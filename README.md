@@ -161,7 +161,7 @@ arduino-cli upload -p /dev/ttyACM0 --fqbn arduino:mbed_nano:nanorp2040connect Mi
 
 ```bash
 # Launch micro-ROS agent
-ros2 run micro_ros_agent micro_ros_agent serial -D /dev/ttyACM0 -b 115200 -v
+ros2 run micro_ros_agent micro_ros_agent serial -D /dev/ttyACM0 -b 115200 -v6
 ```
 
 #### Control and Monitor IMU Data
@@ -179,15 +179,67 @@ ros2 topic pub -1 /imu_enable std_msgs/Bool "data: true" && ros2 topic echo /imu
 ros2 topic pub -1 /imu_enable std_msgs/Bool "data: false"
 ```
 
+### 5. Micro-ROS IMU Publisher with Domain ID
+
+Enhanced version of the IMU publisher that supports ROS2 Domain ID configuration for network isolation and multi-robot systems.
+
+#### Features
+
+- Configurable ROS2 Domain ID (set to 43 by default)
+- Allows multiple isolated ROS2 networks on the same physical network
+- Useful for multi-robot deployments or testing environments
+- Same IMU publishing and control capabilities as MicroRosIMU
+
+#### Build and Upload
+
+```bash
+# Compile the micro-ROS IMU with Domain ID sketch
+arduino-cli compile --fqbn arduino:mbed_nano:nanorp2040connect MicroRosIMUWithDomainId
+
+# Upload to the board
+arduino-cli upload -p /dev/ttyACM0 --fqbn arduino:mbed_nano:nanorp2040connect MicroRosIMUWithDomainId
+```
+
+#### Run the Agent with Domain ID
+
+```bash
+# Launch micro-ROS agent with matching domain ID (43)
+ROS_DOMAIN_ID=43 ros2 run micro_ros_agent micro_ros_agent serial -D /dev/ttyACM0 -b 115200 -v6
+```
+
+#### Control and Monitor IMU Data
+
+With the device connected and agent running (ensure ROS_DOMAIN_ID is set):
+
+```bash
+# Set domain ID for ROS2 commands
+export ROS_DOMAIN_ID=43
+
+# List available topics
+ros2 topic list
+
+# Enable IMU publishing and echo the data
+ros2 topic pub -1 /imu_enable std_msgs/Bool "data: true" && ros2 topic echo /imu/data_raw
+
+# Disable IMU publishing
+ros2 topic pub -1 /imu_enable std_msgs/Bool "data: false"
+```
+
+**Note**: To change the domain ID, modify line 101 in `MicroRosIMUWithDomainId.ino`:
+```c
+rcl_init_options_set_domain_id(&init_options, 43);  // Change 43 to your desired domain ID
+```
+
 ## Project Structure
 
 ```
 .
-├── Led/                 # LED blink example
-├── IMU/                 # Standalone IMU reading example
-├── MicroRosSample/      # Basic micro-ROS publisher example
-├── MicroRosIMU/         # IMU data publisher with ROS2 integration
-└── ros2_ws/             # ROS2 workspace for micro-ROS agent
+├── Led/                        # LED blink example
+├── IMU/                        # Standalone IMU reading example
+├── MicroRosSample/             # Basic micro-ROS publisher example
+├── MicroRosIMU/                # IMU data publisher with ROS2 integration
+├── MicroRosIMUWithDomainId/   # IMU publisher with Domain ID support
+└── ros2_ws/                    # ROS2 workspace for micro-ROS agent
 ```
 
 ## Troubleshooting
