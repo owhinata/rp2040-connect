@@ -124,10 +124,11 @@ source install/setup.bash
 
 # Create micro-ROS agent workspace
 ros2 run micro_ros_setup create_agent_ws.sh
+ros2 run micro_ros_setup build_agent.sh
 source install/setup.bash
 
 # Launch the micro-ROS agent
-ros2 run micro_ros_agent micro_ros_agent serial -D /dev/ttyACM0 -b 115200 -v
+ros2 run micro_ros_agent micro_ros_agent serial -D /dev/ttyACM0 -b 115200 -v6
 ```
 
 #### Verify Communication
