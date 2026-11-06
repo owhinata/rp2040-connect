@@ -1,0 +1,11 @@
+/.venv/
+/.west/
+/.cmake/
+/.wget-hsts
+/zephyr/
+/zephyr-sdk-*/
+/modules/
+/bootloader/
+/tools/
+/doc/
+/build/
