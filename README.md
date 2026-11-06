@@ -64,7 +64,8 @@ west flash -d build/blink -r uf2
 ## USB シリアルコンソール
 
 `app/usb-console` は USB CDC ACM 経由で Zephyr シェルを使うアプリです。
-次のコマンドでビルドして書き込みます。
+初回やマニフェストを更新した後は `west update` を実行し、次のコマンドで
+ビルドして書き込みます。
 
 ```bash
 west build -b arduino_nano_connect app/usb-console -d build/usb-console
@@ -87,3 +88,10 @@ Enter キーを押すとシェルが表示されます。`help` でコマンド�
 表示し、リセット後は 0 から始まります。
 minicom は `sudo apt install minicom` でインストールでき、
 終了するには `Ctrl-A`、続けて `X` を押します。
+
+GPIO、I²C、センサー、再起動、ログのシェルコマンドを有効にしています。
+`gpio --help`、`i2c --help`、`sensor --help`、`kernel reboot --help`、
+`log --help` で使い方を確認できます。`log` はログレベルの参照や変更に使い、
+`dmesg` は RAM に保存されたログの表示に使います。
+
+`ps` を実行すると、スレッドの CPU 使用率とスタック使用量を表示します。
