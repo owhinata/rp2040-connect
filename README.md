@@ -60,3 +60,30 @@ RESET ボタンの2回押しでブートローダーモードに入れない場�
 ```bash
 west flash -d build/blink -r uf2
 ```
+
+## USB シリアルコンソール
+
+`app/usb-console` は USB CDC ACM 経由で Zephyr シェルを使うアプリです。
+次のコマンドでビルドして書き込みます。
+
+```bash
+west build -b arduino_nano_connect app/usb-console -d build/usb-console
+west flash -d build/usb-console -r uf2
+```
+
+書き込み後、USB シリアル端末から接続します。デバイス名は環境によって
+異なりますが、例えば `/dev/ttyACM0` の場合は次のように接続できます。
+
+```bash
+minicom -D /dev/ttyACM0
+```
+
+Enter キーを押すとシェルが表示されます。`help` でコマンド一覧を、`hello` で
+挨拶を表示します。ログは RAM のリングバッファに保存され、`dmesg` コマンドで
+表示できます。バッファは 4 KiB で、いっぱいになると古いデータから上書きされます。
+通常のリセット後もログを参照できるよう初期化されない RAM に保存します。
+電源断や、RAM を初期化するリセットでは消えます。リセット直前の未処理のログは
+保存されない場合があります。タイムスタンプは起動後の経過時間をマイクロ秒単位で
+表示し、リセット後は 0 から始まります。
+minicom は `sudo apt install minicom` でインストールでき、
+終了するには `Ctrl-A`、続けて `X` を押します。
