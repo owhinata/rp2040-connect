@@ -29,6 +29,7 @@ struct imu_measure_result {
 	struct lsm6dso_fifo_stats fifo;
 	uint64_t elapsed_ms;
 	uint64_t cpu_busy_cycles;
+	uint64_t decode_elapsed_cycles;
 	uint64_t cpu_total_cycles;
 	uint32_t dropped_cqes;
 	uint32_t bufferless_cqes;
@@ -77,7 +78,10 @@ static void consume_cqes(struct imu_measure_result *result, bool include)
 					result->error = -ENODATA;
 				}
 			} else {
+				uint32_t before = k_cycle_get_32();
+
 				rc = imu_measure_count_packet(buffer, length, &result->counts);
+				result->decode_elapsed_cycles += (uint32_t)(k_cycle_get_32() - before);
 				if (rc != 0) {
 					result->invalid_packets++;
 					if (result->error == 0) {
@@ -101,6 +105,8 @@ static void print_result(const struct shell *shell, const struct imu_measure_res
 	shell_print(shell, "elapsed_ms=%" PRIu64 " stop_requested_ms=%" PRIu64
 		    " batches=%" PRIu64 " stopped_early=%u", result->elapsed_ms,
 		    result->stop_requested_ms, result->counts.batches, result->stopped_early);
+	shell_print(shell, "decode_elapsed_ns=%" PRIu64 " (includes preemption)",
+		    k_cyc_to_ns_floor64(result->decode_elapsed_cycles));
 	shell_print(shell, "accel_samples=%" PRIu64 " gyro_samples=%" PRIu64
 		    " other_words=%" PRIu64, result->counts.accel_samples,
 		    result->counts.gyro_samples, result->counts.other_words);

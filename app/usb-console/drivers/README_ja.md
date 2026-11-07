@@ -2,7 +2,7 @@
 
 [English](README.md) | 日本語
 
-`lsm6dso/` と `i2c_dw/` は Zephyr v4.5.0、コミット
+`lsm6dso/` は Zephyr v4.5.0、コミット
 `41d10b59730406bbab4ca9f1fbbe9e96aafb4966` の各ドライバーからコピーした。
 各ソースの著作権・Apache-2.0 ライセンス表示を維持している。コピーした
 ソースには FIFO の内部処理が追加されている。新規の `lsm6dso_fifo.c` は FIFO
@@ -16,8 +16,8 @@ decoder と切り替える `get_decoder` に接続している。時刻はホス
 
 アプリの CMake は Zephyr のドライバーライブラリー内の対象ソースをコピーに
 置き換える。Kconfig、devicetree binding、ST の共通バス層と HAL は Zephyr の
-ものを使用する。`CONFIG_LSM6DSO` および `CONFIG_I2C_DW` は有効のままであり、
-同一 compatible を持つ全インスタンスにローカル版が適用される。標準版と
+ものを使用する。I²C は Zephyr 標準の `i2c_dw` を使用する。
+同一 compatible を持つセンサーにはローカル版が適用される。センサーの標準版と
 ローカル版は同時にコンパイルしない。Zephyr のライブラリー構成が変わった場合、
 置換対象が見つからなければ構成エラーにする。
 
@@ -47,7 +47,7 @@ USB shell、I²C scan/speed、sensor get/attr_set、NACK と無効引数を含�
 accel/gyro の sampling_frequency 設定は実機で確認された。NACK・無効引数などの
 確認は残っている。停止後の通常取得と、停止時の無関係なチャンネル表示が出ないことも
 確認した。エラー時の復旧、より長時間の動作、他の I²C 利用者との共存は未検証で、
-DMA は未実装。
+標準 I²C ドライバーに戻した構成は 6667 Hz で 10 秒間の実機測定を行い、FIFO 集計の一致と停止後の sensor get を確認した。
 
 ## 実機検証結果
 
@@ -246,3 +246,15 @@ cc -std=c17 -Wall -Wextra -Werror -Iapp/usb-console/tests/fakes \
   app/usb-console/drivers/lsm6dso/lsm6dso_fifo.c -o /tmp/rp2040-stream-stop-test
 /tmp/rp2040-stream-stop-test
 ```
+
+## DMA の比較
+
+実験的に実装した RP2040 DMA と割り込み方式を同一ファームウェアで比較した。I²C は 1 MHz、両センサーは各 6667 Hz、測定は各 10 秒。標準 I²C ドライバー版も別途 10 秒測定した。いずれも FIFO の集計は一致し、エラーと overrun 観測はなかった。今回の DMA 実装では CPU 使用率が増加したため、カスタムドライバーを削除し、Zephyr 標準の `i2c_dw` ドライバーに戻した。
+
+| 方式 | CPU 使用率 | FIFO ワード数 | バッチ数 | ワード集計の経過時間 |
+| --- | ---: | ---: | ---: | ---: |
+| 割り込み | 13.05% | 134,186 | 1,494 | 129.366 ms |
+| DMA | 34.87% | 134,202 | 3,059 | 144.568 ms |
+| Zephyr 標準の割り込み方式 | 15.62% | 134,138 | 2,089 | 143.352 ms |
+
+集計の経過時間には割り込みやスケジューリングによる中断を含み、CPU 実行時間そのものではない。比較対象は今回の実装であり、すべての DMA 設計の性能を示すものではない。この時間は `imu_measure` の `decode_elapsed_ns` に表示される。

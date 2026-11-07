@@ -5,9 +5,8 @@ project(usb_console)
 target_sources(app PRIVATE src/main.c src/log_ram.c src/imu_fifo_shell.c src/imu_measure.c
   src/imu_measure_packet.c)
 
-# Keep Zephyr's Kconfig and devicetree bindings, but compile only our copies.
-# Replace the sources in their original libraries so all DW instances use the
-# same implementation and the standard sensor driver cannot bind a second time.
+# Keep Zephyr's Kconfig and devicetree bindings, but use our sensor copies.
+# The I2C driver is compiled unmodified from Zephyr.
 function(use_local_driver_sources target pattern replacement_dir)
   get_target_property(sources ${target} SOURCES)
   set(updated_sources)
@@ -27,10 +26,8 @@ function(use_local_driver_sources target pattern replacement_dir)
   set_property(TARGET ${target} PROPERTY SOURCES "${updated_sources}")
 endfunction()
 
-use_local_driver_sources(drivers__i2c "(^|/)i2c_dw\\.c$" drivers/i2c_dw)
 use_local_driver_sources(drivers__sensor__st__lsm6dso "(^|/)lsm6dso(_shub|_trigger)?\\.c$" drivers/lsm6dso)
 use_local_driver_sources(drivers__sensor "(^|/)sensor_shell\\.c$" drivers/sensor_shell)
-target_include_directories(drivers__i2c PRIVATE ${ZEPHYR_BASE}/drivers/i2c)
 target_include_directories(drivers__sensor PRIVATE ${ZEPHYR_BASE}/drivers/sensor)
 target_sources(drivers__sensor__st__lsm6dso PRIVATE drivers/lsm6dso/lsm6dso_fifo.c)
 target_sources(drivers__sensor__st__lsm6dso PRIVATE drivers/lsm6dso/lsm6dso_fifo_hw.c)
