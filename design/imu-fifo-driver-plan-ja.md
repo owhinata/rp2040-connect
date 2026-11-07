@@ -1,5 +1,7 @@
 # LSM6DSOX FIFO バースト取得と RP2040 I²C DMA の実装方針
 
+[English](imu-fifo-driver-plan.md) | 日本語
+
 ## 目的と現状
 
 Arduino Nano RP2040 Connect のオンボード IMU（LSM6DSOX）について、FIFO を使った

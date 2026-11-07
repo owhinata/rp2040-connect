@@ -4,6 +4,8 @@ English | [日本語](README_ja.md)
 
 A Zephyr workspace for the Arduino Nano RP2040 Connect. Multiple applications share the Zephyr version and modules specified in `manifest/west.yml`. Add modules as needed by your applications.
 
+See the [IMU FIFO driver plan](design/imu-fifo-driver-plan.md) for the design and implementation goals.
+
 ## Setup
 
 The following instructions are for Ubuntu 24.04. First, install the packages required for building:
