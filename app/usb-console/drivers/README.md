@@ -30,7 +30,7 @@ The local driver has been built and tested on the Nano RP2040 Connect. At 100 kH
 | Gyroscope only | 104 Hz | 1,024 | 32 | Approx. 0.621 s | 0 / 0 / 0 |
 | Accelerometer and gyroscope | 208 Hz each | 3,904 | 122 | Approx. 2.366 s | 0 / 0 / 0 |
 
-After the 208 Hz run, `ps` reported a sensor shell stack high-water mark of 1,208 / 3,072 bytes. CPU usage measured after stopping does not indicate CPU load during acquisition.
+After the 208 Hz run, `kernel ps` reported a sensor shell stack high-water mark of 1,208 / 3,072 bytes. CPU usage measured after stopping does not indicate CPU load during acquisition.
 
 ### Measurements with `imu_measure`
 
@@ -66,7 +66,7 @@ The FIFO burst read uses the circular FIFO output register behavior described in
 
 Internal statistics record words read, transfer time, I²C errors, buffer shortages, and overrun flag observations. The number of observations is neither a lost-sample count nor a count of distinct overruns.
 
-The current stream supports a 32-word watermark and `fifo_wm incl` only. Set a nonzero ODR for each sensor to use. FIFO overrun stops the stream with `-EOVERFLOW` to report a discontinuity of unknown size. I²C errors and insufficient receive buffers also stop the stream. Ordinary fetch/get and attribute changes return `-EBUSY` during streaming.
+The stream supports `fifo_wm incl`; `sensor attr_set lsm6dsox all fifo_watermark <1..256>` sets the watermark while stopped, and `sensor attr_get lsm6dsox all fifo_watermark` reads it (default 32, reset on reboot). Applications use `sensor_attr_set` / `sensor_attr_get` with `SENSOR_ATTR_LSM6DSO_FIFO_WATERMARK` and `SENSOR_CHAN_ALL`. Set a nonzero ODR for each sensor to use. FIFO overrun stops the stream with `-EOVERFLOW` to report a discontinuity of unknown size. I²C errors and insufficient receive buffers also stop the stream. Ordinary fetch/get and attribute changes return `-EBUSY` during streaming.
 
 ## Using `imu_measure`
 
@@ -103,6 +103,7 @@ After confirming `cleanup_timeout=0`, use `i2c speed i2c0 1` to return to 100 kH
 | `fifo_words` / `transfers` | FIFO words read and transfer count recorded by the driver |
 | `transfer_ns` / `max_transfer_ns` | Total and maximum I²C burst transfer time |
 | `i2c_errors` / `buffer_too_small` / `overrun_observations` | I²C errors, buffer shortages, and overrun flag observations |
+| `cpu_active` | Non-idle time from idle hooks, including interrupts; resolution 0.1% |
 | `cpu_busy` | Scheduler non-idle time; interrupts taken while idle can be omitted |
 | `accounting` | `match` if counts agree without errors, `mismatch` if counts differ, or `incomplete` if errors or other conditions prevent reconciliation |
 | `stream_error` / `stop_error` | Errors in streaming and in requesting or waiting for stop |
@@ -121,7 +122,7 @@ sensor attr_set lsm6dsox accel_xyz sampling_frequency 26
 sensor attr_set lsm6dsox gyro_xyz sampling_frequency 26
 sensor stream lsm6dsox@6a on fifo_wm incl
 sensor stream lsm6dsox@6a off
-imu_fifo_stats
+imu_measure stats
 ```
 
 Zephyr 4.5.0's `sensor stream` requires the full device name `lsm6dsox@6a`; unlike `sensor get` and `sensor attr_set`, it does not accept the `lsm6dsox` node label.
@@ -237,3 +238,54 @@ west flash -d build/usb-console-i2c-validation -r uf2
 With the IMU idle, `i2c_validate` checks 1–65 byte register reads against a stable register prefix and checks guard bytes, a split read without STOP, and repeated START across multiple direction changes. It accesses the onboard LSM6DSOX registers and is not a general test for arbitrary I²C devices. NACK, concurrent use and FIFO streaming should be checked separately.
 
 For timeout recovery, build with `-DEXTRA_CONF_FILE=prj_i2c_timeout.conf`, set `i2c speed i2c0 1` and run `i2c_validate_timeout`. It expects a 64-byte read to time out under the 2 ms limit, then checks that a short WHO_AM_I read succeeds. On hardware this sequence passed three times consecutively. Do not use this short timeout configuration as the ordinary firmware.
+
+## CPU active time including interrupts
+
+`imu_measure` resets Zephyr's idle-hook CPU-load window at the start and reads it after the stream has stopped and drained. `cpu_active` includes interrupts, application and kernel work, and idle-hook overhead; it is rounded down to 0.1%. The measurement includes stream setup and cleanup. The idle-hook backend has a shared reset window, so other calls to `cpu_load_get(true)` must not run concurrently. `cpu_busy` remains the separate scheduler non-idle statistic and can omit interrupts taken while idle.
+
+A test-only image built with `-DEXTRA_CONF_FILE=prj_cpu_load_validation.conf` provides `cpu_load_validate`. Run it when no IMU measurement is active. It measures an idle window, a busy thread and a timer ISR running for 500 µs every 2 ms; it briefly loads the CPU and resets the shared CPU-load window. On the Nano RP2040 Connect the observed results were 0.1%, 100.0% and 25.7% respectively, with 1,000 timer calls.
+
+With the local I²C driver at 1 MHz and both sensors at 6667 Hz, a 60-second run reported `cpu_active=60.0%` and scheduler `cpu_busy=26.64%`. The run accounted for 804,954 FIFO words, with no reported I²C errors, overruns or dropped completions. FIFO transfer time totaled 39.197 seconds; an earlier run without CPU-load hooks took 38.909 seconds under similar settings, but these single runs do not establish a precise instrumentation overhead. DMA was not enabled for that earlier measurement; this result is not a DMA comparison.
+
+The previously recorded 15.05% at 6667 Hz was scheduler non-idle time from an earlier 60-second run with a different driver and earlier FIFO stopping implementation; the 26.64% above is the same scheduler metric for the newer run. The runs processed 16,393 and 23,672 batches respectively. More frequent batch processing is a possible contributor to the difference, but neither result by itself determines the total physical CPU load because idle-time interrupts were omitted. The 60.0% `cpu_active` value cannot be compared to 15.05% as if they were the same metric.
+
+
+## DMA comparison including idle-time interrupts
+
+The following historical comparison used an experimental build to compare the local interrupt driver with an RP2040 DMA path in the same firmware. The normal build now enables this DMA path by default. The DMA path handles I²C0 reads of 32–3584 bytes ending in STOP; other transfers use interrupts.
+
+```sh
+west build -p always -b arduino_nano_connect app/usb-console -d build/usb-console-dma-comparison -- -DEXTRA_CONF_FILE=prj_i2c_dma_comparison.conf -DEXTRA_DTC_OVERLAY_FILE=dma_comparison.overlay
+west flash -d build/usb-console-dma-comparison -r uf2
+```
+
+Set I²C to 1 MHz and both sensor sampling frequencies to 6667 Hz, then use `i2c_dma mode off` or `i2c_dma mode on` before starting `imu_measure start 60`. Change the mode only when no stream or transfer is active. `i2c_dma stats` reports cumulative counters; subtract the values before the run from those afterward to check DMA transfers, errors and fallbacks.
+
+| Mode | `cpu_active` | `cpu_busy` | FIFO words | Batches | Transfer time | DMA transfers |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| Interrupt | 66.8% | 31.22% | 805,410 | 18,191 | 42.177 s | 0 |
+| DMA | 45.1% | 37.28% | 805,118 | 17,499 | 40.641 s | 17,499 |
+
+These 60-second measurements used the same comparison image. Both runs had matching host FIFO accounting and no reported I²C errors, overruns or dropped completions; DMA errors and fallbacks did not increase during the DMA run. Two alternating 10-second runs per mode reported `cpu_active` of 66.8–66.9% without DMA and 45.3% with DMA. The DMA run reduced measured active time by 21.7 percentage points; `cpu_busy` moved in the opposite direction because it is a different scheduler metric and can omit idle-time interrupts. Instrumentation and the comparison firmware itself contribute to the measured load. Matching host accounting and no observed overrun do not prove that every sensor-generated sample was retained.
+
+Short and repeated-start reads and recovery after a NACK were checked at 100 kHz and 1 MHz. A forced DMA timeout followed by a short successful read passed three consecutive times at 100 kHz with a 2 ms timeout. Concurrent DMA users and longer-duration operation have not been fully validated.
+
+
+### Watermark comparison
+
+The normal build supports `fifo_watermark` values from 1 to 256; change the setting only when streaming is stopped. The default is 32 words. In the same comparison firmware, both sensors were set to 6667 Hz and I²C to 1 MHz. Each of the following runs lasted 10 seconds.
+
+| Watermark (words) | DMA | `cpu_active` | `cpu_busy` | FIFO words | Batches |
+| ---: | --- | ---: | ---: | ---: | ---: |
+| 32 | Off | 67.0% | 34.12% | 134,194 | 3,062 |
+| 32 | On | 45.9% | 38.93% | 134,194 | 2,914 |
+| 64 | Off | 60.6% | 27.32% | 134,218 | 1,939 |
+| 64 | On | 39.5% | 31.42% | 134,228 | 1,922 |
+| 128 | Off | 45.7% | 15.50% | 134,118 | 1,007 |
+| 128 | On | 22.5% | 18.25% | 134,186 | 1,003 |
+
+All runs reported matching host accounting and no I²C errors, buffer shortages, observed overruns or dropped completions; DMA error and fallback counters did not increase. These are single 10-second runs per condition, with instrumentation overhead included. Larger thresholds also increase the waiting time before the first FIFO batch and reduce the FIFO's remaining headroom; no observed overrun does not prove that all generated samples were retained.
+
+At 128 words, follow-up 60-second runs reported `cpu_active` 45.6% without DMA (804,974 words, 6,040 batches) and 22.3% with DMA (804,918 words, 6,014 batches). Both matched host FIFO accounting with no reported I²C errors or overruns; the DMA run recorded 6,014 DMA transfers and no new DMA errors or fallbacks.
+
+With the normal DMA-enabled firmware at 1 MHz and 128-word watermark, a 60-second run reported `cpu_active=22.9%`, 804,830 words and 6,006 DMA transfers. Host accounting matched, with no I²C or DMA errors, fallbacks, or observed overruns.

@@ -94,6 +94,7 @@ struct lsm6dso_data {
 	struct lsm6dso_fifo_irq fifo_irq;
 	struct k_work_delayable stream_work;
 	struct k_spinlock stream_lock;
+	uint16_t stream_watermark;
 	struct rtio_iodev_sqe *stream_sqe;
 	struct rtio *stream_rtio;
 	rtio_sqe_handle_t stream_handle;

@@ -11,3 +11,7 @@
 		rx-fifo-size = <2048>;
 	};
 };
+
+&dma {
+	status = "okay";
+};

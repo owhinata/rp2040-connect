@@ -17,6 +17,7 @@
 #include <zephyr/sys/util.h>
 
 #include "sensor_shell.h"
+#include "../lsm6dso/lsm6dso_attributes.h"
 
 LOG_MODULE_REGISTER(sensor_shell, CONFIG_SENSOR_LOG_LEVEL);
 
@@ -650,6 +651,17 @@ unlock:
 	return err;
 }
 
+static int parse_sensor_attribute(const struct device *dev, const char *name)
+{
+	if (!strcmp(name, "fifo_watermark")) {
+		if (dev != DEVICE_DT_GET(DT_NODELABEL(lsm6dsox))) {
+			return -ENOTSUP;
+		}
+		return SENSOR_ATTR_LSM6DSO_FIFO_WATERMARK;
+	}
+	return parse_named_int(name, sensor_attribute_name, ARRAY_SIZE(sensor_attribute_name));
+}
+
 static int cmd_sensor_attr_set(const struct shell *sh, size_t argc, char *argv[])
 {
 	const struct device *dev;
@@ -669,8 +681,7 @@ static int cmd_sensor_attr_set(const struct shell *sh, size_t argc, char *argv[]
 	for (size_t i = 2; i < argc; i += 3) {
 		int channel = parse_named_int(argv[i], sensor_channel_name,
 					      ARRAY_SIZE(sensor_channel_name));
-		int attr = parse_named_int(argv[i + 1], sensor_attribute_name,
-					   ARRAY_SIZE(sensor_attribute_name));
+		int attr = parse_sensor_attribute(dev, argv[i + 1]);
 		struct sensor_value value = {0};
 
 		if (channel < 0) {
@@ -689,11 +700,11 @@ static int cmd_sensor_attr_set(const struct shell *sh, size_t argc, char *argv[]
 		rc = sensor_attr_set(dev, channel, attr, &value);
 		if (rc) {
 			shell_error(sh, "Failed to set channel(%s) attribute(%s): %d",
-				    sensor_channel_name[channel], sensor_attribute_name[attr], rc);
+				    argv[i], argv[i + 1], rc);
 			continue;
 		}
 		shell_print(sh, "%s channel=%s, attr=%s set to value=%s", dev->name,
-			    sensor_channel_name[channel], sensor_attribute_name[attr], argv[i + 2]);
+			    argv[i], argv[i + 1], argv[i + 2]);
 	}
 	return 0;
 }
@@ -704,8 +715,7 @@ static void cmd_sensor_attr_get_handler(const struct shell *sh, const struct dev
 {
 	int channel =
 		parse_named_int(channel_name, sensor_channel_name, ARRAY_SIZE(sensor_channel_name));
-	int attr = parse_named_int(attr_name, sensor_attribute_name,
-				   ARRAY_SIZE(sensor_attribute_name));
+	int attr = parse_sensor_attribute(dev, attr_name);
 	struct sensor_value value[3] = {{0}, {0}, {0}};
 	int rc;
 
@@ -725,12 +735,12 @@ static void cmd_sensor_attr_get_handler(const struct shell *sh, const struct dev
 			return;
 		}
 		shell_error(sh, "Failed to get channel(%s) attribute(%s): %d",
-			    sensor_channel_name[channel], sensor_attribute_name[attr], rc);
+			    channel_name, attr_name, rc);
 		return;
 	}
 
 	shell_print(sh, "%s(channel=%s, attr=%s) value=%.6f value=%.6f value=%.6f", dev->name,
-		    sensor_channel_name[channel], sensor_attribute_name[attr],
+		    channel_name, attr_name,
 		    sensor_value_to_double(&value[0]),
 		    sensor_value_to_double(&value[1]),
 		    sensor_value_to_double(&value[2]));
@@ -820,6 +830,9 @@ static void attribute_name_get(size_t idx, struct shell_static_entry *entry)
 			}
 			cnt++;
 		}
+	}
+	if (entry->syntax == NULL && cnt == idx) {
+		entry->syntax = "fifo_watermark";
 	}
 }
 

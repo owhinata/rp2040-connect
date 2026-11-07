@@ -13,3 +13,12 @@ config IMU_CPU_PROFILE_IRQS
 config IMU_I2C_VALIDATION
 	bool "Enable I2C hardware validation commands"
 	depends on I2C && SHELL
+
+config IMU_CPU_LOAD_VALIDATION
+	bool "Enable CPU idle-hook hardware validation"
+	depends on CPU_LOAD_BACKEND_IDLE_HOOK && SHELL
+
+config I2C_DW_RP2040_DMA
+	bool "RP2040 I2C0 DMA reads"
+	depends on SOC_RP2040 && I2C_DW && DMA_RPI_PICO && SHELL && !SMP
+	depends on !I2C_DW_LPSS_DMA

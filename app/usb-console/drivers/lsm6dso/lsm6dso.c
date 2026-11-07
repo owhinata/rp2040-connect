@@ -18,6 +18,7 @@
 
 #include "lsm6dso.h"
 #include "lsm6dso_fifo.h"
+#include "lsm6dso_attributes.h"
 #include "lsm6dso_fifo_decoder.h"
 #include "lsm6dso_fifo_hw.h"
 
@@ -705,11 +706,34 @@ static int lsm6dso_attr_set(const struct device *dev, enum sensor_channel chan,
 	struct lsm6dso_data *data = dev->data;
 	int ret;
 
+#ifdef CONFIG_SENSOR_ASYNC_API
+	if (attr == (enum sensor_attribute)SENSOR_ATTR_LSM6DSO_FIFO_WATERMARK) {
+		if (chan != SENSOR_CHAN_ALL || val->val2 != 0 || val->val1 < 1 ||
+		    val->val1 > LSM6DSO_FIFO_MAX_WATERMARK) {
+			return -EINVAL;
+		}
+		return lsm6dso_fifo_set_watermark(dev, (uint16_t)val->val1);
+	}
+#endif
 	k_mutex_lock(&data->fifo_lock, K_FOREVER);
 	ret = data->fifo_owned ? -EBUSY : lsm6dso_attr_set_unlocked(dev, chan, attr, val);
 	k_mutex_unlock(&data->fifo_lock);
 	return ret;
 }
+
+#ifdef CONFIG_SENSOR_ASYNC_API
+static int lsm6dso_attr_get(const struct device *dev, enum sensor_channel chan,
+			    enum sensor_attribute attr, struct sensor_value *val)
+{
+	if (attr != (enum sensor_attribute)SENSOR_ATTR_LSM6DSO_FIFO_WATERMARK ||
+	    chan != SENSOR_CHAN_ALL) {
+		return -ENOTSUP;
+	}
+	val->val1 = lsm6dso_fifo_get_watermark(dev);
+	val->val2 = 0;
+	return 0;
+}
+#endif
 
 static int lsm6dso_sample_fetch(const struct device *dev, enum sensor_channel chan)
 {
@@ -924,6 +948,9 @@ static int lsm6dso_get_decoder(const struct device *dev, const struct sensor_dec
 
 static DEVICE_API(sensor, lsm6dso_driver_api) = {
 	.attr_set = lsm6dso_attr_set,
+#ifdef CONFIG_SENSOR_ASYNC_API
+	.attr_get = lsm6dso_attr_get,
+#endif
 #if CONFIG_LSM6DSO_TRIGGER
 	.trigger_set = lsm6dso_trigger_set,
 #endif

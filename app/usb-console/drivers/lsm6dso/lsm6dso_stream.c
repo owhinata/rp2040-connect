@@ -7,7 +7,6 @@
 #include <zephyr/drivers/sensor_clock.h>
 #include <zephyr/rtio/rtio.h>
 
-#define STREAM_WATERMARK 32U
 #define STREAM_CANCEL_POLL_MS 20
 #define STREAM_WORK_STACK_SIZE 2048
 
@@ -69,7 +68,7 @@ static int stream_start(const struct device *dev)
 	if (!gpio_is_ready_dt(&cfg->fifo_gpio)) {
 		return -ENODEV;
 	}
-	ret = lsm6dso_fifo_start_locked_driver(dev, STREAM_WATERMARK,
+	ret = lsm6dso_fifo_start_locked_driver(dev, data->stream_watermark,
 					       data->accel_freq != 0, data->gyro_freq != 0);
 	if (ret != 0) {
 		(void)lsm6dso_fifo_stop_locked_driver(dev);
@@ -114,7 +113,7 @@ static int stream_read(const struct device *dev, struct rtio_iodev_sqe *sqe, boo
 		return 0;
 	}
 	ret = rtio_sqe_rx_buf(sqe, sizeof(*packet) +
-			      (drain ? 1 : STREAM_WATERMARK) * LSM6DSO_FIFO_WORD_SIZE,
+			      (drain ? 1 : data->stream_watermark) * LSM6DSO_FIFO_WORD_SIZE,
 			      sizeof(*packet) + LSM6DSO_FIFO_MAX_WORDS * LSM6DSO_FIFO_WORD_SIZE,
 			      &buf, &len);
 	if (ret != 0) {
@@ -276,6 +275,7 @@ void lsm6dso_stream_init(const struct device *dev)
 					"imu_fifo_worker");
 #endif
 	}
+	data->stream_watermark = LSM6DSO_FIFO_DEFAULT_WATERMARK;
 	k_work_init_delayable(&data->stream_work, stream_work);
 }
 
@@ -314,4 +314,32 @@ void lsm6dso_submit(const struct device *dev, struct rtio_iodev_sqe *sqe)
 		return;
 	}
 	(void)k_work_reschedule_for_queue(&stream_work_queue, &data->stream_work, K_NO_WAIT);
+}
+
+int lsm6dso_fifo_set_watermark(const struct device *dev, uint16_t watermark)
+{
+	struct lsm6dso_data *data = dev->data;
+	k_spinlock_key_t key;
+
+	if (watermark == 0 || watermark > LSM6DSO_FIFO_MAX_WATERMARK) {
+		return -EINVAL;
+	}
+	key = k_spin_lock(&data->stream_lock);
+	if (data->stream_sqe) {
+		k_spin_unlock(&data->stream_lock, key);
+		return -EBUSY;
+	}
+	data->stream_watermark = watermark;
+	k_spin_unlock(&data->stream_lock, key);
+	return 0;
+}
+
+uint16_t lsm6dso_fifo_get_watermark(const struct device *dev)
+{
+	struct lsm6dso_data *data = dev->data;
+	k_spinlock_key_t key = k_spin_lock(&data->stream_lock);
+	uint16_t watermark = data->stream_watermark;
+
+	k_spin_unlock(&data->stream_lock, key);
+	return watermark;
 }

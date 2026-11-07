@@ -11,6 +11,10 @@
 #include <zephyr/drivers/i2c.h>
 #include <zephyr/sys/sys_io.h>
 #include <stdbool.h>
+#ifdef CONFIG_I2C_DW_RP2040_DMA
+#include <zephyr/sys/atomic.h>
+#define I2C_DW_RP2040_DMA_MAX_READ (512U * 7U)
+#endif
 
 #define DT_DRV_COMPAT snps_designware_i2c
 
@@ -191,6 +195,16 @@ struct i2c_dw_dev_config {
 	DEVICE_MMIO_RAM;
 	struct k_sem device_sync_sem;
 	struct k_sem bus_sem;
+#ifdef CONFIG_I2C_DW_RP2040_DMA
+	struct k_sem rp_dma_sem;
+	atomic_t rp_dma_events;
+	atomic_t rp_dma_active;
+	int rp_dma_tx_channel;
+	int rp_dma_rx_channel;
+	bool rp_dma_quarantined;
+	uint16_t rp_dma_commands[I2C_DW_RP2040_DMA_MAX_READ];
+	uint8_t rp_dma_buffer[I2C_DW_RP2040_DMA_MAX_READ];
+#endif
 	uint32_t app_config;
 
 	volatile uint8_t *xfr_buf;

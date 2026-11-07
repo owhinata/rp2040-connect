@@ -22,6 +22,8 @@
 #define K_THREAD_STACK_DEFINE(name, size) char name[size]
 #define K_THREAD_STACK_SIZEOF(name) sizeof(name)
 #define SENSOR_STREAM_DATA_INCLUDE 0
+#define LSM6DSO_FIFO_DEFAULT_WATERMARK 32U
+#define LSM6DSO_FIFO_MAX_WATERMARK 256U
 
 typedef int atomic_t;
 typedef int k_spinlock_key_t;
@@ -44,6 +46,7 @@ struct lsm6dso_data {
 	const struct device *dev;
 	struct k_work_delayable stream_work;
 	struct k_spinlock stream_lock;
+	uint16_t stream_watermark;
 	struct rtio_iodev_sqe *stream_sqe;
 	struct rtio *stream_rtio;
 	rtio_sqe_handle_t stream_handle;
@@ -256,5 +259,15 @@ int main(void)
 	assert(lsm6dso_fifo_request_stop(&dev, &test_rtio, 7) == 0);
 	stream_work(&data.stream_work.work);
 	assert(terminal_error == -ECANCELED && live_sqe == NULL && completions == 2);
+	/* Configuration has bounds and must not change a live stream. */
+	assert(lsm6dso_fifo_set_watermark(&dev, 0) == -EINVAL);
+	assert(lsm6dso_fifo_set_watermark(&dev, 257) == -EINVAL);
+	assert(lsm6dso_fifo_set_watermark(&dev, 128) == 0);
+	assert(lsm6dso_fifo_get_watermark(&dev) == 128);
+	data.stream_sqe = &sqe;
+	assert(lsm6dso_fifo_set_watermark(&dev, 64) == -EBUSY);
+	assert(lsm6dso_fifo_get_watermark(&dev) == 128);
+	data.stream_sqe = NULL;
+	assert(lsm6dso_fifo_set_watermark(&dev, 256) == 0);
 	return 0;
 }

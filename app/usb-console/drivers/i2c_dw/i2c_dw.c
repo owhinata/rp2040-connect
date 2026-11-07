@@ -34,6 +34,15 @@
 #include <zephyr/sys/util.h>
 #include <zephyr/sys/minmax.h>
 
+#ifdef CONFIG_I2C_DW_RP2040_DMA
+#include <zephyr/drivers/dma.h>
+#include <zephyr/dt-bindings/dma/rpi-pico-dma-rp2040.h>
+#include <hardware/dma.h>
+#include <hardware/regs/i2c.h>
+#include <zephyr/shell/shell.h>
+#include "i2c_dw_rp2040_commands.h"
+#endif
+
 #if defined(CONFIG_I2C_DW_LPSS_DMA)
 #include <zephyr/drivers/dma.h>
 #include <zephyr/drivers/dma/dma_intel_lpss.h>
@@ -566,6 +575,232 @@ static void i2c_dw_target_read_clear_intr_bits(const struct device *dev,
 					       union ic_interrupt_register intr_stat);
 #endif
 
+#ifdef CONFIG_I2C_DW_RP2040_DMA
+#define RP_DMA_TX_DONE BIT(0)
+static atomic_t rp_dma_transfers, rp_dma_bytes, rp_dma_errors, rp_dma_fallbacks;
+static atomic_t rp_dma_enabled = ATOMIC_INIT(1);
+#define RP_DMA_RX_DONE BIT(1)
+#define RP_DMA_STOP    BIT(2)
+#define RP_DMA_ERROR   BIT(3)
+#define RP_DMA_DONE    (RP_DMA_TX_DONE | RP_DMA_RX_DONE | RP_DMA_STOP)
+
+static void i2c_dw_rp_dma_notify(struct i2c_dw_dev_config *dw, atomic_val_t events)
+{
+	atomic_val_t all = atomic_or(&dw->rp_dma_events, events) | events;
+	if ((all & RP_DMA_ERROR) || (all & RP_DMA_DONE) == RP_DMA_DONE) {
+		k_sem_give(&dw->rp_dma_sem);
+	}
+}
+
+static void i2c_dw_rp_dma_callback(const struct device *dma, void *user_data, uint32_t channel,
+				   int status)
+{
+	struct i2c_dw_dev_config *dw = user_data;
+	ARG_UNUSED(dma);
+	if (!atomic_get(&dw->rp_dma_active)) {
+		return;
+	}
+	i2c_dw_rp_dma_notify(dw, status < 0 ? RP_DMA_ERROR
+					    : (channel == dw->rp_dma_tx_channel ? RP_DMA_TX_DONE
+										: RP_DMA_RX_DONE));
+}
+
+/* A stop only requests an abort in Zephyr's RP2040 DMA driver.  Wait for BUSY,
+ * then acknowledge late completions (RP2040-E13) before releasing channels.
+ */
+static bool i2c_dw_rp_dma_stop(const struct device *dma, int tx, int rx)
+{
+	int64_t deadline = k_uptime_get() + 100;
+	(void)dma_stop(dma, tx);
+	(void)dma_stop(dma, rx);
+	while (dma_channel_is_busy(tx) || dma_channel_is_busy(rx) || dma_hw->abort) {
+		if (k_uptime_get() >= deadline) {
+			return false;
+		}
+		k_sleep(K_MSEC(1));
+	}
+	dma_irqn_acknowledge_channel(0, tx);
+	dma_irqn_acknowledge_channel(1, tx);
+	dma_irqn_acknowledge_channel(0, rx);
+	dma_irqn_acknowledge_channel(1, rx);
+	return true;
+}
+
+static int i2c_dw_rp_dma_read(const struct device *dev, struct i2c_msg *msg)
+{
+	const struct device *dma = DEVICE_DT_GET(DT_NODELABEL(dma));
+	const struct i2c_dw_rom_config *rom = dev->config;
+	struct i2c_dw_dev_config *dw = dev->data;
+	mm_reg_t base = DEVICE_MMIO_GET(dev);
+	struct dma_block_config tx_block = {0}, rx_block = {0};
+	struct dma_config tx_cfg = {0}, rx_cfg = {0};
+	int tx, rx, ret;
+	bool started = false;
+
+	if (!atomic_get(&rp_dma_enabled) || dev != DEVICE_DT_GET(DT_NODELABEL(i2c0)) ||
+	    !device_is_ready(dma) || msg->len < 32 || msg->len > I2C_DW_RP2040_DMA_MAX_READ ||
+	    !(msg->flags & I2C_MSG_STOP) || (msg->flags & I2C_MSG_ADDR_10_BITS) ||
+	    (dw->app_config & I2C_ADDR_10_BITS)) {
+		return -EAGAIN;
+	}
+	tx = dma_request_channel(dma, NULL);
+	if (tx < 0) {
+		atomic_inc(&rp_dma_fallbacks);
+		return -EAGAIN;
+	}
+	rx = dma_request_channel(dma, NULL);
+	if (rx < 0) {
+		atomic_inc(&rp_dma_fallbacks);
+		dma_release_channel(dma, tx);
+		return -EAGAIN;
+	}
+	dw->rp_dma_tx_channel = tx;
+	dw->rp_dma_rx_channel = rx;
+	i2c_dw_rp2040_read_commands(dw->rp_dma_commands, ARRAY_SIZE(dw->rp_dma_commands), msg->len,
+				    dw->xfr_flags & I2C_MSG_RESTART);
+	tx_block.source_address = (uintptr_t)dw->rp_dma_commands;
+	tx_block.dest_address = base + DW_IC_REG_DATA_CMD;
+	tx_block.block_size = msg->len * sizeof(uint16_t);
+	tx_block.source_addr_adj = DMA_ADDR_ADJ_INCREMENT;
+	tx_block.dest_addr_adj = DMA_ADDR_ADJ_NO_CHANGE;
+	tx_cfg.dma_slot = RPI_PICO_DMA_SLOT_I2C0_TX;
+	tx_cfg.channel_direction = MEMORY_TO_PERIPHERAL;
+	tx_cfg.source_data_size = 2;
+	tx_cfg.dest_data_size = 2;
+	tx_cfg.block_count = 1;
+	tx_cfg.head_block = &tx_block;
+	tx_cfg.dma_callback = i2c_dw_rp_dma_callback;
+	tx_cfg.user_data = dw;
+	rx_block.source_address = base + DW_IC_REG_DATA_CMD;
+	rx_block.dest_address = (uintptr_t)dw->rp_dma_buffer;
+	rx_block.block_size = msg->len;
+	rx_block.source_addr_adj = DMA_ADDR_ADJ_NO_CHANGE;
+	rx_block.dest_addr_adj = DMA_ADDR_ADJ_INCREMENT;
+	rx_cfg.dma_slot = RPI_PICO_DMA_SLOT_I2C0_RX;
+	rx_cfg.channel_direction = PERIPHERAL_TO_MEMORY;
+	rx_cfg.source_data_size = 1;
+	rx_cfg.dest_data_size = 1;
+	rx_cfg.block_count = 1;
+	rx_cfg.head_block = &rx_block;
+	rx_cfg.dma_callback = i2c_dw_rp_dma_callback;
+	rx_cfg.user_data = dw;
+	ret = dma_config(dma, tx, &tx_cfg);
+	if (!ret) {
+		ret = dma_config(dma, rx, &rx_cfg);
+	}
+	if (ret) {
+		atomic_inc(&rp_dma_fallbacks);
+		ret = -EAGAIN;
+		goto release;
+	}
+	atomic_set(&dw->rp_dma_events, 0);
+	k_sem_reset(&dw->rp_dma_sem);
+	atomic_set(&dw->rp_dma_active, 1);
+	sys_write32(8, base + 0x8c); /* TX FIFO threshold */
+	sys_write32(0, base + 0x90); /* RX FIFO threshold */
+	write_intr_mask(DW_INTR_STAT_STOP_DET | DW_INTR_STAT_TX_ABRT | DW_INTR_STAT_TX_OVER |
+				DW_INTR_STAT_RX_OVER | DW_INTR_STAT_RX_UNDER |
+				DW_INTR_STAT_SCL_STUCK_LOW,
+			base);
+	started = true;
+	ret = dma_start(dma, rx);
+	if (!ret) {
+		ret = dma_start(dma, tx);
+	}
+	if (!ret) {
+		k_timepoint_t deadline = sys_timepoint_calc(rom->transfer_timeout);
+		write_dma_cr(3, base);
+		while ((atomic_get(&dw->rp_dma_events) & RP_DMA_DONE) != RP_DMA_DONE) {
+			if (atomic_get(&dw->rp_dma_events) & RP_DMA_ERROR) {
+				ret = -EIO;
+				break;
+			}
+			if (k_sem_take(&dw->rp_dma_sem, sys_timepoint_timeout(deadline))) {
+				ret = -ETIMEDOUT;
+				break;
+			}
+		}
+		if (atomic_get(&dw->rp_dma_events) & RP_DMA_ERROR) {
+			ret = -EIO;
+		}
+	}
+	write_dma_cr(0, base);
+	write_intr_mask(0, base);
+	atomic_set(&dw->rp_dma_active, 0);
+	if (ret) {
+		set_bit_enable_abort(base);
+	}
+	if (ret && !i2c_dw_rp_dma_stop(dma, tx, rx)) {
+		dw->rp_dma_quarantined = true;
+		atomic_inc(&rp_dma_errors);
+		LOG_ERR("DMA channels did not stop; I2C controller quarantined");
+		return -EIO;
+	}
+	(void)read_clr_intr(base);
+	if (ret) {
+		int64_t abort_deadline = k_uptime_get() + 100;
+		while (test_bit_enable_abort(base)) {
+			if (k_uptime_get() >= abort_deadline) {
+				dw->rp_dma_quarantined = true;
+				LOG_ERR("I2C abort did not finish; controller quarantined");
+				break;
+			}
+			k_sleep(K_MSEC(1));
+		}
+		(void)read_clr_intr(base);
+	}
+	if (!ret) {
+		atomic_inc(&rp_dma_transfers);
+		atomic_add(&rp_dma_bytes, msg->len);
+		memcpy(msg->buf, dw->rp_dma_buffer, msg->len);
+		dw->xfr_len = 0;
+	}
+release:
+	if (ret && ret != -EAGAIN) {
+		atomic_inc(&rp_dma_errors);
+	}
+	if (!started || !dw->rp_dma_quarantined) {
+		dma_release_channel(dma, tx);
+		dma_release_channel(dma, rx);
+	}
+	return ret;
+}
+#endif
+
+#if defined(CONFIG_I2C_DW_RP2040_DMA) && defined(CONFIG_SHELL)
+static int i2c_dw_dma_stats(const struct shell *sh, size_t argc, char **argv)
+{
+	ARG_UNUSED(argc);
+	ARG_UNUSED(argv);
+	shell_print(sh, "dma_transfers=%u dma_bytes=%u dma_errors=%u dma_fallbacks=%u",
+		    (unsigned int)atomic_get(&rp_dma_transfers),
+		    (unsigned int)atomic_get(&rp_dma_bytes),
+		    (unsigned int)atomic_get(&rp_dma_errors),
+		    (unsigned int)atomic_get(&rp_dma_fallbacks));
+	return 0;
+}
+static int i2c_dw_dma_mode(const struct shell *sh, size_t argc, char **argv)
+{
+	if (argc == 2) {
+		if (!strcmp(argv[1], "on")) {
+			atomic_set(&rp_dma_enabled, 1);
+		} else if (!strcmp(argv[1], "off")) {
+			atomic_set(&rp_dma_enabled, 0);
+		} else {
+			shell_error(sh, "Expected on or off");
+			return -EINVAL;
+		}
+	}
+	shell_print(sh, "i2c_dma=%s", atomic_get(&rp_dma_enabled) ? "on" : "off");
+	return 0;
+}
+SHELL_STATIC_SUBCMD_SET_CREATE(i2c_dma_commands,
+	SHELL_CMD_ARG(mode, NULL, "Set or show I2C DMA mode: [on|off]", i2c_dw_dma_mode, 1, 1),
+	SHELL_CMD_ARG(stats, NULL, "Show RP2040 I2C DMA counters", i2c_dw_dma_stats, 1, 0),
+	SHELL_SUBCMD_SET_END);
+SHELL_CMD_REGISTER(i2c_dma, &i2c_dma_commands, "RP2040 I2C DMA controls", NULL);
+#endif
+
 static void i2c_dw_isr(const struct device *port)
 {
 	struct i2c_dw_dev_config *const dw = port->data;
@@ -578,6 +813,28 @@ static void i2c_dw_isr(const struct device *port)
 	 * so there is no need to read the register multiple times.
 	 */
 	intr_stat.raw = read_intr_stat(reg_base);
+#ifdef CONFIG_I2C_DW_RP2040_DMA
+	if (atomic_get(&dw->rp_dma_active)) {
+		atomic_val_t events = 0;
+		if (intr_stat.raw &
+		    (DW_INTR_STAT_TX_ABRT | DW_INTR_STAT_TX_OVER | DW_INTR_STAT_RX_OVER |
+		     DW_INTR_STAT_RX_UNDER | DW_INTR_STAT_SCL_STUCK_LOW)) {
+			dw->state |= I2C_DW_CMD_ERROR;
+			(void)i2c_dw_error_chk(port);
+			events |= RP_DMA_ERROR;
+		}
+		if (intr_stat.raw & DW_INTR_STAT_STOP_DET) {
+#if CONFIG_I2C_ALLOW_NO_STOP_TRANSACTIONS
+			dw->need_setup = true;
+#endif
+			events |= RP_DMA_STOP;
+		}
+		write_intr_mask(0, reg_base);
+		(void)read_clr_intr(reg_base);
+		i2c_dw_rp_dma_notify(dw, events);
+		return;
+	}
+#endif
 
 	/*
 	 * Causes of an interrupt:
@@ -785,6 +1042,11 @@ static int i2c_dw_setup(const struct device *dev, uint16_t target_address)
 	}
 
 	ic_con.bits.restart_en = 1U;
+#ifdef CONFIG_I2C_DW_RP2040_DMA
+	if (dev == DEVICE_DT_GET(DT_NODELABEL(i2c0)) && atomic_get(&rp_dma_enabled)) {
+		ic_con.raw |= I2C_IC_CON_RX_FIFO_FULL_HLD_CTRL_BITS;
+	}
+#endif
 
 	/* Set addressing mode - (initialization = 7 bit) */
 	if (I2C_MSG_ADDR_10_BITS & dw->app_config) {
@@ -926,6 +1188,13 @@ static int i2c_dw_transfer(const struct device *dev, struct i2c_msg *msgs, uint8
 		return ret;
 	}
 
+#ifdef CONFIG_I2C_DW_RP2040_DMA
+	if (dw->rp_dma_quarantined) {
+		ret = -EIO;
+		goto error;
+	}
+#endif
+
 	/* check if the state is sda/scl stuck at low state */
 	if (dw->state & I2C_DW_STUCK_ERR_MASK) {
 		/* try to recovery */
@@ -1017,6 +1286,20 @@ static int i2c_dw_transfer(const struct device *dev, struct i2c_msg *msgs, uint8
 		    (dw->xfr_flags & I2C_MSG_RW_MASK) == I2C_MSG_READ && dw->xfr_len > 0U) {
 			write_rx_tl(MIN(RP2040_I2C_RX_BATCH, dw->xfr_len) - 1U, reg_base);
 		}
+
+#ifdef CONFIG_I2C_DW_RP2040_DMA
+		if (msg_left == 1 && (dw->xfr_flags & I2C_MSG_RW_MASK) == I2C_MSG_READ) {
+			ret = i2c_dw_rp_dma_read(dev, cur_msg);
+			if (ret != -EAGAIN) {
+				if (ret) {
+					break;
+				}
+				cur_msg++;
+				msg_left--;
+				continue;
+			}
+		}
+#endif
 
 		/* Enable interrupts to trigger ISR */
 		if (test_bit_con_master_mode(reg_base)) {
@@ -1180,11 +1463,18 @@ static int i2c_dw_runtime_configure(const struct device *dev, uint32_t config)
 		return ret;
 	}
 
-	ret = i2c_dw_configure(dev, config);
+	struct i2c_dw_dev_config *const dw = dev->data;
 
+	k_sem_take(&dw->bus_sem, K_FOREVER);
+#ifdef CONFIG_I2C_DW_RP2040_DMA
+	ret = dw->rp_dma_quarantined ? -EIO : i2c_dw_configure(dev, config);
+#else
+	ret = i2c_dw_configure(dev, config);
+#endif
+	k_sem_give(&dw->bus_sem);
 	pm_device_runtime_put(dev);
 
-	return 0;
+	return ret;
 }
 
 #ifdef CONFIG_I2C_TARGET
@@ -1598,6 +1888,9 @@ static int i2c_dw_initialize(const struct device *dev)
 
 	k_sem_init(&dw->device_sync_sem, 0, K_SEM_MAX_LIMIT);
 	k_sem_init(&dw->bus_sem, 1, 1);
+#ifdef CONFIG_I2C_DW_RP2040_DMA
+	k_sem_init(&dw->rp_dma_sem, 0, K_SEM_MAX_LIMIT);
+#endif
 
 	LOG_DBG("initialize done");
 

@@ -9,6 +9,7 @@
 #include <zephyr/rtio/rtio.h>
 #include <zephyr/shell/shell.h>
 #include <zephyr/sys/atomic.h>
+#include <zephyr/sys/cpu_load.h>
 
 #include "imu_measure_packet.h"
 #include "imu_cpu_profile.h"
@@ -38,6 +39,8 @@ struct imu_measure_result {
 	uint64_t stop_requested_ms;
 	int error;
 	int stop_error;
+	int cpu_active_permille;
+	bool cpu_active_valid;
 	bool valid;
 	bool fifo_valid;
 	bool cpu_valid;
@@ -158,6 +161,12 @@ static void print_result(const struct shell *shell, const struct imu_measure_res
 	} else {
 		shell_print(shell, "cpu_busy=unavailable");
 	}
+	if (result->cpu_active_valid && result->cpu_active_permille >= 0) {
+		shell_print(shell, "cpu_active=%d.%d%% (idle hooks; includes interrupts)",
+			    result->cpu_active_permille / 10, result->cpu_active_permille % 10);
+	} else {
+		shell_print(shell, "cpu_active=unavailable");
+	}
 	shell_print(shell, "stream_error=%d stop_error=%d dropped_completions=%" PRIu32,
 		    result->error, result->stop_error, result->dropped_cqes);
 	shell_print(shell, "bufferless_completions=%" PRIu32 " invalid_packets=%" PRIu32
@@ -186,6 +195,10 @@ static void measure_thread(void *arg1, void *arg2, void *arg3)
 		lsm6dso_fifo_get_stats(dev, &initial_fifo);
 		dropped_before = (uint32_t)atomic_get(&imu_measure_rtio.xcqcnt);
 		imu_cpu_profile_start();
+#ifdef CONFIG_CPU_LOAD_BACKEND_IDLE_HOOK
+		/* The idle-hook backend owns one global measurement window. */
+		result.cpu_active_valid = cpu_load_get(true) >= 0;
+#endif
 		result.cpu_valid = k_thread_runtime_stats_cpu_get(0, &before) == 0;
 		start = k_uptime_get();
 		deadline = start + (int64_t)requested_seconds * 1000;
@@ -265,6 +278,10 @@ static void measure_thread(void *arg1, void *arg2, void *arg3)
 		}
 		end = k_uptime_get();
 		result.elapsed_ms = end - start;
+#ifdef CONFIG_CPU_LOAD_BACKEND_IDLE_HOOK
+		result.cpu_active_permille = cpu_load_get(true);
+		result.cpu_active_valid = result.cpu_active_valid && result.cpu_active_permille >= 0;
+#endif
 		result.cpu_valid = result.cpu_valid && k_thread_runtime_stats_cpu_get(0, &after) == 0 &&
 				   after.execution_cycles >= before.execution_cycles &&
 				   after.total_cycles >= before.total_cycles;
@@ -363,9 +380,31 @@ static int cmd_measure_result(const struct shell *shell, size_t argc, char **arg
 	return 0;
 }
 
+static int cmd_measure_stats(const struct shell *shell, size_t argc, char **argv)
+{
+	const struct device *dev = DEVICE_DT_GET(DT_NODELABEL(lsm6dsox));
+	struct lsm6dso_fifo_stats stats;
+
+	ARG_UNUSED(argc);
+	ARG_UNUSED(argv);
+	if (!device_is_ready(dev)) {
+		return -ENODEV;
+	}
+	lsm6dso_fifo_get_stats(dev, &stats);
+	shell_print(shell, "words=%" PRIu64 " transfers=%" PRIu32,
+		    stats.words_read, stats.transfers);
+	shell_print(shell, "transfer_ns=%" PRIu64 " max_transfer_ns=%" PRIu64,
+		    stats.transfer_time_ns, stats.max_transfer_time_ns);
+	shell_print(shell, "i2c_errors=%" PRIu32 " buffer_too_small=%" PRIu32
+		    " overrun_observations=%" PRIu32,
+		    stats.i2c_errors, stats.buffer_too_small, stats.overrun_observations);
+	return 0;
+}
+
 SHELL_STATIC_SUBCMD_SET_CREATE(imu_measure_commands,
 	SHELL_CMD_ARG(start, NULL, "Start: imu_measure start <seconds>", cmd_measure_start, 2, 0),
 	SHELL_CMD_ARG(stop, NULL, "Stop the current measurement", cmd_measure_stop, 1, 0),
 	SHELL_CMD_ARG(result, NULL, "Show the last measurement", cmd_measure_result, 1, 0),
+	SHELL_CMD_ARG(stats, NULL, "Show current IMU FIFO counters", cmd_measure_stats, 1, 0),
 	SHELL_SUBCMD_SET_END);
 SHELL_CMD_REGISTER(imu_measure, &imu_measure_commands, "Measure IMU FIFO streaming", NULL);

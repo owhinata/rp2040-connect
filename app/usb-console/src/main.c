@@ -38,7 +38,7 @@ static int cmd_ps(const struct shell *sh, size_t argc, char **argv)
 	return 0;
 }
 
-SHELL_CMD_ARG_REGISTER(ps, NULL, "Show thread CPU and stack usage", cmd_ps, 1, 0);
+SHELL_SUBCMD_ADD((kernel), ps, NULL, "Show thread CPU and stack usage", cmd_ps, 1, 0);
 
 int main(void)
 {

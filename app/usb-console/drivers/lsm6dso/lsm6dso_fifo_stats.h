@@ -7,6 +7,13 @@
 #include <zephyr/device.h>
 #include <zephyr/rtio/rtio.h>
 
+/* Limit the threshold to fit the sensor shell's 2048-byte RTIO pool. */
+#define LSM6DSO_FIFO_DEFAULT_WATERMARK 32U
+#define LSM6DSO_FIFO_MAX_WATERMARK 256U
+
+int lsm6dso_fifo_set_watermark(const struct device *dev, uint16_t watermark);
+uint16_t lsm6dso_fifo_get_watermark(const struct device *dev);
+
 struct lsm6dso_fifo_stats {
 	uint32_t generation;
 	uint64_t words_read;

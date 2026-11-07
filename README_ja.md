@@ -98,7 +98,7 @@ GPIO、I²C、センサー、再起動、ログのシェルコマンドを有効
 `log --help` で使い方を確認できます。`log` はログレベルの参照や変更に使い、
 `dmesg` は RAM に保存されたログの表示に使います。
 
-`ps` を実行すると、スレッドの CPU 使用率とスタック使用量を表示します。
+`kernel ps` を実行すると、スレッドの CPU 使用率とスタック使用量を表示します。
 
 ## IMU FIFO の測定
 
@@ -115,7 +115,9 @@ imu_measure start 10
 測定終了後に結果を表示します。途中で停止するには `imu_measure stop`、最後の
 結果を再表示するには `imu_measure result` を実行します。測定時間は1〜3600秒です。
 単一センサーを測る場合は、もう片方の `sampling_frequency` を `0` に設定します。
-`sensor stream` と `imu_measure` は同時に使えません。
+`sensor stream` と `imu_measure` は同時に使えません。どちらのストリームでも、現在の FIFO カウンターを `imu_measure stats` で確認できます。
+
+`sensor attr_get lsm6dsox all fifo_watermark` で FIFO watermark を表示し、`sensor attr_set lsm6dsox all fifo_watermark 128` でストリーム開始前に 128 ワードへ変更できます。設定範囲は 1〜256、初期値は 32 で、リセットすると初期値に戻ります。大きくするとバッチ処理の負荷が減る一方、データ到着までの時間が長くなり、FIFO の余裕が減ります。通常ビルドでは対象となる I²C0 の読み出しに DMA を使用します。`i2c_dma stats` で累積カウンターを確認できます。条件と測定結果は [ドライバーの説明](app/usb-console/drivers/README_ja.md) を参照してください。
 
 センサー時刻と内部温度への対応については、[ドライバーの TODO](app/usb-console/drivers/README_ja.md#todo)
 を参照してください。
@@ -128,7 +130,7 @@ imu_measure start 10
 
 結果には加速度・ジャイロの受信サンプル数、未対応タグのワード数、設定 ODR、
 FIFO バーストの回数と合計・最大時間、I²C エラー、バッファ不足、FIFO overrun の
-観測、RTIO の完了通知の欠落、ストリームエラーを表示します。`cpu_busy` は測定区間中の
+観測、RTIO の完了通知の欠落、ストリームエラーを表示します。`cpu_active` はアイドルフックから求めた非アイドル時間の割合で、割り込みと計測のオーバーヘッドを含み、表示分解能は 0.1% です。`cpu_busy` は測定区間中の
 スケジューラ上の非アイドル時間で、この集計処理と他スレッドの負荷を含みます。アイドル中の割り込みはアイドル時間に含まれる場合があるため、CPU が実際に動作した時間の合計ではありません。
 `observed_hz` は受信したサンプル数を `elapsed_ms` で割った概算値です。開始時の設定と
 停止・残データ回収にかかる時間の影響を受けるため、短い測定ほど誤差が大きくなります。
