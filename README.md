@@ -1,13 +1,12 @@
 # rp2040-connect
 
-Arduino Nano RP2040 Connect 向けの Zephyr ワークスペースです。
-複数のアプリケーションで、`manifest/west.yml` に指定した Zephyr と
-モジュールを共有します。モジュールはアプリの機能に応じて追加してください。
+English | [日本語](README_ja.md)
 
-## 環境構築
+A Zephyr workspace for the Arduino Nano RP2040 Connect. Multiple applications share the Zephyr version and modules specified in `manifest/west.yml`. Add modules as needed by your applications.
 
-以下は Ubuntu 24.04 向けの手順です。初めにビルドに必要なパッケージを
-インストールします。
+## Setup
+
+The following instructions are for Ubuntu 24.04. First, install the packages required for building:
 
 ```bash
 sudo apt update
@@ -17,90 +16,65 @@ sudo apt install --no-install-recommends \
   gcc-multilib g++-multilib libsdl2-dev libmagic1
 ```
 
-AArch64 環境では `gcc-multilib` と `g++-multilib` を除いてください。
-他の OS では [Zephyr の公式手順](https://docs.zephyrproject.org/latest/develop/getting_started/)を参照してください。
+On AArch64, omit `gcc-multilib` and `g++-multilib`. For other operating systems, see the [official Zephyr instructions](https://docs.zephyrproject.org/latest/develop/getting_started/).
 
-このリポジトリのルートでセットアップスクリプトを読み込みます。
+From the root of this repository, source the setup script:
 
 ```bash
 source script/setup.sh
 ```
 
-スクリプトは必要に応じて `.venv`、west ワークスペース、モジュール、
-Python パッケージ、Zephyr SDK と Arm ツールチェーンを用意します。
-また、現在のシェルに `ZEPHYR_SDK_INSTALL_DIR` と `west` のエイリアスを
-設定します。仮想環境の activate は不要です。新しいターミナルでは再度
-`source script/setup.sh` を実行してください。
+The script prepares `.venv`, the west workspace, modules, Python packages, the Zephyr SDK, and the Arm toolchain as needed. It also sets `ZEPHYR_SDK_INSTALL_DIR` and a `west` alias in the current shell. You do not need to activate the virtual environment. Run `source script/setup.sh` again in each new terminal.
 
-インストール済みかどうかは、west のプロジェクト、主要な Python パッケージ、
-SDK と Arm コンパイラの有無から判定します。追加したアプリでモジュールが
-必要になった場合は、`manifest/west.yml` を更新し、次を実行してください。
+The script checks for west projects, key Python packages, the SDK, and the Arm compiler to determine what is already installed. If a new application requires additional modules, update `manifest/west.yml` and run:
 
 ```bash
 west update
 west packages pip --install
 ```
 
-## アプリケーションのビルド
+## Building applications
 
-`app/blink` は、ボードの `led0` を 500 ms ごとに切り替えるサンプルです。
-ビルドには次のコマンドを実行します。
+`app/blink` is a sample that toggles the board's `led0` every 500 ms. Build it with:
 
 ```bash
 west build -b arduino_nano_connect app/blink -d build/blink
 ```
 
-ボードを USB に接続してブートローダーモードにし、UF2 runner を指定して
-書き込みます。
+Connect the board over USB, enter bootloader mode, and flash it using the UF2 runner.
 
-RESET ボタンの2回押しでブートローダーモードに入れない場合は、`REC` と
-`GND` をジャンパー線で接続した状態で RESET ボタンを押します。USB ストレージが
-表示されたらジャンパー線を外してください。
+If double-pressing RESET does not enter bootloader mode, connect `REC` to `GND` with a jumper while pressing RESET. Remove the jumper when the USB storage device appears.
 
 ```bash
 west flash -d build/blink -r uf2
 ```
 
-## USB シリアルコンソール
+## USB serial console
 
-`app/usb-console` は USB CDC ACM 経由で Zephyr シェルを使うアプリです。
-初回やマニフェストを更新した後は `west update` を実行し、次のコマンドで
-ビルドして書き込みます。
+`app/usb-console` provides a Zephyr shell over USB CDC ACM. Run `west update` the first time or after updating the manifest, then build and flash:
 
 ```bash
 west build -b arduino_nano_connect app/usb-console -d build/usb-console
 west flash -d build/usb-console -r uf2
 ```
 
-書き込み後、USB シリアル端末から接続します。デバイス名は環境によって
-異なりますが、例えば `/dev/ttyACM0` の場合は次のように接続できます。
+After flashing, connect with a USB serial terminal. The device name depends on your system; for example, if it is `/dev/ttyACM0`:
 
 ```bash
 minicom -D /dev/ttyACM0
 ```
 
-Enter キーを押すとシェルが表示されます。`help` でコマンド一覧を、`hello` で
-挨拶を表示します。ログは RAM のリングバッファに保存され、`dmesg` コマンドで
-表示できます。バッファは 4 KiB で、いっぱいになると古いデータから上書きされます。
-通常のリセット後もログを参照できるよう初期化されない RAM に保存します。
-電源断や、RAM を初期化するリセットでは消えます。リセット直前の未処理のログは
-保存されない場合があります。タイムスタンプは起動後の経過時間をマイクロ秒単位で
-表示し、リセット後は 0 から始まります。
-minicom は `sudo apt install minicom` でインストールでき、
-終了するには `Ctrl-A`、続けて `X` を押します。
+Press Enter to display the shell. Use `help` to list commands and `hello` to display a greeting. Logs are stored in a 4 KiB RAM ring buffer and can be displayed with `dmesg`; old entries are overwritten when the buffer fills. The buffer is stored in RAM that is not initialized at startup so logs can survive a normal reset. They are lost on power failure or a reset that initializes RAM, and unprocessed logs immediately before a reset may not be saved. Timestamps are microseconds since boot and restart from zero after a reset.
 
-GPIO、I²C、センサー、再起動、ログのシェルコマンドを有効にしています。
-`gpio --help`、`i2c --help`、`sensor --help`、`kernel reboot --help`、
-`log --help` で使い方を確認できます。`log` はログレベルの参照や変更に使い、
-`dmesg` は RAM に保存されたログの表示に使います。
+Install minicom with `sudo apt install minicom`; exit it with `Ctrl-A` followed by `X`.
 
-`ps` を実行すると、スレッドの CPU 使用率とスタック使用量を表示します。
+The shell enables GPIO, I²C, sensor, reboot, and logging commands. Use `gpio --help`, `i2c --help`, `sensor --help`, `kernel reboot --help`, and `log --help` for details. Use `log` to inspect or change log levels and `dmesg` to display logs stored in RAM.
 
-## IMU FIFO の測定
+Run `ps` to display thread CPU and stack usage.
 
-`imu_measure` は Sensor Streaming API で FIFO のバッチを取得し、サンプルを
-逐次表示せずに件数と転送時間を集計します。まず使用するセンサーのサンプリング
-周波数を設定し、測定秒数を指定します。例えば両方 208 Hz で10秒間測定するには：
+## Measuring the IMU FIFO
+
+`imu_measure` uses the Sensor Streaming API to collect FIFO batches and report counts and transfer times without printing each sample. Set the sampling frequencies of the sensors to use, then specify the measurement duration. For example, to measure both sensors at 208 Hz for 10 seconds:
 
 ```text
 sensor attr_set lsm6dsox accel_xyz sampling_frequency 208
@@ -108,36 +82,14 @@ sensor attr_set lsm6dsox gyro_xyz sampling_frequency 208
 imu_measure start 10
 ```
 
-測定終了後に結果を表示します。途中で停止するには `imu_measure stop`、最後の
-結果を再表示するには `imu_measure result` を実行します。測定時間は1〜3600秒です。
-単一センサーを測る場合は、もう片方の `sampling_frequency` を `0` に設定します。
-`sensor stream` と `imu_measure` は同時に使えません。
+The results are printed after the measurement stops. Use `imu_measure stop` to stop early and `imu_measure result` to show the last result again. The duration must be between 1 and 3,600 seconds. To measure one sensor, set the other sensor's `sampling_frequency` to `0`. `sensor stream` and `imu_measure` cannot run simultaneously.
 
-センサー時刻と内部温度への対応については、[ドライバーの TODO](app/usb-console/drivers/README.md#todo)
-を参照してください。
+See the [driver TODOs](app/usb-console/drivers/README.md#todo) for sensor timestamp and internal temperature support.
 
-指定時間の終了または途中停止時には、FIFO への新しいバッチ追加を止め、FIFO に
-残ったワードと処理中の RTIO 完了通知を集計してから結果を確定します。
-`stop_requested_ms` は停止を要求した時点、`elapsed_ms` は残データの回収と終了処理を
-含む時間です。センサーごとのバッチ停止は順番に行うため、停止境界は厳密に同時では
-ありません。
+At the end of the requested duration or an early stop, the driver stops adding new FIFO batches and accounts for the remaining FIFO words and in-flight RTIO completions before finalizing the result. `stop_requested_ms` is the elapsed time when stopping was requested; `elapsed_ms` includes the time to retrieve remaining data and finish cleanup. Batching is stopped for each sensor in turn, so the stop boundary is not exactly simultaneous.
 
-結果には加速度・ジャイロの受信サンプル数、未対応タグのワード数、設定 ODR、
-FIFO バーストの回数と合計・最大時間、I²C エラー、バッファ不足、FIFO overrun の
-観測、RTIO の完了通知の欠落、ストリームエラーを表示します。`cpu_busy` は測定区間中の
-システム全体の CPU 使用率で、この集計処理と他スレッドの負荷を含みます。
-`observed_hz` は受信したサンプル数を `elapsed_ms` で割った概算値です。開始時の設定と
-停止・残データ回収にかかる時間の影響を受けるため、短い測定ほど誤差が大きくなります。
-FIFO のハードウェア時刻やセンサーの正確な生成時刻を測るものではありません。
+The result includes received accelerometer and gyroscope sample counts, unsupported-tag word counts, configured ODRs, FIFO burst counts and total/maximum transfer times, I²C errors, buffer shortages, FIFO overrun observations, dropped RTIO completions, and stream errors. `cpu_busy` is the total system CPU usage during the measurement, including the measurement and other threads. `observed_hz` is an estimate obtained by dividing received samples by `elapsed_ms`. Setup and final drain time affect it, especially for short measurements. It does not measure the FIFO hardware timestamp or the sensor's exact sample generation time.
 
-`accounting=match` は、ドライバーが読み出したワード数・転送回数とアプリが集計した
-ワード数・バッチ数が一致し、集計を妨げるエラーが報告されなかったことを示します。
-`mismatch` は両者の不一致、`incomplete` はエラーや完了通知の欠落などにより照合を
-完了できなかったことを示します。センサーが生成した全サンプルの無欠落を保証する
-ものではありません。
+`accounting=match` means that the driver's read word and transfer counts match the application's counted words and batches, with no reported errors preventing reconciliation. `mismatch` means the counts differ; `incomplete` means an error, dropped completion, or another condition prevented reconciliation. A match does not prove that every sample generated by the sensor was received.
 
-overrun の観測は、不連続が発生したことを示しますが、失われたサンプル数や独立した
-overrun の発生件数は示しません。測定中にバッファ不足・I²C エラー・overrun が発生した
-場合はストリームを停止し、`stream_error` にエラーを表示します。`cleanup_timeout=1`
-の場合は終了処理が完了せず、次の測定には再起動が必要です。完了通知の欠落や
-未知のタグが報告された測定も、取得データの連続性を保証できません。
+An overrun observation signals a discontinuity, but does not give the number of lost samples or distinct overruns. The stream stops and reports `stream_error` if it encounters a buffer shortage, I²C error, or overrun. If `cleanup_timeout=1`, cleanup did not complete and a reboot is required before another measurement. Dropped completions or unknown tags also prevent a guarantee of data continuity.
