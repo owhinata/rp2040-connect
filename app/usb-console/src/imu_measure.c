@@ -11,6 +11,7 @@
 #include <zephyr/sys/atomic.h>
 
 #include "imu_measure_packet.h"
+#include "imu_cpu_profile.h"
 #include "../drivers/lsm6dso/lsm6dso_fifo_stats.h"
 
 #define IMU_MEASURE_CLEANUP_MS 2000
@@ -152,7 +153,7 @@ static void print_result(const struct shell *shell, const struct imu_measure_res
 	if (result->cpu_valid && result->cpu_total_cycles) {
 		uint64_t pct = result->cpu_busy_cycles * 10000ULL / result->cpu_total_cycles;
 
-		shell_print(shell, "cpu_busy=%" PRIu64 ".%02" PRIu64 "%% (system total)",
+		shell_print(shell, "cpu_busy=%" PRIu64 ".%02" PRIu64 "%% (scheduler non-idle; idle IRQ excluded)",
 			    pct / 100, pct % 100);
 	} else {
 		shell_print(shell, "cpu_busy=unavailable");
@@ -184,6 +185,7 @@ static void measure_thread(void *arg1, void *arg2, void *arg3)
 		consume_cqes(&result, false);
 		lsm6dso_fifo_get_stats(dev, &initial_fifo);
 		dropped_before = (uint32_t)atomic_get(&imu_measure_rtio.xcqcnt);
+		imu_cpu_profile_start();
 		result.cpu_valid = k_thread_runtime_stats_cpu_get(0, &before) == 0;
 		start = k_uptime_get();
 		deadline = start + (int64_t)requested_seconds * 1000;
@@ -270,6 +272,7 @@ static void measure_thread(void *arg1, void *arg2, void *arg3)
 			result.cpu_total_cycles = after.execution_cycles - before.execution_cycles;
 			result.cpu_busy_cycles = after.total_cycles - before.total_cycles;
 		}
+		imu_cpu_profile_stop();
 		lsm6dso_fifo_get_stats(dev, &result.fifo);
 		/* A different stream could start before the stats snapshot. Never
 		 * compare that run's counters with this run's completions.
@@ -283,6 +286,7 @@ static void measure_thread(void *arg1, void *arg2, void *arg3)
 		atomic_clear(&measure_running);
 		shell_print(measure_shell, "IMU measurement finished:");
 		print_result(measure_shell, &result);
+		imu_cpu_profile_print(measure_shell, result.cpu_total_cycles, result.cpu_busy_cycles);
 	}
 }
 K_THREAD_DEFINE(imu_measure_tid, 2048, measure_thread, NULL, NULL, NULL, 9, 0, 0);
