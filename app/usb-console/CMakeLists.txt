@@ -2,7 +2,8 @@ cmake_minimum_required(VERSION 3.28.0)
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(usb_console)
 
-target_sources(app PRIVATE src/main.c src/log_ram.c)
+target_sources(app PRIVATE src/main.c src/log_ram.c src/imu_fifo_shell.c src/imu_measure.c
+  src/imu_measure_packet.c)
 
 # Keep Zephyr's Kconfig and devicetree bindings, but compile only our copies.
 # Replace the sources in their original libraries so all DW instances use the
@@ -28,4 +29,15 @@ endfunction()
 
 use_local_driver_sources(drivers__i2c "(^|/)i2c_dw\\.c$" drivers/i2c_dw)
 use_local_driver_sources(drivers__sensor__st__lsm6dso "(^|/)lsm6dso(_shub|_trigger)?\\.c$" drivers/lsm6dso)
+use_local_driver_sources(drivers__sensor "(^|/)sensor_shell\\.c$" drivers/sensor_shell)
 target_include_directories(drivers__i2c PRIVATE ${ZEPHYR_BASE}/drivers/i2c)
+target_include_directories(drivers__sensor PRIVATE ${ZEPHYR_BASE}/drivers/sensor)
+target_sources(drivers__sensor__st__lsm6dso PRIVATE drivers/lsm6dso/lsm6dso_fifo.c)
+target_sources(drivers__sensor__st__lsm6dso PRIVATE drivers/lsm6dso/lsm6dso_fifo_hw.c)
+target_sources(drivers__sensor__st__lsm6dso PRIVATE drivers/lsm6dso/lsm6dso_fifo_irq.c)
+if(CONFIG_SENSOR_ASYNC_API)
+  target_sources(drivers__sensor__st__lsm6dso PRIVATE
+    drivers/lsm6dso/lsm6dso_fifo_decoder.c
+    drivers/lsm6dso/lsm6dso_compat.c
+    drivers/lsm6dso/lsm6dso_stream.c)
+endif()

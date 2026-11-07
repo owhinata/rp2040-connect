@@ -17,6 +17,10 @@
 #include <zephyr/sys/util.h>
 #include <stmemsc.h>
 #include "lsm6dso_reg.h"
+#include "lsm6dso_fifo_stats.h"
+#ifdef CONFIG_SENSOR_ASYNC_API
+#include "lsm6dso_fifo_irq.h"
+#endif
 
 #if DT_HAS_COMPAT_ON_BUS_STATUS_OKAY(st_lsm6dso, spi) || \
 	DT_HAS_COMPAT_ON_BUS_STATUS_OKAY(st_lsm6dso32, spi)
@@ -59,6 +63,9 @@ struct lsm6dso_config {
 	uint8_t gyro_odr;
 	uint8_t gyro_range;
 	uint8_t drdy_pulsed;
+#ifdef CONFIG_SENSOR_ASYNC_API
+	struct gpio_dt_spec fifo_gpio;
+#endif
 #ifdef CONFIG_LSM6DSO_TRIGGER
 	const struct gpio_dt_spec gpio_drdy;
 	uint8_t int_pin;
@@ -77,6 +84,24 @@ struct lsm6dso_config {
 
 struct lsm6dso_data {
 	const struct device *dev;
+	struct k_mutex fifo_lock;
+	/* Nonzero also covers an error state until bypass has been restored. */
+	bool fifo_owned;
+	bool fifo_fault;
+	uint32_t fifo_generation;
+	struct lsm6dso_fifo_stats fifo_stats;
+#ifdef CONFIG_SENSOR_ASYNC_API
+	struct lsm6dso_fifo_irq fifo_irq;
+	struct k_work_delayable stream_work;
+	struct k_spinlock stream_lock;
+	struct rtio_iodev_sqe *stream_sqe;
+	struct rtio *stream_rtio;
+	rtio_sqe_handle_t stream_handle;
+	bool stream_active;
+	bool stream_irq_active;
+	bool stream_stop_requested;
+	bool stream_batch_paused;
+#endif
 	int16_t acc[3];
 	uint32_t acc_gain;
 	int16_t gyro[3];
@@ -134,6 +159,25 @@ struct lsm6dso_data {
 #endif
 #endif /* CONFIG_LSM6DSO_TRIGGER */
 };
+
+#if DT_HAS_COMPAT_ON_BUS_STATUS_OKAY(st_lsm6dso, i2c) || \
+	DT_HAS_COMPAT_ON_BUS_STATUS_OKAY(st_lsm6dso32, i2c)
+struct lsm6dso_fifo_status;
+int lsm6dso_fifo_start_locked_driver(const struct device *dev, uint16_t watermark,
+				     bool accel, bool gyro);
+int lsm6dso_fifo_stop_locked_driver(const struct device *dev);
+int lsm6dso_fifo_read_locked_driver(const struct device *dev, uint8_t *buffer,
+				    size_t capacity_words, struct lsm6dso_fifo_status *status);
+int lsm6dso_fifo_status_locked_driver(const struct device *dev,
+				      struct lsm6dso_fifo_status *status);
+int lsm6dso_fifo_pause_batch_locked_driver(const struct device *dev);
+void lsm6dso_fifo_record_stop_error(const struct device *dev, int error);
+#endif
+
+#ifdef CONFIG_SENSOR_ASYNC_API
+void lsm6dso_stream_init(const struct device *dev);
+void lsm6dso_submit(const struct device *dev, struct rtio_iodev_sqe *sqe);
+#endif
 
 #if defined(CONFIG_LSM6DSO_SENSORHUB)
 int lsm6dso_shub_init(const struct device *dev);

@@ -17,6 +17,9 @@
 #include <zephyr/logging/log.h>
 
 #include "lsm6dso.h"
+#include "lsm6dso_fifo.h"
+#include "lsm6dso_fifo_decoder.h"
+#include "lsm6dso_fifo_hw.h"
 
 LOG_MODULE_REGISTER(LSM6DSO, CONFIG_SENSOR_LOG_LEVEL);
 
@@ -140,10 +143,12 @@ static int lsm6dso_gyro_set_odr_raw(const struct device *dev, uint8_t odr)
 {
 	const struct lsm6dso_config *cfg = dev->config;
 	stmdev_ctx_t *ctx = (stmdev_ctx_t *)&cfg->ctx;
+	struct lsm6dso_data *data = dev->data;
 
 	if (lsm6dso_gy_data_rate_set(ctx, odr) < 0) {
 		return -EIO;
 	}
+	data->gyro_freq = lsm6dso_odr_to_freq_val(odr);
 
 	return 0;
 }
@@ -258,7 +263,7 @@ static int lsm6dso_gyro_config(const struct device *dev,
 	return 0;
 }
 
-static int lsm6dso_attr_set(const struct device *dev,
+static int lsm6dso_attr_set_unlocked(const struct device *dev,
 			    enum sensor_channel chan,
 			    enum sensor_attribute attr,
 			    const struct sensor_value *val)
@@ -347,7 +352,7 @@ static int lsm6dso_sample_fetch_shub(const struct device *dev)
 }
 #endif /* CONFIG_LSM6DSO_SENSORHUB */
 
-static int lsm6dso_sample_fetch(const struct device *dev,
+static int lsm6dso_sample_fetch_unlocked(const struct device *dev,
 				enum sensor_channel chan)
 {
 #if defined(CONFIG_LSM6DSO_SENSORHUB)
@@ -623,7 +628,7 @@ static inline void lsm6dso_temp_convert(struct sensor_value *val,
 }
 #endif
 
-static int lsm6dso_channel_get(const struct device *dev,
+static int lsm6dso_channel_get_unlocked(const struct device *dev,
 			       enum sensor_channel chan,
 			       struct sensor_value *val)
 {
@@ -694,6 +699,229 @@ static int lsm6dso_channel_get(const struct device *dev,
 	return 0;
 }
 
+static int lsm6dso_attr_set(const struct device *dev, enum sensor_channel chan,
+			    enum sensor_attribute attr, const struct sensor_value *val)
+{
+	struct lsm6dso_data *data = dev->data;
+	int ret;
+
+	k_mutex_lock(&data->fifo_lock, K_FOREVER);
+	ret = data->fifo_owned ? -EBUSY : lsm6dso_attr_set_unlocked(dev, chan, attr, val);
+	k_mutex_unlock(&data->fifo_lock);
+	return ret;
+}
+
+static int lsm6dso_sample_fetch(const struct device *dev, enum sensor_channel chan)
+{
+	struct lsm6dso_data *data = dev->data;
+	int ret;
+
+	k_mutex_lock(&data->fifo_lock, K_FOREVER);
+	ret = data->fifo_owned ? -EBUSY : lsm6dso_sample_fetch_unlocked(dev, chan);
+	k_mutex_unlock(&data->fifo_lock);
+	return ret;
+}
+
+static int lsm6dso_channel_get(const struct device *dev, enum sensor_channel chan,
+			       struct sensor_value *val)
+{
+	struct lsm6dso_data *data = dev->data;
+	int ret;
+
+	k_mutex_lock(&data->fifo_lock, K_FOREVER);
+	ret = data->fifo_owned ? -EBUSY : lsm6dso_channel_get_unlocked(dev, chan, val);
+	k_mutex_unlock(&data->fifo_lock);
+	return ret;
+}
+
+#if DT_HAS_COMPAT_ON_BUS_STATUS_OKAY(st_lsm6dso, i2c) || \
+	DT_HAS_COMPAT_ON_BUS_STATUS_OKAY(st_lsm6dso32, i2c)
+int lsm6dso_fifo_start_locked_driver(const struct device *dev, uint16_t watermark,
+				     bool accel, bool gyro)
+{
+	const struct lsm6dso_config *cfg = dev->config;
+	struct lsm6dso_data *data = dev->data;
+	int xl, gy, ret;
+
+	/* Other trigger and sensor-hub accesses do not yet use fifo_lock. */
+	if (IS_ENABLED(CONFIG_LSM6DSO_TRIGGER) || IS_ENABLED(CONFIG_LSM6DSO_SENSORHUB) ||
+	    cfg->ctx.read_reg != (stmdev_read_ptr)stmemsc_i2c_read) {
+		return -ENOTSUP;
+	}
+	k_mutex_lock(&data->fifo_lock, K_FOREVER);
+	if (data->fifo_owned) {
+		ret = -EBUSY;
+		goto out;
+	}
+	xl = accel ? lsm6dso_freq_to_odr_val(data->accel_freq) : 0;
+	gy = gyro ? lsm6dso_freq_to_odr_val(data->gyro_freq) : 0;
+	if ((!xl && accel) || (!gy && gyro) || xl < 0 || gy < 0 || (!xl && !gy) ||
+	    watermark == 0 || watermark > 511) {
+		ret = -EINVAL;
+		goto out;
+	}
+	data->fifo_owned = true;
+	memset(&data->fifo_stats, 0, sizeof(data->fifo_stats));
+	data->fifo_stats.generation = ++data->fifo_generation;
+	data->fifo_stats.accel_hz = accel ? data->accel_freq : 0;
+	data->fifo_stats.gyro_hz = gyro ? data->gyro_freq : 0;
+	ret = lsm6dso_fifo_configure(&cfg->ctx, watermark, xl, gy);
+	if (ret != 0) {
+		data->fifo_stats.i2c_errors++;
+	}
+	data->fifo_fault = ret != 0;
+out:
+	k_mutex_unlock(&data->fifo_lock);
+	return ret;
+}
+
+int lsm6dso_fifo_pause_batch_locked_driver(const struct device *dev)
+{
+	const struct lsm6dso_config *cfg = dev->config;
+	struct lsm6dso_data *data = dev->data;
+	int ret = 0;
+
+	k_mutex_lock(&data->fifo_lock, K_FOREVER);
+	if (!data->fifo_owned || data->fifo_fault) {
+		ret = -EIO;
+	} else if (lsm6dso_fifo_pause_batch(&cfg->ctx) != 0) {
+		data->fifo_stats.i2c_errors++;
+		data->fifo_fault = true;
+		ret = -EIO;
+	}
+	k_mutex_unlock(&data->fifo_lock);
+	return ret;
+}
+
+int lsm6dso_fifo_stop_locked_driver(const struct device *dev)
+{
+	const struct lsm6dso_config *cfg = dev->config;
+	struct lsm6dso_data *data = dev->data;
+	int ret = 0;
+
+	k_mutex_lock(&data->fifo_lock, K_FOREVER);
+	if (data->fifo_owned) {
+		ret = lsm6dso_fifo_stop(&cfg->ctx);
+		if (ret != 0) {
+			data->fifo_stats.i2c_errors++;
+		}
+		data->fifo_owned = ret != 0;
+		data->fifo_fault = ret != 0;
+	}
+	k_mutex_unlock(&data->fifo_lock);
+	return ret;
+}
+
+int lsm6dso_fifo_read_locked_driver(const struct device *dev, uint8_t *buffer,
+				    size_t capacity_words, struct lsm6dso_fifo_status *status)
+{
+	const struct lsm6dso_config *cfg = dev->config;
+	struct lsm6dso_data *data = dev->data;
+	int ret;
+
+	if (!status || (!buffer && capacity_words)) {
+		return -EINVAL;
+	}
+	k_mutex_lock(&data->fifo_lock, K_FOREVER);
+	if (!data->fifo_owned || data->fifo_fault) {
+		ret = -EIO;
+		goto out;
+	}
+	ret = lsm6dso_fifo_status_read(&cfg->stmemsc_cfg.i2c, status);
+	if (ret != 0) {
+		data->fifo_stats.i2c_errors++;
+		data->fifo_fault = true;
+		goto out;
+	}
+	if (status->overrun || status->overrun_latched) {
+		data->fifo_stats.overrun_observations++;
+	}
+	if (status->words > LSM6DSO_FIFO_MAX_WORDS) {
+		data->fifo_fault = true;
+		ret = -EIO;
+	} else if (status->words > capacity_words) {
+		data->fifo_stats.buffer_too_small++;
+		ret = -ENOBUFS;
+	} else if (status->words) {
+		uint32_t start = k_cycle_get_32();
+		uint64_t duration;
+
+		ret = lsm6dso_fifo_burst_read(&cfg->stmemsc_cfg.i2c, buffer, status->words);
+		duration = k_cyc_to_ns_floor64((uint32_t)(k_cycle_get_32() - start));
+		data->fifo_stats.transfers++;
+		data->fifo_stats.transfer_time_ns += duration;
+		data->fifo_stats.max_transfer_time_ns = MAX(data->fifo_stats.max_transfer_time_ns,
+							   duration);
+		if (ret != 0) {
+			data->fifo_stats.i2c_errors++;
+			data->fifo_fault = true;
+		} else {
+			data->fifo_stats.words_read += status->words;
+		}
+	}
+out:
+	k_mutex_unlock(&data->fifo_lock);
+	return ret;
+}
+
+int lsm6dso_fifo_status_locked_driver(const struct device *dev,
+				      struct lsm6dso_fifo_status *status)
+{
+	const struct lsm6dso_config *cfg = dev->config;
+	struct lsm6dso_data *data = dev->data;
+	int ret;
+
+	if (!status) {
+		return -EINVAL;
+	}
+	k_mutex_lock(&data->fifo_lock, K_FOREVER);
+	if (!data->fifo_owned || data->fifo_fault) {
+		ret = -EIO;
+	} else {
+		ret = lsm6dso_fifo_status_read(&cfg->stmemsc_cfg.i2c, status);
+		if (ret != 0) {
+			data->fifo_stats.i2c_errors++;
+			data->fifo_fault = true;
+		} else if (status->overrun || status->overrun_latched) {
+			data->fifo_stats.overrun_observations++;
+		}
+	}
+	k_mutex_unlock(&data->fifo_lock);
+	return ret;
+}
+
+void lsm6dso_fifo_get_stats(const struct device *dev, struct lsm6dso_fifo_stats *stats)
+{
+	struct lsm6dso_data *data = dev->data;
+
+	k_mutex_lock(&data->fifo_lock, K_FOREVER);
+	*stats = data->fifo_stats;
+	stats->active = data->fifo_owned;
+	stats->fault = data->fifo_fault;
+	k_mutex_unlock(&data->fifo_lock);
+}
+
+void lsm6dso_fifo_record_stop_error(const struct device *dev, int error)
+{
+	struct lsm6dso_data *data = dev->data;
+
+	k_mutex_lock(&data->fifo_lock, K_FOREVER);
+	if (error != 0 && data->fifo_stats.stop_error == 0) {
+		data->fifo_stats.stop_error = error;
+	}
+	k_mutex_unlock(&data->fifo_lock);
+}
+#endif
+
+#ifdef CONFIG_SENSOR_ASYNC_API
+static int lsm6dso_get_decoder(const struct device *dev, const struct sensor_decoder_api **decoder)
+{
+	ARG_UNUSED(dev);
+	*decoder = &lsm6dso_combined_decoder;
+	return 0;
+}
+#endif
+
 static DEVICE_API(sensor, lsm6dso_driver_api) = {
 	.attr_set = lsm6dso_attr_set,
 #if CONFIG_LSM6DSO_TRIGGER
@@ -701,6 +929,10 @@ static DEVICE_API(sensor, lsm6dso_driver_api) = {
 #endif
 	.sample_fetch = lsm6dso_sample_fetch,
 	.channel_get = lsm6dso_channel_get,
+#ifdef CONFIG_SENSOR_ASYNC_API
+	.get_decoder = lsm6dso_get_decoder,
+	.submit = lsm6dso_submit,
+#endif
 };
 
 static int lsm6dso_init_chip(const struct device *dev)
@@ -855,6 +1087,10 @@ static int lsm6dso_init(const struct device *dev)
 
 	LOG_INF("Initialize device %s", dev->name);
 	data->dev = dev;
+	k_mutex_init(&data->fifo_lock);
+#ifdef CONFIG_SENSOR_ASYNC_API
+	lsm6dso_stream_init(dev);
+#endif
 
 	if (lsm6dso_init_chip(dev) < 0) {
 		LOG_ERR("failed to initialize chip");
@@ -936,6 +1172,7 @@ static int lsm6dso_init(const struct device *dev)
 	.gyro_odr = DT_INST_PROP(inst, gyro_odr),			\
 	.gyro_range = DT_INST_PROP(inst, gyro_range),			\
 	.drdy_pulsed = DT_INST_PROP(inst, drdy_pulsed),			\
+	IF_ENABLED(CONFIG_SENSOR_ASYNC_API, (.fifo_gpio = GPIO_DT_SPEC_INST_GET_OR(inst, irq_gpios, {0}),)) \
 	LSM6DSO_CONFIG_TAP(inst)					\
 	COND_CODE_1(DT_INST_NODE_HAS_PROP(inst, irq_gpios),		\
 		(LSM6DSO_CFG_IRQ(inst)), ())
