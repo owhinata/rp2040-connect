@@ -1,0 +1,13 @@
+description: Arduino NINA WiFi firmware SPI interface
+compatible: "arduino,nina-spi"
+include: spi-device.yaml
+properties:
+  ready-gpios:
+    type: phandle-array
+    required: true
+  reset-gpios:
+    type: phandle-array
+    required: true
+  irq-gpios:
+    type: phandle-array
+    required: true

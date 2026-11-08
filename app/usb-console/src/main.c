@@ -2,6 +2,7 @@
 #include <zephyr/debug/thread_analyzer.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/shell/shell.h>
+#include "wifi_profile.h"
 
 LOG_MODULE_REGISTER(usb_console, LOG_LEVEL_INF);
 
@@ -23,7 +24,8 @@ static const struct shell *ps_shell;
 static void ps_print_thread(struct thread_analyzer_info *info)
 {
 	shell_print(ps_shell, "%-20s CPU: %3u%%  STACK: %zu / %zu bytes",
-		    info->name, info->utilization, info->stack_used, info->stack_size);
+		    info->name, info->utilization, info->stack_used,
+		    info->stack_size);
 }
 
 static int cmd_ps(const struct shell *sh, size_t argc, char **argv)
@@ -38,10 +40,12 @@ static int cmd_ps(const struct shell *sh, size_t argc, char **argv)
 	return 0;
 }
 
-SHELL_SUBCMD_ADD((kernel), ps, NULL, "Show thread CPU and stack usage", cmd_ps, 1, 0);
+SHELL_SUBCMD_ADD((kernel), ps, NULL, "Show thread CPU and stack usage", cmd_ps,
+		 1, 0);
 
 int main(void)
 {
 	LOG_INF("USB console started");
+	(void)wifi_profile_init();
 	return 0;
 }

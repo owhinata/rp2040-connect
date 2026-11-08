@@ -22,3 +22,11 @@ config I2C_DW_RP2040_DMA
 	bool "RP2040 I2C0 DMA reads"
 	depends on SOC_RP2040 && I2C_DW && DMA_RPI_PICO && SHELL && !SMP
 	depends on !I2C_DW_LPSS_DMA
+
+config WIFI_NINA_LOCAL
+	bool "NINA SPI Wi-Fi offload"
+	default y
+	select NET_L2_WIFI_MGMT
+	select WIFI_OFFLOAD
+	select NET_SOCKETS
+	select NET_SOCKETS_OFFLOAD

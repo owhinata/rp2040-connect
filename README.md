@@ -74,6 +74,46 @@ The shell enables GPIO, I²C, sensor, reboot, and logging commands. Use `gpio --
 
 Run `kernel ps` to display thread CPU and stack usage.
 
+## Wi-Fi connection (under development)
+
+An experimental SPI adapter connects the NINA-W102 running Arduino firmware to Zephyr's
+Wi-Fi management API and IPv4 TCP sockets. The standard shell interface below has been
+verified on hardware for WPA2-PSK association and DHCP address assignment:
+
+```text
+wifi connect --ssid "SSID" --key-mgmt 1 --passphrase "passphrase"
+wifi status
+net iface
+wifi disconnect
+```
+
+The implementation supports open and WPA2-PSK on 2.4 GHz; open networks are untested. The passphrase is echoed;
+Zephyr shell history is disabled but terminal-side recording may retain it.
+
+After a successful standard `wifi connect` and IP assignment, the last successful SSID
+and passphrase are saved to flash and a connection is attempted up to three times at the next boot.
+Failed attempts do not replace the saved profile. `wifi_forget` deletes the profile
+without disconnecting the current connection; a later successful `wifi connect` saves
+a new profile.
+On hardware, one software reboot timed out on the first attempt and connected on the
+second; connection can take tens of seconds.
+
+Currently `wifi status` retrieves only the connection state. Its SSID, security type,
+RSSI and similar fields are not implemented; values such as `OPEN` do not describe the
+actual connection.
+
+The passphrase is stored unencrypted and can be recovered by anyone with access to the
+board's flash. The final 8 KiB of flash is reserved separately from this application's
+code. Other firmware or a full erase may erase the profile. Flash writes can affect IMU
+acquisition, so wait for Wi-Fi connection to complete before starting a measurement.
+
+`nina_mqtt_test <IPv4-address> <port>` is an experimental plain TCP, QoS 0 test using
+Zephyr's MQTT library. On hardware, a simple PC-side MQTT test receiver accepted CONNECT,
+sent CONNACK, and received the QoS 0 payload `nina mqtt test` on `rp2040/test`. A full
+MQTT broker, long-running communication, error handling and disconnection remain untested.
+DNS, UDP, TLS, automatic reconnect and concurrent sockets are unsupported. This build
+uses Zephyr's test-only non-cryptographic random generator.
+
 ## Measuring the IMU FIFO
 
 `imu_measure` uses the Sensor Streaming API to collect FIFO batches and report counts and transfer times without printing each sample. Set the sampling frequencies of the sensors to use, then specify the measurement duration. For example, to measure both sensors at 208 Hz for 10 seconds:

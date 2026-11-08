@@ -15,3 +15,25 @@
 &dma {
 	status = "okay";
 };
+
+&spi1 {
+	status = "okay";
+};
+
+&nina_w102 {
+	compatible = "arduino,nina-spi";
+};
+
+/* Reserve the last two erase sectors for settings; keep the image separate. */
+&code_partition {
+	reg = <0x100 0xffdf00>;
+};
+
+&flash0 {
+	partitions {
+		storage_partition: partition@ffe000 {
+			compatible = "zephyr,mapped-partition";
+			reg = <0xffe000 0x2000>;
+		};
+	};
+};
