@@ -1,0 +1,12 @@
+diff --git a/main/CommandHandler.cpp b/main/CommandHandler.cpp
+--- a/main/CommandHandler.cpp
++++ b/main/CommandHandler.cpp
+@@ -2122,7 +2122,7 @@
+   fd_set rset, wset, xset;
+   FD_ZERO(&rset);
+   FD_ZERO(&wset);
+-  FD_ZERO(&wset);
++  FD_ZERO(&xset);
+
+   FD_SET(sock, &rset);
+   FD_SET(sock, &wset);

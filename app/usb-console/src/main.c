@@ -3,10 +3,34 @@
 #include <zephyr/logging/log.h>
 #include <zephyr/shell/shell.h>
 #include "wifi_profile.h"
+#include "../drivers/nina/nina_proto.h"
 #include "time_sync.h"
 #include "kv_store.h"
 
 LOG_MODULE_REGISTER(usb_console, LOG_LEVEL_INF);
+
+static int cmd_nina_version(const struct shell *sh, size_t argc, char **argv)
+{
+	uint8_t version[16];
+	size_t len;
+	int ret;
+
+	ARG_UNUSED(argc);
+	ARG_UNUSED(argv);
+	ret = nina_request(0x37, NULL, 0, false, false, version, sizeof(version) - 1, &len);
+	if (ret) {
+		shell_error(sh, "NINA version request failed: %d", ret);
+		return ret;
+	}
+	version[len] = '\0';
+	shell_print(sh, "NINA firmware: %s", version);
+	return 0;
+}
+
+SHELL_STATIC_SUBCMD_SET_CREATE(nina_commands,
+	SHELL_CMD(version, NULL, "Show NINA firmware version", cmd_nina_version),
+	SHELL_SUBCMD_SET_END);
+SHELL_CMD_REGISTER(nina, &nina_commands, "NINA Wi-Fi module", NULL);
 
 static int cmd_hello(const struct shell *sh, size_t argc, char **argv)
 {

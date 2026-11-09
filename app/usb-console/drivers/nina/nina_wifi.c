@@ -192,7 +192,7 @@ int nina_request(uint8_t cmd, const struct nina_param *params, size_t nparams,
 {
 	uint8_t c = 0;
 	size_t i, j, sent = 0, len = 0, total = 0;
-	uint8_t response_count = cmd == 0x3a ? 2 : 1;
+	uint8_t response_count = cmd == 0x3a ? 2 : (cmd == 0x75 ? 3 : 1);
 	int ret;
 #define SEND_BYTE(v)                                                           \
 	do {                                                                   \
@@ -291,7 +291,8 @@ int nina_request(uint8_t cmd, const struct nina_param *params, size_t nparams,
 					out[total++] = len;
 				}
 				if (len > cap - total ||
-				    (cmd == 0x3a && len != (j == 0 ? 4 : 2))) {
+				    (cmd == 0x3a && len != (j == 0 ? 4 : 2)) ||
+				    (cmd == 0x75 && len != (j == 0 ? 1 : (j == 1 ? 4 : 2)))) {
 					ret = -EMSGSIZE;
 				}
 			}

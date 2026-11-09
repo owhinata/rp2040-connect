@@ -15,6 +15,8 @@ struct nina_sock {
 	bool connected;
 	bool udp;
 	bool bound;
+	bool bsd;
+	bool listening;
 	uint8_t id;
 	struct net_sockaddr_in peer;
 };
@@ -68,7 +70,7 @@ static int reserve_id(struct nina_sock *s)
 
 	/* NINA 1.4.8 can starve UDP while another socket has unread data. */
 	for (int i = 0; i < MAX_NINA_SOCKETS; i++) {
-		if (&sockets[i] != s && sockets[i].used &&
+		if (&sockets[i] != s && sockets[i].used && !sockets[i].bsd &&
 		    sockets[i].id != NINA_NO_SOCKET &&
 		    (s->udp || sockets[i].udp)) {
 			return -EOPNOTSUPP;
@@ -123,14 +125,44 @@ static int do_bind(void *obj, const struct net_sockaddr *addr,
 	const struct net_sockaddr_in *in = (const struct net_sockaddr_in *)addr;
 	int ret;
 
-	if (!s->udp) {
-		return fail(EOPNOTSUPP);
-	}
 	if (!addr || addrlen < sizeof(*in) || addr->sa_family != NET_AF_INET) {
 		return fail(EINVAL);
 	}
 	if (in->sin_addr.s_addr != 0) {
 		return fail(EADDRNOTAVAIL);
+	}
+	if (!s->udp) {
+		uint8_t type = 1, proto = 6, result;
+		struct nina_param args[2] = {{&type, 1}, {&proto, 1}};
+		size_t n;
+
+		k_mutex_lock(&socket_lock, K_FOREVER);
+		if (s->bound || s->connected || s->id != NINA_NO_SOCKET) {
+			k_mutex_unlock(&socket_lock);
+			return fail(EINVAL);
+		}
+		ret = nina_request(0x70, args, 2, false, false, &result, 1, &n);
+		if (ret || n != 1 || result == NINA_NO_SOCKET) {
+			k_mutex_unlock(&socket_lock);
+			return fail(ret ? ret : ENFILE);
+		}
+		s->id = result;
+		s->bsd = true;
+		args[0] = (struct nina_param){&s->id, 1};
+		args[1] = (struct nina_param){(const uint8_t *)&in->sin_port, 2};
+		ret = nina_request(0x73, args, 2, false, false, &result, 1, &n);
+		if (!ret && (n != 1 || result != 1)) {
+			ret = -EADDRINUSE;
+		}
+		if (!ret) {
+			s->bound = true;
+		} else {
+			(void)cmd1(0x71, s->id, &result, 1, &n);
+			s->id = NINA_NO_SOCKET;
+			s->bsd = false;
+		}
+		k_mutex_unlock(&socket_lock);
+		return ret ? fail(ret) : 0;
 	}
 	k_mutex_lock(&udp_lock, K_FOREVER);
 	k_mutex_lock(&socket_lock, K_FOREVER);
@@ -138,6 +170,106 @@ static int do_bind(void *obj, const struct net_sockaddr *addr,
 	k_mutex_unlock(&socket_lock);
 	k_mutex_unlock(&udp_lock);
 	return ret ? fail(ret) : 0;
+}
+
+/* NINA's accept executes inside the SPI command handler. Never allow it to
+ * block that handler, which is shared by Wi-Fi and all other sockets. */
+static int bsd_nonblocking(struct nina_sock *s)
+{
+	uint8_t cmd[4] = {0x7e, 0x66, 0x04, 0x80}; /* lwIP FIONBIO */
+	uint8_t value[4] = {1, 0, 0, 0}, reply[4];
+	struct nina_param p[] = {{&s->id, 1}, {cmd, sizeof(cmd)}, {value, sizeof(value)}};
+	size_t n;
+	int ret = nina_request(0x7b, p, 3, false, false, reply, sizeof(reply), &n);
+
+	return ret ? ret : (n == sizeof(reply) ? 0 : -EIO);
+}
+
+static int do_listen(void *obj, int backlog)
+{
+	struct nina_sock *s = obj;
+	uint8_t value = CLAMP(backlog, 1, 255), reply;
+	struct nina_param p[] = {{&s->id, 1}, {&value, 1}};
+	size_t n;
+	int ret;
+
+	if (!s->bsd || !s->bound || s->listening) {
+		return fail(EINVAL);
+	}
+	ret = bsd_nonblocking(s);
+	if (!ret) {
+		ret = nina_request(0x74, p, 2, false, false, &reply, 1, &n);
+		if (!ret && (n != 1 || reply != 1)) {
+			ret = -EIO;
+		}
+	}
+	if (ret) {
+		return fail(ret);
+	}
+	s->listening = true;
+	return 0;
+}
+
+static int do_accept(void *obj, struct net_sockaddr *addr, net_socklen_t *addrlen)
+{
+	struct nina_sock *listener = obj, *client = NULL;
+	uint8_t reply[7];
+	struct net_sockaddr_in peer = {.sin_family = NET_AF_INET};
+	size_t n;
+	int fd, ret;
+
+	if (!listener->listening || (!!addr != !!addrlen)) {
+		return fail(EINVAL);
+	}
+	fd = zvfs_reserve_fd();
+	if (fd < 0) {
+		return -1;
+	}
+	k_mutex_lock(&socket_lock, K_FOREVER);
+	for (int i = 0; i < MAX_NINA_SOCKETS; i++) {
+		if (!sockets[i].used) {
+			client = &sockets[i];
+			break;
+		}
+	}
+	if (!client) {
+		ret = -EMFILE;
+		goto error;
+	}
+	ret = cmd1(0x75, listener->id, reply, sizeof(reply), &n);
+	if (ret || n != sizeof(reply) || reply[0] == NINA_NO_SOCKET) {
+		ret = ret ? ret : -EAGAIN;
+		goto error;
+	}
+	memset(client, 0, sizeof(*client));
+	client->id = reply[0];
+	client->used = true;
+	client->bsd = true;
+	client->connected = true;
+	ret = bsd_nonblocking(client);
+	if (ret) {
+		uint8_t ignored;
+		(void)cmd1(0x71, client->id, &ignored, 1, &n);
+		client->used = false;
+		goto error;
+	}
+	memcpy(&peer.sin_addr, reply + 1, 4);
+	/* The firmware returns the two bytes of its network-order integer in
+	 * big endian; convert that integer back to its native representation. */
+	((uint8_t *)&peer.sin_port)[0] = reply[6];
+	((uint8_t *)&peer.sin_port)[1] = reply[5];
+	if (addr) {
+		memcpy(addr, &peer, MIN(*addrlen, sizeof(peer)));
+		*addrlen = sizeof(peer);
+	}
+	k_mutex_unlock(&socket_lock);
+	zvfs_finalize_typed_fd(fd, client, (const struct fd_op_vtable *)&socket_ops,
+			       ZVFS_MODE_IFSOCK);
+	return fd;
+error:
+	k_mutex_unlock(&socket_lock);
+	zvfs_free_fd(fd);
+	return fail(ret);
 }
 
 static int do_connect(void *obj, const struct net_sockaddr *addr,
@@ -284,7 +416,7 @@ static ssize_t do_send(void *obj, const void *buf, size_t len, int flags,
 	if (s->udp) {
 		return udp_send(s, buf, len, flags, to, tolen);
 	}
-	if (to || flags) {
+	if (to || (flags & ~(s->bsd ? ZSOCK_MSG_DONTWAIT : 0))) {
 		return fail(EOPNOTSUPP);
 	}
 	if (!s->connected) {
@@ -300,18 +432,20 @@ static ssize_t do_send(void *obj, const void *buf, size_t len, int flags,
 	len = MIN(len, NINA_MAX_IO);
 	p[0] = (struct nina_param){&s->id, 1};
 	p[1] = (struct nina_param){buf, len};
-	ret = nina_request(0x44, p, 2, true, false, answer, sizeof(answer), &n);
+	ret = nina_request(s->bsd ? 0x77 : 0x44, p, 2, true, false, answer,
+			   sizeof(answer), &n);
 	if (ret) {
 		return fail(ret);
 	}
 	if (n != 2) {
 		return fail(EPROTO);
 	}
-	unsigned int written = answer[0] | ((unsigned int)answer[1] << 8);
+	unsigned int written = s->bsd ? ((unsigned int)answer[0] << 8) | answer[1] :
+					 answer[0] | ((unsigned int)answer[1] << 8);
 	if (written > len) {
 		return fail(EPROTO);
 	}
-	return written ? written : fail(EIO);
+	return written ? written : fail(s->bsd && (flags & ZSOCK_MSG_DONTWAIT) ? EAGAIN : EIO);
 }
 
 static ssize_t do_sendmsg(void *obj, const struct net_msghdr *msg, int flags)
@@ -454,6 +588,30 @@ static ssize_t do_recv(void *obj, void *buf, size_t len, int flags,
 	if (!buf) {
 		return fail(EINVAL);
 	}
+	if (s->bsd) {
+		uint8_t poll_result;
+
+		for (;;) {
+			ret = cmd1(0x7c, s->id, &poll_result, 1, &n);
+			if (ret || n != 1 || (poll_result & 0x80)) {
+				return fail(ret ? ret : EIO);
+			}
+			if (poll_result & 0x01) {
+				break;
+			}
+			if (flags & ZSOCK_MSG_DONTWAIT) {
+				return fail(EAGAIN);
+			}
+			k_sleep(K_MSEC(20));
+		}
+		len = MIN(len, NINA_MAX_IO);
+		bytes[0] = len & 0xff;
+		bytes[1] = len >> 8;
+		p[0] = (struct nina_param){&s->id, 1};
+		p[1] = (struct nina_param){bytes, 2};
+		ret = nina_request(0x78, p, 2, false, true, buf, len, &n);
+		return ret ? fail(ret) : (ssize_t)n;
+	}
 
 	for (;;) {
 		ret = available(s, &count);
@@ -502,7 +660,10 @@ static int do_close(void *obj)
 	}
 	k_mutex_lock(&socket_lock, K_FOREVER);
 	if (s->id != NINA_NO_SOCKET) {
-		ret = cmd1(0x2e, s->id, &result, 1, &n);
+		ret = cmd1(s->bsd ? 0x71 : 0x2e, s->id, &result, 1, &n);
+		if (!ret && s->bsd && (n != 1 || result != 1)) {
+			ret = -EIO;
+		}
 	}
 	s->used = false;
 	s->connected = false;
@@ -536,6 +697,7 @@ static int do_poll(struct zsock_pollfd *fds, int nfds, int timeout)
 			struct nina_sock *s;
 			const struct fd_op_vtable *vtable;
 			unsigned int count;
+			size_t length;
 			uint8_t state;
 			int ret;
 
@@ -549,7 +711,27 @@ static int do_poll(struct zsock_pollfd *fds, int nfds, int timeout)
 				fds[i].revents = ZSOCK_POLLNVAL;
 			} else if (vtable !=
 				   (const struct fd_op_vtable *)&socket_ops) {
-				return fail(ENOTSUP);
+				struct zsock_pollfd native = fds[i];
+
+				ret = zsock_poll(&native, 1, 0);
+				if (ret < 0) {
+					return -1;
+				}
+				fds[i].revents = native.revents;
+			} else if (s->bsd) {
+				ret = cmd1(0x7c, s->id, &state, 1, &length);
+				if (ret || length != 1 || (state & 0x80)) {
+					return fail(ret ? ret : EIO);
+				}
+				if ((state & 0x01) && (fds[i].events & ZSOCK_POLLIN)) {
+					fds[i].revents |= ZSOCK_POLLIN;
+				}
+				if ((state & 0x02) && (fds[i].events & ZSOCK_POLLOUT)) {
+					fds[i].revents |= ZSOCK_POLLOUT;
+				}
+				if (state & 0x04) {
+					fds[i].revents |= ZSOCK_POLLERR;
+				}
 			} else if (!s->udp && !s->connected) {
 				fds[i].revents = ZSOCK_POLLHUP;
 			} else {
@@ -620,6 +802,8 @@ static const struct socket_op_vtable socket_ops = {
 		      .ioctl = do_ioctl},
 	.bind = do_bind,
 	.connect = do_connect,
+	.listen = do_listen,
+	.accept = do_accept,
 	.sendto = do_send,
 	.sendmsg = do_sendmsg,
 	.recvfrom = do_recv,
@@ -662,6 +846,8 @@ int nina_socket_create(int family, int type, int proto)
 	s->connected = false;
 	s->udp = type == NET_SOCK_DGRAM;
 	s->bound = false;
+	s->bsd = false;
+	s->listening = false;
 	k_mutex_unlock(&socket_lock);
 	zvfs_finalize_typed_fd(fd, s, (const struct fd_op_vtable *)&socket_ops,
 			       ZVFS_MODE_IFSOCK);

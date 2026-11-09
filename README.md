@@ -188,6 +188,21 @@ unexpected disconnect, and that explicit `wifi disconnect` does not trigger
 reconnection. A 600-byte binary TCP echo and a refused connection returning
 `ECONNREFUSED` were also checked.
 
+## Shell over Wi-Fi
+
+With the patched NINA 3.0.2 firmware, the Zephyr Telnet shell listens on TCP
+port 23. Find the board's IPv4 address with `net iface` and connect with
+`telnet <address> 23`. Press Enter if the initial prompt is not shown. One
+Telnet client can use the shell at a time; the USB console remains available.
+
+Telnet provides neither authentication nor encryption and exposes the full
+shell, including commands that display Wi-Fi credentials. Use it only on a
+trusted network. Basic commands, repeated connections, recovery after Wi-Fi
+reconnection, a short IMU measurement, and startup SNTP synchronization were
+tested on hardware. One connection timed out during testing and recovered
+after reboot; subsequent reconnection tests did not reproduce it. Long-running
+operation and concurrent MQTT are unverified.
+
 ## Measuring the IMU FIFO
 
 `imu_measure` uses the Sensor Streaming API to collect FIFO batches and report counts and transfer times without printing each sample. Set the sampling frequencies of the sensors to use, then specify the measurement duration. For example, to measure both sensors at 208 Hz for 10 seconds:
