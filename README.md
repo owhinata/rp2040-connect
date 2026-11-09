@@ -77,42 +77,89 @@ Run `kernel ps` to display thread CPU and stack usage.
 ## Wi-Fi connection (under development)
 
 An experimental SPI adapter connects the NINA-W102 running Arduino firmware to Zephyr's
-Wi-Fi management API and IPv4 TCP sockets. The standard shell interface below has been
-verified on hardware for WPA2-PSK association and DHCP address assignment:
+Wi-Fi management API and IPv4 sockets. WPA2-PSK association and DHCP address
+assignment with the standard shell have been verified on hardware with NINA
+firmware `1.4.8`:
 
 ```text
 wifi connect --ssid "SSID" --key-mgmt 1 --passphrase "passphrase"
+wifi scan
 wifi status
 net iface
+ntp status
 wifi disconnect
 ```
 
 The implementation supports open and WPA2-PSK on 2.4 GHz; open networks are untested. The passphrase is echoed;
 Zephyr shell history is disabled but terminal-side recording may retain it.
 
+`wifi scan` lists up to 10 nearby 2.4 GHz access points. NINA firmware stops Wi-Fi
+during the scan, so an existing connection is interrupted and reconnection using the
+saved profile is attempted afterward. Filtering by SSID or channel and other scan
+options are unsupported. Hardware checks confirmed the scan results and automatic
+reconnection with IP address and gateway restoration.
+
+After Wi-Fi connects, Zephyr SNTP obtains time from `time.cloudflare.com` and sets the
+system clock. `ntp status` shows the sync state and Unix time. Configure the server and
+port with `CONFIG_NINA_NTP_SERVER` and `CONFIG_NINA_NTP_PORT`. Failed attempts are
+retried no more often than once per 60 seconds; a successful sync is refreshed after
+six hours. The application time-ready state expires after 24 hours without a sync.
+NINA cannot use UDP while a TCP socket is active, so time synchronization waits for
+a later retry in that case.
+
+SNTP replies are unauthenticated; obtaining a time does not establish the server's
+authenticity, and TLS security also depends on a trustworthy time source. Automatic
+synchronization with the public server and `ntp status` were checked on hardware.
+
 After a successful standard `wifi connect` and IP assignment, the last successful SSID
-and passphrase are saved to flash and a connection is attempted up to three times at the next boot.
+and passphrase are saved to flash and a connection is retried at boot and after an
+unexpected disconnection. An explicit `wifi disconnect` stops reconnection until a
+manual connection or the next boot.
+On hardware, stopping and restarting a phone hotspot triggered disconnection and
+automatic reconnection, with an IP address and gateway restored. Attempts can time
+out while the hotspot is stopped.
 Failed attempts do not replace the saved profile. `wifi_forget` deletes the profile
 without disconnecting the current connection; a later successful `wifi connect` saves
 a new profile.
 On hardware, one software reboot timed out on the first attempt and connected on the
 second; connection can take tens of seconds.
 
-Currently `wifi status` retrieves only the connection state. Its SSID, security type,
-RSSI and similar fields are not implemented; values such as `OPEN` do not describe the
-actual connection.
+`wifi status` retrieves the connection state, SSID, BSSID and RSSI. Security type,
+channel and link mode are not yet available from this driver.
 
 The passphrase is stored unencrypted and can be recovered by anyone with access to the
 board's flash. The final 8 KiB of flash is reserved separately from this application's
 code. Other firmware or a full erase may erase the profile. Flash writes can affect IMU
 acquisition, so wait for Wi-Fi connection to complete before starting a measurement.
 
-`nina_mqtt_test <IPv4-address> <port>` is an experimental plain TCP, QoS 0 test using
-Zephyr's MQTT library. On hardware, a simple PC-side MQTT test receiver accepted CONNECT,
-sent CONNACK, and received the QoS 0 payload `nina mqtt test` on `rp2040/test`. A full
-MQTT broker, long-running communication, error handling and disconnection remain untested.
-DNS, UDP, TLS, automatic reconnect and concurrent sockets are unsupported. This build
-uses Zephyr's test-only non-cryptographic random generator.
+On hardware, a simple PC-side MQTT test receiver accepted CONNECT, sent CONNACK, and
+received a QoS 0 payload. A full MQTT broker, long-running communication, error
+handling and disconnection remain untested.
+DNS lookups through Zephyr `getaddrinfo` are offloaded to NINA; numeric addresses and
+`example.com` were checked on hardware. IPv4 TCP clients and UDP are supported; TLS is
+unsupported. Up to four concurrent TCP sockets are supported; sending,
+receiving, and polling multiple sockets were checked on hardware. Polling mixed socket
+types is unsupported, and concurrent operations during disconnect remain untested.
+This build uses Zephyr's test-only non-cryptographic random generator.
+
+UDP is limited to one socket and cannot be used concurrently with TCP or another UDP
+socket; attempts return `EOPNOTSUPP`. NINA firmware 1.4.8 can stall UDP reception when
+another socket has unread data. UDP sends are limited to 512 bytes, and incoming
+zero-length datagrams cannot be detected. UDP connect, send, receive, truncation and
+poll were checked on hardware. One consecutive-packet test timed out initially; four
+later attempts succeeded, and the cause remains unknown.
+Bytes beyond NINA's 1,500-byte receive buffer are discarded without notification.
+UDP bind supports the wildcard address only; `sendmsg`, multicast configuration and
+socket timeouts are unsupported.
+
+TLS for MQTTS and the ATECC608A secure element are not yet used. I2C0 defaults to
+100 kHz. An earlier scan did not detect the ATECC608A at 1 MHz; coexistence with the
+IMU needs testing, including the device wake sequence and bus speed.
+
+Hardware checks confirmed address and gateway removal and reconnection after an
+unexpected disconnect, and that explicit `wifi disconnect` does not trigger
+reconnection. A 600-byte binary TCP echo and a refused connection returning
+`ECONNREFUSED` were also checked.
 
 ## Measuring the IMU FIFO
 

@@ -191,7 +191,8 @@ int nina_request(uint8_t cmd, const struct nina_param *params, size_t nparams,
 		 size_t *out_len)
 {
 	uint8_t c = 0;
-	size_t i, j, sent = 0, len = 0;
+	size_t i, j, sent = 0, len = 0, total = 0;
+	uint8_t response_count = cmd == 0x3a ? 2 : 1;
 	int ret;
 #define SEND_BYTE(v)                                                           \
 	do {                                                                   \
@@ -262,23 +263,41 @@ int nina_request(uint8_t cmd, const struct nina_param *params, size_t nparams,
 		}
 		if (!ret) {
 			ret = transfer(NINA_DUMMY, &c);
-			if (!ret && c != 1) {
+			if (!ret && c == 0 && cmd == 0x2d) {
+				ret = transfer(NINA_DUMMY, &c);
+				if (!ret) {
+					ret = c == NINA_END ? -ECONNREFUSED
+							    : -EPROTO;
+				}
+			} else if (!ret && cmd == 0x27) {
+				response_count = c;
+			} else if (!ret && c != response_count) {
 				ret = -EPROTO;
 			}
 		}
-		if (!ret && wide_response) {
-			ret = transfer(NINA_DUMMY, &c);
-			len = (size_t)c << 8;
-		}
-		if (!ret) {
-			ret = transfer(NINA_DUMMY, &c);
-			len |= c;
-			if (len > cap) {
-				ret = -EMSGSIZE;
+		for (j = 0; !ret && j < response_count; j++) {
+			len = 0;
+			if (wide_response) {
+				ret = transfer(NINA_DUMMY, &c);
+				len = (size_t)c << 8;
 			}
-		}
-		for (i = 0; !ret && i < len; i++) {
-			ret = transfer(NINA_DUMMY, &out[i]);
+			if (!ret) {
+				ret = transfer(NINA_DUMMY, &c);
+				len |= c;
+				if (cmd == 0x27 && (len > 32 || total == cap)) {
+					ret = -EMSGSIZE;
+				}
+				if (!ret && cmd == 0x27) {
+					out[total++] = len;
+				}
+				if (len > cap - total ||
+				    (cmd == 0x3a && len != (j == 0 ? 4 : 2))) {
+					ret = -EMSGSIZE;
+				}
+			}
+			for (i = 0; !ret && i < len; i++) {
+				ret = transfer(NINA_DUMMY, &out[total++]);
+			}
 		}
 		if (!ret) {
 			ret = transfer(NINA_DUMMY, &c);
@@ -289,7 +308,7 @@ int nina_request(uint8_t cmd, const struct nina_param *params, size_t nparams,
 		(void)gpio_pin_set_dt(&cs, 0);
 	}
 	if (!ret) {
-		*out_len = len;
+		*out_len = total;
 	}
 	k_mutex_unlock(&nina_lock);
 	return ret;

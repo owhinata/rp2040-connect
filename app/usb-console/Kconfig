@@ -30,3 +30,14 @@ config WIFI_NINA_LOCAL
 	select WIFI_OFFLOAD
 	select NET_SOCKETS
 	select NET_SOCKETS_OFFLOAD
+
+config NINA_NTP_SERVER
+	string "NTP server hostname"
+	default "time.cloudflare.com"
+	depends on SNTP
+
+config NINA_NTP_PORT
+	int "NTP server UDP port"
+	default 123
+	range 1 65535
+	depends on SNTP
