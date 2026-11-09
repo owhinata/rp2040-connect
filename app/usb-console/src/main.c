@@ -4,6 +4,7 @@
 #include <zephyr/shell/shell.h>
 #include "wifi_profile.h"
 #include "time_sync.h"
+#include "kv_store.h"
 
 LOG_MODULE_REGISTER(usb_console, LOG_LEVEL_INF);
 
@@ -46,7 +47,13 @@ SHELL_SUBCMD_ADD((kernel), ps, NULL, "Show thread CPU and stack usage", cmd_ps,
 
 int main(void)
 {
+	int ret;
+
 	LOG_INF("USB console started");
+	ret = kv_store_init();
+	if (ret) {
+		LOG_ERR("Could not initialize settings: %d", ret);
+	}
 	time_sync_init();
 	(void)wifi_profile_init();
 	return 0;

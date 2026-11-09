@@ -111,18 +111,45 @@ SNTP replies are unauthenticated; obtaining a time does not establish the server
 authenticity, and TLS security also depends on a trustworthy time source. Automatic
 synchronization with the public server and `ntp status` were checked on hardware.
 
-After a successful standard `wifi connect` and IP assignment, the last successful SSID
-and passphrase are saved to flash and a connection is retried at boot and after an
-unexpected disconnection. An explicit `wifi disconnect` stops reconnection until a
-manual connection or the next boot.
-On hardware, stopping and restarting a phone hotspot triggered disconnection and
-automatic reconnection, with an IP address and gateway restored. Attempts can time
-out while the hotspot is stopped.
-Failed attempts do not replace the saved profile. `wifi_forget` deletes the profile
-without disconnecting the current connection; a later successful `wifi connect` saves
-a new profile.
-On hardware, one software reboot timed out on the first attempt and connected on the
-second; connection can take tens of seconds.
+Key-value storage uses Zephyr Settings/NVS. Wi-Fi credentials use Zephyr's
+credentials API with the same Settings/NVS backend:
+
+```text
+kv set greeting hello
+kv get greeting
+kv sethex bytes 0001ff
+kv get bytes
+kv delete greeting
+```
+
+`get` prints hexadecimal bytes. `set` stores text without a terminating NUL;
+`sethex` stores hexadecimal byte pairs. Keys contain 1–32 ASCII letters,
+digits, `_`, `-` or `.`, and values contain 1–128 bytes. Empty values are not
+supported. Keys beginning with `sys.` are reserved for internal use and cannot
+be accessed through the shell. Applications can call `kv_store_set`, `kv_store_get` and
+`kv_store_delete` from `kv_store.h`; a small read buffer returns `-ENOBUFS`.
+The 8 KiB storage area is shared with the Wi-Fi profile and can fill up. Flash
+writes can affect acquisition. Values are unencrypted and readable through the
+shell; a full flash erase or other firmware can erase them.
+
+Manage Wi-Fi credentials using the standard shell commands. `wifi connect` only
+connects; it does not automatically save the profile:
+
+```text
+wifi cred add -s "SSID" -k 1 -p "passphrase"
+wifi cred list
+wifi cred auto_connect
+wifi cred delete "SSID"
+```
+
+`-k 1` selects WPA2-PSK. Adding the same SSID updates it. `wifi cred list` prints
+passphrases, so take care with terminal output and logs. Stored credentials are
+retried at boot and after an unexpected disconnect; explicit `wifi disconnect`
+pauses retries until reboot or a manual connection. The current Zephyr stored
+connection implementation tries the first accepted request, so failover across
+multiple stored networks is not guaranteed. Old application profiles are deleted
+only after they are saved as standard credentials; failed migration is retried at
+the next boot.
 
 `wifi status` retrieves the connection state, SSID, BSSID and RSSI. Security type,
 channel and link mode are not yet available from this driver.

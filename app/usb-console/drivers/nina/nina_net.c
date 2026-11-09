@@ -256,14 +256,7 @@ static void connect_thread(void *a, void *b, void *c)
 
 		k_mutex_lock(&connect_state_lock, K_FOREVER);
 		if (id == atomic_get(&generation)) {
-			if (!ret) {
-				wifi_profile_commit();
-			} else {
-				wifi_profile_discard();
-			}
 			wifi_mgmt_raise_connect_result_event(nina_iface, ret);
-		} else {
-			wifi_profile_discard();
 		}
 		atomic_clear(&connecting);
 		k_mutex_unlock(&connect_state_lock);
@@ -310,7 +303,6 @@ static int wifi_connect(const struct device *dev, struct net_if *iface,
 		return -EBUSY;
 	}
 
-	wifi_profile_prepare(params);
 	args[0] = (struct nina_param){params->ssid, params->ssid_length};
 	args[1] = (struct nina_param){params->psk, params->psk_length};
 	atomic_inc(&generation);
@@ -320,7 +312,6 @@ static int wifi_connect(const struct device *dev, struct net_if *iface,
 		params->security == WIFI_SECURITY_TYPE_NONE ? 1 : 2, false,
 		false, &answer, 1, &n);
 	if (ret || n != 1 || answer != 1) {
-		wifi_profile_discard();
 		atomic_clear(&connecting);
 		k_mutex_unlock(&connect_state_lock);
 		return ret ? ret : -EIO;
