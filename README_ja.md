@@ -6,7 +6,8 @@ Arduino Nano RP2040 Connect 向けの Zephyr ワークスペースです。
 複数のアプリケーションで、`manifest/west.yml` に指定した Zephyr と
 モジュールを共有します。モジュールはアプリの機能に応じて追加してください。
 
-設計と実装の方針は [IMU FIFO ドライバー計画](design/imu-fifo-driver-plan-ja.md) を参照してください。
+設計と実装の方針は [IMU FIFO ドライバー計画](design/imu-fifo-driver-plan-ja.md) と
+[IMU RAW・MQTT 配信設計案](design/imu-raw-mqtt-design-ja.md) を参照してください。
 
 ## 環境構築
 
