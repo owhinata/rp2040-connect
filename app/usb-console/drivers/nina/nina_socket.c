@@ -6,10 +6,14 @@
 #include <zephyr/net/socket.h>
 #include <zephyr/sys/fdtable.h>
 #include "nina_proto.h"
+#if defined(CONFIG_NINA_SEND_PROFILE)
+#include "nina_send_profile.h"
+#endif
 
-#define MAX_NINA_SOCKETS 4
+#define MAX_NINA_SOCKETS 6
 #define NINA_MAX_IO      512
 #define NINA_NO_SOCKET   UINT8_MAX
+#define NINA_SEND_WAIT_MS 10000
 struct nina_sock {
 	bool used;
 	bool connected;
@@ -17,12 +21,15 @@ struct nina_sock {
 	bool bound;
 	bool bsd;
 	bool listening;
+	bool nonblocking;
 	uint8_t id;
 	struct net_sockaddr_in peer;
 };
 static struct nina_sock sockets[MAX_NINA_SOCKETS];
 K_MUTEX_DEFINE(socket_lock);
 K_MUTEX_DEFINE(udp_lock);
+K_MUTEX_DEFINE(sendmsg_lock);
+static uint8_t sendmsg_buffer[CONFIG_NINA_TCP_MAX_IO];
 static const struct socket_op_vtable socket_ops;
 
 static int cmd1(uint8_t cmd, uint8_t id, uint8_t *data, size_t cap, size_t *n)
@@ -412,6 +419,10 @@ static ssize_t do_send(void *obj, const void *buf, size_t len, int flags,
 	size_t n;
 	int ret;
 	struct nina_param p[2];
+	int64_t deadline;
+#if defined(CONFIG_NINA_TEST_SEND_STATE_INTERVAL_MS)
+	int64_t next_state_check = 0;
+#endif
 
 	if (s->udp) {
 		return udp_send(s, buf, len, flags, to, tolen);
@@ -429,28 +440,65 @@ static ssize_t do_send(void *obj, const void *buf, size_t len, int flags,
 		return fail(EINVAL);
 	}
 
-	len = MIN(len, NINA_MAX_IO);
+	len = MIN(len, CONFIG_NINA_TCP_MAX_IO);
 	p[0] = (struct nina_param){&s->id, 1};
 	p[1] = (struct nina_param){buf, len};
-	ret = nina_request(s->bsd ? 0x77 : 0x44, p, 2, true, false, answer,
-			   sizeof(answer), &n);
-	if (ret) {
-		return fail(ret);
+	deadline = k_uptime_get() + NINA_SEND_WAIT_MS;
+	for (;;) {
+		unsigned int written;
+
+		ret = nina_request(s->bsd ? 0x77 : 0x44, p, 2, true, false, answer,
+				   sizeof(answer), &n);
+		if (ret) {
+			return fail(ret);
+		}
+		if (n != 2) {
+			return fail(EPROTO);
+		}
+		written = s->bsd ? ((unsigned int)answer[0] << 8) | answer[1] :
+				   answer[0] | ((unsigned int)answer[1] << 8);
+		if (written > len) {
+			return fail(EPROTO);
+		}
+		if (written) {
+			return written;
+		}
+		if ((flags & ZSOCK_MSG_DONTWAIT) || s->nonblocking) {
+			return fail(EAGAIN);
+		}
+		if (!s->bsd
+#if defined(CONFIG_NINA_TEST_SEND_STATE_INTERVAL_MS)
+		    && k_uptime_get() >= next_state_check
+#endif
+		) {
+			uint8_t state;
+
+			ret = sock_state(s, &state);
+			if (ret || state != 4) {
+				return fail(ret ? ret : EPIPE);
+			}
+#if defined(CONFIG_NINA_TEST_SEND_STATE_INTERVAL_MS)
+			next_state_check = k_uptime_get() + CONFIG_NINA_TEST_SEND_STATE_INTERVAL_MS;
+#endif
+		}
+		if (k_uptime_get() >= deadline) {
+			return fail(EAGAIN);
+		}
+#if defined(CONFIG_NINA_SEND_PROFILE)
+		uint32_t retry_start = k_cycle_get_32();
+#endif
+		k_sleep(K_MSEC(CONFIG_NINA_SEND_RETRY_MS));
+#if defined(CONFIG_NINA_SEND_PROFILE)
+		nina_send_profile_retry(k_cycle_get_32() - retry_start);
+#endif
 	}
-	if (n != 2) {
-		return fail(EPROTO);
-	}
-	unsigned int written = s->bsd ? ((unsigned int)answer[0] << 8) | answer[1] :
-					 answer[0] | ((unsigned int)answer[1] << 8);
-	if (written > len) {
-		return fail(EPROTO);
-	}
-	return written ? written : fail(s->bsd && (flags & ZSOCK_MSG_DONTWAIT) ? EAGAIN : EIO);
 }
 
 static ssize_t do_sendmsg(void *obj, const struct net_msghdr *msg, int flags)
 {
 	struct nina_sock *s = obj;
+	size_t total = 0;
+	ssize_t ret;
 
 	if (!msg || (msg->msg_iovlen && !msg->msg_iov)) {
 		return fail(EINVAL);
@@ -461,14 +509,28 @@ static ssize_t do_sendmsg(void *obj, const struct net_msghdr *msg, int flags)
 	if (s->udp) {
 		return fail(EOPNOTSUPP);
 	}
-	/* Returning one vector at a time is a valid partial TCP write. */
+	/* Coalesce vectors so MQTT's header and payload share an SPI request.
+	 * Return the actual partial write; the caller advances its iovecs.
+	 */
+	k_mutex_lock(&sendmsg_lock, K_FOREVER);
 	for (size_t i = 0; i < msg->msg_iovlen; i++) {
-		if (msg->msg_iov[i].iov_len) {
-			return do_send(obj, msg->msg_iov[i].iov_base,
-				       msg->msg_iov[i].iov_len, flags, NULL, 0);
+		size_t n = MIN(msg->msg_iov[i].iov_len, sizeof(sendmsg_buffer) - total);
+
+		if (n && !msg->msg_iov[i].iov_base) {
+			k_mutex_unlock(&sendmsg_lock);
+			return fail(EFAULT);
+		}
+		if (n) {
+			memcpy(sendmsg_buffer + total, msg->msg_iov[i].iov_base, n);
+			total += n;
+		}
+		if (total == sizeof(sendmsg_buffer)) {
+			break;
 		}
 	}
-	return 0;
+	ret = total ? do_send(obj, sendmsg_buffer, total, flags, NULL, 0) : 0;
+	k_mutex_unlock(&sendmsg_lock);
+	return ret;
 }
 
 static ssize_t udp_recv(struct nina_sock *s, void *buf, size_t len, int flags,
@@ -503,7 +565,7 @@ static ssize_t udp_recv(struct nina_sock *s, void *buf, size_t len, int flags,
 		}
 		if (!count) {
 			k_mutex_unlock(&udp_lock);
-			if (flags & ZSOCK_MSG_DONTWAIT) {
+			if ((flags & ZSOCK_MSG_DONTWAIT) || s->nonblocking) {
 				return fail(EAGAIN);
 			}
 			k_sleep(K_MSEC(20));
@@ -781,8 +843,20 @@ static int do_poll(struct zsock_pollfd *fds, int nfds, int timeout)
 
 static int do_ioctl(void *obj, unsigned int request, va_list args)
 {
-	ARG_UNUSED(obj);
+	struct nina_sock *s = obj;
+
 	switch (request) {
+	case ZVFS_F_GETFL:
+		return s->nonblocking ? ZVFS_O_NONBLOCK : 0;
+	case ZVFS_F_SETFL: {
+		int flags = va_arg(args, int);
+
+		if (!s->bsd || (flags & ~ZVFS_O_NONBLOCK)) {
+			return fail(EOPNOTSUPP);
+		}
+		s->nonblocking = (flags & ZVFS_O_NONBLOCK) != 0;
+		return 0;
+	}
 	case ZFD_IOCTL_POLL_PREPARE:
 		return -EXDEV;
 	case ZFD_IOCTL_POLL_OFFLOAD: {
@@ -848,6 +922,7 @@ int nina_socket_create(int family, int type, int proto)
 	s->bound = false;
 	s->bsd = false;
 	s->listening = false;
+	s->nonblocking = false;
 	k_mutex_unlock(&socket_lock);
 	zvfs_finalize_typed_fd(fd, s, (const struct fd_op_vtable *)&socket_ops,
 			       ZVFS_MODE_IFSOCK);

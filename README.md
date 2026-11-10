@@ -164,13 +164,14 @@ received a QoS 0 payload. A full MQTT broker, long-running communication, error
 handling and disconnection remain untested.
 DNS lookups through Zephyr `getaddrinfo` are offloaded to NINA; numeric addresses and
 `example.com` were checked on hardware. IPv4 TCP clients and UDP are supported; TLS is
-unsupported. Up to four concurrent TCP sockets are supported; sending,
-receiving, and polling multiple sockets were checked on hardware. Polling mixed socket
-types is unsupported, and concurrent operations during disconnect remain untested.
+unsupported. Four concurrent legacy TCP clients were tested on hardware. The driver
+now has six socket slots shared with Telnet and `iperf3`. Mixed polling with Zephyr's
+eventfd is used; mixing sockets from other offload drivers and concurrent operations
+during disconnect remain untested.
 This build uses Zephyr's test-only non-cryptographic random generator.
 
-UDP is limited to one socket and cannot be used concurrently with TCP or another UDP
-socket; attempts return `EOPNOTSUPP`. NINA firmware 1.4.8 can stall UDP reception when
+Legacy UDP is limited to one socket and cannot be used concurrently with a legacy TCP
+client or another legacy UDP socket; attempts return `EOPNOTSUPP`. NINA firmware 1.4.8 can stall UDP reception when
 another socket has unread data. UDP sends are limited to 512 bytes, and incoming
 zero-length datagrams cannot be detected. UDP connect, send, receive, truncation and
 poll were checked on hardware. One consecutive-packet test timed out initially; four
@@ -202,6 +203,67 @@ reconnection, a short IMU measurement, and startup SNTP synchronization were
 tested on hardware. One connection timed out during testing and recovered
 after reboot; subsequent reconnection tests did not reproduce it. Long-running
 operation and concurrent MQTT are unverified.
+
+## Measuring Wi-Fi throughput
+
+The Zephyr `zperf` shell supports the iperf3 protocol. Start a TCP receiver on
+the board with `zperf tcp download 5201`, then run
+`iperf3 -c <board-ipv4> -p 5201 -t 10` on the PC. Stop the receiver with
+`zperf tcp download stop`. This measures PC-to-board TCP throughput, not the
+board-to-PC MQTT upload rate. The NINA socket implementation does not yet
+provide the socket options required by the iperf3 upload client.
+
+With NINA 3.0.2, an 8 MHz SPI setting and 2.4 GHz Wi-Fi, three 10-second runs
+without an active Telnet client reported approximately 227, 266 and 363 kbit/s
+at the board. A 10-second iperf3 run also completed with Telnet connected.
+
+For the other direction, a temporary `prj_iperf2.conf` build ran
+`zperf tcp upload` to a PC TCP receiver using 512-byte blocks. Three 10-second
+runs reported approximately 272, 263 and 262 kbit/s at the board; the PC
+received the same byte counts. Build this optional variant with:
+
+```sh
+west build -b arduino_nano_connect app/usb-console -d build/usb-console-iperf2 -- -DEXTRA_CONF_FILE=prj_iperf2.conf
+```
+
+After flashing that variant, run `python3 script/tcp_sink.py --port 5001` on
+the PC and `zperf tcp upload <pc-ipv4> 5001 10 512` on the board. The sink
+accepts one connection, reports the received bytes and rate, and exits.
+
+After batching SPI payload transfers, three 512-byte upload runs measured 296,
+341 and 339 kbit/s. Experimental 1460-byte TCP sends measured 373, 530 and
+474 kbit/s without SPI DMA, and 450, 297 and 429 kbit/s with Zephyr's PL022
+SPI DMA enabled. All runs verified the received byte pattern. These short runs
+vary substantially; they do not establish that DMA is inherently slower.
+The 1460-byte limit and SPI DMA remain experimental. To reproduce that DMA
+variant, use a separate build directory and pass
+`-DEXTRA_CONF_FILE=prj_iperf2.conf;prj_tcp_1460.conf;prj_spi_dma.conf` and
+`-DDTC_OVERLAY_FILE=app.overlay;spi_dma.overlay` after `--` (quote each argument
+so the shell preserves the semicolons). Upload with a 1460-byte zperf block.
+
+In one profiled 516 kbit/s run, NINA returned zero bytes 310 times and the
+20 ms retry sleeps added up to about 6.2 seconds. The SPI request phase took
+about 1.25 seconds of elapsed time, including scheduling and interrupt delays.
+A zero return can have multiple causes, including a full TCP send buffer.
+An experimental 2 ms retry produced 539, 646 and 649 kbit/s in three runs;
+the default remains unchanged because retries increased and results varied.
+Add `prj_nina_profile.conf` to enable `nina_send_profile reset` and
+`nina_send_profile`, and `prj_nina_retry2.conf` to try the shorter delay.
+
+With 2872-byte zperf blocks, a 2872-byte NINA send limit and 2 ms retries,
+three 10-second runs after requesting power saving on measured 0.71, 1.43
+and 1.15 Mbit/s; after requesting it off they measured 1.13, 1.07 and
+1.25 Mbit/s. A 30-second run measured 0.91 Mbit/s. Data patterns matched in
+all runs. The NINA firmware does not return the ESP power-setting result, so
+these results do not establish whether the request succeeded or improved speed.
+Use `prj_nina_tcp2872.conf` and `prj_nina_retry2.conf` for this experiment;
+the profile build provides `nina_benchmark_power on|off`. With accelerometer
+and gyroscope both at 208 Hz, one concurrent upload measured 0.96 Mbit/s and
+the 30-second IMU run reported no errors or overruns. At 1667 Hz for both,
+the IMU FIFO overran before the TCP test began.
+
+These results include radio and TCP variation and do not establish MQTT
+throughput or performance while simultaneously collecting IMU data.
 
 ## Measuring the IMU FIFO
 

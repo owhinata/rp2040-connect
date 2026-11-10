@@ -210,13 +210,15 @@ Wi-Fi 接続が完了してから測定を開始してください。
 挙動は未検証です。
 DNS 名の解決は Zephyr の `getaddrinfo` を NINA にオフロードし、実機で数値 IP と
 `example.com` の名前解決を確認しています。IPv4 の TCP クライアントと UDP に対応し、
-TLS には未対応です。TCP は最大 4 ソケットの同時接続に対応し、実機で各
-ソケットの送受信と複数ソケットの `poll` を確認しました。異種ソケットを混ぜた
-`poll` は未対応、切断時の並行操作は未検証です。現在のビルドは Zephyr のテスト用非暗号
+TLS には未対応です。従来の TCP クライアントでは最大 4 ソケットの同時接続を
+実機で確認しました。ドライバのソケット枠は現在 6 個で、Telnet の待ち受けや
+`iperf3` の制御・データ接続も共有します。NINA と Zephyr の eventfd の混在 `poll` は
+使用しますが、他のオフロードドライバとの混在や切断時の並行操作は未検証です。
+現在のビルドは Zephyr のテスト用非暗号
 乱数を使います。
 
-UDP は単一ソケットに限定し、他の UDP または TCP ソケットと同時に使用しようと
-すると `EOPNOTSUPP` を返します。NINA ファームウェア 1.4.8 では他ソケットに未読
+従来の UDP は単一ソケットに限定し、他の従来型 UDP または TCP クライアントと同時に
+使用しようとすると `EOPNOTSUPP` を返します。NINA ファームウェア 1.4.8 では他ソケットに未読
 データがあると UDP 受信が止まるためです。送信は 1 データグラム 512 バイトまで、
 空の受信データグラムは検出できません。接続先への `connect`、送受信、短い受信
 バッファーによる切り捨てと `poll` を実機で確認しました。連続受信試験では最初に
@@ -232,6 +234,133 @@ IMU と同じバスでの利用時は起床手順や通信速度を含めた共�
 実機で意図しない切断後の IP・ゲートウェイ消去と再接続、`wifi disconnect` 後に
 再接続しないことを確認しました。また PC との 600 バイトの TCP バイナリ往復と、
 未使用ポートへの接続が `ECONNREFUSED` になることを確認しました。
+
+## Wi-Fi スループットの測定
+
+Zephyr の `zperf` を `iperf3` プロトコルで有効にしています。ボードの USB または
+Telnet シェルで TCP サーバーを起動し、PC から送信速度を測れます。
+
+```text
+zperf tcp download 5201
+```
+
+PC 側では `iperf3 -c <ボードのIPv4アドレス> -p 5201 -t 10` を実行します。
+終了後、ボード側で `zperf tcp download stop` を実行してサーバーを停止できます。
+これは PC → ボードの TCP 受信速度で、ボード → PC の MQTT 送信速度ではありません。
+現在の NINA ソケットは `iperf3` クライアントが要求するソケットオプションに対応
+していないため、送信方向の `zperf tcp upload` は未対応です。
+
+NINA 3.0.2、SPI 設定 8 MHz、2.4 GHz Wi-Fi の実機で、Telnet 接続なしの 10 秒
+測定を３回行ったところ、ボード側の受信速度は約 227、266、363 kbit/s でした。
+Telnet を接続した状態でも 10 秒間の `iperf3` 測定を完了しました。
+
+送信方向は `prj_iperf2.conf` を追加した一時ビルドの `zperf tcp upload` と PC 上の
+TCP 受信プログラムを使い、512 バイト単位で10秒間測定しました。ボード側の送信
+速度は３回で約 272、263、262 kbit/s で、PC 側で同じバイト数を受信しました。
+通常版では `iperf3` を選択しているため、`iperf2` の測定版は次のようにビルドします。
+
+```sh
+west build -b arduino_nano_connect app/usb-console -d build/usb-console-iperf2 -- -DEXTRA_CONF_FILE=prj_iperf2.conf
+```
+
+測定版を書き込んだ後、PC で `python3 script/tcp_sink.py --port 5001` を起動し、
+ボードのシェルから `zperf tcp upload <PCのIPv4アドレス> 5001 10 512` を実行します。
+受信ツールは接続を１回受け付け、受信バイト数と速度を表示して終了します。
+
+SPI のデータ部分をまとめて転送する変更後、512 バイト単位では 296、341、
+339 kbit/s でした。実験的に TCP の送信単位を 1460 バイトにすると、SPI DMA
+なしで 373、530、474 kbit/s、Zephyr の PL022 SPI DMA ありで 450、297、
+429 kbit/s でした。いずれも受信データのパターンに不一致はありませんでした。
+短時間の測定には大きな変動があり、DMA が本質的に遅いと結論できるものでは
+ありません。1460 バイト送信と SPI DMA は実験用設定です。DMA 版の再現には、
+別のビルドディレクトリを指定し、`--` の後に
+`'-DEXTRA_CONF_FILE=prj_iperf2.conf;prj_tcp_1460.conf;prj_spi_dma.conf'`
+と `'-DDTC_OVERLAY_FILE=app.overlay;spi_dma.overlay'` を追加します。
+送信コマンドのブロックサイズは 1460 にします。
+
+追加の送信時間計測では、20 ms の再試行待ちで 516 kbit/s だった１回のうち、
+NINA のゼロバイト応答は 310 回、再試行待ちは合計約 6.2 秒でした。送信要求の
+SPI 処理区間は合計約 1.25 秒です（割り込みやスケジュール待ちを含む経過時間）。
+ゼロ応答は送信バッファが満杯の場合などに発生し、NINA の API では原因を区別
+できません。再試行間隔を 2 ms にした実験では 539、646、649 kbit/s でしたが、
+ゼロ応答の増加と無線環境による変動があるため通常設定は変更していません。
+計測には `prj_nina_profile.conf`、2 ms の実験には `prj_nina_retry2.conf` を
+追加し、送信前後に `nina_send_profile reset` と `nina_send_profile` を実行します。
+
+さらに実験的に TCP 送信と zperf のブロックを 2872 バイト、再試行を 2 ms にした
+ところ、10 秒の３回は省電力有効要求後に 0.71、1.43、1.15 Mbit/s、無効要求後に
+1.13、1.07、1.25 Mbit/s でした。無効要求後の 30 秒測定は 0.91 Mbit/s でした。
+データの不一致はいずれもありません。省電力要求は NINA が ESP 側の成否を返さない
+ため設定成功を確認できず、短時間の無線測定だけで効果を断定できません。
+測定版には `prj_nina_tcp2872.conf` と `prj_nina_retry2.conf` を追加します。
+`prj_nina_profile.conf` の `nina_benchmark_power on|off` は省電力を要求します。
+加速度と角速度を各 208 Hz で同時取得した１回の TCP 測定は 0.96 Mbit/s で、
+IMU の 30 秒測定にエラーやオーバーランはありませんでした。両方 1667 Hz では
+TCP 試験開始前に FIFO オーバーランしたため、その条件での同時動作は未検証です。
+
+目的条件を確認するため I²C 1 MHz、両センサー各 6667 Hz、watermark 128 で TCP
+送信と並行したところ、１回は約 14 秒で I²C エラー、別の１回は約 32 秒間エラーや
+overrun 観測なしで動作しましたが、想定外の FIFO ワードが検出されました。後者の
+TCP 送信は約 773 kbit/s でした。これはダミーデータの送信であり、IMU データの
+MQTT 配信ではありません。
+
+原因切り分けでは以前の IMU 単独版と現在の Wi-Fi 切断時は、各 10 秒の測定で
+想定外のワードが 0 個でした。現在版を Wi-Fi 接続すると、IMU 単独でも想定外の
+ワードが現れます。診断版で確認した最初のワードは `ff ff ff ff ff ff ff` で、
+ある 10 秒の測定では 8 バッチに計 548 個あり、いずれもバッチ末尾に集中して
+いました。I²C DMA の無効時にも再現しました。原因と実際の欠落は未確定です。
+この条件での無欠落取得は、以前の結果だけから保証できません。
+
+追加の診断では、NINA の Wi-Fi 省電力を無効にすると、6667 Hz の FIFO 取得時に
+見られた異常ワードが検出されなくなりました。診断ファームは NINA の省電力設定の
+成否を返すパッチを使用しています。原因となる電気的な仕組みは未確定です。
+
+実験用 MQTT 送信では FIFO の各軸を 16-bit の生バイナリのまままとめ、フレーム番号と
+加速度／角速度を識別するビット列を付けています。ボードが 2.4 GHz、PC が同じ AP の
+5 GHz に接続し、PC と NINA の省電力を無効にした条件では、6667 Hz の 120 秒測定で
+加速度 804,564 件、角速度 804,566 件を PC で受信し、件数とペイロードの CRC32 が
+ボード側と一致しました。FIFO エラーと診断送信キューの欠落はありませんでした。
+MQTT ペイロードの平均速度は約 665 kbit/s です。この測定は NINA 側の実験的な TCP
+変更と専用の QoS 0 受信テストを使用しており、製品用の MQTT ブローカーや長期的な
+無欠落を保証するものではありません。同じ接続条件で NINA 側の TCP 実験変更を外した
+60 秒の測定でも、各 401,404 件を受信し、件数と CRC32 が一致しました。追加の比較では、
+PC が 2.4 GHz の場合、省電力有効時は約 2.0 秒、無効時は約 1.8 秒で送信キューが満杯に
+なりました。PC が 5 GHz・省電力有効の場合は 30 秒間、受信件数と CRC32 が一致しました。
+各条件は短時間の測定であり、無線環境の変動や他の設定では結果が異なる可能性があります。
+同じ接続条件での TCP ダミーデータ送信は、IMU 停止時に 30 秒間で約 4.19 Mbit/s、
+両センサーの 6667 Hz 取得と並行した 30 秒間で約 2.02 Mbit/s でした。後者の IMU
+取得は約 35 秒間、異常タグ、I²C エラー、FIFO オーバーランがありませんでした。
+
+上記の MQTT 診断版は、NINA 3.0.2 に `firmware/nina-fw/build.sh` が適用する 2 件の
+パッチを入れ、次の構成でビルドできます。これは試験用であり、通常版とは別です。
+
+```sh
+west build -b arduino_nano_connect app/usb-console -d build/usb-console-imu-mqtt -- \
+  '-DEXTRA_CONF_FILE=prj_iperf2.conf;prj_nina_tcp3584.conf;prj_nina_profile.conf;prj_nina_retry1.conf;prj_nina_nops.conf;prj_imu_mqtt_probe.conf;prj_nina_state100.conf;prj_nina_poll100.conf;prj_imu_mqtt_prio8.conf'
+```
+
+PC 側で `python3 script/imu_mqtt_probe.py --bind <PCのIPv4アドレス> --port 18830` を
+実行し、ボードを Wi-Fi に接続してから、USB シェルで次を実行します。接続アドレスは
+環境に合わせて変更します。
+
+```text
+imu_mqtt_probe start <PCのIPv4アドレス> 18830
+imu_mqtt_probe status
+i2c speed i2c0 3
+sensor attr_set lsm6dsox all fifo_watermark 128
+sensor attr_set lsm6dsox accel_xyz sampling_frequency 6667
+sensor attr_set lsm6dsox gyro_xyz sampling_frequency 6667
+imu_measure start 60
+```
+
+`status` の `connected=1 enabled=1` を確認してから測定を始めます。測定完了後に
+`imu_mqtt_probe status` で送信キューと CRC32 を確認し、`imu_mqtt_probe stop` で
+キューを送り切って切断します。PC 側に出力される件数と CRC32 をボード側と照合します。
+この受信プログラムは診断用の簡易 MQTT 受信器で、データを保存する汎用ブローカーでは
+ありません。QoS 0 のため通信断からの再送も実装していません。
+
+これらは無線環境と TCP の挙動による変動を含む参考値であり、MQTT や同時 IMU
+取得時の速度を保証するものではありません。
 
 ## IMU FIFO の測定
 

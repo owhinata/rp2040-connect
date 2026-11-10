@@ -1,6 +1,8 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 #include <errno.h>
+#include <stdbool.h>
 #include <stddef.h>
+#include <string.h>
 #include "imu_measure_packet.h"
 #include "../drivers/lsm6dso/lsm6dso_fifo.h"
 #include "../drivers/lsm6dso/lsm6dso_fifo_decoder.h"
@@ -12,6 +14,9 @@ int imu_measure_count_packet(const uint8_t *buffer, size_t length,
 	struct lsm6dso_fifo_sample sample;
 	size_t cursor = 0;
 	uint64_t accel = 0, gyro = 0, other = 0;
+#if defined(CONFIG_NINA_SEND_PROFILE)
+	bool valid_after_other = false;
+#endif
 	int ret;
 
 	if (!buffer || !counts || length < offsetof(struct lsm6dso_fifo_packet, data) ||
@@ -27,10 +32,22 @@ int imu_measure_count_packet(const uint8_t *buffer, size_t length,
 	for (size_t i = 0; i < packet->words; i++) {
 		ret = lsm6dso_fifo_decode_word(packet->data + cursor, &sample);
 		if (ret == 0) {
+#if defined(CONFIG_NINA_SEND_PROFILE)
+			valid_after_other |= other != 0;
+#endif
 			accel += sample.kind == LSM6DSO_FIFO_ACCEL;
 			gyro += sample.kind == LSM6DSO_FIFO_GYRO;
 		} else if (ret == -ENOTSUP) {
 			other++;
+#if defined(CONFIG_NINA_SEND_PROFILE)
+			if (!counts->other_words && other == 1) {
+				memcpy(counts->first_other, packet->data + cursor,
+				       sizeof(counts->first_other));
+				counts->first_other_index = i;
+				counts->first_other_packet_words = packet->words;
+			}
+			counts->other_tags[packet->data[cursor] >> 3]++;
+#endif
 		} else {
 			return ret;
 		}
@@ -40,6 +57,10 @@ int imu_measure_count_packet(const uint8_t *buffer, size_t length,
 	counts->accel_samples += accel;
 	counts->gyro_samples += gyro;
 	counts->other_words += other;
+#if defined(CONFIG_NINA_SEND_PROFILE)
+	counts->batches_with_other += other != 0;
+	counts->batches_valid_after_other += valid_after_other;
+#endif
 	return 0;
 }
 

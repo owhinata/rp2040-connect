@@ -18,6 +18,38 @@ config IMU_CPU_LOAD_VALIDATION
 	bool "Enable CPU idle-hook hardware validation"
 	depends on CPU_LOAD_BACKEND_IDLE_HOOK && SHELL
 
+config NINA_BENCHMARK_BOOTSEL
+	bool "Enable BOOTSEL command in Wi-Fi benchmark images"
+	depends on SOC_RP2040 && SHELL
+
+config NINA_SEND_PROFILE
+	bool "Profile NINA TCP send phases"
+	depends on WIFI_NINA_LOCAL && SHELL
+
+config IMU_MQTT_PROBE
+	bool "Experimental IMU MQTT delivery probe"
+	depends on NINA_SEND_PROFILE && MQTT_LIB
+
+config IMU_MQTT_TEST_PRIORITY
+	int "Experimental MQTT sender priority"
+	default 11
+	range 0 15
+	depends on IMU_MQTT_PROBE
+
+config IMU_FIFO_TEST_CHUNK_WORDS
+	int "Experimental maximum FIFO words per I2C read"
+	default 0
+	range 0 512
+	depends on NINA_SEND_PROFILE
+	help
+	  Zero preserves the normal single burst. Nonzero is for diagnostics.
+
+config IMU_FIFO_TEST_PRIORITY
+	int "Experimental FIFO work queue priority"
+	default 10
+	range 0 15
+	depends on NINA_SEND_PROFILE
+
 config I2C_DW_RP2040_DMA
 	bool "RP2040 I2C0 DMA reads"
 	depends on SOC_RP2040 && I2C_DW && DMA_RPI_PICO && SHELL && !SMP
@@ -30,6 +62,45 @@ config WIFI_NINA_LOCAL
 	select WIFI_OFFLOAD
 	select NET_SOCKETS
 	select NET_SOCKETS_OFFLOAD
+
+config NINA_SPI_FREQUENCY
+	int "NINA SPI frequency in Hz"
+	default 8000000
+	range 1000000 10000000
+	depends on WIFI_NINA_LOCAL
+
+config NINA_TEST_READY_POLL_US
+	int "Experimental NINA ready polling interval in microseconds"
+	default 1000
+	range 100 1000
+	depends on NINA_SEND_PROFILE
+
+config NINA_TCP_MAX_IO
+	int "Maximum bytes per NINA TCP send"
+	default 512
+	range 1 3584
+	depends on WIFI_NINA_LOCAL
+	help
+	  Bounds each TCP send to leave room for framing in the NINA SPI
+	  command buffer. Larger values require validation on the firmware in use.
+
+config NINA_SEND_RETRY_MS
+	int "Delay before retrying a full NINA TCP send buffer"
+	default 20
+	range 1 1000
+	depends on WIFI_NINA_LOCAL
+
+config NINA_TEST_SEND_STATE_INTERVAL_MS
+	int "Experimental minimum interval between retry state checks"
+	default 0
+	range 0 1000
+	depends on NINA_SEND_PROFILE
+
+config NINA_TEST_DISABLE_POWER_SAVE
+	bool "Request NINA power save off after connecting (diagnostic)"
+	depends on NINA_SEND_PROFILE
+	help
+	  The NINA 3.0.2 response does not report the underlying ESP result.
 
 config NINA_NTP_SERVER
 	string "NTP server hostname"

@@ -6,6 +6,9 @@
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/drivers/spi.h>
 #include <zephyr/kernel.h>
+#if defined(CONFIG_NINA_SEND_PROFILE)
+#include "nina_send_profile.h"
+#endif
 
 #define NINA_START 0xe0
 #define NINA_END   0xee
@@ -22,7 +25,7 @@ static const struct gpio_dt_spec irq = GPIO_DT_SPEC_GET(NINA_NODE, irq_gpios);
 static const struct gpio_dt_spec cs =
 	GPIO_DT_SPEC_GET_BY_IDX(DT_NODELABEL(spi1), cs_gpios, 0);
 static const struct spi_config config = {
-	.frequency = 8000000, .operation = SPI_WORD_SET(8) | SPI_TRANSFER_MSB};
+	.frequency = CONFIG_NINA_SPI_FREQUENCY, .operation = SPI_WORD_SET(8) | SPI_TRANSFER_MSB};
 static bool initialized;
 K_MUTEX_DEFINE(nina_lock);
 
@@ -39,7 +42,11 @@ static int wait_ready(int desired, int timeout_ms)
 		if (value == desired) {
 			return 0;
 		}
+#if defined(CONFIG_NINA_TEST_READY_POLL_US)
+		k_sleep(K_USEC(CONFIG_NINA_TEST_READY_POLL_US));
+#else
 		k_sleep(K_MSEC(1));
+#endif
 	} while (k_uptime_get() < deadline);
 	return -ETIMEDOUT;
 }
@@ -84,6 +91,37 @@ static int transfer(uint8_t tx, uint8_t *rx)
 	return spi_transceive(spi, &config, &ts, &rs);
 }
 
+/* The caller keeps NINA's chip select asserted across these transfers. */
+static int transfer_write(const uint8_t *data, size_t len)
+{
+	struct spi_buf buf = {.buf = (void *)data, .len = len};
+	struct spi_buf_set set = {.buffers = &buf, .count = 1};
+
+	return len ? spi_write(spi, &config, &set) : 0;
+}
+
+static int transfer_read(uint8_t *data, size_t len)
+{
+	uint8_t dummy[128];
+
+	memset(dummy, NINA_DUMMY, sizeof(dummy));
+	while (len) {
+		size_t chunk = MIN(len, sizeof(dummy));
+		struct spi_buf tb = {.buf = dummy, .len = chunk};
+		struct spi_buf rb = {.buf = data, .len = chunk};
+		struct spi_buf_set ts = {.buffers = &tb, .count = 1};
+		struct spi_buf_set rs = {.buffers = &rb, .count = 1};
+		int ret = spi_transceive(spi, &config, &ts, &rs);
+
+		if (ret) {
+			return ret;
+		}
+		data += chunk;
+		len -= chunk;
+	}
+	return 0;
+}
+
 static int command(uint8_t cmd, const uint8_t *a, size_t alen, const uint8_t *b,
 		   size_t blen, uint8_t *out, size_t cap, size_t *outlen)
 {
@@ -123,8 +161,8 @@ static int command(uint8_t cmd, const uint8_t *a, size_t alen, const uint8_t *b,
 	}
 
 	ret = wait_ready(0, 20);
-	for (i = 0; !ret && i < n; i++) {
-		ret = transfer(tx[i], &c);
+	if (!ret) {
+		ret = transfer_write(tx, n);
 	}
 	(void)gpio_pin_set_dt(&cs, 0);
 	memset(tx, 0, sizeof(tx));
@@ -167,8 +205,9 @@ static int command(uint8_t cmd, const uint8_t *a, size_t alen, const uint8_t *b,
 		if (!ret && (len + c > cap || (cmd == 0x21 && c != 4))) {
 			ret = -EMSGSIZE;
 		}
-		for (i = 0; !ret && i < c; i++) {
-			ret = transfer(NINA_DUMMY, &out[len++]);
+		if (!ret) {
+			ret = transfer_read(out + len, c);
+			len += c;
 		}
 	}
 	if (!ret) {
@@ -194,6 +233,11 @@ int nina_request(uint8_t cmd, const struct nina_param *params, size_t nparams,
 	size_t i, j, sent = 0, len = 0, total = 0;
 	uint8_t response_count = cmd == 0x3a ? 2 : (cmd == 0x75 ? 3 : 1);
 	int ret;
+#if defined(CONFIG_NINA_SEND_PROFILE)
+	struct nina_send_sample sample = {0};
+	bool profile = cmd == 0x44 || cmd == 0x77;
+	uint32_t stamp, now;
+#endif
 #define SEND_BYTE(v)                                                           \
 	do {                                                                   \
 		if (!ret) {                                                    \
@@ -210,7 +254,19 @@ int nina_request(uint8_t cmd, const struct nina_param *params, size_t nparams,
 			return -EINVAL;
 		}
 	}
+#if defined(CONFIG_NINA_SEND_PROFILE)
+	stamp = k_cycle_get_32();
+#endif
 	k_mutex_lock(&nina_lock, K_FOREVER);
+#if defined(CONFIG_NINA_SEND_PROFILE)
+	now = k_cycle_get_32();
+	sample.lock_cycles = now - stamp;
+	stamp = now;
+	sample.phase = 1;
+	if (profile && nparams > 1) {
+		sample.requested = params[1].len;
+	}
+#endif
 	ret = init_nina();
 	if (!ret) {
 		ret = wait_ready(1, 2000);
@@ -218,6 +274,14 @@ int nina_request(uint8_t cmd, const struct nina_param *params, size_t nparams,
 	if (!ret) {
 		ret = gpio_pin_set_dt(&cs, 1);
 	}
+#if defined(CONFIG_NINA_SEND_PROFILE)
+	now = k_cycle_get_32();
+	sample.pre_cycles = now - stamp;
+	stamp = now;
+	if (!ret) {
+		sample.phase = 2;
+	}
+#endif
 	if (!ret) {
 		ret = wait_ready(0, 20);
 		SEND_BYTE(NINA_START);
@@ -228,8 +292,9 @@ int nina_request(uint8_t cmd, const struct nina_param *params, size_t nparams,
 				SEND_BYTE(params[i].len >> 8);
 			}
 			SEND_BYTE(params[i].len & 0xff);
-			for (j = 0; !ret && j < params[i].len; j++) {
-				SEND_BYTE(params[i].data[j]);
+			if (!ret) {
+				ret = transfer_write(params[i].data, params[i].len);
+				sent += params[i].len;
 			}
 		}
 		SEND_BYTE(NINA_END);
@@ -238,14 +303,35 @@ int nina_request(uint8_t cmd, const struct nina_param *params, size_t nparams,
 		}
 		(void)gpio_pin_set_dt(&cs, 0);
 	}
+#if defined(CONFIG_NINA_SEND_PROFILE)
+	now = k_cycle_get_32();
+	sample.tx_cycles = now - stamp;
+	stamp = now;
+	if (!ret) {
+		sample.phase = 3;
+	}
+#endif
 	if (!ret) {
 		ret = wait_ready(1, 10000);
 	}
+#if defined(CONFIG_NINA_SEND_PROFILE)
+	now = k_cycle_get_32();
+	sample.ready_cycles = now - stamp;
+	stamp = now;
+	if (!ret) {
+		sample.phase = 4;
+	}
+#endif
 	if (!ret) {
 		ret = gpio_pin_set_dt(&cs, 1);
 	}
 	if (!ret) {
 		ret = wait_ready(0, 20);
+#if defined(CONFIG_NINA_SEND_PROFILE)
+		if (!ret) {
+			sample.phase = 5;
+		}
+#endif
 		for (i = 0; !ret && i < 1000; i++) {
 			ret = transfer(NINA_DUMMY, &c);
 			if (c == NINA_START) {
@@ -296,8 +382,9 @@ int nina_request(uint8_t cmd, const struct nina_param *params, size_t nparams,
 					ret = -EMSGSIZE;
 				}
 			}
-			for (i = 0; !ret && i < len; i++) {
-				ret = transfer(NINA_DUMMY, &out[total++]);
+			if (!ret) {
+				ret = transfer_read(out + total, len);
+				total += len;
 			}
 		}
 		if (!ret) {
@@ -311,7 +398,20 @@ int nina_request(uint8_t cmd, const struct nina_param *params, size_t nparams,
 	if (!ret) {
 		*out_len = total;
 	}
+#if defined(CONFIG_NINA_SEND_PROFILE)
+	sample.reply_cycles = k_cycle_get_32() - stamp;
+	sample.error = ret;
+	if (!ret && total == 2) {
+		sample.accepted = cmd == 0x77 ? ((uint32_t)out[0] << 8) | out[1] :
+						out[0] | ((uint32_t)out[1] << 8);
+	}
+#endif
 	k_mutex_unlock(&nina_lock);
+#if defined(CONFIG_NINA_SEND_PROFILE)
+	if (profile) {
+		nina_send_profile_record(&sample);
+	}
+#endif
 	return ret;
 #undef SEND_BYTE
 }

@@ -14,6 +14,9 @@
 #include "imu_measure_packet.h"
 #include "imu_cpu_profile.h"
 #include "../drivers/lsm6dso/lsm6dso_fifo_stats.h"
+#if defined(CONFIG_IMU_MQTT_PROBE)
+#include "../tests/hardware/imu_mqtt_probe.h"
+#endif
 
 #define IMU_MEASURE_CLEANUP_MS 2000
 #define IMU_MEASURE_MAX_SECONDS 3600
@@ -85,6 +88,11 @@ static void consume_cqes(struct imu_measure_result *result, bool include)
 				uint32_t before = k_cycle_get_32();
 
 				rc = imu_measure_count_packet(buffer, length, &result->counts);
+#if defined(CONFIG_IMU_MQTT_PROBE)
+				if (!rc) {
+					rc = imu_mqtt_probe_submit(buffer, length);
+				}
+#endif
 				result->decode_elapsed_cycles += (uint32_t)(k_cycle_get_32() - before);
 				if (rc != 0) {
 					result->invalid_packets++;
@@ -114,6 +122,23 @@ static void print_result(const struct shell *shell, const struct imu_measure_res
 	shell_print(shell, "accel_samples=%" PRIu64 " gyro_samples=%" PRIu64
 		    " other_words=%" PRIu64, result->counts.accel_samples,
 		    result->counts.gyro_samples, result->counts.other_words);
+#if defined(CONFIG_NINA_SEND_PROFILE)
+	if (result->counts.other_words) {
+		const uint8_t *w = result->counts.first_other;
+		shell_print(shell, "first_other=%02x %02x %02x %02x %02x %02x %02x",
+			    w[0], w[1], w[2], w[3], w[4], w[5], w[6]);
+		shell_print(shell, "first_other_index=%" PRIu32 " packet_words=%" PRIu32
+			    " other_batches=%" PRIu32 " valid_after_other_batches=%" PRIu32,
+			    result->counts.first_other_index, result->counts.first_other_packet_words,
+			    result->counts.batches_with_other, result->counts.batches_valid_after_other);
+	}
+	for (size_t i = 0; i < ARRAY_SIZE(result->counts.other_tags); ++i) {
+		if (result->counts.other_tags[i]) {
+			shell_print(shell, "other_tag[%zu]=%" PRIu32, i,
+				    result->counts.other_tags[i]);
+		}
+	}
+#endif
 	if (result->elapsed_ms) {
 		uint64_t accel_mhz = result->counts.accel_samples * 1000000ULL / result->elapsed_ms;
 		uint64_t gyro_mhz = result->counts.gyro_samples * 1000000ULL / result->elapsed_ms;

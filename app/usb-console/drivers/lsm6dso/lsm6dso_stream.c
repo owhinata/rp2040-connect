@@ -269,7 +269,12 @@ void lsm6dso_stream_init(const struct device *dev)
 
 	if (atomic_cas(&stream_queue_started, 0, 1)) {
 		k_work_queue_start(&stream_work_queue, stream_work_stack,
-				   K_THREAD_STACK_SIZEOF(stream_work_stack), K_PRIO_PREEMPT(10), NULL);
+				   K_THREAD_STACK_SIZEOF(stream_work_stack),
+#if defined(CONFIG_IMU_FIFO_TEST_PRIORITY)
+				   K_PRIO_PREEMPT(CONFIG_IMU_FIFO_TEST_PRIORITY), NULL);
+#else
+				   K_PRIO_PREEMPT(10), NULL);
+#endif
 #if defined(CONFIG_THREAD_NAME)
 		(void)k_thread_name_set(k_work_queue_thread_get(&stream_work_queue),
 					"imu_fifo_worker");

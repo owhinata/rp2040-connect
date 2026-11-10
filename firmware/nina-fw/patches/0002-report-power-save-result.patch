@@ -1,0 +1,30 @@
+diff --git a/main/CommandHandler.cpp b/main/CommandHandler.cpp
+--- a/main/CommandHandler.cpp
++++ b/main/CommandHandler.cpp
+@@ -36,5 +36,6 @@
+ #include "ECCX08Cert.h"
+ 
+ #include "esp_log.h"
++#include "esp_wifi.h"
+ #include "driver/adc_deprecated.h"
+ #include <lwip/priv/sockets_priv.h>
+@@ -168,17 +169,11 @@ int setHostname(const uint8_t command[], uint8_t response[])
+ 
+ int setPowerMode(const uint8_t command[], uint8_t response[])
+ {
+-  if (command[4]) {
+-    // low power
+-    WiFi.lowPowerMode();
+-  } else {
+-    // no low power
+-    WiFi.noLowPowerMode();
+-  }
++  esp_err_t result = esp_wifi_set_ps(command[4] ? WIFI_PS_MIN_MODEM : WIFI_PS_NONE);
+ 
+   response[2] = 1; // number of parameters
+   response[3] = 1; // parameter 1 length
+-  response[4] = 1;
++  response[4] = (result == ESP_OK) ? 1 : 0;
+ 
+   return 6;
+ }

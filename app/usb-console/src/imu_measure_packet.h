@@ -10,6 +10,12 @@ struct imu_measure_counts {
 	uint64_t accel_samples;
 	uint64_t gyro_samples;
 	uint64_t other_words;
+#if defined(CONFIG_NINA_SEND_PROFILE)
+	uint32_t other_tags[32];
+	uint8_t first_other[7];
+	uint32_t first_other_index, first_other_packet_words;
+	uint32_t batches_with_other, batches_valid_after_other;
+#endif
 };
 
 enum imu_measure_accounting {

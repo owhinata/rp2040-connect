@@ -210,6 +210,15 @@ static void connect_thread(void *a, void *b, void *c)
 				break;
 			}
 			if (value == 3) {
+#if defined(CONFIG_NINA_TEST_DISABLE_POWER_SAVE)
+				uint8_t no_power_save = 0, power_reply;
+
+				ret = request_one(0x17, &no_power_save, 1, &power_reply, 1, &n);
+				if (ret || n != 1 || power_reply != 1) {
+					ret = ret ? ret : -EIO;
+					break;
+				}
+#endif
 				ret = nina_ip_config(ip);
 				if (ret) {
 					break;

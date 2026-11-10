@@ -91,6 +91,18 @@ int lsm6dso_fifo_burst_read(const struct i2c_dt_spec *bus, uint8_t *buffer,
 	if (bus == NULL || buffer == NULL || words == 0 || words > LSM6DSO_FIFO_MAX_WORDS) {
 		return -EINVAL;
 	}
+#if defined(CONFIG_IMU_FIFO_TEST_CHUNK_WORDS) && CONFIG_IMU_FIFO_TEST_CHUNK_WORDS > 0
+	while (words > CONFIG_IMU_FIFO_TEST_CHUNK_WORDS) {
+		size_t chunk = CONFIG_IMU_FIFO_TEST_CHUNK_WORDS * LSM6DSO_FIFO_WORD_SIZE;
+		int ret = i2c_burst_read_dt(bus, LSM6DSO_FIFO_DATA_OUT_TAG, buffer, chunk);
+
+		if (ret) {
+			return ret;
+		}
+		buffer += chunk;
+		words -= CONFIG_IMU_FIFO_TEST_CHUNK_WORDS;
+	}
+#endif
 	return i2c_burst_read_dt(bus, LSM6DSO_FIFO_DATA_OUT_TAG, buffer,
 				 words * LSM6DSO_FIFO_WORD_SIZE);
 }
