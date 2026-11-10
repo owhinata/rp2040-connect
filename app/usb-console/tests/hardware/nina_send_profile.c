@@ -79,31 +79,6 @@ static int cmd_send_profile(const struct shell *sh, size_t argc, char **argv)
 }
 SHELL_CMD_REGISTER(nina_send_profile, NULL, "Show/reset TCP send timing", cmd_send_profile);
 
-static int cmd_nina_power(const struct shell *sh, size_t argc, char **argv)
-{
-	uint8_t value, reply;
-	size_t len;
-	int ret;
-
-	if (argc != 2 || (strcmp(argv[1], "on") && strcmp(argv[1], "off"))) {
-		shell_error(sh, "Use nina_benchmark_power on|off");
-		return -EINVAL;
-	}
-	value = !strcmp(argv[1], "on");
-	struct nina_param p = {&value, 1};
-
-	ret = nina_request(0x17, &p, 1, false, false, &reply, 1, &len);
-	if (ret || len != 1 || reply != 1) {
-		shell_error(sh, "NINA power request failed: %d", ret);
-		return ret ? ret : -EIO;
-	}
-	shell_print(sh, "NINA power-saving request: %s (result reporting depends on firmware)",
-		    value ? "on" : "off");
-	return 0;
-}
-SHELL_CMD_REGISTER(nina_benchmark_power, NULL, "Request NINA Wi-Fi power saving on/off",
-		   cmd_nina_power);
-
 extern const k_tid_t nina_monitor_tid;
 static int cmd_nina_monitor(const struct shell *sh, size_t argc, char **argv)
 {

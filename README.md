@@ -60,6 +60,8 @@ west build -b arduino_nano_connect app/usb-console -d build/usb-console
 west flash -d build/usb-console -r uf2
 ```
 
+On each Wi-Fi connection or reconnection, the driver requests that NINA power saving be disabled before reporting the connection as ready. The [patched NINA firmware](firmware/nina-fw/README.md) is required for the reply to reflect whether the setting succeeded.
+
 After flashing, connect with a USB serial terminal. The device name depends on your system; for example, if it is `/dev/ttyACM0`:
 
 ```bash
@@ -257,7 +259,7 @@ and 1.15 Mbit/s; after requesting it off they measured 1.13, 1.07 and
 all runs. The NINA firmware does not return the ESP power-setting result, so
 these results do not establish whether the request succeeded or improved speed.
 Use `prj_nina_tcp2872.conf` and `prj_nina_retry2.conf` for this experiment;
-the profile build provides `nina_benchmark_power on|off`. With accelerometer
+the power-saving toggle used in those measurements is no longer provided. With accelerometer
 and gyroscope both at 208 Hz, one concurrent upload measured 0.96 Mbit/s and
 the 30-second IMU run reported no errors or overruns. At 1667 Hz for both,
 the IMU FIFO overran before the TCP test began.

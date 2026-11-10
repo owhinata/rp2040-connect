@@ -96,12 +96,6 @@ config NINA_TEST_SEND_STATE_INTERVAL_MS
 	range 0 1000
 	depends on NINA_SEND_PROFILE
 
-config NINA_TEST_DISABLE_POWER_SAVE
-	bool "Request NINA power save off after connecting (diagnostic)"
-	depends on NINA_SEND_PROFILE
-	help
-	  The NINA 3.0.2 response does not report the underlying ESP result.
-
 config NINA_NTP_SERVER
 	string "NTP server hostname"
 	default "time.cloudflare.com"

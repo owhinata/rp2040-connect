@@ -77,6 +77,10 @@ west build -b arduino_nano_connect app/usb-console -d build/usb-console
 west flash -d build/usb-console -r uf2
 ```
 
+Wi-Fi 接続時と再接続時には NINA の省電力 OFF を要求し、応答を確認してから
+接続完了とします。設定の実際の成否を確認するには、同梱の
+[修正版 NINA ファームウェア](firmware/nina-fw/README.md) が必要です。
+
 書き込み後、USB シリアル端末から接続します。デバイス名は環境によって
 異なりますが、例えば `/dev/ttyACM0` の場合は次のように接続できます。
 
@@ -294,7 +298,7 @@ SPI 処理区間は合計約 1.25 秒です（割り込みやスケジュール�
 データの不一致はいずれもありません。省電力要求は NINA が ESP 側の成否を返さない
 ため設定成功を確認できず、短時間の無線測定だけで効果を断定できません。
 測定版には `prj_nina_tcp2872.conf` と `prj_nina_retry2.conf` を追加します。
-`prj_nina_profile.conf` の `nina_benchmark_power on|off` は省電力を要求します。
+この測定で使用した省電力切り替えコマンドは現在のファームウェアにはありません。
 加速度と角速度を各 208 Hz で同時取得した１回の TCP 測定は 0.96 Mbit/s で、
 IMU の 30 秒測定にエラーやオーバーランはありませんでした。両方 1667 Hz では
 TCP 試験開始前に FIFO オーバーランしたため、その条件での同時動作は未検証です。
@@ -337,7 +341,7 @@ PC が 2.4 GHz の場合、省電力有効時は約 2.0 秒、無効時は約 1.
 
 ```sh
 west build -b arduino_nano_connect app/usb-console -d build/usb-console-imu-mqtt -- \
-  '-DEXTRA_CONF_FILE=prj_iperf2.conf;prj_nina_tcp3584.conf;prj_nina_profile.conf;prj_nina_retry1.conf;prj_nina_nops.conf;prj_imu_mqtt_probe.conf;prj_nina_state100.conf;prj_nina_poll100.conf;prj_imu_mqtt_prio8.conf'
+  '-DEXTRA_CONF_FILE=prj_iperf2.conf;prj_nina_tcp3584.conf;prj_nina_profile.conf;prj_nina_retry1.conf;prj_imu_mqtt_probe.conf;prj_nina_state100.conf;prj_nina_poll100.conf;prj_imu_mqtt_prio8.conf'
 ```
 
 PC 側で `python3 script/imu_mqtt_probe.py --bind <PCのIPv4アドレス> --port 18830` を

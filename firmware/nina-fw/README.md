@@ -1,7 +1,9 @@
 # Patched NINA firmware
 
-This directory contains a minimal patch for Arduino NINA firmware 3.0.2.
-It fixes the uninitialized exception fd set in `socket_poll`. The firmware
+This directory contains patches for Arduino NINA firmware 3.0.2.
+They fix the uninitialized exception fd set in `socket_poll` and report the
+result of setting Wi-Fi power saving, which the RP2040 driver disables on
+each Wi-Fi connection. The firmware
 source and build output are kept in the ignored `source/` directory.
 
 The source is pinned to the upstream 3.0.2 commit
