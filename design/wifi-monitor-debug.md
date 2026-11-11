@@ -67,8 +67,8 @@ Choose the channel of the AP the NINA connects to from the SSID and BSSID. The A
 channel between the NINA and the AP**.
 
 On the RP2040's USB serial console run `wifi status` and `net iface` to see the connection
-state, the AP's BSSID and the NINA's IP and MAC addresses. The NINA's MAC address in the
-experiment was `02:00:00:00:00:02`.
+state, the AP's BSSID and the NINA's IP and MAC addresses. The examples below use
+`02:00:00:00:00:02` as the NINA's MAC address.
 
 ## Setting up the monitor adapter
 
