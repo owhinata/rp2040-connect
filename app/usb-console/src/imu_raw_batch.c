@@ -19,12 +19,13 @@ int imu_raw_batch_init(struct imu_raw_batch *batch, const uint8_t session_id[16]
 	batch->sink = sink;
 	batch->sink_context = context;
 	imu_raw_time_init(&batch->time);
+	imu_raw_stage_reset(batch->payload);
 	return 0;
 }
 
 int imu_raw_batch_flush(struct imu_raw_batch *batch)
 {
-	size_t written, accel = 0, gyro = 0;
+	size_t written;
 	int rc;
 
 	if (!batch || !batch->sink) {
@@ -37,28 +38,28 @@ int imu_raw_batch_flush(struct imu_raw_batch *batch)
 		return -EOVERFLOW;
 	}
 	batch->meta.batch_seq = batch->next_batch;
-	rc = imu_raw_encode(batch->payload, sizeof(batch->payload), &written,
-			    &batch->meta, batch->samples, batch->count);
+	rc = imu_raw_stage_finish(batch->payload, &written, &batch->meta, batch->count,
+				  batch->accel_count);
 	if (rc) {
 		return rc;
 	}
 	rc = batch->sink(batch->sink_context, batch->payload, written);
 	if (rc && rc != -EAGAIN) {
+		/* Keep the batch so that a later flush can deliver it. */
+		imu_raw_stage_reopen(batch->payload, batch->count);
 		return rc;
 	}
 	if (rc == -EAGAIN) {
-		for (size_t i = 0; i < batch->count; i++) {
-			accel += batch->samples[i].kind == LSM6DSO_FIFO_ACCEL;
-			gyro += batch->samples[i].kind == LSM6DSO_FIFO_GYRO;
-		}
 		batch->dropped_batches++;
-		batch->dropped_accel += accel;
-		batch->dropped_gyro += gyro;
+		batch->dropped_accel += batch->accel_count;
+		batch->dropped_gyro += batch->count - batch->accel_count;
 	} else {
 		batch->delivered_batches++;
 	}
 	batch->next_batch++;
 	batch->count = 0;
+	batch->accel_count = 0;
+	imu_raw_stage_reset(batch->payload);
 	batch->meta.accel_first_index = UINT64_MAX;
 	batch->meta.gyro_first_index = UINT64_MAX;
 	batch->meta.accel_first_tick = 0;
@@ -162,7 +163,8 @@ int imu_raw_batch_consume(struct imu_raw_batch *batch, const uint8_t *words,
 			}
 			batch->next_gyro++;
 		}
-		batch->samples[batch->count++] = entry.sample;
+		imu_raw_stage_put(batch->payload, batch->count++, &entry.sample);
+		batch->accel_count += entry.sample.kind == LSM6DSO_FIFO_ACCEL;
 		*cursor = next;
 		if (batch->count == IMU_RAW_MAX_WORDS) {
 			rc = imu_raw_batch_flush(batch);

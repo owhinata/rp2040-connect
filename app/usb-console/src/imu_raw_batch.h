@@ -14,13 +14,12 @@ typedef bool (*imu_raw_batch_clock)(void *context, uint64_t tick, uint64_t *unix
 
 struct imu_raw_batch {
 	struct imu_raw_metadata meta;
-	struct lsm6dso_fifo_sample samples[IMU_RAW_MAX_WORDS];
-	uint8_t payload[IMU_RAW_MAX_SIZE];
+	uint8_t payload[IMU_RAW_MAX_SIZE]; /* built in place, see imu_raw_stage_put() */
 	uint64_t next_accel, next_gyro, next_batch;
 	uint64_t delivered_batches, dropped_batches, dropped_accel, dropped_gyro;
 	uint64_t timestamp_words;
 	struct imu_raw_time time;
-	size_t count;
+	size_t count, accel_count; /* words in the batch being built */
 	imu_raw_batch_sink sink;
 	void *sink_context;
 	imu_raw_batch_clock clock; /* set after init; NULL leaves Unix time invalid */

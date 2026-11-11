@@ -12,28 +12,13 @@ static void put_le(uint8_t *p, uint64_t v, size_t n)
 	}
 }
 
-int imu_raw_encode(uint8_t *out, size_t capacity, size_t *written,
-		   const struct imu_raw_metadata *meta,
-		   const struct lsm6dso_fifo_sample *samples, size_t count)
+static int check(const struct imu_raw_metadata *meta, size_t count, size_t accel)
 {
-	size_t accel = 0, gyro = 0, bitmap_len, size;
+	size_t gyro = count - accel;
 
-	if (!written) {
-		return -EINVAL;
-	}
-	*written = 0;
-	if (!out || !meta || !samples || count == 0 || count > IMU_RAW_MAX_WORDS ||
+	if (!meta || count == 0 || count > IMU_RAW_MAX_WORDS || accel > count ||
 	    (meta->flags & ~IMU_RAW_FLAGS_MASK)) {
 		return -EINVAL;
-	}
-	for (size_t i = 0; i < count; i++) {
-		if (samples[i].kind == LSM6DSO_FIFO_ACCEL) {
-			accel++;
-		} else if (samples[i].kind == LSM6DSO_FIFO_GYRO) {
-			gyro++;
-		} else {
-			return -EINVAL;
-		}
 	}
 	if ((accel == 0) != (meta->accel_first_index == UINT64_MAX) ||
 	    (gyro == 0) != (meta->gyro_first_index == UINT64_MAX) ||
@@ -50,12 +35,12 @@ int imu_raw_encode(uint8_t *out, size_t capacity, size_t *written,
 	    (!(meta->flags & IMU_RAW_GYRO_UNIX_VALID) && meta->gyro_first_unix_us)) {
 		return -EINVAL;
 	}
-	bitmap_len = (count + 7) / 8;
-	size = IMU_RAW_HEADER_SIZE + bitmap_len + count * 6;
-	if (capacity < size) {
-		return -ENOSPC;
-	}
-	memset(out, 0, size);
+	return 0;
+}
+
+static void put_header(uint8_t *out, const struct imu_raw_metadata *meta, size_t count)
+{
+	memset(out, 0, IMU_RAW_HEADER_SIZE);
 	memcpy(out, "IMU1", 4);
 	out[4] = IMU_RAW_VERSION;
 	out[5] = meta->flags;
@@ -67,20 +52,106 @@ int imu_raw_encode(uint8_t *out, size_t capacity, size_t *written,
 	put_le(out + 48, meta->accel_first_tick, 8);
 	put_le(out + 56, meta->gyro_first_tick, 8);
 	put_le(out + 64, count, 2);
-	put_le(out + 66, bitmap_len, 2);
+	put_le(out + 66, (count + 7) / 8, 2);
 	put_le(out + 68, meta->epoch_id, 4);
 	put_le(out + 72, meta->time_map_id, 4);
 	put_le(out + 80, meta->accel_first_unix_us, 8);
 	put_le(out + 88, meta->gyro_first_unix_us, 8);
+}
+
+static void put_word(uint8_t *bitmap, uint8_t *raw, size_t index,
+		     const struct lsm6dso_fifo_sample *sample)
+{
+	if (sample->kind == LSM6DSO_FIFO_ACCEL) {
+		bitmap[index / 8] |= (uint8_t)(1U << (index % 8));
+	}
+	for (size_t axis = 0; axis < 3; axis++) {
+		put_le(raw + index * 6 + axis * 2, (uint16_t)sample->xyz[axis], 2);
+	}
+}
+
+int imu_raw_encode(uint8_t *out, size_t capacity, size_t *written,
+		   const struct imu_raw_metadata *meta,
+		   const struct lsm6dso_fifo_sample *samples, size_t count)
+{
+	size_t accel = 0, bitmap_len, size;
+	int rc;
+
+	if (!written) {
+		return -EINVAL;
+	}
+	*written = 0;
+	if (!out || !samples || count > IMU_RAW_MAX_WORDS) {
+		return -EINVAL;
+	}
 	for (size_t i = 0; i < count; i++) {
 		if (samples[i].kind == LSM6DSO_FIFO_ACCEL) {
-			out[IMU_RAW_HEADER_SIZE + i / 8] |= (uint8_t)(1U << (i % 8));
+			accel++;
+		} else if (samples[i].kind != LSM6DSO_FIFO_GYRO) {
+			return -EINVAL;
 		}
-		for (size_t axis = 0; axis < 3; axis++) {
-			put_le(out + IMU_RAW_HEADER_SIZE + bitmap_len + i * 6 + axis * 2,
-			       (uint16_t)samples[i].xyz[axis], 2);
-		}
+	}
+	rc = check(meta, count, accel);
+	if (rc) {
+		return rc;
+	}
+	bitmap_len = (count + 7) / 8;
+	size = IMU_RAW_HEADER_SIZE + bitmap_len + count * 6;
+	if (capacity < size) {
+		return -ENOSPC;
+	}
+	put_header(out, meta, count);
+	memset(out + IMU_RAW_HEADER_SIZE, 0, bitmap_len);
+	for (size_t i = 0; i < count; i++) {
+		put_word(out + IMU_RAW_HEADER_SIZE, out + IMU_RAW_HEADER_SIZE + bitmap_len, i,
+			 &samples[i]);
 	}
 	*written = size;
 	return 0;
+}
+
+/* While a payload is being built its raw values sit after a bitmap of the
+ * maximum length; a batch that ends short is closed up when it is finished. */
+#define STAGED_RAW (IMU_RAW_HEADER_SIZE + IMU_RAW_MAX_BITMAP)
+
+void imu_raw_stage_reset(uint8_t *payload)
+{
+	memset(payload + IMU_RAW_HEADER_SIZE, 0, IMU_RAW_MAX_BITMAP);
+}
+
+void imu_raw_stage_put(uint8_t *payload, size_t index, const struct lsm6dso_fifo_sample *sample)
+{
+	put_word(payload + IMU_RAW_HEADER_SIZE, payload + STAGED_RAW, index, sample);
+}
+
+int imu_raw_stage_finish(uint8_t *payload, size_t *written, const struct imu_raw_metadata *meta,
+			 size_t count, size_t accel)
+{
+	size_t bitmap_len = (count + 7) / 8;
+	int rc;
+
+	if (!payload || !written) {
+		return -EINVAL;
+	}
+	*written = 0;
+	rc = check(meta, count, accel);
+	if (rc) {
+		return rc;
+	}
+	if (bitmap_len != IMU_RAW_MAX_BITMAP) {
+		memmove(payload + IMU_RAW_HEADER_SIZE + bitmap_len, payload + STAGED_RAW, count * 6);
+	}
+	put_header(payload, meta, count);
+	*written = IMU_RAW_HEADER_SIZE + bitmap_len + count * 6;
+	return 0;
+}
+
+void imu_raw_stage_reopen(uint8_t *payload, size_t count)
+{
+	size_t bitmap_len = (count + 7) / 8;
+
+	if (bitmap_len != IMU_RAW_MAX_BITMAP) {
+		memmove(payload + STAGED_RAW, payload + IMU_RAW_HEADER_SIZE + bitmap_len, count * 6);
+		memset(payload + IMU_RAW_HEADER_SIZE + bitmap_len, 0, IMU_RAW_MAX_BITMAP - bitmap_len);
+	}
 }

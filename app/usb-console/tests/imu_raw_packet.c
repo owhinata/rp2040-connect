@@ -74,5 +74,54 @@ int main(void)
 	assert(imu_raw_encode(out, sizeof(out), &written, &meta, samples, IMU_RAW_MAX_WORDS + 1) == -EINVAL);
 	samples[0].kind = 99;
 	assert(imu_raw_encode(out, sizeof(out), &written, &meta, samples, 1) == -EINVAL);
+
+	/* Building word by word gives the same bytes as the one-shot encoder,
+	 * for batches that end before, on and after a bitmap byte boundary. */
+	static uint8_t staged[IMU_RAW_MAX_SIZE];
+	static const size_t counts[] = {1, 7, 8, 9, 383, IMU_RAW_MAX_WORDS};
+	size_t staged_len;
+
+	for (size_t i = 0; i < IMU_RAW_MAX_WORDS; i++) {
+		samples[i].kind = i % 3 ? LSM6DSO_FIFO_ACCEL : LSM6DSO_FIFO_GYRO;
+		samples[i].xyz[0] = (int16_t)(i * 37);
+		samples[i].xyz[1] = (int16_t)-(int)i;
+		samples[i].xyz[2] = (int16_t)(i ^ 0x5a5a);
+	}
+	for (size_t c = 0; c < sizeof(counts) / sizeof(counts[0]); c++) {
+		size_t count = counts[c], accel = 0;
+
+		memset(staged, 0xa5, sizeof(staged));
+		imu_raw_stage_reset(staged);
+		for (size_t i = 0; i < count; i++) {
+			imu_raw_stage_put(staged, i, &samples[i]);
+			accel += samples[i].kind == LSM6DSO_FIFO_ACCEL;
+		}
+		meta = (struct imu_raw_metadata){.batch_seq = c, .gyro_first_index = 5,
+			.accel_first_index = accel ? 9 : UINT64_MAX, .epoch_id = 3};
+		assert(imu_raw_encode(out, sizeof(out), &written, &meta, samples, count) == 0);
+		/* A rejected finish leaves the staged words usable. */
+		meta.flags = 16;
+		assert(imu_raw_stage_finish(staged, &staged_len, &meta, count, accel) == -EINVAL);
+		meta.flags = 0;
+		assert(imu_raw_stage_finish(staged, &staged_len, &meta, count, accel) == 0);
+		assert(staged_len == written && !memcmp(staged, out, written));
+		/* Reopened, the same words can be finished again unchanged... */
+		imu_raw_stage_reopen(staged, count);
+		assert(imu_raw_stage_finish(staged, &staged_len, &meta, count, accel) == 0);
+		assert(staged_len == written && !memcmp(staged, out, written));
+		/* ...or extended by another word. */
+		if (count < IMU_RAW_MAX_WORDS) {
+			imu_raw_stage_reopen(staged, count);
+			imu_raw_stage_put(staged, count, &samples[count]);
+			accel += samples[count].kind == LSM6DSO_FIFO_ACCEL;
+			meta.accel_first_index = accel ? 9 : UINT64_MAX;
+			assert(imu_raw_encode(out, sizeof(out), &written, &meta, samples,
+					      count + 1) == 0);
+			assert(imu_raw_stage_finish(staged, &staged_len, &meta, count + 1, accel) == 0);
+			assert(staged_len == written && !memcmp(staged, out, written));
+		}
+	}
+	assert(imu_raw_stage_finish(staged, &staged_len, &meta, 0, 0) == -EINVAL);
+	assert(imu_raw_stage_finish(staged, &staged_len, &meta, 4, 5) == -EINVAL);
 	return 0;
 }

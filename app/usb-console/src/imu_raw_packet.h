@@ -17,7 +17,8 @@
 #define IMU_RAW_VERSION 2U
 #define IMU_RAW_HEADER_SIZE 96U
 #define IMU_RAW_MAX_WORDS 384U
-#define IMU_RAW_MAX_SIZE (IMU_RAW_HEADER_SIZE + (IMU_RAW_MAX_WORDS + 7U) / 8U + 6U * IMU_RAW_MAX_WORDS)
+#define IMU_RAW_MAX_BITMAP ((IMU_RAW_MAX_WORDS + 7U) / 8U)
+#define IMU_RAW_MAX_SIZE (IMU_RAW_HEADER_SIZE + IMU_RAW_MAX_BITMAP + 6U * IMU_RAW_MAX_WORDS)
 #define IMU_RAW_ACCEL_TIME_VALID 1U
 #define IMU_RAW_GYRO_TIME_VALID 2U
 #define IMU_RAW_ACCEL_UNIX_VALID 4U
@@ -44,4 +45,19 @@ struct imu_raw_metadata {
 int imu_raw_encode(uint8_t *out, size_t capacity, size_t *written,
 		   const struct imu_raw_metadata *meta,
 		   const struct lsm6dso_fifo_sample *samples, size_t count);
+
+/* The same payload built one word at a time in a buffer of IMU_RAW_MAX_SIZE
+ * bytes, so that the samples need not be kept elsewhere first:
+ *   imu_raw_stage_reset(), then imu_raw_stage_put() for words 0, 1, 2, ...,
+ *   then imu_raw_stage_finish(), which leaves the complete payload in place.
+ * `accel` is the number of accelerometer words among the `count` put.
+ * After finish the buffer must be reset before the next payload, or reopened
+ * with the same count to continue adding to this one. An error from finish
+ * leaves the staged words untouched.
+ */
+void imu_raw_stage_reset(uint8_t *payload);
+void imu_raw_stage_put(uint8_t *payload, size_t index, const struct lsm6dso_fifo_sample *sample);
+int imu_raw_stage_finish(uint8_t *payload, size_t *written, const struct imu_raw_metadata *meta,
+			 size_t count, size_t accel);
+void imu_raw_stage_reopen(uint8_t *payload, size_t count);
 #endif
