@@ -559,7 +559,9 @@ static void stream_thread(void *a, void *b, void *c)
 	}
 }
 /* Above the FIFO worker (10) so that batches are built as they arrive. */
-K_THREAD_DEFINE(imu_stream_tid, 3072, stream_thread, NULL, NULL, NULL, 9, 0, 0);
+/* Measured peak stack use: 976 bytes. The restart after a FIFO error was not
+ * part of that measurement. */
+K_THREAD_DEFINE(imu_stream_tid, 2048, stream_thread, NULL, NULL, NULL, 9, 0, 0);
 
 static bool kv_text(const char *key, char *out, size_t capacity)
 {

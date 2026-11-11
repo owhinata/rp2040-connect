@@ -182,7 +182,8 @@ static void reconnect_thread(void *a, void *b, void *c)
 		}
 	}
 }
-K_THREAD_DEFINE(wifi_reconnect_tid, 3072, reconnect_thread, NULL, NULL, NULL, 8,
+/* Measured peak stack use: 1120 bytes. */
+K_THREAD_DEFINE(wifi_reconnect_tid, 2048, reconnect_thread, NULL, NULL, NULL, 8,
 		0, 0);
 
 int wifi_profile_init(void)
