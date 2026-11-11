@@ -2,17 +2,25 @@
 
 [English](README.md) | 日本語
 
-Arduino Nano RP2040 Connect 向けの Zephyr ワークスペースです。
-複数のアプリケーションで、`manifest/west.yml` に指定した Zephyr と
-モジュールを共有します。モジュールはアプリの機能に応じて追加してください。
+Arduino Nano RP2040 Connect（RP2040、NINA-W102、LSM6DSOX）向けの Zephyr ワークスペースです。
+主なアプリ `app/usb-console` は、IMU の加速度・角速度を 6667 Hz の RAW データのまま取得し、
+PC の時刻を付けて Wi-Fi 経由の MQTT で送信します。
 
-設計と実装の方針は [IMU FIFO ドライバー計画](design/imu-fifo-driver-plan-ja.md) と
-[IMU RAW・MQTT 配信設計案](design/imu-raw-mqtt-design-ja.md) を参照してください。
+- IMU の FIFO を I²C（DMA）で読み出し、欠落を検出できる番号を付けてバッチ化します。
+- Wi-Fi が切れても取得は続け、送れなかった分は破棄して数えます。
+- PC の NTP サーバーと同期し、各バッチに PC 時刻（Unix 時刻、µs）を付けます。
+- USB と Telnet のシェルから操作します。
+
+設計の詳細は [IMU RAW・MQTT 配信の設計](design/imu-raw-mqtt-design-ja.md)、ドライバーは
+[ローカルドライバーの説明](app/usb-console/drivers/README_ja.md) と
+[NINA ドライバーの説明](design/nina-driver-ja.md) を参照してください。
+
+現状は実験段階です。計測の開始・停止はシェルからの手動操作で、PC 側には検証用の受信
+スクリプトしかありません。確認できた範囲と未確認の範囲は設計書にまとめています。
 
 ## 環境構築
 
-以下は Ubuntu 24.04 向けの手順です。初めにビルドに必要なパッケージを
-インストールします。
+Ubuntu 24.04 向けの手順です。まずビルドに必要なパッケージを入れます。
 
 ```bash
 sudo apt update
@@ -22,395 +30,233 @@ sudo apt install --no-install-recommends \
   gcc-multilib g++-multilib libsdl2-dev libmagic1
 ```
 
-AArch64 環境では `gcc-multilib` と `g++-multilib` を除いてください。
-他の OS では [Zephyr の公式手順](https://docs.zephyrproject.org/latest/develop/getting_started/)を参照してください。
+AArch64 環境では `gcc-multilib` と `g++-multilib` を除いてください。他の OS は
+[Zephyr の公式手順](https://docs.zephyrproject.org/latest/develop/getting_started/)を参照してください。
 
-このリポジトリのルートでセットアップスクリプトを読み込みます。
+リポジトリのルートでセットアップスクリプトを読み込みます。
 
 ```bash
 source script/setup.sh
 ```
 
-スクリプトは必要に応じて `.venv`、west ワークスペース、モジュール、
-Python パッケージ、Zephyr SDK と Arm ツールチェーンを用意します。
-また、現在のシェルに `ZEPHYR_SDK_INSTALL_DIR` と `west` のエイリアスを
-設定します。仮想環境の activate は不要です。新しいターミナルでは再度
-`source script/setup.sh` を実行してください。
+スクリプトは必要に応じて `.venv`、west ワークスペース（Zephyr v4.5.0 とモジュール）、
+Python パッケージ、Zephyr SDK を用意し、現在のシェルに `ZEPHYR_SDK_INSTALL_DIR` と `west` の
+エイリアスを設定します。新しいターミナルでは再度読み込んでください。
 
-インストール済みかどうかは、west のプロジェクト、主要な Python パッケージ、
-SDK と Arm コンパイラの有無から判定します。追加したアプリでモジュールが
-必要になった場合は、`manifest/west.yml` を更新し、次を実行してください。
-
-```bash
-west update
-west packages pip --install
-```
-
-## アプリケーションのビルド
-
-`app/blink` は、ボードの `led0` を 500 ms ごとに切り替えるサンプルです。
-ビルドには次のコマンドを実行します。
-
-```bash
-west build -b arduino_nano_connect app/blink -d build/blink
-```
-
-ボードを USB に接続してブートローダーモードにし、UF2 runner を指定して
-書き込みます。
-
-RESET ボタンの2回押しでブートローダーモードに入れない場合は、`REC` と
-`GND` をジャンパー線で接続した状態で RESET ボタンを押します。USB ストレージが
-表示されたらジャンパー線を外してください。
-
-```bash
-west flash -d build/blink -r uf2
-```
-
-## USB シリアルコンソール
-
-`app/usb-console` は USB CDC ACM 経由で Zephyr シェルを使うアプリです。
-初回やマニフェストを更新した後は `west update` を実行し、次のコマンドで
-ビルドして書き込みます。
+## ビルドと書き込み
 
 ```bash
 west build -b arduino_nano_connect app/usb-console -d build/usb-console
 west flash -d build/usb-console -r uf2
 ```
 
-Wi-Fi 接続時と再接続時には NINA の省電力 OFF を要求し、応答を確認してから
-接続完了とします。設定の実際の成否を確認するには、同梱の
-[修正版 NINA ファームウェア](firmware/nina-fw/README.md) が必要です。
+構成は `app/usb-console/prj.conf` の 1 つだけです。
 
-書き込み後、USB シリアル端末から接続します。デバイス名は環境によって
-異なりますが、例えば `/dev/ttyACM0` の場合は次のように接続できます。
+書き込みの前に、ボードを USB に接続してブートローダーモード（`RPI-RP2` という USB
+ストレージが現れる状態）にします。RESET ボタンを 2 回押しても入れない場合は、`REC` と `GND` を
+ジャンパー線で接続したまま RESET ボタンを押し、ストレージが現れたらジャンパー線を外します。
+
+`app/blink` は `led0` を 500 ms ごとに切り替える最小のサンプルです。
+
+```bash
+west build -b arduino_nano_connect app/blink -d build/blink
+```
+
+NINA-W102 側は、Arduino の NINA ファームウェア 3.0.2 に 2 件の修正を当てたものを前提に
+しています。ビルドと注意点は [NINA ファームウェアの説明](firmware/nina-fw/README.md) を参照して
+ください。ボードに入っているバージョンは `nina version` で確認できます。
+
+## 使い方
+
+### 1. シェルに接続する
+
+USB シリアル（CDC ACM）に端末を接続し、Enter を押すとプロンプトが出ます。
 
 ```bash
 minicom -D /dev/ttyACM0
 ```
 
-Enter キーを押すとシェルが表示されます。`help` でコマンド一覧を、`hello` で
-挨拶を表示します。ログは RAM のリングバッファに保存され、`dmesg` コマンドで
-表示できます。バッファは 4 KiB で、いっぱいになると古いデータから上書きされます。
-通常のリセット後もログを参照できるよう初期化されない RAM に保存します。
-電源断や、RAM を初期化するリセットでは消えます。リセット直前の未処理のログは
-保存されない場合があります。タイムスタンプは起動後の経過時間をマイクロ秒単位で
-表示し、リセット後は 0 から始まります。
-minicom は `sudo apt install minicom` でインストールでき、
-終了するには `Ctrl-A`、続けて `X` を押します。
+デバイス名は環境によって変わります。`/dev/serial/by-id/` で確認できます。
 
-GPIO、I²C、センサー、再起動、ログのシェルコマンドを有効にしています。
-`gpio --help`、`i2c --help`、`sensor --help`、`kernel reboot --help`、
-`log --help` で使い方を確認できます。`log` はログレベルの参照や変更に使い、
-`dmesg` は RAM に保存されたログの表示に使います。
+### 2. Wi-Fi に接続する
 
-`kernel ps` を実行すると、スレッドの CPU 使用率とスタック使用量を表示します。
-
-## Wi-Fi 接続（開発中）
-
-NINA-W102 の Arduino ファームウェアを SPI で操作し、Zephyr の Wi-Fi 管理 API と
-IPv4 TCP ソケットに接続する実装を開発しています。以下の標準シェルコマンドで
-WPA2-PSK のアクセスポイントへの接続と DHCP アドレスの取得を実機で確認しました。
-従来の通信確認には NINA ファームウェア `1.4.8` を使用しました。その後、
-`socket_poll` の初期化を修正した `3.0.2` に更新し、Wi-Fi 再接続と SNTP の
-同期を確認しました。ビルド方法は [NINA ファームウェアの説明](firmware/nina-fw/README.md)
-を参照してください。現在のバージョンは `nina version` で確認できます。
-
-```text
-wifi connect --ssid "SSID" --key-mgmt 1 --passphrase "パスフレーズ"
-wifi scan
-wifi status
-net iface
-ntp status
-wifi disconnect
-```
-
-2.4 GHz のオープンおよび WPA2-PSK 接続を実装しています。オープン接続は未検証です。パスフレーズは端末に
-表示されます。シェルの履歴は無効ですが、端末側の記録には注意してください。
-
-`wifi scan` は周囲の 2.4 GHz アクセスポイントを最大 10 件表示します。NINA の
-ファームウェアはスキャン時に Wi-Fi を停止するため、接続中は一時切断され、
-保存済み設定で再接続を試みます。SSID やチャンネルの絞り込みなどのスキャン
-オプションには対応していません。実機で一覧の表示と、スキャン後の自動再接続・
-IP アドレスとゲートウェイの再取得を確認しました。
-
-Wi-Fi 接続後、Zephyr の SNTP クライアントで `time.cloudflare.com` から時刻を
-取得し、システム時計を設定します。`ntp status` で同期状態と Unix 時刻を確認
-できます。サーバーとポートはビルド設定の `CONFIG_NINA_NTP_SERVER` と
-`CONFIG_NINA_NTP_PORT` で変更できます。失敗時は 60 秒以上の間隔で再試行し、
-成功後は 6 時間ごとに再同期を試みます。24 時間同期できなければ、アプリ向けの
-時刻準備状態は未準備になります。
-
-SNTP の応答は暗号認証されません。取得した時刻は送信元の信頼性を保証せず、
-TLS の安全性には時刻源の信頼も必要です。実機で公開サーバーからの自動同期と
-`ntp status` の表示を確認しました。
-
-KV ストレージは Zephyr Settings/NVS を使用します。Wi-Fi 認証情報は Zephyr 標準の
-credentials API を使い、同じ Settings/NVS 領域に保存します。
-シェルでは次のように利用できます。
-
-```text
-kv set greeting hello
-kv get greeting
-kv sethex bytes 0001ff
-kv get bytes
-kv delete greeting
-```
-
-`get` の結果はバイナリを含めて 16 進数で表示します。`set` はテキストを終端の
-NUL を含めずに保存し、`sethex` は 16 進数のバイト列を保存します。キーは英数字、
-`_`、`-`、`.` の 1〜32 文字、値は 1〜128 バイトです。空の値は保存できません。
-アプリからは `kv_store.h` の `kv_store_set`、`kv_store_get`、`kv_store_delete` を
-使用します。読み出しバッファーが不足した場合は `-ENOBUFS` を返します。
-`sys.` で始まるキーは内部機能用に予約し、シェルから操作できません。
-保存領域は Wi-Fi 設定と共有する 8 KiB で、書き込み時には容量不足やフラッシュ
-書き込みの影響があります。データは暗号化されず、シェルで読み出せます。
-ファームウェア全消去などで失われる場合があります。
-
-Wi-Fi 設定は標準の `wifi cred` で管理します。`wifi connect` は接続のみを行い、
-設定を自動保存しません。設定を保存する場合は次のように登録します。
+2.4 GHz の WPA2-PSK に対応しています。認証情報を保存しておくと、起動時と予期しない切断の
+あとに自動で接続します。
 
 ```text
 wifi cred add -s "SSID" -k 1 -p "パスフレーズ"
-wifi cred list
 wifi cred auto_connect
-wifi cred delete "SSID"
+wifi status
+net iface
 ```
 
-`-k 1` は WPA2-PSK です。同じ SSID を登録すると上書きします。
-`wifi cred list` はパスフレーズも表示します。端末の表示や記録に注意してください。
+- パスフレーズは端末に表示されます。`wifi cred list` でも表示されます。
+- `wifi connect` は接続だけを行い、設定を保存しません。
+- `wifi disconnect` で切断した場合は、次の起動か手動接続まで再接続しません。
+- `wifi scan` は接続を一時的に切り、終わると保存済みの設定で接続し直します。
+
+PC 側の Wi-Fi アダプターを一時的な AP にするには `script/wifi_ap.sh` が使えます。
+
+```bash
+./script/wifi_ap.sh ap <USB-interface> --ssid rp2040-test --channel 6
+./script/wifi_ap.sh station <USB-interface>
+```
+
+### 3. PC で NTP サーバーを動かす
+
+ボードは既定で、デフォルトゲートウェイ（上の AP を提供している PC）に 2 秒ごとに NTP で
+問い合わせます。PC には chrony を入れ、AP 側のサブネットからの問い合わせを許可します。
+
+```bash
+sudo apt install chrony
+sudo tee /etc/chrony/conf.d/rp2040-ap.conf >/dev/null <<'CONF'
+allow 10.42.0.0/24
+local stratum 10
+CONF
+sudo systemctl restart chrony
+```
+
+ファイアウォール（ufw など）が有効なら UDP 123 番を開けてください。ボード側の状態は
+`ntp status` で確認できます。
+
+### 4. PC で受信する
+
+`script/imu_raw_receiver.py` は検証用の受信器です。MQTT クライアント 1 台を直接受け付け、
+RAW バッチの形式、連番、サンプル番号、時刻を検査し、終了時に集計を JSON で出力します。
+汎用の MQTT ブローカーでもデータ保存アプリでもありません。
+
+```bash
+python3 script/imu_raw_receiver.py --bind 0.0.0.0 --port 1883
+```
+
+Ctrl-C で終了すると結果を表示します。`--drop-at`、`--stall-at`、`--rcvbuf` で受信側の停止や
+輻輳を再現できます。
+
+### 5. 計測を開始する
+
+```text
+imu start
+imu status
+imu stop
+```
+
+`imu start` は引数を取りません。センサーを 6667 Hz・FIFO watermark 128・I²C 1 MHz に設定し、
+止めるまで送信を続けます。
+
+- **MQTT サーバーが動いていないとき**：取得は始まり、繋がるまでのバッチは破棄して数えます。
+  繋がった時点から届きます。
+- **NTP の同期が取れていないとき**：送信は行い、バッチの PC 時刻を無効にします。センサーの
+  tick は付きます。
+- **Wi-Fi に繋がっていないとき**：取得だけ始まり、Wi-Fi と MQTT が繋がり次第送信します。
+
+設定は KV ストレージで変えられます。どれも省略でき、省略時は既定値を使います。
+
+| キー | 意味 | 既定値 |
+|---|---|---|
+| `imu.host` | MQTT サーバーの IPv4 アドレス | デフォルトゲートウェイ |
+| `imu.port` | MQTT サーバーのポート | `1883` |
+| `imu.device` | トピック `imu/<device>/raw` に使う名前 | `rp2040` |
+| `imu.odr` | 加速度・角速度の ODR（Hz） | `6667` |
+| `imu.watermark` | FIFO watermark（ワード数） | `128` |
+
+```text
+kv set imu.port 18830
+kv delete imu.port
+```
+
+セッション ID は開始のたびに自動で割り当てます（チップ固有の ID と、保存した通し番号）。
+
+## シェルコマンド
+
+| コマンド | 内容 |
+|---|---|
+| `imu start` / `stop` / `status` | 計測の開始・停止、カウンターとエラーの表示 |
+| `ntp status` | PC 時刻との同期の状態 |
+| `wifi ...`、`net ...` | Wi-Fi と IP の操作（Zephyr 標準） |
+| `nina version` | NINA ファームウェアのバージョン |
+| `kv set` / `sethex` / `get` / `delete` | KV ストレージ |
+| `sensor ...` | センサーの単発取得・ストリーム・属性（Zephyr 標準を拡張） |
+| `i2c_dma mode` / `stats` | I²C 読み出しの DMA 切り替えと統計 |
+| `zperf ...` | iperf 互換の速度測定（Zephyr 標準） |
+| `dmesg` | RAM に保存したログの表示 |
+| `kernel ps`、`kernel reboot` | スレッドの CPU・スタック、再起動 |
+| `gpio ...`、`i2c ...`、`log ...` | Zephyr 標準 |
+
+### `imu status`
+
+1 項目 1 行で、カテゴリーごとに表示します。`errors` と `fifo` の各項目、`time` の
+`unix_unavailable` から `tick_read_failures` までは、正常なら 0 のままです。
+
+| カテゴリー | 見るところ |
+|---|---|
+| 先頭 | `state`、セッション、`epoch`（個数不明の欠落ごとに 1 進む）、`cpu_active` |
+| `acquired` | 取得したサンプル数とバッチ数（送信できたかどうかに関係なく進む） |
+| `errors` | ストリームが止まった原因。0 以外なら計測は終了している |
+| `fifo` | FIFO オーバーラン、I²C エラー、自動再開の回数など |
+| `time` | PC との同期の有無、時刻を付けられなかった数、タイムスタンプの規則からの逸脱 |
+| `mqtt` | 接続先、接続状態、送信数、破棄したバッチ数、キューの最大使用量 |
+
+### センサーの属性
+
+FIFO の設定は `sensor attr_set` / `attr_get` で扱えます。どちらも次のストリーム開始時に適用され、
+ストリーム中は変更できません。`imu start` は watermark を KV の値（既定 128）で上書きします。
+
+```text
+sensor attr_set lsm6dsox all fifo_watermark 128
+sensor attr_set lsm6dsox all fifo_timestamp_decimation 8
+```
+
+`fifo_timestamp_decimation` は FIFO にタイムスタンプを入れる間隔で、0（入れない）、1、8、32 を
+指定できます。既定は 8 です。0 にするとバッチに時刻が付きません。
 
 ### Wi-Fi 経由のシェル
 
-パッチ適用済み NINA 3.0.2 とこのアプリでは、Wi-Fi 接続後に TCP ポート 23 の
-Zephyr Telnet シェルを利用できます。`net iface` でボードの IPv4 アドレスを確認し、
-PC から `telnet <IPv4アドレス> 23` で接続してください。接続直後にプロンプトが
-表示されない場合は Enter を押してください。同時に使える Telnet クライアントは
-１つです。USB コンソールも引き続き使えます。
+Wi-Fi 接続後は TCP ポート 23 で Telnet のシェルを利用できます。同時に使えるクライアントは
+1 つです。認証と暗号化がなく、到達できる相手はフルシェルを操作できるので、信頼できる
+ネットワークでのみ使ってください。
 
-Telnet には認証と暗号化がなく、到達できる相手はフルシェルを操作できます。
-Wi-Fi 認証情報を含む設定も表示できるため、信頼できるネットワークで使用して
-ください。実機では基本コマンド、接続の繰り返し、Wi-Fi 再接続後の Telnet、
-IMU の短時間測定と起動時の SNTP 同期を確認しました。通信中に一度接続タイムアウト
-が発生し、再起動で回復しました。その後の再接続試験では再現していません。
-長時間の安定性と MQTT との同時利用は未検証です。
-起動時と予期しない
-切断後は保存済み設定への接続を再試行します。明示的な `wifi disconnect` 後は
-次回起動または手動接続まで再接続しません。Zephyr の現行実装では接続要求を
-受け付けた最初の登録先を試すため、複数登録先の切り替えは保証されません。
-以前の独自形式は、標準 credentials への保存成功後に削除します。移行失敗時は
-旧データを残して次回起動時に再試行します。
+### KV ストレージ
 
-`wifi status` で接続状態、SSID、BSSID、RSSI を確認できます。セキュリティ方式、
-チャネル、リンクモードなど、モジュールから取得していない項目は未対応です。
+Zephyr の Settings/NVS に保存します。キーは英数字、`_`、`-`、`.` の 1〜32 文字、値は
+1〜128 バイトです。`set` はテキスト、`sethex` は 16 進数のバイト列を保存し、`get` は 16 進数で
+表示します。`sys.` で始まるキーは内部用です。データは暗号化されません。Wi-Fi の認証情報も
+同じ 8 KiB の領域に保存されます。
 
-パスフレーズはフラッシュに暗号化せず保存します。ボードやフラッシュの読み出し権限を
-持つ人は取得できます。設定用の領域はフラッシュ末尾の 8 KiB で、このアプリの
-プログラム領域から分離しています。別のファームウェアや全消去によっては保存設定が
-消える場合があります。保存時のフラッシュ処理は IMU 取得に影響し得るため、
-Wi-Fi 接続が完了してから測定を開始してください。
+### ログ
 
-実機から PC 上の簡易 MQTT テスト受信口へ CONNECT を送り、CONNACK と QoS 0 の
-送信を確認しました。実際の MQTT ブローカー、長時間通信、エラー時や接続切断の
-挙動は未検証です。
-DNS 名の解決は Zephyr の `getaddrinfo` を NINA にオフロードし、実機で数値 IP と
-`example.com` の名前解決を確認しています。IPv4 の TCP クライアントと UDP に対応し、
-TLS には未対応です。ソケットはすべて NINA 3.0.2 の BSD ソケット相当の命令
-（0x70〜0x7F）で扱い、従来の種類別クライアント命令は使いません。ドライバのソケット枠は
-NINA の lwIP に合わせて 10 個で、Telnet の待ち受けや `iperf3` の制御・データ接続も
-共有します。10 個すべてを同時に開く試験はしていません。NINA と Zephyr の eventfd の混在 `poll` は
-使用しますが、他のオフロードドライバとの混在や切断時の並行操作は未検証です。
-現在のビルドは Zephyr のテスト用非暗号
-乱数を使います。
+ログは RAM の 4 KiB のリングバッファに保存し、`dmesg` で表示します。通常のリセットでは
+残りますが、電源断では消えます。
 
-UDP は TCP と同時に使えます。6667 Hz の RAW MQTT 送信（TCP）と Telnet を動かしたまま、
-`nina_udp_echo`（`CONFIG_NINA_UDP_ECHO_TEST`）で 36 秒間・360 個のデータグラムを往復させ、
-欠落・破損がなく MQTT 側にも欠番がないことを 1 回確認しました。SNTP も同じ経路です。
-送受信は 1 データグラム 512 バイトまでで、受信バッファーに収まらない部分は捨てられます。
-`connect` した UDP ソケットは、他の送信元のデータグラムをドライバーで読み捨てます。
-NINA の命令はすべて NINA 内で 1 つずつ処理されるため、ソケットは作成直後に
-非ブロッキングにし、待ちはドライバー側のポーリング（20 ms 間隔）で行います。
-`bind` は任意アドレスのみ対応し、`sendmsg`、マルチキャストの設定やソケットの
-タイムアウト設定は未対応です。
+## テスト
 
-MQTTS に必要な TLS と ATECC608A Security チップはまだ使っていません。標準設定の
-I2C0 は 100 kHz です。以前の 1 MHz スキャンでは ATECC608A を検出できなかったため、
-IMU と同じバスでの利用時は起床手順や通信速度を含めた共存検証が必要です。
-
-実機で意図しない切断後の IP・ゲートウェイ消去と再接続、`wifi disconnect` 後に
-再接続しないことを確認しました。また PC との 600 バイトの TCP バイナリ往復と、
-未使用ポートへの接続が `ECONNREFUSED` になることを確認しました。
-
-## Wi-Fi スループットの測定
-
-Zephyr の `zperf` を `iperf3` プロトコルで有効にしています。ボードの USB または
-Telnet シェルで TCP サーバーを起動し、PC から送信速度を測れます。
-
-```text
-zperf tcp download 5201
+```bash
+./script/host_tests.sh
 ```
 
-PC 側では `iperf3 -c <ボードのIPv4アドレス> -p 5201 -t 10` を実行します。
-終了後、ボード側で `zperf tcp download stop` を実行してサーバーを停止できます。
-これは PC → ボードの TCP 受信速度で、ボード → PC の MQTT 送信速度ではありません。
-現在の NINA ソケットは `iperf3` クライアントが要求するソケットオプションに対応
-していないため、送信方向の `zperf tcp upload` は未対応です。
+FIFO ワードの解析、バッチとペイロード、送信キュー、時刻の対応付け、NTP の推定、ドライバーの
+FIFO 設定と停止処理、NINA の SPI フレーミングなどを、PC 上で実行します。ボードは不要です。
 
-NINA 3.0.2、SPI 設定 8 MHz、2.4 GHz Wi-Fi の実機で、Telnet 接続なしの 10 秒
-測定を３回行ったところ、ボード側の受信速度は約 227、266、363 kbit/s でした。
-Telnet を接続した状態でも 10 秒間の `iperf3` 測定を完了しました。
+実機での確認は、上の「使い方」の手順で受信器を動かし、終了時の集計（欠番、時刻の有効数と
+逆行、`imu status` のエラー）を見ます。
 
-送信方向は `prj_iperf2.conf` を追加した一時ビルドの `zperf tcp upload` と PC 上の
-TCP 受信プログラムを使い、512 バイト単位で10秒間測定しました。ボード側の送信
-速度は３回で約 272、263、262 kbit/s で、PC 側で同じバイト数を受信しました。
-通常版では `iperf3` を選択しているため、`iperf2` の測定版は次のようにビルドします。
+## 制限
 
-```sh
-west build -b arduino_nano_connect app/usb-console -d build/usb-console-iperf2 -- -DEXTRA_CONF_FILE=prj_iperf2.conf
-```
+- TLS には対応していません。MQTT は平文で、認証もありません。
+- ビルドは Zephyr のテスト用の非暗号乱数を使います。
+- 時刻の誤差は、ボードの推定と PC 時刻の間で数 ms 以内を確認していますが、センサー内部の
+  遅れは測定していません。
+- Zephyr のカーネル時計（`kernel uptime` など）は、6667 Hz の送信中に約 480 ppm 遅れます。
+  時刻の基準には使っていません。
 
-測定版を書き込んだ後、PC で `python3 script/tcp_sink.py --port 5001` を起動し、
-ボードのシェルから `zperf tcp upload <PCのIPv4アドレス> 5001 10 512` を実行します。
-受信ツールは接続を１回受け付け、受信バイト数と速度を表示して終了します。
+## リポジトリの構成
 
-SPI のデータ部分をまとめて転送する変更後、512 バイト単位では 296、341、
-339 kbit/s でした。実験的に TCP の送信単位を 1460 バイトにすると、SPI DMA
-なしで 373、530、474 kbit/s、Zephyr の PL022 SPI DMA ありで 450、297、
-429 kbit/s でした。いずれも受信データのパターンに不一致はありませんでした。
-短時間の測定には大きな変動があり、DMA が本質的に遅いと結論できるものでは
-ありません。1460 バイト送信と SPI DMA は実験用設定です。DMA 版の再現には、
-別のビルドディレクトリを指定し、`--` の後に
-`'-DEXTRA_CONF_FILE=prj_iperf2.conf;prj_tcp_1460.conf;prj_spi_dma.conf'`
-と `'-DDTC_OVERLAY_FILE=app.overlay;spi_dma.overlay'` を追加します。
-送信コマンドのブロックサイズは 1460 にします。
-
-追加の送信時間計測では、20 ms の再試行待ちで 516 kbit/s だった１回のうち、
-NINA のゼロバイト応答は 310 回、再試行待ちは合計約 6.2 秒でした。送信要求の
-SPI 処理区間は合計約 1.25 秒です（割り込みやスケジュール待ちを含む経過時間）。
-ゼロ応答は送信バッファが満杯の場合などに発生し、NINA の API では原因を区別
-できません。再試行間隔を 2 ms にした実験では 539、646、649 kbit/s でしたが、
-ゼロ応答の増加と無線環境による変動があるため通常設定は変更していません。
-計測には `prj_nina_profile.conf`、2 ms の実験には `prj_nina_retry2.conf` を
-追加し、送信前後に `nina_send_profile reset` と `nina_send_profile` を実行します。
-
-さらに実験的に TCP 送信と zperf のブロックを 2872 バイト、再試行を 2 ms にした
-ところ、10 秒の３回は省電力有効要求後に 0.71、1.43、1.15 Mbit/s、無効要求後に
-1.13、1.07、1.25 Mbit/s でした。無効要求後の 30 秒測定は 0.91 Mbit/s でした。
-データの不一致はいずれもありません。省電力要求は NINA が ESP 側の成否を返さない
-ため設定成功を確認できず、短時間の無線測定だけで効果を断定できません。
-測定版には `prj_nina_tcp2872.conf` と `prj_nina_retry2.conf` を追加します。
-この測定で使用した省電力切り替えコマンドは現在のファームウェアにはありません。
-加速度と角速度を各 208 Hz で同時取得した１回の TCP 測定は 0.96 Mbit/s で、
-IMU の 30 秒測定にエラーやオーバーランはありませんでした。両方 1667 Hz では
-TCP 試験開始前に FIFO オーバーランしたため、その条件での同時動作は未検証です。
-
-目的条件を確認するため I²C 1 MHz、両センサー各 6667 Hz、watermark 128 で TCP
-送信と並行したところ、１回は約 14 秒で I²C エラー、別の１回は約 32 秒間エラーや
-overrun 観測なしで動作しましたが、想定外の FIFO ワードが検出されました。後者の
-TCP 送信は約 773 kbit/s でした。これはダミーデータの送信であり、IMU データの
-MQTT 配信ではありません。
-
-原因切り分けでは以前の IMU 単独版と現在の Wi-Fi 切断時は、各 10 秒の測定で
-想定外のワードが 0 個でした。現在版を Wi-Fi 接続すると、IMU 単独でも想定外の
-ワードが現れます。診断版で確認した最初のワードは `ff ff ff ff ff ff ff` で、
-ある 10 秒の測定では 8 バッチに計 548 個あり、いずれもバッチ末尾に集中して
-いました。I²C DMA の無効時にも再現しました。原因と実際の欠落は未確定です。
-この条件での無欠落取得は、以前の結果だけから保証できません。
-
-追加の診断では、NINA の Wi-Fi 省電力を無効にすると、6667 Hz の FIFO 取得時に
-見られた異常ワードが検出されなくなりました。診断ファームは NINA の省電力設定の
-成否を返すパッチを使用しています。原因となる電気的な仕組みは未確定です。
-
-実験用 MQTT 送信では FIFO の各軸を 16-bit の生バイナリのまままとめ、フレーム番号と
-加速度／角速度を識別するビット列を付けています。ボードが 2.4 GHz、PC が同じ AP の
-5 GHz に接続し、PC と NINA の省電力を無効にした条件では、6667 Hz の 120 秒測定で
-加速度 804,564 件、角速度 804,566 件を PC で受信し、件数とペイロードの CRC32 が
-ボード側と一致しました。FIFO エラーと診断送信キューの欠落はありませんでした。
-MQTT ペイロードの平均速度は約 665 kbit/s です。この測定は NINA 側の実験的な TCP
-変更と専用の QoS 0 受信テストを使用しており、製品用の MQTT ブローカーや長期的な
-無欠落を保証するものではありません。同じ接続条件で NINA 側の TCP 実験変更を外した
-60 秒の測定でも、各 401,404 件を受信し、件数と CRC32 が一致しました。追加の比較では、
-PC が 2.4 GHz の場合、省電力有効時は約 2.0 秒、無効時は約 1.8 秒で送信キューが満杯に
-なりました。PC が 5 GHz・省電力有効の場合は 30 秒間、受信件数と CRC32 が一致しました。
-各条件は短時間の測定であり、無線環境の変動や他の設定では結果が異なる可能性があります。
-同じ接続条件での TCP ダミーデータ送信は、IMU 停止時に 30 秒間で約 4.19 Mbit/s、
-両センサーの 6667 Hz 取得と並行した 30 秒間で約 2.02 Mbit/s でした。後者の IMU
-取得は約 35 秒間、異常タグ、I²C エラー、FIFO オーバーランがありませんでした。
-
-上記の MQTT 診断版は、NINA 3.0.2 に `firmware/nina-fw/build.sh` が適用する 2 件の
-パッチを入れ、次の構成でビルドできます。これは試験用であり、通常版とは別です。
-
-```sh
-west build -b arduino_nano_connect app/usb-console -d build/usb-console-imu-mqtt -- \
-  '-DEXTRA_CONF_FILE=prj_iperf2.conf;prj_nina_tcp3584.conf;prj_nina_profile.conf;prj_nina_retry1.conf;prj_imu_mqtt_probe.conf;prj_nina_state100.conf;prj_nina_poll100.conf;prj_imu_mqtt_prio8.conf'
-```
-
-PC 側で `python3 script/imu_mqtt_probe.py --bind <PCのIPv4アドレス> --port 18830` を
-実行し、ボードを Wi-Fi に接続してから、USB シェルで次を実行します。接続アドレスは
-環境に合わせて変更します。
-
-```text
-imu_mqtt_probe start <PCのIPv4アドレス> 18830
-imu_mqtt_probe status
-i2c speed i2c0 3
-sensor attr_set lsm6dsox all fifo_watermark 128
-sensor attr_set lsm6dsox accel_xyz sampling_frequency 6667
-sensor attr_set lsm6dsox gyro_xyz sampling_frequency 6667
-imu_measure start 60
-```
-
-`status` の `connected=1 enabled=1` を確認してから測定を始めます。測定完了後に
-`imu_mqtt_probe status` で送信キューと CRC32 を確認し、`imu_mqtt_probe stop` で
-キューを送り切って切断します。PC 側に出力される件数と CRC32 をボード側と照合します。
-この受信プログラムは診断用の簡易 MQTT 受信器で、データを保存する汎用ブローカーでは
-ありません。QoS 0 のため通信断からの再送も実装していません。
-
-これらは無線環境と TCP の挙動による変動を含む参考値であり、MQTT や同時 IMU
-取得時の速度を保証するものではありません。
-
-## IMU FIFO の測定
-
-`imu_measure` は Sensor Streaming API で FIFO のバッチを取得し、サンプルを
-逐次表示せずに件数と転送時間を集計します。まず使用するセンサーのサンプリング
-周波数を設定し、測定秒数を指定します。例えば両方 208 Hz で10秒間測定するには：
-
-```text
-sensor attr_set lsm6dsox accel_xyz sampling_frequency 208
-sensor attr_set lsm6dsox gyro_xyz sampling_frequency 208
-imu_measure start 10
-```
-
-測定終了後に結果を表示します。途中で停止するには `imu_measure stop`、最後の
-結果を再表示するには `imu_measure result` を実行します。測定時間は1〜3600秒です。
-単一センサーを測る場合は、もう片方の `sampling_frequency` を `0` に設定します。
-`sensor stream` と `imu_measure` は同時に使えません。どちらのストリームでも、現在の FIFO カウンターを `imu_measure stats` で確認できます。
-
-`sensor attr_get lsm6dsox all fifo_watermark` で FIFO watermark を表示し、`sensor attr_set lsm6dsox all fifo_watermark 128` でストリーム開始前に 128 ワードへ変更できます。設定範囲は 1〜256、初期値は 32 で、リセットすると初期値に戻ります。大きくするとバッチ処理の負荷が減る一方、データ到着までの時間が長くなり、FIFO の余裕が減ります。IMU FIFO 用途の DMA 対応は完了とし、通常ビルドでは対象となる I²C0 の読み出しに DMA を使用します。今回の用途では 60 秒の確認を十分とし、他の DMA 利用者との競合は必要になった時点で確認します。`i2c_dma stats` で累積カウンターを確認できます。条件と測定結果は [ドライバーの説明](app/usb-console/drivers/README_ja.md) を参照してください。
-
-センサー時刻と内部温度への対応については、[ドライバーの TODO](app/usb-console/drivers/README_ja.md#todo)
-を参照してください。
-
-指定時間の終了または途中停止時には、FIFO への新しいバッチ追加を止め、FIFO に
-残ったワードと処理中の RTIO 完了通知を集計してから結果を確定します。
-`stop_requested_ms` は停止を要求した時点、`elapsed_ms` は残データの回収と終了処理を
-含む時間です。センサーごとのバッチ停止は順番に行うため、停止境界は厳密に同時では
-ありません。
-
-結果には加速度・ジャイロの受信サンプル数、未対応タグのワード数、設定 ODR、
-FIFO バーストの回数と合計・最大時間、I²C エラー、バッファ不足、FIFO overrun の
-観測、RTIO の完了通知の欠落、ストリームエラーを表示します。`cpu_active` はアイドルフックから求めた非アイドル時間の割合で、割り込みと計測のオーバーヘッドを含み、表示分解能は 0.1% です。`cpu_busy` は測定区間中の
-スケジューラ上の非アイドル時間で、この集計処理と他スレッドの負荷を含みます。アイドル中の割り込みはアイドル時間に含まれる場合があるため、CPU が実際に動作した時間の合計ではありません。
-`observed_hz` は受信したサンプル数を `elapsed_ms` で割った概算値です。開始時の設定と
-停止・残データ回収にかかる時間の影響を受けるため、短い測定ほど誤差が大きくなります。
-FIFO のハードウェア時刻やセンサーの正確な生成時刻を測るものではありません。
-
-`accounting=match` は、ドライバーが読み出したワード数・転送回数とアプリが集計した
-ワード数・バッチ数が一致し、集計を妨げるエラーが報告されなかったことを示します。
-`mismatch` は両者の不一致、`incomplete` はエラーや完了通知の欠落などにより照合を
-完了できなかったことを示します。センサーが生成した全サンプルの無欠落を保証する
-ものではありません。
-
-overrun の観測は、不連続が発生したことを示しますが、失われたサンプル数や独立した
-overrun の発生件数は示しません。測定中にバッファ不足・I²C エラー・overrun が発生した
-場合はストリームを停止し、`stream_error` にエラーを表示します。`cleanup_timeout=1`
-の場合は終了処理が完了せず、次の測定には再起動が必要です。完了通知の欠落や
-未知のタグが報告された測定も、取得データの連続性を保証できません。
+| 場所 | 内容 |
+|---|---|
+| `app/usb-console/src/` | アプリ本体（計測、MQTT、時刻同期、KV、Wi-Fi 設定） |
+| `app/usb-console/drivers/` | LSM6DSO、I²C、NINA、sensor shell のローカルドライバー |
+| `app/usb-console/tests/` | ホストテスト |
+| `app/blink/` | LED 点滅のサンプル |
+| `design/` | 設計と調査手順 |
+| `firmware/nina-fw/` | NINA ファームウェアの修正とビルド |
+| `script/` | 環境構築、AP、受信器、ホストテスト |
+| `manifest/west.yml` | Zephyr とモジュールのバージョン |

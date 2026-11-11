@@ -22,8 +22,8 @@ builds reuse the checkout. Move the source directory aside for a fresh build.
 Docker pulls `espressif/idf:v4.4.8` automatically if it is not present locally;
 the build container itself has networking disabled.
 The patched image was built with ESP-IDF 4.4.8 and installed on a Nano RP2040
-Connect. The NINA version, saved Wi-Fi reconnection and SNTP synchronization
-were confirmed; the new low-level socket poll command has not been exercised.
+Connect. The RP2040 driver uses the firmware's BSD-style socket commands
+(0x70 to 0x7f), including the fixed socket poll, for every socket.
 Updating the
 NINA requires a separate passthrough image on the RP2040 and a compatible
 flashing tool; consult the upstream README before attempting it. Preserve a
