@@ -30,9 +30,17 @@ void imu_tick_clock_add(struct imu_tick_clock *c, uint64_t tick, int64_t mono_us
 {
 	const struct imu_tick_point *first;
 
-	if (c->count && (tick <= c->points[c->count - 1].tick ||
-			 mono_us <= c->points[c->count - 1].mono_us)) {
-		return;
+	if (c->count) {
+		const struct imu_tick_point *last = &c->points[c->count - 1];
+		int64_t ticks = (int64_t)(tick - last->tick), ns = (mono_us - last->mono_us) * 1000;
+
+		if (ticks <= 0 || ns <= 0 || ns < ticks * IMU_TICK_CLOCK_MIN_NS_PER_TICK ||
+		    ns > ticks * IMU_TICK_CLOCK_MAX_NS_PER_TICK) {
+			/* Start over from this reading. A measured rate stays in
+			 * use until the new readings give another. */
+			c->count = 0;
+			c->restarts++;
+		}
 	}
 	if (c->count == IMU_TICK_CLOCK_POINTS) {
 		memmove(&c->points[0], &c->points[1],
@@ -64,12 +72,19 @@ bool imu_tick_clock_convert(struct imu_tick_clock *c, uint64_t tick, int64_t *mo
 	 * away from it, so an error in the rate has little leverage. */
 	last = &c->points[c->count - 1];
 	delta = (int64_t)(tick - last->tick);
+	if (delta > (int64_t)IMU_TICK_CLOCK_MAX_AHEAD_TICKS ||
+	    delta < -(int64_t)IMU_TICK_CLOCK_MAX_BEHIND_TICKS) {
+		c->refused++;
+		return false;
+	}
 	result = last->mono_us + delta * c->rate_us / (int64_t)c->rate_ticks;
 	if (c->emitted && tick > c->last_tick && result <= c->last_mono_us) {
 		result = c->last_mono_us + 1;
 		c->held++;
 	}
-	if (!c->emitted || tick > c->last_tick) {
+	if (!c->emitted || tick > c->last_tick ||
+	    tick + IMU_TICK_CLOCK_MAX_BEHIND_TICKS < c->last_tick) {
+		/* The last case: the counter restarted far below where it was. */
 		c->emitted = true;
 		c->last_tick = tick;
 		c->last_mono_us = result;

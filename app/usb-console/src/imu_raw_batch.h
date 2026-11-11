@@ -20,6 +20,10 @@ struct imu_raw_batch {
 	uint64_t timestamp_words;
 	struct imu_raw_time time;
 	size_t count, accel_count; /* words in the batch being built */
+	/* A first tick was noted and awaits confirmation; see imu_raw_time.h. */
+	bool accel_tick_noted, gyro_tick_noted;
+	uint32_t accel_tick_generation, gyro_tick_generation;
+	uint64_t accel_noted_tick, gyro_noted_tick;
 	imu_raw_batch_sink sink;
 	void *sink_context;
 	imu_raw_batch_clock clock; /* set after init; NULL leaves Unix time invalid */
@@ -31,8 +35,9 @@ int imu_raw_batch_init(struct imu_raw_batch *batch, const uint8_t session_id[16]
 		       uint32_t epoch_id, imu_raw_batch_sink sink, void *context);
 /* cursor is a byte offset into a FIFO word array. Each valid sample is
  * numbered before the sink is called. The first accelerometer and gyroscope
- * sample of a batch carry their sensor tick when imu_raw_time can assign one;
- * otherwise the time-valid flag stays clear.
+ * sample of a batch carry their sensor tick when imu_raw_time can assign one
+ * and has confirmed it by the time the batch is flushed; otherwise the
+ * time-valid flag stays clear.
  * Unsupported tags return -EPROTO without consuming the offending word.
  */
 int imu_raw_batch_consume(struct imu_raw_batch *batch, const uint8_t *words,

@@ -187,7 +187,7 @@ A session ID is assigned at every start from the chip's unique ID and a stored c
 ### `imu status`
 
 One item per line, grouped by category. Every item under `errors` and `fifo`, and the items
-from `unix_unavailable` to `tick_read_failures` under `time`, stay at 0 when all is well.
+from `unix_unavailable` to `tick_out_of_range` under `time`, stay at 0 when all is well.
 
 | Category | What to look at |
 |---|---|

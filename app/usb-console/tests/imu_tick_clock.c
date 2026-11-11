@@ -61,8 +61,26 @@ int main(void)
 	imu_tick_clock_init(&c);
 	imu_tick_clock_add(&c, 1000, 1000000);
 	assert(imu_tick_clock_convert(&c, 1400, &mono) && mono == 1010000);
-	imu_tick_clock_add(&c, 1401, 1005000); /* contradicts the previous reading */
+	imu_tick_clock_add(&c, 1401, 1005000); /* does not continue the first reading */
+	assert(c.restarts == 1 && c.count == 1);
 	assert(imu_tick_clock_convert(&c, 1402, &mono) && mono == 1010001 && c.held == 1);
+
+	/* A tick far from the newest reading is refused and leaves the guard
+	 * alone, so one bad value cannot pin later results. */
+	imu_tick_clock_init(&c);
+	imu_tick_clock_add(&c, 100000, 5000000);
+	assert(imu_tick_clock_convert(&c, 100400, &mono) && mono == 5010000);
+	assert(!imu_tick_clock_convert(&c, 100000 + 400000000, &mono) && c.refused == 1);
+	assert(!imu_tick_clock_convert(&c, 100000 - 900000, &mono) && c.refused == 2);
+	assert(imu_tick_clock_convert(&c, 100800, &mono) && mono == 5020000 && c.held == 0);
+	/* A reading that implies an impossible tick length (here the counter
+	 * restarted) replaces the earlier ones instead of bending the rate. */
+	imu_tick_clock_add(&c, 500, 6000000);
+	assert(c.restarts == 1 && c.count == 1);
+	assert(imu_tick_clock_convert(&c, 900, &mono) && mono == 6010000);
+	/* After a restart far below the old ticks, times follow the new ones. */
+	imu_tick_clock_add(&c, 40500, 7000000);
+	assert(c.count == 2 && imu_tick_clock_convert(&c, 40900, &mono) && mono == 7010000);
 
 	/* Restart keeps the measured rate and the guard, drops the readings. */
 	imu_tick_clock_init(&c);

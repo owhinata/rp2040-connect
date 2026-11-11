@@ -185,7 +185,7 @@ kv delete imu.port
 ### `imu status`
 
 1 項目 1 行で、カテゴリーごとに表示します。`errors` と `fifo` の各項目、`time` の
-`unix_unavailable` から `tick_read_failures` までは、正常なら 0 のままです。
+`unix_unavailable` から `tick_out_of_range` までは、正常なら 0 のままです。
 
 | カテゴリー | 見るところ |
 |---|---|

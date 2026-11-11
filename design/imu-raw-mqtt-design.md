@@ -342,6 +342,12 @@ two most recent timestamps. If that interval is not a whole number of ticks, or 
 skips, the tick is marked invalid. The 32-bit counter wraps after about 30 hours and is
 extended to 64 bits.
 
+A single timestamp cannot be told from a stale or corrupt one. A tick therefore counts as
+valid only once the timestamp it rests on has been followed by another at a consistent
+distance. This is decided when the batch is sent, so the first sample of a batch normally
+still gets a valid tick. A timestamp that goes back without being a wrap is treated as a
+restarted counter, and ticks obtained before it are not used.
+
 At 6667 Hz with decimation 8, timestamps were always 48 ticks and 8 samples apart, 6 ticks per
 sample.
 
@@ -356,6 +362,15 @@ tick rate, with which ticks are converted to the board clock.
   previous measurement is used, or else the one derived from `freq_fine`.
 - A conversion that would fall before the previous result is held just after it, so results
   never go backwards.
+- A reading is checked against the FIFO's timestamps and not used if it lies before them or
+  two seconds or more ahead. A reading that does not continue the earlier ones (a tick length
+  outside 23 to 27 us) starts the series over. A tick far from the readings (5 s or more
+  ahead, 20 s or more behind) is not converted. This keeps a single bad value from pinning
+  all later times through the mechanism that prevents going backwards.
+
+In the first measurement after writing a new image, the first read of the register has
+returned a stale value (it did not after a plain reboot; the cause was not investigated). The
+check above discards it.
 
 How a tick relates to the instant the sensor actually sampled (the delay inside the sensor)
 has not been measured.

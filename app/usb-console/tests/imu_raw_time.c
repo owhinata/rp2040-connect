@@ -89,5 +89,38 @@ int main(void)
 	stamp(&t, 0x80, 2);
 	assert(imu_raw_time_sample(&t, 2, &tick) && tick == 0x100000080ULL);
 	assert(!imu_raw_time_sample(&t, 3, &tick) && t.anchors == 3);
+
+	/* Confirmation: one timestamp is provisional, the second confirms it. */
+	imu_raw_time_init(&t);
+	uint32_t generation = t.generation;
+
+	stamp(&t, 1000, 0);
+	assert(imu_raw_time_sample(&t, 0, &tick) && tick == 1000 && !imu_raw_time_confirmed(&t));
+	for (unsigned int slot = 1; slot < 8; slot++) {
+		(void)imu_raw_time_sample(&t, slot & 3, &tick);
+	}
+	stamp(&t, 1048, 0);
+	assert(imu_raw_time_sample(&t, 0, &tick) && imu_raw_time_confirmed(&t) &&
+	       t.generation == generation);
+	/* A timestamp that goes back without being a wrap is a restarted
+	 * counter: earlier ticks are void, and the new one needs confirming. */
+	for (unsigned int slot = 1; slot < 8; slot++) {
+		(void)imu_raw_time_sample(&t, slot & 3, &tick);
+	}
+	stamp(&t, 12, 0);
+	assert(t.restarts == 1 && t.wraps == 0 && t.generation == generation + 1 &&
+	       !imu_raw_time_confirmed(&t));
+	assert(imu_raw_time_sample(&t, 0, &tick) && tick == 12 && !imu_raw_time_confirmed(&t));
+	for (unsigned int slot = 1; slot < 8; slot++) {
+		assert(!imu_raw_time_sample(&t, slot & 3, &tick));
+	}
+	stamp(&t, 60, 0);
+	assert(imu_raw_time_sample(&t, 0, &tick) && tick == 60 && imu_raw_time_confirmed(&t));
+	/* A new epoch and a skipped slot also change the generation. */
+	imu_raw_time_new_epoch(&t);
+	assert(t.generation == generation + 2);
+	(void)imu_raw_time_sample(&t, 1, &tick);
+	(void)imu_raw_time_sample(&t, 3, &tick);
+	assert(t.generation == generation + 3 && t.counter_skips == 1);
 	return 0;
 }

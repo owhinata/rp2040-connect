@@ -50,6 +50,9 @@
 #define FLUSH_INTERVAL_MS       100
 #define REPORT_INTERVAL_MS      500
 #define TIME_POINT_INTERVAL_MS  1000
+/* How far the tick counter may be ahead of the newest FIFO timestamp when it
+ * is read: two seconds of ticks. */
+#define TIME_POINT_MAX_LEAD_TICKS 80000U
 /* After the driver ends a stream with an error it has already stopped the
  * FIFO. Give it this long to release the stream, and give up when this many
  * restarts in a row deliver no data. */
@@ -80,6 +83,7 @@ struct imu_stream_status {
 	bool cleanup_timeout;
 	struct imu_raw_time time;
 	uint32_t time_point_failures, time_point_window_us, unix_unavailable, monotonic_holds;
+	uint32_t clock_refused, clock_restarts;
 	int64_t us_per_million_ticks;
 	int cpu_permille; /* at the end of the run; negative if unavailable */
 };
@@ -142,9 +146,14 @@ static void take_time_point(const struct device *dev)
 {
 	const struct imu_raw_time *fifo_time = &batch.time;
 	int64_t before, after;
-	uint64_t wraps;
+	uint64_t wraps, extended, newest_fifo;
 	uint32_t tick;
 
+	/* The reading is checked against the FIFO's own timestamps, so wait for
+	 * the first of those. */
+	if (!fifo_time->raw_seen) {
+		return;
+	}
 	if (lsm6dso_timestamp_read(dev, time_sync_mono_us, &tick, &before, &after)) {
 		run.time_point_failures++;
 		return;
@@ -152,11 +161,20 @@ static void take_time_point(const struct device *dev)
 	/* Extend like the FIFO timestamps. The register is read later than
 	 * the newest FIFO word, so it may already be past a wrap. */
 	wraps = fifo_time->wraps;
-	if (fifo_time->raw_seen && tick < fifo_time->last_raw &&
-	    fifo_time->last_raw - tick > UINT32_MAX / 2U) {
+	if (tick < fifo_time->last_raw && fifo_time->last_raw - tick > UINT32_MAX / 2U) {
 		wraps++;
 	}
-	time_point.tick = (wraps << 32) | tick;
+	extended = (wraps << 32) | tick;
+	newest_fifo = (fifo_time->wraps << 32) | fifo_time->last_raw;
+	/* The counter is read after the newest FIFO timestamp was written and
+	 * FIFO data is at most a few tens of milliseconds old. Anything else
+	 * is not a usable reading; right after the first FIFO start following
+	 * a reset the register has been seen to return a stale value. */
+	if (extended < newest_fifo || extended - newest_fifo > TIME_POINT_MAX_LEAD_TICKS) {
+		run.time_point_failures++;
+		return;
+	}
+	time_point.tick = extended;
 	time_point.mono_us = before + (after - before) / 2;
 	run.time_point_window_us = (uint32_t)MIN(after - before, (int64_t)UINT32_MAX);
 	imu_tick_clock_add(&tick_clock, time_point.tick, time_point.mono_us);
@@ -195,6 +213,8 @@ static bool report(const struct device *dev, enum imu_raw_state state, bool send
 	run.epoch = batch.meta.epoch_id;
 	run.time = batch.time;
 	run.monotonic_holds = tick_clock.held;
+	run.clock_refused = tick_clock.refused;
+	run.clock_restarts = tick_clock.restarts;
 	run.us_per_million_ticks = tick_clock.rate_us * 1000000LL / (int64_t)tick_clock.rate_ticks;
 	run.end_us = time_sync_mono_us();
 	k_mutex_lock(&snapshot_lock, K_FOREVER);
@@ -773,8 +793,11 @@ static int cmd_status(const struct shell *sh, size_t argc, char **argv)
 	ITEM(sh, "irregular_periods", "%" PRIu64, s.time.irregular_periods);
 	ITEM(sh, "counter_mismatches", "%" PRIu64, s.time.counter_mismatches);
 	ITEM(sh, "counter_skips", "%" PRIu64, s.time.counter_skips);
+	ITEM(sh, "counter_restarts", "%" PRIu64, s.time.restarts);
 	ITEM(sh, "tick_read_failures", "%" PRIu32, s.time_point_failures);
 	ITEM(sh, "tick_read_us", "%" PRIu32, s.time_point_window_us);
+	ITEM(sh, "tick_read_rejected", "%" PRIu32, s.clock_restarts);
+	ITEM(sh, "tick_out_of_range", "%" PRIu32, s.clock_refused);
 	ITEM(sh, "monotonic_holds", "%" PRIu32, s.monotonic_holds);
 	ITEM(sh, "us_per_1e6_ticks", "%" PRId64, s.us_per_million_ticks);
 	shell_print(sh, "mqtt:");

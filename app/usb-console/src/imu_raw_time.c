@@ -16,6 +16,7 @@ void imu_raw_time_new_epoch(struct imu_raw_time *time)
 	time->period_valid = false;
 	time->slot_open = false;
 	time->anchor_pending = false;
+	time->generation++;
 }
 
 void imu_raw_time_timestamp(struct imu_raw_time *time, const uint8_t payload[6], uint8_t counter)
@@ -23,9 +24,19 @@ void imu_raw_time_timestamp(struct imu_raw_time *time, const uint8_t payload[6],
 	uint32_t raw = (uint32_t)payload[0] | ((uint32_t)payload[1] << 8) |
 		       ((uint32_t)payload[2] << 16) | ((uint32_t)payload[3] << 24);
 
-	/* The 32-bit counter wraps after about 30 hours. */
 	if (time->raw_seen && raw < time->last_raw) {
-		time->wraps++;
+		if (time->last_raw >= 0xC0000000U && raw < 0x40000000U) {
+			/* The 32-bit counter wraps after about 30 hours. */
+			time->wraps++;
+		} else {
+			/* Not a wrap: the counter restarted, or one of the two
+			 * values is bad. Nothing before this point can be related
+			 * to what follows. */
+			time->restarts++;
+			time->anchored = false;
+			time->period_valid = false;
+			time->generation++;
+		}
 	}
 	time->raw_seen = true;
 	time->last_raw = raw;
@@ -85,6 +96,7 @@ void imu_raw_time_new_slot(struct imu_raw_time *time, uint8_t counter)
 			time->counter_skips++;
 			time->anchored = false;
 			time->period_valid = false;
+			time->generation++;
 		}
 		time->slots_since_anchor++;
 		if (time->anchor_pending) {

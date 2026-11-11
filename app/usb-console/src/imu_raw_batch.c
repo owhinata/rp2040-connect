@@ -23,6 +23,52 @@ int imu_raw_batch_init(struct imu_raw_batch *batch, const uint8_t session_id[16]
 	return 0;
 }
 
+/* Keeps a noted tick only if its timestamp has been confirmed since and
+ * nothing invalidated it, then asks the clock for server time. Run once per
+ * flush attempt; a batch kept after a sink error is settled again. */
+static void settle_one(struct imu_raw_batch *batch, bool noted, uint32_t generation,
+		       uint64_t *tick, uint64_t *unix_us, uint8_t tick_flag, uint8_t unix_flag)
+{
+	batch->meta.flags &= (uint8_t)~(tick_flag | unix_flag);
+	*unix_us = 0;
+	if (!noted || generation != batch->time.generation ||
+	    !imu_raw_time_confirmed(&batch->time)) {
+		return;
+	}
+	batch->meta.flags |= tick_flag;
+	if (batch->clock && batch->clock(batch->clock_context, *tick, unix_us)) {
+		batch->meta.flags |= unix_flag;
+	} else {
+		*unix_us = 0;
+	}
+}
+
+static void settle_times(struct imu_raw_batch *batch)
+{
+	struct imu_raw_metadata *m = &batch->meta;
+	/* The clock wants ticks in non-decreasing order. */
+	bool accel_first = !batch->gyro_tick_noted ||
+			   (batch->accel_tick_noted &&
+			    batch->accel_noted_tick <= batch->gyro_noted_tick);
+
+	for (int pass = 0; pass < 2; pass++) {
+		if ((pass == 0) == accel_first) {
+			settle_one(batch, batch->accel_tick_noted, batch->accel_tick_generation,
+				   &batch->accel_noted_tick, &m->accel_first_unix_us,
+				   IMU_RAW_ACCEL_TIME_VALID,
+				   IMU_RAW_ACCEL_UNIX_VALID);
+		} else {
+			settle_one(batch, batch->gyro_tick_noted, batch->gyro_tick_generation,
+				   &batch->gyro_noted_tick, &m->gyro_first_unix_us,
+				   IMU_RAW_GYRO_TIME_VALID,
+				   IMU_RAW_GYRO_UNIX_VALID);
+		}
+	}
+	/* The encoder requires a tick of zero unless it is marked valid. */
+	m->accel_first_tick = (m->flags & IMU_RAW_ACCEL_TIME_VALID) ? batch->accel_noted_tick : 0;
+	m->gyro_first_tick = (m->flags & IMU_RAW_GYRO_TIME_VALID) ? batch->gyro_noted_tick : 0;
+}
+
 int imu_raw_batch_flush(struct imu_raw_batch *batch)
 {
 	size_t written;
@@ -38,6 +84,7 @@ int imu_raw_batch_flush(struct imu_raw_batch *batch)
 		return -EOVERFLOW;
 	}
 	batch->meta.batch_seq = batch->next_batch;
+	settle_times(batch);
 	rc = imu_raw_stage_finish(batch->payload, &written, &batch->meta, batch->count,
 				  batch->accel_count);
 	if (rc) {
@@ -67,6 +114,8 @@ int imu_raw_batch_flush(struct imu_raw_batch *batch)
 	batch->meta.accel_first_unix_us = 0;
 	batch->meta.gyro_first_unix_us = 0;
 	batch->meta.flags = 0;
+	batch->accel_tick_noted = false;
+	batch->gyro_tick_noted = false;
 	return 0;
 }
 
@@ -93,7 +142,6 @@ int imu_raw_batch_consume(struct imu_raw_batch *batch, const uint8_t *words,
 			  size_t length, size_t *cursor)
 {
 	struct lsm6dso_fifo_entry entry;
-	uint64_t tick = 0;
 	size_t next;
 	int rc;
 
@@ -133,33 +181,17 @@ int imu_raw_batch_consume(struct imu_raw_batch *batch, const uint8_t *words,
 		if (entry.sample.kind == LSM6DSO_FIFO_ACCEL) {
 			if (batch->meta.accel_first_index == UINT64_MAX) {
 				batch->meta.accel_first_index = batch->next_accel;
-				if (imu_raw_time_get(&batch->time, &tick)) {
-					batch->meta.accel_first_tick = tick;
-					batch->meta.flags |= IMU_RAW_ACCEL_TIME_VALID;
-					if (batch->clock &&
-					    batch->clock(batch->clock_context, tick,
-							 &batch->meta.accel_first_unix_us)) {
-						batch->meta.flags |= IMU_RAW_ACCEL_UNIX_VALID;
-					} else {
-						batch->meta.accel_first_unix_us = 0;
-					}
-				}
+				batch->accel_tick_noted =
+					imu_raw_time_get(&batch->time, &batch->accel_noted_tick);
+				batch->accel_tick_generation = batch->time.generation;
 			}
 			batch->next_accel++;
 		} else {
 			if (batch->meta.gyro_first_index == UINT64_MAX) {
 				batch->meta.gyro_first_index = batch->next_gyro;
-				if (imu_raw_time_get(&batch->time, &tick)) {
-					batch->meta.gyro_first_tick = tick;
-					batch->meta.flags |= IMU_RAW_GYRO_TIME_VALID;
-					if (batch->clock &&
-					    batch->clock(batch->clock_context, tick,
-							 &batch->meta.gyro_first_unix_us)) {
-						batch->meta.flags |= IMU_RAW_GYRO_UNIX_VALID;
-					} else {
-						batch->meta.gyro_first_unix_us = 0;
-					}
-				}
+				batch->gyro_tick_noted =
+					imu_raw_time_get(&batch->time, &batch->gyro_noted_tick);
+				batch->gyro_tick_generation = batch->time.generation;
 			}
 			batch->next_gyro++;
 		}

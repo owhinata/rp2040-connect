@@ -102,7 +102,10 @@ int main(void)
 	assert(imu_raw_batch_new_epoch(&b) == -EOVERFLOW && b.count == 1);
 	assert(imu_raw_batch_new_epoch(NULL) == -EINVAL);
 
-	/* Sensor ticks: the first sample of each kind carries its slot's tick. */
+	/* Sensor ticks. Slots 0, 8 and 16 start with a timestamp; a tick counts
+	 * only once its timestamp has been confirmed by the next one. Word
+	 * offsets: slot 0 is words 0..2, slots 1..7 are words 3..16, slot 8
+	 * starts with the timestamp at word 17. */
 	static uint8_t timed[3 * 17 * 7];
 	size_t n = 0;
 
@@ -123,48 +126,70 @@ int main(void)
 		n += 7;
 	}
 	assert(n == sizeof(timed));
+
+	/* Flushed after one timestamp only: nothing is confirmed yet. */
 	assert(imu_raw_batch_init(&b, session, 0, sink, NULL) == 0);
 	cursor = 0;
-	/* Timestamp, one full slot and the gyro of the next slot. */
 	assert(imu_raw_batch_consume(&b, timed, 4 * 7, &cursor) == 0);
 	assert(imu_raw_batch_flush(&b) == 0);
-	assert(received[5] == 3 && le64(received + 48) == 5000 && le64(received + 56) == 5000);
-	/* The period is not known yet: slot 1 has no tick, so the accel of this
-	 * batch is untimed. Its gyro is absent from the batch start (slot 1's gyro
-	 * was sent above), so the first gyro here is slot 2's. */
-	assert(imu_raw_batch_consume(&b, timed, 6 * 7, &cursor) == 0);
+	assert(received[5] == 0 && le64(received + 48) == 0 && le64(received + 56) == 0);
+	/* Samples of slots 1..9 start before the period is known. */
+	assert(imu_raw_batch_consume(&b, timed, 21 * 7, &cursor) == 0);
 	assert(imu_raw_batch_flush(&b) == 0);
-	assert(received[5] == 0 && le64(received + 48) == 0 && le64(received + 56) == 0 &&
-	       le64(received + 32) == 1 && le64(received + 40) == 2);
-	/* After the second timestamp (slot 8) later slots are extrapolated. */
-	assert(imu_raw_batch_consume(&b, timed, (17 + 1 + 2 * 2 + 1) * 7, &cursor) == 0);
+	assert(received[5] == 0 && le64(received + 32) == 1 && le64(received + 40) == 2);
+	/* From the confirmed timestamp of slot 8 on, later slots are timed:
+	 * accel of slot 9 (index 9), gyro of slot 10 (index 10). */
+	assert(imu_raw_batch_consume(&b, timed, 24 * 7, &cursor) == 0);
 	assert(imu_raw_batch_flush(&b) == 0);
-	assert(imu_raw_batch_consume(&b, timed, (17 + 1 + 2 * 4) * 7, &cursor) == 0);
-	assert(imu_raw_batch_flush(&b) == 0);
-	/* Batch: accel of slot 10 (index 10), gyro of slot 11 (index 11). */
-	assert(received[5] == 3 && le64(received + 32) == 10 && le64(received + 40) == 11 &&
-	       le64(received + 48) == 5000 + 10 * 6 && le64(received + 56) == 5000 + 11 * 6);
-	/* A new epoch forgets the slot position: no tick until the next timestamp. */
-	assert(imu_raw_batch_new_epoch(&b) == 0);
-	assert(imu_raw_batch_consume(&b, timed, (17 + 1 + 2 * 5) * 7, &cursor) == 0);
-	assert(imu_raw_batch_flush(&b) == 0 && received[5] == 0 && received[68] == 1);
-	assert(imu_raw_batch_consume(&b, timed, sizeof(timed), &cursor) == 0);
-	assert(imu_raw_batch_flush(&b) == 0 && b.time.anchors == 3);
+	assert(received[5] == 3 && le64(received + 32) == 9 && le64(received + 40) == 10 &&
+	       le64(received + 48) == 5000 + 9 * 6 && le64(received + 56) == 5000 + 10 * 6);
 
-	/* With a clock, timed first samples also carry Unix time; a clock that
-	 * has no answer leaves it invalid and zero. */
+	/* A tick noted at the very first timestamp counts once the second
+	 * timestamp has confirmed it before the flush. */
 	assert(imu_raw_batch_init(&b, session, 0, sink, NULL) == 0);
 	b.clock = test_clock;
 	cursor = 0;
-	assert(imu_raw_batch_consume(&b, timed, 4 * 7, &cursor) == 0);
+	assert(imu_raw_batch_consume(&b, timed, 21 * 7, &cursor) == 0);
+	/* A sink failure keeps the batch; the retry delivers the same times. */
+	sink_result = -EIO;
+	assert(imu_raw_batch_flush(&b) == -EIO && b.count == 19);
+	sink_result = 0;
 	assert(imu_raw_batch_flush(&b) == 0);
-	assert(received[5] == 15 && le64(received + 80) == 1000000 + 5000 * 25 &&
+	assert(received[5] == 15 && le64(received + 48) == 5000 && le64(received + 56) == 5000 &&
+	       le64(received + 80) == 1000000 + 5000 * 25 &&
 	       le64(received + 88) == 1000000 + 5000 * 25);
+	/* A clock without an answer leaves the tick valid and Unix time unset. */
 	clock_ready = false;
-	assert(imu_raw_batch_consume(&b, timed, (17 + 3) * 7, &cursor) == 0);
+	assert(imu_raw_batch_consume(&b, timed, 24 * 7, &cursor) == 0);
 	assert(imu_raw_batch_flush(&b) == 0);
-	assert(imu_raw_batch_consume(&b, timed, (17 + 5) * 7, &cursor) == 0);
+	assert(received[5] == 3 && le64(received + 48) == 5054 && le64(received + 80) == 0 &&
+	       le64(received + 88) == 0);
+	clock_ready = true;
+
+	/* A new epoch flushes what it has; a tick noted but not yet confirmed
+	 * is dropped, and the next epoch waits for its own two timestamps. */
+	assert(imu_raw_batch_init(&b, session, 0, sink, NULL) == 0);
+	cursor = 0;
+	assert(imu_raw_batch_consume(&b, timed, 4 * 7, &cursor) == 0);
+	assert(imu_raw_batch_new_epoch(&b) == 0 && received[5] == 0 && received[68] == 0);
+	assert(imu_raw_batch_consume(&b, timed, 36 * 7, &cursor) == 0);
+	assert(imu_raw_batch_flush(&b) == 0 && received[5] == 0 && received[68] == 1);
+	/* Slot 16's timestamp confirms slot 8's: the accel of slot 16 is timed. */
+	assert(imu_raw_batch_consume(&b, timed, sizeof(timed), &cursor) == 0);
+	assert(imu_raw_batch_flush(&b) == 0 && received[5] == 3 && b.time.anchors == 3 &&
+	       le64(received + 48) == 5000 + 16 * 6);
+
+	/* A timestamp that jumps back is a restarted counter, not a wrap: the
+	 * tick noted before it must not be used. */
+	static uint8_t restarted[sizeof(timed)];
+
+	memcpy(restarted, timed, sizeof(timed));
+	restarted[17 * 7 + 1] = 100; /* slot 8's timestamp: 100 instead of 5048 */
+	restarted[17 * 7 + 2] = 0;
+	assert(imu_raw_batch_init(&b, session, 0, sink, NULL) == 0);
+	cursor = 0;
+	assert(imu_raw_batch_consume(&b, restarted, 21 * 7, &cursor) == 0);
 	assert(imu_raw_batch_flush(&b) == 0);
-	assert(received[5] == 3 && le64(received + 80) == 0 && le64(received + 88) == 0);
+	assert(received[5] == 0 && b.time.restarts == 1 && b.time.wraps == 0);
 	return 0;
 }
