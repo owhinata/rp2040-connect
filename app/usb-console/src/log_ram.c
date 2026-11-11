@@ -19,7 +19,8 @@ struct retained_log {
 
 /* The linker leaves this region untouched during normal startup. */
 static __noinit struct retained_log retained;
-static char log_snapshot[LOG_RAM_SIZE + 1];
+/* Bytes pushed out of the buffer since boot. Protected by log_lock. */
+static uint64_t dropped;
 static struct k_spinlock log_lock;
 static uint8_t format_buffer[128];
 
@@ -33,6 +34,7 @@ static int store_output(uint8_t *data, size_t length, void *ctx)
 		if (retained.length == LOG_RAM_SIZE) {
 			retained.start = (retained.start + 1) % LOG_RAM_SIZE;
 			retained.length--;
+			dropped++;
 		}
 		retained.buffer[(retained.start + retained.length) % LOG_RAM_SIZE] = data[i];
 		retained.length++;
@@ -82,25 +84,44 @@ static const struct log_backend_api ram_backend_api = {
 
 LOG_BACKEND_DEFINE(ram_backend, ram_backend_api, true);
 
+/* Prints the log in pieces so that no second copy of it is needed. `dropped`
+ * numbers the bytes from boot, which keeps the position valid when new
+ * messages push old ones out while printing. */
 static int cmd_dmesg(const struct shell *sh, size_t argc, char **argv)
 {
-	k_spinlock_key_t key;
-	size_t length;
+	char piece[97];
+	uint64_t position = 0;
+	bool first = true, any = false;
 
 	ARG_UNUSED(argc);
 	ARG_UNUSED(argv);
-	key = k_spin_lock(&log_lock);
-	length = retained.length;
-	for (size_t i = 0; i < length; i++) {
-		log_snapshot[i] = retained.buffer[(retained.start + i) % LOG_RAM_SIZE];
-	}
-	k_spin_unlock(&log_lock, key);
-	log_snapshot[length] = '\0';
+	/* Bounded in case logging keeps up with printing. */
+	for (size_t printed = 0; printed < 2U * LOG_RAM_SIZE;) {
+		k_spinlock_key_t key = k_spin_lock(&log_lock);
+		size_t available, n;
 
-	if (length == 0) {
+		if (first || position < dropped) {
+			position = dropped; /* start, or skip what was overwritten */
+			first = false;
+		}
+		available = (size_t)(dropped + retained.length - position);
+		n = MIN(available, sizeof(piece) - 1);
+		for (size_t k = 0; k < n; k++) {
+			piece[k] = retained.buffer[(retained.start + (size_t)(position - dropped) + k) %
+						   LOG_RAM_SIZE];
+		}
+		k_spin_unlock(&log_lock, key);
+		if (!n) {
+			break;
+		}
+		piece[n] = '\0';
+		shell_fprintf(sh, SHELL_NORMAL, "%s", piece);
+		position += n;
+		printed += n;
+		any = true;
+	}
+	if (!any) {
 		shell_print(sh, "No logs.");
-	} else {
-		shell_fprintf(sh, SHELL_NORMAL, "%s", log_snapshot);
 	}
 	return 0;
 }
