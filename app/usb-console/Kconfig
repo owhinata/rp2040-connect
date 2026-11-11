@@ -120,12 +120,24 @@ config NINA_TEST_SEND_STATE_INTERVAL_MS
 	depends on NINA_SEND_PROFILE
 
 config NINA_NTP_SERVER
-	string "NTP server hostname"
-	default "time.cloudflare.com"
-	depends on SNTP
+	string "NTP server hostname or IPv4 address"
+	default ""
+	depends on WIFI_NINA_LOCAL
+	help
+	  Empty uses the default gateway, normally the PC that provides the
+	  Wi-Fi network and runs an NTP server for the board.
 
 config NINA_NTP_PORT
 	int "NTP server UDP port"
 	default 123
 	range 1 65535
-	depends on SNTP
+	depends on WIFI_NINA_LOCAL
+
+config NINA_NTP_INTERVAL_MS
+	int "Interval between NTP queries in milliseconds"
+	default 2000
+	range 250 3600000
+	depends on WIFI_NINA_LOCAL
+	help
+	  Queries go to a server on the local network. Do not point short
+	  intervals at public servers.
