@@ -13,6 +13,9 @@
 #define IMU_RAW_MQTT_DEVICE_ID_MAX 40
 
 struct imu_raw_mqtt_config {
+	/* 0.0.0.0 means the default gateway, looked up again for every
+	 * connection attempt: the session then follows the network the board
+	 * is on, and can be started before Wi-Fi is connected. */
 	struct in_addr address;
 	uint16_t port;
 	/* Letters, digits, '-' and '_'; used in topics and the client ID. */
@@ -22,6 +25,9 @@ struct imu_raw_mqtt_config {
 
 struct imu_raw_mqtt_stats {
 	bool running, connected;
+	bool via_gateway;       /* no fixed address configured */
+	struct in_addr address; /* of the latest connection attempt; 0 if none */
+	uint16_t port;
 	size_t queued, queue_high;
 	uint32_t published; /* accepted by the socket, not confirmed delivered */
 	uint32_t failures, connects, status_published, info_published;

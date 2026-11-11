@@ -31,7 +31,8 @@
 #include "../drivers/lsm6dso/lsm6dso_fifo_stats.h"
 
 /* Settings read from the key-value store by "imu start"; all are optional. */
-#define KEY_HOST      "imu.host"      /* IPv4 text; default: the default gateway */
+#define KEY_HOST      "imu.host"      /* IPv4 text; default: the default gateway,
+				       * looked up at every connection attempt */
 #define KEY_PORT      "imu.port"      /* decimal text; default DEFAULT_PORT */
 #define KEY_DEVICE    "imu.device"    /* topic name part; default DEFAULT_DEVICE */
 #define KEY_ODR       "imu.odr"       /* Hz for both sensors; default DEFAULT_ODR_HZ */
@@ -615,7 +616,7 @@ static int cmd_start(const struct shell *sh, size_t argc, char **argv)
 	struct imu_raw_mqtt_config *cfg = &transport_config;
 	struct sensor_value odr = {.val1 = DEFAULT_ODR_HZ};
 	unsigned long number, watermark = DEFAULT_WATERMARK;
-	char text[IMU_RAW_MQTT_DEVICE_ID_MAX + 1], address[INET_ADDRSTRLEN];
+	char text[IMU_RAW_MQTT_DEVICE_ID_MAX + 1], address[32];
 	struct lsm6dso_fifo_stats fifo;
 	int rc;
 
@@ -643,17 +644,6 @@ static int cmd_start(const struct shell *sh, size_t argc, char **argv)
 		if (zsock_inet_pton(AF_INET, text, &cfg->address) != 1) {
 			shell_error(sh, KEY_HOST " is not an IPv4 address");
 			rc = -EINVAL;
-			goto failed;
-		}
-	} else {
-		struct net_if *iface = net_if_get_default();
-
-		if (iface) {
-			cfg->address = net_if_ipv4_get_gw(iface);
-		}
-		if (!cfg->address.s_addr) {
-			shell_error(sh, "No default gateway yet; connect Wi-Fi or set " KEY_HOST);
-			rc = -ENETUNREACH;
 			goto failed;
 		}
 	}
@@ -690,9 +680,13 @@ static int cmd_start(const struct shell *sh, size_t argc, char **argv)
 	}
 	atomic_clear(&stop_requested);
 	k_sem_reset(&stop_signal);
-	(void)zsock_inet_ntop(AF_INET, &cfg->address, address, sizeof(address));
-	shell_print(sh, "Streaming %d Hz to %s:%u as imu/%s/raw", odr.val1, address, cfg->port,
-		    cfg->device_id);
+	if (cfg->address.s_addr) {
+		(void)zsock_inet_ntop(AF_INET, &cfg->address, address, sizeof(address));
+	} else {
+		strcpy(address, "the default gateway");
+	}
+	shell_print(sh, "Streaming %d Hz to %s, port %u, as imu/%s/raw", odr.val1, address,
+		    cfg->port, cfg->device_id);
 	k_sem_give(&start_request);
 	return 0;
 failed:
@@ -713,11 +707,14 @@ static int cmd_stop(const struct shell *sh, size_t argc, char **argv)
 	return 0;
 }
 
+/* One item per line, grouped, so that a value that is not zero stands out. */
+#define ITEM(sh, name, format, ...) shell_print(sh, "  %-23s " format, name ":", __VA_ARGS__)
+
 static int cmd_status(const struct shell *sh, size_t argc, char **argv)
 {
 	static struct imu_stream_status s;
 	struct imu_raw_mqtt_stats m;
-	char session[33];
+	char text[33];
 	int cpu;
 
 	ARG_UNUSED(argc);
@@ -727,51 +724,75 @@ static int cmd_status(const struct shell *sh, size_t argc, char **argv)
 	k_mutex_unlock(&snapshot_lock);
 	imu_raw_mqtt_get_stats(&m);
 	if (!s.started) {
-		shell_print(sh, "state=%s", atomic_get(&stream_running) ? "starting" : "idle");
+		shell_print(sh, "state: %s", atomic_get(&stream_running) ? "starting" : "idle");
 		return 0;
 	}
 	for (size_t i = 0; i < 16; i++) {
-		snprintk(session + i * 2, 3, "%02x", s.session_id[i]);
+		snprintk(text + i * 2, 3, "%02x", s.session_id[i]);
 	}
-	shell_print(sh, "state=%s session=%s epoch=%" PRIu32 " elapsed_ms=%" PRId64,
-		    s.running ? "running" : "stopped", session, s.epoch,
-		    (s.end_us - s.start_us) / 1000);
-	shell_print(sh, "accel=%" PRIu64 " gyro=%" PRIu64 " batches=%" PRIu64 " packets=%" PRIu64
-		    " timestamp_words=%" PRIu64, s.accel, s.gyro, s.batches, s.packets,
-		    s.timestamp_words);
-	shell_print(sh, "error=%d batch_error=%d stop_error=%d cleanup_timeout=%d", s.error,
-		    s.batch_error, s.stop_error, s.cleanup_timeout);
-	shell_print(sh, "fifo_overruns=%" PRIu32 " i2c_errors=%" PRIu32 " buffer_too_small=%" PRIu32
-		    " fifo_fault=%d recoveries=%" PRIu32 " last_recovery_error=%d discontinuities=%"
-		    PRIu32, s.fifo.overrun_observations, s.fifo.i2c_errors, s.fifo.buffer_too_small,
-		    s.fifo.fault, s.recoveries, s.last_recovery_error, s.discontinuities);
-	shell_print(sh, "dropped_completions=%" PRIu32 " bufferless_completions=%" PRIu32
-		    " invalid_packets=%" PRIu32 " max_transfer_us=%" PRIu64,
-		    s.dropped_completions, s.bufferless_completions, s.invalid_packets,
-		    s.fifo.max_transfer_time_ns / 1000);
-	shell_print(sh, "time anchors=%" PRIu64 " irregular_periods=%" PRIu64
-		    " counter_mismatches=%" PRIu64 " counter_skips=%" PRIu64,
-		    s.time.anchors, s.time.irregular_periods, s.time.counter_mismatches,
-		    s.time.counter_skips);
-	shell_print(sh, "time point_failures=%" PRIu32 " point_window_us=%" PRIu32
-		    " unix_unavailable=%" PRIu32 " monotonic_holds=%" PRIu32
-		    " us_per_1e6_ticks=%" PRId64 " synchronized=%d",
-		    s.time_point_failures, s.time_point_window_us, s.unix_unavailable,
-		    s.monotonic_holds, s.us_per_million_ticks, time_sync_is_ready());
-	shell_print(sh, "mqtt connected=%d queued=%zu queue_high=%zu published=%" PRIu32
-		    " failures=%" PRIu32 " connects=%" PRIu32, m.connected, m.queued, m.queue_high,
-		    m.published, m.failures, m.connects);
-	shell_print(sh, "mqtt dropped_batches=%" PRIu64 " accel=%" PRIu64 " gyro=%" PRIu64
-		    " lock_wait_max_us=%" PRIu64 " publish_max_us=%" PRIu64,
-		    m.dropped_batches, m.dropped_accel, m.dropped_gyro, m.lock_wait_max_us,
-		    m.publish_max_us);
+	shell_print(sh, "state: %s", s.running ? "running" : "stopped");
+	ITEM(sh, "session", "%s", text);
+	ITEM(sh, "epoch", "%" PRIu32, s.epoch);
+	ITEM(sh, "elapsed_ms", "%" PRId64, (s.end_us - s.start_us) / 1000);
 	/* Share of time not idle, interrupts included, since the start. */
 	cpu = s.running ? cpu_load_get(false) : s.cpu_permille;
 	if (cpu >= 0) {
-		shell_print(sh, "cpu_active=%d.%d%%", cpu / 10, cpu % 10);
+		ITEM(sh, "cpu_active", "%d.%d%%", cpu / 10, cpu % 10);
 	} else {
-		shell_print(sh, "cpu_active=unavailable");
+		ITEM(sh, "cpu_active", "%s", "unavailable");
 	}
+	shell_print(sh, "acquired:");
+	ITEM(sh, "accel", "%" PRIu64, s.accel);
+	ITEM(sh, "gyro", "%" PRIu64, s.gyro);
+	ITEM(sh, "batches", "%" PRIu64, s.batches);
+	ITEM(sh, "fifo_packets", "%" PRIu64, s.packets);
+	ITEM(sh, "timestamp_words", "%" PRIu64, s.timestamp_words);
+	shell_print(sh, "errors:");
+	ITEM(sh, "stream", "%d", s.error);
+	ITEM(sh, "batch", "%d", s.batch_error);
+	ITEM(sh, "stop", "%d", s.stop_error);
+	ITEM(sh, "stop_timeout", "%d", s.cleanup_timeout);
+	shell_print(sh, "fifo:");
+	ITEM(sh, "overruns", "%" PRIu32, s.fifo.overrun_observations);
+	ITEM(sh, "i2c_errors", "%" PRIu32, s.fifo.i2c_errors);
+	ITEM(sh, "buffer_too_small", "%" PRIu32, s.fifo.buffer_too_small);
+	ITEM(sh, "fault", "%d", s.fifo.fault);
+	ITEM(sh, "recoveries", "%" PRIu32, s.recoveries);
+	ITEM(sh, "last_recovery_error", "%d", s.last_recovery_error);
+	ITEM(sh, "discontinuities", "%" PRIu32, s.discontinuities);
+	ITEM(sh, "dropped_completions", "%" PRIu32, s.dropped_completions);
+	ITEM(sh, "bufferless_completions", "%" PRIu32, s.bufferless_completions);
+	ITEM(sh, "invalid_packets", "%" PRIu32, s.invalid_packets);
+	ITEM(sh, "max_transfer_us", "%" PRIu64, s.fifo.max_transfer_time_ns / 1000);
+	shell_print(sh, "time:");
+	ITEM(sh, "synchronized", "%d", time_sync_is_ready());
+	ITEM(sh, "unix_unavailable", "%" PRIu32, s.unix_unavailable);
+	ITEM(sh, "timestamp_anchors", "%" PRIu64, s.time.anchors);
+	ITEM(sh, "irregular_periods", "%" PRIu64, s.time.irregular_periods);
+	ITEM(sh, "counter_mismatches", "%" PRIu64, s.time.counter_mismatches);
+	ITEM(sh, "counter_skips", "%" PRIu64, s.time.counter_skips);
+	ITEM(sh, "tick_read_failures", "%" PRIu32, s.time_point_failures);
+	ITEM(sh, "tick_read_us", "%" PRIu32, s.time_point_window_us);
+	ITEM(sh, "monotonic_holds", "%" PRIu32, s.monotonic_holds);
+	ITEM(sh, "us_per_1e6_ticks", "%" PRId64, s.us_per_million_ticks);
+	shell_print(sh, "mqtt:");
+	if (m.address.s_addr) {
+		(void)zsock_inet_ntop(AF_INET, &m.address, text, sizeof(text));
+	} else {
+		strcpy(text, "none");
+	}
+	ITEM(sh, "server", "%s:%u%s", text, m.port, m.via_gateway ? " (default gateway)" : "");
+	ITEM(sh, "connected", "%d", m.connected);
+	ITEM(sh, "connects", "%" PRIu32, m.connects);
+	ITEM(sh, "failures", "%" PRIu32, m.failures);
+	ITEM(sh, "published", "%" PRIu32, m.published);
+	ITEM(sh, "dropped_batches", "%" PRIu64, m.dropped_batches);
+	ITEM(sh, "dropped_accel", "%" PRIu64, m.dropped_accel);
+	ITEM(sh, "dropped_gyro", "%" PRIu64, m.dropped_gyro);
+	ITEM(sh, "queued", "%zu", m.queued);
+	ITEM(sh, "queue_high", "%zu", m.queue_high);
+	ITEM(sh, "lock_wait_max_us", "%" PRIu64, m.lock_wait_max_us);
+	ITEM(sh, "publish_max_us", "%" PRIu64, m.publish_max_us);
 	return 0;
 }
 

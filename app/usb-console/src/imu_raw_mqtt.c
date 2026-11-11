@@ -6,6 +6,7 @@
 #include <string.h>
 #include <zephyr/kernel.h>
 #include <zephyr/net/mqtt.h>
+#include <zephyr/net/net_if.h>
 #include <zephyr/net/socket.h>
 #include <zephyr/sys/atomic.h>
 
@@ -21,6 +22,7 @@ static struct imu_raw_queue queue;
 static struct imu_raw_queue_item outgoing;
 static struct mqtt_client client;
 static struct sockaddr_in broker;
+static struct in_addr configured_address; /* 0.0.0.0: use the default gateway */
 static uint8_t rx_buf[512], tx_buf[512], session[16];
 static char topic[80], status_topic[80], info_topic[80], client_id[64];
 static char device_id[IMU_RAW_MQTT_DEVICE_ID_MAX + 1];
@@ -181,6 +183,19 @@ static int open_connection(void)
 	struct zsock_pollfd fd;
 	int rc;
 
+	if (configured_address.s_addr) {
+		broker.sin_addr = configured_address;
+	} else {
+		struct net_if *iface = net_if_get_default();
+
+		broker.sin_addr.s_addr = 0;
+		if (iface) {
+			broker.sin_addr = net_if_ipv4_get_gw(iface);
+		}
+		if (!broker.sin_addr.s_addr) {
+			return -ENETUNREACH; /* not on a network yet */
+		}
+	}
 	mqtt_client_init(&client);
 	client.broker = (struct sockaddr *)&broker;
 	client.evt_cb = mqtt_event;
@@ -354,6 +369,7 @@ int imu_raw_mqtt_start(const struct imu_raw_mqtt_config *config)
 	broker.sin_family = AF_INET;
 	broker.sin_port = htons(config->port);
 	broker.sin_addr = config->address;
+	configured_address = config->address;
 	memcpy(session, config->session_id, sizeof(session));
 	strcpy(device_id, config->device_id);
 	snprintk(topic, sizeof(topic), "imu/%s/raw", device_id);
@@ -414,6 +430,9 @@ void imu_raw_mqtt_get_stats(struct imu_raw_mqtt_stats *stats)
 	memset(stats, 0, sizeof(*stats));
 	stats->running = atomic_get(&running);
 	stats->connected = atomic_get(&connected);
+	stats->via_gateway = !configured_address.s_addr;
+	stats->address = broker.sin_addr;
+	stats->port = ntohs(broker.sin_port);
 	stats->published = (uint32_t)atomic_get(&published);
 	stats->failures = (uint32_t)atomic_get(&failures);
 	stats->connects = (uint32_t)atomic_get(&connects);
