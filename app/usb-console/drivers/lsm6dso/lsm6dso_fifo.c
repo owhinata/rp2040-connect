@@ -71,6 +71,7 @@ int lsm6dso_fifo_next_entry(const uint8_t *bytes, size_t length, size_t *cursor,
 	}
 	word = bytes + *cursor;
 	entry->tag = word[0] >> 3;
+	entry->counter = (word[0] >> 1) & 3U;
 	memcpy(entry->payload, word + 1, sizeof(entry->payload));
 	if (lsm6dso_fifo_decode_word(word, &entry->sample) == 0) {
 		entry->type = LSM6DSO_FIFO_ENTRY_SAMPLE;

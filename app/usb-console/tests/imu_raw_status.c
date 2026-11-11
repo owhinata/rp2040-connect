@@ -39,18 +39,21 @@ int main(void)
 	struct imu_raw_info info = {
 		.session_id = {0x10}, .epoch_id = 1, .accel_odr_hz = 6667, .gyro_odr_hz = 6667,
 		.accel_ug_per_lsb = 61, .gyro_udps_per_lsb = 70000, .fifo_watermark = 128,
-		.timestamp_decimation = 8,
+		.timestamp_decimation = 8, .freq_fine = -3,
 	};
 	const char *expected_info =
 		"{\"v\":1,\"session\":\"10000000000000000000000000000000\",\"epoch\":1,"
 		"\"device\":\"rp2040\",\"sensor\":\"LSM6DSO\",\"payload\":\"IMU1\",\"raw\":\"int16le\","
 		"\"axes\":\"xyz\",\"accel_odr_hz\":6667,\"gyro_odr_hz\":6667,\"accel_ug_per_lsb\":61,"
 		"\"gyro_udps_per_lsb\":70000,\"fifo_watermark\":128,\"timestamp_decimation\":8,"
-		"\"time\":\"unavailable\"}";
+		"\"time\":\"sensor_tick\",\"tick_hz_nominal\":40000,\"freq_fine\":-3}";
 
 	n = imu_raw_info_encode(out, sizeof(out), &info, "rp2040");
 	assert(n == (int)strlen(expected_info) && !strcmp(out, expected_info));
 	assert(imu_raw_info_encode(out, 16, &info, "rp2040") == -ENOSPC);
+	info.timestamp_decimation = 0;
+	assert(imu_raw_info_encode(out, sizeof(out), &info, "rp2040") > 0 &&
+	       strstr(out, "\"timestamp_decimation\":0,\"time\":\"unavailable\"}"));
 	/* A device ID that would need JSON escaping is rejected, not emitted. */
 	assert(imu_raw_info_encode(out, sizeof(out), &info, "a\"b") == -EINVAL);
 	return 0;

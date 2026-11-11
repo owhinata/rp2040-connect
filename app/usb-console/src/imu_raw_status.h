@@ -6,8 +6,8 @@
 #include <stdint.h>
 
 /* Experimental JSON for imu/<device_id>/status and imu/<device_id>/info
- * (design/imu-raw-mqtt-design-ja.md §5). Time conversion is not implemented;
- * both messages say so explicitly instead of omitting it. */
+ * (design/imu-raw-mqtt-design-ja.md §5). Batch ticks are in the sensor's own
+ * clock; conversion to host time is not implemented and status says so. */
 enum imu_raw_state {
 	IMU_RAW_STATE_IDLE,      /* session configured, no measurement yet */
 	IMU_RAW_STATE_MEASURING,
@@ -36,6 +36,9 @@ struct imu_raw_info {
 	uint32_t accel_ug_per_lsb, gyro_udps_per_lsb;
 	uint16_t fifo_watermark;
 	uint8_t timestamp_decimation;
+	/* Sensor clock: one tick is 1 / (40000 * (1 + 0.0015 * freq_fine)) s per
+	 * the LSM6DSO datasheet. Not related to host time. */
+	int8_t freq_fine;
 };
 
 /* Both return the JSON length (without a terminator being counted) or

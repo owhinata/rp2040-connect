@@ -34,6 +34,7 @@ int main(void)
 	cursor = 0;
 	assert(lsm6dso_fifo_next_entry(words, sizeof(words), &cursor, &entry) == 1);
 	assert(entry.type == LSM6DSO_FIFO_ENTRY_SAMPLE && entry.sample.xyz[0] == -32768);
+	assert(entry.counter == 3);
 	assert(lsm6dso_fifo_next_entry(words, sizeof(words), &cursor, &entry) == 1);
 	assert(entry.type == LSM6DSO_FIFO_ENTRY_OTHER && entry.tag == 3);
 	assert(lsm6dso_fifo_next_entry(words, sizeof(words), &cursor, &entry) == 1);
@@ -42,7 +43,8 @@ int main(void)
 	const uint8_t timestamp[] = {0x20, 1, 2, 3, 4, 5, 6};
 	cursor = 0;
 	assert(lsm6dso_fifo_next_entry(timestamp, sizeof(timestamp), &cursor, &entry) == 1);
-	assert(entry.type == LSM6DSO_FIFO_ENTRY_TIMESTAMP && entry.payload[3] == 4);
+	assert(entry.type == LSM6DSO_FIFO_ENTRY_TIMESTAMP && entry.payload[3] == 4 &&
+	       entry.counter == 0);
 	assert(lsm6dso_fifo_next_entry(timestamp, 6, &cursor, &entry) == -EINVAL);
 	return 0;
 }

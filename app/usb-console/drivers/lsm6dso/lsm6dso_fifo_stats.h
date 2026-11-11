@@ -34,6 +34,8 @@ struct lsm6dso_fifo_stats {
 	/* Sensitivity in effect when the FIFO was started. */
 	uint32_t accel_ug_per_lsb;
 	uint32_t gyro_udps_per_lsb;
+	/* INTERNAL_FREQ_FINE read when the FIFO was started; 0 if unreadable. */
+	int8_t freq_fine;
 	bool active;
 	bool fault;
 };

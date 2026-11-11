@@ -93,5 +93,54 @@ int main(void)
 	b.meta.epoch_id = UINT32_MAX;
 	assert(imu_raw_batch_new_epoch(&b) == -EOVERFLOW && b.count == 1);
 	assert(imu_raw_batch_new_epoch(NULL) == -EINVAL);
+
+	/* Sensor ticks: the first sample of each kind carries its slot's tick. */
+	static uint8_t timed[3 * 17 * 7];
+	size_t n = 0;
+
+	for (unsigned int slot = 0; slot < 24; slot++) {
+		uint8_t counter = (uint8_t)((slot & 3U) << 1);
+
+		if (slot % 8 == 0) {
+			uint32_t raw = 5000 + slot * 6;
+
+			timed[n] = 0x20 | counter;
+			timed[n + 1] = (uint8_t)raw;
+			timed[n + 2] = (uint8_t)(raw >> 8);
+			n += 7;
+		}
+		timed[n] = 0x08 | counter;
+		n += 7;
+		timed[n] = 0x10 | counter;
+		n += 7;
+	}
+	assert(n == sizeof(timed));
+	assert(imu_raw_batch_init(&b, session, 0, sink, NULL) == 0);
+	cursor = 0;
+	/* Timestamp, one full slot and the gyro of the next slot. */
+	assert(imu_raw_batch_consume(&b, timed, 4 * 7, &cursor) == 0);
+	assert(imu_raw_batch_flush(&b) == 0);
+	assert(received[5] == 3 && le64(received + 48) == 5000 && le64(received + 56) == 5000);
+	/* The period is not known yet: slot 1 has no tick, so the accel of this
+	 * batch is untimed. Its gyro is absent from the batch start (slot 1's gyro
+	 * was sent above), so the first gyro here is slot 2's. */
+	assert(imu_raw_batch_consume(&b, timed, 6 * 7, &cursor) == 0);
+	assert(imu_raw_batch_flush(&b) == 0);
+	assert(received[5] == 0 && le64(received + 48) == 0 && le64(received + 56) == 0 &&
+	       le64(received + 32) == 1 && le64(received + 40) == 2);
+	/* After the second timestamp (slot 8) later slots are extrapolated. */
+	assert(imu_raw_batch_consume(&b, timed, (17 + 1 + 2 * 2 + 1) * 7, &cursor) == 0);
+	assert(imu_raw_batch_flush(&b) == 0);
+	assert(imu_raw_batch_consume(&b, timed, (17 + 1 + 2 * 4) * 7, &cursor) == 0);
+	assert(imu_raw_batch_flush(&b) == 0);
+	/* Batch: accel of slot 10 (index 10), gyro of slot 11 (index 11). */
+	assert(received[5] == 3 && le64(received + 32) == 10 && le64(received + 40) == 11 &&
+	       le64(received + 48) == 5000 + 10 * 6 && le64(received + 56) == 5000 + 11 * 6);
+	/* A new epoch forgets the slot position: no tick until the next timestamp. */
+	assert(imu_raw_batch_new_epoch(&b) == 0);
+	assert(imu_raw_batch_consume(&b, timed, (17 + 1 + 2 * 5) * 7, &cursor) == 0);
+	assert(imu_raw_batch_flush(&b) == 0 && received[5] == 0 && received[68] == 1);
+	assert(imu_raw_batch_consume(&b, timed, sizeof(timed), &cursor) == 0);
+	assert(imu_raw_batch_flush(&b) == 0 && b.time.anchors == 3);
 	return 0;
 }

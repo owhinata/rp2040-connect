@@ -77,6 +77,7 @@ struct imu_measure_result {
 	uint64_t raw_dropped_batches, raw_dropped_accel, raw_dropped_gyro;
 	int raw_error;
 	uint32_t raw_discontinuities, raw_epoch;
+	struct imu_raw_time raw_time;
 #endif
 	uint32_t recoveries;
 	int last_recovery_error, stream_rc;
@@ -186,6 +187,7 @@ static bool raw_report(const struct device *dev, int raw_error, int error,
 			.gyro_udps_per_lsb = fifo.gyro_udps_per_lsb,
 			.fifo_watermark = lsm6dso_fifo_get_watermark(dev),
 			.timestamp_decimation = (uint8_t)lsm6dso_fifo_get_timestamp_decimation(dev),
+			.freq_fine = fifo.freq_fine,
 		};
 
 		memcpy(info.session_id, measurement_session, sizeof(info.session_id));
@@ -345,6 +347,15 @@ static void print_result(const struct shell *shell, const struct imu_measure_res
 		    " recoveries=%" PRIu32 " last_recovery_error=%d",
 		    result->raw_epoch, result->raw_discontinuities, result->recoveries,
 		    result->last_recovery_error);
+	shell_print(shell, "raw_time anchors=%" PRIu64 " irregular_periods=%" PRIu64
+		    " counter_mismatches=%" PRIu64 " counter_skips=%" PRIu64,
+		    result->raw_time.anchors, result->raw_time.irregular_periods,
+		    result->raw_time.counter_mismatches, result->raw_time.counter_skips);
+	shell_print(shell, "raw_time slot_ticks=%" PRIu32 " anchor_ticks=%" PRIu32 "..%" PRIu32
+		    " anchor_slots=%" PRIu32 "..%" PRIu32 " last_tick=%" PRIu64,
+		    result->raw_time.slot_ticks, result->raw_time.min_anchor_ticks,
+		    result->raw_time.max_anchor_ticks, result->raw_time.min_anchor_slots,
+		    result->raw_time.max_anchor_slots, result->raw_time.anchor_tick);
 #endif
 #if defined(CONFIG_NINA_SEND_PROFILE)
 	if (result->counts.other_words) {
@@ -698,6 +709,7 @@ static void measure_thread(void *arg1, void *arg2, void *arg3)
 		result.raw_dropped_accel = raw_batch.dropped_accel;
 		result.raw_dropped_gyro = raw_batch.dropped_gyro;
 		result.raw_epoch = raw_batch.meta.epoch_id;
+		result.raw_time = raw_batch.time;
 #endif
 #if defined(CONFIG_IMU_RAW_MQTT_EXPERIMENTAL)
 		(void)raw_report(dev, result.raw_error, result.error, expected_generation,

@@ -3,6 +3,7 @@
 #define IMU_RAW_BATCH_H_
 
 #include "imu_raw_packet.h"
+#include "imu_raw_time.h"
 
 /* Runs in the FIFO consumer. The sink must not wait or retain payload; it
  * returns 0 after copying or -EAGAIN if it cannot accept the batch. */
@@ -15,6 +16,7 @@ struct imu_raw_batch {
 	uint64_t next_accel, next_gyro, next_batch;
 	uint64_t delivered_batches, dropped_batches, dropped_accel, dropped_gyro;
 	uint64_t timestamp_words;
+	struct imu_raw_time time;
 	size_t count;
 	imu_raw_batch_sink sink;
 	void *sink_context;
@@ -24,7 +26,9 @@ struct imu_raw_batch {
 int imu_raw_batch_init(struct imu_raw_batch *batch, const uint8_t session_id[16],
 		       uint32_t epoch_id, imu_raw_batch_sink sink, void *context);
 /* cursor is a byte offset into a FIFO word array. Each valid sample is
- * numbered before the sink is called. Timestamps are counted, not mapped.
+ * numbered before the sink is called. The first accelerometer and gyroscope
+ * sample of a batch carry their sensor tick when imu_raw_time can assign one;
+ * otherwise the time-valid flag stays clear.
  * Unsupported tags return -EPROTO without consuming the offending word.
  */
 int imu_raw_batch_consume(struct imu_raw_batch *batch, const uint8_t *words,

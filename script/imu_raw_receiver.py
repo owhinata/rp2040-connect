@@ -32,10 +32,15 @@ class Stats:
             packets=0, accel=0, gyro=0, bytes=0, first_seq=None, last_seq=None,
             missing_batches=0, missing_accel=0, missing_gyro=0, reordered=0,
             index_regressions=0, invalid=0, connects=0, disconnects=0,
-            max_gap_ms=0.0, max_gap_before_seq=None, protocol_error=None)
+            max_gap_ms=0.0, max_gap_before_seq=None, protocol_error=None,
+            time_valid=0, time_invalid=0, tick_regressions=0)
         self.gaps = []
         self.epoch_changes = []
         self.last_epoch = None
+        # センサー時刻: 直前バッチの (種類, 先頭番号, 先頭 tick) と 1 サンプルあたりの tick 数
+        self.tick_prev = {}
+        self.ticks_per_sample = {}
+        self.tick_first = self.tick_last = None
         self.sessions, self.topics, self.flags, self.epochs = set(), set(), set(), set()
         self.other = {}
         self.next_accel = self.next_gyro = 0
@@ -110,6 +115,32 @@ class Stats:
         r['bytes'] += len(p)
         self.flags.add(p[5])
         epoch = struct.unpack_from('<I', p, 68)[0]
+        ticks = struct.unpack_from('<QQ', p, 48)
+        for kind, bit, present, index, tick in (('accel', 1, accel, ia, ticks[0]),
+                                                ('gyro', 2, gyro, ig, ticks[1])):
+            if not present:
+                continue
+            if not p[5] & bit:
+                r['time_invalid'] += 1
+                if tick:
+                    r['invalid'] += 1
+                continue
+            r['time_valid'] += 1
+            prev = self.tick_prev.get(kind)
+            if prev and prev[0] == epoch and index > prev[1]:
+                if tick <= prev[2]:
+                    r['tick_regressions'] += 1
+                else:
+                    # 整数にならない比は分数のまま残し、まとめて表示する。
+                    ratio = (tick - prev[2]) / (index - prev[1])
+                    name = '%s:%g' % (kind, ratio)
+                    if name in self.ticks_per_sample or len(self.ticks_per_sample) < 20:
+                        self.ticks_per_sample[name] = self.ticks_per_sample.get(name, 0) + 1
+            self.tick_prev[kind] = (epoch, index, tick)
+            if self.tick_first is None:
+                self.tick_first = (tick, now)
+            if gap_ms < 200:  # 停止時などに遅れて届いたバッチは到着時刻の基準にしない
+                self.tick_last = (tick, now)
         if self.last_epoch is not None and epoch != self.last_epoch and \
            len(self.epoch_changes) < MAX_GAP_RECORDS:
             # 番号が連続していても、epoch の境界では個数不明の欠落がある。
@@ -119,6 +150,11 @@ class Stats:
 
     def summary(self):
         out = dict(self.r)
+        if self.tick_first and self.tick_last[1] > self.tick_first[1]:
+            # 到着時刻との粗い比較。受信の遅延やばらつきを含むため精度の検証にはならない。
+            out['ticks_per_second_by_arrival'] = round(
+                (self.tick_last[0] - self.tick_first[0]) / (self.tick_last[1] - self.tick_first[1]), 1)
+        out['ticks_per_sample'] = self.ticks_per_sample
         out.update(gaps=self.gaps, epoch_changes=self.epoch_changes, sessions=sorted(self.sessions), topics=sorted(self.topics),
                    flags=sorted(self.flags), epochs=sorted(self.epochs), other=self.other)
         return out

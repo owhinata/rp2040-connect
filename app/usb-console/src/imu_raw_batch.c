@@ -2,6 +2,7 @@
 #include "imu_raw_batch.h"
 
 #include <errno.h>
+#include <stdbool.h>
 #include <string.h>
 
 int imu_raw_batch_init(struct imu_raw_batch *batch, const uint8_t session_id[16],
@@ -17,6 +18,7 @@ int imu_raw_batch_init(struct imu_raw_batch *batch, const uint8_t session_id[16]
 	batch->meta.gyro_first_index = UINT64_MAX;
 	batch->sink = sink;
 	batch->sink_context = context;
+	imu_raw_time_init(&batch->time);
 	return 0;
 }
 
@@ -59,6 +61,9 @@ int imu_raw_batch_flush(struct imu_raw_batch *batch)
 	batch->count = 0;
 	batch->meta.accel_first_index = UINT64_MAX;
 	batch->meta.gyro_first_index = UINT64_MAX;
+	batch->meta.accel_first_tick = 0;
+	batch->meta.gyro_first_tick = 0;
+	batch->meta.flags = 0;
 	return 0;
 }
 
@@ -77,6 +82,7 @@ int imu_raw_batch_new_epoch(struct imu_raw_batch *batch)
 		return rc;
 	}
 	batch->meta.epoch_id++;
+	imu_raw_time_new_epoch(&batch->time);
 	return 0;
 }
 
@@ -84,6 +90,7 @@ int imu_raw_batch_consume(struct imu_raw_batch *batch, const uint8_t *words,
 			  size_t length, size_t *cursor)
 {
 	struct lsm6dso_fifo_entry entry;
+	uint64_t tick = 0;
 	size_t next;
 	int rc;
 
@@ -104,6 +111,7 @@ int imu_raw_batch_consume(struct imu_raw_batch *batch, const uint8_t *words,
 				return -EOVERFLOW;
 			}
 			batch->timestamp_words++;
+			imu_raw_time_timestamp(&batch->time, entry.payload, entry.counter);
 			*cursor = next;
 			continue;
 		}
@@ -113,20 +121,28 @@ int imu_raw_batch_consume(struct imu_raw_batch *batch, const uint8_t *words,
 				return rc;
 			}
 		}
+		if ((entry.sample.kind == LSM6DSO_FIFO_ACCEL ? batch->next_accel :
+		     batch->next_gyro) == UINT64_MAX) {
+			return -EOVERFLOW;
+		}
+		/* Every sample advances the slot tracking, not only the first. */
+		imu_raw_time_advance(&batch->time, entry.counter);
 		if (entry.sample.kind == LSM6DSO_FIFO_ACCEL) {
-			if (batch->next_accel == UINT64_MAX) {
-				return -EOVERFLOW;
-			}
 			if (batch->meta.accel_first_index == UINT64_MAX) {
 				batch->meta.accel_first_index = batch->next_accel;
+				if (imu_raw_time_get(&batch->time, &tick)) {
+					batch->meta.accel_first_tick = tick;
+					batch->meta.flags |= IMU_RAW_ACCEL_TIME_VALID;
+				}
 			}
 			batch->next_accel++;
 		} else {
-			if (batch->next_gyro == UINT64_MAX) {
-				return -EOVERFLOW;
-			}
 			if (batch->meta.gyro_first_index == UINT64_MAX) {
 				batch->meta.gyro_first_index = batch->next_gyro;
+				if (imu_raw_time_get(&batch->time, &tick)) {
+					batch->meta.gyro_first_tick = tick;
+					batch->meta.flags |= IMU_RAW_GYRO_TIME_VALID;
+				}
 			}
 			batch->next_gyro++;
 		}

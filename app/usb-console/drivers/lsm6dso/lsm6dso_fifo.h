@@ -28,6 +28,7 @@ enum lsm6dso_fifo_entry_type {
 struct lsm6dso_fifo_entry {
 	enum lsm6dso_fifo_entry_type type;
 	uint8_t tag;
+	uint8_t counter; /* 2-bit tag counter shared by the words of one sampling instant. */
 	uint8_t payload[6]; /* Original bytes, including timestamp payload. */
 	struct lsm6dso_fifo_sample sample; /* Valid only for SAMPLE. */
 };

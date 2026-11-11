@@ -156,6 +156,13 @@ int imu_raw_info_encode(char *out, size_t capacity, const struct imu_raw_info *i
 	field_u64(&w, "gyro_udps_per_lsb", info->gyro_udps_per_lsb);
 	field_u64(&w, "fifo_watermark", info->fifo_watermark);
 	field_u64(&w, "timestamp_decimation", info->timestamp_decimation);
-	field_str(&w, "time", "unavailable");
+	if (info->timestamp_decimation) {
+		field_str(&w, "time", "sensor_tick");
+		field_u64(&w, "tick_hz_nominal", 40000);
+		key(&w, "freq_fine");
+		put_int(&w, info->freq_fine);
+	} else {
+		field_str(&w, "time", "unavailable");
+	}
 	return finish(&w);
 }
