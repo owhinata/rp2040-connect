@@ -1,0 +1,57 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+#include <assert.h>
+#include <errno.h>
+#include <string.h>
+#include "imu_raw_status.h"
+
+int main(void)
+{
+	char out[512];
+	struct imu_raw_status s = {
+		.session_id = {0x01, 0xab, [15] = 0xff}, .state = IMU_RAW_STATE_MEASURING,
+		.epoch_id = 2, .uptime_ms = 1234, .accel_acquired = UINT64_MAX, .gyro_acquired = 5,
+		.next_batch = 6, .timestamp_words = 7, .fifo_overrun_observations = 8, .i2c_errors = 9,
+		.raw_error = -71, .measure_error = 0, .dropped_batches = 10, .dropped_accel = 11,
+		.dropped_gyro = 12, .published = 13, .connects = 14, .failures = 15,
+		.queue_high_watermark = 16,
+	};
+	const char *expected_status =
+		"{\"v\":1,\"session\":\"01ab00000000000000000000000000ff\",\"state\":\"measuring\","
+		"\"epoch\":2,\"uptime_ms\":1234,\"accel\":18446744073709551615,\"gyro\":5,"
+		"\"next_batch\":6,\"timestamp_words\":7,\"fifo_overruns\":8,\"i2c_errors\":9,"
+		"\"raw_error\":-71,\"error\":0,\"dropped_batches\":10,\"dropped_accel\":11,"
+		"\"dropped_gyro\":12,\"published\":13,\"connects\":14,\"failures\":15,"
+		"\"queue_high\":16,\"sync\":\"unsynchronized\"}";
+	int n = imu_raw_status_encode(out, sizeof(out), &s);
+
+	assert(n == (int)strlen(expected_status) && !strcmp(out, expected_status));
+	/* Exact fit needs room for the terminator; one byte less must fail. */
+	assert(imu_raw_status_encode(out, (size_t)n + 1, &s) == n);
+	assert(imu_raw_status_encode(out, (size_t)n, &s) == -ENOSPC);
+	s.state = IMU_RAW_STATE_IDLE;
+	assert(imu_raw_status_encode(out, sizeof(out), &s) > 0 && strstr(out, "\"state\":\"idle\""));
+	s.state = IMU_RAW_STATE_STOPPED;
+	assert(imu_raw_status_encode(out, sizeof(out), &s) > 0 && strstr(out, "\"state\":\"stopped\""));
+	s.state = (enum imu_raw_state)3;
+	assert(imu_raw_status_encode(out, sizeof(out), &s) == -EINVAL);
+	assert(imu_raw_status_encode(NULL, sizeof(out), &s) == -EINVAL);
+
+	struct imu_raw_info info = {
+		.session_id = {0x10}, .epoch_id = 1, .accel_odr_hz = 6667, .gyro_odr_hz = 6667,
+		.accel_ug_per_lsb = 61, .gyro_udps_per_lsb = 70000, .fifo_watermark = 128,
+		.timestamp_decimation = 8,
+	};
+	const char *expected_info =
+		"{\"v\":1,\"session\":\"10000000000000000000000000000000\",\"epoch\":1,"
+		"\"device\":\"rp2040\",\"sensor\":\"LSM6DSO\",\"payload\":\"IMU1\",\"raw\":\"int16le\","
+		"\"axes\":\"xyz\",\"accel_odr_hz\":6667,\"gyro_odr_hz\":6667,\"accel_ug_per_lsb\":61,"
+		"\"gyro_udps_per_lsb\":70000,\"fifo_watermark\":128,\"timestamp_decimation\":8,"
+		"\"time\":\"unavailable\"}";
+
+	n = imu_raw_info_encode(out, sizeof(out), &info, "rp2040");
+	assert(n == (int)strlen(expected_info) && !strcmp(out, expected_info));
+	assert(imu_raw_info_encode(out, 16, &info, "rp2040") == -ENOSPC);
+	/* A device ID that would need JSON escaping is rejected, not emitted. */
+	assert(imu_raw_info_encode(out, sizeof(out), &info, "a\"b") == -EINVAL);
+	return 0;
+}

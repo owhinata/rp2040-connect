@@ -13,6 +13,13 @@ config IMU_RAW_MQTT_EXPERIMENTAL
 	bool "Experimental RAW-only MQTT transport"
 	depends on IMU_RAW_BATCH_DIAGNOSTIC && MQTT_LIB && NETWORKING
 
+config IMU_FAULT_INJECTION
+	bool "Shell command that stalls IMU FIFO handling to force an overrun"
+	depends on IMU_RAW_MQTT_EXPERIMENTAL
+	help
+	  Test builds only. "imu_measure inject_stall <ms>" busy-waits in the
+	  measurement thread, which outranks the FIFO worker.
+
 config IMU_CPU_PROFILE
 	bool "Measure thread CPU time during IMU streaming"
 	depends on THREAD_RUNTIME_STATS && THREAD_MONITOR

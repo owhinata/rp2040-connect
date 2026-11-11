@@ -31,6 +31,9 @@ struct lsm6dso_fifo_stats {
 	int stop_error;
 	uint16_t accel_hz;
 	uint16_t gyro_hz;
+	/* Sensitivity in effect when the FIFO was started. */
+	uint32_t accel_ug_per_lsb;
+	uint32_t gyro_udps_per_lsb;
 	bool active;
 	bool fault;
 };

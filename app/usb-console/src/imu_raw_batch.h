@@ -31,4 +31,11 @@ int imu_raw_batch_consume(struct imu_raw_batch *batch, const uint8_t *words,
 			  size_t length, size_t *cursor);
 /* Flush the incomplete batch at a deadline, stop, or before an epoch change. */
 int imu_raw_batch_flush(struct imu_raw_batch *batch);
+/* Call after an unknown number of samples was lost (FIFO overrun, restart,
+ * unparsable word). Flushes what was collected and starts the next epoch.
+ * Batch and sample numbers keep counting so they stay unique in the session;
+ * consecutive numbers on both sides of an epoch change do not mean that the
+ * samples are contiguous. On a flush error the epoch is left unchanged.
+ */
+int imu_raw_batch_new_epoch(struct imu_raw_batch *batch);
 #endif

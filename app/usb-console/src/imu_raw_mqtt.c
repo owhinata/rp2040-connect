@@ -21,7 +21,16 @@ static struct imu_raw_queue_item outgoing;
 static struct mqtt_client client;
 static struct sockaddr_in broker;
 static uint8_t rx_buf[512], tx_buf[512], session[16];
-static char topic[80], client_id[64];
+static char topic[80], status_topic[80], info_topic[80], client_id[64], device_id[41];
+static char json[512];
+#define STATUS_INTERVAL_MS 1000
+/* Protected by report_lock. */
+static struct k_spinlock report_lock;
+static struct imu_raw_status reported_status;
+static struct imu_raw_info reported_info;
+static bool info_valid, info_pending, status_forced;
+static atomic_t connects, status_published, info_published;
+static uint16_t next_message_id;
 static atomic_t running, worker_active, acquisition_active, session_claimed, connected;
 static atomic_t published, failures, lock_drops;
 static struct k_spinlock publish_stats_lock;
@@ -85,6 +94,109 @@ int imu_raw_mqtt_submit(void *context, const uint8_t *payload, size_t length)
 	return rc;
 }
 
+void imu_raw_mqtt_set_info(const struct imu_raw_info *info)
+{
+	k_spinlock_key_t key = k_spin_lock(&report_lock);
+
+	reported_info = *info;
+	info_valid = true;
+	info_pending = true;
+	k_spin_unlock(&report_lock, key);
+}
+
+void imu_raw_mqtt_report(const struct imu_raw_status *status)
+{
+	k_spinlock_key_t key = k_spin_lock(&report_lock);
+
+	status_forced = status_forced || status->state != reported_status.state;
+	reported_status = *status;
+	k_spin_unlock(&report_lock, key);
+}
+
+static int publish_json(const char *json_topic, int length, enum mqtt_qos qos, bool retain)
+{
+	struct mqtt_publish_param p = {0};
+
+	if (length < 0) {
+		return length;
+	}
+	p.message.topic.topic.utf8 = (const uint8_t *)json_topic;
+	p.message.topic.topic.size = strlen(json_topic);
+	p.message.topic.qos = qos;
+	p.message.payload.data = (uint8_t *)json;
+	p.message.payload.len = length;
+	p.retain_flag = retain;
+	if (qos != MQTT_QOS_0_AT_MOST_ONCE) {
+		if (++next_message_id == 0) {
+			next_message_id = 1;
+		}
+		p.message_id = next_message_id;
+	}
+	return mqtt_publish(&client, &p);
+}
+
+/* QoS 1 only asks the broker to acknowledge; a lost info is not resent
+ * until the next (re)connection or change. */
+static int publish_info_if_pending(void)
+{
+	struct imu_raw_info info;
+	k_spinlock_key_t key = k_spin_lock(&report_lock);
+	bool pending = info_pending && info_valid;
+	int rc;
+
+	info = reported_info;
+	info_pending = false;
+	k_spin_unlock(&report_lock, key);
+	if (!pending) {
+		return 0;
+	}
+	rc = publish_json(info_topic, imu_raw_info_encode(json, sizeof(json), &info, device_id),
+			  MQTT_QOS_1_AT_LEAST_ONCE, true);
+	if (!rc) {
+		atomic_inc(&info_published);
+	}
+	return rc;
+}
+
+static int publish_status(void)
+{
+	struct imu_raw_status status;
+	k_spinlock_key_t key = k_spin_lock(&report_lock);
+	int rc;
+
+	status = reported_status;
+	status_forced = false;
+	k_spin_unlock(&report_lock, key);
+	if (status.state == IMU_RAW_STATE_IDLE) {
+		memcpy(status.session_id, session, sizeof(status.session_id));
+		status.uptime_ms = k_uptime_get();
+	}
+	k_mutex_lock(&raw_queue_lock, K_FOREVER);
+	status.dropped_batches = queue.dropped_batches;
+	status.dropped_accel = queue.dropped_accel;
+	status.dropped_gyro = queue.dropped_gyro;
+	status.queue_high_watermark = queue.high_watermark;
+	k_mutex_unlock(&raw_queue_lock);
+	status.published = (uint32_t)atomic_get(&published);
+	status.connects = (uint32_t)atomic_get(&connects);
+	status.failures = (uint32_t)atomic_get(&failures);
+	rc = publish_json(status_topic, imu_raw_status_encode(json, sizeof(json), &status),
+			  MQTT_QOS_0_AT_MOST_ONCE, false);
+	if (!rc) {
+		atomic_inc(&status_published);
+	}
+	return rc;
+}
+
+static bool status_is_forced(void)
+{
+	k_spinlock_key_t key = k_spin_lock(&report_lock);
+	bool forced = status_forced;
+
+	k_spin_unlock(&report_lock, key);
+	return forced;
+}
+
 static int open_connection(void)
 {
 	struct zsock_pollfd fd;
@@ -139,12 +251,25 @@ static void raw_mqtt_thread(void *a, void *b, void *c)
 				continue;
 			}
 			set_connected(true);
+			atomic_inc(&connects);
 			int64_t next_input_poll = 0;
+			int64_t next_status = 0;
+			k_spinlock_key_t report_key = k_spin_lock(&report_lock);
+
+			info_pending = info_valid;
+			k_spin_unlock(&report_lock, report_key);
 			while (atomic_get(&running) && atomic_get(&connected)) {
 				struct zsock_pollfd fd = {.fd = client.transport.tcp.sock,
 							 .events = ZSOCK_POLLIN};
 				int taken;
 
+				rc = publish_info_if_pending();
+				if (rc) break;
+				if (k_uptime_get() >= next_status || status_is_forced()) {
+					rc = publish_status();
+					if (rc) break;
+					next_status = k_uptime_get() + STATUS_INTERVAL_MS;
+				}
 				k_mutex_lock(&raw_queue_lock, K_FOREVER);
 				taken = imu_raw_queue_take(&queue, &outgoing);
 				k_mutex_unlock(&raw_queue_lock);
@@ -230,6 +355,16 @@ static int raw_cmd(const struct shell *sh, size_t argc, char **argv)
 		broker.sin_family = AF_INET; broker.sin_port = htons(port); broker.sin_addr = address;
 		memcpy(session, new_session, sizeof(session));
 		snprintk(topic, sizeof(topic), "imu/%s/raw", argv[4]);
+		snprintk(status_topic, sizeof(status_topic), "imu/%s/status", argv[4]);
+		snprintk(info_topic, sizeof(info_topic), "imu/%s/info", argv[4]);
+		snprintk(device_id, sizeof(device_id), "%s", argv[4]);
+		k_spinlock_key_t report_key = k_spin_lock(&report_lock);
+		memset(&reported_status, 0, sizeof(reported_status));
+		info_valid = false;
+		info_pending = false;
+		status_forced = false;
+		k_spin_unlock(&report_lock, report_key);
+		atomic_clear(&connects); atomic_clear(&status_published); atomic_clear(&info_published);
 		snprintk(client_id, sizeof(client_id), "imu-%s", argv[4]);
 		k_mutex_lock(&raw_queue_lock, K_FOREVER);
 		imu_raw_queue_init(&queue);
@@ -278,6 +413,9 @@ static int raw_cmd(const struct shell *sh, size_t argc, char **argv)
 		    wait_count, wait_total_us, wait_max_us);
 	shell_print(sh, "publish_us=%" PRIu64 " publish_max_us=%" PRIu64
 		    " publish_bytes=%" PRIu64, total_us, max_us, total_bytes);
+	shell_print(sh, "connects=%d status_published=%d info_published=%d",
+		    (int)atomic_get(&connects), (int)atomic_get(&status_published),
+		    (int)atomic_get(&info_published));
 	return 0;
 }
 SHELL_CMD_REGISTER(imu_raw_mqtt, NULL, "Experimental RAW MQTT transport", raw_cmd);

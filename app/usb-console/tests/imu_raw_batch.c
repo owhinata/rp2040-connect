@@ -71,5 +71,27 @@ int main(void)
 	assert(imu_raw_batch_consume(&b, words + 7, 7, &cursor) == -EOVERFLOW);
 	assert(cursor == 0);
 	assert(imu_raw_batch_init(&b, NULL, 0, sink, NULL) == -EINVAL);
+
+	/* An epoch change flushes first, then keeps numbering in the new epoch. */
+	assert(imu_raw_batch_init(&b, session, 7, sink, NULL) == 0);
+	cursor = 0;
+	assert(imu_raw_batch_consume(&b, words, 14, &cursor) == 0 && b.count == 2);
+	assert(imu_raw_batch_new_epoch(&b) == 0 && b.count == 0 && b.next_batch == 1);
+	assert(received[68] == 7 && le64(received + 24) == 0 && le64(received + 32) == 0);
+	cursor = 0;
+	assert(imu_raw_batch_consume(&b, words, 14, &cursor) == 0);
+	assert(imu_raw_batch_flush(&b) == 0);
+	assert(received[68] == 8 && le64(received + 24) == 1 && le64(received + 32) == 1 &&
+	       le64(received + 40) == 1);
+	/* Nothing pending: only the epoch advances. A failed flush keeps it. */
+	assert(imu_raw_batch_new_epoch(&b) == 0 && b.meta.epoch_id == 9 && b.next_batch == 2);
+	cursor = 0;
+	assert(imu_raw_batch_consume(&b, words, 7, &cursor) == 0);
+	sink_result = -EIO;
+	assert(imu_raw_batch_new_epoch(&b) == -EIO && b.meta.epoch_id == 9 && b.count == 1);
+	sink_result = 0;
+	b.meta.epoch_id = UINT32_MAX;
+	assert(imu_raw_batch_new_epoch(&b) == -EOVERFLOW && b.count == 1);
+	assert(imu_raw_batch_new_epoch(NULL) == -EINVAL);
 	return 0;
 }

@@ -35,6 +35,12 @@
 #define IMU_MEASURE_CQE_BATCH 8
 #if defined(CONFIG_IMU_RAW_MQTT_EXPERIMENTAL)
 #define IMU_RAW_FLUSH_INTERVAL_MS 100
+#define IMU_RAW_REPORT_INTERVAL_MS 500
+/* After the driver ends a stream with an error it has already stopped the
+ * FIFO. Give it this long to release the stream, and give up when this many
+ * restarts in a row deliver no data. */
+#define IMU_RECOVERY_RELEASE_MS 200
+#define IMU_RECOVERY_MAX_CONSECUTIVE 3
 #endif
 #if defined(CONFIG_IMU_TIMESTAMP_DIAGNOSTIC)
 #define IMU_MEASURE_STACK_SIZE 3072
@@ -70,7 +76,10 @@ struct imu_measure_result {
 	uint64_t raw_batches, raw_accel, raw_gyro, raw_timestamps;
 	uint64_t raw_dropped_batches, raw_dropped_accel, raw_dropped_gyro;
 	int raw_error;
+	uint32_t raw_discontinuities, raw_epoch;
 #endif
+	uint32_t recoveries;
+	int last_recovery_error, stream_rc;
 	struct lsm6dso_fifo_stats fifo;
 	uint64_t elapsed_ms;
 	uint64_t cpu_busy_cycles;
@@ -103,6 +112,31 @@ static rtio_sqe_handle_t active_handle = RTIO_SQE_HANDLE_INVALID;
 #if defined(CONFIG_IMU_RAW_MQTT_EXPERIMENTAL)
 static uint8_t measurement_session[16];
 #endif
+#if defined(CONFIG_IMU_FAULT_INJECTION)
+static atomic_t inject_stall_ms;
+#endif
+
+/* Errors after which the driver has stopped the FIFO and a restart can
+ * continue the session in a new epoch. Only the RAW transport can express
+ * the discontinuity, so other builds keep ending the measurement. */
+static bool stream_error_recoverable(int rc)
+{
+	return IS_ENABLED(CONFIG_IMU_RAW_MQTT_EXPERIMENTAL) &&
+	       (rc == -EOVERFLOW || rc == -ENOMEM || rc == -ENOBUFS || rc == -EIO);
+}
+
+#if defined(CONFIG_IMU_RAW_MQTT_EXPERIMENTAL)
+static void fifo_stats_add(struct lsm6dso_fifo_stats *total, const struct lsm6dso_fifo_stats *run)
+{
+	total->words_read += run->words_read;
+	total->transfer_time_ns += run->transfer_time_ns;
+	total->max_transfer_time_ns = MAX(total->max_transfer_time_ns, run->max_transfer_time_ns);
+	total->transfers += run->transfers;
+	total->i2c_errors += run->i2c_errors;
+	total->buffer_too_small += run->buffer_too_small;
+	total->overrun_observations += run->overrun_observations;
+}
+#endif
 
 #if defined(CONFIG_IMU_RAW_BATCH_DIAGNOSTIC)
 /* Diagnostic only: the fixed session ID must never be used on the wire. */
@@ -116,6 +150,50 @@ static int raw_diagnostic_sink(void *context, const uint8_t *payload, size_t len
 	return 0;
 }
 #endif
+#endif
+
+#if defined(CONFIG_IMU_RAW_MQTT_EXPERIMENTAL)
+/* Hands the acquisition counters to the transport. Returns true once the
+ * driver statistics belong to this run (the FIFO starts asynchronously). */
+static bool raw_report(const struct device *dev, int raw_error, int error,
+		       uint32_t generation, const struct lsm6dso_fifo_stats *earlier,
+		       enum imu_raw_state state, bool send_info)
+{
+	struct imu_raw_status status = {
+		.state = state, .epoch_id = raw_batch.meta.epoch_id,
+		.uptime_ms = (uint64_t)k_uptime_get(),
+		.accel_acquired = raw_batch.next_accel, .gyro_acquired = raw_batch.next_gyro,
+		.next_batch = raw_batch.next_batch, .timestamp_words = raw_batch.timestamp_words,
+		.raw_error = raw_error, .measure_error = error,
+	};
+	struct lsm6dso_fifo_stats fifo;
+	bool current;
+
+	lsm6dso_fifo_get_stats(dev, &fifo);
+	current = fifo.generation == generation;
+	memcpy(status.session_id, measurement_session, sizeof(status.session_id));
+	status.fifo_overrun_observations = earlier->overrun_observations;
+	status.i2c_errors = earlier->i2c_errors;
+	if (current) {
+		status.fifo_overrun_observations += fifo.overrun_observations;
+		status.i2c_errors += fifo.i2c_errors;
+	}
+	if (current && send_info) {
+		struct imu_raw_info info = {
+			.epoch_id = raw_batch.meta.epoch_id,
+			.accel_odr_hz = fifo.accel_hz, .gyro_odr_hz = fifo.gyro_hz,
+			.accel_ug_per_lsb = fifo.accel_ug_per_lsb,
+			.gyro_udps_per_lsb = fifo.gyro_udps_per_lsb,
+			.fifo_watermark = lsm6dso_fifo_get_watermark(dev),
+			.timestamp_decimation = (uint8_t)lsm6dso_fifo_get_timestamp_decimation(dev),
+		};
+
+		memcpy(info.session_id, measurement_session, sizeof(info.session_id));
+		imu_raw_mqtt_set_info(&info);
+	}
+	imu_raw_mqtt_report(&status);
+	return current;
+}
 #endif
 
 static void consume_cqes(struct imu_measure_result *result, bool include)
@@ -132,7 +210,11 @@ static void consume_cqes(struct imu_measure_result *result, bool include)
 		rtio_cqe_release(&imu_measure_rtio, cqe);
 		if (include && rc < 0) {
 			result->terminal_seen = true;
-			if ((rc != -ECANCELED || !result->graceful_requested) && result->error == 0) {
+			result->stream_rc = rc;
+			/* A recoverable error during the run is left to the measurement
+			 * loop, which either restarts the stream or records the error. */
+			if ((rc != -ECANCELED || !result->graceful_requested) && result->error == 0 &&
+			    (result->graceful_requested || !stream_error_recoverable(rc))) {
 				result->error = rc;
 			}
 		} else if (include && rc == 0) {
@@ -152,6 +234,12 @@ static void consume_cqes(struct imu_measure_result *result, bool include)
 
 					rc = imu_raw_batch_consume(&raw_batch, packet->data,
 						packet->words * LSM6DSO_FIFO_WORD_SIZE, &cursor);
+					if (rc == -EPROTO && IS_ENABLED(CONFIG_IMU_RAW_MQTT_EXPERIMENTAL)) {
+						/* The rest of this packet cannot be trusted. Mark
+						 * the gap instead of ending the measurement. */
+						result->raw_discontinuities++;
+						rc = imu_raw_batch_new_epoch(&raw_batch);
+					}
 					if (rc) {
 						result->raw_error = rc;
 					}
@@ -253,6 +341,10 @@ static void print_result(const struct shell *shell, const struct imu_measure_res
 		    result->raw_timestamps, result->raw_error);
 	shell_print(shell, "raw_dropped_batches=%" PRIu64 " accel=%" PRIu64 " gyro=%" PRIu64,
 		    result->raw_dropped_batches, result->raw_dropped_accel, result->raw_dropped_gyro);
+	shell_print(shell, "raw_epoch=%" PRIu32 " raw_discontinuities=%" PRIu32
+		    " recoveries=%" PRIu32 " last_recovery_error=%d",
+		    result->raw_epoch, result->raw_discontinuities, result->recoveries,
+		    result->last_recovery_error);
 #endif
 #if defined(CONFIG_NINA_SEND_PROFILE)
 	if (result->counts.other_words) {
@@ -388,10 +480,18 @@ static void measure_thread(void *arg1, void *arg2, void *arg3)
 		k_thread_runtime_stats_t before, after;
 		uint32_t dropped_before;
 		int64_t start, deadline, end, requested_at, cleanup_deadline;
+		uint32_t expected_generation;
+#if defined(CONFIG_IMU_RAW_MQTT_EXPERIMENTAL)
+		struct lsm6dso_fifo_stats earlier_fifo = {0};
+		uint64_t batches_at_restart = 0;
+		unsigned int restarts_without_data = 0;
+#endif
 #if defined(CONFIG_IMU_RAW_MQTT_EXPERIMENTAL)
 		int64_t next_raw_flush;
 		uint64_t observed_raw_batch;
 		bool raw_pending_timed;
+		int64_t next_raw_report;
+		bool raw_info_sent;
 #endif
 		int rc;
 
@@ -408,6 +508,7 @@ static void measure_thread(void *arg1, void *arg2, void *arg3)
 #endif
 #endif
 		lsm6dso_fifo_get_stats(dev, &initial_fifo);
+		expected_generation = initial_fifo.generation + 1U;
 		dropped_before = (uint32_t)atomic_get(&imu_measure_rtio.xcqcnt);
 		imu_cpu_profile_start();
 #ifdef CONFIG_CPU_LOAD_BACKEND_IDLE_HOOK
@@ -421,6 +522,8 @@ static void measure_thread(void *arg1, void *arg2, void *arg3)
 		next_raw_flush = start + IMU_RAW_FLUSH_INTERVAL_MS;
 		observed_raw_batch = 0;
 		raw_pending_timed = false;
+		next_raw_report = start;
+		raw_info_sent = false;
 #endif
 		rc = sensor_stream(&imu_measure_iodev, &imu_measure_rtio, NULL, &active_handle);
 		if (rc != 0) {
@@ -431,7 +534,59 @@ static void measure_thread(void *arg1, void *arg2, void *arg3)
 			struct k_poll_event events[2];
 			int64_t remaining, poll_remaining;
 
+#if defined(CONFIG_IMU_FAULT_INJECTION)
+			uint32_t stall_ms = (uint32_t)atomic_set(&inject_stall_ms, 0);
+
+			if (stall_ms) {
+				k_busy_wait(stall_ms * 1000U);
+			}
+#endif
 			consume_cqes(&result, true);
+#if defined(CONFIG_IMU_RAW_MQTT_EXPERIMENTAL)
+			if (result.terminal_seen && !result.error) {
+				/* The driver ended the stream and stopped the FIFO, losing
+				 * an unknown number of samples. Continue in a new epoch
+				 * unless the sensor cannot be restarted. */
+				struct lsm6dso_fifo_stats ended;
+				int64_t release_deadline = k_uptime_get() + IMU_RECOVERY_RELEASE_MS;
+				bool released;
+
+				for (;;) {
+					lsm6dso_fifo_get_stats(dev, &ended);
+					released = !ended.active &&
+						!rtio_iodev_sqe_from_handle(&imu_measure_rtio, active_handle);
+					if (released || k_uptime_get() >= release_deadline) {
+						break;
+					}
+					k_sleep(K_MSEC(1));
+				}
+				restarts_without_data = result.counts.batches == batches_at_restart ?
+					restarts_without_data + 1U : 0U;
+				if (!released || ended.fault ||
+				    restarts_without_data >= IMU_RECOVERY_MAX_CONSECUTIVE) {
+					result.error = result.stream_rc;
+				} else if ((rc = imu_raw_batch_new_epoch(&raw_batch)) != 0) {
+					result.raw_error = rc;
+					result.error = rc;
+				} else {
+					if (ended.generation == expected_generation) {
+						fifo_stats_add(&earlier_fifo, &ended);
+					}
+					result.recoveries++;
+					result.last_recovery_error = result.stream_rc;
+					batches_at_restart = result.counts.batches;
+					expected_generation = ended.generation + 1U;
+					result.terminal_seen = false;
+					rc = sensor_stream(&imu_measure_iodev, &imu_measure_rtio, NULL,
+							   &active_handle);
+					if (rc != 0) {
+						result.error = rc;
+					}
+					raw_info_sent = false;
+					next_raw_report = 0;
+				}
+			}
+#endif
 			remaining = deadline - k_uptime_get();
 			poll_remaining = remaining;
 #if defined(CONFIG_IMU_RAW_MQTT_EXPERIMENTAL)
@@ -453,6 +608,16 @@ static void measure_thread(void *arg1, void *arg2, void *arg3)
 			if (raw_pending_timed && poll_remaining > next_raw_flush - k_uptime_get()) {
 				poll_remaining = MAX((int64_t)0, next_raw_flush - k_uptime_get());
 			}
+			if (k_uptime_get() >= next_raw_report) {
+				raw_info_sent = raw_report(dev, result.raw_error, result.error,
+							   expected_generation, &earlier_fifo,
+							   IMU_RAW_STATE_MEASURING, !raw_info_sent) ||
+						raw_info_sent;
+				next_raw_report = k_uptime_get() + IMU_RAW_REPORT_INTERVAL_MS;
+			}
+			if (poll_remaining > next_raw_report - k_uptime_get()) {
+				poll_remaining = MAX((int64_t)0, next_raw_report - k_uptime_get());
+			}
 #endif
 			if (result.error || result.terminal_seen || atomic_get(&measure_stop) ||
 			    remaining <= 0) {
@@ -468,6 +633,10 @@ static void measure_thread(void *arg1, void *arg2, void *arg3)
 			}
 		}
 		consume_cqes(&result, true);
+		if (result.terminal_seen && !result.error && result.stream_rc != -ECANCELED) {
+			/* Ended by the driver too late to restart. */
+			result.error = result.stream_rc;
+		}
 		requested_at = k_uptime_get();
 		result.stop_requested_ms = requested_at - start;
 		result.stopped_early = atomic_get(&measure_stop) != 0;
@@ -506,7 +675,7 @@ static void measure_thread(void *arg1, void *arg2, void *arg3)
 				!result.terminal_seen ||
 				rtio_iodev_sqe_from_handle(&imu_measure_rtio, active_handle) != NULL ||
 				(result.error != -EBUSY && cleanup_fifo.active &&
-				 cleanup_fifo.generation == initial_fifo.generation + 1U);
+				 cleanup_fifo.generation == expected_generation);
 			if (result.cleanup_timeout) {
 				/* Forced cancellation can lose in-flight data. Refuse another
 				 * run until reboot so a late CQE cannot contaminate it.
@@ -528,6 +697,11 @@ static void measure_thread(void *arg1, void *arg2, void *arg3)
 		result.raw_dropped_batches = raw_batch.dropped_batches;
 		result.raw_dropped_accel = raw_batch.dropped_accel;
 		result.raw_dropped_gyro = raw_batch.dropped_gyro;
+		result.raw_epoch = raw_batch.meta.epoch_id;
+#endif
+#if defined(CONFIG_IMU_RAW_MQTT_EXPERIMENTAL)
+		(void)raw_report(dev, result.raw_error, result.error, expected_generation,
+				 &earlier_fifo, IMU_RAW_STATE_STOPPED, !raw_info_sent);
 #endif
 		end = k_uptime_get();
 		result.elapsed_ms = end - start;
@@ -548,7 +722,11 @@ static void measure_thread(void *arg1, void *arg2, void *arg3)
 		 * compare that run's counters with this run's completions.
 		 */
 		result.fifo_valid = result.error != -EBUSY &&
-			result.fifo.generation == initial_fifo.generation + 1U;
+			result.fifo.generation == expected_generation;
+#if defined(CONFIG_IMU_RAW_MQTT_EXPERIMENTAL)
+		/* Driver statistics restart with each FIFO start; report the run. */
+		fifo_stats_add(&result.fifo, &earlier_fifo);
+#endif
 		result.dropped_cqes = (uint32_t)atomic_get(&imu_measure_rtio.xcqcnt) - dropped_before;
 		k_mutex_lock(&imu_measure_result_lock, K_FOREVER);
 		last_result = result;
@@ -643,6 +821,27 @@ static int cmd_measure_result(const struct shell *shell, size_t argc, char **arg
 	return 0;
 }
 
+#if defined(CONFIG_IMU_FAULT_INJECTION)
+static int cmd_inject_stall(const struct shell *shell, size_t argc, char **argv)
+{
+	char *end;
+	unsigned long ms = strtoul(argv[1], &end, 10);
+
+	ARG_UNUSED(argc);
+	if (argv[1][0] < '0' || argv[1][0] > '9' || *end || ms == 0 || ms > 2000) {
+		shell_error(shell, "Stall must be 1..2000 ms");
+		return -EINVAL;
+	}
+	if (!atomic_get(&measure_running)) {
+		shell_error(shell, "No measurement running");
+		return -EINVAL;
+	}
+	atomic_set(&inject_stall_ms, (atomic_val_t)ms);
+	shell_print(shell, "Stalling FIFO handling for %lu ms", ms);
+	return 0;
+}
+#endif
+
 static int cmd_measure_stats(const struct shell *shell, size_t argc, char **argv)
 {
 	const struct device *dev = DEVICE_DT_GET(DT_NODELABEL(lsm6dsox));
@@ -704,6 +903,10 @@ SHELL_STATIC_SUBCMD_SET_CREATE(imu_measure_commands,
 #if defined(CONFIG_IMU_TIMESTAMP_DIAGNOSTIC)
 	SHELL_CMD_ARG(timestamp_decimation, NULL, "Get or set FIFO timestamp decimation (0, 1, 8, 32)",
 		      cmd_timestamp_decimation, 1, 1),
+#endif
+#if defined(CONFIG_IMU_FAULT_INJECTION)
+	SHELL_CMD_ARG(inject_stall, NULL, "Test: stall FIFO handling for <ms> to force an overrun",
+		      cmd_inject_stall, 2, 0),
 #endif
 	SHELL_SUBCMD_SET_END);
 SHELL_CMD_REGISTER(imu_measure, &imu_measure_commands, "Measure IMU FIFO streaming", NULL);

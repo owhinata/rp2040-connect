@@ -62,6 +62,24 @@ int imu_raw_batch_flush(struct imu_raw_batch *batch)
 	return 0;
 }
 
+int imu_raw_batch_new_epoch(struct imu_raw_batch *batch)
+{
+	int rc;
+
+	if (!batch || !batch->sink) {
+		return -EINVAL;
+	}
+	if (batch->meta.epoch_id == UINT32_MAX) {
+		return -EOVERFLOW;
+	}
+	rc = imu_raw_batch_flush(batch);
+	if (rc) {
+		return rc;
+	}
+	batch->meta.epoch_id++;
+	return 0;
+}
+
 int imu_raw_batch_consume(struct imu_raw_batch *batch, const uint8_t *words,
 			  size_t length, size_t *cursor)
 {
