@@ -1,5 +1,7 @@
 # IMU RAW データ取得・MQTT 配信の設計
 
+[English](imu-raw-mqtt-design.md) | 日本語
+
 ## 1. 目的と位置付け
 
 Arduino Nano RP2040 Connect の LSM6DSO から加速度と角速度を取得し、
@@ -86,14 +88,14 @@ flowchart LR
 | 送信キュー | `src/imu_raw_queue.*` |
 | MQTT 送信・再接続・status / info | `src/imu_raw_mqtt.*`、`src/imu_raw_status.*` |
 | 取得スレッド・回復・シェル（`imu`） | `src/imu_stream.c` |
-| NINA のソケット | `drivers/nina/nina_socket.c`（[NINA ドライバーの説明](nina-driver-ja.md)） |
+| NINA のソケット | `drivers/nina/nina_socket.c`（[ドライバーの説明](../app/usb-console/drivers/README_ja.md)） |
 
 FIFO 読み出しと送信は独立している。Wi-Fi・MQTT の切断や送信待ちで FIFO の読み出しを
 ブロックしない。スレッドの優先度は、計測（バッチ化）と時刻同期が 9、FIFO の読み出し
 ワーカーが 10、MQTT 送信が 11。送信側は、キューの排他（mutex）以外で取得側を待たせない。
 
 PC 側は現状、検証用の `script/imu_raw_receiver.py` が MQTT クライアント 1 台を直接受け付ける。
-汎用ブローカーでもデータ保存アプリでもない。`script/imu_mqtt_probe.py` は別の旧診断形式用。
+汎用ブローカーでもデータ保存アプリでもない。
 
 ## 3. RAW 取得
 

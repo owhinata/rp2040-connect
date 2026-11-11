@@ -11,9 +11,9 @@ PC の時刻を付けて Wi-Fi 経由の MQTT で送信します。
 - PC の NTP サーバーと同期し、各バッチに PC 時刻（Unix 時刻、µs）を付けます。
 - USB と Telnet のシェルから操作します。
 
-設計の詳細は [IMU RAW・MQTT 配信の設計](design/imu-raw-mqtt-design-ja.md)、ドライバーは
-[ローカルドライバーの説明](app/usb-console/drivers/README_ja.md) と
-[NINA ドライバーの説明](design/nina-driver-ja.md) を参照してください。
+設計の詳細は [IMU RAW・MQTT 配信の設計](design/imu-raw-mqtt-design-ja.md)、ドライバー
+（LSM6DSO、I²C、NINA）は [ローカルドライバーの説明](app/usb-console/drivers/README_ja.md) を
+参照してください。
 
 現状は実験段階です。計測の開始・停止はシェルからの手動操作で、PC 側には検証用の受信
 スクリプトしかありません。確認できた範囲と未確認の範囲は設計書にまとめています。

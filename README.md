@@ -12,9 +12,9 @@ raw values, adds the PC's time, and sends it over Wi-Fi with MQTT.
   microseconds) on every batch.
 - It is operated from a shell over USB or Telnet.
 
-The detailed documents are in Japanese: the [IMU RAW and MQTT design](design/imu-raw-mqtt-design-ja.md)
-and the [NINA driver notes](design/nina-driver-ja.md). The local drivers are described in
-[app/usb-console/drivers](app/usb-console/drivers/README.md).
+See the [IMU RAW and MQTT design](design/imu-raw-mqtt-design.md) for the details and
+[app/usb-console/drivers](app/usb-console/drivers/README.md) for the drivers (LSM6DSO, I2C,
+NINA).
 
 This is experimental. Measurements are started and stopped by hand from the shell, and the
 only software on the PC side is a receiver script for verification. The design document lists
@@ -260,7 +260,7 @@ summary (missing batches, valid and reversed times) and at the errors in `imu st
 | `app/usb-console/drivers/` | Local drivers for the LSM6DSO, I2C, NINA and the sensor shell |
 | `app/usb-console/tests/` | Host tests |
 | `app/blink/` | LED blink sample |
-| `design/` | Design and investigation notes (Japanese) |
+| `design/` | Design and investigation notes |
 | `firmware/nina-fw/` | Fixes and build for the NINA firmware |
 | `script/` | Setup, access point, receiver, host tests |
 | `manifest/west.yml` | Versions of Zephyr and its modules |

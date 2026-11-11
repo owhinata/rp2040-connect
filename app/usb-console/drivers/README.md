@@ -19,9 +19,6 @@ corresponding sources inside Zephyr's driver libraries for the copies. Kconfig, 
 bindings and the ST HAL are Zephyr's. If Zephyr's layout changes and a source to replace is
 not found, the build fails.
 
-The NINA driver is described in the [NINA driver notes](../../../design/nina-driver-ja.md)
-(Japanese).
-
 ## LSM6DSO FIFO streaming
 
 The FIFO can be read through Zephyr's Sensor Streaming API (`sensor_stream()` on RTIO) with the
@@ -56,7 +53,7 @@ trigger `SENSOR_TRIG_FIFO_WATERMARK` and the option `SENSOR_STREAM_DATA_INCLUDE`
 The FIFO contains the sensor's timestamps (nominally 25 us per tick) at an interval set by an
 attribute. The timestamp counter is enabled at start and never disabled, so it keeps running
 across stream restarts. Assigning ticks to samples and converting them to PC time is done by
-the application (section 7 of the [design document](../../../design/imu-raw-mqtt-design-ja.md)).
+the application (section 7 of the [design document](../../../design/imu-raw-mqtt-design.md)).
 
 `lsm6dso_timestamp_read()` reads the sensor's timestamp register between two readings of the
 caller's clock, which relates the sensor clock to the board clock.
@@ -117,6 +114,107 @@ watermark of 128, `cpu_active` was 45.7% without DMA and 22.5% with it.
 - `fifo_watermark` and `fifo_timestamp_decimation` work with `sensor attr_set` and `attr_get`.
 
 `sensor stream` and `imu start` cannot be used at the same time.
+
+## NINA-W102 (`nina`)
+
+A driver that lets Zephyr use the NINA-W102 (an ESP32) as Wi-Fi and sockets over SPI. The
+module is expected to run Arduino NINA firmware 3.0.2 with two fixes applied (see
+[firmware/nina-fw](../../../firmware/nina-fw/README.md)).
+
+### Division of work
+
+Wi-Fi and TCP/IP are handled by the NINA firmware (lwIP). The RP2040 only issues SPI commands
+to manage the Wi-Fi connection and sockets; it never sees packets. To Zephyr this is a Wi-Fi
+management API plus socket offload.
+
+| File | Role |
+|---|---|
+| `nina_wifi.c` | Framing of SPI commands and replies; Wi-Fi connect, disconnect, scan, status |
+| `nina_net.c` | Network interface, applying the DHCP result (address, gateway), link monitoring |
+| `nina_socket.c` | Socket offload: TCP clients and listeners, UDP, poll |
+| `nina_dns.c` | `getaddrinfo` offload (name resolution) |
+
+Zephyr's Telnet shell, MQTT client and zperf run on these sockets.
+
+### SPI commands
+
+- Commands are handled one at a time. The RP2040 serializes them with a mutex and samples the
+  module's ready line every 100 us while waiting for a reply. SPI runs at 8 MHz
+  (`CONFIG_NINA_SPI_FREQUENCY`).
+- One TCP send carries at most 3584 bytes (`CONFIG_NINA_TCP_MAX_IO`), the most that fits the
+  module's command buffer. A RAW batch of up to 2448 bytes goes out in one command.
+
+### Sockets
+
+Every socket uses the BSD-style socket commands of firmware 3.0.2 (0x70 to 0x7f: socket,
+close, bind, listen, accept, connect, send, recv, sendto, recvfrom, ioctl, poll, getsockopt).
+Each command is a single call of an lwIP socket function inside the module, and sockets are
+independent of each other. The older per-type client commands are not used.
+
+- **Ten sockets**, the limit of the module's lwIP (`CONFIG_LWIP_MAX_SOCKETS=10`), shared by
+  the Telnet listener, MQTT, NTP and zperf.
+- **Always non-blocking.** Commands run inside the module's SPI handler, so a blocking call
+  stalls everything including Wi-Fi management. A socket is made non-blocking as soon as it is
+  created, and the driver waits for connect completion, readable data and send space by
+  repeating the poll command every 20 ms.
+- **A reply cannot tell a failure from zero bytes.** Receiving polls first (readable with zero
+  bytes means the peer closed). When a TCP send returns zero, the poll error flag is checked
+  every 100 ms to detect a broken connection. Connect results are read from SO_ERROR.
+- **TCP connect** waits up to 10 s. A send fails when no buffer space appears for 10 s; this
+  is why a vanished access point takes about 9 s to be recognized as a disconnection.
+- **UDP** carries up to 512 bytes per datagram. What does not fit the receive buffer is
+  dropped by lwIP, which keeps datagram boundaries. A connected UDP socket has datagrams from
+  other senders discarded by the driver.
+- `bind` accepts the any address (0.0.0.0) only, IPv4 only. Multicast and socket options are
+  not supported.
+
+### Wi-Fi
+
+- Open and WPA2-PSK networks on 2.4 GHz. Open networks have not been tried on hardware.
+- Power saving is switched off on every connection and reconnection, because with it sending
+  can stall for hundreds of milliseconds. Confirming that the setting took effect needs the
+  patched firmware.
+- Credentials are stored with Zephyr's `wifi cred` (Settings on NVS). At boot and after an
+  unexpected disconnection the driver keeps trying the stored settings. It does not reconnect
+  after `wifi disconnect`. With several stored networks, which one is used is not guaranteed.
+- The module stops Wi-Fi while scanning, so the connection drops briefly. At most 10 results.
+
+### Verified on hardware
+
+Single runs each.
+
+- NTP (UDP), Telnet (TCP listener) and MQTT (TCP client).
+- 360 UDP datagrams echoed without loss or corruption while RAW streaming at 6667 Hz (MQTT)
+  and Telnet were active, with no batch missing on the MQTT side.
+- Automatic reconnection after the access point was stopped and restarted, with the address
+  and gateway obtained again.
+
+Not verified: several TCP clients at once, ten sockets at once, the timeout path when a server
+does not answer, and zperf throughput since the move to the BSD socket commands.
+
+### TLS
+
+TLS is not supported. These points are unresolved.
+
+- **Random source**: the build uses Zephyr's non-cryptographic test random generator, and the
+  RP2040 has no cryptographic random source. The ATECC608A on the board has its configuration
+  and data unlocked and returned the same answer to two Random commands, so it cannot be used
+  as it is. Getting the ESP32's hardware random numbers over SPI needs a new firmware command.
+- **Certificate verification**: TLS on the module cannot verify the host name for connections
+  made by IP address, and certificate date checking is not enabled there.
+- **Time**: checking certificate validity needs trustworthy time, and NTP replies are not
+  authenticated.
+
+Running Zephyr's TLS on a NINA TCP socket with the test random generator and a temporary
+certificate was tried earlier: MQTT connected and sent, and a wrong host name, an expired
+certificate and an untrusted CA were each refused. That was a functional check with an unsafe
+random source, not usable TLS. An implementation must not fall back silently to a test random
+generator when no proper source is available.
+
+### Looking at the radio link
+
+[Tracing TCP ACKs with a Wi-Fi monitor](../../../design/wifi-monitor-debug.md) describes how to
+examine sending delays and ACK behaviour at the level of radio frames.
 
 ## Tests
 

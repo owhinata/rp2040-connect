@@ -1,5 +1,7 @@
 # Wi-Fi モニターによる TCP ACK 調査手順
 
+[English](wifi-monitor-debug.md) | 日本語
+
 Arduino Nano RP2040 Connect の NINA-W102 から PC に TCP/MQTT で送信するとき、
 PC が送信した TCP ACK をアクセスポイント（AP）から NINA まで追跡する手順です。
 PC 側の TCP キャプチャと、別の Wi-Fi アダプターによる 802.11 キャプチャを
