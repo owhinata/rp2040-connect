@@ -154,7 +154,7 @@ have not been produced on hardware.
 
 - MQTT 3.1.1; RAW data with QoS 0 and no retain.
 - One PUBLISH carries one self-contained batch.
-- The send queue has a fixed length of 16 batches and never makes FIFO handling wait. When it
+- The send queue has a fixed length of 12 batches (about 0.35 s of data) and never makes FIFO handling wait. When it
   is full, the new batch is discarded and the number of discarded batches and accelerometer
   and gyroscope samples is counted.
 - While not connected, the queue content and new batches are discarded. A batch whose send

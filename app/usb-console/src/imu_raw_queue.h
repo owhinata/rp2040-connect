@@ -5,7 +5,9 @@
 #include "imu_raw_packet.h"
 #include <stdbool.h>
 
-#define IMU_RAW_QUEUE_CAPACITY 16U
+/* Each batch is about 29 ms of data at 6667 Hz and takes 2.4 KiB here. In
+ * normal runs at most 7 were waiting; a stalled receiver fills any depth. */
+#define IMU_RAW_QUEUE_CAPACITY 12U
 struct imu_raw_queue_item {
 	size_t length;
 	uint16_t accel_count, gyro_count;
