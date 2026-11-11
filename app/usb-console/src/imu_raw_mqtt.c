@@ -31,6 +31,12 @@ static struct imu_raw_info reported_info;
 static bool info_valid, info_pending, status_forced;
 static atomic_t connects, status_published, info_published;
 static uint16_t next_message_id;
+/* Sync experiment. Owned by the transport thread except the two atomics. */
+static char sync_request_topic[80], sync_response_topic[80];
+static bool sync_pending;
+static uint64_t sync_id, sync_t2_us;
+static atomic_t sync_answered, sync_rejected;
+static atomic_t input_poll_ms = ATOMIC_INIT(100);
 static atomic_t running, worker_active, acquisition_active, session_claimed, connected;
 static atomic_t published, failures, lock_drops;
 static struct k_spinlock publish_stats_lock;
@@ -38,13 +44,50 @@ static uint64_t publish_total_us, publish_max_us, publish_total_bytes;
 /* Protected by raw_queue_lock. Includes uncontended acquisition overhead. */
 static uint64_t queue_lock_wait_total_us, queue_lock_wait_max_us, queue_lock_wait_count;
 
-static void mqtt_event(struct mqtt_client *unused, const struct mqtt_evt *evt)
+static uint64_t now_us(void)
 {
-	ARG_UNUSED(unused);
+	return k_cyc_to_us_floor64(k_cycle_get_64());
+}
+
+/* A request is a decimal ID. t2 is taken when the transport thread reads it,
+ * which is later than its arrival at the Wi-Fi module by an unknown amount. */
+static void sync_request(struct mqtt_client *c, const struct mqtt_publish_param *p, uint64_t t2)
+{
+	char text[20];
+	size_t length = p->message.payload.len;
+	uint64_t id = 0;
+	bool valid = length > 0 && length < sizeof(text);
+
+	while (length) {
+		size_t chunk = MIN(length, sizeof(text));
+
+		/* The payload must be consumed even when it is rejected. */
+		if (mqtt_readall_publish_payload(c, (uint8_t *)text, chunk)) {
+			return;
+		}
+		length -= chunk;
+	}
+	for (size_t i = 0; valid && i < p->message.payload.len; i++) {
+		valid = text[i] >= '0' && text[i] <= '9';
+		id = id * 10U + (uint64_t)(text[i] - '0');
+	}
+	if (!valid) {
+		atomic_inc(&sync_rejected);
+		return;
+	}
+	sync_id = id;
+	sync_t2_us = t2;
+	sync_pending = true;
+}
+
+static void mqtt_event(struct mqtt_client *c, const struct mqtt_evt *evt)
+{
 	if (evt->type == MQTT_EVT_CONNACK) {
 		atomic_set(&connected, evt->result == 0);
 	} else if (evt->type == MQTT_EVT_DISCONNECT) {
 		atomic_clear(&connected);
+	} else if (evt->type == MQTT_EVT_PUBLISH) {
+		sync_request(c, &evt->param.publish, now_us());
 	}
 }
 
@@ -188,6 +231,39 @@ static int publish_status(void)
 	return rc;
 }
 
+static int subscribe_sync(void)
+{
+	struct mqtt_topic request = {
+		.topic = {.utf8 = (const uint8_t *)sync_request_topic,
+			  .size = strlen(sync_request_topic)},
+		.qos = MQTT_QOS_0_AT_MOST_ONCE,
+	};
+	struct mqtt_subscription_list list = {.list = &request, .list_count = 1};
+
+	if (++next_message_id == 0) {
+		next_message_id = 1;
+	}
+	list.message_id = next_message_id;
+	return mqtt_subscribe(&client, &list);
+}
+
+static int answer_sync(void)
+{
+	int rc;
+
+	if (!sync_pending) {
+		return 0;
+	}
+	sync_pending = false;
+	rc = publish_json(sync_response_topic,
+			  imu_raw_sync_encode(json, sizeof(json), sync_id, sync_t2_us, now_us()),
+			  MQTT_QOS_0_AT_MOST_ONCE, false);
+	if (!rc) {
+		atomic_inc(&sync_answered);
+	}
+	return rc;
+}
+
 static bool status_is_forced(void)
 {
 	k_spinlock_key_t key = k_spin_lock(&report_lock);
@@ -258,7 +334,9 @@ static void raw_mqtt_thread(void *a, void *b, void *c)
 
 			info_pending = info_valid;
 			k_spin_unlock(&report_lock, report_key);
-			while (atomic_get(&running) && atomic_get(&connected)) {
+			sync_pending = false;
+			rc = subscribe_sync();
+			while (!rc && atomic_get(&running) && atomic_get(&connected)) {
 				struct zsock_pollfd fd = {.fd = client.transport.tcp.sock,
 							 .events = ZSOCK_POLLIN};
 				int taken;
@@ -299,9 +377,12 @@ static void raw_mqtt_thread(void *a, void *b, void *c)
 					}
 					if (rc > 0 && (fd.revents & ZSOCK_POLLIN) &&
 					    (rc = mqtt_input(&client))) break;
+					rc = answer_sync();
+					if (rc) break;
 					rc = mqtt_live(&client);
 					if (rc && rc != -EAGAIN) break;
-					next_input_poll = k_uptime_get() + 100;
+					rc = 0;
+					next_input_poll = k_uptime_get() + atomic_get(&input_poll_ms);
 				}
 				if (taken) {
 					k_sleep(K_MSEC(5));
@@ -358,6 +439,10 @@ static int raw_cmd(const struct shell *sh, size_t argc, char **argv)
 		snprintk(status_topic, sizeof(status_topic), "imu/%s/status", argv[4]);
 		snprintk(info_topic, sizeof(info_topic), "imu/%s/info", argv[4]);
 		snprintk(device_id, sizeof(device_id), "%s", argv[4]);
+		snprintk(sync_request_topic, sizeof(sync_request_topic), "imu/%s/sync/request", argv[4]);
+		snprintk(sync_response_topic, sizeof(sync_response_topic), "imu/%s/sync/response",
+			 argv[4]);
+		atomic_clear(&sync_answered); atomic_clear(&sync_rejected);
 		k_spinlock_key_t report_key = k_spin_lock(&report_lock);
 		memset(&reported_status, 0, sizeof(reported_status));
 		info_valid = false;
@@ -380,8 +465,15 @@ static int raw_cmd(const struct shell *sh, size_t argc, char **argv)
 		publish_total_bytes = 0;
 		k_spin_unlock(&publish_stats_lock, key);
 		k_sem_give(&raw_start);
+	} else if (argc == 3 && !strcmp(argv[1], "poll")) {
+		char *end;
+		unsigned long ms = strtoul(argv[2], &end, 10);
+
+		if (argv[2][0] < '0' || argv[2][0] > '9' || *end || ms > 1000) return -EINVAL;
+		atomic_set(&input_poll_ms, (atomic_val_t)ms);
 	} else if (argc != 2 || strcmp(argv[1], "status")) {
-		shell_error(sh, "Use start <IPv4> <port> <device_id> <32-hex-session> | stop | status");
+		shell_error(sh, "Use start <IPv4> <port> <device_id> <32-hex-session> | stop | status"
+			    " | poll <0-1000 ms>");
 		return -EINVAL;
 	}
 	size_t queued, high_watermark;
@@ -416,6 +508,9 @@ static int raw_cmd(const struct shell *sh, size_t argc, char **argv)
 	shell_print(sh, "connects=%d status_published=%d info_published=%d",
 		    (int)atomic_get(&connects), (int)atomic_get(&status_published),
 		    (int)atomic_get(&info_published));
+	shell_print(sh, "input_poll_ms=%d sync_answered=%d sync_rejected=%d",
+		    (int)atomic_get(&input_poll_ms), (int)atomic_get(&sync_answered),
+		    (int)atomic_get(&sync_rejected));
 	return 0;
 }
 SHELL_CMD_REGISTER(imu_raw_mqtt, NULL, "Experimental RAW MQTT transport", raw_cmd);

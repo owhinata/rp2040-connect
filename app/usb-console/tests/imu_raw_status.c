@@ -56,5 +56,10 @@ int main(void)
 	       strstr(out, "\"timestamp_decimation\":0,\"time\":\"unavailable\"}"));
 	/* A device ID that would need JSON escaping is rejected, not emitted. */
 	assert(imu_raw_info_encode(out, sizeof(out), &info, "a\"b") == -EINVAL);
+
+	n = imu_raw_sync_encode(out, sizeof(out), 42, 1000001, UINT64_MAX);
+	assert(n > 0 && !strcmp(out, "{\"v\":1,\"id\":42,\"t2_us\":1000001,"
+				     "\"t3_us\":18446744073709551615}"));
+	assert(imu_raw_sync_encode(out, 8, 42, 1, 2) == -ENOSPC);
 	return 0;
 }
