@@ -179,7 +179,7 @@ A session ID is assigned at every start from the chip's unique ID and a stored c
 | `kv set` / `sethex` / `get` / `delete` | Key-value store |
 | `sensor ...` | One-shot reads, streaming and attributes (Zephyr, extended) |
 | `i2c_dma mode` / `stats` | DMA for I2C reads: switch and counters |
-| `zperf ...` | iperf-compatible throughput test (Zephyr) |
+| `zperf ...` | Throughput test with iperf3 (Zephyr, see below) |
 | `dmesg` | Show the log kept in RAM |
 | `kernel ps`, `kernel reboot` | Thread CPU and stack use, reboot |
 | `gpio ...`, `i2c ...`, `log ...` | Zephyr |
@@ -211,6 +211,30 @@ sensor attr_set lsm6dsox all fifo_timestamp_decimation 8
 
 `fifo_timestamp_decimation` is the interval between timestamps in the FIFO: 0 (none), 1, 8 or
 32, with 8 as the default. With 0 the batches carry no time.
+
+### Throughput test (zperf)
+
+Zephyr's `zperf` is enabled with the iperf3 protocol; use `iperf3` on the PC.
+
+Board to PC (sending): run `iperf3 -s -p 5201` on the PC first. The arguments are the
+destination, port, seconds, size of one send and, for UDP, the rate.
+
+```text
+zperf tcp upload <PC IPv4 address> 5201 30 1024
+zperf udp upload <PC IPv4 address> 5201 30 500 500K
+```
+
+PC to board (receiving): start the server on the board, then run
+`iperf3 -c <board IPv4 address> -p 5201 -t 30` on the PC.
+
+```text
+zperf tcp download 5201
+zperf tcp download stop
+```
+
+Single 30 s runs on hardware gave 2.93 Mbit/s for TCP sending, 1.54 Mbit/s for TCP receiving
+and no loss for UDP sending at the requested 500 kbit/s. These were taken with IMU streaming
+stopped and depend on the radio environment.
 
 ### Shell over Wi-Fi
 

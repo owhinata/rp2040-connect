@@ -52,6 +52,7 @@ struct nina_sock {
 	bool listening;
 	bool nonblocking;
 	uint8_t id;
+	int32_t receive_timeout_ms; /* SO_RCVTIMEO; 0 waits without limit */
 	struct net_sockaddr_in peer;
 };
 static struct nina_sock sockets[MAX_NINA_SOCKETS];
@@ -527,6 +528,11 @@ static ssize_t do_sendmsg(void *obj, const struct net_msghdr *msg, int flags)
 	return ret;
 }
 
+static int64_t receive_deadline(const struct nina_sock *s)
+{
+	return s->receive_timeout_ms > 0 ? k_uptime_get() + s->receive_timeout_ms : INT64_MAX;
+}
+
 static ssize_t udp_recv(struct nina_sock *s, void *buf, size_t len, int flags,
 			struct net_sockaddr *from, net_socklen_t *fromlen)
 {
@@ -534,6 +540,7 @@ static ssize_t udp_recv(struct nina_sock *s, void *buf, size_t len, int flags,
 	uint8_t state, size[2];
 	struct nina_param p[2];
 	size_t n, copied;
+	int64_t deadline;
 	int ret;
 
 	if ((flags & ~ZSOCK_MSG_DONTWAIT) || (!!from != !!fromlen)) {
@@ -546,6 +553,7 @@ static ssize_t udp_recv(struct nina_sock *s, void *buf, size_t len, int flags,
 	if (ret) {
 		return fail(ret);
 	}
+	deadline = receive_deadline(s);
 	for (;;) {
 		/* Never ask for a datagram that is not there: the reply cannot
 		 * tell "nothing received" from an empty datagram. */
@@ -554,7 +562,8 @@ static ssize_t udp_recv(struct nina_sock *s, void *buf, size_t len, int flags,
 			return fail(ret);
 		}
 		if (!(state & POLL_READ)) {
-			if ((flags & ZSOCK_MSG_DONTWAIT) || s->nonblocking) {
+			if ((flags & ZSOCK_MSG_DONTWAIT) || s->nonblocking ||
+			    k_uptime_get() >= deadline) {
 				return fail(EAGAIN);
 			}
 			k_sleep(K_MSEC(NINA_POLL_INTERVAL_MS));
@@ -602,6 +611,7 @@ static ssize_t do_recv(void *obj, void *buf, size_t len, int flags,
 	struct nina_sock *s = obj;
 	uint8_t state, bytes[2];
 	size_t n;
+	int64_t deadline;
 	int ret;
 	struct nina_param p[2];
 
@@ -620,6 +630,7 @@ static ssize_t do_recv(void *obj, void *buf, size_t len, int flags,
 	if (!buf) {
 		return fail(EINVAL);
 	}
+	deadline = receive_deadline(s);
 	for (;;) {
 		ret = poll_state(s, &state);
 		if (ret) {
@@ -628,7 +639,7 @@ static ssize_t do_recv(void *obj, void *buf, size_t len, int flags,
 		if (state & POLL_READ) {
 			break;
 		}
-		if ((flags & ZSOCK_MSG_DONTWAIT) || s->nonblocking) {
+		if ((flags & ZSOCK_MSG_DONTWAIT) || s->nonblocking || k_uptime_get() >= deadline) {
 			return fail(EAGAIN);
 		}
 		k_sleep(K_MSEC(NINA_POLL_INTERVAL_MS));
@@ -747,6 +758,38 @@ static int do_poll(struct zsock_pollfd *fds, int nfds, int timeout)
 	}
 }
 
+/* Only the receive timeout takes effect, and it is kept here. Options are
+ * not passed on to the module: its setsockopt command reaches SOL_SOCKET
+ * options only, and the sockets there are always non-blocking. */
+static int do_setsockopt(void *obj, int level, int optname, const void *optval,
+			 net_socklen_t optlen)
+{
+	struct nina_sock *s = obj;
+	const struct zsock_timeval *tv = optval;
+	int64_t ms;
+
+	/* Accepted without effect: the module's setsockopt command cannot reach
+	 * TCP-level options, so Nagle's algorithm stays on. Callers such as the
+	 * iperf3 client set this on a control connection and give up if they
+	 * cannot. */
+	if (level == NET_IPPROTO_TCP && optname == ZSOCK_TCP_NODELAY && !s->udp) {
+		return optval && optlen == sizeof(int) ? 0 : fail(EINVAL);
+	}
+	if (level != ZSOCK_SOL_SOCKET || optname != ZSOCK_SO_RCVTIMEO) {
+		return fail(ENOPROTOOPT);
+	}
+	if (!optval || optlen != sizeof(*tv) || tv->tv_sec < 0 || tv->tv_usec < 0 ||
+	    tv->tv_usec >= USEC_PER_SEC) {
+		return fail(EINVAL);
+	}
+	ms = (int64_t)tv->tv_sec * MSEC_PER_SEC + (tv->tv_usec + USEC_PER_MSEC - 1) / USEC_PER_MSEC;
+	if (ms > INT32_MAX) {
+		return fail(EDOM);
+	}
+	s->receive_timeout_ms = (int32_t)ms;
+	return 0;
+}
+
 static int do_ioctl(void *obj, unsigned int request, va_list args)
 {
 	struct nina_sock *s = obj;
@@ -782,6 +825,7 @@ static const struct socket_op_vtable socket_ops = {
 		      .ioctl = do_ioctl},
 	.bind = do_bind,
 	.connect = do_connect,
+	.setsockopt = do_setsockopt,
 	.listen = do_listen,
 	.accept = do_accept,
 	.sendto = do_send,
@@ -828,6 +872,7 @@ int nina_socket_create(int family, int type, int proto)
 	s->bound = false;
 	s->listening = false;
 	s->nonblocking = false;
+	s->receive_timeout_ms = 0;
 	k_mutex_unlock(&socket_lock);
 	zvfs_finalize_typed_fd(fd, s, (const struct fd_op_vtable *)&socket_ops,
 			       ZVFS_MODE_IFSOCK);

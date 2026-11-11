@@ -177,7 +177,7 @@ kv delete imu.port
 | `kv set` / `sethex` / `get` / `delete` | KV ストレージ |
 | `sensor ...` | センサーの単発取得・ストリーム・属性（Zephyr 標準を拡張） |
 | `i2c_dma mode` / `stats` | I²C 読み出しの DMA 切り替えと統計 |
-| `zperf ...` | iperf 互換の速度測定（Zephyr 標準） |
+| `zperf ...` | iperf3 による速度測定（Zephyr 標準、下記） |
 | `dmesg` | RAM に保存したログの表示 |
 | `kernel ps`、`kernel reboot` | スレッドの CPU・スタック、再起動 |
 | `gpio ...`、`i2c ...`、`log ...` | Zephyr 標準 |
@@ -208,6 +208,29 @@ sensor attr_set lsm6dsox all fifo_timestamp_decimation 8
 
 `fifo_timestamp_decimation` は FIFO にタイムスタンプを入れる間隔で、0（入れない）、1、8、32 を
 指定できます。既定は 8 です。0 にするとバッチに時刻が付きません。
+
+### 速度の測定（zperf）
+
+Zephyr の `zperf` を iperf3 プロトコルで有効にしています。PC 側は `iperf3` を使います。
+
+ボード → PC（送信）。PC で `iperf3 -s -p 5201` を動かしてから実行します。引数は
+宛先、ポート、秒数、1 回の送信サイズ、UDP では続けて速度です。
+
+```text
+zperf tcp upload <PC の IPv4 アドレス> 5201 30 1024
+zperf udp upload <PC の IPv4 アドレス> 5201 30 500 500K
+```
+
+PC → ボード（受信）。ボードでサーバーを起動してから、PC で
+`iperf3 -c <ボードの IPv4 アドレス> -p 5201 -t 30` を実行します。
+
+```text
+zperf tcp download 5201
+zperf tcp download stop
+```
+
+実機での 30 秒・1 回ずつの測定では、TCP 送信 2.93 Mbit/s、TCP 受信 1.54 Mbit/s、UDP 送信は
+500 kbit/s の指定で欠落 0 でした。IMU の送信を止めた状態での値で、無線環境によって変わります。
 
 ### Wi-Fi 経由のシェル
 

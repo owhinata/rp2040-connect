@@ -170,8 +170,8 @@ independent of each other. The older per-type client commands are not used.
 - **UDP** carries up to 512 bytes per datagram. What does not fit the receive buffer is
   dropped by lwIP, which keeps datagram boundaries. A connected UDP socket has datagrams from
   other senders discarded by the driver.
-- `bind` accepts the any address (0.0.0.0) only, IPv4 only. Multicast and socket options are
-  not supported.
+- `bind` accepts the any address (0.0.0.0) only, IPv4 only. Multicast is not
+  supported.
 
 ### Wi-Fi
 
@@ -194,8 +194,21 @@ Single runs each.
 - Automatic reconnection after the access point was stopped and restarted, with the address
   and gateway obtained again.
 
-Not verified: several TCP clients at once, ten sockets at once, the timeout path when a server
-does not answer, and zperf throughput since the move to the BSD socket commands.
+- zperf with iperf3 on the PC, 30 s each: 2.93 Mbit/s for TCP sending, 1.54 Mbit/s for TCP
+  receiving, and no loss for UDP sending at the requested 500 kbit/s.
+
+Not verified: several TCP clients at once, ten sockets at once, and the timeout path when a
+server does not answer.
+
+Two socket options (`setsockopt`) are accepted.
+
+- The receive timeout (`SO_RCVTIMEO`) applies to the driver's own receive wait. It is not
+  passed to the module.
+- `TCP_NODELAY` is accepted but **has no effect**. The module's command cannot set TCP-level
+  options, so Nagle's algorithm stays on. The iperf3 client asks for it on its control
+  connection and gives up if it is refused, which is the only reason it is accepted.
+
+Any other option returns `ENOPROTOOPT`.
 
 ### TLS
 
