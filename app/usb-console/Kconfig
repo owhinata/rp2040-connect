@@ -58,9 +58,3 @@ config NINA_NTP_INTERVAL_MS
 	help
 	  Queries go to a server on the local network. Do not point short
 	  intervals at public servers.
-
-# Removed with the last cleanup step; lets a new image be written without
-# pressing the BOOTSEL button while the cleanup is being verified.
-config NINA_BENCHMARK_BOOTSEL
-	bool "Enable BOOTSEL command"
-	depends on SOC_RP2040 && SHELL

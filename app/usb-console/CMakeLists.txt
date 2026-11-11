@@ -9,10 +9,6 @@ target_sources(app PRIVATE src/main.c src/log_ram.c src/kv_store.c src/wifi_prof
   drivers/nina/nina_wifi.c drivers/nina/nina_net.c drivers/nina/nina_socket.c
   drivers/nina/nina_dns.c)
 target_include_directories(app PRIVATE src)
-if(CONFIG_NINA_BENCHMARK_BOOTSEL)
-  target_sources(app PRIVATE tests/hardware/nina_benchmark_bootsel.c)
-endif()
-
 # Keep Zephyr's Kconfig and devicetree bindings while using local driver copies.
 function(use_local_driver_sources target pattern replacement_dir)
   get_target_property(sources ${target} SOURCES)

@@ -227,7 +227,8 @@ int nina_request(uint8_t cmd, const struct nina_param *params, size_t nparams,
 {
 	uint8_t c = 0;
 	size_t i, j, sent = 0, len = 0, total = 0;
-	uint8_t response_count = cmd == 0x3a ? 2 : (cmd == 0x75 || cmd == 0x7a ? 3 : 1);
+	/* accept and recvfrom answer with three parameters. */
+	uint8_t response_count = cmd == 0x75 || cmd == 0x7a ? 3 : 1;
 	int ret;
 #define SEND_BYTE(v)                                                           \
 	do {                                                                   \
@@ -299,13 +300,7 @@ int nina_request(uint8_t cmd, const struct nina_param *params, size_t nparams,
 		}
 		if (!ret) {
 			ret = transfer(NINA_DUMMY, &c);
-			if (!ret && c == 0 && cmd == 0x2d) {
-				ret = transfer(NINA_DUMMY, &c);
-				if (!ret) {
-					ret = c == NINA_END ? -ECONNREFUSED
-							    : -EPROTO;
-				}
-			} else if (!ret && cmd == 0x27) {
+			if (!ret && cmd == 0x27) {
 				response_count = c;
 			} else if (!ret && c != response_count) {
 				ret = -EPROTO;
@@ -327,7 +322,6 @@ int nina_request(uint8_t cmd, const struct nina_param *params, size_t nparams,
 					out[total++] = len;
 				}
 				if (len > cap - total ||
-				    (cmd == 0x3a && len != (j == 0 ? 4 : 2)) ||
 				    (cmd == 0x75 && len != (j == 0 ? 1 : (j == 1 ? 4 : 2))) ||
 				    (cmd == 0x7a && j < 2 && len != (j == 0 ? 4 : 2))) {
 					ret = -EMSGSIZE;
