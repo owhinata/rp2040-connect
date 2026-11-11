@@ -152,7 +152,12 @@ Each command is a single call of an lwIP socket function inside the module, and 
 independent of each other. The older per-type client commands are not used.
 
 - **Ten sockets**, the limit of the module's lwIP (`CONFIG_LWIP_MAX_SOCKETS=10`), shared by
-  the Telnet listener, MQTT, NTP and zperf.
+  the Telnet listener, MQTT, NTP and zperf. Zephyr's file descriptor table is sized with
+  `CONFIG_ZVFS_OPEN_MAX=16`. By default its size follows `CONFIG_NET_MAX_CONTEXTS`, so
+  lowering only that value leaves too few descriptors and accepting a Telnet client then
+  fails over and over.
+- Zephyr's own TCP/IP stack carries no traffic (`net conn` stays empty). Its packet buffers
+  and connection tables are kept at a minimum in `prj.conf`.
 - **Always non-blocking.** Commands run inside the module's SPI handler, so a blocking call
   stalls everything including Wi-Fi management. A socket is made non-blocking as soon as it is
   created, and the driver waits for connect completion, readable data and send space by

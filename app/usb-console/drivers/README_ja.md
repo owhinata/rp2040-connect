@@ -149,7 +149,11 @@ close、bind、listen、accept、connect、send、recv、sendto、recvfrom、ioc
 います。以前使っていた種類別のクライアント命令は使いません。
 
 - **枠は 10 個**です。NINA の lwIP の上限（`CONFIG_LWIP_MAX_SOCKETS=10`）に合わせています。
-  Telnet の待ち受け、MQTT、NTP、zperf が共有します。
+  Telnet の待ち受け、MQTT、NTP、zperf が共有します。Zephyr 側のファイル記述子の表は
+  `CONFIG_ZVFS_OPEN_MAX=16` で確保しています。既定では `CONFIG_NET_MAX_CONTEXTS` から
+  大きさが決まるので、その値だけを減らすと表が足りなくなり、Telnet の受け付けが失敗し続けます。
+- Zephyr 自前の TCP/IP は通信を扱いません（`net conn` は常に空です）。そのためのパケット
+  バッファと接続の管理表は、`prj.conf` で最小にしています。
 - **必ず非ブロッキング**にします。命令は NINA の SPI ハンドラーの中で実行されるので、
   ブロックする呼び出しは Wi-Fi の管理を含む全体を止めます。ソケットは作成直後に
   非ブロッキングにし、接続完了・受信・送信可能の待ちは、ドライバー側で poll 命令を
