@@ -23,7 +23,7 @@ int imu_raw_encode(uint8_t *out, size_t capacity, size_t *written,
 	}
 	*written = 0;
 	if (!out || !meta || !samples || count == 0 || count > IMU_RAW_MAX_WORDS ||
-	    (meta->flags & ~(IMU_RAW_ACCEL_TIME_VALID | IMU_RAW_GYRO_TIME_VALID))) {
+	    (meta->flags & ~IMU_RAW_FLAGS_MASK)) {
 		return -EINVAL;
 	}
 	for (size_t i = 0; i < count; i++) {
@@ -42,7 +42,12 @@ int imu_raw_encode(uint8_t *out, size_t capacity, size_t *written,
 	    ((!accel || !(meta->flags & IMU_RAW_ACCEL_TIME_VALID)) && meta->accel_first_tick) ||
 	    ((!gyro || !(meta->flags & IMU_RAW_GYRO_TIME_VALID)) && meta->gyro_first_tick) ||
 	    (!accel && (meta->flags & IMU_RAW_ACCEL_TIME_VALID)) ||
-	    (!gyro && (meta->flags & IMU_RAW_GYRO_TIME_VALID))) {
+	    (!gyro && (meta->flags & IMU_RAW_GYRO_TIME_VALID)) ||
+	    /* Unix time comes from the tick and is zero unless marked valid. */
+	    ((meta->flags & IMU_RAW_ACCEL_UNIX_VALID) && !(meta->flags & IMU_RAW_ACCEL_TIME_VALID)) ||
+	    ((meta->flags & IMU_RAW_GYRO_UNIX_VALID) && !(meta->flags & IMU_RAW_GYRO_TIME_VALID)) ||
+	    (!(meta->flags & IMU_RAW_ACCEL_UNIX_VALID) && meta->accel_first_unix_us) ||
+	    (!(meta->flags & IMU_RAW_GYRO_UNIX_VALID) && meta->gyro_first_unix_us)) {
 		return -EINVAL;
 	}
 	bitmap_len = (count + 7) / 8;
@@ -52,7 +57,7 @@ int imu_raw_encode(uint8_t *out, size_t capacity, size_t *written,
 	}
 	memset(out, 0, size);
 	memcpy(out, "IMU1", 4);
-	out[4] = 1;
+	out[4] = IMU_RAW_VERSION;
 	out[5] = meta->flags;
 	put_le(out + 6, IMU_RAW_HEADER_SIZE, 2);
 	memcpy(out + 8, meta->session_id, 16);
@@ -65,6 +70,8 @@ int imu_raw_encode(uint8_t *out, size_t capacity, size_t *written,
 	put_le(out + 66, bitmap_len, 2);
 	put_le(out + 68, meta->epoch_id, 4);
 	put_le(out + 72, meta->time_map_id, 4);
+	put_le(out + 80, meta->accel_first_unix_us, 8);
+	put_le(out + 88, meta->gyro_first_unix_us, 8);
 	for (size_t i = 0; i < count; i++) {
 		if (samples[i].kind == LSM6DSO_FIFO_ACCEL) {
 			out[IMU_RAW_HEADER_SIZE + i / 8] |= (uint8_t)(1U << (i % 8));

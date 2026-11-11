@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 #include <assert.h>
 #include <errno.h>
+#include <stdbool.h>
 #include <stdint.h>
 #include <string.h>
 #include "imu_raw_batch.h"
@@ -17,6 +18,13 @@ static int sink(void *context, const uint8_t *payload, size_t length)
 	memcpy(received, payload, length);
 	received_len = length;
 	return 0;
+}
+static bool clock_ready = true;
+static bool test_clock(void *context, uint64_t tick, uint64_t *unix_us)
+{
+	(void)context;
+	*unix_us = 1000000 + tick * 25;
+	return clock_ready;
 }
 static uint64_t le64(const uint8_t *p)
 {
@@ -46,11 +54,11 @@ int main(void)
 	       b.dropped_gyro == 192 && b.count == 128);
 	sink_result = 0;
 	assert(imu_raw_batch_flush(&b) == 0);
-	assert(b.delivered_batches == 1 && b.next_batch == 2 && received_len == 864);
+	assert(b.delivered_batches == 1 && b.next_batch == 2 && received_len == 880);
 	assert(!memcmp(received, "IMU1", 4) && received[8] == 0x42 && received[68] == 3);
 	assert(le64(received + 24) == 1 && le64(received + 32) == 192 &&
 	       le64(received + 40) == 192 && received[5] == 0);
-	assert(received[80] == 0xaa && received[96] == 128 && received[102] == 129);
+	assert(received[96] == 0xaa && received[112] == 128 && received[118] == 129);
 	assert(imu_raw_batch_flush(&b) == 0 && b.next_batch == 2);
 	cursor = 0;
 	assert(imu_raw_batch_consume(&b, words, 7, &cursor) == 0);
@@ -142,5 +150,21 @@ int main(void)
 	assert(imu_raw_batch_flush(&b) == 0 && received[5] == 0 && received[68] == 1);
 	assert(imu_raw_batch_consume(&b, timed, sizeof(timed), &cursor) == 0);
 	assert(imu_raw_batch_flush(&b) == 0 && b.time.anchors == 3);
+
+	/* With a clock, timed first samples also carry Unix time; a clock that
+	 * has no answer leaves it invalid and zero. */
+	assert(imu_raw_batch_init(&b, session, 0, sink, NULL) == 0);
+	b.clock = test_clock;
+	cursor = 0;
+	assert(imu_raw_batch_consume(&b, timed, 4 * 7, &cursor) == 0);
+	assert(imu_raw_batch_flush(&b) == 0);
+	assert(received[5] == 15 && le64(received + 80) == 1000000 + 5000 * 25 &&
+	       le64(received + 88) == 1000000 + 5000 * 25);
+	clock_ready = false;
+	assert(imu_raw_batch_consume(&b, timed, (17 + 3) * 7, &cursor) == 0);
+	assert(imu_raw_batch_flush(&b) == 0);
+	assert(imu_raw_batch_consume(&b, timed, (17 + 5) * 7, &cursor) == 0);
+	assert(imu_raw_batch_flush(&b) == 0);
+	assert(received[5] == 3 && le64(received + 80) == 0 && le64(received + 88) == 0);
 	return 0;
 }

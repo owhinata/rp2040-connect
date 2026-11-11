@@ -19,6 +19,8 @@
 #endif
 #if defined(CONFIG_IMU_RAW_MQTT_EXPERIMENTAL)
 #include "imu_raw_mqtt.h"
+#include "imu_tick_clock.h"
+#include "time_sync.h"
 #endif
 #if defined(CONFIG_IMU_TIMESTAMP_DIAGNOSTIC)
 #include "../drivers/lsm6dso/lsm6dso_fifo.h"
@@ -36,6 +38,7 @@
 #if defined(CONFIG_IMU_RAW_MQTT_EXPERIMENTAL)
 #define IMU_RAW_FLUSH_INTERVAL_MS 100
 #define IMU_RAW_REPORT_INTERVAL_MS 500
+#define IMU_RAW_TIME_POINT_INTERVAL_MS 1000
 /* After the driver ends a stream with an error it has already stopped the
  * FIFO. Give it this long to release the stream, and give up when this many
  * restarts in a row deliver no data. */
@@ -78,6 +81,9 @@ struct imu_measure_result {
 	int raw_error;
 	uint32_t raw_discontinuities, raw_epoch;
 	struct imu_raw_time raw_time;
+	uint32_t raw_time_point_failures, raw_time_point_window_us;
+	uint32_t raw_unix_unavailable, raw_tick_holds;
+	int64_t raw_us_per_million_ticks;
 #endif
 	uint32_t recoveries;
 	int last_recovery_error, stream_rc;
@@ -156,6 +162,68 @@ static int raw_diagnostic_sink(void *context, const uint8_t *payload, size_t len
 #if defined(CONFIG_IMU_RAW_MQTT_EXPERIMENTAL)
 /* Hands the acquisition counters to the transport. Returns true once the
  * driver statistics belong to this run (the FIFO starts asynchronously). */
+/* Latest reading of the sensor tick counter together with the board clock.
+ * Owned by the measurement thread. */
+static struct {
+	bool valid, unix_valid;
+	uint64_t tick;
+	int64_t mono_us, unix_us, unix_estimate_us;
+	uint32_t window_us, sync_delay_us;
+	uint32_t failures;
+} raw_time_point;
+
+/* Sensor tick to board clock. Kept across measurements for its rate and so
+ * that batch times never go back. Owned by the measurement thread. */
+static struct imu_tick_clock raw_tick_clock;
+static bool raw_tick_clock_ready;
+static uint32_t raw_unix_unavailable;
+
+/* Server time of a sample for the batch header. */
+static bool raw_tick_to_unix(void *context, uint64_t tick, uint64_t *unix_us)
+{
+	int64_t mono_us, time_us;
+
+	ARG_UNUSED(context);
+	if (!imu_tick_clock_convert(&raw_tick_clock, tick, &mono_us) ||
+	    !time_sync_unix_us(mono_us, &time_us, NULL) || time_us <= 0) {
+		raw_unix_unavailable++;
+		return false;
+	}
+	*unix_us = (uint64_t)time_us;
+	return true;
+}
+
+static void raw_time_point_take(const struct device *dev)
+{
+	const struct imu_raw_time *fifo_time = &raw_batch.time;
+	int64_t before, after;
+	uint64_t wraps;
+	uint32_t tick;
+
+	if (lsm6dso_timestamp_read(dev, time_sync_mono_us, &tick, &before, &after)) {
+		raw_time_point.failures++;
+		return;
+	}
+	/* Extend like the FIFO timestamps. The register is read later than
+	 * the newest FIFO word, so it may already be past a wrap. */
+	wraps = fifo_time->wraps;
+	if (fifo_time->raw_seen && tick < fifo_time->last_raw &&
+	    fifo_time->last_raw - tick > UINT32_MAX / 2U) {
+		wraps++;
+	}
+	raw_time_point.tick = (wraps << 32) | tick;
+	raw_time_point.mono_us = before + (after - before) / 2;
+	raw_time_point.window_us = (uint32_t)MIN(after - before, (int64_t)UINT32_MAX);
+	imu_tick_clock_add(&raw_tick_clock, raw_time_point.tick, raw_time_point.mono_us);
+	/* Converted now: a point is reported more than once, and the smoothed
+	 * clock only answers for times after its latest correction. */
+	raw_time_point.unix_valid =
+		time_sync_unix_us(raw_time_point.mono_us, &raw_time_point.unix_us,
+				  &raw_time_point.sync_delay_us) &&
+		time_sync_estimate_us(raw_time_point.mono_us, &raw_time_point.unix_estimate_us, NULL);
+	raw_time_point.valid = true;
+}
+
 static bool raw_report(const struct device *dev, int raw_error, int error,
 		       uint32_t generation, const struct lsm6dso_fifo_stats *earlier,
 		       enum imu_raw_state state, bool send_info)
@@ -173,6 +241,16 @@ static bool raw_report(const struct device *dev, int raw_error, int error,
 	lsm6dso_fifo_get_stats(dev, &fifo);
 	current = fifo.generation == generation;
 	memcpy(status.session_id, measurement_session, sizeof(status.session_id));
+	if (raw_time_point.valid) {
+		status.tick_valid = true;
+		status.tick = raw_time_point.tick;
+		status.tick_mono_us = raw_time_point.mono_us;
+		status.tick_window_us = raw_time_point.window_us;
+		status.unix_valid = raw_time_point.unix_valid;
+		status.unix_us = raw_time_point.unix_us;
+		status.unix_estimate_us = raw_time_point.unix_estimate_us;
+		status.sync_delay_us = raw_time_point.sync_delay_us;
+	}
 	status.fifo_overrun_observations = earlier->overrun_observations;
 	status.i2c_errors = earlier->i2c_errors;
 	if (current) {
@@ -351,6 +429,12 @@ static void print_result(const struct shell *shell, const struct imu_measure_res
 		    " counter_mismatches=%" PRIu64 " counter_skips=%" PRIu64,
 		    result->raw_time.anchors, result->raw_time.irregular_periods,
 		    result->raw_time.counter_mismatches, result->raw_time.counter_skips);
+	shell_print(shell, "raw_time_point failures=%" PRIu32 " last_window_us=%" PRIu32
+		    " unix_unavailable=%" PRIu32 " monotonic_holds=%" PRIu32
+		    " us_per_1e6_ticks=%" PRId64,
+		    result->raw_time_point_failures, result->raw_time_point_window_us,
+		    result->raw_unix_unavailable, result->raw_tick_holds,
+		    result->raw_us_per_million_ticks);
 	shell_print(shell, "raw_time slot_ticks=%" PRIu32 " anchor_ticks=%" PRIu32 "..%" PRIu32
 		    " anchor_slots=%" PRIu32 "..%" PRIu32 " last_tick=%" PRIu64,
 		    result->raw_time.slot_ticks, result->raw_time.min_anchor_ticks,
@@ -501,7 +585,7 @@ static void measure_thread(void *arg1, void *arg2, void *arg3)
 		int64_t next_raw_flush;
 		uint64_t observed_raw_batch;
 		bool raw_pending_timed;
-		int64_t next_raw_report;
+		int64_t next_raw_report, next_time_point;
 		bool raw_info_sent;
 #endif
 		int rc;
@@ -512,6 +596,13 @@ static void measure_thread(void *arg1, void *arg2, void *arg3)
 #if defined(CONFIG_IMU_RAW_MQTT_EXPERIMENTAL)
 		result.raw_error = imu_raw_batch_init(&raw_batch, measurement_session, 0,
 						      imu_raw_mqtt_submit, NULL);
+		raw_batch.clock = raw_tick_to_unix;
+		if (!raw_tick_clock_ready) {
+			imu_tick_clock_init(&raw_tick_clock);
+			raw_tick_clock_ready = true;
+		}
+		imu_tick_clock_restart(&raw_tick_clock);
+		raw_unix_unavailable = 0;
 #else
 		const uint8_t diagnostic_session[16] = {0};
 		result.raw_error = imu_raw_batch_init(&raw_batch, diagnostic_session, 0,
@@ -534,6 +625,9 @@ static void measure_thread(void *arg1, void *arg2, void *arg3)
 		observed_raw_batch = 0;
 		raw_pending_timed = false;
 		next_raw_report = start;
+		next_time_point = start;
+		raw_time_point.valid = false;
+		raw_time_point.failures = 0;
 		raw_info_sent = false;
 #endif
 		rc = sensor_stream(&imu_measure_iodev, &imu_measure_rtio, NULL, &active_handle);
@@ -619,6 +713,24 @@ static void measure_thread(void *arg1, void *arg2, void *arg3)
 			if (raw_pending_timed && poll_remaining > next_raw_flush - k_uptime_get()) {
 				poll_remaining = MAX((int64_t)0, next_raw_flush - k_uptime_get());
 			}
+			if (k_uptime_get() >= next_time_point) {
+				struct lsm6dso_fifo_stats running;
+
+				/* The sensor's counter is only meaningful once this
+				 * run's FIFO has been configured. Until the first
+				 * reading, look again soon: batches wait for it. */
+				lsm6dso_fifo_get_stats(dev, &running);
+				if (running.active && running.generation == expected_generation) {
+					imu_tick_clock_set_trim(&raw_tick_clock, running.freq_fine);
+					raw_time_point_take(dev);
+				}
+				next_time_point = k_uptime_get() +
+					(raw_time_point.valid ? IMU_RAW_TIME_POINT_INTERVAL_MS : 5);
+				if (raw_time_point.valid) {
+					/* Report while the point is fresh. */
+					next_raw_report = 0;
+				}
+			}
 			if (k_uptime_get() >= next_raw_report) {
 				raw_info_sent = raw_report(dev, result.raw_error, result.error,
 							   expected_generation, &earlier_fifo,
@@ -628,6 +740,9 @@ static void measure_thread(void *arg1, void *arg2, void *arg3)
 			}
 			if (poll_remaining > next_raw_report - k_uptime_get()) {
 				poll_remaining = MAX((int64_t)0, next_raw_report - k_uptime_get());
+			}
+			if (poll_remaining > next_time_point - k_uptime_get()) {
+				poll_remaining = MAX((int64_t)0, next_time_point - k_uptime_get());
 			}
 #endif
 			if (result.error || result.terminal_seen || atomic_get(&measure_stop) ||
@@ -710,6 +825,14 @@ static void measure_thread(void *arg1, void *arg2, void *arg3)
 		result.raw_dropped_gyro = raw_batch.dropped_gyro;
 		result.raw_epoch = raw_batch.meta.epoch_id;
 		result.raw_time = raw_batch.time;
+#if defined(CONFIG_IMU_RAW_MQTT_EXPERIMENTAL)
+		result.raw_time_point_failures = raw_time_point.failures;
+		result.raw_time_point_window_us = raw_time_point.window_us;
+		result.raw_unix_unavailable = raw_unix_unavailable;
+		result.raw_tick_holds = raw_tick_clock.held;
+		result.raw_us_per_million_ticks =
+			raw_tick_clock.rate_us * 1000000LL / (int64_t)raw_tick_clock.rate_ticks;
+#endif
 #endif
 #if defined(CONFIG_IMU_RAW_MQTT_EXPERIMENTAL)
 		(void)raw_report(dev, result.raw_error, result.error, expected_generation,

@@ -41,6 +41,14 @@ struct lsm6dso_fifo_stats {
 };
 
 void lsm6dso_fifo_get_stats(const struct device *dev, struct lsm6dso_fifo_stats *stats);
+/* Reads the sensor's 32-bit timestamp counter (the clock of the FIFO
+ * timestamp words) between two readings of the caller's clock, so that the
+ * two clocks can be related. The counter was sampled somewhere between
+ * *before_us and *after_us. Returns -EAGAIN if two consecutive reads
+ * disagree, which would indicate a torn multi-byte read.
+ * Thread context only; waits for a FIFO transfer in progress. */
+int lsm6dso_timestamp_read(const struct device *dev, int64_t (*clock_us)(void), uint32_t *tick,
+			   int64_t *before_us, int64_t *after_us);
 /* Request a graceful stop of this stream, leaving its RTIO handle valid until
  * all pending FIFO words have been delivered and the terminal CQE is posted.
  */

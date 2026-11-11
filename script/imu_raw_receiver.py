@@ -24,7 +24,8 @@ import struct
 import sys
 import time
 
-HEADER = 80
+HEADER = 96
+VERSION = 2
 MAX_WORDS = 384
 MAX_GAP_RECORDS = 50
 
@@ -97,6 +98,82 @@ class Sync:
             best_quarter_round_trip_max_ms=round(max(x[1] for x in best), 3) if best else None)
 
 
+class TimePoints:
+    """status の (tick, unix_us) とバッチの先頭 tick・到着時刻から時刻対応を検証する。
+
+    tick から PC 時刻への変換は、対応点全体への直線近似で行う。これは検証用の
+    最も単純な方法で、専用アプリでの変換方法を決めるものではない。
+    """
+
+    def __init__(self):
+        self.points = []   # (tick, unix_us, unix_estimate_us, window_us, delay_us)
+        self.batches = []  # (first accel tick, arrival unix seconds)
+        self.unsynchronized = 0
+
+    def status(self, payload):
+        try:
+            m = json.loads(payload)
+        except ValueError:
+            return
+        if 'tick' not in m:
+            return
+        if 'unix_us' not in m:
+            self.unsynchronized += 1
+            return
+        p = (m['tick'], m['unix_us'], m['unix_estimate_us'], m['tick_window_us'], m['sync_delay_us'])
+        if not self.points or p[0] != self.points[-1][0]:
+            self.points.append(p)
+
+    def compare(self, tick_unix):
+        pts = self.points
+        if len(pts) < 3 or not tick_unix:
+            return None
+        t0, u0 = pts[0][0], pts[0][1]
+        xs = [p[0] - t0 for p in pts]
+        ys = [p[1] - u0 for p in pts]
+        n = len(xs)
+        mx, my = sum(xs) / n, sum(ys) / n
+        slope = sum((x - mx) * (y - my) for x, y in zip(xs, ys)) / sum((x - mx) ** 2 for x in xs)
+        intercept = my - slope * mx
+        return percentiles([(u - u0 - (slope * (t - t0) + intercept)) / 1000 for t, u in tick_unix])
+
+    def summary(self):
+        pts = self.points
+        out = dict(points=len(pts), unsynchronized=self.unsynchronized)
+        if len(pts) < 3:
+            return out
+        t0, u0 = pts[0][0], pts[0][1]
+        xs = [p[0] - t0 for p in pts]
+
+        def fit(ys):
+            n = len(xs)
+            mx, my = sum(xs) / n, sum(ys) / n
+            slope = sum((x - mx) * (y - my) for x, y in zip(xs, ys)) / sum((x - mx) ** 2 for x in xs)
+            return slope, my - slope * mx
+
+        slope, intercept = fit([p[1] - u0 for p in pts])
+        slope_e, intercept_e = fit([p[2] - u0 for p in pts])
+        out.update(
+            span_s=round((pts[-1][1] - u0) / 1e6, 1),
+            us_per_tick=round(slope, 6), ticks_per_second=round(1e6 / slope, 2),
+            # 逆行: tick が進んだのに変換後の時刻が進んでいない点の数
+            unix_not_increasing=sum(b[1] <= a[1] for a, b in zip(pts, pts[1:])),
+            unix_estimate_not_increasing=sum(b[2] <= a[2] for a, b in zip(pts, pts[1:])),
+            fit_residual_ms=percentiles([abs(p[1] - u0 - (slope * x + intercept)) / 1000
+                                         for p, x in zip(pts, xs)]),
+            fit_residual_estimate_ms=percentiles([abs(p[2] - u0 - (slope_e * x + intercept_e)) / 1000
+                                                  for p, x in zip(pts, xs)]),
+            tick_window_us=percentiles([p[3] for p in pts]),
+            sync_delay_ms=percentiles([p[4] / 1000 for p in pts]))
+        if self.batches:
+            # 先頭サンプルの時刻から到着までの時間。バッチの長さ（約 29 ms）より
+            # 短ければ、どこかの対応が間違っている。
+            out['batch_first_sample_to_arrival_ms'] = percentiles(
+                [(arrival * 1e6 - (u0 + slope * (tick - t0) + intercept)) / 1000
+                 for tick, arrival in self.batches])
+        return out
+
+
 class Stats:
     def __init__(self, session):
         self.session = session
@@ -105,7 +182,8 @@ class Stats:
             missing_batches=0, missing_accel=0, missing_gyro=0, reordered=0,
             index_regressions=0, invalid=0, connects=0, disconnects=0,
             max_gap_ms=0.0, max_gap_before_seq=None, protocol_error=None,
-            time_valid=0, time_invalid=0, tick_regressions=0)
+            time_valid=0, time_invalid=0, tick_regressions=0,
+            unix_valid=0, unix_invalid=0, unix_regressions=0)
         self.gaps = []
         self.epoch_changes = []
         self.last_epoch = None
@@ -113,12 +191,20 @@ class Stats:
         self.tick_prev = {}
         self.ticks_per_sample = {}
         self.tick_first = self.tick_last = None
+        self.time_points = TimePoints()
+        # バッチに付いた PC 時刻: 直前バッチの (epoch, 先頭番号, 時刻) と集計
+        self.unix_prev = {}
+        self.unix_us_per_sample = []
+        self.unix_to_arrival_ms = []
+        self.unix_vs_points = []  # (tick, unix_us) 対応点の直線との比較用
         self.sessions, self.topics, self.flags, self.epochs = set(), set(), set(), set()
         self.other = {}
         self.next_accel = self.next_gyro = 0
         self.last_time = None
 
     def other_message(self, topic, payload):
+        if topic.endswith('/status'):
+            self.time_points.status(payload)
         entry = self.other.setdefault(topic, dict(count=0, last=None))
         entry['count'] += 1
         entry['last'] = payload[:2048].decode('utf-8', errors='replace')
@@ -126,7 +212,7 @@ class Stats:
     def raw(self, topic, qos, p):
         r = self.r
         self.topics.add('%s (QoS %d)' % (topic, qos))
-        if len(p) < HEADER or p[:4] != b'IMU1' or p[4] != 1 or p[5] & ~3 or \
+        if len(p) < HEADER or p[:4] != b'IMU1' or p[4] != VERSION or p[5] & ~15 or \
            struct.unpack_from('<H', p, 6)[0] != HEADER or p[76:80] != b'\0' * 4:
             r['invalid'] += 1
             return
@@ -152,6 +238,7 @@ class Stats:
             r['invalid'] += 1
             return
         now = time.monotonic()
+        arrival = time.time()
         gap_ms = 0.0 if self.last_time is None else round((now - self.last_time) * 1000, 1)
         expected = 0 if r['last_seq'] is None else r['last_seq'] + 1
         if seq < expected:
@@ -188,6 +275,29 @@ class Stats:
         self.flags.add(p[5])
         epoch = struct.unpack_from('<I', p, 68)[0]
         ticks = struct.unpack_from('<QQ', p, 48)
+        if accel and p[5] & 1:
+            self.time_points.batches.append((ticks[0], arrival))
+        unix = struct.unpack_from('<QQ', p, 80)
+        for kind, bit, present, index, value, tick in (('accel', 4, accel, ia, unix[0], ticks[0]),
+                                                       ('gyro', 8, gyro, ig, unix[1], ticks[1])):
+            if not present:
+                continue
+            if not p[5] & bit:
+                r['unix_invalid'] += 1
+                if value:
+                    r['invalid'] += 1
+                continue
+            r['unix_valid'] += 1
+            prev = self.unix_prev.get(kind)
+            if prev and index > prev[1]:
+                if value <= prev[2]:
+                    r['unix_regressions'] += 1
+                elif prev[0] == epoch:
+                    self.unix_us_per_sample.append((value - prev[2]) / (index - prev[1]))
+            self.unix_prev[kind] = (epoch, index, value)
+            if kind == 'accel':
+                self.unix_to_arrival_ms.append((arrival * 1e6 - value) / 1000)
+                self.unix_vs_points.append((tick, value))
         for kind, bit, present, index, tick in (('accel', 1, accel, ia, ticks[0]),
                                                 ('gyro', 2, gyro, ig, ticks[1])):
             if not present:
@@ -227,6 +337,13 @@ class Stats:
             out['ticks_per_second_by_arrival'] = round(
                 (self.tick_last[0] - self.tick_first[0]) / (self.tick_last[1] - self.tick_first[1]), 1)
         out['ticks_per_sample'] = self.ticks_per_sample
+        out['time_points'] = self.time_points.summary()
+        out['batch_unix'] = dict(
+            # 連続するバッチの先頭時刻の差を番号の差で割った値（µs）。一定に近いほどよい。
+            us_per_sample=percentiles(self.unix_us_per_sample),
+            first_sample_to_arrival_ms=percentiles(self.unix_to_arrival_ms),
+            # ボードが付けた時刻と、status の対応点から PC 側で求めた直線との差
+            minus_point_fit_ms=self.time_points.compare(self.unix_vs_points))
         out.update(gaps=self.gaps, epoch_changes=self.epoch_changes, sessions=sorted(self.sessions), topics=sorted(self.topics),
                    flags=sorted(self.flags), epochs=sorted(self.epochs), other=self.other)
         return out

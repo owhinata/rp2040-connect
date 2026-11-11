@@ -8,6 +8,7 @@
  * https://www.st.com/resource/en/datasheet/lsm6dso.pdf
  */
 
+#include <zephyr/sys/byteorder.h>
 #include <zephyr/drivers/sensor.h>
 #include <zephyr/kernel.h>
 #include <zephyr/device.h>
@@ -927,6 +928,41 @@ int lsm6dso_fifo_status_locked_driver(const struct device *dev,
 	}
 	k_mutex_unlock(&data->fifo_lock);
 	return ret;
+}
+
+int lsm6dso_timestamp_read(const struct device *dev, int64_t (*clock_us)(void), uint32_t *tick,
+			   int64_t *before_us, int64_t *after_us)
+{
+	const struct lsm6dso_config *cfg = dev->config;
+	struct lsm6dso_data *data = dev->data;
+	uint8_t first[4], second[4];
+	uint32_t a, b;
+	int ret;
+
+	if (!clock_us || !tick || !before_us || !after_us) {
+		return -EINVAL;
+	}
+	k_mutex_lock(&data->fifo_lock, K_FOREVER);
+	ret = i2c_burst_read_dt(&cfg->stmemsc_cfg.i2c, LSM6DSO_TIMESTAMP0, first, sizeof(first));
+	if (ret == 0) {
+		*before_us = clock_us();
+		ret = i2c_burst_read_dt(&cfg->stmemsc_cfg.i2c, LSM6DSO_TIMESTAMP0, second,
+					sizeof(second));
+		*after_us = clock_us();
+	}
+	k_mutex_unlock(&data->fifo_lock);
+	if (ret != 0) {
+		return ret;
+	}
+	a = sys_get_le32(first);
+	b = sys_get_le32(second);
+	/* 400 ticks are 10 ms: far more than two reads take, far less than a
+	 * wrong carry into the second byte or above would produce. */
+	if ((uint32_t)(b - a) > 400U) {
+		return -EAGAIN;
+	}
+	*tick = b;
+	return 0;
 }
 
 void lsm6dso_fifo_get_stats(const struct device *dev, struct lsm6dso_fifo_stats *stats)

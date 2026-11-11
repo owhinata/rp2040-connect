@@ -63,6 +63,8 @@ int imu_raw_batch_flush(struct imu_raw_batch *batch)
 	batch->meta.gyro_first_index = UINT64_MAX;
 	batch->meta.accel_first_tick = 0;
 	batch->meta.gyro_first_tick = 0;
+	batch->meta.accel_first_unix_us = 0;
+	batch->meta.gyro_first_unix_us = 0;
 	batch->meta.flags = 0;
 	return 0;
 }
@@ -133,6 +135,13 @@ int imu_raw_batch_consume(struct imu_raw_batch *batch, const uint8_t *words,
 				if (imu_raw_time_get(&batch->time, &tick)) {
 					batch->meta.accel_first_tick = tick;
 					batch->meta.flags |= IMU_RAW_ACCEL_TIME_VALID;
+					if (batch->clock &&
+					    batch->clock(batch->clock_context, tick,
+							 &batch->meta.accel_first_unix_us)) {
+						batch->meta.flags |= IMU_RAW_ACCEL_UNIX_VALID;
+					} else {
+						batch->meta.accel_first_unix_us = 0;
+					}
 				}
 			}
 			batch->next_accel++;
@@ -142,6 +151,13 @@ int imu_raw_batch_consume(struct imu_raw_batch *batch, const uint8_t *words,
 				if (imu_raw_time_get(&batch->time, &tick)) {
 					batch->meta.gyro_first_tick = tick;
 					batch->meta.flags |= IMU_RAW_GYRO_TIME_VALID;
+					if (batch->clock &&
+					    batch->clock(batch->clock_context, tick,
+							 &batch->meta.gyro_first_unix_us)) {
+						batch->meta.flags |= IMU_RAW_GYRO_UNIX_VALID;
+					} else {
+						batch->meta.gyro_first_unix_us = 0;
+					}
 				}
 			}
 			batch->next_gyro++;

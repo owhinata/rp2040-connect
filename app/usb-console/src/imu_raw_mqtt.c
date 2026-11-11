@@ -22,7 +22,7 @@ static struct mqtt_client client;
 static struct sockaddr_in broker;
 static uint8_t rx_buf[512], tx_buf[512], session[16];
 static char topic[80], status_topic[80], info_topic[80], client_id[64], device_id[41];
-static char json[512];
+static char json[768];
 #define STATUS_INTERVAL_MS 1000
 /* Protected by report_lock. */
 static struct k_spinlock report_lock;

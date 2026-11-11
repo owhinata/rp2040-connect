@@ -19,23 +19,47 @@ int main(void)
 				    0x01, 0x00, 0xfe, 0xff, 0x34, 0x12};
 
 	memset(out, 0xa5, sizeof(out));
-	assert(imu_raw_encode(out, 92, &written, &meta, samples, 2) == -ENOSPC);
+	assert(imu_raw_encode(out, 108, &written, &meta, samples, 2) == -ENOSPC);
 	assert(written == 0 && out[0] == 0xa5);
 	assert(imu_raw_encode(out, sizeof(out), &written, &meta, samples, 2) == 0);
-	assert(written == 93 && memcmp(out, "IMU1\1\0\120\0", 8) == 0);
+	assert(written == 109 && memcmp(out, "IMU1\2\0\140\0", 8) == 0);
 	assert(out[24] == 0x34 && out[25] == 0x12 && out[32] == 4 && out[40] == 9);
 	assert(out[64] == 2 && out[66] == 1 && out[68] == 0x78 && out[71] == 0x12);
-	assert(out[80] == 2 && !memcmp(out + 81, expected, sizeof(expected)));
+	assert(out[96] == 2 && !memcmp(out + 97, expected, sizeof(expected)));
+	for (size_t i = 76; i < 96; i++) {
+		assert(out[i] == 0); /* reserved and both Unix times */
+	}
 	meta.flags = IMU_RAW_ACCEL_TIME_VALID;
 	meta.accel_first_tick = 7;
 	assert(imu_raw_encode(out, sizeof(out), &written, &meta, samples, 2) == 0);
 	assert(out[5] == 1 && out[48] == 7);
+	/* Unix time needs its flag, and the flag needs a valid tick. */
+	meta.accel_first_unix_us = 0x0102030405060708ULL;
+	assert(imu_raw_encode(out, sizeof(out), &written, &meta, samples, 2) == -EINVAL);
+	meta.flags |= IMU_RAW_ACCEL_UNIX_VALID;
+	assert(imu_raw_encode(out, sizeof(out), &written, &meta, samples, 2) == 0);
+	assert(out[5] == 5 && out[80] == 0x08 && out[87] == 0x01 && out[88] == 0);
+	meta.flags = IMU_RAW_ACCEL_UNIX_VALID;
+	meta.accel_first_tick = 0;
+	assert(imu_raw_encode(out, sizeof(out), &written, &meta, samples, 2) == -EINVAL);
+	meta.flags = IMU_RAW_GYRO_TIME_VALID | IMU_RAW_GYRO_UNIX_VALID;
+	meta.accel_first_unix_us = 0;
+	meta.gyro_first_tick = 9;
+	meta.gyro_first_unix_us = 0x11;
+	assert(imu_raw_encode(out, sizeof(out), &written, &meta, samples, 2) == 0);
+	assert(out[5] == 10 && out[56] == 9 && out[88] == 0x11 && out[80] == 0);
+	meta.flags = 16;
+	assert(imu_raw_encode(out, sizeof(out), &written, &meta, samples, 2) == -EINVAL);
 	meta.flags = 0;
+	assert(imu_raw_encode(out, sizeof(out), &written, &meta, samples, 2) == -EINVAL);
+	meta.gyro_first_tick = 0;
+	meta.gyro_first_unix_us = 0;
+	meta.accel_first_tick = 7;
 	assert(imu_raw_encode(out, sizeof(out), &written, &meta, samples, 2) == -EINVAL);
 	meta.accel_first_tick = 0;
 	meta.gyro_first_index = UINT64_MAX;
 	assert(imu_raw_encode(out, sizeof(out), &written, &meta, samples + 1, 1) == 0);
-	assert(written == 87 && out[80] == 1 && out[40] == 0xff);
+	assert(written == 103 && out[96] == 1 && out[40] == 0xff);
 	meta.accel_first_index = UINT64_MAX - 1;
 	assert(imu_raw_encode(out, sizeof(out), &written, &meta, samples + 1, 1) == 0);
 	meta.accel_first_index = UINT64_MAX;

@@ -123,7 +123,25 @@ int imu_raw_status_encode(char *out, size_t capacity, const struct imu_raw_statu
 	field_u64(&w, "connects", s->connects);
 	field_u64(&w, "failures", s->failures);
 	field_u64(&w, "queue_high", s->queue_high_watermark);
-	field_str(&w, "sync", "unsynchronized");
+	if (s->tick_valid) {
+		if (s->tick_mono_us < 0) {
+			return -EINVAL;
+		}
+		field_u64(&w, "tick", s->tick);
+		field_u64(&w, "tick_mono_us", (uint64_t)s->tick_mono_us);
+		field_u64(&w, "tick_window_us", s->tick_window_us);
+	}
+	if (s->tick_valid && s->unix_valid) {
+		if (s->unix_us < 0 || s->unix_estimate_us < 0) {
+			return -EINVAL;
+		}
+		field_u64(&w, "unix_us", (uint64_t)s->unix_us);
+		field_u64(&w, "unix_estimate_us", (uint64_t)s->unix_estimate_us);
+		field_u64(&w, "sync_delay_us", s->sync_delay_us);
+		field_str(&w, "sync", "ntp");
+	} else {
+		field_str(&w, "sync", "unsynchronized");
+	}
 	return finish(&w);
 }
 
@@ -148,6 +166,7 @@ int imu_raw_info_encode(char *out, size_t capacity, const struct imu_raw_info *i
 	field_str(&w, "device", device_id);
 	field_str(&w, "sensor", "LSM6DSO");
 	field_str(&w, "payload", "IMU1");
+	field_u64(&w, "payload_version", 2);
 	field_str(&w, "raw", "int16le");
 	field_str(&w, "axes", "xyz");
 	field_u64(&w, "accel_odr_hz", info->accel_odr_hz);

@@ -28,6 +28,27 @@ int main(void)
 	/* Exact fit needs room for the terminator; one byte less must fail. */
 	assert(imu_raw_status_encode(out, (size_t)n + 1, &s) == n);
 	assert(imu_raw_status_encode(out, (size_t)n, &s) == -ENOSPC);
+	/* Time point: tick and board clock without server time, then with it. */
+	s.tick_valid = true;
+	s.tick = 5000000000ULL;
+	s.tick_mono_us = 123456789;
+	s.tick_window_us = 140;
+	assert(imu_raw_status_encode(out, sizeof(out), &s) > 0 &&
+	       strstr(out, "\"queue_high\":16,\"tick\":5000000000,\"tick_mono_us\":123456789,"
+			   "\"tick_window_us\":140,\"sync\":\"unsynchronized\"}"));
+	s.unix_valid = true;
+	s.unix_us = 1794370000123456LL;
+	s.unix_estimate_us = 1794370000125000LL;
+	s.sync_delay_us = 5300;
+	n = imu_raw_status_encode(out, sizeof(out), &s);
+	assert(n > 0 && n < 640 &&
+	       strstr(out, "\"tick_window_us\":140,\"unix_us\":1794370000123456,"
+			   "\"unix_estimate_us\":1794370000125000,\"sync_delay_us\":5300,"
+			   "\"sync\":\"ntp\"}"));
+	/* Server time without a tick reading is not a usable point. */
+	s.tick_valid = false;
+	assert(imu_raw_status_encode(out, sizeof(out), &s) > 0 &&
+	       strstr(out, "\"queue_high\":16,\"sync\":\"unsynchronized\"}"));
 	s.state = IMU_RAW_STATE_IDLE;
 	assert(imu_raw_status_encode(out, sizeof(out), &s) > 0 && strstr(out, "\"state\":\"idle\""));
 	s.state = IMU_RAW_STATE_STOPPED;
@@ -43,7 +64,8 @@ int main(void)
 	};
 	const char *expected_info =
 		"{\"v\":1,\"session\":\"10000000000000000000000000000000\",\"epoch\":1,"
-		"\"device\":\"rp2040\",\"sensor\":\"LSM6DSO\",\"payload\":\"IMU1\",\"raw\":\"int16le\","
+		"\"device\":\"rp2040\",\"sensor\":\"LSM6DSO\",\"payload\":\"IMU1\",\"payload_version\":2,"
+		"\"raw\":\"int16le\","
 		"\"axes\":\"xyz\",\"accel_odr_hz\":6667,\"gyro_odr_hz\":6667,\"accel_ug_per_lsb\":61,"
 		"\"gyro_udps_per_lsb\":70000,\"fifo_watermark\":128,\"timestamp_decimation\":8,"
 		"\"time\":\"sensor_tick\",\"tick_hz_nominal\":40000,\"freq_fine\":-3}";

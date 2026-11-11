@@ -8,6 +8,9 @@
 /* Runs in the FIFO consumer. The sink must not wait or retain payload; it
  * returns 0 after copying or -EAGAIN if it cannot accept the batch. */
 typedef int (*imu_raw_batch_sink)(void *context, const uint8_t *payload, size_t length);
+/* Optional: server (Unix) time in microseconds for a sensor tick. Called at
+ * most twice per batch with ticks that never decrease. Must not wait long. */
+typedef bool (*imu_raw_batch_clock)(void *context, uint64_t tick, uint64_t *unix_us);
 
 struct imu_raw_batch {
 	struct imu_raw_metadata meta;
@@ -20,6 +23,8 @@ struct imu_raw_batch {
 	size_t count;
 	imu_raw_batch_sink sink;
 	void *sink_context;
+	imu_raw_batch_clock clock; /* set after init; NULL leaves Unix time invalid */
+	void *clock_context;
 };
 
 /* The caller supplies a unique session ID; no random ID is generated here. */

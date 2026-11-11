@@ -47,7 +47,7 @@ int imu_raw_queue_put(struct imu_raw_queue *queue, const uint8_t *payload, size_
 	uint16_t count, bitmap, accel = 0;
 
 	if (!queue || !payload || length < IMU_RAW_HEADER_SIZE ||
-	    memcmp(payload, "IMU1", 4) || payload[4] != 1 ||
+	    memcmp(payload, "IMU1", 4) || payload[4] != IMU_RAW_VERSION ||
 	    le16(payload + 6) != IMU_RAW_HEADER_SIZE) {
 		return -EINVAL;
 	}

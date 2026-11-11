@@ -2,6 +2,7 @@
 #ifndef IMU_RAW_STATUS_H_
 #define IMU_RAW_STATUS_H_
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -24,6 +25,17 @@ struct imu_raw_status {
 	uint64_t accel_acquired, gyro_acquired, next_batch, timestamp_words;
 	uint32_t fifo_overrun_observations, i2c_errors;
 	int raw_error, measure_error;
+	/* One reading of the sensor's tick counter and the board clock taken
+	 * together, with the board's estimate of server (Unix) time for that
+	 * instant. The receiver relates batch ticks to its own time from a
+	 * series of these; the board does not convert sample times itself. */
+	bool tick_valid, unix_valid;
+	uint64_t tick;              /* extended like the batch ticks */
+	int64_t tick_mono_us;       /* board clock at the middle of the read */
+	uint32_t tick_window_us;    /* duration of the read */
+	int64_t unix_us;            /* smoothed: strictly increasing */
+	int64_t unix_estimate_us;   /* unsmoothed: may jump either way */
+	uint32_t sync_delay_us;     /* round trip behind the estimate */
 	/* Filled by the transport. */
 	uint64_t dropped_batches, dropped_accel, dropped_gyro, published;
 	uint32_t connects, failures, queue_high_watermark;
