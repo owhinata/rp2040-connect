@@ -420,6 +420,45 @@ static int cmd_ntp_now(const struct shell *sh, size_t argc, char **argv)
 	return 0;
 }
 
+/* Low-latency version of "ntp now" for bounding the error of the estimate
+ * over USB. While it runs, the shell hands every received byte straight to
+ * this callback: each byte is answered with the estimated time taken on
+ * entry, and 'q' or the time limit ends it. The host's send time is then
+ * before the board's time and its receive time after, each by one USB
+ * transfer plus this thread's scheduling delay. */
+static int64_t probe_deadline;
+
+static void probe_bypass(const struct shell *sh, uint8_t *data, size_t len, void *user_data)
+{
+	int64_t mono = time_sync_mono_us(), unix_us = 0;
+	bool ok = time_sync_unix_us(mono, &unix_us, NULL);
+
+	ARG_UNUSED(user_data);
+	for (size_t i = 0; i < len; i++) {
+		if (data[i] == 'q' || k_uptime_get() >= probe_deadline) {
+			shell_set_bypass(sh, NULL, NULL);
+			shell_print(sh, "probe done");
+			return;
+		}
+	}
+	shell_fprintf(sh, SHELL_NORMAL, "P%" PRId64 "\n", ok ? unix_us : 0);
+}
+
+static int cmd_ntp_probe(const struct shell *sh, size_t argc, char **argv)
+{
+	unsigned long seconds = strtoul(argv[1], NULL, 10);
+
+	ARG_UNUSED(argc);
+	if (!seconds || seconds > 7200) {
+		shell_error(sh, "Use ntp probe <1..7200 seconds>");
+		return -EINVAL;
+	}
+	probe_deadline = k_uptime_get() + (int64_t)seconds * 1000;
+	shell_print(sh, "probe: each byte is answered with P<unix us>; q ends");
+	shell_set_bypass(sh, probe_bypass, NULL);
+	return 0;
+}
+
 SHELL_STATIC_SUBCMD_SET_CREATE(ntp_commands,
 			       SHELL_CMD(status, NULL,
 					 "Show time synchronization status",
@@ -430,5 +469,8 @@ SHELL_STATIC_SUBCMD_SET_CREATE(ntp_commands,
 			       SHELL_CMD(now, NULL,
 					 "Print the estimated server time: N <unix us> <delay us>",
 					 cmd_ntp_now),
+			       SHELL_CMD_ARG(probe, NULL,
+					     "Answer each received byte with the estimated time: <seconds>",
+					     cmd_ntp_probe, 2, 0),
 			       SHELL_SUBCMD_SET_END);
 SHELL_CMD_REGISTER(ntp, &ntp_commands, "Network time synchronization", NULL);
