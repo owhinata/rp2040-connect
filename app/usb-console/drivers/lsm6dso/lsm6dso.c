@@ -708,6 +708,12 @@ static int lsm6dso_attr_set(const struct device *dev, enum sensor_channel chan,
 	int ret;
 
 #ifdef CONFIG_SENSOR_ASYNC_API
+	if (attr == (enum sensor_attribute)SENSOR_ATTR_LSM6DSO_FIFO_TIMESTAMP_DECIMATION) {
+		if (chan != SENSOR_CHAN_ALL || val->val2 != 0 || val->val1 < 0) {
+			return -EINVAL;
+		}
+		return lsm6dso_fifo_set_timestamp_decimation(dev, (unsigned int)val->val1);
+	}
 	if (attr == (enum sensor_attribute)SENSOR_ATTR_LSM6DSO_FIFO_WATERMARK) {
 		if (chan != SENSOR_CHAN_ALL || val->val2 != 0 || val->val1 < 1 ||
 		    val->val1 > LSM6DSO_FIFO_MAX_WATERMARK) {
@@ -726,11 +732,16 @@ static int lsm6dso_attr_set(const struct device *dev, enum sensor_channel chan,
 static int lsm6dso_attr_get(const struct device *dev, enum sensor_channel chan,
 			    enum sensor_attribute attr, struct sensor_value *val)
 {
-	if (attr != (enum sensor_attribute)SENSOR_ATTR_LSM6DSO_FIFO_WATERMARK ||
-	    chan != SENSOR_CHAN_ALL) {
+	if (chan != SENSOR_CHAN_ALL) {
 		return -ENOTSUP;
 	}
-	val->val1 = lsm6dso_fifo_get_watermark(dev);
+	if (attr == (enum sensor_attribute)SENSOR_ATTR_LSM6DSO_FIFO_WATERMARK) {
+		val->val1 = lsm6dso_fifo_get_watermark(dev);
+	} else if (attr == (enum sensor_attribute)SENSOR_ATTR_LSM6DSO_FIFO_TIMESTAMP_DECIMATION) {
+		val->val1 = (int32_t)lsm6dso_fifo_get_timestamp_decimation(dev);
+	} else {
+		return -ENOTSUP;
+	}
 	val->val2 = 0;
 	return 0;
 }
@@ -800,11 +811,7 @@ int lsm6dso_fifo_start_locked_driver(const struct device *dev, uint16_t watermar
 		}
 	}
 	ret = lsm6dso_fifo_configure(&cfg->ctx, watermark, xl, gy,
-#if defined(CONFIG_IMU_TIMESTAMP_DIAGNOSTIC)
 				     data->timestamp_decimation
-#else
-				     LSM6DSO_NO_DECIMATION
-#endif
 				     );
 	if (ret != 0) {
 		data->fifo_stats.i2c_errors++;

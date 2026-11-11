@@ -270,20 +270,14 @@ void lsm6dso_stream_init(const struct device *dev)
 	if (atomic_cas(&stream_queue_started, 0, 1)) {
 		k_work_queue_start(&stream_work_queue, stream_work_stack,
 				   K_THREAD_STACK_SIZEOF(stream_work_stack),
-#if defined(CONFIG_IMU_FIFO_TEST_PRIORITY)
-				   K_PRIO_PREEMPT(CONFIG_IMU_FIFO_TEST_PRIORITY), NULL);
-#else
 				   K_PRIO_PREEMPT(10), NULL);
-#endif
 #if defined(CONFIG_THREAD_NAME)
 		(void)k_thread_name_set(k_work_queue_thread_get(&stream_work_queue),
 					"imu_fifo_worker");
 #endif
 	}
 	data->stream_watermark = LSM6DSO_FIFO_DEFAULT_WATERMARK;
-#if defined(CONFIG_IMU_TIMESTAMP_DIAGNOSTIC)
 	data->timestamp_decimation = LSM6DSO_DEC_8;
-#endif
 	k_work_init_delayable(&data->stream_work, stream_work);
 }
 
@@ -352,7 +346,6 @@ uint16_t lsm6dso_fifo_get_watermark(const struct device *dev)
 	return watermark;
 }
 
-#if defined(CONFIG_IMU_TIMESTAMP_DIAGNOSTIC)
 int lsm6dso_fifo_set_timestamp_decimation(const struct device *dev, unsigned int decimation)
 {
 	struct lsm6dso_data *data = dev->data;
@@ -387,4 +380,3 @@ unsigned int lsm6dso_fifo_get_timestamp_decimation(const struct device *dev)
 	k_mutex_unlock(&data->fifo_lock);
 	return value;
 }
-#endif

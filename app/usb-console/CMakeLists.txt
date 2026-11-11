@@ -2,34 +2,15 @@ cmake_minimum_required(VERSION 3.28.0)
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(usb_console)
 
-target_sources(app PRIVATE src/main.c src/log_ram.c src/imu_measure.c
-  src/imu_measure_packet.c src/imu_raw_packet.c src/imu_raw_batch.c src/imu_raw_queue.c src/imu_raw_status.c src/imu_raw_time.c src/imu_tick_clock.c src/wifi_profile.c src/time_sync.c src/time_offset.c src/kv_store.c
+target_sources(app PRIVATE src/main.c src/log_ram.c src/kv_store.c src/wifi_profile.c
+  src/time_sync.c src/time_offset.c
+  src/imu_stream.c src/imu_raw_batch.c src/imu_raw_packet.c src/imu_raw_time.c
+  src/imu_tick_clock.c src/imu_raw_queue.c src/imu_raw_mqtt.c src/imu_raw_status.c
   drivers/nina/nina_wifi.c drivers/nina/nina_net.c drivers/nina/nina_socket.c
   drivers/nina/nina_dns.c)
 target_include_directories(app PRIVATE src)
-if(CONFIG_IMU_RAW_MQTT_EXPERIMENTAL)
-  target_sources(app PRIVATE src/imu_raw_mqtt.c)
-endif()
-if(CONFIG_IMU_CPU_PROFILE)
-  target_sources(app PRIVATE src/imu_cpu_profile.c)
-endif()
-if(CONFIG_IMU_I2C_VALIDATION)
-  target_sources(app PRIVATE tests/hardware/i2c_validation.c)
-endif()
-if(CONFIG_IMU_CPU_LOAD_VALIDATION)
-  target_sources(app PRIVATE tests/hardware/cpu_load_validation.c)
-endif()
 if(CONFIG_NINA_BENCHMARK_BOOTSEL)
   target_sources(app PRIVATE tests/hardware/nina_benchmark_bootsel.c)
-endif()
-if(CONFIG_NINA_UDP_ECHO_TEST)
-  target_sources(app PRIVATE tests/hardware/nina_udp_echo.c)
-endif()
-if(CONFIG_NINA_SEND_PROFILE)
-  target_sources(app PRIVATE tests/hardware/nina_send_profile.c)
-endif()
-if(CONFIG_IMU_MQTT_PROBE)
-  target_sources(app PRIVATE tests/hardware/imu_mqtt_probe.c)
 endif()
 
 # Keep Zephyr's Kconfig and devicetree bindings while using local driver copies.

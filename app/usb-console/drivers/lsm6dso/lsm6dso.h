@@ -95,9 +95,7 @@ struct lsm6dso_data {
 	struct k_work_delayable stream_work;
 	struct k_spinlock stream_lock;
 	uint16_t stream_watermark;
-#if defined(CONFIG_IMU_TIMESTAMP_DIAGNOSTIC)
 	uint8_t timestamp_decimation;
-#endif
 	struct rtio_iodev_sqe *stream_sqe;
 	struct rtio *stream_rtio;
 	rtio_sqe_handle_t stream_handle;

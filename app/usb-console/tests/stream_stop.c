@@ -17,6 +17,7 @@
 #define CONTAINER_OF(ptr, type, field) ((type *)((char *)(ptr) - offsetof(type, field)))
 #define ARG_UNUSED(x) (void)(x)
 #define K_NO_WAIT 0
+#define K_FOREVER (-1)
 #define K_MSEC(x) (x)
 #define K_PRIO_PREEMPT(x) (x)
 #define K_THREAD_STACK_DEFINE(name, size) char name[size]
@@ -24,6 +25,10 @@
 #define SENSOR_STREAM_DATA_INCLUDE 0
 #define LSM6DSO_FIFO_DEFAULT_WATERMARK 32U
 #define LSM6DSO_FIFO_MAX_WATERMARK 256U
+#define LSM6DSO_NO_DECIMATION 0
+#define LSM6DSO_DEC_1 1
+#define LSM6DSO_DEC_8 2
+#define LSM6DSO_DEC_32 3
 
 typedef int atomic_t;
 typedef int k_spinlock_key_t;
@@ -32,6 +37,9 @@ struct k_work { int unused; };
 struct k_work_delayable { struct k_work work; };
 struct k_work_q { int unused; };
 struct k_spinlock { int unused; };
+struct k_mutex { int unused; };
+static inline void k_mutex_lock(struct k_mutex *lock, int timeout) { (void)lock; (void)timeout; }
+static inline void k_mutex_unlock(struct k_mutex *lock) { (void)lock; }
 struct gpio_dt_spec { int unused; };
 struct lsm6dso_fifo_irq { int unused; };
 struct device { void *data; const void *config; };
@@ -54,6 +62,9 @@ struct lsm6dso_data {
 	bool stream_active, stream_irq_active, stream_stop_requested, stream_batch_paused;
 	uint16_t accel_freq, gyro_freq;
 	uint32_t acc_gain, gyro_gain;
+	struct k_mutex fifo_lock;
+	bool fifo_owned;
+	uint8_t timestamp_decimation;
 };
 
 static struct rtio test_rtio;

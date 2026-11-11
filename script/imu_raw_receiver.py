@@ -10,10 +10,6 @@ IMU1 ペイロードを検査して件数・連番・サンプル番号の欠落
 終了時（SIGINT/SIGTERM、--duration、--idle-timeout）に集計を JSON で 1 行出力する。
 試験用に、受信開始から指定秒後に接続を切って待ち受けも止める --drop-at/--drop-for と、
 読み出しだけを止める --stall-at/--stall-for を備える。
-
---sync-interval を指定すると、ボードが購読した `imu/<id>/sync/request` へ一定間隔で
-要求を送り、`sync/response` の t2/t3 と PC 側の t1/t4 から往復時間を集計する。
-これは経路の遅延の実測用で、往復の非対称は分からないため時刻精度の証明にはならない。
 """
 import argparse
 import json
@@ -37,65 +33,6 @@ def percentiles(values):
     pick = lambda q: round(v[min(len(v) - 1, int(q * len(v)))], 3)
     return dict(n=len(v), min=round(v[0], 3), p50=pick(0.5), p90=pick(0.9), p99=pick(0.99),
                 max=round(v[-1], 3))
-
-
-def residuals(samples):
-    """|offset - 直線近似| (ms)。samples は (t1_s, offset_ms)。"""
-    n = len(samples)
-    if n < 3:
-        return None
-    mx = sum(s[0] for s in samples) / n
-    my = sum(s[1] for s in samples) / n
-    sxx = sum((s[0] - mx) ** 2 for s in samples)
-    slope = sum((s[0] - mx) * (s[1] - my) for s in samples) / sxx if sxx else 0.0
-    out = percentiles([abs(s[1] - my - slope * (s[0] - mx)) for s in samples])
-    out['drift_ppm'] = round(slope * 1000, 1)
-    return out
-
-
-class Sync:
-    """PC が t1 で要求を送り、ボードの t2/t3、PC の t4 から往復時間を求める。"""
-
-    def __init__(self):
-        self.topic = None
-        self.sent = {}
-        self.next_id = 1
-        self.samples = []  # (t1_s, rtt_ms, board_ms, offset_ms)
-        self.unmatched = 0
-
-    def send(self, conn):
-        topic = self.topic.encode()
-        payload = str(self.next_id).encode()
-        body = len(topic).to_bytes(2, 'big') + topic + payload
-        self.sent[self.next_id] = time.monotonic_ns()
-        self.next_id += 1
-        conn.sendall(b'\x30' + bytes([len(body)]) + body)
-
-    def response(self, payload, t4_ns):
-        try:
-            m = json.loads(payload)
-            t1_ns = self.sent.pop(int(m['id']))
-            t2, t3 = int(m['t2_us']), int(m['t3_us'])
-        except (ValueError, KeyError, TypeError):
-            self.unmatched += 1
-            return
-        board_ms = (t3 - t2) / 1000
-        rtt_ms = (t4_ns - t1_ns) / 1e6 - board_ms
-        # ボード時刻 - PC 時刻。経路が対称であると仮定した値。
-        offset_ms = ((t2 * 1000 - t1_ns) + (t3 * 1000 - t4_ns)) / 2e6
-        self.samples.append((t1_ns / 1e9, rtt_ms, board_ms, offset_ms))
-
-    def summary(self):
-        s = self.samples
-        best = sorted(s, key=lambda x: x[1])[:max(3, len(s) // 4)]
-        return dict(
-            sent=self.next_id - 1, answered=len(s), unanswered=len(self.sent),
-            unmatched=self.unmatched,
-            round_trip_ms=percentiles([x[1] for x in s]),
-            board_hold_ms=percentiles([x[2] for x in s]),
-            offset_residual_ms=residuals([(x[0], x[3]) for x in s]),
-            offset_residual_ms_best_quarter=residuals([(x[0], x[3]) for x in best]),
-            best_quarter_round_trip_max_ms=round(max(x[1] for x in best), 3) if best else None)
 
 
 class TimePoints:
@@ -376,7 +313,7 @@ def parse_packets(buf):
     del buf[:pos]
 
 
-def handle(conn, stats, header, body, raw_suffix, sync=None, t4_ns=0):
+def handle(conn, stats, header, body, raw_suffix):
     kind = header >> 4
     if kind == 1:
         conn.sendall(b'\x20\x02\x00\x00')
@@ -391,17 +328,12 @@ def handle(conn, stats, header, body, raw_suffix, sync=None, t4_ns=0):
             offset += 2
         if topic.endswith(raw_suffix):
             stats.raw(topic, qos, body[offset:])
-        elif sync is not None and topic.endswith('/sync/response'):
-            sync.response(body[offset:], t4_ns)
         else:
             stats.other_message(topic, body[offset:])
     elif kind == 8:
         pos, count = 2, 0
         while pos + 2 <= len(body):
             n = int.from_bytes(body[pos:pos + 2], 'big')
-            topic = body[pos + 2:pos + 2 + n].decode('utf-8', errors='replace')
-            if sync is not None and topic.endswith('/sync/request'):
-                sync.topic = topic
             pos += 2 + n + 1
             count += 1
         conn.sendall(b'\x90' + bytes([2 + count]) + body[:2] + b'\x00' * count)
@@ -425,15 +357,12 @@ def main():
     ap.add_argument('--drop-for', type=float, default=5.0)
     ap.add_argument('--stall-at', type=float, help='最初の RAW からこの秒数後に読み出しを停止')
     ap.add_argument('--stall-for', type=float, default=5.0)
-    ap.add_argument('--sync-interval', type=float, help='同期要求を送る間隔（秒）')
     ap.add_argument('--rcvbuf', type=int, help='SO_RCVBUF。小さくすると読み出し停止が送信側へ早く伝わる')
     args = ap.parse_args()
     session = bytes.fromhex(args.session) if args.session else None
     if session is not None and len(session) != 16:
         ap.error('--session は 32 桁の hex')
     stats = Stats(session)
-    sync = Sync() if args.sync_interval else None
-    next_sync = 0.0
     stop = []
     signal.signal(signal.SIGINT, lambda *_: stop.append(1))
     signal.signal(signal.SIGTERM, lambda *_: stop.append(1))
@@ -454,9 +383,6 @@ def main():
             conn = None
             buf.clear()
             stats.r['disconnects'] += 1
-            if sync:
-                sync.topic = None
-                sync.sent.clear()
 
     listener, conn, buf = listen(), None, bytearray()
     started = time.monotonic()
@@ -493,18 +419,8 @@ def main():
         if not readable:
             time.sleep(0.05)
             continue
-        wait = 0.1
-        if sync and conn and sync.topic:
-            if now >= next_sync:
-                try:
-                    sync.send(conn)
-                except OSError:
-                    close_conn()
-                    continue
-                next_sync = now + args.sync_interval
-            wait = max(0.0, min(wait, next_sync - now))
         try:
-            ready, _, _ = select.select(readable, [], [], wait)
+            ready, _, _ = select.select(readable, [], [], 0.1)
         except InterruptedError:
             continue
         if listener in ready:
@@ -515,13 +431,12 @@ def main():
         if conn and conn in ready:
             try:
                 data = conn.recv(65536)
-                t4_ns = time.monotonic_ns()
                 if not data:
                     close_conn()
                     continue
                 buf += data
                 for header, body in parse_packets(buf):
-                    if not handle(conn, stats, header, body, '/raw', sync, t4_ns):
+                    if not handle(conn, stats, header, body, '/raw'):
                         close_conn()
                         break
             except (OSError, ValueError) as e:
@@ -531,10 +446,7 @@ def main():
         conn.close()
     if listener:
         listener.close()
-    result = stats.summary()
-    if sync:
-        result['sync'] = sync.summary()
-    print('RESULT ' + json.dumps(result), flush=True)
+    print('RESULT ' + json.dumps(stats.summary()), flush=True)
     return 0
 
 

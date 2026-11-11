@@ -30,12 +30,6 @@
 /* Step the realtime clock when it is this far from the estimate. */
 #define NTP_CLOCK_STEP_US   20000
 #define NTP_PACKET_SIZE     48
-#define NTP_LOG_SIZE        128
-
-struct sync_log {
-	uint32_t mono_ms, delay_us;
-	int32_t residual_us;
-};
 
 static struct net_mgmt_event_callback wifi_events;
 static atomic_t wifi_connected, wifi_generation, last_error;
@@ -46,8 +40,6 @@ K_MUTEX_DEFINE(sync_lock);
 static struct time_offset estimate;
 static struct time_slew slewed;
 static int64_t last_sample_uptime;
-static struct sync_log sync_log[NTP_LOG_SIZE];
-static unsigned int log_count, log_next;
 static struct sockaddr_in server;
 
 /* The RP2040's 1 MHz hardware timer, read through its raw registers (no
@@ -246,12 +238,6 @@ static void record(const struct time_offset_sample *sample)
 		time_slew_update(&slewed, now, target, estimate.rate_valid ? estimate.rate_ppb : 0);
 	}
 	last_sample_uptime = k_uptime_get();
-	sync_log[log_next] = (struct sync_log){
-		.mono_ms = (uint32_t)(sample->mono_us / 1000), .delay_us = sample->delay_us,
-		.residual_us = (int32_t)CLAMP(estimate.last_residual_us, INT32_MIN, INT32_MAX),
-	};
-	log_next = (log_next + 1) % NTP_LOG_SIZE;
-	log_count = MIN(log_count + 1, NTP_LOG_SIZE);
 	follow_realtime_clock();
 	k_mutex_unlock(&sync_lock);
 }
@@ -381,96 +367,9 @@ static int cmd_ntp_status(const struct shell *sh, size_t argc, char **argv)
 	return 0;
 }
 
-/* For evaluating the path: one line per exchange, oldest first. */
-static int cmd_ntp_samples(const struct shell *sh, size_t argc, char **argv)
-{
-	static struct sync_log copy[NTP_LOG_SIZE];
-	unsigned int count, first;
-
-	ARG_UNUSED(argc);
-	ARG_UNUSED(argv);
-	k_mutex_lock(&sync_lock, K_FOREVER);
-	count = log_count;
-	first = (log_next + NTP_LOG_SIZE - log_count) % NTP_LOG_SIZE;
-	for (unsigned int i = 0; i < count; i++) {
-		copy[i] = sync_log[(first + i) % NTP_LOG_SIZE];
-	}
-	k_mutex_unlock(&sync_lock);
-	for (unsigned int i = 0; i < count; i++) {
-		shell_print(sh, "S %" PRIu32 " %" PRIu32 " %" PRId32, copy[i].mono_ms,
-			    copy[i].delay_us, copy[i].residual_us);
-	}
-	return 0;
-}
-
-/* For checking the estimate over a path other than Wi-Fi: the host notes its
- * own time before sending this command and after reading the answer. */
-static int cmd_ntp_now(const struct shell *sh, size_t argc, char **argv)
-{
-	int64_t unix_us;
-	uint32_t delay;
-
-	ARG_UNUSED(argc);
-	ARG_UNUSED(argv);
-	if (!time_sync_unix_us(time_sync_mono_us(), &unix_us, &delay)) {
-		shell_print(sh, "N none");
-		return 0;
-	}
-	shell_print(sh, "N %" PRId64 " %" PRIu32, unix_us, delay);
-	return 0;
-}
-
-/* Low-latency version of "ntp now" for bounding the error of the estimate
- * over USB. While it runs, the shell hands every received byte straight to
- * this callback: each byte is answered with the estimated time taken on
- * entry, and 'q' or the time limit ends it. The host's send time is then
- * before the board's time and its receive time after, each by one USB
- * transfer plus this thread's scheduling delay. */
-static int64_t probe_deadline;
-
-static void probe_bypass(const struct shell *sh, uint8_t *data, size_t len, void *user_data)
-{
-	int64_t mono = time_sync_mono_us(), unix_us = 0;
-	bool ok = time_sync_unix_us(mono, &unix_us, NULL);
-
-	ARG_UNUSED(user_data);
-	for (size_t i = 0; i < len; i++) {
-		if (data[i] == 'q' || k_uptime_get() >= probe_deadline) {
-			shell_set_bypass(sh, NULL, NULL);
-			shell_print(sh, "probe done");
-			return;
-		}
-	}
-	shell_fprintf(sh, SHELL_NORMAL, "P%" PRId64 "\n", ok ? unix_us : 0);
-}
-
-static int cmd_ntp_probe(const struct shell *sh, size_t argc, char **argv)
-{
-	unsigned long seconds = strtoul(argv[1], NULL, 10);
-
-	ARG_UNUSED(argc);
-	if (!seconds || seconds > 7200) {
-		shell_error(sh, "Use ntp probe <1..7200 seconds>");
-		return -EINVAL;
-	}
-	probe_deadline = k_uptime_get() + (int64_t)seconds * 1000;
-	shell_print(sh, "probe: each byte is answered with P<unix us>; q ends");
-	shell_set_bypass(sh, probe_bypass, NULL);
-	return 0;
-}
-
 SHELL_STATIC_SUBCMD_SET_CREATE(ntp_commands,
 			       SHELL_CMD(status, NULL,
 					 "Show time synchronization status",
 					 cmd_ntp_status),
-			       SHELL_CMD(samples, NULL,
-					 "List recent exchanges: S <mono ms> <delay us> <residual us>",
-					 cmd_ntp_samples),
-			       SHELL_CMD(now, NULL,
-					 "Print the estimated server time: N <unix us> <delay us>",
-					 cmd_ntp_now),
-			       SHELL_CMD_ARG(probe, NULL,
-					     "Answer each received byte with the estimated time: <seconds>",
-					     cmd_ntp_probe, 2, 0),
 			       SHELL_SUBCMD_SET_END);
 SHELL_CMD_REGISTER(ntp, &ntp_commands, "Network time synchronization", NULL);

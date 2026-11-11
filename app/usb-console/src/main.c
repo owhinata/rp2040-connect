@@ -32,17 +32,6 @@ SHELL_STATIC_SUBCMD_SET_CREATE(nina_commands,
 	SHELL_SUBCMD_SET_END);
 SHELL_CMD_REGISTER(nina, &nina_commands, "NINA Wi-Fi module", NULL);
 
-static int cmd_hello(const struct shell *sh, size_t argc, char **argv)
-{
-	ARG_UNUSED(argc);
-	ARG_UNUSED(argv);
-	LOG_INF("hello command received");
-	shell_print(sh, "Hello from Arduino Nano RP2040 Connect!");
-	return 0;
-}
-
-SHELL_CMD_REGISTER(hello, NULL, "Print a greeting", cmd_hello);
-
 /* Thread Analyzer's callback has no user context, so serialize access to it. */
 K_MUTEX_DEFINE(ps_lock);
 static const struct shell *ps_shell;

@@ -659,6 +659,12 @@ static int parse_sensor_attribute(const struct device *dev, const char *name)
 		}
 		return SENSOR_ATTR_LSM6DSO_FIFO_WATERMARK;
 	}
+	if (!strcmp(name, "fifo_timestamp_decimation")) {
+		if (dev != DEVICE_DT_GET(DT_NODELABEL(lsm6dsox))) {
+			return -ENOTSUP;
+		}
+		return SENSOR_ATTR_LSM6DSO_FIFO_TIMESTAMP_DECIMATION;
+	}
 	return parse_named_int(name, sensor_attribute_name, ARRAY_SIZE(sensor_attribute_name));
 }
 
@@ -833,6 +839,8 @@ static void attribute_name_get(size_t idx, struct shell_static_entry *entry)
 	}
 	if (entry->syntax == NULL && cnt == idx) {
 		entry->syntax = "fifo_watermark";
+	} else if (entry->syntax == NULL && cnt + 1 == idx) {
+		entry->syntax = "fifo_timestamp_decimation";
 	}
 }
 

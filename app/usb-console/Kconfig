@@ -1,78 +1,6 @@
 mainmenu "USB console"
 source "Kconfig.zephyr"
 
-config IMU_TIMESTAMP_DIAGNOSTIC
-	bool "Experimental FIFO timestamp capture"
-	depends on SENSOR_ASYNC_API && SHELL
-
-config IMU_RAW_BATCH_DIAGNOSTIC
-	bool "Exercise RAW batch generation during IMU measurement"
-	depends on IMU_TIMESTAMP_DIAGNOSTIC
-
-config IMU_RAW_MQTT_EXPERIMENTAL
-	bool "Experimental RAW-only MQTT transport"
-	depends on IMU_RAW_BATCH_DIAGNOSTIC && MQTT_LIB && NETWORKING
-
-config IMU_FAULT_INJECTION
-	bool "Shell command that stalls IMU FIFO handling to force an overrun"
-	depends on IMU_RAW_MQTT_EXPERIMENTAL
-	help
-	  Test builds only. "imu_measure inject_stall <ms>" busy-waits in the
-	  measurement thread, which outranks the FIFO worker.
-
-config IMU_CPU_PROFILE
-	bool "Measure thread CPU time during IMU streaming"
-	depends on THREAD_RUNTIME_STATS && THREAD_MONITOR
-
-config IMU_CPU_PROFILE_IRQS
-	bool "Sample ISR time during IMU profiling"
-	depends on IMU_CPU_PROFILE && TRACING && TRACING_NONE && TRACING_ISR && SOC_RP2040
-
-
-config IMU_I2C_VALIDATION
-	bool "Enable I2C hardware validation commands"
-	depends on I2C && SHELL
-
-config IMU_CPU_LOAD_VALIDATION
-	bool "Enable CPU idle-hook hardware validation"
-	depends on CPU_LOAD_BACKEND_IDLE_HOOK && SHELL
-
-config NINA_BENCHMARK_BOOTSEL
-	bool "Enable BOOTSEL command in Wi-Fi benchmark images"
-	depends on SOC_RP2040 && SHELL
-
-config NINA_UDP_ECHO_TEST
-	bool "Shell command that echoes UDP datagrams (hardware test)"
-	depends on WIFI_NINA_LOCAL && SHELL
-
-config NINA_SEND_PROFILE
-	bool "Profile NINA TCP send phases"
-	depends on WIFI_NINA_LOCAL && SHELL
-
-config IMU_MQTT_PROBE
-	bool "Experimental IMU MQTT delivery probe"
-	depends on NINA_SEND_PROFILE && MQTT_LIB
-
-config IMU_MQTT_TEST_PRIORITY
-	int "Experimental MQTT sender priority"
-	default 11
-	range 0 15
-	depends on IMU_MQTT_PROBE
-
-config IMU_FIFO_TEST_CHUNK_WORDS
-	int "Experimental maximum FIFO words per I2C read"
-	default 0
-	range 0 512
-	depends on NINA_SEND_PROFILE
-	help
-	  Zero preserves the normal single burst. Nonzero is for diagnostics.
-
-config IMU_FIFO_TEST_PRIORITY
-	int "Experimental FIFO work queue priority"
-	default 10
-	range 0 15
-	depends on NINA_SEND_PROFILE
-
 config I2C_DW_RP2040_DMA
 	bool "RP2040 I2C0 DMA reads"
 	depends on SOC_RP2040 && I2C_DW && DMA_RPI_PICO && SHELL && !SMP
@@ -92,32 +20,21 @@ config NINA_SPI_FREQUENCY
 	range 1000000 10000000
 	depends on WIFI_NINA_LOCAL
 
-config NINA_TEST_READY_POLL_US
-	int "Experimental NINA ready polling interval in microseconds"
-	default 1000
-	range 100 1000
-	depends on NINA_SEND_PROFILE
-
 config NINA_TCP_MAX_IO
 	int "Maximum bytes per NINA TCP send"
-	default 512
+	default 3584
 	range 1 3584
 	depends on WIFI_NINA_LOCAL
 	help
 	  Bounds each TCP send to leave room for framing in the NINA SPI
-	  command buffer. Larger values require validation on the firmware in use.
+	  command buffer. A RAW batch of up to 2448 bytes plus its MQTT
+	  header is sent in one command with the default.
 
 config NINA_SEND_RETRY_MS
 	int "Delay before retrying a full NINA TCP send buffer"
-	default 20
+	default 1
 	range 1 1000
 	depends on WIFI_NINA_LOCAL
-
-config NINA_TEST_SEND_STATE_INTERVAL_MS
-	int "Experimental minimum interval between retry state checks"
-	default 0
-	range 0 1000
-	depends on NINA_SEND_PROFILE
 
 config NINA_NTP_SERVER
 	string "NTP server hostname or IPv4 address"
@@ -141,3 +58,9 @@ config NINA_NTP_INTERVAL_MS
 	help
 	  Queries go to a server on the local network. Do not point short
 	  intervals at public servers.
+
+# Removed with the last cleanup step; lets a new image be written without
+# pressing the BOOTSEL button while the cleanup is being verified.
+config NINA_BENCHMARK_BOOTSEL
+	bool "Enable BOOTSEL command"
+	depends on SOC_RP2040 && SHELL

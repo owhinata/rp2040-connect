@@ -58,6 +58,7 @@ int32_t lsm6dso_fifo_timestamp_decimation_set(const stmdev_ctx_t *ctx, int value
 	return fake_set();
 }
 FAKE_SET(lsm6dso_fifo_stop_on_wtm_set, uint8_t)
+FAKE_SET(lsm6dso_timestamp_set, uint8_t)
 FAKE_SET(lsm6dso_compression_algo_set, int)
 FAKE_SET(lsm6dso_fifo_watermark_set, uint16_t)
 
@@ -87,14 +88,14 @@ int main(void)
 	assert(lsm6dso_fifo_configure(&ctx, 10, 1, 1, 4) == -EINVAL);
 	assert(calls == 0);
 	assert(lsm6dso_fifo_configure(&ctx, 32, 4, 4, 0) == 0);
-	assert(calls == 9 && last_mode == LSM6DSO_STREAM_MODE && last_timestamp == 0);
+	assert(calls == 10 && last_mode == LSM6DSO_STREAM_MODE && last_timestamp == 0);
 	for (int decimation = 1; decimation <= 3; decimation++) {
 		calls = 0;
 		assert(lsm6dso_fifo_configure(&ctx, 32, 4, 4, decimation) == 0);
 		assert(last_timestamp == decimation);
 	}
 	/* Every individual failed configuration write attempts a bypass rollback. */
-	for (int failed = 1; failed <= 9; failed++) {
+	for (int failed = 1; failed <= 10; failed++) {
 		calls = 0;
 		fail_call = failed;
 		last_mode = -1;

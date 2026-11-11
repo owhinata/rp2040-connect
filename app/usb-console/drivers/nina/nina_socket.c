@@ -13,9 +13,6 @@
 #include <zephyr/net/socket.h>
 #include <zephyr/sys/fdtable.h>
 #include "nina_proto.h"
-#if defined(CONFIG_NINA_SEND_PROFILE)
-#include "nina_send_profile.h"
-#endif
 
 /* The firmware's lwIP is built with CONFIG_LWIP_MAX_SOCKETS=10. */
 #define MAX_NINA_SOCKETS 10
@@ -23,6 +20,9 @@
 #define NINA_NO_SOCKET   UINT8_MAX
 #define NINA_SEND_WAIT_MS 10000
 #define NINA_CONNECT_WAIT_MS 10000
+/* While a send finds no buffer space, how often the socket is checked for an
+ * error. Every check is another command to the module. */
+#define NINA_SEND_STATE_INTERVAL_MS 100
 #define NINA_POLL_INTERVAL_MS 20
 
 #define CMD_SOCKET     0x70
@@ -426,9 +426,7 @@ static ssize_t do_send(void *obj, const void *buf, size_t len, int flags,
 	int ret;
 	struct nina_param p[2];
 	int64_t deadline;
-#if defined(CONFIG_NINA_TEST_SEND_STATE_INTERVAL_MS)
 	int64_t next_state_check = 0;
-#endif
 
 	if (s->udp) {
 		return udp_send(s, buf, len, flags, to, tolen);
@@ -473,9 +471,7 @@ static ssize_t do_send(void *obj, const void *buf, size_t len, int flags,
 		}
 		/* Zero means a full send buffer or a failed connection; only the
 		 * socket state tells them apart. */
-#if defined(CONFIG_NINA_TEST_SEND_STATE_INTERVAL_MS)
 		if (k_uptime_get() >= next_state_check)
-#endif
 		{
 			uint8_t state;
 
@@ -483,20 +479,12 @@ static ssize_t do_send(void *obj, const void *buf, size_t len, int flags,
 			if (ret || (state & POLL_ERROR)) {
 				return fail(ret ? ret : EPIPE);
 			}
-#if defined(CONFIG_NINA_TEST_SEND_STATE_INTERVAL_MS)
-			next_state_check = k_uptime_get() + CONFIG_NINA_TEST_SEND_STATE_INTERVAL_MS;
-#endif
+			next_state_check = k_uptime_get() + NINA_SEND_STATE_INTERVAL_MS;
 		}
 		if (k_uptime_get() >= deadline) {
 			return fail(EAGAIN);
 		}
-#if defined(CONFIG_NINA_SEND_PROFILE)
-		uint32_t retry_start = k_cycle_get_32();
-#endif
 		k_sleep(K_MSEC(CONFIG_NINA_SEND_RETRY_MS));
-#if defined(CONFIG_NINA_SEND_PROFILE)
-		nina_send_profile_retry(k_cycle_get_32() - retry_start);
-#endif
 	}
 }
 

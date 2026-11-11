@@ -58,8 +58,4 @@ struct imu_raw_info {
 int imu_raw_status_encode(char *out, size_t capacity, const struct imu_raw_status *status);
 int imu_raw_info_encode(char *out, size_t capacity, const struct imu_raw_info *info,
 			const char *device_id);
-/* Reply to a sync request (experiment for design §7.3). t2 and t3 are the
- * board's monotonic time in microseconds when the request was read from the
- * socket and just before the reply was handed to it. */
-int imu_raw_sync_encode(char *out, size_t capacity, uint64_t id, uint64_t t2_us, uint64_t t3_us);
 #endif

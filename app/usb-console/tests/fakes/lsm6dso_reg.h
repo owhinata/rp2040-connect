@@ -23,6 +23,7 @@ int32_t lsm6dso_fifo_gy_batch_set(const stmdev_ctx_t *ctx, int value);
 int32_t lsm6dso_fifo_temp_batch_set(const stmdev_ctx_t *ctx, int value);
 typedef int lsm6dso_odr_ts_batch_t;
 int32_t lsm6dso_fifo_timestamp_decimation_set(const stmdev_ctx_t *ctx, int value);
+int32_t lsm6dso_timestamp_set(const stmdev_ctx_t *ctx, uint8_t value);
 int32_t lsm6dso_fifo_stop_on_wtm_set(const stmdev_ctx_t *ctx, uint8_t value);
 int32_t lsm6dso_compression_algo_set(const stmdev_ctx_t *ctx, int value);
 int32_t lsm6dso_fifo_watermark_set(const stmdev_ctx_t *ctx, uint16_t value);

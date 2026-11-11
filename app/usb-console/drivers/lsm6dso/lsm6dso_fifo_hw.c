@@ -47,13 +47,11 @@ int lsm6dso_fifo_configure(const stmdev_ctx_t *ctx, uint16_t watermark,
 		return -EINVAL;
 	}
 
-	/* Always enter bypass before changing FIFO configuration. */
-#if defined(CONFIG_IMU_TIMESTAMP_DIAGNOSTIC)
-	if (lsm6dso_timestamp_set(ctx, 1) != 0) {
-		return -EIO;
-	}
-#endif
+	/* Always enter bypass before changing FIFO configuration. The
+	 * timestamp counter is left running once enabled: it is the time base
+	 * of the FIFO timestamp words across stream restarts. */
 	if (lsm6dso_fifo_stop(ctx) != 0 ||
+	    lsm6dso_timestamp_set(ctx, 1) != 0 ||
 	    lsm6dso_fifo_xl_batch_set(ctx, (lsm6dso_bdr_xl_t)accel_batch) != 0 ||
 	    lsm6dso_fifo_gy_batch_set(ctx, (lsm6dso_bdr_gy_t)gyro_batch) != 0 ||
 	    lsm6dso_fifo_temp_batch_set(ctx, LSM6DSO_TEMP_NOT_BATCHED) != 0 ||
@@ -96,18 +94,6 @@ int lsm6dso_fifo_burst_read(const struct i2c_dt_spec *bus, uint8_t *buffer,
 	if (bus == NULL || buffer == NULL || words == 0 || words > LSM6DSO_FIFO_MAX_WORDS) {
 		return -EINVAL;
 	}
-#if defined(CONFIG_IMU_FIFO_TEST_CHUNK_WORDS) && CONFIG_IMU_FIFO_TEST_CHUNK_WORDS > 0
-	while (words > CONFIG_IMU_FIFO_TEST_CHUNK_WORDS) {
-		size_t chunk = CONFIG_IMU_FIFO_TEST_CHUNK_WORDS * LSM6DSO_FIFO_WORD_SIZE;
-		int ret = i2c_burst_read_dt(bus, LSM6DSO_FIFO_DATA_OUT_TAG, buffer, chunk);
-
-		if (ret) {
-			return ret;
-		}
-		buffer += chunk;
-		words -= CONFIG_IMU_FIFO_TEST_CHUNK_WORDS;
-	}
-#endif
 	return i2c_burst_read_dt(bus, LSM6DSO_FIFO_DATA_OUT_TAG, buffer,
 				 words * LSM6DSO_FIFO_WORD_SIZE);
 }

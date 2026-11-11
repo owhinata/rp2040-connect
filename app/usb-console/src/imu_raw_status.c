@@ -185,18 +185,3 @@ int imu_raw_info_encode(char *out, size_t capacity, const struct imu_raw_info *i
 	}
 	return finish(&w);
 }
-
-int imu_raw_sync_encode(char *out, size_t capacity, uint64_t id, uint64_t t2_us, uint64_t t3_us)
-{
-	struct writer w = {.out = out, .capacity = capacity};
-
-	if (!out || !capacity) {
-		return -EINVAL;
-	}
-	put_str(&w, "{");
-	field_u64(&w, "v", 1);
-	field_u64(&w, "id", id);
-	field_u64(&w, "t2_us", t2_us);
-	field_u64(&w, "t3_us", t3_us);
-	return finish(&w);
-}
