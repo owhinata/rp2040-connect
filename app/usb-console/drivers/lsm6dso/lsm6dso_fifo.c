@@ -3,6 +3,7 @@
 #include "lsm6dso_fifo.h"
 
 #include <errno.h>
+#include <string.h>
 
 int lsm6dso_fifo_decode_word(const uint8_t word[LSM6DSO_FIFO_WORD_SIZE],
 			     struct lsm6dso_fifo_sample *sample)
@@ -52,4 +53,32 @@ int lsm6dso_fifo_next(const uint8_t *bytes, size_t length, size_t *cursor,
 		}
 	}
 	return 0;
+}
+
+int lsm6dso_fifo_next_entry(const uint8_t *bytes, size_t length, size_t *cursor,
+			   struct lsm6dso_fifo_entry *entry)
+{
+	const uint8_t *word;
+
+	if (!cursor || !entry || (!bytes && length) ||
+	    length > LSM6DSO_FIFO_MAX_WORDS * LSM6DSO_FIFO_WORD_SIZE ||
+	    length % LSM6DSO_FIFO_WORD_SIZE || *cursor > length ||
+	    *cursor % LSM6DSO_FIFO_WORD_SIZE) {
+		return -EINVAL;
+	}
+	if (*cursor == length) {
+		return 0;
+	}
+	word = bytes + *cursor;
+	entry->tag = word[0] >> 3;
+	memcpy(entry->payload, word + 1, sizeof(entry->payload));
+	if (lsm6dso_fifo_decode_word(word, &entry->sample) == 0) {
+		entry->type = LSM6DSO_FIFO_ENTRY_SAMPLE;
+	} else if (entry->tag == 4) { /* LSM6DSO timestamp tag */
+		entry->type = LSM6DSO_FIFO_ENTRY_TIMESTAMP;
+	} else {
+		entry->type = LSM6DSO_FIFO_ENTRY_OTHER;
+	}
+	*cursor += LSM6DSO_FIFO_WORD_SIZE;
+	return 1;
 }

@@ -5,7 +5,7 @@
 #include "lsm6dso_fifo_hw.h"
 #include "lsm6dso_fifo.h"
 
-static int calls, fail_call, last_mode, last_xl, last_gyro;
+static int calls, fail_call, last_mode, last_xl, last_gyro, last_timestamp;
 static int i2c_result;
 static uint8_t status_bytes[2], last_reg;
 static size_t last_length;
@@ -51,7 +51,12 @@ int32_t lsm6dso_fifo_gy_batch_set(const stmdev_ctx_t *ctx, int value)
 	return fake_set();
 }
 FAKE_SET(lsm6dso_fifo_temp_batch_set, int)
-FAKE_SET(lsm6dso_fifo_timestamp_decimation_set, int)
+int32_t lsm6dso_fifo_timestamp_decimation_set(const stmdev_ctx_t *ctx, int value)
+{
+	(void)ctx;
+	last_timestamp = value;
+	return fake_set();
+}
 FAKE_SET(lsm6dso_fifo_stop_on_wtm_set, uint8_t)
 FAKE_SET(lsm6dso_compression_algo_set, int)
 FAKE_SET(lsm6dso_fifo_watermark_set, uint16_t)
@@ -75,19 +80,25 @@ int main(void)
 	struct lsm6dso_fifo_status status = {0};
 	uint8_t buf[LSM6DSO_FIFO_MAX_WORDS * LSM6DSO_FIFO_WORD_SIZE];
 
-	assert(lsm6dso_fifo_configure(&ctx, 0, 1, 1) == -EINVAL);
-	assert(lsm6dso_fifo_configure(&ctx, 512, 1, 1) == -EINVAL);
-	assert(lsm6dso_fifo_configure(&ctx, 10, 0, 0) == -EINVAL);
-	assert(lsm6dso_fifo_configure(&ctx, 10, 11, 0) == -EINVAL);
+	assert(lsm6dso_fifo_configure(&ctx, 0, 1, 1, 0) == -EINVAL);
+	assert(lsm6dso_fifo_configure(&ctx, 512, 1, 1, 0) == -EINVAL);
+	assert(lsm6dso_fifo_configure(&ctx, 10, 0, 0, 0) == -EINVAL);
+	assert(lsm6dso_fifo_configure(&ctx, 10, 11, 0, 0) == -EINVAL);
+	assert(lsm6dso_fifo_configure(&ctx, 10, 1, 1, 4) == -EINVAL);
 	assert(calls == 0);
-	assert(lsm6dso_fifo_configure(&ctx, 32, 4, 4) == 0);
-	assert(calls == 9 && last_mode == LSM6DSO_STREAM_MODE);
+	assert(lsm6dso_fifo_configure(&ctx, 32, 4, 4, 0) == 0);
+	assert(calls == 9 && last_mode == LSM6DSO_STREAM_MODE && last_timestamp == 0);
+	for (int decimation = 1; decimation <= 3; decimation++) {
+		calls = 0;
+		assert(lsm6dso_fifo_configure(&ctx, 32, 4, 4, decimation) == 0);
+		assert(last_timestamp == decimation);
+	}
 	/* Every individual failed configuration write attempts a bypass rollback. */
 	for (int failed = 1; failed <= 9; failed++) {
 		calls = 0;
 		fail_call = failed;
 		last_mode = -1;
-		assert(lsm6dso_fifo_configure(&ctx, 32, 4, 4) == -EIO);
+		assert(lsm6dso_fifo_configure(&ctx, 32, 4, 4, 0) == -EIO);
 		assert(calls == failed + 1 && last_mode == LSM6DSO_BYPASS_MODE);
 	}
 	fail_call = 0;

@@ -21,6 +21,7 @@ int32_t lsm6dso_pin_int1_route_set(const stmdev_ctx_t *ctx, lsm6dso_pin_int1_rou
 int32_t lsm6dso_fifo_xl_batch_set(const stmdev_ctx_t *ctx, int value);
 int32_t lsm6dso_fifo_gy_batch_set(const stmdev_ctx_t *ctx, int value);
 int32_t lsm6dso_fifo_temp_batch_set(const stmdev_ctx_t *ctx, int value);
+typedef int lsm6dso_odr_ts_batch_t;
 int32_t lsm6dso_fifo_timestamp_decimation_set(const stmdev_ctx_t *ctx, int value);
 int32_t lsm6dso_fifo_stop_on_wtm_set(const stmdev_ctx_t *ctx, uint8_t value);
 int32_t lsm6dso_compression_algo_set(const stmdev_ctx_t *ctx, int value);

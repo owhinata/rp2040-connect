@@ -13,6 +13,10 @@
 
 int lsm6dso_fifo_set_watermark(const struct device *dev, uint16_t watermark);
 uint16_t lsm6dso_fifo_get_watermark(const struct device *dev);
+#if defined(CONFIG_IMU_TIMESTAMP_DIAGNOSTIC)
+int lsm6dso_fifo_set_timestamp_decimation(const struct device *dev, unsigned int decimation);
+unsigned int lsm6dso_fifo_get_timestamp_decimation(const struct device *dev);
+#endif
 
 struct lsm6dso_fifo_stats {
 	uint32_t generation;

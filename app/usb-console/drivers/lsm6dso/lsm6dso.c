@@ -789,7 +789,13 @@ int lsm6dso_fifo_start_locked_driver(const struct device *dev, uint16_t watermar
 	data->fifo_stats.generation = ++data->fifo_generation;
 	data->fifo_stats.accel_hz = accel ? data->accel_freq : 0;
 	data->fifo_stats.gyro_hz = gyro ? data->gyro_freq : 0;
-	ret = lsm6dso_fifo_configure(&cfg->ctx, watermark, xl, gy);
+	ret = lsm6dso_fifo_configure(&cfg->ctx, watermark, xl, gy,
+#if defined(CONFIG_IMU_TIMESTAMP_DIAGNOSTIC)
+				     data->timestamp_decimation
+#else
+				     LSM6DSO_NO_DECIMATION
+#endif
+				     );
 	if (ret != 0) {
 		data->fifo_stats.i2c_errors++;
 	}

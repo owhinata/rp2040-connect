@@ -3,10 +3,13 @@ find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(usb_console)
 
 target_sources(app PRIVATE src/main.c src/log_ram.c src/imu_measure.c
-  src/imu_measure_packet.c src/wifi_profile.c src/time_sync.c src/kv_store.c
+  src/imu_measure_packet.c src/imu_raw_packet.c src/imu_raw_batch.c src/imu_raw_queue.c src/wifi_profile.c src/time_sync.c src/kv_store.c
   drivers/nina/nina_wifi.c drivers/nina/nina_net.c drivers/nina/nina_socket.c
   drivers/nina/nina_dns.c)
 target_include_directories(app PRIVATE src)
+if(CONFIG_IMU_RAW_MQTT_EXPERIMENTAL)
+  target_sources(app PRIVATE src/imu_raw_mqtt.c)
+endif()
 if(CONFIG_IMU_CPU_PROFILE)
   target_sources(app PRIVATE src/imu_cpu_profile.c)
 endif()

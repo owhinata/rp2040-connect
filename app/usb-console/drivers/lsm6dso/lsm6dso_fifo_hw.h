@@ -19,7 +19,7 @@ struct lsm6dso_fifo_status {
  * Batch values are the ST register encodings (0 disables that sensor).
  */
 int lsm6dso_fifo_configure(const stmdev_ctx_t *ctx, uint16_t watermark,
-			   uint8_t accel_batch, uint8_t gyro_batch);
+			   uint8_t accel_batch, uint8_t gyro_batch, uint8_t timestamp_batch);
 int lsm6dso_fifo_stop(const stmdev_ctx_t *ctx);
 /* Stop adding both sensors while retaining the unread FIFO contents. */
 int lsm6dso_fifo_pause_batch(const stmdev_ctx_t *ctx);

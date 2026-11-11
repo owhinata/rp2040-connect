@@ -281,6 +281,9 @@ void lsm6dso_stream_init(const struct device *dev)
 #endif
 	}
 	data->stream_watermark = LSM6DSO_FIFO_DEFAULT_WATERMARK;
+#if defined(CONFIG_IMU_TIMESTAMP_DIAGNOSTIC)
+	data->timestamp_decimation = LSM6DSO_DEC_8;
+#endif
 	k_work_init_delayable(&data->stream_work, stream_work);
 }
 
@@ -348,3 +351,40 @@ uint16_t lsm6dso_fifo_get_watermark(const struct device *dev)
 	k_spin_unlock(&data->stream_lock, key);
 	return watermark;
 }
+
+#if defined(CONFIG_IMU_TIMESTAMP_DIAGNOSTIC)
+int lsm6dso_fifo_set_timestamp_decimation(const struct device *dev, unsigned int decimation)
+{
+	struct lsm6dso_data *data = dev->data;
+	uint8_t encoded;
+	int ret = 0;
+
+	switch (decimation) {
+	case 0: encoded = LSM6DSO_NO_DECIMATION; break;
+	case 1: encoded = LSM6DSO_DEC_1; break;
+	case 8: encoded = LSM6DSO_DEC_8; break;
+	case 32: encoded = LSM6DSO_DEC_32; break;
+	default: return -EINVAL;
+	}
+	k_mutex_lock(&data->fifo_lock, K_FOREVER);
+	if (data->fifo_owned) {
+		ret = -EBUSY;
+	} else {
+		data->timestamp_decimation = encoded;
+	}
+	k_mutex_unlock(&data->fifo_lock);
+	return ret;
+}
+
+unsigned int lsm6dso_fifo_get_timestamp_decimation(const struct device *dev)
+{
+	static const unsigned int values[] = {0, 1, 8, 32};
+	struct lsm6dso_data *data = dev->data;
+	unsigned int value;
+
+	k_mutex_lock(&data->fifo_lock, K_FOREVER);
+	value = values[data->timestamp_decimation];
+	k_mutex_unlock(&data->fifo_lock);
+	return value;
+}
+#endif

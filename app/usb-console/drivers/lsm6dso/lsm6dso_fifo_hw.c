@@ -40,19 +40,24 @@ int lsm6dso_fifo_pause_batch(const stmdev_ctx_t *ctx)
 }
 
 int lsm6dso_fifo_configure(const stmdev_ctx_t *ctx, uint16_t watermark,
-			   uint8_t accel_batch, uint8_t gyro_batch)
+			   uint8_t accel_batch, uint8_t gyro_batch, uint8_t timestamp_batch)
 {
 	if (ctx == NULL || watermark == 0 || watermark > 511 || accel_batch > 10 ||
-	    gyro_batch > 10 || (accel_batch == 0 && gyro_batch == 0)) {
+	    gyro_batch > 10 || timestamp_batch > 3 || (accel_batch == 0 && gyro_batch == 0)) {
 		return -EINVAL;
 	}
 
 	/* Always enter bypass before changing FIFO configuration. */
+#if defined(CONFIG_IMU_TIMESTAMP_DIAGNOSTIC)
+	if (lsm6dso_timestamp_set(ctx, 1) != 0) {
+		return -EIO;
+	}
+#endif
 	if (lsm6dso_fifo_stop(ctx) != 0 ||
 	    lsm6dso_fifo_xl_batch_set(ctx, (lsm6dso_bdr_xl_t)accel_batch) != 0 ||
 	    lsm6dso_fifo_gy_batch_set(ctx, (lsm6dso_bdr_gy_t)gyro_batch) != 0 ||
 	    lsm6dso_fifo_temp_batch_set(ctx, LSM6DSO_TEMP_NOT_BATCHED) != 0 ||
-	    lsm6dso_fifo_timestamp_decimation_set(ctx, LSM6DSO_NO_DECIMATION) != 0 ||
+	    lsm6dso_fifo_timestamp_decimation_set(ctx, (lsm6dso_odr_ts_batch_t)timestamp_batch) != 0 ||
 	    lsm6dso_fifo_stop_on_wtm_set(ctx, 0) != 0 ||
 	    lsm6dso_compression_algo_set(ctx, LSM6DSO_CMP_DISABLE) != 0 ||
 	    lsm6dso_fifo_watermark_set(ctx, watermark) != 0 ||

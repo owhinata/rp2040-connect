@@ -1,6 +1,18 @@
 mainmenu "USB console"
 source "Kconfig.zephyr"
 
+config IMU_TIMESTAMP_DIAGNOSTIC
+	bool "Experimental FIFO timestamp capture"
+	depends on SENSOR_ASYNC_API && SHELL
+
+config IMU_RAW_BATCH_DIAGNOSTIC
+	bool "Exercise RAW batch generation during IMU measurement"
+	depends on IMU_TIMESTAMP_DIAGNOSTIC
+
+config IMU_RAW_MQTT_EXPERIMENTAL
+	bool "Experimental RAW-only MQTT transport"
+	depends on IMU_RAW_BATCH_DIAGNOSTIC && MQTT_LIB && NETWORKING
+
 config IMU_CPU_PROFILE
 	bool "Measure thread CPU time during IMU streaming"
 	depends on THREAD_RUNTIME_STATS && THREAD_MONITOR
