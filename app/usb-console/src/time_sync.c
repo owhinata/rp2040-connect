@@ -324,14 +324,16 @@ void time_sync_init(void)
 	net_mgmt_add_event_callback(&wifi_events);
 }
 
+#define ITEM(sh, name, format, ...) shell_print(sh, "  %-27s " format, name ":", __VA_ARGS__)
+
 static int cmd_ntp_status(const struct shell *sh, size_t argc, char **argv)
 {
 	struct time_offset snapshot;
 	struct time_slew slew_snapshot;
-	char address[INET_ADDRSTRLEN] = "?";
+	char address[INET_ADDRSTRLEN] = "none";
 	int64_t unix_us = 0, slewed_us = 0, age, mono;
 	uint32_t delay = 0;
-	bool ready;
+	bool ready, attempted;
 
 	ARG_UNUSED(argc);
 	ARG_UNUSED(argv);
@@ -342,28 +344,48 @@ static int cmd_ntp_status(const struct shell *sh, size_t argc, char **argv)
 	mono = time_sync_mono_us();
 	ready = estimate_recent() && time_offset_get(&estimate, mono, &unix_us, &delay) &&
 		time_slew_get(&slewed, mono, &slewed_us);
-	(void)zsock_inet_ntop(AF_INET, &server.sin_addr, address, sizeof(address));
+	attempted = server.sin_addr.s_addr != 0;
+	if (attempted) {
+		(void)zsock_inet_ntop(AF_INET, &server.sin_addr, address, sizeof(address));
+	}
 	k_mutex_unlock(&sync_lock);
-	shell_print(sh, "NTP server: %s (%s:%u), every %d ms",
-		    sizeof(CONFIG_NINA_NTP_SERVER) == 1 ? "default gateway" : CONFIG_NINA_NTP_SERVER,
-		    address, CONFIG_NINA_NTP_PORT, CONFIG_NINA_NTP_INTERVAL_MS);
-	shell_print(sh, "queries=%d samples=%" PRIu32 " timeouts=%d rejected=%d clock_steps=%d"
-		    " last_error=%d", (int)atomic_get(&queries), snapshot.samples,
-		    (int)atomic_get(&timeouts), (int)atomic_get(&rejected),
-		    (int)atomic_get(&clock_steps), (int)atomic_get(&last_error));
-	if (!ready) {
-		shell_print(sh, "Time: not synchronized");
+	shell_print(sh, "state: %s", ready ? "synchronized" : "not synchronized");
+	ITEM(sh, "server", "%s:%u%s", address, CONFIG_NINA_NTP_PORT,
+	     sizeof(CONFIG_NINA_NTP_SERVER) == 1 ? " (default gateway)"
+						 : " (" CONFIG_NINA_NTP_SERVER ")");
+	ITEM(sh, "interval_ms", "%d", CONFIG_NINA_NTP_INTERVAL_MS);
+	if (ready) {
+		ITEM(sh, "unix_time", "%" PRId64 ".%06" PRId64, slewed_us / USEC_PER_SEC,
+		     slewed_us % USEC_PER_SEC);
+		ITEM(sh, "last_reply_ms_ago", "%" PRId64, age);
+	}
+	shell_print(sh, "exchanges:");
+	ITEM(sh, "queries", "%d", (int)atomic_get(&queries));
+	ITEM(sh, "replies", "%" PRIu32, snapshot.samples);
+	ITEM(sh, "timeouts", "%d", (int)atomic_get(&timeouts));
+	ITEM(sh, "rejected", "%d", (int)atomic_get(&rejected));
+	ITEM(sh, "last_error", "%d", (int)atomic_get(&last_error));
+	if (!snapshot.samples) {
 		return 0;
 	}
-	shell_print(sh, "delay_us last=%" PRIu32 " min=%" PRIu32 " used=%" PRIu32
-		    " last_residual_us=%" PRId64, snapshot.last_delay_us, snapshot.min_delay_us,
-		    delay, snapshot.last_residual_us);
-	shell_print(sh, "rate_ppb=%" PRId64 " rate_valid=%d slew_ppb=%" PRId64
-		    " slew_steps=%" PRIu32 " slewed_minus_estimate_us=%" PRId64,
-		    snapshot.rate_ppb, snapshot.rate_valid, slew_snapshot.now.slew_ppb,
-		    slew_snapshot.steps, slewed_us - unix_us);
-	shell_print(sh, "Unix time: %" PRId64 ".%06" PRId64 " (last exchange %" PRId64 " ms ago)",
-		    slewed_us / USEC_PER_SEC, slewed_us % USEC_PER_SEC, age);
+	/* Round trip without the server's processing time. Half of the one in
+	 * use bounds the error from an asymmetric path. */
+	shell_print(sh, "round_trip:");
+	ITEM(sh, "last_us", "%" PRIu32, snapshot.last_delay_us);
+	ITEM(sh, "min_us", "%" PRIu32, snapshot.min_delay_us);
+	if (ready) {
+		ITEM(sh, "in_use_us", "%" PRIu32, delay);
+	}
+	shell_print(sh, "clock:");
+	ITEM(sh, "rate_valid", "%d", snapshot.rate_valid);
+	ITEM(sh, "rate_ppb", "%" PRId64, snapshot.rate_ppb);
+	ITEM(sh, "last_residual_us", "%" PRId64, snapshot.last_residual_us);
+	ITEM(sh, "slew_ppb", "%" PRId64, slew_snapshot.now.slew_ppb);
+	if (ready) {
+		ITEM(sh, "smoothed_minus_estimate_us", "%" PRId64, slewed_us - unix_us);
+	}
+	ITEM(sh, "steps", "%" PRIu32, slew_snapshot.steps);
+	ITEM(sh, "realtime_clock_steps", "%d", (int)atomic_get(&clock_steps));
 	return 0;
 }
 
