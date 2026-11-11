@@ -1,4 +1,11 @@
 /* SPDX-License-Identifier: Apache-2.0 */
+/* Zephyr socket offload on the NINA firmware's BSD-style socket commands
+ * (0x70..0x7f). Each command is a single lwIP socket call made inside the
+ * module's SPI command handler, which serves Wi-Fi management and every
+ * socket. A call that blocks there stalls all of them, so every socket is
+ * made non-blocking as soon as it exists and waiting is done here by polling.
+ * The older per-type client commands (0x28..0x46) are not used.
+ */
 #include <errno.h>
 #include <stdarg.h>
 #include <string.h>
@@ -10,16 +17,38 @@
 #include "nina_send_profile.h"
 #endif
 
-#define MAX_NINA_SOCKETS 6
+/* The firmware's lwIP is built with CONFIG_LWIP_MAX_SOCKETS=10. */
+#define MAX_NINA_SOCKETS 10
 #define NINA_MAX_IO      512
 #define NINA_NO_SOCKET   UINT8_MAX
 #define NINA_SEND_WAIT_MS 10000
+#define NINA_CONNECT_WAIT_MS 10000
+#define NINA_POLL_INTERVAL_MS 20
+
+#define CMD_SOCKET     0x70
+#define CMD_CLOSE      0x71
+#define CMD_BIND       0x73
+#define CMD_LISTEN     0x74
+#define CMD_ACCEPT     0x75
+#define CMD_CONNECT    0x76
+#define CMD_SEND       0x77
+#define CMD_RECV       0x78
+#define CMD_SENDTO     0x79
+#define CMD_RECVFROM   0x7a
+#define CMD_IOCTL      0x7b
+#define CMD_POLL       0x7c
+#define CMD_GETSOCKOPT 0x7e
+
+#define POLL_READ  0x01
+#define POLL_WRITE 0x02
+#define POLL_ERROR 0x04
+#define POLL_FAIL  0x80
+
 struct nina_sock {
 	bool used;
 	bool connected;
 	bool udp;
 	bool bound;
-	bool bsd;
 	bool listening;
 	bool nonblocking;
 	uint8_t id;
@@ -30,6 +59,8 @@ K_MUTEX_DEFINE(socket_lock);
 K_MUTEX_DEFINE(udp_lock);
 K_MUTEX_DEFINE(sendmsg_lock);
 static uint8_t sendmsg_buffer[CONFIG_NINA_TCP_MAX_IO];
+/* Address, port and data of one received datagram. Protected by udp_lock. */
+static uint8_t udp_buffer[6 + NINA_MAX_IO];
 static const struct socket_op_vtable socket_ops;
 
 static int cmd1(uint8_t cmd, uint8_t id, uint8_t *data, size_t cap, size_t *n)
@@ -39,90 +70,105 @@ static int cmd1(uint8_t cmd, uint8_t id, uint8_t *data, size_t cap, size_t *n)
 	return nina_request(cmd, &p, 1, false, false, data, cap, n);
 }
 
-static int sock_state(struct nina_sock *s, uint8_t *state)
-{
-	size_t n;
-	int ret = cmd1(0x2f, s->id, state, 1, &n);
-
-	return ret ? ret : (n == 1 ? 0 : -EPROTO);
-}
-
-static int available(struct nina_sock *s, unsigned int *count)
-{
-	uint8_t data[2];
-	size_t n;
-	int ret = cmd1(0x2b, s->id, data, sizeof(data), &n);
-
-	if (ret) {
-		return ret;
-	}
-	if (n != 2) {
-		return -EPROTO;
-	}
-	*count = data[0] | ((unsigned int)data[1] << 8);
-	return 0;
-}
-
 static int fail(int err)
 {
 	errno = err > 0 ? err : -err;
 	return -1;
 }
 
-/* Caller holds socket_lock until the firmware has reserved the ID. */
-static int reserve_id(struct nina_sock *s)
+static int poll_state(struct nina_sock *s, uint8_t *state)
 {
 	size_t n;
-	int ret;
+	int ret = cmd1(CMD_POLL, s->id, state, 1, &n);
 
-	/* NINA 1.4.8 can starve UDP while another socket has unread data. */
-	for (int i = 0; i < MAX_NINA_SOCKETS; i++) {
-		if (&sockets[i] != s && sockets[i].used && !sockets[i].bsd &&
-		    sockets[i].id != NINA_NO_SOCKET &&
-		    (s->udp || sockets[i].udp)) {
-			return -EOPNOTSUPP;
-		}
-	}
-	ret = nina_request(0x3f, NULL, 0, false, false, &s->id, 1, &n);
-
-	if (ret || n != 1 || s->id == NINA_NO_SOCKET) {
-		s->id = NINA_NO_SOCKET;
-		return ret ? ret : -ENFILE;
-	}
-	for (int i = 0; i < MAX_NINA_SOCKETS; i++) {
-		if (&sockets[i] != s && sockets[i].used &&
-		    sockets[i].id == s->id) {
-			s->id = NINA_NO_SOCKET;
-			return -EBUSY;
-		}
-	}
-	return 0;
-}
-
-static int udp_bind_locked(struct nina_sock *s, uint16_t port)
-{
-	uint8_t mode = 1, result;
-	size_t n;
-	struct nina_param p[3];
-	int ret;
-
-	if (s->bound) {
-		return -EINVAL;
-	}
-	ret = reserve_id(s);
 	if (ret) {
 		return ret;
 	}
-	p[0] = (struct nina_param){(const uint8_t *)&port, 2};
-	p[1] = (struct nina_param){&s->id, 1};
-	p[2] = (struct nina_param){&mode, 1};
-	ret = nina_request(0x28, p, 3, false, false, &result, 1, &n);
-	if (ret || n != 1 || result != 1) {
+	return n == 1 && !(*state & POLL_FAIL) ? 0 : -EIO;
+}
+
+static int set_nonblocking(uint8_t id)
+{
+	uint8_t cmd[4] = {0x7e, 0x66, 0x04, 0x80}; /* lwIP FIONBIO */
+	uint8_t value[4] = {1, 0, 0, 0}, reply[4];
+	struct nina_param p[] = {{&id, 1}, {cmd, sizeof(cmd)}, {value, sizeof(value)}};
+	size_t n;
+	int ret = nina_request(CMD_IOCTL, p, 3, false, false, reply, sizeof(reply), &n);
+
+	return ret ? ret : (n == sizeof(reply) ? 0 : -EIO);
+}
+
+static void close_id(struct nina_sock *s)
+{
+	uint8_t result;
+	size_t n;
+
+	if (s->id != NINA_NO_SOCKET) {
+		(void)cmd1(CMD_CLOSE, s->id, &result, 1, &n);
 		s->id = NINA_NO_SOCKET;
-		return ret ? ret : -EADDRINUSE;
 	}
-	s->bound = true;
-	return 0;
+	s->bound = false;
+	s->connected = false;
+	s->listening = false;
+}
+
+/* Creates the firmware socket on first use. Caller holds socket_lock. */
+static int open_locked(struct nina_sock *s)
+{
+	uint8_t type = s->udp ? 2 : 1, proto = s->udp ? 17 : 6, result;
+	struct nina_param args[2] = {{&type, 1}, {&proto, 1}};
+	size_t n;
+	int ret;
+
+	if (s->id != NINA_NO_SOCKET) {
+		return 0;
+	}
+	ret = nina_request(CMD_SOCKET, args, 2, false, false, &result, 1, &n);
+	if (ret || n != 1 || result == NINA_NO_SOCKET) {
+		return ret ? ret : -ENFILE;
+	}
+	s->id = result;
+	ret = set_nonblocking(s->id);
+	if (ret) {
+		close_id(s);
+	}
+	return ret;
+}
+
+static int open_socket(struct nina_sock *s)
+{
+	int ret;
+
+	k_mutex_lock(&socket_lock, K_FOREVER);
+	ret = open_locked(s);
+	k_mutex_unlock(&socket_lock);
+	return ret;
+}
+
+/* SO_ERROR of the firmware socket as reported by its lwIP (ESP-IDF errno
+ * numbers), or a negative errno if it could not be read. */
+static int socket_error(struct nina_sock *s)
+{
+	uint8_t name[4] = {0x07, 0x10, 0, 0}, length = 4, value[4];
+	struct nina_param p[] = {{&s->id, 1}, {name, sizeof(name)}, {&length, 1}};
+	size_t n;
+	int ret = nina_request(CMD_GETSOCKOPT, p, 3, false, false, value, sizeof(value), &n);
+
+	if (ret || n != sizeof(value)) {
+		return ret ? ret : -EIO;
+	}
+	return value[0] | (value[1] << 8) | (value[2] << 16) | ((int)value[3] << 24);
+}
+
+static int connect_errno(int lwip_error)
+{
+	switch (lwip_error) {
+	case 104: return ECONNRESET;
+	case 113: return ECONNABORTED;
+	case 116: return ETIMEDOUT;
+	case 118: return EHOSTUNREACH;
+	default: return ECONNREFUSED;
+	}
 }
 
 static int do_bind(void *obj, const struct net_sockaddr *addr,
@@ -130,6 +176,9 @@ static int do_bind(void *obj, const struct net_sockaddr *addr,
 {
 	struct nina_sock *s = obj;
 	const struct net_sockaddr_in *in = (const struct net_sockaddr_in *)addr;
+	struct nina_param args[2];
+	uint8_t result;
+	size_t n;
 	int ret;
 
 	if (!addr || addrlen < sizeof(*in) || addr->sa_family != NET_AF_INET) {
@@ -138,58 +187,25 @@ static int do_bind(void *obj, const struct net_sockaddr *addr,
 	if (in->sin_addr.s_addr != 0) {
 		return fail(EADDRNOTAVAIL);
 	}
-	if (!s->udp) {
-		uint8_t type = 1, proto = 6, result;
-		struct nina_param args[2] = {{&type, 1}, {&proto, 1}};
-		size_t n;
-
-		k_mutex_lock(&socket_lock, K_FOREVER);
-		if (s->bound || s->connected || s->id != NINA_NO_SOCKET) {
-			k_mutex_unlock(&socket_lock);
-			return fail(EINVAL);
-		}
-		ret = nina_request(0x70, args, 2, false, false, &result, 1, &n);
-		if (ret || n != 1 || result == NINA_NO_SOCKET) {
-			k_mutex_unlock(&socket_lock);
-			return fail(ret ? ret : ENFILE);
-		}
-		s->id = result;
-		s->bsd = true;
+	k_mutex_lock(&socket_lock, K_FOREVER);
+	if (s->bound || s->connected) {
+		k_mutex_unlock(&socket_lock);
+		return fail(EINVAL);
+	}
+	ret = open_locked(s);
+	if (!ret) {
 		args[0] = (struct nina_param){&s->id, 1};
 		args[1] = (struct nina_param){(const uint8_t *)&in->sin_port, 2};
-		ret = nina_request(0x73, args, 2, false, false, &result, 1, &n);
+		ret = nina_request(CMD_BIND, args, 2, false, false, &result, 1, &n);
 		if (!ret && (n != 1 || result != 1)) {
 			ret = -EADDRINUSE;
 		}
-		if (!ret) {
-			s->bound = true;
-		} else {
-			(void)cmd1(0x71, s->id, &result, 1, &n);
-			s->id = NINA_NO_SOCKET;
-			s->bsd = false;
-		}
-		k_mutex_unlock(&socket_lock);
-		return ret ? fail(ret) : 0;
 	}
-	k_mutex_lock(&udp_lock, K_FOREVER);
-	k_mutex_lock(&socket_lock, K_FOREVER);
-	ret = udp_bind_locked(s, in->sin_port);
+	if (!ret) {
+		s->bound = true;
+	}
 	k_mutex_unlock(&socket_lock);
-	k_mutex_unlock(&udp_lock);
 	return ret ? fail(ret) : 0;
-}
-
-/* NINA's accept executes inside the SPI command handler. Never allow it to
- * block that handler, which is shared by Wi-Fi and all other sockets. */
-static int bsd_nonblocking(struct nina_sock *s)
-{
-	uint8_t cmd[4] = {0x7e, 0x66, 0x04, 0x80}; /* lwIP FIONBIO */
-	uint8_t value[4] = {1, 0, 0, 0}, reply[4];
-	struct nina_param p[] = {{&s->id, 1}, {cmd, sizeof(cmd)}, {value, sizeof(value)}};
-	size_t n;
-	int ret = nina_request(0x7b, p, 3, false, false, reply, sizeof(reply), &n);
-
-	return ret ? ret : (n == sizeof(reply) ? 0 : -EIO);
 }
 
 static int do_listen(void *obj, int backlog)
@@ -200,15 +216,12 @@ static int do_listen(void *obj, int backlog)
 	size_t n;
 	int ret;
 
-	if (!s->bsd || !s->bound || s->listening) {
+	if (s->udp || !s->bound || s->listening) {
 		return fail(EINVAL);
 	}
-	ret = bsd_nonblocking(s);
-	if (!ret) {
-		ret = nina_request(0x74, p, 2, false, false, &reply, 1, &n);
-		if (!ret && (n != 1 || reply != 1)) {
-			ret = -EIO;
-		}
+	ret = nina_request(CMD_LISTEN, p, 2, false, false, &reply, 1, &n);
+	if (!ret && (n != 1 || reply != 1)) {
+		ret = -EIO;
 	}
 	if (ret) {
 		return fail(ret);
@@ -243,7 +256,7 @@ static int do_accept(void *obj, struct net_sockaddr *addr, net_socklen_t *addrle
 		ret = -EMFILE;
 		goto error;
 	}
-	ret = cmd1(0x75, listener->id, reply, sizeof(reply), &n);
+	ret = cmd1(CMD_ACCEPT, listener->id, reply, sizeof(reply), &n);
 	if (ret || n != sizeof(reply) || reply[0] == NINA_NO_SOCKET) {
 		ret = ret ? ret : -EAGAIN;
 		goto error;
@@ -251,12 +264,10 @@ static int do_accept(void *obj, struct net_sockaddr *addr, net_socklen_t *addrle
 	memset(client, 0, sizeof(*client));
 	client->id = reply[0];
 	client->used = true;
-	client->bsd = true;
 	client->connected = true;
-	ret = bsd_nonblocking(client);
+	ret = set_nonblocking(client->id);
 	if (ret) {
-		uint8_t ignored;
-		(void)cmd1(0x71, client->id, &ignored, 1, &n);
+		close_id(client);
 		client->used = false;
 		goto error;
 	}
@@ -284,72 +295,79 @@ static int do_connect(void *obj, const struct net_sockaddr *addr,
 {
 	struct nina_sock *s = obj;
 	const struct net_sockaddr_in *in = (const struct net_sockaddr_in *)addr;
-	uint8_t result, mode = 0;
+	uint8_t result, state;
 	size_t n;
-	struct nina_param p[4];
+	struct nina_param p[3];
+	int64_t deadline;
 	int ret;
 
 	if (!addr || addrlen < sizeof(*in) || addr->sa_family != NET_AF_INET) {
 		return fail(EINVAL);
 	}
 	if (s->udp) {
-		k_mutex_lock(&udp_lock, K_FOREVER);
-		k_mutex_lock(&socket_lock, K_FOREVER);
-		ret = s->bound ? 0 : udp_bind_locked(s, 0);
-		if (!ret) {
-			s->peer = *in;
-			s->connected = true;
+		/* Kept here: datagrams from other senders are filtered on receive. */
+		ret = open_socket(s);
+		if (ret) {
+			return fail(ret);
 		}
-		k_mutex_unlock(&socket_lock);
-		k_mutex_unlock(&udp_lock);
-		return ret ? fail(ret) : 0;
+		s->peer = *in;
+		s->connected = true;
+		return 0;
 	}
 	if (s->connected) {
 		return fail(EISCONN);
 	}
-
-	/* The firmware reserves an ID only when startClient succeeds. */
+	if (s->listening) {
+		return fail(EINVAL);
+	}
 	k_mutex_lock(&socket_lock, K_FOREVER);
-	if (s->id != NINA_NO_SOCKET) {
-		k_mutex_unlock(&socket_lock);
-		return fail(EALREADY);
-	}
-	ret = reserve_id(s);
-	if (ret) {
-		k_mutex_unlock(&socket_lock);
-		return fail(ret);
-	}
-	p[0] = (struct nina_param){(const uint8_t *)&in->sin_addr, 4};
-	p[1] = (struct nina_param){(const uint8_t *)&in->sin_port, 2};
-	p[2] = (struct nina_param){&s->id, 1};
-	p[3] = (struct nina_param){&mode, 1};
-	ret = nina_request(0x2d, p, 4, false, false, &result, 1, &n);
-	if (ret) {
-		s->id = NINA_NO_SOCKET;
-		k_mutex_unlock(&socket_lock);
-		return fail(ret);
-	}
-	if (n != 1 || result != 1) {
-		s->id = NINA_NO_SOCKET;
-		k_mutex_unlock(&socket_lock);
-		return fail(ECONNREFUSED);
-	}
-	s->connected = true;
-	k_mutex_unlock(&socket_lock);
-	for (int i = 0; i < 100; i++) {
-		ret = sock_state(s, &result);
-		if (ret) {
-			return fail(ret);
+	ret = open_locked(s);
+	if (!ret) {
+		p[0] = (struct nina_param){&s->id, 1};
+		p[1] = (struct nina_param){(const uint8_t *)&in->sin_addr, 4};
+		p[2] = (struct nina_param){(const uint8_t *)&in->sin_port, 2};
+		ret = nina_request(CMD_CONNECT, p, 3, false, false, &result, 1, &n);
+		if (!ret && n != 1) {
+			ret = -EPROTO;
 		}
-		if (result == 4) {
+	}
+	k_mutex_unlock(&socket_lock);
+	if (ret) {
+		goto failed;
+	}
+	/* The socket is non-blocking, so "not connected yet" is the normal
+	 * answer. It becomes writable when the handshake completes and reports
+	 * an error when it fails. */
+	deadline = k_uptime_get() + NINA_CONNECT_WAIT_MS;
+	for (;;) {
+		ret = poll_state(s, &state);
+		if (ret) {
+			goto failed;
+		}
+		if (state & (POLL_WRITE | POLL_ERROR)) {
+			ret = socket_error(s);
+			if (ret < 0) {
+				goto failed;
+			}
+			if (ret > 0 || (state & POLL_ERROR)) {
+				ret = -connect_errno(ret);
+				goto failed;
+			}
+			s->connected = true;
 			return 0;
 		}
-		if (result == 0) {
-			return fail(ECONNREFUSED);
+		if (k_uptime_get() >= deadline) {
+			ret = -ETIMEDOUT;
+			goto failed;
 		}
-		k_sleep(K_MSEC(100));
+		k_sleep(K_MSEC(NINA_POLL_INTERVAL_MS));
 	}
-	return fail(ETIMEDOUT);
+failed:
+	/* A failed lwIP socket cannot be connected again. */
+	k_mutex_lock(&socket_lock, K_FOREVER);
+	close_id(s);
+	k_mutex_unlock(&socket_lock);
+	return fail(ret);
 }
 
 static ssize_t udp_send(struct nina_sock *s, const void *buf, size_t len,
@@ -358,12 +376,12 @@ static ssize_t udp_send(struct nina_sock *s, const void *buf, size_t len,
 {
 	const struct net_sockaddr_in *peer = (const struct net_sockaddr_in *)to;
 	struct nina_param p[4];
-	uint8_t mode = 1, answer;
+	uint8_t answer[2];
 	size_t n;
 	int ret;
 
-	if (flags || len > NINA_MAX_IO) {
-		return fail(flags ? EOPNOTSUPP : EMSGSIZE);
+	if ((flags & ~ZSOCK_MSG_DONTWAIT) || len > NINA_MAX_IO) {
+		return fail(len > NINA_MAX_IO ? EMSGSIZE : EOPNOTSUPP);
 	}
 	if (len && !buf) {
 		return fail(EINVAL);
@@ -377,38 +395,26 @@ static ssize_t udp_send(struct nina_sock *s, const void *buf, size_t len,
 		}
 		peer = &s->peer;
 	}
-	k_mutex_lock(&udp_lock, K_FOREVER);
-	k_mutex_lock(&socket_lock, K_FOREVER);
-	ret = s->bound ? 0 : udp_bind_locked(s, 0);
-	k_mutex_unlock(&socket_lock);
+	ret = open_socket(s);
 	if (ret) {
-		goto done;
-	}
-	p[0] = (struct nina_param){(const uint8_t *)&peer->sin_addr, 4};
-	p[1] = (struct nina_param){(const uint8_t *)&peer->sin_port, 2};
-	p[2] = (struct nina_param){&s->id, 1};
-	p[3] = (struct nina_param){&mode, 1};
-	ret = nina_request(0x2d, p, 4, false, false, &answer, 1, &n);
-	if (ret || n != 1 || answer != 1) {
-		ret = ret ? ret : -EIO;
-		goto done;
+		return fail(ret);
 	}
 	p[0] = (struct nina_param){&s->id, 1};
-	p[1] = (struct nina_param){buf, len};
-	if (len) {
-		ret = nina_request(0x46, p, 2, true, false, &answer, 1, &n);
-		if (ret || n != 1 || answer != 1) {
-			ret = ret ? ret : -EIO;
-			goto done;
-		}
+	p[1] = (struct nina_param){(const uint8_t *)&peer->sin_addr, 4};
+	p[2] = (struct nina_param){(const uint8_t *)&peer->sin_port, 2};
+	p[3] = (struct nina_param){buf, len};
+	ret = nina_request(CMD_SENDTO, p, 4, true, false, answer, sizeof(answer), &n);
+	if (ret) {
+		return fail(ret);
 	}
-	ret = cmd1(0x39, s->id, &answer, 1, &n);
-	if (!ret && (n != 1 || answer != 1)) {
-		ret = -EIO;
+	if (n != 2) {
+		return fail(EPROTO);
 	}
-done:
-	k_mutex_unlock(&udp_lock);
-	return ret ? fail(ret) : (ssize_t)len;
+	/* The firmware reports every failure as zero bytes sent. */
+	if ((((size_t)answer[0] << 8) | answer[1]) != len) {
+		return fail(EAGAIN);
+	}
+	return len;
 }
 
 static ssize_t do_send(void *obj, const void *buf, size_t len, int flags,
@@ -427,7 +433,7 @@ static ssize_t do_send(void *obj, const void *buf, size_t len, int flags,
 	if (s->udp) {
 		return udp_send(s, buf, len, flags, to, tolen);
 	}
-	if (to || (flags & ~(s->bsd ? ZSOCK_MSG_DONTWAIT : 0))) {
+	if (to || (flags & ~ZSOCK_MSG_DONTWAIT)) {
 		return fail(EOPNOTSUPP);
 	}
 	if (!s->connected) {
@@ -447,7 +453,7 @@ static ssize_t do_send(void *obj, const void *buf, size_t len, int flags,
 	for (;;) {
 		unsigned int written;
 
-		ret = nina_request(s->bsd ? 0x77 : 0x44, p, 2, true, false, answer,
+		ret = nina_request(CMD_SEND, p, 2, true, false, answer,
 				   sizeof(answer), &n);
 		if (ret) {
 			return fail(ret);
@@ -455,8 +461,7 @@ static ssize_t do_send(void *obj, const void *buf, size_t len, int flags,
 		if (n != 2) {
 			return fail(EPROTO);
 		}
-		written = s->bsd ? ((unsigned int)answer[0] << 8) | answer[1] :
-				   answer[0] | ((unsigned int)answer[1] << 8);
+		written = ((unsigned int)answer[0] << 8) | answer[1];
 		if (written > len) {
 			return fail(EPROTO);
 		}
@@ -466,15 +471,16 @@ static ssize_t do_send(void *obj, const void *buf, size_t len, int flags,
 		if ((flags & ZSOCK_MSG_DONTWAIT) || s->nonblocking) {
 			return fail(EAGAIN);
 		}
-		if (!s->bsd
+		/* Zero means a full send buffer or a failed connection; only the
+		 * socket state tells them apart. */
 #if defined(CONFIG_NINA_TEST_SEND_STATE_INTERVAL_MS)
-		    && k_uptime_get() >= next_state_check
+		if (k_uptime_get() >= next_state_check)
 #endif
-		) {
+		{
 			uint8_t state;
 
-			ret = sock_state(s, &state);
-			if (ret || state != 4) {
+			ret = poll_state(s, &state);
+			if (ret || (state & POLL_ERROR)) {
 				return fail(ret ? ret : EPIPE);
 			}
 #if defined(CONFIG_NINA_TEST_SEND_STATE_INTERVAL_MS)
@@ -536,10 +542,9 @@ static ssize_t do_sendmsg(void *obj, const struct net_msghdr *msg, int flags)
 static ssize_t udp_recv(struct nina_sock *s, void *buf, size_t len, int flags,
 			struct net_sockaddr *from, net_socklen_t *fromlen)
 {
-	uint8_t remote[6], length[2], discard[NINA_MAX_IO];
-	struct nina_param p[2];
 	struct net_sockaddr_in sender = {.sin_family = NET_AF_INET};
-	unsigned int count;
+	uint8_t state, size[2];
+	struct nina_param p[2];
 	size_t n, copied;
 	int ret;
 
@@ -549,67 +554,48 @@ static ssize_t udp_recv(struct nina_sock *s, void *buf, size_t len, int flags,
 	if (len && !buf) {
 		return fail(EINVAL);
 	}
-	k_mutex_lock(&socket_lock, K_FOREVER);
-	ret = s->bound ? 0 : udp_bind_locked(s, 0);
-	k_mutex_unlock(&socket_lock);
+	ret = open_socket(s);
 	if (ret) {
 		return fail(ret);
 	}
 	for (;;) {
-		bool matches;
-
-		k_mutex_lock(&udp_lock, K_FOREVER);
-		ret = available(s, &count);
+		/* Never ask for a datagram that is not there: the reply cannot
+		 * tell "nothing received" from an empty datagram. */
+		ret = poll_state(s, &state);
 		if (ret) {
-			goto error;
+			return fail(ret);
 		}
-		if (!count) {
-			k_mutex_unlock(&udp_lock);
+		if (!(state & POLL_READ)) {
 			if ((flags & ZSOCK_MSG_DONTWAIT) || s->nonblocking) {
 				return fail(EAGAIN);
 			}
-			k_sleep(K_MSEC(20));
+			k_sleep(K_MSEC(NINA_POLL_INTERVAL_MS));
 			continue;
 		}
-		ret = cmd1(0x3a, s->id, remote, sizeof(remote), &n);
-		if (ret || n != sizeof(remote)) {
-			ret = ret ? ret : -EPROTO;
-			goto error;
-		}
-		memcpy(&sender.sin_addr, remote, 4);
-		memcpy(&sender.sin_port, remote + 4, 2);
-		matches = !s->connected ||
-			  (sender.sin_addr.s_addr == s->peer.sin_addr.s_addr &&
-			   sender.sin_port == s->peer.sin_port);
-		copied = 0;
+		/* lwIP drops what does not fit, which keeps datagram boundaries. */
+		copied = CLAMP(len, 1, NINA_MAX_IO);
+		size[0] = copied & 0xff;
+		size[1] = copied >> 8;
 		p[0] = (struct nina_param){&s->id, 1};
-		p[1] = (struct nina_param){length, 2};
-		while (count) {
-			size_t chunk = MIN(count, NINA_MAX_IO);
-			size_t keep = matches ? MIN(chunk, len - copied) : 0;
-
-			/* Avoid consuming a discarded suffix into the caller
-			 * buffer. */
-			if (keep) {
-				chunk = keep;
-			}
-			length[0] = chunk & 255;
-			length[1] = chunk >> 8;
-			ret = nina_request(0x45, p, 2, true, true,
-					   keep ? (uint8_t *)buf + copied
-						: discard,
-					   chunk, &n);
-			if (ret || !n || n > chunk) {
-				ret = ret ? ret : -EPROTO;
-				goto error;
-			}
-			count -= n;
-			if (keep) {
-				copied += n;
-			}
+		p[1] = (struct nina_param){size, 2};
+		k_mutex_lock(&udp_lock, K_FOREVER);
+		ret = nina_request(CMD_RECVFROM, p, 2, false, true, udp_buffer,
+				   6 + copied, &n);
+		if (ret || n < 6) {
+			k_mutex_unlock(&udp_lock);
+			return fail(ret ? ret : EPROTO);
+		}
+		memcpy(&sender.sin_addr, udp_buffer, 4);
+		/* Same byte order as the port in the accept reply. */
+		((uint8_t *)&sender.sin_port)[0] = udp_buffer[5];
+		((uint8_t *)&sender.sin_port)[1] = udp_buffer[4];
+		copied = MIN(n - 6, len);
+		if (copied) {
+			memcpy(buf, udp_buffer + 6, copied);
 		}
 		k_mutex_unlock(&udp_lock);
-		if (!matches) {
+		if (s->connected && (sender.sin_addr.s_addr != s->peer.sin_addr.s_addr ||
+				     sender.sin_port != s->peer.sin_port)) {
 			continue;
 		}
 		if (from) {
@@ -620,9 +606,6 @@ static ssize_t udp_recv(struct nina_sock *s, void *buf, size_t len, int flags,
 		}
 		return copied;
 	}
-error:
-	k_mutex_unlock(&udp_lock);
-	return fail(ret);
 }
 
 static ssize_t do_recv(void *obj, void *buf, size_t len, int flags,
@@ -631,7 +614,6 @@ static ssize_t do_recv(void *obj, void *buf, size_t len, int flags,
 	struct nina_sock *s = obj;
 	uint8_t state, bytes[2];
 	size_t n;
-	unsigned int count;
 	int ret;
 	struct nina_param p[2];
 
@@ -650,91 +632,53 @@ static ssize_t do_recv(void *obj, void *buf, size_t len, int flags,
 	if (!buf) {
 		return fail(EINVAL);
 	}
-	if (s->bsd) {
-		uint8_t poll_result;
-
-		for (;;) {
-			ret = cmd1(0x7c, s->id, &poll_result, 1, &n);
-			if (ret || n != 1 || (poll_result & 0x80)) {
-				return fail(ret ? ret : EIO);
-			}
-			if (poll_result & 0x01) {
-				break;
-			}
-			if (flags & ZSOCK_MSG_DONTWAIT) {
-				return fail(EAGAIN);
-			}
-			k_sleep(K_MSEC(20));
-		}
-		len = MIN(len, NINA_MAX_IO);
-		bytes[0] = len & 0xff;
-		bytes[1] = len >> 8;
-		p[0] = (struct nina_param){&s->id, 1};
-		p[1] = (struct nina_param){bytes, 2};
-		ret = nina_request(0x78, p, 2, false, true, buf, len, &n);
-		return ret ? fail(ret) : (ssize_t)n;
-	}
-
 	for (;;) {
-		ret = available(s, &count);
+		ret = poll_state(s, &state);
 		if (ret) {
 			return fail(ret);
 		}
-		if (count) {
+		if (state & POLL_READ) {
 			break;
 		}
-		ret = sock_state(s, &state);
-		if (ret) {
-			return fail(ret);
-		}
-		if (state != 4) {
-			s->connected = false;
-			return 0;
-		}
-		if (flags & ZSOCK_MSG_DONTWAIT) {
+		if ((flags & ZSOCK_MSG_DONTWAIT) || s->nonblocking) {
 			return fail(EAGAIN);
 		}
-		k_sleep(K_MSEC(20));
+		k_sleep(K_MSEC(NINA_POLL_INTERVAL_MS));
 	}
-
-	len = MIN(MIN(len, count), NINA_MAX_IO);
+	len = MIN(len, NINA_MAX_IO);
 	bytes[0] = len & 0xff;
 	bytes[1] = len >> 8;
 	p[0] = (struct nina_param){&s->id, 1};
 	p[1] = (struct nina_param){bytes, 2};
-	ret = nina_request(0x45, p, 2, true, true, buf, len, &n);
+	ret = nina_request(CMD_RECV, p, 2, false, true, buf, len, &n);
 	if (ret) {
 		return fail(ret);
 	}
-	return n;
+	/* Readable with nothing to read: the peer closed or the connection
+	 * failed. The firmware reports both as zero bytes. */
+	return (ssize_t)n;
 }
 
 static int do_close(void *obj)
 {
 	struct nina_sock *s = obj;
-	bool udp = s->udp;
 	uint8_t result;
 	size_t n;
 	int ret = 0;
 
-	if (udp) {
-		k_mutex_lock(&udp_lock, K_FOREVER);
-	}
 	k_mutex_lock(&socket_lock, K_FOREVER);
 	if (s->id != NINA_NO_SOCKET) {
-		ret = cmd1(s->bsd ? 0x71 : 0x2e, s->id, &result, 1, &n);
-		if (!ret && s->bsd && (n != 1 || result != 1)) {
+		ret = cmd1(CMD_CLOSE, s->id, &result, 1, &n);
+		if (!ret && (n != 1 || result != 1)) {
 			ret = -EIO;
 		}
 	}
 	s->used = false;
 	s->connected = false;
 	s->bound = false;
+	s->listening = false;
 	s->id = NINA_NO_SOCKET;
 	k_mutex_unlock(&socket_lock);
-	if (udp) {
-		k_mutex_unlock(&udp_lock);
-	}
 	return ret ? fail(ret) : 0;
 }
 
@@ -758,8 +702,6 @@ static int do_poll(struct zsock_pollfd *fds, int nfds, int timeout)
 		for (int i = 0; i < nfds; i++) {
 			struct nina_sock *s;
 			const struct fd_op_vtable *vtable;
-			unsigned int count;
-			size_t length;
 			uint8_t state;
 			int ret;
 
@@ -780,51 +722,27 @@ static int do_poll(struct zsock_pollfd *fds, int nfds, int timeout)
 					return -1;
 				}
 				fds[i].revents = native.revents;
-			} else if (s->bsd) {
-				ret = cmd1(0x7c, s->id, &state, 1, &length);
-				if (ret || length != 1 || (state & 0x80)) {
-					return fail(ret ? ret : EIO);
+			} else if (s->id == NINA_NO_SOCKET) {
+				/* Nothing can arrive on a socket the firmware does
+				 * not have yet; an unconnected TCP socket is hung up. */
+				if (!s->udp) {
+					fds[i].revents = ZSOCK_POLLHUP;
+				} else if (fds[i].events & ZSOCK_POLLOUT) {
+					fds[i].revents = ZSOCK_POLLOUT;
 				}
-				if ((state & 0x01) && (fds[i].events & ZSOCK_POLLIN)) {
+			} else {
+				ret = poll_state(s, &state);
+				if (ret) {
+					return fail(ret);
+				}
+				if ((state & POLL_READ) && (fds[i].events & ZSOCK_POLLIN)) {
 					fds[i].revents |= ZSOCK_POLLIN;
 				}
-				if ((state & 0x02) && (fds[i].events & ZSOCK_POLLOUT)) {
+				if ((state & POLL_WRITE) && (fds[i].events & ZSOCK_POLLOUT)) {
 					fds[i].revents |= ZSOCK_POLLOUT;
 				}
-				if (state & 0x04) {
+				if (state & POLL_ERROR) {
 					fds[i].revents |= ZSOCK_POLLERR;
-				}
-			} else if (!s->udp && !s->connected) {
-				fds[i].revents = ZSOCK_POLLHUP;
-			} else {
-				if (fds[i].events & ZSOCK_POLLOUT) {
-					fds[i].revents |= ZSOCK_POLLOUT;
-				}
-				if ((fds[i].events & ZSOCK_POLLIN) &&
-				    (!s->udp || s->bound)) {
-					if (s->udp) {
-						k_mutex_lock(&udp_lock,
-							     K_FOREVER);
-					}
-					ret = available(s, &count);
-					if (s->udp) {
-						k_mutex_unlock(&udp_lock);
-					}
-					if (ret) {
-						return fail(ret);
-					}
-					if (count) {
-						fds[i].revents |= ZSOCK_POLLIN;
-					} else if (!s->udp) {
-						ret = sock_state(s, &state);
-						if (ret) {
-							return fail(ret);
-						}
-						if (state != 4) {
-							fds[i].revents |=
-								ZSOCK_POLLHUP;
-						}
-					}
 				}
 			}
 			if (fds[i].revents) {
@@ -837,7 +755,7 @@ static int do_poll(struct zsock_pollfd *fds, int nfds, int timeout)
 		if (k_uptime_get() >= deadline) {
 			return 0;
 		}
-		k_sleep(K_MSEC(20));
+		k_sleep(K_MSEC(NINA_POLL_INTERVAL_MS));
 	}
 }
 
@@ -851,7 +769,7 @@ static int do_ioctl(void *obj, unsigned int request, va_list args)
 	case ZVFS_F_SETFL: {
 		int flags = va_arg(args, int);
 
-		if (!s->bsd || (flags & ~ZVFS_O_NONBLOCK)) {
+		if (flags & ~ZVFS_O_NONBLOCK) {
 			return fail(EOPNOTSUPP);
 		}
 		s->nonblocking = (flags & ZVFS_O_NONBLOCK) != 0;
@@ -920,7 +838,6 @@ int nina_socket_create(int family, int type, int proto)
 	s->connected = false;
 	s->udp = type == NET_SOCK_DGRAM;
 	s->bound = false;
-	s->bsd = false;
 	s->listening = false;
 	s->nonblocking = false;
 	k_mutex_unlock(&socket_lock);

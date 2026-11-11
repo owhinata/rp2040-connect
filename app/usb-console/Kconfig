@@ -41,6 +41,10 @@ config NINA_BENCHMARK_BOOTSEL
 	bool "Enable BOOTSEL command in Wi-Fi benchmark images"
 	depends on SOC_RP2040 && SHELL
 
+config NINA_UDP_ECHO_TEST
+	bool "Shell command that echoes UDP datagrams (hardware test)"
+	depends on WIFI_NINA_LOCAL && SHELL
+
 config NINA_SEND_PROFILE
 	bool "Profile NINA TCP send phases"
 	depends on WIFI_NINA_LOCAL && SHELL

@@ -231,7 +231,7 @@ int nina_request(uint8_t cmd, const struct nina_param *params, size_t nparams,
 {
 	uint8_t c = 0;
 	size_t i, j, sent = 0, len = 0, total = 0;
-	uint8_t response_count = cmd == 0x3a ? 2 : (cmd == 0x75 ? 3 : 1);
+	uint8_t response_count = cmd == 0x3a ? 2 : (cmd == 0x75 || cmd == 0x7a ? 3 : 1);
 	int ret;
 #if defined(CONFIG_NINA_SEND_PROFILE)
 	struct nina_send_sample sample = {0};
@@ -378,7 +378,8 @@ int nina_request(uint8_t cmd, const struct nina_param *params, size_t nparams,
 				}
 				if (len > cap - total ||
 				    (cmd == 0x3a && len != (j == 0 ? 4 : 2)) ||
-				    (cmd == 0x75 && len != (j == 0 ? 1 : (j == 1 ? 4 : 2)))) {
+				    (cmd == 0x75 && len != (j == 0 ? 1 : (j == 1 ? 4 : 2))) ||
+				    (cmd == 0x7a && j < 2 && len != (j == 0 ? 4 : 2))) {
 					ret = -EMSGSIZE;
 				}
 			}

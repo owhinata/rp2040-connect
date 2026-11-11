@@ -145,6 +145,34 @@ int main(void)
 	       -EMSGSIZE);
 	assert(!cs_active);
 
+	/* recvfrom: address, port and data, each with a 16-bit length. */
+	const uint8_t recvfrom_reply[] = {0xe0, 0xfa, 3, 0, 4, 10, 42, 0, 1, 0, 2, 0x12, 0x34,
+					  0, 3, 'a', 'b', 'c', 0xee};
+	uint8_t size[2] = {16, 0};
+	struct nina_param recvfrom_params[] = {{&id, 1}, {size, 2}};
+	reset_fake(recvfrom_reply, sizeof(recvfrom_reply));
+	assert(nina_request(0x7a, recvfrom_params, 2, false, true, output, 6 + 16, &n) == 0);
+	assert(n == 9 && output[0] == 10 && output[3] == 1 && output[4] == 0x12 &&
+	       output[5] == 0x34 && !memcmp(output + 6, "abc", 3));
+	assert(memcmp(request, "\xe0\x7a\x02\x01\x07\x02\x10\x00\xee", 9) == 0);
+	/* An empty datagram is still three parameters. */
+	const uint8_t empty_reply[] = {0xe0, 0xfa, 3, 0, 4, 10, 42, 0, 1, 0, 2, 0x12, 0x34,
+				       0, 0, 0xee};
+	reset_fake(empty_reply, sizeof(empty_reply));
+	assert(nina_request(0x7a, recvfrom_params, 2, false, true, output, 6 + 16, &n) == 0);
+	assert(n == 6);
+	/* A datagram larger than the caller's buffer and a malformed address
+	 * are rejected without leaving chip select asserted. */
+	reset_fake(recvfrom_reply, sizeof(recvfrom_reply));
+	assert(nina_request(0x7a, recvfrom_params, 2, false, true, output, 6 + 2, &n) ==
+	       -EMSGSIZE);
+	assert(!cs_active);
+	const uint8_t bad_address[] = {0xe0, 0xfa, 3, 0, 3, 10, 42, 0, 0xee};
+	reset_fake(bad_address, sizeof(bad_address));
+	assert(nina_request(0x7a, recvfrom_params, 2, false, true, output, 6 + 16, &n) ==
+	       -EMSGSIZE);
+	assert(!cs_active);
+
 	reset_fake(send_reply, sizeof(send_reply));
 	fail_bulk = 1;
 	assert(nina_request(0x44, params, 2, true, false, output, sizeof(output), &n) == -EIO);
