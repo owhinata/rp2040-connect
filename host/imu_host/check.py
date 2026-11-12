@@ -1,28 +1,19 @@
-#!/usr/bin/env python3
 # SPDX-License-Identifier: Apache-2.0
-"""IMU1 RAW バッチの診断用受信器。
+"""RAW バッチの受信を診断する。
 
-MQTT 3.1.1 のクライアント 1 台を直接受け付け、`imu/<device_id>/raw` の
-IMU1 ペイロードを検査して件数・連番・サンプル番号の欠落を集計する。
-汎用ブローカーでもデータ保存アプリでもない。`script/imu_mqtt_probe.py`
-（旧診断フォーマット用）とは互換性がない。
+`imu/<device_id>/raw` の IMU1 ペイロードを検査し、件数・連番・サンプル番号の欠落と
+時刻の整合を集計する。保存はしない（保存は record）。
 
 終了時（SIGINT/SIGTERM、--duration、--idle-timeout）に集計を JSON で 1 行出力する。
 試験用に、受信開始から指定秒後に接続を切って待ち受けも止める --drop-at/--drop-for と、
 読み出しだけを止める --stall-at/--stall-for を備える。
 """
-import argparse
 import json
-import select
 import signal
-import socket
-import struct
-import sys
 import time
 
-HEADER = 96
-VERSION = 2
-MAX_WORDS = 384
+from . import mqtt, packet
+
 MAX_GAP_RECORDS = 50
 
 
@@ -117,8 +108,8 @@ class Stats:
         self.r = dict(
             packets=0, accel=0, gyro=0, bytes=0, first_seq=None, last_seq=None,
             missing_batches=0, missing_accel=0, missing_gyro=0, reordered=0,
-            index_regressions=0, invalid=0, connects=0, disconnects=0,
-            max_gap_ms=0.0, max_gap_before_seq=None, protocol_error=None,
+            index_regressions=0, invalid=0,
+            max_gap_ms=0.0, max_gap_before_seq=None,
             time_valid=0, time_invalid=0, tick_regressions=0,
             unix_valid=0, unix_invalid=0, unix_regressions=0)
         self.gaps = []
@@ -149,31 +140,19 @@ class Stats:
     def raw(self, topic, qos, p):
         r = self.r
         self.topics.add('%s (QoS %d)' % (topic, qos))
-        if len(p) < HEADER or p[:4] != b'IMU1' or p[4] != VERSION or p[5] & ~15 or \
-           struct.unpack_from('<H', p, 6)[0] != HEADER or p[76:80] != b'\0' * 4:
+        try:
+            b = packet.parse(p)
+        except packet.PacketError:
             r['invalid'] += 1
             return
-        seq, ia, ig = struct.unpack_from('<QQQ', p, 24)
-        count, bitmap_len = struct.unpack_from('<HH', p, 64)
-        if not 1 <= count <= MAX_WORDS or bitmap_len != (count + 7) // 8 or \
-           len(p) != HEADER + bitmap_len + count * 6 or \
-           (count % 8 and p[HEADER + bitmap_len - 1] >> (count % 8)):
-            r['invalid'] += 1
-            return
-        session = p[8:24]
         if self.session is None:
-            self.session = session
-        if session != self.session:
-            self.sessions.add(session.hex())
+            self.session = b.session
+        self.sessions.add(b.session.hex())
+        if b.session != self.session:
             r['invalid'] += 1
             return
-        self.sessions.add(session.hex())
-        accel = sum(b.bit_count() for b in p[HEADER:HEADER + bitmap_len])
-        gyro = count - accel
-        none = 0xFFFFFFFFFFFFFFFF
-        if (accel == 0) != (ia == none) or (gyro == 0) != (ig == none):
-            r['invalid'] += 1
-            return
+        seq, ia, ig = b.seq, b.accel_index, b.gyro_index
+        accel, gyro = b.accel_count, b.gyro_count
         now = time.monotonic()
         arrival = time.time()
         gap_ms = 0.0 if self.last_time is None else round((now - self.last_time) * 1000, 1)
@@ -209,20 +188,18 @@ class Stats:
         r['accel'] += accel
         r['gyro'] += gyro
         r['bytes'] += len(p)
-        self.flags.add(p[5])
-        epoch = struct.unpack_from('<I', p, 68)[0]
-        ticks = struct.unpack_from('<QQ', p, 48)
-        if accel and p[5] & 1:
+        self.flags.add(b.flags)
+        epoch = b.epoch
+        ticks = (b.accel_tick, b.gyro_tick)
+        if accel and b.flags & 1:
             self.time_points.batches.append((ticks[0], arrival))
-        unix = struct.unpack_from('<QQ', p, 80)
+        unix = (b.accel_unix_us, b.gyro_unix_us)
         for kind, bit, present, index, value, tick in (('accel', 4, accel, ia, unix[0], ticks[0]),
                                                        ('gyro', 8, gyro, ig, unix[1], ticks[1])):
             if not present:
                 continue
-            if not p[5] & bit:
+            if not b.flags & bit:
                 r['unix_invalid'] += 1
-                if value:
-                    r['invalid'] += 1
                 continue
             r['unix_valid'] += 1
             prev = self.unix_prev.get(kind)
@@ -239,10 +216,8 @@ class Stats:
                                                 ('gyro', 2, gyro, ig, ticks[1])):
             if not present:
                 continue
-            if not p[5] & bit:
+            if not b.flags & bit:
                 r['time_invalid'] += 1
-                if tick:
-                    r['invalid'] += 1
                 continue
             r['time_valid'] += 1
             prev = self.tick_prev.get(kind)
@@ -286,105 +261,15 @@ class Stats:
         return out
 
 
-def parse_packets(buf):
-    """Yield (header, body) for each complete MQTT control packet in buf."""
-    pos = 0
-    while True:
-        if len(buf) - pos < 2:
-            break
-        length = shift = 0
-        i = pos + 1
-        complete = False
-        while i < len(buf) and i < pos + 5:
-            length |= (buf[i] & 0x7F) << shift
-            shift += 7
-            i += 1
-            if not buf[i - 1] & 0x80:
-                complete = True
-                break
-        if not complete:
-            if i >= pos + 5:
-                raise ValueError('malformed remaining length')
-            break
-        if len(buf) - i < length:
-            break
-        yield buf[pos], bytes(buf[i:i + length])
-        pos = i + length
-    del buf[:pos]
-
-
-def handle(conn, stats, header, body, raw_suffix):
-    kind = header >> 4
-    if kind == 1:
-        conn.sendall(b'\x20\x02\x00\x00')
-        stats.r['connects'] += 1
-    elif kind == 3:
-        qos = (header >> 1) & 3
-        n = int.from_bytes(body[:2], 'big')
-        topic = body[2:2 + n].decode('utf-8', errors='replace')
-        offset = 2 + n
-        if qos:
-            conn.sendall(b'\x40\x02' + body[offset:offset + 2])
-            offset += 2
-        if topic.endswith(raw_suffix):
-            stats.raw(topic, qos, body[offset:])
-        else:
-            stats.other_message(topic, body[offset:])
-    elif kind == 8:
-        pos, count = 2, 0
-        while pos + 2 <= len(body):
-            n = int.from_bytes(body[pos:pos + 2], 'big')
-            pos += 2 + n + 1
-            count += 1
-        conn.sendall(b'\x90' + bytes([2 + count]) + body[:2] + b'\x00' * count)
-    elif kind == 12:
-        conn.sendall(b'\xd0\x00')
-    elif kind == 14:
-        return False
-    else:
-        raise ValueError('unexpected MQTT packet type %d' % kind)
-    return True
-
-
-def main():
-    ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument('--bind', required=True, help='待ち受ける PC の IPv4 アドレス')
-    ap.add_argument('--port', type=int, default=18830)
-    ap.add_argument('--session', help='期待する 32 桁 hex のセッション ID（省略時は最初の値）')
-    ap.add_argument('--duration', type=float, help='起動からこの秒数で終了')
-    ap.add_argument('--idle-timeout', type=float, help='RAW 受信後、この秒数受信がなければ終了')
-    ap.add_argument('--drop-at', type=float, help='最初の RAW からこの秒数後に切断し待ち受けも停止')
-    ap.add_argument('--drop-for', type=float, default=5.0)
-    ap.add_argument('--stall-at', type=float, help='最初の RAW からこの秒数後に読み出しを停止')
-    ap.add_argument('--stall-for', type=float, default=5.0)
-    ap.add_argument('--rcvbuf', type=int, help='SO_RCVBUF。小さくすると読み出し停止が送信側へ早く伝わる')
-    args = ap.parse_args()
+def run(args):
     session = bytes.fromhex(args.session) if args.session else None
     if session is not None and len(session) != 16:
-        ap.error('--session は 32 桁の hex')
+        raise SystemExit('--session は 32 桁の hex')
     stats = Stats(session)
     stop = []
     signal.signal(signal.SIGINT, lambda *_: stop.append(1))
     signal.signal(signal.SIGTERM, lambda *_: stop.append(1))
-
-    def listen():
-        s = socket.socket()
-        s.setsockopt(socket.SOL_SOCKET, socket.SO_REUSEADDR, 1)
-        if args.rcvbuf:
-            s.setsockopt(socket.SOL_SOCKET, socket.SO_RCVBUF, args.rcvbuf)
-        s.bind((args.bind, args.port))
-        s.listen(1)
-        return s
-
-    def close_conn():
-        nonlocal conn
-        if conn:
-            conn.close()
-            conn = None
-            buf.clear()
-            stats.r['disconnects'] += 1
-
-    listener, conn, buf = listen(), None, bytearray()
+    server = mqtt.Server(args.bind, args.port, rcvbuf=args.rcvbuf)
     started = time.monotonic()
     first_raw = None
     drop_done = args.drop_at is None
@@ -401,54 +286,28 @@ def main():
             break
         since = None if first_raw is None else now - first_raw
         if not drop_done and since is not None and since >= args.drop_at:
-            close_conn()
-            listener.close()
-            listener = None
+            server.drop_client()
+            server.stop_listening()
             drop_done = True
             drop_until = now + args.drop_for
             print('DROP', flush=True)
         if drop_until is not None and now >= drop_until:
-            listener = listen()
+            server.listen()
             drop_until = None
             print('LISTEN', flush=True)
-        if args.stall_at is not None and since is not None and \
-           args.stall_at <= since < args.stall_at + args.stall_for:
+        if (args.stall_at is not None and since is not None and
+                args.stall_at <= since < args.stall_at + args.stall_for) or \
+           not (server.listener or server.conn):
             time.sleep(0.05)
             continue
-        readable = [s for s in (listener, conn) if s]
-        if not readable:
-            time.sleep(0.05)
-            continue
-        try:
-            ready, _, _ = select.select(readable, [], [], 0.1)
-        except InterruptedError:
-            continue
-        if listener in ready:
-            new, _ = listener.accept()
-            close_conn()
-            conn = new
-            conn.setsockopt(socket.IPPROTO_TCP, socket.TCP_NODELAY, 1)
-        if conn and conn in ready:
-            try:
-                data = conn.recv(65536)
-                if not data:
-                    close_conn()
-                    continue
-                buf += data
-                for header, body in parse_packets(buf):
-                    if not handle(conn, stats, header, body, '/raw'):
-                        close_conn()
-                        break
-            except (OSError, ValueError) as e:
-                stats.r['protocol_error'] = '%s: %s' % (type(e).__name__, e)
-                close_conn()
-    if conn:
-        conn.close()
-    if listener:
-        listener.close()
-    print('RESULT ' + json.dumps(stats.summary()), flush=True)
+        for topic, qos, payload in server.poll(0.1):
+            if topic.endswith('/raw'):
+                stats.raw(topic, qos, payload)
+            else:
+                stats.other_message(topic, payload)
+    server.close()
+    out = stats.summary()
+    out.update(connects=server.connects, disconnects=server.disconnects,
+               protocol_error=server.protocol_error)
+    print('RESULT ' + json.dumps(out), flush=True)
     return 0
-
-
-if __name__ == '__main__':
-    sys.exit(main())

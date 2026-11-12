@@ -121,12 +121,15 @@ sudo systemctl restart chrony
 
 ### 4. PC で受信する
 
-`script/imu_raw_receiver.py` は検証用の受信器です。MQTT クライアント 1 台を直接受け付け、
-RAW バッチの形式、連番、サンプル番号、時刻を検査し、終了時に集計を JSON で出力します。
-汎用の MQTT ブローカーでもデータ保存アプリでもありません。
+PC 側のツールは `host/` にあります。導入方法と、記録（`record`）・校正（`calib`）の使い方は
+[`host/README_ja.md`](host/README_ja.md) を参照してください。
+
+`imu-host check` は検証用の受信器です。MQTT クライアント 1 台を直接受け付け、RAW バッチの
+形式、連番、サンプル番号、時刻を検査し、終了時に集計を JSON で出力します。汎用の MQTT
+ブローカーではなく、保存もしません。
 
 ```bash
-python3 script/imu_raw_receiver.py --bind 0.0.0.0 --port 1883
+host/.venv/bin/imu-host check --port 1883
 ```
 
 Ctrl-C で終了すると結果を表示します。`--drop-at`、`--stall-at`、`--rcvbuf` で受信側の停止や
@@ -281,5 +284,6 @@ FIFO 設定と停止処理、NINA の SPI フレーミングなどを、PC 上�
 | `app/blink/` | LED 点滅のサンプル |
 | `design/` | 設計と調査手順 |
 | `firmware/nina-fw/` | NINA ファームウェアの修正とビルド |
-| `script/` | 環境構築、AP、受信器、ホストテスト |
+| `host/` | PC 側のツール（受信の診断、記録、校正） |
+| `script/` | 環境構築、AP、ホストテスト |
 | `manifest/west.yml` | Zephyr とモジュールのバージョン |

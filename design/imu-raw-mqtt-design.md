@@ -45,7 +45,7 @@ congestion and a receiver that stops are to be detected and reported.
 
 Unless noted, the conditions were: accelerometer and gyroscope at 6667 Hz, FIFO watermark 128,
 I2C at 1 MHz, timestamp decimation 8, a 2.4 GHz connection to a UGREEN USB adapter acting as
-an access point on the PC, and `script/imu_raw_receiver.py` as the receiver. **Each test was
+an access point on the PC, and `imu-host check` as the receiver (at the time, the script it was moved from). **Each test was
 run once**; none of this is a long-term guarantee.
 
 - 30 minutes continuously: 63128 batches with none missing, PC time on every batch, no time
@@ -104,7 +104,7 @@ waits, never blocks FIFO reads. Thread priorities are 9 for acquisition (batchin
 synchronization, 10 for the FIFO read worker and 11 for the MQTT sender. The sender makes the
 acquisition side wait only for the queue mutex.
 
-On the PC there is for now `script/imu_raw_receiver.py`, a verification tool that accepts one
+On the PC there is for now `imu-host check` (in `host/`), a verification tool that accepts one
 MQTT client directly. It is neither a general broker nor a recorder.
 
 ## 3. RAW acquisition
@@ -294,7 +294,7 @@ gyroscope, `1` for accelerometer. Unused high bits of the last byte are 0. The f
 
 A receiver checks the magic, version, lengths, reserved field, flags, unused bitmap bits and
 `payload_len == 96 + bitmap_len + 6 × word_count`, and rejects anything out of range or of an
-unsupported version instead of misreading it. `script/imu_raw_receiver.py` does this.
+unsupported version instead of misreading it. `host/imu_host/packet.py` does this.
 
 A batch of 384 words has a 48-byte bitmap and 2,304 bytes of raw values, **2,448 bytes** with
 the header. With both sensors at 6667 Hz that is about 28.7 ms of data, about 35 batches per

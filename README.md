@@ -123,12 +123,15 @@ Open UDP port 123 if a firewall such as ufw is active. `ntp status` shows the bo
 
 ### 4. Receive on the PC
 
-`script/imu_raw_receiver.py` is a receiver for verification. It accepts one MQTT client
-directly, checks the format, sequence numbers, sample numbers and times of the RAW batches,
-and prints a summary as JSON when it ends. It is neither a general MQTT broker nor a recorder.
+The PC-side tools are in `host/`. See [`host/README.md`](host/README.md) for installation
+and for recording (`record`) and calibration (`calib`).
+
+`imu-host check` is a receiver for verification. It accepts one MQTT client directly, checks
+the format, sequence numbers, sample numbers and times of the RAW batches, and prints a
+summary as JSON when it ends. It is not a general MQTT broker and stores nothing.
 
 ```bash
-python3 script/imu_raw_receiver.py --bind 0.0.0.0 --port 1883
+host/.venv/bin/imu-host check --port 1883
 ```
 
 Ctrl-C ends it and prints the result. `--drop-at`, `--stall-at` and `--rcvbuf` reproduce a
@@ -286,5 +289,6 @@ summary (missing batches, valid and reversed times) and at the errors in `imu st
 | `app/blink/` | LED blink sample |
 | `design/` | Design and investigation notes |
 | `firmware/nina-fw/` | Fixes and build for the NINA firmware |
-| `script/` | Setup, access point, receiver, host tests |
+| `host/` | PC-side tools (receive check, recording, calibration) |
+| `script/` | Setup, access point, host tests |
 | `manifest/west.yml` | Versions of Zephyr and its modules |
