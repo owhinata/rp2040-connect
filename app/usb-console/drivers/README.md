@@ -38,8 +38,12 @@ trigger `SENSOR_TRIG_FIFO_WATERMARK` and the option `SENSOR_STREAM_DATA_INCLUDE`
 - At start the FIFO is put into bypass, the batch rates, timestamp interval and watermark are
   set, and it is switched to stream mode.
 - On the threshold interrupt the FIFO status is read and all pending words are read in one
-  burst and delivered as one RTIO buffer, headed by `struct lsm6dso_fifo_packet` (word count,
-  periods, sensitivities, conversion to physical units).
+  burst and delivered as one RTIO buffer, headed by a header (word count, periods,
+  sensitivities, conversion to physical units).
+- The layout of the header (`lsm6dso_fifo_packet.h`) is private to the driver. Code that reads
+  a buffer uses the decoder for physical values, or `lsm6dso_fifo_buffer_words()` for the raw
+  words. `lsm6dso_fifo_next_entry()` interprets the words one at a time and yields the kind,
+  xyz, the tag counter, and the counter value a timestamp word carries.
 - On a **FIFO overrun**, an I2C error or a buffer that is too small, the FIFO is stopped and
   the stream ends with an error. The number of lost samples is unknown, so nothing that looks
   continuous is returned. Whether to restart is up to the caller (`src/imu_stream.c`).

@@ -42,8 +42,8 @@ void imu_raw_time_init(struct imu_raw_time *time);
 /* After a FIFO restart or lost words: forget the slot position. The 64-bit
  * extension and the diagnostics continue. */
 void imu_raw_time_new_epoch(struct imu_raw_time *time);
-/* payload is the six data bytes of a timestamp word, counter its tag counter. */
-void imu_raw_time_timestamp(struct imu_raw_time *time, const uint8_t payload[6], uint8_t counter);
+/* raw is the sensor counter carried by a timestamp word, counter its tag counter. */
+void imu_raw_time_timestamp(struct imu_raw_time *time, uint32_t raw, uint8_t counter);
 /* Call for every accelerometer or gyroscope word in FIFO order. This runs
  * for each sample at the full data rate, so the common case (another word of
  * the current slot) stays inline. */

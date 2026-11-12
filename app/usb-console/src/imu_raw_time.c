@@ -19,11 +19,8 @@ void imu_raw_time_new_epoch(struct imu_raw_time *time)
 	time->generation++;
 }
 
-void imu_raw_time_timestamp(struct imu_raw_time *time, const uint8_t payload[6], uint8_t counter)
+void imu_raw_time_timestamp(struct imu_raw_time *time, uint32_t raw, uint8_t counter)
 {
-	uint32_t raw = (uint32_t)payload[0] | ((uint32_t)payload[1] << 8) |
-		       ((uint32_t)payload[2] << 16) | ((uint32_t)payload[3] << 24);
-
 	if (time->raw_seen && raw < time->last_raw) {
 		if (time->last_raw >= 0xC0000000U && raw < 0x40000000U) {
 			/* The 32-bit counter wraps after about 30 hours. */

@@ -1,8 +1,10 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 
 #include "lsm6dso_fifo.h"
+#include "lsm6dso_fifo_packet.h"
 
 #include <errno.h>
+#include <stddef.h>
 #include <string.h>
 
 int lsm6dso_fifo_decode_word(const uint8_t word[LSM6DSO_FIFO_WORD_SIZE],
@@ -77,9 +79,29 @@ int lsm6dso_fifo_next_entry(const uint8_t *bytes, size_t length, size_t *cursor,
 		entry->type = LSM6DSO_FIFO_ENTRY_SAMPLE;
 	} else if (entry->tag == 4) { /* LSM6DSO timestamp tag */
 		entry->type = LSM6DSO_FIFO_ENTRY_TIMESTAMP;
+		/* The 32-bit counter, little-endian, in the first four bytes. */
+		entry->timestamp = (uint32_t)word[1] | (uint32_t)word[2] << 8 |
+				   (uint32_t)word[3] << 16 | (uint32_t)word[4] << 24;
 	} else {
 		entry->type = LSM6DSO_FIFO_ENTRY_OTHER;
 	}
 	*cursor += LSM6DSO_FIFO_WORD_SIZE;
 	return 1;
+}
+
+int lsm6dso_fifo_buffer_words(const uint8_t *buffer, size_t length, const uint8_t **words,
+			      size_t *size)
+{
+	const struct lsm6dso_fifo_packet *packet = (const void *)buffer;
+	const size_t header = offsetof(struct lsm6dso_fifo_packet, data);
+
+	if (!buffer || !words || !size || length < header ||
+	    packet->marker != LSM6DSO_FIFO_PACKET_MARKER ||
+	    packet->words > LSM6DSO_FIFO_MAX_WORDS ||
+	    length - header < (size_t)packet->words * LSM6DSO_FIFO_WORD_SIZE) {
+		return -EBADMSG;
+	}
+	*words = packet->data;
+	*size = (size_t)packet->words * LSM6DSO_FIFO_WORD_SIZE;
+	return 0;
 }

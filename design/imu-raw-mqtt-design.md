@@ -116,9 +116,12 @@ for usage.
 ### 3.1 Acquisition and parsing
 
 1. Buffers are obtained per FIFO watermark through Zephyr's `sensor_stream()` and RTIO.
-2. `lsm6dso_fifo_next_entry()` interprets a buffer in FIFO order and distinguishes
-   accelerometer and gyroscope samples, timestamps and other tags. It also extracts each
-   word's 2-bit tag counter.
+2. `lsm6dso_fifo_buffer_words()` finds the FIFO words in a buffer, and
+   `lsm6dso_fifo_next_entry()` interprets them in FIFO order, distinguishing accelerometer and
+   gyroscope samples, timestamps and other tags. It also extracts each word's 2-bit tag counter
+   and the counter value a timestamp word carries. Only the driver knows the layout of the
+   buffer header and of the words; the measurement code uses the results of these two
+   functions.
 3. Samples are numbered and packed into batches of up to 384 words.
 4. A batch is handed to the send queue when it is full or 100 ms after its last sample.
 

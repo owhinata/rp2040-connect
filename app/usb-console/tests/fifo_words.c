@@ -2,9 +2,14 @@
 
 #include <assert.h>
 #include <errno.h>
+#include <stddef.h>
 #include <stdint.h>
 
+#include <string.h>
+
 #include "lsm6dso_fifo.h"
+/* The layout is the driver's; a test of the driver may build a buffer by hand. */
+#include "lsm6dso_fifo_packet.h"
 
 int main(void)
 {
@@ -45,6 +50,35 @@ int main(void)
 	assert(lsm6dso_fifo_next_entry(timestamp, sizeof(timestamp), &cursor, &entry) == 1);
 	assert(entry.type == LSM6DSO_FIFO_ENTRY_TIMESTAMP && entry.payload[3] == 4 &&
 	       entry.counter == 0);
+	/* The counter is the first four bytes, little-endian; the rest is not part of it. */
+	assert(entry.timestamp == 0x04030201);
 	assert(lsm6dso_fifo_next_entry(timestamp, 6, &cursor, &entry) == -EINVAL);
+
+	/* Reading the words out of a stream buffer without knowing its header. */
+	union { uint64_t align; uint8_t bytes[offsetof(struct lsm6dso_fifo_packet, data) + 14]; } buffer = {0};
+	struct lsm6dso_fifo_packet *packet = (void *)buffer.bytes;
+	const uint8_t *found;
+	size_t size;
+
+	packet->marker = LSM6DSO_FIFO_PACKET_MARKER;
+	packet->words = 2;
+	memcpy(packet->data, words, 14);
+	assert(lsm6dso_fifo_buffer_words(buffer.bytes, sizeof(buffer.bytes), &found, &size) == 0);
+	assert(found == packet->data && size == 14 && memcmp(found, words, 14) == 0);
+	/* Truncated, not a FIFO buffer, an impossible word count, bad arguments. */
+	assert(lsm6dso_fifo_buffer_words(buffer.bytes, sizeof(buffer.bytes) - 1, &found, &size) ==
+	       -EBADMSG);
+	assert(lsm6dso_fifo_buffer_words(buffer.bytes, 8, &found, &size) == -EBADMSG);
+	packet->marker = 3;
+	assert(lsm6dso_fifo_buffer_words(buffer.bytes, sizeof(buffer.bytes), &found, &size) ==
+	       -EBADMSG);
+	packet->marker = LSM6DSO_FIFO_PACKET_MARKER;
+	packet->words = LSM6DSO_FIFO_MAX_WORDS + 1;
+	assert(lsm6dso_fifo_buffer_words(buffer.bytes, sizeof(buffer.bytes), &found, &size) ==
+	       -EBADMSG);
+	assert(lsm6dso_fifo_buffer_words(NULL, 64, &found, &size) == -EBADMSG);
+	packet->words = 0;
+	assert(lsm6dso_fifo_buffer_words(buffer.bytes, sizeof(buffer.bytes), &found, &size) == 0 &&
+	       size == 0);
 	return 0;
 }

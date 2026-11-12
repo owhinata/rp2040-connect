@@ -162,7 +162,7 @@ int imu_raw_batch_consume(struct imu_raw_batch *batch, const uint8_t *words,
 				return -EOVERFLOW;
 			}
 			batch->timestamp_words++;
-			imu_raw_time_timestamp(&batch->time, entry.payload, entry.counter);
+			imu_raw_time_timestamp(&batch->time, entry.timestamp, entry.counter);
 			*cursor = next;
 			continue;
 		}

@@ -5,10 +5,7 @@
 
 static void stamp(struct imu_raw_time *t, uint32_t raw, uint8_t counter)
 {
-	const uint8_t payload[6] = {(uint8_t)raw, (uint8_t)(raw >> 8), (uint8_t)(raw >> 16),
-				    (uint8_t)(raw >> 24), 0, 0xaa};
-
-	imu_raw_time_timestamp(t, payload, counter);
+	imu_raw_time_timestamp(t, raw, counter);
 }
 
 int main(void)

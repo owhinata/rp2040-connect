@@ -28,7 +28,6 @@
 #include "kv_store.h"
 #include "time_sync.h"
 #include "../drivers/lsm6dso/lsm6dso_fifo.h"
-#include "../drivers/lsm6dso/lsm6dso_fifo_decoder.h"
 #include "../drivers/lsm6dso/lsm6dso_fifo_stats.h"
 
 /* Settings read from the key-value store by "imu start"; all are optional. */
@@ -263,15 +262,11 @@ static bool report(const struct device *dev, enum imu_raw_state state, bool send
 
 static void consume_packet(const uint8_t *buffer, uint32_t length)
 {
-	const struct lsm6dso_fifo_packet *packet = (const void *)buffer;
-	size_t cursor = 0;
+	const uint8_t *words;
+	size_t size, cursor = 0;
 	int rc;
 
-	if (length < offsetof(struct lsm6dso_fifo_packet, data) ||
-	    packet->marker != LSM6DSO_FIFO_PACKET_MARKER ||
-	    packet->words > LSM6DSO_FIFO_MAX_WORDS ||
-	    length - offsetof(struct lsm6dso_fifo_packet, data) <
-		    (size_t)packet->words * LSM6DSO_FIFO_WORD_SIZE) {
+	if (lsm6dso_fifo_buffer_words(buffer, length, &words, &size) != 0) {
 		run.invalid_packets++;
 		if (!run.error) {
 			run.error = -EBADMSG;
