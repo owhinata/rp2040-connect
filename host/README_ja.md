@@ -10,6 +10,7 @@ PC 側で IMU の RAW データを受信するツールです。ボードが MQT
 | `imu-host check` | 受信を診断する（欠落・時刻の整合の集計。保存しない） |
 | `imu-host record` | 計測を開始して RAW を記録し、停止する |
 | `imu-host calib` | 記録から加速度・角速度の校正値を求める |
+| `imu-host write` | 校正値をボードに書き込む |
 
 ボード側の使い方は [`../README_ja.md`](../README_ja.md) を参照してください。
 
@@ -195,6 +196,46 @@ calibrated = misalignment @ scale @ (raw_lsb - bias_lsb)
 「校正前」は、公称感度だけで換算した値です。imu_tk の出力（`.calib`、ログ）と入力
 （`acc.txt`、`gyro.txt`）も同じディレクトリに残ります。
 
+### ボードへの書き込み（write）
+
+```bash
+.venv/bin/imu-host write recordings/<日時>          # Telnet（AP 経由）
+.venv/bin/imu-host write recordings/<日時> --usb    # USB コンソール
+```
+
+校正値をボードの KV に書き込み、`sensor get` と `sensor stream` の出力に適用します。
+**MQTT で送る RAW は変わりません。** 引数には `calibration.json` を直接指定することもできます。
+
+1. 計測中でないことを確認します（計測中は書き込みません）。
+2. 加速度と角速度の 2 つのキーを `kv sethex` で書き込み、`kv get` で読み返して照合します。
+3. `imu cal reload` を実行し、ボードが校正値を使い始めたことを確認します。
+
+Telnet と USB コンソールは経路が違うだけで、送るコマンドは同じです。`--usb` にデバイス名を
+付けなければ、`/dev/serial/by-id/` から探します。
+
+| オプション | 意味 |
+|---|---|
+| `--board IP` | ボードの IP アドレス（Telnet） |
+| `--usb [DEVICE]` | Telnet ではなく USB コンソールで書き込む |
+| `--force` | 収束しなかった、または回転が不足していた校正値でも書き込む |
+
+キーはセンサーと感度ごとです。
+
+```text
+imu.cal.accel.<µg/LSB>      例: imu.cal.accel.244   （±8 g）
+imu.cal.gyro.<µdps/LSB>     例: imu.cal.gyro.70000  （±2000 dps）
+```
+
+ボードは、現在の感度のキーがあるときだけ校正値を使います。レンジを変えると対応するキーが
+なくなるので、公称感度での変換に戻ります。別のレンジで校正して書き込めば、キーが増え、
+レンジに応じて切り替わります。消すには、ボードのシェルで `kv delete <キー>` のあと
+`imu cal reload` を実行します。
+
+値は 56 バイトで、整数に直した係数です（`app/usb-console/src/imu_cal.h`）。ボードは
+浮動小数点を使わずに `M · (raw − bias)` を計算します。`M` は `misalignment @ scale` を
+出力の単位（2⁻²² m/s² または rad/s）に直して 14 ビットの小数を付けた値、`bias` は 8 ビットの
+小数を付けた LSB です。この丸めによる誤差は 1 LSB の 0.2% 以下です。
+
 ### 時刻の扱い
 
 角速度の積分にはサンプルの時刻の差が効くので、センサーの tick から時刻を作ります。tick の
@@ -207,8 +248,16 @@ calibrated = misalignment @ scale @ (raw_lsb - bias_lsb)
   Telnet での開始と停止）。
 - `calib` は、既知の校正値を埋め込んだ合成データ（約 4 分、40 姿勢、ノイズあり）で、スケールを
   0.03% 以内、バイアスを 0.3 LSB 以内で復元できることを確認しています。
-- **実機で姿勢を変えて取った記録での校正は、まだ確認していません。**
-- 校正値は校正時の温度のものです。RAW に温度は含まれていません。
+- 実機では、姿勢を変えて取った 2 つの記録で校正しています。3 軸の回転が揃った記録の校正値は、
+  別の記録に当てても誤差が下がりました（静止時の加速度の誤差 RMS 0.8 mg、姿勢間の重力の向きの
+  予測誤差 0.20 度）。回転が偏った記録の校正値は、別の記録では公称感度より悪くなりました。
+  角速度の校正値の再現性（同じ条件で取り直したときの差）は、まだ確認していません。
+- `write` は Telnet と USB コンソールの両方で確認しています。書き込んだ校正値でのボードの
+  出力は、同じ姿勢の校正なしの出力を PC で校正した値と、加速度で 0.2 mg、角速度で
+  7×10⁻⁵ rad/s 以内で一致しました。
+- 校正値は校正時の温度のものです。RAW に温度は含まれていません。校正の約 2 時間半後
+  （電源を入れ直したあと）には、静止時の加速度の大きさが重力値より 2〜3 mg 小さく、
+  角速度に約 0.1 dps のバイアスが残っていました。
 
 ## 構成
 
@@ -216,6 +265,6 @@ calibrated = misalignment @ scale @ (raw_lsb - bias_lsb)
 |---|---|
 | `imu_host/packet.py` | IMU1 ペイロードの検査と取り出し |
 | `imu_host/mqtt.py` | MQTT の受け口（クライアント 1 台） |
-| `imu_host/board.py` | ボードの IP アドレスの特定と Telnet 操作 |
+| `imu_host/board.py` | ボードの IP アドレスの特定と、Telnet・USB コンソールでのシェル操作 |
 | `imu_host/recording.py` | 記録の読み書きと、tick から時刻への変換 |
-| `imu_host/check.py`、`record.py`、`calib.py` | 各コマンド |
+| `imu_host/check.py`、`record.py`、`calib.py` | 各コマンド（`write` は `calib.py`） |

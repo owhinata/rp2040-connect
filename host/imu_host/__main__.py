@@ -24,6 +24,13 @@ def main():
                    help='各静止区間から使う長さと、静止判定の窓 [秒]')
     p.add_argument('--force', action='store_true', help='欠落や飽和があっても実行する')
 
+    p = sub.add_parser('write', help='校正値をボードに書き込む')
+    p.add_argument('calibration', help='calibration.json、または calib 済みの記録のディレクトリ')
+    p.add_argument('--board', help='ボードの IP アドレス（Telnet。既定: AP に繋がっている機器から探す）')
+    p.add_argument('--usb', nargs='?', const='', metavar='DEVICE',
+                   help='Telnet ではなく USB コンソールで書き込む（デバイス省略時は自動で探す）')
+    p.add_argument('--force', action='store_true', help='注意の付いた校正値でも書き込む')
+
     p = sub.add_parser('check', help='RAW の受信を診断する（保存しない）')
     p.add_argument('--bind', default='0.0.0.0', help='待ち受ける PC の IPv4 アドレス')
     p.add_argument('--port', type=int, default=1883, help='待ち受けるポート（ボードの imu.port）')
@@ -40,6 +47,9 @@ def main():
     if args.command == 'record':
         from . import record
         return record.run(args)
+    if args.command == 'write':
+        from . import calib
+        return calib.write(args)
     if args.command == 'check':
         from . import check
         return check.run(args)

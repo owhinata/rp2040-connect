@@ -8,13 +8,15 @@ imu_tk は https://github.com/owhinata/ubuntu-imu_tk の Docker イメージで�
 import json
 import math
 import os
+import re
+import struct
 import subprocess
 import sys
 import time
 
 import numpy as np
 
-from . import recording
+from . import board, recording
 
 IMU_TK_REPO = 'https://github.com/owhinata/ubuntu-imu_tk.git'
 # 完全なハッシュで指定する（docker build は省略形を取得できない）。
@@ -301,3 +303,74 @@ def report(result):
           % (*v['rotation_deg'], ROTATION_TARGET_DEG))
     for w in v['warnings']:
         print('  注意: %s' % w)
+
+
+# ---- ボードへの書き込み
+#
+# ボードは校正値を KV に、センサーと感度ごとのキーで持つ（app/usb-console/src/imu_cal.h）。
+# 値は整数化した係数で、ボードは浮動小数点を使わずに
+#   out = M · (raw − bias)        （out は 2^-22 m/s² または rad/s 単位）
+# を計算する。
+STORED_VERSION = 1
+OUT_FRAC = 22      # 出力の小数ビット（Q31、shift 9）
+COEFF_FRAC = 14    # 係数の追加の小数ビット
+BIAS_FRAC = 8      # バイアスの小数ビット
+
+
+def stored_entry(result, name):
+    """calibration.json から、KV のキーと値（56 バイト）を作る。"""
+    kind, gain = (0, result['accel_ug_per_lsb']) if name == 'accel' else \
+        (1, result['gyro_udps_per_lsb'])
+    c = result[name]
+    m = np.array(c['misalignment']) @ np.array(c['scale'])
+    mq = np.rint(m * 2.0 ** (OUT_FRAC + COEFF_FRAC)).astype(np.int64).reshape(-1)
+    bq = np.rint(np.array(c['bias_lsb']) * 2.0 ** BIAS_FRAC).astype(np.int64)
+    values = [int(v) for v in mq] + [int(v) for v in bq]
+    if any(abs(v) >= 2 ** 31 for v in values):
+        raise ValueError('%s の校正値がボードの形式（int32）に収まりません' % name)
+    blob = struct.pack('<BBHI12i', STORED_VERSION, kind, 0, int(gain), *values)
+    return 'imu.cal.%s.%d' % (name, int(gain)), blob
+
+
+def write(args):
+    path = args.calibration
+    if os.path.isdir(path):
+        path = os.path.join(path, 'calib', 'calibration.json')
+    with open(path) as f:
+        result = json.load(f)
+    if not result.get('imu_tk', {}).get('gyro_converged', False) or \
+       result.get('validation', {}).get('warnings'):
+        print('この校正値には収束や回転の不足の注意が付いています', file=sys.stderr)
+        if not args.force:
+            print('書き込むには --force を付けてください', file=sys.stderr)
+            return 1
+    try:
+        entries = [stored_entry(result, name) for name in ('accel', 'gyro')]
+        with board.shell(args.board, args.usb) as sh:
+            print('ボード: %s' % sh.name)
+            if re.search(r'state:\s*(running|starting)', sh.command('imu status', wait=2.0)):
+                print('計測中は書き込めません。imu stop で止めてから実行してください', file=sys.stderr)
+                return 1
+            for key, blob in entries:
+                out = sh.command('kv sethex %s %s' % (key, blob.hex()), wait=2.0)
+                if 'Saved' not in out:
+                    print('%s を書き込めませんでした:\n%s' % (key, out.strip()), file=sys.stderr)
+                    return 1
+                # 長い行はシェルが端末の幅で折り返すので、空白を除いて比べる。
+                if blob.hex() not in re.sub(r'\s+', '', sh.command('kv get %s' % key, wait=1.5)).lower():
+                    print('%s を読み返した内容が一致しません' % key, file=sys.stderr)
+                    return 1
+                print('  書き込み: %s（%d バイト）' % (key, len(blob)))
+            status = sh.command('imu cal reload', wait=1.5)
+    except (board.BoardError, ValueError) as e:
+        print(e, file=sys.stderr)
+        return 1
+    lines = [line.strip() for line in status.splitlines() if re.match(r'\s*(accel|gyro):', line)]
+    for line in lines:
+        print('  %s' % line)
+    if len(lines) != 2 or not all('calibrated' in line for line in lines):
+        print('ボードが校正値を適用していません。センサーの感度が校正時と違うか、ファームウェアが'
+              '対応していません', file=sys.stderr)
+        return 1
+    print('sensor get / sensor stream の出力に校正が適用されます（MQTT の RAW は変わりません）')
+    return 0

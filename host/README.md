@@ -10,6 +10,7 @@ over MQTT directly and do three things.
 | `imu-host check` | Checks reception (gaps and time consistency; stores nothing) |
 | `imu-host record` | Starts a measurement, records the RAW data, and stops it |
 | `imu-host calib` | Computes accelerometer and gyro calibration from a recording |
+| `imu-host write` | Writes a calibration to the board |
 
 See [`../README.md`](../README.md) for the board side.
 
@@ -202,6 +203,48 @@ poorly determined and can come out implausible. A note is printed and the exit c
 "Before" means converted with the nominal sensitivity only. The output of imu_tk (`.calib`
 files, log) and its input (`acc.txt`, `gyro.txt`) stay in the same directory.
 
+### Writing to the board (write)
+
+```bash
+.venv/bin/imu-host write recordings/<date-time>          # Telnet (through the access point)
+.venv/bin/imu-host write recordings/<date-time> --usb    # USB console
+```
+
+This writes the calibration to the board's KV store and applies it to the output of
+`sensor get` and `sensor stream`. **The RAW data sent over MQTT does not change.** The
+argument can also be a `calibration.json` file.
+
+1. Checks that no measurement is running (it does not write during one).
+2. Writes the accelerometer and gyro keys with `kv sethex`, and reads them back with `kv get`
+   to compare.
+3. Runs `imu cal reload` and checks that the board now uses the calibration.
+
+Telnet and the USB console differ only in the path; the commands sent are the same. Without a
+device name, `--usb` looks in `/dev/serial/by-id/`.
+
+| Option | Meaning |
+|---|---|
+| `--board IP` | IP address of the board (Telnet) |
+| `--usb [DEVICE]` | Write over the USB console instead of Telnet |
+| `--force` | Write even a calibration that did not converge or lacked rotation |
+
+There is one key per sensor and sensitivity.
+
+```text
+imu.cal.accel.<µg/LSB>      e.g. imu.cal.accel.244   (±8 g)
+imu.cal.gyro.<µdps/LSB>     e.g. imu.cal.gyro.70000  (±2000 dps)
+```
+
+The board uses a calibration only while a key for the current sensitivity exists. Changing a
+range leaves no matching key, so the conversion falls back to the nominal sensitivity.
+Calibrating in another range and writing it adds a key, and the board then switches with the
+range. To remove one, run `kv delete <key>` and then `imu cal reload` in the board's shell.
+
+The value is 56 bytes of integer coefficients (`app/usb-console/src/imu_cal.h`). The board
+computes `M · (raw − bias)` without floating point. `M` is `misalignment @ scale` in output
+units (2⁻²² m/s² or rad/s) with 14 fraction bits, and `bias` is in LSB with 8 fraction bits.
+The rounding costs at most 0.2% of one LSB.
+
 ### Time base
 
 Integrating the angular rate depends on the time between samples, so sample times are built
@@ -216,8 +259,18 @@ works without NTP synchronization.
 - `calib` was verified with synthetic data that embeds known calibration values (about
   4 minutes, 40 poses, with noise): it recovered the scale within 0.03% and the bias within
   0.3 LSB.
-- **Calibration from a recording of real poses on hardware has not been verified yet.**
+- On hardware, two recordings of real poses were calibrated. The calibration from the
+  recording with rotation about all three axes reduced the error on the other recording too
+  (acceleration error at rest 0.8 mg RMS, error predicting the direction of gravity between
+  poses 0.20 degrees). The calibration from the recording with lopsided rotation did worse
+  than the nominal sensitivity on the other recording. How well the gyro values repeat
+  between recordings taken the same way has not been checked yet.
+- `write` was verified over both Telnet and the USB console. With the calibration written,
+  the board's output matched the PC applying the calibration to the board's uncalibrated
+  output in the same pose, within 0.2 mg and 7×10⁻⁵ rad/s.
 - The values hold for the temperature at calibration. The RAW data carries no temperature.
+  About two and a half hours after calibrating, and after a power cycle, the acceleration at
+  rest was 2 to 3 mg below gravity and a gyro bias of about 0.1 dps remained.
 
 ## Layout
 
@@ -225,6 +278,6 @@ works without NTP synchronization.
 |---|---|
 | `imu_host/packet.py` | Validation and decoding of the IMU1 payload |
 | `imu_host/mqtt.py` | MQTT endpoint (one client) |
-| `imu_host/board.py` | Finding the board's IP address, and Telnet commands |
+| `imu_host/board.py` | Finding the board's IP address, and shell commands over Telnet and the USB console |
 | `imu_host/recording.py` | Reading and writing recordings, and tick-to-time conversion |
-| `imu_host/check.py`, `record.py`, `calib.py` | The commands |
+| `imu_host/check.py`, `record.py`, `calib.py` | The commands (`write` is in `calib.py`) |

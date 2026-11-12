@@ -8,7 +8,7 @@ Acceleration and angular rate are read from the LSM6DSO of an Arduino Nano RP204
 sent to an application on a PC with MQTT. Each axis is sent as the sensor's signed 16-bit raw
 integer.
 
-This document describes the design of the implementation (`app/usb-console`) as of 2026-11-11
+This document describes the design of the implementation (`app/usb-console`, and `host/` on the PC) as of 2026-11-12
 and what has and has not been verified on hardware. The whole is still experimental: the
 payload format and topics are implemented but not final, and are expected to be revised
 against the specification of a dedicated PC application. See the [README](../README.md) for
@@ -38,7 +38,8 @@ congestion and a receiver that stops are to be detected and reported.
 | Synchronization with PC time, PC time on batches | Implemented (NTP, payload version 2) |
 | Starting and stopping a measurement | `imu start` / `imu stop` in the shell (no path from the PC yet) |
 | Session ID and server address | Implemented (assigned automatically; default gateway by default, changed through the key-value store) |
-| Receiving and recording application on the PC | Not started (verification script only) |
+| Computing a calibration and applying it to `sensor get` / `stream` on the board | Implemented (§10) |
+| Receiving and recording application on the PC | Not started (only `host/`, tools for verification and calibration) |
 | Operation with a real MQTT broker | Not verified |
 
 ### Verified on hardware
@@ -59,7 +60,8 @@ run once**; none of this is a long-term guarantee.
   steadily over 30 minutes. Time did not go backwards after chrony was stopped (about 90 s)
   or after the access point was lost.
 
-The main things not verified are listed in sections 8 and 9.
+The main things not verified are listed in sections 8 and 9. The results for the calibration are
+in section 10.5.
 
 ### Build and host tests
 
@@ -70,7 +72,7 @@ west build -b arduino_nano_connect app/usb-console -d build/usb-console
 
 There is one configuration, `prj.conf`; RAW streaming and time stamping are always included.
 The host tests `fifo_words`, `imu_raw_packet`, `imu_raw_batch`, `imu_raw_queue`,
-`imu_raw_status`, `imu_raw_time`, `imu_tick_clock`, `time_offset` and others cover the
+`imu_raw_status`, `imu_raw_time`, `imu_tick_clock`, `time_offset`, `lsm6dso_cal` and others cover the
 functions described here.
 
 ## 2. Overall structure
@@ -104,8 +106,10 @@ waits, never blocks FIFO reads. Thread priorities are 9 for acquisition (batchin
 synchronization, 10 for the FIFO read worker and 11 for the MQTT sender. The sender makes the
 acquisition side wait only for the queue mutex.
 
-On the PC there is for now `imu-host check` (in `host/`), a verification tool that accepts one
-MQTT client directly. It is neither a general broker nor a recorder.
+On the PC there is for now `imu-host` in `host/`, which accepts one MQTT client directly. It
+is a tool for checking reception (`check`) and for calibration (§10), neither a general broker
+nor an always-on receiving and recording application. See [`host/README.md`](../host/README.md)
+for usage.
 
 ## 3. RAW acquisition
 
@@ -436,6 +440,9 @@ the two sides agreed within 1.4 ms.
 | Settings other than 6667 Hz and decimation 8; different ODRs for the two sensors | Not done |
 | Repeated start and stop, resuming after a reboot | Not done |
 | A real MQTT broker; operation for hours | Not done |
+| Calibration: recovery from synthetic data, cross-check between two hardware recordings | Done (§10.5) |
+| Calibration: gyro repeatability, effect of temperature, ranges other than ±8 g and ±2000 dps | Not done |
+| Writing a calibration (Telnet, USB), switching on a range change, loading at boot | Done (once each) |
 
 As a guide to load, `cpu_active` while streaming at 6667 Hz with time stamping was 62 to 66%
 (about 72% with the diagnostic USB probe running alongside).
@@ -451,6 +458,114 @@ As a guide to load, `cpu_active` while streaming at 6667 Hz with time stamping w
 - How to treat the delay inside the sensor: take the datasheet value or measure it.
 - The recording format of the PC application, and environments that need authentication and
   encryption.
+- How to treat the gyro bias. It moves from one power-up to the next, so estimating it at rest
+  is more usual than keeping the value from calibration. For now the calibration value is used.
+- How to treat temperature. The raw data carries none, and a calibration holds for the
+  temperature it was taken at.
+- Whether the threshold for too little rotation (500 degrees) and the aim (1000) are right.
+
+## 10. Calibration and conversion to physical units
+
+What is sent over MQTT stays raw; no calibration is applied to it. The calibration is computed
+on the PC, and is either applied to the raw data there or written to the board, where it applies
+to the output of `sensor get` and `sensor stream`. See [`host/README.md`](../host/README.md)
+for usage.
+
+### 10.1 Computing the calibration
+
+- The method is the multi-position one (Tedaldi et al.), run with
+  [imu_tk](https://bitbucket.org/alberto_pretto/imu_tk/) in Docker. No reference equipment is
+  used. Scale, axis misalignment and bias of the accelerometer and of the gyro follow from two
+  conditions: the acceleration at rest has the magnitude of gravity, and the rotation between
+  two poses equals the integral of the angular rate.
+- Recordings are taken at 6667 Hz as in normal use and passed without decimation. imu_tk counts
+  "samples taken from each static interval" and "the window of the static detector" in samples,
+  so both are set to about one second (6667). The initial gyro scale of the optimizer comes
+  from the sensitivity in info. These are build arguments of the image, built from a pinned
+  commit of [owhinata/ubuntu-imu_tk](https://github.com/owhinata/ubuntu-imu_tk).
+- The input stays in LSB, and sample times are built from the sensor tick. The tick runs about
+  0.5% off nominal, which would go straight into the gyro scale, so its rate is measured from
+  the points in status (tick against the board clock). NTP synchronization is not needed.
+- A recording with gaps, an epoch change or saturation is not used: a gap between two poses
+  breaks the integration.
+- **The rotation between poses must be spread over all three axes.** Rotation about the axis of
+  gravity leaves the accelerometer reading unchanged and carries no information. Each axis's
+  rotation is therefore summed weighted by the sine of its angle to gravity and shown, with a
+  warning for any axis below 500 degrees (the aim is 1000 or more on each). Both figures are provisional, taken from the recordings at hand.
+
+### 10.2 Conversion on the board
+
+One function converts raw values to physical units, with or without a calibration
+(`drivers/lsm6dso/lsm6dso_cal.c`). The FIFO decoder and the one-shot read both use it.
+
+```text
+out = M · (raw − bias)
+```
+
+| Value | Representation |
+|---|---|
+| `M` (3×3) | Scale and misalignment combined; int32 with 14 fraction bits on top of the output unit |
+| `bias` | int32, in LSB with 8 fraction bits |
+| Intermediate sum | int64 |
+| `out` | Q31 with shift 9; one unit is 2⁻²² m/s² or rad/s |
+
+No floating point is used; the coefficients are turned into integers on the PC. The rounding
+costs at most 0.2% of one LSB, well below the sensor noise (about 5 mg and 1.7 dps RMS at
+6667 Hz). Without a calibration the same function runs with the nominal sensitivity on the
+diagonal and a zero bias.
+
+### 10.3 Storing and selecting a calibration
+
+Calibrations are kept in the KV store under a key per sensor and sensitivity.
+
+```text
+imu.cal.accel.<µg/LSB>      imu.cal.gyro.<µdps/LSB>
+```
+
+- The value is 56 bytes: version, kind, sensitivity, nine coefficients, three biases
+  (`src/imu_cal.h`).
+- The driver does not read the KV store. The application registers a function that looks a
+  calibration up by sensitivity, and the driver calls it at registration, on a reload request,
+  and whenever a range is set.
+- **Without a key for the current sensitivity nothing is applied.** The scale differs between
+  ranges from part to part, and a calibration converted from another range would look
+  calibrated without its accuracy being known. Calibrating each range and writing it only adds
+  keys, and the board then switches with the range.
+- The ODR is not part of the key. Calibration is done at 6667 Hz; in one check, the same pose
+  read at 104, 833 and 6667 Hz differed by less than 1 mg.
+- Each FIFO buffer carries the coefficients in effect when it was read, so the decoder needs
+  only the buffer.
+
+### 10.4 How a calibration is written
+
+The existing `kv sethex` is used. The command is the same over Telnet and the USB console, and
+`imu-host write` on the PC only switches the path. Nothing was added to the board for writing.
+
+Building a KV image and writing it in BOOTSEL mode was not adopted. The KV store shares its
+area with the Wi-Fi settings and other values, which an image would wipe. Splitting the area
+needs changes to the storage layer (settings has a single destination) and an NVS image
+generator on the PC. Giving the calibration its own format and API was not adopted either,
+because it would add something separate to maintain.
+
+### 10.5 What has been verified, and limits
+
+- Synthetic data with known values (about 4 minutes, 40 poses): the scale was recovered within
+  0.03% and the bias within 0.3 LSB.
+- Two recordings were taken on hardware. The calibration from the one with rotation about all
+  three axes reduced the error on the other one as well (acceleration error at rest 0.8 mg RMS;
+  error predicting the direction of gravity between poses 0.20 degrees, against 0.29 with the
+  nominal sensitivity). The calibration from the one with lopsided rotation had one gyro scale
+  7.9% off nominal and did worse than the nominal sensitivity on the other recording
+  (2.25 degrees).
+- The accelerometer values agreed between the two (scale within 0.06%, bias within 0.3 LSB).
+  For the gyro there is only one recording with all three axes covered, so repeatability is
+  unverified.
+- The board's output matched the PC applying the calibration to the board's uncalibrated output
+  in the same pose, within 0.2 mg and 7×10⁻⁵ rad/s.
+- **A calibration describes the sensor as it was when calibrated.** About two and a half hours
+  later, after a power cycle, the acceleration at rest was 2 to 3 mg below gravity and a gyro
+  bias of about 0.1 dps remained. The raw data carries no temperature and no temperature
+  compensation is done.
 
 ## References
 
@@ -459,3 +574,5 @@ As a guide to load, `cpu_active` while streaming at 6667 Hz with time stamping w
 - [ST LSM6DSO application note AN5192](https://www.st.com/resource/en/application_note/an5192-lsm6dso-alwayson-3d-accelerometer-and-3d-gyroscope-stmicroelectronics.pdf)
 - [OASIS MQTT 3.1.1](https://docs.oasis-open.org/mqtt/mqtt/v3.1.1/os/mqtt-v3.1.1-os.html)
 - [chrony](https://chrony-project.org/documentation.html)
+- D. Tedaldi, A. Pretto, E. Menegatti, "A Robust and Easy to Implement Method for IMU Calibration
+  without External Equipments", ICRA 2014 (the method of imu_tk)
