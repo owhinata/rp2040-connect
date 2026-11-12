@@ -200,6 +200,9 @@ kv delete imu.port
 | `time` | PC との同期の有無、時刻を付けられなかった数、タイムスタンプの規則からの逸脱 |
 | `mqtt` | 接続先、接続状態、送信数、破棄したバッチ数、キューの最大使用量 |
 
+`state` は `idle`（未計測）、`starting`（開始直後で、まだ最初の集計が出ていない）、`running`、
+`stopped` のいずれかです。`starting` の間、以降の項目は前回の計測の値のままです。
+
 ### 校正値の適用
 
 `sensor get` と `sensor stream` が出す物理量（m/s²、rad/s）には、KV に保存した校正値を適用

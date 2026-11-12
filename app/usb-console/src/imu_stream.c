@@ -753,7 +753,11 @@ static int cmd_status(const struct shell *sh, size_t argc, char **argv)
 	for (size_t i = 0; i < 16; i++) {
 		snprintk(text + i * 2, 3, "%02x", s.session_id[i]);
 	}
-	shell_print(sh, "state: %s", s.running ? "running" : "stopped");
+	/* Until the new run publishes its first snapshot, the values below are
+	 * still those of the previous run.
+	 */
+	shell_print(sh, "state: %s", s.running ? "running" :
+		    atomic_get(&stream_running) ? "starting" : "stopped");
 	ITEM(sh, "session", "%s", text);
 	ITEM(sh, "epoch", "%" PRIu32, s.epoch);
 	ITEM(sh, "elapsed_ms", "%" PRId64, (s.end_us - s.start_us) / 1000);

@@ -202,6 +202,9 @@ from `unix_unavailable` to `tick_out_of_range` under `time`, stay at 0 when all 
 | `time` | Whether PC time is available, batches left without time, deviations from the timestamp layout |
 | `mqtt` | Server, connection state, batches sent and discarded, peak queue use |
 
+`state` is `idle` (no measurement yet), `starting` (just started, before the first summary),
+`running` or `stopped`. While it is `starting`, the items below still show the previous run.
+
 ### Applying a calibration
 
 The physical values (m/s², rad/s) that `sensor get` and `sensor stream` print can use a
