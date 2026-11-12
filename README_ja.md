@@ -174,6 +174,7 @@ kv delete imu.port
 | コマンド | 内容 |
 |---|---|
 | `imu start` / `stop` / `status` | 計測の開始・停止、カウンターとエラーの表示 |
+| `imu cal` / `imu cal reload` | `sensor get` / `stream` が校正値を使っているかの表示、KV の読み直し |
 | `ntp status` | PC 時刻との同期の状態 |
 | `wifi ...`、`net ...` | Wi-Fi と IP の操作（Zephyr 標準） |
 | `nina version` | NINA ファームウェアのバージョン |
@@ -198,6 +199,23 @@ kv delete imu.port
 | `fifo` | FIFO オーバーラン、I²C エラー、自動再開の回数など |
 | `time` | PC との同期の有無、時刻を付けられなかった数、タイムスタンプの規則からの逸脱 |
 | `mqtt` | 接続先、接続状態、送信数、破棄したバッチ数、キューの最大使用量 |
+
+### 校正値の適用
+
+`sensor get` と `sensor stream` が出す物理量（m/s²、rad/s）には、KV に保存した校正値を適用
+できます。校正値は PC 側の `imu-host calib` で求め、`imu-host write` で書き込みます
+（[`host/README_ja.md`](host/README_ja.md)）。**MQTT で送る RAW には適用しません。**
+
+```text
+imu cal
+conversion:
+  accel: calibrated (244 ug/LSB, key imu.cal.accel.244)
+  gyro:  calibrated (70000 udps/LSB, key imu.cal.gyro.70000)
+```
+
+校正値はセンサーと感度ごとのキーで持ち、現在の感度のキーがあるときだけ使います。レンジを
+変えるなどして対応するキーがなければ、公称感度での変換（`nominal`）になります。`kv` で
+キーを書き換えたあとは `imu cal reload` で読み直します（起動時にも読みます）。
 
 ### センサーの属性
 

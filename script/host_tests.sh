@@ -29,8 +29,13 @@ done
 # LSM6DSO FIFO driver pieces.
 run fifo_hw "${flags[@]}" "${inc[@]}" "$app/tests/fifo_hw.c" "$app/drivers/lsm6dso/lsm6dso_fifo_hw.c"
 run fifo_decoder "${flags[@]}" "${inc[@]}" "$app/tests/fifo_decoder.c" \
-    "$app/drivers/lsm6dso/lsm6dso_fifo_decoder.c" "$app/drivers/lsm6dso/lsm6dso_fifo.c"
-run stream_stop "${flags[@]}" "${inc[@]}" "$app/tests/stream_stop.c" "$app/drivers/lsm6dso/lsm6dso_fifo.c"
+    "$app/drivers/lsm6dso/lsm6dso_fifo_decoder.c" "$app/drivers/lsm6dso/lsm6dso_fifo.c" \
+    "$app/drivers/lsm6dso/lsm6dso_cal.c"
+# Conversion to physical units and the stored calibration format.
+run lsm6dso_cal "${flags[@]}" "${inc[@]}" "$app/tests/lsm6dso_cal.c" \
+    "$app/drivers/lsm6dso/lsm6dso_cal.c" "$app/src/imu_cal_codec.c" -lm
+run stream_stop "${flags[@]}" "${inc[@]}" "$app/tests/stream_stop.c" "$app/drivers/lsm6dso/lsm6dso_fifo.c" \
+    "$app/drivers/lsm6dso/lsm6dso_cal.c"
 
 # RP2040 I2C DMA command parsing and NINA SPI framing.
 run i2c_dma_commands "${flags[@]}" -I"$app/drivers/i2c_dw" "$app/tests/i2c_dma_commands.c" \

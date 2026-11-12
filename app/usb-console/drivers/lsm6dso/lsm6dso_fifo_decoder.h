@@ -3,6 +3,7 @@
 #define LSM6DSO_FIFO_DECODER_H_
 
 #include <zephyr/drivers/sensor.h>
+#include "lsm6dso_cal.h"
 
 /* Internal FIFO payload. Times are estimates of the first sample in each
  * channel's batch, in the sensor clock domain, not the host read time.
@@ -21,6 +22,9 @@ struct __attribute__((packed, aligned(4))) lsm6dso_fifo_packet {
 	uint32_t gyro_period_ns;
 	uint32_t accel_gain_ug;
 	uint32_t gyro_gain_udps;
+	/* Conversions in effect when the batch was read. */
+	struct lsm6dso_cal accel_cal;
+	struct lsm6dso_cal gyro_cal;
 	uint16_t words;
 	uint8_t watermark;
 	uint8_t data[];

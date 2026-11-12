@@ -21,6 +21,7 @@
 #include <zephyr/sys/byteorder.h>
 #include <zephyr/sys/cpu_load.h>
 
+#include "imu_cal.h"
 #include "imu_raw_batch.h"
 #include "imu_raw_mqtt.h"
 #include "imu_tick_clock.h"
@@ -825,6 +826,9 @@ SHELL_STATIC_SUBCMD_SET_CREATE(imu_commands,
 	SHELL_CMD_ARG(start, NULL, "Start streaming to the MQTT server (settings: kv imu.*)",
 		      cmd_start, 1, 0),
 	SHELL_CMD_ARG(stop, NULL, "Stop streaming", cmd_stop, 1, 0),
+	SHELL_CMD_ARG(cal, NULL,
+		      "Show the conversion used by sensor get/stream: [reload]",
+		      imu_cal_shell, 1, 1),
 	SHELL_CMD_ARG(status, NULL, "Show counters and errors of the current or last run",
 		      cmd_status, 1, 0),
 	SHELL_SUBCMD_SET_END);

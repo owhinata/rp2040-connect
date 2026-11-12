@@ -176,6 +176,7 @@ A session ID is assigned at every start from the chip's unique ID and a stored c
 | Command | Purpose |
 |---|---|
 | `imu start` / `stop` / `status` | Start and stop a measurement, show counters and errors |
+| `imu cal` / `imu cal reload` | Show whether `sensor get` / `stream` use a stored calibration; read the KV store again |
 | `ntp status` | State of the synchronization with PC time |
 | `wifi ...`, `net ...` | Wi-Fi and IP (Zephyr) |
 | `nina version` | NINA firmware version |
@@ -200,6 +201,25 @@ from `unix_unavailable` to `tick_out_of_range` under `time`, stay at 0 when all 
 | `fifo` | FIFO overruns, I2C errors, number of automatic restarts |
 | `time` | Whether PC time is available, batches left without time, deviations from the timestamp layout |
 | `mqtt` | Server, connection state, batches sent and discarded, peak queue use |
+
+### Applying a calibration
+
+The physical values (m/s², rad/s) that `sensor get` and `sensor stream` print can use a
+calibration kept in the KV store. Compute it on the PC with `imu-host calib` and write it with
+`imu-host write` ([`host/README.md`](host/README.md)). **It is not applied to the RAW data
+sent over MQTT.**
+
+```text
+imu cal
+conversion:
+  accel: calibrated (244 ug/LSB, key imu.cal.accel.244)
+  gyro:  calibrated (70000 udps/LSB, key imu.cal.gyro.70000)
+```
+
+A calibration is stored under a key per sensor and sensitivity, and is used only while a key
+for the current sensitivity exists. Otherwise, for example after changing a range, the nominal
+sensitivity is used (`nominal`). After changing the keys with `kv`, run `imu cal reload`; the
+keys are also read at boot.
 
 ### Sensor attributes
 

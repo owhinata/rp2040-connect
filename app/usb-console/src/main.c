@@ -5,6 +5,7 @@
 #include "wifi_profile.h"
 #include "../drivers/nina/nina_proto.h"
 #include "time_sync.h"
+#include "imu_cal.h"
 #include "kv_store.h"
 
 LOG_MODULE_REGISTER(usb_console, LOG_LEVEL_INF);
@@ -66,6 +67,10 @@ int main(void)
 	ret = kv_store_init();
 	if (ret) {
 		LOG_ERR("Could not initialize settings: %d", ret);
+	}
+	ret = imu_cal_init();
+	if (ret) {
+		LOG_ERR("Could not set up the IMU calibration: %d", ret);
 	}
 	time_sync_init();
 	(void)wifi_profile_init();

@@ -92,6 +92,7 @@ static int stream_read(const struct device *dev, struct rtio_iodev_sqe *sqe, boo
 	struct lsm6dso_fifo_status status;
 	struct lsm6dso_fifo_packet *packet;
 	struct lsm6dso_fifo_sample sample;
+	struct lsm6dso_cal accel_cal, gyro_cal;
 	uint8_t *buf;
 	uint32_t len;
 	uint64_t cycles, now;
@@ -148,6 +149,9 @@ static int stream_read(const struct device *dev, struct rtio_iodev_sqe *sqe, boo
 	packet->gyro_period_ns = period_ns(data->gyro_freq);
 	packet->accel_gain_ug = data->acc_gain;
 	packet->gyro_gain_udps = data->gyro_gain;
+	lsm6dso_cal_snapshot(dev, &accel_cal, &gyro_cal);
+	memcpy(&packet->accel_cal, &accel_cal, sizeof(accel_cal));
+	memcpy(&packet->gyro_cal, &gyro_cal, sizeof(gyro_cal));
 	/* Host-read-time based estimate: FIFO and transfer latency are unknown. */
 	uint64_t accel_age = accel_count ? (uint64_t)(accel_count - 1) * packet->accel_period_ns : 0;
 	uint64_t gyro_age = gyro_count ? (uint64_t)(gyro_count - 1) * packet->gyro_period_ns : 0;

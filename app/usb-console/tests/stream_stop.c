@@ -159,6 +159,14 @@ static int rtio_sqe_rx_buf(struct rtio_iodev_sqe *s, uint32_t min, uint32_t max,
 	*len = sizeof(receive_buffer.bytes);
 	return 0;
 }
+static void lsm6dso_cal_snapshot(const struct device *d, struct lsm6dso_cal *accel,
+				 struct lsm6dso_cal *gyro)
+{
+	(void)d;
+	lsm6dso_cal_nominal(accel, LSM6DSO_CAL_ACCEL, 244);
+	lsm6dso_cal_nominal(gyro, LSM6DSO_CAL_GYRO, 70000);
+}
+
 void lsm6dso_submit(const struct device *d, struct rtio_iodev_sqe *s);
 static void rtio_iodev_sqe_ok(struct rtio_iodev_sqe *s, int result)
 {

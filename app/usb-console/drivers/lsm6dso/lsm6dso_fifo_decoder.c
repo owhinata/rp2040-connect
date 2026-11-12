@@ -7,7 +7,7 @@
 #include "lsm6dso_fifo_decoder.h"
 
 /* Q31 with shift 9 covers the maximum LSM6DSO32 acceleration range. */
-#define FIFO_Q31_SHIFT 9
+#define FIFO_Q31_SHIFT LSM6DSO_CAL_Q31_SHIFT
 
 _Static_assert(offsetof(struct lsm6dso_fifo_packet, marker) == sizeof(uint64_t),
 	       "FIFO marker must occupy the generic channel count offset");
@@ -73,6 +73,9 @@ static int decode(const uint8_t *buffer, struct sensor_chan_spec channel, uint32
 	uint64_t base;
 	int kind = channel_kind(channel), ret;
 	uint16_t count = 0;
+	struct lsm6dso_cal cal_copy;
+	const struct lsm6dso_cal *cal = &cal_copy;
+	int32_t values[3];
 
 	if (!buffer || !fit || !out || kind < 0 || packet->words > LSM6DSO_FIFO_MAX_WORDS ||
 	    *fit > packet->words * LSM6DSO_FIFO_WORD_SIZE ||
@@ -82,6 +85,9 @@ static int decode(const uint8_t *buffer, struct sensor_chan_spec channel, uint32
 	if (max_count == 0) {
 		return 0;
 	}
+	/* The packet is packed; copy the conversion to an aligned object. */
+	memcpy(&cal_copy, kind == LSM6DSO_FIFO_ACCEL ? &packet->accel_cal : &packet->gyro_cal,
+	       sizeof(cal_copy));
 	period = kind == LSM6DSO_FIFO_ACCEL ? packet->accel_period_ns : packet->gyro_period_ns;
 	base = kind == LSM6DSO_FIFO_ACCEL ? packet->accel_first_timestamp_ns :
 						    packet->gyro_first_timestamp_ns;
@@ -111,16 +117,9 @@ static int decode(const uint8_t *buffer, struct sensor_chan_spec channel, uint32
 			break;
 		}
 		decoded->readings[count].timestamp_delta = count * period;
+		lsm6dso_cal_apply(cal, sample.xyz, values);
 		for (int axis = 0; axis < 3; axis++) {
-			int64_t micro = sample.xyz[axis];
-			if (kind == LSM6DSO_FIFO_ACCEL) {
-				micro = micro * packet->accel_gain_ug * SENSOR_G / 1000000LL;
-			} else {
-				micro = micro * packet->gyro_gain_udps * SENSOR_PI / 180000000LL;
-			}
-			micro = micro * (1LL << (31 - FIFO_Q31_SHIFT)) / 1000000LL;
-			decoded->readings[count].values[axis] = (q31_t)CLAMP(micro, INT32_MIN,
-									 INT32_MAX);
+			decoded->readings[count].values[axis] = values[axis];
 		}
 		count++;
 	}

@@ -12,6 +12,7 @@
 #define ZEPHYR_DRIVERS_SENSOR_LSM6DSO_LSM6DSO_H_
 
 #include <zephyr/drivers/sensor.h>
+#include "lsm6dso_cal.h"
 #include <zephyr/types.h>
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/sys/util.h>
@@ -108,6 +109,13 @@ struct lsm6dso_data {
 	uint32_t acc_gain;
 	int16_t gyro[3];
 	uint32_t gyro_gain;
+	/* Conversions to physical units; guarded by cal_lock. */
+	struct k_spinlock cal_lock;
+	struct lsm6dso_cal accel_cal;
+	struct lsm6dso_cal gyro_cal;
+	bool accel_calibrated;
+	bool gyro_calibrated;
+	lsm6dso_cal_lookup_t cal_lookup;
 #if defined(CONFIG_LSM6DSO_ENABLE_TEMP)
 	int16_t temp_sample;
 #endif
@@ -197,5 +205,9 @@ int lsm6dso_trigger_set(const struct device *dev,
 
 int lsm6dso_init_interrupt(const struct device *dev);
 #endif
+
+/* Copies the conversions currently in effect. */
+void lsm6dso_cal_snapshot(const struct device *dev, struct lsm6dso_cal *accel,
+			  struct lsm6dso_cal *gyro);
 
 #endif /* ZEPHYR_DRIVERS_SENSOR_LSM6DSO_LSM6DSO_H_ */

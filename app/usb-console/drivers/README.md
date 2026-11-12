@@ -39,7 +39,7 @@ trigger `SENSOR_TRIG_FIFO_WATERMARK` and the option `SENSOR_STREAM_DATA_INCLUDE`
   set, and it is switched to stream mode.
 - On the threshold interrupt the FIFO status is read and all pending words are read in one
   burst and delivered as one RTIO buffer, headed by `struct lsm6dso_fifo_packet` (word count,
-  periods, sensitivities).
+  periods, sensitivities, conversion to physical units).
 - On a **FIFO overrun**, an I2C error or a buffer that is too small, the FIFO is stopped and
   the stream ends with an error. The number of lost samples is unknown, so nothing that looks
   continuous is returned. Whether to restart is up to the caller (`src/imu_stream.c`).
@@ -73,6 +73,27 @@ stream start and cannot be changed while a stream runs.
 
 A larger watermark means fewer reads and less load, but data arrives later and less of the
 512-word FIFO is left as margin.
+
+### Conversion to physical units and calibration
+
+The conversion from raw values to physical units lives in one function in `lsm6dso_cal.c`,
+used by both the FIFO decoder (`sensor stream`) and the one-shot read (`sensor get`).
+
+```text
+out = M · (raw − bias)
+```
+
+- It is integer arithmetic throughout. `M` is a 3×3 matrix combining scale and axis
+  misalignment; the output is Q31 with shift 9, in units of 2⁻²² m/s² or rad/s.
+- Without a calibration the same function runs with the nominal sensitivity on the diagonal
+  and a zero bias.
+- A calibration comes from the function registered with `lsm6dso_cal_set_lookup()`. The driver
+  calls it with the current sensitivity at registration, on `lsm6dso_cal_reload()`, and whenever
+  a range is set. If it has nothing, the nominal conversion is used. Reading the KV store is
+  left to the application (`src/imu_cal.c`).
+- Each FIFO buffer carries the conversion in effect when it was read. The decoder needs only
+  the buffer, and a range or calibration change in between does not affect buffers already read.
+- `lsm6dso_cal_status()` reports whether the accelerometer and the gyro use a calibration.
 
 ### Statistics
 

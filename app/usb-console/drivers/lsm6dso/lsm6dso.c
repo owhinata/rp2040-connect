@@ -99,6 +99,8 @@ static int lsm6dso_gyro_range_to_fs_val(int32_t range)
 	return -EINVAL;
 }
 
+static void lsm6dso_cal_refresh(const struct device *dev, enum lsm6dso_cal_kind kind);
+
 static int lsm6dso_accel_set_fs_raw(const struct device *dev, uint8_t fs)
 {
 	const struct lsm6dso_config *cfg = dev->config;
@@ -190,6 +192,7 @@ static int lsm6dso_accel_range_set(const struct device *dev, int32_t range)
 	}
 
 	data->acc_gain = lsm6dso_accel_fs_val_to_gain(fs, range_double);
+	lsm6dso_cal_refresh(dev, LSM6DSO_CAL_ACCEL);
 	return 0;
 }
 
@@ -244,6 +247,7 @@ static int lsm6dso_gyro_range_set(const struct device *dev, int32_t range)
 	}
 
 	data->gyro_gain = (lsm6dso_gyro_fs_sens[fs] * GAIN_UNIT_G);
+	lsm6dso_cal_refresh(dev, LSM6DSO_CAL_GYRO);
 	return 0;
 }
 
@@ -402,98 +406,111 @@ static int lsm6dso_sample_fetch_unlocked(const struct device *dev,
 	return ret;
 }
 
-static inline void lsm6dso_accel_convert(struct sensor_value *val, int raw_val,
-					 uint32_t sensitivity)
+/* Selects the conversion for the current sensitivity: the stored calibration
+ * if the lookup has one, the nominal sensitivity otherwise.
+ */
+static void lsm6dso_cal_refresh(const struct device *dev, enum lsm6dso_cal_kind kind)
 {
-	int64_t dval;
+	struct lsm6dso_data *data = dev->data;
+	uint32_t gain = kind == LSM6DSO_CAL_ACCEL ? data->acc_gain : data->gyro_gain;
+	struct lsm6dso_cal cal;
+	bool calibrated = data->cal_lookup != NULL && data->cal_lookup(kind, gain, &cal);
+	k_spinlock_key_t key;
 
-	/* Sensitivity is exposed in ug/LSB */
-	/* Convert to m/s^2 */
-	dval = (int64_t)(raw_val) * sensitivity;
-	sensor_ug_to_ms2(dval, val);
+	if (!calibrated) {
+		lsm6dso_cal_nominal(&cal, kind, gain);
+	}
+	key = k_spin_lock(&data->cal_lock);
+	if (kind == LSM6DSO_CAL_ACCEL) {
+		data->accel_cal = cal;
+		data->accel_calibrated = calibrated;
+	} else {
+		data->gyro_cal = cal;
+		data->gyro_calibrated = calibrated;
+	}
+	k_spin_unlock(&data->cal_lock, key);
 }
 
-static inline int lsm6dso_accel_get_channel(enum sensor_channel chan,
-					    struct sensor_value *val,
-					    struct lsm6dso_data *data,
-					    uint32_t sensitivity)
+void lsm6dso_cal_snapshot(const struct device *dev, struct lsm6dso_cal *accel,
+			  struct lsm6dso_cal *gyro)
 {
-	uint8_t i;
+	struct lsm6dso_data *data = dev->data;
+	k_spinlock_key_t key = k_spin_lock(&data->cal_lock);
+
+	*accel = data->accel_cal;
+	*gyro = data->gyro_cal;
+	k_spin_unlock(&data->cal_lock, key);
+}
+
+void lsm6dso_cal_reload(const struct device *dev)
+{
+	lsm6dso_cal_refresh(dev, LSM6DSO_CAL_ACCEL);
+	lsm6dso_cal_refresh(dev, LSM6DSO_CAL_GYRO);
+}
+
+void lsm6dso_cal_set_lookup(const struct device *dev, lsm6dso_cal_lookup_t lookup)
+{
+	struct lsm6dso_data *data = dev->data;
+
+	data->cal_lookup = lookup;
+	lsm6dso_cal_reload(dev);
+}
+
+void lsm6dso_cal_status(const struct device *dev, struct lsm6dso_cal_status *status)
+{
+	struct lsm6dso_data *data = dev->data;
+	k_spinlock_key_t key = k_spin_lock(&data->cal_lock);
+
+	status->accel_gain = data->acc_gain;
+	status->gyro_gain = data->gyro_gain;
+	status->accel_calibrated = data->accel_calibrated;
+	status->gyro_calibrated = data->gyro_calibrated;
+	k_spin_unlock(&data->cal_lock, key);
+}
+
+/* Converts the last fetched sample with the same function the FIFO decoder
+ * uses.  A single axis still needs all three raw values, because the
+ * calibration mixes the axes.
+ */
+static int lsm6dso_converted_channel_get(const struct device *dev, enum sensor_channel chan,
+					 struct sensor_value *val, bool accel)
+{
+	struct lsm6dso_data *data = dev->data;
+	struct lsm6dso_cal accel_cal, gyro_cal;
+	int32_t out[3];
+	int first, last;
 
 	switch (chan) {
 	case SENSOR_CHAN_ACCEL_X:
-		lsm6dso_accel_convert(val, data->acc[0], sensitivity);
+	case SENSOR_CHAN_GYRO_X:
+		first = last = 0;
 		break;
 	case SENSOR_CHAN_ACCEL_Y:
-		lsm6dso_accel_convert(val, data->acc[1], sensitivity);
+	case SENSOR_CHAN_GYRO_Y:
+		first = last = 1;
 		break;
 	case SENSOR_CHAN_ACCEL_Z:
-		lsm6dso_accel_convert(val, data->acc[2], sensitivity);
+	case SENSOR_CHAN_GYRO_Z:
+		first = last = 2;
 		break;
 	case SENSOR_CHAN_ACCEL_XYZ:
-		for (i = 0; i < 3; i++) {
-			lsm6dso_accel_convert(val++, data->acc[i], sensitivity);
-		}
-		break;
-	default:
-		return -ENOTSUP;
-	}
-
-	return 0;
-}
-
-static int lsm6dso_accel_channel_get(enum sensor_channel chan,
-				     struct sensor_value *val,
-				     struct lsm6dso_data *data)
-{
-	return lsm6dso_accel_get_channel(chan, val, data, data->acc_gain);
-}
-
-static inline void lsm6dso_gyro_convert(struct sensor_value *val, int raw_val,
-					uint32_t sensitivity)
-{
-	int64_t dval;
-
-	/* Sensitivity is exposed in udps/LSB */
-	/* So, calculate value in 10 udps unit and then to rad/s */
-	dval = (int64_t)(raw_val) * sensitivity / 10;
-	sensor_10udegrees_to_rad(dval, val);
-}
-
-static inline int lsm6dso_gyro_get_channel(enum sensor_channel chan,
-					   struct sensor_value *val,
-					   struct lsm6dso_data *data,
-					   uint32_t sensitivity)
-{
-	uint8_t i;
-
-	switch (chan) {
-	case SENSOR_CHAN_GYRO_X:
-		lsm6dso_gyro_convert(val, data->gyro[0], sensitivity);
-		break;
-	case SENSOR_CHAN_GYRO_Y:
-		lsm6dso_gyro_convert(val, data->gyro[1], sensitivity);
-		break;
-	case SENSOR_CHAN_GYRO_Z:
-		lsm6dso_gyro_convert(val, data->gyro[2], sensitivity);
-		break;
 	case SENSOR_CHAN_GYRO_XYZ:
-		for (i = 0; i < 3; i++) {
-			lsm6dso_gyro_convert(val++, data->gyro[i], sensitivity);
-		}
+		first = 0;
+		last = 2;
 		break;
 	default:
 		return -ENOTSUP;
 	}
+	lsm6dso_cal_snapshot(dev, &accel_cal, &gyro_cal);
+	lsm6dso_cal_apply(accel ? &accel_cal : &gyro_cal, accel ? data->acc : data->gyro, out);
+	for (int axis = first; axis <= last; axis++) {
+		int64_t micro = lsm6dso_cal_to_micro(out[axis]);
 
+		val->val1 = (int32_t)(micro / 1000000);
+		val->val2 = (int32_t)(micro % 1000000);
+		val++;
+	}
 	return 0;
-}
-
-static int lsm6dso_gyro_channel_get(enum sensor_channel chan,
-				    struct sensor_value *val,
-				    struct lsm6dso_data *data)
-{
-	return lsm6dso_gyro_get_channel(chan, val, data, data->gyro_gain);
 }
 
 #if defined(CONFIG_LSM6DSO_ENABLE_TEMP)
@@ -634,21 +651,19 @@ static int lsm6dso_channel_get_unlocked(const struct device *dev,
 			       enum sensor_channel chan,
 			       struct sensor_value *val)
 {
-	struct lsm6dso_data *data = dev->data;
+	__maybe_unused struct lsm6dso_data *data = dev->data;
 
 	switch (chan) {
 	case SENSOR_CHAN_ACCEL_X:
 	case SENSOR_CHAN_ACCEL_Y:
 	case SENSOR_CHAN_ACCEL_Z:
 	case SENSOR_CHAN_ACCEL_XYZ:
-		lsm6dso_accel_channel_get(chan, val, data);
-		break;
+		return lsm6dso_converted_channel_get(dev, chan, val, true);
 	case SENSOR_CHAN_GYRO_X:
 	case SENSOR_CHAN_GYRO_Y:
 	case SENSOR_CHAN_GYRO_Z:
 	case SENSOR_CHAN_GYRO_XYZ:
-		lsm6dso_gyro_channel_get(chan, val, data);
-		break;
+		return lsm6dso_converted_channel_get(dev, chan, val, false);
 #if defined(CONFIG_LSM6DSO_ENABLE_TEMP)
 	case SENSOR_CHAN_DIE_TEMP:
 		lsm6dso_gyro_channel_get_temp(val, data);
@@ -1099,6 +1114,7 @@ static int lsm6dso_init_chip(const struct device *dev)
 		return -EIO;
 	}
 	lsm6dso->acc_gain = lsm6dso_accel_fs_val_to_gain(fs, cfg->accel_range & ACCEL_RANGE_DOUBLE);
+	lsm6dso_cal_refresh(dev, LSM6DSO_CAL_ACCEL);
 
 	odr = cfg->accel_odr;
 	LOG_DBG("accel odr is %d", odr);
@@ -1127,6 +1143,7 @@ static int lsm6dso_init_chip(const struct device *dev)
 		return -EIO;
 	}
 	lsm6dso->gyro_gain = (lsm6dso_gyro_fs_sens[fs] * GAIN_UNIT_G);
+	lsm6dso_cal_refresh(dev, LSM6DSO_CAL_GYRO);
 
 	odr = cfg->gyro_odr;
 	LOG_DBG("gyro odr is %d", odr);

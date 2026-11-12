@@ -41,6 +41,7 @@ int main(void)
 		0x08, 0, 0, 0, 0, 0, 0,        /* gyro */
 		0x10, 0x18, 0xfc, 0, 0, 0, 0, /* accel X = -1000 */
 	};
+	struct lsm6dso_cal nominal;
 	uint16_t count;
 	uint32_t fit = 0;
 	size_t base, frame;
@@ -50,6 +51,8 @@ int main(void)
 	packet->accel_first_timestamp_ns = 1000;
 	packet->accel_period_ns = 100;
 	packet->accel_gain_ug = 1000;
+	lsm6dso_cal_nominal(&nominal, LSM6DSO_CAL_ACCEL, 1000);
+	memcpy(&packet->accel_cal, &nominal, sizeof(nominal));
 	packet->watermark = 1;
 	memcpy(packet->data, words, sizeof(words));
 	assert(lsm6dso_fifo_decoder.get_frame_count(storage.bytes, accel, &count) == 0 && count == 2);
