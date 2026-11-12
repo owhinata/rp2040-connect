@@ -11,6 +11,7 @@ import time
 import numpy as np
 
 from . import board, mqtt, packet, recording
+from .calib import MOVING_DPS, ROTATION_MIN_DEG, ROTATION_TARGET_DEG, informative_rotation
 
 DPS_PER_RAD = 180.0 / math.pi
 
@@ -21,6 +22,9 @@ class PoseTracker:
     約 0.1 秒ごとの窓で、角速度の平均が最初の静止時の値に近く、ばらつきも小さければ
     静止とみなす。静止が hold 秒続き、重力の向きが直前に数えた姿勢から angle 度以上
     違えば、新しい姿勢として数える。
+
+    動いている間は、重力の向きを変える回転の量を軸ごとに積算する（rotation）。
+    角速度の校正には、この回転が 3 軸に行き渡っている必要がある。
     """
 
     def __init__(self, gyro_dps_per_lsb, hold=3.0, angle=10.0, window=0.1):
@@ -39,6 +43,7 @@ class PoseTracker:
         self.state = 'init'
         self.gyro_max_dps = 0.0
         self.saturated = 0
+        self.rotation = np.zeros(3)
 
     def add(self, accel, gyro, odr, now):
         for data in (accel, gyro):
@@ -62,8 +67,10 @@ class PoseTracker:
             if len(self.bias_samples) * self.window >= 2.0:
                 self.bias = np.mean(self.bias_samples, axis=0)
             return
-        still = np.linalg.norm(mean - self.bias) * self.dps < 2.0 and \
-            g.std(axis=0).max() * self.dps < 3.0
+        rate = (mean - self.bias) * self.dps
+        still = np.linalg.norm(rate) < MOVING_DPS and g.std(axis=0).max() * self.dps < 3.0
+        if len(a) and np.linalg.norm(rate) >= MOVING_DPS:
+            self.rotation += informative_rotation(a.mean(axis=0), rate, len(g) / odr)
         if not still:
             self.static_since = None
             self.state = 'moving'
@@ -123,7 +130,7 @@ def run(args):
     signal.signal(signal.SIGTERM, lambda *_: stop.append(1))
     print('記録先: %s' % out)
     print('最初の 10 秒以上は静止させ、その後は姿勢を変えて 4 秒以上置く、を繰り返します。'
-          'Ctrl-C で終了します。')
+          '起こす・倒す・裏返す動きを 3 軸に均等に入れてください。Ctrl-C で終了します。')
 
     r = dict(batches=0, accel=0, gyro=0, invalid=0, missing_batches=0, epochs=[],
              session=None, saturated=0, poses=0)
@@ -194,9 +201,9 @@ def run(args):
             t = tracker
             state = {'init': '最初の静止', 'static': '静止 %4.1f 秒' % t.static_seconds(now),
                      'moving': '移動中'}[t.state]
-            line = '%4d 秒  %-12s 姿勢 %2d  バッチ %d  欠落 %d  角速度の最大 %4.0f dps%s' % (
-                now - first_raw, state, t.poses, r['batches'], r['missing_batches'],
-                t.gyro_max_dps, '  飽和 %d' % t.saturated if t.saturated else '')
+            line = '%4d 秒  %-12s 姿勢 %2d  回転 X %4.0f Y %4.0f Z %4.0f 度  欠落 %d%s' % (
+                now - first_raw, state, t.poses, *t.rotation, r['missing_batches'],
+                '  飽和 %d' % t.saturated if t.saturated else '')
             print(('\r\x1b[K' + line) if interactive else line, end='' if interactive else '\n',
                   flush=True)
     if interactive:
@@ -205,6 +212,7 @@ def run(args):
     if tracker:
         r['saturated'], r['poses'] = tracker.saturated, tracker.poses
         r['gyro_max_dps'] = round(tracker.gyro_max_dps, 1)
+        r['rotation_deg'] = [round(float(x), 1) for x in tracker.rotation]
     r.update(connects=server.connects, disconnects=server.disconnects,
              protocol_error=server.protocol_error, board=ip, port=args.port,
              seconds=round((last_raw - first_raw), 1) if first_raw else 0.0,
@@ -218,5 +226,12 @@ def run(args):
         return 1
     if r['missing_batches'] or len(r['epochs']) > 1 or r['invalid'] or r['saturated']:
         print('注意: 欠落・飽和などがあります。校正には使えない可能性があります', file=sys.stderr)
+    if tracker:
+        print('重力の向きを変えた回転の合計: X %.0f、Y %.0f、Z %.0f 度（目安 各 %.0f 以上）'
+              % (*tracker.rotation, ROTATION_TARGET_DEG))
+        short = ['XYZ'[i] for i in range(3) if tracker.rotation[i] < ROTATION_MIN_DEG]
+        if short:
+            print('注意: %s 軸まわりの回転が不足しています。角速度の校正には使えない可能性が'
+                  'あります' % '・'.join(short), file=sys.stderr)
     print('校正: imu-host calib %s' % out)
     return 0

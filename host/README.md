@@ -86,14 +86,19 @@ while recording. Recordings go to `recordings/<date-time>/` by default (`--out` 
 A progress line is shown every second.
 
 ```text
-  42 秒  静止  3.2 秒    姿勢  7  バッチ 1478  欠落 0  角速度の最大  412 dps
+  42 秒  静止  3.2 秒    姿勢  7  回転 X  310 Y  265 Z  180 度  欠落 0
 ```
 
 It shows the elapsed time, the state (initial rest, at rest, moving), the pose count, the
-batches received, the missing batches, and the largest angular rate. A pose is counted when
-the board rests for 3 seconds or more with gravity pointing at least 10 degrees away from the
-previously counted pose. It is only a guide; imu_tk decides separately which static intervals
-the calibration uses.
+rotation per axis in degrees, and the missing batches. A pose is counted when the board rests
+for 3 seconds or more with gravity pointing at least 10 degrees away from the previously
+counted pose. It is only a guide; imu_tk decides separately which static intervals the
+calibration uses.
+
+The rotation is the part of the motion between poses that changed the direction of gravity,
+summed per axis. The gyro calibration needs it spread over all three axes; aim for 1000
+degrees or more on each. Turning the board flat on the table does not count, because gravity
+keeps its direction. A note is printed at the end for any axis below 500 degrees.
 
 | Option | Meaning |
 |---|---|
@@ -137,8 +142,11 @@ method of Tedaldi et al., implemented by imu_tk).
 5. End with Ctrl-C.
 
 - Put the board down rather than holding it still. A hand's tremor is not judged as rest.
-- Spread the orientations. Fixing the board and the power bank in a small box lets it rest
-  stably in many of them.
+- When changing the pose, **tip the board up, lay it down, and turn it over**, evenly about
+  all three axes. Turning it flat on the table tells the gyro calibration nothing. Watch the
+  rotation on the screen grow on all three axes (aim for 1000 degrees or more on each).
+- Fixing the board and the power bank in a small box and rolling the box over its edges gives
+  many stable orientations and brings in rotation about all three axes.
 - A recording with gaps cannot be used, so stay near the access point.
 - It takes about 5 minutes.
 
@@ -185,6 +193,11 @@ The validation treats one-second windows with a small spread of the angular rate
 - Difference between the acceleration magnitude and gravity (before and after calibration)
 - Magnitude of the angular rate at rest (before and after)
 - Deviation of the scale from the nominal sensitivity
+- Rotation that changed the direction of gravity, summed per axis
+
+When an axis has less than 500 degrees of such rotation, its gyro scale and misalignment are
+poorly determined and can come out implausible. A note is printed and the exit code is 1
+(`calibration.json` is still saved). The accelerometer values are not affected.
 
 "Before" means converted with the nominal sensitivity only. The output of imu_tk (`.calib`
 files, log) and its input (`acc.txt`, `gyro.txt`) stay in the same directory.

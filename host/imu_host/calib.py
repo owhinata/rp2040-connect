@@ -21,6 +21,36 @@ IMU_TK_REPO = 'https://github.com/owhinata/ubuntu-imu_tk.git'
 IMU_TK_COMMIT = '6143cdfab14514c6c579013cfc646d36808e8fbb'
 G_STANDARD = 9.80665
 SATURATION = 32760
+# 姿勢を変えるときの回転のうち、校正の情報になる分（重力の向きを変える分）の軸ごとの
+# 合計 [度]。目安に届かない軸は角速度のスケールが決まりにくく、不足を下回ると
+# 結果を信頼できない。
+ROTATION_TARGET_DEG = 1000.0
+ROTATION_MIN_DEG = 500.0
+MOVING_DPS = 2.0
+
+
+def informative_rotation(gravity, rate_dps, seconds):
+    """重力の向きを変える回転の量を軸ごとに返す [度]。
+
+    gravity は機体座標での重力の向き（大きさは任意）、rate_dps は角速度。ある軸まわりの
+    回転は、その軸が重力と直交しているほど重力の向きを大きく変える。重力と同じ軸
+    まわりの回転は、加速度から見て姿勢が変わらず校正の情報にならない。そこで各軸の
+    回転に sin（軸と重力のなす角）を掛けて数える。配列（N×3）でも 1 件（3）でもよい。
+    """
+    g = gravity / np.linalg.norm(gravity, axis=-1, keepdims=True)
+    return np.abs(rate_dps) * np.sqrt(np.clip(1.0 - g * g, 0.0, 1.0)) * seconds
+
+
+def rotation_coverage(rec, acc, gyro, window=0.1):
+    """記録全体について、情報になる回転の軸ごとの合計 [度] を返す。"""
+    n = int(float(rec.info['gyro_odr_hz']) * window)
+    count = min(len(rec.gyro), len(rec.accel)) // n
+    g = apply(gyro, rec.gyro[:count * n].astype(np.float64).reshape(count, n, 3).mean(axis=1))
+    a = apply(acc, rec.accel[:count * n].astype(np.float64).reshape(count, n, 3).mean(axis=1))
+    rate = g * 180.0 / math.pi
+    moving = np.linalg.norm(rate, axis=1) >= MOVING_DPS
+    seconds = n * rec.seconds(rec.gyro_tick[-1] - rec.gyro_tick[0]) / (len(rec.gyro) - 1)
+    return informative_rotation(a[moving], rate[moving], seconds).sum(axis=0)
 
 
 def _odd(n):
@@ -160,6 +190,12 @@ def validate(rec, acc, gyro, gravity):
         float((acc['scale'][i, i] / nominal_a - 1) * 100) for i in range(3)]
     out['gyro_scale_vs_nominal_percent'] = [
         float((gyro['scale'][i, i] / nominal_g - 1) * 100) for i in range(3)]
+    rotation = rotation_coverage(rec, acc, gyro)
+    out['rotation_deg'] = [float(x) for x in rotation]
+    out['warnings'] = [
+        '%s 軸まわりの回転が不足（%.0f 度、目安 %.0f 度以上）。この軸の角速度のスケールと'
+        'ミスアライメントは信頼できません' % ('XYZ'[i], rotation[i], ROTATION_TARGET_DEG)
+        for i in range(3) if rotation[i] < ROTATION_MIN_DEG]
     return out
 
 
@@ -231,6 +267,8 @@ def run(args):
     if not converged:
         print('注意: 角速度の最適化が収束していません。結果は信頼できません', file=sys.stderr)
         return 1
+    if result['validation'].get('warnings'):
+        return 1
     return 0
 
 
@@ -259,3 +297,7 @@ def report(result):
             s = v[key][which]
             print('    %s（%s）: 平均 %+.3f、RMS %.3f、最大 %.3f %s'
                   % (label, jp, s['mean'], s['rms'], s['max_abs'], unit))
+    print('    重力の向きを変えた回転の合計 [度]: X %.0f、Y %.0f、Z %.0f（目安 各 %.0f 以上）'
+          % (*v['rotation_deg'], ROTATION_TARGET_DEG))
+    for w in v['warnings']:
+        print('  注意: %s' % w)
