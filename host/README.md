@@ -270,7 +270,8 @@ works without NTP synchronization.
   output in the same pose, within 0.2 mg and 7×10⁻⁵ rad/s.
 - The values hold for the temperature at calibration. The RAW data carries no temperature.
   About two and a half hours after calibrating, and after a power cycle, the acceleration at
-  rest was 2 to 3 mg below gravity and a gyro bias of about 0.1 dps remained.
+  rest was 2 to 3 mg below gravity and a gyro bias of about 0.1 dps remained. The board takes
+  the gyro bias again from data at rest (`imu cal`, [`../README.md`](../README.md)).
 
 ## Layout
 

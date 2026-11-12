@@ -174,7 +174,7 @@ kv delete imu.port
 | コマンド | 内容 |
 |---|---|
 | `imu start` / `stop` / `status` | 計測の開始・停止、カウンターとエラーの表示 |
-| `imu cal` / `imu cal reload` | `sensor get` / `stream` が校正値を使っているかの表示、KV の読み直し |
+| `imu cal` / `imu cal reload` / `imu cal zero` | `sensor get` / `stream` の変換の表示、KV の読み直し、静止時の角速度バイアスの取り直し |
 | `ntp status` | PC 時刻との同期の状態 |
 | `wifi ...`、`net ...` | Wi-Fi と IP の操作（Zephyr 標準） |
 | `nina version` | NINA ファームウェアのバージョン |
@@ -214,11 +214,23 @@ imu cal
 conversion:
   accel: calibrated (244 ug/LSB, key imu.cal.accel.244)
   gyro:  calibrated (70000 udps/LSB, key imu.cal.gyro.70000)
+  gyro bias: 7.65 -4.25 -0.81 LSB (tracked at rest, 14 updates, 0 rejected)
 ```
 
 校正値はセンサーと感度ごとのキーで持ち、現在の感度のキーがあるときだけ使います。レンジを
 変えるなどして対応するキーがなければ、公称感度での変換（`nominal`）になります。`kv` で
 キーを書き換えたあとは `imu cal reload` で読み直します（起動時にも読みます）。
+
+**角速度のバイアス**は電源を入れるたびに少し変わるので、静止している間のデータから取り直します。
+
+- `imu start` の計測中と `sensor stream` の間は、約 1 秒静止するたびに自動で更新します。
+  動いている間は更新しません。
+- センサーを動かしていないときは `imu cal zero` で取り直せます。ボードを置いて実行すると、
+  センサーを 1〜3 秒だけ動かして止めます。計測中は使えません（計測が自分で更新します）。
+- 取り直した値は RAM にだけ持ちます。再起動、`imu cal reload`、レンジの変更で、保存してある
+  校正値のバイアスに戻ります。
+- 保存してある値から 1 dps 以上離れた値は採用せず、`rejected` に数えます。重力と同じ軸まわりに
+  ゆっくり回っている場合を、静止と区別できないためです。
 
 ### センサーの属性
 

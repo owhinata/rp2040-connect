@@ -40,6 +40,7 @@ use_local_driver_sources(drivers__sensor "(^|/)sensor_shell\\.c$" drivers/sensor
 target_include_directories(drivers__sensor PRIVATE ${ZEPHYR_BASE}/drivers/sensor)
 target_sources(drivers__sensor__st__lsm6dso PRIVATE drivers/lsm6dso/lsm6dso_fifo.c)
 target_sources(drivers__sensor__st__lsm6dso PRIVATE drivers/lsm6dso/lsm6dso_cal.c)
+target_sources(drivers__sensor__st__lsm6dso PRIVATE drivers/lsm6dso/lsm6dso_zero.c)
 target_sources(drivers__sensor__st__lsm6dso PRIVATE drivers/lsm6dso/lsm6dso_fifo_hw.c)
 target_sources(drivers__sensor__st__lsm6dso PRIVATE drivers/lsm6dso/lsm6dso_fifo_irq.c)
 if(CONFIG_SENSOR_ASYNC_API)

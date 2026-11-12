@@ -274,8 +274,7 @@ static void consume_packet(const uint8_t *buffer, uint32_t length)
 		return;
 	}
 	run.packets++;
-	rc = imu_raw_batch_consume(&batch, packet->data,
-				   packet->words * LSM6DSO_FIFO_WORD_SIZE, &cursor);
+	rc = imu_raw_batch_consume(&batch, words, size, &cursor);
 	if (rc == -EPROTO) {
 		/* An unknown word: the rest of this packet cannot be trusted.
 		 * Mark the gap instead of ending the stream. */
@@ -821,13 +820,25 @@ static int cmd_status(const struct shell *sh, size_t argc, char **argv)
 	return 0;
 }
 
+static int cmd_cal(const struct shell *sh, size_t argc, char **argv)
+{
+	/* A measurement tracks the gyro bias from its own data. Reading the sensor
+	 * here would also hold up a measurement that is just starting.
+	 */
+	if (argc > 1 && strcmp(argv[1], "zero") == 0 && atomic_get(&stream_running)) {
+		shell_error(sh, "A measurement is running; it tracks the gyro bias itself");
+		return -EBUSY;
+	}
+	return imu_cal_shell(sh, argc, argv);
+}
+
 SHELL_STATIC_SUBCMD_SET_CREATE(imu_commands,
 	SHELL_CMD_ARG(start, NULL, "Start streaming to the MQTT server (settings: kv imu.*)",
 		      cmd_start, 1, 0),
 	SHELL_CMD_ARG(stop, NULL, "Stop streaming", cmd_stop, 1, 0),
 	SHELL_CMD_ARG(cal, NULL,
-		      "Show the conversion used by sensor get/stream: [reload]",
-		      imu_cal_shell, 1, 1),
+		      "Show the conversion used by sensor get/stream: [reload|zero]",
+		      cmd_cal, 1, 1),
 	SHELL_CMD_ARG(status, NULL, "Show counters and errors of the current or last run",
 		      cmd_status, 1, 0),
 	SHELL_SUBCMD_SET_END);

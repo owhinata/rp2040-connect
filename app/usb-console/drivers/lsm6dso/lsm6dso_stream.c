@@ -137,6 +137,10 @@ static int stream_read(const struct device *dev, struct rtio_iodev_sqe *sqe, boo
 		accel_count += sample.kind == LSM6DSO_FIFO_ACCEL;
 		gyro_count += sample.kind == LSM6DSO_FIFO_GYRO;
 	}
+	/* Before the snapshot below, so that this batch already uses a bias it
+	 * has just updated.
+	 */
+	lsm6dso_cal_track(dev, packet->data, status.words * LSM6DSO_FIFO_WORD_SIZE);
 	ret = sensor_clock_get_cycles(&cycles);
 	if (ret != 0) {
 		return ret;

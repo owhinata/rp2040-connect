@@ -34,6 +34,9 @@ run fifo_decoder "${flags[@]}" "${inc[@]}" "$app/tests/fifo_decoder.c" \
 # Conversion to physical units and the stored calibration format.
 run lsm6dso_cal "${flags[@]}" "${inc[@]}" "$app/tests/lsm6dso_cal.c" \
     "$app/drivers/lsm6dso/lsm6dso_cal.c" "$app/src/imu_cal_codec.c" -lm
+# Gyro bias tracking at rest.
+run lsm6dso_zero "${flags[@]}" "${inc[@]}" "$app/tests/lsm6dso_zero.c" \
+    "$app/drivers/lsm6dso/lsm6dso_zero.c"
 run stream_stop "${flags[@]}" "${inc[@]}" "$app/tests/stream_stop.c" "$app/drivers/lsm6dso/lsm6dso_fifo.c" \
     "$app/drivers/lsm6dso/lsm6dso_cal.c"
 

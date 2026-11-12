@@ -97,7 +97,24 @@ out = M · (raw − bias)
   left to the application (`src/imu_cal.c`).
 - Each FIFO buffer carries the conversion in effect when it was read. The decoder needs only
   the buffer, and a range or calibration change in between does not affect buffers already read.
-- `lsm6dso_cal_status()` reports whether the accelerometer and the gyro use a calibration.
+- `lsm6dso_cal_status()` reports whether the accelerometer and the gyro use a calibration, and
+  the gyro bias in use.
+
+The gyro bias is taken again from data recorded at rest (`lsm6dso_zero.c`).
+
+- Samples read from the FIFO are grouped into segments of an eighth of a second. When eight
+  consecutive segments agree in mean angular rate (within 0.3 dps) and mean acceleration
+  (within 2 mg), the sensor counts as resting and the mean rate of that window is blended in:
+  a plain average over the first 20 windows, then exponential smoothing with 1/20. Single
+  samples are not judged, because at 6667 Hz one sample has too much noise (about 1.7 dps).
+- It runs whenever a FIFO stream runs (`imu start`, `sensor stream`). The driver never starts
+  the sensor on its own.
+- `lsm6dso_cal_zero()` takes one reading on request. If the sensor is off, it runs at 104 Hz
+  for up to three seconds and is switched off again. While a stream owns the FIFO it returns
+  `-EBUSY`.
+- The value is kept in RAM and dropped whenever a conversion is selected again (range set,
+  reload). A window more than 1 dps from the stored bias (5 dps from zero without a
+  calibration) is not used.
 
 ### Statistics
 

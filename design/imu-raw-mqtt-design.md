@@ -61,7 +61,7 @@ run once**; none of this is a long-term guarantee.
   or after the access point was lost.
 
 The main things not verified are listed in sections 8 and 9. The results for the calibration are
-in section 10.5.
+in section 10.6.
 
 ### Build and host tests
 
@@ -72,7 +72,8 @@ west build -b arduino_nano_connect app/usb-console -d build/usb-console
 
 There is one configuration, `prj.conf`; RAW streaming and time stamping are always included.
 The host tests `fifo_words`, `imu_raw_packet`, `imu_raw_batch`, `imu_raw_queue`,
-`imu_raw_status`, `imu_raw_time`, `imu_tick_clock`, `time_offset`, `lsm6dso_cal` and others cover the
+`imu_raw_status`, `imu_raw_time`, `imu_tick_clock`, `time_offset`, `lsm6dso_cal`, `lsm6dso_zero` and others
+cover the
 functions described here.
 
 ## 2. Overall structure
@@ -443,9 +444,11 @@ the two sides agreed within 1.4 ms.
 | Settings other than 6667 Hz and decimation 8; different ODRs for the two sensors | Not done |
 | Repeated start and stop, resuming after a reboot | Not done |
 | A real MQTT broker; operation for hours | Not done |
-| Calibration: recovery from synthetic data, cross-check between two hardware recordings | Done (§10.5) |
+| Calibration: recovery from synthetic data, cross-check between two hardware recordings | Done (§10.6) |
 | Calibration: gyro repeatability, effect of temperature, ranges other than ±8 g and ±2000 dps | Not done |
 | Writing a calibration (Telnet, USB), switching on a range change, loading at boot | Done (once each) |
+| Gyro bias tracking (replayed recordings, during a measurement, `sensor stream`, `imu cal zero`) | Done (§10.5) |
+| Gyro bias tracking: on hardware while moving, rejection of out-of-range readings | Not done (replay and host tests only) |
 
 As a guide to load, `cpu_active` while streaming at 6667 Hz with time stamping was 62 to 66%
 (about 72% with the diagnostic USB probe running alongside).
@@ -461,8 +464,9 @@ As a guide to load, `cpu_active` while streaming at 6667 Hz with time stamping w
 - How to treat the delay inside the sensor: take the datasheet value or measure it.
 - The recording format of the PC application, and environments that need authentication and
   encryption.
-- How to treat the gyro bias. It moves from one power-up to the next, so estimating it at rest
-  is more usual than keeping the value from calibration. For now the calibration value is used.
+- The gyro bias when the PC applies a calibration to the raw data. The board tracks the value
+  at rest for its own output (§10.5) but does not apply it to the raw data.
+- Whether the limits for rest (0.3 dps, 2 mg) and the accepted range (1 dps) are right.
 - How to treat temperature. The raw data carries none, and a calibration holds for the
   temperature it was taken at.
 - Whether the threshold for too little rotation (500 degrees) and the aim (1000) are right.
@@ -550,7 +554,49 @@ needs changes to the storage layer (settings has a single destination) and an NV
 generator on the PC. Giving the calibration its own format and API was not adopted either,
 because it would add something separate to maintain.
 
-### 10.5 What has been verified, and limits
+### 10.5 Tracking the gyro bias
+
+The gyro bias hardly moves within one measurement, but it does between measurements and
+across a power cycle.
+
+| Observation | Change |
+|---|---|
+| Within a recording of about 6 minutes (means of four parts) | Within 0.25 LSB (0.02 dps) |
+| Between two recordings about 40 minutes apart | Up to 1.0 LSB (0.07 dps) |
+| Just after a power cycle, against a few hours earlier | Up to 1.0 LSB |
+| 104 Hz against 6667 Hz in the same pose | 0.3 to 0.6 LSB |
+| Correlation with the direction of gravity | Below 0.1 LSB per g |
+
+The bias of the calibration is therefore not used as a fixed value; it is taken again from
+data recorded at rest (`drivers/lsm6dso/lsm6dso_zero.c`). Only `bias` in `M · (raw − bias)` is
+replaced; `M` stays the calibration's.
+
+- Samples are grouped into segments of an eighth of a second. Eight consecutive segments that
+  agree in mean angular rate (within 0.3 dps) and mean acceleration (within 2 mg) count as
+  rest. Single samples are not judged, because at 6667 Hz the noise of one sample (about
+  1.7 dps) exceeds any useful limit. What biases the estimate is net rotation within the
+  window, and that shows in the segment means.
+- The mean of a resting window is blended in: a plain average over the first 20 windows, then
+  exponential smoothing with 1/20.
+- Rotation about the gravity axis does not change the acceleration, so a slow steady turn
+  cannot be told from a bias. Not using a window more than 1 dps from the stored bias (5 dps
+  from zero without a calibration) bounds the damage.
+- **The sensor is never started automatically.** Tracking runs only while a FIFO stream runs
+  (an `imu start` measurement, `sensor stream`). Otherwise `imu cal zero` takes one reading on
+  request, running the sensor at 104 Hz for up to three seconds.
+- The value is kept in RAM only. A reboot, a reload from the KV store or a range change
+  returns to the stored bias.
+- It is not applied to the RAW data sent over MQTT. When the PC applies a calibration to the
+  raw data, it has to estimate the bias from resting periods itself (not implemented).
+
+Replaying the two recordings at hand (about 6 minutes each) through this code gave no update
+while the pose was being changed and resumed updating one to two seconds after the board was
+put down. The final value agreed with the mean over the resting periods within 0.3 LSB
+(0.02 dps). On hardware the bias was updated every second during a measurement, and
+`cpu_active` rose by 0.3 to 0.6 points. `imu cal zero` took about 1.4 seconds, and the result
+differed by less than 0.3 LSB between a sensor that had been off and one that was running.
+
+### 10.6 What has been verified, and limits
 
 - Synthetic data with known values (about 4 minutes, 40 poses): the scale was recovered within
   0.03% and the bias within 0.3 LSB.
@@ -567,7 +613,8 @@ because it would add something separate to maintain.
   in the same pose, within 0.2 mg and 7×10⁻⁵ rad/s.
 - **A calibration describes the sensor as it was when calibrated.** About two and a half hours
   later, after a power cycle, the acceleration at rest was 2 to 3 mg below gravity and a gyro
-  bias of about 0.1 dps remained. The raw data carries no temperature and no temperature
+  bias of about 0.1 dps remained. The gyro bias is taken again by the tracking of §10.5; there
+  is nothing comparable for the accelerometer. The raw data carries no temperature and no temperature
   compensation is done.
 
 ## References

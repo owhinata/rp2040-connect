@@ -176,7 +176,7 @@ A session ID is assigned at every start from the chip's unique ID and a stored c
 | Command | Purpose |
 |---|---|
 | `imu start` / `stop` / `status` | Start and stop a measurement, show counters and errors |
-| `imu cal` / `imu cal reload` | Show whether `sensor get` / `stream` use a stored calibration; read the KV store again |
+| `imu cal` / `imu cal reload` / `imu cal zero` | Show the conversion `sensor get` / `stream` use; read the KV store again; take the gyro bias at rest |
 | `ntp status` | State of the synchronization with PC time |
 | `wifi ...`, `net ...` | Wi-Fi and IP (Zephyr) |
 | `nina version` | NINA firmware version |
@@ -217,12 +217,26 @@ imu cal
 conversion:
   accel: calibrated (244 ug/LSB, key imu.cal.accel.244)
   gyro:  calibrated (70000 udps/LSB, key imu.cal.gyro.70000)
+  gyro bias: 7.65 -4.25 -0.81 LSB (tracked at rest, 14 updates, 0 rejected)
 ```
 
 A calibration is stored under a key per sensor and sensitivity, and is used only while a key
 for the current sensitivity exists. Otherwise, for example after changing a range, the nominal
 sensitivity is used (`nominal`). After changing the keys with `kv`, run `imu cal reload`; the
 keys are also read at boot.
+
+**The gyro bias** changes a little at every power-up, so it is taken again from data recorded
+at rest.
+
+- During an `imu start` measurement and during `sensor stream` it is updated automatically
+  each time the board has rested for about a second. It is not updated while moving.
+- While the sensor is not running, `imu cal zero` takes it on request. Put the board down and
+  run it; the sensor runs for one to three seconds and is switched off again. It cannot be used
+  during a measurement, which updates the bias itself.
+- The value is kept in RAM only. A reboot, `imu cal reload` or a range change returns to the
+  bias of the stored calibration.
+- A value more than 1 dps from the stored one is not used and counted as `rejected`, because
+  turning slowly about the gravity axis cannot be told from rest.
 
 ### Sensor attributes
 

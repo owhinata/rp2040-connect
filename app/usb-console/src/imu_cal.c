@@ -1,10 +1,12 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 
 #include <errno.h>
+#include <stdlib.h>
 #include <string.h>
 #include <zephyr/device.h>
 #include <zephyr/devicetree.h>
 #include <zephyr/shell/shell.h>
+#include <zephyr/sys/printk.h>
 #include "imu_cal.h"
 #include "kv_store.h"
 
@@ -42,6 +44,34 @@ static void print_one(const struct shell *sh, const char *name, const char *unit
 		    calibrated ? "calibrated" : "nominal", (unsigned int)gain, unit, key);
 }
 
+/* Prints one bias value, kept as LSB << 8, with two decimals. */
+static void format_bias(char *text, size_t size, int32_t value)
+{
+	int32_t hundredths = (int32_t)(((int64_t)value * 100 +
+					(value >= 0 ? 128 : -128)) / 256);
+
+	snprintk(text, size, "%s%d.%02d", hundredths < 0 ? "-" : "",
+		 (int)(abs(hundredths) / 100), (int)(abs(hundredths) % 100));
+}
+
+static void print_bias(const struct shell *sh, const struct lsm6dso_cal_status *status)
+{
+	char x[12], y[12], z[12];
+
+	format_bias(x, sizeof(x), status->gyro_bias[0]);
+	format_bias(y, sizeof(y), status->gyro_bias[1]);
+	format_bias(z, sizeof(z), status->gyro_bias[2]);
+	if (status->gyro_bias_updates > 0) {
+		shell_print(sh, "  gyro bias: %s %s %s LSB (tracked at rest, %u updates, %u rejected)",
+			    x, y, z, (unsigned int)status->gyro_bias_updates,
+			    (unsigned int)status->gyro_bias_rejected);
+	} else {
+		shell_print(sh, "  gyro bias: %s %s %s LSB (%s, %u rejected)", x, y, z,
+			    status->gyro_calibrated ? "stored" : "none",
+			    (unsigned int)status->gyro_bias_rejected);
+	}
+}
+
 int imu_cal_shell(const struct shell *sh, size_t argc, char **argv)
 {
 	struct lsm6dso_cal_status status;
@@ -50,17 +80,32 @@ int imu_cal_shell(const struct shell *sh, size_t argc, char **argv)
 		shell_error(sh, "IMU not ready");
 		return -ENODEV;
 	}
-	if (argc > 1) {
-		if (strcmp(argv[1], "reload") != 0) {
-			shell_error(sh, "usage: imu cal [reload]");
-			return -EINVAL;
-		}
+	if (argc > 1 && strcmp(argv[1], "reload") == 0) {
 		lsm6dso_cal_reload(imu);
+	} else if (argc > 1 && strcmp(argv[1], "zero") == 0) {
+		int ret = lsm6dso_cal_zero(imu);
+
+		if (ret == -EBUSY) {
+			shell_error(sh, "The sensor is streaming; the bias is tracked from the stream");
+		} else if (ret == -EAGAIN) {
+			shell_error(sh, "The sensor did not stay at rest");
+		} else if (ret == -ERANGE) {
+			shell_error(sh, "The reading is too far from the stored bias");
+		} else if (ret) {
+			shell_error(sh, "Could not read the sensor: %d", ret);
+		}
+		if (ret) {
+			return ret;
+		}
+	} else if (argc > 1) {
+		shell_error(sh, "usage: imu cal [reload|zero]");
+		return -EINVAL;
 	}
 	lsm6dso_cal_status(imu, &status);
 	shell_print(sh, "conversion:");
 	print_one(sh, "accel:", "ug", LSM6DSO_CAL_ACCEL, status.accel_gain, status.accel_calibrated);
 	print_one(sh, "gyro:", "udps", LSM6DSO_CAL_GYRO, status.gyro_gain, status.gyro_calibrated);
+	print_bias(sh, &status);
 	return 0;
 }
 

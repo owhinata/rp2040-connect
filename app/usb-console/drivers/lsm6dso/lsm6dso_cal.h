@@ -46,11 +46,25 @@ struct lsm6dso_cal_status {
 	uint32_t gyro_gain;
 	bool accel_calibrated;
 	bool gyro_calibrated;
+	/* Gyro bias in use, in LSB times 2^LSM6DSO_CAL_BIAS_FRAC. It follows the
+	 * readings taken at rest once gyro_bias_updates is not zero; until then
+	 * it is the stored calibration's, or zero.
+	 */
+	int32_t gyro_bias[3];
+	uint32_t gyro_bias_updates;
+	uint32_t gyro_bias_rejected;
 };
 
 struct device;
 void lsm6dso_cal_set_lookup(const struct device *dev, lsm6dso_cal_lookup_t lookup);
 void lsm6dso_cal_reload(const struct device *dev);
 void lsm6dso_cal_status(const struct device *dev, struct lsm6dso_cal_status *status);
+/* Takes the gyro bias from the sensor at rest, now. Runs the sensor at a low
+ * rate for up to three seconds if it is off, and switches it off again.
+ * Returns 0 when the bias was updated, -EBUSY while a stream owns the sensor,
+ * -EAGAIN if the sensor did not rest, -ERANGE if the reading was too far from
+ * the stored calibration to be a bias.
+ */
+int lsm6dso_cal_zero(const struct device *dev);
 
 #endif

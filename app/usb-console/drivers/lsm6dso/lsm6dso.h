@@ -13,6 +13,7 @@
 
 #include <zephyr/drivers/sensor.h>
 #include "lsm6dso_cal.h"
+#include "lsm6dso_zero.h"
 #include <zephyr/types.h>
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/sys/util.h>
@@ -116,6 +117,9 @@ struct lsm6dso_data {
 	bool accel_calibrated;
 	bool gyro_calibrated;
 	lsm6dso_cal_lookup_t cal_lookup;
+	/* Gyro bias tracked at rest; guarded by zero_lock. */
+	struct k_mutex zero_lock;
+	struct lsm6dso_zero zero;
 #if defined(CONFIG_LSM6DSO_ENABLE_TEMP)
 	int16_t temp_sample;
 #endif
@@ -206,6 +210,8 @@ int lsm6dso_trigger_set(const struct device *dev,
 int lsm6dso_init_interrupt(const struct device *dev);
 #endif
 
+/* Feeds FIFO words to the gyro bias tracker. */
+void lsm6dso_cal_track(const struct device *dev, const uint8_t *words, size_t len);
 /* Copies the conversions currently in effect. */
 void lsm6dso_cal_snapshot(const struct device *dev, struct lsm6dso_cal *accel,
 			  struct lsm6dso_cal *gyro);

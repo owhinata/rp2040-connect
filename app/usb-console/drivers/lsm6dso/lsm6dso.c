@@ -100,6 +100,7 @@ static int lsm6dso_gyro_range_to_fs_val(int32_t range)
 }
 
 static void lsm6dso_cal_refresh(const struct device *dev, enum lsm6dso_cal_kind kind);
+static void lsm6dso_zero_restart(const struct device *dev);
 
 static int lsm6dso_accel_set_fs_raw(const struct device *dev, uint8_t fs)
 {
@@ -429,6 +430,56 @@ static void lsm6dso_cal_refresh(const struct device *dev, enum lsm6dso_cal_kind 
 		data->gyro_calibrated = calibrated;
 	}
 	k_spin_unlock(&data->cal_lock, key);
+	lsm6dso_zero_restart(dev);
+}
+
+/* Forgets the tracked gyro bias. Its limits are in LSB and its reference is
+ * the stored bias, so it starts over when either sensitivity or the stored
+ * calibration changes.
+ */
+static void lsm6dso_zero_restart(const struct device *dev)
+{
+	struct lsm6dso_data *data = dev->data;
+	struct lsm6dso_zero_limits limits;
+	struct lsm6dso_cal accel, gyro;
+
+	lsm6dso_cal_snapshot(dev, &accel, &gyro);
+	lsm6dso_zero_limits(&limits, data->gyro_gain, data->acc_gain, data->gyro_calibrated);
+	k_mutex_lock(&data->zero_lock, K_FOREVER);
+	lsm6dso_zero_reset(&data->zero, &limits, data->gyro_calibrated ? gyro.bias : NULL);
+	k_mutex_unlock(&data->zero_lock);
+}
+
+/* Puts a newly tracked bias into the gyro conversion. Call with zero_lock held. */
+static void lsm6dso_zero_apply(const struct device *dev)
+{
+	struct lsm6dso_data *data = dev->data;
+	k_spinlock_key_t key = k_spin_lock(&data->cal_lock);
+
+	memcpy(data->gyro_cal.bias, data->zero.bias, sizeof(data->gyro_cal.bias));
+	k_spin_unlock(&data->cal_lock, key);
+}
+
+void lsm6dso_cal_track(const struct device *dev, const uint8_t *words, size_t len)
+{
+	struct lsm6dso_data *data = dev->data;
+	struct lsm6dso_fifo_sample sample;
+	size_t cursor = 0;
+	bool changed = false;
+
+	k_mutex_lock(&data->zero_lock, K_FOREVER);
+	lsm6dso_zero_set_rate(&data->zero, data->gyro_freq);
+	while (lsm6dso_fifo_next(words, len, &cursor, &sample) > 0) {
+		if (sample.kind == LSM6DSO_FIFO_ACCEL) {
+			lsm6dso_zero_accel(&data->zero, sample.xyz);
+		} else if (lsm6dso_zero_gyro(&data->zero, sample.xyz)) {
+			changed = true;
+		}
+	}
+	if (changed) {
+		lsm6dso_zero_apply(dev);
+	}
+	k_mutex_unlock(&data->zero_lock);
 }
 
 void lsm6dso_cal_snapshot(const struct device *dev, struct lsm6dso_cal *accel,
@@ -465,7 +516,12 @@ void lsm6dso_cal_status(const struct device *dev, struct lsm6dso_cal_status *sta
 	status->gyro_gain = data->gyro_gain;
 	status->accel_calibrated = data->accel_calibrated;
 	status->gyro_calibrated = data->gyro_calibrated;
+	memcpy(status->gyro_bias, data->gyro_cal.bias, sizeof(status->gyro_bias));
 	k_spin_unlock(&data->cal_lock, key);
+	k_mutex_lock(&data->zero_lock, K_FOREVER);
+	status->gyro_bias_updates = data->zero.updates;
+	status->gyro_bias_rejected = data->zero.rejected;
+	k_mutex_unlock(&data->zero_lock);
 }
 
 /* Converts the last fetched sample with the same function the FIFO decoder
@@ -769,6 +825,73 @@ static int lsm6dso_sample_fetch(const struct device *dev, enum sensor_channel ch
 
 	k_mutex_lock(&data->fifo_lock, K_FOREVER);
 	ret = data->fifo_owned ? -EBUSY : lsm6dso_sample_fetch_unlocked(dev, chan);
+	k_mutex_unlock(&data->fifo_lock);
+	return ret;
+}
+
+/* Rate and duration of the on-demand bias reading. */
+#define ZERO_POLL_HZ      104
+#define ZERO_SETTLE_MS    200
+#define ZERO_SECONDS      3
+
+int lsm6dso_cal_zero(const struct device *dev)
+{
+	struct lsm6dso_data *data = dev->data;
+	uint16_t accel_freq, gyro_freq;
+	uint32_t updates, rejected;
+	int ret = 0;
+
+	k_mutex_lock(&data->fifo_lock, K_FOREVER);
+	if (data->fifo_owned) {
+		k_mutex_unlock(&data->fifo_lock);
+		return -EBUSY;
+	}
+	accel_freq = data->accel_freq;
+	gyro_freq = data->gyro_freq;
+	/* A sensor that is off is run for the reading and switched off again; one
+	 * that is on keeps its rate, and is read at the polling rate.
+	 */
+	if (accel_freq == 0) {
+		ret = lsm6dso_accel_set_odr_raw(dev, lsm6dso_freq_to_odr_val(ZERO_POLL_HZ));
+	}
+	if (ret == 0 && gyro_freq == 0) {
+		ret = lsm6dso_gyro_set_odr_raw(dev, lsm6dso_freq_to_odr_val(ZERO_POLL_HZ));
+	}
+	if (ret == 0) {
+		k_msleep(ZERO_SETTLE_MS);
+		k_mutex_lock(&data->zero_lock, K_FOREVER);
+		lsm6dso_zero_set_rate(&data->zero, 0);
+		lsm6dso_zero_set_rate(&data->zero, ZERO_POLL_HZ);
+		updates = data->zero.updates;
+		rejected = data->zero.rejected;
+		for (int i = 0; i < ZERO_SECONDS * ZERO_POLL_HZ; i++) {
+			ret = lsm6dso_sample_fetch_accel(dev);
+			if (ret == 0) {
+				ret = lsm6dso_sample_fetch_gyro(dev);
+			}
+			if (ret != 0) {
+				break;
+			}
+			lsm6dso_zero_accel(&data->zero, data->acc);
+			if (lsm6dso_zero_gyro(&data->zero, data->gyro)) {
+				lsm6dso_zero_apply(dev);
+				break;
+			}
+			k_usleep(USEC_PER_SEC / ZERO_POLL_HZ);
+		}
+		if (ret == 0 && data->zero.updates == updates) {
+			ret = data->zero.rejected != rejected ? -ERANGE : -EAGAIN;
+		}
+		/* The next stream sets its own rate and starts a fresh window. */
+		lsm6dso_zero_set_rate(&data->zero, 0);
+		k_mutex_unlock(&data->zero_lock);
+	}
+	if (accel_freq == 0) {
+		(void)lsm6dso_accel_set_odr_raw(dev, 0);
+	}
+	if (gyro_freq == 0) {
+		(void)lsm6dso_gyro_set_odr_raw(dev, 0);
+	}
 	k_mutex_unlock(&data->fifo_lock);
 	return ret;
 }
@@ -1190,6 +1313,7 @@ static int lsm6dso_init(const struct device *dev)
 	LOG_INF("Initialize device %s", dev->name);
 	data->dev = dev;
 	k_mutex_init(&data->fifo_lock);
+	k_mutex_init(&data->zero_lock);
 #ifdef CONFIG_SENSOR_ASYNC_API
 	lsm6dso_stream_init(dev);
 #endif

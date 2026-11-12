@@ -40,8 +40,8 @@ int imu_cal_decode(const uint8_t *blob, size_t len, enum lsm6dso_cal_kind kind, 
 int imu_cal_init(void);
 
 struct shell;
-/* "imu cal [reload]": shows the conversion in use, after reading the KV store again
- * when asked.
+/* "imu cal [reload|zero]": shows the conversion in use, after reading the KV store
+ * again or taking the gyro bias from the sensor at rest when asked.
  */
 int imu_cal_shell(const struct shell *sh, size_t argc, char **argv);
 
