@@ -192,7 +192,7 @@ AP が消えた直後は、送信が最大約 9 秒ブロックしてから切�
 | `session`、`epoch`、`device` | セッション ID（32 桁 hex）、epoch、デバイス ID |
 | `sensor`、`payload`、`payload_version`、`raw`、`axes` | `LSM6DSO`、`IMU1`、`2`、`int16le`、`xyz` |
 | `accel_odr_hz`、`gyro_odr_hz` | 設定 ODR（実測値ではない） |
-| `accel_ug_per_lsb`、`gyro_udps_per_lsb` | 感度 |
+| `accel_ug_per_lsb`、`gyro_udps_per_lsb` | 感度。レンジは `app.overlay` で加速度 ±8 g、角速度 ±2000 dps にしており、値は 244 と 70000 |
 | `fifo_watermark`、`timestamp_decimation` | FIFO の設定 |
 | `time`、`tick_hz_nominal`、`freq_fine` | tick の種別（`sensor_tick`）、公称 40000 Hz、センサーの周波数補正値 |
 

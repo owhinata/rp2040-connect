@@ -217,7 +217,7 @@ reconnection or change.
 | `session`, `epoch`, `device` | Session ID (32 hex digits), epoch, device ID |
 | `sensor`, `payload`, `payload_version`, `raw`, `axes` | `LSM6DSO`, `IMU1`, `2`, `int16le`, `xyz` |
 | `accel_odr_hz`, `gyro_odr_hz` | Configured ODR, not a measured value |
-| `accel_ug_per_lsb`, `gyro_udps_per_lsb` | Sensitivity |
+| `accel_ug_per_lsb`, `gyro_udps_per_lsb` | Sensitivity. `app.overlay` sets the ranges to ±8 g and ±2000 dps, which gives 244 and 70000 |
 | `fifo_watermark`, `timestamp_decimation` | FIFO settings |
 | `time`, `tick_hz_nominal`, `freq_fine` | Kind of tick (`sensor_tick`), nominal 40000 Hz, the sensor's frequency trim |
 

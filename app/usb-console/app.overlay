@@ -1,3 +1,5 @@
+#include <zephyr/dt-bindings/sensor/lsm6dso.h>
+
 / {
 	chosen {
 		zephyr,console = &cdc_acm_uart0;
@@ -18,6 +20,14 @@
 
 &spi1 {
 	status = "okay";
+};
+
+/* Wide ranges: the noise at 6667 Hz is well above one LSB even here, and a
+ * saturated gyro sample cannot be recovered afterwards.
+ */
+&lsm6dsox {
+	accel-range = <LSM6DSO_DT_FS_8G>;
+	gyro-range = <LSM6DSO_DT_FS_2000DPS>;
 };
 
 &nina_w102 {
