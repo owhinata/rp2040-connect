@@ -71,8 +71,11 @@
 #  include "kv_store.h"
 #endif
 
-#ifdef CONFIG_NANO_APP_IMU
+#if defined(CONFIG_NANO_APP_IMU) || defined(CONFIG_NANO_NINA_NET)
 #  include "zephyr_compat.h"
+#endif
+
+#ifdef CONFIG_NANO_APP_IMU
 #  include "imu_cal.h"
 #  include "time_sync.h"
 #endif
@@ -215,6 +218,11 @@ int nano_init_main(int argc, FAR char *argv[])
    * (z_init_static_threads()).  Each waits for its work at once.
    */
 
+#ifdef CONFIG_NANO_NINA_NET
+  K_THREAD_DEFINE_START(nina_scan_tid);     /* drivers/nina/nina_net.c */
+  K_THREAD_DEFINE_START(nina_connect_tid);
+  K_THREAD_DEFINE_START(nina_monitor_tid);
+#endif
 #ifdef CONFIG_NANO_APP_IMU
   K_THREAD_DEFINE_START(imu_stream_tid);  /* imu_stream.c */
 #endif

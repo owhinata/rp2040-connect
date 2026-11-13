@@ -8,6 +8,7 @@
  * - The errors are NuttX's EAI_* (the Zephyr build's DNS_EAI_* names).
  * - The result comes from the heap (malloc()), not a 2048-byte k_heap.
  * - nina_dns_lock is the NuttX mutex of nina_os_dns_lock().
+ * - nina_dns_init() registers nothing (see there).
  *
  * OS-independent apart from nina_os.h; the host test
  * (nuttx/tests/nina_dns.c) runs it on a fake nina_request().
@@ -139,4 +140,13 @@ void nina_freeaddrinfo(struct addrinfo *result)
 {
 	/* The entry starts with its struct addrinfo. */
 	free(result);
+}
+
+/* The Zephyr build registers resolve() as the socket offload's resolver
+ * here (from iface_init() of nina_net.c).  The port's callers reach
+ * nina_getaddrinfo() directly (zsock_getaddrinfo() of the compatibility
+ * layer), so there is nothing to register.
+ */
+void nina_dns_init(void)
+{
 }

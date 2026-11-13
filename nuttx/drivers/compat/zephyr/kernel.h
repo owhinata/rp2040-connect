@@ -4,7 +4,7 @@
  * part of the compatibility layer and the IMU service use, with Zephyr's
  * names, types and meanings:
  *
- *   k_timeout_t, K_NO_WAIT, K_FOREVER, K_MSEC(), K_TIMEOUT_EQ()
+ *   k_timeout_t, K_NO_WAIT, K_FOREVER, K_MSEC(), K_SECONDS(), K_TIMEOUT_EQ()
  *   k_spinlock (spinlock.h), k_mutex, k_sem (K_SEM_DEFINE), k_poll() on
  *   semaphores (K_POLL_TYPE_SEM_AVAILABLE, K_POLL_MODE_NOTIFY_ONLY)
  *   k_work, k_work_delayable, k_work_q, k_work_sync: k_work_init(),
@@ -99,6 +99,7 @@ typedef struct
 #define K_MSEC(ms) \
   ((k_timeout_t){ .ticks = ((int64_t)MAX((ms), 0) * 1000 + \
                             Z_USEC_PER_TICK - 1) / Z_USEC_PER_TICK })
+#define K_SECONDS(s)      K_MSEC((s) * 1000)
 #define K_TIMEOUT_EQ(a, b) ((a).ticks == (b).ticks)
 
 /* The OS-specific objects ------------------------------------------------*/

@@ -6,8 +6,9 @@
 現在は移植中です。今あるのは、環境構築、OS に依存しない共通ソースのホストテスト、ボード定義とその
 ビルド、USB コンソールと書き込みスクリプト、RAM ログ、キーと値の保存（`kv`）、NINA-W102 との SPI の
 やり取り（`nina version`）、NINA のソケット（usrsock。制御系と送受信）と名前解決、I2C0（DMA を含む）、
-LSM6DSOX のドライバーと FIFO のストリーム、IMU の取得サービス（`imu`）です。Wi-Fi の接続はまだ無く、取得した
-バッチは送信のスタブが数えて捨てます（「IMU の取得（`imu`）」の節）。
+LSM6DSOX のドライバーと FIFO のストリーム、IMU の取得サービス（`imu`）、Wi-Fi のネットワークデバイス
+（`wapi`・`ifconfig`）です。資格情報の保存と自動再接続はまだ無く、取得したバッチは送信のスタブが数えて
+捨てます（「IMU の取得（`imu`）」の節）。
 
 ## 環境構築
 
@@ -195,6 +196,9 @@ picocom /dev/serial/by-id/usb-NuttX_NuttX_USB_Console_*-if00
 - `bootsel` は、メッセージを送り終えてから、ボードを BOOTSEL（`RPI-RP2` のストレージ）で再起動します。
   引数を付けると（`bootsel --help` など）使い方を表示するだけです。`flash.sh` のための開発用の
   コマンドで、`CONFIG_NANO_APP_BOOTSEL` で外せます。
+- `irqstack` は割り込み用のスタックの起動からの最大使用量を 1 行で出します（Zephyr 版の
+  `kernel thread stacks` の `IRQ 00` の行と同じ書式。「スレッドの優先度とスタック」の節）。
+- Wi-Fi は NuttX 標準の `wapi` と `ifconfig` で扱います（「Wi-Fi（`wapi`、`ifconfig`）」の節）。
 - ログは RAM に置き、Zephyr 版と同じくコンソールには出しません。`dmesg` で表示します（「ログ」の節）。
 - シェル（nsh のセッション）と、そこから起動するコマンドは優先度 104 で動きます（Zephyr 版のシェルの
   スレッドと同じ位置。「スレッドの優先度とスタック」の節）。
@@ -223,8 +227,15 @@ Zephyr 版の `src/log_ram.c` と同じ RAM ログです（`nuttx/drivers/log/`�
 - 異常停止（HardFault などの例外、`PANIC()`、assert の失敗、スタックの番兵）のとき、NuttX 版は報告
   （原因、レジスター、スタック、タスクの一覧）を RAM ログに書いてから自動で再起動します
   （`CONFIG_BOARD_RESET_ON_ASSERT=2`。再起動は `reboot` と同じ通常の起動で、BOOTSEL にはなりません）。
-  RAM ログは再起動しても残るので、起動後の `dmesg` で報告を読めます。リングは 4096 バイトなので、
-  報告が長いと（スタックの内容が多いと）報告の先頭が押し出されることがあります。Zephyr 版は異常停止の
+  RAM ログは再起動しても残るので、起動後の `dmesg` で報告を読めます。報告は、原因の行
+  （`Assertion failed` と理由、ファイルと行、止まったタスク）、レジスター（PC・LR・SP を含む）、止まった
+  タスクのスタック（と割り込み中なら割り込み用のスタック）の base と size、SP がスタックの外なら
+  `Stack pointer ... is not within the stack`、タスクの一覧（各スタックの使用量。`irq` の行は割り込み用の
+  スタック）です。スタックの内容（16 進のダンプ）は入れません（`CONFIG_SCHED_DUMP_STACK` を切ってある）。
+  入れると長くなり、4096 バイトのリングから報告の先頭（原因の行とレジスター）が押し出されるためです。
+  NuttX の `CONFIG_ARCH_STACKDUMP_MAX_LENGTH` は SP がそのスタックの外のときのダンプにしか効かないので、
+  この目的には使えません。実機で、スレッドと割り込みの中の `PANIC()`、`__assert()`、HardFault のそれぞれの
+  後に、報告が先頭から読め、続けて再起動後のログが残ることを確かめました。Zephyr 版は異常停止の
   とき止まったままです（`CONFIG_RESET_ON_FATAL_ERROR` が無効）。これは Zephyr 版との違いで、移植が
   終わった後に Zephyr 版にも同じ動作を入れる予定です。
 - ソースからは Zephyr と同じ書き方で使います。`#include "app_log.h"`（`nuttx/drivers/include/`。
@@ -331,8 +342,9 @@ Wi-Fi モジュール NINA-W102 とは SPI1 でやり取りします。NINA の�
 （Arduino の NINA ファームウェア 3.0.2 に修正を当てたもの、`firmware/nina-fw/README.md`）で、書き換えません。
 今あるのは、コマンドを 1 つ送って応答を受け取る転送層（`nina_request()`、`nina_ip_config()`）、
 `nina version`、ソケット（NuttX の usrsock。socket・close・bind・listen・accept・connect・setsockopt と
-送受信・`FIONREAD`）、NINA の名前解決（`nina_getaddrinfo()`）です（`nuttx/drivers/README_ja.md` の
-「ソケット（usrsock）」「名前解決」）。Wi-Fi の接続はまだありません。
+送受信・`FIONREAD`）、NINA の名前解決（`nina_getaddrinfo()`）、Wi-Fi のネットワークデバイス `wlan0`
+（スキャン、接続、切断、状態、接続の監視）です（`nuttx/drivers/README_ja.md` の「ソケット（usrsock）」
+「名前解決」「Wi-Fi」）。資格情報の保存と自動再接続（`wifi cred`）はまだありません。
 
 ```
 nsh$ nina version
@@ -363,13 +375,52 @@ NINA firmware: 3.0.2
   応答を待つ間も保持します。SPI1 の `/dev/spi1` は作りません（`CONFIG_RP2040_SPI_DRIVER` なし）。
 - NINA の初期化は Zephyr 版と同じく最初の要求のときに行います: CS を非アクティブ、READY を入力、IRQ を
   high、RESET をアクティブにし、10 ms 後にリセットを解き、750 ms 待ってから IRQ を low にして入力に戻します。
-  そのため起動（書き込み・`reboot`）後の最初の `nina version` は、この待ちの分だけ時間がかかります。
-  起動時にはボードが SPI1 とそのピン、CS だけを用意します。
+  最初の要求は、起動処理が `wlan0` を用意するときに MAC アドレスを読む命令です（Zephyr 版と同じく起動時）。
+  そのため USB のコンソールが現れるのはこの待ちの後です。
 - 要求の手順と値は Zephyr 版の `drivers/nina/nina_wifi.c` と同じです（`nuttx/drivers/nina/nina_spi.c`）。
   READY を 100 µs ごと（tick に切り上げて 1 tick 足すので、実際は 100〜200 µs ごと）に見て、送信前は
   2000 ms、CS を下げてから NINA が READY を戻すまで 20 ms、応答の準備は 10000 ms で `-ETIMEDOUT`。
   応答の先頭（0xE0）は最大 1000 バイト探します。要求は再帰可能なミューテックス（優先度継承あり）で
   直列化し、呼び出したスレッドの優先度で SPI を動かします。
+
+### Wi-Fi（`wapi`、`ifconfig`）
+
+NINA は NuttX のネットワークデバイス `wlan0` です。Zephyr 版の `wifi` のコマンドの代わりに、NuttX 標準の
+`wapi`（`CONFIG_WIRELESS_WAPI_CMDTOOL`、優先度 104、スタック 3072）と `ifconfig` を使います。ドライバーの
+処理は Zephyr 版の `drivers/nina/nina_net.c` そのもの（`nuttx/drivers/README_ja.md` の「Wi-Fi」）です。
+
+| Zephyr 版 | NuttX 版 |
+|---|---|
+| `wifi connect -s <SSID> -p <パスフレーズ> -k 1` | `wapi psk wlan0 <パスフレーズ> 3` の後に `wapi essid wlan0 <SSID> 1` |
+| `wifi connect -s <SSID> -k 0`（暗号化なし） | `wapi essid wlan0 <SSID> 1`（直前に `wapi psk` を打たない） |
+| `wifi disconnect` | `wapi disconnect wlan0` |
+| `wifi scan` | `wapi scan wlan0` |
+| `wifi status` | `wapi show wlan0` と `ifconfig wlan0`（下） |
+| `net iface` | `ifconfig` |
+| `wifi cred add/delete/list/auto_connect` | まだありません |
+
+- `wapi psk` の 3 は暗号の CCMP、版の既定は WPA2 で、Zephyr 版の `-k 1`（WPA2-PSK）に当たります。`wapi psk` の
+  設定は次の `wapi essid` 1 回で使って忘れ、パスフレーズも消します。ドライバーが受け付けるのは Zephyr 版と同じく
+  暗号化なしと WPA2-PSK（NINA のパスフレーズの命令）だけで、ほかは `ENOTSUP` です。パスフレーズは 8〜63 文字です。
+- `wapi essid` は Zephyr 版の `wifi connect` と同じく、要求を出したところで戻ります。接続の手順と期限
+  （500 ms ごとに最大 60 回、つまり約 30 秒で `ETIMEDOUT`）、接続後の省電力の解除と IP の設定は Zephyr 版と
+  同じです。結果は `ifconfig wlan0` で確かめます（接続すると `RUNNING` が付き、`inet addr`・`DRaddr`・`Mask` に
+  NINA の DHCP の値が出ます）。
+- `wifi status` の項目の見え方: State は `ifconfig` の `RUNNING`（と `wapi show` の ESSID の Flag）、SSID は
+  `wapi show` の ESSID、BSSID は AP、RSSI は Sense（接続中だけ）、Interface Mode は Mode（`WAPI_MODE_MANAGED`）。
+  `wapi show` の SSID・BSSID・RSSI は Zephyr 版の `wifi status` と同じくその場で NINA に尋ねます。Band、Channel、
+  Security、MFP、Link Mode、Beacon Interval、DTIM、TWT、PHY の速度は出ません（Zephyr 版でも NINA からは得て
+  おらず、固定値か 0 です）。
+- `wapi scan` は NINA のスキャン（最大 10 件）を、BSSID・周波数・信号の強さ（dBm）・暗号化（`8000` なし、
+  `0800` あり、`ffff` 不明）・SSID の列で、NINA の順に出します。暗号化の判定は Zephyr 版と同じ NINA の種類の
+  対応（7 なし、5 WEP、2 WPA、4 WPA2、ほかは不明）からで、`wapi` は WEP・WPA・WPA2 を区別して表示しません。
+  周波数の列は、NuttX の `printf` が浮動小数点を扱わない構成（`CONFIG_LIBC_FLOATINGPOINT` なし）なので
+  `*float*` と出ます。ESSID・パッシブ・チャネルを指定したスキャンは Zephyr 版と同じく受け付けません。
+  接続中のスキャンは、Zephyr 版と同じく切断として扱い（IP の設定を消す）、終わった後で再接続を頼みます。
+- スキャン中の接続、接続中のスキャンは Zephyr 版と同じく `EBUSY` です。
+- `wapi` は失敗したときに何も表示しません（エラーの表示が NuttX のデバッグ出力 `wlerr()` で、この構成では
+  無効）。終了状態は 1 になるので、`echo $?` で分かります。Zephyr 版の `wifi` のコマンドはエラーの値を表示します。
+- `ifconfig wlan0 down`・`up` は何もしません（Zephyr 版のインターフェースも常に有効）。
 
 ## I2C0（`i2c`）
 
@@ -610,19 +661,23 @@ Subcommands:
 | スレッド | Zephyr | NuttX | スタック |
 |---|---|---|---|
 | `wifi_reconnect_tid`、`nina_scan_tid`、`nina_connect_tid` | 8 | 110 | 2048、1536、1024 |
-| `time_sync_tid`、`imu_stream_tid`（init が起動時に始める）、`nina_monitor_tid` | 9 | 109 | 2048、2048、1536 |
+| `time_sync_tid`、`imu_stream_tid`、`nina_monitor_tid` | 9 | 109 | 2048、2048、1536 |
 | `imu_fifo_worker` | 10 | 108 | 2048 |
 | `imu_raw_mqtt_tid` | 11 | 107 | 2048 |
 | `nina_event`（NINA のソケットの状態を usrsock のイベントにする。NuttX 版だけ。最初のソケットで起動） | – | 106 | 1536 |
 | `sysworkq`（システムワークキュー。互換層。INT1 の処理） | −1（協調） | 119 | 1024 |
+| `net_mgmt`（ネットワークのイベント。互換層。Wi-Fi のイベントのコールバック） | −1（協調） | 119 | 2048 |
 | `RTIO WQ 0`（RTIO のワークキュー。互換層。単発取得。`ps` では `RTIO_WQ_0`） | 0 | 118 | 1024 |
 | `main`（NuttX は init。起動処理の後シェルの優先度に下げる） | 0 | 118 | 2048 |
 | シェル（nsh のセッション、コマンド） | 14 | 104 | 3072 |
 
 - Zephyr の協調スレッド（負の優先度。`sysworkq`、`net_mgmt` など）は 118 より上になりますが、NuttX には
   他のスレッドに横取りされない協調スレッドが無く、より高い優先度のスレッドには横取りされます。今の移植で
-  協調スレッドに当たるのは `sysworkq`（119）だけで、それより高い優先度のスレッドはありません。
-- `imu_stream_tid`、`imu_fifo_worker`、`sysworkq`、`RTIO WQ 0` のスタックは Zephyr と同じく静的な配列です
+  協調スレッドに当たるのは `sysworkq` と `net_mgmt`（どちらも 119）で、それより高い優先度のスレッドは
+  ありません。同じ 119 の 2 つは時分割で交代します（Zephyr の協調スレッドどうしは自分で譲るまで交代しない）。
+- `K_THREAD_DEFINE()` のスレッド（`nina_scan_tid`、`nina_connect_tid`、`nina_monitor_tid`、`imu_stream_tid`）は、
+  Zephyr 版が `main()` の前に始めるのに合わせて、init が起動処理の最初に始めます。
+- `imu_stream_tid`、`imu_fifo_worker`、`sysworkq`、`RTIO WQ 0`、`net_mgmt`、`nina_*_tid` のスタックは Zephyr と同じく静的な配列です
   （`K_THREAD_DEFINE()`・`K_THREAD_STACK_DEFINE()`、NuttX の `kthread_create_with_stack()`）。`ps` の STACK は
   NuttX が先頭に置く領域の分だけ小さく出ます（2048 → 2008。`imu_stream_tid` は 2000、1024 → 976）。
 - `CONFIG_PRIORITY_INHERITANCE=y` です。ミューテックスは優先度継承あり、セマフォは既定で継承なし
@@ -632,7 +687,14 @@ Subcommands:
   割り込みの処理は割り込まれたスレッドのスタックを使いません。割り込まれたスレッドのスタックに積まれる
   のは、ハードウェアが退避する 32 バイト（とコンテキストの切り替えのときの保存領域）だけです（Zephyr 版と
   同じ）。実機で、何もしていないときに割り込みの中でログを 1 行出しても、アイドルスレッドのスタックの
-  使用量が変わらないことを確かめました。割り込み用のスタックの使用量は `ps` には出ません（PANIC の報告の `irq` の行に出ます）。
+  使用量が変わらないことを確かめました。割り込み用のスタックの使用量は `ps` には出ないので、`irqstack` で
+  見ます（Zephyr 版の `kernel thread stacks` の最後の行と同じ書式。値はスタックの塗りつぶし
+  （`CONFIG_STACK_COLORATION`）から求めた起動からの最大で、PANIC の報告の `irq` の行と同じ）:
+
+  ```
+  nsh$ irqstack
+  <アドレス> IRQ 00                           (real size 2048):	unused <未使用>	usage <使用量> / 2048 (<割合> %)
+  ```
 - スタックの番兵（`CONFIG_NANO_STACK_SENTINEL`。ボードの `Kconfig`、既定で有効）: Zephyr 版の
   `CONFIG_STACK_SENTINEL` と同じく、各スタックの最下位のワード（`CONFIG_STACK_COLORATION` が書いた値）を、
   スレッドの切り替えのとき（切り替えで外れるスレッド）と、割り込みハンドラーの出口ごと（割り込まれた
@@ -680,6 +742,7 @@ Zephyr 版を直したときは、写しも同じ内容に置き換えます。
 | `nuttx/tests/` | `tests/` | 上のファイルを対象にするテスト（`i2c_dma_commands.c`、`fifo_hw.c`、`stream_stop.c` を含む。`stream_stop.c` は `../drivers/lsm6dso/lsm6dso_stream.c` を読み込む） |
 | `nuttx/tests/fakes/` | `tests/fakes/` | テスト用の Zephyr のヘッダーと ST のヘッダーの代わり（`zephyr/drivers/sensor.h`、`zephyr/drivers/sensor_clock.h`、`zephyr/drivers/i2c.h`、`zephyr/rtio/rtio.h`、`lsm6dso_reg.h`） |
 
+`nuttx/drivers/nina/nina_net.c` は先頭の説明と `<nuttx/config.h>` だけを足した写し、
 `nuttx/apps/imu/imu_stream.c` は OS を呼ぶ部分と末尾のコマンドの登録だけを置き換えた写し、
 `imu_raw_mqtt.h` は `<zephyr/net/net_ip.h>` を `<netinet/in.h>` にしただけの写しです。
 
@@ -770,4 +833,4 @@ setsockopt、`nina_event` が何を問い合わせ、何をイベントにする
 既定値と受け付けないフラグ・ファミリー・ソケットの種類、サービス（ポート番号）、数値のアドレス（NINA に問い合わせ
 ない）、名前（ロックを持ったまま命令 0x34 と 0x35）、失敗ごとの `EAI_*`。
 
-NINA の Wi-Fi を対象にするテストは、それを移植するときに加えます。
+NINA の Wi-Fi（`nina_net.c`、`nina_netdev.c`、互換層のネットワークの部品）のホストテストはまだありません。

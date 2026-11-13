@@ -65,6 +65,23 @@ config NANO_NINA_SEND_RETRY_MS
 		delay (the event thread reports SENDTO_READY and usrsock repeats
 		the request in the caller's thread), until NINA_SEND_WAIT_MS.
 
+config NANO_NINA_NET
+	bool "NINA Wi-Fi network device wlan0 (ifconfig, wapi)"
+	default y
+	depends on NANO_NINA_USRSOCK && NANO_LSM6DSO_STREAM
+	depends on DRIVERS_IEEE80211 && NETDEV_WIRELESS_IOCTL && NET_IPv4
+	---help---
+		nina/nina_net.c (the Zephyr build's drivers/nina/nina_net.c:
+		scan, connect, disconnect, status and the 2-second link monitor,
+		with its threads nina_scan_tid, nina_connect_tid and
+		nina_monitor_tid) and nina/nina_netdev.c, which registers the
+		module as the network device wlan0 and turns wapi's wireless
+		ioctls into the Zephyr Wi-Fi requests.  The IP address, netmask,
+		gateway and MAC address are those of wlan0 (ifconfig).  Uses the
+		Zephyr compatibility layer's kernel objects, which are built with
+		NANO_LSM6DSO_STREAM, and its net_if, net_mgmt and wifi_mgmt parts
+		(the "net_mgmt" event thread).
+
 config NANO_NINA_DNS
 	bool "Name resolution with the NINA resolver (nina_getaddrinfo())"
 	default y

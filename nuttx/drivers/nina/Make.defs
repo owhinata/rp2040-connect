@@ -6,8 +6,11 @@
 # sockets as usrsock (nina_sock.c, nina_usrsock.c, nina_poller.c, from the
 # Zephyr build's drivers/nina/nina_socket.c); name resolution with the
 # module's resolver (nina_dns.c, from the Zephyr build's
-# drivers/nina/nina_dns.c).  The board provides the pins and the SPI bus
-# (nano_nina.c, <nano_nina.h>).
+# drivers/nina/nina_dns.c); the Wi-Fi network device wlan0 (nina_net.c,
+# the Zephyr build's drivers/nina/nina_net.c, and nina_netdev.c), with the
+# Wi-Fi profile's calls answered by wifi_profile_null.c until the
+# application provides them (CONFIG_NANO_WIFI_PROFILE).  The board provides
+# the pins and the SPI bus (nano_nina.c, <nano_nina.h>).
 # Included by nuttx/drivers/Makefile.
 ############################################################################
 
@@ -18,6 +21,12 @@ CSRCS += nina_sock.c nina_usrsock.c nina_poller.c
 endif
 ifeq ($(CONFIG_NANO_NINA_DNS),y)
 CSRCS += nina_dns.c
+endif
+ifeq ($(CONFIG_NANO_NINA_NET),y)
+CSRCS += nina_net.c nina_netdev.c
+ifneq ($(CONFIG_NANO_WIFI_PROFILE),y)
+CSRCS += wifi_profile_null.c
+endif
 endif
 DEPPATH += --dep-path nina
 VPATH += :nina

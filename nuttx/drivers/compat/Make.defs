@@ -27,4 +27,12 @@ CSRCS += sensor_default_rtio.c
 CSRCS += zephyr_hwinfo.c
 endif
 
+# The network interface, net_mgmt requests and events, and the Wi-Fi
+# requests that the NINA network device (nina/nina_net.c) and the
+# application use.
+
+ifeq ($(CONFIG_NANO_NINA_NET),y)
+CSRCS += zephyr_net_if.c zephyr_net_mgmt.c zephyr_wifi_mgmt.c
+endif
+
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)compat

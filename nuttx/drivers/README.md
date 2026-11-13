@@ -138,6 +138,62 @@ result comes from `malloc()`, not the Zephyr version's 2 KB heap. The host test 
 `nuttx/tests/nina_dns.c`. The only user now is the time synchronization when its NTP server is
 given by name (the default is the gateway).
 
+### Wi-Fi (network device `wlan0`)
+
+| File | Role |
+|---|---|
+| `nina/nina_net.c` | A copy of the Zephyr version's `drivers/nina/nina_net.c` (only the leading comment and `<nuttx/config.h>` added): scan, connect, disconnect, status, and the three threads `nina_scan_tid`, `nina_connect_tid` and `nina_monitor_tid` |
+| `nina/nina_netdev.c` | Registers the NINA as the NuttX network device `wlan0` and turns wapi's wireless ioctls into the Zephyr Wi-Fi requests (`net_mgmt()`). NuttX port only |
+| `nina/wifi_profile_null.c` | Empty versions of the Wi-Fi profile functions `nina_net.c` calls (`wifi_profile_pause_reconnect()` and so on), standing in for the stored credentials and automatic reconnection (the Zephyr version's `src/wifi_profile.c`) until they are ported (when `CONFIG_NANO_WIFI_PROFILE` is not set) |
+| `include/nina_net.h`, `include/wifi_profile.h` | `nina_net_initialize()`. `wifi_profile.h` has the same declarations as the Zephyr version's `src/wifi_profile.h` |
+
+- `nina_net.c` uses Zephyr's APIs (`net_if`, `net_mgmt`, `wifi_mgmt`, kernel objects) through the
+  compatibility layer (see "Zephyr API compatibility layer" below), so it runs as the same code as in
+  the Zephyr version. Values and behaviour are the Zephyr version's: every 2 seconds, while
+  connected, the monitor reads the NINA's state (0x20); after two disconnected readings in a row it
+  treats the link as lost, clears the IP configuration, raises the disconnect event and asks for a
+  reconnection. A connection hands the SSID (and passphrase) to the NINA, then reads the state every
+  500 ms up to 60 times; once associated it turns power saving off (0x17), reads the IP
+  configuration (0x21) into the interface, and raises the result event (failures as `-ETIMEDOUT` and
+  so on). A connection whose request generation (`generation`/`request_generation`) has changed ends
+  without a result. A scan while connected first treats the link as disconnected and asks for a
+  reconnection when it ends. A manual disconnect stops reconnection (`wifi_profile_pause_reconnect()`).
+  The passphrase is never logged.
+- Start-up: the board's bring-up calls `nina_net_initialize()` after the LSM6DSOX and before the KV
+  store (the Zephyr version initializes the interface at `POST_KERNEL` after the sensor and sets up
+  NVS in `main()`). It starts the `net_mgmt` thread, registers `wlan0` as `NET_LL_IEEE80211` with
+  `IFF_UP`, and calls `driver_init()` and `iface_init()` (dormant, MAC address read from the NINA,
+  0x22) in Zephyr's order. That is the first command to the NINA, so the NINA reset (10 ms, 750 ms)
+  happens here. The init task starts the three threads with `K_THREAD_DEFINE_START()`.
+- Interface values: the IPv4 address, netmask and gateway are `wlan0`'s `d_ipaddr`, `d_netmask` and
+  `d_draddr`, the MAC address is `d_mac`. NuttX's `ifconfig` (`/proc/net/wlan0`), `SIOCGIFADDR` and
+  so on read them there. Zephyr's "dormant" is `IFF_RUNNING` clear (`RUNNING` appears when
+  connected). `wlan0` has no `d_ifup`/`d_ifdown`, so `ifconfig wlan0 down`/`up` do nothing (the
+  Zephyr version's interface is always up as well). NuttX's own TCP/IP is not used, so ARP and ICMP
+  are off (`CONFIG_NET_ARP`, `CONFIG_NET_ICMP`). `CONFIG_NET_ETHERNET` stays: registering a
+  `NET_LL_IEEE80211` device needs it (`netdev_register()` uses `CONFIG_NET_ETH_PKTSIZE`), and so does
+  the MAC address field (`d_mac.ether`).
+- wapi's ioctls (`d_ioctl`, handled in the calling thread):
+
+  | ioctl | Handling |
+  |---|---|
+  | `SIOCSIWSCAN` | `NET_REQUEST_WIFI_SCAN`. An ESSID, a passive scan or channels are passed on, and the driver refuses them with `-ENOTSUP` as in the Zephyr version |
+  | `SIOCGIWSCAN` | `-EAGAIN` while scanning, the scan's error if it failed, else the results (up to 10 collected from the `SCAN_RESULT` events, in the NINA's order, as wireless events: BSSID, channel, RSSI in dBm, SSID, encrypted or not; nothing about encryption when the type is unknown). `-E2BIG` if the buffer is too small |
+  | `SIOCSIWAUTH` | Keeps the WPA version and the pairwise cipher |
+  | `SIOCSIWENCODEEXT` | Keeps the passphrase. What these two keep is used and forgotten by the next `SIOCSIWESSID` (the passphrase is wiped), so a `wapi essid` without a `wapi psk` before it connects without encryption |
+  | `SIOCSIWESSID` | `NET_REQUEST_WIFI_CONNECT` with the kept settings: WPA2 → `WIFI_SECURITY_TYPE_PSK`, none → `_NONE`, WPA → `_WPA_PSK`, WPA3 → `_SAE`, WEP → `_WEP` (the driver takes only NONE and PSK). With a passphrase but no version set: PSK (as Zephyr's `wifi connect` without `-k`). Flags 0 (the random SSID of wapi's `disconnect`) does nothing |
+  | `SIOCSIWAP` | 00:00:00:00:00:00 or ff:ff:ff:ff:ff:ff: `NET_REQUEST_WIFI_DISCONNECT`; anything else `-ENOTSUP` |
+  | `SIOCGIWESSID`, `SIOCGIWAP`, `SIOCGIWSENS` | SSID, BSSID and RSSI from `NET_REQUEST_WIFI_IFACE_STATUS` (asks the NINA). While disconnected: empty SSID, zero BSSID, `-ENOTCONN` for the RSSI |
+  | `SIOCGIWMODE`, `SIOCSIWMODE` | Managed (`IW_MODE_INFRA`) only |
+
+  Other wireless ioctls return `-ENOTTY`. The connection's result is not what `wapi essid` returns
+  (the Zephyr version's `wifi connect` also returns once the request is made); check `RUNNING` and
+  the IP address in `ifconfig`, or the ESSID in `wapi show`.
+- Stored credentials and automatic reconnection (the Zephyr version's `src/wifi_profile.c`,
+  `wifi cred`) can use the layer's `net_mgmt()` (`NET_REQUEST_WIFI_CONNECT`, `_DISCONNECT`),
+  `net_mgmt_add_event_callback()` (`NET_EVENT_WIFI_CONNECT_RESULT`, `_DISCONNECT_RESULT`),
+  `net_if_get_wifi_sta()` and `net_if_ipv4_get_global_addr()` as the Zephyr version does.
+
 ## I2C0
 
 | File | Role |
@@ -275,7 +331,7 @@ RTIO and kernel as a whole are not ported.
 |---|---|
 | `zephyr/device.h` | `struct device` (name, config, API, state, data, init function), `device_is_ready()`, `device_init()` (the meaning of Zephyr's `do_device_init()`), `DEVICE_DT_GET()`, `DEVICE_DT_DEFINE()`, `DEVICE_API()` |
 | `zephyr/devicetree.h` | `DT_NODELABEL()`, `DT_BUS()`; the nodes are `gpio0`, `i2c0` and `lsm6dsox` only |
-| `zephyr/kernel.h` | `k_timeout_t` (`K_NO_WAIT`, `K_FOREVER`, `K_MSEC()`; ticks of 100 µs), `k_mutex`, `k_sem` (`K_SEM_DEFINE`), `k_poll()` on semaphores (`K_POLL_TYPE_SEM_AVAILABLE`, `K_POLL_MODE_NOTIFY_ONLY`), work (`k_work`, `k_work_delayable`, `k_work_q`, `k_work_submit()`, `k_work_cancel_sync()`, `k_work_schedule_for_queue()`, `k_work_reschedule_for_queue()`, `k_work_queue_start()`), `K_THREAD_STACK_DEFINE()`, `K_PRIO_PREEMPT()`, `k_thread_name_set()`, the system work queue `k_sys_work_q`, `K_MUTEX_DEFINE()`, `K_THREAD_DEFINE()` (below), `k_uptime_get()`, `k_sleep()` (below) |
+| `zephyr/kernel.h` | `k_timeout_t` (`K_NO_WAIT`, `K_FOREVER`, `K_MSEC()`, `K_SECONDS()`; ticks of 100 µs), `k_mutex`, `k_sem` (`K_SEM_DEFINE`), `k_poll()` on semaphores (`K_POLL_TYPE_SEM_AVAILABLE`, `K_POLL_MODE_NOTIFY_ONLY`), work (`k_work`, `k_work_delayable`, `k_work_q`, `k_work_submit()`, `k_work_cancel_sync()`, `k_work_schedule_for_queue()`, `k_work_reschedule_for_queue()`, `k_work_queue_start()`), `K_THREAD_STACK_DEFINE()`, `K_PRIO_PREEMPT()`, `k_thread_name_set()`, the system work queue `k_sys_work_q`, `K_MUTEX_DEFINE()`, `K_THREAD_DEFINE()` (below), `k_uptime_get()`, `k_sleep()` (below) |
 | `zephyr/spinlock.h`, `zephyr/sys/atomic.h` | `k_spin_lock()` (below), `atomic_t` and `atomic_get/set/clear/cas/or/inc/add()` |
 | `zephyr/rtio/rtio.h`, `zephyr/rtio/work.h` | RTIO (below) and the RTIO work queue (`rtio_work_req_alloc()`, `_submit()`) |
 | `zephyr/drivers/gpio.h` | `struct gpio_dt_spec`, `gpio_is_ready_dt()`, `gpio_pin_configure_dt()` (inputs only), `gpio_pin_interrupt_configure_dt()`, `gpio_pin_get_dt()`, callbacks (`gpio_init_callback()`, `gpio_add_callback()`, `gpio_remove_callback()`) |
@@ -283,10 +339,13 @@ RTIO and kernel as a whole are not ported.
 | `zephyr/drivers/sensor_clock.h` | `sensor_clock_get_cycles()`, `sensor_clock_cycles_to_ns()` (below) |
 | `zephyr/drivers/i2c.h` | `struct i2c_dt_spec`, `i2c_burst_read_dt()`, `i2c_write_dt()`, `i2c_write_read_dt()`, `i2c_configure()`, the speed classes (`I2C_SPEED_*`, `I2C_SPEED_SET()`) |
 | `zephyr/sys/util.h`, `sys/__assert.h`, `sys/mpsc_lockfree.h`, `sys/mem_blocks.h`, `dsp/types.h` | `BIT()`, `ARRAY_SIZE()`, `MIN()`/`MAX()`, `IS_ENABLED()`, `CONTAINER_OF()`, `GENMASK()`/`FIELD_GET()` and others, `__ASSERT()`, RTIO's queues and block pool, `q31_t` |
-| `zephyr/sys/printk.h`, `zephyr/sys/byteorder.h`, `zephyr/sys/cpu_load.h` | `snprintk()` (`snprintf()`, as in the Zephyr version's configuration with `CONFIG_PICOLIBC=y`), `sys_put_be16/32()`/`sys_get_be16/32()`, `cpu_load_get()` (the board's `cpu_load.h`) |
+| `zephyr/sys/printk.h`, `zephyr/sys/byteorder.h`, `zephyr/sys/cpu_load.h` | `snprintk()` (`snprintf()`, as in the Zephyr version's configuration with `CONFIG_PICOLIBC=y`), `sys_put_be16/32()`/`sys_get_be16/32()`/`sys_get_le32()`, `cpu_load_get()` (the board's `cpu_load.h`) |
 | `zephyr/drivers/hwinfo.h` | `hwinfo_get_device_id()` (below) |
 | `zephyr/shell/shell.h` | `shell_print()` (stdout), `shell_error()` (stderr), so that command functions in Zephyr's form can be called from a builtin command on `nuttx/apps/subcmd` (below) |
-| `zephyr/net/socket.h`, `zephyr/net/net_if.h` | `zsock_inet_pton()`, `zsock_inet_ntop()` (the C library's `inet_pton()`, `inet_ntop()`), `zsock_getaddrinfo()`, `zsock_freeaddrinfo()` (the NINA's resolver, `nina_getaddrinfo()`; errors are NuttX's `EAI_*`); `net_if.h` is empty for now (below) |
+| `zephyr/net/socket.h` | `zsock_inet_pton()`, `zsock_inet_ntop()` (the C library's `inet_pton()`, `inet_ntop()`), `zsock_getaddrinfo()`, `zsock_freeaddrinfo()` (the NINA's resolver, `nina_getaddrinfo()`; errors are NuttX's `EAI_*`) |
+| `zephyr/net/net_if.h` | `struct net_if` (one NuttX network device), `net_if_get_default()`, `net_if_get_wifi_sta()`, the IPv4 address, netmask and gateway (`net_if_ipv4_addr_add()`, `_rm()`, `net_if_ipv4_get_global_addr()`, `net_if_ipv4_set_netmask_by_addr()`, `net_if_ipv4_set_gw()`, `net_if_ipv4_get_gw()`), `net_if_dormant_on()`/`_off()`, `net_if_is_admin_up()`, `net_if_set_link_addr()` (below) |
+| `zephyr/net/net_mgmt.h` | `net_mgmt()` (requests), `struct net_mgmt_event_callback`, `net_mgmt_init_event_callback()`, `net_mgmt_add_event_callback()`, `_del_event_callback()`, `net_mgmt_event_notify_with_info()` (below) |
+| `zephyr/net/wifi_mgmt.h` | The Wi-Fi types (security, band, MFP, state, mode; Zephyr's values), `struct wifi_scan_params`, `wifi_scan_result`, `wifi_connect_req_params`, `wifi_iface_status`, `wifi_status`, `struct wifi_mgmt_ops`, the offloaded interface API and `NET_DEVICE_DT_OFFLOAD_DEFINE()`, the requests `NET_REQUEST_WIFI_SCAN`, `_CONNECT`, `_DISCONNECT`, `_IFACE_STATUS`, the events `NET_EVENT_WIFI_SCAN_RESULT`, `_SCAN_DONE`, `_CONNECT_RESULT`, `_DISCONNECT_RESULT`, `wifi_mgmt_raise_connect_result_event()`, `_disconnect_result_event()` (below) |
 | `zephyr_compat.h` | `zephyr_compat_initialize()` (called by the board's bring-up, below), `K_THREAD_DEFINE_START()` (called by init) |
 
 | Source | Contents |
@@ -299,6 +358,7 @@ RTIO and kernel as a whole are not ported.
 | `sensor_default_rtio.c` | A copy of Zephyr's `drivers/sensor/default_rtio_sensor.c` (only the log replaced): the sensors' iodev API, the fallback for single reads, the default decoder |
 | `zephyr_device.c`, `zephyr_i2c.c` | Device initialization and I2C |
 | `zephyr_hwinfo.c` | `hwinfo_get_device_id()` on the board's chip ID (`nano_chip_id()`) |
+| `zephyr_net_if.c`, `zephyr_net_mgmt.c`, `zephyr_wifi_mgmt.c` | The interface (values of the NuttX network device), the `net_mgmt` event queue and thread, the Wi-Fi requests (a copy of the checks of Zephyr's `subsys/net/l2/wifi/wifi_mgmt.c`) and events. Only with `CONFIG_NANO_NINA_NET` |
 
 - **Work**: the flags (RUNNING, CANCELING, QUEUED, DELAYED) and return values are those of
   `kernel/work.c`. `submit` does nothing if already queued (0) and queues a running item again on
@@ -383,8 +443,32 @@ RTIO and kernel as a whole are not ported.
   registration macros (`SHELL_CMD_REGISTER()` and so on); command tables are written with
   `nuttx/apps/subcmd`.
 - **Network**: `zsock_inet_pton()` and `zsock_inet_ntop()` are the C library's functions. While
-  networking is off, `imu` selects `CONFIG_LIBC_IPv4_ADDRCONV` for the IPv4 conversions. The socket
-  and `net_if` functions come with the NINA socket layer (usrsock).
+  networking is off, `imu` selects `CONFIG_LIBC_IPv4_ADDRCONV` for the IPv4 conversions. Sockets are
+  the NINA's usrsock (there is no `zsock_socket()` and so on; use NuttX's `socket()`).
+- **Interface** (`net_if.h`): the one interface is the NINA's `wlan0`; `net_if_get_default()` and
+  `net_if_get_wifi_sta()` both return it (NULL before it is registered). It has one address (adding
+  replaces it), always "preferred" (the Zephyr version's configuration has no IPv4 duplicate
+  detection either), so `net_if_ipv4_get_global_addr(iface, NET_ADDR_PREFERRED)` returns it while
+  there is one. Values are read and written under the network device's lock (`netdev_lock()`, as
+  `ifconfig`'s ioctls do). `net_in_addr` is NuttX's `in_addr`. Interface events (`NET_EVENT_IF_UP`
+  and so on, address added or removed) are not raised (nothing in the port uses them).
+- **`net_mgmt`**: a request `net_mgmt(NET_REQUEST_X, iface, data, len)` calls
+  `net_mgmt_NET_REQUEST_X()` in the calling thread, as Zephyr's macro does. Events follow the Zephyr
+  version's configuration (`CONFIG_NET_MGMT_EVENT_THREAD`, `_QUEUE`, `_INFO`, a queue of 5 entries,
+  10 ms of waiting for room): the information is copied into the queue, and the thread `net_mgmt`
+  (priority −1 → 119, stack 2048) takes the events in order and calls each callback whose mask has
+  the event (with `cb->info` and `info_length` set, under the callback list's lock). An event that
+  finds no room within 10 ms is dropped (the Zephyr version's warning is compiled out at log level
+  0). Event codes are bits of this port (not Zephyr's 64-bit layer and command values) compared by
+  the same names. `nina_net_initialize()` starts the thread before the interface (Zephyr's
+  `net_init()` order).
+- **Wi-Fi requests** (`zephyr_wifi_mgmt.c`): as in Zephyr's `wifi_mgmt.c`, `-ENOTSUP` if the
+  interface's API (named with `NET_DEVICE_DT_OFFLOAD_DEFINE()`) lacks the driver's operation,
+  `-ENETDOWN` without `IFF_UP`, and the same checks of the connection parameters (channel, SSID length
+  1 to 32, passphrase length 8 to 64 (5/10/13/26 for WEP), required fields per security type) before
+  the driver is called (the Zephyr version's configuration has no wpa_supplicant). Scan results
+  become one `NET_EVENT_WIFI_SCAN_RESULT` each, the end `NET_EVENT_WIFI_SCAN_DONE` (a
+  `struct wifi_status`).
 - An I2C bus is a device holding a NuttX I2C master and a speed (the board binds them with
   `i2c_compat_bind()`). In Zephyr the bus driver keeps the speed and `i2c_configure()` changes it
   for every later transfer. A NuttX transfer carries a frequency in each message, so the layer's
@@ -400,5 +484,3 @@ RTIO and kernel as a whole are not ported.
   device are named `i2c_compat_write()` and `i2c_compat_write_read()` (the `_dt` forms keep
   Zephyr's names). In a file that includes `<zephyr/drivers/i2c.h>`, `I2C_SPEED_*` are Zephyr's
   classes (include NuttX's header first if both are needed).
-
-Wi-Fi management and sockets (usrsock) are not ported yet.

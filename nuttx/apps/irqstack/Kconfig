@@ -1,0 +1,33 @@
+#
+# For a description of the syntax of this configuration file,
+# see the file kconfig-language.txt in the NuttX tools repository.
+#
+
+config NANO_APP_IRQSTACK
+	tristate "irqstack command (interrupt stack use)"
+	default y
+	depends on STACK_COLORATION && ARCH_INTERRUPTSTACK > 3
+	---help---
+		"irqstack" prints how much of the interrupt stack
+		(CONFIG_ARCH_INTERRUPTSTACK, the Zephyr build's
+		CONFIG_ISR_STACK_SIZE) has been used since boot, in the format of
+		the "IRQ 00" line of the Zephyr build's "kernel thread stacks".
+		NuttX's ps does not show the interrupt stack.  It reads the stack
+		coloration with up_check_intstack() (a flat build lets an
+		application call it).  Arguments are ignored.
+
+if NANO_APP_IRQSTACK
+
+config NANO_APP_IRQSTACK_PRIORITY
+	int "irqstack task priority"
+	default 104
+	---help---
+		The shell's priority (NANO_PRIO_SHELL in
+		nuttx/drivers/include/priorities.h): the Zephyr build runs shell
+		commands in its shell thread.
+
+config NANO_APP_IRQSTACK_STACKSIZE
+	int "irqstack stack size"
+	default 1024
+
+endif

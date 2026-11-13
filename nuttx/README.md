@@ -7,8 +7,9 @@ NuttX 13.1.0. The port is in progress. So far there are the setup, the host test
 OS-independent common sources, the board definition with its build, the USB console with the
 flashing script, the RAM log, the key-value store (`kv`), the SPI link to the NINA-W102
 (`nina version`), the NINA's sockets (usrsock: the control side and sending and receiving) and
-name resolution, I2C0 (with DMA), the LSM6DSOX driver with its FIFO stream, and the IMU
-acquisition service (`imu`). There is no Wi-Fi connection yet: a transport stub counts the
+name resolution, I2C0 (with DMA), the LSM6DSOX driver with its FIFO stream, the IMU
+acquisition service (`imu`), and the Wi-Fi network device (`wapi`, `ifconfig`). Stored
+credentials and automatic reconnection are not there yet, and a transport stub counts the
 acquired batches and drops them (see "IMU acquisition (`imu`)").
 
 ## Setup
@@ -198,6 +199,10 @@ picocom /dev/serial/by-id/usb-NuttX_NuttX_USB_Console_*-if00
 - `bootsel` restarts the board into BOOTSEL (the `RPI-RP2` drive) after its message has been sent.
   With any argument (`bootsel --help`, for example) it only prints its usage. It is a development
   command for `flash.sh`; it can be turned off with `CONFIG_NANO_APP_BOOTSEL`.
+- `irqstack` prints the peak use of the interrupt stack since boot in one line (the format of the
+  `IRQ 00` line of the Zephyr version's `kernel thread stacks`; see "Thread priorities and
+  stacks").
+- Wi-Fi is handled with NuttX's own `wapi` and `ifconfig` (see "Wi-Fi (`wapi`, `ifconfig`)").
 - The log is kept in RAM and is not written to the console, as in the Zephyr version; `dmesg`
   shows it (see "Log").
 - The shell (the nsh session) and the commands it starts run at priority 104, the place of the
@@ -229,8 +234,16 @@ The RAM log of the Zephyr version's `src/log_ram.c` (`nuttx/drivers/log/`).
   sentinel) the NuttX version writes its report (the cause, registers, stack and task list) to the
   RAM log and then restarts by itself (`CONFIG_BOARD_RESET_ON_ASSERT=2`; a normal boot, as
   `reboot`, not BOOTSEL). The RAM log survives the restart, so `dmesg` after it shows the report.
-  The ring holds 4096 bytes, so a long report (much stack content) can push its own first lines
-  out. The Zephyr version stays stopped after a fatal error (`CONFIG_RESET_ON_FATAL_ERROR` is
+  The report has the cause line (`Assertion failed` with the reason, file and line, and the task
+  that stopped), the registers (PC, LR and SP among them), the base and size of the stopped task's
+  stack (and of the interrupt stack when in an interrupt), `Stack pointer ... is not within the
+  stack` when SP is outside it, and the task list (each stack's use; the `irq` line is the
+  interrupt stack). Stack contents (hex dumps) are left out (`CONFIG_SCHED_DUMP_STACK` is off):
+  they make the report long enough to push its first lines (the cause and the registers) out of the
+  4096-byte ring. NuttX's `CONFIG_ARCH_STACKDUMP_MAX_LENGTH` only limits the dump of a stack that
+  SP is not in, so it does not help here. Checked on the board: after a `PANIC()`, an `__assert()`
+  and a HardFault, each in a thread and in an interrupt, the report reads from its first line and
+  is followed by the log of the next boot. The Zephyr version stays stopped after a fatal error (`CONFIG_RESET_ON_FATAL_ERROR` is
   off). This is a difference from the Zephyr version; the same behaviour is to be added to the
   Zephyr version after the port is finished.
 - Sources use it the Zephyr way: `#include "app_log.h"` (`nuttx/drivers/include/`; usable from
@@ -352,9 +365,10 @@ The Wi-Fi module NINA-W102 is reached over SPI1. Its firmware is the Zephyr vers
 firmware 3.0.2 with fixes, `firmware/nina-fw/README.md`) and is not changed. So far there is the
 transfer layer that sends one command and receives its answer (`nina_request()`,
 `nina_ip_config()`), `nina version`, the sockets (NuttX's usrsock: socket, close, bind, listen,
-accept, connect, setsockopt, sending and receiving, `FIONREAD`), and the NINA's name resolution
-(`nina_getaddrinfo()`) ("Sockets (usrsock)" and "Name resolution" in `nuttx/drivers/README.md`).
-The Wi-Fi connection is not there yet.
+accept, connect, setsockopt, sending and receiving, `FIONREAD`), the NINA's name resolution
+(`nina_getaddrinfo()`), and the Wi-Fi network device `wlan0` (scan, connect, disconnect, status,
+link monitor) ("Sockets (usrsock)", "Name resolution" and "Wi-Fi" in `nuttx/drivers/README.md`).
+Stored credentials and automatic reconnection (`wifi cred`) are not there yet.
 
 ```
 nsh$ nina version
@@ -388,15 +402,62 @@ NINA firmware: 3.0.2
   (`CONFIG_RP2040_SPI_DRIVER` is off).
 - As in the Zephyr version, the NINA is set up on the first request: CS inactive, READY an input,
   IRQ high, RESET active; 10 ms later the reset is released, and after 750 ms IRQ is driven low and
-  made an input again. So the first `nina version` after a boot (flashing, `reboot`) takes longer
-  by these waits. At boot the board sets up only
-  SPI1, its pins and CS.
+  made an input again. The first request is the one that reads the MAC address when the start-up
+  code sets up `wlan0` (at boot, as in the Zephyr version), so the USB console appears after these
+  waits.
 - The steps and values of a request are those of the Zephyr version's `drivers/nina/nina_wifi.c`
   (`nuttx/drivers/nina/nina_spi.c`). READY is sampled every 100 µs (rounded up to ticks plus one
   tick, so every 100 to 200 µs), with `-ETIMEDOUT` after 2000 ms before sending, 20 ms for the
   NINA to answer CS by releasing READY, and 10000 ms for the answer to be ready. Up to 1000 bytes
   are read looking for the start of the answer (0xE0). A recursive mutex (with priority
   inheritance) serializes the requests, and the SPI runs at the priority of the calling thread.
+
+### Wi-Fi (`wapi`, `ifconfig`)
+
+The NINA is the NuttX network device `wlan0`. Instead of the Zephyr version's `wifi` commands,
+NuttX's own `wapi` (`CONFIG_WIRELESS_WAPI_CMDTOOL`, priority 104, stack 3072) and `ifconfig` are
+used. The driver's work is the Zephyr version's `drivers/nina/nina_net.c` itself ("Wi-Fi" in
+`nuttx/drivers/README.md`).
+
+| Zephyr version | NuttX port |
+|---|---|
+| `wifi connect -s <SSID> -p <passphrase> -k 1` | `wapi psk wlan0 <passphrase> 3`, then `wapi essid wlan0 <SSID> 1` |
+| `wifi connect -s <SSID> -k 0` (no encryption) | `wapi essid wlan0 <SSID> 1` (with no `wapi psk` just before) |
+| `wifi disconnect` | `wapi disconnect wlan0` |
+| `wifi scan` | `wapi scan wlan0` |
+| `wifi status` | `wapi show wlan0` and `ifconfig wlan0` (below) |
+| `net iface` | `ifconfig` |
+| `wifi cred add/delete/list/auto_connect` | Not there yet |
+
+- In `wapi psk`, 3 is the CCMP cipher and the version defaults to WPA2: the Zephyr version's `-k 1`
+  (WPA2-PSK). What `wapi psk` sets is used by the next `wapi essid` only and then forgotten, the
+  passphrase wiped. As in the Zephyr version the driver takes only no encryption and WPA2-PSK (the
+  NINA's passphrase command); anything else is `ENOTSUP`. Passphrases are 8 to 63 characters.
+- Like the Zephyr version's `wifi connect`, `wapi essid` returns once the request is made. The
+  connection steps and limit (every 500 ms, up to 60 times, so `ETIMEDOUT` after about 30
+  seconds), turning power saving off and taking the IP configuration after association are the
+  Zephyr version's. Check the result with `ifconfig wlan0` (`RUNNING` appears when connected, and
+  `inet addr`, `DRaddr` and `Mask` show the NINA's DHCP values).
+- Where the items of `wifi status` are: State is `RUNNING` in `ifconfig` (and the ESSID Flag in
+  `wapi show`), SSID is ESSID in `wapi show`, BSSID is AP, RSSI is Sense (while connected only),
+  Interface Mode is Mode (`WAPI_MODE_MANAGED`). As the Zephyr version's `wifi status`, `wapi show`
+  asks the NINA for the SSID, BSSID and RSSI at that moment. Band, Channel, Security, MFP, Link
+  Mode, Beacon Interval, DTIM, TWT and the PHY rate are not shown (the Zephyr version does not get
+  them from the NINA either; they are fixed values or 0 there).
+- `wapi scan` lists the NINA's scan (up to 10 networks) in the NINA's order, with the columns BSSID,
+  frequency, signal level (dBm), encryption (`8000` none, `0800` encrypted, `ffff` unknown) and
+  SSID. Encryption comes from the Zephyr version's mapping of the NINA's types (7 none, 5 WEP, 2
+  WPA, 4 WPA2, others unknown); `wapi` does not tell WEP, WPA and WPA2 apart. The frequency column
+  shows `*float*`, as NuttX's `printf` is built without floating point
+  (`CONFIG_LIBC_FLOATINGPOINT` off). Scans for an ESSID, passive scans and scans of given channels
+  are refused, as in the Zephyr version. A scan while connected is treated as a disconnection (the
+  IP configuration is cleared) and asks for a reconnection when it ends, as in the Zephyr version.
+- A connection during a scan and a scan during a connection attempt fail with `EBUSY`, as in the
+  Zephyr version.
+- `wapi` prints nothing when it fails (its error messages go through NuttX's debug output
+  `wlerr()`, which this configuration leaves out). Its exit status is 1, so `echo $?` tells. The
+  Zephyr version's `wifi` commands print the error value.
+- `ifconfig wlan0 down` and `up` do nothing (the Zephyr version's interface is always up as well).
 
 ## I2C0 (`i2c`)
 
@@ -666,20 +727,26 @@ Priorities map as `NuttX = 118 − Zephyr`; `nuttx/drivers/include/priorities.h`
 | Thread | Zephyr | NuttX | Stack |
 |---|---|---|---|
 | `wifi_reconnect_tid`, `nina_scan_tid`, `nina_connect_tid` | 8 | 110 | 2048, 1536, 1024 |
-| `time_sync_tid`, `imu_stream_tid` (started by init at boot), `nina_monitor_tid` | 9 | 109 | 2048, 2048, 1536 |
+| `time_sync_tid`, `imu_stream_tid`, `nina_monitor_tid` | 9 | 109 | 2048, 2048, 1536 |
 | `imu_fifo_worker` | 10 | 108 | 2048 |
 | `imu_raw_mqtt_tid` | 11 | 107 | 2048 |
 | `nina_event` (turns the NINA's socket state into usrsock events; NuttX only; started by the first socket) | – | 106 | 1536 |
 | `sysworkq` (system work queue; compatibility layer; INT1's work) | −1 (cooperative) | 119 | 1024 |
+| `net_mgmt` (network events; compatibility layer; the Wi-Fi event callbacks) | −1 (cooperative) | 119 | 2048 |
 | `RTIO WQ 0` (RTIO work queue; compatibility layer; single reads; `RTIO_WQ_0` in `ps`) | 0 | 118 | 1024 |
 | `main` (NuttX: init, which drops to the shell's priority after the start-up work) | 0 | 118 | 2048 |
 | Shell (nsh session, commands) | 14 | 104 | 3072 |
 
 - Zephyr's cooperative threads (negative priorities: `sysworkq`, `net_mgmt` and others) map above
   118, but NuttX has no cooperative threads that other threads cannot preempt; a thread of higher
-  priority preempts them. The only one in the port so far is `sysworkq` (119), and no thread has a
-  higher priority.
-- The stacks of `imu_stream_tid`, `imu_fifo_worker`, `sysworkq` and `RTIO WQ 0` are static arrays
+  priority preempts them. In the port so far these are `sysworkq` and `net_mgmt` (both 119), and
+  no thread has a higher priority. The two at 119 take turns by time slicing (Zephyr's cooperative
+  threads only switch when one yields).
+- The `K_THREAD_DEFINE()` threads (`nina_scan_tid`, `nina_connect_tid`, `nina_monitor_tid`,
+  `imu_stream_tid`) are started by init at the start of its start-up work, as the Zephyr version
+  starts them before `main()`.
+- The stacks of `imu_stream_tid`, `imu_fifo_worker`, `sysworkq`, `RTIO WQ 0`, `net_mgmt` and the
+  `nina_*_tid` threads are static arrays
   as in Zephyr (`K_THREAD_DEFINE()`, `K_THREAD_STACK_DEFINE()`, NuttX's
   `kthread_create_with_stack()`). `ps` shows them smaller by the area NuttX puts at their start
   (2048 → 2008, 2000 for `imu_stream_tid`; 1024 → 976).
@@ -691,8 +758,15 @@ Priorities map as `NuttX = 118 − Zephyr`; `nuttx/drivers/include/priorities.h`
   main stack (MSP), so handlers do not use the stack of the thread they interrupt. Only the 32 bytes
   that the hardware saves (and the save area of a context switch) go on that thread's stack, as in
   the Zephyr version. Checked on the board: a log line written in an interrupt while nothing runs
-  does not change the idle thread's stack use. `ps` does not show the interrupt stack (a PANIC report does, in its
-  `irq` line).
+  does not change the idle thread's stack use. `ps` does not show the interrupt stack; `irqstack`
+  does (in the format of the last line of the Zephyr version's `kernel thread stacks`; the value
+  is the peak since boot found from the stack coloration (`CONFIG_STACK_COLORATION`), the same as
+  the `irq` line of a PANIC report):
+
+  ```
+  nsh$ irqstack
+  <address> IRQ 00                           (real size 2048):	unused <unused>	usage <used> / 2048 (<percent> %)
+  ```
 - Stack sentinel (`CONFIG_NANO_STACK_SENTINEL`, board `Kconfig`, on by default): like the Zephyr
   version's `CONFIG_STACK_SENTINEL`, the lowest word of each stack (the value written by
   `CONFIG_STACK_COLORATION`) is checked at every thread switch (for the thread switched out) and at
@@ -750,7 +824,8 @@ content.
 | `nuttx/tests/` | `tests/` | the tests of the files above (`i2c_dma_commands.c`, `fifo_hw.c` and `stream_stop.c` included; `stream_stop.c` includes `../drivers/lsm6dso/lsm6dso_stream.c`) |
 | `nuttx/tests/fakes/` | `tests/fakes/` | stand-ins for the Zephyr and ST headers the tests need (`zephyr/drivers/sensor.h`, `zephyr/drivers/sensor_clock.h`, `zephyr/drivers/i2c.h`, `zephyr/rtio/rtio.h`, `lsm6dso_reg.h`) |
 
-`nuttx/apps/imu/imu_stream.c` is a copy with only the calls into the system and the command
+`nuttx/drivers/nina/nina_net.c` is a copy with only the leading comment and `<nuttx/config.h>`
+added; `nuttx/apps/imu/imu_stream.c` is a copy with only the calls into the system and the command
 registration at the end replaced; `imu_raw_mqtt.h` is a copy with `<zephyr/net/net_ip.h>` replaced
 by `<netinet/in.h>`.
 
@@ -863,4 +938,5 @@ the hints' defaults and the refused flags, families and socket types, the servic
 numeric addresses (the NINA is not asked), a name (commands 0x34 and 0x35 with the lock held), and
 the `EAI_*` of each failure.
 
-Tests of the NINA's Wi-Fi are added when it is ported.
+There are no host tests yet of the NINA's Wi-Fi (`nina_net.c`, `nina_netdev.c`, the network parts
+of the compatibility layer).

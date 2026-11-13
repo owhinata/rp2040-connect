@@ -52,6 +52,10 @@
 #  include "nano_nina.h"
 #endif
 
+#ifdef CONFIG_NANO_NINA_NET
+#  include "nina_net.h"
+#endif
+
 #ifdef CONFIG_NANO_I2C0
 #  include <nuttx/i2c/i2c_master.h>
 #  include "nano_i2c.h"
@@ -184,6 +188,21 @@ int nano_bringup(void)
       }
 #  endif
   }
+#endif
+
+#ifdef CONFIG_NANO_NINA_NET
+  /* The NINA-W102 network device wlan0.  The Zephyr build initializes its
+   * interface at boot (POST_KERNEL, CONFIG_WIFI_INIT_PRIORITY 80, after
+   * the sensor): dormant, and the MAC address read from the module, whose
+   * first command resets it.  Its NVS is mounted afterwards, in main().
+   */
+
+  ret = nina_net_initialize();
+  if (ret < 0)
+    {
+      syslog(LOG_ERR, "ERROR: nina_net_initialize() failed: %d\n", ret);
+      result = ret;
+    }
 #endif
 
 #ifdef CONFIG_NANO_FLASH_KV

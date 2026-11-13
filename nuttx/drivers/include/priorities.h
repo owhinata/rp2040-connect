@@ -121,8 +121,16 @@
 #define NANO_PRIO_RTIO_WQ            NANO_PRIO_FROM_ZEPHYR(0)   /* 118 */
 #define NANO_STACK_RTIO_WQ           1024
 
+/* "net_mgmt": the network event thread (subsys/net/ip/net_mgmt.c,
+ * CONFIG_NET_MGMT_EVENT_THREAD, priority -1 (cooperative),
+ * CONFIG_NET_MGMT_EVENT_STACK_SIZE 2048); the compatibility layer's
+ * zephyr_net_mgmt.c.  It runs the Wi-Fi event callbacks.
+ */
+
+#define NANO_PRIO_NET_MGMT           NANO_PRIO_FROM_ZEPHYR(-1)  /* 119 */
+#define NANO_STACK_NET_MGMT          2048
+
 /* Not used by the port yet; for reference (see nuttx/README.md):
- *   net_mgmt       -1 (cooperative)  -> 119, 2048
  *   rx_q[0]        -1 (cooperative)  -> 119, 1504 (Zephyr's IP stack, idle)
  *   tcp_work      -14 (cooperative)  -> 132, 1024 (Zephyr's IP stack, idle)
  *   usbd, usbd@50110000 -8 (coop.)   -> 126, 1024 / 512 (NuttX: interrupt)
