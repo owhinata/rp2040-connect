@@ -6,3 +6,5 @@ obj/
 *.user
 *.suo
 TestResults/
+# Models made by tools/export_tartanimu.py; not committed.
+/models/

@@ -39,7 +39,7 @@ congestion and a receiver that stops are to be detected and reported.
 | Starting and stopping a measurement | `imu start` / `imu stop` in the shell (no path from the PC yet) |
 | Session ID and server address | Implemented (assigned automatically; default gateway by default, changed through the key-value store) |
 | Computing a calibration and applying it to `sensor get` / `stream` on the board | Implemented (§10) |
-| Receiving and recording application on the PC | Partly implemented (`host/ImuStudio`: receiving, applying the calibration, attitude and spectrum display, recording and replay) |
+| Receiving and recording application on the PC | Partly implemented (`host/ImuStudio`: receiving, applying the calibration, attitude, spectrum and position display, recording and replay) |
 | Operation with a real MQTT broker | Not verified |
 
 ### Verified on hardware

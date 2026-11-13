@@ -145,6 +145,26 @@
             </DockPanel>
           </Grid>
         </TabItem>
+        <TabItem Header="Position">
+          <Grid ColumnDefinitions="*,270">
+            <Border Grid.Column="0" BorderBrush="#40808080" BorderThickness="1">
+              <controls:TrackControl x:Name="Track" />
+            </Border>
+            <DockPanel Grid.Column="1" Margin="12,0,0,0">
+              <StackPanel DockPanel.Dock="Bottom" Spacing="6">
+                <DockPanel>
+                  <TextBlock Classes="label" Text="Madgwick β" />
+                  <TextBlock DockPanel.Dock="Right" Classes="label" Text="{Binding Beta, StringFormat={}{0:F3}}" />
+                  <Slider Minimum="0" Maximum="0.5" Value="{Binding Beta}" Margin="8,0" />
+                </DockPanel>
+                <Button Content="Reset position" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
+                        Command="{Binding ResetPositionCommand}"
+                        ToolTip.Tip="Back to the origin; the attitude is taken again from the acceleration" />
+              </StackPanel>
+              <TextBlock Text="{Binding PositionText}" FontFamily="monospace" FontSize="12" TextWrapping="Wrap" />
+            </DockPanel>
+          </Grid>
+        </TabItem>
       </TabControl>
 
       <GridSplitter x:Name="ShellSplitter" Grid.Row="1" ResizeDirection="Rows" Background="#30808080"

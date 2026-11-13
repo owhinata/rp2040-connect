@@ -18,7 +18,7 @@ and displays it. The board's shell (Telnet) can be used from inside the applicat
 | 3D attitude display with the Madgwick filter (60 Hz) | Implemented |
 | Recording and replay | Implemented |
 | Frequency content display (spectrogram, updated at 60 Hz) | Implemented |
-| Position estimation | Not implemented |
+| Position estimation (velocity from a learned model, integrated, about 60 times a second) | Implemented (accuracy of the position not evaluated) |
 
 ## Build and run
 
@@ -36,7 +36,7 @@ Arguments (all optional):
 | `--port <number>` | Port to listen on for MQTT. Default: the last value (1883 the first time) |
 | `--board <address>` | Connect to the shell at this address on start. `address:port` is accepted |
 | `--replay <directory>` | Replay a recording on start |
-| `--view <attitude\|spectrum>` | The view to start with |
+| `--view <attitude\|spectrum\|position>` | The view to start with |
 
 The port, the board address, the filter gain, the spectrum settings and the height of the
 shell pane are saved to
@@ -101,6 +101,57 @@ attitude and spectrum starts each one over).
 - After a loss of data the pictures pause until the window has filled again, so that no
   window spans the loss.
 
+### Position
+
+The velocity is estimated by the learned model
+[Tartan IMU](https://github.com/superxslam/TartanIMU) (code Apache-2.0, weights MIT) and
+integrated to a position. The view shows the path from above (X to the right, Y up, grid in
+metres) with the position, the velocity and how the model is doing.
+
+**The model is not part of this repository.** The following makes the ONNX version at
+`host/ImuStudio/models/tartanimu-human.onnx` (`models/` is ignored by Git; once; it installs
+PyTorch and downloads about 64 MB of weights; the clone and the venv may be anywhere).
+
+```bash
+git clone https://github.com/superxslam/TartanIMU.git ~/src/TartanIMU
+git -C ~/src/TartanIMU checkout 8a8025000f85d2c6b0692b88e15c2c91e761f7d7
+python3 -m venv ~/src/tartanimu-venv
+~/src/tartanimu-venv/bin/pip install --index-url https://download.pytorch.org/whl/cpu torch
+~/src/tartanimu-venv/bin/pip install onnx onnxruntime onnxscript pyyaml numpy einops
+~/src/tartanimu-venv/bin/python host/ImuStudio/tools/export_tartanimu.py --source ~/src/TartanIMU
+```
+
+The script ends only after checking that the converted model gives what the original gives.
+The application looks for `models/tartanimu-human.onnx` from the directory of its own
+executable upwards: a build inside the repository finds `host/ImuStudio/models/`, a copy of
+the application elsewhere a `models/` directory beside it. To use a model in another place,
+set `PositionModelPath` in `settings.json`.
+
+What happens:
+
+1. The samples are reduced to 200 Hz (means over 5 ms), the rate of the model's training data.
+2. About 60 times a second the last one to ten seconds go to the model (one-second windows,
+   every fifth sample: 40 points × 6 axes, laid out as in training). The model returns the
+   mean velocity over the last second in the sensor's frame.
+3. The attitude of a Madgwick filter run on every sample turns the velocity into the world
+   frame; velocity × time is summed up.
+
+Limits to know:
+
+- **The model was trained on IMUs worn or carried by people.** Motion such as moving the
+  board by hand on a desk, or holding it differently from the training data, cannot be
+  expected to work well. Judging by the training augmentation (rotation about the vertical
+  and ±5° of tilt), it assumes the sensor's Z axis points roughly up.
+- The velocity is the mean over the last second, so it lags the motion by about 0.5 s.
+- Heading cannot be known from an IMU alone: it is relative to the start and drifts.
+- There is no estimate in the first second, while the window fills. After a loss of data the
+  position pauses until the window has filled again (one second).
+- **Reset position** returns to the origin and takes the attitude again from the acceleration.
+
+`Model` on the right: `estimates` is the number of estimates per second, `skipped` the
+requests the model was too late for (their time is added at the next estimate), `time` the
+duration of one estimate and `history` the seconds given to the model.
+
 ### Gyro bias
 
 The RAW data over MQTT does not carry the bias the board tracked, so the application tracks
@@ -141,7 +192,7 @@ acceleration, an error in the heading stays.
 
 As of 2026-11-13.
 
-- Unit tests (`dotnet test`, 44 tests): packet checks, the MQTT endpoint, Telnet output
+- Unit tests (`dotnet test`, 48 tests): packet checks, the MQTT endpoint, Telnet output
   handling, decoding and applying a calibration, bias tracking, sample period, attitude,
   reading and writing recordings, pausing a replay and moving it to another time,
   the FFT and the spectra (frequency, level and axis of known sines).
@@ -153,6 +204,13 @@ As of 2026-11-13.
 - The spectrum view: with a replay of a recording taken on hardware, the six pictures scroll.
   CPU use is about 40 % of one core (10–20 % for the attitude view). The drawing period was
   not measured.
+- The position view: unit tests with a stand-in that returns a fixed velocity check the input
+  layout, the rotation by the attitude and the integration. The converted model differs from
+  the original by 1.3e-06 m/s. Replaying a recording taken on hardware (for calibration: the
+  board put down in one pose after another, in place) gave about 58 estimates a second at
+  about 10 ms each (one thread), about two requests a second skipped, and about 80 % of one
+  core. **The accuracy of the position was not evaluated** (there is no reference path). In
+  this recording the estimate moved about 0.4 m in 44 s although the board hardly moved.
 - Connection to the real board: the user confirmed that the shell (Telnet) and the buttons
   work. No test of a set duration or count was made.
 

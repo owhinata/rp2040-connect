@@ -25,6 +25,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private readonly ImuPipeline _pipeline = new();
     private readonly AttitudeEstimator _attitude = new();
     private readonly SpectrumAnalyzer _spectrum = new();
+    private PositionEstimator? _position;
     private readonly DispatcherTimer _timer;
     private readonly StringBuilder _shellLog = new();
     private readonly HashSet<string> _calibrationRead = new();
@@ -64,9 +65,14 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty] private double _spectrumMinDb;
     [ObservableProperty] private double _spectrumMaxDb;
     [ObservableProperty] private string _spectrumText = "";
+    [ObservableProperty] private string _positionText = "";
 
     public const int AttitudeView = 0;
     public const int SpectrumView = 1;
+    public const int PositionView = 2;
+
+    /// <summary>Raised on the UI thread at the frame rate: the estimate, and the path when it was copied anew.</summary>
+    public event Action<PositionSnapshot, Vector3[]?>? PositionUpdated;
 
     public IReadOnlyList<int> SpectrumSizes { get; } = SpectrumAnalyzer.Sizes;
     public IReadOnlyList<string> SpectrumMaxFrequencies { get; } = ["Nyquist", "1600", "800", "400", "200", "100"];
@@ -106,6 +112,10 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     partial void OnBetaChanged(double value)
     {
         _attitude.Beta = (float)value;
+        if (_position is not null)
+        {
+            _position.Beta = (float)value;
+        }
         _settings.Beta = (float)value;
     }
 
@@ -113,7 +123,47 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
     /// <summary>The views take turns: only the one shown gets the samples.</summary>
     partial void OnSelectedViewChanged(int value) =>
-        _pipeline.Sink = value == SpectrumView ? _spectrum : _attitude;
+        _pipeline.Sink = value switch
+        {
+            SpectrumView => _spectrum,
+            PositionView => LoadPositionModel(),
+            _ => _attitude,
+        };
+
+    /// <summary>The estimator, made when the view is first opened. Null without the model.</summary>
+    private PositionEstimator? LoadPositionModel()
+    {
+        if (_position is not null)
+        {
+            return _position;
+        }
+        string path = _settings.ResolvePositionModelPath();
+        if (!File.Exists(path))
+        {
+            PositionText = $"The velocity model is missing:\n{path}\n\n" +
+                           "Make it with tools/export_tartanimu.py\n(see the README), then open this\nview again.";
+            return null;
+        }
+        try
+        {
+            _position = new PositionEstimator(new OnnxVelocityModel(path)) { Beta = (float)Beta };
+        }
+        catch (Exception e)
+        {
+            PositionText = $"Cannot load the velocity model:\n{path}\n\n{e.Message}";
+        }
+        return _position;
+    }
+
+    /// <summary>Back to the origin; the attitude is taken again from the acceleration.</summary>
+    [RelayCommand]
+    private void ResetPosition()
+    {
+        if (SelectedView == PositionView)
+        {
+            _pipeline.Sink = _position;
+        }
+    }
 
     partial void OnSpectrumSizeChanged(int value)
     {
@@ -563,6 +613,19 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
                 }
             }
         }
+        else if (SelectedView == PositionView)
+        {
+            if (_position is not null)
+            {
+                PositionSnapshot p = _position.Snapshot();
+                bool slow = _frame % 6 == 0;
+                PositionUpdated?.Invoke(p, slow ? _position.Track() : null);
+                if (slow)
+                {
+                    ShowPositionText(p);
+                }
+            }
+        }
         else
         {
             Orientation = _attitude.Orientation;
@@ -632,6 +695,33 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             """);
     }
 
+    private void ShowPositionText(PositionSnapshot p)
+    {
+        (double roll, double pitch, double yaw) = Euler(p.Orientation);
+        PositionText = string.Create(CultureInfo.InvariantCulture, $"""
+            Position [m]
+              x {p.Position.X,8:F2}
+              y {p.Position.Y,8:F2}
+              z {p.Position.Z,8:F2}
+            Distance   {p.Distance,7:F2} m
+            Time       {p.Seconds,7:F1} s
+
+            Velocity [m/s]  {p.VelocityWorld.Length(),5:F2}
+              sensor {p.VelocityBody.X,6:F2} {p.VelocityBody.Y,6:F2} {p.VelocityBody.Z,6:F2}
+              world  {p.VelocityWorld.X,6:F2} {p.VelocityWorld.Y,6:F2} {p.VelocityWorld.Z,6:F2}
+
+            Roll {roll,6:F1}°  Pitch {pitch,6:F1}°
+            Yaw  {yaw,6:F1}°
+
+            Model
+              estimates {p.EstimatesPerSecond,5:F1} /s
+              skipped   {p.Skipped,5}
+              time      {p.InferenceMilliseconds,5:F2} ms
+              history   {p.Windows,5} s
+            {(p.Windows == 0 ? "waiting for the first second" : "")}{(p.Error is null ? "" : "error: " + p.Error)}
+            """);
+    }
+
     private void ShowSpectrumText(SpectrumColumn column)
     {
         int size = column.Db[0].Length * 2;
@@ -660,6 +750,8 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     {
         _timer.Stop();
         _player?.Dispose();
+        _pipeline.Sink = null;
+        _position?.Dispose();
         if (_writer is not null)
         {
             StopRecording();

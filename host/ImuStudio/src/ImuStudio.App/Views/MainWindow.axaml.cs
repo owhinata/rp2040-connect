@@ -29,6 +29,10 @@ public partial class MainWindow : Window
         {
             _viewModel.SelectedView = MainViewModel.SpectrumView;
         }
+        else if (string.Equals(view, "position", StringComparison.OrdinalIgnoreCase))
+        {
+            _viewModel.SelectedView = MainViewModel.PositionView;
+        }
         if (replay is not null)
         {
             _viewModel.Play(replay);
@@ -52,6 +56,14 @@ public partial class MainWindow : Window
         }
         ApplySpectrumSettings();
         _viewModel.SpectrumColumns += OnSpectrumColumns;
+        _viewModel.PositionUpdated += (snapshot, track) =>
+        {
+            if (track is not null)
+            {
+                Track.SetTrack(track);
+            }
+            Track.SetCurrent(snapshot.Position, snapshot.Orientation);
+        };
         Closed += (_, _) =>
         {
             KeepShellPaneHeight();
