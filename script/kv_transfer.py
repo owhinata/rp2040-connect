@@ -39,9 +39,11 @@ FORMAT = 'rp2040-connect-kv-backup'
 # 他のキーにも保存され得る。無いキーは null として記録されるだけ。
 ACCEL_GAINS = (61, 122, 244, 488)            # ±2, 4, 8, 16 g
 GYRO_GAINS = (4375, 8750, 17500, 35000, 70000)  # ±125, 250, 500, 1000, 2000 dps
-DEFAULT_KEYS = (['imu.host', 'imu.port', 'imu.device', 'imu.odr', 'imu.watermark', 'imu.session']
+DEFAULT_KEYS = (['imu.host', 'imu.port', 'imu.device', 'imu.odr', 'imu.watermark']
                 + ['imu.cal.accel.%d' % g for g in ACCEL_GAINS]
                 + ['imu.cal.gyro.%d' % g for g in GYRO_GAINS])
+# セッションの通し番号は実行時の状態なので移さない（移行先では初期値から数え直す）。
+# 退避ファイルに入っていても書き戻さない。
 SESSION_KEY = 'imu.session'
 
 KEY_RE = re.compile(r'[A-Za-z0-9_.-]{1,32}')
@@ -368,11 +370,8 @@ def run_restore(sh, values, kv=True, wifi=None, out=None):
                     results.append((key, '飛ばした（退避時に未設定）'))
                     continue
                 if key == SESSION_KEY:
-                    now = read_key(sh, key)
-                    if now is not None and len(now) == 4 and len(value) == 4 and \
-                       int.from_bytes(now, 'big') >= int.from_bytes(value, 'big'):
-                        results.append((key, '飛ばした（ボードの通し番号の方が新しい）'))
-                        continue
+                    results.append((key, '飛ばした（実行時の状態なので書き戻さない）'))
+                    continue
                 write_key(sh, key, value)
                 written.add(key)
                 results.append((key, '書き込み・読み返し OK（%d バイト）' % len(value)))
@@ -417,7 +416,8 @@ def dry_run(args, out=None):
                 print('  # %s は未設定なので書かない' % key, file=out)
                 continue
             if key == SESSION_KEY:
-                print('  kv get %s（ボードの値の方が新しければ書かない）' % key, file=out)
+                print('  # %s は実行時の状態なので書かない' % key, file=out)
+                continue
             print('  kv sethex %s %s' % (key, value.hex()), file=out)
             print('  kv get %s' % key, file=out)
         if any(k.startswith('imu.cal.') and v is not None for k, v in values.items()):
