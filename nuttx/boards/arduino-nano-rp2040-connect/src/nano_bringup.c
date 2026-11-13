@@ -57,6 +57,10 @@
 #  include "nano_i2c.h"
 #endif
 
+#ifdef CONFIG_NANO_I2C0_DMA
+#  include "nano_dma.h"
+#endif
+
 #ifdef CONFIG_ARCH_BOARD_COMMON
 #include "rp2040_common_bringup.h"
 #endif /* CONFIG_ARCH_BOARD_COMMON */
@@ -113,6 +117,20 @@ int nano_bringup(void)
   if (ret < 0)
     {
       syslog(LOG_ERR, "ERROR: nano_nina_initialize() failed: %d\n", ret);
+      result = ret;
+    }
+#endif
+
+#ifdef CONFIG_NANO_I2C0_DMA
+  /* The DMA for the I2C0 reads: reset, both interrupts.  The Zephyr build
+   * brings up its DMA device before i2c0 (CONFIG_DMA_INIT_PRIORITY 40,
+   * CONFIG_I2C_INIT_PRIORITY 50, both POST_KERNEL).
+   */
+
+  ret = nano_dma_initialize();
+  if (ret < 0)
+    {
+      syslog(LOG_ERR, "ERROR: nano_dma_initialize() failed: %d\n", ret);
       result = ret;
     }
 #endif

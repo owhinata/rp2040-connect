@@ -34,10 +34,13 @@ the parts ported so far.
 
 | File | Role |
 |---|---|
-| The board's `src/nano_i2c.c` | The I2C0 controller. A copy of the controller part of the Zephyr version's `drivers/i2c_dw/i2c_dw.c` (`i2c_dw_transfer()`, `i2c_dw_isr()`, `i2c_dw_data_ask()`, `_read()`, `_send()`, `i2c_dw_setup()`, `i2c_dw_configure()`, the initialization) with the same functions, branches, order, register values, time limit and error values, offered as a NuttX `struct i2c_master_s` (`I2C_TRANSFER()`, `I2C_RESET()`) |
+| The board's `src/nano_i2c.c` | The I2C0 controller. A copy of the controller part of the Zephyr version's `drivers/i2c_dw/i2c_dw.c` (`i2c_dw_transfer()`, `i2c_dw_isr()`, `i2c_dw_data_ask()`, `_read()`, `_send()`, `i2c_dw_setup()`, `i2c_dw_configure()`, the initialization) and of the DMA reads (`i2c_dw_rp_dma_read()` and the rest) with the same functions, branches, order, register values, time limit and error values, offered as a NuttX `struct i2c_master_s` (`I2C_TRANSFER()`, `I2C_RESET()`) |
 | The board's `src/nano_i2c.h` | `nano_i2c0_initialize()` (called by `nano_bringup()` at boot, which registers `/dev/i2c0`) |
 | The board's `src/nano_i2c_dw.h` | The OS-independent part: the definitions of the Zephyr version's `i2c_dw.h`, the SCL counts, the speed class of a frequency, the NuttX flags (`I2C_M_*`) turned into Zephyr's (`I2C_MSG_*`) and the words written to `IC_DATA_CMD`. Host test `nuttx/tests/nano_i2c_dw.c` |
 | The board's `src/nano_i2c_dw_registers.h` | A copy of the Zephyr version's `i2c_dw_registers.h` (only the accessors are defined for NuttX) |
+| The board's `src/nano_dma.c`, `nano_dma.h` | The RP2040 DMA used by the DMA reads: Zephyr's `drivers/dma/dma_rpi_pico.c` (`dma_config()`, `dma_start()`, `dma_stop()`, the interrupt), the channel allocation of the DMA API (`dma_request_channel()`, `dma_release_channel()`) and the pico-sdk calls that `i2c_dw.c` makes itself (`dma_channel_is_busy()`, `dma_irqn_acknowledge_channel()`, `dma_hw->abort`), written on the registers |
+| The board's `src/i2c_dw_rp2040_commands.[ch]` | Unchanged copies of the Zephyr version's files of that name (the command words sent by DMA). Host test `nuttx/tests/i2c_dma_commands.c` (also a copy) |
+| `include/nano_i2c_dma.h` | The state that the `i2c_dma` command (`nuttx/apps/i2c_dma`) reads and sets: DMA on or off and the four counters |
 
 - The calling thread drives a transfer and the interrupt handler moves the bytes. The caller waits
   for the end on a semaphore (1 s; after that the transfer is aborted and returns `-ETIMEDOUT`). A
@@ -52,7 +55,35 @@ the parts ported so far.
 - Not ported: target (slave) mode, Intel LPSS DMA, `CONFIG_I2C_ALLOW_NO_STOP_TRANSACTIONS`, the SDA/SCL
   timeouts (`CONFIG_I2C_DW_EXTENDED_SUPPORT`), power management, PCIe, code for other SoCs, the bus
   recovery and check callbacks (not registered on this board; recovery does nothing), i2c1.
-- The RP2040 I2C DMA reads are not there yet. Use and measurements are in the "I2C0" section of
-  `nuttx/README.md`.
+- The DMA reads (`CONFIG_NANO_I2C0_DMA`, on by default; the Zephyr version's
+  `CONFIG_I2C_DW_RP2040_DMA`) copy the DMA part of `i2c_dw.c` with the same branches, order and
+  values:
+  - Conditions: DMA on (`i2c_dma mode`), the DMA ready, 32 to 3584 bytes
+    (`I2C_DW_RP2040_DMA_MAX_READ`), ending with STOP, the last message of the transfer, a 7-bit
+    address. Otherwise `-EAGAIN` sends the read to the interrupt path. When a channel cannot be had
+    or configured, `dma_fallbacks` is counted and the read also goes to the interrupt path (nothing
+    has been started yet).
+  - The TX channel writes the read command words (16 bits: READ on each, RESTART on the first only
+    when one is needed, STOP on the last) to `IC_DATA_CMD`; the RX channel takes the data from
+    `IC_DATA_CMD` 8 bits at a time. `IC_DMA_TDLR` is 8, `IC_DMA_RDLR` 0, the only interrupts are
+    STOP_DET, TX_ABRT, TX_OVER, RX_OVER, RX_UNDER and SCL_STUCK_LOW. The RX channel starts first,
+    then TX, then `IC_DMA_CR` gets 3.
+  - The read ends when TX done, RX done and STOP have all come, or on an error (an I2C error
+    interrupt, a DMA bus error). The wait uses the transfer time limit (1 s) as one deadline and
+    waits for what is left of it. An error gives `-EIO`, the deadline `-ETIMEDOUT`.
+  - Clean-up: `IC_DMA_CR` 0, interrupt mask 0; on failure abort the I2C and stop both DMA channels
+    (interrupt off, CHAN_ABORT, wait in 1 ms steps for at most 100 ms until BUSY and CHAN_ABORT clear,
+    then acknowledge late completions (RP2040-E13) on both DMA_IRQ_0 and DMA_IRQ_1). If they do not
+    stop, the controller is quarantined (`<err> i2c_dw: DMA channels did not stop; I2C controller
+    quarantined`, `-EIO`, the channels are not released) and every later transfer gives `-EIO` until
+    a reboot. Otherwise the interrupts are cleared and, on failure, the abort is given at most 100 ms
+    to finish (else quarantine and `<err> i2c_dw: I2C abort did not finish; controller quarantined`).
+  - As in Zephyr's RP2040 DMA driver, channel 0 is on DMA_IRQ_0 and the others on DMA_IRQ_1, a
+    channel request never waits and a stop does not wait (the I2C side above waits). NuttX's
+    `rp2040_dmac.c` (`CONFIG_RP2040_DMAC`) uses DMA_IRQ_0 for every channel, waits for a free channel
+    and waits without a limit in its stop, so it is off (these reads are the only DMA user; the
+    NINA's SPI does not use DMA).
+  - `rp_dma_events` is updated with interrupts off (Zephyr's `atomic_or()`); the four counters are
+    written only by the transfer, which holds the bus semaphore (32 bits, wrapping).
 
 Wi-Fi management and sockets (usrsock) are not ported yet.

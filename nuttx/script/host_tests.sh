@@ -55,3 +55,8 @@ run subcmd -Iapps/subcmd apps/subcmd/subcmd.c
 run nina_spi -Idrivers/include -Idrivers/nina
 # Board: the I2C0 driver's SCL counts, speeds and IC_DATA_CMD words against the Zephyr build's.
 run nano_i2c_dw -Iboards/arduino-nano-rp2040-connect/src
+# Board: the command words of the I2C0 DMA reads (an unchanged copy of the Zephyr build's test).
+run i2c_dma_commands -Iboards/arduino-nano-rp2040-connect/src \
+    boards/arduino-nano-rp2040-connect/src/i2c_dw_rp2040_commands.c
+# The i2c_dma command's output (fake driver side).
+run i2c_dma_app -Idrivers/include -Iapps/i2c_dma -Iapps/subcmd apps/subcmd/subcmd.c

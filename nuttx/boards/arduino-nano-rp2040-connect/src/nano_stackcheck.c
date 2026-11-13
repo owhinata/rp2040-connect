@@ -43,9 +43,12 @@
  *   handler, for every interrupt (peripheral interrupts and SysTick go
  *   through exception_direct(), which does not reach arm_doirq()).  After
  *   the handler (enter == false) the task in g_running_tasks[] is checked:
- *   the task that was running when the interrupt came, whose stack the
- *   handler ran on (NuttX has no interrupt stack on this chip), like
- *   Zephyr's _current at the end of an interrupt.  this_task() may already
+ *   the task that was running when the interrupt came, like Zephyr's
+ *   _current at the end of an interrupt.  With CONFIG_ARCH_INTERRUPTSTACK
+ *   (the imu defconfig: 2048, Zephyr's CONFIG_ISR_STACK_SIZE) tasks run on
+ *   the PSP and handlers on the interrupt stack (MSP), as on Zephyr, so
+ *   what lands on the interrupted task's stack is the frame the hardware
+ *   stacks on entry; without it the handler itself runs there.  this_task() may already
  *   be a task the handler woke, which is switched to only afterwards.
  *   The Cortex-M0+ port runs all interrupts at one priority, so they do not
  *   nest and every handler exit is the end of a non-nested interrupt.
@@ -57,8 +60,10 @@
  * On a changed word, the word is restored (as Zephyr does, so further
  * checks do not trip on it again) and the system halts through PANIC(),
  * whose report (with the running task's name) goes to the RAM log (Zephyr:
- * fatal error, then halt; CONFIG_RESET_ON_FATAL_ERROR is off there).  The
- * report runs on the same, already overrun stack: there is no other.
+ * fatal error, then halt; CONFIG_RESET_ON_FATAL_ERROR is off there).  Both
+ * checks run in handler mode, so with the interrupt stack the report runs
+ * on it, not on the overrun stack.  The interrupt stack itself has no
+ * sentinel, as in Zephyr (z_check_stack_sentinel() checks _current only).
  */
 
 /****************************************************************************

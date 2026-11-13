@@ -1,0 +1,10 @@
+############################################################################
+# nuttx/apps/i2c_dma/Make.defs
+#
+# Read through nuttx/apps/Make.defs.  Adds this directory to the build when
+# CONFIG_NANO_APP_I2C_DMA is set.
+############################################################################
+
+ifneq ($(CONFIG_NANO_APP_I2C_DMA),)
+CONFIGURED_APPS += $(APPDIR)/external/i2c_dma
+endif

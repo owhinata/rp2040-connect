@@ -14,9 +14,10 @@
  *
  * Shared by the kernel side (nuttx/drivers, the board code) and the
  * applications: $(TOPDIR)/external/include.  The stack sizes are those of
- * the Zephyr build; NuttX has no interrupt stack on the RP2040
- * (ARCH_INTERRUPTSTACK=0), so interrupts run on the stack of the thread
- * they interrupt and each stack needs room for them.
+ * the Zephyr build.  As there, interrupts have a stack of their own
+ * (CONFIG_ARCH_INTERRUPTSTACK=2048 in the imu defconfig, Zephyr's
+ * CONFIG_ISR_STACK_SIZE): a thread's stack only takes the frame the
+ * hardware saves when it is interrupted.
  */
 
 #ifndef __NUTTX_DRIVERS_INCLUDE_PRIORITIES_H

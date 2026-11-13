@@ -71,6 +71,15 @@ ifeq ($(CONFIG_NANO_I2C0),y)
 CSRCS += nano_i2c.c
 endif
 
+# Its DMA reads: the DMA channels (in place of the in-tree rp2040_dmac.c,
+# RP2040_DMAC off) and the command words (an unchanged copy of the Zephyr
+# build's drivers/i2c_dw/i2c_dw_rp2040_commands.c).
+
+ifeq ($(CONFIG_NANO_I2C0_DMA),y)
+CSRCS += nano_dma.c
+CSRCS += i2c_dw_rp2040_commands.c
+endif
+
 # The stack sentinel in the scheduler's switch hook.
 
 ifeq ($(CONFIG_NANO_STACK_SENTINEL),y)
@@ -82,6 +91,7 @@ VPATH += :board
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)arch$(DELIM)$(CONFIG_ARCH)$(DELIM)src$(DELIM)board$(DELIM)board
 
 # Headers shared with nuttx/drivers and the applications (app_log.h,
-# log_ram.h, cpu_load.h, priorities.h, nano_nina.h): nuttx/drivers/include.
+# log_ram.h, cpu_load.h, priorities.h, nano_nina.h, nano_i2c_dma.h):
+# nuttx/drivers/include.
 
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)include

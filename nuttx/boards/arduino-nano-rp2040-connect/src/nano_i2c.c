@@ -39,9 +39,17 @@
  * management, PCIe, the RTS5912 quirk, the recover/check-bus callbacks
  * (only wrappers of other SoCs register them; without one the recovery
  * does nothing and returns 0), the never-set i2c_stat_not_ready counter,
- * and other instances than i2c0.  The DMA reads of i2c0
- * (CONFIG_I2C_DW_RP2040_DMA) are not here yet; IC_CON gets the RX FIFO
- * full hold bit as with them enabled (their default), see i2c_dw_setup().
+ * and other instances than i2c0.
+ *
+ * The DMA reads of i2c0 (CONFIG_I2C_DW_RP2040_DMA of the Zephyr build,
+ * i2c_dw.c:578-801, 816-837, 1045-1049, 1191-1196, 1290-1302, 1469-1473,
+ * 1891-1893) are CONFIG_NANO_I2C0_DMA: the same conditions, command words,
+ * thresholds, interrupt mask, start order, completion and timeout, clean-up
+ * and stop sequence, quarantine, counters and log lines, on nano_dma.c (a
+ * port of Zephyr's dma_rpi_pico.c).  atomic_t becomes a volatile word with
+ * the read-modify-write under up_irq_save() where an interrupt also writes
+ * it (rp_dma_events); the counters are only written by the transfer, which
+ * holds bus_sem.
  *
  * Differences of the NuttX interface (see nuttx/drivers/README.md):
  * the speed comes with each transfer (msgs[0].frequency; 100 kHz, 400 kHz
@@ -63,6 +71,7 @@
 #include <nuttx/clock.h>
 #include <nuttx/irq.h>
 #include <nuttx/semaphore.h>
+#include <nuttx/sched.h>
 #include <nuttx/i2c/i2c_master.h>
 #include <arch/board/board.h>
 
@@ -80,7 +89,17 @@
 #include "nano_i2c.h"
 #include "nano_i2c_dw.h"
 
+#ifdef CONFIG_NANO_I2C0_DMA
+#  include "i2c_dw_rp2040_commands.h"
+#  include "nano_dma.h"
+#  include "nano_i2c_dma.h"
+#endif
+
 LOG_MODULE_REGISTER(i2c_dw);
+
+#ifndef ARRAY_SIZE
+#  define ARRAY_SIZE(a) (sizeof(a) / sizeof((a)[0]))
+#endif
 
 #if NANO_I2C_M_READ != I2C_M_READ || NANO_I2C_M_TEN != I2C_M_TEN || \
     NANO_I2C_M_NOSTOP != I2C_M_NOSTOP || NANO_I2C_M_NOSTART != I2C_M_NOSTART
@@ -117,13 +136,19 @@ struct i2c_dw_dev_config {
 	uint8_t xfr_flags;
 	bool support_hs_mode;
 	bool ready;
+
+#ifdef CONFIG_NANO_I2C0_DMA
+	/* i2c_dw.h:198-207 */
+	sem_t rp_dma_sem;
+	volatile uint32_t rp_dma_events;
+	volatile uint32_t rp_dma_active;
+	int rp_dma_tx_channel;
+	int rp_dma_rx_channel;
+	bool rp_dma_quarantined;
+	uint16_t rp_dma_commands[I2C_DW_RP2040_DMA_MAX_READ];
+	uint8_t rp_dma_buffer[I2C_DW_RP2040_DMA_MAX_READ];
+#endif
 };
-
-/* rp_dma_enabled of the Zephyr build (i2c_dw.c:581): on unless the
- * i2c_dma command turns it off.
- */
-
-static bool rp_dma_enabled = true;
 
 static int i2c_dw_transfer(struct i2c_master_s *dev, struct i2c_msg_s *msgs,
 			   int count);
@@ -138,10 +163,11 @@ static const struct i2c_ops_s funcs = {
 #endif
 };
 
-static struct i2c_dw_dev_config i2c_0_runtime = {
-	.dev = {.ops = &funcs},
-	.base = RP2040_I2C0_BASE,
-};
+/* In .bss, as Zephyr's i2c_0_runtime (the DMA buffers make it about
+ * 11 KiB); nano_i2c0_initialize() sets the operations and the base.
+ */
+
+static struct i2c_dw_dev_config i2c_0_runtime;
 
 /* No recover-bus callback is registered (i2c_dw.c:108-122). */
 
@@ -367,6 +393,254 @@ static inline void i2c_dw_transfer_complete(struct i2c_dw_dev_config *dw)
 	nxsem_post(&dw->device_sync_sem);
 }
 
+#ifdef CONFIG_NANO_I2C0_DMA
+#define RP_DMA_TX_DONE BIT(0)
+static volatile uint32_t rp_dma_transfers, rp_dma_bytes, rp_dma_errors, rp_dma_fallbacks;
+static volatile bool rp_dma_enabled = true;
+#define RP_DMA_RX_DONE BIT(1)
+#define RP_DMA_STOP    BIT(2)
+#define RP_DMA_ERROR   BIT(3)
+#define RP_DMA_DONE    (RP_DMA_TX_DONE | RP_DMA_RX_DONE | RP_DMA_STOP)
+
+/* atomic_or(): returns the old value. */
+
+static uint32_t rp_dma_atomic_or(volatile uint32_t *target, uint32_t value)
+{
+	irqstate_t flags = up_irq_save();
+	uint32_t old = *target;
+
+	*target = old | value;
+	up_irq_restore(flags);
+	return old;
+}
+
+/* k_uptime_get(): milliseconds since boot. */
+
+static int64_t rp_dma_uptime_ms(void)
+{
+	return (int64_t)TICK2MSEC(clock_systime_ticks());
+}
+
+static void i2c_dw_rp_dma_notify(struct i2c_dw_dev_config *dw, uint32_t events)
+{
+	uint32_t all = rp_dma_atomic_or(&dw->rp_dma_events, events) | events;
+	if ((all & RP_DMA_ERROR) || (all & RP_DMA_DONE) == RP_DMA_DONE) {
+		nxsem_post(&dw->rp_dma_sem);
+	}
+}
+
+static void i2c_dw_rp_dma_callback(void *user_data, uint32_t channel, int status)
+{
+	struct i2c_dw_dev_config *dw = user_data;
+	if (!dw->rp_dma_active) {
+		return;
+	}
+	i2c_dw_rp_dma_notify(dw, status < 0 ? RP_DMA_ERROR
+					    : (channel == (uint32_t)dw->rp_dma_tx_channel
+						       ? RP_DMA_TX_DONE
+						       : RP_DMA_RX_DONE));
+}
+
+/* A stop only requests an abort in Zephyr's RP2040 DMA driver.  Wait for BUSY,
+ * then acknowledge late completions (RP2040-E13) before releasing channels.
+ */
+static bool i2c_dw_rp_dma_stop(int tx, int rx)
+{
+	int64_t deadline = rp_dma_uptime_ms() + 100;
+	(void)nano_dma_stop(tx);
+	(void)nano_dma_stop(rx);
+	while (nano_dma_channel_is_busy(tx) || nano_dma_channel_is_busy(rx) ||
+	       nano_dma_abort_pending()) {
+		if (rp_dma_uptime_ms() >= deadline) {
+			return false;
+		}
+		nxsched_msleep(1);
+	}
+	nano_dma_irqn_acknowledge_channel(0, tx);
+	nano_dma_irqn_acknowledge_channel(1, tx);
+	nano_dma_irqn_acknowledge_channel(0, rx);
+	nano_dma_irqn_acknowledge_channel(1, rx);
+	return true;
+}
+
+/* i2c_dw_rp_dma_read(dev, msg): msg->buf, msg->len and msg->flags (the
+ * Zephyr flags of the message, see nano_i2c_dw_msg_flags()).
+ */
+static int i2c_dw_rp_dma_read(struct i2c_dw_dev_config *dw, uint8_t *buf, uint32_t len,
+			      uint8_t msg_flags)
+{
+	mm_reg_t base = dw->base;
+	struct nano_dma_block_config tx_block = {0}, rx_block = {0};
+	struct nano_dma_config tx_cfg = {0}, rx_cfg = {0};
+	int tx, rx, ret;
+	bool started = false;
+
+	/* dev != i2c0 cannot happen: i2c0 is the only instance.  10-bit
+	 * addresses are refused before (no I2C_MSG_ADDR_10_BITS here, and
+	 * app_config never has I2C_ADDR_10_BITS).
+	 */
+	if (!rp_dma_enabled || !nano_dma_is_ready() || len < 32 ||
+	    len > I2C_DW_RP2040_DMA_MAX_READ || !(msg_flags & I2C_MSG_STOP) ||
+	    (msg_flags & I2C_MSG_ADDR_10_BITS)) {
+		return -EAGAIN;
+	}
+	tx = nano_dma_request_channel();
+	if (tx < 0) {
+		rp_dma_fallbacks++;
+		return -EAGAIN;
+	}
+	rx = nano_dma_request_channel();
+	if (rx < 0) {
+		rp_dma_fallbacks++;
+		nano_dma_release_channel(tx);
+		return -EAGAIN;
+	}
+	dw->rp_dma_tx_channel = tx;
+	dw->rp_dma_rx_channel = rx;
+	i2c_dw_rp2040_read_commands(dw->rp_dma_commands, ARRAY_SIZE(dw->rp_dma_commands), len,
+				    dw->xfr_flags & I2C_MSG_RESTART);
+	tx_block.source_address = (uintptr_t)dw->rp_dma_commands;
+	tx_block.dest_address = base + DW_IC_REG_DATA_CMD;
+	tx_block.block_size = len * sizeof(uint16_t);
+	tx_block.source_addr_adj = NANO_DMA_ADDR_ADJ_INCREMENT;
+	tx_block.dest_addr_adj = NANO_DMA_ADDR_ADJ_NO_CHANGE;
+	tx_cfg.dma_slot = NANO_DMA_SLOT_I2C0_TX;
+	tx_cfg.channel_direction = NANO_DMA_MEMORY_TO_PERIPHERAL;
+	tx_cfg.source_data_size = 2;
+	tx_cfg.dest_data_size = 2;
+	tx_cfg.block_count = 1;
+	tx_cfg.head_block = &tx_block;
+	tx_cfg.dma_callback = i2c_dw_rp_dma_callback;
+	tx_cfg.user_data = dw;
+	rx_block.source_address = base + DW_IC_REG_DATA_CMD;
+	rx_block.dest_address = (uintptr_t)dw->rp_dma_buffer;
+	rx_block.block_size = len;
+	rx_block.source_addr_adj = NANO_DMA_ADDR_ADJ_NO_CHANGE;
+	rx_block.dest_addr_adj = NANO_DMA_ADDR_ADJ_INCREMENT;
+	rx_cfg.dma_slot = NANO_DMA_SLOT_I2C0_RX;
+	rx_cfg.channel_direction = NANO_DMA_PERIPHERAL_TO_MEMORY;
+	rx_cfg.source_data_size = 1;
+	rx_cfg.dest_data_size = 1;
+	rx_cfg.block_count = 1;
+	rx_cfg.head_block = &rx_block;
+	rx_cfg.dma_callback = i2c_dw_rp_dma_callback;
+	rx_cfg.user_data = dw;
+	ret = nano_dma_config(tx, &tx_cfg);
+	if (!ret) {
+		ret = nano_dma_config(rx, &rx_cfg);
+	}
+	if (ret) {
+		rp_dma_fallbacks++;
+		ret = -EAGAIN;
+		goto release;
+	}
+	dw->rp_dma_events = 0;
+	nxsem_reset(&dw->rp_dma_sem, 0);
+	dw->rp_dma_active = 1;
+	nano_dw_write32(8, base + 0x8c); /* TX FIFO threshold */
+	nano_dw_write32(0, base + 0x90); /* RX FIFO threshold */
+	write_intr_mask(DW_INTR_STAT_STOP_DET | DW_INTR_STAT_TX_ABRT | DW_INTR_STAT_TX_OVER |
+				DW_INTR_STAT_RX_OVER | DW_INTR_STAT_RX_UNDER |
+				DW_INTR_STAT_SCL_STUCK_LOW,
+			base);
+	started = true;
+	ret = nano_dma_start(rx);
+	if (!ret) {
+		ret = nano_dma_start(tx);
+	}
+	if (!ret) {
+		/* sys_timepoint_calc(rom->transfer_timeout) */
+		clock_t deadline = clock_systime_ticks() +
+				   MSEC2TICK(NANO_I2C_DW_TRANSFER_TIMEOUT_MS);
+		write_dma_cr(3, base);
+		while ((dw->rp_dma_events & RP_DMA_DONE) != RP_DMA_DONE) {
+			int64_t left;
+
+			if (dw->rp_dma_events & RP_DMA_ERROR) {
+				ret = -EIO;
+				break;
+			}
+			/* sys_timepoint_timeout(deadline): K_NO_WAIT once it
+			 * has passed (a last try without waiting).
+			 */
+			left = (int64_t)(deadline - clock_systime_ticks());
+			if (left < 0) {
+				left = 0;
+			}
+			if (nxsem_tickwait_uninterruptible(&dw->rp_dma_sem, (uint32_t)left)) {
+				ret = -ETIMEDOUT;
+				break;
+			}
+		}
+		if (dw->rp_dma_events & RP_DMA_ERROR) {
+			ret = -EIO;
+		}
+	}
+	write_dma_cr(0, base);
+	write_intr_mask(0, base);
+	dw->rp_dma_active = 0;
+	if (ret) {
+		set_bit_enable_abort(base);
+	}
+	if (ret && !i2c_dw_rp_dma_stop(tx, rx)) {
+		dw->rp_dma_quarantined = true;
+		rp_dma_errors++;
+		LOG_ERR("DMA channels did not stop; I2C controller quarantined");
+		return -EIO;
+	}
+	(void)read_clr_intr(base);
+	if (ret) {
+		int64_t abort_deadline = rp_dma_uptime_ms() + 100;
+		while (test_bit_enable_abort(base)) {
+			if (rp_dma_uptime_ms() >= abort_deadline) {
+				dw->rp_dma_quarantined = true;
+				LOG_ERR("I2C abort did not finish; controller quarantined");
+				break;
+			}
+			nxsched_msleep(1);
+		}
+		(void)read_clr_intr(base);
+	}
+	if (!ret) {
+		rp_dma_transfers++;
+		rp_dma_bytes += len;
+		memcpy(buf, dw->rp_dma_buffer, len);
+		dw->xfr_len = 0;
+	}
+release:
+	if (ret && ret != -EAGAIN) {
+		rp_dma_errors++;
+	}
+	if (!started || !dw->rp_dma_quarantined) {
+		nano_dma_release_channel(tx);
+		nano_dma_release_channel(rx);
+	}
+	return ret;
+}
+
+/* The i2c_dma shell command's side (i2c_dw.c:770-801): nuttx/apps/i2c_dma
+ * prints and parses; see nano_i2c_dma.h.
+ */
+
+void nano_i2c_dma_get_stats(struct nano_i2c_dma_stats *stats)
+{
+	stats->transfers = rp_dma_transfers;
+	stats->bytes = rp_dma_bytes;
+	stats->errors = rp_dma_errors;
+	stats->fallbacks = rp_dma_fallbacks;
+}
+
+bool nano_i2c_dma_enabled(void)
+{
+	return rp_dma_enabled;
+}
+
+void nano_i2c_dma_set_enabled(bool enabled)
+{
+	rp_dma_enabled = enabled;
+}
+#endif
+
 static int i2c_dw_isr(int irq, void *context, void *arg)
 {
 	struct i2c_dw_dev_config *const dw = arg;
@@ -381,6 +655,25 @@ static int i2c_dw_isr(int irq, void *context, void *arg)
 	 * so there is no need to read the register multiple times.
 	 */
 	intr_stat.raw = read_intr_stat(reg_base);
+#ifdef CONFIG_NANO_I2C0_DMA
+	if (dw->rp_dma_active) {
+		uint32_t events = 0;
+		if (intr_stat.raw &
+		    (DW_INTR_STAT_TX_ABRT | DW_INTR_STAT_TX_OVER | DW_INTR_STAT_RX_OVER |
+		     DW_INTR_STAT_RX_UNDER | DW_INTR_STAT_SCL_STUCK_LOW)) {
+			dw->state |= I2C_DW_CMD_ERROR;
+			(void)i2c_dw_error_chk(dw);
+			events |= RP_DMA_ERROR;
+		}
+		if (intr_stat.raw & DW_INTR_STAT_STOP_DET) {
+			events |= RP_DMA_STOP;
+		}
+		write_intr_mask(0, reg_base);
+		(void)read_clr_intr(reg_base);
+		i2c_dw_rp_dma_notify(dw, events);
+		return 0;
+	}
+#endif
 
 	/*
 	 * Causes of an interrupt:
@@ -482,10 +775,14 @@ static int i2c_dw_setup(struct i2c_dw_dev_config *dw, uint16_t target_address)
 	ic_con.bits.slave_disable = 1U;
 
 	ic_con.bits.restart_en = 1U;
-	/* RX_FIFO_FULL_HLD_CTRL (IC_CON bit 9) with the DMA reads enabled. */
+#ifdef CONFIG_NANO_I2C0_DMA
+	/* I2C_IC_CON_RX_FIFO_FULL_HLD_CTRL_BITS (bit 9) with the DMA reads
+	 * enabled (i2c0 is the only instance here).
+	 */
 	if (rp_dma_enabled) {
 		ic_con.raw |= BIT(9);
 	}
+#endif
 
 	/* 7-bit addresses */
 	ic_con.bits.addr_master_10bit = 0U;
@@ -631,6 +928,14 @@ static int i2c_dw_transfer(struct i2c_master_s *dev, struct i2c_msg_s *msgs, int
 		return ret;
 	}
 
+#ifdef CONFIG_NANO_I2C0_DMA
+	/* Also what i2c_dw_runtime_configure() returns (i2c_dw.c:1469-1473). */
+	if (dw->rp_dma_quarantined) {
+		ret = -EIO;
+		goto error;
+	}
+#endif
+
 	/* i2c_configure() with the speed of this transfer */
 	if (speed != dw->speed) {
 		ret = i2c_dw_configure(dw, speed);
@@ -703,6 +1008,21 @@ static int i2c_dw_transfer(struct i2c_master_s *dev, struct i2c_msg_s *msgs, int
 		    (dw->xfr_flags & I2C_MSG_RW_MASK) == I2C_MSG_READ && dw->xfr_len > 0U) {
 			write_rx_tl(MIN(RP2040_I2C_RX_BATCH, dw->xfr_len) - 1U, reg_base);
 		}
+
+#ifdef CONFIG_NANO_I2C0_DMA
+		if (msg_left == 1 && (dw->xfr_flags & I2C_MSG_RW_MASK) == I2C_MSG_READ) {
+			ret = i2c_dw_rp_dma_read(dw, cur_msg->buffer, (uint32_t)cur_msg->length,
+						 mflags);
+			if (ret != -EAGAIN) {
+				if (ret) {
+					break;
+				}
+				cur_msg++;
+				msg_left--;
+				continue;
+			}
+		}
+#endif
 
 		/* Enable necessary interrupts to trigger ISR */
 		write_intr_mask((DW_ENABLE_TX_INT_I2C_CONTROLLER |
@@ -889,8 +1209,13 @@ struct i2c_master_s *nano_i2c0_initialize(void)
 		return &dw->dev;
 	}
 
+	dw->dev.ops = &funcs;
+	dw->base = RP2040_I2C0_BASE;
 	nxsem_init(&dw->device_sync_sem, 0, 0);
 	nxsem_init(&dw->bus_sem, 0, 1);
+#ifdef CONFIG_NANO_I2C0_DMA
+	nxsem_init(&dw->rp_dma_sem, 0, 0);
+#endif
 
 	if (i2c_dw_turn_on(dw) < 0) {
 		return NULL;

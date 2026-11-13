@@ -63,6 +63,12 @@
 #define NANO_I2C_M_NOSTOP  0x0040
 #define NANO_I2C_M_NOSTART 0x0080
 
+/* i2c_dw.h:14-17: the longest read the DMA path takes (the buffers of
+ * struct i2c_dw_dev_config are this long).
+ */
+
+#define I2C_DW_RP2040_DMA_MAX_READ (512U * 7U)
+
 /* i2c_dw.h:38 */
 
 #define I2C_DW_MAGIC_KEY 0x44570140

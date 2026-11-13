@@ -5,8 +5,9 @@
 # Make.defs of each application directory, which adds the directory to
 # CONFIGURED_APPS when its Kconfig option is set: init/ (the init task,
 # CONFIG_NANO_APP_INIT), bootsel/ (CONFIG_NANO_APP_BOOTSEL), dmesg/
-# (CONFIG_NANO_APP_DMESG), imu/ (the application's modules, for now the
-# key-value store: CONFIG_NANO_KV_STORE), kv/ (CONFIG_NANO_APP_KV), nina/
+# (CONFIG_NANO_APP_DMESG), i2c_dma/ (CONFIG_NANO_APP_I2C_DMA), imu/ (the
+# application's modules, for now the key-value store:
+# CONFIG_NANO_KV_STORE), kv/ (CONFIG_NANO_APP_KV), nina/
 # (CONFIG_NANO_APP_NINA) and subcmd/ (the subcommand dispatch shared by
 # the commands: CONFIG_NANO_SUBCMD).
 ############################################################################

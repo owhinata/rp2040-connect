@@ -45,7 +45,8 @@ config NANO_STACK_SENTINEL
 		Check that the lowest word of a task's stack still holds the
 		coloration value when the task is switched out and at the end of
 		every interrupt handler (for the interrupted task, whose stack
-		the handler ran on), and halt (PANIC) if not: the counterpart of
+		holds the frame the hardware saved, and with ARCH_INTERRUPTSTACK=0
+		the handler's own use too), and halt (PANIC) if not: the counterpart of
 		the Zephyr build's CONFIG_STACK_SENTINEL (src/nano_stackcheck.c).
 		Implemented in the scheduler's instrumentation hooks
 		sched_note_suspend() and sched_note_irqhandler(), which need
@@ -84,3 +85,22 @@ config NANO_I2C0
 		NuttX's arch/arm/src/rp2040/rp2040_i2c.c, which must stay off
 		(RP2040_I2C), and sets up the pins itself.  Registered as
 		/dev/i2c0 when I2C_DRIVER is set (the i2c tool uses it).
+
+config NANO_I2C0_DMA
+	bool "DMA reads on I2C0"
+	default y
+	depends on NANO_I2C0 && !RP2040_DMAC
+	---help---
+		The Zephyr build's CONFIG_I2C_DW_RP2040_DMA (on there): a read
+		of 32 to 3584 bytes that is the last message of a transfer (so
+		it ends with STOP) runs on two DMA channels, one writing the
+		command words to IC_DATA_CMD and one reading the data; other
+		transfers, and reads when no DMA channel can be had, run on the
+		interrupts.  The "i2c_dma" command (nuttx/apps/i2c_dma) switches
+		it and shows its counters.  src/nano_dma.c drives the DMA as the
+		Zephyr build's dma_rpi_pico.c does (channel 0 on DMA_IRQ_0, the
+		others on DMA_IRQ_1, a channel request that never waits, a stop
+		that does not wait), so NuttX's own DMA layer
+		(arch/arm/src/rp2040/rp2040_dmac.c) must be off: RP2040_DMAC
+		takes DMA_IRQ_0 for every channel.  Nothing else in this port
+		uses the DMA.

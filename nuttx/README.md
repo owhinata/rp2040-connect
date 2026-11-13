@@ -397,8 +397,8 @@ NINA firmware: 3.0.2
 I2C0 carries the LSM6DSOX (0x6A) and the ATECC608A (0x60). The driver is the board's
 `src/nano_i2c.c`, a copy of the controller part of the DesignWare I2C driver that the Zephyr
 version uses (`zephyr/app/usb-console/drivers/i2c_dw/i2c_dw.c`). NuttX's `rp2040_i2c.c`
-(`CONFIG_RP2040_I2C`) is not used. It is registered as `/dev/i2c0` for NuttX's `i2c` tool. The DMA
-reads (the Zephyr version's `CONFIG_I2C_DW_RP2040_DMA`) are not there yet.
+(`CONFIG_RP2040_I2C`) is not used. It is registered as `/dev/i2c0` for NuttX's `i2c` tool. Reads
+that meet the conditions run on DMA (see "DMA reads (`i2c_dma`)" below).
 
 ```
 nsh$ i2c get -a 6a -r 0f
@@ -413,9 +413,9 @@ READ Bus: 0 Addr: 6a Subaddr: 0f Value: 6c
   Zephyr version's values: at 100 kHz `IC_SS_SCL_HCNT`/`LCNT` 500/625, at 400 kHz
   `IC_FS_SCL_HCNT`/`LCNT` 93/109, at 1 MHz 31/31 (both with the FAST speed in `IC_CON`),
   `IC_FS_SPKLEN` 1, `IC_SDA_HOLD` at its reset value 1. `IC_CON` is 0x363 at 100 kHz and 0x365
-  otherwise (with the bit that holds the bus while the RX FIFO is full, as in the Zephyr version
-  with its I2C DMA enabled).
-- Transfers are interrupt driven. A read queues as many requests as the RX FIFO (16 entries) has
+  otherwise (with the bit that holds the bus while the RX FIFO is full; as in the Zephyr version it
+  is set only while DMA is on, so after `i2c_dma mode off` transfers use 0x163 and 0x165).
+- Transfers that do not use DMA are interrupt driven. A read queues as many requests as the RX FIFO (16 entries) has
   room for and takes the data 4 bytes at a time. A transfer has 1 s; after that it is aborted and
   returns `-ETIMEDOUT`. A target that does not answer (NACK) and other failures give `-EIO` and
   leave the Zephyr version's `<err> i2c_dw: NACK on i2c@40044000` and the like in `dmesg` (rate
@@ -432,6 +432,53 @@ READ Bus: 0 Addr: 6a Subaddr: 0f Value: 6c
   | 3584-byte read | 298 ms | 59.7 ms | 23.3 ms | about 8.3 to 8.5 ms | 900 to 1040 |
 
   Per bit, the 3584-byte read takes 9.24 us at 100 kHz, 1.85 us at 400 kHz and 0.72 us at 1 MHz.
+  These figures are without DMA (the next section compares the two).
+
+### DMA reads (`i2c_dma`)
+
+As the Zephyr version's `CONFIG_I2C_DW_RP2040_DMA` (here `CONFIG_NANO_I2C0_DMA`, on by default), a
+read that meets all of the following runs on DMA; other reads and all writes are interrupt driven.
+
+- It is the last message of the transfer (so it ends with STOP), 32 to 3584 bytes long, to a 7-bit
+  address, with DMA on (`i2c_dma mode on`, the state at boot).
+- It takes two DMA channels (TX sends the command words, RX takes the data). When a channel cannot be
+  had or configured, the read goes to the interrupt path before anything starts, and
+  `dma_fallbacks` counts it.
+- Time limit and error values are those of the interrupt path (`-ETIMEDOUT` after 1 s, `-EIO` for a
+  NACK and the like). After a failure the DMA and the I2C are stopped before the call returns. If
+  the DMA channels do not stop within 100 ms, I2C0 is quarantined
+  (`<err> i2c_dw: DMA channels did not stop; I2C controller quarantined`) and every later transfer
+  gives `-EIO` until a reboot. The steps are in the "I2C0" section of `nuttx/drivers/README.md`.
+- NuttX's DMA layer (`CONFIG_RP2040_DMAC`) is off; only the board's `src/nano_dma.c` (which behaves as
+  Zephyr's RP2040 DMA driver) uses the DMA.
+
+```text
+i2c_dma mode          show the mode (i2c_dma=on or i2c_dma=off)
+i2c_dma mode on|off   switch (only while no stream or transfer runs)
+i2c_dma stats         DMA transfers, bytes, errors, fallbacks to interrupts (since boot)
+```
+
+The output is the Zephyr version's (`dma_transfers=0 dma_bytes=0 dma_errors=0 dma_fallbacks=0`;
+anything but `on` or `off` gives `Expected on or off`). As in the Zephyr version, switching only
+sets the value: it neither waits for nor stops a transfer in progress. "Only while no stream or
+transfer runs" is a rule for the user; the command does not check it. Priority 104, stack 3072.
+
+Measured (on the board, 1 MHz, a transfer that writes one LSM6DSOX register address and reads, with
+the TIMER and `cpu_load_get()`, averages of back-to-back transfers; interrupts counted for one
+transfer: I2C0 interrupts, including those of the register write, and DMA interrupts):
+
+| Read | Path | Time | CPU time | Interrupts |
+|---|---|---|---|---|
+| 256 bytes | DMA | 1.79 ms | about 0.26 ms | I2C 3, DMA 2 |
+| 256 bytes | interrupts | 1.76 ms | about 0.76 ms | I2C 84 |
+| 3584 bytes | DMA | 22.9 ms | about 0.75 ms | I2C 2 to 3, DMA 2 |
+| 3584 bytes | interrupts | 23.1 ms | about 8.9 ms | I2C 1139 |
+
+Time and CPU time include handing the transfer over with `ioctl()` and the register write (averages
+of 1000, 200 and 50 transfers). 1000 DMA reads of 256 bytes in a row gave no error, and so did 500
+each from two tasks at once (the bus lock runs them one at a time). DMA and interrupt reads of the
+same range gave the same bytes except in registers that change by themselves (outputs, status,
+time stamp).
 
 ### The `i2c` tool and the Zephyr version's `i2c` command
 
@@ -546,13 +593,23 @@ Priorities map as `NuttX = 118 − Zephyr`; `nuttx/drivers/include/priorities.h`
 - `CONFIG_PRIORITY_INHERITANCE=y`. Mutexes inherit priority; semaphores do not by default (NuttX
   13.1.0's `sem_init()` sets their flags to 0), so semaphores used for signalling stay without
   inheritance.
-- NuttX on the RP2040 has no interrupt stack: an interrupt runs on the stack of the thread it
-  interrupts (the idle thread's when nothing runs). Every stack needs room for interrupts.
+- Interrupt stack (`CONFIG_ARCH_INTERRUPTSTACK=2048`, the size of the Zephyr version's
+  `CONFIG_ISR_STACK_SIZE=2048`): threads run on the process stack (PSP), interrupt handlers on the
+  main stack (MSP), so handlers do not use the stack of the thread they interrupt. Only the 32 bytes
+  that the hardware saves (and the save area of a context switch) go on that thread's stack, as in
+  the Zephyr version. On the board, a log line written in an interrupt while nothing ran left the
+  idle thread's use at 304 bytes (without the interrupt stack it grew from 452 to 712 bytes); the
+  interrupt stack used 364 bytes in normal running and 624 bytes after that log line. The cost of an
+  interrupt did not change (an empty wdog about 5000 times a second: 500.0 ms not idle in 10 s with
+  and without it, 3 runs each). `ps` does not show the interrupt stack (a PANIC report does, in its
+  `irq` line).
 - Stack sentinel (`CONFIG_NANO_STACK_SENTINEL`, board `Kconfig`, on by default): like the Zephyr
   version's `CONFIG_STACK_SENTINEL`, the lowest word of each stack (the value written by
   `CONFIG_STACK_COLORATION`) is checked at every thread switch (for the thread switched out) and at
-  the end of every interrupt handler (for the interrupted thread, whose stack the handler ran on),
-  and a changed word stops the system with PANIC (the report goes to the RAM log). The checks run
+  the end of every interrupt handler (for the interrupted thread, whose stack holds what the
+  hardware saved), and a changed word stops the system with PANIC (the report is made on the
+  interrupt stack and goes to the RAM log). The interrupt stack itself has no sentinel, as in the
+  Zephyr version. The checks run
   in two scheduler instrumentation hooks (`sched_note_suspend()` at a switch, and
   `sched_note_irqhandler()`, which `irq_dispatch()` calls around each handler;
   `src/nano_stackcheck.c`). On the Cortex-M0+ peripheral interrupts do not go through
@@ -579,8 +636,9 @@ stored calibration format, gyro zero tracking at rest, the board's time conversi
 pieces, line prefix and rate limit (`log_ram`), the key-value area's range checks, page writes and
 boot-time contents check (`nano_flash_kv`), the key rules of the key-value store (`kv_name`) and
 the hex conversions of the `kv` command (`kv_hex`), the handling of the commands' subcommands
-(`subcmd`), the NINA's SPI transfer layer (`nina_spi`) and the OS-independent part of the I2C0
-driver (`nano_i2c_dw`). Each test is built and run in turn,
+(`subcmd`), the NINA's SPI transfer layer (`nina_spi`), the OS-independent part of the I2C0
+driver (`nano_i2c_dw`), the command words of the I2C0 DMA reads (`i2c_dma_commands`) and the
+output of the `i2c_dma` command (`i2c_dma_app`, with the driver side replaced by fakes). Each test is built and run in turn,
 and the script stops at the first failure. Build products go to a temporary directory that is
 removed on exit.
 
@@ -592,8 +650,12 @@ content.
 |---|---|---|
 | `nuttx/apps/imu/` | `src/` | `imu_raw_{batch,packet,queue,status,time}`, `imu_tick_clock`, `time_offset`, `imu_cal_codec.c`, `imu_cal.h`, `kv_store.h` |
 | `nuttx/drivers/lsm6dso/` | `drivers/lsm6dso/` | `lsm6dso_{fifo,cal,zero,fifo_decoder}`, `lsm6dso_fifo_packet.h` |
-| `nuttx/tests/` | `tests/` | the tests of the files above |
+| `boards/arduino-nano-rp2040-connect/src/` | `drivers/i2c_dw/` | `i2c_dw_rp2040_commands.[ch]` |
+| `nuttx/tests/` | `tests/` | the tests of the files above (`i2c_dma_commands.c` included) |
 | `nuttx/tests/fakes/` | `tests/fakes/` | stand-ins for the Zephyr headers the tests need (`zephyr/drivers/sensor.h`) |
+
+`nuttx/tests/fakes/nuttx/config.h` (empty) is the NuttX port's own: it lets a host test build a
+source of `nuttx/apps` that includes `<nuttx/config.h>` (`i2c_dma_app`).
 
 `nuttx/tests/nano_timeconv.c` is a test of the NuttX port only. It compares the conversions of
 `src/nano_timeconv.h` with C's `/` and `%` and with the generic conversions of NuttX 13.1.0 (the

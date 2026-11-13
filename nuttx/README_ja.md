@@ -372,7 +372,7 @@ I2C0 には LSM6DSOX（0x6A）と ATECC608A（0x60）が載っています。ド
 `src/nano_i2c.c` で、Zephyr 版が使っている DesignWare I2C のドライバー
 （`zephyr/app/usb-console/drivers/i2c_dw/i2c_dw.c`）のコントローラーの部分を写したものです。NuttX の
 `rp2040_i2c.c`（`CONFIG_RP2040_I2C`）は使いません。`/dev/i2c0` として登録し、NuttX 標準の `i2c` ツールで
-使えます。DMA での読み出し（Zephyr 版の `CONFIG_I2C_DW_RP2040_DMA`）はまだありません。
+使えます。条件に合う読み出しは DMA で行います（下の「DMA での読み出し（`i2c_dma`）」）。
 
 ```
 nsh$ i2c get -a 6a -r 0f
@@ -386,9 +386,9 @@ READ Bus: 0 Addr: 6a Subaddr: 0f Value: 6c
   速さの区分。ほかの値は `-EINVAL`）。レジスターの値は Zephyr 版と同じです: 100 kHz は
   `IC_SS_SCL_HCNT`/`LCNT` が 500/625、400 kHz は `IC_FS_SCL_HCNT`/`LCNT` が 93/109、1 MHz は 31/31
   （どちらも `IC_CON` の速さは FAST）、`IC_FS_SPKLEN` は 1、`IC_SDA_HOLD` はリセット値の 1。`IC_CON` は
-  100 kHz で 0x363、それ以外で 0x365 です（RX FIFO が満杯のときバスを止めるビットを含む。Zephyr 版で
-  I2C DMA が有効のときと同じ）。
-- 転送は割り込みで進めます。読み出しは RX FIFO（16 段）の空きの分だけ要求を積み、4 バイトずつ
+  100 kHz で 0x363、それ以外で 0x365 です（RX FIFO が満杯のときバスを止めるビットを含む。Zephyr 版と同じく
+  DMA が有効のときだけ付け、`i2c_dma mode off` の後の転送では 0x163・0x165）。
+- DMA を使わない転送は割り込みで進めます。読み出しは RX FIFO（16 段）の空きの分だけ要求を積み、4 バイトずつ
   受け取ります。1 回の転送の期限は 1 秒で、過ぎると abort して `-ETIMEDOUT` を返します。相手が応答
   しない（NACK）などの失敗は `-EIO` で、`dmesg` に Zephyr 版と同じ `<err> i2c_dw: NACK on i2c@40044000`
   などが残ります（頻度制限あり）。失敗の後の転送はそのまま使えます。転送はバスのロックで直列化します。
@@ -403,7 +403,50 @@ READ Bus: 0 Addr: 6a Subaddr: 0f Value: 6c
   | 3584 バイト読み出し | 298 ms | 59.7 ms | 23.3 ms | 約 8.3〜8.5 ms | 900〜1040 回 |
 
   3584 バイトの所要時間を 1 ビットあたりにすると、100 kHz で 9.24 µs、400 kHz で 1.85 µs、1 MHz で
-  0.72 µs です。
+  0.72 µs です。この表は DMA を使わないときの値です（DMA との比較は次の節）。
+
+### DMA での読み出し（`i2c_dma`）
+
+Zephyr 版の `CONFIG_I2C_DW_RP2040_DMA` と同じく（`CONFIG_NANO_I2C0_DMA`、既定で有効）、次の条件をすべて
+満たす読み出しを DMA で行います。外れる読み出しと書き込みは割り込みで行います。
+
+- 転送の最後のメッセージ（STOP で終わる）で、32〜3584 バイト、7 ビットアドレス、DMA が有効
+  （`i2c_dma mode on`、起動時は on）。
+- DMA のチャネルを 2 本使います（コマンド語を送る TX と、データを受け取る RX）。チャネルの確保や設定に
+  失敗したときは、転送を始める前に割り込みでの処理に切り替え、`dma_fallbacks` を数えます。
+- 期限・エラー値は割り込みの処理と同じです（1 秒で `-ETIMEDOUT`、NACK などは `-EIO`）。失敗の後は
+  DMA と I2C を止めてから戻ります。DMA のチャネルが 100 ms 以内に止まらないときは I2C0 を隔離し
+  （`<err> i2c_dw: DMA channels did not stop; I2C controller quarantined`）、以後の転送はすべて `-EIO`
+  になります（再起動で戻ります）。詳しい手順は `nuttx/drivers/README_ja.md` の「I2C0」の節にあります。
+- NuttX の DMA 層（`CONFIG_RP2040_DMAC`）は切ってあり、DMA はボード側の `src/nano_dma.c`（Zephyr の
+  RP2040 用 DMA ドライバーと同じ動作）だけが使います。
+
+```text
+i2c_dma mode          現在の方式を表示（i2c_dma=on または i2c_dma=off）
+i2c_dma mode on|off   切り替え（ストリームと転送が止まっているときだけ）
+i2c_dma stats         DMA 転送数、バイト数、エラー、割り込み方式への切り替え回数（起動からの累積）
+```
+
+出力は Zephyr 版と同じです（`dma_transfers=0 dma_bytes=0 dma_errors=0 dma_fallbacks=0`、`on`・`off`
+以外は `Expected on or off`）。切り替えは Zephyr 版と同じく値を変えるだけで、進行中の転送を待ったり
+止めたりしません。「止まっているときだけ」は使い方の約束で、コマンドは確かめません。優先度 104、
+スタック 3072 です。
+
+実測（実機、1 MHz、LSM6DSOX のレジスターを 1 バイト書いてから読む転送、TIMER と `cpu_load_get()`、
+間を置かずに繰り返した平均。割り込みの回数は 1 回の転送で数えた I2C0 の割り込み（レジスターを書く
+メッセージの分を含む）と DMA の割り込み）:
+
+| 読み出し | 方式 | 所要時間 | CPU 時間 | 割り込み |
+|---|---|---|---|---|
+| 256 バイト | DMA | 1.79 ms | 約 0.26 ms | I2C 3 回、DMA 2 回 |
+| 256 バイト | 割り込み | 1.76 ms | 約 0.76 ms | I2C 84 回 |
+| 3584 バイト | DMA | 22.9 ms | 約 0.75 ms | I2C 2〜3 回、DMA 2 回 |
+| 3584 バイト | 割り込み | 23.1 ms | 約 8.9 ms | I2C 1139 回 |
+
+所要時間と CPU 時間には、`ioctl()` で転送を渡す処理とレジスターを書くメッセージの分が含まれます
+（1000 回・200 回・50 回の平均）。DMA で 256 バイトを 1000 回続けて読んでエラー 0、2 つのタスクから
+同時に 500 回ずつ読んでもエラー 0（バスのロックで 1 回ずつ進みます）。DMA と割り込みで同じ範囲を
+読んだ内容は、値の変わるレジスター（出力、状態、タイムスタンプ）を除いて一致しました。
 
 ### `i2c` ツールと Zephyr 版の `i2c` コマンド
 
@@ -506,13 +549,21 @@ Zephyr 版の `i2c` コマンド（Zephyr のシェル）は移さず、NuttX �
   今の移植では使っていません。
 - `CONFIG_PRIORITY_INHERITANCE=y` です。ミューテックスは優先度継承あり、セマフォは既定で継承なし
   （NuttX 13.1.0 の `sem_init()` は flags を 0 にします）なので、通知用のセマフォはそのままで継承しません。
-- RP2040 の NuttX には割り込み用のスタックが無く、割り込みは実行中のスレッドのスタックで動きます。
-  各スタックには割り込みの分の余裕が要ります（何もしていないときはアイドルスレッドのスタックです）。
+- 割り込み用のスタック（`CONFIG_ARCH_INTERRUPTSTACK=2048`。Zephyr 版の `CONFIG_ISR_STACK_SIZE=2048` と
+  同じ大きさ）: スレッドはプロセススタック（PSP）、割り込みハンドラーはメインスタック（MSP）で動き、
+  割り込みの処理は割り込まれたスレッドのスタックを使いません。割り込まれたスレッドのスタックに積まれる
+  のは、ハードウェアが退避する 32 バイト（とコンテキストの切り替えのときの保存領域）だけです（Zephyr 版と
+  同じ）。実機では、何もしていないときに割り込みの中でログを 1 行出しても、アイドルスレッドの使用量は
+  304 バイトのまま変わらず（割り込み用のスタックが無かったときは 452 から 712 バイトに増えた）、割り込み
+  用のスタックの使用量は通常 364 バイト、割り込みの中でログを出した後で 624 バイトでした。割り込み 1 回の
+  コストは変わりません（毎秒約 5000 回の空の wdog で、10 秒間のアイドルでない時間が有無とも 500.0 ms。
+  各 3 回）。割り込み用のスタックの使用量は `ps` には出ません（PANIC の報告の `irq` の行に出ます）。
 - スタックの番兵（`CONFIG_NANO_STACK_SENTINEL`。ボードの `Kconfig`、既定で有効）: Zephyr 版の
   `CONFIG_STACK_SENTINEL` と同じく、各スタックの最下位のワード（`CONFIG_STACK_COLORATION` が書いた値）を、
   スレッドの切り替えのとき（切り替えで外れるスレッド）と、割り込みハンドラーの出口ごと（割り込まれた
-  スレッド。ハンドラーはそのスタックで動いた）に確かめ、書き換わっていれば PANIC で止めます（報告は
-  RAM ログに入ります）。スケジューラーの計測用のフック 2 つ（切り替えの `sched_note_suspend()` と、
+  スレッド。ハードウェアが退避した値がそのスタックに積まれている）に確かめ、書き換わっていれば PANIC で
+  止めます（報告は割り込み用のスタックの上で作り、RAM ログに入ります）。割り込み用のスタック自体は、
+  Zephyr 版と同じく番兵で確かめません。スケジューラーの計測用のフック 2 つ（切り替えの `sched_note_suspend()` と、
   `irq_dispatch()` が各ハンドラーの前後で呼ぶ `sched_note_irqhandler()`。`src/nano_stackcheck.c`）で
   行います。Cortex-M0+ では周辺の割り込みは `arm_doirq()` を通らず（`exception_direct()`）、
   切り替えのフックだけでは割り込みの出口で確かめられないためです。割り込みはすべて同じ優先度で
@@ -535,7 +586,8 @@ status と info の JSON、時刻の対応付け、センサーの tick と時�
 CPU 負荷の計算（`nano_cpuload`）、RAM ログのリング・`dmesg` の取り出し・行の前置き・頻度制限（`log_ram`）、
 KV 領域の範囲の検査・ページ単位の書き込み・起動時の内容の判定（`nano_flash_kv`）、KV のキーの規則
 （`kv_name`）と `kv` コマンドの 16 進数の変換（`kv_hex`）、コマンドのサブコマンドの扱い（`subcmd`）、
-NINA の SPI の転送層（`nina_spi`）、I2C0 のドライバーの OS に依存しない部分（`nano_i2c_dw`）を確かめます。テストは 1 つずつビルドして
+NINA の SPI の転送層（`nina_spi`）、I2C0 のドライバーの OS に依存しない部分（`nano_i2c_dw`）、I2C0 の DMA
+読み出しのコマンド語（`i2c_dma_commands`）、`i2c_dma` コマンドの出力（`i2c_dma_app`。ドライバー側は偽物）を確かめます。テストは 1 つずつビルドして
 実行し、失敗したところで止まります。ビルドの生成物は一時ディレクトリに置き、終了時に消します。
 
 次のファイルは Zephyr 版（`zephyr/app/usb-console`）の同名ファイルを変更せずに写したものです。
@@ -545,8 +597,12 @@ Zephyr 版を直したときは、写しも同じ内容に置き換えます。
 |---|---|---|
 | `nuttx/apps/imu/` | `src/` | `imu_raw_{batch,packet,queue,status,time}`、`imu_tick_clock`、`time_offset`、`imu_cal_codec.c`、`imu_cal.h`、`kv_store.h` |
 | `nuttx/drivers/lsm6dso/` | `drivers/lsm6dso/` | `lsm6dso_{fifo,cal,zero,fifo_decoder}`、`lsm6dso_fifo_packet.h` |
-| `nuttx/tests/` | `tests/` | 上のファイルを対象にするテスト |
+| `boards/arduino-nano-rp2040-connect/src/` | `drivers/i2c_dw/` | `i2c_dw_rp2040_commands.[ch]` |
+| `nuttx/tests/` | `tests/` | 上のファイルを対象にするテスト（`i2c_dma_commands.c` を含む） |
 | `nuttx/tests/fakes/` | `tests/fakes/` | テスト用の Zephyr のヘッダーの代わり（`zephyr/drivers/sensor.h`） |
+
+`nuttx/tests/fakes/nuttx/config.h`（空）は NuttX 版だけのもので、`<nuttx/config.h>` を読む `nuttx/apps` の
+ソースをホストテストでビルドするために置いています（`i2c_dma_app`）。
 
 `nuttx/tests/nano_timeconv.c` は NuttX 版だけのテストです。`src/nano_timeconv.h` の換算を、C の
 `/`・`%` と、NuttX 13.1.0 の汎用の換算（`oneshot.h`・`clkcnt.h` の計算を 1 MHz・100 µs で書き写した
