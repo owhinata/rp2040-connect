@@ -1,0 +1,54 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+#ifndef IMU_RAW_BATCH_H_
+#define IMU_RAW_BATCH_H_
+
+#include "imu_raw_packet.h"
+#include "imu_raw_time.h"
+
+/* Runs in the FIFO consumer. The sink must not wait or retain payload; it
+ * returns 0 after copying or -EAGAIN if it cannot accept the batch. */
+typedef int (*imu_raw_batch_sink)(void *context, const uint8_t *payload, size_t length);
+/* Optional: server (Unix) time in microseconds for a sensor tick. Called at
+ * most twice per batch with ticks that never decrease. Must not wait long. */
+typedef bool (*imu_raw_batch_clock)(void *context, uint64_t tick, uint64_t *unix_us);
+
+struct imu_raw_batch {
+	struct imu_raw_metadata meta;
+	uint8_t payload[IMU_RAW_MAX_SIZE]; /* built in place, see imu_raw_stage_put() */
+	uint64_t next_accel, next_gyro, next_batch;
+	uint64_t delivered_batches, dropped_batches, dropped_accel, dropped_gyro;
+	uint64_t timestamp_words;
+	struct imu_raw_time time;
+	size_t count, accel_count; /* words in the batch being built */
+	/* A first tick was noted and awaits confirmation; see imu_raw_time.h. */
+	bool accel_tick_noted, gyro_tick_noted;
+	uint32_t accel_tick_generation, gyro_tick_generation;
+	uint64_t accel_noted_tick, gyro_noted_tick;
+	imu_raw_batch_sink sink;
+	void *sink_context;
+	imu_raw_batch_clock clock; /* set after init; NULL leaves Unix time invalid */
+	void *clock_context;
+};
+
+/* The caller supplies a unique session ID; no random ID is generated here. */
+int imu_raw_batch_init(struct imu_raw_batch *batch, const uint8_t session_id[16],
+		       uint32_t epoch_id, imu_raw_batch_sink sink, void *context);
+/* cursor is a byte offset into a FIFO word array. Each valid sample is
+ * numbered before the sink is called. The first accelerometer and gyroscope
+ * sample of a batch carry their sensor tick when imu_raw_time can assign one
+ * and has confirmed it by the time the batch is flushed; otherwise the
+ * time-valid flag stays clear.
+ * Unsupported tags return -EPROTO without consuming the offending word.
+ */
+int imu_raw_batch_consume(struct imu_raw_batch *batch, const uint8_t *words,
+			  size_t length, size_t *cursor);
+/* Flush the incomplete batch at a deadline, stop, or before an epoch change. */
+int imu_raw_batch_flush(struct imu_raw_batch *batch);
+/* Call after an unknown number of samples was lost (FIFO overrun, restart,
+ * unparsable word). Flushes what was collected and starts the next epoch.
+ * Batch and sample numbers keep counting so they stay unique in the session;
+ * consecutive numbers on both sides of an epoch change do not mean that the
+ * samples are contiguous. On a flush error the epoch is left unchanged.
+ */
+int imu_raw_batch_new_epoch(struct imu_raw_batch *batch);
+#endif

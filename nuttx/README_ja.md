@@ -3,7 +3,7 @@
 [English](README.md) | 日本語
 
 `zephyr/app/usb-console` の IMU 測定ファームウェアを NuttX 13.1.0 に移植したものを置くディレクトリです。
-現在は移植中で、環境構築だけができます。
+現在は移植中で、環境構築と、OS に依存しない共通ソースのホストテストだけができます。
 
 ## 環境構築
 
@@ -47,3 +47,28 @@ NuttX が使う機能だけを実装しています。
 
 取得したものは Git の管理外です。版を変えるときは、スクリプト冒頭の値を直してから、該当する
 ディレクトリを消して読み込み直します。
+
+## テスト
+
+```bash
+nuttx/script/host_tests.sh
+```
+
+OS に依存しない共通ソースのテストを、PC 上でビルドして実行します。ボードもセットアップスクリプトも
+不要で、ホストの `cc`（C17）だけを使います。FIFO ワードの解析、バッチとペイロード、送信キュー、
+status と info の JSON、時刻の対応付け、センサーの tick と時計の対応、NTP の推定、FIFO パケットの復号、物理単位への
+換算と校正値の保存形式、静止中のジャイロのゼロ点の追従を確かめます。テストは 1 つずつビルドして
+実行し、失敗したところで止まります。ビルドの生成物は一時ディレクトリに置き、終了時に消します。
+
+次のファイルは Zephyr 版（`zephyr/app/usb-console`）の同名ファイルを変更せずに写したものです。
+Zephyr 版を直したときは、写しも同じ内容に置き換えます。
+
+| 置き場所 | Zephyr 版の置き場所 | 内容 |
+|---|---|---|
+| `nuttx/apps/imu/` | `src/` | `imu_raw_{batch,packet,queue,status,time}`、`imu_tick_clock`、`time_offset`、`imu_cal_codec.c`、`imu_cal.h` |
+| `nuttx/drivers/lsm6dso/` | `drivers/lsm6dso/` | `lsm6dso_{fifo,cal,zero,fifo_decoder}`、`lsm6dso_fifo_packet.h` |
+| `nuttx/tests/` | `tests/` | 上のファイルを対象にするテスト |
+| `nuttx/tests/fakes/` | `tests/fakes/` | テスト用の Zephyr のヘッダーの代わり（`zephyr/drivers/sensor.h`） |
+
+ドライバーの I2C・FIFO 制御・ストリーム処理と NINA を対象にするテストは、それらを移植するときに
+加えます。

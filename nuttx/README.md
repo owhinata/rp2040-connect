@@ -3,7 +3,8 @@
 English | [日本語](README_ja.md)
 
 This directory holds the port of the IMU measurement firmware in `zephyr/app/usb-console` to
-NuttX 13.1.0. The port is in progress; only the setup is available so far.
+NuttX 13.1.0. The port is in progress; only the setup and the host tests of the OS-independent
+common sources are available so far.
 
 ## Setup
 
@@ -47,3 +48,31 @@ features NuttX uses are implemented.
 
 The fetched files are not tracked by Git. To change a version, edit the value at the top of the
 script, delete the corresponding directory and source the script again.
+
+## Tests
+
+```bash
+nuttx/script/host_tests.sh
+```
+
+This builds and runs the tests of the OS-independent common sources on the PC. It needs neither
+the board nor the setup script, only the host's `cc` (C17). The tests check FIFO word parsing,
+batches and payloads, the send queue, the status and info JSON, time mapping, the mapping from the sensor
+tick to the clock, the NTP estimate, FIFO packet decoding, conversion to physical units and the
+stored calibration format, and gyro zero tracking at rest. Each test is built and run in turn,
+and the script stops at the first failure. Build products go to a temporary directory that is
+removed on exit.
+
+The following files are unchanged copies of the files of the same name in the Zephyr version
+(`zephyr/app/usb-console`). When the Zephyr version changes, replace the copies with the same
+content.
+
+| Location | Location in the Zephyr version | Contents |
+|---|---|---|
+| `nuttx/apps/imu/` | `src/` | `imu_raw_{batch,packet,queue,status,time}`, `imu_tick_clock`, `time_offset`, `imu_cal_codec.c`, `imu_cal.h` |
+| `nuttx/drivers/lsm6dso/` | `drivers/lsm6dso/` | `lsm6dso_{fifo,cal,zero,fifo_decoder}`, `lsm6dso_fifo_packet.h` |
+| `nuttx/tests/` | `tests/` | the tests of the files above |
+| `nuttx/tests/fakes/` | `tests/fakes/` | stand-ins for the Zephyr headers the tests need (`zephyr/drivers/sensor.h`) |
+
+Tests of the driver's I2C, FIFO control and stream handling and of NINA are added when those
+parts are ported.
