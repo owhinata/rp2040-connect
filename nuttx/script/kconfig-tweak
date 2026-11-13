@@ -1,0 +1,147 @@
+#!/usr/bin/env python3
+"""Minimal kconfig-tweak for NuttX builds that use kconfiglib.
+
+kconfiglib has no kconfig-tweak, but NuttX's tools/sethost.sh (called by
+tools/configure.sh) and tools/update_romfs_password.sh call it to edit .config.
+This implements the commands of the kconfig-frontends tool (Linux
+scripts/config) that NuttX uses, with the same .config line formats:
+
+  --file FILE                 .config to edit (default: .config)
+  --enable/-e NAME            NAME=y
+  --disable/-d NAME           # NAME is not set
+  --module/-m NAME            NAME=m
+  --set-str NAME STR          NAME="STR"
+  --set-val NAME VAL          NAME=VAL
+  --undefine/-u NAME          delete NAME
+  --state/-s NAME             print y, n, m, the value, or undef
+  --keep-case/-k              do not upper-case the following names
+
+NAME may be given with or without the CONFIG_ prefix. Commands are applied in
+order, like the original.
+"""
+
+import os
+import re
+import sys
+import tempfile
+
+PREFIX = os.environ.get("CONFIG_", "CONFIG_")
+
+
+def usage(status=1):
+    sys.stderr.write(__doc__)
+    sys.exit(status)
+
+
+def symbol(name, keep_case):
+    if name.startswith(PREFIX):
+        name = name[len(PREFIX):]
+    if not keep_case:
+        name = name.upper()
+    return PREFIX + name
+
+
+def find(lines, sym):
+    pattern = re.compile(
+        r"^(%s=|# %s is not set$)" % (re.escape(sym), re.escape(sym)))
+    return [i for i, line in enumerate(lines) if pattern.match(line)]
+
+
+def set_line(lines, sym, text):
+    hits = find(lines, sym)
+    if hits:
+        lines[hits[0]] = text
+        for i in reversed(hits[1:]):
+            del lines[i]
+    else:
+        lines.append(text)
+
+
+def state(lines, sym):
+    hits = find(lines, sym)
+    if not hits:
+        return "undef"
+    line = lines[hits[-1]]
+    if line.startswith("# "):
+        return "n"
+    value = line[len(sym) + 1:]
+    if len(value) >= 2 and value[0] == '"' and value[-1] == '"':
+        value = value[1:-1].replace('\\"', '"').replace("\\\\", "\\")
+    return value
+
+
+def main(argv):
+    if not argv:
+        usage()
+    path = ".config"
+    if argv[0] == "--file":
+        if len(argv) < 2:
+            usage()
+        path = argv[1]
+        argv = argv[2:]
+    if not argv:
+        usage()
+
+    try:
+        with open(path, encoding="utf-8") as f:
+            lines = f.read().splitlines()
+    except OSError as e:
+        sys.stderr.write("kconfig-tweak: %s\n" % e)
+        return 1
+
+    changed = False
+    keep_case = False
+    i = 0
+    while i < len(argv):
+        cmd = argv[i]
+        i += 1
+        if cmd in ("--keep-case", "-k"):
+            keep_case = True
+            continue
+        if cmd in ("--help", "-h"):
+            usage(0)
+        if i >= len(argv):
+            usage()
+        sym = symbol(argv[i], keep_case)
+        i += 1
+        if cmd in ("--enable", "-e"):
+            set_line(lines, sym, "%s=y" % sym)
+        elif cmd in ("--disable", "-d"):
+            set_line(lines, sym, "# %s is not set" % sym)
+        elif cmd in ("--module", "-m"):
+            set_line(lines, sym, "%s=m" % sym)
+        elif cmd in ("--set-str", "--set-val"):
+            if i >= len(argv):
+                usage()
+            value = argv[i]
+            i += 1
+            if cmd == "--set-str":
+                value = '"%s"' % value.replace("\\", "\\\\").replace('"', '\\"')
+            set_line(lines, sym, "%s=%s" % (sym, value))
+        elif cmd in ("--undefine", "-u"):
+            for j in reversed(find(lines, sym)):
+                del lines[j]
+        elif cmd in ("--state", "-s"):
+            print(state(lines, sym))
+            continue
+        else:
+            sys.stderr.write("kconfig-tweak: unknown command: %s\n" % cmd)
+            usage()
+        changed = True
+
+    if changed:
+        directory = os.path.dirname(os.path.abspath(path))
+        fd, tmp = tempfile.mkstemp(dir=directory, prefix=".kconfig-tweak.")
+        try:
+            with os.fdopen(fd, "w", encoding="utf-8") as f:
+                f.write("\n".join(lines) + ("\n" if lines else ""))
+            os.chmod(tmp, os.stat(path).st_mode & 0o7777)
+            os.replace(tmp, path)
+        except BaseException:
+            os.unlink(tmp)
+            raise
+    return 0
+
+
+if __name__ == "__main__":
+    sys.exit(main(sys.argv[1:]))
