@@ -51,4 +51,13 @@ void nano_chip_id_initialize(void);
 void nano_usbserial_initialize(void);
 #endif
 
+/* nano_oneshot.c: ALARM0 of the TIMER as a oneshot lower-half; from
+ * up_timer_initialize() (nano_timerisr.c).
+ */
+
+#ifdef CONFIG_NANO_TICKLESS
+struct oneshot_lowerhalf_s;
+struct oneshot_lowerhalf_s *nano_oneshot_initialize(void);
+#endif
+
 #endif /* __BOARDS_ARDUINO_NANO_RP2040_CONNECT_SRC_NANO_CONNECT_H */

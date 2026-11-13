@@ -1,0 +1,42 @@
+rp2040: leave rp2040_timerisr.c out with ALARM_ARCH, rp2040_idle.c with ARCH_IDLE_CUSTOM
+
+Purpose: the board provides its own system timer and (later) its own idle
+loop, but arch/arm/src/rp2040/Make.defs builds rp2040_timerisr.c (periodic
+SysTick, defines up_timer_initialize()) and rp2040_idle.c (defines
+up_idle()) unconditionally.
+
+- With CONFIG_ALARM_ARCH (selected by the board's CONFIG_NANO_TICKLESS),
+  up_timer_initialize() comes from the board (src/nano_timerisr.c), which
+  hands ALARM0 of the RP2040 TIMER to drivers/timers/arch_alarm.c for the
+  tickless scheduler.
+- With CONFIG_ARCH_IDLE_CUSTOM, up_idle() is to come from the board (task
+  T05, the CPU load measured as idle windows).  ARCH_IDLE_CUSTOM already
+  leaves out arch/arm/src/common/arm_idle.c (common/Make.defs) and nothing
+  else; with this change it also leaves out rp2040_idle.c.  Not used yet.
+
+Only the Make build is changed (arch/arm/src/rp2040/CMakeLists.txt is not
+used here).
+Zephyr: the Zephyr build runs a 100 us tickless kernel clock
+(CONFIG_SYS_CLOCK_TICKS_PER_SEC=10000, CONFIG_TICKLESS_KERNEL=y).
+
+diff --git a/arch/arm/src/rp2040/Make.defs b/arch/arm/src/rp2040/Make.defs
+index f617f2d6..f66d17c8 100644
+--- a/arch/arm/src/rp2040/Make.defs
++++ b/arch/arm/src/rp2040/Make.defs
+@@ -24,12 +24,16 @@ include armv6-m/Make.defs
+ 
+ CFLAGS += -Wno-array-bounds
+ 
++ifneq ($(CONFIG_ARCH_IDLE_CUSTOM),y)
+ CHIP_CSRCS += rp2040_idle.c
++endif
+ CHIP_CSRCS += rp2040_irq.c
+ CHIP_CSRCS += rp2040_uart.c
+ CHIP_CSRCS += rp2040_serial.c
+ CHIP_CSRCS += rp2040_start.c
++ifneq ($(CONFIG_ALARM_ARCH),y)
+ CHIP_CSRCS += rp2040_timerisr.c
++endif
+ CHIP_CSRCS += rp2040_gpio.c
+ CHIP_CSRCS += rp2040_pio.c
+ CHIP_CSRCS += rp2040_clock.c

@@ -2,8 +2,30 @@
 # For a description of the syntax of this configuration file,
 # see the file kconfig-language.txt in the NuttX tools repository.
 #
-# Board-specific options of arduino-nano-rp2040-connect (none yet).  NuttX
-# sources this file inside "if ARCH_BOARD_CUSTOM" through a copy,
+# Board-specific options of arduino-nano-rp2040-connect.  NuttX sources
+# this file inside "if ARCH_BOARD_CUSTOM" through a copy,
 # nuttx/nuttx/boards/dummy/Kconfig, made once at configure time;
 # nuttx/script/build.sh configures again when this file changes.
 #
+
+config NANO_TICKLESS
+	bool "System timer on the RP2040 TIMER (ALARM0)"
+	default y
+	depends on ARCH_CHIP_RP2040 && !SMP
+	select ONESHOT
+	select ONESHOT_COUNT
+	select ALARM_ARCH
+	---help---
+		Drive the OS clock from ALARM0 of the RP2040 TIMER (64-bit, 1 MHz,
+		from the crystal) through the oneshot/alarm interface
+		(src/nano_oneshot.c, src/nano_timerisr.c and
+		drivers/timers/arch_alarm.c) instead of the periodic SysTick of
+		arch/arm/src/rp2040/rp2040_timerisr.c.  ALARM_ARCH selects
+		ARCH_HAVE_TICKLESS, so SCHED_TICKLESS can be set (the imu
+		defconfig sets it, with USEC_PER_TICK 100: the 100 us tickless
+		kernel of the Zephyr build).  rp2040_timerisr.c is left out of the
+		build by nuttx/patches/nuttx/0004 when ALARM_ARCH is set.
+		ONESHOT_COUNT has no prompt and can only be selected.
+		ONESHOT_FAST_DIVISION is not selected: on the Cortex-M0+ (no
+		64x64 multiply) it made the counter-to-tick conversion slower,
+		not faster (measured: a wake-up from usleep() 45 us later).

@@ -51,15 +51,16 @@ It also does the following:
 
 ### Patches to NuttX
 
-Patches to NuttX 13.1.0 (`nuttx/patches/nuttx/`) and nuttx-apps (`nuttx/patches/apps/`). All of
-them make the shell behave like the Zephyr version; the head of each file gives its purpose and
-the Zephyr code it matches.
+Patches to NuttX 13.1.0 (`nuttx/patches/nuttx/`) and nuttx-apps (`nuttx/patches/apps/`). Some
+make the shell behave like the Zephyr version; others leave out of the build in-tree files that
+the board code replaces. The head of each file gives its purpose and the Zephyr code it matches.
 
 | Patch | What it does |
 |---|---|
 | `nuttx/0001-cdcacm-no-at-protocol` | CDC ACM communication interface protocol 0 instead of 1 (AT commands), as in the Zephyr version; ModemManager does not take the port for a modem |
 | `nuttx/0002-cdcacm-drop-output-without-dtr` | Drop the output while no program on the PC has the port open (DTR low) |
 | `nuttx/0003-serial-canonical-ctrl-c-eof` | Ctrl-C and Ctrl-D end the read of a command that reads its standard input |
+| `nuttx/0004-rp2040-make-defs-alarm-arch-idle-custom` | Leave `rp2040_timerisr.c` (periodic SysTick interrupt) out of the build with `CONFIG_ALARM_ARCH`, and `rp2040_idle.c` with `CONFIG_ARCH_IDLE_CUSTOM` (the board provides the system timer and the idle loop; `ARCH_IDLE_CUSTOM` is not used yet) |
 | `apps/0001-readline-echo-in-readline` | readline, not the serial driver, echoes while a line is typed (only what goes into the line, and the line end) |
 | `apps/0002-readline-cr-lf-line-end` | CR, LF, CR LF and LF CR are each one Enter |
 | `apps/0003-readline-ctrl-c` | Ctrl-C drops the line being typed and shows a new prompt |
@@ -198,6 +199,27 @@ picocom /dev/serial/by-id/usb-NuttX_NuttX_USB_Console_*-if00
 
 UART0 (GPIO0 TX, GPIO1 RX, the Arduino D1/D0 pins) is not the console. Its pins are given to the
 UART, as in the Zephyr version, but nothing is written to it.
+
+## System clock
+
+The kernel clock is tickless with a 100 µs tick (the same tick as the Zephyr version's
+`CONFIG_SYS_CLOCK_TICKS_PER_SEC=10000`, `CONFIG_TICKLESS_KERNEL=y`). There is no periodic
+interrupt: ALARM0 of the RP2040 TIMER (64-bit, 1 MHz, from the crystal) is set to the time of the
+next wait that ends (`nano_oneshot.c` and `nano_timerisr.c` in
+`nuttx/boards/arduino-nano-rp2040-connect/src/`, and NuttX's `drivers/timers/arch_alarm.c`).
+ALARM1 to ALARM3 are not used. The settings are `CONFIG_NANO_TICKLESS` (the board `Kconfig`, on by
+default), `CONFIG_SCHED_TICKLESS=y` and `CONFIG_USEC_PER_TICK=100`.
+
+- A wait is rounded up to whole ticks and one tick is added (`usleep(1000)` takes 1000 to 1100 µs
+  plus the wake-up delay), the same rule as the Zephyr version's `k_sleep(K_MSEC(1))`.
+- `clock_gettime()` with `CLOCK_MONOTONIC` or `CLOCK_REALTIME` returns the TIMER value directly, in
+  µs (`clock_getres()` gives the tick, 100 µs). The Zephyr version's kernel clock is SysTick on the
+  CPU clock, a different source. In both versions the application reads the TIMER directly as its
+  time base.
+- Threads of the same priority are time-sliced every 20 ms (`CONFIG_RR_INTERVAL=20`; the Zephyr
+  version's `CONFIG_TIMESLICE_SIZE=20`).
+- `up_udelay()` and `up_mdelay()` wait by reading the TIMER (they also work with interrupts
+  disabled).
 
 ## Tests
 

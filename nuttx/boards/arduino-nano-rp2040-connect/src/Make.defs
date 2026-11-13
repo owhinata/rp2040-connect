@@ -36,6 +36,14 @@ ifeq ($(CONFIG_BOARD_USBDEV_SERIALSTR),y)
 CSRCS += nano_usbserial.c
 endif
 
+# The tickless system timer (TIMER ALARM0) in place of the in-tree
+# rp2040_timerisr.c, which patches/nuttx/0004 leaves out with ALARM_ARCH.
+
+ifeq ($(CONFIG_NANO_TICKLESS),y)
+CSRCS += nano_oneshot.c
+CSRCS += nano_timerisr.c
+endif
+
 DEPPATH += --dep-path board
 VPATH += :board
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)arch$(DELIM)$(CONFIG_ARCH)$(DELIM)src$(DELIM)board$(DELIM)board
