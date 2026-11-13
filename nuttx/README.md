@@ -5,9 +5,10 @@ English | [日本語](README_ja.md)
 This directory holds the port of the IMU measurement firmware in `zephyr/app/usb-console` to
 NuttX 13.1.0. The port is in progress. So far there are the setup, the host tests of the
 OS-independent common sources, the board definition with its build, the USB console with the
-flashing script, the RAM log, the key-value store (`kv`) and the SPI link to the NINA-W102
-(`nina version`): the firmware boots to an nsh prompt on
-the USB console (CDC ACM) and has none of the measurement functions yet.
+flashing script, the RAM log, the key-value store (`kv`), the SPI link to the NINA-W102
+(`nina version`), I2C0 (with DMA), the LSM6DSOX driver with its FIFO stream, and the IMU
+acquisition service (`imu`). There is no network yet: a transport stub counts the acquired
+batches and drops them (see "IMU acquisition (`imu`)").
 
 ## Setup
 
@@ -334,9 +335,9 @@ host/.venv/bin/python script/kv_transfer.py restore --usb --no-wifi
 ```
 
 `restore` writes with `kv sethex` and checks by reading back with `kv get` (`imu.session` is not
-written back). After calibration values it sends `imu cal reload`; the NuttX port has no `imu`
-command yet, so the script ends with an error there, after the values have been written and read
-back.
+written back). After calibration values it sends `imu cal reload`; `imu cal` of the NuttX port is
+still a stub that fails, so the script ends with an error there, after the values have been
+written and read back.
 
 ## NINA-W102 (`nina`)
 
@@ -509,8 +510,8 @@ The driver is `nuttx/drivers/lsm6dso/lsm6dso.c`, a copy of the Zephyr version's
 changes) with only the calls into the system replaced. The registers are handled by ST's
 `lsm6dso_reg.c` (lsm6dso-pid v3.2.2, fetched into `nuttx/stmemsc/` by `script/setup.sh`; with LF
 line ends identical to the one in Zephyr's hal_st). The FIFO stream (the INT1 interrupt and RTIO)
-runs the Zephyr version's files as they are, too (below). The acquisition service (`imu start` and
-so on) is not ported yet.
+runs the Zephyr version's files as they are, too (below). The acquisition service that uses it
+(`imu start` and so on) is the next section.
 
 - **Initialization at boot**: the board's bring-up (`nano_bringup()`) initializes the sensor right
   after I2C0 and before mounting the key-value store (NVS). That is the Zephyr version's order: it
@@ -567,6 +568,56 @@ so on) is not ported yet.
   and attribute enumerations, `sensor_*()`, part of the I2C API, the kernel, RTIO, GPIO) are in
   `nuttx/drivers/compat/`. See the "LSM6DSOX" and "Zephyr API compatibility layer" sections of
   `nuttx/drivers/README.md`.
+
+## IMU acquisition (`imu`)
+
+The acquisition service is `nuttx/apps/imu/imu_stream.c`, a copy of the Zephyr version's
+`src/imu_stream.c` with only the calls into the system replaced, by the compatibility layer
+(`nuttx/drivers/compat/`, which keeps Zephyr's names). Constants, branches, order, waits, counters
+and output text are the Zephyr version's; side by side with `diff`, the only differences are the
+includes at the top (NuttX's headers first) and the command registration at the end (the Zephyr
+shell's `SHELL_CMD_REGISTER()` made the builtin command `imu` on `nuttx/apps/subcmd`).
+
+```text
+nsh$ imu
+imu - IMU RAW streaming
+Subcommands:
+  start   : Start streaming to the MQTT server (settings: kv imu.*)
+  stop    : Stop streaming
+  cal     : Show the conversion used by sensor get/stream: [reload|zero]
+  status  : Show counters and errors of the current or last run
+```
+
+- `imu start`, `imu stop` and `imu status` have the Zephyr version's syntax and output (`imu` and
+  `imu status` while idle are character for character the output recorded from the Zephyr
+  version; the items of `imu status` have the same order and columns). The settings come from the
+  same KV keys (`imu.host`, `imu.port`, `imu.device`, `imu.odr`, `imu.watermark`).
+- Acquisition runs in the thread `imu_stream_tid` (Zephyr priority 9 → 109, a static 2048-byte
+  stack). Zephyr starts `K_THREAD_DEFINE()` threads before `main()`; here init starts it at the
+  beginning of the part that does what `main()` does (`K_THREAD_DEFINE_START()`). The `imu`
+  command itself is a builtin at the shell's priority (104).
+- The session ID is the chip ID in its first 8 bytes (the USB serial number; the bytes of Zephyr's
+  `hwinfo_get_device_id()`), then the KV value `imu.session` (4 bytes, big-endian, incremented and
+  stored by every `imu start`), then zeros. The Zephyr version's counter is not carried over; the
+  NuttX port starts at 1.
+- init calls, in the order of the Zephyr version's `main()`, `kv_store_init()` →
+  `imu_cal_init()` (on failure `Could not set up the IMU calibration: <value>`) →
+  `time_sync_init()` (`wifi_profile_init()` is not ported yet).
+
+**Stubs for now** (`nuttx/apps/imu/*_null.c`, each replaced by its port):
+
+| Part | Stub | Behavior |
+|---|---|---|
+| MQTT transport (`imu_raw_mqtt.h`) | `imu_raw_mqtt_null.c` | As the Zephyr version without a network: the connection never comes up, every batch is dropped and counted in `dropped_batches`, `dropped_accel` and `dropped_gyro` (by `imu_raw_queue.c` as it is), and `imu_raw_batch` gets `-EAGAIN`. `imu start` waits up to 3 seconds for the connection before it starts acquiring, as in the Zephyr version, so the acquisition time is about 3 seconds shorter than the time from `imu start` to `imu stop`. `server` in `imu status` is `none:<port> (default gateway)` (or the `imu.host` address). `connects`, `failures` and `published` stay 0 (the Zephyr version counts every connection attempt in `failures`) |
+| Time synchronization (`time_sync.h`) | `time_sync_null.c` | Only `time_sync_mono_us()` is the real one (the TIMER read directly). The rest behaves as before the first NTP reply: `synchronized` is 0 and `unix_unavailable` grows with every batch |
+| Calibration (`imu_cal.h`) | `imu_cal_null.c` | `imu_cal_init()` does nothing and succeeds. `imu cal` (also `reload` and `zero`) prints `Calibration is not available in this build yet` and fails (`imu cal zero` during a measurement is refused with the Zephyr version's message) |
+
+On the board (transport stub, no network, 6667 Hz, watermark 128, 1 MHz): `imu start` → 10 s →
+`imu stop` four times (one right after flashing) and 60 s once. Acquisition time about 7.01 s
+(57.12 s for the 60-second run), accelerometer and gyroscope each about 6700 Hz × seconds, every
+item of `errors` and `fifo` and every anomaly count of `time` 0, no `i2c_dma` errors or fallbacks.
+`cpu_active` was 38.4 to 38.5 % (nothing sent) and `imu_stream_tid` used 1024 of 2000 bytes of
+stack.
 
 ## System clock
 
@@ -646,7 +697,7 @@ Priorities map as `NuttX = 118 − Zephyr`; `nuttx/drivers/include/priorities.h`
 | Thread | Zephyr | NuttX | Stack |
 |---|---|---|---|
 | `wifi_reconnect_tid`, `nina_scan_tid`, `nina_connect_tid` | 8 | 110 | 2048, 1536, 1024 |
-| `time_sync_tid`, `imu_stream_tid`, `nina_monitor_tid` | 9 | 109 | 2048, 2048, 1536 |
+| `time_sync_tid`, `imu_stream_tid` (started by init at boot), `nina_monitor_tid` | 9 | 109 | 2048, 2048, 1536 |
 | `imu_fifo_worker` | 10 | 108 | 2048 |
 | `imu_raw_mqtt_tid` | 11 | 107 | 2048 |
 | NINA events (NuttX only) | – | 106 | – |
@@ -659,9 +710,10 @@ Priorities map as `NuttX = 118 − Zephyr`; `nuttx/drivers/include/priorities.h`
   118, but NuttX has no cooperative threads that other threads cannot preempt; a thread of higher
   priority preempts them. The only one in the port so far is `sysworkq` (119), and no thread has a
   higher priority.
-- The stacks of `imu_fifo_worker`, `sysworkq` and `RTIO WQ 0` are static arrays as in Zephyr
-  (`K_THREAD_STACK_DEFINE()`, NuttX's `kthread_create_with_stack()`). `ps` shows them smaller by
-  the area NuttX puts at their start (2048 → 2008, 1024 → 976).
+- The stacks of `imu_stream_tid`, `imu_fifo_worker`, `sysworkq` and `RTIO WQ 0` are static arrays
+  as in Zephyr (`K_THREAD_DEFINE()`, `K_THREAD_STACK_DEFINE()`, NuttX's
+  `kthread_create_with_stack()`). `ps` shows them smaller by the area NuttX puts at their start
+  (2048 → 2008, 2000 for `imu_stream_tid`; 1024 → 976).
 - `CONFIG_PRIORITY_INHERITANCE=y`. Mutexes inherit priority; semaphores do not by default (NuttX
   13.1.0's `sem_init()` sets their flags to 0), so semaphores used for signalling stay without
   inheritance.
@@ -714,8 +766,9 @@ the hex conversions of the `kv` command (`kv_hex`), the handling of the commands
 driver (`nano_i2c_dw`), the command words of the I2C0 DMA reads (`i2c_dma_commands`), the
 output of the `i2c_dma` command (`i2c_dma_app`, with the driver side replaced by fakes), the
 LSM6DSO FIFO control (`fifo_hw`), the LSM6DSO driver and its FIFO stream (`lsm6dso_driver`), the
-stream's state machine (`stream_stop`), and the compatibility layer's RTIO (`zephyr_rtio`) and
-work items (`zephyr_work`). Each test is built and run in turn,
+stream's state machine (`stream_stop`), the compatibility layer's RTIO (`zephyr_rtio`) and
+work items (`zephyr_work`), and the parts of the layer added for the acquisition service
+(`zephyr_compat_misc`). Each test is built and run in turn,
 and the script stops at the first failure. Build products go to a temporary directory that is
 removed on exit.
 
@@ -725,11 +778,15 @@ content.
 
 | Location | Location in the Zephyr version | Contents |
 |---|---|---|
-| `nuttx/apps/imu/` | `src/` | `imu_raw_{batch,packet,queue,status,time}`, `imu_tick_clock`, `time_offset`, `imu_cal_codec.c`, `imu_cal.h`, `kv_store.h` |
+| `nuttx/apps/imu/` | `src/` | `imu_raw_{batch,packet,queue,status,time}`, `imu_tick_clock`, `time_offset`, `imu_cal_codec.c`, `imu_cal.h`, `kv_store.h`, `time_sync.h` |
 | `nuttx/drivers/lsm6dso/` | `drivers/lsm6dso/` | `lsm6dso_{fifo,cal,zero,fifo_decoder,fifo_hw,fifo_irq}`, `lsm6dso_stream.c`, `lsm6dso_fifo_packet.h`, `lsm6dso_fifo_stats.h`, `lsm6dso_attributes.h` |
 | `boards/arduino-nano-rp2040-connect/src/` | `drivers/i2c_dw/` | `i2c_dw_rp2040_commands.[ch]` |
 | `nuttx/tests/` | `tests/` | the tests of the files above (`i2c_dma_commands.c`, `fifo_hw.c` and `stream_stop.c` included; `stream_stop.c` includes `../drivers/lsm6dso/lsm6dso_stream.c`) |
 | `nuttx/tests/fakes/` | `tests/fakes/` | stand-ins for the Zephyr and ST headers the tests need (`zephyr/drivers/sensor.h`, `zephyr/drivers/sensor_clock.h`, `zephyr/drivers/i2c.h`, `zephyr/rtio/rtio.h`, `lsm6dso_reg.h`) |
+
+`nuttx/apps/imu/imu_stream.c` is a copy with only the calls into the system and the command
+registration at the end replaced; `imu_raw_mqtt.h` is a copy with `<zephyr/net/net_ip.h>` replaced
+by `<netinet/in.h>`.
 
 `nuttx/tests/fakes/nuttx/config.h` (empty) is the NuttX port's own: it lets a host test build a
 source of `nuttx/apps` that includes `<nuttx/config.h>` (`i2c_dma_app`).
@@ -811,5 +868,13 @@ error or a cancellation), cancellation (the mark, the iodev's function, stale an
 handles, no completion for one canceled before submission) and the RTIO work queue. The second
 checks the return values and flags of `submit`, `schedule`, `reschedule` and
 `k_work_cancel_sync()`, and `K_MSEC()` in ticks.
+
+`nuttx/tests/zephyr_compat_misc.c` is a test of the NuttX port only too. It checks the parts added
+to the compatibility layer for the acquisition service: `K_MUTEX_DEFINE()`, `K_THREAD_DEFINE()`
+(name, priority 9 → 109, stack, entry and arguments) with `K_THREAD_DEFINE_START()`, the rounding
+of `k_uptime_get()` (against Zephyr's `k_ticks_to_ms_floor64()` of 100 µs ticks, around every carry
+and across the wrap of the 32-bit tick count), the ticks of `k_sleep(K_MSEC(1))`,
+`sys_put_be32()`/`sys_get_be32()`, `snprintk()`, `hwinfo_get_device_id()` (fake chip ID), where
+`shell_print()` and `shell_error()` write, and `zsock_inet_pton()`/`zsock_inet_ntop()`.
 
 Tests of the NINA's Wi-Fi and sockets are added when those parts are ported.

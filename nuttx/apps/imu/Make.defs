@@ -1,8 +1,9 @@
 ############################################################################
 # nuttx/apps/imu/Make.defs
 #
-# Read through nuttx/apps/Make.defs.  Adds this directory (a library: no
-# program of its own) to the build when CONFIG_NANO_KV_STORE is set.
+# Read through nuttx/apps/Make.defs.  Adds this directory (the key-value
+# store, and with CONFIG_NANO_APP_IMU the IMU service and the "imu" command)
+# to the build when CONFIG_NANO_KV_STORE is set.
 ############################################################################
 
 ifneq ($(CONFIG_NANO_KV_STORE),)

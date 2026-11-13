@@ -5,8 +5,9 @@
 `zephyr/app/usb-console` の IMU 測定ファームウェアを NuttX 13.1.0 に移植したものを置くディレクトリです。
 現在は移植中です。今あるのは、環境構築、OS に依存しない共通ソースのホストテスト、ボード定義とその
 ビルド、USB コンソールと書き込みスクリプト、RAM ログ、キーと値の保存（`kv`）、NINA-W102 との SPI の
-やり取り（`nina version`）です。ファームウェアは
-起動して USB コンソール（CDC ACM）に nsh のプロンプトを出すところまでで、測定の機能はまだありません。
+やり取り（`nina version`）、I2C0（DMA を含む）、LSM6DSOX のドライバーと FIFO のストリーム、IMU の取得
+サービス（`imu`）です。ネットワークはまだ無く、取得したバッチは送信のスタブが数えて捨てます（「IMU の
+取得（`imu`）」の節）。
 
 ## 環境構築
 
@@ -315,8 +316,8 @@ host/.venv/bin/python script/kv_transfer.py restore --usb --no-wifi
 ```
 
 `restore` は `kv sethex` で書き、`kv get` で読み返して確かめます（`imu.session` は書き戻しません）。
-校正値を書いた後に `imu cal reload` を送るので、`imu` コマンドがまだ無い今の NuttX 版では、書き込みと
-読み返しが済んだ後、そこでエラーになって終わります。
+校正値を書いた後に `imu cal reload` を送りますが、今の NuttX 版の `imu cal` はスタブでエラーを返すので、
+書き込みと読み返しが済んだ後、そこでエラーになって終わります。
 
 ## NINA-W102（`nina`）
 
@@ -475,7 +476,7 @@ Zephyr 版の `i2c` コマンド（Zephyr のシェル）は移さず、NuttX �
 変更を含む Zephyr の LSM6DSO ドライバー）の OS を呼ぶ部分だけを置き換えた写しです。レジスターの操作は ST の
 `lsm6dso_reg.c`（lsm6dso-pid v3.2.2。`script/setup.sh` が `nuttx/stmemsc/` に取得。Zephyr の hal_st のものと
 LF に直して同一）で行います。FIFO のストリーム（INT1 の割り込みと RTIO）も Zephyr 版のファイルをそのまま写して
-動かしています（下）。取得サービス（`imu start` など）はまだ移していません。
+動かしています（下）。それを使う取得サービス（`imu start` など）は次の節です。
 
 - **起動時の初期化**: ボードの起動処理（`nano_bringup()`）が、I2C0 の初期化の直後、KV（NVS）のマウントより前に
   初期化します。Zephyr 版がデバイスを `main()` より前に初期化し（`POST_KERNEL`、優先度 90）、`main()` で NVS を
@@ -525,6 +526,50 @@ LF に直して同一）で行います。FIFO のストリーム（INT1 の割�
 - 呼ぶ側のための Zephyr の API の写し（`struct device`、`struct sensor_value`、チャネル・属性の列挙、
   `sensor_*()`、I2C の一部、カーネル、RTIO、GPIO）は `nuttx/drivers/compat/` にあります。詳しくは
   `nuttx/drivers/README_ja.md` の「LSM6DSOX」と「Zephyr の API の互換層」の節を見てください。
+
+## IMU の取得（`imu`）
+
+取得サービスは `nuttx/apps/imu/imu_stream.c` で、Zephyr 版の `src/imu_stream.c` の OS を呼ぶ部分だけを
+互換層（`nuttx/drivers/compat/`。Zephyr の名前のまま）に置き換えた写しです。定数、分岐、順序、待ち時間、
+カウンター、出力の文は Zephyr 版と同じで、`diff` で並べると違いは先頭のインクルード（NuttX のヘッダーを先に
+読む）と、末尾のコマンドの登録（Zephyr のシェルの `SHELL_CMD_REGISTER()` を、`nuttx/apps/subcmd` の
+組み込みコマンド `imu` にした）だけです。
+
+```text
+nsh$ imu
+imu - IMU RAW streaming
+Subcommands:
+  start   : Start streaming to the MQTT server (settings: kv imu.*)
+  stop    : Stop streaming
+  cal     : Show the conversion used by sensor get/stream: [reload|zero]
+  status  : Show counters and errors of the current or last run
+```
+
+- `imu start`・`imu stop`・`imu status` の構文と出力は Zephyr 版と同じです（`imu` と、何もしていないときの
+  `imu status` は Zephyr 版で記録した出力と文字単位で同じ。`imu status` の項目の並びと桁も同じ）。設定は
+  Zephyr 版と同じ KV のキー（`imu.host`、`imu.port`、`imu.device`、`imu.odr`、`imu.watermark`）から読みます。
+- 取得はスレッド `imu_stream_tid`（Zephyr の優先度 9 → 109、スタック 2048 の静的な配列）で動きます。Zephyr が
+  `K_THREAD_DEFINE()` のスレッドを `main()` の前に始めるのと同じく、init が `main()` 相当の処理の最初に
+  始めます（`K_THREAD_DEFINE_START()`）。コマンド `imu` 自体はシェルの優先度（104）の組み込みコマンドです。
+- セッション ID は、前半 8 バイトがチップ ID（USB のシリアル番号と同じ。Zephyr の `hwinfo_get_device_id()` と
+  同じバイト列）、続く 4 バイトが KV の `imu.session`（4 バイトのビッグエンディアン。`imu start` のたびに +1 して
+  保存）、残りが 0 です。Zephyr 版の通し番号は引き継がず、NuttX 版では 1 から始まります。
+- init は Zephyr 版の `main()` と同じ順に `kv_store_init()` → `imu_cal_init()`（失敗すると
+  `Could not set up the IMU calibration: <値>`）→ `time_sync_init()` を呼びます（`wifi_profile_init()` は未移植）。
+
+**まだスタブの部分**（`nuttx/apps/imu/*_null.c`。それぞれの移植で本物に置き換えます）:
+
+| 部分 | スタブ | 振る舞い |
+|---|---|---|
+| MQTT の送信（`imu_raw_mqtt.h`） | `imu_raw_mqtt_null.c` | Zephyr 版がネットワークに繋がっていないときと同じ: 接続は成立せず、バッチはすべて捨てて `dropped_batches`・`dropped_accel`・`dropped_gyro` に数え（`imu_raw_queue.c` をそのまま使う）、`imu_raw_batch` には `-EAGAIN` を返します。`imu start` は Zephyr 版と同じく接続を最大 3 秒待ってから取得を始めるので、取得の時間は `imu start` から `imu stop` までより約 3 秒短くなります。`imu status` の `server` は `none:<port> (default gateway)`（`imu.host` があればその番地）。`connects`・`failures`・`published` は 0 のままです（Zephyr 版では接続の試行のたびに `failures` が増える） |
+| 時刻同期（`time_sync.h`） | `time_sync_null.c` | `time_sync_mono_us()` だけ本物（TIMER の直読み）。ほかは最初の NTP の応答の前と同じで、`synchronized` は 0、バッチごとに `unix_unavailable` が増えます |
+| 校正（`imu_cal.h`） | `imu_cal_null.c` | `imu_cal_init()` は何もせず成功します。`imu cal`（`reload`・`zero` も）は `Calibration is not available in this build yet` を出して失敗します（測定中の `imu cal zero` は Zephyr 版と同じ拒否の文） |
+
+実機での確認（送信スタブ、ネットワークなし、6667 Hz、ウォーターマーク 128、1 MHz）: `imu start` → 10 秒 →
+`imu stop` を 4 回（書き込み直後の 1 回を含む）と 60 秒を 1 回。取得の時間は約 7.01 秒（60 秒では 57.12 秒）、
+加速度・ジャイロは各 約 6700 Hz × 秒数、`errors`・`fifo` の各項目・`time` の異常の数はすべて 0、`i2c_dma` の
+エラーとフォールバックは 0 でした。`cpu_active` は 38.4〜38.5 %（送信なし）、`imu_stream_tid` のスタックは
+2000 中 1024 バイトでした。
 
 ## システム時計
 
@@ -594,7 +639,7 @@ LF に直して同一）で行います。FIFO のストリーム（INT1 の割�
 | スレッド | Zephyr | NuttX | スタック |
 |---|---|---|---|
 | `wifi_reconnect_tid`、`nina_scan_tid`、`nina_connect_tid` | 8 | 110 | 2048、1536、1024 |
-| `time_sync_tid`、`imu_stream_tid`、`nina_monitor_tid` | 9 | 109 | 2048、2048、1536 |
+| `time_sync_tid`、`imu_stream_tid`（init が起動時に始める）、`nina_monitor_tid` | 9 | 109 | 2048、2048、1536 |
 | `imu_fifo_worker` | 10 | 108 | 2048 |
 | `imu_raw_mqtt_tid` | 11 | 107 | 2048 |
 | NINA のイベント（NuttX 版だけ） | – | 106 | – |
@@ -606,9 +651,9 @@ LF に直して同一）で行います。FIFO のストリーム（INT1 の割�
 - Zephyr の協調スレッド（負の優先度。`sysworkq`、`net_mgmt` など）は 118 より上になりますが、NuttX には
   他のスレッドに横取りされない協調スレッドが無く、より高い優先度のスレッドには横取りされます。今の移植で
   協調スレッドに当たるのは `sysworkq`（119）だけで、それより高い優先度のスレッドはありません。
-- `imu_fifo_worker`、`sysworkq`、`RTIO WQ 0` のスタックは Zephyr と同じく静的な配列です
-  （`K_THREAD_STACK_DEFINE()`、NuttX の `kthread_create_with_stack()`）。`ps` の STACK は NuttX が先頭に
-  置く領域の分だけ小さく出ます（2048 → 2008、1024 → 976）。
+- `imu_stream_tid`、`imu_fifo_worker`、`sysworkq`、`RTIO WQ 0` のスタックは Zephyr と同じく静的な配列です
+  （`K_THREAD_DEFINE()`・`K_THREAD_STACK_DEFINE()`、NuttX の `kthread_create_with_stack()`）。`ps` の STACK は
+  NuttX が先頭に置く領域の分だけ小さく出ます（2048 → 2008。`imu_stream_tid` は 2000、1024 → 976）。
 - `CONFIG_PRIORITY_INHERITANCE=y` です。ミューテックスは優先度継承あり、セマフォは既定で継承なし
   （NuttX 13.1.0 の `sem_init()` は flags を 0 にします）なので、通知用のセマフォはそのままで継承しません。
 - 割り込み用のスタック（`CONFIG_ARCH_INTERRUPTSTACK=2048`。Zephyr 版の `CONFIG_ISR_STACK_SIZE=2048` と
@@ -652,7 +697,8 @@ KV 領域の範囲の検査・ページ単位の書き込み・起動時の内�
 NINA の SPI の転送層（`nina_spi`）、I2C0 のドライバーの OS に依存しない部分（`nano_i2c_dw`）、I2C0 の DMA
 読み出しのコマンド語（`i2c_dma_commands`）、`i2c_dma` コマンドの出力（`i2c_dma_app`。ドライバー側は偽物）、
 LSM6DSO の FIFO 制御（`fifo_hw`）、LSM6DSO のドライバーと FIFO のストリーム（`lsm6dso_driver`）、ストリームの
-状態機械（`stream_stop`）、互換層の RTIO（`zephyr_rtio`）とワーク（`zephyr_work`）を確かめます。テストは 1 つずつビルドして
+状態機械（`stream_stop`）、互換層の RTIO（`zephyr_rtio`）とワーク（`zephyr_work`）、取得サービスのために
+足した互換層の部品（`zephyr_compat_misc`）を確かめます。テストは 1 つずつビルドして
 実行し、失敗したところで止まります。ビルドの生成物は一時ディレクトリに置き、終了時に消します。
 
 次のファイルは Zephyr 版（`zephyr/app/usb-console`）の同名ファイルを変更せずに写したものです。
@@ -660,11 +706,14 @@ Zephyr 版を直したときは、写しも同じ内容に置き換えます。
 
 | 置き場所 | Zephyr 版の置き場所 | 内容 |
 |---|---|---|
-| `nuttx/apps/imu/` | `src/` | `imu_raw_{batch,packet,queue,status,time}`、`imu_tick_clock`、`time_offset`、`imu_cal_codec.c`、`imu_cal.h`、`kv_store.h` |
+| `nuttx/apps/imu/` | `src/` | `imu_raw_{batch,packet,queue,status,time}`、`imu_tick_clock`、`time_offset`、`imu_cal_codec.c`、`imu_cal.h`、`kv_store.h`、`time_sync.h` |
 | `nuttx/drivers/lsm6dso/` | `drivers/lsm6dso/` | `lsm6dso_{fifo,cal,zero,fifo_decoder,fifo_hw,fifo_irq}`、`lsm6dso_stream.c`、`lsm6dso_fifo_packet.h`、`lsm6dso_fifo_stats.h`、`lsm6dso_attributes.h` |
 | `boards/arduino-nano-rp2040-connect/src/` | `drivers/i2c_dw/` | `i2c_dw_rp2040_commands.[ch]` |
 | `nuttx/tests/` | `tests/` | 上のファイルを対象にするテスト（`i2c_dma_commands.c`、`fifo_hw.c`、`stream_stop.c` を含む。`stream_stop.c` は `../drivers/lsm6dso/lsm6dso_stream.c` を読み込む） |
 | `nuttx/tests/fakes/` | `tests/fakes/` | テスト用の Zephyr のヘッダーと ST のヘッダーの代わり（`zephyr/drivers/sensor.h`、`zephyr/drivers/sensor_clock.h`、`zephyr/drivers/i2c.h`、`zephyr/rtio/rtio.h`、`lsm6dso_reg.h`） |
+
+`nuttx/apps/imu/imu_stream.c` は OS を呼ぶ部分と末尾のコマンドの登録だけを置き換えた写し、
+`imu_raw_mqtt.h` は `<zephyr/net/net_ip.h>` を `<netinet/in.h>` にしただけの写しです。
 
 `nuttx/tests/fakes/nuttx/config.h`（空）は NuttX 版だけのもので、`<nuttx/config.h>` を読む `nuttx/apps` の
 ソースをホストテストでビルドするために置いています（`i2c_dma_app`）。
@@ -729,5 +778,12 @@ Zephyr のフラグへの変換、`IC_DATA_CMD` に書く語の列（`i2c` ツ�
 キャンセル（印、iodev の関数、古いハンドルと無効なハンドル、送信前のキャンセルは完了を出さない）、RTIO の
 ワークキューを確かめます。後者は `submit`・`schedule`・`reschedule`・`k_work_cancel_sync()` の戻り値とフラグ、
 `K_MSEC()` の tick への換算を確かめます。
+
+`nuttx/tests/zephyr_compat_misc.c` も NuttX 版だけのテストで、取得サービスのために互換層に足した部品を
+確かめます: `K_MUTEX_DEFINE()`、`K_THREAD_DEFINE()`（名前、優先度 9 → 109、スタック、入口と引数）と
+`K_THREAD_DEFINE_START()`、`k_uptime_get()` の丸め（Zephyr の `k_ticks_to_ms_floor64()` を 100 µs の tick に
+使ったものと、桁上がりの前後と 32 ビットの tick の一周をまたぐ値で比べる）、`k_sleep(K_MSEC(1))` の tick 数、
+`sys_put_be32()`・`sys_get_be32()`、`snprintk()`、`hwinfo_get_device_id()`（偽のチップ ID）、`shell_print()`・
+`shell_error()` の出力先、`zsock_inet_pton()`・`zsock_inet_ntop()`。
 
 NINA の Wi-Fi・ソケットを対象にするテストは、それらを移植するときに加えます。

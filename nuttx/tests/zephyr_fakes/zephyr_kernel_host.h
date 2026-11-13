@@ -18,5 +18,13 @@ void test_timeout_fire(struct _timeout *to);
  */
 int test_work_queues(void);
 struct k_work_q *test_work_queue(int i, const char **name, int *prio, size_t *stack);
-/* Fires every armed timer of a delayable item on a started queue. */
+/* The fake clock of k_uptime_get() and k_sleep(): set it (microseconds
+ * since boot), and the ticks the last k_sleep() waited.
+ */
+void test_time_set_us(uint64_t us);
+int64_t test_slept_ticks(void);
+/* The i-th thread started with z_thread_static_start() (K_THREAD_DEFINE()
+ * via K_THREAD_DEFINE_START()), NULL if none.
+ */
+const struct z_thread_static *test_thread(int i);
 #endif

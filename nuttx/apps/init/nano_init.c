@@ -71,6 +71,12 @@
 #  include "kv_store.h"
 #endif
 
+#ifdef CONFIG_NANO_APP_IMU
+#  include "zephyr_compat.h"
+#  include "imu_cal.h"
+#  include "time_sync.h"
+#endif
+
 /* The module name and level of the Zephyr build's main.c. */
 
 LOG_MODULE_REGISTER(usb_console, LOG_LEVEL_INF);
@@ -199,11 +205,19 @@ static void console_setup(int fd)
 int nano_init_main(int argc, FAR char *argv[])
 {
   struct sched_param param;
-#ifdef CONFIG_NANO_KV_STORE
+#if defined(CONFIG_NANO_KV_STORE) || defined(CONFIG_NANO_APP_IMU)
   int ret;
 #endif
 
   nsh_initialize();
+
+  /* Zephyr starts the threads of K_THREAD_DEFINE() before main()
+   * (z_init_static_threads()).  Each waits for its work at once.
+   */
+
+#ifdef CONFIG_NANO_APP_IMU
+  K_THREAD_DEFINE_START(imu_stream_tid);  /* imu_stream.c */
+#endif
 
   /* zephyr/app/usb-console/src/main.c */
 
@@ -219,6 +233,18 @@ int nano_init_main(int argc, FAR char *argv[])
       LOG_ERR("Could not initialize settings: %d", ret);
     }
 #endif
+
+#ifdef CONFIG_NANO_APP_IMU
+  ret = imu_cal_init();
+  if (ret)
+    {
+      LOG_ERR("Could not set up the IMU calibration: %d", ret);
+    }
+
+  time_sync_init();
+#endif
+
+  /* wifi_profile_init(): T17 of nuttx/PORTING_PLAN.md. */
 
   param.sched_priority = NANO_PRIO_SHELL;
   sched_setparam(0, &param);

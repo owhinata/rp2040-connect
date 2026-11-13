@@ -187,6 +187,55 @@ void test_timeout_fire(struct _timeout *to)
 	to->fn(to);
 }
 
+/* Time: microseconds since "boot", set by the test; k_sleep() moves it on
+ * by the ticks it would wait (timeout + 1, Zephyr's z_add_timeout()).
+ */
+static uint64_t now_us;
+static int64_t slept_ticks;
+
+void test_time_set_us(uint64_t us)
+{
+	now_us = us;
+}
+
+int64_t test_slept_ticks(void)
+{
+	return slept_ticks;
+}
+
+int64_t k_uptime_get(void)
+{
+	return Z_UPTIME_MS(now_us);
+}
+
+int32_t k_sleep(k_timeout_t timeout)
+{
+	assert(!K_TIMEOUT_EQ(timeout, K_FOREVER));
+	if (!K_TIMEOUT_EQ(timeout, K_NO_WAIT)) {
+		slept_ticks = timeout.ticks + 1;
+		now_us += (uint64_t)slept_ticks * Z_USEC_PER_TICK;
+	}
+	return 0;
+}
+
+/* K_THREAD_DEFINE() threads: recorded, not run. */
+static const struct z_thread_static *threads[8];
+static int num_threads;
+
+int z_thread_static_start(const struct z_thread_static *thread)
+{
+	assert(num_threads < 8);
+	threads[num_threads] = thread;
+	*thread->tid = 200 + num_threads;
+	num_threads++;
+	return 0;
+}
+
+const struct z_thread_static *test_thread(int i)
+{
+	return i < num_threads ? threads[i] : NULL;
+}
+
 struct k_work_q k_sys_work_q;
 
 int zephyr_compat_initialize(void)

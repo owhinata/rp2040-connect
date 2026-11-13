@@ -20,6 +20,11 @@
  *                             interrupt, as Zephyr's timeout does in the
  *                             system clock interrupt)
  *   k_thread_name_set()       the TCB's name
+ *   K_THREAD_DEFINE() thread  a kernel thread on its static stack, started
+ *                             by z_thread_static_start() (the init task)
+ *   k_uptime_get()            the TIMER (the source of the NuttX tick) in
+ *                             ms, rounded down
+ *   k_sleep()                 nxsched_ticksleep()
  */
 
 #include <nuttx/config.h>
@@ -36,6 +41,7 @@
 #include <nuttx/sched.h>
 #include <nuttx/semaphore.h>
 #include <nuttx/wdog.h>
+#include <arch/board/nano_timer.h>
 
 #include <zephyr/device.h>
 #include <zephyr/kernel.h>
@@ -351,6 +357,73 @@ void k_work_queue_start(struct k_work_q *queue, k_thread_stack_t *stack,
     }
 
   nxmutex_unlock(&g_queue_start_lock);
+}
+
+/* The threads of K_THREAD_DEFINE(), handed over to the new thread the same
+ * way as a work queue.
+ */
+
+static mutex_t g_thread_start_lock = NXMUTEX_INITIALIZER;
+static sem_t g_thread_taken = SEM_INITIALIZER(0);
+static const struct z_thread_static *g_thread_starting;
+
+static int static_thread_main(int argc, FAR char *argv[])
+{
+  const struct z_thread_static *thread = g_thread_starting;
+
+  (void)argc;
+  (void)argv;
+  nxsem_post(&g_thread_taken);
+  thread->entry(thread->p1, thread->p2, thread->p3);
+  return 0;
+}
+
+int z_thread_static_start(const struct z_thread_static *thread)
+{
+  int pid;
+
+  nxmutex_lock(&g_thread_start_lock);
+  g_thread_starting = thread;
+  pid = kthread_create_with_stack(thread->name, thread->prio, thread->stack,
+                                  (int)thread->stack_size,
+                                  static_thread_main, NULL);
+  if (pid > 0)
+    {
+      *thread->tid = pid;
+      nxsem_wait_uninterruptible(&g_thread_taken);
+    }
+
+  nxmutex_unlock(&g_thread_start_lock);
+  return pid > 0 ? 0 : pid;
+}
+
+/* Time -------------------------------------------------------------------*/
+
+int64_t k_uptime_get(void)
+{
+  return Z_UPTIME_MS(nano_mono_us());
+}
+
+int32_t k_sleep(k_timeout_t timeout)
+{
+  if (K_TIMEOUT_EQ(timeout, K_NO_WAIT))
+    {
+      sched_yield();
+      return 0;
+    }
+
+  if (K_TIMEOUT_EQ(timeout, K_FOREVER))
+    {
+      for (; ; )
+        {
+          nxsched_ticksleep(UINT32_MAX / 2);
+        }
+    }
+
+  /* clock_delay2abstick(): the current tick + ticks + 1. */
+
+  nxsched_ticksleep((unsigned int)timeout.ticks);
+  return 0;
 }
 
 /* Timeouts of delayable items --------------------------------------------*/

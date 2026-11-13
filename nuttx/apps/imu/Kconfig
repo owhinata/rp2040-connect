@@ -13,5 +13,45 @@ config NANO_KV_STORE
 		key-value area, NANO_FLASH_KV), with the same keys (1-32
 		characters: letters, digits, '_', '-', '.'), values (1-128 bytes)
 		and error values.  Built into the application library; the "kv"
-		command (NANO_APP_KV) and the init task use it.  The other
-		sources of this directory are not built yet.
+		command (NANO_APP_KV), the init task and the IMU service
+		(NANO_APP_IMU) use it.
+
+config NANO_APP_IMU
+	tristate "IMU acquisition service and the imu command"
+	default y
+	depends on NANO_KV_STORE && NANO_SUBCMD && NANO_LSM6DSO_STREAM
+	select LIBC_IPv4_ADDRCONV if !NET_IPv4
+	---help---
+		imu_stream.c: the Zephyr build's src/imu_stream.c with only the
+		system calls replaced (on the Zephyr compatibility layer of
+		nuttx/drivers/compat): the thread imu_stream_tid (Zephyr
+		priority 9, NuttX 109, 2048-byte stack), which the init task
+		starts at boot, and the "imu start|stop|status|cal" command
+		with the Zephyr build's syntax and output.  The MQTT transport,
+		the time synchronization and the calibration are stubs for now
+		(imu_raw_mqtt_null.c, time_sync_null.c, imu_cal_null.c: no
+		network, no server time, no calibration command).  inet_pton()
+		and inet_ntop() for imu.host need LIBC_IPv4_ADDRCONV while the
+		network is off.
+
+if NANO_APP_IMU
+
+config NANO_APP_IMU_PRIORITY
+	int "imu task priority"
+	default 104
+	---help---
+		The shell's priority (NANO_PRIO_SHELL in
+		nuttx/drivers/include/priorities.h): the Zephyr build runs shell
+		commands in its shell thread.  The acquisition itself runs in
+		imu_stream_tid (109).
+
+config NANO_APP_IMU_STACKSIZE
+	int "imu task stack size"
+	default 3072
+	---help---
+		The Zephyr build runs the command on the shell thread's stack
+		(CONFIG_SHELL_STACK_SIZE 3072).  "imu start" writes the session
+		counter to the key-value store, with garbage collection, on
+		this stack.
+
+endif

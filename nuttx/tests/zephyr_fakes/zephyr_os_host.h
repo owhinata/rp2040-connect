@@ -2,7 +2,8 @@
 /* The OS objects of the Zephyr compatibility layer (nuttx/drivers/compat,
  * <zephyr/spinlock.h> and <zephyr/kernel.h>) for host tests: one thread,
  * no interrupts.  A spin lock checks that it is not taken twice; the
- * semaphores are counts; a timer only records that it is armed.  The
+ * semaphores are counts; a timer only records that it is armed; the time
+ * (k_uptime_get(), k_sleep()) is a counter of the test.  The
  * functions are in zephyr_kernel_host.c.
  */
 #ifndef TEST_ZEPHYR_OS_HOST_H
@@ -29,6 +30,7 @@ static inline void k_spin_unlock(struct k_spinlock *l, k_spinlock_key_t key)
 }
 
 struct k_mutex { int depth; };
+#define Z_MUTEX_INITIALIZER(obj) { .depth = 0 }
 
 struct k_poll_event;
 struct k_sem {

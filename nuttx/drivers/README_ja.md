@@ -156,7 +156,7 @@ Zephyr の API を、Zephyr の名前のまま最小限だけ用意したもの�
 |---|---|
 | `zephyr/device.h` | `struct device`（名前、config、API、状態、data、初期化関数）、`device_is_ready()`、`device_init()`（Zephyr の `do_device_init()` と同じ意味）、`DEVICE_DT_GET()`、`DEVICE_DT_DEFINE()`、`DEVICE_API()` |
 | `zephyr/devicetree.h` | `DT_NODELABEL()`、`DT_BUS()`。ノードは `gpio0`、`i2c0`、`lsm6dsox` だけ |
-| `zephyr/kernel.h` | `k_timeout_t`（`K_NO_WAIT`、`K_FOREVER`、`K_MSEC()`。単位は 100 µs の tick）、`k_mutex`、`k_sem`（`K_SEM_DEFINE`）、セマフォに対する `k_poll()`（`K_POLL_TYPE_SEM_AVAILABLE`・`K_POLL_MODE_NOTIFY_ONLY`）、ワーク（`k_work`、`k_work_delayable`、`k_work_q`、`k_work_submit()`、`k_work_cancel_sync()`、`k_work_schedule_for_queue()`、`k_work_reschedule_for_queue()`、`k_work_queue_start()`）、`K_THREAD_STACK_DEFINE()`、`K_PRIO_PREEMPT()`、`k_thread_name_set()`、システムワークキュー `k_sys_work_q` |
+| `zephyr/kernel.h` | `k_timeout_t`（`K_NO_WAIT`、`K_FOREVER`、`K_MSEC()`。単位は 100 µs の tick）、`k_mutex`、`k_sem`（`K_SEM_DEFINE`）、セマフォに対する `k_poll()`（`K_POLL_TYPE_SEM_AVAILABLE`・`K_POLL_MODE_NOTIFY_ONLY`）、ワーク（`k_work`、`k_work_delayable`、`k_work_q`、`k_work_submit()`、`k_work_cancel_sync()`、`k_work_schedule_for_queue()`、`k_work_reschedule_for_queue()`、`k_work_queue_start()`）、`K_THREAD_STACK_DEFINE()`、`K_PRIO_PREEMPT()`、`k_thread_name_set()`、システムワークキュー `k_sys_work_q`、`K_MUTEX_DEFINE()`、`K_THREAD_DEFINE()`（下）、`k_uptime_get()`、`k_sleep()`（下） |
 | `zephyr/spinlock.h`、`zephyr/sys/atomic.h` | `k_spin_lock()`（下）、`atomic_t` と `atomic_get/set/clear/cas/or/inc/add()` |
 | `zephyr/rtio/rtio.h`、`zephyr/rtio/work.h` | RTIO（下）と RTIO のワークキュー（`rtio_work_req_alloc()`・`_submit()`） |
 | `zephyr/drivers/gpio.h` | `struct gpio_dt_spec`、`gpio_is_ready_dt()`、`gpio_pin_configure_dt()`（入力だけ）、`gpio_pin_interrupt_configure_dt()`、`gpio_pin_get_dt()`、コールバック（`gpio_init_callback()`・`gpio_add_callback()`・`gpio_remove_callback()`） |
@@ -164,17 +164,22 @@ Zephyr の API を、Zephyr の名前のまま最小限だけ用意したもの�
 | `zephyr/drivers/sensor_clock.h` | `sensor_clock_get_cycles()`、`sensor_clock_cycles_to_ns()`（下） |
 | `zephyr/drivers/i2c.h` | `struct i2c_dt_spec`、`i2c_burst_read_dt()`、`i2c_write_dt()`、`i2c_write_read_dt()`、`i2c_configure()`、速さの区分（`I2C_SPEED_*`、`I2C_SPEED_SET()`） |
 | `zephyr/sys/util.h`、`sys/__assert.h`、`sys/mpsc_lockfree.h`、`sys/mem_blocks.h`、`dsp/types.h` | `BIT()`、`ARRAY_SIZE()`、`MIN()`・`MAX()`、`IS_ENABLED()`、`CONTAINER_OF()`、`GENMASK()`・`FIELD_GET()` など、`__ASSERT()`、RTIO の待ち行列とブロックのプール、`q31_t` |
-| `zephyr_compat.h` | `zephyr_compat_initialize()`（ボードの起動処理が呼ぶ。下） |
+| `zephyr/sys/printk.h`、`zephyr/sys/byteorder.h`、`zephyr/sys/cpu_load.h` | `snprintk()`（Zephyr 版の構成 `CONFIG_PICOLIBC=y` と同じく `snprintf()`）、`sys_put_be16/32()`・`sys_get_be16/32()`、`cpu_load_get()`（ボードの `cpu_load.h`） |
+| `zephyr/drivers/hwinfo.h` | `hwinfo_get_device_id()`（下） |
+| `zephyr/shell/shell.h` | `shell_print()`（標準出力）・`shell_error()`（標準エラー）。Zephyr の形のコマンドの関数を、`nuttx/apps/subcmd` の組み込みコマンドから呼ぶため（下） |
+| `zephyr/net/socket.h`、`zephyr/net/net_if.h` | `zsock_inet_pton()`・`zsock_inet_ntop()`（C ライブラリの `inet_pton()`・`inet_ntop()`）。`net_if.h` は今は空（下） |
+| `zephyr_compat.h` | `zephyr_compat_initialize()`（ボードの起動処理が呼ぶ。下）、`K_THREAD_DEFINE_START()`（init が呼ぶ） |
 
 | ソース | 中身 |
 |---|---|
-| `zephyr_kernel.c` | NuttX の上の OS 部分: `k_mutex`（`rmutex_t`）、`k_sem`（`sem_t`、上限は `k_sem_give()` で見る）、`k_poll()`、ワークキューのスレッド（静的なスタックのカーネルスレッド）、遅延ワークのタイマー（wdog）、スレッド名、`zephyr_compat_initialize()` |
+| `zephyr_kernel.c` | NuttX の上の OS 部分: `k_mutex`（`rmutex_t`）、`k_sem`（`sem_t`、上限は `k_sem_give()` で見る）、`k_poll()`、ワークキューのスレッド（静的なスタックのカーネルスレッド）、遅延ワークのタイマー（wdog）、スレッド名、`K_THREAD_DEFINE()` のスレッドの起動、`k_uptime_get()`・`k_sleep()`、`zephyr_compat_initialize()` |
 | `zephyr_work.c` | ワークとワークキュー。Zephyr の `kernel/work.c` の使っている部分の写し（OS に依存しない） |
 | `zephyr_rtio.c`、`zephyr_rtio_workq.c`、`zephyr_mem_blocks.c` | RTIO の executor（`subsys/rtio/rtio_executor.c`）、RTIO のワークキュー（`rtio_workq.c`）、ブロックのプール（`lib/mem_blocks`） |
 | `zephyr_gpio.c` | `gpio0` のデバイス（Zephyr の `gpio.h` の処理と `gpio_rpi_pico.c`）。ボードの `<nano_gpio.h>` の上 |
 | `zephyr_sensor_clock.c` | センサーの時計。ボードの TIMER（`nano_mono_us()`） |
 | `sensor_default_rtio.c` | Zephyr の `drivers/sensor/default_rtio_sensor.c` の写し（ログだけ置き換え）。センサーの iodev の API、単発取得のフォールバック、既定のデコーダー |
 | `zephyr_device.c`、`zephyr_i2c.c` | デバイスの初期化と I2C |
+| `zephyr_hwinfo.c` | `hwinfo_get_device_id()`。ボードのチップ ID（`nano_chip_id()`） |
 
 - **ワーク**: フラグ（RUNNING・CANCELING・QUEUED・DELAYED）と戻り値は `kernel/work.c` と同じです。
   `submit` はキュー済みなら何もしない（0）、実行中なら同じキューに入れ直す（2）。`schedule` は遅延中・
@@ -226,6 +231,28 @@ Zephyr の API を、Zephyr の名前のまま最小限だけ用意したもの�
   システムワークキュー（`sysworkq`、優先度 119、スタック 1024）、RTIO のワークキュー、`gpio0` を用意します
   （Zephyr がそれらを `POST_KERNEL` でセンサーより先に用意するのと同じ順）。`imu_fifo_worker` は LSM6DSOX の
   初期化（`lsm6dso_stream_init()`）が作ります。
+- **静的なスレッド**（`K_THREAD_DEFINE()`）: Zephyr と同じ引数で、静的なスタック、`K_PRIO_PREEMPT(prio)` の
+  優先度、名前はトークンそのもの（`imu_stream_tid`）のスレッドを定義します。Zephyr はこれらを `main()` の前に
+  自動で始めますが、NuttX にはその一覧が無いので、init が `main()` 相当の処理の最初に
+  `K_THREAD_DEFINE_START(name)`（`zephyr_compat.h`）で 1 本ずつ始めます。スレッドは NuttX のカーネル
+  スレッド（`kthread_create_with_stack()`）で、入口の関数が戻ると終わります。`options` と `delay` は 0 だけ
+  受け付けます（ほかはビルドエラー）。
+- **時間**: `k_uptime_get()` は Zephyr の `k_ticks_to_ms_floor64(k_uptime_ticks())`（tick 数を ms に切り捨て）
+  と同じ値です。NuttX の tick はボードの TIMER を 100 µs で割ったもの（tickless のタイマー）なので、TIMER を
+  1 回読んで 1000 で割ります（1000 が tick の倍数なので同じ値。ホストテストで確認）。64 ビットで、32 ビットの
+  `clock_systime_ticks()` のような約 5 日での一周はありません。`k_sleep()` は `K_NO_WAIT` で `sched_yield()`、
+  それ以外は `nxsched_ticksleep()` で「今の tick + tick 数 + 1」まで眠ります（Zephyr の `z_add_timeout()` と
+  同じ切り上げ）。`k_wakeup()` が無いので戻り値は常に 0 です。
+- **`hwinfo_get_device_id()`**: Zephyr 版の RP2040 のドライバー（`hwinfo_rpi_pico.c`、
+  `CONFIG_HWINFO_RPI_PICO_CHIP_ID` なし）と同じく、外付け flash の 64 ビットの unique ID（コマンド 0x4B）を
+  flash が送る順のまま返します（最大 8 バイト）。読み出しはボードが起動時に 1 回行い（`nano_chipid.c`）、
+  ここではその写しを返します。ボードがまだ読んでいなければ `-EAGAIN` です（Zephyr のドライバーは失敗しない）。
+- **シェル**: `shell_print()`・`shell_error()` は改行を付けて標準出力・標準エラーに書きます（`kv` など
+  ほかのコマンドと同じ出力先）。`sh` の引数は評価するだけで使いません。コマンドの登録のマクロ
+  （`SHELL_CMD_REGISTER()` など）は無く、コマンドの表は `nuttx/apps/subcmd` で書きます。
+- **ネットワーク**: `zsock_inet_pton()`・`zsock_inet_ntop()` は C ライブラリの関数です。ネットワークが無効な
+  間は、`imu` が `CONFIG_LIBC_IPv4_ADDRCONV` を選んで IPv4 の変換を入れます。ソケットと `net_if` の関数は
+  NINA のソケット層（usrsock）と一緒に入れます。
 - I2C のバスは、NuttX の I2C マスターと速さを持つデバイスです（`i2c_compat_bind()` でボードが結び付ける）。
   Zephyr ではバスのドライバーが速さを持ち、`i2c_configure()` が以後のすべての転送の速さを変えます。NuttX の
   転送はメッセージごとに周波数を持つので、互換層の転送（`i2c_burst_read_dt()` など）がデバイスの速さを

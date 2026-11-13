@@ -20,6 +20,11 @@ ifeq ($(CONFIG_NANO_LSM6DSO_STREAM),y)
 CSRCS += zephyr_kernel.c zephyr_work.c zephyr_mem_blocks.c zephyr_rtio.c
 CSRCS += zephyr_rtio_workq.c zephyr_gpio.c zephyr_sensor_clock.c
 CSRCS += sensor_default_rtio.c
+
+# hwinfo_get_device_id() on the board's chip ID (the IMU service's
+# session IDs).
+
+CSRCS += zephyr_hwinfo.c
 endif
 
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)compat

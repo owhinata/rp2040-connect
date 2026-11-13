@@ -14,7 +14,9 @@
  *   k_work_delayable_from_work(), k_work_queue_start(),
  *   k_work_queue_thread_get()
  *   K_THREAD_STACK_DEFINE(), K_THREAD_STACK_SIZEOF(), K_PRIO_PREEMPT(),
- *   k_thread_name_set()
+ *   k_thread_name_set(), K_THREAD_DEFINE() (started by the init task)
+ *   K_MUTEX_DEFINE(), k_uptime_get(), k_sleep(), snprintk()
+ *   (<zephyr/sys/printk.h>)
  *
  * The work items follow kernel/work.c (flags RUNNING, CANCELING, QUEUED,
  * DELAYED; the return values of submit and schedule): zephyr_work.c, which
@@ -32,7 +34,8 @@
  * Priorities: K_PRIO_PREEMPT(p) is the NuttX priority 118 - p
  * (NANO_PRIO_FROM_ZEPHYR, priorities.h).
  *
- * Not here: threads other than work queue threads (k_thread_create()),
+ * Not here: threads created at run time (k_thread_create()), k_wakeup(),
+ * the cycle counter (k_cycle_get_*()),
  * k_queue, k_msgq, k_timer, k_poll on other object types, user mode, SMP.
  *
  * Part of the small Zephyr compatibility layer of the port
@@ -53,6 +56,7 @@
 #  include <nuttx/mutex.h>
 #  include <nuttx/semaphore.h>
 #  include <nuttx/wdog.h>
+#  include <stdio.h>            /* for <zephyr/sys/printk.h> */
 #endif
 
 #include <errno.h>
@@ -62,6 +66,7 @@
 
 #include <zephyr/spinlock.h>
 #include <zephyr/sys/atomic.h>
+#include <zephyr/sys/printk.h>
 #include <zephyr/sys/util.h>
 
 #include "priorities.h"
@@ -111,6 +116,8 @@ struct k_mutex
   rmutex_t rmutex;
 };
 
+#  define Z_MUTEX_INITIALIZER(obj) { .rmutex = NXRMUTEX_INITIALIZER }
+
 /* k_sem: a count with an upper limit; the threads in k_poll() on it. */
 
 struct k_sem
@@ -144,6 +151,13 @@ typedef pid_t k_tid_t;
 #endif
 
 /* Mutexes ----------------------------------------------------------------*/
+
+/* A mutex defined and initialized at build time (Zephyr: global, not
+ * static).
+ */
+
+#define K_MUTEX_DEFINE(name) \
+  struct k_mutex name = Z_MUTEX_INITIALIZER(name)
 
 int k_mutex_init(struct k_mutex *mutex);
 
@@ -233,6 +247,88 @@ typedef uint8_t k_thread_stack_t;
 /* Names the thread (the name "ps" shows).  0 or -EINVAL. */
 
 int k_thread_name_set(k_tid_t thread, const char *name);
+
+/* K_THREAD_DEFINE(name, stack_size, entry, p1, p2, p3, prio, options,
+ * delay): a thread with a static stack that runs entry(p1, p2, p3) at
+ * K_PRIO_PREEMPT(prio), named by the token name (Zephyr's "kernel ps" shows
+ * e.g. "imu_stream_tid"), and the k_tid_t variable name.  Zephyr starts
+ * every such thread before main() (z_init_static_threads()); NuttX has no
+ * list of them, so the init task starts each one at the same point with
+ * K_THREAD_DEFINE_START(name) (<zephyr_compat.h>), which calls the
+ * function z_thread_start_<name>() that this macro defines.  The thread is
+ * a NuttX kernel thread on the static stack (kthread_create_with_stack(),
+ * as the work queue threads); it ends when entry returns.  Only options 0
+ * and delay 0 (start at once) are supported.
+ */
+
+struct z_thread_static
+{
+  const char *name;
+  k_thread_stack_t *stack;
+  size_t stack_size;
+  void (*entry)(void *p1, void *p2, void *p3);
+  void *p1;
+  void *p2;
+  void *p3;
+  int prio;                     /* NuttX priority */
+  k_tid_t *tid;
+};
+
+/* Starts the thread; 0 or a negative errno. */
+
+int z_thread_static_start(const struct z_thread_static *thread);
+
+#define K_THREAD_DEFINE(_name, _stack_size, _entry, _p1, _p2, _p3, _prio, \
+                        _options, _delay) \
+  BUILD_ASSERT((_options) == 0 && (_delay) == 0, \
+               "K_THREAD_DEFINE: only options 0 and delay 0"); \
+  static K_THREAD_STACK_DEFINE(_k_thread_stack_##_name, _stack_size); \
+  k_tid_t _name; \
+  static const struct z_thread_static _k_thread_data_##_name = \
+    { \
+      .name = #_name, \
+      .stack = _k_thread_stack_##_name, \
+      .stack_size = (_stack_size), \
+      .entry = (_entry), \
+      .p1 = (_p1), \
+      .p2 = (_p2), \
+      .p3 = (_p3), \
+      .prio = K_PRIO_PREEMPT(_prio), \
+      .tid = &_name, \
+    }; \
+  int z_thread_start_##_name(void); \
+  int z_thread_start_##_name(void) \
+  { \
+    return z_thread_static_start(&_k_thread_data_##_name); \
+  }
+
+/* Time -------------------------------------------------------------------*/
+
+/* k_uptime_get(): the time since boot in milliseconds, from the kernel's
+ * tick count, rounded down (k_ticks_to_ms_floor64(k_uptime_ticks())).
+ * The NuttX tick is the TIMER count over CONFIG_USEC_PER_TICK (the board's
+ * tickless timer, nano_oneshot.c), so this is the TIMER read once,
+ * Z_UPTIME_MS(); it is 64 bits wide where clock_systime_ticks() is 32.
+ */
+
+int64_t k_uptime_get(void);
+
+/* Ticks to milliseconds the way k_uptime_get() does it: floor(floor(us /
+ * tick) * tick / 1000), which equals floor(us / 1000) when 1000 is a
+ * multiple of the tick length (100 us).
+ */
+
+#define Z_UPTIME_MS(us) ((int64_t)((uint64_t)(us) / 1000U))
+BUILD_ASSERT(1000 % Z_USEC_PER_TICK == 0, "Z_UPTIME_MS needs 1000 % tick == 0");
+
+/* k_sleep(): K_NO_WAIT yields; otherwise sleeps until the current tick +
+ * timeout.ticks + 1 (Zephyr's kernel/sleep.c and z_add_timeout(), NuttX's
+ * nxsched_ticksleep() and clock_delay2abstick()).  Returns 0 (nothing in
+ * the port wakes a sleeping thread early, k_wakeup() is not provided);
+ * K_FOREVER sleeps for ever.
+ */
+
+int32_t k_sleep(k_timeout_t timeout);
 
 /* Work items -------------------------------------------------------------*/
 

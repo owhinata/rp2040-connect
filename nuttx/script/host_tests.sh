@@ -72,6 +72,13 @@ printf 'ok  zephyr_rtio\n'
 cc "${flags[@]}" "${zinc[@]}" tests/zephyr_work.c "${compat[@]}" "$link" -o "$out/zephyr_work"
 "$out/zephyr_work" >/dev/null
 printf 'ok  zephyr_work\n'
+# The layer's pieces for the IMU service: K_MUTEX_DEFINE, K_THREAD_DEFINE and its start,
+# k_uptime_get's tick rounding, k_sleep, byteorder, snprintk, hwinfo (fake chip ID), the
+# shell output macros, the address conversions.
+cc "${flags[@]}" "${zinc[@]}" -Itests/lsm6dso_fakes tests/zephyr_compat_misc.c \
+    drivers/compat/zephyr_hwinfo.c "${compat[@]}" "$link" -o "$out/zephyr_compat_misc"
+"$out/zephyr_compat_misc" >/dev/null
+printf 'ok  zephyr_compat_misc\n'
 run fifo_decoder "$lsm/lsm6dso_fifo_decoder.c" "$lsm/lsm6dso_fifo.c" "$lsm/lsm6dso_cal.c"
 # Conversion to physical units and the stored calibration format.
 run lsm6dso_cal "$lsm/lsm6dso_cal.c" "$imu/imu_cal_codec.c" -lm
