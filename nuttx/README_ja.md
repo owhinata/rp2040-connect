@@ -5,9 +5,9 @@
 `zephyr/app/usb-console` の IMU 測定ファームウェアを NuttX 13.1.0 に移植したものを置くディレクトリです。
 現在は移植中です。今あるのは、環境構築、OS に依存しない共通ソースのホストテスト、ボード定義とその
 ビルド、USB コンソールと書き込みスクリプト、RAM ログ、キーと値の保存（`kv`）、NINA-W102 との SPI の
-やり取り（`nina version`）、I2C0（DMA を含む）、LSM6DSOX のドライバーと FIFO のストリーム、IMU の取得
-サービス（`imu`）です。ネットワークはまだ無く、取得したバッチは送信のスタブが数えて捨てます（「IMU の
-取得（`imu`）」の節）。
+やり取り（`nina version`）、NINA のソケットの制御系（usrsock）、I2C0（DMA を含む）、LSM6DSOX のドライバーと
+FIFO のストリーム、IMU の取得サービス（`imu`）です。Wi-Fi の接続とソケットの送受信はまだ無く、取得した
+バッチは送信のスタブが数えて捨てます（「IMU の取得（`imu`）」の節）。
 
 ## 環境構築
 
@@ -323,8 +323,9 @@ host/.venv/bin/python script/kv_transfer.py restore --usb --no-wifi
 
 Wi-Fi モジュール NINA-W102 とは SPI1 でやり取りします。NINA のファームウェアは Zephyr 版と同じもの
 （Arduino の NINA ファームウェア 3.0.2 に修正を当てたもの、`firmware/nina-fw/README.md`）で、書き換えません。
-今あるのは、コマンドを 1 つ送って応答を受け取る転送層（`nina_request()`、`nina_ip_config()`）と
-`nina version` です。Wi-Fi の接続とソケットはまだありません。
+今あるのは、コマンドを 1 つ送って応答を受け取る転送層（`nina_request()`、`nina_ip_config()`）、
+`nina version`、ソケットの制御系（NuttX の usrsock。socket・close・bind・listen・accept・connect・setsockopt。
+`nuttx/drivers/README_ja.md` の「ソケット（usrsock）」）です。送受信と Wi-Fi の接続はまだありません。
 
 ```
 nsh$ nina version
@@ -642,7 +643,7 @@ Subcommands:
 | `time_sync_tid`、`imu_stream_tid`（init が起動時に始める）、`nina_monitor_tid` | 9 | 109 | 2048、2048、1536 |
 | `imu_fifo_worker` | 10 | 108 | 2048 |
 | `imu_raw_mqtt_tid` | 11 | 107 | 2048 |
-| NINA のイベント（NuttX 版だけ） | – | 106 | – |
+| `nina_event`（NINA のソケットの状態を usrsock のイベントにする。NuttX 版だけ。最初のソケットで起動） | – | 106 | 1536 |
 | `sysworkq`（システムワークキュー。互換層。INT1 の処理） | −1（協調） | 119 | 1024 |
 | `RTIO WQ 0`（RTIO のワークキュー。互換層。単発取得。`ps` では `RTIO_WQ_0`） | 0 | 118 | 1024 |
 | `main`（NuttX は init。起動処理の後シェルの優先度に下げる） | 0 | 118 | 2048 |
@@ -694,7 +695,7 @@ status と info の JSON、時刻の対応付け、センサーの tick と時�
 CPU 負荷の計算（`nano_cpuload`）、RAM ログのリング・`dmesg` の取り出し・行の前置き・頻度制限（`log_ram`）、
 KV 領域の範囲の検査・ページ単位の書き込み・起動時の内容の判定（`nano_flash_kv`）、KV のキーの規則
 （`kv_name`）と `kv` コマンドの 16 進数の変換（`kv_hex`）、コマンドのサブコマンドの扱い（`subcmd`）、
-NINA の SPI の転送層（`nina_spi`）、I2C0 のドライバーの OS に依存しない部分（`nano_i2c_dw`）、I2C0 の DMA
+NINA の SPI の転送層（`nina_spi`）、NINA のソケットの表と命令（`nina_sock`）、I2C0 のドライバーの OS に依存しない部分（`nano_i2c_dw`）、I2C0 の DMA
 読み出しのコマンド語（`i2c_dma_commands`）、`i2c_dma` コマンドの出力（`i2c_dma_app`。ドライバー側は偽物）、
 LSM6DSO の FIFO 制御（`fifo_hw`）、LSM6DSO のドライバーと FIFO のストリーム（`lsm6dso_driver`）、ストリームの
 状態機械（`stream_stop`）、互換層の RTIO（`zephyr_rtio`）とワーク（`zephyr_work`）、取得サービスのために
@@ -786,4 +787,11 @@ Zephyr のフラグへの変換、`IC_DATA_CMD` に書く語の列（`i2c` ツ�
 `sys_put_be32()`・`sys_get_be32()`、`snprintk()`、`hwinfo_get_device_id()`（偽のチップ ID）、`shell_print()`・
 `shell_error()` の出力先、`zsock_inet_pton()`・`zsock_inet_ntop()`。
 
-NINA の Wi-Fi・ソケットを対象にするテストは、それらを移植するときに加えます。
+`nuttx/tests/nina_sock.c` は `drivers/nina/nina_sock.c` を、命令とパラメーターを検査して決まった応答を返す偽の
+`nina_request()` と偽の時計で確かめます: 対応するソケットの種類、10 個の表と `EMFILE`、NINA 側のソケットを
+最初に使うときに作ること（種類とプロトコル、FIONBIO）、bind、listen（backlog を 1〜255 に丸める）、accept
+（相手のアドレスとポートのバイト順、`EAGAIN`、`EMFILE`）、connect（UDP、TCP の処理中、SO_ERROR の各値の
+errno、エラーフラグ、10000 ms の期限、poll の失敗、失敗後に NINA 側のソケットを閉じること）、close、
+setsockopt、`nina_event` が何を問い合わせ、何をイベントにするか。
+
+NINA の Wi-Fi と送受信を対象にするテストは、それらを移植するときに加えます。

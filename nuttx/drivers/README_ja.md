@@ -28,6 +28,49 @@ symlink で、`libexternal.a` になります）。ボード側の部分は `nut
 - 期限、配線、実測は `nuttx/README_ja.md` の「NINA-W102」の節にあります。
 - `nina/nina_spi.c` はホストテスト（`nuttx/tests/nina_spi.c`）で、偽のボードと時計を使って確かめます。
 
+### ソケット（usrsock）
+
+Zephyr 版はソケットのオフロード（`drivers/nina/nina_socket.c`）で、NuttX 版は usrsock です。NuttX の
+`CONFIG_NET_USRSOCK_CUSTOM` で、カーネル内に `usrsock_request()` を置きます。NuttX 自身の TCP/IP スタックは
+使いません（`NET_TCP_NO_STACK`、`NET_UDP_NO_STACK`）。
+
+| ファイル | 役割 |
+|---|---|
+| `nina/nina_sock.[ch]` | ソケットの表（10 個）と NINA のソケット命令。Zephyr 版の `nina_socket.c` の `nina_socket_create()`・`do_bind()`・`do_listen()`・`do_accept()`・`do_connect()`・`do_close()`・`do_setsockopt()` を、名前・分岐・順序・定数・errno の名前を保って移したもの。OS に依存しない |
+| `nina/nina_usrsock.c` | usrsock の要求を上の関数に振り分け、応答（ACK）を返す |
+| `nina/nina_poller.c` | スレッド `nina_event`。NINA のソケットの状態を見て usrsock のイベントにする |
+| `nina/nina_usrsock.h` | 上の 2 つの間の宣言 |
+
+- 要求は、呼び出したスレッドの文脈で、その優先度のまま同期して処理します（Zephyr 版のソケット呼び出しと
+  同じ）。usrsock は要求を 1 つずつ渡し、その間は usrsock のロックを持っています。NINA の命令は
+  `nina_request()` の中の NINA のロックで直列化します。ロックの順序は常に「usrsock のロック → NINA の
+  ロック」です（`nina_event` も同じ順に取ります）。
+- ソケットの番号（usrsock の usockid）は表の位置（0〜9）です。NINA 側のソケットは Zephyr 版と同じく、
+  bind・connect で初めて作り、すぐに非ブロッキングにします。11 個目の `socket()` は `EMFILE` です。
+  usrsock の接続の枠（`CONFIG_NET_USRSOCK_PREALLOC_CONNS`）は 12 にしてあります（10 個と、11 個目の
+  要求・`accept()` の新しい接続・`SOCK_CTRL` の試行の分）。
+- 待ちの扱い: Zephyr 版は待ちを呼び出し元で行います（connect は 20 ms ごとに 10 秒まで、poll は 20 ms ごと）。
+  NuttX の usrsock はドライバーからのイベントを待つので、`nina_event` が同じ問い合わせ（NINA の poll 命令）を
+  20 ms ごとに行い、結果をイベントにします: 読める → `RECVFROM_AVAIL`（待ち受けのソケットでは接続が来ている）、
+  書ける → `SENDTO_READY`、接続済み TCP のエラーフラグか poll の失敗 → `REMOTE_CLOSED`。UDP のエラー
+  フラグは伝えません（Zephyr 版でもデータグラムの呼び出しはその後も続きます）。usrsock が既に持っている
+  イベントのソケットは問い合わせず、問い合わせるものが無ければスレッドは要求で起こされるまで眠ります。
+- connect: 接続命令の直後に 1 回状態を確かめ（Zephyr 版のループの最初の 1 回）、終わっていなければ
+  「処理中」と応答して、`nina_event` が 20 ms ごとに確かめます。期限は接続命令から 10 秒（`ETIMEDOUT`）。
+  結果は、成功なら `SENDTO_READY`、失敗なら connect の要求への最後の応答で返すので、`connect()` の errno は
+  Zephyr 版と同じです（SO_ERROR の 104/113/116/118 → `ECONNRESET`/`ECONNABORTED`/`ETIMEDOUT`/
+  `EHOSTUNREACH`、それ以外とエラーフラグ → `ECONNREFUSED`）。失敗した NINA 側のソケットは閉じます。
+- accept: 待ち受けのソケットに `RECVFROM_AVAIL` が立ってから要求が来ます（usrsock の仕様）。NINA に
+  接続が無ければ `EAGAIN` で、ブロッキングのソケットでは usrsock が次のイベントを待ちます。新しい
+  ソケットには `SENDTO_READY` を送ります。
+- 対応していない操作は Zephyr 版と同じ errno です: `getsockopt`・`getsockname`・`getpeername`・`shutdown` は
+  `EOPNOTSUPP`、`TCP_NODELAY` 以外の `setsockopt` は `ENOPROTOOPT`（`SO_RCVTIMEO`・`SO_SNDTIMEO` は NuttX が
+  自分で扱います）。`ioctl` は `ENOTTY` を返して NuttX 自身の処理（ネットワークデバイスの `SIOC*` など）に
+  任せます。`socket(AF_INET, SOCK_CTRL)`（`ifconfig` などが使う）は `ENOTSUP` で NuttX 自身に任せます。
+- 送受信（`send`・`recv`・`sendto`・`recvfrom`）と `FIONREAD`・名前解決はまだ移植していません（`ENOSYS`）。
+- `nina/nina_sock.c` はホストテスト（`nuttx/tests/nina_sock.c`）で、偽の `nina_request()` と時計を使って
+  確かめます。
+
 ## I2C0
 
 | ファイル | 役割 |

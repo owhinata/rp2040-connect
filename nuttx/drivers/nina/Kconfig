@@ -29,4 +29,29 @@ config NANO_NINA_SPI_FREQUENCY
 		clk_peri (125 MHz) by an even number: 8 MHz gives 7.8125 MHz in
 		both builds.
 
+config NANO_NINA_USRSOCK
+	bool "NINA sockets (usrsock)"
+	default y
+	depends on NET_USRSOCK_CUSTOM
+	---help---
+		nina/nina_sock.c, nina_usrsock.c, nina_poller.c: the socket
+		offload of the Zephyr build's drivers/nina/nina_socket.c as
+		NuttX's usrsock (usrsock_request() in the kernel, handled in the
+		calling thread), with the same socket table (10 sockets),
+		commands, timeouts and errno names.  The thread "nina_event"
+		polls the module's sockets and turns their state into usrsock
+		events, as the Zephyr build's connect() and poll() poll in
+		their callers.
+
+config NANO_NINA_TCP_MAX_IO
+	int "Maximum bytes per NINA TCP send"
+	default 3584
+	range 1 3584
+	depends on NANO_NINA_USRSOCK
+	---help---
+		The Zephyr build's CONFIG_NINA_TCP_MAX_IO.  Bounds each TCP send
+		to leave room for framing in the NINA SPI command buffer.  A RAW
+		batch of up to 2448 bytes plus its MQTT header is sent in one
+		command with the default.
+
 endif # NANO_NINA

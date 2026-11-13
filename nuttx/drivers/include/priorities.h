@@ -65,13 +65,16 @@
 #define NANO_PRIO_IMU_RAW_MQTT       NANO_PRIO_FROM_ZEPHYR(11)  /* 107 */
 #define NANO_STACK_IMU_RAW_MQTT      2048
 
-/* The kernel thread that turns NINA socket polling into usrsock events
- * (nuttx/PORTING_PLAN.md, T14).  No Zephyr thread: Zephyr polls in the
- * caller of poll() (net_socket_service, 14 -> 104, for Telnet).  106 is the
- * plan's choice: below the application threads, above the shell.
+/* "nina_event", the kernel thread that turns NINA socket polling into
+ * usrsock events (nuttx/drivers/nina/nina_poller.c).  No Zephyr thread:
+ * Zephyr polls in the caller of connect() and poll() (imu_raw_mqtt_tid 11
+ * -> 107, net_socket_service 14 -> 104 for Telnet).  106: below the
+ * application threads, above the shell.  The stack holds a NINA request
+ * and usrsock's event delivery (poll and wait callbacks).
  */
 
 #define NANO_PRIO_NINA_EVENT         106
+#define NANO_STACK_NINA_EVENT        1536
 
 /* Zephyr's own threads ------------------------------------------------- */
 

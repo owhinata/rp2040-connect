@@ -30,6 +30,57 @@ the parts ported so far.
 - `nina/nina_spi.c` is checked by a host test (`nuttx/tests/nina_spi.c`) with a fake board and
   clock.
 
+### Sockets (usrsock)
+
+The Zephyr version uses a socket offload (`drivers/nina/nina_socket.c`); the NuttX version uses
+usrsock, with `usrsock_request()` in the kernel (NuttX's `CONFIG_NET_USRSOCK_CUSTOM`). NuttX's own
+TCP/IP stack is not used (`NET_TCP_NO_STACK`, `NET_UDP_NO_STACK`).
+
+| File | Role |
+|---|---|
+| `nina/nina_sock.[ch]` | The socket table (10 sockets) and the NINA's socket commands: `nina_socket_create()`, `do_bind()`, `do_listen()`, `do_accept()`, `do_connect()`, `do_close()` and `do_setsockopt()` of the Zephyr version's `nina_socket.c`, with the names, branches, order, constants and errno names kept. OS-independent |
+| `nina/nina_usrsock.c` | Dispatches usrsock's requests to the functions above and answers them (ACK) |
+| `nina/nina_poller.c` | The thread `nina_event`: turns the state of the NINA's sockets into usrsock events |
+| `nina/nina_usrsock.h` | The declarations between the two |
+
+- A request is handled synchronously in the calling thread, at its priority (as the Zephyr
+  version's socket calls). usrsock passes one request at a time and holds the usrsock lock
+  meanwhile; the NINA lock inside `nina_request()` serializes the NINA commands. The lock order is
+  always "usrsock lock, then NINA lock" (`nina_event` takes them in the same order).
+- A socket's number (usrsock's usockid) is its place in the table (0 to 9). As in the Zephyr
+  version, the NINA's socket is created on the first bind or connect and made non-blocking at
+  once. An 11th `socket()` fails with `EMFILE`. usrsock has 12 connections
+  (`CONFIG_NET_USRSOCK_PREALLOC_CONNS`): the 10, plus an 11th request, the new connection of an
+  `accept()` and a `SOCK_CTRL` attempt.
+- Waiting: the Zephyr version waits in the caller (connect polls every 20 ms for up to 10 s, poll
+  every 20 ms). NuttX's usrsock waits for events from the driver, so `nina_event` makes the same
+  queries (the NINA's poll command) every 20 ms and turns the answers into events: readable →
+  `RECVFROM_AVAIL` (on a listening socket: a connection is waiting), writable → `SENDTO_READY`,
+  the error flag or a failed poll of a connected TCP socket → `REMOTE_CLOSED`. A UDP socket's error
+  flag is not passed on (the Zephyr version's datagram calls also carry on after it). A socket
+  whose events usrsock already holds is not queried; with nothing to query the thread sleeps until
+  a request wakes it.
+- connect: the state is checked once right after the connect command (the first pass of the
+  Zephyr version's loop); if the handshake is not done, the request is answered "in progress" and
+  `nina_event` checks every 20 ms, up to 10 s after the connect command (`ETIMEDOUT`). Success is
+  reported with `SENDTO_READY`, failure with the final answer to the connect request, so
+  `connect()` sets the Zephyr version's errno (SO_ERROR 104/113/116/118 → `ECONNRESET`/
+  `ECONNABORTED`/`ETIMEDOUT`/`EHOSTUNREACH`; anything else and the error flag → `ECONNREFUSED`).
+  The failed NINA socket is closed.
+- accept: the request comes once the listening socket has `RECVFROM_AVAIL` (usrsock's rule). If
+  the NINA has no connection the answer is `EAGAIN`, and on a blocking socket usrsock waits for the
+  next event. The new socket gets `SENDTO_READY`.
+- Unsupported operations give the Zephyr version's errno: `getsockopt`, `getsockname`,
+  `getpeername` and `shutdown` give `EOPNOTSUPP`; `setsockopt` other than `TCP_NODELAY` gives
+  `ENOPROTOOPT` (NuttX handles `SO_RCVTIMEO` and `SO_SNDTIMEO` itself). `ioctl` answers `ENOTTY`,
+  which leaves the command to NuttX's own handling (the network device's `SIOC*` and so on).
+  `socket(AF_INET, SOCK_CTRL)` (used by `ifconfig` and others) is answered `ENOTSUP`, which leaves it
+  to NuttX.
+- Sending and receiving (`send`, `recv`, `sendto`, `recvfrom`), `FIONREAD` and name resolution are
+  not ported yet (`ENOSYS`).
+- `nina/nina_sock.c` is checked by a host test (`nuttx/tests/nina_sock.c`) with a fake
+  `nina_request()` and clock.
+
 ## I2C0
 
 | File | Role |

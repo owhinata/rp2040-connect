@@ -6,8 +6,9 @@ This directory holds the port of the IMU measurement firmware in `zephyr/app/usb
 NuttX 13.1.0. The port is in progress. So far there are the setup, the host tests of the
 OS-independent common sources, the board definition with its build, the USB console with the
 flashing script, the RAM log, the key-value store (`kv`), the SPI link to the NINA-W102
-(`nina version`), I2C0 (with DMA), the LSM6DSOX driver with its FIFO stream, and the IMU
-acquisition service (`imu`). There is no network yet: a transport stub counts the acquired
+(`nina version`), the control side of the NINA's sockets (usrsock), I2C0 (with DMA), the
+LSM6DSOX driver with its FIFO stream, and the IMU acquisition service (`imu`). There is no Wi-Fi
+connection and no sending or receiving on sockets yet: a transport stub counts the acquired
 batches and drops them (see "IMU acquisition (`imu`)").
 
 ## Setup
@@ -344,7 +345,9 @@ written and read back.
 The Wi-Fi module NINA-W102 is reached over SPI1. Its firmware is the Zephyr version's (Arduino's NINA
 firmware 3.0.2 with fixes, `firmware/nina-fw/README.md`) and is not changed. So far there is the
 transfer layer that sends one command and receives its answer (`nina_request()`,
-`nina_ip_config()`) and `nina version`; Wi-Fi and sockets are not there yet.
+`nina_ip_config()`), `nina version`, and the control side of the sockets (NuttX's usrsock: socket,
+close, bind, listen, accept, connect, setsockopt; "Sockets (usrsock)" in
+`nuttx/drivers/README.md`). Sending, receiving and the Wi-Fi connection are not there yet.
 
 ```
 nsh$ nina version
@@ -700,7 +703,7 @@ Priorities map as `NuttX = 118 − Zephyr`; `nuttx/drivers/include/priorities.h`
 | `time_sync_tid`, `imu_stream_tid` (started by init at boot), `nina_monitor_tid` | 9 | 109 | 2048, 2048, 1536 |
 | `imu_fifo_worker` | 10 | 108 | 2048 |
 | `imu_raw_mqtt_tid` | 11 | 107 | 2048 |
-| NINA events (NuttX only) | – | 106 | – |
+| `nina_event` (turns the NINA's socket state into usrsock events; NuttX only; started by the first socket) | – | 106 | 1536 |
 | `sysworkq` (system work queue; compatibility layer; INT1's work) | −1 (cooperative) | 119 | 1024 |
 | `RTIO WQ 0` (RTIO work queue; compatibility layer; single reads; `RTIO_WQ_0` in `ps`) | 0 | 118 | 1024 |
 | `main` (NuttX: init, which drops to the shell's priority after the start-up work) | 0 | 118 | 2048 |
@@ -762,7 +765,8 @@ stored calibration format, gyro zero tracking at rest, the board's time conversi
 pieces, line prefix and rate limit (`log_ram`), the key-value area's range checks, page writes and
 boot-time contents check (`nano_flash_kv`), the key rules of the key-value store (`kv_name`) and
 the hex conversions of the `kv` command (`kv_hex`), the handling of the commands' subcommands
-(`subcmd`), the NINA's SPI transfer layer (`nina_spi`), the OS-independent part of the I2C0
+(`subcmd`), the NINA's SPI transfer layer (`nina_spi`), the NINA's socket table and commands
+(`nina_sock`), the OS-independent part of the I2C0
 driver (`nano_i2c_dw`), the command words of the I2C0 DMA reads (`i2c_dma_commands`), the
 output of the `i2c_dma` command (`i2c_dma_app`, with the driver side replaced by fakes), the
 LSM6DSO FIFO control (`fifo_hw`), the LSM6DSO driver and its FIFO stream (`lsm6dso_driver`), the
@@ -877,4 +881,12 @@ and across the wrap of the 32-bit tick count), the ticks of `k_sleep(K_MSEC(1))`
 `sys_put_be32()`/`sys_get_be32()`, `snprintk()`, `hwinfo_get_device_id()` (fake chip ID), where
 `shell_print()` and `shell_error()` write, and `zsock_inet_pton()`/`zsock_inet_ntop()`.
 
-Tests of the NINA's Wi-Fi and sockets are added when those parts are ported.
+`nuttx/tests/nina_sock.c` checks `drivers/nina/nina_sock.c` with a fake `nina_request()` that checks
+each command and its parameters and gives scripted answers, and a fake clock: the supported socket
+types, the table of 10 and `EMFILE`, creating the NINA's socket on first use (type and protocol,
+FIONBIO), bind, listen (backlog clamped to 1..255), accept (the peer's address and the byte order of
+its port, `EAGAIN`, `EMFILE`), connect (UDP; TCP in progress, the errno of each SO_ERROR value, the
+error flag, the 10000 ms limit, a failed poll, closing the NINA's socket after a failure), close,
+setsockopt, and what `nina_event` queries and turns into events.
+
+Tests of the NINA's Wi-Fi and of sending and receiving are added when those parts are ported.

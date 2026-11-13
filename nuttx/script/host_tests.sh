@@ -79,6 +79,29 @@ cc "${flags[@]}" "${zinc[@]}" -Itests/lsm6dso_fakes tests/zephyr_compat_misc.c \
     drivers/compat/zephyr_hwinfo.c "${compat[@]}" "$link" -o "$out/zephyr_compat_misc"
 "$out/zephyr_compat_misc" >/dev/null
 printf 'ok  zephyr_compat_misc\n'
+# The minimal MQTT client (apps/imu/mqtt_min.c, the copied part of Zephyr's MQTT library; its
+# text compares signed with unsigned, as in the Zephyr build) on a fake socket.  The same test
+# also runs on Zephyr's own library when the Zephyr tree is there (tests/mqtt_ref: its log,
+# mutex and socket names on the host), so the expected bytes, events and errors are Zephyr's.
+cc "${flags[@]}" -Wno-sign-compare "${zinc[@]}" -Iapps/imu tests/mqtt_min.c apps/imu/mqtt_min.c \
+    "${compat[@]}" "$link" -o "$out/mqtt_min"
+"$out/mqtt_min" >/dev/null
+printf 'ok  mqtt_min\n'
+zmqtt=../zephyr/zephyr/subsys/net/lib/mqtt
+if [[ -f $zmqtt/mqtt.c ]]; then
+    zobjs=()
+    for f in mqtt mqtt_rx mqtt_encoder mqtt_decoder mqtt_transport mqtt_transport_socket_tcp; do
+        cc -std=c17 -w -DCONFIG_MQTT_KEEPALIVE=60 -DCONFIG_MQTT_LOG_LEVEL=0 -Itests/mqtt_ref \
+            "${zinc[@]}" -Iapps/imu -include zephyr/net/socket.h -c "$zmqtt/$f.c" -o "$out/zmqtt_$f.o"
+        zobjs+=("$out/zmqtt_$f.o")
+    done
+    cc "${flags[@]}" "${zinc[@]}" -Iapps/imu tests/mqtt_min.c "${zobjs[@]}" "${compat[@]}" "$link" \
+        -o "$out/mqtt_zephyr"
+    "$out/mqtt_zephyr" >/dev/null
+    printf 'ok  mqtt_min (on Zephyr'\''s MQTT library)\n'
+else
+    printf 'skip mqtt_min on Zephyr'\''s MQTT library (no zephyr/zephyr: run west update)\n'
+fi
 run fifo_decoder "$lsm/lsm6dso_fifo_decoder.c" "$lsm/lsm6dso_fifo.c" "$lsm/lsm6dso_cal.c"
 # Conversion to physical units and the stored calibration format.
 run lsm6dso_cal "$lsm/lsm6dso_cal.c" "$imu/imu_cal_codec.c" -lm
@@ -100,6 +123,8 @@ run kv_hex -Iapps/kv apps/kv/kv_hex.c
 run subcmd -Iapps/subcmd apps/subcmd/subcmd.c
 # NINA SPI link: framing, answers, READY timeouts, reset sequence, CS order (fake board and clock).
 run nina_spi -Idrivers/include -Idrivers/nina
+# NINA sockets: the table and the socket commands of nina_socket.c (fake nina_request() and clock).
+run nina_sock -D_DEFAULT_SOURCE -Idrivers/include -Idrivers/nina drivers/nina/nina_sock.c
 # Board: the I2C0 driver's SCL counts, speeds and IC_DATA_CMD words against the Zephyr build's.
 run nano_i2c_dw -Iboards/arduino-nano-rp2040-connect/src
 # Board: the command words of the I2C0 DMA reads (an unchanged copy of the Zephyr build's test).
