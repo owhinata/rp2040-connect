@@ -78,6 +78,12 @@ ifeq ($(CONFIG_NANO_LSM6DSO),y)
 CSRCS += nano_lsm6dso.c
 endif
 
+# GPIO bank 0 for the compatibility layer's gpio0 (the LSM6DSOX's INT1).
+
+ifeq ($(CONFIG_NANO_LSM6DSO_STREAM),y)
+CSRCS += nano_gpio.c
+endif
+
 # Its DMA reads: the DMA channels (in place of the in-tree rp2040_dmac.c,
 # RP2040_DMAC off) and the command words (an unchanged copy of the Zephyr
 # build's drivers/i2c_dw/i2c_dw_rp2040_commands.c).

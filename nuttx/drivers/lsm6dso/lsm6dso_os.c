@@ -3,10 +3,10 @@
  *
  * Zephyr build (drivers/lsm6dso/lsm6dso.c):
  * - fifo_lock, zero_lock: k_mutex (recursive, priority inheritance).  Here
- *   rmutex_t; the wait is repeated when a signal ends it (-EINTR), so that
- *   it waits for ever as K_FOREVER does.
- * - cal_lock: k_spinlock, which on one CPU only disables interrupts.  Here
- *   up_irq_save()/up_irq_restore().
+ *   the compatibility layer's k_mutex (an rmutex_t, <zephyr/kernel.h>),
+ *   locked with K_FOREVER: a wait ended by a signal is repeated.
+ * - cal_lock: k_spinlock, which on one CPU only disables interrupts; the
+ *   compatibility layer's k_spin_lock() (up_irq_save()).
  * - k_busy_wait(): up_udelay(), which polls the TIMER (the board's
  *   nano_oneshot.c).
  * - k_msleep(), k_usleep(): Zephyr rounds a relative timeout up to ticks
@@ -25,8 +25,6 @@
 #include <stdint.h>
 
 #include <nuttx/arch.h>
-#include <nuttx/irq.h>
-#include <nuttx/mutex.h>
 #include <nuttx/sched.h>
 #include <arch/board/nano_timer.h>
 
@@ -34,36 +32,28 @@
 
 void lsm6dso_os_mutex_init(lsm6dso_mutex_t *mutex)
 {
-  nxrmutex_init(mutex);
+  (void)k_mutex_init(mutex);
 }
 
 void lsm6dso_os_mutex_lock(lsm6dso_mutex_t *mutex)
 {
-  int ret;
-
-  do
-    {
-      ret = nxrmutex_lock(mutex);
-    }
-  while (ret == -EINTR);
+  (void)k_mutex_lock(mutex, K_FOREVER);
 }
 
 void lsm6dso_os_mutex_unlock(lsm6dso_mutex_t *mutex)
 {
-  nxrmutex_unlock(mutex);
+  (void)k_mutex_unlock(mutex);
 }
 
 lsm6dso_spinlock_key_t lsm6dso_os_spin_lock(lsm6dso_spinlock_t *lock)
 {
-  (void)lock;
-  return up_irq_save();
+  return k_spin_lock(lock);
 }
 
 void lsm6dso_os_spin_unlock(lsm6dso_spinlock_t *lock,
                             lsm6dso_spinlock_key_t key)
 {
-  (void)lock;
-  up_irq_restore(key);
+  k_spin_unlock(lock, key);
 }
 
 void lsm6dso_os_busy_wait_us(uint32_t us)

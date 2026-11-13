@@ -1,8 +1,10 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /* The kernel services that lsm6dso.c uses, in the terms of the Zephyr
  * build's drivers/lsm6dso/lsm6dso.c.  lsm6dso_os.c implements them on
- * NuttX; a host test can build lsm6dso.c with fakes (the types below are
- * then the test's).
+ * NuttX; a host test can build lsm6dso.c with fakes.  The kernel objects
+ * are those of the port's Zephyr compatibility layer (<zephyr/kernel.h>),
+ * which the FIFO stream (lsm6dso_stream.c, an unchanged copy) also locks
+ * by their Zephyr names.
  *
  *   Zephyr                                    here
  *   struct k_mutex, k_mutex_init()            lsm6dso_mutex_t,
@@ -22,28 +24,16 @@
 
 #include <stdint.h>
 
-#ifdef __NuttX__
-#  include <nuttx/irq.h>
-#  include <nuttx/mutex.h>
+#include <zephyr/kernel.h>
 
-/* Zephyr's k_mutex: recursive for its owner, priority inheritance.  An
- * rmutex_t (its mutex inherits with CONFIG_PRIORITY_INHERITANCE).
- */
+/* Zephyr's k_mutex: recursive for its owner, priority inheritance. */
 
-typedef rmutex_t lsm6dso_mutex_t;
+typedef struct k_mutex lsm6dso_mutex_t;
 
-/* Zephyr's k_spinlock on one CPU: interrupts off.  No lock word is needed
- * (CONFIG_SMP is off); the type keeps the field of struct lsm6dso_data.
- */
+/* Zephyr's k_spinlock on one CPU: interrupts off. */
 
-typedef struct
-{
-  uint8_t unused;
-} lsm6dso_spinlock_t;
-typedef irqstate_t lsm6dso_spinlock_key_t;
-#else
-#  include "lsm6dso_os_host.h"
-#endif
+typedef struct k_spinlock lsm6dso_spinlock_t;
+typedef k_spinlock_key_t lsm6dso_spinlock_key_t;
 
 void lsm6dso_os_mutex_init(lsm6dso_mutex_t *mutex);
 

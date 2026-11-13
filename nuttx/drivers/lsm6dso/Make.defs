@@ -5,7 +5,9 @@
 # drivers/lsm6dso/lsm6dso.c), its kernel services (lsm6dso_os.c), the ST
 # glue (stmemsc_i2c.c, stmemsc_mdelay.c), the unchanged copies of the
 # Zephyr build's OS-independent parts (lsm6dso_fifo_hw.c, lsm6dso_fifo.c,
-# lsm6dso_cal.c, lsm6dso_zero.c), and ST's register driver lsm6dso_reg.c,
+# lsm6dso_cal.c, lsm6dso_zero.c), the FIFO stream (lsm6dso_stream.c,
+# lsm6dso_fifo_irq.c: unchanged copies; lsm6dso_compat.c with the log
+# replaced; lsm6dso_fifo_decoder.c), and ST's register driver lsm6dso_reg.c,
 # which script/setup.sh puts in nuttx/stmemsc (not in Git; built through
 # st_lsm6dso_reg.c, which includes it).  Included by
 # nuttx/drivers/Makefile.
@@ -15,6 +17,10 @@ ifeq ($(CONFIG_NANO_LSM6DSO),y)
 CSRCS += lsm6dso.c lsm6dso_os.c stmemsc_i2c.c stmemsc_mdelay.c
 CSRCS += lsm6dso_fifo_hw.c lsm6dso_fifo.c lsm6dso_cal.c lsm6dso_zero.c
 CSRCS += st_lsm6dso_reg.c
+ifeq ($(CONFIG_NANO_LSM6DSO_STREAM),y)
+CSRCS += lsm6dso_stream.c lsm6dso_fifo_irq.c lsm6dso_compat.c
+CSRCS += lsm6dso_fifo_decoder.c
+endif
 DEPPATH += --dep-path lsm6dso
 VPATH += :lsm6dso
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)stmemsc

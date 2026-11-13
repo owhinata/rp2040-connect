@@ -25,7 +25,7 @@
  *   k_cycle_get_32, k_cyc_to_ns_floor64 lsm6dso_os_cycle_get_32 (TIMER,
  *                                       1 MHz), _cyc_to_ns_floor64
  *   sys_get_le32()                      the same, written out below
- *   CONFIG_SENSOR_ASYNC_API             CONFIG_NANO_LSM6DSO_STREAM (T11),
+ *   CONFIG_SENSOR_ASYNC_API             CONFIG_NANO_LSM6DSO_STREAM,
  *                                       also around the include of
  *                                       lsm6dso_fifo_decoder.h
  *   #if CONFIG_LSM6DSO_TRIGGER          #ifdef (-Wundef)
@@ -1417,7 +1417,14 @@ static const struct lsm6dso_config lsm6dso_config_0 = {
 	.gyro_odr = BOARD_LSM6DSOX_GYRO_ODR,
 	.gyro_range = BOARD_LSM6DSOX_GYRO_RANGE,
 	.drdy_pulsed = BOARD_LSM6DSOX_DRDY_PULSED,
-	/* CONFIG_NANO_LSM6DSO_STREAM: .fifo_gpio, irq-gpios (the stream, T11) */
+#ifdef CONFIG_NANO_LSM6DSO_STREAM
+	/* GPIO_DT_SPEC_INST_GET_OR(inst, irq_gpios, {0}): <&gpio0 24 0> */
+	.fifo_gpio = {
+		.port = DEVICE_DT_GET(DT_NODELABEL(gpio0)),
+		.pin = BOARD_LSM6DSOX_INT1_GPIO,
+		.dt_flags = BOARD_LSM6DSOX_INT1_FLAGS,
+	},
+#endif
 };
 
 /* SENSOR_DEVICE_DT_INST_DEFINE(): the init function, data, config and API;

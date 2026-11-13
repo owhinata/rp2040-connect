@@ -17,4 +17,18 @@ config NANO_LSM6DSO
 		The board initializes the device in its bring-up, after I2C0
 		and before the key-value store, as the Zephyr build does before
 		main() (src/nano_lsm6dso.c).  The FIFO stream (INT1, RTIO) is
-		added separately.
+		NANO_LSM6DSO_STREAM.
+
+config NANO_LSM6DSO_STREAM
+	bool
+	default y
+	depends on NANO_LSM6DSO
+	---help---
+		The FIFO stream of the LSM6DSO driver: the Zephyr build's
+		CONFIG_SENSOR_ASYNC_API part of drivers/lsm6dso (lsm6dso_stream.c,
+		lsm6dso_fifo_irq.c, lsm6dso_compat.c, lsm6dso_fifo_decoder.c),
+		on the compatibility layer's RTIO, work queues and gpio0
+		(compat/).  Always on with NANO_LSM6DSO: as in Zephyr, lsm6dso.c
+		does not build without it.  The board starts the layer's
+		threads (zephyr_compat_initialize()) before the LSM6DSOX and
+		builds src/nano_gpio.c for the INT1 interrupt.

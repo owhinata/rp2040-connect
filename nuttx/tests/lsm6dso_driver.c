@@ -24,7 +24,19 @@
  *   counters), pause, stop (bypass), and lsm6dso_timestamp_read().
  * - lsm6dso_cal_zero(): the 104 Hz run, the 200 ms settling, switching
  *   the sensors off again.
+ * - the FIFO stream (lsm6dso_stream.c, lsm6dso_fifo_irq.c, lsm6dso_compat.c
+ *   and the decoder, on the compatibility layer's RTIO, work queues and
+ *   gpio0, with the fake kernel of tests/zephyr_fakes and a fake INT1 that
+ *   follows the fake sensor's watermark flag): the stream's start
+ *   (registers, INT1 edge interrupt), batches on the INT1 edge and on the
+ *   20 ms poll, a second stream refused (-EBUSY), another trigger refused
+ *   (-ENOTSUP), the graceful stop (pause, the last partial batch, then
+ *   -ECANCELED and the registers back), a cancellation, an overrun
+ *   (-EOVERFLOW), a single read through the RTIO work queue (the
+ *   fallback) and the decoders.
  */
+
+#include <nuttx/config.h>
 
 #include <assert.h>
 #include <errno.h>
@@ -39,6 +51,9 @@
 #include <zephyr/device.h>
 #include <zephyr/drivers/i2c.h>
 #include <zephyr/drivers/sensor.h>
+#include <zephyr/drivers/sensor_clock.h>
+#include <zephyr/kernel.h>
+#include <zephyr/rtio/rtio.h>
 
 #include "lsm6dso.h"
 #include "nano_lsm6dso.h"
@@ -46,6 +61,9 @@
 #include "lsm6dso_fifo.h"
 #include "lsm6dso_fifo_hw.h"
 #include "lsm6dso_fifo_stats.h"
+#include "lsm6dso_fifo_decoder.h"
+#include "nano_gpio.h"
+#include "zephyr_kernel_host.h"
 
 /* Fake log ---------------------------------------------------------------*/
 
@@ -148,6 +166,7 @@ enum { USER, SHUB, EMB };
 static uint8_t regs[3][256];
 static uint8_t fifo_data[LSM6DSO_FIFO_MAX_WORDS * LSM6DSO_FIFO_WORD_SIZE];
 static size_t fifo_words;
+static bool fifo_overrun;
 static uint32_t timestamp, timestamp_step = 3;
 static int nack_at = -1, transfers, bad_who_am_i;
 static uint32_t expect_frequency = 100000;
@@ -187,7 +206,8 @@ static uint8_t read_byte(int b, uint8_t reg)
 		uint16_t wtm = regs[USER][LSM6DSO_FIFO_CTRL1] |
 			       (uint16_t)(regs[USER][LSM6DSO_FIFO_CTRL2] & 1) << 8;
 
-		return (uint8_t)((fifo_words >> 8) & 3) | (fifo_words >= wtm ? 0x80 : 0);
+		return (uint8_t)((fifo_words >> 8) & 3) | (fifo_words >= wtm ? 0x80 : 0) |
+		       (fifo_overrun ? 0x48 : 0);
 	}
 	return regs[b][reg];
 }
@@ -210,7 +230,19 @@ static void write_byte(int b, uint8_t reg, uint8_t value)
 	regs[b][reg] = value;
 }
 
+static void update_int1(void);
+
+static int fake_transfer_regs(struct i2c_master_s *dev, struct i2c_msg_s *msgs, int count);
+
 static int fake_transfer(struct i2c_master_s *dev, struct i2c_msg_s *msgs, int count)
+{
+	int ret = fake_transfer_regs(dev, msgs, count);
+
+	update_int1();
+	return ret;
+}
+
+static int fake_transfer_regs(struct i2c_master_s *dev, struct i2c_msg_s *msgs, int count)
 {
 	(void)dev;
 	assert(count == 1 || count == 2);
@@ -265,6 +297,64 @@ static int fake_transfer(struct i2c_master_s *dev, struct i2c_msg_s *msgs, int c
 
 static const struct i2c_ops_s fake_ops = {.transfer = fake_transfer};
 static struct i2c_master_s fake_master = {.ops = &fake_ops};
+
+/* Fake INT1 (GPIO24) and the board's GPIO bank ---------------------------*/
+
+/* INT1 is high while the FIFO threshold is routed to it (INT1_CTRL
+ * INT1_FIFO_TH) and the FIFO holds the watermark or more.  A rising edge
+ * calls the compatibility layer's handler if the edge is enabled (as the
+ * bank interrupt would), unless the test hides it.
+ */
+static bool int1_level, int1_hide_edges;
+static uint32_t int1_events;
+static int int1_configured, int1_edges;
+
+int nano_gpio_configure_input(unsigned int pin, bool pull_up, bool pull_down)
+{
+	assert(pin == 24 && !pull_up && !pull_down);
+	int1_configured++;
+	return 0;
+}
+
+uint32_t nano_gpio_get_all(void)
+{
+	return int1_level ? 1U << 24 : 0;
+}
+
+int nano_gpio_irq_configure(unsigned int pin, uint32_t events)
+{
+	assert(pin == 24);
+	int1_events = events;
+	return 0;
+}
+
+static void update_int1(void)
+{
+	uint16_t wtm = regs[USER][LSM6DSO_FIFO_CTRL1] |
+		       (uint16_t)(regs[USER][LSM6DSO_FIFO_CTRL2] & 1) << 8;
+	bool level = (regs[USER][LSM6DSO_INT1_CTRL] & 0x08) && wtm && fifo_words >= wtm;
+	bool rise = level && !int1_level;
+
+	int1_level = level;
+	if (rise && (int1_events & NANO_GPIO_IRQ_EDGE_RISE) && !int1_hide_edges) {
+		int1_edges++;
+		nano_gpio_irq_handler(24);
+	}
+}
+
+/* The sensor clock: 1 ms per reading. */
+static uint64_t clock_cycles = 5000000;
+
+int sensor_clock_get_cycles(uint64_t *c)
+{
+	*c = clock_cycles += 1000;
+	return 0;
+}
+
+uint64_t sensor_clock_cycles_to_ns(uint64_t c)
+{
+	return c * 1000U;
+}
 
 /* Helpers ------------------------------------------------------------------*/
 
@@ -559,16 +649,35 @@ static void test_attr(void)
 	assert(sensor_attr_set(imu(), SENSOR_CHAN_ACCEL_X, SENSOR_ATTR_SAMPLING_FREQUENCY, &v) ==
 	       -ENOTSUP);
 	assert(strcmp(log_text, "<wrn> LSM6DSO: attr_set() not supported on this channel.\n") == 0);
-	/* Without the stream, the FIFO attributes are not there (as without
-	 * CONFIG_SENSOR_ASYNC_API): plain unsupported channel.
-	 */
+	/* The FIFO attributes of the stream (CONFIG_SENSOR_ASYNC_API). */
 	v.val1 = 32;
 	v.val2 = 0;
 	assert(sensor_attr_set(imu(), SENSOR_CHAN_ALL,
+			       (enum sensor_attribute)SENSOR_ATTR_LSM6DSO_FIFO_WATERMARK, &v) == 0);
+	assert(sensor_attr_get(imu(), SENSOR_CHAN_ALL,
+			       (enum sensor_attribute)SENSOR_ATTR_LSM6DSO_FIFO_WATERMARK, &v) == 0);
+	assert(v.val1 == 32 && v.val2 == 0);
+	assert(sensor_attr_get(imu(), SENSOR_CHAN_ALL,
+			       (enum sensor_attribute)SENSOR_ATTR_LSM6DSO_FIFO_TIMESTAMP_DECIMATION,
+			       &v) == 0);
+	assert(v.val1 == 8 && v.val2 == 0);
+	v.val1 = 257;
+	assert(sensor_attr_set(imu(), SENSOR_CHAN_ALL,
+			       (enum sensor_attribute)SENSOR_ATTR_LSM6DSO_FIFO_WATERMARK, &v) ==
+	       -EINVAL);
+	v.val1 = 7;
+	assert(sensor_attr_set(imu(), SENSOR_CHAN_ALL,
+			       (enum sensor_attribute)SENSOR_ATTR_LSM6DSO_FIFO_TIMESTAMP_DECIMATION,
+			       &v) == -EINVAL);
+	v.val1 = 32;
+	assert(sensor_attr_set(imu(), SENSOR_CHAN_ACCEL_XYZ,
+			       (enum sensor_attribute)SENSOR_ATTR_LSM6DSO_FIFO_WATERMARK, &v) ==
+	       -EINVAL);
+	assert(sensor_attr_get(imu(), SENSOR_CHAN_ALL, SENSOR_ATTR_SAMPLING_FREQUENCY, &v) ==
+	       -ENOTSUP);
+	assert(sensor_attr_get(imu(), SENSOR_CHAN_ACCEL_XYZ,
 			       (enum sensor_attribute)SENSOR_ATTR_LSM6DSO_FIFO_WATERMARK, &v) ==
 	       -ENOTSUP);
-	assert(sensor_attr_get(imu(), SENSOR_CHAN_ALL, SENSOR_ATTR_SAMPLING_FREQUENCY, &v) ==
-	       -ENOSYS);
 	assert(sensor_trigger_set(imu(), NULL, NULL) == -ENOSYS);
 	/* An I2C error. */
 	v.val1 = 104;
@@ -629,7 +738,7 @@ static void test_fifo(void)
 	assert(lsm6dso_fifo_start_locked_driver(imu(), 32, true, true) == 0);
 	assert(regs[USER][LSM6DSO_FIFO_CTRL1] == 32 && (regs[USER][LSM6DSO_FIFO_CTRL2] & 0x81) == 0);
 	assert(regs[USER][LSM6DSO_FIFO_CTRL3] == 0xaa);      /* both batched at 6667 Hz */
-	assert(regs[USER][LSM6DSO_FIFO_CTRL4] == 0x06);      /* no timestamps (T10), stream */
+	assert(regs[USER][LSM6DSO_FIFO_CTRL4] == 0x86);      /* timestamps every 8, stream */
 	assert(regs[USER][LSM6DSO_CTRL10_C] == 0x20);        /* timestamp counter on */
 	lsm6dso_fifo_get_stats(imu(), &stats);
 	assert(stats.active && !stats.fault && stats.generation == 1);
@@ -665,9 +774,9 @@ static void test_fifo(void)
 	timestamp_step = 3;
 	/* Pause, drain, stop. */
 	assert(lsm6dso_fifo_pause_batch_locked_driver(imu()) == 0);
-	assert(regs[USER][LSM6DSO_FIFO_CTRL3] == 0x00 && regs[USER][LSM6DSO_FIFO_CTRL4] == 0x06);
+	assert(regs[USER][LSM6DSO_FIFO_CTRL3] == 0x00 && regs[USER][LSM6DSO_FIFO_CTRL4] == 0x86);
 	assert(lsm6dso_fifo_stop_locked_driver(imu()) == 0);
-	assert(regs[USER][LSM6DSO_FIFO_CTRL4] == 0x00);
+	assert(regs[USER][LSM6DSO_FIFO_CTRL4] == 0x80);
 	lsm6dso_fifo_record_stop_error(imu(), -5);
 	lsm6dso_fifo_get_stats(imu(), &stats);
 	assert(!stats.active && stats.stop_error == -5);
@@ -721,8 +830,223 @@ static void test_cal_zero(void)
 	assert(regs[USER][LSM6DSO_CTRL1_XL] == 0x0c && regs[USER][LSM6DSO_CTRL2_G] == 0x0c);
 }
 
+
+/* The FIFO stream ---------------------------------------------------------*/
+
+/* imu_stream.c:62-64 */
+SENSOR_DT_STREAM_IODEV(test_stream_iodev, DT_NODELABEL(lsm6dsox),
+	{ SENSOR_TRIG_FIFO_WATERMARK, SENSOR_STREAM_DATA_INCLUDE });
+SENSOR_DT_STREAM_IODEV(test_full_iodev, DT_NODELABEL(lsm6dsox),
+	{ SENSOR_TRIG_FIFO_FULL, SENSOR_STREAM_DATA_INCLUDE });
+SENSOR_DT_READ_IODEV(test_read_iodev, DT_NODELABEL(lsm6dsox),
+	{ SENSOR_CHAN_ACCEL_XYZ, 0 }, { SENSOR_CHAN_GYRO_XYZ, 0 });
+RTIO_DEFINE_WITH_MEMPOOL(test_rtio, 4, 16, 128, 64, 4);
+
+static void push_pairs(int pairs)
+{
+	for (int i = 0; i < pairs; i++) {
+		push_word(0x02, (int16_t)(100 + i), 0, 4100);  /* accel */
+		push_word(0x01, (int16_t)i, -1, 2);            /* gyro */
+	}
+	update_int1();
+}
+
+/* Takes the next completion: its result, and the FIFO words of its
+ * buffer (-1 if it has none).
+ */
+static int next_cqe(int *words)
+{
+	struct rtio_cqe *cqe = rtio_cqe_consume(&test_rtio);
+	uint8_t *buf = NULL;
+	uint32_t len = 0;
+	const uint8_t *w;
+	size_t size;
+	int result;
+
+	assert(cqe != NULL);
+	result = cqe->result;
+	*words = -1;
+	if (rtio_cqe_get_mempool_buffer(&test_rtio, cqe, &buf, &len) == 0 && buf) {
+		const struct sensor_decoder_api *decoder;
+		uint16_t frames = 0;
+
+		assert(lsm6dso_fifo_buffer_words(buf, len, &w, &size) == 0);
+		*words = (int)(size / LSM6DSO_FIFO_WORD_SIZE);
+		assert(sensor_get_decoder(imu(), &decoder) == 0);
+		assert(decoder == &lsm6dso_combined_decoder);
+		assert(decoder->get_frame_count(buf, (struct sensor_chan_spec){
+				SENSOR_CHAN_ACCEL_XYZ, 0}, &frames) == 0);
+		assert(frames == *words / 2);
+		assert(decoder->has_trigger(buf, SENSOR_TRIG_FIFO_WATERMARK) ==
+		       (*words >= 32));
+	}
+	rtio_cqe_release(&test_rtio, cqe);
+	rtio_release_buffer(&test_rtio, buf, len);
+	return result;
+}
+
+static void test_stream(void)
+{
+	struct lsm6dso_data *d = imu()->data;
+	struct sensor_value v = {.val1 = 6667};
+	rtio_sqe_handle_t h, h2;
+	struct lsm6dso_fifo_stats stats;
+	const char *name;
+	int prio, words;
+	size_t stack;
+
+	/* The stream's work queue, started at init. */
+	assert(test_work_queues() == 2);
+	(void)test_work_queue(1, &name, &prio, &stack);
+	assert(strcmp(name, "imu_fifo_worker") == 0 && prio == 108 && stack == 2048);
+	/* imu start: 1 MHz, the ODRs, the watermark (32 here). */
+	assert(i2c_configure(DEVICE_DT_GET(DT_BUS(DT_NODELABEL(lsm6dsox))),
+			     I2C_MODE_CONTROLLER | I2C_SPEED_SET(I2C_SPEED_FAST_PLUS)) == 0);
+	expect_frequency = 1000000;
+	assert(sensor_attr_set(imu(), SENSOR_CHAN_ACCEL_XYZ, SENSOR_ATTR_SAMPLING_FREQUENCY, &v) == 0);
+	assert(sensor_attr_set(imu(), SENSOR_CHAN_GYRO_XYZ, SENSOR_ATTR_SAMPLING_FREQUENCY, &v) == 0);
+	assert(lsm6dso_fifo_set_watermark(imu(), 32) == 0);
+	fifo_words = 0;
+
+	/* sensor_stream(): lsm6dso_submit() in the caller, the worker starts the
+	 * FIFO, INT1 and the 20 ms poll.
+	 */
+	assert(sensor_stream(&test_stream_iodev, &test_rtio, NULL, &h) == 0);
+	assert(d->stream_sqe != NULL && !d->stream_active);
+	assert(test_work_run_all() == 1);
+	assert(d->stream_active && d->stream_irq_active && int1_configured == 1);
+	assert(int1_events == NANO_GPIO_IRQ_EDGE_RISE);
+	assert(regs[USER][LSM6DSO_FIFO_CTRL1] == 32 && regs[USER][LSM6DSO_FIFO_CTRL3] == 0xaa);
+	assert(regs[USER][LSM6DSO_FIFO_CTRL4] == 0x86 && regs[USER][LSM6DSO_INT1_CTRL] == 0x08);
+	assert(d->stream_work.timeout.armed && d->stream_work.timeout.ticks == 200);
+	assert(lsm6dso_fifo_set_watermark(imu(), 64) == -EBUSY);
+	assert(rtio_cqe_consume(&test_rtio) == NULL);
+
+	/* The INT1 edge: the work on the system work queue wakes the worker
+	 * (the poll is cut short), which delivers one batch of all 40 words
+	 * and goes back to the poll.
+	 */
+	push_pairs(20);
+	assert(int1_edges == 1 && int1_level);
+	assert(test_work_run_all() == 3);   /* INT1 work, the batch, the empty check */
+	assert(fifo_words == 0 && !int1_level);
+	assert(d->stream_work.timeout.armed && d->stream_work.timeout.ticks == 200);
+	assert(next_cqe(&words) == 0 && words == 40);
+	assert(rtio_cqe_consume(&test_rtio) == NULL);
+	assert(rtio_iodev_sqe_from_handle(&test_rtio, h) == d->stream_sqe);
+
+	/* A missed edge: the 20 ms poll finds the watermark. */
+	int1_hide_edges = true;
+	push_pairs(17);
+	int1_hide_edges = false;
+	assert(test_work_run_all() == 0);
+	test_timeout_fire(&d->stream_work.timeout);
+	assert(test_work_run_all() == 2);
+	assert(next_cqe(&words) == 0 && words == 34);
+	/* Below the watermark nothing is delivered. */
+	push_pairs(3);
+	test_timeout_fire(&d->stream_work.timeout);
+	assert(test_work_run_all() == 1 && rtio_cqe_consume(&test_rtio) == NULL);
+
+	/* A second stream while this one runs, and another trigger. */
+	assert(sensor_stream(&test_stream_iodev, &test_rtio, NULL, &h2) == 0);
+	assert(next_cqe(&words) == -EBUSY && words == -1);
+	assert(rtio_iodev_sqe_from_handle(&test_rtio, h2) == NULL);
+	assert(sensor_stream(&test_full_iodev, &test_rtio, NULL, &h2) == 0);
+	assert(next_cqe(&words) == -ENOTSUP);
+
+	/* The graceful stop: pause batching, deliver the last 6 words, then
+	 * stop (bypass, INT1 off) and end with -ECANCELED.
+	 */
+	assert(lsm6dso_fifo_request_stop(imu(), &test_rtio, h + 1) == -ENOENT);
+	assert(lsm6dso_fifo_request_stop(imu(), &test_rtio, h) == 0);
+	assert(test_work_run_all() == 2);
+	assert(next_cqe(&words) == 0 && words == 6);
+	assert(next_cqe(&words) == -ECANCELED && words == -1);
+	assert(rtio_cqe_consume(&test_rtio) == NULL);
+	assert(rtio_iodev_sqe_from_handle(&test_rtio, h) == NULL && d->stream_sqe == NULL);
+	assert(!d->stream_active && !d->stream_irq_active && int1_events == 0);
+	assert(regs[USER][LSM6DSO_FIFO_CTRL3] == 0x00 && regs[USER][LSM6DSO_FIFO_CTRL4] == 0x80);
+	assert(regs[USER][LSM6DSO_INT1_CTRL] == 0x00);
+	assert(!d->stream_work.timeout.armed);
+	lsm6dso_fifo_get_stats(imu(), &stats);
+	assert(!stats.active && stats.stop_error == 0 && stats.words_read == 80);
+
+	/* A cancellation: noticed by the worker at its next run. */
+	assert(sensor_stream(&test_stream_iodev, &test_rtio, NULL, &h) == 0);
+	assert(test_work_run_all() == 1 && d->stream_active);
+	push_pairs(5);
+	assert(rtio_sqe_cancel(&test_rtio, h) == 0);
+	test_timeout_fire(&d->stream_work.timeout);
+	assert(test_work_run_all() == 1);
+	assert(next_cqe(&words) == -ECANCELED && words == -1);
+	assert(rtio_iodev_sqe_from_handle(&test_rtio, h) == NULL && !d->stream_active);
+	assert(regs[USER][LSM6DSO_FIFO_CTRL4] == 0x80 && regs[USER][LSM6DSO_INT1_CTRL] == 0x00);
+	/* Batching was not paused on this path (as in Zephyr). */
+	assert(regs[USER][LSM6DSO_FIFO_CTRL3] == 0xaa);
+	fifo_words = 0;
+
+	/* An overrun ends the stream with -EOVERFLOW. */
+	assert(sensor_stream(&test_stream_iodev, &test_rtio, NULL, &h) == 0);
+	assert(test_work_run_all() == 1);
+	fifo_overrun = true;
+	push_pairs(16);
+	assert(test_work_run_all() == 2);
+	fifo_overrun = false;
+	assert(next_cqe(&words) == -EOVERFLOW && words == -1);
+	assert(!d->stream_active && regs[USER][LSM6DSO_INT1_CTRL] == 0x00);
+	assert(rtio_iodev_sqe_from_handle(&test_rtio, h) == NULL);
+	fifo_words = 0;
+	update_int1();
+	assert(atomic_get(&test_rtio.xcqcnt) == 0);
+	for (int i = 0; i < 128; i++) {
+		assert(test_rtio.block_pool->bitmap[i / 32] == 0);
+	}
+
+	/* A single read: the fallback on the RTIO work queue. */
+	set_raw(LSM6DSO_OUTX_L_A, 0, 0, 4100);
+	set_raw(LSM6DSO_OUTX_L_G, 10, -5, 2);
+	assert(sensor_read_async_mempool(&test_read_iodev, &test_rtio, (void *)7) == 0);
+	assert(rtio_cqe_consume(&test_rtio) == NULL);
+	assert(test_work_run_all() == 1);
+	{
+		struct rtio_cqe *cqe = rtio_cqe_consume(&test_rtio);
+		const struct sensor_decoder_api *decoder;
+		struct sensor_three_axis_data out;
+		uint8_t *buf;
+		uint32_t len, fit = 0;
+		int64_t z;
+
+		assert(cqe && cqe->result == 0 && cqe->userdata == (void *)7);
+		assert(rtio_cqe_get_mempool_buffer(&test_rtio, cqe, &buf, &len) == 0 && buf);
+		rtio_cqe_release(&test_rtio, cqe);
+		assert(sensor_get_decoder(imu(), &decoder) == 0);
+		assert(decoder->decode(buf, (struct sensor_chan_spec){SENSOR_CHAN_ACCEL_XYZ, 0},
+				       &fit, 1, &out) == 1);
+		assert(out.header.base_timestamp_ns == clock_cycles * 1000);
+		z = ((int64_t)out.readings[0].z << out.shift) * 1000000 / ((int64_t)1 << 31);
+		{
+			const int16_t raw[3] = {0, 0, 4100};
+
+			assert(llabs(z - expected_micro(LSM6DSO_CAL_ACCEL, 244, raw, 2)) <= 1);
+		}
+		rtio_release_buffer(&test_rtio, buf, len);
+	}
+
+	/* Back to 100 kHz, ODRs off. */
+	assert(i2c_configure(DEVICE_DT_GET(DT_BUS(DT_NODELABEL(lsm6dsox))),
+			     I2C_SPEED_SET(I2C_SPEED_STANDARD)) == 0);
+	expect_frequency = 100000;
+	v.val1 = 0;
+	assert(sensor_attr_set(imu(), SENSOR_CHAN_ACCEL_XYZ, SENSOR_ATTR_SAMPLING_FREQUENCY, &v) == 0);
+	assert(sensor_attr_set(imu(), SENSOR_CHAN_GYRO_XYZ, SENSOR_ATTR_SAMPLING_FREQUENCY, &v) == 0);
+}
+
 int main(void)
 {
+	/* What the board starts before the LSM6DSOX (nano_bringup.c). */
+	assert(zephyr_compat_initialize() == 0);
+	assert(device_init(DEVICE_DT_GET(DT_NODELABEL(gpio0))) == 0);
 	test_bus();
 	test_init_errors();
 	test_init();
@@ -730,5 +1054,6 @@ int main(void)
 	test_attr();
 	test_fifo();
 	test_cal_zero();
+	test_stream();
 	return 0;
 }

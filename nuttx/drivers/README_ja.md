@@ -84,56 +84,148 @@ symlink で、`libexternal.a` になります）。ボード側の部分は `nut
 
 | ファイル | 役割 |
 |---|---|
-| `lsm6dso/lsm6dso.c` | ドライバー本体。Zephyr 版の `drivers/lsm6dso/lsm6dso.c` の、OS を呼ぶ部分だけを置き換えた写し（関数・分岐・順序・レジスター操作・換算・エラー値・ログの文は同じ）。末尾のデバイスツリーのインスタンス化のマクロは、ボードの値を使う `DEVICE_DT_DEFINE()` 1 つに置き換え |
-| `lsm6dso/lsm6dso.h` | Zephyr 版の同名ファイルの写し。カーネルのオブジェクトの型（`k_mutex`、`k_spinlock`）、バスの条件（`DT_HAS_COMPAT_ON_BUS_STATUS_OKAY()` → `LSM6DSO_BUS_I2C`）、ストリームの条件（`CONFIG_SENSOR_ASYNC_API` → `CONFIG_NANO_LSM6DSO_STREAM`）だけを置き換え。`timestamp_decimation` はストリームの外に出した（下） |
-| `lsm6dso/lsm6dso_os.[ch]` | カーネルの機能: ミューテックス（再帰可能、優先度継承あり）、割り込み禁止（`k_spin_lock()`）、`k_busy_wait()`、`k_msleep()`・`k_usleep()`、`k_cycle_get_32()` |
+| `lsm6dso/lsm6dso.c` | ドライバー本体。Zephyr 版の `drivers/lsm6dso/lsm6dso.c` の、OS を呼ぶ部分だけを置き換えた写し（関数・分岐・順序・レジスター操作・換算・エラー値・ログの文は同じ）。末尾のデバイスツリーのインスタンス化のマクロは、ボードの値を使う `DEVICE_DT_DEFINE()` 1 つに置き換え（INT1 の `.fifo_gpio` は `<&gpio0 24 0>`） |
+| `lsm6dso/lsm6dso.h` | Zephyr 版の同名ファイルの写し。カーネルのオブジェクトの型（`k_mutex`、`k_spinlock`）、バスの条件（`DT_HAS_COMPAT_ON_BUS_STATUS_OKAY()` → `LSM6DSO_BUS_I2C`）、ストリームの条件（`CONFIG_SENSOR_ASYNC_API` → `CONFIG_NANO_LSM6DSO_STREAM`）、`<zephyr/types.h>`（→ `<stdint.h>` 等と `<nuttx/config.h>`）だけを置き換え |
+| `lsm6dso/lsm6dso_os.[ch]` | `lsm6dso.c` が使うカーネルの機能: ミューテックスと割り込み禁止（互換層の `k_mutex`・`k_spin_lock()`）、`k_busy_wait()`、`k_msleep()`・`k_usleep()`、`k_cycle_get_32()` |
 | `lsm6dso/stmemsc.h`、`stmemsc_i2c.c`、`stmemsc_mdelay.c` | Zephyr の `drivers/sensor/st/stmemsc/` の I2C の部分の写し（ST の `stmdev_ctx_t` と Zephyr の I2C の API のつなぎ） |
 | `lsm6dso/st_lsm6dso_reg.c` | ST の `lsm6dso_reg.c`（`nuttx/stmemsc/`、Git 管理外）をそのままビルドするための 1 行の包み |
 | `lsm6dso/lsm6dso_fifo_hw.[ch]`、`lsm6dso_fifo_stats.h`、`lsm6dso_attributes.h` | Zephyr 版の同名ファイルを変更せずに写したもの |
+| `lsm6dso/lsm6dso_stream.c`、`lsm6dso_fifo_irq.[ch]` | FIFO のストリーム（下）。Zephyr 版の同名ファイルを変更せずに写したもの |
+| `lsm6dso/lsm6dso_compat.c` | 単発取得の RTIO 版（ストリームでない submit のフォールバック）。Zephyr 版の写しで、ログのインクルードとレベルの名前だけを置き換え |
+| `lsm6dso/lsm6dso_fifo_decoder.[ch]` | ストリームと単発取得のバッファーのデコーダー（`get_decoder`）。変更なしの写し |
 | ボードの `src/nano_lsm6dso.[ch]` | I2C0 を互換層のバスのデバイス（`i2c0`、100 kHz）にし、`lsm6dsox` を初期化する（`nano_bringup()` から） |
+| ボードの `src/nano_gpio.c` | 互換層の `gpio0` のための GPIO バンク 0（入力の設定、レベルの読み出し、エッジ・レベルの割り込み）。`<nano_gpio.h>`（`nuttx/drivers/include`） |
 
 置き換えの対応（`lsm6dso.c` の先頭にも同じ表があります）:
 
 | Zephyr | NuttX 版 |
 |---|---|
 | `<zephyr/logging/log.h>`、`CONFIG_SENSOR_LOG_LEVEL`（3） | `app_log.h`（同じ行が RAM ログに入る）、レベル 3 |
-| `k_mutex_init/_lock/_unlock` | `lsm6dso_os_mutex_init/_lock/_unlock`（`rmutex_t`。シグナルで終わった待ちはやり直す） |
-| `k_spin_lock/_unlock` | `lsm6dso_os_spin_lock/_unlock`（`up_irq_save()`） |
+| `k_mutex_init/_lock/_unlock` | `lsm6dso_os_mutex_init/_lock/_unlock`（互換層の `k_mutex` = `rmutex_t`。`K_FOREVER` の待ちはシグナルで終わってもやり直す） |
+| `k_spin_lock/_unlock` | `lsm6dso_os_spin_lock/_unlock`（互換層の `k_spin_lock()`） |
 | `k_busy_wait()` | `up_udelay()` |
 | `k_msleep()`、`k_usleep()` | `nxsched_msleep()`、`nxsched_usleep()`（tick に切り上げて 1 tick 足す。Zephyr と同じ規則、同じ 100 µs） |
 | `k_cycle_get_32()`、`k_cyc_to_ns_floor64()` | TIMER の下位 32 ビット（1 MHz）と ×1000 |
 | `sys_get_le32()` | 同じ計算をファイル内に書いた |
+| `CONFIG_SENSOR_ASYNC_API` | `CONFIG_NANO_LSM6DSO_STREAM`（`NANO_LSM6DSO` と一緒に常に有効。Zephyr 版と同じく、無いと `lsm6dso.c` はビルドできない） |
 | デバイスツリーのインスタンス化、`POST_KERNEL`・優先度 90 | `DEVICE_DT_DEFINE(lsm6dsox, …)`、ボードの起動処理での `device_init()` |
 
 - 初期化はボードの `nano_bringup()` が、I2C0 の初期化の直後、KV（NVS）のマウントより前に行います
   （Zephyr 版の初期化の順と同じ）。失敗してもデバイスが「準備できていない」だけで起動は続きます
   （`device_is_ready()` が false。Zephyr の `do_device_init()` と同じ）。
-- FIFO の関数（`lsm6dso_fifo_*_locked_driver()`、`lsm6dso_timestamp_read()`、`lsm6dso_fifo_get_stats()` など）は
-  ストリームが無くてもビルドします。そのため、Zephyr 版でストリームの部分にある `timestamp_decimation` を
-  構造体のストリームの外に置きました。ストリームが値を設定するまでは 0（タイムスタンプのワードなし）です。
-  ストリーム（`lsm6dso_stream.c`、`lsm6dso_fifo_irq.c`、RTIO、デコーダー、`lsm6dso_compat.c`）とその属性
-  （`fifo_watermark`、`fifo_timestamp_decimation`）は、`CONFIG_NANO_LSM6DSO_STREAM` を足すときに入ります。
 - 移していないもの: SPI 接続、センサーハブ（`lsm6dso_shub.c`）、トリガー（`lsm6dso_trigger.c`）、内部温度。
   どれも Zephyr 版の構成で切られていて（`CONFIG_LSM6DSO_SENSORHUB`・`_TRIGGER`・`_ENABLE_TEMP` が無効）、
   ビルドされていません。該当する `#ifdef` の部分は写しに残してあります。
 - `fifo_read` の転送時間（統計の `transfer_time_ns`）は TIMER（1 µs 単位）で測ります。Zephyr 版は CPU の
   クロック（SysTick、8 ns 単位）です。
 
+### FIFO のストリーム
+
+`lsm6dso_stream.c`・`lsm6dso_fifo_irq.[ch]` は Zephyr 版の写しそのもの（`cmp` で一致）で、Zephyr の名前の
+カーネル・RTIO・GPIO・sensor の API を互換層（下の節）から使います。動作は Zephyr 版と同じです。
+
+- `sensor_stream()`（`SENSOR_DT_STREAM_IODEV`、トリガーは `SENSOR_TRIG_FIFO_WATERMARK` と
+  `SENSOR_STREAM_DATA_INCLUDE` の 1 つだけ。ほかは `-ENOTSUP`、2 本目は `-EBUSY`）が multishot の読み出しを
+  1 つ出し、`lsm6dso_submit()` が呼び出し元の文脈でワーカー（`imu_fifo_worker`）を起こします。
+- ワーカーは最初の実行で FIFO を開始し（ウォーターマーク、加速度・ジャイロの BDR、タイムスタンプ 8 回に 1 つ、
+  ストリームモード）、INT1 の立ち上がりエッジの割り込みを有効にしてから FIFO のしきい値を INT1 に出します。
+  有効にした時点で INT1 がすでに高ければ、その場で 1 回処理を予約します。
+- INT1 のエッジ → GPIO の割り込みが `k_work_submit()` でシステムワークキュー（`sysworkq`）に処理を入れる →
+  そこで `stream_wakeup()` がワーカーを `k_work_reschedule_for_queue(.., K_NO_WAIT)` で起こす → ワーカーが
+  FIFO の状態を読み、ウォーターマーク以上なら全ワードを 1 回の転送で読んで 1 バッチを完了にします。
+  完了した multishot はその場でワーカーに戻り（`lsm6dso_submit()`）、ワーカーはすぐもう一度状態を見ます。
+  何も無ければ 20 ms 後に見直す予約（`k_work_schedule_for_queue(.., K_MSEC(20))`）をします。エッジを
+  取りこぼしてもこの見直しで読みます。
+- バッファーはコンテキストのメモリープールから取ります（最小 = パケットの頭＋ウォーターマーク分、
+  最大 = 頭＋512 ワード分。取れなければ `-ENOMEM` でストリームを終える）。オーバーランは `-EOVERFLOW`、
+  I2C の失敗はそのエラーで終えます。終えるときは FIFO をバイパスに戻し、INT1 への出力と割り込みを止めます。
+- 穏やかな停止（`lsm6dso_fifo_request_stop()`）: ワーカーがバッチ化を止め（BDR を 0）、残りのワードを
+  最後の端数のバッチとして渡してから、FIFO をバイパスに戻して `-ECANCELED` で終えます。
+  キャンセル（`rtio_sqe_cancel()`）は次にワーカーが動いたとき（INT1 か 20 ms の見直し）に気づき、
+  バッチ化を止めずにそのまま停止して `-ECANCELED`（停止の失敗ならそのエラー）で終えます。FIFO に残った
+  ワードは捨てます。
+- ストリームを動かしても ODR は変えません（`imu start` が設定し、停止後もそのまま。Zephyr 版と同じ）。
+
 ## Zephyr の API の互換層（`compat`）
 
 `nuttx/drivers/compat/` は、写したドライバーとそれを呼ぶ側（取得サービス、校正、センサーのコマンド）が使う
 Zephyr の API を、Zephyr の名前のまま最小限だけ用意したものです。インクルードパスは
-`$(TOPDIR)/external/compat` です。Zephyr の sensor サブシステムの全体は移していません。
+`$(TOPDIR)/external/compat` です。Zephyr の sensor・RTIO・カーネルの全体は移していません。
 
 | ヘッダー | 中身 |
 |---|---|
 | `zephyr/device.h` | `struct device`（名前、config、API、状態、data、初期化関数）、`device_is_ready()`、`device_init()`（Zephyr の `do_device_init()` と同じ意味）、`DEVICE_DT_GET()`、`DEVICE_DT_DEFINE()`、`DEVICE_API()` |
-| `zephyr/devicetree.h` | `DT_NODELABEL()`、`DT_BUS()`。ノードは `i2c0` と `lsm6dsox` だけ |
-| `zephyr/drivers/sensor.h` | `struct sensor_value`、チャネル・属性・トリガーの列挙（Zephyr と同じ番号）、`struct sensor_driver_api`、`sensor_attr_set()`・`_get()`、`sensor_sample_fetch()`・`_chan()`、`sensor_channel_get()`、`sensor_trigger_set()`、単位の換算（`sensor_ms2_to_g()`、`sensor_rad_to_degrees()`、`sensor_value_to_micro()` など） |
+| `zephyr/devicetree.h` | `DT_NODELABEL()`、`DT_BUS()`。ノードは `gpio0`、`i2c0`、`lsm6dsox` だけ |
+| `zephyr/kernel.h` | `k_timeout_t`（`K_NO_WAIT`、`K_FOREVER`、`K_MSEC()`。単位は 100 µs の tick）、`k_mutex`、`k_sem`（`K_SEM_DEFINE`）、セマフォに対する `k_poll()`（`K_POLL_TYPE_SEM_AVAILABLE`・`K_POLL_MODE_NOTIFY_ONLY`）、ワーク（`k_work`、`k_work_delayable`、`k_work_q`、`k_work_submit()`、`k_work_cancel_sync()`、`k_work_schedule_for_queue()`、`k_work_reschedule_for_queue()`、`k_work_queue_start()`）、`K_THREAD_STACK_DEFINE()`、`K_PRIO_PREEMPT()`、`k_thread_name_set()`、システムワークキュー `k_sys_work_q` |
+| `zephyr/spinlock.h`、`zephyr/sys/atomic.h` | `k_spin_lock()`（下）、`atomic_t` と `atomic_get/set/clear/cas/or/inc/add()` |
+| `zephyr/rtio/rtio.h`、`zephyr/rtio/work.h` | RTIO（下）と RTIO のワークキュー（`rtio_work_req_alloc()`・`_submit()`） |
+| `zephyr/drivers/gpio.h` | `struct gpio_dt_spec`、`gpio_is_ready_dt()`、`gpio_pin_configure_dt()`（入力だけ）、`gpio_pin_interrupt_configure_dt()`、`gpio_pin_get_dt()`、コールバック（`gpio_init_callback()`・`gpio_add_callback()`・`gpio_remove_callback()`） |
+| `zephyr/drivers/sensor.h` | `struct sensor_value`、チャネル・属性・トリガーの列挙（Zephyr と同じ番号）、`struct sensor_driver_api`、`sensor_attr_set()`・`_get()`、`sensor_sample_fetch()`・`_chan()`、`sensor_channel_get()`、`sensor_trigger_set()`、単位の換算。非同期の API: `struct sensor_chan_spec`、デコーダー（`struct sensor_decoder_api`、`sensor_three_axis_data` など）、`SENSOR_DT_READ_IODEV()`、`SENSOR_DT_STREAM_IODEV()`、`sensor_get_decoder()`、`sensor_stream()`、`sensor_read()`、`sensor_read_async_mempool()`、`sensor_processing_with_callback()` |
+| `zephyr/drivers/sensor_clock.h` | `sensor_clock_get_cycles()`、`sensor_clock_cycles_to_ns()`（下） |
 | `zephyr/drivers/i2c.h` | `struct i2c_dt_spec`、`i2c_burst_read_dt()`、`i2c_write_dt()`、`i2c_write_read_dt()`、`i2c_configure()`、速さの区分（`I2C_SPEED_*`、`I2C_SPEED_SET()`） |
-| `zephyr/sys/util.h` | `BIT()`、`ARRAY_SIZE()`、`MIN()`・`MAX()`、`IS_ENABLED()`、`CONTAINER_OF()` など |
-| `zephyr/rtio/rtio.h` | 仮置き（`lsm6dso_fifo_stats.h` が使う 2 つの名前だけ）。RTIO の互換はストリームと一緒に入る |
+| `zephyr/sys/util.h`、`sys/__assert.h`、`sys/mpsc_lockfree.h`、`sys/mem_blocks.h`、`dsp/types.h` | `BIT()`、`ARRAY_SIZE()`、`MIN()`・`MAX()`、`IS_ENABLED()`、`CONTAINER_OF()`、`GENMASK()`・`FIELD_GET()` など、`__ASSERT()`、RTIO の待ち行列とブロックのプール、`q31_t` |
+| `zephyr_compat.h` | `zephyr_compat_initialize()`（ボードの起動処理が呼ぶ。下） |
 
+| ソース | 中身 |
+|---|---|
+| `zephyr_kernel.c` | NuttX の上の OS 部分: `k_mutex`（`rmutex_t`）、`k_sem`（`sem_t`、上限は `k_sem_give()` で見る）、`k_poll()`、ワークキューのスレッド（静的なスタックのカーネルスレッド）、遅延ワークのタイマー（wdog）、スレッド名、`zephyr_compat_initialize()` |
+| `zephyr_work.c` | ワークとワークキュー。Zephyr の `kernel/work.c` の使っている部分の写し（OS に依存しない） |
+| `zephyr_rtio.c`、`zephyr_rtio_workq.c`、`zephyr_mem_blocks.c` | RTIO の executor（`subsys/rtio/rtio_executor.c`）、RTIO のワークキュー（`rtio_workq.c`）、ブロックのプール（`lib/mem_blocks`） |
+| `zephyr_gpio.c` | `gpio0` のデバイス（Zephyr の `gpio.h` の処理と `gpio_rpi_pico.c`）。ボードの `<nano_gpio.h>` の上 |
+| `zephyr_sensor_clock.c` | センサーの時計。ボードの TIMER（`nano_mono_us()`） |
+| `sensor_default_rtio.c` | Zephyr の `drivers/sensor/default_rtio_sensor.c` の写し（ログだけ置き換え）。センサーの iodev の API、単発取得のフォールバック、既定のデコーダー |
+| `zephyr_device.c`、`zephyr_i2c.c` | デバイスの初期化と I2C |
+
+- **ワーク**: フラグ（RUNNING・CANCELING・QUEUED・DELAYED）と戻り値は `kernel/work.c` と同じです。
+  `submit` はキュー済みなら何もしない（0）、実行中なら同じキューに入れ直す（2）。`schedule` は遅延中・
+  キュー済みなら何もしない（実行中なら予約できる）、`reschedule` は遅延を止めてから予約し直す
+  （`K_NO_WAIT` ならその場でキューに入れる）。`k_work_cancel_sync()` はキューから外し、実行中なら終わるまで
+  待ちます（待てるのは 1 スレッドだけ。Zephyr は複数）。キューのスレッドは処理の後、ほかに待ちがあれば
+  `sched_yield()` します（Zephyr の `k_yield()`）。遅延のタイマーは wdog で、時間は Zephyr と同じく
+  「今の tick + tick 数 + 1」で切れます。移していないもの: flush、drain、plug、キューの停止、ワークの
+  タイムアウト、`k_work_cancel()`、`k_work_cancel_delayable()`。
+- **スピンロック**: Zephyr の 1 CPU の `k_spin_lock()` は割り込みを禁止し、その間はほかのスレッドに切り替わり
+  ません（`k_sem_give()` などで起きたスレッドは解放のときに動く）。NuttX は割り込み禁止中でも
+  `nxsem_post()` で起きたスレッドにすぐ切り替えるので、互換層の `k_spin_lock()` は `sched_lock()` と
+  `up_irq_save()` にしています（割り込みハンドラーの中では `sched_lock()` は何もしない）。`atomic_*()` も
+  これで守ります（Cortex-M0+ に排他ロード・ストアは無く、Zephyr の ARMv6-M も割り込み禁止で実装）。
+- **NuttX の名前との衝突**: NuttX の `<nuttx/atomic.h>`（多くのカーネルのヘッダーが読む）にも `atomic_t` と
+  `atomic_set()` などがあり、意味が違います。互換層の `<zephyr/sys/atomic.h>` はそれを先に読んでから、
+  そのファイルの中で名前を引き取ります（`atomic_t` は `zephyr_atomic_t`、NuttX のマクロは `#undef`）。
+  両方を使うファイルは NuttX のヘッダーを先に読みます。ボードの起動処理は Zephyr のヘッダーを読まず、
+  `zephyr_compat.h` だけを読みます。
+- **セマフォと `k_poll()`**: `k_sem_give()` は上限で止め、そのセマフォを `k_poll()` で待っているスレッドを
+  起こします（取らずに知らせるだけ。Zephyr の `K_POLL_MODE_NOTIFY_ONLY`）。`k_sem_take()` は 0、`-EBUSY`
+  （`K_NO_WAIT`）、`-EAGAIN`（時間切れ）。`k_poll()` はセマフォだけを扱います。
+- **RTIO**: Zephyr の構成（`CONFIG_RTIO_SUBMIT_SEM`・`_CONSUME_SEM`・`_SYS_MEM_BLOCKS`、コールバックと
+  ユーザーモードなし）の写しです。寸法は呼ぶ側の `RTIO_DEFINE_WITH_MEMPOOL(name, 送信数, 完了数, ブロック数,
+  ブロックの大きさ, 境界)` で決まります（`imu_stream.c` は 4、16、128、64、4）。iodev の submit は
+  `rtio_submit()` の呼び出し元の文脈で呼ばれます。multishot は成功すると、完了を出す前に iodev に戻り
+  （プールのバッファーの結び付けを外して）、失敗かキャンセルでバッファーと送信を解放して終わります。完了の
+  空きが無いと完了は捨てられて `xcqcnt` に数えられます（そのバッファーは誰も解放できず残ります。Zephyr と
+  同じ）。`rtio_cqe_consume()` は完了を待たず、`consume_sem` を取ります。ハンドルは送信のプールの番号と世代で、
+  解放のたびに世代が進み、古いハンドルは解決もキャンセルもされません。`rtio_sqe_cancel()` は印を付けて
+  iodev のキャンセルの関数（あれば）を呼びます。プールの割り当ては `max` から `min` まで 1 ブロックずつ減らして
+  最初に取れた連続ブロック（最初の適合）。Zephyr との違いは、待ち行列（`struct mpsc`）がロックフリーでなく
+  割り込み禁止を使うことと、プールの空きリストを起動時（`rtio_init()`）ではなく最初の割り当てで作ることです
+  （渡す順は同じ）。移していないもの: チェーンとトランザクション、executor 自身の操作（コールバック、待ち、
+  遅延）、書き込みなどの操作、`rtio_sqe_copy_in()`・`rtio_cqe_copy_out()`、`rtio_pool`、完了のコールバック、
+  ユーザーモード。
+- **RTIO のワークキュー**: Zephyr の `rtio_workq.c` と同じく、要求 4 つのプールと 1 スレッド（`RTIO WQ 0`、
+  優先度 0 → 118、スタック 1024）で、投入順に実行します。単発取得のフォールバック（`lsm6dso_compat.c`）が
+  使います。NuttX はタスク名の空白を `_` にするので、`ps` では `RTIO_WQ_0` と出ます。
+- **GPIO**: ポートは `gpio0`（GPIO0〜29）だけで、入力だけです（出力は `-ENOTSUP`）。ピンの設定、割り込み
+  （エッジ・レベル、論理・物理）、レベルの読み出し、コールバックは Zephyr の `gpio.h` と `gpio_rpi_pico.c`
+  の写しで、ボードの `src/nano_gpio.c` が pico-sdk の `gpio_set_pulls()`・`gpio_set_function()`・
+  `gpio_set_dir()`・`gpio_set_irq_enabled()` と同じレジスター操作をします（イベントを有効・無効にする前に
+  `INTR` のそのピンのイベントを消す）。割り込みは NuttX の `rp2040_gpio` のバンクの割り込みから来ます
+  （有効なイベントを消してからピンのハンドラーを呼ぶ）。
+- **センサーの時計**: Zephyr 版はシステムクロック（SysTick、125 MHz、`k_cycle_get_64()`）、NuttX 版はボードの
+  TIMER（水晶の 1 MHz）です。ストリームのバッチの時刻と単発取得の時刻は 1 µs 単位になります。
+- **起動**: `zephyr_compat_initialize()` を、ボードの起動処理が DMA・I2C0・LSM6DSOX より前に呼び、
+  システムワークキュー（`sysworkq`、優先度 119、スタック 1024）、RTIO のワークキュー、`gpio0` を用意します
+  （Zephyr がそれらを `POST_KERNEL` でセンサーより先に用意するのと同じ順）。`imu_fifo_worker` は LSM6DSOX の
+  初期化（`lsm6dso_stream_init()`）が作ります。
 - I2C のバスは、NuttX の I2C マスターと速さを持つデバイスです（`i2c_compat_bind()` でボードが結び付ける）。
   Zephyr ではバスのドライバーが速さを持ち、`i2c_configure()` が以後のすべての転送の速さを変えます。NuttX の
   転送はメッセージごとに周波数を持つので、互換層の転送（`i2c_burst_read_dt()` など）がデバイスの速さを

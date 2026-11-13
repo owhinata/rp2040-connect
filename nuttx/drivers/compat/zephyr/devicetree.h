@@ -7,6 +7,7 @@
  * Zephyr compatibility layer of the port (nuttx/drivers/compat).
  *
  *   label     node                                 defined in
+ *   gpio0     /soc/gpio@40014000/gpio-port@0       compat/zephyr_gpio.c
  *   i2c0      /soc/i2c@40044000 ("i2c@40044000")   board src/nano_lsm6dso.c
  *   lsm6dsox  /soc/i2c@40044000/lsm6dsox@6a        drivers/lsm6dso/lsm6dso.c
  */
@@ -23,6 +24,7 @@
 #define DT_BUS_lsm6dsox       i2c0
 
 struct device;
+DEVICE_DT_DECLARE(gpio0);
 DEVICE_DT_DECLARE(i2c0);
 DEVICE_DT_DECLARE(lsm6dsox);
 

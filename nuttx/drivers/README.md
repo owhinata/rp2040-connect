@@ -90,59 +90,162 @@ the parts ported so far.
 
 | File | Role |
 |---|---|
-| `lsm6dso/lsm6dso.c` | The driver. A copy of the Zephyr version's `drivers/lsm6dso/lsm6dso.c` with only the calls into the system replaced (the same functions, branches, order, register operations, conversions, error values and log lines). The devicetree instance macros at the end are one `DEVICE_DT_DEFINE()` with the board's values |
-| `lsm6dso/lsm6dso.h` | A copy of the Zephyr version's file. Only the kernel object types (`k_mutex`, `k_spinlock`), the bus condition (`DT_HAS_COMPAT_ON_BUS_STATUS_OKAY()` → `LSM6DSO_BUS_I2C`) and the stream condition (`CONFIG_SENSOR_ASYNC_API` → `CONFIG_NANO_LSM6DSO_STREAM`) are replaced; `timestamp_decimation` is moved out of the stream part (below) |
-| `lsm6dso/lsm6dso_os.[ch]` | The kernel services: mutexes (recursive, priority inheritance), interrupts off (`k_spin_lock()`), `k_busy_wait()`, `k_msleep()`/`k_usleep()`, `k_cycle_get_32()` |
+| `lsm6dso/lsm6dso.c` | The driver. A copy of the Zephyr version's `drivers/lsm6dso/lsm6dso.c` with only the calls into the system replaced (the same functions, branches, order, register operations, conversions, error values and log lines). The devicetree instance macros at the end are one `DEVICE_DT_DEFINE()` with the board's values (INT1's `.fifo_gpio` is `<&gpio0 24 0>`) |
+| `lsm6dso/lsm6dso.h` | A copy of the Zephyr version's file. Only the kernel object types (`k_mutex`, `k_spinlock`), the bus condition (`DT_HAS_COMPAT_ON_BUS_STATUS_OKAY()` → `LSM6DSO_BUS_I2C`), the stream condition (`CONFIG_SENSOR_ASYNC_API` → `CONFIG_NANO_LSM6DSO_STREAM`) and `<zephyr/types.h>` (→ `<stdint.h>` and others, and `<nuttx/config.h>`) are replaced |
+| `lsm6dso/lsm6dso_os.[ch]` | The kernel services `lsm6dso.c` uses: mutexes and interrupts off (the compatibility layer's `k_mutex` and `k_spin_lock()`), `k_busy_wait()`, `k_msleep()`/`k_usleep()`, `k_cycle_get_32()` |
 | `lsm6dso/stmemsc.h`, `stmemsc_i2c.c`, `stmemsc_mdelay.c` | A copy of the I2C part of Zephyr's `drivers/sensor/st/stmemsc/` (the glue between ST's `stmdev_ctx_t` and Zephyr's I2C API) |
 | `lsm6dso/st_lsm6dso_reg.c` | A one-line wrapper that builds ST's `lsm6dso_reg.c` (`nuttx/stmemsc/`, not in Git) as it is |
 | `lsm6dso/lsm6dso_fifo_hw.[ch]`, `lsm6dso_fifo_stats.h`, `lsm6dso_attributes.h` | Unchanged copies of the Zephyr version's files |
+| `lsm6dso/lsm6dso_stream.c`, `lsm6dso_fifo_irq.[ch]` | The FIFO stream (below). Unchanged copies of the Zephyr version's files |
+| `lsm6dso/lsm6dso_compat.c` | Single reads through RTIO (the fallback for a submission that is not a stream). A copy of the Zephyr version's file with only the log include and level name replaced |
+| `lsm6dso/lsm6dso_fifo_decoder.[ch]` | The decoders of the stream's and the single reads' buffers (`get_decoder`). Unchanged copies |
 | the board's `src/nano_lsm6dso.[ch]` | Makes I2C0 the compatibility layer's bus device (`i2c0`, 100 kHz) and initializes `lsm6dsox` (from `nano_bringup()`) |
+| the board's `src/nano_gpio.c` | GPIO bank 0 for the compatibility layer's `gpio0` (input set-up, levels, edge and level interrupts); `<nano_gpio.h>` (`nuttx/drivers/include`) |
 
 The replacements (the same table is at the top of `lsm6dso.c`):
 
 | Zephyr | NuttX port |
 |---|---|
 | `<zephyr/logging/log.h>`, `CONFIG_SENSOR_LOG_LEVEL` (3) | `app_log.h` (the same lines in the RAM log), level 3 |
-| `k_mutex_init/_lock/_unlock` | `lsm6dso_os_mutex_init/_lock/_unlock` (`rmutex_t`; a wait ended by a signal is repeated) |
-| `k_spin_lock/_unlock` | `lsm6dso_os_spin_lock/_unlock` (`up_irq_save()`) |
+| `k_mutex_init/_lock/_unlock` | `lsm6dso_os_mutex_init/_lock/_unlock` (the layer's `k_mutex`, an `rmutex_t`; a `K_FOREVER` wait ended by a signal is repeated) |
+| `k_spin_lock/_unlock` | `lsm6dso_os_spin_lock/_unlock` (the layer's `k_spin_lock()`) |
 | `k_busy_wait()` | `up_udelay()` |
 | `k_msleep()`, `k_usleep()` | `nxsched_msleep()`, `nxsched_usleep()` (rounded up to ticks plus one tick: Zephyr's rule, the same 100 µs tick) |
 | `k_cycle_get_32()`, `k_cyc_to_ns_floor64()` | the TIMER's low 32 bits (1 MHz) and ×1000 |
 | `sys_get_le32()` | the same arithmetic, written in the file |
+| `CONFIG_SENSOR_ASYNC_API` | `CONFIG_NANO_LSM6DSO_STREAM` (always on with `NANO_LSM6DSO`; as in Zephyr, `lsm6dso.c` does not build without it) |
 | the devicetree instance, `POST_KERNEL`, priority 90 | `DEVICE_DT_DEFINE(lsm6dsox, ...)`, `device_init()` in the board's bring-up |
 
 - The board's `nano_bringup()` initializes the sensor right after I2C0 and before mounting the
   key-value store (NVS), the Zephyr version's order. A failure only leaves the device not ready
   (`device_is_ready()` is false, as with Zephyr's `do_device_init()`); the boot goes on.
-- The FIFO functions (`lsm6dso_fifo_*_locked_driver()`, `lsm6dso_timestamp_read()`,
-  `lsm6dso_fifo_get_stats()` and others) are built without the stream too, so
-  `timestamp_decimation`, which the Zephyr version keeps in the stream part of the structure, is
-  outside it here. It is 0 (no timestamp words) until the stream sets it. The stream
-  (`lsm6dso_stream.c`, `lsm6dso_fifo_irq.c`, RTIO, the decoder, `lsm6dso_compat.c`) and its
-  attributes (`fifo_watermark`, `fifo_timestamp_decimation`) come with
-  `CONFIG_NANO_LSM6DSO_STREAM`.
 - Not ported: SPI, the sensor hub (`lsm6dso_shub.c`), triggers (`lsm6dso_trigger.c`) and the die
   temperature. All are off in the Zephyr version's configuration (`CONFIG_LSM6DSO_SENSORHUB`,
   `_TRIGGER`, `_ENABLE_TEMP`) and not built there. Their `#ifdef` parts are kept in the copy.
 - The FIFO read time (`transfer_time_ns` in the statistics) is measured with the TIMER (1 µs
   steps); the Zephyr version uses the CPU clock (SysTick, 8 ns steps).
 
+### FIFO stream
+
+`lsm6dso_stream.c` and `lsm6dso_fifo_irq.[ch]` are the Zephyr version's files as they are (`cmp`
+identical); they use the kernel, RTIO, GPIO and sensor API under Zephyr's names from the
+compatibility layer (next section). They behave as in the Zephyr version:
+
+- `sensor_stream()` (`SENSOR_DT_STREAM_IODEV`; one trigger, `SENSOR_TRIG_FIFO_WATERMARK` with
+  `SENSOR_STREAM_DATA_INCLUDE`, anything else is `-ENOTSUP`, a second stream `-EBUSY`) submits one
+  multishot read; `lsm6dso_submit()` wakes the worker (`imu_fifo_worker`) in the caller.
+- On its first run the worker starts the FIFO (watermark, accelerometer and gyroscope BDR, one
+  timestamp every 8, stream mode), enables the rising-edge interrupt of INT1 and then routes the
+  FIFO threshold to INT1. If INT1 is already high when enabled, it queues one run at once.
+- An INT1 edge → the GPIO interrupt queues work on the system work queue (`sysworkq`,
+  `k_work_submit()`) → there `stream_wakeup()` wakes the worker
+  (`k_work_reschedule_for_queue(.., K_NO_WAIT)`) → the worker reads the FIFO status and, at the
+  watermark or above, reads all words in one transfer and completes one batch. The completed
+  multishot goes straight back to the worker (`lsm6dso_submit()`), which looks at the status again
+  at once; with nothing there it schedules another look in 20 ms
+  (`k_work_schedule_for_queue(.., K_MSEC(20))`), which also catches a missed edge.
+- Buffers come from the context's memory pool (at least the packet header plus the watermark's
+  words, at most the header plus 512 words; none available ends the stream with `-ENOMEM`). An
+  overrun ends it with `-EOVERFLOW`, an I2C failure with that error. Ending puts the FIFO back in
+  bypass and turns the INT1 routing and the interrupt off.
+- Graceful stop (`lsm6dso_fifo_request_stop()`): the worker stops batching (BDR 0), delivers the
+  remaining words as a last partial batch, then puts the FIFO in bypass and ends with
+  `-ECANCELED`. A cancellation (`rtio_sqe_cancel()`) is noticed at the worker's next run (INT1 or
+  the 20 ms look) and stops at once, without pausing, ending with `-ECANCELED` (or the stop's
+  error); the words left in the FIFO are dropped.
+- The stream does not change the ODRs (`imu start` sets them and they stay after the stop, as in
+  the Zephyr version).
+
 ## Zephyr API compatibility layer (`compat`)
 
 `nuttx/drivers/compat/` provides, under Zephyr's names and no more than needed, the part of
 Zephyr's API that the copied driver and its callers (the acquisition service, the calibration, the
-sensor command) use. The include path is `$(TOPDIR)/external/compat`. Zephyr's sensor subsystem
-as a whole is not ported.
+sensor command) use. The include path is `$(TOPDIR)/external/compat`. Zephyr's sensor subsystem,
+RTIO and kernel as a whole are not ported.
 
 | Header | Contents |
 |---|---|
 | `zephyr/device.h` | `struct device` (name, config, API, state, data, init function), `device_is_ready()`, `device_init()` (the meaning of Zephyr's `do_device_init()`), `DEVICE_DT_GET()`, `DEVICE_DT_DEFINE()`, `DEVICE_API()` |
-| `zephyr/devicetree.h` | `DT_NODELABEL()`, `DT_BUS()`; the nodes are `i2c0` and `lsm6dsox` only |
-| `zephyr/drivers/sensor.h` | `struct sensor_value`, the channel, attribute and trigger enumerations (Zephyr's numbers), `struct sensor_driver_api`, `sensor_attr_set()`/`_get()`, `sensor_sample_fetch()`/`_chan()`, `sensor_channel_get()`, `sensor_trigger_set()`, the unit conversions (`sensor_ms2_to_g()`, `sensor_rad_to_degrees()`, `sensor_value_to_micro()` and others) |
+| `zephyr/devicetree.h` | `DT_NODELABEL()`, `DT_BUS()`; the nodes are `gpio0`, `i2c0` and `lsm6dsox` only |
+| `zephyr/kernel.h` | `k_timeout_t` (`K_NO_WAIT`, `K_FOREVER`, `K_MSEC()`; ticks of 100 µs), `k_mutex`, `k_sem` (`K_SEM_DEFINE`), `k_poll()` on semaphores (`K_POLL_TYPE_SEM_AVAILABLE`, `K_POLL_MODE_NOTIFY_ONLY`), work (`k_work`, `k_work_delayable`, `k_work_q`, `k_work_submit()`, `k_work_cancel_sync()`, `k_work_schedule_for_queue()`, `k_work_reschedule_for_queue()`, `k_work_queue_start()`), `K_THREAD_STACK_DEFINE()`, `K_PRIO_PREEMPT()`, `k_thread_name_set()`, the system work queue `k_sys_work_q` |
+| `zephyr/spinlock.h`, `zephyr/sys/atomic.h` | `k_spin_lock()` (below), `atomic_t` and `atomic_get/set/clear/cas/or/inc/add()` |
+| `zephyr/rtio/rtio.h`, `zephyr/rtio/work.h` | RTIO (below) and the RTIO work queue (`rtio_work_req_alloc()`, `_submit()`) |
+| `zephyr/drivers/gpio.h` | `struct gpio_dt_spec`, `gpio_is_ready_dt()`, `gpio_pin_configure_dt()` (inputs only), `gpio_pin_interrupt_configure_dt()`, `gpio_pin_get_dt()`, callbacks (`gpio_init_callback()`, `gpio_add_callback()`, `gpio_remove_callback()`) |
+| `zephyr/drivers/sensor.h` | `struct sensor_value`, the channel, attribute and trigger enumerations (Zephyr's numbers), `struct sensor_driver_api`, `sensor_attr_set()`/`_get()`, `sensor_sample_fetch()`/`_chan()`, `sensor_channel_get()`, `sensor_trigger_set()`, the unit conversions. The async API: `struct sensor_chan_spec`, the decoders (`struct sensor_decoder_api`, `sensor_three_axis_data` and others), `SENSOR_DT_READ_IODEV()`, `SENSOR_DT_STREAM_IODEV()`, `sensor_get_decoder()`, `sensor_stream()`, `sensor_read()`, `sensor_read_async_mempool()`, `sensor_processing_with_callback()` |
+| `zephyr/drivers/sensor_clock.h` | `sensor_clock_get_cycles()`, `sensor_clock_cycles_to_ns()` (below) |
 | `zephyr/drivers/i2c.h` | `struct i2c_dt_spec`, `i2c_burst_read_dt()`, `i2c_write_dt()`, `i2c_write_read_dt()`, `i2c_configure()`, the speed classes (`I2C_SPEED_*`, `I2C_SPEED_SET()`) |
-| `zephyr/sys/util.h` | `BIT()`, `ARRAY_SIZE()`, `MIN()`/`MAX()`, `IS_ENABLED()`, `CONTAINER_OF()` and others |
-| `zephyr/rtio/rtio.h` | A placeholder (only the two names `lsm6dso_fifo_stats.h` uses); RTIO comes with the stream |
+| `zephyr/sys/util.h`, `sys/__assert.h`, `sys/mpsc_lockfree.h`, `sys/mem_blocks.h`, `dsp/types.h` | `BIT()`, `ARRAY_SIZE()`, `MIN()`/`MAX()`, `IS_ENABLED()`, `CONTAINER_OF()`, `GENMASK()`/`FIELD_GET()` and others, `__ASSERT()`, RTIO's queues and block pool, `q31_t` |
+| `zephyr_compat.h` | `zephyr_compat_initialize()` (called by the board's bring-up, below) |
 
+| Source | Contents |
+|---|---|
+| `zephyr_kernel.c` | The OS part on NuttX: `k_mutex` (`rmutex_t`), `k_sem` (`sem_t`, the limit checked in `k_sem_give()`), `k_poll()`, the work queue threads (kernel threads on static stacks), the timer of delayable work (a wdog), thread names, `zephyr_compat_initialize()` |
+| `zephyr_work.c` | Work items and queues: the used part of Zephyr's `kernel/work.c` (OS-independent) |
+| `zephyr_rtio.c`, `zephyr_rtio_workq.c`, `zephyr_mem_blocks.c` | The RTIO executor (`subsys/rtio/rtio_executor.c`), the RTIO work queue (`rtio_workq.c`), the block pool (`lib/mem_blocks`) |
+| `zephyr_gpio.c` | The `gpio0` device (Zephyr's `gpio.h` logic and `gpio_rpi_pico.c`) on the board's `<nano_gpio.h>` |
+| `zephyr_sensor_clock.c` | The sensor clock on the board's TIMER (`nano_mono_us()`) |
+| `sensor_default_rtio.c` | A copy of Zephyr's `drivers/sensor/default_rtio_sensor.c` (only the log replaced): the sensors' iodev API, the fallback for single reads, the default decoder |
+| `zephyr_device.c`, `zephyr_i2c.c` | Device initialization and I2C |
+
+- **Work**: the flags (RUNNING, CANCELING, QUEUED, DELAYED) and return values are those of
+  `kernel/work.c`. `submit` does nothing if already queued (0) and queues a running item again on
+  its queue (2). `schedule` does nothing while delayed or queued (a running item can be
+  scheduled); `reschedule` stops the delay and schedules again (`K_NO_WAIT` queues at once).
+  `k_work_cancel_sync()` removes a queued item and waits for a running one (one waiting thread
+  only; Zephyr allows several). After an item, the queue's thread calls `sched_yield()` if more are
+  pending (Zephyr's `k_yield()`). The delay timer is a wdog; a delay ends at the current tick +
+  ticks + 1, as in Zephyr. Not ported: flush, drain, plug, stopping a queue, the work timeout,
+  `k_work_cancel()`, `k_work_cancel_delayable()`.
+- **Spin locks**: Zephyr's single-CPU `k_spin_lock()` masks interrupts, and no other thread runs
+  until it is released (a thread made ready by `k_sem_give()` or the like runs at the release).
+  NuttX switches to a thread that `nxsem_post()` makes ready at once, even with interrupts masked,
+  so the layer's `k_spin_lock()` is `sched_lock()` plus `up_irq_save()` (`sched_lock()` does
+  nothing in an interrupt handler). The `atomic_*()` functions use it too (the Cortex-M0+ has no
+  exclusive loads and stores; Zephyr's ARMv6-M build masks interrupts as well).
+- **Clashing NuttX names**: NuttX's `<nuttx/atomic.h>` (read by many kernel headers) has its own
+  `atomic_t`, `atomic_set()` and others with other meanings. The layer's `<zephyr/sys/atomic.h>`
+  reads it first, then takes the names over for the file (`atomic_t` is `zephyr_atomic_t`, NuttX's
+  macros are undefined). A file that uses both includes the NuttX headers first. The board's
+  bring-up does not include the Zephyr headers, only `zephyr_compat.h`.
+- **Semaphores and `k_poll()`**: `k_sem_give()` stops at the limit and wakes the threads in
+  `k_poll()` on that semaphore (they are told, the count is not taken: Zephyr's
+  `K_POLL_MODE_NOTIFY_ONLY`). `k_sem_take()` gives 0, `-EBUSY` (`K_NO_WAIT`) or `-EAGAIN` (timed
+  out). `k_poll()` handles semaphores only.
+- **RTIO**: a copy of Zephyr's in the build's configuration (`CONFIG_RTIO_SUBMIT_SEM`,
+  `_CONSUME_SEM`, `_SYS_MEM_BLOCKS`; no callbacks, no user mode). The sizes come from the caller's
+  `RTIO_DEFINE_WITH_MEMPOOL(name, submissions, completions, blocks, block size, alignment)`
+  (`imu_stream.c`: 4, 16, 128, 64, 4). An iodev's submit runs in the context of the
+  `rtio_submit()` caller. A successful multishot goes back to its iodev before its completion is
+  posted (its pool buffer unbound); an error or a cancellation frees its buffer and the submission.
+  A completion that finds no free entry is dropped and counted in `xcqcnt` (its buffer stays
+  allocated, nobody can release it; as in Zephyr). `rtio_cqe_consume()` does not wait and takes
+  `consume_sem`. A handle is the submission's pool index and generation; every free advances the
+  generation, so an old handle neither resolves nor cancels. `rtio_sqe_cancel()` marks the
+  submission and calls the iodev's cancel function (if any). Pool allocation takes the first run
+  of free blocks (first fit), trying from `max` down to `min` one block at a time. Differences from
+  Zephyr: the queues (`struct mpsc`) mask interrupts instead of being lock-free, and the pools'
+  free lists are filled at their first allocation instead of at boot (`rtio_init()`), in the same
+  order. Not ported: chains and transactions, the executor's own operations (callback, await,
+  delay), writes and the other operations, `rtio_sqe_copy_in()`, `rtio_cqe_copy_out()`,
+  `rtio_pool`, completion callbacks, user mode.
+- **RTIO work queue**: as Zephyr's `rtio_workq.c`, a pool of 4 requests and one thread
+  (`RTIO WQ 0`, priority 0 → 118, stack 1024), run in order. The single reads' fallback
+  (`lsm6dso_compat.c`) uses it. NuttX turns spaces in task names into `_`, so `ps` shows
+  `RTIO_WQ_0`.
+- **GPIO**: one port, `gpio0` (GPIO0..29), inputs only (outputs are `-ENOTSUP`). Pin set-up,
+  interrupts (edges and levels, logical or physical), levels and callbacks are copies of Zephyr's
+  `gpio.h` and `gpio_rpi_pico.c`; the board's `src/nano_gpio.c` writes the registers as the
+  pico-sdk's `gpio_set_pulls()`, `gpio_set_function()`, `gpio_set_dir()` and
+  `gpio_set_irq_enabled()` do (the pin's events in `INTR` are cleared before they are enabled or
+  disabled). The interrupt comes from NuttX's `rp2040_gpio` bank interrupt (which clears the
+  enabled events, then calls the pin's handler).
+- **Sensor clock**: the Zephyr version uses the system clock (SysTick, 125 MHz,
+  `k_cycle_get_64()`), the NuttX port the board's TIMER (1 MHz from the crystal). Stream batch and
+  single read times are whole microseconds.
+- **Start-up**: the board's bring-up calls `zephyr_compat_initialize()` before the DMA, I2C0 and the
+  LSM6DSOX; it starts the system work queue (`sysworkq`, priority 119, stack 1024), the RTIO work
+  queue and `gpio0` (Zephyr starts them at `POST_KERNEL` before the sensor too). The LSM6DSOX's
+  initialization (`lsm6dso_stream_init()`) creates `imu_fifo_worker`.
 - An I2C bus is a device holding a NuttX I2C master and a speed (the board binds them with
   `i2c_compat_bind()`). In Zephyr the bus driver keeps the speed and `i2c_configure()` changes it
   for every later transfer. A NuttX transfer carries a frequency in each message, so the layer's

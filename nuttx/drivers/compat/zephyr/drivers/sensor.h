@@ -4,13 +4,20 @@
  * sensor_value, the channels, attributes and triggers (the same numbers as
  * Zephyr's), the driver's API table, sensor_attr_set()/_get(),
  * sensor_sample_fetch()/_chan(), sensor_channel_get(), sensor_trigger_set()
- * and the unit conversions.  The functions and conversions are Zephyr's,
- * written out.  Part of the small Zephyr compatibility layer of the port
- * (nuttx/drivers/compat, see nuttx/drivers/README.md).
+ * and the unit conversions; and the asynchronous API on RTIO
+ * (CONFIG_SENSOR_ASYNC_API of the Zephyr build): channel specifications,
+ * the decoder API and the decoded data types (sensor_data_types.h), stream
+ * triggers, SENSOR_DT_READ_IODEV(), SENSOR_DT_STREAM_IODEV(),
+ * sensor_get_decoder(), sensor_stream(), sensor_read(),
+ * sensor_read_async_mempool(), sensor_processing_with_callback(), and the
+ * default iodev and decoder (sensor_default_rtio.c, a copy of Zephyr's
+ * drivers/sensor/default_rtio_sensor.c).  The functions and conversions
+ * are Zephyr's, written out.  Part of the small Zephyr compatibility layer
+ * of the port (nuttx/drivers/compat, see nuttx/drivers/README.md).
  *
- * Not here: the asynchronous API (sensor_stream(), sensor_read(), the
- * decoders, RTIO; nuttx/PORTING_PLAN.md T11), the sensor shell (T23) and
- * the device definition macros (lsm6dso.c defines its device with
+ * Not here: the sensor shell (T23), the PRIsensor_* print formats, the
+ * other decoded data types (game rotation vector, occurrence), and the
+ * device definition macros (lsm6dso.c defines its device with
  * DEVICE_DT_DEFINE() of <zephyr/device.h>).
  */
 
@@ -23,6 +30,8 @@
 #include <stdint.h>
 
 #include <zephyr/device.h>
+#include <zephyr/dsp/types.h>
+#include <zephyr/rtio/rtio.h>
 
 /* A value: val1 + val2 / 1000000, both with the sign of the value. */
 
@@ -190,7 +199,7 @@ typedef int (*sensor_channel_get_t)(const struct device *dev,
                                     enum sensor_channel chan,
                                     struct sensor_value *val);
 
-/* The asynchronous part of the table (filled by the FIFO stream, T11). */
+/* The asynchronous part of the table (the FIFO stream's driver fills it). */
 
 struct sensor_decoder_api;
 struct rtio_iodev_sqe;
@@ -273,6 +282,310 @@ static inline int sensor_channel_get(const struct device *dev,
 {
   return DEVICE_API_GET(sensor, dev)->channel_get(dev, chan, val);
 }
+
+/* The asynchronous API (CONFIG_SENSOR_ASYNC_API) -----------------------*/
+
+/* A 3-axis channel: ACCEL_XYZ, GYRO_XYZ, MAGN_XYZ or POS_DXYZ. */
+
+#define SENSOR_CHANNEL_3_AXIS(chan) \
+  ((chan) == SENSOR_CHAN_ACCEL_XYZ || (chan) == SENSOR_CHAN_GYRO_XYZ || \
+   (chan) == SENSOR_CHAN_MAGN_XYZ || (chan) == SENSOR_CHAN_POS_DXYZ)
+
+struct sensor_chan_spec
+{
+  uint16_t chan_type;   /* enum sensor_channel */
+  uint16_t chan_idx;
+};
+
+static inline bool sensor_chan_spec_eq(struct sensor_chan_spec chan_spec0,
+                                       struct sensor_chan_spec chan_spec1)
+{
+  return chan_spec0.chan_type == chan_spec1.chan_type &&
+         chan_spec0.chan_idx == chan_spec1.chan_idx;
+}
+
+/* zephyr/drivers/sensor_data_types.h */
+
+struct sensor_data_header
+{
+  uint64_t base_timestamp_ns;
+  uint16_t reading_count;
+};
+
+struct sensor_three_axis_data
+{
+  struct sensor_data_header header;
+  int8_t shift;
+  struct sensor_three_axis_sample_data
+    {
+      uint32_t timestamp_delta;
+      union
+        {
+          q31_t values[3];
+          q31_t v[3];
+          struct
+            {
+              q31_t x;
+              q31_t y;
+              q31_t z;
+            };
+        };
+    } readings[1];
+};
+
+struct sensor_q31_data
+{
+  struct sensor_data_header header;
+  int8_t shift;
+  struct sensor_q31_sample_data
+    {
+      uint32_t timestamp_delta;
+      union
+        {
+          q31_t value;
+          q31_t temperature;
+        };
+    } readings[1];
+};
+
+struct sensor_byte_data
+{
+  struct sensor_data_header header;
+  struct sensor_byte_sample_data
+    {
+      uint32_t timestamp_delta;
+      union
+        {
+          uint8_t value;
+          struct
+            {
+              uint8_t is_near : 1;
+              uint8_t padding : 7;
+            };
+        };
+    } readings[1];
+};
+
+struct sensor_uint64_data
+{
+  struct sensor_data_header header;
+  struct sensor_uint64_sample_data
+    {
+      uint32_t timestamp_delta;
+      uint64_t value;
+    } readings[1];
+};
+
+/* Decodes the buffers of a sensor's RTIO reads. */
+
+struct sensor_decoder_api
+{
+  int (*get_frame_count)(const uint8_t *buffer,
+                         struct sensor_chan_spec chan_spec,
+                         uint16_t *frame_count);
+  int (*get_size_info)(struct sensor_chan_spec channel, size_t *base_size,
+                       size_t *frame_size);
+  int (*decode)(const uint8_t *buffer, struct sensor_chan_spec chan_spec,
+                uint32_t *fit, uint16_t max_count, void *data_out);
+  bool (*has_trigger)(const uint8_t *buffer,
+                      enum sensor_trigger_type trigger);
+};
+
+struct sensor_decode_context
+{
+  const struct sensor_decoder_api *decoder;
+  const uint8_t *buffer;
+  struct sensor_chan_spec channel;
+  uint32_t fit;
+};
+
+#define SENSOR_DECODE_CONTEXT_INIT(decoder_, buffer_, channel_type_, \
+                                   channel_index_) \
+  { \
+    .decoder = (decoder_), \
+    .buffer = (buffer_), \
+    .channel = {.chan_type = (channel_type_), .chan_idx = (channel_index_)}, \
+    .fit = 0, \
+  }
+
+static inline int sensor_decode(struct sensor_decode_context *ctx,
+                                void *out, uint16_t max_count)
+{
+  return ctx->decoder->decode(ctx->buffer, ctx->channel, &ctx->fit,
+                              max_count, out);
+}
+
+int sensor_natively_supported_channel_size_info(struct sensor_chan_spec channel,
+                                                size_t *base_size,
+                                                size_t *frame_size);
+
+enum sensor_stream_data_opt
+{
+  SENSOR_STREAM_DATA_INCLUDE = 0,
+  SENSOR_STREAM_DATA_NOP = 1,
+  SENSOR_STREAM_DATA_DROP = 2,
+};
+
+struct sensor_stream_trigger
+{
+  enum sensor_trigger_type trigger;
+  enum sensor_stream_data_opt opt;
+};
+
+#define SENSOR_STREAM_TRIGGER_PREP(_trigger, _opt) \
+  { \
+    .trigger = (_trigger), .opt = (_opt), \
+  }
+
+/* The data of a sensor's iodev. */
+
+struct sensor_read_config
+{
+  const struct device *sensor;
+  const bool is_streaming;
+  union
+    {
+      struct sensor_chan_spec *const channels;
+      struct sensor_stream_trigger *const triggers;
+    };
+  size_t count;
+  const size_t max;
+};
+
+#define SENSOR_DT_READ_IODEV(name, dt_node, ...) \
+  static struct sensor_chan_spec _CONCAT(__channel_array_, name)[] = \
+    {__VA_ARGS__}; \
+  static struct sensor_read_config _CONCAT(__sensor_read_config_, name) = \
+    { \
+      .sensor = DEVICE_DT_GET(dt_node), \
+      .is_streaming = false, \
+      .channels = _CONCAT(__channel_array_, name), \
+      .count = ARRAY_SIZE(_CONCAT(__channel_array_, name)), \
+      .max = ARRAY_SIZE(_CONCAT(__channel_array_, name)), \
+    }; \
+  RTIO_IODEV_DEFINE(name, &__sensor_iodev_api, \
+                    _CONCAT(&__sensor_read_config_, name))
+
+#define SENSOR_DT_STREAM_IODEV(name, dt_node, ...) \
+  static struct sensor_stream_trigger _CONCAT(__trigger_array_, name)[] = \
+    {__VA_ARGS__}; \
+  static struct sensor_read_config _CONCAT(__sensor_read_config_, name) = \
+    { \
+      .sensor = DEVICE_DT_GET(dt_node), \
+      .is_streaming = true, \
+      .triggers = _CONCAT(__trigger_array_, name), \
+      .count = ARRAY_SIZE(_CONCAT(__trigger_array_, name)), \
+      .max = ARRAY_SIZE(_CONCAT(__trigger_array_, name)), \
+    }; \
+  RTIO_IODEV_DEFINE(name, &__sensor_iodev_api, \
+                    &_CONCAT(__sensor_read_config_, name))
+
+/* The default decoder and iodev API (sensor_default_rtio.c). */
+
+extern const struct sensor_decoder_api __sensor_default_decoder;
+extern const struct rtio_iodev_api __sensor_iodev_api;
+
+/* The frame of the default (single read) decoder. */
+
+struct __attribute__((__packed__)) sensor_data_generic_header
+{
+  uint64_t timestamp_ns;
+  uint32_t num_channels;
+  int8_t shift;
+  int8_t _padding[sizeof(struct sensor_chan_spec) - 1];
+  struct sensor_chan_spec channels[0];
+};
+
+static inline int sensor_get_decoder(const struct device *dev,
+                                     const struct sensor_decoder_api **decoder)
+{
+  const struct sensor_driver_api *api = DEVICE_API_GET(sensor, dev);
+
+  if (api->get_decoder == NULL)
+    {
+      *decoder = &__sensor_default_decoder;
+      return 0;
+    }
+
+  return api->get_decoder(dev, decoder);
+}
+
+/* Starts a stream: one multishot read with the context's pool, submitted
+ * now in the caller's context.  *handle (if not NULL) names it for
+ * rtio_sqe_cancel().  0 or -ENOMEM (no free submission).
+ */
+
+static inline int sensor_stream(const struct rtio_iodev *iodev,
+                                struct rtio *ctx, void *userdata,
+                                rtio_sqe_handle_t *handle)
+{
+  struct rtio_sqe *sqe = rtio_sqe_acquire(ctx);
+
+  if (sqe == NULL)
+    {
+      return -ENOMEM;
+    }
+
+  if (handle != NULL)
+    {
+      *handle = rtio_sqe_handle(ctx, sqe);
+    }
+
+  rtio_sqe_prep_read_multishot(sqe, iodev, RTIO_PRIO_NORM, userdata);
+  rtio_submit(ctx, 0);
+  return 0;
+}
+
+/* A blocking single read into buf. */
+
+static inline int sensor_read(const struct rtio_iodev *iodev,
+                              struct rtio *ctx, uint8_t *buf, size_t buf_len)
+{
+  struct rtio_sqe *sqe = rtio_sqe_acquire(ctx);
+
+  if (sqe == NULL)
+    {
+      return -ENOMEM;
+    }
+
+  rtio_sqe_prep_read(sqe, iodev, RTIO_PRIO_NORM, buf, buf_len, buf);
+  rtio_submit(ctx, 0);
+
+  struct rtio_cqe *cqe = rtio_cqe_consume_block(ctx);
+  int res = cqe->result;
+
+  __ASSERT(cqe->userdata == buf,
+           "consumed non-matching completion for sensor read into buffer");
+
+  rtio_cqe_release(ctx, cqe);
+  return res;
+}
+
+/* A single read into the context's pool; the completion comes later. */
+
+static inline int sensor_read_async_mempool(const struct rtio_iodev *iodev,
+                                            struct rtio *ctx, void *userdata)
+{
+  struct rtio_sqe *sqe = rtio_sqe_acquire(ctx);
+
+  if (sqe == NULL)
+    {
+      return -ENOMEM;
+    }
+
+  rtio_sqe_prep_read_with_pool(sqe, iodev, RTIO_PRIO_NORM, userdata);
+  rtio_submit(ctx, 0);
+  return 0;
+}
+
+typedef void (*sensor_processing_callback_t)(int result, uint8_t *buf,
+                                             uint32_t buf_len,
+                                             void *userdata);
+
+/* Waits for a completion, calls cb with its buffer, releases the buffer. */
+
+void sensor_processing_with_callback(struct rtio *ctx,
+                                     sensor_processing_callback_t cb);
 
 /* Unit conversions (Zephyr's, with its rounding). */
 

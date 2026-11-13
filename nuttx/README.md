@@ -509,7 +509,8 @@ The driver is `nuttx/drivers/lsm6dso/lsm6dso.c`, a copy of the Zephyr version's
 changes) with only the calls into the system replaced. The registers are handled by ST's
 `lsm6dso_reg.c` (lsm6dso-pid v3.2.2, fetched into `nuttx/stmemsc/` by `script/setup.sh`; with LF
 line ends identical to the one in Zephyr's hal_st). The FIFO stream (the INT1 interrupt and RTIO)
-is not ported yet.
+runs the Zephyr version's files as they are, too (below). The acquisition service (`imu start` and
+so on) is not ported yet.
 
 - **Initialization at boot**: the board's bring-up (`nano_bringup()`) initializes the sensor right
   after I2C0 and before mounting the key-value store (NVS). That is the Zephyr version's order: it
@@ -549,9 +550,23 @@ is not ported yet.
   scale is m/s² rounded to g and only 2, 4, 8 or 16 g; the gyro full scale is rad/s rounded to
   dps and only 125, 250, 500, 1000 or 2000 dps (anything else is `-EINVAL`). While the FIFO is in
   use, single readings and attribute changes are `-EBUSY`.
+- **FIFO stream**: `lsm6dso_stream.c` and `lsm6dso_fifo_irq.[ch]` are unchanged copies of the
+  Zephyr version's files. As there, a stream starts with `sensor_stream()`; a rising edge of INT1
+  (GPIO24) → the system work queue (`sysworkq`) → the FIFO worker (`imu_fifo_worker`) reads the
+  FIFO and completes an RTIO request. Below the watermark it looks again every 20 ms;
+  `lsm6dso_fifo_request_stop()` delivers the rest as a last partial batch and ends with
+  `-ECANCELED`. The Zephyr kernel parts it needs (work queues, semaphores, `k_poll()`), RTIO, GPIO
+  and the sensors' async API are in the compatibility layer (`nuttx/drivers/compat/`); the board's
+  bring-up starts `sysworkq` and `RTIO WQ 0` with `zephyr_compat_initialize()`. On the board (1 MHz,
+  6667 Hz, watermark 128, the RTIO sizes of `imu_stream.c`; with a temporary test command at T11
+  whose consumer only takes and releases the completions): about 1070 completions in 10 s, about
+  67080 accelerometer and gyro words each (the sensor's oscillator runs about 0.6 % fast,
+  `freq_fine` 4), no errors, overruns, `i2c_dma` errors or fallbacks, 5.5 ms on average from the
+  INT1 interrupt to the completion (mostly the FIFO read), CPU load 26 %. A 60 s run gave the same.
 - The copies of Zephyr's API for the callers (`struct device`, `struct sensor_value`, the channel
-  and attribute enumerations, `sensor_*()`, part of the I2C API) are in `nuttx/drivers/compat/`.
-  See the "LSM6DSOX" and "Zephyr API compatibility layer" sections of `nuttx/drivers/README.md`.
+  and attribute enumerations, `sensor_*()`, part of the I2C API, the kernel, RTIO, GPIO) are in
+  `nuttx/drivers/compat/`. See the "LSM6DSOX" and "Zephyr API compatibility layer" sections of
+  `nuttx/drivers/README.md`.
 
 ## System clock
 
@@ -635,12 +650,18 @@ Priorities map as `NuttX = 118 − Zephyr`; `nuttx/drivers/include/priorities.h`
 | `imu_fifo_worker` | 10 | 108 | 2048 |
 | `imu_raw_mqtt_tid` | 11 | 107 | 2048 |
 | NINA events (NuttX only) | – | 106 | – |
+| `sysworkq` (system work queue; compatibility layer; INT1's work) | −1 (cooperative) | 119 | 1024 |
+| `RTIO WQ 0` (RTIO work queue; compatibility layer; single reads; `RTIO_WQ_0` in `ps`) | 0 | 118 | 1024 |
 | `main` (NuttX: init, which drops to the shell's priority after the start-up work) | 0 | 118 | 2048 |
 | Shell (nsh session, commands) | 14 | 104 | 3072 |
 
 - Zephyr's cooperative threads (negative priorities: `sysworkq`, `net_mgmt` and others) map above
   118, but NuttX has no cooperative threads that other threads cannot preempt; a thread of higher
-  priority preempts them. The port does not use them now.
+  priority preempts them. The only one in the port so far is `sysworkq` (119), and no thread has a
+  higher priority.
+- The stacks of `imu_fifo_worker`, `sysworkq` and `RTIO WQ 0` are static arrays as in Zephyr
+  (`K_THREAD_STACK_DEFINE()`, NuttX's `kthread_create_with_stack()`). `ps` shows them smaller by
+  the area NuttX puts at their start (2048 → 2008, 1024 → 976).
 - `CONFIG_PRIORITY_INHERITANCE=y`. Mutexes inherit priority; semaphores do not by default (NuttX
   13.1.0's `sem_init()` sets their flags to 0), so semaphores used for signalling stay without
   inheritance.
@@ -692,7 +713,9 @@ the hex conversions of the `kv` command (`kv_hex`), the handling of the commands
 (`subcmd`), the NINA's SPI transfer layer (`nina_spi`), the OS-independent part of the I2C0
 driver (`nano_i2c_dw`), the command words of the I2C0 DMA reads (`i2c_dma_commands`), the
 output of the `i2c_dma` command (`i2c_dma_app`, with the driver side replaced by fakes), the
-LSM6DSO FIFO control (`fifo_hw`) and the LSM6DSO driver (`lsm6dso_driver`). Each test is built and run in turn,
+LSM6DSO FIFO control (`fifo_hw`), the LSM6DSO driver and its FIFO stream (`lsm6dso_driver`), the
+stream's state machine (`stream_stop`), and the compatibility layer's RTIO (`zephyr_rtio`) and
+work items (`zephyr_work`). Each test is built and run in turn,
 and the script stops at the first failure. Build products go to a temporary directory that is
 removed on exit.
 
@@ -703,10 +726,10 @@ content.
 | Location | Location in the Zephyr version | Contents |
 |---|---|---|
 | `nuttx/apps/imu/` | `src/` | `imu_raw_{batch,packet,queue,status,time}`, `imu_tick_clock`, `time_offset`, `imu_cal_codec.c`, `imu_cal.h`, `kv_store.h` |
-| `nuttx/drivers/lsm6dso/` | `drivers/lsm6dso/` | `lsm6dso_{fifo,cal,zero,fifo_decoder,fifo_hw}`, `lsm6dso_fifo_packet.h`, `lsm6dso_fifo_stats.h`, `lsm6dso_attributes.h` |
+| `nuttx/drivers/lsm6dso/` | `drivers/lsm6dso/` | `lsm6dso_{fifo,cal,zero,fifo_decoder,fifo_hw,fifo_irq}`, `lsm6dso_stream.c`, `lsm6dso_fifo_packet.h`, `lsm6dso_fifo_stats.h`, `lsm6dso_attributes.h` |
 | `boards/arduino-nano-rp2040-connect/src/` | `drivers/i2c_dw/` | `i2c_dw_rp2040_commands.[ch]` |
-| `nuttx/tests/` | `tests/` | the tests of the files above (`i2c_dma_commands.c` and `fifo_hw.c` included) |
-| `nuttx/tests/fakes/` | `tests/fakes/` | stand-ins for the Zephyr and ST headers the tests need (`zephyr/drivers/sensor.h`, `zephyr/drivers/i2c.h`, `lsm6dso_reg.h`) |
+| `nuttx/tests/` | `tests/` | the tests of the files above (`i2c_dma_commands.c`, `fifo_hw.c` and `stream_stop.c` included; `stream_stop.c` includes `../drivers/lsm6dso/lsm6dso_stream.c`) |
+| `nuttx/tests/fakes/` | `tests/fakes/` | stand-ins for the Zephyr and ST headers the tests need (`zephyr/drivers/sensor.h`, `zephyr/drivers/sensor_clock.h`, `zephyr/drivers/i2c.h`, `zephyr/rtio/rtio.h`, `lsm6dso_reg.h`) |
 
 `nuttx/tests/fakes/nuttx/config.h` (empty) is the NuttX port's own: it lets a host test build a
 source of `nuttx/apps` that includes `<nuttx/config.h>` (`i2c_dma_app`).
@@ -767,7 +790,26 @@ what `i2c_configure()` sets) and message shape of every transfer, the registers 
 reads and its conversion (against `lsm6dso_cal.c` and the physical value, the signs of `val1` and
 `val2`, one axis and three), the attributes (the ODR steps, the rounding of m/s² and rad/s, the
 refused values and channels, `-EBUSY`), starting, reading, pausing and stopping the FIFO and its
-statistics, the timestamp reading, and `lsm6dso_cal_zero()`.
+statistics, the timestamp reading, and `lsm6dso_cal_zero()`. It also runs the FIFO stream:
+`lsm6dso_stream.c`, `lsm6dso_fifo_irq.c`, `lsm6dso_compat.c` and the decoder with the
+compatibility layer (work, RTIO, `gpio0`, the default iodev and decoder), on a fake kernel
+(`nuttx/tests/zephyr_fakes/`: one thread; the test runs the work queues and fires the timers) and a
+fake INT1 that follows the fake sensor's watermark. It checks the stream's start (registers, the
+INT1 interrupt), batches on an INT1 edge and on the 20 ms look, a second stream (`-EBUSY`) and
+another trigger (`-ENOTSUP`), the graceful stop (pause, the last partial batch, `-ECANCELED`, the
+registers back), a cancellation, an overrun (`-EOVERFLOW`), and a single read through the RTIO
+work queue with the decoders.
 
-Tests of the stream handling and of the NINA's Wi-Fi and sockets are added when those parts are
-ported.
+`nuttx/tests/zephyr_rtio.c` and `zephyr_work.c` are tests of the NuttX port only too: they check
+the compatibility layer's RTIO and work items on the fake kernel. The first uses a context of
+`imu_stream.c`'s sizes and a fake iodev and checks the memory pool (block size, allocation from
+`max` down to `min`, binding to the submission, first fit, exhaustion and release), the
+submission pool (4, reuse in order of release, handles and generations), completions (order, 16
+of them, a dropped one counted in `xcqcnt` with its buffer left allocated, `consume_sem`),
+multishot (handed back before the completion, the binding cleared, the handle kept, freed on an
+error or a cancellation), cancellation (the mark, the iodev's function, stale and invalid
+handles, no completion for one canceled before submission) and the RTIO work queue. The second
+checks the return values and flags of `submit`, `schedule`, `reschedule` and
+`k_work_cancel_sync()`, and `K_MSEC()` in ticks.
+
+Tests of the NINA's Wi-Fi and sockets are added when those parts are ported.

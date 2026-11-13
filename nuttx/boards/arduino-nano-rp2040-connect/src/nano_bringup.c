@@ -65,6 +65,10 @@
 #  include "nano_lsm6dso.h"
 #endif
 
+#ifdef CONFIG_NANO_LSM6DSO_STREAM
+#  include "zephyr_compat.h"
+#endif
+
 #ifdef CONFIG_ARCH_BOARD_COMMON
 #include "rp2040_common_bringup.h"
 #endif /* CONFIG_ARCH_BOARD_COMMON */
@@ -107,6 +111,21 @@ int nano_bringup(void)
   if (ret < 0)
     {
       syslog(LOG_ERR, "ERROR: nano_nina_initialize() failed: %d\n", ret);
+      result = ret;
+    }
+#endif
+
+#ifdef CONFIG_NANO_LSM6DSO_STREAM
+  /* The Zephyr compatibility layer's system work queue ("sysworkq"), RTIO
+   * work queue ("RTIO WQ 0") and gpio0, which Zephyr starts at boot
+   * (POST_KERNEL, before its GPIO, DMA and I2C devices and the sensor) and
+   * the LSM6DSO's FIFO stream uses.
+   */
+
+  ret = zephyr_compat_initialize();
+  if (ret < 0)
+    {
+      syslog(LOG_ERR, "ERROR: zephyr_compat_initialize() failed: %d\n", ret);
       result = ret;
     }
 #endif

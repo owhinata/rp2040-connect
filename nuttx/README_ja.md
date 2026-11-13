@@ -474,7 +474,8 @@ Zephyr 版の `i2c` コマンド（Zephyr のシェル）は移さず、NuttX �
 ドライバーは `nuttx/drivers/lsm6dso/lsm6dso.c` で、Zephyr 版の `drivers/lsm6dso/lsm6dso.c`（FIFO・校正・ゼロ点の
 変更を含む Zephyr の LSM6DSO ドライバー）の OS を呼ぶ部分だけを置き換えた写しです。レジスターの操作は ST の
 `lsm6dso_reg.c`（lsm6dso-pid v3.2.2。`script/setup.sh` が `nuttx/stmemsc/` に取得。Zephyr の hal_st のものと
-LF に直して同一）で行います。FIFO のストリーム（INT1 の割り込みと RTIO）はまだ移していません。
+LF に直して同一）で行います。FIFO のストリーム（INT1 の割り込みと RTIO）も Zephyr 版のファイルをそのまま写して
+動かしています（下）。取得サービス（`imu start` など）はまだ移していません。
 
 - **起動時の初期化**: ボードの起動処理（`nano_bringup()`）が、I2C0 の初期化の直後、KV（NVS）のマウントより前に
   初期化します。Zephyr 版がデバイスを `main()` より前に初期化し（`POST_KERNEL`、優先度 90）、`main()` で NVS を
@@ -509,9 +510,21 @@ LF に直して同一）で行います。FIFO のストリーム（INT1 の割�
   段（12、26、52、104、208、417、833、1667、3333、6667 Hz）、加速度のフルスケールは m/s² を g に四捨五入して
   2・4・8・16 g、ジャイロは rad/s を dps に四捨五入して 125・250・500・1000・2000 dps だけを受け付けます
   （ほかは `-EINVAL`）。FIFO を使っている間の単発取得と属性の変更は `-EBUSY` です。
+- **FIFO のストリーム**: `lsm6dso_stream.c`・`lsm6dso_fifo_irq.[ch]` は Zephyr 版のファイルを変更せずに
+  写したもので、Zephyr 版と同じく `sensor_stream()` で始まり、INT1（GPIO24）の立ち上がりエッジの割り込み →
+  システムワークキュー（`sysworkq`）→ FIFO のワーカー（`imu_fifo_worker`）が FIFO を読んで RTIO の完了に
+  します。ウォーターマークに届かないときは 20 ms ごとに見直し、`lsm6dso_fifo_request_stop()` で残りを最後の
+  端数のバッチとして渡してから `-ECANCELED` で終えます。動かすための Zephyr のカーネル（ワークキュー、
+  セマフォ、`k_poll()`）、RTIO、GPIO、センサーの非同期の API は互換層（`nuttx/drivers/compat/`）にあり、
+  ボードの起動処理が `zephyr_compat_initialize()` で `sysworkq` と `RTIO WQ 0` を始めます。
+  実機での確認（1 MHz、6667 Hz、ウォーターマーク 128、`imu_stream.c` と同じ RTIO の寸法。T11 の時点の
+  一時的な試験コマンドで、消費側は受け取って解放するだけ）: 10 秒で完了 1070 前後、加速度・ジャイロ各
+  約 67080 ワード（センサーの発振器が約 0.6 % 速い。`freq_fine` 4）、エラー・オーバーラン・`i2c_dma` の
+  エラーとフォールバックは 0、INT1 の割り込みから完了を受け取るまで平均 5.5 ms（ほぼ FIFO の読み出しの
+  時間）、CPU 負荷 26 %。60 秒の連続でも同じでした。
 - 呼ぶ側のための Zephyr の API の写し（`struct device`、`struct sensor_value`、チャネル・属性の列挙、
-  `sensor_*()`、I2C の一部）は `nuttx/drivers/compat/` にあります。詳しくは `nuttx/drivers/README_ja.md` の
-  「LSM6DSOX」と「Zephyr の API の互換層」の節を見てください。
+  `sensor_*()`、I2C の一部、カーネル、RTIO、GPIO）は `nuttx/drivers/compat/` にあります。詳しくは
+  `nuttx/drivers/README_ja.md` の「LSM6DSOX」と「Zephyr の API の互換層」の節を見てください。
 
 ## システム時計
 
@@ -585,12 +598,17 @@ LF に直して同一）で行います。FIFO のストリーム（INT1 の割�
 | `imu_fifo_worker` | 10 | 108 | 2048 |
 | `imu_raw_mqtt_tid` | 11 | 107 | 2048 |
 | NINA のイベント（NuttX 版だけ） | – | 106 | – |
+| `sysworkq`（システムワークキュー。互換層。INT1 の処理） | −1（協調） | 119 | 1024 |
+| `RTIO WQ 0`（RTIO のワークキュー。互換層。単発取得。`ps` では `RTIO_WQ_0`） | 0 | 118 | 1024 |
 | `main`（NuttX は init。起動処理の後シェルの優先度に下げる） | 0 | 118 | 2048 |
 | シェル（nsh のセッション、コマンド） | 14 | 104 | 3072 |
 
 - Zephyr の協調スレッド（負の優先度。`sysworkq`、`net_mgmt` など）は 118 より上になりますが、NuttX には
-  他のスレッドに横取りされない協調スレッドが無く、より高い優先度のスレッドには横取りされます。
-  今の移植では使っていません。
+  他のスレッドに横取りされない協調スレッドが無く、より高い優先度のスレッドには横取りされます。今の移植で
+  協調スレッドに当たるのは `sysworkq`（119）だけで、それより高い優先度のスレッドはありません。
+- `imu_fifo_worker`、`sysworkq`、`RTIO WQ 0` のスタックは Zephyr と同じく静的な配列です
+  （`K_THREAD_STACK_DEFINE()`、NuttX の `kthread_create_with_stack()`）。`ps` の STACK は NuttX が先頭に
+  置く領域の分だけ小さく出ます（2048 → 2008、1024 → 976）。
 - `CONFIG_PRIORITY_INHERITANCE=y` です。ミューテックスは優先度継承あり、セマフォは既定で継承なし
   （NuttX 13.1.0 の `sem_init()` は flags を 0 にします）なので、通知用のセマフォはそのままで継承しません。
 - 割り込み用のスタック（`CONFIG_ARCH_INTERRUPTSTACK=2048`。Zephyr 版の `CONFIG_ISR_STACK_SIZE=2048` と
@@ -633,7 +651,8 @@ KV 領域の範囲の検査・ページ単位の書き込み・起動時の内�
 （`kv_name`）と `kv` コマンドの 16 進数の変換（`kv_hex`）、コマンドのサブコマンドの扱い（`subcmd`）、
 NINA の SPI の転送層（`nina_spi`）、I2C0 のドライバーの OS に依存しない部分（`nano_i2c_dw`）、I2C0 の DMA
 読み出しのコマンド語（`i2c_dma_commands`）、`i2c_dma` コマンドの出力（`i2c_dma_app`。ドライバー側は偽物）、
-LSM6DSO の FIFO 制御（`fifo_hw`）と LSM6DSO のドライバー（`lsm6dso_driver`）を確かめます。テストは 1 つずつビルドして
+LSM6DSO の FIFO 制御（`fifo_hw`）、LSM6DSO のドライバーと FIFO のストリーム（`lsm6dso_driver`）、ストリームの
+状態機械（`stream_stop`）、互換層の RTIO（`zephyr_rtio`）とワーク（`zephyr_work`）を確かめます。テストは 1 つずつビルドして
 実行し、失敗したところで止まります。ビルドの生成物は一時ディレクトリに置き、終了時に消します。
 
 次のファイルは Zephyr 版（`zephyr/app/usb-console`）の同名ファイルを変更せずに写したものです。
@@ -642,10 +661,10 @@ Zephyr 版を直したときは、写しも同じ内容に置き換えます。
 | 置き場所 | Zephyr 版の置き場所 | 内容 |
 |---|---|---|
 | `nuttx/apps/imu/` | `src/` | `imu_raw_{batch,packet,queue,status,time}`、`imu_tick_clock`、`time_offset`、`imu_cal_codec.c`、`imu_cal.h`、`kv_store.h` |
-| `nuttx/drivers/lsm6dso/` | `drivers/lsm6dso/` | `lsm6dso_{fifo,cal,zero,fifo_decoder,fifo_hw}`、`lsm6dso_fifo_packet.h`、`lsm6dso_fifo_stats.h`、`lsm6dso_attributes.h` |
+| `nuttx/drivers/lsm6dso/` | `drivers/lsm6dso/` | `lsm6dso_{fifo,cal,zero,fifo_decoder,fifo_hw,fifo_irq}`、`lsm6dso_stream.c`、`lsm6dso_fifo_packet.h`、`lsm6dso_fifo_stats.h`、`lsm6dso_attributes.h` |
 | `boards/arduino-nano-rp2040-connect/src/` | `drivers/i2c_dw/` | `i2c_dw_rp2040_commands.[ch]` |
-| `nuttx/tests/` | `tests/` | 上のファイルを対象にするテスト（`i2c_dma_commands.c`、`fifo_hw.c` を含む） |
-| `nuttx/tests/fakes/` | `tests/fakes/` | テスト用の Zephyr のヘッダーと ST のヘッダーの代わり（`zephyr/drivers/sensor.h`、`zephyr/drivers/i2c.h`、`lsm6dso_reg.h`） |
+| `nuttx/tests/` | `tests/` | 上のファイルを対象にするテスト（`i2c_dma_commands.c`、`fifo_hw.c`、`stream_stop.c` を含む。`stream_stop.c` は `../drivers/lsm6dso/lsm6dso_stream.c` を読み込む） |
+| `nuttx/tests/fakes/` | `tests/fakes/` | テスト用の Zephyr のヘッダーと ST のヘッダーの代わり（`zephyr/drivers/sensor.h`、`zephyr/drivers/sensor_clock.h`、`zephyr/drivers/i2c.h`、`zephyr/rtio/rtio.h`、`lsm6dso_reg.h`） |
 
 `nuttx/tests/fakes/nuttx/config.h`（空）は NuttX 版だけのもので、`<nuttx/config.h>` を読む `nuttx/apps` の
 ソースをホストテストでビルドするために置いています（`i2c_dma_app`）。
@@ -694,6 +713,21 @@ Zephyr のフラグへの変換、`IC_DATA_CMD` に書く語の列（`i2c` ツ�
 アドレス・速さ（100 kHz と `i2c_configure()` の後の値）・メッセージの形、単発取得の読むレジスターと換算
 （`lsm6dso_cal.c` の結果と物理量、`val1`・`val2` の符号、1 軸と 3 軸）、属性（ODR の段、m/s² と rad/s の
 丸め、受け付けない値とチャネル、`-EBUSY`）、FIFO の開始・読み出し・一時停止・停止と統計、タイムスタンプの
-読み取り、`lsm6dso_cal_zero()` です。
+読み取り、`lsm6dso_cal_zero()` です。FIFO のストリームも、`lsm6dso_stream.c`・`lsm6dso_fifo_irq.c`・
+`lsm6dso_compat.c`・デコーダーと互換層（ワーク、RTIO、`gpio0`、既定の iodev とデコーダー）を、偽のカーネル
+（`nuttx/tests/zephyr_fakes/`。1 スレッドで、ワークキューとタイマーはテストが回す）と、偽のセンサーの
+ウォーターマークに従う偽の INT1 で動かし、ストリームの開始（レジスター、INT1 の割り込み）、INT1 のエッジと
+20 ms の見直しでのバッチ、2 本目（`-EBUSY`）とほかのトリガー（`-ENOTSUP`）、穏やかな停止（一時停止、最後の
+端数のバッチ、`-ECANCELED`、レジスターの戻り）、キャンセル、オーバーラン（`-EOVERFLOW`）、RTIO の
+ワークキューでの単発取得とデコーダーを確かめます。
 
-ストリーム処理と、NINA の Wi-Fi・ソケットを対象にするテストは、それらを移植するときに加えます。
+`nuttx/tests/zephyr_rtio.c` と `zephyr_work.c` も NuttX 版だけのテストで、互換層の RTIO とワークを偽の
+カーネルの上で確かめます。前者は `imu_stream.c` と同じ寸法のコンテキストと偽の iodev で、メモリープール
+（ブロックの大きさ、`max` から `min` への割り当て、送信への結び付け、最初の適合、枯渇と解放）、送信のプール
+（4 つ、解放順の再利用、ハンドルと世代）、完了（順序、16 個、あふれた完了の `xcqcnt` とそのバッファーが残ること、
+`consume_sem`）、multishot（完了の前の再投入、結び付けの解除、ハンドルの維持、失敗とキャンセルでの解放）、
+キャンセル（印、iodev の関数、古いハンドルと無効なハンドル、送信前のキャンセルは完了を出さない）、RTIO の
+ワークキューを確かめます。後者は `submit`・`schedule`・`reschedule`・`k_work_cancel_sync()` の戻り値とフラグ、
+`K_MSEC()` の tick への換算を確かめます。
+
+NINA の Wi-Fi・ソケットを対象にするテストは、それらを移植するときに加えます。

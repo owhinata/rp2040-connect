@@ -17,12 +17,13 @@
  *   lsm6dso_spinlock_t (lsm6dso_os.h).
  * - DT_HAS_COMPAT_ON_BUS_STATUS_OKAY(st_lsm6dso, i2c) and the SPI variant:
  *   LSM6DSO_BUS_I2C (1) and no SPI (the board has one LSM6DSOX, on I2C0).
- * - CONFIG_SENSOR_ASYNC_API (the FIFO stream): CONFIG_NANO_LSM6DSO_STREAM,
- *   which the stream adds (nuttx/PORTING_PLAN.md T11).
- *   timestamp_decimation is outside that block: the FIFO functions of
- *   lsm6dso.c read it (lsm6dso_fifo_start_locked_driver()), and they are
- *   built without the stream too.  Until the stream sets it, it is 0 (no
- *   timestamp words).
+ * - <zephyr/types.h>: <stdbool.h> and <stdint.h>; <nuttx/config.h> for
+ *   the CONFIG_ options (Zephyr's build includes its autoconf.h in every
+ *   file).
+ * - CONFIG_SENSOR_ASYNC_API (the FIFO stream): CONFIG_NANO_LSM6DSO_STREAM.
+ *   As in Zephyr, lsm6dso.c needs it (lsm6dso_fifo_start_locked_driver()
+ *   reads timestamp_decimation), so the option cannot be turned off
+ *   (lsm6dso/Kconfig).
  * The CONFIG_LSM6DSO_TRIGGER, _TAP, _TILT, _SENSORHUB and _ENABLE_TEMP
  * parts are kept as they are; those options are off in the Zephyr build and
  * do not exist here.
@@ -31,11 +32,13 @@
 #ifndef ZEPHYR_DRIVERS_SENSOR_LSM6DSO_LSM6DSO_H_
 #define ZEPHYR_DRIVERS_SENSOR_LSM6DSO_LSM6DSO_H_
 
+#include <nuttx/config.h>
 #include <zephyr/drivers/sensor.h>
 #include "lsm6dso_cal.h"
 #include "lsm6dso_zero.h"
 #include <stdbool.h>
 #include <stdint.h>
+#include <zephyr/drivers/gpio.h>
 #include <zephyr/sys/util.h>
 #include "lsm6dso_os.h"
 #include "stmemsc.h"
@@ -105,12 +108,12 @@ struct lsm6dso_data {
 	bool fifo_fault;
 	uint32_t fifo_generation;
 	struct lsm6dso_fifo_stats fifo_stats;
-	uint8_t timestamp_decimation;
 #ifdef CONFIG_NANO_LSM6DSO_STREAM
 	struct lsm6dso_fifo_irq fifo_irq;
 	struct k_work_delayable stream_work;
 	struct k_spinlock stream_lock;
 	uint16_t stream_watermark;
+	uint8_t timestamp_decimation;
 	struct rtio_iodev_sqe *stream_sqe;
 	struct rtio *stream_rtio;
 	rtio_sqe_handle_t stream_handle;

@@ -33,25 +33,45 @@ done
 
 # LSM6DSO FIFO driver pieces.
 run fifo_hw "$lsm/lsm6dso_fifo_hw.c"
-# The LSM6DSO driver (lsm6dso.c) on ST's lsm6dso_reg.c, the Zephyr compatibility layer and the
-# board's devices, against a fake sensor behind a fake I2C master.  Its own include path: the
-# compatibility layer's headers and ST's, not the fakes of tests/fakes.  ST's file (fetched by
-# setup.sh into nuttx/stmemsc) is built without warnings, as it is; the Zephyr driver's code
-# casts its bus functions and leaves parameters unused, as in the Zephyr build.
+# The LSM6DSO driver (lsm6dso.c) and its FIFO stream (lsm6dso_stream.c, lsm6dso_fifo_irq.c,
+# lsm6dso_compat.c, the decoder) on ST's real lsm6dso_reg.c, the Zephyr compatibility layer
+# (I2C, devices, work queues, RTIO, gpio0, the default sensor iodev and decoder) with the fake
+# kernel of tests/zephyr_fakes, and the board's devices, against a fake sensor behind a fake
+# I2C master and a fake INT1.  Its own include path: the compatibility layer's headers and
+# ST's, not the fakes of tests/fakes.  ST's file (fetched by setup.sh into nuttx/stmemsc) is
+# built without warnings, as it is; the Zephyr driver's code casts its bus functions, leaves
+# parameters unused and compares signed with unsigned, as in the Zephyr build.
+compat=(drivers/compat/zephyr_work.c drivers/compat/zephyr_rtio.c drivers/compat/zephyr_mem_blocks.c
+        drivers/compat/zephyr_rtio_workq.c tests/zephyr_fakes/zephyr_kernel_host.c)
 if [[ -f stmemsc/lsm6dso_reg.c ]]; then
     cc -std=c17 -w -Istmemsc -c stmemsc/lsm6dso_reg.c -o "$out/lsm6dso_reg.o"
-    cc "${flags[@]}" -Wno-unused-parameter -Wno-cast-function-type -D_DEFAULT_SOURCE \
-        -D'DEBUGASSERT(x)=assert(x)' -Itests/lsm6dso_fakes -Idrivers/compat -Istmemsc -I"$lsm" \
-        -Iboards/arduino-nano-rp2040-connect/src tests/lsm6dso_driver.c "$lsm/lsm6dso.c" \
-        "$lsm/stmemsc_i2c.c" "$lsm/stmemsc_mdelay.c" "$lsm/lsm6dso_fifo_hw.c" "$lsm/lsm6dso_fifo.c" \
-        "$lsm/lsm6dso_cal.c" "$lsm/lsm6dso_zero.c" drivers/compat/zephyr_i2c.c \
-        drivers/compat/zephyr_device.c boards/arduino-nano-rp2040-connect/src/nano_lsm6dso.c \
-        "$out/lsm6dso_reg.o" -lm "$link" -o "$out/lsm6dso_driver"
+    cc "${flags[@]}" -Wno-unused-parameter -Wno-cast-function-type -Wno-sign-compare \
+        -D_DEFAULT_SOURCE -D'DEBUGASSERT(x)=assert(x)' -Itests/lsm6dso_fakes -Itests/zephyr_fakes \
+        -Idrivers/compat -Idrivers/include -Istmemsc -I"$lsm" -Iboards/arduino-nano-rp2040-connect/src \
+        tests/lsm6dso_driver.c "$lsm/lsm6dso.c" "$lsm/stmemsc_i2c.c" "$lsm/stmemsc_mdelay.c" \
+        "$lsm/lsm6dso_fifo_hw.c" "$lsm/lsm6dso_fifo.c" "$lsm/lsm6dso_cal.c" "$lsm/lsm6dso_zero.c" \
+        "$lsm/lsm6dso_stream.c" "$lsm/lsm6dso_fifo_irq.c" "$lsm/lsm6dso_compat.c" \
+        "$lsm/lsm6dso_fifo_decoder.c" drivers/compat/zephyr_i2c.c drivers/compat/zephyr_device.c \
+        drivers/compat/zephyr_gpio.c drivers/compat/sensor_default_rtio.c "${compat[@]}" \
+        boards/arduino-nano-rp2040-connect/src/nano_lsm6dso.c "$out/lsm6dso_reg.o" -lm "$link" \
+        -o "$out/lsm6dso_driver"
     "$out/lsm6dso_driver" >/dev/null
     printf 'ok  lsm6dso_driver\n'
 else
     printf 'skip lsm6dso_driver (no stmemsc/lsm6dso_reg.c: run script/setup.sh)\n'
 fi
+# The stream's state machine (lsm6dso_stream.c) with a fake FIFO and RTIO executor: an
+# unchanged copy of the Zephyr build's test, which includes the unchanged copy of the source.
+run stream_stop "$lsm/lsm6dso_fifo.c" "$lsm/lsm6dso_cal.c"
+# The compatibility layer's RTIO (pool, completions, multishot, cancellation, work queue) and
+# work items (submit, schedule, reschedule, cancel), on the fake kernel.
+zinc=(-D_DEFAULT_SOURCE -Itests/zephyr_fakes -Idrivers/compat -Idrivers/include)
+cc "${flags[@]}" "${zinc[@]}" tests/zephyr_rtio.c "${compat[@]}" "$link" -o "$out/zephyr_rtio"
+"$out/zephyr_rtio" >/dev/null
+printf 'ok  zephyr_rtio\n'
+cc "${flags[@]}" "${zinc[@]}" tests/zephyr_work.c "${compat[@]}" "$link" -o "$out/zephyr_work"
+"$out/zephyr_work" >/dev/null
+printf 'ok  zephyr_work\n'
 run fifo_decoder "$lsm/lsm6dso_fifo_decoder.c" "$lsm/lsm6dso_fifo.c" "$lsm/lsm6dso_cal.c"
 # Conversion to physical units and the stored calibration format.
 run lsm6dso_cal "$lsm/lsm6dso_cal.c" "$imu/imu_cal_codec.c" -lm
