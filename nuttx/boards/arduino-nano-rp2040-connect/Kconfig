@@ -26,6 +26,10 @@ config NANO_TICKLESS
 		kernel of the Zephyr build).  rp2040_timerisr.c is left out of the
 		build by nuttx/patches/nuttx/0004 when ALARM_ARCH is set.
 		ONESHOT_COUNT has no prompt and can only be selected.
-		ONESHOT_FAST_DIVISION is not selected: on the Cortex-M0+ (no
-		64x64 multiply) it made the counter-to-tick conversion slower,
-		not faster (measured: a wake-up from usleep() 45 us later).
+		src/nano_oneshot.c also replaces the weak up_timer_gettick(),
+		up_timer_gettime(), up_alarm_tick_start(), up_alarm_cancel(),
+		up_udelay() and up_ndelay() of arch_alarm.c with versions that
+		read the TIMER directly and convert with src/nano_timeconv.h
+		(1 MHz counts, 100 us ticks, no 64-bit division), so it needs
+		USEC_PER_TICK to be 100.  ONESHOT_FAST_DIVISION is not selected:
+		it only changes the generic conversions, which these replace.

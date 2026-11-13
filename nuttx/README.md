@@ -217,9 +217,25 @@ default), `CONFIG_SCHED_TICKLESS=y` and `CONFIG_USEC_PER_TICK=100`.
   CPU clock, a different source. In both versions the application reads the TIMER directly as its
   time base.
 - Threads of the same priority are time-sliced every 20 ms (`CONFIG_RR_INTERVAL=20`; the Zephyr
-  version's `CONFIG_TIMESLICE_SIZE=20`).
-- `up_udelay()` and `up_mdelay()` wait by reading the TIMER (they also work with interrupts
-  disabled).
+  version's `CONFIG_TIMESLICE_SIZE=20`). The watchdog that times the rest of a slice is not
+  cancelled when the thread starts to wait, so a sleep longer than the rest of the slice takes one
+  extra interrupt while the thread sleeps (NuttX 13.1.0 behaviour).
+- `up_udelay()`, `up_mdelay()` and `up_ndelay()` wait by reading the TIMER directly, to the
+  microsecond (they also work with interrupts disabled).
+- The conversions between the counter and ticks or time are done by the board, which replaces the
+  weak functions of `arch_alarm.c` (`up_timer_gettick()`, `up_timer_gettime()`,
+  `up_alarm_tick_start()`, `up_alarm_cancel()`, `up_udelay()`, `up_ndelay()`) with arithmetic for
+  1 MHz and 100 µs (`src/nano_timeconv.h`: division by 100 one byte at a time, with a 32-bit
+  multiply and a shift). The Cortex-M0+ has no divide instruction, and NuttX's generic conversions
+  (`ONESHOT_COUNT`) do 64-bit divisions: about 5.5 µs per `clock_systime_ticks()` and about 11 µs per
+  tick-to-counter conversion (about 1.3 µs and 0.6 µs after the replacement). The results equal
+  the generic ones over the whole 64-bit range (host test `nano_timeconv`). The conversions assume a
+  100 µs tick, so the build stops if `CONFIG_USEC_PER_TICK` is not 100.
+- The wake-up delay (from the tick boundary until `usleep()` returns) is about 17 to 36 µs, and the
+  CPU time per `usleep(1000)` about 30 to 52 µs (before the replacement about 51 to 55 µs and 104
+  to 114 µs; both measured with temporary measurement code, as the mean of 1000 calls timed by
+  the TIMER). The placement of the code run from flash changes how well the XIP cache hits, and
+  the values vary by about this much from build to build.
 
 ## Tests
 
@@ -231,7 +247,8 @@ This builds and runs the tests of the OS-independent common sources on the PC. I
 the board nor the setup script, only the host's `cc` (C17). The tests check FIFO word parsing,
 batches and payloads, the send queue, the status and info JSON, time mapping, the mapping from the sensor
 tick to the clock, the NTP estimate, FIFO packet decoding, conversion to physical units and the
-stored calibration format, and gyro zero tracking at rest. Each test is built and run in turn,
+stored calibration format, gyro zero tracking at rest, and the board's time conversions
+(`nano_timeconv`). Each test is built and run in turn,
 and the script stops at the first failure. Build products go to a temporary directory that is
 removed on exit.
 
@@ -245,6 +262,13 @@ content.
 | `nuttx/drivers/lsm6dso/` | `drivers/lsm6dso/` | `lsm6dso_{fifo,cal,zero,fifo_decoder}`, `lsm6dso_fifo_packet.h` |
 | `nuttx/tests/` | `tests/` | the tests of the files above |
 | `nuttx/tests/fakes/` | `tests/fakes/` | stand-ins for the Zephyr headers the tests need (`zephyr/drivers/sensor.h`) |
+
+`nuttx/tests/nano_timeconv.c` is a test of the NuttX port only. It compares the conversions of
+`src/nano_timeconv.h` with C's `/` and `%` and with the generic conversions of NuttX 13.1.0 (the
+arithmetic of `oneshot.h` and `clkcnt.h` written out for 1 MHz and 100 µs): every number in the
+range where the one-byte division step must be exact, 300 values on each side of edge values (0,
+99, 100, around 2^32, around 2^32 × 100, 2^63, 2^64 − 1 and others), every count of the first
+10^7 µs, 2000 values on each side of 256 multiples of 2^32, and 4 million random values.
 
 Tests of the driver's I2C, FIFO control and stream handling and of NINA are added when those
 parts are ported.

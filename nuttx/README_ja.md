@@ -213,8 +213,23 @@ UART0（GPIO0 が TX、GPIO1 が RX。Arduino の D1/D0）はコンソールで�
   （`clock_getres()` は tick の長さ 100 µs を返します）。Zephyr 版のカーネル時計は CPU クロックの
   SysTick で、TIMER とは源が違います。アプリはどちらでも、時刻の基準に TIMER を直接読みます。
 - 同じ優先度のスレッドは 20 ms ずつの時分割（`CONFIG_RR_INTERVAL=20`。Zephyr 版の
-  `CONFIG_TIMESLICE_SIZE=20`）です。
-- `up_udelay()`・`up_mdelay()` は TIMER を読みながら待ちます（割り込み禁止中でも使えます）。
+  `CONFIG_TIMESLICE_SIZE=20`）です。時分割の残り時間を計る wdog は、スレッドが待ちに入っても
+  取り消されないので、時分割の残り時間より長く眠ると、眠っている間に割り込みが 1 回余分に
+  入ります（NuttX 13.1.0 の動作）。
+- `up_udelay()`・`up_mdelay()`・`up_ndelay()` は TIMER を直接読みながら µs 単位で待ちます（割り込み
+  禁止中でも使えます）。
+- カウンターと tick・時刻の換算は、ボードが `arch_alarm.c` の weak 関数（`up_timer_gettick()`、
+  `up_timer_gettime()`、`up_alarm_tick_start()`、`up_alarm_cancel()`、`up_udelay()`、`up_ndelay()`）を
+  置き換えて、1 MHz と 100 µs に特化した計算（`src/nano_timeconv.h`。100 での除算を 1 バイトずつ
+  32 ビットの乗算とシフトで行う）でします。Cortex-M0+ には除算命令がなく、NuttX の汎用の換算
+  （`ONESHOT_COUNT`）は 64 ビットの除算になり、`clock_systime_ticks()` 1 回に約 5.5 µs、tick から
+  カウンターへの換算 1 回に約 11 µs かかるためです（置き換え後は約 1.3 µs と約 0.6 µs）。結果は
+  64 ビットの全域で汎用の換算と同じです（ホストテスト `nano_timeconv`）。換算が 100 µs の tick を
+  前提にするので、`CONFIG_USEC_PER_TICK` が 100 でなければビルドが止まります。
+- 起床の遅れ（tick の境界から `usleep()` が戻るまで）は約 17〜36 µs、`usleep(1000)` 1 回あたりの
+  CPU 時間は約 30〜52 µs です（置き換え前はそれぞれ約 51〜55 µs、約 104〜114 µs。どちらも
+  一時的な計測コードを入れた版で、1000 回の平均を TIMER で測った値。flash から実行するコードの
+  配置で XIP キャッシュの当たり方が変わり、ビルドごとにこの程度ばらつきます）。
 
 ## テスト
 
@@ -225,7 +240,8 @@ nuttx/script/host_tests.sh
 OS に依存しない共通ソースのテストを、PC 上でビルドして実行します。ボードもセットアップスクリプトも
 不要で、ホストの `cc`（C17）だけを使います。FIFO ワードの解析、バッチとペイロード、送信キュー、
 status と info の JSON、時刻の対応付け、センサーの tick と時計の対応、NTP の推定、FIFO パケットの復号、物理単位への
-換算と校正値の保存形式、静止中のジャイロのゼロ点の追従を確かめます。テストは 1 つずつビルドして
+換算と校正値の保存形式、静止中のジャイロのゼロ点の追従、ボードの時間の換算（`nano_timeconv`）を
+確かめます。テストは 1 つずつビルドして
 実行し、失敗したところで止まります。ビルドの生成物は一時ディレクトリに置き、終了時に消します。
 
 次のファイルは Zephyr 版（`zephyr/app/usb-console`）の同名ファイルを変更せずに写したものです。
@@ -237,6 +253,12 @@ Zephyr 版を直したときは、写しも同じ内容に置き換えます。
 | `nuttx/drivers/lsm6dso/` | `drivers/lsm6dso/` | `lsm6dso_{fifo,cal,zero,fifo_decoder}`、`lsm6dso_fifo_packet.h` |
 | `nuttx/tests/` | `tests/` | 上のファイルを対象にするテスト |
 | `nuttx/tests/fakes/` | `tests/fakes/` | テスト用の Zephyr のヘッダーの代わり（`zephyr/drivers/sensor.h`） |
+
+`nuttx/tests/nano_timeconv.c` は NuttX 版だけのテストです。`src/nano_timeconv.h` の換算を、C の
+`/`・`%` と、NuttX 13.1.0 の汎用の換算（`oneshot.h`・`clkcnt.h` の計算を 1 MHz・100 µs で書き写した
+もの）と比べます。対象は 1 バイトずつの除算が正しい範囲の全数、境界値（0、99、100、2^32 前後、
+2^32×100 前後、2^63、2^64−1 など）の前後 300、最初の 10^7 µs の全数、2^32 の倍数 256 個の前後 2000、
+乱数 400 万個です。
 
 ドライバーの I2C・FIFO 制御・ストリーム処理と NINA を対象にするテストは、それらを移植するときに
 加えます。

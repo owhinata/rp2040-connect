@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
 # Build and run the host tests for the OS-independent sources under nuttx/.
-# The sources and tests are unchanged copies of the Zephyr version's; they need no board.
+# Most sources and tests are unchanged copies of the Zephyr version's (nano_timeconv is the
+# board's own); none needs the board.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 out=$(mktemp -d)
@@ -36,3 +37,5 @@ run fifo_decoder "$lsm/lsm6dso_fifo_decoder.c" "$lsm/lsm6dso_fifo.c" "$lsm/lsm6d
 run lsm6dso_cal "$lsm/lsm6dso_cal.c" "$imu/imu_cal_codec.c" -lm
 # Gyro bias tracking at rest.
 run lsm6dso_zero "$lsm/lsm6dso_zero.c"
+# Board: TIMER count <-> OS tick conversions of the tickless system timer.
+run nano_timeconv -Iboards/arduino-nano-rp2040-connect/src

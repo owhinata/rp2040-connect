@@ -42,6 +42,18 @@
  * already due (or that the counter reaches while the alarm is being armed)
  * is raised at once through the INTF force register rather than waiting a
  * full 32-bit wrap (~71.6 minutes) for the compare to match again.
+ *
+ * This file also replaces the weak time functions of
+ * drivers/timers/arch_alarm.c that the tickless scheduler calls on every
+ * sleep, wake-up and context switch (up_timer_gettick(),
+ * up_alarm_tick_start(), up_timer_gettime(), up_alarm_cancel()), and
+ * up_udelay()/up_ndelay().  The generic versions convert through the
+ * ONESHOT_COUNT layer (include/nuttx/timers/oneshot.h), whose 64-bit
+ * divisions by the run-time frequency go to libgcc's __aeabi_uldivmod: on
+ * the Cortex-M0+ (no divide instruction, no 32x32->64 multiply) about 6 us
+ * per call.  The replacements read the TIMER directly and convert with
+ * nano_timeconv.h, which is specialised for 1 MHz counts and 100 us ticks
+ * and gives the same results for every 64-bit value.
  */
 
 /****************************************************************************
@@ -53,6 +65,8 @@
 #include <sys/types.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include <errno.h>
+#include <time.h>
 
 #include <nuttx/arch.h>
 #include <nuttx/irq.h>
@@ -63,6 +77,7 @@
 #include "arm_internal.h"
 
 #include "nano_connect.h"
+#include "nano_timeconv.h"
 
 /****************************************************************************
  * Pre-processor Definitions
@@ -85,6 +100,12 @@
 /* The counter is clocked at 1 MHz (1 us per count). */
 
 #define ONESHOT_FREQ_HZ     1000000
+
+/* nano_timeconv.h converts counts to ticks of exactly 100 counts. */
+
+#if CONFIG_USEC_PER_TICK != 100
+#  error "nano_oneshot.c requires CONFIG_USEC_PER_TICK == 100"
+#endif
 
 /* The ALARM compare is only 32 bits wide, so never schedule further ahead
  * than this many counts.
@@ -121,6 +142,13 @@ static struct oneshot_lowerhalf_s g_nano_oneshot =
 {
   .ops = &g_nano_oneshot_ops,
 };
+
+/* Set once nano_oneshot_initialize() has set up ALARM0, just before
+ * up_alarm_set_lowerhalf().  Until then the time functions below return
+ * -EAGAIN, as the generic ones do before a lower half is registered.
+ */
+
+static bool g_nano_oneshot_ready;
 
 /****************************************************************************
  * Private Functions
@@ -321,5 +349,141 @@ FAR struct oneshot_lowerhalf_s *nano_oneshot_initialize(void)
   irq_attach(ONESHOT_IRQ, nano_oneshot_interrupt, lower);
   up_enable_irq(ONESHOT_IRQ);
 
+  g_nano_oneshot_ready = true;
   return lower;
+}
+
+/****************************************************************************
+ * Name: up_timer_gettick
+ *
+ * Description:
+ *   The current OS tick: the TIMER count over 100.  Replaces the weak
+ *   function of arch_alarm.c (ONESHOT_TICK_CURRENT); called through
+ *   clock_systime_ticks() on every sleep, wake-up and round-robin context
+ *   switch, and by nxsched_process_timer().
+ *
+ ****************************************************************************/
+
+int up_timer_gettick(FAR clock_t *ticks)
+{
+  if (!g_nano_oneshot_ready)
+    {
+      return -EAGAIN;
+    }
+
+  *ticks = (clock_t)nano_count_to_tick(nano_oneshot_count());
+  return OK;
+}
+
+/****************************************************************************
+ * Name: up_timer_gettime
+ *
+ * Description:
+ *   The time since boot (CLOCK_MONOTONIC, through clock_systime_timespec()).
+ *   Replaces the weak function of arch_alarm.c (ONESHOT_CURRENT).
+ *
+ ****************************************************************************/
+
+int up_timer_gettime(FAR struct timespec *ts)
+{
+  uint64_t sec;
+  uint32_t nsec;
+
+  if (!g_nano_oneshot_ready)
+    {
+      return -EAGAIN;
+    }
+
+  nano_count_to_time(nano_oneshot_count(), &sec, &nsec);
+  ts->tv_sec  = (time_t)sec;
+  ts->tv_nsec = (long)nsec;
+  return OK;
+}
+
+/****************************************************************************
+ * Name: up_alarm_tick_start
+ *
+ * Description:
+ *   Raise the alarm (and so nxsched_process_timer()) at the start of the
+ *   given tick, TIMER count ticks * 100.  Replaces the weak function of
+ *   arch_alarm.c (ONESHOT_TICK_ABSOLUTE); the wdog code calls it whenever
+ *   the earliest deadline changes.
+ *
+ ****************************************************************************/
+
+int up_alarm_tick_start(clock_t ticks)
+{
+  if (!g_nano_oneshot_ready)
+    {
+      return -EAGAIN;
+    }
+
+  nano_oneshot_start_absolute(&g_nano_oneshot,
+                              nano_tick_to_count((uint64_t)ticks));
+  return OK;
+}
+
+/****************************************************************************
+ * Name: up_alarm_cancel
+ *
+ * Description:
+ *   Stop the alarm and return the current time.  Replaces the weak
+ *   function of arch_alarm.c (ONESHOT_CANCEL); the wdog code calls it when
+ *   the last watchdog is cancelled.
+ *
+ ****************************************************************************/
+
+int up_alarm_cancel(FAR struct timespec *ts)
+{
+  if (!g_nano_oneshot_ready)
+    {
+      return -EAGAIN;
+    }
+
+  nano_oneshot_cancel(&g_nano_oneshot);
+  if (ts != NULL)
+    {
+      up_timer_gettime(ts);
+    }
+
+  return OK;
+}
+
+/****************************************************************************
+ * Name: up_udelay / up_ndelay
+ *
+ * Description:
+ *   Busy-wait on the TIMER.  Replace the weak functions of arch_alarm.c,
+ *   which read the time through ONESHOT_CURRENT (a 64-bit division per
+ *   reading) or, before the timer is registered, count loops.  The TIMER
+ *   runs from rp2040_clockconfig() on, so it can be used from early boot.
+ *   The wait ends at the first count at or past the start plus the delay
+ *   rounded up to whole microseconds, as in the generic ndelay_accurate().
+ *
+ ****************************************************************************/
+
+static void nano_delay_counts(uint32_t counts)
+{
+  uint64_t start = nano_oneshot_count();
+
+  while (nano_oneshot_count() - start < counts)
+    {
+    }
+}
+
+void up_udelay(useconds_t microseconds)
+{
+  nano_delay_counts(microseconds);
+}
+
+void up_ndelay(unsigned long nanoseconds)
+{
+  uint32_t usec = nanoseconds / NSEC_PER_USEC;
+
+  if (usec * NSEC_PER_USEC != nanoseconds)
+    {
+      usec++;
+    }
+
+  nano_delay_counts(usec);
 }
