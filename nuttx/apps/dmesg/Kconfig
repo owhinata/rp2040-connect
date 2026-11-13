@@ -1,0 +1,30 @@
+#
+# For a description of the syntax of this configuration file,
+# see the file kconfig-language.txt in the NuttX tools repository.
+#
+
+config NANO_APP_DMESG
+	tristate "dmesg command (RAM log)"
+	default y
+	depends on NANO_LOG_RAM
+	---help---
+		"dmesg" prints the RAM log (nuttx/drivers/log/log_ram.c) the way
+		the Zephyr build's dmesg command does: the stored text as is, or
+		"No logs." when it is empty.  Arguments are ignored.  NuttX's own
+		nsh dmesg (NSH_DISABLE_DMESG) reads /dev/kmsg and is not used.
+
+if NANO_APP_DMESG
+
+config NANO_APP_DMESG_PRIORITY
+	int "dmesg task priority"
+	default 104
+	---help---
+		The Zephyr build runs shell commands in the shell thread, at
+		K_LOWEST_APPLICATION_THREAD_PRIO (14), which is 104 here
+		(nuttx/drivers/include/priorities.h, NANO_PRIO_SHELL).
+
+config NANO_APP_DMESG_STACKSIZE
+	int "dmesg stack size"
+	default 1024
+
+endif

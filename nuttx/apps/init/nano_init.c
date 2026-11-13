@@ -64,6 +64,13 @@
 #include "nsh.h"
 #include "nsh_console.h"
 
+#include "app_log.h"
+#include "priorities.h"
+
+/* The module name and level of the Zephyr build's main.c. */
+
+LOG_MODULE_REGISTER(usb_console, LOG_LEVEL_INF);
+
 /****************************************************************************
  * Private Functions
  ****************************************************************************/
@@ -178,11 +185,25 @@ static void console_setup(int fd)
  * Description:
  *   CONFIG_INIT_ENTRYPOINT.  Never returns.
  *
+ *   Starts at CONFIG_INIT_PRIORITY, the priority of the Zephyr build's
+ *   main() (NANO_PRIO_MAIN, 118), does what that main() does, then drops to
+ *   the shell's priority (NANO_PRIO_SHELL, 104) for the console loop, which
+ *   the Zephyr build runs in its shell thread.
+ *
  ****************************************************************************/
 
 int nano_init_main(int argc, FAR char *argv[])
 {
+  struct sched_param param;
+
   nsh_initialize();
+
+  /* zephyr/app/usb-console/src/main.c */
+
+  LOG_INF("USB console started");
+
+  param.sched_priority = NANO_PRIO_SHELL;
+  sched_setparam(0, &param);
 
   for (; ; )
     {

@@ -158,31 +158,16 @@ static bool g_nano_oneshot_ready;
  * Name: nano_oneshot_count
  *
  * Description:
- *   Read the free-running 64-bit microsecond counter through the raw
- *   (non-latching) registers, guarding against a carry from the low word
- *   into the high word between the two reads.  Safe from any context.
+ *   Read the free-running 64-bit microsecond counter: nano_mono_us()
+ *   (include/nano_timer.h), the board's monotonic clock, which reads the
+ *   raw (non-latching) registers and guards against a carry from the low
+ *   word into the high word between the two reads.  Safe from any context.
  *
  ****************************************************************************/
 
-static uint64_t nano_oneshot_count(void)
+static inline uint64_t nano_oneshot_count(void)
 {
-  uint32_t hi = getreg32(NANO_TIMER_TIMERAWH);
-  uint32_t lo;
-  uint32_t next;
-
-  for (; ; )
-    {
-      lo   = getreg32(NANO_TIMER_TIMERAWL);
-      next = getreg32(NANO_TIMER_TIMERAWH);
-      if (hi == next)
-        {
-          break;
-        }
-
-      hi = next;
-    }
-
-  return ((uint64_t)hi << 32) | lo;
+  return nano_mono_us();
 }
 
 /****************************************************************************

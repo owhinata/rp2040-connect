@@ -72,4 +72,57 @@
 #define NANO_TIMER_TIMERAWH  (NANO_TIMER_BASE + NANO_TIMER_TIMERAWH_OFFSET)
 #define NANO_TIMER_TIMERAWL  (NANO_TIMER_BASE + NANO_TIMER_TIMERAWL_OFFSET)
 
+#ifndef __ASSEMBLY__
+
+/****************************************************************************
+ * Included Files
+ ****************************************************************************/
+
+#include <stdint.h>
+
+/****************************************************************************
+ * Inline Functions
+ ****************************************************************************/
+
+/****************************************************************************
+ * Name: nano_mono_us
+ *
+ * Description:
+ *   The board's monotonic clock: microseconds since the TIMER left reset
+ *   at boot (rp2040_clockconfig() resets it on every boot, including
+ *   "reboot"), read through the raw registers.  Reads the high word, then
+ *   the low word and the high word again until the two highs agree, so a
+ *   carry between the two reads is never mixed in.  No side effect and no
+ *   lock: safe from any context, threads and interrupt handlers, kernel
+ *   and applications (flat build).
+ *
+ *   The same read as time_sync_mono_us() of the Zephyr build
+ *   (zephyr/app/usb-console/src/time_sync.c), which will keep that name
+ *   in nuttx/apps/imu/time_sync.c.  The OS clock (CLOCK_MONOTONIC,
+ *   clock_systime_ticks()) comes from the same counter
+ *   (src/nano_oneshot.c).
+ *
+ ****************************************************************************/
+
+static inline uint64_t nano_mono_us(void)
+{
+  volatile uint32_t *const rawh = (volatile uint32_t *)NANO_TIMER_TIMERAWH;
+  volatile uint32_t *const rawl = (volatile uint32_t *)NANO_TIMER_TIMERAWL;
+  uint32_t high;
+  uint32_t low;
+  uint32_t again = *rawh;
+
+  do
+    {
+      high  = again;
+      low   = *rawl;
+      again = *rawh;
+    }
+  while (again != high);
+
+  return ((uint64_t)high << 32) | low;
+}
+
+#endif /* __ASSEMBLY__ */
+
 #endif /* __BOARDS_ARDUINO_NANO_RP2040_CONNECT_INCLUDE_NANO_TIMER_H */

@@ -44,6 +44,25 @@ CSRCS += nano_oneshot.c
 CSRCS += nano_timerisr.c
 endif
 
+# The idle loop with the CPU load measurement (cpu_load_get()) in place of
+# the in-tree rp2040_idle.c, which patches/nuttx/0004 leaves out with
+# ARCH_IDLE_CUSTOM.
+
+ifeq ($(CONFIG_ARCH_IDLE_CUSTOM),y)
+CSRCS += nano_idle.c
+endif
+
+# The stack sentinel in the scheduler's switch hook.
+
+ifeq ($(CONFIG_NANO_STACK_SENTINEL),y)
+CSRCS += nano_stackcheck.c
+endif
+
 DEPPATH += --dep-path board
 VPATH += :board
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)arch$(DELIM)$(CONFIG_ARCH)$(DELIM)src$(DELIM)board$(DELIM)board
+
+# Headers shared with nuttx/drivers and the applications (app_log.h,
+# log_ram.h, cpu_load.h, priorities.h): nuttx/drivers/include.
+
+CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)include

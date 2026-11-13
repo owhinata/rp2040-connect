@@ -60,7 +60,7 @@ the board code replaces. The head of each file gives its purpose and the Zephyr 
 | `nuttx/0001-cdcacm-no-at-protocol` | CDC ACM communication interface protocol 0 instead of 1 (AT commands), as in the Zephyr version; ModemManager does not take the port for a modem |
 | `nuttx/0002-cdcacm-drop-output-without-dtr` | Drop the output while no program on the PC has the port open (DTR low) |
 | `nuttx/0003-serial-canonical-ctrl-c-eof` | Ctrl-C and Ctrl-D end the read of a command that reads its standard input |
-| `nuttx/0004-rp2040-make-defs-alarm-arch-idle-custom` | Leave `rp2040_timerisr.c` (periodic SysTick interrupt) out of the build with `CONFIG_ALARM_ARCH`, and `rp2040_idle.c` with `CONFIG_ARCH_IDLE_CUSTOM` (the board provides the system timer and the idle loop; `ARCH_IDLE_CUSTOM` is not used yet) |
+| `nuttx/0004-rp2040-make-defs-alarm-arch-idle-custom` | Leave `rp2040_timerisr.c` (periodic SysTick interrupt) out of the build with `CONFIG_ALARM_ARCH`, and `rp2040_idle.c` with `CONFIG_ARCH_IDLE_CUSTOM` (the board provides the system timer and the idle loop) |
 | `apps/0001-readline-echo-in-readline` | readline, not the serial driver, echoes while a line is typed (only what goes into the line, and the line end) |
 | `apps/0002-readline-cr-lf-line-end` | CR, LF, CR LF and LF CR are each one Enter |
 | `apps/0003-readline-ctrl-c` | Ctrl-C drops the line being typed and shows a new prompt |
@@ -194,11 +194,46 @@ picocom /dev/serial/by-id/usb-NuttX_NuttX_USB_Console_*-if00
 - `bootsel` restarts the board into BOOTSEL (the `RPI-RP2` drive) after its message has been sent.
   With any argument (`bootsel --help`, for example) it only prints its usage. It is a development
   command for `flash.sh`; it can be turned off with `CONFIG_NANO_APP_BOOTSEL`.
-- The system log is kept in RAM (`/dev/kmsg`, 4 KB) and is not written to the console, as in the
-  Zephyr version. `dmesg` is not available yet.
+- The log is kept in RAM and is not written to the console, as in the Zephyr version; `dmesg`
+  shows it (see "Log").
+- The shell (the nsh session) and the commands it starts run at priority 104, the place of the
+  Zephyr version's shell thread (see "Thread priorities and stacks").
 
 UART0 (GPIO0 TX, GPIO1 RX, the Arduino D1/D0 pins) is not the console. Its pins are given to the
 UART, as in the Zephyr version, but nothing is written to it.
+
+## Log (`dmesg`)
+
+The RAM log of the Zephyr version's `src/log_ram.c` (`nuttx/drivers/log/`).
+
+- A 4096-byte ring buffer in `.noinit`. The startup code does not clear it, so its contents
+  survive a reset such as `reboot`. At boot its header (the magic number `0x4c4f4752` and its
+  inverse, the start and the length) is checked, and the ring is emptied if it is not intact.
+  Power-off clears it. When it is full, the oldest bytes are overwritten.
+- `dmesg` prints what is stored as is, or `No logs.` when it is empty; arguments are ignored. As in
+  the Zephyr version it takes 96 bytes at a time, skips what new messages push out while it
+  prints, and stops after 8192 bytes. NuttX's own `dmesg` (`/dev/kmsg`) is turned off.
+- Lines have the format of the Zephyr version's log, `[HH:MM:SS.mmm,uuu] <inf> module: message`,
+  ending in LF only. The levels are `<err>`, `<wrn>`, `<inf>` and `<dbg>`; `<dbg>` lines have
+  `module.function: `. Hours take at least two digits and more after 99 hours. The time is the
+  board's monotonic clock (the TIMER, µs since boot) and starts again from 0 at every reboot (as
+  seen in the Zephyr version).
+- Output of `syslog()` (kernel and nsh messages, PANIC reports) goes to the same ring. Like the
+  Zephyr version's `printk`, it is stored as is, without a prefix, with line ends as CR LF
+  (syslog's `CONFIG_SYSLOG_CRLF`, the same as the Zephyr version's printk strings).
+- Sources use it the Zephyr way: `#include "app_log.h"` (`nuttx/drivers/include/`; usable from
+  the kernel side, the board code and the applications, also in interrupt handlers), then per file
+  `LOG_MODULE_REGISTER(name, LOG_LEVEL_INF)` (without a level: `CONFIG_NANO_LOG_DEFAULT_LEVEL`,
+  default 3, or `LOG_LEVEL` if defined before the include), and `LOG_ERR()`, `LOG_WRN()`,
+  `LOG_INF()`, `LOG_DBG()`, `LOG_ERR_RATELIMIT()` and so on in the code. Messages above the file's
+  level are dropped at compile time; there is no run-time level control (Zephyr's `log` command).
+  The header replaces `<syslog.h>`'s `LOG_ERR` (a syslog priority) with the macro of the same name,
+  so a file that includes `app_log.h` uses `APP_LOG_SYSLOG_ERR` instead in `syslog(LOG_ERR, ...)`.
+- A line is formatted in the calling thread (or interrupt), in a 192-byte buffer on its stack,
+  and then written to the ring with interrupts disabled. A longer message is cut to fit 192
+  bytes. One `LOG_INF()` takes about 42 µs and about 500 bytes of stack (mean of 100 calls on the
+  board). In the Zephyr version's default (deferred) mode the caller only records the message, and
+  a low-priority logging thread formats it later.
 
 ## System clock
 
@@ -216,6 +251,13 @@ default), `CONFIG_SCHED_TICKLESS=y` and `CONFIG_USEC_PER_TICK=100`.
   µs (`clock_getres()` gives the tick, 100 µs). The Zephyr version's kernel clock is SysTick on the
   CPU clock, a different source. In both versions the application reads the TIMER directly as its
   time base.
+- The board's monotonic clock is `nano_mono_us()` (`<arch/board/nano_timer.h>`). It reads the
+  TIMER's TIMERAWH, TIMERAWL and TIMERAWH again until the two high words agree (the read of the
+  Zephyr version's `time_sync_mono_us()`). It has no side effect and takes no lock, so the kernel,
+  the applications and interrupt handlers may all call it; one call takes about 0.3 µs. The value
+  is µs since boot; the TIMER starts again from 0 at every boot (`reboot` included). It is the
+  counter behind `CLOCK_MONOTONIC`, and the two agree to within the time between the reads (a few
+  µs).
 - Threads of the same priority are time-sliced every 20 ms (`CONFIG_RR_INTERVAL=20`; the Zephyr
   version's `CONFIG_TIMESLICE_SIZE=20`). The watchdog that times the rest of a slice is not
   cancelled when the thread starts to wait, so a sleep longer than the rest of the slice takes one
@@ -237,6 +279,71 @@ default), `CONFIG_SCHED_TICKLESS=y` and `CONFIG_USEC_PER_TICK=100`.
   the TIMER). The placement of the code run from flash changes how well the XIP cache hits, and
   the values vary by about this much from build to build.
 
+## CPU load
+
+`cpu_load_get(bool reset)` (`#include "cpu_load.h"`; the board's `src/nano_idle.c`) returns what
+the Zephyr version's `CONFIG_CPU_LOAD` (`CONFIG_CPU_LOAD_BACKEND_IDLE_HOOK`) returns.
+
+- The idle loop (`up_idle()`, the board's own with `CONFIG_ARCH_IDLE_CUSTOM=y`) disables interrupts,
+  reads the TIMER, waits for an interrupt with `WFI`, reads the TIMER again and adds the time to
+  the idle time, and then enables interrupts. The handler of the interrupt that woke the CPU runs
+  after that, so the time spent in interrupts that arrive while idle counts as load (as in the
+  Zephyr version). `WFI` on the Cortex-M0+ returns on a pending interrupt even while interrupts are
+  disabled, so an interrupt that arrives between disabling them and `WFI` does not leave the CPU
+  asleep.
+- The value is `1000 × (total − idle) / total` since the last call with `reset=true` (since boot
+  before the first), rounded down, in tenths of a percent; 0 if no time has passed. A call with
+  `reset=true` also returns the value up to that moment and then starts the next window.
+- The time base is the TIMER (1 µs); the Zephyr version converts CPU clock cycles to µs. Each idle
+  window is off by up to ±1 µs, without bias; even with many windows the effect on the result is
+  estimated to be well below 0.1‰.
+- Values on the board (1 or 2 runs each): 0 for 10 s of doing nothing (0.3 to 0.4 ms of the 10 s
+  not idle), 1000 with a low-priority busy loop, 499 with 10 ms of work and 10 ms of waiting in
+  turn. With interrupts alone, a wdog every 196 µs or so (5099 per second) gives 50 with an empty
+  handler and 300 with a 50 µs handler (260 for the handler bodies alone): the entry and exit of
+  each interrupt (the timer interrupt, the wdog, setting the next alarm) adds about 8 to 10 µs of
+  load. One `cpu_load_get()` takes about 4.8 µs.
+
+## Thread priorities and stacks
+
+Priorities map as `NuttX = 118 − Zephyr`; `nuttx/drivers/include/priorities.h` holds the constants
+(`NANO_PRIO_*`) and the stack sizes (`NANO_STACK_*`). The Zephyr version's application threads
+(priorities 8 to 11) become 110 to 107, its shell thread (14) 104.
+
+| Thread | Zephyr | NuttX | Stack |
+|---|---|---|---|
+| `wifi_reconnect_tid`, `nina_scan_tid`, `nina_connect_tid` | 8 | 110 | 2048, 1536, 1024 |
+| `time_sync_tid`, `imu_stream_tid`, `nina_monitor_tid` | 9 | 109 | 2048, 2048, 1536 |
+| `imu_fifo_worker` | 10 | 108 | 2048 |
+| `imu_raw_mqtt_tid` | 11 | 107 | 2048 |
+| NINA events (NuttX only) | – | 106 | – |
+| `main` (NuttX: init, which drops to the shell's priority after the start-up work) | 0 | 118 | 2048 |
+| Shell (nsh session, commands) | 14 | 104 | 3072 |
+
+- Zephyr's cooperative threads (negative priorities: `sysworkq`, `net_mgmt` and others) map above
+  118, but NuttX has no cooperative threads that other threads cannot preempt; a thread of higher
+  priority preempts them. The port does not use them now.
+- `CONFIG_PRIORITY_INHERITANCE=y`. Mutexes inherit priority; semaphores do not by default (NuttX
+  13.1.0's `sem_init()` sets their flags to 0), so semaphores used for signalling stay without
+  inheritance.
+- NuttX on the RP2040 has no interrupt stack: an interrupt runs on the stack of the thread it
+  interrupts (the idle thread's when nothing runs). Every stack needs room for interrupts.
+- Stack sentinel (`CONFIG_NANO_STACK_SENTINEL`, board `Kconfig`, on by default): like the Zephyr
+  version's `CONFIG_STACK_SENTINEL`, the lowest word of each stack (the value written by
+  `CONFIG_STACK_COLORATION`) is checked at every thread switch (for the thread switched out) and at
+  the end of every interrupt handler (for the interrupted thread, whose stack the handler ran on),
+  and a changed word stops the system with PANIC (the report goes to the RAM log). The checks run
+  in two scheduler instrumentation hooks (`sched_note_suspend()` at a switch, and
+  `sched_note_irqhandler()`, which `irq_dispatch()` calls around each handler;
+  `src/nano_stackcheck.c`). On the Cortex-M0+ peripheral interrupts do not go through
+  `arm_doirq()` (they use `exception_direct()`), so the switch hook alone does not see the end of
+  an interrupt. All interrupts run at one priority and never nest, so every handler exit is the
+  end of a non-nested interrupt in Zephyr's terms. NuttX's `CONFIG_STACKCHECK_MARGIN` is not used:
+  it checks at switches only and needs `CONFIG_DEBUG_ASSERTIONS` (every DEBUGASSERT). Each interrupt
+  costs about 1.0 µs more (a wdog about every 200 µs, 4999 per second: the time not idle in 5 s
+  went from 225.2 ms to 250.2 ms; 3 runs each).
+- `ps` shows stack use in its STACK, USED and FILLED columns.
+
 ## Tests
 
 ```bash
@@ -247,8 +354,9 @@ This builds and runs the tests of the OS-independent common sources on the PC. I
 the board nor the setup script, only the host's `cc` (C17). The tests check FIFO word parsing,
 batches and payloads, the send queue, the status and info JSON, time mapping, the mapping from the sensor
 tick to the clock, the NTP estimate, FIFO packet decoding, conversion to physical units and the
-stored calibration format, gyro zero tracking at rest, and the board's time conversions
-(`nano_timeconv`). Each test is built and run in turn,
+stored calibration format, gyro zero tracking at rest, the board's time conversions
+(`nano_timeconv`), the CPU load arithmetic (`nano_cpuload`), and the RAM log's ring, `dmesg`
+pieces, line prefix and rate limit (`log_ram`). Each test is built and run in turn,
 and the script stops at the first failure. Build products go to a temporary directory that is
 removed on exit.
 
@@ -269,6 +377,14 @@ arithmetic of `oneshot.h` and `clkcnt.h` written out for 1 MHz and 100 µs): eve
 range where the one-byte division step must be exact, 300 values on each side of edge values (0,
 99, 100, around 2^32, around 2^32 × 100, 2^63, 2^64 − 1 and others), every count of the first
 10^7 µs, 2000 values on each side of 256 multiples of 2^32, and 4 million random values.
+
+`nuttx/tests/nano_cpuload.c` and `nuttx/tests/log_ram.c` are also tests of the NuttX port only.
+The first compares the arithmetic of `src/nano_cpuload.h` with the steps of Zephyr's
+`cpu_load_get_cpu()` (reset, an open window, zero time, rounding down). The second compares
+`nuttx/drivers/log/log_ring.c` with the byte-by-byte store of the Zephyr version's `log_ram.c`
+over 20,000 random writes, compares the line prefix with the time arithmetic of Zephyr's
+`log_output.c` for 200,000 random values, and checks the `dmesg` pieces (skipping what is
+overwritten, stopping at 8192 bytes) and the rate limit.
 
 Tests of the driver's I2C, FIFO control and stream handling and of NINA are added when those
 parts are ported.

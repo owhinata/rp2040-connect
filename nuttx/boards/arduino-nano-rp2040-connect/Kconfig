@@ -33,3 +33,21 @@ config NANO_TICKLESS
 		(1 MHz counts, 100 us ticks, no 64-bit division), so it needs
 		USEC_PER_TICK to be 100.  ONESHOT_FAST_DIVISION is not selected:
 		it only changes the generic conversions, which these replace.
+
+config NANO_STACK_SENTINEL
+	bool "Stack sentinel (check the lowest stack word)"
+	default y
+	depends on STACK_COLORATION && !SMP && ARCH_ARMV6M
+	select SCHED_INSTRUMENTATION
+	select SCHED_INSTRUMENTATION_SWITCH
+	select SCHED_INSTRUMENTATION_IRQHANDLER
+	---help---
+		Check that the lowest word of a task's stack still holds the
+		coloration value when the task is switched out and at the end of
+		every interrupt handler (for the interrupted task, whose stack
+		the handler ran on), and halt (PANIC) if not: the counterpart of
+		the Zephyr build's CONFIG_STACK_SENTINEL (src/nano_stackcheck.c).
+		Implemented in the scheduler's instrumentation hooks
+		sched_note_suspend() and sched_note_irqhandler(), which need
+		SCHED_INSTRUMENTATION, SCHED_INSTRUMENTATION_SWITCH and
+		SCHED_INSTRUMENTATION_IRQHANDLER but no note driver.

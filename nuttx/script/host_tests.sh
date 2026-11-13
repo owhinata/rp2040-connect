@@ -39,3 +39,7 @@ run lsm6dso_cal "$lsm/lsm6dso_cal.c" "$imu/imu_cal_codec.c" -lm
 run lsm6dso_zero "$lsm/lsm6dso_zero.c"
 # Board: TIMER count <-> OS tick conversions of the tickless system timer.
 run nano_timeconv -Iboards/arduino-nano-rp2040-connect/src
+# Board: the CPU load arithmetic of the idle loop (nano_idle.c).
+run nano_cpuload -Iboards/arduino-nano-rp2040-connect/src
+# RAM log: the retained ring, dmesg pieces, line prefix and rate limit.
+run log_ram -Idrivers/log drivers/log/log_ring.c

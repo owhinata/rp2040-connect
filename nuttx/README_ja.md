@@ -58,7 +58,7 @@ NuttX 13.1.0 本体（`nuttx/patches/nuttx/`）と nuttx-apps（`nuttx/patches/a
 | `nuttx/0001-cdcacm-no-at-protocol` | CDC ACM の通信インターフェースのプロトコルを 1（AT コマンド）から 0 にする（Zephyr 版と同じ。ModemManager がモデムの候補として扱わない） |
 | `nuttx/0002-cdcacm-drop-output-without-dtr` | PC 側でポートを開いているプログラムがない間（DTR が落ちている間）の出力を捨てる |
 | `nuttx/0003-serial-canonical-ctrl-c-eof` | 標準入力を読むコマンドの読み込みを Ctrl-C・Ctrl-D で終わらせる |
-| `nuttx/0004-rp2040-make-defs-alarm-arch-idle-custom` | `CONFIG_ALARM_ARCH` のとき `rp2040_timerisr.c`（SysTick の周期割り込み）を、`CONFIG_ARCH_IDLE_CUSTOM` のとき `rp2040_idle.c` をビルドから外す（システム時計とアイドルをボード側で持つため。`ARCH_IDLE_CUSTOM` はまだ使っていない） |
+| `nuttx/0004-rp2040-make-defs-alarm-arch-idle-custom` | `CONFIG_ALARM_ARCH` のとき `rp2040_timerisr.c`（SysTick の周期割り込み）を、`CONFIG_ARCH_IDLE_CUSTOM` のとき `rp2040_idle.c` をビルドから外す（システム時計とアイドルループをボード側で持つため） |
 | `apps/0001-readline-echo-in-readline` | 行の入力中のエコーをシリアルドライバーではなく readline が行う（行に入れた文字と改行だけを返す） |
 | `apps/0002-readline-cr-lf-line-end` | CR、LF、CR LF、LF CR のどれでも 1 回の Enter にする |
 | `apps/0003-readline-ctrl-c` | Ctrl-C で入力中の行を捨てて新しいプロンプトを出す |
@@ -192,11 +192,43 @@ picocom /dev/serial/by-id/usb-NuttX_NuttX_USB_Console_*-if00
 - `bootsel` は、メッセージを送り終えてから、ボードを BOOTSEL（`RPI-RP2` のストレージ）で再起動します。
   引数を付けると（`bootsel --help` など）使い方を表示するだけです。`flash.sh` のための開発用の
   コマンドで、`CONFIG_NANO_APP_BOOTSEL` で外せます。
-- システムログは RAM（`/dev/kmsg`、4 KB）に置き、Zephyr 版と同じくコンソールには出しません。
-  `dmesg` はまだありません。
+- ログは RAM に置き、Zephyr 版と同じくコンソールには出しません。`dmesg` で表示します（「ログ」の節）。
+- シェル（nsh のセッション）と、そこから起動するコマンドは優先度 104 で動きます（Zephyr 版のシェルの
+  スレッドと同じ位置。「スレッドの優先度とスタック」の節）。
 
 UART0（GPIO0 が TX、GPIO1 が RX。Arduino の D1/D0）はコンソールではありません。Zephyr 版と同じく
 ピンは UART に割り当てますが、何も出力しません。
+
+## ログ（`dmesg`）
+
+Zephyr 版の `src/log_ram.c` と同じ RAM ログです（`nuttx/drivers/log/`）。
+
+- 4096 バイトのリングバッファーを `.noinit` に置きます。起動処理はこの領域を消さないので、`reboot` などの
+  リセットをまたいで内容が残ります。起動時に先頭の情報（マジックナンバー
+  `0x4c4f4752` とその反転、開始位置、長さ）を確かめ、壊れていれば空にします。電源を切ると消えます。
+  いっぱいになると古いバイトから上書きします。
+- `dmesg` は保存されている内容をそのまま表示し、空なら `No logs.` と出します。引数は見ません。
+  Zephyr 版と同じく 96 バイトずつ取り出して表示し、表示中に新しいログで押し出された部分は飛ばし、
+  合わせて 8192 バイトで打ち切ります。NuttX 標準の `dmesg`（`/dev/kmsg`）は外してあります。
+- 行の形式は Zephyr 版のログと同じ `[時:分:秒.ミリ秒,マイクロ秒] <inf> モジュール名: 本文` で、改行は
+  LF だけです。レベルは `<err>`、`<wrn>`、`<inf>`、`<dbg>` で、`<dbg>` では `モジュール名.関数名: ` に
+  なります。時は 2 桁以上で、99 時間を超えると桁が増えます。時刻はボードの単調時計（TIMER、
+  起動からの µs）で、再起動すると 0 から数え直します（Zephyr 版と同じ見え方）。
+- `syslog()` の出力（カーネルや nsh のメッセージ、PANIC の報告）も同じリングに入ります。Zephyr 版の
+  `printk` と同じく、前置きを付けずにそのまま入れ、改行は CR LF にします（syslog の
+  `CONFIG_SYSLOG_CRLF`。Zephyr 版の printk の文字列と同じ）。
+- ソースからは Zephyr と同じ書き方で使います。`#include "app_log.h"`（`nuttx/drivers/include/`。
+  カーネル側・ボード・アプリのどれからも使え、割り込みハンドラーからも呼べます）のあと、ファイルごとに
+  `LOG_MODULE_REGISTER(名前, LOG_LEVEL_INF)`（レベルを省くと `CONFIG_NANO_LOG_DEFAULT_LEVEL`、既定 3。
+  include の前に `LOG_LEVEL` を定義していればその値）、本文で `LOG_ERR()`、`LOG_WRN()`、`LOG_INF()`、
+  `LOG_DBG()`、`LOG_ERR_RATELIMIT()` などを書きます。ファイルのレベルより上のメッセージはコンパイル時に
+  捨てます。実行時のレベル変更（Zephyr の `log` コマンド）はありません。`<syslog.h>` の `LOG_ERR`
+  （syslog の優先度）は同名のマクロで置き換えるので、`app_log.h` を読み込んだファイルでは
+  `syslog(LOG_ERR, ...)` の代わりに `APP_LOG_SYSLOG_ERR` を使います。
+- 1 行は呼び出したスレッド（または割り込み）の中で、そのスタック上の 192 バイトのバッファーに整形して
+  から、割り込みを禁止してリングに書きます。本文が長いと 192 バイトに収まるところで切れます。
+  `LOG_INF()` 1 回に約 42 µs、スタックを約 500 バイト使います（実機で 100 回の平均）。Zephyr 版の
+  既定（deferred）では、呼び出し側は記録するだけで、整形は優先度の低いログスレッドが後で行います。
 
 ## システム時計
 
@@ -212,6 +244,11 @@ UART0（GPIO0 が TX、GPIO1 が RX。Arduino の D1/D0）はコンソールで�
 - `clock_gettime()` の `CLOCK_MONOTONIC`・`CLOCK_REALTIME` は TIMER の値をそのまま µs 単位で返します
   （`clock_getres()` は tick の長さ 100 µs を返します）。Zephyr 版のカーネル時計は CPU クロックの
   SysTick で、TIMER とは源が違います。アプリはどちらでも、時刻の基準に TIMER を直接読みます。
+- ボードの単調時計は `nano_mono_us()`（`<arch/board/nano_timer.h>`）で、TIMER の TIMERAWH・TIMERAWL を
+  上位、下位、上位の順に読み、上位が一致するまで読み直します（Zephyr 版の `time_sync_mono_us()` と
+  同じ読み方）。副作用もロックも無いので、カーネル側・アプリ・割り込みハンドラーのどこからでも呼べ、
+  1 回は約 0.3 µs です。値は起動からの µs で、TIMER は起動のたびに（`reboot` でも）0 から数え直します。
+  `CLOCK_MONOTONIC` と同じカウンターなので、両者は読み出しの時間差（数 µs）の範囲で一致します。
 - 同じ優先度のスレッドは 20 ms ずつの時分割（`CONFIG_RR_INTERVAL=20`。Zephyr 版の
   `CONFIG_TIMESLICE_SIZE=20`）です。時分割の残り時間を計る wdog は、スレッドが待ちに入っても
   取り消されないので、時分割の残り時間より長く眠ると、眠っている間に割り込みが 1 回余分に
@@ -231,6 +268,64 @@ UART0（GPIO0 が TX、GPIO1 が RX。Arduino の D1/D0）はコンソールで�
   一時的な計測コードを入れた版で、1000 回の平均を TIMER で測った値。flash から実行するコードの
   配置で XIP キャッシュの当たり方が変わり、ビルドごとにこの程度ばらつきます）。
 
+## CPU 負荷
+
+`cpu_load_get(bool reset)`（`#include "cpu_load.h"`。ボードの `src/nano_idle.c`）は、Zephyr 版の
+`CONFIG_CPU_LOAD`（`CONFIG_CPU_LOAD_BACKEND_IDLE_HOOK`）と同じ意味の値を返します。
+
+- アイドルループ（`up_idle()`。`CONFIG_ARCH_IDLE_CUSTOM=y` でボードのものに置き換えています）は、割り込みを
+  禁止して TIMER を読み、`WFI` で割り込みを待ち、起きたら TIMER を読んでその間をアイドル時間に足してから
+  割り込みを許可します。起こした割り込みのハンドラーは許可した後で動くので、アイドル中に入った
+  割り込みの処理時間も負荷に数えます（Zephyr 版と同じ）。Cortex-M0+ の `WFI` は割り込み禁止中でも
+  保留中の割り込みで戻るので、禁止してから `WFI` までの間に来た割り込みでも眠り続けません。
+- 値は、前回 `reset=true` で呼んでから（初回は起動から）の `1000 × (全体 − アイドル) / 全体` を切り捨てた
+  千分率です。全体の時間が 0 なら 0 を返します。`reset=true` の呼び出しも、その時点までの値を返してから
+  次の区間を始めます。
+- 時間の源は TIMER（1 µs）です（Zephyr 版は CPU クロックの周期を µs に換算）。1 回のアイドルの区間の
+  誤差は ±1 µs で偏りはなく、区間の数が多くても結果への影響は 0.1‰ より十分小さい見積もりです。
+- 実機での値（各 1〜2 回）: 何もしない 10 秒で 0（アイドルでない時間は 10 秒中 0.3〜0.4 ms）、
+  優先度の低いビジーループで 1000、10 ms ずつの動作と待ちで 499。割り込みだけが多い状況として、
+  約 196 µs ごとの wdog（毎秒 5099 回）で、ハンドラーの中身が 0 µs のとき 50、50 µs のとき 300
+  （中身だけなら 260）で、割り込み 1 回あたり約 8〜10 µs の入口・出口の処理（タイマー割り込み、wdog、
+  次のアラームの設定）も負荷に入ります。`cpu_load_get()` 1 回は約 4.8 µs です。
+
+## スレッドの優先度とスタック
+
+優先度は `NuttX = 118 − Zephyr` で対応させ、`nuttx/drivers/include/priorities.h` に定数（`NANO_PRIO_*`）と
+スタックの大きさ（`NANO_STACK_*`）を置きます。Zephyr 版のアプリのスレッド（優先度 8〜11）は 110〜107、
+シェルのスレッド（14）は 104 です。
+
+| スレッド | Zephyr | NuttX | スタック |
+|---|---|---|---|
+| `wifi_reconnect_tid`、`nina_scan_tid`、`nina_connect_tid` | 8 | 110 | 2048、1536、1024 |
+| `time_sync_tid`、`imu_stream_tid`、`nina_monitor_tid` | 9 | 109 | 2048、2048、1536 |
+| `imu_fifo_worker` | 10 | 108 | 2048 |
+| `imu_raw_mqtt_tid` | 11 | 107 | 2048 |
+| NINA のイベント（NuttX 版だけ） | – | 106 | – |
+| `main`（NuttX は init。起動処理の後シェルの優先度に下げる） | 0 | 118 | 2048 |
+| シェル（nsh のセッション、コマンド） | 14 | 104 | 3072 |
+
+- Zephyr の協調スレッド（負の優先度。`sysworkq`、`net_mgmt` など）は 118 より上になりますが、NuttX には
+  他のスレッドに横取りされない協調スレッドが無く、より高い優先度のスレッドには横取りされます。
+  今の移植では使っていません。
+- `CONFIG_PRIORITY_INHERITANCE=y` です。ミューテックスは優先度継承あり、セマフォは既定で継承なし
+  （NuttX 13.1.0 の `sem_init()` は flags を 0 にします）なので、通知用のセマフォはそのままで継承しません。
+- RP2040 の NuttX には割り込み用のスタックが無く、割り込みは実行中のスレッドのスタックで動きます。
+  各スタックには割り込みの分の余裕が要ります（何もしていないときはアイドルスレッドのスタックです）。
+- スタックの番兵（`CONFIG_NANO_STACK_SENTINEL`。ボードの `Kconfig`、既定で有効）: Zephyr 版の
+  `CONFIG_STACK_SENTINEL` と同じく、各スタックの最下位のワード（`CONFIG_STACK_COLORATION` が書いた値）を、
+  スレッドの切り替えのとき（切り替えで外れるスレッド）と、割り込みハンドラーの出口ごと（割り込まれた
+  スレッド。ハンドラーはそのスタックで動いた）に確かめ、書き換わっていれば PANIC で止めます（報告は
+  RAM ログに入ります）。スケジューラーの計測用のフック 2 つ（切り替えの `sched_note_suspend()` と、
+  `irq_dispatch()` が各ハンドラーの前後で呼ぶ `sched_note_irqhandler()`。`src/nano_stackcheck.c`）で
+  行います。Cortex-M0+ では周辺の割り込みは `arm_doirq()` を通らず（`exception_direct()`）、
+  切り替えのフックだけでは割り込みの出口で確かめられないためです。割り込みはすべて同じ優先度で
+  入れ子にならないので、どの出口も Zephyr の「入れ子でない割り込みの出口」に当たります。NuttX の
+  `CONFIG_STACKCHECK_MARGIN` は切り替えのときにしか確かめず、`CONFIG_DEBUG_ASSERTIONS`（すべての
+  DEBUGASSERT）も要るので使いません。割り込み 1 回あたり約 1.0 µs 増えます（約 200 µs ごとの wdog、
+  毎秒 4999 回で、5 秒間のアイドルでない時間が 225.2 ms から 250.2 ms に。各 3 回）。
+- `ps` の STACK・USED・FILLED でスタックの使用量を見られます。
+
 ## テスト
 
 ```bash
@@ -240,7 +335,8 @@ nuttx/script/host_tests.sh
 OS に依存しない共通ソースのテストを、PC 上でビルドして実行します。ボードもセットアップスクリプトも
 不要で、ホストの `cc`（C17）だけを使います。FIFO ワードの解析、バッチとペイロード、送信キュー、
 status と info の JSON、時刻の対応付け、センサーの tick と時計の対応、NTP の推定、FIFO パケットの復号、物理単位への
-換算と校正値の保存形式、静止中のジャイロのゼロ点の追従、ボードの時間の換算（`nano_timeconv`）を
+換算と校正値の保存形式、静止中のジャイロのゼロ点の追従、ボードの時間の換算（`nano_timeconv`）、
+CPU 負荷の計算（`nano_cpuload`）、RAM ログのリング・`dmesg` の取り出し・行の前置き・頻度制限（`log_ram`）を
 確かめます。テストは 1 つずつビルドして
 実行し、失敗したところで止まります。ビルドの生成物は一時ディレクトリに置き、終了時に消します。
 
@@ -259,6 +355,12 @@ Zephyr 版を直したときは、写しも同じ内容に置き換えます。
 もの）と比べます。対象は 1 バイトずつの除算が正しい範囲の全数、境界値（0、99、100、2^32 前後、
 2^32×100 前後、2^63、2^64−1 など）の前後 300、最初の 10^7 µs の全数、2^32 の倍数 256 個の前後 2000、
 乱数 400 万個です。
+
+`nuttx/tests/nano_cpuload.c` と `nuttx/tests/log_ram.c` も NuttX 版だけのテストです。前者は
+`src/nano_cpuload.h` の計算を Zephyr の `cpu_load_get_cpu()` の手順（リセット、開いている区間、0 の扱い、
+切り捨て）と比べます。後者は `nuttx/drivers/log/log_ring.c` を、Zephyr 版の `log_ram.c` の 1 バイトずつの
+書き込みと乱数の書き込み 2 万回で比べ、行の前置きを Zephyr の `log_output.c` の時刻の計算と乱数 20 万個で
+比べ、`dmesg` の取り出し（上書き中の読み飛ばし、8192 バイトでの打ち切り）と頻度制限を確かめます。
 
 ドライバーの I2C・FIFO 制御・ストリーム処理と NINA を対象にするテストは、それらを移植するときに
 加えます。

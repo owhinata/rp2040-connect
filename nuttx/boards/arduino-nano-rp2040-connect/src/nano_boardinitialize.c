@@ -46,6 +46,10 @@
 
 #include "nano_connect.h"
 
+#ifdef CONFIG_NANO_LOG_RAM
+#  include "log_ram.h"
+#endif
+
 /****************************************************************************
  * Pre-processor Definitions
  ****************************************************************************/
@@ -88,6 +92,14 @@ void rp2040_boardinitialize(void)
   #endif
 
   /* --- Place any board specific initialization here --- */
+
+#ifdef CONFIG_NANO_LOG_RAM
+  /* The RAM log (and syslog channel) first, so the rest of the boot can
+   * log.  The TIMER (its time stamps) runs since rp2040_clockconfig().
+   */
+
+  log_ram_initialize();
+#endif
 
   /* Read the chip ID here, like rp2040_common_initialize() reads the flash
    * ID for board_uniqueid(): the flash command stops XIP, and nothing else

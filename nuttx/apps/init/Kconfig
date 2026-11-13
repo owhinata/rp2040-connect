@@ -39,11 +39,13 @@ config NANO_INIT_RETRY_MS
 
 config NANO_INIT_NSH_PRIORITY
 	int "nsh task priority"
-	default 100
+	default 104
 	---help---
 		Priority of the nsh session task.  The Zephyr build runs its shell
-		thread at the lowest application priority; 100 is below every
-		thread of the port (nuttx/PORTING_PLAN.md, "priorities").
+		thread at the lowest application priority,
+		K_LOWEST_APPLICATION_THREAD_PRIO (14), which is 104 here
+		(NANO_PRIO_SHELL in nuttx/drivers/include/priorities.h): below
+		every other thread of the port.
 
 config NANO_INIT_NSH_STACKSIZE
 	int "nsh task stack size"

@@ -9,14 +9,18 @@
 # Each subdirectory adds its sources from its own Make.defs, e.g.
 #   include nina/Make.defs
 # with "CSRCS += ...", "VPATH += :nina" and "DEPPATH += --dep-path nina".
-# lsm6dso/ is not built yet.  With no sources, libexternal.a is an empty
-# archive.
+# lsm6dso/ is not built yet.  include/ holds the headers shared with the
+# board code and the applications ($(TOPDIR)/external/include).
 ############################################################################
 
 include $(TOPDIR)/Make.defs
 
 ASRCS :=
 CSRCS :=
+
+include log/Make.defs
+
+CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)include
 
 AOBJS = $(ASRCS:.S=$(OBJEXT))
 COBJS = $(CSRCS:.c=$(OBJEXT))

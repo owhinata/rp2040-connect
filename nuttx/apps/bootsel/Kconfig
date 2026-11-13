@@ -22,7 +22,11 @@ if NANO_APP_BOOTSEL
 
 config NANO_APP_BOOTSEL_PRIORITY
 	int "bootsel task priority"
-	default 100
+	default 104
+	---help---
+		The shell's priority (NANO_PRIO_SHELL in
+		nuttx/drivers/include/priorities.h): the Zephyr build runs shell
+		commands in its shell thread.
 
 config NANO_APP_BOOTSEL_STACKSIZE
 	int "bootsel stack size"

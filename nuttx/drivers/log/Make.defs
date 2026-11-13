@@ -1,0 +1,12 @@
+############################################################################
+# nuttx/drivers/log/Make.defs
+#
+# The RAM log (log_ram.c) and its OS-independent part (log_ring.c), which
+# the host tests also build.  Included by nuttx/drivers/Makefile.
+############################################################################
+
+ifeq ($(CONFIG_NANO_LOG_RAM),y)
+CSRCS += log_ram.c log_ring.c
+DEPPATH += --dep-path log
+VPATH += :log
+endif
