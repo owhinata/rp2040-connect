@@ -1,0 +1,48 @@
+readline: Ctrl-C drops the line being typed and starts a new one
+
+Purpose: readline ignored Ctrl-C (0x03), so "abc", Ctrl-C, "uname" ran
+"abcuname".  Now, while readline echoes (RL_OPTION_ECHO), Ctrl-C moves the
+cursor to the end of the line, echoes a newline and returns an empty line;
+nsh then shows a new prompt.  The host tools send Ctrl-C right after they
+open the console to clear any half-typed line.
+Zephyr: subsys/shell/shell.c ctrl_metakeys_handle() (CTRL + C): cursor to
+the end, newline, new prompt, command buffer cleared, history browsing
+ended; the same on an empty line.
+
+diff --git a/system/readline/readline_common.c b/system/readline/readline_common.c
+index a2453a1..01bfd8a 100644
+--- a/system/readline/readline_common.c
++++ b/system/readline/readline_common.c
+@@ -1528,6 +1528,32 @@ ssize_t readline_common(FAR struct rl_common_s *vtbl, FAR char *buf,
+           return submit_line(buf, nch);
+         }
+ 
++#ifdef CONFIG_READLINE_ECHO
++      /* Ctrl-C: drop the line being typed, move to a new line and return
++       * an empty line, so that the caller shows a new prompt.  As the
++       * Zephyr shell does (subsys/shell/shell.c ctrl_metakeys_handle(),
++       * CTRL + C: cursor to the end of the line, newline, prompt with an
++       * empty command buffer; only while echo is on).
++       */
++
++      else if (ch == ASCII_ETX && (options & RL_OPTION_ECHO) != 0)
++        {
++#  ifdef CONFIG_READLINE_EDIT
++          while (cursor < nch)
++            {
++              cursor++;
++              RL_WRITE(vtbl, g_curright, sizeof(g_curright));
++            }
++#  endif
++
++          RL_PUTC(vtbl, '\n');
++#  ifdef CONFIG_READLINE_CMD_HISTORY
++          g_cmdhist.offset = 1;
++#  endif
++          return submit_line(buf, 0);
++        }
++#endif
++
+       /* Some callers use the conventional empty-line Ctrl-D as EOF. */
+ 
+       else if (ch == CTRL_D && (options & READLINE_CTRL_D_EOF) != 0 &&

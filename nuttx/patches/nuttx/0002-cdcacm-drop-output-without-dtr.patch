@@ -1,0 +1,141 @@
+cdcacm: drop output while the host has the port closed (DTR low)
+
+Purpose: output written while no program on the host has the port open
+waited in the device (TX buffer and bulk IN requests) and reached the next
+program that opened it.  After the device was enumerated again, Linux
+gives the new tty the default modes (ECHO on), so the waiting prompt was
+echoed back and became input: the first command failed with
+"nsh: nsh: command not found".  Now the TX buffer is dropped when DTR
+falls, and output is dropped while DTR is low, until the host raises DTR or
+sends data (a host that never raises DTR gets output after its first
+input).  Writers no longer block while the port is closed.  Up to
+CONFIG_CDCACM_NWRREQS requests already handed to the controller when DTR
+falls are not taken back.
+Zephyr: the Zephyr build does not deliver an old prompt to a new tty with
+ECHO on (usbd_cdc_acm.c holds the first data until the host has read a
+zero-length packet and 100 ms more, CONFIG_USBD_CDC_ACM_TX_DELAY_MS, so the
+host program can turn ECHO off first).  This patch reaches the same result
+by dropping what nobody reads.
+
+diff --git a/drivers/usbdev/cdcacm.c b/drivers/usbdev/cdcacm.c
+index 87671cf0..5914b973 100644
+--- a/drivers/usbdev/cdcacm.c
++++ b/drivers/usbdev/cdcacm.c
+@@ -107,6 +107,7 @@ struct cdcacm_dev_s
+ #endif
+   bool rxenabled;                      /* true: UART RX "interrupts" enabled */
+   bool ispolling;
++  bool rxseen;                         /* true: data received since DTR fell */
+   spinlock_t lock;
+ 
+   struct cdc_linecoding_s linecoding;  /* Buffered line status */
+@@ -406,6 +407,50 @@ static ssize_t cdcuart_sendbuf(FAR struct uart_dev_s *dev,
+   return nbytes;
+ }
+ 
++/****************************************************************************
++ * Name: cdcacm_txdiscard
++ *
++ * Description:
++ *   True while output is to be dropped instead of sent: the host has not
++ *   raised DTR (no program on the host has the port open) and has sent
++ *   nothing since DTR last fell.  Bulk IN data queued while the port is
++ *   closed would otherwise wait in the device and reach the next program
++ *   that opens the port, before that program could turn off the echo of
++ *   its tty, and be echoed back as input.  A host that never raises DTR
++ *   gets output once it has sent something (e.g. Enter).
++ *
++ ****************************************************************************/
++
++#ifndef CONFIG_CDCACM_DISABLE_TXBUF
++static bool cdcacm_txdiscard(FAR struct cdcacm_dev_s *priv)
++{
++  return (priv->ctrlline & CDCACM_UART_DTR) == 0 && !priv->rxseen;
++}
++#endif
++
++/****************************************************************************
++ * Name: cdcacm_dropxmit
++ *
++ * Description:
++ *   Drop everything in the serial TX buffer and wake up the writers.  Called
++ *   with priv->lock held.  Only with the TX buffer (CDCACM_DISABLE_TXBUF=n);
++ *   otherwise output is not dropped.
++ *
++ ****************************************************************************/
++
++static void cdcacm_dropxmit(FAR struct cdcacm_dev_s *priv)
++{
++#ifndef CONFIG_CDCACM_DISABLE_TXBUF
++  FAR struct uart_dev_s *dev = &priv->serdev;
++
++  if (dev->xmit.head != dev->xmit.tail)
++    {
++      dev->xmit.tail = dev->xmit.head;
++      uart_datasent(dev);
++    }
++#endif
++}
++
+ /****************************************************************************
+  * Name: cdcacm_sndpacket
+  *
+@@ -490,7 +535,11 @@ static int cdcacm_sndpacket(FAR struct cdcacm_dev_s *priv)
+    */
+ 
+   flags = spin_lock_irqsave(&priv->lock);
+-  if (!sq_empty(&priv->txfree))
++  if (cdcacm_txdiscard(priv))
++    {
++      cdcacm_dropxmit(priv);
++    }
++  else if (!sq_empty(&priv->txfree))
+     {
+       uart_xmitchars_dma(&priv->serdev);
+     }
+@@ -847,6 +896,11 @@ static void cdcacm_resetconfig(FAR struct cdcacm_dev_s *priv)
+       priv->nrdq = 0;
+     }
+ 
++  /* The host is gone: no DTR until it sets the control lines again. */
++
++  priv->ctrlline = 0;
++  priv->rxseen   = false;
++
+   /* Are we configured? */
+ 
+   if (priv->config != CDCACM_CONFIGIDNONE)
+@@ -1086,6 +1140,11 @@ static void cdcacm_rdcomplete(FAR struct usbdev_ep_s *ep,
+         flags = spin_lock_irqsave(&priv->lock);
+         rdcontainer->offset = 0;
+         sq_addlast((FAR sq_entry_t *)rdcontainer, &priv->rxpending);
++        if (req->xfrd > 0)
++          {
++            priv->rxseen = true;
++          }
++
+         spin_unlock_irqrestore(&priv->lock, flags);
+ 
+         /* Then process all pending RX packet starting at the head of the
+@@ -1892,7 +1951,21 @@ static int cdcacm_setup(FAR struct usbdevclass_driver_s *driver,
+                  * a zero length packet.
+                  */
+ 
++                irqstate_t flags = spin_lock_irqsave(&priv->lock);
++
++                if ((priv->ctrlline & CDCACM_UART_DTR) != 0 &&
++                    (value & CDCACM_UART_DTR) == 0)
++                  {
++                    /* The host closed the port: drop what is waiting
++                     * to be sent (see cdcacm_txdiscard()).
++                     */
++
++                    priv->rxseen = false;
++                    cdcacm_dropxmit(priv);
++                  }
++
+                 priv->ctrlline = value & 3;
++                spin_unlock_irqrestore(&priv->lock, flags);
+                 ret = 0;
+ 
+                 /* If there is a registered callback to receive control line

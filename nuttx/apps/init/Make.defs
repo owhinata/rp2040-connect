@@ -1,0 +1,10 @@
+############################################################################
+# nuttx/apps/init/Make.defs
+#
+# Read through nuttx/apps/Make.defs.  Adds this directory to the build when
+# CONFIG_NANO_APP_INIT is set.
+############################################################################
+
+ifneq ($(CONFIG_NANO_APP_INIT),)
+CONFIGURED_APPS += $(APPDIR)/external/init
+endif

@@ -23,7 +23,8 @@
 /* Derived from boards/arm/rp2040/raspberrypi-pico/src/rp2040_bringup.c
  * (NuttX 13.1.0), without the LED and button drivers (see
  * nano_boardinitialize.c).  rp2040_common_bringup() mounts /proc when
- * CONFIG_FS_PROCFS is set.
+ * CONFIG_FS_PROCFS is set.  Runs from board_late_initialize(), just before
+ * the init task starts (13.1.0 has no NSH_ARCHINIT/board_app_initialize).
  */
 
 /****************************************************************************
@@ -34,8 +35,13 @@
 
 #include <nuttx/debug.h>
 #include <stddef.h>
+#include <syslog.h>
 
 #include <nuttx/fs/fs.h>
+
+#ifdef CONFIG_CDCACM
+#  include <nuttx/usb/cdcacm.h>
+#endif
 
 #include <arch/board/board.h>
 
@@ -55,17 +61,43 @@
 
 int nano_bringup(void)
 {
+  int result = OK;
+  int ret;
+
 #ifdef CONFIG_ARCH_BOARD_COMMON
 
-  int ret = rp2040_common_bringup();
+  /* A failure here must not keep the console from being registered. */
+
+  ret = rp2040_common_bringup();
   if (ret < 0)
     {
-      return ret;
+      syslog(LOG_ERR, "ERROR: rp2040_common_bringup() failed: %d\n", ret);
+      result = ret;
     }
 
 #endif /* CONFIG_ARCH_BOARD_COMMON */
 
   /* --- Place any board specific bringup code here --- */
 
-  return OK;
+#ifdef CONFIG_CDCACM
+  /* The console: USB CDC ACM, /dev/ttyACM0 (minor 0).  It is not a NuttX
+   * console device (CDCACM_CONSOLE is off); the init task (nuttx/apps/init)
+   * opens it and runs nsh on it.  The serial number string must be ready
+   * before the host asks for the descriptors.
+   */
+
+#  ifdef CONFIG_BOARD_USBDEV_SERIALSTR
+  nano_usbserial_initialize();
+#  endif
+
+  ret = cdcacm_initialize(0, NULL);
+  if (ret < 0)
+    {
+      syslog(LOG_ERR, "ERROR: cdcacm_initialize() failed: %d\n", ret);
+      result = ret;
+    }
+#endif
+
+  UNUSED(ret);
+  return result;
 }

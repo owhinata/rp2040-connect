@@ -29,6 +29,12 @@ include $(TOPDIR)/Make.defs
 
 CSRCS = nano_boardinitialize.c
 CSRCS += nano_bringup.c
+CSRCS += nano_chipid.c
+CSRCS += nano_reset.c
+
+ifeq ($(CONFIG_BOARD_USBDEV_SERIALSTR),y)
+CSRCS += nano_usbserial.c
+endif
 
 DEPPATH += --dep-path board
 VPATH += :board

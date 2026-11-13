@@ -88,6 +88,13 @@ void rp2040_boardinitialize(void)
   #endif
 
   /* --- Place any board specific initialization here --- */
+
+  /* Read the chip ID here, like rp2040_common_initialize() reads the flash
+   * ID for board_uniqueid(): the flash command stops XIP, and nothing else
+   * runs yet.
+   */
+
+  nano_chip_id_initialize();
 }
 
 /****************************************************************************

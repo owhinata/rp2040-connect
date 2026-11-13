@@ -86,21 +86,60 @@ _nuttx_setup() {
     mv "${dir}.tmp" "$dir"
   }
 
-  # Apply patches/<name>/*.patch to a clone. A patch that already applies in
-  # reverse is treated as applied, so each patch goes in only once.
+  # Apply patches/<name>/*.patch to a clone, in name order.  What has been
+  # applied is recorded in the clone's .git/nano-patches/ (a copy of each
+  # applied patch and the list in "applied"), outside the work tree.  When
+  # the set of patches differs from the record (a patch added, removed or
+  # changed), the recorded patches are taken back in reverse order and the
+  # current ones applied.  A clone with local changes but no record is left
+  # alone (restore it with "git checkout -- ." first).
   _nuttx_patch() {  # clone patchdir
-    local dir=$1 pdir=$2 p
-    [[ -d "$pdir" ]] || return 0
+    local dir=$1 pdir=$2 rec p name want="" have="" i
+    local -a old=()
+    rec="${dir}/.git/nano-patches"
+    if [[ -d "$pdir" ]]; then
+      for p in "$pdir"/*.patch; do
+        [[ -f "$p" ]] || continue
+        want+="$(basename -- "$p") $(sha256sum < "$p" | cut -d' ' -f1)"$'\n'
+      done
+    fi
+    [[ -f "${rec}/applied" ]] && have="$(cat "${rec}/applied")"$'\n'
+    [[ "$have" == $'\n' ]] && have=""
+    [[ "$want" == "$have" ]] && return 0
+
+    if [[ ! -f "${rec}/applied" ]] && ! git -C "$dir" diff --quiet; then
+      printf '%s has local changes and no record of applied patches;\n' "$dir" >&2
+      printf 'restore it with "git -C %s checkout -- ." and source setup.sh again.\n' "$dir" >&2
+      return 1
+    fi
+
+    # Take back what is applied, last first.
+    if [[ -f "${rec}/applied" ]]; then
+      mapfile -t old < <(cut -d' ' -f1 "${rec}/applied")
+      for (( i = ${#old[@]} - 1; i >= 0; i-- )); do
+        name=${old[i]}
+        [[ -n "$name" ]] || continue
+        if ! git -C "$dir" apply --reverse "${rec}/${name}"; then
+          printf 'Cannot take back %s from %s; restore it with "git -C %s checkout -- ."\n' \
+            "$name" "$dir" "$dir" >&2
+          printf 'and remove %s, then source setup.sh again.\n' "$rec" >&2
+          return 1
+        fi
+        printf 'Reverted %s\n' "$name"
+      done
+    fi
+    rm -rf "$rec" && mkdir -p "$rec" && : > "${rec}/applied" || return 1
+
+    [[ -n "$want" ]] || return 0
     for p in "$pdir"/*.patch; do
       [[ -f "$p" ]] || continue
-      if git -C "$dir" apply --reverse --check "$p" >/dev/null 2>&1; then
-        continue
-      fi
+      name="$(basename -- "$p")"
       if ! git -C "$dir" apply --check "$p"; then
         printf 'Patch %s does not apply to %s.\n' "$p" "$dir" >&2
         return 1
       fi
-      git -C "$dir" apply "$p" || return 1
+      git -C "$dir" apply "$p" && cp -- "$p" "${rec}/${name}" || return 1
+      printf '%s %s\n' "$name" "$(sha256sum < "$p" | cut -d' ' -f1)" >> "${rec}/applied"
       printf 'Applied %s\n' "${p#"${root}/"}"
     done
   }

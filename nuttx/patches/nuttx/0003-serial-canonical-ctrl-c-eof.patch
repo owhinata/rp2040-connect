@@ -1,0 +1,46 @@
+serial: in canonical mode, ^C (without ISIG) and ^D end a read
+
+Purpose: a command that reads the console in canonical mode ("cat" with no
+file, "cat /dev/ttyACM0", dd) could not be ended from the terminal: the
+serial driver has no VEOF and, with ISIG off, ^C was an ordinary byte, so
+the shell never came back without re-enumerating the USB device.  Now ^D
+ends the read with what has been read (end-of-file at the start of a line,
+POSIX VEOF) and ^C, when ISIG is off, ends it as end-of-file.  Nothing is
+killed and no signal is sent.  readline() reads in non-canonical mode and
+still gets both bytes (it handles ^C itself).
+Zephyr: the Zephyr shell has no command that reads the console, so it
+always comes back; a Ctrl-C typed while a command runs is handled at the
+next prompt.  Builtin applications that do not read the console are not
+affected: their Ctrl-C stays in the buffer for the next prompt.
+
+diff --git a/drivers/serial/serial.c b/drivers/serial/serial.c
+index 772ea5eb..6aa6360f 100644
+--- a/drivers/serial/serial.c
++++ b/drivers/serial/serial.c
+@@ -1119,6 +1119,26 @@ static ssize_t uart_readv(FAR struct file *filep, FAR struct uio *uio)
+                 }
+             }
+ 
++          /* In canonical mode, ^D (VEOF) ends the read with what has been
++           * read so far (end-of-file when nothing has), and ^C without
++           * ISIG ends it as end-of-file, dropping a partial line.  So a
++           * command that reads the console (e.g. "cat" with no file) can
++           * always be ended from the terminal; readline() reads in
++           * non-canonical mode and sees both bytes as input.
++           */
++
++          if ((dev->tc_lflag & ICANON) != 0 &&
++              (ch == ASCII_EOT ||
++               (ch == ASCII_ETX && (dev->tc_lflag & ISIG) == 0)))
++            {
++              if (ch == ASCII_ETX)
++                {
++                  recvd = 0;
++                }
++
++              break;
++            }
++
+           if ((dev->tc_lflag & ICANON) &&
+               (ch == ASCII_BS || ch == ASCII_DEL))
+             {

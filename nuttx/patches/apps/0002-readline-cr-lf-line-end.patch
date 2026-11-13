@@ -1,0 +1,167 @@
+readline: end a line at CR or LF; CR LF and LF CR are one line end
+
+Purpose: readline ended a line only at LF, so a terminal's CR alone did
+nothing and CR LF needed the terminal driver to translate CR.  Now CR and
+LF each end a line and the second byte of a CR LF or LF CR pair is
+ignored, also when the next readline() call reads it (the state is kept
+per task, i.e. per shell session).  CR NUL from Telnet is one line end too
+(NUL is ignored as before).
+Zephyr: subsys/shell/shell.c process_nl() and state_collect(): CR, LF,
+CR LF and LF CR are each one Enter.
+
+diff --git a/system/readline/readline_common.c b/system/readline/readline_common.c
+index f300c89..a2453a1 100644
+--- a/system/readline/readline_common.c
++++ b/system/readline/readline_common.c
+@@ -26,11 +26,13 @@
+ 
+ #include <nuttx/config.h>
+ 
++#include <sched.h>
+ #include <stdbool.h>
+ #include <string.h>
+ #include <ctype.h>
+ #include <errno.h>
+ #include <assert.h>
++#include <unistd.h>
+ #include <nuttx/debug.h>
+ 
+ #include <nuttx/ascii.h>
+@@ -51,6 +53,10 @@
+ 
+ #define CTRL_D  4   /* ^D - EOF or delete at cursor */
+ 
++/* Number of tasks (sessions) whose line end state is kept */
++
++#define RL_NLSTATE_SLOTS 4
++
+ #ifdef CONFIG_READLINE_EDIT_EMACS
+ /* Additional Emacs-style control key codes */
+ 
+@@ -81,6 +87,16 @@ struct cmdhist_s
+ };
+ #endif /* CONFIG_READLINE_CMD_HISTORY */
+ 
++/* The line end that ended the last line read by a task, until a byte other
++ * than CR or LF is read (see rl_lastnl()).
++ */
++
++struct rl_nlstate_s
++{
++  pid_t pid;
++  char  last;
++};
++
+ /****************************************************************************
+  * Private Data
+  ****************************************************************************/
+@@ -121,10 +137,54 @@ static FAR const struct extmatch_vtable_s *g_extmatch_vtbl = NULL;
+ static struct cmdhist_s g_cmdhist;
+ #endif /* CONFIG_READLINE_CMD_HISTORY */
+ 
++static struct rl_nlstate_s g_nlstate[RL_NLSTATE_SLOTS];
++static int g_nlnext;
++
+ /****************************************************************************
+  * Private Functions
+  ****************************************************************************/
+ 
++/****************************************************************************
++ * Name: rl_lastnl
++ *
++ * Description:
++ *   Return the line end state of the calling task.  A line ends at CR or
++ *   at LF; the other one of a CR LF or LF CR pair is ignored, also when it
++ *   is read by the next readline() call.  So the state must outlive one
++ *   call, and it belongs to the input stream: each shell session (USB
++ *   console, Telnet) is its own task, so it is kept per task.  The last
++ *   RL_NLSTATE_SLOTS tasks are remembered.
++ *
++ ****************************************************************************/
++
++static FAR char *rl_lastnl(void)
++{
++  pid_t pid = getpid();
++  FAR char *last;
++  int i;
++
++  sched_lock();
++  for (i = 0; i < RL_NLSTATE_SLOTS; i++)
++    {
++      if (g_nlstate[i].pid == pid)
++        {
++          break;
++        }
++    }
++
++  if (i == RL_NLSTATE_SLOTS)
++    {
++      i = g_nlnext;
++      g_nlnext = (i + 1) % RL_NLSTATE_SLOTS;
++      g_nlstate[i].pid  = pid;
++      g_nlstate[i].last = '\0';
++    }
++
++  last = &g_nlstate[i].last;
++  sched_unlock();
++  return last;
++}
++
+ /****************************************************************************
+  * Name: count_builtin_matches
+  *
+@@ -870,6 +930,8 @@ ssize_t readline_common(FAR struct rl_common_s *vtbl, FAR char *buf,
+   int  savedcursor;
+ #endif
+ 
++  FAR char *lastnl;
++
+   /* Sanity checks */
+ 
+   DEBUGASSERT(buf && buflen > 0);
+@@ -893,6 +955,7 @@ ssize_t readline_common(FAR struct rl_common_s *vtbl, FAR char *buf,
+ 
+   escape = 0;
+   nch    = 0;
++  lastnl = rl_lastnl();
+ #ifdef CONFIG_READLINE_EDIT
+   cursor  = 0;
+ #endif
+@@ -909,6 +972,13 @@ ssize_t readline_common(FAR struct rl_common_s *vtbl, FAR char *buf,
+ 
+       int ch = RL_GETC(vtbl);
+ 
++      /* Any byte other than a line end ends a CR LF / LF CR pair. */
++
++      if (ch != '\r' && ch != '\n' && ch != EOF)
++        {
++          *lastnl = '\0';
++        }
++
+       /* Check for end-of-file or read error */
+ 
+       if (ch == EOF)
+@@ -1433,11 +1503,21 @@ ssize_t readline_common(FAR struct rl_common_s *vtbl, FAR char *buf,
+ 
+       /* Check for end-of-line.  This is tricky only in that some
+        * environments may return CR as end-of-line, others LF, and
+-       * others both.
++       * others both.  CR and LF each end a line; the second byte of a
++       * CR LF or LF CR pair is ignored, so CR, LF, CR LF and LF CR are one
++       * Enter each, and CR NUL (Telnet) is one too.  This is what the
++       * Zephyr shell does (subsys/shell/shell.c process_nl()).
+        */
+ 
+-      else if (ch == '\n')
++      else if (ch == '\r' || ch == '\n')
+         {
++          if (*lastnl != '\0' && *lastnl != ch)
++            {
++              continue;
++            }
++
++          *lastnl = (char)ch;
++
+ #ifdef CONFIG_READLINE_ECHO
+           if ((options & RL_OPTION_ECHO) != 0)
+             {

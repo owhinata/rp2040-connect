@@ -1,0 +1,21 @@
+cdcacm: no class-specific protocol on the communication interface
+
+Purpose: the CDC ACM communication interface reported bInterfaceProtocol 1
+(AT commands, V.250), which makes ModemManager treat the console as a modem
+candidate.  Report 0 (no class-specific protocol).
+Zephyr: the Zephyr build's CDC ACM communication interface uses protocol 0
+(subsys/usb/device_next/class/usbd_cdc_acm.c, bInterfaceProtocol = 0).
+
+diff --git a/drivers/usbdev/cdcacm_desc.c b/drivers/usbdev/cdcacm_desc.c
+index 40f3d785..d34bee87 100644
+--- a/drivers/usbdev/cdcacm_desc.c
++++ b/drivers/usbdev/cdcacm_desc.c
+@@ -600,7 +600,7 @@ int16_t cdcacm_mkcfgdesc(FAR uint8_t *buf,
+ #endif
+       dest->classid  = USB_CLASS_CDC;                        /* Interface class */
+       dest->subclass = CDC_SUBCLASS_ACM;                     /* Interface sub-class */
+-      dest->protocol = CDC_PROTO_ATM;                        /* Interface protocol */
++      dest->protocol = CDC_PROTO_NONE;                       /* Interface protocol */
+ #ifdef CONFIG_CDCACM_NOTIFSTR
+       dest->iif      = devinfo->strbase + CDCACM_NOTIFSTRID; /* iInterface */
+ #else

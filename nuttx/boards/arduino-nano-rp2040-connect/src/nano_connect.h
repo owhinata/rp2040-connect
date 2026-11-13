@@ -39,4 +39,16 @@
 
 int nano_bringup(void);
 
+/* nano_chipid.c: read the flash unique ID; from rp2040_boardinitialize(). */
+
+void nano_chip_id_initialize(void);
+
+/* nano_usbserial.c: build the USB serial number string from the chip ID;
+ * from nano_bringup() before the USB device is registered.
+ */
+
+#ifdef CONFIG_BOARD_USBDEV_SERIALSTR
+void nano_usbserial_initialize(void);
+#endif
+
 #endif /* __BOARDS_ARDUINO_NANO_RP2040_CONNECT_SRC_NANO_CONNECT_H */

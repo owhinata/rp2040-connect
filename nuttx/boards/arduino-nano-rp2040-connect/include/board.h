@@ -43,6 +43,7 @@
 
 #ifndef __ASSEMBLY__
 #  include <stdint.h>
+#  include <nuttx/compiler.h>
 #endif
 
 /****************************************************************************
@@ -93,12 +94,18 @@
 
 /* GPIO definitions *********************************************************/
 
-/* All numbers are RP2040 GPIO numbers.  Nothing here is configured by the
- * board code yet: the pins are reset defaults until the driver that owns
- * them sets them up.
+/* All numbers are RP2040 GPIO numbers.  Except for UART0, nothing here is
+ * configured by the board code yet: the pins are reset defaults until the
+ * driver that owns them sets them up.
  */
 
-/* UART0 (Arduino D1/D0), 115200 8N1 in the Zephyr board too. */
+/* UART0 (Arduino D1/D0), 115200 8N1 in the Zephyr board too.  Not the
+ * console (the console is USB CDC ACM, as in the Zephyr build).  The
+ * in-tree rp2040_common_earlyinitialize() gives GPIO0/1 to UART0 (Zephyr's
+ * pinctrl does the same); NuttX registers /dev/ttyS0 and programs the UART
+ * itself only when it is opened.  These defines must match
+ * CONFIG_RP2040_UART0_TX_GPIO/RX_GPIO (the defaults, 0 and 1).
+ */
 
 #define BOARD_UART0_TX_GPIO          0
 #define BOARD_UART0_RX_GPIO          1
@@ -167,6 +174,37 @@ void rp2040_boardearlyinitialize(void);
  ****************************************************************************/
 
 void rp2040_boardinitialize(void);
+
+/****************************************************************************
+ * Name: nano_chip_id
+ *
+ * Description:
+ *   Copy the chip ID to id: the 8-byte unique ID of the external flash
+ *   (command 0x4B), raw, in the order the flash sends it.  The same bytes
+ *   as hwinfo_get_device_id() in the Zephyr build; the USB serial number is
+ *   these bytes as 16 upper-case hexadecimal digits.  Read once at boot
+ *   (src/nano_chipid.c).
+ *
+ * Returned Value:
+ *   OK, or -EAGAIN if the ID has not been read yet.
+ *
+ ****************************************************************************/
+
+#define NANO_CHIP_ID_SIZE 8
+
+int nano_chip_id(uint8_t id[NANO_CHIP_ID_SIZE]);
+
+/****************************************************************************
+ * Name: nano_reset_usb_boot
+ *
+ * Description:
+ *   Reboot into the RP2040 USB bootloader (BOOTSEL, drive RPI-RP2) through
+ *   the boot ROM's reset_usb_boot(0, 0) (src/nano_reset.c).  The caller
+ *   flushes its output first.  Does not return.
+ *
+ ****************************************************************************/
+
+void nano_reset_usb_boot(void) noreturn_function;
 
 #undef EXTERN
 #if defined(__cplusplus)

@@ -1,0 +1,31 @@
+#
+# For a description of the syntax of this configuration file,
+# see the file kconfig-language.txt in the NuttX tools repository.
+#
+
+config NANO_APP_BOOTSEL
+	tristate "bootsel command (development)"
+	default y
+	depends on ARCH_BOARD_CUSTOM && ARCH_CHIP_RP2040
+	---help---
+		A development command: "bootsel" (no arguments) prints a message,
+		waits until the output has gone out, and reboots into the RP2040
+		USB bootloader (BOOTSEL: the RPI-RP2 drive) through the boot ROM's
+		reset_usb_boot(0, 0) (nano_reset_usb_boot() in the board code).
+		nuttx/script/flash.sh uses it to write a new UF2 without pressing
+		the RESET button.  With any argument it only prints its usage and
+		does nothing else, so "bootsel --help" does not reboot.  Turn it
+		off for a build that should not be put into the bootloader from
+		the shell.
+
+if NANO_APP_BOOTSEL
+
+config NANO_APP_BOOTSEL_PRIORITY
+	int "bootsel task priority"
+	default 100
+
+config NANO_APP_BOOTSEL_STACKSIZE
+	int "bootsel stack size"
+	default DEFAULT_TASK_STACKSIZE
+
+endif

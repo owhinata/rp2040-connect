@@ -1,0 +1,124 @@
+readline: echo the input in readline instead of in the terminal driver
+
+Purpose: while readline reads a line it turns off the terminal's ECHO (as
+it already turns off ICANON) and echoes itself only the characters it puts
+into the line, and the line end.  The serial driver echoes every printable
+byte and "\n" at the moment it is read, so it showed bytes readline drops
+and could not echo a line end that readline decides (CR, LF, CRLF).
+Zephyr: the shell echoes only what it inserts into its command buffer
+(subsys/shell/shell_ops.c data_insert) and a newline on Enter
+(shell.c state_collect).  Needed by the following readline patches.
+
+diff --git a/system/readline/readline.h b/system/readline/readline.h
+index c255a65..0356b67 100644
+--- a/system/readline/readline.h
++++ b/system/readline/readline.h
+@@ -42,6 +42,14 @@
+ #  define RL_WRITE(v,b,s) ((v)->rl_write(v,b,s))
+ #endif
+ 
++/* Internal option of readline_common(): the front end has turned off the
++ * terminal's ECHO while the line is read, so readline_common() echoes the
++ * characters it puts into the line and the line end itself (only what is
++ * really in the line is shown).
++ */
++
++#define RL_OPTION_ECHO  (1u << 31)
++
+ /****************************************************************************
+  * Public Type Declarations
+  ****************************************************************************/
+diff --git a/system/readline/readline_common.c b/system/readline/readline_common.c
+index 742759e..f300c89 100644
+--- a/system/readline/readline_common.c
++++ b/system/readline/readline_common.c
+@@ -1438,6 +1438,13 @@ ssize_t readline_common(FAR struct rl_common_s *vtbl, FAR char *buf,
+ 
+       else if (ch == '\n')
+         {
++#ifdef CONFIG_READLINE_ECHO
++          if ((options & RL_OPTION_ECHO) != 0)
++            {
++              RL_PUTC(vtbl, '\n');
++            }
++#endif
++
+           return submit_line(buf, nch);
+         }
+ 
+@@ -1607,6 +1614,11 @@ ssize_t readline_common(FAR struct rl_common_s *vtbl, FAR char *buf,
+ 
+               buf[cursor] = (char)ch; nch++; cursor++;
+ #  ifdef CONFIG_READLINE_ECHO
++              if ((options & RL_OPTION_ECHO) != 0)
++                {
++                  RL_PUTC(vtbl, ch);
++                }
++
+               if (cursor < nch)
+                 {
+                   redraw_tail(vtbl, buf, nch, cursor);
+@@ -1615,6 +1627,12 @@ ssize_t readline_common(FAR struct rl_common_s *vtbl, FAR char *buf,
+             }
+ #else
+           buf[nch++] = ch;
++#  ifdef CONFIG_READLINE_ECHO
++          if ((options & RL_OPTION_ECHO) != 0)
++            {
++              RL_PUTC(vtbl, ch);
++            }
++#  endif
+ #endif  /* CONFIG_READLINE_EDIT */
+ 
+           /* Check if there is room for another character and the line's
+diff --git a/system/readline/readline_fd.c b/system/readline/readline_fd.c
+index cc9d5cb..4300df8 100644
+--- a/system/readline/readline_fd.c
++++ b/system/readline/readline_fd.c
+@@ -36,6 +36,23 @@
+ #include "system/readline.h"
+ #include "readline.h"
+ 
++/****************************************************************************
++ * Pre-processor Definitions
++ ****************************************************************************/
++
++/* The terminal modes turned off while a line is read.  With ECHO the
++ * terminal driver would echo every printable character, and the line end,
++ * at the time it is read, even when readline drops the character or
++ * ignores the line end; readline_common() echoes instead
++ * (RL_OPTION_ECHO).
++ */
++
++#ifdef CONFIG_READLINE_ECHO
++#  define RL_TERMIOS_LFLAGS (ICANON | ECHO)
++#else
++#  define RL_TERMIOS_LFLAGS ICANON
++#endif
++
+ /****************************************************************************
+  * Private Types
+  ****************************************************************************/
+@@ -247,14 +264,20 @@ ssize_t readline_fd_ex(FAR char *buf, int buflen, int infd, int outfd,
+   ssize_t ret;
+ 
+   if (isatty(infd) && tcgetattr(infd, &cfg) == 0 &&
+-      (cfg.c_lflag & ICANON) != 0)
++      (cfg.c_lflag & RL_TERMIOS_LFLAGS) != 0)
+     {
+       newcfg = cfg;
+-      newcfg.c_lflag &= ~ICANON;
++      newcfg.c_lflag &= ~RL_TERMIOS_LFLAGS;
+ 
+       if (tcsetattr(infd, TCSANOW, &newcfg) == 0)
+         {
+           restore_termios = true;
++#ifdef CONFIG_READLINE_ECHO
++          if ((cfg.c_lflag & ECHO) != 0)
++            {
++              options |= RL_OPTION_ECHO;
++            }
++#endif
+         }
+     }
+ 

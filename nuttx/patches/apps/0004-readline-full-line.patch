@@ -1,0 +1,89 @@
+readline: drop characters when the line is full instead of splitting it
+
+Purpose: when the line buffer was full, readline returned the line at once
+and the rest of the input became the next command (a 600-character line
+ran as two commands).  Now characters that do not fit are dropped, without
+echo, until the line ends, and the first part is returned on Enter.  The
+room for the line end and the NUL that submit_line() adds is kept also on
+history recall and Tab completion (they could fill the whole buffer and
+submit_line() then wrote one byte past it).  With a buffer of N bytes the
+longest line is N - 2 characters (the board sets LINE_MAX=513: 511).
+Zephyr: subsys/shell/shell_ops.c data_insert() ignores input once
+cmd_buff_len + 1 >= CONFIG_SHELL_CMD_BUFF_SIZE (512): 511 characters.
+
+diff --git a/system/readline/readline_common.c b/system/readline/readline_common.c
+index 01bfd8a..14d2528 100644
+--- a/system/readline/readline_common.c
++++ b/system/readline/readline_common.c
+@@ -1329,7 +1329,7 @@ ssize_t readline_common(FAR struct rl_common_s *vtbl, FAR char *buf,
+ 
+                       for (i = 0;
+                            g_cmdhist.buf[idx][i] != '\0' &&
+-                           nch + 1 < buflen;
++                           nch + 2 < buflen;
+                            i++)
+                         {
+                           buf[nch++] = g_cmdhist.buf[idx][i];
+@@ -1705,12 +1705,14 @@ ssize_t readline_common(FAR struct rl_common_s *vtbl, FAR char *buf,
+             }
+ 
+           /* Only insert if there is room for the new character plus
+-           * the line's null terminator.  Checking this before writing
+-           * (rather than only after, as the non-editing path below
+-           * does) is what actually prevents the out-of-bounds write.
++           * the line end and the null terminator that submit_line()
++           * adds.  When the line is full, further characters are dropped
++           * (and not echoed) until the line ends, as in the Zephyr shell
++           * (subsys/shell/shell_ops.c data_insert()): with a buffer of
++           * N bytes the longest line is N - 2 characters.
+            */
+ 
+-          if (nch + 1 < buflen)
++          if (nch + 2 < buflen)
+             {
+               int j;
+               for (j = nch; j > cursor; j--)
+@@ -1732,24 +1734,17 @@ ssize_t readline_common(FAR struct rl_common_s *vtbl, FAR char *buf,
+ #  endif
+             }
+ #else
+-          buf[nch++] = ch;
+-#  ifdef CONFIG_READLINE_ECHO
+-          if ((options & RL_OPTION_ECHO) != 0)
++          if (nch + 2 < buflen)
+             {
+-              RL_PUTC(vtbl, ch);
+-            }
++              buf[nch++] = ch;
++#  ifdef CONFIG_READLINE_ECHO
++              if ((options & RL_OPTION_ECHO) != 0)
++                {
++                  RL_PUTC(vtbl, ch);
++                }
+ #  endif
+-#endif  /* CONFIG_READLINE_EDIT */
+-
+-          /* Check if there is room for another character and the line's
+-           * null terminator.  If not then we have to end the line now.
+-           */
+-
+-          if (nch + 1 >= buflen)
+-            {
+-              buf[nch] = '\0';
+-              return nch;
+             }
++#endif  /* CONFIG_READLINE_EDIT */
+         }
+ #ifdef CONFIG_READLINE_TABCOMPLETION
+       else if (ch == '\t') /* TAB character */
+@@ -1760,7 +1755,9 @@ ssize_t readline_common(FAR struct rl_common_s *vtbl, FAR char *buf,
+            * leave 'cursor' unchanged to preserve its current position.
+            */
+ 
+-          if (tab_completion(vtbl, buf, buflen, &nch))
++          /* Leave room for the line end added by submit_line(). */
++
++          if (tab_completion(vtbl, buf, buflen - 1, &nch))
+ #  ifdef CONFIG_READLINE_EDIT
+             {
+               cursor = nch;

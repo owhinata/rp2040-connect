@@ -1,0 +1,56 @@
+#
+# For a description of the syntax of this configuration file,
+# see the file kconfig-language.txt in the NuttX tools repository.
+#
+
+config NANO_APP_INIT
+	bool "Init task: nsh on the USB CDC ACM console"
+	default n
+	depends on NSH_LIBRARY && NSH_CONSOLE && CDCACM && !CDCACM_CONSOLE && !NSH_USBCONSOLE
+	depends on SCHED_WAITPID
+	---help---
+		The first task (CONFIG_INIT_ENTRYPOINT="nano_init_main").  It is
+		linked into libapps as a plain function, not as a builtin, so it
+		cannot be started from the shell.  It calls nsh_initialize() once,
+		then repeatedly opens the USB console (NANO_INIT_CONSOLE), sets the
+		terminal modes, makes it fd 0/1/2 and runs an nsh session on it in
+		its own task until the session ends (USB disconnected), then opens
+		the console again.  NuttX's own USB console front end
+		(NSH_USBCONSOLE, CDCACM_CONSOLE) waits for three Enter keys before
+		the first prompt and is not used.
+
+if NANO_APP_INIT
+
+config NANO_INIT_CONSOLE
+	string "Console device"
+	default "/dev/ttyACM0"
+	---help---
+		The CDC ACM device registered by the board (cdcacm_initialize(0)
+		in nano_bringup.c).
+
+config NANO_INIT_RETRY_MS
+	int "Retry interval (ms)"
+	default 100
+	---help---
+		How long to wait before trying again while the console cannot be
+		opened (USB not configured: -ENOTCONN) or is disconnected, and
+		after a session has ended.  Keeps a USB cable that is unplugged or
+		a host that suspends the device from turning into a busy loop.
+
+config NANO_INIT_NSH_PRIORITY
+	int "nsh task priority"
+	default 100
+	---help---
+		Priority of the nsh session task.  The Zephyr build runs its shell
+		thread at the lowest application priority; 100 is below every
+		thread of the port (nuttx/PORTING_PLAN.md, "priorities").
+
+config NANO_INIT_NSH_STACKSIZE
+	int "nsh task stack size"
+	default 3072
+	---help---
+		Stack of the nsh session task: nsh's own commands (ps, free, ...)
+		run on it.  Builtin applications run as separate tasks with their
+		own stacks.  3072 is CONFIG_SHELL_STACK_SIZE of the Zephyr build.
+
+endif
