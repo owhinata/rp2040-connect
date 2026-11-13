@@ -7,7 +7,8 @@
 /* NuttX port: a copy of zephyr/app/usb-console/src/imu_stream.c with only the
  * system calls replaced (nuttx/drivers/compat, the Zephyr compatibility
  * layer, keeps the Zephyr names) and the shell registration at the end made
- * a builtin "imu" command on nuttx/apps/subcmd. NuttX's headers come first:
+ * a builtin "imu" command on nuttx/apps/subcmd, and PRId32 for the int32_t in
+ * cmd_start()'s message (long on NuttX's arm). NuttX's headers come first:
  * the layer's <zephyr/sys/atomic.h> takes over NuttX's atomic names. */
 #include <nuttx/config.h>
 #include <stdio.h>
@@ -712,7 +713,7 @@ static int cmd_start(const struct shell *sh, size_t argc, char **argv)
 	} else {
 		strcpy(address, "the default gateway");
 	}
-	shell_print(sh, "Streaming %d Hz to %s, port %u, as imu/%s/raw", odr.val1, address,
+	shell_print(sh, "Streaming %" PRId32 " Hz to %s, port %u, as imu/%s/raw", odr.val1, address,
 		    cfg->port, cfg->device_id);
 	k_sem_give(&start_request);
 	return 0;

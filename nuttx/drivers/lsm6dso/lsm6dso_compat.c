@@ -5,8 +5,8 @@
  */
 /* The Zephyr build's drivers/lsm6dso/lsm6dso_compat.c with only the system
  * parts replaced: <zephyr/logging/log.h> and CONFIG_SENSOR_LOG_LEVEL (3)
- * become app_log.h and LSM6DSO_COMPAT_LOG_LEVEL (3); <inttypes.h> for
- * PRIu32.  The Zephyr names it uses come from the port's compatibility
+ * become app_log.h and LSM6DSO_COMPAT_LOG_LEVEL (3); <inttypes.h>, and
+ * PRIu32/PRId32 for two uint32_t/q31_t log arguments (long on NuttX's arm).  The Zephyr names it uses come from the port's compatibility
  * layer (nuttx/drivers/compat).
  */
 #ifdef __NuttX__
@@ -126,7 +126,7 @@ static void sensor_submit_fallback_sync(struct rtio_iodev_sqe *iodev_sqe)
 	/* Get the buffer for the frame, it may be allocated dynamically by the rtio context */
 	rc = rtio_sqe_rx_buf(iodev_sqe, min_buf_len, min_buf_len, &buf, &buf_len);
 	if (rc != 0) {
-		LOG_WRN("Failed to get a read buffer of size %u bytes", min_buf_len);
+		LOG_WRN("Failed to get a read buffer of size %" PRIu32 " bytes", min_buf_len);
 		rtio_iodev_sqe_err(iodev_sqe, rc);
 		return;
 	}
@@ -235,7 +235,7 @@ static void sensor_submit_fallback_sync(struct rtio_iodev_sqe *iodev_sqe)
 			q[sample_idx + sample] =
 				((value_u * (INT64_C(1) << 31)) / 1000000) >> header->shift;
 
-			LOG_DBG("value[%d]=%s%d.%06d, q[%d]@%p=%d, shift: %d",
+			LOG_DBG("value[%d]=%s%d.%06d, q[%d]@%p=%" PRId32 ", shift: %d",
 				sample, value_u < 0 ? "-" : "",
 				abs((int)value[sample].val1), abs((int)value[sample].val2),
 				(int)(sample_idx + sample), (void *)&q[sample_idx + sample],
