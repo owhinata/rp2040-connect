@@ -6,7 +6,7 @@
 config NANO_APP_KV
 	tristate "kv command (key-value store)"
 	default y
-	depends on NANO_KV_STORE
+	depends on NANO_KV_STORE && NANO_SUBCMD
 	---help---
 		"kv set|sethex|get|delete": the Zephyr build's kv command
 		(src/kv_store.c) with the same syntax and messages, on the

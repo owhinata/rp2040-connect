@@ -1,0 +1,14 @@
+############################################################################
+# nuttx/drivers/nina/Make.defs
+#
+# The NINA-W102 SPI link (nina_spi.c, a port of the Zephyr build's
+# drivers/nina/nina_wifi.c) and its kernel services (nina_os.c).  The
+# board provides the pins and the SPI bus (nano_nina.c, <nano_nina.h>).
+# Included by nuttx/drivers/Makefile.
+############################################################################
+
+ifeq ($(CONFIG_NANO_NINA),y)
+CSRCS += nina_spi.c nina_os.c
+DEPPATH += --dep-path nina
+VPATH += :nina
+endif

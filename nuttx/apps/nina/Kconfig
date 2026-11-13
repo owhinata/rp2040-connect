@@ -1,0 +1,33 @@
+#
+# For a description of the syntax of this configuration file,
+# see the file kconfig-language.txt in the NuttX tools repository.
+#
+
+config NANO_APP_NINA
+	tristate "nina command (NINA-W102 module)"
+	default y
+	depends on NANO_NINA && NANO_SUBCMD
+	---help---
+		"nina version": the Zephyr build's nina command
+		(src/main.c, cmd_nina_version()) with the same output, on
+		nina_request() of nuttx/drivers/nina (NANO_NINA).
+
+if NANO_APP_NINA
+
+config NANO_APP_NINA_PRIORITY
+	int "nina task priority"
+	default 104
+	---help---
+		The shell's priority (NANO_PRIO_SHELL in
+		nuttx/drivers/include/priorities.h): the Zephyr build runs shell
+		commands in its shell thread, and nina_request() runs the SPI
+		transfer at the caller's priority.
+
+config NANO_APP_NINA_STACKSIZE
+	int "nina stack size"
+	default 3072
+	---help---
+		The Zephyr build runs the command on the shell thread's stack
+		(CONFIG_SHELL_STACK_SIZE 3072).
+
+endif

@@ -1,0 +1,10 @@
+############################################################################
+# nuttx/apps/nina/Make.defs
+#
+# Read through nuttx/apps/Make.defs.  Adds this directory to the build when
+# CONFIG_NANO_APP_NINA is set.
+############################################################################
+
+ifneq ($(CONFIG_NANO_APP_NINA),)
+CONFIGURED_APPS += $(APPDIR)/external/nina
+endif

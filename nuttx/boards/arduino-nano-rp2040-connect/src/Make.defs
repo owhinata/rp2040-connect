@@ -58,6 +58,12 @@ ifeq ($(CONFIG_NANO_FLASH_KV),y)
 CSRCS += nano_flash_kv.c
 endif
 
+# SPI1 and the lines of the NINA-W102 (nuttx/drivers/nina uses them).
+
+ifeq ($(CONFIG_NANO_NINA),y)
+CSRCS += nano_nina.c
+endif
+
 # The stack sentinel in the scheduler's switch hook.
 
 ifeq ($(CONFIG_NANO_STACK_SENTINEL),y)
@@ -69,6 +75,6 @@ VPATH += :board
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)arch$(DELIM)$(CONFIG_ARCH)$(DELIM)src$(DELIM)board$(DELIM)board
 
 # Headers shared with nuttx/drivers and the applications (app_log.h,
-# log_ram.h, cpu_load.h, priorities.h): nuttx/drivers/include.
+# log_ram.h, cpu_load.h, priorities.h, nano_nina.h): nuttx/drivers/include.
 
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)include

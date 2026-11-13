@@ -1,0 +1,14 @@
+#
+# For a description of the syntax of this configuration file,
+# see the file kconfig-language.txt in the NuttX tools repository.
+#
+
+config NANO_SUBCMD
+	bool "Subcommand dispatch with the Zephyr shell's output"
+	default y
+	---help---
+		subcmd.c: subcmd_main(), the subcommand sets, help, "wrong
+		parameter count" and wildcard rules of the Zephyr shell
+		(SHELL_CMD(), SHELL_CMD_ARG(), SHELL_CMD_REGISTER()), shared by
+		the port's commands (kv, nina, ...).  Built into the application
+		library.

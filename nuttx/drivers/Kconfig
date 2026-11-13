@@ -5,8 +5,8 @@
 # Kernel-side code of the Nano RP2040 Connect port.  nuttx/nuttx/external is
 # a symlink to this directory; NuttX sources this file at the end of its
 # top-level Kconfig (outside any menu) and links libexternal.a built by
-# ./Makefile.  Later tasks add their options here (for example
-# 'rsource "nina/Kconfig"').
+# ./Makefile.  Each subdirectory with options has its own Kconfig, sourced
+# at the end of this file.
 #
 
 config NANO_LOG_RAM
@@ -42,3 +42,5 @@ config NANO_LOG_MAX_LEVEL
 		build: CONFIG_LOG_MAX_LEVEL=4.
 
 endif # NANO_LOG_RAM
+
+rsource "nina/Kconfig"

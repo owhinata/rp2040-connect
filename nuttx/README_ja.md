@@ -4,7 +4,8 @@
 
 `zephyr/app/usb-console` の IMU 測定ファームウェアを NuttX 13.1.0 に移植したものを置くディレクトリです。
 現在は移植中です。今あるのは、環境構築、OS に依存しない共通ソースのホストテスト、ボード定義とその
-ビルド、USB コンソールと書き込みスクリプト、RAM ログ、キーと値の保存（`kv`）です。ファームウェアは
+ビルド、USB コンソールと書き込みスクリプト、RAM ログ、キーと値の保存（`kv`）、NINA-W102 との SPI の
+やり取り（`nina version`）です。ファームウェアは
 起動して USB コンソール（CDC ACM）に nsh のプロンプトを出すところまでで、測定の機能はまだありません。
 
 ## 環境構築
@@ -252,7 +253,7 @@ Zephyr 版の `storage_partition` と同じ場所です。API とコマンドは
   `<inf> fs_nvs: 2 Sectors of 4096 bytes` だけが出ます（Zephyr 版の起動時の `fs_nvs` の 1 行目と同じ。
   2・3 行目の書き込み位置は出しません）。値は引き継がれないので、下の手順で退避して書き戻します。
   NuttX 版の後で Zephyr 版に戻したときの Zephyr 版の動作は確かめていません。
-- コマンド（優先度 104、スタック 3072）:
+- コマンド（優先度 104、スタック 3072。サブコマンドの扱いは下の「コマンドのサブコマンド」）:
 
   ```
   kv set <キー> <文字列>       文字列をそのまま保存
@@ -289,6 +290,21 @@ Zephyr 版の `storage_partition` と同じ場所です。API とコマンドは
   が行うので、どのスレッドからも呼べます。`/dev/config` はボードが起動時に用意し、init が Zephyr 版の
   `main()` と同じ位置で `kv_store_init()` を呼びます（失敗すると `Could not initialize settings: <値>`）。
 
+### コマンドのサブコマンド
+
+`kv`・`nina` など、この移植のサブコマンドを持つコマンドは、共通の部品 `nuttx/apps/subcmd/`
+（`subcmd_main()`）で、Zephyr のシェルと同じ出力にしています。Zephyr の `SHELL_CMD()`（引数の数を検査しない）は
+`SUBCMD()`、`SHELL_CMD_ARG()`（必須と省略可の数）は `SUBCMD_ARG()` で表します。
+
+- コマンドだけ、または知らない語: 一番深く一致したコマンドのヘルプ（`<名前> - <説明>`、`Subcommands:`、
+  各サブコマンドの行）。
+- 引数の数が違う: `<サブコマンド>: wrong parameter count`（標準エラー）とそのサブコマンドのヘルプ。
+- サブコマンドの直後の語に `*` か `?` があり、どのサブコマンドにも一致しないときは、Zephyr のシェルと
+  同じくそこで語の読み取りを止めます（`kv get a*` は引数の数の誤り、`nina version *` は `nina version`）。
+  一致するサブコマンドがあるとき（Zephyr のシェルは名前に展開する）は再現せず、知らない語として扱います。
+- `-h`・`--help` はふつうの語です（Zephyr 版と同じ）。ヘルプの行は 80 桁で折り返しません。
+- 終了状態は、成功で 0、失敗・ヘルプ・引数の誤りで 1 です。
+
 ### Zephyr 版からの移し替え
 
 ```bash
@@ -301,6 +317,54 @@ host/.venv/bin/python script/kv_transfer.py restore --usb --no-wifi
 `restore` は `kv sethex` で書き、`kv get` で読み返して確かめます（`imu.session` は書き戻しません）。
 校正値を書いた後に `imu cal reload` を送るので、`imu` コマンドがまだ無い今の NuttX 版では、書き込みと
 読み返しが済んだ後、そこでエラーになって終わります。
+
+## NINA-W102（`nina`）
+
+Wi-Fi モジュール NINA-W102 とは SPI1 でやり取りします。NINA のファームウェアは Zephyr 版と同じもの
+（Arduino の NINA ファームウェア 3.0.2 に修正を当てたもの、`firmware/nina-fw/README.md`）で、書き換えません。
+今あるのは、コマンドを 1 つ送って応答を受け取る転送層（`nina_request()`、`nina_ip_config()`）と
+`nina version` です。Wi-Fi の接続とソケットはまだありません。
+
+```
+nsh$ nina version
+NINA firmware: 3.0.2
+```
+
+- `nina version` は Zephyr 版と同じ出力です。失敗すると `NINA version request failed: <値>` を標準エラー
+  （同じコンソール）に出し、終了状態は 1 です。`nina` だけ、または知らない語ではヘルプを出します。
+  `version` は Zephyr 版と同じく引数の数を検査しないので、余分な語は無視します（優先度 104、スタック 3072）。
+- 配線（ボードの `include/board.h` の `BOARD_NINA_*`。Zephyr のボード定義
+  `arduino_nano_connect.dts` と同じ）:
+
+  | 信号 | GPIO | 設定 |
+  |---|---|---|
+  | SCK | 14 | SPI1。プルなし、4 mA、スルーレート低速、シュミットトリガーなし |
+  | MOSI（TX） | 11 | 同上 |
+  | MISO（RX） | 8 | 同上、入力有効 |
+  | CS | 9 | GPIO の出力、active low。プルなし。起動時に非アクティブ（high） |
+  | READY | 10 | GPIO の入力、active low、プルアップ |
+  | RESET | 3 | GPIO の出力、active low。プルなし |
+  | IRQ（NINA の GPIO0） | 2 | プルダウン。リセット中は high を出力し、その後は入力 |
+
+- SPI: モード 0（CPOL 0、CPHA 0）、8 ビット、MSB が先、`CONFIG_NANO_NINA_SPI_FREQUENCY`（既定 8000000。
+  Zephyr 版の `CONFIG_NINA_SPI_FREQUENCY`）。PL022 は clk_peri（125 MHz）を偶数で割るので、実際は
+  7.8125 MHz です（Zephyr 版も同じ値）。NuttX の SPI1 ドライバー（`rp2040_spi.c`）をポーリングで使います
+  （Zephyr 版も割り込み・DMA なし）。`CONFIG_RP2040_SPI_DMA` は切ってあります（有効だと 4 バイトを超える
+  転送が DMA になり、その完了待ちに期限がありません）。CS は SPI ドライバーではなく転送層が GPIO で動かし、
+  応答を待つ間も保持します。SPI1 の `/dev/spi1` は作りません（`CONFIG_RP2040_SPI_DRIVER` なし）。
+- NINA の初期化は Zephyr 版と同じく最初の要求のときに行います: CS を非アクティブ、READY を入力、IRQ を
+  high、RESET をアクティブにし、10 ms 後にリセットを解き、750 ms 待ってから IRQ を low にして入力に戻します。
+  そのため起動（書き込み・`reboot`）後の最初の `nina version` は約 0.76 秒かかります（実機で 761 ms。
+  2 回目以降は約 0.6〜0.7 ms）。起動時にはボードが SPI1 とそのピン、CS だけを用意します。
+- 要求の手順と値は Zephyr 版の `drivers/nina/nina_wifi.c` と同じです（`nuttx/drivers/nina/nina_spi.c`）。
+  READY を 100 µs ごと（tick に切り上げて 1 tick 足すので、実際は 100〜200 µs ごと）に見て、送信前は
+  2000 ms、CS を下げてから NINA が READY を戻すまで 20 ms、応答の準備は 10000 ms で `-ETIMEDOUT`。
+  応答の先頭（0xE0）は最大 1000 バイト探します。要求は再帰可能なミューテックス（優先度継承あり）で
+  直列化し、呼び出したスレッドの優先度で SPI を動かします。
+- 実測（実機、TIMER で測定。`nina_request(0x37)` を間を置かずに 1000 回）: 要求 1 回は平均 591 µs
+  （最小 427、最大 697）、CPU 時間は約 360 µs（`cpu_load_get()` の差から）。1 バイトの転送は 1 回あたり
+  約 5.1 µs、まとめての転送は 1 バイトあたり読み出し 1.26 µs・書き込み 1.22 µs（線上の 8 ビットは 1.02 µs）。
+  READY を 1 回見るたびの待ちは約 200 µs、その CPU 時間は約 50 µs です。
 
 ## システム時計
 
@@ -410,7 +474,8 @@ status と info の JSON、時刻の対応付け、センサーの tick と時�
 換算と校正値の保存形式、静止中のジャイロのゼロ点の追従、ボードの時間の換算（`nano_timeconv`）、
 CPU 負荷の計算（`nano_cpuload`）、RAM ログのリング・`dmesg` の取り出し・行の前置き・頻度制限（`log_ram`）、
 KV 領域の範囲の検査・ページ単位の書き込み・起動時の内容の判定（`nano_flash_kv`）、KV のキーの規則
-（`kv_name`）と `kv` コマンドの 16 進数の変換（`kv_hex`）を確かめます。テストは 1 つずつビルドして
+（`kv_name`）と `kv` コマンドの 16 進数の変換（`kv_hex`）、コマンドのサブコマンドの扱い（`subcmd`）、
+NINA の SPI の転送層（`nina_spi`）を確かめます。テストは 1 つずつビルドして
 実行し、失敗したところで止まります。ビルドの生成物は一時ディレクトリに置き、終了時に消します。
 
 次のファイルは Zephyr 版（`zephyr/app/usb-console`）の同名ファイルを変更せずに写したものです。
@@ -443,5 +508,13 @@ Zephyr 版を直したときは、写しも同じ内容に置き換えます。
 `kv_store.c` から分けたキーの検査（`apps/imu/kv_name.c`）を、`kv_hex` は Zephyr の `lib/utils/hex.c` の
 写し（`apps/kv/kv_hex.c`）を確かめます。
 
-ドライバーの I2C・FIFO 制御・ストリーム処理と NINA を対象にするテストは、それらを移植するときに
-加えます。
+`nuttx/tests/subcmd.c` は `apps/subcmd/subcmd.c` を、`kv` と `nina` の表（Zephyr 版の記録した出力と同じ
+ヘルプ）、入れ子の表、省略可の引数で確かめます。`nuttx/tests/nina_spi.c` は `drivers/nina/nina_spi.c` を、
+偽の SPI・GPIO・時計・ロックで確かめます。Zephyr 版の `tests/nina_spi.c` の項目（広いパラメーターと詰め、
+まとめての転送、0x75・0x7a の 3 つの応答パラメーター、長さの検査、転送の失敗）に加えて、狭いパラメーター、
+版の要求、応答の先頭探し（1000 バイト）、各 `-EPROTO`・`-EMSGSIZE`・`-EINVAL`、0x27、`nina_ip_config()`
+（0x21）、READY の期限（2000・20・10000 ms を 100 µs ごとに見る回数）、最初の要求のリセット手順、CS と
+転送の順序、ロックを確かめます。
+
+ドライバーの I2C・FIFO 制御・ストリーム処理と、NINA の Wi-Fi・ソケットを対象にするテストは、それらを
+移植するときに加えます。

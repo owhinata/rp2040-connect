@@ -47,6 +47,10 @@
 
 #include "nano_connect.h"
 
+#ifdef CONFIG_NANO_NINA
+#  include "nano_nina.h"
+#endif
+
 #ifdef CONFIG_ARCH_BOARD_COMMON
 #include "rp2040_common_bringup.h"
 #endif /* CONFIG_ARCH_BOARD_COMMON */
@@ -89,6 +93,20 @@ int nano_bringup(void)
   ret = nano_flash_kv_initialize();
   if (ret < 0)
     {
+      result = ret;
+    }
+#endif
+
+#ifdef CONFIG_NANO_NINA
+  /* SPI1 to the NINA-W102 and its chip select.  The Zephyr build sets up
+   * spi1 (and drives cs-gpios inactive) at boot; the module itself is
+   * reset on the first request (nuttx/drivers/nina/nina_spi.c).
+   */
+
+  ret = nano_nina_initialize();
+  if (ret < 0)
+    {
+      syslog(LOG_ERR, "ERROR: nano_nina_initialize() failed: %d\n", ret);
       result = ret;
     }
 #endif

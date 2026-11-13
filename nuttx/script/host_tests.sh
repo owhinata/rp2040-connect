@@ -49,3 +49,7 @@ run nano_flash_kv -Iboards/arduino-nano-rp2040-connect/src
 # strnlen() is POSIX, not C17.
 run kv_name -D_POSIX_C_SOURCE=200809L "$imu/kv_name.c"
 run kv_hex -Iapps/kv apps/kv/kv_hex.c
+# Subcommand dispatch with the Zephyr shell's output (kv, nina, ...).
+run subcmd -Iapps/subcmd apps/subcmd/subcmd.c
+# NINA SPI link: framing, answers, READY timeouts, reset sequence, CS order (fake board and clock).
+run nina_spi -Idrivers/include -Idrivers/nina

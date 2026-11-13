@@ -1,0 +1,32 @@
+#
+# For a description of the syntax of this configuration file,
+# see the file kconfig-language.txt in the NuttX tools repository.
+#
+
+config NANO_NINA
+	bool "NINA-W102 SPI link (nina_request())"
+	default y
+	depends on RP2040_SPI1 && !RP2040_SPI_DMA
+	---help---
+		nina/nina_spi.c: nina_request() and nina_ip_config() of the
+		Zephyr build's drivers/nina/nina_wifi.c (the WiFiNINA SPI
+		protocol of the module's Arduino firmware), with the same
+		framing, timeouts, error values and lazy initialization (the
+		module is reset on the first request).  The board provides SPI1
+		and the module's lines (src/nano_nina.c).  SPI1 is polled, as in
+		the Zephyr build (CONFIG_SPI_PL022_INTERRUPT and _DMA off), so
+		RP2040_SPI_DMA must be off.
+
+if NANO_NINA
+
+config NANO_NINA_SPI_FREQUENCY
+	int "NINA SPI frequency in Hz"
+	default 8000000
+	range 1000000 10000000
+	---help---
+		The requested SPI clock.  The Zephyr build's
+		CONFIG_NINA_SPI_FREQUENCY (default 8000000).  The PL022 divides
+		clk_peri (125 MHz) by an even number: 8 MHz gives 7.8125 MHz in
+		both builds.
+
+endif # NANO_NINA

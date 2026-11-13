@@ -19,6 +19,7 @@ ASRCS :=
 CSRCS :=
 
 include log/Make.defs
+include nina/Make.defs
 
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)include
 

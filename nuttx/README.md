@@ -5,7 +5,8 @@ English | [日本語](README_ja.md)
 This directory holds the port of the IMU measurement firmware in `zephyr/app/usb-console` to
 NuttX 13.1.0. The port is in progress. So far there are the setup, the host tests of the
 OS-independent common sources, the board definition with its build, the USB console with the
-flashing script, the RAM log and the key-value store (`kv`): the firmware boots to an nsh prompt on
+flashing script, the RAM log, the key-value store (`kv`) and the SPI link to the NINA-W102
+(`nina version`): the firmware boots to an nsh prompt on
 the USB console (CDC ACM) and has none of the measurement functions yet.
 
 ## Setup
@@ -260,7 +261,8 @@ compatible with the Zephyr version's.
   boot; the write positions of its second and third lines are not shown). Values are not carried
   over: back them up and write them back as below. What the Zephyr version does when it is flashed
   back after the NuttX port has not been checked.
-- Command (priority 104, stack 3072):
+- Command (priority 104, stack 3072; subcommands are handled as in "Subcommands of the commands"
+  below):
 
   ```
   kv set <key> <text>        store the text as is
@@ -303,6 +305,25 @@ compatible with the Zephyr version's.
   can call them. The board sets up `/dev/config` at boot, and init calls `kv_store_init()` where
   the Zephyr version's `main()` does (on failure: `Could not initialize settings: <value>`).
 
+### Subcommands of the commands
+
+The port's commands with subcommands (`kv`, `nina`, ...) give the Zephyr shell's output through a
+shared part, `nuttx/apps/subcmd/` (`subcmd_main()`). Zephyr's `SHELL_CMD()` (no check of the
+number of arguments) is `SUBCMD()`, and `SHELL_CMD_ARG()` (mandatory and optional counts) is
+`SUBCMD_ARG()`.
+
+- The command alone, or an unknown word: the help of the deepest matching command
+  (`<name> - <help>`, `Subcommands:`, one line per subcommand).
+- A wrong number of arguments: `<subcommand>: wrong parameter count` (on standard error) and the
+  subcommand's help.
+- A `*` or `?` in the word right after a subcommand that matches none of its subcommands ends the
+  words there, as in the Zephyr shell (`kv get a*` is a wrong number of arguments, `nina version *`
+  is `nina version`). When it does match subcommands (the Zephyr shell expands it to their names),
+  this is not reproduced: the word is taken as an unknown word.
+- `-h` and `--help` are ordinary words (as in the Zephyr version). Help lines are not wrapped at
+  80 columns.
+- The exit status is 0 on success and 1 on failure, help or a wrong number of arguments.
+
 ### Moving the values from the Zephyr version
 
 ```bash
@@ -316,6 +337,60 @@ host/.venv/bin/python script/kv_transfer.py restore --usb --no-wifi
 written back). After calibration values it sends `imu cal reload`; the NuttX port has no `imu`
 command yet, so the script ends with an error there, after the values have been written and read
 back.
+
+## NINA-W102 (`nina`)
+
+The Wi-Fi module NINA-W102 is reached over SPI1. Its firmware is the Zephyr version's (Arduino's NINA
+firmware 3.0.2 with fixes, `firmware/nina-fw/README.md`) and is not changed. So far there is the
+transfer layer that sends one command and receives its answer (`nina_request()`,
+`nina_ip_config()`) and `nina version`; Wi-Fi and sockets are not there yet.
+
+```
+nsh$ nina version
+NINA firmware: 3.0.2
+```
+
+- `nina version` prints what the Zephyr version prints. On failure it prints
+  `NINA version request failed: <value>` on standard error (the same console) and exits with 1.
+  `nina` alone or with an unknown word prints the help. As in the Zephyr version, `version` does
+  not check the number of arguments, so extra words are ignored (priority 104, stack 3072).
+- Wiring (`BOARD_NINA_*` in the board's `include/board.h`, as in Zephyr's board definition
+  `arduino_nano_connect.dts`):
+
+  | Signal | GPIO | Setting |
+  |---|---|---|
+  | SCK | 14 | SPI1. No pulls, 4 mA, slow slew, no Schmitt trigger |
+  | MOSI (TX) | 11 | Same |
+  | MISO (RX) | 8 | Same, input enabled |
+  | CS | 9 | GPIO output, active low, no pulls. Inactive (high) from boot |
+  | READY | 10 | GPIO input, active low, pull-up |
+  | RESET | 3 | GPIO output, active low, no pulls |
+  | IRQ (the NINA's GPIO0) | 2 | Pull-down. Driven high during the reset, then an input |
+
+- SPI: mode 0 (CPOL 0, CPHA 0), 8 bits, MSB first, `CONFIG_NANO_NINA_SPI_FREQUENCY` (default
+  8000000; the Zephyr version's `CONFIG_NINA_SPI_FREQUENCY`). The PL022 divides clk_peri (125 MHz)
+  by an even number, so the clock is 7.8125 MHz (the same in the Zephyr version). NuttX's SPI1
+  driver (`rp2040_spi.c`) is used by polling (the Zephyr version uses neither interrupts nor DMA).
+  `CONFIG_RP2040_SPI_DMA` is off (with it, transfers over 4 bytes use DMA, whose completion is
+  waited for without a time limit). The transfer layer, not the SPI driver, drives CS as a GPIO,
+  and keeps it asserted while waiting for the answer. There is no `/dev/spi1`
+  (`CONFIG_RP2040_SPI_DRIVER` is off).
+- As in the Zephyr version, the NINA is set up on the first request: CS inactive, READY an input,
+  IRQ high, RESET active; 10 ms later the reset is released, and after 750 ms IRQ is driven low and
+  made an input again. So the first `nina version` after a boot (flashing, `reboot`) takes about
+  0.76 s (761 ms on the board; about 0.6 to 0.7 ms after that). At boot the board sets up only
+  SPI1, its pins and CS.
+- The steps and values of a request are those of the Zephyr version's `drivers/nina/nina_wifi.c`
+  (`nuttx/drivers/nina/nina_spi.c`). READY is sampled every 100 µs (rounded up to ticks plus one
+  tick, so every 100 to 200 µs), with `-ETIMEDOUT` after 2000 ms before sending, 20 ms for the
+  NINA to answer CS by releasing READY, and 10000 ms for the answer to be ready. Up to 1000 bytes
+  are read looking for the start of the answer (0xE0). A recursive mutex (with priority
+  inheritance) serializes the requests, and the SPI runs at the priority of the calling thread.
+- Measured (on the board with the TIMER; `nina_request(0x37)` 1000 times back to back): one
+  request takes 591 µs on average (427 to 697), about 360 µs of it CPU time (from
+  `cpu_load_get()`). A 1-byte transfer takes about 5.1 µs per call; longer transfers take 1.26 µs
+  per byte reading and 1.22 µs writing (8 bits on the wire are 1.02 µs). Each wait between two
+  READY samples takes about 200 µs, about 50 µs of it CPU time.
 
 ## System clock
 
@@ -440,7 +515,8 @@ stored calibration format, gyro zero tracking at rest, the board's time conversi
 (`nano_timeconv`), the CPU load arithmetic (`nano_cpuload`), the RAM log's ring, `dmesg`
 pieces, line prefix and rate limit (`log_ram`), the key-value area's range checks, page writes and
 boot-time contents check (`nano_flash_kv`), the key rules of the key-value store (`kv_name`) and
-the hex conversions of the `kv` command (`kv_hex`). Each test is built and run in turn,
+the hex conversions of the `kv` command (`kv_hex`), the handling of the commands' subcommands
+(`subcmd`) and the NINA's SPI transfer layer (`nina_spi`). Each test is built and run in turn,
 and the script stops at the first failure. Build products go to a temporary directory that is
 removed on exit.
 
@@ -480,5 +556,15 @@ happen to pass NuttX's CRC). `kv_name` checks the key checks split out of the Ze
 `kv_store.c` (`apps/imu/kv_name.c`), and `kv_hex` the copy of Zephyr's `lib/utils/hex.c`
 (`apps/kv/kv_hex.c`).
 
-Tests of the driver's I2C, FIFO control and stream handling and of NINA are added when those
-parts are ported.
+`nuttx/tests/subcmd.c` checks `apps/subcmd/subcmd.c` with the tables of `kv` and `nina` (the help
+is the one recorded from the Zephyr version), a nested table and optional arguments.
+`nuttx/tests/nina_spi.c` checks `drivers/nina/nina_spi.c` with a fake SPI, GPIO, clock and lock: the
+cases of the Zephyr version's `tests/nina_spi.c` (wide parameters and padding, bulk transfers, the
+three answer parameters of 0x75 and 0x7a, the length checks, a failing transfer), and also narrow
+parameters, the version request, the search for the start of the answer (1000 bytes), each
+`-EPROTO`, `-EMSGSIZE` and `-EINVAL`, 0x27, `nina_ip_config()` (0x21), the READY time limits (2000,
+20 and 10000 ms, counted as samples every 100 µs), the reset on the first request, the order of
+the CS edges and transfers, and the lock.
+
+Tests of the driver's I2C, FIFO control and stream handling and of the NINA's Wi-Fi and sockets are
+added when those parts are ported.
