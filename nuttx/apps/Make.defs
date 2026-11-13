@@ -1,0 +1,10 @@
+############################################################################
+# nuttx/apps/Make.defs
+#
+# Read by nuttx-apps/Make.defs (as external/Make.defs).  Pulls in the
+# Make.defs of each application directory, which adds the directory to
+# CONFIGURED_APPS when its Kconfig option is set.  imu/ has no Make.defs
+# yet, so nothing is built.
+############################################################################
+
+include $(wildcard $(APPDIR)/external/*/Make.defs)

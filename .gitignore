@@ -43,3 +43,6 @@
 /nuttx/boards/**/etctmp/
 /nuttx/boards/**/etctmp.c
 /nuttx/boards/**/romfs.img
+/nuttx/boards/**/*.ld.tmp
+# Output of nuttx/script/build.sh.
+/nuttx/build/

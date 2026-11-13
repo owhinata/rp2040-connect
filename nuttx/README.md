@@ -3,8 +3,9 @@
 English | [日本語](README_ja.md)
 
 This directory holds the port of the IMU measurement firmware in `zephyr/app/usb-console` to
-NuttX 13.1.0. The port is in progress; only the setup and the host tests of the OS-independent
-common sources are available so far.
+NuttX 13.1.0. The port is in progress. So far there are the setup, the host tests of the
+OS-independent common sources, and the board definition with its build: the firmware boots to an
+nsh prompt on UART0 and has none of the measurement functions yet.
 
 ## Setup
 
@@ -48,6 +49,51 @@ features NuttX uses are implemented.
 
 The fetched files are not tracked by Git. To change a version, edit the value at the top of the
 script, delete the corresponding directory and source the script again.
+
+## Build
+
+```bash
+nuttx/script/build.sh
+```
+
+This builds the firmware for the custom board `nuttx/boards/arduino-nano-rp2040-connect/` with its
+only configuration, `configs/imu/defconfig`, and writes `nuttx/build/nuttx.uf2`. The script
+sources `setup.sh` itself, so it also works in a shell where the setup script has not been
+sourced. For now the firmware is a minimal one: nsh on UART0 (GPIO0 TX, GPIO1 RX, 115200 8N1,
+the Arduino D1/D0 pins).
+
+The script does the following:
+
+1. Configures NuttX (`tools/configure.sh -l -a ../nuttx-apps`) when it has not been configured
+   yet, or when the defconfig, the board's `Kconfig`, a `Kconfig` under `nuttx/drivers/` or
+   `nuttx/apps/`, the set of application directories, the patches or the NuttX/apps commit have
+   changed since the last configure (recorded in `nuttx/build/.configure-stamp`). NuttX reads the
+   board's `Kconfig` and generates `nuttx/apps/Kconfig` only at configure time, so it starts from
+   `make distclean`. Otherwise the build is incremental.
+2. Runs `make` in `nuttx/nuttx`.
+3. Checks the image: `.boot2` is at 0x10000000 and is 256 bytes (without `PICO_SDK_PATH`, NuttX
+   would silently leave boot2 out), `nuttx.bin` covers exactly what the ELF loads into flash,
+   and the image ends before 0x10ffe000. The last 8 KB of the flash (0x10ffe000–0x10ffffff) is
+   kept out of the image for the key-value store, as in the Zephyr version.
+4. Converts `nuttx/nuttx/nuttx.bin` (raw image from 0x10000000, boot2 included) to
+   `nuttx/build/nuttx.uf2` with `nuttx/script/bin2uf2.py` and prints the path and size. The
+   converter checks the boot2 checksum first and writes 256-byte payloads with the RP2040 family
+   ID (0xe48bff56). NuttX's own UF2 step (picotool) is turned off.
+
+Any failed step stops the script with an error.
+
+| Option | Effect |
+|---|---|
+| `--clean` | Start from `make distclean` and configure again |
+| `--menuconfig` | Configure when needed, run `make menuconfig`, and stop without building |
+| `--savedefconfig` | Run `make savedefconfig` and write the result, with `CONFIG_APPS_DIR`, back to `configs/imu/defconfig` (no build) |
+| `-j N` | Parallel make jobs (default: number of CPUs) |
+| `-v` | Verbose make output (`V=1`) |
+
+Changes made with `--menuconfig` stay in `nuttx/nuttx/.config` until the next configure; save
+them with `--savedefconfig` to keep them. Other outputs: the ELF is `nuttx/nuttx/nuttx` and the
+raw image `nuttx/nuttx/nuttx.bin`. Build products, including those NuttX writes into
+`nuttx/drivers/` and `nuttx/apps/`, are not tracked by Git.
 
 ## Tests
 

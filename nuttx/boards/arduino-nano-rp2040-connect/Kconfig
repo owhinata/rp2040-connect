@@ -1,0 +1,9 @@
+#
+# For a description of the syntax of this configuration file,
+# see the file kconfig-language.txt in the NuttX tools repository.
+#
+# Board-specific options of arduino-nano-rp2040-connect (none yet).  NuttX
+# sources this file inside "if ARCH_BOARD_CUSTOM" through a copy,
+# nuttx/nuttx/boards/dummy/Kconfig, made once at configure time;
+# nuttx/script/build.sh configures again when this file changes.
+#

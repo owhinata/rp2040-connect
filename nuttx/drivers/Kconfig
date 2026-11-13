@@ -1,0 +1,10 @@
+#
+# For a description of the syntax of this configuration file,
+# see the file kconfig-language.txt in the NuttX tools repository.
+#
+# Kernel-side code of the Nano RP2040 Connect port.  nuttx/nuttx/external is
+# a symlink to this directory; NuttX sources this file at the end of its
+# top-level Kconfig (outside any menu) and links libexternal.a built by
+# ./Makefile.  Later tasks add their options here (for example
+# 'rsource "nina/Kconfig"').
+#

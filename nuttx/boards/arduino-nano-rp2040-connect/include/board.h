@@ -1,0 +1,176 @@
+/****************************************************************************
+ * boards/arduino-nano-rp2040-connect/include/board.h
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Licensed to the Apache Software Foundation (ASF) under one or more
+ * contributor license agreements.  See the NOTICE file distributed with
+ * this work for additional information regarding copyright ownership.  The
+ * ASF licenses this file to you under the Apache License, Version 2.0 (the
+ * "License"); you may not use this file except in compliance with the
+ * License.  You may obtain a copy of the License at
+ *
+ *   http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS, WITHOUT
+ * WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.  See the
+ * License for the specific language governing permissions and limitations
+ * under the License.
+ *
+ ****************************************************************************/
+
+/* Derived from boards/arm/rp2040/raspberrypi-pico/include/board.h
+ * (NuttX 13.1.0).  The clock tree is the same as the Zephyr board
+ * (zephyr/dts/arm/raspberrypi/rpi_pico/rp2040.dtsi); the pin numbers come
+ * from zephyr/boards/arduino/nano_connect/arduino_nano_connect.dts.
+ */
+
+#ifndef __BOARDS_ARDUINO_NANO_RP2040_CONNECT_INCLUDE_BOARD_H
+#define __BOARDS_ARDUINO_NANO_RP2040_CONNECT_INCLUDE_BOARD_H
+
+/****************************************************************************
+ * Included Files
+ ****************************************************************************/
+
+#include <nuttx/config.h>
+
+#include "rp2040_i2cdev.h"
+#include "rp2040_spidev.h"
+#include "rp2040_i2sdev.h"
+
+#include "rp2040_spisd.h"
+
+#ifndef __ASSEMBLY__
+#  include <stdint.h>
+#endif
+
+/****************************************************************************
+ * Pre-processor Definitions
+ ****************************************************************************/
+
+/* Clocking *****************************************************************/
+
+#define MHZ                     1000000
+
+#define BOARD_XOSC_FREQ         (12 * MHZ)
+
+/* XOSC STARTUP.DELAY multiplier (in units of about 1 ms).  6 is the value
+ * the Zephyr build uses (the startup-delay-multiplier default of the
+ * raspberrypi,pico-xosc binding, the same as the pico-sdk default), giving
+ * STARTUP.DELAY = 282 in both.
+ */
+
+#define BOARD_XOSC_STARTUPDELAY 6
+#define BOARD_PLL_SYS_FREQ      (125 * MHZ)
+#define BOARD_PLL_USB_FREQ      (48 * MHZ)
+
+#define BOARD_REF_FREQ          (12 * MHZ)
+#define BOARD_SYS_FREQ          (125 * MHZ)
+#define BOARD_PERI_FREQ         (125 * MHZ)
+#define BOARD_USB_FREQ          (48 * MHZ)
+#define BOARD_ADC_FREQ          (48 * MHZ)
+#define BOARD_RTC_FREQ          46875
+
+#define BOARD_UART_BASEFREQ     BOARD_PERI_FREQ
+
+/* The watchdog tick (which also clocks the TIMER) runs at 1 MHz. */
+
+#define BOARD_TICK_CLOCK        (1 * MHZ)
+
+/* Flash ********************************************************************/
+
+/* 16 MiB AT25SF128A.  The last two 4 KiB erase sectors are kept out of the
+ * image for the key-value store, at the same place as the Zephyr build's
+ * storage_partition (zephyr/app/usb-console/app.overlay).  The linker
+ * script uses the same numbers.
+ */
+
+#define BOARD_FLASH_BASE        0x10000000
+#define BOARD_FLASH_SIZE        (16 * 1024 * 1024)
+#define BOARD_KV_OFFSET         0x00ffe000  /* Offset from BOARD_FLASH_BASE */
+#define BOARD_KV_SIZE           0x00002000
+
+/* GPIO definitions *********************************************************/
+
+/* All numbers are RP2040 GPIO numbers.  Nothing here is configured by the
+ * board code yet: the pins are reset defaults until the driver that owns
+ * them sets them up.
+ */
+
+/* UART0 (Arduino D1/D0), 115200 8N1 in the Zephyr board too. */
+
+#define BOARD_UART0_TX_GPIO          0
+#define BOARD_UART0_RX_GPIO          1
+
+/* LED on GPIO6 (Zephyr led0).  The pin is also D13/SCK of the Arduino
+ * header, so the board code does not drive it: no ARCH_LEDS, no USERLED.
+ */
+
+#define BOARD_GPIO_LED_PIN           6
+
+/* I2C0 (Arduino A4/A5): LSM6DSOX at 0x6a and ATECC608A at 0x60. */
+
+#define BOARD_I2C0_SDA_GPIO          12
+#define BOARD_I2C0_SCL_GPIO          13
+#define BOARD_LSM6DSOX_I2C_ADDR      0x6a
+#define BOARD_LSM6DSOX_INT1_GPIO     24  /* irq-gpios, active high */
+#define BOARD_ATECC608A_I2C_ADDR     0x60
+
+/* SPI1 to the NINA-W102 Wi-Fi module. */
+
+#define BOARD_NINA_SPI1_SCK_GPIO     14
+#define BOARD_NINA_SPI1_TX_GPIO      11  /* MOSI */
+#define BOARD_NINA_SPI1_RX_GPIO      8   /* MISO */
+#define BOARD_NINA_CS_GPIO           9   /* cs-gpios, active low */
+#define BOARD_NINA_READY_GPIO        10  /* ready-gpios, active low, pull-up */
+#define BOARD_NINA_RESET_GPIO        3   /* reset-gpios, active low */
+#define BOARD_NINA_IRQ_GPIO          2   /* irq-gpios, pull-down */
+
+/****************************************************************************
+ * Public Types
+ ****************************************************************************/
+
+#ifndef __ASSEMBLY__
+
+/****************************************************************************
+ * Public Data
+ ****************************************************************************/
+
+#undef EXTERN
+#if defined(__cplusplus)
+#define EXTERN extern "C"
+extern "C"
+{
+#else
+#define EXTERN extern
+#endif
+
+/****************************************************************************
+ * Public Function Prototypes
+ ****************************************************************************/
+
+/****************************************************************************
+ * Name: rp2040_boardearlyinitialize
+ *
+ * Description:
+ *
+ ****************************************************************************/
+
+void rp2040_boardearlyinitialize(void);
+
+/****************************************************************************
+ * Name: rp2040_boardinitialize
+ *
+ * Description:
+ *
+ ****************************************************************************/
+
+void rp2040_boardinitialize(void);
+
+#undef EXTERN
+#if defined(__cplusplus)
+}
+#endif
+#endif /* __ASSEMBLY__ */
+#endif /* __BOARDS_ARDUINO_NANO_RP2040_CONNECT_INCLUDE_BOARD_H */

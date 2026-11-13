@@ -3,7 +3,9 @@
 [English](README.md) | 日本語
 
 `zephyr/app/usb-console` の IMU 測定ファームウェアを NuttX 13.1.0 に移植したものを置くディレクトリです。
-現在は移植中で、環境構築と、OS に依存しない共通ソースのホストテストだけができます。
+現在は移植中です。今あるのは、環境構築、OS に依存しない共通ソースのホストテスト、ボード定義とその
+ビルドです。ファームウェアは起動して UART0 に nsh のプロンプトを出すところまでで、測定の機能はまだ
+ありません。
 
 ## 環境構築
 
@@ -47,6 +49,51 @@ NuttX が使う機能だけを実装しています。
 
 取得したものは Git の管理外です。版を変えるときは、スクリプト冒頭の値を直してから、該当する
 ディレクトリを消して読み込み直します。
+
+## ビルド
+
+```bash
+nuttx/script/build.sh
+```
+
+カスタムボード `nuttx/boards/arduino-nano-rp2040-connect/` を、唯一の構成 `configs/imu/defconfig` で
+ビルドし、`nuttx/build/nuttx.uf2` を作ります。スクリプトが `setup.sh` を自分で読み込むので、
+セットアップスクリプトを読み込んでいないシェルでも動きます。今のファームウェアは最小構成で、
+UART0（GPIO0 が TX、GPIO1 が RX、115200 8N1。Arduino の D1/D0）に nsh が出るだけです。
+
+スクリプトは次のことを行います。
+
+1. まだ configure していないとき、または前回の configure から defconfig、ボードの `Kconfig`、
+   `nuttx/drivers/` と `nuttx/apps/` の下の `Kconfig`、アプリのディレクトリの構成、パッチ、NuttX と
+   apps の commit のどれかが変わったとき（`nuttx/build/.configure-stamp` に記録）は、NuttX を
+   configure します（`tools/configure.sh -l -a ../nuttx-apps`）。NuttX はボードの `Kconfig` を読み込み
+   `nuttx/apps/Kconfig` を生成するのを configure のときにしか行わないため、`make distclean` から
+   やり直します。それ以外のときは差分ビルドです。
+2. `nuttx/nuttx` で `make` を実行します。
+3. イメージを検査します。`.boot2` が 0x10000000 にあって 256 バイトであること（`PICO_SDK_PATH` が
+   無いと、NuttX はエラーを出さずに boot2 の無いイメージを作ります）、`nuttx.bin` が ELF の
+   flash に載せる範囲とちょうど一致すること、イメージが 0x10ffe000 より前で終わることです。
+   flash の末尾 8 KB（0x10ffe000〜0x10ffffff）は、Zephyr 版と同じく KV のためにイメージから
+   外してあります。
+4. `nuttx/nuttx/nuttx.bin`（0x10000000 からの生のイメージ。boot2 を含む）を
+   `nuttx/script/bin2uf2.py` で `nuttx/build/nuttx.uf2` に変換し、パスとサイズを表示します。
+   変換の前に boot2 のチェックサムを確かめ、256 バイトのペイロードと RP2040 のファミリー ID
+   （0xe48bff56）で書き出します。NuttX 自身の UF2 生成（picotool）は切ってあります。
+
+どの段階でも、失敗するとエラーで止まります。
+
+| オプション | 動作 |
+|---|---|
+| `--clean` | `make distclean` から configure し直す |
+| `--menuconfig` | 必要なら configure し、`make menuconfig` を実行する（ビルドはしない） |
+| `--savedefconfig` | `make savedefconfig` を実行し、結果に `CONFIG_APPS_DIR` を加えて `configs/imu/defconfig` に書き戻す（ビルドはしない） |
+| `-j N` | make の並列数（既定は CPU の数） |
+| `-v` | make の出力を詳しくする（`V=1`） |
+
+`--menuconfig` で変えた内容は、次に configure するまで `nuttx/nuttx/.config` にだけ残ります。
+残すには `--savedefconfig` で保存してください。ほかの生成物は、ELF が `nuttx/nuttx/nuttx`、生の
+イメージが `nuttx/nuttx/nuttx.bin` です。NuttX が `nuttx/drivers/` と `nuttx/apps/` に書き出すものを
+含め、ビルドの生成物は Git の管理外です。
 
 ## テスト
 
