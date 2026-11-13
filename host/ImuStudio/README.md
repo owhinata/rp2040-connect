@@ -17,7 +17,7 @@ and displays it. The board's shell (Telnet) can be used from inside the applicat
 | Conversion to physical units with the calibration, gyro bias tracking at rest | Implemented |
 | 3D attitude display with the Madgwick filter (60 Hz) | Implemented |
 | Recording and replay | Implemented |
-| Frequency content display (spectrogram) | Not implemented |
+| Frequency content display (spectrogram, updated at 60 Hz) | Implemented |
 | Position estimation | Not implemented |
 
 ## Build and run
@@ -36,8 +36,10 @@ Arguments (all optional):
 | `--port <number>` | Port to listen on for MQTT. Default: the last value (1883 the first time) |
 | `--board <address>` | Connect to the shell at this address on start. `address:port` is accepted |
 | `--replay <directory>` | Replay a recording on start |
+| `--view <attitude\|spectrum>` | The view to start with |
 
-The port, the board address and the filter gain are saved to
+The port, the board address, the filter gain, the spectrum settings and the height of the
+shell pane are saved to
 `~/.config/ImuStudio/settings.json` on exit.
 
 ## Usage
@@ -71,6 +73,33 @@ The Madgwick filter is updated on every gyro sample (6667 Hz) and drawn at 60 Hz
   the tilt to the acceleration faster and makes it more sensitive to acceleration while moving.
 - **Reset attitude** sets the tilt again from the current acceleration.
 - The view rotates by dragging, pans with Shift + drag and zooms with the wheel.
+
+### Spectrum
+
+Six spectrograms, of the acceleration and of the angular rate. Time runs to the right (about
+ten seconds), frequency upwards, and the colour is the level. The curve at the right of each
+is the current spectrum. Only the view whose tab is open is running (switching between
+attitude and spectrum starts each one over).
+
+- **Frame**: the mean acceleration of the first 0.25 s after the tab is opened is taken as the
+  direction of gravity and becomes one axis (vertical). The other two are horizontal;
+  horizontal 1 is the sensor's X axis laid flat. The frame is fixed to the sensor, so
+  tilting the sensor takes "vertical" away from the true vertical. Hold it still and press
+  **Level again** to take the direction of gravity again.
+- **Window and step**: the last **FFT size** samples get a Hann window and have their mean
+  removed before the FFT. The window moves by 1/60 s, so the display updates at 60 Hz
+  however long the window is. A longer window resolves frequency more finely and blurs
+  changes in time (4096 is about 0.61 s and about 1.6 Hz).
+- **Levels**: amplitude in dB, re 1 m/s² for acceleration and re 1 dps for angular rate; a
+  sine of amplitude A reads 20·log10(A) at its frequency. **Min dB** / **Max dB** are the
+  levels drawn in the darkest and the brightest colour.
+- **Frequency axis**: **Max freq** chooses the upper end (Nyquist is half the sample rate,
+  about 3350 Hz). **Logarithmic frequency** makes the axis logarithmic (from 2 Hz). Changing
+  the axis starts the pictures over.
+- `peak` in each picture is the strongest frequency and its level (the two bins next to DC
+  are left out).
+- After a loss of data the pictures pause until the window has filled again, so that no
+  window spans the loss.
 
 ### Gyro bias
 
@@ -112,14 +141,18 @@ acceleration, an error in the heading stays.
 
 As of 2026-11-13.
 
-- Unit tests (`dotnet test`, 38 tests): packet checks, the MQTT endpoint, Telnet output
+- Unit tests (`dotnet test`, 44 tests): packet checks, the MQTT endpoint, Telnet output
   handling, decoding and applying a calibration, bias tracking, sample period, attitude,
-  reading and writing recordings, pausing a replay and moving it to another time.
+  reading and writing recordings, pausing a replay and moving it to another time,
+  the FFT and the spectra (frequency, level and axis of known sines).
 - Replay of a recording taken on hardware (about 379 s, about 2.54 million samples): no loss,
   sample rate 6703.5 Hz, magnitude of the acceleration at rest 0.999 g with the calibration.
 - Connection to a script standing in for the board (Telnet replies and a recording sent over
   MQTT): receiving, the shell pane, reading the calibration from KV, detection of one missing
   batch.
+- The spectrum view: with a replay of a recording taken on hardware, the six pictures scroll.
+  CPU use is about 40 % of one core (10–20 % for the attitude view). The drawing period was
+  not measured.
 - Connection to the real board: the user confirmed that the shell (Telnet) and the buttons
   work. No test of a set duration or count was made.
 
@@ -127,12 +160,15 @@ As of 2026-11-13.
 
 | Project | Role |
 | --- | --- |
-| `src/ImuStudio.Core` | Packets, MQTT endpoint, shell, calibration, bias tracking, Madgwick, recording and replay |
+| `src/ImuStudio.Core` | Packets, MQTT endpoint, shell, calibration, bias tracking, Madgwick, spectra, recording and replay |
 | `src/ImuStudio.Rendering` | 3D drawing with Silk.NET OpenGL |
 | `src/ImuStudio.App` | The Avalonia user interface |
 | `tests/ImuStudio.Core.Tests` | xUnit unit tests |
 
-The icon (`src/ImuStudio.App/Assets/icon.png`) is drawn by `tools/make_icon.py`.
+The icon (`src/ImuStudio.App/Assets/icon.png`) is drawn by `tools/make_icon.py`. To have it
+in the GNOME dock and the application list, run `tools/install_desktop.sh` once (it builds
+the Release configuration and writes `~/.local/share/applications/ImuStudio.desktop`;
+`--remove` takes it away).
 
 `ImuPipeline` turns the received messages into samples in physical units and hands them to
 the processing of the view in use (`ISampleSink`). A new view adds such a processing.

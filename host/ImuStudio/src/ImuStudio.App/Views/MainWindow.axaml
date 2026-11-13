@@ -16,6 +16,12 @@
       <Setter Property="Padding" Value="0,0,12,0" />
       <Setter Property="Margin" Value="0,0,12,0" />
     </Style>
+    <!-- Tab names in the size of the other labels; the theme's default is a headline size -->
+    <Style Selector="TabItem">
+      <Setter Property="FontSize" Value="14" />
+      <Setter Property="MinHeight" Value="32" />
+      <Setter Property="Padding" Value="10,4" />
+    </Style>
   </Window.Styles>
 
   <DockPanel>
@@ -80,7 +86,7 @@
     <!-- The views above, the board shell below; the bar between them sets the shell's height -->
     <Grid x:Name="WorkArea" RowDefinitions="*,6,190">
   <!-- Views; one is in use at a time -->
-      <TabControl Grid.Row="0" Margin="10,0,10,0">
+      <TabControl Grid.Row="0" Margin="10,0,10,0" SelectedIndex="{Binding SelectedView}">
         <TabItem Header="Attitude">
           <Grid ColumnDefinitions="*,270">
             <Border Grid.Column="0" BorderBrush="#40808080" BorderThickness="1">
@@ -100,6 +106,42 @@
                         ToolTip.Tip="Read the calibration from the board again" />
               </StackPanel>
               <TextBlock Text="{Binding AttitudeText}" FontFamily="monospace" FontSize="12" />
+            </DockPanel>
+          </Grid>
+        </TabItem>
+        <TabItem Header="Spectrum">
+          <Grid ColumnDefinitions="*,270">
+            <Grid x:Name="SpectrumGrid" Grid.Column="0" ColumnDefinitions="*,*" RowDefinitions="*,*,*" />
+            <DockPanel Grid.Column="1" Margin="12,0,0,0">
+              <StackPanel DockPanel.Dock="Bottom" Spacing="6">
+                <DockPanel>
+                  <TextBlock Classes="label" Text="FFT size" Width="92" />
+                  <ComboBox ItemsSource="{Binding SpectrumSizes}" SelectedItem="{Binding SpectrumSize}"
+                            HorizontalAlignment="Stretch" />
+                </DockPanel>
+                <DockPanel>
+                  <TextBlock Classes="label" Text="Max freq [Hz]" Width="92" />
+                  <ComboBox ItemsSource="{Binding SpectrumMaxFrequencies}"
+                            SelectedItem="{Binding SpectrumMaxFrequency}" HorizontalAlignment="Stretch" />
+                </DockPanel>
+                <CheckBox Content="Logarithmic frequency" IsChecked="{Binding SpectrumLogFrequency}" />
+                <DockPanel>
+                  <TextBlock Classes="label" Text="Min dB" Width="52" />
+                  <TextBlock DockPanel.Dock="Right" Classes="label" Width="34" TextAlignment="Right"
+                             Text="{Binding SpectrumMinDb, StringFormat={}{0:F0}}" />
+                  <Slider Minimum="-140" Maximum="0" Value="{Binding SpectrumMinDb}" Margin="8,0" />
+                </DockPanel>
+                <DockPanel>
+                  <TextBlock Classes="label" Text="Max dB" Width="52" />
+                  <TextBlock DockPanel.Dock="Right" Classes="label" Width="34" TextAlignment="Right"
+                             Text="{Binding SpectrumMaxDb, StringFormat={}{0:F0}}" />
+                  <Slider Minimum="-60" Maximum="60" Value="{Binding SpectrumMaxDb}" Margin="8,0" />
+                </DockPanel>
+                <Button Content="Level again" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
+                        Command="{Binding LevelSpectrumCommand}"
+                        ToolTip.Tip="Take the direction of gravity again; keep the sensor still for a moment" />
+              </StackPanel>
+              <TextBlock Text="{Binding SpectrumText}" FontFamily="monospace" FontSize="12" />
             </DockPanel>
           </Grid>
         </TabItem>

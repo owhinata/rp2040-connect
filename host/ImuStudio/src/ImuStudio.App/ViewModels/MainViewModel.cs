@@ -24,6 +24,7 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     private readonly AppSettings _settings = AppSettings.Load();
     private readonly ImuPipeline _pipeline = new();
     private readonly AttitudeEstimator _attitude = new();
+    private readonly SpectrumAnalyzer _spectrum = new();
     private readonly DispatcherTimer _timer;
     private readonly StringBuilder _shellLog = new();
     private readonly HashSet<string> _calibrationRead = new();
@@ -56,6 +57,22 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     [ObservableProperty] private double _replayDuration = 1;
     [ObservableProperty] private string _replayTime = "";
     [ObservableProperty] private bool _isShellPaneVisible;
+    [ObservableProperty] private int _selectedView;
+    [ObservableProperty] private int _spectrumSize;
+    [ObservableProperty] private string _spectrumMaxFrequency;
+    [ObservableProperty] private bool _spectrumLogFrequency;
+    [ObservableProperty] private double _spectrumMinDb;
+    [ObservableProperty] private double _spectrumMaxDb;
+    [ObservableProperty] private string _spectrumText = "";
+
+    public const int AttitudeView = 0;
+    public const int SpectrumView = 1;
+
+    public IReadOnlyList<int> SpectrumSizes { get; } = SpectrumAnalyzer.Sizes;
+    public IReadOnlyList<string> SpectrumMaxFrequencies { get; } = ["Nyquist", "1600", "800", "400", "200", "100"];
+
+    /// <summary>Raised on the UI thread, at the frame rate, with the spectra made since the last frame.</summary>
+    public event Action<List<SpectrumColumn>>? SpectrumColumns;
 
     public List<string> ShellHistory { get; } = new();
 
@@ -68,6 +85,13 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
         _beta = _settings.Beta;
         _attitude.Beta = _settings.Beta;
         _isShellPaneVisible = _settings.ShellPaneVisible;
+        _spectrumSize = Array.IndexOf(SpectrumAnalyzer.Sizes, _settings.SpectrumSize) >= 0 ? _settings.SpectrumSize : 4096;
+        _spectrumMaxFrequency = SpectrumMaxFrequencies.Contains(_settings.SpectrumMaxFrequency)
+            ? _settings.SpectrumMaxFrequency : "Nyquist";
+        _spectrumLogFrequency = _settings.SpectrumLogFrequency;
+        _spectrumMinDb = _settings.SpectrumMinDb;
+        _spectrumMaxDb = _settings.SpectrumMaxDb;
+        _spectrum.Size = _spectrumSize;
         _pipeline.Sink = _attitude;
         _pipeline.InfoReceived += info => Dispatcher.UIThread.Post(() => _ = ReadCalibrationAsync(info));
         Listen();
@@ -86,6 +110,36 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
     }
 
     partial void OnIsShellPaneVisibleChanged(bool value) => _settings.ShellPaneVisible = value;
+
+    /// <summary>The views take turns: only the one shown gets the samples.</summary>
+    partial void OnSelectedViewChanged(int value) =>
+        _pipeline.Sink = value == SpectrumView ? _spectrum : _attitude;
+
+    partial void OnSpectrumSizeChanged(int value)
+    {
+        _spectrum.Size = value;
+        _settings.SpectrumSize = value;
+    }
+
+    partial void OnSpectrumMaxFrequencyChanged(string value) => _settings.SpectrumMaxFrequency = value;
+    partial void OnSpectrumLogFrequencyChanged(bool value) => _settings.SpectrumLogFrequency = value;
+    partial void OnSpectrumMinDbChanged(double value) => _settings.SpectrumMinDb = value;
+    partial void OnSpectrumMaxDbChanged(double value) => _settings.SpectrumMaxDb = value;
+
+    /// <summary>Upper end of the frequency axis in Hz; infinity for all there is.</summary>
+    public double SpectrumMaxHz =>
+        double.TryParse(SpectrumMaxFrequency, NumberStyles.Float, CultureInfo.InvariantCulture, out double hz)
+            ? hz : double.PositiveInfinity;
+
+    /// <summary>Takes the direction of gravity again, from the next quarter second.</summary>
+    [RelayCommand]
+    private void LevelSpectrum()
+    {
+        if (SelectedView == SpectrumView)
+        {
+            _pipeline.Sink = _spectrum;
+        }
+    }
 
     /// <summary>Height of the shell pane in the window; kept between runs.</summary>
     public double ShellPaneHeight
@@ -497,7 +551,22 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
 
     private void Tick()
     {
-        Orientation = _attitude.Orientation;
+        if (SelectedView == SpectrumView)
+        {
+            List<SpectrumColumn> columns = _spectrum.Drain();
+            if (columns.Count > 0)
+            {
+                SpectrumColumns?.Invoke(columns);
+                if (_frame % 6 == 0)
+                {
+                    ShowSpectrumText(columns[^1]);
+                }
+            }
+        }
+        else
+        {
+            Orientation = _attitude.Orientation;
+        }
         if (++_frame % 6 != 0)
         {
             return;
@@ -560,6 +629,21 @@ public sealed partial class MainViewModel : ObservableObject, IDisposable
             Gyro bias [dps]
               {s.GyroBiasDps.X,8:F3} {s.GyroBiasDps.Y,8:F3} {s.GyroBiasDps.Z,8:F3}
               tracked at rest: {s.BiasUpdates} (rejected {s.BiasRejected})
+            """);
+    }
+
+    private void ShowSpectrumText(SpectrumColumn column)
+    {
+        int size = column.Db[0].Length * 2;
+        double rate = column.BinHz * size;
+        Vector3 v = _spectrum.Vertical;
+        SpectrumText = string.Create(CultureInfo.InvariantCulture, $"""
+            Window     {size / rate * 1000,7:F0} ms
+            Resolution {column.BinHz,7:F2} Hz
+            Nyquist    {rate / 2,7:F0} Hz
+
+            Vertical (sensor x y z)
+              {v.X,6:F3} {v.Y,6:F3} {v.Z,6:F3}
             """);
     }
 

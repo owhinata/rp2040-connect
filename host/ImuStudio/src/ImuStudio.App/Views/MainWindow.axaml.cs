@@ -4,23 +4,31 @@ using Avalonia.Controls;
 using Avalonia.Input;
 using Avalonia.Interactivity;
 using Avalonia.Platform.Storage;
+using ImuStudio.App.Controls;
 using ImuStudio.App.ViewModels;
+using ImuStudio.Core.Processing;
 
 namespace ImuStudio.App.Views;
 
 public partial class MainWindow : Window
 {
     private readonly MainViewModel _viewModel;
+    private readonly SpectrogramControl[] _spectrograms = new SpectrogramControl[SpectrumAnalyzer.Channels];
+    private readonly List<float[]> _channelColumns = new();
     private int _historyIndex = -1;
 
-    public MainWindow() : this(null, null, null)
+    public MainWindow() : this(null, null, null, null)
     {
     }
 
-    public MainWindow(string? port, string? board, string? replay)
+    public MainWindow(string? port, string? board, string? replay, string? view)
     {
         _viewModel = new MainViewModel(port, board);
         InitializeComponent();
+        if (string.Equals(view, "spectrum", StringComparison.OrdinalIgnoreCase))
+        {
+            _viewModel.SelectedView = MainViewModel.SpectrumView;
+        }
         if (replay is not null)
         {
             _viewModel.Play(replay);
@@ -28,11 +36,55 @@ public partial class MainWindow : Window
         DataContext = _viewModel;
         _viewModel.PropertyChanged += OnViewModelPropertyChanged;
         ShowShellPane(_viewModel.IsShellPaneVisible);
+        // Acceleration on the left, angular rate on the right; vertical axis on top.
+        for (int c = 0; c < _spectrograms.Length; c++)
+        {
+            SpectrogramControl control = new()
+            {
+                Title = SpectrumAnalyzer.ChannelNames[c],
+                Unit = c < 3 ? "dB re 1 m/s²" : "dB re 1 dps",
+                Margin = new Avalonia.Thickness(c < 3 ? 0 : 3, c % 3 == 0 ? 0 : 3, c < 3 ? 3 : 0, 0),
+            };
+            Grid.SetColumn(control, c / 3);
+            Grid.SetRow(control, c % 3);
+            SpectrumGrid.Children.Add(control);
+            _spectrograms[c] = control;
+        }
+        ApplySpectrumSettings();
+        _viewModel.SpectrumColumns += OnSpectrumColumns;
         Closed += (_, _) =>
         {
             KeepShellPaneHeight();
             _viewModel.Dispose();
         };
+    }
+
+    private void ApplySpectrumSettings()
+    {
+        foreach (SpectrogramControl control in _spectrograms)
+        {
+            control.SetAxis(_viewModel.SpectrumMaxHz, _viewModel.SpectrumLogFrequency);
+            control.SetRange((float)_viewModel.SpectrumMinDb, (float)_viewModel.SpectrumMaxDb);
+        }
+    }
+
+    private void OnSpectrumColumns(List<SpectrumColumn> columns)
+    {
+        // The controls take columns of one size at a time; a change of size starts a new picture.
+        int bins = columns[^1].Db[0].Length;
+        SpectrumColumn last = columns[^1];
+        for (int c = 0; c < _spectrograms.Length; c++)
+        {
+            _channelColumns.Clear();
+            foreach (SpectrumColumn column in columns)
+            {
+                if (column.Db[c].Length == bins)
+                {
+                    _channelColumns.Add(column.Db[c]);
+                }
+            }
+            _spectrograms[c].Add(_channelColumns, last.BinHz, last.PeakHz[c], last.PeakDb[c]);
+        }
     }
 
     private const double ShellPaneMinHeight = 70;
@@ -66,9 +118,24 @@ public partial class MainWindow : Window
 
     private void OnViewModelPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.PropertyName == nameof(MainViewModel.IsShellPaneVisible))
+        switch (e.PropertyName)
         {
-            ShowShellPane(_viewModel.IsShellPaneVisible);
+            case nameof(MainViewModel.IsShellPaneVisible):
+                ShowShellPane(_viewModel.IsShellPaneVisible);
+                break;
+            case nameof(MainViewModel.SpectrumMaxFrequency):
+            case nameof(MainViewModel.SpectrumLogFrequency):
+            case nameof(MainViewModel.SpectrumMinDb):
+            case nameof(MainViewModel.SpectrumMaxDb):
+                ApplySpectrumSettings();
+                break;
+            case nameof(MainViewModel.SelectedView):
+                // The other view had the samples meanwhile: the old picture is not continuous with what comes.
+                foreach (SpectrogramControl control in _spectrograms)
+                {
+                    control.Clear();
+                }
+                break;
         }
         if (e.PropertyName == nameof(MainViewModel.ShellText))
         {

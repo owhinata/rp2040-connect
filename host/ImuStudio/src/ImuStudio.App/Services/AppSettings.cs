@@ -12,6 +12,11 @@ public sealed class AppSettings
     public string RecordingsDirectory { get; set; } = "";
     public double ShellPaneHeight { get; set; } = 190;
     public bool ShellPaneVisible { get; set; } = true;
+    public int SpectrumSize { get; set; } = 4096;
+    public string SpectrumMaxFrequency { get; set; } = "Nyquist";
+    public bool SpectrumLogFrequency { get; set; }
+    public double SpectrumMinDb { get; set; } = -70;
+    public double SpectrumMaxDb { get; set; } = 20;
 
     private static string FilePath => Path.Combine(
         Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData), "ImuStudio", "settings.json");

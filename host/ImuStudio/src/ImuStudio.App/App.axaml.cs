@@ -12,10 +12,11 @@ public partial class App : Application
     {
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
-            // --port N: MQTT port; --board ADDRESS: connect the shell; --replay DIR: replay a recording.
+            // --port N: MQTT port; --board ADDRESS: connect the shell; --replay DIR: replay a recording;
+            // --view attitude|spectrum: the view to start with.
             string[] args = desktop.Args ?? [];
             desktop.MainWindow = new Views.MainWindow(Option(args, "--port"), Option(args, "--board"),
-                                                      Option(args, "--replay"));
+                                                      Option(args, "--replay"), Option(args, "--view"));
         }
 
         base.OnFrameworkInitializationCompleted();
