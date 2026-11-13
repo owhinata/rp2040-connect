@@ -1,0 +1,10 @@
+<Solution>
+  <Folder Name="/src/">
+    <Project Path="src/ImuStudio.App/ImuStudio.App.csproj" />
+    <Project Path="src/ImuStudio.Core/ImuStudio.Core.csproj" />
+    <Project Path="src/ImuStudio.Rendering/ImuStudio.Rendering.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/ImuStudio.Core.Tests/ImuStudio.Core.Tests.csproj" />
+  </Folder>
+</Solution>

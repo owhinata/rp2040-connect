@@ -122,7 +122,8 @@ sudo systemctl restart chrony
 ### 4. PC で受信する
 
 PC 側のツールは `host/` にあります。導入方法と、記録（`record`）・校正（`calib`）の使い方は
-[`host/README_ja.md`](host/README_ja.md) を参照してください。
+[`host/README_ja.md`](host/README_ja.md) を参照してください。受信したデータを物理量に変換して
+姿勢を表示するデスクトップアプリは [`host/ImuStudio/`](host/ImuStudio/README_ja.md) にあります。
 
 `imu-host check` は検証用の受信器です。MQTT クライアント 1 台を直接受け付け、RAW バッチの
 形式、連番、サンプル番号、時刻を検査し、終了時に集計を JSON で出力します。汎用の MQTT
@@ -317,6 +318,6 @@ FIFO 設定と停止処理、NINA の SPI フレーミングなどを、PC 上�
 | `app/blink/` | LED 点滅のサンプル |
 | `design/` | 設計と調査手順 |
 | `firmware/nina-fw/` | NINA ファームウェアの修正とビルド |
-| `host/` | PC 側のツール（受信の診断、記録、校正） |
+| `host/` | PC 側のツール（受信の診断、記録、校正）と、表示用のアプリ `ImuStudio` |
 | `script/` | 環境構築、AP、ホストテスト |
 | `manifest/west.yml` | Zephyr とモジュールのバージョン |

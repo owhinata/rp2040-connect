@@ -39,7 +39,7 @@ congestion and a receiver that stops are to be detected and reported.
 | Starting and stopping a measurement | `imu start` / `imu stop` in the shell (no path from the PC yet) |
 | Session ID and server address | Implemented (assigned automatically; default gateway by default, changed through the key-value store) |
 | Computing a calibration and applying it to `sensor get` / `stream` on the board | Implemented (§10) |
-| Receiving and recording application on the PC | Not started (only `host/`, tools for verification and calibration) |
+| Receiving and recording application on the PC | Partly implemented (`host/ImuStudio`: receiving, applying the calibration, attitude display, recording and replay) |
 | Operation with a real MQTT broker | Not verified |
 
 ### Verified on hardware
@@ -587,7 +587,8 @@ replaced; `M` stays the calibration's.
 - The value is kept in RAM only. A reboot, a reload from the KV store or a range change
   returns to the stored bias.
 - It is not applied to the RAW data sent over MQTT. When the PC applies a calibration to the
-  raw data, it has to estimate the bias from resting periods itself (not implemented).
+  raw data, it has to estimate the bias from resting periods itself. `host/ImuStudio` tracks it
+  the same way as the board.
 
 Replaying the two recordings at hand (about 6 minutes each) through this code gave no update
 while the pose was being changed and resumed updating one to two seconds after the board was

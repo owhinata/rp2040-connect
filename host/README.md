@@ -12,7 +12,8 @@ over MQTT directly and do three things.
 | `imu-host calib` | Computes accelerometer and gyro calibration from a recording |
 | `imu-host write` | Writes a calibration to the board |
 
-See [`../README.md`](../README.md) for the board side.
+See [`../README.md`](../README.md) for the board side. The desktop application that displays
+the received data is in [`ImuStudio/`](ImuStudio/README.md).
 
 ## Requirements
 

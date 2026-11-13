@@ -1,0 +1,125 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:ImuStudio.App.ViewModels"
+        xmlns:controls="using:ImuStudio.App.Controls"
+        x:Class="ImuStudio.App.Views.MainWindow"
+        x:DataType="vm:MainViewModel"
+        Title="ImuStudio" Icon="/Assets/icon.png" Width="1200" Height="820" MinWidth="800" MinHeight="500">
+  <Window.Styles>
+    <Style Selector="TextBlock.label">
+      <Setter Property="VerticalAlignment" Value="Center" />
+      <Setter Property="Opacity" Value="0.7" />
+    </Style>
+    <Style Selector="Border.group">
+      <Setter Property="BorderBrush" Value="#40808080" />
+      <Setter Property="BorderThickness" Value="0,0,1,0" />
+      <Setter Property="Padding" Value="0,0,12,0" />
+      <Setter Property="Margin" Value="0,0,12,0" />
+    </Style>
+  </Window.Styles>
+
+  <DockPanel>
+    <!-- Connections and the actions on the stream -->
+    <WrapPanel DockPanel.Dock="Top" Margin="10,8,10,4" Orientation="Horizontal">
+      <Border Classes="group">
+        <StackPanel Orientation="Horizontal" Spacing="6">
+          <TextBlock Classes="label" Text="MQTT port" />
+          <TextBox Width="76" Text="{Binding MqttPort}" />
+          <Button Content="Listen" Command="{Binding ListenCommand}" />
+          <TextBlock Classes="label" Text="{Binding ListenStatus}" />
+        </StackPanel>
+      </Border>
+      <Border Classes="group">
+        <StackPanel Orientation="Horizontal" Spacing="6">
+          <TextBlock Classes="label" Text="Board" />
+          <TextBox Width="130" Watermark="address" Text="{Binding BoardAddress}"
+                   IsEnabled="{Binding !IsShellConnected}" />
+          <Button Content="Find" Command="{Binding FindBoardCommand}" IsEnabled="{Binding !IsShellConnected}" />
+          <ToggleButton Content="Shell" IsChecked="{Binding IsShellConnected, Mode=OneWay}"
+                        Command="{Binding ToggleShellCommand}"
+                        ToolTip.Tip="Connect or disconnect the Telnet shell" />
+        </StackPanel>
+      </Border>
+      <Border Classes="group">
+        <StackPanel Orientation="Horizontal" Spacing="6">
+          <Button Content="imu start" Command="{Binding ImuStartCommand}" IsEnabled="{Binding IsShellConnected}" />
+          <Button Content="imu stop" Command="{Binding ImuStopCommand}" IsEnabled="{Binding IsShellConnected}" />
+        </StackPanel>
+      </Border>
+      <StackPanel Orientation="Horizontal" Spacing="6">
+        <ToggleButton Content="Record" IsChecked="{Binding IsRecording, Mode=OneWay}"
+                      Command="{Binding ToggleRecordCommand}" IsEnabled="{Binding !IsPlaying}" />
+        <Button Content="Replay…" Click="OnReplayClick" />
+      </StackPanel>
+    </WrapPanel>
+
+    <!-- Replay: pause, place in the recording, stop -->
+    <DockPanel DockPanel.Dock="Top" Margin="10,2,10,4" IsVisible="{Binding IsPlaying}">
+      <ToggleButton DockPanel.Dock="Left" Content="Pause" Width="70" HorizontalContentAlignment="Center"
+                    IsChecked="{Binding IsReplayPaused, Mode=OneWay}" Command="{Binding ToggleReplayPauseCommand}" />
+      <Button DockPanel.Dock="Right" Content="Stop replay" Command="{Binding StopReplayCommand}" />
+      <TextBlock DockPanel.Dock="Right" Classes="label" FontFamily="monospace" FontSize="12" Margin="8,0,12,0"
+                 Text="{Binding ReplayTime}" />
+      <Slider Minimum="0" Maximum="{Binding ReplayDuration}" Value="{Binding ReplayPosition}" Margin="12,0,0,0"
+              VerticalAlignment="Center" />
+    </DockPanel>
+
+    <!-- State of the stream -->
+    <Border DockPanel.Dock="Bottom" Background="#20808080" Padding="10,4">
+      <DockPanel>
+        <ToggleButton DockPanel.Dock="Right" Content="Shell pane" FontSize="12" Padding="8,2" Margin="8,0,0,0"
+                      VerticalAlignment="Center" IsChecked="{Binding IsShellPaneVisible}"
+                      ToolTip.Tip="Show or hide the shell pane" />
+        <StackPanel Spacing="2">
+          <TextBlock Text="{Binding StreamStatus}" FontSize="12" TextTrimming="CharacterEllipsis" />
+          <TextBlock Text="{Binding Message}" FontSize="12" Opacity="0.7" TextTrimming="CharacterEllipsis" />
+        </StackPanel>
+      </DockPanel>
+    </Border>
+
+    <!-- The views above, the board shell below; the bar between them sets the shell's height -->
+    <Grid x:Name="WorkArea" RowDefinitions="*,6,190">
+  <!-- Views; one is in use at a time -->
+      <TabControl Grid.Row="0" Margin="10,0,10,0">
+        <TabItem Header="Attitude">
+          <Grid ColumnDefinitions="*,270">
+            <Border Grid.Column="0" BorderBrush="#40808080" BorderThickness="1">
+              <controls:OpenGlSceneControl Orientation="{Binding Orientation}" />
+            </Border>
+            <DockPanel Grid.Column="1" Margin="12,0,0,0">
+              <StackPanel DockPanel.Dock="Bottom" Spacing="6">
+                <DockPanel>
+                  <TextBlock Classes="label" Text="Madgwick β" />
+                  <TextBlock DockPanel.Dock="Right" Classes="label" Text="{Binding Beta, StringFormat={}{0:F3}}" />
+                  <Slider Minimum="0" Maximum="0.5" Value="{Binding Beta}" Margin="8,0" />
+                </DockPanel>
+                <Button Content="Reset attitude" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
+                        Command="{Binding ResetAttitudeCommand}" />
+                <Button Content="Reload calibration" HorizontalAlignment="Stretch" HorizontalContentAlignment="Center"
+                        Command="{Binding ReloadCalibrationCommand}" IsEnabled="{Binding IsShellConnected}"
+                        ToolTip.Tip="Read the calibration from the board again" />
+              </StackPanel>
+              <TextBlock Text="{Binding AttitudeText}" FontFamily="monospace" FontSize="12" />
+            </DockPanel>
+          </Grid>
+        </TabItem>
+      </TabControl>
+
+      <GridSplitter x:Name="ShellSplitter" Grid.Row="1" ResizeDirection="Rows" Background="#30808080"
+                    Margin="10,2" CornerRadius="2" />
+
+      <DockPanel x:Name="ShellPane" Grid.Row="2" Margin="10,0,10,6">
+        <DockPanel DockPanel.Dock="Bottom" Margin="0,4,0,0">
+          <Button DockPanel.Dock="Right" Content="Send" Margin="6,0,0,0" Command="{Binding SendShellCommand}"
+                  IsEnabled="{Binding IsShellConnected}" />
+          <TextBox x:Name="ShellInputBox" Text="{Binding ShellInput}" FontFamily="monospace"
+                   Watermark="command (Enter to send, Up/Down for history)"
+                   IsEnabled="{Binding IsShellConnected}" KeyDown="OnShellInputKeyDown" />
+        </DockPanel>
+        <TextBox x:Name="ShellLogBox" Text="{Binding ShellText, Mode=OneWay}" IsReadOnly="True"
+                 FontFamily="monospace" FontSize="12" AcceptsReturn="True" TextWrapping="Wrap"
+                 ScrollViewer.VerticalScrollBarVisibility="Auto" />
+      </DockPanel>
+    </Grid>
+  </DockPanel>
+</Window>

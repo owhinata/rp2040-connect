@@ -124,7 +124,9 @@ Open UDP port 123 if a firewall such as ufw is active. `ntp status` shows the bo
 ### 4. Receive on the PC
 
 The PC-side tools are in `host/`. See [`host/README.md`](host/README.md) for installation
-and for recording (`record`) and calibration (`calib`).
+and for recording (`record`) and calibration (`calib`). The desktop application that converts
+the received data to physical units and shows the attitude is in
+[`host/ImuStudio/`](host/ImuStudio/README.md).
 
 `imu-host check` is a receiver for verification. It accepts one MQTT client directly, checks
 the format, sequence numbers, sample numbers and times of the RAW batches, and prints a
@@ -326,6 +328,6 @@ summary (missing batches, valid and reversed times) and at the errors in `imu st
 | `app/blink/` | LED blink sample |
 | `design/` | Design and investigation notes |
 | `firmware/nina-fw/` | Fixes and build for the NINA firmware |
-| `host/` | PC-side tools (receive check, recording, calibration) |
+| `host/` | PC-side tools (receive check, recording, calibration) and the display application `ImuStudio` |
 | `script/` | Setup, access point, host tests |
 | `manifest/west.yml` | Versions of Zephyr and its modules |

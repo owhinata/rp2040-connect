@@ -12,7 +12,8 @@ PC 側で IMU の RAW データを受信するツールです。ボードが MQT
 | `imu-host calib` | 記録から加速度・角速度の校正値を求める |
 | `imu-host write` | 校正値をボードに書き込む |
 
-ボード側の使い方は [`../README_ja.md`](../README_ja.md) を参照してください。
+ボード側の使い方は [`../README_ja.md`](../README_ja.md) を参照してください。受信したデータを
+表示するデスクトップアプリは [`ImuStudio/`](ImuStudio/README_ja.md) にあります。
 
 ## 必要なもの
 
