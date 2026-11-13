@@ -25,7 +25,7 @@ symlink で、`libexternal.a` になります）。ボード側の部分は `nut
 - SPI は NuttX の `rp2040_spi.c` をポーリングで使います（DMA なし）。転送ごとに `SPI_LOCK` を取り、
   最初の転送でモード 0・8 ビット・`CONFIG_NANO_NINA_SPI_FREQUENCY` を設定します。`SPI_SELECT` は
   使いません。
-- 期限、配線、実測は `nuttx/README_ja.md` の「NINA-W102」の節にあります。
+- 期限と配線は `nuttx/README_ja.md` の「NINA-W102」の節にあります。
 - `nina/nina_spi.c` はホストテスト（`nuttx/tests/nina_spi.c`）で、偽のボードと時計を使って確かめます。
 
 ### ソケット（usrsock）

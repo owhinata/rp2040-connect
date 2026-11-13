@@ -25,7 +25,7 @@ the parts ported so far.
   SPI1 and its pins and drives CS inactive.
 - The SPI is NuttX's `rp2040_spi.c`, polled (no DMA). Each transfer takes `SPI_LOCK`; the first
   one sets mode 0, 8 bits and `CONFIG_NANO_NINA_SPI_FREQUENCY`. `SPI_SELECT` is not used.
-- The time limits, the wiring and measurements are in the "NINA-W102" section of
+- The time limits and the wiring are in the "NINA-W102" section of
   `nuttx/README.md`.
 - `nina/nina_spi.c` is checked by a host test (`nuttx/tests/nina_spi.c`) with a fake board and
   clock.

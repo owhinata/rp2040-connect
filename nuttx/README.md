@@ -234,8 +234,7 @@ The RAM log of the Zephyr version's `src/log_ram.c` (`nuttx/drivers/log/`).
   so a file that includes `app_log.h` uses `APP_LOG_SYSLOG_ERR` instead in `syslog(LOG_ERR, ...)`.
 - A line is formatted in the calling thread (or interrupt), in a 192-byte buffer on its stack,
   and then written to the ring with interrupts disabled. A longer message is cut to fit 192
-  bytes. One `LOG_INF()` takes about 42 µs and about 500 bytes of stack (mean of 100 calls on the
-  board). In the Zephyr version's default (deferred) mode the caller only records the message, and
+  bytes. In the Zephyr version's default (deferred) mode the caller only records the message, and
   a low-priority logging thread formats it later.
 
 ## Key-value store (`kv`)
@@ -285,16 +284,14 @@ compatible with the Zephyr version's.
 - Capacity: all live entries must fit in one erase sector (4 KiB; the other one is kept for
   compaction). An entry takes "key length + 8 (`app_kv/` and the terminator) + value length + 16"
   bytes, and 4048 bytes are usable: with 32-character keys and 128-byte values, 184 bytes each, up
-  to 22 entries (on the board, 21 such entries and `imu.port` fitted, and the next one gave
+  to 22 entries (checked on the board: the write after the area is full gives
   `KV write failed: -28`). The Zephyr version (settings on NVS, the same 4 KiB × 2) stores a name and
   a value per entry (183 bytes for the same entry), about the same. Storing the value that is
   already stored writes nothing.
 - Updates and compaction: an update appends the new entry and marks the old one; when an erase
   sector is full, the live entries are copied to the other sector and the full one is erased
   (NVS garbage collection). XIP stops while the flash is erased or programmed, so this runs from
-  RAM with interrupts disabled: 33 to 40 ms per 4 KiB erase and 0.37 to 0.51 ms per 256-byte page
-  program (measured on the board with the TIMER, over 200-odd erases and 30,000-odd programs).
-  Updating one entry normally takes 4 page programs. The Zephyr version's flash driver also
+  RAM with interrupts disabled, for each 4 KiB erase and each 256-byte page program. Updating one entry normally takes 4 page programs. The Zephyr version's flash driver also
   disables interrupts per erase call (4 KiB) and per write call (an entry's data, up to 2 pages).
 - Power loss: NVS writes the data before its CRC-checked table entry, and marks the old entry only
   after the new one is written; at boot it repairs a half-written entry or an interrupted
@@ -381,8 +378,8 @@ NINA firmware: 3.0.2
   (`CONFIG_RP2040_SPI_DRIVER` is off).
 - As in the Zephyr version, the NINA is set up on the first request: CS inactive, READY an input,
   IRQ high, RESET active; 10 ms later the reset is released, and after 750 ms IRQ is driven low and
-  made an input again. So the first `nina version` after a boot (flashing, `reboot`) takes about
-  0.76 s (761 ms on the board; about 0.6 to 0.7 ms after that). At boot the board sets up only
+  made an input again. So the first `nina version` after a boot (flashing, `reboot`) takes longer
+  by these waits. At boot the board sets up only
   SPI1, its pins and CS.
 - The steps and values of a request are those of the Zephyr version's `drivers/nina/nina_wifi.c`
   (`nuttx/drivers/nina/nina_spi.c`). READY is sampled every 100 µs (rounded up to ticks plus one
@@ -390,11 +387,6 @@ NINA firmware: 3.0.2
   NINA to answer CS by releasing READY, and 10000 ms for the answer to be ready. Up to 1000 bytes
   are read looking for the start of the answer (0xE0). A recursive mutex (with priority
   inheritance) serializes the requests, and the SPI runs at the priority of the calling thread.
-- Measured (on the board with the TIMER; `nina_request(0x37)` 1000 times back to back): one
-  request takes 591 µs on average (427 to 697), about 360 µs of it CPU time (from
-  `cpu_load_get()`). A 1-byte transfer takes about 5.1 µs per call; longer transfers take 1.26 µs
-  per byte reading and 1.22 µs writing (8 bits on the wire are 1.02 µs). Each wait between two
-  READY samples takes about 200 µs, about 50 µs of it CPU time.
 
 ## I2C0 (`i2c`)
 
@@ -426,17 +418,6 @@ READ Bus: 0 Addr: 6a Subaddr: 0f Value: 6c
   limited). The next transfer works as usual. A bus lock serializes transfers.
 - A transfer has one address and one frequency for all its messages. 10-bit addresses are not
   supported. The last message ends with a STOP even with `I2C_M_NOSTOP` (as in the Zephyr version).
-- Measured (on the board, with the TIMER and `cpu_load_get()`, averages of back-to-back
-  transfers):
-
-  | Transfer | 100 kHz | 400 kHz | 1 MHz | CPU time | Interrupts |
-  |---|---|---|---|---|---|
-  | WHO_AM_I (write 1 byte, read 1 byte) | 411 us | 128 us | 95 us | about 95 us | 5 (about 3 at 1 MHz) |
-  | 256-byte read | 21.6 ms | 4.37 ms | 1.73 ms | about 0.7 ms | 68 to 80 |
-  | 3584-byte read | 298 ms | 59.7 ms | 23.3 ms | about 8.3 to 8.5 ms | 900 to 1040 |
-
-  Per bit, the 3584-byte read takes 9.24 us at 100 kHz, 1.85 us at 400 kHz and 0.72 us at 1 MHz.
-  These figures are without DMA (the next section compares the two).
 
 ### DMA reads (`i2c_dma`)
 
@@ -467,21 +448,9 @@ anything but `on` or `off` gives `Expected on or off`). As in the Zephyr version
 sets the value: it neither waits for nor stops a transfer in progress. "Only while no stream or
 transfer runs" is a rule for the user; the command does not check it. Priority 104, stack 3072.
 
-Measured (on the board, 1 MHz, a transfer that writes one LSM6DSOX register address and reads, with
-the TIMER and `cpu_load_get()`, averages of back-to-back transfers; interrupts counted for one
-transfer: I2C0 interrupts, including those of the register write, and DMA interrupts):
-
-| Read | Path | Time | CPU time | Interrupts |
-|---|---|---|---|---|
-| 256 bytes | DMA | 1.79 ms | about 0.26 ms | I2C 3, DMA 2 |
-| 256 bytes | interrupts | 1.76 ms | about 0.76 ms | I2C 84 |
-| 3584 bytes | DMA | 22.9 ms | about 0.75 ms | I2C 2 to 3, DMA 2 |
-| 3584 bytes | interrupts | 23.1 ms | about 8.9 ms | I2C 1139 |
-
-Time and CPU time include handing the transfer over with `ioctl()` and the register write (averages
-of 1000, 200 and 50 transfers). 1000 DMA reads of 256 bytes in a row gave no error, and so did 500
-each from two tasks at once (the bus lock runs them one at a time). DMA and interrupt reads of the
-same range gave the same bytes except in registers that change by themselves (outputs, status,
+Checked on the board (1 MHz): 1000 DMA reads of 256 bytes in a row give no error, and neither do
+500 each from two tasks at once (the bus lock runs them one at a time); DMA and interrupt reads of
+the same range give the same bytes except in registers that change by themselves (outputs, status,
 time stamp).
 
 ### The `i2c` tool and the Zephyr version's `i2c` command
@@ -561,12 +530,10 @@ runs the Zephyr version's files as they are, too (below). The acquisition servic
   `lsm6dso_fifo_request_stop()` delivers the rest as a last partial batch and ends with
   `-ECANCELED`. The Zephyr kernel parts it needs (work queues, semaphores, `k_poll()`), RTIO, GPIO
   and the sensors' async API are in the compatibility layer (`nuttx/drivers/compat/`); the board's
-  bring-up starts `sysworkq` and `RTIO WQ 0` with `zephyr_compat_initialize()`. On the board (1 MHz,
-  6667 Hz, watermark 128, the RTIO sizes of `imu_stream.c`; with a temporary test command at T11
-  whose consumer only takes and releases the completions): about 1070 completions in 10 s, about
-  67080 accelerometer and gyro words each (the sensor's oscillator runs about 0.6 % fast,
-  `freq_fine` 4), no errors, overruns, `i2c_dma` errors or fallbacks, 5.5 ms on average from the
-  INT1 interrupt to the completion (mostly the FIFO read), CPU load 26 %. A 60 s run gave the same.
+  bring-up starts `sysworkq` and `RTIO WQ 0` with `zephyr_compat_initialize()`. Checked on the
+  board (1 MHz, 6667 Hz, watermark 128, the RTIO sizes of `imu_stream.c`; with a temporary test
+  command at T11 whose consumer only takes and releases the completions) in 10 s and 60 s runs: no
+  errors, overruns, `i2c_dma` errors or fallbacks.
 - The copies of Zephyr's API for the callers (`struct device`, `struct sensor_value`, the channel
   and attribute enumerations, `sensor_*()`, part of the I2C API, the kernel, RTIO, GPIO) are in
   `nuttx/drivers/compat/`. See the "LSM6DSOX" and "Zephyr API compatibility layer" sections of
@@ -615,12 +582,9 @@ Subcommands:
 | Time synchronization (`time_sync.h`) | `time_sync_null.c` | Only `time_sync_mono_us()` is the real one (the TIMER read directly). The rest behaves as before the first NTP reply: `synchronized` is 0 and `unix_unavailable` grows with every batch |
 | Calibration (`imu_cal.h`) | `imu_cal_null.c` | `imu_cal_init()` does nothing and succeeds. `imu cal` (also `reload` and `zero`) prints `Calibration is not available in this build yet` and fails (`imu cal zero` during a measurement is refused with the Zephyr version's message) |
 
-On the board (transport stub, no network, 6667 Hz, watermark 128, 1 MHz): `imu start` → 10 s →
-`imu stop` four times (one right after flashing) and 60 s once. Acquisition time about 7.01 s
-(57.12 s for the 60-second run), accelerometer and gyroscope each about 6700 Hz × seconds, every
-item of `errors` and `fifo` and every anomaly count of `time` 0, no `i2c_dma` errors or fallbacks.
-`cpu_active` was 38.4 to 38.5 % (nothing sent) and `imu_stream_tid` used 1024 of 2000 bytes of
-stack.
+Checked on the board (transport stub, no network, 6667 Hz, watermark 128, 1 MHz) with `imu start`
+→ 10 s → `imu stop` four times (one right after flashing) and 60 s once: every item of `errors` and
+`fifo`, every anomaly count of `time`, and the `i2c_dma` errors and fallbacks are 0.
 
 ## System clock
 
@@ -641,7 +605,7 @@ default), `CONFIG_SCHED_TICKLESS=y` and `CONFIG_USEC_PER_TICK=100`.
 - The board's monotonic clock is `nano_mono_us()` (`<arch/board/nano_timer.h>`). It reads the
   TIMER's TIMERAWH, TIMERAWL and TIMERAWH again until the two high words agree (the read of the
   Zephyr version's `time_sync_mono_us()`). It has no side effect and takes no lock, so the kernel,
-  the applications and interrupt handlers may all call it; one call takes about 0.3 µs. The value
+  the applications and interrupt handlers may all call it. The value
   is µs since boot; the TIMER starts again from 0 at every boot (`reboot` included). It is the
   counter behind `CLOCK_MONOTONIC`, and the two agree to within the time between the reads (a few
   µs).
@@ -656,15 +620,9 @@ default), `CONFIG_SCHED_TICKLESS=y` and `CONFIG_USEC_PER_TICK=100`.
   `up_alarm_tick_start()`, `up_alarm_cancel()`, `up_udelay()`, `up_ndelay()`) with arithmetic for
   1 MHz and 100 µs (`src/nano_timeconv.h`: division by 100 one byte at a time, with a 32-bit
   multiply and a shift). The Cortex-M0+ has no divide instruction, and NuttX's generic conversions
-  (`ONESHOT_COUNT`) do 64-bit divisions: about 5.5 µs per `clock_systime_ticks()` and about 11 µs per
-  tick-to-counter conversion (about 1.3 µs and 0.6 µs after the replacement). The results equal
+  (`ONESHOT_COUNT`) do 64-bit divisions, which are slow. The results equal
   the generic ones over the whole 64-bit range (host test `nano_timeconv`). The conversions assume a
   100 µs tick, so the build stops if `CONFIG_USEC_PER_TICK` is not 100.
-- The wake-up delay (from the tick boundary until `usleep()` returns) is about 17 to 36 µs, and the
-  CPU time per `usleep(1000)` about 30 to 52 µs (before the replacement about 51 to 55 µs and 104
-  to 114 µs; both measured with temporary measurement code, as the mean of 1000 calls timed by
-  the TIMER). The placement of the code run from flash changes how well the XIP cache hits, and
-  the values vary by about this much from build to build.
 
 ## CPU load
 
@@ -684,12 +642,10 @@ the Zephyr version's `CONFIG_CPU_LOAD` (`CONFIG_CPU_LOAD_BACKEND_IDLE_HOOK`) ret
 - The time base is the TIMER (1 µs); the Zephyr version converts CPU clock cycles to µs. Each idle
   window is off by up to ±1 µs, without bias; even with many windows the effect on the result is
   estimated to be well below 0.1‰.
-- Values on the board (1 or 2 runs each): 0 for 10 s of doing nothing (0.3 to 0.4 ms of the 10 s
-  not idle), 1000 with a low-priority busy loop, 499 with 10 ms of work and 10 ms of waiting in
-  turn. With interrupts alone, a wdog every 196 µs or so (5099 per second) gives 50 with an empty
-  handler and 300 with a 50 µs handler (260 for the handler bodies alone): the entry and exit of
-  each interrupt (the timer interrupt, the wdog, setting the next alarm) adds about 8 to 10 µs of
-  load. One `cpu_load_get()` takes about 4.8 µs.
+- The values were checked on the board while doing nothing, with a low-priority busy loop, with
+  10 ms of work and 10 ms of waiting in turn, and with interrupts alone (a wdog at short
+  intervals). The entry and exit of each interrupt (the timer interrupt, the wdog, setting the next
+  alarm) also count as load.
 
 ## Thread priorities and stacks
 
@@ -724,11 +680,8 @@ Priorities map as `NuttX = 118 − Zephyr`; `nuttx/drivers/include/priorities.h`
   `CONFIG_ISR_STACK_SIZE=2048`): threads run on the process stack (PSP), interrupt handlers on the
   main stack (MSP), so handlers do not use the stack of the thread they interrupt. Only the 32 bytes
   that the hardware saves (and the save area of a context switch) go on that thread's stack, as in
-  the Zephyr version. On the board, a log line written in an interrupt while nothing ran left the
-  idle thread's use at 304 bytes (without the interrupt stack it grew from 452 to 712 bytes); the
-  interrupt stack used 364 bytes in normal running and 624 bytes after that log line. The cost of an
-  interrupt did not change (an empty wdog about 5000 times a second: 500.0 ms not idle in 10 s with
-  and without it, 3 runs each). `ps` does not show the interrupt stack (a PANIC report does, in its
+  the Zephyr version. Checked on the board: a log line written in an interrupt while nothing runs
+  does not change the idle thread's stack use. `ps` does not show the interrupt stack (a PANIC report does, in its
   `irq` line).
 - Stack sentinel (`CONFIG_NANO_STACK_SENTINEL`, board `Kconfig`, on by default): like the Zephyr
   version's `CONFIG_STACK_SENTINEL`, the lowest word of each stack (the value written by
@@ -743,9 +696,7 @@ Priorities map as `NuttX = 118 − Zephyr`; `nuttx/drivers/include/priorities.h`
   `arm_doirq()` (they use `exception_direct()`), so the switch hook alone does not see the end of
   an interrupt. All interrupts run at one priority and never nest, so every handler exit is the
   end of a non-nested interrupt in Zephyr's terms. NuttX's `CONFIG_STACKCHECK_MARGIN` is not used:
-  it checks at switches only and needs `CONFIG_DEBUG_ASSERTIONS` (every DEBUGASSERT). Each interrupt
-  costs about 1.0 µs more (a wdog about every 200 µs, 4999 per second: the time not idle in 5 s
-  went from 225.2 ms to 250.2 ms; 3 runs each).
+  it checks at switches only and needs `CONFIG_DEBUG_ASSERTIONS` (every DEBUGASSERT).
 - `ps` shows stack use in its STACK, USED and FILLED columns.
 
 ## Tests
