@@ -392,6 +392,69 @@ NINA firmware: 3.0.2
   per byte reading and 1.22 µs writing (8 bits on the wire are 1.02 µs). Each wait between two
   READY samples takes about 200 µs, about 50 µs of it CPU time.
 
+## I2C0 (`i2c`)
+
+I2C0 carries the LSM6DSOX (0x6A) and the ATECC608A (0x60). The driver is the board's
+`src/nano_i2c.c`, a copy of the controller part of the DesignWare I2C driver that the Zephyr
+version uses (`zephyr/app/usb-console/drivers/i2c_dw/i2c_dw.c`). NuttX's `rp2040_i2c.c`
+(`CONFIG_RP2040_I2C`) is not used. It is registered as `/dev/i2c0` for NuttX's `i2c` tool. The DMA
+reads (the Zephyr version's `CONFIG_I2C_DW_RP2040_DMA`) are not there yet.
+
+```
+nsh$ i2c get -a 6a -r 0f
+READ Bus: 0 Addr: 6a Subaddr: 0f Value: 6c
+```
+
+- Wiring (`BOARD_I2C0_*` in the board's `include/board.h`): SDA on GPIO12, SCL on GPIO13. As the
+  Zephyr version's pinctrl sets them: the I2C function, no internal pulls, 4 mA, slow slew, Schmitt
+  trigger on, input enabled. The I2C0 block is reset at boot before it is set up.
+- The speed comes with each transfer, from the messages' frequency, and only 100000, 400000 and
+  1000000 are taken (Zephyr's speed classes; other values give `-EINVAL`). The registers get the
+  Zephyr version's values: at 100 kHz `IC_SS_SCL_HCNT`/`LCNT` 500/625, at 400 kHz
+  `IC_FS_SCL_HCNT`/`LCNT` 93/109, at 1 MHz 31/31 (both with the FAST speed in `IC_CON`),
+  `IC_FS_SPKLEN` 1, `IC_SDA_HOLD` at its reset value 1. `IC_CON` is 0x363 at 100 kHz and 0x365
+  otherwise (with the bit that holds the bus while the RX FIFO is full, as in the Zephyr version
+  with its I2C DMA enabled).
+- Transfers are interrupt driven. A read queues as many requests as the RX FIFO (16 entries) has
+  room for and takes the data 4 bytes at a time. A transfer has 1 s; after that it is aborted and
+  returns `-ETIMEDOUT`. A target that does not answer (NACK) and other failures give `-EIO` and
+  leave the Zephyr version's `<err> i2c_dw: NACK on i2c@40044000` and the like in `dmesg` (rate
+  limited). The next transfer works as usual. A bus lock serializes transfers.
+- A transfer has one address and one frequency for all its messages. 10-bit addresses are not
+  supported. The last message ends with a STOP even with `I2C_M_NOSTOP` (as in the Zephyr version).
+- Measured (on the board, with the TIMER and `cpu_load_get()`, averages of back-to-back
+  transfers):
+
+  | Transfer | 100 kHz | 400 kHz | 1 MHz | CPU time | Interrupts |
+  |---|---|---|---|---|---|
+  | WHO_AM_I (write 1 byte, read 1 byte) | 411 us | 128 us | 95 us | about 95 us | 5 (about 3 at 1 MHz) |
+  | 256-byte read | 21.6 ms | 4.37 ms | 1.73 ms | about 0.7 ms | 68 to 80 |
+  | 3584-byte read | 298 ms | 59.7 ms | 23.3 ms | about 8.3 to 8.5 ms | 900 to 1040 |
+
+  Per bit, the 3584-byte read takes 9.24 us at 100 kHz, 1.85 us at 400 kHz and 0.72 us at 1 MHz.
+
+### The `i2c` tool and the Zephyr version's `i2c` command
+
+The Zephyr version's `i2c` command (Zephyr's shell) is not ported; NuttX's `i2c` tool
+(`CONFIG_SYSTEM_I2CTOOL`) takes its place. Its options (`-a` address, `-r` register, `-f`
+frequency and so on) stay until changed. The default frequency is 100000 (the Zephyr version's
+speed at boot). Addresses, registers and values to write are hexadecimal; the byte count of `dump`
+is decimal.
+
+| Zephyr version | NuttX port | Differences |
+|---|---|---|
+| `i2c scan i2c@40044000` | `i2c dev 03 77` | Probes differently (the Zephyr version writes 1 byte, the NuttX port reads 1 byte). Both see 0x60 and 0x6a. Do not add `-z` (a 0-byte write cannot be sent; each address times out after 1 s) |
+| `i2c read_byte i2c@40044000 6a 0f` | `i2c get -a 6a -r 0f` | |
+| `i2c read i2c@40044000 6a 10 10` | `i2c dump -a 6a -r 10 16` | Up to 256 bytes (the Zephyr version: 64). The Zephyr version's byte count is hexadecimal |
+| `i2c direct_read i2c@40044000 6a 1` | `i2c get -a 6a` | Without `-r` no register is sent |
+| `i2c write_byte i2c@40044000 6a 07 5a` | `i2c set -a 6a -r 07 5a` | |
+| `i2c write i2c@40044000 6a 07 5a 00` | none | The NuttX tool writes one value at a time (two bytes with `-w 16`) |
+| `i2c speed i2c@40044000 3` | `-f 1000000` (kept for later commands) | The Zephyr version changes the bus setting, and `imu start` sets 1 MHz there; the NuttX tool only changes its own setting |
+| `i2c recover i2c@40044000` | `i2c reset` | Both only take and release the bus (the board has no recovery routine) |
+
+`i2c verf` writes and reads back, so it changes the sensor's settings. The `i2c` tool runs at
+priority 100 (the Zephyr version's shell commands are at the place of 104).
+
 ## System clock
 
 The kernel clock is tickless with a 100 µs tick (the same tick as the Zephyr version's
@@ -516,7 +579,8 @@ stored calibration format, gyro zero tracking at rest, the board's time conversi
 pieces, line prefix and rate limit (`log_ram`), the key-value area's range checks, page writes and
 boot-time contents check (`nano_flash_kv`), the key rules of the key-value store (`kv_name`) and
 the hex conversions of the `kv` command (`kv_hex`), the handling of the commands' subcommands
-(`subcmd`) and the NINA's SPI transfer layer (`nina_spi`). Each test is built and run in turn,
+(`subcmd`), the NINA's SPI transfer layer (`nina_spi`) and the OS-independent part of the I2C0
+driver (`nano_i2c_dw`). Each test is built and run in turn,
 and the script stops at the first failure. Build products go to a temporary directory that is
 removed on exit.
 
@@ -566,5 +630,14 @@ parameters, the version request, the search for the start of the answer (1000 by
 20 and 10000 ms, counted as samples every 100 µs), the reset on the first request, the order of
 the CS edges and transfers, and the lock.
 
-Tests of the driver's I2C, FIFO control and stream handling and of the NINA's Wi-Fi and sockets are
-added when those parts are ported.
+`nuttx/tests/nano_i2c_dw.c` checks `src/nano_i2c_dw.h` against the relevant parts of the Zephyr
+version's `i2c_dw.c` and `i2c_dw.h` and of Zephyr's `i2c.h`, written out in the test: the SCL
+counts (500/625, 93/109 and 31/31 at 125 MHz, and every combination of a 1 to 400 MHz clock and a
+speed class), the frequencies taken, the NuttX message flags turned into Zephyr's, the words
+written to `IC_DATA_CMD` (the `i2c` tool's `get`, `set`, `set -s`, `dump` and `dev`, a sensor
+register read and write, three messages and so on, run as consecutive transfers so that the
+direction of one transfer sets the RESTART at the start of the next), the `IC_CON` value and the
+register layout.
+
+Tests of the driver's I2C DMA, FIFO control and stream handling and of the NINA's Wi-Fi and
+sockets are added when those parts are ported.

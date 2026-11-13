@@ -64,6 +64,13 @@ ifeq ($(CONFIG_NANO_NINA),y)
 CSRCS += nano_nina.c
 endif
 
+# I2C0 (the LSM6DSOX and the ATECC608A), in place of the in-tree
+# rp2040_i2c.c (RP2040_I2C off).
+
+ifeq ($(CONFIG_NANO_I2C0),y)
+CSRCS += nano_i2c.c
+endif
+
 # The stack sentinel in the scheduler's switch hook.
 
 ifeq ($(CONFIG_NANO_STACK_SENTINEL),y)

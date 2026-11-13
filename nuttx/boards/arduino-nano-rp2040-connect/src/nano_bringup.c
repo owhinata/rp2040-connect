@@ -34,6 +34,7 @@
 #include <nuttx/config.h>
 
 #include <nuttx/debug.h>
+#include <errno.h>
 #include <stddef.h>
 #include <syslog.h>
 
@@ -49,6 +50,11 @@
 
 #ifdef CONFIG_NANO_NINA
 #  include "nano_nina.h"
+#endif
+
+#ifdef CONFIG_NANO_I2C0
+#  include <nuttx/i2c/i2c_master.h>
+#  include "nano_i2c.h"
 #endif
 
 #ifdef CONFIG_ARCH_BOARD_COMMON
@@ -109,6 +115,34 @@ int nano_bringup(void)
       syslog(LOG_ERR, "ERROR: nano_nina_initialize() failed: %d\n", ret);
       result = ret;
     }
+#endif
+
+#ifdef CONFIG_NANO_I2C0
+  /* I2C0: reset, pins, controller registers and interrupt, as the Zephyr
+   * build's i2c0 is set up at boot (POST_KERNEL), then /dev/i2c0 for the
+   * i2c tool.
+   */
+
+  {
+    struct i2c_master_s *i2c = nano_i2c0_initialize();
+
+    if (i2c == NULL)
+      {
+        syslog(LOG_ERR, "ERROR: nano_i2c0_initialize() failed\n");
+        result = -ENODEV;
+      }
+#  ifdef CONFIG_I2C_DRIVER
+    else
+      {
+        ret = i2c_register(i2c, 0);
+        if (ret < 0)
+          {
+            syslog(LOG_ERR, "ERROR: i2c_register(0) failed: %d\n", ret);
+            result = ret;
+          }
+      }
+#  endif
+  }
 #endif
 
 #ifdef CONFIG_CDCACM

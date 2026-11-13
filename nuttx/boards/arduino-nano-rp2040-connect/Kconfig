@@ -70,3 +70,17 @@ config NANO_FLASH_KV
 		that holds neither NuttX's NVS layout nor only erased bytes (for
 		example the Zephyr build's NVS) is erased before it is mounted.
 		The store's format is not the Zephyr build's.
+
+config NANO_I2C0
+	bool "I2C0 controller (LSM6DSOX, ATECC608A)"
+	default y
+	depends on ARCH_CHIP_RP2040 && I2C && !RP2040_I2C
+	---help---
+		src/nano_i2c.c: I2C0 on GPIO12 (SDA) and GPIO13 (SCL), a port of
+		the controller path of the Zephyr build's DesignWare driver
+		(zephyr/app/usb-console/drivers/i2c_dw/i2c_dw.c): interrupt
+		driven, RX in batches of 4, 1 s transfer timeout with an abort,
+		the Zephyr SCL counts (100 kHz, 400 kHz, 1 MHz).  It replaces
+		NuttX's arch/arm/src/rp2040/rp2040_i2c.c, which must stay off
+		(RP2040_I2C), and sets up the pins itself.  Registered as
+		/dev/i2c0 when I2C_DRIVER is set (the i2c tool uses it).

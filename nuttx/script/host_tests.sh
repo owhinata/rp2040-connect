@@ -53,3 +53,5 @@ run kv_hex -Iapps/kv apps/kv/kv_hex.c
 run subcmd -Iapps/subcmd apps/subcmd/subcmd.c
 # NINA SPI link: framing, answers, READY timeouts, reset sequence, CS order (fake board and clock).
 run nina_spi -Idrivers/include -Idrivers/nina
+# Board: the I2C0 driver's SCL counts, speeds and IC_DATA_CMD words against the Zephyr build's.
+run nano_i2c_dw -Iboards/arduino-nano-rp2040-connect/src

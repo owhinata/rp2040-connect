@@ -30,4 +30,29 @@ the parts ported so far.
 - `nina/nina_spi.c` is checked by a host test (`nuttx/tests/nina_spi.c`) with a fake board and
   clock.
 
+## I2C0
+
+| File | Role |
+|---|---|
+| The board's `src/nano_i2c.c` | The I2C0 controller. A copy of the controller part of the Zephyr version's `drivers/i2c_dw/i2c_dw.c` (`i2c_dw_transfer()`, `i2c_dw_isr()`, `i2c_dw_data_ask()`, `_read()`, `_send()`, `i2c_dw_setup()`, `i2c_dw_configure()`, the initialization) with the same functions, branches, order, register values, time limit and error values, offered as a NuttX `struct i2c_master_s` (`I2C_TRANSFER()`, `I2C_RESET()`) |
+| The board's `src/nano_i2c.h` | `nano_i2c0_initialize()` (called by `nano_bringup()` at boot, which registers `/dev/i2c0`) |
+| The board's `src/nano_i2c_dw.h` | The OS-independent part: the definitions of the Zephyr version's `i2c_dw.h`, the SCL counts, the speed class of a frequency, the NuttX flags (`I2C_M_*`) turned into Zephyr's (`I2C_MSG_*`) and the words written to `IC_DATA_CMD`. Host test `nuttx/tests/nano_i2c_dw.c` |
+| The board's `src/nano_i2c_dw_registers.h` | A copy of the Zephyr version's `i2c_dw_registers.h` (only the accessors are defined for NuttX) |
+
+- The calling thread drives a transfer and the interrupt handler moves the bytes. The caller waits
+  for the end on a semaphore (1 s; after that the transfer is aborted and returns `-ETIMEDOUT`). A
+  bus semaphore serializes whole transfers (no priority inheritance, as in the Zephyr version).
+- NuttX messages are handled as Zephyr messages: a STOP after the last message and after any
+  message without `I2C_M_NOSTOP` whose next message has no `I2C_M_NOSTART`, a RESTART at the start
+  of a message without `I2C_M_NOSTART` after one with `I2C_M_NOSTOP`. A change of direction (also
+  from the last message of the previous transfer) adds a RESTART, as in the Zephyr version.
+- The speed comes from the messages' frequency (100 kHz, 400 kHz, 1 MHz); when it changes, the
+  counts are computed as Zephyr's `i2c_configure()` does. A speed that is not taken changes nothing
+  and gives `-EINVAL` (the Zephyr version keeps the minimum counts then).
+- Not ported: target (slave) mode, Intel LPSS DMA, `CONFIG_I2C_ALLOW_NO_STOP_TRANSACTIONS`, the SDA/SCL
+  timeouts (`CONFIG_I2C_DW_EXTENDED_SUPPORT`), power management, PCIe, code for other SoCs, the bus
+  recovery and check callbacks (not registered on this board; recovery does nothing), i2c1.
+- The RP2040 I2C DMA reads are not there yet. Use and measurements are in the "I2C0" section of
+  `nuttx/README.md`.
+
 Wi-Fi management and sockets (usrsock) are not ported yet.
