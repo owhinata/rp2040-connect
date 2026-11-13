@@ -8,7 +8,7 @@ Acceleration and angular rate are read from the LSM6DSO of an Arduino Nano RP204
 sent to an application on a PC with MQTT. Each axis is sent as the sensor's signed 16-bit raw
 integer.
 
-This document describes the design of the implementation (`app/usb-console`, and `host/` on the PC) as of 2026-11-12
+This document describes the design of the implementation (`zephyr/app/usb-console`, and `host/` on the PC) as of 2026-11-12
 and what has and has not been verified on hardware. The whole is still experimental: the
 payload format and topics are implemented but not final, and are expected to be revised
 against the specification of a dedicated PC application. See the [README](../README.md) for
@@ -66,6 +66,7 @@ in section 10.6.
 ### Build and host tests
 
 ```sh
+cd zephyr
 west build -b arduino_nano_connect app/usb-console -d build/usb-console
 ./script/host_tests.sh
 ```
@@ -100,7 +101,7 @@ flowchart LR
 | Send queue | `src/imu_raw_queue.*` |
 | MQTT sending, reconnecting, status / info | `src/imu_raw_mqtt.*`, `src/imu_raw_status.*` |
 | Acquisition thread, recovery, shell (`imu`) | `src/imu_stream.c` |
-| NINA sockets | `drivers/nina/nina_socket.c` (see the [driver README](../app/usb-console/drivers/README.md)) |
+| NINA sockets | `drivers/nina/nina_socket.c` (see the [driver README](../zephyr/app/usb-console/drivers/README.md)) |
 
 Reading the FIFO and sending are independent. A lost Wi-Fi or MQTT connection, or a send that
 waits, never blocks FIFO reads. Thread priorities are 9 for acquisition (batching) and time

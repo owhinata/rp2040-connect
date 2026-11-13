@@ -232,7 +232,7 @@ imu.cal.gyro.<µdps/LSB>     例: imu.cal.gyro.70000  （±2000 dps）
 レンジに応じて切り替わります。消すには、ボードのシェルで `kv delete <キー>` のあと
 `imu cal reload` を実行します。
 
-値は 56 バイトで、整数に直した係数です（`app/usb-console/src/imu_cal.h`）。ボードは
+値は 56 バイトで、整数に直した係数です（`zephyr/app/usb-console/src/imu_cal.h`）。ボードは
 浮動小数点を使わずに `M · (raw − bias)` を計算します。`M` は `misalignment @ scale` を
 出力の単位（2⁻²² m/s² または rad/s）に直して 14 ビットの小数を付けた値、`bias` は 8 ビットの
 小数を付けた LSB です。この丸めによる誤差は 1 LSB の 0.2% 以下です。

@@ -8,7 +8,7 @@ Arduino Nano RP2040 Connect の LSM6DSO から加速度と角速度を取得し�
 PC 上のアプリケーションに MQTT で送信する。各軸はセンサーの符号付き
 16-bit RAW 整数のまま送る。
 
-この文書は、2026-11-12 時点の実装（`app/usb-console`、PC 側の `host/`）の設計と、実機で確認できた範囲・
+この文書は、2026-11-12 時点の実装（`zephyr/app/usb-console`、PC 側の `host/`）の設計と、実機で確認できた範囲・
 できていない範囲を記す。全体はまだ実験段階で、ペイロード形式やトピックは実装済みだが
 確定ではなく、PC 側の専用アプリの仕様に合わせて見直す前提である。使い方は
 [README](../README_ja.md) を参照。
@@ -57,6 +57,7 @@ PC 上のアプリケーションに MQTT で送信する。各軸はセンサ�
 ### ビルドとホストテスト
 
 ```sh
+cd zephyr
 west build -b arduino_nano_connect app/usb-console -d build/usb-console
 ./script/host_tests.sh
 ```
@@ -89,7 +90,7 @@ flowchart LR
 | 送信キュー | `src/imu_raw_queue.*` |
 | MQTT 送信・再接続・status / info | `src/imu_raw_mqtt.*`、`src/imu_raw_status.*` |
 | 取得スレッド・回復・シェル（`imu`） | `src/imu_stream.c` |
-| NINA のソケット | `drivers/nina/nina_socket.c`（[ドライバーの説明](../app/usb-console/drivers/README_ja.md)） |
+| NINA のソケット | `drivers/nina/nina_socket.c`（[ドライバーの説明](../zephyr/app/usb-console/drivers/README_ja.md)） |
 
 FIFO 読み出しと送信は独立している。Wi-Fi・MQTT の切断や送信待ちで FIFO の読み出しを
 ブロックしない。スレッドの優先度は、計測（バッチ化）と時刻同期が 9、FIFO の読み出し

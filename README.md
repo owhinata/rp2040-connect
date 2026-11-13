@@ -3,7 +3,7 @@
 English | [日本語](README_ja.md)
 
 A Zephyr workspace for the Arduino Nano RP2040 Connect (RP2040, NINA-W102, LSM6DSOX).
-The main application, `app/usb-console`, reads accelerometer and gyroscope data at 6667 Hz as
+The main application, `zephyr/app/usb-console`, reads accelerometer and gyroscope data at 6667 Hz as
 raw values, adds the PC's time, and sends it over Wi-Fi with MQTT.
 
 - The IMU FIFO is read over I2C (with DMA) and batched with numbers that make loss detectable.
@@ -13,7 +13,7 @@ raw values, adds the PC's time, and sends it over Wi-Fi with MQTT.
 - It is operated from a shell over USB or Telnet.
 
 See the [IMU RAW and MQTT design](design/imu-raw-mqtt-design.md) for the details and
-[app/usb-console/drivers](app/usb-console/drivers/README.md) for the drivers (LSM6DSO, I2C,
+[zephyr/app/usb-console/drivers](zephyr/app/usb-console/drivers/README.md) for the drivers (LSM6DSO, I2C,
 NINA).
 
 This is experimental. Measurements are started and stopped by hand from the shell, and the
@@ -35,13 +35,15 @@ sudo apt install --no-install-recommends \
 Leave out `gcc-multilib` and `g++-multilib` on AArch64. For other systems see the
 [Zephyr getting started guide](https://docs.zephyrproject.org/latest/develop/getting_started/).
 
-Source the setup script from the repository root.
+The Zephyr workspace is under `zephyr/`; run the commands below there. First source the
+setup script.
 
 ```bash
+cd zephyr
 source script/setup.sh
 ```
 
-It prepares `.venv`, the west workspace (Zephyr v4.5.0 and modules), Python packages and the
+It prepares, under `zephyr/`, `.venv`, the west workspace (Zephyr v4.5.0 and modules), Python packages and the
 Zephyr SDK as needed, and sets `ZEPHYR_SDK_INSTALL_DIR` and a `west` alias in the current shell.
 Source it again in every new terminal.
 
@@ -52,13 +54,13 @@ west build -b arduino_nano_connect app/usb-console -d build/usb-console
 west flash -d build/usb-console -r uf2
 ```
 
-There is one configuration, `app/usb-console/prj.conf`.
+There is one configuration, `zephyr/app/usb-console/prj.conf`.
 
 Before flashing, connect the board over USB and put it into bootloader mode, in which a USB
 drive named `RPI-RP2` appears. If pressing RESET twice does not do it, press RESET while `REC`
 and `GND` are joined with a jumper wire, and remove the wire once the drive appears.
 
-`app/blink` is a minimal sample that toggles `led0` every 500 ms.
+`zephyr/app/blink` is a minimal sample that toggles `led0` every 500 ms.
 
 ```bash
 west build -b arduino_nano_connect app/blink -d build/blink
@@ -299,7 +301,7 @@ reset but not a power cycle.
 ## Tests
 
 ```bash
-./script/host_tests.sh
+zephyr/script/host_tests.sh
 ```
 
 This runs, on the PC and without a board, the tests for FIFO word parsing, batches and
@@ -322,12 +324,13 @@ summary (missing batches, valid and reversed times) and at the errors in `imu st
 
 | Path | Content |
 |---|---|
-| `app/usb-console/src/` | The application: measurement, MQTT, time sync, key-value store, Wi-Fi settings |
-| `app/usb-console/drivers/` | Local drivers for the LSM6DSO, I2C, NINA and the sensor shell |
-| `app/usb-console/tests/` | Host tests |
-| `app/blink/` | LED blink sample |
+| `zephyr/app/usb-console/src/` | The application: measurement, MQTT, time sync, key-value store, Wi-Fi settings |
+| `zephyr/app/usb-console/drivers/` | Local drivers for the LSM6DSO, I2C, NINA and the sensor shell |
+| `zephyr/app/usb-console/tests/` | Host tests |
+| `zephyr/app/blink/` | LED blink sample |
+| `zephyr/script/` | Setup, host tests |
+| `zephyr/manifest/west.yml` | Versions of Zephyr and its modules |
 | `design/` | Design and investigation notes |
 | `firmware/nina-fw/` | Fixes and build for the NINA firmware |
 | `host/` | PC-side tools (receive check, recording, calibration) and the display application `ImuStudio` |
-| `script/` | Setup, access point, host tests |
-| `manifest/west.yml` | Versions of Zephyr and its modules |
+| `script/` | Script that turns the PC into a temporary access point |

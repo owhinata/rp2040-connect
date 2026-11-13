@@ -3,7 +3,7 @@
 [English](README.md) | 日本語
 
 Arduino Nano RP2040 Connect（RP2040、NINA-W102、LSM6DSOX）向けの Zephyr ワークスペースです。
-主なアプリ `app/usb-console` は、IMU の加速度・角速度を 6667 Hz の RAW データのまま取得し、
+主なアプリ `zephyr/app/usb-console` は、IMU の加速度・角速度を 6667 Hz の RAW データのまま取得し、
 PC の時刻を付けて Wi-Fi 経由の MQTT で送信します。
 
 - IMU の FIFO を I²C（DMA）で読み出し、欠落を検出できる番号を付けてバッチ化します。
@@ -12,7 +12,7 @@ PC の時刻を付けて Wi-Fi 経由の MQTT で送信します。
 - USB と Telnet のシェルから操作します。
 
 設計の詳細は [IMU RAW・MQTT 配信の設計](design/imu-raw-mqtt-design-ja.md)、ドライバー
-（LSM6DSO、I²C、NINA）は [ローカルドライバーの説明](app/usb-console/drivers/README_ja.md) を
+（LSM6DSO、I²C、NINA）は [ローカルドライバーの説明](zephyr/app/usb-console/drivers/README_ja.md) を
 参照してください。
 
 現状は実験段階です。計測の開始・停止はシェルからの手動操作で、PC 側には検証用の受信
@@ -33,13 +33,15 @@ sudo apt install --no-install-recommends \
 AArch64 環境では `gcc-multilib` と `g++-multilib` を除いてください。他の OS は
 [Zephyr の公式手順](https://docs.zephyrproject.org/latest/develop/getting_started/)を参照してください。
 
-リポジトリのルートでセットアップスクリプトを読み込みます。
+Zephyr のワークスペースは `zephyr/` の下にあります。以下のコマンドは `zephyr/` で実行します。
+まず、セットアップスクリプトを読み込みます。
 
 ```bash
+cd zephyr
 source script/setup.sh
 ```
 
-スクリプトは必要に応じて `.venv`、west ワークスペース（Zephyr v4.5.0 とモジュール）、
+スクリプトは必要に応じて `zephyr/` の下に `.venv`、west ワークスペース（Zephyr v4.5.0 とモジュール）、
 Python パッケージ、Zephyr SDK を用意し、現在のシェルに `ZEPHYR_SDK_INSTALL_DIR` と `west` の
 エイリアスを設定します。新しいターミナルでは再度読み込んでください。
 
@@ -50,13 +52,13 @@ west build -b arduino_nano_connect app/usb-console -d build/usb-console
 west flash -d build/usb-console -r uf2
 ```
 
-構成は `app/usb-console/prj.conf` の 1 つだけです。
+構成は `zephyr/app/usb-console/prj.conf` の 1 つだけです。
 
 書き込みの前に、ボードを USB に接続してブートローダーモード（`RPI-RP2` という USB
 ストレージが現れる状態）にします。RESET ボタンを 2 回押しても入れない場合は、`REC` と `GND` を
 ジャンパー線で接続したまま RESET ボタンを押し、ストレージが現れたらジャンパー線を外します。
 
-`app/blink` は `led0` を 500 ms ごとに切り替える最小のサンプルです。
+`zephyr/app/blink` は `led0` を 500 ms ごとに切り替える最小のサンプルです。
 
 ```bash
 west build -b arduino_nano_connect app/blink -d build/blink
@@ -290,7 +292,7 @@ Zephyr の Settings/NVS に保存します。キーは英数字、`_`、`-`、`.
 ## テスト
 
 ```bash
-./script/host_tests.sh
+zephyr/script/host_tests.sh
 ```
 
 FIFO ワードの解析、バッチとペイロード、送信キュー、時刻の対応付け、NTP の推定、ドライバーの
@@ -312,12 +314,13 @@ FIFO 設定と停止処理、NINA の SPI フレーミングなどを、PC 上�
 
 | 場所 | 内容 |
 |---|---|
-| `app/usb-console/src/` | アプリ本体（計測、MQTT、時刻同期、KV、Wi-Fi 設定） |
-| `app/usb-console/drivers/` | LSM6DSO、I²C、NINA、sensor shell のローカルドライバー |
-| `app/usb-console/tests/` | ホストテスト |
-| `app/blink/` | LED 点滅のサンプル |
+| `zephyr/app/usb-console/src/` | アプリ本体（計測、MQTT、時刻同期、KV、Wi-Fi 設定） |
+| `zephyr/app/usb-console/drivers/` | LSM6DSO、I²C、NINA、sensor shell のローカルドライバー |
+| `zephyr/app/usb-console/tests/` | ホストテスト |
+| `zephyr/app/blink/` | LED 点滅のサンプル |
+| `zephyr/script/` | 環境構築、ホストテスト |
+| `zephyr/manifest/west.yml` | Zephyr とモジュールのバージョン |
 | `design/` | 設計と調査手順 |
 | `firmware/nina-fw/` | NINA ファームウェアの修正とビルド |
 | `host/` | PC 側のツール（受信の診断、記録、校正）と、表示用のアプリ `ImuStudio` |
-| `script/` | 環境構築、AP、ホストテスト |
-| `manifest/west.yml` | Zephyr とモジュールのバージョン |
+| `script/` | PC を一時的な AP にするスクリプト |

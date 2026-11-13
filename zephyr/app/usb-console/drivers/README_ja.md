@@ -2,7 +2,7 @@
 
 [English](README.md) | 日本語
 
-`app/usb-console` は、Zephyr のドライバーの一部をこのディレクトリのコピーに置き換えて
+`zephyr/app/usb-console` は、Zephyr のドライバーの一部をこのディレクトリのコピーに置き換えて
 ビルドします。IMU の FIFO を高いレートで読み出すための変更と、NINA-W102 用の Wi-Fi
 ドライバーを含みます。
 
@@ -57,7 +57,7 @@ Zephyr の Sensor Streaming API（`sensor_stream()`、RTIO）で FIFO を読み�
 FIFO にはセンサーのタイムスタンプ（公称 25 µs 単位）を入れます。間隔は属性で変えられます。
 タイムスタンプの有効化は開始時に行い、止めません（ストリームを再開してもカウンターは
 進み続けます）。サンプルへの対応付けと PC 時刻への変換はアプリ側で行います
-（[設計書](../../../design/imu-raw-mqtt-design-ja.md) §7）。
+（[設計書](../../../../design/imu-raw-mqtt-design-ja.md) §7）。
 
 `lsm6dso_timestamp_read()` は、センサーのタイムスタンプレジスタを、呼び出し側の時計の読み取りで
 挟んで読みます。センサーの時計とボードの時計を対応付けるために使います。
@@ -154,7 +154,7 @@ FIFO の取得だけを行った過去の測定（6667 Hz、1 MHz、各 1 回）
 
 NINA-W102（ESP32）を、SPI 経由の Wi-Fi・ソケットとして Zephyr から使うためのドライバーです。
 NINA 側は Arduino の NINA ファームウェア 3.0.2 に 2 件の修正を当てたものを前提にします
-（[ファームウェアの説明](../../../firmware/nina-fw/README.md)）。
+（[ファームウェアの説明](../../../../firmware/nina-fw/README.md)）。
 
 ### 役割分担
 
@@ -261,11 +261,11 @@ MQTT の接続と送信ができること、ホスト名の不一致・期限切
 ### 無線区間の調査
 
 送信の遅れや ACK の挙動を無線フレームの段階で調べる手順は、
-[Wi-Fi モニターによる TCP ACK 調査手順](../../../design/wifi-monitor-debug-ja.md) にあります。
+[Wi-Fi モニターによる TCP ACK 調査手順](../../../../design/wifi-monitor-debug-ja.md) にあります。
 
 ## テスト
 
-`./script/host_tests.sh` が、偽の Zephyr ヘッダーを使ってドライバーの次の部分を PC 上で
+`zephyr/script/host_tests.sh` が、偽の Zephyr ヘッダーを使ってドライバーの次の部分を PC 上で
 テストします。
 
 | テスト | 対象 |

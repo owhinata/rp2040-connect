@@ -241,7 +241,7 @@ range leaves no matching key, so the conversion falls back to the nominal sensit
 Calibrating in another range and writing it adds a key, and the board then switches with the
 range. To remove one, run `kv delete <key>` and then `imu cal reload` in the board's shell.
 
-The value is 56 bytes of integer coefficients (`app/usb-console/src/imu_cal.h`). The board
+The value is 56 bytes of integer coefficients (`zephyr/app/usb-console/src/imu_cal.h`). The board
 computes `M · (raw − bias)` without floating point. `M` is `misalignment @ scale` in output
 units (2⁻²² m/s² or rad/s) with 14 fraction bits, and `bias` is in LSB with 8 fraction bits.
 The rounding costs at most 0.2% of one LSB.

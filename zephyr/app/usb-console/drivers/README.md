@@ -2,7 +2,7 @@
 
 English | [日本語](README_ja.md)
 
-`app/usb-console` builds with some Zephyr drivers replaced by the copies in this directory.
+`zephyr/app/usb-console` builds with some Zephyr drivers replaced by the copies in this directory.
 They carry the changes needed to read the IMU FIFO at a high rate, and a Wi-Fi driver for the
 NINA-W102.
 
@@ -57,7 +57,7 @@ trigger `SENSOR_TRIG_FIFO_WATERMARK` and the option `SENSOR_STREAM_DATA_INCLUDE`
 The FIFO contains the sensor's timestamps (nominally 25 us per tick) at an interval set by an
 attribute. The timestamp counter is enabled at start and never disabled, so it keeps running
 across stream restarts. Assigning ticks to samples and converting them to PC time is done by
-the application (section 7 of the [design document](../../../design/imu-raw-mqtt-design.md)).
+the application (section 7 of the [design document](../../../../design/imu-raw-mqtt-design.md)).
 
 `lsm6dso_timestamp_read()` reads the sensor's timestamp register between two readings of the
 caller's clock, which relates the sensor clock to the board clock.
@@ -161,7 +161,7 @@ watermark of 128, `cpu_active` was 45.7% without DMA and 22.5% with it.
 
 A driver that lets Zephyr use the NINA-W102 (an ESP32) as Wi-Fi and sockets over SPI. The
 module is expected to run Arduino NINA firmware 3.0.2 with two fixes applied (see
-[firmware/nina-fw](../../../firmware/nina-fw/README.md)).
+[firmware/nina-fw](../../../../firmware/nina-fw/README.md)).
 
 ### Division of work
 
@@ -273,12 +273,12 @@ generator when no proper source is available.
 
 ### Looking at the radio link
 
-[Tracing TCP ACKs with a Wi-Fi monitor](../../../design/wifi-monitor-debug.md) describes how to
+[Tracing TCP ACKs with a Wi-Fi monitor](../../../../design/wifi-monitor-debug.md) describes how to
 examine sending delays and ACK behaviour at the level of radio frames.
 
 ## Tests
 
-`./script/host_tests.sh` tests these parts of the drivers on the PC with fake Zephyr headers.
+`zephyr/script/host_tests.sh` tests these parts of the drivers on the PC with fake Zephyr headers.
 
 | Test | Covers |
 |---|---|

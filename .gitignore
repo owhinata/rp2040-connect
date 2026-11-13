@@ -1,11 +1,12 @@
-/.venv/
-/.west/
-/.cmake/
-/.wget-hsts
-/zephyr/
-/zephyr-sdk-*/
-/modules/
-/bootloader/
-/tools/
-/doc/
-/build/
+# The Zephyr workspace: fetched and built by zephyr/script/setup.sh and west.
+/zephyr/.venv/
+/zephyr/.west/
+/zephyr/.cmake/
+/zephyr/.wget-hsts
+/zephyr/zephyr/
+/zephyr/zephyr-sdk-*/
+/zephyr/modules/
+/zephyr/bootloader/
+/zephyr/tools/
+/zephyr/doc/
+/zephyr/build/

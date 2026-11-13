@@ -45,7 +45,7 @@ run i2c_dma_commands "${flags[@]}" -I"$app/drivers/i2c_dw" "$app/tests/i2c_dma_c
     "$app/drivers/i2c_dw/i2c_dw_rp2040_commands.c"
 run nina_spi -std=gnu17 -Wall -I"$app/tests/nina_fakes" -I"$app/drivers/nina" "$app/tests/nina_spi.c"
 
-for f in host/imu_host/*.py; do
+for f in ../host/imu_host/*.py; do
     python3 -c 'import sys; compile(open(sys.argv[1]).read(), sys.argv[1], "exec")' "$f"
 done
 printf 'ok  host/imu_host (syntax)\n'

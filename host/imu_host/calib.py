@@ -307,7 +307,7 @@ def report(result):
 
 # ---- ボードへの書き込み
 #
-# ボードは校正値を KV に、センサーと感度ごとのキーで持つ（app/usb-console/src/imu_cal.h）。
+# ボードは校正値を KV に、センサーと感度ごとのキーで持つ（zephyr/app/usb-console/src/imu_cal.h）。
 # 値は整数化した係数で、ボードは浮動小数点を使わずに
 #   out = M · (raw − bias)        （out は 2^-22 m/s² または rad/s 単位）
 # を計算する。
