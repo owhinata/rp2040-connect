@@ -86,4 +86,77 @@ the parts ported so far.
   - `rp_dma_events` is updated with interrupts off (Zephyr's `atomic_or()`); the four counters are
     written only by the transfer, which holds the bus semaphore (32 bits, wrapping).
 
+## LSM6DSOX (`lsm6dso`)
+
+| File | Role |
+|---|---|
+| `lsm6dso/lsm6dso.c` | The driver. A copy of the Zephyr version's `drivers/lsm6dso/lsm6dso.c` with only the calls into the system replaced (the same functions, branches, order, register operations, conversions, error values and log lines). The devicetree instance macros at the end are one `DEVICE_DT_DEFINE()` with the board's values |
+| `lsm6dso/lsm6dso.h` | A copy of the Zephyr version's file. Only the kernel object types (`k_mutex`, `k_spinlock`), the bus condition (`DT_HAS_COMPAT_ON_BUS_STATUS_OKAY()` → `LSM6DSO_BUS_I2C`) and the stream condition (`CONFIG_SENSOR_ASYNC_API` → `CONFIG_NANO_LSM6DSO_STREAM`) are replaced; `timestamp_decimation` is moved out of the stream part (below) |
+| `lsm6dso/lsm6dso_os.[ch]` | The kernel services: mutexes (recursive, priority inheritance), interrupts off (`k_spin_lock()`), `k_busy_wait()`, `k_msleep()`/`k_usleep()`, `k_cycle_get_32()` |
+| `lsm6dso/stmemsc.h`, `stmemsc_i2c.c`, `stmemsc_mdelay.c` | A copy of the I2C part of Zephyr's `drivers/sensor/st/stmemsc/` (the glue between ST's `stmdev_ctx_t` and Zephyr's I2C API) |
+| `lsm6dso/st_lsm6dso_reg.c` | A one-line wrapper that builds ST's `lsm6dso_reg.c` (`nuttx/stmemsc/`, not in Git) as it is |
+| `lsm6dso/lsm6dso_fifo_hw.[ch]`, `lsm6dso_fifo_stats.h`, `lsm6dso_attributes.h` | Unchanged copies of the Zephyr version's files |
+| the board's `src/nano_lsm6dso.[ch]` | Makes I2C0 the compatibility layer's bus device (`i2c0`, 100 kHz) and initializes `lsm6dsox` (from `nano_bringup()`) |
+
+The replacements (the same table is at the top of `lsm6dso.c`):
+
+| Zephyr | NuttX port |
+|---|---|
+| `<zephyr/logging/log.h>`, `CONFIG_SENSOR_LOG_LEVEL` (3) | `app_log.h` (the same lines in the RAM log), level 3 |
+| `k_mutex_init/_lock/_unlock` | `lsm6dso_os_mutex_init/_lock/_unlock` (`rmutex_t`; a wait ended by a signal is repeated) |
+| `k_spin_lock/_unlock` | `lsm6dso_os_spin_lock/_unlock` (`up_irq_save()`) |
+| `k_busy_wait()` | `up_udelay()` |
+| `k_msleep()`, `k_usleep()` | `nxsched_msleep()`, `nxsched_usleep()` (rounded up to ticks plus one tick: Zephyr's rule, the same 100 µs tick) |
+| `k_cycle_get_32()`, `k_cyc_to_ns_floor64()` | the TIMER's low 32 bits (1 MHz) and ×1000 |
+| `sys_get_le32()` | the same arithmetic, written in the file |
+| the devicetree instance, `POST_KERNEL`, priority 90 | `DEVICE_DT_DEFINE(lsm6dsox, ...)`, `device_init()` in the board's bring-up |
+
+- The board's `nano_bringup()` initializes the sensor right after I2C0 and before mounting the
+  key-value store (NVS), the Zephyr version's order. A failure only leaves the device not ready
+  (`device_is_ready()` is false, as with Zephyr's `do_device_init()`); the boot goes on.
+- The FIFO functions (`lsm6dso_fifo_*_locked_driver()`, `lsm6dso_timestamp_read()`,
+  `lsm6dso_fifo_get_stats()` and others) are built without the stream too, so
+  `timestamp_decimation`, which the Zephyr version keeps in the stream part of the structure, is
+  outside it here. It is 0 (no timestamp words) until the stream sets it. The stream
+  (`lsm6dso_stream.c`, `lsm6dso_fifo_irq.c`, RTIO, the decoder, `lsm6dso_compat.c`) and its
+  attributes (`fifo_watermark`, `fifo_timestamp_decimation`) come with
+  `CONFIG_NANO_LSM6DSO_STREAM`.
+- Not ported: SPI, the sensor hub (`lsm6dso_shub.c`), triggers (`lsm6dso_trigger.c`) and the die
+  temperature. All are off in the Zephyr version's configuration (`CONFIG_LSM6DSO_SENSORHUB`,
+  `_TRIGGER`, `_ENABLE_TEMP`) and not built there. Their `#ifdef` parts are kept in the copy.
+- The FIFO read time (`transfer_time_ns` in the statistics) is measured with the TIMER (1 µs
+  steps); the Zephyr version uses the CPU clock (SysTick, 8 ns steps).
+
+## Zephyr API compatibility layer (`compat`)
+
+`nuttx/drivers/compat/` provides, under Zephyr's names and no more than needed, the part of
+Zephyr's API that the copied driver and its callers (the acquisition service, the calibration, the
+sensor command) use. The include path is `$(TOPDIR)/external/compat`. Zephyr's sensor subsystem
+as a whole is not ported.
+
+| Header | Contents |
+|---|---|
+| `zephyr/device.h` | `struct device` (name, config, API, state, data, init function), `device_is_ready()`, `device_init()` (the meaning of Zephyr's `do_device_init()`), `DEVICE_DT_GET()`, `DEVICE_DT_DEFINE()`, `DEVICE_API()` |
+| `zephyr/devicetree.h` | `DT_NODELABEL()`, `DT_BUS()`; the nodes are `i2c0` and `lsm6dsox` only |
+| `zephyr/drivers/sensor.h` | `struct sensor_value`, the channel, attribute and trigger enumerations (Zephyr's numbers), `struct sensor_driver_api`, `sensor_attr_set()`/`_get()`, `sensor_sample_fetch()`/`_chan()`, `sensor_channel_get()`, `sensor_trigger_set()`, the unit conversions (`sensor_ms2_to_g()`, `sensor_rad_to_degrees()`, `sensor_value_to_micro()` and others) |
+| `zephyr/drivers/i2c.h` | `struct i2c_dt_spec`, `i2c_burst_read_dt()`, `i2c_write_dt()`, `i2c_write_read_dt()`, `i2c_configure()`, the speed classes (`I2C_SPEED_*`, `I2C_SPEED_SET()`) |
+| `zephyr/sys/util.h` | `BIT()`, `ARRAY_SIZE()`, `MIN()`/`MAX()`, `IS_ENABLED()`, `CONTAINER_OF()` and others |
+| `zephyr/rtio/rtio.h` | A placeholder (only the two names `lsm6dso_fifo_stats.h` uses); RTIO comes with the stream |
+
+- An I2C bus is a device holding a NuttX I2C master and a speed (the board binds them with
+  `i2c_compat_bind()`). In Zephyr the bus driver keeps the speed and `i2c_configure()` changes it
+  for every later transfer. A NuttX transfer carries a frequency in each message, so the layer's
+  transfers (`i2c_burst_read_dt()` and so on) put the device's speed in their messages. Users of
+  the NuttX master itself, such as the `i2c` tool, run at their own frequency.
+- `i2c_configure()` takes only the classes the Zephyr version's RP2040 driver takes (100 kHz,
+  400 kHz, 1 MHz); for anything else it changes nothing and returns `-EINVAL`. It ignores the mode
+  bits (that driver forces controller mode too). While I2C0 is quarantined after a DMA failure,
+  Zephyr's `i2c_configure()` returns `-EIO`; the layer records the speed and returns 0, and the
+  next transfer gives `-EIO`.
+- NuttX's `<nuttx/i2c/i2c_master.h>` has functions of its own named `i2c_write()` and `i2c_read()`
+  and `I2C_SPEED_*` in Hz. In the layer, Zephyr's `i2c_write()` and `i2c_write_read()` on a bus
+  device are named `i2c_compat_write()` and `i2c_compat_write_read()` (the `_dt` forms keep
+  Zephyr's names). In a file that includes `<zephyr/drivers/i2c.h>`, `I2C_SPEED_*` are Zephyr's
+  classes (include NuttX's header first if both are needed).
+
 Wi-Fi management and sockets (usrsock) are not ported yet.

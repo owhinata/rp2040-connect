@@ -9,8 +9,9 @@
 # Each subdirectory adds its sources from its own Make.defs, e.g.
 #   include nina/Make.defs
 # with "CSRCS += ...", "VPATH += :nina" and "DEPPATH += --dep-path nina".
-# lsm6dso/ is not built yet.  include/ holds the headers shared with the
-# board code and the applications ($(TOPDIR)/external/include).
+# include/ holds the headers shared with the board code and the
+# applications ($(TOPDIR)/external/include); compat/ the small Zephyr
+# compatibility layer ($(TOPDIR)/external/compat).
 ############################################################################
 
 include $(TOPDIR)/Make.defs
@@ -20,6 +21,8 @@ CSRCS :=
 
 include log/Make.defs
 include nina/Make.defs
+include compat/Make.defs
+include lsm6dso/Make.defs
 
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)include
 

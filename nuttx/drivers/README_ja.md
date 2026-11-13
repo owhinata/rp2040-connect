@@ -80,4 +80,71 @@ symlink で、`libexternal.a` になります）。ボード側の部分は `nut
   - `rp_dma_events` の更新は割り込みを禁止して行い（Zephyr の `atomic_or()`）、4 つのカウンターは
     バスのセマフォを持った転送だけが書きます（32 ビットで一周します）。
 
+## LSM6DSOX（`lsm6dso`）
+
+| ファイル | 役割 |
+|---|---|
+| `lsm6dso/lsm6dso.c` | ドライバー本体。Zephyr 版の `drivers/lsm6dso/lsm6dso.c` の、OS を呼ぶ部分だけを置き換えた写し（関数・分岐・順序・レジスター操作・換算・エラー値・ログの文は同じ）。末尾のデバイスツリーのインスタンス化のマクロは、ボードの値を使う `DEVICE_DT_DEFINE()` 1 つに置き換え |
+| `lsm6dso/lsm6dso.h` | Zephyr 版の同名ファイルの写し。カーネルのオブジェクトの型（`k_mutex`、`k_spinlock`）、バスの条件（`DT_HAS_COMPAT_ON_BUS_STATUS_OKAY()` → `LSM6DSO_BUS_I2C`）、ストリームの条件（`CONFIG_SENSOR_ASYNC_API` → `CONFIG_NANO_LSM6DSO_STREAM`）だけを置き換え。`timestamp_decimation` はストリームの外に出した（下） |
+| `lsm6dso/lsm6dso_os.[ch]` | カーネルの機能: ミューテックス（再帰可能、優先度継承あり）、割り込み禁止（`k_spin_lock()`）、`k_busy_wait()`、`k_msleep()`・`k_usleep()`、`k_cycle_get_32()` |
+| `lsm6dso/stmemsc.h`、`stmemsc_i2c.c`、`stmemsc_mdelay.c` | Zephyr の `drivers/sensor/st/stmemsc/` の I2C の部分の写し（ST の `stmdev_ctx_t` と Zephyr の I2C の API のつなぎ） |
+| `lsm6dso/st_lsm6dso_reg.c` | ST の `lsm6dso_reg.c`（`nuttx/stmemsc/`、Git 管理外）をそのままビルドするための 1 行の包み |
+| `lsm6dso/lsm6dso_fifo_hw.[ch]`、`lsm6dso_fifo_stats.h`、`lsm6dso_attributes.h` | Zephyr 版の同名ファイルを変更せずに写したもの |
+| ボードの `src/nano_lsm6dso.[ch]` | I2C0 を互換層のバスのデバイス（`i2c0`、100 kHz）にし、`lsm6dsox` を初期化する（`nano_bringup()` から） |
+
+置き換えの対応（`lsm6dso.c` の先頭にも同じ表があります）:
+
+| Zephyr | NuttX 版 |
+|---|---|
+| `<zephyr/logging/log.h>`、`CONFIG_SENSOR_LOG_LEVEL`（3） | `app_log.h`（同じ行が RAM ログに入る）、レベル 3 |
+| `k_mutex_init/_lock/_unlock` | `lsm6dso_os_mutex_init/_lock/_unlock`（`rmutex_t`。シグナルで終わった待ちはやり直す） |
+| `k_spin_lock/_unlock` | `lsm6dso_os_spin_lock/_unlock`（`up_irq_save()`） |
+| `k_busy_wait()` | `up_udelay()` |
+| `k_msleep()`、`k_usleep()` | `nxsched_msleep()`、`nxsched_usleep()`（tick に切り上げて 1 tick 足す。Zephyr と同じ規則、同じ 100 µs） |
+| `k_cycle_get_32()`、`k_cyc_to_ns_floor64()` | TIMER の下位 32 ビット（1 MHz）と ×1000 |
+| `sys_get_le32()` | 同じ計算をファイル内に書いた |
+| デバイスツリーのインスタンス化、`POST_KERNEL`・優先度 90 | `DEVICE_DT_DEFINE(lsm6dsox, …)`、ボードの起動処理での `device_init()` |
+
+- 初期化はボードの `nano_bringup()` が、I2C0 の初期化の直後、KV（NVS）のマウントより前に行います
+  （Zephyr 版の初期化の順と同じ）。失敗してもデバイスが「準備できていない」だけで起動は続きます
+  （`device_is_ready()` が false。Zephyr の `do_device_init()` と同じ）。
+- FIFO の関数（`lsm6dso_fifo_*_locked_driver()`、`lsm6dso_timestamp_read()`、`lsm6dso_fifo_get_stats()` など）は
+  ストリームが無くてもビルドします。そのため、Zephyr 版でストリームの部分にある `timestamp_decimation` を
+  構造体のストリームの外に置きました。ストリームが値を設定するまでは 0（タイムスタンプのワードなし）です。
+  ストリーム（`lsm6dso_stream.c`、`lsm6dso_fifo_irq.c`、RTIO、デコーダー、`lsm6dso_compat.c`）とその属性
+  （`fifo_watermark`、`fifo_timestamp_decimation`）は、`CONFIG_NANO_LSM6DSO_STREAM` を足すときに入ります。
+- 移していないもの: SPI 接続、センサーハブ（`lsm6dso_shub.c`）、トリガー（`lsm6dso_trigger.c`）、内部温度。
+  どれも Zephyr 版の構成で切られていて（`CONFIG_LSM6DSO_SENSORHUB`・`_TRIGGER`・`_ENABLE_TEMP` が無効）、
+  ビルドされていません。該当する `#ifdef` の部分は写しに残してあります。
+- `fifo_read` の転送時間（統計の `transfer_time_ns`）は TIMER（1 µs 単位）で測ります。Zephyr 版は CPU の
+  クロック（SysTick、8 ns 単位）です。
+
+## Zephyr の API の互換層（`compat`）
+
+`nuttx/drivers/compat/` は、写したドライバーとそれを呼ぶ側（取得サービス、校正、センサーのコマンド）が使う
+Zephyr の API を、Zephyr の名前のまま最小限だけ用意したものです。インクルードパスは
+`$(TOPDIR)/external/compat` です。Zephyr の sensor サブシステムの全体は移していません。
+
+| ヘッダー | 中身 |
+|---|---|
+| `zephyr/device.h` | `struct device`（名前、config、API、状態、data、初期化関数）、`device_is_ready()`、`device_init()`（Zephyr の `do_device_init()` と同じ意味）、`DEVICE_DT_GET()`、`DEVICE_DT_DEFINE()`、`DEVICE_API()` |
+| `zephyr/devicetree.h` | `DT_NODELABEL()`、`DT_BUS()`。ノードは `i2c0` と `lsm6dsox` だけ |
+| `zephyr/drivers/sensor.h` | `struct sensor_value`、チャネル・属性・トリガーの列挙（Zephyr と同じ番号）、`struct sensor_driver_api`、`sensor_attr_set()`・`_get()`、`sensor_sample_fetch()`・`_chan()`、`sensor_channel_get()`、`sensor_trigger_set()`、単位の換算（`sensor_ms2_to_g()`、`sensor_rad_to_degrees()`、`sensor_value_to_micro()` など） |
+| `zephyr/drivers/i2c.h` | `struct i2c_dt_spec`、`i2c_burst_read_dt()`、`i2c_write_dt()`、`i2c_write_read_dt()`、`i2c_configure()`、速さの区分（`I2C_SPEED_*`、`I2C_SPEED_SET()`） |
+| `zephyr/sys/util.h` | `BIT()`、`ARRAY_SIZE()`、`MIN()`・`MAX()`、`IS_ENABLED()`、`CONTAINER_OF()` など |
+| `zephyr/rtio/rtio.h` | 仮置き（`lsm6dso_fifo_stats.h` が使う 2 つの名前だけ）。RTIO の互換はストリームと一緒に入る |
+
+- I2C のバスは、NuttX の I2C マスターと速さを持つデバイスです（`i2c_compat_bind()` でボードが結び付ける）。
+  Zephyr ではバスのドライバーが速さを持ち、`i2c_configure()` が以後のすべての転送の速さを変えます。NuttX の
+  転送はメッセージごとに周波数を持つので、互換層の転送（`i2c_burst_read_dt()` など）がデバイスの速さを
+  メッセージに入れます。`i2c` ツールなど、NuttX のマスターを直接使うものは自分の周波数で動きます。
+- `i2c_configure()` は Zephyr の RP2040 向けドライバーが受け付ける区分（100 kHz、400 kHz、1 MHz）だけを受け付け、
+  ほかは何も変えずに `-EINVAL` を返します。モードのビットは見ません（Zephyr のドライバーもコントローラーに
+  固定）。DMA の不具合で I2C0 が隔離されているとき、Zephyr の `i2c_configure()` は `-EIO` を返しますが、
+  互換層は速さを記録して 0 を返し、次の転送が `-EIO` になります。
+- NuttX の `<nuttx/i2c/i2c_master.h>` には同じ名前の `i2c_write()`・`i2c_read()` と、Hz の値の `I2C_SPEED_*` が
+  あります。互換層では、バスのデバイスに対する Zephyr の `i2c_write()`・`i2c_write_read()` を
+  `i2c_compat_write()`・`i2c_compat_write_read()` という名前にしました（`_dt` の付く形は Zephyr の名前のまま）。
+  `<zephyr/drivers/i2c.h>` を読むファイルでは `I2C_SPEED_*` は Zephyr の区分です（両方読むなら NuttX のものを先に）。
+
 Wi-Fi の管理とソケット（usrsock）はまだ移植していません。

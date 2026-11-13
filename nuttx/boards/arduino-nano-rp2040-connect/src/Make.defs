@@ -71,6 +71,13 @@ ifeq ($(CONFIG_NANO_I2C0),y)
 CSRCS += nano_i2c.c
 endif
 
+# The i2c0 and lsm6dsox devices of the Zephyr compatibility layer
+# (nuttx/drivers/compat, nuttx/drivers/lsm6dso).
+
+ifeq ($(CONFIG_NANO_LSM6DSO),y)
+CSRCS += nano_lsm6dso.c
+endif
+
 # Its DMA reads: the DMA channels (in place of the in-tree rp2040_dmac.c,
 # RP2040_DMAC off) and the command words (an unchanged copy of the Zephyr
 # build's drivers/i2c_dw/i2c_dw_rp2040_commands.c).
@@ -95,3 +102,8 @@ CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)arch$(DELIM)$(CONFIG_ARCH)$(DELIM)src
 # nuttx/drivers/include.
 
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)include
+
+# The small Zephyr compatibility layer (<zephyr/device.h>, ...):
+# nuttx/drivers/compat.
+
+CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)compat

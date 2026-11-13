@@ -120,9 +120,28 @@
 
 #define BOARD_I2C0_SDA_GPIO          12
 #define BOARD_I2C0_SCL_GPIO          13
+#define BOARD_I2C0_FREQUENCY         100000 /* clock-frequency at boot */
 #define BOARD_LSM6DSOX_I2C_ADDR      0x6a
 #define BOARD_LSM6DSOX_INT1_GPIO     24  /* irq-gpios, active high */
 #define BOARD_ATECC608A_I2C_ADDR     0x60
+
+/* The properties of the LSM6DSOX node of the Zephyr build's devicetree
+ * (zephyr/build/usb-console/zephyr/zephyr.dts, lsm6dsox@6a: the board's
+ * arduino_nano_connect.dts and app/usb-console/app.overlay; the others are
+ * the defaults of st,lsm6dso-common.yaml), for the device that
+ * nuttx/drivers/lsm6dso/lsm6dso.c defines.  The values are the binding's
+ * (zephyr/dt-bindings/sensor/lsm6dso.h).
+ */
+
+#define BOARD_LSM6DSOX_NODE_NAME     "lsm6dsox@6a"
+#define BOARD_LSM6DSOX_ACCEL_PM      0   /* default: high performance */
+#define BOARD_LSM6DSOX_ACCEL_ODR     0   /* default: off */
+#define BOARD_LSM6DSOX_ACCEL_LP_FILTER 0 /* default: LPF2 off */
+#define BOARD_LSM6DSOX_ACCEL_RANGE   3   /* app.overlay: LSM6DSO_DT_FS_8G */
+#define BOARD_LSM6DSOX_GYRO_PM       0   /* default: high performance */
+#define BOARD_LSM6DSOX_GYRO_ODR      0   /* default: off */
+#define BOARD_LSM6DSOX_GYRO_RANGE    6   /* app.overlay: LSM6DSO_DT_FS_2000DPS */
+#define BOARD_LSM6DSOX_DRDY_PULSED   0   /* default: latched */
 
 /* SPI1 to the NINA-W102 Wi-Fi module. */
 

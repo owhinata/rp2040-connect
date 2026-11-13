@@ -1,0 +1,20 @@
+#
+# For a description of the syntax of this configuration file,
+# see the file kconfig-language.txt in the NuttX tools repository.
+#
+
+config NANO_LSM6DSO
+	bool "LSM6DSOX IMU driver (Zephyr build's LSM6DSO driver)"
+	default y
+	depends on NANO_I2C0
+	---help---
+		lsm6dso/lsm6dso.c: the Zephyr build's drivers/lsm6dso/lsm6dso.c
+		(Zephyr's LSM6DSO driver with the FIFO, calibration and
+		zero-rate changes) with only the calls into the system replaced,
+		on ST's lsm6dso_reg.c (nuttx/stmemsc, fetched by
+		script/setup.sh) and the port's small Zephyr compatibility
+		layer (compat/: struct device, the sensor API, the I2C calls).
+		The board initializes the device in its bring-up, after I2C0
+		and before the key-value store, as the Zephyr build does before
+		main() (src/nano_lsm6dso.c).  The FIFO stream (INT1, RTIO) is
+		added separately.

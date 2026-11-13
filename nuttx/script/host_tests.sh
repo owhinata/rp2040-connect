@@ -32,6 +32,26 @@ for test in fifo_words imu_raw_packet imu_raw_batch imu_raw_queue imu_raw_status
 done
 
 # LSM6DSO FIFO driver pieces.
+run fifo_hw "$lsm/lsm6dso_fifo_hw.c"
+# The LSM6DSO driver (lsm6dso.c) on ST's lsm6dso_reg.c, the Zephyr compatibility layer and the
+# board's devices, against a fake sensor behind a fake I2C master.  Its own include path: the
+# compatibility layer's headers and ST's, not the fakes of tests/fakes.  ST's file (fetched by
+# setup.sh into nuttx/stmemsc) is built without warnings, as it is; the Zephyr driver's code
+# casts its bus functions and leaves parameters unused, as in the Zephyr build.
+if [[ -f stmemsc/lsm6dso_reg.c ]]; then
+    cc -std=c17 -w -Istmemsc -c stmemsc/lsm6dso_reg.c -o "$out/lsm6dso_reg.o"
+    cc "${flags[@]}" -Wno-unused-parameter -Wno-cast-function-type -D_DEFAULT_SOURCE \
+        -D'DEBUGASSERT(x)=assert(x)' -Itests/lsm6dso_fakes -Idrivers/compat -Istmemsc -I"$lsm" \
+        -Iboards/arduino-nano-rp2040-connect/src tests/lsm6dso_driver.c "$lsm/lsm6dso.c" \
+        "$lsm/stmemsc_i2c.c" "$lsm/stmemsc_mdelay.c" "$lsm/lsm6dso_fifo_hw.c" "$lsm/lsm6dso_fifo.c" \
+        "$lsm/lsm6dso_cal.c" "$lsm/lsm6dso_zero.c" drivers/compat/zephyr_i2c.c \
+        drivers/compat/zephyr_device.c boards/arduino-nano-rp2040-connect/src/nano_lsm6dso.c \
+        "$out/lsm6dso_reg.o" -lm "$link" -o "$out/lsm6dso_driver"
+    "$out/lsm6dso_driver" >/dev/null
+    printf 'ok  lsm6dso_driver\n'
+else
+    printf 'skip lsm6dso_driver (no stmemsc/lsm6dso_reg.c: run script/setup.sh)\n'
+fi
 run fifo_decoder "$lsm/lsm6dso_fifo_decoder.c" "$lsm/lsm6dso_fifo.c" "$lsm/lsm6dso_cal.c"
 # Conversion to physical units and the stored calibration format.
 run lsm6dso_cal "$lsm/lsm6dso_cal.c" "$imu/imu_cal_codec.c" -lm

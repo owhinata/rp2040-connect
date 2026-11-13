@@ -61,6 +61,10 @@
 #  include "nano_dma.h"
 #endif
 
+#ifdef CONFIG_NANO_LSM6DSO
+#  include "nano_lsm6dso.h"
+#endif
+
 #ifdef CONFIG_ARCH_BOARD_COMMON
 #include "rp2040_common_bringup.h"
 #endif /* CONFIG_ARCH_BOARD_COMMON */
@@ -92,20 +96,6 @@ int nano_bringup(void)
 #endif /* CONFIG_ARCH_BOARD_COMMON */
 
   /* --- Place any board specific bringup code here --- */
-
-#ifdef CONFIG_NANO_FLASH_KV
-  /* The key-value store: /dev/config on the last 8 KiB of the flash.  The
-   * Zephyr build mounts its NVS before main() too.  Done before USB is
-   * registered: the first boot after the Zephyr build may erase the area,
-   * with interrupts off for each 4 KiB sector.
-   */
-
-  ret = nano_flash_kv_initialize();
-  if (ret < 0)
-    {
-      result = ret;
-    }
-#endif
 
 #ifdef CONFIG_NANO_NINA
   /* SPI1 to the NINA-W102 and its chip select.  The Zephyr build sets up
@@ -160,7 +150,36 @@ int nano_bringup(void)
           }
       }
 #  endif
+
+#  ifdef CONFIG_NANO_LSM6DSO
+    /* The LSM6DSOX (lsm6dsox@6a) on i2c0, which Zephyr initializes before
+     * main() (POST_KERNEL, CONFIG_SENSOR_INIT_PRIORITY 90).  Its log lines
+     * ("Initialize device lsm6dsox@6a", "chip id 0x6c") come first in
+     * dmesg, as in the Zephyr build.  A failure leaves the device not
+     * ready (the driver logs it) and does not stop the boot.
+     */
+
+    if (i2c != NULL)
+      {
+        (void)nano_lsm6dso_initialize(i2c);
+      }
+#  endif
   }
+#endif
+
+#ifdef CONFIG_NANO_FLASH_KV
+  /* The key-value store: /dev/config on the last 8 KiB of the flash.  The
+   * Zephyr build mounts its NVS in main(), after its devices (the
+   * LSM6DSOX above).  Done before USB is registered: the first boot after
+   * the Zephyr build may erase the area, with interrupts off for each
+   * 4 KiB sector.
+   */
+
+  ret = nano_flash_kv_initialize();
+  if (ret < 0)
+    {
+      result = ret;
+    }
 #endif
 
 #ifdef CONFIG_CDCACM

@@ -469,6 +469,50 @@ Zephyr 版の `i2c` コマンド（Zephyr のシェル）は移さず、NuttX �
 `i2c verf` は書き込んで読み返すコマンドなので、センサーの設定を書き換えます。`i2c` ツールは優先度 100 で
 動きます（Zephyr 版のシェルのコマンドは 104 に当たる位置）。
 
+## LSM6DSOX（IMU）
+
+ドライバーは `nuttx/drivers/lsm6dso/lsm6dso.c` で、Zephyr 版の `drivers/lsm6dso/lsm6dso.c`（FIFO・校正・ゼロ点の
+変更を含む Zephyr の LSM6DSO ドライバー）の OS を呼ぶ部分だけを置き換えた写しです。レジスターの操作は ST の
+`lsm6dso_reg.c`（lsm6dso-pid v3.2.2。`script/setup.sh` が `nuttx/stmemsc/` に取得。Zephyr の hal_st のものと
+LF に直して同一）で行います。FIFO のストリーム（INT1 の割り込みと RTIO）はまだ移していません。
+
+- **起動時の初期化**: ボードの起動処理（`nano_bringup()`）が、I2C0 の初期化の直後、KV（NVS）のマウントより前に
+  初期化します。Zephyr 版がデバイスを `main()` より前に初期化し（`POST_KERNEL`、優先度 90）、`main()` で NVS を
+  マウントするのと同じ順です。`dmesg` の最初の 2 行は Zephyr 版と同じ文です:
+
+  ```text
+  [00:00:00.007,154] <inf> LSM6DSO: Initialize device lsm6dsox@6a
+  [00:00:00.008,475] <inf> LSM6DSO: chip id 0x6c
+  [00:00:00.028,920] <inf> fs_nvs: 2 Sectors of 4096 bytes
+  ```
+
+  失敗したとき（チップ ID が違う、I2C の失敗）は Zephyr 版と同じ `<err>` の行を残し、デバイスは「準備
+  できていない」状態のまま起動を続けます。
+- **初期化の手順と値**は Zephyr 版と同じです: ユーザーのレジスターバンクを選ぶ → `WHO_AM_I` → I3C を
+  無効 → センサーハブのマスターが動いていれば止めて 300 µs → ソフトウェアリセットと 100 µs →
+  加速度の電力モード・フルスケール・ODR → ジャイロの電力モード・フルスケール・ODR → FIFO をバイパス →
+  BDU。設定値は Zephyr 版のデバイスツリー（`app.overlay` を含む）と同じで、ボードの `include/board.h` の
+  `BOARD_LSM6DSOX_*` にあります（加速度 ±8 g、ジャイロ ±2000 dps、ODR は両方停止、高性能モード）。
+  初期化後のレジスターは `CTRL1_XL`=0x0c、`CTRL2_G`=0x0c、`CTRL3_C`=0x44、`CTRL9_XL`=0xe2、
+  `FIFO_CTRL1`〜`4`・`COUNTER_BDR_REG1`/`2`・`INT1_CTRL`・`INT2_CTRL`・`CTRL4_C`〜`CTRL8_XL`・`CTRL10_C` が 0 です
+  （`i2c dump -a 6a -r 00 32` で確認できます）。
+- **I2C**: 起動時の速さはデバイスツリーの 100 kHz で、`i2c_configure()`（Zephyr の API の写し）で 400 kHz・1 MHz に
+  変えられます（Zephyr 版の `imu start` は 1 MHz にします）。NuttX の I2C はメッセージごとに周波数を持つので、
+  この速さは I2C0 のデバイス（`nuttx/drivers/compat`）が覚えていて、ドライバーの転送だけに使います。`i2c`
+  ツールは自分の `-f` の周波数で動き、ドライバーの速さを変えません（Zephyr 版の `i2c speed` はバスの設定を
+  変えます）。レジスターの読み出しは 1 回の転送（レジスター番号の書き込み → RESTART → 読み出し）、書き込みは
+  STOP 付きの 1 メッセージで、Zephyr の `i2c_burst_read_dt()`・`i2c_write_dt()` と同じ形です。FIFO の読み出しは
+  32 バイト以上なので DMA を使います。
+- **単発の取得**（`sensor_sample_fetch()`・`sensor_channel_get()`）、**属性**（`sensor_attr_set()` の ODR と
+  フルスケール）、FIFO の開始・読み出し・停止の関数、センサーのタイムスタンプの読み取り、校正値の参照と
+  その場でのゼロ点の取り直し（`lsm6dso_cal_zero()`）は Zephyr 版と同じ動作です。ODR は指定値以上で最小の
+  段（12、26、52、104、208、417、833、1667、3333、6667 Hz）、加速度のフルスケールは m/s² を g に四捨五入して
+  2・4・8・16 g、ジャイロは rad/s を dps に四捨五入して 125・250・500・1000・2000 dps だけを受け付けます
+  （ほかは `-EINVAL`）。FIFO を使っている間の単発取得と属性の変更は `-EBUSY` です。
+- 呼ぶ側のための Zephyr の API の写し（`struct device`、`struct sensor_value`、チャネル・属性の列挙、
+  `sensor_*()`、I2C の一部）は `nuttx/drivers/compat/` にあります。詳しくは `nuttx/drivers/README_ja.md` の
+  「LSM6DSOX」と「Zephyr の API の互換層」の節を見てください。
+
 ## システム時計
 
 カーネルの時計は tickless で、1 tick は 100 µs です（Zephyr 版の `CONFIG_SYS_CLOCK_TICKS_PER_SEC=10000`、
@@ -579,15 +623,17 @@ Zephyr 版の `i2c` コマンド（Zephyr のシェル）は移さず、NuttX �
 nuttx/script/host_tests.sh
 ```
 
-OS に依存しない共通ソースのテストを、PC 上でビルドして実行します。ボードもセットアップスクリプトも
-不要で、ホストの `cc`（C17）だけを使います。FIFO ワードの解析、バッチとペイロード、送信キュー、
+OS に依存しない共通ソースのテストを、PC 上でビルドして実行します。ボードは不要で、ホストの `cc`（C17）だけを
+使います。セットアップスクリプトも不要ですが、`lsm6dso_driver` だけは `script/setup.sh` が取得する ST の
+`lsm6dso_reg.c`（`nuttx/stmemsc/`）を使い、無ければ `skip` と出して飛ばします。FIFO ワードの解析、バッチとペイロード、送信キュー、
 status と info の JSON、時刻の対応付け、センサーの tick と時計の対応、NTP の推定、FIFO パケットの復号、物理単位への
 換算と校正値の保存形式、静止中のジャイロのゼロ点の追従、ボードの時間の換算（`nano_timeconv`）、
 CPU 負荷の計算（`nano_cpuload`）、RAM ログのリング・`dmesg` の取り出し・行の前置き・頻度制限（`log_ram`）、
 KV 領域の範囲の検査・ページ単位の書き込み・起動時の内容の判定（`nano_flash_kv`）、KV のキーの規則
 （`kv_name`）と `kv` コマンドの 16 進数の変換（`kv_hex`）、コマンドのサブコマンドの扱い（`subcmd`）、
 NINA の SPI の転送層（`nina_spi`）、I2C0 のドライバーの OS に依存しない部分（`nano_i2c_dw`）、I2C0 の DMA
-読み出しのコマンド語（`i2c_dma_commands`）、`i2c_dma` コマンドの出力（`i2c_dma_app`。ドライバー側は偽物）を確かめます。テストは 1 つずつビルドして
+読み出しのコマンド語（`i2c_dma_commands`）、`i2c_dma` コマンドの出力（`i2c_dma_app`。ドライバー側は偽物）、
+LSM6DSO の FIFO 制御（`fifo_hw`）と LSM6DSO のドライバー（`lsm6dso_driver`）を確かめます。テストは 1 つずつビルドして
 実行し、失敗したところで止まります。ビルドの生成物は一時ディレクトリに置き、終了時に消します。
 
 次のファイルは Zephyr 版（`zephyr/app/usb-console`）の同名ファイルを変更せずに写したものです。
@@ -596,10 +642,10 @@ Zephyr 版を直したときは、写しも同じ内容に置き換えます。
 | 置き場所 | Zephyr 版の置き場所 | 内容 |
 |---|---|---|
 | `nuttx/apps/imu/` | `src/` | `imu_raw_{batch,packet,queue,status,time}`、`imu_tick_clock`、`time_offset`、`imu_cal_codec.c`、`imu_cal.h`、`kv_store.h` |
-| `nuttx/drivers/lsm6dso/` | `drivers/lsm6dso/` | `lsm6dso_{fifo,cal,zero,fifo_decoder}`、`lsm6dso_fifo_packet.h` |
+| `nuttx/drivers/lsm6dso/` | `drivers/lsm6dso/` | `lsm6dso_{fifo,cal,zero,fifo_decoder,fifo_hw}`、`lsm6dso_fifo_packet.h`、`lsm6dso_fifo_stats.h`、`lsm6dso_attributes.h` |
 | `boards/arduino-nano-rp2040-connect/src/` | `drivers/i2c_dw/` | `i2c_dw_rp2040_commands.[ch]` |
-| `nuttx/tests/` | `tests/` | 上のファイルを対象にするテスト（`i2c_dma_commands.c` を含む） |
-| `nuttx/tests/fakes/` | `tests/fakes/` | テスト用の Zephyr のヘッダーの代わり（`zephyr/drivers/sensor.h`） |
+| `nuttx/tests/` | `tests/` | 上のファイルを対象にするテスト（`i2c_dma_commands.c`、`fifo_hw.c` を含む） |
+| `nuttx/tests/fakes/` | `tests/fakes/` | テスト用の Zephyr のヘッダーと ST のヘッダーの代わり（`zephyr/drivers/sensor.h`、`zephyr/drivers/i2c.h`、`lsm6dso_reg.h`） |
 
 `nuttx/tests/fakes/nuttx/config.h`（空）は NuttX 版だけのもので、`<nuttx/config.h>` を読む `nuttx/apps` の
 ソースをホストテストでビルドするために置いています（`i2c_dma_app`）。
@@ -639,5 +685,15 @@ Zephyr のフラグへの変換、`IC_DATA_CMD` に書く語の列（`i2c` ツ�
 センサーのレジスターの読み書き、3 つのメッセージなど。前の転送の向きが次の転送の最初の RESTART に効くことを
 含めて、転送を続けて流す）、`IC_CON` の値とレジスターの配置を確かめます。
 
-ドライバーの I2C の DMA・FIFO 制御・ストリーム処理と、NINA の Wi-Fi・ソケットを対象にするテストは、それらを
-移植するときに加えます。
+`nuttx/tests/lsm6dso_driver.c` も NuttX 版だけのテストです。`drivers/lsm6dso/lsm6dso.c` を、ST の本物の
+`lsm6dso_reg.c`、stmemsc の層、互換層（`drivers/compat`）、ボードの `src/nano_lsm6dso.c` と一緒にビルドし、
+偽の I2C マスターの先の偽の LSM6DSOX（レジスターのバンク、アドレスの自動増加、ソフトウェアリセット、FIFO、
+タイムスタンプ）に対して動かします。偽物のヘッダーは `nuttx/tests/lsm6dso_fakes/`（ボードの `board.h` は本物を
+読みます）。確かめるのは、初期化のログの文と順序、書き込むレジスターと値の順序（リセット後の 100 µs を
+含む）、初期化後のレジスター、感度、各段階での I2C の失敗とそのログ、`device_is_ready()`、すべての転送の
+アドレス・速さ（100 kHz と `i2c_configure()` の後の値）・メッセージの形、単発取得の読むレジスターと換算
+（`lsm6dso_cal.c` の結果と物理量、`val1`・`val2` の符号、1 軸と 3 軸）、属性（ODR の段、m/s² と rad/s の
+丸め、受け付けない値とチャネル、`-EBUSY`）、FIFO の開始・読み出し・一時停止・停止と統計、タイムスタンプの
+読み取り、`lsm6dso_cal_zero()` です。
+
+ストリーム処理と、NINA の Wi-Fi・ソケットを対象にするテストは、それらを移植するときに加えます。

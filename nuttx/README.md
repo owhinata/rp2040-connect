@@ -502,6 +502,57 @@ is decimal.
 `i2c verf` writes and reads back, so it changes the sensor's settings. The `i2c` tool runs at
 priority 100 (the Zephyr version's shell commands are at the place of 104).
 
+## LSM6DSOX (IMU)
+
+The driver is `nuttx/drivers/lsm6dso/lsm6dso.c`, a copy of the Zephyr version's
+`drivers/lsm6dso/lsm6dso.c` (Zephyr's LSM6DSO driver with the FIFO, calibration and zero-rate
+changes) with only the calls into the system replaced. The registers are handled by ST's
+`lsm6dso_reg.c` (lsm6dso-pid v3.2.2, fetched into `nuttx/stmemsc/` by `script/setup.sh`; with LF
+line ends identical to the one in Zephyr's hal_st). The FIFO stream (the INT1 interrupt and RTIO)
+is not ported yet.
+
+- **Initialization at boot**: the board's bring-up (`nano_bringup()`) initializes the sensor right
+  after I2C0 and before mounting the key-value store (NVS). That is the Zephyr version's order: it
+  initializes its devices before `main()` (`POST_KERNEL`, priority 90) and mounts NVS in `main()`.
+  The first two `dmesg` lines are the Zephyr version's:
+
+  ```text
+  [00:00:00.007,154] <inf> LSM6DSO: Initialize device lsm6dsox@6a
+  [00:00:00.008,475] <inf> LSM6DSO: chip id 0x6c
+  [00:00:00.028,920] <inf> fs_nvs: 2 Sectors of 4096 bytes
+  ```
+
+  On failure (a wrong chip ID, an I2C error) the same `<err>` lines as in the Zephyr version are
+  logged, the device stays "not ready" and the boot goes on.
+- **The initialization steps and values** are the Zephyr version's: select the user register bank
+  → `WHO_AM_I` → disable I3C → if the sensor hub master runs, stop it and wait 300 µs → software
+  reset and 100 µs → accelerometer power mode, full scale, ODR → gyro power mode, full scale, ODR →
+  FIFO bypass → BDU. The settings are those of the Zephyr version's devicetree (with
+  `app.overlay`), kept in the board's `include/board.h` as `BOARD_LSM6DSOX_*` (accelerometer ±8 g,
+  gyro ±2000 dps, both ODRs off, high-performance mode). After it, `CTRL1_XL`=0x0c,
+  `CTRL2_G`=0x0c, `CTRL3_C`=0x44, `CTRL9_XL`=0xe2, and `FIFO_CTRL1`..`4`, `COUNTER_BDR_REG1`/`2`,
+  `INT1_CTRL`, `INT2_CTRL`, `CTRL4_C`..`CTRL8_XL` and `CTRL10_C` are 0 (see
+  `i2c dump -a 6a -r 00 32`).
+- **I2C**: the speed at boot is the devicetree's 100 kHz; `i2c_configure()` (a copy of Zephyr's
+  API) changes it to 400 kHz or 1 MHz (the Zephyr version's `imu start` sets 1 MHz). A NuttX I2C
+  transfer carries its frequency in each message, so the I2C0 device (`nuttx/drivers/compat`)
+  keeps this speed and the driver's transfers use it. The `i2c` tool runs at its own `-f`
+  frequency and does not change the driver's speed (the Zephyr version's `i2c speed` changes the
+  bus). A register read is one transfer (write the register number → RESTART → read), a write is
+  one message with STOP: the shape of Zephyr's `i2c_burst_read_dt()` and `i2c_write_dt()`. FIFO
+  reads are 32 bytes or more and use DMA.
+- **Single readings** (`sensor_sample_fetch()`, `sensor_channel_get()`), **attributes** (ODR and
+  full scale through `sensor_attr_set()`), the functions that start, read and stop the FIFO,
+  reading the sensor's timestamp, the stored calibration and the on-demand gyro zero
+  (`lsm6dso_cal_zero()`) behave as in the Zephyr version. The ODR becomes the lowest step at or
+  above the request (12, 26, 52, 104, 208, 417, 833, 1667, 3333, 6667 Hz); the accelerometer full
+  scale is m/s² rounded to g and only 2, 4, 8 or 16 g; the gyro full scale is rad/s rounded to
+  dps and only 125, 250, 500, 1000 or 2000 dps (anything else is `-EINVAL`). While the FIFO is in
+  use, single readings and attribute changes are `-EBUSY`.
+- The copies of Zephyr's API for the callers (`struct device`, `struct sensor_value`, the channel
+  and attribute enumerations, `sensor_*()`, part of the I2C API) are in `nuttx/drivers/compat/`.
+  See the "LSM6DSOX" and "Zephyr API compatibility layer" sections of `nuttx/drivers/README.md`.
+
 ## System clock
 
 The kernel clock is tickless with a 100 µs tick (the same tick as the Zephyr version's
@@ -627,8 +678,10 @@ Priorities map as `NuttX = 118 − Zephyr`; `nuttx/drivers/include/priorities.h`
 nuttx/script/host_tests.sh
 ```
 
-This builds and runs the tests of the OS-independent common sources on the PC. It needs neither
-the board nor the setup script, only the host's `cc` (C17). The tests check FIFO word parsing,
+This builds and runs the tests of the OS-independent common sources on the PC. It needs no board,
+only the host's `cc` (C17). Nor does it need the setup script, except that `lsm6dso_driver` uses
+ST's `lsm6dso_reg.c` that `script/setup.sh` fetches (`nuttx/stmemsc/`); without it, that test
+prints `skip` and is left out. The tests check FIFO word parsing,
 batches and payloads, the send queue, the status and info JSON, time mapping, the mapping from the sensor
 tick to the clock, the NTP estimate, FIFO packet decoding, conversion to physical units and the
 stored calibration format, gyro zero tracking at rest, the board's time conversions
@@ -637,8 +690,9 @@ pieces, line prefix and rate limit (`log_ram`), the key-value area's range check
 boot-time contents check (`nano_flash_kv`), the key rules of the key-value store (`kv_name`) and
 the hex conversions of the `kv` command (`kv_hex`), the handling of the commands' subcommands
 (`subcmd`), the NINA's SPI transfer layer (`nina_spi`), the OS-independent part of the I2C0
-driver (`nano_i2c_dw`), the command words of the I2C0 DMA reads (`i2c_dma_commands`) and the
-output of the `i2c_dma` command (`i2c_dma_app`, with the driver side replaced by fakes). Each test is built and run in turn,
+driver (`nano_i2c_dw`), the command words of the I2C0 DMA reads (`i2c_dma_commands`), the
+output of the `i2c_dma` command (`i2c_dma_app`, with the driver side replaced by fakes), the
+LSM6DSO FIFO control (`fifo_hw`) and the LSM6DSO driver (`lsm6dso_driver`). Each test is built and run in turn,
 and the script stops at the first failure. Build products go to a temporary directory that is
 removed on exit.
 
@@ -649,10 +703,10 @@ content.
 | Location | Location in the Zephyr version | Contents |
 |---|---|---|
 | `nuttx/apps/imu/` | `src/` | `imu_raw_{batch,packet,queue,status,time}`, `imu_tick_clock`, `time_offset`, `imu_cal_codec.c`, `imu_cal.h`, `kv_store.h` |
-| `nuttx/drivers/lsm6dso/` | `drivers/lsm6dso/` | `lsm6dso_{fifo,cal,zero,fifo_decoder}`, `lsm6dso_fifo_packet.h` |
+| `nuttx/drivers/lsm6dso/` | `drivers/lsm6dso/` | `lsm6dso_{fifo,cal,zero,fifo_decoder,fifo_hw}`, `lsm6dso_fifo_packet.h`, `lsm6dso_fifo_stats.h`, `lsm6dso_attributes.h` |
 | `boards/arduino-nano-rp2040-connect/src/` | `drivers/i2c_dw/` | `i2c_dw_rp2040_commands.[ch]` |
-| `nuttx/tests/` | `tests/` | the tests of the files above (`i2c_dma_commands.c` included) |
-| `nuttx/tests/fakes/` | `tests/fakes/` | stand-ins for the Zephyr headers the tests need (`zephyr/drivers/sensor.h`) |
+| `nuttx/tests/` | `tests/` | the tests of the files above (`i2c_dma_commands.c` and `fifo_hw.c` included) |
+| `nuttx/tests/fakes/` | `tests/fakes/` | stand-ins for the Zephyr and ST headers the tests need (`zephyr/drivers/sensor.h`, `zephyr/drivers/i2c.h`, `lsm6dso_reg.h`) |
 
 `nuttx/tests/fakes/nuttx/config.h` (empty) is the NuttX port's own: it lets a host test build a
 source of `nuttx/apps` that includes `<nuttx/config.h>` (`i2c_dma_app`).
@@ -701,5 +755,19 @@ register read and write, three messages and so on, run as consecutive transfers 
 direction of one transfer sets the RESTART at the start of the next), the `IC_CON` value and the
 register layout.
 
-Tests of the driver's I2C DMA, FIFO control and stream handling and of the NINA's Wi-Fi and
-sockets are added when those parts are ported.
+`nuttx/tests/lsm6dso_driver.c` is also a test of the NuttX port only. It builds
+`drivers/lsm6dso/lsm6dso.c` with ST's real `lsm6dso_reg.c`, the stmemsc glue, the compatibility
+layer (`drivers/compat`) and the board's `src/nano_lsm6dso.c`, and runs it against a fake LSM6DSOX
+(register banks, address auto-increment, software reset, FIFO, timestamp) behind a fake I2C
+master. Its stand-in headers are in `nuttx/tests/lsm6dso_fakes/` (the board's `board.h` is the
+real one). It checks the initialization's log lines and their order, the register writes and
+values in order (with the 100 µs after the reset), the registers after it, the sensitivities, an
+I2C failure at each step and its log lines, `device_is_ready()`, the address, speed (100 kHz and
+what `i2c_configure()` sets) and message shape of every transfer, the registers a single reading
+reads and its conversion (against `lsm6dso_cal.c` and the physical value, the signs of `val1` and
+`val2`, one axis and three), the attributes (the ODR steps, the rounding of m/s² and rad/s, the
+refused values and channels, `-EBUSY`), starting, reading, pausing and stopping the FIFO and its
+statistics, the timestamp reading, and `lsm6dso_cal_zero()`.
+
+Tests of the stream handling and of the NINA's Wi-Fi and sockets are added when those parts are
+ported.

@@ -1,0 +1,16 @@
+############################################################################
+# nuttx/drivers/compat/Make.defs
+#
+# The port's small Zephyr compatibility layer: the parts of Zephyr's device
+# model, sensor API and I2C API that the ported driver (lsm6dso/) and its
+# callers use, under Zephyr's names (headers in compat/zephyr/, include
+# path $(TOPDIR)/external/compat).  Included by nuttx/drivers/Makefile.
+############################################################################
+
+ifeq ($(CONFIG_NANO_LSM6DSO),y)
+CSRCS += zephyr_device.c zephyr_i2c.c
+DEPPATH += --dep-path compat
+VPATH += :compat
+endif
+
+CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)compat
