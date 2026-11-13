@@ -52,6 +52,12 @@ ifeq ($(CONFIG_ARCH_IDLE_CUSTOM),y)
 CSRCS += nano_idle.c
 endif
 
+# The key-value store's flash (the last 8 KiB) under /dev/config.
+
+ifeq ($(CONFIG_NANO_FLASH_KV),y)
+CSRCS += nano_flash_kv.c
+endif
+
 # The stack sentinel in the scheduler's switch hook.
 
 ifeq ($(CONFIG_NANO_STACK_SENTINEL),y)

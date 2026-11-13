@@ -67,6 +67,10 @@
 #include "app_log.h"
 #include "priorities.h"
 
+#ifdef CONFIG_NANO_KV_STORE
+#  include "kv_store.h"
+#endif
+
 /* The module name and level of the Zephyr build's main.c. */
 
 LOG_MODULE_REGISTER(usb_console, LOG_LEVEL_INF);
@@ -195,12 +199,26 @@ static void console_setup(int fd)
 int nano_init_main(int argc, FAR char *argv[])
 {
   struct sched_param param;
+#ifdef CONFIG_NANO_KV_STORE
+  int ret;
+#endif
 
   nsh_initialize();
 
   /* zephyr/app/usb-console/src/main.c */
 
   LOG_INF("USB console started");
+#ifdef CONFIG_NANO_KV_STORE
+  /* The board has mounted /dev/config already (nano_flash_kv.c); this
+   * only checks that it is there, at the same point as main().
+   */
+
+  ret = kv_store_init();
+  if (ret)
+    {
+      LOG_ERR("Could not initialize settings: %d", ret);
+    }
+#endif
 
   param.sched_priority = NANO_PRIO_SHELL;
   sched_setparam(0, &param);

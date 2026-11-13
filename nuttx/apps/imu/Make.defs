@@ -1,0 +1,10 @@
+############################################################################
+# nuttx/apps/imu/Make.defs
+#
+# Read through nuttx/apps/Make.defs.  Adds this directory (a library: no
+# program of its own) to the build when CONFIG_NANO_KV_STORE is set.
+############################################################################
+
+ifneq ($(CONFIG_NANO_KV_STORE),)
+CONFIGURED_APPS += $(APPDIR)/external/imu
+endif

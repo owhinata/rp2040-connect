@@ -4,8 +4,8 @@
 
 `zephyr/app/usb-console` の IMU 測定ファームウェアを NuttX 13.1.0 に移植したものを置くディレクトリです。
 現在は移植中です。今あるのは、環境構築、OS に依存しない共通ソースのホストテスト、ボード定義とその
-ビルド、USB コンソールと書き込みスクリプトです。ファームウェアは起動して USB コンソール（CDC ACM）に
-nsh のプロンプトを出すところまでで、測定の機能はまだありません。
+ビルド、USB コンソールと書き込みスクリプト、RAM ログ、キーと値の保存（`kv`）です。ファームウェアは
+起動して USB コンソール（CDC ACM）に nsh のプロンプトを出すところまでで、測定の機能はまだありません。
 
 ## 環境構築
 
@@ -230,6 +230,78 @@ Zephyr 版の `src/log_ram.c` と同じ RAM ログです（`nuttx/drivers/log/`�
   `LOG_INF()` 1 回に約 42 µs、スタックを約 500 バイト使います（実機で 100 回の平均）。Zephyr 版の
   既定（deferred）では、呼び出し側は記録するだけで、整形は優先度の低いログスレッドが後で行います。
 
+## キーと値の保存（`kv`）
+
+設定と校正値を flash の末尾 8 KiB（`0x10ffe000`〜`0x10ffffff`、4 KiB の消去単位 2 つ）に保存します。
+Zephyr 版の `storage_partition` と同じ場所です。API とコマンドは Zephyr 版の `src/kv_store.[ch]` と同じで、
+保存形式は Zephyr 版と互換がありません。
+
+- 領域: ボードの `include/board.h`（`BOARD_KV_OFFSET`、`BOARD_KV_SIZE`）とリンカースクリプト
+  （`scripts/nano-flash.ld` の `__kv_start`、`__kv_end`。この領域はイメージの flash 領域から外してあり、
+  `build.sh` もイメージの終端を確かめます）で決まります。`src/nano_flash_kv.c` がこの範囲だけを見せる
+  MTD で、消去と書き込みのたびに、対象がこの範囲に収まることを、定数とリンカースクリプトの値の両方と
+  照らしてから（起動時に両者が一致し、イメージが手前で終わることを確かめてから）flash に触れます。
+  範囲の外なら何もせずエラーにします。
+- 形式: NuttX の NVS（`drivers/mtd/mtd_config_nvs.c`、`CONFIG_MTD_CONFIG_NVS`・`CONFIG_MTD_CONFIG_NAMED`、
+  名前は 63 文字まで）を `/dev/config` として使い、Zephyr 版と同じく `app_kv/<キー>` の名前で保存します。
+  MTD は書き込みの単位を 1 バイトと見せ（項目を詰めて置くため）、flash には 256 バイトのページ単位で、
+  データの外を 0xFF にして書きます。
+- Zephyr 版の後で初めて起動したとき: 起動時に、領域がこの形式でも全面消去済みでもなければ（Zephyr 版の
+  データが残っているとき）、領域を消去してから使います。そのとき `dmesg` に
+  `<wrn> fs_nvs: Erasing the key-value area: not in this build's format` が出ます。いつもの起動では
+  `<inf> fs_nvs: 2 Sectors of 4096 bytes` だけが出ます（Zephyr 版の起動時の `fs_nvs` の 1 行目と同じ。
+  2・3 行目の書き込み位置は出しません）。値は引き継がれないので、下の手順で退避して書き戻します。
+  NuttX 版の後で Zephyr 版に戻したときの Zephyr 版の動作は確かめていません。
+- コマンド（優先度 104、スタック 3072）:
+
+  ```
+  kv set <キー> <文字列>       文字列をそのまま保存
+  kv sethex <キー> <16 進数>   1〜128 バイトを 16 進数の対で保存（大文字も可）
+  kv get <キー>                値を小文字の 16 進数で表示
+  kv delete <キー>             削除（無いキーでも Deleted）
+  ```
+
+  キーは英数字・`_`・`-`・`.` の 1〜32 文字、値は 1〜128 バイトです。`sys.` で始まるキーは
+  `Reserved key` になります。出力は Zephyr 版と同じです（`Saved`、`Deleted`、`KV write failed: -22`、
+  `KV read failed: -2`、`Expected 1-128 bytes as hexadecimal pairs`、`Invalid hexadecimal value` など）。
+  `kv` だけ、または知らないサブコマンドではヘルプを、引数の数が違うと `<サブコマンド>: wrong parameter count`
+  とサブコマンドのヘルプを出します（Zephyr のシェルと同じ文）。Zephyr 版と違う点: 引数は nsh が解釈する
+  （`$`、`;`、`#`、`>` などは引用符で囲む）、エラーの行は標準エラー（同じコンソール）に出る、終了状態は
+  成功で 0・失敗で 1。
+- 容量: 生きている項目はすべて 1 つの消去単位（4 KiB）に収まる必要があります（もう 1 つは整理用）。
+  1 項目は「キーの長さ + 8（`app_kv/` と終端）+ 値の長さ + 16」バイトで、使えるのは 4048 バイトです。
+  32 文字のキーと 128 バイトの値なら 184 バイトで 22 項目まで（実機で 21 項目と `imu.port` が入り、
+  次で `KV write failed: -28`）。Zephyr 版（settings on NVS、同じ 4 KiB×2）も 1 項目が名前と値の 2 件
+  （183 バイト）で、ほぼ同じです。同じ値を保存し直しても書き込みません。
+- 書き換えと整理: 書き換えは新しい項目を足して古い項目に印を付け、1 つの消去単位が埋まると、生きている
+  項目をもう 1 つへ写して元を消去します（NVS のガベージコレクション）。flash を消去・書き込みする間は
+  XIP が止まるので、RAM 上のコードで割り込みを禁止して行います。禁止する時間は 4 KiB の消去 1 回が
+  33〜40 ms、256 バイトの書き込み 1 回が 0.37〜0.51 ms です（実機、TIMER で測定。消去 200 回余り、
+  書き込み 3 万回余り）。項目を 1 つ書き換えると、ふつうはページの書き込みが 4 回です。Zephyr 版の
+  flash ドライバーも、消去は 1 回（4 KiB）ごと、書き込みは 1 回の呼び出し（項目のデータ、最大 2 ページ）
+  ごとに割り込みを禁止します。
+- 電源断: NVS はデータの後に CRC 付きの索引を書き、古い項目の印は新しい項目を書いた後に付けます。
+  起動時に、書きかけの項目や途中で止まった整理を NVS が直します。電源を切る試験はしていません。
+- API（`nuttx/apps/imu/kv_store.[ch]`。ヘッダーは Zephyr 版と同じ）: `kv_store_init()`・`set`・`get`・
+  `delete` は Zephyr 版と同じ引数・戻り値です（キーや値が不正なら `-EINVAL`、無いキーは `-ENOENT`、
+  バッファーが小さければ `-ENOBUFS`、いっぱいなら `-ENOSPC`）。`/dev/config` が無いときは `-ENODEV`
+  です。呼び出しのたびに `/dev/config` を開いて閉じ、排他はドライバーのミューテックス（優先度継承あり）
+  が行うので、どのスレッドからも呼べます。`/dev/config` はボードが起動時に用意し、init が Zephyr 版の
+  `main()` と同じ位置で `kv_store_init()` を呼びます（失敗すると `Could not initialize settings: <値>`）。
+
+### Zephyr 版からの移し替え
+
+```bash
+# Zephyr 版が動いている間に退避する（host/recordings/kv-backup.json、Git 管理外）
+host/.venv/bin/python script/kv_transfer.py backup --usb
+# NuttX 版を書き込んだ後で書き戻す（Wi-Fi を登録しない場合）
+host/.venv/bin/python script/kv_transfer.py restore --usb --no-wifi
+```
+
+`restore` は `kv sethex` で書き、`kv get` で読み返して確かめます（`imu.session` は書き戻しません）。
+校正値を書いた後に `imu cal reload` を送るので、`imu` コマンドがまだ無い今の NuttX 版では、書き込みと
+読み返しが済んだ後、そこでエラーになって終わります。
+
 ## システム時計
 
 カーネルの時計は tickless で、1 tick は 100 µs です（Zephyr 版の `CONFIG_SYS_CLOCK_TICKS_PER_SEC=10000`、
@@ -336,8 +408,9 @@ OS に依存しない共通ソースのテストを、PC 上でビルドして�
 不要で、ホストの `cc`（C17）だけを使います。FIFO ワードの解析、バッチとペイロード、送信キュー、
 status と info の JSON、時刻の対応付け、センサーの tick と時計の対応、NTP の推定、FIFO パケットの復号、物理単位への
 換算と校正値の保存形式、静止中のジャイロのゼロ点の追従、ボードの時間の換算（`nano_timeconv`）、
-CPU 負荷の計算（`nano_cpuload`）、RAM ログのリング・`dmesg` の取り出し・行の前置き・頻度制限（`log_ram`）を
-確かめます。テストは 1 つずつビルドして
+CPU 負荷の計算（`nano_cpuload`）、RAM ログのリング・`dmesg` の取り出し・行の前置き・頻度制限（`log_ram`）、
+KV 領域の範囲の検査・ページ単位の書き込み・起動時の内容の判定（`nano_flash_kv`）、KV のキーの規則
+（`kv_name`）と `kv` コマンドの 16 進数の変換（`kv_hex`）を確かめます。テストは 1 つずつビルドして
 実行し、失敗したところで止まります。ビルドの生成物は一時ディレクトリに置き、終了時に消します。
 
 次のファイルは Zephyr 版（`zephyr/app/usb-console`）の同名ファイルを変更せずに写したものです。
@@ -345,7 +418,7 @@ Zephyr 版を直したときは、写しも同じ内容に置き換えます。
 
 | 置き場所 | Zephyr 版の置き場所 | 内容 |
 |---|---|---|
-| `nuttx/apps/imu/` | `src/` | `imu_raw_{batch,packet,queue,status,time}`、`imu_tick_clock`、`time_offset`、`imu_cal_codec.c`、`imu_cal.h` |
+| `nuttx/apps/imu/` | `src/` | `imu_raw_{batch,packet,queue,status,time}`、`imu_tick_clock`、`time_offset`、`imu_cal_codec.c`、`imu_cal.h`、`kv_store.h` |
 | `nuttx/drivers/lsm6dso/` | `drivers/lsm6dso/` | `lsm6dso_{fifo,cal,zero,fifo_decoder}`、`lsm6dso_fifo_packet.h` |
 | `nuttx/tests/` | `tests/` | 上のファイルを対象にするテスト |
 | `nuttx/tests/fakes/` | `tests/fakes/` | テスト用の Zephyr のヘッダーの代わり（`zephyr/drivers/sensor.h`） |
@@ -361,6 +434,14 @@ Zephyr 版を直したときは、写しも同じ内容に置き換えます。
 切り捨て）と比べます。後者は `nuttx/drivers/log/log_ring.c` を、Zephyr 版の `log_ram.c` の 1 バイトずつの
 書き込みと乱数の書き込み 2 万回で比べ、行の前置きを Zephyr の `log_output.c` の時刻の計算と乱数 20 万個で
 比べ、`dmesg` の取り出し（上書き中の読み飛ばし、8192 バイトでの打ち切り）と頻度制限を確かめます。
+
+`nuttx/tests/nano_flash_kv.c`、`kv_name.c`、`kv_hex.c` も NuttX 版だけのテストです。`nano_flash_kv` は
+`src/nano_flash_kv.h` の範囲の検査を境界の前後と、flash の先頭と末尾 1 MiB のすべてのページ・消去単位で
+確かめ、ページ単位の書き込みを、ページ境界の前後のさまざまな位置と長さで、書いたバイトだけが変わる
+ことで確かめます。起動時の判定は、NuttX の NVS が書く索引を受け付け、Zephyr 版の NVS の索引の並び
+（NuttX の CRC がたまたま合うものを含む）を受け付けないことを確かめます。`kv_name` は Zephyr 版の
+`kv_store.c` から分けたキーの検査（`apps/imu/kv_name.c`）を、`kv_hex` は Zephyr の `lib/utils/hex.c` の
+写し（`apps/kv/kv_hex.c`）を確かめます。
 
 ドライバーの I2C・FIFO 制御・ストリーム処理と NINA を対象にするテストは、それらを移植するときに
 加えます。

@@ -1,0 +1,33 @@
+#
+# For a description of the syntax of this configuration file,
+# see the file kconfig-language.txt in the NuttX tools repository.
+#
+
+config NANO_APP_KV
+	tristate "kv command (key-value store)"
+	default y
+	depends on NANO_KV_STORE
+	---help---
+		"kv set|sethex|get|delete": the Zephyr build's kv command
+		(src/kv_store.c) with the same syntax and messages, on the
+		key-value store of nuttx/apps/imu (NANO_KV_STORE).
+
+if NANO_APP_KV
+
+config NANO_APP_KV_PRIORITY
+	int "kv task priority"
+	default 104
+	---help---
+		The shell's priority (NANO_PRIO_SHELL in
+		nuttx/drivers/include/priorities.h): the Zephyr build runs shell
+		commands in its shell thread.
+
+config NANO_APP_KV_STACKSIZE
+	int "kv stack size"
+	default 3072
+	---help---
+		The Zephyr build runs the command on the shell thread's stack
+		(CONFIG_SHELL_STACK_SIZE 3072).  The NVS write, with garbage
+		collection, runs on this stack too.
+
+endif

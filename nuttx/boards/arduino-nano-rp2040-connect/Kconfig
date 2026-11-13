@@ -51,3 +51,22 @@ config NANO_STACK_SENTINEL
 		sched_note_suspend() and sched_note_irqhandler(), which need
 		SCHED_INSTRUMENTATION, SCHED_INSTRUMENTATION_SWITCH and
 		SCHED_INSTRUMENTATION_IRQHANDLER but no note driver.
+
+config NANO_FLASH_KV
+	bool "Key-value store in the last 8 KiB of the flash (/dev/config)"
+	default y
+	depends on ARCH_CHIP_RP2040 && !SMP
+	depends on MTD_CONFIG_NVS && MTD_CONFIG_NAMED
+	depends on MTD_CONFIG_BLOCKSIZE_MULTIPLE = 1
+	---help---
+		src/nano_flash_kv.c: an MTD over flash offsets 0xffe000-0xffffff
+		(BOARD_KV_OFFSET, BOARD_KV_SIZE in include/board.h; __kv_start,
+		__kv_end in scripts/nano-flash.ld), two 4 KiB erase sectors, the
+		place of the Zephyr build's storage_partition, registered as
+		/dev/config through NuttX's NVS (mtd_config_nvs.c).  Every erase
+		and program is checked to lie inside that area.  The MTD reports
+		a 1-byte program unit so that NVS packs its entries; it programs
+		whole 256-byte pages with 0xff around the data.  At boot, an area
+		that holds neither NuttX's NVS layout nor only erased bytes (for
+		example the Zephyr build's NVS) is erased before it is mounted.
+		The store's format is not the Zephyr build's.

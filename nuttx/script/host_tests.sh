@@ -43,3 +43,9 @@ run nano_timeconv -Iboards/arduino-nano-rp2040-connect/src
 run nano_cpuload -Iboards/arduino-nano-rp2040-connect/src
 # RAM log: the retained ring, dmesg pieces, line prefix and rate limit.
 run log_ram -Idrivers/log drivers/log/log_ring.c
+# Board: the key-value area's range checks, page writes and contents check.
+run nano_flash_kv -Iboards/arduino-nano-rp2040-connect/src
+# Key-value store: key rules, and the hex conversions of the kv command.
+# strnlen() is POSIX, not C17.
+run kv_name -D_POSIX_C_SOURCE=200809L "$imu/kv_name.c"
+run kv_hex -Iapps/kv apps/kv/kv_hex.c

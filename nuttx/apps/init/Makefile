@@ -15,5 +15,6 @@ CSRCS = nano_init.c
 
 CFLAGS += ${INCDIR_PREFIX}$(APPDIR)$(DELIM)nshlib
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)include
+CFLAGS += ${INCDIR_PREFIX}$(APPDIR)$(DELIM)external$(DELIM)imu
 
 include $(APPDIR)/Application.mk

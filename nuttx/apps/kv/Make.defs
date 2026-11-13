@@ -1,0 +1,10 @@
+############################################################################
+# nuttx/apps/kv/Make.defs
+#
+# Read through nuttx/apps/Make.defs.  Adds this directory to the build when
+# CONFIG_NANO_APP_KV is set.
+############################################################################
+
+ifneq ($(CONFIG_NANO_APP_KV),)
+CONFIGURED_APPS += $(APPDIR)/external/kv
+endif

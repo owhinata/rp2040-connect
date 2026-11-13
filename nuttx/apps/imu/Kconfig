@@ -1,0 +1,17 @@
+#
+# For a description of the syntax of this configuration file,
+# see the file kconfig-language.txt in the NuttX tools repository.
+#
+
+config NANO_KV_STORE
+	bool "Key-value store (kv_store.c)"
+	default y
+	depends on MTD_CONFIG_NVS && MTD_CONFIG_NAMED
+	---help---
+		kv_store_init/set/get/delete() of the Zephyr build's
+		src/kv_store.[ch] on /dev/config (NuttX's NVS on the board's
+		key-value area, NANO_FLASH_KV), with the same keys (1-32
+		characters: letters, digits, '_', '-', '.'), values (1-128 bytes)
+		and error values.  Built into the application library; the "kv"
+		command (NANO_APP_KV) and the init task use it.  The other
+		sources of this directory are not built yet.

@@ -79,6 +79,20 @@ int nano_bringup(void)
 
   /* --- Place any board specific bringup code here --- */
 
+#ifdef CONFIG_NANO_FLASH_KV
+  /* The key-value store: /dev/config on the last 8 KiB of the flash.  The
+   * Zephyr build mounts its NVS before main() too.  Done before USB is
+   * registered: the first boot after the Zephyr build may erase the area,
+   * with interrupts off for each 4 KiB sector.
+   */
+
+  ret = nano_flash_kv_initialize();
+  if (ret < 0)
+    {
+      result = ret;
+    }
+#endif
+
 #ifdef CONFIG_CDCACM
   /* The console: USB CDC ACM, /dev/ttyACM0 (minor 0).  It is not a NuttX
    * console device (CDCACM_CONSOLE is off); the init task (nuttx/apps/init)

@@ -51,6 +51,14 @@ void nano_chip_id_initialize(void);
 void nano_usbserial_initialize(void);
 #endif
 
+/* nano_flash_kv.c: the MTD over the key-value area and /dev/config; from
+ * nano_bringup().
+ */
+
+#ifdef CONFIG_NANO_FLASH_KV
+int nano_flash_kv_initialize(void);
+#endif
+
 /* nano_oneshot.c: ALARM0 of the TIMER as a oneshot lower-half; from
  * up_timer_initialize() (nano_timerisr.c).
  */

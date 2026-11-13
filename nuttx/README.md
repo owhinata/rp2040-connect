@@ -4,9 +4,9 @@ English | [日本語](README_ja.md)
 
 This directory holds the port of the IMU measurement firmware in `zephyr/app/usb-console` to
 NuttX 13.1.0. The port is in progress. So far there are the setup, the host tests of the
-OS-independent common sources, the board definition with its build, and the USB console with the
-flashing script: the firmware boots to an nsh prompt on the USB console (CDC ACM) and has none of
-the measurement functions yet.
+OS-independent common sources, the board definition with its build, the USB console with the
+flashing script, the RAM log and the key-value store (`kv`): the firmware boots to an nsh prompt on
+the USB console (CDC ACM) and has none of the measurement functions yet.
 
 ## Setup
 
@@ -235,6 +235,88 @@ The RAM log of the Zephyr version's `src/log_ram.c` (`nuttx/drivers/log/`).
   board). In the Zephyr version's default (deferred) mode the caller only records the message, and
   a low-priority logging thread formats it later.
 
+## Key-value store (`kv`)
+
+Settings and calibration values are kept in the last 8 KiB of the flash (`0x10ffe000` to
+`0x10ffffff`, two 4 KiB erase sectors), where the Zephyr version keeps its `storage_partition`. The
+API and the command are those of the Zephyr version's `src/kv_store.[ch]`; the stored format is not
+compatible with the Zephyr version's.
+
+- Area: set by the board's `include/board.h` (`BOARD_KV_OFFSET`, `BOARD_KV_SIZE`) and the linker
+  script (`__kv_start`, `__kv_end` in `scripts/nano-flash.ld`; the area is outside the image's
+  flash region, and `build.sh` checks where the image ends). `src/nano_flash_kv.c` is an MTD that
+  shows only this range. Before every erase and program it checks that the target lies inside the
+  range, against both the constants and the linker script's values (after checking at boot that
+  the two agree and that the image ends before the area), and only then touches the flash. A
+  request outside the range does nothing and fails.
+- Format: NuttX's NVS (`drivers/mtd/mtd_config_nvs.c`, `CONFIG_MTD_CONFIG_NVS`,
+  `CONFIG_MTD_CONFIG_NAMED`, names up to 63 characters) as `/dev/config`, with the Zephyr version's
+  names `app_kv/<key>`. The MTD reports a 1-byte program unit (so that entries are packed) and
+  programs the flash in 256-byte pages, with 0xff outside the data.
+- First boot after the Zephyr version: at boot, an area that is neither in this format nor fully
+  erased (the Zephyr version's data is still there) is erased before it is used, and `dmesg` shows
+  `<wrn> fs_nvs: Erasing the key-value area: not in this build's format`. A normal boot shows only
+  `<inf> fs_nvs: 2 Sectors of 4096 bytes` (the first of the Zephyr version's `fs_nvs` lines at
+  boot; the write positions of its second and third lines are not shown). Values are not carried
+  over: back them up and write them back as below. What the Zephyr version does when it is flashed
+  back after the NuttX port has not been checked.
+- Command (priority 104, stack 3072):
+
+  ```
+  kv set <key> <text>        store the text as is
+  kv sethex <key> <hex>      store 1 to 128 bytes given as hex pairs (upper case allowed)
+  kv get <key>               print the value in lower-case hex
+  kv delete <key>            delete (Deleted even for a missing key)
+  ```
+
+  Keys are 1 to 32 characters of letters, digits, `_`, `-` and `.`; values are 1 to 128 bytes.
+  Keys starting with `sys.` give `Reserved key`. The output is the Zephyr version's (`Saved`,
+  `Deleted`, `KV write failed: -22`, `KV read failed: -2`,
+  `Expected 1-128 bytes as hexadecimal pairs`, `Invalid hexadecimal value` and so on). `kv` alone or
+  with an unknown subcommand prints the help, and a wrong number of arguments prints
+  `<subcommand>: wrong parameter count` and the subcommand's help (the Zephyr shell's text).
+  Differences from the Zephyr version: nsh parses the arguments (quote `$`, `;`, `#`, `>` and the
+  like), error lines go to standard error (the same console), and the exit status is 0 on success
+  and 1 on failure.
+- Capacity: all live entries must fit in one erase sector (4 KiB; the other one is kept for
+  compaction). An entry takes "key length + 8 (`app_kv/` and the terminator) + value length + 16"
+  bytes, and 4048 bytes are usable: with 32-character keys and 128-byte values, 184 bytes each, up
+  to 22 entries (on the board, 21 such entries and `imu.port` fitted, and the next one gave
+  `KV write failed: -28`). The Zephyr version (settings on NVS, the same 4 KiB × 2) stores a name and
+  a value per entry (183 bytes for the same entry), about the same. Storing the value that is
+  already stored writes nothing.
+- Updates and compaction: an update appends the new entry and marks the old one; when an erase
+  sector is full, the live entries are copied to the other sector and the full one is erased
+  (NVS garbage collection). XIP stops while the flash is erased or programmed, so this runs from
+  RAM with interrupts disabled: 33 to 40 ms per 4 KiB erase and 0.37 to 0.51 ms per 256-byte page
+  program (measured on the board with the TIMER, over 200-odd erases and 30,000-odd programs).
+  Updating one entry normally takes 4 page programs. The Zephyr version's flash driver also
+  disables interrupts per erase call (4 KiB) and per write call (an entry's data, up to 2 pages).
+- Power loss: NVS writes the data before its CRC-checked table entry, and marks the old entry only
+  after the new one is written; at boot it repairs a half-written entry or an interrupted
+  compaction. This has not been tested by cutting the power.
+- API (`nuttx/apps/imu/kv_store.[ch]`; the header is the Zephyr version's): `kv_store_init()`,
+  `set`, `get` and `delete` take the Zephyr version's arguments and return its values (`-EINVAL`
+  for a bad key or value, `-ENOENT` for a missing key, `-ENOBUFS` for a buffer that is too small,
+  `-ENOSPC` when full), and `-ENODEV` when there is no `/dev/config`. Every call opens and closes
+  `/dev/config`, and the driver's mutex (with priority inheritance) serializes them, so any thread
+  can call them. The board sets up `/dev/config` at boot, and init calls `kv_store_init()` where
+  the Zephyr version's `main()` does (on failure: `Could not initialize settings: <value>`).
+
+### Moving the values from the Zephyr version
+
+```bash
+# Back up while the Zephyr version runs (host/recordings/kv-backup.json, not in Git)
+host/.venv/bin/python script/kv_transfer.py backup --usb
+# Write them back after flashing the NuttX port (without registering Wi-Fi)
+host/.venv/bin/python script/kv_transfer.py restore --usb --no-wifi
+```
+
+`restore` writes with `kv sethex` and checks by reading back with `kv get` (`imu.session` is not
+written back). After calibration values it sends `imu cal reload`; the NuttX port has no `imu`
+command yet, so the script ends with an error there, after the values have been written and read
+back.
+
 ## System clock
 
 The kernel clock is tickless with a 100 µs tick (the same tick as the Zephyr version's
@@ -355,8 +437,10 @@ the board nor the setup script, only the host's `cc` (C17). The tests check FIFO
 batches and payloads, the send queue, the status and info JSON, time mapping, the mapping from the sensor
 tick to the clock, the NTP estimate, FIFO packet decoding, conversion to physical units and the
 stored calibration format, gyro zero tracking at rest, the board's time conversions
-(`nano_timeconv`), the CPU load arithmetic (`nano_cpuload`), and the RAM log's ring, `dmesg`
-pieces, line prefix and rate limit (`log_ram`). Each test is built and run in turn,
+(`nano_timeconv`), the CPU load arithmetic (`nano_cpuload`), the RAM log's ring, `dmesg`
+pieces, line prefix and rate limit (`log_ram`), the key-value area's range checks, page writes and
+boot-time contents check (`nano_flash_kv`), the key rules of the key-value store (`kv_name`) and
+the hex conversions of the `kv` command (`kv_hex`). Each test is built and run in turn,
 and the script stops at the first failure. Build products go to a temporary directory that is
 removed on exit.
 
@@ -366,7 +450,7 @@ content.
 
 | Location | Location in the Zephyr version | Contents |
 |---|---|---|
-| `nuttx/apps/imu/` | `src/` | `imu_raw_{batch,packet,queue,status,time}`, `imu_tick_clock`, `time_offset`, `imu_cal_codec.c`, `imu_cal.h` |
+| `nuttx/apps/imu/` | `src/` | `imu_raw_{batch,packet,queue,status,time}`, `imu_tick_clock`, `time_offset`, `imu_cal_codec.c`, `imu_cal.h`, `kv_store.h` |
 | `nuttx/drivers/lsm6dso/` | `drivers/lsm6dso/` | `lsm6dso_{fifo,cal,zero,fifo_decoder}`, `lsm6dso_fifo_packet.h` |
 | `nuttx/tests/` | `tests/` | the tests of the files above |
 | `nuttx/tests/fakes/` | `tests/fakes/` | stand-ins for the Zephyr headers the tests need (`zephyr/drivers/sensor.h`) |
@@ -385,6 +469,16 @@ The first compares the arithmetic of `src/nano_cpuload.h` with the steps of Zeph
 over 20,000 random writes, compares the line prefix with the time arithmetic of Zephyr's
 `log_output.c` for 200,000 random values, and checks the `dmesg` pieces (skipping what is
 overwritten, stopping at 8192 bytes) and the rate limit.
+
+`nuttx/tests/nano_flash_kv.c`, `kv_name.c` and `kv_hex.c` are also tests of the NuttX port only.
+`nano_flash_kv` checks the range checks of `src/nano_flash_kv.h` around the edges and for every
+page and erase sector of the first and last MiB of the flash, and checks the page writes, at many
+offsets and lengths around page boundaries, by seeing that exactly the written bytes change. For
+the boot-time check it confirms that the table entries NuttX's NVS writes are accepted and that
+the Zephyr version's NVS entries, laid out as they are in the flash, are not (including ones that
+happen to pass NuttX's CRC). `kv_name` checks the key checks split out of the Zephyr version's
+`kv_store.c` (`apps/imu/kv_name.c`), and `kv_hex` the copy of Zephyr's `lib/utils/hex.c`
+(`apps/kv/kv_hex.c`).
 
 Tests of the driver's I2C, FIFO control and stream handling and of NINA are added when those
 parts are ported.
