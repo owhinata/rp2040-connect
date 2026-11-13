@@ -5,8 +5,8 @@
 `zephyr/app/usb-console` の IMU 測定ファームウェアを NuttX 13.1.0 に移植したものを置くディレクトリです。
 現在は移植中です。今あるのは、環境構築、OS に依存しない共通ソースのホストテスト、ボード定義とその
 ビルド、USB コンソールと書き込みスクリプト、RAM ログ、キーと値の保存（`kv`）、NINA-W102 との SPI の
-やり取り（`nina version`）、NINA のソケットの制御系（usrsock）、I2C0（DMA を含む）、LSM6DSOX のドライバーと
-FIFO のストリーム、IMU の取得サービス（`imu`）です。Wi-Fi の接続とソケットの送受信はまだ無く、取得した
+やり取り（`nina version`）、NINA のソケット（usrsock。制御系と送受信）と名前解決、I2C0（DMA を含む）、
+LSM6DSOX のドライバーと FIFO のストリーム、IMU の取得サービス（`imu`）です。Wi-Fi の接続はまだ無く、取得した
 バッチは送信のスタブが数えて捨てます（「IMU の取得（`imu`）」の節）。
 
 ## 環境構築
@@ -61,6 +61,7 @@ NuttX 13.1.0 本体（`nuttx/patches/nuttx/`）と nuttx-apps（`nuttx/patches/a
 | `nuttx/0002-cdcacm-drop-output-without-dtr` | PC 側でポートを開いているプログラムがない間（DTR が落ちている間）の出力を捨てる |
 | `nuttx/0003-serial-canonical-ctrl-c-eof` | 標準入力を読むコマンドの読み込みを Ctrl-C・Ctrl-D で終わらせる |
 | `nuttx/0004-rp2040-make-defs-alarm-arch-idle-custom` | `CONFIG_ALARM_ARCH` のとき `rp2040_timerisr.c`（SysTick の周期割り込み）を、`CONFIG_ARCH_IDLE_CUSTOM` のとき `rp2040_idle.c` をビルドから外す（システム時計とアイドルループをボード側で持つため） |
+| `nuttx/0005-usrsock-dontwait-to-daemon-and-daemon-send-timeout` | usrsock の送受信で、呼び出しが待たないこと（`MSG_DONTWAIT`、非ブロッキングのソケット）をドライバーへの要求に残し、ドライバーが `-ETIME` で応えた送信を `-EAGAIN` で終える。元の usrsock は待つ呼び出しへの `-EAGAIN` を出し直し続けるので、Zephyr 版の「待つ TCP 送信は 10 秒で `EAGAIN`」「NINA が受け取らなかったデータグラムはすぐ `EAGAIN`」を作れず、ブロッキングのソケットへの `MSG_DONTWAIT` も 2 回目で待ってしまうため（`nuttx/drivers/README_ja.md` の「ソケット（usrsock）」） |
 | `apps/0001-readline-echo-in-readline` | 行の入力中のエコーをシリアルドライバーではなく readline が行う（行に入れた文字と改行だけを返す） |
 | `apps/0002-readline-cr-lf-line-end` | CR、LF、CR LF、LF CR のどれでも 1 回の Enter にする |
 | `apps/0003-readline-ctrl-c` | Ctrl-C で入力中の行を捨てて新しいプロンプトを出す |
@@ -219,6 +220,13 @@ Zephyr 版の `src/log_ram.c` と同じ RAM ログです（`nuttx/drivers/log/`�
 - `syslog()` の出力（カーネルや nsh のメッセージ、PANIC の報告）も同じリングに入ります。Zephyr 版の
   `printk` と同じく、前置きを付けずにそのまま入れ、改行は CR LF にします（syslog の
   `CONFIG_SYSLOG_CRLF`。Zephyr 版の printk の文字列と同じ）。
+- 異常停止（HardFault などの例外、`PANIC()`、assert の失敗、スタックの番兵）のとき、NuttX 版は報告
+  （原因、レジスター、スタック、タスクの一覧）を RAM ログに書いてから自動で再起動します
+  （`CONFIG_BOARD_RESET_ON_ASSERT=2`。再起動は `reboot` と同じ通常の起動で、BOOTSEL にはなりません）。
+  RAM ログは再起動しても残るので、起動後の `dmesg` で報告を読めます。リングは 4096 バイトなので、
+  報告が長いと（スタックの内容が多いと）報告の先頭が押し出されることがあります。Zephyr 版は異常停止の
+  とき止まったままです（`CONFIG_RESET_ON_FATAL_ERROR` が無効）。これは Zephyr 版との違いで、移植が
+  終わった後に Zephyr 版にも同じ動作を入れる予定です。
 - ソースからは Zephyr と同じ書き方で使います。`#include "app_log.h"`（`nuttx/drivers/include/`。
   カーネル側・ボード・アプリのどれからも使え、割り込みハンドラーからも呼べます）のあと、ファイルごとに
   `LOG_MODULE_REGISTER(名前, LOG_LEVEL_INF)`（レベルを省くと `CONFIG_NANO_LOG_DEFAULT_LEVEL`、既定 3。
@@ -322,8 +330,9 @@ host/.venv/bin/python script/kv_transfer.py restore --usb --no-wifi
 Wi-Fi モジュール NINA-W102 とは SPI1 でやり取りします。NINA のファームウェアは Zephyr 版と同じもの
 （Arduino の NINA ファームウェア 3.0.2 に修正を当てたもの、`firmware/nina-fw/README.md`）で、書き換えません。
 今あるのは、コマンドを 1 つ送って応答を受け取る転送層（`nina_request()`、`nina_ip_config()`）、
-`nina version`、ソケットの制御系（NuttX の usrsock。socket・close・bind・listen・accept・connect・setsockopt。
-`nuttx/drivers/README_ja.md` の「ソケット（usrsock）」）です。送受信と Wi-Fi の接続はまだありません。
+`nina version`、ソケット（NuttX の usrsock。socket・close・bind・listen・accept・connect・setsockopt と
+送受信・`FIONREAD`）、NINA の名前解決（`nina_getaddrinfo()`）です（`nuttx/drivers/README_ja.md` の
+「ソケット（usrsock）」「名前解決」）。Wi-Fi の接続はまだありません。
 
 ```
 nsh$ nina version
@@ -627,8 +636,9 @@ Subcommands:
 - スタックの番兵（`CONFIG_NANO_STACK_SENTINEL`。ボードの `Kconfig`、既定で有効）: Zephyr 版の
   `CONFIG_STACK_SENTINEL` と同じく、各スタックの最下位のワード（`CONFIG_STACK_COLORATION` が書いた値）を、
   スレッドの切り替えのとき（切り替えで外れるスレッド）と、割り込みハンドラーの出口ごと（割り込まれた
-  スレッド。ハードウェアが退避した値がそのスタックに積まれている）に確かめ、書き換わっていれば PANIC で
-  止めます（報告は割り込み用のスタックの上で作り、RAM ログに入ります）。割り込み用のスタック自体は、
+  スレッド。ハードウェアが退避した値がそのスタックに積まれている）に確かめ、書き換わっていれば PANIC に
+  します（報告は割り込み用のスタックの上で作り、RAM ログに入ります。その後は自動で再起動します。
+  「ログ（`dmesg`）」の節。Zephyr 版は止まったままです）。割り込み用のスタック自体は、
   Zephyr 版と同じく番兵で確かめません。スケジューラーの計測用のフック 2 つ（切り替えの `sched_note_suspend()` と、
   `irq_dispatch()` が各ハンドラーの前後で呼ぶ `sched_note_irqhandler()`。`src/nano_stackcheck.c`）で
   行います。Cortex-M0+ では周辺の割り込みは `arm_doirq()` を通らず（`exception_direct()`）、
@@ -652,7 +662,7 @@ status と info の JSON、時刻の対応付け、センサーの tick と時�
 CPU 負荷の計算（`nano_cpuload`）、RAM ログのリング・`dmesg` の取り出し・行の前置き・頻度制限（`log_ram`）、
 KV 領域の範囲の検査・ページ単位の書き込み・起動時の内容の判定（`nano_flash_kv`）、KV のキーの規則
 （`kv_name`）と `kv` コマンドの 16 進数の変換（`kv_hex`）、コマンドのサブコマンドの扱い（`subcmd`）、
-NINA の SPI の転送層（`nina_spi`）、NINA のソケットの表と命令（`nina_sock`）、I2C0 のドライバーの OS に依存しない部分（`nano_i2c_dw`）、I2C0 の DMA
+NINA の SPI の転送層（`nina_spi`）、NINA のソケットの表と命令（`nina_sock`）、NINA の名前解決（`nina_dns`）、I2C0 のドライバーの OS に依存しない部分（`nano_i2c_dw`）、I2C0 の DMA
 読み出しのコマンド語（`i2c_dma_commands`）、`i2c_dma` コマンドの出力（`i2c_dma_app`。ドライバー側は偽物）、
 LSM6DSO の FIFO 制御（`fifo_hw`）、LSM6DSO のドライバーと FIFO のストリーム（`lsm6dso_driver`）、ストリームの
 状態機械（`stream_stop`）、互換層の RTIO（`zephyr_rtio`）とワーク（`zephyr_work`）、取得サービスのために
@@ -749,6 +759,15 @@ Zephyr のフラグへの変換、`IC_DATA_CMD` に書く語の列（`i2c` ツ�
 最初に使うときに作ること（種類とプロトコル、FIONBIO）、bind、listen（backlog を 1〜255 に丸める）、accept
 （相手のアドレスとポートのバイト順、`EAGAIN`、`EMFILE`）、connect（UDP、TCP の処理中、SO_ERROR の各値の
 errno、エラーフラグ、10000 ms の期限、poll の失敗、失敗後に NINA 側のソケットを閉じること）、close、
-setsockopt、`nina_event` が何を問い合わせ、何をイベントにするか。
+setsockopt、`nina_event` が何を問い合わせ、何をイベントにするか。送受信では、TCP の送信（1 回 3584 バイトまで、
+応答の検査、`MSG_DONTWAIT`、待つ送信の各回と 100 ms ごとの状態確認・10000 ms の期限、同じ呼び出しの続きと
+新しい呼び出しの区別）、`sendmsg`（複数のベクターを 1 つの命令にまとめること、受け付けないもの）、UDP の送信
+（アドレスの検査、接続した相手、512 バイトの上限、NINA が受け取らなかったデータグラム）、TCP と UDP の受信
+（先に poll すること、サイズのパラメーター、送信元のポートのバイト順、接続した相手以外を捨てること、空の
+データグラム）、データを見つけた poll を次の受信の最初の poll に使うこと、`FIONREAD`。
 
-NINA の Wi-Fi と送受信を対象にするテストは、それらを移植するときに加えます。
+`nuttx/tests/nina_dns.c` は `drivers/nina/nina_dns.c` を、偽の `nina_request()` とロックで確かめます: ヒントの
+既定値と受け付けないフラグ・ファミリー・ソケットの種類、サービス（ポート番号）、数値のアドレス（NINA に問い合わせ
+ない）、名前（ロックを持ったまま命令 0x34 と 0x35）、失敗ごとの `EAI_*`。
+
+NINA の Wi-Fi を対象にするテストは、それを移植するときに加えます。

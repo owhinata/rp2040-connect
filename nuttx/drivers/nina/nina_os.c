@@ -13,6 +13,8 @@
  *   clock_systime_ticks() + ticks + 1 (clock_delay2abstick()): the same
  *   with the same 100 us tick.  They are not ended by signals; neither is
  *   k_sleep() (only k_wakeup(), which this driver does not use).
+ * - K_MUTEX_DEFINE(nina_dns_lock) of nina_dns.c: a mutex_t, which also
+ *   inherits priority.
  * - k_uptime_get(): ticks converted to milliseconds, rounded down
  *   (k_ticks_to_ms_floor64()).  TICK2MSEC() rounds down too.
  */
@@ -29,6 +31,7 @@
 #include "nina_os.h"
 
 static rmutex_t g_nina_lock = NXRMUTEX_INITIALIZER;
+static mutex_t g_dns_lock = NXMUTEX_INITIALIZER;
 
 int nina_os_lock(void)
 {
@@ -46,6 +49,18 @@ int nina_os_lock(void)
 void nina_os_unlock(void)
 {
   nxrmutex_unlock(&g_nina_lock);
+}
+
+void nina_os_dns_lock(void)
+{
+  while (nxmutex_lock(&g_dns_lock) == -EINTR)
+    {
+    }
+}
+
+void nina_os_dns_unlock(void)
+{
+  nxmutex_unlock(&g_dns_lock);
 }
 
 void nina_os_sleep_us(uint32_t us)

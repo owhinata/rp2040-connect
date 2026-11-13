@@ -19,6 +19,14 @@
 int nina_os_lock(void);
 void nina_os_unlock(void);
 
+/* K_MUTEX_DEFINE(nina_dns_lock) of drivers/nina/nina_dns.c: held across
+ * the two resolver commands (nina_dns.c).  A mutex with priority
+ * inheritance; the wait is not ended by signals.
+ */
+
+void nina_os_dns_lock(void);
+void nina_os_dns_unlock(void);
+
 /* k_sleep(K_USEC(us)) and k_sleep(K_MSEC(ms)): the time rounded up to
  * ticks, plus one tick.  Not ended by signals.
  */

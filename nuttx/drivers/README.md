@@ -38,9 +38,9 @@ TCP/IP stack is not used (`NET_TCP_NO_STACK`, `NET_UDP_NO_STACK`).
 
 | File | Role |
 |---|---|
-| `nina/nina_sock.[ch]` | The socket table (10 sockets) and the NINA's socket commands: `nina_socket_create()`, `do_bind()`, `do_listen()`, `do_accept()`, `do_connect()`, `do_close()` and `do_setsockopt()` of the Zephyr version's `nina_socket.c`, with the names, branches, order, constants and errno names kept. OS-independent |
+| `nina/nina_sock.[ch]` | The socket table (10 sockets) and the NINA's socket commands: `nina_socket_create()`, `do_bind()`, `do_listen()`, `do_accept()`, `do_connect()`, `do_close()` and `do_setsockopt()` of the Zephyr version's `nina_socket.c`, and for sending and receiving `udp_send()`, `do_send()`, `do_sendmsg()`, `udp_recv()` and `do_recv()`, with the names, branches, order, constants and errno names kept (one pass of a send or receive wait loop per request). `FIONREAD` (`nina_sock_fionread()`) is the NuttX version's own. OS-independent |
 | `nina/nina_usrsock.c` | Dispatches usrsock's requests to the functions above and answers them (ACK) |
-| `nina/nina_poller.c` | The thread `nina_event`: turns the state of the NINA's sockets into usrsock events |
+| `nina/nina_poller.c` | The thread `nina_event`: turns the state of the NINA's sockets into usrsock events, and times the retries of a waiting send |
 | `nina/nina_usrsock.h` | The declarations between the two |
 
 - A request is handled synchronously in the calling thread, at its priority (as the Zephyr
@@ -72,14 +72,71 @@ TCP/IP stack is not used (`NET_TCP_NO_STACK`, `NET_UDP_NO_STACK`).
   next event. The new socket gets `SENDTO_READY`.
 - Unsupported operations give the Zephyr version's errno: `getsockopt`, `getsockname`,
   `getpeername` and `shutdown` give `EOPNOTSUPP`; `setsockopt` other than `TCP_NODELAY` gives
-  `ENOPROTOOPT` (NuttX handles `SO_RCVTIMEO` and `SO_SNDTIMEO` itself). `ioctl` answers `ENOTTY`,
-  which leaves the command to NuttX's own handling (the network device's `SIOC*` and so on).
-  `socket(AF_INET, SOCK_CTRL)` (used by `ifconfig` and others) is answered `ENOTSUP`, which leaves it
-  to NuttX.
-- Sending and receiving (`send`, `recv`, `sendto`, `recvfrom`), `FIONREAD` and name resolution are
-  not ported yet (`ENOSYS`).
+  `ENOPROTOOPT` (NuttX handles `SO_RCVTIMEO` and `SO_SNDTIMEO` itself). `ioctl` other than `FIONREAD`
+  (below) answers `ENOTTY`, which leaves the command to NuttX's own handling (the network device's
+  `SIOC*` and so on). `socket(AF_INET, SOCK_CTRL)` (used by `ifconfig` and others) is answered
+  `ENOTSUP`, which leaves it to NuttX.
+- Sending and receiving use the Zephyr version's values: a TCP send takes at most 3584 bytes a
+  call (`CONFIG_NANO_NINA_TCP_MAX_IO`), a datagram at most 512 (more gives `EMSGSIZE`), a receive at
+  most 512. `sendmsg` joins several vectors, up to 3584 bytes, and writes them with one command (so
+  that MQTT's header and payload go out together; NuttX's usrsock passes the vectors separately). A
+  send with one vector is treated as `send`/`sendto`, with more as `sendmsg` (UDP `sendmsg` gives
+  `EOPNOTSUPP`, as in the Zephyr version).
+- How sending and receiving wait: each request makes one pass of the Zephyr version's wait loop in
+  the calling thread, and usrsock waits between passes.
+  - When a waiting TCP send finds that the NINA took nothing, the answer is `EAGAIN` with
+    `SENDTO_READY` dropped; after `CONFIG_NANO_NINA_SEND_RETRY_MS` (default 1 ms, the Zephyr
+    version's `CONFIG_NINA_SEND_RETRY_MS`) `nina_event` reports `SENDTO_READY` and usrsock repeats
+    the request (the next pass). The state is checked with the NINA's poll at the first pass and
+    then every 100 ms (the error flag gives `EPIPE`), and the call gives `EAGAIN` 10 s after its
+    first pass. The deadline and the next check are kept per socket; a continued call is told from
+    a new one by the data's address and length.
+  - A send that does not wait (`MSG_DONTWAIT`, a non-blocking socket) gives `EAGAIN` at once when
+    nothing is taken, as in the Zephyr version. A datagram the NINA did not take (the NINA reports
+    every failure as zero bytes) gives `EAGAIN` at once whether the call waits or not. In these two
+    cases and at the 10 s deadline the answer is `-ETIME` with `SENDTO_READY` kept, which patch 0005
+    turns into `EAGAIN` that ends the call (stock usrsock repeats a waiting call's `EAGAIN`).
+    `SENDTO_READY` is dropped only between the passes of a waiting send: with it dropped, a
+    following blocking send would wait in usrsock without asking the driver, with no passes and no
+    deadline. So a TCP socket always looks writable to `poll()` (the Zephyr version's `poll()` asks
+    the NINA).
+  - A receive first checks with the NINA's poll that data is there (as in the Zephyr version: the
+    answer cannot tell "nothing" from an empty datagram); if not, the answer is `EAGAIN` with
+    `RECVFROM_AVAIL` dropped. A waiting receive waits in usrsock for `RECVFROM_AVAIL`, which
+    `nina_event` reports from its polls every 20 ms (NuttX handles `SO_RCVTIMEO`). After data is
+    received `RECVFROM_AVAIL` is dropped too and `nina_event` polls again at once. usrsock passes a
+    receive to the driver only with `RECVFROM_AVAIL`, so the first query of a receive or a `poll()`
+    can wait for `nina_event`'s poll (up to 20 ms; the Zephyr version asks there and then).
+  - A poll that found data (`nina_event`'s, `FIONREAD`'s) stands for the next receive's first poll
+    (nothing takes the data in between).
+- A TCP receive of 0 means the peer closed or the connection failed (the NINA reports both as zero
+  bytes, as in the Zephyr version). A UDP socket connected with `connect()` drops datagrams from
+  other senders (as in the Zephyr version).
+- `ioctl(FIONREAD)` is the NuttX version's own: one NINA poll there and then, in the calling thread;
+  1 when data (for TCP also the peer's close) is there, 0 when not (the NINA does not give a byte
+  count). With 1 the answer carries `RECVFROM_AVAIL`, so a following `recv(MSG_DONTWAIT)` reaches
+  the NINA. It is for the time synchronization's receive polling every 1 ms (the Zephyr version's
+  `time_sync.c` does the same with `recv(MSG_DONTWAIT)`).
 - `nina/nina_sock.c` is checked by a host test (`nuttx/tests/nina_sock.c`) with a fake
   `nina_request()` and clock.
+
+### Name resolution
+
+`nina/nina_dns.c` is a line-by-line port of the Zephyr version's `drivers/nina/nina_dns.c`: it
+resolves a name with the NINA's resolver commands (0x34 with the name, 0x35 to read the address) to
+one IPv4 address. A numeric address is not sent to the NINA. The Zephyr version registers it as the
+socket offload's `getaddrinfo()`, used by `zsock_getaddrinfo()`; the NuttX version has functions of
+its own, `nina_getaddrinfo()` and `nina_freeaddrinfo()` (`include/nina_dns.h`), and the compatibility
+layer's `<zephyr/net/socket.h>` maps `zsock_getaddrinfo()`, `zsock_freeaddrinfo()` and
+`struct zsock_addrinfo` to them. NuttX's `getaddrinfo()` (`CONFIG_LIBC_NETDB`, which queries a DNS
+server over UDP itself) is not used; `CONFIG_NANO_NINA_DNS` cannot be on together with
+`CONFIG_LIBC_NETDB`. Errors are NuttX's `EAI_*` values under the Zephyr version's `DNS_EAI_*` names
+(`EAI_NONAME` for a name that does not resolve, `EAI_AGAIN` for an SPI failure, `EAI_FAIL` for an
+address of the wrong length, `EAI_BADFLAGS`/`EAI_FAMILY`/`EAI_SOCKTYPE` for bad hints, `EAI_SERVICE`
+for a bad service, `EAI_MEMORY`). A mutex covers the two commands (the NINA keeps one result). The
+result comes from `malloc()`, not the Zephyr version's 2 KB heap. The host test is
+`nuttx/tests/nina_dns.c`. The only user now is the time synchronization when its NTP server is
+given by name (the default is the gateway).
 
 ## I2C0
 
@@ -229,7 +286,7 @@ RTIO and kernel as a whole are not ported.
 | `zephyr/sys/printk.h`, `zephyr/sys/byteorder.h`, `zephyr/sys/cpu_load.h` | `snprintk()` (`snprintf()`, as in the Zephyr version's configuration with `CONFIG_PICOLIBC=y`), `sys_put_be16/32()`/`sys_get_be16/32()`, `cpu_load_get()` (the board's `cpu_load.h`) |
 | `zephyr/drivers/hwinfo.h` | `hwinfo_get_device_id()` (below) |
 | `zephyr/shell/shell.h` | `shell_print()` (stdout), `shell_error()` (stderr), so that command functions in Zephyr's form can be called from a builtin command on `nuttx/apps/subcmd` (below) |
-| `zephyr/net/socket.h`, `zephyr/net/net_if.h` | `zsock_inet_pton()`, `zsock_inet_ntop()` (the C library's `inet_pton()`, `inet_ntop()`); `net_if.h` is empty for now (below) |
+| `zephyr/net/socket.h`, `zephyr/net/net_if.h` | `zsock_inet_pton()`, `zsock_inet_ntop()` (the C library's `inet_pton()`, `inet_ntop()`), `zsock_getaddrinfo()`, `zsock_freeaddrinfo()` (the NINA's resolver, `nina_getaddrinfo()`; errors are NuttX's `EAI_*`); `net_if.h` is empty for now (below) |
 | `zephyr_compat.h` | `zephyr_compat_initialize()` (called by the board's bring-up, below), `K_THREAD_DEFINE_START()` (called by init) |
 
 | Source | Contents |

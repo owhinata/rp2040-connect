@@ -54,4 +54,27 @@ config NANO_NINA_TCP_MAX_IO
 		batch of up to 2448 bytes plus its MQTT header is sent in one
 		command with the default.
 
+config NANO_NINA_SEND_RETRY_MS
+	int "Delay before retrying a full NINA TCP send buffer"
+	default 1
+	range 1 1000
+	depends on NANO_NINA_USRSOCK
+	---help---
+		The Zephyr build's CONFIG_NINA_SEND_RETRY_MS.  A TCP send that
+		waits and finds no room in the module is tried again after this
+		delay (the event thread reports SENDTO_READY and usrsock repeats
+		the request in the caller's thread), until NINA_SEND_WAIT_MS.
+
+config NANO_NINA_DNS
+	bool "Name resolution with the NINA resolver (nina_getaddrinfo())"
+	default y
+	depends on !LIBC_NETDB
+	---help---
+		nina/nina_dns.c: nina_getaddrinfo() and nina_freeaddrinfo()
+		(<nina_dns.h>), the Zephyr build's drivers/nina/nina_dns.c, which
+		resolves a name with the module's commands 0x34 and 0x35 and
+		gives one IPv4 address.  The Zephyr compatibility layer's
+		zsock_getaddrinfo() uses it.  Not with LIBC_NETDB (NuttX's own
+		getaddrinfo()).
+
 endif # NANO_NINA

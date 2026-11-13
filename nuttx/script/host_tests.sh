@@ -123,8 +123,11 @@ run kv_hex -Iapps/kv apps/kv/kv_hex.c
 run subcmd -Iapps/subcmd apps/subcmd/subcmd.c
 # NINA SPI link: framing, answers, READY timeouts, reset sequence, CS order (fake board and clock).
 run nina_spi -Idrivers/include -Idrivers/nina
-# NINA sockets: the table and the socket commands of nina_socket.c (fake nina_request() and clock).
+# NINA sockets: the table, the socket commands and the data calls of nina_socket.c (fake
+# nina_request() and clock).
 run nina_sock -D_DEFAULT_SOURCE -Idrivers/include -Idrivers/nina drivers/nina/nina_sock.c
+# NINA name resolution: hints, service, numeric addresses, the resolver commands (fake module).
+run nina_dns -D_DEFAULT_SOURCE -Idrivers/include -Idrivers/nina drivers/nina/nina_dns.c
 # Board: the I2C0 driver's SCL counts, speeds and IC_DATA_CMD words against the Zephyr build's.
 run nano_i2c_dw -Iboards/arduino-nano-rp2040-connect/src
 # Board: the command words of the I2C0 DMA reads (an unchanged copy of the Zephyr build's test).

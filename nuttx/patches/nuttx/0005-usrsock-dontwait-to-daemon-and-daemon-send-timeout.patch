@@ -1,0 +1,81 @@
+usrsock: pass MSG_DONTWAIT to the daemon; let it end a waiting send with -EAGAIN
+
+Purpose: the NINA socket driver (nuttx/drivers/nina, CONFIG_NET_USRSOCK_CUSTOM)
+ports the Zephyr build's NINA socket offload (drivers/nina/nina_socket.c),
+whose send and receive calls behave differently when the call does not wait
+and whose waiting TCP send gives up with EAGAIN after 10 s.
+
+- usrsock_sendmsg() and usrsock_recvmsg() cleared MSG_DONTWAIT before the
+  request, so the daemon could not tell whether the call waits, and the
+  next pass of their loop (after the daemon answered -EAGAIN) waited even
+  for a call made with MSG_DONTWAIT on a blocking socket.  Now the flag
+  stays set, and is also set for a non-blocking socket, so the daemon sees
+  it in the request's flags.
+- usrsock_sendmsg() repeats a request the daemon answers -EAGAIN for as
+  long as the call waits (only SO_SNDTIMEO ends that), so a daemon could
+  not end a waiting send with EAGAIN.  An answer of -ETIME now ends the
+  call with -EAGAIN, as an expired SO_SNDTIMEO does.
+
+Zephyr: drivers/nina/nina_socket.c do_send() (NINA_SEND_WAIT_MS, EAGAIN
+after it; EAGAIN at once with MSG_DONTWAIT or a non-blocking socket) and
+udp_send() (EAGAIN at once when the module does not take the datagram).
+
+diff --git a/net/usrsock/usrsock_recvmsg.c b/net/usrsock/usrsock_recvmsg.c
+--- a/net/usrsock/usrsock_recvmsg.c
++++ b/net/usrsock/usrsock_recvmsg.c
+@@ -392,9 +392,15 @@
+ 
+       usrsock_setup_datain(conn, inbufs, nitems(inbufs));
+ 
+-      /* MSG_DONTWAIT is only use in usrsock. */
++      /* Tell the daemon whether the call waits: MSG_DONTWAIT for a
++       * non-blocking socket too.  The flag stays set for the next pass of
++       * the loop, which must not wait either.
++       */
+ 
+-      flags &= ~MSG_DONTWAIT;
++      if (_SS_ISNONBLOCK(conn->sconn.s_flags))
++        {
++          flags |= MSG_DONTWAIT;
++        }
+ 
+       /* Request user-space daemon to close socket. */
+ 
+diff --git a/net/usrsock/usrsock_sendmsg.c b/net/usrsock/usrsock_sendmsg.c
+--- a/net/usrsock/usrsock_sendmsg.c
++++ b/net/usrsock/usrsock_sendmsg.c
+@@ -362,9 +362,15 @@
+           goto errout_unlock;
+         }
+ 
+-      /* MSG_DONTWAIT is only use in usrsock. */
++      /* Tell the daemon whether the call waits: MSG_DONTWAIT for a
++       * non-blocking socket too.  The flag stays set for the next pass of
++       * the loop, which must not wait either.
++       */
+ 
+-       flags &= ~MSG_DONTWAIT;
++      if (_SS_ISNONBLOCK(conn->sconn.s_flags))
++        {
++          flags |= MSG_DONTWAIT;
++        }
+ 
+       /* Request user-space daemon to close socket. */
+ 
+@@ -378,6 +384,16 @@
+         }
+ 
+       usrsock_teardown_request_callback(&state);
++
++      /* -ETIME: the daemon gave up waiting for room itself.  Return
++       * -EAGAIN, as for an expired SO_SNDTIMEO, without trying again.
++       */
++
++      if (ret == -ETIME)
++        {
++          ret = -EAGAIN;
++          break;
++        }
+     }
+   while (ret == -EAGAIN);
+ 

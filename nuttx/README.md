@@ -6,10 +6,10 @@ This directory holds the port of the IMU measurement firmware in `zephyr/app/usb
 NuttX 13.1.0. The port is in progress. So far there are the setup, the host tests of the
 OS-independent common sources, the board definition with its build, the USB console with the
 flashing script, the RAM log, the key-value store (`kv`), the SPI link to the NINA-W102
-(`nina version`), the control side of the NINA's sockets (usrsock), I2C0 (with DMA), the
-LSM6DSOX driver with its FIFO stream, and the IMU acquisition service (`imu`). There is no Wi-Fi
-connection and no sending or receiving on sockets yet: a transport stub counts the acquired
-batches and drops them (see "IMU acquisition (`imu`)").
+(`nina version`), the NINA's sockets (usrsock: the control side and sending and receiving) and
+name resolution, I2C0 (with DMA), the LSM6DSOX driver with its FIFO stream, and the IMU
+acquisition service (`imu`). There is no Wi-Fi connection yet: a transport stub counts the
+acquired batches and drops them (see "IMU acquisition (`imu`)").
 
 ## Setup
 
@@ -64,6 +64,7 @@ the board code replaces. The head of each file gives its purpose and the Zephyr 
 | `nuttx/0002-cdcacm-drop-output-without-dtr` | Drop the output while no program on the PC has the port open (DTR low) |
 | `nuttx/0003-serial-canonical-ctrl-c-eof` | Ctrl-C and Ctrl-D end the read of a command that reads its standard input |
 | `nuttx/0004-rp2040-make-defs-alarm-arch-idle-custom` | Leave `rp2040_timerisr.c` (periodic SysTick interrupt) out of the build with `CONFIG_ALARM_ARCH`, and `rp2040_idle.c` with `CONFIG_ARCH_IDLE_CUSTOM` (the board provides the system timer and the idle loop) |
+| `nuttx/0005-usrsock-dontwait-to-daemon-and-daemon-send-timeout` | usrsock's send and receive keep in the driver's request that the call does not wait (`MSG_DONTWAIT`, a non-blocking socket), and a send the driver answers with `-ETIME` ends with `-EAGAIN`. Stock usrsock repeats a waiting call's `-EAGAIN` for ever, so the Zephyr version's "a waiting TCP send gives `EAGAIN` after 10 s" and "a datagram the NINA did not take gives `EAGAIN` at once" could not be made, and `MSG_DONTWAIT` on a blocking socket waited on the second pass ("Sockets (usrsock)" in `nuttx/drivers/README.md`) |
 | `apps/0001-readline-echo-in-readline` | readline, not the serial driver, echoes while a line is typed (only what goes into the line, and the line end) |
 | `apps/0002-readline-cr-lf-line-end` | CR, LF, CR LF and LF CR are each one Enter |
 | `apps/0003-readline-ctrl-c` | Ctrl-C drops the line being typed and shows a new prompt |
@@ -224,6 +225,14 @@ The RAM log of the Zephyr version's `src/log_ram.c` (`nuttx/drivers/log/`).
 - Output of `syslog()` (kernel and nsh messages, PANIC reports) goes to the same ring. Like the
   Zephyr version's `printk`, it is stored as is, without a prefix, with line ends as CR LF
   (syslog's `CONFIG_SYSLOG_CRLF`, the same as the Zephyr version's printk strings).
+- On a fatal error (an exception such as a HardFault, `PANIC()`, a failed assertion, the stack
+  sentinel) the NuttX version writes its report (the cause, registers, stack and task list) to the
+  RAM log and then restarts by itself (`CONFIG_BOARD_RESET_ON_ASSERT=2`; a normal boot, as
+  `reboot`, not BOOTSEL). The RAM log survives the restart, so `dmesg` after it shows the report.
+  The ring holds 4096 bytes, so a long report (much stack content) can push its own first lines
+  out. The Zephyr version stays stopped after a fatal error (`CONFIG_RESET_ON_FATAL_ERROR` is
+  off). This is a difference from the Zephyr version; the same behaviour is to be added to the
+  Zephyr version after the port is finished.
 - Sources use it the Zephyr way: `#include "app_log.h"` (`nuttx/drivers/include/`; usable from
   the kernel side, the board code and the applications, also in interrupt handlers), then per file
   `LOG_MODULE_REGISTER(name, LOG_LEVEL_INF)` (without a level: `CONFIG_NANO_LOG_DEFAULT_LEVEL`,
@@ -342,9 +351,10 @@ written and read back.
 The Wi-Fi module NINA-W102 is reached over SPI1. Its firmware is the Zephyr version's (Arduino's NINA
 firmware 3.0.2 with fixes, `firmware/nina-fw/README.md`) and is not changed. So far there is the
 transfer layer that sends one command and receives its answer (`nina_request()`,
-`nina_ip_config()`), `nina version`, and the control side of the sockets (NuttX's usrsock: socket,
-close, bind, listen, accept, connect, setsockopt; "Sockets (usrsock)" in
-`nuttx/drivers/README.md`). Sending, receiving and the Wi-Fi connection are not there yet.
+`nina_ip_config()`), `nina version`, the sockets (NuttX's usrsock: socket, close, bind, listen,
+accept, connect, setsockopt, sending and receiving, `FIONREAD`), and the NINA's name resolution
+(`nina_getaddrinfo()`) ("Sockets (usrsock)" and "Name resolution" in `nuttx/drivers/README.md`).
+The Wi-Fi connection is not there yet.
 
 ```
 nsh$ nina version
@@ -687,8 +697,9 @@ Priorities map as `NuttX = 118 − Zephyr`; `nuttx/drivers/include/priorities.h`
   version's `CONFIG_STACK_SENTINEL`, the lowest word of each stack (the value written by
   `CONFIG_STACK_COLORATION`) is checked at every thread switch (for the thread switched out) and at
   the end of every interrupt handler (for the interrupted thread, whose stack holds what the
-  hardware saved), and a changed word stops the system with PANIC (the report is made on the
-  interrupt stack and goes to the RAM log). The interrupt stack itself has no sentinel, as in the
+  hardware saved), and a changed word raises PANIC (the report is made on the interrupt stack and
+  goes to the RAM log; the board then restarts by itself, see "Log (`dmesg`)"; the Zephyr version stays
+  stopped). The interrupt stack itself has no sentinel, as in the
   Zephyr version. The checks run
   in two scheduler instrumentation hooks (`sched_note_suspend()` at a switch, and
   `sched_note_irqhandler()`, which `irq_dispatch()` calls around each handler;
@@ -717,7 +728,7 @@ pieces, line prefix and rate limit (`log_ram`), the key-value area's range check
 boot-time contents check (`nano_flash_kv`), the key rules of the key-value store (`kv_name`) and
 the hex conversions of the `kv` command (`kv_hex`), the handling of the commands' subcommands
 (`subcmd`), the NINA's SPI transfer layer (`nina_spi`), the NINA's socket table and commands
-(`nina_sock`), the OS-independent part of the I2C0
+(`nina_sock`), the NINA's name resolution (`nina_dns`), the OS-independent part of the I2C0
 driver (`nano_i2c_dw`), the command words of the I2C0 DMA reads (`i2c_dma_commands`), the
 output of the `i2c_dma` command (`i2c_dma_app`, with the driver side replaced by fakes), the
 LSM6DSO FIFO control (`fifo_hw`), the LSM6DSO driver and its FIFO stream (`lsm6dso_driver`), the
@@ -838,6 +849,18 @@ types, the table of 10 and `EMFILE`, creating the NINA's socket on first use (ty
 FIONBIO), bind, listen (backlog clamped to 1..255), accept (the peer's address and the byte order of
 its port, `EAGAIN`, `EMFILE`), connect (UDP; TCP in progress, the errno of each SO_ERROR value, the
 error flag, the 10000 ms limit, a failed poll, closing the NINA's socket after a failure), close,
-setsockopt, and what `nina_event` queries and turns into events.
+setsockopt, and what `nina_event` queries and turns into events. For sending and receiving: TCP
+send (at most 3584 bytes a call, the answer checks, `MSG_DONTWAIT`, the passes of a waiting send
+with its state check every 100 ms and its 10000 ms limit, a continued call told from a new one),
+`sendmsg` (vectors joined into one command, what it refuses), UDP send (the address checks, the
+connected peer, the 512-byte limit, a datagram the NINA did not take), TCP and UDP receive (the
+poll first, the size parameter, the byte order of the sender's port, dropping datagrams from other
+than the connected peer, an empty datagram), a poll that found data standing for the next
+receive's first poll, and `FIONREAD`.
 
-Tests of the NINA's Wi-Fi and of sending and receiving are added when those parts are ported.
+`nuttx/tests/nina_dns.c` checks `drivers/nina/nina_dns.c` with a fake `nina_request()` and lock:
+the hints' defaults and the refused flags, families and socket types, the service (a port number),
+numeric addresses (the NINA is not asked), a name (commands 0x34 and 0x35 with the lock held), and
+the `EAI_*` of each failure.
+
+Tests of the NINA's Wi-Fi are added when it is ported.

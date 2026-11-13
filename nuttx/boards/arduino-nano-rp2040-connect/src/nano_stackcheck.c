@@ -58,9 +58,12 @@
  * Zephyr build has CONFIG_ASSERT off.
  *
  * On a changed word, the word is restored (as Zephyr does, so further
- * checks do not trip on it again) and the system halts through PANIC(),
- * whose report (with the running task's name) goes to the RAM log (Zephyr:
- * fatal error, then halt; CONFIG_RESET_ON_FATAL_ERROR is off there).  Both
+ * checks do not trip on it again) and PANIC() is raised: its report (with
+ * the running task's name) goes to the RAM log, and the board then restarts
+ * (CONFIG_BOARD_RESET_ON_ASSERT=2, a normal boot); dmesg shows the report
+ * after the restart.  The Zephyr build halts instead (fatal error;
+ * CONFIG_RESET_ON_FATAL_ERROR is off there), a difference to be removed
+ * there once the port is done.  Both
  * checks run in handler mode, so with the interrupt stack the report runs
  * on it, not on the overrun stack.  The interrupt stack itself has no
  * sentinel, as in Zephyr (z_check_stack_sentinel() checks _current only).

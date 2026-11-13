@@ -4,7 +4,10 @@
  * and inet_ntop() (Zephyr's are the same functions under its own names:
  * 1 / the buffer on success).  NuttX builds AF_INET in them with
  * CONFIG_NET_IPv4 or, without networking, CONFIG_LIBC_IPv4_ADDRCONV (the
- * imu application selects it).  The sockets themselves (zsock_socket(),
+ * imu application selects it).  zsock_getaddrinfo() and
+ * zsock_freeaddrinfo() are the NINA resolver's (<nina_dns.h>, the Zephyr
+ * build's offloaded getaddrinfo() of drivers/nina/nina_dns.c); their
+ * errors are NuttX's EAI_* values.  The sockets themselves (zsock_socket(),
  * zsock_poll(), ...) come with the NINA socket layer (T14-T16 of the port
  * plan).  Part of the small Zephyr compatibility layer of the port
  * (nuttx/drivers/compat, see nuttx/drivers/README.md).  Include NuttX's
@@ -15,10 +18,18 @@
 #define __NUTTX_DRIVERS_COMPAT_ZEPHYR_NET_SOCKET_H
 
 #include <arpa/inet.h>
+#include <netdb.h>
 #include <netinet/in.h>
+
+#include <nina_dns.h>
 
 #define zsock_inet_pton(family, src, dst) inet_pton(family, src, dst)
 #define zsock_inet_ntop(family, src, dst, size) \
   inet_ntop(family, src, dst, size)
+
+#define zsock_addrinfo addrinfo
+#define zsock_getaddrinfo(host, service, hints, res) \
+  nina_getaddrinfo(host, service, hints, res)
+#define zsock_freeaddrinfo(res) nina_freeaddrinfo(res)
 
 #endif /* __NUTTX_DRIVERS_COMPAT_ZEPHYR_NET_SOCKET_H */

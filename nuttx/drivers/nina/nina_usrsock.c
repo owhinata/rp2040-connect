@@ -19,14 +19,42 @@
  *   SETSOCKOPT               do_setsockopt()          nina_sock_setsockopt()
  *   GETSOCKOPT, GETSOCKNAME, no vtable entry:         -EOPNOTSUPP
  *   GETPEERNAME, SHUTDOWN    EOPNOTSUPP
- *   IOCTL                    do_ioctl()               -ENOTTY (NuttX's own
- *                                                     handling); FIONREAD T15
- *   SENDTO, RECVFROM         do_send(), do_recv()     T15: -ENOSYS for now
+ *   IOCTL                    do_ioctl()               FIONREAD: nina_sock_fionread()
+ *                                                     (not in the Zephyr build);
+ *                                                     others -ENOTTY (NuttX's own
+ *                                                     handling)
+ *   SENDTO                   do_send(), udp_send()    nina_sock_send() (one data
+ *                            (send, sendto)           vector)
+ *                            do_sendmsg()             nina_sock_sendmsg() (more)
+ *   RECVFROM                 do_recv(), udp_recv()    nina_sock_recv()
  *
  * A TCP connect is answered "in progress" when the module has not finished
  * the handshake at the first check; nina_poller.c checks it every
  * NINA_POLL_INTERVAL_MS until NINA_CONNECT_WAIT_MS, as the Zephyr build's
  * connect() does in its caller, and answers the request then.
+ *
+ * Send and receive (see nina_sock.c): each request makes one pass of the
+ * Zephyr build's wait loop in the calling thread; usrsock does the waiting
+ * between passes.  The answers:
+ *
+ *   data sent                 the count, SENDTO_READY kept
+ *   TCP send, no room, the    -EAGAIN without SENDTO_READY; nina_poller.c
+ *   call waits                reports SENDTO_READY after NINA_SEND_RETRY_MS
+ *                             and usrsock sends the request again
+ *   any other EAGAIN: a call  NINA_USRSOCK_EAGAIN_FINAL with SENDTO_READY:
+ *   that does not wait, the   the call returns -EAGAIN at once (usrsock
+ *   10 s deadline, a datagram would repeat a -EAGAIN of a waiting call)
+ *   the module did not take
+ *   data received             the count, RECVFROM_AVAIL dropped, and
+ *                             nina_poller.c polls now for more
+ *   nothing to receive        -EAGAIN without RECVFROM_AVAIL; nina_poller.c
+ *                             polls every NINA_POLL_INTERVAL_MS
+ *
+ * SENDTO_READY is dropped only between the passes of a waiting send.  A
+ * send that waits for it without asking the driver would miss its passes
+ * and its deadline (usrsock asks only when it holds SENDTO_READY), so a
+ * TCP socket is always writable for poll(), where the Zephyr build's
+ * poll() asks the module.
  */
 
 #include <nuttx/config.h>
@@ -48,6 +76,15 @@
 #  error CONFIG_NET_USRSOCK_CUSTOM must be set
 #endif
 
+/* The answer that ends a send call with -EAGAIN without another try:
+ * nuttx/patches/nuttx/0005 makes usrsock_sendmsg() return -EAGAIN for it.
+ * usrsock repeats a request answered -EAGAIN while the call waits, and
+ * the Zephyr build's send returns EAGAIN after NINA_SEND_WAIT_MS (and at
+ * once for a datagram).  nina_request() never returns -ETIME.
+ */
+
+#define NINA_USRSOCK_EAGAIN_FINAL (-ETIME)
+
 #if CONFIG_NET_USRSOCK_PREALLOC_CONNS + CONFIG_NET_USRSOCK_ALLOC_CONNS == 0
 #  error usrsock needs connections
 #endif
@@ -57,12 +94,15 @@
  * Data (T15) is read from the request's iovec, not copied here.  The
  * request structures are packed; what follows them is copied out with
  * memcpy() (get_addr()) before it is used: the Cortex-M0+ faults on
- * unaligned word access.
+ * unaligned word access.  Data to send is read from the caller's vectors
+ * in place (nina_sock.c joins several into one buffer).  Received data is
+ * read into g_receive and copied to the caller by usrsock_response().
  */
 
 #define NINA_USRSOCK_REQBUF 64
 
 static uint8_t g_request[NINA_USRSOCK_REQBUF] aligned_data(4);
+static uint8_t g_receive[NINA_MAX_IO] aligned_data(4);
 
 /* Answers ********************************************************************/
 
@@ -136,8 +176,10 @@ static int send_ack(uint32_t xid, int32_t result, uint16_t events,
   return ack(xid, result, events, inprogress, true);
 }
 
-/* A data answer: VALUE (an address, VALUELEN of its VALUELEN_FULL bytes),
- * then RESULT bytes of DATA.  A negative RESULT carries neither.
+/* A data answer: VALUE (an address or an ioctl value, VALUELEN of its
+ * VALUELEN_FULL bytes), then RESULT bytes of DATA.  A negative RESULT
+ * carries neither.  The header and value go to usrsock in one message,
+ * the data in a second (usrsock copies both into the caller's buffers).
  */
 
 static int send_dack(uint32_t xid, int32_t result, uint16_t events,
@@ -147,10 +189,11 @@ static int send_dack(uint32_t xid, int32_t result, uint16_t events,
   struct
   {
     struct usrsock_message_datareq_ack_s ack;
-    uint8_t payload[sizeof(struct sockaddr_in) + sizeof(int16_t)];
+    uint8_t value[sizeof(struct sockaddr_in)];
   } msg;
 
   size_t len = sizeof(msg.ack);
+  int ret;
 
   memset(&msg.ack, 0, sizeof(msg.ack));
   msg.ack.reqack.head.msgid  = USRSOCK_MESSAGE_RESPONSE_DATA_ACK;
@@ -165,19 +208,24 @@ static int send_dack(uint32_t xid, int32_t result, uint16_t events,
           valuelen = valuelen_full;
         }
 
-      if (valuelen + (size_t)result > sizeof(msg.payload))
+      if (valuelen > sizeof(msg.value))
         {
           return -EINVAL;
         }
 
       msg.ack.valuelen          = valuelen;
       msg.ack.valuelen_nontrunc = valuelen_full;
-      memcpy(msg.payload, value, valuelen);
-      memcpy(msg.payload + valuelen, data, result);
-      len += valuelen + result;
+      memcpy(msg.value, value, valuelen);
+      len += valuelen;
     }
 
-  return respond(&msg, len, true);
+  ret = respond(&msg, len, true);
+  if (ret == 0 && result > 0)
+    {
+      ret = respond(data, result, false);
+    }
+
+  return ret;
 }
 
 /* Requests *******************************************************************/
@@ -244,6 +292,7 @@ static int handle_socket(const struct usrsock_request_socket_s *req)
 
 static int handle_close(const struct usrsock_request_close_s *req)
 {
+  nina_poller_cancel(req->usockid);
   return send_ack(req->head.xid, nina_sock_close(req->usockid), 0, false);
 }
 
@@ -372,15 +421,154 @@ static int handle_setsockopt(const struct usrsock_request_setsockopt_s *req,
                   0, false);
 }
 
-static int handle_ioctl(const struct usrsock_request_ioctl_s *req)
+/* SENDTO: the request, the address (addrlen bytes, maybe none), then the
+ * caller's data vectors (usrsock_sendmsg.c, do_sendto_request()).  One
+ * vector is the Zephyr build's send()/sendto(), more its sendmsg().
+ */
+
+static int handle_sendto(const struct usrsock_request_sendto_s *req,
+                         size_t len, FAR struct iovec *iov,
+                         unsigned int iovcnt)
 {
-  /* FIONREAD: T15.  Everything else goes on to NuttX's own handling of
-   * the command (the network device's, for SIOC*): usrsock does that only
-   * for -ENOTTY (netdev_ioctl.c).
+  struct sockaddr_in in;
+  const struct sockaddr *addr;
+  struct nina_sock *s;
+  int16_t usockid = req->usockid;
+  int32_t flags = req->flags;
+  uint32_t xid = req->head.xid;
+  bool retry = false;
+  ssize_t ret;
+  int err;
+
+  addr = get_addr(sizeof(*req), req->addrlen, len, &in, &err);
+  if (err < 0)
+    {
+      return send_ack(xid, err, 0, false);
+    }
+
+  if (iovcnt < 2 || iov[0].iov_len != sizeof(*req) ||
+      iov[1].iov_len != req->addrlen)
+    {
+      return send_ack(xid, -EINVAL, 0, false);
+    }
+
+  if (iovcnt == 3)
+    {
+      ret = nina_sock_send(usockid, iov[2].iov_base, iov[2].iov_len, flags,
+                           addr, req->addrlen, &retry);
+    }
+  else
+    {
+      ret = nina_sock_sendmsg(usockid, iov + 2, iovcnt - 2, addr != NULL,
+                              flags, &retry);
+    }
+
+  s = nina_sock_get(usockid);
+  if (ret >= 0 || s == NULL)
+    {
+      return send_ack(xid, ret, ret >= 0 ? report(usockid,
+                                                  NINA_SOCK_EV_WRITE) : 0,
+                      false);
+    }
+
+  if (ret != -EAGAIN)
+    {
+      return send_ack(xid, ret, 0, false);
+    }
+
+  if (retry)
+    {
+      /* The call waits: the next pass after NINA_SEND_RETRY_MS. */
+
+      s->reported &= (uint8_t)~NINA_SOCK_EV_WRITE;
+      ret = send_ack(xid, -EAGAIN, 0, false);
+      nina_poller_retry(usockid);
+      return ret;
+    }
+
+  /* A call that does not wait, the deadline of a waiting call, or a
+   * datagram: EAGAIN now.  The next call tries at once, as there.
    */
 
-  return send_dack(req->head.xid, req->cmd == FIONREAD ? -ENOSYS : -ENOTTY,
-                   0, NULL, 0, 0, NULL);
+  return send_ack(xid, NINA_USRSOCK_EAGAIN_FINAL,
+                  report(usockid, NINA_SOCK_EV_WRITE), false);
+}
+
+static int handle_recvfrom(const struct usrsock_request_recvfrom_s *req)
+{
+  struct sockaddr_in from;
+  struct nina_sock *s;
+  int16_t usockid = req->usockid;
+  uint16_t max_addrlen = req->max_addrlen;
+  uint32_t xid = req->head.xid;
+  uint16_t valuelen;
+  ssize_t ret;
+
+  /* The address is wanted when there is room for it (recvfrom()). */
+
+  memset(&from, 0, sizeof(from));
+  ret = nina_sock_recv(usockid, g_receive, req->max_buflen, req->flags,
+                       max_addrlen > 0 ? &from : NULL);
+  s = nina_sock_get(usockid);
+  if (ret == -EAGAIN && s != NULL)
+    {
+      /* Nothing there: the call waits for RECVFROM_AVAIL (or returns
+       * -EAGAIN), which nina_poller.c reports from its polls.
+       */
+
+      s->reported &= (uint8_t)~NINA_SOCK_EV_READ;
+      ret = send_dack(xid, -EAGAIN, 0, NULL, 0, 0, NULL);
+      nina_poller_kick();
+      return ret;
+    }
+
+  if (ret < 0 || s == NULL)
+    {
+      return send_dack(xid, ret < 0 ? ret : -EBADF, 0, NULL, 0, 0, NULL);
+    }
+
+  /* Whether more is there is for the next poll, which comes now: the
+   * Zephyr build's next receive polls first, too.
+   */
+
+  s->reported &= (uint8_t)~NINA_SOCK_EV_READ;
+  valuelen = max_addrlen < sizeof(from) ? max_addrlen : sizeof(from);
+  ret = send_dack(xid, ret, 0, &from, s->udp ? valuelen : 0,
+                  s->udp ? sizeof(from) : 0, g_receive);
+  nina_poller_wake();
+  return ret;
+}
+
+static int handle_ioctl(const struct usrsock_request_ioctl_s *req)
+{
+  int16_t usockid = req->usockid;
+  uint32_t xid = req->head.xid;
+  int value;
+
+  /* FIONREAD: a poll of the module now, in this thread (nina_sock.h).
+   * When data is there, RECVFROM_AVAIL comes with the answer, so that a
+   * receive with MSG_DONTWAIT asks the module for it.
+   */
+
+  if (req->cmd == FIONREAD)
+    {
+      value = nina_sock_fionread(usockid);
+      if (value < 0)
+        {
+          return send_dack(xid, value, 0, NULL, 0, 0, NULL);
+        }
+
+      return send_dack(xid, 0,
+                       value > 0 ? report(usockid, NINA_SOCK_EV_READ) : 0,
+                       &value, sizeof(value), sizeof(value), NULL);
+    }
+
+  /* Everything else goes on to NuttX's own handling of the command (the
+   * network device's, for SIOC*): usrsock does that only for -ENOTTY
+   * (netdev_ioctl.c).
+   */
+
+  return send_dack(xid, -ENOTTY, 0, NULL, 0, 0, NULL);
 }
 
 /* Header sizes by request, for the length check. */
@@ -533,16 +721,10 @@ int usrsock_request(FAR struct iovec *iov, unsigned int iovcnt)
         return send_ack(common->xid, -EOPNOTSUPP, 0, false);
 
       case USRSOCK_REQUEST_SENDTO:
-
-        /* T15 (nina_socket.c do_send(), udp_send(), do_sendmsg()). */
-
-        return send_ack(common->xid, -ENOSYS, 0, false);
+        return handle_sendto((const void *)g_request, len, iov, iovcnt);
 
       case USRSOCK_REQUEST_RECVFROM:
-
-        /* T15 (nina_socket.c do_recv(), udp_recv()). */
-
-        return send_dack(common->xid, -ENOSYS, 0, NULL, 0, 0, NULL);
+        return handle_recvfrom((const void *)g_request);
 
       default:
         return -EINVAL;
