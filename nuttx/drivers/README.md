@@ -115,8 +115,9 @@ TCP/IP stack is not used (`NET_TCP_NO_STACK`, `NET_UDP_NO_STACK`).
 - `ioctl(FIONREAD)` is the NuttX version's own: one NINA poll there and then, in the calling thread;
   1 when data (for TCP also the peer's close) is there, 0 when not (the NINA does not give a byte
   count). With 1 the answer carries `RECVFROM_AVAIL`, so a following `recv(MSG_DONTWAIT)` reaches
-  the NINA. It is for the time synchronization's receive polling every 1 ms (the Zephyr version's
-  `time_sync.c` does the same with `recv(MSG_DONTWAIT)`).
+  the NINA. It is for the time synchronization's receive polling every 1 ms, and the
+  compatibility layer's `zsock_recv()` uses it with `ZSOCK_MSG_DONTWAIT` (the Zephyr version's
+  `time_sync.c` does the same with `recv(MSG_DONTWAIT)`; see the layer's table below).
 - `nina/nina_sock.c` is checked by a host test (`nuttx/tests/nina_sock.c`) with a fake
   `nina_request()` and clock.
 
@@ -346,7 +347,8 @@ RTIO and kernel as a whole are not ported.
 | `zephyr/sys/printk.h`, `zephyr/sys/byteorder.h`, `zephyr/sys/cpu_load.h` | `snprintk()` (`snprintf()`, as in the Zephyr version's configuration with `CONFIG_PICOLIBC=y`), `sys_put_be16/32()`/`sys_get_be16/32()`/`sys_get_le32()`, `cpu_load_get()` (the board's `cpu_load.h`) |
 | `zephyr/drivers/hwinfo.h` | `hwinfo_get_device_id()` (below) |
 | `zephyr/shell/shell.h` | `shell_print()` (stdout), `shell_warn()` and `shell_error()` (stderr), so that command functions in Zephyr's form can be called from a builtin command on `nuttx/apps/subcmd` (below) |
-| `zephyr/net/socket.h` | `zsock_inet_pton()`, `zsock_inet_ntop()` (the C library's `inet_pton()`, `inet_ntop()`), `zsock_getaddrinfo()`, `zsock_freeaddrinfo()` (the NINA's resolver, `nina_getaddrinfo()`; errors are NuttX's `EAI_*`) |
+| `zephyr/net/socket.h` | `zsock_inet_pton()`, `zsock_inet_ntop()` (the C library's `inet_pton()`, `inet_ntop()`), `zsock_getaddrinfo()`, `zsock_freeaddrinfo()` (the NINA's resolver, `nina_getaddrinfo()`; errors are NuttX's `EAI_*`), `zsock_socket()`, `zsock_sendto()`, `zsock_close()` (NuttX's `socket()`, `sendto()`, `close()`), `zsock_recv()` (`recv()`; with `ZSOCK_MSG_DONTWAIT` it first asks the NINA there and then with `ioctl(FIONREAD)` and gives `EAGAIN` when nothing is there, as the Zephyr version's NINA `recv()` asks on every call), `ZSOCK_MSG_DONTWAIT` |
+| `zephyr/sys/clock.h` | `sys_clock_gettime()`, `sys_clock_settime()` (`SYS_CLOCK_REALTIME`: NuttX's `clock_gettime()`, `clock_settime()` with `CLOCK_REALTIME`; 0 or `-EINVAL`), `NSEC_PER_USEC`, `USEC_PER_SEC` |
 | `zephyr/net/net_if.h` | `struct net_if` (one NuttX network device), `net_if_get_default()`, `net_if_get_wifi_sta()`, the IPv4 address, netmask and gateway (`net_if_ipv4_addr_add()`, `_rm()`, `net_if_ipv4_get_global_addr()`, `net_if_ipv4_set_netmask_by_addr()`, `net_if_ipv4_set_gw()`, `net_if_ipv4_get_gw()`), `net_if_dormant_on()`/`_off()`, `net_if_is_admin_up()`, `net_if_set_link_addr()` (below) |
 | `zephyr/net/net_mgmt.h` | `net_mgmt()` (requests), `struct net_mgmt_event_callback`, `net_mgmt_init_event_callback()`, `net_mgmt_add_event_callback()`, `_del_event_callback()`, `net_mgmt_event_notify_with_info()` (below) |
 | `zephyr/net/wifi_mgmt.h` | The Wi-Fi types (security, band, MFP, state, mode; Zephyr's values), `struct wifi_scan_params`, `wifi_scan_result`, `wifi_connect_req_params`, `wifi_iface_status`, `wifi_status`, `struct wifi_mgmt_ops`, the offloaded interface API and `NET_DEVICE_DT_OFFLOAD_DEFINE()`, the requests `NET_REQUEST_WIFI_SCAN`, `_CONNECT`, `_DISCONNECT`, `_IFACE_STATUS`, `_CONNECT_STORED` (with `CONFIG_NANO_WIFI_CREDENTIALS`), the events `NET_EVENT_WIFI_SCAN_RESULT`, `_SCAN_DONE`, `_CONNECT_RESULT`, `_DISCONNECT_RESULT`, `wifi_mgmt_raise_connect_result_event()`, `_disconnect_result_event()` (below), `wifi_security_txt()`, `wifi_band_txt()` |

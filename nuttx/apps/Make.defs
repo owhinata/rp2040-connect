@@ -9,7 +9,7 @@
 # (CONFIG_NANO_APP_IRQSTACK), imu/ (the
 # application's modules: the key-value store, CONFIG_NANO_KV_STORE, and the
 # IMU service with the "imu" command, CONFIG_NANO_APP_IMU), kv/ (CONFIG_NANO_APP_KV), nina/
-# (CONFIG_NANO_APP_NINA), subcmd/ (the subcommand dispatch shared by
+# (CONFIG_NANO_APP_NINA), ntp/ (CONFIG_NANO_APP_NTP), subcmd/ (the subcommand dispatch shared by
 # the commands: CONFIG_NANO_SUBCMD) and wifi/ (the stored Wi-Fi
 # credentials, CONFIG_NANO_WIFI_CREDENTIALS, the Wi-Fi profile,
 # CONFIG_NANO_WIFI_PROFILE, and the "wifi" command, CONFIG_NANO_APP_WIFI).

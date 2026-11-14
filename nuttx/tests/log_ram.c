@@ -87,16 +87,16 @@ static void test_validate(void)
 	assert(ring.start == 0 && ring.length == 0);
 
 	/* Intact: kept. */
-	ring.start = 4095;
-	ring.length = 4096;
+	ring.start = LOG_RAM_SIZE - 1;
+	ring.length = LOG_RAM_SIZE;
 	log_ring_validate(&ring);
-	assert(ring.start == 4095 && ring.length == 4096);
+	assert(ring.start == LOG_RAM_SIZE - 1 && ring.length == LOG_RAM_SIZE);
 
 	/* Each broken field empties it. */
-	ring.start = 4096;
+	ring.start = LOG_RAM_SIZE;
 	log_ring_validate(&ring);
 	assert(ring.start == 0 && ring.length == 0);
-	ring.length = 4097;
+	ring.length = LOG_RAM_SIZE + 1;
 	log_ring_validate(&ring);
 	assert(ring.length == 0);
 	ring.length = 10;
@@ -107,11 +107,22 @@ static void test_validate(void)
 	ring.magic = 0;
 	log_ring_validate(&ring);
 	assert(ring.length == 0 && ring.magic == LOG_RAM_MAGIC);
+	/* The header of the 4096-byte ring of earlier builds (and the Zephyr
+	 * build's magic number): emptied, though its start and length are in
+	 * range here.
+	 */
+	ring.magic = 0x4c4f4752U;
+	ring.magic_inverse = ~0x4c4f4752U;
+	ring.start = 100;
+	ring.length = 4096;
+	log_ring_validate(&ring);
+	assert(ring.start == 0 && ring.length == 0 && ring.magic == LOG_RAM_MAGIC);
+	assert(LOG_RAM_MAGIC == 0x4c4f6752U);
 }
 
 static void test_store_and_dmesg(void)
 {
-	static char data[10000], out[3 * LOG_RAM_SIZE];
+	static char data[3 * LOG_RAM_SIZE], out[3 * LOG_RAM_SIZE];
 	size_t n;
 
 	memset(&ring, 0, sizeof(ring));
@@ -128,13 +139,13 @@ static void test_store_and_dmesg(void)
 	n = dmesg(out, sizeof(out), 0);
 	assert(n == 100 && memcmp(out, data, 100) == 0);
 
-	/* Over 4096 bytes: the oldest go, dropped counts them. */
-	log_ring_store(&ring, &dropped, data + 100, 5000);
-	assert(ring.length == LOG_RAM_SIZE && dropped == 5100 - LOG_RAM_SIZE);
+	/* Over the ring's size: the oldest go, dropped counts them. */
+	log_ring_store(&ring, &dropped, data + 100, LOG_RAM_SIZE + 1000);
+	assert(ring.length == LOG_RAM_SIZE && dropped == 1100);
 	n = dmesg(out, sizeof(out), 0);
-	assert(n == LOG_RAM_SIZE && memcmp(out, data + 5100 - LOG_RAM_SIZE, n) == 0);
+	assert(n == LOG_RAM_SIZE && memcmp(out, data + 1100, n) == 0);
 
-	/* Logging while printing: skips what was overwritten, stops at 2*4096. */
+	/* Logging while printing: skips what was overwritten, stops at twice the size. */
 	n = dmesg(out, sizeof(out), 1);
 	assert(n >= 2U * LOG_RAM_SIZE - 96 && n <= 2U * LOG_RAM_SIZE + 96);
 }

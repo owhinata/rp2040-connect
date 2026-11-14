@@ -1,0 +1,10 @@
+############################################################################
+# nuttx/apps/ntp/Make.defs
+#
+# Read through nuttx/apps/Make.defs.  Adds this directory to the build when
+# CONFIG_NANO_APP_NTP is set.
+############################################################################
+
+ifneq ($(CONFIG_NANO_APP_NTP),)
+CONFIGURED_APPS += $(APPDIR)/external/ntp
+endif

@@ -15,8 +15,8 @@ config NANO_LOG_RAM
 	depends on SYSLOG
 	select SYSLOG_REGISTER
 	---help---
-		log/log_ram.c: a 4096-byte ring buffer in .noinit that survives
-		a reset (Zephyr build: src/log_ram.c).  The LOG_* macros of
+		log/log_ram.c: an 8192-byte ring buffer in .noinit that
+		survives a reset (Zephyr build: src/log_ram.c, 4096 bytes).  The LOG_* macros of
 		include/app_log.h write lines to it, and it is registered as the
 		syslog channel, so syslog() output goes there too.  The "dmesg"
 		command (nuttx/apps/dmesg) prints it.  The board calls

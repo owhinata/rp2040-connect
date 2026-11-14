@@ -101,7 +101,8 @@ Zephyr 版はソケットのオフロード（`drivers/nina/nina_socket.c`）で
 - `ioctl(FIONREAD)` は NuttX 版だけのもので、呼び出したスレッドでその場で NINA に poll を 1 回送り、データ
   （TCP では相手の切断も）があれば 1、無ければ 0 を返します（NINA はバイト数を教えません）。1 のときは応答に
   `RECVFROM_AVAIL` を付けるので、続く `recv(MSG_DONTWAIT)` が NINA に届きます。時刻同期が 1 ms ごとに受信を
-  見るためのものです（Zephyr 版の `time_sync.c` は `recv(MSG_DONTWAIT)` で同じことをしています）。
+  見るためのもので、互換層の `zsock_recv()` が `ZSOCK_MSG_DONTWAIT` のときに使います（Zephyr 版の `time_sync.c` は
+  `recv(MSG_DONTWAIT)` で同じことをしています。下の互換層の表）。
 - `nina/nina_sock.c` はホストテスト（`nuttx/tests/nina_sock.c`）で、偽の `nina_request()` と時計を使って
   確かめます。
 
@@ -314,7 +315,8 @@ Zephyr の API を、Zephyr の名前のまま最小限だけ用意したもの�
 | `zephyr/sys/printk.h`、`zephyr/sys/byteorder.h`、`zephyr/sys/cpu_load.h` | `snprintk()`（Zephyr 版の構成 `CONFIG_PICOLIBC=y` と同じく `snprintf()`）、`sys_put_be16/32()`・`sys_get_be16/32()`・`sys_get_le32()`、`cpu_load_get()`（ボードの `cpu_load.h`） |
 | `zephyr/drivers/hwinfo.h` | `hwinfo_get_device_id()`（下） |
 | `zephyr/shell/shell.h` | `shell_print()`（標準出力）・`shell_warn()`・`shell_error()`（標準エラー）。Zephyr の形のコマンドの関数を、`nuttx/apps/subcmd` の組み込みコマンドから呼ぶため（下） |
-| `zephyr/net/socket.h` | `zsock_inet_pton()`・`zsock_inet_ntop()`（C ライブラリの `inet_pton()`・`inet_ntop()`）、`zsock_getaddrinfo()`・`zsock_freeaddrinfo()`（NINA の名前解決、`nina_getaddrinfo()`。エラーは NuttX の `EAI_*`） |
+| `zephyr/net/socket.h` | `zsock_inet_pton()`・`zsock_inet_ntop()`（C ライブラリの `inet_pton()`・`inet_ntop()`）、`zsock_getaddrinfo()`・`zsock_freeaddrinfo()`（NINA の名前解決、`nina_getaddrinfo()`。エラーは NuttX の `EAI_*`）、`zsock_socket()`・`zsock_sendto()`・`zsock_close()`（NuttX の `socket()`・`sendto()`・`close()`）、`zsock_recv()`（`recv()`。`ZSOCK_MSG_DONTWAIT` のときは先に `ioctl(FIONREAD)` で NINA にその場で尋ね、何も無ければ `EAGAIN`。Zephyr 版の NINA の `recv()` が呼ばれるたびに尋ねるのに合わせるため）、`ZSOCK_MSG_DONTWAIT` |
+| `zephyr/sys/clock.h` | `sys_clock_gettime()`・`sys_clock_settime()`（`SYS_CLOCK_REALTIME`。NuttX の `clock_gettime()`・`clock_settime()` の `CLOCK_REALTIME`。0 か `-EINVAL`）、`NSEC_PER_USEC`・`USEC_PER_SEC` |
 | `zephyr/net/net_if.h` | `struct net_if`（NuttX のネットワークデバイス 1 つ）、`net_if_get_default()`・`net_if_get_wifi_sta()`、IPv4 のアドレス・ネットマスク・ゲートウェイ（`net_if_ipv4_addr_add()`・`_rm()`・`net_if_ipv4_get_global_addr()`・`net_if_ipv4_set_netmask_by_addr()`・`net_if_ipv4_set_gw()`・`net_if_ipv4_get_gw()`）、`net_if_dormant_on()`・`_off()`、`net_if_is_admin_up()`、`net_if_set_link_addr()`（下） |
 | `zephyr/net/net_mgmt.h` | `net_mgmt()`（要求）、`struct net_mgmt_event_callback`、`net_mgmt_init_event_callback()`・`net_mgmt_add_event_callback()`・`_del_event_callback()`、`net_mgmt_event_notify_with_info()`（下） |
 | `zephyr/net/wifi_mgmt.h` | Wi-Fi の型（セキュリティ、帯域、MFP、状態、モード。Zephyr と同じ値）、`struct wifi_scan_params`・`wifi_scan_result`・`wifi_connect_req_params`・`wifi_iface_status`・`wifi_status`、`struct wifi_mgmt_ops`、オフロードのインターフェースの API と `NET_DEVICE_DT_OFFLOAD_DEFINE()`、要求 `NET_REQUEST_WIFI_SCAN`・`_CONNECT`・`_DISCONNECT`・`_IFACE_STATUS`・`_CONNECT_STORED`（`CONFIG_NANO_WIFI_CREDENTIALS` のとき）、イベント `NET_EVENT_WIFI_SCAN_RESULT`・`_SCAN_DONE`・`_CONNECT_RESULT`・`_DISCONNECT_RESULT`、`wifi_mgmt_raise_connect_result_event()`・`_disconnect_result_event()`（下）、`wifi_security_txt()`・`wifi_band_txt()` |

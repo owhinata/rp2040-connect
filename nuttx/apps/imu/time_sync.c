@@ -1,0 +1,416 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+/* Keeps an estimate of the NTP server's time, normally the PC that provides
+ * the Wi-Fi network (the default gateway). The server is asked every few
+ * seconds and the exchanges with the shortest round trip are used; see
+ * time_offset.h. The board's realtime clock follows the estimate, but code
+ * that needs the best time should convert from the monotonic clock with
+ * time_sync_unix_us(). */
+/* NuttX port: a copy of zephyr/app/usb-console/src/time_sync.c with only the
+ * system calls replaced (nuttx/drivers/compat, the Zephyr compatibility
+ * layer, keeps the Zephyr names: sockets, net_mgmt events, the realtime
+ * clock), time_sync_mono_us() reading the TIMER through nano_mono_us() (the
+ * same read), the Kconfig names CONFIG_NANO_NINA_NTP_* mapped to the Zephyr
+ * build's CONFIG_NINA_NTP_*, and the shell registration at the end made the
+ * subcommand set of the builtin "ntp" command (nuttx/apps/ntp, on
+ * nuttx/apps/subcmd). The reply is polled for with the layer's zsock_recv()
+ * and ZSOCK_MSG_DONTWAIT, which asks the NINA module each time, as the
+ * Zephyr build's recv() does (<zephyr/net/socket.h> of the layer). NuttX's
+ * headers come first: the layer's <zephyr/sys/atomic.h> takes over NuttX's
+ * atomic names. */
+#include <nuttx/config.h>
+#include <arch/board/nano_timer.h>
+#include <arpa/inet.h>
+#include <netinet/in.h>
+#include <sys/socket.h>
+#include <time.h>
+#include "subcmd.h"
+#define CONFIG_NINA_NTP_SERVER      CONFIG_NANO_NINA_NTP_SERVER
+#define CONFIG_NINA_NTP_PORT        CONFIG_NANO_NINA_NTP_PORT
+#define CONFIG_NINA_NTP_INTERVAL_MS CONFIG_NANO_NINA_NTP_INTERVAL_MS
+#include <errno.h>
+#include <inttypes.h>
+#include <stdio.h>
+#include <stdlib.h>
+#include <string.h>
+#include <zephyr/kernel.h>
+#include <zephyr/net/net_if.h>
+#include <zephyr/net/net_mgmt.h>
+#include <zephyr/net/socket.h>
+#include <zephyr/net/wifi_mgmt.h>
+#include <zephyr/shell/shell.h>
+#include <zephyr/sys/clock.h>
+#include "time_offset.h"
+#include "time_sync.h"
+
+#define NTP_REPLY_WAIT_MS   250
+#define NTP_RETRY_MS        5000
+#define NTP_MAX_AGE_MS      60000
+#define NTP_MIN_UNIX_TIME   1577836800LL
+#define NTP_UNIX_OFFSET     2208988800LL
+/* Step the realtime clock when it is this far from the estimate. */
+#define NTP_CLOCK_STEP_US   20000
+#define NTP_PACKET_SIZE     48
+
+static struct net_mgmt_event_callback wifi_events;
+static atomic_t wifi_connected, wifi_generation, last_error;
+static atomic_t queries, timeouts, rejected, clock_steps;
+K_SEM_DEFINE(sync_request, 0, 1);
+K_MUTEX_DEFINE(sync_lock);
+/* Protected by sync_lock. */
+static struct time_offset estimate;
+static struct time_slew slewed;
+static int64_t last_sample_uptime;
+static struct sockaddr_in server;
+
+/* The RP2040's 1 MHz hardware timer, read through its raw registers (no
+ * latching, so any context may read it). The kernel clock is not used: it is
+ * driven by SysTick and was measured to lose about 480 ppm while streaming
+ * at 6667 Hz, although it kept time when idle. */
+/* NuttX: the same read of TIMERAWH, TIMERAWL, TIMERAWH (until the two highs
+ * agree) is nano_mono_us() of the board (<arch/board/nano_timer.h>). */
+int64_t time_sync_mono_us(void)
+{
+	return (int64_t)nano_mono_us();
+}
+
+static bool estimate_recent(void)
+{
+	return estimate.samples && k_uptime_get() - last_sample_uptime <= NTP_MAX_AGE_MS;
+}
+
+bool time_sync_unix_us(int64_t mono_us, int64_t *unix_us, uint32_t *delay_us)
+{
+	int64_t raw;
+	bool ok;
+
+	k_mutex_lock(&sync_lock, K_FOREVER);
+	ok = estimate_recent() && time_offset_get(&estimate, mono_us, &raw, delay_us) &&
+	     time_slew_get(&slewed, mono_us, unix_us);
+	k_mutex_unlock(&sync_lock);
+	return ok;
+}
+
+bool time_sync_estimate_us(int64_t mono_us, int64_t *unix_us, uint32_t *delay_us)
+{
+	bool ok;
+
+	k_mutex_lock(&sync_lock, K_FOREVER);
+	ok = estimate_recent() && time_offset_get(&estimate, mono_us, unix_us, delay_us);
+	k_mutex_unlock(&sync_lock);
+	return ok;
+}
+
+bool time_sync_is_ready(void)
+{
+	bool ready;
+
+	k_mutex_lock(&sync_lock, K_FOREVER);
+	ready = estimate_recent();
+	k_mutex_unlock(&sync_lock);
+	return ready;
+}
+
+static int resolve_server(void)
+{
+	memset(&server, 0, sizeof(server));
+	server.sin_family = AF_INET;
+	server.sin_port = htons(CONFIG_NINA_NTP_PORT);
+	if (sizeof(CONFIG_NINA_NTP_SERVER) == 1) {
+		struct net_if *iface = net_if_get_default();
+
+		if (!iface) {
+			return -ENETDOWN;
+		}
+		server.sin_addr = net_if_ipv4_get_gw(iface);
+		return server.sin_addr.s_addr ? 0 : -EHOSTUNREACH;
+	} else {
+		const struct zsock_addrinfo hints = {
+			.ai_family = AF_INET, .ai_socktype = SOCK_DGRAM, .ai_protocol = IPPROTO_UDP,
+		};
+		struct zsock_addrinfo *addr = NULL;
+
+		if (zsock_getaddrinfo(CONFIG_NINA_NTP_SERVER, NULL, &hints, &addr) || !addr ||
+		    !addr->ai_addr) {
+			if (addr) {
+				zsock_freeaddrinfo(addr);
+			}
+			return -EHOSTUNREACH;
+		}
+		server.sin_addr = ((struct sockaddr_in *)addr->ai_addr)->sin_addr;
+		zsock_freeaddrinfo(addr);
+		return 0;
+	}
+}
+
+static uint32_t be32(const uint8_t *p)
+{
+	return ((uint32_t)p[0] << 24) | ((uint32_t)p[1] << 16) | ((uint32_t)p[2] << 8) | p[3];
+}
+
+/* NTP timestamp to Unix microseconds. Seconds below the 1970 offset belong
+ * to the era that starts in 2036. */
+static int64_t ntp_to_unix_us(const uint8_t *p)
+{
+	int64_t seconds = be32(p);
+
+	if (seconds < NTP_UNIX_OFFSET) {
+		seconds += 1LL << 32;
+	}
+	return (seconds - NTP_UNIX_OFFSET) * USEC_PER_SEC +
+	       (int64_t)(((uint64_t)be32(p + 4) * USEC_PER_SEC) >> 32);
+}
+
+/* One request and its reply. The reply is polled for at 1 ms intervals:
+ * every millisecond between its arrival and this thread noticing it looks
+ * like path delay in one direction only. */
+static int exchange(int fd, struct time_offset_sample *sample)
+{
+	uint8_t packet[NTP_PACKET_SIZE] = {0x23}; /* version 4, client */
+	uint8_t reply[NTP_PACKET_SIZE];
+	int64_t t1, t2, t3, t4, deadline;
+
+	t1 = time_sync_mono_us();
+	/* The server returns this value; it only has to identify the request. */
+	packet[40] = (uint8_t)(t1 >> 56); packet[41] = (uint8_t)(t1 >> 48);
+	packet[42] = (uint8_t)(t1 >> 40); packet[43] = (uint8_t)(t1 >> 32);
+	packet[44] = (uint8_t)(t1 >> 24); packet[45] = (uint8_t)(t1 >> 16);
+	packet[46] = (uint8_t)(t1 >> 8); packet[47] = (uint8_t)t1;
+	t1 = time_sync_mono_us();
+	if (zsock_sendto(fd, packet, sizeof(packet), 0, (struct sockaddr *)&server,
+			 sizeof(server)) != sizeof(packet)) {
+		return -errno;
+	}
+	deadline = k_uptime_get() + NTP_REPLY_WAIT_MS;
+	for (;;) {
+		ssize_t n = zsock_recv(fd, reply, sizeof(reply), ZSOCK_MSG_DONTWAIT);
+
+		t4 = time_sync_mono_us();
+		if (n < 0 && errno != EAGAIN) {
+			return -errno;
+		}
+		if (n == sizeof(reply) && !memcmp(reply + 24, packet + 40, 8)) {
+			break;
+		}
+		/* Anything else is a late reply to an earlier request. */
+		if (k_uptime_get() >= deadline) {
+			return -ETIMEDOUT;
+		}
+		if (n < 0) {
+			k_sleep(K_MSEC(1));
+		}
+	}
+	/* Server mode, synchronized, stratum 1..15, transmit time present. */
+	if ((reply[0] & 7) != 4 || (reply[0] >> 6) == 3 || reply[1] == 0 || reply[1] > 15 ||
+	    (!be32(reply + 40) && !be32(reply + 44))) {
+		return -EPROTO;
+	}
+	t2 = ntp_to_unix_us(reply + 32);
+	t3 = ntp_to_unix_us(reply + 40);
+	if (t3 < t2 || t2 < NTP_MIN_UNIX_TIME * USEC_PER_SEC || (t4 - t1) < (t3 - t2)) {
+		return -EPROTO;
+	}
+	sample->mono_us = (t1 + t4) / 2;
+	sample->offset_us = ((t2 - t1) + (t3 - t4)) / 2;
+	sample->delay_us = (uint32_t)MIN((t4 - t1) - (t3 - t2), (int64_t)UINT32_MAX);
+	return 0;
+}
+
+/* The kernel's realtime clock is only pushed forward. It falls behind under
+ * load (see time_sync_mono_us), so this is the usual direction; being ahead
+ * is left alone rather than stepping it back. It is good for dates and logs,
+ * not for precise time. */
+static void follow_realtime_clock(void)
+{
+	struct timespec now, target;
+	int64_t unix_us, current_us;
+
+	if (sys_clock_gettime(SYS_CLOCK_REALTIME, &now) ||
+	    !time_slew_get(&slewed, time_sync_mono_us(), &unix_us)) {
+		return;
+	}
+	current_us = (int64_t)now.tv_sec * USEC_PER_SEC + now.tv_nsec / NSEC_PER_USEC;
+	if (unix_us - current_us < NTP_CLOCK_STEP_US) {
+		return;
+	}
+	target.tv_sec = unix_us / USEC_PER_SEC;
+	target.tv_nsec = (unix_us % USEC_PER_SEC) * NSEC_PER_USEC;
+	if (!sys_clock_settime(SYS_CLOCK_REALTIME, &target)) {
+		atomic_inc(&clock_steps);
+	}
+}
+
+static void record(const struct time_offset_sample *sample)
+{
+	k_mutex_lock(&sync_lock, K_FOREVER);
+	int64_t now = time_sync_mono_us(), target;
+
+	time_offset_add(&estimate, sample);
+	if (time_offset_get(&estimate, now, &target, NULL)) {
+		time_slew_update(&slewed, now, target, estimate.rate_valid ? estimate.rate_ppb : 0);
+	}
+	last_sample_uptime = k_uptime_get();
+	follow_realtime_clock();
+	k_mutex_unlock(&sync_lock);
+}
+
+static void sync_thread(void *a, void *b, void *c)
+{
+	ARG_UNUSED(a);
+	ARG_UNUSED(b);
+	ARG_UNUSED(c);
+	for (;;) {
+		k_sem_take(&sync_request, K_FOREVER);
+		while (atomic_get(&wifi_connected)) {
+			atomic_val_t generation = atomic_get(&wifi_generation);
+			int fd = -1, ret = resolve_server();
+
+			if (!ret) {
+				fd = zsock_socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+				ret = fd < 0 ? -errno : 0;
+			}
+			/* A new connection may be a different network and server. */
+			k_mutex_lock(&sync_lock, K_FOREVER);
+			time_offset_init(&estimate);
+			k_mutex_unlock(&sync_lock);
+			while (!ret && atomic_get(&wifi_connected) &&
+			       generation == atomic_get(&wifi_generation)) {
+				struct time_offset_sample sample;
+
+				atomic_inc(&queries);
+				ret = exchange(fd, &sample);
+				if (!ret) {
+					record(&sample);
+				} else if (ret == -ETIMEDOUT) {
+					atomic_inc(&timeouts);
+					ret = 0;
+				} else if (ret == -EPROTO) {
+					atomic_inc(&rejected);
+					ret = 0;
+				}
+				atomic_set(&last_error, ret);
+				if (!ret) {
+					(void)k_sem_take(&sync_request,
+							 K_MSEC(CONFIG_NINA_NTP_INTERVAL_MS));
+				}
+			}
+			if (fd >= 0) {
+				(void)zsock_close(fd);
+			}
+			if (ret) {
+				atomic_set(&last_error, ret);
+				(void)k_sem_take(&sync_request, K_MSEC(NTP_RETRY_MS));
+			}
+		}
+	}
+}
+K_THREAD_DEFINE(time_sync_tid, 2048, sync_thread, NULL, NULL, NULL, 9, 0, 0);
+
+static void wifi_event(struct net_mgmt_event_callback *cb, uint64_t event,
+		       struct net_if *iface)
+{
+	ARG_UNUSED(iface);
+	if (event == NET_EVENT_WIFI_CONNECT_RESULT) {
+		const struct wifi_status *status = cb->info;
+
+		if (!status || status->status) {
+			return;
+		}
+		atomic_inc(&wifi_generation);
+		atomic_set(&wifi_connected, 1);
+		k_sem_give(&sync_request);
+	} else if (event == NET_EVENT_WIFI_DISCONNECT_RESULT) {
+		atomic_inc(&wifi_generation);
+		atomic_clear(&wifi_connected);
+		k_sem_give(&sync_request);
+	}
+}
+
+void time_sync_init(void)
+{
+	time_offset_init(&estimate);
+	time_slew_init(&slewed);
+	net_mgmt_init_event_callback(&wifi_events, wifi_event,
+				     NET_EVENT_WIFI_CONNECT_RESULT |
+					     NET_EVENT_WIFI_DISCONNECT_RESULT);
+	net_mgmt_add_event_callback(&wifi_events);
+}
+
+#define ITEM(sh, name, format, ...) shell_print(sh, "  %-27s " format, name ":", __VA_ARGS__)
+
+static int cmd_ntp_status(const struct shell *sh, size_t argc, char **argv)
+{
+	struct time_offset snapshot;
+	struct time_slew slew_snapshot;
+	char address[INET_ADDRSTRLEN] = "none";
+	int64_t unix_us = 0, slewed_us = 0, age, mono;
+	uint32_t delay = 0;
+	bool ready, attempted;
+
+	ARG_UNUSED(argc);
+	ARG_UNUSED(argv);
+	k_mutex_lock(&sync_lock, K_FOREVER);
+	snapshot = estimate;
+	slew_snapshot = slewed;
+	age = k_uptime_get() - last_sample_uptime;
+	mono = time_sync_mono_us();
+	ready = estimate_recent() && time_offset_get(&estimate, mono, &unix_us, &delay) &&
+		time_slew_get(&slewed, mono, &slewed_us);
+	attempted = server.sin_addr.s_addr != 0;
+	if (attempted) {
+		(void)zsock_inet_ntop(AF_INET, &server.sin_addr, address, sizeof(address));
+	}
+	k_mutex_unlock(&sync_lock);
+	shell_print(sh, "state: %s", ready ? "synchronized" : "not synchronized");
+	ITEM(sh, "server", "%s:%u%s", address, CONFIG_NINA_NTP_PORT,
+	     sizeof(CONFIG_NINA_NTP_SERVER) == 1 ? " (default gateway)"
+						 : " (" CONFIG_NINA_NTP_SERVER ")");
+	ITEM(sh, "interval_ms", "%d", CONFIG_NINA_NTP_INTERVAL_MS);
+	if (ready) {
+		ITEM(sh, "unix_time", "%" PRId64 ".%06" PRId64, slewed_us / USEC_PER_SEC,
+		     slewed_us % USEC_PER_SEC);
+		ITEM(sh, "last_reply_ms_ago", "%" PRId64, age);
+	}
+	shell_print(sh, "exchanges:");
+	ITEM(sh, "queries", "%d", (int)atomic_get(&queries));
+	ITEM(sh, "replies", "%" PRIu32, snapshot.samples);
+	ITEM(sh, "timeouts", "%d", (int)atomic_get(&timeouts));
+	ITEM(sh, "rejected", "%d", (int)atomic_get(&rejected));
+	ITEM(sh, "last_error", "%d", (int)atomic_get(&last_error));
+	if (!snapshot.samples) {
+		return 0;
+	}
+	/* Round trip without the server's processing time. Half of the one in
+	 * use bounds the error from an asymmetric path. */
+	shell_print(sh, "round_trip:");
+	ITEM(sh, "last_us", "%" PRIu32, snapshot.last_delay_us);
+	ITEM(sh, "min_us", "%" PRIu32, snapshot.min_delay_us);
+	if (ready) {
+		ITEM(sh, "in_use_us", "%" PRIu32, delay);
+	}
+	shell_print(sh, "clock:");
+	ITEM(sh, "rate_valid", "%d", snapshot.rate_valid);
+	ITEM(sh, "rate_ppb", "%" PRId64, snapshot.rate_ppb);
+	ITEM(sh, "last_residual_us", "%" PRId64, snapshot.last_residual_us);
+	ITEM(sh, "slew_ppb", "%" PRId64, slew_snapshot.now.slew_ppb);
+	if (ready) {
+		ITEM(sh, "smoothed_minus_estimate_us", "%" PRId64, slewed_us - unix_us);
+	}
+	ITEM(sh, "steps", "%" PRIu32, slew_snapshot.steps);
+	ITEM(sh, "realtime_clock_steps", "%d", (int)atomic_get(&clock_steps));
+	return 0;
+}
+
+/* NuttX: SHELL_STATIC_SUBCMD_SET_CREATE() and SHELL_CMD_REGISTER() as the
+ * command set of the builtin "ntp" command (nuttx/apps/ntp), on ../subcmd,
+ * which prints the Zephyr shell's help and argument count errors. Its
+ * handlers take (argc, argv). */
+static int ntp_status(int argc, char **argv)
+{
+	return cmd_ntp_status(NULL, argc, argv);
+}
+
+static const struct subcmd ntp_commands[] = {
+	SUBCMD(status, NULL, "Show time synchronization status", ntp_status),
+	SUBCMD_SET_END
+};
+const struct subcmd ntp_root = SUBCMD(ntp, ntp_commands, "Network time synchronization", NULL);

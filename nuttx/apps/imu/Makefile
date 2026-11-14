@@ -31,10 +31,19 @@ MAINSRC   = imu_stream.c
 CSRCS    += imu_raw_batch.c imu_raw_packet.c imu_raw_time.c imu_tick_clock.c
 CSRCS    += imu_raw_queue.c
 
-# Stubs, replaced by the ports of imu_raw_mqtt.c (T21), time_sync.c (T19)
-# and imu_cal.c (T22).
+# Stubs, replaced by the ports of imu_raw_mqtt.c (T21) and imu_cal.c (T22).
 
-CSRCS    += imu_raw_mqtt_null.c time_sync_null.c imu_cal_null.c
+CSRCS    += imu_raw_mqtt_null.c imu_cal_null.c
+
+# The time synchronization (NANO_TIME_SYNC: time_sync.c, its estimate in
+# time_offset.c, and the command set of the "ntp" command, nuttx/apps/ntp),
+# or the stub without it.
+
+ifeq ($(CONFIG_NANO_TIME_SYNC),y)
+CSRCS    += time_sync.c time_offset.c
+else
+CSRCS    += time_sync_null.c
+endif
 
 CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)include
 CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)compat

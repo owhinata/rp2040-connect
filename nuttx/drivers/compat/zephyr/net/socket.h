@@ -7,9 +7,27 @@
  * imu application selects it).  zsock_getaddrinfo() and
  * zsock_freeaddrinfo() are the NINA resolver's (<nina_dns.h>, the Zephyr
  * build's offloaded getaddrinfo() of drivers/nina/nina_dns.c); their
- * errors are NuttX's EAI_* values.  The sockets themselves (zsock_socket(),
- * zsock_poll(), ...) come with the NINA socket layer (T14-T16 of the port
- * plan).  Part of the small Zephyr compatibility layer of the port
+ * errors are NuttX's EAI_* values.
+ *
+ * Sockets: zsock_socket(), zsock_sendto() and zsock_close() are NuttX's
+ * socket(), sendto() and close() (the NINA's sockets through usrsock,
+ * nuttx/drivers/nina/nina_usrsock.c), -1 and errno as in Zephyr.
+ * zsock_recv() is recv(), except with ZSOCK_MSG_DONTWAIT: the Zephyr
+ * build's recv() on a NINA socket (drivers/nina/nina_socket.c udp_recv(),
+ * do_recv()) asks the module (CMD_POLL) on every call and reads what is
+ * there.  NuttX's usrsock answers a call that does not wait from the
+ * RECVFROM_AVAIL it holds, which the NINA's event thread refreshes only
+ * every 20 ms (nina_poller.c).  So zsock_recv() with ZSOCK_MSG_DONTWAIT
+ * first asks the module with ioctl(FIONREAD), which polls it once in the
+ * calling thread (nina_sock_fionread(): 1 when data or the end of a stream
+ * is there, 0 when not) and, when there is something, raises
+ * RECVFROM_AVAIL; then recv(MSG_DONTWAIT) reads it, without a second poll
+ * (the driver keeps what the poll found, read_hint).  Nothing there:
+ * -1 with errno EAGAIN, as Zephyr's.  The module sees the same commands as
+ * from the Zephyr build: one CMD_POLL, then the read when it found data.
+ * Not here: zsock_poll() and the others (T21).
+ *
+ * Part of the small Zephyr compatibility layer of the port
  * (nuttx/drivers/compat, see nuttx/drivers/README.md).  Include NuttX's
  * headers before the layer's (see <zephyr/sys/atomic.h>).
  */
@@ -18,10 +36,49 @@
 #define __NUTTX_DRIVERS_COMPAT_ZEPHYR_NET_SOCKET_H
 
 #include <arpa/inet.h>
+#include <errno.h>
 #include <netdb.h>
 #include <netinet/in.h>
+#include <sys/ioctl.h>
+#include <sys/socket.h>
+#include <sys/types.h>
 
 #include <nina_dns.h>
+
+/* <unistd.h>'s (not included: its getopt() names are macros, see
+ * <zephyr/kernel.h>).
+ */
+
+int close(int fd);
+
+#define ZSOCK_MSG_DONTWAIT MSG_DONTWAIT
+
+#define zsock_socket(family, type, proto) socket(family, type, proto)
+#define zsock_sendto(sock, buf, len, flags, dest_addr, addrlen) \
+  sendto(sock, buf, len, flags, dest_addr, addrlen)
+#define zsock_close(sock) close(sock)
+
+static inline ssize_t zsock_recv(int sock, void *buf, size_t max_len,
+                                 int flags)
+{
+  if (flags & ZSOCK_MSG_DONTWAIT)
+    {
+      int avail = 0;
+
+      if (ioctl(sock, FIONREAD, &avail) < 0)
+        {
+          return -1;
+        }
+
+      if (avail <= 0)
+        {
+          errno = EAGAIN;
+          return -1;
+        }
+    }
+
+  return recv(sock, buf, max_len, flags);
+}
 
 #define zsock_inet_pton(family, src, dst) inet_pton(family, src, dst)
 #define zsock_inet_ntop(family, src, dst, size) \

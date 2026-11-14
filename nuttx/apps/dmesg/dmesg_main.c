@@ -3,8 +3,9 @@
  * zephyr/app/usb-console/src/log_ram.c: the log is printed in pieces of up
  * to 96 bytes so that no second copy of it is needed, the position counts
  * bytes from boot (log_ram_piece()), which keeps it valid when new messages
- * push old ones out while printing, and printing stops after 2 * 4096
- * bytes in case logging keeps up with it.  Arguments are ignored.
+ * push old ones out while printing, and printing stops after twice the
+ * ring's size (2 * 8192 bytes here, 2 * 4096 there) in case logging keeps
+ * up with it.  Arguments are ignored.
  */
 
 #include <nuttx/config.h>

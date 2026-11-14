@@ -1,0 +1,34 @@
+#
+# For a description of the syntax of this configuration file,
+# see the file kconfig-language.txt in the NuttX tools repository.
+#
+
+config NANO_APP_NTP
+	tristate "ntp command (ntp status)"
+	default y
+	depends on NANO_TIME_SYNC && NANO_SUBCMD
+	---help---
+		"ntp status": the Zephyr build's ntp command (src/time_sync.c
+		cmd_ntp_status()) with the same syntax and output.  The handler
+		and its command set stay in nuttx/apps/imu/time_sync.c, as in
+		the Zephyr build; this is the builtin command that runs them.
+
+if NANO_APP_NTP
+
+config NANO_APP_NTP_PRIORITY
+	int "ntp task priority"
+	default 104
+	---help---
+		The shell's priority (NANO_PRIO_SHELL in
+		nuttx/drivers/include/priorities.h): the Zephyr build runs shell
+		commands in its shell thread.
+
+config NANO_APP_NTP_STACKSIZE
+	int "ntp stack size"
+	default 3072
+	---help---
+		The Zephyr build runs the command on the shell thread's stack
+		(CONFIG_SHELL_STACK_SIZE 3072).  Over Telnet the output goes to
+		the NINA on this stack.
+
+endif

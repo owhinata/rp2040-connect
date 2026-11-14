@@ -27,12 +27,12 @@ config NANO_APP_IMU
 		nuttx/drivers/compat): the thread imu_stream_tid (Zephyr
 		priority 9, NuttX 109, 2048-byte stack), which the init task
 		starts at boot, and the "imu start|stop|status|cal" command
-		with the Zephyr build's syntax and output.  The MQTT transport,
-		the time synchronization and the calibration are stubs for now
-		(imu_raw_mqtt_null.c, time_sync_null.c, imu_cal_null.c: no
-		network, no server time, no calibration command).  inet_pton()
-		and inet_ntop() for imu.host need LIBC_IPv4_ADDRCONV while the
-		network is off.
+		with the Zephyr build's syntax and output.  The MQTT transport
+		and the calibration are stubs for now (imu_raw_mqtt_null.c,
+		imu_cal_null.c: no network, no calibration command); the time
+		synchronization is NANO_TIME_SYNC (time_sync_null.c without
+		it: no server time).  inet_pton() and inet_ntop() for imu.host
+		need LIBC_IPv4_ADDRCONV while the network is off.
 
 if NANO_APP_IMU
 
@@ -53,5 +53,49 @@ config NANO_APP_IMU_STACKSIZE
 		(CONFIG_SHELL_STACK_SIZE 3072).  "imu start" writes the session
 		counter to the key-value store, with garbage collection, on
 		this stack.
+
+endif
+
+config NANO_TIME_SYNC
+	bool "Time synchronization with an NTP server (time_sync.c)"
+	default y
+	depends on NANO_APP_IMU && NANO_NINA_NET && NANO_NINA_DNS && NET_USRSOCK_UDP
+	---help---
+		time_sync.c: the Zephyr build's src/time_sync.c with only the
+		system calls replaced: the thread time_sync_tid (Zephyr
+		priority 9, NuttX 109, 2048-byte stack), which the init task
+		starts at boot, asks the NTP server (the default gateway, or
+		NANO_NINA_NTP_SERVER) every NANO_NINA_NTP_INTERVAL_MS while
+		Wi-Fi is connected and keeps the estimate of its time
+		(time_offset.c) that the IMU service puts on its batches
+		(time_sync_unix_us()), and moves the realtime clock forward to
+		it.  The "ntp status" command is NANO_APP_NTP.  Without this
+		option time_sync_null.c stands in: no server time.
+
+if NANO_TIME_SYNC
+
+config NANO_NINA_NTP_SERVER
+	string "NTP server hostname or IPv4 address"
+	default ""
+	---help---
+		The Zephyr build's CONFIG_NINA_NTP_SERVER.  Empty uses the
+		default gateway, normally the PC that provides the Wi-Fi
+		network and runs an NTP server for the board.
+
+config NANO_NINA_NTP_PORT
+	int "NTP server UDP port"
+	default 123
+	range 1 65535
+	---help---
+		The Zephyr build's CONFIG_NINA_NTP_PORT.
+
+config NANO_NINA_NTP_INTERVAL_MS
+	int "Interval between NTP queries in milliseconds"
+	default 2000
+	range 250 3600000
+	---help---
+		The Zephyr build's CONFIG_NINA_NTP_INTERVAL_MS.  Queries go to a
+		server on the local network.  Do not point short intervals at
+		public servers.
 
 endif

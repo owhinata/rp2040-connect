@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-/* The RAM log (drivers/log/log_ram.c): 4096 bytes kept in .noinit across a
+/* The RAM log (drivers/log/log_ram.c): 8192 bytes kept in .noinit across a
  * reset, filled by the LOG_* macros (app_log.h) and by everything written
  * through syslog(), shown by the "dmesg" command (nuttx/apps/dmesg).
  */
@@ -15,7 +15,7 @@
 
 #include <nuttx/compiler.h>
 
-#define LOG_RAM_BUFFER_SIZE 4096
+#define LOG_RAM_BUFFER_SIZE 8192
 
 #ifdef __cplusplus
 extern "C"

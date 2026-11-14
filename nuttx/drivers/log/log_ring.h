@@ -13,8 +13,19 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define LOG_RAM_SIZE  4096
-#define LOG_RAM_MAGIC 0x4c4f4752U
+/* 8192 bytes (the Zephyr build's ring has 4096): a fatal error report with
+ * the task list of the whole port has to fit from its first line.
+ */
+
+#define LOG_RAM_SIZE  8192
+
+/* The Zephyr build's magic number 0x4c4f4752 with the size mixed in
+ * (0x4c4f6752 for 8192), so that a ring of another size left in RAM (the
+ * 4096-byte one of earlier builds) fails the header check at boot and is
+ * emptied instead of being read with the wrong wrap-around.
+ */
+
+#define LOG_RAM_MAGIC (0x4c4f4752U ^ LOG_RAM_SIZE)
 
 /* Kept across a reset in .noinit (Zephyr: __noinit). */
 

@@ -9,8 +9,8 @@ flashing script, the RAM log, the key-value store (`kv`), the SPI link to the NI
 (`nina version`), the NINA's sockets (usrsock: the control side and sending and receiving) and
 name resolution, I2C0 (with DMA), the LSM6DSOX driver with its FIFO stream, the IMU
 acquisition service (`imu`), the Wi-Fi network device (`wapi`, `ifconfig`), stored Wi-Fi
-credentials with automatic reconnection (`wifi cred`), the shell over Wi-Fi (Telnet), and
-throughput measurement (`iperf`). A transport stub counts the acquired
+credentials with automatic reconnection (`wifi cred`), the shell over Wi-Fi (Telnet),
+throughput measurement (`iperf`), and time synchronization (`ntp`). A transport stub counts the acquired
 batches and drops them (see "IMU acquisition (`imu`)").
 
 ## Setup
@@ -223,13 +223,16 @@ UART, as in the Zephyr version, but nothing is written to it.
 
 The RAM log of the Zephyr version's `src/log_ram.c` (`nuttx/drivers/log/`).
 
-- A 4096-byte ring buffer in `.noinit`. The startup code does not clear it, so its contents
-  survive a reset such as `reboot`. At boot its header (the magic number `0x4c4f4752` and its
-  inverse, the start and the length) is checked, and the ring is emptied if it is not intact.
+- An 8192-byte ring buffer in `.noinit` (the Zephyr version's has 4096 bytes; it was made larger
+  so that a fatal error report fits from its first line). The startup code does not clear it, so
+  its contents survive a reset such as `reboot`. At boot its header (the magic number and its
+  inverse, the start and the length) is checked, and the ring is emptied if it is not intact. The
+  magic number is the Zephyr version's `0x4c4f4752` XORed with the size (`0x4c4f6752`), so a ring
+  of another size left in RAM (the 4096-byte one of earlier builds) is emptied rather than misread.
   Power-off clears it. When it is full, the oldest bytes are overwritten.
 - `dmesg` prints what is stored as is, or `No logs.` when it is empty; arguments are ignored. As in
   the Zephyr version it takes 96 bytes at a time, skips what new messages push out while it
-  prints, and stops after 8192 bytes. NuttX's own `dmesg` (`/dev/kmsg`) is turned off.
+  prints, and stops after twice the ring's size (16384 bytes; 8192 in the Zephyr version). NuttX's own `dmesg` (`/dev/kmsg`) is turned off.
 - Lines have the format of the Zephyr version's log, `[HH:MM:SS.mmm,uuu] <inf> module: message`,
   ending in LF only. The levels are `<err>`, `<wrn>`, `<inf>` and `<dbg>`; `<dbg>` lines have
   `module.function: `. Hours take at least two digits and more after 99 hours. The time is the
@@ -248,7 +251,7 @@ The RAM log of the Zephyr version's `src/log_ram.c` (`nuttx/drivers/log/`).
   stack` when SP is outside it, and the task list (each stack's use; the `irq` line is the
   interrupt stack). Stack contents (hex dumps) are left out (`CONFIG_SCHED_DUMP_STACK` is off):
   they make the report long enough to push its first lines (the cause and the registers) out of the
-  4096-byte ring. NuttX's `CONFIG_ARCH_STACKDUMP_MAX_LENGTH` only limits the dump of a stack that
+  ring. NuttX's `CONFIG_ARCH_STACKDUMP_MAX_LENGTH` only limits the dump of a stack that
   SP is not in, so it does not help here. Checked on the board: after a `PANIC()`, an `__assert()`
   and a HardFault, each in a thread and in an interrupt, the report reads from its first line and
   is followed by the log of the next boot. The Zephyr version stays stopped after a fatal error (`CONFIG_RESET_ON_FATAL_ERROR` is
@@ -842,12 +845,69 @@ Subcommands:
 | Part | Stub | Behavior |
 |---|---|---|
 | MQTT transport (`imu_raw_mqtt.h`) | `imu_raw_mqtt_null.c` | As the Zephyr version without a network: the connection never comes up, every batch is dropped and counted in `dropped_batches`, `dropped_accel` and `dropped_gyro` (by `imu_raw_queue.c` as it is), and `imu_raw_batch` gets `-EAGAIN`. `imu start` waits up to 3 seconds for the connection before it starts acquiring, as in the Zephyr version, so the acquisition time is about 3 seconds shorter than the time from `imu start` to `imu stop`. `server` in `imu status` is `none:<port> (default gateway)` (or the `imu.host` address). `connects`, `failures` and `published` stay 0 (the Zephyr version counts every connection attempt in `failures`) |
-| Time synchronization (`time_sync.h`) | `time_sync_null.c` | Only `time_sync_mono_us()` is the real one (the TIMER read directly). The rest behaves as before the first NTP reply: `synchronized` is 0 and `unix_unavailable` grows with every batch |
 | Calibration (`imu_cal.h`) | `imu_cal_null.c` | `imu_cal_init()` does nothing and succeeds. `imu cal` (also `reload` and `zero`) prints `Calibration is not available in this build yet` and fails (`imu cal zero` during a measurement is refused with the Zephyr version's message) |
 
 Checked on the board (transport stub, no network, 6667 Hz, watermark 128, 1 MHz) with `imu start`
 → 10 s → `imu stop` four times (one right after flashing) and 60 s once: every item of `errors` and
 `fifo`, every anomaly count of `time`, and the `i2c_dma` errors and fallbacks are 0.
+
+## Time synchronization (`ntp`)
+
+`nuttx/apps/imu/time_sync.c` is a copy of the Zephyr version's `src/time_sync.c`. Only the calls
+into the system (sockets, `net_mgmt` events, the realtime clock; the compatibility layer provides
+them under Zephyr's names), the body of `time_sync_mono_us()` (the board's `nano_mono_us()`, the
+same read), the Kconfig names and the command registration at the end are replaced. The NTP
+packet and the checks of the reply, where t1 (right before the send) and t4 (right after the
+reply is received) are read, the estimate (`time_offset.c`, an unchanged copy: the reply with the
+shortest round trip of the last 8 is used), the estimate's expiry after 60 s without a reply, the
+clock that follows it at up to ±500 ppm without going back, moving the realtime clock only
+forward, the query interval, wait and retry, the counters and the output of `ntp status` are the
+Zephyr version's. It is built with `CONFIG_NANO_TIME_SYNC` (on by default); without it the stub
+`time_sync_null.c` stands in (only `time_sync_mono_us()` is real; no synchronization).
+
+```text
+nsh$ ntp
+ntp - Network time synchronization
+Subcommands:
+  status  : Show time synchronization status
+```
+
+- Thread `time_sync_tid` (Zephyr priority 9 → 109, 2048-byte stack), started by init at the start
+  of its work. A successful Wi-Fi connection (`NET_EVENT_WIFI_CONNECT_RESULT`) starts the queries
+  and a disconnection (`NET_EVENT_WIFI_DISCONNECT_RESULT`) stops them. Every connection starts a
+  new estimate (it may be another network). Nothing happens while Wi-Fi is not connected.
+- The server is `CONFIG_NANO_NINA_NTP_SERVER` (the Zephyr version's `CONFIG_NINA_NTP_SERVER`;
+  empty by default: the default gateway), the port `CONFIG_NANO_NINA_NTP_PORT` (123), the interval
+  `CONFIG_NANO_NINA_NTP_INTERVAL_MS` (2000 ms). A reply is awaited for 250 ms; none is counted in
+  `timeouts`, one that fails the checks in `rejected`, and the next query follows at the next
+  interval. When there is no address, no socket or the send fails, the error goes to `last_error`
+  and the thread tries again after 5 seconds.
+- Waiting for the reply: the Zephyr version calls `recv(MSG_DONTWAIT)` about every millisecond,
+  and its NINA driver asks the module for the socket's state each time (`CMD_POLL`) and reads what
+  has arrived. NuttX's usrsock answers a receive that does not wait from the readable mark it holds
+  (`RECVFROM_AVAIL`, refreshed every 20 ms by `nina_event`), so the compatibility layer's
+  `zsock_recv()` with `ZSOCK_MSG_DONTWAIT` first calls `ioctl(FIONREAD)` (one `CMD_POLL` in the
+  calling thread) and reads with `recv(MSG_DONTWAIT)` only when something is there (the driver
+  uses that poll's answer and does not poll again). The module sees the Zephyr version's sequence:
+  a poll, a read when something has arrived, about 1 ms of wait, again.
+- Difference from the Zephyr version: in the NuttX version `nina_event` also polls this socket
+  every 20 ms while usrsock does not hold its readable mark (and once right after the reply is
+  read). The Zephyr version polls only when a receive is called (see "Sockets (usrsock)" in
+  `nuttx/drivers/README.md`).
+- Difference from the Zephyr version: `k_uptime_get()` (the 250 ms wait, the 60 s check,
+  `last_reply_ms_ago`) comes from the TIMER in the NuttX version. The Zephyr version's is the
+  SysTick kernel clock, which falls behind while streaming.
+- The realtime clock (`CLOCK_REALTIME`) is set to the estimate only when it is 20 ms or more behind
+  (counted in `realtime_clock_steps`); when it is ahead, it is left alone. It is good for dates and
+  times of day; precise times come from `time_sync_unix_us()`. A command that shows the realtime
+  clock (the Zephyr version's `date`) is not in the current configuration (nsh's `date` is off).
+- Checked on the board: after flashing and after `reboot`, synchronization comes with the first
+  reply once Wi-Fi is up; `ntp status` prints the items of the Zephyr version's recorded output in
+  the same order and widths; after `wapi disconnect wlan0` the queries stop and the state becomes
+  `not synchronized` 60 s after the last reply; `wifi cred auto_connect` reconnects, starts a new
+  estimate and synchronizes again; the realtime clock only moves forward; with a measurement
+  (`imu start`) and a Telnet session running at the same time, the `time` items of `imu status`
+  show synchronized values.
 
 ## System clock
 
@@ -937,9 +997,9 @@ Priorities map as `NuttX = 118 − Zephyr`; `nuttx/drivers/include/priorities.h`
   no thread has a higher priority. The two at 119 take turns by time slicing (Zephyr's cooperative
   threads only switch when one yields).
 - The `K_THREAD_DEFINE()` threads (`nina_scan_tid`, `nina_connect_tid`, `nina_monitor_tid`,
-  `imu_stream_tid`, `wifi_reconnect_tid`) are started by init at the start of its start-up work, as the Zephyr version
+  `imu_stream_tid`, `time_sync_tid`, `wifi_reconnect_tid`) are started by init at the start of its start-up work, as the Zephyr version
   starts them before `main()`.
-- The stacks of `imu_stream_tid`, `imu_fifo_worker`, `sysworkq`, `RTIO WQ 0`, `net_mgmt`, the
+- The stacks of `imu_stream_tid`, `time_sync_tid`, `imu_fifo_worker`, `sysworkq`, `RTIO WQ 0`, `net_mgmt`, the
   `nina_*_tid` threads and `wifi_reconnect_tid` are static arrays
   as in Zephyr (`K_THREAD_DEFINE()`, `K_THREAD_STACK_DEFINE()`, NuttX's
   `kthread_create_with_stack()`). `ps` shows them smaller by the area NuttX puts at their start
@@ -996,7 +1056,9 @@ pieces, line prefix and rate limit (`log_ram`), the key-value area's range check
 boot-time contents check (`nano_flash_kv`), the key rules of the key-value store (`kv_name`) and
 the hex conversions of the `kv` command (`kv_hex`), the handling of the commands' subcommands
 (`subcmd`), the stored Wi-Fi credentials and the `wifi cred` command (`wifi_cred`), the NINA's SPI transfer layer (`nina_spi`), the NINA's socket table and commands
-(`nina_sock`), the NINA's name resolution (`nina_dns`), the OS-independent part of the I2C0
+(`nina_sock`), the NINA's name resolution (`nina_dns`), the time synchronization's query, reply checks, wait
+for the reply, estimate expiry, realtime clock and `ntp status` output (`time_sync`, with a fake
+NINA socket and clock), the OS-independent part of the I2C0
 driver (`nano_i2c_dw`), the command words of the I2C0 DMA reads (`i2c_dma_commands`), the
 output of the `i2c_dma` command (`i2c_dma_app`, with the driver side replaced by fakes), the
 LSM6DSO FIFO control (`fifo_hw`), the LSM6DSO driver and its FIFO stream (`lsm6dso_driver`), the
@@ -1021,7 +1083,9 @@ content.
 `nuttx/drivers/nina/nina_net.c` is a copy with only the leading comment and `<nuttx/config.h>`
 added; `nuttx/apps/wifi/wifi_profile.c` is a copy with only the includes (the log is `app_log.h`)
 and the declaration of `wifi_reconnect_tid` (without `const`) changed; `nuttx/apps/imu/imu_stream.c` is a copy with only the calls into the system and the command
-registration at the end replaced; `imu_raw_mqtt.h` is a copy with `<zephyr/net/net_ip.h>` replaced
+registration at the end replaced; `nuttx/apps/imu/time_sync.c` is a copy with only the calls into
+the system, the body of `time_sync_mono_us()`, the Kconfig names and the command registration at
+the end replaced; `imu_raw_mqtt.h` is a copy with `<zephyr/net/net_ip.h>` replaced
 by `<netinet/in.h>`.
 
 `nuttx/tests/fakes/nuttx/config.h` (empty) is the NuttX port's own: it lets a host test build a

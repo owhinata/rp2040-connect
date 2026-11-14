@@ -135,6 +135,16 @@ run i2c_dma_commands -Iboards/arduino-nano-rp2040-connect/src \
     boards/arduino-nano-rp2040-connect/src/i2c_dw_rp2040_commands.c
 # The i2c_dma command's output (fake driver side).
 run i2c_dma_app -Idrivers/include -Iapps/i2c_dma -Iapps/subcmd apps/subcmd/subcmd.c
+# The time synchronization (apps/imu/time_sync.c, the copy of the Zephyr build's) on the
+# compatibility layer with a fake NINA socket, clock, interface and realtime clock: the NTP
+# request and the checks of the reply, where t1 and t4 are read, the 1 ms polling of the
+# reply through FIONREAD, the 60 s age, the forward-only realtime clock, the Wi-Fi events and
+# the "ntp status" lines.
+cc "${flags[@]}" -D_DEFAULT_SOURCE -Itests/time_sync_fakes -Itests/zephyr_fakes -Idrivers/compat \
+    -Idrivers/include -I"$imu" -Iapps/subcmd tests/time_sync.c "$imu/time_offset.c" \
+    apps/subcmd/subcmd.c "${compat[@]}" "$link" -o "$out/time_sync"
+"$out/time_sync" >/dev/null
+printf 'ok  time_sync\n'
 # The stored Wi-Fi credentials (apps/wifi: the copies of Zephyr's wifi_credentials.c and its
 # settings backend) and the "wifi cred" command (the copy of wifi_credentials_shell.c on
 # subcmd), on a fake store of named items: the stored entries and names, the cache, the
