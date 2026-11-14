@@ -18,6 +18,8 @@
  *   k_current_get()
  *   K_MUTEX_DEFINE(), k_uptime_get(), k_sleep(), snprintk()
  *   (<zephyr/sys/printk.h>)
+ *   k_cycle_get_32(), k_cycle_get_64(), k_cyc_to_us_floor64(),
+ *   k_cyc_to_us_ceil64(), sys_clock_hw_cycles_per_sec()
  *
  * The work items follow kernel/work.c (flags RUNNING, CANCELING, QUEUED,
  * DELAYED; the return values of submit and schedule): zephyr_work.c, which
@@ -36,7 +38,6 @@
  * (NANO_PRIO_FROM_ZEPHYR, priorities.h).
  *
  * Not here: threads created at run time (k_thread_create()), k_wakeup(),
- * the cycle counter (k_cycle_get_*()),
  * k_queue, k_msgq, k_timer, k_poll on other object types, user mode, SMP.
  *
  * Part of the small Zephyr compatibility layer of the port
@@ -58,6 +59,7 @@
 #  include <nuttx/semaphore.h>
 #  include <nuttx/wdog.h>
 #  include <stdio.h>            /* for <zephyr/sys/printk.h> */
+#  include <arch/board/nano_timer.h> /* nano_mono_us(): the cycle counter */
 #endif
 
 #include <errno.h>
@@ -351,7 +353,47 @@ BUILD_ASSERT(1000 % Z_USEC_PER_TICK == 0, "Z_UPTIME_MS needs 1000 % tick == 0");
 
 int32_t k_sleep(k_timeout_t timeout);
 
-/* Work items -------------------------------------------------------------*/
+/* The cycle counter: the Zephyr build's is the 125 MHz SysTick count
+ * (CONFIG_SYS_CLOCK_HW_CYCLES_PER_SEC), which falls behind under load (see
+ * nuttx/README.md); here it is the board's monotonic clock, the RP2040
+ * TIMER (nano_mono_us(), 1 MHz from the crystal), as for the sensor clock
+ * (<zephyr/drivers/sensor_clock.h>).  A cycle is a microsecond, so the
+ * conversions to microseconds are exact (Zephyr's round down or up a
+ * count of 8 ns cycles).  k_cycle_get_32() is the low 32 bits, wrapping
+ * after about 71.6 minutes (Zephyr's after about 34 s).  The IMU service
+ * times its queue lock waits and its publishes with these.
+ */
+
+#define sys_clock_hw_cycles_per_sec() 1000000
+
+#ifdef __NuttX__
+static inline uint64_t k_cycle_get_64(void)
+{
+  return nano_mono_us();
+}
+
+static inline uint32_t k_cycle_get_32(void)
+{
+  return (uint32_t)nano_mono_us();
+}
+#else
+/* Host test: the test's clock. */
+
+uint64_t k_cycle_get_64(void);
+uint32_t k_cycle_get_32(void);
+#endif
+
+static inline uint64_t k_cyc_to_us_floor64(uint64_t cycles)
+{
+  return cycles;
+}
+
+static inline uint64_t k_cyc_to_us_ceil64(uint64_t cycles)
+{
+  return cycles;
+}
+
+/* Work items-------------------------------------------------------------*/
 
 struct k_work;
 struct k_work_q;

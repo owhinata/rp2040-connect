@@ -8,7 +8,7 @@
 やり取り（`nina version`）、NINA のソケット（usrsock。制御系と送受信）と名前解決、I2C0（DMA を含む）、
 LSM6DSOX のドライバーと FIFO のストリーム、IMU の取得サービス（`imu`）、Wi-Fi のネットワークデバイス
 （`wapi`・`ifconfig`）、Wi-Fi の資格情報の保存と自動再接続（`wifi cred`）、Wi-Fi 経由のシェル（Telnet）、
-速度の測定（`iperf`）、時刻同期（`ntp`）です。取得したバッチは送信のスタブが数えて捨てます（「IMU の取得（`imu`）」の節）。
+速度の測定（`iperf`）、時刻同期（`ntp`）、MQTT での送信です。校正（`imu cal`）はまだスタブです（「IMU の取得（`imu`）」の節）。
 
 ## 環境構築
 
@@ -754,16 +754,59 @@ Subcommands:
 - init は Zephyr 版の `main()` と同じ順に `kv_store_init()` → `imu_cal_init()`（失敗すると
   `Could not set up the IMU calibration: <値>`）→ `time_sync_init()` → `wifi_profile_init()` を呼びます。
 
-**まだスタブの部分**（`nuttx/apps/imu/*_null.c`。それぞれの移植で本物に置き換えます）:
+**まだスタブの部分**（`nuttx/apps/imu/*_null.c`。移植で本物に置き換えます）:
 
 | 部分 | スタブ | 振る舞い |
 |---|---|---|
-| MQTT の送信（`imu_raw_mqtt.h`） | `imu_raw_mqtt_null.c` | Zephyr 版がネットワークに繋がっていないときと同じ: 接続は成立せず、バッチはすべて捨てて `dropped_batches`・`dropped_accel`・`dropped_gyro` に数え（`imu_raw_queue.c` をそのまま使う）、`imu_raw_batch` には `-EAGAIN` を返します。`imu start` は Zephyr 版と同じく接続を最大 3 秒待ってから取得を始めるので、取得の時間は `imu start` から `imu stop` までより約 3 秒短くなります。`imu status` の `server` は `none:<port> (default gateway)`（`imu.host` があればその番地）。`connects`・`failures`・`published` は 0 のままです（Zephyr 版では接続の試行のたびに `failures` が増える） |
 | 校正（`imu_cal.h`） | `imu_cal_null.c` | `imu_cal_init()` は何もせず成功します。`imu cal`（`reload`・`zero` も）は `Calibration is not available in this build yet` を出して失敗します（測定中の `imu cal zero` は Zephyr 版と同じ拒否の文） |
 
 実機で（送信スタブ、ネットワークなし、6667 Hz、ウォーターマーク 128、1 MHz）、`imu start` → 10 秒 →
 `imu stop` を 4 回（書き込み直後の 1 回を含む）と 60 秒を 1 回行い、`errors`・`fifo` の各項目・`time` の
-異常の数と、`i2c_dma` のエラーとフォールバックが 0 であることを確かめました。
+異常の数と、`i2c_dma` のエラーとフォールバックが 0 であることを確かめました（MQTT の送信を入れる前）。
+
+### MQTT の送信
+
+`nuttx/apps/imu/imu_raw_mqtt.c` は Zephyr 版の `src/imu_raw_mqtt.c` の写しで、`diff` で並べると違いは先頭の
+説明と NuttX のヘッダーのインクルード（互換層より先に読む）だけです。`CONFIG_NANO_IMU_RAW_MQTT`（既定で
+有効）で入り、無ければスタブ `imu_raw_mqtt_null.c`（Zephyr 版がネットワークに繋がっていないときと同じく、
+バッチをすべて捨てて数える）になります。トピック（`imu/<device>/raw`・`status`・`info`）と QoS（raw と
+status は 0、info は 1 で retain）、クライアント ID（`imu-<device>`）、keepalive（60 秒）、クリーン
+セッションなし、送信の順（接続のたびに info、status、キューのバッチ。status は 1 秒ごとと状態の変化時、
+入力の確認は 100 ms ごと、キューが空なら 5 ms 待つ）、再接続の間隔（1 秒）、CONNACK の待ち（5 秒）、
+`imu start` の最初の接続の待ち（最大 3 秒）、切断中のバッチを捨てて数えること、送信に失敗したバッチを
+再送しないこと、`imu stop` で最後の status を最大 0.5 秒待つこと、`imu status` の `mqtt` の各項目と
+それが増える事象は Zephyr 版と同じです。
+
+- スレッド `imu_raw_mqtt_tid`（Zephyr の優先度 11 → 107、スタック 2048 の静的な配列）。init が起動処理の
+  最初に始め、`imu start` を待ちます。
+- MQTT のクライアントは、Zephyr の MQTT ライブラリ（`subsys/net/lib/mqtt/`）のうち使う部分の写し
+  （`nuttx/apps/imu/mqtt_min.c`、API は互換層の `<zephyr/net/mqtt.h>`）です。MQTT 3.1.1、TCP だけで、
+  送るバイト列、既定値、受信の分け方は Zephyr のライブラリと同じです（ホストテスト `mqtt_min` は同じ
+  テストを Zephyr の本物のライブラリでも動かします）。PUBLISH は固定ヘッダーと本体を 2 つのベクターの
+  `sendmsg()` 1 回で渡し、NINA のドライバーがそれを 1 つの送信の命令にまとめます（Zephyr 版と同じ）。
+- ソケットはブロッキングのまま使います（Zephyr 版と同じ）。接続は最大 10 秒、空きのない送信は最大
+  10 秒待ってから失敗します（NINA のドライバーの期限。`nuttx/drivers/README_ja.md` の「ソケット（usrsock）」）。
+- 受信の確認（`zsock_poll()`）と待たない受信（`zsock_recv()` の `ZSOCK_MSG_DONTWAIT`）は、互換層が先に
+  `ioctl(FIONREAD)` で NINA にソケットの状態を問い合わせます（呼び出したスレッドで `CMD_POLL` を 1 回）。
+  NINA に届く命令の並び（問い合わせ、届いていれば問い合わせと読み出し）は Zephyr 版と同じです。
+  CONNACK の待ちの残りの時間は、`nina_event` が 20 ms ごとに問い合わせた結果を待ちます（Zephyr 版は呼び出した
+  スレッドが 20 ms ごとに問い合わせる）。
+- Zephyr 版との違い: NINA が報告する接続の異常（POLL_ERROR）は、Zephyr 版では `ZSOCK_POLLERR`、NuttX 版では
+  `nina_event` が問い合わせて usrsock の切断（`REMOTE_CLOSED`）にしたものが `ZSOCK_POLLHUP` で届きます。
+  `imu_raw_mqtt.c` はどちらも同じく `-EIO` で接続を終えます。
+- Zephyr 版との違い: `nina_event` は、受信可の印を usrsock がまだ持っていない間、MQTT のソケットも 20 ms
+  ごとに問い合わせます。Zephyr 版では `imu_raw_mqtt_tid` が 100 ms ごとに問い合わせるだけです。
+- Zephyr 版との違い: `lock_wait_*`・`publish_*` の時間は、Zephyr 版は 125 MHz の SysTick の周期
+  （`k_cycle_get_*()`。送信中は遅れる）を µs にしたもの、NuttX 版は TIMER（1 µs）です（互換層の
+  `k_cycle_get_*()`）。
+
+実機で（6667 Hz、ウォーターマーク 128、1 MHz、PC の `host/.venv/bin/imu-host check --port 18830`）、書き込み
+直後の最初の計測、60 秒、10 分の連続で、受信器の欠番（`missing_batches`）、時刻の逆行（`unix_regressions`）、
+`imu status` の `errors`・`fifo` が 0 であることと、送信中の Telnet の接続と切断、受信器の切断
+（`--drop-at`）・読み出しの停止（`--stall-at`）・ボードの Wi-Fi の切断（`wapi disconnect wlan0` →
+`wifi cred auto_connect`）で、ボードの `published` と `dropped_batches` が受信器の受信数と欠番に合う
+（切断の直前に切れかけの接続へ書いた数バッチを除く。Zephyr 版と同じ）こと、取得が続くこと、再接続することを
+確かめました。
 
 ## 時刻同期（`ntp`）
 
@@ -806,8 +849,14 @@ Subcommands:
   TIMER から求めます。Zephyr 版は SysTick のカーネル時計で、送信中は遅れます。
 - 実時間時計（`CLOCK_REALTIME`）は、推定より 20 ms 以上遅れているときだけ推定に合わせ（`realtime_clock_steps`
   に数える）、進んでいるときは戻しません。日付や時刻の表示には使えますが、精密な時刻には
-  `time_sync_unix_us()` を使います。実時間時計を表示するコマンド（Zephyr 版の `date`）は、今の構成には
-  ありません（nsh の `date` が無効）。
+  `time_sync_unix_us()` を使います。実時間時計の表示と設定は nsh の `date` です（Zephyr 版の `date`。
+  `CONFIG_DATE_SHELL=y` に対応して `CONFIG_NSH_DISABLE_DATE` を外してある）。表示は UTC で、書式は nsh のもの
+  です:
+
+  | Zephyr 版 | NuttX 版 |
+  |---|---|
+  | `date get` | `date`（例 `Sat, Nov 14 03:23:03 2026`） |
+  | `date set 2026-11-14 03:23:03` | `date -s "Nov 14 03:23:03 2026"` |
 - 実機で、書き込み直後と `reboot` 後に Wi-Fi が繋がって最初の応答で同期が有効になること、`ntp status` の
   出力が Zephyr 版の記録と同じ項目・並び・桁で出ること、`wapi disconnect wlan0` の後は問い合わせが止まり、
   最後の応答から 60 秒で `not synchronized` になること、`wifi cred auto_connect` で繋がり直すと推定を
@@ -892,9 +941,9 @@ Subcommands:
   協調スレッドに当たるのは `sysworkq` と `net_mgmt`（どちらも 119）で、それより高い優先度のスレッドは
   ありません。同じ 119 の 2 つは時分割で交代します（Zephyr の協調スレッドどうしは自分で譲るまで交代しない）。
 - `K_THREAD_DEFINE()` のスレッド（`nina_scan_tid`、`nina_connect_tid`、`nina_monitor_tid`、`imu_stream_tid`、
-  `time_sync_tid`、`wifi_reconnect_tid`）は、
+  `imu_raw_mqtt_tid`、`time_sync_tid`、`wifi_reconnect_tid`）は、
   Zephyr 版が `main()` の前に始めるのに合わせて、init が起動処理の最初に始めます。
-- `imu_stream_tid`、`time_sync_tid`、`imu_fifo_worker`、`sysworkq`、`RTIO WQ 0`、`net_mgmt`、`nina_*_tid`、`wifi_reconnect_tid` のスタックは Zephyr と同じく静的な配列です
+- `imu_stream_tid`、`imu_raw_mqtt_tid`、`time_sync_tid`、`imu_fifo_worker`、`sysworkq`、`RTIO WQ 0`、`net_mgmt`、`nina_*_tid`、`wifi_reconnect_tid` のスタックは Zephyr と同じく静的な配列です
   （`K_THREAD_DEFINE()`・`K_THREAD_STACK_DEFINE()`、NuttX の `kthread_create_with_stack()`）。`ps` の STACK は
   NuttX が先頭に置く領域の分だけ小さく出ます（2048 → 2008。`imu_stream_tid` は 2000、1024 → 976）。
 - `CONFIG_PRIORITY_INHERITANCE=y` です。ミューテックスは優先度継承あり、セマフォは既定で継承なし
@@ -943,7 +992,9 @@ KV 領域の範囲の検査・ページ単位の書き込み・起動時の内�
 （`kv_name`）と `kv` コマンドの 16 進数の変換（`kv_hex`）、コマンドのサブコマンドの扱い（`subcmd`）、
 Wi-Fi の資格情報の保存と `wifi cred` コマンド（`wifi_cred`）、
 NINA の SPI の転送層（`nina_spi`）、NINA のソケットの表と命令（`nina_sock`）、NINA の名前解決（`nina_dns`）、時刻同期の問い合わせ・応答の検査・応答の待ち方・推定の期限・実時間時計・
-`ntp status` の出力（`time_sync`。NINA のソケットと時計は偽物）、I2C0 のドライバーの OS に依存しない部分（`nano_i2c_dw`）、I2C0 の DMA
+`ntp status` の出力（`time_sync`。NINA のソケットと時計は偽物）、MQTT の送信の開始の検査・トピック・スレッド・ソケットの呼び出しの順序・
+CONNECT と CONNACK の待ち・info と status とバッチの順と 1 回の `sendmsg()`・status と入力の間隔・捨てたバッチ・エラーの経路
+（`imu_raw_mqtt`。ソケット、時計、ネットワークのインターフェースは偽物）、I2C0 のドライバーの OS に依存しない部分（`nano_i2c_dw`）、I2C0 の DMA
 読み出しのコマンド語（`i2c_dma_commands`）、`i2c_dma` コマンドの出力（`i2c_dma_app`。ドライバー側は偽物）、
 LSM6DSO の FIFO 制御（`fifo_hw`）、LSM6DSO のドライバーと FIFO のストリーム（`lsm6dso_driver`）、ストリームの
 状態機械（`stream_stop`）、互換層の RTIO（`zephyr_rtio`）とワーク（`zephyr_work`）、取得サービスのために
@@ -966,6 +1017,7 @@ Zephyr 版を直したときは、写しも同じ内容に置き換えます。
 （`const` を外す）だけを変えた写し、
 `nuttx/apps/imu/imu_stream.c` は OS を呼ぶ部分と末尾のコマンドの登録だけを置き換えた写し、
 `nuttx/apps/imu/time_sync.c` は OS を呼ぶ部分、`time_sync_mono_us()` の中身、Kconfig の名前と末尾のコマンドの登録だけを置き換えた写し、
+`nuttx/apps/imu/imu_raw_mqtt.c` は先頭の説明と NuttX のヘッダーのインクルードだけを足した写し、
 `imu_raw_mqtt.h` は `<zephyr/net/net_ip.h>` を `<netinet/in.h>` にしただけの写しです。
 
 `nuttx/tests/fakes/nuttx/config.h`（空）は NuttX 版だけのもので、`<nuttx/config.h>` を読む `nuttx/apps` の

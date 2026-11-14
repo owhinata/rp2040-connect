@@ -145,6 +145,17 @@ cc "${flags[@]}" -D_DEFAULT_SOURCE -Itests/time_sync_fakes -Itests/zephyr_fakes 
     apps/subcmd/subcmd.c "${compat[@]}" "$link" -o "$out/time_sync"
 "$out/time_sync" >/dev/null
 printf 'ok  time_sync\n'
+# The MQTT transport (apps/imu/imu_raw_mqtt.c, the copy of the Zephyr build's) with the
+# port's MQTT client and its socket layer on the compatibility layer's zsock_*() calls, on a
+# fake socket, clock and interface: the start checks and topics, the thread, the socket calls
+# in order (FIONREAD before every read that does not wait and before poll()), CONNECT, the
+# CONNACK wait, the order of info, status and batch with header and body in one sendmsg(),
+# the status and input intervals, dropped batches and the error paths.
+cc "${flags[@]}" -Wno-sign-compare -D_DEFAULT_SOURCE -Itests/time_sync_fakes "${zinc[@]}" \
+    "${inc[@]}" tests/imu_raw_mqtt.c apps/imu/mqtt_min.c "${lib[@]}" "${compat[@]}" "$link" \
+    -o "$out/imu_raw_mqtt"
+"$out/imu_raw_mqtt" >/dev/null
+printf 'ok  imu_raw_mqtt\n'
 # The stored Wi-Fi credentials (apps/wifi: the copies of Zephyr's wifi_credentials.c and its
 # settings backend) and the "wifi cred" command (the copy of wifi_credentials_shell.c on
 # subcmd), on a fake store of named items: the stored entries and names, the cache, the

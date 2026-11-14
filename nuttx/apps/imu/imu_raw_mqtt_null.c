@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-/* STUB, replaced by the port of src/imu_raw_mqtt.c (T21 of
- * nuttx/PORTING_PLAN.md) once the port has sockets (T14-T16) and an MQTT
- * client (T20).
+/* STUB for a build without the MQTT transport (CONFIG_NANO_IMU_RAW_MQTT
+ * off; with it, imu_raw_mqtt.c, the port of src/imu_raw_mqtt.c, is built
+ * instead).
  *
  * The API of imu_raw_mqtt.h behaving as the Zephyr build's transport does
  * while the board has no network: the connection never comes up, so every

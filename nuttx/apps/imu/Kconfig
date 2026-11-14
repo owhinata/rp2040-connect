@@ -27,12 +27,13 @@ config NANO_APP_IMU
 		nuttx/drivers/compat): the thread imu_stream_tid (Zephyr
 		priority 9, NuttX 109, 2048-byte stack), which the init task
 		starts at boot, and the "imu start|stop|status|cal" command
-		with the Zephyr build's syntax and output.  The MQTT transport
-		and the calibration are stubs for now (imu_raw_mqtt_null.c,
-		imu_cal_null.c: no network, no calibration command); the time
-		synchronization is NANO_TIME_SYNC (time_sync_null.c without
-		it: no server time).  inet_pton() and inet_ntop() for imu.host
-		need LIBC_IPv4_ADDRCONV while the network is off.
+		with the Zephyr build's syntax and output.  The calibration is
+		a stub for now (imu_cal_null.c: no calibration command); the
+		MQTT transport is NANO_IMU_RAW_MQTT (imu_raw_mqtt_null.c
+		without it: no network) and the time synchronization
+		NANO_TIME_SYNC (time_sync_null.c without it: no server time).
+		inet_pton() and inet_ntop() for imu.host need
+		LIBC_IPv4_ADDRCONV while the network is off.
 
 if NANO_APP_IMU
 
@@ -55,6 +56,24 @@ config NANO_APP_IMU_STACKSIZE
 		this stack.
 
 endif
+
+config NANO_IMU_RAW_MQTT
+	bool "MQTT transport of the IMU service (imu_raw_mqtt.c)"
+	default y
+	depends on NANO_APP_IMU && NANO_NINA_NET && NET_USRSOCK_TCP
+	---help---
+		imu_raw_mqtt.c: the Zephyr build's src/imu_raw_mqtt.c with only
+		the system calls replaced: the thread imu_raw_mqtt_tid (Zephyr
+		priority 11, NuttX 107, 2048-byte stack), which the init task
+		starts at boot, connects to the MQTT receiver (imu.host and
+		imu.port, by default the default gateway's port 1883) while a
+		measurement runs, publishes the batches of the send queue
+		(imu_raw_queue.c), the status and the info (imu_raw_status.c),
+		and reconnects every second after a failure.  The MQTT client is
+		the port's copy of the part of Zephyr's MQTT library it uses
+		(mqtt_min.c, MQTT 3.1.1 over TCP).  Without this option
+		imu_raw_mqtt_null.c stands in: every batch is dropped as while
+		disconnected.
 
 config NANO_TIME_SYNC
 	bool "Time synchronization with an NTP server (time_sync.c)"

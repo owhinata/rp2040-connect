@@ -254,6 +254,9 @@ int nano_init_main(int argc, FAR char *argv[])
 #ifdef CONFIG_NANO_APP_IMU
   K_THREAD_DEFINE_START(imu_stream_tid);  /* imu_stream.c */
 #endif
+#ifdef CONFIG_NANO_IMU_RAW_MQTT
+  K_THREAD_DEFINE_START(imu_raw_mqtt_tid);  /* ../imu/imu_raw_mqtt.c */
+#endif
 #ifdef CONFIG_NANO_TIME_SYNC
   K_THREAD_DEFINE_START(time_sync_tid);   /* ../imu/time_sync.c */
 #endif

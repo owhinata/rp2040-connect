@@ -31,9 +31,19 @@ MAINSRC   = imu_stream.c
 CSRCS    += imu_raw_batch.c imu_raw_packet.c imu_raw_time.c imu_tick_clock.c
 CSRCS    += imu_raw_queue.c
 
-# Stubs, replaced by the ports of imu_raw_mqtt.c (T21) and imu_cal.c (T22).
+# Stub, replaced by the port of imu_cal.c (T22).
 
-CSRCS    += imu_raw_mqtt_null.c imu_cal_null.c
+CSRCS    += imu_cal_null.c
+
+# The MQTT transport (NANO_IMU_RAW_MQTT: imu_raw_mqtt.c with its JSON
+# messages in imu_raw_status.c, on the minimal MQTT client mqtt_min.c and
+# its socket layer mqtt_min_sock.c), or the stub without it.
+
+ifeq ($(CONFIG_NANO_IMU_RAW_MQTT),y)
+CSRCS    += imu_raw_mqtt.c imu_raw_status.c mqtt_min.c mqtt_min_sock.c
+else
+CSRCS    += imu_raw_mqtt_null.c
+endif
 
 # The time synchronization (NANO_TIME_SYNC: time_sync.c, its estimate in
 # time_offset.c, and the command set of the "ntp" command, nuttx/apps/ntp),
