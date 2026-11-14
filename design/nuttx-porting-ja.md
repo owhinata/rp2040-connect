@@ -1,6 +1,6 @@
 # NuttX 版の設計と動作の説明
 
-[English](PORTING_DESIGN.md) | 日本語
+[English](nuttx-porting.md) | 日本語
 
 NuttX 版の各機能の動作の詳しい説明です。使い方は `nuttx/README_ja.md`、
 ドライバーと互換層は `nuttx/drivers/README_ja.md`、移植の経緯と判断は `nuttx/PORTING_STATUS.md`・

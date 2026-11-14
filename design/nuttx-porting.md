@@ -1,6 +1,6 @@
 # Design and behaviour of the NuttX build
 
-English | [日本語](PORTING_DESIGN_ja.md)
+English | [日本語](nuttx-porting-ja.md)
 
 How each part of the NuttX build works in detail. Usage is in
 `nuttx/README.md`, the drivers and the compatibility layer in `nuttx/drivers/README.md`, and the

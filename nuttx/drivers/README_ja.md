@@ -5,7 +5,7 @@
 `nuttx/drivers/` は NuttX のカーネル側でビルドするこの移植のコードです（`nuttx/nuttx/external` からの
 symlink で、`libexternal.a` になります）。ボード側の部分は `nuttx/boards/arduino-nano-rp2040-connect/src/`
 にあります。Zephyr 版のドライバー説明は `zephyr/app/usb-console/drivers/README_ja.md` です。コマンドの
-使い方と Zephyr 版との違いは `nuttx/README_ja.md`、各機能の動作の詳しい説明は `nuttx/PORTING_DESIGN_ja.md` に
+使い方と Zephyr 版との違いは `nuttx/README_ja.md`、各機能の動作の詳しい説明は `design/nuttx-porting-ja.md` に
 あります。
 
 ## NINA-W102（`nina`）
@@ -26,7 +26,7 @@ symlink で、`libexternal.a` になります）。ボード側の部分は `nut
 - SPI は NuttX の `rp2040_spi.c` をポーリングで使います（DMA なし）。転送ごとに `SPI_LOCK` を取り、
   最初の転送でモード 0・8 ビット・`CONFIG_NANO_NINA_SPI_FREQUENCY` を設定します。`SPI_SELECT` は
   使いません。
-- 期限と配線は `nuttx/PORTING_DESIGN_ja.md` の「NINA-W102（`nina`）」の節にあります。
+- 期限と配線は `design/nuttx-porting-ja.md` の「NINA-W102（`nina`）」の節にあります。
 - `nina/nina_spi.c` はホストテスト（`nuttx/tests/nina_spi.c`）で、偽のボードと時計を使って確かめます。
 
 ### ソケット（usrsock）
@@ -190,7 +190,7 @@ wapi の ioctl（`d_ioctl`。呼び出したスレッドで処理）は次のと
 要求を出して戻る）、`ifconfig` の `RUNNING` と IP アドレス、`wapi show` の ESSID で確かめます。
 
 - 資格情報の保存と自動再接続（`nuttx/apps/wifi/`。Zephyr 版の `src/wifi_profile.c` と Zephyr の
-  `subsys/net/lib/wifi_credentials/` の写し、`wifi cred`。`nuttx/PORTING_DESIGN_ja.md` の「Wi-Fi の資格情報と自動再接続（`wifi cred`）」）は、
+  `subsys/net/lib/wifi_credentials/` の写し、`wifi cred`。`design/nuttx-porting-ja.md` の「Wi-Fi の資格情報と自動再接続（`wifi cred`）」）は、
   互換層の `net_mgmt()`（`NET_REQUEST_WIFI_CONNECT_STORED`）、`net_mgmt_add_event_callback()`
   （`NET_EVENT_WIFI_CONNECT_RESULT`）、`net_if_get_wifi_sta()`、`net_if_ipv4_get_global_addr()`、`k_current_get()` を
   Zephyr 版と同じ形で使います。`nina_net.c` は接続の要求のたびに `wifi_profile_connection_allowed()` を呼び、

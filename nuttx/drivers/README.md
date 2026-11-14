@@ -7,7 +7,7 @@ English | [日本語](README_ja.md)
 `nuttx/boards/arduino-nano-rp2040-connect/src/`. The Zephyr version's driver notes are
 `zephyr/app/usb-console/drivers/README.md`. How to use the commands, and the differences from the
 Zephyr version, are in `nuttx/README.md`, and how each part works in detail is in
-`nuttx/PORTING_DESIGN.md`.
+`design/nuttx-porting.md`.
 
 ## NINA-W102 (`nina`)
 
@@ -27,7 +27,7 @@ Zephyr version, are in `nuttx/README.md`, and how each part works in detail is i
 - The SPI is NuttX's `rp2040_spi.c`, polled (no DMA). Each transfer takes `SPI_LOCK`; the first
   one sets mode 0, 8 bits and `CONFIG_NANO_NINA_SPI_FREQUENCY`. `SPI_SELECT` is not used.
 - The time limits and the wiring are in the "NINA-W102 (`nina`)" section of
-  `nuttx/PORTING_DESIGN.md`.
+  `design/nuttx-porting.md`.
 - `nina/nina_spi.c` is checked by a host test (`nuttx/tests/nina_spi.c`) with a fake board and
   clock.
 
@@ -215,7 +215,7 @@ the IP address in `ifconfig`, or the ESSID in `wapi show`.
 
 - The stored credentials and automatic reconnection (`nuttx/apps/wifi/`: copies of the Zephyr
   version's `src/wifi_profile.c` and of Zephyr's `subsys/net/lib/wifi_credentials/`, `wifi cred`;
-  "Stored Wi-Fi credentials and automatic reconnection (`wifi cred`)" in `nuttx/PORTING_DESIGN.md`) use the layer's
+  "Stored Wi-Fi credentials and automatic reconnection (`wifi cred`)" in `design/nuttx-porting.md`) use the layer's
   `net_mgmt()` (`NET_REQUEST_WIFI_CONNECT_STORED`), `net_mgmt_add_event_callback()`
   (`NET_EVENT_WIFI_CONNECT_RESULT`), `net_if_get_wifi_sta()`, `net_if_ipv4_get_global_addr()` and
   `k_current_get()` as the Zephyr version does. `nina_net.c` calls

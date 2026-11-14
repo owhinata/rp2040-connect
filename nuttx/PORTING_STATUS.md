@@ -987,7 +987,7 @@ FIFO ストリームと互換層（T11、詳細は T11 の記録）:
 ### 完成（2026-11-14 夜）
 
 - `bootsel` コマンドを削除（`apps/bootsel/`、`nano_reset.c` の BOOTSEL 関数、`flash.sh` の自動 BOOTSEL）。以後、書き込みは両方の版とも手動 BOOTSEL。新しい `flash.sh` の実書き込みは未確認（最終版は UF2 を直接コピーして書いた。`RPI-RP2` があるときの分岐は無変更）。
-- `nuttx/README`（日英）を簡潔化（日 1458 → 429 行、英 1668 → 460 行）。各機能の動作の詳しい説明は `nuttx/PORTING_DESIGN_ja.md`／`PORTING_DESIGN.md` へ移した（ユーザーの指示でこの名前に。字下げされた表 2 つを修正）。
+- `nuttx/README`（日英）を簡潔化（日 1458 → 429 行、英 1668 → 460 行）。各機能の動作の詳しい説明は `design/nuttx-porting-ja.md`／`nuttx-porting.md` へ移した（ユーザーの指示でこの名前に。字下げされた表 2 つを修正）。
 - `CLAUDE.md` を移植完了後の内容に更新（未追跡のまま）。
 - ユーザーが NuttX の最終版（`Nov 14 2026 19:05:03`）で `kv_transfer.py restore --usb` を実行。
 - **最終確認（メイン、各 1 回）**: 60 s 計測（受信器つき）で 2094 バッチ・欠番 0・`unix_regressions` 0・errors/fifo 0・`unix_unavailable` 0・`cpu_active` 67.0 %。Telnet から `ps`・`nina version` 3.0.2・`i2c_dma stats`（errors 0）・`date`・`uptime`・`wapi show wlan0`・`sensor get`・`/proc/cpuload`、`dmesg` に `<err>` なし。`imu cal` は calibrated、`kv get imu.port` は 18830。
