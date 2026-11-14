@@ -14,7 +14,7 @@
 
 詳しい資料:
 
-- 各機能の動作の詳しい説明: [`doc/internals_ja.md`](doc/internals_ja.md)
+- 各機能の動作の詳しい説明: [`PORTING_DESIGN_ja.md`](PORTING_DESIGN_ja.md)
 - ドライバー（NINA、I2C0、LSM6DSOX）と Zephyr の API の互換層: [`drivers/README_ja.md`](drivers/README_ja.md)
 - 設計の要約: 設計書 [§11](../design/imu-raw-mqtt-design-ja.md)（「11. NuttX 版」）
 - Zephyr 版との性能の比較: ルートの [`README_ja.md`](../README_ja.md) の「Zephyr 版と NuttX 版の性能の違い」
@@ -51,7 +51,7 @@ source nuttx/script/setup.sh
 あわせて、`nuttx/nuttx/external` → `nuttx/drivers` と `nuttx/nuttx-apps/external` → `nuttx/apps` の symlink を張り、
 下のパッチを当て、現在のシェルに `PICO_SDK_PATH` と `PATH`（ツールチェーン、`nuttx/.venv/bin`、`nuttx/script`）を
 設定します。版はスクリプトの冒頭で固定しています。取得したものは Git の管理外です。パッチの記録や
-クローンに変更があるときの扱いは [`doc/internals_ja.md`](doc/internals_ja.md) の「環境構築（`setup.sh`）の動作」です。
+クローンに変更があるときの扱いは [`PORTING_DESIGN_ja.md`](PORTING_DESIGN_ja.md) の「環境構築（`setup.sh`）の動作」です。
 
 ### NuttX へのパッチ
 
@@ -84,7 +84,7 @@ nuttx/script/build.sh
 ボード `nuttx/boards/arduino-nano-rp2040-connect/` を唯一の構成 `configs/imu/defconfig` でビルドし、
 `nuttx/build/nuttx.uf2` を作ります。`setup.sh` は自分で読み込みます。defconfig・Kconfig・パッチなどが
 変わったときは自動で configure し直し、イメージ（boot2、flash の範囲、KV の領域との重なり）を確かめてから
-UF2 にします（[`doc/internals_ja.md`](doc/internals_ja.md) の「ビルド（`build.sh`）の動作」）。
+UF2 にします（[`PORTING_DESIGN_ja.md`](PORTING_DESIGN_ja.md) の「ビルド（`build.sh`）の動作」）。
 
 | オプション | 動作 |
 |---|---|
@@ -412,7 +412,7 @@ nuttx/script/host_tests.sh
 OS に依存しない部分のホストテスト 38 本を PC 上でビルドして実行します。ボードは不要で、ホストの `cc`（C17）だけを
 使います。ST の `lsm6dso_reg.c`（`setup.sh` が取得）が無ければ、それを使う 3 本（`lsm6dso_driver`、`imu_cal`、
 `sensor_shell`）は `skip` になります。失敗したところで止まります。各テストの内容と、Zephyr 版から変更せずに
-写したファイルの一覧（Zephyr 版を直したときに置き換えるもの）は [`doc/internals_ja.md`](doc/internals_ja.md) の
+写したファイルの一覧（Zephyr 版を直したときに置き換えるもの）は [`PORTING_DESIGN_ja.md`](PORTING_DESIGN_ja.md) の
 「ホストテストの詳細」です。
 
 ## ディレクトリ構成
@@ -425,5 +425,5 @@ OS に依存しない部分のホストテスト 38 本を PC 上でビルドし
 | `patches/` | NuttX と nuttx-apps へのパッチ |
 | `script/` | `setup.sh`、`build.sh`、`flash.sh`、`host_tests.sh`、`bin2uf2.py`、`kconfig-tweak` |
 | `tests/` | ホストテスト |
-| `doc/` | 内部の説明（`internals_ja.md`、`internals.md`） |
+| `PORTING_DESIGN_ja.md`、`PORTING_DESIGN.md` | 各機能の動作の詳しい説明 |
 | `nuttx/`、`nuttx-apps/`、`pico-sdk/`、`toolchain/`、`stmemsc/`、`.venv/`、`build/` | `setup.sh` が取得するものとビルドの生成物（Git 管理外） |

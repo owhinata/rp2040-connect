@@ -1,6 +1,6 @@
 # NuttX 版の内部の説明
 
-[English](internals.md) | 日本語
+[English](PORTING_DESIGN.md) | 日本語
 
 `nuttx/README_ja.md` から移した、NuttX 版の各機能の動作の詳しい説明です。使い方は `nuttx/README_ja.md`、
 ドライバーと互換層は `nuttx/drivers/README_ja.md`、移植の経緯と判断は `nuttx/PORTING_STATUS.md`・
@@ -263,15 +263,15 @@ NINA firmware: 3.0.2
 - 配線（ボードの `include/board.h` の `BOARD_NINA_*`。Zephyr のボード定義
   `arduino_nano_connect.dts` と同じ）:
 
-  | 信号 | GPIO | 設定 |
-  |---|---|---|
-  | SCK | 14 | SPI1。プルなし、4 mA、スルーレート低速、シュミットトリガーなし |
-  | MOSI（TX） | 11 | 同上 |
-  | MISO（RX） | 8 | 同上、入力有効 |
-  | CS | 9 | GPIO の出力、active low。プルなし。起動時に非アクティブ（high） |
-  | READY | 10 | GPIO の入力、active low、プルアップ |
-  | RESET | 3 | GPIO の出力、active low。プルなし |
-  | IRQ（NINA の GPIO0） | 2 | プルダウン。リセット中は high を出力し、その後は入力 |
+| 信号 | GPIO | 設定 |
+|---|---|---|
+| SCK | 14 | SPI1。プルなし、4 mA、スルーレート低速、シュミットトリガーなし |
+| MOSI（TX） | 11 | 同上 |
+| MISO（RX） | 8 | 同上、入力有効 |
+| CS | 9 | GPIO の出力、active low。プルなし。起動時に非アクティブ（high） |
+| READY | 10 | GPIO の入力、active low、プルアップ |
+| RESET | 3 | GPIO の出力、active low。プルなし |
+| IRQ（NINA の GPIO0） | 2 | プルダウン。リセット中は high を出力し、その後は入力 |
 
 - SPI: モード 0（CPOL 0、CPHA 0）、8 ビット、MSB が先、`CONFIG_NANO_NINA_SPI_FREQUENCY`（既定 8000000。
   Zephyr 版の `CONFIG_NINA_SPI_FREQUENCY`）。PL022 は clk_peri（125 MHz）を偶数で割るので、実際は
@@ -809,10 +809,10 @@ Subcommands:
   `CONFIG_DATE_SHELL=y` に対応して `CONFIG_NSH_DISABLE_DATE` を外してある）。表示は UTC で、書式は nsh のもの
   です:
 
-  | Zephyr 版 | NuttX 版 |
-  |---|---|
-  | `date get` | `date`（例 `Sat, Nov 14 03:23:03 2026`） |
-  | `date set 2026-11-14 03:23:03` | `date -s "Nov 14 03:23:03 2026"` |
+| Zephyr 版 | NuttX 版 |
+|---|---|
+| `date get` | `date`（例 `Sat, Nov 14 03:23:03 2026`） |
+| `date set 2026-11-14 03:23:03` | `date -s "Nov 14 03:23:03 2026"` |
 
 ## システム時計
 

@@ -16,7 +16,7 @@ PC's time and sends them by MQTT over Wi-Fi.
 
 Further reading:
 
-- How each part works in detail: [`doc/internals.md`](doc/internals.md)
+- How each part works in detail: [`PORTING_DESIGN.md`](PORTING_DESIGN.md)
 - The drivers (NINA, I2C0, LSM6DSOX) and the Zephyr API compatibility layer:
   [`drivers/README.md`](drivers/README.md)
 - The design summary: [§11](../design/imu-raw-mqtt-design.md) of the design document ("11. The NuttX port")
@@ -59,7 +59,7 @@ It also creates the symlinks `nuttx/nuttx/external` → `nuttx/drivers` and `nut
 `nuttx/.venv/bin`, `nuttx/script`) in the current shell. The versions are fixed at the top of the
 script. The fetched files are not tracked by Git. How the applied patches are recorded and what
 happens when a clone has local changes is in "What `setup.sh` does" in
-[`doc/internals.md`](doc/internals.md).
+[`PORTING_DESIGN.md`](PORTING_DESIGN.md).
 
 ### Patches to NuttX
 
@@ -93,7 +93,7 @@ This builds the board `nuttx/boards/arduino-nano-rp2040-connect/` with its only 
 `configs/imu/defconfig`, into `nuttx/build/nuttx.uf2`. It sources `setup.sh` itself. When the
 defconfig, a Kconfig, the patches and so on change, it configures again by itself, and it checks the
 image (boot2, the flash range, no overlap with the key-value area) before making the UF2 ("What
-`build.sh` does" in [`doc/internals.md`](doc/internals.md)).
+`build.sh` does" in [`PORTING_DESIGN.md`](PORTING_DESIGN.md)).
 
 | Option | Effect |
 |---|---|
@@ -444,7 +444,7 @@ This builds and runs the 38 host tests of the OS-independent parts on the PC. It
 the host's `cc` (C17). Without ST's `lsm6dso_reg.c` (fetched by `setup.sh`), the 3 tests that use it
 (`lsm6dso_driver`, `imu_cal`, `sensor_shell`) print `skip`. It stops at the first failure. What each
 test checks, and the list of files copied unchanged from the Zephyr build (to be replaced when the
-Zephyr build changes), are in "Host test details" in [`doc/internals.md`](doc/internals.md).
+Zephyr build changes), are in "Host test details" in [`PORTING_DESIGN.md`](PORTING_DESIGN.md).
 
 ## Directory layout
 
@@ -456,5 +456,5 @@ Zephyr build changes), are in "Host test details" in [`doc/internals.md`](doc/in
 | `patches/` | Patches to NuttX and nuttx-apps |
 | `script/` | `setup.sh`, `build.sh`, `flash.sh`, `host_tests.sh`, `bin2uf2.py`, `kconfig-tweak` |
 | `tests/` | Host tests |
-| `doc/` | Internals (`internals.md`, `internals_ja.md`) |
+| `PORTING_DESIGN.md`, `PORTING_DESIGN_ja.md` | Detailed description of how each feature works |
 | `nuttx/`, `nuttx-apps/`, `pico-sdk/`, `toolchain/`, `stmemsc/`, `.venv/`, `build/` | What `setup.sh` fetches and the build products (not in Git) |

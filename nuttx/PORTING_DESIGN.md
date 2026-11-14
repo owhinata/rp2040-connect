@@ -1,6 +1,6 @@
 # NuttX build internals
 
-English | [日本語](internals_ja.md)
+English | [日本語](PORTING_DESIGN_ja.md)
 
 How each part of the NuttX build works in detail, moved out of `nuttx/README.md`. Usage is in
 `nuttx/README.md`, the drivers and the compatibility layer in `nuttx/drivers/README.md`, and the
@@ -290,15 +290,15 @@ NINA firmware: 3.0.2
 - Wiring (`BOARD_NINA_*` in the board's `include/board.h`, as in Zephyr's board definition
   `arduino_nano_connect.dts`):
 
-  | Signal | GPIO | Setting |
-  |---|---|---|
-  | SCK | 14 | SPI1. No pulls, 4 mA, slow slew, no Schmitt trigger |
-  | MOSI (TX) | 11 | Same |
-  | MISO (RX) | 8 | Same, input enabled |
-  | CS | 9 | GPIO output, active low, no pulls. Inactive (high) from boot |
-  | READY | 10 | GPIO input, active low, pull-up |
-  | RESET | 3 | GPIO output, active low, no pulls |
-  | IRQ (the NINA's GPIO0) | 2 | Pull-down. Driven high during the reset, then an input |
+| Signal | GPIO | Setting |
+|---|---|---|
+| SCK | 14 | SPI1. No pulls, 4 mA, slow slew, no Schmitt trigger |
+| MOSI (TX) | 11 | Same |
+| MISO (RX) | 8 | Same, input enabled |
+| CS | 9 | GPIO output, active low, no pulls. Inactive (high) from boot |
+| READY | 10 | GPIO input, active low, pull-up |
+| RESET | 3 | GPIO output, active low, no pulls |
+| IRQ (the NINA's GPIO0) | 2 | Pull-down. Driven high during the reset, then an input |
 
 - SPI: mode 0 (CPOL 0, CPHA 0), 8 bits, MSB first, `CONFIG_NANO_NINA_SPI_FREQUENCY` (default
   8000000; the Zephyr build's `CONFIG_NINA_SPI_FREQUENCY`). The PL022 divides clk_peri (125 MHz)
@@ -928,10 +928,10 @@ Subcommands:
   realtime clock (the Zephyr build's `date`; `CONFIG_NSH_DISABLE_DATE` is cleared, for the Zephyr
   version's `CONFIG_DATE_SHELL=y`). It shows UTC, in nsh's format:
 
-  | Zephyr build | NuttX build |
-  |---|---|
-  | `date get` | `date` (e.g. `Sat, Nov 14 03:23:03 2026`) |
-  | `date set 2026-11-14 03:23:03` | `date -s "Nov 14 03:23:03 2026"` |
+| Zephyr build | NuttX build |
+|---|---|
+| `date get` | `date` (e.g. `Sat, Nov 14 03:23:03 2026`) |
+| `date set 2026-11-14 03:23:03` | `date -s "Nov 14 03:23:03 2026"` |
 
 ## System clock
 
