@@ -34,6 +34,22 @@ config NANO_TICKLESS
 		USEC_PER_TICK to be 100.  ONESHOT_FAST_DIVISION is not selected:
 		it only changes the generic conversions, which these replace.
 
+config NANO_PERF
+	bool "Perf counter on the RP2040 TIMER (up_perf_*)"
+	default y
+	depends on ARCH_CHIP_RP2040
+	select ARCH_HAVE_PERF_EVENTS
+	---help---
+		src/nano_perf.c: up_perf_gettime() returns the TIMER count
+		(nano_mono_us(), 1 MHz, 64 bits) and up_perf_getfreq() 1000000.
+		The Cortex-M0+ has no cycle counter.  Used by the critical
+		section monitor (SCHED_CRITMONITOR, SCHED_CPULOAD_CRITMONITOR) to
+		account each task's CPU time at every context switch: the CPU
+		column of ps, /proc/cpuload, /proc/<pid>/loadavg and the total
+		run time in /proc/<pid>/critmon.  Without it,
+		drivers/timers/arch_alarm.c supplies a slower counter in
+		nanoseconds through the oneshot.
+
 config NANO_STACK_SENTINEL
 	bool "Stack sentinel (check the lowest stack word)"
 	default y

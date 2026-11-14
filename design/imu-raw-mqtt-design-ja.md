@@ -611,7 +611,14 @@ NINA-W102 のソケットは NuttX の usrsock（`CONFIG_NET_USRSOCK_CUSTOM`）�
 する。Zephyr 版はアイドルの区間を割り込みの入口で閉じるので、アイドル中に入った割り込みの処理時間は
 負荷に数えられる。NuttX 版は自前のアイドルループで、割り込みを禁止して TIMER を読み、`WFI` で待ち、
 起きたら TIMER を読んでアイドル時間に足してから割り込みを許可する（ハンドラーは許可の後で動くので、
-負荷の側に入る）。NuttX 標準の `CONFIG_SCHED_CPULOAD`（tick ごとの標本）は意味が違うので使わない。
+負荷の側に入る）。`cpu_active` には NuttX 標準の `CONFIG_SCHED_CPULOAD` を使わない（tick ごとの標本の方式は
+意味が違い、切り替えのときに積算する方式はスレッドごとの割合で、割り込みの時間を割り込まれたスレッドに入れる）。
+
+スレッドごとの割合は、`ps` の CPU 列（NuttX 標準の `CONFIG_SCHED_CPULOAD_CRITMONITOR`。時間の源は TIMER）で
+見る。Zephyr 版の `CONFIG_SCHED_THREAD_USAGE`（`kernel ps`・`kernel thread list`）と同じく切り替えのときに
+積算し、割り込みの時間は割り込まれたスレッドに入る。`ps` の値は移動平均（約 1 秒ごとに半分に減衰）で、
+Zephyr 版は起動からの累積。区間の割合は `/proc/<tid>/critmon` の実行時間の合計の差で求める
+（`nuttx/README_ja.md` の「CPU 負荷」）。
 
 ### 11.5 KV の形式と移し替え
 

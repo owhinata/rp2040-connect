@@ -350,15 +350,40 @@ FIFO 設定と停止処理、NINA の SPI フレーミングなどを、PC 上�
 
 | 項目 | Zephyr 版 | NuttX 版 |
 |---|---|---|
-| 送信中の `cpu_active` | 62.6 %、63.3 %（2 回） | 66.0〜66.1 %（3 回） |
-| 同、`ntp status` を 2 秒ごとに実行しながら | 65.4 %（1 回） | 66.7 %（1 回） |
-| 送信中の NTP の往復時間（`ntp status` の `last_us` の中央値） | 7.6 ms（27 点） | 8.6 ms（30 点） |
+| 送信中の `cpu_active` | 62.6 %、63.3 %（2 回） | 67.7〜67.9 %（3 回） |
+| 同、`ntp status` を 2 秒ごとに実行しながら | 65.4 %（1 回） | 68.3 %、68.5 %（2 回） |
+| 送信中の NTP の往復時間（`ntp status` の `last_us` の中央値） | 7.6 ms（27 点） | 9.9 ms、10.0 ms（30 点ずつ、2 回） |
 | TCP の送信（ボード → PC、10 秒） | 3.00 Mbit/s（`zperf`、1024 バイトずつ、1 回） | 3.6〜3.9 Mbit/s（`iperf`、5 回） |
 | TCP の受信（PC → ボード、10 秒） | 1.57 Mbit/s（`zperf`、1 回） | 0.95〜1.03 Mbit/s（`iperf`、5 回） |
 
-- NuttX 版は、送信中の CPU 負荷が Zephyr 版より約 3 ポイント高く、NTP の往復が約 1 ms 長くなります。
+- NuttX 版は、送信中の CPU 負荷が Zephyr 版より約 5 ポイント高く、NTP の往復が約 2 ms 長くなります。
   差の原因は特定していません。
+- NuttX 版の値は `ps` に CPU の列を入れた版のものです。入れる前の版は、同じ手順で `cpu_active` 66.0〜66.1 %
+  （3 回）、`ntp status` を見ながら 66.7 %（1 回）、NTP の往復の中央値 8.6 ms（30 点）でした。
 - TCP の速度は測定のコマンドが違うので（Zephyr 版は `zperf`＝iperf 3 の方式、NuttX 版は `iperf`＝iperf 2 の
   方式で、1 回に送る大きさも違います）、目安としての比較です。
 - `sensor stream` は、どちらの版でも ODR を上げると `Read failed` で止まります。Zephyr 版は 833 Hz 以上、
   NuttX 版は 3333 Hz 以上で止まりました（watermark 128、USB コンソール、各 1 回）。
+
+### 送信中のスレッドごとの CPU 時間
+
+送信中（`imu start` の 8 秒後から 30 秒間）に、各スレッドの実行時間が全スレッドの合計に占める割合です。
+Zephyr 版は `kernel thread list` の `Total execution cycles`、NuttX 版は `/proc/<tid>/critmon` の実行時間の
+合計を、区間の前後にシェルから読んだ差です。どちらもスレッドの切り替えのときに積算し、割り込みの処理の
+時間は割り込まれたスレッドに入ります（アイドル中の割り込みはアイドルに入るので、アイドルの割合は
+100 % − `cpu_active` と一致しません）。Zephyr 版は 1 回、NuttX 版は 2 回です。この計測の `cpu_active`
+（`imu start` から `imu stop` まで、区間の前後に値を読むコマンドを含む）は Zephyr 版 63.5 %、NuttX 版
+68.8 %・68.3 % でした。
+
+| スレッド | Zephyr 版 | NuttX 版 |
+|---|---|---|
+| アイドル | 41.85 % | 34.58 %、35.17 % |
+| `imu_raw_mqtt_tid` | 20.39 % | 22.83 %、22.28 % |
+| `imu_fifo_worker` | 18.53 % | 19.09 %、18.82 % |
+| `imu_stream_tid` | 16.18 % | 17.40 %、17.73 % |
+| `nina_event`（NuttX 版だけのスレッド。NINA のソケットの状態の問い合わせ、送信の再試行） | – | 3.24 %、3.21 % |
+| `sysworkq` | 1.85 % | 2.24 %、2.16 % |
+| USB（Zephyr 版の `usbd@50110000` と `usbd`。NuttX 版には USB のスレッドが無い） | 0.63 % | – |
+| シェル（Zephyr 版の `shell_uart`、NuttX 版の `nsh`） | 0.38 % | 0.36 %、0.35 % |
+| `time_sync_tid` | 0.17 % | 0.24 %、0.27 % |
+| `nina_monitor_tid` | 0.02 % | 0.02 %、0.02 % |

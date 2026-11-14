@@ -78,6 +78,8 @@ the board code replaces. The head of each file gives its purpose and the Zephyr 
 | `nuttx/0004-rp2040-make-defs-alarm-arch-idle-custom` | Leave `rp2040_timerisr.c` (periodic SysTick interrupt) out of the build with `CONFIG_ALARM_ARCH`, and `rp2040_idle.c` with `CONFIG_ARCH_IDLE_CUSTOM` (the board provides the system timer and the idle loop) |
 | `nuttx/0005-usrsock-dontwait-to-daemon-and-daemon-send-timeout` | usrsock's send and receive keep in the driver's request that the call does not wait (`MSG_DONTWAIT`, a non-blocking socket), and a send the driver answers with `-ETIME` ends with `-EAGAIN`. Stock usrsock repeats a waiting call's `-EAGAIN` for ever, so the Zephyr version's "a waiting TCP send gives `EAGAIN` after 10 s" and "a datagram the NINA did not take gives `EAGAIN` at once" could not be made, and `MSG_DONTWAIT` on a blocking socket waited on the second pass ("Sockets (usrsock)" in `nuttx/drivers/README.md`) |
 | `nuttx/0006-telnet-crlf-line-end` | The Telnet driver sends a line feed of the output as CR LF (the Telnet end of line, as the Zephyr version's Telnet shell does) instead of LF CR |
+| `nuttx/0007-sched-critmon-cpuload-in-perf-counts` | The CPU column of `ps` (`CONFIG_SCHED_CPULOAD_CRITMONITOR`) adds each run in perf counts (the TIMER, 1 µs) instead of converting it to ticks (100 µs) at every switch, rounding down. The stock conversion turns every run shorter than a tick into nothing and drops the remainder of longer ones. Also, on the ARMv6-M the outgoing task is passed as NULL when a task exits (`up_exit()` sets `g_running_tasks[]` to NULL); a value read through that NULL made the total negative and every share 0.0%, so a NULL outgoing task is now skipped ("CPU load") |
+| `nuttx/0008-sched-critmon-irqcount-only-for-csection-busywait` | `CONFIG_SCHED_CRITMONITOR` selects `CONFIG_IRQCOUNT` only for the critical section and busy-wait monitors (`..._MAXTIME_CSECTION` or `..._BUSYWAIT` at 0 or more). `IRQCOUNT` turns every `enter_critical_section()` into a function call, and the CPU time accounting does not use it |
 | `apps/0001-readline-echo-in-readline` | readline, not the serial driver, echoes while a line is typed (only what goes into the line, and the line end) |
 | `apps/0002-readline-cr-lf-line-end` | CR, LF, CR LF and LF CR are each one Enter |
 | `apps/0003-readline-ctrl-c` | Ctrl-C drops the line being typed and shows a new prompt |
@@ -1170,6 +1172,39 @@ the Zephyr version's `CONFIG_CPU_LOAD` (`CONFIG_CPU_LOAD_BACKEND_IDLE_HOOK`) ret
   intervals). The entry and exit of each interrupt (the timer interrupt, the wdog, setting the next
   alarm) also count as load.
 
+### CPU time per thread (the CPU column of `ps`)
+
+This uses the per-thread CPU time that NuttX's own critical section monitor
+(`CONFIG_SCHED_CRITMONITOR`) keeps (`CONFIG_SCHED_CPULOAD_CRITMONITOR`; patches `nuttx/0007` and
+`nuttx/0008`). Its maximum-time monitors (`CONFIG_SCHED_CRITMONITOR_MAXTIME_*`) stay at their
+default of −1 and are not used. `cpu_load_get()` above (`cpu_active` in `imu status`) is a separate
+mechanism; turning this on does not change how it measures.
+
+- At every thread switch, the time since the previous switch is added to the thread being switched
+  out. The time base is the board's perf counter (`src/nano_perf.c`, `CONFIG_NANO_PERF`: the TIMER,
+  1 µs; the Cortex-M0+ has no cycle counter). The Zephyr version's `CONFIG_SCHED_THREAD_USAGE` also
+  adds CPU cycles only at a switch (PendSV).
+- In both versions the time spent in interrupt handlers goes to the thread that was interrupted
+  (interrupts while idle go to the idle thread). So the idle thread's share does not match what
+  `cpu_active`, which counts interrupt handling as load, leaves (100 % − `cpu_active`).
+- What can be read:
+  - The CPU column of `ps` and `/proc/<tid>/loadavg`: the thread's share, in 0.1 % steps. It is a
+    moving average: whenever the total exceeds `CONFIG_SCHED_CPULOAD_TIMECONSTANT` (2 s), every
+    thread's count is halved (with the CPU always running, about once a second, so the last 1–2
+    seconds weigh most). `ps` reads one row at a time, so the rows may not add up to 100 %, and the
+    shell running `ps` counts too.
+  - `/proc/cpuload`: 100 % − the idle thread's share (the same moving average).
+  - `/proc/<tid>/critmon`: `longest continuous run,total run time since boot` (seconds, to the
+    nanosecond digit). The total only grows, so the difference of two readings gives the share over
+    an interval (what `Total execution cycles` of the Zephyr version's `kernel thread list` gives).
+    The longest run goes back to 0 at each read.
+- The CPU of the Zephyr version's `kernel ps` is a whole-number percentage accumulated since boot,
+  and `Total execution cycles` of `kernel thread list` a cycle count since boot. The CPU column of
+  NuttX's `ps` is the moving average above.
+- nsh's `top` (which shows the same values over and over) is turned off, as the Zephyr version has
+  no such command.
+- The task list of a PANIC report shows the CPU column too.
+
 ## Thread priorities and stacks
 
 Priorities map as `NuttX = 118 − Zephyr`; `nuttx/drivers/include/priorities.h` holds the constants
@@ -1238,7 +1273,7 @@ Priorities map as `NuttX = 118 − Zephyr`; `nuttx/drivers/include/priorities.h`
   an interrupt. All interrupts run at one priority and never nest, so every handler exit is the
   end of a non-nested interrupt in Zephyr's terms. NuttX's `CONFIG_STACKCHECK_MARGIN` is not used:
   it checks at switches only and needs `CONFIG_DEBUG_ASSERTIONS` (every DEBUGASSERT).
-- `ps` shows stack use in its STACK, USED and FILLED columns.
+- `ps` shows stack use in its STACK, USED and FILLED columns, and each thread's share of CPU time in its CPU column ("CPU load").
 
 ## Commands of the Zephyr version and of this port
 
@@ -1270,7 +1305,8 @@ column have the details. nsh parses the arguments of this port, so quote an argu
 | `zperf udp upload <PC> 5201 30 500 500K` | `iperf -c <PC> -u -t 30 -l 500` (no rate setting) | Same section |
 | `zperf tcp download 5201` / `download stop` | `iperf -s -B 0.0.0.0` (ends after one connection) | Same section |
 | `kernel reboot` | `reboot` | "Shell". Both restart without looking at the arguments |
-| `kernel ps` | `ps` | `ps` shows the priority, policy, state and stack (STACK, USED, FILLED), but no CPU share |
+| `kernel ps` | `ps` | `ps` shows the priority, policy, state, stack (STACK, USED, FILLED) and CPU share. The Zephyr version's CPU is a whole-number percentage accumulated since boot, NuttX's a moving average weighted to the last 1–2 seconds, in 0.1 % steps; see "CPU load" |
+| `kernel thread list` (`Total execution cycles`) | `cat /proc/<tid>/critmon` (the second value is the total run time since boot, in seconds) | "CPU load" |
 | `kernel thread stacks` | `ps` (each thread) and `irqstack` (in the format of the `IRQ 00` line) | "Thread priorities and stacks" |
 | `kernel version` | `uname -a` | |
 | `kernel uptime` | `uptime` | |
@@ -1397,7 +1433,7 @@ same as in the Zephyr version is not listed.
 - **Fatal errors**: the report is left in the RAM log and the board restarts by itself
   (`CONFIG_BOARD_RESET_ON_ASSERT=2`). The Zephyr version stays stopped.
 - **Clocks**: the kernel clock, `k_uptime_get()`, `k_cycle_get_*()`, the sensor clock and the time
-  base of the CPU load come from the RP2040 TIMER (1 MHz from the crystal). The Zephyr version uses
+  base of the CPU load and of the CPU column of `ps` come from the RP2040 TIMER (1 MHz from the crystal). The Zephyr version uses
   SysTick from the CPU clock (which falls behind while sending). Both have a 100 µs tickless tick
   with the same rounding of waits. The remaining time slice is carried over, and the time-slice
   wdog stays armed while the thread waits.

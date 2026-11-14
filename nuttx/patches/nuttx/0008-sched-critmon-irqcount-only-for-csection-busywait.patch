@@ -1,0 +1,37 @@
+sched: the critical section monitor needs IRQCOUNT only for its csection and busy-wait parts
+
+Purpose: SCHED_CRITMONITOR selects IRQCOUNT unconditionally.  On a single
+CPU, IRQCOUNT turns enter_critical_section() and leave_critical_section()
+from up_irq_save()/up_irq_restore() into function calls that also check for
+interrupt context and count tcb->irqcount (sched/irq/irq_csection.c), on
+every critical section in the OS.  Without SMP, the only readers of that
+count are the critical section and busy-wait monitors
+(SCHED_CRITMONITOR_MAXTIME_CSECTION or _BUSYWAIT >= 0: nxsched_switch_critmon()
+and the enter/leave_critical_section() versions in irq_csection.c, which
+include/nuttx/irq.h only declares under IRQCOUNT).  The per-task run time
+and the CPU load (SCHED_CRITMONITOR_MAXTIME_THREAD >= 0,
+SCHED_CPULOAD_CRITMONITOR) do not use it.
+
+- sched/Kconfig: select IRQCOUNT only when one of those two monitors is on.
+  SMP and SCHED_INSTRUMENTATION_CSECTION still select it themselves.
+
+The board uses the monitor only for the CPU column of ps
+(boards/arduino-nano-rp2040-connect/configs/imu/defconfig); with both
+monitors off (-1, their defaults) the critical sections stay as they are
+without SCHED_CRITMONITOR.
+Zephyr: the Zephyr build's thread usage (CONFIG_SCHED_THREAD_USAGE) does
+not touch irq_lock()/irq_unlock().
+
+diff --git a/sched/Kconfig b/sched/Kconfig
+index bac8e961..cc005153 100644
+--- a/sched/Kconfig
++++ b/sched/Kconfig
+@@ -922,7 +922,7 @@ config SCHED_IRQMONITOR
+ config SCHED_CRITMONITOR
+ 	bool "Enable Critical Section monitoring"
+ 	default n
+-	select IRQCOUNT
++	select IRQCOUNT if SCHED_CRITMONITOR_MAXTIME_CSECTION >= 0 || SCHED_CRITMONITOR_MAXTIME_BUSYWAIT >= 0
+ 	---help---
+ 		Enables logic that monitors the duration of time that a thread keeps
+ 		interrupts or pre-emption disabled.  These global locks can have

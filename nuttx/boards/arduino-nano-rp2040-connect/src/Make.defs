@@ -44,6 +44,13 @@ CSRCS += nano_oneshot.c
 CSRCS += nano_timerisr.c
 endif
 
+# The perf counter on the TIMER (up_perf_*), for the per-task CPU time of
+# the critical section monitor (the CPU column of ps).
+
+ifeq ($(CONFIG_NANO_PERF),y)
+CSRCS += nano_perf.c
+endif
+
 # The idle loop with the CPU load measurement (cpu_load_get()) in place of
 # the in-tree rp2040_idle.c, which patches/nuttx/0004 leaves out with
 # ARCH_IDLE_CUSTOM.

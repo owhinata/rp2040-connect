@@ -363,16 +363,43 @@ run, with the same steps for both builds (`imu start` from the USB shell, `imu s
 
 | Item | Zephyr build | NuttX build |
 |---|---|---|
-| `cpu_active` while sending | 62.6% and 63.3% (2 runs) | 66.0 to 66.1% (3 runs) |
-| The same while running `ntp status` every 2 seconds | 65.4% (1 run) | 66.7% (1 run) |
-| NTP round trip while sending (median of `last_us` in `ntp status`) | 7.6 ms (27 points) | 8.6 ms (30 points) |
+| `cpu_active` while sending | 62.6% and 63.3% (2 runs) | 67.7 to 67.9% (3 runs) |
+| The same while running `ntp status` every 2 seconds | 65.4% (1 run) | 68.3% and 68.5% (2 runs) |
+| NTP round trip while sending (median of `last_us` in `ntp status`) | 7.6 ms (27 points) | 9.9 ms and 10.0 ms (30 points each, 2 runs) |
 | TCP send (board to PC, 10 seconds) | 3.00 Mbit/s (`zperf`, 1024 bytes at a time, 1 run) | 3.6 to 3.9 Mbit/s (`iperf`, 5 runs) |
 | TCP receive (PC to board, 10 seconds) | 1.57 Mbit/s (`zperf`, 1 run) | 0.95 to 1.03 Mbit/s (`iperf`, 5 runs) |
 
-- The NuttX build uses about 3 points more CPU while sending than the Zephyr build, and its NTP round trip
-  is about 1 ms longer. The cause has not been identified.
+- The NuttX build uses about 5 points more CPU while sending than the Zephyr build, and its NTP round trip
+  is about 2 ms longer. The cause has not been identified.
+- The NuttX values are from the build with the CPU column in `ps`. The build before it gave, with the same
+  steps, a `cpu_active` of 66.0 to 66.1% (3 runs), 66.7% while watching `ntp status` (1 run), and a median
+  NTP round trip of 8.6 ms (30 points).
 - The TCP rates come from different commands (`zperf` in the Zephyr build speaks the iperf 3 protocol, `iperf`
   in the NuttX build the iperf 2 protocol, and they send different sizes at a time), so they are a rough
   comparison.
 - `sensor stream` stops with `Read failed` at higher output data rates in both builds: at 833 Hz and above in
   the Zephyr build, at 3333 Hz and above in the NuttX build (watermark 128, USB console, one run each).
+
+### CPU time per thread while sending
+
+Each thread's share of the total run time of all threads while sending (30 seconds, starting 8 seconds after
+`imu start`). For the Zephyr build it is `Total execution cycles` of `kernel thread list`, for the NuttX build
+the total run time in `/proc/<tid>/critmon`, read from the shell before and after the interval. Both add
+the time at thread switches, and the time of an interrupt handler goes to the thread it interrupted
+(interrupts while idle go to the idle thread, so the idle share does not match 100% − `cpu_active`). One run
+for the Zephyr build, two for the NuttX build. The `cpu_active` of these runs (from `imu start` to
+`imu stop`, including the commands that read the values) was 63.5% for the Zephyr build and 68.8% and 68.3%
+for the NuttX build.
+
+| Thread | Zephyr build | NuttX build |
+|---|---|---|
+| Idle | 41.85% | 34.58%, 35.17% |
+| `imu_raw_mqtt_tid` | 20.39% | 22.83%, 22.28% |
+| `imu_fifo_worker` | 18.53% | 19.09%, 18.82% |
+| `imu_stream_tid` | 16.18% | 17.40%, 17.73% |
+| `nina_event` (NuttX build only: polls the state of the NINA's sockets, retries sends) | – | 3.24%, 3.21% |
+| `sysworkq` | 1.85% | 2.24%, 2.16% |
+| USB (the Zephyr build's `usbd@50110000` and `usbd`; the NuttX build has no USB thread) | 0.63% | – |
+| Shell (the Zephyr build's `shell_uart`, the NuttX build's `nsh`) | 0.38% | 0.36%, 0.35% |
+| `time_sync_tid` | 0.17% | 0.24%, 0.27% |
+| `nina_monitor_tid` | 0.02% | 0.02%, 0.02% |

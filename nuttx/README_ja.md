@@ -74,6 +74,8 @@ NuttX 13.1.0 本体（`nuttx/patches/nuttx/`）と nuttx-apps（`nuttx/patches/a
 | `nuttx/0004-rp2040-make-defs-alarm-arch-idle-custom` | `CONFIG_ALARM_ARCH` のとき `rp2040_timerisr.c`（SysTick の周期割り込み）を、`CONFIG_ARCH_IDLE_CUSTOM` のとき `rp2040_idle.c` をビルドから外す（システム時計とアイドルループをボード側で持つため） |
 | `nuttx/0005-usrsock-dontwait-to-daemon-and-daemon-send-timeout` | usrsock の送受信で、呼び出しが待たないこと（`MSG_DONTWAIT`、非ブロッキングのソケット）をドライバーへの要求に残し、ドライバーが `-ETIME` で応えた送信を `-EAGAIN` で終える。元の usrsock は待つ呼び出しへの `-EAGAIN` を出し直し続けるので、Zephyr 版の「待つ TCP 送信は 10 秒で `EAGAIN`」「NINA が受け取らなかったデータグラムはすぐ `EAGAIN`」を作れず、ブロッキングのソケットへの `MSG_DONTWAIT` も 2 回目で待ってしまうため（`nuttx/drivers/README_ja.md` の「ソケット（usrsock）」） |
 | `nuttx/0006-telnet-crlf-line-end` | Telnet のドライバーが出力の改行を LF CR ではなく CR LF（Telnet の行末。Zephyr 版の Telnet のシェルと同じ）で送る |
+| `nuttx/0007-sched-critmon-cpuload-in-perf-counts` | `ps` の CPU 列（`CONFIG_SCHED_CPULOAD_CRITMONITOR`）の積算を、切り替えのたびに tick（100 µs）へ切り捨てて換算せず、perf のカウンター（TIMER、1 µs）のまま足す。元の換算では 1 tick より短い実行は 0、長い実行も端数が切り捨てられる。また、ARMv6-M ではタスクの終了のときに切り替え前のタスクが NULL で渡され（`up_exit()` が `g_running_tasks[]` を NULL にする）、NULL から読んだ値で全体の積算が負になり、すべての割合が 0.0% になっていたので、NULL のときは何もしない（「CPU 負荷」の節） |
+| `nuttx/0008-sched-critmon-irqcount-only-for-csection-busywait` | `CONFIG_SCHED_CRITMONITOR` が `CONFIG_IRQCOUNT` を選ぶのを、クリティカルセクションと busy-wait の監視（`..._MAXTIME_CSECTION`・`..._BUSYWAIT` が 0 以上）を使うときだけにする。`IRQCOUNT` はすべての `enter_critical_section()` を関数呼び出しにするが、CPU 時間の積算には使わない |
 | `apps/0001-readline-echo-in-readline` | 行の入力中のエコーをシリアルドライバーではなく readline が行う（行に入れた文字と改行だけを返す） |
 | `apps/0002-readline-cr-lf-line-end` | CR、LF、CR LF、LF CR のどれでも 1 回の Enter にする |
 | `apps/0003-readline-ctrl-c` | Ctrl-C で入力中の行を捨てて新しいプロンプトを出す |
@@ -1027,6 +1029,34 @@ Subcommands:
   多い状況（短い間隔の wdog）で値を確かめました。割り込みの入口・出口の処理（タイマー割り込み、wdog、
   次のアラームの設定）も負荷に入ります。
 
+### スレッドごとの CPU 時間（`ps` の CPU 列）
+
+NuttX 標準のクリティカルセクションの監視（`CONFIG_SCHED_CRITMONITOR`）が持つ、スレッドごとの CPU 時間の
+積算を使います（`CONFIG_SCHED_CPULOAD_CRITMONITOR`。パッチ `nuttx/0007`・`nuttx/0008`）。最長時間の監視
+（`CONFIG_SCHED_CRITMONITOR_MAXTIME_*`）は既定の −1 のままで使いません。上の `cpu_load_get()`（`imu status` の
+`cpu_active`）は別の仕組みで、これを有効にしても値の測り方は変わりません。
+
+- スレッドの切り替えのたびに、外れるスレッドへ前の切り替えからの時間を足します。時間の源はボードの perf の
+  カウンター（`src/nano_perf.c`、`CONFIG_NANO_PERF`。TIMER の 1 µs。Cortex-M0+ にはサイクルカウンターが
+  ありません）です。Zephyr 版の `CONFIG_SCHED_THREAD_USAGE` も、切り替え（PendSV）のときだけ CPU の
+  サイクル数を足します。
+- 割り込みの処理の時間は、どちらの版でも割り込まれたスレッドの時間に入ります（アイドル中の割り込みは
+  アイドルスレッドに入ります）。そのため、アイドルスレッドの割合は、割り込みの処理を負荷に数える
+  `cpu_active` の残り（100 % − `cpu_active`）とは一致しません。
+- 読める値:
+  - `ps` の CPU 列と `/proc/<tid>/loadavg`: そのスレッドの割合（0.1 % 単位）。移動平均で、全体の積算が
+    `CONFIG_SCHED_CPULOAD_TIMECONSTANT`（2 秒）を超えるたびに全スレッドの積算を半分にします（常に動いて
+    いれば約 1 秒ごとに半分になり、直近の 1〜2 秒の重みが大きくなります）。`ps` は行ごとに読むので行の
+    合計は 100 % にならないことがあり、`ps` を実行しているシェルの分も入ります。
+  - `/proc/cpuload`: 100 % − アイドルスレッドの割合（同じ移動平均）。
+  - `/proc/<tid>/critmon`: `最長の連続実行時間,起動からの実行時間の合計`（秒、ナノ秒の桁まで）。合計は
+    減らないので、2 回読んだ差から区間の割合を求められます（Zephyr 版の `kernel thread list` の
+    `Total execution cycles` に当たります）。最長の値は読むたびに 0 に戻ります。
+- Zephyr 版の `kernel ps` の CPU は起動からの累積の整数の %、`kernel thread list` の
+  `Total execution cycles` は起動からの累積のサイクル数です。NuttX の `ps` の CPU 列は上の移動平均です。
+- nsh の `top`（同じ値を繰り返し表示する）は無効にしています（Zephyr 版に無いコマンドのため）。
+- PANIC の報告のタスクの一覧にも CPU の列が出ます。
+
 ## スレッドの優先度とスタック
 
 優先度は `NuttX = 118 − Zephyr` で対応させ、`nuttx/drivers/include/priorities.h` に定数（`NANO_PRIO_*`）と
@@ -1087,7 +1117,7 @@ Subcommands:
   入れ子にならないので、どの出口も Zephyr の「入れ子でない割り込みの出口」に当たります。NuttX の
   `CONFIG_STACKCHECK_MARGIN` は切り替えのときにしか確かめず、`CONFIG_DEBUG_ASSERTIONS`（すべての
   DEBUGASSERT）も要るので使いません。
-- `ps` の STACK・USED・FILLED でスタックの使用量を見られます。
+- `ps` の STACK・USED・FILLED でスタックの使用量を、CPU でスレッドごとの CPU 時間の割合（「CPU 負荷」の節）を見られます。
 
 ## Zephyr 版とのコマンドの対応
 
@@ -1118,7 +1148,8 @@ Zephyr 版の README の「シェルコマンド」の表と、Zephyr 版の `he
 | `zperf udp upload <PC> 5201 30 500 500K` | `iperf -c <PC> -u -t 30 -l 500`（速さは指定できない） | 同上 |
 | `zperf tcp download 5201` / `download stop` | `iperf -s -B 0.0.0.0`（1 回の接続で終わる） | 同上 |
 | `kernel reboot` | `reboot` | 「シェル」。どちらも引数を見ずに再起動する |
-| `kernel ps` | `ps` | `ps` は優先度、方式、状態、スタック（STACK・USED・FILLED）を出す。CPU の割合は出さない |
+| `kernel ps` | `ps` | `ps` は優先度、方式、状態、スタック（STACK・USED・FILLED）と CPU の割合を出す。CPU は Zephyr 版が起動からの累積の整数 %、NuttX 版が直近 1〜2 秒の重みが大きい移動平均（0.1 % 単位）。「CPU 負荷」の節 |
+| `kernel thread list`（`Total execution cycles`） | `cat /proc/<tid>/critmon`（2 つ目の値が起動からの実行時間の合計、秒） | 「CPU 負荷」の節 |
 | `kernel thread stacks` | `ps`（各スレッド）と `irqstack`（`IRQ 00` の行と同じ書式） | 「スレッドの優先度とスタック」 |
 | `kernel version` | `uname -a` | |
 | `kernel uptime` | `uptime` | |
@@ -1236,7 +1267,7 @@ NuttX 版は、コマンドの出力、ログ、`imu status` の `errors:` の�
   （Zephyr 版は 4096）。実行時のレベル変更はありません。
 - **異常停止**: 報告を RAM ログに残して自動で再起動します（`CONFIG_BOARD_RESET_ON_ASSERT=2`）。Zephyr 版は
   止まったままです。
-- **時計**: カーネルの時計、`k_uptime_get()`、`k_cycle_get_*()`、センサーの時計、CPU 負荷の時間の源は
+- **時計**: カーネルの時計、`k_uptime_get()`、`k_cycle_get_*()`、センサーの時計、CPU 負荷と `ps` の CPU 列の時間の源は
   RP2040 の TIMER（水晶の 1 MHz）です。Zephyr 版は CPU クロックの SysTick（送信中は遅れる）を使います。
   tick は両方とも 100 µs の tickless で、待ち時間の丸めは同じです。時分割の残り時間は持ち越され、時分割の
   wdog は待ちの間も残ります。

@@ -693,8 +693,17 @@ the SPI at the caller's priority and serializes with `nina_lock`. The lock order
 hook back end). The Zephyr version closes the idle window at interrupt entry, so the time spent in
 interrupts taken while idle counts as load. The NuttX port has its own idle loop: with interrupts
 disabled it reads the TIMER, waits in `WFI`, reads the TIMER again and adds the interval to the idle
-time, and only then enables interrupts (the handler runs after that and counts as load). NuttX's
-own `CONFIG_SCHED_CPULOAD` (sampling at each tick) means something else and is not used.
+time, and only then enables interrupts (the handler runs after that and counts as load).
+`cpu_active` does not use NuttX's own `CONFIG_SCHED_CPULOAD` (sampling at each tick means something
+else, and accounting at switches gives per-thread shares with interrupt time in the interrupted
+thread).
+
+The per-thread share is shown in the CPU column of `ps` (NuttX's own
+`CONFIG_SCHED_CPULOAD_CRITMONITOR`, timed by the TIMER). Like the Zephyr version's
+`CONFIG_SCHED_THREAD_USAGE` (`kernel ps`, `kernel thread list`) it accounts at switches and puts
+interrupt time in the interrupted thread. The `ps` value is a moving average (halved about once a
+second), the Zephyr version's is accumulated since boot. The share over an interval comes from the
+difference of the total run time in `/proc/<tid>/critmon` ("CPU load" in `nuttx/README.md`).
 
 ### 11.5 KV format and moving the values
 

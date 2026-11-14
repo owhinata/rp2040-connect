@@ -1,0 +1,101 @@
+sched: keep the critmon CPU load in perf counts, skip a NULL outgoing task
+
+Purpose: with SCHED_CPULOAD_CRITMONITOR, nxsched_switch_critmon() and
+nxsched_update_critmon() convert each run of a task to system ticks
+(elapsed * CLOCKS_PER_SEC / perf_getfreq()) before adding it to the CPU
+load.  The division rounds down, so every run shorter than a tick (100 us
+here, CONFIG_USEC_PER_TICK) adds nothing and every longer run loses its
+remainder: tasks that run often and briefly (the IMU threads, the NINA
+event thread, interrupt-woken threads) are under-counted and the idle task
+over-counted.  It is also a 64-bit division at every context switch, which
+the Cortex-M0+ does in software.
+
+- sched_critmonitor.c: add the elapsed perf counts as they are.
+- sched_critmonitor.c: return at once when the outgoing task is NULL.  On
+  the ARMv6-M, up_exit() (arch/arm/src/common/arm_exit.c) sets
+  g_running_tasks[] to NULL before the last switch away from an exiting
+  task, and arm_doirq() (arch/arm/src/armv6-m/arm_doirq.c) then calls
+  nxsched_switch_context(NULL, tcb).  nxsched_switch_critmon() read
+  run_start through the NULL pointer (on the RP2040, the boot ROM at
+  address 0) and added the difference to g_cpuload_total: the total went
+  negative, was never scaled back, and every load read 0.0 %.  The
+  exiting task's time was already accounted when nxtask_exit() switched
+  away from it, before its TCB was released, and to->run_start was set
+  then.
+- sched_cpuload.c: with SCHED_CPULOAD_CRITMONITOR, count the time constant
+  (SCHED_CPULOAD_TIMECONSTANT seconds) in perf counts, perf_getfreq() per
+  second.
+
+Only ratios of the counts are read (clock_cpuload(): /proc/cpuload,
+/proc/<pid>/loadavg, the CPU column of ps, the task list of a PANIC
+report), so their meaning does not change.  The board's perf counter is the
+1 MHz TIMER (boards/arduino-nano-rp2040-connect/src/nano_perf.c); the
+counts of a 2-second time constant fit easily in clock_t (64 bits).
+Zephyr: the Zephyr build's thread usage (CONFIG_SCHED_THREAD_USAGE) adds
+the cycles of each run without rounding.
+
+diff --git a/sched/sched/sched_cpuload.c b/sched/sched/sched_cpuload.c
+index 3eb62043..bba533a6 100644
+--- a/sched/sched/sched_cpuload.c
++++ b/sched/sched/sched_cpuload.c
+@@ -48,6 +48,10 @@
+ #    error CONFIG_SCHED_CPULOAD_TICKSPERSEC is not defined
+ #  endif
+ #  define CPULOAD_TICKSPERSEC CONFIG_SCHED_CPULOAD_TICKSPERSEC
++#elif defined(CONFIG_SCHED_CPULOAD_CRITMONITOR)
++/* sched_critmonitor.c accounts the load in perf counts. */
++
++#  define CPULOAD_TICKSPERSEC ((clock_t)perf_getfreq())
+ #else
+ #  define CPULOAD_TICKSPERSEC CLOCKS_PER_SEC
+ #endif
+diff --git a/sched/sched/sched_critmonitor.c b/sched/sched/sched_critmonitor.c
+index 7e12f367..0e302558 100644
+--- a/sched/sched/sched_critmonitor.c
++++ b/sched/sched/sched_critmonitor.c
+@@ -370,13 +370,30 @@ void nxsched_critmon_busywait(bool state, FAR void *caller)
+ 
+ void nxsched_switch_critmon(FAR struct tcb_s *from, FAR struct tcb_s *to)
+ {
+-  clock_t current = perf_gettime();
+-  clock_t elapsed = current - from->run_start;
++  clock_t current;
++  clock_t elapsed;
++
++  /* On the ARMv6-M, up_exit() clears g_running_tasks[] before the switch
++   * away from an exiting task, so arm_doirq() passes from == NULL.  That
++   * task's time was accounted when nxtask_exit() switched away from it
++   * (before its TCB was released), and to->run_start was set then.
++   */
++
++  if (from == NULL)
++    {
++      return;
++    }
++
++  current = perf_gettime();
++  elapsed = current - from->run_start;
+ 
+ #ifdef CONFIG_SCHED_CPULOAD_CRITMONITOR
+-  clock_t tick = elapsed * CLOCKS_PER_SEC / perf_getfreq();
++  /* The load is kept in perf counts (CPULOAD_TICKSPERSEC in
++   * sched_cpuload.c): converting each run to system ticks here would
++   * round every run shorter than a tick down to nothing.
++   */
+ 
+-  nxsched_critmon_cpuload(from, current, tick);
++  nxsched_critmon_cpuload(from, current, elapsed);
+ #endif
+ 
+ #if CONFIG_SCHED_CRITMONITOR_MAXTIME_THREAD >= 0
+@@ -465,9 +482,7 @@ void nxsched_update_critmon(FAR struct tcb_s *tcb)
+   if (tcb->task_state == TSTATE_TASK_RUNNING)
+     {
+ #ifdef CONFIG_SCHED_CPULOAD_CRITMONITOR
+-      clock_t tick = elapsed * CLOCKS_PER_SEC / perf_getfreq();
+-
+-      nxsched_process_taskload_ticks(tcb, tick);
++      nxsched_process_taskload_ticks(tcb, elapsed);
+ #endif
+ 
+       tcb->run_start = current;
