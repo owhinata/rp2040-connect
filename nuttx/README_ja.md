@@ -32,7 +32,7 @@ source nuttx/script/setup.sh
 |---|---|---|
 | `nuttx/nuttx` | NuttX 本体 | タグ `nuttx-13.1.0`（shallow clone） |
 | `nuttx/nuttx-apps` | NuttX のアプリ | タグ `nuttx-13.1.0`（shallow clone） |
-| `nuttx/pico-sdk` | Raspberry Pi Pico SDK。boot2（flash の second stage）のビルドにだけ使います | タグ `2.2.0`（shallow clone、サブモジュールなし） |
+| `nuttx/pico-sdk` | Raspberry Pi Pico SDK のうち、boot2（flash の second stage）のビルドが読む部分だけ（boot2 のソースと `pad_checksum`、その include ディレクトリ。約 4 MB）。全体を取得済みの `nuttx/pico-sdk` があればそのまま使うので、小さくするには一度削除してから `setup.sh` を読み込み直します | タグ `2.2.0`（shallow の部分取得と sparse checkout、サブモジュールなし） |
 | `nuttx/toolchain/` | Arm GNU Toolchain（arm-none-eabi、x86_64 Linux 用） | 13.2.Rel1（SHA-256 を検証） |
 | `nuttx/.venv` | Python の venv。NuttX の `make menuconfig`・`olddefconfig` が使う kconfiglib | kconfiglib 14.1.0 |
 | `nuttx/stmemsc/` | ST の LSM6DSO レジスタドライバー（`lsm6dso_reg.c`、`lsm6dso_reg.h`） | lsm6dso-pid v3.2.2（Zephyr の hal_st と同じ内容。SHA-256 を検証） |

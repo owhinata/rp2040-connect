@@ -35,7 +35,7 @@ the versions are pinned at the top of the script.
 |---|---|---|
 | `nuttx/nuttx` | NuttX | tag `nuttx-13.1.0` (shallow clone) |
 | `nuttx/nuttx-apps` | NuttX applications | tag `nuttx-13.1.0` (shallow clone) |
-| `nuttx/pico-sdk` | Raspberry Pi Pico SDK, used only to build boot2 (the flash second stage) | tag `2.2.0` (shallow clone, no submodules) |
+| `nuttx/pico-sdk` | The part of the Raspberry Pi Pico SDK that the build of boot2 (the flash second stage) reads: the boot2 source with `pad_checksum` and its include directories, about 4 MB. A full `nuttx/pico-sdk` that is already there is used as it is; remove it and source `setup.sh` again to get the small one | tag `2.2.0` (shallow partial clone with a sparse checkout, no submodules) |
 | `nuttx/toolchain/` | Arm GNU Toolchain (arm-none-eabi, for x86_64 Linux) | 13.2.Rel1 (SHA-256 checked) |
 | `nuttx/.venv` | Python venv with kconfiglib, used by NuttX's `make menuconfig` and `olddefconfig` | kconfiglib 14.1.0 |
 | `nuttx/stmemsc/` | ST's LSM6DSO register driver (`lsm6dso_reg.c`, `lsm6dso_reg.h`) | lsm6dso-pid v3.2.2 (the same content as Zephyr's hal_st; SHA-256 checked) |

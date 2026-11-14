@@ -18,6 +18,24 @@ _nuttx_setup() {
   # Documentation/platforms/arm/rp2040/index.rst and used by NuttX CI.
   local pico_sdk_tag=2.2.0
   local pico_sdk_commit=a1438dff1d38bd9c65dbd693f0e5db4b9ae91779
+  # Only what NuttX's boot2 build reads (arch/arm/src/rp2040/boot2/Make.defs:
+  # the second stage source with pad_checksum, and its include directories)
+  # is checked out, about 4 MB instead of the SDK's 31 MB.  A full clone
+  # that is already there is used as it is; remove nuttx/pico-sdk to get
+  # the small one.
+  local -a pico_sdk_paths=(
+    /LICENSE.TXT
+    /src/rp2040/boot_stage2/
+    /src/rp2040/hardware_regs/include/
+    /src/rp2040/pico_platform/include/
+    /src/rp2_common/hardware_base/include/
+    /src/rp2_common/pico_platform_common/include/
+    /src/rp2_common/pico_platform_compiler/include/
+    /src/rp2_common/pico_platform_sections/include/
+    /src/rp2_common/pico_platform_panic/include/
+    /src/common/pico_base_headers/include/
+    /src/boards/include/boards/pico.h
+  )
   # Arm GNU Toolchain, the version used by NuttX CI (tools/ci/platforms/ubuntu.sh).
   local arm_gnu_version=13.2.rel1
   local arm_gnu_dirname=arm-gnu-toolchain-13.2.Rel1-x86_64-arm-none-eabi
@@ -89,6 +107,35 @@ _nuttx_setup() {
       printf 'Tag %s of %s is %s, expected %s.\n' "$tag" "$url" "$head" "$commit" >&2
       return 1
     fi
+    mv "${dir}.tmp" "$dir"
+  }
+
+  # Like _nuttx_clone, but checks out only the given paths (sparse checkout
+  # patterns) and downloads only their files (a partial clone).
+  _nuttx_clone_sparse() {  # url tag commit dir path...
+    local url=$1 tag=$2 commit=$3 dir=$4 head
+    shift 4
+    if [[ -d "${dir}/.git" ]]; then
+      head="$(git -C "$dir" rev-parse HEAD 2>/dev/null)"
+      if [[ "$head" != "$commit" ]]; then
+        printf 'Note: %s is at %s, not %s (%s); leaving it as it is.\n' \
+          "$dir" "${head:-unknown}" "$commit" "$tag" >&2
+      fi
+      return 0
+    fi
+    if [[ -e "$dir" ]]; then
+      printf '%s exists but is not a Git clone; remove it and retry.\n' "$dir" >&2
+      return 1
+    fi
+    rm -rf "${dir}.tmp"
+    git -c advice.detachedHead=false clone --depth 1 --filter=blob:none --sparse \
+      --branch "$tag" "$url" "${dir}.tmp" || return 1
+    head="$(git -C "${dir}.tmp" rev-parse HEAD)"
+    if [[ "$head" != "$commit" ]]; then
+      printf 'Tag %s of %s is %s, expected %s.\n' "$tag" "$url" "$head" "$commit" >&2
+      return 1
+    fi
+    git -C "${dir}.tmp" sparse-checkout set --no-cone "$@" || return 1
     mv "${dir}.tmp" "$dir"
   }
 
@@ -169,8 +216,8 @@ _nuttx_setup() {
     "${root}/nuttx" || return 1
   _nuttx_clone https://github.com/apache/nuttx-apps.git "$nuttx_tag" "$apps_commit" \
     "${root}/nuttx-apps" || return 1
-  _nuttx_clone https://github.com/raspberrypi/pico-sdk.git "$pico_sdk_tag" "$pico_sdk_commit" \
-    "${root}/pico-sdk" || return 1
+  _nuttx_clone_sparse https://github.com/raspberrypi/pico-sdk.git "$pico_sdk_tag" "$pico_sdk_commit" \
+    "${root}/pico-sdk" "${pico_sdk_paths[@]}" || return 1
   for f in src/rp2040/boot_stage2/boot2_at25sf128a.S src/rp2040/boot_stage2/pad_checksum; do
     if [[ ! -f "${root}/pico-sdk/${f}" ]]; then
       printf 'pico-sdk lacks %s.\n' "$f" >&2
@@ -274,7 +321,7 @@ _nuttx_setup() {
 
 _nuttx_setup
 _nuttx_setup_status=$?
-unset -f _nuttx_setup _nuttx_fetch _nuttx_sha256_ok _nuttx_clone _nuttx_patch _nuttx_link
+unset -f _nuttx_setup _nuttx_fetch _nuttx_sha256_ok _nuttx_clone _nuttx_clone_sparse _nuttx_patch _nuttx_link
 if (( _nuttx_setup_status != 0 )); then
   unset _nuttx_setup_status
   return 1
