@@ -288,6 +288,7 @@ given by name (the default is the gateway).
 | `lsm6dso/lsm6dso_stream.c`, `lsm6dso_fifo_irq.[ch]` | The FIFO stream (below). Unchanged copies of the Zephyr version's files |
 | `lsm6dso/lsm6dso_compat.c` | Single reads through RTIO (the fallback for a submission that is not a stream). A copy of the Zephyr version's file with only the log include and level name replaced |
 | `lsm6dso/lsm6dso_fifo_decoder.[ch]` | The decoders of the stream's and the single reads' buffers (`get_decoder`). Unchanged copies |
+| `lsm6dso/lsm6dso_cal.[ch]`, `lsm6dso_zero.[ch]` | The conversion to physical units with the calibration, and the tracking of the gyro bias at rest (below). Unchanged copies of the Zephyr version's files |
 | the board's `src/nano_lsm6dso.[ch]` | Makes I2C0 the compatibility layer's bus device (`i2c0`, 100 kHz) and initializes `lsm6dsox` (from `nano_bringup()`) |
 | the board's `src/nano_gpio.c` | GPIO bank 0 for the compatibility layer's `gpio0` (input set-up, levels, edge and level interrupts); `<nano_gpio.h>` (`nuttx/drivers/include`) |
 
@@ -313,6 +314,18 @@ The replacements (the same table is at the top of `lsm6dso.c`):
   `_TRIGGER`, `_ENABLE_TEMP`) and not built there. Their `#ifdef` parts are kept in the copy.
 - The FIFO read time (`transfer_time_ns` in the statistics) is measured with the TIMER (1 µs
   steps); the Zephyr version uses the CPU clock (SysTick, 8 ns steps).
+
+### Conversion to physical units and calibration
+
+The conversion (`lsm6dso_cal.c`), the calibration lookup (`lsm6dso_cal_set_lookup()`,
+`lsm6dso_cal_reload()`, `lsm6dso_cal_status()`), taking the bias again on the spot
+(`lsm6dso_cal_zero()`) and the tracking during a stream (`lsm6dso_zero.c`) are the Zephyr
+version's code and behave the same (the Zephyr version's driver notes, "Conversion to physical
+units and calibration"). The driver does not read the KV store. The lookup function is registered
+by `nuttx/apps/imu/imu_cal.c` (a copy of the Zephyr version's `src/imu_cal.c`) in init's
+`imu_cal_init()`; the driver calls it when it is registered, on `imu cal reload` and when a range
+is set. The calibration applies to the output of the single reads (`sensor_channel_get()`) and of
+the FIFO decoder, not to the RAW the acquisition service sends over MQTT.
 
 ### FIFO stream
 

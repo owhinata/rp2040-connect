@@ -10,8 +10,8 @@ flashing script, the RAM log, the key-value store (`kv`), the SPI link to the NI
 name resolution, I2C0 (with DMA), the LSM6DSOX driver with its FIFO stream, the IMU
 acquisition service (`imu`), the Wi-Fi network device (`wapi`, `ifconfig`), stored Wi-Fi
 credentials with automatic reconnection (`wifi cred`), the shell over Wi-Fi (Telnet),
-throughput measurement (`iperf`), time synchronization (`ntp`), and sending over MQTT. The
-calibration (`imu cal`) is still a stub (see "IMU acquisition (`imu`)").
+throughput measurement (`iperf`), time synchronization (`ntp`), sending over MQTT, and the
+calibration (`imu cal`).
 
 ## Setup
 
@@ -382,9 +382,8 @@ written back). For Wi-Fi it sends `wifi cred add -s <SSID> -k 1 -p <password>` (
 nothing on success, as in the Zephyr version) and `wifi cred auto_connect`. The credentials cannot
 be carried over from the Zephyr version's flash (the stored formats differ), so the password is
 typed then. With 2 networks already stored, `wifi cred add` fails with
-`Failed to add network credentials, err: -105` (delete one with `wifi cred delete` first). After calibration values it sends `imu cal reload`; `imu cal` of the NuttX port is
-still a stub that fails, so the script ends with an error there, after the values have been
-written and read back.
+`Failed to add network credentials, err: -105` (delete one with `wifi cred delete` first). After calibration values it sends `imu cal reload` and checks that the keys written back are
+used (`calibrated`), as with the Zephyr version (see "Calibration (`imu cal`)").
 
 ## NINA-W102 (`nina`)
 
@@ -840,16 +839,50 @@ Subcommands:
   `imu_cal_init()` (on failure `Could not set up the IMU calibration: <value>`) →
   `time_sync_init()` → `wifi_profile_init()`.
 
-**Stubs for now** (`nuttx/apps/imu/*_null.c`, replaced by its port):
-
-| Part | Stub | Behavior |
-|---|---|---|
-| Calibration (`imu_cal.h`) | `imu_cal_null.c` | `imu_cal_init()` does nothing and succeeds. `imu cal` (also `reload` and `zero`) prints `Calibration is not available in this build yet` and fails (`imu cal zero` during a measurement is refused with the Zephyr version's message) |
-
 Checked on the board (transport stub, no network, 6667 Hz, watermark 128, 1 MHz) with `imu start`
 → 10 s → `imu stop` four times (one right after flashing) and 60 s once: every item of `errors` and
 `fifo`, every anomaly count of `time`, and the `i2c_dma` errors and fallbacks are 0 (before the
 MQTT transport was added).
+
+### Calibration (`imu cal`)
+
+`nuttx/apps/imu/imu_cal.c` is a copy of the Zephyr version's `src/imu_cal.c`; side by side in
+`diff`, the only differences are the leading comment and the include of `<nuttx/config.h>` (the
+value format, `imu_cal_codec.c` and `imu_cal.h`, are unchanged copies). The KV keys
+(`imu.cal.accel.<ug/LSB>`, `imu.cal.gyro.<udps/LSB>`) and values (56 bytes), using only the key of
+the current sensitivity, and the syntax, output and error messages of `imu cal`,
+`imu cal reload` and `imu cal zero` are the Zephyr version's (the Zephyr version's README,
+"Applying a calibration", and the design document, section 10).
+
+```text
+nsh$ imu cal
+conversion:
+  accel: calibrated (244 ug/LSB, key imu.cal.accel.244)
+  gyro:  calibrated (70000 udps/LSB, key imu.cal.gyro.70000)
+  gyro bias: 7.65 -4.25 -0.81 LSB (stored, 0 rejected)
+```
+
+- init calls `imu_cal_init()` after `kv_store_init()`, which gives the driver the function that
+  looks up the calibration for a sensitivity (where the Zephyr version's `main()` does). The
+  driver reads the KV store when it is given the function, on `imu cal reload`, and when a range
+  is set.
+- The calibration applies to the driver's physical values only (single reads,
+  `sensor_channel_get()`, and the FIFO decoder), **not to the RAW sent over MQTT** (as in the
+  Zephyr version). The NuttX port has no `sensor` command yet.
+- `imu cal zero` is refused during a measurement with
+  `A measurement is running; it tracks the gyro bias itself`. `imu cal` and `imu cal reload` work
+  during a measurement. A gyro bias taken again is kept in RAM only.
+- Errors go to stderr and the exit status is 1 (as with `kv`; 0 on success). With two or more
+  arguments it prints `cal: wrong parameter count` and the help (as the Zephyr shell does).
+
+Checked on the board: the loading at boot, every subcommand of `imu cal` and the refusal during a
+measurement (USB and Telnet), the switch to `nominal` on a range change and back (with a
+temporary test command), the check `script/kv_transfer.py restore` makes on the reply to
+`imu cal reload` (the same code run without writing to the KV store), and
+`host/.venv/bin/imu-host write` (writing the same values; Telnet, and USB with the device given:
+the automatic USB detection of `imu-host` does not know the NuttX port yet). The output of
+`imu cal` right after boot is character for character the output recorded from the Zephyr
+version.
 
 ### MQTT transport
 
@@ -1105,7 +1138,7 @@ nuttx/script/host_tests.sh
 This builds and runs the tests of the OS-independent common sources on the PC. It needs no board,
 only the host's `cc` (C17). Nor does it need the setup script, except that `lsm6dso_driver` uses
 ST's `lsm6dso_reg.c` that `script/setup.sh` fetches (`nuttx/stmemsc/`); without it, that test
-prints `skip` and is left out. The tests check FIFO word parsing,
+(and `imu_cal`) prints `skip` and is left out. The tests check FIFO word parsing,
 batches and payloads, the send queue, the status and info JSON, time mapping, the mapping from the sensor
 tick to the clock, the NTP estimate, FIFO packet decoding, conversion to physical units and the
 stored calibration format, gyro zero tracking at rest, the board's time conversions
@@ -1123,7 +1156,7 @@ socket calls, CONNECT and the CONNACK wait, the order of info, status and batch 
 driver (`nano_i2c_dw`), the command words of the I2C0 DMA reads (`i2c_dma_commands`), the
 output of the `i2c_dma` command (`i2c_dma_app`, with the driver side replaced by fakes), the
 LSM6DSO FIFO control (`fifo_hw`), the LSM6DSO driver and its FIFO stream (`lsm6dso_driver`), the
-stream's state machine (`stream_stop`), the compatibility layer's RTIO (`zephyr_rtio`) and
+loading of the calibration and the output of `imu cal` (`imu_cal`), the stream's state machine (`stream_stop`), the compatibility layer's RTIO (`zephyr_rtio`) and
 work items (`zephyr_work`), and the parts of the layer added for the acquisition service
 (`zephyr_compat_misc`). Each test is built and run in turn,
 and the script stops at the first failure. Build products go to a temporary directory that is
@@ -1147,7 +1180,8 @@ and the declaration of `wifi_reconnect_tid` (without `const`) changed; `nuttx/ap
 registration at the end replaced; `nuttx/apps/imu/time_sync.c` is a copy with only the calls into
 the system, the body of `time_sync_mono_us()`, the Kconfig names and the command registration at
 the end replaced; `nuttx/apps/imu/imu_raw_mqtt.c` is a copy with only a leading comment and the
-includes of NuttX's headers added; `imu_raw_mqtt.h` is a copy with `<zephyr/net/net_ip.h>` replaced
+includes of NuttX's headers added; `nuttx/apps/imu/imu_cal.c` is a copy with only a leading
+comment and the include of `<nuttx/config.h>` added; `imu_raw_mqtt.h` is a copy with `<zephyr/net/net_ip.h>` replaced
 by `<netinet/in.h>`.
 
 `nuttx/tests/fakes/nuttx/config.h` (empty) is the NuttX port's own: it lets a host test build a
@@ -1228,6 +1262,16 @@ INT1 interrupt), batches on an INT1 edge and on the 20 ms look, a second stream 
 another trigger (`-ENOTSUP`), the graceful stop (pause, the last partial batch, `-ECANCELED`, the
 registers back), a cancellation, an overrun (`-EOVERFLOW`), and a single read through the RTIO
 work queue with the decoders.
+
+`nuttx/tests/imu_cal.c` is a test of the NuttX port only too. It includes `lsm6dso_driver.c` for
+the same fake sensor (running the checks of `lsm6dso_driver` first) and builds
+`apps/imu/imu_cal.c` with a fake KV store. It checks the loading at boot (two keys), that a stored
+value is applied to the single reads (`M·(raw−bias)`), that a value of the wrong length, version,
+kind, sensitivity or reserved bytes, or one too long, leaves the nominal conversion, that a range
+change reads the key of the other sensitivity and back, `reload` (a deleted key is nominal again,
+a tracked bias is dropped), `zero` (at rest, far from the stored bias, during a stream, on an I2C
+error), the usage error, an IMU that is not ready, and every line of `imu cal` (including the
+rounding of the bias to two decimals) with where it goes (stdout or stderr).
 
 `nuttx/tests/zephyr_rtio.c` and `zephyr_work.c` are tests of the NuttX port only too: they check
 the compatibility layer's RTIO and work items on the fake kernel. The first uses a context of

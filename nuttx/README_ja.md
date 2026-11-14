@@ -8,7 +8,7 @@
 やり取り（`nina version`）、NINA のソケット（usrsock。制御系と送受信）と名前解決、I2C0（DMA を含む）、
 LSM6DSOX のドライバーと FIFO のストリーム、IMU の取得サービス（`imu`）、Wi-Fi のネットワークデバイス
 （`wapi`・`ifconfig`）、Wi-Fi の資格情報の保存と自動再接続（`wifi cred`）、Wi-Fi 経由のシェル（Telnet）、
-速度の測定（`iperf`）、時刻同期（`ntp`）、MQTT での送信です。校正（`imu cal`）はまだスタブです（「IMU の取得（`imu`）」の節）。
+速度の測定（`iperf`）、時刻同期（`ntp`）、MQTT での送信、校正値の適用（`imu cal`）です。
 
 ## 環境構築
 
@@ -356,8 +356,8 @@ Wi-Fi は、`wifi cred add -s <SSID> -k 1 -p <パスワード>`（成功する�
 `wifi cred auto_connect` を送ります。資格情報は Zephyr 版の flash の内容からは移せないので（保存形式が違う）、
 パスワードはそのとき入力します。資格情報がすでに 2 件あると、`wifi cred add` は
 `Failed to add network credentials, err: -105` で失敗します（先に `wifi cred delete` で消す）。
-校正値を書いた後に `imu cal reload` を送りますが、今の NuttX 版の `imu cal` はスタブでエラーを返すので、
-書き込みと読み返しが済んだ後、そこでエラーになって終わります。
+校正値を書いた後に `imu cal reload` を送り、書き戻したキーが `calibrated` で使われていることを確かめます
+（Zephyr 版と同じ。「校正（`imu cal`）」の節）。
 
 ## NINA-W102（`nina`）
 
@@ -754,15 +754,40 @@ Subcommands:
 - init は Zephyr 版の `main()` と同じ順に `kv_store_init()` → `imu_cal_init()`（失敗すると
   `Could not set up the IMU calibration: <値>`）→ `time_sync_init()` → `wifi_profile_init()` を呼びます。
 
-**まだスタブの部分**（`nuttx/apps/imu/*_null.c`。移植で本物に置き換えます）:
-
-| 部分 | スタブ | 振る舞い |
-|---|---|---|
-| 校正（`imu_cal.h`） | `imu_cal_null.c` | `imu_cal_init()` は何もせず成功します。`imu cal`（`reload`・`zero` も）は `Calibration is not available in this build yet` を出して失敗します（測定中の `imu cal zero` は Zephyr 版と同じ拒否の文） |
-
 実機で（送信スタブ、ネットワークなし、6667 Hz、ウォーターマーク 128、1 MHz）、`imu start` → 10 秒 →
 `imu stop` を 4 回（書き込み直後の 1 回を含む）と 60 秒を 1 回行い、`errors`・`fifo` の各項目・`time` の
 異常の数と、`i2c_dma` のエラーとフォールバックが 0 であることを確かめました（MQTT の送信を入れる前）。
+
+### 校正（`imu cal`）
+
+`nuttx/apps/imu/imu_cal.c` は Zephyr 版の `src/imu_cal.c` の写しで、`diff` で並べると違いは先頭の説明と
+`<nuttx/config.h>` のインクルードだけです（値の形式の `imu_cal_codec.c`・`imu_cal.h` は無変更の写し）。
+KV のキー（`imu.cal.accel.<µg/LSB>`、`imu.cal.gyro.<µdps/LSB>`）と値（56 バイト）、現在の感度のキーだけを
+使うこと、`imu cal`・`imu cal reload`・`imu cal zero` の構文・出力・エラーの文は Zephyr 版と同じです
+（Zephyr 版の README の「校正値の適用」、設計書 §10）。
+
+```text
+nsh$ imu cal
+conversion:
+  accel: calibrated (244 ug/LSB, key imu.cal.accel.244)
+  gyro:  calibrated (70000 udps/LSB, key imu.cal.gyro.70000)
+  gyro bias: 7.65 -4.25 -0.81 LSB (stored, 0 rejected)
+```
+
+- init が `kv_store_init()` の後に `imu_cal_init()` を呼び、ドライバーに「感度から校正値を引く関数」を
+  登録します（Zephyr 版の `main()` と同じ位置）。ドライバーは登録時、`imu cal reload`、レンジの設定時に
+  KV を読みます。
+- 校正値が掛かるのはドライバーの物理量の出力（単発取得の `sensor_channel_get()` と FIFO のデコーダー）だけで、
+  **MQTT で送る RAW には掛かりません**（Zephyr 版と同じ）。NuttX 版にはまだ `sensor` コマンドがありません。
+- `imu cal zero` は計測中は `A measurement is running; it tracks the gyro bias itself` で拒否します。
+  計測中も `imu cal` と `imu cal reload` は使えます。取り直した角速度のバイアスは RAM にだけ持ちます。
+- エラーは stderr に出て、終了状態は 1 です（`kv` と同じ。成功は 0）。引数が 2 つ以上なら
+  `cal: wrong parameter count` とヘルプです（Zephyr のシェルと同じ）。
+
+実機で、起動時の読み込み、`imu cal` の各サブコマンドと計測中の拒否（USB と Telnet）、レンジを変えたときの
+`nominal` への切り替えと戻り（一時的な試験コマンドで）、`script/kv_transfer.py restore` が `imu cal reload` の応答に行う判定（同じ処理を
+KV に書かずに実行）、`host/.venv/bin/imu-host write`（同じ値の書き込み。Telnet と、デバイスを指定した USB。`imu-host` の USB の自動検出はまだ NuttX 版に対応していません）を
+確かめました。起動直後の `imu cal` の出力は Zephyr 版で記録した出力と文字単位で同じです。
 
 ### MQTT の送信
 
@@ -981,7 +1006,7 @@ nuttx/script/host_tests.sh
 
 OS に依存しない共通ソースのテストを、PC 上でビルドして実行します。ボードは不要で、ホストの `cc`（C17）だけを
 使います。セットアップスクリプトも不要ですが、`lsm6dso_driver` だけは `script/setup.sh` が取得する ST の
-`lsm6dso_reg.c`（`nuttx/stmemsc/`）を使い、無ければ `skip` と出して飛ばします。FIFO ワードの解析、バッチとペイロード、送信キュー、
+`lsm6dso_reg.c`（`nuttx/stmemsc/`）を使い、無ければ `skip` と出して飛ばします（`imu_cal` も同じ）。FIFO ワードの解析、バッチとペイロード、送信キュー、
 status と info の JSON、時刻の対応付け、センサーの tick と時計の対応、NTP の推定、FIFO パケットの復号、物理単位への
 換算と校正値の保存形式、静止中のジャイロのゼロ点の追従、ボードの時間の換算（`nano_timeconv`）、
 CPU 負荷の計算（`nano_cpuload`）、RAM ログのリング・`dmesg` の取り出し・行の前置き・頻度制限（`log_ram`）、
@@ -993,7 +1018,8 @@ NINA の SPI の転送層（`nina_spi`）、NINA のソケットの表と命令�
 CONNECT と CONNACK の待ち・info と status とバッチの順と 1 回の `sendmsg()`・status と入力の間隔・捨てたバッチ・エラーの経路
 （`imu_raw_mqtt`。ソケット、時計、ネットワークのインターフェースは偽物）、I2C0 のドライバーの OS に依存しない部分（`nano_i2c_dw`）、I2C0 の DMA
 読み出しのコマンド語（`i2c_dma_commands`）、`i2c_dma` コマンドの出力（`i2c_dma_app`。ドライバー側は偽物）、
-LSM6DSO の FIFO 制御（`fifo_hw`）、LSM6DSO のドライバーと FIFO のストリーム（`lsm6dso_driver`）、ストリームの
+LSM6DSO の FIFO 制御（`fifo_hw`）、LSM6DSO のドライバーと FIFO のストリーム（`lsm6dso_driver`）、校正値の読み込みと
+`imu cal` の出力（`imu_cal`）、ストリームの
 状態機械（`stream_stop`）、互換層の RTIO（`zephyr_rtio`）とワーク（`zephyr_work`）、取得サービスのために
 足した互換層の部品（`zephyr_compat_misc`）を確かめます。テストは 1 つずつビルドして
 実行し、失敗したところで止まります。ビルドの生成物は一時ディレクトリに置き、終了時に消します。
@@ -1015,6 +1041,7 @@ Zephyr 版を直したときは、写しも同じ内容に置き換えます。
 `nuttx/apps/imu/imu_stream.c` は OS を呼ぶ部分と末尾のコマンドの登録だけを置き換えた写し、
 `nuttx/apps/imu/time_sync.c` は OS を呼ぶ部分、`time_sync_mono_us()` の中身、Kconfig の名前と末尾のコマンドの登録だけを置き換えた写し、
 `nuttx/apps/imu/imu_raw_mqtt.c` は先頭の説明と NuttX のヘッダーのインクルードだけを足した写し、
+`nuttx/apps/imu/imu_cal.c` は先頭の説明と `<nuttx/config.h>` のインクルードだけを足した写し、
 `imu_raw_mqtt.h` は `<zephyr/net/net_ip.h>` を `<netinet/in.h>` にしただけの写しです。
 
 `nuttx/tests/fakes/nuttx/config.h`（空）は NuttX 版だけのもので、`<nuttx/config.h>` を読む `nuttx/apps` の
@@ -1078,6 +1105,14 @@ Zephyr のフラグへの変換、`IC_DATA_CMD` に書く語の列（`i2c` ツ�
 20 ms の見直しでのバッチ、2 本目（`-EBUSY`）とほかのトリガー（`-ENOTSUP`）、穏やかな停止（一時停止、最後の
 端数のバッチ、`-ECANCELED`、レジスターの戻り）、キャンセル、オーバーラン（`-EOVERFLOW`）、RTIO の
 ワークキューでの単発取得とデコーダーを確かめます。
+
+`nuttx/tests/imu_cal.c` も NuttX 版だけのテストです。`lsm6dso_driver.c` を読み込んで同じ偽のセンサーを使い
+（`lsm6dso_driver` の確認を先に一通り動かします）、`apps/imu/imu_cal.c` を偽の KV と一緒にビルドして確かめます:
+起動時の読み込み（キー 2 つ）、保存した値が単発取得の出力に掛かること（`M·(raw−bias)`）、長さ・版・種類・感度・
+予約バイトが合わない値や長すぎる値は公称の変換になること、レンジの変更で別の感度のキーを読むことと戻ること、
+`reload`（消したキーは公称に戻る、追従したバイアスを捨てる）、`zero`（静止時、保存したバイアスから遠い、
+ストリーム中、I2C のエラー）、使い方の誤り、IMU が準備できていないとき、`imu cal` の各行（バイアスの小数 2 桁の
+丸めを含む）と出力先（stdout と stderr）。
 
 `nuttx/tests/zephyr_rtio.c` と `zephyr_work.c` も NuttX 版だけのテストで、互換層の RTIO とワークを偽の
 カーネルの上で確かめます。前者は `imu_stream.c` と同じ寸法のコンテキストと偽の iodev で、メモリープール

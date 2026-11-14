@@ -258,6 +258,7 @@ Zephyr 版はソケットのオフロード（`drivers/nina/nina_socket.c`）で
 | `lsm6dso/lsm6dso_stream.c`、`lsm6dso_fifo_irq.[ch]` | FIFO のストリーム（下）。Zephyr 版の同名ファイルを変更せずに写したもの |
 | `lsm6dso/lsm6dso_compat.c` | 単発取得の RTIO 版（ストリームでない submit のフォールバック）。Zephyr 版の写しで、ログのインクルードとレベルの名前だけを置き換え |
 | `lsm6dso/lsm6dso_fifo_decoder.[ch]` | ストリームと単発取得のバッファーのデコーダー（`get_decoder`）。変更なしの写し |
+| `lsm6dso/lsm6dso_cal.[ch]`、`lsm6dso_zero.[ch]` | 物理量への変換と校正値の適用、静止時の角速度のバイアスの追従（下）。Zephyr 版の同名ファイルを変更せずに写したもの |
 | ボードの `src/nano_lsm6dso.[ch]` | I2C0 を互換層のバスのデバイス（`i2c0`、100 kHz）にし、`lsm6dsox` を初期化する（`nano_bringup()` から） |
 | ボードの `src/nano_gpio.c` | 互換層の `gpio0` のための GPIO バンク 0（入力の設定、レベルの読み出し、エッジ・レベルの割り込み）。`<nano_gpio.h>`（`nuttx/drivers/include`） |
 
@@ -283,6 +284,16 @@ Zephyr 版はソケットのオフロード（`drivers/nina/nina_socket.c`）で
   ビルドされていません。該当する `#ifdef` の部分は写しに残してあります。
 - `fifo_read` の転送時間（統計の `transfer_time_ns`）は TIMER（1 µs 単位）で測ります。Zephyr 版は CPU の
   クロック（SysTick、8 ns 単位）です。
+
+### 物理量への変換と校正
+
+変換（`lsm6dso_cal.c`）、校正値の参照（`lsm6dso_cal_set_lookup()`・`lsm6dso_cal_reload()`・
+`lsm6dso_cal_status()`）、その場でのバイアスの取り直し（`lsm6dso_cal_zero()`）、ストリーム中の追従
+（`lsm6dso_zero.c`）は Zephyr 版のコードのままで、動作も同じです（Zephyr 版のドライバー説明の
+「物理量への変換と校正」）。ドライバーは KV を読みません。校正値を引く関数は `nuttx/apps/imu/imu_cal.c`
+（Zephyr 版の `src/imu_cal.c` の写し）が init の `imu_cal_init()` で登録し、ドライバーは登録時、
+`imu cal reload`、レンジの設定時にそれを呼びます。校正値が掛かるのは単発取得の `sensor_channel_get()` と
+FIFO のデコーダーの出力で、取得サービスが MQTT で送る RAW には掛かりません。
 
 ### FIFO のストリーム
 

@@ -31,9 +31,10 @@ MAINSRC   = imu_stream.c
 CSRCS    += imu_raw_batch.c imu_raw_packet.c imu_raw_time.c imu_tick_clock.c
 CSRCS    += imu_raw_queue.c
 
-# Stub, replaced by the port of imu_cal.c (T22).
+# The calibration: "imu cal" and the lookup of the stored values for the
+# LSM6DSO driver (imu_cal.c, with the value format in imu_cal_codec.c).
 
-CSRCS    += imu_cal_null.c
+CSRCS    += imu_cal.c imu_cal_codec.c
 
 # The MQTT transport (NANO_IMU_RAW_MQTT: imu_raw_mqtt.c with its JSON
 # messages in imu_raw_status.c, on the minimal MQTT client mqtt_min.c and

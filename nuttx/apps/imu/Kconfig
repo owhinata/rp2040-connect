@@ -27,8 +27,9 @@ config NANO_APP_IMU
 		nuttx/drivers/compat): the thread imu_stream_tid (Zephyr
 		priority 9, NuttX 109, 2048-byte stack), which the init task
 		starts at boot, and the "imu start|stop|status|cal" command
-		with the Zephyr build's syntax and output.  The calibration is
-		a stub for now (imu_cal_null.c: no calibration command); the
+		with the Zephyr build's syntax and output, and the calibration
+		(imu_cal.c, the Zephyr build's src/imu_cal.c: the stored values
+		of the key-value store for the LSM6DSO driver, "imu cal"); the
 		MQTT transport is NANO_IMU_RAW_MQTT (imu_raw_mqtt_null.c
 		without it: no network) and the time synchronization
 		NANO_TIME_SYNC (time_sync_null.c without it: no server time).

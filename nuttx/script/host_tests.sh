@@ -57,8 +57,27 @@ if [[ -f stmemsc/lsm6dso_reg.c ]]; then
         -o "$out/lsm6dso_driver"
     "$out/lsm6dso_driver" >/dev/null
     printf 'ok  lsm6dso_driver\n'
+    # The calibration (apps/imu/imu_cal.c, the copy of the Zephyr build's) on the same driver
+    # and fake sensor (the test includes tests/lsm6dso_driver.c and runs it first) with a
+    # fake key-value store: the lookup of the stored values, the driver's output with them,
+    # range changes, reload, zero and the "imu cal" lines.
+    cc "${flags[@]}" -Wno-unused-parameter -Wno-cast-function-type -Wno-sign-compare \
+        -D_DEFAULT_SOURCE -D'DEBUGASSERT(x)=assert(x)' -Itests/lsm6dso_fakes -Itests/zephyr_fakes \
+        -Idrivers/compat -Idrivers/include -Istmemsc -I"$lsm" -I"$imu" \
+        -Iboards/arduino-nano-rp2040-connect/src \
+        tests/imu_cal.c "$imu/imu_cal.c" "$imu/imu_cal_codec.c" "$lsm/lsm6dso.c" \
+        "$lsm/stmemsc_i2c.c" "$lsm/stmemsc_mdelay.c" \
+        "$lsm/lsm6dso_fifo_hw.c" "$lsm/lsm6dso_fifo.c" "$lsm/lsm6dso_cal.c" "$lsm/lsm6dso_zero.c" \
+        "$lsm/lsm6dso_stream.c" "$lsm/lsm6dso_fifo_irq.c" "$lsm/lsm6dso_compat.c" \
+        "$lsm/lsm6dso_fifo_decoder.c" drivers/compat/zephyr_i2c.c drivers/compat/zephyr_device.c \
+        drivers/compat/zephyr_gpio.c drivers/compat/sensor_default_rtio.c "${compat[@]}" \
+        boards/arduino-nano-rp2040-connect/src/nano_lsm6dso.c "$out/lsm6dso_reg.o" -lm "$link" \
+        -o "$out/imu_cal"
+    "$out/imu_cal" >/dev/null
+    printf 'ok  imu_cal\n'
 else
     printf 'skip lsm6dso_driver (no stmemsc/lsm6dso_reg.c: run script/setup.sh)\n'
+    printf 'skip imu_cal (no stmemsc/lsm6dso_reg.c: run script/setup.sh)\n'
 fi
 # The stream's state machine (lsm6dso_stream.c) with a fake FIFO and RTIO executor: an
 # unchanged copy of the Zephyr build's test, which includes the unchanged copy of the source.
