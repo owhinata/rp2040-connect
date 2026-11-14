@@ -407,3 +407,34 @@ for the NuttX build.
 | Shell (the Zephyr build's `shell_uart`, the NuttX build's `nsh`) | 0.38% | 0.36%, 0.35% |
 | `time_sync_tid` | 0.17% | 0.24%, 0.27% |
 | `nina_monitor_tid` | 0.02% | 0.02%, 0.02% |
+
+### Memory use
+
+Section sizes and symbol addresses from the ELF files of the builds of 2026-11-14. The flash (16 MB) and RAM
+(264 KB) regions, boot2 (256 bytes at 0x10000000), the start of the code (0x10000100) and the place of the
+key-value store (the last 8 KB of flash, from 0x10ffe000) are the same.
+
+| Flash | Zephyr build | NuttX build |
+|---|---|---|
+| Code | 266,776 bytes | 274,968 bytes (constants included) |
+| Constants | 85,808 bytes | in the code |
+| Initial values of `.data` | 5,232 bytes | 3,716 bytes |
+| Image total | 362,284 bytes | about 279,000 bytes |
+| UF2 file | 725,504 bytes | 558,080 bytes |
+
+| RAM | Zephyr build | NuttX build |
+|---|---|---|
+| `.data` and initialized kernel objects | 5,232 bytes | 3,716 bytes (plus a 192-byte vector table in RAM) |
+| `.bss` | 94,637 bytes | 109,436 bytes |
+| `.noinit` | 55,712 bytes (all thread stacks and the 4 KiB RAM log) | 8,208 bytes (the 8 KiB RAM log) |
+| Statically allocated total | 155,584 bytes | 121,564 bytes |
+| After that | 114,752 bytes (available to libc's malloc) | the 1,024-byte idle stack and a heap of about 147.7 KB |
+| Interrupt stack | 2,048 bytes | 2,048 bytes |
+
+- The Zephyr build allocates every thread stack statically. In the NuttX build the stacks of the threads
+  copied from the Zephyr build (`imu_stream_tid` and the like) are in `.bss`, and the tasks NuttX creates
+  (`nsh`, `telnetd`, `nina_event` and the like) take their stacks from the heap. The NuttX heap has about
+  23.8 KB in use while no measurement runs (as `free` shows).
+- The application's large variables have the same size in both (the send queue 29,512 bytes, the FIFO read
+  block pool 8,192 bytes, the NINA send buffer 3,584 bytes and so on). The differences are the RAM log (8 KiB
+  in the NuttX build), the shell's command history (4,108 bytes in the NuttX build) and the like.
