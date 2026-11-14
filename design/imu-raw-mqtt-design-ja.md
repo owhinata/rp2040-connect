@@ -618,7 +618,7 @@ NINA-W102 のソケットは NuttX の usrsock（`CONFIG_NET_USRSOCK_CUSTOM`）�
 見る。Zephyr 版の `CONFIG_SCHED_THREAD_USAGE`（`kernel ps`・`kernel thread list`）と同じく切り替えのときに
 積算し、割り込みの時間は割り込まれたスレッドに入る。`ps` の値は移動平均（約 1 秒ごとに半分に減衰）で、
 Zephyr 版は起動からの累積。区間の割合は `/proc/<tid>/critmon` の実行時間の合計の差で求める
-（`nuttx/README_ja.md` の「CPU 負荷」）。
+（`nuttx/doc/internals_ja.md` の「CPU 負荷」）。
 
 ### 11.5 KV の形式と移し替え
 

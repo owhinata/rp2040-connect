@@ -703,7 +703,7 @@ The per-thread share is shown in the CPU column of `ps` (NuttX's own
 `CONFIG_SCHED_THREAD_USAGE` (`kernel ps`, `kernel thread list`) it accounts at switches and puts
 interrupt time in the interrupted thread. The `ps` value is a moving average (halved about once a
 second), the Zephyr version's is accumulated since boot. The share over an interval comes from the
-difference of the total run time in `/proc/<tid>/critmon` ("CPU load" in `nuttx/README.md`).
+difference of the total run time in `/proc/<tid>/critmon` ("CPU load" in `nuttx/doc/internals.md`).
 
 ### 11.5 KV format and moving the values
 

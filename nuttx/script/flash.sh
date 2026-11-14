@@ -17,10 +17,7 @@ Usage: nuttx/script/flash.sh [options] [UF2]
 
 Write UF2 (default: nuttx/build/nuttx.uf2) to the board:
   1. If an RPI-RP2 drive (RP2040 in BOOTSEL) is present, copy to it.
-  2. Otherwise, if the NuttX USB console
-     (/dev/serial/by-id/usb-*NuttX_USB_Console*) is present, send "bootsel"
-     to it and wait for the drive.
-  3. Otherwise, explain how to enter BOOTSEL by hand and wait for the drive.
+  2. Otherwise, explain how to enter BOOTSEL by hand and wait for the drive.
 The drive is mounted with udisksctl if it is not mounted already (no sudo).
 After the copy, wait for the drive to go away and for the NuttX USB console
 to appear, and print its /dev/serial/by-id path.
@@ -31,7 +28,7 @@ Options:
                 (default: 60).
   --dry-run     Look for the drive and the console (lsblk and
                 /dev/serial/by-id only) and print what would be done; do not
-                build, mount, read the drive, send, copy or wait.
+                build, mount, read the drive, copy or wait.
   -h, --help    Show this help.
 EOF
 }
@@ -212,46 +209,6 @@ list_byid() {  # glob -> matching paths, one per line
   shopt -u nullglob
 }
 
-# Send "bootsel" to the NuttX console and show what comes back.  Ctrl-C
-# first drops any half-typed line (and ends a command that reads the
-# console, see nuttx/patches), as host/imu_host/board.py does, so that
-# nothing else is executed.
-send_bootsel() {
-  python3 -I - "$1" <<'PY'
-import os, re, select, sys, termios, time, tty
-
-dev = sys.argv[1]
-fd = os.open(dev, os.O_RDWR | os.O_NOCTTY | os.O_NONBLOCK)
-out = b''
-try:
-    tty.setraw(fd)
-    termios.tcflush(fd, termios.TCIFLUSH)
-    os.write(fd, b'\x03')
-    time.sleep(0.1)
-    os.write(fd, b'bootsel\r\n')
-    end = time.monotonic() + 3.0
-    while time.monotonic() < end and b'BOOTSEL' not in out:
-        if select.select([fd], [], [], 0.2)[0]:
-            try:
-                data = os.read(fd, 4096)
-            except OSError:
-                break           # the device went away
-            if not data:
-                break
-            out += data
-finally:
-    try:
-        os.close(fd)
-    except OSError:
-        pass
-text = re.sub(r'\x1b\[[0-9;]*[A-Za-z]', '', out.decode('utf-8', 'replace')).replace('\r', '')
-for line in text.splitlines():
-    if line.strip():
-        print('  | ' + line)
-sys.exit(0 if 'BOOTSEL' in text else 3)
-PY
-}
-
 wait_for_console() {  # timeout in s; prints the by-id path(s)
   local t=$(( $1 * 2 )) found
   while (( t-- > 0 )); do
@@ -297,37 +254,20 @@ drive_dev="" drive_mnt=""
 if pick_drive; then
   note "found the ${drive_label} drive: ${drive_dev}${drive_mnt:+ on ${drive_mnt}}"
 else
+  note "no ${drive_label} drive"
   mapfile -t nuttx_consoles < <(list_byid "$nuttx_glob")
-  if (( ${#nuttx_consoles[@]} > 1 )); then
-    printf 'flash.sh: more than one NuttX USB console:\n' >&2
-    printf '  %s\n' "${nuttx_consoles[@]}" >&2
-    die "connect only the board to be written, or put it into BOOTSEL by hand"
-  elif (( ${#nuttx_consoles[@]} == 1 )); then
-    console="${nuttx_consoles[0]}"
-    note "found the NuttX USB console: ${console}"
-    if (( dry )); then
-      plan "send \"bootsel\" to ${console} and wait up to ${wait_s} s for the ${drive_label} drive"
-    else
-      note "sending \"bootsel\""
-      send_bootsel "$console" || note "no reply from bootsel seen; waiting for the drive anyway"
-      wait_for_drive "$wait_s" || die "no ${drive_label} drive appeared within ${wait_s} s"
-      note "found the ${drive_label} drive: ${drive_dev}${drive_mnt:+ on ${drive_mnt}}"
-    fi
+  mapfile -t zephyr_consoles < <(list_byid "$zephyr_glob")
+  if (( ${#nuttx_consoles[@]} + ${#zephyr_consoles[@]} )); then
+    note "running on the board now (neither build can enter BOOTSEL from its shell):"
+    printf '  %s\n' "${nuttx_consoles[@]}" "${zephyr_consoles[@]}"
+  fi
+  manual_bootsel_help
+  if (( dry )); then
+    plan "wait up to ${wait_s} s for the ${drive_label} drive"
   else
-    note "no ${drive_label} drive and no NuttX USB console (${byid_dir}/${nuttx_glob})"
-    mapfile -t zephyr_consoles < <(list_byid "$zephyr_glob")
-    if (( ${#zephyr_consoles[@]} )); then
-      note "the Zephyr build is running (it has no bootsel command):"
-      printf '  %s\n' "${zephyr_consoles[@]}"
-    fi
-    manual_bootsel_help
-    if (( dry )); then
-      plan "wait up to ${wait_s} s for the ${drive_label} drive"
-    else
-      note "waiting up to ${wait_s} s for the ${drive_label} drive"
-      wait_for_drive "$wait_s" || die "no ${drive_label} drive appeared within ${wait_s} s"
-      note "found the ${drive_label} drive: ${drive_dev}${drive_mnt:+ on ${drive_mnt}}"
-    fi
+    note "waiting up to ${wait_s} s for the ${drive_label} drive"
+    wait_for_drive "$wait_s" || die "no ${drive_label} drive appeared within ${wait_s} s"
+    note "found the ${drive_label} drive: ${drive_dev}${drive_mnt:+ on ${drive_mnt}}"
   fi
 fi
 

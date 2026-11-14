@@ -7,7 +7,8 @@
 #   nuttx/script/build.sh --menuconfig    configure if needed, run menuconfig
 #   nuttx/script/build.sh --savedefconfig save .config to configs/imu/defconfig
 #
-# See nuttx/README.md ("Build") for what is checked and where the output goes.
+# See nuttx/README.md ("Build") and nuttx/doc/internals.md ("What `build.sh`
+# does") for what is checked and where the output goes.
 
 set -euo pipefail
 

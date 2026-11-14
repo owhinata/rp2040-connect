@@ -214,18 +214,6 @@ void rp2040_boardinitialize(void);
 
 int nano_chip_id(uint8_t id[NANO_CHIP_ID_SIZE]);
 
-/****************************************************************************
- * Name: nano_reset_usb_boot
- *
- * Description:
- *   Reboot into the RP2040 USB bootloader (BOOTSEL, drive RPI-RP2) through
- *   the boot ROM's reset_usb_boot(0, 0) (src/nano_reset.c).  The caller
- *   flushes its output first.  Does not return.
- *
- ****************************************************************************/
-
-void nano_reset_usb_boot(void) noreturn_function;
-
 #undef EXTERN
 #if defined(__cplusplus)
 }

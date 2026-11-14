@@ -354,7 +354,7 @@ replaced by the standard NuttX ones (`wapi`, `ifconfig`, `iperf`, `ps`, `reboot`
 - The PC tools (`imu-host` and `ImuStudio` in `host/`) work with either firmware ("Board firmware"
   in [`host/README.md`](host/README.md)).
 - The KV store has a different format, so the Zephyr build's settings and calibration are saved
-  and written back with `script/kv_transfer.py` ("Moving the values from the Zephyr version" in
+  and written back with `script/kv_transfer.py` ("Moving the values from the Zephyr build" in
   `nuttx/README.md`).
 - Section 11 of the [design](design/imu-raw-mqtt-design.md) describes the design differences.
 

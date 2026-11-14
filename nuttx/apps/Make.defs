@@ -4,9 +4,8 @@
 # Read by nuttx-apps/Make.defs (as external/Make.defs).  Pulls in the
 # Make.defs of each application directory, which adds the directory to
 # CONFIGURED_APPS when its Kconfig option is set: init/ (the init task,
-# CONFIG_NANO_APP_INIT), bootsel/ (CONFIG_NANO_APP_BOOTSEL), dmesg/
-# (CONFIG_NANO_APP_DMESG), i2c_dma/ (CONFIG_NANO_APP_I2C_DMA), irqstack/
-# (CONFIG_NANO_APP_IRQSTACK), imu/ (the
+# CONFIG_NANO_APP_INIT), dmesg/ (CONFIG_NANO_APP_DMESG), i2c_dma/
+# (CONFIG_NANO_APP_I2C_DMA), irqstack/ (CONFIG_NANO_APP_IRQSTACK), imu/ (the
 # application's modules: the key-value store, CONFIG_NANO_KV_STORE, and the
 # IMU service with the "imu" command, CONFIG_NANO_APP_IMU), kv/ (CONFIG_NANO_APP_KV), nina/
 # (CONFIG_NANO_APP_NINA), ntp/ (CONFIG_NANO_APP_NTP), subcmd/ (the subcommand dispatch shared by
