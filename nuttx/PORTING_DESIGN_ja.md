@@ -1,8 +1,8 @@
-# NuttX 版の内部の説明
+# NuttX 版の設計と動作の説明
 
 [English](PORTING_DESIGN.md) | 日本語
 
-`nuttx/README_ja.md` から移した、NuttX 版の各機能の動作の詳しい説明です。使い方は `nuttx/README_ja.md`、
+NuttX 版の各機能の動作の詳しい説明です。使い方は `nuttx/README_ja.md`、
 ドライバーと互換層は `nuttx/drivers/README_ja.md`、移植の経緯と判断は `nuttx/PORTING_STATUS.md`・
 `nuttx/PORTING_NOTES.md`・`nuttx/PORTING_PLAN.md` にあります。文中の「〜の節」は、この文書の節です
 （「Zephyr 版とのコマンドの対応」「エラー番号（errno）」は `nuttx/README_ja.md` の節）。

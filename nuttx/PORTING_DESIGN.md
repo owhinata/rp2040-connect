@@ -1,8 +1,8 @@
-# NuttX build internals
+# Design and behaviour of the NuttX build
 
 English | [日本語](PORTING_DESIGN_ja.md)
 
-How each part of the NuttX build works in detail, moved out of `nuttx/README.md`. Usage is in
+How each part of the NuttX build works in detail. Usage is in
 `nuttx/README.md`, the drivers and the compatibility layer in `nuttx/drivers/README.md`, and the
 history and the reasons for the decisions in `nuttx/PORTING_STATUS.md`, `nuttx/PORTING_NOTES.md`
 and `nuttx/PORTING_PLAN.md` (in Japanese). A section named in quotes is a section of this document
