@@ -8,8 +8,9 @@ OS-independent common sources, the board definition with its build, the USB cons
 flashing script, the RAM log, the key-value store (`kv`), the SPI link to the NINA-W102
 (`nina version`), the NINA's sockets (usrsock: the control side and sending and receiving) and
 name resolution, I2C0 (with DMA), the LSM6DSOX driver with its FIFO stream, the IMU
-acquisition service (`imu`), the Wi-Fi network device (`wapi`, `ifconfig`), and stored Wi-Fi
-credentials with automatic reconnection (`wifi cred`). A transport stub counts the acquired
+acquisition service (`imu`), the Wi-Fi network device (`wapi`, `ifconfig`), stored Wi-Fi
+credentials with automatic reconnection (`wifi cred`), the shell over Wi-Fi (Telnet), and
+throughput measurement (`iperf`). A transport stub counts the acquired
 batches and drops them (see "IMU acquisition (`imu`)").
 
 ## Setup
@@ -38,6 +39,7 @@ the versions are pinned at the top of the script.
 | `nuttx/toolchain/` | Arm GNU Toolchain (arm-none-eabi, for x86_64 Linux) | 13.2.Rel1 (SHA-256 checked) |
 | `nuttx/.venv` | Python venv with kconfiglib, used by NuttX's `make menuconfig` and `olddefconfig` | kconfiglib 14.1.0 |
 | `nuttx/stmemsc/` | ST's LSM6DSO register driver (`lsm6dso_reg.c`, `lsm6dso_reg.h`) | lsm6dso-pid v3.2.2 (the same content as Zephyr's hal_st; SHA-256 checked) |
+| `nuttx/nuttx-apps/system/argtable3/argtable3` | argtable3 (the command line parser of `iperf`). The nuttx-apps Makefile uses a clone found here; without one it downloads the tarball from GitHub on every build and `make distclean` deletes it | tag `v3.2.0.7402e6e` (the default `CONFIG_SYSTEM_ARGTABLE3_VERSION` of nuttx-apps 13.1.0; shallow clone) |
 
 It also does the following:
 
@@ -66,10 +68,13 @@ the board code replaces. The head of each file gives its purpose and the Zephyr 
 | `nuttx/0003-serial-canonical-ctrl-c-eof` | Ctrl-C and Ctrl-D end the read of a command that reads its standard input |
 | `nuttx/0004-rp2040-make-defs-alarm-arch-idle-custom` | Leave `rp2040_timerisr.c` (periodic SysTick interrupt) out of the build with `CONFIG_ALARM_ARCH`, and `rp2040_idle.c` with `CONFIG_ARCH_IDLE_CUSTOM` (the board provides the system timer and the idle loop) |
 | `nuttx/0005-usrsock-dontwait-to-daemon-and-daemon-send-timeout` | usrsock's send and receive keep in the driver's request that the call does not wait (`MSG_DONTWAIT`, a non-blocking socket), and a send the driver answers with `-ETIME` ends with `-EAGAIN`. Stock usrsock repeats a waiting call's `-EAGAIN` for ever, so the Zephyr version's "a waiting TCP send gives `EAGAIN` after 10 s" and "a datagram the NINA did not take gives `EAGAIN` at once" could not be made, and `MSG_DONTWAIT` on a blocking socket waited on the second pass ("Sockets (usrsock)" in `nuttx/drivers/README.md`) |
+| `nuttx/0006-telnet-crlf-line-end` | The Telnet driver sends a line feed of the output as CR LF (the Telnet end of line, as the Zephyr version's Telnet shell does) instead of LF CR |
 | `apps/0001-readline-echo-in-readline` | readline, not the serial driver, echoes while a line is typed (only what goes into the line, and the line end) |
 | `apps/0002-readline-cr-lf-line-end` | CR, LF, CR LF and LF CR are each one Enter |
 | `apps/0003-readline-ctrl-c` | Ctrl-C drops the line being typed and shows a new prompt |
 | `apps/0004-readline-full-line` | A full line drops further characters instead of being split |
+| `apps/0005-iperf-free-argtable` | `iperf` freed only the first entry of its argument table (argtable3) and lost heap on every run; now it frees all of it |
+| `apps/0006-iperf-len-option-udp-eagain` | Adds `-l`, the bytes per read or write (as in iperf 2), to `iperf`, and retries a UDP send that fails with `EAGAIN` after a pause, as for `ENOMEM`. The NINA refuses a datagram over 512 bytes with `EMSGSIZE` and one it cannot take with `EAGAIN` (as in the Zephyr version), so stock `iperf`'s UDP send (1472 bytes, giving up on anything but `ENOMEM`) ended at once |
 
 `nuttx/script/kconfig-tweak` stands in for the `kconfig-tweak` that NuttX's `tools/configure.sh`
 (through `tools/sethost.sh`) uses to edit `.config`. kconfiglib does not include it, so only the
@@ -191,6 +196,7 @@ picocom /dev/serial/by-id/usb-NuttX_NuttX_USB_Console_*-if00
   that reads its standard input (`cat` with no file, for example; Ctrl-D does too); otherwise it
   clears the line at the next prompt. It never stops a running command (neither does the Zephyr
   version). Commands that never end (`while`/`until` loops, `watch`) are left out.
+- While Wi-Fi is connected, the same shell is also on Telnet (see "Shell over Wi-Fi (Telnet)").
 - `help` lists the commands. Most of them are nsh's own (`uname`, `ps`, `free`, `echo`, `sleep`,
   ...); the commands of this port are added as they are ported. An unknown command gives
   `nsh: <name>: command not found`.
@@ -466,8 +472,8 @@ used. The driver's work is the Zephyr version's `drivers/nina/nina_net.c` itself
   frequency, signal level (dBm), encryption (`8000` none, `0800` encrypted, `ffff` unknown) and
   SSID. Encryption comes from the Zephyr version's mapping of the NINA's types (7 none, 5 WEP, 2
   WPA, 4 WPA2, others unknown); `wapi` does not tell WEP, WPA and WPA2 apart. The frequency column
-  shows `*float*`, as NuttX's `printf` is built without floating point
-  (`CONFIG_LIBC_FLOATINGPOINT` off). Scans for an ESSID, passive scans and scans of given channels
+  is in MHz (`iperf` selects `CONFIG_LIBC_FLOATINGPOINT`, so `printf` handles floating point;
+  without it the column shows `*float*`). Scans for an ESSID, passive scans and scans of given channels
   are refused, as in the Zephyr version. A scan while connected is treated as a disconnection (the
   IP configuration is cleared) and asks for a reconnection when it ends, as in the Zephyr version.
 - A connection during a scan and a scan during a connection attempt fail with `EBUSY`, as in the
@@ -544,6 +550,106 @@ nsh$ wifi cred list
   are never in the port's store.
 - The passphrase is shown by `wifi cred list` (as in the Zephyr version) and nowhere else: not in
   the log, not in error messages.
+
+## Shell over Wi-Fi (Telnet)
+
+As with the Zephyr version's Telnet shell (`CONFIG_SHELL_BACKEND_TELNET`), the shell of the USB
+console is also on TCP port 23 while Wi-Fi is connected (`nuttx/apps/init/nano_telnet.c`,
+`CONFIG_NANO_INIT_TELNET`; the port is `CONFIG_NANO_INIT_TELNET_PORT`, the Zephyr version's
+`CONFIG_SHELL_TELNET_PORT`). There is no authentication or encryption, and anyone who can reach
+the port can do everything the shell can, so use it on trusted networks only.
+
+```bash
+telnet <the board's IPv4 address>
+```
+
+- Listening: the start-up (init) opens the listening socket before the `USB console started` log
+  line, the place where the Zephyr version's Telnet backend opens it (a `SYS_INIT()` before
+  `main()`); the log says `<inf> shell_telnet: Telnet shell backend initialized`. As in the Zephyr
+  version it listens on all addresses (`INADDR_ANY`) with a backlog of 1 and no `SO_REUSEADDR`.
+  The NINA holds the socket, so a socket opened before Wi-Fi is connected starts accepting once it
+  is, and keeps listening across Wi-Fi disconnections and reconnections (as in the Zephyr
+  version). If it cannot be opened, the Zephyr version's messages are logged (`Unable to start
+  telnet on NET_AF_INET (<value>)` and others) and there is no Telnet.
+- One client at a time. A second client that connects while one is connected is accepted and
+  closed at once, and `<err> shell_telnet: Telnet client already connected.` is logged; the first
+  one keeps working (as in the Zephyr version). The `telnetd` task accepts the clients, at
+  priority 104 with a 2048-byte stack (those of the Zephyr version's `net_socket_service` thread,
+  which does this there). When an accept fails, it logs `Telnet accept error (<value>)` and waits
+  `CONFIG_NANO_INIT_RETRY_MS` (100 ms) before accepting again, so that a lasting failure does not
+  become a busy loop (the Zephyr version does not wait).
+- A session is the same nsh as on USB (the same commands and output, the prompt `nsh$ `, no
+  greeting). It is a task of its own and runs at the same time as, and independently of, the USB
+  shell (like the Zephyr version's two backends), at priority 104 with a 3072-byte stack (as the
+  USB session; the Zephyr version's `shell_telnet` thread priority 14 and
+  `CONFIG_SHELL_STACK_SIZE`). `ps` shows it as `nsh_telnet`. NuttX's Telnet driver
+  (`CONFIG_NETDEV_TELNET`, `CONFIG_TELNET_MAXLCLIENTS=1`) turns the accepted connection into the
+  terminal `/dev/telnet0`, which the session uses as its standard input and output. NuttX's own
+  Telnet daemon (`netutils/telnetd`, `NSH_TELNET`) is not used: it ends, listening socket and all,
+  on a second client (a session over `TELNET_MAXLCLIENTS`) and when `SO_REUSEADDR` fails (the
+  NINA's sockets give `ENOPROTOOPT`), and its sessions print a greeting.
+- The prompt arrives right after connecting. The Zephyr version sends nothing on a connection (the
+  output before it is dropped, and the prompt comes after an Enter). `host/imu_host` reads and
+  drops whatever arrives after connecting before it sends a command, so it works the same with
+  both.
+- Echo and line editing: as on USB, readline echoes what is typed, and line editing, history, Tab
+  and Ctrl-C (drop the line being typed and show a new prompt) work. NuttX's Telnet driver sends
+  `IAC WILL ECHO` while a line is read and `IAC WONT ECHO` while a command runs, switching the
+  Telnet client's local echo. The Zephyr version's Telnet shell turns echo off on a connection and
+  negotiates no options; with echo off, the Zephyr shell also ignores the line editing, history,
+  Tab and Ctrl-C keys, which leaves echo and editing to the client's local echo. `host/imu_host`
+  drops the echo and the Telnet commands, so the results are the same.
+- Line ends: the output's line end is CR LF (as in the Zephyr version; patch `nuttx/0006`). An
+  Enter may be CR, LF, CR LF or CR NUL and runs the line once, as on USB.
+- Disconnection: a session ends when the client closes the connection or the connection fails,
+  and the next client is accepted. When Wi-Fi drops, the NINA closes the connection and the
+  session ends. The PC side gets an RST on its first send after Wi-Fi is back. A `reboot` of the
+  board resets the NINA too, so no disconnection reaches the PC.
+- A command that reads its standard input (such as `cat` without arguments) does not end with
+  Ctrl-C or Ctrl-D on Telnet (patch `nuttx/0003` is for the serial driver, not for the Telnet
+  driver); closing the connection ends it. A command started in the background with `&` inherits
+  the session's terminal, so until it ends, the next client after the connection is closed is
+  refused like a second one.
+- In a Telnet session a command's output goes on the command task's stack down to the SPI
+  transfer to the NINA (on USB it only goes into the CDC ACM buffer). The port's commands
+  therefore have the stack of the Zephyr version's shell, 3072 bytes (`dmesg` and `irqstack` were
+  raised from 1024).
+
+## Throughput measurement (`iperf`)
+
+Instead of the Zephyr version's `zperf` (iperf 3 protocol), the port uses NuttX's `iperf`
+(`netutils/iperf` in nuttx-apps, iperf 2 protocol). On the PC, use `iperf` (iperf 2), not
+`iperf3`. The default port is 5001 (the Zephyr version uses 5201).
+
+| Zephyr version | NuttX port | PC (with the NuttX port) |
+|---|---|---|
+| `zperf tcp upload <PC> 5201 30 1024` | `iperf -c <PC> -t 30 -l 1024` | `iperf -s` |
+| `zperf udp upload <PC> 5201 30 500 500K` | `iperf -c <PC> -u -t 30 -l 500` (no rate setting; it sends as fast as it can) | `iperf -s -u` |
+| `zperf tcp download 5201` | `iperf -s -B 0.0.0.0` | `iperf -c <board> -t 30` |
+| `zperf tcp download stop` | The TCP server ends by itself after one connection | – |
+| – | `iperf -s -u -B 0.0.0.0 -l 512` (UDP server; stop it with `iperf -a` from another shell) | `iperf -c <board> -u -l 500 -b 500K` |
+
+- Main options: `-c <host>` (client), `-s` (server), `-u` (UDP), `-p <port>`, `-t <s>` (client
+  time, default 30), `-i <s>` (report interval, default 3), `-l <bytes>` (per read or write;
+  default 1472 for UDP, 16384 for TCP), `-B <address>` (server bind address), `-a` (tell a running
+  `iperf` to stop).
+- Give a server `-B 0.0.0.0`. Without it, it binds to the address of `wlan0`, and the NINA does not
+  accept a bind to a given address (`EADDRNOTAVAIL`, `error code: 99`, as in the Zephyr version).
+- UDP datagrams are at most 512 bytes (the NINA; as in the Zephyr version). With the default 1472
+  bytes the send ends with `EMSGSIZE` (`err=90`) and the receive drops what is past 512 bytes, so
+  give `-l 512` or less. `-l`, and waiting and sending again when the NINA cannot take a datagram
+  (`EAGAIN`), come from patch `apps/0006`.
+- The TCP server ends after one connection (NuttX's `iperf` does so). It does not return while no
+  client comes (it waits in `accept()`, which `iperf -a` does not interrupt). The UDP server does
+  not end; stop it with `iperf -a` from another shell (Telnet or USB, whichever is free). It prints
+  `udp server recv error` at every 10 s receive timeout and ends at the first one after `-a`.
+- Threads: the command `iperf` (priority 104, 3072-byte stack) and its pthreads `iperf_traffic`
+  (priority 100, 4096) and `iperf_report` (101, 4096). The two pthreads' priorities and stacks are
+  fixed in `iperf`'s source (the Zephyr version's `zperf_work_q` has priority 15, which Zephyr
+  lowers to the lowest application priority 14, here 104). The read and write buffer comes from
+  the heap (16 KiB for TCP).
+- `iperf` selects floating point in `printf` (`CONFIG_LIBC_FLOATINGPOINT`) and argtable3
+  (`CONFIG_SYSTEM_ARGTABLE3`).
 
 ## I2C0 (`i2c`)
 
@@ -821,7 +927,9 @@ Priorities map as `NuttX = 118 − Zephyr`; `nuttx/drivers/include/priorities.h`
 | `net_mgmt` (network events; compatibility layer; the Wi-Fi event callbacks) | −1 (cooperative) | 119 | 2048 |
 | `RTIO WQ 0` (RTIO work queue; compatibility layer; single reads; `RTIO_WQ_0` in `ps`) | 0 | 118 | 1024 |
 | `main` (NuttX: init, which drops to the shell's priority after the start-up work) | 0 | 118 | 2048 |
-| Shell (nsh session, commands) | 14 | 104 | 3072 |
+| Shell (nsh session, commands; `nsh` on USB, `nsh_telnet` on Telnet) | 14 | 104 | 3072 |
+| `telnetd` (accepts Telnet clients; the Zephyr version's `net_socket_service`) | 15 → 14 | 104 | 2048 |
+| `iperf_traffic`, `iperf_report` (`iperf`'s pthreads; the Zephyr version's `zperf_work_q`) | 15 → 14 | 100, 101 | 4096, 4096 |
 
 - Zephyr's cooperative threads (negative priorities: `sysworkq`, `net_mgmt` and others) map above
   118, but NuttX has no cooperative threads that other threads cannot preempt; a thread of higher

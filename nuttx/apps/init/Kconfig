@@ -55,4 +55,26 @@ config NANO_INIT_NSH_STACKSIZE
 		run on it.  Builtin applications run as separate tasks with their
 		own stacks.  3072 is CONFIG_SHELL_STACK_SIZE of the Zephyr build.
 
+config NANO_INIT_TELNET
+	bool "Telnet shell"
+	default y
+	depends on NETDEV_TELNET && NET_IPv4
+	---help---
+		nsh on TCP port NANO_INIT_TELNET_PORT for one client at a time,
+		the Zephyr build's Telnet shell backend
+		(CONFIG_SHELL_BACKEND_TELNET).  init opens the listening socket
+		before the "USB console started" log line, as Zephyr does in a
+		SYS_INIT before main(), and a task ("telnetd") accepts the
+		clients; a second client is closed at once with "Telnet client
+		already connected." in the log.  The sessions run on NuttX's
+		Telnet driver (NETDEV_TELNET, TELNET_MAXLCLIENTS=1) with the same
+		priority and stack as the USB session.  See nano_telnet.c.
+
+config NANO_INIT_TELNET_PORT
+	int "Telnet port"
+	default 23
+	depends on NANO_INIT_TELNET
+	---help---
+		CONFIG_SHELL_TELNET_PORT of the Zephyr build.
+
 endif

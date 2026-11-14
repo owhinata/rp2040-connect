@@ -25,6 +25,12 @@ config NANO_APP_DMESG_PRIORITY
 
 config NANO_APP_DMESG_STACKSIZE
 	int "dmesg stack size"
-	default 1024
+	default 3072
+	---help---
+		CONFIG_SHELL_STACK_SIZE of the Zephyr build, which runs shell
+		commands in the shell thread.  The output goes through the
+		caller's stack down to the NINA's SPI transfer when the command
+		runs in a Telnet session (nuttx/apps/init/nano_telnet.c); 1024
+		overflowed there.
 
 endif

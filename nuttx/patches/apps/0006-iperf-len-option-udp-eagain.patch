@@ -1,0 +1,91 @@
+iperf: add -l (bytes per read or write) and retry a UDP send on EAGAIN
+
+Purpose: the UDP client always sent 1472-byte datagrams, and it gave up at
+the first send that failed with anything but ENOMEM.  The NINA-W102's
+sockets carry datagrams of at most 512 bytes (EMSGSIZE above that, as in
+the Zephyr build) and refuse a datagram the module cannot take at once
+with EAGAIN, so "iperf -c ... -u" ended at once.  -l <len> (as in iperf 2)
+sets the bytes per read or write for the UDP and TCP client and server
+(the default stays 1472 for UDP and 16384 for TCP), and EAGAIN backs off
+and retries like ENOMEM.
+Zephyr: "zperf udp upload" takes the datagram size as an argument (500 in
+the Zephyr build's README) and paces the sending.
+
+--- a/netutils/iperf/iperf.c
++++ b/netutils/iperf/iperf.c
+@@ -725,7 +725,7 @@
+       if (actual_send != want_send)
+         {
+           err = iperf_get_socket_error_code(sockfd);
+-          if (err == ENOMEM)
++          if (err == ENOMEM || err == EAGAIN)
+             {
+               usleep(delay * 10000);
+               if (delay < IPERF_MAX_DELAY)
+@@ -883,6 +883,14 @@
+ 
+ static uint32_t iperf_get_buffer_len(FAR struct iperf_ctrl_t *ctrl)
+ {
++  if (ctrl->cfg.len > 0)
++    {
++      /* A UDP datagram carries the packet header. */
++
++      return ctrl->cfg.len > sizeof(struct iperf_udp_pkt_t) ?
++             ctrl->cfg.len : sizeof(struct iperf_udp_pkt_t);
++    }
++
+   if (iperf_is_udp_client(ctrl))
+     {
+       return IPERF_UDP_TX_LEN;
+--- a/netutils/iperf/iperf.h
++++ b/netutils/iperf/iperf.h
+@@ -66,6 +66,7 @@
+   uint16_t sport;
+   uint32_t interval;
+   uint32_t time;
++  uint32_t len;         /* bytes per read or write, 0: the default */
+   FAR const char *host; /* host name (dip) or rpmsg cpu */
+   FAR const char *path; /* local path or rpmsg name */
+ };
+--- a/netutils/iperf/iperf_main.c
++++ b/netutils/iperf/iperf_main.c
+@@ -65,6 +65,7 @@
+   FAR struct arg_int *interval;
+   FAR struct arg_int *time;
+   FAR struct arg_lit *abort;
++  FAR struct arg_int *len;
+   FAR struct arg_end *end;
+ };
+ 
+@@ -84,7 +85,8 @@
+                             FAR struct wifi_iperf_t *args, int exitcode)
+ {
+   printf("USAGE: %s [-sua] [-c <ip|cpu>] [-p <port>] [-i <interval>] "
+-         "[-t <time>] [--local <path>] [--rpmsg <name>]\n", progname);
++         "[-t <time>] [-l <len>] [--local <path>] [--rpmsg <name>]\n",
++         progname);
+   printf("iperf command:\n");
+   arg_print_glossary(stdout, (FAR void **)args, NULL);
+ 
+@@ -162,6 +164,9 @@
+   iperf_args.time = arg_int0("t", "time", "<time>",
+                         "time in seconds to transmit for (default 10 secs)");
+   iperf_args.abort = arg_lit0("a", "abort", "abort running iperf");
++  iperf_args.len = arg_int0("l", "len", "<length>",
++                            "bytes per read or write (default 1472 for UDP, "
++                            "16384 for TCP)");
+   iperf_args.end = arg_end(1);
+ 
+   /* Value of local is needed for server, optional for client. */
+@@ -321,6 +326,11 @@
+         }
+     }
+ 
++  if (iperf_args.len->count > 0 && iperf_args.len->ival[0] > 0)
++    {
++      cfg.len = iperf_args.len->ival[0];
++    }
++
+   iperf_printcfg(&cfg);
+   iperf_start(&cfg);
+ 

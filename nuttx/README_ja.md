@@ -7,8 +7,8 @@
 ビルド、USB コンソールと書き込みスクリプト、RAM ログ、キーと値の保存（`kv`）、NINA-W102 との SPI の
 やり取り（`nina version`）、NINA のソケット（usrsock。制御系と送受信）と名前解決、I2C0（DMA を含む）、
 LSM6DSOX のドライバーと FIFO のストリーム、IMU の取得サービス（`imu`）、Wi-Fi のネットワークデバイス
-（`wapi`・`ifconfig`）、Wi-Fi の資格情報の保存と自動再接続（`wifi cred`）です。取得したバッチは送信の
-スタブが数えて捨てます（「IMU の取得（`imu`）」の節）。
+（`wapi`・`ifconfig`）、Wi-Fi の資格情報の保存と自動再接続（`wifi cred`）、Wi-Fi 経由のシェル（Telnet）、
+速度の測定（`iperf`）です。取得したバッチは送信のスタブが数えて捨てます（「IMU の取得（`imu`）」の節）。
 
 ## 環境構築
 
@@ -36,6 +36,7 @@ source nuttx/script/setup.sh
 | `nuttx/toolchain/` | Arm GNU Toolchain（arm-none-eabi、x86_64 Linux 用） | 13.2.Rel1（SHA-256 を検証） |
 | `nuttx/.venv` | Python の venv。NuttX の `make menuconfig`・`olddefconfig` が使う kconfiglib | kconfiglib 14.1.0 |
 | `nuttx/stmemsc/` | ST の LSM6DSO レジスタドライバー（`lsm6dso_reg.c`、`lsm6dso_reg.h`） | lsm6dso-pid v3.2.2（Zephyr の hal_st と同じ内容。SHA-256 を検証） |
+| `nuttx/nuttx-apps/system/argtable3/argtable3` | argtable3（`iperf` が使うコマンドラインの解析）。nuttx-apps の Makefile はここにクローンがあれば使い、無ければビルドのたびに GitHub から取得し、`make distclean` で消します | タグ `v3.2.0.7402e6e`（nuttx-apps 13.1.0 の `CONFIG_SYSTEM_ARGTABLE3_VERSION` の既定。shallow clone） |
 
 あわせて次のことを行います。
 
@@ -63,10 +64,13 @@ NuttX 13.1.0 本体（`nuttx/patches/nuttx/`）と nuttx-apps（`nuttx/patches/a
 | `nuttx/0003-serial-canonical-ctrl-c-eof` | 標準入力を読むコマンドの読み込みを Ctrl-C・Ctrl-D で終わらせる |
 | `nuttx/0004-rp2040-make-defs-alarm-arch-idle-custom` | `CONFIG_ALARM_ARCH` のとき `rp2040_timerisr.c`（SysTick の周期割り込み）を、`CONFIG_ARCH_IDLE_CUSTOM` のとき `rp2040_idle.c` をビルドから外す（システム時計とアイドルループをボード側で持つため） |
 | `nuttx/0005-usrsock-dontwait-to-daemon-and-daemon-send-timeout` | usrsock の送受信で、呼び出しが待たないこと（`MSG_DONTWAIT`、非ブロッキングのソケット）をドライバーへの要求に残し、ドライバーが `-ETIME` で応えた送信を `-EAGAIN` で終える。元の usrsock は待つ呼び出しへの `-EAGAIN` を出し直し続けるので、Zephyr 版の「待つ TCP 送信は 10 秒で `EAGAIN`」「NINA が受け取らなかったデータグラムはすぐ `EAGAIN`」を作れず、ブロッキングのソケットへの `MSG_DONTWAIT` も 2 回目で待ってしまうため（`nuttx/drivers/README_ja.md` の「ソケット（usrsock）」） |
+| `nuttx/0006-telnet-crlf-line-end` | Telnet のドライバーが出力の改行を LF CR ではなく CR LF（Telnet の行末。Zephyr 版の Telnet のシェルと同じ）で送る |
 | `apps/0001-readline-echo-in-readline` | 行の入力中のエコーをシリアルドライバーではなく readline が行う（行に入れた文字と改行だけを返す） |
 | `apps/0002-readline-cr-lf-line-end` | CR、LF、CR LF、LF CR のどれでも 1 回の Enter にする |
 | `apps/0003-readline-ctrl-c` | Ctrl-C で入力中の行を捨てて新しいプロンプトを出す |
 | `apps/0004-readline-full-line` | 行が満杯になったら、行を分けずに後の文字を捨てる |
+| `apps/0005-iperf-free-argtable` | `iperf` が引数の表（argtable3）の最初の 1 項目しか解放せず、実行のたびにヒープを失っていたのを、全部解放するようにする |
+| `apps/0006-iperf-len-option-udp-eagain` | `iperf` に 1 回の読み書きのバイト数 `-l` を足し（iperf 2 と同じ）、UDP の送信が `EAGAIN` で失敗したときに `ENOMEM` と同じく待って送り直す。NINA は 512 バイトを超えるデータグラムを `EMSGSIZE` で、受け取れないデータグラムを `EAGAIN` で断る（Zephyr 版と同じ）ので、元の `iperf` の UDP の送信（1472 バイト、`ENOMEM` 以外で終了）はすぐ終わっていた |
 
 `nuttx/script/kconfig-tweak` は、NuttX の `tools/configure.sh`（から呼ばれる `tools/sethost.sh`）が
 `.config` の書き換えに使う `kconfig-tweak` の代わりです。kconfiglib には含まれていないため、
@@ -188,6 +192,7 @@ picocom /dev/serial/by-id/usb-NuttX_NuttX_USB_Console_*-if00
   その読み込みを終わらせ（Ctrl-D も同じ）、そうでなければ次のプロンプトで行を消す操作として
   扱われます。実行中のコマンドを止めることはありません（Zephyr 版でも実行中のコマンドは止まりません）。
   終わらないコマンド（`while`/`until` のループ、`watch`）は外してあります。
+- Wi-Fi に繋がっている間は、同じシェルを Telnet でも使えます（「Wi-Fi 経由のシェル（Telnet）」の節）。
 - `help` でコマンドの一覧が出ます。今は大半が nsh のコマンド（`uname`、`ps`、`free`、`echo`、`sleep`
   など）で、この移植のコマンドは移植が進むにつれて加わります。存在しないコマンドを打つと
   `nsh: <名前>: command not found` と出ます。
@@ -430,8 +435,8 @@ NINA は NuttX のネットワークデバイス `wlan0` です。Zephyr 版の 
 - `wapi scan` は NINA のスキャン（最大 10 件）を、BSSID・周波数・信号の強さ（dBm）・暗号化（`8000` なし、
   `0800` あり、`ffff` 不明）・SSID の列で、NINA の順に出します。暗号化の判定は Zephyr 版と同じ NINA の種類の
   対応（7 なし、5 WEP、2 WPA、4 WPA2、ほかは不明）からで、`wapi` は WEP・WPA・WPA2 を区別して表示しません。
-  周波数の列は、NuttX の `printf` が浮動小数点を扱わない構成（`CONFIG_LIBC_FLOATINGPOINT` なし）なので
-  `*float*` と出ます。ESSID・パッシブ・チャネルを指定したスキャンは Zephyr 版と同じく受け付けません。
+  周波数の列は MHz です（`iperf` が `CONFIG_LIBC_FLOATINGPOINT` を選ぶので、`printf` が浮動小数点を扱います。
+  無いと `*float*` と出ます）。ESSID・パッシブ・チャネルを指定したスキャンは Zephyr 版と同じく受け付けません。
   接続中のスキャンは、Zephyr 版と同じく切断として扱い（IP の設定を消す）、終わった後で再接続を頼みます。
 - スキャン中の接続、接続中のスキャンは Zephyr 版と同じく `EBUSY` です。
 - `wapi` は失敗したときに何も表示しません（エラーの表示が NuttX のデバッグ出力 `wlerr()` で、この構成では
@@ -494,6 +499,92 @@ nsh$ wifi cred list
 - Zephyr 版の古い形式の資格情報（KV の `sys.wifi_profile`、settings の `wifi_last/last`）を移す処理は、
   Zephyr 版のまま起動時に走りますが、この移植の保存領域には無いので何もしません。
 - パスフレーズは `wifi cred list` の表示（Zephyr 版と同じ）のほかは、ログにもエラーの文にも出しません。
+
+## Wi-Fi 経由のシェル（Telnet）
+
+Zephyr 版の Telnet のシェル（`CONFIG_SHELL_BACKEND_TELNET`）と同じく、Wi-Fi に繋がっている間は TCP の
+ポート 23 で USB と同じシェルを使えます（`nuttx/apps/init/nano_telnet.c`、`CONFIG_NANO_INIT_TELNET`。
+ポートは `CONFIG_NANO_INIT_TELNET_PORT`、Zephyr 版の `CONFIG_SHELL_TELNET_PORT`）。認証と暗号化がなく、
+到達できる相手はシェルのすべての操作ができるので、信頼できるネットワークでだけ使ってください。
+
+```bash
+telnet <ボードの IPv4 アドレス>
+```
+
+- 待ち受け: 起動処理（init）が `USB console started` のログより前に、待ち受けのソケットを開きます（Zephyr 版の
+  Telnet のバックエンドが `main()` の前の `SYS_INIT()` で開くのと同じ位置。ログは
+  `<inf> shell_telnet: Telnet shell backend initialized`）。Zephyr 版と同じく、すべてのアドレス（`INADDR_ANY`）、
+  backlog 1、`SO_REUSEADDR` なしです。ソケットは NINA が持つので、Wi-Fi に繋がる前に開いたソケットが
+  接続の後で受け付けを始め、Wi-Fi の切断と再接続をまたいで待ち受け続けます（Zephyr 版と同じ）。開けなければ
+  Zephyr 版と同じログ（`Unable to start telnet on NET_AF_INET (<値>)` など）を出し、Telnet は使えません。
+- 同時に使えるクライアントは 1 つです。接続中に 2 本目が来ると、受け付けてすぐ閉じ、
+  `<err> shell_telnet: Telnet client already connected.` をログに出します。1 本目はそのまま使えます（Zephyr 版と
+  同じ）。受け付けは `telnetd` のタスクが行います（Zephyr 版でこれを行う `net_socket_service` スレッドと同じ
+  優先度 104、スタック 2048）。受け付けが失敗したときは `Telnet accept error (<値>)` を出し、
+  `CONFIG_NANO_INIT_RETRY_MS`（100 ms）待ってから次を受け付けます（失敗が続くときに空回りしないため。Zephyr 版は
+  待ちません）。
+- セッションは USB と同じ nsh です（同じコマンドと出力、プロンプト `nsh$ `、挨拶文なし）。USB のシェルとは
+  別のタスクで、同時に独立して動きます（Zephyr 版の 2 つのバックエンドと同じ）。優先度 104、スタック 3072
+  （USB のセッションと同じ。Zephyr 版の `shell_telnet` スレッドの優先度 14 と `CONFIG_SHELL_STACK_SIZE`）。
+  `ps` では `nsh_telnet` です。NuttX の Telnet ドライバー（`CONFIG_NETDEV_TELNET`、
+  `CONFIG_TELNET_MAXLCLIENTS=1`）が、受け付けた接続を `/dev/telnet0` の端末にし、セッションはそれを標準入出力に
+  します。NuttX 標準の Telnet デーモン（`netutils/telnetd`、`NSH_TELNET`）は使いません。2 本目の接続
+  （`TELNET_MAXLCLIENTS` を超えるセッション）や `SO_REUSEADDR` の失敗（NINA のソケットは `ENOPROTOOPT`）で
+  待ち受けごと終わり、セッションが挨拶文を出すためです。
+- 接続した直後にプロンプトが届きます。Zephyr 版は接続しただけでは何も送りません（接続前の出力は捨て、
+  プロンプトは Enter の後に出ます）。`host/imu_host` は接続直後に届いたものを読み捨ててからコマンドを送るので、
+  どちらでも同じに使えます。
+- エコーと行編集: USB と同じく、入力した文字は readline がエコーし、行の編集・履歴・Tab・Ctrl-C（入力中の
+  行を捨てて新しいプロンプト）が使えます。NuttX の Telnet ドライバーは、行を読む間は `IAC WILL ECHO`、
+  コマンドの実行中は `IAC WONT ECHO` を送って、Telnet のクライアントのローカルエコーを切り替えます。Zephyr 版の
+  Telnet のシェルは接続のときにエコーを切り、オプションの交渉もしません。Zephyr のシェルはエコーが無効の間は
+  行の編集・履歴・Tab・Ctrl-C のキーも扱わないので、入力の見え方と編集はクライアントのローカルエコーに
+  任されます。`host/imu_host` はエコーと Telnet のコマンドを読み捨てるので、どちらでも同じ結果になります。
+- 改行: 出力の改行は CR LF です（Zephyr 版と同じ。パッチ `nuttx/0006`）。入力の Enter は CR、LF、CR LF、
+  CR NUL のどれでもよく、USB と同じく 1 回だけ実行します。
+- 切断: クライアントが接続を閉じたとき、接続が失敗したときにセッションが終わり、次の接続を受け付けます。
+  Wi-Fi が切れると NINA が接続を閉じ、セッションは終わります。PC 側の
+  接続には、Wi-Fi が戻った後の最初の送信で RST が届きます。ボードの `reboot` では NINA もリセットされるので、
+  PC 側に切断は届きません。
+- 標準入力を読むコマンド（引数なしの `cat` など）は、Telnet では Ctrl-C・Ctrl-D で終わりません（USB の
+  シリアルドライバーへのパッチ `nuttx/0003` は Telnet のドライバーには効きません）。接続を閉じると終わります。
+  セッションから `&` で裏で動かしたコマンドはセッションの端末を引き継ぐので、それが終わるまでは、接続を
+  閉じた後の次の接続も 2 本目と同じく断られます。
+- Telnet のセッションでは、コマンドの出力が、そのコマンドのタスクのスタックの上で NINA への SPI の転送まで
+  進みます（USB では CDC ACM のバッファーに入れるだけ）。そのため、この移植のコマンドのスタックは Zephyr 版の
+  シェルのスタックと同じ 3072 にしてあります（`dmesg` と `irqstack` は 1024 から上げました）。
+
+## 速度の測定（`iperf`）
+
+Zephyr 版の `zperf`（iperf 3 の方式）の代わりに、NuttX 標準の `iperf`（nuttx-apps の `netutils/iperf`、
+iperf 2 の方式）を使います。PC 側は `iperf3` ではなく `iperf`（iperf 2）を使います。既定のポートは 5001 です
+（Zephyr 版は 5201）。
+
+| Zephyr 版 | NuttX 版 | PC 側（NuttX 版のとき） |
+|---|---|---|
+| `zperf tcp upload <PC> 5201 30 1024` | `iperf -c <PC> -t 30 -l 1024` | `iperf -s` |
+| `zperf udp upload <PC> 5201 30 500 500K` | `iperf -c <PC> -u -t 30 -l 500`（速さは指定できず、送れるだけ送る） | `iperf -s -u` |
+| `zperf tcp download 5201` | `iperf -s -B 0.0.0.0` | `iperf -c <ボード> -t 30` |
+| `zperf tcp download stop` | TCP のサーバーは 1 回の接続が終わると自分で終わる | – |
+| – | `iperf -s -u -B 0.0.0.0 -l 512`（UDP のサーバー。止めるには別のシェルから `iperf -a`） | `iperf -c <ボード> -u -l 500 -b 500K` |
+
+- 主なオプション: `-c <宛先>`（クライアント）、`-s`（サーバー）、`-u`（UDP）、`-p <ポート>`、`-t <秒>`（クライアントの
+  時間、既定 30）、`-i <秒>`（途中経過の間隔、既定 3）、`-l <バイト>`（1 回の読み書き。既定は UDP 1472、TCP 16384）、
+  `-B <アドレス>`（サーバーの bind）、`-a`（動いている `iperf` に止まるよう伝える）。
+- サーバーには `-B 0.0.0.0` を付けます。付けないと `wlan0` のアドレスに bind しようとし、NINA は特定の
+  アドレスへの bind を受け付けません（Zephyr 版と同じく `EADDRNOTAVAIL`、`error code: 99`）。
+- UDP のデータグラムは 512 バイトまでです（NINA。Zephyr 版と同じ）。既定の 1472 バイトでは送信が
+  `EMSGSIZE`（`err=90`）で終わり、受信は 512 バイトより後を捨てるので、`-l 512` 以下を付けます。`-l` と、NINA が
+  データグラムを受け取れないとき（`EAGAIN`）に待って送り直す動作は、パッチ `apps/0006` で足したものです。
+- TCP のサーバーは、接続が 1 回終わると終わります（NuttX の `iperf` の動作）。接続が来ないうちは戻りません
+  （`accept()` の中で待つので `iperf -a` でも止まりません）。UDP のサーバーは終わらないので、別のシェル（Telnet と
+  USB のもう一方）から `iperf -a` で止めます（受信の期限 10 秒ごとに `udp server recv error` を出し、`-a` の後の
+  期限で終わります）。
+- スレッド: コマンドの `iperf`（優先度 104、スタック 3072）と、その pthread の `iperf_traffic`（優先度 100、
+  スタック 4096）、`iperf_report`（101、4096）。2 つの pthread の優先度とスタックは `iperf` のソースに固定です
+  （Zephyr 版の `zperf_work_q` は優先度 15 で、最も低いアプリの優先度 14 に下げられるので 104 に当たります）。
+  読み書きのバッファーはヒープから取ります（TCP は 16 KiB）。
+- `iperf` は浮動小数点の `printf`（`CONFIG_LIBC_FLOATINGPOINT`）と argtable3（`CONFIG_SYSTEM_ARGTABLE3`）を選びます。
 
 ## I2C0（`i2c`）
 
@@ -742,7 +833,9 @@ Subcommands:
 | `net_mgmt`（ネットワークのイベント。互換層。Wi-Fi のイベントのコールバック） | −1（協調） | 119 | 2048 |
 | `RTIO WQ 0`（RTIO のワークキュー。互換層。単発取得。`ps` では `RTIO_WQ_0`） | 0 | 118 | 1024 |
 | `main`（NuttX は init。起動処理の後シェルの優先度に下げる） | 0 | 118 | 2048 |
-| シェル（nsh のセッション、コマンド） | 14 | 104 | 3072 |
+| シェル（nsh のセッション、コマンド。USB の `nsh`、Telnet の `nsh_telnet`） | 14 | 104 | 3072 |
+| `telnetd`（Telnet の受け付け。Zephyr 版は `net_socket_service`） | 15 → 14 | 104 | 2048 |
+| `iperf_traffic`・`iperf_report`（`iperf` の pthread。Zephyr 版の `zperf_work_q` に当たる） | 15 → 14 | 100・101 | 4096・4096 |
 
 - Zephyr の協調スレッド（負の優先度。`sysworkq`、`net_mgmt` など）は 118 より上になりますが、NuttX には
   他のスレッドに横取りされない協調スレッドが無く、より高い優先度のスレッドには横取りされます。今の移植で

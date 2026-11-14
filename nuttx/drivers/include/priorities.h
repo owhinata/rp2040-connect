@@ -130,13 +130,24 @@
 #define NANO_PRIO_NET_MGMT           NANO_PRIO_FROM_ZEPHYR(-1)  /* 119 */
 #define NANO_STACK_NET_MGMT          2048
 
-/* Not used by the port yet; for reference (see nuttx/README.md):
+/* "net_socket_service" (subsys/net/lib/sockets/sockets_service.c,
+ * CONFIG_NET_SOCKETS_SERVICE_THREAD_PRIO 15, which Zephyr lowers to the
+ * lowest application priority 14, CONFIG_NET_SOCKETS_SERVICE_STACK_SIZE
+ * 2048): it accepts the Telnet clients (shell_telnet.c telnet_accept()).
+ * The port's "telnetd" task (nuttx/apps/init/nano_telnet.c).
+ */
+
+#define NANO_PRIO_TELNET_SERVICE     NANO_PRIO_FROM_ZEPHYR(14)  /* 104 */
+#define NANO_STACK_TELNET_SERVICE    2048
+
+/* Not used by the port; for reference (see nuttx/README.md):
  *   rx_q[0]        -1 (cooperative)  -> 119, 1504 (Zephyr's IP stack, idle)
  *   tcp_work      -14 (cooperative)  -> 132, 1024 (Zephyr's IP stack, idle)
  *   usbd, usbd@50110000 -8 (coop.)   -> 126, 1024 / 512 (NuttX: interrupt)
  *   logging        14                -> 104, 768 (NuttX: none, see app_log.h)
- *   net_socket_service 15 -> 14      -> 104, 2048 (NuttX: telnetd)
- *   zperf_work_q   15 -> 14          -> 104, 2048 (NuttX: iperf)
+ *   zperf_work_q   15 -> 14          -> 104, 2048 (NuttX: iperf, whose
+ *                                       threads have fixed priorities
+ *                                       100 and 101)
  *   idle           15                -> NuttX idle (0), 256 (NuttX 1024)
  */
 

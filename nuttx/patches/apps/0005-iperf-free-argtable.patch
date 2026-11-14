@@ -1,0 +1,31 @@
+iperf: free the whole argument table
+
+Purpose: iperf freed only the first of the eleven entries of its argtable3
+table (arg_freetable(..., 1)), so every run, including a usage error, left
+ten allocations (about 700 bytes) on the heap.  In a flat build the heap is
+shared, so repeated measurements used it up.  Now all entries are freed.
+Zephyr: no counterpart (zperf is a different implementation).
+
+diff --git a/netutils/iperf/iperf_main.c b/netutils/iperf/iperf_main.c
+index b87a122..2e551e5 100644
+--- a/netutils/iperf/iperf_main.c
++++ b/netutils/iperf/iperf_main.c
+@@ -88,7 +88,7 @@ static void iperf_showusage(FAR const char *progname,
+   printf("iperf command:\n");
+   arg_print_glossary(stdout, (FAR void **)args, NULL);
+ 
+-  arg_freetable((FAR void **)args, 1);
++  arg_freetable((FAR void **)args, sizeof(*args) / sizeof(FAR void *));
+   exit(exitcode);
+ }
+ 
+@@ -325,7 +325,8 @@ int main(int argc, FAR char *argv[])
+   iperf_start(&cfg);
+ 
+ out:
+-  arg_freetable((FAR void **)&iperf_args, 1);
++  arg_freetable((FAR void **)&iperf_args,
++                sizeof(iperf_args) / sizeof(FAR void *));
+ 
+   return 0;
+ }

@@ -31,6 +31,12 @@ _nuttx_setup() {
   local lsm6dso_h_sha256_crlf=fe8eb5586cfe75148957d74a75b148b0d6ccf09e81e45d211981050b0e533546
   local lsm6dso_c_sha256=4a17a4ca5c2a33d2116171f23b65b96a2e497537c443b295b487f60b2fb389ab
   local lsm6dso_h_sha256=ee2c5a6cca9fd78a454a25f015c17d73fa809620cdc42b971b1750ba66eb4326
+  # argtable3, the command line parser that nuttx-apps' iperf selects
+  # (SYSTEM_ARGTABLE3).  The tag is CONFIG_SYSTEM_ARGTABLE3_VERSION's default
+  # in nuttx-apps 13.1.0.  Without a Git clone in place, its Makefile
+  # downloads the tarball at build time and "make distclean" deletes it.
+  local argtable3_tag=v3.2.0.7402e6e
+  local argtable3_commit=7402e6ead5dc5ca7db1c321baa8c10ac243907e4
   # ---------------------------------------------------------------------------
 
   local root tool missing=() arm_gnu_file arm_gnu_url tc_dir tmp f
@@ -171,6 +177,11 @@ _nuttx_setup() {
       return 1
     fi
   done
+
+  # Inside nuttx-apps' system/argtable3 (ignored by its .gitignore), where
+  # its Makefile looks for a clone before downloading.
+  _nuttx_clone https://github.com/argtable/argtable3.git "$argtable3_tag" "$argtable3_commit" \
+    "${root}/nuttx-apps/system/argtable3/argtable3" || return 1
 
   _nuttx_patch "${root}/nuttx" "${root}/patches/nuttx" || return 1
   _nuttx_patch "${root}/nuttx-apps" "${root}/patches/apps" || return 1

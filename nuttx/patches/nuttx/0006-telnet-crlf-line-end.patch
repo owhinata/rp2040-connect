@@ -1,0 +1,42 @@
+telnet: send a line feed as CR LF, not LF CR
+
+Purpose: the Telnet driver sent each "\n" of the output as LF CR.  The
+Telnet end of line is CR LF (RFC 854), which is what the Zephyr build's
+Telnet shell sends (the Zephyr shell writes "\r\n").  With LF CR, a client
+that keeps the bytes (a script, a log) sees every line start with CR.
+Carriage returns written by the application are still dropped, as before.
+
+diff --git a/drivers/net/telnet.c b/drivers/net/telnet.c
+index b5811d04..928eda38 100644
+--- a/drivers/net/telnet.c
++++ b/drivers/net/telnet.c
+@@ -591,17 +591,12 @@ static bool telnet_putchar(FAR struct telnet_dev_s *priv, uint8_t ch,
+ 
+   if (ch != TELNET_CR)
+     {
+-      /* Add all other characters to the destination buffer */
+-
+       index = *nread;
+-      priv->td_txbuffer[index++] = ch;
+ 
+-      /* Check for line feeds */
++      /* A line feed goes out as CR LF, the Telnet end of line (RFC 854) */
+ 
+       if (ch == TELNET_NL)
+         {
+-          /* Now add the carriage return */
+-
+           priv->td_txbuffer[index++] = TELNET_CR;
+ 
+           /* End of line */
+@@ -609,6 +604,10 @@ static bool telnet_putchar(FAR struct telnet_dev_s *priv, uint8_t ch,
+           ret = true;
+         }
+ 
++      /* Add all other characters to the destination buffer */
++
++      priv->td_txbuffer[index++] = ch;
++
+       *nread = index;
+     }
+ 

@@ -10,12 +10,13 @@
 # It starts the IMU service's thread (zephyr_compat.h of
 # $(TOPDIR)/external/compat, without the layer's Zephyr headers) and calls
 # imu_cal_init() and time_sync_init() (../imu; imu_cal.h includes
-# lsm6dso_cal.h of $(TOPDIR)/external/lsm6dso).
+# lsm6dso_cal.h of $(TOPDIR)/external/lsm6dso).  nano_telnet.c runs the
+# Telnet shell (CONFIG_NANO_INIT_TELNET).
 ############################################################################
 
 include $(APPDIR)/Make.defs
 
-CSRCS = nano_init.c
+CSRCS = nano_init.c nano_telnet.c
 
 CFLAGS += ${INCDIR_PREFIX}$(APPDIR)$(DELIM)nshlib
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)include

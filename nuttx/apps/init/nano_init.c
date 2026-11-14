@@ -4,7 +4,8 @@
  * SPDX-License-Identifier: Apache-2.0
  *
  * The init task of the Nano RP2040 Connect port: nsh on the USB CDC ACM
- * console.
+ * console.  The Telnet shell is in nano_telnet.c; init starts it at the
+ * point where the Zephyr build's Telnet backend starts (before main()).
  *
  * The Zephyr build runs its shell on the CDC ACM UART from boot, prompts
  * without waiting for anything, keeps running while the host closes and
@@ -66,6 +67,7 @@
 
 #include "app_log.h"
 #include "priorities.h"
+#include "nano_init.h"
 
 #ifdef CONFIG_NANO_KV_STORE
 #  include "kv_store.h"
@@ -98,7 +100,7 @@ int wifi_profile_init(void);
 LOG_MODULE_REGISTER(usb_console, LOG_LEVEL_INF);
 
 /****************************************************************************
- * Private Functions
+ * Public Functions
  ****************************************************************************/
 
 /****************************************************************************
@@ -106,11 +108,12 @@ LOG_MODULE_REGISTER(usb_console, LOG_LEVEL_INF);
  *
  * Description:
  *   The nsh session task.  Same as nsh_consolemain() but without the login
- *   greeting.  Runs on the fd 0/1/2 it inherits from init.
+ *   greeting.  Runs on the fd 0/1/2 it inherits from init (USB) or from the
+ *   Telnet task (nano_telnet.c).
  *
  ****************************************************************************/
 
-static int nano_nsh_session(int argc, FAR char *argv[])
+int nano_nsh_session(int argc, FAR char *argv[])
 {
   FAR struct console_stdio_s *pstate = nsh_newconsole(true);
   int ret;
@@ -127,6 +130,10 @@ static int nano_nsh_session(int argc, FAR char *argv[])
   nsh_exit(&pstate->cn_vtbl, ret);
   return ret;
 }
+
+/****************************************************************************
+ * Private Functions
+ ****************************************************************************/
 
 /****************************************************************************
  * Name: console_connected
@@ -249,6 +256,14 @@ int nano_init_main(int argc, FAR char *argv[])
 #endif
 #ifdef CONFIG_NANO_WIFI_PROFILE
   K_THREAD_DEFINE_START(wifi_reconnect_tid);  /* nuttx/apps/wifi/wifi_profile.c */
+#endif
+
+#ifdef CONFIG_NANO_INIT_TELNET
+  /* The Telnet shell backend's SYS_INIT(APPLICATION), before main(): the
+   * listening socket (shell_telnet.c telnet_init()).
+   */
+
+  nano_telnet_start();
 #endif
 
   /* zephyr/app/usb-console/src/main.c */
