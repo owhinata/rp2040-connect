@@ -20,24 +20,6 @@ This is experimental. Measurements are started and stopped by hand from the shel
 only software on the PC side is a receiver script for verification. The design document lists
 what has and has not been verified.
 
-## NuttX build
-
-A port of the same firmware to NuttX 13.1.0 (the NuttX build) is in [`nuttx/`](nuttx/README.md).
-Acquisition, MQTT delivery, time synchronization, the KV store, calibration, Wi-Fi and the Telnet
-shell behave as in the Zephyr build, and the commands of this project (`imu`, `kv`, `ntp`, `nina`,
-`dmesg`, `i2c_dma`, `sensor`, `wifi cred`) have the same syntax and output. The other commands are
-replaced by the standard NuttX ones (`wapi`, `ifconfig`, `iperf`, `ps`, `reboot` and so on).
-
-- See [`nuttx/README.md`](nuttx/README.md) for setup, building, flashing and usage. It also has the
-  table of Zephyr commands and their NuttX counterparts, the table of error numbers (errno), and
-  the differences from the Zephyr build.
-- The PC tools (`imu-host` and `ImuStudio` in `host/`) work with either firmware ("Board firmware"
-  in [`host/README.md`](host/README.md)).
-- The KV store has a different format, so the Zephyr build's settings and calibration are saved
-  and written back with `script/kv_transfer.py` ("Moving the values from the Zephyr version" in
-  `nuttx/README.md`).
-- Section 11 of the [design](design/imu-raw-mqtt-design.md) describes the design differences.
-
 ## Setup
 
 These steps are for Ubuntu 24.04. Install the packages needed for the build first.
@@ -353,3 +335,44 @@ summary (missing batches, valid and reversed times) and at the errors in `imu st
 | `firmware/nina-fw/` | Fixes and build for the NINA firmware |
 | `host/` | PC-side tools (receive check, recording, calibration) and the display application `ImuStudio` |
 | `script/` | Script that turns the PC into a temporary access point, and the KV transfer from the Zephyr build to the NuttX build (`kv_transfer.py`) |
+
+## NuttX build
+
+A port of the same firmware to NuttX 13.1.0 (the NuttX build) is in [`nuttx/`](nuttx/README.md).
+Acquisition, MQTT delivery, time synchronization, the KV store, calibration, Wi-Fi and the Telnet
+shell behave as in the Zephyr build, and the commands of this project (`imu`, `kv`, `ntp`, `nina`,
+`dmesg`, `i2c_dma`, `sensor`, `wifi cred`) have the same syntax and output. The other commands are
+replaced by the standard NuttX ones (`wapi`, `ifconfig`, `iperf`, `ps`, `reboot` and so on).
+
+- See [`nuttx/README.md`](nuttx/README.md) for setup, building, flashing and usage. It also has the
+  table of Zephyr commands and their NuttX counterparts, the table of error numbers (errno), and
+  the differences from the Zephyr build.
+- The PC tools (`imu-host` and `ImuStudio` in `host/`) work with either firmware ("Board firmware"
+  in [`host/README.md`](host/README.md)).
+- The KV store has a different format, so the Zephyr build's settings and calibration are saved
+  and written back with `script/kv_transfer.py` ("Moving the values from the Zephyr version" in
+  `nuttx/README.md`).
+- Section 11 of the [design](design/imu-raw-mqtt-design.md) describes the design differences.
+
+## Performance of the Zephyr and NuttX builds
+
+Measured on the same board, PC and access point on the same day (2026-11-14), flashing one firmware and then
+the other. The condition is a 6667 Hz measurement sent over MQTT to `imu-host check` on the PC, 60 seconds per
+run, with the same steps for both builds (`imu start` from the USB shell, `imu stop` 60 seconds later, then
+`imu status`). No run had missing batches, and `errors` and `fifo` in `imu status` were 0 in all of them.
+
+| Item | Zephyr build | NuttX build |
+|---|---|---|
+| `cpu_active` while sending | 62.6% and 63.3% (2 runs) | 66.0 to 66.1% (3 runs) |
+| The same while running `ntp status` every 2 seconds | 65.4% (1 run) | 66.7% (1 run) |
+| NTP round trip while sending (median of `last_us` in `ntp status`) | 7.6 ms (27 points) | 8.6 ms (30 points) |
+| TCP send (board to PC, 10 seconds) | 3.00 Mbit/s (`zperf`, 1024 bytes at a time, 1 run) | 3.6 to 3.9 Mbit/s (`iperf`, 5 runs) |
+| TCP receive (PC to board, 10 seconds) | 1.57 Mbit/s (`zperf`, 1 run) | 0.95 to 1.03 Mbit/s (`iperf`, 5 runs) |
+
+- The NuttX build uses about 3 points more CPU while sending than the Zephyr build, and its NTP round trip
+  is about 1 ms longer. The cause has not been identified.
+- The TCP rates come from different commands (`zperf` in the Zephyr build speaks the iperf 3 protocol, `iperf`
+  in the NuttX build the iperf 2 protocol, and they send different sizes at a time), so they are a rough
+  comparison.
+- `sensor stream` stops with `Read failed` at higher output data rates in both builds: at 833 Hz and above in
+  the Zephyr build, at 3333 Hz and above in the NuttX build (watermark 128, USB console, one run each).

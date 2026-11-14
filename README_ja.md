@@ -18,21 +18,6 @@ PC の時刻を付けて Wi-Fi 経由の MQTT で送信します。
 現状は実験段階です。計測の開始・停止はシェルからの手動操作で、PC 側には検証用の受信
 スクリプトしかありません。確認できた範囲と未確認の範囲は設計書にまとめています。
 
-## NuttX 版
-
-同じファームウェアを NuttX 13.1.0 に移植したもの（NuttX 版）が [`nuttx/`](nuttx/README_ja.md) にあります。
-計測、MQTT の送信、時刻同期、KV、校正、Wi-Fi、Telnet のシェルは Zephyr 版と同じ動作で、独自のコマンド
-（`imu`、`kv`、`ntp`、`nina`、`dmesg`、`i2c_dma`、`sensor`、`wifi cred`）は構文と出力も同じです。それ以外の
-コマンドは NuttX 標準のもの（`wapi`、`ifconfig`、`iperf`、`ps`、`reboot` など）に置き換わります。
-
-- 環境構築、ビルド、書き込み、使い方は [`nuttx/README_ja.md`](nuttx/README_ja.md) を見てください。Zephyr 版の
-  コマンドと NuttX 版のコマンドの対応表、エラー番号（errno）の対応表、Zephyr 版との違いもそこにあります。
-- PC 側のツール（`host/` の `imu-host`、`ImuStudio`）は、どちらのファームウェアにも使えます
-  （[`host/README_ja.md`](host/README_ja.md) の「ボードのファームウェア」）。
-- KV の保存形式が違うので、Zephyr 版の設定と校正値は `script/kv_transfer.py` で退避して書き戻します
-  （`nuttx/README_ja.md` の「Zephyr 版からの移し替え」）。
-- 設計上の違いは [設計書](design/imu-raw-mqtt-design-ja.md) の §11 にあります。
-
 ## 環境構築
 
 Ubuntu 24.04 向けの手順です。まずビルドに必要なパッケージを入れます。
@@ -340,3 +325,40 @@ FIFO 設定と停止処理、NINA の SPI フレーミングなどを、PC 上�
 | `firmware/nina-fw/` | NINA ファームウェアの修正とビルド |
 | `host/` | PC 側のツール（受信の診断、記録、校正）と、表示用のアプリ `ImuStudio` |
 | `script/` | PC を一時的な AP にするスクリプト、Zephyr 版から NuttX 版への KV の移し替え（`kv_transfer.py`） |
+
+## NuttX 版
+
+同じファームウェアを NuttX 13.1.0 に移植したもの（NuttX 版）が [`nuttx/`](nuttx/README_ja.md) にあります。
+計測、MQTT の送信、時刻同期、KV、校正、Wi-Fi、Telnet のシェルは Zephyr 版と同じ動作で、独自のコマンド
+（`imu`、`kv`、`ntp`、`nina`、`dmesg`、`i2c_dma`、`sensor`、`wifi cred`）は構文と出力も同じです。それ以外の
+コマンドは NuttX 標準のもの（`wapi`、`ifconfig`、`iperf`、`ps`、`reboot` など）に置き換わります。
+
+- 環境構築、ビルド、書き込み、使い方は [`nuttx/README_ja.md`](nuttx/README_ja.md) を見てください。Zephyr 版の
+  コマンドと NuttX 版のコマンドの対応表、エラー番号（errno）の対応表、Zephyr 版との違いもそこにあります。
+- PC 側のツール（`host/` の `imu-host`、`ImuStudio`）は、どちらのファームウェアにも使えます
+  （[`host/README_ja.md`](host/README_ja.md) の「ボードのファームウェア」）。
+- KV の保存形式が違うので、Zephyr 版の設定と校正値は `script/kv_transfer.py` で退避して書き戻します
+  （`nuttx/README_ja.md` の「Zephyr 版からの移し替え」）。
+- 設計上の違いは [設計書](design/imu-raw-mqtt-design-ja.md) の §11 にあります。
+
+## Zephyr 版と NuttX 版の性能の違い
+
+同じボード、同じ PC、同じ AP で、2 つのファームウェアを書き換えて同じ日（2026-11-14）に測った値です。
+条件は 6667 Hz の計測を MQTT で送信、PC 側は `imu-host check`、1 回 60 秒で、どちらの版も同じ手順
+（USB のシェルから `imu start`、60 秒後に `imu stop`、`imu status`）で測りました。どの回も欠番、
+`imu status` の `errors`・`fifo` は 0 でした。
+
+| 項目 | Zephyr 版 | NuttX 版 |
+|---|---|---|
+| 送信中の `cpu_active` | 62.6 %、63.3 %（2 回） | 66.0〜66.1 %（3 回） |
+| 同、`ntp status` を 2 秒ごとに実行しながら | 65.4 %（1 回） | 66.7 %（1 回） |
+| 送信中の NTP の往復時間（`ntp status` の `last_us` の中央値） | 7.6 ms（27 点） | 8.6 ms（30 点） |
+| TCP の送信（ボード → PC、10 秒） | 3.00 Mbit/s（`zperf`、1024 バイトずつ、1 回） | 3.6〜3.9 Mbit/s（`iperf`、5 回） |
+| TCP の受信（PC → ボード、10 秒） | 1.57 Mbit/s（`zperf`、1 回） | 0.95〜1.03 Mbit/s（`iperf`、5 回） |
+
+- NuttX 版は、送信中の CPU 負荷が Zephyr 版より約 3 ポイント高く、NTP の往復が約 1 ms 長くなります。
+  差の原因は特定していません。
+- TCP の速度は測定のコマンドが違うので（Zephyr 版は `zperf`＝iperf 3 の方式、NuttX 版は `iperf`＝iperf 2 の
+  方式で、1 回に送る大きさも違います）、目安としての比較です。
+- `sensor stream` は、どちらの版でも ODR を上げると `Read failed` で止まります。Zephyr 版は 833 Hz 以上、
+  NuttX 版は 3333 Hz 以上で止まりました（watermark 128、USB コンソール、各 1 回）。
