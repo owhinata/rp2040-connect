@@ -396,7 +396,8 @@ RTIO and kernel as a whole are not ported.
 
 | Source | Contents |
 |---|---|
-| `zephyr_kernel.c` | The OS part on NuttX: `k_mutex` (`rmutex_t`), `k_sem` (`sem_t`, the limit checked in `k_sem_give()`), `k_poll()`, the work queue threads (kernel threads on static stacks), the timer of delayable work (a wdog), thread names, the start of `K_THREAD_DEFINE()` threads, `k_uptime_get()`, `k_sleep()`, `zephyr_compat_initialize()` |
+| `zephyr_mutex.c` | `k_mutex` on NuttX (`rmutex_t`). Zephyr's `k_mutex` is unlocked when all zero (`lock_count` 0), and Zephyr's MQTT library locks the client's mutex in `mqtt_abort()` before `mqtt_client_init()`; NuttX's all-zero mutex counts as held by thread 0, and the lock never returns. So `K_MUTEX_DEFINE()` and `k_mutex_init()` set a mark (`ready`), and one without it (all zero) is initialized by its first lock or unlock (once, under the layer's spin lock) |
+| `zephyr_kernel.c` | The OS part on NuttX: `k_sem` (`sem_t`, the limit checked in `k_sem_give()`), `k_poll()`, the work queue threads (kernel threads on static stacks), the timer of delayable work (a wdog), thread names, the start of `K_THREAD_DEFINE()` threads, `k_uptime_get()`, `k_sleep()`, `zephyr_compat_initialize()` |
 | `zephyr_work.c` | Work items and queues: the used part of Zephyr's `kernel/work.c` (OS-independent) |
 | `zephyr_rtio.c`, `zephyr_rtio_workq.c`, `zephyr_mem_blocks.c` | The RTIO executor (`subsys/rtio/rtio_executor.c`), the RTIO work queue (`rtio_workq.c`), the block pool (`lib/mem_blocks`) |
 | `zephyr_gpio.c` | The `gpio0` device (Zephyr's `gpio.h` logic and `gpio_rpi_pico.c`) on the board's `<nano_gpio.h>` |

@@ -112,15 +112,22 @@ struct k_poll_event;
 #ifdef __NuttX__
 
 /* k_mutex: recursive for its owner, with priority inheritance
- * (CONFIG_PRIORITY_INHERITANCE).
+ * (CONFIG_PRIORITY_INHERITANCE).  READY is set by Z_MUTEX_INITIALIZER()
+ * and k_mutex_init(); a mutex left all zero (never initialized) is
+ * initialized by its first k_mutex_lock() or k_mutex_unlock()
+ * (zephyr_mutex.c).  Zephyr's k_mutex is unlocked when all zero
+ * (lock_count 0); NuttX's is held by thread 0 (mholder 0) and would make
+ * its first locker wait for ever.
  */
 
 struct k_mutex
 {
   rmutex_t rmutex;
+  bool ready;
 };
 
-#  define Z_MUTEX_INITIALIZER(obj) { .rmutex = NXRMUTEX_INITIALIZER }
+#  define Z_MUTEX_INITIALIZER(obj) \
+  { .rmutex = NXRMUTEX_INITIALIZER, .ready = true }
 
 /* k_sem: a count with an upper limit; the threads in k_poll() on it. */
 

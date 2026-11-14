@@ -1301,7 +1301,8 @@ KV 領域の範囲の検査・ページ単位の書き込み・起動時の内�
 Wi-Fi の資格情報の保存と `wifi cred` コマンド（`wifi_cred`）、
 NINA の SPI の転送層（`nina_spi`）、NINA のソケットの表と命令（`nina_sock`）、NINA の名前解決（`nina_dns`）、時刻同期の問い合わせ・応答の検査・応答の待ち方・推定の期限・実時間時計・
 `ntp status` の出力（`time_sync`。NINA のソケットと時計は偽物）、MQTT の送信の開始の検査・トピック・スレッド・ソケットの呼び出しの順序・
-CONNECT と CONNACK の待ち・info と status とバッチの順と 1 回の `sendmsg()`・status と入力の間隔・捨てたバッチ・エラーの経路
+CONNECT と CONNACK の待ち・info と status とバッチの順と 1 回の `sendmsg()`・status と入力の間隔・捨てたバッチ・エラーの経路・
+ネットワークに繋がる前の開始（失敗を数えて 1000 ms ごとにやり直し、繋がれば送信、停止後の次の開始）
 （`imu_raw_mqtt`。ソケット、時計、ネットワークのインターフェースは偽物）、I2C0 のドライバーの OS に依存しない部分（`nano_i2c_dw`）、I2C0 の DMA
 読み出しのコマンド語（`i2c_dma_commands`）、`i2c_dma` コマンドの出力（`i2c_dma_app`。ドライバー側は偽物）、
 LSM6DSO の FIFO 制御（`fifo_hw`）、LSM6DSO のドライバーと FIFO のストリーム（`lsm6dso_driver`）、校正値の読み込みと
@@ -1309,7 +1310,7 @@ LSM6DSO の FIFO 制御（`fifo_hw`）、LSM6DSO のドライバーと FIFO の�
 `attr_set`・`stream`・`trig` の出力と、処理スレッドのコールバックがコマンドの端末に書くこと（`sensor_shell`。
 ドライバーと偽のセンサーは `lsm6dso_driver` のもの）、ストリームの
 状態機械（`stream_stop`）、互換層の RTIO（`zephyr_rtio`）とワーク（`zephyr_work`）、取得サービスのために
-足した互換層の部品（`zephyr_compat_misc`）を確かめます。テストは 1 つずつビルドして
+足した互換層の部品（`zephyr_compat_misc`）、互換層の NuttX の上の `k_mutex`（`zephyr_mutex`）を確かめます。テストは 1 つずつビルドして
 実行し、失敗したところで止まります。ビルドの生成物は一時ディレクトリに置き、終了時に消します。
 
 次のファイルは Zephyr 版（`zephyr/app/usb-console`）の同名ファイルを変更せずに写したものです。
@@ -1430,6 +1431,12 @@ Zephyr のフラグへの変換、`IC_DATA_CMD` に書く語の列（`i2c` ツ�
 使ったものと、桁上がりの前後と 32 ビットの tick の一周をまたぐ値で比べる）、`k_sleep(K_MSEC(1))` の tick 数、
 `sys_put_be32()`・`sys_get_be32()`、`snprintk()`、`hwinfo_get_device_id()`（偽のチップ ID）、`shell_print()`・
 `shell_error()` の出力先、`zsock_inet_pton()`・`zsock_inet_ntop()`。
+
+`nuttx/tests/zephyr_mutex.c` は互換層の `k_mutex`（`drivers/compat/zephyr_mutex.c`）を、NuttX 向けと同じ
+分岐（`__NuttX__`）で、NuttX 13.1.0 の再帰ミューテックスを模した偽物（全部 0 のものはスレッド 0 が持っている）の
+上でビルドして確かめます: `K_MUTEX_DEFINE()`、`k_mutex_init()`、全部 0 のまま初期化していない `k_mutex`（MQTT の
+クライアントの `mqtt_client_init()` の前の状態）が Zephyr と同じく最初の lock で待たずに取れること、再帰、
+他のスレッドが持っているときの `-EBUSY`・`-EAGAIN`。
 
 `nuttx/tests/nina_sock.c` は `drivers/nina/nina_sock.c` を、命令とパラメーターを検査して決まった応答を返す偽の
 `nina_request()` と偽の時計で確かめます: 対応するソケットの種類、10 個の表と `EMFILE`、NINA 側のソケットを

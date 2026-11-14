@@ -27,12 +27,20 @@
  *   POLL_ERROR (ZSOCK_POLLERR, as in the Zephyr build), a socket the
  *   module does not have (ZSOCK_POLLHUP) and a failed poll of the module
  *   end the connection with -EIO; a PINGRESP is read.
+ * - raw_mqtt_thread() started before the network is up (the client not
+ *   initialized yet): -ENETUNREACH counted as a failure, 1000 ms, again,
+ *   then the connection when the gateway comes; after the stop it waits
+ *   for the next start, which is accepted.  (The k_mutex of the client is
+ *   locked by mqtt_abort() before mqtt_client_init(): on NuttX that is
+ *   zephyr_mutex.c's case, tested in tests/zephyr_mutex.c; the fake
+ *   kernel's mutex here is Zephyr's, unlocked when all zero.)
  * - imu_raw_mqtt_submit() while disconnected: dropped and -EAGAIN.
  * - The counters of imu_raw_mqtt_get_stats().
  */
 #include <assert.h>
 #include <errno.h>
 #include <poll.h>
+#include <setjmp.h>
 #include <stdarg.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -75,8 +83,12 @@ int fake_getsockopt(int sock, int level, int option, void *value, socklen_t *len
 
 #include <zephyr/kernel.h>
 int32_t test_sleep(k_timeout_t timeout);
+int test_sem_take(struct k_sem *sem, k_timeout_t timeout);
 
+/* raw_mqtt_thread() runs in the test until it waits for the next start. */
+#define k_sem_take test_sem_take
 #include "../apps/imu/imu_raw_mqtt.c"
+#undef k_sem_take
 #include "../apps/imu/mqtt_min_sock.c"
 
 #include "imu_raw_batch.h"
@@ -88,6 +100,8 @@ static uint64_t now_us = 1000000;
 static uint64_t cycles;
 static int64_t stop_at_ms = -1;  /* test_sleep() clears running from then */
 static int sleeps;
+static void (*sleep_hook)(k_timeout_t timeout);
+static jmp_buf thread_waits;     /* raw_mqtt_thread() waits for a start */
 
 uint64_t k_cycle_get_64(void)
 {
@@ -108,11 +122,27 @@ static void set_time_us(uint64_t us)
 int32_t test_sleep(k_timeout_t timeout)
 {
 	sleeps++;
+	if (sleep_hook) {
+		sleep_hook(timeout);
+	}
 	set_time_us(now_us + (uint64_t)(timeout.ticks + 1) * Z_USEC_PER_TICK);
 	if (stop_at_ms >= 0 && k_uptime_get() >= stop_at_ms) {
 		atomic_clear(&running);
 	}
 	return 0;
+}
+
+/* raw_mqtt_thread()'s k_sem_take(&raw_start, K_FOREVER) with no start
+ * given: the thread would wait, so it ends here. */
+int test_sem_take(struct k_sem *sem, k_timeout_t timeout)
+{
+	if (sem == &raw_start && K_TIMEOUT_EQ(timeout, K_FOREVER)) {
+		if (k_sem_take(sem, K_NO_WAIT) != 0) {
+			longjmp(thread_waits, 1);
+		}
+		return 0;
+	}
+	return k_sem_take(sem, timeout);
 }
 
 /* The network interface ---------------------------------------------------*/
@@ -438,6 +468,51 @@ static size_t make_batch(uint8_t *payload, size_t cap)
 	return length;
 }
 
+static int retry_sleeps;
+
+/* At the third 1000 ms sleep the network comes up with a broker that
+ * accepts; the serving stops 50 ms later. */
+static void network_comes_up(k_timeout_t timeout)
+{
+	if (K_TIMEOUT_EQ(timeout, K_MSEC(RECONNECT_DELAY_MS))) {
+		assert(!fk.open && fk.nev == 0); /* no socket while unreachable */
+		if (++retry_sleeps == 3) {
+			gateway.s_addr = htonl(0x0a2a0001);
+			arrive(connack_ok, sizeof(connack_ok));
+			stop_at_ms = k_uptime_get() + 1000 + 50;
+		}
+	}
+}
+
+static void run_before_network(void)
+{
+	static const uint8_t zero[sizeof(client)];
+	struct imu_raw_mqtt_config cfg = {.port = 18830, .device_id = "rp2040"};
+	struct imu_raw_mqtt_stats st;
+
+	assert(!memcmp(&client, zero, sizeof(client)));
+	fake_reset();
+	assert(imu_raw_mqtt_start(&cfg) == 0);
+	retry_sleeps = 0;
+	sleep_hook = network_comes_up;
+	if (!setjmp(thread_waits)) {
+		raw_mqtt_thread(NULL, NULL, NULL);
+		assert(0); /* it does not return */
+	}
+	sleep_hook = NULL;
+	stop_at_ms = -1;
+	imu_raw_mqtt_get_stats(&st);
+	assert(retry_sleeps == 3 && st.failures == 3 && st.connects == 1 && !st.connected);
+	assert(st.status_published >= 1 && fk.addr.sin_addr.s_addr == htonl(0x0a2a0001));
+	assert(!atomic_get(&worker_active) && !atomic_get(&running) && !fk.open);
+	/* Stopped: the next start is accepted (not -EBUSY). */
+	assert(imu_raw_mqtt_start(&cfg) == 0);
+	assert(k_sem_take(&raw_start, K_NO_WAIT) == 0);
+	atomic_clear(&running);
+	atomic_clear(&worker_active);
+	fake_reset();
+}
+
 int main(void)
 {
 	static uint8_t batch[IMU_RAW_MAX_SIZE];
@@ -455,6 +530,16 @@ int main(void)
 	t = test_thread(0);
 	assert(t && !strcmp(t->name, "imu_raw_mqtt_tid") && t->prio == 107 &&
 	       t->stack_size == 2048 && t->entry == raw_mqtt_thread);
+
+	/* Started before the network is up (the client still all zero, as
+	 * after boot: mqtt_client_init() not called yet), as the Zephyr build:
+	 * each attempt fails with -ENETUNREACH, counted, then a
+	 * k_sleep(K_MSEC(1000)) and the next attempt; when the gateway comes
+	 * the thread connects and serves; after the stop it waits for the next
+	 * start, and the next start is accepted. */
+	gateway.s_addr = 0;
+	run_before_network();
+	gateway.s_addr = htonl(0x0a2a0001);
 
 	/* Start: the checks, the topics and the client ID. */
 	assert(imu_raw_mqtt_start(&cfg) == -EINVAL); /* no device */

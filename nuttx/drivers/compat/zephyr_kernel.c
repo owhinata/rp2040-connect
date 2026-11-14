@@ -1,13 +1,12 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-/* The OS part of <zephyr/kernel.h> on NuttX: mutexes, semaphores, k_poll()
+/* The OS part of <zephyr/kernel.h> on NuttX: semaphores, k_poll()
  * on semaphores, the threads of the work queues, the timer of a delayable
  * work item, thread names, and the start of what Zephyr starts at boot
  * (zephyr_compat_initialize()).  The work queue logic itself is
  * zephyr_work.c.  Part of the small Zephyr compatibility layer of the port
- * (nuttx/drivers/compat).
+ * (nuttx/drivers/compat).  The mutexes are zephyr_mutex.c.
  *
  *   Zephyr                    here
- *   k_mutex                   rmutex_t (recursive, priority inheritance)
  *   k_sem                     sem_t without priority inheritance (NuttX's
  *                             default for a semaphore), with the limit
  *                             checked in k_sem_give()
@@ -37,7 +36,6 @@
 
 #include <nuttx/irq.h>
 #include <nuttx/kthread.h>
-#include <nuttx/mutex.h>
 #include <nuttx/sched.h>
 #include <nuttx/semaphore.h>
 #include <nuttx/wdog.h>
@@ -48,43 +46,6 @@
 #include <zephyr/rtio/work.h>
 
 #include "priorities.h"
-
-/* Mutexes ----------------------------------------------------------------*/
-
-int k_mutex_init(struct k_mutex *mutex)
-{
-  return nxrmutex_init(&mutex->rmutex);
-}
-
-int k_mutex_lock(struct k_mutex *mutex, k_timeout_t timeout)
-{
-  int ret;
-
-  if (K_TIMEOUT_EQ(timeout, K_NO_WAIT))
-    {
-      ret = nxrmutex_trylock(&mutex->rmutex);
-      return ret == 0 ? 0 : -EBUSY;
-    }
-
-  if (K_TIMEOUT_EQ(timeout, K_FOREVER))
-    {
-      do
-        {
-          ret = nxrmutex_lock(&mutex->rmutex);
-        }
-      while (ret == -EINTR);
-
-      return ret;
-    }
-
-  ret = nxrmutex_ticklock(&mutex->rmutex, (uint32_t)timeout.ticks);
-  return ret == -ETIMEDOUT ? -EAGAIN : ret;
-}
-
-int k_mutex_unlock(struct k_mutex *mutex)
-{
-  return nxrmutex_unlock(&mutex->rmutex);
-}
 
 /* Semaphores -------------------------------------------------------------*/
 

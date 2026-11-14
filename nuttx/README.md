@@ -1474,8 +1474,9 @@ the hex conversions of the `kv` command (`kv_hex`), the handling of the commands
 for the reply, estimate expiry, realtime clock and `ntp status` output (`time_sync`, with a fake
 NINA socket and clock), the MQTT transport's start checks, topics and thread, the order of its
 socket calls, CONNECT and the CONNACK wait, the order of info, status and batch each in one
-`sendmsg()`, the status and input intervals, the dropped batches and the error paths
-(`imu_raw_mqtt`, with a fake socket, clock and network interface), the OS-independent part of the I2C0
+`sendmsg()`, the status and input intervals, the dropped batches, the error paths and a start
+before the network is up (each failure counted and retried after 1000 ms, sending once it is up,
+the next start after a stop) (`imu_raw_mqtt`, with a fake socket, clock and network interface), the OS-independent part of the I2C0
 driver (`nano_i2c_dw`), the command words of the I2C0 DMA reads (`i2c_dma_commands`), the
 output of the `i2c_dma` command (`i2c_dma_app`, with the driver side replaced by fakes), the
 LSM6DSO FIFO control (`fifo_hw`), the LSM6DSO driver and its FIFO stream (`lsm6dso_driver`), the
@@ -1483,8 +1484,8 @@ loading of the calibration and the output of `imu cal` (`imu_cal`), the `sensor`
 argument checks, wildcards, device names, the output of `get`, `attr_get`, `attr_set`, `stream`
 and `trig`, written by the processing thread's callback to the command's terminal (`sensor_shell`,
 on the driver and fake sensor of `lsm6dso_driver`), the stream's state machine (`stream_stop`), the compatibility layer's RTIO (`zephyr_rtio`) and
-work items (`zephyr_work`), and the parts of the layer added for the acquisition service
-(`zephyr_compat_misc`). Each test is built and run in turn,
+work items (`zephyr_work`), the parts of the layer added for the acquisition service
+(`zephyr_compat_misc`), and the layer's `k_mutex` on NuttX (`zephyr_mutex`). Each test is built and run in turn,
 and the script stops at the first failure. Build products go to a temporary directory that is
 removed on exit.
 
@@ -1634,6 +1635,12 @@ of `k_uptime_get()` (against Zephyr's `k_ticks_to_ms_floor64()` of 100 µs ticks
 and across the wrap of the 32-bit tick count), the ticks of `k_sleep(K_MSEC(1))`,
 `sys_put_be32()`/`sys_get_be32()`, `snprintk()`, `hwinfo_get_device_id()` (fake chip ID), where
 `shell_print()` and `shell_error()` write, and `zsock_inet_pton()`/`zsock_inet_ntop()`.
+
+`nuttx/tests/zephyr_mutex.c` checks the layer's `k_mutex` (`drivers/compat/zephyr_mutex.c`), built
+with the NuttX branch (`__NuttX__`) on a model of NuttX 13.1.0's recursive mutex (an all-zero one
+is held by thread 0): `K_MUTEX_DEFINE()`, `k_mutex_init()`, a `k_mutex` left all zero and never
+initialized (the MQTT client's before `mqtt_client_init()`) that the first lock takes at once, as
+in Zephyr, recursion, and `-EBUSY`/`-EAGAIN` while another thread holds it.
 
 `nuttx/tests/nina_sock.c` checks `drivers/nina/nina_sock.c` with a fake `nina_request()` that checks
 each command and its parameters and gives scripted answers, and a fake clock: the supported socket

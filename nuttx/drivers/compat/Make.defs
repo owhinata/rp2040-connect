@@ -17,7 +17,8 @@ endif
 # (default iodev and decoder) that the FIFO stream uses.
 
 ifeq ($(CONFIG_NANO_LSM6DSO_STREAM),y)
-CSRCS += zephyr_kernel.c zephyr_work.c zephyr_mem_blocks.c zephyr_rtio.c
+CSRCS += zephyr_kernel.c zephyr_mutex.c zephyr_work.c zephyr_mem_blocks.c
+CSRCS += zephyr_rtio.c
 CSRCS += zephyr_rtio_workq.c zephyr_gpio.c zephyr_sensor_clock.c
 CSRCS += sensor_default_rtio.c
 

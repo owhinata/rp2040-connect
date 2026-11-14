@@ -121,6 +121,15 @@ cc "${flags[@]}" "${zinc[@]}" -Itests/lsm6dso_fakes tests/zephyr_compat_misc.c \
     drivers/compat/zephyr_hwinfo.c "${compat[@]}" "$link" -o "$out/zephyr_compat_misc"
 "$out/zephyr_compat_misc" >/dev/null
 printf 'ok  zephyr_compat_misc\n'
+# The layer's k_mutex on NuttX (drivers/compat/zephyr_mutex.c), built as for NuttX on a model
+# of NuttX's recursive mutex (an all-zero one is held by thread 0): K_MUTEX_DEFINE, k_mutex_init,
+# and a mutex left all zero (the MQTT client's before mqtt_client_init()), which is unlocked
+# as in Zephyr.
+cc "${flags[@]}" -D_DEFAULT_SOURCE -D__NuttX__ -Itests/zephyr_mutex_fakes -Idrivers/compat \
+    -Idrivers/include tests/zephyr_mutex.c drivers/compat/zephyr_mutex.c "$link" \
+    -o "$out/zephyr_mutex"
+"$out/zephyr_mutex" >/dev/null
+printf 'ok  zephyr_mutex\n'
 # The minimal MQTT client (apps/imu/mqtt_min.c, the copied part of Zephyr's MQTT library; its
 # text compares signed with unsigned, as in the Zephyr build) on a fake socket.  The same test
 # also runs on Zephyr's own library when the Zephyr tree is there (tests/mqtt_ref: its log,

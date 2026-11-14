@@ -359,7 +359,8 @@ Zephyr の API を、Zephyr の名前のまま最小限だけ用意したもの�
 
 | ソース | 中身 |
 |---|---|
-| `zephyr_kernel.c` | NuttX の上の OS 部分: `k_mutex`（`rmutex_t`）、`k_sem`（`sem_t`、上限は `k_sem_give()` で見る）、`k_poll()`、ワークキューのスレッド（静的なスタックのカーネルスレッド）、遅延ワークのタイマー（wdog）、スレッド名、`K_THREAD_DEFINE()` のスレッドの起動、`k_uptime_get()`・`k_sleep()`、`zephyr_compat_initialize()` |
+| `zephyr_mutex.c` | NuttX の上の `k_mutex`（`rmutex_t`）。Zephyr の `k_mutex` は全部 0 のとき未ロック（`lock_count` 0）で、Zephyr の MQTT ライブラリは `mqtt_client_init()` の前のクライアントのミューテックスを `mqtt_abort()` で lock する。NuttX の全部 0 のミューテックスはスレッド 0 が持っている扱いで、lock が戻らない。そこで `K_MUTEX_DEFINE()` と `k_mutex_init()` が印（`ready`）を立て、印のないもの（全部 0）は最初の lock・unlock で初期化する（互換層のスピンロックの中で 1 回だけ） |
+| `zephyr_kernel.c` | NuttX の上の OS 部分: `k_sem`（`sem_t`、上限は `k_sem_give()` で見る）、`k_poll()`、ワークキューのスレッド（静的なスタックのカーネルスレッド）、遅延ワークのタイマー（wdog）、スレッド名、`K_THREAD_DEFINE()` のスレッドの起動、`k_uptime_get()`・`k_sleep()`、`zephyr_compat_initialize()` |
 | `zephyr_work.c` | ワークとワークキュー。Zephyr の `kernel/work.c` の使っている部分の写し（OS に依存しない） |
 | `zephyr_rtio.c`、`zephyr_rtio_workq.c`、`zephyr_mem_blocks.c` | RTIO の executor（`subsys/rtio/rtio_executor.c`）、RTIO のワークキュー（`rtio_workq.c`）、ブロックのプール（`lib/mem_blocks`） |
 | `zephyr_gpio.c` | `gpio0` のデバイス（Zephyr の `gpio.h` の処理と `gpio_rpi_pico.c`）。ボードの `<nano_gpio.h>` の上 |
