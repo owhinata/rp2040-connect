@@ -36,9 +36,9 @@ Zephyr 版はソケットのオフロード（`drivers/nina/nina_socket.c`）で
 
 | ファイル | 役割 |
 |---|---|
-| `nina/nina_sock.[ch]` | ソケットの表（10 個）と NINA のソケット命令。Zephyr 版の `nina_socket.c` の `nina_socket_create()`・`do_bind()`・`do_listen()`・`do_accept()`・`do_connect()`・`do_close()`・`do_setsockopt()` と、送受信の `udp_send()`・`do_send()`・`do_sendmsg()`・`udp_recv()`・`do_recv()` を、名前・分岐・順序・定数・errno の名前を保って移したもの（送受信の待ちのループは要求 1 回で 1 周）。`FIONREAD`（`nina_sock_fionread()`）は NuttX 版だけ。OS に依存しない |
+| `nina/nina_sock.[ch]` | ソケットの表（10 個）と NINA のソケット命令。Zephyr 版の `nina_socket.c` の `nina_socket_create()`・`do_bind()`・`do_listen()`・`do_accept()`・`do_connect()`・`do_close()`・`do_setsockopt()` と、送受信の `udp_send()`・`do_send()`・`do_sendmsg()`・`udp_recv()`・`do_recv()` を、名前・分岐・順序・定数・errno の名前を保って移したもの（送受信の待ちのループは要求 1 回で 1 周）。`FIONREAD`（`nina_sock_fionread()`）と独自のソケットオプション `NINA_SO_CALLER_POLLS`・`NINA_SO_POLL`（`nina_sock_poll_revents()`、`include/nina_sockopt.h`）は NuttX 版だけ。OS に依存しない |
 | `nina/nina_usrsock.c` | usrsock の要求を上の関数に振り分け、応答（ACK）を返す |
-| `nina/nina_poller.c` | スレッド `nina_event`。NINA のソケットの状態を見て usrsock のイベントにする。待つ送信の再試行の時間も計る |
+| `nina/nina_poller.c` | スレッド `nina_event`。NINA のソケットの状態を見て usrsock のイベントにする（呼び出し元だけが問い合わせるソケットは接続中だけ）。待つ送信の再試行の時間も計る |
 | `nina/nina_usrsock.h` | 上の 2 つの間の宣言 |
 
 - 要求は、呼び出したスレッドの文脈で、その優先度のまま同期して処理します（Zephyr 版のソケット呼び出しと
@@ -55,6 +55,17 @@ Zephyr 版はソケットのオフロード（`drivers/nina/nina_socket.c`）で
   書ける → `SENDTO_READY`、接続済み TCP のエラーフラグか poll の失敗 → `REMOTE_CLOSED`。UDP のエラー
   フラグは伝えません（Zephyr 版でもデータグラムの呼び出しはその後も続きます）。usrsock が既に持っている
   イベントのソケットは問い合わせず、問い合わせるものが無ければスレッドは要求で起こされるまで眠ります。
+- 呼び出し元だけが問い合わせるソケット: 互換層の `zsock_socket()` は、作ったソケットにドライバー独自の
+  ソケットオプション `NINA_SO_CALLER_POLLS`（レベル `NINA_SOL`、`include/nina_sockopt.h`）を付けます（MQTT と
+  時刻同期のソケット）。印の付いたソケットは、`nina_event` が接続中の確認のほかは問い合わせず、受信の後の
+  問い合わせもしません。Zephyr 版の NINA のソケットと同じく、使う側（互換層の `zsock_recv()`・`zsock_poll()`）
+  だけが、呼び出したスレッドで NINA に尋ねます（下の互換層の「`zsock_poll()`」）。印の無いソケット（Telnet、
+  iperf、nsh のコマンド）は上のとおり `nina_event` が問い合わせます（Zephyr 版の Telnet も socket service の
+  `poll()` が 20 ms ごとに尋ねます）。印の付いたソケットでも、接続の確認（20 ms ごと、10 秒まで）と、待つ
+  送信の次の周までの時間（1 ms）は `nina_event` が受け持ちます。usrsock では、要求を持ったまま待つと他の
+  ソケットの要求も止まるためで、周の中の NINA の命令は呼び出したスレッドで送ります。印の付いたソケットで
+  待つ受信（`MSG_DONTWAIT` なしの `recv()`）や NuttX の `poll()` を使うと来ないイベントを待ち続けるので、
+  互換層の呼び出しだけで使います。
 - connect: 接続命令の直後に 1 回状態を確かめ（Zephyr 版のループの最初の 1 回）、終わっていなければ
   「処理中」と応答して、`nina_event` が 20 ms ごとに確かめます。期限は接続命令から 10 秒（`ETIMEDOUT`）。
   結果は、成功なら `SENDTO_READY`、失敗なら connect の要求への最後の応答で返すので、`connect()` の errno は
@@ -65,7 +76,8 @@ Zephyr 版はソケットのオフロード（`drivers/nina/nina_socket.c`）で
   ソケットには `SENDTO_READY` を送ります。
 - 対応していない操作は Zephyr 版と同じ errno です: `getsockopt`・`getsockname`・`getpeername`・`shutdown` は
   `EOPNOTSUPP`、`TCP_NODELAY` 以外の `setsockopt` は `ENOPROTOOPT`（`SO_RCVTIMEO`・`SO_SNDTIMEO` は NuttX が
-  自分で扱います）。`ioctl` は `FIONREAD`（下）のほかは `ENOTTY` を返して NuttX 自身の処理（ネットワーク
+  自分で扱います）。例外はドライバー独自の `NINA_SOL` の 2 つ（`setsockopt` の `NINA_SO_CALLER_POLLS`、
+  `getsockopt` の `NINA_SO_POLL`）です。`ioctl` は `FIONREAD`（下）のほかは `ENOTTY` を返して NuttX 自身の処理（ネットワーク
   デバイスの `SIOC*` など）に任せます。`socket(AF_INET, SOCK_CTRL)`（`ifconfig` などが使う）は `ENOTSUP` で
   NuttX 自身に任せます。
 - 送受信の値は Zephyr 版と同じです: TCP の送信は 1 回 3584 バイトまで（`CONFIG_NANO_NINA_TCP_MAX_IO`）、
@@ -92,18 +104,22 @@ Zephyr 版はソケットのオフロード（`drivers/nina/nina_socket.c`）で
     データグラムを区別できないため）、無ければ `RECVFROM_AVAIL` を落として `EAGAIN` で応えます。待つ受信は
     usrsock が `RECVFROM_AVAIL` を待ち、それは `nina_event` が 20 ms ごとの poll で送ります（`SO_RCVTIMEO` は
     NuttX が扱います）。受け取った後も `RECVFROM_AVAIL` を落とし、`nina_event` がすぐに poll し直します。
-    usrsock は `RECVFROM_AVAIL` が無いと受信をドライバーに渡さないので、受信や `poll()` の最初の問い合わせは
-    `nina_event` の poll まで（最大 20 ms）遅れることがあります（Zephyr 版はその場で尋ねます）。
+    usrsock は `RECVFROM_AVAIL` が無いと受信をドライバーに渡さないので、印の無いソケットでは、受信や `poll()`
+    の最初の問い合わせが `nina_event` の poll まで（最大 20 ms）遅れることがあります（Zephyr 版はその場で
+    尋ねます）。印の付いたソケットは、互換層が `FIONREAD` で先に尋ねるので遅れません。
   - データを見つけた poll（`nina_event`、`FIONREAD`）は、次の受信の最初の poll の代わりに使います（その間に
     データを取る者はいません）。
 - TCP の受信の 0 は、相手が閉じたか接続が失敗したことを示します（NINA はどちらも 0 バイトと答えます。
   Zephyr 版と同じ）。UDP は接続した相手（`connect()`）以外からのデータグラムを捨てます（Zephyr 版と同じ）。
 - `ioctl(FIONREAD)` は NuttX 版だけのもので、呼び出したスレッドでその場で NINA に poll を 1 回送り、データ
   （TCP では相手の切断も）があれば 1、無ければ 0 を返します（NINA はバイト数を教えません）。1 のときは応答に
-  `RECVFROM_AVAIL` を付けるので、続く `recv(MSG_DONTWAIT)` が NINA に届きます。時刻同期が 1 ms ごとに受信を
-  見るためのもので、互換層の `zsock_recv()` が `ZSOCK_MSG_DONTWAIT` のときと `zsock_poll()` が使います（Zephyr 版の
-  `time_sync.c` は `recv(MSG_DONTWAIT)`、`imu_raw_mqtt.c` は `poll()` と MQTT のライブラリの `recv(MSG_DONTWAIT)` で
-  同じことをしています。下の互換層の表と「`zsock_poll()`」）。
+  `RECVFROM_AVAIL` を付けるので、続く `recv(MSG_DONTWAIT)` が NINA に届きます。互換層の `zsock_recv()` が使います
+  （Zephyr 版の NINA の `recv()` は呼ばれるたびに poll を 1 回送ってから読みます。時刻同期の 1 ms ごとの受信と
+  MQTT のライブラリの `recv(MSG_DONTWAIT)`。下の互換層の表）。
+- `getsockopt(NINA_SOL, NINA_SO_POLL)`（int）も NuttX 版だけのもので、Zephyr 版の `do_poll()` のソケット 1 つ分の
+  1 周です: NINA 側のソケットがまだ無ければ尋ねずに TCP は `POLLHUP`、UDP は `POLLOUT`。あれば poll を 1 回送り、
+  読める → `POLLIN`、書ける → `POLLOUT`、エラーフラグ → `POLLERR` を返します。poll の失敗はその errno です。
+  互換層の `zsock_poll()` が使います。
 - `nina/nina_sock.c` はホストテスト（`nuttx/tests/nina_sock.c`）で、偽の `nina_request()` と時計を使って
   確かめます。
 
@@ -316,7 +332,7 @@ Zephyr の API を、Zephyr の名前のまま最小限だけ用意したもの�
 | `zephyr/sys/printk.h`、`zephyr/sys/byteorder.h`、`zephyr/sys/cpu_load.h` | `snprintk()`（Zephyr 版の構成 `CONFIG_PICOLIBC=y` と同じく `snprintf()`）、`sys_put_be16/32()`・`sys_get_be16/32()`・`sys_get_le32()`、`cpu_load_get()`（ボードの `cpu_load.h`） |
 | `zephyr/drivers/hwinfo.h` | `hwinfo_get_device_id()`（下） |
 | `zephyr/shell/shell.h` | `shell_print()`（標準出力）・`shell_warn()`・`shell_error()`（標準エラー）。Zephyr の形のコマンドの関数を、`nuttx/apps/subcmd` の組み込みコマンドから呼ぶため（下） |
-| `zephyr/net/socket.h` | `zsock_inet_pton()`・`zsock_inet_ntop()`（C ライブラリの `inet_pton()`・`inet_ntop()`）、`zsock_getaddrinfo()`・`zsock_freeaddrinfo()`（NINA の名前解決、`nina_getaddrinfo()`。エラーは NuttX の `EAI_*`）、`zsock_socket()`・`zsock_sendto()`・`zsock_close()`（NuttX の `socket()`・`sendto()`・`close()`）、`zsock_recv()`（`recv()`。`ZSOCK_MSG_DONTWAIT` のときは先に `ioctl(FIONREAD)` で NINA にその場で尋ね、何も無ければ `EAGAIN`。Zephyr 版の NINA の `recv()` が呼ばれるたびに尋ねるのに合わせるため）、`ZSOCK_MSG_DONTWAIT`、`zsock_connect()`・`zsock_send()`・`zsock_sendmsg()`（`connect()`・`send()`・`sendmsg()`）、`zsock_poll()`・`struct zsock_pollfd`・`ZSOCK_POLLIN` など（`poll()` と `struct pollfd`。NINA への尋ね方は下） |
+| `zephyr/net/socket.h` | `zsock_inet_pton()`・`zsock_inet_ntop()`（C ライブラリの `inet_pton()`・`inet_ntop()`）、`zsock_getaddrinfo()`・`zsock_freeaddrinfo()`（NINA の名前解決、`nina_getaddrinfo()`。エラーは NuttX の `EAI_*`）、`zsock_socket()`（NuttX の `socket()` に `NINA_SO_CALLER_POLLS` を付ける。付けられなければ閉じて -1）、`zsock_sendto()`・`zsock_close()`（NuttX の `sendto()`・`close()`）、`zsock_recv()`（先に `ioctl(FIONREAD)` で NINA にその場で尋ね、あれば `recv(MSG_DONTWAIT)` で読む。`ZSOCK_MSG_DONTWAIT` のときは何も無ければ `EAGAIN`、無いときは 20 ms ごとに尋ね直す。Zephyr 版の NINA の `recv()`（`do_recv()`・`udp_recv()`）が呼ばれるたびに尋ね、待つときは 20 ms ごとに尋ね直すのに合わせるため。`SO_RCVTIMEO`・`O_NONBLOCK` は見ない）、`ZSOCK_MSG_DONTWAIT`、`zsock_connect()`・`zsock_send()`・`zsock_sendmsg()`（`connect()`・`send()`・`sendmsg()`）、`zsock_poll()`・`struct zsock_pollfd`・`ZSOCK_POLLIN` など（`poll()` と `struct pollfd`。NINA への尋ね方は下） |
 | `zephyr/sys/clock.h` | `sys_clock_gettime()`・`sys_clock_settime()`（`SYS_CLOCK_REALTIME`。NuttX の `clock_gettime()`・`clock_settime()` の `CLOCK_REALTIME`。0 か `-EINVAL`）、`NSEC_PER_USEC`・`USEC_PER_SEC` |
 | `zephyr/net/net_if.h` | `struct net_if`（NuttX のネットワークデバイス 1 つ）、`net_if_get_default()`・`net_if_get_wifi_sta()`、IPv4 のアドレス・ネットマスク・ゲートウェイ（`net_if_ipv4_addr_add()`・`_rm()`・`net_if_ipv4_get_global_addr()`・`net_if_ipv4_set_netmask_by_addr()`・`net_if_ipv4_set_gw()`・`net_if_ipv4_get_gw()`）、`net_if_dormant_on()`・`_off()`、`net_if_is_admin_up()`、`net_if_set_link_addr()`（下） |
 | `zephyr/net/net_mgmt.h` | `net_mgmt()`（要求）、`struct net_mgmt_event_callback`、`net_mgmt_init_event_callback()`・`net_mgmt_add_event_callback()`・`_del_event_callback()`、`net_mgmt_event_notify_with_info()`（下） |
@@ -412,17 +428,14 @@ Zephyr の API を、Zephyr の名前のまま最小限だけ用意したもの�
   間は、`imu` が `CONFIG_LIBC_IPv4_ADDRCONV` を選んで IPv4 の変換を入れます。ソケットは NINA の usrsock
   で、`zsock_socket()`・`zsock_connect()`・`zsock_send()`・`zsock_sendmsg()`・`zsock_sendto()`・`zsock_close()` は
   NuttX の同じ名前の関数です（ブロッキングのソケットの待ちと期限は NINA のドライバーのもの）。
-- **`zsock_poll()`**: Zephyr 版の NINA の `poll()`（`nina_socket.c` の `do_poll()`）は、呼び出したスレッドで
-  ソケットごとに NINA の poll 命令をその場で 1 回送り、何も無ければ 20 ms ごとに送り直して時間切れまで待ちます。
-  NuttX の `poll()` は usrsock が持っているイベントで答え、それは `nina_event` が 20 ms ごとの問い合わせで
-  更新します。そこで互換層の `zsock_poll()` は、`ZSOCK_POLLIN` を待つソケットごとに先に `ioctl(FIONREAD)`
-  （呼び出したスレッドで NINA に poll 命令を 1 回。データか接続の終わりがあれば `RECVFROM_AVAIL` が立つ）を
-  呼び、続けて NuttX の `poll()` を待たずに 1 回呼びます。何も無く、待ち時間が 0 でなければ、残りを NuttX の
-  `poll()` で待ちます（`nina_event` の 20 ms ごとの問い合わせを待つ）。NINA の poll の失敗は Zephyr 版と同じく
-  -1 とその errno で返します。接続していない TCP のソケット（`FIONREAD` が `ENOTCONN`）は NuttX の `poll()` に
-  任せます。NINA の接続の異常（エラーフラグ）は、Zephyr 版では `ZSOCK_POLLERR`、ここでは `nina_event` が
-  usrsock の `REMOTE_CLOSED` にしたものが `ZSOCK_POLLHUP` で届きます。ソケットにだけ使います（ほかの
-  ファイル記述子にも `FIONREAD` を送るため）。`imu_raw_mqtt.c` の受信の確認と CONNACK の待ちが使います。
+- **`zsock_poll()`**: Zephyr 版の NINA の `poll()`（`nina_socket.c` の `do_poll()`）と同じ動きです。呼び出した
+  スレッドで、ソケットごとに `getsockopt(NINA_SOL, NINA_SO_POLL)`（NINA の poll 命令を 1 回）で尋ね、求めた
+  `ZSOCK_POLLIN`・`ZSOCK_POLLOUT` と、`ZSOCK_POLLERR`（NINA のエラーフラグ）・`ZSOCK_POLLHUP`（NINA 側のソケットが
+  まだ無い TCP）を返します。どれも無ければ `k_sleep(K_MSEC(20))` の後に尋ね直し、`k_uptime_get()` で待ち時間
+  （-1 は無期限）が過ぎたら 0 を返します。NINA の poll の失敗は -1 とその errno です。NINA のソケットでない
+  ファイル記述子は NuttX の `poll()` を待たずに 1 回呼んだ結果（不正なものは `ZSOCK_POLLNVAL`）で、これも
+  Zephyr 版と同じです。NuttX の `poll()` と `nina_event` は使いません。`imu_raw_mqtt.c` の受信の確認（100 ms
+  ごと、待ち時間 0）と CONNACK の待ち（5000 ms）が使います。
 - **サイクルカウンター**: Zephyr 版の `k_cycle_get_*()` は 125 MHz の SysTick の数（負荷で遅れる）で、
   NuttX 版はボードの TIMER（`nano_mono_us()`、水晶の 1 MHz。センサーの時計と同じ）です。1 サイクルが 1 µs
   なので、µs への換算（`k_cyc_to_us_floor64()`・`_ceil64()`）はそのままの値です。`k_cycle_get_32()` は下位

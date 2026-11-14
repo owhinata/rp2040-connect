@@ -879,19 +879,16 @@ events that advance them are the same as in the Zephyr version.
 - The socket stays blocking (as in the Zephyr version). A connection waits up to 10 s, a send
   that finds no room up to 10 s, before failing (the NINA driver's deadlines; "Sockets (usrsock)"
   in `nuttx/drivers/README.md`).
-- For the input check (`zsock_poll()`) and the reads that do not wait (`zsock_recv()` with
-  `ZSOCK_MSG_DONTWAIT`), the compatibility layer first asks the NINA about the socket with
-  `ioctl(FIONREAD)` (one `CMD_POLL` in the calling thread). The commands the NINA receives (a poll,
-  and when something is there a poll and a read) are those of the Zephyr version. The rest of the
-  CONNACK wait waits for the polls that `nina_event` makes every 20 ms (the Zephyr version's
-  calling thread polls every 20 ms).
-- Difference from the Zephyr version: a failed connection that the NINA reports (POLL_ERROR) is
-  `ZSOCK_POLLERR` in the Zephyr version; here `nina_event` polls it, turns it into usrsock's
-  "closed" (`REMOTE_CLOSED`), and it comes as `ZSOCK_POLLHUP`. `imu_raw_mqtt.c` ends the connection
-  with `-EIO` for either.
-- Difference from the Zephyr version: `nina_event` also polls the MQTT socket every 20 ms while
-  usrsock does not hold its "data to read" event. In the Zephyr version only `imu_raw_mqtt_tid`
-  polls it, every 100 ms.
+- The socket is made with the compatibility layer's `zsock_socket()`, which marks it as asked
+  about by its callers only (`NINA_SO_CALLER_POLLS`). `nina_event` does not query it except to check
+  the connection; only `imu_raw_mqtt_tid` asks the NINA about it, as in the Zephyr version ("Sockets
+  (usrsock)" in `nuttx/drivers/README.md`).
+- The input check (`zsock_poll()`, every 100 ms) and the CONNACK wait (`zsock_poll()`, 5000 ms) ask
+  the NINA in the calling thread (one `CMD_POLL`) and, with nothing there, again every 20 ms, as the
+  Zephyr version's NINA `poll()` does. A failed connection that the NINA reports (POLL_ERROR) is
+  `ZSOCK_POLLERR`, as in the Zephyr version. A read that does not wait (`zsock_recv()` with
+  `ZSOCK_MSG_DONTWAIT`) asks first with `ioctl(FIONREAD)`. The commands the NINA receives (a poll,
+  and when something is there a poll and a read) are those of the Zephyr version.
 - Difference from the Zephyr version: the `lock_wait_*` and `publish_*` times are the 125 MHz
   SysTick cycles (`k_cycle_get_*()`, which fall behind while streaming) in microseconds in the
   Zephyr version, and the TIMER (1 µs) here (the compatibility layer's `k_cycle_get_*()`).
@@ -940,14 +937,14 @@ Subcommands:
 - Waiting for the reply: the Zephyr version calls `recv(MSG_DONTWAIT)` about every millisecond,
   and its NINA driver asks the module for the socket's state each time (`CMD_POLL`) and reads what
   has arrived. NuttX's usrsock answers a receive that does not wait from the readable mark it holds
-  (`RECVFROM_AVAIL`, refreshed every 20 ms by `nina_event`), so the compatibility layer's
-  `zsock_recv()` with `ZSOCK_MSG_DONTWAIT` first calls `ioctl(FIONREAD)` (one `CMD_POLL` in the
-  calling thread) and reads with `recv(MSG_DONTWAIT)` only when something is there (the driver
-  uses that poll's answer and does not poll again). The module sees the Zephyr version's sequence:
-  a poll, a read when something has arrived, about 1 ms of wait, again.
-- Difference from the Zephyr version: in the NuttX version `nina_event` also polls this socket
-  every 20 ms while usrsock does not hold its readable mark (and once right after the reply is
-  read). The Zephyr version polls only when a receive is called (see "Sockets (usrsock)" in
+  (`RECVFROM_AVAIL`), so the compatibility layer's `zsock_recv()` with `ZSOCK_MSG_DONTWAIT` first
+  calls `ioctl(FIONREAD)` (one `CMD_POLL` in the calling thread) and reads with `recv(MSG_DONTWAIT)`
+  only when something is there (the driver uses that poll's answer and does not poll again). The
+  module sees the Zephyr version's sequence: a poll, a read when something has arrived, about 1 ms
+  of wait, again.
+- The socket is made with the compatibility layer's `zsock_socket()`, so it is marked as asked
+  about by its callers only (`NINA_SO_CALLER_POLLS`) and `nina_event` does not query it. As in the
+  Zephyr version, the NINA is asked only when a receive is called (see "Sockets (usrsock)" in
   `nuttx/drivers/README.md`).
 - Difference from the Zephyr version: `k_uptime_get()` (the 250 ms wait, the 60 s check,
   `last_reply_ms_ago`) comes from the TIMER in the NuttX version. The Zephyr version's is the
@@ -1258,7 +1255,9 @@ types, the table of 10 and `EMFILE`, creating the NINA's socket on first use (ty
 FIONBIO), bind, listen (backlog clamped to 1..255), accept (the peer's address and the byte order of
 its port, `EAGAIN`, `EMFILE`), connect (UDP; TCP in progress, the errno of each SO_ERROR value, the
 error flag, the 10000 ms limit, a failed poll, closing the NINA's socket after a failure), close,
-setsockopt, and what `nina_event` queries and turns into events. For sending and receiving: TCP
+setsockopt, what `nina_event` queries and turns into events (a socket marked as polled by its
+callers only: only while it connects), and `NINA_SO_POLL` (the Zephyr version's `do_poll()` for one
+socket). For sending and receiving: TCP
 send (at most 3584 bytes a call, the answer checks, `MSG_DONTWAIT`, the passes of a waiting send
 with its state check every 100 ms and its 10000 ms limit, a continued call told from a new one),
 `sendmsg` (vectors joined into one command, what it refuses), UDP send (the address checks, the

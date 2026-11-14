@@ -11,18 +11,22 @@
  *   thread imu_raw_mqtt_tid (Zephyr priority 11 = NuttX 107, 2048 bytes).
  * - open_connection(): -ENETUNREACH without a default gateway (no socket),
  *   the configured address or the gateway, the port; the socket calls in
- *   order (socket, connect, send of CONNECT with keep-alive 60 and no
- *   clean session), the CONNACK wait: one FIONREAD (a poll of the module)
- *   and a poll() that does not wait, then a poll() of the rest of the 5000
- *   ms; every read that does not wait asks the module first (FIONREAD);
- *   a CONNACK that arrives in two pieces; -ETIMEDOUT, -ECONNREFUSED.
+ *   order (socket marked NINA_SO_CALLER_POLLS, connect, send of CONNECT
+ *   with keep-alive 60 and no clean session), the CONNACK wait as the
+ *   Zephyr build's poll() (do_poll()): one poll of the module
+ *   (getsockopt(NINA_SO_POLL)) at once, then one every
+ *   k_sleep(K_MSEC(20)) until 5000 ms have gone by, NuttX's poll() never;
+ *   every read that does not wait asks the module first (FIONREAD); a
+ *   CONNACK that arrives in two pieces; -ETIMEDOUT, -ECONNREFUSED.
  * - serve_connection(): info (QoS 1, retain, message ID 1), then status
  *   (QoS 0), then the batch (QoS 0), each one PUBLISH in one sendmsg()
  *   call with the header and the body as two vectors; status every 1000
  *   ms, input every 100 ms, 5 ms sleeps while the queue is empty; a failed
  *   publish discards the batch (dropped) and ends the connection.
- * - service_input(): POLLHUP and a failed poll of the module end the
- *   connection with -EIO; a PINGRESP is read.
+ * - service_input(): one poll of the module that does not wait; its
+ *   POLL_ERROR (ZSOCK_POLLERR, as in the Zephyr build), a socket the
+ *   module does not have (ZSOCK_POLLHUP) and a failed poll of the module
+ *   end the connection with -EIO; a PINGRESP is read.
  * - imu_raw_mqtt_submit() while disconnected: dropped and -EAGAIN.
  * - The counters of imu_raw_mqtt_get_stats().
  */
@@ -54,6 +58,8 @@
 #define close(s) fake_close(s)
 #define ioctl(fd, req, ...) fake_ioctl(fd, req, __VA_ARGS__)
 #define poll(fds, n, t) fake_poll(fds, n, t)
+#define setsockopt(s, l, o, v, n) fake_setsockopt(s, l, o, v, n)
+#define getsockopt(s, l, o, v, n) fake_getsockopt(s, l, o, v, n)
 #define k_sleep test_sleep
 
 int fake_socket(int family, int type, int protocol);
@@ -64,6 +70,8 @@ ssize_t fake_recv(int sock, void *buf, size_t len, int flags);
 int fake_close(int sock);
 int fake_ioctl(int fd, unsigned long req, ...);
 int fake_poll(struct pollfd *fds, nfds_t n, int timeout);
+int fake_setsockopt(int sock, int level, int option, const void *value, socklen_t len);
+int fake_getsockopt(int sock, int level, int option, void *value, socklen_t *len);
 
 #include <zephyr/kernel.h>
 int32_t test_sleep(k_timeout_t timeout);
@@ -128,12 +136,16 @@ struct in_addr net_if_ipv4_get_gw(struct net_if *i)
 
 #define FD 9
 
-enum ev { EV_SOCKET, EV_CONNECT, EV_SEND, EV_SENDMSG, EV_RECV, EV_CLOSE, EV_IOCTL, EV_POLL };
+/* EV_MARK: setsockopt(NINA_SO_CALLER_POLLS); EV_PSTATE: getsockopt
+ * (NINA_SO_POLL), one poll of the module. */
+enum ev { EV_SOCKET, EV_CONNECT, EV_SEND, EV_SENDMSG, EV_RECV, EV_CLOSE, EV_IOCTL, EV_POLL,
+	  EV_MARK, EV_PSTATE };
 
 struct event {
 	enum ev type;
 	long arg;       /* send/recv length, poll timeout, iovec count */
 	int flags;
+	uint64_t us;    /* the clock at the call */
 };
 
 static struct {
@@ -153,8 +165,11 @@ static struct {
 	uint8_t rx[512];
 	size_t rx_len, rx_pos, seg_end[16];
 	int segs, seg;
-	bool hup;
-	int ioctl_errno;
+	bool hup;        /* the module's POLL_ERROR */
+	bool no_module;  /* the module has no socket: POLLHUP */
+	bool marked;
+	uint64_t arrive_at_us;  /* the CONNACK arrives then (0: not) */
+	int ioctl_errno; /* FIONREAD and NINA_SO_POLL fail with it */
 	int connect_errno;
 } fk;
 
@@ -166,7 +181,7 @@ static void fake_reset(void)
 static void record(enum ev type, long arg, int flags)
 {
 	assert(fk.nev < (int)(sizeof(fk.ev) / sizeof(fk.ev[0])));
-	fk.ev[fk.nev++] = (struct event){type, arg, flags};
+	fk.ev[fk.nev++] = (struct event){type, arg, flags, now_us};
 }
 
 /* Bytes the broker sends, in one piece each call. */
@@ -284,15 +299,49 @@ int fake_ioctl(int fd, unsigned long req, ...)
 	return 0;
 }
 
+/* NuttX's poll(): only for what is not a NINA socket; never here. */
 int fake_poll(struct pollfd *fds, nfds_t n, int timeout)
 {
-	assert(n == 1 && fds[0].fd == FD && fds[0].events == POLLIN);
+	(void)fds;
+	(void)n;
 	record(EV_POLL, timeout, 0);
-	fds[0].revents = (readable() ? POLLIN : 0) | (fk.hup ? POLLHUP : 0);
-	if (!fds[0].revents && timeout > 0) {
-		set_time_us(now_us + (uint64_t)timeout * 1000);
+	assert(0);
+	return -1;
+}
+
+int fake_setsockopt(int sock, int level, int option, const void *value, socklen_t len)
+{
+	assert(sock == FD && fk.open && level == NINA_SOL && option == NINA_SO_CALLER_POLLS &&
+	       len == sizeof(int) && *(const int *)value == 1);
+	record(EV_MARK, 0, 0);
+	fk.marked = true;
+	return 0;
+}
+
+/* The driver's answer (nina_sock_poll_revents()): POLLIN, POLLOUT (a
+ * connected TCP socket has room), POLLERR; POLLHUP alone without a module
+ * socket. */
+int fake_getsockopt(int sock, int level, int option, void *value, socklen_t *len)
+{
+	int revents;
+
+	assert(sock == FD && fk.open && fk.marked && level == NINA_SOL &&
+	       option == NINA_SO_POLL && *len == sizeof(int));
+	record(EV_PSTATE, 0, 0);
+	if (fk.arrive_at_us && now_us >= fk.arrive_at_us) {
+		static const uint8_t connack[] = {0x20, 0x02, 0x00, 0x00};
+
+		fk.arrive_at_us = 0;
+		arrive(connack, sizeof(connack));
 	}
-	return fds[0].revents ? 1 : 0;
+	if (fk.ioctl_errno) {
+		errno = fk.ioctl_errno;
+		return -1;
+	}
+	revents = fk.no_module ? POLLHUP :
+		  POLLOUT | (readable() ? POLLIN : 0) | (fk.hup ? POLLERR : 0);
+	memcpy(value, &revents, sizeof(revents));
+	return 0;
 }
 
 /* Checks ------------------------------------------------------------------*/
@@ -440,14 +489,13 @@ int main(void)
 	 * every read that does not wait asks the module first. */
 	connect_ok();
 	{
-		static const enum ev seq[] = {EV_SOCKET, EV_CONNECT, EV_SEND, EV_IOCTL, EV_POLL,
+		static const enum ev seq[] = {EV_SOCKET, EV_MARK, EV_CONNECT, EV_SEND, EV_PSTATE,
 					      EV_IOCTL, EV_RECV, EV_IOCTL, EV_RECV};
 		expect(0, seq, 9);
 	}
 	assert(fk.family == AF_INET && fk.type == SOCK_STREAM && fk.protocol == IPPROTO_TCP);
 	assert(fk.addr.sin_family == AF_INET && fk.addr.sin_port == htons(18830) &&
 	       fk.addr.sin_addr.s_addr == htonl(0x0a2a0001));
-	assert(fk.ev[4].arg == 0);                          /* poll() without waiting */
 	assert(fk.ev[6].arg == 2 && fk.ev[6].flags == MSG_DONTWAIT); /* fixed header */
 	assert(fk.ev[8].arg == 2 && fk.ev[8].flags == MSG_DONTWAIT);
 	/* CONNECT: MQTT 3.1.1, no clean session, keep-alive 60, the client ID. */
@@ -480,14 +528,13 @@ int main(void)
 		assert(serve_connection() == 0);
 		assert(fk.nmsg == 3 && sleeps == 1);
 		{
-			static const enum ev seq[] = {EV_SENDMSG, EV_SENDMSG, EV_SENDMSG, EV_IOCTL,
-						      EV_POLL};
-			expect(from, seq, 5);
+			static const enum ev seq[] = {EV_SENDMSG, EV_SENDMSG, EV_SENDMSG,
+						      EV_PSTATE};
+			expect(from, seq, 4);
 		}
 		for (int i = 0; i < 3; i++) {
 			assert(fk.ev[from + i].arg == 2); /* header and body: two vectors */
 		}
-		assert(fk.ev[from + 4].arg == 0);
 		p = publish_of(0);
 		assert(p.first == 0x33 && !strcmp(p.topic, "imu/rp2040-x_1/info") &&
 		       p.message_id == 1 && !memcmp(p.payload, "{\"v\":1,", 7));
@@ -514,7 +561,8 @@ int main(void)
 		stop_at_ms = t0 + 2050;
 		assert(serve_connection() == 0);
 		for (int i = from; i < fk.nev; i++) {
-			polls += fk.ev[i].type == EV_IOCTL;
+			polls += fk.ev[i].type == EV_PSTATE;
+			assert(fk.ev[i].type != EV_IOCTL && fk.ev[i].type != EV_POLL);
 		}
 		for (int i = 0; i < fk.nmsg; i++) {
 			status_msgs += !strcmp(publish_of(i).topic, "imu/rp2040-x_1/status");
@@ -530,14 +578,30 @@ int main(void)
 	{
 		static const uint8_t pingresp[] = {0xd0, 0x00};
 
+		from = fk.nev;
+		sleeps = 0;
 		arrive(pingresp, 2);
 		assert(service_input() == 0 && !readable());
+		{
+			static const enum ev seq[] = {EV_PSTATE, EV_IOCTL, EV_RECV};
+			expect(from, seq, 3);
+		}
+		from = fk.nev;
+		assert(service_input() == 0);    /* nothing there: one poll, no sleep */
+		{
+			static const enum ev seq[] = {EV_PSTATE};
+			expect(from, seq, 1);
+		}
 		fk.hup = true;
-		assert(service_input() == -EIO);
+		assert(service_input() == -EIO); /* POLL_ERROR: ZSOCK_POLLERR */
 		fk.hup = false;
+		fk.no_module = true;
+		assert(service_input() == -EIO); /* ZSOCK_POLLHUP */
+		fk.no_module = false;
 		fk.ioctl_errno = EIO;
 		assert(service_input() == -EIO);
 		fk.ioctl_errno = 0;
+		assert(sleeps == 0);
 	}
 
 	/* A failed publish: the batch is discarded (dropped), the connection
@@ -581,16 +645,50 @@ int main(void)
 	fk.sendmsg_errno = 0;
 	finish();
 
-	/* No CONNACK within 5000 ms: -ETIMEDOUT; poll() waits for the rest. */
+	/* No CONNACK within 5000 ms: -ETIMEDOUT.  The module is polled at
+	 * once and after each k_sleep(K_MSEC(20)) (20.1 ms: 200 ticks + 1)
+	 * until 5000 ms have gone by, as the Zephyr build's do_poll(). */
 	start("rp2040");
 	fake_reset();
+	sleeps = 0;
+	stop_at_ms = -1;
 	assert(open_connection() == -ETIMEDOUT);
 	{
-		static const enum ev seq[] = {EV_SOCKET, EV_CONNECT, EV_SEND, EV_IOCTL, EV_POLL,
-					      EV_POLL};
-		expect(0, seq, 6);
-		assert(fk.ev[4].arg == 0 && fk.ev[5].arg == CONNACK_WAIT_MS);
+		static const enum ev seq[] = {EV_SOCKET, EV_MARK, EV_CONNECT, EV_SEND};
+		int polls = fk.nev - 4;
+		uint64_t first = fk.ev[4].us;
+
+		for (int i = 0; i < 4; i++) {
+			assert(fk.ev[i].type == seq[i]);
+		}
+		for (int i = 4; i < fk.nev; i++) {
+			assert(fk.ev[i].type == EV_PSTATE);
+			assert(i == 4 || fk.ev[i].us - fk.ev[i - 1].us == 20100);
+		}
+		/* 0, 20.1, ..., 4984.8 ms: not yet; 5004.9 ms: over. */
+		assert(polls == 250 && sleeps == polls - 1);
+		assert(fk.ev[fk.nev - 1].us - first == 249 * 20100);
 	}
+	finish();
+
+	/* A CONNACK that arrives during the wait (at +1010 ms) is found by
+	 * the next poll (+1025.1 ms), then read. */
+	start("rp2040");
+	fake_reset();
+	fk.arrive_at_us = now_us + 1010000;
+	assert(open_connection() == 0);
+	{
+		int polls = 0;
+
+		for (int i = 0; i < fk.nev; i++) {
+			if (fk.ev[i].type == EV_PSTATE) {
+				polls++;
+				assert(fk.ev[i].us - fk.ev[4].us == (uint64_t)(polls - 1) * 20100);
+			}
+		}
+		assert(polls == 52 && fk.ev[fk.nev - 1].type == EV_RECV);
+	}
+	set_connected(false);
 	finish();
 
 	/* Refused (return code 5): -ECONNREFUSED. */

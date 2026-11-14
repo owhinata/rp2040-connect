@@ -16,6 +16,11 @@
  *   yet.  A socket whose events are all held is not polled; with nothing
  *   to poll the thread sleeps until a request wakes it.
  *
+ * A socket marked NINA_SO_CALLER_POLLS (<nina_sockopt.h>: the Zephyr
+ * compatibility layer's zsock_*() sockets, MQTT and NTP) is polled here
+ * only while it connects: its callers ask the module themselves, as the
+ * Zephyr build's recv() and poll() do (nina_sock_watch()).
+ *
  * It also times the passes of a TCP send that waits for room: the Zephyr
  * build's do_send() sleeps CONFIG_NINA_SEND_RETRY_MS between its tries.
  * Here a pass that sent nothing ends the request with -EAGAIN; after

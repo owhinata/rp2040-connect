@@ -21,6 +21,12 @@
  * parameter, the sender's port byte order, the connected peer's filter,
  * an empty datagram), the poll finding that stands for the next receive's
  * first poll, and FIONREAD.
+ *
+ * Sockets whose callers poll (NINA_SO_CALLER_POLLS, the Zephyr
+ * compatibility layer's): the option, the event thread leaving them alone
+ * except while they connect, and NINA_SO_POLL (nina_sock_poll_revents(),
+ * do_poll() for one socket: one CMD_POLL, its bits, POLLHUP / POLLOUT
+ * without a firmware socket, a failed poll).
  */
 
 #include <assert.h>
@@ -31,6 +37,7 @@
 #include <arpa/inet.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
+#include <poll.h>
 #include <sys/socket.h>
 
 #include "nina_os.h"
@@ -1238,6 +1245,112 @@ static void test_fionread(void)
 	close_all();
 }
 
+static void test_caller_polls(void)
+{
+	int one = 1, zero = 0, s, u;
+	char c = 1;
+	struct nina_sock *t;
+
+	/* The option: an int, 1 or 0, on either type. */
+	s = tcp_connected(4);
+	t = nina_sock_get(s);
+	reset_script();
+	assert(!t->caller_polls);
+	assert(nina_sock_setsockopt(s, NINA_SOL, NINA_SO_CALLER_POLLS, &c, 1) == -EINVAL);
+	assert(nina_sock_setsockopt(s, NINA_SOL, NINA_SO_CALLER_POLLS, NULL, sizeof(one)) ==
+	       -EINVAL);
+	assert(nina_sock_setsockopt(s, NINA_SOL, NINA_SO_POLL, &one, sizeof(one)) ==
+	       -ENOPROTOOPT);
+	assert(nina_sock_setsockopt(s, NINA_SOL, NINA_SO_CALLER_POLLS, &one, sizeof(one)) == 0);
+	assert(t->caller_polls);
+	done();
+
+	/* The event thread does not poll it, whatever usrsock holds. */
+	assert(nina_sock_watch(t) == 0);
+	assert(nina_sock_events(t, 0, NINA_POLL_READ | NINA_POLL_WRITE | NINA_POLL_ERROR) == 0);
+	assert(nina_sock_events(t, -EIO, 0) == 0);
+	t->reported = NINA_SOCK_EV_WRITE;
+	assert(nina_sock_watch(t) == 0);
+	t->send_waiting = true;
+	assert(nina_sock_watch(t) == 0);
+	t->send_waiting = false;
+	/* Unmarked again: as before. */
+	assert(nina_sock_setsockopt(s, NINA_SOL, NINA_SO_CALLER_POLLS, &zero, sizeof(zero)) == 0);
+	assert(nina_sock_watch(t) == NINA_SOCK_EV_READ);
+	t->reported = 0;
+	assert(nina_sock_setsockopt(s, NINA_SOL, NINA_SO_CALLER_POLLS, &one, sizeof(one)) == 0);
+
+	/* NINA_SO_POLL: one CMD_POLL, its bits as do_poll() gives them. */
+	reset_script();
+	expect1(NINA_CMD_POLL, 0);
+	assert(nina_sock_poll_revents(s) == 0);
+	expect1(NINA_CMD_POLL, NINA_POLL_READ);
+	assert(nina_sock_poll_revents(s) == POLLIN);
+	expect1(NINA_CMD_POLL, NINA_POLL_WRITE);
+	assert(nina_sock_poll_revents(s) == POLLOUT);
+	expect1(NINA_CMD_POLL, NINA_POLL_ERROR);
+	assert(nina_sock_poll_revents(s) == POLLERR);
+	expect1(NINA_CMD_POLL, NINA_POLL_READ | NINA_POLL_WRITE | NINA_POLL_ERROR);
+	assert(nina_sock_poll_revents(s) == (POLLIN | POLLOUT | POLLERR));
+	expect1(NINA_CMD_POLL, NINA_POLL_FAIL | NINA_POLL_READ);
+	assert(nina_sock_poll_revents(s) == -EIO);
+	expect(NINA_CMD_POLL, -ETIMEDOUT, NULL, 0);
+	assert(nina_sock_poll_revents(s) == -ETIMEDOUT);
+	done();
+	for (size_t i = 0; i < next_step; i++) {
+		param1(i, 0, 4);
+	}
+	assert(nina_sock_poll_revents(9) == -EBADF);
+
+	/* A receive after FIONREAD found data: the read only (the Zephyr
+	 * build's recv(): CMD_POLL, then CMD_RECV). */
+	reset_script();
+	expect1(NINA_CMD_POLL, NINA_POLL_READ);
+	expect(NINA_CMD_RECV, 0, (const uint8_t[]){0xd0, 0x00}, 2);
+	assert(nina_sock_fionread(s) == 1);
+	{
+		uint8_t buf[2];
+
+		assert(nina_sock_recv(s, buf, sizeof(buf), MSG_DONTWAIT, NULL) == 2);
+	}
+	done();
+
+	/* Closing clears the mark (a new socket in the entry is not marked). */
+	close_all();
+	s = nina_sock_create(AF_INET, SOCK_STREAM, 0);
+	assert(!nina_sock_get(s)->caller_polls);
+
+	/* No firmware socket: TCP hung up, UDP writable; the module is not
+	 * asked. */
+	u = nina_sock_create(AF_INET, SOCK_DGRAM, 0);
+	reset_script();
+	assert(nina_sock_poll_revents(s) == POLLHUP);
+	assert(nina_sock_poll_revents(u) == POLLOUT);
+	done();
+	close_all();
+
+	/* A marked socket that connects: the event thread checks the
+	 * connection (connect() waits for its events), and then leaves it. */
+	s = nina_sock_create(AF_INET, SOCK_STREAM, 0);
+	assert(nina_sock_setsockopt(s, NINA_SOL, NINA_SO_CALLER_POLLS, &one, sizeof(one)) == 0);
+	connect_started(s, 3, 0);
+	assert(nina_sock_watch(nina_sock_get(s)) == NINA_SOCK_WATCH_CONNECT);
+	reset_script();
+	expect1(NINA_CMD_POLL, NINA_POLL_WRITE);
+	expect_so_error(0);
+	assert(nina_sock_connect_check(s, now_ms) == 0);
+	done();
+	assert(nina_sock_watch(nina_sock_get(s)) == 0);
+	close_all();
+
+	/* A marked UDP socket with a firmware socket: not polled either. */
+	u = nina_sock_create(AF_INET, SOCK_DGRAM, 0);
+	assert(nina_sock_setsockopt(u, NINA_SOL, NINA_SO_CALLER_POLLS, &one, sizeof(one)) == 0);
+	g_nina_sockets[u].id = 2;
+	assert(nina_sock_watch(nina_sock_get(u)) == 0);
+	close_all();
+}
+
 int main(void)
 {
 	assert(NINA_SOCK_MAX == 10 && NINA_MAX_IO == 512 && NINA_TCP_MAX_IO == 3584);
@@ -1257,6 +1370,7 @@ int main(void)
 	test_recv_tcp();
 	test_recv_udp();
 	test_fionread();
+	test_caller_polls();
 	puts("nina_sock: ok");
 	return 0;
 }

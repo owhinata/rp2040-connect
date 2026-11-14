@@ -138,7 +138,8 @@ run i2c_dma_app -Idrivers/include -Iapps/i2c_dma -Iapps/subcmd apps/subcmd/subcm
 # The time synchronization (apps/imu/time_sync.c, the copy of the Zephyr build's) on the
 # compatibility layer with a fake NINA socket, clock, interface and realtime clock: the NTP
 # request and the checks of the reply, where t1 and t4 are read, the 1 ms polling of the
-# reply through FIONREAD, the 60 s age, the forward-only realtime clock, the Wi-Fi events and
+# reply through FIONREAD, the socket marked as polled by its callers only, a receive that waits
+# (FIONREAD every 20 ms), the 60 s age, the forward-only realtime clock, the Wi-Fi events and
 # the "ntp status" lines.
 cc "${flags[@]}" -D_DEFAULT_SOURCE -Itests/time_sync_fakes -Itests/zephyr_fakes -Idrivers/compat \
     -Idrivers/include -I"$imu" -Iapps/subcmd tests/time_sync.c "$imu/time_offset.c" \
@@ -148,9 +149,10 @@ printf 'ok  time_sync\n'
 # The MQTT transport (apps/imu/imu_raw_mqtt.c, the copy of the Zephyr build's) with the
 # port's MQTT client and its socket layer on the compatibility layer's zsock_*() calls, on a
 # fake socket, clock and interface: the start checks and topics, the thread, the socket calls
-# in order (FIONREAD before every read that does not wait and before poll()), CONNECT, the
-# CONNACK wait, the order of info, status and batch with header and body in one sendmsg(),
-# the status and input intervals, dropped batches and the error paths.
+# in order (the socket marked as polled by its callers only, FIONREAD before every read that
+# does not wait, poll() as the Zephyr build's: one NINA_SO_POLL at once and every 20 ms),
+# CONNECT, the CONNACK wait, the order of info, status and batch with header and body in one
+# sendmsg(), the status and input intervals, dropped batches and the error paths.
 cc "${flags[@]}" -Wno-sign-compare -D_DEFAULT_SOURCE -Itests/time_sync_fakes "${zinc[@]}" \
     "${inc[@]}" tests/imu_raw_mqtt.c apps/imu/mqtt_min.c "${lib[@]}" "${compat[@]}" "$link" \
     -o "$out/imu_raw_mqtt"

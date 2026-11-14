@@ -786,16 +786,14 @@ status は 0、info は 1 で retain）、クライアント ID（`imu-<device>`
   `sendmsg()` 1 回で渡し、NINA のドライバーがそれを 1 つの送信の命令にまとめます（Zephyr 版と同じ）。
 - ソケットはブロッキングのまま使います（Zephyr 版と同じ）。接続は最大 10 秒、空きのない送信は最大
   10 秒待ってから失敗します（NINA のドライバーの期限。`nuttx/drivers/README_ja.md` の「ソケット（usrsock）」）。
-- 受信の確認（`zsock_poll()`）と待たない受信（`zsock_recv()` の `ZSOCK_MSG_DONTWAIT`）は、互換層が先に
-  `ioctl(FIONREAD)` で NINA にソケットの状態を問い合わせます（呼び出したスレッドで `CMD_POLL` を 1 回）。
-  NINA に届く命令の並び（問い合わせ、届いていれば問い合わせと読み出し）は Zephyr 版と同じです。
-  CONNACK の待ちの残りの時間は、`nina_event` が 20 ms ごとに問い合わせた結果を待ちます（Zephyr 版は呼び出した
-  スレッドが 20 ms ごとに問い合わせる）。
-- Zephyr 版との違い: NINA が報告する接続の異常（POLL_ERROR）は、Zephyr 版では `ZSOCK_POLLERR`、NuttX 版では
-  `nina_event` が問い合わせて usrsock の切断（`REMOTE_CLOSED`）にしたものが `ZSOCK_POLLHUP` で届きます。
-  `imu_raw_mqtt.c` はどちらも同じく `-EIO` で接続を終えます。
-- Zephyr 版との違い: `nina_event` は、受信可の印を usrsock がまだ持っていない間、MQTT のソケットも 20 ms
-  ごとに問い合わせます。Zephyr 版では `imu_raw_mqtt_tid` が 100 ms ごとに問い合わせるだけです。
+- ソケットは互換層の `zsock_socket()` で作り、呼び出し元だけが NINA に問い合わせるソケットの印
+  （`NINA_SO_CALLER_POLLS`）が付きます。`nina_event` は接続の確認のほかはこのソケットを問い合わせず、
+  Zephyr 版と同じく `imu_raw_mqtt_tid` だけが問い合わせます（`nuttx/drivers/README_ja.md` の「ソケット（usrsock）」）。
+- 受信の確認（`zsock_poll()`、100 ms ごと）と CONNACK の待ち（`zsock_poll()`、5000 ms）は、Zephyr 版の NINA の
+  `poll()` と同じく、呼び出したスレッドで NINA に問い合わせ（`CMD_POLL` を 1 回）、何も無ければ 20 ms ごとに
+  問い合わせ直します。NINA が報告する接続の異常（POLL_ERROR）は Zephyr 版と同じく `ZSOCK_POLLERR` です。
+  待たない受信（`zsock_recv()` の `ZSOCK_MSG_DONTWAIT`）は先に `ioctl(FIONREAD)` で問い合わせます。NINA に届く
+  命令の並び（問い合わせ、届いていれば問い合わせと読み出し）は Zephyr 版と同じです。
 - Zephyr 版との違い: `lock_wait_*`・`publish_*` の時間は、Zephyr 版は 125 MHz の SysTick の周期
   （`k_cycle_get_*()`。送信中は遅れる）を µs にしたもの、NuttX 版は TIMER（1 µs）です（互換層の
   `k_cycle_get_*()`）。
@@ -837,14 +835,13 @@ Subcommands:
   入れて 5 秒後にやり直します。
 - 応答の待ち方: Zephyr 版は `recv(MSG_DONTWAIT)` を約 1 ms ごとに呼び、NINA のドライバーがそのたびに
   ソケットの状態を問い合わせ（`CMD_POLL`）、届いていれば読みます。NuttX の usrsock は、待たない受信に、
-  保持している受信可の印（`RECVFROM_AVAIL`。`nina_event` が 20 ms ごとに更新）で答えるので、互換層の
-  `zsock_recv()` は `ZSOCK_MSG_DONTWAIT` のとき、先に `ioctl(FIONREAD)`（呼び出したスレッドで `CMD_POLL` を
-  1 回）を呼び、何か届いているときだけ `recv(MSG_DONTWAIT)` で読みます（ドライバーは直前の問い合わせの
-  結果を使い、`CMD_POLL` を重ねません）。NINA に届く命令の並び（問い合わせ、届いていれば読み出し、約 1 ms
-  待って繰り返し）は Zephyr 版と同じです。
-- Zephyr 版との違い: NuttX 版では `nina_event` も、受信可の印を usrsock がまだ持っていない間、このソケットの
-  状態を 20 ms ごとに問い合わせます（応答を読んだ直後にも 1 回）。Zephyr 版では、受信を呼んだときだけ
-  問い合わせます（`nuttx/drivers/README_ja.md` の「ソケット（usrsock）」の節）。
+  保持している受信可の印（`RECVFROM_AVAIL`）で答えるので、互換層の `zsock_recv()` は `ZSOCK_MSG_DONTWAIT` の
+  とき、先に `ioctl(FIONREAD)`（呼び出したスレッドで `CMD_POLL` を 1 回）を呼び、何か届いているときだけ
+  `recv(MSG_DONTWAIT)` で読みます（ドライバーは直前の問い合わせの結果を使い、`CMD_POLL` を重ねません）。NINA に
+  届く命令の並び（問い合わせ、届いていれば読み出し、約 1 ms 待って繰り返し）は Zephyr 版と同じです。
+- ソケットは互換層の `zsock_socket()` で作るので、呼び出し元だけが問い合わせる印（`NINA_SO_CALLER_POLLS`）が
+  付き、`nina_event` は問い合わせません。Zephyr 版と同じく、受信を呼んだときだけ問い合わせます
+  （`nuttx/drivers/README_ja.md` の「ソケット（usrsock）」の節）。
 - Zephyr 版との違い: `k_uptime_get()`（応答の待ち 250 ms、60 秒の判定、`last_reply_ms_ago`）は NuttX 版では
   TIMER から求めます。Zephyr 版は SysTick のカーネル時計で、送信中は遅れます。
 - 実時間時計（`CLOCK_REALTIME`）は、推定より 20 ms 以上遅れているときだけ推定に合わせ（`realtime_clock_steps`
@@ -1103,7 +1100,8 @@ Zephyr のフラグへの変換、`IC_DATA_CMD` に書く語の列（`i2c` ツ�
 最初に使うときに作ること（種類とプロトコル、FIONBIO）、bind、listen（backlog を 1〜255 に丸める）、accept
 （相手のアドレスとポートのバイト順、`EAGAIN`、`EMFILE`）、connect（UDP、TCP の処理中、SO_ERROR の各値の
 errno、エラーフラグ、10000 ms の期限、poll の失敗、失敗後に NINA 側のソケットを閉じること）、close、
-setsockopt、`nina_event` が何を問い合わせ、何をイベントにするか。送受信では、TCP の送信（1 回 3584 バイトまで、
+setsockopt、`nina_event` が何を問い合わせ、何をイベントにするか（呼び出し元だけが問い合わせる印の付いたソケットは
+接続中だけ）、`NINA_SO_POLL`（Zephyr 版の `do_poll()` のソケット 1 つ分）。送受信では、TCP の送信（1 回 3584 バイトまで、
 応答の検査、`MSG_DONTWAIT`、待つ送信の各回と 100 ms ごとの状態確認・10000 ms の期限、同じ呼び出しの続きと
 新しい呼び出しの区別）、`sendmsg`（複数のベクターを 1 つの命令にまとめること、受け付けないもの）、UDP の送信
 （アドレスの検査、接続した相手、512 バイトの上限、NINA が受け取らなかったデータグラム）、TCP と UDP の受信

@@ -7,7 +7,8 @@
  * ZSOCK_MSG_DONTWAIT, which the client's reads use, asks the module first
  * (ioctl(FIONREAD)), as the Zephyr build's recv() does with its CMD_POLL:
  * NuttX's usrsock would answer such a call from the RECVFROM_AVAIL it
- * holds, which the NINA's event thread refreshes only every 20 ms, and a
+ * holds, which nobody refreshes for these sockets (only their callers ask
+ * the module, <nina_sockopt.h>), and a
  * packet that arrives in pieces (CONNACK: 2 bytes, then 2) would stop
  * after the first.  The mqtt_min host test links a fake of these functions
  * instead; the imu_raw_mqtt host test builds this file on fake sockets.

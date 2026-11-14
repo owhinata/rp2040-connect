@@ -31,6 +31,12 @@
  *   next state check in struct nina_sock between passes.
  * - A poll that found data is remembered (read_hint) and stands for the
  *   first poll of the next receive.
+ * - A socket can be marked as asked about by its callers only
+ *   (NINA_SO_CALLER_POLLS, <nina_sockopt.h>), which the Zephyr
+ *   compatibility layer's zsock_*() calls do: nina_poller.c then leaves it
+ *   alone (nina_sock_watch()), and the callers poll as the Zephyr build's
+ *   recv() and poll() do, through FIONREAD and NINA_SO_POLL
+ *   (nina_sock_poll_revents()).
  */
 
 #include <errno.h>
@@ -40,6 +46,7 @@
 
 #include <netinet/in.h>
 #include <netinet/tcp.h>
+#include <poll.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <sys/uio.h>
@@ -740,6 +747,38 @@ int nina_sock_fionread(int usockid)
 	return (state & NINA_POLL_READ) ? 1 : 0;
 }
 
+/* do_poll() (nina_socket.c:707-746) for one NINA socket, both POLLIN and
+ * POLLOUT asked (see nina_sock.h). */
+int nina_sock_poll_revents(int usockid)
+{
+	struct nina_sock *s = nina_sock_get(usockid);
+	uint8_t state;
+	int revents = 0, ret;
+
+	if (!s) {
+		return -EBADF;
+	}
+	if (s->id == NINA_NO_SOCKET) {
+		/* Nothing can arrive on a socket the firmware does
+		 * not have yet; an unconnected TCP socket is hung up. */
+		return s->udp ? POLLOUT : POLLHUP;
+	}
+	ret = poll_state(s, &state);
+	if (ret) {
+		return ret;
+	}
+	if (state & NINA_POLL_READ) {
+		revents |= POLLIN;
+	}
+	if (state & NINA_POLL_WRITE) {
+		revents |= POLLOUT;
+	}
+	if (state & NINA_POLL_ERROR) {
+		revents |= POLLERR;
+	}
+	return revents;
+}
+
 int nina_sock_close(int usockid)
 {
 	struct nina_sock *s = nina_sock_get(usockid);
@@ -766,6 +805,7 @@ int nina_sock_close(int usockid)
 	s->reported = 0;
 	s->send_waiting = false;
 	s->read_hint = false;
+	s->caller_polls = false;
 	return ret;
 }
 
@@ -787,6 +827,17 @@ int nina_sock_setsockopt(int usockid, int level, int option, const void *value,
 	 * cannot. */
 	if (level == IPPROTO_TCP && option == TCP_NODELAY && !s->udp) {
 		return value && valuelen == sizeof(int) ? 0 : -EINVAL;
+	}
+	/* NuttX: the driver's own option (nina_sock.h). */
+	if (level == NINA_SOL && option == NINA_SO_CALLER_POLLS) {
+		int on;
+
+		if (!value || valuelen != sizeof(int)) {
+			return -EINVAL;
+		}
+		memcpy(&on, value, sizeof(on));
+		s->caller_polls = on != 0;
+		return 0;
 	}
 	return -ENOPROTOOPT;
 }
@@ -836,6 +887,10 @@ uint8_t nina_sock_watch(const struct nina_sock *s)
 	}
 	if (s->connecting) {
 		return NINA_SOCK_WATCH_CONNECT;
+	}
+	/* NuttX: its callers ask the module, as there. */
+	if (s->caller_polls) {
+		return 0;
 	}
 	if (s->listening) {
 		want = NINA_SOCK_EV_READ;

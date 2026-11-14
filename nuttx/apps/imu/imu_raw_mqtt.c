@@ -7,13 +7,10 @@
  * - The MQTT client is the port's copy of the part of Zephyr's MQTT
  *   library that this file uses (mqtt_min.c, <zephyr/net/mqtt.h> of the
  *   layer), on the zsock_*() calls of the layer (mqtt_min_sock.c).
- * - zsock_poll() asks the NINA module about the socket at once in the
- *   calling thread (one CMD_POLL, through ioctl(FIONREAD)) and then waits
- *   on the module polls of the NINA's event thread every 20 ms, where the
- *   Zephyr build's poll() polls from the caller at the same interval
- *   (<zephyr/net/socket.h> of the layer).  A failed connection the module
- *   reports (POLL_ERROR) comes as ZSOCK_POLLHUP instead of ZSOCK_POLLERR;
- *   service_input() treats both the same.
+ * - zsock_poll() asks the NINA module about the socket in the calling
+ *   thread, at once and then every 20 ms, as the Zephyr build's poll()
+ *   does (<zephyr/net/socket.h> of the layer; the socket is one that only
+ *   its callers poll, <nina_sockopt.h>).
  * - k_cycle_get_32/64() count the board's TIMER (1 MHz) instead of the
  *   125 MHz SysTick cycles, so the lock waits and publish times are whole
  *   microseconds.

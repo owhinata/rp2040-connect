@@ -15,6 +15,12 @@
  *   nothing, the next pass at once after a datagram that is not the reply
  *   (a late reply to an earlier request), -ETIMEDOUT once 250 ms have gone
  *   by, other errors passed on.
+ * - The socket (the layer's zsock_socket()): socket() marked
+ *   NINA_SO_CALLER_POLLS, so that only this thread asks the module about
+ *   it, as in the Zephyr build; a refused mark closes it (-1, the errno).
+ *   A receive that waits (the layer's zsock_recv() without
+ *   ZSOCK_MSG_DONTWAIT, not used by the file): one FIONREAD now and after
+ *   each k_sleep(K_MSEC(20)), as the Zephyr build's udp_recv(), then recv().
  * - The checks of the reply (-EPROTO): mode, leap indicator 3, stratum
  *   0 and 16, no transmit time, transmit before receive, receive time
  *   before 2020, a round trip shorter than the server's time.  The NTP era
@@ -53,6 +59,9 @@ int64_t test_now_us = 1000000;
 /* The fake socket calls and realtime clock that the file under test (and
  * the layer's inline zsock_recv() and sys_clock_*()) call.
  */
+#define socket(f, t, p) fake_socket(f, t, p)
+#define setsockopt(fd, l, o, v, n) fake_setsockopt(fd, l, o, v, n)
+#define close(fd) fake_close(fd)
 #define ioctl(fd, req, ...) fake_ioctl(fd, req, __VA_ARGS__)
 #define recv(fd, buf, len, flags) fake_recv(fd, buf, len, flags)
 #define sendto(fd, buf, len, flags, to, tolen) fake_sendto(fd, buf, len, flags, to, tolen)
@@ -60,6 +69,9 @@ int64_t test_now_us = 1000000;
 #define clock_settime(id, ts) fake_clock_settime(id, ts)
 
 struct timespec;
+int fake_socket(int family, int type, int protocol);
+int fake_setsockopt(int fd, int level, int option, const void *value, socklen_t len);
+int fake_close(int fd);
 int fake_ioctl(int fd, int req, int *arg);
 ssize_t fake_recv(int fd, void *buf, size_t len, int flags);
 ssize_t fake_sendto(int fd, const void *buf, size_t len, int flags, const struct sockaddr *to,
@@ -142,6 +154,39 @@ static void push(const uint8_t *data, size_t len, int64_t arrival_us)
 static bool available(void)
 {
 	return queued > 0 && queue[0].arrival_us <= test_now_us;
+}
+
+static int sockets_open, marks, mark_error;
+
+int fake_socket(int family, int type, int protocol)
+{
+	assert(family == AF_INET && type == SOCK_DGRAM && protocol == IPPROTO_UDP);
+	assert(sockets_open == 0);
+	sockets_open++;
+	return FAKE_FD;
+}
+
+int fake_setsockopt(int fd, int level, int option, const void *value, socklen_t len)
+{
+	assert(fd == FAKE_FD && sockets_open == 1 && level == NINA_SOL &&
+	       option == NINA_SO_CALLER_POLLS && len == sizeof(int) && *(const int *)value == 1);
+	if (mark_error) {
+		errno = mark_error;
+		return -1;
+	}
+	marks++;
+	return 0;
+}
+
+/* The test's own descriptors (the pipes of run_ntp()) are the host's. */
+int fake_close(int fd)
+{
+	if (fd != FAKE_FD) {
+		return (close)(fd);
+	}
+	assert(sockets_open == 1);
+	sockets_open--;
+	return 0;
 }
 
 int fake_ioctl(int fd, int req, int *arg)
@@ -434,6 +479,41 @@ static void test_exchange_timeout(void)
 	assert(recvs == 0 && polls > 200 && polls == sleeps + 1);
 }
 
+static void test_socket(void)
+{
+	int fd;
+
+	marks = 0;
+	fd = zsock_socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
+	assert(fd == FAKE_FD && sockets_open == 1 && marks == 1);
+	assert(zsock_close(fd) == 0 && sockets_open == 0);
+	mark_error = ENOPROTOOPT;
+	errno = 0;
+	assert(zsock_socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP) == -1 && errno == ENOPROTOOPT);
+	assert(sockets_open == 0 && marks == 1);
+	mark_error = 0;
+}
+
+static void test_recv_waits(void)
+{
+	uint8_t data[4] = {1, 2, 3, 4}, buf[8];
+	int64_t start;
+
+	reset_net();
+	start = test_now_us;
+	push(data, sizeof(data), start + 50000);
+	/* FIONREAD at 0, 20.1, 40.2 ms: nothing; 60.3 ms: the datagram. */
+	assert(zsock_recv(FAKE_FD, buf, sizeof(buf), 0) == 4 && !memcmp(buf, data, 4));
+	assert(polls == 4 && sleeps == 3 && slept_ticks == 200 && recvs == 1);
+	assert(recv_exit_us - start == 3 * 20100 + recv_cost_us);
+	/* A failed poll ends it. */
+	reset_net();
+	ioctl_error = EIO;
+	assert(zsock_recv(FAKE_FD, buf, sizeof(buf), 0) == -1 && errno == EIO);
+	assert(polls == 1 && sleeps == 0);
+	ioctl_error = 0;
+}
+
 static void test_exchange_errors(void)
 {
 	struct time_offset_sample sample;
@@ -688,6 +768,8 @@ int main(void)
 	test_exchange_ok();
 	test_exchange_late_reply();
 	test_exchange_timeout();
+	test_socket();
+	test_recv_waits();
 	test_exchange_errors();
 	test_exchange_rejected();
 	test_estimate_age();

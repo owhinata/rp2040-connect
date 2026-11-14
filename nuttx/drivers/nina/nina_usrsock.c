@@ -17,7 +17,11 @@
  *                                                     nina_poller.c
  *   BIND, LISTEN, ACCEPT     do_bind/listen/accept()  nina_sock_bind/listen/accept()
  *   SETSOCKOPT               do_setsockopt()          nina_sock_setsockopt()
- *   GETSOCKOPT, GETSOCKNAME, no vtable entry:         -EOPNOTSUPP
+ *   GETSOCKOPT               no vtable entry:         NINA_SO_POLL:
+ *                            EOPNOTSUPP               nina_sock_poll_revents()
+ *                            (do_poll() for one       (not in the Zephyr build);
+ *                            socket)                  others -EOPNOTSUPP
+ *   GETSOCKNAME,             no vtable entry:         -EOPNOTSUPP
  *   GETPEERNAME, SHUTDOWN    EOPNOTSUPP
  *   IOCTL                    do_ioctl()               FIONREAD: nina_sock_fionread()
  *                                                     (not in the Zephyr build);
@@ -49,6 +53,13 @@
  *                             nina_poller.c polls now for more
  *   nothing to receive        -EAGAIN without RECVFROM_AVAIL; nina_poller.c
  *                             polls every NINA_POLL_INTERVAL_MS
+ *
+ * A socket marked NINA_SO_CALLER_POLLS (<nina_sockopt.h>; the Zephyr
+ * compatibility layer's sockets) is not polled by nina_poller.c, nor after
+ * a receive: its callers poll it, through FIONREAD and NINA_SO_POLL, in
+ * their own thread, as the Zephyr build's recv() and poll() do.  Only a
+ * connection in progress and the timer of a waiting send's next pass are
+ * left to nina_poller.c.
  *
  * SENDTO_READY is dropped only between the passes of a waiting send.  A
  * send that waits for it without asking the driver would miss its passes
@@ -324,7 +335,11 @@ static int handle_connect(const struct usrsock_request_connect_s *req,
 
       ret = send_ack(req->head.xid, 0,
                      report(req->usockid, NINA_SOCK_EV_WRITE), false);
-      nina_poller_wake();
+      if (!nina_sock_get(req->usockid)->caller_polls)
+        {
+          nina_poller_wake();
+        }
+
       return ret;
     }
 
@@ -518,7 +533,11 @@ static int handle_recvfrom(const struct usrsock_request_recvfrom_s *req)
 
       s->reported &= (uint8_t)~NINA_SOCK_EV_READ;
       ret = send_dack(xid, -EAGAIN, 0, NULL, 0, 0, NULL);
-      nina_poller_kick();
+      if (!s->caller_polls)
+        {
+          nina_poller_kick();
+        }
+
       return ret;
     }
 
@@ -527,16 +546,50 @@ static int handle_recvfrom(const struct usrsock_request_recvfrom_s *req)
       return send_dack(xid, ret < 0 ? ret : -EBADF, 0, NULL, 0, 0, NULL);
     }
 
-  /* Whether more is there is for the next poll, which comes now: the
-   * Zephyr build's next receive polls first, too.
+  /* Whether more is there is for the next poll, which comes now (for a
+   * socket whose callers poll: with their next call): the Zephyr build's
+   * next receive polls first, too.
    */
 
   s->reported &= (uint8_t)~NINA_SOCK_EV_READ;
   valuelen = max_addrlen < sizeof(from) ? max_addrlen : sizeof(from);
   ret = send_dack(xid, ret, 0, &from, s->udp ? valuelen : 0,
                   s->udp ? sizeof(from) : 0, g_receive);
-  nina_poller_wake();
+  if (!s->caller_polls)
+    {
+      nina_poller_wake();
+    }
+
   return ret;
+}
+
+static int handle_getsockopt(const struct usrsock_request_getsockopt_s *req)
+{
+  uint32_t xid = req->head.xid;
+  int value;
+
+  /* NINA_SO_POLL: one pass of the Zephyr build's poll() for the socket,
+   * now, in this thread (nina_sock.h).  No events: the caller reads with
+   * FIONREAD first, which raises RECVFROM_AVAIL.
+   */
+
+  if (req->level != NINA_SOL || req->option != NINA_SO_POLL)
+    {
+      return send_dack(xid, -EOPNOTSUPP, 0, NULL, 0, 0, NULL);
+    }
+
+  if (req->max_valuelen < sizeof(value))
+    {
+      return send_dack(xid, -EINVAL, 0, NULL, 0, 0, NULL);
+    }
+
+  value = nina_sock_poll_revents(req->usockid);
+  if (value < 0)
+    {
+      return send_dack(xid, value, 0, NULL, 0, 0, NULL);
+    }
+
+  return send_dack(xid, 0, 0, &value, sizeof(value), sizeof(value), NULL);
 }
 
 static int handle_ioctl(const struct usrsock_request_ioctl_s *req)
@@ -713,6 +766,8 @@ int usrsock_request(FAR struct iovec *iov, unsigned int iovcnt)
         return handle_ioctl((const void *)g_request);
 
       case USRSOCK_REQUEST_GETSOCKOPT:
+        return handle_getsockopt((const void *)g_request);
+
       case USRSOCK_REQUEST_GETSOCKNAME:
       case USRSOCK_REQUEST_GETPEERNAME:
         return send_dack(common->xid, -EOPNOTSUPP, 0, NULL, 0, 0, NULL);

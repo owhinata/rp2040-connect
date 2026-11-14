@@ -40,7 +40,10 @@
 #define NINA_SEND_WAIT_MS            10000
 #define NINA_CONNECT_WAIT_MS         10000
 #define NINA_SEND_STATE_INTERVAL_MS  100
-#define NINA_POLL_INTERVAL_MS        20
+
+/* NINA_POLL_INTERVAL_MS (:26) and the driver's own socket options. */
+
+#include "nina_sockopt.h"
 
 /* CONFIG_NINA_TCP_MAX_IO of the Zephyr build. */
 
@@ -136,6 +139,13 @@ struct nina_sock
    */
 
   bool read_hint;
+
+  /* NINA_SO_CALLER_POLLS (<nina_sockopt.h>): only the socket's callers ask
+   * the module about it, as in the Zephyr build; nina_poller.c does not
+   * poll it (nina_sock_watch()).
+   */
+
+  bool caller_polls;
 };
 
 extern struct nina_sock g_nina_sockets[NINA_SOCK_MAX];
@@ -194,7 +204,9 @@ int nina_sock_close(int usockid);
 
 /* do_setsockopt() (:764-791) for what reaches it on NuttX: TCP_NODELAY is
  * accepted without effect, everything else is -ENOPROTOOPT.  NuttX keeps
- * SO_RCVTIMEO itself (see struct nina_sock).
+ * SO_RCVTIMEO itself (see struct nina_sock).  Not in the Zephyr build:
+ * NINA_SO_CALLER_POLLS at level NINA_SOL (<nina_sockopt.h>), an int, sets
+ * or clears caller_polls.
  */
 
 int nina_sock_setsockopt(int usockid, int level, int option,
@@ -244,6 +256,17 @@ ssize_t nina_sock_recv(int usockid, void *buf, size_t len, int flags,
 
 int nina_sock_fionread(int usockid);
 
+/* getsockopt(NINA_SOL, NINA_SO_POLL) (<nina_sockopt.h>): the part of
+ * do_poll() (:694-759) for one NINA socket, one pass, for both POLLIN and
+ * POLLOUT; the caller keeps what it asked for, plus POLLERR and POLLHUP.
+ * A socket the module does not have yet is not polled: POLLHUP for TCP,
+ * POLLOUT for UDP (:724-731).  Otherwise one CMD_POLL: POLLIN, POLLOUT and
+ * POLLERR from its state (:733-745).  Returns the bits, or a negative errno
+ * when the poll failed (:734-736).
+ */
+
+int nina_sock_poll_revents(int usockid);
+
 /* poll_state() (:80-89): the module's state byte of the socket's firmware
  * socket.  Records what it says about data (read_hint).
  */
@@ -253,7 +276,8 @@ int nina_sock_poll_state(struct nina_sock *s, uint8_t *state);
 /* What nina_poller.c should look at for this socket now: a connection in
  * progress, or the NINA_SOCK_EV_* bits it could still report.  0: nothing,
  * the module is not asked.  A TCP send that waits for room is not polled
- * for WRITE: its passes are timed (NINA_SEND_RETRY_MS), as there.
+ * for WRITE: its passes are timed (NINA_SEND_RETRY_MS), as there.  A socket
+ * whose callers poll (caller_polls) is looked at only while it connects.
  */
 
 #define NINA_SOCK_WATCH_CONNECT      0x80
