@@ -724,8 +724,9 @@ difference of the total run time in `/proc/<tid>/critmon` ("CPU load" in `nuttx/
 
 - On an exception, `PANIC()`, a failed assertion or the stack sentinel, the NuttX port writes a
   report to the RAM log and restarts by itself (`CONFIG_BOARD_RESET_ON_ASSERT=2`). The Zephyr
-  version is now configured to reboot after a fatal error as well (`CONFIG_RESET_ON_FATAL_ERROR=y`; not
-  checked on the board).
+  version is now configured to reboot after a fatal error as well (`CONFIG_RESET_ON_FATAL_ERROR=y`; checked
+  once by reading an unmapped address with the shell's `devmem`: the HardFault report stayed in the RAM log
+  and the board rebooted).
 - The RAM log has the Zephyr version's format and the same `dmesg`, but is 8 KiB so that the
   report of a fatal error fits (the Zephyr version's is 4 KiB). A log line is formatted in the
   calling thread (the Zephyr version's default is deferred).

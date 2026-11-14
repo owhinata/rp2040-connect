@@ -300,7 +300,7 @@ reset but not a power cycle.
 
 On a fatal error (an exception, the stack sentinel and the like) the firmware logs the error report and
 then reboots by itself (`CONFIG_RESET_ON_FATAL_ERROR=y`). The report can be read with `dmesg` after the
-reboot. This has not been checked on the board (only the build and its configuration).
+reboot.
 
 ## Tests
 

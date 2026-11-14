@@ -636,7 +636,8 @@ Zephyr 版は起動からの累積。区間の割合は `/proc/<tid>/critmon` �
 
 - NuttX 版は、例外・`PANIC()`・assert の失敗・スタックの番兵で、報告を RAM ログに書いてから自動で
   再起動する（`CONFIG_BOARD_RESET_ON_ASSERT=2`）。Zephyr 版も致命的なエラーの後に再起動する設定にした
-  （`CONFIG_RESET_ON_FATAL_ERROR=y`。実機では未確認）。
+  （`CONFIG_RESET_ON_FATAL_ERROR=y`。シェルの `devmem` で存在しないアドレスを読んで HardFault を起こし、
+  報告が RAM ログに残って再起動することを 1 回確認した）。
 - RAM ログは Zephyr 版と同じ形式・同じ `dmesg` だが、異常停止の報告が収まるように 8 KiB にした
   （Zephyr 版は 4 KiB）。ログの行は呼び出したスレッドの中で整形する（Zephyr 版の既定は deferred）。
 
