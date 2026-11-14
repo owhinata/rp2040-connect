@@ -67,6 +67,15 @@
   (((~0U) - (1U << (l)) + 1) & (~0U >> (31 - (h))))
 #endif
 
+/* 64-bit masks (zephyr/sys/util.h; for the Q value print format of
+ * <zephyr/dsp/print_format.h>).
+ */
+
+#ifndef GENMASK64
+#  define GENMASK64(h, l) \
+  (((~0ULL) - (1ULL << (l)) + 1) & (~0ULL >> (64 - 1 - (h))))
+#endif
+
 #ifndef FIELD_GET
 #  define FIELD_GET(mask, value) \
   (((value) & (mask)) / ((mask) & ~((mask) << 1)))

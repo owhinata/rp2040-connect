@@ -58,6 +58,38 @@ static inline bool device_is_ready(const struct device *dev)
 
 int device_init(const struct device *dev);
 
+/* The devices of the port, in Zephyr's order of initialization (the
+ * devicetree nodes of <zephyr/devicetree.h> that exist in this build):
+ * Zephyr's z_device_get_all_static() as a count and an index, since the
+ * port's devices are separate objects (Zephyr: an array in a linker
+ * section).  zephyr_device.c.
+ */
+
+size_t z_device_count(void);
+const struct device *z_device_get(size_t idx);
+
+/* kernel/device.c z_impl_device_get_binding(): the device named NAME (its
+ * node name, e.g. "lsm6dsox@6a"), if ready; NULL for NULL, "" or no such
+ * ready device.
+ */
+
+const struct device *device_get_binding(const char *name);
+
+/* device_get_by_dt_nodelabel() (CONFIG_DEVICE_DT_METADATA): the ready
+ * device of the devicetree node labelled NAME (e.g. "lsm6dsox").
+ */
+
+const struct device *device_get_by_dt_nodelabel(const char *name);
+
+/* DEVICE_API_IS(class, dev): whether the device's API is of the class.
+ * Zephyr checks that the API table is in the class's linker section; here
+ * zephyr_device.c knows the class of each device.  Only the sensor class.
+ */
+
+#define DEVICE_API_IS(_class, _dev) z_device_api_is_##_class(_dev)
+
+bool z_device_api_is_sensor(const struct device *dev);
+
 /* DEVICE_API(sensor, name): the driver's API table. */
 
 #define DEVICE_API(_class, _name)  const struct _class##_driver_api _name

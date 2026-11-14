@@ -114,6 +114,11 @@ static void text_print(const char *str, size_t offset_col)
   putchar('\n');
 }
 
+void subcmd_text_print(const char *str, size_t offset_col)
+{
+  text_print(str, offset_col);
+}
+
 /* z_shell_help_cmd_print() and z_shell_help_subcmd_print() with
  * help_item_print()'s layout: two spaces, the name padded to the longest
  * name of the set, two spaces, ": ", the help; the help text laid out by

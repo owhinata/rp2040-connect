@@ -365,6 +365,12 @@ number of arguments) is `SUBCMD()`, and `SHELL_CMD_ARG()` (mandatory and optiona
   empty line, as in Zephyr. There is no `resize` command to change the terminal width.
 - The exit status is 0 on success and 1 on failure, help or a wrong number of arguments.
 
+`sensor`, whose command table is a copy of Zephyr's, runs on `zshell.c` (`z_shell_cmd_main()`) of
+the same part. The rules are the ones above; in addition, as in the Zephyr shell, it handles
+dynamic subcommands (device names, channel names and so on), the `SHELL_HELP()` description with
+its `Usage:` line, and the expansion of a wildcard that matches subcommands (see "Sensor command
+(`sensor`)").
+
 ### Moving the values from the Zephyr version
 
 ```bash
@@ -804,6 +810,96 @@ runs the Zephyr version's files as they are, too (below). The acquisition servic
   `nuttx/drivers/compat/`. See the "LSM6DSOX" and "Zephyr API compatibility layer" sections of
   `nuttx/drivers/README.md`.
 
+## Sensor command (`sensor`)
+
+`nuttx/apps/sensor/` is a copy of the Zephyr version's sensor shell
+(`zephyr/app/usb-console/drivers/sensor_shell/sensor_shell.c`: Zephyr v4.5.0's
+`drivers/sensor/sensor_shell.c` with its fixes and the LSM6DSO's FIFO attributes) and of Zephyr's
+`drivers/sensor/sensor_shell_stream.c` and `sensor_shell.h`. Side by side in `diff`, the only
+differences are:
+
+- both `.c` files: a leading comment and the include of `sensor_shell_nuttx.h` (the values of the
+  Zephyr build's `CONFIG_SENSOR_SHELL_*`, and the log through `app_log.h`);
+- `sensor_shell.c`: two lines with which `sensor get` waits for its result to be printed (see
+  "Where the output goes" below), and the format of the data ready trigger's log line (`PRIu32`,
+  `PRId32`);
+- `sensor_shell_stream.c`: one line, the callback of the processing thread, which is the original
+  callback followed by telling a waiting `sensor get` (`sensor_shell_nuttx.c`);
+- `sensor_shell.h` is unchanged.
+
+The command table (`SHELL_STATIC_SUBCMD_SET_CREATE()`, `SHELL_DYNAMIC_CMD_CREATE()`,
+`SHELL_CMD_REGISTER()`) is copied too. The compatibility layer's `<zephyr/shell/shell.h>` and
+`nuttx/apps/subcmd/zshell.c` make it the builtin command `sensor` with the Zephyr shell's rules
+(matching the words, dynamic subcommands, wildcard expansion, the argument count check, and the
+`SHELL_HELP()` description with its `Usage:` line and their wrapping).
+
+```text
+nsh$ sensor
+sensor - Sensor commands
+Subcommands:
+  get       : Get sensor data.
+              Channel names are optional. All channels are read when no channels
+              are provided.
+              Usage: get <device_name> [<channel name 0> .. <channel name N>]
+  attr_set  : Set the sensor's channel attribute.
+              Usage: attr_set <device_name> <channel_name> <attribute_name> <value>
+  ...
+nsh$ sensor get lsm6dsox accel_xyz
+channel type=0(accel_x) index=0 shift=4 num_samples=1 value=<time>ns (<m/s²>)
+...
+channel type=3(accel_xyz) index=0 shift=4 num_samples=1 value=<time>ns, (<x>, <y>, <z>)
+```
+
+- The subcommands are `get`, `attr_set`, `attr_get`, `stream` and `trig`. The Zephyr build has no
+  `CONFIG_SENSOR_INFO`, so there is no `info`: `sensor info` prints the help of `sensor` (as in the
+  Zephyr version). The syntax, the output formats (`channel type=... index=... shift=...
+  num_samples=... value=...ns (...)`, `%.6f` in `attr_get`) and the error messages are the Zephyr
+  version's. Error numbers are NuttX's (for example `ENOTSUP` is 138 here, 134 in the Zephyr
+  version).
+- Device names: `get`, `attr_set`, `attr_get` and `trig` take the node name `lsm6dsox@6a` or the
+  node label `lsm6dsox`. `stream` takes the node name `lsm6dsox@6a` only (`device_get_binding()`,
+  as in the Zephyr version). The device listed in the help is `lsm6dsox@6a` too. Wildcards (`*`,
+  `?`) expand to channel names only after the node name (for example
+  `sensor get lsm6dsox@6a gyro_?`; as in the Zephyr version).
+- The attributes are `fifo_watermark` (1 to 256, default 32), `fifo_timestamp_decimation` (0, 1, 8
+  or 32, default 8), and `sampling_frequency` and `full_scale` (see "LSM6DSOX (IMU)"). They are
+  refused with `-16` (`-EBUSY`) while a stream runs (`sensor stream`, `imu start`). `imu start`
+  overwrites the watermark with the KV value (default 128). After boot the ODR is off, so
+  `sensor stream` ends with `Read failed: -22` until `sampling_frequency` is set (as in the Zephyr
+  version).
+- It cannot run together with `imu start`: `imu start` during a stream says
+  `The IMU FIFO is in use (sensor stream?)`, and `sensor stream` and `sensor get` during a
+  measurement say `Read failed: -16` (the driver and `imu_stream.c` are copies of the Zephyr
+  version's).
+- The calibration applies to the physical values of `sensor get` and `sensor stream`. During
+  `sensor stream` the gyro bias is updated at rest by itself (`tracked at rest` in `imu cal`).
+- `trig` gives `Error while setting trigger 1 on device lsm6dsox (-38)` (`-ENOSYS`): as in the Zephyr
+  build, the driver has no trigger (`CONFIG_LSM6DSO_TRIGGER_NONE`).
+- Tab completes command names only (nsh). The Zephyr version also completes subcommands, device,
+  channel and attribute names.
+
+**Where the output goes**: in the Zephyr version, the results of `sensor get` and `sensor stream`
+are written by the processing thread (`sensor_shell_processing_tid`, priority 0, 3072-byte stack)
+to the shell that ran the command (USB or Telnet). Here the same thread (priority 118, 3072-byte
+stack, started by init at boot) writes them.
+
+- It writes to a shell backend of the compatibility layer (`zshell.c`): one per terminal that a
+  command's stdout is (`/dev/ttyACM0` for USB, `/dev/telnet0` for Telnet). For each line the
+  processing thread opens that terminal, writes the line with one `write()` and closes it again.
+  The command's own output goes to its stdout and stderr.
+- `sensor get` returns to the prompt once the processing thread has written the result (it waits at
+  most 2 s). The Zephyr version prints the result after the prompt and draws the prompt again;
+  nsh cannot draw its prompt again, hence the wait.
+- The output of `sensor stream` goes on after the prompt has come back. nsh does not draw the
+  prompt or the line being typed again, so the output comes in the middle of what is typed (the
+  Zephyr version draws the prompt and the line again after each line). `sensor stream
+  lsm6dsox@6a off`, from any terminal, stops it (so does `reboot`).
+- When the Telnet client goes, the output is dropped until the next client connects (there is no
+  terminal device to open) and then goes to that client (as with the Zephyr version's Telnet
+  backend). The processing thread has the terminal open only while it writes, so it does not hold
+  up the next connection (no `Telnet client already connected.`).
+- While the PC has the USB port closed, the output is dropped like all other output (see "Shell").
+
 ## IMU acquisition (`imu`)
 
 The acquisition service is `nuttx/apps/imu/imu_stream.c`, a copy of the Zephyr version's
@@ -868,7 +964,7 @@ conversion:
   is set.
 - The calibration applies to the driver's physical values only (single reads,
   `sensor_channel_get()`, and the FIFO decoder), **not to the RAW sent over MQTT** (as in the
-  Zephyr version). The NuttX port has no `sensor` command yet.
+  Zephyr version). `sensor get` and `sensor stream` show it (see "Sensor command (`sensor`)").
 - `imu cal zero` is refused during a measurement with
   `A measurement is running; it tracks the gyro bias itself`. `imu cal` and `imu cal reload` work
   during a measurement. A gyro bias taken again is kept in RAM only.
@@ -1077,6 +1173,7 @@ Priorities map as `NuttX = 118 − Zephyr`; `nuttx/drivers/include/priorities.h`
 | `sysworkq` (system work queue; compatibility layer; INT1's work) | −1 (cooperative) | 119 | 1024 |
 | `net_mgmt` (network events; compatibility layer; the Wi-Fi event callbacks) | −1 (cooperative) | 119 | 2048 |
 | `RTIO WQ 0` (RTIO work queue; compatibility layer; single reads; `RTIO_WQ_0` in `ps`) | 0 | 118 | 1024 |
+| `sensor_shell_processing_tid` (prints the results of `sensor get` and `sensor stream`) | 0 | 118 | 3072 |
 | `main` (NuttX: init, which drops to the shell's priority after the start-up work) | 0 | 118 | 2048 |
 | Shell (nsh session, commands; `nsh` on USB, `nsh_telnet` on Telnet) | 14 | 104 | 3072 |
 | `telnetd` (accepts Telnet clients; the Zephyr version's `net_socket_service`) | 15 → 14 | 104 | 2048 |
@@ -1088,10 +1185,11 @@ Priorities map as `NuttX = 118 − Zephyr`; `nuttx/drivers/include/priorities.h`
   no thread has a higher priority. The two at 119 take turns by time slicing (Zephyr's cooperative
   threads only switch when one yields).
 - The `K_THREAD_DEFINE()` threads (`nina_scan_tid`, `nina_connect_tid`, `nina_monitor_tid`,
-  `imu_stream_tid`, `imu_raw_mqtt_tid`, `time_sync_tid`, `wifi_reconnect_tid`) are started by init at the start of its start-up work, as the Zephyr version
+  `imu_stream_tid`, `imu_raw_mqtt_tid`, `time_sync_tid`, `wifi_reconnect_tid`,
+  `sensor_shell_processing_tid`) are started by init at the start of its start-up work, as the Zephyr version
   starts them before `main()`.
 - The stacks of `imu_stream_tid`, `imu_raw_mqtt_tid`, `time_sync_tid`, `imu_fifo_worker`, `sysworkq`, `RTIO WQ 0`, `net_mgmt`, the
-  `nina_*_tid` threads and `wifi_reconnect_tid` are static arrays
+  `nina_*_tid` threads, `wifi_reconnect_tid` and `sensor_shell_processing_tid` are static arrays
   as in Zephyr (`K_THREAD_DEFINE()`, `K_THREAD_STACK_DEFINE()`, NuttX's
   `kthread_create_with_stack()`). `ps` shows them smaller by the area NuttX puts at their start
   (2048 → 2008, 2000 for `imu_stream_tid`; 1024 → 976).
@@ -1138,7 +1236,7 @@ nuttx/script/host_tests.sh
 This builds and runs the tests of the OS-independent common sources on the PC. It needs no board,
 only the host's `cc` (C17). Nor does it need the setup script, except that `lsm6dso_driver` uses
 ST's `lsm6dso_reg.c` that `script/setup.sh` fetches (`nuttx/stmemsc/`); without it, that test
-(and `imu_cal`) prints `skip` and is left out. The tests check FIFO word parsing,
+(and `imu_cal`, `sensor_shell`) prints `skip` and is left out. The tests check FIFO word parsing,
 batches and payloads, the send queue, the status and info JSON, time mapping, the mapping from the sensor
 tick to the clock, the NTP estimate, FIFO packet decoding, conversion to physical units and the
 stored calibration format, gyro zero tracking at rest, the board's time conversions
@@ -1156,7 +1254,10 @@ socket calls, CONNECT and the CONNACK wait, the order of info, status and batch 
 driver (`nano_i2c_dw`), the command words of the I2C0 DMA reads (`i2c_dma_commands`), the
 output of the `i2c_dma` command (`i2c_dma_app`, with the driver side replaced by fakes), the
 LSM6DSO FIFO control (`fifo_hw`), the LSM6DSO driver and its FIFO stream (`lsm6dso_driver`), the
-loading of the calibration and the output of `imu cal` (`imu_cal`), the stream's state machine (`stream_stop`), the compatibility layer's RTIO (`zephyr_rtio`) and
+loading of the calibration and the output of `imu cal` (`imu_cal`), the `sensor` command's help,
+argument checks, wildcards, device names, the output of `get`, `attr_get`, `attr_set`, `stream`
+and `trig`, written by the processing thread's callback to the command's terminal (`sensor_shell`,
+on the driver and fake sensor of `lsm6dso_driver`), the stream's state machine (`stream_stop`), the compatibility layer's RTIO (`zephyr_rtio`) and
 work items (`zephyr_work`), and the parts of the layer added for the acquisition service
 (`zephyr_compat_misc`). Each test is built and run in turn,
 and the script stops at the first failure. Build products go to a temporary directory that is
@@ -1181,7 +1282,9 @@ registration at the end replaced; `nuttx/apps/imu/time_sync.c` is a copy with on
 the system, the body of `time_sync_mono_us()`, the Kconfig names and the command registration at
 the end replaced; `nuttx/apps/imu/imu_raw_mqtt.c` is a copy with only a leading comment and the
 includes of NuttX's headers added; `nuttx/apps/imu/imu_cal.c` is a copy with only a leading
-comment and the include of `<nuttx/config.h>` added; `imu_raw_mqtt.h` is a copy with `<zephyr/net/net_ip.h>` replaced
+comment and the include of `<nuttx/config.h>` added; `nuttx/apps/sensor/sensor_shell.c`,
+`sensor_shell_stream.c` and `sensor_shell.h` are copies of the Zephyr version's sensor shell and of
+Zephyr's, with only the differences listed in "Sensor command (`sensor`)"; `imu_raw_mqtt.h` is a copy with `<zephyr/net/net_ip.h>` replaced
 by `<netinet/in.h>`.
 
 `nuttx/tests/fakes/nuttx/config.h` (empty) is the NuttX port's own: it lets a host test build a
@@ -1272,6 +1375,20 @@ change reads the key of the other sensitivity and back, `reload` (a deleted key 
 a tracked bias is dropped), `zero` (at rest, far from the stored bias, during a stream, on an I2C
 error), the usage error, an IMU that is not ready, and every line of `imu cal` (including the
 rounding of the bias to two decimals) with where it goes (stdout or stderr).
+
+`nuttx/tests/sensor_shell.c` is a test of the NuttX port only too. It includes `lsm6dso_driver.c`
+for the same fake sensor, builds the copies of `apps/sensor/` with `apps/subcmd/zshell.c`, and
+points the command's stdout and stderr at one file (in place of the terminal). It checks the help
+of `sensor` (no `info`, the `SHELL_HELP()` description and `Usage:` line wrapped at 80 columns),
+the wrong argument count with the help and the dynamic device list, wildcards (expanded to
+subcommands or channel names, the words no longer read after one that matches nothing, the error
+when a second handler would run), the device names (node name and label, the node name only for
+`stream`), `get` (all channels, named ones, a number, unknown names, the line format), `attr_get`
+and `attr_set` (the FIFO attributes, the value parser, unknown names, the driver's errors, `%.6f`,
+every channel and attribute), `stream` (the argument errors, the start, the trigger line and the
+batch averages printed by the processing thread's callback, `attr_set` refused during the stream,
+`off`) and `trig`. The results are written after the command has returned, by the processing
+thread's callback, to the command's terminal (the backend's path).
 
 `nuttx/tests/zephyr_rtio.c` and `zephyr_work.c` are tests of the NuttX port only too: they check
 the compatibility layer's RTIO and work items on the fake kernel. The first uses a context of

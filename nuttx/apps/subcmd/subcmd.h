@@ -46,6 +46,7 @@
 #ifndef __NUTTX_APPS_SUBCMD_SUBCMD_H
 #define __NUTTX_APPS_SUBCMD_SUBCMD_H
 
+#include <stddef.h>
 #include <stdint.h>
 
 struct subcmd
@@ -84,5 +85,14 @@ int subcmd_main(const struct subcmd *root, int argc, char **argv);
  */
 
 void subcmd_help(const struct subcmd *entry);
+
+/* Zephyr's formatted_text_print() (shell_help.c) without the first-line
+ * margin: STR after its leading white space, a new line at each '\n' and
+ * before a word that would pass the 80th column, each continued at the
+ * column OFFSET_COL, then "\n"; on stdout.  The help layout of subcmd_main()
+ * and of zshell.c (<zephyr/shell/shell.h>).
+ */
+
+void subcmd_text_print(const char *str, size_t offset_col);
 
 #endif /* __NUTTX_APPS_SUBCMD_SUBCMD_H */

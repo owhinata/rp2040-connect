@@ -74,7 +74,7 @@
 #endif
 
 #if defined(CONFIG_NANO_APP_IMU) || defined(CONFIG_NANO_NINA_NET) || \
-    defined(CONFIG_NANO_WIFI_PROFILE)
+    defined(CONFIG_NANO_WIFI_PROFILE) || defined(CONFIG_NANO_APP_SENSOR)
 #  include "zephyr_compat.h"
 #endif
 
@@ -262,6 +262,9 @@ int nano_init_main(int argc, FAR char *argv[])
 #endif
 #ifdef CONFIG_NANO_WIFI_PROFILE
   K_THREAD_DEFINE_START(wifi_reconnect_tid);  /* nuttx/apps/wifi/wifi_profile.c */
+#endif
+#ifdef CONFIG_NANO_APP_SENSOR
+  K_THREAD_DEFINE_START(sensor_shell_processing_tid);  /* ../sensor/sensor_shell_stream.c */
 #endif
 
 #ifdef CONFIG_NANO_INIT_TELNET

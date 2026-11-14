@@ -15,10 +15,13 @@
  * are Zephyr's, written out.  Part of the small Zephyr compatibility layer
  * of the port (nuttx/drivers/compat, see nuttx/drivers/README.md).
  *
- * Not here: the sensor shell (T23), the PRIsensor_* print formats, the
- * other decoded data types (game rotation vector, occurrence), and the
- * device definition macros (lsm6dso.c defines its device with
- * DEVICE_DT_DEFINE() of <zephyr/device.h>).
+ * The print formats of the decoded data (PRIsensor_*_data, with the Q
+ * value format of <zephyr/dsp/print_format.h>) are Zephyr's, for the
+ * sensor shell (nuttx/apps/sensor).
+ *
+ * Not here: the other decoded data types (game rotation vector,
+ * occurrence), and the device definition macros (lsm6dso.c defines its
+ * device with DEVICE_DT_DEFINE() of <zephyr/device.h>).
  */
 
 #ifndef __NUTTX_DRIVERS_COMPAT_ZEPHYR_DRIVERS_SENSOR_H
@@ -30,6 +33,7 @@
 #include <stdint.h>
 
 #include <zephyr/device.h>
+#include <zephyr/dsp/print_format.h>
 #include <zephyr/dsp/types.h>
 #include <zephyr/rtio/rtio.h>
 
@@ -375,6 +379,42 @@ struct sensor_uint64_data
       uint64_t value;
     } readings[1];
 };
+
+/* The print formats of sensor_data_types.h: "%" PRIsensor_*_data with
+ * PRIsensor_*_data_arg(data, reading index).
+ */
+
+#define PRIsensor_three_axis_data PRIu64 "ns, (%" PRIq(6) ", %" PRIq(6) \
+  ", %" PRIq(6) ")"
+
+#define PRIsensor_three_axis_data_arg(data_, readings_offset_) \
+  (data_).header.base_timestamp_ns + \
+    (data_).readings[(readings_offset_)].timestamp_delta, \
+  PRIq_arg((data_).readings[(readings_offset_)].x, 6, (data_).shift), \
+  PRIq_arg((data_).readings[(readings_offset_)].y, 6, (data_).shift), \
+  PRIq_arg((data_).readings[(readings_offset_)].z, 6, (data_).shift)
+
+#define PRIsensor_q31_data PRIu64 "ns (%" PRIq(6) ")"
+
+#define PRIsensor_q31_data_arg(data_, readings_offset_) \
+  (data_).header.base_timestamp_ns + \
+    (data_).readings[(readings_offset_)].timestamp_delta, \
+  PRIq_arg((data_).readings[(readings_offset_)].value, 6, (data_).shift)
+
+#define PRIsensor_byte_data(field_name_) \
+  PRIu64 "ns (" STRINGIFY(field_name_) " = %" PRIu8 ")"
+
+#define PRIsensor_byte_data_arg(data_, readings_offset_, field_name_) \
+  (data_).header.base_timestamp_ns + \
+    (data_).readings[(readings_offset_)].timestamp_delta, \
+  (data_).readings[(readings_offset_)].field_name_
+
+#define PRIsensor_uint64_data PRIu64 "ns (%" PRIu64 ")"
+
+#define PRIsensor_uint64_data_arg(data_, readings_offset_) \
+  (data_).header.base_timestamp_ns + \
+    (data_).readings[(readings_offset_)].timestamp_delta, \
+  (data_).readings[(readings_offset_)].value
 
 /* Decodes the buffers of a sensor's RTIO reads. */
 

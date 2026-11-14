@@ -1,0 +1,42 @@
+#
+# For a description of the syntax of this configuration file,
+# see the file kconfig-language.txt in the NuttX tools repository.
+#
+
+config NANO_APP_SENSOR
+	tristate "sensor command (the Zephyr build's sensor shell)"
+	default y
+	depends on NANO_SUBCMD && NANO_LSM6DSO_STREAM
+	---help---
+		"sensor get|attr_set|attr_get|stream|trig": the Zephyr build's
+		sensor shell (zephyr/app/usb-console/drivers/sensor_shell/
+		sensor_shell.c, Zephyr v4.5.0's drivers/sensor/sensor_shell.c
+		with the LSM6DSO's FIFO attributes, and sensor_shell_stream.c)
+		with the same syntax and output, on the Zephyr compatibility
+		layer and the Zephyr shell's command handling of
+		nuttx/apps/subcmd/zshell.c.  Also the thread
+		sensor_shell_processing_tid (Zephyr priority 0, NuttX 118,
+		CONFIG_SENSOR_SHELL_THREAD_STACK_SIZE 3072), which the init task
+		starts at boot and which prints the results of "sensor get" and
+		"sensor stream" on the terminal of the session that asked for
+		them.  CONFIG_SENSOR_INFO is not set in the Zephyr build, so
+		there is no "sensor info".
+
+if NANO_APP_SENSOR
+
+config NANO_APP_SENSOR_PRIORITY
+	int "sensor task priority"
+	default 104
+	---help---
+		The shell's priority (NANO_PRIO_SHELL in
+		nuttx/drivers/include/priorities.h): the Zephyr build runs shell
+		commands in its shell thread.
+
+config NANO_APP_SENSOR_STACKSIZE
+	int "sensor stack size"
+	default 3072
+	---help---
+		The Zephyr build runs the command on the shell thread's stack
+		(CONFIG_SHELL_STACK_SIZE 3072).
+
+endif

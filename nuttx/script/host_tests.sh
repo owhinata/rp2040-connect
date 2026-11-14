@@ -75,9 +75,32 @@ if [[ -f stmemsc/lsm6dso_reg.c ]]; then
         -o "$out/imu_cal"
     "$out/imu_cal" >/dev/null
     printf 'ok  imu_cal\n'
+    # The "sensor" command (apps/sensor: the copies of the Zephyr build's sensor_shell.c and of
+    # sensor_shell_stream.c) on the Zephyr shell's command handling (apps/subcmd/zshell.c) and
+    # the driver with its fake sensor (lsm6dso_driver.c, included): the help, argument checks,
+    # wildcards, device names, the output of get / attr_get / attr_set / stream / trig, printed
+    # by the processing callback on the command's terminal.  Its main() is sensor_main().
+    sinc=(-D_GNU_SOURCE -D'DEBUGASSERT(x)=assert(x)' -DSENSOR_SHELL_GET_WAIT_MS=1
+          -Itests/lsm6dso_fakes -Itests/zephyr_fakes -Idrivers/compat -Idrivers/include -Istmemsc
+          -I"$lsm" -Iapps/sensor -Iapps/subcmd -Iboards/arduino-nano-rp2040-connect/src)
+    sflags=("${flags[@]}" -Wno-unused-parameter -Wno-cast-function-type -Wno-sign-compare)
+    cc "${sflags[@]}" "${sinc[@]}" -Dmain=sensor_main -c apps/sensor/sensor_shell.c \
+        -o "$out/sensor_shell.o"
+    cc "${sflags[@]}" "${sinc[@]}" tests/sensor_shell.c "$out/sensor_shell.o" \
+        apps/sensor/sensor_shell_stream.c apps/sensor/sensor_shell_nuttx.c apps/subcmd/zshell.c \
+        apps/subcmd/subcmd.c "$lsm/lsm6dso.c" "$lsm/stmemsc_i2c.c" "$lsm/stmemsc_mdelay.c" \
+        "$lsm/lsm6dso_fifo_hw.c" "$lsm/lsm6dso_fifo.c" "$lsm/lsm6dso_cal.c" "$lsm/lsm6dso_zero.c" \
+        "$lsm/lsm6dso_stream.c" "$lsm/lsm6dso_fifo_irq.c" "$lsm/lsm6dso_compat.c" \
+        "$lsm/lsm6dso_fifo_decoder.c" drivers/compat/zephyr_i2c.c drivers/compat/zephyr_device.c \
+        drivers/compat/zephyr_gpio.c drivers/compat/sensor_default_rtio.c "${compat[@]}" \
+        boards/arduino-nano-rp2040-connect/src/nano_lsm6dso.c "$out/lsm6dso_reg.o" -lm "$link" \
+        -o "$out/sensor_shell"
+    "$out/sensor_shell" >/dev/null
+    printf 'ok  sensor_shell\n'
 else
     printf 'skip lsm6dso_driver (no stmemsc/lsm6dso_reg.c: run script/setup.sh)\n'
     printf 'skip imu_cal (no stmemsc/lsm6dso_reg.c: run script/setup.sh)\n'
+    printf 'skip sensor_shell (no stmemsc/lsm6dso_reg.c: run script/setup.sh)\n'
 fi
 # The stream's state machine (lsm6dso_stream.c) with a fake FIFO and RTIO executor: an
 # unchanged copy of the Zephyr build's test, which includes the unchanged copy of the source.

@@ -339,6 +339,11 @@ Zephyr 版の `storage_partition` と同じ場所です。API とコマンドは
   端末の幅を変える `resize` はありません。
 - 終了状態は、成功で 0、失敗・ヘルプ・引数の誤りで 1 です。
 
+`sensor` は Zephyr のコマンドの表をそのまま写したので、同じ部品の `zshell.c`（`z_shell_cmd_main()`）で動きます。
+規則は上と同じで、加えて Zephyr のシェルと同じく、動的なサブコマンド（デバイス名、チャネル名など）、
+`SHELL_HELP()` の説明と `Usage:` の行、一致するサブコマンドがあるワイルドカードの展開を扱います
+（「センサーのコマンド（`sensor`）」の節）。
+
 ### Zephyr 版からの移し替え
 
 ```bash
@@ -724,6 +729,80 @@ LF に直して同一）で行います。FIFO のストリーム（INT1 の割�
   `sensor_*()`、I2C の一部、カーネル、RTIO、GPIO）は `nuttx/drivers/compat/` にあります。詳しくは
   `nuttx/drivers/README_ja.md` の「LSM6DSOX」と「Zephyr の API の互換層」の節を見てください。
 
+## センサーのコマンド（`sensor`）
+
+`nuttx/apps/sensor/` は、Zephyr 版の sensor シェル（`zephyr/app/usb-console/drivers/sensor_shell/sensor_shell.c`。
+Zephyr v4.5.0 の `drivers/sensor/sensor_shell.c` に修正と LSM6DSO の FIFO の属性を加えたもの）と、Zephyr の
+`drivers/sensor/sensor_shell_stream.c`・`sensor_shell.h` の写しです。`diff` で並べると違いは次だけです。
+
+- 2 つの `.c`: 先頭の説明と `sensor_shell_nuttx.h` のインクルード（Zephyr 版の構成の `CONFIG_SENSOR_SHELL_*` の
+  値と、ログを `app_log.h` に）。
+- `sensor_shell.c`: `sensor get` が結果の表示を待つ 2 行（下の「出力先」）と、データレディのトリガーのログの
+  書式（`PRIu32`・`PRId32`）。
+- `sensor_shell_stream.c`: 処理スレッドが呼ぶコールバックを、元のコールバックの後で待っている `sensor get` に
+  知らせるもの（`sensor_shell_nuttx.c`）にした 1 行。
+- `sensor_shell.h` は無変更です。
+
+コマンドの表（`SHELL_STATIC_SUBCMD_SET_CREATE()`、`SHELL_DYNAMIC_CMD_CREATE()`、`SHELL_CMD_REGISTER()`）も
+写しのままで、互換層の `<zephyr/shell/shell.h>` と `nuttx/apps/subcmd/zshell.c` が、Zephyr のシェルと同じ規則
+（語の照合、動的なサブコマンド、ワイルドカードの展開、引数の数の検査、`SHELL_HELP()` の説明と `Usage:` の行と
+その折り返し）で組み込みコマンド `sensor` にします。
+
+```text
+nsh$ sensor
+sensor - Sensor commands
+Subcommands:
+  get       : Get sensor data.
+              Channel names are optional. All channels are read when no channels
+              are provided.
+              Usage: get <device_name> [<channel name 0> .. <channel name N>]
+  attr_set  : Set the sensor's channel attribute.
+              Usage: attr_set <device_name> <channel_name> <attribute_name> <value>
+  ...
+nsh$ sensor get lsm6dsox accel_xyz
+channel type=0(accel_x) index=0 shift=4 num_samples=1 value=<時刻>ns (<m/s²>)
+...
+channel type=3(accel_xyz) index=0 shift=4 num_samples=1 value=<時刻>ns, (<x>, <y>, <z>)
+```
+
+- サブコマンドは `get`、`attr_set`、`attr_get`、`stream`、`trig` です。Zephyr 版の構成には `CONFIG_SENSOR_INFO`
+  が無いので `info` は無く、`sensor info` は `sensor` のヘルプになります（Zephyr 版と同じ）。構文、出力の書式
+  （`channel type=... index=... shift=... num_samples=... value=...ns (...)`、`attr_get` の `%.6f`）、エラーの文は
+  Zephyr 版と同じです。エラー番号は NuttX の番号です（例: `ENOTSUP` は Zephyr 版の 134 に対して 138）。
+- デバイス名: `get`・`attr_set`・`attr_get`・`trig` はノード名 `lsm6dsox@6a` とノードのラベル `lsm6dsox` の
+  どちらでも受け付けます。`stream` はノード名 `lsm6dsox@6a` だけです（`device_get_binding()`。Zephyr 版と
+  同じ）。ヘルプに出るデバイスの一覧も `lsm6dsox@6a` です。ワイルドカード（`*`、`?`）はノード名の後でだけ
+  チャネル名に展開されます（例: `sensor get lsm6dsox@6a gyro_?`。Zephyr 版と同じ）。
+- 属性は `fifo_watermark`（1〜256、既定 32）・`fifo_timestamp_decimation`（0・1・8・32、既定 8）と、
+  `sampling_frequency`・`full_scale`（「LSM6DSOX（IMU）」の節）です。ストリームの間（`sensor stream`、`imu start`）は
+  `-16`（`-EBUSY`）で拒否します。`imu start` は watermark を KV の値（既定 128）で上書きします。起動直後は ODR が
+  止まっているので、`sensor stream` は `sampling_frequency` を設定するまで `Read failed: -22` で終わります
+  （Zephyr 版と同じ）。
+- `imu start` とは同時に使えません。ストリーム中の `imu start` は `The IMU FIFO is in use (sensor stream?)`、
+  計測中の `sensor stream` と `sensor get` は `Read failed: -16` です（ドライバーと `imu_stream.c` は Zephyr 版の写し）。
+- 校正値は `sensor get` と `sensor stream` の物理量に掛かります。`sensor stream` の間は、静止しているたびに
+  角速度のバイアスが自動で更新されます（`imu cal` の `tracked at rest`）。
+- `trig` は、Zephyr 版の構成と同じくドライバーにトリガーが無いので（`CONFIG_LSM6DSO_TRIGGER_NONE`）、
+  `Error while setting trigger 1 on device lsm6dsox (-38)`（`-ENOSYS`）になります。
+- Tab 補完はコマンド名だけです（nsh）。Zephyr 版はサブコマンド、デバイス名、チャネル名、属性名まで補完します。
+
+**出力先**: Zephyr 版では、`sensor get` と `sensor stream` の結果を処理スレッド（`sensor_shell_processing_tid`、
+優先度 0、スタック 3072）が、コマンドを実行したシェル（USB か Telnet）に書きます。NuttX 版も同じスレッド
+（優先度 118、スタック 3072。init が起動時に始めます）が書きます。
+
+- 書き先は互換層のシェルのバックエンド（`zshell.c`）です。コマンドの標準出力の端末（USB は `/dev/ttyACM0`、
+  Telnet は `/dev/telnet0`）ごとに 1 つあり、処理スレッドは 1 行ごとにその端末を開き、1 回の `write()` で
+  書いて閉じます。コマンド自身の出力は、その標準出力と標準エラーです。
+- `sensor get` は、処理スレッドが結果を書き終えるまで（最長 2 秒）待ってからプロンプトに戻ります。Zephyr 版は
+  プロンプトの後に結果を出し、プロンプトを描き直します。nsh はプロンプトを描き直せないので、こうしています。
+- `sensor stream` の出力は、プロンプトに戻った後も続きます。nsh はプロンプトや入力中の行を描き直さないので、
+  入力の途中に出力が挟まります（Zephyr 版は 1 行ごとにプロンプトと入力中の行を描き直します）。止めるには、
+  どの端末からでも `sensor stream lsm6dsox@6a off` を実行します（`reboot` でも止まります）。
+- Telnet のクライアントが切れると、次のクライアントが繋がるまでの出力は捨て（端末の装置が無く開けない）、
+  次に繋いだクライアントに出力が続きます（Zephyr 版の Telnet のバックエンドと同じ）。処理スレッドは書く間しか
+  端末を開いていないので、次の接続を妨げません（`Telnet client already connected.` になりません）。
+- PC が USB のポートを閉じている間の出力は、ほかの出力と同じく捨てます（「シェル」の節）。
+
 ## IMU の取得（`imu`）
 
 取得サービスは `nuttx/apps/imu/imu_stream.c` で、Zephyr 版の `src/imu_stream.c` の OS を呼ぶ部分だけを
@@ -778,7 +857,8 @@ conversion:
   登録します（Zephyr 版の `main()` と同じ位置）。ドライバーは登録時、`imu cal reload`、レンジの設定時に
   KV を読みます。
 - 校正値が掛かるのはドライバーの物理量の出力（単発取得の `sensor_channel_get()` と FIFO のデコーダー）だけで、
-  **MQTT で送る RAW には掛かりません**（Zephyr 版と同じ）。NuttX 版にはまだ `sensor` コマンドがありません。
+  **MQTT で送る RAW には掛かりません**（Zephyr 版と同じ）。`sensor get` と `sensor stream` の値で確かめられます
+  （「センサーのコマンド（`sensor`）」の節）。
 - `imu cal zero` は計測中は `A measurement is running; it tracks the gyro bias itself` で拒否します。
   計測中も `imu cal` と `imu cal reload` は使えます。取り直した角速度のバイアスは RAM にだけ持ちます。
 - エラーは stderr に出て、終了状態は 1 です（`kv` と同じ。成功は 0）。引数が 2 つ以上なら
@@ -953,6 +1033,7 @@ Subcommands:
 | `sysworkq`（システムワークキュー。互換層。INT1 の処理） | −1（協調） | 119 | 1024 |
 | `net_mgmt`（ネットワークのイベント。互換層。Wi-Fi のイベントのコールバック） | −1（協調） | 119 | 2048 |
 | `RTIO WQ 0`（RTIO のワークキュー。互換層。単発取得。`ps` では `RTIO_WQ_0`） | 0 | 118 | 1024 |
+| `sensor_shell_processing_tid`（`sensor get`・`sensor stream` の結果の表示） | 0 | 118 | 3072 |
 | `main`（NuttX は init。起動処理の後シェルの優先度に下げる） | 0 | 118 | 2048 |
 | シェル（nsh のセッション、コマンド。USB の `nsh`、Telnet の `nsh_telnet`） | 14 | 104 | 3072 |
 | `telnetd`（Telnet の受け付け。Zephyr 版は `net_socket_service`） | 15 → 14 | 104 | 2048 |
@@ -963,9 +1044,9 @@ Subcommands:
   協調スレッドに当たるのは `sysworkq` と `net_mgmt`（どちらも 119）で、それより高い優先度のスレッドは
   ありません。同じ 119 の 2 つは時分割で交代します（Zephyr の協調スレッドどうしは自分で譲るまで交代しない）。
 - `K_THREAD_DEFINE()` のスレッド（`nina_scan_tid`、`nina_connect_tid`、`nina_monitor_tid`、`imu_stream_tid`、
-  `imu_raw_mqtt_tid`、`time_sync_tid`、`wifi_reconnect_tid`）は、
+  `imu_raw_mqtt_tid`、`time_sync_tid`、`wifi_reconnect_tid`、`sensor_shell_processing_tid`）は、
   Zephyr 版が `main()` の前に始めるのに合わせて、init が起動処理の最初に始めます。
-- `imu_stream_tid`、`imu_raw_mqtt_tid`、`time_sync_tid`、`imu_fifo_worker`、`sysworkq`、`RTIO WQ 0`、`net_mgmt`、`nina_*_tid`、`wifi_reconnect_tid` のスタックは Zephyr と同じく静的な配列です
+- `imu_stream_tid`、`imu_raw_mqtt_tid`、`time_sync_tid`、`imu_fifo_worker`、`sysworkq`、`RTIO WQ 0`、`net_mgmt`、`nina_*_tid`、`wifi_reconnect_tid`、`sensor_shell_processing_tid` のスタックは Zephyr と同じく静的な配列です
   （`K_THREAD_DEFINE()`・`K_THREAD_STACK_DEFINE()`、NuttX の `kthread_create_with_stack()`）。`ps` の STACK は
   NuttX が先頭に置く領域の分だけ小さく出ます（2048 → 2008。`imu_stream_tid` は 2000、1024 → 976）。
 - `CONFIG_PRIORITY_INHERITANCE=y` です。ミューテックスは優先度継承あり、セマフォは既定で継承なし
@@ -1006,7 +1087,7 @@ nuttx/script/host_tests.sh
 
 OS に依存しない共通ソースのテストを、PC 上でビルドして実行します。ボードは不要で、ホストの `cc`（C17）だけを
 使います。セットアップスクリプトも不要ですが、`lsm6dso_driver` だけは `script/setup.sh` が取得する ST の
-`lsm6dso_reg.c`（`nuttx/stmemsc/`）を使い、無ければ `skip` と出して飛ばします（`imu_cal` も同じ）。FIFO ワードの解析、バッチとペイロード、送信キュー、
+`lsm6dso_reg.c`（`nuttx/stmemsc/`）を使い、無ければ `skip` と出して飛ばします（`imu_cal`、`sensor_shell` も同じ）。FIFO ワードの解析、バッチとペイロード、送信キュー、
 status と info の JSON、時刻の対応付け、センサーの tick と時計の対応、NTP の推定、FIFO パケットの復号、物理単位への
 換算と校正値の保存形式、静止中のジャイロのゼロ点の追従、ボードの時間の換算（`nano_timeconv`）、
 CPU 負荷の計算（`nano_cpuload`）、RAM ログのリング・`dmesg` の取り出し・行の前置き・頻度制限（`log_ram`）、
@@ -1019,7 +1100,9 @@ CONNECT と CONNACK の待ち・info と status とバッチの順と 1 回の `
 （`imu_raw_mqtt`。ソケット、時計、ネットワークのインターフェースは偽物）、I2C0 のドライバーの OS に依存しない部分（`nano_i2c_dw`）、I2C0 の DMA
 読み出しのコマンド語（`i2c_dma_commands`）、`i2c_dma` コマンドの出力（`i2c_dma_app`。ドライバー側は偽物）、
 LSM6DSO の FIFO 制御（`fifo_hw`）、LSM6DSO のドライバーと FIFO のストリーム（`lsm6dso_driver`）、校正値の読み込みと
-`imu cal` の出力（`imu_cal`）、ストリームの
+`imu cal` の出力（`imu_cal`）、`sensor` コマンドのヘルプ・引数の検査・ワイルドカード・デバイス名・`get`・`attr_get`・
+`attr_set`・`stream`・`trig` の出力と、処理スレッドのコールバックがコマンドの端末に書くこと（`sensor_shell`。
+ドライバーと偽のセンサーは `lsm6dso_driver` のもの）、ストリームの
 状態機械（`stream_stop`）、互換層の RTIO（`zephyr_rtio`）とワーク（`zephyr_work`）、取得サービスのために
 足した互換層の部品（`zephyr_compat_misc`）を確かめます。テストは 1 つずつビルドして
 実行し、失敗したところで止まります。ビルドの生成物は一時ディレクトリに置き、終了時に消します。
@@ -1042,6 +1125,8 @@ Zephyr 版を直したときは、写しも同じ内容に置き換えます。
 `nuttx/apps/imu/time_sync.c` は OS を呼ぶ部分、`time_sync_mono_us()` の中身、Kconfig の名前と末尾のコマンドの登録だけを置き換えた写し、
 `nuttx/apps/imu/imu_raw_mqtt.c` は先頭の説明と NuttX のヘッダーのインクルードだけを足した写し、
 `nuttx/apps/imu/imu_cal.c` は先頭の説明と `<nuttx/config.h>` のインクルードだけを足した写し、
+`nuttx/apps/sensor/sensor_shell.c`・`sensor_shell_stream.c`・`sensor_shell.h` は Zephyr 版の sensor シェルと Zephyr の
+写しで、違いは「センサーのコマンド（`sensor`）」の節に書いたものだけ、
 `imu_raw_mqtt.h` は `<zephyr/net/net_ip.h>` を `<netinet/in.h>` にしただけの写しです。
 
 `nuttx/tests/fakes/nuttx/config.h`（空）は NuttX 版だけのもので、`<nuttx/config.h>` を読む `nuttx/apps` の
@@ -1113,6 +1198,17 @@ Zephyr のフラグへの変換、`IC_DATA_CMD` に書く語の列（`i2c` ツ�
 `reload`（消したキーは公称に戻る、追従したバイアスを捨てる）、`zero`（静止時、保存したバイアスから遠い、
 ストリーム中、I2C のエラー）、使い方の誤り、IMU が準備できていないとき、`imu cal` の各行（バイアスの小数 2 桁の
 丸めを含む）と出力先（stdout と stderr）。
+
+`nuttx/tests/sensor_shell.c` も NuttX 版だけのテストです。`lsm6dso_driver.c` を読み込んで同じ偽のセンサーを使い、
+`apps/sensor/` の写しを `apps/subcmd/zshell.c` と一緒にビルドし、コマンドの標準出力と標準エラーを 1 つの
+ファイル（端末の代わり）に向けて確かめます: `sensor` のヘルプ（`info` が無いこと、`SHELL_HELP()` の説明と
+`Usage:` の行の 80 桁での折り返し）、引数の数の誤りとヘルプと動的なデバイスの一覧、ワイルドカード（サブコマンド
+やチャネル名への展開、一致しないときに語の読み取りが止まること、ハンドラーが 2 つになるときのエラー）、
+デバイス名（ノード名とラベル、`stream` はノード名だけ）、`get`（全チャネル、指定、番号、不明な名前、行の書式）、
+`attr_get`・`attr_set`（FIFO の属性、値の解析、不明な名前、ドライバーのエラー、`%.6f`、全チャネルと全属性）、
+`stream`（引数の誤り、開始、処理スレッドのコールバックが出すトリガーの行とバッチの平均、ストリーム中の
+`attr_set` の拒否、`off`）、`trig`。結果はコマンドが戻った後に、処理スレッドのコールバックがコマンドの端末
+（バックエンドのパス）に書きます。
 
 `nuttx/tests/zephyr_rtio.c` と `zephyr_work.c` も NuttX 版だけのテストで、互換層の RTIO とワークを偽の
 カーネルの上で確かめます。前者は `imu_stream.c` と同じ寸法のコンテキストと偽の iodev で、メモリープール

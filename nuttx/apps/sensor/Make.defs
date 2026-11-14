@@ -1,0 +1,11 @@
+############################################################################
+# nuttx/apps/sensor/Make.defs
+#
+# Read through nuttx/apps/Make.defs.  Adds this directory (the "sensor"
+# command and its processing thread) to the build when
+# CONFIG_NANO_APP_SENSOR is set.
+############################################################################
+
+ifneq ($(CONFIG_NANO_APP_SENSOR),)
+CONFIGURED_APPS += $(APPDIR)/external/sensor
+endif
