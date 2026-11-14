@@ -79,6 +79,64 @@ public class BoardShellTests
         }
     }
 
+    /// <summary>
+    /// The NuttX build's Telnet shell: a prompt right after connecting, the
+    /// line echoed by readline, and WILL/WONT ECHO around every command.
+    /// </summary>
+    [Fact]
+    public async Task Works_with_the_NuttX_shell()
+    {
+        byte[] willEcho = { 0xFF, 0xFB, 0x01 }, wontEcho = { 0xFF, 0xFC, 0x01 };
+        byte[] prompt = willEcho.Concat(Encoding.ASCII.GetBytes("nsh$ \x1b[K")).ToArray();
+        TcpListener listener = new(IPAddress.Loopback, 0);
+        listener.Start();
+        Task server = Task.Run(async () =>
+        {
+            using TcpClient client = await listener.AcceptTcpClientAsync();
+            NetworkStream stream = client.GetStream();
+            await stream.WriteAsync(prompt);
+            StringBuilder line = new();
+            byte[] one = new byte[1];
+            while (await stream.ReadAsync(one) == 1)
+            {
+                if (one[0] == '\r')
+                {
+                    continue;
+                }
+                if (one[0] != '\n')
+                {
+                    line.Append((char)one[0]);
+                    await stream.WriteAsync(one);
+                    continue;
+                }
+                string text = line.ToString();
+                line.Clear();
+                string reply = text == "kv get k" ? "0102\r\n" : "Saved\r\n";
+                byte[] output = Encoding.ASCII.GetBytes("\r\n").Concat(wontEcho)
+                    .Concat(Encoding.ASCII.GetBytes(reply)).Concat(prompt).ToArray();
+                for (int i = 0; i < output.Length; i += 5)
+                {
+                    await stream.WriteAsync(output.AsMemory(i, Math.Min(5, output.Length - i)));
+                    await stream.FlushAsync();
+                }
+            }
+        });
+        try
+        {
+            using BoardShell shell = await BoardShell.ConnectAsync("127.0.0.1", ((IPEndPoint)listener.LocalEndpoint).Port);
+            await shell.SettleAsync();
+            string first = await shell.ExecuteAsync("kv get k", TimeSpan.FromSeconds(5));
+            BoardShell.OutputLines(first, "kv get k").Should().Equal("0102");
+            string second = await shell.ExecuteAsync("kv set a b", TimeSpan.FromSeconds(5));
+            BoardShell.OutputLines(second, "kv set a b").Should().Equal("Saved");
+        }
+        finally
+        {
+            listener.Stop();
+            await Task.WhenAny(server, Task.Delay(1000));
+        }
+    }
+
     [Fact]
     public async Task Gives_up_after_the_wait_and_reports_the_end_of_the_connection()
     {

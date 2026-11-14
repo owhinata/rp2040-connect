@@ -2,13 +2,22 @@
 
 [English](README.md) | 日本語
 
-`zephyr/app/usb-console` の IMU 測定ファームウェアを NuttX 13.1.0 に移植したものを置くディレクトリです。
-現在は移植中です。今あるのは、環境構築、OS に依存しない共通ソースのホストテスト、ボード定義とその
-ビルド、USB コンソールと書き込みスクリプト、RAM ログ、キーと値の保存（`kv`）、NINA-W102 との SPI の
-やり取り（`nina version`）、NINA のソケット（usrsock。制御系と送受信）と名前解決、I2C0（DMA を含む）、
-LSM6DSOX のドライバーと FIFO のストリーム、IMU の取得サービス（`imu`）、Wi-Fi のネットワークデバイス
-（`wapi`・`ifconfig`）、Wi-Fi の資格情報の保存と自動再接続（`wifi cred`）、Wi-Fi 経由のシェル（Telnet）、
-速度の測定（`iperf`）、時刻同期（`ntp`）、MQTT での送信、校正値の適用（`imu cal`）です。
+`zephyr/app/usb-console` の IMU 測定ファームウェアを NuttX 13.1.0 に移植したもの（NuttX 版）を置くディレクトリです。
+Zephyr 版と同じく、LSM6DSOX の加速度・角速度を 6667 Hz の RAW のまま取得し、PC の時刻を付けて Wi-Fi 経由の
+MQTT で送ります。入っているのは、ボード定義、USB コンソールと Telnet のシェル（nsh）、RAM ログ（`dmesg`）、
+キーと値の保存（`kv`）、NINA-W102 のドライバー（SPI、ソケット、名前解決、Wi-Fi）、I2C0（DMA を含む）、
+LSM6DSOX のドライバーと FIFO のストリーム、IMU の取得と MQTT の送信（`imu`）、時刻同期（`ntp`）、校正値の
+適用（`imu cal`）、センサーのコマンド（`sensor`）、Wi-Fi の資格情報の保存と自動再接続（`wifi cred`）、
+速度の測定（`iperf`）と、環境構築・ビルド・書き込みのスクリプト、ホストテストです。
+
+- 独自のコマンド（`imu`、`kv`、`ntp`、`nina`、`dmesg`、`i2c_dma`、`sensor`、`wifi cred`）は Zephyr 版と構文・出力が
+  同じです。それ以外の Zephyr 標準のコマンドは NuttX 標準のコマンドに置き換わります。対応は
+  「Zephyr 版とのコマンドの対応」の節にまとめてあります。
+- エラー番号（errno）は NuttX の値のまま表示します。Zephyr 版の値との対応は
+  「エラー番号（errno）」の節です。
+- Zephyr 版との違いは「Zephyr 版との違い」の節にまとめ、詳しくは各節に書いてあります。
+- PC 側のツール（`host/` の `imu-host`、`ImuStudio`）はそのまま使えます（`host/README_ja.md` の「ボードの
+  ファームウェア」）。
 
 ## 環境構築
 
@@ -87,8 +96,7 @@ nuttx/script/build.sh
 
 カスタムボード `nuttx/boards/arduino-nano-rp2040-connect/` を、唯一の構成 `configs/imu/defconfig` で
 ビルドし、`nuttx/build/nuttx.uf2` を作ります。スクリプトが `setup.sh` を自分で読み込むので、
-セットアップスクリプトを読み込んでいないシェルでも動きます。今のファームウェアは最小構成で、
-USB コンソールに nsh が出るだけです（「シェル」の節を参照）。
+セットアップスクリプトを読み込んでいないシェルでも動きます。
 
 スクリプトは次のことを行います。
 
@@ -193,9 +201,10 @@ picocom /dev/serial/by-id/usb-NuttX_NuttX_USB_Console_*-if00
   扱われます。実行中のコマンドを止めることはありません（Zephyr 版でも実行中のコマンドは止まりません）。
   終わらないコマンド（`while`/`until` のループ、`watch`）は外してあります。
 - Wi-Fi に繋がっている間は、同じシェルを Telnet でも使えます（「Wi-Fi 経由のシェル（Telnet）」の節）。
-- `help` でコマンドの一覧が出ます。今は大半が nsh のコマンド（`uname`、`ps`、`free`、`echo`、`sleep`
-  など）で、この移植のコマンドは移植が進むにつれて加わります。存在しないコマンドを打つと
-  `nsh: <名前>: command not found` と出ます。
+- `help` でコマンドの一覧が出ます。前半が nsh のコマンド（`uname`、`ps`、`free`、`echo`、`sleep`
+  など）、`Builtin Apps:` の後がこの移植のコマンドと NuttX のアプリ（`wapi`、`iperf`、`i2c` など）です。
+  Zephyr 版のコマンドとの対応は「Zephyr 版とのコマンドの対応」の節です。存在しないコマンドを打つと
+  `nsh: <名前>: command not found` と出ます（Zephyr 版は `<名前>: command not found`）。
 - `reboot` でボードを再起動します（Zephyr 版の `kernel reboot`）。引数を付けても（`reboot --help` でも）
   再起動します。
 - `bootsel` は、メッセージを送り終えてから、ボードを BOOTSEL（`RPI-RP2` のストレージ）で再起動します。
@@ -368,10 +377,10 @@ Wi-Fi は、`wifi cred add -s <SSID> -k 1 -p <パスワード>`（成功する�
 
 Wi-Fi モジュール NINA-W102 とは SPI1 でやり取りします。NINA のファームウェアは Zephyr 版と同じもの
 （Arduino の NINA ファームウェア 3.0.2 に修正を当てたもの、`firmware/nina-fw/README.md`）で、書き換えません。
-今あるのは、コマンドを 1 つ送って応答を受け取る転送層（`nina_request()`、`nina_ip_config()`）、
+ドライバーは、コマンドを 1 つ送って応答を受け取る転送層（`nina_request()`、`nina_ip_config()`）、
 `nina version`、ソケット（NuttX の usrsock。socket・close・bind・listen・accept・connect・setsockopt と
 送受信・`FIONREAD`）、NINA の名前解決（`nina_getaddrinfo()`）、Wi-Fi のネットワークデバイス `wlan0`
-（スキャン、接続、切断、状態、接続の監視）です（`nuttx/drivers/README_ja.md` の「ソケット（usrsock）」
+（スキャン、接続、切断、状態、接続の監視）からなります（`nuttx/drivers/README_ja.md` の「ソケット（usrsock）」
 「名前解決」「Wi-Fi」）。資格情報の保存と自動再接続（`wifi cred`）は下の節です。
 
 ```
@@ -722,7 +731,7 @@ LF に直して同一）で行います。FIFO のストリーム（INT1 の割�
   端数のバッチとして渡してから `-ECANCELED` で終えます。動かすための Zephyr のカーネル（ワークキュー、
   セマフォ、`k_poll()`）、RTIO、GPIO、センサーの非同期の API は互換層（`nuttx/drivers/compat/`）にあり、
   ボードの起動処理が `zephyr_compat_initialize()` で `sysworkq` と `RTIO WQ 0` を始めます。
-  実機で（1 MHz、6667 Hz、ウォーターマーク 128、`imu_stream.c` と同じ RTIO の寸法。T11 の時点の
+  実機で（1 MHz、6667 Hz、ウォーターマーク 128、`imu_stream.c` と同じ RTIO の寸法。移植の途中の
   一時的な試験コマンドで、消費側は受け取って解放するだけ）10 秒と 60 秒の連続で動かし、エラー・
   オーバーラン・`i2c_dma` のエラーとフォールバックが出ないことを確かめました。
 - 呼ぶ側のための Zephyr の API の写し（`struct device`、`struct sensor_value`、チャネル・属性の列挙、
@@ -833,9 +842,10 @@ Subcommands:
 - init は Zephyr 版の `main()` と同じ順に `kv_store_init()` → `imu_cal_init()`（失敗すると
   `Could not set up the IMU calibration: <値>`）→ `time_sync_init()` → `wifi_profile_init()` を呼びます。
 
-実機で（送信スタブ、ネットワークなし、6667 Hz、ウォーターマーク 128、1 MHz）、`imu start` → 10 秒 →
-`imu stop` を 4 回（書き込み直後の 1 回を含む）と 60 秒を 1 回行い、`errors`・`fifo` の各項目・`time` の
-異常の数と、`i2c_dma` のエラーとフォールバックが 0 であることを確かめました（MQTT の送信を入れる前）。
+実機で（MQTT の送信をスタブ `imu_raw_mqtt_null.c` にした構成、ネットワークなし、6667 Hz、ウォーターマーク 128、
+1 MHz）、`imu start` → 10 秒 → `imu stop` を 4 回（書き込み直後の 1 回を含む）と 60 秒を 1 回行い、`errors`・
+`fifo` の各項目・`time` の異常の数と、`i2c_dma` のエラーとフォールバックが 0 であることを確かめました。
+送信を入れた構成での確認は「MQTT の送信」の節です。
 
 ### 校正（`imu cal`）
 
@@ -866,8 +876,8 @@ conversion:
 
 実機で、起動時の読み込み、`imu cal` の各サブコマンドと計測中の拒否（USB と Telnet）、レンジを変えたときの
 `nominal` への切り替えと戻り（一時的な試験コマンドで）、`script/kv_transfer.py restore` が `imu cal reload` の応答に行う判定（同じ処理を
-KV に書かずに実行）、`host/.venv/bin/imu-host write`（同じ値の書き込み。Telnet と、デバイスを指定した USB。`imu-host` の USB の自動検出はまだ NuttX 版に対応していません）を
-確かめました。起動直後の `imu cal` の出力は Zephyr 版で記録した出力と文字単位で同じです。
+KV に書かずに実行）、`host/.venv/bin/imu-host write`（ボードにあった値と同じ値の書き込み。Telnet の自動検出と `--board`、USB の
+自動検出とデバイスの指定、計測中の拒否）を確かめました。起動直後の `imu cal` の出力は Zephyr 版で記録した出力と文字単位で同じです。
 
 ### MQTT の送信
 
@@ -1079,6 +1089,170 @@ Subcommands:
   DEBUGASSERT）も要るので使いません。
 - `ps` の STACK・USED・FILLED でスタックの使用量を見られます。
 
+## Zephyr 版とのコマンドの対応
+
+Zephyr 版の README の「シェルコマンド」の表と、Zephyr 版の `help` に出るコマンドを、NuttX 版のコマンドと
+並べたものです。詳しくは右の列の節を見てください。NuttX 版の引数は nsh が解釈するので、`$`・`;`・`#`・`>`・
+`&`・引用符を含む引数は引用符で囲みます（Zephyr 版のシェルは二重引用符だけを扱います）。
+
+| Zephyr 版 | NuttX 版 | 節・違い |
+|---|---|---|
+| `imu start` / `stop` / `status` | 同じ | 「IMU の取得（`imu`）」 |
+| `imu cal` / `imu cal reload` / `imu cal zero` | 同じ | 「校正（`imu cal`）」 |
+| `ntp status` | 同じ | 「時刻同期（`ntp`）」 |
+| `kv set` / `sethex` / `get` / `delete` | 同じ | 「キーと値の保存（`kv`）」。保存形式は互換なし |
+| `nina version` | 同じ | 「NINA-W102（`nina`）」 |
+| `sensor get` / `attr_set` / `attr_get` / `stream` / `trig` | 同じ | 「センサーのコマンド（`sensor`）」。`sensor info` はどちらにも無い |
+| `i2c_dma mode` / `stats` | 同じ | 「DMA での読み出し（`i2c_dma`）」 |
+| `dmesg` | 同じ | 「ログ（`dmesg`）」 |
+| `wifi cred add` / `delete` / `list` / `auto_connect` | 同じ | 「Wi-Fi の資格情報と自動再接続（`wifi cred`）」 |
+| `wifi connect -s <SSID> -p <パスフレーズ> -k 1` | `wapi psk wlan0 <パスフレーズ> 3` の後に `wapi essid wlan0 <SSID> 1` | 「Wi-Fi（`wapi`、`ifconfig`）」 |
+| `wifi connect -s <SSID> -k 0` | `wapi essid wlan0 <SSID> 1` | 同上 |
+| `wifi disconnect` | `wapi disconnect wlan0` | 同上 |
+| `wifi scan` | `wapi scan wlan0` | 同上 |
+| `wifi status` | `wapi show wlan0` と `ifconfig wlan0` | 同上 |
+| `wifi` のそのほかのサブコマンド | 無い | |
+| `net iface` | `ifconfig` | 同上 |
+| `net` のそのほかのサブコマンド | 無い | |
+| `zperf tcp upload <PC> 5201 30 1024` | `iperf -c <PC> -t 30 -l 1024`（PC は `iperf -s`） | 「速度の測定（`iperf`）」。iperf 3 ではなく iperf 2、ポートは 5001 |
+| `zperf udp upload <PC> 5201 30 500 500K` | `iperf -c <PC> -u -t 30 -l 500`（速さは指定できない） | 同上 |
+| `zperf tcp download 5201` / `download stop` | `iperf -s -B 0.0.0.0`（1 回の接続で終わる） | 同上 |
+| `kernel reboot` | `reboot` | 「シェル」。どちらも引数を見ずに再起動する |
+| `kernel ps` | `ps` | `ps` は優先度、方式、状態、スタック（STACK・USED・FILLED）を出す。CPU の割合は出さない |
+| `kernel thread stacks` | `ps`（各スレッド）と `irqstack`（`IRQ 00` の行と同じ書式） | 「スレッドの優先度とスタック」 |
+| `kernel version` | `uname -a` | |
+| `kernel uptime` | `uptime` | |
+| `kernel` のそのほかのサブコマンド | 無い | |
+| `date get` | `date` | 「時刻同期（`ntp`）」 |
+| `date set <日付> <時刻>` | `date -s "<月> <日> <時刻> <年>"` | 同上 |
+| `i2c scan` / `read_byte` / `read` / `direct_read` / `write_byte` / `speed` / `recover` | `i2c dev` / `get` / `dump` / `set` / `-f` / `reset`（NuttX の `i2c` ツール） | 「`i2c` ツールと Zephyr 版の `i2c` コマンド」。`i2c write`（複数バイトの書き込み）は無い |
+| `devmem <アドレス>`（読み出し） | `xd <16 進のアドレス> <バイト数>` | 書き込みは無い |
+| `gpio ...` | 無い | |
+| `log ...` | 無い | 実行時のログレベルの変更は無い（「ログ（`dmesg`）」） |
+| `device list` | 無い | |
+| `history` | 無い | 上下の矢印で直前の 8 行を呼び出せる |
+| `retval` | `echo $?` | 終了状態は成功で 0、失敗で 1 |
+| `rem <文>` | `# <文>` | nsh のコメント |
+| `clear`、`resize`、`shell ...` | 無い | |
+| `help` | `help`（`help <コマンド>` で使い方） | |
+| – | `bootsel` | 開発用（「シェル」） |
+| – | `irqstack` | 割り込み用のスタックの使用量（「スレッドの優先度とスタック」） |
+| – | nsh の標準のコマンド（`free`、`ls`、`cat`、`echo`、`sleep`、`time` など） | |
+
+PC 側のツール（`imu-host`、`ImuStudio`、`script/kv_transfer.py`）が送るコマンドは、どれも上の「同じ」の行に
+あるものです。
+
+## エラー番号（errno）
+
+NuttX 版は、コマンドの出力、ログ、`imu status` の `errors:` の各項目と `last_recovery_error`、`ntp status` の
+`last_error`、MQTT の status の `raw_error`・`error` などに出るエラー番号を、NuttX の値のまま表示します
+（Zephyr 版の値へ変換しません）。名前が同じでも値が違うものがあるので、Zephyr 版の記録や設計書の値と
+比べるときは下の表で読み替えます。表示はどちらも負の値（例: `KV read failed: -2`）です。PC 側のツールは
+エラー番号の値を見ていません。
+
+値の出どころ:
+
+- Zephyr 版: picolibc（`CONFIG_PICOLIBC=y`、`CONFIG_PICOLIBC_USE_TOOLCHAIN=y`。Zephyr SDK 1.0.1 のツールチェーンの
+  picolibc）の `zephyr/zephyr-sdk-1.0.1/gnu/arm-zephyr-eabi/arm-zephyr-eabi/sys-include/sys/errno.h`。
+  `zephyr/zephyr/lib/libc/minimal/include/errno.h` はこの構成では使いません。
+- NuttX 版: `nuttx/nuttx/include/errno.h`（NuttX 13.1.0）。
+
+値の違うもの:
+
+| 名前 | Zephyr 版 | NuttX 版 | この移植で出る場所の例 |
+|---|---|---|---|
+| `ENOMSG` | 35 | 42 | |
+| `ENOSYS` | 88 | 38 | `sensor trig`（`-38`） |
+| `EBADMSG` | 77 | 74 | |
+| `EOVERFLOW` | 139 | 75 | FIFO のオーバーラン（ドライバー） |
+| `ENOTSOCK` | 108 | 88 | |
+| `EMSGSIZE` | 122 | 90 | 512 バイトを超える UDP の送信（`iperf` の `err=90`） |
+| `ENOPROTOOPT` | 109 | 92 | NINA のソケットが受け付けないオプション |
+| `EPROTONOSUPPORT` | 123 | 93 | |
+| `ENOTSUP` | 134 | 138 | `sensor` の受け付けない属性、`wapi` の受け付けない暗号 |
+| `EAFNOSUPPORT` | 106 | 97 | |
+| `EADDRINUSE` | 112 | 98 | |
+| `EADDRNOTAVAIL` | 125 | 99 | 特定のアドレスへの bind（`iperf -s` に `-B 0.0.0.0` が無いとき、`error code: 99`） |
+| `ENETDOWN` | 115 | 100 | |
+| `ENETUNREACH` | 114 | 101 | |
+| `ECONNABORTED` | 113 | 103 | |
+| `EISCONN` | 127 | 106 | |
+| `ENOTCONN` | 128 | 107 | |
+| `ETIMEDOUT` | 116 | 110 | Wi-Fi の接続（約 30 秒）、TCP の接続（10 秒）、NINA の応答、I2C の転送 |
+| `EHOSTUNREACH` | 118 | 113 | |
+| `EALREADY` | 120 | 114 | Wi-Fi の接続の要求 |
+| `EINPROGRESS` | 119 | 115 | 待たない connect |
+| `ECANCELED` | 140 | 125 | FIFO のストリームを止めたときの終わりの値（ドライバー） |
+
+値の同じもの（主なもの）:
+
+| 名前 | 値 | この移植で出る場所の例 |
+|---|---|---|
+| `EPERM` | 1 | |
+| `ENOENT` | 2 | 無いキー（`KV read failed: -2`） |
+| `EIO` | 5 | I2C の失敗（NACK など）、隔離した I2C0 |
+| `EAGAIN`（`EWOULDBLOCK`） | 11 | 空きのない送信の期限、`imu cal zero` |
+| `ENOMEM` | 12 | ストリームのバッファー不足 |
+| `EBUSY` | 16 | ストリーム中の `sensor`（`-16`）、スキャン中の接続 |
+| `ENODEV` | 19 | KV の装置が無いとき |
+| `EINVAL` | 22 | 不正なキー・値・引数（`KV write failed: -22`） |
+| `EMFILE` | 24 | NINA のソケット 11 個目 |
+| `ENOTTY` | 25 | |
+| `ENOSPC` | 28 | KV が満杯（`KV write failed: -28`） |
+| `EPIPE` | 32 | |
+| `ERANGE` | 34 | |
+| `ENODATA` | 61 | |
+| `ETIME` | 62 | |
+| `EPROTO` | 71 | NINA の応答の形式の誤り |
+| `EOPNOTSUPP` | 95 | |
+| `ECONNRESET` | 104 | |
+| `ENOBUFS` | 105 | Wi-Fi の資格情報の 3 件目（`err: -105`）、KV の読み出しのバッファー不足 |
+| `ECONNREFUSED` | 111 | |
+
+## Zephyr 版との違い
+
+各節に書いた違いのうち、確かめたものをまとめます。Zephyr 版と同じ動作のものは書いていません。
+
+- **シェル**: nsh です。プロンプトは `nsh$ `（Zephyr 版は USB `uart:~$ `、Telnet `~$ `）。未知のコマンドは
+  `nsh: <名前>: command not found`。Tab 補完はコマンド名だけ（`sensor` も含む）、履歴は 8 行。引数は nsh が
+  解釈します（`$`、引用符、`;`、`#`、`>`、`&`）。この移植のコマンドのエラーの行は標準エラー（同じ端末）に出て、
+  終了状態は成功で 0、失敗で 1。
+  `sensor stream` の出力の間にプロンプトと入力中の行を描き直さず、色も付けません。
+- **USB コンソール**: 製品文字列は `NuttX USB Console`（by-id は `usb-NuttX_NuttX_USB_Console_<チップ ID>-if00`）、
+  デバイスクラスは 02/00/00 で IAD なし（Zephyr 版は EF/02/01 と IAD）。ポートを開いていない間の出力は捨て、
+  開いた直後は Enter（または Ctrl-C）を送るまでプロンプトが見えません。
+- **Telnet**: 接続した直後にプロンプトを送り、入力をエコーし、行を読む間とコマンドの実行中で
+  `IAC WILL ECHO`・`IAC WONT ECHO` を送ります（Zephyr 版はエコーも交渉もなく、プロンプトは入力の後）。
+  受け付けが失敗したときは 100 ms 待ってから次を受け付けます。標準入力を読むコマンドは Telnet では
+  Ctrl-C・Ctrl-D で終わりません。
+- **コマンド**: Zephyr 標準のコマンドは NuttX 標準のものに置き換わります（「Zephyr 版とのコマンドの対応」）。
+  `gpio`、`log`、`device`、`devmem` の書き込みなどは無く、`wapi` は失敗したときにエラーの値を表示しません。
+  速度の測定は iperf 2（ポート 5001、UDP の速さの指定なし）です。
+- **エラー番号**: NuttX の値です（「エラー番号（errno）」）。
+- **KV と資格情報**: 保存形式に互換がありません。NuttX 版は最初の起動で Zephyr 版の KV の領域を消去します。
+  移し替えは `script/kv_transfer.py`（「Zephyr 版からの移し替え」）。`imu.session` は引き継がず、NuttX 版の
+  通し番号は 1 から始まります。
+- **ログ**: 呼び出したスレッドの中で整形します（Zephyr 版の既定は deferred）。RAM のリングは 8192 バイト
+  （Zephyr 版は 4096）。実行時のレベル変更はありません。
+- **異常停止**: 報告を RAM ログに残して自動で再起動します（`CONFIG_BOARD_RESET_ON_ASSERT=2`）。Zephyr 版は
+  止まったままです。
+- **時計**: カーネルの時計、`k_uptime_get()`、`k_cycle_get_*()`、センサーの時計、CPU 負荷の時間の源は
+  RP2040 の TIMER（水晶の 1 MHz）です。Zephyr 版は CPU クロックの SysTick（送信中は遅れる）を使います。
+  tick は両方とも 100 µs の tickless で、待ち時間の丸めは同じです。時分割の残り時間は持ち越され、時分割の
+  wdog は待ちの間も残ります。
+- **スレッド**: 優先度は `118 − Zephyr`。Zephyr の協調スレッド（`sysworkq`、`net_mgmt`）は 119 の通常の
+  スレッドで、より高い優先度のスレッドには横取りされます（119 より上のスレッドはありません）。NINA の
+  ソケットの状態をイベントにする `nina_event` は NuttX 版だけのスレッドです。`ps` のスタックの大きさは
+  先頭の領域の分だけ小さく出て、`RTIO WQ 0` は `RTIO_WQ_0` と出ます。割り込み用のスタックは `irqstack` で
+  見ます。割り込みはすべて同じ優先度で入れ子になりません（Zephyr 版は GPIO と I2C の割り込みを最も低い
+  優先度 3 にしています）。
+- **ソケット**: NINA のソケットは NuttX の usrsock です。互換層（`zsock_*()`）で作るソケット（MQTT、NTP）は
+  Zephyr 版と同じく呼び出したスレッドだけが NINA に問い合わせ、それ以外（Telnet、`iperf`）は `nina_event` が
+  20 ms ごとに問い合わせます。違いの詳細は `nuttx/drivers/README_ja.md` の「ソケット（usrsock）」の節です。
+- **クロックとピン**: PLL_USB の VCO は 480 MHz（Zephyr 版は 1200 MHz。出力はどちらも 48 MHz）、ベクター表は
+  SRAM、GPIO4・6・7 を SPI0 に割り当てない（アプリは SPI0 を使わない）、ROSC の設定を変えない、GPIO26〜29 の
+  入力を切る、クロックの初期化で SYSCFG と USBCTRL をリセットする、の点が Zephyr 版と違います。
+
 ## テスト
 
 ```bash
@@ -1243,4 +1417,4 @@ setsockopt、`nina_event` が何を問い合わせ、何をイベントにする
 既定値と受け付けないフラグ・ファミリー・ソケットの種類、サービス（ポート番号）、数値のアドレス（NINA に問い合わせ
 ない）、名前（ロックを持ったまま命令 0x34 と 0x35）、失敗ごとの `EAI_*`。
 
-NINA の Wi-Fi（`nina_net.c`、`nina_netdev.c`、互換層のネットワークの部品）のホストテストはまだありません。
+NINA の Wi-Fi（`nina_net.c`、`nina_netdev.c`、互換層のネットワークの部品）のホストテストはありません。

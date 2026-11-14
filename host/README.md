@@ -15,9 +15,13 @@ over MQTT directly and do three things.
 See [`../README.md`](../README.md) for the board side. The desktop application that displays
 the received data is in [`ImuStudio/`](ImuStudio/README.md).
 
+The tools work with both board firmwares, the Zephyr build (`zephyr/app/usb-console`) and the
+NuttX build ([`../nuttx/`](../nuttx/README.md)); see "Board firmware" below.
+
 ## Requirements
 
-- Python 3.10 or later
+- Python 3.10 or later (3.11 or later to find a NuttX board on USB automatically and to tell the
+  prompts apart, because `firmware_profiles.toml` is read with the standard library's `tomllib`)
 - A PC that runs the access point the board connects to (the one `script/wifi_ap.sh` creates)
 - Docker, for `calib`. The calibration uses
   [imu_tk](https://bitbucket.org/alberto_pretto/imu_tk/), built into an image from
@@ -40,6 +44,46 @@ The examples below are run from `host/`.
 Every command listens on the port the board sends to (`imu.port` in the KV store, 1883 by
 default). Pass `--port` if `imu.port` was changed. `record` stops the measurement and says so
 when the two differ.
+
+## Board firmware
+
+The commands that `record` and `write` send to the board (`imu start`, `stop`, `status`,
+`kv sethex`, `get`, `imu cal reload`) and the strings they look for in the replies are the same
+on the Zephyr and the NuttX builds. Only the name of the USB console and the shell prompt
+differ, and [`firmware_profiles.toml`](firmware_profiles.toml) holds that difference.
+
+| | Zephyr build | NuttX build |
+|---|---|---|
+| USB console (`/dev/serial/by-id/`) | `usb-Zephyr_Project_Zephyr_USB_Console_*` | `usb-NuttX_NuttX_USB_Console_*` |
+| Prompt | `uart:~$ ` on USB, `~$ ` on Telnet | `nsh$ ` on both |
+| Right after a Telnet connection | Sends nothing | Sends the prompt |
+| Echo of the input on Telnet | None | Yes (with `IAC WILL/WONT ECHO` around each line) |
+
+`imu_host/board.py` tells which firmware it talks to as follows.
+
+- USB: from the device name (for a `/dev/ttyACM*` given to `--usb`, from the by-id name that
+  points to it). Without a device after `--usb`, it searches with every `usb_glob` and uses the
+  device if there is exactly one.
+- Telnet: from the prompt on the last line of the reply to the first command (the longest prompt
+  that the line ends with; `nsh$` also ends with `$`, so it is the NuttX build).
+
+Until the firmware is known, a line that ends with any of the prompts ends a command (the Zephyr
+prompt is written as `$ `, which every line ending in `$` matches; this is the earlier check).
+Once the board is known to be the NuttX build, it waits for a line ending in `nsh$`, so a line of
+output that happens to end in `$` (the ASCII column of `i2c dump`, for example) does not end the
+command early. The echo and the Telnet commands are dropped, so the output is handled the same
+way for both.
+
+`firmware_profiles.toml` lives in `host/`, and `board.py` reads it from there (one directory above
+`imu_host/`, with the `pip install -e .` installation). If the file is missing, or with Python
+3.10, which has no `tomllib`, `board.py` uses the values of the first entry (the Zephyr build),
+which it also holds itself, so a Zephyr board works as before. A malformed file is an error.
+
+The detection can be checked without a board:
+
+```bash
+.venv/bin/python -m unittest discover -s tests
+```
 
 ## Checking reception (check)
 
@@ -221,7 +265,7 @@ argument can also be a `calibration.json` file.
 3. Runs `imu cal reload` and checks that the board now uses the calibration.
 
 Telnet and the USB console differ only in the path; the commands sent are the same. Without a
-device name, `--usb` looks in `/dev/serial/by-id/`.
+device name, `--usb` looks in `/dev/serial/by-id/` for the name of either firmware.
 
 | Option | Meaning |
 |---|---|
@@ -266,6 +310,11 @@ works without NTP synchronization.
   poses 0.20 degrees). The calibration from the recording with lopsided rotation did worse
   than the nominal sensitivity on the other recording. How well the gyro values repeat
   between recordings taken the same way has not been checked yet.
+- With the NuttX build on the board, `record` (Telnet with the board found automatically,
+  `--board`, `--no-board`, and the stop when the board sends to another port), `check`, `write`
+  (USB found automatically, a given device, Telnet found automatically, `--board`, and the
+  refusal during a measurement), and `calib` reading a recording made with the NuttX build were
+  checked. The values written were the ones already on the board.
 - `write` was verified over both Telnet and the USB console. With the calibration written,
   the board's output matched the PC applying the calibration to the board's uncalibrated
   output in the same pose, within 0.2 mg and 7×10⁻⁵ rad/s.
@@ -280,6 +329,8 @@ works without NTP synchronization.
 |---|---|
 | `imu_host/packet.py` | Validation and decoding of the IMU1 payload |
 | `imu_host/mqtt.py` | MQTT endpoint (one client) |
-| `imu_host/board.py` | Finding the board's IP address, and shell commands over Telnet and the USB console |
+| `imu_host/board.py` | Finding the board's IP address, shell commands over Telnet and the USB console, and telling the firmware apart |
+| `firmware_profiles.toml` | What differs between the firmwares (the USB console name and the prompt) |
+| `tests/test_board.py` | Tests of the firmware detection and of the prompt handling (no board needed) |
 | `imu_host/recording.py` | Reading and writing recordings, and tick-to-time conversion |
 | `imu_host/check.py`, `record.py`, `calib.py` | The commands (`write` is in `calib.py`) |

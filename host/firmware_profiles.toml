@@ -1,0 +1,29 @@
+# ファームウェアごとの差分（imu_host/board.py が読む）。
+#
+# imu_host がボードに送るコマンド（imu start / stop / status、kv sethex / get、
+# imu cal reload）と、応答で照合する文字列（Streaming、port N、state:、Saved、
+# 16 進の値、accel: / gyro: の行と calibrated）は、Zephyr 版と NuttX 版で同じなので
+# ここには書かない。違うのは USB コンソールの名前とプロンプトだけ。
+#
+# usb_glob  USB コンソールの /dev/serial/by-id/ の名前（USB の製造者・製品文字列から付く）。
+#           --usb でデバイスを省いたときはすべての usb_glob で探し、1 つに決まればそれを使う。
+# prompt    シェルのプロンプト。コマンドの出力の後に、末尾の空白を除いたこの文字列で終わる
+#           行が来たら、コマンドが終わったとみなす。
+#
+# どのファームウェアかは、USB では by-id の名前で、Telnet では応答の最後のプロンプトで
+# 決める（末尾に一致するプロンプトのうち最も長いもの）。決まるまでは、どのプロンプトでも
+# 終わりとみなす。最初の項目が既定で、このファイルが無いとき（または Python 3.10 で
+# tomllib が無いとき）は、最初の項目と同じ値を board.py が持っている。
+
+[[firmware]]
+# Zephyr 版（zephyr/app/usb-console）。プロンプトは USB が "uart:~$ "、Telnet が "~$ "。
+# "$ " はその両方に一致する（以前のハードコードと同じ判定）。
+name = "zephyr"
+usb_glob = "/dev/serial/by-id/usb-Zephyr_Project_Zephyr_USB_Console_*"
+prompt = "$ "
+
+[[firmware]]
+# NuttX 版（nuttx/）。プロンプトは USB・Telnet とも "nsh$ "。
+name = "nuttx"
+usb_glob = "/dev/serial/by-id/usb-NuttX_NuttX_USB_Console_*"
+prompt = "nsh$ "

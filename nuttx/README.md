@@ -3,15 +3,24 @@
 English | [日本語](README_ja.md)
 
 This directory holds the port of the IMU measurement firmware in `zephyr/app/usb-console` to
-NuttX 13.1.0. The port is in progress. So far there are the setup, the host tests of the
-OS-independent common sources, the board definition with its build, the USB console with the
-flashing script, the RAM log, the key-value store (`kv`), the SPI link to the NINA-W102
-(`nina version`), the NINA's sockets (usrsock: the control side and sending and receiving) and
-name resolution, I2C0 (with DMA), the LSM6DSOX driver with its FIFO stream, the IMU
-acquisition service (`imu`), the Wi-Fi network device (`wapi`, `ifconfig`), stored Wi-Fi
-credentials with automatic reconnection (`wifi cred`), the shell over Wi-Fi (Telnet),
-throughput measurement (`iperf`), time synchronization (`ntp`), sending over MQTT, and the
-calibration (`imu cal`).
+NuttX 13.1.0 (the NuttX port). Like the Zephyr version, it acquires the LSM6DSOX's acceleration
+and angular rate as RAW data at 6667 Hz and sends it with the PC's time over MQTT on Wi-Fi. It
+has the board definition, the shell (nsh) on the USB console and over Telnet, the RAM log
+(`dmesg`), the key-value store (`kv`), the NINA-W102 driver (SPI, sockets, name resolution,
+Wi-Fi), I2C0 (with DMA), the LSM6DSOX driver with its FIFO stream, the IMU acquisition and MQTT
+transport (`imu`), time synchronization (`ntp`), the calibration (`imu cal`), the sensor command
+(`sensor`), stored Wi-Fi credentials with automatic reconnection (`wifi cred`), throughput
+measurement (`iperf`), the setup, build and flashing scripts, and the host tests.
+
+- The commands of this project (`imu`, `kv`, `ntp`, `nina`, `dmesg`, `i2c_dma`, `sensor`,
+  `wifi cred`) have the Zephyr version's syntax and output. The other standard Zephyr commands
+  are replaced by standard NuttX ones; "Commands of the Zephyr version and of this port" lists
+  them side by side.
+- Error numbers (errno) are shown with NuttX's values. "Error numbers (errno)" maps them to the
+  Zephyr version's values.
+- "Differences from the Zephyr version" sums up the differences; each section has the details.
+- The PC tools (`imu-host` and `ImuStudio` in `host/`) work unchanged ("Board firmware" in
+  `host/README.md`).
 
 ## Setup
 
@@ -92,7 +101,7 @@ nuttx/script/build.sh
 This builds the firmware for the custom board `nuttx/boards/arduino-nano-rp2040-connect/` with its
 only configuration, `configs/imu/defconfig`, and writes `nuttx/build/nuttx.uf2`. The script
 sources `setup.sh` itself, so it also works in a shell where the setup script has not been
-sourced. For now the firmware is a minimal one: nsh on the USB console (see "Shell").
+sourced.
 
 The script does the following:
 
@@ -197,9 +206,11 @@ picocom /dev/serial/by-id/usb-NuttX_NuttX_USB_Console_*-if00
   clears the line at the next prompt. It never stops a running command (neither does the Zephyr
   version). Commands that never end (`while`/`until` loops, `watch`) are left out.
 - While Wi-Fi is connected, the same shell is also on Telnet (see "Shell over Wi-Fi (Telnet)").
-- `help` lists the commands. Most of them are nsh's own (`uname`, `ps`, `free`, `echo`, `sleep`,
-  ...); the commands of this port are added as they are ported. An unknown command gives
-  `nsh: <name>: command not found`.
+- `help` lists the commands: first nsh's own (`uname`, `ps`, `free`, `echo`, `sleep`, ...), then,
+  after `Builtin Apps:`, the commands of this port and the NuttX applications (`wapi`, `iperf`,
+  `i2c`, ...). "Commands of the Zephyr version and of this port" maps them to the Zephyr version's
+  commands. An unknown command gives `nsh: <name>: command not found` (the Zephyr version prints
+  `<name>: command not found`).
 - `reboot` restarts the board (the Zephyr version's `kernel reboot`). It also restarts when given
   an argument, `reboot --help` included.
 - `bootsel` restarts the board into BOOTSEL (the `RPI-RP2` drive) after its message has been sent.
@@ -394,7 +405,7 @@ used (`calibrated`), as with the Zephyr version (see "Calibration (`imu cal`)").
 ## NINA-W102 (`nina`)
 
 The Wi-Fi module NINA-W102 is reached over SPI1. Its firmware is the Zephyr version's (Arduino's NINA
-firmware 3.0.2 with fixes, `firmware/nina-fw/README.md`) and is not changed. So far there is the
+firmware 3.0.2 with fixes, `firmware/nina-fw/README.md`) and is not changed. The driver consists of the
 transfer layer that sends one command and receives its answer (`nina_request()`,
 `nina_ip_config()`), `nina version`, the sockets (NuttX's usrsock: socket, close, bind, listen,
 accept, connect, setsockopt, sending and receiving, `FIONREAD`), the NINA's name resolution
@@ -803,7 +814,7 @@ runs the Zephyr version's files as they are, too (below). The acquisition servic
   and the sensors' async API are in the compatibility layer (`nuttx/drivers/compat/`); the board's
   bring-up starts `sysworkq` and `RTIO WQ 0` with `zephyr_compat_initialize()`. Checked on the
   board (1 MHz, 6667 Hz, watermark 128, the RTIO sizes of `imu_stream.c`; with a temporary test
-  command at T11 whose consumer only takes and releases the completions) in 10 s and 60 s runs: no
+  command during the port whose consumer only takes and releases the completions) in 10 s and 60 s runs: no
   errors, overruns, `i2c_dma` errors or fallbacks.
 - The copies of Zephyr's API for the callers (`struct device`, `struct sensor_value`, the channel
   and attribute enumerations, `sensor_*()`, part of the I2C API, the kernel, RTIO, GPIO) are in
@@ -935,10 +946,11 @@ Subcommands:
   `imu_cal_init()` (on failure `Could not set up the IMU calibration: <value>`) →
   `time_sync_init()` → `wifi_profile_init()`.
 
-Checked on the board (transport stub, no network, 6667 Hz, watermark 128, 1 MHz) with `imu start`
-→ 10 s → `imu stop` four times (one right after flashing) and 60 s once: every item of `errors` and
-`fifo`, every anomaly count of `time`, and the `i2c_dma` errors and fallbacks are 0 (before the
-MQTT transport was added).
+Checked on the board (with the MQTT transport replaced by the stub `imu_raw_mqtt_null.c`, no
+network, 6667 Hz, watermark 128, 1 MHz) with `imu start` → 10 s → `imu stop` four times (one right
+after flashing) and 60 s once: every item of `errors` and `fifo`, every anomaly count of `time`,
+and the `i2c_dma` errors and fallbacks are 0. The checks with the transport are in "MQTT
+transport".
 
 ### Calibration (`imu cal`)
 
@@ -975,8 +987,9 @@ Checked on the board: the loading at boot, every subcommand of `imu cal` and the
 measurement (USB and Telnet), the switch to `nominal` on a range change and back (with a
 temporary test command), the check `script/kv_transfer.py restore` makes on the reply to
 `imu cal reload` (the same code run without writing to the KV store), and
-`host/.venv/bin/imu-host write` (writing the same values; Telnet, and USB with the device given:
-the automatic USB detection of `imu-host` does not know the NuttX port yet). The output of
+`host/.venv/bin/imu-host write` (writing the values the board already had; Telnet with the board
+found automatically and with `--board`, USB found automatically and with the device given, and
+the refusal during a measurement). The output of
 `imu cal` right after boot is character for character the output recorded from the Zephyr
 version.
 
@@ -1227,6 +1240,182 @@ Priorities map as `NuttX = 118 − Zephyr`; `nuttx/drivers/include/priorities.h`
   it checks at switches only and needs `CONFIG_DEBUG_ASSERTIONS` (every DEBUGASSERT).
 - `ps` shows stack use in its STACK, USED and FILLED columns.
 
+## Commands of the Zephyr version and of this port
+
+The commands of the table "Shell commands" in the Zephyr version's README and those that the
+Zephyr version's `help` lists, next to the commands of this port. The sections in the right-hand
+column have the details. nsh parses the arguments of this port, so quote an argument that has
+`$`, `;`, `#`, `>`, `&` or quotes in it (the Zephyr shell only handles double quotes).
+
+| Zephyr version | This port | Section, differences |
+|---|---|---|
+| `imu start` / `stop` / `status` | Same | "IMU acquisition (`imu`)" |
+| `imu cal` / `imu cal reload` / `imu cal zero` | Same | "Calibration (`imu cal`)" |
+| `ntp status` | Same | "Time synchronization (`ntp`)" |
+| `kv set` / `sethex` / `get` / `delete` | Same | "Key-value store (`kv`)". The storage format is not compatible |
+| `nina version` | Same | "NINA-W102 (`nina`)" |
+| `sensor get` / `attr_set` / `attr_get` / `stream` / `trig` | Same | "Sensor command (`sensor`)". Neither has `sensor info` |
+| `i2c_dma mode` / `stats` | Same | "DMA reads (`i2c_dma`)" |
+| `dmesg` | Same | "Log (`dmesg`)" |
+| `wifi cred add` / `delete` / `list` / `auto_connect` | Same | "Stored Wi-Fi credentials and automatic reconnection (`wifi cred`)" |
+| `wifi connect -s <SSID> -p <passphrase> -k 1` | `wapi psk wlan0 <passphrase> 3`, then `wapi essid wlan0 <SSID> 1` | "Wi-Fi (`wapi`, `ifconfig`)" |
+| `wifi connect -s <SSID> -k 0` | `wapi essid wlan0 <SSID> 1` | Same section |
+| `wifi disconnect` | `wapi disconnect wlan0` | Same section |
+| `wifi scan` | `wapi scan wlan0` | Same section |
+| `wifi status` | `wapi show wlan0` and `ifconfig wlan0` | Same section |
+| Other `wifi` subcommands | None | |
+| `net iface` | `ifconfig` | Same section |
+| Other `net` subcommands | None | |
+| `zperf tcp upload <PC> 5201 30 1024` | `iperf -c <PC> -t 30 -l 1024` (`iperf -s` on the PC) | "Throughput measurement (`iperf`)". iperf 2 instead of iperf 3, port 5001 |
+| `zperf udp upload <PC> 5201 30 500 500K` | `iperf -c <PC> -u -t 30 -l 500` (no rate setting) | Same section |
+| `zperf tcp download 5201` / `download stop` | `iperf -s -B 0.0.0.0` (ends after one connection) | Same section |
+| `kernel reboot` | `reboot` | "Shell". Both restart without looking at the arguments |
+| `kernel ps` | `ps` | `ps` shows the priority, policy, state and stack (STACK, USED, FILLED), but no CPU share |
+| `kernel thread stacks` | `ps` (each thread) and `irqstack` (in the format of the `IRQ 00` line) | "Thread priorities and stacks" |
+| `kernel version` | `uname -a` | |
+| `kernel uptime` | `uptime` | |
+| Other `kernel` subcommands | None | |
+| `date get` | `date` | "Time synchronization (`ntp`)" |
+| `date set <date> <time>` | `date -s "<month> <day> <time> <year>"` | Same section |
+| `i2c scan` / `read_byte` / `read` / `direct_read` / `write_byte` / `speed` / `recover` | `i2c dev` / `get` / `dump` / `set` / `-f` / `reset` (NuttX's `i2c` tool) | "The `i2c` tool and the Zephyr version's `i2c` command". There is no `i2c write` (several bytes) |
+| `devmem <address>` (read) | `xd <hex address> <byte count>` | No write |
+| `gpio ...` | None | |
+| `log ...` | None | The log level cannot be changed at run time ("Log (`dmesg`)") |
+| `device list` | None | |
+| `history` | None | The up and down arrows recall the last 8 lines |
+| `retval` | `echo $?` | The exit status is 0 on success and 1 on failure |
+| `rem <text>` | `# <text>` | nsh's comment |
+| `clear`, `resize`, `shell ...` | None | |
+| `help` | `help` (`help <command>` for the usage) | |
+| – | `bootsel` | For development ("Shell") |
+| – | `irqstack` | Use of the interrupt stack ("Thread priorities and stacks") |
+| – | nsh's own commands (`free`, `ls`, `cat`, `echo`, `sleep`, `time`, ...) | |
+
+Every command the PC tools (`imu-host`, `ImuStudio`, `script/kv_transfer.py`) send is in a "Same"
+row above.
+
+## Error numbers (errno)
+
+This port shows the error numbers in command output, the log, the items under `errors:` and
+`last_recovery_error` of `imu status`, `last_error` of `ntp status`, `raw_error` and `error` of the
+MQTT status and so on with NuttX's values (they are not converted to the Zephyr version's values).
+Some have the same name but a different value, so read them through the tables below when
+comparing with records of the Zephyr version or values in the design document. Both show them as
+negative numbers (`KV read failed: -2`, for example). The PC tools do not look at the values.
+
+Where the values come from:
+
+- Zephyr version: picolibc (`CONFIG_PICOLIBC=y`, `CONFIG_PICOLIBC_USE_TOOLCHAIN=y`; the picolibc of
+  the Zephyr SDK 1.0.1 toolchain),
+  `zephyr/zephyr-sdk-1.0.1/gnu/arm-zephyr-eabi/arm-zephyr-eabi/sys-include/sys/errno.h`.
+  `zephyr/zephyr/lib/libc/minimal/include/errno.h` is not used in this configuration.
+- This port: `nuttx/nuttx/include/errno.h` (NuttX 13.1.0).
+
+Different values:
+
+| Name | Zephyr version | This port | Where this port can show it |
+|---|---|---|---|
+| `ENOMSG` | 35 | 42 | |
+| `ENOSYS` | 88 | 38 | `sensor trig` (`-38`) |
+| `EBADMSG` | 77 | 74 | |
+| `EOVERFLOW` | 139 | 75 | A FIFO overrun (driver) |
+| `ENOTSOCK` | 108 | 88 | |
+| `EMSGSIZE` | 122 | 90 | A UDP send over 512 bytes (`err=90` from `iperf`) |
+| `ENOPROTOOPT` | 109 | 92 | A socket option the NINA's sockets do not take |
+| `EPROTONOSUPPORT` | 123 | 93 | |
+| `ENOTSUP` | 134 | 138 | An attribute `sensor` does not take, a cipher `wapi` does not take |
+| `EAFNOSUPPORT` | 106 | 97 | |
+| `EADDRINUSE` | 112 | 98 | |
+| `EADDRNOTAVAIL` | 125 | 99 | A bind to a specific address (`iperf -s` without `-B 0.0.0.0`, `error code: 99`) |
+| `ENETDOWN` | 115 | 100 | |
+| `ENETUNREACH` | 114 | 101 | |
+| `ECONNABORTED` | 113 | 103 | |
+| `EISCONN` | 127 | 106 | |
+| `ENOTCONN` | 128 | 107 | |
+| `ETIMEDOUT` | 116 | 110 | The Wi-Fi connection (about 30 s), a TCP connect (10 s), a NINA reply, an I2C transfer |
+| `EHOSTUNREACH` | 118 | 113 | |
+| `EALREADY` | 120 | 114 | A Wi-Fi connection request |
+| `EINPROGRESS` | 119 | 115 | A connect that does not wait |
+| `ECANCELED` | 140 | 125 | The end of a stopped FIFO stream (driver) |
+
+The same values (the main ones):
+
+| Name | Value | Where this port can show it |
+|---|---|---|
+| `EPERM` | 1 | |
+| `ENOENT` | 2 | A missing key (`KV read failed: -2`) |
+| `EIO` | 5 | An I2C failure (NACK and so on), a quarantined I2C0 |
+| `EAGAIN` (`EWOULDBLOCK`) | 11 | The time limit of a send with no room, `imu cal zero` |
+| `ENOMEM` | 12 | No buffer for the stream |
+| `EBUSY` | 16 | `sensor` during a stream (`-16`), a connection during a scan |
+| `ENODEV` | 19 | No KV device |
+| `EINVAL` | 22 | An invalid key, value or argument (`KV write failed: -22`) |
+| `EMFILE` | 24 | The 11th NINA socket |
+| `ENOTTY` | 25 | |
+| `ENOSPC` | 28 | A full KV store (`KV write failed: -28`) |
+| `EPIPE` | 32 | |
+| `ERANGE` | 34 | |
+| `ENODATA` | 61 | |
+| `ETIME` | 62 | |
+| `EPROTO` | 71 | A NINA reply in the wrong format |
+| `EOPNOTSUPP` | 95 | |
+| `ECONNRESET` | 104 | |
+| `ENOBUFS` | 105 | The third Wi-Fi credential (`err: -105`), a KV read into a small buffer |
+| `ECONNREFUSED` | 111 | |
+
+## Differences from the Zephyr version
+
+The differences given in the sections, limited to the ones that were checked. Behaviour that is the
+same as in the Zephyr version is not listed.
+
+- **Shell**: nsh. The prompt is `nsh$ ` (the Zephyr version has `uart:~$ ` on USB and `~$ ` on
+  Telnet). An unknown command gives `nsh: <name>: command not found`. Tab completes command names
+  only (`sensor` included), and the history has 8 lines. nsh parses the arguments (`$`, quotes,
+  `;`, `#`, `>`, `&`). The error lines of this port's commands go to standard error (the same
+  terminal), and the exit status is 0 on success and 1 on failure. `sensor stream` does not redraw
+  the prompt and the line being typed between its output lines, and uses no colours.
+- **USB console**: the product string is `NuttX USB Console` (by-id
+  `usb-NuttX_NuttX_USB_Console_<chip ID>-if00`), and the device class is 02/00/00 without an IAD
+  (the Zephyr version has EF/02/01 with an IAD). Output is dropped while the port is closed, and
+  right after opening the port the prompt shows only after Enter (or Ctrl-C) is sent.
+- **Telnet**: the prompt is sent right after connecting, the input is echoed, and `IAC WILL ECHO`
+  and `IAC WONT ECHO` are sent while a line is read and while a command runs (the Zephyr version
+  neither echoes nor negotiates, and the prompt comes after the first input). After a failed
+  accept it waits 100 ms before accepting again. A command that reads standard input does not end
+  with Ctrl-C or Ctrl-D over Telnet.
+- **Commands**: the standard Zephyr commands are replaced by standard NuttX ones ("Commands of the
+  Zephyr version and of this port"). There is no `gpio`, `log`, `device`, no write of `devmem` and
+  so on, and `wapi` does not print the error value when it fails. Throughput is measured with
+  iperf 2 (port 5001, no UDP rate setting).
+- **Error numbers**: NuttX's values ("Error numbers (errno)").
+- **KV store and credentials**: the storage formats are not compatible. The first boot of this
+  port erases the Zephyr version's KV area. Move the values with `script/kv_transfer.py` ("Moving
+  the values from the Zephyr version"). `imu.session` is not carried over; this port's counter
+  starts at 1.
+- **Log**: a line is formatted in the calling thread (the Zephyr version's default is deferred).
+  The RAM ring has 8192 bytes (the Zephyr version 4096). The level cannot be changed at run time.
+- **Fatal errors**: the report is left in the RAM log and the board restarts by itself
+  (`CONFIG_BOARD_RESET_ON_ASSERT=2`). The Zephyr version stays stopped.
+- **Clocks**: the kernel clock, `k_uptime_get()`, `k_cycle_get_*()`, the sensor clock and the time
+  base of the CPU load come from the RP2040 TIMER (1 MHz from the crystal). The Zephyr version uses
+  SysTick from the CPU clock (which falls behind while sending). Both have a 100 µs tickless tick
+  with the same rounding of waits. The remaining time slice is carried over, and the time-slice
+  wdog stays armed while the thread waits.
+- **Threads**: priorities are `118 − Zephyr`. Zephyr's cooperative threads (`sysworkq`,
+  `net_mgmt`) are ordinary threads at 119 that a higher priority could preempt (there is no thread
+  above 119). `nina_event`, which turns the state of the NINA's sockets into events, exists only in
+  this port. `ps` shows stacks smaller by the area at their start, and `RTIO WQ 0` as `RTIO_WQ_0`.
+  The interrupt stack is shown by `irqstack`. All interrupts have the same priority and do not
+  nest (the Zephyr version gives the GPIO and I2C interrupts the lowest priority, 3).
+- **Sockets**: the NINA's sockets are NuttX usrsock sockets. Sockets made through the compatibility
+  layer (`zsock_*()`; MQTT, NTP) are polled on the NINA only by the calling thread, as in the
+  Zephyr version; the others (Telnet, `iperf`) are polled by `nina_event` every 20 ms. "Sockets
+  (usrsock)" in `nuttx/drivers/README.md` has the details.
+- **Clocks and pins**: the PLL_USB VCO runs at 480 MHz (the Zephyr version 1200 MHz; both output
+  48 MHz), the vector table is in SRAM, GPIO4, 6 and 7 are not assigned to SPI0 (the application
+  does not use SPI0), the ROSC settings are left as they are, the input of GPIO26 to 29 is turned
+  off, and the clock setup resets SYSCFG and USBCTRL.
+
 ## Tests
 
 ```bash
@@ -1432,5 +1621,5 @@ the hints' defaults and the refused flags, families and socket types, the servic
 numeric addresses (the NINA is not asked), a name (commands 0x34 and 0x35 with the lock held), and
 the `EAI_*` of each failure.
 
-There are no host tests yet of the NINA's Wi-Fi (`nina_net.c`, `nina_netdev.c`, the network parts
+There are no host tests of the NINA's Wi-Fi (`nina_net.c`, `nina_netdev.c`, the network parts
 of the compatibility layer).

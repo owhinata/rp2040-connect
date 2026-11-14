@@ -15,9 +15,13 @@ PC 側で IMU の RAW データを受信するツールです。ボードが MQT
 ボード側の使い方は [`../README_ja.md`](../README_ja.md) を参照してください。受信したデータを
 表示するデスクトップアプリは [`ImuStudio/`](ImuStudio/README_ja.md) にあります。
 
+ボードのファームウェアは Zephyr 版（`zephyr/app/usb-console`）と NuttX 版（[`../nuttx/`](../nuttx/README_ja.md)）の
+どちらでも使えます（下の「ボードのファームウェア」）。
+
 ## 必要なもの
 
-- Python 3.10 以上
+- Python 3.10 以上（NuttX 版のボードを USB で自動検出する・プロンプトを見分けるには 3.11 以上。
+  `firmware_profiles.toml` を標準ライブラリの `tomllib` で読むため）
 - ボードが接続する AP を持つ PC（`script/wifi_ap.sh` で作る AP を想定）
 - `calib` を使う場合は Docker。校正の計算に
   [imu_tk](https://bitbucket.org/alberto_pretto/imu_tk/) を使い、そのイメージを
@@ -39,6 +43,43 @@ Zephyr 用の `.venv`（リポジトリ直下）とは別です。以下の例�
 どのコマンドも、ボードの送信先ポート（KV の `imu.port`、既定 1883）で待ち受けます。
 `imu.port` を変えている場合は `--port` で合わせてください。`record` は、ボードの送信先と
 待ち受けが違うと計測を止めてその旨を表示します。
+
+## ボードのファームウェア
+
+ボードを操作する `record` と `write` が送るコマンド（`imu start`・`stop`・`status`、`kv sethex`・`get`、
+`imu cal reload`）と、応答で照合する文字列は、Zephyr 版と NuttX 版で同じです。違うのは USB コンソールの
+名前とシェルのプロンプトだけで、その差を [`firmware_profiles.toml`](firmware_profiles.toml) に書いて
+あります。
+
+| | Zephyr 版 | NuttX 版 |
+|---|---|---|
+| USB コンソール（`/dev/serial/by-id/`） | `usb-Zephyr_Project_Zephyr_USB_Console_*` | `usb-NuttX_NuttX_USB_Console_*` |
+| プロンプト | USB `uart:~$ `、Telnet `~$ ` | USB・Telnet とも `nsh$ ` |
+| Telnet に接続した直後 | 何も送らない | プロンプトを送る |
+| Telnet での入力のエコー | なし | あり（行ごとに `IAC WILL/WONT ECHO`） |
+
+`imu_host/board.py` は、どのファームウェアかを次のように決めます。
+
+- USB: デバイスの名前で決めます（`--usb` に `/dev/ttyACM*` を指定したときは、それを指す by-id の名前で）。
+  `--usb` にデバイスを付けなければ、すべての `usb_glob` で探し、1 つに決まればそれを使います。
+- Telnet: 最初のコマンドの応答の、最後の行のプロンプトで決めます（末尾に一致するプロンプトのうち最も
+  長いもの。`nsh$` は `$` にも一致するので NuttX 版になる）。
+
+決まるまでは、どれかのプロンプトで終わる行が来たらコマンドの終わりとみなします（Zephyr 版のプロンプトは
+`$ ` と書いてあり、`$` で終わる行すべてに一致します。以前の判定と同じです）。NuttX 版と決まった後は、
+`nsh$` で終わる行が来るまで待つので、出力の途中の `$` で終わる行（`i2c dump` の ASCII の列など）で
+止まりません。エコーと Telnet のコマンドは読み捨てるので、出力の扱いは両方で同じです。
+
+`firmware_profiles.toml` は `host/` に置き、`board.py` はその場所（`imu_host/` の 1 つ上）から読みます
+（`pip install -e .` で入れた場合）。ファイルが無いとき、または Python 3.10 で `tomllib` が無いときは、
+最初の項目（Zephyr 版）と同じ値を `board.py` が持っているので、Zephyr 版にはそのまま使えます。
+ファイルの形式が違うときはエラーで止まります。
+
+判定はボードなしで確かめられます。
+
+```bash
+.venv/bin/python -m unittest discover -s tests
+```
 
 ## 受信の診断（check）
 
@@ -212,7 +253,7 @@ calibrated = misalignment @ scale @ (raw_lsb - bias_lsb)
 3. `imu cal reload` を実行し、ボードが校正値を使い始めたことを確認します。
 
 Telnet と USB コンソールは経路が違うだけで、送るコマンドは同じです。`--usb` にデバイス名を
-付けなければ、`/dev/serial/by-id/` から探します。
+付けなければ、`/dev/serial/by-id/` から Zephyr 版・NuttX 版のどちらの名前でも探します。
 
 | オプション | 意味 |
 |---|---|
@@ -253,6 +294,10 @@ imu.cal.gyro.<µdps/LSB>     例: imu.cal.gyro.70000  （±2000 dps）
   別の記録に当てても誤差が下がりました（静止時の加速度の誤差 RMS 0.8 mg、姿勢間の重力の向きの
   予測誤差 0.20 度）。回転が偏った記録の校正値は、別の記録では公称感度より悪くなりました。
   角速度の校正値の再現性（同じ条件で取り直したときの差）は、まだ確認していません。
+- NuttX 版のボードに対して、`record`（Telnet の自動検出、`--board`、`--no-board`、ボードの送信先ポートが
+  違うときの停止）、`check`、`write`（USB の自動検出、デバイスの指定、Telnet の自動検出、`--board`、計測中の
+  拒否）、NuttX 版で取った記録の `calib` による読み込みを確認しています。書き込んだ値は、ボードにあった
+  値と同じものです。
 - `write` は Telnet と USB コンソールの両方で確認しています。書き込んだ校正値でのボードの
   出力は、同じ姿勢の校正なしの出力を PC で校正した値と、加速度で 0.2 mg、角速度で
   7×10⁻⁵ rad/s 以内で一致しました。
@@ -267,6 +312,8 @@ imu.cal.gyro.<µdps/LSB>     例: imu.cal.gyro.70000  （±2000 dps）
 |---|---|
 | `imu_host/packet.py` | IMU1 ペイロードの検査と取り出し |
 | `imu_host/mqtt.py` | MQTT の受け口（クライアント 1 台） |
-| `imu_host/board.py` | ボードの IP アドレスの特定と、Telnet・USB コンソールでのシェル操作 |
+| `imu_host/board.py` | ボードの IP アドレスの特定と、Telnet・USB コンソールでのシェル操作、ファームウェアの判定 |
+| `firmware_profiles.toml` | ファームウェアごとの差分（USB コンソールの名前、プロンプト） |
+| `tests/test_board.py` | ファームウェアの判定とプロンプトの扱いのテスト（ボード不要） |
 | `imu_host/recording.py` | 記録の読み書きと、tick から時刻への変換 |
 | `imu_host/check.py`、`record.py`、`calib.py` | 各コマンド（`write` は `calib.py`） |

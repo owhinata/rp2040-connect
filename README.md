@@ -20,6 +20,24 @@ This is experimental. Measurements are started and stopped by hand from the shel
 only software on the PC side is a receiver script for verification. The design document lists
 what has and has not been verified.
 
+## NuttX build
+
+A port of the same firmware to NuttX 13.1.0 (the NuttX build) is in [`nuttx/`](nuttx/README.md).
+Acquisition, MQTT delivery, time synchronization, the KV store, calibration, Wi-Fi and the Telnet
+shell behave as in the Zephyr build, and the commands of this project (`imu`, `kv`, `ntp`, `nina`,
+`dmesg`, `i2c_dma`, `sensor`, `wifi cred`) have the same syntax and output. The other commands are
+replaced by the standard NuttX ones (`wapi`, `ifconfig`, `iperf`, `ps`, `reboot` and so on).
+
+- See [`nuttx/README.md`](nuttx/README.md) for setup, building, flashing and usage. It also has the
+  table of Zephyr commands and their NuttX counterparts, the table of error numbers (errno), and
+  the differences from the Zephyr build.
+- The PC tools (`imu-host` and `ImuStudio` in `host/`) work with either firmware ("Board firmware"
+  in [`host/README.md`](host/README.md)).
+- The KV store has a different format, so the Zephyr build's settings and calibration are saved
+  and written back with `script/kv_transfer.py` ("Moving the values from the Zephyr version" in
+  `nuttx/README.md`).
+- Section 11 of the [design](design/imu-raw-mqtt-design.md) describes the design differences.
+
 ## Setup
 
 These steps are for Ubuntu 24.04. Install the packages needed for the build first.
@@ -329,8 +347,9 @@ summary (missing batches, valid and reversed times) and at the errors in `imu st
 | `zephyr/app/usb-console/tests/` | Host tests |
 | `zephyr/app/blink/` | LED blink sample |
 | `zephyr/script/` | Setup, host tests |
+| `nuttx/` | The NuttX build (board definition, drivers, applications, patches, scripts, host tests) |
 | `zephyr/manifest/west.yml` | Versions of Zephyr and its modules |
 | `design/` | Design and investigation notes |
 | `firmware/nina-fw/` | Fixes and build for the NINA firmware |
 | `host/` | PC-side tools (receive check, recording, calibration) and the display application `ImuStudio` |
-| `script/` | Script that turns the PC into a temporary access point |
+| `script/` | Script that turns the PC into a temporary access point, and the KV transfer from the Zephyr build to the NuttX build (`kv_transfer.py`) |

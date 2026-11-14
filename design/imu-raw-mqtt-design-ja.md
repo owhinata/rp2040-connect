@@ -12,6 +12,7 @@ PC 上のアプリケーションに MQTT で送信する。各軸はセンサ�
 できていない範囲を記す。全体はまだ実験段階で、ペイロード形式やトピックは実装済みだが
 確定ではなく、PC 側の専用アプリの仕様に合わせて見直す前提である。使い方は
 [README](../README_ja.md) を参照。
+NuttX 13.1.0 に移植した版（`nuttx/`）の設計上の違いは §11 に記す。
 
 ### 合意済みの要求
 
@@ -546,6 +547,116 @@ KV のイメージを作って BOOTSEL で書く方法は採らなかった。KV
   加速度の大きさが重力値より 2〜3 mg 小さく、角速度に約 0.1 dps のバイアスが残っていた。
   角速度のバイアスは §10.5 の追従で取り直す。加速度には同様の仕組みはない。
   RAW に温度は含まれておらず、温度による補正はしていない。
+
+## 11. NuttX 版
+
+`nuttx/` に、同じファームウェアを NuttX 13.1.0 に移植したもの（NuttX 版）がある。§1〜§10 の設計
+（取得、番号付け、ペイロード、トピック、切断時の動作、時刻の付与、校正）はそのまま同じで、この節は
+OS が違うことによる設計上の違いだけを記す。使い方とコマンドの対応、エラー番号の対応、細かな違いの
+一覧は [`nuttx/README_ja.md`](../nuttx/README_ja.md)、ドライバーは
+[`nuttx/drivers/README_ja.md`](../nuttx/drivers/README_ja.md) にある。§8 の確認結果は Zephyr 版のもので、
+NuttX 版の確認の範囲は §11.7 に分けて書く。
+
+### 11.1 移植の方針
+
+- OS に依存しないソース（バッチ、ペイロード、キュー、status、時刻の対応付け、NTP の推定、FIFO の解析、
+  校正の形式）は Zephyr 版のファイルを変更せずに写し、同じホストテストを NuttX 版の側でも動かす。
+- OS を呼ぶソース（`imu_stream.c`、`imu_raw_mqtt.c`、`time_sync.c`、`imu_cal.c`、`wifi_profile.c`、
+  `nina_net.c`、LSM6DSO のドライバーと FIFO のストリーム、sensor シェル）も、OS の呼び出しを
+  **Zephyr の名前のまま**提供する互換層（`nuttx/drivers/compat/`）の上で、ほぼそのまま写して動かす。
+  互換層は、移したソースが使う部分だけを持つ（`struct device`、センサーの API、RTIO、ワークキュー、
+  `k_sem`・`k_mutex`・`k_poll` の一部、`net_mgmt` のイベント、`zsock_*()`、シェルのコマンドの表）。
+  定数、分岐、順序、待ち時間、カウンター、出力の文は Zephyr 版のソースのものがそのまま使われる。
+- スレッドの優先度は `NuttX = 118 − Zephyr` で対応させる。Zephyr の協調スレッドに当たるものは 119 の
+  通常のスレッドになる（NuttX には協調スレッドがない）。
+- 独自のコマンド（`imu`、`kv`、`ntp`、`nina`、`dmesg`、`i2c_dma`、`sensor`、`wifi cred`）は構文と出力を
+  Zephyr 版と同じにし、Zephyr 標準のコマンドは NuttX 標準のもの（`wapi`、`ifconfig`、`iperf`、`ps`、
+  `reboot`、`i2c`、`date`）に任せる。PC 側のツールが送るコマンドはすべて前者なので、ツールの違いは
+  USB コンソールの名前とプロンプトだけになり、`host/firmware_profiles.toml` に書く。
+- エラー番号は NuttX の値のまま表示する（Zephyr 版の値へ変換しない）。MQTT の status の
+  `raw_error`・`error` も NuttX の値になる。対応表は `nuttx/README_ja.md` にある。
+
+### 11.2 ソケット（usrsock）
+
+NINA-W102 のソケットは NuttX の usrsock（`CONFIG_NET_USRSOCK_CUSTOM`）で提供する。カーネル内の
+`usrsock_request()` が要求を**呼び出したスレッドの文脈で**同期処理し、NINA の転送層のミューテックスで
+直列化する。Zephyr 版の「呼び出し元の優先度で SPI を動かし、`nina_lock` で直列化する」と同じ形である。
+ロックの順序は「usrsock のロック → NINA のミューテックス」に固定する。
+
+- usrsock は、受信できる・送信できる・切れた、をドライバーからのイベントで知る。NINA は割り込みで
+  知らせないので、スレッド `nina_event` が NINA に問い合わせてイベントにする（待っている送信の 1 ms
+  ごとの再試行、接続の完了の確認、Telnet・`iperf` など素の POSIX のソケットの 20 ms ごとの問い合わせ）。
+- 互換層の `zsock_socket()` で作るソケット（MQTT、NTP）には、呼び出し元だけが NINA に問い合わせる印を
+  付け、`nina_event` の 20 ms ごとの問い合わせから外す。`zsock_poll()`・`zsock_recv()` は Zephyr 版の
+  ドライバーと同じく、呼び出したスレッドで NINA に問い合わせる。NINA に届く命令の並びは Zephyr 版と同じに
+  なる。
+- Zephyr 版の「待つ TCP 送信は 10 秒で `EAGAIN`」「NINA が受け取らなかったデータグラムはすぐ `EAGAIN`」を
+  作るため、NuttX の usrsock に小さなパッチを当てる（`nuttx/patches/nuttx/0005`）。
+- NINA は NuttX のネットワークデバイス `wlan0` としても登録し、`wapi`・`ifconfig` の要求をドライバー
+  （Zephyr 版の `nina_net.c` の写し）の操作に変える。
+
+### 11.3 時計と tick
+
+- §7.1 の「ボードの時計」は両方とも RP2040 の TIMER（1 MHz、水晶から）で、読み方も同じである。
+- Zephyr 版のカーネル時計は CPU クロックの SysTick で、送信中に遅れる（§7.1）。NuttX 版は TIMER の
+  ALARM0 で 100 µs 刻みの tickless のカーネル時計をボード側に実装した（NuttX の RP2040 移植には tickless が
+  無い）。そのため NuttX 版では、カーネル時計（`k_uptime_get()`、status の `uptime_ms`、`clock_gettime()`）、
+  `k_cycle_get_*()`、センサーの時計、CPU 負荷の時間の源もすべて TIMER である。待ち時間を tick に切り上げて
+  1 tick 足す規則は Zephyr 版と同じにしてある。
+- 時刻の基準には、どちらの版でも TIMER を直接読む `time_sync_mono_us()` を使う（§7）。
+
+### 11.4 CPU 負荷の測り方
+
+`imu status` の `cpu_active` は Zephyr 版の `CONFIG_CPU_LOAD`（アイドルフックの方式）と同じ意味の値に
+する。Zephyr 版はアイドルの区間を割り込みの入口で閉じるので、アイドル中に入った割り込みの処理時間は
+負荷に数えられる。NuttX 版は自前のアイドルループで、割り込みを禁止して TIMER を読み、`WFI` で待ち、
+起きたら TIMER を読んでアイドル時間に足してから割り込みを許可する（ハンドラーは許可の後で動くので、
+負荷の側に入る）。NuttX 標準の `CONFIG_SCHED_CPULOAD`（tick ごとの標本）は意味が違うので使わない。
+
+### 11.5 KV の形式と移し替え
+
+- 場所は Zephyr 版と同じ flash の末尾 8 KiB（4 KiB の消去単位 2 つ）で、キーと値の規則と API・コマンドも
+  同じだが、保存形式は NuttX の NVS（`/dev/config`、名前 `app_kv/<キー>`、Wi-Fi の資格情報は
+  `wifi_cred/<番号>`）で、Zephyr 版（settings on NVS）と互換がない。
+- NuttX 版は、領域がこの形式でも消去済みでもなければ、最初の起動で消去する。
+- 移し替えは `script/kv_transfer.py` で行う: Zephyr 版が動いている間に `backup`（`kv get` で読んで PC に
+  保存）→ NuttX 版を書き込む → `restore`（`kv sethex` で書いて読み返す。校正値の後に `imu cal reload`）。
+  Wi-Fi の資格情報は flash から移せないので、`restore` がパスワードを入力させて `wifi cred add` で登録する。
+  セッションの通し番号（`imu.session`）は書き戻さず、NuttX 版では 1 から始まる。
+- NuttX 版から Zephyr 版に戻すときも、同じ理由で値は引き継がれない。
+
+### 11.6 異常停止とログ
+
+- NuttX 版は、例外・`PANIC()`・assert の失敗・スタックの番兵で、報告を RAM ログに書いてから自動で
+  再起動する（`CONFIG_BOARD_RESET_ON_ASSERT=2`）。Zephyr 版は止まったままである。
+- RAM ログは Zephyr 版と同じ形式・同じ `dmesg` だが、異常停止の報告が収まるように 8 KiB にした
+  （Zephyr 版は 4 KiB）。ログの行は呼び出したスレッドの中で整形する（Zephyr 版の既定は deferred）。
+
+### 11.7 NuttX 版で確認した範囲・未確認の範囲
+
+確認した範囲（実機。条件と結果の値は記録に残し、この文書には書かない）:
+
+- USB コンソールと Telnet のシェル、書き込みスクリプト、`reboot`。
+- KV の読み書き・再起動後の保持・容量の境界、Zephyr 版からの移し替え（KV と Wi-Fi の資格情報）。
+- NINA の転送、ソケット（TCP・UDP、待つ送信の期限、接続の失敗）、Wi-Fi の接続・自動再接続・スキャン後の
+  復帰・手動切断後に再接続しないこと。
+- I2C0 と DMA の読み出し、LSM6DSOX の初期化と FIFO のストリーム。
+- 6667 Hz での取得と MQTT の送信（`imu-host check` で、書き込み直後の最初の計測、10 分の連続、受信器の
+  切断と読み出しの停止、ボード側の Wi-Fi の切断、送信中の Telnet の接続と切断）。欠番、時刻の有効数と逆行、
+  `imu status` の `errors`・`fifo`。
+- NTP の同期、Wi-Fi の切断で同期が無効になることと再接続後の復帰、実時間時計が前にだけ進むこと。
+- 校正値の読み込み・`imu cal` の各サブコマンド・レンジ変更での切り替え、`sensor` の各サブコマンドと計測との排他。
+- 異常停止の後の自動再起動と報告。
+- `imu-host` の `record`・`check`・`write`（USB と Telnet）と、NuttX 版で取った記録の `calib` による読み込み。
+
+未確認の範囲:
+
+- Zephyr 版と同じ条件での比較（CPU 負荷、NTP の往復、`sensor stream` の高い ODR）。
+- FIFO のエラーからの自動再開、CQE のあふれ、計測中の KV の整理など、実機で起こしていない経路。
+- 電源断（KV の耐性、RAM ログが消えること）、USB の抜き差し・RESET ボタン・PC のサスペンド。
+- AP 側を止めたときの切断の検出、実際の MQTT ブローカー、数時間以上の運用。
+- NuttX 版の後で Zephyr 版を書き込んだときの Zephyr 版の動作。
+- ImuStudio の GUI からの操作（シェルの部分はテストで確認）。
 
 ## 参考資料
 

@@ -4,8 +4,8 @@
 
 `nuttx/drivers/` は NuttX のカーネル側でビルドするこの移植のコードです（`nuttx/nuttx/external` からの
 symlink で、`libexternal.a` になります）。ボード側の部分は `nuttx/boards/arduino-nano-rp2040-connect/src/`
-にあります。Zephyr 版のドライバー説明は `zephyr/app/usb-console/drivers/README_ja.md` です。この文書は
-移植の途中で、移植した部分だけを書いています。
+にあります。Zephyr 版のドライバー説明は `zephyr/app/usb-console/drivers/README_ja.md` です。コマンドの
+使い方と Zephyr 版との違いは `nuttx/README_ja.md` にあります。
 
 ## NINA-W102（`nina`）
 

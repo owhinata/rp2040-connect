@@ -1,5 +1,6 @@
 # SPDX-License-Identifier: Apache-2.0
 """ボードの IP アドレスの特定と、Telnet シェルでのコマンド実行。"""
+import fnmatch
 import glob
 import json
 import os
@@ -79,9 +80,90 @@ def _clean(data):
 
 
 PROMPT = b'$ '
+USB_CONSOLE_GLOB = '/dev/serial/by-id/usb-Zephyr_Project_Zephyr_USB_Console_*'
 
 
-def _exchange(read, write, line, wait, drain=True):
+class Firmware:
+    """ファームウェアごとの差分（host/firmware_profiles.toml の 1 項目）。"""
+
+    def __init__(self, name, usb_glob, prompt):
+        self.name, self.usb_glob, self.prompt = name, usb_glob, prompt
+
+    def __repr__(self):
+        return 'Firmware(%r)' % self.name
+
+
+# firmware_profiles.toml が読めないときに使う、最初の項目（Zephyr 版）と同じ値。
+_BUILTIN = (Firmware('zephyr', USB_CONSOLE_GLOB, PROMPT.decode()),)
+PROFILES_PATH = os.path.join(os.path.dirname(os.path.dirname(os.path.abspath(__file__))),
+                             'firmware_profiles.toml')
+_profiles = None
+
+
+def load_profiles(path=PROFILES_PATH):
+    """path のファームウェアの一覧を返す。ファイルか tomllib（Python 3.11 以上）が無ければ既定だけ。"""
+    try:
+        import tomllib
+    except ImportError:
+        return _BUILTIN
+    try:
+        with open(path, 'rb') as f:
+            data = tomllib.load(f)
+    except FileNotFoundError:
+        return _BUILTIN
+    except (OSError, tomllib.TOMLDecodeError) as e:
+        raise BoardError('%s を読めません: %s' % (path, e)) from e
+    try:
+        found = tuple(Firmware(str(p['name']), str(p['usb_glob']), str(p['prompt']))
+                      for p in data['firmware'])
+    except (KeyError, TypeError) as e:
+        raise BoardError('%s の形式が違います（[[firmware]] に name・usb_glob・prompt）: %s'
+                         % (path, e)) from e
+    if not found or any(not p.prompt.strip() for p in found):
+        raise BoardError('%s にファームウェアがないか、空のプロンプトがあります' % path)
+    return found
+
+
+def profiles():
+    """ファームウェアの一覧（最初が既定）。初回に firmware_profiles.toml を読む。"""
+    global _profiles
+    if _profiles is None:
+        _profiles = load_profiles()
+    return _profiles
+
+
+def _last_line(text):
+    lines = text.rstrip().splitlines()
+    return lines[-1].rstrip() if lines else ''
+
+
+def _ends_with_prompt(text, candidates):
+    last = _last_line(text)
+    return bool(last) and any(last.endswith(p.prompt.rstrip()) for p in candidates)
+
+
+def firmware_from_prompt(text, candidates=None):
+    """text の最後の行のプロンプトからファームウェアを決める。決まらなければ None。
+
+    末尾に一致するプロンプトのうち、最も長いものを選ぶ（"nsh$" は "$" にも一致する）。
+    """
+    last = _last_line(text)
+    match = [p for p in (candidates or profiles()) if last and last.endswith(p.prompt.rstrip())]
+    return max(match, key=lambda p: len(p.prompt.rstrip())) if match else None
+
+
+def firmware_from_device(device, candidates=None):
+    """USB のデバイス（by-id の名前、またはその先の /dev/ttyACM*）からファームウェアを決める。"""
+    real = os.path.realpath(device)
+    for p in candidates or profiles():
+        if fnmatch.fnmatchcase(device, p.usb_glob):
+            return p
+        if any(os.path.realpath(d) == real for d in glob.glob(p.usb_glob)):
+            return p
+    return None
+
+
+def _exchange(read, write, line, wait, drain=True, firmware=None):
     """line を送り、実行が終わってプロンプトが戻るまで（最長 wait 秒）の出力を返す。
 
     送る前に、接続直後のネゴシエーションやプロンプトなど、届いているものを読み捨てる。
@@ -90,8 +172,10 @@ def _exchange(read, write, line, wait, drain=True):
 
     終わりの判定は「出力の後にプロンプトが来た」こと。読み捨てそこねた古いプロンプト
     だけを見て終わらないよう、プロンプトの前にコマンドの出力があることを条件にする
-    （使うコマンドはどれも何かを出力する）。
+    （使うコマンドはどれも何かを出力する）。プロンプトは firmware のもの、None なら
+    firmware_profiles.toml のどれか。
     """
+    candidates = (firmware,) if firmware else profiles()
     quiet_since = time.monotonic()
     end = quiet_since + (3.0 if drain else 0.0)
     while time.monotonic() < end and time.monotonic() - quiet_since < 0.5:
@@ -104,8 +188,8 @@ def _exchange(read, write, line, wait, drain=True):
         data += read(min(0.2, max(0.0, end - time.monotonic())))
         text = _clean(data)
         body = text.rstrip()
-        if body.endswith(PROMPT.strip().decode()):
-            # エコー（USB コンソール）と末尾のプロンプトを除いて、出力が残るか。
+        if _ends_with_prompt(body, candidates):
+            # エコー（USB コンソール、NuttX 版の Telnet）と末尾のプロンプトを除いて、出力が残るか。
             lines = [ln for ln in body.splitlines()[:-1] if ln.strip() and line not in ln]
             if lines:
                 break
@@ -162,12 +246,12 @@ class _Serial:
         os.close(self.fd)
 
 
-USB_CONSOLE_GLOB = '/dev/serial/by-id/usb-Zephyr_Project_Zephyr_USB_Console_*'
-
-
 def usb_console():
-    """USB コンソールのデバイスを返す。1 つに決まらなければ BoardError。"""
-    found = sorted(glob.glob(USB_CONSOLE_GLOB))
+    """USB コンソールのデバイスを返す（どのファームウェアのものでもよい）。
+
+    firmware_profiles.toml のすべての usb_glob で探す。1 つに決まらなければ BoardError。
+    """
+    found = sorted({d for p in profiles() for d in glob.glob(p.usb_glob)})
     if len(found) == 1:
         return found[0]
     if not found:
@@ -182,12 +266,17 @@ class Shell:
     接続は最初のコマンドで開き、close() まで使い回す。ボードの Telnet は同時に
     1 接続で、接続と切断を短い間隔で繰り返すと受け付けなくなることがあるため、
     コマンドごとに繋ぎ直さない。
+
+    firmware は相手のファームウェア（firmware_profiles.toml の項目）。USB はデバイスの
+    名前から、Telnet は最初のコマンドの後のプロンプトから決める。決まるまでは None で、
+    どのファームウェアのプロンプトでもコマンドの終わりとみなす。
     """
 
-    def __init__(self, ip=None, usb=None):
+    def __init__(self, ip=None, usb=None, firmware=None):
         self.ip, self.usb = ip, usb
         self.name = 'USB %s' % usb if usb else 'Telnet %s' % ip
         self.link = None
+        self.firmware = firmware or (firmware_from_device(usb) if usb else None)
 
     def __enter__(self):
         return self
@@ -209,7 +298,11 @@ class Shell:
             fresh = self.link is None
             if fresh:
                 self.link = _Serial(self.usb) if self.usb else _Telnet(self.ip)
-            return _exchange(self.link.read, self.link.write, line, wait, drain=fresh)
+            out = _exchange(self.link.read, self.link.write, line, wait, drain=fresh,
+                            firmware=self.firmware)
+            if self.firmware is None:
+                self.firmware = firmware_from_prompt(out)
+            return out
         except (OSError, termios.error) as e:
             self.close()
             raise BoardError('%s でコマンドを実行できません: %s' % (self.name, e)) from e

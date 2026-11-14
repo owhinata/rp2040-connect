@@ -5,8 +5,8 @@ English | [日本語](README_ja.md)
 `nuttx/drivers/` holds the port's code that NuttX builds on the kernel side (through the symlink
 `nuttx/nuttx/external`, into `libexternal.a`). The board's part is in
 `nuttx/boards/arduino-nano-rp2040-connect/src/`. The Zephyr version's driver notes are
-`zephyr/app/usb-console/drivers/README.md`. The port is in progress; this document covers only
-the parts ported so far.
+`zephyr/app/usb-console/drivers/README.md`. How to use the commands, and the differences from the
+Zephyr version, are in `nuttx/README.md`.
 
 ## NINA-W102 (`nina`)
 

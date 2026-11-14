@@ -13,6 +13,7 @@ and what has and has not been verified on hardware. The whole is still experimen
 payload format and topics are implemented but not final, and are expected to be revised
 against the specification of a dedicated PC application. See the [README](../README.md) for
 usage.
+Section 11 describes the design differences of the port to NuttX 13.1.0 (`nuttx/`).
 
 ### Agreed requirements
 
@@ -618,6 +619,141 @@ differed by less than 0.3 LSB between a sensor that had been off and one that wa
   bias of about 0.1 dps remained. The gyro bias is taken again by the tracking of §10.5; there
   is nothing comparable for the accelerometer. The raw data carries no temperature and no temperature
   compensation is done.
+
+## 11. The NuttX port
+
+`nuttx/` holds a port of the same firmware to NuttX 13.1.0 (the NuttX port). The design of
+sections 1 to 10 (acquisition, numbering, payload, topics, behaviour when disconnected, time
+stamping, calibration) is the same; this section describes only the design differences that come
+from the different OS. Usage, the command map, the error number map and the detailed list of
+differences are in [`nuttx/README.md`](../nuttx/README.md), the drivers in
+[`nuttx/drivers/README.md`](../nuttx/drivers/README.md). The results in section 8 are the Zephyr
+version's; what has been verified on the NuttX port is listed separately in 11.7.
+
+### 11.1 Approach
+
+- The OS-independent sources (batches, payload, queue, status, time mapping, NTP estimate, FIFO
+  parser, calibration format) are copied unchanged from the Zephyr version, and the same host
+  tests also run on the NuttX side.
+- The sources that call the OS (`imu_stream.c`, `imu_raw_mqtt.c`, `time_sync.c`, `imu_cal.c`,
+  `wifi_profile.c`, `nina_net.c`, the LSM6DSO driver with its FIFO stream, the sensor shell) are
+  also copied almost as they are, on top of a compatibility layer (`nuttx/drivers/compat/`) that
+  provides the OS calls **under Zephyr's names**. The layer has only what the copied sources use
+  (`struct device`, the sensor API, RTIO, work queues, parts of `k_sem`, `k_mutex` and `k_poll`,
+  `net_mgmt` events, `zsock_*()`, shell command tables). The constants, branches, order, waits,
+  counters and output strings are those of the Zephyr sources.
+- Thread priorities map as `NuttX = 118 − Zephyr`. What corresponds to Zephyr's cooperative
+  threads becomes an ordinary thread at 119 (NuttX has no cooperative threads).
+- The project's own commands (`imu`, `kv`, `ntp`, `nina`, `dmesg`, `i2c_dma`, `sensor`,
+  `wifi cred`) keep the Zephyr version's syntax and output; the standard Zephyr commands are left
+  to standard NuttX ones (`wapi`, `ifconfig`, `iperf`, `ps`, `reboot`, `i2c`, `date`). Every
+  command the PC tools send is of the first kind, so the tools only have to know the USB console
+  name and the prompt, which are in `host/firmware_profiles.toml`.
+- Error numbers are shown with NuttX's values (not converted to the Zephyr version's), the
+  `raw_error` and `error` of the MQTT status included. The map is in `nuttx/README.md`.
+
+### 11.2 Sockets (usrsock)
+
+The NINA-W102's sockets are provided through NuttX's usrsock (`CONFIG_NET_USRSOCK_CUSTOM`).
+`usrsock_request()` in the kernel handles each request synchronously **in the context of the
+calling thread**, serialized by the mutex of the NINA transfer layer, as the Zephyr version runs
+the SPI at the caller's priority and serializes with `nina_lock`. The lock order is fixed as
+"usrsock lock, then the NINA mutex".
+
+- usrsock learns from driver events that a socket can receive, can send or was closed. The NINA
+  does not signal these with an interrupt, so the thread `nina_event` asks the NINA and turns the
+  answers into events (the 1 ms retry of a waiting send, the check that a connect has finished,
+  and polling of plain POSIX sockets such as Telnet's and `iperf`'s every 20 ms).
+- Sockets made with the compatibility layer's `zsock_socket()` (MQTT, NTP) are marked so that only
+  the caller polls them on the NINA, and `nina_event` leaves them out of its 20 ms polling.
+  `zsock_poll()` and `zsock_recv()` poll the NINA in the calling thread, as the Zephyr driver does.
+  The commands that reach the NINA are in the Zephyr version's order.
+- To get the Zephyr version's "a waiting TCP send gives `EAGAIN` after 10 s" and "a datagram the
+  NINA did not take gives `EAGAIN` at once", a small patch is applied to NuttX's usrsock
+  (`nuttx/patches/nuttx/0005`).
+- The NINA is also registered as the NuttX network device `wlan0`, and the requests of `wapi` and
+  `ifconfig` are turned into operations of the driver (a copy of the Zephyr version's
+  `nina_net.c`).
+
+### 11.3 Clocks and tick
+
+- The "board clock" of 7.1 is the RP2040 TIMER (1 MHz from the crystal) in both, read the same way.
+- The Zephyr version's kernel clock is SysTick from the CPU clock and falls behind while sending
+  (7.1). For the NuttX port, a 100 µs tickless kernel clock on the TIMER's ALARM0 was implemented on
+  the board side (NuttX's RP2040 port has no tickless support). In the NuttX port the kernel clock
+  (`k_uptime_get()`, `uptime_ms` of the status, `clock_gettime()`), `k_cycle_get_*()`, the sensor
+  clock and the time base of the CPU load therefore all come from the TIMER. Waits are rounded up
+  to a tick plus one tick, as in the Zephyr version.
+- Both versions use `time_sync_mono_us()`, which reads the TIMER directly, as the time reference
+  (section 7).
+
+### 11.4 Measuring the CPU load
+
+`cpu_active` of `imu status` has the meaning of the Zephyr version's `CONFIG_CPU_LOAD` (the idle
+hook back end). The Zephyr version closes the idle window at interrupt entry, so the time spent in
+interrupts taken while idle counts as load. The NuttX port has its own idle loop: with interrupts
+disabled it reads the TIMER, waits in `WFI`, reads the TIMER again and adds the interval to the idle
+time, and only then enables interrupts (the handler runs after that and counts as load). NuttX's
+own `CONFIG_SCHED_CPULOAD` (sampling at each tick) means something else and is not used.
+
+### 11.5 KV format and moving the values
+
+- The KV store is in the same place as in the Zephyr version, the last 8 KiB of flash (two 4 KiB
+  erase units), with the same key and value rules, API and commands, but the format is NuttX's
+  NVS (`/dev/config`, names `app_kv/<key>`, Wi-Fi credentials `wifi_cred/<number>`), not
+  compatible with the Zephyr version's (settings on NVS).
+- If the area is neither in this format nor erased, the NuttX port erases it at its first boot.
+- `script/kv_transfer.py` moves the values: `backup` while the Zephyr version runs (reads with
+  `kv get` and saves on the PC), then flash the NuttX port, then `restore` (writes with
+  `kv sethex` and reads back; `imu cal reload` after the calibration). Wi-Fi credentials cannot be
+  taken from flash, so `restore` asks for the password and registers it with `wifi cred add`. The
+  session counter (`imu.session`) is not written back; the NuttX port starts at 1.
+- Going back from the NuttX port to the Zephyr version does not keep the values either, for the
+  same reason.
+
+### 11.6 Fatal errors and the log
+
+- On an exception, `PANIC()`, a failed assertion or the stack sentinel, the NuttX port writes a
+  report to the RAM log and restarts by itself (`CONFIG_BOARD_RESET_ON_ASSERT=2`). The Zephyr
+  version stays stopped.
+- The RAM log has the Zephyr version's format and the same `dmesg`, but is 8 KiB so that the
+  report of a fatal error fits (the Zephyr version's is 4 KiB). A log line is formatted in the
+  calling thread (the Zephyr version's default is deferred).
+
+### 11.7 What has and has not been verified on the NuttX port
+
+Verified on the board (the conditions and values are kept in the records, not in this document):
+
+- The shell on the USB console and over Telnet, the flashing script, `reboot`.
+- KV reads and writes, keeping the values over a restart, the capacity limit, and moving the
+  values (KV and Wi-Fi credentials) from the Zephyr version.
+- NINA transfers, sockets (TCP and UDP, the time limit of a waiting send, failed connects), and
+  Wi-Fi: connecting, reconnecting by itself, coming back after a scan, and not reconnecting after a
+  manual disconnect.
+- I2C0 with DMA reads, the LSM6DSOX initialization and FIFO stream.
+- Acquisition at 6667 Hz and MQTT delivery (with `imu-host check`: the first measurement after
+  flashing, 10 minutes in a row, the receiver dropping the connection and stalling, the board's
+  Wi-Fi disconnected, Telnet connections and disconnections while sending): missing batches, valid
+  and backward times, `errors` and `fifo` of `imu status`.
+- NTP synchronization, the synchronization becoming invalid after a Wi-Fi disconnection and coming
+  back after reconnecting, and the real-time clock only moving forward.
+- Loading the calibration, every subcommand of `imu cal`, the switch on a range change, every
+  subcommand of `sensor` and its exclusion with a measurement.
+- The automatic restart and the report after a fatal error.
+- `record`, `check` and `write` of `imu-host` (USB and Telnet), and `calib` reading a recording made
+  with the NuttX port.
+
+Not verified:
+
+- Comparison with the Zephyr version under the same conditions (CPU load, NTP round trip, high-ODR
+  `sensor stream`).
+- Paths not triggered on the board, such as the automatic restart after a FIFO error, CQE overflow,
+  and a KV garbage collection during a measurement.
+- Power loss (KV robustness, the RAM log being cleared), unplugging USB, the RESET button, suspending
+  the PC.
+- Detecting a disconnection when the AP side stops, a real MQTT broker, running for several hours.
+- How the Zephyr version behaves when written after the NuttX port.
+- Operation from the ImuStudio GUI (its shell part is covered by tests).
 
 ## References
 
