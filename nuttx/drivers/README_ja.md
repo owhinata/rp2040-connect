@@ -171,21 +171,23 @@ Zephyr 版はソケットのオフロード（`drivers/nina/nina_socket.c`）で
   （`CONFIG_NET_ARP`・`CONFIG_NET_ICMP`）。`CONFIG_NET_ETHERNET` は、`NET_LL_IEEE80211` の登録
   （`netdev_register()` が `CONFIG_NET_ETH_PKTSIZE` を使う）と MAC アドレスの欄（`d_mac.ether`）に要るので
   残します。
-- wapi の ioctl（`d_ioctl`。呼び出したスレッドで処理）:
 
-  | ioctl | 処理 |
-  |---|---|
-  | `SIOCSIWSCAN` | `NET_REQUEST_WIFI_SCAN`。ESSID の指定、パッシブ、チャネルの指定は渡して、ドライバーが Zephyr 版と同じく `-ENOTSUP` で断る |
-  | `SIOCGIWSCAN` | スキャン中は `-EAGAIN`、失敗ならそのエラー、終わっていれば結果（`SCAN_RESULT` のイベントで集めた最大 10 件を、NINA の順に、BSSID・チャネル・RSSI（dBm）・SSID・暗号化の有無の無線イベントにする。暗号化の種類が不明なら有無を付けない）。バッファーが足りなければ `-E2BIG` |
-  | `SIOCSIWAUTH` | WPA の版と pairwise の暗号を覚える |
-  | `SIOCSIWENCODEEXT` | パスフレーズを覚える。この 2 つで覚えた設定は次の `SIOCSIWESSID` で使って忘れる（パスフレーズは消す）ので、`wapi psk` を付けない `wapi essid` は暗号化なしの接続になる |
-  | `SIOCSIWESSID` | 覚えた設定で `NET_REQUEST_WIFI_CONNECT`。WPA2 → `WIFI_SECURITY_TYPE_PSK`、無し → `_NONE`、WPA → `_WPA_PSK`、WPA3 → `_SAE`、WEP → `_WEP`（ドライバーが受け付けるのは NONE と PSK だけ）。版を設定せずにパスフレーズだけがあれば PSK（Zephyr の `wifi connect` で `-k` を省いたときと同じ）。フラグ 0（wapi の `disconnect` が送る乱数の SSID）は何もしない |
-  | `SIOCSIWAP` | 00:00:00:00:00:00 か ff:ff:ff:ff:ff:ff なら `NET_REQUEST_WIFI_DISCONNECT`。ほかは `-ENOTSUP` |
-  | `SIOCGIWESSID`、`SIOCGIWAP`、`SIOCGIWSENS` | `NET_REQUEST_WIFI_IFACE_STATUS`（NINA に尋ねる）の SSID、BSSID、RSSI。未接続なら SSID は空、BSSID は 0、RSSI は `-ENOTCONN` |
-  | `SIOCGIWMODE`、`SIOCSIWMODE` | managed（`IW_MODE_INFRA`）だけ |
+wapi の ioctl（`d_ioctl`。呼び出したスレッドで処理）は次のとおりです。
 
-  ほかの無線の ioctl は `-ENOTTY` です。接続の結果は `wapi essid` の戻りでは分からず（Zephyr 版の `wifi connect` も
-  要求を出して戻る）、`ifconfig` の `RUNNING` と IP アドレス、`wapi show` の ESSID で確かめます。
+| ioctl | 処理 |
+|---|---|
+| `SIOCSIWSCAN` | `NET_REQUEST_WIFI_SCAN`。ESSID の指定、パッシブ、チャネルの指定は渡して、ドライバーが Zephyr 版と同じく `-ENOTSUP` で断る |
+| `SIOCGIWSCAN` | スキャン中は `-EAGAIN`、失敗ならそのエラー、終わっていれば結果（`SCAN_RESULT` のイベントで集めた最大 10 件を、NINA の順に、BSSID・チャネル・RSSI（dBm）・SSID・暗号化の有無の無線イベントにする。暗号化の種類が不明なら有無を付けない）。バッファーが足りなければ `-E2BIG` |
+| `SIOCSIWAUTH` | WPA の版と pairwise の暗号を覚える |
+| `SIOCSIWENCODEEXT` | パスフレーズを覚える。この 2 つで覚えた設定は次の `SIOCSIWESSID` で使って忘れる（パスフレーズは消す）ので、`wapi psk` を付けない `wapi essid` は暗号化なしの接続になる |
+| `SIOCSIWESSID` | 覚えた設定で `NET_REQUEST_WIFI_CONNECT`。WPA2 → `WIFI_SECURITY_TYPE_PSK`、無し → `_NONE`、WPA → `_WPA_PSK`、WPA3 → `_SAE`、WEP → `_WEP`（ドライバーが受け付けるのは NONE と PSK だけ）。版を設定せずにパスフレーズだけがあれば PSK（Zephyr の `wifi connect` で `-k` を省いたときと同じ）。フラグ 0（wapi の `disconnect` が送る乱数の SSID）は何もしない |
+| `SIOCSIWAP` | 00:00:00:00:00:00 か ff:ff:ff:ff:ff:ff なら `NET_REQUEST_WIFI_DISCONNECT`。ほかは `-ENOTSUP` |
+| `SIOCGIWESSID`、`SIOCGIWAP`、`SIOCGIWSENS` | `NET_REQUEST_WIFI_IFACE_STATUS`（NINA に尋ねる）の SSID、BSSID、RSSI。未接続なら SSID は空、BSSID は 0、RSSI は `-ENOTCONN` |
+| `SIOCGIWMODE`、`SIOCSIWMODE` | managed（`IW_MODE_INFRA`）だけ |
+
+ほかの無線の ioctl は `-ENOTTY` です。接続の結果は `wapi essid` の戻りでは分からず（Zephyr 版の `wifi connect` も
+要求を出して戻る）、`ifconfig` の `RUNNING` と IP アドレス、`wapi show` の ESSID で確かめます。
+
 - 資格情報の保存と自動再接続（`nuttx/apps/wifi/`。Zephyr 版の `src/wifi_profile.c` と Zephyr の
   `subsys/net/lib/wifi_credentials/` の写し、`wifi cred`。`nuttx/README_ja.md` の「Wi-Fi の資格情報と自動再接続」）は、
   互換層の `net_mgmt()`（`NET_REQUEST_WIFI_CONNECT_STORED`）、`net_mgmt_add_event_callback()`

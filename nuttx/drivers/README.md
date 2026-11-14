@@ -194,22 +194,24 @@ given by name (the default is the gateway).
   are off (`CONFIG_NET_ARP`, `CONFIG_NET_ICMP`). `CONFIG_NET_ETHERNET` stays: registering a
   `NET_LL_IEEE80211` device needs it (`netdev_register()` uses `CONFIG_NET_ETH_PKTSIZE`), and so does
   the MAC address field (`d_mac.ether`).
-- wapi's ioctls (`d_ioctl`, handled in the calling thread):
 
-  | ioctl | Handling |
-  |---|---|
-  | `SIOCSIWSCAN` | `NET_REQUEST_WIFI_SCAN`. An ESSID, a passive scan or channels are passed on, and the driver refuses them with `-ENOTSUP` as in the Zephyr version |
-  | `SIOCGIWSCAN` | `-EAGAIN` while scanning, the scan's error if it failed, else the results (up to 10 collected from the `SCAN_RESULT` events, in the NINA's order, as wireless events: BSSID, channel, RSSI in dBm, SSID, encrypted or not; nothing about encryption when the type is unknown). `-E2BIG` if the buffer is too small |
-  | `SIOCSIWAUTH` | Keeps the WPA version and the pairwise cipher |
-  | `SIOCSIWENCODEEXT` | Keeps the passphrase. What these two keep is used and forgotten by the next `SIOCSIWESSID` (the passphrase is wiped), so a `wapi essid` without a `wapi psk` before it connects without encryption |
-  | `SIOCSIWESSID` | `NET_REQUEST_WIFI_CONNECT` with the kept settings: WPA2 → `WIFI_SECURITY_TYPE_PSK`, none → `_NONE`, WPA → `_WPA_PSK`, WPA3 → `_SAE`, WEP → `_WEP` (the driver takes only NONE and PSK). With a passphrase but no version set: PSK (as Zephyr's `wifi connect` without `-k`). Flags 0 (the random SSID of wapi's `disconnect`) does nothing |
-  | `SIOCSIWAP` | 00:00:00:00:00:00 or ff:ff:ff:ff:ff:ff: `NET_REQUEST_WIFI_DISCONNECT`; anything else `-ENOTSUP` |
-  | `SIOCGIWESSID`, `SIOCGIWAP`, `SIOCGIWSENS` | SSID, BSSID and RSSI from `NET_REQUEST_WIFI_IFACE_STATUS` (asks the NINA). While disconnected: empty SSID, zero BSSID, `-ENOTCONN` for the RSSI |
-  | `SIOCGIWMODE`, `SIOCSIWMODE` | Managed (`IW_MODE_INFRA`) only |
+wapi's ioctls (`d_ioctl`, handled in the calling thread):
 
-  Other wireless ioctls return `-ENOTTY`. The connection's result is not what `wapi essid` returns
-  (the Zephyr version's `wifi connect` also returns once the request is made); check `RUNNING` and
-  the IP address in `ifconfig`, or the ESSID in `wapi show`.
+| ioctl | Handling |
+|---|---|
+| `SIOCSIWSCAN` | `NET_REQUEST_WIFI_SCAN`. An ESSID, a passive scan or channels are passed on, and the driver refuses them with `-ENOTSUP` as in the Zephyr version |
+| `SIOCGIWSCAN` | `-EAGAIN` while scanning, the scan's error if it failed, else the results (up to 10 collected from the `SCAN_RESULT` events, in the NINA's order, as wireless events: BSSID, channel, RSSI in dBm, SSID, encrypted or not; nothing about encryption when the type is unknown). `-E2BIG` if the buffer is too small |
+| `SIOCSIWAUTH` | Keeps the WPA version and the pairwise cipher |
+| `SIOCSIWENCODEEXT` | Keeps the passphrase. What these two keep is used and forgotten by the next `SIOCSIWESSID` (the passphrase is wiped), so a `wapi essid` without a `wapi psk` before it connects without encryption |
+| `SIOCSIWESSID` | `NET_REQUEST_WIFI_CONNECT` with the kept settings: WPA2 → `WIFI_SECURITY_TYPE_PSK`, none → `_NONE`, WPA → `_WPA_PSK`, WPA3 → `_SAE`, WEP → `_WEP` (the driver takes only NONE and PSK). With a passphrase but no version set: PSK (as Zephyr's `wifi connect` without `-k`). Flags 0 (the random SSID of wapi's `disconnect`) does nothing |
+| `SIOCSIWAP` | 00:00:00:00:00:00 or ff:ff:ff:ff:ff:ff: `NET_REQUEST_WIFI_DISCONNECT`; anything else `-ENOTSUP` |
+| `SIOCGIWESSID`, `SIOCGIWAP`, `SIOCGIWSENS` | SSID, BSSID and RSSI from `NET_REQUEST_WIFI_IFACE_STATUS` (asks the NINA). While disconnected: empty SSID, zero BSSID, `-ENOTCONN` for the RSSI |
+| `SIOCGIWMODE`, `SIOCSIWMODE` | Managed (`IW_MODE_INFRA`) only |
+
+Other wireless ioctls return `-ENOTTY`. The connection's result is not what `wapi essid` returns
+(the Zephyr version's `wifi connect` also returns once the request is made); check `RUNNING` and
+the IP address in `ifconfig`, or the ESSID in `wapi show`.
+
 - The stored credentials and automatic reconnection (`nuttx/apps/wifi/`: copies of the Zephyr
   version's `src/wifi_profile.c` and of Zephyr's `subsys/net/lib/wifi_credentials/`, `wifi cred`;
   "Stored Wi-Fi credentials and automatic reconnection" in `nuttx/README.md`) use the layer's
