@@ -8,9 +8,9 @@
 # module's resolver (nina_dns.c, from the Zephyr build's
 # drivers/nina/nina_dns.c); the Wi-Fi network device wlan0 (nina_net.c,
 # the Zephyr build's drivers/nina/nina_net.c, and nina_netdev.c), with the
-# Wi-Fi profile's calls answered by wifi_profile_null.c until the
-# application provides them (CONFIG_NANO_WIFI_PROFILE).  The board provides
-# the pins and the SPI bus (nano_nina.c, <nano_nina.h>).
+# Wi-Fi profile's calls answered by nuttx/apps/wifi/wifi_profile.c
+# (CONFIG_NANO_WIFI_PROFILE), or by wifi_profile_null.c without it.  The
+# board provides the pins and the SPI bus (nano_nina.c, <nano_nina.h>).
 # Included by nuttx/drivers/Makefile.
 ############################################################################
 

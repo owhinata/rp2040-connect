@@ -8,6 +8,15 @@
  * NET_EVENT_WIFI_SCAN_DONE, and the raise functions of the connect and
  * disconnect results.  The operations are those of the interface's
  * offloaded API (NET_DEVICE_DT_OFFLOAD_DEFINE() of the driver).
+ *
+ * With the stored credentials (CONFIG_NANO_WIFI_CREDENTIALS, the Zephyr
+ * build's CONFIG_WIFI_CREDENTIALS_CONNECT_STORED), also the handler of
+ * NET_REQUEST_WIFI_CONNECT_STORED, connect_stored_command() of the same
+ * file with its helpers: each stored network in turn becomes a
+ * NET_REQUEST_WIFI_CONNECT until one is accepted.  The Zephyr build has no
+ * static network (CONFIG_WIFI_CREDENTIALS_STATIC off) and no enterprise
+ * security, and compiles this file's log messages out
+ * (CONFIG_NET_L2_WIFI_MGMT_LOG_LEVEL=0), so those parts are left out.
  */
 
 #include <nuttx/config.h>
@@ -16,11 +25,14 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include <string.h>
+
 #include <zephyr/net/net_if.h>
 #include <zephyr/net/net_mgmt.h>
 #include <zephyr/net/wifi_mgmt.h>
-
-#define WIFI_SAE_PSWD_MAX_LEN 128  /* CONFIG_WIFI_CREDENTIALS_SAE_PASSWORD_LENGTH */
+#ifdef CONFIG_NANO_WIFI_CREDENTIALS
+#  include <zephyr/net/wifi_credentials.h>
+#endif
 
 static const struct wifi_mgmt_ops *get_wifi_api(struct net_if *iface)
 {
@@ -256,3 +268,146 @@ void wifi_mgmt_raise_disconnect_result_event(struct net_if *iface,
   net_mgmt_event_notify_with_info(NET_EVENT_WIFI_DISCONNECT_RESULT, iface,
                                   &cnx_status, sizeof(struct wifi_status));
 }
+
+#ifdef CONFIG_NANO_WIFI_CREDENTIALS
+
+/* Zephyr's subsys/net/l2/wifi/wifi_mgmt.c, CONFIG_WIFI_CREDENTIALS_CONNECT_STORED. */
+
+static int __stored_creds_to_params(struct wifi_credentials_personal *creds,
+				    struct wifi_connect_req_params *params)
+{
+	/* SSID */
+	if (creds->header.ssid_len > WIFI_SSID_MAX_LEN) {
+		return -EINVAL;
+	}
+
+	memcpy((uint8_t *)params->ssid, creds->header.ssid, creds->header.ssid_len);
+	params->ssid_length = creds->header.ssid_len;
+
+	/* PSK (optional) */
+	if (creds->password_len > 0 && creds->password_len <= WIFI_PSK_MAX_LEN) {
+		memcpy((uint8_t *)params->psk, creds->password, creds->password_len);
+		params->psk_length = creds->password_len;
+	}
+
+	/* Defaults */
+	params->security = creds->header.type;
+
+	/* If channel is set to 0 we default to ANY. 0 is not a valid Wi-Fi channel. */
+	params->channel = (creds->header.channel != 0) ? creds->header.channel : WIFI_CHANNEL_ANY;
+	params->timeout = (creds->header.timeout != 0)
+				  ? creds->header.timeout
+				  : CONFIG_WIFI_CREDENTIALS_CONNECT_STORED_CONNECTION_TIMEOUT;
+
+	/* Security type (optional) */
+	if (creds->header.type > WIFI_SECURITY_TYPE_MAX) {
+		params->security = WIFI_SECURITY_TYPE_NONE;
+	}
+
+	if (creds->header.flags & WIFI_CREDENTIALS_FLAG_2_4GHz) {
+		params->band = WIFI_FREQ_BAND_2_4_GHZ;
+	} else if (creds->header.flags & WIFI_CREDENTIALS_FLAG_5GHz) {
+		params->band = WIFI_FREQ_BAND_5_GHZ;
+	} else {
+		params->band = WIFI_FREQ_BAND_UNKNOWN;
+	}
+
+	/* MFP setting (default: optional) */
+	if (creds->header.flags & WIFI_CREDENTIALS_FLAG_MFP_DISABLED) {
+		params->mfp = WIFI_MFP_DISABLE;
+	} else if (creds->header.flags & WIFI_CREDENTIALS_FLAG_MFP_REQUIRED) {
+		params->mfp = WIFI_MFP_REQUIRED;
+	} else {
+		params->mfp = WIFI_MFP_OPTIONAL;
+	}
+
+	return 0;
+}
+
+static int add_network_from_credentials_struct_personal(struct wifi_credentials_personal *creds,
+							struct net_if *iface)
+{
+	int ret = 0;
+	uint8_t ssid[WIFI_SSID_MAX_LEN + 1] = {0};
+	uint8_t psk[WIFI_PSK_MAX_LEN + 1] = {0};
+
+	struct wifi_connect_req_params cnx_params = {
+		.ssid = ssid,
+		.psk = psk,
+	};
+
+	if (__stored_creds_to_params(creds, &cnx_params) != 0) {
+		ret = -ENOEXEC;
+		goto out;
+	}
+
+	ret = net_mgmt(NET_REQUEST_WIFI_CONNECT, iface, &cnx_params,
+		       sizeof(struct wifi_connect_req_params));
+	if (ret < 0) {
+		ret = -ENOEXEC;
+		goto out;
+	}
+
+out:
+	return ret;
+}
+
+struct add_stored_network_arg {
+	struct net_if *iface;
+	bool connected;
+};
+
+static void add_stored_network(void *cb_arg, const char *ssid, size_t ssid_len)
+{
+	struct add_stored_network_arg *arg = cb_arg;
+	int ret = 0;
+	struct wifi_credentials_personal creds;
+
+	if (arg->connected) {
+		/* Already connected */
+		return;
+	}
+
+	/* load stored data */
+	ret = wifi_credentials_get_by_ssid_personal_struct(ssid, ssid_len, &creds);
+
+	if (ret) {
+		return;
+	}
+
+	ret = add_network_from_credentials_struct_personal(&creds, arg->iface);
+	if (ret == 0) {
+		/* Indicate that we are connected */
+		arg->connected = true;
+	}
+}
+
+static int add_static_network_config(struct net_if *iface)
+{
+	(void)iface;
+	return 0;
+}
+
+int net_mgmt_NET_REQUEST_WIFI_CONNECT_STORED(uint64_t mgmt_request,
+					     struct net_if *iface, void *data,
+					     size_t len)
+{
+	struct add_stored_network_arg cb_arg = {
+		.iface = iface,
+	};
+	int ret = 0;
+
+	(void)mgmt_request;
+	(void)data;
+	(void)len;
+	ret = add_static_network_config(iface);
+	if (ret) {
+		return ret;
+	}
+
+	wifi_credentials_for_each_ssid(add_stored_network, &cb_arg);
+
+	return ret;
+}
+
+#endif /* CONFIG_NANO_WIFI_CREDENTIALS */

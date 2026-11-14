@@ -135,3 +135,18 @@ run i2c_dma_commands -Iboards/arduino-nano-rp2040-connect/src \
     boards/arduino-nano-rp2040-connect/src/i2c_dw_rp2040_commands.c
 # The i2c_dma command's output (fake driver side).
 run i2c_dma_app -Idrivers/include -Iapps/i2c_dma -Iapps/subcmd apps/subcmd/subcmd.c
+# The stored Wi-Fi credentials (apps/wifi: the copies of Zephyr's wifi_credentials.c and its
+# settings backend) and the "wifi cred" command (the copy of wifi_credentials_shell.c on
+# subcmd), on a fake store of named items: the stored entries and names, the cache, the
+# lengths and options, the messages and the log.  The copied text leaves parameters unused and
+# compares signed with unsigned, as in the Zephyr build; the command's main() is wifi_main().
+winc=(-D_GNU_SOURCE -DCONFIG_NANO_WIFI_CREDENTIALS=1 -Itests/lsm6dso_fakes "${zinc[@]}"
+      -Iapps/subcmd -Iapps/wifi)
+wflags=("${flags[@]}" -Wno-unused-parameter -Wno-sign-compare)
+cc "${wflags[@]}" "${winc[@]}" -Dmain=wifi_main -c apps/wifi/wifi_credentials_shell.c \
+    -o "$out/wifi_credentials_shell.o"
+cc "${wflags[@]}" "${winc[@]}" tests/wifi_cred.c apps/wifi/wifi_credentials.c \
+    apps/wifi/wifi_credentials_backend_settings.c drivers/compat/zephyr_wifi_utils.c \
+    apps/subcmd/subcmd.c "$out/wifi_credentials_shell.o" "${compat[@]}" "$link" -o "$out/wifi_cred"
+"$out/wifi_cred" >/dev/null
+printf 'ok  wifi_cred\n'

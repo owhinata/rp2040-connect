@@ -1,9 +1,9 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /* The calls of the NINA network device into the Wi-Fi profile
- * (<wifi_profile.h>, the Zephyr build's src/wifi_profile.c) while the port
- * has no stored profile and no automatic reconnection
- * (CONFIG_NANO_WIFI_PROFILE off): the Zephyr build with no stored
- * credentials behaves the same way, as its reconnection is never enabled
+ * (<wifi_profile.h>, the Zephyr build's src/wifi_profile.c) in a build
+ * without the stored profile and the automatic reconnection
+ * (CONFIG_NANO_WIFI_PROFILE off, nuttx/apps/wifi): the Zephyr build with no
+ * stored credentials behaves the same way, as its reconnection is never enabled
  * (auto_enabled stays false) and only its own reconnection thread is ever
  * refused a connection.
  */

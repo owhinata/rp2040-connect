@@ -74,6 +74,18 @@ static const struct subcmd imu_commands[] = {
 };
 static const struct subcmd imu_root = SUBCMD(imu, imu_commands, "IMU", NULL);
 
+/* Help texts with newlines and longer than the 80 columns of the Zephyr
+ * shell's terminal (formatted_text_print() of shell_help.c).
+ */
+#define WORDS8 "0123456789 0123456789 0123456789 0123456789 0123456789 0123456789 " \
+	       "0123456789 0123456789"
+static const struct subcmd text_commands[] = {
+	SUBCMD(nl, NULL, "first\nsecond\n", handler),
+	SUBCMD(long, NULL, WORDS8, handler),
+	SUBCMD_SET_END
+};
+static const struct subcmd text_root = SUBCMD(txt, text_commands, "Text\nmore", NULL);
+
 static void slurp(FILE *f, char *buf, size_t size)
 {
 	size_t n;
@@ -216,6 +228,17 @@ int main(void)
 	       !strcmp(out, "cal - Show: [reload|zero]\nSubcommands:\n  reload  : Reload\n"));
 	/* "z*" matches no subcommand of cal: the words end before it. */
 	assert(run(&imu_root, "imu", "cal", "z*", NULL) == EXIT_SUCCESS && last_argc == 1);
+
+	/* Text layout: continuation lines start at the help's column, a long
+	 * line breaks at the last space before column 80, a final newline
+	 * leaves an empty indented line.
+	 */
+	assert(run(&text_root, "txt", NULL) == EXIT_FAILURE);
+	assert(!strcmp(out, "txt - Text\n      more\nSubcommands:\n"
+			    "  nl    : first\n          second\n          \n"
+			    "  long  : 0123456789 0123456789 0123456789 0123456789 0123456789 "
+			    "0123456789\n          0123456789 0123456789\n"));
+	assert(run(&text_root, "txt", "long", "a", NULL) == EXIT_SUCCESS);
 
 	puts("subcmd tests passed");
 	return 0;

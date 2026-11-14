@@ -7,8 +7,8 @@
 ビルド、USB コンソールと書き込みスクリプト、RAM ログ、キーと値の保存（`kv`）、NINA-W102 との SPI の
 やり取り（`nina version`）、NINA のソケット（usrsock。制御系と送受信）と名前解決、I2C0（DMA を含む）、
 LSM6DSOX のドライバーと FIFO のストリーム、IMU の取得サービス（`imu`）、Wi-Fi のネットワークデバイス
-（`wapi`・`ifconfig`）です。資格情報の保存と自動再接続はまだ無く、取得したバッチは送信のスタブが数えて
-捨てます（「IMU の取得（`imu`）」の節）。
+（`wapi`・`ifconfig`）、Wi-Fi の資格情報の保存と自動再接続（`wifi cred`）です。取得したバッチは送信の
+スタブが数えて捨てます（「IMU の取得（`imu`）」の節）。
 
 ## 環境構築
 
@@ -198,7 +198,8 @@ picocom /dev/serial/by-id/usb-NuttX_NuttX_USB_Console_*-if00
   コマンドで、`CONFIG_NANO_APP_BOOTSEL` で外せます。
 - `irqstack` は割り込み用のスタックの起動からの最大使用量を 1 行で出します（Zephyr 版の
   `kernel thread stacks` の `IRQ 00` の行と同じ書式。「スレッドの優先度とスタック」の節）。
-- Wi-Fi は NuttX 標準の `wapi` と `ifconfig` で扱います（「Wi-Fi（`wapi`、`ifconfig`）」の節）。
+- Wi-Fi は NuttX 標準の `wapi` と `ifconfig` で扱います（「Wi-Fi（`wapi`、`ifconfig`）」の節）。資格情報の
+  保存は Zephyr 版と同じ `wifi cred` です（「Wi-Fi の資格情報と自動再接続（`wifi cred`）」の節）。
 - ログは RAM に置き、Zephyr 版と同じくコンソールには出しません。`dmesg` で表示します（「ログ」の節）。
 - シェル（nsh のセッション）と、そこから起動するコマンドは優先度 104 で動きます（Zephyr 版のシェルの
   スレッドと同じ位置。「スレッドの優先度とスタック」の節）。
@@ -264,6 +265,8 @@ Zephyr 版の `storage_partition` と同じ場所です。API とコマンドは
   範囲の外なら何もせずエラーにします。
 - 形式: NuttX の NVS（`drivers/mtd/mtd_config_nvs.c`、`CONFIG_MTD_CONFIG_NVS`・`CONFIG_MTD_CONFIG_NAMED`、
   名前は 63 文字まで）を `/dev/config` として使い、Zephyr 版と同じく `app_kv/<キー>` の名前で保存します。
+  Wi-Fi の資格情報も同じ `/dev/config` に、Zephyr 版の settings と同じ `wifi_cred/<番号>` の名前で置きます
+  （`kv` からは見えず、消せません。「Wi-Fi の資格情報と自動再接続（`wifi cred`）」の節）。
   MTD は書き込みの単位を 1 バイトと見せ（項目を詰めて置くため）、flash には 256 バイトのページ単位で、
   データの外を 0xFF にして書きます。
 - Zephyr 版の後で初めて起動したとき: 起動時に、領域がこの形式でも全面消去済みでもなければ（Zephyr 版の
@@ -292,7 +295,9 @@ Zephyr 版の `storage_partition` と同じ場所です。API とコマンドは
   1 項目は「キーの長さ + 8（`app_kv/` と終端）+ 値の長さ + 16」バイトで、使えるのは 4048 バイトです。
   32 文字のキーと 128 バイトの値なら 184 バイトで 22 項目まで（実機で、満杯の次の書き込みが
   `KV write failed: -28` になることを確かめました）。Zephyr 版（settings on NVS、同じ 4 KiB×2）も 1 項目が名前と値の 2 件
-  （183 バイト）で、ほぼ同じです。同じ値を保存し直しても書き込みません。
+  （183 バイト）で、ほぼ同じです。同じ値を保存し直しても書き込みません。Wi-Fi の資格情報は 1 件が
+  12 + 224 + 16 = 252 バイト（名前 `wifi_cred/<番号>` と終端、`struct wifi_credentials_personal`、索引）で、
+  2 件まで同じ領域を使います。
 - 書き換えと整理: 書き換えは新しい項目を足して古い項目に印を付け、1 つの消去単位が埋まると、生きている
   項目をもう 1 つへ写して元を消去します（NVS のガベージコレクション）。flash を消去・書き込みする間は
   XIP が止まるので、RAM 上のコードで割り込みを禁止して行います。割り込みを禁止するのは、4 KiB の消去
@@ -320,7 +325,11 @@ Zephyr 版の `storage_partition` と同じ場所です。API とコマンドは
 - サブコマンドの直後の語に `*` か `?` があり、どのサブコマンドにも一致しないときは、Zephyr のシェルと
   同じくそこで語の読み取りを止めます（`kv get a*` は引数の数の誤り、`nina version *` は `nina version`）。
   一致するサブコマンドがあるとき（Zephyr のシェルは名前に展開する）は再現せず、知らない語として扱います。
-- `-h`・`--help` はふつうの語です（Zephyr 版と同じ）。ヘルプの行は 80 桁で折り返しません。
+- `-h`・`--help` はふつうの語です（Zephyr 版と同じ）。
+- ヘルプの文は Zephyr のシェル（`shell_help.c` の `formatted_text_print()`）と同じに並べます: 文の中の改行と、
+  80 桁を越える語の前で行を改め、続きの行は文の始まりの桁から書きます（Zephyr のシェルは VT100 の
+  カーソル移動で、この移植は空白で桁を合わせます）。文の末尾の改行は、空の行を 1 行残します（Zephyr と同じ）。
+  端末の幅を変える `resize` はありません。
 - 終了状態は、成功で 0、失敗・ヘルプ・引数の誤りで 1 です。
 
 ### Zephyr 版からの移し替え
@@ -328,11 +337,18 @@ Zephyr 版の `storage_partition` と同じ場所です。API とコマンドは
 ```bash
 # Zephyr 版が動いている間に退避する（host/recordings/kv-backup.json、Git 管理外）
 host/.venv/bin/python script/kv_transfer.py backup --usb
-# NuttX 版を書き込んだ後で書き戻す（Wi-Fi を登録しない場合）
+# NuttX 版を書き込んだ後で書き戻し、Wi-Fi を登録する（パスワードを端末で入力。SSID の既定は rp2040-test、
+# 別の AP なら --ssid）
+host/.venv/bin/python script/kv_transfer.py restore --usb
+# Wi-Fi を登録しない場合
 host/.venv/bin/python script/kv_transfer.py restore --usb --no-wifi
 ```
 
 `restore` は `kv sethex` で書き、`kv get` で読み返して確かめます（`imu.session` は書き戻しません）。
+Wi-Fi は、`wifi cred add -s <SSID> -k 1 -p <パスワード>`（成功すると何も出さない。Zephyr 版と同じ）と
+`wifi cred auto_connect` を送ります。資格情報は Zephyr 版の flash の内容からは移せないので（保存形式が違う）、
+パスワードはそのとき入力します。資格情報がすでに 2 件あると、`wifi cred add` は
+`Failed to add network credentials, err: -105` で失敗します（先に `wifi cred delete` で消す）。
 校正値を書いた後に `imu cal reload` を送りますが、今の NuttX 版の `imu cal` はスタブでエラーを返すので、
 書き込みと読み返しが済んだ後、そこでエラーになって終わります。
 
@@ -344,7 +360,7 @@ Wi-Fi モジュール NINA-W102 とは SPI1 でやり取りします。NINA の�
 `nina version`、ソケット（NuttX の usrsock。socket・close・bind・listen・accept・connect・setsockopt と
 送受信・`FIONREAD`）、NINA の名前解決（`nina_getaddrinfo()`）、Wi-Fi のネットワークデバイス `wlan0`
 （スキャン、接続、切断、状態、接続の監視）です（`nuttx/drivers/README_ja.md` の「ソケット（usrsock）」
-「名前解決」「Wi-Fi」）。資格情報の保存と自動再接続（`wifi cred`）はまだありません。
+「名前解決」「Wi-Fi」）。資格情報の保存と自動再接続（`wifi cred`）は下の節です。
 
 ```
 nsh$ nina version
@@ -397,7 +413,7 @@ NINA は NuttX のネットワークデバイス `wlan0` です。Zephyr 版の 
 | `wifi scan` | `wapi scan wlan0` |
 | `wifi status` | `wapi show wlan0` と `ifconfig wlan0`（下） |
 | `net iface` | `ifconfig` |
-| `wifi cred add/delete/list/auto_connect` | まだありません |
+| `wifi cred add/delete/list/auto_connect` | 同じ（`wifi cred`。下の「Wi-Fi の資格情報と自動再接続（`wifi cred`）」） |
 
 - `wapi psk` の 3 は暗号の CCMP、版の既定は WPA2 で、Zephyr 版の `-k 1`（WPA2-PSK）に当たります。`wapi psk` の
   設定は次の `wapi essid` 1 回で使って忘れ、パスフレーズも消します。ドライバーが受け付けるのは Zephyr 版と同じく
@@ -421,6 +437,63 @@ NINA は NuttX のネットワークデバイス `wlan0` です。Zephyr 版の 
 - `wapi` は失敗したときに何も表示しません（エラーの表示が NuttX のデバッグ出力 `wlerr()` で、この構成では
   無効）。終了状態は 1 になるので、`echo $?` で分かります。Zephyr 版の `wifi` のコマンドはエラーの値を表示します。
 - `ifconfig wlan0 down`・`up` は何もしません（Zephyr 版のインターフェースも常に有効）。
+
+### Wi-Fi の資格情報と自動再接続（`wifi cred`）
+
+接続先の資格情報を保存し、起動時と接続が切れたときに自動で繋ぎ直します。資格情報の扱いは Zephyr の
+ライブラリ（`subsys/net/lib/wifi_credentials/` と settings のバックエンド）の写し、コマンドは
+`wifi_credentials_shell.c` の写し、自動再接続は Zephyr 版の `src/wifi_profile.c` の OS を呼ぶ部分だけを
+置き換えた写しです（`nuttx/apps/wifi/`）。構文・出力・エラーの文・戻り値は Zephyr 版と同じです。
+
+```
+wifi cred add -s <SSID> [-k <種類>] [-p <パスフレーズ>] [-c <チャネル>] [-b <帯域>] [-w <MFP>] [-m <BSSID>]
+                                     保存（同じ SSID は置き換え。成功すると何も出さない）
+wifi cred delete <SSID>              削除（Deleting network ssid: ... と出す）
+wifi cred list                       保存した順の番号で一覧（パスフレーズも表示する。Zephyr 版と同じ）
+wifi cred auto_connect               保存した資格情報で接続を要求する（結果は待たない）
+```
+
+```text
+nsh$ wifi cred add -s example-ap -k 1 -p example-pass
+nsh$ wifi cred list
+  network ssid: "example-ap", ssid_len: 10, type: WPA2-PSK, password: "example-pass", password_len: 12, MFP_OPTIONAL
+```
+
+- 件数と長さ: 2 件まで（`CONFIG_NANO_WIFI_CREDENTIALS_MAX_ENTRIES`、Zephyr 版の
+  `CONFIG_WIFI_CREDENTIALS_MAX_ENTRIES=2`）。3 件目は `Failed to add network credentials, err: -105`（`ENOBUFS`）で、
+  `dmesg` に `<err> wifi_credentials: Cannot store WiFi credentials, no space left` が出ます（Zephyr 版と同じ）。
+  SSID は 1〜32 文字（`SSID too long (max 32 characters)`、`SSID not provided`）、パスフレーズは 8〜64 文字
+  （`Passphrase should be minimum 8 characters`、`Passphrase too long (max 64 characters)`）。ただし NINA が受け付ける
+  パスフレーズは 63 文字までです（Zephyr 版と同じ）。
+- 種類（`-k`）: Zephyr の番号（0 なし、1 WPA2-PSK、2 WPA2-PSK-SHA256、3 WPA3-SAE など。`-h` のヘルプ）を
+  そのまま保存します。接続できるのは Zephyr 版と同じく 0 と 1 だけで、ほかの種類の資格情報は自動接続で
+  飛ばされます。`-k` なしでパスフレーズを付けると `Passphrase provided without security configuration` と
+  出して保存します。`-t` は Zephyr 版と同じく `Invalid option` になります（オプションの表にあるが処理が無い）。
+- `wifi cred`・`wifi` だけ、または知らない語ではヘルプを、`add` の引数の数が 1〜13 語でなければ
+  `add: wrong parameter count` とヘルプを出します（「コマンドのサブコマンド」の節）。`wifi` のサブコマンドは
+  `cred` だけです（ほかは `wapi`・`ifconfig`）。
+- オプションの解析は NuttX の `getopt_long()` で、Zephyr の `sys_getopt_long()` と違い、オプションでない語を
+  後ろへ回しません（オプションでない語より後のオプションは読まない）。知らないオプションのときに Zephyr 版が
+  ログ（`<wrn> sys_getopt`）に出す行もありません。
+- 保存: 1 件ずつ `/dev/config` の `wifi_cred/<番号>`（番号は空いている最小のもの）に、Zephyr の
+  `struct wifi_credentials_personal` のまま書きます。`add`・`delete` のたびにすぐ書きます。起動時に init が
+  保存された SSID を読み込みます（Zephyr のライブラリの `SYS_INIT()` と同じ位置、スレッドを始める前）。
+  `kv` のキーは `app_kv/` で始まるので、`kv` からは資格情報を読めず、消せません（`wifi_cred/0` は
+  `/` を含むので `KV read failed: -22`）。KV の保存形式と同じく、Zephyr 版の資格情報とは互換がありません。
+- 自動再接続（スレッド `wifi_reconnect_tid`、Zephyr の優先度 8 → 110、スタック 2048）: 資格情報があれば、
+  起動時（`wifi_profile_init()`）と、接続が切れたとき（監視が切断を見つけたとき、接続中のスキャンの後）に、
+  4 秒待ってから保存した資格情報で接続を要求し（`NET_REQUEST_WIFI_CONNECT_STORED`。保存した順に、要求が
+  受け付けられるまで）、その後は 1 秒ごとに見て、アドレスが付かないまま 32 秒たつと要求し直します。
+  `wapi disconnect wlan0`（手動の切断）の後は、次に接続に成功するまで再接続しません（Zephyr 版と同じ）。
+  資格情報が無ければ何もしません。接続の要求が失敗したとき（`EBUSY`・`EALREADY` 以外）は
+  `<wrn> wifi_profile: Stored Wi-Fi request failed: <値>` を出します。接続の失敗そのもの（約 30 秒で `ETIMEDOUT`）は
+  ログに出ません（Zephyr 版でも出ない）。
+- `wifi cred auto_connect` はシェルから接続を要求するだけで、自動再接続を始めません（接続に成功すると
+  始まる）。要求が受け付けられないと `An error occurred when trying to auto-connect to a network. err: <値>` と
+  出します（終了状態は Zephyr 版と同じく常に 0）。
+- Zephyr 版の古い形式の資格情報（KV の `sys.wifi_profile`、settings の `wifi_last/last`）を移す処理は、
+  Zephyr 版のまま起動時に走りますが、この移植の保存領域には無いので何もしません。
+- パスフレーズは `wifi cred list` の表示（Zephyr 版と同じ）のほかは、ログにもエラーの文にも出しません。
 
 ## I2C0（`i2c`）
 
@@ -586,7 +659,7 @@ Subcommands:
   同じバイト列）、続く 4 バイトが KV の `imu.session`（4 バイトのビッグエンディアン。`imu start` のたびに +1 して
   保存）、残りが 0 です。Zephyr 版の通し番号は引き継がず、NuttX 版では 1 から始まります。
 - init は Zephyr 版の `main()` と同じ順に `kv_store_init()` → `imu_cal_init()`（失敗すると
-  `Could not set up the IMU calibration: <値>`）→ `time_sync_init()` を呼びます（`wifi_profile_init()` は未移植）。
+  `Could not set up the IMU calibration: <値>`）→ `time_sync_init()` → `wifi_profile_init()` を呼びます。
 
 **まだスタブの部分**（`nuttx/apps/imu/*_null.c`。それぞれの移植で本物に置き換えます）:
 
@@ -675,9 +748,10 @@ Subcommands:
   他のスレッドに横取りされない協調スレッドが無く、より高い優先度のスレッドには横取りされます。今の移植で
   協調スレッドに当たるのは `sysworkq` と `net_mgmt`（どちらも 119）で、それより高い優先度のスレッドは
   ありません。同じ 119 の 2 つは時分割で交代します（Zephyr の協調スレッドどうしは自分で譲るまで交代しない）。
-- `K_THREAD_DEFINE()` のスレッド（`nina_scan_tid`、`nina_connect_tid`、`nina_monitor_tid`、`imu_stream_tid`）は、
+- `K_THREAD_DEFINE()` のスレッド（`nina_scan_tid`、`nina_connect_tid`、`nina_monitor_tid`、`imu_stream_tid`、
+  `wifi_reconnect_tid`）は、
   Zephyr 版が `main()` の前に始めるのに合わせて、init が起動処理の最初に始めます。
-- `imu_stream_tid`、`imu_fifo_worker`、`sysworkq`、`RTIO WQ 0`、`net_mgmt`、`nina_*_tid` のスタックは Zephyr と同じく静的な配列です
+- `imu_stream_tid`、`imu_fifo_worker`、`sysworkq`、`RTIO WQ 0`、`net_mgmt`、`nina_*_tid`、`wifi_reconnect_tid` のスタックは Zephyr と同じく静的な配列です
   （`K_THREAD_DEFINE()`・`K_THREAD_STACK_DEFINE()`、NuttX の `kthread_create_with_stack()`）。`ps` の STACK は
   NuttX が先頭に置く領域の分だけ小さく出ます（2048 → 2008。`imu_stream_tid` は 2000、1024 → 976）。
 - `CONFIG_PRIORITY_INHERITANCE=y` です。ミューテックスは優先度継承あり、セマフォは既定で継承なし
@@ -724,6 +798,7 @@ status と info の JSON、時刻の対応付け、センサーの tick と時�
 CPU 負荷の計算（`nano_cpuload`）、RAM ログのリング・`dmesg` の取り出し・行の前置き・頻度制限（`log_ram`）、
 KV 領域の範囲の検査・ページ単位の書き込み・起動時の内容の判定（`nano_flash_kv`）、KV のキーの規則
 （`kv_name`）と `kv` コマンドの 16 進数の変換（`kv_hex`）、コマンドのサブコマンドの扱い（`subcmd`）、
+Wi-Fi の資格情報の保存と `wifi cred` コマンド（`wifi_cred`）、
 NINA の SPI の転送層（`nina_spi`）、NINA のソケットの表と命令（`nina_sock`）、NINA の名前解決（`nina_dns`）、I2C0 のドライバーの OS に依存しない部分（`nano_i2c_dw`）、I2C0 の DMA
 読み出しのコマンド語（`i2c_dma_commands`）、`i2c_dma` コマンドの出力（`i2c_dma_app`。ドライバー側は偽物）、
 LSM6DSO の FIFO 制御（`fifo_hw`）、LSM6DSO のドライバーと FIFO のストリーム（`lsm6dso_driver`）、ストリームの
@@ -743,6 +818,8 @@ Zephyr 版を直したときは、写しも同じ内容に置き換えます。
 | `nuttx/tests/fakes/` | `tests/fakes/` | テスト用の Zephyr のヘッダーと ST のヘッダーの代わり（`zephyr/drivers/sensor.h`、`zephyr/drivers/sensor_clock.h`、`zephyr/drivers/i2c.h`、`zephyr/rtio/rtio.h`、`lsm6dso_reg.h`） |
 
 `nuttx/drivers/nina/nina_net.c` は先頭の説明と `<nuttx/config.h>` だけを足した写し、
+`nuttx/apps/wifi/wifi_profile.c` は先頭のインクルード（ログを `app_log.h` に）と `wifi_reconnect_tid` の宣言
+（`const` を外す）だけを変えた写し、
 `nuttx/apps/imu/imu_stream.c` は OS を呼ぶ部分と末尾のコマンドの登録だけを置き換えた写し、
 `imu_raw_mqtt.h` は `<zephyr/net/net_ip.h>` を `<netinet/in.h>` にしただけの写しです。
 
@@ -770,7 +847,14 @@ Zephyr 版を直したときは、写しも同じ内容に置き換えます。
 写し（`apps/kv/kv_hex.c`）を確かめます。
 
 `nuttx/tests/subcmd.c` は `apps/subcmd/subcmd.c` を、`kv` と `nina` の表（Zephyr 版の記録した出力と同じ
-ヘルプ）、入れ子の表、省略可の引数で確かめます。`nuttx/tests/nina_spi.c` は `drivers/nina/nina_spi.c` を、
+ヘルプ）、入れ子の表、省略可の引数、ヘルプの文の並べ方（改行、80 桁での折り返し、末尾の改行）で確かめます。
+
+`nuttx/tests/wifi_cred.c` は `apps/wifi/` の Zephyr のライブラリの写し（`wifi_credentials.c`、settings の
+バックエンド）と `wifi cred` のコマンド（`wifi_credentials_shell.c` の写し、`subcmd`、互換層の
+`zephyr_wifi_utils.c`）を、名前付きの項目を持つ偽の settings で確かめます: 起動時の読み込み、保存する名前
+（`wifi_cred/<番号>`。`app_kv/` と重ならない）と中身、長さの境界（SSID 32/33、パスフレーズ 7/8/64/65）、
+3 件目の `-105` とログ、同じ SSID の置き換えと番号の順の一覧、各オプションとエラーの文、長さの違う保存値、
+保存の失敗、`auto_connect`、`wifi`・`wifi cred` のヘルプ。期待する出力は Zephyr のソースが出す文です。`nuttx/tests/nina_spi.c` は `drivers/nina/nina_spi.c` を、
 偽の SPI・GPIO・時計・ロックで確かめます。Zephyr 版の `tests/nina_spi.c` の項目（広いパラメーターと詰め、
 まとめての転送、0x75・0x7a の 3 つの応答パラメーター、長さの検査、転送の失敗）に加えて、狭いパラメーター、
 版の要求、応答の先頭探し（1000 バイト）、各 `-EPROTO`・`-EMSGSIZE`・`-EINVAL`、0x27、`nina_ip_config()`

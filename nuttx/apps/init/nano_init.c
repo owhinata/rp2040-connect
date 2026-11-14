@@ -71,13 +71,26 @@
 #  include "kv_store.h"
 #endif
 
-#if defined(CONFIG_NANO_APP_IMU) || defined(CONFIG_NANO_NINA_NET)
+#if defined(CONFIG_NANO_APP_IMU) || defined(CONFIG_NANO_NINA_NET) || \
+    defined(CONFIG_NANO_WIFI_PROFILE)
 #  include "zephyr_compat.h"
 #endif
 
 #ifdef CONFIG_NANO_APP_IMU
 #  include "imu_cal.h"
 #  include "time_sync.h"
+#endif
+
+/* nuttx/apps/wifi: <zephyr/net/wifi_credentials.h> and <wifi_profile.h>
+ * declare these, but this file does not include the Zephyr compatibility
+ * layer's headers (see zephyr_compat.h).
+ */
+
+#ifdef CONFIG_NANO_WIFI_CREDENTIALS
+int wifi_credentials_init(void);
+#endif
+#ifdef CONFIG_NANO_WIFI_PROFILE
+int wifi_profile_init(void);
 #endif
 
 /* The module name and level of the Zephyr build's main.c. */
@@ -214,6 +227,14 @@ int nano_init_main(int argc, FAR char *argv[])
 
   nsh_initialize();
 
+#ifdef CONFIG_NANO_WIFI_CREDENTIALS
+  /* The Wi-Fi credentials library's SYS_INIT(POST_KERNEL), which Zephyr
+   * runs before the threads below start: reads the stored SSIDs.
+   */
+
+  wifi_credentials_init();
+#endif
+
   /* Zephyr starts the threads of K_THREAD_DEFINE() before main()
    * (z_init_static_threads()).  Each waits for its work at once.
    */
@@ -225,6 +246,9 @@ int nano_init_main(int argc, FAR char *argv[])
 #endif
 #ifdef CONFIG_NANO_APP_IMU
   K_THREAD_DEFINE_START(imu_stream_tid);  /* imu_stream.c */
+#endif
+#ifdef CONFIG_NANO_WIFI_PROFILE
+  K_THREAD_DEFINE_START(wifi_reconnect_tid);  /* nuttx/apps/wifi/wifi_profile.c */
 #endif
 
   /* zephyr/app/usb-console/src/main.c */
@@ -252,7 +276,9 @@ int nano_init_main(int argc, FAR char *argv[])
   time_sync_init();
 #endif
 
-  /* wifi_profile_init(): T17 of nuttx/PORTING_PLAN.md. */
+#ifdef CONFIG_NANO_WIFI_PROFILE
+  (void)wifi_profile_init();
+#endif
 
   param.sched_priority = NANO_PRIO_SHELL;
   sched_setparam(0, &param);

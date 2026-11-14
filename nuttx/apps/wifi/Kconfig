@@ -1,0 +1,94 @@
+#
+# For a description of the syntax of this configuration file,
+# see the file kconfig-language.txt in the NuttX tools repository.
+#
+
+config NANO_WIFI_CREDENTIALS
+	bool "Stored Wi-Fi credentials (wifi_credentials.c)"
+	default y
+	depends on NANO_NINA_NET && MTD_CONFIG_NVS && MTD_CONFIG_NAMED
+	---help---
+		The Zephyr build's Wi-Fi credentials library
+		(subsys/net/lib/wifi_credentials/ with its settings backend,
+		CONFIG_WIFI_CREDENTIALS_BACKEND_SETTINGS) on /dev/config (NuttX's
+		NVS, the store of the kv command), under the same names
+		("wifi_cred/0" and so on), which the kv command cannot reach
+		(its keys are stored as "app_kv/<key>").  Also the request
+		NET_REQUEST_WIFI_CONNECT_STORED of the Zephyr compatibility
+		layer (CONFIG_WIFI_CREDENTIALS_CONNECT_STORED).  Built into the
+		application library; the init task reads the stored SSIDs at
+		boot.
+
+if NANO_WIFI_CREDENTIALS
+
+config NANO_WIFI_CREDENTIALS_MAX_ENTRIES
+	int "Maximum number of stored networks"
+	default 2
+	range 1 99
+	---help---
+		The Zephyr build's CONFIG_WIFI_CREDENTIALS_MAX_ENTRIES.
+
+config NANO_WIFI_CREDENTIALS_SAE_PASSWORD_LENGTH
+	int "Room for a password in an entry"
+	default 128
+	---help---
+		The Zephyr build's CONFIG_WIFI_CREDENTIALS_SAE_PASSWORD_LENGTH.
+		An entry keeps MAX(64, this) bytes of password.
+
+config NANO_WIFI_CREDENTIALS_CONNECTION_TIMEOUT
+	int "Connection timeout of a stored network (s)"
+	default 30
+	---help---
+		The Zephyr build's
+		CONFIG_WIFI_CREDENTIALS_CONNECT_STORED_CONNECTION_TIMEOUT: the
+		timeout passed with the connection request of a stored network
+		that has none of its own.  The NINA driver does not use it (it
+		waits 30 s itself).
+
+endif
+
+config NANO_WIFI_PROFILE
+	bool "Wi-Fi profile and automatic reconnection (wifi_profile.c)"
+	default y
+	depends on NANO_WIFI_CREDENTIALS && NANO_KV_STORE
+	---help---
+		wifi_profile.c: the Zephyr build's src/wifi_profile.c with only
+		the system calls replaced: the thread wifi_reconnect_tid (Zephyr
+		priority 8, NuttX 110, 2048-byte stack), which the init task
+		starts at boot, connects to the stored networks 4 s after a
+		request and then every 32 s while there is no address, from
+		boot when networks are stored and after a lost connection;
+		a disconnection asked for (wapi disconnect) stops it until the
+		next successful connection.  Replaces nuttx/drivers/nina/
+		wifi_profile_null.c.
+
+config NANO_APP_WIFI
+	tristate "wifi command (wifi cred)"
+	default y
+	depends on NANO_WIFI_CREDENTIALS && NANO_SUBCMD
+	---help---
+		"wifi cred add|delete|list|auto_connect": the Zephyr build's
+		wifi credentials shell (subsys/net/lib/wifi_credentials/
+		wifi_credentials_shell.c) with the same syntax and output.  The
+		other subcommands of the Zephyr build's wifi command are NuttX's
+		wapi and ifconfig.
+
+if NANO_APP_WIFI
+
+config NANO_APP_WIFI_PRIORITY
+	int "wifi task priority"
+	default 104
+	---help---
+		The shell's priority (NANO_PRIO_SHELL in
+		nuttx/drivers/include/priorities.h): the Zephyr build runs shell
+		commands in its shell thread.
+
+config NANO_APP_WIFI_STACKSIZE
+	int "wifi stack size"
+	default 3072
+	---help---
+		The Zephyr build runs the command on the shell thread's stack
+		(CONFIG_SHELL_STACK_SIZE 3072).  The NVS write, with garbage
+		collection, runs on this stack too.
+
+endif

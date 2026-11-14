@@ -127,7 +127,7 @@ Zephyr 版はソケットのオフロード（`drivers/nina/nina_socket.c`）で
 |---|---|
 | `nina/nina_net.c` | Zephyr 版の `drivers/nina/nina_net.c` の写し（先頭の説明と `<nuttx/config.h>` だけを足したもの）。スキャン・接続・切断・状態の取得と、3 つのスレッド `nina_scan_tid`・`nina_connect_tid`・`nina_monitor_tid` |
 | `nina/nina_netdev.c` | NINA を NuttX のネットワークデバイス `wlan0` として登録し、wapi の無線の ioctl を Zephyr の Wi-Fi の要求（`net_mgmt()`）にする。NuttX 版だけ |
-| `nina/wifi_profile_null.c` | `nina_net.c` が呼ぶ Wi-Fi のプロファイルの関数（`wifi_profile_pause_reconnect()` など）の空の実装。保存した資格情報と自動再接続（Zephyr 版の `src/wifi_profile.c`）が入るまでの代わり（`CONFIG_NANO_WIFI_PROFILE` が無いとき） |
+| `nina/wifi_profile_null.c` | `nina_net.c` が呼ぶ Wi-Fi のプロファイルの関数（`wifi_profile_pause_reconnect()` など）の空の実装。保存した資格情報と自動再接続（`nuttx/apps/wifi/wifi_profile.c`、Zephyr 版の `src/wifi_profile.c` の写し）を入れない構成（`CONFIG_NANO_WIFI_PROFILE` が無いとき）だけで使う |
 | `include/nina_net.h`、`include/wifi_profile.h` | `nina_net_initialize()`。`wifi_profile.h` は Zephyr 版の `src/wifi_profile.h` と同じ宣言 |
 
 - `nina_net.c` は Zephyr の API（`net_if`、`net_mgmt`、`wifi_mgmt`、カーネルのオブジェクト）を互換層
@@ -168,9 +168,12 @@ Zephyr 版はソケットのオフロード（`drivers/nina/nina_socket.c`）で
 
   ほかの無線の ioctl は `-ENOTTY` です。接続の結果は `wapi essid` の戻りでは分からず（Zephyr 版の `wifi connect` も
   要求を出して戻る）、`ifconfig` の `RUNNING` と IP アドレス、`wapi show` の ESSID で確かめます。
-- 資格情報の保存と自動再接続（Zephyr 版の `src/wifi_profile.c`、`wifi cred`）は、互換層の `net_mgmt()`
-  （`NET_REQUEST_WIFI_CONNECT`・`_DISCONNECT`）、`net_mgmt_add_event_callback()`（`NET_EVENT_WIFI_CONNECT_RESULT`・
-  `_DISCONNECT_RESULT`）、`net_if_get_wifi_sta()`、`net_if_ipv4_get_global_addr()` を Zephyr 版と同じ形で使えます。
+- 資格情報の保存と自動再接続（`nuttx/apps/wifi/`。Zephyr 版の `src/wifi_profile.c` と Zephyr の
+  `subsys/net/lib/wifi_credentials/` の写し、`wifi cred`。`nuttx/README_ja.md` の「Wi-Fi の資格情報と自動再接続」）は、
+  互換層の `net_mgmt()`（`NET_REQUEST_WIFI_CONNECT_STORED`）、`net_mgmt_add_event_callback()`
+  （`NET_EVENT_WIFI_CONNECT_RESULT`）、`net_if_get_wifi_sta()`、`net_if_ipv4_get_global_addr()`、`k_current_get()` を
+  Zephyr 版と同じ形で使います。`nina_net.c` は接続の要求のたびに `wifi_profile_connection_allowed()` を呼び、
+  再接続のスレッドからの要求を、手動の切断の後は `-ECANCELED` で断ります（Zephyr 版と同じ）。
 
 ## I2C0
 
@@ -300,21 +303,24 @@ Zephyr の API を、Zephyr の名前のまま最小限だけ用意したもの�
 |---|---|
 | `zephyr/device.h` | `struct device`（名前、config、API、状態、data、初期化関数）、`device_is_ready()`、`device_init()`（Zephyr の `do_device_init()` と同じ意味）、`DEVICE_DT_GET()`、`DEVICE_DT_DEFINE()`、`DEVICE_API()` |
 | `zephyr/devicetree.h` | `DT_NODELABEL()`、`DT_BUS()`。ノードは `gpio0`、`i2c0`、`lsm6dsox` だけ |
-| `zephyr/kernel.h` | `k_timeout_t`（`K_NO_WAIT`、`K_FOREVER`、`K_MSEC()`、`K_SECONDS()`。単位は 100 µs の tick）、`k_mutex`、`k_sem`（`K_SEM_DEFINE`）、セマフォに対する `k_poll()`（`K_POLL_TYPE_SEM_AVAILABLE`・`K_POLL_MODE_NOTIFY_ONLY`）、ワーク（`k_work`、`k_work_delayable`、`k_work_q`、`k_work_submit()`、`k_work_cancel_sync()`、`k_work_schedule_for_queue()`、`k_work_reschedule_for_queue()`、`k_work_queue_start()`）、`K_THREAD_STACK_DEFINE()`、`K_PRIO_PREEMPT()`、`k_thread_name_set()`、システムワークキュー `k_sys_work_q`、`K_MUTEX_DEFINE()`、`K_THREAD_DEFINE()`（下）、`k_uptime_get()`、`k_sleep()`（下） |
+| `zephyr/kernel.h` | `k_timeout_t`（`K_NO_WAIT`、`K_FOREVER`、`K_MSEC()`、`K_SECONDS()`。単位は 100 µs の tick）、`k_mutex`、`k_sem`（`K_SEM_DEFINE`）、セマフォに対する `k_poll()`（`K_POLL_TYPE_SEM_AVAILABLE`・`K_POLL_MODE_NOTIFY_ONLY`）、ワーク（`k_work`、`k_work_delayable`、`k_work_q`、`k_work_submit()`、`k_work_cancel_sync()`、`k_work_schedule_for_queue()`、`k_work_reschedule_for_queue()`、`k_work_queue_start()`）、`K_THREAD_STACK_DEFINE()`、`K_PRIO_PREEMPT()`、`k_thread_name_set()`、システムワークキュー `k_sys_work_q`、`K_MUTEX_DEFINE()`、`K_THREAD_DEFINE()`（下）、`k_current_get()`（呼び出したスレッドの NuttX のスレッド ID。`K_THREAD_DEFINE()` の `k_tid_t` と比べられる）、`k_uptime_get()`、`k_sleep()`（下） |
 | `zephyr/spinlock.h`、`zephyr/sys/atomic.h` | `k_spin_lock()`（下）、`atomic_t` と `atomic_get/set/clear/cas/or/inc/add()` |
 | `zephyr/rtio/rtio.h`、`zephyr/rtio/work.h` | RTIO（下）と RTIO のワークキュー（`rtio_work_req_alloc()`・`_submit()`） |
 | `zephyr/drivers/gpio.h` | `struct gpio_dt_spec`、`gpio_is_ready_dt()`、`gpio_pin_configure_dt()`（入力だけ）、`gpio_pin_interrupt_configure_dt()`、`gpio_pin_get_dt()`、コールバック（`gpio_init_callback()`・`gpio_add_callback()`・`gpio_remove_callback()`） |
 | `zephyr/drivers/sensor.h` | `struct sensor_value`、チャネル・属性・トリガーの列挙（Zephyr と同じ番号）、`struct sensor_driver_api`、`sensor_attr_set()`・`_get()`、`sensor_sample_fetch()`・`_chan()`、`sensor_channel_get()`、`sensor_trigger_set()`、単位の換算。非同期の API: `struct sensor_chan_spec`、デコーダー（`struct sensor_decoder_api`、`sensor_three_axis_data` など）、`SENSOR_DT_READ_IODEV()`、`SENSOR_DT_STREAM_IODEV()`、`sensor_get_decoder()`、`sensor_stream()`、`sensor_read()`、`sensor_read_async_mempool()`、`sensor_processing_with_callback()` |
 | `zephyr/drivers/sensor_clock.h` | `sensor_clock_get_cycles()`、`sensor_clock_cycles_to_ns()`（下） |
 | `zephyr/drivers/i2c.h` | `struct i2c_dt_spec`、`i2c_burst_read_dt()`、`i2c_write_dt()`、`i2c_write_read_dt()`、`i2c_configure()`、速さの区分（`I2C_SPEED_*`、`I2C_SPEED_SET()`） |
-| `zephyr/sys/util.h`、`sys/__assert.h`、`sys/mpsc_lockfree.h`、`sys/mem_blocks.h`、`dsp/types.h` | `BIT()`、`ARRAY_SIZE()`、`MIN()`・`MAX()`、`IS_ENABLED()`、`CONTAINER_OF()`、`GENMASK()`・`FIELD_GET()` など、`__ASSERT()`、RTIO の待ち行列とブロックのプール、`q31_t` |
+| `zephyr/sys/util.h`、`sys/__assert.h`、`sys/mpsc_lockfree.h`、`sys/mem_blocks.h`、`dsp/types.h` | `BIT()`、`ARRAY_SIZE()`、`MIN()`・`MAX()`、`IS_ENABLED()`、`CONTAINER_OF()`、`GENMASK()`・`FIELD_GET()`、`STRINGIFY()` など、`__ASSERT()`、RTIO の待ち行列とブロックのプール、`q31_t` |
 | `zephyr/sys/printk.h`、`zephyr/sys/byteorder.h`、`zephyr/sys/cpu_load.h` | `snprintk()`（Zephyr 版の構成 `CONFIG_PICOLIBC=y` と同じく `snprintf()`）、`sys_put_be16/32()`・`sys_get_be16/32()`・`sys_get_le32()`、`cpu_load_get()`（ボードの `cpu_load.h`） |
 | `zephyr/drivers/hwinfo.h` | `hwinfo_get_device_id()`（下） |
-| `zephyr/shell/shell.h` | `shell_print()`（標準出力）・`shell_error()`（標準エラー）。Zephyr の形のコマンドの関数を、`nuttx/apps/subcmd` の組み込みコマンドから呼ぶため（下） |
+| `zephyr/shell/shell.h` | `shell_print()`（標準出力）・`shell_warn()`・`shell_error()`（標準エラー）。Zephyr の形のコマンドの関数を、`nuttx/apps/subcmd` の組み込みコマンドから呼ぶため（下） |
 | `zephyr/net/socket.h` | `zsock_inet_pton()`・`zsock_inet_ntop()`（C ライブラリの `inet_pton()`・`inet_ntop()`）、`zsock_getaddrinfo()`・`zsock_freeaddrinfo()`（NINA の名前解決、`nina_getaddrinfo()`。エラーは NuttX の `EAI_*`） |
 | `zephyr/net/net_if.h` | `struct net_if`（NuttX のネットワークデバイス 1 つ）、`net_if_get_default()`・`net_if_get_wifi_sta()`、IPv4 のアドレス・ネットマスク・ゲートウェイ（`net_if_ipv4_addr_add()`・`_rm()`・`net_if_ipv4_get_global_addr()`・`net_if_ipv4_set_netmask_by_addr()`・`net_if_ipv4_set_gw()`・`net_if_ipv4_get_gw()`）、`net_if_dormant_on()`・`_off()`、`net_if_is_admin_up()`、`net_if_set_link_addr()`（下） |
 | `zephyr/net/net_mgmt.h` | `net_mgmt()`（要求）、`struct net_mgmt_event_callback`、`net_mgmt_init_event_callback()`・`net_mgmt_add_event_callback()`・`_del_event_callback()`、`net_mgmt_event_notify_with_info()`（下） |
-| `zephyr/net/wifi_mgmt.h` | Wi-Fi の型（セキュリティ、帯域、MFP、状態、モード。Zephyr と同じ値）、`struct wifi_scan_params`・`wifi_scan_result`・`wifi_connect_req_params`・`wifi_iface_status`・`wifi_status`、`struct wifi_mgmt_ops`、オフロードのインターフェースの API と `NET_DEVICE_DT_OFFLOAD_DEFINE()`、要求 `NET_REQUEST_WIFI_SCAN`・`_CONNECT`・`_DISCONNECT`・`_IFACE_STATUS`、イベント `NET_EVENT_WIFI_SCAN_RESULT`・`_SCAN_DONE`・`_CONNECT_RESULT`・`_DISCONNECT_RESULT`、`wifi_mgmt_raise_connect_result_event()`・`_disconnect_result_event()`（下） |
+| `zephyr/net/wifi_mgmt.h` | Wi-Fi の型（セキュリティ、帯域、MFP、状態、モード。Zephyr と同じ値）、`struct wifi_scan_params`・`wifi_scan_result`・`wifi_connect_req_params`・`wifi_iface_status`・`wifi_status`、`struct wifi_mgmt_ops`、オフロードのインターフェースの API と `NET_DEVICE_DT_OFFLOAD_DEFINE()`、要求 `NET_REQUEST_WIFI_SCAN`・`_CONNECT`・`_DISCONNECT`・`_IFACE_STATUS`・`_CONNECT_STORED`（`CONFIG_NANO_WIFI_CREDENTIALS` のとき）、イベント `NET_EVENT_WIFI_SCAN_RESULT`・`_SCAN_DONE`・`_CONNECT_RESULT`・`_DISCONNECT_RESULT`、`wifi_mgmt_raise_connect_result_event()`・`_disconnect_result_event()`（下）、`wifi_security_txt()`・`wifi_band_txt()` |
+| `zephyr/net/wifi_credentials.h` | Zephyr の同名のヘッダーの写し: `struct wifi_credentials_header`・`_personal`、`WIFI_CREDENTIALS_FLAG_*`、`wifi_credentials_set_personal_struct()`・`_get_by_ssid_personal_struct()`・`_delete_by_ssid()`・`_for_each_ssid()`・`_is_empty()` など。設定の値（`CONFIG_WIFI_CREDENTIALS_MAX_ENTRIES` など）は `nuttx/apps/wifi/Kconfig` の `NANO_WIFI_CREDENTIALS_*` から。NuttX 版だけの `wifi_credentials_init()`（init が呼ぶ。Zephyr の `SYS_INIT()`）。関数は `nuttx/apps/wifi/` |
+| `zephyr/net/wifi_utils.h` | `wifi_utils_validate_chan()`（`_2g`・`_5g`・`_6g`）、`net_bytes_from_str()`（Zephyr では `<zephyr/net/net_ip.h>`） |
+| `zephyr/settings/settings.h` | `settings_subsys_init()`、`settings_save_one()`、`settings_delete()`、`settings_load_one()`。名前 1 つずつを NuttX の NVS（`/dev/config`）の同じ名前の項目で読み書きする（実装は `nuttx/apps/wifi/settings_nvs.c`）。部分木の読み込みとハンドラーは無い |
 | `zephyr_compat.h` | `zephyr_compat_initialize()`（ボードの起動処理が呼ぶ。下）、`K_THREAD_DEFINE_START()`（init が呼ぶ） |
 
 | ソース | 中身 |
@@ -327,7 +333,8 @@ Zephyr の API を、Zephyr の名前のまま最小限だけ用意したもの�
 | `sensor_default_rtio.c` | Zephyr の `drivers/sensor/default_rtio_sensor.c` の写し（ログだけ置き換え）。センサーの iodev の API、単発取得のフォールバック、既定のデコーダー |
 | `zephyr_device.c`、`zephyr_i2c.c` | デバイスの初期化と I2C |
 | `zephyr_hwinfo.c` | `hwinfo_get_device_id()`。ボードのチップ ID（`nano_chip_id()`） |
-| `zephyr_net_if.c`、`zephyr_net_mgmt.c`、`zephyr_wifi_mgmt.c` | インターフェース（NuttX のネットワークデバイスの値）、`net_mgmt` のイベントの待ち行列とスレッド、Wi-Fi の要求の処理（Zephyr の `subsys/net/l2/wifi/wifi_mgmt.c` の検査の写し）とイベント。`CONFIG_NANO_NINA_NET` のときだけ |
+| `zephyr_net_if.c`、`zephyr_net_mgmt.c`、`zephyr_wifi_mgmt.c` | インターフェース（NuttX のネットワークデバイスの値）、`net_mgmt` のイベントの待ち行列とスレッド、Wi-Fi の要求の処理（Zephyr の `subsys/net/l2/wifi/wifi_mgmt.c` の検査の写し）とイベント、`NET_REQUEST_WIFI_CONNECT_STORED`（同じファイルの `connect_stored_command()` の写し。`CONFIG_NANO_WIFI_CREDENTIALS` のとき）。`CONFIG_NANO_NINA_NET` のときだけ |
+| `zephyr_wifi_utils.c` | `wifi_security_txt()`・`wifi_band_txt()`（Zephyr の `wifi_mgmt.c`）、チャネルの検査（`wifi_utils.c`）、`net_bytes_from_str()`（`subsys/net/ip/utils.c`）の写し。`wifi cred` が使う。OS に依存しない。`CONFIG_NANO_NINA_NET` のときだけ |
 
 - **ワーク**: フラグ（RUNNING・CANCELING・QUEUED・DELAYED）と戻り値は `kernel/work.c` と同じです。
   `submit` はキュー済みなら何もしない（0）、実行中なら同じキューに入れ直す（2）。`schedule` は遅延中・
@@ -395,8 +402,8 @@ Zephyr の API を、Zephyr の名前のまま最小限だけ用意したもの�
   `CONFIG_HWINFO_RPI_PICO_CHIP_ID` なし）と同じく、外付け flash の 64 ビットの unique ID（コマンド 0x4B）を
   flash が送る順のまま返します（最大 8 バイト）。読み出しはボードが起動時に 1 回行い（`nano_chipid.c`）、
   ここではその写しを返します。ボードがまだ読んでいなければ `-EAGAIN` です（Zephyr のドライバーは失敗しない）。
-- **シェル**: `shell_print()`・`shell_error()` は改行を付けて標準出力・標準エラーに書きます（`kv` など
-  ほかのコマンドと同じ出力先）。`sh` の引数は評価するだけで使いません。コマンドの登録のマクロ
+- **シェル**: `shell_print()`・`shell_warn()`・`shell_error()` は改行を付けて標準出力・標準エラー・標準エラーに
+  書きます（`kv` などほかのコマンドと同じ出力先。Zephyr は警告を黄色、エラーを赤で出す）。`sh` の引数は評価するだけで使いません。コマンドの登録のマクロ
   （`SHELL_CMD_REGISTER()` など）は無く、コマンドの表は `nuttx/apps/subcmd` で書きます。
 - **ネットワーク**: `zsock_inet_pton()`・`zsock_inet_ntop()` は C ライブラリの関数です。ネットワークが無効な
   間は、`imu` が `CONFIG_LIBC_IPv4_ADDRCONV` を選んで IPv4 の変換を入れます。ソケットは NINA の usrsock
@@ -422,6 +429,10 @@ Zephyr の API を、Zephyr の名前のまま最小限だけ用意したもの�
   長さ 8〜64（WEP は 5/10/13/26）、セキュリティの種類ごとの必須項目）をしてからドライバーを呼びます
   （Zephyr 版の構成には wpa_supplicant が無い）。スキャンの結果は 1 件ずつ `NET_EVENT_WIFI_SCAN_RESULT`、
   終わりは `NET_EVENT_WIFI_SCAN_DONE`（`struct wifi_status`）のイベントにします。
+  `NET_REQUEST_WIFI_CONNECT_STORED` は、保存した資格情報を番号の順に読み、資格情報から接続の引数を作って
+  （チャネル 0 は「どれでも」、期限 0 は 30 秒、種類が範囲外なら暗号化なし、帯域と MFP はフラグから）
+  `NET_REQUEST_WIFI_CONNECT` を出し、最初に受け付けられたところで止めます。戻り値は常に 0 です（Zephyr と同じ。
+  Zephyr 版の構成ではこのファイルのログはレベル 0 で消えているので、ログも出しません）。
 - I2C のバスは、NuttX の I2C マスターと速さを持つデバイスです（`i2c_compat_bind()` でボードが結び付ける）。
   Zephyr ではバスのドライバーが速さを持ち、`i2c_configure()` が以後のすべての転送の速さを変えます。NuttX の
   転送はメッセージごとに周波数を持つので、互換層の転送（`i2c_burst_read_dt()` など）がデバイスの速さを

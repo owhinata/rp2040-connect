@@ -33,6 +33,7 @@ endif
 
 ifeq ($(CONFIG_NANO_NINA_NET),y)
 CSRCS += zephyr_net_if.c zephyr_net_mgmt.c zephyr_wifi_mgmt.c
+CSRCS += zephyr_wifi_utils.c
 endif
 
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)compat

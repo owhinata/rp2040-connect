@@ -14,7 +14,8 @@
  *   k_work_delayable_from_work(), k_work_queue_start(),
  *   k_work_queue_thread_get()
  *   K_THREAD_STACK_DEFINE(), K_THREAD_STACK_SIZEOF(), K_PRIO_PREEMPT(),
- *   k_thread_name_set(), K_THREAD_DEFINE() (started by the init task)
+ *   k_thread_name_set(), K_THREAD_DEFINE() (started by the init task),
+ *   k_current_get()
  *   K_MUTEX_DEFINE(), k_uptime_get(), k_sleep(), snprintk()
  *   (<zephyr/sys/printk.h>)
  *
@@ -244,6 +245,25 @@ typedef uint8_t k_thread_stack_t;
 #define K_THREAD_STACK_SIZEOF(sym) sizeof(sym)
 
 #define K_PRIO_PREEMPT(x) NANO_PRIO_FROM_ZEPHYR(x)
+
+/* The calling thread: its NuttX thread ID, which is what K_THREAD_DEFINE()
+ * stores in its k_tid_t (Zephyr: the thread's struct k_thread).
+ */
+
+#ifdef __NuttX__
+/* <unistd.h>'s; that header is not included here: its getopt() names
+ * (optarg, optind, ...) are macros.
+ */
+
+pid_t gettid(void);
+
+static inline k_tid_t k_current_get(void)
+{
+  return gettid();
+}
+#else
+k_tid_t k_current_get(void);
+#endif
 
 /* Names the thread (the name "ps" shows).  0 or -EINVAL. */
 

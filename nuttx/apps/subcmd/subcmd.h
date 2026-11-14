@@ -30,8 +30,12 @@
  *   reproduced: it is handled as a word that names no subcommand.
  * - "-h" and "--help" are ordinary words (SHELL_HELP_OPT_PARSE is off).
  *
- * Help lines are not wrapped at the terminal width (the Zephyr shell wraps
- * at 80 columns; every help text of the port fits).  Errors go to stderr,
+ * Help texts are laid out as the Zephyr shell does (formatted_text_print()
+ * of shell_help.c): a new line at each '\n' and before a word that would
+ * pass the 80th column (CONFIG_SHELL_DEFAULT_TERMINAL_WIDTH; the "resize"
+ * command is not provided), continued at the column where the text began;
+ * the Zephyr shell moves the cursor there with a VT100 sequence, this
+ * prints spaces.  Errors go to stderr,
  * which is the same console; stdout is flushed before returning.  The
  * return value is the exit status: EXIT_SUCCESS when the handler returned
  * 0, EXIT_FAILURE when it returned anything else or when only the help or
@@ -73,5 +77,12 @@ struct subcmd
  */
 
 int subcmd_main(const struct subcmd *root, int argc, char **argv);
+
+/* The help of ENTRY as subcmd_main() prints it ("<name> - <help>" and its
+ * subcommands): Zephyr's shell_help(), for a handler that prints the help
+ * of its own entry.
+ */
+
+void subcmd_help(const struct subcmd *entry);
 
 #endif /* __NUTTX_APPS_SUBCMD_SUBCMD_H */

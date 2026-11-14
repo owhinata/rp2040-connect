@@ -101,6 +101,13 @@
 #  define __aligned(x)        __attribute__((__aligned__(x)))
 #endif
 
+/* <zephyr/toolchain/common.h> */
+
+#ifndef STRINGIFY
+#  define Z_STRINGIFY(x)      #x
+#  define STRINGIFY(s)        Z_STRINGIFY(s)
+#endif
+
 #ifndef BUILD_ASSERT
 #  define BUILD_ASSERT(expr, ...) _Static_assert(expr, "" __VA_ARGS__)
 #endif

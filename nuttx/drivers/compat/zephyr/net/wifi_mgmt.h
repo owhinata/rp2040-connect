@@ -9,9 +9,11 @@
  *   wifi_iface_status, wifi_status; struct wifi_mgmt_ops (scan, connect,
  *   disconnect, iface_status) and the offloaded interface API;
  *   NET_DEVICE_DT_OFFLOAD_DEFINE();
- *   the requests NET_REQUEST_WIFI_SCAN, _CONNECT, _DISCONNECT and
- *   _IFACE_STATUS (net_mgmt(), handlers in zephyr_wifi_mgmt.c with the
- *   checks of Zephyr's subsys/net/l2/wifi/wifi_mgmt.c);
+ *   the requests NET_REQUEST_WIFI_SCAN, _CONNECT, _DISCONNECT,
+ *   _IFACE_STATUS and _CONNECT_STORED (net_mgmt(), handlers in
+ *   zephyr_wifi_mgmt.c with the checks of Zephyr's
+ *   subsys/net/l2/wifi/wifi_mgmt.c);
+ *   wifi_security_txt(), wifi_band_txt() (zephyr_wifi_utils.c);
  *   the events NET_EVENT_WIFI_SCAN_RESULT, _SCAN_DONE, _CONNECT_RESULT and
  *   _DISCONNECT_RESULT and wifi_mgmt_raise_connect_result_event(),
  *   wifi_mgmt_raise_disconnect_result_event().
@@ -22,6 +24,10 @@
 
 #ifndef __NUTTX_DRIVERS_COMPAT_ZEPHYR_NET_WIFI_MGMT_H
 #define __NUTTX_DRIVERS_COMPAT_ZEPHYR_NET_WIFI_MGMT_H
+
+#ifdef __NuttX__
+#  include <nuttx/config.h>
+#endif
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -34,8 +40,13 @@
 /* <zephyr/net/wifi.h> ----------------------------------------------------*/
 
 #define WIFI_SSID_MAX_LEN  32
+#define WIFI_PSK_MIN_LEN   8
 #define WIFI_PSK_MAX_LEN   64
+#define WIFI_SAE_PSWD_MAX_LEN 128
 #define WIFI_MAC_ADDR_LEN  6
+#define WIFI_ENT_IDENTITY_MAX_LEN 64
+#define WIFI_ENT_PSWD_MAX_LEN 128
+#define WIFI_CHANNEL_MIN   1
 #define WIFI_CHANNEL_MAX   233
 #define WIFI_CHANNEL_ANY   255
 
@@ -153,6 +164,13 @@ enum wifi_scan_type
   WIFI_SCAN_TYPE_ACTIVE = 0,
   WIFI_SCAN_TYPE_PASSIVE,
 };
+
+/* User-friendly names of a security type and a band (Zephyr's
+ * subsys/net/l2/wifi/wifi_mgmt.c; here in zephyr_wifi_utils.c).
+ */
+
+const char *wifi_security_txt(enum wifi_security_type security);
+const char *wifi_band_txt(enum wifi_frequency_bands band);
 
 /* <zephyr/net/wifi_mgmt.h> -----------------------------------------------*/
 
@@ -301,6 +319,18 @@ NET_MGMT_DEFINE_REQUEST_HANDLER(NET_REQUEST_WIFI_SCAN);
 NET_MGMT_DEFINE_REQUEST_HANDLER(NET_REQUEST_WIFI_CONNECT);
 NET_MGMT_DEFINE_REQUEST_HANDLER(NET_REQUEST_WIFI_DISCONNECT);
 NET_MGMT_DEFINE_REQUEST_HANDLER(NET_REQUEST_WIFI_IFACE_STATUS);
+
+/* NET_REQUEST_WIFI_CONNECT_STORED (CONFIG_WIFI_CREDENTIALS_CONNECT_STORED):
+ * a connection request (NET_REQUEST_WIFI_CONNECT) with each stored network
+ * (<zephyr/net/wifi_credentials.h>) in turn until one is accepted; the
+ * handler is Zephyr's connect_stored_command(), in zephyr_wifi_mgmt.c, with
+ * the stored credentials of nuttx/apps/wifi (CONFIG_NANO_WIFI_CREDENTIALS).
+ */
+
+#ifdef CONFIG_NANO_WIFI_CREDENTIALS
+#  define NET_REQUEST_WIFI_CONNECT_STORED 5
+NET_MGMT_DEFINE_REQUEST_HANDLER(NET_REQUEST_WIFI_CONNECT_STORED);
+#endif
 
 /* Events (bits of this port, see <zephyr/net/net_mgmt.h>).  The
  * information is a struct wifi_scan_result (SCAN_RESULT) or a struct

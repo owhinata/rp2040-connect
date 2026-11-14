@@ -8,9 +8,9 @@ OS-independent common sources, the board definition with its build, the USB cons
 flashing script, the RAM log, the key-value store (`kv`), the SPI link to the NINA-W102
 (`nina version`), the NINA's sockets (usrsock: the control side and sending and receiving) and
 name resolution, I2C0 (with DMA), the LSM6DSOX driver with its FIFO stream, the IMU
-acquisition service (`imu`), and the Wi-Fi network device (`wapi`, `ifconfig`). Stored
-credentials and automatic reconnection are not there yet, and a transport stub counts the
-acquired batches and drops them (see "IMU acquisition (`imu`)").
+acquisition service (`imu`), the Wi-Fi network device (`wapi`, `ifconfig`), and stored Wi-Fi
+credentials with automatic reconnection (`wifi cred`). A transport stub counts the acquired
+batches and drops them (see "IMU acquisition (`imu`)").
 
 ## Setup
 
@@ -202,7 +202,9 @@ picocom /dev/serial/by-id/usb-NuttX_NuttX_USB_Console_*-if00
 - `irqstack` prints the peak use of the interrupt stack since boot in one line (the format of the
   `IRQ 00` line of the Zephyr version's `kernel thread stacks`; see "Thread priorities and
   stacks").
-- Wi-Fi is handled with NuttX's own `wapi` and `ifconfig` (see "Wi-Fi (`wapi`, `ifconfig`)").
+- Wi-Fi is handled with NuttX's own `wapi` and `ifconfig` (see "Wi-Fi (`wapi`, `ifconfig`)"). The
+  credentials are stored with the Zephyr version's `wifi cred` (see "Stored Wi-Fi credentials and
+  automatic reconnection (`wifi cred`)").
 - The log is kept in RAM and is not written to the console, as in the Zephyr version; `dmesg`
   shows it (see "Log").
 - The shell (the nsh session) and the commands it starts run at priority 104, the place of the
@@ -275,8 +277,11 @@ compatible with the Zephyr version's.
   request outside the range does nothing and fails.
 - Format: NuttX's NVS (`drivers/mtd/mtd_config_nvs.c`, `CONFIG_MTD_CONFIG_NVS`,
   `CONFIG_MTD_CONFIG_NAMED`, names up to 63 characters) as `/dev/config`, with the Zephyr version's
-  names `app_kv/<key>`. The MTD reports a 1-byte program unit (so that entries are packed) and
-  programs the flash in 256-byte pages, with 0xff outside the data.
+  names `app_kv/<key>`. The Wi-Fi credentials are in the same `/dev/config`, under the names of
+  the Zephyr version's settings, `wifi_cred/<index>` (`kv` cannot see or delete them; see "Stored
+  Wi-Fi credentials and automatic reconnection (`wifi cred`)"). The MTD reports a 1-byte program
+  unit (so that entries are packed) and programs the flash in 256-byte pages, with 0xff outside
+  the data.
 - First boot after the Zephyr version: at boot, an area that is neither in this format nor fully
   erased (the Zephyr version's data is still there) is erased before it is used, and `dmesg` shows
   `<wrn> fs_nvs: Erasing the key-value area: not in this build's format`. A normal boot shows only
@@ -309,7 +314,9 @@ compatible with the Zephyr version's.
   to 22 entries (checked on the board: the write after the area is full gives
   `KV write failed: -28`). The Zephyr version (settings on NVS, the same 4 KiB × 2) stores a name and
   a value per entry (183 bytes for the same entry), about the same. Storing the value that is
-  already stored writes nothing.
+  already stored writes nothing. A stored Wi-Fi network takes 12 + 224 + 16 = 252 bytes (the name
+  `wifi_cred/<index>` with its terminator, `struct wifi_credentials_personal`, the index entry),
+  in the same area, for up to 2 networks.
 - Updates and compaction: an update appends the new entry and marks the old one; when an erase
   sector is full, the live entries are copied to the other sector and the full one is erased
   (NVS garbage collection). XIP stops while the flash is erased or programmed, so this runs from
@@ -341,8 +348,12 @@ number of arguments) is `SUBCMD()`, and `SHELL_CMD_ARG()` (mandatory and optiona
   words there, as in the Zephyr shell (`kv get a*` is a wrong number of arguments, `nina version *`
   is `nina version`). When it does match subcommands (the Zephyr shell expands it to their names),
   this is not reproduced: the word is taken as an unknown word.
-- `-h` and `--help` are ordinary words (as in the Zephyr version). Help lines are not wrapped at
-  80 columns.
+- `-h` and `--help` are ordinary words (as in the Zephyr version).
+- Help texts are laid out as the Zephyr shell lays them out (`formatted_text_print()` of
+  `shell_help.c`): a new line at each newline of the text and before a word that would pass column
+  80, the next line starting at the column where the text began (the Zephyr shell moves the cursor
+  there with a VT100 sequence; the port prints spaces). A newline at the end of a text leaves one
+  empty line, as in Zephyr. There is no `resize` command to change the terminal width.
 - The exit status is 0 on success and 1 on failure, help or a wrong number of arguments.
 
 ### Moving the values from the Zephyr version
@@ -350,12 +361,19 @@ number of arguments) is `SUBCMD()`, and `SHELL_CMD_ARG()` (mandatory and optiona
 ```bash
 # Back up while the Zephyr version runs (host/recordings/kv-backup.json, not in Git)
 host/.venv/bin/python script/kv_transfer.py backup --usb
-# Write them back after flashing the NuttX port (without registering Wi-Fi)
+# Write them back after flashing the NuttX port, and register Wi-Fi (the password is typed at the
+# terminal; the SSID defaults to rp2040-test, --ssid for another access point)
+host/.venv/bin/python script/kv_transfer.py restore --usb
+# Without registering Wi-Fi
 host/.venv/bin/python script/kv_transfer.py restore --usb --no-wifi
 ```
 
 `restore` writes with `kv sethex` and checks by reading back with `kv get` (`imu.session` is not
-written back). After calibration values it sends `imu cal reload`; `imu cal` of the NuttX port is
+written back). For Wi-Fi it sends `wifi cred add -s <SSID> -k 1 -p <password>` (which prints
+nothing on success, as in the Zephyr version) and `wifi cred auto_connect`. The credentials cannot
+be carried over from the Zephyr version's flash (the stored formats differ), so the password is
+typed then. With 2 networks already stored, `wifi cred add` fails with
+`Failed to add network credentials, err: -105` (delete one with `wifi cred delete` first). After calibration values it sends `imu cal reload`; `imu cal` of the NuttX port is
 still a stub that fails, so the script ends with an error there, after the values have been
 written and read back.
 
@@ -368,7 +386,7 @@ transfer layer that sends one command and receives its answer (`nina_request()`,
 accept, connect, setsockopt, sending and receiving, `FIONREAD`), the NINA's name resolution
 (`nina_getaddrinfo()`), and the Wi-Fi network device `wlan0` (scan, connect, disconnect, status,
 link monitor) ("Sockets (usrsock)", "Name resolution" and "Wi-Fi" in `nuttx/drivers/README.md`).
-Stored credentials and automatic reconnection (`wifi cred`) are not there yet.
+Stored credentials and automatic reconnection (`wifi cred`) are in their own section below.
 
 ```
 nsh$ nina version
@@ -427,7 +445,7 @@ used. The driver's work is the Zephyr version's `drivers/nina/nina_net.c` itself
 | `wifi scan` | `wapi scan wlan0` |
 | `wifi status` | `wapi show wlan0` and `ifconfig wlan0` (below) |
 | `net iface` | `ifconfig` |
-| `wifi cred add/delete/list/auto_connect` | Not there yet |
+| `wifi cred add/delete/list/auto_connect` | The same (`wifi cred`; see "Stored Wi-Fi credentials and automatic reconnection (`wifi cred`)" below) |
 
 - In `wapi psk`, 3 is the CCMP cipher and the version defaults to WPA2: the Zephyr version's `-k 1`
   (WPA2-PSK). What `wapi psk` sets is used by the next `wapi essid` only and then forgotten, the
@@ -458,6 +476,74 @@ used. The driver's work is the Zephyr version's `drivers/nina/nina_net.c` itself
   `wlerr()`, which this configuration leaves out). Its exit status is 1, so `echo $?` tells. The
   Zephyr version's `wifi` commands print the error value.
 - `ifconfig wlan0 down` and `up` do nothing (the Zephyr version's interface is always up as well).
+
+### Stored Wi-Fi credentials and automatic reconnection (`wifi cred`)
+
+The credentials of the networks to join are stored, and the board joins again by itself at boot
+and when the connection is lost. The credentials are a copy of Zephyr's library
+(`subsys/net/lib/wifi_credentials/` with its settings backend), the command a copy of
+`wifi_credentials_shell.c`, and the reconnection a copy of the Zephyr version's
+`src/wifi_profile.c` with only the calls into the system replaced (`nuttx/apps/wifi/`). Syntax,
+output, error messages and return values are the Zephyr version's.
+
+```
+wifi cred add -s <SSID> [-k <type>] [-p <passphrase>] [-c <channel>] [-b <band>] [-w <MFP>] [-m <BSSID>]
+                                     store (replaces the same SSID; prints nothing on success)
+wifi cred delete <SSID>              delete (prints Deleting network ssid: ...)
+wifi cred list                       list by stored index (with the passphrase, as in the Zephyr version)
+wifi cred auto_connect               ask for a connection with the stored networks (does not wait)
+```
+
+```text
+nsh$ wifi cred add -s example-ap -k 1 -p example-pass
+nsh$ wifi cred list
+  network ssid: "example-ap", ssid_len: 10, type: WPA2-PSK, password: "example-pass", password_len: 12, MFP_OPTIONAL
+```
+
+- Number and lengths: up to 2 networks (`CONFIG_NANO_WIFI_CREDENTIALS_MAX_ENTRIES`, the Zephyr
+  version's `CONFIG_WIFI_CREDENTIALS_MAX_ENTRIES=2`). A third gives
+  `Failed to add network credentials, err: -105` (`ENOBUFS`), and `dmesg` shows
+  `<err> wifi_credentials: Cannot store WiFi credentials, no space left` (as in the Zephyr
+  version). SSIDs are 1 to 32 characters (`SSID too long (max 32 characters)`,
+  `SSID not provided`), passphrases 8 to 64 (`Passphrase should be minimum 8 characters`,
+  `Passphrase too long (max 64 characters)`); the NINA takes passphrases up to 63 characters only
+  (as in the Zephyr version).
+- Type (`-k`): Zephyr's number (0 none, 1 WPA2-PSK, 2 WPA2-PSK-SHA256, 3 WPA3-SAE and so on; see the
+  help of `-h`) is stored as it is. As in the Zephyr version only 0 and 1 can connect; stored
+  networks of other types are skipped by the automatic connection. A passphrase without `-k` is
+  stored with the warning `Passphrase provided without security configuration`. `-t` gives
+  `Invalid option`, as in the Zephyr version (it is in the option string but not handled).
+- `wifi cred`, `wifi` alone, or an unknown word print the help; `add` with other than 1 to 13
+  words prints `add: wrong parameter count` and the help (see "Subcommands of the commands"). The
+  only subcommand of `wifi` is `cred` (the others are `wapi` and `ifconfig`).
+- Options are parsed by NuttX's `getopt_long()`, which, unlike Zephyr's `sys_getopt_long()`, does
+  not move the words that are not options to the end (options after such a word are not read),
+  and does not log the line the Zephyr version logs for an unknown option (`<wrn> sys_getopt`).
+- Storage: each network is written at once, on every `add` and `delete`, to `wifi_cred/<index>` in
+  `/dev/config` (the lowest free index), as Zephyr's `struct wifi_credentials_personal`. At boot,
+  init reads the stored SSIDs (where the Zephyr library's `SYS_INIT()` runs, before the threads
+  start). The keys of `kv` start with `app_kv/`, so `kv` can neither read nor delete the
+  credentials (`wifi_cred/0` contains `/`: `KV read failed: -22`). As with the KV, the store is not
+  compatible with the Zephyr version's.
+- Automatic reconnection (thread `wifi_reconnect_tid`, Zephyr priority 8 → 110, 2048-byte stack):
+  when networks are stored, at boot (`wifi_profile_init()`) and when the connection is lost (the
+  link monitor finds it gone, or after a scan while connected), it waits 4 seconds, asks for a
+  connection with the stored networks (`NET_REQUEST_WIFI_CONNECT_STORED`: in stored order, until
+  one request is accepted), then checks every second and asks again after 32 seconds without an
+  address. After `wapi disconnect wlan0` (a disconnection asked for) it does not reconnect until
+  the next successful connection (as in the Zephyr version). With nothing stored it does nothing.
+  A refused request (other than `EBUSY` and `EALREADY`) logs
+  `<wrn> wifi_profile: Stored Wi-Fi request failed: <value>`; a failed connection itself
+  (`ETIMEDOUT` after about 30 seconds) is not logged (nor in the Zephyr version).
+- `wifi cred auto_connect` only asks for a connection from the shell and does not start the
+  automatic reconnection (a successful connection does). When the request is refused it prints
+  `An error occurred when trying to auto-connect to a network. err: <value>` (the exit status is
+  always 0, as in the Zephyr version).
+- The migration of the Zephyr version's old profile formats (the KV key `sys.wifi_profile`, the
+  settings item `wifi_last/last`) runs at boot as in the Zephyr version, and finds nothing: they
+  are never in the port's store.
+- The passphrase is shown by `wifi cred list` (as in the Zephyr version) and nowhere else: not in
+  the log, not in error messages.
 
 ## I2C0 (`i2c`)
 
@@ -643,7 +729,7 @@ Subcommands:
   NuttX port starts at 1.
 - init calls, in the order of the Zephyr version's `main()`, `kv_store_init()` →
   `imu_cal_init()` (on failure `Could not set up the IMU calibration: <value>`) →
-  `time_sync_init()` (`wifi_profile_init()` is not ported yet).
+  `time_sync_init()` → `wifi_profile_init()`.
 
 **Stubs for now** (`nuttx/apps/imu/*_null.c`, each replaced by its port):
 
@@ -743,10 +829,10 @@ Priorities map as `NuttX = 118 − Zephyr`; `nuttx/drivers/include/priorities.h`
   no thread has a higher priority. The two at 119 take turns by time slicing (Zephyr's cooperative
   threads only switch when one yields).
 - The `K_THREAD_DEFINE()` threads (`nina_scan_tid`, `nina_connect_tid`, `nina_monitor_tid`,
-  `imu_stream_tid`) are started by init at the start of its start-up work, as the Zephyr version
+  `imu_stream_tid`, `wifi_reconnect_tid`) are started by init at the start of its start-up work, as the Zephyr version
   starts them before `main()`.
-- The stacks of `imu_stream_tid`, `imu_fifo_worker`, `sysworkq`, `RTIO WQ 0`, `net_mgmt` and the
-  `nina_*_tid` threads are static arrays
+- The stacks of `imu_stream_tid`, `imu_fifo_worker`, `sysworkq`, `RTIO WQ 0`, `net_mgmt`, the
+  `nina_*_tid` threads and `wifi_reconnect_tid` are static arrays
   as in Zephyr (`K_THREAD_DEFINE()`, `K_THREAD_STACK_DEFINE()`, NuttX's
   `kthread_create_with_stack()`). `ps` shows them smaller by the area NuttX puts at their start
   (2048 → 2008, 2000 for `imu_stream_tid`; 1024 → 976).
@@ -801,7 +887,7 @@ stored calibration format, gyro zero tracking at rest, the board's time conversi
 pieces, line prefix and rate limit (`log_ram`), the key-value area's range checks, page writes and
 boot-time contents check (`nano_flash_kv`), the key rules of the key-value store (`kv_name`) and
 the hex conversions of the `kv` command (`kv_hex`), the handling of the commands' subcommands
-(`subcmd`), the NINA's SPI transfer layer (`nina_spi`), the NINA's socket table and commands
+(`subcmd`), the stored Wi-Fi credentials and the `wifi cred` command (`wifi_cred`), the NINA's SPI transfer layer (`nina_spi`), the NINA's socket table and commands
 (`nina_sock`), the NINA's name resolution (`nina_dns`), the OS-independent part of the I2C0
 driver (`nano_i2c_dw`), the command words of the I2C0 DMA reads (`i2c_dma_commands`), the
 output of the `i2c_dma` command (`i2c_dma_app`, with the driver side replaced by fakes), the
@@ -825,7 +911,8 @@ content.
 | `nuttx/tests/fakes/` | `tests/fakes/` | stand-ins for the Zephyr and ST headers the tests need (`zephyr/drivers/sensor.h`, `zephyr/drivers/sensor_clock.h`, `zephyr/drivers/i2c.h`, `zephyr/rtio/rtio.h`, `lsm6dso_reg.h`) |
 
 `nuttx/drivers/nina/nina_net.c` is a copy with only the leading comment and `<nuttx/config.h>`
-added; `nuttx/apps/imu/imu_stream.c` is a copy with only the calls into the system and the command
+added; `nuttx/apps/wifi/wifi_profile.c` is a copy with only the includes (the log is `app_log.h`)
+and the declaration of `wifi_reconnect_tid` (without `const`) changed; `nuttx/apps/imu/imu_stream.c` is a copy with only the calls into the system and the command
 registration at the end replaced; `imu_raw_mqtt.h` is a copy with `<zephyr/net/net_ip.h>` replaced
 by `<netinet/in.h>`.
 
@@ -858,7 +945,17 @@ happen to pass NuttX's CRC). `kv_name` checks the key checks split out of the Ze
 (`apps/kv/kv_hex.c`).
 
 `nuttx/tests/subcmd.c` checks `apps/subcmd/subcmd.c` with the tables of `kv` and `nina` (the help
-is the one recorded from the Zephyr version), a nested table and optional arguments.
+is the one recorded from the Zephyr version), a nested table, optional arguments, and the layout of
+help texts (newlines, the line break before column 80, a newline at the end).
+
+`nuttx/tests/wifi_cred.c` checks the copies of Zephyr's library in `apps/wifi/`
+(`wifi_credentials.c`, the settings backend) and the `wifi cred` command (the copy of
+`wifi_credentials_shell.c`, `subcmd`, the layer's `zephyr_wifi_utils.c`) on a fake settings store
+of named items: loading at boot, the stored names (`wifi_cred/<index>`, apart from `app_kv/`) and
+contents, the length limits (SSID 32/33, passphrase 7/8/64/65), the third network's `-105` and its
+log line, replacing the same SSID and the list in index order, each option and error message, a
+stored value of the wrong length, a store failure, `auto_connect`, and the help of `wifi` and
+`wifi cred`. The expected output is what Zephyr's sources print.
 `nuttx/tests/nina_spi.c` checks `drivers/nina/nina_spi.c` with a fake SPI, GPIO, clock and lock: the
 cases of the Zephyr version's `tests/nina_spi.c` (wide parameters and padding, bulk transfers, the
 three answer parameters of 0x75 and 0x7a, the length checks, a failing transfer), and also narrow
