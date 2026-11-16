@@ -11,21 +11,17 @@ fi
 _openmv_setup() {
   # ---- Pinned versions (change them here only) ------------------------------
   # OpenMV firmware.  Its submodules (MicroPython and others) are pinned by
-  # this commit.  v4.7.0 is the last release that OpenMV built and published
-  # for this board.  v4.8.1 builds, but stops on the board when a script is
-  # interrupted with Ctrl-C; in v5.x the rp2 port does not build (it refers
-  # to common/usbdbg.c, which was removed).
-  local openmv_tag=v4.7.0
-  local openmv_commit=2206dcb31c2a854c79e83cd62d6b55939f6c351a
-  # OpenMV SDK (Arm GNU toolchain, CMake and other tools).  OpenMV has an SDK
-  # from v5.0.0 on; 1.6.0 is the one of v5.0.1.  Its compiler is Arm GNU
-  # Toolchain 14.3.Rel1 (OpenMV's CI used 13.2.Rel1 for v4.7.0).
+  # this commit.  The rp2 port of this release needs patches/openmv/.
+  local openmv_tag=v5.0.1
+  local openmv_commit=631681e5ac5ab332c920b6bf9cd3dba5cf299eac
+  # OpenMV SDK (Arm GNU toolchain 14.3.Rel1, CMake and other tools).  The
+  # version is the one named in openmv/SDK_VERSION at the tag above.
   local sdk_version=1.6.0
   local sdk_sha256=93003345f37b910e66bb2a41fa19f17160437693cbc0452f6d47d3c37da37a14
   # Submodules of openmv that the rp2 port builds from, and the submodules
   # of MicroPython that the board needs: the ones its CMake configuration
   # lists (UPDATE_SUBMODULES), and pico-sdk.
-  local -a openmv_submodules=(lib/micropython modules/ulab)
+  local -a openmv_submodules=(lib/micropython modules/ulab lib/apriltag)
   local -a mpy_submodules=(lib/pico-sdk lib/mbedtls lib/tinyusb lib/mynewt-nimble lib/micropython-lib)
   # ---------------------------------------------------------------------------
 
@@ -75,6 +71,68 @@ _openmv_setup() {
       git -C "$omv" submodule update --init --depth=1 -- "$sm" || return 1
     fi
   done
+
+  # Apply patches/<name>/*.patch to a clone, in name order.  What has been
+  # applied is recorded in the clone's .git/openmv-patches/ (a copy of each
+  # applied patch and the list in "applied"), outside the work tree.  When
+  # the set of patches differs from the record (a patch added, removed or
+  # changed), the recorded patches are taken back in reverse order and the
+  # current ones applied.  A clone with local changes but no record is left
+  # alone (restore it with "git checkout -- ." first).
+  _openmv_patch() {  # clone patchdir
+    local dir=$1 pdir=$2 rec p name want="" have="" i
+    local -a old=()
+    rec="${dir}/.git/openmv-patches"
+    if [[ -d "$pdir" ]]; then
+      for p in "$pdir"/*.patch; do
+        [[ -f "$p" ]] || continue
+        want+="$(basename -- "$p") $(sha256sum < "$p" | cut -d' ' -f1)"$'\n'
+      done
+    fi
+    [[ -f "${rec}/applied" ]] && have="$(cat "${rec}/applied")"$'\n'
+    [[ "$have" == $'\n' ]] && have=""
+    [[ "$want" == "$have" ]] && return 0
+
+    if [[ ! -f "${rec}/applied" ]] && ! git -C "$dir" diff --quiet; then
+      printf '%s has local changes and no record of applied patches;\n' "$dir" >&2
+      printf 'restore it with "git -C %s checkout -- ." and source setup.sh again.\n' "$dir" >&2
+      return 1
+    fi
+
+    # Take back what is applied, last first.
+    if [[ -f "${rec}/applied" ]]; then
+      mapfile -t old < <(cut -d' ' -f1 "${rec}/applied")
+      for (( i = ${#old[@]} - 1; i >= 0; i-- )); do
+        name=${old[i]}
+        [[ -n "$name" ]] || continue
+        if ! git -C "$dir" apply --reverse "${rec}/${name}"; then
+          printf 'Cannot take back %s from %s; restore it with "git -C %s checkout -- ."\n' \
+            "$name" "$dir" "$dir" >&2
+          printf 'and remove %s, then source setup.sh again.\n' "$rec" >&2
+          return 1
+        fi
+        printf 'Reverted %s\n' "$name"
+      done
+    fi
+    rm -rf "$rec" && mkdir -p "$rec" && : > "${rec}/applied" || return 1
+
+    [[ -n "$want" ]] || return 0
+    for p in "$pdir"/*.patch; do
+      [[ -f "$p" ]] || continue
+      name="$(basename -- "$p")"
+      if ! git -C "$dir" apply --check "$p"; then
+        printf 'Patch %s does not apply to %s.\n' "$p" "$dir" >&2
+        return 1
+      fi
+      git -C "$dir" apply "$p" && cp -- "$p" "${rec}/${name}" || return 1
+      printf '%s %s\n' "$name" "$(sha256sum < "$p" | cut -d' ' -f1)" >> "${rec}/applied"
+      printf 'Applied %s\n' "${p#"${root}/"}"
+    done
+  }
+
+  # The rp2 port of this release does not build and its protocol code faults
+  # on the Cortex-M0+; patches/openmv/ brings it up (see openmv/README.md).
+  _openmv_patch "$omv" "${root}/patches/openmv" || return 1
 
   # OpenMV SDK ----------------------------------------------------------------
   # An SDK of the right version in OpenMV's default place (~/openmv-sdk-<ver>,
@@ -151,7 +209,7 @@ _openmv_setup() {
 
 _openmv_setup
 _openmv_setup_status=$?
-unset -f _openmv_setup _openmv_sdk_ok
+unset -f _openmv_setup _openmv_sdk_ok _openmv_patch
 if (( _openmv_setup_status != 0 )); then
   unset _openmv_setup_status
   return 1

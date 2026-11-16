@@ -15,7 +15,7 @@ Usage: openmv/script/build.sh [options]
 
   (no option)   Build mpy-cross and the firmware, copy firmware.uf2,
                 firmware.bin and firmware.elf to openmv/build/.
-  --clean       Remove openmv/build first.
+  --clean       Remove openmv/build/<target> first.
   -j N          Parallel jobs for make (default: number of CPUs).
   -v            Verbose make output (V=1).
   -h, --help    Show this help.
@@ -59,7 +59,7 @@ set -eu
 command -v arm-none-eabi-gcc >/dev/null || die "arm-none-eabi-gcc not found"
 command -v cmake >/dev/null || die "cmake not found"
 
-make_args=(-C "$omv" TARGET="$target")
+make_args=(-C "$omv" TARGET="$target" SDK_DIR="$OPENMV_SDK_DIR")
 (( verbose )) && make_args+=(V=1)
 
 # Build --------------------------------------------------------------------------
@@ -77,7 +77,7 @@ make "${make_args[@]}" -j"$jobs"
 
 # Output -------------------------------------------------------------------------
 step "Output"
-bin_dir="${omv}/build/bin"
+bin_dir="${omv}/build/${target}/bin"
 [[ -f "${bin_dir}/firmware.uf2" ]] || die "firmware.uf2 is missing after the build"
 mkdir -p "$out_dir"
 cp -- "${bin_dir}/firmware.uf2" "${bin_dir}/firmware.bin" "${bin_dir}/firmware.elf" "$out_dir/"

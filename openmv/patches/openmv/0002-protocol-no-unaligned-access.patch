@@ -1,0 +1,48 @@
+diff --git a/common/omv_buffer.h b/common/omv_buffer.h
+index 45ab5ce..4a80d8d 100644
+--- a/common/omv_buffer.h
++++ b/common/omv_buffer.h
+@@ -74,7 +74,10 @@ static inline void *omv_buffer_data(omv_buffer_t *buf) {
+ // Peek at 16-bit value at start of buffer
+ // Caller must ensure omv_buffer_avail(buf) >= 2
+ static inline uint16_t omv_buffer_peek16(omv_buffer_t *buf) {
+-    return *((uint16_t *) buf->read_ptr);
++    // read_ptr can be at any address: no unaligned access (Cortex-M0+).
++    uint16_t value;
++    memcpy(&value, buf->read_ptr, sizeof(value));
++    return value;
+ }
+ 
+ // Mark data as consumed and advance read pointer
+diff --git a/common/omv_crc.h b/common/omv_crc.h
+index 3febe73..13ea0c7 100644
+--- a/common/omv_crc.h
++++ b/common/omv_crc.h
+@@ -70,10 +70,11 @@ static inline uint32_t omv_crc_update(omv_crc_size_t size, uint32_t crc, const v
+ // Read CRC value from the last bytes of buffer
+ static inline uint32_t omv_crc_read(omv_crc_size_t crc_size, const void *buf, size_t size) {
+     const uint8_t *crc_buf = (const uint8_t *) buf + size - (crc_size == OMV_CRC16 ? 2 : 4);
++    // crc_buf can be at any address: no unaligned access (Cortex-M0+).
+     if (crc_size == OMV_CRC16) {
+-        return *((uint16_t *) crc_buf);
++        return crc_buf[0] | (crc_buf[1] << 8);
+     } else {
+-        return *((uint32_t *) crc_buf);
++        return crc_buf[0] | (crc_buf[1] << 8) | (crc_buf[2] << 16) | ((uint32_t) crc_buf[3] << 24);
+     }
+ }
+ 
+diff --git a/protocol/omv_protocol.c b/protocol/omv_protocol.c
+index 3976bfb..1f69e47 100644
+--- a/protocol/omv_protocol.c
++++ b/protocol/omv_protocol.c
+@@ -386,7 +386,8 @@ int omv_protocol_send_packet(uint8_t opcode, uint8_t channel_id, size_t size, co
+ 
+         // Calculate payload CRC (excluding the CRC field itself)
+         if (ctx.config.crc_enabled && size && data) {
+-            *((uint32_t *) crc32_bytes) = omv_crc_start(OMV_CRC32, data, frag_len);
++            uint32_t crc32 = omv_crc_start(OMV_CRC32, data, frag_len);
++            memcpy(crc32_bytes, &crc32, sizeof(crc32));
+         }
+ 
+         // Set up ACK waiting context

@@ -1,0 +1,343 @@
+diff --git a/common/omv_cycles.c b/common/omv_cycles.c
+index 2290be5..aa0e376 100644
+--- a/common/omv_cycles.c
++++ b/common/omv_cycles.c
+@@ -27,10 +27,12 @@
+ #include "omv_cycles.h"
+ 
+ void omv_cycles_init(void) {
++    #if defined(DWT)
+     CoreDebug->DEMCR |= CoreDebug_DEMCR_TRCENA_Msk;
+     #if __CORTEX_M == 7
+     DWT->LAR = 0xc5acce55;
+     #endif
+     DWT->CYCCNT = 0;
+     DWT->CTRL |= DWT_CTRL_CYCCNTENA_Msk;
++    #endif
+ }
+diff --git a/common/omv_cycles.h b/common/omv_cycles.h
+index 0f418a0..a3c12ea 100644
+--- a/common/omv_cycles.h
++++ b/common/omv_cycles.h
+@@ -28,6 +28,7 @@
+ #include <stdint.h>
+ #include CMSIS_MCU_H
+ 
++#if defined(DWT)
+ #ifndef OMV_CPU_FREQ_HZ
+ #define OMV_CPU_FREQ_HZ         SystemCoreClock
+ #endif
+@@ -40,6 +41,19 @@ void omv_cycles_init(void);
+ static inline uint32_t omv_cycles_now(void) {
+     return DWT->CYCCNT;
+ }
++#else
++// Cores without a DWT cycle counter (Cortex-M0+): count microseconds.
++#include "py/mphal.h"
++
++#define OMV_CYCLES_PER_US       (1UL)
++#define OMV_CYCLES_PER_MS       (1000UL)
++
++void omv_cycles_init(void);
++
++static inline uint32_t omv_cycles_now(void) {
++    return mp_hal_ticks_us();
++}
++#endif
+ 
+ static inline uint32_t omv_cycles_to_us(uint32_t cycles) {
+     return cycles / OMV_CYCLES_PER_US;
+diff --git a/ports/rp2/main.c b/ports/rp2/main.c
+index db4d067..ed49bdf 100644
+--- a/ports/rp2/main.c
++++ b/ports/rp2/main.c
+@@ -38,6 +38,7 @@
+ #include "extmod/modmachine.h"
+ #include "shared/readline/readline.h"
+ #include "shared/runtime/gchelper.h"
++#include "shared/runtime/interrupt_char.h"
+ #include "shared/runtime/pyexec.h"
+ #include "shared/runtime/softtimer.h"
+ #include "tusb.h"
+@@ -63,8 +64,10 @@
+ #include "framebuffer.h"
+ #include "omv_i2c.h"
+ #include "omv_csi.h"
+-#include "usbdbg.h"
+-#include "tinyusb_debug.h"
++#include "omv_protocol.h"
++#if MICROPY_PY_PROTOCOL
++#include "py_protocol.h"
++#endif
+ #include "py_fir.h"
+ #if MICROPY_PY_AUDIO
+ #include "py_audio.h"
+@@ -155,6 +158,9 @@ int main(int argc, char **argv) {
+     OMV_BOARD_UID_ADDR = pico_unique_id.id;
+     pico_get_unique_board_id(&pico_unique_id);
+ 
++    // Claims a hardware alarm: only once, as in MicroPython's main.c.
++    soft_timer_init();
++
+ soft_reset:
+     // Initialise stack extents and GC heap.
+     mp_init_gc_stack(&__StackBottom, &__StackTop, &gc_heap[0], &gc_heap[MP_ARRAY_SIZE(gc_heap)], 256);
+@@ -178,8 +184,9 @@ soft_reset:
+     #endif
+ 
+     pendsv_init();
+-    soft_timer_init();
+-    usbdbg_init();
++    #if MICROPY_PY_PROTOCOL
++    py_protocol_init0();
++    #endif
+ 
+     uma_init();
+     framebuffer_init0();
+@@ -209,24 +216,21 @@ soft_reset:
+         tusb_init();
+     }
+ 
+-    // Run boot.py script.
+-    bool interrupted = mp_exec_bootscript("boot.py", true);
++    // Initialize OpenMV protocol
++    omv_protocol_init_default();
+ 
+-    // Run main.py script on first soft-reset.
+-    if (first_soft_reset && !interrupted && mp_vfs_import_stat("main.py")) {
+-        mp_exec_bootscript("main.py", true);
+-        goto soft_reset_exit;
++    // Run boot.py every reset and main.py on first soft-reset
++    if (pyexec_file_if_exists("boot.py") && first_soft_reset) {
++        pyexec_file_if_exists("main.py");
+     }
+ 
+-    // If there's no script ready, just re-exec REPL
+-    while (!usbdbg_script_ready()) {
++    while (!omv_protocol_exec_script()) {
+         nlr_buf_t nlr;
+ 
+         if (nlr_push(&nlr) == 0) {
+-            // enable IDE interrupt
+-            usbdbg_set_irq_enabled(true);
++            // Enable Ctrl+C to interrupt script or REPL.
++            mp_hal_set_interrupt_char(CHAR_CTRL_C);
+ 
+-            // run REPL
+             if (pyexec_mode_kind == PYEXEC_MODE_RAW_REPL) {
+                 if (pyexec_raw_repl() != 0) {
+                     break;
+@@ -241,23 +245,10 @@ soft_reset:
+         }
+     }
+ 
+-    if (usbdbg_script_ready()) {
+-        nlr_buf_t nlr;
+-        if (nlr_push(&nlr) == 0) {
+-            // Enable IDE interrupt
+-            usbdbg_set_irq_enabled(true);
+-            // Execute the script.
+-            pyexec_str(usbdbg_get_script(), true);
+-            // Disable IDE interrupts
+-            usbdbg_set_irq_enabled(false);
+-            nlr_pop();
+-        } else {
+-            mp_obj_print_exception(&mp_plat_print, (mp_obj_t) nlr.ret_val);
+-        }
+-    }
+-
+-soft_reset_exit:
++    // soft reset
++    mp_hal_set_interrupt_char(-1);
+     mp_printf(MP_PYTHON_PRINTER, "MPY: soft reboot\n");
++    omv_protocol_deinit();
+     #if MICROPY_PY_CSI
+     omv_csi_abort_all();
+     #endif
+diff --git a/ports/rp2/mp_config.h b/ports/rp2/mp_config.h
+index 1a15cd9..c8e4a28 100644
+--- a/ports/rp2/mp_config.h
++++ b/ports/rp2/mp_config.h
+@@ -29,11 +29,24 @@
+         uma_collect();                 \
+     } while (0);
+ 
++#define MICROPY_BOARD_BEFORE_PYTHON_EXEC(input_kind, exec_flags) \
++    do {                                                         \
++        extern void stdio_channel_pyexec_hook(bool);             \
++        stdio_channel_pyexec_hook(true);                         \
++    } while (0);
++
++#define MICROPY_BOARD_AFTER_PYTHON_EXEC(input_kind, exec_flags, nlr, ret) \
++    do {                                                                  \
++        extern void stdio_channel_pyexec_hook(bool);                      \
++        stdio_channel_pyexec_hook(false);                                 \
++    } while (0);
++
+ #define MICROPY_ENABLE_VM_ABORT             (1)
+ #define MICROPY_OPT_COMPUTED_GOTO           (1)
+ #define MICROPY_BANNER_NAME_AND_VERSION "OpenMV " OPENMV_GIT_TAG "; MicroPython " MICROPY_GIT_TAG
+ 
+ #define MICROPY_WRAP_TUD_CDC_RX_CB(name) __mp_ ## name
++#define MICROPY_WRAP_TUD_CDC_LINE_STATE_CB(name) __mp_ ## name
+ #define MICROPY_WRAP_TUD_EVENT_HOOK_CB(name) __mp_ ## name
+ 
+ #include <mpconfigport.h>
+diff --git a/ports/rp2/port_config.cmake b/ports/rp2/port_config.cmake
+index f377a54..d872efb 100644
+--- a/ports/rp2/port_config.cmake
++++ b/ports/rp2/port_config.cmake
+@@ -24,8 +24,8 @@
+ set(TOP_DIR                 $ENV{TOP_DIR})
+ set(TARGET                  $ENV{TARGET})
+ set(PORT                    rp2)
+-set(BUILD                   ${TOP_DIR}/build/rp2)
+-set(BIN_DIR                 ${TOP_DIR}/build/bin)
++set(BUILD                   ${CMAKE_BINARY_DIR})
++set(BIN_DIR                 $ENV{FW_DIR})
+ set(CMSIS_DIR               lib/cmsis)
+ set(LEPTON_DIR              drivers/lepton)
+ set(LSM6DS3_DIR             drivers/lsm6ds3)
+@@ -52,6 +52,10 @@ target_link_options(${MICROPY_TARGET} PRIVATE
+ 
+ target_compile_definitions(${MICROPY_TARGET} PRIVATE
+     ARM_MATH_CM0PLUS
++    APRILTAG_HAVE_CONFIG
++    OMV_USB_STACK_TINYUSB=1
++    OMV_USB_VID=MICROPY_HW_USB_VID
++    OMV_USB_PID=MICROPY_HW_USB_PID
+     ${OMV_BOARD_MODULES_DEFINITIONS}
+     CMSIS_MCU_H="${CMSIS_MCU_H}"
+ )
+@@ -91,10 +95,13 @@ target_include_directories(${MICROPY_TARGET} PRIVATE
+     ${TOP_DIR}/
+     ${TOP_DIR}/common/
+     ${TOP_DIR}/modules/
++    ${TOP_DIR}/protocol/
+     ${TOP_DIR}/drivers/sensors/
+     ${TOP_DIR}/ports/${PORT}/
+     ${TOP_DIR}/ports/${PORT}/modules/
+     ${TOP_DIR}/lib/imlib/
++    ${TOP_DIR}/lib/apriltag/
++    ${TOP_DIR}/lib/apriltag/common/
+ 
+     ${TOP_DIR}/${LEPTON_DIR}/include/
+     ${TOP_DIR}/${LSM6DS3_DIR}/include/
+@@ -113,14 +120,21 @@ target_sources(${MICROPY_TARGET} PRIVATE
+     ${TOP_DIR}/common/trace.c
+     ${TOP_DIR}/common/mutex.c
+     ${TOP_DIR}/common/pendsv.c
+-    ${TOP_DIR}/common/usbdbg.c
+-    ${TOP_DIR}/common/tinyusb_debug.c
++    ${TOP_DIR}/common/omv_crc.c
++
++    ${TOP_DIR}/protocol/omv_protocol.c
++    ${TOP_DIR}/protocol/omv_protocol_channel_stdio.c
++    ${TOP_DIR}/protocol/omv_protocol_channel_stream.c
++    ${TOP_DIR}/protocol/omv_protocol_channel_profile.c
++    ${TOP_DIR}/protocol/omv_protocol_channel_tinyusb.c
+     ${TOP_DIR}/common/file_utils.c
+     ${TOP_DIR}/common/mp_utils.c
+     ${TOP_DIR}/common/omv_csi.c
+-    ${TOP_DIR}/common/fb_alloc.c
+     ${TOP_DIR}/common/umalloc.c
+-    ${TOP_DIR}/common/dma_alloc.c
++    ${TOP_DIR}/common/tlsf.c
++    ${TOP_DIR}/common/omv_i2c.c
++    ${TOP_DIR}/common/omv_cycles.c
++    ${TOP_DIR}/common/omv_profiler.c
+     ${TOP_DIR}/common/memcpy.c
+     ${TOP_DIR}/common/queue.c
+ 
+@@ -147,6 +161,7 @@ target_sources(${MICROPY_TARGET} PRIVATE
+     ${TOP_DIR}/lib/imlib/dmtx.c
+     ${TOP_DIR}/lib/imlib/draw.c
+     ${TOP_DIR}/lib/imlib/edge.c
++    ${TOP_DIR}/lib/imlib/edl.c
+     ${TOP_DIR}/lib/imlib/eye.c
+     ${TOP_DIR}/lib/imlib/fast.c
+     ${TOP_DIR}/lib/imlib/fft.c
+@@ -171,7 +186,6 @@ target_sources(${MICROPY_TARGET} PRIVATE
+     ${TOP_DIR}/lib/imlib/lab_tab.c
+     ${TOP_DIR}/lib/imlib/lbp.c
+     ${TOP_DIR}/lib/imlib/line.c
+-    ${TOP_DIR}/lib/imlib/lsd.c
+     ${TOP_DIR}/lib/imlib/mathop.c
+     ${TOP_DIR}/lib/imlib/mjpeg.c
+     ${TOP_DIR}/lib/imlib/orb.c
+@@ -182,6 +196,7 @@ target_sources(${MICROPY_TARGET} PRIVATE
+     ${TOP_DIR}/lib/imlib/qsort.c
+     ${TOP_DIR}/lib/imlib/rainbow_tab.c
+     ${TOP_DIR}/lib/imlib/rectangle.c
++    ${TOP_DIR}/lib/imlib/rotation_corr.c
+     ${TOP_DIR}/lib/imlib/selective_search.c
+     ${TOP_DIR}/lib/imlib/sincos_tab.c
+     ${TOP_DIR}/lib/imlib/stats.c
+diff --git a/ports/rp2/port_config.mk b/ports/rp2/port_config.mk
+index 13d8606..afa1ed9 100644
+--- a/ports/rp2/port_config.mk
++++ b/ports/rp2/port_config.mk
+@@ -25,6 +25,9 @@
+ export Q=
+ export CC=
+ export CXX=
++# The top Makefile exports these with the $(Q) prefix already expanded.
++export MAKE=make
++export PYTHON=python3
+ 
+ # Note this overrides USER_C_MODULES.
+ MPY_MKARGS += BOARD=$(TARGET) BUILD=$(BUILD)/rp2 USER_C_MODULES="" \
+diff --git a/ports/rp2/rp2.ld.S b/ports/rp2/rp2.ld.S
+index f17893b..2f9f339 100644
+--- a/ports/rp2/rp2.ld.S
++++ b/ports/rp2/rp2.ld.S
+@@ -123,6 +123,15 @@ SECTIONS
+     __binary_info_end = .;
+     . = ALIGN(4);
+ 
++    /* Table of the UMA pools: address, size, flags */
++    .uma.blocks.table : ALIGN(4)
++    {
++      _uma_blocks_table_start = .;
++      LONG (ADDR(.uma.block0)) LONG (SIZEOF(.uma.block0)) LONG (OMV_UMA_BLOCK0_FLAGS)
++      _uma_blocks_table_end = .;
++      . = ALIGN(4);
++    } > FLASH
++
+     /* End of .text-like segments */
+     __etext = .;
+ 
+@@ -196,25 +205,21 @@ SECTIONS
+         _ebss = .;
+     } > RAM
+ 
+-    /* Main framebuffer memory */
+-    .fb_memory (NOLOAD) :
++    /* UMA pool (see common/umalloc.c) */
++    .uma.block0 (NOLOAD) : ALIGN(4)
+     {
++      . = . + OMV_UMA_BLOCK0_SIZE;
+       . = ALIGN(4);
+-      _fb_memory_start = .;
+-      . += OMV_FB_SIZE;
+-      . = ALIGN(4);
+-      _fb_memory_end = .;
++    } >OMV_UMA_BLOCK0_MEMORY
+ 
+-      . += OMV_FB_ALLOC_SIZE;
+-      . = ALIGN(4);
+-      _fb_alloc_end = .;
+-
+-      . = ALIGN(4);
++    /* Streaming buffer */
++    .sb_memory (NOLOAD) : ALIGN(4)
++    {
+       _sb_memory_start = .;
+       . = . + OMV_SB_SIZE;
+       . = ALIGN(4);
+       _sb_memory_end = .;
+-    } >OMV_FB_MEMORY
++    } >OMV_MAIN_MEMORY
+ 
+     .heap (COPY):
+     {
