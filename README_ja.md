@@ -323,6 +323,7 @@ FIFO 設定と停止処理、NINA の SPI フレーミングなどを、PC 上�
 | `zephyr/app/blink/` | LED 点滅のサンプル |
 | `zephyr/script/` | 環境構築、ホストテスト |
 | `nuttx/` | NuttX 版（ボード定義、ドライバー、アプリ、パッチ、スクリプト、ホストテスト） |
+| `openmv/` | OpenMV 版 MicroPython のビルド環境（[`openmv/README_ja.md`](openmv/README_ja.md)） |
 | `zephyr/manifest/west.yml` | Zephyr とモジュールのバージョン |
 | `design/` | 設計と調査手順 |
 | `firmware/nina-fw/` | NINA ファームウェアの修正とビルド |

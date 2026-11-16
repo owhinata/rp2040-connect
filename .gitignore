@@ -46,3 +46,11 @@
 /nuttx/boards/**/*.ld.tmp
 # Output of nuttx/script/build.sh.
 /nuttx/build/
+
+# The OpenMV (MicroPython) workspace: fetched by openmv/script/setup.sh.
+/openmv/openmv/
+/openmv/openmv.tmp/
+/openmv/openmv-sdk-*/
+/openmv/.download/
+# Output of openmv/script/build.sh.
+/openmv/build/

@@ -334,6 +334,7 @@ summary (missing batches, valid and reversed times) and at the errors in `imu st
 | `zephyr/app/blink/` | LED blink sample |
 | `zephyr/script/` | Setup, host tests |
 | `nuttx/` | The NuttX build (board definition, drivers, applications, patches, scripts, host tests) |
+| `openmv/` | Build environment for the OpenMV MicroPython firmware ([`openmv/README.md`](openmv/README.md)) |
 | `zephyr/manifest/west.yml` | Versions of Zephyr and its modules |
 | `design/` | Design and investigation notes |
 | `firmware/nina-fw/` | Fixes and build for the NINA firmware |
