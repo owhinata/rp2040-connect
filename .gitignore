@@ -54,3 +54,15 @@
 /openmv/.download/
 # Output of openmv/script/build.sh.
 /openmv/build/
+
+# The Pico SDK + FreeRTOS workspace: fetched by freertos/script/setup.sh.
+/freertos/pico-sdk/
+/freertos/pico-sdk.tmp/
+/freertos/FreeRTOS-Kernel/
+/freertos/FreeRTOS-Kernel.tmp/
+/freertos/toolchain/
+/freertos/.venv/
+# picotool's source, fetched by the Pico SDK at the first build.
+/freertos/picotool/
+# Output of freertos/script/build.sh.
+/freertos/build/

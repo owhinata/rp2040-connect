@@ -335,6 +335,7 @@ summary (missing batches, valid and reversed times) and at the errors in `imu st
 | `zephyr/script/` | Setup, host tests |
 | `nuttx/` | The NuttX build (board definition, drivers, applications, patches, scripts, host tests) |
 | `openmv/` | Build environment for the OpenMV MicroPython firmware ([`openmv/README.md`](openmv/README.md)) |
+| `freertos/` | Build environment for the Raspberry Pi Pico SDK with the FreeRTOS kernel, and a USB console application ([`freertos/README.md`](freertos/README.md)) |
 | `zephyr/manifest/west.yml` | Versions of Zephyr and its modules |
 | `design/` | Design and investigation notes |
 | `firmware/nina-fw/` | Fixes and build for the NINA firmware |
