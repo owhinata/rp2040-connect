@@ -3,7 +3,7 @@ namespace ImuStudio.Core.Processing;
 
 /// <summary>
 /// Tracks the gyro bias from the samples that pass while the sensor is at
-/// rest. This is the board's tracker (drivers/lsm6dso/lsm6dso_zero.c) with
+/// rest. This is the board's tracker (common/drivers/lsm6dso/lsm6dso_zero.c) with
 /// the same integer arithmetic, because the RAW stream does not carry what
 /// the board tracked.
 ///

@@ -82,16 +82,19 @@ flowchart LR
 
 | 役割 | 実装 |
 |---|---|
-| FIFO ワードの解析 | `drivers/lsm6dso/lsm6dso_fifo.*` |
-| バッチ化・番号付け・epoch | `src/imu_raw_batch.*` |
-| ペイロードの組み立て | `src/imu_raw_packet.*` |
-| FIFO タイムスタンプ → サンプルの tick | `src/imu_raw_time.*` |
-| tick → ボードの時計 | `src/imu_tick_clock.*` |
-| ボードの時計 → PC 時刻 | `src/time_sync.*`、`src/time_offset.*` |
-| 送信キュー | `src/imu_raw_queue.*` |
-| MQTT 送信・再接続・status / info | `src/imu_raw_mqtt.*`、`src/imu_raw_status.*` |
+| FIFO ワードの解析 | `common/drivers/lsm6dso/lsm6dso_fifo.*` |
+| バッチ化・番号付け・epoch | `common/imu/imu_raw_batch.*` |
+| ペイロードの組み立て | `common/imu/imu_raw_packet.*` |
+| FIFO タイムスタンプ → サンプルの tick | `common/imu/imu_raw_time.*` |
+| tick → ボードの時計 | `common/imu/imu_tick_clock.*` |
+| ボードの時計 → PC 時刻 | `src/time_sync.*`、`common/imu/time_offset.*` |
+| 送信キュー | `common/imu/imu_raw_queue.*` |
+| MQTT 送信・再接続・status / info | `src/imu_raw_mqtt.*`、`common/imu/imu_raw_status.*` |
 | 取得スレッド・回復・シェル（`imu`） | `src/imu_stream.c` |
 | NINA のソケット | `drivers/nina/nina_socket.c`（[ドライバーの説明](../zephyr/app/usb-console/drivers/README_ja.md)） |
+
+`src/`・`drivers/` は `zephyr/app/usb-console` の下、`common/` はリポジトリのルートの下で、NuttX 版と同じ
+ファイルを使う部分。
 
 FIFO 読み出しと送信は独立している。Wi-Fi・MQTT の切断や送信待ちで FIFO の読み出しを
 ブロックしない。スレッドの優先度は、計測（バッチ化）と時刻同期が 9、FIFO の読み出し
@@ -449,7 +452,7 @@ MQTT で送るのは RAW のままで、校正は掛けない。校正値は PC 
 ### 10.2 ボードでの変換
 
 RAW から物理量への変換は、校正の有無にかかわらず 1 つの関数で行う
-（`drivers/lsm6dso/lsm6dso_cal.c`）。FIFO のデコーダーと単発読み出しの両方がこれを使う。
+（`common/drivers/lsm6dso/lsm6dso_cal.c`）。FIFO のデコーダーと単発読み出しの両方がこれを使う。
 
 ```text
 out = M · (raw − bias)
@@ -474,7 +477,7 @@ out = M · (raw − bias)
 imu.cal.accel.<µg/LSB>      imu.cal.gyro.<µdps/LSB>
 ```
 
-- 値は 56 バイト（版、種類、感度、係数 9 個、バイアス 3 個。`src/imu_cal.h`）。
+- 値は 56 バイト（版、種類、感度、係数 9 個、バイアス 3 個。`common/imu/imu_cal.h`）。
 - ドライバーは KV を直接読まない。アプリが「感度から校正値を引く関数」を登録し、ドライバーは
   登録時、読み直しの要求時、レンジの設定時にそれを呼ぶ。
 - **現在の感度のキーがなければ適用しない。** スケールはレンジごとに個体差があり、別のレンジの
@@ -507,7 +510,7 @@ KV のイメージを作って BOOTSEL で書く方法は採らなかった。KV
 | 重力の向きとの相関 | 1 g あたり 0.1 LSB 以下 |
 
 そこで、校正値のバイアスを固定で使わず、静止している間のデータから取り直す
-（`drivers/lsm6dso/lsm6dso_zero.c`）。変換 `M · (raw − bias)` の `bias` だけを差し替え、`M` は
+（`common/drivers/lsm6dso/lsm6dso_zero.c`）。変換 `M · (raw − bias)` の `bias` だけを差し替え、`M` は
 校正値のままとする。
 
 - サンプルを 1/8 秒ごとに区切り、8 区切り連続で角速度の平均（0.3 dps 以内）と加速度の平均
@@ -560,7 +563,9 @@ NuttX 版の確認の範囲は §11.7 に分けて書く。
 ### 11.1 移植の方針
 
 - OS に依存しないソース（バッチ、ペイロード、キュー、status、時刻の対応付け、NTP の推定、FIFO の解析、
-  校正の形式）は Zephyr 版のファイルを変更せずに写し、同じホストテストを NuttX 版の側でも動かす。
+  校正の形式）は Zephyr 版と同じファイルを使う。どちらの版のビルドもリポジトリの `common/` の 1 本を参照し、
+  同じホストテスト（`common/tests/`）を両方の版の `host_tests.sh` から動かす。`common/` に置いていない
+  同一のファイル（`lsm6dso_fifo_hw.[ch]` など）は、Zephyr 版のファイルを変更せずに写している。
 - OS を呼ぶソース（`imu_stream.c`、`imu_raw_mqtt.c`、`time_sync.c`、`imu_cal.c`、`wifi_profile.c`、
   `nina_net.c`、LSM6DSO のドライバーと FIFO のストリーム、sensor シェル）も、OS の呼び出しを
   **Zephyr の名前のまま**提供する互換層（`nuttx/drivers/compat/`）の上で、ほぼそのまま写して動かす。

@@ -19,6 +19,11 @@
 ST の HAL は Zephyr のものを使います。Zephyr 側の構成が変わって差し替え対象が見つからない
 場合は、ビルドをエラーにします。
 
+このうち OS に依存しない部分（LSM6DSO の `lsm6dso_fifo.[ch]`、`lsm6dso_fifo_packet.h`、`lsm6dso_cal.[ch]`、
+`lsm6dso_zero.[ch]`、`lsm6dso_fifo_decoder.[ch]` と、I²C の `i2c_dw_rp2040_commands.[ch]`）は NuttX 版と
+同じものを使うので、リポジトリの `common/drivers/lsm6dso/`・`common/drivers/i2c_dw/` に置いています。
+`CMakeLists.txt` がそこをドライバーのライブラリーに加えます。下の表のファイル名はどちらの場所のものも含みます。
+
 ## LSM6DSO の FIFO ストリーム
 
 Zephyr の Sensor Streaming API（`sensor_stream()`、RTIO）で FIFO を読み出せるようにしています。
@@ -266,7 +271,8 @@ MQTT の接続と送信ができること、ホスト名の不一致・期限切
 ## テスト
 
 `zephyr/script/host_tests.sh` が、偽の Zephyr ヘッダーを使ってドライバーの次の部分を PC 上で
-テストします。
+テストします。`fifo_words`・`fifo_decoder`・`i2c_dma_commands` は NuttX 版と共有するテスト
+（`common/tests/`、`common/tests/run.sh` が実行）です。
 
 | テスト | 対象 |
 |---|---|

@@ -440,7 +440,8 @@ NuttX puts at the start of a stack (2048 → 2008 and so on).
 nuttx/script/host_tests.sh
 ```
 
-This builds and runs the 38 host tests of the OS-independent parts on the PC. It needs no board, only
+This builds and runs the 38 host tests of the OS-independent parts on the PC. The first 12 are the
+tests of the sources shared with the Zephyr build, run by `common/tests/run.sh`. It needs no board, only
 the host's `cc` (C17). Without ST's `lsm6dso_reg.c` (fetched by `setup.sh`), the 3 tests that use it
 (`lsm6dso_driver`, `imu_cal`, `sensor_shell`) print `skip`. It stops at the first failure. What each
 test checks, and the list of files copied unchanged from the Zephyr build (to be replaced when the
@@ -455,5 +456,6 @@ Zephyr build changes), are in "Host test details" in [`design/nuttx-porting.md`]
 | `apps/` | Applications: `init` (start-up and Telnet), `imu` (acquisition, MQTT, time synchronization, calibration, key-value store), `kv`, `nina`, `ntp`, `wifi`, `sensor`, `i2c_dma`, `dmesg`, `irqstack`, `subcmd` (shared subcommand handling) |
 | `patches/` | Patches to NuttX and nuttx-apps |
 | `script/` | `setup.sh`, `build.sh`, `flash.sh`, `host_tests.sh`, `bin2uf2.py`, `kconfig-tweak` |
-| `tests/` | Host tests |
+| `tests/` | Host tests (those of the NuttX build only) |
+| `../common/` | Sources shared with the Zephyr build (`imu/`, `drivers/lsm6dso/`, `drivers/i2c_dw/`) and their host tests. The build finds them through `VPATH`; the objects are made in `apps/imu`, `drivers` and the board's directory |
 | `nuttx/`, `nuttx-apps/`, `pico-sdk/`, `toolchain/`, `stmemsc/`, `.venv/`, `build/` | What `setup.sh` fetches and the build products (not in Git) |

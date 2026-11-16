@@ -387,7 +387,7 @@ static int64_t micro(const struct sensor_value *v)
 	return (int64_t)v->val1 * 1000000 + v->val2;
 }
 
-/* The conversion of the copy of lsm6dso_cal.c, as channel_get must give. */
+/* The conversion of lsm6dso_cal.c (common/drivers/lsm6dso), as channel_get must give. */
 static int64_t expected_micro(enum lsm6dso_cal_kind kind, uint32_t gain, const int16_t raw[3],
 			      int axis)
 {

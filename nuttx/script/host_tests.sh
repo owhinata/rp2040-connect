@@ -1,17 +1,22 @@
 #!/usr/bin/env bash
 # Build and run the host tests for the OS-independent sources under nuttx/.
-# Most sources and tests are unchanged copies of the Zephyr version's (nano_timeconv is the
-# board's own); none needs the board.
+# The tests of the sources shared with the Zephyr build run first (common/tests/run.sh).
+# Most of the other sources and tests are unchanged copies of the Zephyr version's
+# (nano_timeconv is the board's own); none needs the board.
 set -euo pipefail
 cd "$(dirname "$0")/.."
+../common/tests/run.sh
 out=$(mktemp -d)
 trap 'rm -rf "$out"' EXIT
 imu=apps/imu
 lsm=drivers/lsm6dso
+cimu=../common/imu
+clsm=../common/drivers/lsm6dso
 flags=(-std=c17 -Wall -Wextra -Werror -ffunction-sections -fdata-sections)
 link="-Wl,--gc-sections"
-# imu_raw_packet.h includes "../drivers/lsm6dso/lsm6dso_fifo.h", which resolves from apps/.
-inc=(-Itests/fakes -I"$imu" -I"$lsm" -Iapps)
+# The fake headers shared with the Zephyr build (common/tests/fakes) and the port's own
+# (tests/fakes: nuttx/config.h).
+inc=(-I../common/tests/fakes -Itests/fakes -I"$imu" -I"$cimu" -I"$lsm" -I"$clsm")
 
 # run NAME CC-ARGS...: build tests/NAME.c with the arguments, run it, stop on failure.
 run() {
@@ -22,14 +27,10 @@ run() {
     printf 'ok  %s\n' "$name"
 }
 
-# Application modules and the FIFO word parser.
-lib=("$imu/imu_raw_queue.c" "$imu/imu_raw_packet.c" "$imu/imu_raw_batch.c"
-     "$imu/imu_raw_status.c" "$imu/imu_raw_time.c" "$imu/imu_tick_clock.c"
-     "$imu/time_offset.c" "$lsm/lsm6dso_fifo.c")
-for test in fifo_words imu_raw_packet imu_raw_batch imu_raw_queue imu_raw_status imu_raw_time \
-            imu_tick_clock time_offset; do
-    run "$test" "${lib[@]}"
-done
+# Application modules and the FIFO word parser (common/), for imu_raw_mqtt below.
+lib=("$cimu/imu_raw_queue.c" "$cimu/imu_raw_packet.c" "$cimu/imu_raw_batch.c"
+     "$cimu/imu_raw_status.c" "$cimu/imu_raw_time.c" "$cimu/imu_tick_clock.c"
+     "$cimu/time_offset.c" "$clsm/lsm6dso_fifo.c")
 
 # LSM6DSO FIFO driver pieces.
 run fifo_hw "$lsm/lsm6dso_fifo_hw.c"
@@ -47,11 +48,13 @@ if [[ -f stmemsc/lsm6dso_reg.c ]]; then
     cc -std=c17 -w -Istmemsc -c stmemsc/lsm6dso_reg.c -o "$out/lsm6dso_reg.o"
     cc "${flags[@]}" -Wno-unused-parameter -Wno-cast-function-type -Wno-sign-compare \
         -D_DEFAULT_SOURCE -D'DEBUGASSERT(x)=assert(x)' -Itests/lsm6dso_fakes -Itests/zephyr_fakes \
-        -Idrivers/compat -Idrivers/include -Istmemsc -I"$lsm" -Iboards/arduino-nano-rp2040-connect/src \
+        -Idrivers/compat -Idrivers/include -Istmemsc -I"$lsm" -I"$clsm" \
+        -Iboards/arduino-nano-rp2040-connect/src \
         tests/lsm6dso_driver.c "$lsm/lsm6dso.c" "$lsm/stmemsc_i2c.c" "$lsm/stmemsc_mdelay.c" \
-        "$lsm/lsm6dso_fifo_hw.c" "$lsm/lsm6dso_fifo.c" "$lsm/lsm6dso_cal.c" "$lsm/lsm6dso_zero.c" \
-        "$lsm/lsm6dso_stream.c" "$lsm/lsm6dso_fifo_irq.c" "$lsm/lsm6dso_compat.c" \
-        "$lsm/lsm6dso_fifo_decoder.c" drivers/compat/zephyr_i2c.c drivers/compat/zephyr_device.c \
+        "$lsm/lsm6dso_fifo_hw.c" "$clsm/lsm6dso_fifo.c" "$clsm/lsm6dso_cal.c" \
+        "$clsm/lsm6dso_zero.c" "$lsm/lsm6dso_stream.c" "$lsm/lsm6dso_fifo_irq.c" \
+        "$lsm/lsm6dso_compat.c" \
+        "$clsm/lsm6dso_fifo_decoder.c" drivers/compat/zephyr_i2c.c drivers/compat/zephyr_device.c \
         drivers/compat/zephyr_gpio.c drivers/compat/sensor_default_rtio.c "${compat[@]}" \
         boards/arduino-nano-rp2040-connect/src/nano_lsm6dso.c "$out/lsm6dso_reg.o" -lm "$link" \
         -o "$out/lsm6dso_driver"
@@ -63,13 +66,14 @@ if [[ -f stmemsc/lsm6dso_reg.c ]]; then
     # range changes, reload, zero and the "imu cal" lines.
     cc "${flags[@]}" -Wno-unused-parameter -Wno-cast-function-type -Wno-sign-compare \
         -D_DEFAULT_SOURCE -D'DEBUGASSERT(x)=assert(x)' -Itests/lsm6dso_fakes -Itests/zephyr_fakes \
-        -Idrivers/compat -Idrivers/include -Istmemsc -I"$lsm" -I"$imu" \
+        -Idrivers/compat -Idrivers/include -Istmemsc -I"$lsm" -I"$clsm" -I"$imu" -I"$cimu" \
         -Iboards/arduino-nano-rp2040-connect/src \
-        tests/imu_cal.c "$imu/imu_cal.c" "$imu/imu_cal_codec.c" "$lsm/lsm6dso.c" \
+        tests/imu_cal.c "$imu/imu_cal.c" "$cimu/imu_cal_codec.c" "$lsm/lsm6dso.c" \
         "$lsm/stmemsc_i2c.c" "$lsm/stmemsc_mdelay.c" \
-        "$lsm/lsm6dso_fifo_hw.c" "$lsm/lsm6dso_fifo.c" "$lsm/lsm6dso_cal.c" "$lsm/lsm6dso_zero.c" \
-        "$lsm/lsm6dso_stream.c" "$lsm/lsm6dso_fifo_irq.c" "$lsm/lsm6dso_compat.c" \
-        "$lsm/lsm6dso_fifo_decoder.c" drivers/compat/zephyr_i2c.c drivers/compat/zephyr_device.c \
+        "$lsm/lsm6dso_fifo_hw.c" "$clsm/lsm6dso_fifo.c" "$clsm/lsm6dso_cal.c" \
+        "$clsm/lsm6dso_zero.c" "$lsm/lsm6dso_stream.c" "$lsm/lsm6dso_fifo_irq.c" \
+        "$lsm/lsm6dso_compat.c" \
+        "$clsm/lsm6dso_fifo_decoder.c" drivers/compat/zephyr_i2c.c drivers/compat/zephyr_device.c \
         drivers/compat/zephyr_gpio.c drivers/compat/sensor_default_rtio.c "${compat[@]}" \
         boards/arduino-nano-rp2040-connect/src/nano_lsm6dso.c "$out/lsm6dso_reg.o" -lm "$link" \
         -o "$out/imu_cal"
@@ -82,16 +86,17 @@ if [[ -f stmemsc/lsm6dso_reg.c ]]; then
     # by the processing callback on the command's terminal.  Its main() is sensor_main().
     sinc=(-D_GNU_SOURCE -D'DEBUGASSERT(x)=assert(x)' -DSENSOR_SHELL_GET_WAIT_MS=1
           -Itests/lsm6dso_fakes -Itests/zephyr_fakes -Idrivers/compat -Idrivers/include -Istmemsc
-          -I"$lsm" -Iapps/sensor -Iapps/subcmd -Iboards/arduino-nano-rp2040-connect/src)
+          -I"$lsm" -I"$clsm" -Iapps/sensor -Iapps/subcmd -Iboards/arduino-nano-rp2040-connect/src)
     sflags=("${flags[@]}" -Wno-unused-parameter -Wno-cast-function-type -Wno-sign-compare)
     cc "${sflags[@]}" "${sinc[@]}" -Dmain=sensor_main -c apps/sensor/sensor_shell.c \
         -o "$out/sensor_shell.o"
     cc "${sflags[@]}" "${sinc[@]}" tests/sensor_shell.c "$out/sensor_shell.o" \
         apps/sensor/sensor_shell_stream.c apps/sensor/sensor_shell_nuttx.c apps/subcmd/zshell.c \
         apps/subcmd/subcmd.c "$lsm/lsm6dso.c" "$lsm/stmemsc_i2c.c" "$lsm/stmemsc_mdelay.c" \
-        "$lsm/lsm6dso_fifo_hw.c" "$lsm/lsm6dso_fifo.c" "$lsm/lsm6dso_cal.c" "$lsm/lsm6dso_zero.c" \
-        "$lsm/lsm6dso_stream.c" "$lsm/lsm6dso_fifo_irq.c" "$lsm/lsm6dso_compat.c" \
-        "$lsm/lsm6dso_fifo_decoder.c" drivers/compat/zephyr_i2c.c drivers/compat/zephyr_device.c \
+        "$lsm/lsm6dso_fifo_hw.c" "$clsm/lsm6dso_fifo.c" "$clsm/lsm6dso_cal.c" \
+        "$clsm/lsm6dso_zero.c" "$lsm/lsm6dso_stream.c" "$lsm/lsm6dso_fifo_irq.c" \
+        "$lsm/lsm6dso_compat.c" \
+        "$clsm/lsm6dso_fifo_decoder.c" drivers/compat/zephyr_i2c.c drivers/compat/zephyr_device.c \
         drivers/compat/zephyr_gpio.c drivers/compat/sensor_default_rtio.c "${compat[@]}" \
         boards/arduino-nano-rp2040-connect/src/nano_lsm6dso.c "$out/lsm6dso_reg.o" -lm "$link" \
         -o "$out/sensor_shell"
@@ -104,7 +109,7 @@ else
 fi
 # The stream's state machine (lsm6dso_stream.c) with a fake FIFO and RTIO executor: an
 # unchanged copy of the Zephyr build's test, which includes the unchanged copy of the source.
-run stream_stop "$lsm/lsm6dso_fifo.c" "$lsm/lsm6dso_cal.c"
+run stream_stop "$clsm/lsm6dso_fifo.c" "$clsm/lsm6dso_cal.c"
 # The compatibility layer's RTIO (pool, completions, multishot, cancellation, work queue) and
 # work items (submit, schedule, reschedule, cancel), on the fake kernel.
 zinc=(-D_DEFAULT_SOURCE -Itests/zephyr_fakes -Idrivers/compat -Idrivers/include)
@@ -153,11 +158,6 @@ if [[ -f $zmqtt/mqtt.c ]]; then
 else
     printf 'skip mqtt_min on Zephyr'\''s MQTT library (no zephyr/zephyr: run west update)\n'
 fi
-run fifo_decoder "$lsm/lsm6dso_fifo_decoder.c" "$lsm/lsm6dso_fifo.c" "$lsm/lsm6dso_cal.c"
-# Conversion to physical units and the stored calibration format.
-run lsm6dso_cal "$lsm/lsm6dso_cal.c" "$imu/imu_cal_codec.c" -lm
-# Gyro bias tracking at rest.
-run lsm6dso_zero "$lsm/lsm6dso_zero.c"
 # Board: TIMER count <-> OS tick conversions of the tickless system timer.
 run nano_timeconv -Iboards/arduino-nano-rp2040-connect/src
 # Board: the CPU load arithmetic of the idle loop (nano_idle.c).
@@ -181,9 +181,6 @@ run nina_sock -D_DEFAULT_SOURCE -Idrivers/include -Idrivers/nina drivers/nina/ni
 run nina_dns -D_DEFAULT_SOURCE -Idrivers/include -Idrivers/nina drivers/nina/nina_dns.c
 # Board: the I2C0 driver's SCL counts, speeds and IC_DATA_CMD words against the Zephyr build's.
 run nano_i2c_dw -Iboards/arduino-nano-rp2040-connect/src
-# Board: the command words of the I2C0 DMA reads (an unchanged copy of the Zephyr build's test).
-run i2c_dma_commands -Iboards/arduino-nano-rp2040-connect/src \
-    boards/arduino-nano-rp2040-connect/src/i2c_dw_rp2040_commands.c
 # The i2c_dma command's output (fake driver side).
 run i2c_dma_app -Idrivers/include -Iapps/i2c_dma -Iapps/subcmd apps/subcmd/subcmd.c
 # The time synchronization (apps/imu/time_sync.c, the copy of the Zephyr build's) on the
@@ -193,7 +190,7 @@ run i2c_dma_app -Idrivers/include -Iapps/i2c_dma -Iapps/subcmd apps/subcmd/subcm
 # (FIONREAD every 20 ms), the 60 s age, the forward-only realtime clock, the Wi-Fi events and
 # the "ntp status" lines.
 cc "${flags[@]}" -D_DEFAULT_SOURCE -Itests/time_sync_fakes -Itests/zephyr_fakes -Idrivers/compat \
-    -Idrivers/include -I"$imu" -Iapps/subcmd tests/time_sync.c "$imu/time_offset.c" \
+    -Idrivers/include -I"$imu" -I"$cimu" -Iapps/subcmd tests/time_sync.c "$cimu/time_offset.c" \
     apps/subcmd/subcmd.c "${compat[@]}" "$link" -o "$out/time_sync"
 "$out/time_sync" >/dev/null
 printf 'ok  time_sync\n'

@@ -19,6 +19,12 @@ corresponding sources inside Zephyr's driver libraries for the copies. Kconfig, 
 bindings and the ST HAL are Zephyr's. If Zephyr's layout changes and a source to replace is
 not found, the build fails.
 
+The OS-independent parts (the LSM6DSO's `lsm6dso_fifo.[ch]`, `lsm6dso_fifo_packet.h`, `lsm6dso_cal.[ch]`,
+`lsm6dso_zero.[ch]` and `lsm6dso_fifo_decoder.[ch]`, and the I2C driver's `i2c_dw_rp2040_commands.[ch]`)
+are the same files as the NuttX build's, so they are kept in the repository's `common/drivers/lsm6dso/`
+and `common/drivers/i2c_dw/`. `CMakeLists.txt` adds them from there to the driver libraries. The file
+names in the tables below cover both places.
+
 ## LSM6DSO FIFO streaming
 
 The FIFO can be read through Zephyr's Sensor Streaming API (`sensor_stream()` on RTIO) with the
@@ -279,6 +285,8 @@ examine sending delays and ACK behaviour at the level of radio frames.
 ## Tests
 
 `zephyr/script/host_tests.sh` tests these parts of the drivers on the PC with fake Zephyr headers.
+`fifo_words`, `fifo_decoder` and `i2c_dma_commands` are tests shared with the NuttX build
+(`common/tests/`, run by `common/tests/run.sh`).
 
 | Test | Covers |
 |---|---|

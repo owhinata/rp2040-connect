@@ -205,7 +205,7 @@ wapi の ioctl（`d_ioctl`。呼び出したスレッドで処理）は次のと
 | ボードの `src/nano_i2c_dw.h` | OS に依存しない部分: Zephyr 版の `i2c_dw.h` の定義、SCL のカウント、周波数から速さの区分、NuttX のフラグ（`I2C_M_*`）から Zephyr のフラグ（`I2C_MSG_*`）への変換、`IC_DATA_CMD` に書く語。ホストテスト `nuttx/tests/nano_i2c_dw.c` |
 | ボードの `src/nano_i2c_dw_registers.h` | Zephyr 版の `i2c_dw_registers.h` の写し（アクセス関数だけ NuttX 向けに定義） |
 | ボードの `src/nano_dma.c`・`nano_dma.h` | DMA 読み出しが使う RP2040 の DMA。Zephyr の `drivers/dma/dma_rpi_pico.c`（`dma_config()`・`dma_start()`・`dma_stop()`・割り込み）と、DMA API のチャネルの確保・解放（`dma_request_channel()`・`dma_release_channel()`）、`i2c_dw.c` が直接呼ぶ pico-sdk の関数（`dma_channel_is_busy()`・`dma_irqn_acknowledge_channel()`・`dma_hw->abort`）をレジスターで書いたもの |
-| ボードの `src/i2c_dw_rp2040_commands.[ch]` | Zephyr 版の同名ファイルを変更せずに写したもの（DMA で送るコマンド語）。ホストテスト `nuttx/tests/i2c_dma_commands.c`（これも写し） |
+| `common/drivers/i2c_dw/i2c_dw_rp2040_commands.[ch]` | DMA で送るコマンド語。Zephyr 版と同じファイル（リポジトリの `common/`。ボードの `src/Make.defs` が `VPATH` で参照し、オブジェクトはボードのディレクトリーにできる）。ホストテスト `common/tests/i2c_dma_commands.c` |
 | `include/nano_i2c_dma.h` | `i2c_dma` コマンド（`nuttx/apps/i2c_dma`）が読み書きする状態: DMA の有効・無効と 4 つのカウンター |
 
 - 転送は呼び出したスレッドが進め、バイトの出し入れは割り込みで行います。呼び出し元はセマフォで完了を
@@ -260,8 +260,9 @@ wapi の ioctl（`d_ioctl`。呼び出したスレッドで処理）は次のと
 | `lsm6dso/lsm6dso_fifo_hw.[ch]`、`lsm6dso_fifo_stats.h`、`lsm6dso_attributes.h` | Zephyr 版の同名ファイルを変更せずに写したもの |
 | `lsm6dso/lsm6dso_stream.c`、`lsm6dso_fifo_irq.[ch]` | FIFO のストリーム（下）。Zephyr 版の同名ファイルを変更せずに写したもの |
 | `lsm6dso/lsm6dso_compat.c` | 単発取得の RTIO 版（ストリームでない submit のフォールバック）。Zephyr 版の写しで、ログのインクルードとレベルの名前だけを置き換え |
-| `lsm6dso/lsm6dso_fifo_decoder.[ch]` | ストリームと単発取得のバッファーのデコーダー（`get_decoder`）。変更なしの写し |
-| `lsm6dso/lsm6dso_cal.[ch]`、`lsm6dso_zero.[ch]` | 物理量への変換と校正値の適用、静止時の角速度のバイアスの追従（下）。Zephyr 版の同名ファイルを変更せずに写したもの |
+| `common/drivers/lsm6dso/lsm6dso_fifo.[ch]`、`lsm6dso_fifo_packet.h` | FIFO のワードの解析とバッファーの先頭の形式。Zephyr 版と同じファイル（リポジトリの `common/`。`lsm6dso/Make.defs` が `VPATH` で参照し、オブジェクトは `nuttx/drivers` にできる。以下の 2 行も同じ） |
+| `common/drivers/lsm6dso/lsm6dso_fifo_decoder.[ch]` | ストリームと単発取得のバッファーのデコーダー（`get_decoder`）。Zephyr 版と同じファイル |
+| `common/drivers/lsm6dso/lsm6dso_cal.[ch]`、`lsm6dso_zero.[ch]` | 物理量への変換と校正値の適用、静止時の角速度のバイアスの追従（下）。Zephyr 版と同じファイル |
 | ボードの `src/nano_lsm6dso.[ch]` | I2C0 を互換層のバスのデバイス（`i2c0`、100 kHz）にし、`lsm6dsox` を初期化する（`nano_bringup()` から） |
 | ボードの `src/nano_gpio.c` | 互換層の `gpio0` のための GPIO バンク 0（入力の設定、レベルの読み出し、エッジ・レベルの割り込み）。`<nano_gpio.h>`（`nuttx/drivers/include`） |
 

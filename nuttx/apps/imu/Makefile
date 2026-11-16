@@ -8,13 +8,20 @@
 # task).  The copies of the Zephyr build's other sources in this directory
 # that are not listed here are not built yet.
 #
+# The sources shared with the Zephyr build (imu_raw_*, imu_tick_clock.c,
+# time_offset.c, imu_cal_codec.c and their headers) are in common/imu, found
+# through VPATH and DEPPATH, which are relative to this directory (mkdeps
+# needs relative ones); their objects are made here.
+#
 # Include paths of the service: the Zephyr compatibility layer
 # ($(TOPDIR)/external/compat; NuttX's headers are included before it), the
 # LSM6DSO driver's headers ($(TOPDIR)/external/lsm6dso), the port's shared
 # headers ($(TOPDIR)/external/include: priorities.h, cpu_load.h), subcmd.h,
-# and $(APPDIR)/external, through which "../drivers/lsm6dso/..." of
-# imu_stream.c and imu_raw_packet.h reaches nuttx/drivers (external is a
-# symlink to nuttx/apps).
+# $(APPDIR)/external, through which "../drivers/lsm6dso/lsm6dso_fifo_stats.h"
+# of imu_stream.c reaches nuttx/drivers (external is a symlink to
+# nuttx/apps), and common/imu and common/drivers/lsm6dso, through which
+# imu_stream.c's "../drivers/lsm6dso/lsm6dso_fifo.h" and imu_cal.h's
+# "lsm6dso_cal.h" are found.
 ############################################################################
 
 include $(APPDIR)/Make.defs
@@ -61,6 +68,11 @@ CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)compat
 CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)lsm6dso
 CFLAGS   += ${INCDIR_PREFIX}$(APPDIR)$(DELIM)external$(DELIM)subcmd
 CFLAGS   += ${INCDIR_PREFIX}$(APPDIR)$(DELIM)external
+CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)imu
+CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)drivers$(DELIM)lsm6dso
+
+VPATH    += :../../../common/imu
+DEPPATH  += --dep-path ../../../common/imu
 endif
 
 include $(APPDIR)/Application.mk

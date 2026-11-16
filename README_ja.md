@@ -300,6 +300,7 @@ zephyr/script/host_tests.sh
 
 FIFO ワードの解析、バッチとペイロード、送信キュー、時刻の対応付け、NTP の推定、ドライバーの
 FIFO 設定と停止処理、NINA の SPI フレーミングなどを、PC 上で実行します。ボードは不要です。
+NuttX 版と共有するソースのテスト（`common/tests/run.sh`）を先に実行します。
 
 実機での確認は、上の「使い方」の手順で受信器を動かし、終了時の集計（欠番、時刻の有効数と
 逆行、`imu status` のエラー）を見ます。
@@ -319,10 +320,11 @@ FIFO 設定と停止処理、NINA の SPI フレーミングなどを、PC 上�
 |---|---|
 | `zephyr/app/usb-console/src/` | アプリ本体（計測、MQTT、時刻同期、KV、Wi-Fi 設定） |
 | `zephyr/app/usb-console/drivers/` | LSM6DSO、I²C、NINA、sensor shell のローカルドライバー |
-| `zephyr/app/usb-console/tests/` | ホストテスト |
+| `zephyr/app/usb-console/tests/` | ホストテスト（Zephyr 版だけのもの） |
 | `zephyr/app/blink/` | LED 点滅のサンプル |
 | `zephyr/script/` | 環境構築、ホストテスト |
 | `nuttx/` | NuttX 版（ボード定義、ドライバー、アプリ、パッチ、スクリプト、ホストテスト） |
+| `common/` | Zephyr 版と NuttX 版が同じものを使うソース（`imu/`: バッチ、パケット、送信キュー、時刻の対応付け、NTP の推定、校正値の形式。`drivers/`: LSM6DSO の FIFO の解析・単位の変換・ジャイロのゼロ点、I²C の DMA のコマンド語）と、そのホストテスト（`tests/`。`tests/run.sh` を両方の版の `host_tests.sh` が呼ぶ） |
 | `openmv/` | OpenMV 版 MicroPython のビルド環境（[`openmv/README_ja.md`](openmv/README_ja.md)） |
 | `freertos/` | Raspberry Pi Pico SDK と FreeRTOS カーネルのビルド環境と、USB コンソールのアプリ（[`freertos/README_ja.md`](freertos/README_ja.md)） |
 | `zephyr/manifest/west.yml` | Zephyr とモジュールのバージョン |

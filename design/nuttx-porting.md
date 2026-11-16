@@ -807,7 +807,7 @@ Subcommands:
 
 `nuttx/apps/imu/imu_cal.c` is a copy of the Zephyr build's `src/imu_cal.c`; side by side in
 `diff`, the only differences are the leading comment and the include of `<nuttx/config.h>` (the
-value format, `imu_cal_codec.c` and `imu_cal.h`, are unchanged copies). The KV keys
+value format, `imu_cal_codec.c` and `imu_cal.h`, are the Zephyr build's own files, in `common/imu/`). The KV keys
 (`imu.cal.accel.<ug/LSB>`, `imu.cal.gyro.<udps/LSB>`) and values (56 bytes), using only the key of
 the current sensitivity, and the syntax, output and error messages of `imu cal`,
 `imu cal reload` and `imu cal zero` are the Zephyr build's (the Zephyr build's README,
@@ -1093,17 +1093,27 @@ Priorities map as `NuttX = 118 − Zephyr`; `nuttx/drivers/include/priorities.h`
 
 ## Host test details
 
+The following files are used by both the Zephyr and the NuttX build and are kept once each in the
+repository's `common/`. The Zephyr build's `CMakeLists.txt` and the NuttX build's Makefiles
+(`apps/imu/Makefile`, `drivers/lsm6dso/Make.defs`, the board's `src/Make.defs`) refer to them there.
+
+| Location | Contents |
+|---|---|
+| `common/imu/` | `imu_raw_{batch,packet,queue,status,time}`, `imu_tick_clock`, `time_offset`, `imu_cal_codec.c`, `imu_cal.h` |
+| `common/drivers/lsm6dso/` | `lsm6dso_{fifo,cal,zero,fifo_decoder}`, `lsm6dso_fifo_packet.h` |
+| `common/drivers/i2c_dw/` | `i2c_dw_rp2040_commands.[ch]` |
+| `common/tests/` | the 12 tests of the files above (run by `common/tests/run.sh`, which the `host_tests.sh` of both builds call first) |
+| `common/tests/fakes/` | stand-ins for the Zephyr and ST headers the tests need (`zephyr/drivers/sensor.h`, `zephyr/drivers/sensor_clock.h`, `zephyr/drivers/i2c.h`, `zephyr/rtio/rtio.h`, `lsm6dso_reg.h`), also used by `fifo_hw.c` and `stream_stop.c` below |
+
 The following files are unchanged copies of the files of the same name in the Zephyr build
 (`zephyr/app/usb-console`). When the Zephyr build changes, replace the copies with the same
 content.
 
 | Location | Location in the Zephyr build | Contents |
 |---|---|---|
-| `nuttx/apps/imu/` | `src/` | `imu_raw_{batch,packet,queue,status,time}`, `imu_tick_clock`, `time_offset`, `imu_cal_codec.c`, `imu_cal.h`, `kv_store.h`, `time_sync.h` |
-| `nuttx/drivers/lsm6dso/` | `drivers/lsm6dso/` | `lsm6dso_{fifo,cal,zero,fifo_decoder,fifo_hw,fifo_irq}`, `lsm6dso_stream.c`, `lsm6dso_fifo_packet.h`, `lsm6dso_fifo_stats.h`, `lsm6dso_attributes.h` |
-| `boards/arduino-nano-rp2040-connect/src/` | `drivers/i2c_dw/` | `i2c_dw_rp2040_commands.[ch]` |
-| `nuttx/tests/` | `tests/` | the tests of the files above (`i2c_dma_commands.c`, `fifo_hw.c` and `stream_stop.c` included; `stream_stop.c` includes `../drivers/lsm6dso/lsm6dso_stream.c`) |
-| `nuttx/tests/fakes/` | `tests/fakes/` | stand-ins for the Zephyr and ST headers the tests need (`zephyr/drivers/sensor.h`, `zephyr/drivers/sensor_clock.h`, `zephyr/drivers/i2c.h`, `zephyr/rtio/rtio.h`, `lsm6dso_reg.h`) |
+| `nuttx/apps/imu/` | `src/` | `kv_store.h`, `time_sync.h` |
+| `nuttx/drivers/lsm6dso/` | `drivers/lsm6dso/` | `lsm6dso_{fifo_hw,fifo_irq}`, `lsm6dso_stream.c`, `lsm6dso_fifo_stats.h`, `lsm6dso_attributes.h` |
+| `nuttx/tests/` | `tests/` | the tests of the files above (`fifo_hw.c` and `stream_stop.c`; `stream_stop.c` includes `../drivers/lsm6dso/lsm6dso_stream.c`) |
 
 `nuttx/drivers/nina/nina_net.c` is a copy with only the leading comment and `<nuttx/config.h>`
 added; `nuttx/apps/wifi/wifi_profile.c` is a copy with only the includes (the log is `app_log.h`)

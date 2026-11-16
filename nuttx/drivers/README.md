@@ -231,7 +231,7 @@ the IP address in `ifconfig`, or the ESSID in `wapi show`.
 | The board's `src/nano_i2c_dw.h` | The OS-independent part: the definitions of the Zephyr version's `i2c_dw.h`, the SCL counts, the speed class of a frequency, the NuttX flags (`I2C_M_*`) turned into Zephyr's (`I2C_MSG_*`) and the words written to `IC_DATA_CMD`. Host test `nuttx/tests/nano_i2c_dw.c` |
 | The board's `src/nano_i2c_dw_registers.h` | A copy of the Zephyr version's `i2c_dw_registers.h` (only the accessors are defined for NuttX) |
 | The board's `src/nano_dma.c`, `nano_dma.h` | The RP2040 DMA used by the DMA reads: Zephyr's `drivers/dma/dma_rpi_pico.c` (`dma_config()`, `dma_start()`, `dma_stop()`, the interrupt), the channel allocation of the DMA API (`dma_request_channel()`, `dma_release_channel()`) and the pico-sdk calls that `i2c_dw.c` makes itself (`dma_channel_is_busy()`, `dma_irqn_acknowledge_channel()`, `dma_hw->abort`), written on the registers |
-| The board's `src/i2c_dw_rp2040_commands.[ch]` | Unchanged copies of the Zephyr version's files of that name (the command words sent by DMA). Host test `nuttx/tests/i2c_dma_commands.c` (also a copy) |
+| `common/drivers/i2c_dw/i2c_dw_rp2040_commands.[ch]` | The command words sent by DMA. The same files as the Zephyr version's (the repository's `common/`; the board's `src/Make.defs` finds them through `VPATH`, and the object is made in the board's directory). Host test `common/tests/i2c_dma_commands.c` |
 | `include/nano_i2c_dma.h` | The state that the `i2c_dma` command (`nuttx/apps/i2c_dma`) reads and sets: DMA on or off and the four counters |
 
 - The calling thread drives a transfer and the interrupt handler moves the bytes. The caller waits
@@ -290,8 +290,9 @@ the IP address in `ifconfig`, or the ESSID in `wapi show`.
 | `lsm6dso/lsm6dso_fifo_hw.[ch]`, `lsm6dso_fifo_stats.h`, `lsm6dso_attributes.h` | Unchanged copies of the Zephyr version's files |
 | `lsm6dso/lsm6dso_stream.c`, `lsm6dso_fifo_irq.[ch]` | The FIFO stream (below). Unchanged copies of the Zephyr version's files |
 | `lsm6dso/lsm6dso_compat.c` | Single reads through RTIO (the fallback for a submission that is not a stream). A copy of the Zephyr version's file with only the log include and level name replaced |
-| `lsm6dso/lsm6dso_fifo_decoder.[ch]` | The decoders of the stream's and the single reads' buffers (`get_decoder`). Unchanged copies |
-| `lsm6dso/lsm6dso_cal.[ch]`, `lsm6dso_zero.[ch]` | The conversion to physical units with the calibration, and the tracking of the gyro bias at rest (below). Unchanged copies of the Zephyr version's files |
+| `common/drivers/lsm6dso/lsm6dso_fifo.[ch]`, `lsm6dso_fifo_packet.h` | Parsing of the FIFO words and the format of the buffer's header. The same files as the Zephyr version's (the repository's `common/`; `lsm6dso/Make.defs` finds them through `VPATH`, and the objects are made in `nuttx/drivers`; the same for the next 2 rows) |
+| `common/drivers/lsm6dso/lsm6dso_fifo_decoder.[ch]` | The decoders of the stream's and the single reads' buffers (`get_decoder`). The same files as the Zephyr version's |
+| `common/drivers/lsm6dso/lsm6dso_cal.[ch]`, `lsm6dso_zero.[ch]` | The conversion to physical units with the calibration, and the tracking of the gyro bias at rest (below). The same files as the Zephyr version's |
 | the board's `src/nano_lsm6dso.[ch]` | Makes I2C0 the compatibility layer's bus device (`i2c0`, 100 kHz) and initializes `lsm6dsox` (from `nano_bringup()`) |
 | the board's `src/nano_gpio.c` | GPIO bank 0 for the compatibility layer's `gpio0` (input set-up, levels, edge and level interrupts); `<nano_gpio.h>` (`nuttx/drivers/include`) |
 

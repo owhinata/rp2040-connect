@@ -93,16 +93,19 @@ flowchart LR
 
 | Role | Implementation |
 |---|---|
-| Parsing FIFO words | `drivers/lsm6dso/lsm6dso_fifo.*` |
-| Batching, numbering, epochs | `src/imu_raw_batch.*` |
-| Building the payload | `src/imu_raw_packet.*` |
-| FIFO timestamps to sample ticks | `src/imu_raw_time.*` |
-| Ticks to the board clock | `src/imu_tick_clock.*` |
-| Board clock to PC time | `src/time_sync.*`, `src/time_offset.*` |
-| Send queue | `src/imu_raw_queue.*` |
-| MQTT sending, reconnecting, status / info | `src/imu_raw_mqtt.*`, `src/imu_raw_status.*` |
+| Parsing FIFO words | `common/drivers/lsm6dso/lsm6dso_fifo.*` |
+| Batching, numbering, epochs | `common/imu/imu_raw_batch.*` |
+| Building the payload | `common/imu/imu_raw_packet.*` |
+| FIFO timestamps to sample ticks | `common/imu/imu_raw_time.*` |
+| Ticks to the board clock | `common/imu/imu_tick_clock.*` |
+| Board clock to PC time | `src/time_sync.*`, `common/imu/time_offset.*` |
+| Send queue | `common/imu/imu_raw_queue.*` |
+| MQTT sending, reconnecting, status / info | `src/imu_raw_mqtt.*`, `common/imu/imu_raw_status.*` |
 | Acquisition thread, recovery, shell (`imu`) | `src/imu_stream.c` |
 | NINA sockets | `drivers/nina/nina_socket.c` (see the [driver README](../zephyr/app/usb-console/drivers/README.md)) |
+
+`src/` and `drivers/` are under `zephyr/app/usb-console`; `common/` is under the repository's root and
+holds the parts whose files are the same as the NuttX build's.
 
 Reading the FIFO and sending are independent. A lost Wi-Fi or MQTT connection, or a send that
 waits, never blocks FIFO reads. Thread priorities are 9 for acquisition (batching) and time
@@ -505,7 +508,7 @@ for usage.
 ### 10.2 Conversion on the board
 
 One function converts raw values to physical units, with or without a calibration
-(`drivers/lsm6dso/lsm6dso_cal.c`). The FIFO decoder and the one-shot read both use it.
+(`common/drivers/lsm6dso/lsm6dso_cal.c`). The FIFO decoder and the one-shot read both use it.
 
 ```text
 out = M · (raw − bias)
@@ -532,7 +535,7 @@ imu.cal.accel.<µg/LSB>      imu.cal.gyro.<µdps/LSB>
 ```
 
 - The value is 56 bytes: version, kind, sensitivity, nine coefficients, three biases
-  (`src/imu_cal.h`).
+  (`common/imu/imu_cal.h`).
 - The driver does not read the KV store. The application registers a function that looks a
   calibration up by sensitivity, and the driver calls it at registration, on a reload request,
   and whenever a range is set.
@@ -570,7 +573,7 @@ across a power cycle.
 | Correlation with the direction of gravity | Below 0.1 LSB per g |
 
 The bias of the calibration is therefore not used as a fixed value; it is taken again from
-data recorded at rest (`drivers/lsm6dso/lsm6dso_zero.c`). Only `bias` in `M · (raw − bias)` is
+data recorded at rest (`common/drivers/lsm6dso/lsm6dso_zero.c`). Only `bias` in `M · (raw − bias)` is
 replaced; `M` stays the calibration's.
 
 - Samples are grouped into segments of an eighth of a second. Eight consecutive segments that
@@ -633,8 +636,10 @@ version's; what has been verified on the NuttX port is listed separately in 11.7
 ### 11.1 Approach
 
 - The OS-independent sources (batches, payload, queue, status, time mapping, NTP estimate, FIFO
-  parser, calibration format) are copied unchanged from the Zephyr version, and the same host
-  tests also run on the NuttX side.
+  parser, calibration format) are the Zephyr version's own files: both builds refer to the single
+  copy in the repository's `common/`, and the same host tests (`common/tests/`) run from the
+  `host_tests.sh` of both builds. Identical files not in `common/` (`lsm6dso_fifo_hw.[ch]`
+  and others) are unchanged copies of the Zephyr version's.
 - The sources that call the OS (`imu_stream.c`, `imu_raw_mqtt.c`, `time_sync.c`, `imu_cal.c`,
   `wifi_profile.c`, `nina_net.c`, the LSM6DSO driver with its FIFO stream, the sensor shell) are
   also copied almost as they are, on top of a compatibility layer (`nuttx/drivers/compat/`) that

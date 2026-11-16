@@ -91,12 +91,17 @@ CSRCS += nano_gpio.c
 endif
 
 # Its DMA reads: the DMA channels (in place of the in-tree rp2040_dmac.c,
-# RP2040_DMAC off) and the command words (an unchanged copy of the Zephyr
-# build's drivers/i2c_dw/i2c_dw_rp2040_commands.c).
+# RP2040_DMAC off) and the command words (i2c_dw_rp2040_commands.c, shared
+# with the Zephyr build in common/drivers/i2c_dw; VPATH and DEPPATH are
+# relative to the directory where the board's objects are made, through the
+# board symlink, as mkdeps needs).
 
 ifeq ($(CONFIG_NANO_I2C0_DMA),y)
 CSRCS += nano_dma.c
 CSRCS += i2c_dw_rp2040_commands.c
+DEPPATH += --dep-path board/../../../../common/drivers/i2c_dw
+VPATH += :board/../../../../common/drivers/i2c_dw
+CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)drivers$(DELIM)i2c_dw
 endif
 
 # The stack sentinel in the scheduler's switch hook.
