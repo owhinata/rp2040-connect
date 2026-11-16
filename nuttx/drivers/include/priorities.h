@@ -53,7 +53,7 @@
 #define NANO_PRIO_IMU_STREAM         NANO_PRIO_FROM_ZEPHYR(9)   /* 109 */
 #define NANO_STACK_IMU_STREAM        2048
 
-/* drivers/lsm6dso/lsm6dso_stream.c:279 the "imu_fifo_worker" work queue,
+/* common/drivers/lsm6dso/lsm6dso_stream.c:279 the "imu_fifo_worker" work queue,
  * K_PRIO_PREEMPT(10), STREAM_WORK_STACK_SIZE 2048.
  */
 

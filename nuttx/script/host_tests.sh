@@ -32,8 +32,6 @@ lib=("$cimu/imu_raw_queue.c" "$cimu/imu_raw_packet.c" "$cimu/imu_raw_batch.c"
      "$cimu/imu_raw_status.c" "$cimu/imu_raw_time.c" "$cimu/imu_tick_clock.c"
      "$cimu/time_offset.c" "$clsm/lsm6dso_fifo.c")
 
-# LSM6DSO FIFO driver pieces.
-run fifo_hw "$lsm/lsm6dso_fifo_hw.c"
 # The LSM6DSO driver (lsm6dso.c) and its FIFO stream (lsm6dso_stream.c, lsm6dso_fifo_irq.c,
 # lsm6dso_compat.c, the decoder) on ST's real lsm6dso_reg.c, the Zephyr compatibility layer
 # (I2C, devices, work queues, RTIO, gpio0, the default sensor iodev and decoder) with the fake
@@ -51,8 +49,8 @@ if [[ -f stmemsc/lsm6dso_reg.c ]]; then
         -Idrivers/compat -Idrivers/include -Istmemsc -I"$lsm" -I"$clsm" \
         -Iboards/arduino-nano-rp2040-connect/src \
         tests/lsm6dso_driver.c "$lsm/lsm6dso.c" "$lsm/stmemsc_i2c.c" "$lsm/stmemsc_mdelay.c" \
-        "$lsm/lsm6dso_fifo_hw.c" "$clsm/lsm6dso_fifo.c" "$clsm/lsm6dso_cal.c" \
-        "$clsm/lsm6dso_zero.c" "$lsm/lsm6dso_stream.c" "$lsm/lsm6dso_fifo_irq.c" \
+        "$clsm/lsm6dso_fifo_hw.c" "$clsm/lsm6dso_fifo.c" "$clsm/lsm6dso_cal.c" \
+        "$clsm/lsm6dso_zero.c" "$clsm/lsm6dso_stream.c" "$clsm/lsm6dso_fifo_irq.c" \
         "$lsm/lsm6dso_compat.c" \
         "$clsm/lsm6dso_fifo_decoder.c" drivers/compat/zephyr_i2c.c drivers/compat/zephyr_device.c \
         drivers/compat/zephyr_gpio.c drivers/compat/sensor_default_rtio.c "${compat[@]}" \
@@ -70,8 +68,8 @@ if [[ -f stmemsc/lsm6dso_reg.c ]]; then
         -Iboards/arduino-nano-rp2040-connect/src \
         tests/imu_cal.c "$imu/imu_cal.c" "$cimu/imu_cal_codec.c" "$lsm/lsm6dso.c" \
         "$lsm/stmemsc_i2c.c" "$lsm/stmemsc_mdelay.c" \
-        "$lsm/lsm6dso_fifo_hw.c" "$clsm/lsm6dso_fifo.c" "$clsm/lsm6dso_cal.c" \
-        "$clsm/lsm6dso_zero.c" "$lsm/lsm6dso_stream.c" "$lsm/lsm6dso_fifo_irq.c" \
+        "$clsm/lsm6dso_fifo_hw.c" "$clsm/lsm6dso_fifo.c" "$clsm/lsm6dso_cal.c" \
+        "$clsm/lsm6dso_zero.c" "$clsm/lsm6dso_stream.c" "$clsm/lsm6dso_fifo_irq.c" \
         "$lsm/lsm6dso_compat.c" \
         "$clsm/lsm6dso_fifo_decoder.c" drivers/compat/zephyr_i2c.c drivers/compat/zephyr_device.c \
         drivers/compat/zephyr_gpio.c drivers/compat/sensor_default_rtio.c "${compat[@]}" \
@@ -93,8 +91,8 @@ if [[ -f stmemsc/lsm6dso_reg.c ]]; then
     cc "${sflags[@]}" "${sinc[@]}" tests/sensor_shell.c "$out/sensor_shell.o" \
         apps/sensor/sensor_shell_stream.c apps/sensor/sensor_shell_nuttx.c apps/subcmd/zshell.c \
         apps/subcmd/subcmd.c "$lsm/lsm6dso.c" "$lsm/stmemsc_i2c.c" "$lsm/stmemsc_mdelay.c" \
-        "$lsm/lsm6dso_fifo_hw.c" "$clsm/lsm6dso_fifo.c" "$clsm/lsm6dso_cal.c" \
-        "$clsm/lsm6dso_zero.c" "$lsm/lsm6dso_stream.c" "$lsm/lsm6dso_fifo_irq.c" \
+        "$clsm/lsm6dso_fifo_hw.c" "$clsm/lsm6dso_fifo.c" "$clsm/lsm6dso_cal.c" \
+        "$clsm/lsm6dso_zero.c" "$clsm/lsm6dso_stream.c" "$clsm/lsm6dso_fifo_irq.c" \
         "$lsm/lsm6dso_compat.c" \
         "$clsm/lsm6dso_fifo_decoder.c" drivers/compat/zephyr_i2c.c drivers/compat/zephyr_device.c \
         drivers/compat/zephyr_gpio.c drivers/compat/sensor_default_rtio.c "${compat[@]}" \
@@ -107,9 +105,6 @@ else
     printf 'skip imu_cal (no stmemsc/lsm6dso_reg.c: run script/setup.sh)\n'
     printf 'skip sensor_shell (no stmemsc/lsm6dso_reg.c: run script/setup.sh)\n'
 fi
-# The stream's state machine (lsm6dso_stream.c) with a fake FIFO and RTIO executor: an
-# unchanged copy of the Zephyr build's test, which includes the unchanged copy of the source.
-run stream_stop "$clsm/lsm6dso_fifo.c" "$clsm/lsm6dso_cal.c"
 # The compatibility layer's RTIO (pool, completions, multishot, cancellation, work queue) and
 # work items (submit, schedule, reschedule, cancel), on the fake kernel.
 zinc=(-D_DEFAULT_SOURCE -Itests/zephyr_fakes -Idrivers/compat -Idrivers/include)

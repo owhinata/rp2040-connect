@@ -3,8 +3,8 @@
  * build's drivers/lsm6dso/lsm6dso.c.  lsm6dso_os.c implements them on
  * NuttX; a host test can build lsm6dso.c with fakes.  The kernel objects
  * are those of the port's Zephyr compatibility layer (<zephyr/kernel.h>),
- * which the FIFO stream (lsm6dso_stream.c, an unchanged copy) also locks
- * by their Zephyr names.
+ * which the FIFO stream (lsm6dso_stream.c, the Zephyr build's file in
+ * common/drivers/lsm6dso) also locks by their Zephyr names.
  *
  *   Zephyr                                    here
  *   struct k_mutex, k_mutex_init()            lsm6dso_mutex_t,

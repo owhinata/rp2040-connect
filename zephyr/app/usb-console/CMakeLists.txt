@@ -43,18 +43,19 @@ target_include_directories(drivers__i2c PRIVATE "${ZEPHYR_BASE}/drivers/i2c" ${C
 
 use_local_driver_sources(drivers__sensor__st__lsm6dso "(^|/)lsm6dso(_shub|_trigger)?\\.c$" drivers/lsm6dso)
 use_local_driver_sources(drivers__sensor "(^|/)sensor_shell\\.c$" drivers/sensor_shell)
-target_include_directories(drivers__sensor PRIVATE ${ZEPHYR_BASE}/drivers/sensor)
+# sensor_shell.c reads lsm6dso_attributes.h of common/drivers/lsm6dso.
+target_include_directories(drivers__sensor PRIVATE ${ZEPHYR_BASE}/drivers/sensor ${COMMON_DIR}/drivers/lsm6dso)
 # The driver's files are in drivers/lsm6dso and common/drivers/lsm6dso.
 target_include_directories(drivers__sensor__st__lsm6dso PRIVATE
   ${CMAKE_CURRENT_SOURCE_DIR}/drivers/lsm6dso ${COMMON_DIR}/drivers/lsm6dso)
 target_sources(drivers__sensor__st__lsm6dso PRIVATE ${COMMON_DIR}/drivers/lsm6dso/lsm6dso_fifo.c)
 target_sources(drivers__sensor__st__lsm6dso PRIVATE ${COMMON_DIR}/drivers/lsm6dso/lsm6dso_cal.c)
 target_sources(drivers__sensor__st__lsm6dso PRIVATE ${COMMON_DIR}/drivers/lsm6dso/lsm6dso_zero.c)
-target_sources(drivers__sensor__st__lsm6dso PRIVATE drivers/lsm6dso/lsm6dso_fifo_hw.c)
-target_sources(drivers__sensor__st__lsm6dso PRIVATE drivers/lsm6dso/lsm6dso_fifo_irq.c)
+target_sources(drivers__sensor__st__lsm6dso PRIVATE ${COMMON_DIR}/drivers/lsm6dso/lsm6dso_fifo_hw.c)
+target_sources(drivers__sensor__st__lsm6dso PRIVATE ${COMMON_DIR}/drivers/lsm6dso/lsm6dso_fifo_irq.c)
 if(CONFIG_SENSOR_ASYNC_API)
   target_sources(drivers__sensor__st__lsm6dso PRIVATE
     ${COMMON_DIR}/drivers/lsm6dso/lsm6dso_fifo_decoder.c
     drivers/lsm6dso/lsm6dso_compat.c
-    drivers/lsm6dso/lsm6dso_stream.c)
+    ${COMMON_DIR}/drivers/lsm6dso/lsm6dso_stream.c)
 endif()

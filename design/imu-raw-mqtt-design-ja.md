@@ -564,10 +564,12 @@ NuttX 版の確認の範囲は §11.7 に分けて書く。
 
 - OS に依存しないソース（バッチ、ペイロード、キュー、status、時刻の対応付け、NTP の推定、FIFO の解析、
   校正の形式）は Zephyr 版と同じファイルを使う。どちらの版のビルドもリポジトリの `common/` の 1 本を参照し、
-  同じホストテスト（`common/tests/`）を両方の版の `host_tests.sh` から動かす。`common/` に置いていない
-  同一のファイル（`lsm6dso_fifo_hw.[ch]` など）は、Zephyr 版のファイルを変更せずに写している。
+  同じホストテスト（`common/tests/`）を両方の版の `host_tests.sh` から動かす。Zephyr の API を使うが両方の版で
+  同一のドライバーのファイル（LSM6DSO の FIFO の設定とストリーム、`lsm6dso_fifo_stats.h`、`lsm6dso_attributes.h`）も
+  `common/` に置き、NuttX 版では下の互換層の上で動かす。`common/` に置いていない同一のファイル（`kv_store.h`、
+  `time_sync.h`、`nina_proto.h`）は、Zephyr 版のファイルを変更せずに写している。
 - OS を呼ぶソース（`imu_stream.c`、`imu_raw_mqtt.c`、`time_sync.c`、`imu_cal.c`、`wifi_profile.c`、
-  `nina_net.c`、LSM6DSO のドライバーと FIFO のストリーム、sensor シェル）も、OS の呼び出しを
+  `nina_net.c`、LSM6DSO のドライバー、sensor シェル）も、OS の呼び出しを
   **Zephyr の名前のまま**提供する互換層（`nuttx/drivers/compat/`）の上で、ほぼそのまま写して動かす。
   互換層は、移したソースが使う部分だけを持つ（`struct device`、センサーの API、RTIO、ワークキュー、
   `k_sem`・`k_mutex`・`k_poll` の一部、`net_mgmt` のイベント、`zsock_*()`、シェルのコマンドの表）。

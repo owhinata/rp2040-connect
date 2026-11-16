@@ -17,11 +17,9 @@
 # ($(TOPDIR)/external/compat; NuttX's headers are included before it), the
 # LSM6DSO driver's headers ($(TOPDIR)/external/lsm6dso), the port's shared
 # headers ($(TOPDIR)/external/include: priorities.h, cpu_load.h), subcmd.h,
-# $(APPDIR)/external, through which "../drivers/lsm6dso/lsm6dso_fifo_stats.h"
-# of imu_stream.c reaches nuttx/drivers (external is a symlink to
-# nuttx/apps), and common/imu and common/drivers/lsm6dso, through which
-# imu_stream.c's "../drivers/lsm6dso/lsm6dso_fifo.h" and imu_cal.h's
-# "lsm6dso_cal.h" are found.
+# and common/imu and common/drivers/lsm6dso, through which imu_stream.c's
+# "../drivers/lsm6dso/lsm6dso_fifo.h" and "../drivers/lsm6dso/
+# lsm6dso_fifo_stats.h" and imu_cal.h's "lsm6dso_cal.h" are found.
 ############################################################################
 
 include $(APPDIR)/Make.defs
@@ -67,7 +65,6 @@ CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)include
 CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)compat
 CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)lsm6dso
 CFLAGS   += ${INCDIR_PREFIX}$(APPDIR)$(DELIM)external$(DELIM)subcmd
-CFLAGS   += ${INCDIR_PREFIX}$(APPDIR)$(DELIM)external
 CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)imu
 CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)drivers$(DELIM)lsm6dso
 

@@ -4,14 +4,19 @@
 # The LSM6DSOX driver: lsm6dso.c (a port of the Zephyr build's
 # drivers/lsm6dso/lsm6dso.c), its kernel services (lsm6dso_os.c), the ST
 # glue (stmemsc_i2c.c, stmemsc_mdelay.c), the OS-independent parts
-# (lsm6dso_fifo_hw.c, an unchanged copy of the Zephyr build's, and
-# lsm6dso_fifo.c, lsm6dso_cal.c, lsm6dso_zero.c, shared with the Zephyr
-# build in common/drivers/lsm6dso), the FIFO stream (lsm6dso_stream.c,
-# lsm6dso_fifo_irq.c: unchanged copies; lsm6dso_compat.c with the log
-# replaced; lsm6dso_fifo_decoder.c of common/drivers/lsm6dso), and ST's
-# register driver lsm6dso_reg.c, which script/setup.sh puts in
-# nuttx/stmemsc (not in Git; built through st_lsm6dso_reg.c, which includes
-# it).  Included by nuttx/drivers/Makefile.  VPATH and DEPPATH of
+# (lsm6dso_fifo_hw.c, lsm6dso_fifo.c, lsm6dso_cal.c, lsm6dso_zero.c), the
+# FIFO stream (lsm6dso_stream.c, lsm6dso_fifo_irq.c, lsm6dso_fifo_decoder.c;
+# lsm6dso_compat.c with the log replaced), and ST's register driver
+# lsm6dso_reg.c, which script/setup.sh puts in nuttx/stmemsc (not in Git;
+# built through st_lsm6dso_reg.c, which includes it).  The files shared
+# with the Zephyr build (lsm6dso_fifo_hw, lsm6dso_fifo, lsm6dso_cal,
+# lsm6dso_zero, lsm6dso_fifo_decoder, lsm6dso_stream.c, lsm6dso_fifo_irq and
+# the headers lsm6dso_fifo_packet.h, lsm6dso_fifo_stats.h,
+# lsm6dso_attributes.h) are in common/drivers/lsm6dso; lsm6dso.c, the
+# compatibility file and the headers of this directory (lsm6dso.h,
+# lsm6dso_os.h, stmemsc.h) stay here, and $(TOPDIR)/external/lsm6dso (this
+# directory) is on the include path for the shared files that read them.
+# Included by nuttx/drivers/Makefile.  VPATH and DEPPATH of
 # common/drivers/lsm6dso are relative to nuttx/drivers (mkdeps needs
 # relative ones); the objects are made there.
 ############################################################################
@@ -30,4 +35,5 @@ DEPPATH += --dep-path ../../common/drivers/lsm6dso
 VPATH += :../../common/drivers/lsm6dso
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)stmemsc
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)drivers$(DELIM)lsm6dso
+CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)lsm6dso
 endif

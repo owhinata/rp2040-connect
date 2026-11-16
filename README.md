@@ -335,7 +335,7 @@ summary (missing batches, valid and reversed times) and at the errors in `imu st
 | `zephyr/app/blink/` | LED blink sample |
 | `zephyr/script/` | Setup, host tests |
 | `nuttx/` | The NuttX build (board definition, drivers, applications, patches, scripts, host tests) |
-| `common/` | Sources that the Zephyr and NuttX builds both use (`imu/`: batches, packets, the send queue, time assignment, the NTP estimate, the calibration value format; `drivers/`: the LSM6DSO's FIFO parsing, unit conversion and gyro zero, the I2C DMA command words) and their host tests (`tests/`; `tests/run.sh` is called by the `host_tests.sh` of both builds) |
+| `common/` | Sources that the Zephyr and NuttX builds both use (`imu/`: batches, packets, the send queue, time assignment, the NTP estimate, the calibration value format; `drivers/`: the LSM6DSO's FIFO parsing, unit conversion and gyro zero, FIFO setup, interrupt and stream, the I2C DMA command words) and their host tests (`tests/`; `tests/run.sh` is called by the `host_tests.sh` of both builds) |
 | `openmv/` | Build environment for the OpenMV MicroPython firmware ([`openmv/README.md`](openmv/README.md)) |
 | `freertos/` | Build environment for the Raspberry Pi Pico SDK with the FreeRTOS kernel, and a USB console application ([`freertos/README.md`](freertos/README.md)) |
 | `zephyr/manifest/west.yml` | Versions of Zephyr and its modules |

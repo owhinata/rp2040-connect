@@ -257,10 +257,10 @@ wapi の ioctl（`d_ioctl`。呼び出したスレッドで処理）は次のと
 | `lsm6dso/lsm6dso_os.[ch]` | `lsm6dso.c` が使うカーネルの機能: ミューテックスと割り込み禁止（互換層の `k_mutex`・`k_spin_lock()`）、`k_busy_wait()`、`k_msleep()`・`k_usleep()`、`k_cycle_get_32()` |
 | `lsm6dso/stmemsc.h`、`stmemsc_i2c.c`、`stmemsc_mdelay.c` | Zephyr の `drivers/sensor/st/stmemsc/` の I2C の部分の写し（ST の `stmdev_ctx_t` と Zephyr の I2C の API のつなぎ） |
 | `lsm6dso/st_lsm6dso_reg.c` | ST の `lsm6dso_reg.c`（`nuttx/stmemsc/`、Git 管理外）をそのままビルドするための 1 行の包み |
-| `lsm6dso/lsm6dso_fifo_hw.[ch]`、`lsm6dso_fifo_stats.h`、`lsm6dso_attributes.h` | Zephyr 版の同名ファイルを変更せずに写したもの |
-| `lsm6dso/lsm6dso_stream.c`、`lsm6dso_fifo_irq.[ch]` | FIFO のストリーム（下）。Zephyr 版の同名ファイルを変更せずに写したもの |
 | `lsm6dso/lsm6dso_compat.c` | 単発取得の RTIO 版（ストリームでない submit のフォールバック）。Zephyr 版の写しで、ログのインクルードとレベルの名前だけを置き換え |
-| `common/drivers/lsm6dso/lsm6dso_fifo.[ch]`、`lsm6dso_fifo_packet.h` | FIFO のワードの解析とバッファーの先頭の形式。Zephyr 版と同じファイル（リポジトリの `common/`。`lsm6dso/Make.defs` が `VPATH` で参照し、オブジェクトは `nuttx/drivers` にできる。以下の 2 行も同じ） |
+| `common/drivers/lsm6dso/lsm6dso_fifo.[ch]`、`lsm6dso_fifo_packet.h` | FIFO のワードの解析とバッファーの先頭の形式。Zephyr 版と同じファイル（リポジトリの `common/`。`lsm6dso/Make.defs` が `VPATH` で参照し、オブジェクトは `nuttx/drivers` にできる。以下の 4 行も同じ） |
+| `common/drivers/lsm6dso/lsm6dso_fifo_hw.[ch]`、`lsm6dso_fifo_stats.h`、`lsm6dso_attributes.h` | FIFO の設定・状態の読み取り・バースト読み出し、FIFO の統計、独自属性。Zephyr 版と同じファイル（Zephyr の名前の API を互換層から使う） |
+| `common/drivers/lsm6dso/lsm6dso_stream.c`、`lsm6dso_fifo_irq.[ch]` | FIFO のストリーム（下）。Zephyr 版と同じファイル |
 | `common/drivers/lsm6dso/lsm6dso_fifo_decoder.[ch]` | ストリームと単発取得のバッファーのデコーダー（`get_decoder`）。Zephyr 版と同じファイル |
 | `common/drivers/lsm6dso/lsm6dso_cal.[ch]`、`lsm6dso_zero.[ch]` | 物理量への変換と校正値の適用、静止時の角速度のバイアスの追従（下）。Zephyr 版と同じファイル |
 | ボードの `src/nano_lsm6dso.[ch]` | I2C0 を互換層のバスのデバイス（`i2c0`、100 kHz）にし、`lsm6dsox` を初期化する（`nano_bringup()` から） |
@@ -301,7 +301,7 @@ FIFO のデコーダーの出力で、取得サービスが MQTT で送る RAW �
 
 ### FIFO のストリーム
 
-`lsm6dso_stream.c`・`lsm6dso_fifo_irq.[ch]` は Zephyr 版の写しそのもの（`cmp` で一致）で、Zephyr の名前の
+`lsm6dso_stream.c`・`lsm6dso_fifo_irq.[ch]` は Zephyr 版と同じファイル（`common/drivers/lsm6dso/`）で、Zephyr の名前の
 カーネル・RTIO・GPIO・sensor の API を互換層（下の節）から使います。動作は Zephyr 版と同じです。
 
 - `sensor_stream()`（`SENSOR_DT_STREAM_IODEV`、トリガーは `SENSOR_TRIG_FIFO_WATERMARK` と

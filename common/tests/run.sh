@@ -30,6 +30,7 @@ for test in fifo_words imu_raw_packet imu_raw_batch imu_raw_queue imu_raw_status
 done
 
 # LSM6DSO FIFO driver pieces.
+run fifo_hw "${flags[@]}" "${inc[@]}" tests/fifo_hw.c "$lsm/lsm6dso_fifo_hw.c"
 run fifo_decoder "${flags[@]}" "${inc[@]}" tests/fifo_decoder.c \
     "$lsm/lsm6dso_fifo_decoder.c" "$lsm/lsm6dso_fifo.c" "$lsm/lsm6dso_cal.c"
 # Conversion to physical units and the stored calibration format.
@@ -37,6 +38,10 @@ run lsm6dso_cal "${flags[@]}" "${inc[@]}" tests/lsm6dso_cal.c \
     "$lsm/lsm6dso_cal.c" "$imu/imu_cal_codec.c" -lm
 # Gyro bias tracking at rest.
 run lsm6dso_zero "${flags[@]}" "${inc[@]}" tests/lsm6dso_zero.c "$lsm/lsm6dso_zero.c"
+# The stream's state machine (lsm6dso_stream.c, which the test includes) with a fake FIFO and
+# RTIO executor.
+run stream_stop "${flags[@]}" "${inc[@]}" tests/stream_stop.c \
+    "$lsm/lsm6dso_fifo.c" "$lsm/lsm6dso_cal.c"
 
 # RP2040 I2C DMA command parsing.
 run i2c_dma_commands "${flags[@]}" -Idrivers/i2c_dw tests/i2c_dma_commands.c \

@@ -287,10 +287,10 @@ the IP address in `ifconfig`, or the ESSID in `wapi show`.
 | `lsm6dso/lsm6dso_os.[ch]` | The kernel services `lsm6dso.c` uses: mutexes and interrupts off (the compatibility layer's `k_mutex` and `k_spin_lock()`), `k_busy_wait()`, `k_msleep()`/`k_usleep()`, `k_cycle_get_32()` |
 | `lsm6dso/stmemsc.h`, `stmemsc_i2c.c`, `stmemsc_mdelay.c` | A copy of the I2C part of Zephyr's `drivers/sensor/st/stmemsc/` (the glue between ST's `stmdev_ctx_t` and Zephyr's I2C API) |
 | `lsm6dso/st_lsm6dso_reg.c` | A one-line wrapper that builds ST's `lsm6dso_reg.c` (`nuttx/stmemsc/`, not in Git) as it is |
-| `lsm6dso/lsm6dso_fifo_hw.[ch]`, `lsm6dso_fifo_stats.h`, `lsm6dso_attributes.h` | Unchanged copies of the Zephyr version's files |
-| `lsm6dso/lsm6dso_stream.c`, `lsm6dso_fifo_irq.[ch]` | The FIFO stream (below). Unchanged copies of the Zephyr version's files |
 | `lsm6dso/lsm6dso_compat.c` | Single reads through RTIO (the fallback for a submission that is not a stream). A copy of the Zephyr version's file with only the log include and level name replaced |
-| `common/drivers/lsm6dso/lsm6dso_fifo.[ch]`, `lsm6dso_fifo_packet.h` | Parsing of the FIFO words and the format of the buffer's header. The same files as the Zephyr version's (the repository's `common/`; `lsm6dso/Make.defs` finds them through `VPATH`, and the objects are made in `nuttx/drivers`; the same for the next 2 rows) |
+| `common/drivers/lsm6dso/lsm6dso_fifo.[ch]`, `lsm6dso_fifo_packet.h` | Parsing of the FIFO words and the format of the buffer's header. The same files as the Zephyr version's (the repository's `common/`; `lsm6dso/Make.defs` finds them through `VPATH`, and the objects are made in `nuttx/drivers`; the same for the next 4 rows) |
+| `common/drivers/lsm6dso/lsm6dso_fifo_hw.[ch]`, `lsm6dso_fifo_stats.h`, `lsm6dso_attributes.h` | FIFO setup, status and burst reads, the FIFO statistics, the private attributes. The same files as the Zephyr version's (they use Zephyr's API through the compatibility layer) |
+| `common/drivers/lsm6dso/lsm6dso_stream.c`, `lsm6dso_fifo_irq.[ch]` | The FIFO stream (below). The same files as the Zephyr version's |
 | `common/drivers/lsm6dso/lsm6dso_fifo_decoder.[ch]` | The decoders of the stream's and the single reads' buffers (`get_decoder`). The same files as the Zephyr version's |
 | `common/drivers/lsm6dso/lsm6dso_cal.[ch]`, `lsm6dso_zero.[ch]` | The conversion to physical units with the calibration, and the tracking of the gyro bias at rest (below). The same files as the Zephyr version's |
 | the board's `src/nano_lsm6dso.[ch]` | Makes I2C0 the compatibility layer's bus device (`i2c0`, 100 kHz) and initializes `lsm6dsox` (from `nano_bringup()`) |
@@ -333,8 +333,8 @@ the FIFO decoder, not to the RAW the acquisition service sends over MQTT.
 
 ### FIFO stream
 
-`lsm6dso_stream.c` and `lsm6dso_fifo_irq.[ch]` are the Zephyr version's files as they are (`cmp`
-identical); they use the kernel, RTIO, GPIO and sensor API under Zephyr's names from the
+`lsm6dso_stream.c` and `lsm6dso_fifo_irq.[ch]` are the same files as the Zephyr version's
+(`common/drivers/lsm6dso/`); they use the kernel, RTIO, GPIO and sensor API under Zephyr's names from the
 compatibility layer (next section). They behave as in the Zephyr version:
 
 - `sensor_stream()` (`SENSOR_DT_STREAM_IODEV`; one trigger, `SENSOR_TRIG_FIFO_WATERMARK` with

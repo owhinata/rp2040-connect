@@ -440,7 +440,7 @@ NuttX puts at the start of a stack (2048 → 2008 and so on).
 nuttx/script/host_tests.sh
 ```
 
-This builds and runs the 38 host tests of the OS-independent parts on the PC. The first 12 are the
+This builds and runs the 38 host tests of the OS-independent parts on the PC. The first 14 are the
 tests of the sources shared with the Zephyr build, run by `common/tests/run.sh`. It needs no board, only
 the host's `cc` (C17). Without ST's `lsm6dso_reg.c` (fetched by `setup.sh`), the 3 tests that use it
 (`lsm6dso_driver`, `imu_cal`, `sensor_shell`) print `skip`. It stops at the first failure. What each

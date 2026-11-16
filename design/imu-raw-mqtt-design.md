@@ -638,10 +638,13 @@ version's; what has been verified on the NuttX port is listed separately in 11.7
 - The OS-independent sources (batches, payload, queue, status, time mapping, NTP estimate, FIFO
   parser, calibration format) are the Zephyr version's own files: both builds refer to the single
   copy in the repository's `common/`, and the same host tests (`common/tests/`) run from the
-  `host_tests.sh` of both builds. Identical files not in `common/` (`lsm6dso_fifo_hw.[ch]`
-  and others) are unchanged copies of the Zephyr version's.
+  `host_tests.sh` of both builds. The driver files that use Zephyr's API but are the same in both
+  builds (the LSM6DSO's FIFO setup and stream, `lsm6dso_fifo_stats.h`, `lsm6dso_attributes.h`) are
+  in `common/` too and run on the compatibility layer below in the NuttX build. Identical files not
+  in `common/` (`kv_store.h`, `time_sync.h`, `nina_proto.h`) are unchanged copies of the Zephyr
+  version's.
 - The sources that call the OS (`imu_stream.c`, `imu_raw_mqtt.c`, `time_sync.c`, `imu_cal.c`,
-  `wifi_profile.c`, `nina_net.c`, the LSM6DSO driver with its FIFO stream, the sensor shell) are
+  `wifi_profile.c`, `nina_net.c`, the LSM6DSO driver, the sensor shell) are
   also copied almost as they are, on top of a compatibility layer (`nuttx/drivers/compat/`) that
   provides the OS calls **under Zephyr's names**. The layer has only what the copied sources use
   (`struct device`, the sensor API, RTIO, work queues, parts of `k_sem`, `k_mutex` and `k_poll`,

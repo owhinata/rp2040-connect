@@ -589,8 +589,8 @@ LF に直して同一）で行います。FIFO のストリーム（INT1 の割�
   段（12、26、52、104、208、417、833、1667、3333、6667 Hz）、加速度のフルスケールは m/s² を g に四捨五入して
   2・4・8・16 g、ジャイロは rad/s を dps に四捨五入して 125・250・500・1000・2000 dps だけを受け付けます
   （ほかは `-EINVAL`）。FIFO を使っている間の単発取得と属性の変更は `-EBUSY` です。
-- **FIFO のストリーム**: `lsm6dso_stream.c`・`lsm6dso_fifo_irq.[ch]` は Zephyr 版のファイルを変更せずに
-  写したもので、Zephyr 版と同じく `sensor_stream()` で始まり、INT1（GPIO24）の立ち上がりエッジの割り込み →
+- **FIFO のストリーム**: `lsm6dso_stream.c`・`lsm6dso_fifo_irq.[ch]` は Zephyr 版と同じファイル
+  （`common/drivers/lsm6dso/`）で、Zephyr 版と同じく `sensor_stream()` で始まり、INT1（GPIO24）の立ち上がりエッジの割り込み →
   システムワークキュー（`sysworkq`）→ FIFO のワーカー（`imu_fifo_worker`）が FIFO を読んで RTIO の完了に
   します。ウォーターマークに届かないときは 20 ms ごとに見直し、`lsm6dso_fifo_request_stop()` で残りを最後の
   端数のバッチとして渡してから `-ECANCELED` で終えます。動かすための Zephyr のカーネル（ワークキュー、
@@ -955,16 +955,17 @@ NuttX 標準のクリティカルセクションの監視（`CONFIG_SCHED_CRITMO
 ## ホストテストの詳細
 
 次のファイルは Zephyr 版と NuttX 版が同じものを使い、リポジトリの `common/` に 1 本ずつ置いています。
-Zephyr 版の `CMakeLists.txt` と NuttX 版の Makefile（`apps/imu/Makefile`、`drivers/lsm6dso/Make.defs`、ボードの
-`src/Make.defs`）がそこを参照します。
+Zephyr 版の `CMakeLists.txt` と NuttX 版の Makefile（`apps/imu/Makefile`、`apps/sensor/Makefile`、`drivers/lsm6dso/Make.defs`、
+ボードの `src/Make.defs`）がそこを参照します。`common/drivers/lsm6dso/` のうち Zephyr の API を使うもの（FIFO の設定と
+ストリーム、`lsm6dso_fifo_stats.h`、`lsm6dso_attributes.h`）は、NuttX 版では互換層の上で動きます。
 
 | 置き場所 | 内容 |
 |---|---|
 | `common/imu/` | `imu_raw_{batch,packet,queue,status,time}`、`imu_tick_clock`、`time_offset`、`imu_cal_codec.c`、`imu_cal.h` |
-| `common/drivers/lsm6dso/` | `lsm6dso_{fifo,cal,zero,fifo_decoder}`、`lsm6dso_fifo_packet.h` |
+| `common/drivers/lsm6dso/` | `lsm6dso_{fifo,cal,zero,fifo_decoder,fifo_hw,fifo_irq}`、`lsm6dso_stream.c`、`lsm6dso_fifo_packet.h`、`lsm6dso_fifo_stats.h`、`lsm6dso_attributes.h` |
 | `common/drivers/i2c_dw/` | `i2c_dw_rp2040_commands.[ch]` |
-| `common/tests/` | 上のファイルを対象にするテスト 12 本（`common/tests/run.sh` が実行し、両方の版の `host_tests.sh` が最初に呼ぶ） |
-| `common/tests/fakes/` | テスト用の Zephyr のヘッダーと ST のヘッダーの代わり（`zephyr/drivers/sensor.h`、`zephyr/drivers/sensor_clock.h`、`zephyr/drivers/i2c.h`、`zephyr/rtio/rtio.h`、`lsm6dso_reg.h`）。下の `fifo_hw.c`・`stream_stop.c` も使う |
+| `common/tests/` | 上のファイルを対象にするテスト 14 本（`common/tests/run.sh` が実行し、両方の版の `host_tests.sh` が最初に呼ぶ）。`stream_stop.c` は `../drivers/lsm6dso/lsm6dso_stream.c` を読み込む |
+| `common/tests/fakes/` | テスト用の Zephyr のヘッダーと ST のヘッダーの代わり（`zephyr/drivers/sensor.h`、`zephyr/drivers/sensor_clock.h`、`zephyr/drivers/i2c.h`、`zephyr/rtio/rtio.h`、`lsm6dso_reg.h`）と、`lsm6dso_stream.c` が読む `lsm6dso.h` の代わり（中身はインクルードガードだけ。`stream_stop.c` が必要な定義を自分で置く） |
 
 次のファイルは Zephyr 版（`zephyr/app/usb-console`）の同名ファイルを変更せずに写したものです。
 Zephyr 版を直したときは、写しも同じ内容に置き換えます。
@@ -972,8 +973,6 @@ Zephyr 版を直したときは、写しも同じ内容に置き換えます。
 | 置き場所 | Zephyr 版の置き場所 | 内容 |
 |---|---|---|
 | `nuttx/apps/imu/` | `src/` | `kv_store.h`、`time_sync.h` |
-| `nuttx/drivers/lsm6dso/` | `drivers/lsm6dso/` | `lsm6dso_{fifo_hw,fifo_irq}`、`lsm6dso_stream.c`、`lsm6dso_fifo_stats.h`、`lsm6dso_attributes.h` |
-| `nuttx/tests/` | `tests/` | 上のファイルを対象にするテスト（`fifo_hw.c`、`stream_stop.c`。`stream_stop.c` は `../drivers/lsm6dso/lsm6dso_stream.c` を読み込む） |
 
 `nuttx/drivers/nina/nina_net.c` は先頭の説明と `<nuttx/config.h>` だけを足した写し、
 `nuttx/apps/wifi/wifi_profile.c` は先頭のインクルード（ログを `app_log.h` に）と `wifi_reconnect_tid` の宣言

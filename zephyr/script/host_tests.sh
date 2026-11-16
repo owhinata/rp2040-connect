@@ -7,7 +7,6 @@ cd "$(dirname "$0")/.."
 out=$(mktemp -d)
 trap 'rm -rf "$out"' EXIT
 app=app/usb-console
-common=../common
 flags=(-std=c17 -Wall -Wextra -Werror -ffunction-sections -fdata-sections)
 link="-Wl,--gc-sections"
 
@@ -18,12 +17,6 @@ run() {
     "$out/$name" >/dev/null
     printf 'ok  %s\n' "$name"
 }
-
-inc=(-I"$common/tests/fakes" -I"$app/drivers/lsm6dso" -I"$common/drivers/lsm6dso")
-# LSM6DSO FIFO driver pieces.
-run fifo_hw "${flags[@]}" "${inc[@]}" "$app/tests/fifo_hw.c" "$app/drivers/lsm6dso/lsm6dso_fifo_hw.c"
-run stream_stop "${flags[@]}" "${inc[@]}" "$app/tests/stream_stop.c" \
-    "$common/drivers/lsm6dso/lsm6dso_fifo.c" "$common/drivers/lsm6dso/lsm6dso_cal.c"
 
 # NINA SPI framing.
 run nina_spi -std=gnu17 -Wall -I"$app/tests/nina_fakes" -I"$app/drivers/nina" "$app/tests/nina_spi.c"

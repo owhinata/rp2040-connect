@@ -665,8 +665,8 @@ runs the Zephyr build's files as they are, too (below). The acquisition service 
   scale is m/s² rounded to g and only 2, 4, 8 or 16 g; the gyro full scale is rad/s rounded to
   dps and only 125, 250, 500, 1000 or 2000 dps (anything else is `-EINVAL`). While the FIFO is in
   use, single readings and attribute changes are `-EBUSY`.
-- **FIFO stream**: `lsm6dso_stream.c` and `lsm6dso_fifo_irq.[ch]` are unchanged copies of the
-  Zephyr build's files. As there, a stream starts with `sensor_stream()`; a rising edge of INT1
+- **FIFO stream**: `lsm6dso_stream.c` and `lsm6dso_fifo_irq.[ch]` are the same files as the
+  Zephyr build's (`common/drivers/lsm6dso/`). As there, a stream starts with `sensor_stream()`; a rising edge of INT1
   (GPIO24) → the system work queue (`sysworkq`) → the FIFO worker (`imu_fifo_worker`) reads the
   FIFO and completes an RTIO request. Below the watermark it looks again every 20 ms;
   `lsm6dso_fifo_request_stop()` delivers the rest as a last partial batch and ends with
@@ -1095,15 +1095,17 @@ Priorities map as `NuttX = 118 − Zephyr`; `nuttx/drivers/include/priorities.h`
 
 The following files are used by both the Zephyr and the NuttX build and are kept once each in the
 repository's `common/`. The Zephyr build's `CMakeLists.txt` and the NuttX build's Makefiles
-(`apps/imu/Makefile`, `drivers/lsm6dso/Make.defs`, the board's `src/Make.defs`) refer to them there.
+(`apps/imu/Makefile`, `apps/sensor/Makefile`, `drivers/lsm6dso/Make.defs`, the board's `src/Make.defs`)
+refer to them there. The files of `common/drivers/lsm6dso/` that use Zephyr's API (the FIFO setup and
+stream, `lsm6dso_fifo_stats.h`, `lsm6dso_attributes.h`) run on the compatibility layer in the NuttX build.
 
 | Location | Contents |
 |---|---|
 | `common/imu/` | `imu_raw_{batch,packet,queue,status,time}`, `imu_tick_clock`, `time_offset`, `imu_cal_codec.c`, `imu_cal.h` |
-| `common/drivers/lsm6dso/` | `lsm6dso_{fifo,cal,zero,fifo_decoder}`, `lsm6dso_fifo_packet.h` |
+| `common/drivers/lsm6dso/` | `lsm6dso_{fifo,cal,zero,fifo_decoder,fifo_hw,fifo_irq}`, `lsm6dso_stream.c`, `lsm6dso_fifo_packet.h`, `lsm6dso_fifo_stats.h`, `lsm6dso_attributes.h` |
 | `common/drivers/i2c_dw/` | `i2c_dw_rp2040_commands.[ch]` |
-| `common/tests/` | the 12 tests of the files above (run by `common/tests/run.sh`, which the `host_tests.sh` of both builds call first) |
-| `common/tests/fakes/` | stand-ins for the Zephyr and ST headers the tests need (`zephyr/drivers/sensor.h`, `zephyr/drivers/sensor_clock.h`, `zephyr/drivers/i2c.h`, `zephyr/rtio/rtio.h`, `lsm6dso_reg.h`), also used by `fifo_hw.c` and `stream_stop.c` below |
+| `common/tests/` | the 14 tests of the files above (run by `common/tests/run.sh`, which the `host_tests.sh` of both builds call first); `stream_stop.c` includes `../drivers/lsm6dso/lsm6dso_stream.c` |
+| `common/tests/fakes/` | stand-ins for the Zephyr and ST headers the tests need (`zephyr/drivers/sensor.h`, `zephyr/drivers/sensor_clock.h`, `zephyr/drivers/i2c.h`, `zephyr/rtio/rtio.h`, `lsm6dso_reg.h`), and for the `lsm6dso.h` that `lsm6dso_stream.c` includes (only its include guard; `stream_stop.c` provides the definitions it needs) |
 
 The following files are unchanged copies of the files of the same name in the Zephyr build
 (`zephyr/app/usb-console`). When the Zephyr build changes, replace the copies with the same
@@ -1112,8 +1114,6 @@ content.
 | Location | Location in the Zephyr build | Contents |
 |---|---|---|
 | `nuttx/apps/imu/` | `src/` | `kv_store.h`, `time_sync.h` |
-| `nuttx/drivers/lsm6dso/` | `drivers/lsm6dso/` | `lsm6dso_{fifo_hw,fifo_irq}`, `lsm6dso_stream.c`, `lsm6dso_fifo_stats.h`, `lsm6dso_attributes.h` |
-| `nuttx/tests/` | `tests/` | the tests of the files above (`fifo_hw.c` and `stream_stop.c`; `stream_stop.c` includes `../drivers/lsm6dso/lsm6dso_stream.c`) |
 
 `nuttx/drivers/nina/nina_net.c` is a copy with only the leading comment and `<nuttx/config.h>`
 added; `nuttx/apps/wifi/wifi_profile.c` is a copy with only the includes (the log is `app_log.h`)
