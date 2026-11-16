@@ -36,6 +36,7 @@
 #include "app_log.h"
 #include "log_ram.h"
 #include "log_ring.h"
+#include "nano_smp.h"
 
 #if LOG_RAM_BUFFER_SIZE != LOG_RAM_SIZE
 #  error "log_ram.h and log_ring.h disagree on the size"
@@ -55,10 +56,10 @@ static uint64_t g_dropped;
 
 static void log_ram_store(FAR const char *data, size_t length)
 {
-  irqstate_t flags = up_irq_save();
+  irqstate_t flags = nano_irq_save();
 
   log_ring_store(&g_retained, &g_dropped, data, length);
-  up_irq_restore(flags);
+  nano_irq_restore(flags);
 }
 
 /* syslog channel ------------------------------------------------------- */
@@ -101,10 +102,10 @@ static syslog_channel_t g_log_ram_channel =
 
 void log_ram_initialize(void)
 {
-  irqstate_t flags = up_irq_save();
+  irqstate_t flags = nano_irq_save();
 
   log_ring_validate(&g_retained);
-  up_irq_restore(flags);
+  nano_irq_restore(flags);
 
   /* With CONFIG_SYSLOG_MAX_CHANNELS 1 this replaces channel 0. */
 
@@ -114,11 +115,11 @@ void log_ram_initialize(void)
 size_t log_ram_piece(FAR uint64_t *position, FAR bool *first,
                      FAR char *piece, size_t max)
 {
-  irqstate_t flags = up_irq_save();
+  irqstate_t flags = nano_irq_save();
   size_t n = log_ring_piece(&g_retained, g_dropped, position, first,
                             piece, max);
 
-  up_irq_restore(flags);
+  nano_irq_restore(flags);
   return n;
 }
 
@@ -162,10 +163,10 @@ bool app_log_ratelimit_pass(FAR uint32_t *last_ms, FAR uint32_t *skipped,
   /* Zephyr: k_uptime_get_32(), milliseconds since boot. */
 
   uint32_t now_ms = (uint32_t)(nano_mono_us() / 1000U);
-  irqstate_t flags = up_irq_save();
+  irqstate_t flags = nano_irq_save();
   bool pass = log_ring_ratelimit(last_ms, skipped, now_ms, rate_ms,
                                  skipped_out);
 
-  up_irq_restore(flags);
+  nano_irq_restore(flags);
   return pass;
 }

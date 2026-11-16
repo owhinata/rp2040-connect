@@ -9,7 +9,11 @@
  * sched_lock() and up_irq_save(): the switch waits for k_spin_unlock()
  * (sched_unlock()), as in Zephyr.  In an interrupt handler sched_lock()
  * does nothing (NuttX switches at the end of the interrupt, as Zephyr
- * does).  The lock word is not used.  Part of the small Zephyr
+ * does).  The lock word is not used.  With CONFIG_SMP (NuttX on both
+ * cores, which the Zephyr build does not do) masking interrupts on one
+ * core is not enough and the lock is NuttX's critical section instead
+ * (nano_irq_save(), see nano_smp.h): every k_spinlock is then the same
+ * recursive lock.  Part of the small Zephyr
  * compatibility layer of the port (nuttx/drivers/compat, see
  * nuttx/drivers/README.md).
  *
@@ -25,6 +29,7 @@
 #ifdef __NuttX__
 #  include <sched.h>
 #  include <nuttx/irq.h>
+#  include "nano_smp.h"
 
 struct k_spinlock
 {
@@ -37,13 +42,13 @@ static inline k_spinlock_key_t k_spin_lock(struct k_spinlock *l)
 {
   (void)l;
   sched_lock();
-  return up_irq_save();
+  return nano_irq_save();
 }
 
 static inline void k_spin_unlock(struct k_spinlock *l, k_spinlock_key_t key)
 {
   (void)l;
-  up_irq_restore(key);
+  nano_irq_restore(key);
   sched_unlock();
 }
 #else

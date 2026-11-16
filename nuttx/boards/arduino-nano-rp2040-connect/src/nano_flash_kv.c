@@ -56,6 +56,17 @@
  * one entry's data (up to two pages) or one table entry per call.
  * Reads go through the uncached XIP alias (0x13000000).
  *
+ * With CONFIG_SMP (not in the Zephyr build) the other core must not execute
+ * from the flash either.  kv_flash() first sends it an SMP call whose
+ * handler, kv_park(), runs from RAM and only reads two RAM words until it
+ * is released; the flash is touched once the handler has reported in.  The
+ * other core is in an interrupt handler meanwhile (no interrupt nests on
+ * this port, all have the same priority), so it runs nothing else.
+ * arch/arm/src/rp2040/rp2040_flash_mtd.c does the same with spin locks,
+ * which the parked core takes through code in the flash.  kv_flash() must
+ * not be called inside a critical section: the other core could be waiting
+ * for it with interrupts masked and would never take the call.
+ *
  * Before NuttX's NVS mounts the area, the area is checked
  * (nano_kv_layout()): if neither block shows NuttX's layout and the area
  * is not erased, it holds something else, typically the Zephyr build's NVS,
@@ -73,11 +84,15 @@
 #include <stdint.h>
 #include <string.h>
 #include <errno.h>
+#include <sched.h>
+#include <assert.h>
 
+#include <nuttx/arch.h>
 #include <nuttx/compiler.h>
 #include <nuttx/crc8.h>
 #include <nuttx/irq.h>
 #include <nuttx/mutex.h>
+#include <nuttx/sched.h>
 #include <nuttx/mtd/mtd.h>
 #include <nuttx/mtd/configdata.h>
 #include <arch/board/board.h>
@@ -98,10 +113,6 @@
 
 #if CONFIG_MTD_CONFIG_BLOCKSIZE_MULTIPLE != 1
 #  error "nano_flash_kv.c expects MTD_CONFIG_BLOCKSIZE_MULTIPLE 1"
-#endif
-
-#ifdef CONFIG_SMP
-#  error "nano_flash_kv.c does not stop the other core while XIP is off"
 #endif
 
 #define KV_XIP_BASE          0x10000000u
@@ -209,6 +220,16 @@ static uint8_t g_kv_page[NANO_KV_PAGE_SIZE] aligned_data(4);
 static uint32_t g_kv_lo;
 static uint32_t g_kv_hi;
 
+#ifdef CONFIG_SMP
+/* kv_flash() and kv_park(): hold is set while the other core must stay in
+ * kv_park(), parked while it is there.  Used under g_kv_lock.
+ */
+
+static volatile uint32_t g_kv_hold;
+static volatile uint32_t g_kv_parked;
+static struct smp_call_data_s g_kv_park_call;
+#endif
+
 /****************************************************************************
  * Private Functions
  ****************************************************************************/
@@ -263,6 +284,31 @@ kv_flash_op(uint32_t addr, FAR const uint8_t *page, uint32_t count)
   return OK;
 }
 
+#ifdef CONFIG_SMP
+/****************************************************************************
+ * Name: kv_park
+ *
+ * Description:
+ *   The SMP call that keeps the other core out of the flash: runs from RAM
+ *   and calls nothing.
+ *
+ ****************************************************************************/
+
+static int locate_code(".ram_code.kv_park") noinline_function
+kv_park(FAR void *arg)
+{
+  UNUSED(arg);
+
+  g_kv_parked = 1;
+  while (g_kv_hold != 0)
+    {
+    }
+
+  g_kv_parked = 0;
+  return OK;
+}
+#endif
+
 /****************************************************************************
  * Name: kv_flash
  *
@@ -289,9 +335,32 @@ static int kv_flash(uint32_t addr, FAR const uint8_t *page, uint32_t count)
       return -EINVAL;
     }
 
+#ifdef CONFIG_SMP
+  /* Stay on this core, then park the other one (see the top of the file). */
+
+  DEBUGASSERT(!up_interrupt_context());
+  sched_lock();
+  g_kv_hold = 1;
+  nxsched_smp_call_init(&g_kv_park_call, kv_park, NULL);
+  nxsched_smp_call_single_async(up_this_cpu() == 0 ? 1 : 0,
+                                &g_kv_park_call);
+  while (g_kv_parked == 0)
+    {
+    }
+#endif
+
   flags = up_irq_save();
   ret = kv_flash_op(addr, page, count);
   up_irq_restore(flags);
+
+#ifdef CONFIG_SMP
+  g_kv_hold = 0;
+  while (g_kv_parked != 0)
+    {
+    }
+
+  sched_unlock();
+#endif
 
   return ret;
 }

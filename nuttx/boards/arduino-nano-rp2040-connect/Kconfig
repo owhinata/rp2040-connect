@@ -11,7 +11,7 @@
 config NANO_TICKLESS
 	bool "System timer on the RP2040 TIMER (ALARM0)"
 	default y
-	depends on ARCH_CHIP_RP2040 && !SMP
+	depends on ARCH_CHIP_RP2040
 	select ONESHOT
 	select ONESHOT_COUNT
 	select ALARM_ARCH
@@ -72,7 +72,7 @@ config NANO_STACK_SENTINEL
 config NANO_FLASH_KV
 	bool "Key-value store in the last 8 KiB of the flash (/dev/config)"
 	default y
-	depends on ARCH_CHIP_RP2040 && !SMP
+	depends on ARCH_CHIP_RP2040
 	depends on MTD_CONFIG_NVS && MTD_CONFIG_NAMED
 	depends on MTD_CONFIG_BLOCKSIZE_MULTIPLE = 1
 	---help---

@@ -51,6 +51,7 @@
 #include "rp2040_gpio.h"
 
 #include "nano_gpio.h"
+#include "nano_smp.h"
 
 /****************************************************************************
  * Private Data
@@ -72,6 +73,8 @@ static int nano_gpio_isr(int irq, void *context, void *arg)
   nano_gpio_irq_handler((unsigned int)irq);
   return 0;
 }
+
+NANO_ISR_SMP(nano_gpio_isr)
 
 /****************************************************************************
  * Public Functions
@@ -113,7 +116,7 @@ int nano_gpio_irq_configure(unsigned int pin, uint32_t events)
        * GPIO24's group has interrupts.
        */
 
-      rp2040_gpio_irq_attach(pin, events, nano_gpio_isr, NULL);
+      rp2040_gpio_irq_attach(pin, events, NANO_ISR(nano_gpio_isr), NULL);
       g_attached |= 1U << pin;
     }
 

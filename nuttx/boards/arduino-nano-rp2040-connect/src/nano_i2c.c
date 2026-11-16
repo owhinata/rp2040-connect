@@ -47,7 +47,7 @@
  * thresholds, interrupt mask, start order, completion and timeout, clean-up
  * and stop sequence, quarantine, counters and log lines, on nano_dma.c (a
  * port of Zephyr's dma_rpi_pico.c).  atomic_t becomes a volatile word with
- * the read-modify-write under up_irq_save() where an interrupt also writes
+ * the read-modify-write under nano_irq_save() where an interrupt also writes
  * it (rp_dma_events); the counters are only written by the transfer, which
  * holds bus_sem.
  *
@@ -88,6 +88,7 @@
 
 #include "nano_i2c.h"
 #include "nano_i2c_dw.h"
+#include "nano_smp.h"
 
 #ifdef CONFIG_NANO_I2C0_DMA
 #  include "i2c_dw_rp2040_commands.h"
@@ -406,11 +407,11 @@ static volatile bool rp_dma_enabled = true;
 
 static uint32_t rp_dma_atomic_or(volatile uint32_t *target, uint32_t value)
 {
-	irqstate_t flags = up_irq_save();
+	irqstate_t flags = nano_irq_save();
 	uint32_t old = *target;
 
 	*target = old | value;
-	up_irq_restore(flags);
+	nano_irq_restore(flags);
 	return old;
 }
 
@@ -745,6 +746,8 @@ done:
 	i2c_dw_transfer_complete(dw);
 	return 0;
 }
+
+NANO_ISR_SMP(i2c_dw_isr)
 
 static int i2c_dw_setup(struct i2c_dw_dev_config *dw, uint16_t target_address)
 {
@@ -1195,7 +1198,7 @@ static int i2c_dw_turn_on(struct i2c_dw_dev_config *dw)
 	}
 
 	/* Configure IRQ */
-	irq_attach(RP2040_I2C0_IRQ, i2c_dw_isr, dw);
+	irq_attach(RP2040_I2C0_IRQ, NANO_ISR(i2c_dw_isr), dw);
 	up_enable_irq(RP2040_I2C0_IRQ);
 
 	return 0;

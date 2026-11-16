@@ -773,6 +773,13 @@ static int cmd_status(const struct shell *sh, size_t argc, char **argv)
 	} else {
 		ITEM(sh, "cpu_active", "%s", "unavailable");
 	}
+#ifdef CONFIG_SMP
+	/* NuttX on both cores only: core 1 of the run in progress. */
+	if (s.running) {
+		cpu = cpu_load_get_cpu(1, false);
+		ITEM(sh, "cpu1_active", "%d.%d%%", cpu / 10, cpu % 10);
+	}
+#endif
 	shell_print(sh, "acquired:");
 	ITEM(sh, "accel", "%" PRIu64, s.accel);
 	ITEM(sh, "gyro", "%" PRIu64, s.gyro);

@@ -45,6 +45,14 @@
  *
  * Time base: the TIMER, 1 us (Zephyr: k_cycle_get_32(), CPU cycles at
  * 125 MHz, converted to microseconds rounding down in cpu_load_get()).
+ *
+ * With CONFIG_SMP (not in the Zephyr build) each core has its own idle
+ * task and its own windows.  A reader on the other core can see a window
+ * that is open, which nano_cpuload_sample() accounts for, so the windows
+ * are changed and read under a spin lock; the lock is not held across WFI.
+ * cpu_load_get() returns the load of core 0, where every device interrupt
+ * runs, and resets the windows of all cores; cpu_load_get_cpu() reads one
+ * core.
  */
 
 /****************************************************************************
@@ -53,11 +61,13 @@
 
 #include <nuttx/config.h>
 
+#include <errno.h>
 #include <stdbool.h>
 #include <stdint.h>
 
 #include <nuttx/arch.h>
 #include <nuttx/irq.h>
+#include <nuttx/spinlock.h>
 #include <arch/board/nano_timer.h>
 
 #include "cpu_load.h"
@@ -67,59 +77,45 @@
 #  error "nano_idle.c needs the timer interrupt"
 #endif
 
+/****************************************************************************
+ * Pre-processor Definitions
+ ****************************************************************************/
+
 #ifdef CONFIG_SMP
-#  error "nano_idle.c measures one CPU"
+#  define CPULOAD_NCPUS    CONFIG_SMP_NCPUS
+#  define CPULOAD_THIS()   (&g_cpuload[up_this_cpu()])
+#  define CPULOAD_LOCK()   spin_lock_notrace(&g_cpuload_lock)
+#  define CPULOAD_UNLOCK() spin_unlock_notrace(&g_cpuload_lock)
+#else
+#  define CPULOAD_NCPUS    1
+#  define CPULOAD_THIS()   (&g_cpuload[0])
+#  define CPULOAD_LOCK()
+#  define CPULOAD_UNLOCK()
 #endif
 
 /****************************************************************************
  * Private Data
  ****************************************************************************/
 
-/* Changed only with interrupts disabled. */
+/* Changed only with interrupts disabled (and under g_cpuload_lock). */
 
-static struct nano_cpuload_s g_cpuload;
+static struct nano_cpuload_s g_cpuload[CPULOAD_NCPUS];
+
+#ifdef CONFIG_SMP
+static volatile spinlock_t g_cpuload_lock = SP_UNLOCKED;
+#endif
 
 /****************************************************************************
- * Public Functions
+ * Private Functions
  ****************************************************************************/
 
-/****************************************************************************
- * Name: up_idle
- *
- * Description:
- *   Called in a loop by the idle task with interrupts enabled.  Waits for
- *   an interrupt and counts the wait as idle time.
- *
- ****************************************************************************/
+/* Zephyr's cpu_load_get(): reads the time before taking the lock, then the
+ * window state under it.
+ */
 
-void up_idle(void)
+static int nano_cpuload_get(int cpu, bool reset)
 {
-  irqstate_t flags = up_irq_save();
-
-  nano_cpuload_enter(&g_cpuload, nano_mono_us());
-
-  /* Zephyr: __DSB() then __WFI() (SLEEP_IF_ALLOWED). */
-
-  __asm__ __volatile__("dsb\n\twfi" ::: "memory");
-
-  nano_cpuload_exit(&g_cpuload, nano_mono_us());
-
-  /* The pending interrupt is taken here, outside the window. */
-
-  up_irq_restore(flags);
-}
-
-/****************************************************************************
- * Name: cpu_load_get
- *
- * Description:
- *   See cpu_load.h.  Zephyr's cpu_load_get(): reads the time before taking
- *   the lock, then the window state under it.
- *
- ****************************************************************************/
-
-int cpu_load_get(bool reset)
-{
+  FAR struct nano_cpuload_s *s = &g_cpuload[cpu];
   uint64_t now = nano_mono_us();
   uint64_t total;
   uint64_t idle;
@@ -129,9 +125,10 @@ int cpu_load_get(bool reset)
    * the second reading is kept for the same steps as Zephyr's.
    */
 
-  nano_cpuload_sample(&g_cpuload, now,
-                      g_cpuload.open ? nano_mono_us() : now, reset,
+  CPULOAD_LOCK();
+  nano_cpuload_sample(s, now, s->open ? nano_mono_us() : now, reset,
                       &total, &idle);
+  CPULOAD_UNLOCK();
   up_irq_restore(flags);
 
   /* The division (64-bit, libgcc on the M0+) runs with interrupts
@@ -139,4 +136,72 @@ int cpu_load_get(bool reset)
    */
 
   return nano_cpuload_ratio(total, idle);
+}
+
+/****************************************************************************
+ * Public Functions
+ ****************************************************************************/
+
+/****************************************************************************
+ * Name: up_idle
+ *
+ * Description:
+ *   Called in a loop by the idle task (of each core) with interrupts
+ *   enabled.  Waits for an interrupt and counts the wait as idle time.
+ *
+ ****************************************************************************/
+
+void up_idle(void)
+{
+  irqstate_t flags = up_irq_save();
+  FAR struct nano_cpuload_s *s = CPULOAD_THIS();
+
+  CPULOAD_LOCK();
+  nano_cpuload_enter(s, nano_mono_us());
+  CPULOAD_UNLOCK();
+
+  /* Zephyr: __DSB() then __WFI() (SLEEP_IF_ALLOWED). */
+
+  __asm__ __volatile__("dsb\n\twfi" ::: "memory");
+
+  CPULOAD_LOCK();
+  nano_cpuload_exit(s, nano_mono_us());
+  CPULOAD_UNLOCK();
+
+  /* The pending interrupt is taken here, outside the window. */
+
+  up_irq_restore(flags);
+}
+
+/****************************************************************************
+ * Name: cpu_load_get, cpu_load_get_cpu
+ *
+ * Description:
+ *   See cpu_load.h.
+ *
+ ****************************************************************************/
+
+int cpu_load_get(bool reset)
+{
+#ifdef CONFIG_SMP
+  if (reset)
+    {
+      for (int cpu = 1; cpu < CPULOAD_NCPUS; cpu++)
+        {
+          (void)nano_cpuload_get(cpu, true);
+        }
+    }
+#endif
+
+  return nano_cpuload_get(0, reset);
+}
+
+int cpu_load_get_cpu(int cpu, bool reset)
+{
+  if (cpu < 0 || cpu >= CPULOAD_NCPUS)
+    {
+      return -EINVAL;
+    }
+
+  return nano_cpuload_get(cpu, reset);
 }

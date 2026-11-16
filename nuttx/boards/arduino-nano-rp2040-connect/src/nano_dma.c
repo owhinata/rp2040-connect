@@ -75,6 +75,7 @@
 #include "app_log.h"
 
 #include "nano_dma.h"
+#include "nano_smp.h"
 
 LOG_MODULE_REGISTER(dma_rpi_pico);
 
@@ -283,6 +284,8 @@ static int dma_rpi_pico_isr(int irq, void *context, void *arg)
   return 0;
 }
 
+NANO_ISR_SMP(dma_rpi_pico_isr)
+
 /****************************************************************************
  * Public Functions
  ****************************************************************************/
@@ -450,7 +453,7 @@ int nano_dma_request_channel(void)
 
   /* atomic_test_and_set_bit() over the channels, lowest first. */
 
-  flags = up_irq_save();
+  flags = nano_irq_save();
   for (int i = 0; i < NANO_DMA_CHANNELS; i++)
     {
       if ((g_taken & (1u << i)) == 0)
@@ -461,7 +464,7 @@ int nano_dma_request_channel(void)
         }
     }
 
-  up_irq_restore(flags);
+  nano_irq_restore(flags);
   return channel;
 }
 
@@ -476,9 +479,9 @@ void nano_dma_release_channel(uint32_t channel)
 
   if (channel < NANO_DMA_CHANNELS)
     {
-      flags = up_irq_save();
+      flags = nano_irq_save();
       g_taken &= ~(1u << channel);
-      up_irq_restore(flags);
+      nano_irq_restore(flags);
     }
 }
 
@@ -506,9 +509,9 @@ int nano_dma_initialize(void)
 
   /* irq_configure(): both interrupts of the DMA node, same handler. */
 
-  irq_attach(RP2040_DMA_IRQ_0, dma_rpi_pico_isr, NULL);
+  irq_attach(RP2040_DMA_IRQ_0, NANO_ISR(dma_rpi_pico_isr), NULL);
   up_enable_irq(RP2040_DMA_IRQ_0);
-  irq_attach(RP2040_DMA_IRQ_1, dma_rpi_pico_isr, NULL);
+  irq_attach(RP2040_DMA_IRQ_1, NANO_ISR(dma_rpi_pico_isr), NULL);
   up_enable_irq(RP2040_DMA_IRQ_1);
 
   g_ready = true;

@@ -78,6 +78,7 @@
 
 #include "nano_connect.h"
 #include "nano_timeconv.h"
+#include "nano_smp.h"
 
 /****************************************************************************
  * Pre-processor Definitions
@@ -240,6 +241,8 @@ static int nano_oneshot_interrupt(int irq, FAR void *context, FAR void *arg)
   return OK;
 }
 
+NANO_ISR_SMP(nano_oneshot_interrupt)
+
 /****************************************************************************
  * Name: nano_oneshot_max_delay
  ****************************************************************************/
@@ -267,11 +270,11 @@ static clkcnt_t nano_oneshot_current(FAR struct oneshot_lowerhalf_s *l)
 static void nano_oneshot_start_absolute(FAR struct oneshot_lowerhalf_s *l,
                                         clkcnt_t expected)
 {
-  irqstate_t flags = up_irq_save();
+  irqstate_t flags = nano_irq_save();
 
   UNUSED(l);
   nano_oneshot_setcompare(expected);
-  up_irq_restore(flags);
+  nano_irq_restore(flags);
 }
 
 /****************************************************************************
@@ -281,11 +284,11 @@ static void nano_oneshot_start_absolute(FAR struct oneshot_lowerhalf_s *l,
 static void nano_oneshot_start(FAR struct oneshot_lowerhalf_s *l,
                                clkcnt_t delta)
 {
-  irqstate_t flags = up_irq_save();
+  irqstate_t flags = nano_irq_save();
 
   UNUSED(l);
   nano_oneshot_setcompare(nano_oneshot_count() + delta);
-  up_irq_restore(flags);
+  nano_irq_restore(flags);
 }
 
 /****************************************************************************
@@ -294,13 +297,13 @@ static void nano_oneshot_start(FAR struct oneshot_lowerhalf_s *l,
 
 static void nano_oneshot_cancel(FAR struct oneshot_lowerhalf_s *l)
 {
-  irqstate_t flags = up_irq_save();
+  irqstate_t flags = nano_irq_save();
 
   UNUSED(l);
   putreg32(ONESHOT_ALARM0_BIT, ONESHOT_ARMED);
   modifyreg32(ONESHOT_INTF, ONESHOT_ALARM0_BIT, 0);
   putreg32(ONESHOT_ALARM0_BIT, ONESHOT_INTR);
-  up_irq_restore(flags);
+  nano_irq_restore(flags);
 }
 
 /****************************************************************************
@@ -331,7 +334,7 @@ FAR struct oneshot_lowerhalf_s *nano_oneshot_initialize(void)
   putreg32(ONESHOT_ALARM0_BIT, ONESHOT_INTR);
   modifyreg32(ONESHOT_INTE, 0, ONESHOT_ALARM0_BIT);
 
-  irq_attach(ONESHOT_IRQ, nano_oneshot_interrupt, lower);
+  irq_attach(ONESHOT_IRQ, NANO_ISR(nano_oneshot_interrupt), lower);
   up_enable_irq(ONESHOT_IRQ);
 
   g_nano_oneshot_ready = true;

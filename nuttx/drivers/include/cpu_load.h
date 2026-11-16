@@ -27,6 +27,14 @@ extern "C"
 
 int cpu_load_get(bool reset);
 
+/* The same for one core; -EINVAL for a core that does not exist.  Without
+ * CONFIG_SMP there is only core 0.  With CONFIG_SMP cpu_load_get() returns
+ * the load of core 0, where every device interrupt runs, and its reset
+ * starts a new window on every core.
+ */
+
+int cpu_load_get_cpu(int cpu, bool reset);
+
 #ifdef __cplusplus
 }
 #endif

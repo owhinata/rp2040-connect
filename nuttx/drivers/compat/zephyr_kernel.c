@@ -41,6 +41,8 @@
 #include <nuttx/wdog.h>
 #include <arch/board/nano_timer.h>
 
+#include "nano_smp.h"
+
 #include <zephyr/device.h>
 #include <zephyr/kernel.h>
 #include <zephyr/rtio/work.h>
@@ -109,13 +111,13 @@ void k_sem_give(struct k_sem *sem)
 
 void k_sem_reset(struct k_sem *sem)
 {
-  irqstate_t flags = up_irq_save();
+  irqstate_t flags = nano_irq_save();
 
   while (nxsem_trywait(&sem->sem) == 0)
     {
     }
 
-  up_irq_restore(flags);
+  nano_irq_restore(flags);
 }
 
 unsigned int k_sem_count_get(struct k_sem *sem)
@@ -187,7 +189,7 @@ int k_poll(struct k_poll_event *events, int num_events, k_timeout_t timeout)
   int i;
 
   nxsem_init(&waiter, 0, 0);
-  flags = up_irq_save();
+  flags = nano_irq_save();
   for (i = 0; i < num_events; i++)
     {
       events[i].state = K_POLL_STATE_NOT_READY;
@@ -206,7 +208,7 @@ int k_poll(struct k_poll_event *events, int num_events, k_timeout_t timeout)
             }
         }
 
-      up_irq_restore(flags);
+      nano_irq_restore(flags);
       if (K_TIMEOUT_EQ(timeout, K_FOREVER))
         {
           (void)nxsem_wait_uninterruptible(&waiter);
@@ -217,7 +219,7 @@ int k_poll(struct k_poll_event *events, int num_events, k_timeout_t timeout)
                                                (uint32_t)timeout.ticks);
         }
 
-      flags = up_irq_save();
+      flags = nano_irq_save();
       for (i = 0; i < num_events; i++)
         {
           if (events[i].type == K_POLL_TYPE_SEM_AVAILABLE)
@@ -229,7 +231,7 @@ int k_poll(struct k_poll_event *events, int num_events, k_timeout_t timeout)
       ready = poll_ready(events, num_events);
     }
 
-  up_irq_restore(flags);
+  nano_irq_restore(flags);
   nxsem_destroy(&waiter);
   return ready > 0 ? 0 : -EAGAIN;
 }
