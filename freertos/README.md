@@ -5,8 +5,9 @@ English | [日本語](README_ja.md)
 A build environment for firmware on the Raspberry Pi Pico SDK and the FreeRTOS kernel, for the Arduino
 Nano RP2040 Connect. Like `zephyr/`, `nuttx/` and `openmv/`, it fetches what it needs under `freertos/`.
 
-The features of the Zephyr and NuttX builds are being ported. For now there is a shell on USB and a
-blinking LED; the IMU measurement has not been ported yet.
+Like the Zephyr and NuttX builds, it reads the raw data of the LSM6DSOX at 6667 Hz and sends it to the PC
+over MQTT on Wi-Fi. Most of the sources are in `common/`, shared by the three builds. There is no `sensor`
+command yet.
 
 | Item | Content |
 |---|---|
@@ -160,7 +161,7 @@ The console is the USB CDC ACM port (UART0 is not used). Opening a terminal show
 | `drivers/telnet/`, `drivers/zperf/` | The Telnet shell, and the throughput test |
 | `drivers/i2c_dw/` | I2C0 and DMA (the sensor's bus) |
 | `drivers/lsm6dso/` | The device and start-up of the LSM6DSOX (the driver itself is in `common/drivers/lsm6dso/`) |
-| `drivers/imu/` | Brings in the acquisition service (in `common/imu/`), with stand-ins for the transport and time synchronization |
+| `drivers/imu/` | Brings in the acquisition, the transport and the time synchronization (in `common/imu/`) |
 | `tests/` | Host tests |
 | `script/` | `setup.sh`, `build.sh`, `flash.sh`, `format.sh`, `host_tests.sh` |
 | `PORTING_PLAN.md`, `PORTING_STATUS.md` | The plan of the port, and the record of its progress and of what was checked (in Japanese) |

@@ -5,8 +5,8 @@
 Arduino Nano RP2040 Connect 向けに、Raspberry Pi Pico SDK と FreeRTOS カーネルでファームウェアを
 ビルドする環境です。`zephyr/`、`nuttx/`、`openmv/` と同じく、必要なものを `freertos/` の下に取得します。
 
-Zephyr 版・NuttX 版の機能を移している途中で、今あるのは USB のシェルと LED の点滅です。IMU の計測は
-まだ移していません。
+Zephyr 版・NuttX 版と同じく、LSM6DSOX の RAW データを 6667 Hz で取得し、Wi-Fi 経由の MQTT で PC へ送ります。
+ソースの大半は 3 つの版で共有する `common/` にあります。`sensor` コマンドはまだありません。
 
 | 項目 | 内容 |
 |---|---|
@@ -154,7 +154,7 @@ USB の CDC ACM ポートがコンソールです（UART0 は使いません）�
 | `drivers/telnet/`、`drivers/zperf/` | Telnet のシェルと、速度測定の組み込み |
 | `drivers/i2c_dw/` | I2C0 と DMA（センサーのバス） |
 | `drivers/lsm6dso/` | LSM6DSOX のデバイスの生成と初期化（ドライバー本体は `common/drivers/lsm6dso/`） |
-| `drivers/imu/` | 取得サービスの組み込み（本体は `common/imu/`）と、送信・時刻同期の仮の実装 |
+| `drivers/imu/` | 取得・送信・時刻同期の組み込み（本体は `common/imu/`） |
 | `tests/` | ホストテスト |
 | `script/` | `setup.sh`、`build.sh`、`flash.sh`、`format.sh`、`host_tests.sh` |
 | `PORTING_PLAN.md`、`PORTING_STATUS.md` | 移植の計画と、進み具合・確かめたことの記録 |
