@@ -902,3 +902,12 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
   - `dmesg` の `<err>`: `shell_telnet` の 2 行は書き込みのための `bootsel`（ネットワーク停止）のとき、`i2c_dw` の 3 行は `selftest` の
     NACK の試験のもの（RAM ログは再起動をまたいで残る）。Telnet はそのあとも使える。
 - 実機: 両方を入れた像（`irq-tick1k`）。既定をどうするかはユーザーの判断待ち。
+
+## フラッシュのクロックの規格（2026-11-18、データシートで確認）
+
+- AT25SF128A（Renesas、DS-AT25SF/QF128A-168 Rev. Q、表 24、85 °C）: 03h は 70 MHz、6Bh は 133 MHz（3.0〜3.6 V）、それ以外
+  （EBh を含む）は 120 MHz（3.0〜3.6 V）・108 MHz（2.7〜3.6 V）。105 °C 品は最大 120 MHz。
+- W25Q80DV（Winbond、9.6 AC Electrical Characteristics）: 03h は 50 MHz、それ以外は 104 MHz（2.7〜3.6 V、工業用温度）。
+- boot2 が使う読み出しは EBh で、分周 2 の 62.5 MHz はどちらの規格にも収まる。clk_sys 125 MHz では分周は偶数なので 62.5 MHz が上限。
+- ユーザーの決定（同日）: FreeRTOS 版は READY の割り込み待ちと tick 1 ms を既定にし、古いコード（オプション、フック）は残さない
+  （subagent が作業中）。
