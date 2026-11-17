@@ -836,3 +836,23 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
   内訳は Zephyr 版では分けて測っていない。
 - 併せて確かめたこと: NuttX 版・FreeRTOS 版が書いた KV を Zephyr 版が読み、保存済みの資格情報で自動接続した（`kv get imu.port` も一致）。
 - 実機: 実験用の Zephyr 版のまま（FreeRTOS 版へ戻すには RESET 2 回の操作が要る）。
+
+## FreeRTOS 版を `-Os` に、時分割のフックの比較（2026-11-18）
+
+- ユーザーの決定: FreeRTOS 版の最適化を `-Os` にする（Zephyr 版・NuttX 版と同じ）。boot2 の分周 2 を Zephyr 版・NuttX 版に正式に入れる。
+  除算器と ROM の `memcpy`・`memset` を Zephyr 版・NuttX 版に入れるかは変更量を見てから（まず検討）。保留の 3 項目に着手する。
+- `-Os`: `build.sh` の `CMAKE_BUILD_TYPE` を `MinSizeRel` に。像は 297860 → 227328 バイト（約 24% 減）。ビルド（既定・selftest）警告 0。
+  書き込み直後の最初の計測（送信、60 秒）: `cpu_active` 43.5%、欠番 0、overruns 0。`selftest` は `-Os` では未実行。
+- 時分割のフック（`-DNANO_SCHED_ZEPHYR=OFF` との比較、どちらも `-Os`）:
+
+  | 試験 | フックあり（既定） | フックなし |
+  |---|---|---|
+  | 送信 60 秒の `cpu_active` | 43.5%（1 回） | 43.0%、42.9%（2 回） |
+  | 同、欠番・overruns | 0・0 | 0・0 |
+  | 送信 + `zperf tcp upload` 20 秒 + Telnet で `ps` を繰り返す | drop 586/1439、zperf 2.67 Mbit/s、overruns 0 | drop 636/1438、zperf 2.78 Mbit/s、overruns 0 |
+
+  併用の試験の drop は、NINA の回線を zperf と分け合うためのもの（CP-F4 と同じ振る舞い）。フックの有無で差は見えない。
+  未確認: 長時間、`selftest`（フックなしでは `timeslice` の 2 項目が skipped）。
+- 1 ms 未満の待ちの一覧（tick を 1 ms にする材料）: 共有コードでは NINA の READY のポーリング（`nina_spi.c` の
+  `nina_os_sleep_us(NINA_READY_POLL_US)`）だけ。READY を割り込みにすれば、1 ms 未満の待ちは無くなる。
+- 実機: フックなしの像（`-Os`）。
