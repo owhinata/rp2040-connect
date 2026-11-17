@@ -311,7 +311,7 @@ DMA のチャネルの確保はほかの利用者を知らず、初期化で DMA
 |---|---|
 | `common/drivers/lsm6dso/lsm6dso.[ch]` | ドライバー本体。Zephyr 版と同じファイル（リポジトリの `common/`。前置きヘッダーを付けてビルドする。Zephyr のカーネル・デバイス・センサー・GPIO・I2C・ログの呼び出しは互換層が提供する。下）。`lsm6dso.c` は末尾でビルドごとのドライバーのディレクトリーの `lsm6dso_instance.h` を読むので、`lsm6dso_init` と `lsm6dso_driver_api` は `static` のまま |
 | `lsm6dso/lsm6dso_instance.h` | デバイス。Zephyr 版のデバイスツリーのインスタンス化のマクロの代わりに、ボードの値を使う `DEVICE_DT_DEFINE()` 1 つ（INT1 の `.fifo_gpio` は `<&gpio0 24 0>`） |
-| `lsm6dso/stmemsc.h`、`stmemsc_i2c.c`、`stmemsc_mdelay.c` | Zephyr の `drivers/sensor/st/stmemsc/` の I2C の部分の写し（ST の `stmdev_ctx_t` と Zephyr の I2C の API のつなぎ。`stmemsc_mdelay()` は互換層の `k_msleep()`）。`lsm6dso.h` の `<stmemsc.h>` はインクルードパスでこのファイルになる |
+| `common/drivers/stmemsc/stmemsc.h`、`stmemsc_i2c.c`、`stmemsc_mdelay.c` | Zephyr の `drivers/sensor/st/stmemsc/` の I2C の部分の写し（ST の `stmdev_ctx_t` と Zephyr の I2C の API のつなぎ。`stmemsc_mdelay()` は互換層の `k_msleep()`）。FreeRTOS 版と共有する（前置きヘッダーは付けない）。`lsm6dso.h` の `<stmemsc.h>` はインクルードパスでこのファイルになる |
 | `lsm6dso/st_lsm6dso_reg.c` | ST の `lsm6dso_reg.c`（`nuttx/stmemsc/`、Git 管理外）をそのままビルドするための 1 行の包み |
 | `common/drivers/lsm6dso/lsm6dso_compat.c` | 単発取得の RTIO 版（ストリームでない submit のフォールバック）。Zephyr 版と同じファイル（ログは互換層の `<zephyr/logging/log.h>`、レベル `CONFIG_SENSOR_LOG_LEVEL` は前置きヘッダー） |
 | `common/drivers/lsm6dso/lsm6dso_fifo.[ch]`、`lsm6dso_fifo_packet.h` | FIFO のワードの解析とバッファーの先頭の形式。Zephyr 版と同じファイル（リポジトリの `common/`。`lsm6dso/Make.defs` が `VPATH` で参照し、オブジェクトは `nuttx/drivers` にできる。以下の 4 行も同じ） |

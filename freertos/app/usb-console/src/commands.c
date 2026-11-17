@@ -22,6 +22,7 @@
 #include "os_clock.h"
 #ifdef NANO_SELFTEST
 #include "i2c_dw_selftest.h"
+#include "lsm6dso_selftest.h"
 #include "zephyr_selftest.h"
 #endif
 
@@ -300,8 +301,11 @@ SHELL_CMD_REGISTER(bootsel, NULL, "Restart into the USB bootloader (BOOTSEL)", c
 #ifdef NANO_SELFTEST
 /* The Zephyr compatibility layer's self-test (a build option, NANO_SELFTEST;
  * freertos/drivers/compat/zephyr_selftest.h), then the check of I2C0 on the
- * board's LSM6DSOX (freertos/drivers/i2c_dw/i2c_dw_selftest.h).  Runs in
- * this task, at the shell's priority, as the test expects.
+ * board's LSM6DSOX (freertos/drivers/i2c_dw/i2c_dw_selftest.h) and that of
+ * the LSM6DSOX itself with its FIFO stream
+ * (freertos/drivers/lsm6dso/lsm6dso_selftest.h), which leaves the sensor at
+ * rest for the I2C0 check of the next run.  Runs in this task, at the
+ * shell's priority, as the test expects.
  */
 static int cmd_selftest(const struct shell *sh, size_t argc, char **argv)
 {
@@ -313,6 +317,7 @@ static int cmd_selftest(const struct shell *sh, size_t argc, char **argv)
 
 	failed = zephyr_selftest_run();
 	failed += i2c_dw_selftest_run();
+	failed += lsm6dso_selftest_run();
 	return failed == 0 ? 0 : -EIO;
 }
 

@@ -29,9 +29,19 @@ _freertos_setup() {
   # clang-format, the formatter of freertos/script/format.sh (PyPI's build of
   # LLVM's clang-format, in a Python venv).
   local clang_format_version=18.1.3
+  # LSM6DSO register driver: lsm6dso-pid v3.2.2, the driver submodule of
+  # STMems_Standard_C_drivers v2.13.2 (the stmemsc version in Zephyr's hal_st;
+  # the same files as nuttx/script/setup.sh fetches).  Upstream files use
+  # CRLF; they are stored with LF like hal_st.
+  local lsm6dso_commit=f55167674138aca789c70a2970187c6322192dde
+  local lsm6dso_c_sha256_crlf=0ba42733ac6242bebd4b404d6c7e45b7420f6f15cbdfc4d34b0ae966698271a1
+  local lsm6dso_h_sha256_crlf=fe8eb5586cfe75148957d74a75b148b0d6ccf09e81e45d211981050b0e533546
+  local lsm6dso_c_sha256=4a17a4ca5c2a33d2116171f23b65b96a2e497537c443b295b487f60b2fb389ab
+  local lsm6dso_h_sha256=ee2c5a6cca9fd78a454a25f015c17d73fa809620cdc42b971b1750ba66eb4326
   # ---------------------------------------------------------------------------
 
   local root tool missing=() arm_gnu_file arm_gnu_url tc_dir tmp f
+  local lsm6dso_url c_sum h_sum
   root="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)" || return 1
 
   # cmake, and gcc/g++ for picotool, which the Pico SDK builds for the host.
@@ -153,6 +163,33 @@ _freertos_setup() {
      [[ "$("${root}/.venv/bin/python" -c 'from importlib.metadata import version; print(version("clang-format"))' 2>/dev/null)" \
         != "$clang_format_version" ]]; then
     "${root}/.venv/bin/python" -m pip install --quiet "clang-format==${clang_format_version}" || return 1
+  fi
+
+  # ST LSM6DSO register driver (freertos/stmemsc, built by
+  # freertos/drivers/lsm6dso/lsm6dso.cmake) ----------------------------------
+  if [[ ! -f "${root}/stmemsc/lsm6dso_reg.c" ]] || [[ ! -f "${root}/stmemsc/lsm6dso_reg.h" ]] || \
+     ! _freertos_sha256_ok "${root}/stmemsc/lsm6dso_reg.c" "$lsm6dso_c_sha256" || \
+     ! _freertos_sha256_ok "${root}/stmemsc/lsm6dso_reg.h" "$lsm6dso_h_sha256"; then
+    lsm6dso_url="https://raw.githubusercontent.com/STMicroelectronics/lsm6dso-pid/${lsm6dso_commit}"
+    tmp="${root}/stmemsc/.download"
+    rm -rf "$tmp" && mkdir -p "$tmp" || return 1
+    _freertos_fetch "${lsm6dso_url}/lsm6dso_reg.c" "${tmp}/lsm6dso_reg.c.crlf" || return 1
+    _freertos_fetch "${lsm6dso_url}/lsm6dso_reg.h" "${tmp}/lsm6dso_reg.h.crlf" || return 1
+    if ! _freertos_sha256_ok "${tmp}/lsm6dso_reg.c.crlf" "$lsm6dso_c_sha256_crlf" || \
+       ! _freertos_sha256_ok "${tmp}/lsm6dso_reg.h.crlf" "$lsm6dso_h_sha256_crlf"; then
+      printf 'SHA-256 mismatch: lsm6dso_reg.[ch] from %s\n' "$lsm6dso_url" >&2
+      return 1
+    fi
+    tr -d '\r' < "${tmp}/lsm6dso_reg.c.crlf" > "${tmp}/lsm6dso_reg.c" || return 1
+    tr -d '\r' < "${tmp}/lsm6dso_reg.h.crlf" > "${tmp}/lsm6dso_reg.h" || return 1
+    c_sum="$(sha256sum "${tmp}/lsm6dso_reg.c" | cut -d' ' -f1)"
+    h_sum="$(sha256sum "${tmp}/lsm6dso_reg.h" | cut -d' ' -f1)"
+    if [[ "$c_sum" != "$lsm6dso_c_sha256" ]] || [[ "$h_sum" != "$lsm6dso_h_sha256" ]]; then
+      printf 'SHA-256 mismatch after converting lsm6dso_reg.[ch] to LF.\n' >&2
+      return 1
+    fi
+    mv "${tmp}/lsm6dso_reg.c" "${tmp}/lsm6dso_reg.h" "${root}/stmemsc/" || return 1
+    rm -rf "$tmp"
   fi
 
   # Environment ---------------------------------------------------------------

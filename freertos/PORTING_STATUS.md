@@ -483,3 +483,33 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
   `kv get` を確認。
 - 次: F07（LSM6DSOX。`zephyr_device.c` のリンク、stmemsc、GPIO の割り込みは `gpio_add_raw_irq_handler_masked()` の案、
   gpio0 デバイス、`sysworkq` のスタックの実測）。
+
+## ユーザーの決定と相談（2026-11-17、F06 のあと）
+
+- コマンド名は短いまま（`kernel ...` は足さない）。`script/kv_transfer.py` のファームウェアの判定は F15 で FreeRTOS 版の
+  `version` に対応させる。
+- 消去中の tick の遅れ: tickless では解決しない（下の理由）と回答。対応の案は「フラッシュ操作のあとで TIMER から落ちた tick を
+  数えて `xTaskCatchUpTicks()` で補い、互換層のタイムアウトを tick の数から判定する形に直す」。入れるかは CP-F2 の実測を見て決める。
+  - FreeRTOS の tickless idle は、アイドルの間だけ tick を止めてあとで補う機能で、割り込み禁止中に落ちた tick は補わない。
+    RP2040 ポートは tickless 未対応（T01b）。Zephyr・NuttX の「tickless」は時刻をハードウェアのカウンターから作る方式で別物。
+
+## F07 の記録（2026-11-17）
+
+- 実装: 共有の LSM6DSO ドライバー 9 本（ストリーム込み）を FreeRTOS 版にリンク。`freertos/drivers/lsm6dso/`
+  （`lsm6dso_instance.h`、`nano_lsm6dso.[ch]`、`lsm6dso.cmake`、selftest の 3 項目）、`drivers/compat/rp2040/nano_gpio.c`
+  （`gpio_add_raw_irq_handler_masked()`、割り込みは GPIO24 だけ。ほかは -ENOTSUP）、`zephyr_sensor_clock.c`、gpio0 の初期化、
+  ホストテスト `freertos/tests/gpio`。`setup.sh` が ST の `lsm6dso_reg.[ch]` を `freertos/stmemsc/` に取得（Git 管理外）。
+- **計画外の共通化**: NuttX 版の `stmemsc.h`・`stmemsc_i2c.c`・`stmemsc_mdelay.c` を `common/drivers/stmemsc/` へ移動
+  （`DEBUGASSERT` → `__ASSERT_NO_MSG`、コメント）。メインが NuttX を再ビルドし、像が snapshot-t24 と一致、ホストテスト全通過。
+- 起動の順: `main()` で 互換層（gpio0 含む）→ NINA → DMA → I2C0 → flash_kv の準備。タスク `main`（優先度 20）の先頭で
+  LSM6DSOX の初期化 → `USB console started` → `kv_store_init()`。
+- メインが確かめたこと: NuttX の像と NuttX 側のホストテスト、FreeRTOS のビルド（既定・selftest、警告 0）、整形、
+  `host_tests.sh`、移動したファイルの差分。Zephyr の像の一致は subagent の報告のまま（Zephyr がビルドするファイルは変えていない）。
+- 実機（selftest のビルド）: 起動時に `LSM6DSO: Initialize device lsm6dsox@6a`、`chip id 0x6c`、エラーなし。`selftest` 3 回とも
+  `0 of 22`、`i2c: 0 of 6`、`lsm6dso: 0 of 3`。fetch: 加速度 (0.139, -1.412, 9.779) m/s²、ジャイロ 0.01 rad/s 以下、
+  温度 31.8 °C。stream（6667 Hz、500 ms）: 54 バッチ、7136 語、accel 3357・gyro 3359、最大転送 5984 µs。`i2c_dma stats` は
+  1 回ごとに transfers +55、約 +50 KB、errors・fallbacks 0。スタックの空き: `imu_fifo_worker` 1248/2048、`sysworkq` 816/1024、
+  `console` 1616/3072。`irqstack` 564/2048。既定のビルドに書き直し済み（アイドルの `cpu_active` 2.0%）。
+- 予想と違った点（未調査）: INT1 のエッジが 137 回（予想は約 55。バッチは 54）。終了コードは -140（newlib の ECANCELED。
+  報告の -110 は誤記とみられる）。F08 で NuttX 版・Zephyr 版の INT1 の回数と比べる。
+- 残り: `sensor` コマンドは F14（`sensor_shell_os.h`、処理スレッドの出力先）。`hwinfo` は F08。

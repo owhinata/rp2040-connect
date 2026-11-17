@@ -15,7 +15,10 @@
 #   GPIO and SPI functions (freertos/tests/nina), and I2C0's boundaries
 #   (freertos/drivers/i2c_dw, the layer's <zephyr/drivers/i2c.h>) with the
 #   shared core on fakes of the Pico SDK's GPIO, reset, IRQ and sync
-#   functions and of I2C0's registers (freertos/tests/i2c_dw).
+#   functions and of I2C0's registers (freertos/tests/i2c_dw), and GPIO bank
+#   0's boundary (freertos/drivers/compat/rp2040/nano_gpio.c) under the
+#   layer's gpio0 and the LSM6DSO's FIFO interrupt on fakes of the Pico SDK's
+#   GPIO and IRQ functions (freertos/tests/gpio).
 #
 #   freertos/script/host_tests.sh        run them
 #   freertos/script/host_tests.sh -v     also show the tests' output
@@ -26,7 +29,7 @@ verbose=0
 case "${1:-}" in
   "") ;;
   -v) verbose=1 ;;
-  -h|--help) sed -n '2,21p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+  -h|--help) sed -n '2,24p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
   *) printf 'Unknown option: %s\n' "$1" >&2; exit 2 ;;
 esac
 
@@ -214,3 +217,34 @@ else
     timeout 60 "$out/i2c_dw" >"$out/log" 2>&1 || { cat "$out/log"; exit 1; }
 fi
 printf 'ok  i2c_dw (I2C0 boundary and device, Zephyr I2C API, FreeRTOS POSIX port)\n'
+
+# GPIO bank 0 (freertos/tests/gpio): the board's boundary of the layer's gpio0
+# (drivers/compat/rp2040/nano_gpio.c) on fakes of the Pico SDK's GPIO and IRQ functions
+# (tests/gpio/pico_fake), under common/compat/zephyr_gpio.c and zephyr_device.c and the LSM6DSO's
+# FIFO interrupt (common/drivers/lsm6dso/lsm6dso_fifo_irq.c), with the prelude and
+# CONFIG_NANO_LSM6DSO_STREAM as drivers/lsm6dso/lsm6dso.cmake builds them; the layer's kernel part
+# again with that option (zephyr_compat_initialize() starts gpio0), on the same kernel objects.
+gpioinc=(-Itests/gpio/pico_fake -I../common/drivers/lsm6dso -DCONFIG_NANO_LSM6DSO_STREAM=1)
+gpioobjs=()
+for src in drivers/compat/rp2040/nano_gpio.c drivers/compat/zephyr_kernel.c tests/gpio/main.c \
+           ../common/compat/zephyr_gpio.c ../common/compat/zephyr_device.c \
+           ../common/drivers/lsm6dso/lsm6dso_fifo_irq.c; do
+    obj="$out/gpio_$(basename "$src" .c).o"
+    extra=()
+    case $src in
+        ../common/*) extra=(-include drivers/compat/common_prelude.h) ;;
+    esac
+    cc "${flags[@]}" "${strict[@]}" "${gpioinc[@]}" "${inc[@]}" "${extra[@]}" -c "$src" -o "$obj"
+    gpioobjs+=("$obj")
+done
+gpiokern=()
+for o in "${kernobjs[@]}"; do
+    [[ $(basename "$o") == zephyr_kernel.o ]] || gpiokern+=("$o")
+done
+cc "${flags[@]}" "${gpiokern[@]}" "${gpioobjs[@]}" -o "$out/gpio"
+if (( verbose )); then
+    timeout 60 "$out/gpio"
+else
+    timeout 60 "$out/gpio" >"$out/log" 2>&1 || { cat "$out/log"; exit 1; }
+fi
+printf 'ok  gpio (GPIO bank 0 boundary, gpio0, FIFO interrupt, FreeRTOS POSIX port)\n'

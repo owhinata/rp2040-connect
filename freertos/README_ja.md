@@ -36,6 +36,7 @@ source freertos/script/setup.sh
 | `freertos/FreeRTOS-Kernel` | FreeRTOS カーネル | タグ `V11.3.3`（shallow clone） |
 | `freertos/toolchain/` | Arm GNU Toolchain（arm-none-eabi、x86_64 Linux 用） | 15.2.Rel1（SHA-256 を検証） |
 | `freertos/.venv` | Python の venv（整形に使う `clang-format`） | clang-format 18.1.3（PyPI） |
+| `freertos/stmemsc/` | ST の LSM6DSO のレジスター定義（`lsm6dso_reg.[ch]`） | NuttX 版と同じコミット（SHA-256 を検証） |
 
 あわせて、現在のシェルに `PICO_SDK_PATH`、`FREERTOS_KERNEL_PATH`、`PICO_TOOLCHAIN_PATH` と `PATH`
 （ツールチェーン、`freertos/.venv/bin`、`freertos/script`）を設定します。版はスクリプトの冒頭で固定しています。取得したものは
@@ -57,7 +58,7 @@ freertos/script/build.sh [--clean] [-j N] [-v] [-DNAME=VALUE ...] [APP]
 
 | オプション | 既定 | 内容 |
 |---|---|---|
-| `-DNANO_SELFTEST=ON` | OFF | 試験用の `selftest` コマンド（Zephyr 互換層と I2C0 の自己診断。計測を止めて使う）を入れる |
+| `-DNANO_SELFTEST=ON` | OFF | 試験用の `selftest` コマンド（Zephyr 互換層、I2C0、LSM6DSOX の自己診断。計測を止め、ボードを静止させて使う）を入れる |
 | `-DNANO_SCHED_ZEPHYR=OFF` | ON | 同じ優先度のタスクの選び方を、Zephyr に合わせず FreeRTOS 標準のままにする（比較用） |
 
 ## ホストテスト
@@ -135,6 +136,7 @@ USB の CDC ACM ポートがコンソールです（UART0 は使いません）�
 | `drivers/kv/` | KV のフラッシュの読み書き |
 | `drivers/nina/` | NINA-W102 の SPI と制御線 |
 | `drivers/i2c_dw/` | I2C0 と DMA（センサーのバス） |
+| `drivers/lsm6dso/` | LSM6DSOX のデバイスの生成と初期化（ドライバー本体は `common/drivers/lsm6dso/`） |
 | `tests/` | ホストテスト |
 | `script/` | `setup.sh`、`build.sh`、`flash.sh`、`format.sh`、`host_tests.sh` |
 | `PORTING_PLAN.md`、`PORTING_STATUS.md` | 移植の計画と、進み具合・確かめたことの記録 |

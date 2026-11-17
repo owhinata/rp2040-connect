@@ -3,7 +3,9 @@
 #
 # The LSM6DSOX driver: lsm6dso.c (the Zephyr build's driver, on the
 # compatibility layer's kernel, device, sensor and I2C calls), the ST
-# glue (stmemsc_i2c.c, stmemsc_mdelay.c), the OS-independent parts
+# glue (stmemsc_i2c.c, stmemsc_mdelay.c and stmemsc.h, in
+# common/drivers/stmemsc, shared with the FreeRTOS build and compiled
+# without the prelude), the OS-independent parts
 # (lsm6dso_fifo_hw.c, lsm6dso_fifo.c, lsm6dso_cal.c, lsm6dso_zero.c), the
 # FIFO stream (lsm6dso_stream.c, lsm6dso_fifo_irq.c, lsm6dso_fifo_decoder.c,
 # lsm6dso_compat.c), and ST's register driver
@@ -15,12 +17,12 @@
 # lsm6dso_fifo_stats.h, lsm6dso_attributes.h) are in common/drivers/lsm6dso
 # and are compiled with the prelude of the shared sources
 # (compat/common_prelude.h); the headers of this directory
-# (lsm6dso_instance.h, the device that lsm6dso.c defines at its end, and
-# stmemsc.h) stay here, and $(TOPDIR)/external/lsm6dso (this directory) is
+# (lsm6dso_instance.h, the device that lsm6dso.c defines at its end) stay
+# here, and $(TOPDIR)/external/lsm6dso (this directory) is
 # on the include path for the shared files that read them.
 # Included by nuttx/drivers/Makefile.  VPATH and DEPPATH of
-# common/drivers/lsm6dso are relative to nuttx/drivers (mkdeps needs
-# relative ones); the objects are made there.
+# common/drivers/lsm6dso and common/drivers/stmemsc are relative to
+# nuttx/drivers (mkdeps needs relative ones); the objects are made there.
 ############################################################################
 
 ifeq ($(CONFIG_NANO_LSM6DSO),y)
@@ -35,8 +37,11 @@ DEPPATH += --dep-path lsm6dso
 VPATH += :lsm6dso
 DEPPATH += --dep-path ../../common/drivers/lsm6dso
 VPATH += :../../common/drivers/lsm6dso
+DEPPATH += --dep-path ../../common/drivers/stmemsc
+VPATH += :../../common/drivers/stmemsc
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)stmemsc
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)drivers$(DELIM)lsm6dso
+CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)drivers$(DELIM)stmemsc
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)lsm6dso
 LSM6DSO_COMMON_CSRCS = $(notdir $(wildcard ../../common/drivers/lsm6dso/*.c))
 $(patsubst %.c,%$(OBJEXT),$(filter $(LSM6DSO_COMMON_CSRCS),$(CSRCS))): \

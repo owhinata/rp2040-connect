@@ -36,6 +36,7 @@ source freertos/script/setup.sh
 | `freertos/FreeRTOS-Kernel` | The FreeRTOS kernel | tag `V11.3.3` (shallow clone) |
 | `freertos/toolchain/` | Arm GNU Toolchain (arm-none-eabi, for x86_64 Linux) | 15.2.Rel1 (SHA-256 checked) |
 | `freertos/.venv` | A Python venv (`clang-format`, used for formatting) | clang-format 18.1.3 (PyPI) |
+| `freertos/stmemsc/` | ST's register definitions of the LSM6DSO (`lsm6dso_reg.[ch]`) | The commit the NuttX build uses (SHA-256 checked) |
 
 It also sets `PICO_SDK_PATH`, `FREERTOS_KERNEL_PATH`, `PICO_TOOLCHAIN_PATH` and `PATH` (the toolchain,
 `freertos/.venv/bin` and `freertos/script`) in the current shell. The versions are pinned at the top of the script. What it
@@ -57,7 +58,7 @@ On the first build the Pico SDK fetches the source of `picotool` from GitHub and
 
 | Option | Default | Content |
 |---|---|---|
-| `-DNANO_SELFTEST=ON` | OFF | Adds the test command `selftest` (the self-test of the Zephyr compatibility layer and of I2C0; use it with the measurement stopped) |
+| `-DNANO_SELFTEST=ON` | OFF | Adds the test command `selftest` (the self-test of the Zephyr compatibility layer, I2C0 and the LSM6DSOX; use it with the measurement stopped and the board at rest) |
 | `-DNANO_SCHED_ZEPHYR=OFF` | ON | Leaves the choice among tasks of one priority as FreeRTOS makes it, not as Zephyr does (for comparison) |
 
 ## Host tests
@@ -138,6 +139,7 @@ The console is the USB CDC ACM port (UART0 is not used). Opening a terminal show
 | `drivers/kv/` | Reading and writing the flash of the key-value store |
 | `drivers/nina/` | The SPI bus and control lines of the NINA-W102 |
 | `drivers/i2c_dw/` | I2C0 and DMA (the sensor's bus) |
+| `drivers/lsm6dso/` | The device and start-up of the LSM6DSOX (the driver itself is in `common/drivers/lsm6dso/`) |
 | `tests/` | Host tests |
 | `script/` | `setup.sh`, `build.sh`, `flash.sh`, `format.sh`, `host_tests.sh` |
 | `PORTING_PLAN.md`, `PORTING_STATUS.md` | The plan of the port, and the record of its progress and of what was checked (in Japanese) |

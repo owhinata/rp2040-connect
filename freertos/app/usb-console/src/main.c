@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MIT */
 /* The USB console on the Pico SDK and the FreeRTOS kernel: a shell on the
  * USB CDC ACM port, the key-value store, the SPI link to the NINA-W102, I2C0
- * with its DMA reads and a task that blinks the LED.
+ * with its DMA reads, the LSM6DSOX and a task that blinks the LED.
  */
 #include <stdbool.h>
 #include <stdint.h>
@@ -20,6 +20,7 @@
 #include "nano_dma.h"
 #include "nano_flash_kv_os.h"
 #include "nano_i2c.h"
+#include "nano_lsm6dso.h"
 #include "nano_nina.h"
 #include "nano_shell.h"
 #include "nano_stdio.h"
@@ -165,6 +166,16 @@ static void console_main(void *arg)
  * stack, ending when done as Zephyr's main thread does.  It runs before the
  * console's task, which has a lower priority, as the Zephyr build's main()
  * runs before its shell thread.
+ * First the LSM6DSOX (lsm6dsox@6a), which Zephyr initializes in its main
+ * thread before main() (POST_KERNEL, CONFIG_SENSOR_INIT_PRIORITY 90) and the
+ * NuttX build in its bringup, after I2C0: it needs a task (the driver sleeps
+ * and waits for I2C0's interrupt), so not main() below, which runs before
+ * the scheduler.  Its lines ("Initialize device lsm6dsox@6a", "chip id
+ * 0x6c") come first in "dmesg", as in the Zephyr and NuttX builds.  A failure
+ * leaves the device not ready (the driver logs why; without i2c0 nothing is
+ * tried) and the start goes on (freertos/drivers/lsm6dso/nano_lsm6dso.h).
+ * While the driver waits, the console's task may run; a command that uses
+ * the sensor before it is ready gets the error of a device that is not.
  * kv_store_init() is settings_subsys_init(): it checks what the key-value
  * area holds, mounts NVS on it (the "fs_nvs" lines of "dmesg") and reads the
  * settings' handlers.  Data that is neither Zephyr's NVS nor erased is not
@@ -178,6 +189,8 @@ static void main_main(void *arg)
 	int ret;
 
 	(void)arg;
+
+	(void)nano_lsm6dso_initialize();
 
 	LOG_INF("USB console started");
 	ret = kv_store_init();
@@ -227,19 +240,13 @@ int main(void)
 	 */
 	vPortFree(pvPortMalloc(1));
 
-	/* What Zephyr starts before main(): the system work queue ("sysworkq")
-	 * and the RTIO work queue ("RTIO WQ 0") of the compatibility layer
-	 * (freertos/drivers/compat).
+	/* What Zephyr starts before main(): the system work queue ("sysworkq"),
+	 * the RTIO work queue ("RTIO WQ 0") and the gpio0 device of the
+	 * compatibility layer (freertos/drivers/compat).
 	 */
 	if (zephyr_compat_initialize() != 0) {
 		panic("zephyr_compat_initialize");
 	}
-
-	/* The bounds of the key-value area from the linker script; until they
-	 * are found right, the store refuses to erase or program the flash
-	 * (freertos/drivers/kv).
-	 */
-	(void)nano_flash_kv_initialize();
 
 	/* SPI1 to the NINA-W102 and its chip select, which the Zephyr build sets
 	 * up at boot (its spi1 device, before main()) and the NuttX build in its
@@ -268,6 +275,13 @@ int main(void)
 	if (ret != 0) {
 		LOG_ERR("Could not set up I2C0: %d", ret);
 	}
+
+	/* The bounds of the key-value area from the linker script; until they
+	 * are found right, the store refuses to erase or program the flash
+	 * (freertos/drivers/kv).  After I2C0, where the NuttX build's bringup
+	 * checks its flash; the store itself is mounted by the task "main".
+	 */
+	(void)nano_flash_kv_initialize();
 
 	xTaskCreateStatic(main_main, "main", MAIN_STACK_SIZE, NULL, MAIN_PRIORITY, main_stack,
 			  &main_tcb);

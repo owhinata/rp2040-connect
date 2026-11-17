@@ -13,6 +13,9 @@ imu=apps/imu
 lsm=drivers/lsm6dso
 cimu=../common/imu
 clsm=../common/drivers/lsm6dso
+# ST's glue to the Zephyr I2C API (stmemsc.h, stmemsc_i2c.c, stmemsc_mdelay.c), shared with the
+# FreeRTOS build.
+cstm=../common/drivers/stmemsc
 # The Zephyr compatibility layer: its NuttX part (drivers/compat), its shared part
 # (common/compat) and the fake kernel of the host tests (common/tests/zephyr_fakes), which
 # comes first (its zephyr_os*.h and <zephyr/sys/__assert.h> in place of the NuttX ones).
@@ -65,9 +68,9 @@ if [[ -f stmemsc/lsm6dso_reg.c ]]; then
         -D_DEFAULT_SOURCE -D'DEBUGASSERT(x)=assert(x)' -include tests/lsm6dso_fakes/nuttx/config.h \
         -include "$prelude" -Itests/lsm6dso_fakes \
         -I"$zfakes" \
-        -Idrivers/compat -I"$ccompat" -Idrivers/include -I"$clog" -Istmemsc -I"$lsm" -I"$clsm" \
+        -Idrivers/compat -I"$ccompat" -Idrivers/include -I"$clog" -Istmemsc -I"$lsm" -I"$clsm" -I"$cstm" \
         -Iboards/arduino-nano-rp2040-connect/src \
-        tests/lsm6dso_driver.c "$clsm/lsm6dso.c" "$lsm/stmemsc_i2c.c" "$lsm/stmemsc_mdelay.c" \
+        tests/lsm6dso_driver.c "$clsm/lsm6dso.c" "$cstm/stmemsc_i2c.c" "$cstm/stmemsc_mdelay.c" \
         "$clsm/lsm6dso_fifo_hw.c" "$clsm/lsm6dso_fifo.c" "$clsm/lsm6dso_cal.c" \
         "$clsm/lsm6dso_zero.c" "$clsm/lsm6dso_stream.c" "$clsm/lsm6dso_fifo_irq.c" \
         "$clsm/lsm6dso_compat.c" \
@@ -85,10 +88,10 @@ if [[ -f stmemsc/lsm6dso_reg.c ]]; then
         -D_DEFAULT_SOURCE -D'DEBUGASSERT(x)=assert(x)' -include tests/lsm6dso_fakes/nuttx/config.h \
         -include "$prelude" -Itests/lsm6dso_fakes \
         -I"$zfakes" \
-        -Idrivers/compat -I"$ccompat" -Idrivers/include -I"$clog" -Istmemsc -I"$lsm" -I"$clsm" -I"$imu" -I"$cimu" \
+        -Idrivers/compat -I"$ccompat" -Idrivers/include -I"$clog" -Istmemsc -I"$lsm" -I"$clsm" -I"$cstm" -I"$imu" -I"$cimu" \
         -Iboards/arduino-nano-rp2040-connect/src \
         tests/imu_cal.c "$cimu/imu_cal.c" "$cimu/imu_cal_codec.c" "$clsm/lsm6dso.c" \
-        "$lsm/stmemsc_i2c.c" "$lsm/stmemsc_mdelay.c" \
+        "$cstm/stmemsc_i2c.c" "$cstm/stmemsc_mdelay.c" \
         "$clsm/lsm6dso_fifo_hw.c" "$clsm/lsm6dso_fifo.c" "$clsm/lsm6dso_cal.c" \
         "$clsm/lsm6dso_zero.c" "$clsm/lsm6dso_stream.c" "$clsm/lsm6dso_fifo_irq.c" \
         "$clsm/lsm6dso_compat.c" \
@@ -107,13 +110,13 @@ if [[ -f stmemsc/lsm6dso_reg.c ]]; then
     sinc=(-D_GNU_SOURCE -D'DEBUGASSERT(x)=assert(x)' -DSENSOR_SHELL_GET_WAIT_MS=1
           -include tests/lsm6dso_fakes/nuttx/config.h -include "$prelude"
           -Itests/lsm6dso_fakes -I"$zfakes" -Idrivers/compat -I"$ccompat" -Idrivers/include -I"$clog" -Istmemsc
-          -I"$lsm" -I"$clsm" -Iapps/sensor -I"$cshell" -Iapps/subcmd -Iboards/arduino-nano-rp2040-connect/src)
+          -I"$lsm" -I"$clsm" -I"$cstm" -Iapps/sensor -I"$cshell" -Iapps/subcmd -Iboards/arduino-nano-rp2040-connect/src)
     sflags=("${flags[@]}" -Wno-unused-parameter -Wno-cast-function-type -Wno-sign-compare)
     cc "${sflags[@]}" "${sinc[@]}" -Dmain=sensor_main -c ../common/drivers/sensor_shell/sensor_shell.c \
         -o "$out/sensor_shell.o"
     cc "${sflags[@]}" "${sinc[@]}" tests/sensor_shell.c "$out/sensor_shell.o" \
         "$ccompat/sensor_shell_stream.c" apps/sensor/sensor_shell_nuttx.c "$cshell/zshell.c" \
-        "$cshell/subcmd.c" "$clsm/lsm6dso.c" "$lsm/stmemsc_i2c.c" "$lsm/stmemsc_mdelay.c" \
+        "$cshell/subcmd.c" "$clsm/lsm6dso.c" "$cstm/stmemsc_i2c.c" "$cstm/stmemsc_mdelay.c" \
         "$clsm/lsm6dso_fifo_hw.c" "$clsm/lsm6dso_fifo.c" "$clsm/lsm6dso_cal.c" \
         "$clsm/lsm6dso_zero.c" "$clsm/lsm6dso_stream.c" "$clsm/lsm6dso_fifo_irq.c" \
         "$clsm/lsm6dso_compat.c" \

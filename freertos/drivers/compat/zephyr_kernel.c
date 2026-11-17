@@ -64,6 +64,7 @@
 #include "FreeRTOS.h"
 #include "task.h"
 
+#include <zephyr/device.h>
 #include <zephyr/kernel.h>
 #include <zephyr/rtio/work.h>
 
@@ -693,9 +694,16 @@ int zephyr_compat_initialize(void)
 	/* subsys/rtio/rtio_workq.c static_init() (POST_KERNEL). */
 	rtio_workq_initialize();
 
-	/* The gpio0 device (drivers/gpio/gpio_rpi_pico.c, POST_KERNEL), which the
-	 * NuttX build starts here too, comes with the GPIO part of the layer
-	 * (F07).
+#ifdef CONFIG_NANO_LSM6DSO_STREAM
+	/* drivers/gpio/gpio_rpi_pico.c (POST_KERNEL, CONFIG_GPIO_INIT_PRIORITY
+	 * 40): the gpio0 device of common/compat/zephyr_gpio.c, which the
+	 * LSM6DSO's FIFO stream uses for INT1 (built with the driver,
+	 * freertos/drivers/lsm6dso/lsm6dso.cmake), as the NuttX build starts it
+	 * here.  Its bank interrupt is added with the first pin's
+	 * (rp2040/nano_gpio.c).
 	 */
+	return device_init(DEVICE_DT_GET(DT_NODELABEL(gpio0)));
+#else
 	return 0;
+#endif
 }

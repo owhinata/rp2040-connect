@@ -62,6 +62,7 @@
 /freertos/FreeRTOS-Kernel.tmp/
 /freertos/toolchain/
 /freertos/.venv/
+/freertos/stmemsc/
 # picotool's source, fetched by the Pico SDK at the first build.
 /freertos/picotool/
 # Output of freertos/script/build.sh.

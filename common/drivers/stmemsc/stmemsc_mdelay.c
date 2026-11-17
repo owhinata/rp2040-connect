@@ -10,7 +10,7 @@
 /* Zephyr's drivers/sensor/st/stmemsc/stmemsc_mdelay.c, with k_msleep() of
  * the compatibility layer (<zephyr/kernel.h>, which Zephyr's stmemsc.h
  * reads; this directory's stmemsc.h does not).  ST's lsm6dso_reg.c does
- * not call it.
+ * not call it.  Shared by the NuttX and FreeRTOS builds.
  */
 
 #include <zephyr/kernel.h>
