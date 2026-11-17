@@ -10,14 +10,29 @@ symlink で、`libexternal.a` になります）。ボード側の部分は `nut
 
 ## NINA-W102（`nina`）
 
+NINA のドライバーは、OS に依存しないコア（リポジトリの `common/drivers/nina/`。ほかの版と共有する）と、NuttX への
+接続（`nuttx/drivers/nina/` とボードの `src/nano_nina.c`）に分かれています。コアの `.c` は `nina/Make.defs` が
+`VPATH` で参照し、オブジェクトは `nuttx/drivers` にできます。コアには前置きヘッダーを付けません（構成の値は、NuttX の
+ヘッダーが読む `<nuttx/config.h>` から入ります）。コアのヘッダーは `common/drivers/nina/` にあり、カーネル側
+（`nina/Make.defs`）、ボード、`nina`・`imu` のアプリがインクルードパスに足します。
+
+コアが OS とボードに求めるもの（境界）:
+
+| 境界 | NuttX 版の実装 | 満たすこと |
+|---|---|---|
+| `common/drivers/nina/nina_os.h` | `nina/nina_os.c` | `nina_os_lock()`・`nina_os_unlock()`: 再帰可能で優先度継承のあるロック（Zephyr 版の `K_MUTEX_DEFINE(nina_lock)`）。`nina_os_lock()` は 0 か負の errno を返し、失敗は `nina_request()`・`nina_ip_config()` がそのまま返す。`nina_os_dns_lock()`・`nina_os_dns_unlock()`: 名前解決の 2 つの命令の間に持つ、優先度継承のあるロック。`nina_os_sleep_us()`・`nina_os_sleep_ms()`: Zephyr の `k_sleep()` と同じく tick に切り上げて 1 tick 足した時間眠り、シグナルでは終わらない。`nina_os_uptime_ms()`: カーネルの時計の ms（切り捨て。`k_uptime_get()`） |
+| `common/drivers/nina/nano_nina.h` | ボードの `src/nano_nina.c` | `nano_nina_initialize()`: 起動時に 1 回、SPI とそのピンを設定して CS を非アクティブにする（READY・RESET・IRQ には触れない）。`nano_nina_bus_ready()`: SPI と 4 本の線が使えるか。`nano_nina_pin_configure()`・`nano_nina_pin_set()`・`nano_nina_pin_get()`: 論理値（1 がアクティブ）。極性とプルはボードが知る（CS GPIO9 アクティブ low、READY GPIO10 アクティブ low・プルアップ、RESET GPIO3 アクティブ low、IRQ GPIO2 アクティブ high・プルダウン）。`nano_nina_transceive()`: モード 0・8 ビット・MSB first の同期転送（RX が NULL なら書くだけ）、CS には触れない |
+| 構成 | `nina/Kconfig` | `CONFIG_NANO_NINA_TCP_MAX_IO`（既定 3584）と `CONFIG_NANO_NINA_SEND_RETRY_MS`（既定 1）。`nina_sock.h` が読み、無ければ既定値を使う |
+| C ライブラリ | NuttX の libc | `nina_sock.[ch]`・`nina_dns.[ch]` は POSIX の `<sys/socket.h>`・`<sys/types.h>`・`<sys/uio.h>`・`<netinet/in.h>`・`<netinet/tcp.h>`・`<arpa/inet.h>`・`<poll.h>`・`<netdb.h>` の型と定数（`struct sockaddr_in`、`struct iovec`、`struct addrinfo`、`AF_INET`、`MSG_DONTWAIT`、`POLLIN`、`EAI_*` など）と、`inet_pton()`・`htons()`・`malloc()`・`free()` を使う。`nina_sock_poll_revents()` が返す `POLL*` と `EAI_*` の値は、呼び出す側と同じヘッダーのもの |
+
 ### SPI の転送層
 
 | ファイル | 役割 |
 |---|---|
-| `nina/nina_spi.c` | コマンドと応答のフレーミング（`nina_request()`、`nina_ip_config()`）。Zephyr 版の `drivers/nina/nina_wifi.c` の同名の関数と、分岐・順序・定数・エラー値を 1 対 1 で対応させた写し |
-| `nina/nina_proto.h` | 公開する宣言。Zephyr 版の同名ファイルを変更せずに写したもの |
-| `nina/nina_os.[ch]` | ロック（再帰可能なミューテックス、優先度継承あり）、sleep、ms の時計。Zephyr の `K_MUTEX`・`k_sleep()`・`k_uptime_get()` に当たる |
-| `include/nano_nina.h`、ボードの `src/nano_nina.c` | SPI1 と 4 本の信号線（CS、READY、RESET、IRQ）。Zephyr のデバイスツリーと SPI・GPIO ドライバーが行っていた設定に当たる |
+| `common/drivers/nina/nina_spi.c` | コマンドと応答のフレーミング（`nina_request()`、`nina_ip_config()`）。Zephyr 版の `drivers/nina/nina_wifi.c` の同名の関数と、分岐・順序・定数・エラー値を 1 対 1 で対応させた写し |
+| `common/drivers/nina/nina_proto.h` | 公開する宣言。Zephyr 版も同じファイルを使う |
+| `common/drivers/nina/nina_os.h`、`nina/nina_os.c` | ロック（再帰可能なミューテックス、優先度継承あり）、sleep、ms の時計。Zephyr の `K_MUTEX`・`k_sleep()`・`k_uptime_get()` に当たる |
+| `common/drivers/nina/nano_nina.h`、ボードの `src/nano_nina.c` | SPI1 と 4 本の信号線（CS、READY、RESET、IRQ）。Zephyr のデバイスツリーと SPI・GPIO ドライバーが行っていた設定に当たる |
 
 - 要求は呼び出したスレッドの文脈で同期して処理します。ミューテックスで直列化し、CS を下げてから
   応答を読み終えるまで（READY を待つ間も）CS を保持します。
@@ -27,7 +42,8 @@ symlink で、`libexternal.a` になります）。ボード側の部分は `nut
   最初の転送でモード 0・8 ビット・`CONFIG_NANO_NINA_SPI_FREQUENCY` を設定します。`SPI_SELECT` は
   使いません。
 - 期限と配線は `design/nuttx-porting-ja.md` の「NINA-W102（`nina`）」の節にあります。
-- `nina/nina_spi.c` はホストテスト（`nuttx/tests/nina_spi.c`）で、偽のボードと時計を使って確かめます。
+- `common/drivers/nina/nina_spi.c` はホストテスト（`common/tests/nina_spi.c`。`common/tests/run.sh` が走らせる）で、偽のボードと時計を
+  使って確かめます。
 
 ### ソケット（usrsock）
 
@@ -37,7 +53,7 @@ Zephyr 版はソケットのオフロード（`drivers/nina/nina_socket.c`）で
 
 | ファイル | 役割 |
 |---|---|
-| `nina/nina_sock.[ch]` | ソケットの表（10 個）と NINA のソケット命令。Zephyr 版の `nina_socket.c` の `nina_socket_create()`・`do_bind()`・`do_listen()`・`do_accept()`・`do_connect()`・`do_close()`・`do_setsockopt()` と、送受信の `udp_send()`・`do_send()`・`do_sendmsg()`・`udp_recv()`・`do_recv()` を、名前・分岐・順序・定数・errno の名前を保って移したもの（送受信の待ちのループは要求 1 回で 1 周）。`FIONREAD`（`nina_sock_fionread()`）と独自のソケットオプション `NINA_SO_CALLER_POLLS`・`NINA_SO_POLL`（`nina_sock_poll_revents()`、`include/nina_sockopt.h`）は NuttX 版だけ。OS に依存しない |
+| `common/drivers/nina/nina_sock.[ch]` | ソケットの表（10 個）と NINA のソケット命令。Zephyr 版の `nina_socket.c` の `nina_socket_create()`・`do_bind()`・`do_listen()`・`do_accept()`・`do_connect()`・`do_close()`・`do_setsockopt()` と、送受信の `udp_send()`・`do_send()`・`do_sendmsg()`・`udp_recv()`・`do_recv()` を、名前・分岐・順序・定数・errno の名前を保って移したもの（送受信の待ちのループは要求 1 回で 1 周）。`FIONREAD`（`nina_sock_fionread()`）と独自のソケットオプション `NINA_SO_CALLER_POLLS`・`NINA_SO_POLL`（`nina_sock_poll_revents()`、`common/drivers/nina/nina_sockopt.h`）は Zephyr 版には無い。OS に依存しない |
 | `nina/nina_usrsock.c` | usrsock の要求を上の関数に振り分け、応答（ACK）を返す |
 | `nina/nina_poller.c` | スレッド `nina_event`。NINA のソケットの状態を見て usrsock のイベントにする（呼び出し元だけが問い合わせるソケットは接続中だけ）。待つ送信の再試行の時間も計る |
 | `nina/nina_usrsock.h` | 上の 2 つの間の宣言 |
@@ -57,7 +73,7 @@ Zephyr 版はソケットのオフロード（`drivers/nina/nina_socket.c`）で
   フラグは伝えません（Zephyr 版でもデータグラムの呼び出しはその後も続きます）。usrsock が既に持っている
   イベントのソケットは問い合わせず、問い合わせるものが無ければスレッドは要求で起こされるまで眠ります。
 - 呼び出し元だけが問い合わせるソケット: 互換層の `zsock_socket()` は、作ったソケットにドライバー独自の
-  ソケットオプション `NINA_SO_CALLER_POLLS`（レベル `NINA_SOL`、`include/nina_sockopt.h`）を付けます（MQTT と
+  ソケットオプション `NINA_SO_CALLER_POLLS`（レベル `NINA_SOL`、`nina_sockopt.h`）を付けます（MQTT と
   時刻同期のソケット）。印の付いたソケットは、`nina_event` が接続中の確認のほかは問い合わせず、受信の後の
   問い合わせもしません。Zephyr 版の NINA のソケットと同じく、使う側（互換層の `zsock_recv()`・`zsock_poll()`）
   だけが、呼び出したスレッドで NINA に尋ねます（下の互換層の「`zsock_poll()`」）。印の無いソケット（Telnet、
@@ -121,15 +137,15 @@ Zephyr 版はソケットのオフロード（`drivers/nina/nina_socket.c`）で
   1 周です: NINA 側のソケットがまだ無ければ尋ねずに TCP は `POLLHUP`、UDP は `POLLOUT`。あれば poll を 1 回送り、
   読める → `POLLIN`、書ける → `POLLOUT`、エラーフラグ → `POLLERR` を返します。poll の失敗はその errno です。
   互換層の `zsock_poll()` が使います。
-- `nina/nina_sock.c` はホストテスト（`nuttx/tests/nina_sock.c`）で、偽の `nina_request()` と時計を使って
+- `common/drivers/nina/nina_sock.c` はホストテスト（`common/tests/nina_sock.c`）で、偽の `nina_request()` と時計を使って
   確かめます。
 
 ### 名前解決
 
-`nina/nina_dns.c` は Zephyr 版の `drivers/nina/nina_dns.c` を行単位で移したもので、名前を NINA の名前解決の
+`common/drivers/nina/nina_dns.c` は Zephyr 版の `drivers/nina/nina_dns.c` を行単位で移したもので、名前を NINA の名前解決の
 命令（0x34 で名前を渡し、0x35 でアドレスを読む）で IPv4 のアドレス 1 つにします。数値のアドレスは NINA に
 尋ねません。Zephyr 版はソケットのオフロードの `getaddrinfo()` として登録し、`zsock_getaddrinfo()` がこれを
-使います。NuttX 版は専用の関数 `nina_getaddrinfo()`・`nina_freeaddrinfo()`（`include/nina_dns.h`）で、互換層の
+使います。NuttX 版は専用の関数 `nina_getaddrinfo()`・`nina_freeaddrinfo()`（`common/drivers/nina/nina_dns.h`）で、互換層の
 `<zephyr/net/socket.h>` が `zsock_getaddrinfo()`・`zsock_freeaddrinfo()`・`struct zsock_addrinfo` をこれに
 つなぎます。NuttX の `getaddrinfo()`（`CONFIG_LIBC_NETDB`。DNS サーバーへ自分で UDP で問い合わせる）は
 使わず、`CONFIG_NANO_NINA_DNS` は `CONFIG_LIBC_NETDB` と同時には有効にできません。エラーは NuttX の
@@ -137,7 +153,7 @@ Zephyr 版はソケットのオフロード（`drivers/nina/nina_socket.c`）で
 `EAI_AGAIN`、アドレスの長さが違う `EAI_FAIL`、ヒントの誤り `EAI_BADFLAGS`・`EAI_FAMILY`・`EAI_SOCKTYPE`、
 サービスの誤り `EAI_SERVICE`、メモリー不足 `EAI_MEMORY`）。2 つの命令の間はミューテックスで守ります
 （NINA の名前解決の結果は 1 つしかないため）。結果は Zephyr 版の 2 KB の専用ヒープではなく `malloc()` で
-取ります。ホストテストは `nuttx/tests/nina_dns.c` です。今これを使うのは、時刻同期の NTP サーバーを名前で
+取ります。ホストテストは `common/tests/nina_dns.c` です。今これを使うのは、時刻同期の NTP サーバーを名前で
 指定したときだけです（既定はゲートウェイ）。
 
 ### Wi-Fi（ネットワークデバイス `wlan0`）

@@ -3,7 +3,7 @@
 #include <zephyr/logging/log.h>
 #include <zephyr/shell/shell.h>
 #include "wifi_profile.h"
-#include "../drivers/nina/nina_proto.h"
+#include "nina_proto.h"
 #include "time_sync.h"
 #include "imu_cal.h"
 #include "kv_store.h"

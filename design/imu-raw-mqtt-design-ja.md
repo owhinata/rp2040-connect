@@ -573,8 +573,10 @@ NuttX 版の確認の範囲は §11.7 に分けて書く。
   各ファイルに前置きヘッダー（NuttX の設定と、互換層より先に読む NuttX のヘッダー、ファイルが使う Zephyr の Kconfig の
   値と名前）を付けてコンパイルし、版ごとに違う数行は OS ごとの小さなヘッダー（`sensor_shell_os.h`、
   `wifi_profile_os.h`、`lsm6dso.c` が末尾で読む LSM6DSO のデバイスの `lsm6dso_instance.h`。Zephyr 版はデバイスツリーの
-  インスタンス化のマクロ、NuttX 版はボードの値を使うデバイス 1 つ）に出している。`common/` に置いていない同一の
-  ファイル（`nina_proto.h`）は、Zephyr 版のファイルを変更せずに写している。
+  インスタンス化のマクロ、NuttX 版はボードの値を使うデバイス 1 つ）に出している。NINA の宣言 `nina_proto.h` も
+  `common/drivers/nina/` の 1 本を両方の版が使う。NINA の OS に依存しないコア（SPI の転送層 `nina_spi.c`、ソケットの表と
+  命令 `nina_sock.[ch]`、名前解決 `nina_dns.[ch]`。狭い境界 `nina_os.h`・`nano_nina.h` だけに依存する）も
+  `common/drivers/nina/` にあり、今は NuttX 版が使う（Zephyr 版は自分の `drivers/nina/` の 3 つのファイル）。
 - 共有するソースは、OS の呼び出しを **Zephyr の名前のまま**提供する互換層（OS に依存しない部分は `common/compat/`、NuttX の実装は `nuttx/drivers/compat/`）の上で動かす。
   互換層は、移したソースが使う部分だけを持つ（`struct device`、センサーの API、RTIO、ワークキュー、
   `k_sem`・`k_mutex`・`k_poll` の一部、`net_mgmt` のイベント、`zsock_*()`、シェルのコマンドの表）。

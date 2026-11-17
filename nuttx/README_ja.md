@@ -409,7 +409,7 @@ Zephyr 版の `i2c write`、`gpio`、`log`、`device`、`history`、`clear`、`r
 nuttx/script/host_tests.sh
 ```
 
-OS に依存しない部分のホストテスト 39 本を PC 上でビルドして実行します。最初の 17 本は Zephyr 版と共有する
+OS に依存しない部分のホストテスト 39 本を PC 上でビルドして実行します。最初の 20 本は Zephyr 版と共有する
 ソースと互換層の共通部分のテストで、`common/tests/run.sh` が実行します。ボードは不要で、ホストの `cc`（C17）だけを
 使います。ST の `lsm6dso_reg.c`（`setup.sh` が取得）が無ければ、それを使う 3 本（`lsm6dso_driver`、`imu_cal`、
 `sensor_shell`）は `skip` になります。失敗したところで止まります。各テストの内容と、Zephyr 版から変更せずに
@@ -426,5 +426,5 @@ OS に依存しない部分のホストテスト 39 本を PC 上でビルドし
 | `patches/` | NuttX と nuttx-apps へのパッチ |
 | `script/` | `setup.sh`、`build.sh`、`flash.sh`、`host_tests.sh`、`bin2uf2.py`、`kconfig-tweak` |
 | `tests/` | ホストテスト（NuttX 版だけのもの） |
-| `../common/` | Zephyr 版と共有するソース（`imu/`、`drivers/lsm6dso/`、`drivers/nina/`、`drivers/sensor_shell/`、`drivers/i2c_dw/`）、互換層の OS に依存しない部分（`compat/`）とそれらのホストテスト。ビルドは `VPATH` でそこを参照し、各ファイルに前置きヘッダー（`drivers/compat/common_prelude.h`）を付けてコンパイルする。オブジェクトは `apps/imu`・`apps/wifi`・`apps/sensor`・`drivers`・ボードのディレクトリーにできる |
+| `../common/` | Zephyr 版と共有するソース（`imu/`、`drivers/lsm6dso/`、`drivers/nina/`、`drivers/sensor_shell/`、`drivers/i2c_dw/`。`drivers/nina/` の NINA のコアは今はこの版だけが使う）、互換層の OS に依存しない部分（`compat/`）とそれらのホストテスト。ビルドは `VPATH` でそこを参照し、NINA のコアを除く各ファイルに前置きヘッダー（`drivers/compat/common_prelude.h`）を付けてコンパイルする。オブジェクトは `apps/imu`・`apps/wifi`・`apps/sensor`・`drivers`・ボードのディレクトリーにできる |
 | `nuttx/`、`nuttx-apps/`、`pico-sdk/`、`toolchain/`、`stmemsc/`、`.venv/`、`build/` | `setup.sh` が取得するものとビルドの生成物（Git 管理外） |

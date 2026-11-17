@@ -14,9 +14,9 @@ target_sources(app PRIVATE src/main.c src/log_ram.c src/kv_store.c ${COMMON_DIR}
   ${COMMON_DIR}/imu/imu_raw_mqtt.c ${COMMON_DIR}/imu/imu_raw_status.c
   drivers/nina/nina_wifi.c ${COMMON_DIR}/drivers/nina/nina_net.c drivers/nina/nina_socket.c
   drivers/nina/nina_dns.c)
-# drivers/nina: nina_proto.h for common/drivers/nina/nina_net.c.
+# common/drivers/nina: nina_proto.h for src/main.c and drivers/nina.
 target_include_directories(app PRIVATE src drivers/lsm6dso ${COMMON_DIR}/imu ${COMMON_DIR}/drivers/lsm6dso
-  drivers/nina)
+  ${COMMON_DIR}/drivers/nina)
 # Keep Zephyr's Kconfig and devicetree bindings while using local driver copies.
 function(use_local_driver_sources target pattern replacement_dir)
   get_filename_component(dir "${replacement_dir}" ABSOLUTE BASE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")

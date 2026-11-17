@@ -440,7 +440,7 @@ NuttX puts at the start of a stack (2048 → 2008 and so on).
 nuttx/script/host_tests.sh
 ```
 
-This builds and runs the 39 host tests of the OS-independent parts on the PC. The first 17 are the
+This builds and runs the 39 host tests of the OS-independent parts on the PC. The first 20 are the
 tests of the sources shared with the Zephyr build and of the layer's shared part, run by
 `common/tests/run.sh`. It needs no board, only
 the host's `cc` (C17). Without ST's `lsm6dso_reg.c` (fetched by `setup.sh`), the 3 tests that use it
@@ -458,5 +458,5 @@ Zephyr build changes), are in "Host test details" in [`design/nuttx-porting.md`]
 | `patches/` | Patches to NuttX and nuttx-apps |
 | `script/` | `setup.sh`, `build.sh`, `flash.sh`, `host_tests.sh`, `bin2uf2.py`, `kconfig-tweak` |
 | `tests/` | Host tests (those of the NuttX build only) |
-| `../common/` | Sources shared with the Zephyr build (`imu/`, `drivers/lsm6dso/`, `drivers/nina/`, `drivers/sensor_shell/`, `drivers/i2c_dw/`), the OS-independent part of the compatibility layer (`compat/`) and their host tests. The build finds them through `VPATH` and compiles each with the prelude (`drivers/compat/common_prelude.h`); the objects are made in `apps/imu`, `apps/wifi`, `apps/sensor`, `drivers` and the board's directory |
+| `../common/` | Sources shared with the Zephyr build (`imu/`, `drivers/lsm6dso/`, `drivers/nina/`, `drivers/sensor_shell/`, `drivers/i2c_dw/`; the NINA core in `drivers/nina/`, which only this build uses now), the OS-independent part of the compatibility layer (`compat/`) and their host tests. The build finds them through `VPATH` and compiles each but the NINA core with the prelude (`drivers/compat/common_prelude.h`); the objects are made in `apps/imu`, `apps/wifi`, `apps/sensor`, `drivers` and the board's directory |
 | `nuttx/`, `nuttx-apps/`, `pico-sdk/`, `toolchain/`, `stmemsc/`, `.venv/`, `build/` | What `setup.sh` fetches and the build products (not in Git) |

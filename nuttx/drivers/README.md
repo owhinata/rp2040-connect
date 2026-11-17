@@ -11,14 +11,31 @@ Zephyr version, are in `nuttx/README.md`, and how each part works in detail is i
 
 ## NINA-W102 (`nina`)
 
+The NINA driver is in two parts: an OS-independent core (the repository's `common/drivers/nina/`,
+shared with the other builds) and its connection to NuttX (`nuttx/drivers/nina/` and the board's
+`src/nano_nina.c`). `nina/Make.defs` finds the core's `.c` files through `VPATH`, and the objects are
+made in `nuttx/drivers`. The core is compiled without the prelude (the configuration values come in
+through `<nuttx/config.h>`, which NuttX's headers read). Its headers are in `common/drivers/nina/`;
+the kernel side (`nina/Make.defs`), the board and the `nina` and `imu` applications add that
+directory to their include paths.
+
+What the core needs from the OS and the board (its boundary):
+
+| Boundary | NuttX implementation | What it must do |
+|---|---|---|
+| `common/drivers/nina/nina_os.h` | `nina/nina_os.c` | `nina_os_lock()`, `nina_os_unlock()`: a recursive lock with priority inheritance (the Zephyr version's `K_MUTEX_DEFINE(nina_lock)`); `nina_os_lock()` returns 0 or a negative errno, which `nina_request()` and `nina_ip_config()` return untouched. `nina_os_dns_lock()`, `nina_os_dns_unlock()`: a lock with priority inheritance held across the two resolver commands. `nina_os_sleep_us()`, `nina_os_sleep_ms()`: sleep for the time rounded up to ticks plus one tick, as Zephyr's `k_sleep()`, not ended by signals. `nina_os_uptime_ms()`: the kernel clock in milliseconds, rounded down (`k_uptime_get()`) |
+| `common/drivers/nina/nano_nina.h` | the board's `src/nano_nina.c` | `nano_nina_initialize()`: called once at boot, sets up the SPI and its pins and drives CS inactive (leaves READY, RESET and IRQ alone). `nano_nina_bus_ready()`: whether the SPI and the four lines can be used. `nano_nina_pin_configure()`, `nano_nina_pin_set()`, `nano_nina_pin_get()`: logical values (1 is active); the board knows each line's polarity and pull (CS GPIO9 active low, READY GPIO10 active low with pull-up, RESET GPIO3 active low, IRQ GPIO2 active high with pull-down). `nano_nina_transceive()`: a synchronous transfer in mode 0, 8 bits, MSB first (only a write when RX is NULL), without touching CS |
+| Configuration | `nina/Kconfig` | `CONFIG_NANO_NINA_TCP_MAX_IO` (default 3584) and `CONFIG_NANO_NINA_SEND_RETRY_MS` (default 1), read by `nina_sock.h`, which uses the defaults without them |
+| C library | NuttX's libc | `nina_sock.[ch]` and `nina_dns.[ch]` use the types and constants of POSIX's `<sys/socket.h>`, `<sys/types.h>`, `<sys/uio.h>`, `<netinet/in.h>`, `<netinet/tcp.h>`, `<arpa/inet.h>`, `<poll.h>` and `<netdb.h>` (`struct sockaddr_in`, `struct iovec`, `struct addrinfo`, `AF_INET`, `MSG_DONTWAIT`, `POLLIN`, `EAI_*` and so on) and `inet_pton()`, `htons()`, `malloc()` and `free()`. The `POLL*` bits of `nina_sock_poll_revents()` and the `EAI_*` values are those of the same headers as the callers' |
+
 ### SPI transfer layer
 
 | File | Role |
 |---|---|
-| `nina/nina_spi.c` | Framing of commands and answers (`nina_request()`, `nina_ip_config()`). A copy of the functions of the same names in the Zephyr version's `drivers/nina/nina_wifi.c`, with the branches, order, constants and error values matching one to one |
-| `nina/nina_proto.h` | The public declarations, an unchanged copy of the Zephyr version's file |
-| `nina/nina_os.[ch]` | The lock (a recursive mutex with priority inheritance), sleeps and the millisecond clock: Zephyr's `K_MUTEX`, `k_sleep()` and `k_uptime_get()` |
-| `include/nano_nina.h`, the board's `src/nano_nina.c` | SPI1 and the four lines (CS, READY, RESET, IRQ): what Zephyr's devicetree and its SPI and GPIO drivers set up |
+| `common/drivers/nina/nina_spi.c` | Framing of commands and answers (`nina_request()`, `nina_ip_config()`). A copy of the functions of the same names in the Zephyr version's `drivers/nina/nina_wifi.c`, with the branches, order, constants and error values matching one to one |
+| `common/drivers/nina/nina_proto.h` | The public declarations; the Zephyr version uses the same file |
+| `common/drivers/nina/nina_os.h`, `nina/nina_os.c` | The lock (a recursive mutex with priority inheritance), sleeps and the millisecond clock: Zephyr's `K_MUTEX`, `k_sleep()` and `k_uptime_get()` |
+| `common/drivers/nina/nano_nina.h`, the board's `src/nano_nina.c` | SPI1 and the four lines (CS, READY, RESET, IRQ): what Zephyr's devicetree and its SPI and GPIO drivers set up |
 
 - A request is handled synchronously in the calling thread. The mutex serializes requests, and CS
   stays asserted from the start of a phase until its last byte, including the wait for READY.
@@ -28,8 +45,8 @@ Zephyr version, are in `nuttx/README.md`, and how each part works in detail is i
   one sets mode 0, 8 bits and `CONFIG_NANO_NINA_SPI_FREQUENCY`. `SPI_SELECT` is not used.
 - The time limits and the wiring are in the "NINA-W102 (`nina`)" section of
   `design/nuttx-porting.md`.
-- `nina/nina_spi.c` is checked by a host test (`nuttx/tests/nina_spi.c`) with a fake board and
-  clock.
+- `common/drivers/nina/nina_spi.c` is checked by a host test (`common/tests/nina_spi.c`, run by
+  `common/tests/run.sh`) with a fake board and clock.
 
 ### Sockets (usrsock)
 
@@ -39,7 +56,7 @@ TCP/IP stack is not used (`NET_TCP_NO_STACK`, `NET_UDP_NO_STACK`).
 
 | File | Role |
 |---|---|
-| `nina/nina_sock.[ch]` | The socket table (10 sockets) and the NINA's socket commands: `nina_socket_create()`, `do_bind()`, `do_listen()`, `do_accept()`, `do_connect()`, `do_close()` and `do_setsockopt()` of the Zephyr version's `nina_socket.c`, and for sending and receiving `udp_send()`, `do_send()`, `do_sendmsg()`, `udp_recv()` and `do_recv()`, with the names, branches, order, constants and errno names kept (one pass of a send or receive wait loop per request). `FIONREAD` (`nina_sock_fionread()`) and the driver's own socket options `NINA_SO_CALLER_POLLS` and `NINA_SO_POLL` (`nina_sock_poll_revents()`, `include/nina_sockopt.h`) are the NuttX version's own. OS-independent |
+| `common/drivers/nina/nina_sock.[ch]` | The socket table (10 sockets) and the NINA's socket commands: `nina_socket_create()`, `do_bind()`, `do_listen()`, `do_accept()`, `do_connect()`, `do_close()` and `do_setsockopt()` of the Zephyr version's `nina_socket.c`, and for sending and receiving `udp_send()`, `do_send()`, `do_sendmsg()`, `udp_recv()` and `do_recv()`, with the names, branches, order, constants and errno names kept (one pass of a send or receive wait loop per request). `FIONREAD` (`nina_sock_fionread()`) and the driver's own socket options `NINA_SO_CALLER_POLLS` and `NINA_SO_POLL` (`nina_sock_poll_revents()`, `common/drivers/nina/nina_sockopt.h`) are not in the Zephyr version. OS-independent |
 | `nina/nina_usrsock.c` | Dispatches usrsock's requests to the functions above and answers them (ACK) |
 | `nina/nina_poller.c` | The thread `nina_event`: turns the state of the NINA's sockets into usrsock events (for a socket whose callers poll, only while it connects), and times the retries of a waiting send |
 | `nina/nina_usrsock.h` | The declarations between the two |
@@ -63,7 +80,7 @@ TCP/IP stack is not used (`NET_TCP_NO_STACK`, `NET_UDP_NO_STACK`).
   a request wakes it.
 - Sockets whose callers poll: the compatibility layer's `zsock_socket()` marks the socket it makes
   with the driver's own socket option `NINA_SO_CALLER_POLLS` (level `NINA_SOL`,
-  `include/nina_sockopt.h`): the MQTT and time synchronization sockets. `nina_event` does not query
+  `nina_sockopt.h`): the MQTT and time synchronization sockets. `nina_event` does not query
   a marked socket except to check a connection in progress, nor after a receive. As with the
   Zephyr version's NINA sockets, only its users (the layer's `zsock_recv()` and `zsock_poll()`)
   ask the NINA, in the calling thread (see the layer's "`zsock_poll()`" below). Unmarked sockets
@@ -139,16 +156,16 @@ TCP/IP stack is not used (`NET_TCP_NO_STACK`, `NET_UDP_NO_STACK`).
   Zephyr version's `do_poll()` for one socket. Without a NINA socket yet the NINA is not asked: TCP
   gives `POLLHUP`, UDP `POLLOUT`. Otherwise one poll: readable → `POLLIN`, writable → `POLLOUT`, the
   error flag → `POLLERR`; a failed poll gives its errno. The layer's `zsock_poll()` uses it.
-- `nina/nina_sock.c` is checked by a host test (`nuttx/tests/nina_sock.c`) with a fake
+- `common/drivers/nina/nina_sock.c` is checked by a host test (`common/tests/nina_sock.c`) with a fake
   `nina_request()` and clock.
 
 ### Name resolution
 
-`nina/nina_dns.c` is a line-by-line port of the Zephyr version's `drivers/nina/nina_dns.c`: it
+`common/drivers/nina/nina_dns.c` is a line-by-line port of the Zephyr version's `drivers/nina/nina_dns.c`: it
 resolves a name with the NINA's resolver commands (0x34 with the name, 0x35 to read the address) to
 one IPv4 address. A numeric address is not sent to the NINA. The Zephyr version registers it as the
 socket offload's `getaddrinfo()`, used by `zsock_getaddrinfo()`; the NuttX version has functions of
-its own, `nina_getaddrinfo()` and `nina_freeaddrinfo()` (`include/nina_dns.h`), and the compatibility
+its own, `nina_getaddrinfo()` and `nina_freeaddrinfo()` (`common/drivers/nina/nina_dns.h`), and the compatibility
 layer's `<zephyr/net/socket.h>` maps `zsock_getaddrinfo()`, `zsock_freeaddrinfo()` and
 `struct zsock_addrinfo` to them. NuttX's `getaddrinfo()` (`CONFIG_LIBC_NETDB`, which queries a DNS
 server over UDP itself) is not used; `CONFIG_NANO_NINA_DNS` cannot be on together with
@@ -157,7 +174,7 @@ server over UDP itself) is not used; `CONFIG_NANO_NINA_DNS` cannot be on togethe
 address of the wrong length, `EAI_BADFLAGS`/`EAI_FAMILY`/`EAI_SOCKTYPE` for bad hints, `EAI_SERVICE`
 for a bad service, `EAI_MEMORY`). A mutex covers the two commands (the NINA keeps one result). The
 result comes from `malloc()`, not the Zephyr version's 2 KB heap. The host test is
-`nuttx/tests/nina_dns.c`. The only user now is the time synchronization when its NTP server is
+`common/tests/nina_dns.c`. The only user now is the time synchronization when its NTP server is
 given by name (the default is the gateway).
 
 ### Wi-Fi (network device `wlan0`)

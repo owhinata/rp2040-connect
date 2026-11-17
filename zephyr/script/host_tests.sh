@@ -18,8 +18,9 @@ run() {
     printf 'ok  %s\n' "$name"
 }
 
-# NINA SPI framing.
-run nina_spi -std=gnu17 -Wall -I"$app/tests/nina_fakes" -I"$app/drivers/nina" "$app/tests/nina_spi.c"
+# NINA SPI framing of this build's drivers/nina/nina_wifi.c (common/tests/run.sh tests the shared
+# common/drivers/nina/nina_spi.c as nina_spi); nina_proto.h is in common/drivers/nina.
+run nina_wifi_spi -std=gnu17 -Wall -I"$app/tests/nina_fakes" -I../common/drivers/nina "$app/tests/nina_spi.c"
 
 for f in ../host/imu_host/*.py; do
     python3 -c 'import sys; compile(open(sys.argv[1]).read(), sys.argv[1], "exec")' "$f"

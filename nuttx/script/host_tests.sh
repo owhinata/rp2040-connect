@@ -125,7 +125,9 @@ else
 fi
 # The compatibility layer on the fake kernel, with its NuttX headers (<zephyr/net/socket.h>,
 # <zephyr/shell/shell.h>, ...).  Its RTIO and work items are tested in common/tests/run.sh.
-zinc=(-D_DEFAULT_SOURCE -I"$zfakes" -Idrivers/compat -I"$ccompat" -Idrivers/include)
+# <zephyr/net/socket.h> reads <nina_dns.h> and <nina_sockopt.h> of the NINA core (common/drivers/nina).
+cnina=../common/drivers/nina
+zinc=(-D_DEFAULT_SOURCE -I"$zfakes" -Idrivers/compat -I"$ccompat" -Idrivers/include -I"$cnina")
 # The layer's pieces for the IMU service: K_MUTEX_DEFINE, K_THREAD_DEFINE and its start,
 # k_uptime_get's tick rounding, k_sleep, byteorder, snprintk, hwinfo (fake chip ID), the
 # shell output macros, the address conversions.
@@ -187,13 +189,6 @@ grep -q '^SHELL_CMD_REGISTER(ntp,' "$out/ntp_shell.inc"
 run shell_register -D_DEFAULT_SOURCE -DZ_SHELL_CMD_NAMED_MAIN -DIMU_SHELL_INC="\"$out/imu_shell.inc\"" \
     -DNTP_SHELL_INC="\"$out/ntp_shell.inc\"" -Idrivers/compat -I"$ccompat" -Iapps/subcmd apps/subcmd/zshell.c \
     apps/subcmd/subcmd.c
-# NINA SPI link: framing, answers, READY timeouts, reset sequence, CS order (fake board and clock).
-run nina_spi -Idrivers/include -Idrivers/nina
-# NINA sockets: the table, the socket commands and the data calls of nina_socket.c (fake
-# nina_request() and clock).
-run nina_sock -D_DEFAULT_SOURCE -Idrivers/include -Idrivers/nina drivers/nina/nina_sock.c
-# NINA name resolution: hints, service, numeric addresses, the resolver commands (fake module).
-run nina_dns -D_DEFAULT_SOURCE -Idrivers/include -Idrivers/nina drivers/nina/nina_dns.c
 # Board: the I2C0 driver's SCL counts, speeds and IC_DATA_CMD words against the Zephyr build's.
 run nano_i2c_dw -Iboards/arduino-nano-rp2040-connect/src
 # The i2c_dma command's output (fake driver side).
@@ -208,7 +203,7 @@ run i2c_dma_app -Idrivers/include -Iapps/i2c_dma -Iapps/subcmd apps/subcmd/subcm
 # (apps/subcmd/zshell.c).  The prelude follows the fake <nuttx/config.h>, as on NuttX.
 cc "${flags[@]}" -D_DEFAULT_SOURCE -DZ_SHELL_CMD_NAMED_MAIN -include tests/time_sync_fakes/nuttx/config.h \
     -include "$prelude" -Itests/time_sync_fakes -I"$zfakes" -Idrivers/compat -I"$ccompat" \
-    -Idrivers/include -I"$imu" -I"$cimu" -Iapps/subcmd tests/time_sync.c "$cimu/time_offset.c" \
+    -Idrivers/include -I"$cnina" -I"$imu" -I"$cimu" -Iapps/subcmd tests/time_sync.c "$cimu/time_offset.c" \
     apps/subcmd/zshell.c apps/subcmd/subcmd.c "${compat[@]}" "$link" -o "$out/time_sync"
 "$out/time_sync" >/dev/null
 printf 'ok  time_sync\n'

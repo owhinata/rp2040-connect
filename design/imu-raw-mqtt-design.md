@@ -649,8 +649,12 @@ version's; what has been verified on the NuttX port is listed separately in 11.7
   and names of the Zephyr Kconfig options the files use), and the few lines that differ between the builds
   are in small headers of each OS (`sensor_shell_os.h`, `wifi_profile_os.h`, and the LSM6DSO device
   `lsm6dso_instance.h`, which `lsm6dso.c` includes at its end: the Zephyr build's devicetree
-  instance macros, one device with the board's values on NuttX). The identical file not in
-  `common/` (`nina_proto.h`) is an unchanged copy of the Zephyr version's.
+  instance macros, one device with the board's values on NuttX). The NINA's declarations,
+  `nina_proto.h`, are also one file in `common/drivers/nina/` that both builds use. The NINA's
+  OS-independent core (the SPI link `nina_spi.c`, the socket table and commands `nina_sock.[ch]`,
+  name resolution `nina_dns.[ch]`, which depend only on the narrow boundary of `nina_os.h` and
+  `nano_nina.h`) is in `common/drivers/nina/` too and is used by the NuttX build now (the Zephyr
+  build uses the three files of its own `drivers/nina/`).
 - The shared sources run on top of a compatibility layer
   (its OS-independent part in `common/compat/`, its NuttX implementation in
   `nuttx/drivers/compat/`) that provides the OS calls **under Zephyr's names**. The layer has only what the copied sources use

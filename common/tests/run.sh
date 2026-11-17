@@ -1,8 +1,8 @@
 #!/usr/bin/env bash
 # Build and run the host tests of the sources shared by the Zephyr and NuttX builds (common/)
 # and of the OS-independent part of the Zephyr compatibility layer (common/compat).  They use
-# the fake headers of tests/fakes or the fake kernel of tests/zephyr_fakes and need no board
-# and no Zephyr tree.  zephyr/script/host_tests.sh and nuttx/script/host_tests.sh run this
+# the fake headers of tests/fakes, the fake kernel of tests/zephyr_fakes or (the NINA core)
+# fakes of its boundary defined by the tests, and need no board and no Zephyr tree.  zephyr/script/host_tests.sh and nuttx/script/host_tests.sh run this
 # before their own tests.
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -62,3 +62,15 @@ run zephyr_rtio "${flags[@]}" "${zinc[@]}" tests/zephyr_rtio.c "${compat[@]}"
 run zephyr_work "${flags[@]}" "${zinc[@]}" tests/zephyr_work.c "${compat[@]}"
 run mqtt_min "${flags[@]}" -Wno-sign-compare "${zinc[@]}" -I"$imu" tests/mqtt_min.c \
     "$imu/mqtt_min.c" "${compat[@]}"
+
+# The NINA-W102 core (drivers/nina) on fakes of its boundary (nano_nina.h: the SPI bus and the
+# module's lines; nina_os.h: locks, sleeps, clock), defined by the tests.
+nina=drivers/nina
+# SPI link (nina_spi.c, which the test includes): framing, answers, READY timeouts, reset
+# sequence, CS order (fake board and clock).
+run nina_spi "${flags[@]}" -I"$nina" tests/nina_spi.c
+# Sockets: the table, the socket commands and the data calls of the Zephyr build's
+# nina_socket.c (fake nina_request() and clock).
+run nina_sock "${flags[@]}" -D_DEFAULT_SOURCE -I"$nina" tests/nina_sock.c "$nina/nina_sock.c"
+# Name resolution: hints, service, numeric addresses, the resolver commands (fake module).
+run nina_dns "${flags[@]}" -D_DEFAULT_SOURCE -I"$nina" tests/nina_dns.c "$nina/nina_dns.c"

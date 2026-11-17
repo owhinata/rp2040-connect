@@ -30,8 +30,10 @@ I²C の `i2c_dw_rp2040_commands.[ch]`）は、リポジトリの `common/driver
 `lsm6dso.c` が末尾で読む Zephyr 版の部分で、ドライバーのデバイスツリーのインスタンス化のマクロをそのまま置いています
 （NuttX 版は同名のヘッダーでボードの値を使うデバイスを 1 つ定義します）。`lsm6dso/lsm6dso_shub.c`・`lsm6dso_trigger.c`
 （Zephyr の写し。無効にしてある `CONFIG_LSM6DSO_SENSORHUB`・`CONFIG_LSM6DSO_TRIGGER` のときだけビルドされる）は
-このディレクトリーに残り、`lsm6dso.h` を `common/drivers/lsm6dso/` から読みます。`nina/nina_proto.h` は `nina_net.c` も
-読みます。下の表のファイル名はどちらの場所のものも含みます。
+このディレクトリーに残り、`lsm6dso.h` を `common/drivers/lsm6dso/` から読みます。NINA の宣言 `nina_proto.h` は
+`common/drivers/nina/` にあり（NuttX 版と同じファイル）、`nina/` の 3 つのファイル、`nina_net.c`、`src/main.c` が読みます
+（`CMakeLists.txt` がそこをアプリのインクルードパスに加えます）。`common/drivers/nina/` の NINA のコア（`nina_spi.c`、
+`nina_sock.[ch]`、`nina_dns.[ch]`）は、今は NuttX 版だけが使います（Zephyr 版は `nina/` のファイル）。下の表のファイル名はどちらの場所のものも含みます。
 
 ## LSM6DSO の FIFO ストリーム
 

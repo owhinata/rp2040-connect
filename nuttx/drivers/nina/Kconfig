@@ -8,7 +8,7 @@ config NANO_NINA
 	default y
 	depends on RP2040_SPI1 && !RP2040_SPI_DMA
 	---help---
-		nina/nina_spi.c: nina_request() and nina_ip_config() of the
+		common/drivers/nina/nina_spi.c: nina_request() and nina_ip_config() of the
 		Zephyr build's drivers/nina/nina_wifi.c (the WiFiNINA SPI
 		protocol of the module's Arduino firmware), with the same
 		framing, timeouts, error values and lazy initialization (the
@@ -34,7 +34,7 @@ config NANO_NINA_USRSOCK
 	default y
 	depends on NET_USRSOCK_CUSTOM
 	---help---
-		nina/nina_sock.c, nina_usrsock.c, nina_poller.c: the socket
+		common/drivers/nina/nina_sock.c, nina/nina_usrsock.c, nina_poller.c: the socket
 		offload of the Zephyr build's drivers/nina/nina_socket.c as
 		NuttX's usrsock (usrsock_request() in the kernel, handled in the
 		calling thread), with the same socket table (10 sockets),
@@ -87,7 +87,7 @@ config NANO_NINA_DNS
 	default y
 	depends on !LIBC_NETDB
 	---help---
-		nina/nina_dns.c: nina_getaddrinfo() and nina_freeaddrinfo()
+		common/drivers/nina/nina_dns.c: nina_getaddrinfo() and nina_freeaddrinfo()
 		(<nina_dns.h>), the Zephyr build's drivers/nina/nina_dns.c, which
 		resolves a name with the module's commands 0x34 and 0x35 and
 		gives one IPv4 address.  The Zephyr compatibility layer's

@@ -325,7 +325,7 @@ NINA firmware: 3.0.2
   code sets up `wlan0` (at boot, as in the Zephyr build), so the USB console appears after these
   waits.
 - The steps and values of a request are those of the Zephyr build's `drivers/nina/nina_wifi.c`
-  (`nuttx/drivers/nina/nina_spi.c`). READY is sampled every 100 µs (rounded up to ticks plus one
+  (`common/drivers/nina/nina_spi.c`). READY is sampled every 100 µs (rounded up to ticks plus one
   tick, so every 100 to 200 µs), with `-ETIMEDOUT` after 2000 ms before sending, 20 ms for the
   NINA to answer CS by releasing READY, and 10000 ms for the answer to be ready. Up to 1000 bytes
   are read looking for the start of the answer (0xE0). A recursive mutex (with priority
@@ -1121,14 +1121,15 @@ Priorities map as `NuttX = 118 − Zephyr`; `nuttx/drivers/include/priorities.h`
 ## Host test details
 
 The following files are used by both the Zephyr and the NuttX build and are kept once each in the
-repository's `common/`. The Zephyr build's `CMakeLists.txt` and the NuttX build's Makefiles
-(`apps/imu/Makefile`, `apps/wifi/Makefile`, `apps/sensor/Makefile`, `drivers/compat/Make.defs`,
+repository's `common/` (only the NuttX build uses the NINA core now; see the table). The Zephyr
+build's `CMakeLists.txt` and the NuttX build's Makefiles
+(`apps/imu/Makefile`, `apps/nina/Makefile`, `apps/wifi/Makefile`, `apps/sensor/Makefile`, `drivers/compat/Make.defs`,
 `drivers/lsm6dso/Make.defs`, `drivers/nina/Make.defs`, the board's `src/Make.defs`) refer to them
 there. The files that use
 Zephyr's API (in `common/drivers/`, the FIFO setup and stream, the RTIO single reads, the NINA's
 Wi-Fi and the sensor shell; in `common/imu/`, the acquisition service, the time synchronization,
 the calibration, MQTT and the Wi-Fi profile) run on
-the compatibility layer in the NuttX build. The NuttX build compiles each file of `common/` with
+the compatibility layer in the NuttX build. The NuttX build compiles each file of `common/` (but the NINA core) with
 the prelude (`nuttx/drivers/compat/common_prelude.h`), and the few lines that differ between the
 builds are in headers of each OS (`sensor_shell_os.h`, `wifi_profile_os.h`, `lsm6dso_instance.h`;
 the Zephyr build's under `zephyr/app/usb-console/`, the NuttX build's under `nuttx/apps/` and
@@ -1140,11 +1141,11 @@ with the layer's NuttX implementation (`nuttx/drivers/compat/`; the Zephyr build
 |---|---|
 | `common/imu/` | `imu_stream.c`, `imu_raw_{batch,packet,queue,status,time}`, `imu_tick_clock`, `time_sync.[ch]`, `time_offset`, `imu_cal_codec.c`, `imu_cal.[ch]`, `imu_raw_mqtt.[ch]`, `wifi_profile.[ch]`, `kv_store.h`, `mqtt_min.[ch]` (the MQTT client of the builds on the compatibility layer; the Zephyr build does not use it) |
 | `common/drivers/lsm6dso/` | `lsm6dso.[ch]` (the driver; the device at its end is `lsm6dso_instance.h` of each build), `lsm6dso_{fifo,cal,zero,fifo_decoder,fifo_hw,fifo_irq}`, `lsm6dso_stream.c`, `lsm6dso_compat.c`, `lsm6dso_fifo_packet.h`, `lsm6dso_fifo_stats.h`, `lsm6dso_attributes.h` |
-| `common/drivers/nina/` | `nina_net.c` |
+| `common/drivers/nina/` | `nina_net.c` and `nina_proto.h` (both builds); the NINA core `nina_spi.c`, `nina_sock.[ch]` and `nina_dns.[ch]` with the headers of its boundary, `nina_os.h` and `nano_nina.h`, and its socket options, `nina_sockopt.h` (only the NuttX build uses them now; they do not use Zephyr's API and are compiled without the prelude; the boundary is described under "NINA-W102" in `nuttx/drivers/README.md`) |
 | `common/drivers/sensor_shell/` | `sensor_shell.c` |
 | `common/drivers/i2c_dw/` | `i2c_dw_rp2040_commands.[ch]` |
 | `common/compat/` | the OS-independent part of the compatibility layer (the headers of Zephyr's API `zephyr/...`, `zephyr_compat.h`, work items, RTIO, the block pool, the device list, `gpio0`, `net_mgmt`, the Wi-Fi requests, the sensors' default iodev) and the copies of Zephyr's libraries that the builds on the layer use (`sensor_shell_stream.c`, `sensor_shell.h`, `wifi_credentials.c`, `wifi_credentials_backend_settings.c`, `wifi_credentials_internal.h`); the Zephyr build does not use it |
-| `common/tests/` | the 17 tests of the files above (run by `common/tests/run.sh`, which the `host_tests.sh` of both builds call first; the layer's `zephyr_rtio`, `zephyr_work` and `mqtt_min` on the fake kernel); `stream_stop.c` includes `../drivers/lsm6dso/lsm6dso_stream.c` (with the include guard of `lsm6dso.h` defined first, so nothing of that header is used; `stream_stop.c` provides the definitions it needs) |
+| `common/tests/` | the 20 tests of the files above (run by `common/tests/run.sh`, which the `host_tests.sh` of both builds call first; the layer's `zephyr_rtio`, `zephyr_work` and `mqtt_min` on the fake kernel, the NINA core's `nina_spi`, `nina_sock` and `nina_dns` on fakes of its boundary defined by the tests); `stream_stop.c` includes `../drivers/lsm6dso/lsm6dso_stream.c` (with the include guard of `lsm6dso.h` defined first, so nothing of that header is used; `stream_stop.c` provides the definitions it needs) |
 | `common/tests/fakes/` | stand-ins for the Zephyr and ST headers the tests need (`zephyr/drivers/sensor.h`, `zephyr/drivers/sensor_clock.h`, `zephyr/drivers/i2c.h`, `zephyr/rtio/rtio.h`, `lsm6dso_reg.h`) |
 | `common/tests/zephyr_fakes/` | the compatibility layer's fake kernel: the OS headers (`zephyr_os.h`, `zephyr_os_spinlock.h`, `zephyr_os_atomic.h`, `zephyr_rtio_workq_os.h`, `zephyr/sys/__assert.h`) and their functions (`zephyr_kernel_host.[ch]`: one thread; the test runs the work queues and fires the timers); the NuttX build's tests use it too |
 
@@ -1213,7 +1214,7 @@ contents, the length limits (SSID 32/33, passphrase 7/8/64/65), the third networ
 log line, replacing the same SSID and the list in index order, each option and error message, a
 stored value of the wrong length, a store failure, `auto_connect`, and the help of `wifi` and
 `wifi cred`. The expected output is what Zephyr's sources print.
-`nuttx/tests/nina_spi.c` checks `drivers/nina/nina_spi.c` with a fake SPI, GPIO, clock and lock: the
+`common/tests/nina_spi.c` checks `common/drivers/nina/nina_spi.c` with a fake SPI, GPIO, clock and lock: the
 cases of the Zephyr build's `tests/nina_spi.c` (wide parameters and padding, bulk transfers, the
 three answer parameters of 0x75 and 0x7a, the length checks, a failing transfer), and also narrow
 parameters, the version request, the search for the start of the answer (1000 bytes), each
@@ -1307,7 +1308,7 @@ is held by thread 0): `K_MUTEX_DEFINE()`, `k_mutex_init()`, a `k_mutex` left all
 initialized (the MQTT client's before `mqtt_client_init()`) that the first lock takes at once, as
 in Zephyr, recursion, and `-EBUSY`/`-EAGAIN` while another thread holds it.
 
-`nuttx/tests/nina_sock.c` checks `drivers/nina/nina_sock.c` with a fake `nina_request()` that checks
+`common/tests/nina_sock.c` checks `common/drivers/nina/nina_sock.c` with a fake `nina_request()` that checks
 each command and its parameters and gives scripted answers, and a fake clock: the supported socket
 types, the table of 10 and `EMFILE`, creating the NINA's socket on first use (type and protocol,
 FIONBIO), bind, listen (backlog clamped to 1..255), accept (the peer's address and the byte order of
@@ -1324,7 +1325,7 @@ poll first, the size parameter, the byte order of the sender's port, dropping da
 than the connected peer, an empty datagram), a poll that found data standing for the next
 receive's first poll, and `FIONREAD`.
 
-`nuttx/tests/nina_dns.c` checks `drivers/nina/nina_dns.c` with a fake `nina_request()` and lock:
+`common/tests/nina_dns.c` checks `common/drivers/nina/nina_dns.c` with a fake `nina_request()` and lock:
 the hints' defaults and the refused flags, families and socket types, the service (a port number),
 numeric addresses (the NINA is not asked), a name (commands 0x34 and 0x35 with the lock held), and
 the `EAI_*` of each failure.

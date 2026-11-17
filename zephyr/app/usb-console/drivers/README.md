@@ -34,7 +34,11 @@ that the shared `lsm6dso.c` includes at its end: Zephyr's devicetree instance ma
 unchanged (the NuttX build's header of the same name defines its one device with the board's
 values). `lsm6dso/lsm6dso_shub.c` and `lsm6dso_trigger.c` (copies of Zephyr's, built only with
 `CONFIG_LSM6DSO_SENSORHUB` and `CONFIG_LSM6DSO_TRIGGER`, which are off) stay here and read
-`lsm6dso.h` from `common/drivers/lsm6dso/`. `nina/nina_proto.h` is read by `nina_net.c` too.
+`lsm6dso.h` from `common/drivers/lsm6dso/`. The NINA's declarations, `nina_proto.h`, are
+in `common/drivers/nina/` (the same file as the NuttX build's) and are read by the three files of
+`nina/`, by `nina_net.c` and by `src/main.c` (`CMakeLists.txt` adds the directory to the application's
+include path). The NINA core in `common/drivers/nina/` (`nina_spi.c`, `nina_sock.[ch]`,
+`nina_dns.[ch]`) is used only by the NuttX build now (this build uses the files of `nina/`).
 The file names in the tables below cover both places.
 
 ## LSM6DSO FIFO streaming

@@ -24,8 +24,10 @@
 # prelude in the shared sources, an include of their own in the others), the
 # LSM6DSO driver's headers ($(TOPDIR)/external/lsm6dso), the port's shared
 # headers ($(TOPDIR)/external/include: priorities.h, cpu_load.h),
-# and common/imu and common/drivers/lsm6dso (imu_stream.c's "lsm6dso_fifo.h"
-# and "lsm6dso_fifo_stats.h", imu_cal.h's "lsm6dso_cal.h").
+# common/imu and common/drivers/lsm6dso (imu_stream.c's "lsm6dso_fifo.h"
+# and "lsm6dso_fifo_stats.h", imu_cal.h's "lsm6dso_cal.h"), and
+# common/drivers/nina (<nina_dns.h> and <nina_sockopt.h> of the NINA core,
+# which the layer's <zephyr/net/socket.h> reads).
 ############################################################################
 
 include $(APPDIR)/Make.defs
@@ -73,6 +75,7 @@ CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)c
 CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)lsm6dso
 CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)imu
 CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)drivers$(DELIM)lsm6dso
+CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)drivers$(DELIM)nina
 
 VPATH    += :../../../common/imu
 DEPPATH  += --dep-path ../../../common/imu

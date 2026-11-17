@@ -292,7 +292,7 @@ NINA firmware: 3.0.2
   high、RESET をアクティブにし、10 ms 後にリセットを解き、750 ms 待ってから IRQ を low にして入力に戻します。
   最初の要求は、起動処理が `wlan0` を用意するときに MAC アドレスを読む命令です（Zephyr 版と同じく起動時）。
   そのため USB のコンソールが現れるのはこの待ちの後です。
-- 要求の手順と値は Zephyr 版の `drivers/nina/nina_wifi.c` と同じです（`nuttx/drivers/nina/nina_spi.c`）。
+- 要求の手順と値は Zephyr 版の `drivers/nina/nina_wifi.c` と同じです（`common/drivers/nina/nina_spi.c`）。
   READY を 100 µs ごと（tick に切り上げて 1 tick 足すので、実際は 100〜200 µs ごと）に見て、送信前は
   2000 ms、CS を下げてから NINA が READY を戻すまで 20 ms、応答の準備は 10000 ms で `-ETIMEDOUT`。
   応答の先頭（0xE0）は最大 1000 バイト探します。要求は再帰可能なミューテックス（優先度継承あり）で
@@ -974,12 +974,13 @@ NuttX 標準のクリティカルセクションの監視（`CONFIG_SCHED_CRITMO
 
 ## ホストテストの詳細
 
-次のファイルは Zephyr 版と NuttX 版が同じものを使い、リポジトリの `common/` に 1 本ずつ置いています。
-Zephyr 版の `CMakeLists.txt` と NuttX 版の Makefile（`apps/imu/Makefile`、`apps/wifi/Makefile`、`apps/sensor/Makefile`、
+次のファイルは Zephyr 版と NuttX 版が同じものを使い、リポジトリの `common/` に 1 本ずつ置いています（NINA のコアは
+今は NuttX 版だけが使います。下の表）。
+Zephyr 版の `CMakeLists.txt` と NuttX 版の Makefile（`apps/imu/Makefile`、`apps/nina/Makefile`、`apps/wifi/Makefile`、`apps/sensor/Makefile`、
 `drivers/compat/Make.defs`、`drivers/lsm6dso/Make.defs`、`drivers/nina/Make.defs`、ボードの `src/Make.defs`）がそこを参照します。Zephyr の API を
 使うもの（`common/drivers/` の FIFO の設定とストリーム、単発取得の RTIO 版、NINA の Wi-Fi、sensor シェルと、
 `common/imu/` の取得サービス・時刻同期・校正・MQTT・Wi-Fi のプロファイル）は、NuttX 版では互換層の上で動きます。NuttX 版は `common/` の
-各ファイルに前置きヘッダー（`nuttx/drivers/compat/common_prelude.h`）を付けてコンパイルし、版ごとに違う数行は
+各ファイル（NINA のコアを除く）に前置きヘッダー（`nuttx/drivers/compat/common_prelude.h`）を付けてコンパイルし、版ごとに違う数行は
 OS ごとのヘッダー（`sensor_shell_os.h`、`wifi_profile_os.h`、`lsm6dso_instance.h`。Zephyr 版は `zephyr/app/usb-console/`
 の下、NuttX 版は `nuttx/apps/` と `nuttx/drivers/lsm6dso/` の下）に出しています（`nuttx/drivers/README_ja.md` の
 「Zephyr の API の互換層」）。互換層のうち OS に依存しない部分も `common/compat/` に置き、NuttX 版はそれと NuttX の
@@ -989,11 +990,11 @@ OS ごとのヘッダー（`sensor_shell_os.h`、`wifi_profile_os.h`、`lsm6dso_
 |---|---|
 | `common/imu/` | `imu_stream.c`、`imu_raw_{batch,packet,queue,status,time}`、`imu_tick_clock`、`time_sync.[ch]`、`time_offset`、`imu_cal_codec.c`、`imu_cal.[ch]`、`imu_raw_mqtt.[ch]`、`wifi_profile.[ch]`、`kv_store.h`、`mqtt_min.[ch]`（互換層の上の版の MQTT クライアント。Zephyr 版は使わない） |
 | `common/drivers/lsm6dso/` | `lsm6dso.[ch]`（ドライバー本体。末尾のデバイスは版ごとの `lsm6dso_instance.h`）、`lsm6dso_{fifo,cal,zero,fifo_decoder,fifo_hw,fifo_irq}`、`lsm6dso_stream.c`、`lsm6dso_compat.c`、`lsm6dso_fifo_packet.h`、`lsm6dso_fifo_stats.h`、`lsm6dso_attributes.h` |
-| `common/drivers/nina/` | `nina_net.c` |
+| `common/drivers/nina/` | `nina_net.c`、`nina_proto.h`（両方の版）。NINA のコア `nina_spi.c`・`nina_sock.[ch]`・`nina_dns.[ch]` と、コアの境界のヘッダー `nina_os.h`・`nano_nina.h`、ソケットオプションの `nina_sockopt.h`（今は NuttX 版だけが使う。Zephyr の API を使わず、前置きヘッダーなしでコンパイルする。境界は `nuttx/drivers/README_ja.md` の「NINA-W102」） |
 | `common/drivers/sensor_shell/` | `sensor_shell.c` |
 | `common/drivers/i2c_dw/` | `i2c_dw_rp2040_commands.[ch]` |
 | `common/compat/` | 互換層の OS に依存しない部分（Zephyr の API のヘッダー `zephyr/...`、`zephyr_compat.h`、ワーク、RTIO、ブロックのプール、デバイスの一覧、`gpio0`、`net_mgmt`、Wi-Fi の要求、sensor の既定の iodev）と、互換層の上の版が使う Zephyr のライブラリーの写し（`sensor_shell_stream.c`・`sensor_shell.h`、`wifi_credentials.c`・`wifi_credentials_backend_settings.c`・`wifi_credentials_internal.h`）。Zephyr 版は使わない |
-| `common/tests/` | 上のファイルを対象にするテスト 17 本（`common/tests/run.sh` が実行し、両方の版の `host_tests.sh` が最初に呼ぶ。互換層の `zephyr_rtio`・`zephyr_work`・`mqtt_min` は偽のカーネルの上）。`stream_stop.c` は `../drivers/lsm6dso/lsm6dso_stream.c` を読み込む（先に `lsm6dso.h` のインクルードガードを定義するので、そのヘッダーの中身は使わない。`stream_stop.c` が必要な定義を自分で置く） |
+| `common/tests/` | 上のファイルを対象にするテスト 20 本（`common/tests/run.sh` が実行し、両方の版の `host_tests.sh` が最初に呼ぶ。互換層の `zephyr_rtio`・`zephyr_work`・`mqtt_min` は偽のカーネルの上、NINA のコアの `nina_spi`・`nina_sock`・`nina_dns` はテストが定義する境界の偽物の上）。`stream_stop.c` は `../drivers/lsm6dso/lsm6dso_stream.c` を読み込む（先に `lsm6dso.h` のインクルードガードを定義するので、そのヘッダーの中身は使わない。`stream_stop.c` が必要な定義を自分で置く） |
 | `common/tests/fakes/` | テスト用の Zephyr のヘッダーと ST のヘッダーの代わり（`zephyr/drivers/sensor.h`、`zephyr/drivers/sensor_clock.h`、`zephyr/drivers/i2c.h`、`zephyr/rtio/rtio.h`、`lsm6dso_reg.h`） |
 | `common/tests/zephyr_fakes/` | 互換層の偽のカーネル: OS ごとのヘッダー（`zephyr_os.h`・`zephyr_os_spinlock.h`・`zephyr_os_atomic.h`・`zephyr_rtio_workq_os.h`、`zephyr/sys/__assert.h`）とその関数（`zephyr_kernel_host.[ch]`。1 スレッドで、ワークキューとタイマーはテストが回す）。NuttX 版のテストも使う |
 
@@ -1047,7 +1048,7 @@ OS ごとのヘッダー（`sensor_shell_os.h`、`wifi_profile_os.h`、`lsm6dso_
 `zephyr_wifi_utils.c`）を、名前付きの項目を持つ偽の settings で確かめます: 起動時の読み込み、保存する名前
 （`wifi_cred/<番号>`。`app_kv/` と重ならない）と中身、長さの境界（SSID 32/33、パスフレーズ 7/8/64/65）、
 3 件目の `-105` とログ、同じ SSID の置き換えと番号の順の一覧、各オプションとエラーの文、長さの違う保存値、
-保存の失敗、`auto_connect`、`wifi`・`wifi cred` のヘルプ。期待する出力は Zephyr のソースが出す文です。`nuttx/tests/nina_spi.c` は `drivers/nina/nina_spi.c` を、
+保存の失敗、`auto_connect`、`wifi`・`wifi cred` のヘルプ。期待する出力は Zephyr のソースが出す文です。`common/tests/nina_spi.c` は `common/drivers/nina/nina_spi.c` を、
 偽の SPI・GPIO・時計・ロックで確かめます。Zephyr 版の `tests/nina_spi.c` の項目（広いパラメーターと詰め、
 まとめての転送、0x75・0x7a の 3 つの応答パラメーター、長さの検査、転送の失敗）に加えて、狭いパラメーター、
 版の要求、応答の先頭探し（1000 バイト）、各 `-EPROTO`・`-EMSGSIZE`・`-EINVAL`、0x27、`nina_ip_config()`
@@ -1121,7 +1122,7 @@ Zephyr のフラグへの変換、`IC_DATA_CMD` に書く語の列（`i2c` ツ�
 クライアントの `mqtt_client_init()` の前の状態）が Zephyr と同じく最初の lock で待たずに取れること、再帰、
 他のスレッドが持っているときの `-EBUSY`・`-EAGAIN`。
 
-`nuttx/tests/nina_sock.c` は `drivers/nina/nina_sock.c` を、命令とパラメーターを検査して決まった応答を返す偽の
+`common/tests/nina_sock.c` は `common/drivers/nina/nina_sock.c` を、命令とパラメーターを検査して決まった応答を返す偽の
 `nina_request()` と偽の時計で確かめます: 対応するソケットの種類、10 個の表と `EMFILE`、NINA 側のソケットを
 最初に使うときに作ること（種類とプロトコル、FIONBIO）、bind、listen（backlog を 1〜255 に丸める）、accept
 （相手のアドレスとポートのバイト順、`EAGAIN`、`EMFILE`）、connect（UDP、TCP の処理中、SO_ERROR の各値の
@@ -1134,7 +1135,7 @@ setsockopt、`nina_event` が何を問い合わせ、何をイベントにする
 （先に poll すること、サイズのパラメーター、送信元のポートのバイト順、接続した相手以外を捨てること、空の
 データグラム）、データを見つけた poll を次の受信の最初の poll に使うこと、`FIONREAD`。
 
-`nuttx/tests/nina_dns.c` は `drivers/nina/nina_dns.c` を、偽の `nina_request()` とロックで確かめます: ヒントの
+`common/tests/nina_dns.c` は `common/drivers/nina/nina_dns.c` を、偽の `nina_request()` とロックで確かめます: ヒントの
 既定値と受け付けないフラグ・ファミリー・ソケットの種類、サービス（ポート番号）、数値のアドレス（NINA に問い合わせ
 ない）、名前（ロックを持ったまま命令 0x34 と 0x35）、失敗ごとの `EAI_*`。
 
