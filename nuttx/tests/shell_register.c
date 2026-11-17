@@ -4,8 +4,9 @@
  * common/imu/imu_stream.c and common/imu/time_sync.c (cut out of the files
  * by script/host_tests.sh, IMU_SHELL_INC and NTP_SHELL_INC), compiled with
  * the compatibility layer's <zephyr/shell/shell.h> and
- * Z_SHELL_CMD_NAMED_MAIN and run on apps/subcmd/zshell.c, against the
- * same sets written as apps/subcmd tables (subcmd_main(), as the NuttX
+ * Z_SHELL_CMD_NAMED_MAIN and run on common/shell/zshell.c (with the NuttX
+ * backends, apps/subcmd/zshell_os_impl.h), against the same sets written
+ * as common/shell/subcmd.h tables (subcmd_main(), as the NuttX
  * build ran these two commands before they were shared with the Zephyr
  * build: the handlers then got sh == NULL).
  *
@@ -14,9 +15,9 @@
  * on stderr and, with both on one file, in the same order.  The handlers
  * print complete lines on stdout and stderr through shell_print(),
  * shell_warn() and shell_error() with the sh they get (NULL before, the
- * terminal's backend now) and one line longer than zshell.c's 256-byte
- * buffer.  stdout is line buffered with NuttX's 64-byte buffer
- * (CONFIG_STDIO_LINEBUFFER, CONFIG_STDIO_BUFFER_SIZE).
+ * terminal's backend now) and one line longer than the 256-byte buffer of
+ * the NuttX backend (zshell_os_impl.h).  stdout is line buffered with
+ * NuttX's 64-byte buffer (CONFIG_STDIO_LINEBUFFER, CONFIG_STDIO_BUFFER_SIZE).
  *
  * Also the cases where the two differ, with the Zephyr shell's output
  * (zephyr/subsys/shell/shell.c execute()): a wildcard that matches

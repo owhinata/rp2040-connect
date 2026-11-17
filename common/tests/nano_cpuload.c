@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-/* boards/arduino-nano-rp2040-connect/src/nano_cpuload.h against the steps of
+/* common/compat/nano_cpuload.h against the steps of
  * Zephyr's cpu_load_get_cpu() (lib/os/cpu_load/cpu_load_backend_idle.c).
  */
 #include <assert.h>

@@ -2,14 +2,14 @@
 /* The RAM log: a port of the Zephyr build's
  * zephyr/app/usb-console/src/log_ram.c.
  *
- * - The ring (log_ring.[ch]) lives in .noinit (nano-flash.ld places it
+ * - The ring (common/log/log_ring.[ch]) lives in .noinit (nano-flash.ld places it
  *   between .data and .bss, so the startup code neither clears nor copies
  *   it) and survives a reset; log_ram_initialize() empties it only when its
  *   header is not intact.  `dropped` (bytes pushed out since boot) is in
  *   .bss and starts at 0 on every boot, as in Zephyr.
  * - The lock is "interrupts disabled" (Zephyr: a spinlock, the same thing
  *   on one core), so it may be used from interrupt handlers.
- * - LOG_* lines (app_log.h) are formatted by app_log_vprintf() in the
+ * - LOG_* lines (common/log/app_log.h) are formatted by app_log_vprintf() in the
  *   caller's context: "[HH:MM:SS.mmm,uuu] <lvl> module: message\n" with the
  *   time of the call from nano_mono_us().  Zephyr's deferred mode takes the
  *   time at the call too but formats later in its logging thread.

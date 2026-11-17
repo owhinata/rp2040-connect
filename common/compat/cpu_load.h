@@ -1,8 +1,9 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-/* CPU load from idle windows: the board's up_idle()
- * (boards/arduino-nano-rp2040-connect/src/nano_idle.c), the equivalent of
- * Zephyr's CONFIG_CPU_LOAD with CONFIG_CPU_LOAD_BACKEND_IDLE_HOOK
- * (<zephyr/sys/cpu_load.h>, lib/os/cpu_load/cpu_load_backend_idle.c).
+/* CPU load from idle windows, the equivalent of Zephyr's CONFIG_CPU_LOAD
+ * with CONFIG_CPU_LOAD_BACKEND_IDLE_HOOK (<zephyr/sys/cpu_load.h>,
+ * lib/os/cpu_load/cpu_load_backend_idle.c).  The OS implements it in its
+ * idle loop with the arithmetic of nano_cpuload.h (on NuttX the board's
+ * up_idle(), boards/arduino-nano-rp2040-connect/src/nano_idle.c).
  */
 
 #ifndef __NUTTX_DRIVERS_INCLUDE_CPU_LOAD_H

@@ -1,8 +1,10 @@
 #!/usr/bin/env bash
 # Build and run the host tests of the sources shared by the Zephyr and NuttX builds (common/)
-# and of the OS-independent part of the Zephyr compatibility layer (common/compat).  They use
-# the fake headers of tests/fakes, the fake kernel of tests/zephyr_fakes or (the NINA core)
-# fakes of its boundary defined by the tests, and need no board and no Zephyr tree.  zephyr/script/host_tests.sh and nuttx/script/host_tests.sh run this
+# and of the OS-independent parts that the builds other than Zephyr's share: the Zephyr
+# compatibility layer (common/compat), the shell's subcommand dispatch (common/shell) and the
+# RAM log's ring (common/log).  They use the fake headers of tests/fakes, the fake kernel of
+# tests/zephyr_fakes or (the NINA core) fakes of its boundary defined by the tests, and need no
+# board and no Zephyr tree.  zephyr/script/host_tests.sh and nuttx/script/host_tests.sh run this
 # before their own tests.
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -78,3 +80,12 @@ run nina_spi "${flags[@]}" -I"$nina" tests/nina_spi.c
 run nina_sock "${flags[@]}" -D_DEFAULT_SOURCE -I"$nina" tests/nina_sock.c "$nina/nina_sock.c"
 # Name resolution: hints, service, numeric addresses, the resolver commands (fake module).
 run nina_dns "${flags[@]}" -D_DEFAULT_SOURCE -I"$nina" tests/nina_dns.c "$nina/nina_dns.c"
+
+# The shell's subcommand dispatch with the Zephyr shell's output (shell/subcmd.c: the kv, nina,
+# ... tables of the NuttX build).
+run subcmd "${flags[@]}" -Ishell tests/subcmd.c shell/subcmd.c
+# The RAM log's ring (log/log_ring.c): the retained ring, dmesg pieces, line prefix and rate
+# limit.
+run log_ring "${flags[@]}" -Ilog tests/log_ring.c log/log_ring.c
+# The CPU load arithmetic of the idle loop (compat/nano_cpuload.h).
+run nano_cpuload "${flags[@]}" -Icompat tests/nano_cpuload.c

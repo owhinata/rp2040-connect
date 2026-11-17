@@ -15,7 +15,8 @@
 # Include paths: the Zephyr compatibility layer
 # ($(TOPDIR)/external/compat and common/compat, which has
 # wifi_credentials_internal.h), the port's shared headers
-# ($(TOPDIR)/external/include: app_log.h, priorities.h), subcmd.h, this
+# (common/log: app_log.h; common/compat: priorities.h; their NuttX parts in
+# $(TOPDIR)/external/include), common/shell (subcmd.h), this
 # directory (wifi_profile_os.h, for the file in common/imu) and common/imu
 # (wifi_profile.h, kv_store.h).
 ############################################################################
@@ -38,9 +39,10 @@ MAINSRC   = wifi_credentials_shell.c
 endif
 
 CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)include
+CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)log
 CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)compat
 CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)compat
-CFLAGS   += ${INCDIR_PREFIX}$(APPDIR)$(DELIM)external$(DELIM)subcmd
+CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)shell
 CFLAGS   += ${INCDIR_PREFIX}$(APPDIR)$(DELIM)external$(DELIM)wifi
 CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)imu
 

@@ -2,7 +2,8 @@
 # nuttx/apps/kv/Makefile
 #
 # The "kv" builtin command (see Kconfig).  kv_store.c and kv_name.c are in
-# ../imu, subcmd.c in ../subcmd (linked into libapps).
+# ../imu, subcmd.c and subcmd.h in common/shell (built by ../subcmd and
+# linked into libapps).
 ############################################################################
 
 include $(APPDIR)/Make.defs
@@ -17,6 +18,6 @@ CSRCS     = kv_hex.c
 
 CFLAGS   += ${INCDIR_PREFIX}$(APPDIR)$(DELIM)external$(DELIM)imu
 CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)imu
-CFLAGS   += ${INCDIR_PREFIX}$(APPDIR)$(DELIM)external$(DELIM)subcmd
+CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)shell
 
 include $(APPDIR)/Application.mk

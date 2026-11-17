@@ -7,13 +7,13 @@ config NANO_SUBCMD
 	bool "Subcommand dispatch with the Zephyr shell's output"
 	default y
 	---help---
-		subcmd.c: subcmd_main(), the subcommand sets, help, "wrong
+		common/shell/subcmd.c: subcmd_main(), the subcommand sets, help, "wrong
 		parameter count" and wildcard rules of the Zephyr shell
 		(SHELL_CMD(), SHELL_CMD_ARG(), SHELL_CMD_REGISTER()), shared by
-		the port's commands (kv, nina, ...); and zshell.c:
+		the port's commands (kv, nina, ...); and common/shell/zshell.c:
 		z_shell_cmd_main(), the same for the commands written with the
 		Zephyr shell macros of the compatibility layer's
 		<zephyr/shell/shell.h> (static and dynamic sets, SHELL_HELP()),
-		with the shell backends that keep a session's terminal for
-		output after the command has returned (sensor).  Built into the
-		application library.
+		with the NuttX shell backends (zshell_os_impl.h here) that keep
+		a session's terminal for output after the command has returned
+		(sensor).  Built into the application library.

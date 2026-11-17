@@ -5,18 +5,21 @@
  * sources move over with only the include changed (the sources shared with
  * the Zephyr build, common/, keep Zephyr's include: <zephyr/logging/log.h>
  * of the compatibility layer includes this header).  Each message becomes
- * one line in the RAM log (drivers/log/log_ram.c, shown by "dmesg") in
- * Zephyr's format:
+ * one line in the RAM log (log_ring.c here, filled by the OS's part: on
+ * NuttX nuttx/drivers/log/log_ram.c; shown by "dmesg") in Zephyr's
+ * format:
  *
  *   [HH:MM:SS.mmm,uuu] <inf> module: message\n
  *
  * with <err>, <wrn>, <inf> and <dbg>, and "module.function: " for <dbg>
  * (Zephyr's CONFIG_LOG_FUNC_NAME_PREFIX_DBG).  The time is the board's
- * monotonic clock, microseconds since boot (nano_mono_us()).
+ * monotonic clock, microseconds since boot (the RP2040's TIMER; on NuttX
+ * nano_mono_us()).
  *
- * Usable from the kernel side (nuttx/drivers, the board code) and from the
- * applications (flat build), in threads and in interrupt handlers.  The
- * include path is $(TOPDIR)/external/include.
+ * Usable in threads and in interrupt handlers (on NuttX from the kernel
+ * side, nuttx/drivers and the board code, and from the applications: flat
+ * build).  The include path is common/log and the OS's directory of
+ * "app_log_os.h" (on NuttX $(TOPDIR)/external/include).
  *
  * Levels are checked at compile time only: a message above the level of
  * its file (or above CONFIG_NANO_LOG_MAX_LEVEL) is not compiled in.
@@ -25,28 +28,27 @@
  * Unlike Zephyr's deferred mode, the line is formatted at once, in the
  * caller's context and on its stack (see app_log_printf() in log_ram.c).
  *
- * <syslog.h> defines LOG_ERR as a syslog priority.  This header includes
- * <syslog.h> first and replaces LOG_ERR with the function-like macro, so a
- * file that includes app_log.h cannot use syslog(LOG_ERR, ...); it can use
- * APP_LOG_SYSLOG_ERR instead.
+ * The OS part: "app_log_os.h", which this header includes first, from the
+ * OS's directory (nuttx/drivers/include on NuttX), provides:
+ *
+ *   - the OS's configuration (CONFIG_NANO_LOG_DEFAULT_LEVEL and
+ *     CONFIG_NANO_LOG_MAX_LEVEL, both optional),
+ *   - the OS's headers that must come before this one, with any macro of
+ *     theirs that this header defines (LOG_ERR of <syslog.h>) undefined.
+ *
+ * The OS implements app_log_printf(), app_log_vprintf() and
+ * app_log_ratelimit_pass() (below), on log_ring.h; on NuttX
+ * nuttx/drivers/log/log_ram.c.
  */
 
 #ifndef __NUTTX_DRIVERS_INCLUDE_APP_LOG_H
 #define __NUTTX_DRIVERS_INCLUDE_APP_LOG_H
 
-#include <nuttx/config.h>
+#include "app_log_os.h"
 
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stdint.h>
-#include <syslog.h>
-
-#include <nuttx/compiler.h>
-
-/* The syslog priority that <syslog.h> calls LOG_ERR. */
-
-#define APP_LOG_SYSLOG_ERR 3
-#undef LOG_ERR
 
 /* Zephyr's levels (zephyr/logging/log_core.h). */
 
@@ -91,7 +93,7 @@
  */
 
 #define APP_LOG_MODULE_(name, level, ...) \
-  static const char app_log_module_name_[] unused_data = #name; \
+  static const char app_log_module_name_[] __attribute__((unused)) = #name; \
   enum { app_log_module_level_ = (level) }
 
 #define LOG_MODULE_REGISTER(...) \
@@ -169,7 +171,8 @@ extern "C"
 {
 #endif
 
-/* Format one line and store it in the RAM log (drivers/log/log_ram.c).
+/* Format one line and store it in the RAM log (the OS's part; on NuttX
+ * nuttx/drivers/log/log_ram.c).
  * level is LOG_LEVEL_ERR..LOG_LEVEL_DBG; func is NULL, or the function
  * name to put after the module name.  The line is built in a buffer of
  * APP_LOG_LINE_MAX bytes on the caller's stack; a longer message is cut
@@ -178,10 +181,12 @@ extern "C"
 
 #define APP_LOG_LINE_MAX 192
 
-void app_log_printf(int level, FAR const char *module, FAR const char *func,
-                    FAR const char *fmt, ...) printf_like(4, 5);
-void app_log_vprintf(int level, FAR const char *module, FAR const char *func,
-                     FAR const char *fmt, va_list ap) printf_like(4, 0);
+void app_log_printf(int level, const char *module, const char *func,
+                    const char *fmt, ...)
+  __attribute__((__format__(__printf__, 4, 5)));
+void app_log_vprintf(int level, const char *module, const char *func,
+                     const char *fmt, va_list ap)
+  __attribute__((__format__(__printf__, 4, 0)));
 
 /* The rate-limit decision of APP_LOG_RATELIMIT_(): returns true if the
  * message may go out (and sets *skipped_out to the number of messages held
@@ -189,8 +194,8 @@ void app_log_vprintf(int level, FAR const char *module, FAR const char *func,
  * counts it).
  */
 
-bool app_log_ratelimit_pass(FAR uint32_t *last_ms, FAR uint32_t *skipped,
-                            uint32_t rate_ms, FAR uint32_t *skipped_out);
+bool app_log_ratelimit_pass(uint32_t *last_ms, uint32_t *skipped,
+                            uint32_t rate_ms, uint32_t *skipped_out);
 
 #ifdef __cplusplus
 }

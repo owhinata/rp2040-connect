@@ -413,7 +413,7 @@ credential).
 ## Threads and priorities
 
 Priorities map as `NuttX = 118 − Zephyr` (`NANO_PRIO_*` and `NANO_STACK_*` in
-`nuttx/drivers/include/priorities.h`).
+`common/compat/priorities.h`; the mapping is in `nuttx/drivers/include/priorities_os.h`).
 
 | Thread | Zephyr | NuttX | Stack |
 |---|---|---|---|
@@ -440,8 +440,9 @@ NuttX puts at the start of a stack (2048 → 2008 and so on).
 nuttx/script/host_tests.sh
 ```
 
-This builds and runs the 39 host tests of the OS-independent parts on the PC. The first 20 are the
-tests of the sources shared with the Zephyr build and of the layer's shared part, run by
+This builds and runs the 39 host tests of the OS-independent parts on the PC. The first 24 are the
+tests of the sources shared with the Zephyr build and of the shared parts of the layer, the
+shell and the RAM log's ring, run by
 `common/tests/run.sh`. It needs no board, only
 the host's `cc` (C17). Without ST's `lsm6dso_reg.c` (fetched by `setup.sh`), the 3 tests that use it
 (`lsm6dso_driver`, `imu_cal`, `sensor_shell`) print `skip`. It stops at the first failure. What each
@@ -453,10 +454,10 @@ Zephyr build changes), are in "Host test details" in [`design/nuttx-porting.md`]
 | Location | Contents |
 |---|---|
 | `boards/arduino-nano-rp2040-connect/` | Board definition (`configs/imu/defconfig`, `include/board.h`, linker script, and in `src/` the bring-up, clocks, the NuttX part of I2C0 and the DMA, key-value flash and so on) |
-| `drivers/` | Kernel-side code: NINA (`nina/`), LSM6DSOX (`lsm6dso/`), RAM log (`log/`), the NuttX implementation of the Zephyr API compatibility layer (`compat/`), shared headers (`include/`) |
-| `apps/` | Applications: `init` (start-up and Telnet), `imu` (acquisition, MQTT, time synchronization, calibration, key-value store), `kv`, `nina`, `ntp`, `wifi`, `sensor`, `i2c_dma`, `dmesg`, `irqstack`, `subcmd` (shared subcommand handling) |
+| `drivers/` | Kernel-side code: NINA (`nina/`), LSM6DSOX (`lsm6dso/`), RAM log (`log/`; its ring is in `../common/log/`), the NuttX implementation of the Zephyr API compatibility layer (`compat/`), the NuttX parts of shared headers (`include/`) |
+| `apps/` | Applications: `init` (start-up and Telnet), `imu` (acquisition, MQTT, time synchronization, calibration, key-value store), `kv`, `nina`, `ntp`, `wifi`, `sensor`, `i2c_dma`, `dmesg`, `irqstack`, `subcmd` (the Zephyr shell's command handling and the subcommand handling: the sources are in `../common/shell/`, the NuttX shell backends here) |
 | `patches/` | Patches to NuttX and nuttx-apps |
 | `script/` | `setup.sh`, `build.sh`, `flash.sh`, `host_tests.sh`, `bin2uf2.py`, `kconfig-tweak` |
 | `tests/` | Host tests (those of the NuttX build only) |
-| `../common/` | Sources shared with the Zephyr build (`imu/`, `drivers/lsm6dso/`, `drivers/nina/`, `drivers/sensor_shell/`, `drivers/i2c_dw/`; the NINA core in `drivers/nina/` and the I2C0 and DMA core in `drivers/i2c_dw/`, which only this build uses now), the OS-independent part of the compatibility layer (`compat/`) and their host tests. The build finds them through `VPATH` and compiles each but the NINA core and the I2C0 and DMA core with the prelude (`drivers/compat/common_prelude.h`); the objects are made in `apps/imu`, `apps/wifi`, `apps/sensor`, `drivers` and the board's directory |
+| `../common/` | Sources shared with the Zephyr build (`imu/`, `drivers/lsm6dso/`, `drivers/nina/`, `drivers/sensor_shell/`, `drivers/i2c_dw/`; the NINA core in `drivers/nina/` and the I2C0 and DMA core in `drivers/i2c_dw/`, which only this build uses now), the OS-independent part of the compatibility layer (`compat/`), the shell's command handling (`shell/`), the `LOG_*` macros and the RAM log's ring (`log/`) and their host tests. The build finds them through `VPATH` and compiles each but the NINA core, the I2C0 and DMA core, `shell/` and `log/` with the prelude (`drivers/compat/common_prelude.h`); the objects are made in `apps/imu`, `apps/wifi`, `apps/sensor`, `apps/subcmd`, `drivers` and the board's directory |
 | `nuttx/`, `nuttx-apps/`, `pico-sdk/`, `toolchain/`, `stmemsc/`, `.venv/`, `build/` | What `setup.sh` fetches and the build products (not in Git) |

@@ -5,8 +5,9 @@
  *
  *   int handler(const struct shell *sh, size_t argc, char **argv)
  *
- * Part of the small Zephyr compatibility layer of the port
- * (nuttx/drivers/compat, see nuttx/drivers/README.md).
+ * Part of the small Zephyr compatibility layer of the port: its
+ * OS-independent part (common/compat; see nuttx/drivers/README.md), with
+ * the command handling in common/shell/zshell.c.
  *
  * Output: shell_fprintf() and shell_print(), shell_info(), shell_warn(),
  * shell_error() (each of the last four adds "\n", as Zephyr's).
@@ -14,28 +15,39 @@
  *     other commands write (nuttx/apps/kv): stdout for shell_print() and
  *     shell_info(), stderr for shell_warn() and shell_error() (Zephyr
  *     prints the last ones in yellow and red).  The commands whose sets are
- *     written with nuttx/apps/subcmd (subcmd.h) pass NULL.
- *   - sh != NULL: a shell backend of nuttx/apps/subcmd/zshell.c, the
- *     terminal of an nsh session (/dev/ttyACM0, /dev/telnet0), which the
+ *     written with common/shell/subcmd.h pass NULL.
+ *   - sh != NULL: a shell backend, the terminal of a shell session (on
+ *     NuttX the nsh session's /dev/ttyACM0 or /dev/telnet0), which the
  *     commands registered with SHELL_CMD_REGISTER() below get as sh.  As in
  *     Zephyr the object outlives the command: a thread that keeps it (the
  *     sensor shell's processing thread, nuttx/apps/sensor) writes to that
- *     terminal later, after the command has returned to the prompt.
+ *     terminal later, after the command has returned to the prompt.  The
+ *     output to a backend is the OS's z_shell_backend_vfprintf() (below).
  *
  * Commands: SHELL_CMD_REGISTER() with SHELL_STATIC_SUBCMD_SET_CREATE(),
  * SHELL_DYNAMIC_CMD_CREATE(), SHELL_CMD_ARG(), SHELL_CMD(),
  * SHELL_COND_CMD(), SHELL_EXPR_CMD_ARG(), SHELL_HELP() and
- * SHELL_SUBCMD_SET_END make the builtin command's entry: the application's
- * main() when the source is its MAINSRC, else z_shell_main_<syntax>() when
- * the source is compiled with Z_SHELL_CMD_NAMED_MAIN (below).  The entry
- * runs the command with the Zephyr shell's word matching, wildcards,
- * argument count check and help (zshell.c).  Differences from Zephyr: the subcommand set of an entry is a
- * struct shell_cmd_entry that says whether it is dynamic (Zephyr: union
- * shell_cmd_entry in a linker section of its own); no select mode, aliases,
- * remote commands, raw arguments or Tab completion (nsh's).
+ * SHELL_SUBCMD_SET_END make the command's entry: main() (on NuttX the
+ * builtin application's, when the source is its MAINSRC), else
+ * z_shell_main_<syntax>() when the source is compiled with
+ * Z_SHELL_CMD_NAMED_MAIN (below).  The entry runs the command with the
+ * Zephyr shell's word matching, wildcards, argument count check and help
+ * (common/shell/zshell.c).  Differences from Zephyr: the subcommand set of
+ * an entry is a struct shell_cmd_entry that says whether it is dynamic
+ * (Zephyr: union shell_cmd_entry in a linker section of its own); no
+ * select mode, aliases, remote commands, raw arguments or Tab completion
+ * (on NuttX, nsh's).
  *
  * shell_device_get_binding() and shell_device_filter() are Zephyr's, on
  * the devices of <zephyr/device.h>.
+ *
+ * The OS part: "zephyr_os_shell.h", from the OS's directory of the layer
+ * (nuttx/drivers/compat on NuttX), defines struct shell, a shell backend
+ * (Zephyr: the instance of a shell transport), with whatever the OS's
+ * backend needs to find the terminal of a session and to tell output from
+ * the session's running command from output of other threads.  The OS
+ * implements z_shell_backend_vfprintf() (below) and the boundary of
+ * common/shell/zshell_os.h.
  */
 
 #ifndef __NUTTX_DRIVERS_COMPAT_ZEPHYR_SHELL_SHELL_H
@@ -46,19 +58,14 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdio.h>
-#include <sys/types.h>
 
 #include <zephyr/sys/util.h>
 
-/* A shell backend (Zephyr: the instance of a shell transport). */
+/* A shell backend (Zephyr: the instance of a shell transport): struct
+ * shell of the OS part.
+ */
 
-#define Z_SHELL_PATH_MAX 32
-
-struct shell
-{
-  char path[Z_SHELL_PATH_MAX];  /* the session's terminal, "" if unused */
-  pid_t cmd_pid;                /* the task of its running command, or 0 */
-};
+#include "zephyr_os_shell.h"
 
 /* zephyr/shell/shell_types.h */
 
@@ -82,8 +89,10 @@ enum shell_vt100_color
 #define SHELL_WARNING  SHELL_VT100_COLOR_YELLOW
 #define SHELL_ERROR    SHELL_VT100_COLOR_RED
 
-/* The output to a backend (zshell.c).  Weak, so that the sources that only
- * pass NULL link without zshell.c.
+/* The output to a backend (the OS's part of zshell.c, see
+ * common/shell/zshell_os.h): COLOR is SHELL_NORMAL, SHELL_INFO,
+ * SHELL_WARNING or SHELL_ERROR as the macros below pass it.  Weak, so that
+ * the sources that only pass NULL link without zshell.c.
  */
 
 void z_shell_backend_vfprintf(const struct shell *sh,
@@ -268,7 +277,7 @@ static inline bool shell_help_is_structured(const char *help)
 /* Runs the root command ROOT with the words of main() (ARGV[0] is the
  * command's name) as the Zephyr shell runs a command line, on the backend
  * of the calling task's terminal.  Returns the exit status: EXIT_SUCCESS
- * when the handler returned 0, else EXIT_FAILURE.  zshell.c.
+ * when the handler returned 0, else EXIT_FAILURE.  common/shell/zshell.c.
  */
 
 int z_shell_cmd_main(const struct shell_static_entry *root, int argc,
@@ -276,9 +285,10 @@ int z_shell_cmd_main(const struct shell_static_entry *root, int argc,
 
 /* SHELL_CMD_ARG_REGISTER() / SHELL_CMD_REGISTER(): the command's entry,
  * int Z_SHELL_CMD_MAIN(syntax)(int argc, char *argv[]), which runs it with
- * z_shell_cmd_main().  By default the entry is the builtin application's
- * main(), for the source that is the application's MAINSRC.  A source that
- * is not (its build defines Z_SHELL_CMD_NAMED_MAIN for it) gets
+ * z_shell_cmd_main().  By default the entry is main() (on NuttX the
+ * builtin application's, for the source that is the application's
+ * MAINSRC).  A source that is not (its build defines
+ * Z_SHELL_CMD_NAMED_MAIN for it) gets
  * z_shell_main_<syntax>() instead, which the application's main() calls
  * (common/imu/time_sync.c: z_shell_main_ntp(), nuttx/apps/ntp/ntp_main.c).
  */
@@ -302,7 +312,7 @@ int z_shell_cmd_main(const struct shell_static_entry *root, int argc,
 #define SHELL_CMD_REGISTER(syntax, subcmd, help, handler) \
   SHELL_CMD_ARG_REGISTER(syntax, subcmd, help, handler, 0, 0)
 
-/* Devices (zshell.c, on the devices of <zephyr/device.h>). */
+/* Devices (common/shell/zshell.c, on the devices of <zephyr/device.h>). */
 
 struct device;
 typedef bool (*shell_device_filter_t)(const struct device *dev);

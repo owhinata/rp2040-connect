@@ -22,7 +22,7 @@ config NANO_APP_NTP_PRIORITY
 	default 104
 	---help---
 		The shell's priority (NANO_PRIO_SHELL in
-		nuttx/drivers/include/priorities.h): the Zephyr build runs shell
+		common/compat/priorities.h): the Zephyr build runs shell
 		commands in its shell thread.
 
 config NANO_APP_NTP_STACKSIZE

@@ -21,7 +21,7 @@ config NANO_APP_DMESG_PRIORITY
 	---help---
 		The Zephyr build runs shell commands in the shell thread, at
 		K_LOWEST_APPLICATION_THREAD_PRIO (14), which is 104 here
-		(nuttx/drivers/include/priorities.h, NANO_PRIO_SHELL).
+		(common/compat/priorities.h, NANO_PRIO_SHELL).
 
 config NANO_APP_DMESG_STACKSIZE
 	int "dmesg stack size"

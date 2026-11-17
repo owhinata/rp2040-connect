@@ -23,7 +23,8 @@
 # included before it: the
 # prelude in the shared sources, an include of their own in the others), the
 # LSM6DSO driver's headers ($(TOPDIR)/external/lsm6dso), the port's shared
-# headers ($(TOPDIR)/external/include: priorities.h, cpu_load.h),
+# headers (common/compat: priorities.h, cpu_load.h; common/log: app_log.h;
+# their NuttX parts in $(TOPDIR)/external/include),
 # common/imu and common/drivers/lsm6dso (imu_stream.c's "lsm6dso_fifo.h"
 # and "lsm6dso_fifo_stats.h", imu_cal.h's "lsm6dso_cal.h"), and
 # common/drivers/nina (<nina_dns.h> and <nina_sockopt.h> of the NINA core,
@@ -70,6 +71,7 @@ CSRCS    += time_sync_null.c
 endif
 
 CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)include
+CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)log
 CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)compat
 CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)compat
 CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)lsm6dso

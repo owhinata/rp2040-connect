@@ -120,11 +120,14 @@ DEPPATH += --dep-path board
 VPATH += :board
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)arch$(DELIM)$(CONFIG_ARCH)$(DELIM)src$(DELIM)board$(DELIM)board
 
-# Headers shared with nuttx/drivers and the applications (app_log.h,
-# log_ram.h, cpu_load.h, priorities.h, nina_net.h): nuttx/drivers/include.  The NINA core's boundary to the board
-# (nano_nina.h): common/drivers/nina.
+# Headers shared with nuttx/drivers and the applications: nuttx/drivers/include
+# (nina_net.h, and the NuttX parts app_log_os.h and priorities_os.h),
+# common/log (app_log.h, log_ram.h; common/compat has priorities.h,
+# cpu_load.h, nano_cpuload.h and nano_gpio.h).  The NINA core's boundary to
+# the board (nano_nina.h): common/drivers/nina.
 
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)include
+CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)log
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)drivers$(DELIM)nina
 
 # The small Zephyr compatibility layer (<zephyr/device.h>, ...): its NuttX

@@ -5,7 +5,7 @@
  * the Zephyr build; it is not this application's main source, so it is
  * compiled with Z_SHELL_CMD_NAMED_MAIN and the compatibility layer's
  * SHELL_CMD_REGISTER() makes z_shell_main_ntp() (<zephyr/shell/shell.h>),
- * which runs the command on nuttx/apps/subcmd/zshell.c, with the Zephyr
+ * which runs the command on common/shell/zshell.c, with the Zephyr
  * shell's help and argument errors.
  */
 

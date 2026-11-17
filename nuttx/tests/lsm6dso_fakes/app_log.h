@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-/* The LOG_* macros of nuttx/drivers/include/app_log.h for the host test:
+/* The LOG_* macros of common/log/app_log.h for the host test:
  * each message enabled by the module's level becomes one line
  * "<lvl> module: message" in a buffer the test reads (test_log_line()).
  * LOG_DBG is compiled out above the level, as in app_log.h.

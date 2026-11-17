@@ -14,5 +14,6 @@ MODULE    = $(CONFIG_NANO_APP_DMESG)
 MAINSRC   = dmesg_main.c
 
 CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)include
+CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)log
 
 include $(APPDIR)/Application.mk

@@ -114,7 +114,8 @@ UART0（GPIO0 が TX、GPIO1 が RX。Arduino の D1/D0）はコンソールで�
 
 ## ログ（`dmesg`）
 
-Zephyr 版の `src/log_ram.c` と同じ RAM ログです（`nuttx/drivers/log/`）。
+Zephyr 版の `src/log_ram.c` と同じ RAM ログです（`nuttx/drivers/log/`。OS に依存しないリング・行の前置き・頻度制限は
+`common/log/log_ring.c`、`LOG_*` マクロは `common/log/app_log.h` で、その NuttX の部分が `nuttx/drivers/include/app_log_os.h`）。
 
 - 8192 バイトのリングバッファーを `.noinit` に置きます（Zephyr 版は 4096 バイト。異常停止の報告が
   先頭から収まるように広げました）。起動処理はこの領域を消さないので、`reboot` などの
@@ -144,7 +145,7 @@ Zephyr 版の `src/log_ram.c` と同じ RAM ログです（`nuttx/drivers/log/`�
   NuttX の `CONFIG_ARCH_STACKDUMP_MAX_LENGTH` は SP がそのスタックの外のときのダンプにしか効かないので、
   この目的には使えません。Zephyr 版も致命的なエラーの後に再起動する設定です
   （`CONFIG_RESET_ON_FATAL_ERROR=y`。Zephyr 版の RAM ログは 4 KiB）。
-- ソースからは Zephyr と同じ書き方で使います。`#include "app_log.h"`（`nuttx/drivers/include/`。
+- ソースからは Zephyr と同じ書き方で使います。`#include "app_log.h"`（`common/log/`。
   カーネル側・ボード・アプリのどれからも使え、割り込みハンドラーからも呼べます）のあと、ファイルごとに
   `LOG_MODULE_REGISTER(名前, LOG_LEVEL_INF)`（レベルを省くと `CONFIG_NANO_LOG_DEFAULT_LEVEL`、既定 3。
   include の前に `LOG_LEVEL` を定義していればその値）、本文で `LOG_ERR()`、`LOG_WRN()`、`LOG_INF()`、
@@ -220,8 +221,8 @@ Zephyr 版の `storage_partition` と同じ場所です。API とコマンドは
 
 ### コマンドのサブコマンド
 
-`kv`・`nina` など、この移植のサブコマンドを持つコマンドは、共通の部品 `nuttx/apps/subcmd/`
-（`subcmd_main()`）で、Zephyr のシェルと同じ出力にしています。Zephyr の `SHELL_CMD()`（引数の数を検査しない）は
+`kv`・`nina` など、この移植のサブコマンドを持つコマンドは、共通の部品 `common/shell/subcmd.c`
+（`subcmd_main()`。ビルドは `nuttx/apps/subcmd/`）で、Zephyr のシェルと同じ出力にしています。Zephyr の `SHELL_CMD()`（引数の数を検査しない）は
 `SUBCMD()`、`SHELL_CMD_ARG()`（必須と省略可の数）は `SUBCMD_ARG()` で表します。
 
 - コマンドだけ、または知らない語: 一番深く一致したコマンドのヘルプ（`<名前> - <説明>`、`Subcommands:`、
@@ -635,7 +636,8 @@ Zephyr のものを使う）、NuttX 版の部分は `nuttx/apps/sensor/` にあ
 - `sensor_shell.h` は無変更の写しです。
 
 コマンドの表（`SHELL_STATIC_SUBCMD_SET_CREATE()`、`SHELL_DYNAMIC_CMD_CREATE()`、`SHELL_CMD_REGISTER()`）も
-Zephyr 版の文のままで、互換層の `<zephyr/shell/shell.h>` と `nuttx/apps/subcmd/zshell.c` が、Zephyr のシェルと同じ規則
+Zephyr 版の文のままで、互換層の `<zephyr/shell/shell.h>` と `common/shell/zshell.c`（端末のバックエンドは NuttX の部分
+`nuttx/apps/subcmd/zshell_os_impl.h`）が、Zephyr のシェルと同じ規則
 （語の照合、動的なサブコマンド、ワイルドカードの展開、引数の数の検査、`SHELL_HELP()` の説明と `Usage:` の行と
 その折り返し）で組み込みコマンド `sensor` にします。
 
@@ -916,8 +918,9 @@ NuttX 標準のクリティカルセクションの監視（`CONFIG_SCHED_CRITMO
 
 ## スレッドの優先度とスタック
 
-優先度は `NuttX = 118 − Zephyr` で対応させ、`nuttx/drivers/include/priorities.h` に定数（`NANO_PRIO_*`）と
-スタックの大きさ（`NANO_STACK_*`）を置きます。Zephyr 版のアプリのスレッド（優先度 8〜11）は 110〜107、
+優先度は `NuttX = 118 − Zephyr` で対応させ、`common/compat/priorities.h` に定数（`NANO_PRIO_*`）と
+スタックの大きさ（`NANO_STACK_*`）を置きます（換算 `NANO_PRIO_FROM_ZEPHYR()` と NuttX だけのスレッドは
+`nuttx/drivers/include/priorities_os.h`）。Zephyr 版のアプリのスレッド（優先度 8〜11）は 110〜107、
 シェルのスレッド（14）は 104 です。
 
 | スレッド | Zephyr | NuttX | スタック |
@@ -996,8 +999,10 @@ OS ごとのヘッダー（`sensor_shell_os.h`、`wifi_profile_os.h`、`lsm6dso_
 | `common/drivers/nina/` | `nina_net.c`、`nina_proto.h`（両方の版）。NINA のコア `nina_spi.c`・`nina_sock.[ch]`・`nina_dns.[ch]` と、コアの境界のヘッダー `nina_os.h`・`nano_nina.h`、ソケットオプションの `nina_sockopt.h`（今は NuttX 版だけが使う。Zephyr の API を使わず、前置きヘッダーなしでコンパイルする。境界は `nuttx/drivers/README_ja.md` の「NINA-W102」） |
 | `common/drivers/sensor_shell/` | `sensor_shell.c` |
 | `common/drivers/i2c_dw/` | `i2c_dw_rp2040_commands.[ch]`（両方の版）。I2C0 と DMA のコア `nano_i2c.c`・`nano_dma.c` と、その定義 `nano_i2c_dw.h`・`nano_i2c_dw_registers.h`・`nano_dma.h`、`i2c_dma` の状態 `nano_i2c_dma.h`、境界のヘッダー `i2c_dw_os.h`（今は NuttX 版だけが使う。前置きヘッダーなしでコンパイルし、OS の部分はボードの `src/` の `i2c_dw_os_impl.h`・`nano_i2c_instance.h`・`nano_dma_instance.h`。境界は `nuttx/drivers/README_ja.md` の「I2C0」） |
-| `common/compat/` | 互換層の OS に依存しない部分（Zephyr の API のヘッダー `zephyr/...`、`zephyr_compat.h`、ワーク、RTIO、ブロックのプール、デバイスの一覧、`gpio0`、`net_mgmt`、Wi-Fi の要求、sensor の既定の iodev）と、互換層の上の版が使う Zephyr のライブラリーの写し（`sensor_shell_stream.c`・`sensor_shell.h`、`wifi_credentials.c`・`wifi_credentials_backend_settings.c`・`wifi_credentials_internal.h`）。Zephyr 版は使わない |
-| `common/tests/` | 上のファイルを対象にするテスト 21 本（`common/tests/run.sh` が実行し、両方の版の `host_tests.sh` が最初に呼ぶ。互換層の `zephyr_rtio`・`zephyr_work`・`mqtt_min` は偽のカーネルの上、NINA のコアの `nina_spi`・`nina_sock`・`nina_dns` はテストが定義する境界の偽物の上）。`stream_stop.c` は `../drivers/lsm6dso/lsm6dso_stream.c` を読み込む（先に `lsm6dso.h` のインクルードガードを定義するので、そのヘッダーの中身は使わない。`stream_stop.c` が必要な定義を自分で置く） |
+| `common/compat/` | 互換層の OS に依存しない部分（Zephyr の API のヘッダー `zephyr/...`、`zephyr_compat.h`、ワーク、RTIO、ブロックのプール、デバイスの一覧、`gpio0`、`net_mgmt`、Wi-Fi の要求、sensor の既定の iodev）と、互換層の上の版が使う Zephyr のライブラリーの写し（`sensor_shell_stream.c`・`sensor_shell.h`、`wifi_credentials.c`・`wifi_credentials_backend_settings.c`・`wifi_credentials_internal.h`）、境界のヘッダー（`priorities.h`、`cpu_load.h`、`nano_cpuload.h`、`nano_gpio.h`）。Zephyr 版は使わない |
+| `common/shell/` | `subcmd.[ch]`（サブコマンドの表の処理）、`zshell.c`（`<zephyr/shell/shell.h>` で書いたコマンドの処理: 語の照合、ワイルドカード、引数の数の検査、ヘルプ）とその OS との境界 `zshell_os.h`（NuttX 版の部分は `nuttx/apps/subcmd/zshell_os_impl.h`）。前置きヘッダーなしでコンパイルする。Zephyr 版は使わない |
+| `common/log/` | `log_ring.[ch]`（RAM ログのリング、行の前置き、頻度制限）、`app_log.h`（`LOG_*` マクロ。NuttX の部分は `nuttx/drivers/include/app_log_os.h`）、`log_ram.h`（RAM ログの関数。NuttX 版は `nuttx/drivers/log/log_ram.c`）。Zephyr 版は使わない |
+| `common/tests/` | 上のファイルを対象にするテスト 24 本（`common/tests/run.sh` が実行し、両方の版の `host_tests.sh` が最初に呼ぶ。互換層の `zephyr_rtio`・`zephyr_work`・`mqtt_min` は偽のカーネルの上、NINA のコアの `nina_spi`・`nina_sock`・`nina_dns` はテストが定義する境界の偽物の上）。`stream_stop.c` は `../drivers/lsm6dso/lsm6dso_stream.c` を読み込む（先に `lsm6dso.h` のインクルードガードを定義するので、そのヘッダーの中身は使わない。`stream_stop.c` が必要な定義を自分で置く） |
 | `common/tests/fakes/` | テスト用の Zephyr のヘッダーと ST のヘッダーの代わり（`zephyr/drivers/sensor.h`、`zephyr/drivers/sensor_clock.h`、`zephyr/drivers/i2c.h`、`zephyr/rtio/rtio.h`、`lsm6dso_reg.h`） |
 | `common/tests/zephyr_fakes/` | 互換層の偽のカーネル: OS ごとのヘッダー（`zephyr_os.h`・`zephyr_os_spinlock.h`・`zephyr_os_atomic.h`・`zephyr_rtio_workq_os.h`、`zephyr/sys/__assert.h`）とその関数（`zephyr_kernel_host.[ch]`。1 スレッドで、ワークキューとタイマーはテストが回す）。NuttX 版のテストも使う |
 
@@ -1020,9 +1025,9 @@ OS ごとのヘッダー（`sensor_shell_os.h`、`wifi_profile_os.h`、`lsm6dso_
 2^32×100 前後、2^63、2^64−1 など）の前後 300、最初の 10^7 µs の全数、2^32 の倍数 256 個の前後 2000、
 乱数 400 万個です。
 
-`nuttx/tests/nano_cpuload.c` と `nuttx/tests/log_ram.c` も NuttX 版だけのテストです。前者は
-`src/nano_cpuload.h` の計算を Zephyr の `cpu_load_get_cpu()` の手順（リセット、開いている区間、0 の扱い、
-切り捨て）と比べます。後者は `nuttx/drivers/log/log_ring.c` を、Zephyr 版の `log_ram.c` の 1 バイトずつの
+`common/tests/nano_cpuload.c` と `common/tests/log_ring.c` は、Zephyr 版が使わない共通の部分のテストです。前者は
+`common/compat/nano_cpuload.h` の計算を Zephyr の `cpu_load_get_cpu()` の手順（リセット、開いている区間、0 の扱い、
+切り捨て）と比べます。後者は `common/log/log_ring.c` を、Zephyr 版の `log_ram.c` の 1 バイトずつの
 書き込みと乱数の書き込み 2 万回で比べ、行の前置きを Zephyr の `log_output.c` の時刻の計算と乱数 20 万個で
 比べ、`dmesg` の取り出し（上書き中の読み飛ばし、8192 バイトでの打ち切り）と頻度制限を確かめます。
 
@@ -1034,12 +1039,13 @@ OS ごとのヘッダー（`sensor_shell_os.h`、`wifi_profile_os.h`、`lsm6dso_
 `kv_store.c` から分けたキーの検査（`apps/imu/kv_name.c`）を、`kv_hex` は Zephyr の `lib/utils/hex.c` の
 写し（`apps/kv/kv_hex.c`）を確かめます。
 
-`nuttx/tests/subcmd.c` は `apps/subcmd/subcmd.c` を、`kv` と `nina` の表（Zephyr 版の記録した出力と同じ
+`common/tests/subcmd.c` は `common/shell/subcmd.c` を、`kv` と `nina` の表（Zephyr 版の記録した出力と同じ
 ヘルプ）、入れ子の表、省略可の引数、ヘルプの文の並べ方（改行、80 桁での折り返し、末尾の改行）で確かめます。
 
 `nuttx/tests/shell_register.c` は `imu` と `ntp` のコマンドの登録を確かめます。`common/imu/imu_stream.c`・
 `time_sync.c` の `SHELL_STATIC_SUBCMD_SET_CREATE()` から `SHELL_CMD_REGISTER()` までの文を `host_tests.sh` が切り出し、
-互換層の `<zephyr/shell/shell.h>` と `Z_SHELL_CMD_NAMED_MAIN` でビルドして `apps/subcmd/zshell.c` で動かし、同じ表を
+互換層の `<zephyr/shell/shell.h>` と `Z_SHELL_CMD_NAMED_MAIN` でビルドして `common/shell/zshell.c`（NuttX のバックエンド
+`apps/subcmd/zshell_os_impl.h` と）で動かし、同じ表を
 `subcmd` の表に書いたもの（`subcmd_main()`。ハンドラーには `sh` として NULL が渡る）と比べます。ヘルプ（コマンドだけ、
 `-h`・`--help`、知らない語、ワイルドカード）、引数の数の誤り、各ハンドラーへの引数について、終了状態、ハンドラーの
 呼び出しと `argc`・`argv`、標準出力、標準エラー、両方を 1 つのファイルにしたときの順序が同じこと（ハンドラーは
@@ -1093,7 +1099,7 @@ Zephyr のフラグへの変換、`IC_DATA_CMD` に書く語の列（`i2c` ツ�
 丸めを含む）と出力先（stdout と stderr）。
 
 `nuttx/tests/sensor_shell.c` も NuttX 版だけのテストです。`lsm6dso_driver.c` を読み込んで同じ偽のセンサーを使い、
-`common/drivers/sensor_shell/sensor_shell.c` と `apps/sensor/` を `apps/subcmd/zshell.c` と一緒にビルドし、コマンドの標準出力と標準エラーを 1 つの
+`common/drivers/sensor_shell/sensor_shell.c` と `apps/sensor/` を `common/shell/zshell.c` と一緒にビルドし、コマンドの標準出力と標準エラーを 1 つの
 ファイル（端末の代わり）に向けて確かめます: `sensor` のヘルプ（`info` が無いこと、`SHELL_HELP()` の説明と
 `Usage:` の行の 80 桁での折り返し）、引数の数の誤りとヘルプと動的なデバイスの一覧、ワイルドカード（サブコマンド
 やチャネル名への展開、一致しないときに語の読み取りが止まること、ハンドラーが 2 つになるときのエラー）、

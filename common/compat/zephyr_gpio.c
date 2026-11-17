@@ -6,8 +6,8 @@
  * inputs, gpio_rpi_pin_interrupt_configure(), gpio_rpi_isr()) on the
  * board's <nano_gpio.h>.  OS-independent apart from k_spin_lock().  Part
  * of the small Zephyr compatibility layer of the port, its OS-independent
- * part (common/compat); the board implements <nano_gpio.h> (on NuttX
- * nuttx/drivers/include/nano_gpio.h, the board's src/nano_gpio.c).
+ * part (common/compat); the board implements <nano_gpio.h> (here; on
+ * NuttX the board's src/nano_gpio.c).
  */
 
 #include <errno.h>

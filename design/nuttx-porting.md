@@ -121,7 +121,9 @@ UART, as in the Zephyr build, but nothing is written to it.
 
 ## Log (`dmesg`)
 
-The RAM log of the Zephyr build's `src/log_ram.c` (`nuttx/drivers/log/`).
+The RAM log of the Zephyr build's `src/log_ram.c` (`nuttx/drivers/log/`; the OS-independent ring,
+line prefix and rate limit are `common/log/log_ring.c`, the `LOG_*` macros `common/log/app_log.h`
+with its NuttX part `nuttx/drivers/include/app_log_os.h`).
 
 - An 8192-byte ring buffer in `.noinit` (the Zephyr build's has 4096 bytes; it was made larger
   so that a fatal error report fits from its first line). The startup code does not clear it, so
@@ -154,7 +156,7 @@ The RAM log of the Zephyr build's `src/log_ram.c` (`nuttx/drivers/log/`).
   ring. NuttX's `CONFIG_ARCH_STACKDUMP_MAX_LENGTH` only limits the dump of a stack that
   SP is not in, so it does not help here. The Zephyr build also restarts after a fatal error
   (`CONFIG_RESET_ON_FATAL_ERROR=y`; its RAM log is 4 KiB).
-- Sources use it the Zephyr way: `#include "app_log.h"` (`nuttx/drivers/include/`; usable from
+- Sources use it the Zephyr way: `#include "app_log.h"` (`common/log/`; usable from
   the kernel side, the board code and the applications, also in interrupt handlers), then per file
   `LOG_MODULE_REGISTER(name, LOG_LEVEL_INF)` (without a level: `CONFIG_NANO_LOG_DEFAULT_LEVEL`,
   default 3, or `LOG_LEVEL` if defined before the include), and `LOG_ERR()`, `LOG_WRN()`,
@@ -241,7 +243,7 @@ compatible with the Zephyr build's.
 ### Subcommands of the commands
 
 The port's commands with subcommands (`kv`, `nina`, ...) give the Zephyr shell's output through a
-shared part, `nuttx/apps/subcmd/` (`subcmd_main()`). Zephyr's `SHELL_CMD()` (no check of the
+shared part, `common/shell/subcmd.c` (`subcmd_main()`, built by `nuttx/apps/subcmd/`). Zephyr's `SHELL_CMD()` (no check of the
 number of arguments) is `SUBCMD()`, and `SHELL_CMD_ARG()` (mandatory and optional counts) is
 `SUBCMD_ARG()`.
 
@@ -724,7 +726,8 @@ compatibility layer (`common/compat/`; the Zephyr build uses Zephyr's), the Nutt
 
 The command table (`SHELL_STATIC_SUBCMD_SET_CREATE()`, `SHELL_DYNAMIC_CMD_CREATE()`,
 `SHELL_CMD_REGISTER()`) is the Zephyr build's text too. The compatibility layer's `<zephyr/shell/shell.h>` and
-`nuttx/apps/subcmd/zshell.c` make it the builtin command `sensor` with the Zephyr shell's rules
+`common/shell/zshell.c` (with the NuttX part of the terminal backends,
+`nuttx/apps/subcmd/zshell_os_impl.h`) make it the builtin command `sensor` with the Zephyr shell's rules
 (matching the words, dynamic subcommands, wildcard expansion, the argument count check, and the
 `SHELL_HELP()` description with its `Usage:` line and their wrapping).
 
@@ -1057,8 +1060,9 @@ mechanism; turning this on does not change how it measures.
 
 ## Thread priorities and stacks
 
-Priorities map as `NuttX = 118 − Zephyr`; `nuttx/drivers/include/priorities.h` holds the constants
-(`NANO_PRIO_*`) and the stack sizes (`NANO_STACK_*`). The Zephyr build's application threads
+Priorities map as `NuttX = 118 − Zephyr`; `common/compat/priorities.h` holds the constants
+(`NANO_PRIO_*`) and the stack sizes (`NANO_STACK_*`) (the mapping `NANO_PRIO_FROM_ZEPHYR()` and the
+NuttX-only threads are in `nuttx/drivers/include/priorities_os.h`). The Zephyr build's application threads
 (priorities 8 to 11) become 110 to 107, its shell thread (14) 104.
 
 | Thread | Zephyr | NuttX | Stack |
@@ -1150,8 +1154,10 @@ with the layer's NuttX implementation (`nuttx/drivers/compat/`; the Zephyr build
 | `common/drivers/nina/` | `nina_net.c` and `nina_proto.h` (both builds); the NINA core `nina_spi.c`, `nina_sock.[ch]` and `nina_dns.[ch]` with the headers of its boundary, `nina_os.h` and `nano_nina.h`, and its socket options, `nina_sockopt.h` (only the NuttX build uses them now; they do not use Zephyr's API and are compiled without the prelude; the boundary is described under "NINA-W102" in `nuttx/drivers/README.md`) |
 | `common/drivers/sensor_shell/` | `sensor_shell.c` |
 | `common/drivers/i2c_dw/` | `i2c_dw_rp2040_commands.[ch]` (both builds); the I2C0 and DMA core `nano_i2c.c` and `nano_dma.c` with its definitions `nano_i2c_dw.h`, `nano_i2c_dw_registers.h` and `nano_dma.h`, the `i2c_dma` state `nano_i2c_dma.h` and the header of its boundary, `i2c_dw_os.h` (only the NuttX build uses them now; they are compiled without the prelude, and the OS's part is the board's `src/i2c_dw_os_impl.h`, `nano_i2c_instance.h` and `nano_dma_instance.h`; the boundary is described under "I2C0" in `nuttx/drivers/README.md`) |
-| `common/compat/` | the OS-independent part of the compatibility layer (the headers of Zephyr's API `zephyr/...`, `zephyr_compat.h`, work items, RTIO, the block pool, the device list, `gpio0`, `net_mgmt`, the Wi-Fi requests, the sensors' default iodev) and the copies of Zephyr's libraries that the builds on the layer use (`sensor_shell_stream.c`, `sensor_shell.h`, `wifi_credentials.c`, `wifi_credentials_backend_settings.c`, `wifi_credentials_internal.h`); the Zephyr build does not use it |
-| `common/tests/` | the 21 tests of the files above (run by `common/tests/run.sh`, which the `host_tests.sh` of both builds call first; the layer's `zephyr_rtio`, `zephyr_work` and `mqtt_min` on the fake kernel, the NINA core's `nina_spi`, `nina_sock` and `nina_dns` on fakes of its boundary defined by the tests); `stream_stop.c` includes `../drivers/lsm6dso/lsm6dso_stream.c` (with the include guard of `lsm6dso.h` defined first, so nothing of that header is used; `stream_stop.c` provides the definitions it needs) |
+| `common/compat/` | the OS-independent part of the compatibility layer (the headers of Zephyr's API `zephyr/...`, `zephyr_compat.h`, work items, RTIO, the block pool, the device list, `gpio0`, `net_mgmt`, the Wi-Fi requests, the sensors' default iodev) and the copies of Zephyr's libraries that the builds on the layer use (`sensor_shell_stream.c`, `sensor_shell.h`, `wifi_credentials.c`, `wifi_credentials_backend_settings.c`, `wifi_credentials_internal.h`), and boundary headers (`priorities.h`, `cpu_load.h`, `nano_cpuload.h`, `nano_gpio.h`); the Zephyr build does not use it |
+| `common/shell/` | `subcmd.[ch]` (the subcommand tables), `zshell.c` (the handling of commands written with `<zephyr/shell/shell.h>`: word matching, wildcards, argument count checks, help) and its boundary to the OS, `zshell_os.h` (the NuttX build's part is `nuttx/apps/subcmd/zshell_os_impl.h`); compiled without the prelude; the Zephyr build does not use it |
+| `common/log/` | `log_ring.[ch]` (the RAM log's ring, line prefix and rate limit), `app_log.h` (the `LOG_*` macros; the NuttX part is `nuttx/drivers/include/app_log_os.h`), `log_ram.h` (the RAM log's functions; in the NuttX build `nuttx/drivers/log/log_ram.c`); the Zephyr build does not use it |
+| `common/tests/` | the 24 tests of the files above (run by `common/tests/run.sh`, which the `host_tests.sh` of both builds call first; the layer's `zephyr_rtio`, `zephyr_work` and `mqtt_min` on the fake kernel, the NINA core's `nina_spi`, `nina_sock` and `nina_dns` on fakes of its boundary defined by the tests); `stream_stop.c` includes `../drivers/lsm6dso/lsm6dso_stream.c` (with the include guard of `lsm6dso.h` defined first, so nothing of that header is used; `stream_stop.c` provides the definitions it needs) |
 | `common/tests/fakes/` | stand-ins for the Zephyr and ST headers the tests need (`zephyr/drivers/sensor.h`, `zephyr/drivers/sensor_clock.h`, `zephyr/drivers/i2c.h`, `zephyr/rtio/rtio.h`, `lsm6dso_reg.h`) |
 | `common/tests/zephyr_fakes/` | the compatibility layer's fake kernel: the OS headers (`zephyr_os.h`, `zephyr_os_spinlock.h`, `zephyr_os_atomic.h`, `zephyr_rtio_workq_os.h`, `zephyr/sys/__assert.h`) and their functions (`zephyr_kernel_host.[ch]`: one thread; the test runs the work queues and fires the timers); the NuttX build's tests use it too |
 
@@ -1177,10 +1183,10 @@ range where the one-byte division step must be exact, 300 values on each side of
 99, 100, around 2^32, around 2^32 × 100, 2^63, 2^64 − 1 and others), every count of the first
 10^7 µs, 2000 values on each side of 256 multiples of 2^32, and 4 million random values.
 
-`nuttx/tests/nano_cpuload.c` and `nuttx/tests/log_ram.c` are also tests of the NuttX build only.
-The first compares the arithmetic of `src/nano_cpuload.h` with the steps of Zephyr's
-`cpu_load_get_cpu()` (reset, an open window, zero time, rounding down). The second compares
-`nuttx/drivers/log/log_ring.c` with the byte-by-byte store of the Zephyr build's `log_ram.c`
+`common/tests/nano_cpuload.c` and `common/tests/log_ring.c` test shared parts that the Zephyr
+build does not use. The first compares the arithmetic of `common/compat/nano_cpuload.h` with the
+steps of Zephyr's `cpu_load_get_cpu()` (reset, an open window, zero time, rounding down). The second compares
+`common/log/log_ring.c` with the byte-by-byte store of the Zephyr build's `log_ram.c`
 over 20,000 random writes, compares the line prefix with the time arithmetic of Zephyr's
 `log_output.c` for 200,000 random values, and checks the `dmesg` pieces (skipping what is
 overwritten, stopping at 8192 bytes) and the rate limit.
@@ -1195,14 +1201,15 @@ happen to pass NuttX's CRC). `kv_name` checks the key checks split out of the Ze
 `kv_store.c` (`apps/imu/kv_name.c`), and `kv_hex` the copy of Zephyr's `lib/utils/hex.c`
 (`apps/kv/kv_hex.c`).
 
-`nuttx/tests/subcmd.c` checks `apps/subcmd/subcmd.c` with the tables of `kv` and `nina` (the help
+`common/tests/subcmd.c` checks `common/shell/subcmd.c` with the tables of `kv` and `nina` (the help
 is the one recorded from the Zephyr build), a nested table, optional arguments, and the layout of
 help texts (newlines, the line break before column 80, a newline at the end).
 
 `nuttx/tests/shell_register.c` checks the registration of `imu` and `ntp`. `host_tests.sh` cuts
 the text from `SHELL_STATIC_SUBCMD_SET_CREATE()` to `SHELL_CMD_REGISTER()` out of
 `common/imu/imu_stream.c` and `time_sync.c`; the test builds it with the compatibility layer's
-`<zephyr/shell/shell.h>` and `Z_SHELL_CMD_NAMED_MAIN`, runs it on `apps/subcmd/zshell.c`, and
+`<zephyr/shell/shell.h>` and `Z_SHELL_CMD_NAMED_MAIN`, runs it on `common/shell/zshell.c` (with the
+NuttX backends, `apps/subcmd/zshell_os_impl.h`), and
 compares it with the same tables written as `subcmd` tables (`subcmd_main()`, whose handlers get
 NULL as `sh`). For the help (the command alone, `-h` and `--help`, unknown words, wildcards),
 wrong numbers of arguments and the arguments of each handler, it checks that the exit status, the
@@ -1275,7 +1282,7 @@ rounding of the bias to two decimals) with where it goes (stdout or stderr).
 
 `nuttx/tests/sensor_shell.c` is a test of the NuttX build only too. It includes `lsm6dso_driver.c`
 for the same fake sensor, builds `common/drivers/sensor_shell/sensor_shell.c` and `apps/sensor/` with
-`apps/subcmd/zshell.c`, and
+`common/shell/zshell.c`, and
 points the command's stdout and stderr at one file (in place of the terminal). It checks the help
 of `sensor` (no `info`, the `SHELL_HELP()` description and `Usage:` line wrapped at 80 columns),
 the wrong argument count with the help and the dynamic device list, wildcards (expanded to

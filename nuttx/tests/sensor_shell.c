@@ -2,7 +2,7 @@
 /* Host test of the "sensor" command (common/drivers/sensor_shell/
  * sensor_shell.c, shared with the Zephyr build, and nuttx/apps/sensor: the
  * copy of Zephyr's sensor_shell_stream.c and the NuttX part) on the
- * Zephyr shell's command handling of nuttx/apps/subcmd/zshell.c, the ported
+ * Zephyr shell's command handling of common/shell/zshell.c, the ported
  * LSM6DSO driver and its fake sensor (tests/lsm6dso_driver.c, included
  * below; its own tests run first).  The expected text is the Zephyr
  * build's, derived from the copied code and zephyr/subsys/shell

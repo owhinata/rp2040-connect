@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-/* Host test of nuttx/apps/subcmd/subcmd.c: the Zephyr shell's output for
+/* Host test of common/shell/subcmd.c: the Zephyr shell's output for
  * the "kv" and "nina" command tables (SHELL_CMD_ARG() and SHELL_CMD()), as
  * recorded from the Zephyr build (host/recordings/zephyr-reference-outputs.txt
  * for "kv") or derived from zephyr/subsys/shell/shell.c for the rest, and a

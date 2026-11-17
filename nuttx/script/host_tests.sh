@@ -18,6 +18,11 @@ clsm=../common/drivers/lsm6dso
 # comes first (its zephyr_os*.h and <zephyr/sys/__assert.h> in place of the NuttX ones).
 ccompat=../common/compat
 zfakes=../common/tests/zephyr_fakes
+# The Zephyr shell's command handling and the subcommand dispatch (common/shell; the NuttX
+# backends of the former are apps/subcmd/zshell_os_impl.h) and the logging macros (common/log;
+# their NuttX part app_log_os.h is in drivers/include).
+cshell=../common/shell
+clog=../common/log
 flags=(-std=c17 -Wall -Wextra -Werror -ffunction-sections -fdata-sections)
 link="-Wl,--gc-sections"
 # The prelude that the NuttX build includes before each source of common/ (on the host: the
@@ -60,7 +65,7 @@ if [[ -f stmemsc/lsm6dso_reg.c ]]; then
         -D_DEFAULT_SOURCE -D'DEBUGASSERT(x)=assert(x)' -include tests/lsm6dso_fakes/nuttx/config.h \
         -include "$prelude" -Itests/lsm6dso_fakes \
         -I"$zfakes" \
-        -Idrivers/compat -I"$ccompat" -Idrivers/include -Istmemsc -I"$lsm" -I"$clsm" \
+        -Idrivers/compat -I"$ccompat" -Idrivers/include -I"$clog" -Istmemsc -I"$lsm" -I"$clsm" \
         -Iboards/arduino-nano-rp2040-connect/src \
         tests/lsm6dso_driver.c "$clsm/lsm6dso.c" "$lsm/stmemsc_i2c.c" "$lsm/stmemsc_mdelay.c" \
         "$clsm/lsm6dso_fifo_hw.c" "$clsm/lsm6dso_fifo.c" "$clsm/lsm6dso_cal.c" \
@@ -80,7 +85,7 @@ if [[ -f stmemsc/lsm6dso_reg.c ]]; then
         -D_DEFAULT_SOURCE -D'DEBUGASSERT(x)=assert(x)' -include tests/lsm6dso_fakes/nuttx/config.h \
         -include "$prelude" -Itests/lsm6dso_fakes \
         -I"$zfakes" \
-        -Idrivers/compat -I"$ccompat" -Idrivers/include -Istmemsc -I"$lsm" -I"$clsm" -I"$imu" -I"$cimu" \
+        -Idrivers/compat -I"$ccompat" -Idrivers/include -I"$clog" -Istmemsc -I"$lsm" -I"$clsm" -I"$imu" -I"$cimu" \
         -Iboards/arduino-nano-rp2040-connect/src \
         tests/imu_cal.c "$cimu/imu_cal.c" "$cimu/imu_cal_codec.c" "$clsm/lsm6dso.c" \
         "$lsm/stmemsc_i2c.c" "$lsm/stmemsc_mdelay.c" \
@@ -95,20 +100,20 @@ if [[ -f stmemsc/lsm6dso_reg.c ]]; then
     printf 'ok  imu_cal\n'
     # The "sensor" command (common/drivers/sensor_shell/sensor_shell.c, shared with the Zephyr
     # build, the copy of Zephyr's sensor_shell_stream.c in common/compat, and apps/sensor: the
-    # NuttX part) on the Zephyr shell's command handling (apps/subcmd/zshell.c) and
+    # NuttX part) on the Zephyr shell's command handling (common/shell/zshell.c) and
     # the driver with its fake sensor (lsm6dso_driver.c, included): the help, argument checks,
     # wildcards, device names, the output of get / attr_get / attr_set / stream / trig, printed
     # by the processing callback on the command's terminal.  Its main() is sensor_main().
     sinc=(-D_GNU_SOURCE -D'DEBUGASSERT(x)=assert(x)' -DSENSOR_SHELL_GET_WAIT_MS=1
           -include tests/lsm6dso_fakes/nuttx/config.h -include "$prelude"
-          -Itests/lsm6dso_fakes -I"$zfakes" -Idrivers/compat -I"$ccompat" -Idrivers/include -Istmemsc
-          -I"$lsm" -I"$clsm" -Iapps/sensor -Iapps/subcmd -Iboards/arduino-nano-rp2040-connect/src)
+          -Itests/lsm6dso_fakes -I"$zfakes" -Idrivers/compat -I"$ccompat" -Idrivers/include -I"$clog" -Istmemsc
+          -I"$lsm" -I"$clsm" -Iapps/sensor -I"$cshell" -Iapps/subcmd -Iboards/arduino-nano-rp2040-connect/src)
     sflags=("${flags[@]}" -Wno-unused-parameter -Wno-cast-function-type -Wno-sign-compare)
     cc "${sflags[@]}" "${sinc[@]}" -Dmain=sensor_main -c ../common/drivers/sensor_shell/sensor_shell.c \
         -o "$out/sensor_shell.o"
     cc "${sflags[@]}" "${sinc[@]}" tests/sensor_shell.c "$out/sensor_shell.o" \
-        "$ccompat/sensor_shell_stream.c" apps/sensor/sensor_shell_nuttx.c apps/subcmd/zshell.c \
-        apps/subcmd/subcmd.c "$clsm/lsm6dso.c" "$lsm/stmemsc_i2c.c" "$lsm/stmemsc_mdelay.c" \
+        "$ccompat/sensor_shell_stream.c" apps/sensor/sensor_shell_nuttx.c "$cshell/zshell.c" \
+        "$cshell/subcmd.c" "$clsm/lsm6dso.c" "$lsm/stmemsc_i2c.c" "$lsm/stmemsc_mdelay.c" \
         "$clsm/lsm6dso_fifo_hw.c" "$clsm/lsm6dso_fifo.c" "$clsm/lsm6dso_cal.c" \
         "$clsm/lsm6dso_zero.c" "$clsm/lsm6dso_stream.c" "$clsm/lsm6dso_fifo_irq.c" \
         "$clsm/lsm6dso_compat.c" \
@@ -127,7 +132,7 @@ fi
 # <zephyr/shell/shell.h>, ...).  Its RTIO and work items are tested in common/tests/run.sh.
 # <zephyr/net/socket.h> reads <nina_dns.h> and <nina_sockopt.h> of the NINA core (common/drivers/nina).
 cnina=../common/drivers/nina
-zinc=(-D_DEFAULT_SOURCE -I"$zfakes" -Idrivers/compat -I"$ccompat" -Idrivers/include -I"$cnina")
+zinc=(-D_DEFAULT_SOURCE -I"$zfakes" -Idrivers/compat -I"$ccompat" -Idrivers/include -I"$clog" -I"$cnina")
 # The layer's pieces for the IMU service: K_MUTEX_DEFINE, K_THREAD_DEFINE and its start,
 # k_uptime_get's tick rounding, k_sleep, byteorder, snprintk, hwinfo (fake chip ID), the
 # shell output macros, the address conversions.
@@ -140,7 +145,7 @@ printf 'ok  zephyr_compat_misc\n'
 # and a mutex left all zero (the MQTT client's before mqtt_client_init()), which is unlocked
 # as in Zephyr.
 cc "${flags[@]}" -D_DEFAULT_SOURCE -D__NuttX__ -Itests/zephyr_mutex_fakes -Idrivers/compat \
-    -I"$ccompat" -Idrivers/include tests/zephyr_mutex.c drivers/compat/zephyr_mutex.c "$link" \
+    -I"$ccompat" -Idrivers/include -I"$clog" tests/zephyr_mutex.c drivers/compat/zephyr_mutex.c "$link" \
     -o "$out/zephyr_mutex"
 "$out/zephyr_mutex" >/dev/null
 printf 'ok  zephyr_mutex\n'
@@ -165,20 +170,14 @@ else
 fi
 # Board: TIMER count <-> OS tick conversions of the tickless system timer.
 run nano_timeconv -Iboards/arduino-nano-rp2040-connect/src
-# Board: the CPU load arithmetic of the idle loop (nano_idle.c).
-run nano_cpuload -Iboards/arduino-nano-rp2040-connect/src
-# RAM log: the retained ring, dmesg pieces, line prefix and rate limit.
-run log_ram -Idrivers/log drivers/log/log_ring.c
 # Board: the key-value area's range checks, page writes and contents check.
 run nano_flash_kv -Iboards/arduino-nano-rp2040-connect/src
 # Key-value store: key rules, and the hex conversions of the kv command.
 # strnlen() is POSIX, not C17.
 run kv_name -D_POSIX_C_SOURCE=200809L "$imu/kv_name.c"
 run kv_hex -Iapps/kv apps/kv/kv_hex.c
-# Subcommand dispatch with the Zephyr shell's output (kv, nina, ...).
-run subcmd -Iapps/subcmd apps/subcmd/subcmd.c
 # The registration of "imu" and "ntp" (the SHELL_*() text cut out of common/imu/imu_stream.c
-# and time_sync.c, built with Z_SHELL_CMD_NAMED_MAIN on apps/subcmd/zshell.c): the same exit
+# and time_sync.c, built with Z_SHELL_CMD_NAMED_MAIN on common/shell/zshell.c): the same exit
 # status, handler calls and output as the same sets on subcmd_main(), and where they differ.
 sed -n '/^SHELL_STATIC_SUBCMD_SET_CREATE(imu_commands,/,/^SHELL_CMD_REGISTER(imu,/p' \
     "$cimu/imu_stream.c" >"$out/imu_shell.inc"
@@ -187,10 +186,10 @@ sed -n '/^SHELL_STATIC_SUBCMD_SET_CREATE(ntp_commands,/,/^SHELL_CMD_REGISTER(ntp
 grep -q '^SHELL_CMD_REGISTER(imu,' "$out/imu_shell.inc"
 grep -q '^SHELL_CMD_REGISTER(ntp,' "$out/ntp_shell.inc"
 run shell_register -D_DEFAULT_SOURCE -DZ_SHELL_CMD_NAMED_MAIN -DIMU_SHELL_INC="\"$out/imu_shell.inc\"" \
-    -DNTP_SHELL_INC="\"$out/ntp_shell.inc\"" -Idrivers/compat -I"$ccompat" -Iapps/subcmd apps/subcmd/zshell.c \
-    apps/subcmd/subcmd.c
+    -DNTP_SHELL_INC="\"$out/ntp_shell.inc\"" -Idrivers/compat -I"$ccompat" -I"$cshell" -Iapps/subcmd "$cshell/zshell.c" \
+    "$cshell/subcmd.c"
 # The i2c_dma command's output (fake driver side; nano_i2c_dma.h of the I2C0 core).
-run i2c_dma_app -I../common/drivers/i2c_dw -Iapps/i2c_dma -Iapps/subcmd apps/subcmd/subcmd.c
+run i2c_dma_app -I../common/drivers/i2c_dw -Iapps/i2c_dma -I"$cshell" "$cshell/subcmd.c"
 # The time synchronization (common/imu/time_sync.c, shared with the Zephyr build) on the
 # compatibility layer with a fake NINA socket, clock (the TIMER's registers), interface and
 # realtime clock: the NTP request and the checks of the reply, where t1 and t4 are read, the
@@ -198,11 +197,11 @@ run i2c_dma_app -I../common/drivers/i2c_dw -Iapps/i2c_dma -Iapps/subcmd apps/sub
 # a receive that waits (FIONREAD every 20 ms), the 60 s age, the forward-only realtime clock,
 # the Wi-Fi events and the "ntp status" lines, through z_shell_main_ntp() (the file is built
 # with Z_SHELL_CMD_NAMED_MAIN, as in the NuttX build) on the Zephyr shell's command handling
-# (apps/subcmd/zshell.c).  The prelude follows the fake <nuttx/config.h>, as on NuttX.
+# (common/shell/zshell.c).  The prelude follows the fake <nuttx/config.h>, as on NuttX.
 cc "${flags[@]}" -D_DEFAULT_SOURCE -DZ_SHELL_CMD_NAMED_MAIN -include tests/time_sync_fakes/nuttx/config.h \
     -include "$prelude" -Itests/time_sync_fakes -I"$zfakes" -Idrivers/compat -I"$ccompat" \
-    -Idrivers/include -I"$cnina" -I"$imu" -I"$cimu" -Iapps/subcmd tests/time_sync.c "$cimu/time_offset.c" \
-    apps/subcmd/zshell.c apps/subcmd/subcmd.c "${compat[@]}" "$link" -o "$out/time_sync"
+    -Idrivers/include -I"$clog" -I"$cnina" -I"$imu" -I"$cimu" -I"$cshell" -Iapps/subcmd tests/time_sync.c \
+    "$cimu/time_offset.c" "$cshell/zshell.c" "$cshell/subcmd.c" "${compat[@]}" "$link" -o "$out/time_sync"
 "$out/time_sync" >/dev/null
 printf 'ok  time_sync\n'
 # The MQTT transport (common/imu/imu_raw_mqtt.c, shared with the Zephyr build) with the
@@ -223,12 +222,12 @@ printf 'ok  imu_raw_mqtt\n'
 # lengths and options, the messages and the log.  The copied text leaves parameters unused and
 # compares signed with unsigned, as in the Zephyr build; the command's main() is wifi_main().
 winc=(-D_GNU_SOURCE -DCONFIG_NANO_WIFI_CREDENTIALS=1 -Itests/lsm6dso_fakes "${zinc[@]}"
-      -Iapps/subcmd -Iapps/wifi -I"$ccompat")
+      -I"$cshell" -Iapps/wifi -I"$ccompat")
 wflags=("${flags[@]}" -Wno-unused-parameter -Wno-sign-compare)
 cc "${wflags[@]}" "${winc[@]}" -Dmain=wifi_main -c apps/wifi/wifi_credentials_shell.c \
     -o "$out/wifi_credentials_shell.o"
 cc "${wflags[@]}" "${winc[@]}" tests/wifi_cred.c "$ccompat/wifi_credentials.c" \
     "$ccompat/wifi_credentials_backend_settings.c" "$ccompat/zephyr_wifi_utils.c" \
-    apps/subcmd/subcmd.c "$out/wifi_credentials_shell.o" "${compat[@]}" "$link" -o "$out/wifi_cred"
+    "$cshell/subcmd.c" "$out/wifi_credentials_shell.o" "${compat[@]}" "$link" -o "$out/wifi_cred"
 "$out/wifi_cred" >/dev/null
 printf 'ok  wifi_cred\n'

@@ -32,7 +32,7 @@
  * - The server address: the default gateway, -ENETDOWN, -EHOSTUNREACH.
  * - "ntp status" and "ntp" alone (z_shell_main_ntp(), the file's
  *   SHELL_CMD_REGISTER() of the compatibility layer, on
- *   nuttx/apps/subcmd/zshell.c): the Zephyr build's lines.
+ *   common/shell/zshell.c): the Zephyr build's lines.
  */
 #include <assert.h>
 #include <errno.h>

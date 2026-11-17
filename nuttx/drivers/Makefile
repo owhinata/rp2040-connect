@@ -10,7 +10,8 @@
 #   include nina/Make.defs
 # with "CSRCS += ...", "VPATH += :nina" and "DEPPATH += --dep-path nina".
 # include/ holds the headers shared with the board code and the
-# applications ($(TOPDIR)/external/include); compat/ the NuttX
+# applications ($(TOPDIR)/external/include; the OS-independent ones are in
+# common/log and common/compat); compat/ the NuttX
 # implementation of the small Zephyr compatibility layer
 # ($(TOPDIR)/external/compat; its OS-independent part is common/compat).
 ############################################################################
@@ -26,6 +27,7 @@ include compat/Make.defs
 include lsm6dso/Make.defs
 
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)include
+CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)log
 
 AOBJS = $(ASRCS:.S=$(OBJEXT))
 COBJS = $(CSRCS:.c=$(OBJEXT))
