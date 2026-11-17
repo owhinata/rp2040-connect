@@ -137,4 +137,10 @@ uint64_t app_run_time_us(void);
 #define INCLUDE_xTaskAbortDelay                 1
 #define INCLUDE_xSemaphoreGetMutexHolder        1
 
+/* Zephyr's choice among the tasks of one priority: a preempted task goes on
+ * (the Zephyr compatibility layer, freertos/drivers/compat/zephyr_os_sched.h:
+ * traceTASK_SWITCHED_OUT() and traceTASK_SWITCHED_IN()).
+ */
+#include "zephyr_os_sched.h"
+
 #endif /* FREERTOS_CONFIG_H */

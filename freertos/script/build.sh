@@ -16,6 +16,9 @@ Usage: freertos/script/build.sh [options] [APP]
   APP           Directory name under freertos/app/ (default: usb-console).
                 The result is freertos/build/APP/APP.uf2.
   --clean       Remove freertos/build/APP first.
+  -DNAME=VALUE  Pass a CMake option on (e.g. -DNANO_SELFTEST=ON, the
+                selftest command).  CMake keeps it in the build directory
+                until --clean.
   -j N          Parallel jobs (default: number of CPUs).
   -v            Verbose make output.
   -h, --help    Show this help.
@@ -28,12 +31,14 @@ app=""
 clean=0
 jobs=""
 verbose=0
+cmake_defs=()
 while (( $# )); do
   case "$1" in
     --clean) clean=1 ;;
     -j) shift; jobs="${1:?-j needs a number}" ;;
     -j*) jobs="${1#-j}" ;;
     -v) verbose=1 ;;
+    -D?*) cmake_defs+=("$1") ;;
     -h|--help) usage; exit 0 ;;
     -*) printf 'Unknown option: %s\n' "$1" >&2; usage >&2; exit 2 ;;
     *)
@@ -76,7 +81,8 @@ fi
 step "cmake ${app}"
 cmake -S "$src_dir" -B "$build_dir" -G "Unix Makefiles" \
   -DCMAKE_BUILD_TYPE=Release \
-  -DPICOTOOL_FETCH_FROM_GIT_PATH="${root}/picotool"
+  -DPICOTOOL_FETCH_FROM_GIT_PATH="${root}/picotool" \
+  "${cmake_defs[@]}"
 
 make_args=(-C "$build_dir" -j"$jobs")
 (( verbose )) && make_args+=(VERBOSE=1)

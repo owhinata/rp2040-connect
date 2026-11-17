@@ -18,8 +18,15 @@ set(CMAKE_C_STANDARD 11)
 pico_sdk_init()
 
 # The sources shared with the Zephyr and NuttX builds (common/ at the root of
-# the repository).
+# the repository), and the FreeRTOS implementation of the Zephyr
+# compatibility layer that runs them (freertos/drivers/compat).
 get_filename_component(COMMON_DIR ${CMAKE_CURRENT_LIST_DIR}/../../../common ABSOLUTE)
+include(${CMAKE_CURRENT_LIST_DIR}/../../drivers/compat/compat.cmake)
+
+# The compatibility layer's self-test, the "selftest" command
+# (freertos/drivers/compat/zephyr_selftest.h): a test feature, off by default
+# (freertos/script/build.sh -DNANO_SELFTEST=ON).
+option(NANO_SELFTEST "Build the selftest command" OFF)
 
 add_executable(usb-console
   src/main.c
@@ -31,6 +38,12 @@ add_executable(usb-console
   src/tick.c
   ${COMMON_DIR}/log/fault_record.c
 )
+
+if(NANO_SELFTEST)
+  freertos_zephyr_compat(usb-console SELFTEST)
+else()
+  freertos_zephyr_compat(usb-console)
+endif()
 
 # FreeRTOSConfig.h; priorities_os.h (src/, which FreeRTOSConfig.h includes);
 # priorities.h, cpu_load.h and nano_cpuload.h (common/compat);

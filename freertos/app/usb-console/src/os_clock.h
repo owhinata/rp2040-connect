@@ -72,7 +72,14 @@ static inline void os_sleep_us(uint64_t us)
 	TickType_t ticks = os_ticks_from_us_ceil(us);
 
 	if (ticks == 0) {
+		/* Behind the other ready tasks of the priority, as Zephyr's yield
+		 * (z_sched_yield_pending, freertos/drivers/compat/zephyr_os_sched.h,
+		 * read by FreeRTOSConfig.h).
+		 */
+		taskENTER_CRITICAL();
+		z_sched_yield_pending = 1;
 		taskYIELD();
+		taskEXIT_CRITICAL();
 		return;
 	}
 	vTaskDelay(ticks < portMAX_DELAY - 1 ? ticks + 1 : ticks);

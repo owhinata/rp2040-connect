@@ -1,4 +1,5 @@
-# The coding style of the sources under freertos/app/: the Zephyr project's
+# The coding style of the sources under freertos/app/, freertos/drivers/ and
+# freertos/tests/: the Zephyr project's
 # .clang-format (Zephyr v4.5.0), unchanged below this comment.  Applied by
 # freertos/script/format.sh.
 #

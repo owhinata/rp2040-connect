@@ -12,6 +12,7 @@
 #include "app.h"
 #include "fault.h"
 #include "priorities.h"
+#include "zephyr_compat.h"
 
 /* Priorities and stacks (bytes): src/priorities_os.h and
  * common/compat/priorities.h.  The console is the Zephyr build's shell
@@ -141,6 +142,14 @@ int main(void)
 	 * space until then ("free"). Nothing else here allocates from it.
 	 */
 	vPortFree(pvPortMalloc(1));
+
+	/* What Zephyr starts before main(): the system work queue ("sysworkq")
+	 * and the RTIO work queue ("RTIO WQ 0") of the compatibility layer
+	 * (freertos/drivers/compat).
+	 */
+	if (zephyr_compat_initialize() != 0) {
+		panic("zephyr_compat_initialize");
+	}
 
 	console_task = xTaskCreateStatic(console_main, "console", CONSOLE_STACK_SIZE, NULL,
 					 CONSOLE_PRIORITY, console_stack, &console_tcb);

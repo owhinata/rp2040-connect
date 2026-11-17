@@ -14,6 +14,9 @@
 #include "app.h"
 #include "fault.h"
 #include "os_clock.h"
+#ifdef NANO_SELFTEST
+#include "zephyr_selftest.h"
+#endif
 
 #define PS_TASKS_MAX     16
 /* Time for the USB code to send a command's last message before a restart. */
@@ -81,6 +84,53 @@ static int cmd_sleep(int argc, char **argv)
 		return -EINVAL;
 	}
 	os_sleep_us((uint64_t)ms * 1000u);
+	return 0;
+}
+
+/* Zephyr's "devmem" (subsys/shell/modules/devmem_service.c): the same
+ * arguments (address and value in hexadecimal, width in bits) and the same
+ * output.  Reads or writes any address: one that does not exist ends in a
+ * HardFault ("fault" after the restart).
+ */
+static int cmd_devmem(int argc, char **argv)
+{
+	uintptr_t addr;
+	unsigned long width = 32;
+	uint32_t value;
+
+	if (argc < 2 || argc > 4) {
+		printf("Usage: devmem <address> [<width> [<value>]]\n");
+		return -EINVAL;
+	}
+	addr = (uintptr_t)strtoul(argv[1], NULL, 16);
+	if (argc >= 3) {
+		width = strtoul(argv[2], NULL, 10);
+	}
+	printf("Using data width %lu\n", width);
+	if (width != 8 && width != 16 && width != 32) {
+		printf("Incorrect data width\n");
+		return -EINVAL;
+	}
+	if (argc <= 3) {
+		if (width == 8) {
+			value = *(volatile uint8_t *)addr;
+		} else if (width == 16) {
+			value = *(volatile uint16_t *)addr;
+		} else {
+			value = *(volatile uint32_t *)addr;
+		}
+		printf("Read value 0x%lx\n", (unsigned long)value);
+		return 0;
+	}
+	value = (uint32_t)strtoul(argv[3], NULL, 16);
+	printf("Writing value 0x%lx\n", (unsigned long)value);
+	if (width == 8) {
+		*(volatile uint8_t *)addr = (uint8_t)value;
+	} else if (width == 16) {
+		*(volatile uint16_t *)addr = (uint16_t)value;
+	} else {
+		*(volatile uint32_t *)addr = value;
+	}
 	return 0;
 }
 
@@ -210,18 +260,36 @@ static int cmd_bootsel(int argc, char **argv)
 	reset_usb_boot(0, 0);
 }
 
+#ifdef NANO_SELFTEST
+/* The Zephyr compatibility layer's self-test (a build option, NANO_SELFTEST;
+ * freertos/drivers/compat/zephyr_selftest.h).  Runs in this task, at the
+ * shell's priority, as the test expects.
+ */
+static int cmd_selftest(int argc, char **argv)
+{
+	(void)argc;
+	(void)argv;
+
+	return zephyr_selftest_run() == 0 ? 0 : -EIO;
+}
+#endif
+
 const struct cli_command console_commands[] = {
 	{"help", "", "List the commands", cmd_help},
 	{"version", "", "Show the versions of the kernel, SDK and compiler", cmd_version},
 	{"id", "", "Show the board's unique ID (of the flash)", cmd_id},
 	{"uptime", "", "Show the time since the start (TIMER) and the ticks", cmd_uptime},
 	{"sleep", "<ms>", "Sleep for ms milliseconds (Zephyr's kernel sleep)", cmd_sleep},
+	{"devmem", "<addr> [<bits> [<val>]]", "Read or write memory (hexadecimal)", cmd_devmem},
 	{"ps", "", "List the tasks and show the CPU load", cmd_ps},
 	{"irqstack", "", "Show the use of the interrupt stack", cmd_irqstack},
 	{"fault", "", "Show the fatal error that ended the last run", cmd_fault},
 	{"free", "", "Show the use of the FreeRTOS heap", cmd_free},
 	{"reboot", "", "Restart the board", cmd_reboot},
 	{"bootsel", "", "Restart into the USB bootloader (BOOTSEL)", cmd_bootsel},
+#ifdef NANO_SELFTEST
+	{"selftest", "", "Test the Zephyr compatibility layer (build option)", cmd_selftest},
+#endif
 };
 
 const size_t console_command_count = sizeof(console_commands) / sizeof(console_commands[0]);
