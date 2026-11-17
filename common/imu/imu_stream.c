@@ -27,8 +27,8 @@
 #include "imu_tick_clock.h"
 #include "kv_store.h"
 #include "time_sync.h"
-#include "../drivers/lsm6dso/lsm6dso_fifo.h"
-#include "../drivers/lsm6dso/lsm6dso_fifo_stats.h"
+#include "lsm6dso_fifo.h"
+#include "lsm6dso_fifo_stats.h"
 
 /* Settings read from the key-value store by "imu start"; all are optional. */
 #define KEY_HOST      "imu.host"      /* IPv4 text; default: the default gateway,
@@ -702,7 +702,7 @@ static int cmd_start(const struct shell *sh, size_t argc, char **argv)
 	} else {
 		strcpy(address, "the default gateway");
 	}
-	shell_print(sh, "Streaming %d Hz to %s, port %u, as imu/%s/raw", odr.val1, address,
+	shell_print(sh, "Streaming %" PRId32 " Hz to %s, port %u, as imu/%s/raw", odr.val1, address,
 		    cfg->port, cfg->device_id);
 	k_sem_give(&start_request);
 	return 0;

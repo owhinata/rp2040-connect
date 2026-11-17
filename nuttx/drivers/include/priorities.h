@@ -45,12 +45,12 @@
 #define NANO_PRIO_NINA_MONITOR       NANO_PRIO_FROM_ZEPHYR(9)   /* 109 */
 #define NANO_STACK_NINA_MONITOR      1536
 
-/* src/time_sync.c:295 time_sync_tid (2048, 9) */
+/* common/imu/time_sync.c:295 time_sync_tid (2048, 9) */
 
 #define NANO_PRIO_TIME_SYNC          NANO_PRIO_FROM_ZEPHYR(9)   /* 109 */
 #define NANO_STACK_TIME_SYNC         2048
 
-/* src/imu_stream.c:579 imu_stream_tid (2048, 9) */
+/* common/imu/imu_stream.c:579 imu_stream_tid (2048, 9) */
 
 #define NANO_PRIO_IMU_STREAM         NANO_PRIO_FROM_ZEPHYR(9)   /* 109 */
 #define NANO_STACK_IMU_STREAM        2048

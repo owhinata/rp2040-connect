@@ -261,11 +261,22 @@ number of arguments) is `SUBCMD()`, and `SHELL_CMD_ARG()` (mandatory and optiona
   empty line, as in Zephyr. There is no `resize` command to change the terminal width.
 - The exit status is 0 on success and 1 on failure, help or a wrong number of arguments.
 
-`sensor`, whose command table is a copy of Zephyr's, runs on `zshell.c` (`z_shell_cmd_main()`) of
-the same part. The rules are the ones above; in addition, as in the Zephyr shell, it handles
-dynamic subcommands (device names, channel names and so on), the `SHELL_HELP()` description with
-its `Usage:` line, and the expansion of a wildcard that matches subcommands (see "Sensor command
-(`sensor`)").
+`sensor`, `imu` and `ntp`, whose command tables are in the sources shared with the Zephyr build
+(`common/`), run on `zshell.c` (`z_shell_cmd_main()`) of the same part. The rules are the ones
+above; in addition, as in the Zephyr shell, it handles dynamic subcommands (device names, channel
+names and so on), the `SHELL_HELP()` description with its `Usage:` line, the expansion of a
+wildcard that matches subcommands (followed by a subcommand with a handler:
+`Error: requested multiple function executions`), and lines of more than 30 words
+(`CONFIG_SHELL_ARGC_MAX`: `Too many arguments in the command.`) (see "Sensor command (`sensor`)").
+The handler gets the backend of the command's terminal (a `struct shell`) as `sh`, and
+`shell_print()` and the others write to the command's standard output and standard error.
+
+The compatibility layer's `<zephyr/shell/shell.h>` makes a command's registration
+(`SHELL_CMD_REGISTER()`) the builtin command's entry. In the application's main source
+(`MAINSRC`) the entry is `main()` (`sensor_shell.c`, `imu_stream.c`). A file that is not a main
+source (`time_sync.c`: `ntp` is an application of its own, apart from `imu`) is compiled with
+`Z_SHELL_CMD_NAMED_MAIN` by its build, and the entry is `z_shell_main_<name>()`
+(`z_shell_main_ntp()`), which the application's `main()` (`nuttx/apps/ntp/ntp_main.c`) calls.
 
 ## NINA-W102 (`nina`)
 
@@ -741,8 +752,8 @@ channel type=3(accel_xyz) index=0 shift=4 num_samples=1 value=<time>ns, (<x>, <y
   version).
 - It cannot run together with `imu start`: `imu start` during a stream says
   `The IMU FIFO is in use (sensor stream?)`, and `sensor stream` and `sensor get` during a
-  measurement say `Read failed: -16` (the driver and `imu_stream.c` are copies of the Zephyr
-  version's).
+  measurement say `Read failed: -16` (the driver is a copy of the Zephyr version's, and `imu_stream.c`
+  is the Zephyr build's file).
 - The calibration applies to the physical values of `sensor get` and `sensor stream`. During
   `sensor stream` the gyro bias is updated at rest by itself (`tracked at rest` in `imu cal`).
 - `trig` gives `Error while setting trigger 1 on device lsm6dsox (-38)` (`-ENOSYS`): as in the Zephyr
@@ -774,12 +785,13 @@ stack, started by init at boot) writes them.
 
 ## IMU acquisition (`imu`)
 
-The acquisition service is `nuttx/apps/imu/imu_stream.c`, a copy of the Zephyr build's
-`src/imu_stream.c` with only the calls into the system replaced, by the compatibility layer
-(`nuttx/drivers/compat/`, which keeps Zephyr's names). Constants, branches, order, waits, counters
-and output text are the Zephyr build's; side by side with `diff`, the only differences are the
-includes at the top (NuttX's headers first) and the command registration at the end (the Zephyr
-shell's `SHELL_CMD_REGISTER()` made the builtin command `imu` on `nuttx/apps/subcmd`).
+The acquisition service is `common/imu/imu_stream.c`, the Zephyr build's file (`nuttx/apps/imu/`
+builds it as the main source of the builtin command `imu`). The compatibility layer
+(`nuttx/drivers/compat/`, which keeps Zephyr's names) provides the calls into the system, and the
+constants, branches, order, waits, counters and output text are the Zephyr build's. The command
+registration at the end (`SHELL_CMD_REGISTER()`) is the Zephyr build's text too; the
+compatibility layer makes it the `main()` of the builtin command `imu` (see "Subcommands of the
+commands").
 
 ```text
 nsh$ imu
@@ -881,10 +893,15 @@ events that advance them are the same as in the Zephyr build.
 
 ## Time synchronization (`ntp`)
 
-`nuttx/apps/imu/time_sync.c` is a copy of the Zephyr build's `src/time_sync.c`. Only the calls
-into the system (sockets, `net_mgmt` events, the realtime clock; the compatibility layer provides
-them under Zephyr's names), the body of `time_sync_mono_us()` (the board's `nano_mono_us()`, the
-same read), the Kconfig names and the command registration at the end are replaced. The NTP
+`common/imu/time_sync.c` is the Zephyr build's file (`nuttx/apps/imu/` builds it). The compatibility
+layer provides the calls into the system (sockets, `net_mgmt` events, the realtime clock) under
+Zephyr's names. `time_sync_mono_us()` reads the TIMER's TIMERAWH and TIMERAWL with `sys_read32()`,
+as written for the Zephyr build (the layer's `<zephyr/sys/sys_io.h>` and the `timer` node of its
+`<zephyr/devicetree.h>`; the same read as the board's `nano_mono_us()`). The prelude maps the
+Kconfig names that the file uses (`CONFIG_NINA_NTP_*`) to the NuttX build's options
+(`CONFIG_NANO_NINA_NTP_*`). The layer makes the command registration at the end
+`z_shell_main_ntp()`, which the `main()` of the builtin command `ntp` (`nuttx/apps/ntp/`) calls
+(see "Subcommands of the commands"). The NTP
 packet and the checks of the reply, where t1 (right before the send) and t4 (right after the
 reply is received) are read, the estimate (`time_offset.c`, an unchanged copy: the reply with the
 shortest round trip of the last 8 is used), the estimate's expiry after 60 s without a reply, the
@@ -1101,7 +1118,8 @@ repository's `common/`. The Zephyr build's `CMakeLists.txt` and the NuttX build'
 (`apps/imu/Makefile`, `apps/wifi/Makefile`, `apps/sensor/Makefile`, `drivers/lsm6dso/Make.defs`,
 `drivers/nina/Make.defs`, the board's `src/Make.defs`) refer to them there. The files that use
 Zephyr's API (in `common/drivers/`, the FIFO setup and stream, the RTIO single reads, the NINA's
-Wi-Fi and the sensor shell; in `common/imu/`, the calibration, MQTT and the Wi-Fi profile) run on
+Wi-Fi and the sensor shell; in `common/imu/`, the acquisition service, the time synchronization,
+the calibration, MQTT and the Wi-Fi profile) run on
 the compatibility layer in the NuttX build. The NuttX build compiles each file of `common/` with
 the prelude (`nuttx/drivers/compat/common_prelude.h`), and the few lines that differ between the
 builds are in headers of each OS (`sensor_shell_os.h`, `wifi_profile_os.h`; the Zephyr build's
@@ -1110,7 +1128,7 @@ layer" in `nuttx/drivers/README.md`).
 
 | Location | Contents |
 |---|---|
-| `common/imu/` | `imu_raw_{batch,packet,queue,status,time}`, `imu_tick_clock`, `time_offset`, `imu_cal_codec.c`, `imu_cal.[ch]`, `imu_raw_mqtt.[ch]`, `wifi_profile.[ch]`, `kv_store.h`, `time_sync.h` |
+| `common/imu/` | `imu_stream.c`, `imu_raw_{batch,packet,queue,status,time}`, `imu_tick_clock`, `time_sync.[ch]`, `time_offset`, `imu_cal_codec.c`, `imu_cal.[ch]`, `imu_raw_mqtt.[ch]`, `wifi_profile.[ch]`, `kv_store.h` |
 | `common/drivers/lsm6dso/` | `lsm6dso_{fifo,cal,zero,fifo_decoder,fifo_hw,fifo_irq}`, `lsm6dso_stream.c`, `lsm6dso_compat.c`, `lsm6dso_fifo_packet.h`, `lsm6dso_fifo_stats.h`, `lsm6dso_attributes.h` |
 | `common/drivers/nina/` | `nina_net.c` |
 | `common/drivers/sensor_shell/` | `sensor_shell.c` |
@@ -1122,12 +1140,8 @@ The tests of `common/` sources that run on the NuttX build's compatibility layer
 (`nuttx/tests/zephyr_fakes/` and others), `imu_cal`, `imu_raw_mqtt` and `sensor_shell`, are in
 `nuttx/tests/`; `nuttx/script/host_tests.sh` builds them with the prelude.
 
-The following files are copies of the Zephyr build's or of Zephyr's. When the Zephyr build
-changes, put the same change into the copies. `nuttx/apps/imu/imu_stream.c` is a copy with only
-the calls into the system and the command registration at the end replaced;
-`nuttx/apps/imu/time_sync.c` is a copy with only the calls into the system, the body of
-`time_sync_mono_us()`, the Kconfig names and the command registration at the end replaced;
-`nuttx/apps/sensor/sensor_shell_stream.c` and `sensor_shell.h` are copies of Zephyr's, with only
+The following files are copies of Zephyr's. When the Zephyr build changes, put the same change
+into the copies. `nuttx/apps/sensor/sensor_shell_stream.c` and `sensor_shell.h` are copies of Zephyr's, with only
 the differences listed in "Sensor command (`sensor`)".
 
 `nuttx/tests/fakes/nuttx/config.h` (empty) is the NuttX build's own: it lets a host test build a
@@ -1161,6 +1175,19 @@ happen to pass NuttX's CRC). `kv_name` checks the key checks split out of the Ze
 `nuttx/tests/subcmd.c` checks `apps/subcmd/subcmd.c` with the tables of `kv` and `nina` (the help
 is the one recorded from the Zephyr build), a nested table, optional arguments, and the layout of
 help texts (newlines, the line break before column 80, a newline at the end).
+
+`nuttx/tests/shell_register.c` checks the registration of `imu` and `ntp`. `host_tests.sh` cuts
+the text from `SHELL_STATIC_SUBCMD_SET_CREATE()` to `SHELL_CMD_REGISTER()` out of
+`common/imu/imu_stream.c` and `time_sync.c`; the test builds it with the compatibility layer's
+`<zephyr/shell/shell.h>` and `Z_SHELL_CMD_NAMED_MAIN`, runs it on `apps/subcmd/zshell.c`, and
+compares it with the same tables written as `subcmd` tables (`subcmd_main()`, whose handlers get
+NULL as `sh`). For the help (the command alone, `-h` and `--help`, unknown words, wildcards),
+wrong numbers of arguments and the arguments of each handler, it checks that the exit status, the
+handler calls with their `argc` and `argv`, standard output, standard error, and the order of the
+two on one file are the same (the handlers write lines with `shell_print()`, `shell_warn()` and
+`shell_error()`; standard output has the NuttX build's 64-byte line buffer), and the Zephyr
+shell's output where the two differ (a subcommand after a wildcard that matches, a line of more
+than 30 words).
 
 `nuttx/tests/wifi_cred.c` checks the copies of Zephyr's library in `apps/wifi/`
 (`wifi_credentials.c`, the settings backend) and the `wifi cred` command (the copy of

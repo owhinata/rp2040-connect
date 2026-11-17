@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-/* Subcommand dispatch for the port's commands ("kv", "nina", and later
- * "imu", "ntp", "wifi", "i2c_dma"), with the output of the Zephyr shell
+/* Subcommand dispatch for the port's commands ("kv", "nina", "wifi",
+ * "i2c_dma"), with the output of the Zephyr shell
  * for a command registered with SHELL_CMD_REGISTER() and a static
  * subcommand set (zephyr/subsys/shell/shell.c execute(), exec_cmd(),
  * cmd_precheck(); shell_help.c; shell_wildcard.c), as configured in the

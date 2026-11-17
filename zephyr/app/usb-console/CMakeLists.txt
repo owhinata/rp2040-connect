@@ -8,8 +8,8 @@ cmake_path(NORMAL_PATH COMMON_DIR)
 
 target_sources(app PRIVATE src/main.c src/log_ram.c src/kv_store.c ${COMMON_DIR}/imu/imu_cal.c
   ${COMMON_DIR}/imu/imu_cal_codec.c ${COMMON_DIR}/imu/wifi_profile.c
-  src/time_sync.c ${COMMON_DIR}/imu/time_offset.c
-  src/imu_stream.c ${COMMON_DIR}/imu/imu_raw_batch.c ${COMMON_DIR}/imu/imu_raw_packet.c
+  ${COMMON_DIR}/imu/time_sync.c ${COMMON_DIR}/imu/time_offset.c
+  ${COMMON_DIR}/imu/imu_stream.c ${COMMON_DIR}/imu/imu_raw_batch.c ${COMMON_DIR}/imu/imu_raw_packet.c
   ${COMMON_DIR}/imu/imu_raw_time.c ${COMMON_DIR}/imu/imu_tick_clock.c ${COMMON_DIR}/imu/imu_raw_queue.c
   ${COMMON_DIR}/imu/imu_raw_mqtt.c ${COMMON_DIR}/imu/imu_raw_status.c
   drivers/nina/nina_wifi.c ${COMMON_DIR}/drivers/nina/nina_net.c drivers/nina/nina_socket.c

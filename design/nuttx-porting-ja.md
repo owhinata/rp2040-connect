@@ -237,10 +237,19 @@ Zephyr 版の `storage_partition` と同じ場所です。API とコマンドは
   端末の幅を変える `resize` はありません。
 - 終了状態は、成功で 0、失敗・ヘルプ・引数の誤りで 1 です。
 
-`sensor` は Zephyr のコマンドの表をそのまま写したので、同じ部品の `zshell.c`（`z_shell_cmd_main()`）で動きます。
-規則は上と同じで、加えて Zephyr のシェルと同じく、動的なサブコマンド（デバイス名、チャネル名など）、
-`SHELL_HELP()` の説明と `Usage:` の行、一致するサブコマンドがあるワイルドカードの展開を扱います
-（「センサーのコマンド（`sensor`）」の節）。
+`sensor`・`imu`・`ntp` は Zephyr 版と同じソース（`common/`）のコマンドの表なので、同じ部品の `zshell.c`
+（`z_shell_cmd_main()`）で動きます。規則は上と同じで、加えて Zephyr のシェルと同じく、動的なサブコマンド
+（デバイス名、チャネル名など）、`SHELL_HELP()` の説明と `Usage:` の行、一致するサブコマンドがあるワイルドカードの
+展開（その後にハンドラーのあるサブコマンドが続くと `Error: requested multiple function executions`）、30 語
+（`CONFIG_SHELL_ARGC_MAX`）を越える行（`Too many arguments in the command.`）を扱います（「センサーのコマンド
+（`sensor`）」の節）。ハンドラーには、コマンドの端末のバックエンド（`struct shell`）が `sh` として渡り、
+`shell_print()` などはコマンドの標準出力・標準エラーに書きます。
+
+コマンドの登録（`SHELL_CMD_REGISTER()`）は、互換層の `<zephyr/shell/shell.h>` が組み込みコマンドの入口にします。
+そのファイルがアプリの main のソース（`MAINSRC`）なら入口は `main()` です（`sensor_shell.c`、`imu_stream.c`）。
+main のソースでないファイル（`time_sync.c`。`ntp` は `imu` と別のアプリ）は、ビルドが `Z_SHELL_CMD_NAMED_MAIN` を
+付けてコンパイルし、入口は `z_shell_main_<名前>()`（`z_shell_main_ntp()`）になります。アプリの `main()`
+（`nuttx/apps/ntp/ntp_main.c`）がそれを呼びます。
 
 ## NINA-W102（`nina`）
 
@@ -652,7 +661,7 @@ channel type=3(accel_xyz) index=0 shift=4 num_samples=1 value=<時刻>ns, (<x>, 
   止まっているので、`sensor stream` は `sampling_frequency` を設定するまで `Read failed: -22` で終わります
   （Zephyr 版と同じ）。
 - `imu start` とは同時に使えません。ストリーム中の `imu start` は `The IMU FIFO is in use (sensor stream?)`、
-  計測中の `sensor stream` と `sensor get` は `Read failed: -16` です（ドライバーと `imu_stream.c` は Zephyr 版の写し）。
+  計測中の `sensor stream` と `sensor get` は `Read failed: -16` です（ドライバーは Zephyr 版の写しで、`imu_stream.c` は Zephyr 版と同じファイル）。
 - 校正値は `sensor get` と `sensor stream` の物理量に掛かります。`sensor stream` の間は、静止しているたびに
   角速度のバイアスが自動で更新されます（`imu cal` の `tracked at rest`）。
 - `trig` は、Zephyr 版の構成と同じくドライバーにトリガーが無いので（`CONFIG_LSM6DSO_TRIGGER_NONE`）、
@@ -678,11 +687,11 @@ channel type=3(accel_xyz) index=0 shift=4 num_samples=1 value=<時刻>ns, (<x>, 
 
 ## IMU の取得（`imu`）
 
-取得サービスは `nuttx/apps/imu/imu_stream.c` で、Zephyr 版の `src/imu_stream.c` の OS を呼ぶ部分だけを
-互換層（`nuttx/drivers/compat/`。Zephyr の名前のまま）に置き換えた写しです。定数、分岐、順序、待ち時間、
-カウンター、出力の文は Zephyr 版と同じで、`diff` で並べると違いは先頭のインクルード（NuttX のヘッダーを先に
-読む）と、末尾のコマンドの登録（Zephyr のシェルの `SHELL_CMD_REGISTER()` を、`nuttx/apps/subcmd` の
-組み込みコマンド `imu` にした）だけです。
+取得サービスは `common/imu/imu_stream.c` で、Zephyr 版と同じファイルです（`nuttx/apps/imu/` が組み込みコマンド
+`imu` の main のソースとしてビルドする）。OS を呼ぶ部分は互換層（`nuttx/drivers/compat/`。Zephyr の名前のまま）が
+提供し、定数、分岐、順序、待ち時間、カウンター、出力の文は Zephyr 版のものがそのまま使われます。末尾の
+コマンドの登録（`SHELL_CMD_REGISTER()`）も Zephyr 版の文のままで、互換層がそれを組み込みコマンド `imu` の
+`main()` にします（「コマンドのサブコマンド」）。
 
 ```text
 nsh$ imu
@@ -768,9 +777,13 @@ status は 0、info は 1 で retain）、クライアント ID（`imu-<device>`
 
 ## 時刻同期（`ntp`）
 
-`nuttx/apps/imu/time_sync.c` は Zephyr 版の `src/time_sync.c` の写しです。置き換えたのは、OS を呼ぶ部分
-（ソケット、`net_mgmt` のイベント、実時間時計。互換層が Zephyr の名前のまま提供します）、`time_sync_mono_us()`
-の中身（ボードの `nano_mono_us()`。同じ読み方）、Kconfig の名前、末尾のコマンドの登録だけです。NTP の
+`common/imu/time_sync.c` は Zephyr 版と同じファイルです（`nuttx/apps/imu/` がビルドする）。OS を呼ぶ部分
+（ソケット、`net_mgmt` のイベント、実時間時計）は互換層が Zephyr の名前のまま提供します。`time_sync_mono_us()` は
+Zephyr 版の文のまま、TIMER の TIMERAWH・TIMERAWL を `sys_read32()` で読みます（互換層の `<zephyr/sys/sys_io.h>` と、
+`<zephyr/devicetree.h>` の `timer` の節。ボードの `nano_mono_us()` と同じ読み方）。ファイルが使う Kconfig の名前
+（`CONFIG_NINA_NTP_*`）は、前置きヘッダーが NuttX 版の選択肢（`CONFIG_NANO_NINA_NTP_*`）に対応させます。末尾の
+コマンドの登録は、互換層が `z_shell_main_ntp()` にし、組み込みコマンド `ntp`（`nuttx/apps/ntp/`）の `main()` が
+それを呼びます（「コマンドのサブコマンド」）。NTP の
 パケットと応答の検査、t1（送信の直前）と t4（応答を受け取った直後）を読む位置、推定（`time_offset.c`。
 無変更の写し。直近 8 回のうち往復が最短の応答を使う）、60 秒応答が無ければ無効、±500 ppm で寄せる逆行しない
 時計、実時間時計を前にだけ進めること、問い合わせの周期・待ち・再試行、カウンター、`ntp status` の出力は
@@ -959,14 +972,14 @@ NuttX 標準のクリティカルセクションの監視（`CONFIG_SCHED_CRITMO
 Zephyr 版の `CMakeLists.txt` と NuttX 版の Makefile（`apps/imu/Makefile`、`apps/wifi/Makefile`、`apps/sensor/Makefile`、
 `drivers/lsm6dso/Make.defs`、`drivers/nina/Make.defs`、ボードの `src/Make.defs`）がそこを参照します。Zephyr の API を
 使うもの（`common/drivers/` の FIFO の設定とストリーム、単発取得の RTIO 版、NINA の Wi-Fi、sensor シェルと、
-`common/imu/` の校正・MQTT・Wi-Fi のプロファイル）は、NuttX 版では互換層の上で動きます。NuttX 版は `common/` の
+`common/imu/` の取得サービス・時刻同期・校正・MQTT・Wi-Fi のプロファイル）は、NuttX 版では互換層の上で動きます。NuttX 版は `common/` の
 各ファイルに前置きヘッダー（`nuttx/drivers/compat/common_prelude.h`）を付けてコンパイルし、版ごとに違う数行は
 OS ごとのヘッダー（`sensor_shell_os.h`、`wifi_profile_os.h`。Zephyr 版は `zephyr/app/usb-console/` の下、NuttX 版は
 `nuttx/apps/` の下）に出しています（`nuttx/drivers/README_ja.md` の「Zephyr の API の互換層」）。
 
 | 置き場所 | 内容 |
 |---|---|
-| `common/imu/` | `imu_raw_{batch,packet,queue,status,time}`、`imu_tick_clock`、`time_offset`、`imu_cal_codec.c`、`imu_cal.[ch]`、`imu_raw_mqtt.[ch]`、`wifi_profile.[ch]`、`kv_store.h`、`time_sync.h` |
+| `common/imu/` | `imu_stream.c`、`imu_raw_{batch,packet,queue,status,time}`、`imu_tick_clock`、`time_sync.[ch]`、`time_offset`、`imu_cal_codec.c`、`imu_cal.[ch]`、`imu_raw_mqtt.[ch]`、`wifi_profile.[ch]`、`kv_store.h` |
 | `common/drivers/lsm6dso/` | `lsm6dso_{fifo,cal,zero,fifo_decoder,fifo_hw,fifo_irq}`、`lsm6dso_stream.c`、`lsm6dso_compat.c`、`lsm6dso_fifo_packet.h`、`lsm6dso_fifo_stats.h`、`lsm6dso_attributes.h` |
 | `common/drivers/nina/` | `nina_net.c` |
 | `common/drivers/sensor_shell/` | `sensor_shell.c` |
@@ -978,9 +991,7 @@ OS ごとのヘッダー（`sensor_shell_os.h`、`wifi_profile_os.h`。Zephyr �
 動かすもの（`imu_cal`、`imu_raw_mqtt`、`sensor_shell`）は `nuttx/tests/` にあり、`nuttx/script/host_tests.sh` が
 前置きヘッダーを付けてビルドします。
 
-次のファイルは Zephyr 版や Zephyr の写しです。Zephyr 版を直したときは、写しにも同じ変更を入れます。
-`nuttx/apps/imu/imu_stream.c` は OS を呼ぶ部分と末尾のコマンドの登録だけを置き換えた写し、
-`nuttx/apps/imu/time_sync.c` は OS を呼ぶ部分、`time_sync_mono_us()` の中身、Kconfig の名前と末尾のコマンドの登録だけを置き換えた写し、
+次のファイルは Zephyr の写しです。Zephyr 版を直したときは、写しにも同じ変更を入れます。
 `nuttx/apps/sensor/sensor_shell_stream.c`・`sensor_shell.h` は Zephyr の写しで、違いは「センサーのコマンド（`sensor`）」の節に
 書いたものだけです。
 
@@ -1009,6 +1020,15 @@ OS ごとのヘッダー（`sensor_shell_os.h`、`wifi_profile_os.h`。Zephyr �
 
 `nuttx/tests/subcmd.c` は `apps/subcmd/subcmd.c` を、`kv` と `nina` の表（Zephyr 版の記録した出力と同じ
 ヘルプ）、入れ子の表、省略可の引数、ヘルプの文の並べ方（改行、80 桁での折り返し、末尾の改行）で確かめます。
+
+`nuttx/tests/shell_register.c` は `imu` と `ntp` のコマンドの登録を確かめます。`common/imu/imu_stream.c`・
+`time_sync.c` の `SHELL_STATIC_SUBCMD_SET_CREATE()` から `SHELL_CMD_REGISTER()` までの文を `host_tests.sh` が切り出し、
+互換層の `<zephyr/shell/shell.h>` と `Z_SHELL_CMD_NAMED_MAIN` でビルドして `apps/subcmd/zshell.c` で動かし、同じ表を
+`subcmd` の表に書いたもの（`subcmd_main()`。ハンドラーには `sh` として NULL が渡る）と比べます。ヘルプ（コマンドだけ、
+`-h`・`--help`、知らない語、ワイルドカード）、引数の数の誤り、各ハンドラーへの引数について、終了状態、ハンドラーの
+呼び出しと `argc`・`argv`、標準出力、標準エラー、両方を 1 つのファイルにしたときの順序が同じこと（ハンドラーは
+`shell_print()`・`shell_warn()`・`shell_error()` で行を書く。標準出力は NuttX 版と同じ 64 バイトの行バッファー）と、
+違う場合（一致するワイルドカードの後のサブコマンド、30 語を越える行）の Zephyr のシェルの出力を確かめます。
 
 `nuttx/tests/wifi_cred.c` は `apps/wifi/` の Zephyr のライブラリの写し（`wifi_credentials.c`、settings の
 バックエンド）と `wifi cred` のコマンド（`wifi_credentials_shell.c` の写し、`subcmd`、互換層の

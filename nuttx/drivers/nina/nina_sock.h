@@ -248,7 +248,7 @@ ssize_t nina_sock_recv(int usockid, void *buf, size_t len, int flags,
 
 /* ioctl(FIONREAD), which the Zephyr build does not have: one poll of the
  * module now, in the caller's thread (the time synchronization's 1 ms
- * receive polling, Zephyr build src/time_sync.c exchange(), which polls
+ * receive polling, common/imu/time_sync.c exchange(), which polls
  * through recv(MSG_DONTWAIT)).  Returns 1 when data (or the end of a TCP
  * stream) is there, 0 when not, or a negative errno.  The module does not
  * tell how many bytes.

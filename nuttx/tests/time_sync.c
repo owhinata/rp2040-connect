@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-/* Host test of the time synchronization (nuttx/apps/imu/time_sync.c, the
- * copy of the Zephyr build's src/time_sync.c) on the Zephyr compatibility
+/* Host test of the time synchronization (common/imu/time_sync.c, shared
+ * with the Zephyr build) on the Zephyr compatibility
  * layer, with a fake NINA socket, clock, network interface and realtime
  * clock.  The source is included, so its static functions are tested
  * directly:
@@ -30,7 +30,9 @@
  *   back.
  * - The Wi-Fi events: connection generation, state and wake-up.
  * - The server address: the default gateway, -ENETDOWN, -EHOSTUNREACH.
- * - "ntp status" (through nuttx/apps/subcmd): the Zephyr build's lines.
+ * - "ntp status" and "ntp" alone (z_shell_main_ntp(), the file's
+ *   SHELL_CMD_REGISTER() of the compatibility layer, on
+ *   nuttx/apps/subcmd/zshell.c): the Zephyr build's lines.
  */
 #include <assert.h>
 #include <errno.h>
@@ -48,7 +50,8 @@
 #include <sys/ioctl.h>
 #include <sys/socket.h>
 
-/* The test's clock: nano_mono_us() (tests/time_sync_fakes), k_uptime_get()
+/* The test's clock: the TIMER's registers read by time_sync_mono_us()
+ * (sys_read32() of tests/time_sync_fakes), k_uptime_get()
  * and k_sleep() of the file under test.
  */
 int64_t test_now_us = 1000000;
@@ -79,7 +82,7 @@ ssize_t fake_sendto(int fd, const void *buf, size_t len, int flags, const struct
 int fake_clock_gettime(clockid_t id, struct timespec *ts);
 int fake_clock_settime(clockid_t id, const struct timespec *ts);
 
-#include "../apps/imu/time_sync.c"
+#include "../../common/imu/time_sync.c"
 
 int64_t test_uptime_get(void)
 {
@@ -372,7 +375,7 @@ static int run_ntp(const char *word)
 	fflush(stdout);
 	saved = dup(1);
 	dup2(fileno(fo), 1);
-	ret = subcmd_main(&ntp_root, word ? 2 : 1, argv);
+	ret = z_shell_main_ntp(word ? 2 : 1, argv);
 	fflush(stdout);
 	dup2(saved, 1);
 	close(saved);

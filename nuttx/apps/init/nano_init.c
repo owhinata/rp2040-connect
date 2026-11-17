@@ -252,13 +252,13 @@ int nano_init_main(int argc, FAR char *argv[])
   K_THREAD_DEFINE_START(nina_monitor_tid);
 #endif
 #ifdef CONFIG_NANO_APP_IMU
-  K_THREAD_DEFINE_START(imu_stream_tid);  /* imu_stream.c */
+  K_THREAD_DEFINE_START(imu_stream_tid);  /* common/imu/imu_stream.c */
 #endif
 #ifdef CONFIG_NANO_IMU_RAW_MQTT
   K_THREAD_DEFINE_START(imu_raw_mqtt_tid);  /* common/imu/imu_raw_mqtt.c */
 #endif
 #ifdef CONFIG_NANO_TIME_SYNC
-  K_THREAD_DEFINE_START(time_sync_tid);   /* ../imu/time_sync.c */
+  K_THREAD_DEFINE_START(time_sync_tid);   /* common/imu/time_sync.c */
 #endif
 #ifdef CONFIG_NANO_WIFI_PROFILE
   K_THREAD_DEFINE_START(wifi_reconnect_tid);  /* common/imu/wifi_profile.c */

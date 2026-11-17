@@ -2,7 +2,8 @@
 # nuttx/apps/ntp/Makefile
 #
 # The "ntp" builtin command (see Kconfig).  Its subcommands and their
-# handler are in ../imu/time_sync.c (ntp_root), subcmd.c in ../subcmd (both
+# handler are in common/imu/time_sync.c (z_shell_main_ntp(), built by
+# ../imu), the Zephyr shell's command handling in ../subcmd/zshell.c (both
 # linked into libapps).
 ############################################################################
 
@@ -14,7 +15,5 @@ STACKSIZE = $(CONFIG_NANO_APP_NTP_STACKSIZE)
 MODULE    = $(CONFIG_NANO_APP_NTP)
 
 MAINSRC   = ntp_main.c
-
-CFLAGS   += ${INCDIR_PREFIX}$(APPDIR)$(DELIM)external$(DELIM)subcmd
 
 include $(APPDIR)/Application.mk

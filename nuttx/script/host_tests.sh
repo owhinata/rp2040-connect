@@ -172,6 +172,18 @@ run kv_name -D_POSIX_C_SOURCE=200809L "$imu/kv_name.c"
 run kv_hex -Iapps/kv apps/kv/kv_hex.c
 # Subcommand dispatch with the Zephyr shell's output (kv, nina, ...).
 run subcmd -Iapps/subcmd apps/subcmd/subcmd.c
+# The registration of "imu" and "ntp" (the SHELL_*() text cut out of common/imu/imu_stream.c
+# and time_sync.c, built with Z_SHELL_CMD_NAMED_MAIN on apps/subcmd/zshell.c): the same exit
+# status, handler calls and output as the same sets on subcmd_main(), and where they differ.
+sed -n '/^SHELL_STATIC_SUBCMD_SET_CREATE(imu_commands,/,/^SHELL_CMD_REGISTER(imu,/p' \
+    "$cimu/imu_stream.c" >"$out/imu_shell.inc"
+sed -n '/^SHELL_STATIC_SUBCMD_SET_CREATE(ntp_commands,/,/^SHELL_CMD_REGISTER(ntp,/p' \
+    "$cimu/time_sync.c" >"$out/ntp_shell.inc"
+grep -q '^SHELL_CMD_REGISTER(imu,' "$out/imu_shell.inc"
+grep -q '^SHELL_CMD_REGISTER(ntp,' "$out/ntp_shell.inc"
+run shell_register -D_DEFAULT_SOURCE -DZ_SHELL_CMD_NAMED_MAIN -DIMU_SHELL_INC="\"$out/imu_shell.inc\"" \
+    -DNTP_SHELL_INC="\"$out/ntp_shell.inc\"" -Idrivers/compat -Iapps/subcmd apps/subcmd/zshell.c \
+    apps/subcmd/subcmd.c
 # NINA SPI link: framing, answers, READY timeouts, reset sequence, CS order (fake board and clock).
 run nina_spi -Idrivers/include -Idrivers/nina
 # NINA sockets: the table, the socket commands and the data calls of nina_socket.c (fake
@@ -183,15 +195,18 @@ run nina_dns -D_DEFAULT_SOURCE -Idrivers/include -Idrivers/nina drivers/nina/nin
 run nano_i2c_dw -Iboards/arduino-nano-rp2040-connect/src
 # The i2c_dma command's output (fake driver side).
 run i2c_dma_app -Idrivers/include -Iapps/i2c_dma -Iapps/subcmd apps/subcmd/subcmd.c
-# The time synchronization (apps/imu/time_sync.c, the copy of the Zephyr build's) on the
-# compatibility layer with a fake NINA socket, clock, interface and realtime clock: the NTP
-# request and the checks of the reply, where t1 and t4 are read, the 1 ms polling of the
-# reply through FIONREAD, the socket marked as polled by its callers only, a receive that waits
-# (FIONREAD every 20 ms), the 60 s age, the forward-only realtime clock, the Wi-Fi events and
-# the "ntp status" lines.
-cc "${flags[@]}" -D_DEFAULT_SOURCE -Itests/time_sync_fakes -Itests/zephyr_fakes -Idrivers/compat \
+# The time synchronization (common/imu/time_sync.c, shared with the Zephyr build) on the
+# compatibility layer with a fake NINA socket, clock (the TIMER's registers), interface and
+# realtime clock: the NTP request and the checks of the reply, where t1 and t4 are read, the
+# 1 ms polling of the reply through FIONREAD, the socket marked as polled by its callers only,
+# a receive that waits (FIONREAD every 20 ms), the 60 s age, the forward-only realtime clock,
+# the Wi-Fi events and the "ntp status" lines, through z_shell_main_ntp() (the file is built
+# with Z_SHELL_CMD_NAMED_MAIN, as in the NuttX build) on the Zephyr shell's command handling
+# (apps/subcmd/zshell.c).  The prelude follows the fake <nuttx/config.h>, as on NuttX.
+cc "${flags[@]}" -D_DEFAULT_SOURCE -DZ_SHELL_CMD_NAMED_MAIN -include tests/time_sync_fakes/nuttx/config.h \
+    -include "$prelude" -Itests/time_sync_fakes -Itests/zephyr_fakes -Idrivers/compat \
     -Idrivers/include -I"$imu" -I"$cimu" -Iapps/subcmd tests/time_sync.c "$cimu/time_offset.c" \
-    apps/subcmd/subcmd.c "${compat[@]}" "$link" -o "$out/time_sync"
+    apps/subcmd/zshell.c apps/subcmd/subcmd.c "${compat[@]}" "$link" -o "$out/time_sync"
 "$out/time_sync" >/dev/null
 printf 'ok  time_sync\n'
 # The MQTT transport (common/imu/imu_raw_mqtt.c, shared with the Zephyr build) with the

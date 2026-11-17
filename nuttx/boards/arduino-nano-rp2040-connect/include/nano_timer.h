@@ -96,9 +96,8 @@
  *   lock: safe from any context, threads and interrupt handlers, kernel
  *   and applications (flat build).
  *
- *   The same read as time_sync_mono_us() of the Zephyr build
- *   (zephyr/app/usb-console/src/time_sync.c), which will keep that name
- *   in nuttx/apps/imu/time_sync.c.  The OS clock (CLOCK_MONOTONIC,
+ *   The same read as time_sync_mono_us() of common/imu/time_sync.c,
+ *   shared with the Zephyr build.  The OS clock (CLOCK_MONOTONIC,
  *   clock_systime_ticks()) comes from the same counter
  *   (src/nano_oneshot.c).
  *

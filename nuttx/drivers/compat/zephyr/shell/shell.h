@@ -25,10 +25,11 @@
  * Commands: SHELL_CMD_REGISTER() with SHELL_STATIC_SUBCMD_SET_CREATE(),
  * SHELL_DYNAMIC_CMD_CREATE(), SHELL_CMD_ARG(), SHELL_CMD(),
  * SHELL_COND_CMD(), SHELL_EXPR_CMD_ARG(), SHELL_HELP() and
- * SHELL_SUBCMD_SET_END make the builtin application's main() (the source is
- * the application's MAINSRC), which runs the command with the Zephyr
- * shell's word matching, wildcards, argument count check and help
- * (zshell.c).  Differences from Zephyr: the subcommand set of an entry is a
+ * SHELL_SUBCMD_SET_END make the builtin command's entry: the application's
+ * main() when the source is its MAINSRC, else z_shell_main_<syntax>() when
+ * the source is compiled with Z_SHELL_CMD_NAMED_MAIN (below).  The entry
+ * runs the command with the Zephyr shell's word matching, wildcards,
+ * argument count check and help (zshell.c).  Differences from Zephyr: the subcommand set of an entry is a
  * struct shell_cmd_entry that says whether it is dynamic (Zephyr: union
  * shell_cmd_entry in a linker section of its own); no select mode, aliases,
  * remote commands, raw arguments or Tab completion (nsh's).
@@ -273,16 +274,27 @@ static inline bool shell_help_is_structured(const char *help)
 int z_shell_cmd_main(const struct shell_static_entry *root, int argc,
                      char **argv);
 
-/* SHELL_CMD_ARG_REGISTER() / SHELL_CMD_REGISTER(): the builtin
- * application's main().
+/* SHELL_CMD_ARG_REGISTER() / SHELL_CMD_REGISTER(): the command's entry,
+ * int Z_SHELL_CMD_MAIN(syntax)(int argc, char *argv[]), which runs it with
+ * z_shell_cmd_main().  By default the entry is the builtin application's
+ * main(), for the source that is the application's MAINSRC.  A source that
+ * is not (its build defines Z_SHELL_CMD_NAMED_MAIN for it) gets
+ * z_shell_main_<syntax>() instead, which the application's main() calls
+ * (common/imu/time_sync.c: z_shell_main_ntp(), nuttx/apps/ntp/ntp_main.c).
  */
+
+#ifdef Z_SHELL_CMD_NAMED_MAIN
+#  define Z_SHELL_CMD_MAIN(syntax) z_shell_main_##syntax
+#else
+#  define Z_SHELL_CMD_MAIN(syntax) main
+#endif
 
 #define SHELL_CMD_ARG_REGISTER(syntax, subcmd, help, handler, mandatory, \
                                optional) \
   static const struct shell_static_entry z_shell_root_##syntax = \
     SHELL_CMD_ARG(syntax, subcmd, help, handler, mandatory, optional); \
-  int main(int argc, char *argv[]); \
-  int main(int argc, char *argv[]) \
+  int Z_SHELL_CMD_MAIN(syntax)(int argc, char *argv[]); \
+  int Z_SHELL_CMD_MAIN(syntax)(int argc, char *argv[]) \
   { \
     return z_shell_cmd_main(&z_shell_root_##syntax, argc, argv); \
   }

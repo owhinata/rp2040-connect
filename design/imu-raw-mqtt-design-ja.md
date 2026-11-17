@@ -87,10 +87,10 @@ flowchart LR
 | ペイロードの組み立て | `common/imu/imu_raw_packet.*` |
 | FIFO タイムスタンプ → サンプルの tick | `common/imu/imu_raw_time.*` |
 | tick → ボードの時計 | `common/imu/imu_tick_clock.*` |
-| ボードの時計 → PC 時刻 | `src/time_sync.*`、`common/imu/time_offset.*` |
+| ボードの時計 → PC 時刻 | `common/imu/time_sync.*`、`common/imu/time_offset.*` |
 | 送信キュー | `common/imu/imu_raw_queue.*` |
 | MQTT 送信・再接続・status / info | `common/imu/imu_raw_mqtt.*`、`common/imu/imu_raw_status.*` |
-| 取得スレッド・回復・シェル（`imu`） | `src/imu_stream.c` |
+| 取得スレッド・回復・シェル（`imu`） | `common/imu/imu_stream.c` |
 | NINA のソケット | `drivers/nina/nina_socket.c`（[ドライバーの説明](../zephyr/app/usb-console/drivers/README_ja.md)） |
 
 `src/`・`drivers/` は `zephyr/app/usb-console` の下、`common/` はリポジトリのルートの下で、NuttX 版と同じ
@@ -566,13 +566,14 @@ NuttX 版の確認の範囲は §11.7 に分けて書く。
   校正の形式）は Zephyr 版と同じファイルを使う。どちらの版のビルドもリポジトリの `common/` の 1 本を参照し、
   同じホストテスト（`common/tests/`）を両方の版の `host_tests.sh` から動かす。Zephyr の API を使うが両方の版で
   同一のドライバーのファイル（LSM6DSO の FIFO の設定とストリーム、`lsm6dso_fifo_stats.h`、`lsm6dso_attributes.h`）も
-  `common/` に置き、NuttX 版では下の互換層の上で動かす。OS を呼ぶソースのうち `imu_raw_mqtt.c`、`imu_cal.c`、
-  `wifi_profile.c`、`nina_net.c`、`lsm6dso_compat.c`、sensor シェルの `sensor_shell.c` と、ヘッダーの `kv_store.h`・
-  `time_sync.h` も `common/` の 1 本を両方の版が使う。NuttX 版では各ファイルに前置きヘッダー（NuttX の設定と、互換層より
-  先に読む NuttX のヘッダー、ファイルが使う Zephyr の Kconfig の値）を付けてコンパイルし、版ごとに違う数行は
-  OS ごとの小さなヘッダー（`sensor_shell_os.h`、`wifi_profile_os.h`）に出している。`common/` に置いていない
-  同一のファイル（`nina_proto.h`）は、Zephyr 版のファイルを変更せずに写している。
-- 残りの OS を呼ぶソース（`imu_stream.c`、`time_sync.c`、LSM6DSO のドライバー）は写しで、共有するものと同じく、
+  `common/` に置き、NuttX 版では下の互換層の上で動かす。OS を呼ぶソースのうち `imu_stream.c`、`time_sync.c`、
+  `imu_raw_mqtt.c`、`imu_cal.c`、`wifi_profile.c`、`nina_net.c`、`lsm6dso_compat.c`、sensor シェルの `sensor_shell.c` と、
+  ヘッダーの `kv_store.h` も `common/` の 1 本を両方の版が使う（コマンドの登録も Zephyr 版の文のまま）。NuttX 版では
+  各ファイルに前置きヘッダー（NuttX の設定と、互換層より先に読む NuttX のヘッダー、ファイルが使う Zephyr の Kconfig の
+  値と名前）を付けてコンパイルし、版ごとに違う数行は OS ごとの小さなヘッダー（`sensor_shell_os.h`、
+  `wifi_profile_os.h`）に出している。`common/` に置いていない同一のファイル（`nina_proto.h`）は、Zephyr 版の
+  ファイルを変更せずに写している。
+- 残りの OS を呼ぶソース（LSM6DSO のドライバー）は写しで、共有するものと同じく、
   OS の呼び出しを **Zephyr の名前のまま**提供する互換層（`nuttx/drivers/compat/`）の上で、ほぼそのまま動かす。
   互換層は、移したソースが使う部分だけを持つ（`struct device`、センサーの API、RTIO、ワークキュー、
   `k_sem`・`k_mutex`・`k_poll` の一部、`net_mgmt` のイベント、`zsock_*()`、シェルのコマンドの表）。

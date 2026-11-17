@@ -40,4 +40,16 @@
 
 #define CONFIG_SENSOR_LOG_LEVEL 3
 
+/* The Zephyr build's names of the port's NuttX options that the shared
+ * sources use: the NTP server, port and interval of the time
+ * synchronization (time_sync.c), CONFIG_NANO_NINA_NTP_* of
+ * nuttx/apps/imu/Kconfig.
+ */
+
+#ifdef CONFIG_NANO_NINA_NTP_PORT
+#  define CONFIG_NINA_NTP_SERVER      CONFIG_NANO_NINA_NTP_SERVER
+#  define CONFIG_NINA_NTP_PORT        CONFIG_NANO_NINA_NTP_PORT
+#  define CONFIG_NINA_NTP_INTERVAL_MS CONFIG_NANO_NINA_NTP_INTERVAL_MS
+#endif
+
 #endif /* __NUTTX_DRIVERS_COMPAT_COMMON_PRELUDE_H */

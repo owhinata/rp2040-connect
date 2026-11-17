@@ -22,9 +22,9 @@ config NANO_APP_IMU
 	depends on NANO_KV_STORE && NANO_SUBCMD && NANO_LSM6DSO_STREAM
 	select LIBC_IPv4_ADDRCONV if !NET_IPv4
 	---help---
-		imu_stream.c: the Zephyr build's src/imu_stream.c with only the
-		system calls replaced (on the Zephyr compatibility layer of
-		nuttx/drivers/compat): the thread imu_stream_tid (Zephyr
+		imu_stream.c (common/imu, shared with the Zephyr build) on the
+		Zephyr compatibility layer of nuttx/drivers/compat: the thread
+		imu_stream_tid (Zephyr
 		priority 9, NuttX 109, 2048-byte stack), which the init task
 		starts at boot, and the "imu start|stop|status|cal" command
 		with the Zephyr build's syntax and output, and the calibration
@@ -81,8 +81,8 @@ config NANO_TIME_SYNC
 	default y
 	depends on NANO_APP_IMU && NANO_NINA_NET && NANO_NINA_DNS && NET_USRSOCK_UDP
 	---help---
-		time_sync.c: the Zephyr build's src/time_sync.c with only the
-		system calls replaced: the thread time_sync_tid (Zephyr
+		time_sync.c (common/imu, shared with the Zephyr build) on the
+		Zephyr compatibility layer: the thread time_sync_tid (Zephyr
 		priority 9, NuttX 109, 2048-byte stack), which the init task
 		starts at boot, asks the NTP server (the default gateway, or
 		NANO_NINA_NTP_SERVER) every NANO_NINA_NTP_INTERVAL_MS while

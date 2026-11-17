@@ -372,7 +372,7 @@ RTIO and kernel as a whole are not ported.
 | Header | Contents |
 |---|---|
 | `zephyr/device.h` | `struct device` (name, config, API, state, data, init function), `device_is_ready()`, `device_init()` (the meaning of Zephyr's `do_device_init()`), `DEVICE_DT_GET()`, `DEVICE_DT_DEFINE()`, `DEVICE_API()`, `device_get_binding()` (node name), `device_get_by_dt_nodelabel()` (node label), `DEVICE_API_IS(sensor, dev)` (below) |
-| `zephyr/devicetree.h` | `DT_NODELABEL()`, `DT_BUS()`; the nodes are `gpio0`, `i2c0` and `lsm6dsox` only |
+| `zephyr/devicetree.h` | `DT_NODELABEL()`, `DT_BUS()`, `DT_REG_ADDR()`; the nodes are `gpio0`, `i2c0`, `lsm6dsox` and `timer`, which has no device (the TIMER's address 0x40054000, for `time_sync_mono_us()` of `time_sync.c`), only |
 | `zephyr/kernel.h` | `k_timeout_t` (`K_NO_WAIT`, `K_FOREVER`, `K_MSEC()`, `K_SECONDS()`; ticks of 100 µs), `k_mutex`, `k_sem` (`K_SEM_DEFINE`), `k_poll()` on semaphores (`K_POLL_TYPE_SEM_AVAILABLE`, `K_POLL_MODE_NOTIFY_ONLY`), work (`k_work`, `k_work_delayable`, `k_work_q`, `k_work_submit()`, `k_work_cancel_sync()`, `k_work_schedule_for_queue()`, `k_work_reschedule_for_queue()`, `k_work_queue_start()`), `K_THREAD_STACK_DEFINE()`, `K_PRIO_PREEMPT()`, `k_thread_name_set()`, the system work queue `k_sys_work_q`, `K_MUTEX_DEFINE()`, `K_THREAD_DEFINE()` (below), `k_current_get()` (the calling thread's NuttX thread ID, comparable with the `k_tid_t` of `K_THREAD_DEFINE()`), `k_uptime_get()`, `k_sleep()` (below), `k_cycle_get_32()`, `k_cycle_get_64()`, `k_cyc_to_us_floor64()`, `k_cyc_to_us_ceil64()`, `sys_clock_hw_cycles_per_sec()` (below) |
 | `zephyr/spinlock.h`, `zephyr/sys/atomic.h` | `k_spin_lock()` (below), `atomic_t` and `atomic_get/set/clear/cas/or/inc/add()` |
 | `zephyr/rtio/rtio.h`, `zephyr/rtio/work.h` | RTIO (below) and the RTIO work queue (`rtio_work_req_alloc()`, `_submit()`) |
@@ -383,6 +383,7 @@ RTIO and kernel as a whole are not ported.
 | `zephyr/sys/util.h`, `sys/__assert.h`, `sys/mpsc_lockfree.h`, `sys/mem_blocks.h`, `dsp/types.h` | `BIT()`, `ARRAY_SIZE()`, `MIN()`/`MAX()`, `IS_ENABLED()`, `CONTAINER_OF()`, `GENMASK()`/`GENMASK64()`/`FIELD_GET()`, `STRINGIFY()` and others, `__ASSERT()`, RTIO's queues and block pool, `q31_t` |
 | `zephyr/dsp/print_format.h` | A copy of Zephyr's header of that name (with only a leading comment and the include of `<zephyr/sys/util.h>` added): the Q value print format `PRIq()`, `PRIq_arg()` |
 | `zephyr/sys/iterable_sections.h` | An empty header (the sensor shell includes it, but uses it only with `CONFIG_SENSOR_INFO`, which the Zephyr build does not set) |
+| `zephyr/sys/sys_io.h` | `sys_read32()` (one volatile 32-bit read without a barrier, as Zephyr's on Arm), `mem_addr_t` |
 | `zephyr/sys/printk.h`, `zephyr/sys/byteorder.h`, `zephyr/sys/cpu_load.h` | `snprintk()` (`snprintf()`, as in the Zephyr version's configuration with `CONFIG_PICOLIBC=y`), `sys_put_be16/32()`/`sys_get_be16/32()`/`sys_get_le32()`, `cpu_load_get()` (the board's `cpu_load.h`) |
 | `zephyr/drivers/hwinfo.h` | `hwinfo_get_device_id()` (below) |
 | `zephyr/shell/shell.h` | `shell_print()`, `shell_info()`, `shell_warn()`, `shell_error()`, `shell_fprintf()`, `struct shell` (a shell backend), the command table macros (`SHELL_CMD_REGISTER()`, `SHELL_STATIC_SUBCMD_SET_CREATE()`, `SHELL_DYNAMIC_CMD_CREATE()`, `SHELL_CMD_ARG()`, `SHELL_CMD()`, `SHELL_COND_CMD()`, `SHELL_EXPR_CMD_ARG()`, `SHELL_HELP()`, `SHELL_SUBCMD_SET_END`), `shell_device_get_binding()`, `shell_device_filter()` (below) |
@@ -442,10 +443,13 @@ RTIO and kernel as a whole are not ported.
   headers needed before the layer (those that `<zephyr/kernel.h>` reads first: `<sys/types.h>`,
   `<nuttx/irq.h>`, `<nuttx/mutex.h>`, `<nuttx/semaphore.h>`, `<nuttx/wdog.h>`, `<stdio.h>`) and the
   values of the Zephyr Kconfig options that the shared sources use (`CONFIG_SENSOR_LOG_LEVEL` 3, the
-  Zephyr build's value). So the shared sources have no lines that include NuttX headers. The socket
-  headers are not in it (names such as `accept()` would collide with the sources' own functions;
-  the layer's `<zephyr/net/socket.h>` reads them for the files that need them). The host tests use
-  the same prelude (without `__NuttX__`, only the Kconfig values).
+  Zephyr build's value) and their names (`CONFIG_NINA_NTP_SERVER`, `_PORT` and `_INTERVAL_MS` of
+  `time_sync.c`, set to the NuttX build's options `CONFIG_NANO_NINA_NTP_*`). So the shared sources
+  have no lines that include NuttX headers. The socket headers are not in it (names such as
+  `accept()` would collide with the sources' own functions; the layer's `<zephyr/net/socket.h>`
+  reads them for the files that need them). The host tests use the same prelude (without
+  `__NuttX__`, only the Kconfig values; the `time_sync` test puts a fake `<nuttx/config.h>` before
+  it).
 - **Headers of each OS**: the few lines of a shared source that differ between the builds are in a
   small header of the same name, of which the Zephyr and the NuttX build each have their own:
   `sensor_shell_os.h` (included first by `sensor_shell.c`; the NuttX one, `nuttx/apps/sensor/`, reads
@@ -519,8 +523,9 @@ RTIO and kernel as a whole are not ported.
   says where the text goes.
   - `sh` is NULL: the calling task's stdout (`shell_print()`, `shell_info()`) and stderr
     (`shell_warn()`, `shell_error()`). The commands whose tables are written with
-    `nuttx/apps/subcmd` (`subcmd.h`: `kv`, `imu` and others) pass NULL.
-  - `sh` is a backend: what a command registered with `SHELL_CMD_REGISTER()` (`sensor`) gets.
+    `nuttx/apps/subcmd` (`subcmd.h`: `kv`, `nina` and others) pass NULL.
+  - `sh` is a backend: what a command registered with `SHELL_CMD_REGISTER()` (`sensor`, `imu`,
+    `ntp`) gets.
     `nuttx/apps/subcmd/zshell.c` keeps one per terminal that a command's stdout is (`/dev/ttyACM0`
     for USB, `/dev/telnet0` for Telnet; `F_GETPATH`, and since a Telnet session's device passes that
     on to its socket, a search of `/dev` for the inode number of `fstat()`). Like Zephyr's shell
@@ -532,7 +537,13 @@ RTIO and kernel as a whole are not ported.
     backend). A Telnet session's device is open only while text is written, so the end of the
     session (when its last descriptor is closed) and the next connection are not held up.
   - The command table macros have the form of Zephyr's `shell.h`; `SHELL_CMD_REGISTER()` makes the
-    builtin command's `main()`. `z_shell_cmd_main()` of `zshell.c` follows Zephyr's `shell.c`
+    builtin command's entry. By default the entry is `main()`, and the application's main source
+    (`MAINSRC`) is the builtin command as it is (`sensor_shell.c`, `imu_stream.c`). A file that is
+    not a main source is compiled with `Z_SHELL_CMD_NAMED_MAIN`, which its build definition adds for
+    that file only, and the entry is `int z_shell_main_<name>(int argc, char *argv[])`, which the
+    application's `main()` calls (`ntp` of `time_sync.c`: `apps/imu/Makefile` adds it for
+    `time_sync.c`, and `main()` of `apps/ntp/ntp_main.c` calls `z_shell_main_ntp()`).
+    `z_shell_cmd_main()` of `zshell.c` follows Zephyr's `shell.c`
     `execute()`, `exec_cmd()` and `cmd_precheck()`, `shell_wildcard.c` and `shell_help.c`: it matches
     the words that nsh has split (calling the dynamic subcommand functions in Zephyr's order),
     expands wildcards, checks the argument count, prints the help (the `SHELL_HELP()` description

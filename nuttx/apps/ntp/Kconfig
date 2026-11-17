@@ -8,10 +8,12 @@ config NANO_APP_NTP
 	default y
 	depends on NANO_TIME_SYNC && NANO_SUBCMD
 	---help---
-		"ntp status": the Zephyr build's ntp command (src/time_sync.c
-		cmd_ntp_status()) with the same syntax and output.  The handler
-		and its command set stay in nuttx/apps/imu/time_sync.c, as in
-		the Zephyr build; this is the builtin command that runs them.
+		"ntp status": the Zephyr build's ntp command (cmd_ntp_status()
+		of common/imu/time_sync.c, shared with the Zephyr build) with the
+		same syntax and output.  The handler and its command set stay in
+		that file, as in the Zephyr build (its SHELL_CMD_REGISTER()
+		makes z_shell_main_ntp()); this is the builtin command that runs
+		them.
 
 if NANO_APP_NTP
 

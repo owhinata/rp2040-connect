@@ -59,7 +59,7 @@ trigger `SENSOR_TRIG_FIFO_WATERMARK` and the option `SENSOR_STREAM_DATA_INCLUDE`
   xyz, the tag counter, and the counter value a timestamp word carries.
 - On a **FIFO overrun**, an I2C error or a buffer that is too small, the FIFO is stopped and
   the stream ends with an error. The number of lost samples is unknown, so nothing that looks
-  continuous is returned. Whether to restart is up to the caller (`src/imu_stream.c`).
+  continuous is returned. Whether to restart is up to the caller (`common/imu/imu_stream.c`).
 - **Stopping** is requested with `lsm6dso_fifo_request_stop()`. It pauses batching, delivers
   the words left in the FIFO and then posts a terminal completion. Canceling the RTIO request
   directly could free a buffer that was read but not yet consumed.

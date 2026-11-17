@@ -409,7 +409,7 @@ Zephyr 版の `i2c write`、`gpio`、`log`、`device`、`history`、`clear`、`r
 nuttx/script/host_tests.sh
 ```
 
-OS に依存しない部分のホストテスト 38 本を PC 上でビルドして実行します。最初の 14 本は Zephyr 版と共有する
+OS に依存しない部分のホストテスト 39 本を PC 上でビルドして実行します。最初の 14 本は Zephyr 版と共有する
 ソースのテストで、`common/tests/run.sh` が実行します。ボードは不要で、ホストの `cc`（C17）だけを
 使います。ST の `lsm6dso_reg.c`（`setup.sh` が取得）が無ければ、それを使う 3 本（`lsm6dso_driver`、`imu_cal`、
 `sensor_shell`）は `skip` になります。失敗したところで止まります。各テストの内容と、Zephyr 版から変更せずに

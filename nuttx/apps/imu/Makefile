@@ -8,9 +8,9 @@
 # task).  The copies of the Zephyr build's other sources in this directory
 # that are not listed here are not built yet.
 #
-# The sources shared with the Zephyr build (imu_raw_*, imu_tick_clock.c,
-# time_offset.c, imu_cal.c, imu_cal_codec.c, imu_raw_mqtt.c and their
-# headers, kv_store.h, time_sync.h) are in common/imu, found through VPATH
+# The sources shared with the Zephyr build (imu_stream.c, imu_raw_*,
+# imu_tick_clock.c, time_sync.c, time_offset.c, imu_cal.c, imu_cal_codec.c,
+# imu_raw_mqtt.c and their headers, kv_store.h) are in common/imu, found through VPATH
 # and DEPPATH, which are relative to this directory (mkdeps needs relative
 # ones); their objects are made here, each compiled with the prelude of the
 # shared sources (common_prelude.h of the compatibility layer, -include).
@@ -19,10 +19,9 @@
 # ($(TOPDIR)/external/compat; NuttX's headers are included before it: the
 # prelude in the shared sources, an include of their own in the others), the
 # LSM6DSO driver's headers ($(TOPDIR)/external/lsm6dso), the port's shared
-# headers ($(TOPDIR)/external/include: priorities.h, cpu_load.h), subcmd.h,
-# and common/imu and common/drivers/lsm6dso, through which imu_stream.c's
-# "../drivers/lsm6dso/lsm6dso_fifo.h" and "../drivers/lsm6dso/
-# lsm6dso_fifo_stats.h" and imu_cal.h's "lsm6dso_cal.h" are found.
+# headers ($(TOPDIR)/external/include: priorities.h, cpu_load.h),
+# and common/imu and common/drivers/lsm6dso (imu_stream.c's "lsm6dso_fifo.h"
+# and "lsm6dso_fifo_stats.h", imu_cal.h's "lsm6dso_cal.h").
 ############################################################################
 
 include $(APPDIR)/Make.defs
@@ -67,7 +66,6 @@ endif
 CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)include
 CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)compat
 CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)lsm6dso
-CFLAGS   += ${INCDIR_PREFIX}$(APPDIR)$(DELIM)external$(DELIM)subcmd
 CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)imu
 CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)drivers$(DELIM)lsm6dso
 
@@ -84,4 +82,12 @@ ifneq ($(CONFIG_NANO_APP_IMU),)
 IMU_COMMON_CSRCS = $(notdir $(wildcard ../../../common/imu/*.c))
 $(addsuffix $(SUFFIX)$(OBJEXT),$(filter $(IMU_COMMON_CSRCS),$(CSRCS) $(MAINSRC))): \
   CFLAGS += -include $(TOPDIR)$(DELIM)external$(DELIM)compat$(DELIM)common_prelude.h
+
+# The "imu" command's SHELL_CMD_REGISTER() in imu_stream.c makes this
+# program's main(); time_sync.c is not a main source, so its
+# SHELL_CMD_REGISTER(ntp, ...) makes z_shell_main_ntp(), which ../ntp's
+# main() calls (Z_SHELL_CMD_NAMED_MAIN, <zephyr/shell/shell.h> of the
+# compatibility layer).
+
+time_sync.c$(SUFFIX)$(OBJEXT): CFLAGS += -DZ_SHELL_CMD_NAMED_MAIN
 endif
