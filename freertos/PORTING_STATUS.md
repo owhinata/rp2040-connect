@@ -927,3 +927,8 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
   Zephyr 版での除算器の上積みは約 0.3 ポイント。NuttX 版は未確認（RESET の操作待ち）。
 - **新しい基準**: `freertos/build/baseline/zephyr/snapshot-rommem/image.bin`、`.../nuttx/snapshot-rommem/image.bin`。
 - README に入れること（未反映）: `zephyr/README`・`nuttx/README` にオプションの 1 行、ルートの README の性能の節の書き直し（測り直してから）。
+- 実機（NuttX 版、boot2 分周 2 + ROM の `memcpy`・`memset`、書き込み直後から 2 回、各 約 70 秒）: 起動、KV の読み出し、自動接続、
+  `cpu_active` 55.7%・55.9%、欠番 0、overruns 0、`dmesg` にエラーなし。変更前は 67.7〜67.9%（2026-11-14）、70.0%（2026-11-17、T24 の像）。
+- 3 版の送信中の `cpu_active`（2026-11-18、同じ AP と受信器、同じ手順）: Zephyr 49.0〜49.1%、NuttX 55.7〜55.9%、
+  FreeRTOS 41.7%（READY 割り込み + tick 1 ms、フックあり、`-Os`）。
+- 実機: NuttX 版（FreeRTOS 版へ戻すには RESET 2 回の操作が要る）。
