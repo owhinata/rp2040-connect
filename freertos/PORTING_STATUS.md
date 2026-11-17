@@ -573,3 +573,5 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
   送信のやり直し（`NINA_SEND_RETRY_MS` 1）と NTP の応答のポーリング（`time_sync.c:188`。時刻の精度に出る）。
 - F12 への注意: `time_sync.c` の `TIMER_BASE` が Pico SDK の定義と重なる。F13 への注意: `mqtt_min.c` は `-Wno-sign-compare`、
   `mqtt_min_sock.c` は NuttX 版の写しで足りる。
+- `cpu_active` の比較（ユーザーの決定、同日）: Zephyr 版の 22.5% は「FIFO の取得だけ」の値で、FreeRTOS 版の 27.5%（取得サービス
+  込み）とは範囲が違う。3 版の比較は**送信が入ってから**（CP-F4）同じ条件で測る。それまで追加の計測は入れない。
