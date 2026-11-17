@@ -274,7 +274,9 @@ Zephyr build stored, and the other way round. The API and the command are the Ze
   acquisition starts). If a garbage collection runs then, one 4 KiB erase (interrupts off 34-40 ms)
   happens during the measurement. There is one erase each time the sector being written fills:
   about once in 300 rewrites of `imu.session` (a 4-byte value + an 8-byte ATE; NuttX's NVS before
-  used about 38 bytes, about once in 100). Reads (`kv_store_get()`, loading the credentials) write
+  used about 38 bytes, about once in 100). On the board, one such erase during a measurement (6667 Hz)
+  overflowed the sensor's FIFO and the recovery from an overrun ran once (2026-11-17, once in 260
+  `kv set`; no batch missing at the receiver, the epoch advances by one). Reads (`kv_store_get()`, loading the credentials) write
   nothing, except that the settings delete a half-written item they find (only a name or only a
   value left by a power loss), as in the Zephyr build.
 - Power loss: NVS writes the data before the ATE with its CRC and repairs, at boot, a half-written
