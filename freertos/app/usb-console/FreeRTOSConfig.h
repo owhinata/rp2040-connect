@@ -64,6 +64,8 @@
 #define configQUEUE_REGISTRY_SIZE               0
 #define configUSE_EVENT_GROUPS                  1
 #define configUSE_STREAM_BUFFERS                1
+/* Pointer 0: the console of a task (freertos/drivers/shell/nano_console.h). */
+#define configNUM_THREAD_LOCAL_STORAGE_POINTERS 1
 
 /* The timer task also wakes the tasks that wait on the Pico SDK's locks and
  * sleeps when an interrupt handler releases them; its priority and stack

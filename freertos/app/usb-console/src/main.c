@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MIT */
-/* The USB console on the Pico SDK and the FreeRTOS kernel: a command line on
- * the USB CDC ACM port and a task that blinks the LED.
+/* The USB console on the Pico SDK and the FreeRTOS kernel: a shell on the
+ * USB CDC ACM port and a task that blinks the LED.
  */
 #include <stdbool.h>
 #include <stdint.h>
@@ -10,9 +10,17 @@
 #include "FreeRTOS.h"
 #include "task.h"
 #include "app.h"
+#include "app_log.h"
+#include "cli.h"
 #include "fault.h"
+#include "log_ram.h"
+#include "nano_console.h"
+#include "nano_shell.h"
+#include "nano_stdio.h"
 #include "priorities.h"
 #include "zephyr_compat.h"
+
+LOG_MODULE_REGISTER(usb_console, LOG_LEVEL_INF);
 
 /* Priorities and stacks (bytes): src/priorities_os.h and
  * common/compat/priorities.h.  The console is the Zephyr build's shell
@@ -29,8 +37,14 @@
  */
 #define CONSOLE_POLL_MS     50
 #define CONSOLE_PROMPT      "freertos:~$ "
+/* Characters taken from the USB code at a time (its receive buffer has 64). */
+#define CONSOLE_READ_SIZE   64
 
-struct cli console_cli;
+/* The USB console: the terminal of the USB session and the default console
+ * of the tasks that have none (freertos/drivers/shell/nano_console.h).
+ */
+static struct nano_console usb_console;
+static struct cli usb_cli;
 
 static StackType_t console_stack[CONSOLE_STACK_SIZE];
 static StaticTask_t console_tcb;
@@ -47,9 +61,27 @@ uint64_t app_run_time_us(void)
 	return time_us_64();
 }
 
-static void console_write(const char *text, size_t len)
+/* The USB console's terminal: the Pico SDK's USB CDC ACM driver, which
+ * drops the text while no terminal has the port open (DTR) and, when the
+ * terminal stops reading, waits up to 500 ms for room in its 64-byte
+ * buffer and then drops the rest until room comes again
+ * (PICO_STDIO_USB_STDOUT_TIMEOUT_US).
+ */
+static void usb_out(struct nano_console *con, const char *buf, size_t len)
 {
-	stdio_put_string(text, (int)len, false, false);
+	(void)con;
+	stdio_usb.out_chars(buf, (int)len);
+}
+
+static void cli_write(void *ctx, const char *text, size_t len)
+{
+	nano_console_write(ctx, text, len);
+}
+
+static void cli_execute(void *ctx, char *line)
+{
+	(void)ctx;
+	(void)nano_shell_execute(line);
 }
 
 /* Called by the Pico SDK's USB code when characters have arrived: from its
@@ -70,7 +102,8 @@ static void console_chars_available(void *param)
 }
 
 /* The record of the fatal error that ended the last run, once, at the first
- * connection of the terminal after the start ("fault" shows it again).
+ * connection of the terminal after the start ("fault" shows it again, and
+ * the RAM log has it, "dmesg").
  */
 static void console_banner(void)
 {
@@ -86,27 +119,30 @@ static void console_banner(void)
 
 static void console_main(void *arg)
 {
+	char buf[CONSOLE_READ_SIZE];
 	bool connected = false;
-	int c;
+	int n;
 
 	(void)arg;
 
-	cli_init(&console_cli, console_commands, console_command_count, CONSOLE_PROMPT,
-		 console_write);
-	stdio_set_chars_available_callback(console_chars_available, NULL);
+	nano_console_bind(NULL, &usb_console);
+	cli_init(&usb_cli, CONSOLE_PROMPT, cli_write, cli_execute, &usb_console);
+	stdio_usb.set_chars_available_callback(console_chars_available, NULL);
 
 	for (;;) {
 		/* The terminal has opened the port (DTR): show the prompt. */
 		if (stdio_usb_connected() != connected) {
 			connected = !connected;
 			if (connected) {
-				console_write("\r\n", 2);
+				cli_write(&usb_console, "\r\n", 2);
 				console_banner();
-				cli_prompt(&console_cli);
+				cli_prompt(&usb_cli);
 			}
 		}
-		while ((c = stdio_getchar_timeout_us(0)) >= 0) {
-			cli_input(&console_cli, (char)c);
+		while ((n = stdio_usb.in_chars(buf, sizeof(buf))) > 0) {
+			for (int i = 0; i < n; i++) {
+				cli_input(&usb_cli, buf[i]);
+			}
 		}
 		/* Until characters arrive; the timeout is for noticing the terminal. */
 		ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(CONSOLE_POLL_MS));
@@ -130,13 +166,21 @@ static void heartbeat_main(void *arg)
 
 int main(void)
 {
-	/* First: the paint for the interrupt stack's high-water mark, and the
-	 * record the last run may have left.
+	/* First: the paint for the interrupt stack's high-water mark, the RAM
+	 * log kept across the restart, and the record the last run may have
+	 * left (fault_boot() also puts it into the RAM log).
 	 */
 	irq_stack_paint();
+	log_ram_initialize();
 	fault_boot();
 
+	/* The USB CDC ACM port, and the stdio of the tasks on the consoles
+	 * (freertos/drivers/shell/nano_stdio.h).
+	 */
 	stdio_init_all();
+	nano_console_init(&usb_console, "usb", usb_out, NULL);
+	nano_console_set_default(&usb_console);
+	nano_stdio_init(&stdio_usb);
 
 	/* heap_4 sets up its heap at the first allocation and reports no free
 	 * space until then ("free"). Nothing else here allocates from it.
@@ -156,6 +200,8 @@ int main(void)
 	xTaskCreateStatic(heartbeat_main, "heartbeat", HEARTBEAT_STACK_SIZE, NULL,
 			  HEARTBEAT_PRIORITY, heartbeat_stack, &heartbeat_tcb);
 
+	/* The Zephyr build's main() logs the same line. */
+	LOG_INF("USB console started");
 	vTaskStartScheduler();
 
 	for (;;) {

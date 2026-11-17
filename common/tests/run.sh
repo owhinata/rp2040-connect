@@ -85,6 +85,16 @@ run nina_dns "${flags[@]}" -D_DEFAULT_SOURCE -I"$nina" tests/nina_dns.c "$nina/n
 # The shell's subcommand dispatch with the Zephyr shell's output (shell/subcmd.c: the kv, nina,
 # ... tables of the NuttX build).
 run subcmd "${flags[@]}" -Ishell tests/subcmd.c shell/subcmd.c
+# The same with the copy of Zephyr's fnmatch() (compat/subsys/portability, which the FreeRTOS
+# build links: newlib has none) instead of the host's.
+run subcmd_fnmatch "${flags[@]}" -Ishell -Icompat tests/subcmd.c shell/subcmd.c \
+    compat/subsys/portability/posix/c_lib_ext/fnmatch.c
+# The copies of Zephyr's getopt (compat/lib/utils/getopt, for the FreeRTOS build): short and long
+# options, permutation, errors, and two states parsing two command lines interleaved, as two
+# shell sessions do.
+run sys_getopt "${flags[@]}" -D_DEFAULT_SOURCE -DCONFIG_GETOPT_LONG=1 -Itests/kv_fakes \
+    -Itests/zephyr_fakes -Icompat -Ilog -Icompat/lib/utils/getopt tests/sys_getopt.c \
+    compat/lib/utils/getopt/getopt.c compat/lib/utils/getopt/getopt_long.c
 # The RAM log's ring (log/log_ring.c): the retained ring, dmesg pieces, line prefix and rate
 # limit.
 run log_ring "${flags[@]}" -Ilog tests/log_ring.c log/log_ring.c
@@ -147,10 +157,17 @@ if [[ -f $ztree/VERSION ]]; then
         compat/zephyr/kvss/nvs.h:include/zephyr/kvss/nvs.h \
         compat/zephyr/settings/settings.h:include/zephyr/settings/settings.h \
         compat/zephyr/sys/slist.h:include/zephyr/sys/slist.h \
-        compat/zephyr/sys/list_gen.h:include/zephyr/sys/list_gen.h; do
+        compat/zephyr/sys/list_gen.h:include/zephyr/sys/list_gen.h \
+        compat/subsys/portability/posix/c_lib_ext/fnmatch.c:subsys/portability/posix/c_lib_ext/fnmatch.c \
+        compat/zephyr/posix/fnmatch.h:include/zephyr/posix/fnmatch.h \
+        compat/lib/utils/getopt/getopt.c:lib/utils/getopt/getopt.c \
+        compat/lib/utils/getopt/getopt_long.c:lib/utils/getopt/getopt_long.c \
+        compat/lib/utils/getopt/getopt_common.h:lib/utils/getopt/getopt_common.h \
+        compat/lib/utils/getopt/README:lib/utils/getopt/README \
+        compat/zephyr/sys/sys_getopt.h:include/zephyr/sys/sys_getopt.h; do
         cmp "${pair%%:*}" "$ztree/${pair#*:}"
     done
-    printf 'ok  zephyr_copies (15 files, Zephyr v4.5.0)\n'
+    printf 'ok  zephyr_copies (22 files, Zephyr v4.5.0)\n'
 else
     printf 'skip zephyr_copies (no zephyr/zephyr: run west update)\n'
 fi

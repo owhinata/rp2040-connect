@@ -153,6 +153,44 @@ int hex2char(uint8_t x, char *c);
 size_t bin2hex(const uint8_t *buf, size_t buflen, char *hex, size_t hexlen);
 size_t hex2bin(const char *hex, size_t hexlen, uint8_t *buf, size_t buflen);
 
+/* sys_gcd(): the greatest common divisor, unsigned (Zephyr's, which the
+ * copy of Zephyr's getopt_long.c in common/compat/lib/utils/getopt uses).
+ */
+
+#define sys_gcd(a, b) \
+  ((((__typeof__(a))-1) < 0) ? sys_gcd_s(a, b) : sys_gcd_u(a, b))
+
+static inline uint32_t sys_gcd_u(uint32_t a, uint32_t b)
+{
+  uint32_t c;
+
+  if (a == 0)
+    {
+      return b;
+    }
+
+  if (b == 0)
+    {
+      return a;
+    }
+
+  c = a % b;
+  while (c != 0)
+    {
+      a = b;
+      b = c;
+      c = a % b;
+    }
+
+  return b;
+}
+
+static inline uint32_t sys_gcd_s(int32_t a, int32_t b)
+{
+  return sys_gcd_u(a < 0 ? -(uint32_t)a : (uint32_t)a,
+                   b < 0 ? -(uint32_t)b : (uint32_t)b);
+}
+
 /* IS_ENABLED(CONFIG_X): 1 if CONFIG_X is defined as 1 (a NuttX "y"), else
  * 0, also when it is not defined at all; usable in C expressions and #if.
  * Zephyr's util_macro.h / util_internal.h.

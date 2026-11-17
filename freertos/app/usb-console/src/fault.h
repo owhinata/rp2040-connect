@@ -21,8 +21,9 @@
 
 /* At the start, before anything else can fail: takes the record the last
  * run left (in RAM, or, if that fails its check, the scratch registers),
- * keeps it for fault_last(), and clears both so that the next start does
- * not see it again.
+ * keeps it for fault_last(), writes its lines into the RAM log ("dmesg";
+ * call log_ram_initialize() first), and clears both so that the next start
+ * does not see it again.
  */
 void fault_boot(void);
 

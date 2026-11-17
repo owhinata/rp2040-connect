@@ -299,6 +299,20 @@ int z_shell_cmd_main(const struct shell_static_entry *root, int argc,
 #  define Z_SHELL_CMD_MAIN(syntax) main
 #endif
 
+/* With Z_SHELL_CMD_ROOT_GLOBAL (the FreeRTOS build defines it for every
+ * source) the registration makes no entry function: the root entry itself,
+ * const struct shell_static_entry z_shell_root_<syntax>, is global, and the
+ * build's table of commands lists it (the OS's shell runs it with
+ * z_shell_cmd_main()).
+ */
+
+#ifdef Z_SHELL_CMD_ROOT_GLOBAL
+#define SHELL_CMD_ARG_REGISTER(syntax, subcmd, help, handler, mandatory, \
+                               optional) \
+  extern const struct shell_static_entry z_shell_root_##syntax; \
+  const struct shell_static_entry z_shell_root_##syntax = \
+    SHELL_CMD_ARG(syntax, subcmd, help, handler, mandatory, optional)
+#else
 #define SHELL_CMD_ARG_REGISTER(syntax, subcmd, help, handler, mandatory, \
                                optional) \
   static const struct shell_static_entry z_shell_root_##syntax = \
@@ -308,6 +322,7 @@ int z_shell_cmd_main(const struct shell_static_entry *root, int argc,
   { \
     return z_shell_cmd_main(&z_shell_root_##syntax, argc, argv); \
   }
+#endif
 
 #define SHELL_CMD_REGISTER(syntax, subcmd, help, handler) \
   SHELL_CMD_ARG_REGISTER(syntax, subcmd, help, handler, 0, 0)

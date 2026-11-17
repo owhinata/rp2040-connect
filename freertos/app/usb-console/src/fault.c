@@ -13,8 +13,11 @@
 #include "FreeRTOS.h"
 #include "task.h"
 #include "app.h"
+#include "app_log.h"
 #include "fault.h"
 #include "os_clock.h"
+
+LOG_MODULE_REGISTER(fault);
 
 /* The RP2040's SRAM, where stacks and the kernel's objects are. */
 #define RAM_START 0x20000000u
@@ -278,6 +281,24 @@ void __attribute__((naked, noreturn)) isr_hardfault(void)
 
 /* The record ----------------------------------------------------------------*/
 
+/* The record of the last run into the RAM log, once, at the start (the
+ * Zephyr and NuttX builds write their report there when the error happens;
+ * this build cannot, see fault.h): <err> lines of the module "fault" with
+ * this start's time, the record's lines as "fault" prints them.
+ */
+static void fault_log(void)
+{
+	char line[128];
+
+	if (!last_valid) {
+		return;
+	}
+	LOG_ERR("The last run ended with a fatal error:");
+	for (unsigned int i = 0; fault_record_line(&last, i, line, sizeof(line)) > 0; i++) {
+		LOG_ERR("%s", line);
+	}
+}
+
 void fault_boot(void)
 {
 	uint32_t s[FAULT_SCRATCH_WORDS];
@@ -295,6 +316,7 @@ void fault_boot(void)
 	for (int i = 0; i < FAULT_SCRATCH_WORDS; i++) {
 		watchdog_hw->scratch[i] = 0;
 	}
+	fault_log();
 }
 
 const struct fault_record *fault_last(void)

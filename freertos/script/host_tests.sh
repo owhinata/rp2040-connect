@@ -72,3 +72,39 @@ else
     timeout 120 "$out/compat_selftest" >"$out/log" || { cat "$out/log"; exit 1; }
 fi
 printf 'ok  compat_selftest (FreeRTOS POSIX port)\n'
+
+# The shell (freertos/tests/shell): the line editor, and two sessions at once on two consoles
+# (each task's stdout, the shared zshell.c and subcmd.c, the copies of Zephyr's fnmatch() and
+# getopt), on the same kernel and layer objects.
+shinc=(-Itests/shell -Idrivers/shell -I../common/shell -I../common/compat/lib/utils/getopt
+       -DZ_SHELL_CMD_ROOT_GLOBAL -DCONFIG_GETOPT_LONG=1 -U_FORTIFY_SOURCE -ffunction-sections
+       -fdata-sections)
+shobjs=()
+for src in drivers/shell/cli.c drivers/shell/getopt_state.c drivers/shell/nano_console.c \
+           drivers/shell/nano_shell.c drivers/shell/shell_argv.c drivers/libc/stdio_wrap.c \
+           tests/shell/main.c ../common/shell/zshell.c ../common/shell/subcmd.c \
+           ../common/compat/subsys/portability/posix/c_lib_ext/fnmatch.c \
+           ../common/compat/lib/utils/getopt/getopt.c ../common/compat/lib/utils/getopt/getopt_long.c; do
+    obj="$out/shell_$(basename "$src" .c).o"
+    alloc=()
+    case $src in
+        *zshell.c|*nano_console.c) alloc=(-Dcalloc=test_calloc -Dmalloc=test_malloc -Dfree=test_free) ;;
+    esac
+    cc "${flags[@]}" "${strict[@]}" "${shinc[@]}" "${inc[@]}" "${alloc[@]}" -c "$src" -o "$obj"
+    shobjs+=("$obj")
+done
+wraps=()
+for f in printf vprintf puts putchar fputs fwrite fputc putc fprintf vfprintf fflush; do
+    wraps+=("-Wl,--wrap=$f")
+done
+kernobjs=()
+for o in "${objs[@]}"; do
+    [[ $(basename "$o") == zephyr_selftest.o || $(basename "$o") == main.o ]] || kernobjs+=("$o")
+done
+cc "${flags[@]}" -Wl,--gc-sections "${wraps[@]}" "${kernobjs[@]}" "${shobjs[@]}" -o "$out/shell"
+if (( verbose )); then
+    timeout 60 "$out/shell"
+else
+    timeout 60 "$out/shell" >"$out/log" 2>&1 || { cat "$out/log"; exit 1; }
+fi
+printf 'ok  shell (two sessions, FreeRTOS POSIX port)\n'

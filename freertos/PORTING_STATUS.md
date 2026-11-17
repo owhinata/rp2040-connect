@@ -394,3 +394,37 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
 - `freertos/PORTING_*.md` は Git 管理にする（以前の「未追跡のまま」を変更）。タスクの commit に STATUS の更新を含める。
   `CLAUDE.md` は未追跡のまま。
 - 残り: `freertos/README`（360 行）を使い方だけに整理する。F03 が戻ってからメインがやる。
+
+## あとで見直すこと: 時分割のフック（2026-11-17、ユーザーの意向）
+
+- `zephyr_os_sched.h` のトレースマクロ（横取りされたタスクが続きを走る、切り替えのたびにスライスを数え直す）は、
+  FreeRTOS 標準の動きで問題がなければ戻すことを検討する。カーネルの内部の名前に依存するのが弱点。
+- 判断の材料: 全機能が動いた時点（CP-F4 か CP-F5）で、フックあり・なしの両方で実機を測って比べる（欠番、FIFO のオーバーラン、
+  `cpu_active`、時刻同期の残差、Telnet・シェルの応答）。そのために、フックをビルドのオプションで切れるようにする
+  （F03 のあとでメインが入れる。既定はあり）。なしのときは自己診断の `timeslice`・`timeslice_preempt` の期待が変わる。
+
+## F03 の記録（2026-11-17）
+
+- 実装: コンソールを共有の `common/shell/zshell.c`（Zephyr のシェル API）に載せた。`freertos/drivers/shell/`
+  （`nano_console`: タスクごとの出力先、`nano_stdio`: SDK の stdio ドライバーの差し替え、`nano_shell`、`cli`（移動）、
+  `shell_argv`（Zephyr の写し）、`getopt_state`）、`drivers/libc/stdio_wrap.c`（newlib の FILE 関数の `--wrap`）、
+  `drivers/log/log_ram.c`（共有の `log_ring`、8 KB、再起動をまたいで残る）、`dmesg`。Zephyr の fnmatch・getopt を
+  無改変で `common/compat/` に写した（`zephyr_copies` は 22 本）。`shell.h` に `Z_SHELL_CMD_ROOT_GLOBAL`。
+- 計画との違い: 出力先の切り替えは「`_write` の差し替え」ではなく、SDK の stdio ドライバーの差し替えと `--wrap`
+  （`printf` は `_write` を通らないため）。`PICO_STDOUT_MUTEX=0`。2 本目（F11 の Telnet）は `nano_console_init()` と
+  `nano_console_bind()` で足す。
+- 変わった動作（Zephyr に合わせた）: `help` の書式、`x: command not found`、引数の数の誤りの表示、`error N` を出さない、
+  履歴（上下の矢印、512 B）、1 行 511 文字・30 語、引用符と `\`、`free` に `malloc:` の行。
+- メインが追加: ビルドのオプション `-DNANO_SCHED_ZEPHYR=OFF`（時分割のフックを切る。既定 ON。`selftest` の
+  `timeslice`・`timeslice_preempt` は skipped になる）。README（日英）を使い方だけに書き直した（360 → 135 行）。
+- メインが確かめたこと: Zephyr の像が基準と一致、NuttX の像が snapshot-t24 と一致、FreeRTOS のビルド（既定、selftest、
+  selftest+フックなし）が警告 0、整形、`host_tests.sh`。ソースは読んでいない（報告と実機の動作で判断）。
+- 実機: `flash.sh` の `bootsel`（F03 の像からも）、`help`（13 行）、引数の誤り、`command not found`、`dmesg`、
+  閉じていない引用符、履歴（上矢印）と左右の矢印が行に入らないこと、`devmem 30000000` → 再起動 → バナー・`fault`・
+  `dmesg` の `<err> fault:` の 6 行、`reboot` 後も RAM ログが残ること、端末を閉じたまま `ps` を 5 回送っても止まらないこと。
+  `ps`: `console` の空き 1788〜1900 B（3072 中）、アイドルの `cpu_active` 2.0〜2.1%（F02 の 3.0% から下がった。機能は
+  同じなので、配置で動く範囲とみられる）。フックなしのビルドで `selftest` が `0 of 22 tests failed`（2 項目 skipped）。
+- 相談中: コマンド名を Zephyr にそろえるか（案: `kernel version|uptime|sleep|reboot|ps|thread stacks` を足し、今の
+  短い名前は別名で残す。`kv_transfer.py` が送る `kernel version` も通る）。
+- 残り: 文書の本数（共有のテスト 33、NuttX 側 44）は F15 で。異常停止の行の時刻は次の起動の時刻、モジュール名は
+  `fault`（Zephyr 版は `os`）。USB の送信バッファー 64 B は CP-F2 で計測中に確かめる。

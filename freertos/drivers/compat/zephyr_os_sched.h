@@ -60,6 +60,12 @@ extern void *volatile z_sched_switched_out;
 /* The application's: the running task's time slice starts again. */
 void tick_slice_restart(void);
 
+/* NANO_SCHED_FREERTOS (the build option -DNANO_SCHED_ZEPHYR=OFF) leaves the
+ * macros out: FreeRTOS's own choice, and the tick hook's slices are not
+ * restarted at a switch.
+ */
+#ifndef NANO_SCHED_FREERTOS
+
 #define traceTASK_SWITCHED_OUT()                                                                   \
 	do {                                                                                       \
 		z_sched_switched_out = pxCurrentTCB;                                               \
@@ -78,6 +84,8 @@ void tick_slice_restart(void);
 			tick_slice_restart();                                                      \
 		}                                                                                  \
 	} while (0)
+
+#endif /* NANO_SCHED_FREERTOS */
 
 #endif /* __ASSEMBLER__ */
 

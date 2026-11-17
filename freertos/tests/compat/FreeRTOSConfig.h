@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MIT */
 /* FreeRTOS kernel configuration of the host test of the Zephyr compatibility
- * layer (freertos/tests/compat, the FreeRTOS POSIX port): the board's
+ * layer (freertos/tests/compat, the FreeRTOS POSIX port; the shell's test,
+ * freertos/tests/shell, uses it as well): the board's
  * (freertos/app/usb-console/FreeRTOSConfig.h) where the layer depends on it
  * (time slices by the tick hook, two task notifications, mutexes, static and
  * dynamic allocation, the priorities, the length of task names), with a
@@ -34,6 +35,9 @@
 #define configQUEUE_REGISTRY_SIZE             0
 #define configUSE_EVENT_GROUPS                0
 #define configUSE_STREAM_BUFFERS              0
+/* Pointer 0: the console of a task (freertos/drivers/shell/nano_console.h,
+ * the host test of freertos/tests/shell). */
+#define configNUM_THREAD_LOCAL_STORAGE_POINTERS 1
 #define configUSE_TIMERS                      0
 
 #define configMINIMAL_STACK_SIZE              256

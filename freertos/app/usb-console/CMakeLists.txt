@@ -28,9 +28,17 @@ include(${CMAKE_CURRENT_LIST_DIR}/../../drivers/compat/compat.cmake)
 # (freertos/script/build.sh -DNANO_SELFTEST=ON).
 option(NANO_SELFTEST "Build the selftest command" OFF)
 
+# Zephyr's choice among the tasks of one priority (a preempted task goes on;
+# freertos/drivers/compat/zephyr_os_sched.h).  OFF leaves FreeRTOS's own
+# choice, for comparing the two (freertos/script/build.sh
+# -DNANO_SCHED_ZEPHYR=OFF).  Defined for every target, the kernel included.
+option(NANO_SCHED_ZEPHYR "Keep a preempted task's turn, as Zephyr does" ON)
+if(NOT NANO_SCHED_ZEPHYR)
+  add_compile_definitions(NANO_SCHED_FREERTOS=1)
+endif()
+
 add_executable(usb-console
   src/main.c
-  src/cli.c
   src/commands.c
   src/fault.c
   src/idle.c

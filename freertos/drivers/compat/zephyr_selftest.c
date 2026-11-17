@@ -1143,6 +1143,12 @@ static void test_timeslice(void)
 	bool ok;
 	int n;
 
+	/* These test Zephyr's rules of zephyr_os_sched.h. */
+	if (IS_ENABLED(NANO_SCHED_FREERTOS)) {
+		st_printf("  skipped: built with FreeRTOS's own choice of the next task\n");
+		return;
+	}
+
 	/* Two tasks of the same priority (above the caller) that never block
 	 * take turns every 20 ms.  Both are started before either runs.
 	 */
@@ -1203,6 +1209,12 @@ static void test_timeslice_preempt(void)
 	struct helper hb;
 	struct helper hk;
 	bool ok;
+
+	/* These test Zephyr's rules of zephyr_os_sched.h. */
+	if (IS_ENABLED(NANO_SCHED_FREERTOS)) {
+		st_printf("  skipped: built with FreeRTOS's own choice of the next task\n");
+		return;
+	}
 
 	/* Zephyr (one CPU): a thread preempted by a higher one stays at the head
 	 * of its priority's queue and goes on when the higher one blocks, and
