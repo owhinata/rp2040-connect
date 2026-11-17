@@ -1,11 +1,12 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-/* Host test of the ported LSM6DSO driver (nuttx/drivers/lsm6dso/lsm6dso.c)
- * on ST's real lsm6dso_reg.c, the stmemsc glue and the Zephyr
- * compatibility layer (compat/zephyr_i2c.c, zephyr_device.c), against a
- * fake LSM6DSOX behind a fake NuttX I2C master (register banks,
- * auto-increment, software reset, FIFO, timestamp) and fake kernel
- * services.  It checks what the driver must do as the Zephyr build's
- * drivers/lsm6dso/lsm6dso.c does:
+/* Host test of the LSM6DSO driver (common/drivers/lsm6dso/lsm6dso.c, shared
+ * with the Zephyr build, with the NuttX build's device:
+ * drivers/lsm6dso/lsm6dso_instance.h) on ST's real lsm6dso_reg.c, the
+ * stmemsc glue and the Zephyr compatibility layer (compat/zephyr_i2c.c,
+ * zephyr_device.c), against a fake LSM6DSOX behind a fake NuttX I2C master
+ * (register banks, auto-increment, software reset, FIFO, timestamp) and
+ * fake kernel services.  It checks what the driver must do as in the
+ * Zephyr build:
  *
  * - init: the log lines and their order, the register writes in order
  *   (user bank, I3C off, software reset and its 100 us wait, power modes,
@@ -103,61 +104,36 @@ static void event(const char *fmt, ...)
 	strcat(events, " ");
 }
 
-void lsm6dso_os_mutex_init(lsm6dso_mutex_t *mutex)
-{
-	mutex->depth = 0;
-}
+/* The driver's waits and its cycle counter (<zephyr/kernel.h>; on NuttX in
+ * compat/zephyr_kernel.c and the layer's k_cycle_get_32()).  Its mutexes
+ * and spin lock are those of the fake kernel (tests/zephyr_fakes: a mutex
+ * counts its depth, a spin lock must not be taken twice).
+ * k_cyc_to_ns_floor64() is the layer's own (a cycle is 1 us).
+ */
 
-void lsm6dso_os_mutex_lock(lsm6dso_mutex_t *mutex)
-{
-	mutex->depth++;
-}
-
-void lsm6dso_os_mutex_unlock(lsm6dso_mutex_t *mutex)
-{
-	assert(mutex->depth > 0);
-	mutex->depth--;
-}
-
-lsm6dso_spinlock_key_t lsm6dso_os_spin_lock(lsm6dso_spinlock_t *lock)
-{
-	assert(!lock->locked);
-	lock->locked = 1;
-	return 7;
-}
-
-void lsm6dso_os_spin_unlock(lsm6dso_spinlock_t *lock, lsm6dso_spinlock_key_t key)
-{
-	assert(lock->locked && key == 7);
-	lock->locked = 0;
-}
-
-void lsm6dso_os_busy_wait_us(uint32_t us)
+void k_busy_wait(uint32_t us)
 {
 	event("busy%u", us);
 }
 
-void lsm6dso_os_sleep_ms(int32_t ms)
+int32_t k_msleep(int32_t ms)
 {
 	event("sleep%dms", ms);
 	slept_us += (int64_t)ms * 1000;
+	return 0;
 }
 
-void lsm6dso_os_sleep_us(int32_t us)
+int32_t k_usleep(int32_t us)
 {
 	slept_us += us;
+	return 0;
 }
 
 static uint32_t cycles;
 
-uint32_t lsm6dso_os_cycle_get_32(void)
+uint32_t k_cycle_get_32(void)
 {
 	return cycles += 250;
-}
-
-uint64_t lsm6dso_os_cyc_to_ns_floor64(uint32_t c)
-{
-	return (uint64_t)c * 1000U;
 }
 
 /* Fake LSM6DSOX ------------------------------------------------------------*/

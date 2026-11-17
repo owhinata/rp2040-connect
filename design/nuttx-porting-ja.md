@@ -559,8 +559,11 @@ Zephyr 版の `i2c` コマンド（Zephyr のシェル）は移さず、NuttX �
 
 ## LSM6DSOX（IMU）
 
-ドライバーは `nuttx/drivers/lsm6dso/lsm6dso.c` で、Zephyr 版の `drivers/lsm6dso/lsm6dso.c`（FIFO・校正・ゼロ点の
-変更を含む Zephyr の LSM6DSO ドライバー）の OS を呼ぶ部分だけを置き換えた写しです。レジスターの操作は ST の
+ドライバーは Zephyr 版と同じファイル `common/drivers/lsm6dso/lsm6dso.c`・`lsm6dso.h`（FIFO・校正・ゼロ点の変更を
+含む Zephyr の LSM6DSO ドライバー）です。OS を呼ぶ部分は Zephyr の名前のまま互換層が提供し、NuttX 版のものは
+末尾のデバイスだけです（`nuttx/drivers/lsm6dso/lsm6dso_instance.h`。ボードの値を使う `DEVICE_DT_DEFINE()` 1 つで、
+Zephyr 版の `zephyr/app/usb-console/drivers/lsm6dso/lsm6dso_instance.h` のデバイスツリーのインスタンス化のマクロの
+代わり）。レジスターの操作は ST の
 `lsm6dso_reg.c`（lsm6dso-pid v3.2.2。`script/setup.sh` が `nuttx/stmemsc/` に取得。Zephyr の hal_st のものと
 LF に直して同一）で行います。FIFO のストリーム（INT1 の割り込みと RTIO）は Zephyr 版と同じファイル
 （`common/drivers/lsm6dso/`）で動かしています（下）。それを使う取得サービス（`imu start` など）は次の節です。
@@ -974,21 +977,22 @@ Zephyr 版の `CMakeLists.txt` と NuttX 版の Makefile（`apps/imu/Makefile`�
 使うもの（`common/drivers/` の FIFO の設定とストリーム、単発取得の RTIO 版、NINA の Wi-Fi、sensor シェルと、
 `common/imu/` の取得サービス・時刻同期・校正・MQTT・Wi-Fi のプロファイル）は、NuttX 版では互換層の上で動きます。NuttX 版は `common/` の
 各ファイルに前置きヘッダー（`nuttx/drivers/compat/common_prelude.h`）を付けてコンパイルし、版ごとに違う数行は
-OS ごとのヘッダー（`sensor_shell_os.h`、`wifi_profile_os.h`。Zephyr 版は `zephyr/app/usb-console/` の下、NuttX 版は
-`nuttx/apps/` の下）に出しています（`nuttx/drivers/README_ja.md` の「Zephyr の API の互換層」）。
+OS ごとのヘッダー（`sensor_shell_os.h`、`wifi_profile_os.h`、`lsm6dso_instance.h`。Zephyr 版は `zephyr/app/usb-console/`
+の下、NuttX 版は `nuttx/apps/` と `nuttx/drivers/lsm6dso/` の下）に出しています（`nuttx/drivers/README_ja.md` の
+「Zephyr の API の互換層」）。
 
 | 置き場所 | 内容 |
 |---|---|
 | `common/imu/` | `imu_stream.c`、`imu_raw_{batch,packet,queue,status,time}`、`imu_tick_clock`、`time_sync.[ch]`、`time_offset`、`imu_cal_codec.c`、`imu_cal.[ch]`、`imu_raw_mqtt.[ch]`、`wifi_profile.[ch]`、`kv_store.h` |
-| `common/drivers/lsm6dso/` | `lsm6dso_{fifo,cal,zero,fifo_decoder,fifo_hw,fifo_irq}`、`lsm6dso_stream.c`、`lsm6dso_compat.c`、`lsm6dso_fifo_packet.h`、`lsm6dso_fifo_stats.h`、`lsm6dso_attributes.h` |
+| `common/drivers/lsm6dso/` | `lsm6dso.[ch]`（ドライバー本体。末尾のデバイスは版ごとの `lsm6dso_instance.h`）、`lsm6dso_{fifo,cal,zero,fifo_decoder,fifo_hw,fifo_irq}`、`lsm6dso_stream.c`、`lsm6dso_compat.c`、`lsm6dso_fifo_packet.h`、`lsm6dso_fifo_stats.h`、`lsm6dso_attributes.h` |
 | `common/drivers/nina/` | `nina_net.c` |
 | `common/drivers/sensor_shell/` | `sensor_shell.c` |
 | `common/drivers/i2c_dw/` | `i2c_dw_rp2040_commands.[ch]` |
-| `common/tests/` | 上のファイルを対象にするテスト 14 本（`common/tests/run.sh` が実行し、両方の版の `host_tests.sh` が最初に呼ぶ）。`stream_stop.c` は `../drivers/lsm6dso/lsm6dso_stream.c` を読み込む |
-| `common/tests/fakes/` | テスト用の Zephyr のヘッダーと ST のヘッダーの代わり（`zephyr/drivers/sensor.h`、`zephyr/drivers/sensor_clock.h`、`zephyr/drivers/i2c.h`、`zephyr/rtio/rtio.h`、`lsm6dso_reg.h`）と、`lsm6dso_stream.c` が読む `lsm6dso.h` の代わり（中身はインクルードガードだけ。`stream_stop.c` が必要な定義を自分で置く） |
+| `common/tests/` | 上のファイルを対象にするテスト 14 本（`common/tests/run.sh` が実行し、両方の版の `host_tests.sh` が最初に呼ぶ）。`stream_stop.c` は `../drivers/lsm6dso/lsm6dso_stream.c` を読み込む（先に `lsm6dso.h` のインクルードガードを定義するので、そのヘッダーの中身は使わない。`stream_stop.c` が必要な定義を自分で置く） |
+| `common/tests/fakes/` | テスト用の Zephyr のヘッダーと ST のヘッダーの代わり（`zephyr/drivers/sensor.h`、`zephyr/drivers/sensor_clock.h`、`zephyr/drivers/i2c.h`、`zephyr/rtio/rtio.h`、`lsm6dso_reg.h`） |
 
 `common/` のソースを対象にするテストのうち、NuttX 版の互換層と偽のカーネル（`nuttx/tests/zephyr_fakes/` など）で
-動かすもの（`imu_cal`、`imu_raw_mqtt`、`sensor_shell`）は `nuttx/tests/` にあり、`nuttx/script/host_tests.sh` が
+動かすもの（`lsm6dso_driver`、`imu_cal`、`imu_raw_mqtt`、`sensor_shell`）は `nuttx/tests/` にあり、`nuttx/script/host_tests.sh` が
 前置きヘッダーを付けてビルドします。
 
 次のファイルは Zephyr の写しです。Zephyr 版を直したときは、写しにも同じ変更を入れます。
@@ -1049,8 +1053,8 @@ Zephyr のフラグへの変換、`IC_DATA_CMD` に書く語の列（`i2c` ツ�
 センサーのレジスターの読み書き、3 つのメッセージなど。前の転送の向きが次の転送の最初の RESTART に効くことを
 含めて、転送を続けて流す）、`IC_CON` の値とレジスターの配置を確かめます。
 
-`nuttx/tests/lsm6dso_driver.c` も NuttX 版だけのテストです。`drivers/lsm6dso/lsm6dso.c` を、ST の本物の
-`lsm6dso_reg.c`、stmemsc の層、互換層（`drivers/compat`）、ボードの `src/nano_lsm6dso.c` と一緒にビルドし、
+`nuttx/tests/lsm6dso_driver.c` も NuttX 版だけのテストです。`common/drivers/lsm6dso/lsm6dso.c`（NuttX 版の
+`lsm6dso_instance.h` と）を、ST の本物の `lsm6dso_reg.c`、stmemsc の層、互換層（`drivers/compat`）、ボードの `src/nano_lsm6dso.c` と一緒にビルドし、
 偽の I2C マスターの先の偽の LSM6DSOX（レジスターのバンク、アドレスの自動増加、ソフトウェアリセット、FIFO、
 タイムスタンプ）に対して動かします。偽物のヘッダーは `nuttx/tests/lsm6dso_fakes/`（ボードの `board.h` は本物を
 読みます）。確かめるのは、初期化のログの文と順序、書き込むレジスターと値の順序（リセット後の 100 µs を
@@ -1058,7 +1062,9 @@ Zephyr のフラグへの変換、`IC_DATA_CMD` に書く語の列（`i2c` ツ�
 アドレス・速さ（100 kHz と `i2c_configure()` の後の値）・メッセージの形、単発取得の読むレジスターと換算
 （`lsm6dso_cal.c` の結果と物理量、`val1`・`val2` の符号、1 軸と 3 軸）、属性（ODR の段、m/s² と rad/s の
 丸め、受け付けない値とチャネル、`-EBUSY`）、FIFO の開始・読み出し・一時停止・停止と統計、タイムスタンプの
-読み取り、`lsm6dso_cal_zero()` です。FIFO のストリームも、`lsm6dso_stream.c`・`lsm6dso_fifo_irq.c`・
+読み取り、`lsm6dso_cal_zero()` です。ドライバーの待ち（`k_busy_wait()`、`k_msleep()`、`k_usleep()`）とサイクル
+カウンター（`k_cycle_get_32()`）はテストの偽物で、待ちをレジスターの書き込みの列の中に記録し、眠った時間を
+足し上げます。ミューテックスとスピンロックは偽のカーネルのものです。FIFO のストリームも、`lsm6dso_stream.c`・`lsm6dso_fifo_irq.c`・
 `lsm6dso_compat.c`・デコーダーと互換層（ワーク、RTIO、`gpio0`、既定の iodev とデコーダー）を、偽のカーネル
 （`nuttx/tests/zephyr_fakes/`。1 スレッドで、ワークキューとタイマーはテストが回す）と、偽のセンサーの
 ウォーターマークに従う偽の INT1 で動かし、ストリームの開始（レジスター、INT1 の割り込み）、INT1 のエッジと

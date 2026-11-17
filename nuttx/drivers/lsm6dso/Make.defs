@@ -1,30 +1,30 @@
 ############################################################################
 # nuttx/drivers/lsm6dso/Make.defs
 #
-# The LSM6DSOX driver: lsm6dso.c (a port of the Zephyr build's
-# drivers/lsm6dso/lsm6dso.c), its kernel services (lsm6dso_os.c), the ST
+# The LSM6DSOX driver: lsm6dso.c (the Zephyr build's driver, on the
+# compatibility layer's kernel, device, sensor and I2C calls), the ST
 # glue (stmemsc_i2c.c, stmemsc_mdelay.c), the OS-independent parts
 # (lsm6dso_fifo_hw.c, lsm6dso_fifo.c, lsm6dso_cal.c, lsm6dso_zero.c), the
 # FIFO stream (lsm6dso_stream.c, lsm6dso_fifo_irq.c, lsm6dso_fifo_decoder.c,
 # lsm6dso_compat.c), and ST's register driver
 # lsm6dso_reg.c, which script/setup.sh puts in nuttx/stmemsc (not in Git;
 # built through st_lsm6dso_reg.c, which includes it).  The files shared
-# with the Zephyr build (lsm6dso_fifo_hw, lsm6dso_fifo, lsm6dso_cal,
-# lsm6dso_zero, lsm6dso_fifo_decoder, lsm6dso_stream.c, lsm6dso_fifo_irq,
-# lsm6dso_compat.c and the headers lsm6dso_fifo_packet.h,
+# with the Zephyr build (lsm6dso.[ch], lsm6dso_fifo_hw, lsm6dso_fifo,
+# lsm6dso_cal, lsm6dso_zero, lsm6dso_fifo_decoder, lsm6dso_stream.c,
+# lsm6dso_fifo_irq, lsm6dso_compat.c and the headers lsm6dso_fifo_packet.h,
 # lsm6dso_fifo_stats.h, lsm6dso_attributes.h) are in common/drivers/lsm6dso
 # and are compiled with the prelude of the shared sources
-# (compat/common_prelude.h); lsm6dso.c and the headers of this directory
-# (lsm6dso.h, lsm6dso_os.h, stmemsc.h) stay here, and
-# $(TOPDIR)/external/lsm6dso (this directory) is on the include path for
-# the shared files that read them.
+# (compat/common_prelude.h); the headers of this directory
+# (lsm6dso_instance.h, the device that lsm6dso.c defines at its end, and
+# stmemsc.h) stay here, and $(TOPDIR)/external/lsm6dso (this directory) is
+# on the include path for the shared files that read them.
 # Included by nuttx/drivers/Makefile.  VPATH and DEPPATH of
 # common/drivers/lsm6dso are relative to nuttx/drivers (mkdeps needs
 # relative ones); the objects are made there.
 ############################################################################
 
 ifeq ($(CONFIG_NANO_LSM6DSO),y)
-CSRCS += lsm6dso.c lsm6dso_os.c stmemsc_i2c.c stmemsc_mdelay.c
+CSRCS += lsm6dso.c stmemsc_i2c.c stmemsc_mdelay.c
 CSRCS += lsm6dso_fifo_hw.c lsm6dso_fifo.c lsm6dso_cal.c lsm6dso_zero.c
 CSRCS += st_lsm6dso_reg.c
 ifeq ($(CONFIG_NANO_LSM6DSO_STREAM),y)

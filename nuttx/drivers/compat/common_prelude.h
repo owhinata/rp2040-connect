@@ -35,7 +35,7 @@
 #endif
 
 /* The Zephyr build's CONFIG_SENSOR_LOG_LEVEL (3, info): the log level of
- * lsm6dso_compat.c and sensor_shell.c.
+ * lsm6dso.c, lsm6dso_compat.c and sensor_shell.c.
  */
 
 #define CONFIG_SENSOR_LOG_LEVEL 3
@@ -50,6 +50,15 @@
 #  define CONFIG_NINA_NTP_SERVER      CONFIG_NANO_NINA_NTP_SERVER
 #  define CONFIG_NINA_NTP_PORT        CONFIG_NANO_NINA_NTP_PORT
 #  define CONFIG_NINA_NTP_INTERVAL_MS CONFIG_NANO_NINA_NTP_INTERVAL_MS
+#endif
+
+/* The FIFO stream of the LSM6DSO driver, CONFIG_SENSOR_ASYNC_API in the
+ * Zephyr build (lsm6dso.c, lsm6dso.h): CONFIG_NANO_LSM6DSO_STREAM of
+ * nuttx/drivers/lsm6dso/Kconfig.
+ */
+
+#ifdef CONFIG_NANO_LSM6DSO_STREAM
+#  define CONFIG_SENSOR_ASYNC_API 1
 #endif
 
 #endif /* __NUTTX_DRIVERS_COMPAT_COMMON_PRELUDE_H */

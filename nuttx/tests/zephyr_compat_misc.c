@@ -13,6 +13,8 @@
  *   values around every carry and across the 32-bit tick wrap.
  * - k_sleep(): K_MSEC(1) waits 10 + 1 ticks (fake kernel, documents the
  *   rounding the NuttX version gets from nxsched_ticksleep()).
+ * - k_cyc_to_ns_floor64(): a cycle of the 1 MHz counter is 1000 ns (the
+ *   LSM6DSO driver's FIFO read time), also above 32 bits.
  * - sys_put_be32()/sys_get_be32(): big-endian bytes at any alignment.
  * - snprintk(): "%02x" as in the session ID print.
  * - hwinfo_get_device_id(): the board's chip ID bytes in order, at most 8,
@@ -129,6 +131,14 @@ static void test_sleep(void)
 	assert(k_uptime_get() == 1001);
 }
 
+static void test_cycles(void)
+{
+	assert(k_cyc_to_ns_floor64(0) == 0);
+	assert(k_cyc_to_ns_floor64(1) == 1000);
+	assert(k_cyc_to_ns_floor64(UINT32_MAX) == (uint64_t)UINT32_MAX * 1000U);
+	assert(k_cyc_to_ns_floor64(1ULL << 40) == (1ULL << 40) * 1000U);
+}
+
 static void test_byteorder(void)
 {
 	uint8_t buf[6] = {0};
@@ -236,6 +246,7 @@ int main(void)
 	test_thread_define();
 	test_uptime();
 	test_sleep();
+	test_cycles();
 	test_byteorder();
 	test_snprintk();
 	test_hwinfo();

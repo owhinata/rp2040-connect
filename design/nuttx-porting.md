@@ -630,9 +630,12 @@ priority 100 (the Zephyr build's shell commands are at the place of 104).
 
 ## LSM6DSOX (IMU)
 
-The driver is `nuttx/drivers/lsm6dso/lsm6dso.c`, a copy of the Zephyr build's
-`drivers/lsm6dso/lsm6dso.c` (Zephyr's LSM6DSO driver with the FIFO, calibration and zero-rate
-changes) with only the calls into the system replaced. The registers are handled by ST's
+The driver is the Zephyr build's own file, `common/drivers/lsm6dso/lsm6dso.c` and `lsm6dso.h`
+(Zephyr's LSM6DSO driver with the FIFO, calibration and zero-rate changes). Its calls into the
+system keep Zephyr's names and come from the compatibility layer; only the device at its end is
+the NuttX build's own, `nuttx/drivers/lsm6dso/lsm6dso_instance.h` (one `DEVICE_DT_DEFINE()` with the
+board's values, in place of the Zephyr build's devicetree instance macros in
+`zephyr/app/usb-console/drivers/lsm6dso/lsm6dso_instance.h`). The registers are handled by ST's
 `lsm6dso_reg.c` (lsm6dso-pid v3.2.2, fetched into `nuttx/stmemsc/` by `script/setup.sh`; with LF
 line ends identical to the one in Zephyr's hal_st). The FIFO stream (the INT1 interrupt and RTIO)
 runs on the Zephyr build's own files (`common/drivers/lsm6dso/`) (below). The acquisition service that uses it
@@ -1122,23 +1125,23 @@ Wi-Fi and the sensor shell; in `common/imu/`, the acquisition service, the time 
 the calibration, MQTT and the Wi-Fi profile) run on
 the compatibility layer in the NuttX build. The NuttX build compiles each file of `common/` with
 the prelude (`nuttx/drivers/compat/common_prelude.h`), and the few lines that differ between the
-builds are in headers of each OS (`sensor_shell_os.h`, `wifi_profile_os.h`; the Zephyr build's
-under `zephyr/app/usb-console/`, the NuttX build's under `nuttx/apps/`) ("Zephyr API compatibility
-layer" in `nuttx/drivers/README.md`).
+builds are in headers of each OS (`sensor_shell_os.h`, `wifi_profile_os.h`, `lsm6dso_instance.h`;
+the Zephyr build's under `zephyr/app/usb-console/`, the NuttX build's under `nuttx/apps/` and
+`nuttx/drivers/lsm6dso/`) ("Zephyr API compatibility layer" in `nuttx/drivers/README.md`).
 
 | Location | Contents |
 |---|---|
 | `common/imu/` | `imu_stream.c`, `imu_raw_{batch,packet,queue,status,time}`, `imu_tick_clock`, `time_sync.[ch]`, `time_offset`, `imu_cal_codec.c`, `imu_cal.[ch]`, `imu_raw_mqtt.[ch]`, `wifi_profile.[ch]`, `kv_store.h` |
-| `common/drivers/lsm6dso/` | `lsm6dso_{fifo,cal,zero,fifo_decoder,fifo_hw,fifo_irq}`, `lsm6dso_stream.c`, `lsm6dso_compat.c`, `lsm6dso_fifo_packet.h`, `lsm6dso_fifo_stats.h`, `lsm6dso_attributes.h` |
+| `common/drivers/lsm6dso/` | `lsm6dso.[ch]` (the driver; the device at its end is `lsm6dso_instance.h` of each build), `lsm6dso_{fifo,cal,zero,fifo_decoder,fifo_hw,fifo_irq}`, `lsm6dso_stream.c`, `lsm6dso_compat.c`, `lsm6dso_fifo_packet.h`, `lsm6dso_fifo_stats.h`, `lsm6dso_attributes.h` |
 | `common/drivers/nina/` | `nina_net.c` |
 | `common/drivers/sensor_shell/` | `sensor_shell.c` |
 | `common/drivers/i2c_dw/` | `i2c_dw_rp2040_commands.[ch]` |
-| `common/tests/` | the 14 tests of the files above (run by `common/tests/run.sh`, which the `host_tests.sh` of both builds call first); `stream_stop.c` includes `../drivers/lsm6dso/lsm6dso_stream.c` |
-| `common/tests/fakes/` | stand-ins for the Zephyr and ST headers the tests need (`zephyr/drivers/sensor.h`, `zephyr/drivers/sensor_clock.h`, `zephyr/drivers/i2c.h`, `zephyr/rtio/rtio.h`, `lsm6dso_reg.h`), and for the `lsm6dso.h` that `lsm6dso_stream.c` includes (only its include guard; `stream_stop.c` provides the definitions it needs) |
+| `common/tests/` | the 14 tests of the files above (run by `common/tests/run.sh`, which the `host_tests.sh` of both builds call first); `stream_stop.c` includes `../drivers/lsm6dso/lsm6dso_stream.c` (with the include guard of `lsm6dso.h` defined first, so nothing of that header is used; `stream_stop.c` provides the definitions it needs) |
+| `common/tests/fakes/` | stand-ins for the Zephyr and ST headers the tests need (`zephyr/drivers/sensor.h`, `zephyr/drivers/sensor_clock.h`, `zephyr/drivers/i2c.h`, `zephyr/rtio/rtio.h`, `lsm6dso_reg.h`) |
 
 The tests of `common/` sources that run on the NuttX build's compatibility layer and fake kernel
-(`nuttx/tests/zephyr_fakes/` and others), `imu_cal`, `imu_raw_mqtt` and `sensor_shell`, are in
-`nuttx/tests/`; `nuttx/script/host_tests.sh` builds them with the prelude.
+(`nuttx/tests/zephyr_fakes/` and others), `lsm6dso_driver`, `imu_cal`, `imu_raw_mqtt` and
+`sensor_shell`, are in `nuttx/tests/`; `nuttx/script/host_tests.sh` builds them with the prelude.
 
 The following files are copies of Zephyr's. When the Zephyr build changes, put the same change
 into the copies. `nuttx/apps/sensor/sensor_shell_stream.c` and `sensor_shell.h` are copies of Zephyr's, with only
@@ -1215,8 +1218,9 @@ direction of one transfer sets the RESTART at the start of the next), the `IC_CO
 register layout.
 
 `nuttx/tests/lsm6dso_driver.c` is also a test of the NuttX build only. It builds
-`drivers/lsm6dso/lsm6dso.c` with ST's real `lsm6dso_reg.c`, the stmemsc glue, the compatibility
-layer (`drivers/compat`) and the board's `src/nano_lsm6dso.c`, and runs it against a fake LSM6DSOX
+`common/drivers/lsm6dso/lsm6dso.c` (with the NuttX build's `lsm6dso_instance.h`) with ST's real
+`lsm6dso_reg.c`, the stmemsc glue, the compatibility layer (`drivers/compat`) and the board's
+`src/nano_lsm6dso.c`, and runs it against a fake LSM6DSOX
 (register banks, address auto-increment, software reset, FIFO, timestamp) behind a fake I2C
 master. Its stand-in headers are in `nuttx/tests/lsm6dso_fakes/` (the board's `board.h` is the
 real one). It checks the initialization's log lines and their order, the register writes and
@@ -1226,7 +1230,10 @@ what `i2c_configure()` sets) and message shape of every transfer, the registers 
 reads and its conversion (against `lsm6dso_cal.c` and the physical value, the signs of `val1` and
 `val2`, one axis and three), the attributes (the ODR steps, the rounding of m/s² and rad/s, the
 refused values and channels, `-EBUSY`), starting, reading, pausing and stopping the FIFO and its
-statistics, the timestamp reading, and `lsm6dso_cal_zero()`. It also runs the FIFO stream:
+statistics, the timestamp reading, and `lsm6dso_cal_zero()`. The driver's waits
+(`k_busy_wait()`, `k_msleep()`, `k_usleep()`) and its cycle counter (`k_cycle_get_32()`) are the
+test's own fakes, which put the waits in the order of the register writes and add up the time
+slept; its mutexes and spin lock are the fake kernel's. It also runs the FIFO stream:
 `lsm6dso_stream.c`, `lsm6dso_fifo_irq.c`, `lsm6dso_compat.c` and the decoder with the
 compatibility layer (work, RTIO, `gpio0`, the default iodev and decoder), on a fake kernel
 (`nuttx/tests/zephyr_fakes/`: one thread; the test runs the work queues and fires the timers) and a

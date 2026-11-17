@@ -19,7 +19,7 @@ corresponding sources inside Zephyr's driver libraries for the copies. Kconfig, 
 bindings and the ST HAL are Zephyr's. If Zephyr's layout changes and a source to replace is
 not found, the build fails.
 
-The parts that are the same files as the NuttX build's (the LSM6DSO's `lsm6dso_fifo.[ch]`,
+The parts that are the same files as the NuttX build's (the LSM6DSO driver itself, `lsm6dso.[ch]`, and its `lsm6dso_fifo.[ch]`,
 `lsm6dso_fifo_packet.h`, `lsm6dso_cal.[ch]`, `lsm6dso_zero.[ch]`, `lsm6dso_fifo_decoder.[ch]`,
 `lsm6dso_fifo_hw.[ch]`, `lsm6dso_fifo_irq.[ch]`, `lsm6dso_stream.c`, `lsm6dso_compat.c`,
 `lsm6dso_fifo_stats.h` and `lsm6dso_attributes.h`, the sensor shell's `sensor_shell.c`, the NINA's
@@ -29,7 +29,12 @@ The parts that are the same files as the NuttX build's (the LSM6DSO's `lsm6dso_f
 to the application), and the sensor shell reads `lsm6dso_attributes.h` from there.
 `sensor_shell/sensor_shell_os.h`, which stays in this directory, is the Zephyr part that the shared
 `sensor_shell.c` includes first (two macros that do nothing; the NuttX build's header of the same name
-makes `sensor get` wait for its result to be printed). `nina/nina_proto.h` is read by `nina_net.c` too.
+makes `sensor get` wait for its result to be printed). `lsm6dso/lsm6dso_instance.h` is the Zephyr part
+that the shared `lsm6dso.c` includes at its end: Zephyr's devicetree instance macros of the driver,
+unchanged (the NuttX build's header of the same name defines its one device with the board's
+values). `lsm6dso/lsm6dso_shub.c` and `lsm6dso_trigger.c` (copies of Zephyr's, built only with
+`CONFIG_LSM6DSO_SENSORHUB` and `CONFIG_LSM6DSO_TRIGGER`, which are off) stay here and read
+`lsm6dso.h` from `common/drivers/lsm6dso/`. `nina/nina_proto.h` is read by `nina_net.c` too.
 The file names in the tables below cover both places.
 
 ## LSM6DSO FIFO streaming

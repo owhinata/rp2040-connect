@@ -8,70 +8,22 @@
  * https://www.st.com/resource/en/datasheet/lsm6dso.pdf
  */
 
-/* The Zephyr build's drivers/lsm6dso/lsm6dso.c (Zephyr's driver with the
- * FIFO, calibration and zero-rate changes of zephyr/app/usb-console), with
- * the same functions, branches, order, register operations, conversions,
- * error values and log lines.  Only the calls into the system are
- * replaced:
- *
- *   Zephyr                              here
- *   <zephyr/logging/log.h>              app_log.h (the same LOG_* lines in
- *                                       the RAM log, "dmesg")
- *   CONFIG_SENSOR_LOG_LEVEL (3)         LSM6DSO_LOG_LEVEL (3)
- *   k_mutex_init/_lock/_unlock          lsm6dso_os_mutex_init/_lock/_unlock
- *   k_spin_lock/_unlock                 lsm6dso_os_spin_lock/_unlock
- *   k_busy_wait, k_msleep, k_usleep     lsm6dso_os_busy_wait_us, _sleep_ms,
- *                                       _sleep_us
- *   k_cycle_get_32, k_cyc_to_ns_floor64 lsm6dso_os_cycle_get_32 (TIMER,
- *                                       1 MHz), _cyc_to_ns_floor64
- *   sys_get_le32()                      the same, written out below
- *   CONFIG_SENSOR_ASYNC_API             CONFIG_NANO_LSM6DSO_STREAM,
- *                                       also around the include of
- *                                       lsm6dso_fifo_decoder.h
- *   #if CONFIG_LSM6DSO_TRIGGER          #ifdef (-Wundef)
- *   DT_HAS_COMPAT_ON_BUS_STATUS_OKAY()  LSM6DSO_BUS_I2C (lsm6dso.h)
- *   the devicetree instance macros      one DEVICE_DT_DEFINE() at the end,
- *                                       with the board's values
- *
- * The device model, the sensor API and the I2C calls keep Zephyr's names:
- * struct device, struct sensor_value, i2c_burst_read_dt() and so on come
- * from the port's compatibility layer (nuttx/drivers/compat), and
- * stmemsc_i2c_read()/_write() from stmemsc_i2c.c.  The board initializes
- * the device in its bring-up (boards/.../src/nano_lsm6dso.c, device_init()),
- * where Zephyr does it before main() (POST_KERNEL,
- * CONFIG_SENSOR_INIT_PRIORITY 90).
- */
-
-#include <nuttx/config.h>
-
+#include <zephyr/sys/byteorder.h>
 #include <zephyr/drivers/sensor.h>
+#include <zephyr/kernel.h>
 #include <zephyr/device.h>
-#include <errno.h>
-#include <stdbool.h>
-#include <stdint.h>
+#include <zephyr/init.h>
 #include <string.h>
-#include <arch/board/board.h>
-
-/* CONFIG_SENSOR_LOG_LEVEL of the Zephyr build (3, info). */
-#define LSM6DSO_LOG_LEVEL 3
-#include "app_log.h"
+#include <zephyr/sys/__assert.h>
+#include <zephyr/logging/log.h>
 
 #include "lsm6dso.h"
 #include "lsm6dso_fifo.h"
 #include "lsm6dso_attributes.h"
-#ifdef CONFIG_NANO_LSM6DSO_STREAM
 #include "lsm6dso_fifo_decoder.h"
-#endif
 #include "lsm6dso_fifo_hw.h"
 
-LOG_MODULE_REGISTER(LSM6DSO, LSM6DSO_LOG_LEVEL);
-
-/* zephyr/sys/byteorder.h */
-static inline uint32_t sys_get_le32(const uint8_t src[4])
-{
-	return ((uint32_t)src[3] << 24) | ((uint32_t)src[2] << 16) |
-	       ((uint32_t)src[1] << 8) | src[0];
-}
+LOG_MODULE_REGISTER(LSM6DSO, CONFIG_SENSOR_LOG_LEVEL);
 
 static const uint16_t lsm6dso_odr_map[] = {0, 12, 26, 52, 104, 208, 417, 833,
 					1667, 3333, 6667};
@@ -464,12 +416,12 @@ static void lsm6dso_cal_refresh(const struct device *dev, enum lsm6dso_cal_kind 
 	uint32_t gain = kind == LSM6DSO_CAL_ACCEL ? data->acc_gain : data->gyro_gain;
 	struct lsm6dso_cal cal;
 	bool calibrated = data->cal_lookup != NULL && data->cal_lookup(kind, gain, &cal);
-	lsm6dso_spinlock_key_t key;
+	k_spinlock_key_t key;
 
 	if (!calibrated) {
 		lsm6dso_cal_nominal(&cal, kind, gain);
 	}
-	key = lsm6dso_os_spin_lock(&data->cal_lock);
+	key = k_spin_lock(&data->cal_lock);
 	if (kind == LSM6DSO_CAL_ACCEL) {
 		data->accel_cal = cal;
 		data->accel_calibrated = calibrated;
@@ -477,7 +429,7 @@ static void lsm6dso_cal_refresh(const struct device *dev, enum lsm6dso_cal_kind 
 		data->gyro_cal = cal;
 		data->gyro_calibrated = calibrated;
 	}
-	lsm6dso_os_spin_unlock(&data->cal_lock, key);
+	k_spin_unlock(&data->cal_lock, key);
 	lsm6dso_zero_restart(dev);
 }
 
@@ -493,19 +445,19 @@ static void lsm6dso_zero_restart(const struct device *dev)
 
 	lsm6dso_cal_snapshot(dev, &accel, &gyro);
 	lsm6dso_zero_limits(&limits, data->gyro_gain, data->acc_gain, data->gyro_calibrated);
-	lsm6dso_os_mutex_lock(&data->zero_lock);
+	k_mutex_lock(&data->zero_lock, K_FOREVER);
 	lsm6dso_zero_reset(&data->zero, &limits, data->gyro_calibrated ? gyro.bias : NULL);
-	lsm6dso_os_mutex_unlock(&data->zero_lock);
+	k_mutex_unlock(&data->zero_lock);
 }
 
 /* Puts a newly tracked bias into the gyro conversion. Call with zero_lock held. */
 static void lsm6dso_zero_apply(const struct device *dev)
 {
 	struct lsm6dso_data *data = dev->data;
-	lsm6dso_spinlock_key_t key = lsm6dso_os_spin_lock(&data->cal_lock);
+	k_spinlock_key_t key = k_spin_lock(&data->cal_lock);
 
 	memcpy(data->gyro_cal.bias, data->zero.bias, sizeof(data->gyro_cal.bias));
-	lsm6dso_os_spin_unlock(&data->cal_lock, key);
+	k_spin_unlock(&data->cal_lock, key);
 }
 
 void lsm6dso_cal_track(const struct device *dev, const uint8_t *words, size_t len)
@@ -515,7 +467,7 @@ void lsm6dso_cal_track(const struct device *dev, const uint8_t *words, size_t le
 	size_t cursor = 0;
 	bool changed = false;
 
-	lsm6dso_os_mutex_lock(&data->zero_lock);
+	k_mutex_lock(&data->zero_lock, K_FOREVER);
 	lsm6dso_zero_set_rate(&data->zero, data->gyro_freq);
 	while (lsm6dso_fifo_next(words, len, &cursor, &sample) > 0) {
 		if (sample.kind == LSM6DSO_FIFO_ACCEL) {
@@ -527,18 +479,18 @@ void lsm6dso_cal_track(const struct device *dev, const uint8_t *words, size_t le
 	if (changed) {
 		lsm6dso_zero_apply(dev);
 	}
-	lsm6dso_os_mutex_unlock(&data->zero_lock);
+	k_mutex_unlock(&data->zero_lock);
 }
 
 void lsm6dso_cal_snapshot(const struct device *dev, struct lsm6dso_cal *accel,
 			  struct lsm6dso_cal *gyro)
 {
 	struct lsm6dso_data *data = dev->data;
-	lsm6dso_spinlock_key_t key = lsm6dso_os_spin_lock(&data->cal_lock);
+	k_spinlock_key_t key = k_spin_lock(&data->cal_lock);
 
 	*accel = data->accel_cal;
 	*gyro = data->gyro_cal;
-	lsm6dso_os_spin_unlock(&data->cal_lock, key);
+	k_spin_unlock(&data->cal_lock, key);
 }
 
 void lsm6dso_cal_reload(const struct device *dev)
@@ -558,18 +510,18 @@ void lsm6dso_cal_set_lookup(const struct device *dev, lsm6dso_cal_lookup_t looku
 void lsm6dso_cal_status(const struct device *dev, struct lsm6dso_cal_status *status)
 {
 	struct lsm6dso_data *data = dev->data;
-	lsm6dso_spinlock_key_t key = lsm6dso_os_spin_lock(&data->cal_lock);
+	k_spinlock_key_t key = k_spin_lock(&data->cal_lock);
 
 	status->accel_gain = data->acc_gain;
 	status->gyro_gain = data->gyro_gain;
 	status->accel_calibrated = data->accel_calibrated;
 	status->gyro_calibrated = data->gyro_calibrated;
 	memcpy(status->gyro_bias, data->gyro_cal.bias, sizeof(status->gyro_bias));
-	lsm6dso_os_spin_unlock(&data->cal_lock, key);
-	lsm6dso_os_mutex_lock(&data->zero_lock);
+	k_spin_unlock(&data->cal_lock, key);
+	k_mutex_lock(&data->zero_lock, K_FOREVER);
 	status->gyro_bias_updates = data->zero.updates;
 	status->gyro_bias_rejected = data->zero.rejected;
-	lsm6dso_os_mutex_unlock(&data->zero_lock);
+	k_mutex_unlock(&data->zero_lock);
 }
 
 /* Converts the last fetched sample with the same function the FIFO decoder
@@ -826,7 +778,7 @@ static int lsm6dso_attr_set(const struct device *dev, enum sensor_channel chan,
 	struct lsm6dso_data *data = dev->data;
 	int ret;
 
-#ifdef CONFIG_NANO_LSM6DSO_STREAM
+#ifdef CONFIG_SENSOR_ASYNC_API
 	if (attr == (enum sensor_attribute)SENSOR_ATTR_LSM6DSO_FIFO_TIMESTAMP_DECIMATION) {
 		if (chan != SENSOR_CHAN_ALL || val->val2 != 0 || val->val1 < 0) {
 			return -EINVAL;
@@ -841,13 +793,13 @@ static int lsm6dso_attr_set(const struct device *dev, enum sensor_channel chan,
 		return lsm6dso_fifo_set_watermark(dev, (uint16_t)val->val1);
 	}
 #endif
-	lsm6dso_os_mutex_lock(&data->fifo_lock);
+	k_mutex_lock(&data->fifo_lock, K_FOREVER);
 	ret = data->fifo_owned ? -EBUSY : lsm6dso_attr_set_unlocked(dev, chan, attr, val);
-	lsm6dso_os_mutex_unlock(&data->fifo_lock);
+	k_mutex_unlock(&data->fifo_lock);
 	return ret;
 }
 
-#ifdef CONFIG_NANO_LSM6DSO_STREAM
+#ifdef CONFIG_SENSOR_ASYNC_API
 static int lsm6dso_attr_get(const struct device *dev, enum sensor_channel chan,
 			    enum sensor_attribute attr, struct sensor_value *val)
 {
@@ -871,9 +823,9 @@ static int lsm6dso_sample_fetch(const struct device *dev, enum sensor_channel ch
 	struct lsm6dso_data *data = dev->data;
 	int ret;
 
-	lsm6dso_os_mutex_lock(&data->fifo_lock);
+	k_mutex_lock(&data->fifo_lock, K_FOREVER);
 	ret = data->fifo_owned ? -EBUSY : lsm6dso_sample_fetch_unlocked(dev, chan);
-	lsm6dso_os_mutex_unlock(&data->fifo_lock);
+	k_mutex_unlock(&data->fifo_lock);
 	return ret;
 }
 
@@ -889,9 +841,9 @@ int lsm6dso_cal_zero(const struct device *dev)
 	uint32_t updates, rejected;
 	int ret = 0;
 
-	lsm6dso_os_mutex_lock(&data->fifo_lock);
+	k_mutex_lock(&data->fifo_lock, K_FOREVER);
 	if (data->fifo_owned) {
-		lsm6dso_os_mutex_unlock(&data->fifo_lock);
+		k_mutex_unlock(&data->fifo_lock);
 		return -EBUSY;
 	}
 	accel_freq = data->accel_freq;
@@ -906,8 +858,8 @@ int lsm6dso_cal_zero(const struct device *dev)
 		ret = lsm6dso_gyro_set_odr_raw(dev, lsm6dso_freq_to_odr_val(ZERO_POLL_HZ));
 	}
 	if (ret == 0) {
-		lsm6dso_os_sleep_ms(ZERO_SETTLE_MS);
-		lsm6dso_os_mutex_lock(&data->zero_lock);
+		k_msleep(ZERO_SETTLE_MS);
+		k_mutex_lock(&data->zero_lock, K_FOREVER);
 		lsm6dso_zero_set_rate(&data->zero, 0);
 		lsm6dso_zero_set_rate(&data->zero, ZERO_POLL_HZ);
 		updates = data->zero.updates;
@@ -925,14 +877,14 @@ int lsm6dso_cal_zero(const struct device *dev)
 				lsm6dso_zero_apply(dev);
 				break;
 			}
-			lsm6dso_os_sleep_us(USEC_PER_SEC / ZERO_POLL_HZ);
+			k_usleep(USEC_PER_SEC / ZERO_POLL_HZ);
 		}
 		if (ret == 0 && data->zero.updates == updates) {
 			ret = data->zero.rejected != rejected ? -ERANGE : -EAGAIN;
 		}
 		/* The next stream sets its own rate and starts a fresh window. */
 		lsm6dso_zero_set_rate(&data->zero, 0);
-		lsm6dso_os_mutex_unlock(&data->zero_lock);
+		k_mutex_unlock(&data->zero_lock);
 	}
 	if (accel_freq == 0) {
 		(void)lsm6dso_accel_set_odr_raw(dev, 0);
@@ -940,7 +892,7 @@ int lsm6dso_cal_zero(const struct device *dev)
 	if (gyro_freq == 0) {
 		(void)lsm6dso_gyro_set_odr_raw(dev, 0);
 	}
-	lsm6dso_os_mutex_unlock(&data->fifo_lock);
+	k_mutex_unlock(&data->fifo_lock);
 	return ret;
 }
 
@@ -950,13 +902,14 @@ static int lsm6dso_channel_get(const struct device *dev, enum sensor_channel cha
 	struct lsm6dso_data *data = dev->data;
 	int ret;
 
-	lsm6dso_os_mutex_lock(&data->fifo_lock);
+	k_mutex_lock(&data->fifo_lock, K_FOREVER);
 	ret = data->fifo_owned ? -EBUSY : lsm6dso_channel_get_unlocked(dev, chan, val);
-	lsm6dso_os_mutex_unlock(&data->fifo_lock);
+	k_mutex_unlock(&data->fifo_lock);
 	return ret;
 }
 
-#if LSM6DSO_BUS_I2C
+#if DT_HAS_COMPAT_ON_BUS_STATUS_OKAY(st_lsm6dso, i2c) || \
+	DT_HAS_COMPAT_ON_BUS_STATUS_OKAY(st_lsm6dso32, i2c)
 int lsm6dso_fifo_start_locked_driver(const struct device *dev, uint16_t watermark,
 				     bool accel, bool gyro)
 {
@@ -969,7 +922,7 @@ int lsm6dso_fifo_start_locked_driver(const struct device *dev, uint16_t watermar
 	    cfg->ctx.read_reg != (stmdev_read_ptr)stmemsc_i2c_read) {
 		return -ENOTSUP;
 	}
-	lsm6dso_os_mutex_lock(&data->fifo_lock);
+	k_mutex_lock(&data->fifo_lock, K_FOREVER);
 	if (data->fifo_owned) {
 		ret = -EBUSY;
 		goto out;
@@ -1003,7 +956,7 @@ int lsm6dso_fifo_start_locked_driver(const struct device *dev, uint16_t watermar
 	}
 	data->fifo_fault = ret != 0;
 out:
-	lsm6dso_os_mutex_unlock(&data->fifo_lock);
+	k_mutex_unlock(&data->fifo_lock);
 	return ret;
 }
 
@@ -1013,7 +966,7 @@ int lsm6dso_fifo_pause_batch_locked_driver(const struct device *dev)
 	struct lsm6dso_data *data = dev->data;
 	int ret = 0;
 
-	lsm6dso_os_mutex_lock(&data->fifo_lock);
+	k_mutex_lock(&data->fifo_lock, K_FOREVER);
 	if (!data->fifo_owned || data->fifo_fault) {
 		ret = -EIO;
 	} else if (lsm6dso_fifo_pause_batch(&cfg->ctx) != 0) {
@@ -1021,7 +974,7 @@ int lsm6dso_fifo_pause_batch_locked_driver(const struct device *dev)
 		data->fifo_fault = true;
 		ret = -EIO;
 	}
-	lsm6dso_os_mutex_unlock(&data->fifo_lock);
+	k_mutex_unlock(&data->fifo_lock);
 	return ret;
 }
 
@@ -1031,7 +984,7 @@ int lsm6dso_fifo_stop_locked_driver(const struct device *dev)
 	struct lsm6dso_data *data = dev->data;
 	int ret = 0;
 
-	lsm6dso_os_mutex_lock(&data->fifo_lock);
+	k_mutex_lock(&data->fifo_lock, K_FOREVER);
 	if (data->fifo_owned) {
 		ret = lsm6dso_fifo_stop(&cfg->ctx);
 		if (ret != 0) {
@@ -1040,7 +993,7 @@ int lsm6dso_fifo_stop_locked_driver(const struct device *dev)
 		data->fifo_owned = ret != 0;
 		data->fifo_fault = ret != 0;
 	}
-	lsm6dso_os_mutex_unlock(&data->fifo_lock);
+	k_mutex_unlock(&data->fifo_lock);
 	return ret;
 }
 
@@ -1054,7 +1007,7 @@ int lsm6dso_fifo_read_locked_driver(const struct device *dev, uint8_t *buffer,
 	if (!status || (!buffer && capacity_words)) {
 		return -EINVAL;
 	}
-	lsm6dso_os_mutex_lock(&data->fifo_lock);
+	k_mutex_lock(&data->fifo_lock, K_FOREVER);
 	if (!data->fifo_owned || data->fifo_fault) {
 		ret = -EIO;
 		goto out;
@@ -1075,11 +1028,11 @@ int lsm6dso_fifo_read_locked_driver(const struct device *dev, uint8_t *buffer,
 		data->fifo_stats.buffer_too_small++;
 		ret = -ENOBUFS;
 	} else if (status->words) {
-		uint32_t start = lsm6dso_os_cycle_get_32();
+		uint32_t start = k_cycle_get_32();
 		uint64_t duration;
 
 		ret = lsm6dso_fifo_burst_read(&cfg->stmemsc_cfg.i2c, buffer, status->words);
-		duration = lsm6dso_os_cyc_to_ns_floor64((uint32_t)(lsm6dso_os_cycle_get_32() - start));
+		duration = k_cyc_to_ns_floor64((uint32_t)(k_cycle_get_32() - start));
 		data->fifo_stats.transfers++;
 		data->fifo_stats.transfer_time_ns += duration;
 		data->fifo_stats.max_transfer_time_ns = MAX(data->fifo_stats.max_transfer_time_ns,
@@ -1092,7 +1045,7 @@ int lsm6dso_fifo_read_locked_driver(const struct device *dev, uint8_t *buffer,
 		}
 	}
 out:
-	lsm6dso_os_mutex_unlock(&data->fifo_lock);
+	k_mutex_unlock(&data->fifo_lock);
 	return ret;
 }
 
@@ -1106,7 +1059,7 @@ int lsm6dso_fifo_status_locked_driver(const struct device *dev,
 	if (!status) {
 		return -EINVAL;
 	}
-	lsm6dso_os_mutex_lock(&data->fifo_lock);
+	k_mutex_lock(&data->fifo_lock, K_FOREVER);
 	if (!data->fifo_owned || data->fifo_fault) {
 		ret = -EIO;
 	} else {
@@ -1118,7 +1071,7 @@ int lsm6dso_fifo_status_locked_driver(const struct device *dev,
 			data->fifo_stats.overrun_observations++;
 		}
 	}
-	lsm6dso_os_mutex_unlock(&data->fifo_lock);
+	k_mutex_unlock(&data->fifo_lock);
 	return ret;
 }
 
@@ -1134,7 +1087,7 @@ int lsm6dso_timestamp_read(const struct device *dev, int64_t (*clock_us)(void), 
 	if (!clock_us || !tick || !before_us || !after_us) {
 		return -EINVAL;
 	}
-	lsm6dso_os_mutex_lock(&data->fifo_lock);
+	k_mutex_lock(&data->fifo_lock, K_FOREVER);
 	ret = i2c_burst_read_dt(&cfg->stmemsc_cfg.i2c, LSM6DSO_TIMESTAMP0, first, sizeof(first));
 	if (ret == 0) {
 		*before_us = clock_us();
@@ -1142,7 +1095,7 @@ int lsm6dso_timestamp_read(const struct device *dev, int64_t (*clock_us)(void), 
 					sizeof(second));
 		*after_us = clock_us();
 	}
-	lsm6dso_os_mutex_unlock(&data->fifo_lock);
+	k_mutex_unlock(&data->fifo_lock);
 	if (ret != 0) {
 		return ret;
 	}
@@ -1161,26 +1114,26 @@ void lsm6dso_fifo_get_stats(const struct device *dev, struct lsm6dso_fifo_stats 
 {
 	struct lsm6dso_data *data = dev->data;
 
-	lsm6dso_os_mutex_lock(&data->fifo_lock);
+	k_mutex_lock(&data->fifo_lock, K_FOREVER);
 	*stats = data->fifo_stats;
 	stats->active = data->fifo_owned;
 	stats->fault = data->fifo_fault;
-	lsm6dso_os_mutex_unlock(&data->fifo_lock);
+	k_mutex_unlock(&data->fifo_lock);
 }
 
 void lsm6dso_fifo_record_stop_error(const struct device *dev, int error)
 {
 	struct lsm6dso_data *data = dev->data;
 
-	lsm6dso_os_mutex_lock(&data->fifo_lock);
+	k_mutex_lock(&data->fifo_lock, K_FOREVER);
 	if (error != 0 && data->fifo_stats.stop_error == 0) {
 		data->fifo_stats.stop_error = error;
 	}
-	lsm6dso_os_mutex_unlock(&data->fifo_lock);
+	k_mutex_unlock(&data->fifo_lock);
 }
 #endif
 
-#ifdef CONFIG_NANO_LSM6DSO_STREAM
+#ifdef CONFIG_SENSOR_ASYNC_API
 static int lsm6dso_get_decoder(const struct device *dev, const struct sensor_decoder_api **decoder)
 {
 	ARG_UNUSED(dev);
@@ -1191,7 +1144,7 @@ static int lsm6dso_get_decoder(const struct device *dev, const struct sensor_dec
 
 static DEVICE_API(sensor, lsm6dso_driver_api) = {
 	.attr_set = lsm6dso_attr_set,
-#ifdef CONFIG_NANO_LSM6DSO_STREAM
+#ifdef CONFIG_SENSOR_ASYNC_API
 	.attr_get = lsm6dso_attr_get,
 #endif
 #ifdef CONFIG_LSM6DSO_TRIGGER
@@ -1199,7 +1152,7 @@ static DEVICE_API(sensor, lsm6dso_driver_api) = {
 #endif
 	.sample_fetch = lsm6dso_sample_fetch,
 	.channel_get = lsm6dso_channel_get,
-#ifdef CONFIG_NANO_LSM6DSO_STREAM
+#ifdef CONFIG_SENSOR_ASYNC_API
 	.get_decoder = lsm6dso_get_decoder,
 	.submit = lsm6dso_submit,
 #endif
@@ -1251,7 +1204,7 @@ static int lsm6dso_init_chip(const struct device *dev)
 	if (master_on) {
 		LOG_DBG("Disable shub before reset");
 		lsm6dso_sh_master_set(ctx, 0);
-		lsm6dso_os_busy_wait_us(300);
+		k_busy_wait(300);
 	}
 
 	/* reset device */
@@ -1260,7 +1213,7 @@ static int lsm6dso_init_chip(const struct device *dev)
 		return -EIO;
 	}
 
-	lsm6dso_os_busy_wait_us(100);
+	k_busy_wait(100);
 
 	/* set accel power mode */
 	LOG_DBG("accel pm is %d", cfg->accel_pm);
@@ -1359,9 +1312,9 @@ static int lsm6dso_init(const struct device *dev)
 
 	LOG_INF("Initialize device %s", dev->name);
 	data->dev = dev;
-	lsm6dso_os_mutex_init(&data->fifo_lock);
-	lsm6dso_os_mutex_init(&data->zero_lock);
-#ifdef CONFIG_NANO_LSM6DSO_STREAM
+	k_mutex_init(&data->fifo_lock);
+	k_mutex_init(&data->zero_lock);
+#ifdef CONFIG_SENSOR_ASYNC_API
 	lsm6dso_stream_init(dev);
 #endif
 
@@ -1390,46 +1343,7 @@ static int lsm6dso_init(const struct device *dev)
 	return 0;
 }
 
-/*
- * The device: the devicetree node lsm6dsox@6a of the Zephyr build
- * (zephyr/build/usb-console/zephyr/zephyr.dts: the board's
- * arduino_nano_connect.dts with app/usb-console/app.overlay), compatible
- * "st,lsm6dso" (not st,lsm6dso32: no ACCEL_RANGE_DOUBLE), on i2c0 at 0x6a.
- * The board's <arch/board/board.h> carries the property values; the rest
- * are the binding's defaults (st,lsm6dso-common.yaml).  Zephyr's
- * LSM6DSO_CONFIG_COMMON() and LSM6DSO_CONFIG_I2C() for that node:
+/* The devices: lsm6dso_instance.h of the OS's build (the Zephyr build's
+ * devicetree instance macros, the NuttX build's board values).
  */
-
-static struct lsm6dso_data lsm6dso_data_0;
-static const struct lsm6dso_config lsm6dso_config_0 = {
-	STMEMSC_CTX_I2C(&lsm6dso_config_0.stmemsc_cfg),
-	.stmemsc_cfg = {
-		.i2c = {
-			.bus = DEVICE_DT_GET(DT_BUS(DT_NODELABEL(lsm6dsox))),
-			.addr = BOARD_LSM6DSOX_I2C_ADDR,
-		},
-	},
-	.accel_pm = BOARD_LSM6DSOX_ACCEL_PM,
-	.accel_odr = BOARD_LSM6DSOX_ACCEL_ODR,
-	.accel_lp_filter = BOARD_LSM6DSOX_ACCEL_LP_FILTER,
-	.accel_range = BOARD_LSM6DSOX_ACCEL_RANGE,
-	.gyro_pm = BOARD_LSM6DSOX_GYRO_PM,
-	.gyro_odr = BOARD_LSM6DSOX_GYRO_ODR,
-	.gyro_range = BOARD_LSM6DSOX_GYRO_RANGE,
-	.drdy_pulsed = BOARD_LSM6DSOX_DRDY_PULSED,
-#ifdef CONFIG_NANO_LSM6DSO_STREAM
-	/* GPIO_DT_SPEC_INST_GET_OR(inst, irq_gpios, {0}): <&gpio0 24 0> */
-	.fifo_gpio = {
-		.port = DEVICE_DT_GET(DT_NODELABEL(gpio0)),
-		.pin = BOARD_LSM6DSOX_INT1_GPIO,
-		.dt_flags = BOARD_LSM6DSOX_INT1_FLAGS,
-	},
-#endif
-};
-
-/* SENSOR_DEVICE_DT_INST_DEFINE(): the init function, data, config and API;
- * POST_KERNEL and CONFIG_SENSOR_INIT_PRIORITY are the board's order of
- * calls.
- */
-DEVICE_DT_DEFINE(lsm6dsox, BOARD_LSM6DSOX_NODE_NAME, lsm6dso_init,
-		 &lsm6dso_data_0, &lsm6dso_config_0, &lsm6dso_driver_api);
+#include "lsm6dso_instance.h"

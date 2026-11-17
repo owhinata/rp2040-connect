@@ -1,0 +1,64 @@
+/* ST Microelectronics LSM6DSO 6-axis IMU sensor driver
+ *
+ * Copyright (c) 2019 STMicroelectronics
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Datasheet:
+ * https://www.st.com/resource/en/datasheet/lsm6dso.pdf
+ */
+
+/* The end of the driver on NuttX (common/drivers/lsm6dso/lsm6dso.c, which
+ * includes this file last, so lsm6dso_init and lsm6dso_driver_api stay
+ * static): in place of the Zephyr build's devicetree instance macros
+ * (zephyr/app/usb-console/drivers/lsm6dso/lsm6dso_instance.h), the one
+ * device with the board's values.  The board initializes it in its
+ * bring-up (boards/.../src/nano_lsm6dso.c, device_init()), where Zephyr
+ * does it before main() (POST_KERNEL, CONFIG_SENSOR_INIT_PRIORITY 90).
+ */
+
+#include <arch/board/board.h>
+
+/*
+ * The device: the devicetree node lsm6dsox@6a of the Zephyr build
+ * (zephyr/build/usb-console/zephyr/zephyr.dts: the board's
+ * arduino_nano_connect.dts with app/usb-console/app.overlay), compatible
+ * "st,lsm6dso" (not st,lsm6dso32: no ACCEL_RANGE_DOUBLE), on i2c0 at 0x6a.
+ * The board's <arch/board/board.h> carries the property values; the rest
+ * are the binding's defaults (st,lsm6dso-common.yaml).  Zephyr's
+ * LSM6DSO_CONFIG_COMMON() and LSM6DSO_CONFIG_I2C() for that node:
+ */
+
+static struct lsm6dso_data lsm6dso_data_0;
+static const struct lsm6dso_config lsm6dso_config_0 = {
+	STMEMSC_CTX_I2C(&lsm6dso_config_0.stmemsc_cfg),
+	.stmemsc_cfg = {
+		.i2c = {
+			.bus = DEVICE_DT_GET(DT_BUS(DT_NODELABEL(lsm6dsox))),
+			.addr = BOARD_LSM6DSOX_I2C_ADDR,
+		},
+	},
+	.accel_pm = BOARD_LSM6DSOX_ACCEL_PM,
+	.accel_odr = BOARD_LSM6DSOX_ACCEL_ODR,
+	.accel_lp_filter = BOARD_LSM6DSOX_ACCEL_LP_FILTER,
+	.accel_range = BOARD_LSM6DSOX_ACCEL_RANGE,
+	.gyro_pm = BOARD_LSM6DSOX_GYRO_PM,
+	.gyro_odr = BOARD_LSM6DSOX_GYRO_ODR,
+	.gyro_range = BOARD_LSM6DSOX_GYRO_RANGE,
+	.drdy_pulsed = BOARD_LSM6DSOX_DRDY_PULSED,
+#ifdef CONFIG_SENSOR_ASYNC_API
+	/* GPIO_DT_SPEC_INST_GET_OR(inst, irq_gpios, {0}): <&gpio0 24 0> */
+	.fifo_gpio = {
+		.port = DEVICE_DT_GET(DT_NODELABEL(gpio0)),
+		.pin = BOARD_LSM6DSOX_INT1_GPIO,
+		.dt_flags = BOARD_LSM6DSOX_INT1_FLAGS,
+	},
+#endif
+};
+
+/* SENSOR_DEVICE_DT_INST_DEFINE(): the init function, data, config and API;
+ * POST_KERNEL and CONFIG_SENSOR_INIT_PRIORITY are the board's order of
+ * calls.
+ */
+DEVICE_DT_DEFINE(lsm6dsox, BOARD_LSM6DSOX_NODE_NAME, lsm6dso_init,
+		 &lsm6dso_data_0, &lsm6dso_config_0, &lsm6dso_driver_api);

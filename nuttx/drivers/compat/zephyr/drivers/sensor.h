@@ -20,8 +20,9 @@
  * sensor shell (nuttx/apps/sensor).
  *
  * Not here: the other decoded data types (game rotation vector,
- * occurrence), and the device definition macros (lsm6dso.c defines its
- * device with DEVICE_DT_DEFINE() of <zephyr/device.h>).
+ * occurrence), and the device definition macros (the NuttX build's
+ * lsm6dso_instance.h, which lsm6dso.c includes, defines its device with
+ * DEVICE_DT_DEFINE() of <zephyr/device.h>).
  */
 
 #ifndef __NUTTX_DRIVERS_COMPAT_ZEPHYR_DRIVERS_SENSOR_H

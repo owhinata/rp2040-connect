@@ -130,8 +130,8 @@
  * (zephyr/build/usb-console/zephyr/zephyr.dts, lsm6dsox@6a: the board's
  * arduino_nano_connect.dts and app/usb-console/app.overlay; the others are
  * the defaults of st,lsm6dso-common.yaml), for the device that
- * nuttx/drivers/lsm6dso/lsm6dso.c defines.  The values are the binding's
- * (zephyr/dt-bindings/sensor/lsm6dso.h).
+ * nuttx/drivers/lsm6dso/lsm6dso_instance.h defines.  The values are the
+ * binding's (zephyr/dt-bindings/sensor/lsm6dso.h).
  */
 
 #define BOARD_LSM6DSOX_NODE_NAME     "lsm6dsox@6a"

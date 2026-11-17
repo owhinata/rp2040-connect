@@ -8,9 +8,9 @@ config NANO_LSM6DSO
 	default y
 	depends on NANO_I2C0
 	---help---
-		lsm6dso/lsm6dso.c: the Zephyr build's drivers/lsm6dso/lsm6dso.c
+		common/drivers/lsm6dso/lsm6dso.c: the Zephyr build's driver
 		(Zephyr's LSM6DSO driver with the FIFO, calibration and
-		zero-rate changes) with only the calls into the system replaced,
+		zero-rate changes), with the device of lsm6dso/lsm6dso_instance.h,
 		on ST's lsm6dso_reg.c (nuttx/stmemsc, fetched by
 		script/setup.sh) and the port's small Zephyr compatibility
 		layer (compat/: struct device, the sensor API, the I2C calls).

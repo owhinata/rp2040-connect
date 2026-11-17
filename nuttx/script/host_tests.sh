@@ -35,24 +35,28 @@ lib=("$cimu/imu_raw_queue.c" "$cimu/imu_raw_packet.c" "$cimu/imu_raw_batch.c"
      "$cimu/imu_raw_status.c" "$cimu/imu_raw_time.c" "$cimu/imu_tick_clock.c"
      "$cimu/time_offset.c" "$clsm/lsm6dso_fifo.c")
 
-# The LSM6DSO driver (lsm6dso.c) and its FIFO stream (lsm6dso_stream.c, lsm6dso_fifo_irq.c,
+# The LSM6DSO driver (common/drivers/lsm6dso/lsm6dso.c with drivers/lsm6dso/lsm6dso_instance.h)
+# and its FIFO stream (lsm6dso_stream.c, lsm6dso_fifo_irq.c,
 # lsm6dso_compat.c, the decoder) on ST's real lsm6dso_reg.c, the Zephyr compatibility layer
 # (I2C, devices, work queues, RTIO, gpio0, the default sensor iodev and decoder) with the fake
 # kernel of tests/zephyr_fakes, and the board's devices, against a fake sensor behind a fake
 # I2C master and a fake INT1.  Its own include path: the compatibility layer's headers and
 # ST's, not the fakes of tests/fakes.  ST's file (fetched by setup.sh into nuttx/stmemsc) is
 # built without warnings, as it is; the Zephyr driver's code casts its bus functions, leaves
-# parameters unused and compares signed with unsigned, as in the Zephyr build.
+# parameters unused and compares signed with unsigned, as in the Zephyr build.  The prelude
+# follows the fake <nuttx/config.h>, as on NuttX (CONFIG_SENSOR_ASYNC_API from
+# CONFIG_NANO_LSM6DSO_STREAM).
 compat=(drivers/compat/zephyr_work.c drivers/compat/zephyr_rtio.c drivers/compat/zephyr_mem_blocks.c
         drivers/compat/zephyr_rtio_workq.c tests/zephyr_fakes/zephyr_kernel_host.c)
 if [[ -f stmemsc/lsm6dso_reg.c ]]; then
     cc -std=c17 -w -Istmemsc -c stmemsc/lsm6dso_reg.c -o "$out/lsm6dso_reg.o"
     cc "${flags[@]}" -Wno-unused-parameter -Wno-cast-function-type -Wno-sign-compare \
-        -D_DEFAULT_SOURCE -D'DEBUGASSERT(x)=assert(x)' -include "$prelude" -Itests/lsm6dso_fakes \
+        -D_DEFAULT_SOURCE -D'DEBUGASSERT(x)=assert(x)' -include tests/lsm6dso_fakes/nuttx/config.h \
+        -include "$prelude" -Itests/lsm6dso_fakes \
         -Itests/zephyr_fakes \
         -Idrivers/compat -Idrivers/include -Istmemsc -I"$lsm" -I"$clsm" \
         -Iboards/arduino-nano-rp2040-connect/src \
-        tests/lsm6dso_driver.c "$lsm/lsm6dso.c" "$lsm/stmemsc_i2c.c" "$lsm/stmemsc_mdelay.c" \
+        tests/lsm6dso_driver.c "$clsm/lsm6dso.c" "$lsm/stmemsc_i2c.c" "$lsm/stmemsc_mdelay.c" \
         "$clsm/lsm6dso_fifo_hw.c" "$clsm/lsm6dso_fifo.c" "$clsm/lsm6dso_cal.c" \
         "$clsm/lsm6dso_zero.c" "$clsm/lsm6dso_stream.c" "$clsm/lsm6dso_fifo_irq.c" \
         "$clsm/lsm6dso_compat.c" \
@@ -67,11 +71,12 @@ if [[ -f stmemsc/lsm6dso_reg.c ]]; then
     # fake key-value store: the lookup of the stored values, the driver's output with them,
     # range changes, reload, zero and the "imu cal" lines.
     cc "${flags[@]}" -Wno-unused-parameter -Wno-cast-function-type -Wno-sign-compare \
-        -D_DEFAULT_SOURCE -D'DEBUGASSERT(x)=assert(x)' -include "$prelude" -Itests/lsm6dso_fakes \
+        -D_DEFAULT_SOURCE -D'DEBUGASSERT(x)=assert(x)' -include tests/lsm6dso_fakes/nuttx/config.h \
+        -include "$prelude" -Itests/lsm6dso_fakes \
         -Itests/zephyr_fakes \
         -Idrivers/compat -Idrivers/include -Istmemsc -I"$lsm" -I"$clsm" -I"$imu" -I"$cimu" \
         -Iboards/arduino-nano-rp2040-connect/src \
-        tests/imu_cal.c "$cimu/imu_cal.c" "$cimu/imu_cal_codec.c" "$lsm/lsm6dso.c" \
+        tests/imu_cal.c "$cimu/imu_cal.c" "$cimu/imu_cal_codec.c" "$clsm/lsm6dso.c" \
         "$lsm/stmemsc_i2c.c" "$lsm/stmemsc_mdelay.c" \
         "$clsm/lsm6dso_fifo_hw.c" "$clsm/lsm6dso_fifo.c" "$clsm/lsm6dso_cal.c" \
         "$clsm/lsm6dso_zero.c" "$clsm/lsm6dso_stream.c" "$clsm/lsm6dso_fifo_irq.c" \
@@ -87,7 +92,8 @@ if [[ -f stmemsc/lsm6dso_reg.c ]]; then
     # the driver with its fake sensor (lsm6dso_driver.c, included): the help, argument checks,
     # wildcards, device names, the output of get / attr_get / attr_set / stream / trig, printed
     # by the processing callback on the command's terminal.  Its main() is sensor_main().
-    sinc=(-D_GNU_SOURCE -D'DEBUGASSERT(x)=assert(x)' -DSENSOR_SHELL_GET_WAIT_MS=1 -include "$prelude"
+    sinc=(-D_GNU_SOURCE -D'DEBUGASSERT(x)=assert(x)' -DSENSOR_SHELL_GET_WAIT_MS=1
+          -include tests/lsm6dso_fakes/nuttx/config.h -include "$prelude"
           -Itests/lsm6dso_fakes -Itests/zephyr_fakes -Idrivers/compat -Idrivers/include -Istmemsc
           -I"$lsm" -I"$clsm" -Iapps/sensor -Iapps/subcmd -Iboards/arduino-nano-rp2040-connect/src)
     sflags=("${flags[@]}" -Wno-unused-parameter -Wno-cast-function-type -Wno-sign-compare)
@@ -95,7 +101,7 @@ if [[ -f stmemsc/lsm6dso_reg.c ]]; then
         -o "$out/sensor_shell.o"
     cc "${sflags[@]}" "${sinc[@]}" tests/sensor_shell.c "$out/sensor_shell.o" \
         apps/sensor/sensor_shell_stream.c apps/sensor/sensor_shell_nuttx.c apps/subcmd/zshell.c \
-        apps/subcmd/subcmd.c "$lsm/lsm6dso.c" "$lsm/stmemsc_i2c.c" "$lsm/stmemsc_mdelay.c" \
+        apps/subcmd/subcmd.c "$clsm/lsm6dso.c" "$lsm/stmemsc_i2c.c" "$lsm/stmemsc_mdelay.c" \
         "$clsm/lsm6dso_fifo_hw.c" "$clsm/lsm6dso_fifo.c" "$clsm/lsm6dso_cal.c" \
         "$clsm/lsm6dso_zero.c" "$clsm/lsm6dso_stream.c" "$clsm/lsm6dso_fifo_irq.c" \
         "$clsm/lsm6dso_compat.c" \

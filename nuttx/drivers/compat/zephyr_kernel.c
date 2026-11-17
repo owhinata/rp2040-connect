@@ -24,6 +24,9 @@
  *   k_uptime_get()            the TIMER (the source of the NuttX tick) in
  *                             ms, rounded down
  *   k_sleep()                 nxsched_ticksleep()
+ *   k_msleep(), k_usleep()    nxsched_msleep(), nxsched_usleep() (rounded
+ *                             up to ticks; the same wake-up as k_sleep())
+ *   k_busy_wait()             up_udelay() (polls the TIMER)
  */
 
 #include <nuttx/config.h>
@@ -34,6 +37,7 @@
 #include <string.h>
 #include <sched.h>
 
+#include <nuttx/arch.h>
 #include <nuttx/irq.h>
 #include <nuttx/kthread.h>
 #include <nuttx/sched.h>
@@ -385,6 +389,28 @@ int32_t k_sleep(k_timeout_t timeout)
 
   nxsched_ticksleep((unsigned int)timeout.ticks);
   return 0;
+}
+
+/* nxsched_msleep(), nxsched_usleep(): the time rounded up to ticks
+ * (MSEC2TICK(), USEC2TICK()), then nxsched_ticksleep(), which yields for 0
+ * ticks and otherwise wakes at the current tick + ticks + 1, as k_sleep().
+ */
+
+int32_t k_msleep(int32_t ms)
+{
+  nxsched_msleep(ms > 0 ? (unsigned int)ms : 0);
+  return 0;
+}
+
+int32_t k_usleep(int32_t us)
+{
+  nxsched_usleep(us > 0 ? (useconds_t)us : 0);
+  return 0;
+}
+
+void k_busy_wait(uint32_t usec_to_wait)
+{
+  up_udelay(usec_to_wait);
 }
 
 /* Timeouts of delayable items --------------------------------------------*/

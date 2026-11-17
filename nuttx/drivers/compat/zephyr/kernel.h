@@ -16,10 +16,11 @@
  *   K_THREAD_STACK_DEFINE(), K_THREAD_STACK_SIZEOF(), K_PRIO_PREEMPT(),
  *   k_thread_name_set(), K_THREAD_DEFINE() (started by the init task),
  *   k_current_get()
- *   K_MUTEX_DEFINE(), k_uptime_get(), k_sleep(), snprintk()
- *   (<zephyr/sys/printk.h>)
+ *   K_MUTEX_DEFINE(), k_uptime_get(), k_sleep(), k_msleep(), k_usleep(),
+ *   k_busy_wait(), snprintk() (<zephyr/sys/printk.h>)
  *   k_cycle_get_32(), k_cycle_get_64(), k_cyc_to_us_floor64(),
- *   k_cyc_to_us_ceil64(), sys_clock_hw_cycles_per_sec()
+ *   k_cyc_to_us_ceil64(), k_cyc_to_ns_floor64(),
+ *   sys_clock_hw_cycles_per_sec()
  *
  * The work items follow kernel/work.c (flags RUNNING, CANCELING, QUEUED,
  * DELAYED; the return values of submit and schedule): zephyr_work.c, which
@@ -360,6 +361,27 @@ BUILD_ASSERT(1000 % Z_USEC_PER_TICK == 0, "Z_UPTIME_MS needs 1000 % tick == 0");
 
 int32_t k_sleep(k_timeout_t timeout);
 
+/* k_msleep(), k_usleep(): the time rounded up to ticks, then as k_sleep():
+ * the thread wakes at the current tick + ticks + 1 (Zephyr's
+ * z_tick_sleep() and z_add_timeout(); NuttX's nxsched_msleep() and
+ * nxsched_usleep(), which round up the same way and wait until
+ * clock_delay2abstick()).  0 or less yields, as k_sleep(K_NO_WAIT).  A
+ * signal does not end the sleep.  Return 0 (Zephyr: the time left, which
+ * only k_wakeup() makes non-zero).  zephyr_kernel.c on NuttX; a host test
+ * that calls them defines them.
+ */
+
+int32_t k_msleep(int32_t ms);
+int32_t k_usleep(int32_t us);
+
+/* k_busy_wait(): spins for at least usec_to_wait microseconds without
+ * leaving the CPU (NuttX's up_udelay(), which polls the TIMER: the board's
+ * nano_oneshot.c).  zephyr_kernel.c on NuttX; a host test that calls it
+ * defines it.
+ */
+
+void k_busy_wait(uint32_t usec_to_wait);
+
 /* The cycle counter: the Zephyr build's is the 125 MHz SysTick count
  * (CONFIG_SYS_CLOCK_HW_CYCLES_PER_SEC), which falls behind under load (see
  * nuttx/README.md); here it is the board's monotonic clock, the RP2040
@@ -368,7 +390,8 @@ int32_t k_sleep(k_timeout_t timeout);
  * conversions to microseconds are exact (Zephyr's round down or up a
  * count of 8 ns cycles).  k_cycle_get_32() is the low 32 bits, wrapping
  * after about 71.6 minutes (Zephyr's after about 34 s).  The IMU service
- * times its queue lock waits and its publishes with these.
+ * times its queue lock waits and its publishes with these, the LSM6DSO
+ * driver its FIFO reads (k_cycle_get_32(), k_cyc_to_ns_floor64()).
  */
 
 #define sys_clock_hw_cycles_per_sec() 1000000
@@ -398,6 +421,11 @@ static inline uint64_t k_cyc_to_us_floor64(uint64_t cycles)
 static inline uint64_t k_cyc_to_us_ceil64(uint64_t cycles)
 {
   return cycles;
+}
+
+static inline uint64_t k_cyc_to_ns_floor64(uint64_t cycles)
+{
+  return cycles * 1000U;
 }
 
 /* Work items-------------------------------------------------------------*/
