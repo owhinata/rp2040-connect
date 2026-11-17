@@ -13,9 +13,9 @@
  * The OS-independent part of the layer, the RAM log's ring, the shell's
  * zshell.c and subcmd.c and the copies of Zephyr's fnmatch() and getopt need
  * none (CONFIG_GETOPT_LONG, which changes a structure, is defined for every
- * source of the build, compat.cmake); the LSM6DSO driver's are below (the
- * same values as the NuttX build's prelude); the options of the others (the
- * NTP options of the time synchronization, ...) are added with them.
+ * source of the build, compat.cmake); the LSM6DSO driver's and the time
+ * synchronization's are below (the same values as the NuttX build's
+ * prelude and Kconfig); the options of the others are added with them.
  */
 
 #ifndef FREERTOS_DRIVERS_COMPAT_COMMON_PRELUDE_H
@@ -25,6 +25,16 @@
  * lsm6dso.c, lsm6dso_compat.c and sensor_shell.c.
  */
 #define CONFIG_SENSOR_LOG_LEVEL 3
+
+/* The time synchronization (common/imu/time_sync.c): the NTP server (empty:
+ * the default gateway), its UDP port and the interval between queries, the
+ * Zephyr build's CONFIG_NINA_NTP_SERVER, CONFIG_NINA_NTP_PORT and
+ * CONFIG_NINA_NTP_INTERVAL_MS (zephyr/app/usb-console/Kconfig; the NuttX
+ * build's CONFIG_NANO_NINA_NTP_*).  The same values in the three builds.
+ */
+#define CONFIG_NINA_NTP_SERVER      ""
+#define CONFIG_NINA_NTP_PORT        123
+#define CONFIG_NINA_NTP_INTERVAL_MS 2000
 
 /* The FIFO stream of the LSM6DSO driver, CONFIG_SENSOR_ASYNC_API in the
  * Zephyr build (lsm6dso.c, lsm6dso.h): on with the driver

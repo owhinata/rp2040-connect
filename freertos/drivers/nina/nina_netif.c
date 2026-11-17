@@ -18,6 +18,11 @@
 
 #include "nina_net.h"
 
+/* NET_DEVICE_DT_OFFLOAD_DEFINE(..., 1500) of nina_net.c (the NuttX build's
+ * NINA_NET_MTU, nuttx/drivers/nina/nina_netdev.c).
+ */
+#define NINA_NET_MTU 1500
+
 static struct net_if nina_iface;
 
 int nina_net_initialize(void)
@@ -33,6 +38,7 @@ int nina_net_initialize(void)
 
 	nina_iface.api = api;
 	z_net_if_register(&nina_iface);
+	net_if_set_mtu(&nina_iface, NINA_NET_MTU);
 
 	ret = z_net_offload_init(NULL);
 	if (ret < 0) {

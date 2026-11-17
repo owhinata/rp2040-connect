@@ -667,3 +667,26 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
   ping 2/2）。`dmesg` には getopt の `<wrn>` が残る（Zephyr の getopt の動作）。`-k 1 -p` での手動の接続は実機では未確認
   （パスフレーズの入力が要る。ホストテストでは通っている）。
 - IP アドレスの表示: NuttX 版と同じ `ifconfig`（2 行）にする方向（`net iface` だと `net` の下が `iface` だけになる）。F12 と一緒に入れる。
+
+## F12 の記録（2026-11-17）
+
+- 実装: スタブ `time_sync_null.c` を共有の `time_sync.c`・`time_offset.c` に置き換え。壁時計 `zephyr_sys_clock.c`（TIMER + 基準値、
+  NuttX 版と同じ作り。newlib の `gettimeofday` も同じ時計に）、`time_sync_prelude.h`（Pico SDK の `TIMER_BASE` との重なりを
+  `time_sync.c` だけで処理）、`CONFIG_NINA_NTP_*`（3 版と同じ値）、`time_sync_tid`（優先度 11、2048 B、NuttX 版と同じ起動位置）、
+  `ntp` コマンド、ホストテスト `freertos/tests/time_sync`。共有・NuttX・Zephyr のファイルは変えていない。
+- `ifconfig`（`freertos/drivers/wifi/nano_ifconfig.c`）: NuttX 版と同じ 2 行と空行。切断中は `at UP`、アドレスとマスクは 0.0.0.0
+  （NuttX 版は切断後もマスクを残す。違いは 1 点だけ）。`net iface` は作らない（ユーザーの決定）。
+- **`irqstack` を廃止し `ps` にまとめた**（ユーザーの指示）: `ps` の表に `(interrupts)` の行（割り込み用スタックの空き）。
+  `ps` のタスク数の上限を 16 → 24（タスクが 17 個になり `More than 16 tasks` で表示できなくなったのを実機で見つけた）。
+- メインが確かめたこと: ビルド（既定・selftest、警告 0）、整形、`host_tests.sh`（42 個）。ソースは読んでいない。
+- 実機（PC の chrony が相手）:
+  - 起動から 26.6 秒の時点で `state: synchronized`、queries 9・replies 9、`realtime_clock_steps` 1、timeouts 0。往復 `min_us` 6012。
+    66 秒後: `rate_valid` 1、`rate_ppb` -1028、`last_residual_us` 3366、`in_use_us` 6294。
+  - 同期後の `imu start`（36.6 秒）: `synchronized: 1`、`unix_unavailable: 0`、エラー・オーバーラン 0、`cpu_active` 30.3〜30.4%
+    （時刻同期なしの CP-F2 は 27.5%）、落ちた tick 7。
+  - `wifi disconnect` 中: `ifconfig` が `at UP`・0.0.0.0、`ntp status` の queries が増えない。再接続後: `at RUNNING`・10.42.0.97、
+    replies が数え直しで同期に戻る。`ifconfig eth0` はエラー。Telnet からも `ifconfig`・`ntp status` が出る。
+  - `ps`: 17 タスクと `(interrupts)` 1580〜1620。`time_sync_tid` の空き 952/2048。アイドル（接続中）の `cpu_active` 2.7%。
+  - 未確認: 切断 60 秒後の `not synchronized`、サーバーを名前で指定する経路、長時間（壁時計の step の増え方）。
+- 相談事項: Zephyr 版・NuttX 版にある `date` が FreeRTOS 版に無い（足すか）。`ifconfig` の切断中のマスクを NuttX に合わせるか。
+- 次: F13（MQTT と `imu_raw_mqtt.c`）→ CP-F4。そこで受信器での確認と、3 版の `cpu_active` の比較。

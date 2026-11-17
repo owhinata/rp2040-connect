@@ -8,7 +8,9 @@
 #
 # after add_executable().  It adds to the target:
 #
-# - the FreeRTOS part of the layer (zephyr_kernel.c, zephyr_mutex.c) and the
+# - the FreeRTOS part of the layer (zephyr_kernel.c, zephyr_mutex.c, and
+#   zephyr_sys_clock.c: the realtime clock of <zephyr/sys/clock.h>, which
+#   newlib's gettimeofday() and time() read too) and the
 #   OS-independent part that links at this stage (common/compat:
 #   zephyr_work.c, zephyr_rtio.c, zephyr_rtio_workq.c, zephyr_mem_blocks.c);
 # - the RAM log and "dmesg" (freertos/drivers/log/log_ram.c, on
@@ -76,6 +78,7 @@ function(freertos_zephyr_compat target)
   target_sources(${target} PRIVATE
     ${FREERTOS_COMPAT_DIR}/zephyr_kernel.c
     ${FREERTOS_COMPAT_DIR}/zephyr_mutex.c
+    ${FREERTOS_COMPAT_DIR}/zephyr_sys_clock.c
     ${FREERTOS_DRIVERS_DIR}/log/log_ram.c
     ${FREERTOS_DRIVERS_DIR}/shell/cli.c
     ${FREERTOS_DRIVERS_DIR}/shell/getopt_state.c

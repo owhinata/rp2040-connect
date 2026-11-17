@@ -16,8 +16,9 @@
  *   gateway as 0.0.0.0, or the configured address), every valid batch
  *   counted as dropped with -EAGAIN and an invalid one refused with -EINVAL
  *   and not counted, counters reset by the next start.
- * - The time synchronization's stub (freertos/drivers/imu/time_sync_null.c):
- *   never ready, no server time, time_sync_mono_us() the board clock.
+ *
+ * The time synchronization (common/imu/time_sync.c) has its own test,
+ * freertos/tests/time_sync.
  *
  * Built and run by freertos/script/host_tests.sh.
  */
@@ -41,9 +42,9 @@
 
 #include "imu_raw_mqtt.h"
 #include "imu_raw_packet.h"
-#include "os_clock.h"
 #include "priorities.h"
 #include "time_sync.h"
+#include "zephyr_os_port.h"
 #include "zephyr_compat.h"
 
 #define RUNNER_STACK 16384
@@ -58,6 +59,15 @@ void vApplicationTickHook(void)
 	z_host_isr_depth++;
 	app_tick_hook();
 	z_host_isr_depth--;
+}
+
+/* The board clock of time_sync.h, which the transport's stub reads (the
+ * build's is common/imu/time_sync.c, tested by freertos/tests/time_sync):
+ * the test port's clock.
+ */
+int64_t time_sync_mono_us(void)
+{
+	return (int64_t)nano_mono_us();
 }
 
 /* The log (common/log/app_log.h) into a buffer. */
@@ -278,31 +288,12 @@ static void test_transport(void)
 	printf("imu_raw_mqtt stub: ok\n");
 }
 
-/* The time synchronization's stub ------------------------------------------*/
-
-static void test_time_sync(void)
-{
-	int64_t unix_us = 123, a, b;
-	uint32_t delay = 456;
-
-	time_sync_init();
-	assert(!time_sync_is_ready());
-	a = time_sync_mono_us();
-	assert(!time_sync_unix_us(a, &unix_us, &delay) && unix_us == 123 && delay == 456);
-	assert(!time_sync_estimate_us(a, &unix_us, NULL) && unix_us == 123);
-	vTaskDelay(pdMS_TO_TICKS(5));
-	b = time_sync_mono_us();
-	assert(b >= a + 4000 && (uint64_t)b <= nano_mono_us());
-	printf("time_sync stub: ok\n");
-}
-
 static void runner(void *arg)
 {
 	(void)arg;
 	test_inet();
 	test_hwinfo();
 	test_transport();
-	test_time_sync();
 	fflush(stdout);
 	_exit(0);
 }

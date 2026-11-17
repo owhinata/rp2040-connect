@@ -26,7 +26,7 @@
 #include "zephyr_selftest.h"
 #endif
 
-#define PS_TASKS_MAX     16
+#define PS_TASKS_MAX     24
 /* Time for the USB code to send a command's last message before a restart. */
 #define RESTART_DELAY_MS 100
 
@@ -207,6 +207,10 @@ static int cmd_ps(const struct shell *sh, size_t argc, char **argv)
 			    (unsigned long)(t->usStackHighWaterMark * sizeof(StackType_t)),
 			    permille / 10, permille % 10);
 	}
+	/* The interrupt stack (the main stack, irq_stack.c): not a task. */
+	shell_print(sh, "%-20s %-5c %4c %10lu %6c", "(interrupts)", '-', '-',
+		    (unsigned long)(irq_stack_size() - MIN(irq_stack_used(), irq_stack_size())),
+		    '-');
 	shell_print(sh, "STATE: X running, R ready, B blocked, S suspended, D deleted");
 
 	/* The load as the IMU service's "cpu_active" measures it: idle windows,
@@ -220,27 +224,6 @@ static int cmd_ps(const struct shell *sh, size_t argc, char **argv)
 }
 
 SHELL_CMD_REGISTER(ps, NULL, "List the tasks and show the CPU load", cmd_ps);
-
-/* The use of the interrupt stack since the start, in the format of the
- * "IRQ 00" line of the Zephyr build's "kernel thread stacks" and the NuttX
- * build's "irqstack".  Arguments are ignored.
- */
-static int cmd_irqstack(const struct shell *sh, size_t argc, char **argv)
-{
-	size_t size = irq_stack_size();
-	size_t used = irq_stack_used();
-	size_t unused = used < size ? size - used : 0;
-
-	(void)argc;
-	(void)argv;
-
-	shell_print(sh, "%p %-32s (real size %4zu):\tunused %4zu\tusage %4zu / %4zu (%2zu %%)",
-		    (void *)irq_stack_base(), "IRQ 00", size, unused, used, size,
-		    used * 100 / size);
-	return 0;
-}
-
-SHELL_CMD_REGISTER(irqstack, NULL, "Show the use of the interrupt stack", cmd_irqstack);
 
 void fault_print(const struct fault_record *r)
 {
@@ -330,13 +313,16 @@ SHELL_CMD_REGISTER(selftest, NULL, "Test the Zephyr compatibility layer (build o
  * common/imu/kv_store.c (with "kv wipe" of common/compat/kv_store_wipe.c),
  * common/drivers/nina/nina_shell.c, common/compat/zephyr_wifi_shell.c
  * ("wifi", with "wifi cred" of the copy of Zephyr's
- * wifi_credentials_shell.c) and common/compat/zephyr_zperf_shell.c.
+ * wifi_credentials_shell.c), freertos/drivers/wifi/nano_ifconfig.c,
+ * common/imu/time_sync.c ("ntp") and common/compat/zephyr_zperf_shell.c.
  */
 NANO_SHELL_CMD_DECLARE(dmesg);
 NANO_SHELL_CMD_DECLARE(i2c_dma);
+NANO_SHELL_CMD_DECLARE(ifconfig);
 NANO_SHELL_CMD_DECLARE(imu);
 NANO_SHELL_CMD_DECLARE(kv);
 NANO_SHELL_CMD_DECLARE(nina);
+NANO_SHELL_CMD_DECLARE(ntp);
 NANO_SHELL_CMD_DECLARE(wifi);
 NANO_SHELL_CMD_DECLARE(zperf);
 
@@ -352,10 +338,11 @@ const struct nano_shell_cmd nano_shell_cmds[] = {
 	NANO_SHELL_CMD(help),
 	NANO_SHELL_CMD(i2c_dma),
 	NANO_SHELL_CMD(id),
+	NANO_SHELL_CMD(ifconfig),
 	NANO_SHELL_CMD(imu),
-	NANO_SHELL_CMD(irqstack),
 	NANO_SHELL_CMD(kv),
 	NANO_SHELL_CMD(nina),
+	NANO_SHELL_CMD(ntp),
 	NANO_SHELL_CMD(ps),
 	NANO_SHELL_CMD(reboot),
 #ifdef NANO_SELFTEST

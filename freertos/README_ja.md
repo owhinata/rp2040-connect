@@ -106,12 +106,13 @@ USB の CDC ACM ポートがコンソールです（UART0 は使いません）�
 | `uptime` | 起動からの時間と tick の数 |
 | `sleep <ms>` | ms ミリ秒眠る |
 | `devmem <address> [<width> [<value>]]` | メモリーの読み書き。アドレスと値は 16 進、幅は 8・16・32 ビット（省略時 32）。値を付けると書き込み |
-| `ps` | タスクの一覧（状態、優先度、スタックの空きの最小値、CPU 時間の割合）と、前回の `ps` からの CPU 負荷 |
+| `ps` | タスクの一覧（状態、優先度、スタックの空きの最小値、CPU 時間の割合）、割り込み用スタックの空き（`(interrupts)` の行）、前回の `ps` からの CPU 負荷 |
 | `imu start`、`imu stop`、`imu status`、`imu cal [reload\|zero]` | IMU の取得の開始・停止、カウンターの表示、校正値の表示と読み直し（Zephyr 版と同じ） |
 | `wifi connect`、`wifi disconnect`、`wifi scan`、`wifi status` | Wi-Fi の接続（`connect -s <SSID> -k 1 -p <パスフレーズ>`。`-k 0` は暗号化なし）・切断・スキャン・状態。Zephyr 版の `wifi` のうち、このボードで使えるものだけ |
 | `wifi cred add`、`wifi cred delete`、`wifi cred list`、`wifi cred auto_connect` | 保存する資格情報の登録・削除・一覧と、保存済みの網への接続。`list` はパスフレーズも表示する |
 | `zperf tcp upload <IP> [port] [秒] [サイズ]`、`zperf tcp download [port]`、`zperf tcp download stop` | TCP の速度測定。PC 側は `iperf3 -s` / `iperf3 -c <ボード>`。UDP は無い |
-| `irqstack` | 割り込み用スタックの使用量 |
+| `ntp status` | 時刻同期の状態（Zephyr 版と同じ出力） |
+| `ifconfig` | MAC アドレス、接続の状態、IP アドレス、ゲートウェイ、マスク（NuttX 版と同じ形式） |
 | `dmesg` | RAM ログ（8 KB。再起動をまたいで残る） |
 | `kv set <key> <value>`、`kv sethex <key> <hex>`、`kv get <key>`、`kv delete <key>` | KV（設定と校正値）の読み書き。`get` は 16 進で表示 |
 | `kv wipe confirm` | KV の領域全体（Wi-Fi の資格情報も）を消す |
@@ -128,11 +129,12 @@ USB の CDC ACM ポートがコンソールです（UART0 は使いません）�
   再起動します。記録は、次に端末をつないだときの表示、`fault`、`dmesg` で見られます。
 - KV はフラッシュの末尾 8 KB にあり、形式は Zephyr 版・NuttX 版と同じです。版を書き換えても残ります。領域に
   別のデータがあると `kv` は `-138` で失敗し、`dmesg` に案内が出ます。消すのは `kv wipe confirm` です。
-- 送信（MQTT）と時刻同期はまだありません。`imu start` は取得だけを行い、バッチは破棄として数えます
-  （`imu status` の `mqtt:` は接続なしの値）。取得が始まるのは `imu start` の約 3 秒後です。
+- 送信（MQTT）はまだありません。`imu start` は取得だけを行い、バッチは破棄として数えます（`imu status` の `mqtt:` は
+  接続なしの値）。取得が始まるのは `imu start` の約 3 秒後です。
+- Wi-Fi が繋がると、既定のゲートウェイ（PC）の NTP（UDP 123 番）に 2 秒ごとに問い合わせて時刻を合わせます。
+  PC 側は chrony などで応答させます。
 - 起動の約 4 秒後に、保存済みの網へ自動で接続します。切れたら自動で再接続します。`wifi disconnect` で切ると、
   次に接続するまで自動の再接続は止まります。資格情報は KV にあり、Zephyr 版・NuttX 版と共通です。
-- 取得した IP アドレスを表示するコマンドはまだありません（PC 側で `ip neigh` などを見ます）。
 - Telnet（ポート 23）でも同じシェルが使えます。同時に 1 接続で、認証と暗号化はありません。接続しただけでは何も
   出ません（Enter でプロンプト）。エコーと行の編集はクライアント側です。2 本目の接続はすぐ閉じられます。
 - `devmem` で存在しないアドレスを読むと異常停止します（例: `devmem 30000000`）。

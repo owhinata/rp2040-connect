@@ -17,7 +17,7 @@
  * words (StackType_t, 4 bytes).
  *
  * Interrupts have a stack of their own (the main stack, MSP: PICO_STACK_SIZE
- * 0x800 = 2048 bytes, Zephyr's CONFIG_ISR_STACK_SIZE=2048; "irqstack").
+ * 0x800 = 2048 bytes, Zephyr's CONFIG_ISR_STACK_SIZE=2048; the "(interrupts)" row of "ps").
  *
  * The values of priorities.h on FreeRTOS:
  *

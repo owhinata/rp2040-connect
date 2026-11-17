@@ -7,7 +7,7 @@
  * itself:
  *
  *   struct net_if: the interface; its state (one IPv4 address with its
- *   netmask, the default gateway, the link address, dormant and
+ *   netmask, the default gateway, the link address, the MTU, dormant and
  *   administratively up) is kept by zephyr_net_if.c, as the NuttX build
  *   keeps it in its network device (nuttx/drivers/compat/zephyr/net/
  *   net_if.h has the same functions).  Dormant is Zephyr's "connected to
@@ -68,6 +68,17 @@ struct net_if_addr {
 	enum net_addr_state addr_state;
 };
 
+/* include/zephyr/net/net_linkaddr.h: a link address (the MAC address of an
+ * Ethernet or Wi-Fi interface, 6 bytes).
+ */
+#define NET_LINK_ADDR_MAX_LENGTH 6
+
+struct net_linkaddr {
+	uint8_t type; /* enum net_link_type */
+	uint8_t len;
+	uint8_t addr[NET_LINK_ADDR_MAX_LENGTH];
+};
+
 /* Makes IFACE the interface that net_if_get_default() and
  * net_if_get_wifi_sta() return, administratively up (Zephyr brings an
  * interface up when it is initialized), dormant, with no address
@@ -99,6 +110,12 @@ struct net_in_addr *net_if_ipv4_get_global_addr(struct net_if *iface, enum net_a
 bool net_if_ipv4_set_netmask_by_addr(struct net_if *iface, const struct net_in_addr *addr,
 				     const struct net_in_addr *netmask);
 
+/* The netmask of ADDR, when it is the interface's address, else 0.0.0.0
+ * (the "ifconfig" command, freertos/drivers/wifi/nano_ifconfig.c).
+ */
+struct net_in_addr net_if_ipv4_get_netmask_by_addr(struct net_if *iface,
+						   const struct net_in_addr *addr);
+
 /* The default gateway (0.0.0.0 when there is none). */
 void net_if_ipv4_set_gw(struct net_if *iface, const struct net_in_addr *gw);
 struct net_in_addr net_if_ipv4_get_gw(struct net_if *iface);
@@ -115,6 +132,19 @@ bool net_if_is_admin_up(struct net_if *iface);
  * -EINVAL.
  */
 int net_if_set_link_addr(struct net_if *iface, uint8_t *addr, uint8_t len, enum net_link_type type);
+
+/* The link address (len 0 until one is set).  As in Zephyr, a pointer to the
+ * interface's own, read under no lock.
+ */
+struct net_linkaddr *net_if_get_link_addr(struct net_if *iface);
+
+/* The MTU, which Zephyr takes from the device definition
+ * (NET_DEVICE_DT_OFFLOAD_DEFINE(..., mtu): 1500 for the NINA) and the
+ * FreeRTOS build's interface sets at its start (freertos/drivers/nina/
+ * nina_netif.c).  0 until set.
+ */
+void net_if_set_mtu(struct net_if *iface, uint16_t mtu);
+uint16_t net_if_get_mtu(struct net_if *iface);
 
 /* Zephyr routes the sockets of an offloaded interface to the driver's
  * socket(); the FreeRTOS build's zsock_*() calls go to the NINA's sockets

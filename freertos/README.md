@@ -106,12 +106,13 @@ The console is the USB CDC ACM port (UART0 is not used). Opening a terminal show
 | `uptime` | Time since the start and the number of ticks |
 | `sleep <ms>` | Sleep for ms milliseconds |
 | `devmem <address> [<width> [<value>]]` | Read or write memory. Address and value in hexadecimal, width 8, 16 or 32 bits (default 32). A value writes |
-| `ps` | The tasks (state, priority, least free stack, share of the CPU time) and the CPU load since the previous `ps` |
+| `ps` | The tasks (state, priority, least free stack, share of the CPU time), the free interrupt stack (the `(interrupts)` row) and the CPU load since the previous `ps` |
 | `imu start`, `imu stop`, `imu status`, `imu cal [reload\|zero]` | Start and stop the IMU acquisition, show its counters, show and reload the calibration (as in the Zephyr build) |
 | `wifi connect`, `wifi disconnect`, `wifi scan`, `wifi status` | Connect (`connect -s <SSID> -k 1 -p <passphrase>`; `-k 0` for an open network), disconnect, scan, and show the state of Wi-Fi: the part of the Zephyr build's `wifi` that works on this board |
 | `wifi cred add`, `wifi cred delete`, `wifi cred list`, `wifi cred auto_connect` | Add, delete and list the stored credentials, and connect to a stored network. `list` shows the passphrases too |
 | `zperf tcp upload <IP> [port] [seconds] [size]`, `zperf tcp download [port]`, `zperf tcp download stop` | TCP throughput test. On the PC: `iperf3 -s` / `iperf3 -c <board>`. No UDP |
-| `irqstack` | Use of the interrupt stack |
+| `ntp status` | The state of the time synchronization (the output of the Zephyr build) |
+| `ifconfig` | MAC address, link state, IP address, gateway and mask (the format of the NuttX build) |
 | `dmesg` | The RAM log (8 KB; kept across restarts) |
 | `kv set <key> <value>`, `kv sethex <key> <hex>`, `kv get <key>`, `kv delete <key>` | Read and write the key-value store (settings and calibration). `get` prints hexadecimal |
 | `kv wipe confirm` | Erase the whole key-value area (the Wi-Fi credentials too) |
@@ -130,13 +131,13 @@ The console is the USB CDC ACM port (UART0 is not used). Opening a terminal show
 - The key-value store is in the last 8 KiB of the flash, in the format of the Zephyr and NuttX builds, so
   it survives a change of build. If the area holds other data, `kv` fails with `-138` and `dmesg` says
   what to do; `kv wipe confirm` erases it.
-- There is no transport (MQTT) and no time synchronization yet. `imu start` only acquires and counts the
-  batches as dropped (`mqtt:` in `imu status` shows no connection). The acquisition starts about 3 s after
-  `imu start`.
+- There is no transport (MQTT) yet. `imu start` only acquires and counts the batches as dropped (`mqtt:`
+  in `imu status` shows no connection). The acquisition starts about 3 s after `imu start`.
+- Once Wi-Fi is connected, the board asks the NTP server of the default gateway (the PC, UDP port 123) every
+  2 s and keeps its time. Run chrony or similar on the PC.
 - About 4 s after the start the board connects to a stored network by itself, and it reconnects when the
   connection is lost. After `wifi disconnect` it does not reconnect by itself until the next connection.
   The credentials are in the key-value store, shared with the Zephyr and NuttX builds.
-- No command shows the IP address yet (look at `ip neigh` or similar on the PC).
 - The same shell is on Telnet (port 23): one connection at a time, no authentication, no encryption.
   Nothing is shown on connecting (Enter gives the prompt). Echo and line editing are the client's. A second
   connection is closed at once.

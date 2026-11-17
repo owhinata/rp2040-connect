@@ -32,6 +32,11 @@
  *   (the module's status, seen twice by nina_monitor_tid) raises the
  *   disconnection, and wifi_reconnect_tid connects again 4 s later.
  * - Garbage collection of the store (many writes): the entry is still read.
+ * - "ifconfig" (freertos/drivers/wifi/nano_ifconfig.c), with and without
+ *   "wlan0": nothing before the interface exists, then the NuttX build's
+ *   lines (the state UP while dormant, RUNNING while connected, the
+ *   addresses of the connection, 0.0.0.0 without them, an empty line at
+ *   the end); another name and more arguments are errors.
  *
  * Built and run by freertos/script/host_tests.sh.
  */
@@ -444,6 +449,35 @@ static void expect_text(const char *want)
 	}
 }
 
+/* The session's whole output is WANT (after cap_clear()). */
+static void expect_exact(const char *want)
+{
+	if (strcmp(cap.text, want) != 0) {
+		say(2, "want exactly \"%s\"\n", want);
+		fail("session");
+	}
+}
+
+/* "ifconfig" and "ifconfig wlan0": the NuttX build's two lines and the empty
+ * one, with STATE and the addresses (the MAC address stays 0: the module did
+ * not answer when the interface read it).  The console ends lines with CR LF.
+ */
+static void expect_ifconfig(const char *state, const char *inet)
+{
+	char want[256];
+
+	snprintf(want, sizeof(want),
+		 "wlan0\tLink encap:Ethernet HWaddr 00:00:00:00:00:00 at %s mtu 1500\r\n"
+		 "\tinet addr:%s\r\n\r\n",
+		 state, inet);
+	cap_clear();
+	assert(run("ifconfig") == 0);
+	expect_exact(want);
+	cap_clear();
+	assert(run("ifconfig wlan0") == 0);
+	expect_exact(want);
+}
+
 /* Waits up to MS for WANT in the session's output. */
 static void wait_text(const char *want, int ms)
 {
@@ -457,9 +491,11 @@ static void wait_text(const char *want, int ms)
 	fail("session");
 }
 
+NANO_SHELL_CMD_DECLARE(ifconfig);
 NANO_SHELL_CMD_DECLARE(wifi);
 
 const struct nano_shell_cmd nano_shell_cmds[] = {
+	NANO_SHELL_CMD(ifconfig),
 	NANO_SHELL_CMD(wifi),
 };
 
@@ -507,6 +543,13 @@ static void test_start(void)
 	struct net_if *iface;
 	int ret;
 
+	/* No interface yet: "ifconfig" shows nothing, and there is no wlan0. */
+	cap_clear();
+	assert(run("ifconfig") == 0);
+	expect_exact("");
+	assert(run("ifconfig wlan0") == 1);
+	expect_text("wlan0: no such interface");
+
 	/* A module that does not answer: nothing waits for it. */
 	fw.dead = true;
 	assert(nina_net_initialize() == 0);
@@ -538,6 +581,15 @@ static void test_start(void)
 	assert(run("wifi status") == 1);
 	expect_text("Status request failed");
 	fw.dead = false;
+
+	/* Up, not on a network, no address; other names and arguments. */
+	expect_ifconfig("UP", "0.0.0.0 DRaddr:0.0.0.0 Mask:0.0.0.0");
+	cap_clear();
+	assert(run("ifconfig eth0") == 1);
+	expect_text("eth0: no such interface");
+	cap_clear();
+	assert(run("ifconfig wlan0 10.0.0.2") == 1);
+	expect_text("ifconfig: wrong parameter count");
 
 	/* The subcommands, in Zephyr's order, and the help of one. */
 	cap_clear();
@@ -656,6 +708,7 @@ static void test_connect(void)
 	gw = net_if_ipv4_get_gw(iface);
 	assert(addr(&gw) == 0x0a2a0001);
 	assert(!net_if_is_dormant(iface));
+	expect_ifconfig("RUNNING", "10.42.0.97 DRaddr:10.42.0.1 Mask:255.255.255.0");
 
 	/* Connected already: -EALREADY, in the log (Zephyr: printk()). */
 	cap_clear();
@@ -692,6 +745,8 @@ static void test_disconnect_scan(void)
 	assert(net_if_ipv4_get_global_addr(iface, NET_ADDR_PREFERRED) == NULL);
 	gw = net_if_ipv4_get_gw(iface);
 	assert(addr(&gw) == 0 && net_if_is_dormant(iface));
+	/* The netmask goes with the address (the NuttX build keeps its own). */
+	expect_ifconfig("UP", "0.0.0.0 DRaddr:0.0.0.0 Mask:0.0.0.0");
 
 	cap_clear();
 	assert(run("wifi scan") == 0);

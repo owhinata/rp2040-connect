@@ -19,12 +19,14 @@
 #   0's boundary (freertos/drivers/compat/rp2040/nano_gpio.c) under the
 #   layer's gpio0 and the LSM6DSO's FIFO interrupt on fakes of the Pico SDK's
 #   GPIO and IRQ functions (freertos/tests/gpio), and the IMU service's
-#   parts of the build (address conversions, hwinfo, the stubs of the MQTT
-#   transport and the time synchronization: freertos/tests/imu), and the
+#   parts of the build (address conversions, hwinfo, the stub of the MQTT
+#   transport: freertos/tests/imu), and the time synchronization
+#   (common/imu/time_sync.c on the build's realtime clock, TIMER read and
+#   thread, with fake sockets and a fake NTP server: freertos/tests/time_sync), and the
 #   sockets: the zsock_*() calls (freertos/drivers/nina/nina_socket.c) on the
 #   shared NINA core, a fake module and a fake clock (freertos/tests/socket), and Wi-Fi: the
 #   interface, the net_mgmt events, the stored credentials (settings "wifi_cred/<n>"), the
-#   reconnection and the "wifi" command on a fake module (freertos/tests/wifi), and the
+#   reconnection, the "wifi" and "ifconfig" commands on a fake module (freertos/tests/wifi), and the
 #   Telnet shell (freertos/drivers/telnet) and "zperf" (common/compat/zperf_iperf3.c) on the
 #   host's sockets with the NINA's behaviour, driven over TCP on 127.0.0.1 by
 #   freertos/tests/telnet/client.py (python3; with the host's iperf3, which is skipped when
@@ -39,7 +41,7 @@ verbose=0
 case "${1:-}" in
   "") ;;
   -v) verbose=1 ;;
-  -h|--help) sed -n '2,30p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+  -h|--help) sed -n '2,33p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
   *) printf 'Unknown option: %s\n' "$1" >&2; exit 2 ;;
 esac
 
@@ -262,15 +264,14 @@ printf 'ok  gpio (GPIO bank 0 boundary, gpio0, FIFO interrupt, FreeRTOS POSIX po
 # The IMU service's FreeRTOS parts (freertos/tests/imu): the address conversions
 # (drivers/libc/inet.c, the layer's <zephyr/net/socket.h> on drivers/libc/include),
 # hwinfo_get_device_id() (drivers/compat/rp2040/zephyr_hwinfo.c) on a fake of
-# pico_get_unique_board_id(), and the stubs of the MQTT transport and the time synchronization
-# (drivers/imu, with common/imu/imu_raw_queue.c and imu_raw_packet.c, with the prelude, as
-# drivers/imu/imu.cmake builds them), on the same kernel and layer objects.  tests/imu/fake
-# (pico/unique_id.h, and os_clock.h on the test's port header) comes first.
+# pico_get_unique_board_id(), and the stub of the MQTT transport (drivers/imu, with
+# common/imu/imu_raw_queue.c and imu_raw_packet.c, with the prelude, as drivers/imu/imu.cmake
+# builds them), on the same kernel and layer objects.  tests/imu/fake (pico/unique_id.h) comes
+# first.
 imuinc=(-Itests/imu/fake -Idrivers/libc/include -I../common/imu -I../common/drivers/lsm6dso)
 imuobjs=()
 for src in drivers/libc/inet.c drivers/compat/rp2040/zephyr_hwinfo.c drivers/imu/imu_raw_mqtt_null.c \
-           drivers/imu/time_sync_null.c tests/imu/main.c ../common/imu/imu_raw_queue.c \
-           ../common/imu/imu_raw_packet.c; do
+           tests/imu/main.c ../common/imu/imu_raw_queue.c ../common/imu/imu_raw_packet.c; do
     obj="$out/imu_$(basename "$src" .c).o"
     extra=()
     case $src in
@@ -285,7 +286,47 @@ if (( verbose )); then
 else
     timeout 60 "$out/imu" >"$out/log" 2>&1 || { cat "$out/log"; exit 1; }
 fi
-printf 'ok  imu (address conversions, hwinfo, stubs of the transport and time, FreeRTOS POSIX port)\n'
+printf 'ok  imu (address conversions, hwinfo, stub of the transport, FreeRTOS POSIX port)\n'
+
+# The time synchronization (freertos/tests/time_sync): the shared common/imu/time_sync.c and
+# time_offset.c with the prelude, as drivers/imu/imu.cmake builds them (without
+# drivers/imu/time_sync_prelude.h, which only takes away a name of the Pico SDK's headers), on
+# the build's realtime clock (drivers/compat/zephyr_sys_clock.c), interface
+# (drivers/compat/zephyr_net_if.c) and net_mgmt events (common/compat/zephyr_net_mgmt.c with the
+# "net_mgmt" thread), the build's shell on a console that captures, fake zsock_*() calls with a
+# fake NTP server, and the TIMER's registers on the test port's clock
+# (tests/time_sync/fake/zephyr/sys/sys_io.h, before common/compat), on the same kernel and layer
+# objects.  It waits for the real intervals (2 s): about 12 s.
+tsinc=(-DZ_SHELL_CMD_ROOT_GLOBAL -DCONFIG_GETOPT_LONG=1 -U_FORTIFY_SOURCE
+       -Itests/time_sync/fake -Itests/shell -Idrivers/shell -Idrivers/libc/include -I../common/shell
+       -I../common/compat/lib/utils/getopt -I../common/imu -ffunction-sections -fdata-sections)
+tsobjs=()
+for src in tests/time_sync/main.c drivers/compat/zephyr_sys_clock.c drivers/compat/zephyr_net_if.c \
+           drivers/libc/inet.c drivers/shell/getopt_state.c drivers/shell/nano_console.c \
+           drivers/shell/nano_shell.c drivers/shell/shell_argv.c drivers/libc/stdio_wrap.c \
+           ../common/shell/zshell.c ../common/shell/subcmd.c \
+           ../common/compat/subsys/portability/posix/c_lib_ext/fnmatch.c \
+           ../common/compat/lib/utils/getopt/getopt.c ../common/compat/lib/utils/getopt/getopt_long.c \
+           ../common/imu/time_sync.c ../common/imu/time_offset.c ../common/compat/zephyr_net_mgmt.c; do
+    obj="$out/time_sync_$(basename "$src" .c).o"
+    extra=()
+    case $src in
+        ../common/shell/*|*/fnmatch.c|*/getopt*.c) ;;
+        ../common/*) extra=(-include drivers/compat/common_prelude.h) ;;
+    esac
+    case $src in
+        *zshell.c|*nano_console.c) extra+=(-Dcalloc=test_calloc -Dmalloc=test_malloc -Dfree=test_free) ;;
+    esac
+    cc "${flags[@]}" "${strict[@]}" "${tsinc[@]}" "${inc[@]}" "${extra[@]}" -c "$src" -o "$obj"
+    tsobjs+=("$obj")
+done
+cc "${flags[@]}" -Wl,--gc-sections "${wraps[@]}" "${kernobjs[@]}" "${tsobjs[@]}" -o "$out/time_sync"
+if (( verbose )); then
+    timeout 60 "$out/time_sync"
+else
+    timeout 60 "$out/time_sync" >"$out/log" 2>&1 || { cat "$out/log"; exit 1; }
+fi
+printf 'ok  time_sync (realtime clock, TIMER read, thread, NTP exchanges, ntp status, FreeRTOS POSIX port)\n'
 
 # The sockets (freertos/tests/socket): the zsock_*() calls of the layer's <zephyr/net/socket.h>
 # (drivers/nina/nina_socket.c: the descriptors, their locks, the Zephyr build's wait loops) on
@@ -318,6 +359,7 @@ printf 'ok  socket (descriptors, wait loops, options, poll, resolver, FreeRTOS P
 # drivers/wifi/wifi.cmake builds them (the NINA driver common/drivers/nina/nina_net.c, the
 # layer's net_mgmt and Wi-Fi requests, the stored credentials and their settings backend, the
 # Wi-Fi profile, the "wifi" command and the copy of Zephyr's wifi_credentials_shell.c, with the
+# "ifconfig" command (drivers/wifi/nano_ifconfig.c), with the
 # prelude, CONFIG_NANO_WIFI_CREDENTIALS and the same per-file options), on the store and the
 # copies of Zephyr's settings and NVS over the shared fake flash (common/tests/kv_flash_fake.c),
 # the build's shell on a console that captures, and a fake module (the test's nina_request());
@@ -329,7 +371,8 @@ wifiinc=(-D_GNU_SOURCE -DZ_SHELL_CMD_ROOT_GLOBAL -DCONFIG_GETOPT_LONG=1 -DCONFIG
          -I../common/imu -I../common/tests -I../common/compat/subsys/settings/include
          -I../common/compat/subsys/settings/src -ffunction-sections -fdata-sections)
 wifiobjs=()
-for src in drivers/compat/zephyr_net_if.c drivers/nina/nina_netif.c tests/wifi/main.c \
+for src in drivers/compat/zephyr_net_if.c drivers/nina/nina_netif.c drivers/wifi/nano_ifconfig.c \
+           tests/wifi/main.c \
            drivers/shell/cli.c drivers/shell/getopt_state.c drivers/shell/nano_console.c \
            drivers/shell/nano_shell.c drivers/shell/shell_argv.c drivers/libc/stdio_wrap.c \
            ../common/shell/zshell.c ../common/shell/subcmd.c \
@@ -373,7 +416,7 @@ if (( verbose )); then
 else
     timeout 120 "$out/wifi" >"$out/log" 2>&1 || { cat "$out/log"; exit 1; }
 fi
-printf 'ok  wifi (interface, events, credentials, reconnection, wifi command, FreeRTOS POSIX port)\n'
+printf 'ok  wifi (interface, events, credentials, reconnection, wifi and ifconfig commands, FreeRTOS POSIX port)\n'
 
 # The Telnet shell and "zperf" (freertos/tests/telnet): the build's Telnet backend
 # (drivers/telnet/nano_telnet.c, its port a variable here) and shell, the port's iperf3 and the

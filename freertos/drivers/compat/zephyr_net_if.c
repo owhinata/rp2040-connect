@@ -25,7 +25,8 @@ static bool dormant = true;
 static struct net_if_addr unicast;
 static struct net_in_addr netmask;
 static struct net_in_addr gateway;
-static uint8_t link_addr[6];
+static struct net_linkaddr link_addr;
+static uint16_t mtu;
 
 void z_net_if_register(struct net_if *iface)
 {
@@ -114,6 +115,21 @@ bool net_if_ipv4_set_netmask_by_addr(struct net_if *iface, const struct net_in_a
 	return set;
 }
 
+struct net_in_addr net_if_ipv4_get_netmask_by_addr(struct net_if *iface,
+						   const struct net_in_addr *addr)
+{
+	k_spinlock_key_t key;
+	struct net_in_addr mask = {.s_addr = INADDR_ANY};
+
+	(void)iface;
+	key = k_spin_lock(&lock);
+	if (unicast.address.s_addr != INADDR_ANY && unicast.address.s_addr == addr->s_addr) {
+		mask = netmask;
+	}
+	k_spin_unlock(&lock, key);
+	return mask;
+}
+
 void net_if_ipv4_set_gw(struct net_if *iface, const struct net_in_addr *gw)
 {
 	k_spinlock_key_t key = k_spin_lock(&lock);
@@ -162,12 +178,32 @@ int net_if_set_link_addr(struct net_if *iface, uint8_t *addr, uint8_t len, enum 
 	k_spinlock_key_t key;
 
 	(void)iface;
-	if (type != NET_LINK_ETHERNET || len != sizeof(link_addr)) {
+	if (type != NET_LINK_ETHERNET || len != sizeof(link_addr.addr)) {
 		return -EINVAL;
 	}
 
 	key = k_spin_lock(&lock);
-	memcpy(link_addr, addr, len);
+	memcpy(link_addr.addr, addr, len);
+	link_addr.len = len;
+	link_addr.type = (uint8_t)type;
 	k_spin_unlock(&lock, key);
 	return 0;
+}
+
+struct net_linkaddr *net_if_get_link_addr(struct net_if *iface)
+{
+	(void)iface;
+	return &link_addr;
+}
+
+void net_if_set_mtu(struct net_if *iface, uint16_t value)
+{
+	(void)iface;
+	mtu = value;
+}
+
+uint16_t net_if_get_mtu(struct net_if *iface)
+{
+	(void)iface;
+	return mtu;
 }

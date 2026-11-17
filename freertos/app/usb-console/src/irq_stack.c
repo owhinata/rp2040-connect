@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: MIT */
-/* The use of the interrupt stack (the main stack, MSP), for "irqstack".
+/* The use of the interrupt stack (the main stack, MSP), for the "(interrupts)" row of "ps".
  *
  * Interrupt handlers run on the main stack, tasks on their own stacks
  * (PSP).  The main stack is the Pico SDK's: PICO_STACK_SIZE (0x800 = 2048

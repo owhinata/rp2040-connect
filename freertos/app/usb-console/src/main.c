@@ -2,9 +2,9 @@
 /* The USB console on the Pico SDK and the FreeRTOS kernel: a shell on the
  * USB CDC ACM port, the key-value store, the SPI link to the NINA-W102, I2C0
  * with its DMA reads, the LSM6DSOX, the IMU acquisition service (without
- * its MQTT transport and time synchronization yet), Wi-Fi with the stored
- * credentials, the shell over Telnet, the "zperf" speed test and a task
- * that blinks the LED.
+ * its MQTT transport yet), Wi-Fi with the stored credentials, the time
+ * synchronization with the NTP server, the shell over Telnet, the "zperf"
+ * speed test and a task that blinks the LED.
  */
 #include <stdbool.h>
 #include <stdint.h>
@@ -249,9 +249,11 @@ static void main_main(void *arg)
 	 * (z_init_static_threads(), after the devices) and the NuttX build in
 	 * its init task at this point, in the NuttX build's order: the NINA
 	 * driver's (common/drivers/nina/nina_net.c: scan, connect, link
-	 * monitor), the IMU service's (common/imu/imu_stream.c) and the Wi-Fi
-	 * profile's reconnection (common/imu/wifi_profile.c).  Each waits for
-	 * its work at once (the monitor polls every 2 s while connected).  They
+	 * monitor), the IMU service's (common/imu/imu_stream.c), the time
+	 * synchronization's (common/imu/time_sync.c) and the Wi-Fi profile's
+	 * reconnection (common/imu/wifi_profile.c).  Each waits for its work
+	 * at once (the monitor polls every 2 s while connected; the time
+	 * synchronization waits for the Wi-Fi events of time_sync_init()).  They
 	 * have lower priorities than this task, so they first run when this
 	 * task waits.
 	 */
@@ -259,6 +261,7 @@ static void main_main(void *arg)
 	start_thread(K_THREAD_DEFINE_START(nina_connect_tid), "nina_connect_tid");
 	start_thread(K_THREAD_DEFINE_START(nina_monitor_tid), "nina_monitor_tid");
 	start_thread(K_THREAD_DEFINE_START(imu_stream_tid), "imu_stream_tid");
+	start_thread(K_THREAD_DEFINE_START(time_sync_tid), "time_sync_tid");
 	start_thread(K_THREAD_DEFINE_START(wifi_reconnect_tid), "wifi_reconnect_tid");
 	/* The iperf3 server of "zperf tcp download" (common/compat/
 	 * zperf_iperf3.h), Zephyr's net_socket_service thread: waits until
@@ -275,8 +278,11 @@ static void main_main(void *arg)
 	if (ret) {
 		LOG_ERR("Could not set up the IMU calibration: %d", ret);
 	}
-	/* The stub until the build has the time synchronization
-	 * (freertos/drivers/imu/time_sync_null.c): nothing to start.
+	/* The time synchronization's Wi-Fi events (common/imu/time_sync.c):
+	 * from a connection on, time_sync_tid asks the NTP server (the default
+	 * gateway, port 123) every 2 s; a disconnection stops it.  Before
+	 * wifi_profile_init(), so that the automatic connection's event is
+	 * seen, as in the Zephyr and NuttX builds.
 	 */
 	time_sync_init();
 	/* The automatic connection: the event callback, the migration of an
