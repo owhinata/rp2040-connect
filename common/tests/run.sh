@@ -4,7 +4,8 @@
 # compatibility layer (common/compat), the shell's subcommand dispatch (common/shell) and the
 # RAM log's ring (common/log).  They use the fake headers of tests/fakes, the fake kernel of
 # tests/zephyr_fakes or (the NINA core) fakes of its boundary defined by the tests, and need no
-# board and no Zephyr tree.  zephyr/script/host_tests.sh and nuttx/script/host_tests.sh run this
+# board and no Zephyr tree (the check that the copies of Zephyr's files are unchanged runs when
+# the tree is there).  zephyr/script/host_tests.sh and nuttx/script/host_tests.sh run this
 # before their own tests.
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -89,3 +90,64 @@ run subcmd "${flags[@]}" -Ishell tests/subcmd.c shell/subcmd.c
 run log_ring "${flags[@]}" -Ilog tests/log_ring.c log/log_ring.c
 # The CPU load arithmetic of the idle loop (compat/nano_cpuload.h).
 run nano_cpuload "${flags[@]}" -Icompat tests/nano_cpuload.c
+
+# The hexadecimal conversions of the "kv" command (compat/lib/utils/hex.c, the copy of Zephyr's
+# lib/utils/hex.c).
+run hex "${flags[@]}" -Icompat tests/hex.c compat/lib/utils/hex.c
+# The key-value area's helpers (compat/nano_flash_kv.h): range checks, page writes, the check of
+# what the area holds (Zephyr's NVS, the NuttX build's earlier format, erased, other).
+run nano_flash_kv "${flags[@]}" -Icompat tests/nano_flash_kv.c
+# The key-value store (imu/kv_store.c, the Zephyr build's) on the copies of Zephyr's settings and
+# NVS (compat/subsys, built as they are, without warnings, with the Zephyr build's Kconfig values
+# of compat/zephyr_kv_config.h), the flash device and map of the area (compat/zephyr_flash_kv.c)
+# and "kv wipe" (compat/kv_store_wipe.c), on a fake flash (tests/kv_flash_fake.c) and the fake
+# kernel: the bytes on the flash, reads, writes, limits, garbage collection, foreign data, the
+# device's refusals, a power loss at every flash operation of a sequence.  Its log, shell
+# backend and app_log_os.h are tests/kv_fakes and the test's own.
+kvinc=(-D_GNU_SOURCE -DZ_SHELL_CMD_NAMED_MAIN -Itests/kv_fakes -Itests/zephyr_fakes -Icompat -Ilog
+       -Iimu -Icompat/subsys/settings/include -Icompat/subsys/settings/src
+       -Icompat/subsys/kvss/nvs -Itests)
+kvobjs=()
+for f in compat/subsys/kvss/nvs/nvs.c compat/subsys/settings/src/settings.c \
+         compat/subsys/settings/src/settings_store.c compat/subsys/settings/src/settings_init.c \
+         compat/subsys/settings/src/settings_nvs.c compat/subsys/crc/crc8_sw.c \
+         compat/lib/utils/hex.c; do
+    o="$out/kv_$(basename "$f" .c).o"
+    cc -std=gnu17 -w -ffunction-sections -fdata-sections -include compat/zephyr_kv_config.h \
+        "${kvinc[@]}" -c "$f" -o "$o"
+    kvobjs+=("$o")
+done
+run kv_settings "${flags[@]}" -include compat/zephyr_kv_config.h "${kvinc[@]}" tests/kv_settings.c \
+    tests/kv_flash_fake.c compat/zephyr_flash_kv.c compat/kv_store_wipe.c imu/kv_store.c \
+    tests/zephyr_fakes/zephyr_kernel_host.c "${kvobjs[@]}"
+
+# The copies of Zephyr's files (v4.5.0) are unchanged: compared with the Zephyr tree when it is
+# there (zephyr/zephyr, "west update").  wifi_credentials.c and
+# wifi_credentials_backend_settings.c are copies with changes (see their headers).
+ztree=../zephyr/zephyr
+if [[ -f $ztree/VERSION ]]; then
+    grep -q '^VERSION_MAJOR = 4$' "$ztree/VERSION"
+    grep -q '^VERSION_MINOR = 5$' "$ztree/VERSION"
+    grep -q '^PATCHLEVEL = 0$' "$ztree/VERSION"
+    for pair in \
+        compat/subsys/kvss/nvs/nvs.c:subsys/kvss/nvs/nvs.c \
+        compat/subsys/kvss/nvs/nvs_priv.h:subsys/kvss/nvs/nvs_priv.h \
+        compat/subsys/settings/src/settings.c:subsys/settings/src/settings.c \
+        compat/subsys/settings/src/settings_store.c:subsys/settings/src/settings_store.c \
+        compat/subsys/settings/src/settings_init.c:subsys/settings/src/settings_init.c \
+        compat/subsys/settings/src/settings_nvs.c:subsys/settings/src/settings_nvs.c \
+        compat/subsys/settings/src/settings_priv.h:subsys/settings/src/settings_priv.h \
+        compat/subsys/settings/include/settings/settings_nvs.h:subsys/settings/include/settings/settings_nvs.h \
+        compat/subsys/settings/include/settings/settings_file.h:subsys/settings/include/settings/settings_file.h \
+        compat/subsys/crc/crc8_sw.c:subsys/crc/crc8_sw.c \
+        compat/lib/utils/hex.c:lib/utils/hex.c \
+        compat/zephyr/kvss/nvs.h:include/zephyr/kvss/nvs.h \
+        compat/zephyr/settings/settings.h:include/zephyr/settings/settings.h \
+        compat/zephyr/sys/slist.h:include/zephyr/sys/slist.h \
+        compat/zephyr/sys/list_gen.h:include/zephyr/sys/list_gen.h; do
+        cmp "${pair%%:*}" "$ztree/${pair#*:}"
+    done
+    printf 'ok  zephyr_copies (15 files, Zephyr v4.5.0)\n'
+else
+    printf 'skip zephyr_copies (no zephyr/zephyr: run west update)\n'
+fi

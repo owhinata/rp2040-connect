@@ -5,6 +5,7 @@
 #include <zephyr/shell/shell.h>
 #include <zephyr/sys/util.h>
 #include "kv_store.h"
+#include "kv_store_os.h"
 
 #define KV_PREFIX        "app_kv/"
 #define KV_SYSTEM_PREFIX "sys."
@@ -199,5 +200,6 @@ SHELL_STATIC_SUBCMD_SET_CREATE(
 		      3, 0),
 	SHELL_CMD_ARG(get, NULL, "Print a value as hex: <key>", cmd_get, 2, 0),
 	SHELL_CMD_ARG(delete, NULL, "Delete a value: <key>", cmd_delete, 2, 0),
+	KV_STORE_OS_COMMANDS
 	SHELL_SUBCMD_SET_END);
 SHELL_CMD_REGISTER(kv, &kv_commands, "Application key-value storage", NULL);

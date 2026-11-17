@@ -11,6 +11,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
+#include <string.h>  /* as Zephyr's sys/util.h, which its sources rely on */
 
 #ifndef BIT
 #  define BIT(n)              (1UL << (n))
@@ -130,6 +131,27 @@
 #  define ilog2(x) \
   ((uint32_t)(x) == 0 ? -1 : 31 - __builtin_clz((uint32_t)(x)))
 #endif
+
+/* Used by the copies of Zephyr's NVS and settings (common/compat/subsys):
+ * KB() (a size_t, as Zephyr's), ZTESTABLE_STATIC (static outside ztest).
+ */
+
+#ifndef KB
+#  define KB(x)               (((size_t)(x)) << 10)
+#endif
+
+#ifndef ZTESTABLE_STATIC
+#  define ZTESTABLE_STATIC    static
+#endif
+
+/* The hexadecimal conversions of Zephyr's lib/utils/hex.c (the copy in
+ * common/compat/lib/utils/hex.c), which the "kv" command uses.
+ */
+
+int char2hex(char c, uint8_t *x);
+int hex2char(uint8_t x, char *c);
+size_t bin2hex(const uint8_t *buf, size_t buflen, char *hex, size_t hexlen);
+size_t hex2bin(const char *hex, size_t hexlen, uint8_t *buf, size_t buflen);
 
 /* IS_ENABLED(CONFIG_X): 1 if CONFIG_X is defined as 1 (a NuttX "y"), else
  * 0, also when it is not defined at all; usable in C expressions and #if.

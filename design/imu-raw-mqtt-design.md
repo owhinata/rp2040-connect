@@ -729,20 +729,28 @@ interrupt time in the interrupted thread. The `ps` value is a moving average (ha
 second), the Zephyr version's is accumulated since boot. The share over an interval comes from the
 difference of the total run time in `/proc/<tid>/critmon` ("CPU load" in `design/nuttx-porting.md`).
 
-### 11.5 KV format and moving the values
+### 11.5 KV format
 
-- The KV store is in the same place as in the Zephyr version, the last 8 KiB of flash (two 4 KiB
-  erase units), with the same key and value rules, API and commands, but the format is NuttX's
-  NVS (`/dev/config`, names `app_kv/<key>`, Wi-Fi credentials `wifi_cred/<number>`), not
-  compatible with the Zephyr version's (settings on NVS).
-- If the area is neither in this format nor erased, the NuttX port erases it at its first boot.
-- `script/kv_transfer.py` moves the values: `backup` while the Zephyr version runs (reads with
-  `kv get` and saves on the PC), then flash the NuttX port, then `restore` (writes with
-  `kv sethex` and reads back; `imu cal reload` after the calibration). Wi-Fi credentials cannot be
-  taken from flash, so `restore` asks for the password and registers it with `wifi cred add`. The
-  session counter (`imu.session`) is not written back; the NuttX port starts at 1.
-- Going back from the NuttX port to the Zephyr version does not keep the values either, for the
-  same reason.
+- The place (the last 8 KiB of flash, two 4 KiB erase units) and the format are the Zephyr
+  version's. The NuttX port runs unchanged copies of Zephyr v4.5.0's NVS and settings sources
+  (`common/compat/subsys/` and others) with the Zephyr version's Kconfig values and flash
+  parameters (sectors of 4096 bytes × 2, a 1-byte write block, erase value 0xFF), and uses the
+  Zephyr version's `kv_store.c` (`common/imu/kv_store.c`) for the `kv` command and the API. The
+  names are `app_kv/<key>` and, for the Wi-Fi credentials, `wifi_cred/<number>`. Each build reads
+  and writes what the other stored.
+- The flash operations (reads, 256-byte page programs, 4 KiB sector erases) are behind a small
+  boundary for each OS (`common/compat/nano_flash_kv.h`), limited to the last 8 KiB. Interrupts are
+  off for one page program or one erase at a time (34-40 ms for an erase).
+- If the area holds data that is neither Zephyr's NVS nor erased (the NuttX port's earlier format,
+  what another firmware left), the NuttX port does not erase it, reports it in `dmesg`, and the
+  KV operations return an error (`-EILSEQ`). `kv wipe confirm` (NuttX port only) erases it. The
+  Zephyr version does what Zephyr's NVS does (the mount fails if the ends of both sectors are
+  written; if either is erased, it erases the area and starts empty).
+- `script/kv_transfer.py` backs the values up through the shell's `kv get` (`backup`) and writes
+  them back with `kv sethex` (`restore`; `imu cal reload` after the calibration, and the Wi-Fi
+  credentials with `wifi cred add` after asking for the password) when the area is lost (flashing
+  another firmware, before `kv wipe`). Switching between the Zephyr version and the NuttX port
+  does not need it.
 
 ### 11.6 Fatal errors and the log
 

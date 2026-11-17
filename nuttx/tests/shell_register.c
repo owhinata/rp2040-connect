@@ -1,14 +1,17 @@
 /* SPDX-License-Identifier: MIT */
-/* Host test of the "imu" and "ntp" commands' registration: the
+/* Host test of the "imu", "ntp" and "kv" commands' registration: the
  * SHELL_STATIC_SUBCMD_SET_CREATE() ... SHELL_CMD_REGISTER() text of
- * common/imu/imu_stream.c and common/imu/time_sync.c (cut out of the files
- * by script/host_tests.sh, IMU_SHELL_INC and NTP_SHELL_INC), compiled with
+ * common/imu/imu_stream.c, common/imu/time_sync.c and common/imu/kv_store.c
+ * (cut out of the files by script/host_tests.sh, IMU_SHELL_INC,
+ * NTP_SHELL_INC and KV_SHELL_INC; "kv" with the "wipe" entry of
+ * common/compat/kv_store_os.h), compiled with
  * the compatibility layer's <zephyr/shell/shell.h> and
  * Z_SHELL_CMD_NAMED_MAIN and run on common/shell/zshell.c (with the NuttX
  * backends, apps/subcmd/zshell_os_impl.h), against the same sets written
  * as common/shell/subcmd.h tables (subcmd_main(), as the NuttX
- * build ran these two commands before they were shared with the Zephyr
- * build: the handlers then got sh == NULL).
+ * build ran these commands before they were shared with the Zephyr
+ * build: the handlers then got sh == NULL; "kv" as nuttx/apps/kv/kv_main.c
+ * had it, with "wipe" added).
  *
  * For each command line, both must give the same exit status, the same
  * handler calls with the same argc and argv, and the same bytes on stdout,
@@ -38,6 +41,7 @@
 
 #include <zephyr/shell/shell.h>
 
+#include "kv_store_os.h"
 #include "subcmd.h"
 
 /* Handler calls ----------------------------------------------------------*/
@@ -125,6 +129,43 @@ static const struct subcmd ref_ntp_commands[] = {
 static const struct subcmd ref_ntp_root =
 	SUBCMD(ntp, ref_ntp_commands, "Network time synchronization", NULL);
 
+static int ref_kv_set(int argc, char **argv)
+{
+	return record("set", NULL, argc, argv);
+}
+
+static int ref_kv_sethex(int argc, char **argv)
+{
+	return record("sethex", NULL, argc, argv);
+}
+
+static int ref_kv_get(int argc, char **argv)
+{
+	return record("get", NULL, argc, argv);
+}
+
+static int ref_kv_delete(int argc, char **argv)
+{
+	return record("delete", NULL, argc, argv);
+}
+
+static int ref_kv_wipe(int argc, char **argv)
+{
+	return record("wipe", NULL, argc, argv);
+}
+
+static const struct subcmd ref_kv_commands[] = {
+	SUBCMD_ARG(set, NULL, "Store a text value: <key> <value>", ref_kv_set, 3, 0),
+	SUBCMD_ARG(sethex, NULL, "Store hex bytes: <key> <hex>", ref_kv_sethex, 3, 0),
+	SUBCMD_ARG(get, NULL, "Print a value as hex: <key>", ref_kv_get, 2, 0),
+	SUBCMD_ARG(delete, NULL, "Delete a value: <key>", ref_kv_delete, 2, 0),
+	SUBCMD_ARG(wipe, NULL, "Erase the whole store (also Wi-Fi credentials): confirm",
+		   ref_kv_wipe, 2, 0),
+	SUBCMD_SET_END
+};
+static const struct subcmd ref_kv_root =
+	SUBCMD(kv, ref_kv_commands, "Application key-value storage", NULL);
+
 /* The sources' own text --------------------------------------------------*/
 
 static int cmd_start(const struct shell *sh, size_t argc, char **argv)
@@ -152,11 +193,38 @@ static int cmd_ntp_status(const struct shell *sh, size_t argc, char **argv)
 	return record("ntp status", sh, argc, argv);
 }
 
+static int cmd_set(const struct shell *sh, size_t argc, char **argv)
+{
+	return record("set", sh, argc, argv);
+}
+
+static int cmd_sethex(const struct shell *sh, size_t argc, char **argv)
+{
+	return record("sethex", sh, argc, argv);
+}
+
+static int cmd_get(const struct shell *sh, size_t argc, char **argv)
+{
+	return record("get", sh, argc, argv);
+}
+
+static int cmd_delete(const struct shell *sh, size_t argc, char **argv)
+{
+	return record("delete", sh, argc, argv);
+}
+
+int kv_store_cmd_wipe(const struct shell *sh, size_t argc, char **argv)
+{
+	return record("wipe", sh, argc, argv);
+}
+
 #include IMU_SHELL_INC
 #include NTP_SHELL_INC
+#include KV_SHELL_INC
 
 int z_shell_main_imu(int argc, char *argv[]);
 int z_shell_main_ntp(int argc, char *argv[]);
+int z_shell_main_kv(int argc, char *argv[]);
 
 /* Running a command line -------------------------------------------------*/
 
@@ -260,8 +328,16 @@ static void same(const char *line)
 
 	snprintf(buf, sizeof(buf), "%s", line);
 	argc = split(buf, words);
-	ref = strcmp(words[0], "imu") == 0 ? &ref_imu_root : &ref_ntp_root;
-	main_fn = strcmp(words[0], "imu") == 0 ? z_shell_main_imu : z_shell_main_ntp;
+	if (strcmp(words[0], "imu") == 0) {
+		ref = &ref_imu_root;
+		main_fn = z_shell_main_imu;
+	} else if (strcmp(words[0], "ntp") == 0) {
+		ref = &ref_ntp_root;
+		main_fn = z_shell_main_ntp;
+	} else {
+		ref = &ref_kv_root;
+		main_fn = z_shell_main_kv;
+	}
 	run(&a, ref, NULL, argc, words);
 	run(&b, NULL, main_fn, argc, words);
 	if (a.ret != b.ret || strcmp(a.out, b.out) || strcmp(a.err, b.err) ||
@@ -315,6 +391,14 @@ int main(void)
 		"ntp status *", "ntp status x*",
 		/* After a word with a wildcard that matches nothing. */
 		"imu x* start", "ntp x* status",
+		/* kv: help, counts, handlers, wildcards. */
+		"kv", "kv --help", "kv -h", "kv foo", "kv foo set", "kv s*", "kv *", "kv x*",
+		"kv set", "kv set k", "kv set k v", "kv set k v w", "kv set k fail", "kv set --help",
+		"kv sethex", "kv sethex k 01", "kv sethex k 01 02",
+		"kv get", "kv get k", "kv get k l", "kv get fail", "kv get k*",
+		"kv delete", "kv delete k", "kv delete k l",
+		"kv wipe", "kv wipe confirm", "kv wipe confirm x", "kv wipe fail", "kv wipe *",
+		"kv x* get k",
 	};
 	size_t i;
 

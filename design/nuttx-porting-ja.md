@@ -159,65 +159,108 @@ Zephyr 版の `src/log_ram.c` と同じ RAM ログです（`nuttx/drivers/log/`�
 
 ## キーと値の保存（`kv`）
 
-設定と校正値を flash の末尾 8 KiB（`0x10ffe000`〜`0x10ffffff`、4 KiB の消去単位 2 つ）に保存します。
-Zephyr 版の `storage_partition` と同じ場所です。API とコマンドは Zephyr 版の `src/kv_store.[ch]` と同じで、
-保存形式は Zephyr 版と互換がありません。
+設定と校正値、Wi-Fi の資格情報を flash の末尾 8 KiB（`0x10ffe000`〜`0x10ffffff`、4 KiB の消去単位 2 つ）に
+保存します。Zephyr 版の `storage_partition` と同じ場所に、Zephyr 版と同じ形式（Zephyr の NVS と settings）で
+置くので、Zephyr 版が書いた値を NuttX 版がそのまま読み書きでき、その逆もできます。API とコマンドは Zephyr 版の
+`kv_store.c` そのもの（`common/imu/kv_store.c`。両方の版が使う）です。
 
-- 領域: ボードの `include/board.h`（`BOARD_KV_OFFSET`、`BOARD_KV_SIZE`）とリンカースクリプト
-  （`scripts/nano-flash.ld` の `__kv_start`、`__kv_end`。この領域はイメージの flash 領域から外してあり、
-  `build.sh` もイメージの終端を確かめます）で決まります。`src/nano_flash_kv.c` がこの範囲だけを見せる
-  MTD で、消去と書き込みのたびに、対象がこの範囲に収まることを、定数とリンカースクリプトの値の両方と
-  照らしてから（起動時に両者が一致し、イメージが手前で終わることを確かめてから）flash に触れます。
-  範囲の外なら何もせずエラーにします。
-- 形式: NuttX の NVS（`drivers/mtd/mtd_config_nvs.c`、`CONFIG_MTD_CONFIG_NVS`・`CONFIG_MTD_CONFIG_NAMED`、
-  名前は 63 文字まで）を `/dev/config` として使い、Zephyr 版と同じく `app_kv/<キー>` の名前で保存します。
-  Wi-Fi の資格情報も同じ `/dev/config` に、Zephyr 版の settings と同じ `wifi_cred/<番号>` の名前で置きます
-  （`kv` からは見えず、消せません。「Wi-Fi の資格情報と自動再接続（`wifi cred`）」の節）。
-  MTD は書き込みの単位を 1 バイトと見せ（項目を詰めて置くため）、flash には 256 バイトのページ単位で、
-  データの外を 0xFF にして書きます。
-- Zephyr 版の後で初めて起動したとき: 起動時に、領域がこの形式でも全面消去済みでもなければ（Zephyr 版の
-  データが残っているとき）、領域を消去してから使います。そのとき `dmesg` に
-  `<wrn> fs_nvs: Erasing the key-value area: not in this build's format` が出ます。いつもの起動では
-  `<inf> fs_nvs: 2 Sectors of 4096 bytes` だけが出ます（Zephyr 版の起動時の `fs_nvs` の 1 行目と同じ。
-  2・3 行目の書き込み位置は出しません）。値は引き継がれないので、下の手順で退避して書き戻します。
-  NuttX 版の後で Zephyr 版に戻したときの Zephyr 版の動作は確かめていません。
-- コマンド（優先度 104、スタック 3072。サブコマンドの扱いは下の「コマンドのサブコマンド」）:
+- 構成: `kv_store.c` → Zephyr の settings（`settings_save_one()`・`settings_load_one()`・`settings_delete()`）→
+  Zephyr の NVS → 互換層の flash デバイスと flash map（`common/compat/zephyr_flash_kv.c`）→ OS の境界
+  （`common/compat/nano_flash_kv.h` の 4 関数。NuttX ではボードの `src/nano_flash_kv.c`）。settings と NVS は
+  Zephyr v4.5.0 のソースを改変せずに写したもの（`common/compat/subsys/` ほか。一覧はドライバー説明の互換層の
+  節）で、Zephyr 版の Kconfig の値（`common/compat/zephyr_kv_config.h`）でビルドします。
+- 形式（Zephyr 版の `.config` とデバイスツリーと同じ値）: NVS のセクターは 4096 バイト × 2
+  （`CONFIG_SETTINGS_NVS_SECTOR_SIZE_MULT=1`、`CONFIG_SETTINGS_NVS_SECTOR_COUNT=8` のうち 8 KiB に収まる 2）、
+  書き込み単位は 1 バイト、消去値は 0xFF。NVS の索引（ATE）は 8 バイト（id、offset、len、part、CRC-8）で、
+  セクターの末尾から下へ、データは先頭から上へ書きます。settings は、ID 0x8000 に使っている最大の名前の ID、
+  名前を 0x8001 から（終端なし）、値を名前の ID + 0x4000 に置きます。名前は `app_kv/<キー>`（`kv` のキー）と
+  `wifi_cred/<番号>`（資格情報）。値のバイト列も Zephyr 版と同じです（校正値は 56 バイト、`imu.port` などは
+  文字列、`imu.session` は 4 バイトのビッグエンディアン、資格情報は `struct wifi_credentials_personal` の
+  224 バイト。この構造体の並びが Zephyr 版の ELF と同じことを、互換層の `<zephyr/net/wifi_credentials.h>` の
+  `BUILD_ASSERT` で確かめます）。
+- 領域: ボードの `include/board.h`（`BOARD_KV_OFFSET`、`BOARD_KV_SIZE`）、`nano_flash_kv.h` の定数とリンカー
+  スクリプト（`scripts/nano-flash.ld` の `__kv_start`、`__kv_end`。この領域はイメージの flash 領域から外して
+  あり、`build.sh` もイメージの終端を確かめます）で決まります。読み出し・書き込み・消去のたびに、対象が
+  この範囲に収まることを、互換層（定数）、ボード（`board.h` の定数と、起動時に一致を確かめたリンカー
+  スクリプトの値）、RAM 上の関数（ブート ROM を呼ぶ直前）の 3 か所で確かめてから flash に触れます。範囲の外なら
+  何もせずエラーにします（`dmesg` に `<err> flash_kv: Refused flash ...`）。Zephyr 版の flash ドライバーは
+  flash 全体を受け付けますが、NVS が触れるのはこの範囲だけです。
+- 起動: ボードの起動処理（`nano_bringup()`、LSM6DSOX と NINA の後）は flash の操作の準備（リンカー
+  スクリプトの確認、ブート ROM の関数、boot2 の写し）だけをします。NVS のマウントは、Zephyr 版と同じく
+  settings の最初の呼び出し、つまり init が Zephyr の `SYS_INIT()` と同じ位置で呼ぶ資格情報の初期化の中です。
+  そのとき `dmesg` に Zephyr 版と同じ 3 行が出ます（`<inf> fs_nvs: 2 Sectors of 4096 bytes`、
+  `alloc wra: <セクター>, <位置>`、`data wra: <セクター>, <位置>`）。続いて init が Zephyr 版の `main()` と同じ
+  位置で `kv_store_init()`（`settings_subsys_init()`）を呼びます（失敗すると
+  `Could not initialize settings: <値>`）。
+- 別のデータがあるとき: マウントの前に（起動後の最初の settings の呼び出しで 1 回）、領域が Zephyr の NVS か
+  （どちらかのセクターの最後の 2 つの索引の場所に、NVS が書く正しい索引がある）、全面が消去済みかを
+  確かめます。どちらでもなければ（NuttX 版の以前の形式、OpenMV 版などの別のファームウェアの残り）、領域を
+  消さずに `dmesg` に次の 2 行を出し、settings を初期化しません。
+
+  ```text
+  <err> flash_kv: Key-value area 0xffe000-0xffffff holds the NuttX build's earlier format
+  <err> flash_kv: Not used; "kv wipe confirm" erases it (all keys and Wi-Fi credentials)
+  ```
+
+  （以前の形式でないものは 1 行目が `holds data that is not Zephyr's NVS`。）`kv` の操作は `-EILSEQ`（NuttX の値は
+  84。`KV read failed: -84`）を、資格情報の保存は `-ENOENT` を返し、何も書きません。`kv wipe confirm` で領域を
+  消すと、その場で空の NVS をマウントし直します（`<wrn> flash_kv: Key-value area erased` と NVS の 3 行）。
+  読み込み済みの校正値と資格情報の SSID の一覧は再起動まで RAM に残ります。Zephyr 版は同じ状況で、Zephyr の
+  NVS のとおりに動きます: 2 つのセクターの末尾 8 バイトがどちらも書かれていればマウントが `-EDEADLK` で失敗し
+  （`CONFIG_NVS_INIT_BAD_MEMORY_REGION` が無効）、KV を使えません。どちらかが消去済みなら、中断した
+  ガベージコレクションとみなして（`<inf> fs_nvs: No GC Done marker found: restarting gc`）2 つのセクターを
+  消し、空の KV で始めます。以前の NuttX 版の形式は、書き込み中のブロックの末尾が消去済みなので、ふつう
+  後者です（偽の flash の上で確かめた。実機では確かめていない）。
+- コマンド（優先度 104、スタック 3072。Zephyr 版の `SHELL_CMD_REGISTER(kv, ...)` を `common/shell/zshell.c` で
+  動かす。`nuttx/apps/kv` の `main()` は `z_shell_main_kv()` を呼ぶだけ）:
 
   ```
   kv set <キー> <文字列>       文字列をそのまま保存
   kv sethex <キー> <16 進数>   1〜128 バイトを 16 進数の対で保存（大文字も可）
   kv get <キー>                値を小文字の 16 進数で表示
   kv delete <キー>             削除（無いキーでも Deleted）
+  kv wipe confirm              KV の領域全体を消去（NuttX 版だけ。confirm が無いと消さない）
   ```
 
   キーは英数字・`_`・`-`・`.` の 1〜32 文字、値は 1〜128 バイトです。`sys.` で始まるキーは
   `Reserved key` になります。出力は Zephyr 版と同じです（`Saved`、`Deleted`、`KV write failed: -22`、
   `KV read failed: -2`、`Expected 1-128 bytes as hexadecimal pairs`、`Invalid hexadecimal value` など）。
   `kv` だけ、または知らないサブコマンドではヘルプを、引数の数が違うと `<サブコマンド>: wrong parameter count`
-  とサブコマンドのヘルプを出します（Zephyr のシェルと同じ文）。Zephyr 版と違う点: 引数は nsh が解釈する
-  （`$`、`;`、`#`、`>` などは引用符で囲む）、エラーの行は標準エラー（同じコンソール）に出る、終了状態は
-  成功で 0・失敗で 1。
-- 容量: 生きている項目はすべて 1 つの消去単位（4 KiB）に収まる必要があります（もう 1 つは整理用）。
-  1 項目は「キーの長さ + 8（`app_kv/` と終端）+ 値の長さ + 16」バイトで、使えるのは 4048 バイトです。
-  32 文字のキーと 128 バイトの値なら 184 バイトで 22 項目まで（満杯の次の書き込みは
-  `KV write failed: -28`）。Zephyr 版（settings on NVS、同じ 4 KiB×2）も 1 項目が名前と値の 2 件
-  （183 バイト）で、ほぼ同じです。同じ値を保存し直しても書き込みません。Wi-Fi の資格情報は 1 件が
-  12 + 224 + 16 = 252 バイト（名前 `wifi_cred/<番号>` と終端、`struct wifi_credentials_personal`、索引）で、
-  2 件まで同じ領域を使います。
-- 書き換えと整理: 書き換えは新しい項目を足して古い項目に印を付け、1 つの消去単位が埋まると、生きている
-  項目をもう 1 つへ写して元を消去します（NVS のガベージコレクション）。flash を消去・書き込みする間は
-  XIP が止まるので、RAM 上のコードで割り込みを禁止して行います。割り込みを禁止するのは、4 KiB の消去
-  1 回と 256 バイトの書き込み 1 回のそれぞれの間です。項目を 1 つ書き換えると、ふつうはページの書き込みが 4 回です。Zephyr 版の
-  flash ドライバーも、消去は 1 回（4 KiB）ごと、書き込みは 1 回の呼び出し（項目のデータ、最大 2 ページ）
-  ごとに割り込みを禁止します。
-- 電源断: NVS はデータの後に CRC 付きの索引を書き、古い項目の印は新しい項目を書いた後に付けます。
-  起動時に、書きかけの項目や途中で止まった整理を NVS が直します。電源を切る試験はしていません。
-- API（`nuttx/apps/imu/kv_store.[ch]`。ヘッダーは Zephyr 版と同じ）: `kv_store_init()`・`set`・`get`・
-  `delete` は Zephyr 版と同じ引数・戻り値です（キーや値が不正なら `-EINVAL`、無いキーは `-ENOENT`、
-  バッファーが小さければ `-ENOBUFS`、いっぱいなら `-ENOSPC`）。`/dev/config` が無いときは `-ENODEV`
-  です。呼び出しのたびに `/dev/config` を開いて閉じ、排他はドライバーのミューテックス（優先度継承あり）
-  が行うので、どのスレッドからも呼べます。`/dev/config` はボードが起動時に用意し、init が Zephyr 版の
-  `main()` と同じ位置で `kv_store_init()` を呼びます（失敗すると `Could not initialize settings: <値>`）。
+  とサブコマンドのヘルプを出します（Zephyr のシェルと同じ文）。ヘルプには `wipe` の行が加わります。
+  `kv wipe` に `confirm` 以外の語を付けると
+  `Type "kv wipe confirm" to erase all keys and Wi-Fi credentials` を出して何もしません。成功すると `Erased`。
+  Zephyr 版と違う点: 引数は nsh が解釈する（`$`、`;`、`#`、`>` などは引用符で囲む）、エラーの行は標準エラー
+  （同じコンソール）に出る、終了状態は成功で 0・失敗で 1、`kv wipe` がある。
+- 容量: 生きている項目はすべて 1 つのセクター（4 KiB）に収まる必要があります（もう 1 つは整理用）。1 項目は
+  名前の項目（`app_kv/` + キー、索引 8 バイト）と値の項目（値、索引 8 バイト）の 2 件で、32 文字のキーと
+  128 バイトの値なら 183 バイトです。満杯の次の書き込みは `KV write failed: -28`。同じ値を保存し直しても書き
+  込みません（NVS が比べる）。Wi-Fi の資格情報は 1 件が 11 + 8 + 224 + 8 = 251 バイトで、2 件まで同じ領域を
+  使います。
+- 書き換えと整理: 書き換えは新しい項目（値の索引）を足すだけで、古い項目には触れません。書き込み中の
+  セクターが埋まると、それを閉じ、もう 1 つのセクターの生きている項目を写してから、そのセクターを消去します
+  （NVS のガベージコレクション。消去は 1 回の書き換えの中で同期して行う）。flash を消去・書き込みする間は
+  XIP が止まるので、RAM 上のコードで割り込みを禁止して行います。割り込みを禁止するのは、4 KiB の消去 1 回
+  （実測 34〜40 ms）と 256 バイトのページの書き込み 1 回（0.4〜0.5 ms）のそれぞれの間です。既存のキーを
+  書き換えると、ページの書き込みはふつう 2 回（データと索引。ページ境界をまたぐと 3 回）です。Zephyr 版の
+  flash ドライバーも、消去は 1 回の呼び出し（4 KiB）ごと、書き込みは 1 回の呼び出し（1 項目のデータか
+  1 つの索引）ごとに割り込みを禁止します。
+- 計測中の書き込み: 計測中に KV を書くのは、シェルから `kv set`・`kv wipe`・`wifi cred add` などを打ったとき
+  だけです（`imu start` の `imu.session` の保存は、取得を始める前）。そのときガベージコレクションが走れば、計測中に
+  4 KiB の消去（割り込み禁止 34〜40 ms）が 1 回起こります。消去は書き込み中のセクターが埋まるたびに 1 回で、
+  `imu.session` の書き換え（値 4 バイト + 索引 8 バイト）なら約 300 回に 1 回です（以前の NuttX の NVS は
+  1 回に約 38 バイトを使い、約 100 回に 1 回）。読み出し（`kv_store_get()`、資格情報の読み込み）は書きませんが、
+  settings が書きかけの項目（電源断の後に残った名前だけ・値だけの項目）を見つけると、その場で消す書き込みを
+  します（Zephyr 版と同じ）。
+- 電源断: NVS はデータを書いてから CRC 付きの索引を書き、起動時に、書きかけの項目や途中で止まった整理を
+  直します。ホストテスト（`common/tests/kv_settings.c`）が、整理を何度も通る書き換えの列の、flash の書き込みと
+  消去のすべて（652 回）のそれぞれで電源を切り（ページの半分だけ書く、セクターの半分だけ消す）、次の起動で
+  すべてのキーが書き換えの前か後の値を持つことを確かめます。実機で電源を切る試験はしていません。
+- API（`common/imu/kv_store.h`、Zephyr 版と同じ）: `kv_store_init()`・`set`・`get`・`delete` は Zephyr 版と同じ
+  引数・戻り値です（キーや値が不正なら `-EINVAL`、無いキーは `-ENOENT`、バッファーが小さければ `-ENOBUFS`、
+  いっぱいなら `-ENOSPC`、flash の準備ができていなければ `-ENODEV`、別のデータがあれば `-EILSEQ`）。`kv_store_*()` は
+  毎回 settings の初期化を確かめてから（未初期化なら初期化し直して）動きます（Zephyr 版と同じ）。排他は settings のミューテックスと
+  NVS のミューテックスで（Zephyr の `k_mutex`、互換層では NuttX の再帰ミューテックス、優先度継承あり）、
+  どのスレッドからも呼べます。
 
 ### コマンドのサブコマンド
 
@@ -375,11 +418,13 @@ nsh$ wifi cred list
 - オプションの解析は NuttX の `getopt_long()` で、Zephyr の `sys_getopt_long()` と違い、オプションでない語を
   後ろへ回しません（オプションでない語より後のオプションは読まない）。知らないオプションのときに Zephyr 版が
   ログ（`<wrn> sys_getopt`）に出す行もありません。
-- 保存: 1 件ずつ `/dev/config` の `wifi_cred/<番号>`（番号は空いている最小のもの）に、Zephyr の
-  `struct wifi_credentials_personal` のまま書きます。`add`・`delete` のたびにすぐ書きます。起動時に init が
-  保存された SSID を読み込みます（Zephyr のライブラリの `SYS_INIT()` と同じ位置、スレッドを始める前）。
-  `kv` のキーは `app_kv/` で始まるので、`kv` からは資格情報を読めず、消せません（`wifi_cred/0` は
-  `/` を含むので `KV read failed: -22`）。KV の保存形式と同じく、Zephyr 版の資格情報とは互換がありません。
+- 保存: 1 件ずつ settings の `wifi_cred/<番号>`（番号は空いている最小のもの）に、Zephyr の
+  `struct wifi_credentials_personal` のまま書きます（Zephyr のライブラリの settings のバックエンドの写し。
+  読み出しも Zephyr と同じく `settings_load_subtree_direct()`）。`add`・`delete` のたびにすぐ書きます。起動時に
+  init が保存された SSID を読み込みます（Zephyr のライブラリの `SYS_INIT()` と同じ位置、スレッドを始める前）。
+  `kv` のキーは `app_kv/` で始まるので、`kv` からは資格情報を読めず、消せません（`wifi_cred/0` は `/` を含むので
+  `KV read failed: -22`）。形式と場所が Zephyr 版と同じなので、Zephyr 版で登録した資格情報をそのまま使えます
+  （逆も）。保存された項目の長さが違うと、Zephyr と同じく読み出しは `-ENOENT`（`err: -2`）になります。
 - 自動再接続（スレッド `wifi_reconnect_tid`、Zephyr の優先度 8 → 110、スタック 2048）: 資格情報があれば、
   起動時（`wifi_profile_init()`）と、接続が切れたとき（監視が切断を見つけたとき、接続中のスキャンの後）に、
   4 秒待ってから保存した資格情報で接続を要求し（`NET_REQUEST_WIFI_CONNECT_STORED`。保存した順に、要求が
@@ -392,7 +437,7 @@ nsh$ wifi cred list
   始まる）。要求が受け付けられないと `An error occurred when trying to auto-connect to a network. err: <値>` と
   出します（終了状態は Zephyr 版と同じく常に 0）。
 - Zephyr 版の古い形式の資格情報（KV の `sys.wifi_profile`、settings の `wifi_last/last`）を移す処理は、
-  Zephyr 版のまま起動時に走りますが、この移植の保存領域には無いので何もしません。
+  Zephyr 版のまま起動時に走ります（保存形式が同じなので、あれば Zephyr 版と同じく移します）。
 - パスフレーズは `wifi cred list` の表示（Zephyr 版と同じ）のほかは、ログにもエラーの文にも出しません。
 
 ## Wi-Fi 経由のシェル（Telnet）
@@ -572,9 +617,9 @@ Zephyr 版の `zephyr/app/usb-console/drivers/lsm6dso/lsm6dso_instance.h` のデ
 LF に直して同一）で行います。FIFO のストリーム（INT1 の割り込みと RTIO）は Zephyr 版と同じファイル
 （`common/drivers/lsm6dso/`）で動かしています（下）。それを使う取得サービス（`imu start` など）は次の節です。
 
-- **起動時の初期化**: ボードの起動処理（`nano_bringup()`）が、I2C0 の初期化の直後、KV（NVS）のマウントより前に
-  初期化します。Zephyr 版がデバイスを `main()` より前に初期化し（`POST_KERNEL`、優先度 90）、`main()` で NVS を
-  マウントするのと同じ順です。`dmesg` の最初の 2 行は Zephyr 版と同じ文です:
+- **起動時の初期化**: ボードの起動処理（`nano_bringup()`）が、I2C0 の初期化の直後、KV（NVS）のマウント（init の
+  中）より前に初期化します。Zephyr 版がデバイスを `main()` より前に初期化し（`POST_KERNEL`、優先度 90）、その後で
+  NVS をマウントするのと同じ順です。`dmesg` の最初の 2 行は Zephyr 版と同じ文です:
 
   ```text
   [00:00:00.007,154] <inf> LSM6DSO: Initialize device lsm6dsox@6a
@@ -1031,18 +1076,31 @@ OS ごとのヘッダー（`sensor_shell_os.h`、`wifi_profile_os.h`、`lsm6dso_
 書き込みと乱数の書き込み 2 万回で比べ、行の前置きを Zephyr の `log_output.c` の時刻の計算と乱数 20 万個で
 比べ、`dmesg` の取り出し（上書き中の読み飛ばし、8192 バイトでの打ち切り）と頻度制限を確かめます。
 
-`nuttx/tests/nano_flash_kv.c`、`kv_name.c`、`kv_hex.c` も NuttX 版だけのテストです。`nano_flash_kv` は
-`src/nano_flash_kv.h` の範囲の検査を境界の前後と、flash の先頭と末尾 1 MiB のすべてのページ・消去単位で
-確かめ、ページ単位の書き込みを、ページ境界の前後のさまざまな位置と長さで、書いたバイトだけが変わる
-ことで確かめます。起動時の判定は、NuttX の NVS が書く索引を受け付け、Zephyr 版の NVS の索引の並び
-（NuttX の CRC がたまたま合うものを含む）を受け付けないことを確かめます。`kv_name` は Zephyr 版の
-`kv_store.c` から分けたキーの検査（`apps/imu/kv_name.c`）を、`kv_hex` は Zephyr の `lib/utils/hex.c` の
-写し（`apps/kv/kv_hex.c`）を確かめます。
+KV のテストは `common/tests/` にあります（`common/tests/run.sh`）。`kv_settings` は `common/imu/kv_store.c` を、
+写した Zephyr の settings と NVS（警告を出さずにそのままビルド）、互換層の flash デバイスと `kv wipe` と一緒に、
+偽の flash（`common/tests/kv_flash_fake.c`: 8 KiB の RAM、書き込みはビットを落とすだけ、4 KiB 単位の消去、
+範囲の外や揃っていない要求はテストを止める）の上で動かします。起動のたびに子プロセスで動かし、flash だけを
+引き継ぎます。確かめること: NVS の大きさと位置が Zephyr 版と同じこと、flash の上のバイト列（空の領域に
+Zephyr の NVS が書く最初の索引、`app_kv/imu.port` と `app_kv/imu.session` の名前・値・最大の名前の ID の索引と
+データ。CRC はテストの中で 1 ビットずつ計算し、写した `crc8_ccitt()` とも比べる）、読み書きと削除、キーと値の
+上限、再起動の後、整理（消去 10 回以上）、満杯（`-ENOSPC`、削除はできる）、別のデータ（乱数、1 バイトだけ
+書かれた領域、以前の NuttX 版の形式: 使わず、触れず、ログが 1 回、`kv wipe` の後に使える）、flash デバイスが
+領域の外を断ること、Zephyr の NVS そのものが両方のセクターの末尾が書かれた領域で `-EDEADLK` になること、
+電源断（上の「キーと値の保存」）。`nano_flash_kv` は `common/compat/nano_flash_kv.h` の範囲の検査を境界の前後と、
+flash の先頭と末尾 1 MiB のすべてのページ・消去単位で確かめ、ページ単位の書き込みを、ページ境界の前後の
+さまざまな位置と長さで、書いたバイトだけが変わることで確かめます。起動時の判定は、Zephyr の NVS の索引と
+NuttX の NVS の索引をそれぞれ受け付け、相手の形式の索引の並び（CRC がたまたま合うものを含む、それぞれ
+20 万通り）を受け付けないことを確かめます。`hex` は Zephyr の `lib/utils/hex.c` の写しを確かめます。
+`zephyr_copies` は、Zephyr のツリー（`zephyr/zephyr`）があるとき、写した 15 本が v4.5.0 の元と同じことを
+`cmp` で確かめます。`nuttx/tests/kv_cmd.c` は `kv` のコマンドを `z_shell_main_kv()` から上の KV の上で動かし、
+すべてのサブコマンドの出力（以前の NuttX 版と同じ文）、`sys.` の拒否、上限、`kv wipe`、別のデータがあるときの
+`-EILSEQ` を確かめます。`nuttx/tests/wifi_cred.c` は資格情報を同じ KV の上で確かめます。
 
 `common/tests/subcmd.c` は `common/shell/subcmd.c` を、`kv` と `nina` の表（Zephyr 版の記録した出力と同じ
 ヘルプ）、入れ子の表、省略可の引数、ヘルプの文の並べ方（改行、80 桁での折り返し、末尾の改行）で確かめます。
 
-`nuttx/tests/shell_register.c` は `imu` と `ntp` のコマンドの登録を確かめます。`common/imu/imu_stream.c`・
+`nuttx/tests/shell_register.c` は `imu`・`ntp`・`kv` のコマンドの登録を確かめます（`kv` は以前の NuttX 版の
+`subcmd` の表に `wipe` を足したものと比べる）。`common/imu/imu_stream.c`・
 `time_sync.c` の `SHELL_STATIC_SUBCMD_SET_CREATE()` から `SHELL_CMD_REGISTER()` までの文を `host_tests.sh` が切り出し、
 互換層の `<zephyr/shell/shell.h>` と `Z_SHELL_CMD_NAMED_MAIN` でビルドして `common/shell/zshell.c`（NuttX のバックエンド
 `apps/subcmd/zshell_os_impl.h` と）で動かし、同じ表を

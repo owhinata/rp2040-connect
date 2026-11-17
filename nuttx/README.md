@@ -135,25 +135,51 @@ the NuttX USB console and prints its path. It stops if there is more than one dr
 
 ## Moving the values from the Zephyr build
 
-The key-value store's format is not compatible with the Zephyr build's, and the NuttX build erases the
-Zephyr build's key-value area at its first boot (`<wrn> fs_nvs: Erasing the key-value area: not in
-this build's format` in `dmesg`). Back the values up while the Zephyr build runs and write them back
-after flashing the NuttX build:
+The key-value store (the calibration, the `imu.*` settings, the Wi-Fi credentials) is in the same
+place as in the Zephyr build (the last 8 KiB of the flash, `0xffe000`-`0xffffff`) and in the same
+format (Zephyr's NVS and settings). It stays when you switch between the Zephyr and the NuttX build,
+and each build reads what the other stored. Nothing has to be moved.
 
-```bash
-# Back up while the Zephyr build runs (host/recordings/kv-backup.json, not in Git)
-host/.venv/bin/python script/kv_transfer.py backup --usb
-# Write them back after flashing the NuttX build, and register Wi-Fi (the password is typed at the
-# terminal; the SSID defaults to rp2040-test, --ssid for another access point)
-host/.venv/bin/python script/kv_transfer.py restore --usb
-# Without registering Wi-Fi
-host/.venv/bin/python script/kv_transfer.py restore --usb --no-wifi
+If the key-value area holds data that is neither Zephyr's NVS nor erased (the NuttX build's earlier
+format, what another firmware such as the OpenMV build left), the NuttX build leaves it as it is and
+does not use the store. `dmesg` shows these lines, and the `kv` commands and the credentials fail
+(`kv get` prints `KV read failed: -84`):
+
+```text
+<err> flash_kv: Key-value area 0xffe000-0xffffff holds the NuttX build's earlier format
+<err> flash_kv: Not used; "kv wipe confirm" erases it (all keys and Wi-Fi credentials)
 ```
 
-`restore` writes with `kv sethex`, reads back with `kv get`, and sends `wifi cred add`,
-`wifi cred auto_connect` and `imu cal reload`. It does not write `imu.session` back (the NuttX build
-numbers sessions from 1). If two credentials are stored already, `wifi cred add` fails with
-`err: -105`; remove one with `wifi cred delete` first.
+Erase the area with `kv wipe confirm` (without `confirm` nothing is erased), then store the values
+again:
+
+```bash
+# If the values were backed up while a firmware that reads them ran (host/recordings/kv-backup.json,
+# not in Git)
+nsh$ kv wipe confirm
+Erased
+# Write them back and register Wi-Fi (the password is typed at the terminal; the SSID defaults to
+# rp2040-test, --ssid for another access point)
+host/.venv/bin/python script/kv_transfer.py restore --usb
+```
+
+`script/kv_transfer.py` backs the values up through the shell's `kv get` (`backup`) before the
+key-value area is lost (flashing another firmware, `kv wipe confirm`) and writes them back with
+`kv sethex` (`restore`). `restore` reads back with `kv get` and sends `wifi cred add`,
+`wifi cred auto_connect` and `imu cal reload`. It does not write `imu.session` back. If two
+credentials are stored already, `wifi cred add` fails with `err: -105`; remove one with
+`wifi cred delete` first.
+
+### A board with the earlier NuttX build's store
+
+NuttX builds before this one kept the store in NuttX's NVS format. On a board that holds such a
+store, this build treats it as the other data above. Move the values in this order:
+
+1. While the earlier NuttX build runs, back them up with `script/kv_transfer.py backup --usb` (not
+   needed if a backup file exists).
+2. Flash this build and erase the area with `kv wipe confirm`.
+3. Write the values back and register the Wi-Fi credentials with
+   `script/kv_transfer.py restore --usb` (the password has to be typed).
 
 ## Usage
 
@@ -236,7 +262,10 @@ errors:
   `time`, `mqtt`). Prepare the receiver and the NTP server on the PC as in "Usage" of the top-level
   README (to check the reception: `host/.venv/bin/imu-host check --port <port>`).
 - `kv set <key> <string>`, `kv sethex <key> <hex>`, `kv get <key>` and `kv delete <key>` have the same
-  syntax and output as in the Zephyr build (`kv get` prints hexadecimal).
+  syntax and output as in the Zephyr build (`kv get` prints hexadecimal). `kv wipe confirm` erases
+  the whole key-value area (all keys and the Wi-Fi credentials; not in the Zephyr build, see "Moving
+  the values from the Zephyr build" above). The calibration and the list of credentials read
+  before stay in RAM until the next start.
 - `sensor` (`sensor get lsm6dsox accel_xyz` and so on) is the Zephyr build's sensor shell. It refuses
   with `-16` while a measurement runs.
 
@@ -306,7 +335,8 @@ datagrams at 512 bytes or less, as in `-u -l 500`.
 | `imu start` / `stop` / `status` | Same | |
 | `imu cal` / `imu cal reload` / `imu cal zero` | Same | |
 | `ntp status` | Same | |
-| `kv set` / `sethex` / `get` / `delete` | Same | The storage format is not compatible |
+| `kv set` / `sethex` / `get` / `delete` | Same | The storage format is the same too |
+| (none) | `kv wipe confirm` | Erases the key-value area. NuttX build only |
 | `nina version` | Same | |
 | `sensor get` / `attr_set` / `attr_get` / `stream` / `trig` | Same | Neither has `sensor info` |
 | `i2c_dma mode` / `stats` | Same | |
@@ -376,6 +406,7 @@ values (not converted to the Zephyr build's). The ones whose values differ from 
 | `EALREADY` | 120 | 114 | A Wi-Fi connection request |
 | `EINPROGRESS` | 119 | 115 | A non-blocking connect |
 | `ECANCELED` | 140 | 125 | The end value of a stopped FIFO stream |
+| `EILSEQ` | 138 | 84 | Other data in the key-value area (only the NuttX build returns it) |
 
 Main ones with the same value: `ENOENT` 2 (a missing key), `EIO` 5 (an I2C failure), `EAGAIN` 11,
 `ENOMEM` 12, `EBUSY` 16 (`sensor` during a stream), `ENODEV` 19, `EINVAL` 22, `EMFILE` 24 (the 11th
@@ -394,8 +425,13 @@ credential).
 - **Commands**: Zephyr's standard commands become NuttX's (the table above). `wapi` does not print
   the error value. Throughput is measured with iperf 2.
 - **Error numbers**: NuttX's values (the table above).
-- **Key-value store and credentials**: the storage format is not compatible. `imu.session` is not
-  carried over.
+- **Key-value store and credentials**: the same format (copies of Zephyr's NVS and settings). They
+  differ only when the key-value area holds other data. The NuttX build leaves it, returns errors
+  and waits for `kv wipe confirm`. The Zephyr build does what Zephyr's NVS does: if the last 8 bytes
+  of both sectors are written, the mount fails and the store cannot be used (there is no command to
+  erase it); if either is erased, it takes the area for an interrupted garbage collection, erases
+  it and starts with an empty store (usually the case for the earlier NuttX build's format, whose
+  block being written ends erased).
 - **Log**: formatted in the calling thread (the Zephyr build defers it). The RAM ring is 8 KiB (4 KiB
   in the Zephyr build). No run-time level change.
 - **Clocks**: the kernel clock, `k_uptime_get()`, `k_cycle_get_*()`, the sensor clock and the CPU

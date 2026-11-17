@@ -15,6 +15,9 @@
  *                                                  lsm6dso_instance.h
  *   timer     /soc/timer@40054000                  (no device: its address,
  *                                                  common/imu/time_sync.c)
+ *   storage_partition  partition@ffe000 of /soc/flash-controller@18000000
+ *                                                  (<zephyr/storage/flash_map.h>,
+ *                                                  compat/zephyr_flash_kv.c)
  */
 
 #ifndef __NUTTX_DRIVERS_COMPAT_ZEPHYR_DEVICETREE_H
@@ -23,6 +26,14 @@
 #include <zephyr/sys/util.h>
 
 #define DT_NODELABEL(label)   label
+
+/* /chosen: none of the properties that the ported code asks for is set
+ * (zephyr,settings-partition: the copy of Zephyr's settings_nvs.c then uses
+ * the partition storage_partition of <zephyr/storage/flash_map.h>, as in
+ * the Zephyr build, whose app.overlay chooses none either).
+ */
+
+#define DT_HAS_CHOSEN(prop)   0
 
 /* The parent bus of a node: DT_BUS(node) -> DT_BUS_<node>. */
 

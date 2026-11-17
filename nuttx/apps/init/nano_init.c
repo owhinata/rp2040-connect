@@ -236,7 +236,8 @@ int nano_init_main(int argc, FAR char *argv[])
 
 #ifdef CONFIG_NANO_WIFI_CREDENTIALS
   /* The Wi-Fi credentials library's SYS_INIT(POST_KERNEL), which Zephyr
-   * runs before the threads below start: reads the stored SSIDs.
+   * runs before the threads below start: initializes the settings (mounts
+   * NVS on the key-value area) and reads the stored SSIDs.
    */
 
   wifi_credentials_init();
@@ -279,8 +280,9 @@ int nano_init_main(int argc, FAR char *argv[])
 
   LOG_INF("USB console started");
 #ifdef CONFIG_NANO_KV_STORE
-  /* The board has mounted /dev/config already (nano_flash_kv.c); this
-   * only checks that it is there, at the same point as main().
+  /* settings_subsys_init() (Zephyr's, common/compat/subsys), at the same
+   * point as main(): NVS is mounted already when the Wi-Fi credentials'
+   * initialization above has done it.
    */
 
   ret = kv_store_init();

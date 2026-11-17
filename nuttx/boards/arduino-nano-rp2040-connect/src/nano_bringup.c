@@ -194,7 +194,7 @@ int nano_bringup(void)
   /* The NINA-W102 network device wlan0.  The Zephyr build initializes its
    * interface at boot (POST_KERNEL, CONFIG_WIFI_INIT_PRIORITY 80, after
    * the sensor): dormant, and the MAC address read from the module, whose
-   * first command resets it.  Its NVS is mounted afterwards, in main().
+   * first command resets it.
    */
 
   ret = nina_net_initialize();
@@ -206,11 +206,11 @@ int nano_bringup(void)
 #endif
 
 #ifdef CONFIG_NANO_FLASH_KV
-  /* The key-value store: /dev/config on the last 8 KiB of the flash.  The
-   * Zephyr build mounts its NVS in main(), after its devices (the
-   * LSM6DSOX above).  Done before USB is registered: the first boot after
-   * the Zephyr build may erase the area, with interrupts off for each
-   * 4 KiB sector.
+  /* The flash of the key-value store (the last 8 KiB): the linker script
+   * checked and the boot ROM's functions found.  NVS is mounted later,
+   * where the Zephyr build mounts it: by the first call of the settings
+   * (the Wi-Fi credentials' initialization in the init task, Zephyr's
+   * SYS_INIT; main()'s kv_store_init()).
    */
 
   ret = nano_flash_kv_initialize();

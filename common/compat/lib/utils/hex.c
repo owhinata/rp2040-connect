@@ -1,13 +1,15 @@
-/* SPDX-License-Identifier: Apache-2.0 */
-/* Zephyr's lib/utils/hex.c (Copyright (c) 2019 Nordic Semiconductor ASA),
- * with the functions renamed (see kv_hex.h).
+/*
+ * Copyright (c) 2019 Nordic Semiconductor ASA
+ *
+ * SPDX-License-Identifier: Apache-2.0
  */
 
+#include <stddef.h>
+#include <zephyr/types.h>
 #include <errno.h>
+#include <zephyr/sys/util.h>
 
-#include "kv_hex.h"
-
-static int char2hex(char c, uint8_t *x)
+int char2hex(char c, uint8_t *x)
 {
 	if ((c >= '0') && (c <= '9')) {
 		*x = c - '0';
@@ -22,7 +24,7 @@ static int char2hex(char c, uint8_t *x)
 	return 0;
 }
 
-static int hex2char(uint8_t x, char *c)
+int hex2char(uint8_t x, char *c)
 {
 	if (x <= 9) {
 		*c = x + (char)'0';
@@ -35,7 +37,7 @@ static int hex2char(uint8_t x, char *c)
 	return 0;
 }
 
-size_t kv_bin2hex(const uint8_t *buf, size_t buflen, char *hex, size_t hexlen)
+size_t bin2hex(const uint8_t *buf, size_t buflen, char *hex, size_t hexlen)
 {
 	if (hexlen < ((buflen * 2U) + 1U)) {
 		return 0;
@@ -50,7 +52,7 @@ size_t kv_bin2hex(const uint8_t *buf, size_t buflen, char *hex, size_t hexlen)
 	return 2U * buflen;
 }
 
-size_t kv_hex2bin(const char *hex, size_t hexlen, uint8_t *buf, size_t buflen)
+size_t hex2bin(const char *hex, size_t hexlen, uint8_t *buf, size_t buflen)
 {
 	uint8_t dec;
 

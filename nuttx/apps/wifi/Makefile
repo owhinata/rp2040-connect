@@ -3,8 +3,8 @@
 #
 # The stored Wi-Fi credentials (NANO_WIFI_CREDENTIALS: the copy of Zephyr's
 # subsys/net/lib/wifi_credentials/ in common/compat, compiled with the
-# prelude of the shared sources, with its settings backend on /dev/config,
-# settings_nvs.c), the Wi-Fi profile with its reconnection thread
+# prelude of the shared sources, with its settings backend on the copy of
+# Zephyr's settings built by ../imu), the Wi-Fi profile with its reconnection thread
 # (NANO_WIFI_PROFILE: wifi_profile.c, shared with the Zephyr build in
 # common/imu, found through VPATH and DEPPATH relative to this directory and
 # compiled with the prelude of the shared sources, common_prelude.h of the
@@ -23,7 +23,7 @@
 
 include $(APPDIR)/Make.defs
 
-CSRCS = wifi_credentials.c wifi_credentials_backend_settings.c settings_nvs.c
+CSRCS = wifi_credentials.c wifi_credentials_backend_settings.c
 
 ifeq ($(CONFIG_NANO_WIFI_PROFILE),y)
 CSRCS += wifi_profile.c

@@ -51,8 +51,8 @@ void nano_chip_id_initialize(void);
 void nano_usbserial_initialize(void);
 #endif
 
-/* nano_flash_kv.c: the MTD over the key-value area and /dev/config; from
- * nano_bringup().
+/* nano_flash_kv.c: the OS boundary of the key-value area
+ * (common/compat/nano_flash_kv.h); from nano_bringup().
  */
 
 #ifdef CONFIG_NANO_FLASH_KV

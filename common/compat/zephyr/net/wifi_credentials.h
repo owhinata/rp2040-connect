@@ -3,13 +3,13 @@
  * Wi-Fi credentials, with Zephyr's names, types, flags and functions.  The
  * library is the copy of Zephyr's subsys/net/lib/wifi_credentials/ in
  * common/compat (wifi_credentials.c, wifi_credentials_backend_settings.c;
- * CONFIG_NANO_WIFI_CREDENTIALS), which keeps the entries in the layer's
- * settings (<zephyr/settings/settings.h>; on NuttX its NVS, /dev/config)
- * under the names "wifi_cred/<index>", as the Zephyr build keeps them in
- * its settings.  The entry is this header's struct
+ * CONFIG_NANO_WIFI_CREDENTIALS), which keeps the entries in the copy of
+ * Zephyr's settings (common/compat/subsys/settings, on NVS in the key-value
+ * area) under the names "wifi_cred/<index>", as the Zephyr build keeps them
+ * in its settings.  The entry is this header's struct
  * wifi_credentials_personal, stored as it is in memory, as Zephyr's
- * settings backend stores it; NuttX's NVS is a store the Zephyr build
- * cannot read (and the other way round).
+ * settings backend stores it, in the same bytes as the Zephyr build (see
+ * the layout check below).
  *
  * The configuration of the Zephyr build (CONFIG_WIFI_CREDENTIALS_*) comes
  * from the OS's CONFIG_NANO_WIFI_CREDENTIALS_* (NuttX: the options of
@@ -134,6 +134,31 @@ struct wifi_credentials_personal {
 	/** Length of the password */
 	size_t password_len;
 };
+
+/* Port: the entry is stored as it is in memory, so its layout must be the
+ * Zephyr build's (from its zephyr.elf, "ptype /o" of GDB): 224 bytes, the
+ * enum of one byte (arm-none-eabi's short enums, which every build for the
+ * board has), ssid at 1, ssid_len at 36, password at 92, password_len at
+ * 220.  Host builds have 4-byte enums and are not checked.
+ */
+#if defined(__arm__) && CONFIG_WIFI_CREDENTIALS_SAE_PASSWORD_LENGTH == 128
+BUILD_ASSERT(sizeof(enum wifi_security_type) == 1, "enum size differs from Zephyr's");
+BUILD_ASSERT(sizeof(struct wifi_credentials_personal) == 224, "entry size differs");
+BUILD_ASSERT(offsetof(struct wifi_credentials_header, ssid) == 1, "layout differs");
+BUILD_ASSERT(offsetof(struct wifi_credentials_header, ssid_len) == 36, "layout differs");
+BUILD_ASSERT(offsetof(struct wifi_credentials_header, flags) == 40, "layout differs");
+BUILD_ASSERT(offsetof(struct wifi_credentials_header, timeout) == 44, "layout differs");
+BUILD_ASSERT(offsetof(struct wifi_credentials_header, bssid) == 48, "layout differs");
+BUILD_ASSERT(offsetof(struct wifi_credentials_header, channel) == 54, "layout differs");
+BUILD_ASSERT(offsetof(struct wifi_credentials_header, anon_id) == 55, "layout differs");
+BUILD_ASSERT(offsetof(struct wifi_credentials_header, aid_length) == 71, "layout differs");
+BUILD_ASSERT(offsetof(struct wifi_credentials_header, key_passwd) == 72, "layout differs");
+BUILD_ASSERT(offsetof(struct wifi_credentials_header, key_passwd_length) == 88,
+	     "layout differs");
+BUILD_ASSERT(offsetof(struct wifi_credentials_personal, password) == 92, "layout differs");
+BUILD_ASSERT(offsetof(struct wifi_credentials_personal, password_len) == 220,
+	     "layout differs");
+#endif
 
 struct wifi_credentials_enterprise {
 	/** Header */

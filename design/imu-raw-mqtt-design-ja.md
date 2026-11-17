@@ -638,17 +638,23 @@ NINA-W102 のソケットは NuttX の usrsock（`CONFIG_NET_USRSOCK_CUSTOM`）�
 Zephyr 版は起動からの累積。区間の割合は `/proc/<tid>/critmon` の実行時間の合計の差で求める
 （`design/nuttx-porting-ja.md` の「CPU 負荷」）。
 
-### 11.5 KV の形式と移し替え
+### 11.5 KV の形式
 
-- 場所は Zephyr 版と同じ flash の末尾 8 KiB（4 KiB の消去単位 2 つ）で、キーと値の規則と API・コマンドも
-  同じだが、保存形式は NuttX の NVS（`/dev/config`、名前 `app_kv/<キー>`、Wi-Fi の資格情報は
-  `wifi_cred/<番号>`）で、Zephyr 版（settings on NVS）と互換がない。
-- NuttX 版は、領域がこの形式でも消去済みでもなければ、最初の起動で消去する。
-- 移し替えは `script/kv_transfer.py` で行う: Zephyr 版が動いている間に `backup`（`kv get` で読んで PC に
-  保存）→ NuttX 版を書き込む → `restore`（`kv sethex` で書いて読み返す。校正値の後に `imu cal reload`）。
-  Wi-Fi の資格情報は flash から移せないので、`restore` がパスワードを入力させて `wifi cred add` で登録する。
-  セッションの通し番号（`imu.session`）は書き戻さず、NuttX 版では 1 から始まる。
-- NuttX 版から Zephyr 版に戻すときも、同じ理由で値は引き継がれない。
+- 場所（flash の末尾 8 KiB、4 KiB の消去単位 2 つ）も形式も Zephyr 版と同じ。NuttX 版は Zephyr v4.5.0 の NVS と
+  settings のソースを改変せずに写したもの（`common/compat/subsys/` ほか）を、Zephyr 版と同じ Kconfig の値と
+  flash のパラメーター（セクター 4096 バイト × 2、書き込み単位 1 バイト、消去値 0xFF）で動かし、`kv` のコマンドと
+  API も Zephyr 版の `kv_store.c`（`common/imu/kv_store.c`）をそのまま使う。名前は `app_kv/<キー>`、Wi-Fi の
+  資格情報は `wifi_cred/<番号>`。どちらの版が書いた KV も、もう一方がそのまま読み書きする。
+- flash の操作（読み出し、256 バイトのページの書き込み、4 KiB のセクターの消去）は OS ごとの小さな境界
+  （`common/compat/nano_flash_kv.h`）にあり、範囲は末尾 8 KiB だけに限る。割り込みを止めるのはページの書き込み
+  1 回と消去 1 回のそれぞれの間（消去は 34〜40 ms）。
+- KV の領域に Zephyr の NVS でも消去済みでもないデータ（NuttX 版の以前の形式、別のファームウェアの残り）が
+  あると、NuttX 版は消さずにエラーを `dmesg` に出し、KV の操作はエラー（`-EILSEQ`）を返す。`kv wipe confirm`
+  （NuttX 版だけ）で消して使い始める。Zephyr 版は Zephyr の NVS のとおりに動く（両方のセクターの末尾が
+  書かれていればマウントに失敗、どちらかが消去済みなら領域を消して空で始める）。
+- `script/kv_transfer.py` は、KV の領域が失われる場面（別のファームウェアを書くとき、`kv wipe` の前）に、
+  シェルの `kv get` で退避し（`backup`）、`kv sethex` で書き戻す（`restore`。校正値の後に `imu cal reload`、
+  Wi-Fi の資格情報はパスワードを入力させて `wifi cred add`）。Zephyr 版と NuttX 版の間の書き換えには要らない。
 
 ### 11.6 異常停止とログ
 

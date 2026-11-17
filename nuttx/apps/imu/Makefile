@@ -5,35 +5,74 @@
 # (NANO_KV_STORE) and the IMU acquisition service with its "imu" builtin
 # command (NANO_APP_IMU).  imu_stream.c is the program's main source (its
 # main() is the "imu" command; the thread it defines is started by the init
-# task).  The copies of the Zephyr build's other sources in this directory
-# that are not listed here are not built yet.
+# task).
+#
+# The key-value store is the Zephyr build's: common/imu/kv_store.c (the
+# store and the "kv" command's subcommands, z_shell_main_kv(), which
+# ../kv's main() calls; with "kv wipe" of common/compat/kv_store_wipe.c)
+# on the copies of Zephyr's settings and NVS (common/compat/subsys:
+# settings.c, settings_store.c, settings_init.c, settings_nvs.c, nvs.c,
+# crc8_sw.c; each read with the Zephyr build's Kconfig values,
+# common/compat/zephyr_kv_config.h, and without -Wundef, since they test
+# unset options with #if as Zephyr does), the flash device and flash map of
+# the key-value area (common/compat/zephyr_flash_kv.c, on the board's
+# nano_flash_kv.c) and the hex conversions of the "kv" command (the copy
+# of Zephyr's lib/utils/hex.c, common/compat/lib/utils).  The Wi-Fi
+# credentials (../wifi) use the same settings.
 #
 # The sources shared with the Zephyr build (imu_stream.c, imu_raw_*,
 # imu_tick_clock.c, time_sync.c, time_offset.c, imu_cal.c, imu_cal_codec.c,
-# imu_raw_mqtt.c and their headers, kv_store.h), and the port's MQTT client
-# for the builds on the compatibility layer (mqtt_min.c, mqtt_min.h; its
-# socket layer on NuttX's sockets, mqtt_min_sock.c, is here), are in
-# common/imu, found through VPATH
-# and DEPPATH, which are relative to this directory (mkdeps needs relative
-# ones); their objects are made here, each compiled with the prelude of the
-# shared sources (common_prelude.h of the compatibility layer, -include).
+# imu_raw_mqtt.c, kv_store.c and their headers), and the port's MQTT
+# client for the builds on the compatibility layer (mqtt_min.c,
+# mqtt_min.h; its socket layer on NuttX's sockets, mqtt_min_sock.c, is
+# here), are in common/imu; the others named above in common/compat.  They
+# are found through VPATH and DEPPATH, which are relative to this directory
+# (mkdeps needs relative ones); their objects are made here, each compiled
+# with the prelude of the shared sources (common_prelude.h of the
+# compatibility layer, -include).
 #
-# Include paths of the service: the Zephyr compatibility layer
+# Include paths: the Zephyr compatibility layer
 # ($(TOPDIR)/external/compat, then common/compat; NuttX's headers are
-# included before it: the
-# prelude in the shared sources, an include of their own in the others), the
-# LSM6DSO driver's headers ($(TOPDIR)/external/lsm6dso), the port's shared
-# headers (common/compat: priorities.h, cpu_load.h; common/log: app_log.h;
-# their NuttX parts in $(TOPDIR)/external/include),
-# common/imu and common/drivers/lsm6dso (imu_stream.c's "lsm6dso_fifo.h"
-# and "lsm6dso_fifo_stats.h", imu_cal.h's "lsm6dso_cal.h"), and
+# included before it: the prelude in the shared sources, an include of
+# their own in the others), the copied settings' own headers
+# (common/compat/subsys/settings/include: <settings/settings_nvs.h>;
+# common/compat/subsys/settings/src: settings_priv.h for
+# kv_store_wipe.c), the LSM6DSO driver's headers
+# ($(TOPDIR)/external/lsm6dso), the port's shared headers (common/compat:
+# priorities.h, cpu_load.h, nano_flash_kv.h, kv_store_os.h; common/log:
+# app_log.h; their NuttX parts in $(TOPDIR)/external/include), common/imu
+# and common/drivers/lsm6dso (imu_stream.c's "lsm6dso_fifo.h" and
+# "lsm6dso_fifo_stats.h", imu_cal.h's "lsm6dso_cal.h"), and
 # common/drivers/nina (<nina_dns.h> and <nina_sockopt.h> of the NINA core,
 # which the layer's <zephyr/net/socket.h> reads).
 ############################################################################
 
 include $(APPDIR)/Make.defs
 
-CSRCS = kv_name.c kv_store.c
+CSRCS  = kv_store.c kv_store_wipe.c zephyr_flash_kv.c hex.c
+KV_ZEPHYR_CSRCS = settings.c settings_store.c settings_init.c settings_nvs.c nvs.c crc8_sw.c
+CSRCS += $(KV_ZEPHYR_CSRCS)
+
+CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)include
+CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)log
+CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)compat
+CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)compat
+CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)compat$(DELIM)subsys$(DELIM)settings$(DELIM)include
+CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)compat$(DELIM)subsys$(DELIM)settings$(DELIM)src
+CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)imu
+
+VPATH    += :../../../common/imu
+DEPPATH  += --dep-path ../../../common/imu
+VPATH    += :../../../common/compat
+DEPPATH  += --dep-path ../../../common/compat
+VPATH    += :../../../common/compat/lib/utils
+DEPPATH  += --dep-path ../../../common/compat/lib/utils
+VPATH    += :../../../common/compat/subsys/settings/src
+DEPPATH  += --dep-path ../../../common/compat/subsys/settings/src
+VPATH    += :../../../common/compat/subsys/kvss/nvs
+DEPPATH  += --dep-path ../../../common/compat/subsys/kvss/nvs
+VPATH    += :../../../common/compat/subsys/crc
+DEPPATH  += --dep-path ../../../common/compat/subsys/crc
 
 ifneq ($(CONFIG_NANO_APP_IMU),)
 PROGNAME  = imu
@@ -70,17 +109,9 @@ else
 CSRCS    += time_sync_null.c
 endif
 
-CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)include
-CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)log
-CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)compat
-CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)compat
 CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)lsm6dso
-CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)imu
 CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)drivers$(DELIM)lsm6dso
 CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)drivers$(DELIM)nina
-
-VPATH    += :../../../common/imu
-DEPPATH  += --dep-path ../../../common/imu
 endif
 
 include $(APPDIR)/Application.mk
@@ -88,10 +119,25 @@ include $(APPDIR)/Application.mk
 # The prelude of the shared sources (common_prelude.h of the compatibility
 # layer) before each source of common/imu.
 
-ifneq ($(CONFIG_NANO_APP_IMU),)
-IMU_COMMON_CSRCS = $(notdir $(wildcard ../../../common/imu/*.c))
+IMU_COMMON_CSRCS  = $(notdir $(wildcard ../../../common/imu/*.c))
+IMU_COMMON_CSRCS += kv_store_wipe.c zephyr_flash_kv.c hex.c $(KV_ZEPHYR_CSRCS)
 $(addsuffix $(SUFFIX)$(OBJEXT),$(filter $(IMU_COMMON_CSRCS),$(CSRCS) $(MAINSRC))): \
   CFLAGS += -include $(TOPDIR)$(DELIM)external$(DELIM)compat$(DELIM)common_prelude.h
+$(addsuffix $(SUFFIX)$(OBJEXT),$(KV_ZEPHYR_CSRCS)): \
+  CFLAGS += -include $(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)compat$(DELIM)zephyr_kv_config.h -Wno-undef
+
+# nvs.c prints uint32_t values with %d, %u and %x: Zephyr's uint32_t is
+# unsigned int, NuttX's unsigned long (the same 32 bits).
+
+nvs.c$(SUFFIX)$(OBJEXT): CFLAGS += -Wno-format
+
+# The "kv" command's SHELL_CMD_REGISTER() in kv_store.c makes
+# z_shell_main_kv(), which ../kv's main() calls (kv_store.c is not a main
+# source).
+
+kv_store.c$(SUFFIX)$(OBJEXT): CFLAGS += -DZ_SHELL_CMD_NAMED_MAIN
+
+ifneq ($(CONFIG_NANO_APP_IMU),)
 
 # The "imu" command's SHELL_CMD_REGISTER() in imu_stream.c makes this
 # program's main(); time_sync.c is not a main source, so its

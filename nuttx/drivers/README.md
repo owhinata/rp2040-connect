@@ -435,9 +435,11 @@ is in two places:
   `net_mgmt` events, the Wi-Fi requests, the sensors' default iodev, and the copies of Zephyr's
   libraries that the builds on the layer use (`sensor_shell_stream.c` and `sensor_shell.h`; the
   stored Wi-Fi credentials, `wifi_credentials.c`, `wifi_credentials_backend_settings.c` and
-  `wifi_credentials_internal.h`; the MQTT client is `common/imu/mqtt_min.c`), and boundary headers
-  (the table of thread priorities and stacks `priorities.h`, `cpu_load.h` of `cpu_load_get()` with
-  its arithmetic `nano_cpuload.h`, `nano_gpio.h` under `gpio0`). The command handling of the shell's
+  `wifi_credentials_internal.h`; the key-value store's NVS and settings, see "Key-value store:
+  copies of Zephyr's NVS and settings" below; the MQTT client is `common/imu/mqtt_min.c`), and
+  boundary headers (the table of thread priorities and stacks `priorities.h`, `cpu_load.h` of
+  `cpu_load_get()` with its arithmetic `nano_cpuload.h`, `nano_gpio.h` under `gpio0`, the
+  key-value area's flash `nano_flash_kv.h`). The command handling of the shell's
   `zephyr/shell/shell.h` is `common/shell/zshell.c` ("Shell" below). The Zephyr build does not use
   it (it has Zephyr itself).
 - **The NuttX implementation** (`nuttx/drivers/compat/`): the kernel part (`zephyr_kernel.c`,
@@ -457,7 +459,7 @@ of the NuttX implementation on the include path.
 | Header (in `common/compat/` unless marked) | Contents |
 |---|---|
 | `zephyr/device.h` | `struct device` (name, config, API, state, data, init function), `device_is_ready()`, `device_init()` (the meaning of Zephyr's `do_device_init()`), `DEVICE_DT_GET()`, `DEVICE_DT_DEFINE()`, `DEVICE_API()`, `device_get_binding()` (node name), `device_get_by_dt_nodelabel()` (node label), `DEVICE_API_IS(sensor, dev)` (below) |
-| `zephyr/devicetree.h` | `DT_NODELABEL()`, `DT_BUS()`, `DT_REG_ADDR()`; the nodes are `gpio0`, `i2c0`, `lsm6dsox` and `timer`, which has no device (the TIMER's address 0x40054000, for `time_sync_mono_us()` of `time_sync.c`), only. `DT_HAS_COMPAT_ON_BUS_STATUS_OKAY()` (Zephyr's definition): 1 for `st_lsm6dso` on `i2c`, 0 for any other compatible or bus (`lsm6dso.h`) |
+| `zephyr/devicetree.h` | `DT_NODELABEL()`, `DT_BUS()`, `DT_REG_ADDR()`; the nodes are `gpio0`, `i2c0`, `lsm6dsox` and `timer`, which has no device (the TIMER's address 0x40054000, for `time_sync_mono_us()` of `time_sync.c`), only. `DT_HAS_COMPAT_ON_BUS_STATUS_OKAY()` (Zephyr's definition): 1 for `st_lsm6dso` on `i2c`, 0 for any other compatible or bus (`lsm6dso.h`). `DT_HAS_CHOSEN()` is always 0 (the Zephyr build chooses no `zephyr,settings-partition` either) |
 | `zephyr/kernel.h` | `k_timeout_t` (`K_NO_WAIT`, `K_FOREVER`, `K_MSEC()`, `K_SECONDS()`; ticks of 100 µs), `k_mutex`, `k_sem` (`K_SEM_DEFINE`), `k_poll()` on semaphores (`K_POLL_TYPE_SEM_AVAILABLE`, `K_POLL_MODE_NOTIFY_ONLY`), work (`k_work`, `k_work_delayable`, `k_work_q`, `k_work_submit()`, `k_work_cancel_sync()`, `k_work_schedule_for_queue()`, `k_work_reschedule_for_queue()`, `k_work_queue_start()`), `K_THREAD_STACK_DEFINE()`, `K_PRIO_PREEMPT()`, `k_thread_name_set()`, the system work queue `k_sys_work_q`, `K_MUTEX_DEFINE()`, `K_THREAD_DEFINE()` (below), `k_current_get()` (the calling thread's NuttX thread ID, comparable with the `k_tid_t` of `K_THREAD_DEFINE()`), `k_uptime_get()`, `k_sleep()`, `k_msleep()`, `k_usleep()`, `k_busy_wait()` (below), `k_cycle_get_32()`, `k_cycle_get_64()`, `k_cyc_to_us_floor64()`, `k_cyc_to_us_ceil64()`, `k_cyc_to_ns_floor64()`, `sys_clock_hw_cycles_per_sec()` (below) |
 | `zephyr/spinlock.h`, `zephyr/sys/atomic.h` | `k_spin_lock()` (below), `atomic_t` and `atomic_get/set/clear/cas/or/inc/add()` |
 | `zephyr/rtio/rtio.h`, `zephyr/rtio/work.h` | RTIO (below) and the RTIO work queue (`rtio_work_req_alloc()`, `_submit()`) |
@@ -465,12 +467,12 @@ of the NuttX implementation on the include path.
 | `zephyr/drivers/sensor.h` | `struct sensor_value`, the channel, attribute and trigger enumerations (Zephyr's numbers), `struct sensor_driver_api`, `sensor_attr_set()`/`_get()`, `sensor_sample_fetch()`/`_chan()`, `sensor_channel_get()`, `sensor_trigger_set()`, the unit conversions. The async API: `struct sensor_chan_spec`, the decoders (`struct sensor_decoder_api`, `sensor_three_axis_data` and others), `SENSOR_DT_READ_IODEV()`, `SENSOR_DT_STREAM_IODEV()`, `sensor_get_decoder()`, `sensor_stream()`, `sensor_read()`, `sensor_read_async_mempool()`, `sensor_processing_with_callback()`. The print formats of the decoded data, `PRIsensor_*_data` (Zephyr's `sensor_data_types.h`; the Q value format is in `dsp/print_format.h`) |
 | `zephyr/drivers/sensor_clock.h` | `sensor_clock_get_cycles()`, `sensor_clock_cycles_to_ns()` (below) |
 | `zephyr/drivers/i2c.h` (NuttX) | `struct i2c_dt_spec`, `i2c_burst_read_dt()`, `i2c_write_dt()`, `i2c_write_read_dt()`, `i2c_configure()`, the speed classes (`I2C_SPEED_*`, `I2C_SPEED_SET()`) |
-| `zephyr/sys/util.h`, `sys/mpsc_lockfree.h`, `sys/mem_blocks.h`, `dsp/types.h` | `BIT()`, `ARRAY_SIZE()`, `MIN()`/`MAX()`, `IS_ENABLED()`, `CONTAINER_OF()`, `GENMASK()`/`GENMASK64()`/`FIELD_GET()`, `STRINGIFY()` and others, RTIO's queues and block pool, `q31_t` |
+| `zephyr/sys/util.h`, `sys/mpsc_lockfree.h`, `sys/mem_blocks.h`, `dsp/types.h` | `BIT()`, `ARRAY_SIZE()`, `MIN()`/`MAX()`, `IS_ENABLED()`, `CONTAINER_OF()`, `GENMASK()`/`GENMASK64()`/`FIELD_GET()`, `STRINGIFY()`, `KB()`, `ZTESTABLE_STATIC`, `hex2bin()`/`bin2hex()` (implemented by the copy of `lib/utils/hex.c`) and others (it also includes `<string.h>`, as Zephyr's does), RTIO's queues and block pool, `q31_t` |
 | `zephyr/sys/__assert.h` (NuttX) | `__ASSERT()`, `__ASSERT_NO_MSG()` (NuttX's `DEBUGASSERT()`; `assert()` in the host tests) |
 | `zephyr/dsp/print_format.h` | A copy of Zephyr's header of that name (with only a leading comment and the include of `<zephyr/sys/util.h>` added): the Q value print format `PRIq()`, `PRIq_arg()` |
 | `zephyr/types.h` | `<stddef.h>` and `<stdint.h>` (what `lsm6dso.h` reads it for) |
 | `zephyr/init.h` | An empty header (`lsm6dso.c` includes it; `SYS_INIT()` and the init levels are used only by the Zephyr version's instance macros) |
-| `zephyr/sys/iterable_sections.h` | An empty header (the sensor shell includes it, but uses it only with `CONFIG_SENSOR_INFO`, which the Zephyr build does not set) |
+| `zephyr/sys/iterable_sections.h` | `STRUCT_SECTION_FOREACH()` only, over an always empty section (the port has no Zephyr linker sections). The sensor shell includes it (and uses it only with `CONFIG_SENSOR_INFO`, which the Zephyr build does not set); the settings walk the section of static handlers (none in the port) |
 | `zephyr/sys/sys_io.h` | `sys_read32()` (one volatile 32-bit read without a barrier, as Zephyr's on Arm), `mem_addr_t` |
 | `zephyr/sys/printk.h`, `zephyr/sys/byteorder.h`, `zephyr/sys/cpu_load.h` | `snprintk()` (`snprintf()`, as in the Zephyr version's configuration with `CONFIG_PICOLIBC=y`), `sys_put_be16/32()`/`sys_get_be16/32()`/`sys_get_le32()`, `cpu_load_get()` (`cpu_load.h`; the board implements it) |
 | `zephyr/drivers/hwinfo.h` | `hwinfo_get_device_id()` (below) |
@@ -482,7 +484,12 @@ of the NuttX implementation on the include path.
 | `zephyr/net/wifi_mgmt.h` | The Wi-Fi types (security, band, MFP, state, mode; Zephyr's values), `struct wifi_scan_params`, `wifi_scan_result`, `wifi_connect_req_params`, `wifi_iface_status`, `wifi_status`, `struct wifi_mgmt_ops`, the offloaded interface API and `NET_DEVICE_DT_OFFLOAD_DEFINE()`, the requests `NET_REQUEST_WIFI_SCAN`, `_CONNECT`, `_DISCONNECT`, `_IFACE_STATUS`, `_CONNECT_STORED` (with `CONFIG_NANO_WIFI_CREDENTIALS`), the events `NET_EVENT_WIFI_SCAN_RESULT`, `_SCAN_DONE`, `_CONNECT_RESULT`, `_DISCONNECT_RESULT`, `wifi_mgmt_raise_connect_result_event()`, `_disconnect_result_event()` (below), `wifi_security_txt()`, `wifi_band_txt()` |
 | `zephyr/net/wifi_credentials.h` | A copy of Zephyr's header of that name: `struct wifi_credentials_header`, `_personal`, `WIFI_CREDENTIALS_FLAG_*`, `wifi_credentials_set_personal_struct()`, `_get_by_ssid_personal_struct()`, `_delete_by_ssid()`, `_for_each_ssid()`, `_is_empty()` and the rest. The configuration values (`CONFIG_WIFI_CREDENTIALS_MAX_ENTRIES` and so on) come from the OS's `CONFIG_NANO_WIFI_CREDENTIALS_*` (in the NuttX build, `nuttx/apps/wifi/Kconfig`). The port's own `wifi_credentials_init()` (called by init; Zephyr's `SYS_INIT()`). The functions are in `common/compat/wifi_credentials.c` (the copy of Zephyr's library) and `wifi_credentials_backend_settings.c`, which stores them in the settings |
 | `zephyr/net/wifi_utils.h` | `wifi_utils_validate_chan()` (`_2g`, `_5g`, `_6g`), `net_bytes_from_str()` (in Zephyr's `<zephyr/net/net_ip.h>`) |
-| `zephyr/settings/settings.h` | `settings_subsys_init()`, `settings_save_one()`, `settings_delete()`, `settings_load_one()`: one name at a time, as the item of the same name in the OS's store (implemented by each OS; in the NuttX build on its NVS, `/dev/config`, `nuttx/apps/wifi/settings_nvs.c`). No subtree loads and no handlers |
+| `zephyr/settings/settings.h`, `zephyr/kvss/nvs.h`, `zephyr/sys/slist.h`, `zephyr/sys/list_gen.h` | Unchanged copies of Zephyr's headers of the same names ("Key-value store" below): the settings API (`settings_subsys_init()`, `settings_save_one()`, `settings_load_one()`, `settings_delete()`, `settings_load_subtree_direct()` and others), NVS's API and `struct nvs_fs`, singly linked lists |
+| `zephyr/drivers/flash.h`, `zephyr/storage/flash_map.h` | The flash API that NVS and the settings use (`flash_read()`, `flash_write()`, `flash_erase()`, `flash_flatten()`, `flash_get_parameters()`, `flash_get_write_block_size()`, `flash_get_page_info_by_offs()`, `struct flash_parameters`) and the flash map (`flash_area_open()`, `flash_area_close()`, `flash_area_get_sectors()`, `PARTITION_ID(storage_partition)`). The only device is the key-value area's flash (`zephyr_flash_kv.c`, below) |
+| `zephyr/sys/crc.h`, `zephyr/toolchain.h` | Declarations of `crc8_ccitt()` and others (implemented by the copy of `subsys/crc/crc8_sw.c`), `__packed`, `__weak` |
+| `nano_flash_kv.h` | The key-value area's constants (8 KiB from `0xffe000`, 256-byte pages, 4 KiB sectors), the OS boundary ("Key-value store" below), the range checks, the split into pages and the check of what the area holds (Zephyr's NVS, the earlier NuttX build's format, erased, other) |
+| `zephyr_kv_config.h` | The Zephyr build's Kconfig values read before the copied NVS and settings (`CONFIG_SETTINGS_NVS_SECTOR_COUNT` and others; "Key-value store" below) |
+| `kv_store_os.h` | The OS part of `common/imu/kv_store.c`: the `kv wipe` subcommand (the Zephyr build's `zephyr/app/usb-console/src/kv_store_os.h` is empty) |
 | `zephyr/logging/log.h` | `LOG_MODULE_REGISTER()`, `LOG_ERR()` and the other logging macros. It only includes the port's `app_log.h` (`common/log/`; the RAM log of `dmesg`) |
 | `zephyr/net/net_ip.h` | The IPv4 address type `struct in_addr` (`imu_raw_mqtt.h`). It only includes NuttX's `<netinet/in.h>` (the same member `s_addr`, network byte order) |
 | `zephyr_compat.h` | `zephyr_compat_initialize()` (called by the board's bring-up, below), `K_THREAD_DEFINE_START()` (called by init) |
@@ -506,7 +513,10 @@ of the NuttX implementation on the include path.
 | `zephyr_net_if.c` (NuttX), `zephyr_net_mgmt.c`, `zephyr_wifi_mgmt.c` | The interface (values of the NuttX network device), the `net_mgmt` event queue and thread (the thread is the OS part `zephyr_net_mgmt_os.h`; its stack size is `NANO_STACK_NET_MGMT` of `priorities.h`), the Wi-Fi requests (a copy of the checks of Zephyr's `subsys/net/l2/wifi/wifi_mgmt.c`) and events, `NET_REQUEST_WIFI_CONNECT_STORED` (a copy of `connect_stored_command()` of the same file; with `CONFIG_NANO_WIFI_CREDENTIALS`). Only with `CONFIG_NANO_NINA_NET` |
 | `zephyr_wifi_utils.c` | Copies of `wifi_security_txt()` and `wifi_band_txt()` (Zephyr's `wifi_mgmt.c`), the channel checks (`wifi_utils.c`) and `net_bytes_from_str()` (`subsys/net/ip/utils.c`), for `wifi cred`. OS-independent. Only with `CONFIG_NANO_NINA_NET` |
 | `sensor_shell_stream.c` | A copy of Zephyr's `drivers/sensor/sensor_shell_stream.c` (the sensor shell's processing thread). It includes the OS's `sensor_shell_os.h` first, and the processing thread's callback is `sensor_shell_os_processing_callback()` (in the NuttX build, `nuttx/apps/sensor/sensor_shell_nuttx.c`). Built by `apps/sensor` |
-| `wifi_credentials.c`, `wifi_credentials_backend_settings.c` | Copies of Zephyr's `subsys/net/lib/wifi_credentials/` (the stored Wi-Fi credentials). Built by `apps/wifi` |
+| `wifi_credentials.c`, `wifi_credentials_backend_settings.c` | Copies of Zephyr's `subsys/net/lib/wifi_credentials/` (the stored Wi-Fi credentials). Built by `apps/wifi`. Two changes in the backend: the read buffer is aligned to 8 bytes (it is read as a struct; the Cortex-M0+ faults on an unaligned access) and the index formats are `%zu` |
+| `subsys/kvss/nvs/`, `subsys/settings/`, `subsys/crc/crc8_sw.c`, `lib/utils/hex.c` | Unchanged copies of Zephyr v4.5.0's NVS, settings, CRC-8 and hex conversions ("Key-value store" below). Built by `apps/imu` |
+| `zephyr_flash_kv.c` | The key-value area's flash device and flash map ("Key-value store" below). Built by `apps/imu` |
+| `kv_store_wipe.c` | `kv wipe confirm` (erases the area and initializes the settings again). Built by `apps/imu` |
 
 - **Work**: the flags (RUNNING, CANCELING, QUEUED, DELAYED) and return values are those of
   `kernel/work.c`. `submit` does nothing if already queued (0) and queues a running item again on
@@ -761,3 +771,71 @@ of the NuttX implementation on the include path.
   device are named `i2c_compat_write()` and `i2c_compat_write_read()` (the `_dt` forms keep
   Zephyr's names). In a file that includes `<zephyr/drivers/i2c.h>`, `I2C_SPEED_*` are Zephyr's
   classes (include NuttX's header first if both are needed).
+
+### Key-value store: copies of Zephyr's NVS and settings
+
+To write the same bytes to the flash as the Zephyr build, the NuttX build (and the FreeRTOS build)
+use unchanged copies of the parts of Zephyr v4.5.0's NVS and settings that the Zephyr build uses,
+with the Zephyr build's configuration. When the Zephyr tree (`zephyr/zephyr`) is there, a host
+test (`zephyr_copies` in `common/tests/run.sh`) checks with `cmp` that the copies are the
+originals.
+
+| Copy (`common/compat/`) | Original (Zephyr v4.5.0) | Changes |
+|---|---|---|
+| `subsys/kvss/nvs/nvs.c`, `nvs_priv.h` | `subsys/kvss/nvs/` | none |
+| `subsys/settings/src/settings.c`, `settings_store.c`, `settings_init.c`, `settings_nvs.c`, `settings_priv.h` | `subsys/settings/src/` | none |
+| `subsys/settings/include/settings/settings_nvs.h`, `settings_file.h` | `subsys/settings/include/settings/` | none |
+| `subsys/crc/crc8_sw.c` | `subsys/crc/crc8_sw.c` | none |
+| `lib/utils/hex.c` | `lib/utils/hex.c` | none |
+| `zephyr/kvss/nvs.h`, `zephyr/settings/settings.h`, `zephyr/sys/slist.h`, `zephyr/sys/list_gen.h` | `include/zephyr/...` | none |
+| `wifi_credentials_backend_settings.c` | `subsys/net/lib/wifi_credentials/` | the two in the table above |
+
+- Configuration: the copied sources are built with `zephyr_kv_config.h` in front (the Zephyr
+  build's `.config` values: `CONFIG_SETTINGS_NVS_SECTOR_SIZE_MULT` 1,
+  `CONFIG_SETTINGS_NVS_SECTOR_COUNT` 8, `CONFIG_SETTINGS_DYNAMIC_HANDLERS`,
+  `CONFIG_MULTITHREADING`, log level 3; `CONFIG_NVS_LOOKUP_CACHE`, `CONFIG_NVS_DATA_CRC`,
+  `CONFIG_NVS_INIT_BAD_MEMORY_REGION` and `CONFIG_SETTINGS_NVS_NAME_CACHE` off, as in the Zephyr
+  build). They test the options that are off with `#if`, so they are built without `-Wundef`;
+  `nvs.c` prints `uint32_t` values with `%d` (Zephyr's `uint32_t` is `unsigned int`, newlib's and
+  NuttX's `unsigned long`, both 32 bits), so it is built without `-Wformat`.
+- The layout on the flash and the values that decide it (where the Zephyr build has them):
+
+  | Value | Here | Zephyr build |
+  |---|---|---|
+  | Area | `0x2000` from `0xffe000` (`nano_flash_kv.h`, `<zephyr/storage/flash_map.h>`) | `storage_partition` of `app.overlay` |
+  | Sectors | 4096 bytes × 2 | `erase-block-size` of `rp2040.dtsi` × `SECTOR_SIZE_MULT` 1, as many as fit in 8 KiB (`settings_nvs.c`) |
+  | Write block, erase value | 1, 0xFF | `flash_rpi_parameters` of `flash_rpi_pico.c`, `write-block-size` of the DT |
+  | Allocation table entry | 8 bytes, `crc8_ccitt(0xff, ...)` | `nvs_priv.h` (unchanged) |
+  | Name and value IDs | 0x8000, 0x8001 on, +0x4000 | `settings_nvs.h` (unchanged) |
+  | Values | calibration 56 bytes, text, `imu.session` 4 bytes, a credential 224 bytes | `imu_cal_codec.c`, `imu_stream.c` (shared), `struct wifi_credentials_personal` (its layout fixed to the Zephyr build's ELF by `BUILD_ASSERT`s; arm-none-eabi's 1-byte enums) |
+
+- Assumptions kept: the settings' lock (`K_MUTEX_DEFINE(settings_lock)`, a mutex that starts all
+  zero) and NVS's lock are the layer's `k_mutex` (recursive: `kv wipe` initializes the settings
+  again while it holds the settings' lock). Initialization is, as in Zephyr, the first
+  `settings_subsys_init()` (tried again by the next call after a failure).
+- **The flash boundary** (`nano_flash_kv.h`; each OS implements it: the NuttX build in the board's
+  `src/nano_flash_kv.c`, the FreeRTOS build with the Pico SDK's `flash_range_program()` and
+  `flash_range_erase()` with interrupts off):
+
+  ```c
+  bool nano_flash_kv_os_ready(void);
+  int nano_flash_kv_os_read(uint32_t offset, void *buf, uint32_t len);
+  int nano_flash_kv_os_program(uint32_t page_offset, const uint8_t page[256]);
+  int nano_flash_kv_os_erase(uint32_t sector_offset);
+  ```
+
+  `offset` is from the start of the flash (XIP 0x10000000). While `ready` is false, the flash map
+  treats the device as missing (`-ENODEV`). `read` returns what the flash holds now (also right
+  after a program or an erase). `program` writes the page at a multiple of 256 (0xFF where nothing
+  is written; programming only clears bits), `erase` the sector at a multiple of 4096. Each
+  returns 0 or a negative errno and is called from threads only, one at a time (the layer holds
+  its lock). The caller (`zephyr_flash_kv.c`) passes only aligned requests inside the area, but
+  the OS checks the range again and returns `-EINVAL` without touching the flash otherwise.
+  Interrupts are off, and no code runs from the flash, while a page is programmed or a sector
+  erased (the NuttX build: for one page or one sector at a time).
+- `zephyr_flash_kv.c`: the flash device (`z_flash_kv_device`) and the flash map. It accepts
+  requests inside the area only (the Zephyr build's driver accepts the whole flash), splits writes
+  into 256-byte pages and erases into sectors for the boundary. `flash_area_open()` checks once
+  after boot what the area holds; if it is neither Zephyr's NVS nor erased, it logs that and
+  returns `-EILSEQ` (the settings are not initialized and nothing is written). After
+  `kv wipe confirm` it checks again.

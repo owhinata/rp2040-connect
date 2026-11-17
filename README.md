@@ -291,7 +291,8 @@ it on trusted networks only.
 Stored with Zephyr Settings on NVS. Keys are 1 to 32 characters of letters, digits, `_`, `-`
 and `.`; values are 1 to 128 bytes. `set` stores text, `sethex` stores bytes given in hex, and
 `get` prints hex. Keys starting with `sys.` are reserved. Data is not encrypted. Wi-Fi
-credentials share the same 8 KiB area.
+credentials share the same 8 KiB area. The NuttX build stores them in the same place and format,
+so the store stays when you switch builds.
 
 ### Log
 
@@ -336,14 +337,14 @@ summary (missing batches, valid and reversed times) and at the errors in `imu st
 | `zephyr/app/blink/` | LED blink sample |
 | `zephyr/script/` | Setup, host tests |
 | `nuttx/` | The NuttX build (board definition, drivers, applications, patches, scripts, host tests) |
-| `common/` | Sources that the Zephyr and NuttX builds both use (`imu/`: the acquisition service and the `imu` command, batches, packets, the send queue, time assignment, the time sync and the `ntp` command, the NTP estimate, the calibration value format and `imu cal`, the MQTT transport, the Wi-Fi profile and automatic reconnection, the declarations of the key-value store; `drivers/`: the LSM6DSO driver and its FIFO parsing, unit conversion and gyro zero, FIFO setup, interrupt, stream and RTIO single reads, the NINA's Wi-Fi network device and its declarations `nina_proto.h`, the NINA's OS-independent core (the SPI link, the socket table and commands, name resolution, and the headers of its boundary; only the NuttX build uses it now), the sensor shell, the I2C DMA command words, the I2C0 and DMA core (the register work of the DesignWare I2C driver and of the RP2040 DMA, their definitions, the `i2c_dma` counters and the header of its boundary to the OS; only the NuttX build uses it now); `compat/`: the OS-independent part of the compatibility layer that the NuttX build and others use in place of Zephyr's API, with the copies of Zephyr's libraries it needs, the table of thread priorities and stacks, the CPU load arithmetic and the header of the GPIO boundary (the Zephyr build does not use it; the layer's MQTT client is `imu/mqtt_min.c`); `shell/`: the Zephyr shell's command handling (subcommand matching, wildcards, argument count checks, help) and the subcommand tables (the Zephyr build does not use it); `log/`: the `LOG_*` macros and the RAM log's ring (the Zephyr build does not use it)) and their host tests (`tests/`; `tests/run.sh` is called by the `host_tests.sh` of both builds) |
+| `common/` | Sources that the Zephyr and NuttX builds both use (`imu/`: the acquisition service and the `imu` command, batches, packets, the send queue, time assignment, the time sync and the `ntp` command, the NTP estimate, the calibration value format and `imu cal`, the MQTT transport, the Wi-Fi profile and automatic reconnection, the key-value store's API and `kv` command (`kv_store.c`); `drivers/`: the LSM6DSO driver and its FIFO parsing, unit conversion and gyro zero, FIFO setup, interrupt, stream and RTIO single reads, the NINA's Wi-Fi network device and its declarations `nina_proto.h`, the NINA's OS-independent core (the SPI link, the socket table and commands, name resolution, and the headers of its boundary; only the NuttX build uses it now), the sensor shell, the I2C DMA command words, the I2C0 and DMA core (the register work of the DesignWare I2C driver and of the RP2040 DMA, their definitions, the `i2c_dma` counters and the header of its boundary to the OS; only the NuttX build uses it now); `compat/`: the OS-independent part of the compatibility layer that the NuttX build and others use in place of Zephyr's API, with the copies of Zephyr's libraries it needs (the Wi-Fi credentials, the key-value store's NVS and settings and others), the header of the key-value area's flash boundary, the table of thread priorities and stacks, the CPU load arithmetic and the header of the GPIO boundary (the Zephyr build does not use it; the layer's MQTT client is `imu/mqtt_min.c`); `shell/`: the Zephyr shell's command handling (subcommand matching, wildcards, argument count checks, help) and the subcommand tables (the Zephyr build does not use it); `log/`: the `LOG_*` macros and the RAM log's ring (the Zephyr build does not use it)) and their host tests (`tests/`; `tests/run.sh` is called by the `host_tests.sh` of both builds) |
 | `openmv/` | Build environment for the OpenMV MicroPython firmware ([`openmv/README.md`](openmv/README.md)) |
 | `freertos/` | Build environment for the Raspberry Pi Pico SDK with the FreeRTOS kernel, and a USB console application ([`freertos/README.md`](freertos/README.md)) |
 | `zephyr/manifest/west.yml` | Versions of Zephyr and its modules |
 | `design/` | Design and investigation notes |
 | `firmware/nina-fw/` | Fixes and build for the NINA firmware |
 | `host/` | PC-side tools (receive check, recording, calibration) and the display application `ImuStudio` |
-| `script/` | Script that turns the PC into a temporary access point, and the KV transfer from the Zephyr build to the NuttX build (`kv_transfer.py`) |
+| `script/` | Script that turns the PC into a temporary access point, and the backup and restore of the KV store (`kv_transfer.py`, for flashing another firmware and the like) |
 
 ## NuttX build
 
@@ -358,8 +359,10 @@ replaced by the standard NuttX ones (`wapi`, `ifconfig`, `iperf`, `ps`, `reboot`
   the differences from the Zephyr build.
 - The PC tools (`imu-host` and `ImuStudio` in `host/`) work with either firmware ("Board firmware"
   in [`host/README.md`](host/README.md)).
-- The KV store has a different format, so the Zephyr build's settings and calibration are saved
-  and written back with `script/kv_transfer.py` ("Moving the values from the Zephyr build" in
+- The KV store (settings, calibration, Wi-Fi credentials) is in the same place and format as the
+  Zephyr build's, so it stays when you switch builds. If the key-value area holds other data (the
+  NuttX build's earlier format, for example), the NuttX build does not use it; erase it with
+  `kv wipe confirm` and store the values again ("Moving the values from the Zephyr build" in
   `nuttx/README.md`).
 - Section 11 of the [design](design/imu-raw-mqtt-design.md) describes the design differences.
 

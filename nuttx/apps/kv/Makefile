@@ -1,9 +1,10 @@
 ############################################################################
 # nuttx/apps/kv/Makefile
 #
-# The "kv" builtin command (see Kconfig).  kv_store.c and kv_name.c are in
-# ../imu, subcmd.c and subcmd.h in common/shell (built by ../subcmd and
-# linked into libapps).
+# The "kv" builtin command (see Kconfig).  Its subcommands and their
+# handlers are in common/imu/kv_store.c (z_shell_main_kv(), built by
+# ../imu), the Zephyr shell's command handling in common/shell/zshell.c
+# (built by ../subcmd; both linked into libapps).
 ############################################################################
 
 include $(APPDIR)/Make.defs
@@ -14,10 +15,5 @@ STACKSIZE = $(CONFIG_NANO_APP_KV_STACKSIZE)
 MODULE    = $(CONFIG_NANO_APP_KV)
 
 MAINSRC   = kv_main.c
-CSRCS     = kv_hex.c
-
-CFLAGS   += ${INCDIR_PREFIX}$(APPDIR)$(DELIM)external$(DELIM)imu
-CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)imu
-CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)shell
 
 include $(APPDIR)/Application.mk

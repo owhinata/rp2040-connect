@@ -4,31 +4,20 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-/* Port: Zephyr's subsys/net/lib/wifi_credentials/
+/* Port: a copy of Zephyr's subsys/net/lib/wifi_credentials/
  * wifi_credentials_backend_settings.c (Zephyr v4.5.0; the Zephyr build
- * uses Zephyr's own) on the settings of the Zephyr compatibility layer
- * (<zephyr/settings/settings.h>: on NuttX its NVS, /dev/config), with the
- * same names ("wifi_cred/<index>"), checks,
- * log messages and errors.  Zephyr reads the subtree "wifi_cred" with
- * settings_load_subtree_direct() and calls a callback for each stored
- * name; the layer reads one name at a time, and the library writes only
- * "wifi_cred/0" to "wifi_cred/<CONFIG_WIFI_CREDENTIALS_MAX_ENTRIES - 1>",
- * so the two callbacks become reads of those names:
- * - zephyr_settings_backend_load_key_cb() (the SSID cache at start) runs for
- *   each index that is stored; its "index too large" and "no key" cases
- *   cannot occur (no other name is read),
- * - zephyr_settings_backend_load_val_cb() (one entry) reads the entry's
- *   name: -ENOENT when it is not stored, as when Zephyr finds no match.
- * The entry buffer is aligned for the struct cast on it (the Cortex-M0+
- * faults on an unaligned word access), and the index formats are %zu
- * (-Wformat of NuttX's build).
+ * uses Zephyr's own) on the copy of Zephyr's settings in common/compat
+ * (common/compat/subsys/settings, the same names "wifi_cred/<index>" in
+ * the same store as the Zephyr build), with these changes only:
+ * - the entry buffer of zephyr_settings_backend_load_key_cb() is aligned
+ *   for the struct cast on it (the Cortex-M0+ faults on an unaligned word
+ *   access; GCC does not align a local array with -Os),
+ * - the index formats are %zu (idx is a size_t; -Wformat of NuttX's
+ *   build).
  */
 
-#include <stdint.h>
-#include <stdio.h>
-#include <string.h>
 #include <zephyr/kernel.h>
-#include "app_log.h"
+#include <zephyr/logging/log.h>
 #include <stdlib.h>
 #include <zephyr/settings/settings.h>
 
@@ -36,33 +25,77 @@
 
 LOG_MODULE_REGISTER(wifi_credentials_backend, CONFIG_WIFI_CREDENTIALS_LOG_LEVEL);
 
+BUILD_ASSERT(ENTRY_MAX_LEN <= SETTINGS_MAX_VAL_LEN);
+
 #define WIFI_CREDENTIALS_SBE_BASE_KEY "wifi_cred"
 #define WIFI_CREDENTIALS_SBE_KEY_SIZE                                                              \
 	sizeof(WIFI_CREDENTIALS_SBE_BASE_KEY "/" STRINGIFY(CONFIG_WIFI_CREDENTIALS_MAX_ENTRIES))
 #define WIFI_CREDENTIALS_SBE_KEY_FMT WIFI_CREDENTIALS_SBE_BASE_KEY "/%zu"
 
-/* Port: the name of index idx (the formatting of store_entry()). */
-static int settings_name(char *buf, size_t size, size_t idx)
-{
-	int ret = snprintk(buf, size, WIFI_CREDENTIALS_SBE_KEY_FMT, idx);
+/* Type of the callback argument used in the function below. */
+struct zephyr_settings_backend_load_cb_arg {
+	uint8_t *buf;
+	size_t buf_len;
+	size_t idx;
+	bool found;
+};
 
-	if (ret < 0 || ret == size) {
-		LOG_ERR("WiFi credentials settings key could not be generated, idx: %zu", idx);
-		return -EFAULT;
+/* This callback function is used to retrieve credentials on demand. */
+static int zephyr_settings_backend_load_val_cb(const char *key, size_t len,
+					       settings_read_cb read_cb, void *cb_arg, void *param)
+{
+	struct zephyr_settings_backend_load_cb_arg *arg = param;
+	int idx = atoi(key);
+
+	if (arg->idx != idx) {
+		LOG_DBG("Skipping index [%s]", key);
+		return 0;
 	}
+
+	if (len != arg->buf_len) {
+		LOG_ERR("Settings error: invalid settings length");
+		return -EINVAL;
+	}
+
+	size_t length_read = read_cb(cb_arg, arg->buf, arg->buf_len);
+
+	/* value validation */
+	if (length_read < len) {
+		LOG_ERR("Settings error: entry incomplete");
+		return -ENODATA;
+	}
+
+	arg->found = true;
+
 	return 0;
 }
 
-/* zephyr_settings_backend_load_key_cb() for the entry of index idx, of len
- * stored bytes, read into buf.
- */
-static int zephyr_settings_backend_load_key_cb(size_t idx, size_t len, uint8_t *buf,
-					       size_t length_read)
+/* This callback function is used to initialize the SSID cache. */
+static int zephyr_settings_backend_load_key_cb(const char *key, size_t len,
+					       settings_read_cb read_cb, void *cb_arg, void *param)
 {
+	ARG_UNUSED(param);
+
+	/* key validation */
+	if (!key) {
+		LOG_ERR("Settings error: no key");
+		return -EINVAL;
+	}
+
+	int idx = atoi(key);
+
+	if ((idx == 0 && strcmp(key, "0") != 0) || idx >= CONFIG_WIFI_CREDENTIALS_MAX_ENTRIES) {
+		LOG_ERR("Settings error: index too large");
+		return -EINVAL;
+	}
+
 	if (len < sizeof(struct wifi_credentials_header)) {
 		LOG_ERR("Settings error: invalid settings length");
 		return -EINVAL;
 	}
+
+	uint8_t buf[ENTRY_MAX_LEN] __aligned(8);
+	size_t length_read = read_cb(cb_arg, buf, ARRAY_SIZE(buf));
 
 	/* value validation */
 	if (length_read < len) {
@@ -83,30 +116,10 @@ int wifi_credentials_backend_init(void)
 		return ret;
 	}
 
-	for (size_t idx = 0; idx < CONFIG_WIFI_CREDENTIALS_MAX_ENTRIES; idx++) {
-		char settings_name_buf[WIFI_CREDENTIALS_SBE_KEY_SIZE] = {0};
-		uint8_t buf[ENTRY_MAX_LEN] __aligned(8);
-		ssize_t len;
+	ret = settings_load_subtree_direct(WIFI_CREDENTIALS_SBE_BASE_KEY,
+					   zephyr_settings_backend_load_key_cb, NULL);
 
-		ret = settings_name(settings_name_buf, ARRAY_SIZE(settings_name_buf), idx);
-		if (ret) {
-			return ret;
-		}
-		len = settings_load_one(settings_name_buf, buf, ARRAY_SIZE(buf));
-		if (len < 0) {
-			return len;
-		}
-		if (len == 0) {
-			continue;
-		}
-		ret = zephyr_settings_backend_load_key_cb(idx, len, buf,
-							  MIN((size_t)len, ARRAY_SIZE(buf)));
-		if (ret) {
-			return ret;
-		}
-	}
-
-	return 0;
+	return ret;
 }
 
 int wifi_credentials_store_entry(size_t idx, const void *buf, size_t buf_len)
@@ -141,28 +154,24 @@ int wifi_credentials_delete_entry(size_t idx)
 
 int wifi_credentials_load_entry(size_t idx, void *buf, size_t buf_len)
 {
-	char settings_name_buf[WIFI_CREDENTIALS_SBE_KEY_SIZE] = {0};
-	ssize_t len;
+	struct zephyr_settings_backend_load_cb_arg arg = {
+		.buf = buf,
+		.buf_len = buf_len,
+		.idx = idx,
+		.found = false,
+	};
 	int ret;
 
-	ret = settings_name(settings_name_buf, ARRAY_SIZE(settings_name_buf), idx);
+	/* Browse through the settings entries with custom callback to load the whole entry. */
+	ret = settings_load_subtree_direct(WIFI_CREDENTIALS_SBE_BASE_KEY,
+					   zephyr_settings_backend_load_val_cb, &arg);
+
 	if (ret) {
 		return ret;
 	}
 
-	/* zephyr_settings_backend_load_val_cb() on the entry's name. */
-	len = settings_load_one(settings_name_buf, buf, buf_len);
-	if (len < 0) {
-		return len;
-	}
-
-	if (len == 0) {
+	if (!arg.found) {
 		return -ENOENT;
-	}
-
-	if (len != buf_len) {
-		LOG_ERR("Settings error: invalid settings length");
-		return -EINVAL;
 	}
 
 	return 0;

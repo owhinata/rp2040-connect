@@ -16,6 +16,7 @@ void test_log(int level, const char *module, const char *fmt, ...)
 #define LOG_MODULE_REGISTER(name, level) \
 	static const char test_log_module_[] __attribute__((unused)) = #name; \
 	enum { test_log_level_ = (level) }
+#define LOG_MODULE_DECLARE(name, level) LOG_MODULE_REGISTER(name, level)
 #define TEST_LOG_(level, ...) \
 	do { if ((level) <= test_log_level_) { test_log((level), test_log_module_, __VA_ARGS__); } } while (0)
 #define LOG_ERR(...) TEST_LOG_(LOG_LEVEL_ERR, __VA_ARGS__)

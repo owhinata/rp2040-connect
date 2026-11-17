@@ -58,7 +58,9 @@ ifeq ($(CONFIG_ARCH_IDLE_CUSTOM),y)
 CSRCS += nano_idle.c
 endif
 
-# The key-value store's flash (the last 8 KiB) under /dev/config.
+# The key-value area's flash (the last 8 KiB): the OS boundary of
+# common/compat/nano_flash_kv.h (nano_flash_kv.h is found through the -I
+# of common/compat below).
 
 ifeq ($(CONFIG_NANO_FLASH_KV),y)
 CSRCS += nano_flash_kv.c

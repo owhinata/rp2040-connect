@@ -393,9 +393,10 @@ Zephyr の API を、Zephyr の名前のまま最小限だけ用意したもの�
 - **OS に依存しない部分**（リポジトリの `common/compat/`）: Zephyr の API のヘッダー（`common/compat/zephyr/...`）、
   ワーク、RTIO、ブロックのプール、デバイスの一覧、`gpio0`、`net_mgmt` のイベント、Wi-Fi の要求、sensor の既定の
   iodev と、互換層の上の版が使う Zephyr のライブラリーの写し（`sensor_shell_stream.c`・`sensor_shell.h`、
-  Wi-Fi の資格情報の `wifi_credentials.c`・`wifi_credentials_backend_settings.c`・`wifi_credentials_internal.h`。
-  MQTT のクライアントは `common/imu/mqtt_min.c`）、境界のヘッダー（スレッドの優先度とスタックの表
-  `priorities.h`、`cpu_load_get()` の `cpu_load.h` とその計算 `nano_cpuload.h`、`gpio0` の下の `nano_gpio.h`）。
+  Wi-Fi の資格情報の `wifi_credentials.c`・`wifi_credentials_backend_settings.c`・`wifi_credentials_internal.h`、
+  KV の NVS と settings（下の「KV: Zephyr の NVS と settings の写し」）。MQTT のクライアントは
+  `common/imu/mqtt_min.c`）、境界のヘッダー（スレッドの優先度とスタックの表 `priorities.h`、`cpu_load_get()` の
+  `cpu_load.h` とその計算 `nano_cpuload.h`、`gpio0` の下の `nano_gpio.h`、KV の領域の flash の `nano_flash_kv.h`）。
   シェルの `zephyr/shell/shell.h` のコマンドの処理は `common/shell/zshell.c`（下の「シェル」）。Zephyr 版は
   使いません（Zephyr 本体を使う）。
 - **NuttX の実装**（`nuttx/drivers/compat/`）: カーネルの部分（`zephyr_kernel.c`・`zephyr_mutex.c`）、OS ごとの
@@ -412,7 +413,7 @@ Zephyr の API を、Zephyr の名前のまま最小限だけ用意したもの�
 | ヘッダー（場所の無いものは `common/compat/`） | 中身 |
 |---|---|
 | `zephyr/device.h` | `struct device`（名前、config、API、状態、data、初期化関数）、`device_is_ready()`、`device_init()`（Zephyr の `do_device_init()` と同じ意味）、`DEVICE_DT_GET()`、`DEVICE_DT_DEFINE()`、`DEVICE_API()`、`device_get_binding()`（ノード名）、`device_get_by_dt_nodelabel()`（ノードのラベル）、`DEVICE_API_IS(sensor, dev)`（下） |
-| `zephyr/devicetree.h` | `DT_NODELABEL()`、`DT_BUS()`、`DT_REG_ADDR()`。ノードは `gpio0`、`i2c0`、`lsm6dsox` と、デバイスの無い `timer`（TIMER のアドレス 0x40054000。`time_sync.c` の `time_sync_mono_us()`）だけ。`DT_HAS_COMPAT_ON_BUS_STATUS_OKAY()`（Zephyr と同じ定義）は `st_lsm6dso` の `i2c` で 1、ほかの互換文字列・バスでは 0（`lsm6dso.h`） |
+| `zephyr/devicetree.h` | `DT_NODELABEL()`、`DT_BUS()`、`DT_REG_ADDR()`。ノードは `gpio0`、`i2c0`、`lsm6dsox` と、デバイスの無い `timer`（TIMER のアドレス 0x40054000。`time_sync.c` の `time_sync_mono_us()`）だけ。`DT_HAS_COMPAT_ON_BUS_STATUS_OKAY()`（Zephyr と同じ定義）は `st_lsm6dso` の `i2c` で 1、ほかの互換文字列・バスでは 0（`lsm6dso.h`）。`DT_HAS_CHOSEN()` はいつも 0（Zephyr 版も `zephyr,settings-partition` を選んでいない） |
 | `zephyr/kernel.h` | `k_timeout_t`（`K_NO_WAIT`、`K_FOREVER`、`K_MSEC()`、`K_SECONDS()`。単位は 100 µs の tick）、`k_mutex`、`k_sem`（`K_SEM_DEFINE`）、セマフォに対する `k_poll()`（`K_POLL_TYPE_SEM_AVAILABLE`・`K_POLL_MODE_NOTIFY_ONLY`）、ワーク（`k_work`、`k_work_delayable`、`k_work_q`、`k_work_submit()`、`k_work_cancel_sync()`、`k_work_schedule_for_queue()`、`k_work_reschedule_for_queue()`、`k_work_queue_start()`）、`K_THREAD_STACK_DEFINE()`、`K_PRIO_PREEMPT()`、`k_thread_name_set()`、システムワークキュー `k_sys_work_q`、`K_MUTEX_DEFINE()`、`K_THREAD_DEFINE()`（下）、`k_current_get()`（呼び出したスレッドの NuttX のスレッド ID。`K_THREAD_DEFINE()` の `k_tid_t` と比べられる）、`k_uptime_get()`、`k_sleep()`・`k_msleep()`・`k_usleep()`・`k_busy_wait()`（下）、`k_cycle_get_32()`・`k_cycle_get_64()`・`k_cyc_to_us_floor64()`・`k_cyc_to_us_ceil64()`・`k_cyc_to_ns_floor64()`・`sys_clock_hw_cycles_per_sec()`（下） |
 | `zephyr/spinlock.h`、`zephyr/sys/atomic.h` | `k_spin_lock()`（下）、`atomic_t` と `atomic_get/set/clear/cas/or/inc/add()` |
 | `zephyr/rtio/rtio.h`、`zephyr/rtio/work.h` | RTIO（下）と RTIO のワークキュー（`rtio_work_req_alloc()`・`_submit()`） |
@@ -420,12 +421,12 @@ Zephyr の API を、Zephyr の名前のまま最小限だけ用意したもの�
 | `zephyr/drivers/sensor.h` | `struct sensor_value`、チャネル・属性・トリガーの列挙（Zephyr と同じ番号）、`struct sensor_driver_api`、`sensor_attr_set()`・`_get()`、`sensor_sample_fetch()`・`_chan()`、`sensor_channel_get()`、`sensor_trigger_set()`、単位の換算。非同期の API: `struct sensor_chan_spec`、デコーダー（`struct sensor_decoder_api`、`sensor_three_axis_data` など）、`SENSOR_DT_READ_IODEV()`、`SENSOR_DT_STREAM_IODEV()`、`sensor_get_decoder()`、`sensor_stream()`、`sensor_read()`、`sensor_read_async_mempool()`、`sensor_processing_with_callback()`。復号したデータの表示の書式 `PRIsensor_*_data`（Zephyr の `sensor_data_types.h`。Q 値の書式は `dsp/print_format.h`） |
 | `zephyr/drivers/sensor_clock.h` | `sensor_clock_get_cycles()`、`sensor_clock_cycles_to_ns()`（下） |
 | `zephyr/drivers/i2c.h`（NuttX） | `struct i2c_dt_spec`、`i2c_burst_read_dt()`、`i2c_write_dt()`、`i2c_write_read_dt()`、`i2c_configure()`、速さの区分（`I2C_SPEED_*`、`I2C_SPEED_SET()`） |
-| `zephyr/sys/util.h`、`sys/mpsc_lockfree.h`、`sys/mem_blocks.h`、`dsp/types.h` | `BIT()`、`ARRAY_SIZE()`、`MIN()`・`MAX()`、`IS_ENABLED()`、`CONTAINER_OF()`、`GENMASK()`・`GENMASK64()`・`FIELD_GET()`、`STRINGIFY()` など、RTIO の待ち行列とブロックのプール、`q31_t` |
+| `zephyr/sys/util.h`、`sys/mpsc_lockfree.h`、`sys/mem_blocks.h`、`dsp/types.h` | `BIT()`、`ARRAY_SIZE()`、`MIN()`・`MAX()`、`IS_ENABLED()`、`CONTAINER_OF()`、`GENMASK()`・`GENMASK64()`・`FIELD_GET()`、`STRINGIFY()`、`KB()`、`ZTESTABLE_STATIC`、`hex2bin()`・`bin2hex()`（実装は `lib/utils/hex.c` の写し）など（Zephyr と同じく `<string.h>` も読む）、RTIO の待ち行列とブロックのプール、`q31_t` |
 | `zephyr/sys/__assert.h`（NuttX） | `__ASSERT()`・`__ASSERT_NO_MSG()`（NuttX の `DEBUGASSERT()`。ホストテストは `assert()`） |
 | `zephyr/dsp/print_format.h` | Zephyr の同名のヘッダーの写し（先頭の説明と `<zephyr/sys/util.h>` のインクルードだけを足した）。Q 値の表示の書式 `PRIq()`・`PRIq_arg()` |
 | `zephyr/types.h` | `<stddef.h>` と `<stdint.h>`（`lsm6dso.h` が読む目的のもの） |
 | `zephyr/init.h` | 中身の無いヘッダー（`lsm6dso.c` が読む。`SYS_INIT()` と初期化レベルを使うのは Zephyr 版のインスタンス化のマクロだけ） |
-| `zephyr/sys/iterable_sections.h` | 中身の無いヘッダー（sensor シェルが読むが、使うのは Zephyr 版の構成に無い `CONFIG_SENSOR_INFO` のときだけ） |
+| `zephyr/sys/iterable_sections.h` | `STRUCT_SECTION_FOREACH()` だけ（いつも空の区間。Zephyr のリンカーの区間は無い）。sensor シェルが読み（使うのは Zephyr 版の構成に無い `CONFIG_SENSOR_INFO` のときだけ）、settings が静的なハンドラーの区間を回す（この移植には無い） |
 | `zephyr/sys/sys_io.h` | `sys_read32()`（Zephyr の Arm と同じく、バリアの無い 32 ビットの volatile の読み出し 1 回）、`mem_addr_t` |
 | `zephyr/sys/printk.h`、`zephyr/sys/byteorder.h`、`zephyr/sys/cpu_load.h` | `snprintk()`（Zephyr 版の構成 `CONFIG_PICOLIBC=y` と同じく `snprintf()`）、`sys_put_be16/32()`・`sys_get_be16/32()`・`sys_get_le32()`、`cpu_load_get()`（`cpu_load.h`。実装はボード） |
 | `zephyr/drivers/hwinfo.h` | `hwinfo_get_device_id()`（下） |
@@ -437,7 +438,12 @@ Zephyr の API を、Zephyr の名前のまま最小限だけ用意したもの�
 | `zephyr/net/wifi_mgmt.h` | Wi-Fi の型（セキュリティ、帯域、MFP、状態、モード。Zephyr と同じ値）、`struct wifi_scan_params`・`wifi_scan_result`・`wifi_connect_req_params`・`wifi_iface_status`・`wifi_status`、`struct wifi_mgmt_ops`、オフロードのインターフェースの API と `NET_DEVICE_DT_OFFLOAD_DEFINE()`、要求 `NET_REQUEST_WIFI_SCAN`・`_CONNECT`・`_DISCONNECT`・`_IFACE_STATUS`・`_CONNECT_STORED`（`CONFIG_NANO_WIFI_CREDENTIALS` のとき）、イベント `NET_EVENT_WIFI_SCAN_RESULT`・`_SCAN_DONE`・`_CONNECT_RESULT`・`_DISCONNECT_RESULT`、`wifi_mgmt_raise_connect_result_event()`・`_disconnect_result_event()`（下）、`wifi_security_txt()`・`wifi_band_txt()` |
 | `zephyr/net/wifi_credentials.h` | Zephyr の同名のヘッダーの写し: `struct wifi_credentials_header`・`_personal`、`WIFI_CREDENTIALS_FLAG_*`、`wifi_credentials_set_personal_struct()`・`_get_by_ssid_personal_struct()`・`_delete_by_ssid()`・`_for_each_ssid()`・`_is_empty()` など。設定の値（`CONFIG_WIFI_CREDENTIALS_MAX_ENTRIES` など）は OS の構成の `CONFIG_NANO_WIFI_CREDENTIALS_*`（NuttX 版は `nuttx/apps/wifi/Kconfig`）から。Zephyr に無い `wifi_credentials_init()`（init が呼ぶ。Zephyr の `SYS_INIT()`）。関数は `common/compat/wifi_credentials.c`（Zephyr のライブラリーの写し）と、設定に保存する `wifi_credentials_backend_settings.c` |
 | `zephyr/net/wifi_utils.h` | `wifi_utils_validate_chan()`（`_2g`・`_5g`・`_6g`）、`net_bytes_from_str()`（Zephyr では `<zephyr/net/net_ip.h>`） |
-| `zephyr/settings/settings.h` | `settings_subsys_init()`、`settings_save_one()`、`settings_delete()`、`settings_load_one()`。名前 1 つずつを OS の保存先の同じ名前の項目で読み書きする（実装は OS ごと。NuttX 版は NVS（`/dev/config`）の `nuttx/apps/wifi/settings_nvs.c`）。部分木の読み込みとハンドラーは無い |
+| `zephyr/settings/settings.h`、`zephyr/kvss/nvs.h`、`zephyr/sys/slist.h`、`zephyr/sys/list_gen.h` | Zephyr の同名のヘッダーの写し（無改変。下の「KV」）。settings の API（`settings_subsys_init()`、`settings_save_one()`、`settings_load_one()`、`settings_delete()`、`settings_load_subtree_direct()` など）、NVS の API と `struct nvs_fs`、単方向リスト |
+| `zephyr/drivers/flash.h`、`zephyr/storage/flash_map.h` | NVS と settings が使う flash の API（`flash_read()`・`flash_write()`・`flash_erase()`・`flash_flatten()`・`flash_get_parameters()`・`flash_get_write_block_size()`・`flash_get_page_info_by_offs()`、`struct flash_parameters`）と flash map（`flash_area_open()`・`flash_area_close()`・`flash_area_get_sectors()`、`PARTITION_ID(storage_partition)`）。デバイスは KV の領域の flash だけ（`zephyr_flash_kv.c`。下） |
+| `zephyr/sys/crc.h`、`zephyr/toolchain.h` | `crc8_ccitt()` などの宣言（実装は `subsys/crc/crc8_sw.c` の写し）、`__packed`・`__weak` |
+| `nano_flash_kv.h` | KV の領域の定数（`0xffe000` から 8 KiB、256 バイトのページ、4 KiB のセクター）、OS の境界（下の「KV」）、範囲の検査・ページへの分割・領域の中身の判定（Zephyr の NVS、以前の NuttX 版の形式、消去済み、それ以外） |
+| `zephyr_kv_config.h` | 写した NVS と settings の前に読む Zephyr 版の Kconfig の値（`CONFIG_SETTINGS_NVS_SECTOR_COUNT` など。下の「KV」） |
+| `kv_store_os.h` | `common/imu/kv_store.c` の OS の部分: `kv wipe` のサブコマンド（Zephyr 版の `zephyr/app/usb-console/src/kv_store_os.h` は空） |
 | `zephyr/logging/log.h` | `LOG_MODULE_REGISTER()`、`LOG_ERR()` などのログのマクロ。ポートの `app_log.h`（`common/log/`。`dmesg` の RAM ログ）を読むだけ |
 | `zephyr/net/net_ip.h` | IPv4 のアドレスの型 `struct in_addr`（`imu_raw_mqtt.h`）。NuttX の `<netinet/in.h>` を読むだけ（同じメンバー `s_addr`、ネットワークバイト順） |
 | `zephyr_compat.h` | `zephyr_compat_initialize()`（ボードの起動処理が呼ぶ。下）、`K_THREAD_DEFINE_START()`（init が呼ぶ） |
@@ -461,7 +467,10 @@ Zephyr の API を、Zephyr の名前のまま最小限だけ用意したもの�
 | `zephyr_net_if.c`（NuttX）、`zephyr_net_mgmt.c`、`zephyr_wifi_mgmt.c` | インターフェース（NuttX のネットワークデバイスの値）、`net_mgmt` のイベントの待ち行列とスレッド（スレッドは OS の部分 `zephyr_net_mgmt_os.h`。スタックの大きさは `priorities.h` の `NANO_STACK_NET_MGMT`）、Wi-Fi の要求の処理（Zephyr の `subsys/net/l2/wifi/wifi_mgmt.c` の検査の写し）とイベント、`NET_REQUEST_WIFI_CONNECT_STORED`（同じファイルの `connect_stored_command()` の写し。`CONFIG_NANO_WIFI_CREDENTIALS` のとき）。`CONFIG_NANO_NINA_NET` のときだけ |
 | `zephyr_wifi_utils.c` | `wifi_security_txt()`・`wifi_band_txt()`（Zephyr の `wifi_mgmt.c`）、チャネルの検査（`wifi_utils.c`）、`net_bytes_from_str()`（`subsys/net/ip/utils.c`）の写し。`wifi cred` が使う。OS に依存しない。`CONFIG_NANO_NINA_NET` のときだけ |
 | `sensor_shell_stream.c` | Zephyr の `drivers/sensor/sensor_shell_stream.c` の写し（sensor シェルの処理スレッド）。OS の `sensor_shell_os.h` を最初に読み、処理スレッドのコールバックを `sensor_shell_os_processing_callback()` にした（NuttX 版は `nuttx/apps/sensor/sensor_shell_nuttx.c`）。`apps/sensor` がビルドする |
-| `wifi_credentials.c`、`wifi_credentials_backend_settings.c` | Zephyr の `subsys/net/lib/wifi_credentials/` の写し（保存した Wi-Fi の資格情報）。`apps/wifi` がビルドする |
+| `wifi_credentials.c`、`wifi_credentials_backend_settings.c` | Zephyr の `subsys/net/lib/wifi_credentials/` の写し（保存した Wi-Fi の資格情報）。`apps/wifi` がビルドする。バックエンドの変更は 2 つ: 読み込みのバッファーを 8 バイトに揃えた（構造体として読むため。Cortex-M0+ は揃っていない読み出しで止まる）、番号の書式を `%zu` にした |
+| `subsys/kvss/nvs/`、`subsys/settings/`、`subsys/crc/crc8_sw.c`、`lib/utils/hex.c` | Zephyr v4.5.0 の NVS、settings、CRC-8、16 進の変換の写し（無改変。下の「KV」）。`apps/imu` がビルドする |
+| `zephyr_flash_kv.c` | KV の領域の flash デバイスと flash map（下の「KV」）。`apps/imu` がビルドする |
+| `kv_store_wipe.c` | `kv wipe confirm`（領域を消し、settings を初期化し直す）。`apps/imu` がビルドする |
 
 - **ワーク**: フラグ（RUNNING・CANCELING・QUEUED・DELAYED）と戻り値は `kernel/work.c` と同じです。
   `submit` はキュー済みなら何もしない（0）、実行中なら同じキューに入れ直す（2）。`schedule` は遅延中・
@@ -672,3 +681,62 @@ Zephyr の API を、Zephyr の名前のまま最小限だけ用意したもの�
   あります。互換層では、バスのデバイスに対する Zephyr の `i2c_write()`・`i2c_write_read()` を
   `i2c_compat_write()`・`i2c_compat_write_read()` という名前にしました（`_dt` の付く形は Zephyr の名前のまま）。
   `<zephyr/drivers/i2c.h>` を読むファイルでは `I2C_SPEED_*` は Zephyr の区分です（両方読むなら NuttX のものを先に）。
+
+### KV: Zephyr の NVS と settings の写し
+
+NuttX 版（と FreeRTOS 版）の KV は、Zephyr 版と同じバイト列を flash に書くため、Zephyr v4.5.0 の NVS と
+settings のうち Zephyr 版が使う部分を改変せずに写し、Zephyr 版と同じ設定で動かします。写したファイルが元と
+同じことは、Zephyr のツリー（`zephyr/zephyr`）があるときにホストテスト（`common/tests/run.sh` の
+`zephyr_copies`）が `cmp` で確かめます。
+
+| 写し（`common/compat/`） | 元（Zephyr v4.5.0） | 変更 |
+|---|---|---|
+| `subsys/kvss/nvs/nvs.c`、`nvs_priv.h` | `subsys/kvss/nvs/` | なし |
+| `subsys/settings/src/settings.c`、`settings_store.c`、`settings_init.c`、`settings_nvs.c`、`settings_priv.h` | `subsys/settings/src/` | なし |
+| `subsys/settings/include/settings/settings_nvs.h`、`settings_file.h` | `subsys/settings/include/settings/` | なし |
+| `subsys/crc/crc8_sw.c` | `subsys/crc/crc8_sw.c` | なし |
+| `lib/utils/hex.c` | `lib/utils/hex.c` | なし |
+| `zephyr/kvss/nvs.h`、`zephyr/settings/settings.h`、`zephyr/sys/slist.h`、`zephyr/sys/list_gen.h` | `include/zephyr/...` | なし |
+| `wifi_credentials_backend_settings.c` | `subsys/net/lib/wifi_credentials/` | 上の表（2 つ） |
+
+- 設定: 写したソースは `zephyr_kv_config.h`（Zephyr 版の `.config` の値。`CONFIG_SETTINGS_NVS_SECTOR_SIZE_MULT` 1、
+  `CONFIG_SETTINGS_NVS_SECTOR_COUNT` 8、`CONFIG_SETTINGS_DYNAMIC_HANDLERS`、`CONFIG_MULTITHREADING`、ログの
+  レベル 3。`CONFIG_NVS_LOOKUP_CACHE`・`CONFIG_NVS_DATA_CRC`・`CONFIG_NVS_INIT_BAD_MEMORY_REGION`・
+  `CONFIG_SETTINGS_NVS_NAME_CACHE` は Zephyr 版と同じく無効）を前置きしてビルドします。無効の値を `#if` で見る
+  ので `-Wundef` を外し、`nvs.c` は `uint32_t` を `%d` で出す（Zephyr の `uint32_t` は `unsigned int`、newlib と
+  NuttX は `unsigned long`。どちらも 32 ビット）ので `-Wformat` を外します。
+- flash の上の形と、それを決める値（Zephyr 版の根拠）:
+
+  | 値 | ここ | Zephyr 版 |
+  |---|---|---|
+  | 領域 | `0xffe000` から `0x2000`（`nano_flash_kv.h`、`<zephyr/storage/flash_map.h>`） | `app.overlay` の `storage_partition` |
+  | セクター | 4096 バイト × 2 | `rp2040.dtsi` の `erase-block-size` × `SECTOR_SIZE_MULT` 1、8 KiB に入る数（`settings_nvs.c`） |
+  | 書き込み単位・消去値 | 1、0xFF | `flash_rpi_pico.c` の `flash_rpi_parameters`、DT の `write-block-size` |
+  | 索引（ATE） | 8 バイト、`crc8_ccitt(0xff, ...)` | `nvs_priv.h`（無改変） |
+  | 名前と値の ID | 0x8000、0x8001〜、+0x4000 | `settings_nvs.h`（無改変） |
+  | 値 | 校正値 56 バイト、文字列、`imu.session` 4 バイト、資格情報 224 バイト | `imu_cal_codec.c`・`imu_stream.c`（共通）、`struct wifi_credentials_personal`（並びを `BUILD_ASSERT` で Zephyr 版の ELF と同じに固定。arm-none-eabi の 1 バイトの enum） |
+
+- 前提: settings のロック（`K_MUTEX_DEFINE(settings_lock)`、全部 0 から始まるミューテックス）と NVS のロックは
+  互換層の `k_mutex`（再帰。`kv wipe` は settings のロックを持ったまま settings を初期化し直す）。初期化は
+  Zephyr と同じく最初の `settings_subsys_init()`（失敗したら次の呼び出しでやり直す）。
+- **flash の境界**（`nano_flash_kv.h`。OS ごとに実装する。NuttX 版はボードの `src/nano_flash_kv.c`、FreeRTOS 版は
+  Pico SDK の `flash_range_program()`・`flash_range_erase()` を割り込みを止めて呼ぶ）:
+
+  ```c
+  bool nano_flash_kv_os_ready(void);
+  int nano_flash_kv_os_read(uint32_t offset, void *buf, uint32_t len);
+  int nano_flash_kv_os_program(uint32_t page_offset, const uint8_t page[256]);
+  int nano_flash_kv_os_erase(uint32_t sector_offset);
+  ```
+
+  `offset` は flash の先頭（XIP の 0x10000000）からの位置。`ready` が偽のあいだ flash map はデバイスが無い扱い
+  （`-ENODEV`）。`read` は今の flash の中身を返す（書き込み・消去の直後も）。`program` は 256 の倍数の位置の
+  1 ページを書く（書かない所は 0xFF。書き込みはビットを落とすだけ）。`erase` は 4096 の倍数の位置の 1 セクターを
+  消す。どれも 0 か負の errno を返し、スレッドからだけ、同時に 1 つだけ呼ばれます（互換層がロックを持つ）。
+  呼ぶ側（`zephyr_flash_kv.c`）は領域の中の揃った要求しか渡しませんが、OS の実装も範囲を確かめ直し、外なら
+  flash に触れずに `-EINVAL` を返します。書き込みと消去の間は割り込みを止め、そのあいだ flash 上のコードを
+  動かしません（NuttX 版はページ 1 回・セクター 1 回ごと）。
+- `zephyr_flash_kv.c`: flash のデバイス（`z_flash_kv_device`）と flash map。要求は領域の中だけを受け付け
+  （Zephyr 版のドライバーは flash 全体）、書き込みを 256 バイトのページに分け、消去をセクターごとに境界へ渡し
+  ます。`flash_area_open()` は起動後に 1 回、領域の中身を判定し、Zephyr の NVS でも消去済みでもなければログに
+  出して `-EILSEQ` を返します（settings は初期化されず、何も書かない）。`kv wipe confirm` の後にもう一度判定します。

@@ -1,14 +1,21 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: Apache-2.0
-"""KV（設定と校正値）を Zephyr 版ファームウェアから退避し、NuttX 版へ書き戻す。
+"""KV（設定と校正値）をボードのシェルから退避し、書き戻す。
 
-Zephyr 版と NuttX 版は flash 上の KV の保存形式が違い、NuttX 版を書き込むと Zephyr 版が
-保存した値は読めなくなる。そこで、Zephyr 版が動いている間にシェルの `kv get` で値を読んで
-PC のファイル（JSON）に保存し、NuttX 版を書き込んだあとで `kv sethex` で書き戻す。
+Zephyr 版と NuttX 版は、フラッシュ末尾 8 KB の KV を同じ形式（Zephyr の NVS と settings）で
+持つ。版を書き換えても KV はそのまま残るので、Zephyr 版と NuttX 版の間の書き換えにこの
+スクリプトは要らない。要るのは KV 領域が失われる、または使えない場面:
+
+  - 別のファームウェア（OpenMV 版など）が KV 領域を上書きする前に退避し、戻した後で書き戻す。
+  - KV 領域に別のデータ（NuttX 版の以前の形式、別のファームウェアの残り）があり、NuttX 版が
+    KV を使わない（`kv` が -84 などのエラーを返す）とき。`kv wipe confirm` で領域を消して
+    から書き戻す。以前の形式の値は、その形式を読めるファームウェア（以前の NuttX 版）で
+    退避しておく。
 
 手順:
-  1. Zephyr 版が動いている状態で backup を実行する。
-  2. NuttX 版を書き込む。
+  1. 値を読めるファームウェアが動いている状態で backup を実行する（Zephyr 版でも NuttX 版でも
+     よい）。
+  2. ファームウェアを書き換える（必要なら `kv wipe confirm`）。
   3. restore を実行する。KV を書き戻し、Wi-Fi の資格情報を `wifi cred add` で登録する。
 
 Wi-Fi のパスワードはボードから読み出さない（退避ファイルにも入らない）。restore のときに
@@ -49,6 +56,11 @@ SESSION_KEY = 'imu.session'
 KEY_RE = re.compile(r'[A-Za-z0-9_.-]{1,32}')
 VALUE_MAX = 128
 ENOENT = 2
+# KV 領域に Zephyr の NVS でも消去済みでもないデータがある（NuttX 版の EILSEQ は 84、
+# newlib の版は 138）。`kv wipe confirm` で消すまで KV は使えない。
+EILSEQ = (84, 138)
+WIPE_HINT = ('KV 領域に別のデータがあります（Zephyr の NVS でも消去済みでもない）。退避する値は'
+             'ありません。書き戻すには、ボードで kv wipe confirm を実行して領域を消してください')
 PSK_MIN, PSK_MAX = 8, 63
 SSID_MAX = 32
 
@@ -130,6 +142,8 @@ def parse_kv_get(output, key):
         m = re.fullmatch(r'KV read failed: (-?\d+)', lines[0])
         if m and int(m.group(1)) == -ENOENT:
             return None
+        if m and -int(m.group(1)) in EILSEQ:
+            raise TransferError('%s を読めません（errno %s）。%s' % (key, m.group(1), WIPE_HINT))
         if m:
             raise TransferError('%s を読めません（errno %s）' % (key, m.group(1)))
         if lines[0] == 'Reserved key':
@@ -154,6 +168,9 @@ def check_idle(sh):
 def write_key(sh, key, value):
     """kv sethex で書き、Saved と読み返しを確かめる。"""
     out = sh.command('kv sethex %s %s' % (key, value.hex()), wait=2.0)
+    m = re.search(r'KV write failed: (-?\d+)', out)
+    if m and -int(m.group(1)) in EILSEQ:
+        raise TransferError('%s を書き込めません（errno %s）。%s' % (key, m.group(1), WIPE_HINT))
     if not re.search(r'^\s*Saved\s*$', out, re.M):
         raise TransferError('%s を書き込めませんでした:\n%s'
                             % (key, '\n'.join(_body_lines(out, 'kv sethex')) or '（応答なし）'))
@@ -338,8 +355,8 @@ def run_backup(sh, keys, path, force=False, out=None):
     out = out or sys.stdout
     firmware = detect_firmware(sh)
     print('ボード: %s（%s）' % (sh.name, firmware['version'] or '種類不明'), file=out)
-    if firmware['kind'] != 'zephyr':
-        print('注意: Zephyr 版ではないボードから読み出しています', file=out)
+    if firmware['kind'] == 'unknown':
+        print('注意: Zephyr 版でも NuttX 版でもないボードから読み出しています', file=out)
     values = {}
     for key in keys:
         values[key] = read_key(sh, key)
@@ -432,12 +449,14 @@ def dry_run(args, out=None):
     return 0
 
 
-EPILOG = '''例:
-  # Zephyr 版が動いている間に退避する（USB、デバイスは自動で探す）
+EPILOG = '''Zephyr 版と NuttX 版の間で書き換えるだけなら不要です（KV の形式が同じ）。
+
+例:
+  # 別のファームウェアを書く前に退避する（USB、デバイスは自動で探す）
   host/.venv/bin/python script/kv_transfer.py backup --usb
   # Telnet で、出力先を指定して
   host/.venv/bin/python script/kv_transfer.py backup --board 10.42.0.23 --out kv.json
-  # NuttX 版を書き込んだあとで書き戻す（パスワードは端末で入力）
+  # Zephyr 版か NuttX 版に戻したあとで書き戻す（パスワードは端末で入力）
   host/.venv/bin/python script/kv_transfer.py restore --usb
   # パスワードをパイプで渡し、SSID を変える
   pass show wifi/ap | host/.venv/bin/python script/kv_transfer.py restore --usb --ssid my-ap
@@ -452,7 +471,7 @@ Wi-Fi のパスワードは退避ファイルに書きません。restore で標
 def parse_args(argv=None):
     ap = argparse.ArgumentParser(
         prog='kv_transfer.py', formatter_class=argparse.RawDescriptionHelpFormatter,
-        description='KV（設定と校正値）を Zephyr 版から退避し、NuttX 版へ書き戻す', epilog=EPILOG)
+        description='KV（設定と校正値）をボードから退避し、書き戻す', epilog=EPILOG)
     common = argparse.ArgumentParser(add_help=False)
     common.add_argument('--board', help='ボードの IP アドレス（Telnet。既定: AP に繋がっている機器から探す）')
     common.add_argument('--usb', nargs='?', const='', metavar='DEVICE',

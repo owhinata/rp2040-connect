@@ -171,74 +171,125 @@ with its NuttX part `nuttx/drivers/include/app_log_os.h`).
 
 ## Key-value store (`kv`)
 
-Settings and calibration values are kept in the last 8 KiB of the flash (`0x10ffe000` to
-`0x10ffffff`, two 4 KiB erase sectors), where the Zephyr build keeps its `storage_partition`. The
-API and the command are those of the Zephyr build's `src/kv_store.[ch]`; the stored format is not
-compatible with the Zephyr build's.
+The settings, the calibration and the Wi-Fi credentials are stored in the last 8 KiB of the flash
+(`0x10ffe000`-`0x10ffffff`, two 4 KiB erase sectors), the Zephyr build's `storage_partition`, in
+the Zephyr build's format (Zephyr's NVS and settings): the NuttX build reads and writes what the
+Zephyr build stored, and the other way round. The API and the command are the Zephyr build's
+`kv_store.c` itself (`common/imu/kv_store.c`, used by both builds).
 
-- Area: set by the board's `include/board.h` (`BOARD_KV_OFFSET`, `BOARD_KV_SIZE`) and the linker
-  script (`__kv_start`, `__kv_end` in `scripts/nano-flash.ld`; the area is outside the image's
-  flash region, and `build.sh` checks where the image ends). `src/nano_flash_kv.c` is an MTD that
-  shows only this range. Before every erase and program it checks that the target lies inside the
-  range, against both the constants and the linker script's values (after checking at boot that
-  the two agree and that the image ends before the area), and only then touches the flash. A
-  request outside the range does nothing and fails.
-- Format: NuttX's NVS (`drivers/mtd/mtd_config_nvs.c`, `CONFIG_MTD_CONFIG_NVS`,
-  `CONFIG_MTD_CONFIG_NAMED`, names up to 63 characters) as `/dev/config`, with the Zephyr build's
-  names `app_kv/<key>`. The Wi-Fi credentials are in the same `/dev/config`, under the names of
-  the Zephyr build's settings, `wifi_cred/<index>` (`kv` cannot see or delete them; see "Stored
-  Wi-Fi credentials and automatic reconnection (`wifi cred`)"). The MTD reports a 1-byte program
-  unit (so that entries are packed) and programs the flash in 256-byte pages, with 0xff outside
-  the data.
-- First boot after the Zephyr build: at boot, an area that is neither in this format nor fully
-  erased (the Zephyr build's data is still there) is erased before it is used, and `dmesg` shows
-  `<wrn> fs_nvs: Erasing the key-value area: not in this build's format`. A normal boot shows only
-  `<inf> fs_nvs: 2 Sectors of 4096 bytes` (the first of the Zephyr build's `fs_nvs` lines at
-  boot; the write positions of its second and third lines are not shown). Values are not carried
-  over: back them up and write them back as below. What the Zephyr build does when it is flashed
-  back after the NuttX build has not been checked.
-- Command (priority 104, stack 3072; subcommands are handled as in "Subcommands of the commands"
-  below):
+- Layers: `kv_store.c` → Zephyr's settings (`settings_save_one()`, `settings_load_one()`,
+  `settings_delete()`) → Zephyr's NVS → the compatibility layer's flash device and flash map
+  (`common/compat/zephyr_flash_kv.c`) → the OS boundary (the four functions of
+  `common/compat/nano_flash_kv.h`; on NuttX the board's `src/nano_flash_kv.c`). The settings and NVS
+  are unchanged copies of Zephyr v4.5.0's sources (`common/compat/subsys/` and others; the list is
+  in the compatibility layer's section of the driver notes), built with the Zephyr build's Kconfig
+  values (`common/compat/zephyr_kv_config.h`).
+- Format (the values of the Zephyr build's `.config` and devicetree): NVS sectors of 4096 bytes × 2
+  (`CONFIG_SETTINGS_NVS_SECTOR_SIZE_MULT=1`; of `CONFIG_SETTINGS_NVS_SECTOR_COUNT=8`, the 2 that fit
+  in 8 KiB), a write block of 1 byte, erase value 0xFF. NVS's allocation table entries (ATEs) are 8
+  bytes (id, offset, len, part, CRC-8), written from the end of a sector downwards, the data from
+  the start upwards. The settings keep the largest name ID in use at ID 0x8000, the names from
+  0x8001 (without a terminator) and each value at its name's ID + 0x4000. The names are
+  `app_kv/<key>` (the `kv` keys) and `wifi_cred/<index>` (the credentials). The values are the
+  Zephyr build's bytes too (the calibration 56 bytes, `imu.port` and the like text, `imu.session`
+  4 bytes big-endian, a credential the 224 bytes of `struct wifi_credentials_personal`, whose layout
+  `BUILD_ASSERT`s in the layer's `<zephyr/net/wifi_credentials.h>` check against the Zephyr build's
+  ELF).
+- Area: the board's `include/board.h` (`BOARD_KV_OFFSET`, `BOARD_KV_SIZE`), the constants of
+  `nano_flash_kv.h` and the linker script (`__kv_start`, `__kv_end` in `scripts/nano-flash.ld`;
+  the area is left out of the image's flash region, and `build.sh` checks where the image ends).
+  Every read, program and erase is checked to lie inside the area in three places before the flash
+  is touched: the compatibility layer (the constants), the board (the `board.h` constants and the
+  linker script's values, found equal at boot) and the RAM function (right before the boot ROM is
+  called). Anything outside is refused without touching the flash (`<err> flash_kv: Refused flash
+  ...` in `dmesg`). The Zephyr build's flash driver accepts the whole flash; its NVS only touches
+  this area.
+- Boot: the board's start-up (`nano_bringup()`, after the LSM6DSOX and the NINA) only prepares the
+  flash operations (the linker script checked, the boot ROM's functions found, boot2 copied). NVS
+  is mounted, as in the Zephyr build, by the first call of the settings: the credentials'
+  initialization, which init runs where Zephyr runs its `SYS_INIT()`. `dmesg` then shows the
+  Zephyr build's three lines (`<inf> fs_nvs: 2 Sectors of 4096 bytes`, `alloc wra: <sector>,
+  <offset>`, `data wra: <sector>, <offset>`). init then calls `kv_store_init()`
+  (`settings_subsys_init()`) where the Zephyr build's `main()` does (`Could not initialize settings:
+  <value>` on failure).
+- Other data in the area: before mounting (at the first settings call after boot, once), the area is
+  checked to hold Zephyr's NVS (a valid NVS ATE in one of the last two ATE slots of a sector) or to
+  be erased throughout. If neither (the NuttX build's earlier format, what another firmware such as
+  the OpenMV build left), the area is not erased; `dmesg` shows two lines and the settings are not
+  initialized:
+
+  ```text
+  <err> flash_kv: Key-value area 0xffe000-0xffffff holds the NuttX build's earlier format
+  <err> flash_kv: Not used; "kv wipe confirm" erases it (all keys and Wi-Fi credentials)
+  ```
+
+  (for data other than the earlier format the first line ends `holds data that is not Zephyr's
+  NVS`). The `kv` operations return `-EILSEQ` (84 on NuttX: `KV read failed: -84`), storing a
+  credential `-ENOENT`, and nothing is written. `kv wipe confirm` erases the area and mounts an
+  empty NVS on it at once (`<wrn> flash_kv: Key-value area erased` and NVS's three lines). The
+  calibration and the credentials' SSID list read before stay in RAM until the next start. The
+  Zephyr build, in the same situation, does what Zephyr's NVS does: if the last 8 bytes of both
+  sectors are written, the mount fails with `-EDEADLK` (`CONFIG_NVS_INIT_BAD_MEMORY_REGION` is off)
+  and the store cannot be used; if either is erased, it takes the area for an interrupted garbage
+  collection (`<inf> fs_nvs: No GC Done marker found: restarting gc`), erases both sectors and
+  starts with an empty store. The NuttX build's earlier format, whose block being written ends
+  erased, is usually the latter (checked on a fake flash, not on the board).
+- Command (priority 104, 3072-byte stack; the Zephyr build's `SHELL_CMD_REGISTER(kv, ...)` run by
+  `common/shell/zshell.c`, whose `main()` in `nuttx/apps/kv` only calls `z_shell_main_kv()`):
 
   ```
-  kv set <key> <text>        store the text as is
-  kv sethex <key> <hex>      store 1 to 128 bytes given as hex pairs (upper case allowed)
-  kv get <key>               print the value in lower-case hex
-  kv delete <key>            delete (Deleted even for a missing key)
+  kv set <key> <string>       store the string as it is
+  kv sethex <key> <hex>       store 1-128 bytes given as hexadecimal pairs (upper case allowed)
+  kv get <key>                print the value as lower-case hexadecimal
+  kv delete <key>             delete it (Deleted also for a missing key)
+  kv wipe confirm             erase the whole key-value area (NuttX build only; nothing
+                              without confirm)
   ```
 
-  Keys are 1 to 32 characters of letters, digits, `_`, `-` and `.`; values are 1 to 128 bytes.
-  Keys starting with `sys.` give `Reserved key`. The output is the Zephyr build's (`Saved`,
-  `Deleted`, `KV write failed: -22`, `KV read failed: -2`,
-  `Expected 1-128 bytes as hexadecimal pairs`, `Invalid hexadecimal value` and so on). `kv` alone or
-  with an unknown subcommand prints the help, and a wrong number of arguments prints
-  `<subcommand>: wrong parameter count` and the subcommand's help (the Zephyr shell's text).
-  Differences from the Zephyr build: nsh parses the arguments (quote `$`, `;`, `#`, `>` and the
-  like), error lines go to standard error (the same console), and the exit status is 0 on success
-  and 1 on failure.
-- Capacity: all live entries must fit in one erase sector (4 KiB; the other one is kept for
-  compaction). An entry takes "key length + 8 (`app_kv/` and the terminator) + value length + 16"
-  bytes, and 4048 bytes are usable: with 32-character keys and 128-byte values, 184 bytes each, up
-  to 22 entries (the write after the area is full gives `KV write failed: -28`). The Zephyr build (settings on NVS, the same 4 KiB × 2) stores a name and
-  a value per entry (183 bytes for the same entry), about the same. Storing the value that is
-  already stored writes nothing. A stored Wi-Fi network takes 12 + 224 + 16 = 252 bytes (the name
-  `wifi_cred/<index>` with its terminator, `struct wifi_credentials_personal`, the index entry),
-  in the same area, for up to 2 networks.
-- Updates and compaction: an update appends the new entry and marks the old one; when an erase
-  sector is full, the live entries are copied to the other sector and the full one is erased
-  (NVS garbage collection). XIP stops while the flash is erased or programmed, so this runs from
-  RAM with interrupts disabled, for each 4 KiB erase and each 256-byte page program. Updating one entry normally takes 4 page programs. The Zephyr build's flash driver also
-  disables interrupts per erase call (4 KiB) and per write call (an entry's data, up to 2 pages).
-- Power loss: NVS writes the data before its CRC-checked table entry, and marks the old entry only
-  after the new one is written; at boot it repairs a half-written entry or an interrupted
-  compaction. This has not been tested by cutting the power.
-- API (`nuttx/apps/imu/kv_store.[ch]`; the header is the Zephyr build's): `kv_store_init()`,
-  `set`, `get` and `delete` take the Zephyr build's arguments and return its values (`-EINVAL`
-  for a bad key or value, `-ENOENT` for a missing key, `-ENOBUFS` for a buffer that is too small,
-  `-ENOSPC` when full), and `-ENODEV` when there is no `/dev/config`. Every call opens and closes
-  `/dev/config`, and the driver's mutex (with priority inheritance) serializes them, so any thread
-  can call them. The board sets up `/dev/config` at boot, and init calls `kv_store_init()` where
-  the Zephyr build's `main()` does (on failure: `Could not initialize settings: <value>`).
+  Keys are 1 to 32 characters of letters, digits, `_`, `-` and `.`; values 1 to 128 bytes. Keys
+  starting with `sys.` give `Reserved key`. The output is the Zephyr build's (`Saved`, `Deleted`,
+  `KV write failed: -22`, `KV read failed: -2`, `Expected 1-128 bytes as hexadecimal pairs`,
+  `Invalid hexadecimal value` and so on). `kv` alone or an unknown subcommand prints the help, a
+  wrong number of arguments `<subcommand>: wrong parameter count` and the subcommand's help (the
+  Zephyr shell's text); the help has a `wipe` line more. `kv wipe` with a word other than `confirm`
+  prints `Type "kv wipe confirm" to erase all keys and Wi-Fi credentials` and does nothing;
+  success prints `Erased`. Differences from the Zephyr build: nsh parses the arguments (quote `$`,
+  `;`, `#`, `>` and the like), error lines go to standard error (the same console), the exit
+  status is 0 on success and 1 on failure, and `kv wipe`.
+- Capacity: all live entries must fit in one sector (4 KiB; the other is kept for garbage
+  collection). An item is two entries, its name (`app_kv/` + key, an 8-byte ATE) and its value (an
+  8-byte ATE): 183 bytes for a 32-character key and a 128-byte value. The write after the store is
+  full gives `KV write failed: -28`. Storing the value already stored writes nothing (NVS compares).
+  A Wi-Fi credential takes 11 + 8 + 224 + 8 = 251 bytes; up to two share the same area.
+- Rewriting and garbage collection: a rewrite only adds a new entry (the value's ATE) and leaves
+  the old one alone. When the sector being written is full, NVS closes it, copies the live entries
+  of the other sector over, then erases that sector (garbage collection, done synchronously inside
+  the write). Erasing and programming stop XIP, so they run from RAM with interrupts disabled, for
+  one 4 KiB erase (34-40 ms measured) or one 256-byte page program (0.4-0.5 ms) at a time. Rewriting
+  an existing key is usually two page programs (the data and the ATE; three across a page
+  boundary). The Zephyr build's flash driver also disables interrupts per call: one erase (4 KiB),
+  one write (one entry's data or one ATE).
+- Writes during a measurement: the KV is written during a measurement only by shell commands
+  (`kv set`, `kv wipe`, `wifi cred add` and the like; `imu start` stores `imu.session` before the
+  acquisition starts). If a garbage collection runs then, one 4 KiB erase (interrupts off 34-40 ms)
+  happens during the measurement. There is one erase each time the sector being written fills:
+  about once in 300 rewrites of `imu.session` (a 4-byte value + an 8-byte ATE; NuttX's NVS before
+  used about 38 bytes, about once in 100). Reads (`kv_store_get()`, loading the credentials) write
+  nothing, except that the settings delete a half-written item they find (only a name or only a
+  value left by a power loss), as in the Zephyr build.
+- Power loss: NVS writes the data before the ATE with its CRC and repairs, at boot, a half-written
+  entry or an interrupted garbage collection. A host test (`common/tests/kv_settings.c`) cuts the
+  power at each of the 652 programs and erases of a sequence of rewrites that goes through garbage
+  collection several times (half a page programmed, half a sector erased) and checks that after
+  the next boot every key holds its value from before or after the rewrite. No power was cut on the
+  board.
+- API (`common/imu/kv_store.h`, the Zephyr build's): `kv_store_init()`, `set`, `get` and `delete`
+  take the Zephyr build's arguments and return its values (`-EINVAL` for a bad key or value,
+  `-ENOENT` for a missing key, `-ENOBUFS` for a short buffer, `-ENOSPC` when full, `-ENODEV` while
+  the flash is not ready, `-EILSEQ` for other data). `kv_store_*()` check, every time, that the
+  settings are initialized (and initialize them again if not), as in the Zephyr build. The settings'
+  and NVS's mutexes (Zephyr's `k_mutex`; in the layer NuttX's recursive mutex with priority
+  inheritance) serialize the calls, so any thread can call them.
 
 ### Subcommands of the commands
 
@@ -422,12 +473,15 @@ nsh$ wifi cred list
 - Options are parsed by NuttX's `getopt_long()`, which, unlike Zephyr's `sys_getopt_long()`, does
   not move the words that are not options to the end (options after such a word are not read),
   and does not log the line the Zephyr build logs for an unknown option (`<wrn> sys_getopt`).
-- Storage: each network is written at once, on every `add` and `delete`, to `wifi_cred/<index>` in
-  `/dev/config` (the lowest free index), as Zephyr's `struct wifi_credentials_personal`. At boot,
-  init reads the stored SSIDs (where the Zephyr library's `SYS_INIT()` runs, before the threads
-  start). The keys of `kv` start with `app_kv/`, so `kv` can neither read nor delete the
-  credentials (`wifi_cred/0` contains `/`: `KV read failed: -22`). As with the KV, the store is not
-  compatible with the Zephyr build's.
+- Storage: each network is written at once, on every `add` and `delete`, to the settings name
+  `wifi_cred/<index>` (the lowest free index), as Zephyr's `struct wifi_credentials_personal` (the
+  copy of the Zephyr library's settings backend; it reads with `settings_load_subtree_direct()` as
+  Zephyr does). At boot, init reads the stored SSIDs (where the Zephyr library's `SYS_INIT()` runs,
+  before the threads start). The keys of `kv` start with `app_kv/`, so `kv` can neither read nor
+  delete the credentials (`wifi_cred/0` contains `/`: `KV read failed: -22`). The format and place
+  are the Zephyr build's, so credentials stored by the Zephyr build are used as they are (and the
+  other way round). A stored entry of the wrong length reads as `-ENOENT` (`err: -2`), as in
+  Zephyr.
 - Automatic reconnection (thread `wifi_reconnect_tid`, Zephyr priority 8 → 110, 2048-byte stack):
   when networks are stored, at boot (`wifi_profile_init()`) and when the connection is lost (the
   link monitor finds it gone, or after a scan while connected), it waits 4 seconds, asks for a
@@ -443,8 +497,8 @@ nsh$ wifi cred list
   `An error occurred when trying to auto-connect to a network. err: <value>` (the exit status is
   always 0, as in the Zephyr build).
 - The migration of the Zephyr build's old profile formats (the KV key `sys.wifi_profile`, the
-  settings item `wifi_last/last`) runs at boot as in the Zephyr build, and finds nothing: they
-  are never in the port's store.
+  settings item `wifi_last/last`) runs at boot as in the Zephyr build (the store being the same, it
+  moves them when they are there, as the Zephyr build does).
 - The passphrase is shown by `wifi cred list` (as in the Zephyr build) and nowhere else: not in
   the log, not in error messages.
 
@@ -649,8 +703,9 @@ runs on the Zephyr build's own files (`common/drivers/lsm6dso/`) (below). The ac
 (`imu start` and so on) is the next section.
 
 - **Initialization at boot**: the board's bring-up (`nano_bringup()`) initializes the sensor right
-  after I2C0 and before mounting the key-value store (NVS). That is the Zephyr build's order: it
-  initializes its devices before `main()` (`POST_KERNEL`, priority 90) and mounts NVS in `main()`.
+  after I2C0 and before the key-value store (NVS) is mounted (in init). That is the Zephyr build's
+  order: it initializes its devices before `main()` (`POST_KERNEL`, priority 90) and mounts NVS
+  afterwards.
   The first two `dmesg` lines are the Zephyr build's:
 
   ```text
@@ -1191,21 +1246,37 @@ over 20,000 random writes, compares the line prefix with the time arithmetic of 
 `log_output.c` for 200,000 random values, and checks the `dmesg` pieces (skipping what is
 overwritten, stopping at 8192 bytes) and the rate limit.
 
-`nuttx/tests/nano_flash_kv.c`, `kv_name.c` and `kv_hex.c` are also tests of the NuttX build only.
-`nano_flash_kv` checks the range checks of `src/nano_flash_kv.h` around the edges and for every
-page and erase sector of the first and last MiB of the flash, and checks the page writes, at many
-offsets and lengths around page boundaries, by seeing that exactly the written bytes change. For
-the boot-time check it confirms that the table entries NuttX's NVS writes are accepted and that
-the Zephyr build's NVS entries, laid out as they are in the flash, are not (including ones that
-happen to pass NuttX's CRC). `kv_name` checks the key checks split out of the Zephyr build's
-`kv_store.c` (`apps/imu/kv_name.c`), and `kv_hex` the copy of Zephyr's `lib/utils/hex.c`
-(`apps/kv/kv_hex.c`).
+The key-value store's tests are in `common/tests/` (`common/tests/run.sh`). `kv_settings` runs
+`common/imu/kv_store.c` with the copied Zephyr settings and NVS (built as they are, without
+warnings), the layer's flash device and `kv wipe` on a fake flash (`common/tests/kv_flash_fake.c`:
+8 KiB of RAM, programs only clear bits, 4 KiB erases, a request outside the area or not aligned
+stops the test). Each boot runs in a child process and only the flash is kept. It checks that the
+NVS has the Zephyr build's size and place; the bytes on the flash (the first ATE Zephyr's NVS writes
+into an empty area, and the names, values and largest-name-ID entries of `app_kv/imu.port` and
+`app_kv/imu.session`, with the CRC computed bit by bit in the test and also compared with the
+copied `crc8_ccitt()`); reads, writes and deletes, the key and value limits, after a reboot,
+garbage collection (10 erases or more), a full store (`-ENOSPC`, deleting still works); other data
+(random bytes, an area with one stray byte, the earlier NuttX format: not used, not touched, logged
+once, usable after `kv wipe`); that the flash device refuses requests outside the area; that
+Zephyr's NVS itself gives `-EDEADLK` on an area whose two sector ends are written; and the power
+loss (see "Key-value store"). `nano_flash_kv` checks the range checks of
+`common/compat/nano_flash_kv.h` around the edges and for every page and erase sector of the first
+and last MiB of the flash, and the page writes, at many offsets and lengths around page boundaries,
+by seeing that exactly the written bytes change. For the boot-time check it confirms that Zephyr's
+and NuttX's NVS entries are each accepted and that the other format's entries (200,000 layouts each,
+including ones that happen to pass the CRC) are not. `hex` checks the copy of Zephyr's
+`lib/utils/hex.c`. `zephyr_copies` checks with `cmp`, when the Zephyr tree (`zephyr/zephyr`) is
+there, that the 15 copied files are the v4.5.0 originals. `nuttx/tests/kv_cmd.c` runs the `kv`
+command through `z_shell_main_kv()` on that store and checks the output of every subcommand (the
+earlier NuttX build's text), the `sys.` refusal, the limits, `kv wipe`, and `-EILSEQ` with other
+data. `nuttx/tests/wifi_cred.c` checks the credentials on the same store.
 
 `common/tests/subcmd.c` checks `common/shell/subcmd.c` with the tables of `kv` and `nina` (the help
 is the one recorded from the Zephyr build), a nested table, optional arguments, and the layout of
 help texts (newlines, the line break before column 80, a newline at the end).
 
-`nuttx/tests/shell_register.c` checks the registration of `imu` and `ntp`. `host_tests.sh` cuts
+`nuttx/tests/shell_register.c` checks the registration of `imu`, `ntp` and `kv` (`kv` against the
+earlier NuttX build's `subcmd` table with `wipe` added). `host_tests.sh` cuts
 the text from `SHELL_STATIC_SUBCMD_SET_CREATE()` to `SHELL_CMD_REGISTER()` out of
 `common/imu/imu_stream.c` and `time_sync.c`; the test builds it with the compatibility layer's
 `<zephyr/shell/shell.h>` and `Z_SHELL_CMD_NAMED_MAIN`, runs it on `common/shell/zshell.c` (with the

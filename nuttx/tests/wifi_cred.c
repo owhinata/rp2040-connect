@@ -1,10 +1,13 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /* Host test of the stored Wi-Fi credentials and the "wifi cred" command
  * (nuttx/apps/wifi): the copies of Zephyr's wifi_credentials.c, its
- * settings backend on the layer's settings (here a fake store of named
- * items standing in for /dev/config) and wifi_credentials_shell.c, on
- * ../subcmd and the layer's Wi-Fi helpers (zephyr_wifi_utils.c).  The
- * expected output is what Zephyr's sources print (the same text; see
+ * settings backend (common/compat) and wifi_credentials_shell.c, on
+ * ../subcmd and the layer's Wi-Fi helpers (zephyr_wifi_utils.c), with the
+ * key-value store of the build: the copies of Zephyr's settings and NVS
+ * (common/compat/subsys) on the flash device of the key-value area
+ * (common/compat/zephyr_flash_kv.c) over a fake flash
+ * (common/tests/kv_flash_fake.c).  The expected output is what Zephyr's
+ * sources print (the same text; see
  * zephyr/zephyr/subsys/net/lib/wifi_credentials/); the stored entry is
  * struct wifi_credentials_personal under "wifi_cred/<index>".
  */
@@ -27,6 +30,8 @@
 #include <zephyr/net/wifi_credentials.h>
 #include <zephyr/settings/settings.h>
 
+#include "kv_flash_fake.h"
+
 int wifi_main(int argc, char *argv[]);
 
 /* The log (app_log.h of tests/lsm6dso_fakes). */
@@ -46,98 +51,35 @@ void test_log(int level, const char *module, const char *fmt, ...)
 	snprintf(log_buf + n, sizeof(log_buf) - n, "\n");
 }
 
-/* The settings: a few named items. */
+/* The settings: Zephyr's, on the fake flash. */
 
-#define ITEMS 8
-
-static struct item {
-	char name[64];
-	unsigned char value[512];
-	size_t len;
-	bool used;
-} items[ITEMS];
-static int store_error;     /* returned by the next call when set */
-static int saves, deletes;
-
-static struct item *find(const char *name)
+/* NAME's stored value into BUF (SIZE bytes): its length, 0 if absent. */
+static ssize_t stored(const char *name, void *buf, size_t size)
 {
-	for (int i = 0; i < ITEMS; i++) {
-		if (items[i].used && !strcmp(items[i].name, name)) {
-			return &items[i];
-		}
-	}
-	return NULL;
+	ssize_t len = settings_load_one(name, buf, size);
+
+	assert(len >= 0);
+	return len;
 }
 
-static int take_error(void)
+static int name_cb(const char *key, size_t len, settings_read_cb read_cb, void *cb_arg,
+		   void *param)
 {
-	int ret = store_error;
-
-	store_error = 0;
-	return ret;
-}
-
-int settings_subsys_init(void)
-{
-	return take_error();
-}
-
-int settings_save_one(const char *name, const void *value, size_t val_len)
-{
-	struct item *it = find(name);
-	int ret = take_error();
-
-	if (ret) {
-		return ret;
-	}
-	if (!val_len) {
-		return settings_delete(name);
-	}
-	saves++;
-	if (!it) {
-		for (int i = 0; i < ITEMS && !it; i++) {
-			if (!items[i].used) {
-				it = &items[i];
-			}
-		}
-		assert(it);
-		snprintf(it->name, sizeof(it->name), "%s", name);
-		it->used = true;
-	}
-	assert(val_len <= sizeof(it->value));
-	memcpy(it->value, value, val_len);
-	it->len = val_len;
+	(void)len;
+	(void)read_cb;
+	(void)cb_arg;
+	/* Every stored name is outside the kv command's "app_kv/". */
+	assert(strncmp(key, "wifi_cred/", 10) == 0);
+	(*(int *)param)++;
 	return 0;
 }
 
-int settings_delete(const char *name)
+static int stored_names(void)
 {
-	struct item *it = find(name);
-	int ret = take_error();
+	int n = 0;
 
-	if (ret) {
-		return ret;
-	}
-	deletes++;
-	if (it) {
-		it->used = false;
-	}
-	return 0;
-}
-
-ssize_t settings_load_one(const char *name, void *buf, size_t buf_len)
-{
-	struct item *it = find(name);
-	int ret = take_error();
-
-	if (ret) {
-		return ret;
-	}
-	if (!it) {
-		return 0;
-	}
-	memcpy(buf, it->value, it->len < buf_len ? it->len : buf_len);
-	return it->len;
+	assert(settings_load_subtree_direct(NULL, name_cb, &n) == 0);
+	return n;
 }
 
 /* The interface and NET_REQUEST_WIFI_CONNECT_STORED. */
@@ -226,16 +168,17 @@ static int run(const char *first, ...)
 
 static const struct wifi_credentials_personal *entry(int idx)
 {
+	static struct wifi_credentials_personal e;
 	char name[16];
-	struct item *it;
+	ssize_t len;
 
 	snprintf(name, sizeof(name), "wifi_cred/%d", idx);
-	it = find(name);
-	if (!it) {
+	len = stored(name, &e, sizeof(e));
+	if (len == 0) {
 		return NULL;
 	}
-	assert(it->len == sizeof(struct wifi_credentials_personal));
-	return (const struct wifi_credentials_personal *)it->value;
+	assert(len == sizeof(struct wifi_credentials_personal));
+	return &e;
 }
 
 static const char add_help_start[] =
@@ -255,6 +198,12 @@ int main(void)
 	pre.header.ssid_len = 9;
 	memcpy(pre.password, "dummypass0", 10);
 	pre.password_len = 10;
+	kv_fake_init();
+	assert(settings_subsys_init() == 0);
+	assert(strcmp(log_buf, "<inf> fs_nvs: 2 Sectors of 4096 bytes\n"
+			       "<inf> fs_nvs: alloc wra: 0, fe8\n"
+			       "<inf> fs_nvs: data wra: 0, 0\n") == 0);
+	log_buf[0] = '\0';
 	assert(settings_save_one("wifi_cred/1", &pre, sizeof(pre)) == 0);
 	assert(wifi_credentials_is_empty());
 	assert(wifi_credentials_init() == 0 && log_buf[0] == '\0');
@@ -264,16 +213,19 @@ int main(void)
 			    "password: \"dummypass0\", password_len: 10, MFP_OPTIONAL\n"));
 	assert(err[0] == '\0');
 
-	/* A stored entry of the wrong length: the load fails. */
-	find("wifi_cred/1")->len = sizeof(pre) - 1;
+	/* A stored entry of the wrong length: the load fails.  Zephyr's
+	 * settings_load_subtree_direct() drops the callback's -EINVAL, so the
+	 * entry is not found (-ENOENT), as in the Zephyr build.
+	 */
+	assert(settings_save_one("wifi_cred/1", &pre, sizeof(pre) - 1) == 0);
 	OK("list");
 	assert(out[0] == '\0');
 	assert(!strcmp(err, "An error occurred when trying to load credentials for network "
-			    "\"dummy-pre\". err: -22\n"));
+			    "\"dummy-pre\". err: -2\n"));
 	assert(!strcmp(log_buf, "<err> wifi_credentials_backend: Settings error: invalid "
 				"settings length\n<err> wifi_credentials: Failed to load WiFi "
-				"credentials at index 1, err: -22\n"));
-	find("wifi_cred/1")->len = sizeof(pre);
+				"credentials at index 1, err: -2\n"));
+	assert(settings_save_one("wifi_cred/1", &pre, sizeof(pre)) == 0);
 
 	/* Delete. */
 	FAIL("delete");
@@ -285,7 +237,7 @@ int main(void)
 	assert(!strcmp(err, "SSID too long\n") && out[0] == '\0');
 	OK("delete", "dummy-pre");
 	assert(!strcmp(out, "\tDeleting network ssid: \"dummy-pre\", ssid_len: 9\n"));
-	assert(!find("wifi_cred/1") && wifi_credentials_is_empty());
+	assert(!entry(1) && wifi_credentials_is_empty());
 	OK("list");
 	assert(out[0] == '\0' && err[0] == '\0');
 
@@ -296,10 +248,7 @@ int main(void)
 	assert(entry(0)->header.ssid_len == 7 && !memcmp(entry(0)->header.ssid, "dummy-a", 7));
 	assert(entry(0)->password_len == 10 && !memcmp(entry(0)->password, "dummypass1", 10));
 	assert(entry(0)->header.flags == 0 && entry(0)->header.channel == 0);
-	/* Every stored name is outside the kv command's "app_kv/". */
-	for (int i = 0; i < ITEMS; i++) {
-		assert(!items[i].used || !strncmp(items[i].name, "wifi_cred/", 10));
-	}
+	assert(stored_names() == 1);
 
 	/* Lengths: SSID 1-32, passphrase 8-64. */
 	memset(s32, 's', 32);
@@ -384,8 +333,9 @@ int main(void)
 	FAIL("add");
 	assert(!strcmp(err, "add: wrong parameter count\n"));
 	assert(!strncmp(out, add_help_start, strlen(add_help_start)));
-	/* A store error. */
-	store_error = -ENOSPC;
+	/* A store error (the flash's, through NVS and the settings). */
+	kv_fake->fail_next = 1;
+	kv_fake->fail_errno = -ENOSPC;
 	FAIL("add", "-s", "dummy-a", "-k", "1", "-p", "dummypass1");
 	assert(!strcmp(err, "Failed to add network credentials, err: -28\n"));
 	assert(!strcmp(log_buf, "<err> wifi_credentials: Failed to store WiFi credentials at "
@@ -415,6 +365,7 @@ int main(void)
 	OK("delete", "dummy-a");
 	OK("delete", "dummy b");
 	assert(wifi_credentials_is_empty() && !entry(0) && !entry(1));
+	assert(stored_names() == 0);
 	OK("list");
 	assert(out[0] == '\0');
 

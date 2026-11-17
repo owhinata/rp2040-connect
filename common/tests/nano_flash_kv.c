@@ -1,17 +1,21 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-/* boards/arduino-nano-rp2040-connect/src/nano_flash_kv.h: the range checks
- * done before every flash erase and program, the split of writes into
- * pages, and the check of the area's contents before NuttX's NVS mounts
- * it (NuttX ATEs accepted, the Zephyr build's NVS rejected).
+/* compat/nano_flash_kv.h: the range checks done before every flash erase
+ * and program, the split of writes into pages, and the check of the
+ * area's contents before Zephyr's NVS mounts it: Zephyr's ATEs, the NuttX
+ * build's earlier format (NuttX's NVS) and that neither is taken for the
+ * other.  The check on whole areas written by the copied NVS is in
+ * kv_settings.c.
  */
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
 #include "nano_flash_kv.h"
 
-/* include/board.h */
+/* include/board.h of the NuttX board */
 #define KV_LO 0x00ffe000u
 #define KV_HI 0x01000000u
+_Static_assert(NANO_KV_OFFSET == KV_LO && NANO_KV_END == KV_HI, "the area");
+_Static_assert(NANO_KV_SECTORS == 2 && NANO_KV_PAGE_SIZE == 256, "the area");
 
 /* NuttX's crc8part() (libs/libc/misc/lib_crc8.c, lib_crc8table.c): the
  * table of the reflected polynomial 0xB2, input and output inverted.
@@ -31,6 +35,21 @@ static void crc_init(void)
 	/* Spot checks against crc8_tab[] of lib_crc8.c. */
 	assert(crc_tab[1] == 0x3e && crc_tab[8] == 0x95);
 	assert(crc_tab[0x80] == 0xb2 && crc_tab[255] == 0x15);
+}
+
+static uint8_t crc8part(const uint8_t *src, size_t len, uint8_t crc);
+
+/* nano_kv_nuttx_crc8() of the header is crc8part(..., 0xff). */
+static void test_nuttx_crc(void)
+{
+	uint8_t buf[16];
+
+	for (int n = 0; n < 2000; n++) {
+		for (size_t i = 0; i < sizeof(buf); i++) {
+			buf[i] = (uint8_t)(n * 31 + i * 7);
+		}
+		assert(nano_kv_nuttx_crc8(buf, n % 17) == crc8part(buf, n % 17, 0xff));
+	}
 }
 
 static uint8_t crc8part(const uint8_t *src, size_t len, uint8_t crc)
@@ -269,19 +288,145 @@ static void test_layout(void)
 	z[12] = 0; z[13] = 0; z[14] = 0xff; z[15] = 0x34;
 	assert(!plausible(z, 0) && !plausible(z, 1));
 
-	assert(nano_kv_layout(1, false) == NANO_KV_LAYOUT_NUTTX);
-	assert(nano_kv_layout(2, false) == NANO_KV_LAYOUT_NUTTX);
-	assert(nano_kv_layout(1, true) == NANO_KV_LAYOUT_NUTTX);
-	assert(nano_kv_layout(0, true) == NANO_KV_LAYOUT_EMPTY);
-	assert(nano_kv_layout(0, false) == NANO_KV_LAYOUT_FOREIGN);
+	assert(nano_kv_layout(0, 1, false) == NANO_KV_LAYOUT_NUTTX);
+	assert(nano_kv_layout(0, 2, false) == NANO_KV_LAYOUT_NUTTX);
+	assert(nano_kv_layout(0, 1, true) == NANO_KV_LAYOUT_NUTTX);
+	assert(nano_kv_layout(0, 0, true) == NANO_KV_LAYOUT_EMPTY);
+	assert(nano_kv_layout(0, 0, false) == NANO_KV_LAYOUT_FOREIGN);
+	assert(nano_kv_layout(1, 0, false) == NANO_KV_LAYOUT_NVS);
+	assert(nano_kv_layout(2, 0, false) == NANO_KV_LAYOUT_NVS);
+	assert(nano_kv_layout(1, 1, false) == NANO_KV_LAYOUT_NVS);
+}
+
+/* Zephyr's NVS: crc8_ccitt(0xff, ...), polynomial 0x07, MSB first. */
+static uint8_t zcrc(const uint8_t *p, size_t n)
+{
+	uint8_t crc = 0xff;
+
+	for (size_t i = 0; i < n; i++) {
+		crc ^= p[i];
+		for (int b = 0; b < 8; b++) {
+			crc = (crc & 0x80) ? (uint8_t)((crc << 1) ^ 0x07) : (uint8_t)(crc << 1);
+		}
+	}
+	return crc;
+}
+
+static void zephyr_ate(uint8_t s[8], uint16_t id, uint16_t offset, uint16_t len)
+{
+	s[0] = id;
+	s[1] = id >> 8;
+	s[2] = offset;
+	s[3] = offset >> 8;
+	s[4] = len;
+	s[5] = len >> 8;
+	s[6] = 0xff;
+	s[7] = zcrc(s, 7);
+}
+
+static int zvalid(const uint8_t s[8], uint32_t pos, int close)
+{
+	return nano_kv_nvs_ate_valid(s, zcrc(s, NANO_KV_NVS_ATE_CRC_LEN), pos, close);
+}
+
+static void test_zephyr_ate(void)
+{
+	uint8_t s[8];
+
+	/* A gc-done ATE in the first slot, a data entry, a close ATE. */
+	zephyr_ate(s, 0xffff, 0, 0);
+	assert(zvalid(s, 4080, 0) && zvalid(s, 4088, 1));
+	zephyr_ate(s, 0xc001, 2, 5);
+	assert(zvalid(s, 4080, 0) && zvalid(s, 7, 0) && !zvalid(s, 6, 0));
+	zephyr_ate(s, 0xffff, 4096 - 8 * 20, 0);
+	assert(zvalid(s, 4088, 1) && zvalid(s, 4080, 0));
+	zephyr_ate(s, 0xffff, 4096 - 8 * 20 + 4, 0);
+	assert(!zvalid(s, 4088, 1));
+	zephyr_ate(s, 0x8001, 4096 - 8 * 20, 0);
+	assert(!zvalid(s, 4088, 1));
+	/* Damaged: CRC, part, data past the ATE; all erased. */
+	zephyr_ate(s, 0xc001, 2, 5);
+	s[7] ^= 1;
+	assert(!zvalid(s, 4080, 0));
+	zephyr_ate(s, 0xc001, 2, 5);
+	s[6] = 0;
+	s[7] = zcrc(s, 7);
+	assert(!zvalid(s, 4080, 0));
+	zephyr_ate(s, 0xc001, 4000, 100);
+	assert(!zvalid(s, 4080, 0));
+	memset(s, 0xff, sizeof(s));
+	assert(!zvalid(s, 4080, 0) && !zvalid(s, 4088, 1));
+	memset(s, 0x00, sizeof(s));
+	assert(!zvalid(s, 4080, 0) && !zvalid(s, 4088, 1));
+}
+
+/* The last 32 bytes of a block as each format leaves them, seen by the
+ * other format's check (kv_layout() of zephyr_flash_kv.c reads the same).
+ */
+static void tail_check(const uint8_t t[32], int *nvs, int *nuttx)
+{
+	*nvs = zvalid(&t[16], 4080, 0) || zvalid(&t[24], 4088, 1);
+	*nuttx = plausible(&t[0], 0) || plausible(&t[16], 1);
+}
+
+static void test_formats_apart(void)
+{
+	uint8_t t[32];
+	int nvs, nuttx;
+
+	/* Zephyr: the first ATE (any id, offset, length up to its slot) and
+	 * up to two more below it, the close slot erased or closed.
+	 */
+	for (uint32_t v = 0; v < 200000; v++) {
+		uint16_t len = (uint16_t)(v % 300);
+		uint16_t off = (uint16_t)((v * 13) % (4000 - len));
+		int written = 1 + (int)(v % 3);
+
+		memset(t, 0xff, sizeof(t));
+		zephyr_ate(&t[16], (uint16_t)(v * 2654435761u >> 16), off, len);
+		for (int k = 1; k < written; k++) {
+			zephyr_ate(&t[16 - 8 * k], (uint16_t)(v + k), (uint16_t)(off + k),
+				   (uint16_t)((len + k * 37) % 256));
+		}
+		if (v % 3 == 0) {
+			zephyr_ate(&t[24], 0xffff, (uint16_t)(4096 - 8 * (2 + v % 400)), 0);
+		}
+		tail_check(t, &nvs, &nuttx);
+		assert(nvs && !nuttx);
+	}
+	/* NuttX: a block with a gc-done or data ATE first, the close slot
+	 * erased or closed.
+	 */
+	for (uint32_t v = 0; v < 200000; v++) {
+		memset(t, 0xff, sizeof(t));
+		if (v % 2) {
+			nuttx_ate(&t[0], 0xffffffff, 0, 0, 0, 0xff);
+		} else {
+			nuttx_ate(&t[0], v * 2654435761u, (uint16_t)(v % 4000), (uint16_t)(v % 300),
+				  (uint16_t)(1 + v % 64), (uint8_t)v);
+		}
+		if (v % 3 == 0) {
+			nuttx_ate(&t[16], 0xffffffff, (uint16_t)(4096 - 16 * (2 + v % 200)), 0, 0,
+				  0xff);
+		}
+		tail_check(t, &nvs, &nuttx);
+		assert(nuttx && !nvs);
+	}
+	/* Erased: neither. */
+	memset(t, 0xff, sizeof(t));
+	tail_check(t, &nvs, &nuttx);
+	assert(!nvs && !nuttx);
 }
 
 int main(void)
 {
 	crc_init();
+	test_nuttx_crc();
 	test_ranges();
 	test_pages();
 	test_layout();
+	test_zephyr_ate();
+	test_formats_apart();
 	puts("nano_flash_kv ok");
 	return 0;
 }

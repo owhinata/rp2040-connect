@@ -20,30 +20,26 @@
  *
  ****************************************************************************/
 
-/* The key-value store's flash: an MTD over the last 8 KiB of the 16 MiB
- * flash (0x10ffe000-0x10ffffff, two 4 KiB erase sectors), the place of the
- * Zephyr build's storage_partition, with NuttX's NVS
- * (drivers/mtd/mtd_config_nvs.c) on top as /dev/config.  The image never
- * reaches the area (scripts/nano-flash.ld leaves it out of the flash
+/* The OS boundary of the key-value area (common/compat/nano_flash_kv.h):
+ * reads, 256-byte page programs and 4 KiB sector erases of the last 8 KiB
+ * of the 16 MiB flash (0x10ffe000-0x10ffffff, two sectors), the place of
+ * the Zephyr build's storage_partition.  The copies of Zephyr's NVS and
+ * settings (common/compat/subsys) keep the store there in the Zephyr
+ * build's format through the flash device of
+ * common/compat/zephyr_flash_kv.c, which calls these functions.  The image
+ * never reaches the area (scripts/nano-flash.ld leaves it out of the flash
  * region; nuttx/script/build.sh checks the image end).
  *
- * Geometry: blocksize 1, erasesize 4096, 2 erase blocks.  mtd_config_nvs.c
- * takes blocksize as its program unit, and with 1 an allocation table
- * entry is 16 bytes and data is not padded (with the flash's real 256-byte
- * page, one entry would take at least 768 bytes).  Writes are done in
- * 256-byte pages, the bytes outside the request set to 0xff, which leaves
- * those bytes of the flash as they are (programming only clears bits).
- * NVS relies on that when it marks an entry as replaced by clearing one
- * byte of its table entry.
- *
  * Safety: an erase or a program outside the area would destroy the
- * firmware.  Every request is checked twice before the flash is touched:
- * in the caller (nano_kv_range_ok() against the board.h constants and
- * against the bounds taken from the linker script), and again in the RAM
- * function itself right before the boot ROM is called.  The bounds are
- * set only after the linker symbols __kv_start/__kv_end have been found
- * equal to the constants and the image found to end before the area;
- * until then every request is refused.
+ * firmware.  Every request is checked three times before the flash is
+ * touched: in zephyr_flash_kv.c (against the constants of
+ * nano_flash_kv.h), here (nano_kv_range_ok() against the board.h
+ * constants and against the bounds taken from the linker script), and
+ * again in the RAM function itself right before the boot ROM is called.
+ * The bounds are set only after the linker symbols __kv_start/__kv_end
+ * have been found equal to the constants and the image found to end
+ * before the area; until then every request is refused and
+ * nano_flash_kv_os_ready() is false.
  *
  * Erasing and programming stop XIP, so they run from RAM with interrupts
  * disabled: the boot ROM's connect_internal_flash, flash_exit_xip,
@@ -55,11 +51,6 @@
  * for one erase or write call: NVS erases one sector per call and writes
  * one entry's data (up to two pages) or one table entry per call.
  * Reads go through the uncached XIP alias (0x13000000).
- *
- * Before NuttX's NVS mounts the area, the area is checked
- * (nano_kv_layout()): if neither block shows NuttX's layout and the area
- * is not erased, it holds something else, typically the Zephyr build's NVS,
- * which NuttX would read as damaged NuttX data.  The area is then erased.
  */
 
 /****************************************************************************
@@ -75,11 +66,7 @@
 #include <errno.h>
 
 #include <nuttx/compiler.h>
-#include <nuttx/crc8.h>
 #include <nuttx/irq.h>
-#include <nuttx/mutex.h>
-#include <nuttx/mtd/mtd.h>
-#include <nuttx/mtd/configdata.h>
 #include <arch/board/board.h>
 
 #include "rp2040_rom.h"
@@ -91,14 +78,6 @@
 /****************************************************************************
  * Pre-processor Definitions
  ****************************************************************************/
-
-#ifndef CONFIG_MTD_CONFIG_NVS
-#  error "nano_flash_kv.c is the MTD of mtd_config_nvs.c: set MTD_CONFIG_NVS"
-#endif
-
-#if CONFIG_MTD_CONFIG_BLOCKSIZE_MULTIPLE != 1
-#  error "nano_flash_kv.c expects MTD_CONFIG_BLOCKSIZE_MULTIPLE 1"
-#endif
 
 #ifdef CONFIG_SMP
 #  error "nano_flash_kv.c does not stop the other core while XIP is off"
@@ -112,9 +91,8 @@
 
 #define KV_LO                ((uint32_t)BOARD_KV_OFFSET)
 #define KV_HI                ((uint32_t)(BOARD_KV_OFFSET + BOARD_KV_SIZE))
-#define KV_NBLOCKS           (BOARD_KV_SIZE / NANO_KV_SECTOR_SIZE)
 
-#if (BOARD_KV_OFFSET % 4096) != 0 || BOARD_KV_SIZE != 8192 || \
+#if BOARD_KV_OFFSET != NANO_KV_OFFSET || BOARD_KV_SIZE != NANO_KV_SIZE || \
     BOARD_KV_OFFSET + BOARD_KV_SIZE != BOARD_FLASH_SIZE
 #  error "the key-value area must be the last two 4 KiB sectors"
 #endif
@@ -147,21 +125,6 @@ struct kv_rom_s
 };
 
 /****************************************************************************
- * Private Function Prototypes
- ****************************************************************************/
-
-static int     kv_erase(FAR struct mtd_dev_s *dev, off_t startblock,
-                        size_t nblocks);
-static ssize_t kv_bread(FAR struct mtd_dev_s *dev, off_t startblock,
-                        size_t nblocks, FAR uint8_t *buffer);
-static ssize_t kv_bwrite(FAR struct mtd_dev_s *dev, off_t startblock,
-                         size_t nblocks, FAR const uint8_t *buffer);
-static ssize_t kv_read(FAR struct mtd_dev_s *dev, off_t offset,
-                       size_t nbytes, FAR uint8_t *buffer);
-static int     kv_ioctl(FAR struct mtd_dev_s *dev, int cmd,
-                        unsigned long arg);
-
-/****************************************************************************
  * Public Data
  ****************************************************************************/
 
@@ -177,24 +140,7 @@ extern uint8_t _edata[];
  * Private Data
  ****************************************************************************/
 
-LOG_MODULE_REGISTER(fs_nvs, LOG_LEVEL_INF);
-
-static struct mtd_dev_s g_kv_mtd =
-{
-  .erase  = kv_erase,
-  .bread  = kv_bread,
-  .bwrite = kv_bwrite,
-  .read   = kv_read,
-#ifdef CONFIG_MTD_BYTE_WRITE
-  .write  = kv_bwrite,
-#endif
-  .ioctl  = kv_ioctl,
-  .name   = "nano_kv",
-};
-
-/* Serializes the page buffer (NVS already serializes its callers). */
-
-static mutex_t g_kv_lock = NXMUTEX_INITIALIZER;
+LOG_MODULE_REGISTER(flash_kv, LOG_LEVEL_INF);
 
 /* Everything the RAM function touches is in RAM. */
 
@@ -297,249 +243,62 @@ static int kv_flash(uint32_t addr, FAR const uint8_t *page, uint32_t count)
 }
 
 /****************************************************************************
- * Name: kv_erase
- ****************************************************************************/
-
-static int kv_erase(FAR struct mtd_dev_s *dev, off_t startblock,
-                    size_t nblocks)
-{
-  size_t i;
-  int ret;
-
-  UNUSED(dev);
-
-  if (startblock < 0 || nblocks > KV_NBLOCKS ||
-      (size_t)startblock > KV_NBLOCKS - nblocks)
-    {
-      return -EINVAL;
-    }
-
-  ret = nxmutex_lock(&g_kv_lock);
-  if (ret < 0)
-    {
-      return ret;
-    }
-
-  for (i = 0; i < nblocks; i++)
-    {
-      ret = kv_flash(KV_LO + ((uint32_t)startblock + i) *
-                     NANO_KV_SECTOR_SIZE, NULL, NANO_KV_SECTOR_SIZE);
-      if (ret < 0)
-        {
-          break;
-        }
-    }
-
-  nxmutex_unlock(&g_kv_lock);
-  return ret < 0 ? ret : (int)nblocks;
-}
-
-/****************************************************************************
- * Name: kv_read
- ****************************************************************************/
-
-static ssize_t kv_read(FAR struct mtd_dev_s *dev, off_t offset,
-                       size_t nbytes, FAR uint8_t *buffer)
-{
-  UNUSED(dev);
-
-  if (nbytes == 0)
-    {
-      return 0;
-    }
-
-  if (offset < 0 || offset >= BOARD_KV_SIZE || nbytes > BOARD_KV_SIZE ||
-      !nano_kv_range_ok(KV_LO + (uint32_t)offset, (uint32_t)nbytes,
-                        KV_LO, KV_HI, 1))
-    {
-      return -EINVAL;
-    }
-
-  memcpy(buffer, (FAR const void *)(uintptr_t)(KV_XIP_NOCACHE_BASE + KV_LO +
-                                               (uint32_t)offset), nbytes);
-  return nbytes;
-}
-
-/****************************************************************************
- * Name: kv_bread
- ****************************************************************************/
-
-static ssize_t kv_bread(FAR struct mtd_dev_s *dev, off_t startblock,
-                        size_t nblocks, FAR uint8_t *buffer)
-{
-  /* blocksize is 1: blocks are bytes. */
-
-  return kv_read(dev, startblock, nblocks, buffer);
-}
-
-/****************************************************************************
- * Name: kv_bwrite
- *
- * Description:
- *   Write nblocks bytes (blocksize 1) at offset startblock of the area, a
- *   256-byte page at a time with 0xff around the data.
- *
- ****************************************************************************/
-
-static int kv_program_page(FAR void *arg, uint32_t page_offset,
-                           FAR const uint8_t *page)
-{
-  UNUSED(arg);
-  return kv_flash(page_offset, page, NANO_KV_PAGE_SIZE);
-}
-
-static ssize_t kv_bwrite(FAR struct mtd_dev_s *dev, off_t startblock,
-                         size_t nblocks, FAR const uint8_t *buffer)
-{
-  int ret;
-
-  UNUSED(dev);
-
-  if (nblocks == 0)
-    {
-      return 0;
-    }
-
-  if (startblock < 0 || startblock >= BOARD_KV_SIZE ||
-      nblocks > BOARD_KV_SIZE ||
-      !nano_kv_range_ok(KV_LO + (uint32_t)startblock, (uint32_t)nblocks,
-                        KV_LO, KV_HI, 1))
-    {
-      return -EINVAL;
-    }
-
-  ret = nxmutex_lock(&g_kv_lock);
-  if (ret < 0)
-    {
-      return ret;
-    }
-
-  ret = nano_kv_write_pages(KV_LO + (uint32_t)startblock, buffer,
-                            (uint32_t)nblocks, g_kv_page, kv_program_page,
-                            NULL);
-
-  nxmutex_unlock(&g_kv_lock);
-  return ret < 0 ? ret : (ssize_t)nblocks;
-}
-
-/****************************************************************************
- * Name: kv_ioctl
- ****************************************************************************/
-
-static int kv_ioctl(FAR struct mtd_dev_s *dev, int cmd, unsigned long arg)
-{
-  switch (cmd)
-    {
-      case MTDIOC_GEOMETRY:
-        {
-          FAR struct mtd_geometry_s *geo =
-            (FAR struct mtd_geometry_s *)((uintptr_t)arg);
-
-          if (geo == NULL)
-            {
-              return -EINVAL;
-            }
-
-          memset(geo, 0, sizeof(*geo));
-          geo->blocksize    = 1;
-          geo->erasesize    = NANO_KV_SECTOR_SIZE;
-          geo->neraseblocks = KV_NBLOCKS;
-          strlcpy(geo->model, "nano_kv", sizeof(geo->model));
-          return OK;
-        }
-
-      case MTDIOC_ERASESTATE:
-        {
-          FAR uint8_t *value = (FAR uint8_t *)((uintptr_t)arg);
-
-          if (value == NULL)
-            {
-              return -EINVAL;
-            }
-
-          *value = NANO_KV_ERASE_VALUE;
-          return OK;
-        }
-
-      case MTDIOC_BULKERASE:
-        {
-          int ret = kv_erase(dev, 0, KV_NBLOCKS);
-
-          return ret < 0 ? ret : OK;
-        }
-
-      default:
-        return -ENOTTY;
-    }
-}
-
-/****************************************************************************
- * Name: kv_layout
- *
- * Description:
- *   What the area holds (see nano_flash_kv.h).
- *
- ****************************************************************************/
-
-static enum nano_kv_layout_e kv_layout(void)
-{
-  unsigned signed_blocks = 0;
-  bool erased = true;
-  uint8_t tail[2 * NANO_KV_ATE_SIZE];
-  uint32_t block;
-  uint32_t i;
-
-  for (block = 0; block < KV_NBLOCKS; block++)
-    {
-      FAR const uint8_t *first = &tail[0];
-      FAR const uint8_t *close = &tail[NANO_KV_ATE_SIZE];
-
-      kv_read(&g_kv_mtd, (block + 1) * NANO_KV_SECTOR_SIZE - sizeof(tail),
-              sizeof(tail), tail);
-
-      if (nano_kv_ate_plausible(first,
-                                crc8part(first, NANO_KV_ATE_CRC_LEN, 0xff),
-                                NANO_KV_SECTOR_SIZE, false) ||
-          nano_kv_ate_plausible(close,
-                                crc8part(close, NANO_KV_ATE_CRC_LEN, 0xff),
-                                NANO_KV_SECTOR_SIZE, true))
-        {
-          signed_blocks++;
-        }
-    }
-
-  for (i = 0; i < BOARD_KV_SIZE && erased; i += sizeof(tail))
-    {
-      uint32_t j;
-
-      kv_read(&g_kv_mtd, i, sizeof(tail), tail);
-      for (j = 0; j < sizeof(tail); j++)
-        {
-          if (tail[j] != NANO_KV_ERASE_VALUE)
-            {
-              erased = false;
-              break;
-            }
-        }
-    }
-
-  return nano_kv_layout(signed_blocks, erased);
-}
-
-/****************************************************************************
  * Public Functions
  ****************************************************************************/
+
+/****************************************************************************
+ * Name: nano_flash_kv_os_ready, nano_flash_kv_os_read,
+ *       nano_flash_kv_os_program, nano_flash_kv_os_erase
+ *
+ * Description:
+ *   The boundary of common/compat/nano_flash_kv.h.  The program copies
+ *   the page into RAM first: the caller's page may be anywhere, and the
+ *   ROM reads it while XIP is off.
+ *
+ ****************************************************************************/
+
+bool nano_flash_kv_os_ready(void)
+{
+  return g_kv_lo != 0;
+}
+
+int nano_flash_kv_os_read(uint32_t offset, FAR void *buf, uint32_t len)
+{
+  if (!nano_kv_range_ok(offset, len, KV_LO, KV_HI, 1))
+    {
+      LOG_ERR("Refused flash read at 0x%08lx, %lu bytes",
+              (unsigned long)offset, (unsigned long)len);
+      return -EINVAL;
+    }
+
+  memcpy(buf, (FAR const void *)(uintptr_t)(KV_XIP_NOCACHE_BASE + offset),
+         len);
+  return OK;
+}
+
+int nano_flash_kv_os_program(uint32_t page_offset,
+                             FAR const uint8_t page[NANO_KV_PAGE_SIZE])
+{
+  memcpy(g_kv_page, page, NANO_KV_PAGE_SIZE);
+  return kv_flash(page_offset, g_kv_page, NANO_KV_PAGE_SIZE);
+}
+
+int nano_flash_kv_os_erase(uint32_t sector_offset)
+{
+  return kv_flash(sector_offset, NULL, NANO_KV_SECTOR_SIZE);
+}
 
 /****************************************************************************
  * Name: nano_flash_kv_initialize
  *
  * Description:
- *   Check the linker script, set up the MTD, erase the area if it holds
- *   something other than NuttX's NVS, and register /dev/config.  Called
- *   once from nano_bringup().
+ *   Check the linker script, find the boot ROM's flash functions and copy
+ *   boot2, then accept requests.  Called once from nano_bringup().  What
+ *   the area holds is checked when the settings open it
+ *   (common/compat/zephyr_flash_kv.c); nothing is erased here.
  *
  * Returned Value:
- *   OK, or a negated errno value (then there is no /dev/config).
+ *   OK, or a negated errno value (then every request is refused).
  *
  ****************************************************************************/
 
@@ -547,7 +306,6 @@ int nano_flash_kv_initialize(void)
 {
   uintptr_t image_end = (uintptr_t)_eronly +
                         (uintptr_t)(_edata - _sdata);
-  int ret;
 
   if ((uintptr_t)__kv_start != KV_XIP_BASE + KV_LO ||
       (uintptr_t)__kv_end != KV_XIP_BASE + KV_HI ||
@@ -593,26 +351,5 @@ int nano_flash_kv_initialize(void)
 
   g_kv_lo = KV_LO;
   g_kv_hi = KV_HI;
-
-  if (kv_layout() == NANO_KV_LAYOUT_FOREIGN)
-    {
-      LOG_WRN("Erasing the key-value area: not in this build's format");
-      ret = kv_erase(&g_kv_mtd, 0, KV_NBLOCKS);
-      if (ret < 0)
-        {
-          LOG_ERR("Could not erase the key-value area: %d", ret);
-          return ret;
-        }
-    }
-
-  ret = mtdconfig_register(&g_kv_mtd);
-  if (ret < 0)
-    {
-      LOG_ERR("Could not mount the key-value area: %d", ret);
-      return ret;
-    }
-
-  LOG_INF("%d Sectors of %d bytes", (int)KV_NBLOCKS,
-          (int)NANO_KV_SECTOR_SIZE);
   return OK;
 }

@@ -282,7 +282,8 @@ Wi-Fi 接続後は TCP ポート 23 で Telnet のシェルを利用できます
 Zephyr の Settings/NVS に保存します。キーは英数字、`_`、`-`、`.` の 1〜32 文字、値は
 1〜128 バイトです。`set` はテキスト、`sethex` は 16 進数のバイト列を保存し、`get` は 16 進数で
 表示します。`sys.` で始まるキーは内部用です。データは暗号化されません。Wi-Fi の認証情報も
-同じ 8 KiB の領域に保存されます。
+同じ 8 KiB の領域に保存されます。NuttX 版も同じ場所に同じ形式で保存するので、版を書き換えても
+KV は残ります。
 
 ### ログ
 
@@ -325,14 +326,14 @@ OS に依存しない部分のテスト（`common/tests/run.sh`）を先に実�
 | `zephyr/app/blink/` | LED 点滅のサンプル |
 | `zephyr/script/` | 環境構築、ホストテスト |
 | `nuttx/` | NuttX 版（ボード定義、ドライバー、アプリ、パッチ、スクリプト、ホストテスト） |
-| `common/` | Zephyr 版と NuttX 版が同じものを使うソース（`imu/`: 取得サービスと `imu` コマンド、バッチ、パケット、送信キュー、時刻の対応付け、時刻同期と `ntp` コマンド、NTP の推定、校正値の形式と `imu cal`、MQTT の送信、Wi-Fi のプロファイルと自動再接続、KV の宣言。`drivers/`: LSM6DSO のドライバー本体と FIFO の解析・単位の変換・ジャイロのゼロ点・FIFO の設定・割り込み・ストリーム・単発取得の RTIO 版、NINA の Wi-Fi のネットワークデバイスと宣言 `nina_proto.h`、NINA の OS に依存しないコア（SPI の転送層、ソケットの表と命令、名前解決と、その境界のヘッダー。今は NuttX 版だけが使う）、sensor シェル、I²C の DMA のコマンド語、I2C0 と DMA のコア（DesignWare の I2C と RP2040 の DMA のドライバーのレジスター操作、その定義、`i2c_dma` のカウンター、OS との境界のヘッダー。今は NuttX 版だけが使う）。`compat/`: NuttX 版などが Zephyr 版の API の代わりに使う互換層のうち OS に依存しない部分と、Zephyr のライブラリーの写し、スレッドの優先度とスタックの表、CPU 負荷の計算、GPIO の境界のヘッダー（Zephyr 版は使わない）。互換層の MQTT クライアントは `imu/mqtt_min.c`。`shell/`: Zephyr のシェルのコマンド処理（サブコマンドの照合、ワイルドカード、引数の数の検査、ヘルプ）の再現と、サブコマンドの表の処理（Zephyr 版は使わない）。`log/`: `LOG_*` マクロと RAM ログのリング（Zephyr 版は使わない））と、そのホストテスト（`tests/`。`tests/run.sh` を両方の版の `host_tests.sh` が呼ぶ） |
+| `common/` | Zephyr 版と NuttX 版が同じものを使うソース（`imu/`: 取得サービスと `imu` コマンド、バッチ、パケット、送信キュー、時刻の対応付け、時刻同期と `ntp` コマンド、NTP の推定、校正値の形式と `imu cal`、MQTT の送信、Wi-Fi のプロファイルと自動再接続、KV の API と `kv` コマンド（`kv_store.c`）。`drivers/`: LSM6DSO のドライバー本体と FIFO の解析・単位の変換・ジャイロのゼロ点・FIFO の設定・割り込み・ストリーム・単発取得の RTIO 版、NINA の Wi-Fi のネットワークデバイスと宣言 `nina_proto.h`、NINA の OS に依存しないコア（SPI の転送層、ソケットの表と命令、名前解決と、その境界のヘッダー。今は NuttX 版だけが使う）、sensor シェル、I²C の DMA のコマンド語、I2C0 と DMA のコア（DesignWare の I2C と RP2040 の DMA のドライバーのレジスター操作、その定義、`i2c_dma` のカウンター、OS との境界のヘッダー。今は NuttX 版だけが使う）。`compat/`: NuttX 版などが Zephyr 版の API の代わりに使う互換層のうち OS に依存しない部分と、Zephyr のライブラリーの写し（Wi-Fi の資格情報、KV の NVS と settings など）、KV の領域の flash の境界のヘッダー、スレッドの優先度とスタックの表、CPU 負荷の計算、GPIO の境界のヘッダー（Zephyr 版は使わない）。互換層の MQTT クライアントは `imu/mqtt_min.c`。`shell/`: Zephyr のシェルのコマンド処理（サブコマンドの照合、ワイルドカード、引数の数の検査、ヘルプ）の再現と、サブコマンドの表の処理（Zephyr 版は使わない）。`log/`: `LOG_*` マクロと RAM ログのリング（Zephyr 版は使わない））と、そのホストテスト（`tests/`。`tests/run.sh` を両方の版の `host_tests.sh` が呼ぶ） |
 | `openmv/` | OpenMV 版 MicroPython のビルド環境（[`openmv/README_ja.md`](openmv/README_ja.md)） |
 | `freertos/` | Raspberry Pi Pico SDK と FreeRTOS カーネルのビルド環境と、USB コンソールのアプリ（[`freertos/README_ja.md`](freertos/README_ja.md)） |
 | `zephyr/manifest/west.yml` | Zephyr とモジュールのバージョン |
 | `design/` | 設計と調査手順 |
 | `firmware/nina-fw/` | NINA ファームウェアの修正とビルド |
 | `host/` | PC 側のツール（受信の診断、記録、校正）と、表示用のアプリ `ImuStudio` |
-| `script/` | PC を一時的な AP にするスクリプト、Zephyr 版から NuttX 版への KV の移し替え（`kv_transfer.py`） |
+| `script/` | PC を一時的な AP にするスクリプト、KV の退避と書き戻し（`kv_transfer.py`。別のファームウェアを書くときなど） |
 
 ## NuttX 版
 
@@ -345,8 +346,9 @@ OS に依存しない部分のテスト（`common/tests/run.sh`）を先に実�
   コマンドと NuttX 版のコマンドの対応表、エラー番号（errno）の対応表、Zephyr 版との違いもそこにあります。
 - PC 側のツール（`host/` の `imu-host`、`ImuStudio`）は、どちらのファームウェアにも使えます
   （[`host/README_ja.md`](host/README_ja.md) の「ボードのファームウェア」）。
-- KV の保存形式が違うので、Zephyr 版の設定と校正値は `script/kv_transfer.py` で退避して書き戻します
-  （`nuttx/README_ja.md` の「Zephyr 版からの移し替え」）。
+- KV（設定、校正値、Wi-Fi の資格情報）は Zephyr 版と同じ場所・同じ形式なので、版を書き換えても残ります。
+  KV の領域に別のデータ（NuttX 版の以前の形式など）があると、NuttX 版は KV を使わず、`kv wipe confirm` で消して
+  から登録し直します（`nuttx/README_ja.md` の「Zephyr 版からの移し替え」）。
 - 設計上の違いは [設計書](design/imu-raw-mqtt-design-ja.md) の §11 にあります。
 
 ## Zephyr 版と NuttX 版の性能の違い

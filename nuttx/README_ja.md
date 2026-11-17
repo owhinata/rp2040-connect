@@ -124,23 +124,44 @@ NuttX 版の USB コンソールが現れるのを待ってそのパスを表示
 
 ## Zephyr 版からの移し替え
 
-KV の保存形式は Zephyr 版と互換がなく、NuttX 版は最初の起動で Zephyr 版の KV の領域を消去します
-（`dmesg` に `<wrn> fs_nvs: Erasing the key-value area: not in this build's format`）。Zephyr 版が動いている間に
-退避し、NuttX 版を書き込んだ後で書き戻します。
+KV（校正値、`imu.*` の設定、Wi-Fi の資格情報）は、Zephyr 版と同じ場所（フラッシュ末尾 8 KB、`0xffe000`〜
+`0xffffff`）に Zephyr 版と同じ形式（Zephyr の NVS と settings）で置きます。Zephyr 版と NuttX 版の間で
+書き換えても KV はそのまま残り、どちらの版が書いた値もそのまま読めます。移し替えの作業はありません。
 
-```bash
-# Zephyr 版が動いている間に退避する（host/recordings/kv-backup.json、Git 管理外）
-host/.venv/bin/python script/kv_transfer.py backup --usb
-# NuttX 版を書き込んだ後で書き戻し、Wi-Fi を登録する（パスワードを端末で入力。SSID の既定は rp2040-test、
-# 別の AP なら --ssid）
-host/.venv/bin/python script/kv_transfer.py restore --usb
-# Wi-Fi を登録しない場合
-host/.venv/bin/python script/kv_transfer.py restore --usb --no-wifi
+KV の領域に、Zephyr の NVS でも消去済みでもないデータ（NuttX 版の以前の形式、OpenMV 版などの別の
+ファームウェアの残り）があると、NuttX 版はそれを消さずに残し、KV を使いません。`dmesg` に次の行が出て、
+`kv` のコマンドや資格情報の操作はエラーになります（`kv get` は `KV read failed: -84`）。
+
+```text
+<err> flash_kv: Key-value area 0xffe000-0xffffff holds the NuttX build's earlier format
+<err> flash_kv: Not used; "kv wipe confirm" erases it (all keys and Wi-Fi credentials)
 ```
 
-`restore` は `kv sethex` で書いて `kv get` で読み返し、`wifi cred add`・`wifi cred auto_connect` と
-`imu cal reload` を送ります。`imu.session` は書き戻しません（NuttX 版の通し番号は 1 から）。資格情報が
-すでに 2 件あると `wifi cred add` が `err: -105` で失敗するので、先に `wifi cred delete` で消します。
+この場合は `kv wipe confirm` で領域を消してから、値を登録し直します（`confirm` を付けないと消しません）。
+
+```bash
+# 値を読めるファームウェアが動いている間に退避しておいた場合は（host/recordings/kv-backup.json、Git 管理外）
+nsh$ kv wipe confirm
+Erased
+# 書き戻し、Wi-Fi を登録する（パスワードを端末で入力。SSID の既定は rp2040-test、別の AP なら --ssid）
+host/.venv/bin/python script/kv_transfer.py restore --usb
+```
+
+`script/kv_transfer.py` は、KV の領域が失われる場面（別のファームウェアを書くとき、`kv wipe confirm` の前）に
+シェルの `kv get` で値を退避し（`backup`）、あとで `kv sethex` で書き戻す（`restore`）ためのものです。
+`restore` は `kv get` で読み返し、`wifi cred add`・`wifi cred auto_connect` と `imu cal reload` を送ります。
+`imu.session` は書き戻しません。資格情報がすでに 2 件あると `wifi cred add` が `err: -105` で失敗するので、
+先に `wifi cred delete` で消します。
+
+### 以前の NuttX 版の KV が入っているボード
+
+この版より前の NuttX 版は、KV を NuttX の NVS の形式で持っていました。その KV が入っているボードにこの版を
+書くと、上の「別のデータ」として扱われます。次の順に移します。
+
+1. 以前の NuttX 版が動いている間に `script/kv_transfer.py backup --usb` で退避する（すでに退避ファイルが
+   あれば不要）。
+2. この版を書き込み、`kv wipe confirm` で領域を消す。
+3. `script/kv_transfer.py restore --usb` で書き戻し、Wi-Fi の資格情報を登録する（パスワードの入力が要る）。
 
 ## 使い方
 
@@ -218,7 +239,9 @@ errors:
   NTP サーバーの用意はルートの README の「使い方」と同じです（受信の確認は
   `host/.venv/bin/imu-host check --port <ポート>`）。
 - `kv set <キー> <文字列>`、`kv sethex <キー> <16 進数>`、`kv get <キー>`、`kv delete <キー>` の構文と出力は
-  Zephyr 版と同じです（`kv get` は 16 進で表示）。
+  Zephyr 版と同じです（`kv get` は 16 進で表示）。`kv wipe confirm` は KV の領域全体（すべてのキーと Wi-Fi の
+  資格情報）を消します（Zephyr 版には無い。上の「Zephyr 版からの移し替え」）。読み込み済みの校正値と資格情報の
+  一覧は、次の起動まで RAM に残ります。
 - `sensor`（`sensor get lsm6dsox accel_xyz` など）は Zephyr 版の sensor シェルと同じです。計測中は `-16` で断ります。
 
 ### 時刻同期
@@ -284,7 +307,8 @@ iperf -s -B 0.0.0.0
 | `imu start` / `stop` / `status` | 同じ | |
 | `imu cal` / `imu cal reload` / `imu cal zero` | 同じ | |
 | `ntp status` | 同じ | |
-| `kv set` / `sethex` / `get` / `delete` | 同じ | 保存形式は互換なし |
+| `kv set` / `sethex` / `get` / `delete` | 同じ | 保存形式も同じ |
+| （なし） | `kv wipe confirm` | KV の領域を消す。NuttX 版だけ |
 | `nina version` | 同じ | |
 | `sensor get` / `attr_set` / `attr_get` / `stream` / `trig` | 同じ | `sensor info` はどちらにも無い |
 | `i2c_dma mode` / `stats` | 同じ | |
@@ -353,6 +377,7 @@ Zephyr 版の `i2c write`、`gpio`、`log`、`device`、`history`、`clear`、`r
 | `EALREADY` | 120 | 114 | Wi-Fi の接続の要求 |
 | `EINPROGRESS` | 119 | 115 | 待たない connect |
 | `ECANCELED` | 140 | 125 | FIFO のストリームを止めたときの終わりの値 |
+| `EILSEQ` | 138 | 84 | KV の領域に別のデータ（NuttX 版だけが返す） |
 
 値の同じ主なもの: `ENOENT` 2（無いキー）、`EIO` 5（I2C の失敗）、`EAGAIN` 11、`ENOMEM` 12、`EBUSY` 16
 （ストリーム中の `sensor`）、`ENODEV` 19、`EINVAL` 22、`EMFILE` 24（NINA のソケット 11 個目）、`ENOSPC` 28
@@ -368,7 +393,11 @@ Zephyr 版の `i2c write`、`gpio`、`log`、`device`、`history`、`clear`、`r
 - **コマンド**: Zephyr 標準のコマンドは NuttX 標準のものになる（上の表）。`wapi` は失敗の値を表示しない。
   速度の測定は iperf 2。
 - **エラー番号**: NuttX の値（上の表）。
-- **KV と資格情報**: 保存形式に互換がない。`imu.session` は引き継がない。
+- **KV と資格情報**: 形式は同じ（Zephyr の NVS と settings を写したもの）。KV の領域に別のデータがあるときだけ違う。
+  NuttX 版は消さずにエラーを返し、`kv wipe confirm` を待つ。Zephyr 版は Zephyr の NVS のとおりに扱う: 2 つの
+  セクターの末尾 8 バイトがどちらも書かれていればマウントに失敗して KV を使えず（消すコマンドは無い）、どちらかが
+  消去済みなら中断したガベージコレクションとみなして領域を消し、空の KV で始める（以前の NuttX 版の形式は、書き込み中の
+  ブロックの末尾が消去済みなので、ふつうこちら）。
 - **ログ**: 呼び出したスレッドの中で整形する（Zephyr 版は deferred）。RAM のリングは 8 KiB（Zephyr 版は 4 KiB）。
   実行時のレベル変更はない。
 - **時計**: カーネルの時計、`k_uptime_get()`、`k_cycle_get_*()`、センサーの時計、CPU 負荷の時間の源は RP2040 の

@@ -6,14 +6,15 @@
 config NANO_WIFI_CREDENTIALS
 	bool "Stored Wi-Fi credentials (wifi_credentials.c)"
 	default y
-	depends on NANO_NINA_NET && MTD_CONFIG_NVS && MTD_CONFIG_NAMED
+	depends on NANO_NINA_NET && NANO_KV_STORE
 	---help---
 		The Zephyr build's Wi-Fi credentials library
 		(subsys/net/lib/wifi_credentials/ with its settings backend,
-		CONFIG_WIFI_CREDENTIALS_BACKEND_SETTINGS) on /dev/config (NuttX's
-		NVS, the store of the kv command), under the same names
-		("wifi_cred/0" and so on), which the kv command cannot reach
-		(its keys are stored as "app_kv/<key>").  Also the request
+		CONFIG_WIFI_CREDENTIALS_BACKEND_SETTINGS) on the copy of
+		Zephyr's settings of the key-value store (NANO_KV_STORE), under
+		the same names ("wifi_cred/0" and so on) in the same format as
+		the Zephyr build, which the kv command cannot reach (its keys are
+		stored as "app_kv/<key>").  Also the request
 		NET_REQUEST_WIFI_CONNECT_STORED of the Zephyr compatibility
 		layer (CONFIG_WIFI_CREDENTIALS_CONNECT_STORED).  Built into the
 		application library; the init task reads the stored SSIDs at
@@ -88,7 +89,7 @@ config NANO_APP_WIFI_STACKSIZE
 	default 3072
 	---help---
 		The Zephyr build runs the command on the shell thread's stack
-		(CONFIG_SHELL_STACK_SIZE 3072).  The NVS write, with garbage
-		collection, runs on this stack too.
+		(CONFIG_SHELL_STACK_SIZE 3072).  The settings and NVS calls,
+		with garbage collection, run on this stack too.
 
 endif

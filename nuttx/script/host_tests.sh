@@ -170,24 +170,23 @@ else
 fi
 # Board: TIMER count <-> OS tick conversions of the tickless system timer.
 run nano_timeconv -Iboards/arduino-nano-rp2040-connect/src
-# Board: the key-value area's range checks, page writes and contents check.
-run nano_flash_kv -Iboards/arduino-nano-rp2040-connect/src
-# Key-value store: key rules, and the hex conversions of the kv command.
-# strnlen() is POSIX, not C17.
-run kv_name -D_POSIX_C_SOURCE=200809L "$imu/kv_name.c"
-run kv_hex -Iapps/kv apps/kv/kv_hex.c
-# The registration of "imu" and "ntp" (the SHELL_*() text cut out of common/imu/imu_stream.c
-# and time_sync.c, built with Z_SHELL_CMD_NAMED_MAIN on common/shell/zshell.c): the same exit
-# status, handler calls and output as the same sets on subcmd_main(), and where they differ.
+# The registration of "imu", "ntp" and "kv" (the SHELL_*() text cut out of
+# common/imu/imu_stream.c, time_sync.c and kv_store.c, built with Z_SHELL_CMD_NAMED_MAIN on
+# common/shell/zshell.c): the same exit status, handler calls and output as the same sets on
+# subcmd_main() (for "kv": the NuttX build's table before, with "wipe"), and where they differ.
 sed -n '/^SHELL_STATIC_SUBCMD_SET_CREATE(imu_commands,/,/^SHELL_CMD_REGISTER(imu,/p' \
     "$cimu/imu_stream.c" >"$out/imu_shell.inc"
 sed -n '/^SHELL_STATIC_SUBCMD_SET_CREATE(ntp_commands,/,/^SHELL_CMD_REGISTER(ntp,/p' \
     "$cimu/time_sync.c" >"$out/ntp_shell.inc"
+sed -n '/^SHELL_STATIC_SUBCMD_SET_CREATE($/,/^SHELL_CMD_REGISTER(kv,/p' \
+    "$cimu/kv_store.c" >"$out/kv_shell.inc"
 grep -q '^SHELL_CMD_REGISTER(imu,' "$out/imu_shell.inc"
 grep -q '^SHELL_CMD_REGISTER(ntp,' "$out/ntp_shell.inc"
+grep -q '^SHELL_CMD_REGISTER(kv,' "$out/kv_shell.inc"
+grep -q 'KV_STORE_OS_COMMANDS' "$out/kv_shell.inc"
 run shell_register -D_DEFAULT_SOURCE -DZ_SHELL_CMD_NAMED_MAIN -DIMU_SHELL_INC="\"$out/imu_shell.inc\"" \
-    -DNTP_SHELL_INC="\"$out/ntp_shell.inc\"" -Idrivers/compat -I"$ccompat" -I"$cshell" -Iapps/subcmd "$cshell/zshell.c" \
-    "$cshell/subcmd.c"
+    -DNTP_SHELL_INC="\"$out/ntp_shell.inc\"" -DKV_SHELL_INC="\"$out/kv_shell.inc\"" \
+    -Idrivers/compat -I"$ccompat" -I"$cshell" -Iapps/subcmd "$cshell/zshell.c" "$cshell/subcmd.c"
 # The i2c_dma command's output (fake driver side; nano_i2c_dma.h of the I2C0 core).
 run i2c_dma_app -I../common/drivers/i2c_dw -Iapps/i2c_dma -I"$cshell" "$cshell/subcmd.c"
 # The time synchronization (common/imu/time_sync.c, shared with the Zephyr build) on the
@@ -216,18 +215,50 @@ cc "${flags[@]}" -Wno-sign-compare -D_DEFAULT_SOURCE -include "$prelude" -Itests
     -o "$out/imu_raw_mqtt"
 "$out/imu_raw_mqtt" >/dev/null
 printf 'ok  imu_raw_mqtt\n'
+# The key-value store of the build (the copies of Zephyr's settings and NVS in
+# common/compat/subsys, built as they are, without warnings, with the Zephyr build's Kconfig
+# values; the flash device of the area, common/compat/zephyr_flash_kv.c; a fake flash,
+# common/tests/kv_flash_fake.c), for the tests of the "kv" command and the Wi-Fi credentials
+# below.  The store itself is tested in common/tests/run.sh (kv_settings).
+ctests=../common/tests
+kvset=(-include "$ccompat/zephyr_kv_config.h" -I"$ccompat/subsys/settings/include"
+       -I"$ccompat/subsys/settings/src" -I"$ctests")
+kvobjs=()
+for f in "$ccompat/subsys/kvss/nvs/nvs.c" "$ccompat/subsys/settings/src/settings.c" \
+         "$ccompat/subsys/settings/src/settings_store.c" \
+         "$ccompat/subsys/settings/src/settings_init.c" \
+         "$ccompat/subsys/settings/src/settings_nvs.c" "$ccompat/subsys/crc/crc8_sw.c" \
+         "$ccompat/lib/utils/hex.c"; do
+    o="$out/kv_$(basename "$f" .c).o"
+    cc -std=gnu17 -w -ffunction-sections -fdata-sections -D_DEFAULT_SOURCE -Itests/lsm6dso_fakes \
+        "${zinc[@]}" "${kvset[@]}" -c "$f" -o "$o"
+    kvobjs+=("$o")
+done
+kvobjs+=("$ctests/kv_flash_fake.c" "$ccompat/zephyr_flash_kv.c")
+# The "kv" command (common/imu/kv_store.c with "kv wipe" of common/compat/kv_store_wipe.c, through
+# z_shell_main_kv() as apps/kv runs it, on common/shell/zshell.c with the NuttX backends) on that
+# store: the output of every subcommand (the NuttX build's before it was shared: Saved, Deleted,
+# Reserved key, hex, the errors, the help) on stdout and stderr, the stored bytes, "kv wipe" on
+# foreign data.
+cc "${flags[@]}" -D_GNU_SOURCE -DZ_SHELL_CMD_NAMED_MAIN -Itests/lsm6dso_fakes "${zinc[@]}" \
+    "${kvset[@]}" -I"$cimu" -I"$cshell" -Iapps/subcmd tests/kv_cmd.c "$cimu/kv_store.c" \
+    "$ccompat/kv_store_wipe.c" "$cshell/zshell.c" "$cshell/subcmd.c" "${kvobjs[@]}" "${compat[@]}" \
+    "$link" -o "$out/kv_cmd"
+"$out/kv_cmd" >/dev/null
+printf 'ok  kv_cmd\n'
 # The stored Wi-Fi credentials (common/compat: the copies of Zephyr's wifi_credentials.c and its
 # settings backend) and the "wifi cred" command (apps/wifi: the copy of wifi_credentials_shell.c
-# on subcmd), on a fake store of named items: the stored entries and names, the cache, the
-# lengths and options, the messages and the log.  The copied text leaves parameters unused and
-# compares signed with unsigned, as in the Zephyr build; the command's main() is wifi_main().
+# on subcmd), on the store above: the stored entries and names, the cache, the lengths and
+# options, the messages and the log.  The copied text leaves parameters unused and compares
+# signed with unsigned, as in the Zephyr build; the command's main() is wifi_main().
 winc=(-D_GNU_SOURCE -DCONFIG_NANO_WIFI_CREDENTIALS=1 -Itests/lsm6dso_fakes "${zinc[@]}"
-      -I"$cshell" -Iapps/wifi -I"$ccompat")
+      -I"$cshell" -Iapps/wifi -I"$ccompat" -I"$ctests")
 wflags=("${flags[@]}" -Wno-unused-parameter -Wno-sign-compare)
 cc "${wflags[@]}" "${winc[@]}" -Dmain=wifi_main -c apps/wifi/wifi_credentials_shell.c \
     -o "$out/wifi_credentials_shell.o"
 cc "${wflags[@]}" "${winc[@]}" tests/wifi_cred.c "$ccompat/wifi_credentials.c" \
     "$ccompat/wifi_credentials_backend_settings.c" "$ccompat/zephyr_wifi_utils.c" \
-    "$cshell/subcmd.c" "$out/wifi_credentials_shell.o" "${compat[@]}" "$link" -o "$out/wifi_cred"
+    "$cshell/subcmd.c" "$out/wifi_credentials_shell.o" "${kvobjs[@]}" "${compat[@]}" "$link" \
+    -o "$out/wifi_cred"
 "$out/wifi_cred" >/dev/null
 printf 'ok  wifi_cred\n'
