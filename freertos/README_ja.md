@@ -6,7 +6,7 @@ Arduino Nano RP2040 Connect 向けに、Raspberry Pi Pico SDK と FreeRTOS カ�
 ビルドする環境です。`zephyr/`、`nuttx/`、`openmv/` と同じく、必要なものを `freertos/` の下に取得します。
 
 Zephyr 版・NuttX 版と同じく、LSM6DSOX の RAW データを 6667 Hz で取得し、Wi-Fi 経由の MQTT で PC へ送ります。
-ソースの大半は 3 つの版で共有する `common/` にあります。`sensor` コマンドはまだありません。
+ソースの大半は 3 つの版で共有する `common/` にあります。
 
 | 項目 | 内容 |
 |---|---|
@@ -104,6 +104,7 @@ USB の CDC ACM ポートがコンソールです（UART0 は使いません）�
 | `version` | FreeRTOS カーネル、Pico SDK、コンパイラーの版 |
 | `id` | ボードの固有 ID（16 桁の 16 進数） |
 | `uptime` | 起動からの時間と tick の数 |
+| `sensor get <デバイス> [チャネル...]`、`sensor attr_set`、`sensor attr_get`、`sensor stream` | センサーの値・属性の読み書きと、ストリームの表示（Zephyr 版と同じ構文と出力）。デバイス名は `lsm6dsox@6a` |
 | `sleep <ms>` | ms ミリ秒眠る |
 | `date` | 日付と時刻（UTC。NuttX 版と同じ形式。時刻同期の前は 1970 年から数える） |
 | `devmem <address> [<width> [<value>]]` | メモリーの読み書き。アドレスと値は 16 進、幅は 8・16・32 ビット（省略時 32）。値を付けると書き込み |
@@ -139,6 +140,9 @@ USB の CDC ACM ポートがコンソールです（UART0 は使いません）�
   次に接続するまで自動の再接続は止まります。資格情報は KV にあり、Zephyr 版・NuttX 版と共通です。
 - Telnet（ポート 23）でも同じシェルが使えます。同時に 1 接続で、認証と暗号化はありません。接続しただけでは何も
   出ません（Enter でプロンプト）。エコーと行の編集はクライアント側です。2 本目の接続はすぐ閉じられます。
+- `sensor get` は、起動直後は先にサンプリング周波数を設定してから使います
+  （例: `sensor attr_set lsm6dsox@6a accel_xyz sampling_frequency 104 gyro_xyz sampling_frequency 104`）。ストリームは
+  `sensor stream lsm6dsox@6a on fifo_wm incl` と `off` です。計測中（`imu start`）は `sensor` の読み出しは使えません（-16）。
 - `devmem` で存在しないアドレスを読むと異常停止します（例: `devmem 30000000`）。
 
 ## ディレクトリー
@@ -155,6 +159,7 @@ USB の CDC ACM ポートがコンソールです（UART0 は使いません）�
 | `drivers/i2c_dw/` | I2C0 と DMA（センサーのバス） |
 | `drivers/lsm6dso/` | LSM6DSOX のデバイスの生成と初期化（ドライバー本体は `common/drivers/lsm6dso/`） |
 | `drivers/imu/` | 取得・送信・時刻同期の組み込み（本体は `common/imu/`） |
+| `drivers/sensor_shell/` | `sensor` コマンドの組み込み（本体は `common/drivers/sensor_shell/`） |
 | `tests/` | ホストテスト |
 | `script/` | `setup.sh`、`build.sh`、`flash.sh`、`format.sh`、`host_tests.sh` |
 | `PORTING_PLAN.md`、`PORTING_STATUS.md` | 移植の計画と、進み具合・確かめたことの記録 |

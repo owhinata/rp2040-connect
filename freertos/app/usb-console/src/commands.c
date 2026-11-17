@@ -339,7 +339,8 @@ SHELL_CMD_REGISTER(selftest, NULL, "Test the Zephyr compatibility layer (build o
  * common/drivers/nina/nina_shell.c, common/compat/zephyr_wifi_shell.c
  * ("wifi", with "wifi cred" of the copy of Zephyr's
  * wifi_credentials_shell.c), freertos/drivers/wifi/nano_ifconfig.c,
- * common/imu/time_sync.c ("ntp") and common/compat/zephyr_zperf_shell.c.
+ * common/imu/time_sync.c ("ntp"), common/compat/zephyr_zperf_shell.c and
+ * common/drivers/sensor_shell/sensor_shell.c ("sensor").
  */
 NANO_SHELL_CMD_DECLARE(dmesg);
 NANO_SHELL_CMD_DECLARE(i2c_dma);
@@ -348,6 +349,7 @@ NANO_SHELL_CMD_DECLARE(imu);
 NANO_SHELL_CMD_DECLARE(kv);
 NANO_SHELL_CMD_DECLARE(nina);
 NANO_SHELL_CMD_DECLARE(ntp);
+NANO_SHELL_CMD_DECLARE(sensor);
 NANO_SHELL_CMD_DECLARE(wifi);
 NANO_SHELL_CMD_DECLARE(zperf);
 
@@ -374,6 +376,7 @@ const struct nano_shell_cmd nano_shell_cmds[] = {
 #ifdef NANO_SELFTEST
 	NANO_SHELL_CMD(selftest),
 #endif
+	NANO_SHELL_CMD(sensor),
 	NANO_SHELL_CMD(sleep),
 	NANO_SHELL_CMD(uptime),
 	NANO_SHELL_CMD(version),

@@ -6,8 +6,7 @@ A build environment for firmware on the Raspberry Pi Pico SDK and the FreeRTOS k
 Nano RP2040 Connect. Like `zephyr/`, `nuttx/` and `openmv/`, it fetches what it needs under `freertos/`.
 
 Like the Zephyr and NuttX builds, it reads the raw data of the LSM6DSOX at 6667 Hz and sends it to the PC
-over MQTT on Wi-Fi. Most of the sources are in `common/`, shared by the three builds. There is no `sensor`
-command yet.
+over MQTT on Wi-Fi. Most of the sources are in `common/`, shared by the three builds.
 
 | Item | Content |
 |---|---|
@@ -105,6 +104,7 @@ The console is the USB CDC ACM port (UART0 is not used). Opening a terminal show
 | `version` | Versions of the FreeRTOS kernel, the Pico SDK and the compiler |
 | `id` | The board's unique ID (16 hexadecimal digits) |
 | `uptime` | Time since the start and the number of ticks |
+| `sensor get <device> [channel...]`, `sensor attr_set`, `sensor attr_get`, `sensor stream` | Read and set the sensor's values and attributes, and print its stream (the syntax and output of the Zephyr build). The device is `lsm6dsox@6a` |
 | `sleep <ms>` | Sleep for ms milliseconds |
 | `date` | Date and time (UTC, in the format of the NuttX build; counts from 1970 until the time is synchronized) |
 | `devmem <address> [<width> [<value>]]` | Read or write memory. Address and value in hexadecimal, width 8, 16 or 32 bits (default 32). A value writes |
@@ -145,6 +145,10 @@ The console is the USB CDC ACM port (UART0 is not used). Opening a terminal show
 - The same shell is on Telnet (port 23): one connection at a time, no authentication, no encryption.
   Nothing is shown on connecting (Enter gives the prompt). Echo and line editing are the client's. A second
   connection is closed at once.
+- After the start, set the sampling frequency before `sensor get` (for example
+  `sensor attr_set lsm6dsox@6a accel_xyz sampling_frequency 104 gyro_xyz sampling_frequency 104`). The stream
+  is `sensor stream lsm6dsox@6a on fifo_wm incl` and `off`. During a measurement (`imu start`) the reads of
+  `sensor` are refused (-16).
 - Reading an address that does not exist with `devmem` ends in a fatal error (for example
   `devmem 30000000`).
 
@@ -162,6 +166,7 @@ The console is the USB CDC ACM port (UART0 is not used). Opening a terminal show
 | `drivers/i2c_dw/` | I2C0 and DMA (the sensor's bus) |
 | `drivers/lsm6dso/` | The device and start-up of the LSM6DSOX (the driver itself is in `common/drivers/lsm6dso/`) |
 | `drivers/imu/` | Brings in the acquisition, the transport and the time synchronization (in `common/imu/`) |
+| `drivers/sensor_shell/` | Brings in the `sensor` command (in `common/drivers/sensor_shell/`) |
 | `tests/` | Host tests |
 | `script/` | `setup.sh`, `build.sh`, `flash.sh`, `format.sh`, `host_tests.sh` |
 | `PORTING_PLAN.md`, `PORTING_STATUS.md` | The plan of the port, and the record of its progress and of what was checked (in Japanese) |

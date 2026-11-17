@@ -728,3 +728,25 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
 - **`cpu_active` の比較（送信あり、同じ AP と受信器）**: FreeRTOS 版 45.5%（今回）、NuttX 版 70.0%（今日の CP-B、71 秒、T24 の像）、
   Zephyr 版 63〜64%（文書の値。今日は測っていない）。Zephyr 版を同じ条件で測るには書き込みが要る（CP-Z）。
 - 次: F14（`sensor` コマンド、`imu cal` の確認）、F15（ホストの差分ファイルと文書）→ CP-F5。
+
+## F14 の記録（2026-11-17）
+
+- 実装: 共有の `sensor_shell.c`・`sensor_shell_stream.c` を FreeRTOS 版にリンク。`freertos/drivers/sensor_shell/`
+  （`sensor_shell_os.[ch]`: `sensor get` は結果が出るまで最長 2 秒待つ = NuttX 版と同じ。Zephyr 版はすぐ戻ってプロンプトを
+  描き直す）、`sensor_shell_processing_tid`（優先度 20、3072 B）、ホストテスト `freertos/tests/sensor_shell`。出力はコマンドを
+  打ったセッション（USB か Telnet）へ。`common/`・`nuttx/`・`zephyr/` は変えていない。
+- メインが確かめたこと: ビルド（既定・selftest、警告 0）、整形、`host_tests.sh`（45 個）。ソースは読んでいない。
+- 実機（ボード静止）: `sensor` のヘルプ。`imu cal` が accel・gyro とも `calibrated`（KV の校正値）。`sampling_frequency 104` を設定して
+  `sensor get lsm6dsox@6a` → 8 行（Zephyr の書式）。`full_scale` を 4 g / 1000 dps にすると `imu cal` が `nominal` になり値が変わる、
+  8 g / 2000 dps に戻すと `calibrated`。`imu cal zero` → `tracked at rest, 1 updates`、そのあとのジャイロは 0.0005 rad/s 以下、
+  `imu cal reload` で `stored` に戻る。`sensor stream lsm6dsox@6a on fifo_wm incl` → 約 0.14 秒ごとに 3 行、`off` で止まる。
+  ストリーム中の `imu start` は `The IMU FIFO is in use (sensor stream?)`。計測中の `sensor get` は `Read failed: -16`、
+  `imu cal zero` は `A measurement is running; ...`。Telnet からの `sensor get` は Telnet にだけ出る。
+  スタックの空き: `sensor_shell_processing_tid` 1720/3072、**`RTIO WQ 0` 376/1024**（`sensor get` で初めて使われた。余裕が小さい）。
+  ヒープ 30992/32768。
+  - 見たもの: ODR を設定した直後の最初の `sensor get` は値がずれていた（加速度 z 8.56、ジャイロ z -0.33）。2 回目以降は正常。
+    センサーの立ち上がりとみられるが未調査（ほかの版と比べていない）。
+- このボードで使えないもの（subagent の調査）: `trig` 全部（-88）、`stream` は `on fifo_wm incl`/`off` 以外、`attr_get`・`attr_set` の
+  大半の組、`get` の加速度・角速度以外の 70 チャネル。FreeRTOS 版だけで隠す案 A（`trig` を外す）、B（A + `stream` を絞る）、
+  C（B + チャネル名・属性名を絞る）。共有ソースは変えず、FreeRTOS 側で `#include` して表だけ作り直す。ユーザーに相談中。
+- 次: F15（ホストの差分ファイル、`kv_transfer.py`、文書）→ CP-F5。

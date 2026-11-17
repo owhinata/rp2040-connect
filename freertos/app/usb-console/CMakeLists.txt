@@ -45,6 +45,9 @@ include(${CMAKE_CURRENT_LIST_DIR}/../../drivers/wifi/wifi.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/../../drivers/telnet/telnet.cmake)
 # The "zperf" command: TCP tests against iperf3 (freertos/drivers/zperf).
 include(${CMAKE_CURRENT_LIST_DIR}/../../drivers/zperf/zperf.cmake)
+# The "sensor" command: the Zephyr build's sensor shell with its processing
+# thread (freertos/drivers/sensor_shell).
+include(${CMAKE_CURRENT_LIST_DIR}/../../drivers/sensor_shell/sensor_shell.cmake)
 
 # The compatibility layer's self-test, the "selftest" command
 # (freertos/drivers/compat/zephyr_selftest.h): a test feature, off by default
@@ -88,6 +91,7 @@ freertos_imu(usb-console)
 freertos_wifi(usb-console)
 freertos_telnet(usb-console)
 freertos_zperf(usb-console)
+freertos_sensor_shell(usb-console)
 
 # FreeRTOSConfig.h; priorities_os.h (src/, which FreeRTOSConfig.h includes);
 # priorities.h, cpu_load.h and nano_cpuload.h (common/compat);

@@ -34,7 +34,10 @@
 #   Telnet shell (freertos/drivers/telnet) and "zperf" (common/compat/zperf_iperf3.c) on the
 #   host's sockets with the NINA's behaviour, driven over TCP on 127.0.0.1 by
 #   freertos/tests/telnet/client.py (python3; with the host's iperf3, which is skipped when
-#   missing) (freertos/tests/telnet, about 60 s).
+#   missing) (freertos/tests/telnet, about 60 s), and the "sensor" command
+#   (freertos/drivers/sensor_shell with the shared sensor shell, its processing thread and
+#   "imu cal") on the shared LSM6DSO driver and a fake sensor, from two sessions
+#   (freertos/tests/sensor_shell; skipped without freertos/stmemsc/lsm6dso_reg.c).
 #
 #   freertos/script/host_tests.sh        run them
 #   freertos/script/host_tests.sh -v     also show the tests' output
@@ -45,7 +48,7 @@ verbose=0
 case "${1:-}" in
   "") ;;
   -v) verbose=1 ;;
-  -h|--help) sed -n '2,38p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+  -h|--help) sed -n '2,43p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
   *) printf 'Unknown option: %s\n' "$1" >&2; exit 2 ;;
 esac
 
@@ -525,4 +528,71 @@ if command -v python3 >/dev/null; then
     printf 'ok  telnet (protocol, one client, reconnections, stalls, zperf, FreeRTOS POSIX port)\n'
 else
     printf 'skip telnet (no python3)\n'
+fi
+
+# The "sensor" command (freertos/tests/sensor_shell): the shared common/drivers/sensor_shell/
+# sensor_shell.c, the copy of Zephyr's sensor_shell_stream.c with its processing thread and the
+# build's part (drivers/sensor_shell/sensor_shell_os.c), with "imu cal" (common/imu/imu_cal.c,
+# imu_cal_codec.c, on a fake key-value store), on the shared LSM6DSO driver with its FIFO stream
+# and ST's lsm6dso_reg.c (freertos/stmemsc), the layer's devices, gpio0, RTIO and its work queue
+# and the default sensor iodev and decoder, with the prelude, CONFIG_NANO_LSM6DSO_STREAM and the
+# per-file options of drivers/lsm6dso/lsm6dso.cmake and drivers/sensor_shell/sensor_shell.cmake;
+# the layer's kernel part again with that option (gpio0); the build's shell with two sessions on
+# consoles that capture; a fake LSM6DSOX behind a fake i2c0 and a fake INT1 on the layer's GPIO
+# boundary.  On the same kernel objects.  The results on the session that asked, the wait of
+# "sensor get", the calibration in the printed values, "sensor stream" from one session and "off"
+# from the other, a session whose terminal is gone, the FIFO taken by another stream.  About 2 s.
+if [[ -f stmemsc/lsm6dso_reg.c ]]; then
+    ssinc=(-D_GNU_SOURCE -DZ_SHELL_CMD_ROOT_GLOBAL -DCONFIG_GETOPT_LONG=1 -DCONFIG_NANO_LSM6DSO_STREAM=1
+           -U_FORTIFY_SOURCE -Itests/shell -Idrivers/shell -Idrivers/sensor_shell -Idrivers/lsm6dso
+           -I../common/shell -I../common/compat/lib/utils/getopt -I../common/drivers/lsm6dso
+           -I../common/drivers/stmemsc -Istmemsc -I../common/imu -ffunction-sections -fdata-sections)
+    cc "${flags[@]}" -w -Istmemsc -c stmemsc/lsm6dso_reg.c -o "$out/sensor_lsm6dso_reg.o"
+    ssobjs=("$out/sensor_lsm6dso_reg.o")
+    for src in tests/sensor_shell/main.c drivers/compat/zephyr_kernel.c \
+               drivers/sensor_shell/sensor_shell_os.c \
+               drivers/shell/cli.c drivers/shell/getopt_state.c drivers/shell/nano_console.c \
+               drivers/shell/nano_shell.c drivers/shell/shell_argv.c drivers/libc/stdio_wrap.c \
+               ../common/shell/zshell.c ../common/shell/subcmd.c \
+               ../common/compat/subsys/portability/posix/c_lib_ext/fnmatch.c \
+               ../common/compat/lib/utils/getopt/getopt.c ../common/compat/lib/utils/getopt/getopt_long.c \
+               ../common/drivers/sensor_shell/sensor_shell.c ../common/compat/sensor_shell_stream.c \
+               ../common/imu/imu_cal.c ../common/imu/imu_cal_codec.c \
+               ../common/drivers/lsm6dso/lsm6dso.c ../common/drivers/lsm6dso/lsm6dso_fifo_hw.c \
+               ../common/drivers/lsm6dso/lsm6dso_fifo.c ../common/drivers/lsm6dso/lsm6dso_cal.c \
+               ../common/drivers/lsm6dso/lsm6dso_zero.c ../common/drivers/lsm6dso/lsm6dso_stream.c \
+               ../common/drivers/lsm6dso/lsm6dso_fifo_irq.c ../common/drivers/lsm6dso/lsm6dso_compat.c \
+               ../common/drivers/lsm6dso/lsm6dso_fifo_decoder.c \
+               ../common/drivers/stmemsc/stmemsc_i2c.c ../common/drivers/stmemsc/stmemsc_mdelay.c \
+               ../common/compat/zephyr_device.c ../common/compat/zephyr_gpio.c \
+               ../common/compat/sensor_default_rtio.c ../common/compat/zephyr_rtio.c \
+               ../common/compat/zephyr_mem_blocks.c; do
+        obj="$out/sensor_$(basename "$src" .c).o"
+        extra=()
+        case $src in
+            ../common/shell/*|*/fnmatch.c|*/getopt*.c) ;;
+            ../common/*|*/sensor_shell_os.c|tests/sensor_shell/*) extra=(-include drivers/compat/common_prelude.h) ;;
+        esac
+        case $src in
+            */lsm6dso.c) extra+=(-Wno-unused-parameter -Wno-sign-compare -Wno-cast-function-type) ;;
+            */lsm6dso_compat.c|*/sensor_default_rtio.c) extra+=(-Wno-unused-parameter -Wno-sign-compare) ;;
+            */sensor_shell.c) extra+=(-Wno-sign-compare -Wno-unused-parameter) ;;
+            *zshell.c|*nano_console.c) extra+=(-Dcalloc=test_calloc -Dmalloc=test_malloc -Dfree=test_free) ;;
+        esac
+        cc "${flags[@]}" "${strict[@]}" "${ssinc[@]}" "${inc[@]}" "${extra[@]}" -c "$src" -o "$obj"
+        ssobjs+=("$obj")
+    done
+    sskern=()
+    for o in "${kernobjs[@]}"; do
+        [[ $(basename "$o") == zephyr_kernel.o ]] || sskern+=("$o")
+    done
+    cc "${flags[@]}" -Wl,--gc-sections "${wraps[@]}" "${sskern[@]}" "${ssobjs[@]}" -lm -o "$out/sensor_shell"
+    if (( verbose )); then
+        timeout 120 "$out/sensor_shell"
+    else
+        timeout 120 "$out/sensor_shell" >"$out/log" 2>&1 || { cat "$out/log"; exit 1; }
+    fi
+    printf 'ok  sensor_shell (sessions, get, calibration, stream, FreeRTOS POSIX port)\n'
+else
+    printf 'skip sensor_shell (no stmemsc/lsm6dso_reg.c: run script/setup.sh)\n'
 fi

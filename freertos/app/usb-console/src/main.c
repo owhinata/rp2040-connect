@@ -4,7 +4,7 @@
  * with its DMA reads, the LSM6DSOX, the IMU acquisition service with its
  * MQTT transport, Wi-Fi with the stored credentials, the time
  * synchronization with the NTP server, the shell over Telnet, the "zperf"
- * speed test and a task that blinks the LED.
+ * speed test, the "sensor" command and a task that blinks the LED.
  */
 #include <stdbool.h>
 #include <stdint.h>
@@ -251,13 +251,15 @@ static void main_main(void *arg)
 	 * driver's (common/drivers/nina/nina_net.c: scan, connect, link
 	 * monitor), the IMU service's (common/imu/imu_stream.c), its MQTT
 	 * transport's (common/imu/imu_raw_mqtt.c), the time synchronization's
-	 * (common/imu/time_sync.c) and the Wi-Fi profile's reconnection
-	 * (common/imu/wifi_profile.c).  Each waits for its work at once (the
-	 * monitor polls every 2 s while connected; the transport waits for
-	 * "imu start"; the time synchronization waits for the Wi-Fi events of
-	 * time_sync_init()).  They
-	 * have lower priorities than this task, so they first run when this
-	 * task waits.
+	 * (common/imu/time_sync.c), the Wi-Fi profile's reconnection
+	 * (common/imu/wifi_profile.c) and the sensor shell's processing thread
+	 * (common/compat/sensor_shell_stream.c).  Each waits for its work at
+	 * once (the monitor polls every 2 s while connected; the transport
+	 * waits for "imu start"; the time synchronization waits for the Wi-Fi
+	 * events of time_sync_init(); the processing thread waits for the
+	 * completions of "sensor get" and "sensor stream").  They have lower
+	 * priorities than this task, or its own (the processing thread, Zephyr's
+	 * 0), so they first run when this task waits.
 	 */
 	start_thread(K_THREAD_DEFINE_START(nina_scan_tid), "nina_scan_tid");
 	start_thread(K_THREAD_DEFINE_START(nina_connect_tid), "nina_connect_tid");
@@ -266,6 +268,8 @@ static void main_main(void *arg)
 	start_thread(K_THREAD_DEFINE_START(imu_raw_mqtt_tid), "imu_raw_mqtt_tid");
 	start_thread(K_THREAD_DEFINE_START(time_sync_tid), "time_sync_tid");
 	start_thread(K_THREAD_DEFINE_START(wifi_reconnect_tid), "wifi_reconnect_tid");
+	start_thread(K_THREAD_DEFINE_START(sensor_shell_processing_tid),
+		     "sensor_shell_processing_tid");
 	/* The iperf3 server of "zperf tcp download" (common/compat/
 	 * zperf_iperf3.h), Zephyr's net_socket_service thread: waits until
 	 * the server is started.
