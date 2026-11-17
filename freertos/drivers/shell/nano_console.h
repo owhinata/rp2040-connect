@@ -2,7 +2,8 @@
 /* The consoles of the FreeRTOS build and the output of each task.
  *
  * A console is the terminal of one shell session: the USB CDC ACM port
- * (freertos/app/usb-console/src/main.c) and later a Telnet client.  Each
+ * (freertos/app/usb-console/src/main.c) and the Telnet client
+ * (freertos/drivers/telnet/nano_telnet.c).  Each
  * task may be bound to a console (a FreeRTOS thread local storage pointer,
  * index NANO_CONSOLE_TLS_INDEX); everything the task writes to stdout or
  * stderr goes to that console, the rest of the tasks write to the default
@@ -31,6 +32,7 @@
 #include <stdarg.h>
 #include <stdbool.h>
 #include <stddef.h>
+#include <stdint.h>
 
 #include "FreeRTOS.h"
 #include "semphr.h"
@@ -61,6 +63,10 @@ struct nano_console {
 	void *ctx; /* for out */
 	SemaphoreHandle_t lock;
 	StaticSemaphore_t lock_mem;
+	/* How long a task that is not bound to this console waits for its
+	 * mutex (nano_console_write()); the bound tasks wait 1 s.
+	 */
+	uint32_t other_lock_timeout_ms;
 	bool last_cr;                   /* the last byte written was '\r' */
 	struct shell sh;                /* the session's backend */
 	struct sys_getopt_state getopt; /* the session's getopt state */
@@ -88,10 +94,26 @@ struct nano_console *nano_console_current(void);
 
 /* Writes LEN bytes to CON with the line ends turned into "\r\n".  Nothing
  * for CON == NULL or in an interrupt handler.  Before the scheduler starts
- * the mutex is not taken.  A writer that has waited 1 s for the mutex
- * drops its text.
+ * the mutex is not taken.  A writer that has waited for the mutex 1 s (a
+ * task bound to CON) or CON's other_lock_timeout_ms (any other task) drops
+ * its text.
  */
 void nano_console_write(struct nano_console *con, const char *buf, size_t len);
+
+/* How long the tasks that are not bound to CON wait for its mutex (by
+ * default 1 s, as the bound ones): a console whose terminal may keep its
+ * session's task in a write for long (the Telnet client that stops
+ * reading) gives the other tasks a short wait, so that they drop their
+ * text instead of stalling.
+ */
+void nano_console_set_other_lock_timeout(struct nano_console *con, uint32_t ms);
+
+/* Takes CON's mutex (waiting up to TIMEOUT_MS) for work on its terminal
+ * outside nano_console_write(), such as sending what the terminal has
+ * buffered; false when it was not free in time.
+ */
+bool nano_console_lock(struct nano_console *con, uint32_t timeout_ms);
+void nano_console_unlock(struct nano_console *con);
 
 /* Formats into a buffer on the stack (a longer text: on the heap, or cut
  * when that fails) and writes it with nano_console_write().

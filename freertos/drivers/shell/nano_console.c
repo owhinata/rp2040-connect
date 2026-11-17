@@ -26,6 +26,7 @@ void nano_console_init(struct nano_console *con, const char *name, nano_console_
 	con->out = out;
 	con->ctx = ctx;
 	con->lock = xSemaphoreCreateMutexStatic(&con->lock_mem);
+	con->other_lock_timeout_ms = LOCK_TIMEOUT_MS;
 	con->sh.console = con;
 	con->getopt.opterr = 1;
 	con->getopt.optind = 1;
@@ -98,13 +99,33 @@ void nano_console_write(struct nano_console *con, const char *buf, size_t len)
 		return;
 	}
 	locked = xTaskGetSchedulerState() != taskSCHEDULER_NOT_STARTED;
-	if (locked && xSemaphoreTake(con->lock, pdMS_TO_TICKS(LOCK_TIMEOUT_MS)) != pdTRUE) {
-		return;
+	if (locked) {
+		uint32_t ms =
+			nano_console_bound() == con ? LOCK_TIMEOUT_MS : con->other_lock_timeout_ms;
+
+		if (xSemaphoreTake(con->lock, pdMS_TO_TICKS(ms)) != pdTRUE) {
+			return;
+		}
 	}
 	write_crlf(con, buf, len);
 	if (locked) {
 		xSemaphoreGive(con->lock);
 	}
+}
+
+void nano_console_set_other_lock_timeout(struct nano_console *con, uint32_t ms)
+{
+	con->other_lock_timeout_ms = ms;
+}
+
+bool nano_console_lock(struct nano_console *con, uint32_t timeout_ms)
+{
+	return xSemaphoreTake(con->lock, pdMS_TO_TICKS(timeout_ms)) == pdTRUE;
+}
+
+void nano_console_unlock(struct nano_console *con)
+{
+	xSemaphoreGive(con->lock);
 }
 
 void nano_console_vprintf(struct nano_console *con, const char *fmt, va_list args)

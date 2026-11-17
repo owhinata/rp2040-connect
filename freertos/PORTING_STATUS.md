@@ -615,3 +615,42 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
   `wifi connect` のヘルプが 50 行ある（Zephyr の文面のまま）。互換層の `net_mgmt` の add が重複を除かない（NuttX の像が変わるので
   直していない）。`net_mgmt`（優先度 21）がイベントの文字を直接コンソールに書く。
 - 次: F11（Telnet、速度測定）→ CP-F3。
+
+## ユーザーの指示: `wifi` の使えないオプションを削る（2026-11-17）
+
+- `common/compat/zephyr_wifi_shell.c`（FreeRTOS 版だけがビルド）から、このボード（NINA のドライバー）で使えないオプションを、
+  ヘルプと引数の解析の両方から削る（企業向けの認証、AP・TWT 用、ドライバーが見ないスキャンの指定など）。残すのは
+  `nina_net.c` が実際に使うものだけ。F11 の subagent が同じビルドディレクトリーを使っているので、F11 が戻ってからメインがやる。
+
+## F11 の記録と CP-F3（2026-11-17）
+
+- 実装: `freertos/drivers/telnet/nano_telnet.c`（タスク `telnet_service` と `shell_telnet`、どちらも優先度 6。ポート 23、同時 1 接続、
+  IAC は取り除いて応答しない、エコーなし = Zephyr の `shell_telnet.c` と同じ）、`common/compat/zperf_iperf3.[ch]`（iperf3 の
+  制御プロトコルの最小限の自作、MIT）と `zephyr_zperf_shell.c`（Zephyr の `zperf_shell.c` からの抜き出し、Apache-2.0）、
+  `zperf_server_tid`（優先度 6、2048 B）、`nano_console` にロックの待ち時間の設定、ホストテスト `freertos/tests/telnet`
+  （python3 と iperf3 を使う。約 60 秒）。共有の既存ファイルは変えていない。
+- Zephyr 版と違えた点（subagent の報告）: 2 本目を断る前に 1 本目が閉じていないか確かめ直す（無いと、閉じてすぐ繋ぎ直した
+  クライアントが毎回断られる）。送信の再試行は 10 ms ごと、閉じるのはサービスのタスクだけ。プロンプトをすぐ送る。新しい
+  クライアントは空の行から。poll の失敗は 100 ms ごとに再試行（Zephyr 版はサービスのスレッドが終わる、とのこと）。
+- メインが確かめたこと: ビルド（既定・selftest、警告 0）、整形、`host_tests.sh`。Zephyr・NuttX の像の一致は subagent の報告の
+  まま（既存の共有ファイルは変えていない）。ソースは読んでいない。
+- **CP-F3（実機、ボード 10.42.0.97、PC 10.42.0.1）**:
+  - 起動時に `shell_telnet: Telnet shell backend initialized`。Telnet で接続（Python のソケット）: Enter でプロンプト、`help`
+    （23 行）、`ps`、`dmesg`（124 行、切れない）。2 本目はすぐ閉じられ（受信 0 バイト）、`Telnet client already connected.`、
+    1 本目は使える。USB の `ps` と Telnet の `dmesg` を同時に出しても混ざらない。
+  - 繋ぎ直し: 3 秒おき 20 回 20/20、0.5 秒おき 20 回 20/20、そのあとも繋がる。
+  - `zperf tcp upload 10.42.0.1 5201 20 1024`: ボード側 2.94 Mbps、`iperf3 -s`（3.16）側 2.93 Mbit/s（Zephyr 版の文書は
+    2.93〜3.00）。`zperf tcp download 5201` + `iperf3 -c -t 20`: 1.38 Mbit/s（Zephyr 版 1.54〜1.57、NuttX 版 0.95〜1.03）。
+  - 計測中（`imu start`）の download 10 秒: 1.10 Mbit/s、取得のエラー・オーバーラン 0、`cpu_active` 51.9%。
+  - スタックの空き: `shell_telnet` 1540/3072、`telnet_service` 1276/2048、`zperf_server_tid` 1104/2048。アイドル（接続中、
+    Telnet の待ち受けあり）の `cpu_active` 4.2%（F10 は 2.6%）。ヒープ 31392/32768。
+  - 1 回だけ見たもの: 書き込み後の最初の起動の 25.0 秒に `<err> shell_telnet: Telnet poll failed (-116)`（そのあと Telnet は
+    使えた。再起動後は出ない。原因未調査）。
+  - 未確認: `wifi disconnect` での Telnet の切断と再接続後の接続、`telnet` コマンド・`nc` からの操作、読まないクライアントの
+    10 秒での切断、Telnet からの `zperf`。
+- **説明のつかない記録**: F11 の書き込みの前、F10 の像が動いていた間（メインの `reboot` から 1119 秒後）に HardFault の記録が
+  1 件（task console、レジスターの形は `devmem` で存在しない番地を読んだときと同じ）。メインはその時刻に実機を操作していない。
+  ユーザーが端末から打ったのでなければ、F11 の subagent が指示に反して実機に触れた可能性がある。ユーザーに確認する。
+- IP アドレスの表示の案（subagent）: Zephyr の `net iface` を、互換層が持てる行だけで作る（100〜200 行。ルートの README の
+  手順が `net iface` を使っている）。実装はユーザーと相談のうえ。
+- 次: `wifi` の使えないオプションを削る（ユーザーの指示）→ F12（時刻同期と `ntp`）、F13（MQTT）→ CP-F4。

@@ -24,7 +24,11 @@
 #   sockets: the zsock_*() calls (freertos/drivers/nina/nina_socket.c) on the
 #   shared NINA core, a fake module and a fake clock (freertos/tests/socket), and Wi-Fi: the
 #   interface, the net_mgmt events, the stored credentials (settings "wifi_cred/<n>"), the
-#   reconnection and the "wifi" command on a fake module (freertos/tests/wifi).
+#   reconnection and the "wifi" command on a fake module (freertos/tests/wifi), and the
+#   Telnet shell (freertos/drivers/telnet) and "zperf" (common/compat/zperf_iperf3.c) on the
+#   host's sockets with the NINA's behaviour, driven over TCP on 127.0.0.1 by
+#   freertos/tests/telnet/client.py (python3; with the host's iperf3, which is skipped when
+#   missing) (freertos/tests/telnet, about 60 s).
 #
 #   freertos/script/host_tests.sh        run them
 #   freertos/script/host_tests.sh -v     also show the tests' output
@@ -370,3 +374,47 @@ else
     timeout 120 "$out/wifi" >"$out/log" 2>&1 || { cat "$out/log"; exit 1; }
 fi
 printf 'ok  wifi (interface, events, credentials, reconnection, wifi command, FreeRTOS POSIX port)\n'
+
+# The Telnet shell and "zperf" (freertos/tests/telnet): the build's Telnet backend
+# (drivers/telnet/nano_telnet.c, its port a variable here) and shell, the port's iperf3 and the
+# "zperf" command (common/compat/zperf_iperf3.c, zephyr_zperf_shell.c, with the prelude, as
+# drivers/zperf/zperf.cmake builds them), on the zsock_*() calls over the host's sockets with
+# the NINA's behaviour (tests/telnet/host_sock.c), on the same kernel and layer objects.  The
+# program is the board; tests/telnet/client.py starts it and is the client: the Telnet
+# protocol and line ends, a second client refused, 140 connections and disconnections, the
+# USB session's output kept apart, a failed connection, a client that stops reading, and with
+# the host's iperf3 (127.0.0.1 only; skipped without it) "zperf tcp upload" to "iperf3 -s" and
+# "iperf3 -c" to "zperf tcp download".
+if command -v python3 >/dev/null; then
+    tninc=(-D_GNU_SOURCE -DZ_SHELL_CMD_ROOT_GLOBAL -DCONFIG_GETOPT_LONG=1 -U_FORTIFY_SOURCE
+           -Itests/telnet -Itests/shell -Idrivers/shell -Idrivers/telnet -I../common/shell
+           -I../common/compat/lib/utils/getopt -ffunction-sections -fdata-sections)
+    tnobjs=()
+    for src in drivers/telnet/nano_telnet.c tests/telnet/main.c tests/telnet/host_sock.c \
+               drivers/shell/getopt_state.c drivers/shell/nano_console.c drivers/shell/nano_shell.c \
+               drivers/shell/shell_argv.c drivers/libc/stdio_wrap.c ../common/shell/zshell.c \
+               ../common/shell/subcmd.c ../common/compat/subsys/portability/posix/c_lib_ext/fnmatch.c \
+               ../common/compat/lib/utils/getopt/getopt.c ../common/compat/lib/utils/getopt/getopt_long.c \
+               ../common/compat/zperf_iperf3.c ../common/compat/zephyr_zperf_shell.c; do
+        obj="$out/telnet_$(basename "$src" .c).o"
+        extra=()
+        case $src in
+            */zperf_iperf3.c|*/zephyr_zperf_shell.c) extra=(-include drivers/compat/common_prelude.h) ;;
+            */nano_telnet.c) extra=(-DCONFIG_SHELL_TELNET_PORT=test_telnet_port
+                                    "-include" tests/telnet/port.h) ;;
+            *zshell.c|*nano_console.c) extra=(-Dcalloc=test_calloc -Dmalloc=test_malloc -Dfree=test_free) ;;
+        esac
+        cc "${flags[@]}" "${strict[@]}" "${tninc[@]}" "${inc[@]}" "${extra[@]}" -c "$src" -o "$obj"
+        tnobjs+=("$obj")
+    done
+    cc "${flags[@]}" -Wl,--gc-sections "${wraps[@]}" "${kernobjs[@]}" "${tnobjs[@]}" -o "$out/telnet_test"
+    if (( verbose )); then
+        timeout 300 python3 tests/telnet/client.py "$out/telnet_test" -v
+    else
+        timeout 300 python3 tests/telnet/client.py "$out/telnet_test" >"$out/log" 2>&1 || { cat "$out/log"; exit 1; }
+        tail -n 1 "$out/log"
+    fi
+    printf 'ok  telnet (protocol, one client, reconnections, stalls, zperf, FreeRTOS POSIX port)\n'
+else
+    printf 'skip telnet (no python3)\n'
+fi

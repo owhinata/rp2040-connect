@@ -3,7 +3,8 @@
  * USB CDC ACM port, the key-value store, the SPI link to the NINA-W102, I2C0
  * with its DMA reads, the LSM6DSOX, the IMU acquisition service (without
  * its MQTT transport and time synchronization yet), Wi-Fi with the stored
- * credentials and a task that blinks the LED.
+ * credentials, the shell over Telnet, the "zperf" speed test and a task
+ * that blinks the LED.
  */
 #include <stdbool.h>
 #include <stdint.h>
@@ -28,6 +29,7 @@
 #include "nina_net.h"
 #include "nano_shell.h"
 #include "nano_stdio.h"
+#include "nano_telnet.h"
 #include "priorities.h"
 #include "time_sync.h"
 #include "wifi_profile.h"
@@ -234,6 +236,15 @@ static void main_main(void *arg)
 	(void)wifi_credentials_init();
 	(void)wifi_shell_init();
 
+	/* The Telnet shell backend's SYS_INIT(APPLICATION, 95), after the
+	 * "wifi" command's: the listening socket on port 23 (whether or not
+	 * Wi-Fi is connected; the NINA keeps it across disconnections) and the
+	 * tasks "telnet_service" and "shell_telnet"
+	 * (freertos/drivers/telnet/nano_telnet.h).  A failure is logged and
+	 * leaves no Telnet.
+	 */
+	(void)nano_telnet_init(CONSOLE_PROMPT);
+
 	/* The threads of K_THREAD_DEFINE(), which Zephyr starts before main()
 	 * (z_init_static_threads(), after the devices) and the NuttX build in
 	 * its init task at this point, in the NuttX build's order: the NINA
@@ -249,6 +260,11 @@ static void main_main(void *arg)
 	start_thread(K_THREAD_DEFINE_START(nina_monitor_tid), "nina_monitor_tid");
 	start_thread(K_THREAD_DEFINE_START(imu_stream_tid), "imu_stream_tid");
 	start_thread(K_THREAD_DEFINE_START(wifi_reconnect_tid), "wifi_reconnect_tid");
+	/* The iperf3 server of "zperf tcp download" (common/compat/
+	 * zperf_iperf3.h), Zephyr's net_socket_service thread: waits until
+	 * the server is started.
+	 */
+	start_thread(K_THREAD_DEFINE_START(zperf_server_tid), "zperf_server_tid");
 
 	LOG_INF("USB console started");
 	ret = kv_store_init();

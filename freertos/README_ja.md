@@ -110,6 +110,7 @@ USB の CDC ACM ポートがコンソールです（UART0 は使いません）�
 | `imu start`、`imu stop`、`imu status`、`imu cal [reload\|zero]` | IMU の取得の開始・停止、カウンターの表示、校正値の表示と読み直し（Zephyr 版と同じ） |
 | `wifi connect`、`wifi disconnect`、`wifi scan`、`wifi status` | Wi-Fi の接続・切断・スキャン・状態（Zephyr 版と同じ構文。ほかのサブコマンドは無い） |
 | `wifi cred add`、`wifi cred delete`、`wifi cred list`、`wifi cred auto_connect` | 保存する資格情報の登録・削除・一覧と、保存済みの網への接続。`list` はパスフレーズも表示する |
+| `zperf tcp upload <IP> [port] [秒] [サイズ]`、`zperf tcp download [port]`、`zperf tcp download stop` | TCP の速度測定。PC 側は `iperf3 -s` / `iperf3 -c <ボード>`。UDP は無い |
 | `irqstack` | 割り込み用スタックの使用量 |
 | `dmesg` | RAM ログ（8 KB。再起動をまたいで残る） |
 | `kv set <key> <value>`、`kv sethex <key> <hex>`、`kv get <key>`、`kv delete <key>` | KV（設定と校正値）の読み書き。`get` は 16 進で表示 |
@@ -132,6 +133,8 @@ USB の CDC ACM ポートがコンソールです（UART0 は使いません）�
 - 起動の約 4 秒後に、保存済みの網へ自動で接続します。切れたら自動で再接続します。`wifi disconnect` で切ると、
   次に接続するまで自動の再接続は止まります。資格情報は KV にあり、Zephyr 版・NuttX 版と共通です。
 - 取得した IP アドレスを表示するコマンドはまだありません（PC 側で `ip neigh` などを見ます）。
+- Telnet（ポート 23）でも同じシェルが使えます。同時に 1 接続で、認証と暗号化はありません。接続しただけでは何も
+  出ません（Enter でプロンプト）。エコーと行の編集はクライアント側です。2 本目の接続はすぐ閉じられます。
 - `devmem` で存在しないアドレスを読むと異常停止します（例: `devmem 30000000`）。
 
 ## ディレクトリー
@@ -144,6 +147,7 @@ USB の CDC ACM ポートがコンソールです（UART0 は使いません）�
 | `drivers/kv/` | KV のフラッシュの読み書き |
 | `drivers/nina/` | NINA-W102 の SPI と制御線 |
 | `drivers/wifi/` | Wi-Fi の組み込み（本体は `common/`） |
+| `drivers/telnet/`、`drivers/zperf/` | Telnet のシェルと、速度測定の組み込み |
 | `drivers/i2c_dw/` | I2C0 と DMA（センサーのバス） |
 | `drivers/lsm6dso/` | LSM6DSOX のデバイスの生成と初期化（ドライバー本体は `common/drivers/lsm6dso/`） |
 | `drivers/imu/` | 取得サービスの組み込み（本体は `common/imu/`）と、送信・時刻同期の仮の実装 |

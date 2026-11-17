@@ -110,6 +110,7 @@ The console is the USB CDC ACM port (UART0 is not used). Opening a terminal show
 | `imu start`, `imu stop`, `imu status`, `imu cal [reload\|zero]` | Start and stop the IMU acquisition, show its counters, show and reload the calibration (as in the Zephyr build) |
 | `wifi connect`, `wifi disconnect`, `wifi scan`, `wifi status` | Connect, disconnect, scan, and show the state of Wi-Fi (the syntax of the Zephyr build; no other subcommands) |
 | `wifi cred add`, `wifi cred delete`, `wifi cred list`, `wifi cred auto_connect` | Add, delete and list the stored credentials, and connect to a stored network. `list` shows the passphrases too |
+| `zperf tcp upload <IP> [port] [seconds] [size]`, `zperf tcp download [port]`, `zperf tcp download stop` | TCP throughput test. On the PC: `iperf3 -s` / `iperf3 -c <board>`. No UDP |
 | `irqstack` | Use of the interrupt stack |
 | `dmesg` | The RAM log (8 KB; kept across restarts) |
 | `kv set <key> <value>`, `kv sethex <key> <hex>`, `kv get <key>`, `kv delete <key>` | Read and write the key-value store (settings and calibration). `get` prints hexadecimal |
@@ -136,6 +137,9 @@ The console is the USB CDC ACM port (UART0 is not used). Opening a terminal show
   connection is lost. After `wifi disconnect` it does not reconnect by itself until the next connection.
   The credentials are in the key-value store, shared with the Zephyr and NuttX builds.
 - No command shows the IP address yet (look at `ip neigh` or similar on the PC).
+- The same shell is on Telnet (port 23): one connection at a time, no authentication, no encryption.
+  Nothing is shown on connecting (Enter gives the prompt). Echo and line editing are the client's. A second
+  connection is closed at once.
 - Reading an address that does not exist with `devmem` ends in a fatal error (for example
   `devmem 30000000`).
 
@@ -149,6 +153,7 @@ The console is the USB CDC ACM port (UART0 is not used). Opening a terminal show
 | `drivers/kv/` | Reading and writing the flash of the key-value store |
 | `drivers/nina/` | The SPI bus and control lines of the NINA-W102 |
 | `drivers/wifi/` | Brings in Wi-Fi (the code is in `common/`) |
+| `drivers/telnet/`, `drivers/zperf/` | The Telnet shell, and the throughput test |
 | `drivers/i2c_dw/` | I2C0 and DMA (the sensor's bus) |
 | `drivers/lsm6dso/` | The device and start-up of the LSM6DSOX (the driver itself is in `common/drivers/lsm6dso/`) |
 | `drivers/imu/` | Brings in the acquisition service (in `common/imu/`), with stand-ins for the transport and time synchronization |

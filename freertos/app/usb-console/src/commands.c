@@ -328,9 +328,9 @@ SHELL_CMD_REGISTER(selftest, NULL, "Test the Zephyr compatibility layer (build o
 /* The commands of other sources: freertos/drivers/log/log_ram.c,
  * common/drivers/i2c_dw/i2c_dma_shell.c, common/imu/imu_stream.c,
  * common/imu/kv_store.c (with "kv wipe" of common/compat/kv_store_wipe.c),
- * common/drivers/nina/nina_shell.c and common/compat/zephyr_wifi_shell.c
+ * common/drivers/nina/nina_shell.c, common/compat/zephyr_wifi_shell.c
  * ("wifi", with "wifi cred" of the copy of Zephyr's
- * wifi_credentials_shell.c).
+ * wifi_credentials_shell.c) and common/compat/zephyr_zperf_shell.c.
  */
 NANO_SHELL_CMD_DECLARE(dmesg);
 NANO_SHELL_CMD_DECLARE(i2c_dma);
@@ -338,6 +338,7 @@ NANO_SHELL_CMD_DECLARE(imu);
 NANO_SHELL_CMD_DECLARE(kv);
 NANO_SHELL_CMD_DECLARE(nina);
 NANO_SHELL_CMD_DECLARE(wifi);
+NANO_SHELL_CMD_DECLARE(zperf);
 
 /* All the commands, sorted by name (Zephyr's "help" lists them so). */
 /* One command per line. */
@@ -364,6 +365,7 @@ const struct nano_shell_cmd nano_shell_cmds[] = {
 	NANO_SHELL_CMD(uptime),
 	NANO_SHELL_CMD(version),
 	NANO_SHELL_CMD(wifi),
+	NANO_SHELL_CMD(zperf),
 };
 /* clang-format on */
 
