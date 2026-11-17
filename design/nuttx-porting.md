@@ -548,10 +548,15 @@ Instead of the Zephyr build's `zperf` (iperf 3 protocol), the port uses NuttX's 
 
 ## I2C0 (`i2c`)
 
-I2C0 carries the LSM6DSOX (0x6A) and the ATECC608A (0x60). The driver is the board's
-`src/nano_i2c.c`, a copy of the controller part of the DesignWare I2C driver that the Zephyr
-version uses (`zephyr/app/usb-console/drivers/i2c_dw/i2c_dw.c`). NuttX's `rp2040_i2c.c`
-(`CONFIG_RP2040_I2C`) is not used. It is registered as `/dev/i2c0` for NuttX's `i2c` tool. Reads
+I2C0 carries the LSM6DSOX (0x6A) and the ATECC608A (0x60). The driver is a copy of the controller
+part of the DesignWare I2C driver that the Zephyr version uses
+(`zephyr/app/usb-console/drivers/i2c_dw/i2c_dw.c`). Its core, which works on the registers
+(`common/drivers/i2c_dw/nano_i2c.c`, and `nano_dma.c` for the DMA), does not depend on the OS; the
+semaphores, the clock, the interrupt connection, the reset and the pins and NuttX's
+`struct i2c_master_s` are in the board's `src/i2c_dw_os_impl.h`, `nano_i2c_instance.h` and
+`nano_dma_instance.h` (the boundary is `common/drivers/i2c_dw/i2c_dw_os.h`; the table is in the
+"I2C0" section of `nuttx/drivers/README.md`). NuttX's `rp2040_i2c.c` (`CONFIG_RP2040_I2C`) is not
+used. It is registered as `/dev/i2c0` for NuttX's `i2c` tool. Reads
 that meet the conditions run on DMA (see "DMA reads (`i2c_dma`)" below).
 
 ```
@@ -592,8 +597,8 @@ read that meets all of the following runs on DMA; other reads and all writes are
   the DMA channels do not stop within 100 ms, I2C0 is quarantined
   (`<err> i2c_dw: DMA channels did not stop; I2C controller quarantined`) and every later transfer
   gives `-EIO` until a reboot. The steps are in the "I2C0" section of `nuttx/drivers/README.md`.
-- NuttX's DMA layer (`CONFIG_RP2040_DMAC`) is off; only the board's `src/nano_dma.c` (which behaves as
-  Zephyr's RP2040 DMA driver) uses the DMA.
+- NuttX's DMA layer (`CONFIG_RP2040_DMAC`) is off; only `common/drivers/i2c_dw/nano_dma.c` (which
+  behaves as Zephyr's RP2040 DMA driver) uses the DMA.
 
 ```text
 i2c_dma mode          show the mode (i2c_dma=on or i2c_dma=off)
@@ -1121,7 +1126,8 @@ Priorities map as `NuttX = 118 − Zephyr`; `nuttx/drivers/include/priorities.h`
 ## Host test details
 
 The following files are used by both the Zephyr and the NuttX build and are kept once each in the
-repository's `common/` (only the NuttX build uses the NINA core now; see the table). The Zephyr
+repository's `common/` (only the NuttX build uses the NINA core and the I2C0 and DMA core now;
+see the table). The Zephyr
 build's `CMakeLists.txt` and the NuttX build's Makefiles
 (`apps/imu/Makefile`, `apps/nina/Makefile`, `apps/wifi/Makefile`, `apps/sensor/Makefile`, `drivers/compat/Make.defs`,
 `drivers/lsm6dso/Make.defs`, `drivers/nina/Make.defs`, the board's `src/Make.defs`) refer to them
@@ -1129,7 +1135,7 @@ there. The files that use
 Zephyr's API (in `common/drivers/`, the FIFO setup and stream, the RTIO single reads, the NINA's
 Wi-Fi and the sensor shell; in `common/imu/`, the acquisition service, the time synchronization,
 the calibration, MQTT and the Wi-Fi profile) run on
-the compatibility layer in the NuttX build. The NuttX build compiles each file of `common/` (but the NINA core) with
+the compatibility layer in the NuttX build. The NuttX build compiles each file of `common/` (but the NINA core and the I2C0 and DMA core) with
 the prelude (`nuttx/drivers/compat/common_prelude.h`), and the few lines that differ between the
 builds are in headers of each OS (`sensor_shell_os.h`, `wifi_profile_os.h`, `lsm6dso_instance.h`;
 the Zephyr build's under `zephyr/app/usb-console/`, the NuttX build's under `nuttx/apps/` and
@@ -1143,9 +1149,9 @@ with the layer's NuttX implementation (`nuttx/drivers/compat/`; the Zephyr build
 | `common/drivers/lsm6dso/` | `lsm6dso.[ch]` (the driver; the device at its end is `lsm6dso_instance.h` of each build), `lsm6dso_{fifo,cal,zero,fifo_decoder,fifo_hw,fifo_irq}`, `lsm6dso_stream.c`, `lsm6dso_compat.c`, `lsm6dso_fifo_packet.h`, `lsm6dso_fifo_stats.h`, `lsm6dso_attributes.h` |
 | `common/drivers/nina/` | `nina_net.c` and `nina_proto.h` (both builds); the NINA core `nina_spi.c`, `nina_sock.[ch]` and `nina_dns.[ch]` with the headers of its boundary, `nina_os.h` and `nano_nina.h`, and its socket options, `nina_sockopt.h` (only the NuttX build uses them now; they do not use Zephyr's API and are compiled without the prelude; the boundary is described under "NINA-W102" in `nuttx/drivers/README.md`) |
 | `common/drivers/sensor_shell/` | `sensor_shell.c` |
-| `common/drivers/i2c_dw/` | `i2c_dw_rp2040_commands.[ch]` |
+| `common/drivers/i2c_dw/` | `i2c_dw_rp2040_commands.[ch]` (both builds); the I2C0 and DMA core `nano_i2c.c` and `nano_dma.c` with its definitions `nano_i2c_dw.h`, `nano_i2c_dw_registers.h` and `nano_dma.h`, the `i2c_dma` state `nano_i2c_dma.h` and the header of its boundary, `i2c_dw_os.h` (only the NuttX build uses them now; they are compiled without the prelude, and the OS's part is the board's `src/i2c_dw_os_impl.h`, `nano_i2c_instance.h` and `nano_dma_instance.h`; the boundary is described under "I2C0" in `nuttx/drivers/README.md`) |
 | `common/compat/` | the OS-independent part of the compatibility layer (the headers of Zephyr's API `zephyr/...`, `zephyr_compat.h`, work items, RTIO, the block pool, the device list, `gpio0`, `net_mgmt`, the Wi-Fi requests, the sensors' default iodev) and the copies of Zephyr's libraries that the builds on the layer use (`sensor_shell_stream.c`, `sensor_shell.h`, `wifi_credentials.c`, `wifi_credentials_backend_settings.c`, `wifi_credentials_internal.h`); the Zephyr build does not use it |
-| `common/tests/` | the 20 tests of the files above (run by `common/tests/run.sh`, which the `host_tests.sh` of both builds call first; the layer's `zephyr_rtio`, `zephyr_work` and `mqtt_min` on the fake kernel, the NINA core's `nina_spi`, `nina_sock` and `nina_dns` on fakes of its boundary defined by the tests); `stream_stop.c` includes `../drivers/lsm6dso/lsm6dso_stream.c` (with the include guard of `lsm6dso.h` defined first, so nothing of that header is used; `stream_stop.c` provides the definitions it needs) |
+| `common/tests/` | the 21 tests of the files above (run by `common/tests/run.sh`, which the `host_tests.sh` of both builds call first; the layer's `zephyr_rtio`, `zephyr_work` and `mqtt_min` on the fake kernel, the NINA core's `nina_spi`, `nina_sock` and `nina_dns` on fakes of its boundary defined by the tests); `stream_stop.c` includes `../drivers/lsm6dso/lsm6dso_stream.c` (with the include guard of `lsm6dso.h` defined first, so nothing of that header is used; `stream_stop.c` provides the definitions it needs) |
 | `common/tests/fakes/` | stand-ins for the Zephyr and ST headers the tests need (`zephyr/drivers/sensor.h`, `zephyr/drivers/sensor_clock.h`, `zephyr/drivers/i2c.h`, `zephyr/rtio/rtio.h`, `lsm6dso_reg.h`) |
 | `common/tests/zephyr_fakes/` | the compatibility layer's fake kernel: the OS headers (`zephyr_os.h`, `zephyr_os_spinlock.h`, `zephyr_os_atomic.h`, `zephyr_rtio_workq_os.h`, `zephyr/sys/__assert.h`) and their functions (`zephyr_kernel_host.[ch]`: one thread; the test runs the work queues and fires the timers); the NuttX build's tests use it too |
 
@@ -1222,7 +1228,7 @@ parameters, the version request, the search for the start of the answer (1000 by
 20 and 10000 ms, counted as samples every 100 µs), the reset on the first request, the order of
 the CS edges and transfers, and the lock.
 
-`nuttx/tests/nano_i2c_dw.c` checks `src/nano_i2c_dw.h` against the relevant parts of the Zephyr
+`common/tests/nano_i2c_dw.c` checks `common/drivers/i2c_dw/nano_i2c_dw.h` against the relevant parts of the Zephyr
 version's `i2c_dw.c` and `i2c_dw.h` and of Zephyr's `i2c.h`, written out in the test: the SCL
 counts (500/625, 93/109 and 31/31 at 125 MHz, and every combination of a 1 to 400 MHz clock and a
 speed class), the frequencies taken, the NuttX message flags turned into Zephyr's, the words

@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-/* boards/arduino-nano-rp2040-connect/src/nano_i2c_dw.h: the OS-independent
+/* common/drivers/i2c_dw/nano_i2c_dw.h: the OS-independent
  * pieces of the I2C0 driver (nano_i2c.c) against the Zephyr build's
  * driver (zephyr/app/usb-console/drivers/i2c_dw/i2c_dw.c, i2c_dw.h) and
  * Zephyr's i2c.h, written out below as the reference:

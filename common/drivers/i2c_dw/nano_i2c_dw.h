@@ -1,12 +1,12 @@
 /****************************************************************************
- * boards/arduino-nano-rp2040-connect/src/nano_i2c_dw.h
+ * common/drivers/i2c_dw/nano_i2c_dw.h
  *
  * SPDX-License-Identifier: Apache-2.0
  *
  ****************************************************************************/
 
-/* The OS-independent part of the I2C0 driver (nano_i2c.c), kept free of
- * NuttX headers so the host tests (nuttx/tests/nano_i2c_dw.c) can check it:
+/* Definitions and pure functions of the I2C0 driver (nano_i2c.c), without
+ * OS headers, so the host tests (common/tests/nano_i2c_dw.c) can check them:
  *
  * - the definitions of the Zephyr build's i2c_dw.h
  *   (zephyr/app/usb-console/drivers/i2c_dw/i2c_dw.h) that the controller
@@ -17,17 +17,18 @@
  * - the command words that i2c_dw_data_send() and i2c_dw_data_ask() write
  *   to IC_DATA_CMD (i2c_dw.c:516-546, 428-456), and the RESTART that
  *   i2c_dw_transfer() adds when the direction changes (i2c_dw.c:1262-1272);
- * - what the port adds: the NuttX message flags (I2C_M_*) turned into
- *   Zephyr's (I2C_MSG_*) for one message of a transfer, and the NuttX
- *   frequency turned into a Zephyr speed class.
+ * - what the NuttX build adds: the NuttX message flags (I2C_M_*) turned
+ *   into Zephyr's (I2C_MSG_*) for one message of a transfer, and the NuttX
+ *   frequency turned into a Zephyr speed class (its part of the driver,
+ *   nano_i2c_instance.h and i2c_dw_os_impl.h of the board, uses them).
  *
  * The Zephyr build's values: CONFIG_I2C_DW_CLOCK_SPEED=125 (MHz, clk_peri),
  * CONFIG_I2C_DW_IC_CLK_FREQ_OPTIMIZATION off, no lcnt-offset/hcnt-offset/
  * fs-spike-len/hs-spike-len in the devicetree (so 0, 0, 1, 1).
  */
 
-#ifndef __BOARDS_ARDUINO_NANO_RP2040_CONNECT_SRC_NANO_I2C_DW_H
-#define __BOARDS_ARDUINO_NANO_RP2040_CONNECT_SRC_NANO_I2C_DW_H
+#ifndef __COMMON_DRIVERS_I2C_DW_NANO_I2C_DW_H
+#define __COMMON_DRIVERS_I2C_DW_NANO_I2C_DW_H
 
 #include <errno.h>
 #include <stdbool.h>
@@ -55,7 +56,7 @@
 #define NANO_I2C_SPEED_ULTRA     5U  /* 5 Mbit/s */
 
 /* The NuttX message flags (nuttx/include/nuttx/i2c/i2c_master.h:95-98);
- * nano_i2c.c checks that they match.
+ * the NuttX build's nano_i2c_instance.h checks that they match.
  */
 
 #define NANO_I2C_M_READ    0x0001
@@ -310,4 +311,4 @@ static inline uint32_t nano_i2c_dw_read_cmd(uint8_t *flags,
 	return data;
 }
 
-#endif /* __BOARDS_ARDUINO_NANO_RP2040_CONNECT_SRC_NANO_I2C_DW_H */
+#endif /* __COMMON_DRIVERS_I2C_DW_NANO_I2C_DW_H */

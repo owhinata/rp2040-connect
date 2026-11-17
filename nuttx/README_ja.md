@@ -420,11 +420,11 @@ OS に依存しない部分のホストテスト 39 本を PC 上でビルドし
 
 | 置き場所 | 内容 |
 |---|---|
-| `boards/arduino-nano-rp2040-connect/` | ボード定義（`configs/imu/defconfig`、`include/board.h`、リンカースクリプト、`src/` の起動処理・時計・I2C0・DMA・KV の flash など） |
+| `boards/arduino-nano-rp2040-connect/` | ボード定義（`configs/imu/defconfig`、`include/board.h`、リンカースクリプト、`src/` の起動処理・時計・I2C0 と DMA の NuttX の部分・KV の flash など） |
 | `drivers/` | カーネル側のコード: NINA（`nina/`）、LSM6DSOX（`lsm6dso/`）、RAM ログ（`log/`）、Zephyr の API の互換層の NuttX の実装（`compat/`）、共通のヘッダー（`include/`） |
 | `apps/` | アプリ: `init`（起動処理と Telnet）、`imu`（取得・MQTT・時刻同期・校正・KV）、`kv`、`nina`、`ntp`、`wifi`、`sensor`、`i2c_dma`、`dmesg`、`irqstack`、`subcmd`（サブコマンドの共通部品） |
 | `patches/` | NuttX と nuttx-apps へのパッチ |
 | `script/` | `setup.sh`、`build.sh`、`flash.sh`、`host_tests.sh`、`bin2uf2.py`、`kconfig-tweak` |
 | `tests/` | ホストテスト（NuttX 版だけのもの） |
-| `../common/` | Zephyr 版と共有するソース（`imu/`、`drivers/lsm6dso/`、`drivers/nina/`、`drivers/sensor_shell/`、`drivers/i2c_dw/`。`drivers/nina/` の NINA のコアは今はこの版だけが使う）、互換層の OS に依存しない部分（`compat/`）とそれらのホストテスト。ビルドは `VPATH` でそこを参照し、NINA のコアを除く各ファイルに前置きヘッダー（`drivers/compat/common_prelude.h`）を付けてコンパイルする。オブジェクトは `apps/imu`・`apps/wifi`・`apps/sensor`・`drivers`・ボードのディレクトリーにできる |
+| `../common/` | Zephyr 版と共有するソース（`imu/`、`drivers/lsm6dso/`、`drivers/nina/`、`drivers/sensor_shell/`、`drivers/i2c_dw/`。`drivers/nina/` の NINA のコアと `drivers/i2c_dw/` の I2C0・DMA のコアは今はこの版だけが使う）、互換層の OS に依存しない部分（`compat/`）とそれらのホストテスト。ビルドは `VPATH` でそこを参照し、NINA のコアと I2C0・DMA のコアを除く各ファイルに前置きヘッダー（`drivers/compat/common_prelude.h`）を付けてコンパイルする。オブジェクトは `apps/imu`・`apps/wifi`・`apps/sensor`・`drivers`・ボードのディレクトリーにできる |
 | `nuttx/`、`nuttx-apps/`、`pico-sdk/`、`toolchain/`、`stmemsc/`、`.venv/`、`build/` | `setup.sh` が取得するものとビルドの生成物（Git 管理外） |

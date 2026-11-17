@@ -1,15 +1,16 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-/* The I2C0 DMA reads of the board's I2C driver
- * (boards/arduino-nano-rp2040-connect/src/nano_i2c.c, CONFIG_NANO_I2C0_DMA):
+/* The I2C0 DMA reads of the I2C0 core (common/drivers/i2c_dw/nano_i2c.c,
+ * CONFIG_NANO_I2C0_DMA):
  * the state that the Zephyr build's "i2c_dma" shell command reads and sets
  * (zephyr/app/usb-console/drivers/i2c_dw/i2c_dw.c: rp_dma_enabled and the
  * counters rp_dma_transfers, rp_dma_bytes, rp_dma_errors,
- * rp_dma_fallbacks).  The flat build lets the command (nuttx/apps/i2c_dma)
- * call these directly.
+ * rp_dma_fallbacks).  No OS header: the command of each build calls these
+ * directly (NuttX: nuttx/apps/i2c_dma, which the flat build links with
+ * the board's I2C0 driver).
  */
 
-#ifndef __NUTTX_DRIVERS_INCLUDE_NANO_I2C_DMA_H
-#define __NUTTX_DRIVERS_INCLUDE_NANO_I2C_DMA_H
+#ifndef __COMMON_DRIVERS_I2C_DW_NANO_I2C_DMA_H
+#define __COMMON_DRIVERS_I2C_DW_NANO_I2C_DMA_H
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -50,4 +51,4 @@ void nano_i2c_dma_set_enabled(bool enabled);
 }
 #endif
 
-#endif /* __NUTTX_DRIVERS_INCLUDE_NANO_I2C_DMA_H */
+#endif /* __COMMON_DRIVERS_I2C_DW_NANO_I2C_DMA_H */

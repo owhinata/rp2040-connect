@@ -5,8 +5,8 @@
  *
  * SPDX-License-Identifier: Apache-2.0
  */
-#ifndef __BOARDS_ARDUINO_NANO_RP2040_CONNECT_SRC_NANO_I2C_DW_REGISTERS_H
-#define __BOARDS_ARDUINO_NANO_RP2040_CONNECT_SRC_NANO_I2C_DW_REGISTERS_H
+#ifndef __COMMON_DRIVERS_I2C_DW_NANO_I2C_DW_REGISTERS_H
+#define __COMMON_DRIVERS_I2C_DW_NANO_I2C_DW_REGISTERS_H
 
 /* Copy of zephyr/app/usb-console/drivers/i2c_dw/i2c_dw_registers.h (the
  * Zephyr build's DesignWare I2C register map and accessors).  Changes:
@@ -16,7 +16,7 @@
  * plain volatile 32-bit accesses, as Zephyr's sys_read32()/sys_write32()/
  * sys_set_bit()/sys_clear_bit()/sys_test_bit() do on Arm (a read-modify-
  * write without a lock for the bit operations).  Host tests include this
- * file too (no NuttX header).
+ * file too (no OS header).
  */
 
 #include <stdint.h>
@@ -398,4 +398,4 @@ DEFINE_MM_REG_READ(comp_type, DW_IC_REG_COMP_TYPE, 32)
 }
 #endif
 
-#endif /* __BOARDS_ARDUINO_NANO_RP2040_CONNECT_SRC_NANO_I2C_DW_REGISTERS_H */
+#endif /* __COMMON_DRIVERS_I2C_DW_NANO_I2C_DW_REGISTERS_H */

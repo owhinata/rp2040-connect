@@ -2,7 +2,8 @@
 /* Host test of nuttx/apps/i2c_dma/i2c_dma_main.c: the output of the
  * "i2c_dma" command against the Zephyr build's (i2c_dw.c:770-801, and
  * host/recordings/zephyr-reference-outputs.txt for "i2c_dma stats"), with
- * the board's side (nano_i2c_dma.h) replaced by fakes.
+ * the I2C0 core's side (common/drivers/i2c_dw/nano_i2c_dma.h) replaced by
+ * fakes.
  */
 
 #define _POSIX_C_SOURCE 200809L

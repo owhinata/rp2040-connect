@@ -654,7 +654,12 @@ version's; what has been verified on the NuttX port is listed separately in 11.7
   OS-independent core (the SPI link `nina_spi.c`, the socket table and commands `nina_sock.[ch]`,
   name resolution `nina_dns.[ch]`, which depend only on the narrow boundary of `nina_os.h` and
   `nano_nina.h`) is in `common/drivers/nina/` too and is used by the NuttX build now (the Zephyr
-  build uses the three files of its own `drivers/nina/`).
+  build uses the three files of its own `drivers/nina/`). The core that works on the I2C0 and DMA
+  registers (`nano_i2c.c` and `nano_dma.c` in `common/drivers/i2c_dw/`, copies of the Zephyr
+  build's `i2c_dw.c` and RP2040 DMA driver) does not depend on the OS either; it depends only on the
+  boundary of `i2c_dw_os.h` (semaphores, clock, interrupt connection, reset and pins, the link to
+  the OS's driver model) and is used by the NuttX build now (the Zephyr build uses its own
+  `drivers/i2c_dw/i2c_dw.c`).
 - The shared sources run on top of a compatibility layer
   (its OS-independent part in `common/compat/`, its NuttX implementation in
   `nuttx/drivers/compat/`) that provides the OS calls **under Zephyr's names**. The layer has only what the copied sources use

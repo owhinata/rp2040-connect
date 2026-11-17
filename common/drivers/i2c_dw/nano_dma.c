@@ -1,5 +1,5 @@
 /****************************************************************************
- * boards/arduino-nano-rp2040-connect/src/nano_dma.c
+ * common/drivers/i2c_dw/nano_dma.c
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -44,30 +44,26 @@
  * - Init (dma_rpi_pico_init()): reset the DMA block (reset_line_toggle_dt())
  *   and attach and enable both interrupts.
  *
- * NuttX's own DMA layer (arch/arm/src/rp2040/rp2040_dmac.c,
- * CONFIG_RP2040_DMAC) must be off: it takes DMA_IRQ_0 for all channels,
- * allocates channels with a wait, and stops a channel with an unbounded
- * wait.  Nothing else in this port uses the DMA (the NINA's SPI runs
- * without DMA, as in the Zephyr build), as in the Zephyr build, where i2c0
- * is the DMA's only user.
+ * The OS's part (i2c_dw_os.h): the critical section of the channel
+ * allocation, and nano_dma_instance.h, read at the end of this file, which
+ * defines nano_dma_os_reset() (the reset of the DMA block),
+ * nano_dma_os_irq_enable() (DMA_IRQ_0 and DMA_IRQ_1 on a handler that
+ * calls dma_rpi_pico_isr_handler(), then enabled) and any OS-specific
+ * interface.  No other user of the DMA may own its interrupts or channels:
+ * as in the Zephyr build, where i2c0 is the DMA's only user, the
+ * allocation here does not know of other users, and the reset at init
+ * stops any channel that runs.  (The NuttX build turns NuttX's own DMA
+ * layer off, nuttx/drivers/README.md.)
  *
  * Left out (not used by i2c_dw.c): reload, get_status, block chains,
  * memory-to-memory, more than one DMA instance.
  */
 
-#include <nuttx/config.h>
+#include "i2c_dw_os.h"
 
 #include <errno.h>
 #include <stdbool.h>
 #include <stdint.h>
-
-#include <nuttx/arch.h>
-#include <nuttx/irq.h>
-
-#include "arm_internal.h"
-#include "hardware/rp2040_dma.h"
-#include "hardware/rp2040_memorymap.h"
-#include "hardware/rp2040_resets.h"
 
 /* CONFIG_DMA_LOG_LEVEL of the Zephyr build (3). */
 
@@ -79,8 +75,8 @@
 LOG_MODULE_REGISTER(dma_rpi_pico);
 
 #define DMA_INT_ERROR_FLAGS                                                    \
-  (RP2040_DMA_CTRL_TRIG_AHB_ERROR | RP2040_DMA_CTRL_TRIG_READ_ERROR |          \
-   RP2040_DMA_CTRL_TRIG_WRITE_ERROR)
+  (NANO_DMA_CTRL_TRIG_AHB_ERROR | NANO_DMA_CTRL_TRIG_READ_ERROR |              \
+   NANO_DMA_CTRL_TRIG_WRITE_ERROR)
 
 /* pico-sdk enum dma_channel_transfer_size */
 
@@ -123,19 +119,19 @@ static inline void rpi_pico_dma_channel_clear_error_flags(uint32_t channel)
 {
   /* ch[channel].al1_ctrl &= ~DMA_INT_ERROR_FLAGS */
 
-  uintptr_t al1 = RP2040_DMA_AL1_CTRL(channel);
+  uintptr_t al1 = NANO_DMA_AL1_CTRL(channel);
 
-  putreg32(getreg32(al1) & ~DMA_INT_ERROR_FLAGS, al1);
+  nano_dma_putreg32(nano_dma_getreg32(al1) & ~DMA_INT_ERROR_FLAGS, al1);
 }
 
 static inline uint32_t rpi_pico_dma_channel_get_error_flags(uint32_t channel)
 {
-  return getreg32(RP2040_DMA_AL1_CTRL(channel)) & DMA_INT_ERROR_FLAGS;
+  return nano_dma_getreg32(NANO_DMA_AL1_CTRL(channel)) & DMA_INT_ERROR_FLAGS;
 }
 
 static inline void rpi_pico_dma_channel_abort(uint32_t channel)
 {
-  putreg32(1u << channel, RP2040_DMA_CHAN_ABORT);
+  nano_dma_putreg32(1u << channel, NANO_DMA_CHAN_ABORT);
 }
 
 /****************************************************************************
@@ -177,24 +173,24 @@ static inline void dma_irqn_set_channel_enabled(uint32_t irq_index,
                                                 uint32_t channel,
                                                 bool enabled)
 {
-  uintptr_t inte = irq_index ? RP2040_DMA_INTE1 : RP2040_DMA_INTE0;
+  uintptr_t inte = irq_index ? NANO_DMA_INTE1 : NANO_DMA_INTE0;
 
   if (enabled)
     {
-      setbits_reg32(1u << channel, inte);
+      nano_dma_setbits32(1u << channel, inte);
     }
   else
     {
-      clrbits_reg32(1u << channel, inte);
+      nano_dma_clrbits32(1u << channel, inte);
     }
 }
 
 static inline bool dma_irqn_get_channel_status(uint32_t irq_index,
                                                uint32_t channel)
 {
-  uintptr_t ints = irq_index ? RP2040_DMA_INTS1 : RP2040_DMA_INTS0;
+  uintptr_t ints = irq_index ? NANO_DMA_INTS1 : NANO_DMA_INTS0;
 
-  return (getreg32(ints) & (1u << channel)) != 0;
+  return (nano_dma_getreg32(ints) & (1u << channel)) != 0;
 }
 
 /* pico-sdk dma_channel_get_default_config() with the setters that
@@ -209,24 +205,24 @@ static uint32_t dma_rpi_pico_ctrl(uint32_t channel, bool read_increment,
 
   if (read_increment)
     {
-      ctrl |= RP2040_DMA_CTRL_TRIG_INCR_READ;
+      ctrl |= NANO_DMA_CTRL_TRIG_INCR_READ;
     }
 
   if (write_increment)
     {
-      ctrl |= RP2040_DMA_CTRL_TRIG_INCR_WRITE;
+      ctrl |= NANO_DMA_CTRL_TRIG_INCR_WRITE;
     }
 
-  ctrl |= (dreq << RP2040_DMA_CTRL_TRIG_TREQ_SEL_SHIFT) &
-          RP2040_DMA_CTRL_TRIG_TREQ_SEL_MASK;
-  ctrl |= (channel << RP2040_DMA_CTRL_TRIG_CHAIN_TO_SHIFT) &
-          RP2040_DMA_CTRL_TRIG_CHAIN_TO_MASK;
-  ctrl |= (size << RP2040_DMA_CTRL_TRIG_DATA_SIZE_SHIFT) &
-          RP2040_DMA_CTRL_TRIG_DATA_SIZE_MASK;
-  ctrl |= RP2040_DMA_CTRL_TRIG_EN;
+  ctrl |= (dreq << NANO_DMA_CTRL_TRIG_TREQ_SEL_SHIFT) &
+          NANO_DMA_CTRL_TRIG_TREQ_SEL_MASK;
+  ctrl |= (channel << NANO_DMA_CTRL_TRIG_CHAIN_TO_SHIFT) &
+          NANO_DMA_CTRL_TRIG_CHAIN_TO_MASK;
+  ctrl |= (size << NANO_DMA_CTRL_TRIG_DATA_SIZE_SHIFT) &
+          NANO_DMA_CTRL_TRIG_DATA_SIZE_MASK;
+  ctrl |= NANO_DMA_CTRL_TRIG_EN;
   if (high_priority)
     {
-      ctrl |= RP2040_DMA_CTRL_TRIG_HIGH_PRIORITY;
+      ctrl |= NANO_DMA_CTRL_TRIG_HIGH_PRIORITY;
     }
 
   return ctrl;
@@ -240,22 +236,22 @@ static void dma_channel_configure(uint32_t channel, uint32_t ctrl,
                                   uintptr_t write_addr, uintptr_t read_addr,
                                   uint32_t count)
 {
-  putreg32(read_addr, RP2040_DMA_READ_ADDR(channel));
-  putreg32(write_addr, RP2040_DMA_WRITE_ADDR(channel));
-  putreg32(count, RP2040_DMA_TRANS_COUNT(channel));
-  putreg32(ctrl, RP2040_DMA_CTRL_TRIG(channel));
+  nano_dma_putreg32(read_addr, NANO_DMA_READ_ADDR(channel));
+  nano_dma_putreg32(write_addr, NANO_DMA_WRITE_ADDR(channel));
+  nano_dma_putreg32(count, NANO_DMA_TRANS_COUNT(channel));
+  nano_dma_putreg32(ctrl, NANO_DMA_CTRL_TRIG(channel));
 }
 
 /****************************************************************************
  * Interrupt handler
  ****************************************************************************/
 
-static int dma_rpi_pico_isr(int irq, void *context, void *arg)
-{
-  (void)irq;
-  (void)context;
-  (void)arg;
+/* dma_rpi_pico_isr(): the body of the handler of DMA_IRQ_0 and DMA_IRQ_1,
+ * which the OS's handler (nano_dma_instance.h) calls.  Interrupt.
+ */
 
+static inline void dma_rpi_pico_isr_handler(void)
+{
   for (uint32_t i = 0; i < NANO_DMA_CHANNELS; i++)
     {
       int err = 0;
@@ -279,9 +275,22 @@ static int dma_rpi_pico_isr(int irq, void *context, void *arg)
           g_channels[i].callback(g_channels[i].user_data, i, err);
         }
     }
-
-  return 0;
 }
+
+/* The OS's part (nano_dma_instance.h). */
+
+/* reset_line_toggle_dt(): reset_block_num(), then
+ * unreset_block_num_wait_blocking() for the DMA block.
+ */
+
+static void nano_dma_os_reset(void);
+
+/* irq_configure(): both interrupts of the DMA node (DMA_IRQ_0 and
+ * DMA_IRQ_1) on a handler that calls dma_rpi_pico_isr_handler(), then
+ * enabled.
+ */
+
+static void nano_dma_os_irq_enable(void);
 
 /****************************************************************************
  * Public Functions
@@ -441,7 +450,7 @@ int nano_dma_stop(uint32_t channel)
 int nano_dma_request_channel(void)
 {
   int channel = -EINVAL;
-  irqstate_t flags;
+  i2c_dw_os_irqstate_t flags;
 
   if (!g_ready)
     {
@@ -450,7 +459,7 @@ int nano_dma_request_channel(void)
 
   /* atomic_test_and_set_bit() over the channels, lowest first. */
 
-  flags = up_irq_save();
+  flags = i2c_dw_os_irq_lock();
   for (int i = 0; i < NANO_DMA_CHANNELS; i++)
     {
       if ((g_taken & (1u << i)) == 0)
@@ -461,13 +470,13 @@ int nano_dma_request_channel(void)
         }
     }
 
-  up_irq_restore(flags);
+  i2c_dw_os_irq_unlock(flags);
   return channel;
 }
 
 void nano_dma_release_channel(uint32_t channel)
 {
-  irqstate_t flags;
+  i2c_dw_os_irqstate_t flags;
 
   if (!g_ready)
     {
@@ -476,9 +485,9 @@ void nano_dma_release_channel(uint32_t channel)
 
   if (channel < NANO_DMA_CHANNELS)
     {
-      flags = up_irq_save();
+      flags = i2c_dw_os_irq_lock();
       g_taken &= ~(1u << channel);
-      up_irq_restore(flags);
+      i2c_dw_os_irq_unlock(flags);
     }
 }
 
@@ -494,23 +503,20 @@ int nano_dma_initialize(void)
       return 0;
     }
 
-  /* reset_line_toggle_dt(): reset_block_num(), then
-   * unreset_block_num_wait_blocking().
-   */
+  /* reset_line_toggle_dt() */
 
-  setbits_reg32(RP2040_RESETS_RESET_DMA, RP2040_RESETS_RESET);
-  clrbits_reg32(RP2040_RESETS_RESET_DMA, RP2040_RESETS_RESET);
-  while ((getreg32(RP2040_RESETS_RESET_DONE) & RP2040_RESETS_RESET_DMA) == 0)
-    {
-    }
+  nano_dma_os_reset();
 
   /* irq_configure(): both interrupts of the DMA node, same handler. */
 
-  irq_attach(RP2040_DMA_IRQ_0, dma_rpi_pico_isr, NULL);
-  up_enable_irq(RP2040_DMA_IRQ_0);
-  irq_attach(RP2040_DMA_IRQ_1, dma_rpi_pico_isr, NULL);
-  up_enable_irq(RP2040_DMA_IRQ_1);
+  nano_dma_os_irq_enable();
 
   g_ready = true;
   return 0;
 }
+
+/* The OS's part: the functions declared above and the OS's interrupt
+ * handler.
+ */
+
+#include "nano_dma_instance.h"

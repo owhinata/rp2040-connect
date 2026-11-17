@@ -241,15 +241,58 @@ the IP address in `ifconfig`, or the ESSID in `wapi show`.
 
 ## I2C0
 
+The core is in the repository's `common/drivers/i2c_dw/` (it does not depend on the OS; the board's
+`src/Make.defs` finds it through `VPATH`, and the objects are made in the board's directory); the
+NuttX part is in the board's `src/`.
+
 | File | Role |
 |---|---|
-| The board's `src/nano_i2c.c` | The I2C0 controller. A copy of the controller part of the Zephyr version's `drivers/i2c_dw/i2c_dw.c` (`i2c_dw_transfer()`, `i2c_dw_isr()`, `i2c_dw_data_ask()`, `_read()`, `_send()`, `i2c_dw_setup()`, `i2c_dw_configure()`, the initialization) and of the DMA reads (`i2c_dw_rp_dma_read()` and the rest) with the same functions, branches, order, register values, time limit and error values, offered as a NuttX `struct i2c_master_s` (`I2C_TRANSFER()`, `I2C_RESET()`) |
+| `common/drivers/i2c_dw/nano_i2c.c` | The core of the I2C0 controller. A copy of the controller part of the Zephyr version's `drivers/i2c_dw/i2c_dw.c` (the transfer's state machine, the body of the interrupt handler, `i2c_dw_data_ask()`, `_read()`, `_send()`, `i2c_dw_setup()`, `i2c_dw_configure()`, the register work of the initialization), of the DMA reads (`i2c_dw_rp_dma_read()` and the rest) and of the `i2c_dma` counters, with the same functions, branches, order, register values, time limit and error values. It includes the board's `nano_i2c_instance.h` at its end |
+| `common/drivers/i2c_dw/nano_dma.c`, `nano_dma.h` | The core of the RP2040 DMA used by the DMA reads: Zephyr's `drivers/dma/dma_rpi_pico.c` (`dma_config()`, `dma_start()`, `dma_stop()`, the body of the interrupt handler), the channel allocation of the DMA API (`dma_request_channel()`, `dma_release_channel()`) and the pico-sdk calls that `i2c_dw.c` makes itself (`dma_channel_is_busy()`, `dma_irqn_acknowledge_channel()`, `dma_hw->abort`), written on the registers (their addresses are in `nano_dma.h`). It includes the board's `nano_dma_instance.h` at its end |
+| `common/drivers/i2c_dw/i2c_dw_os.h` | The boundary: what the two cores need from the OS (the table below). It includes the board's `i2c_dw_os_impl.h` first and declares the functions that it must define |
+| `common/drivers/i2c_dw/nano_i2c_dw.h` | Definitions and pure functions without OS headers: the definitions of the Zephyr version's `i2c_dw.h`, the SCL counts, the speed class of a frequency, the NuttX flags (`I2C_M_*`) turned into Zephyr's (`I2C_MSG_*`) and the words written to `IC_DATA_CMD`. Host test `common/tests/nano_i2c_dw.c` |
+| `common/drivers/i2c_dw/nano_i2c_dw_registers.h` | A copy of the Zephyr version's `i2c_dw_registers.h` (the accessors are defined on plain volatile 32-bit accesses) |
+| `common/drivers/i2c_dw/i2c_dw_rp2040_commands.[ch]` | The command words sent by DMA. The same files as the Zephyr version's. Host test `common/tests/i2c_dma_commands.c` |
+| `common/drivers/i2c_dw/nano_i2c_dma.h` | The state that the `i2c_dma` command (`nuttx/apps/i2c_dma`) reads and sets: DMA on or off and the four counters |
+| The board's `src/i2c_dw_os_impl.h` | The NuttX implementation of the boundary: semaphores (`sem_t`: `nxsem_post()`, `nxsem_tickwait_uninterruptible()`, `nxsem_wait_uninterruptible()`, `nxsem_reset()`), time (the system ticks), `nxsched_msleep()`, `up_irq_save()`, the messages (`struct i2c_msg_s`, with Zephyr's flags made by `nano_i2c_dw_msg_flags()`), `I2C_DW_CLOCK_SPEED` (`BOARD_PERI_FREQ`) |
+| The board's `src/nano_i2c_instance.h` | The NuttX part of I2C0: the operations of `struct i2c_master_s` (`I2C_TRANSFER()` checks the request, takes the speed from the frequency and calls the core's transfer; `I2C_RESET()`), the interrupt handler attached with `irq_attach()`, the reset and the pins (`i2c_dw_pinctrl()`), `nano_i2c0_initialize()` |
+| The board's `src/nano_dma_instance.h` | The NuttX part of the DMA: the reset of the DMA block and the handler of DMA_IRQ_0 and 1 |
 | The board's `src/nano_i2c.h` | `nano_i2c0_initialize()` (called by `nano_bringup()` at boot, which registers `/dev/i2c0`) |
-| The board's `src/nano_i2c_dw.h` | The OS-independent part: the definitions of the Zephyr version's `i2c_dw.h`, the SCL counts, the speed class of a frequency, the NuttX flags (`I2C_M_*`) turned into Zephyr's (`I2C_MSG_*`) and the words written to `IC_DATA_CMD`. Host test `nuttx/tests/nano_i2c_dw.c` |
-| The board's `src/nano_i2c_dw_registers.h` | A copy of the Zephyr version's `i2c_dw_registers.h` (only the accessors are defined for NuttX) |
-| The board's `src/nano_dma.c`, `nano_dma.h` | The RP2040 DMA used by the DMA reads: Zephyr's `drivers/dma/dma_rpi_pico.c` (`dma_config()`, `dma_start()`, `dma_stop()`, the interrupt), the channel allocation of the DMA API (`dma_request_channel()`, `dma_release_channel()`) and the pico-sdk calls that `i2c_dw.c` makes itself (`dma_channel_is_busy()`, `dma_irqn_acknowledge_channel()`, `dma_hw->abort`), written on the registers |
-| `common/drivers/i2c_dw/i2c_dw_rp2040_commands.[ch]` | The command words sent by DMA. The same files as the Zephyr version's (the repository's `common/`; the board's `src/Make.defs` finds them through `VPATH`, and the object is made in the board's directory). Host test `common/tests/i2c_dma_commands.c` |
-| `include/nano_i2c_dma.h` | The state that the `i2c_dma` command (`nuttx/apps/i2c_dma`) reads and sets: DMA on or off and the four counters |
+
+What the OS provides at the boundary (`i2c_dw_os.h`). All are static inline functions or macros, and
+the OS's interrupt handlers and transfer entry call static inline functions of the core, so the
+compiler makes one function of each (no extra calls on the transfer and interrupt paths). Those
+marked "interrupt" are called from the interrupt handlers.
+
+| Boundary | Meaning (Zephyr) | NuttX build |
+|---|---|---|
+| `i2c_dw_os_sem_t` | A counting semaphore (`k_sem`; `bus_sem` is used as a binary one without priority inheritance) | `sem_t` |
+| `i2c_dw_os_sem_give()` (interrupt) | `k_sem_give()` | `nxsem_post()` |
+| `i2c_dw_os_sem_take_ms(sem, ms)` | `k_sem_take(sem, K_MSEC(ms))`: 0 when taken, nonzero when the time (rounded up to ticks) passes first; not ended by signals | `nxsem_tickwait_uninterruptible(sem, MSEC2TICK(ms))` |
+| `i2c_dw_os_timepoint_t`, `i2c_dw_os_timepoint_calc(ms)`, `i2c_dw_os_sem_take_until(sem, end)` | `sys_timepoint_calc()` and `k_sem_take(sem, sys_timepoint_timeout(end))` (after the deadline, one try without waiting) | The system ticks (`clock_systime_ticks()`) and `nxsem_tickwait_uninterruptible()` with what is left, at least 0 |
+| `i2c_dw_os_sem_reset()` | `k_sem_reset()` | `nxsem_reset(sem, 0)` |
+| `i2c_dw_os_bus_lock()`, `_unlock()` | `k_sem_take(K_FOREVER)` and `k_sem_give()` on `bus_sem`; the errno of a failed lock is what the transfer returns | `nxsem_wait_uninterruptible()`, `nxsem_post()` |
+| `i2c_dw_os_msleep(ms)` | `k_msleep()` | `nxsched_msleep()` |
+| `i2c_dw_os_uptime_ms()` | `k_uptime_get()` (may be a macro) | `TICK2MSEC(clock_systime_ticks())` (a macro) |
+| `i2c_dw_os_irq_lock()`, `_unlock()` (interrupt) | `irq_lock()` (for `atomic_or()` and the DMA's channel table); nests | `up_irq_save()`, `up_irq_restore()` |
+| `i2c_dw_os_msg_t`, `I2C_DW_OS_MSG_BUF()`, `_LEN()`, `_FLAGS()` | One message of a transfer (for Zephyr's `struct i2c_msg`: `buf`, `len`, `flags`, with STOP on the last message) | `struct i2c_msg_s`; the flags are made from it and its neighbours by `nano_i2c_dw_msg_flags()` |
+| `I2C_DW_OS_DEV_HEAD` | The OS's device at the start of the controller's data (may be empty) | `struct i2c_master_s dev;` |
+| `I2C_DW_CLOCK_SPEED` | `CONFIG_I2C_DW_CLOCK_SPEED` (MHz, 125) | `BOARD_PERI_FREQ / 1000000` |
+| `i2c_dw_os_prepare(dw)` (`nano_i2c_instance.h`) | `reset_line_toggle_dt()` and `pinctrl_apply_state()`: reset I2C0, GPIO12 and 13 as I2C (no pulls, 4 mA, slow slew, Schmitt trigger and input enabled) | RESETS and `rp2040_gpio_*()` (`i2c_dw_pinctrl()`, the steps of Zephyr's `pinctrl_rpi_pico.c`) |
+| `i2c_dw_os_irq_enable(dw)` (same) | `IRQ_CONNECT()`, `irq_enable()`: a handler of I2C0_IRQ that calls `i2c_dw_isr_handler(dw)` | `irq_attach()`, `up_enable_irq()` |
+| `nano_dma_os_reset()`, `nano_dma_os_irq_enable()` (`nano_dma_instance.h`) | The reset of the DMA block; a handler of DMA_IRQ_0 and 1 that calls `dma_rpi_pico_isr_handler()` | RESETS, `irq_attach()`, `up_enable_irq()` |
+| `app_log.h` | `LOG_MODULE_REGISTER()`, `LOG_ERR()`, `LOG_ERR_RATELIMIT()` (at the level 3 that the core sets) | `nuttx/drivers/include/app_log.h` (the RAM log) |
+| `CONFIG_NANO_I2C0_DMA` | Build the DMA reads (the Zephyr version's `CONFIG_I2C_DW_RP2040_DMA`) | Kconfig |
+
+The OS's I2C0 device (`nano_i2c_instance.h`) sets `base` of `i2c_0_runtime` (0x40044000), initializes
+the semaphores (`device_sync_sem` and `rp_dma_sem` to 0, `bus_sem` to 1), calls `i2c_dw_turn_on()`
+once at boot after `nano_dma_initialize()`, and sets `ready` when that succeeds. Its transfer entry
+refuses what the Zephyr API cannot express (no message array, more than 255 messages, addresses or
+speeds that differ between messages, a 10-bit address, a missing buffer, a device that is not ready),
+returns 0 for no message, and otherwise returns `i2c_dw_transfer_msgs(dw, msgs, count, address,
+speed)` (`speed` is Zephyr's speed class). The I2C0 and DMA interrupts run at the same priority, and
+the handlers and the transfers run on one core. The DMA's channel allocation knows no other users and
+the initialization resets the DMA block, so nothing else may use the DMA.
 
 - The calling thread drives a transfer and the interrupt handler moves the bytes. The caller waits
   for the end on a semaphore (1 s; after that the transfer is aborted and returns `-ETIMEDOUT`). A

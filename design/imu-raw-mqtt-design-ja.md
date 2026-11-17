@@ -577,6 +577,10 @@ NuttX 版の確認の範囲は §11.7 に分けて書く。
   `common/drivers/nina/` の 1 本を両方の版が使う。NINA の OS に依存しないコア（SPI の転送層 `nina_spi.c`、ソケットの表と
   命令 `nina_sock.[ch]`、名前解決 `nina_dns.[ch]`。狭い境界 `nina_os.h`・`nano_nina.h` だけに依存する）も
   `common/drivers/nina/` にあり、今は NuttX 版が使う（Zephyr 版は自分の `drivers/nina/` の 3 つのファイル）。
+  I2C0 と DMA のレジスターを操作するコア（`common/drivers/i2c_dw/` の `nano_i2c.c`・`nano_dma.c`。Zephyr 版の
+  `i2c_dw.c` と RP2040 の DMA のドライバーの写し）も OS に依存せず、境界 `i2c_dw_os.h`（セマフォ、時計、割り込みの
+  登録、リセットとピン、OS のドライバーモデルへの接続）だけに依存する。今は NuttX 版が使う（Zephyr 版は自分の
+  `drivers/i2c_dw/i2c_dw.c`）。
 - 共有するソースは、OS の呼び出しを **Zephyr の名前のまま**提供する互換層（OS に依存しない部分は `common/compat/`、NuttX の実装は `nuttx/drivers/compat/`）の上で動かす。
   互換層は、移したソースが使う部分だけを持つ（`struct device`、センサーの API、RTIO、ワークキュー、
   `k_sem`・`k_mutex`・`k_poll` の一部、`net_mgmt` のイベント、`zsock_*()`、シェルのコマンドの表）。

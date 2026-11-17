@@ -189,10 +189,8 @@ grep -q '^SHELL_CMD_REGISTER(ntp,' "$out/ntp_shell.inc"
 run shell_register -D_DEFAULT_SOURCE -DZ_SHELL_CMD_NAMED_MAIN -DIMU_SHELL_INC="\"$out/imu_shell.inc\"" \
     -DNTP_SHELL_INC="\"$out/ntp_shell.inc\"" -Idrivers/compat -I"$ccompat" -Iapps/subcmd apps/subcmd/zshell.c \
     apps/subcmd/subcmd.c
-# Board: the I2C0 driver's SCL counts, speeds and IC_DATA_CMD words against the Zephyr build's.
-run nano_i2c_dw -Iboards/arduino-nano-rp2040-connect/src
-# The i2c_dma command's output (fake driver side).
-run i2c_dma_app -Idrivers/include -Iapps/i2c_dma -Iapps/subcmd apps/subcmd/subcmd.c
+# The i2c_dma command's output (fake driver side; nano_i2c_dma.h of the I2C0 core).
+run i2c_dma_app -I../common/drivers/i2c_dw -Iapps/i2c_dma -Iapps/subcmd apps/subcmd/subcmd.c
 # The time synchronization (common/imu/time_sync.c, shared with the Zephyr build) on the
 # compatibility layer with a fake NINA socket, clock (the TIMER's registers), interface and
 # realtime clock: the NTP request and the checks of the reply, where t1 and t4 are read, the
