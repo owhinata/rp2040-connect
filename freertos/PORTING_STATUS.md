@@ -650,7 +650,20 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
     10 秒での切断、Telnet からの `zperf`。
 - **説明のつかない記録**: F11 の書き込みの前、F10 の像が動いていた間（メインの `reboot` から 1119 秒後）に HardFault の記録が
   1 件（task console、レジスターの形は `devmem` で存在しない番地を読んだときと同じ）。メインはその時刻に実機を操作していない。
-  ユーザーが端末から打ったのでなければ、F11 の subagent が指示に反して実機に触れた可能性がある。ユーザーに確認する。
+  **解決**: ユーザーが自分で `devmem 30000000` を試したもの（同日に確認）。subagent は実機に触れていない。
 - IP アドレスの表示の案（subagent）: Zephyr の `net iface` を、互換層が持てる行だけで作る（100〜200 行。ルートの README の
   手順が `net iface` を使っている）。実装はユーザーと相談のうえ。
 - 次: `wifi` の使えないオプションを削る（ユーザーの指示）→ F12（時刻同期と `ntp`）、F13（MQTT）→ CP-F4。
+
+## `wifi` の使えないオプションを削った（2026-11-17、ユーザーの指示）
+
+- `common/compat/zephyr_wifi_shell.c`: `wifi connect` は `-s`・`-p`・`-k`（0: なし、1: WPA2-PSK だけ）と `-h`/`--help`。
+  `scan`・`disconnect`・`status` は引数なし。削ったオプションは解析からも外した。使わなくなった補助関数も削除
+  （text −8.7 KB）。`wifi` のヘルプは約 100 行 → 14 行。`wifi status` の出力と `wifi cred` は変えていない。
+- メインの追加の修正（Zephyr の癖を直した）: `-h` が引数を取らない、`--help` でヘルプが 2 回出ない、知らない長いオプションの
+  エラーにその文字列を出す（Zephyr は NUL を 1 個出す）。
+- 確認: ビルド（既定・selftest、警告 0）、整形、`host_tests.sh`（41 個）。実機: `wifi`、`wifi connect --help`・`-h`（各 1 回）、
+  `--channel=6`・`-c 6`・`-k 3`・`scan -t active`・`status -i 1` はエラーとヘルプだけで、接続は保たれる（`State: COMPLETED`、
+  ping 2/2）。`dmesg` には getopt の `<wrn>` が残る（Zephyr の getopt の動作）。`-k 1 -p` での手動の接続は実機では未確認
+  （パスフレーズの入力が要る。ホストテストでは通っている）。
+- IP アドレスの表示: NuttX 版と同じ `ifconfig`（2 行）にする方向（`net iface` だと `net` の下が `iface` だけになる）。F12 と一緒に入れる。

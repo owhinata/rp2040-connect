@@ -17,14 +17,17 @@
  * - The start with a module that does not answer: the interface comes up
  *   without a MAC address, "wifi status" fails, nothing waits.
  * - The start in the build's order with no stored network: no connection
- *   is attempted.
+ *   is attempted.  The help has only the options the driver serves; the
+ *   others (channel, -i, another -k, any of "wifi scan") are errors that
+ *   ask nothing of the module.
  * - "wifi cred add": the entry is the setting "wifi_cred/0" in the
  *   Zephyr build's layout, "wifi cred list" shows it, "wifi cred delete" of
  *   another SSID fails.
  * - "wifi connect": the events (Zephyr's messages on the session from the
  *   "net_mgmt" thread), the address, netmask and gateway on the interface,
  *   dormant off; "wifi status"; "wifi disconnect" clears them and pauses
- *   the automatic reconnection; "wifi scan" prints the module's networks.
+ *   the automatic reconnection; "wifi scan" prints the module's networks;
+ *   "wifi connect -k 0" joins an open network with the SSID alone.
  * - "wifi cred auto_connect" connects with the stored network; a lost link
  *   (the module's status, seen twice by nina_monitor_tid) raises the
  *   disconnection, and wifi_reconnect_tid connects again 4 s later.
@@ -551,10 +554,55 @@ static void test_start(void)
 			fail("wifi help");
 		}
 	}
+	expect_text("connect     : Connect to a Wi-Fi AP");
+	if (strstr(cap.text, "--channel") != NULL || strstr(cap.text, "--iface") != NULL ||
+	    strstr(cap.text, "--type") != NULL || strstr(cap.text, "eap") != NULL) {
+		fail("wifi help: options the driver cannot serve");
+	}
+	cap_clear();
+	assert(run("wifi connect --help") == 1);
+	expect_text("Usage: connect <-s --ssid \"<SSID>\">: SSID to connect");
+	expect_text("0:None, 1:WPA2-PSK");
+	if (strstr(cap.text, "2:WPA2-PSK-256") != NULL) {
+		fail("wifi connect --help: key management types");
+	}
 	cap_clear();
 	assert(run("wifi scan -h") == 1);
+	expect_text("scan: wrong parameter count");
 	expect_text("Scan for Wi-Fi APs");
-	expect_text("Scan not initiated");
+
+	/* The options the driver cannot serve are errors: nothing is asked of
+	 * the module.
+	 */
+	cap_clear();
+	assert(run("wifi connect -s " TEST_SSID " -c 6") == 1);
+	expect_text("Invalid option c");
+	expect_text("Usage: connect");
+	cap_clear();
+	assert(run("wifi connect -s " TEST_SSID " --channel=6") == 1);
+	expect_text("Invalid option");
+	cap_clear();
+	assert(run("wifi connect -s " TEST_SSID " -i 1") == 1);
+	expect_text("Invalid option i");
+	cap_clear();
+	assert(run("wifi connect -s " TEST_SSID " -k 3 -p " TEST_PSK) == 1);
+	expect_text("Invalid key management type: 3");
+	cap_clear();
+	assert(run("wifi connect -s " TEST_SSID " -k psk -p " TEST_PSK) == 1);
+	expect_text("Invalid key management type: psk");
+	cap_clear();
+	assert(run("wifi connect -k 1 -p " TEST_PSK) == 1);
+	expect_text("SSID not provided");
+	cap_clear();
+	assert(run("wifi scan -t active") == 1);
+	expect_text("scan: wrong parameter count");
+	cap_clear();
+	assert(run("wifi status -i 1") == 1);
+	expect_text("status: wrong parameter count");
+	cap_clear();
+	assert(run("wifi disconnect -i 1") == 1);
+	expect_text("disconnect: wrong parameter count");
+	assert(fw.connects == 0 && fw.scans == 0 && fw.disconnects == 0);
 
 	/* No stored network: no connection is tried. */
 	vTaskDelay(pdMS_TO_TICKS(5000));
@@ -668,6 +716,30 @@ static void test_disconnect_scan(void)
 	report("ok  disconnect, scan\n");
 }
 
+static void test_open(void)
+{
+	struct net_if *iface = net_if_get_default();
+
+	/* -k 0: an open network, the SSID alone (0x10). */
+	cap_clear();
+	events[0] = '\0';
+	assert(run("wifi connect -s TestAP-2 -k 0") == 0);
+	expect_text("Connection requested");
+	if (strstr(cap.text, "Passphrase provided") != NULL) {
+		fail("open network: warning");
+	}
+	wait_text("Connected", 5000);
+	wait_events("C0 ", 1000);
+	assert(strcmp(fw.ssid, "TestAP-2") == 0 && !fw.with_psk);
+	assert(net_if_ipv4_get_global_addr(iface, NET_ADDR_PREFERRED) != NULL);
+
+	cap_clear();
+	assert(run("wifi disconnect") == 0);
+	wait_text("Disconnection request done", 1000);
+	wait_events("C0 D0 ", 1000);
+	report("ok  open network\n");
+}
+
 static void test_auto_connect(void)
 {
 	struct net_if *iface = net_if_get_default();
@@ -728,6 +800,7 @@ static void runner(void *arg)
 	test_cred();
 	test_connect();
 	test_disconnect_scan();
+	test_open();
 	test_auto_connect();
 	test_gc();
 	if (strstr(log_buf, "<err>") != NULL) {
