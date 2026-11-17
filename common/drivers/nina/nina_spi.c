@@ -21,6 +21,10 @@
  * One difference: nina_os_lock() can fail where k_mutex_lock(K_FOREVER)
  * cannot (only with pthread cancellation, which this build does not use);
  * nina_request() and nina_ip_config() then return its error untouched.
+ *
+ * An option of the OS: with NINA_OS_WAIT_READY, the waits for READY sleep
+ * until the OS reports a change of the line (nina_os_ready_*() of
+ * nina_os.h) instead of sampling it every 100 us; see wait_ready().
  */
 
 #include <errno.h>
@@ -43,6 +47,34 @@
 
 static bool initialized;
 
+#ifdef NINA_OS_WAIT_READY
+/* The OS wakes the wait when READY changes (nina_os.h).  The same deadline
+ * and results as the sampling below; READY is read once more after the
+ * last wait, so a module that gets ready at the deadline is not missed.
+ */
+static int wait_ready(int desired, int timeout_ms)
+{
+	int64_t deadline = nina_os_uptime_ms() + timeout_ms;
+	int64_t now;
+	int value;
+
+	nina_os_ready_arm(desired);
+	for (;;) {
+		value = nano_nina_pin_get(NANO_NINA_READY);
+		if (value < 0 || value == desired) {
+			break;
+		}
+		now = nina_os_uptime_ms();
+		if (now >= deadline) {
+			value = -ETIMEDOUT;
+			break;
+		}
+		nina_os_ready_wait((uint32_t)(deadline - now));
+	}
+	nina_os_ready_disarm();
+	return value < 0 ? value : 0;
+}
+#else
 /* How often the module's ready line is sampled while waiting for it. */
 #define NINA_READY_POLL_US 100
 
@@ -63,6 +95,7 @@ static int wait_ready(int desired, int timeout_ms)
 	} while (nina_os_uptime_ms() < deadline);
 	return -ETIMEDOUT;
 }
+#endif
 
 static int init_nina(void)
 {

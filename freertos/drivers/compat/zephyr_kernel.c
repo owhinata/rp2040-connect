@@ -582,7 +582,7 @@ void k_busy_wait(uint32_t usec_to_wait)
 /* Timeouts of delayable items -----------------------------------------------*/
 
 /* The longest timeout: the deadlines are compared as signed 32-bit
- * differences (about 2.5 days at 100 us).
+ * differences (about 2.5 days at 100 us, 24.8 days at 1 ms).
  */
 #define TIMEOUT_TICKS_MAX ((int64_t)INT32_MAX - 1)
 

@@ -33,8 +33,12 @@
 #include "priorities.h"
 
 /* Timeouts are kernel ticks, as in Zephyr: the FreeRTOS tick
- * (configTICK_RATE_HZ 10000 on the board, 100 us, the Zephyr build's
- * CONFIG_SYS_CLOCK_TICKS_PER_SEC=10000).  A relative wait ends at the
+ * (configTICK_RATE_HZ 10000 on the board by default, 100 us, the Zephyr
+ * build's CONFIG_SYS_CLOCK_TICKS_PER_SEC=10000; 1000, 1 ms, with the build
+ * option NANO_TICK_HZ=1000; 1000 in the host tests).  K_MSEC(), K_SECONDS()
+ * and k_usleep() convert with Z_USEC_PER_TICK, k_uptime_get() and the cycle
+ * counter are the TIMER whatever the tick, and 1000 must be a multiple of
+ * Z_USEC_PER_TICK (<zephyr/kernel.h>).  A relative wait ends at the
  * current tick + ticks + 1 in Zephyr (z_add_timeout()); FreeRTOS's block
  * times end at the current tick + n, so the layer waits ticks + 1
  * (zephyr_kernel.c).

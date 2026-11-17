@@ -4,7 +4,8 @@
  * CONFIG_TIMESLICE_PRIORITY=0).
  *
  * FreeRTOS's own time slicing (configUSE_TIME_SLICING 1) switches between
- * the ready tasks of the running priority at every tick, 100 us here.  It is
+ * the ready tasks of the running priority at every tick (100 us, or 1 ms
+ * with the build option NANO_TICK_HZ=1000).  It is
  * off (configUSE_TIME_SLICING 0), and this hook, which the tick interrupt
  * calls (configUSE_TICK_HOOK), asks for a switch once the running task has
  * run for TIMESLICE_TICKS ticks since it was switched in.  The slice starts
@@ -19,10 +20,12 @@
  * and the port's tasks below them); the cooperative ones (-1 -> 21 and up) and the timer task are
  * not, nor is the idle task, which has no peer.
  *
- * Difference from Zephyr: the slice is counted in whole ticks, so a task
- * switched in between two ticks gets (199, 200] ticks (Zephyr's timeout:
- * (200, 201]); one switched in at the end of the previous slice gets 200, as
- * in Zephyr.
+ * Difference from Zephyr: the slice is counted in whole ticks
+ * (TIMESLICE_TICKS: 200 of 100 us, or 20 of 1 ms), so a task switched in
+ * between two ticks gets (TIMESLICE_TICKS - 1, TIMESLICE_TICKS] ticks
+ * (Zephyr's timeout: (200, 201] of its 100 us ticks); one switched in at the
+ * end of the previous slice gets TIMESLICE_TICKS, as in Zephyr.  With 1 ms
+ * ticks a slice is so between 19 and 20 ms long.
  *
  * The hook also runs the Zephyr compatibility layer's timeouts (the timers
  * of delayable work items, z_add_timeout(): zephyr_compat_tick() of

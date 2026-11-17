@@ -18,7 +18,7 @@
  * ticks + 1, Zephyr's end of a relative wait (z_add_timeout(): the current
  * tick + ticks + 1; FreeRTOS ends a block time of n at the current tick + n),
  * at most portMAX_DELAY - 1 (about 4.97 days with the board's 32-bit tick of
- * 100 us).
+ * 100 us, 49.7 days with NANO_TICK_HZ=1000).
  */
 TickType_t z_os_wait_ticks(k_timeout_t timeout);
 

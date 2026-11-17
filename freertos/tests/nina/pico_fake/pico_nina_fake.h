@@ -2,9 +2,12 @@
 /* The part of the Pico SDK that freertos/drivers/nina/nano_nina.c uses, for
  * its host test (freertos/tests/nina/main.c, which implements the
  * functions: they record the calls and play the module's side of the
- * lines and of SPI1).  hardware/gpio.h, hardware/resets.h and
- * hardware/spi.h next to this one include it.  Names and values as in the
- * SDK (hardware_gpio, hardware_resets, hardware_spi, hardware/regs/spi.h).
+ * lines and of SPI1), and the GPIO interrupt functions of
+ * freertos/drivers/compat/rp2040/nano_gpio.c for the test's build with
+ * NANO_NINA_READY_IRQ (READY's edges).  hardware/gpio.h, hardware/irq.h,
+ * hardware/resets.h and hardware/spi.h next to this one include it.  Names
+ * and values as in the SDK (hardware_gpio, hardware_irq, hardware_resets,
+ * hardware_spi, hardware/regs/intctrl.h, hardware/regs/spi.h).
  */
 
 #ifndef FREERTOS_TESTS_NINA_PICO_FAKE_PICO_NINA_FAKE_H
@@ -55,6 +58,26 @@ void gpio_set_irqover(uint gpio, uint value);
 void gpio_set_dir(uint gpio, bool out);
 void gpio_put(uint gpio, bool value);
 bool gpio_get(uint gpio);
+
+enum gpio_irq_level {
+	GPIO_IRQ_LEVEL_LOW = 0x1u,
+	GPIO_IRQ_LEVEL_HIGH = 0x2u,
+	GPIO_IRQ_EDGE_FALL = 0x4u,
+	GPIO_IRQ_EDGE_RISE = 0x8u,
+};
+
+uint32_t gpio_get_all(void);
+void gpio_set_irq_enabled(uint gpio, uint32_t event_mask, bool enabled);
+uint32_t gpio_get_irq_event_mask(uint gpio);
+void gpio_acknowledge_irq(uint gpio, uint32_t event_mask);
+
+/* hardware/regs/intctrl.h and hardware_irq */
+#define IO_IRQ_BANK0 13
+
+typedef void (*irq_handler_t)(void);
+
+void gpio_add_raw_irq_handler_masked(uint32_t gpio_mask, irq_handler_t handler);
+void irq_set_enabled(uint num, bool enabled);
 
 /* hardware_resets */
 typedef enum reset_num {

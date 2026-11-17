@@ -76,6 +76,9 @@ nina=drivers/nina
 # SPI link (nina_spi.c, which the test includes): framing, answers, READY timeouts, reset
 # sequence, CS order (fake board and clock).
 run nina_spi "${flags[@]}" -I"$nina" tests/nina_spi.c
+# The same with the OS's waits for READY (NINA_OS_WAIT_READY, the FreeRTOS build's
+# NANO_NINA_READY_IRQ): the same results and deadlines (fake waits).
+run nina_spi_wait_ready "${flags[@]}" -DNINA_OS_WAIT_READY -I"$nina" tests/nina_spi.c
 # Sockets: the table, the socket commands and the data calls of the Zephyr build's
 # nina_socket.c (fake nina_request() and clock).
 run nina_sock "${flags[@]}" -D_DEFAULT_SOURCE -I"$nina" tests/nina_sock.c "$nina/nina_sock.c"

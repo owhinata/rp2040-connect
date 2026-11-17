@@ -116,8 +116,9 @@
  *
  * The waits are the core's boundary (nina_os.h, freertos/drivers/nina/
  * nina_os.c): nina_os_sleep_ms() is k_sleep(K_MSEC()), the time rounded up
- * to 100 us ticks plus one tick (20 ms: 201 ticks, 1 ms: 11 ticks, as in
- * the Zephyr build with its 10 kHz tick), and nina_os_uptime_ms() is
+ * to ticks plus one tick (with the default 100 us tick 20 ms: 201 ticks, 1
+ * ms: 11 ticks, as in the Zephyr build with its 10 kHz tick; with
+ * NANO_TICK_HZ=1000, 21 and 2 ticks of 1 ms), and nina_os_uptime_ms() is
  * k_uptime_get(), the clock of the core's deadlines; the host test
  * (freertos/tests/socket) replaces both.
  *

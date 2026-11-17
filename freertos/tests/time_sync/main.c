@@ -41,8 +41,9 @@
  *   2000, the counters).
  *
  * The test port's tick is 1 ms (tests/compat/FreeRTOSConfig.h), so the polls
- * are 2 ticks apart here (the board: 11 ticks of 100 us).  It waits for the
- * real intervals: about 12 s.  Built and run by freertos/script/host_tests.sh.
+ * are 2 ticks apart here (the board: 11 ticks of 100 us by default, 2 ticks
+ * as here with NANO_TICK_HZ=1000).  It waits for the real intervals: about
+ * 12 s.  Built and run by freertos/script/host_tests.sh.
  */
 
 #include <arpa/inet.h>

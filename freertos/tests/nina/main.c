@@ -23,8 +23,25 @@
  *   the core's 2000 ms (the layer's clock), CS untouched.
  * - nina_os_lock(): recursive and with priority inheritance; the DNS lock
  *   is a separate mutex.
+ * - A module that gets ready while a request waits: the request goes on
+ *   within a few ticks of it.
  *
- * Built and run by freertos/script/host_tests.sh.
+ * Built twice by freertos/script/host_tests.sh: as the board's default
+ * (READY sampled every 100 us by the core), and with NANO_NINA_READY_IRQ
+ * and NINA_OS_WAIT_READY (the build option -DNANO_NINA_READY_IRQ=ON:
+ * nina_os.c's waits on READY's edge interrupt, through
+ * drivers/compat/rp2040/nano_gpio.c and the layer's gpio0,
+ * common/compat/zephyr_gpio.c, on fakes of the SDK's GPIO interrupt
+ * functions that latch READY's edges and run the bank's handler as an
+ * interrupt handler).  The second also checks:
+ * - the bank's handler claims GPIO24 and GPIO10; READY's edge is enabled
+ *   only during a wait (falling towards ready, rising towards busy) and
+ *   off after each request;
+ * - a wait that times out reads READY once per 10 ms (nina_os.c's
+ *   slices) instead of once per 2 ticks, a wait that the interrupt ends
+ *   early twice;
+ * - a change right after the core's read of READY (before it waits) is not
+ *   lost: the wait returns at once.
  */
 
 #include <assert.h>
@@ -172,6 +189,72 @@ static uint8_t exchange(uint8_t tx)
 	return 0xff;
 }
 
+/* READY's level and edges -------------------------------------------------*/
+
+/* The physical level (high: busy or no module), counted reads of it, and a
+ * test's hook: after that many more reads, the module comes alive just
+ * after the read returns (as if it got ready between the core's read and
+ * its wait).
+ */
+static bool ready_high = true;
+static unsigned int ready_reads;
+static int alive_after_reads = -1;
+
+#ifdef NANO_NINA_READY_IRQ
+/* GPIO10's latched edges (INTR) and enabled events (PROC0_INTE), the bank's
+ * handler and its mask, IO_IRQ_BANK0's enable.
+ */
+static uint32_t ready_intr, ready_inte;
+static uint32_t raw_mask;
+static irq_handler_t bank_handler;
+static bool bank_enabled;
+static unsigned int ready_irqs;
+
+static uint32_t ready_events(void)
+{
+	return ready_intr | (ready_high ? GPIO_IRQ_LEVEL_HIGH : GPIO_IRQ_LEVEL_LOW);
+}
+
+/* The NVIC: the bank's handler runs, as an interrupt handler, if an enabled
+ * event of GPIO10 is pending.
+ */
+static void bank_irq(void)
+{
+	if (bank_enabled && bank_handler != NULL && (ready_events() & ready_inte) != 0) {
+		ready_irqs++;
+		z_host_isr_depth++;
+		bank_handler();
+		z_host_isr_depth--;
+	}
+}
+#endif
+
+static bool module_running(void);
+static bool cs_asserted(void);
+
+/* After any change of the module or the lines: READY follows them, an edge
+ * is latched and may interrupt.
+ */
+static void ready_update(void)
+{
+	bool high = !(module_running() && !cs_asserted());
+
+	if (high == ready_high) {
+		return;
+	}
+	ready_high = high;
+#ifdef NANO_NINA_READY_IRQ
+	ready_intr |= high ? GPIO_IRQ_EDGE_RISE : GPIO_IRQ_EDGE_FALL;
+	bank_irq();
+#endif
+}
+
+static void set_module_alive(bool alive)
+{
+	module_alive = alive;
+	ready_update();
+}
+
 /* Ticks at the reset sequence's edges (each valid once its flag is set). */
 static TickType_t tick_reset_active, tick_reset_inactive, tick_irq_low;
 static bool seen_reset_active, seen_reset_inactive, seen_irq_low;
@@ -257,6 +340,7 @@ static void line_changed(uint gpio, bool was_cs)
 		tick_irq_low = xTaskGetTickCount();
 		seen_irq_low = true;
 	}
+	ready_update();
 }
 
 void gpio_set_dir(uint gpio, bool out)
@@ -279,10 +363,62 @@ void gpio_put(uint gpio, bool value)
 
 bool gpio_get(uint gpio)
 {
+	bool high;
+
 	assert(gpio == GPIO_READY && !pins[gpio].out);
 	/* Pulled up unless the running module pulls it low. */
-	return !(module_running() && !cs_asserted());
+	high = !(module_running() && !cs_asserted());
+	assert(high == ready_high);
+	ready_reads++;
+	if (alive_after_reads > 0 && --alive_after_reads == 0) {
+		alive_after_reads = -1;
+		set_module_alive(true);
+	}
+	return high;
 }
+
+#ifdef NANO_NINA_READY_IRQ
+uint32_t gpio_get_all(void)
+{
+	return ready_high ? 1u << GPIO_READY : 0;
+}
+
+/* The SDK's: clear the events (INTR), then set or clear them in INTE. */
+void gpio_set_irq_enabled(uint gpio, uint32_t event_mask, bool enabled)
+{
+	assert(gpio == GPIO_READY);
+	ready_intr &= ~(event_mask & 0xcu);
+	if (enabled) {
+		ready_inte |= event_mask;
+	} else {
+		ready_inte &= ~event_mask;
+	}
+}
+
+uint32_t gpio_get_irq_event_mask(uint gpio)
+{
+	return gpio == GPIO_READY ? ready_events() & ready_inte : 0;
+}
+
+void gpio_acknowledge_irq(uint gpio, uint32_t event_mask)
+{
+	assert(gpio == GPIO_READY);
+	ready_intr &= ~(event_mask & 0xcu);
+}
+
+void gpio_add_raw_irq_handler_masked(uint32_t gpio_mask, irq_handler_t handler)
+{
+	assert(raw_mask == 0 && bank_handler == NULL);
+	raw_mask = gpio_mask;
+	bank_handler = handler;
+}
+
+void irq_set_enabled(uint num, bool enabled)
+{
+	assert(num == IO_IRQ_BANK0);
+	bank_enabled = enabled;
+}
+#endif
 
 void reset_block_num(reset_num_t block_num)
 {
@@ -474,24 +610,113 @@ static void test_no_answer(void)
 {
 	char v[16];
 	unsigned int calls_before = spi_calls;
+	unsigned int reads;
 	int64_t start;
 	int64_t took;
 
-	module_alive = false;
+	set_module_alive(false);
 	recording = false;
+	reads = ready_reads;
 	start = k_uptime_get();
 	assert(version(v, sizeof(v)) == -ETIMEDOUT);
 	took = k_uptime_get() - start;
+	reads = ready_reads - reads;
 	recording = true;
 	calls[0] = '\0';
 	/* wait_ready(1, 2000): polled every 100 us (rounded to the tick, plus
-	 * one) until the clock passes the deadline.
+	 * one) until the clock passes the deadline; with the interrupt, waits of
+	 * 10 ms (nina_os.c READY_WAIT_SLICE_MS), READY read before the first and
+	 * after each.
 	 */
 	assert(took >= 2000 && took < 2000 + 50);
 	assert(spi_calls == calls_before && !cs_asserted());
-	module_alive = true;
-	printf("nina: no answer, -ETIMEDOUT after %lld ms\n", (long long)took);
+#ifdef NANO_NINA_READY_IRQ
+	assert(reads >= 2 && reads <= 2000 / 10 + 1 && ready_inte == 0);
+#else
+	assert(reads > 100);
+#endif
+	set_module_alive(true);
+	printf("nina: no answer, -ETIMEDOUT after %lld ms, %u reads of READY\n", (long long)took,
+	       reads);
 }
+
+static void wake_helper(void *arg)
+{
+	vTaskDelay(pdMS_TO_TICKS((uintptr_t)arg));
+	set_module_alive(true);
+	vTaskDelete(NULL);
+}
+
+/* The module gets ready while the request waits for it (a helper task
+ * above the runner brings it up after 50 ms): the request goes on within a
+ * few ticks.  With the interrupt, the first wait reads READY once before
+ * its first 10 ms slice and once after each (the last ended by the
+ * interrupt), the other three once each.
+ */
+static void test_late_ready(void)
+{
+	char v[16];
+	unsigned int reads;
+	int64_t start;
+	int64_t took;
+
+	set_module_alive(false);
+	recording = false;
+	assert(xTaskCreate(wake_helper, "wake", HELPER_STACK / sizeof(StackType_t), (void *)50,
+			   uxTaskPriorityGet(NULL) + 1, NULL) == pdPASS);
+	reads = ready_reads;
+	start = k_uptime_get();
+	assert(version(v, sizeof(v)) == 0);
+	took = k_uptime_get() - start;
+	reads = ready_reads - reads;
+	recording = true;
+	calls[0] = '\0';
+	assert(strcmp(v, "1.5.0") == 0);
+	assert(took >= 50 && took < 50 + 20);
+#ifdef NANO_NINA_READY_IRQ
+	assert(reads >= 5 && reads <= 1 + 50 / 10 + 1 + 3 && ready_inte == 0);
+#endif
+	printf("nina: ready after %lld ms, %u reads of READY\n", (long long)took, reads);
+}
+
+#ifdef NANO_NINA_READY_IRQ
+/* The bank's handler claims both pins; READY's edge is off between waits. */
+static void test_irq_setup(void)
+{
+	assert(raw_mask == ((1u << 24) | (1u << GPIO_READY)));
+	assert(bank_enabled && bank_handler != NULL && ready_inte == 0);
+}
+
+/* The module gets ready right after the core's first read of READY, before
+ * it waits: the edge was enabled before the read, so the interrupt gives
+ * the semaphore and the wait returns at once instead of after 2000 ms.
+ */
+static void test_ready_between_read_and_wait(void)
+{
+	char v[16];
+	unsigned int reads;
+	unsigned int irqs;
+	int64_t start;
+	int64_t took;
+
+	set_module_alive(false);
+	recording = false;
+	alive_after_reads = 1;
+	reads = ready_reads;
+	irqs = ready_irqs;
+	start = k_uptime_get();
+	assert(version(v, sizeof(v)) == 0);
+	took = k_uptime_get() - start;
+	reads = ready_reads - reads;
+	irqs = ready_irqs - irqs;
+	recording = true;
+	calls[0] = '\0';
+	assert(strcmp(v, "1.5.0") == 0 && alive_after_reads == -1);
+	assert(took < 20 && reads == 5 && irqs >= 1 && ready_inte == 0);
+	printf("nina: ready between the read and the wait: %lld ms, %u interrupts\n",
+	       (long long)took, irqs);
+}
+#endif
 
 static void test_sleeps(void)
 {
@@ -571,6 +796,11 @@ static void runner(void *arg)
 	test_lines();
 	test_version();
 	test_no_answer();
+	test_late_ready();
+#ifdef NANO_NINA_READY_IRQ
+	test_irq_setup();
+	test_ready_between_read_and_wait();
+#endif
 	test_sleeps();
 	test_locks();
 	fflush(stdout);

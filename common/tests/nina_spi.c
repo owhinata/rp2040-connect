@@ -12,6 +12,13 @@
  * timeouts (2000, 20 and 10000 ms of the fake clock, polled every
  * 100 us), the reset sequence of the first request, the order of the CS
  * edges and transfers, and the lock.
+ *
+ * Built a second time with NINA_OS_WAIT_READY (common/tests/run.sh), the
+ * waits of an OS that reports READY's changes (nina_os_ready_*() of
+ * nina_os.h, fakes here: a wait sleeps the whole time it is given, as when
+ * the line does not change): the same results and deadlines, READY read
+ * once before and once after the wait, armed before the first read and
+ * disarmed at the end.
  */
 
 #include <assert.h>
@@ -33,6 +40,10 @@ static int ready_stuck_phase = -1;       /* READY stays on with CS in it */
 static int lock_depth, lock_calls, lock_result;
 static long long now_us;
 static unsigned int polls;
+#ifdef NINA_OS_WAIT_READY
+static int armed = -1; /* the level armed for, -1 when disarmed */
+static unsigned int arms, waits;
+#endif
 static char events[4096];
 
 static void event(const char *e)
@@ -85,6 +96,10 @@ int nano_nina_pin_set(enum nano_nina_pin pin, int value)
 int nano_nina_pin_get(enum nano_nina_pin pin)
 {
 	assert(pin == NANO_NINA_READY && lock_depth > 0);
+#ifdef NINA_OS_WAIT_READY
+	/* Read only while armed: a change after the read wakes the wait. */
+	assert(armed >= 0);
+#endif
 	polls++;
 	if (ready_never_from >= 0 && (int)phase >= ready_never_from && !cs_active) {
 		return 0;
@@ -171,6 +186,29 @@ int64_t nina_os_uptime_ms(void)
 	return now_us / 1000;
 }
 
+#ifdef NINA_OS_WAIT_READY
+void nina_os_ready_arm(int desired)
+{
+	assert(lock_depth > 0 && armed < 0);
+	assert(desired == 0 || desired == 1);
+	armed = desired;
+	arms++;
+}
+
+void nina_os_ready_wait(uint32_t ms)
+{
+	assert(lock_depth > 0 && armed >= 0 && ms > 0);
+	waits++;
+	now_us += (long long)ms * 1000;
+}
+
+void nina_os_ready_disarm(void)
+{
+	assert(lock_depth > 0 && armed >= 0);
+	armed = -1;
+}
+#endif
+
 /* Helpers ----------------------------------------------------------------*/
 
 static void reset_fake(const uint8_t *reply, size_t len)
@@ -188,7 +226,20 @@ static void reset_fake(const uint8_t *reply, size_t len)
 	polls = 0;
 	events[0] = '\0';
 	initialized = true;
+#ifdef NINA_OS_WAIT_READY
+	assert(armed < 0);
+	arms = waits = 0;
+#endif
 }
+
+/* READY reads of a wait that times out: every 100 us, or (with the OS's
+ * waits) once before and once after the one wait.
+ */
+#ifdef NINA_OS_WAIT_READY
+#define TIMEOUT_POLLS(ms) 2
+#else
+#define TIMEOUT_POLLS(ms) ((ms) * 10)
+#endif
 
 /* nina_request() with no parameters and an 8-bit answer. */
 static int simple(uint8_t cmd, uint8_t *out, size_t cap, size_t *n)
@@ -474,15 +525,22 @@ static void ready_cases(void)
 	reset_fake(reply, sizeof(reply));
 	ready_never_from = 0;
 	assert(simple(0x37, out, 15, &n) == -ETIMEDOUT);
-	assert(polls == 20000 && now_us == 2000000 && phase == 0 && events[0] == '\0');
+	assert(polls == TIMEOUT_POLLS(2000) && now_us == 2000000 && phase == 0 &&
+	       events[0] == '\0');
 	assert(lock_depth == 0 && n == 77);
+#ifdef NINA_OS_WAIT_READY
+	assert(arms == 1 && waits == 1 && armed < 0);
+#endif
 	/* It does not answer CS by releasing READY: 20 ms, nothing sent, CS
 	 * released.
 	 */
 	reset_fake(reply, sizeof(reply));
 	ready_stuck_phase = 1;
 	assert(simple(0x37, out, 15, &n) == -ETIMEDOUT);
-	assert(polls == 1 + 200 && now_us == 20000 && calls == 0 && !cs_active);
+	assert(polls == 1 + TIMEOUT_POLLS(20) && now_us == 20000 && calls == 0 && !cs_active);
+#ifdef NINA_OS_WAIT_READY
+	assert(arms == 2 && waits == 1 && armed < 0);
+#endif
 	assert(strcmp(events, "CS1 CS0 ") == 0);
 	/* It never gets ready to answer: 10000 ms after the request. */
 	reset_fake(reply, sizeof(reply));
@@ -499,6 +557,9 @@ static void ready_cases(void)
 	/* A ready module costs one poll per wait and no sleep. */
 	reset_fake(reply, sizeof(reply));
 	assert(simple(0x37, out, 15, &n) == 0 && polls == 4 && now_us == 0);
+#ifdef NINA_OS_WAIT_READY
+	assert(arms == 4 && waits == 0 && armed < 0);
+#endif
 }
 
 static void init_cases(void)
@@ -586,6 +647,10 @@ int main(void)
 	ready_cases();
 	init_cases();
 	ip_config_cases();
+#ifdef NINA_OS_WAIT_READY
+	puts("NINA SPI framing, answers, timeouts and reset tests passed (OS waits for READY)");
+#else
 	puts("NINA SPI framing, answers, timeouts and reset tests passed");
+#endif
 	return 0;
 }

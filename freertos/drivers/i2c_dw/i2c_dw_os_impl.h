@@ -14,7 +14,8 @@
  *                                timer task "Tmr Svc"; zephyr_kernel.c)
  *   k_sem_give()                 k_sem_give()
  *   k_sem_take(.., K_MSEC(ms))   k_sem_take(.., K_MSEC(ms)): ms rounded up
- *                                to 100 us ticks, plus one tick (Zephyr's
+ *                                to ticks (100 us, or 1 ms with
+ *                                NANO_TICK_HZ=1000), plus one tick (Zephyr's
  *                                rounding and wake-up)
  *   k_sem_take(.., K_FOREVER)    k_sem_take(.., K_FOREVER) (never fails)
  *   k_sem_reset()                k_sem_reset()

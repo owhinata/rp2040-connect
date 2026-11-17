@@ -68,9 +68,11 @@
  *   so no other task's GPIO calls interfere: SIO's set and clear registers
  *   change only the bits written.
  *
- * No GPIO interrupt is used: nina_spi.c polls READY every 100 us
+ * No GPIO interrupt is used here: nina_spi.c polls READY every 100 us
  * (NINA_READY_POLL_US) and IRQ is only driven at the reset, as in both
- * builds.
+ * builds.  With the build option NANO_NINA_READY_IRQ, nina_os.c waits for
+ * READY's edges (GPIO10, active low, as in lines[] below) through the
+ * layer's GPIO bank 0 instead; the line's configuration here is the same.
  */
 
 #include <errno.h>

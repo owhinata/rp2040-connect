@@ -63,6 +63,25 @@ if(NOT NANO_SCHED_ZEPHYR)
   add_compile_definitions(NANO_SCHED_FREERTOS=1)
 endif()
 
+# The kernel tick in Hz (FreeRTOSConfig.h configTICK_RATE_HZ): 10000 (100 us,
+# the Zephyr and NuttX builds' tick, the default) or 1000 (1 ms: fewer tick
+# interrupts; the layer's timeouts then count in 1 ms ticks, so a sleep
+# shorter than 1 ms lasts 1 to 2 ms).  For comparing the two
+# (freertos/script/build.sh -DNANO_TICK_HZ=1000).  Defined for every target,
+# the kernel included.
+set(NANO_TICK_HZ 10000 CACHE STRING "Kernel tick in Hz: 10000 or 1000")
+set_property(CACHE NANO_TICK_HZ PROPERTY STRINGS 10000 1000)
+if(NOT NANO_TICK_HZ STREQUAL "10000" AND NOT NANO_TICK_HZ STREQUAL "1000")
+  message(FATAL_ERROR "NANO_TICK_HZ must be 10000 or 1000, not ${NANO_TICK_HZ}")
+endif()
+add_compile_definitions(NANO_TICK_HZ=${NANO_TICK_HZ})
+
+# The NINA-W102's READY line waited for on its edge interrupt (GPIO10)
+# instead of sampled every 100 us, as the Zephyr and NuttX builds do
+# (freertos/drivers/nina/nina.cmake, READY_IRQ).  Off by default, for
+# comparing the two (freertos/script/build.sh -DNANO_NINA_READY_IRQ=ON).
+option(NANO_NINA_READY_IRQ "Wait for the NINA's READY line on its interrupt" OFF)
+
 add_executable(usb-console
   src/main.c
   src/commands.c
@@ -79,7 +98,11 @@ else()
   freertos_zephyr_compat(usb-console)
 endif()
 freertos_kv(usb-console)
-freertos_nina(usb-console)
+if(NANO_NINA_READY_IRQ)
+  freertos_nina(usb-console READY_IRQ)
+else()
+  freertos_nina(usb-console)
+endif()
 if(NANO_SELFTEST)
   freertos_i2c_dw(usb-console SELFTEST)
   freertos_lsm6dso(usb-console SELFTEST)
