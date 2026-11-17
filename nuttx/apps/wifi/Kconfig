@@ -52,8 +52,8 @@ config NANO_WIFI_PROFILE
 	default y
 	depends on NANO_WIFI_CREDENTIALS && NANO_KV_STORE
 	---help---
-		wifi_profile.c: the Zephyr build's src/wifi_profile.c with only
-		the system calls replaced: the thread wifi_reconnect_tid (Zephyr
+		wifi_profile.c (common/imu, shared with the Zephyr build) on the
+		Zephyr compatibility layer: the thread wifi_reconnect_tid (Zephyr
 		priority 8, NuttX 110, 2048-byte stack), which the init task
 		starts at boot, connects to the stored networks 4 s after a
 		request and then every 32 s while there is no address, from

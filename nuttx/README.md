@@ -457,5 +457,5 @@ Zephyr build changes), are in "Host test details" in [`design/nuttx-porting.md`]
 | `patches/` | Patches to NuttX and nuttx-apps |
 | `script/` | `setup.sh`, `build.sh`, `flash.sh`, `host_tests.sh`, `bin2uf2.py`, `kconfig-tweak` |
 | `tests/` | Host tests (those of the NuttX build only) |
-| `../common/` | Sources shared with the Zephyr build (`imu/`, `drivers/lsm6dso/`, `drivers/i2c_dw/`) and their host tests. The build finds them through `VPATH`; the objects are made in `apps/imu`, `drivers` and the board's directory |
+| `../common/` | Sources shared with the Zephyr build (`imu/`, `drivers/lsm6dso/`, `drivers/nina/`, `drivers/sensor_shell/`, `drivers/i2c_dw/`) and their host tests. The build finds them through `VPATH` and compiles each with the prelude (`drivers/compat/common_prelude.h`); the objects are made in `apps/imu`, `apps/wifi`, `apps/sensor`, `drivers` and the board's directory |
 | `nuttx/`, `nuttx-apps/`, `pico-sdk/`, `toolchain/`, `stmemsc/`, `.venv/`, `build/` | What `setup.sh` fetches and the build products (not in Git) |

@@ -426,5 +426,5 @@ OS に依存しない部分のホストテスト 38 本を PC 上でビルドし
 | `patches/` | NuttX と nuttx-apps へのパッチ |
 | `script/` | `setup.sh`、`build.sh`、`flash.sh`、`host_tests.sh`、`bin2uf2.py`、`kconfig-tweak` |
 | `tests/` | ホストテスト（NuttX 版だけのもの） |
-| `../common/` | Zephyr 版と共有するソース（`imu/`、`drivers/lsm6dso/`、`drivers/i2c_dw/`）とそのホストテスト。ビルドは `VPATH` でそこを参照し、オブジェクトは `apps/imu`・`drivers`・ボードのディレクトリーにできる |
+| `../common/` | Zephyr 版と共有するソース（`imu/`、`drivers/lsm6dso/`、`drivers/nina/`、`drivers/sensor_shell/`、`drivers/i2c_dw/`）とそのホストテスト。ビルドは `VPATH` でそこを参照し、各ファイルに前置きヘッダー（`drivers/compat/common_prelude.h`）を付けてコンパイルする。オブジェクトは `apps/imu`・`apps/wifi`・`apps/sensor`・`drivers`・ボードのディレクトリーにできる |
 | `nuttx/`、`nuttx-apps/`、`pico-sdk/`、`toolchain/`、`stmemsc/`、`.venv/`、`build/` | `setup.sh` が取得するものとビルドの生成物（Git 管理外） |

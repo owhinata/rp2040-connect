@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /* The big-endian accessors of Zephyr's <zephyr/sys/byteorder.h> that the
- * ported code uses, and sys_get_le32() (drivers/nina/nina_net.c), with Zephyr's definitions: values at any alignment,
+ * ported code uses, and sys_get_le32() (common/drivers/nina/nina_net.c), with Zephyr's definitions: values at any alignment,
  * independent of the CPU's byte order.  Part of the small Zephyr
  * compatibility layer of the port (nuttx/drivers/compat, see
  * nuttx/drivers/README.md).

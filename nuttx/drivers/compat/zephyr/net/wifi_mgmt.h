@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /* The part of Zephyr's <zephyr/net/wifi.h>, <zephyr/net/wifi_mgmt.h> and
  * <zephyr/net/offloaded_netdev.h> (Zephyr v4.5.0) that the NINA network
- * device (drivers/nina/nina_net.c) and the application use, with Zephyr's
+ * device (common/drivers/nina/nina_net.c) and the application use, with Zephyr's
  * names, types and values:
  *
  *   the Wi-Fi types (security, band, MFP, state, mode), struct

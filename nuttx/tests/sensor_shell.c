@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-/* Host test of the "sensor" command (nuttx/apps/sensor: the copies of the
- * Zephyr build's sensor_shell.c and Zephyr's sensor_shell_stream.c) on the
+/* Host test of the "sensor" command (common/drivers/sensor_shell/
+ * sensor_shell.c, shared with the Zephyr build, and nuttx/apps/sensor: the
+ * copy of Zephyr's sensor_shell_stream.c and the NuttX part) on the
  * Zephyr shell's command handling of nuttx/apps/subcmd/zshell.c, the ported
  * LSM6DSO driver and its fake sensor (tests/lsm6dso_driver.c, included
  * below; its own tests run first).  The expected text is the Zephyr

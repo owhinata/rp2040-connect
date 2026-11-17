@@ -100,7 +100,7 @@ flowchart LR
 | Ticks to the board clock | `common/imu/imu_tick_clock.*` |
 | Board clock to PC time | `src/time_sync.*`, `common/imu/time_offset.*` |
 | Send queue | `common/imu/imu_raw_queue.*` |
-| MQTT sending, reconnecting, status / info | `src/imu_raw_mqtt.*`, `common/imu/imu_raw_status.*` |
+| MQTT sending, reconnecting, status / info | `common/imu/imu_raw_mqtt.*`, `common/imu/imu_raw_status.*` |
 | Acquisition thread, recovery, shell (`imu`) | `src/imu_stream.c` |
 | NINA sockets | `drivers/nina/nina_socket.c` (see the [driver README](../zephyr/app/usb-console/drivers/README.md)) |
 
@@ -640,13 +640,17 @@ version's; what has been verified on the NuttX port is listed separately in 11.7
   copy in the repository's `common/`, and the same host tests (`common/tests/`) run from the
   `host_tests.sh` of both builds. The driver files that use Zephyr's API but are the same in both
   builds (the LSM6DSO's FIFO setup and stream, `lsm6dso_fifo_stats.h`, `lsm6dso_attributes.h`) are
-  in `common/` too and run on the compatibility layer below in the NuttX build. Identical files not
-  in `common/` (`kv_store.h`, `time_sync.h`, `nina_proto.h`) are unchanged copies of the Zephyr
-  version's.
-- The sources that call the OS (`imu_stream.c`, `imu_raw_mqtt.c`, `time_sync.c`, `imu_cal.c`,
-  `wifi_profile.c`, `nina_net.c`, the LSM6DSO driver, the sensor shell) are
-  also copied almost as they are, on top of a compatibility layer (`nuttx/drivers/compat/`) that
-  provides the OS calls **under Zephyr's names**. The layer has only what the copied sources use
+  in `common/` too and run on the compatibility layer below in the NuttX build. Of the sources that
+  call the OS, `imu_raw_mqtt.c`, `imu_cal.c`, `wifi_profile.c`, `nina_net.c`, `lsm6dso_compat.c` and
+  the sensor shell's `sensor_shell.c`, with the headers `kv_store.h` and `time_sync.h`, are also the
+  single files in `common/` that both builds use. The NuttX build compiles each with a prelude
+  (NuttX's configuration, the NuttX headers to read before the compatibility layer, and the values
+  of the Zephyr Kconfig options the files use), and the few lines that differ between the builds
+  are in small headers of each OS (`sensor_shell_os.h`, `wifi_profile_os.h`). The identical file not
+  in `common/` (`nina_proto.h`) is an unchanged copy of the Zephyr version's.
+- The other sources that call the OS (`imu_stream.c`, `time_sync.c`, the LSM6DSO driver) are
+  copies, almost as they are, and run like the shared ones on top of a compatibility layer
+  (`nuttx/drivers/compat/`) that provides the OS calls **under Zephyr's names**. The layer has only what the copied sources use
   (`struct device`, the sensor API, RTIO, work queues, parts of `k_sem`, `k_mutex` and `k_poll`,
   `net_mgmt` events, `zsock_*()`, shell command tables). The constants, branches, order, waits,
   counters and output strings are those of the Zephyr sources.
@@ -680,8 +684,8 @@ the SPI at the caller's priority and serializes with `nina_lock`. The lock order
   NINA did not take gives `EAGAIN` at once", a small patch is applied to NuttX's usrsock
   (`nuttx/patches/nuttx/0005`).
 - The NINA is also registered as the NuttX network device `wlan0`, and the requests of `wapi` and
-  `ifconfig` are turned into operations of the driver (a copy of the Zephyr version's
-  `nina_net.c`).
+  `ifconfig` are turned into operations of the driver (`common/drivers/nina/nina_net.c`, shared with
+  the Zephyr build).
 
 ### 11.3 Clocks and tick
 

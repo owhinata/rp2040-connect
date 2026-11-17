@@ -2,7 +2,9 @@
 /* The logging macros of the port: LOG_MODULE_REGISTER(), LOG_ERR(),
  * LOG_WRN(), LOG_INF(), LOG_DBG() and the *_RATELIMIT() forms, used the way
  * Zephyr's <zephyr/logging/log.h> is used by zephyr/app/usb-console, so its
- * sources move over with only the include changed.  Each message becomes
+ * sources move over with only the include changed (the sources shared with
+ * the Zephyr build, common/, keep Zephyr's include: <zephyr/logging/log.h>
+ * of the compatibility layer includes this header).  Each message becomes
  * one line in the RAM log (drivers/log/log_ram.c, shown by "dmesg") in
  * Zephyr's format:
  *

@@ -1,12 +1,12 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /* STUB for a build without the MQTT transport (CONFIG_NANO_IMU_RAW_MQTT
- * off; with it, imu_raw_mqtt.c, the port of src/imu_raw_mqtt.c, is built
- * instead).
+ * off; with it, common/imu/imu_raw_mqtt.c, shared with the Zephyr build,
+ * is built instead).
  *
  * The API of imu_raw_mqtt.h behaving as the Zephyr build's transport does
  * while the board has no network: the connection never comes up, so every
  * batch is refused and counted as dropped, and nothing is published. It is
- * the Zephyr code (zephyr/app/usb-console/src/imu_raw_mqtt.c) without the
+ * the code of common/imu/imu_raw_mqtt.c without the
  * MQTT client and its thread:
  *
  * - imu_raw_mqtt_start(): the same checks (-EBUSY, -EINVAL) and resets.

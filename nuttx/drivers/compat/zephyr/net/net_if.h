@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /* The part of Zephyr's <zephyr/net/net_if.h> (Zephyr v4.5.0) that the NINA
- * network device (drivers/nina/nina_net.c) and the application
+ * network device (common/drivers/nina/nina_net.c) and the application
  * (wifi_profile.c, time_sync.c, imu_raw_mqtt.c of the Zephyr build) use,
  * with Zephyr's names and meanings, on one NuttX network device:
  *

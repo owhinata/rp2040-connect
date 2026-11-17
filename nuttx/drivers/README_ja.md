@@ -144,10 +144,10 @@ Zephyr 版はソケットのオフロード（`drivers/nina/nina_socket.c`）で
 
 | ファイル | 役割 |
 |---|---|
-| `nina/nina_net.c` | Zephyr 版の `drivers/nina/nina_net.c` の写し（先頭の説明と `<nuttx/config.h>` だけを足したもの）。スキャン・接続・切断・状態の取得と、3 つのスレッド `nina_scan_tid`・`nina_connect_tid`・`nina_monitor_tid` |
+| `common/drivers/nina/nina_net.c` | Zephyr 版と同じファイル（リポジトリの `common/`。`nina/Make.defs` が `VPATH` で参照し、前置きヘッダーを付けてコンパイルする。オブジェクトは `nuttx/drivers` にできる）。スキャン・接続・切断・状態の取得と、3 つのスレッド `nina_scan_tid`・`nina_connect_tid`・`nina_monitor_tid` |
 | `nina/nina_netdev.c` | NINA を NuttX のネットワークデバイス `wlan0` として登録し、wapi の無線の ioctl を Zephyr の Wi-Fi の要求（`net_mgmt()`）にする。NuttX 版だけ |
-| `nina/wifi_profile_null.c` | `nina_net.c` が呼ぶ Wi-Fi のプロファイルの関数（`wifi_profile_pause_reconnect()` など）の空の実装。保存した資格情報と自動再接続（`nuttx/apps/wifi/wifi_profile.c`、Zephyr 版の `src/wifi_profile.c` の写し）を入れない構成（`CONFIG_NANO_WIFI_PROFILE` が無いとき）だけで使う |
-| `include/nina_net.h`、`include/wifi_profile.h` | `nina_net_initialize()`。`wifi_profile.h` は Zephyr 版の `src/wifi_profile.h` と同じ宣言 |
+| `nina/wifi_profile_null.c` | `nina_net.c` が呼ぶ Wi-Fi のプロファイルの関数（`wifi_profile_pause_reconnect()` など）の空の実装。保存した資格情報と自動再接続（`common/imu/wifi_profile.c`、Zephyr 版と同じファイル。`nuttx/apps/wifi/` がビルドする）を入れない構成（`CONFIG_NANO_WIFI_PROFILE` が無いとき）だけで使う |
+| `include/nina_net.h` | `nina_net_initialize()`。`nina_net.c` が読む `wifi_profile.h` は Zephyr 版と同じファイル `common/imu/wifi_profile.h`（`nina/Make.defs` がインクルードパスに足す） |
 
 - `nina_net.c` は Zephyr の API（`net_if`、`net_mgmt`、`wifi_mgmt`、カーネルのオブジェクト）を互換層
   （下の「Zephyr の API の互換層」）で使うので、Zephyr 版と同じコードのまま動きます。値と動作は Zephyr 版と
@@ -189,7 +189,7 @@ wapi の ioctl（`d_ioctl`。呼び出したスレッドで処理）は次のと
 ほかの無線の ioctl は `-ENOTTY` です。接続の結果は `wapi essid` の戻りでは分からず（Zephyr 版の `wifi connect` も
 要求を出して戻る）、`ifconfig` の `RUNNING` と IP アドレス、`wapi show` の ESSID で確かめます。
 
-- 資格情報の保存と自動再接続（`nuttx/apps/wifi/`。Zephyr 版の `src/wifi_profile.c` と Zephyr の
+- 資格情報の保存と自動再接続（`nuttx/apps/wifi/`。Zephyr 版と同じファイル `common/imu/wifi_profile.c` と、Zephyr の
   `subsys/net/lib/wifi_credentials/` の写し、`wifi cred`。`design/nuttx-porting-ja.md` の「Wi-Fi の資格情報と自動再接続（`wifi cred`）」）は、
   互換層の `net_mgmt()`（`NET_REQUEST_WIFI_CONNECT_STORED`）、`net_mgmt_add_event_callback()`
   （`NET_EVENT_WIFI_CONNECT_RESULT`）、`net_if_get_wifi_sta()`、`net_if_ipv4_get_global_addr()`、`k_current_get()` を
@@ -257,7 +257,7 @@ wapi の ioctl（`d_ioctl`。呼び出したスレッドで処理）は次のと
 | `lsm6dso/lsm6dso_os.[ch]` | `lsm6dso.c` が使うカーネルの機能: ミューテックスと割り込み禁止（互換層の `k_mutex`・`k_spin_lock()`）、`k_busy_wait()`、`k_msleep()`・`k_usleep()`、`k_cycle_get_32()` |
 | `lsm6dso/stmemsc.h`、`stmemsc_i2c.c`、`stmemsc_mdelay.c` | Zephyr の `drivers/sensor/st/stmemsc/` の I2C の部分の写し（ST の `stmdev_ctx_t` と Zephyr の I2C の API のつなぎ） |
 | `lsm6dso/st_lsm6dso_reg.c` | ST の `lsm6dso_reg.c`（`nuttx/stmemsc/`、Git 管理外）をそのままビルドするための 1 行の包み |
-| `lsm6dso/lsm6dso_compat.c` | 単発取得の RTIO 版（ストリームでない submit のフォールバック）。Zephyr 版の写しで、ログのインクルードとレベルの名前だけを置き換え |
+| `common/drivers/lsm6dso/lsm6dso_compat.c` | 単発取得の RTIO 版（ストリームでない submit のフォールバック）。Zephyr 版と同じファイル（ログは互換層の `<zephyr/logging/log.h>`、レベル `CONFIG_SENSOR_LOG_LEVEL` は前置きヘッダー） |
 | `common/drivers/lsm6dso/lsm6dso_fifo.[ch]`、`lsm6dso_fifo_packet.h` | FIFO のワードの解析とバッファーの先頭の形式。Zephyr 版と同じファイル（リポジトリの `common/`。`lsm6dso/Make.defs` が `VPATH` で参照し、オブジェクトは `nuttx/drivers` にできる。以下の 4 行も同じ） |
 | `common/drivers/lsm6dso/lsm6dso_fifo_hw.[ch]`、`lsm6dso_fifo_stats.h`、`lsm6dso_attributes.h` | FIFO の設定・状態の読み取り・バースト読み出し、FIFO の統計、独自属性。Zephyr 版と同じファイル（Zephyr の名前の API を互換層から使う） |
 | `common/drivers/lsm6dso/lsm6dso_stream.c`、`lsm6dso_fifo_irq.[ch]` | FIFO のストリーム（下）。Zephyr 版と同じファイル |
@@ -294,8 +294,8 @@ wapi の ioctl（`d_ioctl`。呼び出したスレッドで処理）は次のと
 変換（`lsm6dso_cal.c`）、校正値の参照（`lsm6dso_cal_set_lookup()`・`lsm6dso_cal_reload()`・
 `lsm6dso_cal_status()`）、その場でのバイアスの取り直し（`lsm6dso_cal_zero()`）、ストリーム中の追従
 （`lsm6dso_zero.c`）は Zephyr 版のコードのままで、動作も同じです（Zephyr 版のドライバー説明の
-「物理量への変換と校正」）。ドライバーは KV を読みません。校正値を引く関数は `nuttx/apps/imu/imu_cal.c`
-（Zephyr 版の `src/imu_cal.c` の写し）が init の `imu_cal_init()` で登録し、ドライバーは登録時、
+「物理量への変換と校正」）。ドライバーは KV を読みません。校正値を引く関数は `common/imu/imu_cal.c`
+（Zephyr 版と同じファイル。`nuttx/apps/imu/` がビルドする）が init の `imu_cal_init()` で登録し、ドライバーは登録時、
 `imu cal reload`、レンジの設定時にそれを呼びます。校正値が掛かるのは単発取得の `sensor_channel_get()` と
 FIFO のデコーダーの出力で、取得サービスが MQTT で送る RAW には掛かりません。
 
@@ -357,7 +357,10 @@ Zephyr の API を、Zephyr の名前のまま最小限だけ用意したもの�
 | `zephyr/net/wifi_credentials.h` | Zephyr の同名のヘッダーの写し: `struct wifi_credentials_header`・`_personal`、`WIFI_CREDENTIALS_FLAG_*`、`wifi_credentials_set_personal_struct()`・`_get_by_ssid_personal_struct()`・`_delete_by_ssid()`・`_for_each_ssid()`・`_is_empty()` など。設定の値（`CONFIG_WIFI_CREDENTIALS_MAX_ENTRIES` など）は `nuttx/apps/wifi/Kconfig` の `NANO_WIFI_CREDENTIALS_*` から。NuttX 版だけの `wifi_credentials_init()`（init が呼ぶ。Zephyr の `SYS_INIT()`）。関数は `nuttx/apps/wifi/` |
 | `zephyr/net/wifi_utils.h` | `wifi_utils_validate_chan()`（`_2g`・`_5g`・`_6g`）、`net_bytes_from_str()`（Zephyr では `<zephyr/net/net_ip.h>`） |
 | `zephyr/settings/settings.h` | `settings_subsys_init()`、`settings_save_one()`、`settings_delete()`、`settings_load_one()`。名前 1 つずつを NuttX の NVS（`/dev/config`）の同じ名前の項目で読み書きする（実装は `nuttx/apps/wifi/settings_nvs.c`）。部分木の読み込みとハンドラーは無い |
+| `zephyr/logging/log.h` | `LOG_MODULE_REGISTER()`、`LOG_ERR()` などのログのマクロ。ポートの `app_log.h`（`dmesg` の RAM ログ）を読むだけ |
+| `zephyr/net/net_ip.h` | IPv4 のアドレスの型 `struct in_addr`（`imu_raw_mqtt.h`）。NuttX の `<netinet/in.h>` を読むだけ（同じメンバー `s_addr`、ネットワークバイト順） |
 | `zephyr_compat.h` | `zephyr_compat_initialize()`（ボードの起動処理が呼ぶ。下）、`K_THREAD_DEFINE_START()`（init が呼ぶ） |
+| `common_prelude.h` | 前置きヘッダー（下） |
 
 | ソース | 中身 |
 |---|---|
@@ -389,8 +392,25 @@ Zephyr の API を、Zephyr の名前のまま最小限だけ用意したもの�
 - **NuttX の名前との衝突**: NuttX の `<nuttx/atomic.h>`（多くのカーネルのヘッダーが読む）にも `atomic_t` と
   `atomic_set()` などがあり、意味が違います。互換層の `<zephyr/sys/atomic.h>` はそれを先に読んでから、
   そのファイルの中で名前を引き取ります（`atomic_t` は `zephyr_atomic_t`、NuttX のマクロは `#undef`）。
-  両方を使うファイルは NuttX のヘッダーを先に読みます。ボードの起動処理は Zephyr のヘッダーを読まず、
-  `zephyr_compat.h` だけを読みます。
+  両方を使うファイルは NuttX のヘッダーを先に読みます（`common/` のファイルは前置きヘッダーが読む）。ボードの
+  起動処理は Zephyr のヘッダーを読まず、`zephyr_compat.h` だけを読みます。
+- **前置きヘッダー**（`common_prelude.h`）: Zephyr 版と共有するソース（リポジトリの `common/`）を NuttX 版で
+  コンパイルするとき、ビルド定義（`apps/imu`・`apps/wifi`・`apps/sensor` の `Makefile`、`lsm6dso/Make.defs`、
+  `nina/Make.defs`、ボードの `src/Make.defs`）が各ファイルの前に `-include` で読ませます（Zephyr 版がすべての
+  ファイルに `-imacros autoconf.h` で構成を読ませるのと同じ形）。中身は `<nuttx/config.h>`、互換層より先に要る
+  NuttX のヘッダー（`<zephyr/kernel.h>` が先に読むもの: `<sys/types.h>`、`<nuttx/irq.h>`、`<nuttx/mutex.h>`、
+  `<nuttx/semaphore.h>`、`<nuttx/wdog.h>`、`<stdio.h>`）と、共有するソースが使う Zephyr の Kconfig の値
+  （`CONFIG_SENSOR_LOG_LEVEL` 3。Zephyr 版の構成と同じ値）です。そのため共有するソースには NuttX のヘッダーの行が
+  ありません。ソケットのヘッダーは入れていません（`accept()` などの名前がソースの関数と重なる。必要なファイルは
+  互換層の `<zephyr/net/socket.h>` が読む）。ホストテストも同じヘッダーを付けます（`__NuttX__` が無いと Kconfig の
+  値だけ）。
+- **OS ごとのヘッダー**: 共有するソースのうち版ごとに違う数行は、同じ名前の小さなヘッダーに出し、Zephyr 版と
+  NuttX 版がそれぞれのものを読みます。`sensor_shell_os.h`（`sensor_shell.c` が最初に読む。NuttX 版
+  `nuttx/apps/sensor/` は Zephyr 版の構成の値とログを読み、`sensor get` が結果の表示を待つ 2 行を関数にする。
+  Zephyr 版 `zephyr/app/usb-console/drivers/sensor_shell/` は何もしない）と `wifi_profile_os.h`（再接続のスレッドの
+  `wifi_reconnect_tid` の宣言。Zephyr 版 `zephyr/app/usb-console/src/` は `K_THREAD_DEFINE()` が作るとおり
+  `const k_tid_t`、NuttX 版 `nuttx/apps/wifi/` は互換層の `K_THREAD_DEFINE()` がスレッドを始めるときに値を書くので
+  `const` なし）です。
 - **セマフォと `k_poll()`**: `k_sem_give()` は上限で止め、そのセマフォを `k_poll()` で待っているスレッドを
   起こします（取らずに知らせるだけ。Zephyr の `K_POLL_MODE_NOTIFY_ONLY`）。`k_sem_take()` は 0、`-EBUSY`
   （`K_NO_WAIT`）、`-EAGAIN`（時間切れ）。`k_poll()` はセマフォだけを扱います。

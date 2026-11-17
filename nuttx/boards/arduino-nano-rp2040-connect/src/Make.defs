@@ -92,9 +92,10 @@ endif
 
 # Its DMA reads: the DMA channels (in place of the in-tree rp2040_dmac.c,
 # RP2040_DMAC off) and the command words (i2c_dw_rp2040_commands.c, shared
-# with the Zephyr build in common/drivers/i2c_dw; VPATH and DEPPATH are
-# relative to the directory where the board's objects are made, through the
-# board symlink, as mkdeps needs).
+# with the Zephyr build in common/drivers/i2c_dw and compiled with the
+# prelude of the shared sources, common_prelude.h of the compatibility
+# layer; VPATH and DEPPATH are relative to the directory where the board's
+# objects are made, through the board symlink, as mkdeps needs).
 
 ifeq ($(CONFIG_NANO_I2C0_DMA),y)
 CSRCS += nano_dma.c
@@ -102,6 +103,7 @@ CSRCS += i2c_dw_rp2040_commands.c
 DEPPATH += --dep-path board/../../../../common/drivers/i2c_dw
 VPATH += :board/../../../../common/drivers/i2c_dw
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)drivers$(DELIM)i2c_dw
+i2c_dw_rp2040_commands$(OBJEXT): CFLAGS += -include $(TOPDIR)$(DELIM)external$(DELIM)compat$(DELIM)common_prelude.h
 endif
 
 # The stack sentinel in the scheduler's switch hook.

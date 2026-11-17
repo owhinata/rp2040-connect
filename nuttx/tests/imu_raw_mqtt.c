@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-/* Host test of the MQTT transport (nuttx/apps/imu/imu_raw_mqtt.c, the copy
- * of the Zephyr build's src/imu_raw_mqtt.c) with the port's MQTT client
+/* Host test of the MQTT transport (common/imu/imu_raw_mqtt.c, shared with
+ * the Zephyr build) with the port's MQTT client
  * (mqtt_min.c), its socket layer (mqtt_min_sock.c) and the compatibility
  * layer's zsock_*() calls (<zephyr/net/socket.h>), on a fake socket, clock
  * and network interface.  The sources are included, so the static
@@ -87,7 +87,7 @@ int test_sem_take(struct k_sem *sem, k_timeout_t timeout);
 
 /* raw_mqtt_thread() runs in the test until it waits for the next start. */
 #define k_sem_take test_sem_take
-#include "../apps/imu/imu_raw_mqtt.c"
+#include "../../common/imu/imu_raw_mqtt.c"
 #undef k_sem_take
 #include "../apps/imu/mqtt_min_sock.c"
 

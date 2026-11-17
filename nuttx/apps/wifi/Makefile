@@ -4,15 +4,18 @@
 # The stored Wi-Fi credentials (NANO_WIFI_CREDENTIALS: the copy of Zephyr's
 # subsys/net/lib/wifi_credentials/ with its settings backend on /dev/config,
 # settings_nvs.c), the Wi-Fi profile with its reconnection thread
-# (NANO_WIFI_PROFILE: wifi_profile.c, the Zephyr build's src/wifi_profile.c;
-# the init task starts the thread) and the "wifi" builtin command
-# (NANO_APP_WIFI: wifi_credentials_shell.c is its main source), linked into
-# libapps.
+# (NANO_WIFI_PROFILE: wifi_profile.c, shared with the Zephyr build in
+# common/imu, found through VPATH and DEPPATH relative to this directory and
+# compiled with the prelude of the shared sources, common_prelude.h of the
+# compatibility layer; its NuttX part is wifi_profile_os.h here; the init
+# task starts the thread) and the "wifi" builtin command (NANO_APP_WIFI:
+# wifi_credentials_shell.c is its main source), linked into libapps.
 #
 # Include paths: the Zephyr compatibility layer
 # ($(TOPDIR)/external/compat), the port's shared headers
-# ($(TOPDIR)/external/include: app_log.h, priorities.h, wifi_profile.h),
-# the key-value store (kv_store.h) and subcmd.h.
+# ($(TOPDIR)/external/include: app_log.h, priorities.h), subcmd.h, this
+# directory (wifi_profile_os.h, for the file in common/imu) and common/imu
+# (wifi_profile.h, kv_store.h).
 ############################################################################
 
 include $(APPDIR)/Make.defs
@@ -34,7 +37,15 @@ endif
 
 CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)include
 CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)compat
-CFLAGS   += ${INCDIR_PREFIX}$(APPDIR)$(DELIM)external$(DELIM)imu
 CFLAGS   += ${INCDIR_PREFIX}$(APPDIR)$(DELIM)external$(DELIM)subcmd
+CFLAGS   += ${INCDIR_PREFIX}$(APPDIR)$(DELIM)external$(DELIM)wifi
+CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)imu
+
+VPATH    += :../../../common/imu
+DEPPATH  += --dep-path ../../../common/imu
 
 include $(APPDIR)/Application.mk
+
+ifeq ($(CONFIG_NANO_WIFI_PROFILE),y)
+wifi_profile.c$(SUFFIX)$(OBJEXT): CFLAGS += -include $(TOPDIR)$(DELIM)external$(DELIM)compat$(DELIM)common_prelude.h
+endif

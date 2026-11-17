@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-/* Host test of the calibration (nuttx/apps/imu/imu_cal.c, the copy of the
- * Zephyr build's src/imu_cal.c) on the ported LSM6DSO driver and its fake
+/* Host test of the calibration (common/imu/imu_cal.c, shared with the
+ * Zephyr build) on the ported LSM6DSO driver and its fake
  * sensor (tests/lsm6dso_driver.c, included below; its own tests run first)
  * and a fake key-value store.  It checks the path from a stored value to
  * the driver's output and the "imu cal" text:

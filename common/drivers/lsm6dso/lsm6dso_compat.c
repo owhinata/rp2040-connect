@@ -3,26 +3,15 @@
  * Copyright (c) 2024 Croxel Inc.
  * SPDX-License-Identifier: Apache-2.0
  */
-/* The Zephyr build's drivers/lsm6dso/lsm6dso_compat.c with only the system
- * parts replaced: <zephyr/logging/log.h> and CONFIG_SENSOR_LOG_LEVEL (3)
- * become app_log.h and LSM6DSO_COMPAT_LOG_LEVEL (3); <inttypes.h>, and
- * PRIu32/PRId32 for two uint32_t/q31_t log arguments (long on NuttX's arm).  The Zephyr names it uses come from the port's compatibility
- * layer (nuttx/drivers/compat).
- */
-#ifdef __NuttX__
-#include <nuttx/config.h>
-#endif
 #include <errno.h>
 #include <inttypes.h>
 #include <stdlib.h>
 #include <zephyr/drivers/sensor.h>
 #include <zephyr/drivers/sensor_clock.h>
 #include <zephyr/dsp/types.h>
-/* CONFIG_SENSOR_LOG_LEVEL of the Zephyr build (3, info). */
-#define LSM6DSO_COMPAT_LOG_LEVEL 3
-#include "app_log.h"
+#include <zephyr/logging/log.h>
 #include <zephyr/rtio/work.h>
-LOG_MODULE_REGISTER(lsm6dso_compat, LSM6DSO_COMPAT_LOG_LEVEL);
+LOG_MODULE_REGISTER(lsm6dso_compat, CONFIG_SENSOR_LOG_LEVEL);
 /**
  * @brief Compute the number of samples needed for the given channels
  *

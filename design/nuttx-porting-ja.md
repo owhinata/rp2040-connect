@@ -293,7 +293,7 @@ NINA firmware: 3.0.2
 
 NINA は NuttX のネットワークデバイス `wlan0` です。Zephyr 版の `wifi` のコマンドの代わりに、NuttX 標準の
 `wapi`（`CONFIG_WIRELESS_WAPI_CMDTOOL`、優先度 104、スタック 3072）と `ifconfig` を使います。ドライバーの
-処理は Zephyr 版の `drivers/nina/nina_net.c` そのもの（`nuttx/drivers/README_ja.md` の「Wi-Fi」）です。
+処理は Zephyr 版と同じファイル `common/drivers/nina/nina_net.c`（`nuttx/drivers/README_ja.md` の「Wi-Fi」）です。
 
 | Zephyr 版 | NuttX 版 |
 |---|---|
@@ -332,8 +332,8 @@ NINA は NuttX のネットワークデバイス `wlan0` です。Zephyr 版の 
 
 接続先の資格情報を保存し、起動時と接続が切れたときに自動で繋ぎ直します。資格情報の扱いは Zephyr の
 ライブラリ（`subsys/net/lib/wifi_credentials/` と settings のバックエンド）の写し、コマンドは
-`wifi_credentials_shell.c` の写し、自動再接続は Zephyr 版の `src/wifi_profile.c` の OS を呼ぶ部分だけを
-置き換えた写しです（`nuttx/apps/wifi/`）。構文・出力・エラーの文・戻り値は Zephyr 版と同じです。
+`wifi_credentials_shell.c` の写し（`nuttx/apps/wifi/`）、自動再接続は Zephyr 版と同じファイル
+`common/imu/wifi_profile.c` です。構文・出力・エラーの文・戻り値は Zephyr 版と同じです。
 
 ```
 wifi cred add -s <SSID> [-k <種類>] [-p <パスフレーズ>] [-c <チャネル>] [-b <帯域>] [-w <MFP>] [-m <BSSID>]
@@ -553,8 +553,8 @@ Zephyr 版の `i2c` コマンド（Zephyr のシェル）は移さず、NuttX �
 ドライバーは `nuttx/drivers/lsm6dso/lsm6dso.c` で、Zephyr 版の `drivers/lsm6dso/lsm6dso.c`（FIFO・校正・ゼロ点の
 変更を含む Zephyr の LSM6DSO ドライバー）の OS を呼ぶ部分だけを置き換えた写しです。レジスターの操作は ST の
 `lsm6dso_reg.c`（lsm6dso-pid v3.2.2。`script/setup.sh` が `nuttx/stmemsc/` に取得。Zephyr の hal_st のものと
-LF に直して同一）で行います。FIFO のストリーム（INT1 の割り込みと RTIO）も Zephyr 版のファイルをそのまま写して
-動かしています（下）。それを使う取得サービス（`imu start` など）は次の節です。
+LF に直して同一）で行います。FIFO のストリーム（INT1 の割り込みと RTIO）は Zephyr 版と同じファイル
+（`common/drivers/lsm6dso/`）で動かしています（下）。それを使う取得サービス（`imu start` など）は次の節です。
 
 - **起動時の初期化**: ボードの起動処理（`nano_bringup()`）が、I2C0 の初期化の直後、KV（NVS）のマウントより前に
   初期化します。Zephyr 版がデバイスを `main()` より前に初期化し（`POST_KERNEL`、優先度 90）、`main()` で NVS を
@@ -602,20 +602,22 @@ LF に直して同一）で行います。FIFO のストリーム（INT1 の割�
 
 ## センサーのコマンド（`sensor`）
 
-`nuttx/apps/sensor/` は、Zephyr 版の sensor シェル（`zephyr/app/usb-console/drivers/sensor_shell/sensor_shell.c`。
-Zephyr v4.5.0 の `drivers/sensor/sensor_shell.c` に修正と LSM6DSO の FIFO の属性を加えたもの）と、Zephyr の
-`drivers/sensor/sensor_shell_stream.c`・`sensor_shell.h` の写しです。`diff` で並べると違いは次だけです。
+コマンドの本体は Zephyr 版の sensor シェルと同じファイル `common/drivers/sensor_shell/sensor_shell.c`（Zephyr v4.5.0 の
+`drivers/sensor/sensor_shell.c` に修正と LSM6DSO の FIFO の属性を加えたもの）で、`nuttx/apps/sensor/` に、Zephyr の
+`drivers/sensor/sensor_shell_stream.c`・`sensor_shell.h` の写しと NuttX 版の部分があります。
 
-- 2 つの `.c`: 先頭の説明と `sensor_shell_nuttx.h` のインクルード（Zephyr 版の構成の `CONFIG_SENSOR_SHELL_*` の
-  値と、ログを `app_log.h` に）。
-- `sensor_shell.c`: `sensor get` が結果の表示を待つ 2 行（下の「出力先」）と、データレディのトリガーのログの
-  書式（`PRIu32`・`PRId32`）。
-- `sensor_shell_stream.c`: 処理スレッドが呼ぶコールバックを、元のコールバックの後で待っている `sensor get` に
-  知らせるもの（`sensor_shell_nuttx.c`）にした 1 行。
-- `sensor_shell.h` は無変更です。
+- `sensor_shell.c` は最初に OS ごとのヘッダー `sensor_shell_os.h` を読みます。NuttX 版（`nuttx/apps/sensor/`）は
+  `sensor_shell_nuttx.h`（Zephyr 版の構成の `CONFIG_SENSOR_SHELL_*` の値と、ログの `app_log.h`）を読み、
+  `sensor get` が結果の表示を待つ 2 行（`sensor_shell_os_get_arm()`・`sensor_shell_os_get_wait()`。下の「出力先」）を
+  `sensor_shell_nuttx.c` の関数にします。Zephyr 版（`zephyr/app/usb-console/drivers/sensor_shell/`）の同名の
+  ヘッダーでは、この 2 行は何もしません。ログのレベル `CONFIG_SENSOR_LOG_LEVEL` は前置きヘッダーにあります
+  （`nuttx/drivers/README_ja.md` の「Zephyr の API の互換層」）。
+- `sensor_shell_stream.c`（写し）: 先頭の説明と `sensor_shell_nuttx.h` のインクルード、処理スレッドが呼ぶ
+  コールバックを、元のコールバックの後で待っている `sensor get` に知らせるもの（`sensor_shell_nuttx.c`）にした 1 行。
+- `sensor_shell.h` は無変更の写しです。
 
 コマンドの表（`SHELL_STATIC_SUBCMD_SET_CREATE()`、`SHELL_DYNAMIC_CMD_CREATE()`、`SHELL_CMD_REGISTER()`）も
-写しのままで、互換層の `<zephyr/shell/shell.h>` と `nuttx/apps/subcmd/zshell.c` が、Zephyr のシェルと同じ規則
+Zephyr 版の文のままで、互換層の `<zephyr/shell/shell.h>` と `nuttx/apps/subcmd/zshell.c` が、Zephyr のシェルと同じ規則
 （語の照合、動的なサブコマンド、ワイルドカードの展開、引数の数の検査、`SHELL_HELP()` の説明と `Usage:` の行と
 その折り返し）で組み込みコマンド `sensor` にします。
 
@@ -706,8 +708,7 @@ Subcommands:
 
 ### 校正（`imu cal`）
 
-`nuttx/apps/imu/imu_cal.c` は Zephyr 版の `src/imu_cal.c` の写しで、`diff` で並べると違いは先頭の説明と
-`<nuttx/config.h>` のインクルードだけです（値の形式の `imu_cal_codec.c`・`imu_cal.h` は Zephyr 版と同じファイルで、`common/imu/` にあります）。
+`common/imu/imu_cal.c` は Zephyr 版と同じファイルです（値の形式の `imu_cal_codec.c`・`imu_cal.h` も同じく `common/imu/` にあります）。
 KV のキー（`imu.cal.accel.<µg/LSB>`、`imu.cal.gyro.<µdps/LSB>`）と値（56 バイト）、現在の感度のキーだけを
 使うこと、`imu cal`・`imu cal reload`・`imu cal zero` の構文・出力・エラーの文は Zephyr 版と同じです
 （Zephyr 版の README の「校正値の適用」、設計書 §10）。
@@ -733,8 +734,8 @@ conversion:
 
 ### MQTT の送信
 
-`nuttx/apps/imu/imu_raw_mqtt.c` は Zephyr 版の `src/imu_raw_mqtt.c` の写しで、`diff` で並べると違いは先頭の
-説明と NuttX のヘッダーのインクルード（互換層より先に読む）だけです。`CONFIG_NANO_IMU_RAW_MQTT`（既定で
+`common/imu/imu_raw_mqtt.c`・`imu_raw_mqtt.h` は Zephyr 版と同じファイルです（`imu_raw_mqtt.h` が読む
+`<zephyr/net/net_ip.h>` は、互換層のものが `<netinet/in.h>` を読みます）。`CONFIG_NANO_IMU_RAW_MQTT`（既定で
 有効）で入り、無ければスタブ `imu_raw_mqtt_null.c`（Zephyr 版がネットワークに繋がっていないときと同じく、
 バッチをすべて捨てて数える）になります。トピック（`imu/<device>/raw`・`status`・`info`）と QoS（raw と
 status は 0、info は 1 で retain）、クライアント ID（`imu-<device>`）、keepalive（60 秒）、クリーン
@@ -955,35 +956,33 @@ NuttX 標準のクリティカルセクションの監視（`CONFIG_SCHED_CRITMO
 ## ホストテストの詳細
 
 次のファイルは Zephyr 版と NuttX 版が同じものを使い、リポジトリの `common/` に 1 本ずつ置いています。
-Zephyr 版の `CMakeLists.txt` と NuttX 版の Makefile（`apps/imu/Makefile`、`apps/sensor/Makefile`、`drivers/lsm6dso/Make.defs`、
-ボードの `src/Make.defs`）がそこを参照します。`common/drivers/lsm6dso/` のうち Zephyr の API を使うもの（FIFO の設定と
-ストリーム、`lsm6dso_fifo_stats.h`、`lsm6dso_attributes.h`）は、NuttX 版では互換層の上で動きます。
+Zephyr 版の `CMakeLists.txt` と NuttX 版の Makefile（`apps/imu/Makefile`、`apps/wifi/Makefile`、`apps/sensor/Makefile`、
+`drivers/lsm6dso/Make.defs`、`drivers/nina/Make.defs`、ボードの `src/Make.defs`）がそこを参照します。Zephyr の API を
+使うもの（`common/drivers/` の FIFO の設定とストリーム、単発取得の RTIO 版、NINA の Wi-Fi、sensor シェルと、
+`common/imu/` の校正・MQTT・Wi-Fi のプロファイル）は、NuttX 版では互換層の上で動きます。NuttX 版は `common/` の
+各ファイルに前置きヘッダー（`nuttx/drivers/compat/common_prelude.h`）を付けてコンパイルし、版ごとに違う数行は
+OS ごとのヘッダー（`sensor_shell_os.h`、`wifi_profile_os.h`。Zephyr 版は `zephyr/app/usb-console/` の下、NuttX 版は
+`nuttx/apps/` の下）に出しています（`nuttx/drivers/README_ja.md` の「Zephyr の API の互換層」）。
 
 | 置き場所 | 内容 |
 |---|---|
-| `common/imu/` | `imu_raw_{batch,packet,queue,status,time}`、`imu_tick_clock`、`time_offset`、`imu_cal_codec.c`、`imu_cal.h` |
-| `common/drivers/lsm6dso/` | `lsm6dso_{fifo,cal,zero,fifo_decoder,fifo_hw,fifo_irq}`、`lsm6dso_stream.c`、`lsm6dso_fifo_packet.h`、`lsm6dso_fifo_stats.h`、`lsm6dso_attributes.h` |
+| `common/imu/` | `imu_raw_{batch,packet,queue,status,time}`、`imu_tick_clock`、`time_offset`、`imu_cal_codec.c`、`imu_cal.[ch]`、`imu_raw_mqtt.[ch]`、`wifi_profile.[ch]`、`kv_store.h`、`time_sync.h` |
+| `common/drivers/lsm6dso/` | `lsm6dso_{fifo,cal,zero,fifo_decoder,fifo_hw,fifo_irq}`、`lsm6dso_stream.c`、`lsm6dso_compat.c`、`lsm6dso_fifo_packet.h`、`lsm6dso_fifo_stats.h`、`lsm6dso_attributes.h` |
+| `common/drivers/nina/` | `nina_net.c` |
+| `common/drivers/sensor_shell/` | `sensor_shell.c` |
 | `common/drivers/i2c_dw/` | `i2c_dw_rp2040_commands.[ch]` |
 | `common/tests/` | 上のファイルを対象にするテスト 14 本（`common/tests/run.sh` が実行し、両方の版の `host_tests.sh` が最初に呼ぶ）。`stream_stop.c` は `../drivers/lsm6dso/lsm6dso_stream.c` を読み込む |
 | `common/tests/fakes/` | テスト用の Zephyr のヘッダーと ST のヘッダーの代わり（`zephyr/drivers/sensor.h`、`zephyr/drivers/sensor_clock.h`、`zephyr/drivers/i2c.h`、`zephyr/rtio/rtio.h`、`lsm6dso_reg.h`）と、`lsm6dso_stream.c` が読む `lsm6dso.h` の代わり（中身はインクルードガードだけ。`stream_stop.c` が必要な定義を自分で置く） |
 
-次のファイルは Zephyr 版（`zephyr/app/usb-console`）の同名ファイルを変更せずに写したものです。
-Zephyr 版を直したときは、写しも同じ内容に置き換えます。
+`common/` のソースを対象にするテストのうち、NuttX 版の互換層と偽のカーネル（`nuttx/tests/zephyr_fakes/` など）で
+動かすもの（`imu_cal`、`imu_raw_mqtt`、`sensor_shell`）は `nuttx/tests/` にあり、`nuttx/script/host_tests.sh` が
+前置きヘッダーを付けてビルドします。
 
-| 置き場所 | Zephyr 版の置き場所 | 内容 |
-|---|---|---|
-| `nuttx/apps/imu/` | `src/` | `kv_store.h`、`time_sync.h` |
-
-`nuttx/drivers/nina/nina_net.c` は先頭の説明と `<nuttx/config.h>` だけを足した写し、
-`nuttx/apps/wifi/wifi_profile.c` は先頭のインクルード（ログを `app_log.h` に）と `wifi_reconnect_tid` の宣言
-（`const` を外す）だけを変えた写し、
+次のファイルは Zephyr 版や Zephyr の写しです。Zephyr 版を直したときは、写しにも同じ変更を入れます。
 `nuttx/apps/imu/imu_stream.c` は OS を呼ぶ部分と末尾のコマンドの登録だけを置き換えた写し、
 `nuttx/apps/imu/time_sync.c` は OS を呼ぶ部分、`time_sync_mono_us()` の中身、Kconfig の名前と末尾のコマンドの登録だけを置き換えた写し、
-`nuttx/apps/imu/imu_raw_mqtt.c` は先頭の説明と NuttX のヘッダーのインクルードだけを足した写し、
-`nuttx/apps/imu/imu_cal.c` は先頭の説明と `<nuttx/config.h>` のインクルードだけを足した写し、
-`nuttx/apps/sensor/sensor_shell.c`・`sensor_shell_stream.c`・`sensor_shell.h` は Zephyr 版の sensor シェルと Zephyr の
-写しで、違いは「センサーのコマンド（`sensor`）」の節に書いたものだけ、
-`imu_raw_mqtt.h` は `<zephyr/net/net_ip.h>` を `<netinet/in.h>` にしただけの写しです。
+`nuttx/apps/sensor/sensor_shell_stream.c`・`sensor_shell.h` は Zephyr の写しで、違いは「センサーのコマンド（`sensor`）」の節に
+書いたものだけです。
 
 `nuttx/tests/fakes/nuttx/config.h`（空）は NuttX 版だけのもので、`<nuttx/config.h>` を読む `nuttx/apps` の
 ソースをホストテストでビルドするために置いています（`i2c_dma_app`）。
@@ -1048,7 +1047,7 @@ Zephyr のフラグへの変換、`IC_DATA_CMD` に書く語の列（`i2c` ツ�
 ワークキューでの単発取得とデコーダーを確かめます。
 
 `nuttx/tests/imu_cal.c` も NuttX 版だけのテストです。`lsm6dso_driver.c` を読み込んで同じ偽のセンサーを使い
-（`lsm6dso_driver` の確認を先に一通り動かします）、`apps/imu/imu_cal.c` を偽の KV と一緒にビルドして確かめます:
+（`lsm6dso_driver` の確認を先に一通り動かします）、`common/imu/imu_cal.c` を偽の KV と一緒にビルドして確かめます:
 起動時の読み込み（キー 2 つ）、保存した値が単発取得の出力に掛かること（`M·(raw−bias)`）、長さ・版・種類・感度・
 予約バイトが合わない値や長すぎる値は公称の変換になること、レンジの変更で別の感度のキーを読むことと戻ること、
 `reload`（消したキーは公称に戻る、追従したバイアスを捨てる）、`zero`（静止時、保存したバイアスから遠い、
@@ -1056,7 +1055,7 @@ Zephyr のフラグへの変換、`IC_DATA_CMD` に書く語の列（`i2c` ツ�
 丸めを含む）と出力先（stdout と stderr）。
 
 `nuttx/tests/sensor_shell.c` も NuttX 版だけのテストです。`lsm6dso_driver.c` を読み込んで同じ偽のセンサーを使い、
-`apps/sensor/` の写しを `apps/subcmd/zshell.c` と一緒にビルドし、コマンドの標準出力と標準エラーを 1 つの
+`common/drivers/sensor_shell/sensor_shell.c` と `apps/sensor/` を `apps/subcmd/zshell.c` と一緒にビルドし、コマンドの標準出力と標準エラーを 1 つの
 ファイル（端末の代わり）に向けて確かめます: `sensor` のヘルプ（`info` が無いこと、`SHELL_HELP()` の説明と
 `Usage:` の行の 80 桁での折り返し）、引数の数の誤りとヘルプと動的なデバイスの一覧、ワイルドカード（サブコマンド
 やチャネル名への展開、一致しないときに語の読み取りが止まること、ハンドラーが 2 つになるときのエラー）、

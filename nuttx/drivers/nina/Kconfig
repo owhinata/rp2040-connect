@@ -71,7 +71,7 @@ config NANO_NINA_NET
 	depends on NANO_NINA_USRSOCK && NANO_LSM6DSO_STREAM
 	depends on DRIVERS_IEEE80211 && NETDEV_WIRELESS_IOCTL && NET_IPv4
 	---help---
-		nina/nina_net.c (the Zephyr build's drivers/nina/nina_net.c:
+		nina_net.c (common/drivers/nina, shared with the Zephyr build:
 		scan, connect, disconnect, status and the 2-second link monitor,
 		with its threads nina_scan_tid, nina_connect_tid and
 		nina_monitor_tid) and nina/nina_netdev.c, which registers the

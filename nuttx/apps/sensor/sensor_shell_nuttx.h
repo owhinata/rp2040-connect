@@ -1,8 +1,10 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-/* NuttX port of the sensor shell: what the copies of Zephyr's sensor shell
- * (sensor_shell.c, sensor_shell_stream.c, sensor_shell.h) take from the
- * Zephyr build's configuration and logging, and the two additions of the
- * port (sensor_shell_nuttx.c).  Included first by both copies.
+/* NuttX port of the sensor shell: what the sensor shell (sensor_shell.c,
+ * shared with the Zephyr build in common/drivers/sensor_shell, and the
+ * copies of Zephyr's sensor_shell_stream.c and sensor_shell.h) takes from
+ * the Zephyr build's configuration and logging, and the two additions of
+ * the port (sensor_shell_nuttx.c).  Included first by sensor_shell_stream.c,
+ * and by sensor_shell.c through sensor_shell_os.h.
  */
 
 #ifndef __NUTTX_APPS_SENSOR_SENSOR_SHELL_NUTTX_H
@@ -17,15 +19,16 @@
 /* The Zephyr build's values (zephyr/build/usb-console/zephyr/.config):
  * CONFIG_SENSOR_SHELL_STREAM=y, CONFIG_SENSOR_SHELL_THREAD_STACK_SIZE=3072,
  * CONFIG_SENSOR_SHELL_TRIG_PRINT_TIMEOUT_MS=5000,
- * CONFIG_SENSOR_SHELL_MAX_TRIGGER_DEVICES=1, CONFIG_SENSOR_LOG_LEVEL=3;
- * CONFIG_SENSOR_INFO and CONFIG_SENSOR_SHELL_BATTERY are not set.
+ * CONFIG_SENSOR_SHELL_MAX_TRIGGER_DEVICES=1; CONFIG_SENSOR_INFO and
+ * CONFIG_SENSOR_SHELL_BATTERY are not set.  CONFIG_SENSOR_LOG_LEVEL (3),
+ * which only sensor_shell.c uses, is in the prelude of the shared sources
+ * (common_prelude.h of the compatibility layer).
  */
 
 #define CONFIG_SENSOR_SHELL_STREAM                1
 #define CONFIG_SENSOR_SHELL_THREAD_STACK_SIZE     NANO_STACK_SENSOR_SHELL
 #define CONFIG_SENSOR_SHELL_TRIG_PRINT_TIMEOUT_MS 5000
 #define CONFIG_SENSOR_SHELL_MAX_TRIGGER_DEVICES   1
-#define CONFIG_SENSOR_LOG_LEVEL                   3
 
 /* Zephyr's <zephyr/logging/log.h>, which the copies get through Zephyr's
  * headers: the port's RAM log ("dmesg").

@@ -318,13 +318,13 @@ NuttX 版と共有するソースのテスト（`common/tests/run.sh`）を先�
 
 | 場所 | 内容 |
 |---|---|
-| `zephyr/app/usb-console/src/` | アプリ本体（計測、MQTT、時刻同期、KV、Wi-Fi 設定） |
+| `zephyr/app/usb-console/src/` | アプリ本体のうち Zephyr 版だけのもの（計測、時刻同期、KV、RAM ログ、起動処理）。NuttX 版と共有するもの（MQTT、Wi-Fi 設定、校正など）は `common/imu/` |
 | `zephyr/app/usb-console/drivers/` | LSM6DSO、I²C、NINA、sensor shell のローカルドライバー |
 | `zephyr/app/usb-console/tests/` | ホストテスト（Zephyr 版だけのもの） |
 | `zephyr/app/blink/` | LED 点滅のサンプル |
 | `zephyr/script/` | 環境構築、ホストテスト |
 | `nuttx/` | NuttX 版（ボード定義、ドライバー、アプリ、パッチ、スクリプト、ホストテスト） |
-| `common/` | Zephyr 版と NuttX 版が同じものを使うソース（`imu/`: バッチ、パケット、送信キュー、時刻の対応付け、NTP の推定、校正値の形式。`drivers/`: LSM6DSO の FIFO の解析・単位の変換・ジャイロのゼロ点・FIFO の設定・割り込み・ストリーム、I²C の DMA のコマンド語）と、そのホストテスト（`tests/`。`tests/run.sh` を両方の版の `host_tests.sh` が呼ぶ） |
+| `common/` | Zephyr 版と NuttX 版が同じものを使うソース（`imu/`: バッチ、パケット、送信キュー、時刻の対応付け、NTP の推定、校正値の形式と `imu cal`、MQTT の送信、Wi-Fi のプロファイルと自動再接続、KV と時刻同期の宣言。`drivers/`: LSM6DSO の FIFO の解析・単位の変換・ジャイロのゼロ点・FIFO の設定・割り込み・ストリーム・単発取得の RTIO 版、NINA の Wi-Fi のネットワークデバイス、sensor シェル、I²C の DMA のコマンド語）と、そのホストテスト（`tests/`。`tests/run.sh` を両方の版の `host_tests.sh` が呼ぶ） |
 | `openmv/` | OpenMV 版 MicroPython のビルド環境（[`openmv/README_ja.md`](openmv/README_ja.md)） |
 | `freertos/` | Raspberry Pi Pico SDK と FreeRTOS カーネルのビルド環境と、USB コンソールのアプリ（[`freertos/README_ja.md`](freertos/README_ja.md)） |
 | `zephyr/manifest/west.yml` | Zephyr とモジュールのバージョン |

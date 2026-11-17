@@ -329,13 +329,13 @@ summary (missing batches, valid and reversed times) and at the errors in `imu st
 
 | Path | Content |
 |---|---|
-| `zephyr/app/usb-console/src/` | The application: measurement, MQTT, time sync, key-value store, Wi-Fi settings |
+| `zephyr/app/usb-console/src/` | The parts of the application that are the Zephyr build's own: measurement, time sync, key-value store, RAM log, start-up. Those shared with the NuttX build (MQTT, Wi-Fi settings, calibration and others) are in `common/imu/` |
 | `zephyr/app/usb-console/drivers/` | Local drivers for the LSM6DSO, I2C, NINA and the sensor shell |
 | `zephyr/app/usb-console/tests/` | Host tests (those of the Zephyr build only) |
 | `zephyr/app/blink/` | LED blink sample |
 | `zephyr/script/` | Setup, host tests |
 | `nuttx/` | The NuttX build (board definition, drivers, applications, patches, scripts, host tests) |
-| `common/` | Sources that the Zephyr and NuttX builds both use (`imu/`: batches, packets, the send queue, time assignment, the NTP estimate, the calibration value format; `drivers/`: the LSM6DSO's FIFO parsing, unit conversion and gyro zero, FIFO setup, interrupt and stream, the I2C DMA command words) and their host tests (`tests/`; `tests/run.sh` is called by the `host_tests.sh` of both builds) |
+| `common/` | Sources that the Zephyr and NuttX builds both use (`imu/`: batches, packets, the send queue, time assignment, the NTP estimate, the calibration value format and `imu cal`, the MQTT transport, the Wi-Fi profile and automatic reconnection, the declarations of the key-value store and time sync; `drivers/`: the LSM6DSO's FIFO parsing, unit conversion and gyro zero, FIFO setup, interrupt, stream and RTIO single reads, the NINA's Wi-Fi network device, the sensor shell, the I2C DMA command words) and their host tests (`tests/`; `tests/run.sh` is called by the `host_tests.sh` of both builds) |
 | `openmv/` | Build environment for the OpenMV MicroPython firmware ([`openmv/README.md`](openmv/README.md)) |
 | `freertos/` | Build environment for the Raspberry Pi Pico SDK with the FreeRTOS kernel, and a USB console application ([`freertos/README.md`](freertos/README.md)) |
 | `zephyr/manifest/west.yml` | Versions of Zephyr and its modules |

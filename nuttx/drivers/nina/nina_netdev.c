@@ -2,7 +2,7 @@
 /* The NINA-W102 as the NuttX network device wlan0, for ifconfig and wapi.
  *
  * The Zephyr build defines its interface with NET_DEVICE_DT_OFFLOAD_DEFINE()
- * (drivers/nina/nina_net.c): Zephyr calls driver_init() and the
+ * (common/drivers/nina/nina_net.c): Zephyr calls driver_init() and the
  * interface's init (iface_init(): dormant, MAC address from the module) at
  * boot, and the "wifi" shell commands reach the driver's operations
  * through net_mgmt() requests (subsys/net/l2/wifi/wifi_mgmt.c) and print

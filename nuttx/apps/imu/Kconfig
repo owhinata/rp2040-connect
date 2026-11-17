@@ -28,7 +28,7 @@ config NANO_APP_IMU
 		priority 9, NuttX 109, 2048-byte stack), which the init task
 		starts at boot, and the "imu start|stop|status|cal" command
 		with the Zephyr build's syntax and output, and the calibration
-		(imu_cal.c, the Zephyr build's src/imu_cal.c: the stored values
+		(common/imu/imu_cal.c, shared with the Zephyr build: the stored values
 		of the key-value store for the LSM6DSO driver, "imu cal"); the
 		MQTT transport is NANO_IMU_RAW_MQTT (imu_raw_mqtt_null.c
 		without it: no network) and the time synchronization
@@ -63,8 +63,8 @@ config NANO_IMU_RAW_MQTT
 	default y
 	depends on NANO_APP_IMU && NANO_NINA_NET && NET_USRSOCK_TCP
 	---help---
-		imu_raw_mqtt.c: the Zephyr build's src/imu_raw_mqtt.c with only
-		the system calls replaced: the thread imu_raw_mqtt_tid (Zephyr
+		imu_raw_mqtt.c (common/imu, shared with the Zephyr build) on the
+		Zephyr compatibility layer: the thread imu_raw_mqtt_tid (Zephyr
 		priority 11, NuttX 107, 2048-byte stack), which the init task
 		starts at boot, connects to the MQTT receiver (imu.host and
 		imu.port, by default the default gateway's port 1883) while a

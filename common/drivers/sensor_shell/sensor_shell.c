@@ -4,6 +4,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+#include "sensor_shell_os.h"
+
 #include <ctype.h>
 #include <stdlib.h>
 #include <string.h>
@@ -632,6 +634,7 @@ static int cmd_get_sensor(const struct shell *sh, size_t argc, char *argv[])
 
 	ctx.dev = dev;
 	ctx.sh = sh;
+	sensor_shell_os_get_arm(&ctx);
 	err = sensor_read_async_mempool(&iodev_sensor_shell_read, &sensor_read_rtio, &ctx);
 	if (err < 0) {
 		shell_error(sh, "Failed to read sensor: %d", err);
@@ -648,6 +651,7 @@ static int cmd_get_sensor(const struct shell *sh, size_t argc, char *argv[])
 
 unlock:
 	k_mutex_unlock(&cmd_get_mutex);
+	sensor_shell_os_get_wait(&ctx, err);
 	return err;
 }
 
@@ -1085,7 +1089,8 @@ static void data_ready_trigger_handler(const struct device *sensor,
 
 			value.val1 = micro_value / 1000000;
 			value.val2 = (int32_t)llabs(micro_value - (value.val1 * 1000000));
-			LOG_INF("sensor=%.*s, chan=%s, num_samples=%u, data=%d.%06d",
+			LOG_INF("sensor=%.*s, chan=%s, num_samples=%" PRIu32 ", data=%" PRId32
+				".%06" PRId32,
 				sensor_name_len_before_at, sensor_name,
 				sensor_channel_name[i],
 				stats[i].count,

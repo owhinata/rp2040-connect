@@ -7,11 +7,16 @@
 # Zephyr build's drivers/nina/nina_socket.c); name resolution with the
 # module's resolver (nina_dns.c, from the Zephyr build's
 # drivers/nina/nina_dns.c); the Wi-Fi network device wlan0 (nina_net.c,
-# the Zephyr build's drivers/nina/nina_net.c, and nina_netdev.c), with the
-# Wi-Fi profile's calls answered by nuttx/apps/wifi/wifi_profile.c
-# (CONFIG_NANO_WIFI_PROFILE), or by wifi_profile_null.c without it.  The
-# board provides the pins and the SPI bus (nano_nina.c, <nano_nina.h>).
-# Included by nuttx/drivers/Makefile.
+# shared with the Zephyr build in common/drivers/nina, and nina_netdev.c),
+# with the Wi-Fi profile's calls answered by common/imu/wifi_profile.c
+# (CONFIG_NANO_WIFI_PROFILE, nuttx/apps/wifi), or by wifi_profile_null.c
+# without it.  The board provides the pins and the SPI bus (nano_nina.c,
+# <nano_nina.h>).  Included by nuttx/drivers/Makefile.  VPATH and DEPPATH of
+# common/drivers/nina are relative to nuttx/drivers (mkdeps needs relative
+# ones); the object is made there, compiled with the prelude of the shared
+# sources (compat/common_prelude.h).  Include paths: this directory
+# ($(TOPDIR)/external/nina: nina_proto.h for nina_net.c) and common/imu
+# (wifi_profile.h).
 ############################################################################
 
 ifeq ($(CONFIG_NANO_NINA),y)
@@ -30,4 +35,11 @@ endif
 endif
 DEPPATH += --dep-path nina
 VPATH += :nina
+ifeq ($(CONFIG_NANO_NINA_NET),y)
+DEPPATH += --dep-path ../../common/drivers/nina
+VPATH += :../../common/drivers/nina
+CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)nina
+CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)imu
+nina_net$(OBJEXT): CFLAGS += -include $(TOPDIR)$(DELIM)external$(DELIM)compat$(DELIM)common_prelude.h
+endif
 endif

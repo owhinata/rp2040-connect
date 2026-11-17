@@ -9,12 +9,15 @@
 # that are not listed here are not built yet.
 #
 # The sources shared with the Zephyr build (imu_raw_*, imu_tick_clock.c,
-# time_offset.c, imu_cal_codec.c and their headers) are in common/imu, found
-# through VPATH and DEPPATH, which are relative to this directory (mkdeps
-# needs relative ones); their objects are made here.
+# time_offset.c, imu_cal.c, imu_cal_codec.c, imu_raw_mqtt.c and their
+# headers, kv_store.h, time_sync.h) are in common/imu, found through VPATH
+# and DEPPATH, which are relative to this directory (mkdeps needs relative
+# ones); their objects are made here, each compiled with the prelude of the
+# shared sources (common_prelude.h of the compatibility layer, -include).
 #
 # Include paths of the service: the Zephyr compatibility layer
-# ($(TOPDIR)/external/compat; NuttX's headers are included before it), the
+# ($(TOPDIR)/external/compat; NuttX's headers are included before it: the
+# prelude in the shared sources, an include of their own in the others), the
 # LSM6DSO driver's headers ($(TOPDIR)/external/lsm6dso), the port's shared
 # headers ($(TOPDIR)/external/include: priorities.h, cpu_load.h), subcmd.h,
 # and common/imu and common/drivers/lsm6dso, through which imu_stream.c's
@@ -73,3 +76,12 @@ DEPPATH  += --dep-path ../../../common/imu
 endif
 
 include $(APPDIR)/Application.mk
+
+# The prelude of the shared sources (common_prelude.h of the compatibility
+# layer) before each source of common/imu.
+
+ifneq ($(CONFIG_NANO_APP_IMU),)
+IMU_COMMON_CSRCS = $(notdir $(wildcard ../../../common/imu/*.c))
+$(addsuffix $(SUFFIX)$(OBJEXT),$(filter $(IMU_COMMON_CSRCS),$(CSRCS) $(MAINSRC))): \
+  CFLAGS += -include $(TOPDIR)$(DELIM)external$(DELIM)compat$(DELIM)common_prelude.h
+endif

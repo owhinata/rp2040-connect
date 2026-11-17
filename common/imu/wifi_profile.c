@@ -26,7 +26,7 @@ static bool auto_enabled;
 static struct net_mgmt_event_callback wifi_events;
 K_SEM_DEFINE(reconnect_request, 0, 1);
 K_MUTEX_DEFINE(profile_lock);
-extern const k_tid_t wifi_reconnect_tid;
+#include "wifi_profile_os.h"
 
 static bool old_profile_valid(const struct old_wifi_profile *p)
 {

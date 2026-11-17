@@ -21,9 +21,13 @@ ST の HAL は Zephyr のものを使います。Zephyr 側の構成が変わっ
 
 このうち NuttX 版と同じファイルを使う部分（LSM6DSO の `lsm6dso_fifo.[ch]`、`lsm6dso_fifo_packet.h`、`lsm6dso_cal.[ch]`、
 `lsm6dso_zero.[ch]`、`lsm6dso_fifo_decoder.[ch]`、`lsm6dso_fifo_hw.[ch]`、`lsm6dso_fifo_irq.[ch]`、`lsm6dso_stream.c`、
-`lsm6dso_fifo_stats.h`、`lsm6dso_attributes.h` と、I²C の `i2c_dw_rp2040_commands.[ch]`）は、リポジトリの
-`common/drivers/lsm6dso/`・`common/drivers/i2c_dw/` に置いています。`CMakeLists.txt` がそこをドライバーの
-ライブラリーに加え、sensor シェルの `lsm6dso_attributes.h` もそこから読みます。下の表のファイル名はどちらの場所のものも含みます。
+`lsm6dso_compat.c`、`lsm6dso_fifo_stats.h`、`lsm6dso_attributes.h`、sensor シェルの `sensor_shell.c`、NINA の `nina_net.c` と、
+I²C の `i2c_dw_rp2040_commands.[ch]`）は、リポジトリの `common/drivers/lsm6dso/`・`common/drivers/sensor_shell/`・
+`common/drivers/nina/`・`common/drivers/i2c_dw/` に置いています。`CMakeLists.txt` がそこをドライバーのライブラリー
+（`nina_net.c` はアプリ）に加え、sensor シェルの `lsm6dso_attributes.h` もそこから読みます。このディレクトリーに残る
+`sensor_shell/sensor_shell_os.h` は、共有の `sensor_shell.c` が最初に読む Zephyr 版の部分です（何もしない
+マクロ 2 つ。NuttX 版は同名のヘッダーで `sensor get` が結果の表示を待ちます）。`nina/nina_proto.h` は `nina_net.c` も
+読みます。下の表のファイル名はどちらの場所のものも含みます。
 
 ## LSM6DSO の FIFO ストリーム
 
@@ -98,7 +102,7 @@ out = M · (raw − bias)
 - 校正値がないときは、公称感度を対角に置いた行列とバイアス 0 で同じ関数を通します。
 - 校正値は `lsm6dso_cal_set_lookup()` で登録した関数から得ます。ドライバーは登録時、
   `lsm6dso_cal_reload()` の呼び出し時、レンジの設定時に、現在の感度でこの関数を呼びます。
-  該当がなければ公称値になります。KV からの読み出しはアプリ側（`src/imu_cal.c`）が行います。
+  該当がなければ公称値になります。KV からの読み出しはアプリ側（`common/imu/imu_cal.c`）が行います。
 - FIFO のバッファには、読み出した時点の変換係数を入れます。デコーダーはバッファだけで
   変換でき、途中でレンジや校正値が変わっても、読み出し時の係数で変換されます。
 - `lsm6dso_cal_status()` で、加速度・角速度それぞれが校正値を使っているかと、使用中の角速度の

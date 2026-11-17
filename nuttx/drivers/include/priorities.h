@@ -25,14 +25,16 @@
 
 #define NANO_PRIO_FROM_ZEPHYR(p)     (118 - (p))
 
-/* Application threads (zephyr/app/usb-console). */
+/* Application threads (zephyr/app/usb-console and common/). */
 
-/* src/wifi_profile.c:186 K_THREAD_DEFINE(wifi_reconnect_tid, 2048, .., 8) */
+/* common/imu/wifi_profile.c:186
+ * K_THREAD_DEFINE(wifi_reconnect_tid, 2048, .., 8)
+ */
 
 #define NANO_PRIO_WIFI_RECONNECT     NANO_PRIO_FROM_ZEPHYR(8)   /* 110 */
 #define NANO_STACK_WIFI_RECONNECT    2048
 
-/* drivers/nina/nina_net.c:140 nina_scan_tid (1536, 8), :274
+/* common/drivers/nina/nina_net.c:140 nina_scan_tid (1536, 8), :274
  * nina_connect_tid (1024, 8), :402 nina_monitor_tid (1536, 9).
  */
 
@@ -60,7 +62,7 @@
 #define NANO_PRIO_IMU_FIFO_WORKER    NANO_PRIO_FROM_ZEPHYR(10)  /* 108 */
 #define NANO_STACK_IMU_FIFO_WORKER   2048
 
-/* src/imu_raw_mqtt.c:349 imu_raw_mqtt_tid (2048, 11) */
+/* common/imu/imu_raw_mqtt.c:349 imu_raw_mqtt_tid (2048, 11) */
 
 #define NANO_PRIO_IMU_RAW_MQTT       NANO_PRIO_FROM_ZEPHYR(11)  /* 107 */
 #define NANO_STACK_IMU_RAW_MQTT      2048

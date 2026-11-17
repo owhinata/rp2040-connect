@@ -164,10 +164,10 @@ given by name (the default is the gateway).
 
 | File | Role |
 |---|---|
-| `nina/nina_net.c` | A copy of the Zephyr version's `drivers/nina/nina_net.c` (only the leading comment and `<nuttx/config.h>` added): scan, connect, disconnect, status, and the three threads `nina_scan_tid`, `nina_connect_tid` and `nina_monitor_tid` |
+| `common/drivers/nina/nina_net.c` | The same file as the Zephyr version's (the repository's `common/`; `nina/Make.defs` finds it through `VPATH` and compiles it with the prelude, and the object is made in `nuttx/drivers`): scan, connect, disconnect, status, and the three threads `nina_scan_tid`, `nina_connect_tid` and `nina_monitor_tid` |
 | `nina/nina_netdev.c` | Registers the NINA as the NuttX network device `wlan0` and turns wapi's wireless ioctls into the Zephyr Wi-Fi requests (`net_mgmt()`). NuttX port only |
-| `nina/wifi_profile_null.c` | Empty versions of the Wi-Fi profile functions `nina_net.c` calls (`wifi_profile_pause_reconnect()` and so on), used only in a build without the stored credentials and automatic reconnection (`nuttx/apps/wifi/wifi_profile.c`, the copy of the Zephyr version's `src/wifi_profile.c`; when `CONFIG_NANO_WIFI_PROFILE` is not set) |
-| `include/nina_net.h`, `include/wifi_profile.h` | `nina_net_initialize()`. `wifi_profile.h` has the same declarations as the Zephyr version's `src/wifi_profile.h` |
+| `nina/wifi_profile_null.c` | Empty versions of the Wi-Fi profile functions `nina_net.c` calls (`wifi_profile_pause_reconnect()` and so on), used only in a build without the stored credentials and automatic reconnection (`common/imu/wifi_profile.c`, the same file as the Zephyr version's, built by `nuttx/apps/wifi/`; when `CONFIG_NANO_WIFI_PROFILE` is not set) |
+| `include/nina_net.h` | `nina_net_initialize()`. The `wifi_profile.h` that `nina_net.c` includes is the Zephyr version's own file, `common/imu/wifi_profile.h` (`nina/Make.defs` adds it to the include path) |
 
 - `nina_net.c` uses Zephyr's APIs (`net_if`, `net_mgmt`, `wifi_mgmt`, kernel objects) through the
   compatibility layer (see "Zephyr API compatibility layer" below), so it runs as the same code as in
@@ -213,8 +213,8 @@ Other wireless ioctls return `-ENOTTY`. The connection's result is not what `wap
 (the Zephyr version's `wifi connect` also returns once the request is made); check `RUNNING` and
 the IP address in `ifconfig`, or the ESSID in `wapi show`.
 
-- The stored credentials and automatic reconnection (`nuttx/apps/wifi/`: copies of the Zephyr
-  version's `src/wifi_profile.c` and of Zephyr's `subsys/net/lib/wifi_credentials/`, `wifi cred`;
+- The stored credentials and automatic reconnection (`nuttx/apps/wifi/`: the Zephyr version's own
+  file `common/imu/wifi_profile.c`, copies of Zephyr's `subsys/net/lib/wifi_credentials/`, `wifi cred`;
   "Stored Wi-Fi credentials and automatic reconnection (`wifi cred`)" in `design/nuttx-porting.md`) use the layer's
   `net_mgmt()` (`NET_REQUEST_WIFI_CONNECT_STORED`), `net_mgmt_add_event_callback()`
   (`NET_EVENT_WIFI_CONNECT_RESULT`), `net_if_get_wifi_sta()`, `net_if_ipv4_get_global_addr()` and
@@ -287,7 +287,7 @@ the IP address in `ifconfig`, or the ESSID in `wapi show`.
 | `lsm6dso/lsm6dso_os.[ch]` | The kernel services `lsm6dso.c` uses: mutexes and interrupts off (the compatibility layer's `k_mutex` and `k_spin_lock()`), `k_busy_wait()`, `k_msleep()`/`k_usleep()`, `k_cycle_get_32()` |
 | `lsm6dso/stmemsc.h`, `stmemsc_i2c.c`, `stmemsc_mdelay.c` | A copy of the I2C part of Zephyr's `drivers/sensor/st/stmemsc/` (the glue between ST's `stmdev_ctx_t` and Zephyr's I2C API) |
 | `lsm6dso/st_lsm6dso_reg.c` | A one-line wrapper that builds ST's `lsm6dso_reg.c` (`nuttx/stmemsc/`, not in Git) as it is |
-| `lsm6dso/lsm6dso_compat.c` | Single reads through RTIO (the fallback for a submission that is not a stream). A copy of the Zephyr version's file with only the log include and level name replaced |
+| `common/drivers/lsm6dso/lsm6dso_compat.c` | Single reads through RTIO (the fallback for a submission that is not a stream). The same file as the Zephyr version's (the log is the layer's `<zephyr/logging/log.h>`, the level `CONFIG_SENSOR_LOG_LEVEL` is in the prelude) |
 | `common/drivers/lsm6dso/lsm6dso_fifo.[ch]`, `lsm6dso_fifo_packet.h` | Parsing of the FIFO words and the format of the buffer's header. The same files as the Zephyr version's (the repository's `common/`; `lsm6dso/Make.defs` finds them through `VPATH`, and the objects are made in `nuttx/drivers`; the same for the next 4 rows) |
 | `common/drivers/lsm6dso/lsm6dso_fifo_hw.[ch]`, `lsm6dso_fifo_stats.h`, `lsm6dso_attributes.h` | FIFO setup, status and burst reads, the FIFO statistics, the private attributes. The same files as the Zephyr version's (they use Zephyr's API through the compatibility layer) |
 | `common/drivers/lsm6dso/lsm6dso_stream.c`, `lsm6dso_fifo_irq.[ch]` | The FIFO stream (below). The same files as the Zephyr version's |
@@ -326,7 +326,7 @@ The conversion (`lsm6dso_cal.c`), the calibration lookup (`lsm6dso_cal_set_looku
 (`lsm6dso_cal_zero()`) and the tracking during a stream (`lsm6dso_zero.c`) are the Zephyr
 version's code and behave the same (the Zephyr version's driver notes, "Conversion to physical
 units and calibration"). The driver does not read the KV store. The lookup function is registered
-by `nuttx/apps/imu/imu_cal.c` (a copy of the Zephyr version's `src/imu_cal.c`) in init's
+by `common/imu/imu_cal.c` (the same file as the Zephyr version's, built by `nuttx/apps/imu/`) in init's
 `imu_cal_init()`; the driver calls it when it is registered, on `imu cal reload` and when a range
 is set. The calibration applies to the output of the single reads (`sensor_channel_get()`) and of
 the FIFO decoder, not to the RAW the acquisition service sends over MQTT.
@@ -394,7 +394,10 @@ RTIO and kernel as a whole are not ported.
 | `zephyr/net/wifi_credentials.h` | A copy of Zephyr's header of that name: `struct wifi_credentials_header`, `_personal`, `WIFI_CREDENTIALS_FLAG_*`, `wifi_credentials_set_personal_struct()`, `_get_by_ssid_personal_struct()`, `_delete_by_ssid()`, `_for_each_ssid()`, `_is_empty()` and the rest. The configuration values (`CONFIG_WIFI_CREDENTIALS_MAX_ENTRIES` and so on) come from `NANO_WIFI_CREDENTIALS_*` of `nuttx/apps/wifi/Kconfig`. The port's own `wifi_credentials_init()` (called by init; Zephyr's `SYS_INIT()`). The functions are in `nuttx/apps/wifi/` |
 | `zephyr/net/wifi_utils.h` | `wifi_utils_validate_chan()` (`_2g`, `_5g`, `_6g`), `net_bytes_from_str()` (in Zephyr's `<zephyr/net/net_ip.h>`) |
 | `zephyr/settings/settings.h` | `settings_subsys_init()`, `settings_save_one()`, `settings_delete()`, `settings_load_one()`: one name at a time, as the NuttX NVS (`/dev/config`) item of the same name (implemented in `nuttx/apps/wifi/settings_nvs.c`). No subtree loads and no handlers |
+| `zephyr/logging/log.h` | `LOG_MODULE_REGISTER()`, `LOG_ERR()` and the other logging macros. It only includes the port's `app_log.h` (the RAM log of `dmesg`) |
+| `zephyr/net/net_ip.h` | The IPv4 address type `struct in_addr` (`imu_raw_mqtt.h`). It only includes NuttX's `<netinet/in.h>` (the same member `s_addr`, network byte order) |
 | `zephyr_compat.h` | `zephyr_compat_initialize()` (called by the board's bring-up, below), `K_THREAD_DEFINE_START()` (called by init) |
+| `common_prelude.h` | The prelude (below) |
 
 | Source | Contents |
 |---|---|
@@ -428,8 +431,31 @@ RTIO and kernel as a whole are not ported.
 - **Clashing NuttX names**: NuttX's `<nuttx/atomic.h>` (read by many kernel headers) has its own
   `atomic_t`, `atomic_set()` and others with other meanings. The layer's `<zephyr/sys/atomic.h>`
   reads it first, then takes the names over for the file (`atomic_t` is `zephyr_atomic_t`, NuttX's
-  macros are undefined). A file that uses both includes the NuttX headers first. The board's
-  bring-up does not include the Zephyr headers, only `zephyr_compat.h`.
+  macros are undefined). A file that uses both includes the NuttX headers first (for the files of
+  `common/`, the prelude does). The board's bring-up does not include the Zephyr headers, only
+  `zephyr_compat.h`.
+- **Prelude** (`common_prelude.h`): when the NuttX build compiles the sources shared with the Zephyr
+  build (the repository's `common/`), its build definitions (the `Makefile` of `apps/imu`,
+  `apps/wifi` and `apps/sensor`, `lsm6dso/Make.defs`, `nina/Make.defs`, the board's
+  `src/Make.defs`) include it before each file with `-include` (as the Zephyr build reads its
+  configuration into every file with `-imacros autoconf.h`). It holds `<nuttx/config.h>`, the NuttX
+  headers needed before the layer (those that `<zephyr/kernel.h>` reads first: `<sys/types.h>`,
+  `<nuttx/irq.h>`, `<nuttx/mutex.h>`, `<nuttx/semaphore.h>`, `<nuttx/wdog.h>`, `<stdio.h>`) and the
+  values of the Zephyr Kconfig options that the shared sources use (`CONFIG_SENSOR_LOG_LEVEL` 3, the
+  Zephyr build's value). So the shared sources have no lines that include NuttX headers. The socket
+  headers are not in it (names such as `accept()` would collide with the sources' own functions;
+  the layer's `<zephyr/net/socket.h>` reads them for the files that need them). The host tests use
+  the same prelude (without `__NuttX__`, only the Kconfig values).
+- **Headers of each OS**: the few lines of a shared source that differ between the builds are in a
+  small header of the same name, of which the Zephyr and the NuttX build each have their own:
+  `sensor_shell_os.h` (included first by `sensor_shell.c`; the NuttX one, `nuttx/apps/sensor/`, reads
+  the Zephyr build's configuration values and the log and makes the two lines with which
+  `sensor get` waits for its result to be printed call functions; the Zephyr one,
+  `zephyr/app/usb-console/drivers/sensor_shell/`, does nothing) and `wifi_profile_os.h` (the
+  declaration of the reconnection thread's `wifi_reconnect_tid`: `const k_tid_t` in the Zephyr one,
+  `zephyr/app/usb-console/src/`, as `K_THREAD_DEFINE()` makes it; without `const` in the NuttX one,
+  `nuttx/apps/wifi/`, because the layer's `K_THREAD_DEFINE()` writes the value when the thread is
+  started).
 - **Semaphores and `k_poll()`**: `k_sem_give()` stops at the limit and wakes the threads in
   `k_poll()` on that semaphore (they are told, the count is not taken: Zephyr's
   `K_POLL_MODE_NOTIFY_ONLY`). `k_sem_take()` gives 0, `-EBUSY` (`K_NO_WAIT`) or `-EAGAIN` (timed

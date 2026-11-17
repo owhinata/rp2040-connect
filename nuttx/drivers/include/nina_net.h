@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /* The NINA-W102 network device wlan0 (nuttx/drivers/nina/nina_netdev.c and
- * nina_net.c, the Zephyr build's drivers/nina/nina_net.c).  The Wi-Fi
+ * common/drivers/nina/nina_net.c, shared with the Zephyr build).  The Wi-Fi
  * operations themselves are reached as in the Zephyr build, through the
  * compatibility layer's net_mgmt() requests and events
  * (<zephyr/net/wifi_mgmt.h>) and the interface functions

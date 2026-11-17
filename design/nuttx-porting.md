@@ -324,7 +324,7 @@ NINA firmware: 3.0.2
 
 The NINA is the NuttX network device `wlan0`. Instead of the Zephyr build's `wifi` commands,
 NuttX's own `wapi` (`CONFIG_WIRELESS_WAPI_CMDTOOL`, priority 104, stack 3072) and `ifconfig` are
-used. The driver's work is the Zephyr build's `drivers/nina/nina_net.c` itself ("Wi-Fi" in
+used. The driver's work is the Zephyr build's own file, `common/drivers/nina/nina_net.c` ("Wi-Fi" in
 `nuttx/drivers/README.md`).
 
 | Zephyr build | NuttX build |
@@ -372,8 +372,8 @@ used. The driver's work is the Zephyr build's `drivers/nina/nina_net.c` itself (
 The credentials of the networks to join are stored, and the board joins again by itself at boot
 and when the connection is lost. The credentials are a copy of Zephyr's library
 (`subsys/net/lib/wifi_credentials/` with its settings backend), the command a copy of
-`wifi_credentials_shell.c`, and the reconnection a copy of the Zephyr build's
-`src/wifi_profile.c` with only the calls into the system replaced (`nuttx/apps/wifi/`). Syntax,
+`wifi_credentials_shell.c` (`nuttx/apps/wifi/`), and the reconnection is the Zephyr build's own
+file, `common/imu/wifi_profile.c`. Syntax,
 output, error messages and return values are the Zephyr build's.
 
 ```
@@ -624,7 +624,7 @@ The driver is `nuttx/drivers/lsm6dso/lsm6dso.c`, a copy of the Zephyr build's
 changes) with only the calls into the system replaced. The registers are handled by ST's
 `lsm6dso_reg.c` (lsm6dso-pid v3.2.2, fetched into `nuttx/stmemsc/` by `script/setup.sh`; with LF
 line ends identical to the one in Zephyr's hal_st). The FIFO stream (the INT1 interrupt and RTIO)
-runs the Zephyr build's files as they are, too (below). The acquisition service that uses it
+runs on the Zephyr build's own files (`common/drivers/lsm6dso/`) (below). The acquisition service that uses it
 (`imu start` and so on) is the next section.
 
 - **Initialization at boot**: the board's bring-up (`nano_bringup()`) initializes the sensor right
@@ -680,23 +680,27 @@ runs the Zephyr build's files as they are, too (below). The acquisition service 
 
 ## Sensor command (`sensor`)
 
-`nuttx/apps/sensor/` is a copy of the Zephyr build's sensor shell
-(`zephyr/app/usb-console/drivers/sensor_shell/sensor_shell.c`: Zephyr v4.5.0's
-`drivers/sensor/sensor_shell.c` with its fixes and the LSM6DSO's FIFO attributes) and of Zephyr's
-`drivers/sensor/sensor_shell_stream.c` and `sensor_shell.h`. Side by side in `diff`, the only
-differences are:
+The command itself is the Zephyr build's sensor shell, the same file
+`common/drivers/sensor_shell/sensor_shell.c` (Zephyr v4.5.0's `drivers/sensor/sensor_shell.c` with
+its fixes and the LSM6DSO's FIFO attributes); `nuttx/apps/sensor/` holds copies of Zephyr's
+`drivers/sensor/sensor_shell_stream.c` and `sensor_shell.h` and the NuttX part.
 
-- both `.c` files: a leading comment and the include of `sensor_shell_nuttx.h` (the values of the
-  Zephyr build's `CONFIG_SENSOR_SHELL_*`, and the log through `app_log.h`);
-- `sensor_shell.c`: two lines with which `sensor get` waits for its result to be printed (see
-  "Where the output goes" below), and the format of the data ready trigger's log line (`PRIu32`,
-  `PRId32`);
-- `sensor_shell_stream.c`: one line, the callback of the processing thread, which is the original
-  callback followed by telling a waiting `sensor get` (`sensor_shell_nuttx.c`);
-- `sensor_shell.h` is unchanged.
+- `sensor_shell.c` first includes the header of each OS, `sensor_shell_os.h`. The NuttX one
+  (`nuttx/apps/sensor/`) includes `sensor_shell_nuttx.h` (the values of the Zephyr build's
+  `CONFIG_SENSOR_SHELL_*`, and the log through `app_log.h`) and turns the two lines with which
+  `sensor get` waits for its result to be printed (`sensor_shell_os_get_arm()`,
+  `sensor_shell_os_get_wait()`; see "Where the output goes" below) into the functions of
+  `sensor_shell_nuttx.c`. In the Zephyr build's header of the same name
+  (`zephyr/app/usb-console/drivers/sensor_shell/`) the two lines do nothing. The log level
+  `CONFIG_SENSOR_LOG_LEVEL` is in the prelude ("Zephyr API compatibility layer" in
+  `nuttx/drivers/README.md`).
+- `sensor_shell_stream.c` (a copy): a leading comment and the include of `sensor_shell_nuttx.h`,
+  and one line, the callback of the processing thread, which is the original callback followed by
+  telling a waiting `sensor get` (`sensor_shell_nuttx.c`).
+- `sensor_shell.h` is an unchanged copy.
 
 The command table (`SHELL_STATIC_SUBCMD_SET_CREATE()`, `SHELL_DYNAMIC_CMD_CREATE()`,
-`SHELL_CMD_REGISTER()`) is copied too. The compatibility layer's `<zephyr/shell/shell.h>` and
+`SHELL_CMD_REGISTER()`) is the Zephyr build's text too. The compatibility layer's `<zephyr/shell/shell.h>` and
 `nuttx/apps/subcmd/zshell.c` make it the builtin command `sensor` with the Zephyr shell's rules
 (matching the words, dynamic subcommands, wildcard expansion, the argument count check, and the
 `SHELL_HELP()` description with its `Usage:` line and their wrapping).
@@ -805,9 +809,8 @@ Subcommands:
 
 ### Calibration (`imu cal`)
 
-`nuttx/apps/imu/imu_cal.c` is a copy of the Zephyr build's `src/imu_cal.c`; side by side in
-`diff`, the only differences are the leading comment and the include of `<nuttx/config.h>` (the
-value format, `imu_cal_codec.c` and `imu_cal.h`, are the Zephyr build's own files, in `common/imu/`). The KV keys
+`common/imu/imu_cal.c` is the Zephyr build's own file (as are the value format, `imu_cal_codec.c` and
+`imu_cal.h`, in `common/imu/`). The KV keys
 (`imu.cal.accel.<ug/LSB>`, `imu.cal.gyro.<udps/LSB>`) and values (56 bytes), using only the key of
 the current sensitivity, and the syntax, output and error messages of `imu cal`,
 `imu cal reload` and `imu cal zero` are the Zephyr build's (the Zephyr build's README,
@@ -836,9 +839,9 @@ conversion:
 
 ### MQTT transport
 
-`nuttx/apps/imu/imu_raw_mqtt.c` is a copy of the Zephyr build's `src/imu_raw_mqtt.c`; side by
-side in `diff`, the only differences are the leading comment and the includes of NuttX's headers
-(read before the compatibility layer's). It is built with `CONFIG_NANO_IMU_RAW_MQTT` (on by
+`common/imu/imu_raw_mqtt.c` and `imu_raw_mqtt.h` are the Zephyr build's own files (the
+`<zephyr/net/net_ip.h>` that `imu_raw_mqtt.h` includes is the compatibility layer's, which includes
+`<netinet/in.h>`). It is built with `CONFIG_NANO_IMU_RAW_MQTT` (on by
 default); without it the stub `imu_raw_mqtt_null.c` stands in (it drops and counts every batch, as
 the Zephyr build does without a network). The topics (`imu/<device>/raw`, `status`, `info`)
 and QoS (0 for raw and status, 1 with retain for info), the client ID (`imu-<device>`), the
@@ -1095,37 +1098,37 @@ Priorities map as `NuttX = 118 − Zephyr`; `nuttx/drivers/include/priorities.h`
 
 The following files are used by both the Zephyr and the NuttX build and are kept once each in the
 repository's `common/`. The Zephyr build's `CMakeLists.txt` and the NuttX build's Makefiles
-(`apps/imu/Makefile`, `apps/sensor/Makefile`, `drivers/lsm6dso/Make.defs`, the board's `src/Make.defs`)
-refer to them there. The files of `common/drivers/lsm6dso/` that use Zephyr's API (the FIFO setup and
-stream, `lsm6dso_fifo_stats.h`, `lsm6dso_attributes.h`) run on the compatibility layer in the NuttX build.
+(`apps/imu/Makefile`, `apps/wifi/Makefile`, `apps/sensor/Makefile`, `drivers/lsm6dso/Make.defs`,
+`drivers/nina/Make.defs`, the board's `src/Make.defs`) refer to them there. The files that use
+Zephyr's API (in `common/drivers/`, the FIFO setup and stream, the RTIO single reads, the NINA's
+Wi-Fi and the sensor shell; in `common/imu/`, the calibration, MQTT and the Wi-Fi profile) run on
+the compatibility layer in the NuttX build. The NuttX build compiles each file of `common/` with
+the prelude (`nuttx/drivers/compat/common_prelude.h`), and the few lines that differ between the
+builds are in headers of each OS (`sensor_shell_os.h`, `wifi_profile_os.h`; the Zephyr build's
+under `zephyr/app/usb-console/`, the NuttX build's under `nuttx/apps/`) ("Zephyr API compatibility
+layer" in `nuttx/drivers/README.md`).
 
 | Location | Contents |
 |---|---|
-| `common/imu/` | `imu_raw_{batch,packet,queue,status,time}`, `imu_tick_clock`, `time_offset`, `imu_cal_codec.c`, `imu_cal.h` |
-| `common/drivers/lsm6dso/` | `lsm6dso_{fifo,cal,zero,fifo_decoder,fifo_hw,fifo_irq}`, `lsm6dso_stream.c`, `lsm6dso_fifo_packet.h`, `lsm6dso_fifo_stats.h`, `lsm6dso_attributes.h` |
+| `common/imu/` | `imu_raw_{batch,packet,queue,status,time}`, `imu_tick_clock`, `time_offset`, `imu_cal_codec.c`, `imu_cal.[ch]`, `imu_raw_mqtt.[ch]`, `wifi_profile.[ch]`, `kv_store.h`, `time_sync.h` |
+| `common/drivers/lsm6dso/` | `lsm6dso_{fifo,cal,zero,fifo_decoder,fifo_hw,fifo_irq}`, `lsm6dso_stream.c`, `lsm6dso_compat.c`, `lsm6dso_fifo_packet.h`, `lsm6dso_fifo_stats.h`, `lsm6dso_attributes.h` |
+| `common/drivers/nina/` | `nina_net.c` |
+| `common/drivers/sensor_shell/` | `sensor_shell.c` |
 | `common/drivers/i2c_dw/` | `i2c_dw_rp2040_commands.[ch]` |
 | `common/tests/` | the 14 tests of the files above (run by `common/tests/run.sh`, which the `host_tests.sh` of both builds call first); `stream_stop.c` includes `../drivers/lsm6dso/lsm6dso_stream.c` |
 | `common/tests/fakes/` | stand-ins for the Zephyr and ST headers the tests need (`zephyr/drivers/sensor.h`, `zephyr/drivers/sensor_clock.h`, `zephyr/drivers/i2c.h`, `zephyr/rtio/rtio.h`, `lsm6dso_reg.h`), and for the `lsm6dso.h` that `lsm6dso_stream.c` includes (only its include guard; `stream_stop.c` provides the definitions it needs) |
 
-The following files are unchanged copies of the files of the same name in the Zephyr build
-(`zephyr/app/usb-console`). When the Zephyr build changes, replace the copies with the same
-content.
+The tests of `common/` sources that run on the NuttX build's compatibility layer and fake kernel
+(`nuttx/tests/zephyr_fakes/` and others), `imu_cal`, `imu_raw_mqtt` and `sensor_shell`, are in
+`nuttx/tests/`; `nuttx/script/host_tests.sh` builds them with the prelude.
 
-| Location | Location in the Zephyr build | Contents |
-|---|---|---|
-| `nuttx/apps/imu/` | `src/` | `kv_store.h`, `time_sync.h` |
-
-`nuttx/drivers/nina/nina_net.c` is a copy with only the leading comment and `<nuttx/config.h>`
-added; `nuttx/apps/wifi/wifi_profile.c` is a copy with only the includes (the log is `app_log.h`)
-and the declaration of `wifi_reconnect_tid` (without `const`) changed; `nuttx/apps/imu/imu_stream.c` is a copy with only the calls into the system and the command
-registration at the end replaced; `nuttx/apps/imu/time_sync.c` is a copy with only the calls into
-the system, the body of `time_sync_mono_us()`, the Kconfig names and the command registration at
-the end replaced; `nuttx/apps/imu/imu_raw_mqtt.c` is a copy with only a leading comment and the
-includes of NuttX's headers added; `nuttx/apps/imu/imu_cal.c` is a copy with only a leading
-comment and the include of `<nuttx/config.h>` added; `nuttx/apps/sensor/sensor_shell.c`,
-`sensor_shell_stream.c` and `sensor_shell.h` are copies of the Zephyr build's sensor shell and of
-Zephyr's, with only the differences listed in "Sensor command (`sensor`)"; `imu_raw_mqtt.h` is a copy with `<zephyr/net/net_ip.h>` replaced
-by `<netinet/in.h>`.
+The following files are copies of the Zephyr build's or of Zephyr's. When the Zephyr build
+changes, put the same change into the copies. `nuttx/apps/imu/imu_stream.c` is a copy with only
+the calls into the system and the command registration at the end replaced;
+`nuttx/apps/imu/time_sync.c` is a copy with only the calls into the system, the body of
+`time_sync_mono_us()`, the Kconfig names and the command registration at the end replaced;
+`nuttx/apps/sensor/sensor_shell_stream.c` and `sensor_shell.h` are copies of Zephyr's, with only
+the differences listed in "Sensor command (`sensor`)".
 
 `nuttx/tests/fakes/nuttx/config.h` (empty) is the NuttX build's own: it lets a host test build a
 source of `nuttx/apps` that includes `<nuttx/config.h>` (`i2c_dma_app`).
@@ -1208,7 +1211,7 @@ work queue with the decoders.
 
 `nuttx/tests/imu_cal.c` is a test of the NuttX build only too. It includes `lsm6dso_driver.c` for
 the same fake sensor (running the checks of `lsm6dso_driver` first) and builds
-`apps/imu/imu_cal.c` with a fake KV store. It checks the loading at boot (two keys), that a stored
+`common/imu/imu_cal.c` with a fake KV store. It checks the loading at boot (two keys), that a stored
 value is applied to the single reads (`M·(raw−bias)`), that a value of the wrong length, version,
 kind, sensitivity or reserved bytes, or one too long, leaves the nominal conversion, that a range
 change reads the key of the other sensitivity and back, `reload` (a deleted key is nominal again,
@@ -1217,7 +1220,8 @@ error), the usage error, an IMU that is not ready, and every line of `imu cal` (
 rounding of the bias to two decimals) with where it goes (stdout or stderr).
 
 `nuttx/tests/sensor_shell.c` is a test of the NuttX build only too. It includes `lsm6dso_driver.c`
-for the same fake sensor, builds the copies of `apps/sensor/` with `apps/subcmd/zshell.c`, and
+for the same fake sensor, builds `common/drivers/sensor_shell/sensor_shell.c` and `apps/sensor/` with
+`apps/subcmd/zshell.c`, and
 points the command's stdout and stderr at one file (in place of the terminal). It checks the help
 of `sensor` (no `info`, the `SHELL_HELP()` description and `Usage:` line wrapped at 80 columns),
 the wrong argument count with the help and the dynamic device list, wildcards (expanded to

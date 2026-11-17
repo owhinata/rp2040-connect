@@ -5,6 +5,9 @@
 # model, kernel (work queues, semaphores), RTIO, GPIO, sensor API and I2C
 # API that the ported driver (lsm6dso/) and its callers use, under Zephyr's names (headers in compat/zephyr/, include
 # path $(TOPDIR)/external/compat).  Included by nuttx/drivers/Makefile.
+# compat/common_prelude.h is the prelude of the sources shared with the
+# Zephyr build (common/): the build definitions that compile them include it
+# before each one (-include).
 ############################################################################
 
 ifeq ($(CONFIG_NANO_LSM6DSO),y)
@@ -29,8 +32,8 @@ CSRCS += zephyr_hwinfo.c
 endif
 
 # The network interface, net_mgmt requests and events, and the Wi-Fi
-# requests that the NINA network device (nina/nina_net.c) and the
-# application use.
+# requests that the NINA network device (common/drivers/nina/nina_net.c)
+# and the application use.
 
 ifeq ($(CONFIG_NANO_NINA_NET),y)
 CSRCS += zephyr_net_if.c zephyr_net_mgmt.c zephyr_wifi_mgmt.c

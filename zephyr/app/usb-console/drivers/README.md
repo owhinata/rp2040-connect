@@ -21,11 +21,16 @@ not found, the build fails.
 
 The parts that are the same files as the NuttX build's (the LSM6DSO's `lsm6dso_fifo.[ch]`,
 `lsm6dso_fifo_packet.h`, `lsm6dso_cal.[ch]`, `lsm6dso_zero.[ch]`, `lsm6dso_fifo_decoder.[ch]`,
-`lsm6dso_fifo_hw.[ch]`, `lsm6dso_fifo_irq.[ch]`, `lsm6dso_stream.c`, `lsm6dso_fifo_stats.h` and
-`lsm6dso_attributes.h`, and the I2C driver's `i2c_dw_rp2040_commands.[ch]`) are kept in the
-repository's `common/drivers/lsm6dso/` and `common/drivers/i2c_dw/`. `CMakeLists.txt` adds them from
-there to the driver libraries, and the sensor shell reads `lsm6dso_attributes.h` from there. The file
-names in the tables below cover both places.
+`lsm6dso_fifo_hw.[ch]`, `lsm6dso_fifo_irq.[ch]`, `lsm6dso_stream.c`, `lsm6dso_compat.c`,
+`lsm6dso_fifo_stats.h` and `lsm6dso_attributes.h`, the sensor shell's `sensor_shell.c`, the NINA's
+`nina_net.c`, and the I2C driver's `i2c_dw_rp2040_commands.[ch]`) are kept in the repository's
+`common/drivers/lsm6dso/`, `common/drivers/sensor_shell/`, `common/drivers/nina/` and
+`common/drivers/i2c_dw/`. `CMakeLists.txt` adds them from there to the driver libraries (`nina_net.c`
+to the application), and the sensor shell reads `lsm6dso_attributes.h` from there.
+`sensor_shell/sensor_shell_os.h`, which stays in this directory, is the Zephyr part that the shared
+`sensor_shell.c` includes first (two macros that do nothing; the NuttX build's header of the same name
+makes `sensor get` wait for its result to be printed). `nina/nina_proto.h` is read by `nina_net.c` too.
+The file names in the tables below cover both places.
 
 ## LSM6DSO FIFO streaming
 
@@ -102,7 +107,7 @@ out = M · (raw − bias)
 - A calibration comes from the function registered with `lsm6dso_cal_set_lookup()`. The driver
   calls it with the current sensitivity at registration, on `lsm6dso_cal_reload()`, and whenever
   a range is set. If it has nothing, the nominal conversion is used. Reading the KV store is
-  left to the application (`src/imu_cal.c`).
+  left to the application (`common/imu/imu_cal.c`).
 - Each FIFO buffer carries the conversion in effect when it was read. The decoder needs only
   the buffer, and a range or calibration change in between does not affect buffers already read.
 - `lsm6dso_cal_status()` reports whether the accelerometer and the gyro use a calibration, and

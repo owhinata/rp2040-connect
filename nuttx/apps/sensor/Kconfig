@@ -9,9 +9,9 @@ config NANO_APP_SENSOR
 	depends on NANO_SUBCMD && NANO_LSM6DSO_STREAM
 	---help---
 		"sensor get|attr_set|attr_get|stream|trig": the Zephyr build's
-		sensor shell (zephyr/app/usb-console/drivers/sensor_shell/
-		sensor_shell.c, Zephyr v4.5.0's drivers/sensor/sensor_shell.c
-		with the LSM6DSO's FIFO attributes, and sensor_shell_stream.c)
+		sensor shell (common/drivers/sensor_shell/sensor_shell.c,
+		Zephyr v4.5.0's drivers/sensor/sensor_shell.c with the
+		LSM6DSO's FIFO attributes, and sensor_shell_stream.c)
 		with the same syntax and output, on the Zephyr compatibility
 		layer and the Zephyr shell's command handling of
 		nuttx/apps/subcmd/zshell.c.  Also the thread

@@ -247,7 +247,7 @@ int nano_init_main(int argc, FAR char *argv[])
    */
 
 #ifdef CONFIG_NANO_NINA_NET
-  K_THREAD_DEFINE_START(nina_scan_tid);     /* drivers/nina/nina_net.c */
+  K_THREAD_DEFINE_START(nina_scan_tid);     /* common/drivers/nina/nina_net.c */
   K_THREAD_DEFINE_START(nina_connect_tid);
   K_THREAD_DEFINE_START(nina_monitor_tid);
 #endif
@@ -255,13 +255,13 @@ int nano_init_main(int argc, FAR char *argv[])
   K_THREAD_DEFINE_START(imu_stream_tid);  /* imu_stream.c */
 #endif
 #ifdef CONFIG_NANO_IMU_RAW_MQTT
-  K_THREAD_DEFINE_START(imu_raw_mqtt_tid);  /* ../imu/imu_raw_mqtt.c */
+  K_THREAD_DEFINE_START(imu_raw_mqtt_tid);  /* common/imu/imu_raw_mqtt.c */
 #endif
 #ifdef CONFIG_NANO_TIME_SYNC
   K_THREAD_DEFINE_START(time_sync_tid);   /* ../imu/time_sync.c */
 #endif
 #ifdef CONFIG_NANO_WIFI_PROFILE
-  K_THREAD_DEFINE_START(wifi_reconnect_tid);  /* nuttx/apps/wifi/wifi_profile.c */
+  K_THREAD_DEFINE_START(wifi_reconnect_tid);  /* common/imu/wifi_profile.c */
 #endif
 #ifdef CONFIG_NANO_APP_SENSOR
   K_THREAD_DEFINE_START(sensor_shell_processing_tid);  /* ../sensor/sensor_shell_stream.c */
