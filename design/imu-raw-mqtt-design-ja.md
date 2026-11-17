@@ -707,6 +707,7 @@ Zephyr の名前のまま提供する互換層の上でビルドする。ホス�
 | `common/drivers/nina/` | `nina_net.c`・`nina_proto.h`、NINA のコア（SPI の転送層、ソケット、名前解決） | `nina_net.c`・`nina_proto.h` は 3 版、コアは NuttX 版と FreeRTOS 版 |
 | `common/drivers/i2c_dw/` | DMA のコマンド語、I2C0 と DMA のコア | コマンド語は 3 版、コアは NuttX 版と FreeRTOS 版 |
 | `common/drivers/stmemsc/` | ST のドライバーと Zephyr の I2C の API のつなぎ | NuttX 版と FreeRTOS 版 |
+| `common/drivers/rp2040_rom/` | ブート ROM の `memcpy`・`memset`（`CONFIG_NANO_ROM_MEM_OPS`） | Zephyr 版と NuttX 版（FreeRTOS 版は Pico SDK の `pico_mem_ops`） |
 | `common/compat/` | 互換層の OS に依存しない部分と、Zephyr のライブラリーの写し（KV の NVS と settings、Wi-Fi の資格情報、getopt など） | NuttX 版と FreeRTOS 版 |
 | `common/shell/`、`common/log/` | Zephyr のシェルのコマンド処理の再現、`LOG_*` と RAM ログのリング | NuttX 版と FreeRTOS 版 |
 

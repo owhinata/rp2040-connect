@@ -50,6 +50,22 @@ config NANO_PERF
 		drivers/timers/arch_alarm.c supplies a slower counter in
 		nanoseconds through the oneshot.
 
+config NANO_ROM_MEM_OPS
+	bool "memcpy() and memset() through the RP2040 bootrom"
+	default y
+	depends on ARCH_CHIP_RP2040
+	select LIBC_ARCH_MEMCPY
+	select LIBC_ARCH_MEMSET
+	---help---
+		memcpy(), memset(), __aeabi_memcpy*() and __aeabi_memset*() jump
+		to the bootrom's routines, as the Pico SDK's pico_mem_ops does
+		(common/drivers/rp2040_rom, shared with the Zephyr build's
+		CONFIG_NANO_ROM_MEM_OPS).  LIBC_ARCH_MEMCPY and LIBC_ARCH_MEMSET
+		leave the byte loops of libs/libc/string out; the weak
+		__aeabi_memclr*() of libs/libc/machine/arm call memset().  The
+		routines are looked up on first use and kept in .bss, which
+		__start() clears with an inline loop before calling anything.
+
 config NANO_STACK_SENTINEL
 	bool "Stack sentinel (check the lowest stack word)"
 	default y

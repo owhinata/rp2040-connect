@@ -56,7 +56,9 @@ The script does the following:
 3. Checks the image: `.boot2` is at 0x10000000 and is 256 bytes (without `PICO_SDK_PATH`, NuttX
    would silently leave boot2 out), `nuttx.bin` covers exactly what the ELF loads into flash,
    and the image ends before 0x10ffe000. The last 8 KB of the flash (0x10ffe000–0x10ffffff) is
-   kept out of the image for the key-value store, as in the Zephyr build.
+   kept out of the image for the key-value store, as in the Zephyr build. With
+   `CONFIG_NANO_ROM_MEM_OPS` it also checks that `__start()` calls neither `memcpy` nor `memset`
+   (section "The C library's `memcpy` and `memset`").
 4. Converts `nuttx/nuttx/nuttx.bin` (raw image from 0x10000000, boot2 included) to
    `nuttx/build/nuttx.uf2` with `nuttx/script/bin2uf2.py` and prints the path and size. The
    converter checks the boot2 checksum first and writes 256-byte payloads with the RP2040 family
@@ -1185,6 +1187,17 @@ NuttX-only threads are in `nuttx/drivers/include/priorities_os.h`). The Zephyr b
   end of a non-nested interrupt in Zephyr's terms. NuttX's `CONFIG_STACKCHECK_MARGIN` is not used:
   it checks at switches only and needs `CONFIG_DEBUG_ASSERTIONS` (every DEBUGASSERT).
 - `ps` shows stack use in its STACK, USED and FILLED columns, and each thread's share of CPU time in its CPU column ("CPU load").
+
+## The C library's `memcpy` and `memset`
+
+With `CONFIG_NANO_ROM_MEM_OPS` (board `Kconfig`, on by default), `memcpy`, `memset`,
+`__aeabi_memcpy*` and `__aeabi_memset*` are the RP2040 bootrom's routines, split as the Pico SDK's
+`pico_mem_ops` does (`common/drivers/rp2040_rom/`, shared with the Zephyr build). It selects
+`LIBC_ARCH_MEMCPY` and `LIBC_ARCH_MEMSET`, which leave out the byte loops of `libs/libc/string`. The
+routines are looked up on first use and kept in `.bss`, so they cannot be called before `.bss` is
+cleared. GCC turns the `.bss` clearing loop of `__start()` into a call to `memset`, so the board's
+`scripts/Make.defs` compiles `rp2040_start.c` alone with `-fno-tree-loop-distribute-patterns`, and
+`build.sh` checks the result.
 
 ## Host test details
 

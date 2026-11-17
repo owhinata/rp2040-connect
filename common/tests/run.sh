@@ -85,6 +85,10 @@ run nina_sock "${flags[@]}" -D_DEFAULT_SOURCE -I"$nina" tests/nina_sock.c "$nina
 # Name resolution: hints, service, numeric addresses, the resolver commands (fake module).
 run nina_dns "${flags[@]}" -D_DEFAULT_SOURCE -I"$nina" tests/nina_dns.c "$nina/nina_dns.c"
 
+# The lookup of the bootrom's memcpy() and memset() (drivers/rp2040_rom/rp2040_rom_mem_lookup.c,
+# which the test includes): the codes, the entries stored on first use (fake function table).
+run rp2040_rom_mem "${flags[@]}" -Idrivers/rp2040_rom tests/rp2040_rom_mem.c
+
 # The shell's subcommand dispatch with the Zephyr shell's output (shell/subcmd.c: the kv, nina,
 # ... tables of the NuttX build).
 run subcmd "${flags[@]}" -Ishell tests/subcmd.c shell/subcmd.c

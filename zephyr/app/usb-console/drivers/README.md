@@ -298,6 +298,16 @@ generator when no proper source is available.
 [Tracing TCP ACKs with a Wi-Fi monitor](../../../../design/wifi-monitor-debug.md) describes how to
 examine sending delays and ACK behaviour at the level of radio frames.
 
+## The bootrom's `memcpy` and `memset`
+
+With `CONFIG_NANO_ROM_MEM_OPS` (the application's Kconfig, on by default), `memcpy`, `memset`,
+`__aeabi_memcpy*` and `__aeabi_memset*` are wrapped (the linker's `--wrap`) to the RP2040 bootrom's
+routines, split as the Pico SDK's `pico_mem_ops` does (`common/drivers/rp2040_rom/`, shared with the
+NuttX build). Without it they are picolibc's byte loops. The routines are looked up on first use and
+kept in `.bss`, so `arch_early_memset` and `arch_early_memcpy`, which clear `.bss` and copy `.data`,
+use picolibc's (`src/rom_mem_early.c`). The host test is `rp2040_rom_mem` in `common/tests/` (a
+fake function table).
+
 ## Tests
 
 `zephyr/script/host_tests.sh` tests these parts of the drivers on the PC with fake Zephyr headers.

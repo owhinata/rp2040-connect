@@ -50,6 +50,18 @@ ifeq ($(CONFIG_NANO_PERF),y)
 CSRCS += nano_perf.c
 endif
 
+# memcpy() and memset() through the bootrom, shared with the Zephyr build
+# (common/drivers/rp2040_rom; VPATH and DEPPATH as for i2c_dw below).  The
+# Kconfig option selects LIBC_ARCH_MEMCPY and LIBC_ARCH_MEMSET, which leave
+# libc's out.
+
+ifeq ($(CONFIG_NANO_ROM_MEM_OPS),y)
+ASRCS += rp2040_rom_mem_ops.S
+CSRCS += rp2040_rom_mem_lookup.c
+DEPPATH += --dep-path board/../../../../common/drivers/rp2040_rom
+VPATH += :board/../../../../common/drivers/rp2040_rom
+endif
+
 # The idle loop with the CPU load measurement (cpu_load_get()) in place of
 # the in-tree rp2040_idle.c, which patches/nuttx/0004 leaves out with
 # ARCH_IDLE_CUSTOM.

@@ -279,6 +279,14 @@ MQTT の接続と送信ができること、ホスト名の不一致・期限切
 送信の遅れや ACK の挙動を無線フレームの段階で調べる手順は、
 [Wi-Fi モニターによる TCP ACK 調査手順](../../../../design/wifi-monitor-debug-ja.md) にあります。
 
+## ブート ROM の `memcpy`・`memset`
+
+`CONFIG_NANO_ROM_MEM_OPS`（アプリの Kconfig、既定で有効）で、`memcpy`・`memset`・`__aeabi_memcpy*`・`__aeabi_memset*`
+をリンカーの `--wrap` で RP2040 のブート ROM のルーチンへ回します（Pico SDK の `pico_mem_ops` と同じ使い分け。
+NuttX 版と共有の `common/drivers/rp2040_rom/`）。無効にすると picolibc のバイト単位のループです。ROM のルーチンは
+初回の呼び出しで引いて `.bss` に置くので、`.bss` のゼロ化と `.data` のコピーを行う `arch_early_memset`・`arch_early_memcpy`
+は picolibc のものを使います（`src/rom_mem_early.c`）。ホストテストは `common/tests/` の `rp2040_rom_mem`（偽の関数表）。
+
 ## テスト
 
 `zephyr/script/host_tests.sh` が、偽の Zephyr ヘッダーを使ってドライバーの次の部分を PC 上で

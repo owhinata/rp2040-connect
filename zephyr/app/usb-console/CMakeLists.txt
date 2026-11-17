@@ -17,6 +17,20 @@ target_sources(app PRIVATE src/main.c src/log_ram.c ${COMMON_DIR}/imu/kv_store.c
 # common/drivers/nina: nina_proto.h for src/main.c and drivers/nina.
 target_include_directories(app PRIVATE src drivers/lsm6dso ${COMMON_DIR}/imu ${COMMON_DIR}/drivers/lsm6dso
   ${COMMON_DIR}/drivers/nina)
+# memcpy() and memset() through the bootrom (common/drivers/rp2040_rom, shared with the NuttX
+# build): picolibc defines the plain names, so the references are wrapped to __wrap_memcpy, ...
+if(CONFIG_NANO_ROM_MEM_OPS)
+  set(rom_mem_dir ${COMMON_DIR}/drivers/rp2040_rom)
+  target_sources(app PRIVATE src/rom_mem_early.c ${rom_mem_dir}/rp2040_rom_mem_lookup.c
+    ${rom_mem_dir}/rp2040_rom_mem_ops.S)
+  set_source_files_properties(${rom_mem_dir}/rp2040_rom_mem_ops.S PROPERTIES
+    COMPILE_DEFINITIONS RP2040_ROM_MEM_WRAP)
+  foreach(sym memcpy memset __aeabi_memcpy __aeabi_memcpy4 __aeabi_memcpy8 __aeabi_memset
+          __aeabi_memset4 __aeabi_memset8)
+    zephyr_ld_options(-Wl,--wrap=${sym})
+  endforeach()
+endif()
+
 # Keep Zephyr's Kconfig and devicetree bindings while using local driver copies.
 function(use_local_driver_sources target pattern replacement_dir)
   get_filename_component(dir "${replacement_dir}" ABSOLUTE BASE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")

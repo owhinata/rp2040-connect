@@ -911,3 +911,19 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
 - boot2 が使う読み出しは EBh で、分周 2 の 62.5 MHz はどちらの規格にも収まる。clk_sys 125 MHz では分周は偶数なので 62.5 MHz が上限。
 - ユーザーの決定（同日）: FreeRTOS 版は READY の割り込み待ちと tick 1 ms を既定にし、古いコード（オプション、フック）は残さない
   （subagent が作業中）。
+
+## Zephyr 版・NuttX 版に ROM の `memcpy`・`memset`（2026-11-18）
+
+- 実装（subagent）: 共有の `common/drivers/rp2040_rom/`（Thumb-1 の入口 `rp2040_rom_mem_ops.S`、ROM を引く `rp2040_rom_mem_lookup.c`。
+  ポインターは `.bss`、NULL なら初回に引く。FreeRTOS 版はリンクしない）。Zephyr は `CONFIG_NANO_ROM_MEM_OPS`（既定 y）で 8 記号を
+  `--wrap`、`arch_early_memcpy/memset` は picolibc を呼ぶ形で上書き（`src/rom_mem_early.c`）。NuttX は同名の Kconfig（既定 y）が
+  `LIBC_ARCH_MEMCPY/MEMSET` を select、`rp2040_start.c` を `-fno-tree-loop-distribute-patterns` でコンパイル（GCC が `.bss`・`.data` の
+  ループを `memset`・`memcpy` の呼び出しに変えていたため）、`build.sh` が `__start` に呼び出しが無いことを検査。ホストテスト
+  `rp2040_rom_mem`。文書（日英）: Zephyr のドライバー説明、`nuttx-porting`、設計書 §12。
+- subagent の確認: OFF の像は 2 版とも `snapshot-clkdiv2` と一致。ON の像は呼び出しが新しい実装へ行く（起動時の 1〜2 か所を除く）。
+  像は Zephyr +144 B、NuttX +88 B。ホストテスト 3 種とも成功。メインはソースを読んでいない。
+- 実機（Zephyr 版、boot2 分周 2 + ROM の `memcpy`・`memset`）: 起動、`devmem 0x18000014` = 2、KV の読み出し、送信 約 71 秒 × 2 回で
+  `cpu_active` 49.0%・49.1%、欠番 0、overruns 0、`dmesg` に `<err>` なし。除算器も入れた実験の像は 48.7〜48.8% だったので、
+  Zephyr 版での除算器の上積みは約 0.3 ポイント。NuttX 版は未確認（RESET の操作待ち）。
+- **新しい基準**: `freertos/build/baseline/zephyr/snapshot-rommem/image.bin`、`.../nuttx/snapshot-rommem/image.bin`。
+- README に入れること（未反映）: `zephyr/README`・`nuttx/README` にオプションの 1 行、ルートの README の性能の節の書き直し（測り直してから）。

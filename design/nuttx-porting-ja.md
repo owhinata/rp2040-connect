@@ -53,7 +53,8 @@ NuttX が使う機能だけを実装しています。
    無いと、NuttX はエラーを出さずに boot2 の無いイメージを作ります）、`nuttx.bin` が ELF の
    flash に載せる範囲とちょうど一致すること、イメージが 0x10ffe000 より前で終わることです。
    flash の末尾 8 KB（0x10ffe000〜0x10ffffff）は、Zephyr 版と同じく KV のためにイメージから
-   外してあります。
+   外してあります。`CONFIG_NANO_ROM_MEM_OPS` のときは、`__start()` が `memcpy`・`memset` を呼ばないことも
+   確かめます（「C ライブラリの `memcpy`・`memset`」の節）。
 4. `nuttx/nuttx/nuttx.bin`（0x10000000 からの生のイメージ。boot2 を含む）を
    `nuttx/script/bin2uf2.py` で `nuttx/build/nuttx.uf2` に変換し、パスとサイズを表示します。
    変換の前に boot2 のチェックサムを確かめ、256 バイトのペイロードと RP2040 のファミリー ID
@@ -1025,6 +1026,15 @@ NuttX 標準のクリティカルセクションの監視（`CONFIG_SCHED_CRITMO
   `CONFIG_STACKCHECK_MARGIN` は切り替えのときにしか確かめず、`CONFIG_DEBUG_ASSERTIONS`（すべての
   DEBUGASSERT）も要るので使いません。
 - `ps` の STACK・USED・FILLED でスタックの使用量を、CPU でスレッドごとの CPU 時間の割合（「CPU 負荷」の節）を見られます。
+
+## C ライブラリの `memcpy`・`memset`
+
+`CONFIG_NANO_ROM_MEM_OPS`（ボードの `Kconfig`、既定で有効）で、`memcpy`・`memset`・`__aeabi_memcpy*`・`__aeabi_memset*`
+を RP2040 のブート ROM のルーチンにします（Pico SDK の `pico_mem_ops` と同じ使い分け。Zephyr 版と共有の
+`common/drivers/rp2040_rom/`）。`LIBC_ARCH_MEMCPY`・`LIBC_ARCH_MEMSET` を選び、`libs/libc/string` のバイト単位のループを
+外します。ROM のルーチンは初回の呼び出しで引いて `.bss` に置くので、`.bss` をゼロにする前には呼べません。
+`__start()` の `.bss` のゼロ化のループを GCC が `memset` の呼び出しに変えるため、ボードの `scripts/Make.defs` が
+`rp2040_start.c` だけを `-fno-tree-loop-distribute-patterns` でコンパイルし、`build.sh` がその結果を確かめます。
 
 ## ホストテストの詳細
 

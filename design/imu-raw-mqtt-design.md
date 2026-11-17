@@ -815,6 +815,7 @@ host tests (`common/tests/run.sh`) run first in the `host_tests.sh` of each of t
 | `common/drivers/nina/` | `nina_net.c` and `nina_proto.h`, the NINA core (SPI link, sockets, name resolution) | `nina_net.c` and `nina_proto.h` all three, the core NuttX and FreeRTOS |
 | `common/drivers/i2c_dw/` | The DMA command words, the I2C0 and DMA core | The command words all three, the core NuttX and FreeRTOS |
 | `common/drivers/stmemsc/` | The glue between ST's driver and Zephyr's I2C API | NuttX and FreeRTOS |
+| `common/drivers/rp2040_rom/` | The bootrom's `memcpy` and `memset` (`CONFIG_NANO_ROM_MEM_OPS`) | Zephyr and NuttX (FreeRTOS uses the Pico SDK's `pico_mem_ops`) |
 | `common/compat/` | The OS-independent part of the compatibility layer and copies of Zephyr's libraries (the key-value store's NVS and settings, the Wi-Fi credentials, getopt and others) | NuttX and FreeRTOS |
 | `common/shell/`, `common/log/` | Zephyr's shell command handling, the `LOG_*` macros and the RAM log's ring | NuttX and FreeRTOS |
 
