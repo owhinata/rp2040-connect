@@ -2,7 +2,8 @@
 # nuttx/apps/wifi/Makefile
 #
 # The stored Wi-Fi credentials (NANO_WIFI_CREDENTIALS: the copy of Zephyr's
-# subsys/net/lib/wifi_credentials/ with its settings backend on /dev/config,
+# subsys/net/lib/wifi_credentials/ in common/compat, compiled with the
+# prelude of the shared sources, with its settings backend on /dev/config,
 # settings_nvs.c), the Wi-Fi profile with its reconnection thread
 # (NANO_WIFI_PROFILE: wifi_profile.c, shared with the Zephyr build in
 # common/imu, found through VPATH and DEPPATH relative to this directory and
@@ -12,7 +13,8 @@
 # wifi_credentials_shell.c is its main source), linked into libapps.
 #
 # Include paths: the Zephyr compatibility layer
-# ($(TOPDIR)/external/compat), the port's shared headers
+# ($(TOPDIR)/external/compat and common/compat, which has
+# wifi_credentials_internal.h), the port's shared headers
 # ($(TOPDIR)/external/include: app_log.h, priorities.h), subcmd.h, this
 # directory (wifi_profile_os.h, for the file in common/imu) and common/imu
 # (wifi_profile.h, kv_store.h).
@@ -37,15 +39,21 @@ endif
 
 CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)include
 CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)compat
+CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)compat
 CFLAGS   += ${INCDIR_PREFIX}$(APPDIR)$(DELIM)external$(DELIM)subcmd
 CFLAGS   += ${INCDIR_PREFIX}$(APPDIR)$(DELIM)external$(DELIM)wifi
 CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)imu
 
 VPATH    += :../../../common/imu
 DEPPATH  += --dep-path ../../../common/imu
+VPATH    += :../../../common/compat
+DEPPATH  += --dep-path ../../../common/compat
 
 include $(APPDIR)/Application.mk
 
+wifi_credentials.c$(SUFFIX)$(OBJEXT) \
+wifi_credentials_backend_settings.c$(SUFFIX)$(OBJEXT): \
+  CFLAGS += -include $(TOPDIR)$(DELIM)external$(DELIM)compat$(DELIM)common_prelude.h
 ifeq ($(CONFIG_NANO_WIFI_PROFILE),y)
 wifi_profile.c$(SUFFIX)$(OBJEXT): CFLAGS += -include $(TOPDIR)$(DELIM)external$(DELIM)compat$(DELIM)common_prelude.h
 endif

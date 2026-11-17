@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /* The board's GPIO bank 0 (GPIO0..29) for the Zephyr compatibility layer's
- * gpio0 device (nuttx/drivers/compat/zephyr_gpio.c), which the LSM6DSOX's
+ * gpio0 device (common/compat/zephyr_gpio.c), which the LSM6DSOX's
  * INT1 line (GPIO24, BOARD_LSM6DSOX_INT1_GPIO) uses.  The board implements
  * it in src/nano_gpio.c as Zephyr's RP2040 GPIO driver does
  * (drivers/gpio/gpio_rpi_pico.c, on the pico-sdk's hardware_gpio).  Shared

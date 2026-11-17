@@ -652,7 +652,8 @@ version's; what has been verified on the NuttX port is listed separately in 11.7
   instance macros, one device with the board's values on NuttX). The identical file not in
   `common/` (`nina_proto.h`) is an unchanged copy of the Zephyr version's.
 - The shared sources run on top of a compatibility layer
-  (`nuttx/drivers/compat/`) that provides the OS calls **under Zephyr's names**. The layer has only what the copied sources use
+  (its OS-independent part in `common/compat/`, its NuttX implementation in
+  `nuttx/drivers/compat/`) that provides the OS calls **under Zephyr's names**. The layer has only what the copied sources use
   (`struct device`, the sensor API, RTIO, work queues, parts of `k_sem`, `k_mutex` and `k_poll`,
   `net_mgmt` events, `zsock_*()`, shell command tables). The constants, branches, order, waits,
   counters and output strings are those of the Zephyr sources.

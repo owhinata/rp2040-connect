@@ -10,7 +10,7 @@
 /* The I2C part of Zephyr's drivers/sensor/st/stmemsc/stmemsc.h (Zephyr
  * v4.5.0): the glue between ST's register drivers (stmdev_ctx_t of
  * lsm6dso_reg.h) and the Zephyr I2C API (here the compatibility layer,
- * nuttx/drivers/compat).  The I3C and SPI parts are left out (the LSM6DSOX
+ * common/compat).  The I3C and SPI parts are left out (the LSM6DSOX
  * of this board is on I2C0).
  */
 

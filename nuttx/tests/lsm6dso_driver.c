@@ -27,7 +27,7 @@
  *   the sensors off again.
  * - the FIFO stream (lsm6dso_stream.c, lsm6dso_fifo_irq.c, lsm6dso_compat.c
  *   and the decoder, on the compatibility layer's RTIO, work queues and
- *   gpio0, with the fake kernel of tests/zephyr_fakes and a fake INT1 that
+ *   gpio0, with the fake kernel of common/tests/zephyr_fakes and a fake INT1 that
  *   follows the fake sensor's watermark flag): the stream's start
  *   (registers, INT1 edge interrupt), batches on the INT1 edge and on the
  *   20 ms poll, a second stream refused (-EBUSY), another trigger refused
@@ -106,7 +106,7 @@ static void event(const char *fmt, ...)
 
 /* The driver's waits and its cycle counter (<zephyr/kernel.h>; on NuttX in
  * compat/zephyr_kernel.c and the layer's k_cycle_get_32()).  Its mutexes
- * and spin lock are those of the fake kernel (tests/zephyr_fakes: a mutex
+ * and spin lock are those of the fake kernel (common/tests/zephyr_fakes: a mutex
  * counts its depth, a spin lock must not be taken twice).
  * k_cyc_to_ns_floor64() is the layer's own (a cycle is 1 us).
  */

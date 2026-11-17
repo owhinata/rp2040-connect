@@ -10,8 +10,9 @@
 #   include nina/Make.defs
 # with "CSRCS += ...", "VPATH += :nina" and "DEPPATH += --dep-path nina".
 # include/ holds the headers shared with the board code and the
-# applications ($(TOPDIR)/external/include); compat/ the small Zephyr
-# compatibility layer ($(TOPDIR)/external/compat).
+# applications ($(TOPDIR)/external/include); compat/ the NuttX
+# implementation of the small Zephyr compatibility layer
+# ($(TOPDIR)/external/compat; its OS-independent part is common/compat).
 ############################################################################
 
 include $(TOPDIR)/Make.defs

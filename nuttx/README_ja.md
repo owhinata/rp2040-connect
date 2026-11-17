@@ -409,8 +409,8 @@ Zephyr 版の `i2c write`、`gpio`、`log`、`device`、`history`、`clear`、`r
 nuttx/script/host_tests.sh
 ```
 
-OS に依存しない部分のホストテスト 39 本を PC 上でビルドして実行します。最初の 14 本は Zephyr 版と共有する
-ソースのテストで、`common/tests/run.sh` が実行します。ボードは不要で、ホストの `cc`（C17）だけを
+OS に依存しない部分のホストテスト 39 本を PC 上でビルドして実行します。最初の 17 本は Zephyr 版と共有する
+ソースと互換層の共通部分のテストで、`common/tests/run.sh` が実行します。ボードは不要で、ホストの `cc`（C17）だけを
 使います。ST の `lsm6dso_reg.c`（`setup.sh` が取得）が無ければ、それを使う 3 本（`lsm6dso_driver`、`imu_cal`、
 `sensor_shell`）は `skip` になります。失敗したところで止まります。各テストの内容と、Zephyr 版から変更せずに
 写したファイルの一覧（Zephyr 版を直したときに置き換えるもの）は [`design/nuttx-porting-ja.md`](../design/nuttx-porting-ja.md) の
@@ -421,10 +421,10 @@ OS に依存しない部分のホストテスト 39 本を PC 上でビルドし
 | 置き場所 | 内容 |
 |---|---|
 | `boards/arduino-nano-rp2040-connect/` | ボード定義（`configs/imu/defconfig`、`include/board.h`、リンカースクリプト、`src/` の起動処理・時計・I2C0・DMA・KV の flash など） |
-| `drivers/` | カーネル側のコード: NINA（`nina/`）、LSM6DSOX（`lsm6dso/`）、RAM ログ（`log/`）、Zephyr の API の互換層（`compat/`）、共通のヘッダー（`include/`） |
+| `drivers/` | カーネル側のコード: NINA（`nina/`）、LSM6DSOX（`lsm6dso/`）、RAM ログ（`log/`）、Zephyr の API の互換層の NuttX の実装（`compat/`）、共通のヘッダー（`include/`） |
 | `apps/` | アプリ: `init`（起動処理と Telnet）、`imu`（取得・MQTT・時刻同期・校正・KV）、`kv`、`nina`、`ntp`、`wifi`、`sensor`、`i2c_dma`、`dmesg`、`irqstack`、`subcmd`（サブコマンドの共通部品） |
 | `patches/` | NuttX と nuttx-apps へのパッチ |
 | `script/` | `setup.sh`、`build.sh`、`flash.sh`、`host_tests.sh`、`bin2uf2.py`、`kconfig-tweak` |
 | `tests/` | ホストテスト（NuttX 版だけのもの） |
-| `../common/` | Zephyr 版と共有するソース（`imu/`、`drivers/lsm6dso/`、`drivers/nina/`、`drivers/sensor_shell/`、`drivers/i2c_dw/`）とそのホストテスト。ビルドは `VPATH` でそこを参照し、各ファイルに前置きヘッダー（`drivers/compat/common_prelude.h`）を付けてコンパイルする。オブジェクトは `apps/imu`・`apps/wifi`・`apps/sensor`・`drivers`・ボードのディレクトリーにできる |
+| `../common/` | Zephyr 版と共有するソース（`imu/`、`drivers/lsm6dso/`、`drivers/nina/`、`drivers/sensor_shell/`、`drivers/i2c_dw/`）、互換層の OS に依存しない部分（`compat/`）とそれらのホストテスト。ビルドは `VPATH` でそこを参照し、各ファイルに前置きヘッダー（`drivers/compat/common_prelude.h`）を付けてコンパイルする。オブジェクトは `apps/imu`・`apps/wifi`・`apps/sensor`・`drivers`・ボードのディレクトリーにできる |
 | `nuttx/`、`nuttx-apps/`、`pico-sdk/`、`toolchain/`、`stmemsc/`、`.venv/`、`build/` | `setup.sh` が取得するものとビルドの生成物（Git 管理外） |

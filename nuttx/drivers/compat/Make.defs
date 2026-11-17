@@ -3,10 +3,17 @@
 #
 # The port's small Zephyr compatibility layer: the parts of Zephyr's device
 # model, kernel (work queues, semaphores), RTIO, GPIO, sensor API and I2C
-# API that the ported driver (lsm6dso/) and its callers use, under Zephyr's names (headers in compat/zephyr/, include
-# path $(TOPDIR)/external/compat).  Included by nuttx/drivers/Makefile.
-# compat/common_prelude.h is the prelude of the sources shared with the
-# Zephyr build (common/): the build definitions that compile them include it
+# API that the ported driver (lsm6dso/) and its callers use, under Zephyr's
+# names.  Its OS-independent part is in common/compat (headers in
+# common/compat/zephyr/, include path $(TOPDIR)/../../common/compat); the
+# NuttX implementation is this directory (the OS headers zephyr_os*.h, the
+# OS parts *_os.h of the shared sources, the NuttX headers in
+# compat/zephyr/, include path $(TOPDIR)/external/compat, which comes
+# first).  Included by nuttx/drivers/Makefile.  VPATH and DEPPATH of
+# common/compat are relative to nuttx/drivers (mkdeps needs relative ones);
+# the objects are made there.  compat/common_prelude.h is the prelude of
+# the sources shared with the Zephyr build and of the layer's shared
+# sources (common/): the build definitions that compile them include it
 # before each one (-include).
 ############################################################################
 
@@ -14,6 +21,8 @@ ifeq ($(CONFIG_NANO_LSM6DSO),y)
 CSRCS += zephyr_device.c zephyr_i2c.c
 DEPPATH += --dep-path compat
 VPATH += :compat
+DEPPATH += --dep-path ../../common/compat
+VPATH += :../../common/compat
 endif
 
 # The kernel objects, work queues, RTIO, gpio0 and the sensors' async API
@@ -41,3 +50,10 @@ CSRCS += zephyr_wifi_utils.c
 endif
 
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)compat
+CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)compat
+
+# The sources of common/compat, with the prelude of the shared sources.
+
+COMPAT_COMMON_CSRCS = $(notdir $(wildcard ../../common/compat/*.c))
+$(patsubst %.c,%$(OBJEXT),$(filter $(COMPAT_COMMON_CSRCS),$(CSRCS))): \
+  CFLAGS += -include $(TOPDIR)$(DELIM)external$(DELIM)compat$(DELIM)common_prelude.h

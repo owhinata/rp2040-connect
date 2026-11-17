@@ -5,7 +5,8 @@
 # add ${INCDIR_PREFIX}$(APPDIR)/external/subcmd to their CFLAGS, and
 # z_shell_cmd_main() with the shell backends (zshell.c) for the commands
 # written with the Zephyr shell macros of the compatibility layer's
-# <zephyr/shell/shell.h> ($(TOPDIR)/external/compat).
+# <zephyr/shell/shell.h> ($(TOPDIR)/external/compat; the layer's shared
+# headers are in common/compat).
 ############################################################################
 
 include $(APPDIR)/Make.defs
@@ -13,5 +14,6 @@ include $(APPDIR)/Make.defs
 CSRCS = subcmd.c zshell.c
 
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)compat
+CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)compat
 
 include $(APPDIR)/Application.mk

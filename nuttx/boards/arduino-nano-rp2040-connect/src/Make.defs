@@ -122,7 +122,9 @@ CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)arch$(DELIM)$(CONFIG_ARCH)$(DELIM)src
 
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)include
 
-# The small Zephyr compatibility layer (<zephyr/device.h>, ...):
-# nuttx/drivers/compat.
+# The small Zephyr compatibility layer (<zephyr/device.h>, ...): its NuttX
+# implementation, nuttx/drivers/compat, then its OS-independent part,
+# common/compat.
 
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)compat
+CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)compat

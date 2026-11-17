@@ -365,12 +365,33 @@ compatibility layer (next section). They behave as in the Zephyr version:
 
 ## Zephyr API compatibility layer (`compat`)
 
-`nuttx/drivers/compat/` provides, under Zephyr's names and no more than needed, the part of
+The compatibility layer provides, under Zephyr's names and no more than needed, the part of
 Zephyr's API that the copied driver and its callers (the acquisition service, the calibration, the
-sensor command) use. The include path is `$(TOPDIR)/external/compat`. Zephyr's sensor subsystem,
-RTIO and kernel as a whole are not ported.
+sensor command) use. Zephyr's sensor subsystem, RTIO and kernel as a whole are not ported. The layer
+is in two places:
 
-| Header | Contents |
+- **The OS-independent part** (the repository's `common/compat/`): the headers of Zephyr's API
+  (`common/compat/zephyr/...`), the work items, RTIO, the block pool, the device list, `gpio0`, the
+  `net_mgmt` events, the Wi-Fi requests, the sensors' default iodev, and the copies of Zephyr's
+  libraries that the builds on the layer use (`sensor_shell_stream.c` and `sensor_shell.h`; the
+  stored Wi-Fi credentials, `wifi_credentials.c`, `wifi_credentials_backend_settings.c` and
+  `wifi_credentials_internal.h`; the MQTT client is `common/imu/mqtt_min.c`). The Zephyr build does
+  not use it (it has Zephyr itself).
+- **The NuttX implementation** (`nuttx/drivers/compat/`): the kernel part (`zephyr_kernel.c`,
+  `zephyr_mutex.c`), the OS headers (`zephyr_os.h`, `zephyr_os_spinlock.h`, `zephyr_os_atomic.h`),
+  the OS parts that shared `.c` files include at their end (`zephyr_rtio_workq_os.h`,
+  `zephyr_net_mgmt_os.h`), the headers that depend on NuttX as a whole (`zephyr/net/socket.h`,
+  `net_if.h`, `zephyr/sys/clock.h`, `__assert.h`, `zephyr/drivers/i2c.h`, `zephyr/shell/shell.h`),
+  the `.c` files of I2C, the interface, the chip ID and the sensor clock, and the prelude
+  (`common_prelude.h`).
+
+The include path is the NuttX implementation (`$(TOPDIR)/external/compat`), then the shared part
+(`common/compat`). The kernel side (`compat/Make.defs`) and the applications (`apps/sensor`,
+`apps/wifi`) find the shared `.c` files through `VPATH` and compile them with the prelude. The host
+tests have a fake kernel (the OS headers and their functions) in `common/tests/zephyr_fakes`, ahead
+of the NuttX implementation on the include path.
+
+| Header (in `common/compat/` unless marked) | Contents |
 |---|---|
 | `zephyr/device.h` | `struct device` (name, config, API, state, data, init function), `device_is_ready()`, `device_init()` (the meaning of Zephyr's `do_device_init()`), `DEVICE_DT_GET()`, `DEVICE_DT_DEFINE()`, `DEVICE_API()`, `device_get_binding()` (node name), `device_get_by_dt_nodelabel()` (node label), `DEVICE_API_IS(sensor, dev)` (below) |
 | `zephyr/devicetree.h` | `DT_NODELABEL()`, `DT_BUS()`, `DT_REG_ADDR()`; the nodes are `gpio0`, `i2c0`, `lsm6dsox` and `timer`, which has no device (the TIMER's address 0x40054000, for `time_sync_mono_us()` of `time_sync.c`), only. `DT_HAS_COMPAT_ON_BUS_STATUS_OKAY()` (Zephyr's definition): 1 for `st_lsm6dso` on `i2c`, 0 for any other compatible or bus (`lsm6dso.h`) |
@@ -380,8 +401,9 @@ RTIO and kernel as a whole are not ported.
 | `zephyr/drivers/gpio.h` | `struct gpio_dt_spec`, `gpio_is_ready_dt()`, `gpio_pin_configure_dt()` (inputs only), `gpio_pin_interrupt_configure_dt()`, `gpio_pin_get_dt()`, callbacks (`gpio_init_callback()`, `gpio_add_callback()`, `gpio_remove_callback()`) |
 | `zephyr/drivers/sensor.h` | `struct sensor_value`, the channel, attribute and trigger enumerations (Zephyr's numbers), `struct sensor_driver_api`, `sensor_attr_set()`/`_get()`, `sensor_sample_fetch()`/`_chan()`, `sensor_channel_get()`, `sensor_trigger_set()`, the unit conversions. The async API: `struct sensor_chan_spec`, the decoders (`struct sensor_decoder_api`, `sensor_three_axis_data` and others), `SENSOR_DT_READ_IODEV()`, `SENSOR_DT_STREAM_IODEV()`, `sensor_get_decoder()`, `sensor_stream()`, `sensor_read()`, `sensor_read_async_mempool()`, `sensor_processing_with_callback()`. The print formats of the decoded data, `PRIsensor_*_data` (Zephyr's `sensor_data_types.h`; the Q value format is in `dsp/print_format.h`) |
 | `zephyr/drivers/sensor_clock.h` | `sensor_clock_get_cycles()`, `sensor_clock_cycles_to_ns()` (below) |
-| `zephyr/drivers/i2c.h` | `struct i2c_dt_spec`, `i2c_burst_read_dt()`, `i2c_write_dt()`, `i2c_write_read_dt()`, `i2c_configure()`, the speed classes (`I2C_SPEED_*`, `I2C_SPEED_SET()`) |
-| `zephyr/sys/util.h`, `sys/__assert.h`, `sys/mpsc_lockfree.h`, `sys/mem_blocks.h`, `dsp/types.h` | `BIT()`, `ARRAY_SIZE()`, `MIN()`/`MAX()`, `IS_ENABLED()`, `CONTAINER_OF()`, `GENMASK()`/`GENMASK64()`/`FIELD_GET()`, `STRINGIFY()` and others, `__ASSERT()`, RTIO's queues and block pool, `q31_t` |
+| `zephyr/drivers/i2c.h` (NuttX) | `struct i2c_dt_spec`, `i2c_burst_read_dt()`, `i2c_write_dt()`, `i2c_write_read_dt()`, `i2c_configure()`, the speed classes (`I2C_SPEED_*`, `I2C_SPEED_SET()`) |
+| `zephyr/sys/util.h`, `sys/mpsc_lockfree.h`, `sys/mem_blocks.h`, `dsp/types.h` | `BIT()`, `ARRAY_SIZE()`, `MIN()`/`MAX()`, `IS_ENABLED()`, `CONTAINER_OF()`, `GENMASK()`/`GENMASK64()`/`FIELD_GET()`, `STRINGIFY()` and others, RTIO's queues and block pool, `q31_t` |
+| `zephyr/sys/__assert.h` (NuttX) | `__ASSERT()`, `__ASSERT_NO_MSG()` (NuttX's `DEBUGASSERT()`; `assert()` in the host tests) |
 | `zephyr/dsp/print_format.h` | A copy of Zephyr's header of that name (with only a leading comment and the include of `<zephyr/sys/util.h>` added): the Q value print format `PRIq()`, `PRIq_arg()` |
 | `zephyr/types.h` | `<stddef.h>` and `<stdint.h>` (what `lsm6dso.h` reads it for) |
 | `zephyr/init.h` | An empty header (`lsm6dso.c` includes it; `SYS_INIT()` and the init levels are used only by the Zephyr version's instance macros) |
@@ -389,33 +411,39 @@ RTIO and kernel as a whole are not ported.
 | `zephyr/sys/sys_io.h` | `sys_read32()` (one volatile 32-bit read without a barrier, as Zephyr's on Arm), `mem_addr_t` |
 | `zephyr/sys/printk.h`, `zephyr/sys/byteorder.h`, `zephyr/sys/cpu_load.h` | `snprintk()` (`snprintf()`, as in the Zephyr version's configuration with `CONFIG_PICOLIBC=y`), `sys_put_be16/32()`/`sys_get_be16/32()`/`sys_get_le32()`, `cpu_load_get()` (the board's `cpu_load.h`) |
 | `zephyr/drivers/hwinfo.h` | `hwinfo_get_device_id()` (below) |
-| `zephyr/shell/shell.h` | `shell_print()`, `shell_info()`, `shell_warn()`, `shell_error()`, `shell_fprintf()`, `struct shell` (a shell backend), the command table macros (`SHELL_CMD_REGISTER()`, `SHELL_STATIC_SUBCMD_SET_CREATE()`, `SHELL_DYNAMIC_CMD_CREATE()`, `SHELL_CMD_ARG()`, `SHELL_CMD()`, `SHELL_COND_CMD()`, `SHELL_EXPR_CMD_ARG()`, `SHELL_HELP()`, `SHELL_SUBCMD_SET_END`), `shell_device_get_binding()`, `shell_device_filter()` (below) |
-| `zephyr/net/socket.h` | `zsock_inet_pton()`, `zsock_inet_ntop()` (the C library's `inet_pton()`, `inet_ntop()`), `zsock_getaddrinfo()`, `zsock_freeaddrinfo()` (the NINA's resolver, `nina_getaddrinfo()`; errors are NuttX's `EAI_*`), `zsock_socket()` (NuttX's `socket()` marked `NINA_SO_CALLER_POLLS`; if the mark is refused, closed and -1), `zsock_sendto()`, `zsock_close()` (NuttX's `sendto()`, `close()`), `zsock_recv()` (asks the NINA there and then with `ioctl(FIONREAD)` and reads with `recv(MSG_DONTWAIT)` when something is there; nothing there: `EAGAIN` with `ZSOCK_MSG_DONTWAIT`, otherwise asks again every 20 ms; as the Zephyr version's NINA `recv()`, `do_recv()` and `udp_recv()`, asks on every call and every 20 ms while it waits; `SO_RCVTIMEO` and `O_NONBLOCK` are not looked at), `ZSOCK_MSG_DONTWAIT`, `zsock_connect()`, `zsock_send()`, `zsock_sendmsg()` (`connect()`, `send()`, `sendmsg()`), `zsock_poll()`, `struct zsock_pollfd`, `ZSOCK_POLLIN` and the others (`poll()` and `struct pollfd`; how the NINA is asked, below) |
-| `zephyr/sys/clock.h` | `sys_clock_gettime()`, `sys_clock_settime()` (`SYS_CLOCK_REALTIME`: NuttX's `clock_gettime()`, `clock_settime()` with `CLOCK_REALTIME`; 0 or `-EINVAL`), `NSEC_PER_USEC`, `USEC_PER_SEC` |
-| `zephyr/net/net_if.h` | `struct net_if` (one NuttX network device), `net_if_get_default()`, `net_if_get_wifi_sta()`, the IPv4 address, netmask and gateway (`net_if_ipv4_addr_add()`, `_rm()`, `net_if_ipv4_get_global_addr()`, `net_if_ipv4_set_netmask_by_addr()`, `net_if_ipv4_set_gw()`, `net_if_ipv4_get_gw()`), `net_if_dormant_on()`/`_off()`, `net_if_is_admin_up()`, `net_if_set_link_addr()` (below) |
+| `zephyr/shell/shell.h` (NuttX) | `shell_print()`, `shell_info()`, `shell_warn()`, `shell_error()`, `shell_fprintf()`, `struct shell` (a shell backend), the command table macros (`SHELL_CMD_REGISTER()`, `SHELL_STATIC_SUBCMD_SET_CREATE()`, `SHELL_DYNAMIC_CMD_CREATE()`, `SHELL_CMD_ARG()`, `SHELL_CMD()`, `SHELL_COND_CMD()`, `SHELL_EXPR_CMD_ARG()`, `SHELL_HELP()`, `SHELL_SUBCMD_SET_END`), `shell_device_get_binding()`, `shell_device_filter()` (below) |
+| `zephyr/net/socket.h` (NuttX) | `zsock_inet_pton()`, `zsock_inet_ntop()` (the C library's `inet_pton()`, `inet_ntop()`), `zsock_getaddrinfo()`, `zsock_freeaddrinfo()` (the NINA's resolver, `nina_getaddrinfo()`; errors are NuttX's `EAI_*`), `zsock_socket()` (NuttX's `socket()` marked `NINA_SO_CALLER_POLLS`; if the mark is refused, closed and -1), `zsock_sendto()`, `zsock_close()` (NuttX's `sendto()`, `close()`), `zsock_recv()` (asks the NINA there and then with `ioctl(FIONREAD)` and reads with `recv(MSG_DONTWAIT)` when something is there; nothing there: `EAGAIN` with `ZSOCK_MSG_DONTWAIT`, otherwise asks again every 20 ms; as the Zephyr version's NINA `recv()`, `do_recv()` and `udp_recv()`, asks on every call and every 20 ms while it waits; `SO_RCVTIMEO` and `O_NONBLOCK` are not looked at), `ZSOCK_MSG_DONTWAIT`, `zsock_connect()`, `zsock_send()`, `zsock_sendmsg()` (`connect()`, `send()`, `sendmsg()`), `zsock_poll()`, `struct zsock_pollfd`, `ZSOCK_POLLIN` and the others (`poll()` and `struct pollfd`; how the NINA is asked, below) |
+| `zephyr/sys/clock.h` (NuttX) | `sys_clock_gettime()`, `sys_clock_settime()` (`SYS_CLOCK_REALTIME`: NuttX's `clock_gettime()`, `clock_settime()` with `CLOCK_REALTIME`; 0 or `-EINVAL`), `NSEC_PER_USEC`, `USEC_PER_SEC` |
+| `zephyr/net/net_if.h` (NuttX) | `struct net_if` (one NuttX network device), `net_if_get_default()`, `net_if_get_wifi_sta()`, the IPv4 address, netmask and gateway (`net_if_ipv4_addr_add()`, `_rm()`, `net_if_ipv4_get_global_addr()`, `net_if_ipv4_set_netmask_by_addr()`, `net_if_ipv4_set_gw()`, `net_if_ipv4_get_gw()`), `net_if_dormant_on()`/`_off()`, `net_if_is_admin_up()`, `net_if_set_link_addr()` (below) |
 | `zephyr/net/net_mgmt.h` | `net_mgmt()` (requests), `struct net_mgmt_event_callback`, `net_mgmt_init_event_callback()`, `net_mgmt_add_event_callback()`, `_del_event_callback()`, `net_mgmt_event_notify_with_info()` (below) |
 | `zephyr/net/wifi_mgmt.h` | The Wi-Fi types (security, band, MFP, state, mode; Zephyr's values), `struct wifi_scan_params`, `wifi_scan_result`, `wifi_connect_req_params`, `wifi_iface_status`, `wifi_status`, `struct wifi_mgmt_ops`, the offloaded interface API and `NET_DEVICE_DT_OFFLOAD_DEFINE()`, the requests `NET_REQUEST_WIFI_SCAN`, `_CONNECT`, `_DISCONNECT`, `_IFACE_STATUS`, `_CONNECT_STORED` (with `CONFIG_NANO_WIFI_CREDENTIALS`), the events `NET_EVENT_WIFI_SCAN_RESULT`, `_SCAN_DONE`, `_CONNECT_RESULT`, `_DISCONNECT_RESULT`, `wifi_mgmt_raise_connect_result_event()`, `_disconnect_result_event()` (below), `wifi_security_txt()`, `wifi_band_txt()` |
-| `zephyr/net/wifi_credentials.h` | A copy of Zephyr's header of that name: `struct wifi_credentials_header`, `_personal`, `WIFI_CREDENTIALS_FLAG_*`, `wifi_credentials_set_personal_struct()`, `_get_by_ssid_personal_struct()`, `_delete_by_ssid()`, `_for_each_ssid()`, `_is_empty()` and the rest. The configuration values (`CONFIG_WIFI_CREDENTIALS_MAX_ENTRIES` and so on) come from `NANO_WIFI_CREDENTIALS_*` of `nuttx/apps/wifi/Kconfig`. The port's own `wifi_credentials_init()` (called by init; Zephyr's `SYS_INIT()`). The functions are in `nuttx/apps/wifi/` |
+| `zephyr/net/wifi_credentials.h` | A copy of Zephyr's header of that name: `struct wifi_credentials_header`, `_personal`, `WIFI_CREDENTIALS_FLAG_*`, `wifi_credentials_set_personal_struct()`, `_get_by_ssid_personal_struct()`, `_delete_by_ssid()`, `_for_each_ssid()`, `_is_empty()` and the rest. The configuration values (`CONFIG_WIFI_CREDENTIALS_MAX_ENTRIES` and so on) come from the OS's `CONFIG_NANO_WIFI_CREDENTIALS_*` (in the NuttX build, `nuttx/apps/wifi/Kconfig`). The port's own `wifi_credentials_init()` (called by init; Zephyr's `SYS_INIT()`). The functions are in `common/compat/wifi_credentials.c` (the copy of Zephyr's library) and `wifi_credentials_backend_settings.c`, which stores them in the settings |
 | `zephyr/net/wifi_utils.h` | `wifi_utils_validate_chan()` (`_2g`, `_5g`, `_6g`), `net_bytes_from_str()` (in Zephyr's `<zephyr/net/net_ip.h>`) |
-| `zephyr/settings/settings.h` | `settings_subsys_init()`, `settings_save_one()`, `settings_delete()`, `settings_load_one()`: one name at a time, as the NuttX NVS (`/dev/config`) item of the same name (implemented in `nuttx/apps/wifi/settings_nvs.c`). No subtree loads and no handlers |
+| `zephyr/settings/settings.h` | `settings_subsys_init()`, `settings_save_one()`, `settings_delete()`, `settings_load_one()`: one name at a time, as the item of the same name in the OS's store (implemented by each OS; in the NuttX build on its NVS, `/dev/config`, `nuttx/apps/wifi/settings_nvs.c`). No subtree loads and no handlers |
 | `zephyr/logging/log.h` | `LOG_MODULE_REGISTER()`, `LOG_ERR()` and the other logging macros. It only includes the port's `app_log.h` (the RAM log of `dmesg`) |
 | `zephyr/net/net_ip.h` | The IPv4 address type `struct in_addr` (`imu_raw_mqtt.h`). It only includes NuttX's `<netinet/in.h>` (the same member `s_addr`, network byte order) |
 | `zephyr_compat.h` | `zephyr_compat_initialize()` (called by the board's bring-up, below), `K_THREAD_DEFINE_START()` (called by init) |
-| `common_prelude.h` | The prelude (below) |
+| `sensor_shell.h` | A copy of Zephyr's `drivers/sensor/sensor_shell.h` (the sensor shell's shared types; the Zephyr build reads Zephyr's) |
+| `zephyr_os.h`, `zephyr_os_spinlock.h`, `zephyr_os_atomic.h` (NuttX) | The OS headers (below): NuttX's types (`rmutex_t`, `sem_t`, a wdog, `pid_t`), the tick, the priorities, the TIMER, `sched_lock()` and `up_irq_save()`, the takeover of `<nuttx/atomic.h>`'s names |
+| `zephyr_rtio_workq_os.h`, `zephyr_net_mgmt_os.h` (NuttX) | The OS parts that `zephyr_rtio_workq.c` and `zephyr_net_mgmt.c` include at their end: the entries of the threads `RTIO WQ 0` and `net_mgmt` and their start as kernel threads (`kthread_create_with_stack()`) |
+| `common_prelude.h` (NuttX) | The prelude (below) |
 
-| Source | Contents |
+| Source (in `common/compat/` unless marked) | Contents |
 |---|---|
-| `zephyr_mutex.c` | `k_mutex` on NuttX (`rmutex_t`). Zephyr's `k_mutex` is unlocked when all zero (`lock_count` 0), and Zephyr's MQTT library locks the client's mutex in `mqtt_abort()` before `mqtt_client_init()`; NuttX's all-zero mutex counts as held by thread 0, and the lock never returns. So `K_MUTEX_DEFINE()` and `k_mutex_init()` set a mark (`ready`), and one without it (all zero) is initialized by its first lock or unlock (once, under the layer's spin lock) |
-| `zephyr_kernel.c` | The OS part on NuttX: `k_sem` (`sem_t`, the limit checked in `k_sem_give()`), `k_poll()`, the work queue threads (kernel threads on static stacks), the timer of delayable work (a wdog), thread names, the start of `K_THREAD_DEFINE()` threads, `k_uptime_get()`, `k_sleep()`, `k_msleep()`, `k_usleep()`, `k_busy_wait()`, `zephyr_compat_initialize()` |
+| `zephyr_mutex.c` (NuttX) | `k_mutex` on NuttX (`rmutex_t`). Zephyr's `k_mutex` is unlocked when all zero (`lock_count` 0), and Zephyr's MQTT library locks the client's mutex in `mqtt_abort()` before `mqtt_client_init()`; NuttX's all-zero mutex counts as held by thread 0, and the lock never returns. So `K_MUTEX_DEFINE()` and `k_mutex_init()` set a mark (`ready`), and one without it (all zero) is initialized by its first lock or unlock (once, under the layer's spin lock) |
+| `zephyr_kernel.c` (NuttX) | The OS part on NuttX: `k_sem` (`sem_t`, the limit checked in `k_sem_give()`), `k_poll()`, the work queue threads (kernel threads on static stacks), the timer of delayable work (a wdog), thread names, the start of `K_THREAD_DEFINE()` threads, `k_uptime_get()`, `k_sleep()`, `k_msleep()`, `k_usleep()`, `k_busy_wait()`, `zephyr_compat_initialize()` |
 | `zephyr_work.c` | Work items and queues: the used part of Zephyr's `kernel/work.c` (OS-independent) |
-| `zephyr_rtio.c`, `zephyr_rtio_workq.c`, `zephyr_mem_blocks.c` | The RTIO executor (`subsys/rtio/rtio_executor.c`), the RTIO work queue (`rtio_workq.c`), the block pool (`lib/mem_blocks`) |
+| `zephyr_rtio.c`, `zephyr_rtio_workq.c`, `zephyr_mem_blocks.c` | The RTIO executor (`subsys/rtio/rtio_executor.c`), the RTIO work queue (`rtio_workq.c`; its thread is the OS part `zephyr_rtio_workq_os.h`), the block pool (`lib/mem_blocks`) |
 | `zephyr_gpio.c` | The `gpio0` device (Zephyr's `gpio.h` logic and `gpio_rpi_pico.c`) on the board's `<nano_gpio.h>` |
-| `zephyr_sensor_clock.c` | The sensor clock on the board's TIMER (`nano_mono_us()`) |
+| `zephyr_sensor_clock.c` (NuttX) | The sensor clock on the board's TIMER (`nano_mono_us()`) |
 | `sensor_default_rtio.c` | A copy of Zephyr's `drivers/sensor/default_rtio_sensor.c` (only the log replaced): the sensors' iodev API, the fallback for single reads, the default decoder |
-| `zephyr_device.c`, `zephyr_i2c.c` | Device initialization and the list of devices (`gpio0`, `i2c0`, `lsm6dsox` in the Zephyr build's order of initialization, with their node labels and whether the API is a sensor API), I2C |
-| `zephyr_hwinfo.c` | `hwinfo_get_device_id()` on the board's chip ID (`nano_chip_id()`) |
-| `zephyr_net_if.c`, `zephyr_net_mgmt.c`, `zephyr_wifi_mgmt.c` | The interface (values of the NuttX network device), the `net_mgmt` event queue and thread, the Wi-Fi requests (a copy of the checks of Zephyr's `subsys/net/l2/wifi/wifi_mgmt.c`) and events, `NET_REQUEST_WIFI_CONNECT_STORED` (a copy of `connect_stored_command()` of the same file; with `CONFIG_NANO_WIFI_CREDENTIALS`). Only with `CONFIG_NANO_NINA_NET` |
+| `zephyr_device.c` | Device initialization and the list of devices (`gpio0`, `i2c0`, `lsm6dsox` in the Zephyr build's order of initialization, with their node labels and whether the API is a sensor API; `gpio0` with the OS's configuration `CONFIG_NANO_LSM6DSO_STREAM`) |
+| `zephyr_i2c.c` (NuttX) | I2C (on a NuttX I2C master) |
+| `zephyr_hwinfo.c` (NuttX) | `hwinfo_get_device_id()` on the board's chip ID (`nano_chip_id()`) |
+| `zephyr_net_if.c` (NuttX), `zephyr_net_mgmt.c`, `zephyr_wifi_mgmt.c` | The interface (values of the NuttX network device), the `net_mgmt` event queue and thread (the thread is the OS part `zephyr_net_mgmt_os.h`; its stack size is `NANO_STACK_NET_MGMT` of `priorities.h`), the Wi-Fi requests (a copy of the checks of Zephyr's `subsys/net/l2/wifi/wifi_mgmt.c`) and events, `NET_REQUEST_WIFI_CONNECT_STORED` (a copy of `connect_stored_command()` of the same file; with `CONFIG_NANO_WIFI_CREDENTIALS`). Only with `CONFIG_NANO_NINA_NET` |
 | `zephyr_wifi_utils.c` | Copies of `wifi_security_txt()` and `wifi_band_txt()` (Zephyr's `wifi_mgmt.c`), the channel checks (`wifi_utils.c`) and `net_bytes_from_str()` (`subsys/net/ip/utils.c`), for `wifi cred`. OS-independent. Only with `CONFIG_NANO_NINA_NET` |
+| `sensor_shell_stream.c` | A copy of Zephyr's `drivers/sensor/sensor_shell_stream.c` (the sensor shell's processing thread). It includes the OS's `sensor_shell_os.h` first, and the processing thread's callback is `sensor_shell_os_processing_callback()` (in the NuttX build, `nuttx/apps/sensor/sensor_shell_nuttx.c`). Built by `apps/sensor` |
+| `wifi_credentials.c`, `wifi_credentials_backend_settings.c` | Copies of Zephyr's `subsys/net/lib/wifi_credentials/` (the stored Wi-Fi credentials). Built by `apps/wifi` |
 
 - **Work**: the flags (RUNNING, CANCELING, QUEUED, DELAYED) and return values are those of
   `kernel/work.c`. `submit` does nothing if already queued (0) and queues a running item again on
@@ -426,22 +454,54 @@ RTIO and kernel as a whole are not ported.
   pending (Zephyr's `k_yield()`). The delay timer is a wdog; a delay ends at the current tick +
   ticks + 1, as in Zephyr. Not ported: flush, drain, plug, stopping a queue, the work timeout,
   `k_work_cancel()`, `k_work_cancel_delayable()`.
+- **OS headers** (of the layer): the shared headers hold no OS types; they include these headers
+  from the OS's directory (`nuttx/drivers/compat/` in the NuttX build, `common/tests/zephyr_fakes/`
+  in the host tests). The list of what each must provide is in the leading comment of the shared
+  header that includes it.
+  - `zephyr_os.h` (included first by `<zephyr/kernel.h>`): the OS headers needed before the layer,
+    `Z_USEC_PER_TICK`, `struct k_mutex` and `Z_MUTEX_INITIALIZER()` (an all-zero one must work as
+    an unlocked mutex), `struct k_sem`, `Z_SEM_INITIALIZER()`, `K_SEM_MAX_LIMIT`, `struct _timeout`,
+    `_timeout_func_t`, `k_tid_t`, `k_current_get()`, `K_PRIO_PREEMPT()` (Zephyr's priority as the
+    OS's, keeping the order), `k_cycle_get_32()`, `k_cycle_get_64()` (1 MHz). The functions
+    (`k_sem_*()`, `k_mutex_*()`, `k_poll()`, `k_sleep()` and the others, `k_work_queue_start()`,
+    `z_add_timeout()`, `z_abort_timeout()`, `z_thread_static_start()`,
+    `zephyr_compat_initialize()`) are the OS's `.c` files (`zephyr_kernel.c` and `zephyr_mutex.c`
+    in the NuttX build).
+  - `zephyr_os_spinlock.h` (included by `<zephyr/spinlock.h>`): `struct k_spinlock`,
+    `k_spinlock_key_t`, `k_spin_lock()`, `k_spin_unlock()` (below).
+  - `zephyr_os_atomic.h` (included by `<zephyr/sys/atomic.h>` before it defines its names): the OS
+    headers that have names the layer takes over, and the `#undef` of their macros (below). Empty in
+    the host tests.
+  - `zephyr_rtio_workq_os.h`, `zephyr_net_mgmt_os.h` (included by the shared `.c` files at their
+    end): the threads' entries and their start (`rtio_workq_initialize()`,
+    `net_mgmt_event_init()`), on the files' `static` variables (semaphores, stacks).
+  - Headers that are the OS's as a whole: `zephyr/net/socket.h`, `zephyr/net/net_if.h`,
+    `zephyr/sys/clock.h`, `zephyr/sys/__assert.h`, `zephyr/drivers/i2c.h`, `zephyr/shell/shell.h`.
+  - Boundary headers that the shared files read: `priorities.h` (`NANO_STACK_NET_MGMT`;
+    `nuttx/drivers/include/` in the NuttX build), `nano_gpio.h` (`zephyr_gpio.c`), `app_log.h`
+    (`<zephyr/logging/log.h>`, `sensor_default_rtio.c`, the credentials), `<cpu_load.h>`
+    (`<zephyr/sys/cpu_load.h>`), `sensor_shell_os.h` (`sensor_shell_stream.c`). The configuration
+    values `CONFIG_NANO_LSM6DSO_STREAM` (`zephyr_device.c`) and `CONFIG_NANO_WIFI_CREDENTIALS`,
+    `_MAX_ENTRIES`, `_SAE_PASSWORD_LENGTH`, `_CONNECTION_TIMEOUT` (the Wi-Fi headers and
+    `zephyr_wifi_mgmt.c`) must be defined before the layer's headers (in the NuttX build by
+    `<nuttx/config.h>`, which the prelude reads for the shared `.c` files).
 - **Spin locks**: Zephyr's single-CPU `k_spin_lock()` masks interrupts, and no other thread runs
   until it is released (a thread made ready by `k_sem_give()` or the like runs at the release).
   NuttX switches to a thread that `nxsem_post()` makes ready at once, even with interrupts masked,
-  so the layer's `k_spin_lock()` is `sched_lock()` plus `up_irq_save()` (`sched_lock()` does
+  so the NuttX build's `k_spin_lock()` (`zephyr_os_spinlock.h`) is `sched_lock()` plus
+  `up_irq_save()` (`sched_lock()` does
   nothing in an interrupt handler). The `atomic_*()` functions use it too (the Cortex-M0+ has no
   exclusive loads and stores; Zephyr's ARMv6-M build masks interrupts as well).
 - **Clashing NuttX names**: NuttX's `<nuttx/atomic.h>` (read by many kernel headers) has its own
   `atomic_t`, `atomic_set()` and others with other meanings. The layer's `<zephyr/sys/atomic.h>`
-  reads it first, then takes the names over for the file (`atomic_t` is `zephyr_atomic_t`, NuttX's
+  reads it first (`zephyr_os_atomic.h`), then takes the names over for the file (`atomic_t` is `zephyr_atomic_t`, NuttX's
   macros are undefined). A file that uses both includes the NuttX headers first (for the files of
   `common/`, the prelude does). The board's bring-up does not include the Zephyr headers, only
   `zephyr_compat.h`.
 - **Prelude** (`common_prelude.h`): when the NuttX build compiles the sources shared with the Zephyr
-  build (the repository's `common/`), its build definitions (the `Makefile` of `apps/imu`,
-  `apps/wifi` and `apps/sensor`, `lsm6dso/Make.defs`, `nina/Make.defs`, the board's
-  `src/Make.defs`) include it before each file with `-include` (as the Zephyr build reads its
+  build and the layer's shared `.c` files (the repository's `common/`), its build definitions (the
+  `Makefile` of `apps/imu`, `apps/wifi` and `apps/sensor`, `compat/Make.defs`, `lsm6dso/Make.defs`,
+  `nina/Make.defs`, the board's `src/Make.defs`) include it before each file with `-include` (as the Zephyr build reads its
   configuration into every file with `-imacros autoconf.h`). It holds `<nuttx/config.h>`, the NuttX
   headers needed before the layer (those that `<zephyr/kernel.h>` reads first: `<sys/types.h>`,
   `<nuttx/irq.h>`, `<nuttx/mutex.h>`, `<nuttx/semaphore.h>`, `<nuttx/wdog.h>`, `<stdio.h>`) and the
@@ -454,12 +514,13 @@ RTIO and kernel as a whole are not ported.
   reads them for the files that need them). The host tests use the same prelude (without
   `__NuttX__`, only the Kconfig values; the `time_sync` test and the tests of the LSM6DSO driver put
   a fake `<nuttx/config.h>` before it).
-- **Headers of each OS**: the few lines of a shared source that differ between the builds are in a
+- **Headers of each OS** (of the shared sources): the few lines of a shared source that differ between the builds are in a
   small header of the same name, of which the Zephyr and the NuttX build each have their own
   (besides `lsm6dso_instance.h`, the LSM6DSO device, above):
-  `sensor_shell_os.h` (included first by `sensor_shell.c`; the NuttX one, `nuttx/apps/sensor/`, reads
-  the Zephyr build's configuration values and the log and makes the two lines with which
-  `sensor get` waits for its result to be printed call functions; the Zephyr one,
+  `sensor_shell_os.h` (included first by `sensor_shell.c` and by the layer's
+  `sensor_shell_stream.c`; the NuttX one, `nuttx/apps/sensor/`, reads the Zephyr build's
+  configuration values and the log and makes the two lines with which `sensor get` waits for its
+  result to be printed, and the processing thread's callback, call functions; the Zephyr one,
   `zephyr/app/usb-console/drivers/sensor_shell/`, does nothing) and `wifi_profile_os.h` (the
   declaration of the reconnection thread's `wifi_reconnect_tid`: `const k_tid_t` in the Zephyr one,
   `zephyr/app/usb-console/src/`, as `K_THREAD_DEFINE()` makes it; without `const` in the NuttX one,

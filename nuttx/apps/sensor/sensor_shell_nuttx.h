@@ -1,10 +1,10 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /* NuttX port of the sensor shell: what the sensor shell (sensor_shell.c,
  * shared with the Zephyr build in common/drivers/sensor_shell, and the
- * copies of Zephyr's sensor_shell_stream.c and sensor_shell.h) takes from
- * the Zephyr build's configuration and logging, and the two additions of
- * the port (sensor_shell_nuttx.c).  Included first by sensor_shell_stream.c,
- * and by sensor_shell.c through sensor_shell_os.h.
+ * copies of Zephyr's sensor_shell_stream.c and sensor_shell.h in
+ * common/compat) takes from the Zephyr build's configuration and logging,
+ * and the two additions of the port (sensor_shell_nuttx.c).  Included first
+ * by sensor_shell.c and sensor_shell_stream.c through sensor_shell_os.h.
  */
 
 #ifndef __NUTTX_APPS_SENSOR_SENSOR_SHELL_NUTTX_H

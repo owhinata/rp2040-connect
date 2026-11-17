@@ -590,7 +590,7 @@ LF に直して同一）で行います。FIFO のストリーム（INT1 の割�
   （`i2c dump -a 6a -r 00 32` で確認できます）。
 - **I2C**: 起動時の速さはデバイスツリーの 100 kHz で、`i2c_configure()`（Zephyr の API の写し）で 400 kHz・1 MHz に
   変えられます（Zephyr 版の `imu start` は 1 MHz にします）。NuttX の I2C はメッセージごとに周波数を持つので、
-  この速さは I2C0 のデバイス（`nuttx/drivers/compat`）が覚えていて、ドライバーの転送だけに使います。`i2c`
+  この速さは I2C0 のデバイス（互換層の NuttX の実装、`nuttx/drivers/compat`）が覚えていて、ドライバーの転送だけに使います。`i2c`
   ツールは自分の `-f` の周波数で動き、ドライバーの速さを変えません（Zephyr 版の `i2c speed` はバスの設定を
   変えます）。レジスターの読み出しは 1 回の転送（レジスター番号の書き込み → RESTART → 読み出し）、書き込みは
   STOP 付きの 1 メッセージで、Zephyr の `i2c_burst_read_dt()`・`i2c_write_dt()` と同じ形です。FIFO の読み出しは
@@ -606,17 +606,19 @@ LF に直して同一）で行います。FIFO のストリーム（INT1 の割�
   システムワークキュー（`sysworkq`）→ FIFO のワーカー（`imu_fifo_worker`）が FIFO を読んで RTIO の完了に
   します。ウォーターマークに届かないときは 20 ms ごとに見直し、`lsm6dso_fifo_request_stop()` で残りを最後の
   端数のバッチとして渡してから `-ECANCELED` で終えます。動かすための Zephyr のカーネル（ワークキュー、
-  セマフォ、`k_poll()`）、RTIO、GPIO、センサーの非同期の API は互換層（`nuttx/drivers/compat/`）にあり、
+  セマフォ、`k_poll()`）、RTIO、GPIO、センサーの非同期の API は互換層（`common/compat/` と `nuttx/drivers/compat/`）にあり、
   ボードの起動処理が `zephyr_compat_initialize()` で `sysworkq` と `RTIO WQ 0` を始めます。
 - 呼ぶ側のための Zephyr の API の写し（`struct device`、`struct sensor_value`、チャネル・属性の列挙、
-  `sensor_*()`、I2C の一部、カーネル、RTIO、GPIO）は `nuttx/drivers/compat/` にあります。詳しくは
+  `sensor_*()`、I2C の一部、カーネル、RTIO、GPIO）は互換層にあります（OS に依存しない部分は `common/compat/`、NuttX の
+  実装は `nuttx/drivers/compat/`）。詳しくは
   `nuttx/drivers/README_ja.md` の「LSM6DSOX」と「Zephyr の API の互換層」の節を見てください。
 
 ## センサーのコマンド（`sensor`）
 
 コマンドの本体は Zephyr 版の sensor シェルと同じファイル `common/drivers/sensor_shell/sensor_shell.c`（Zephyr v4.5.0 の
-`drivers/sensor/sensor_shell.c` に修正と LSM6DSO の FIFO の属性を加えたもの）で、`nuttx/apps/sensor/` に、Zephyr の
-`drivers/sensor/sensor_shell_stream.c`・`sensor_shell.h` の写しと NuttX 版の部分があります。
+`drivers/sensor/sensor_shell.c` に修正と LSM6DSO の FIFO の属性を加えたもの）です。Zephyr の
+`drivers/sensor/sensor_shell_stream.c`・`sensor_shell.h` の写しは互換層の共通の部分（`common/compat/`。Zephyr 版は
+Zephyr のものを使う）、NuttX 版の部分は `nuttx/apps/sensor/` にあります。
 
 - `sensor_shell.c` は最初に OS ごとのヘッダー `sensor_shell_os.h` を読みます。NuttX 版（`nuttx/apps/sensor/`）は
   `sensor_shell_nuttx.h`（Zephyr 版の構成の `CONFIG_SENSOR_SHELL_*` の値と、ログの `app_log.h`）を読み、
@@ -624,8 +626,9 @@ LF に直して同一）で行います。FIFO のストリーム（INT1 の割�
   `sensor_shell_nuttx.c` の関数にします。Zephyr 版（`zephyr/app/usb-console/drivers/sensor_shell/`）の同名の
   ヘッダーでは、この 2 行は何もしません。ログのレベル `CONFIG_SENSOR_LOG_LEVEL` は前置きヘッダーにあります
   （`nuttx/drivers/README_ja.md` の「Zephyr の API の互換層」）。
-- `sensor_shell_stream.c`（写し）: 先頭の説明と `sensor_shell_nuttx.h` のインクルード、処理スレッドが呼ぶ
-  コールバックを、元のコールバックの後で待っている `sensor get` に知らせるもの（`sensor_shell_nuttx.c`）にした 1 行。
+- `sensor_shell_stream.c`（写し）: 先頭の説明と OS ごとのヘッダー `sensor_shell_os.h` のインクルード、処理スレッドが呼ぶ
+  コールバックを OS のもの（`sensor_shell_os_processing_callback()`。NuttX 版は、元のコールバックの後で待っている
+  `sensor get` に知らせる `sensor_shell_nuttx.c` の関数）にした 1 行。
 - `sensor_shell.h` は無変更の写しです。
 
 コマンドの表（`SHELL_STATIC_SUBCMD_SET_CREATE()`、`SHELL_DYNAMIC_CMD_CREATE()`、`SHELL_CMD_REGISTER()`）も
@@ -691,7 +694,7 @@ channel type=3(accel_xyz) index=0 shift=4 num_samples=1 value=<時刻>ns, (<x>, 
 ## IMU の取得（`imu`）
 
 取得サービスは `common/imu/imu_stream.c` で、Zephyr 版と同じファイルです（`nuttx/apps/imu/` が組み込みコマンド
-`imu` の main のソースとしてビルドする）。OS を呼ぶ部分は互換層（`nuttx/drivers/compat/`。Zephyr の名前のまま）が
+`imu` の main のソースとしてビルドする）。OS を呼ぶ部分は互換層（`common/compat/` と `nuttx/drivers/compat/`。Zephyr の名前のまま）が
 提供し、定数、分岐、順序、待ち時間、カウンター、出力の文は Zephyr 版のものがそのまま使われます。末尾の
 コマンドの登録（`SHELL_CMD_REGISTER()`）も Zephyr 版の文のままで、互換層がそれを組み込みコマンド `imu` の
 `main()` にします（「コマンドのサブコマンド」）。
@@ -760,7 +763,7 @@ status は 0、info は 1 で retain）、クライアント ID（`imu-<device>`
 - スレッド `imu_raw_mqtt_tid`（Zephyr の優先度 11 → 107、スタック 2048 の静的な配列）。init が起動処理の
   最初に始め、`imu start` を待ちます。
 - MQTT のクライアントは、Zephyr の MQTT ライブラリ（`subsys/net/lib/mqtt/`）のうち使う部分の写し
-  （`nuttx/apps/imu/mqtt_min.c`、API は互換層の `<zephyr/net/mqtt.h>`）です。MQTT 3.1.1、TCP だけで、
+  （`common/imu/mqtt_min.c`、API は互換層の `<zephyr/net/mqtt.h>`。ソケットの層は `nuttx/apps/imu/mqtt_min_sock.c`）です。MQTT 3.1.1、TCP だけで、
   送るバイト列、既定値、受信の分け方は Zephyr のライブラリと同じです（ホストテスト `mqtt_min` は同じ
   テストを Zephyr の本物のライブラリでも動かします）。PUBLISH は固定ヘッダーと本体を 2 つのベクターの
   `sendmsg()` 1 回で渡し、NINA のドライバーがそれを 1 つの送信の命令にまとめます（Zephyr 版と同じ）。
@@ -973,30 +976,35 @@ NuttX 標準のクリティカルセクションの監視（`CONFIG_SCHED_CRITMO
 
 次のファイルは Zephyr 版と NuttX 版が同じものを使い、リポジトリの `common/` に 1 本ずつ置いています。
 Zephyr 版の `CMakeLists.txt` と NuttX 版の Makefile（`apps/imu/Makefile`、`apps/wifi/Makefile`、`apps/sensor/Makefile`、
-`drivers/lsm6dso/Make.defs`、`drivers/nina/Make.defs`、ボードの `src/Make.defs`）がそこを参照します。Zephyr の API を
+`drivers/compat/Make.defs`、`drivers/lsm6dso/Make.defs`、`drivers/nina/Make.defs`、ボードの `src/Make.defs`）がそこを参照します。Zephyr の API を
 使うもの（`common/drivers/` の FIFO の設定とストリーム、単発取得の RTIO 版、NINA の Wi-Fi、sensor シェルと、
 `common/imu/` の取得サービス・時刻同期・校正・MQTT・Wi-Fi のプロファイル）は、NuttX 版では互換層の上で動きます。NuttX 版は `common/` の
 各ファイルに前置きヘッダー（`nuttx/drivers/compat/common_prelude.h`）を付けてコンパイルし、版ごとに違う数行は
 OS ごとのヘッダー（`sensor_shell_os.h`、`wifi_profile_os.h`、`lsm6dso_instance.h`。Zephyr 版は `zephyr/app/usb-console/`
 の下、NuttX 版は `nuttx/apps/` と `nuttx/drivers/lsm6dso/` の下）に出しています（`nuttx/drivers/README_ja.md` の
-「Zephyr の API の互換層」）。
+「Zephyr の API の互換層」）。互換層のうち OS に依存しない部分も `common/compat/` に置き、NuttX 版はそれと NuttX の
+実装（`nuttx/drivers/compat/`）を使います（Zephyr 版は使わない）。
 
 | 置き場所 | 内容 |
 |---|---|
-| `common/imu/` | `imu_stream.c`、`imu_raw_{batch,packet,queue,status,time}`、`imu_tick_clock`、`time_sync.[ch]`、`time_offset`、`imu_cal_codec.c`、`imu_cal.[ch]`、`imu_raw_mqtt.[ch]`、`wifi_profile.[ch]`、`kv_store.h` |
+| `common/imu/` | `imu_stream.c`、`imu_raw_{batch,packet,queue,status,time}`、`imu_tick_clock`、`time_sync.[ch]`、`time_offset`、`imu_cal_codec.c`、`imu_cal.[ch]`、`imu_raw_mqtt.[ch]`、`wifi_profile.[ch]`、`kv_store.h`、`mqtt_min.[ch]`（互換層の上の版の MQTT クライアント。Zephyr 版は使わない） |
 | `common/drivers/lsm6dso/` | `lsm6dso.[ch]`（ドライバー本体。末尾のデバイスは版ごとの `lsm6dso_instance.h`）、`lsm6dso_{fifo,cal,zero,fifo_decoder,fifo_hw,fifo_irq}`、`lsm6dso_stream.c`、`lsm6dso_compat.c`、`lsm6dso_fifo_packet.h`、`lsm6dso_fifo_stats.h`、`lsm6dso_attributes.h` |
 | `common/drivers/nina/` | `nina_net.c` |
 | `common/drivers/sensor_shell/` | `sensor_shell.c` |
 | `common/drivers/i2c_dw/` | `i2c_dw_rp2040_commands.[ch]` |
-| `common/tests/` | 上のファイルを対象にするテスト 14 本（`common/tests/run.sh` が実行し、両方の版の `host_tests.sh` が最初に呼ぶ）。`stream_stop.c` は `../drivers/lsm6dso/lsm6dso_stream.c` を読み込む（先に `lsm6dso.h` のインクルードガードを定義するので、そのヘッダーの中身は使わない。`stream_stop.c` が必要な定義を自分で置く） |
+| `common/compat/` | 互換層の OS に依存しない部分（Zephyr の API のヘッダー `zephyr/...`、`zephyr_compat.h`、ワーク、RTIO、ブロックのプール、デバイスの一覧、`gpio0`、`net_mgmt`、Wi-Fi の要求、sensor の既定の iodev）と、互換層の上の版が使う Zephyr のライブラリーの写し（`sensor_shell_stream.c`・`sensor_shell.h`、`wifi_credentials.c`・`wifi_credentials_backend_settings.c`・`wifi_credentials_internal.h`）。Zephyr 版は使わない |
+| `common/tests/` | 上のファイルを対象にするテスト 17 本（`common/tests/run.sh` が実行し、両方の版の `host_tests.sh` が最初に呼ぶ。互換層の `zephyr_rtio`・`zephyr_work`・`mqtt_min` は偽のカーネルの上）。`stream_stop.c` は `../drivers/lsm6dso/lsm6dso_stream.c` を読み込む（先に `lsm6dso.h` のインクルードガードを定義するので、そのヘッダーの中身は使わない。`stream_stop.c` が必要な定義を自分で置く） |
 | `common/tests/fakes/` | テスト用の Zephyr のヘッダーと ST のヘッダーの代わり（`zephyr/drivers/sensor.h`、`zephyr/drivers/sensor_clock.h`、`zephyr/drivers/i2c.h`、`zephyr/rtio/rtio.h`、`lsm6dso_reg.h`） |
+| `common/tests/zephyr_fakes/` | 互換層の偽のカーネル: OS ごとのヘッダー（`zephyr_os.h`・`zephyr_os_spinlock.h`・`zephyr_os_atomic.h`・`zephyr_rtio_workq_os.h`、`zephyr/sys/__assert.h`）とその関数（`zephyr_kernel_host.[ch]`。1 スレッドで、ワークキューとタイマーはテストが回す）。NuttX 版のテストも使う |
 
-`common/` のソースを対象にするテストのうち、NuttX 版の互換層と偽のカーネル（`nuttx/tests/zephyr_fakes/` など）で
-動かすもの（`lsm6dso_driver`、`imu_cal`、`imu_raw_mqtt`、`sensor_shell`）は `nuttx/tests/` にあり、`nuttx/script/host_tests.sh` が
-前置きヘッダーを付けてビルドします。
+`common/` のソースを対象にするテストのうち、NuttX 版の互換層の実装（ソケット、I2C、シェルなど）やボードのコードと
+偽のカーネル（`common/tests/zephyr_fakes/`）で動かすもの（`lsm6dso_driver`、`imu_cal`、`imu_raw_mqtt`、`sensor_shell`、
+`time_sync`、`wifi_cred`、`zephyr_compat_misc`）は `nuttx/tests/` にあり、`nuttx/script/host_tests.sh` が前置き
+ヘッダーを付けてビルドします。`common/tests/mqtt_min.c` を Zephyr の MQTT ライブラリーの上で動かすもの（Zephyr の
+ツリーと NuttX 版の `<zephyr/net/socket.h>` が要る）も `nuttx/script/host_tests.sh` がビルドします。
 
 次のファイルは Zephyr の写しです。Zephyr 版を直したときは、写しにも同じ変更を入れます。
-`nuttx/apps/sensor/sensor_shell_stream.c`・`sensor_shell.h` は Zephyr の写しで、違いは「センサーのコマンド（`sensor`）」の節に
+`common/compat/sensor_shell_stream.c`・`sensor_shell.h` は Zephyr の写しで、違いは「センサーのコマンド（`sensor`）」の節に
 書いたものだけです。
 
 `nuttx/tests/fakes/nuttx/config.h`（空）は NuttX 版だけのもので、`<nuttx/config.h>` を読む `nuttx/apps` の
@@ -1034,7 +1042,7 @@ OS ごとのヘッダー（`sensor_shell_os.h`、`wifi_profile_os.h`、`lsm6dso_
 `shell_print()`・`shell_warn()`・`shell_error()` で行を書く。標準出力は NuttX 版と同じ 64 バイトの行バッファー）と、
 違う場合（一致するワイルドカードの後のサブコマンド、30 語を越える行）の Zephyr のシェルの出力を確かめます。
 
-`nuttx/tests/wifi_cred.c` は `apps/wifi/` の Zephyr のライブラリの写し（`wifi_credentials.c`、settings の
+`nuttx/tests/wifi_cred.c` は `common/compat/` の Zephyr のライブラリの写し（`wifi_credentials.c`、settings の
 バックエンド）と `wifi cred` のコマンド（`wifi_credentials_shell.c` の写し、`subcmd`、互換層の
 `zephyr_wifi_utils.c`）を、名前付きの項目を持つ偽の settings で確かめます: 起動時の読み込み、保存する名前
 （`wifi_cred/<番号>`。`app_kv/` と重ならない）と中身、長さの境界（SSID 32/33、パスフレーズ 7/8/64/65）、
@@ -1066,7 +1074,7 @@ Zephyr のフラグへの変換、`IC_DATA_CMD` に書く語の列（`i2c` ツ�
 カウンター（`k_cycle_get_32()`）はテストの偽物で、待ちをレジスターの書き込みの列の中に記録し、眠った時間を
 足し上げます。ミューテックスとスピンロックは偽のカーネルのものです。FIFO のストリームも、`lsm6dso_stream.c`・`lsm6dso_fifo_irq.c`・
 `lsm6dso_compat.c`・デコーダーと互換層（ワーク、RTIO、`gpio0`、既定の iodev とデコーダー）を、偽のカーネル
-（`nuttx/tests/zephyr_fakes/`。1 スレッドで、ワークキューとタイマーはテストが回す）と、偽のセンサーの
+（`common/tests/zephyr_fakes/`。1 スレッドで、ワークキューとタイマーはテストが回す）と、偽のセンサーの
 ウォーターマークに従う偽の INT1 で動かし、ストリームの開始（レジスター、INT1 の割り込み）、INT1 のエッジと
 20 ms の見直しでのバッチ、2 本目（`-EBUSY`）とほかのトリガー（`-ENOTSUP`）、穏やかな停止（一時停止、最後の
 端数のバッチ、`-ECANCELED`、レジスターの戻り）、キャンセル、オーバーラン（`-EOVERFLOW`）、RTIO の
@@ -1091,8 +1099,8 @@ Zephyr のフラグへの変換、`IC_DATA_CMD` に書く語の列（`i2c` ツ�
 `attr_set` の拒否、`off`）、`trig`。結果はコマンドが戻った後に、処理スレッドのコールバックがコマンドの端末
 （バックエンドのパス）に書きます。
 
-`nuttx/tests/zephyr_rtio.c` と `zephyr_work.c` も NuttX 版だけのテストで、互換層の RTIO とワークを偽の
-カーネルの上で確かめます。前者は `imu_stream.c` と同じ寸法のコンテキストと偽の iodev で、メモリープール
+`common/tests/zephyr_rtio.c` と `zephyr_work.c` は、互換層の共通の部分の RTIO とワークを偽の
+カーネル（`common/tests/zephyr_fakes/`）の上で確かめます（`common/tests/run.sh` が実行する）。前者は `imu_stream.c` と同じ寸法のコンテキストと偽の iodev で、メモリープール
 （ブロックの大きさ、`max` から `min` への割り当て、送信への結び付け、最初の適合、枯渇と解放）、送信のプール
 （4 つ、解放順の再利用、ハンドルと世代）、完了（順序、16 個、あふれた完了の `xcqcnt` とそのバッファーが残ること、
 `consume_sem`）、multishot（完了の前の再投入、結び付けの解除、ハンドルの維持、失敗とキャンセルでの解放）、

@@ -3,8 +3,9 @@
  * on semaphores, the threads of the work queues, the timer of a delayable
  * work item, thread names, and the start of what Zephyr starts at boot
  * (zephyr_compat_initialize()).  The work queue logic itself is
- * zephyr_work.c.  Part of the small Zephyr compatibility layer of the port
- * (nuttx/drivers/compat).  The mutexes are zephyr_mutex.c.
+ * zephyr_work.c (common/compat).  The types are in zephyr_os.h.  Part of
+ * the NuttX implementation of the small Zephyr compatibility layer of the
+ * port (nuttx/drivers/compat).  The mutexes are zephyr_mutex.c.
  *
  *   Zephyr                    here
  *   k_sem                     sem_t without priority inheritance (NuttX's

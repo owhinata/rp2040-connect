@@ -8,15 +8,16 @@
 # common_prelude.h of the compatibility layer; it is the main source, with
 # SHELL_CMD_REGISTER() of the compatibility layer making main()), the copy
 # of Zephyr's sensor_shell_stream.c (the processing thread, which the init
-# task starts), and the port's additions (sensor_shell_os.h, the NuttX part
-# that sensor_shell.c includes first, and sensor_shell_nuttx.c), linked
-# into libapps.
+# task starts; common/compat, also with the prelude), and the port's
+# additions (sensor_shell_os.h, the NuttX part that both include first,
+# and sensor_shell_nuttx.c), linked into libapps.
 #
-# Include paths: the Zephyr compatibility layer ($(TOPDIR)/external/compat),
-# the port's shared headers ($(TOPDIR)/external/include: app_log.h,
-# priorities.h), subcmd.h, this directory (sensor_shell_os.h,
-# sensor_shell.h, for the file in common/) and common/drivers/lsm6dso
-# (sensor_shell.c's "lsm6dso_attributes.h", shared with the Zephyr build).
+# Include paths: the Zephyr compatibility layer ($(TOPDIR)/external/compat
+# and common/compat, which has the copy of Zephyr's sensor_shell.h), the
+# port's shared headers ($(TOPDIR)/external/include: app_log.h,
+# priorities.h), subcmd.h, this directory (sensor_shell_os.h, for the files
+# in common/) and common/drivers/lsm6dso (sensor_shell.c's
+# "lsm6dso_attributes.h", shared with the Zephyr build).
 ############################################################################
 
 include $(APPDIR)/Make.defs
@@ -31,13 +32,17 @@ CSRCS     = sensor_shell_stream.c sensor_shell_nuttx.c
 
 CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)include
 CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)compat
+CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)compat
 CFLAGS   += ${INCDIR_PREFIX}$(APPDIR)$(DELIM)external$(DELIM)subcmd
 CFLAGS   += ${INCDIR_PREFIX}$(APPDIR)$(DELIM)external$(DELIM)sensor
 CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)drivers$(DELIM)lsm6dso
 
 VPATH    += :../../../common/drivers/sensor_shell
 DEPPATH  += --dep-path ../../../common/drivers/sensor_shell
+VPATH    += :../../../common/compat
+DEPPATH  += --dep-path ../../../common/compat
 
 include $(APPDIR)/Application.mk
 
-sensor_shell.c$(SUFFIX)$(OBJEXT): CFLAGS += -include $(TOPDIR)$(DELIM)external$(DELIM)compat$(DELIM)common_prelude.h
+sensor_shell.c$(SUFFIX)$(OBJEXT) sensor_shell_stream.c$(SUFFIX)$(OBJEXT): \
+  CFLAGS += -include $(TOPDIR)$(DELIM)external$(DELIM)compat$(DELIM)common_prelude.h

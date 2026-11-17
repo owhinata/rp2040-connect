@@ -3,7 +3,7 @@
  * result (see sensor_shell_nuttx.h).
  *
  * The read's completion reaches the processing thread
- * (sensor_shell_processing_tid, sensor_shell_stream.c), which prints the
+ * (sensor_shell_processing_tid, common/compat/sensor_shell_stream.c), which prints the
  * result on the command's terminal with sensor_shell_processing_callback()
  * and then posts the semaphore that the command waits on.  The command
  * waits at most GET_WAIT_MS: the processing thread can be held up by a

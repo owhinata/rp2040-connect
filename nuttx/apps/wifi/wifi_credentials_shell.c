@@ -7,7 +7,8 @@
 /* NuttX port: the "wifi" command with its "cred" subcommands: a copy of
  * Zephyr's subsys/net/lib/wifi_credentials/wifi_credentials_shell.c
  * (Zephyr v4.5.0) with the same syntax, messages and return values, on the
- * Zephyr compatibility layer (nuttx/drivers/compat) and ../subcmd, with
+ * Zephyr compatibility layer (common/compat, nuttx/drivers/compat) and
+ * ../subcmd, with
  * these changes:
  * - sys_getopt_long() is the C library's getopt_long() (NuttX's: it does not
  *   move the words that are not options to the end, and it logs nothing for

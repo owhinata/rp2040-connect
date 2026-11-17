@@ -6,7 +6,7 @@
  ****************************************************************************/
 
 /* The devices of the Zephyr build's devicetree that the ported LSM6DSO
- * driver uses (<zephyr/devicetree.h> of nuttx/drivers/compat):
+ * driver uses (<zephyr/devicetree.h> of common/compat):
  *
  *   i2c0      /soc/i2c@40044000: the I2C0 master of nano_i2c.c, as a bus
  *             device of the compatibility layer, at the devicetree's

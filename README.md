@@ -310,8 +310,9 @@ zephyr/script/host_tests.sh
 
 This runs, on the PC and without a board, the tests for FIFO word parsing, batches and
 payloads, the send queue, time assignment, the NTP estimate, the driver's FIFO setup and stop
-handling, and NINA SPI framing. The tests of the sources shared with the NuttX build
-(`common/tests/run.sh`) run first.
+handling, and NINA SPI framing. The tests of the sources shared with the NuttX build and of
+the OS-independent part of the Zephyr API compatibility layer (`common/tests/run.sh`) run
+first.
 
 To check on hardware, follow the usage steps with the receiver running and look at its
 summary (missing batches, valid and reversed times) and at the errors in `imu status`.
@@ -335,7 +336,7 @@ summary (missing batches, valid and reversed times) and at the errors in `imu st
 | `zephyr/app/blink/` | LED blink sample |
 | `zephyr/script/` | Setup, host tests |
 | `nuttx/` | The NuttX build (board definition, drivers, applications, patches, scripts, host tests) |
-| `common/` | Sources that the Zephyr and NuttX builds both use (`imu/`: the acquisition service and the `imu` command, batches, packets, the send queue, time assignment, the time sync and the `ntp` command, the NTP estimate, the calibration value format and `imu cal`, the MQTT transport, the Wi-Fi profile and automatic reconnection, the declarations of the key-value store; `drivers/`: the LSM6DSO driver and its FIFO parsing, unit conversion and gyro zero, FIFO setup, interrupt, stream and RTIO single reads, the NINA's Wi-Fi network device, the sensor shell, the I2C DMA command words) and their host tests (`tests/`; `tests/run.sh` is called by the `host_tests.sh` of both builds) |
+| `common/` | Sources that the Zephyr and NuttX builds both use (`imu/`: the acquisition service and the `imu` command, batches, packets, the send queue, time assignment, the time sync and the `ntp` command, the NTP estimate, the calibration value format and `imu cal`, the MQTT transport, the Wi-Fi profile and automatic reconnection, the declarations of the key-value store; `drivers/`: the LSM6DSO driver and its FIFO parsing, unit conversion and gyro zero, FIFO setup, interrupt, stream and RTIO single reads, the NINA's Wi-Fi network device, the sensor shell, the I2C DMA command words; `compat/`: the OS-independent part of the compatibility layer that the NuttX build and others use in place of Zephyr's API, with the copies of Zephyr's libraries it needs (the Zephyr build does not use it; the layer's MQTT client is `imu/mqtt_min.c`) and their host tests (`tests/`; `tests/run.sh` is called by the `host_tests.sh` of both builds) |
 | `openmv/` | Build environment for the OpenMV MicroPython firmware ([`openmv/README.md`](openmv/README.md)) |
 | `freertos/` | Build environment for the Raspberry Pi Pico SDK with the FreeRTOS kernel, and a USB console application ([`freertos/README.md`](freertos/README.md)) |
 | `zephyr/manifest/west.yml` | Versions of Zephyr and its modules |

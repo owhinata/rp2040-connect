@@ -1,7 +1,9 @@
 #!/usr/bin/env bash
-# Build and run the host tests of the sources shared by the Zephyr and NuttX builds (common/).
-# They use the fake headers of tests/fakes and need no board.  zephyr/script/host_tests.sh and
-# nuttx/script/host_tests.sh run this before their own tests.
+# Build and run the host tests of the sources shared by the Zephyr and NuttX builds (common/)
+# and of the OS-independent part of the Zephyr compatibility layer (common/compat).  They use
+# the fake headers of tests/fakes or the fake kernel of tests/zephyr_fakes and need no board
+# and no Zephyr tree.  zephyr/script/host_tests.sh and nuttx/script/host_tests.sh run this
+# before their own tests.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 out=$(mktemp -d)
@@ -46,3 +48,17 @@ run stream_stop "${flags[@]}" "${inc[@]}" tests/stream_stop.c \
 # RP2040 I2C DMA command parsing.
 run i2c_dma_commands "${flags[@]}" -Idrivers/i2c_dw tests/i2c_dma_commands.c \
     drivers/i2c_dw/i2c_dw_rp2040_commands.c
+
+# The compatibility layer on the fake kernel (tests/zephyr_fakes: the OS part, zephyr_os*.h,
+# and its functions): RTIO (pool, completions, multishot, cancellation, work queue), work items
+# (submit, schedule, reschedule, cancel), and the minimal MQTT client (imu/mqtt_min.c, the
+# copied part of Zephyr's MQTT library; its text compares signed with unsigned, as in the
+# Zephyr build) on a fake socket.  nuttx/script/host_tests.sh also runs the MQTT test on
+# Zephyr's own library when the Zephyr tree is there.
+compat=(compat/zephyr_work.c compat/zephyr_rtio.c compat/zephyr_mem_blocks.c
+        compat/zephyr_rtio_workq.c tests/zephyr_fakes/zephyr_kernel_host.c)
+zinc=(-D_DEFAULT_SOURCE -Itests/zephyr_fakes -Icompat)
+run zephyr_rtio "${flags[@]}" "${zinc[@]}" tests/zephyr_rtio.c "${compat[@]}"
+run zephyr_work "${flags[@]}" "${zinc[@]}" tests/zephyr_work.c "${compat[@]}"
+run mqtt_min "${flags[@]}" -Wno-sign-compare "${zinc[@]}" -I"$imu" tests/mqtt_min.c \
+    "$imu/mqtt_min.c" "${compat[@]}"

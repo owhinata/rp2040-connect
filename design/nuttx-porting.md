@@ -665,7 +665,7 @@ runs on the Zephyr build's own files (`common/drivers/lsm6dso/`) (below). The ac
   `i2c dump -a 6a -r 00 32`).
 - **I2C**: the speed at boot is the devicetree's 100 kHz; `i2c_configure()` (a copy of Zephyr's
   API) changes it to 400 kHz or 1 MHz (the Zephyr build's `imu start` sets 1 MHz). A NuttX I2C
-  transfer carries its frequency in each message, so the I2C0 device (`nuttx/drivers/compat`)
+  transfer carries its frequency in each message, so the I2C0 device (the layer's NuttX implementation, `nuttx/drivers/compat`)
   keeps this speed and the driver's transfers use it. The `i2c` tool runs at its own `-f`
   frequency and does not change the driver's speed (the Zephyr build's `i2c speed` changes the
   bus). A register read is one transfer (write the register number → RESTART → read), a write is
@@ -685,19 +685,22 @@ runs on the Zephyr build's own files (`common/drivers/lsm6dso/`) (below). The ac
   FIFO and completes an RTIO request. Below the watermark it looks again every 20 ms;
   `lsm6dso_fifo_request_stop()` delivers the rest as a last partial batch and ends with
   `-ECANCELED`. The Zephyr kernel parts it needs (work queues, semaphores, `k_poll()`), RTIO, GPIO
-  and the sensors' async API are in the compatibility layer (`nuttx/drivers/compat/`); the board's
+  and the sensors' async API are in the compatibility layer (`common/compat/` and `nuttx/drivers/compat/`); the board's
   bring-up starts `sysworkq` and `RTIO WQ 0` with `zephyr_compat_initialize()`.
 - The copies of Zephyr's API for the callers (`struct device`, `struct sensor_value`, the channel
-  and attribute enumerations, `sensor_*()`, part of the I2C API, the kernel, RTIO, GPIO) are in
-  `nuttx/drivers/compat/`. See the "LSM6DSOX" and "Zephyr API compatibility layer" sections of
+  and attribute enumerations, `sensor_*()`, part of the I2C API, the kernel, RTIO, GPIO) are in the
+  compatibility layer (its OS-independent part in `common/compat/`, its NuttX implementation in
+  `nuttx/drivers/compat/`). See the "LSM6DSOX" and "Zephyr API compatibility layer" sections of
   `nuttx/drivers/README.md`.
 
 ## Sensor command (`sensor`)
 
 The command itself is the Zephyr build's sensor shell, the same file
 `common/drivers/sensor_shell/sensor_shell.c` (Zephyr v4.5.0's `drivers/sensor/sensor_shell.c` with
-its fixes and the LSM6DSO's FIFO attributes); `nuttx/apps/sensor/` holds copies of Zephyr's
-`drivers/sensor/sensor_shell_stream.c` and `sensor_shell.h` and the NuttX part.
+its fixes and the LSM6DSO's FIFO attributes). The copies of Zephyr's
+`drivers/sensor/sensor_shell_stream.c` and `sensor_shell.h` are in the shared part of the
+compatibility layer (`common/compat/`; the Zephyr build uses Zephyr's), the NuttX part in
+`nuttx/apps/sensor/`.
 
 - `sensor_shell.c` first includes the header of each OS, `sensor_shell_os.h`. The NuttX one
   (`nuttx/apps/sensor/`) includes `sensor_shell_nuttx.h` (the values of the Zephyr build's
@@ -708,9 +711,10 @@ its fixes and the LSM6DSO's FIFO attributes); `nuttx/apps/sensor/` holds copies 
   (`zephyr/app/usb-console/drivers/sensor_shell/`) the two lines do nothing. The log level
   `CONFIG_SENSOR_LOG_LEVEL` is in the prelude ("Zephyr API compatibility layer" in
   `nuttx/drivers/README.md`).
-- `sensor_shell_stream.c` (a copy): a leading comment and the include of `sensor_shell_nuttx.h`,
-  and one line, the callback of the processing thread, which is the original callback followed by
-  telling a waiting `sensor get` (`sensor_shell_nuttx.c`).
+- `sensor_shell_stream.c` (a copy): a leading comment and the include of the header of each OS,
+  `sensor_shell_os.h`, and one line, the callback of the processing thread, which is the OS's
+  (`sensor_shell_os_processing_callback()`; in the NuttX build the original callback followed by
+  telling a waiting `sensor get`, in `sensor_shell_nuttx.c`).
 - `sensor_shell.h` is an unchanged copy.
 
 The command table (`SHELL_STATIC_SUBCMD_SET_CREATE()`, `SHELL_DYNAMIC_CMD_CREATE()`,
@@ -790,7 +794,7 @@ stack, started by init at boot) writes them.
 
 The acquisition service is `common/imu/imu_stream.c`, the Zephyr build's file (`nuttx/apps/imu/`
 builds it as the main source of the builtin command `imu`). The compatibility layer
-(`nuttx/drivers/compat/`, which keeps Zephyr's names) provides the calls into the system, and the
+(`common/compat/` and `nuttx/drivers/compat/`, which keep Zephyr's names) provides the calls into the system, and the
 constants, branches, order, waits, counters and output text are the Zephyr build's. The command
 registration at the end (`SHELL_CMD_REGISTER()`) is the Zephyr build's text too; the
 compatibility layer makes it the `main()` of the builtin command `imu` (see "Subcommands of the
@@ -871,8 +875,8 @@ events that advance them are the same as in the Zephyr build.
 - Thread `imu_raw_mqtt_tid` (Zephyr priority 11 → 107, a static 2048-byte stack). init starts it
   at the start of its start-up work; it waits for `imu start`.
 - The MQTT client is a copy of the part of Zephyr's MQTT library (`subsys/net/lib/mqtt/`) that is
-  used (`nuttx/apps/imu/mqtt_min.c`, with the API of the compatibility layer's
-  `<zephyr/net/mqtt.h>`): MQTT 3.1.1 over TCP only, with the bytes it sends, the defaults and the
+  used (`common/imu/mqtt_min.c`, with the API of the compatibility layer's
+  `<zephyr/net/mqtt.h>`; its socket layer is `nuttx/apps/imu/mqtt_min_sock.c`): MQTT 3.1.1 over TCP only, with the bytes it sends, the defaults and the
   way it reads in pieces of Zephyr's library (the host test `mqtt_min` runs the same test on
   Zephyr's own library as well). A PUBLISH goes as its fixed header and its body in two vectors
   of one `sendmsg()`, which the NINA driver joins into one send command (as in the Zephyr
@@ -1118,8 +1122,9 @@ Priorities map as `NuttX = 118 − Zephyr`; `nuttx/drivers/include/priorities.h`
 
 The following files are used by both the Zephyr and the NuttX build and are kept once each in the
 repository's `common/`. The Zephyr build's `CMakeLists.txt` and the NuttX build's Makefiles
-(`apps/imu/Makefile`, `apps/wifi/Makefile`, `apps/sensor/Makefile`, `drivers/lsm6dso/Make.defs`,
-`drivers/nina/Make.defs`, the board's `src/Make.defs`) refer to them there. The files that use
+(`apps/imu/Makefile`, `apps/wifi/Makefile`, `apps/sensor/Makefile`, `drivers/compat/Make.defs`,
+`drivers/lsm6dso/Make.defs`, `drivers/nina/Make.defs`, the board's `src/Make.defs`) refer to them
+there. The files that use
 Zephyr's API (in `common/drivers/`, the FIFO setup and stream, the RTIO single reads, the NINA's
 Wi-Fi and the sensor shell; in `common/imu/`, the acquisition service, the time synchronization,
 the calibration, MQTT and the Wi-Fi profile) run on
@@ -1127,24 +1132,32 @@ the compatibility layer in the NuttX build. The NuttX build compiles each file o
 the prelude (`nuttx/drivers/compat/common_prelude.h`), and the few lines that differ between the
 builds are in headers of each OS (`sensor_shell_os.h`, `wifi_profile_os.h`, `lsm6dso_instance.h`;
 the Zephyr build's under `zephyr/app/usb-console/`, the NuttX build's under `nuttx/apps/` and
-`nuttx/drivers/lsm6dso/`) ("Zephyr API compatibility layer" in `nuttx/drivers/README.md`).
+`nuttx/drivers/lsm6dso/`) ("Zephyr API compatibility layer" in `nuttx/drivers/README.md`). The
+OS-independent part of the compatibility layer is in `common/compat/` too; the NuttX build uses it
+with the layer's NuttX implementation (`nuttx/drivers/compat/`; the Zephyr build does not use it).
 
 | Location | Contents |
 |---|---|
-| `common/imu/` | `imu_stream.c`, `imu_raw_{batch,packet,queue,status,time}`, `imu_tick_clock`, `time_sync.[ch]`, `time_offset`, `imu_cal_codec.c`, `imu_cal.[ch]`, `imu_raw_mqtt.[ch]`, `wifi_profile.[ch]`, `kv_store.h` |
+| `common/imu/` | `imu_stream.c`, `imu_raw_{batch,packet,queue,status,time}`, `imu_tick_clock`, `time_sync.[ch]`, `time_offset`, `imu_cal_codec.c`, `imu_cal.[ch]`, `imu_raw_mqtt.[ch]`, `wifi_profile.[ch]`, `kv_store.h`, `mqtt_min.[ch]` (the MQTT client of the builds on the compatibility layer; the Zephyr build does not use it) |
 | `common/drivers/lsm6dso/` | `lsm6dso.[ch]` (the driver; the device at its end is `lsm6dso_instance.h` of each build), `lsm6dso_{fifo,cal,zero,fifo_decoder,fifo_hw,fifo_irq}`, `lsm6dso_stream.c`, `lsm6dso_compat.c`, `lsm6dso_fifo_packet.h`, `lsm6dso_fifo_stats.h`, `lsm6dso_attributes.h` |
 | `common/drivers/nina/` | `nina_net.c` |
 | `common/drivers/sensor_shell/` | `sensor_shell.c` |
 | `common/drivers/i2c_dw/` | `i2c_dw_rp2040_commands.[ch]` |
-| `common/tests/` | the 14 tests of the files above (run by `common/tests/run.sh`, which the `host_tests.sh` of both builds call first); `stream_stop.c` includes `../drivers/lsm6dso/lsm6dso_stream.c` (with the include guard of `lsm6dso.h` defined first, so nothing of that header is used; `stream_stop.c` provides the definitions it needs) |
+| `common/compat/` | the OS-independent part of the compatibility layer (the headers of Zephyr's API `zephyr/...`, `zephyr_compat.h`, work items, RTIO, the block pool, the device list, `gpio0`, `net_mgmt`, the Wi-Fi requests, the sensors' default iodev) and the copies of Zephyr's libraries that the builds on the layer use (`sensor_shell_stream.c`, `sensor_shell.h`, `wifi_credentials.c`, `wifi_credentials_backend_settings.c`, `wifi_credentials_internal.h`); the Zephyr build does not use it |
+| `common/tests/` | the 17 tests of the files above (run by `common/tests/run.sh`, which the `host_tests.sh` of both builds call first; the layer's `zephyr_rtio`, `zephyr_work` and `mqtt_min` on the fake kernel); `stream_stop.c` includes `../drivers/lsm6dso/lsm6dso_stream.c` (with the include guard of `lsm6dso.h` defined first, so nothing of that header is used; `stream_stop.c` provides the definitions it needs) |
 | `common/tests/fakes/` | stand-ins for the Zephyr and ST headers the tests need (`zephyr/drivers/sensor.h`, `zephyr/drivers/sensor_clock.h`, `zephyr/drivers/i2c.h`, `zephyr/rtio/rtio.h`, `lsm6dso_reg.h`) |
+| `common/tests/zephyr_fakes/` | the compatibility layer's fake kernel: the OS headers (`zephyr_os.h`, `zephyr_os_spinlock.h`, `zephyr_os_atomic.h`, `zephyr_rtio_workq_os.h`, `zephyr/sys/__assert.h`) and their functions (`zephyr_kernel_host.[ch]`: one thread; the test runs the work queues and fires the timers); the NuttX build's tests use it too |
 
-The tests of `common/` sources that run on the NuttX build's compatibility layer and fake kernel
-(`nuttx/tests/zephyr_fakes/` and others), `lsm6dso_driver`, `imu_cal`, `imu_raw_mqtt` and
-`sensor_shell`, are in `nuttx/tests/`; `nuttx/script/host_tests.sh` builds them with the prelude.
+The tests of `common/` sources that run on the NuttX build's implementation of the compatibility
+layer (sockets, I2C, the shell and so on) or the board's code with the fake kernel
+(`common/tests/zephyr_fakes/`), `lsm6dso_driver`, `imu_cal`, `imu_raw_mqtt`, `sensor_shell`,
+`time_sync`, `wifi_cred` and `zephyr_compat_misc`, are in `nuttx/tests/`;
+`nuttx/script/host_tests.sh` builds them with the prelude. It also builds `common/tests/mqtt_min.c`
+on Zephyr's MQTT library (which needs the Zephyr tree and the NuttX build's
+`<zephyr/net/socket.h>`).
 
 The following files are copies of Zephyr's. When the Zephyr build changes, put the same change
-into the copies. `nuttx/apps/sensor/sensor_shell_stream.c` and `sensor_shell.h` are copies of Zephyr's, with only
+into the copies. `common/compat/sensor_shell_stream.c` and `sensor_shell.h` are copies of Zephyr's, with only
 the differences listed in "Sensor command (`sensor`)".
 
 `nuttx/tests/fakes/nuttx/config.h` (empty) is the NuttX build's own: it lets a host test build a
@@ -1192,7 +1205,7 @@ two on one file are the same (the handlers write lines with `shell_print()`, `sh
 shell's output where the two differ (a subcommand after a wildcard that matches, a line of more
 than 30 words).
 
-`nuttx/tests/wifi_cred.c` checks the copies of Zephyr's library in `apps/wifi/`
+`nuttx/tests/wifi_cred.c` checks the copies of Zephyr's library in `common/compat/`
 (`wifi_credentials.c`, the settings backend) and the `wifi cred` command (the copy of
 `wifi_credentials_shell.c`, `subcmd`, the layer's `zephyr_wifi_utils.c`) on a fake settings store
 of named items: loading at boot, the stored names (`wifi_cred/<index>`, apart from `app_kv/`) and
@@ -1236,7 +1249,7 @@ test's own fakes, which put the waits in the order of the register writes and ad
 slept; its mutexes and spin lock are the fake kernel's. It also runs the FIFO stream:
 `lsm6dso_stream.c`, `lsm6dso_fifo_irq.c`, `lsm6dso_compat.c` and the decoder with the
 compatibility layer (work, RTIO, `gpio0`, the default iodev and decoder), on a fake kernel
-(`nuttx/tests/zephyr_fakes/`: one thread; the test runs the work queues and fires the timers) and a
+(`common/tests/zephyr_fakes/`: one thread; the test runs the work queues and fires the timers) and a
 fake INT1 that follows the fake sensor's watermark. It checks the stream's start (registers, the
 INT1 interrupt), batches on an INT1 edge and on the 20 ms look, a second stream (`-EBUSY`) and
 another trigger (`-ENOTSUP`), the graceful stop (pause, the last partial batch, `-ECANCELED`, the
@@ -1268,8 +1281,8 @@ batch averages printed by the processing thread's callback, `attr_set` refused d
 `off`) and `trig`. The results are written after the command has returned, by the processing
 thread's callback, to the command's terminal (the backend's path).
 
-`nuttx/tests/zephyr_rtio.c` and `zephyr_work.c` are tests of the NuttX build only too: they check
-the compatibility layer's RTIO and work items on the fake kernel. The first uses a context of
+`common/tests/zephyr_rtio.c` and `zephyr_work.c` check the RTIO and work items of the compatibility
+layer's shared part on the fake kernel (`common/tests/zephyr_fakes/`; run by `common/tests/run.sh`). The first uses a context of
 `imu_stream.c`'s sizes and a fake iodev and checks the memory pool (block size, allocation from
 `max` down to `min`, binding to the submission, first fit, exhaustion and release), the
 submission pool (4, reuse in order of release, handles and generations), completions (order, 16

@@ -300,7 +300,8 @@ zephyr/script/host_tests.sh
 
 FIFO ワードの解析、バッチとペイロード、送信キュー、時刻の対応付け、NTP の推定、ドライバーの
 FIFO 設定と停止処理、NINA の SPI フレーミングなどを、PC 上で実行します。ボードは不要です。
-NuttX 版と共有するソースのテスト（`common/tests/run.sh`）を先に実行します。
+NuttX 版と共有するソースと、Zephyr の API の互換層の OS に依存しない部分のテスト
+（`common/tests/run.sh`）を先に実行します。
 
 実機での確認は、上の「使い方」の手順で受信器を動かし、終了時の集計（欠番、時刻の有効数と
 逆行、`imu status` のエラー）を見ます。
@@ -324,7 +325,7 @@ NuttX 版と共有するソースのテスト（`common/tests/run.sh`）を先�
 | `zephyr/app/blink/` | LED 点滅のサンプル |
 | `zephyr/script/` | 環境構築、ホストテスト |
 | `nuttx/` | NuttX 版（ボード定義、ドライバー、アプリ、パッチ、スクリプト、ホストテスト） |
-| `common/` | Zephyr 版と NuttX 版が同じものを使うソース（`imu/`: 取得サービスと `imu` コマンド、バッチ、パケット、送信キュー、時刻の対応付け、時刻同期と `ntp` コマンド、NTP の推定、校正値の形式と `imu cal`、MQTT の送信、Wi-Fi のプロファイルと自動再接続、KV の宣言。`drivers/`: LSM6DSO のドライバー本体と FIFO の解析・単位の変換・ジャイロのゼロ点・FIFO の設定・割り込み・ストリーム・単発取得の RTIO 版、NINA の Wi-Fi のネットワークデバイス、sensor シェル、I²C の DMA のコマンド語）と、そのホストテスト（`tests/`。`tests/run.sh` を両方の版の `host_tests.sh` が呼ぶ） |
+| `common/` | Zephyr 版と NuttX 版が同じものを使うソース（`imu/`: 取得サービスと `imu` コマンド、バッチ、パケット、送信キュー、時刻の対応付け、時刻同期と `ntp` コマンド、NTP の推定、校正値の形式と `imu cal`、MQTT の送信、Wi-Fi のプロファイルと自動再接続、KV の宣言。`drivers/`: LSM6DSO のドライバー本体と FIFO の解析・単位の変換・ジャイロのゼロ点・FIFO の設定・割り込み・ストリーム・単発取得の RTIO 版、NINA の Wi-Fi のネットワークデバイス、sensor シェル、I²C の DMA のコマンド語。`compat/`: NuttX 版などが Zephyr 版の API の代わりに使う互換層のうち OS に依存しない部分と、Zephyr のライブラリーの写し（Zephyr 版は使わない）。互換層の MQTT クライアントは `imu/mqtt_min.c`）と、そのホストテスト（`tests/`。`tests/run.sh` を両方の版の `host_tests.sh` が呼ぶ） |
 | `openmv/` | OpenMV 版 MicroPython のビルド環境（[`openmv/README_ja.md`](openmv/README_ja.md)） |
 | `freertos/` | Raspberry Pi Pico SDK と FreeRTOS カーネルのビルド環境と、USB コンソールのアプリ（[`freertos/README_ja.md`](freertos/README_ja.md)） |
 | `zephyr/manifest/west.yml` | Zephyr とモジュールのバージョン |

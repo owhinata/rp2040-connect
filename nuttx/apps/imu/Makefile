@@ -10,13 +10,17 @@
 #
 # The sources shared with the Zephyr build (imu_stream.c, imu_raw_*,
 # imu_tick_clock.c, time_sync.c, time_offset.c, imu_cal.c, imu_cal_codec.c,
-# imu_raw_mqtt.c and their headers, kv_store.h) are in common/imu, found through VPATH
+# imu_raw_mqtt.c and their headers, kv_store.h), and the port's MQTT client
+# for the builds on the compatibility layer (mqtt_min.c, mqtt_min.h; its
+# socket layer on NuttX's sockets, mqtt_min_sock.c, is here), are in
+# common/imu, found through VPATH
 # and DEPPATH, which are relative to this directory (mkdeps needs relative
 # ones); their objects are made here, each compiled with the prelude of the
 # shared sources (common_prelude.h of the compatibility layer, -include).
 #
 # Include paths of the service: the Zephyr compatibility layer
-# ($(TOPDIR)/external/compat; NuttX's headers are included before it: the
+# ($(TOPDIR)/external/compat, then common/compat; NuttX's headers are
+# included before it: the
 # prelude in the shared sources, an include of their own in the others), the
 # LSM6DSO driver's headers ($(TOPDIR)/external/lsm6dso), the port's shared
 # headers ($(TOPDIR)/external/include: priorities.h, cpu_load.h),
@@ -65,6 +69,7 @@ endif
 
 CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)include
 CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)compat
+CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)compat
 CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)lsm6dso
 CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)imu
 CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)drivers$(DELIM)lsm6dso

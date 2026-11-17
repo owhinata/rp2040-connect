@@ -7,8 +7,8 @@
 # It uses nshlib's internal headers (nsh.h, nsh_console.h) to run an nsh
 # session without the login greeting (see nano_init.c).  app_log.h and
 # priorities.h come from nuttx/drivers/include ($(TOPDIR)/external/include).
-# It starts the IMU service's thread (zephyr_compat.h of
-# $(TOPDIR)/external/compat, without the layer's Zephyr headers) and calls
+# It starts the IMU service's thread (zephyr_compat.h of common/compat,
+# without the layer's Zephyr headers) and calls
 # imu_cal_init() and time_sync_init() (../imu, and imu_cal.h of common/imu,
 # which includes lsm6dso_cal.h of common/drivers/lsm6dso).  nano_telnet.c
 # runs the Telnet shell (CONFIG_NANO_INIT_TELNET).
@@ -22,6 +22,7 @@ CFLAGS += ${INCDIR_PREFIX}$(APPDIR)$(DELIM)nshlib
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)include
 CFLAGS += ${INCDIR_PREFIX}$(APPDIR)$(DELIM)external$(DELIM)imu
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)compat
+CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)compat
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)lsm6dso
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)imu
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)drivers$(DELIM)lsm6dso

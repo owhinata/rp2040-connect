@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /* Host test of the parts of the Zephyr compatibility layer
- * (nuttx/drivers/compat) that the IMU service (common/imu/imu_stream.c)
+ * (common/compat and nuttx/drivers/compat) that the IMU service
+ * (common/imu/imu_stream.c)
  * added, against Zephyr's definitions:
  *
  * - K_MUTEX_DEFINE(): a usable, unlocked mutex.
