@@ -18,7 +18,9 @@
 #   functions and of I2C0's registers (freertos/tests/i2c_dw), and GPIO bank
 #   0's boundary (freertos/drivers/compat/rp2040/nano_gpio.c) under the
 #   layer's gpio0 and the LSM6DSO's FIFO interrupt on fakes of the Pico SDK's
-#   GPIO and IRQ functions (freertos/tests/gpio).
+#   GPIO and IRQ functions (freertos/tests/gpio), and the IMU service's
+#   parts of the build (address conversions, hwinfo, the stubs of the MQTT
+#   transport and the time synchronization: freertos/tests/imu).
 #
 #   freertos/script/host_tests.sh        run them
 #   freertos/script/host_tests.sh -v     also show the tests' output
@@ -29,7 +31,7 @@ verbose=0
 case "${1:-}" in
   "") ;;
   -v) verbose=1 ;;
-  -h|--help) sed -n '2,24p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+  -h|--help) sed -n '2,27p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
   *) printf 'Unknown option: %s\n' "$1" >&2; exit 2 ;;
 esac
 
@@ -248,3 +250,31 @@ else
     timeout 60 "$out/gpio" >"$out/log" 2>&1 || { cat "$out/log"; exit 1; }
 fi
 printf 'ok  gpio (GPIO bank 0 boundary, gpio0, FIFO interrupt, FreeRTOS POSIX port)\n'
+
+# The IMU service's FreeRTOS parts (freertos/tests/imu): the address conversions
+# (drivers/libc/inet.c, the layer's <zephyr/net/socket.h> on drivers/libc/include),
+# hwinfo_get_device_id() (drivers/compat/rp2040/zephyr_hwinfo.c) on a fake of
+# pico_get_unique_board_id(), and the stubs of the MQTT transport and the time synchronization
+# (drivers/imu, with common/imu/imu_raw_queue.c and imu_raw_packet.c, with the prelude, as
+# drivers/imu/imu.cmake builds them), on the same kernel and layer objects.  tests/imu/fake
+# (pico/unique_id.h, and os_clock.h on the test's port header) comes first.
+imuinc=(-Itests/imu/fake -Idrivers/libc/include -I../common/imu -I../common/drivers/lsm6dso)
+imuobjs=()
+for src in drivers/libc/inet.c drivers/compat/rp2040/zephyr_hwinfo.c drivers/imu/imu_raw_mqtt_null.c \
+           drivers/imu/time_sync_null.c tests/imu/main.c ../common/imu/imu_raw_queue.c \
+           ../common/imu/imu_raw_packet.c; do
+    obj="$out/imu_$(basename "$src" .c).o"
+    extra=()
+    case $src in
+        ../common/*) extra=(-include drivers/compat/common_prelude.h) ;;
+    esac
+    cc "${flags[@]}" "${strict[@]}" "${imuinc[@]}" "${inc[@]}" "${extra[@]}" -c "$src" -o "$obj"
+    imuobjs+=("$obj")
+done
+cc "${flags[@]}" "${kernobjs[@]}" "${imuobjs[@]}" -o "$out/imu"
+if (( verbose )); then
+    timeout 60 "$out/imu"
+else
+    timeout 60 "$out/imu" >"$out/log" 2>&1 || { cat "$out/log"; exit 1; }
+fi
+printf 'ok  imu (address conversions, hwinfo, stubs of the transport and time, FreeRTOS POSIX port)\n'

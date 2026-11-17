@@ -107,6 +107,7 @@ The console is the USB CDC ACM port (UART0 is not used). Opening a terminal show
 | `sleep <ms>` | Sleep for ms milliseconds |
 | `devmem <address> [<width> [<value>]]` | Read or write memory. Address and value in hexadecimal, width 8, 16 or 32 bits (default 32). A value writes |
 | `ps` | The tasks (state, priority, least free stack, share of the CPU time) and the CPU load since the previous `ps` |
+| `imu start`, `imu stop`, `imu status`, `imu cal [reload\|zero]` | Start and stop the IMU acquisition, show its counters, show and reload the calibration (as in the Zephyr build) |
 | `irqstack` | Use of the interrupt stack |
 | `dmesg` | The RAM log (8 KB; kept across restarts) |
 | `kv set <key> <value>`, `kv sethex <key> <hex>`, `kv get <key>`, `kv delete <key>` | Read and write the key-value store (settings and calibration). `get` prints hexadecimal |
@@ -126,6 +127,9 @@ The console is the USB CDC ACM port (UART0 is not used). Opening a terminal show
 - The key-value store is in the last 8 KiB of the flash, in the format of the Zephyr and NuttX builds, so
   it survives a change of build. If the area holds other data, `kv` fails with `-138` and `dmesg` says
   what to do; `kv wipe confirm` erases it.
+- There is no transport (MQTT) and no time synchronization yet. `imu start` only acquires and counts the
+  batches as dropped (`mqtt:` in `imu status` shows no connection). The acquisition starts about 3 s after
+  `imu start`.
 - Reading an address that does not exist with `devmem` ends in a fatal error (for example
   `devmem 30000000`).
 
@@ -140,6 +144,7 @@ The console is the USB CDC ACM port (UART0 is not used). Opening a terminal show
 | `drivers/nina/` | The SPI bus and control lines of the NINA-W102 |
 | `drivers/i2c_dw/` | I2C0 and DMA (the sensor's bus) |
 | `drivers/lsm6dso/` | The device and start-up of the LSM6DSOX (the driver itself is in `common/drivers/lsm6dso/`) |
+| `drivers/imu/` | Brings in the acquisition service (in `common/imu/`), with stand-ins for the transport and time synchronization |
 | `tests/` | Host tests |
 | `script/` | `setup.sh`, `build.sh`, `flash.sh`, `format.sh`, `host_tests.sh` |
 | `PORTING_PLAN.md`, `PORTING_STATUS.md` | The plan of the port, and the record of its progress and of what was checked (in Japanese) |

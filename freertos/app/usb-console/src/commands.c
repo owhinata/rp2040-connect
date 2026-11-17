@@ -326,12 +326,13 @@ SHELL_CMD_REGISTER(selftest, NULL, "Test the Zephyr compatibility layer (build o
 #endif
 
 /* The commands of other sources: freertos/drivers/log/log_ram.c,
- * common/drivers/i2c_dw/i2c_dma_shell.c, common/imu/kv_store.c (with
- * "kv wipe" of common/compat/kv_store_wipe.c) and
- * common/drivers/nina/nina_shell.c.
+ * common/drivers/i2c_dw/i2c_dma_shell.c, common/imu/imu_stream.c,
+ * common/imu/kv_store.c (with "kv wipe" of common/compat/kv_store_wipe.c)
+ * and common/drivers/nina/nina_shell.c.
  */
 NANO_SHELL_CMD_DECLARE(dmesg);
 NANO_SHELL_CMD_DECLARE(i2c_dma);
+NANO_SHELL_CMD_DECLARE(imu);
 NANO_SHELL_CMD_DECLARE(kv);
 NANO_SHELL_CMD_DECLARE(nina);
 
@@ -347,6 +348,7 @@ const struct nano_shell_cmd nano_shell_cmds[] = {
 	NANO_SHELL_CMD(help),
 	NANO_SHELL_CMD(i2c_dma),
 	NANO_SHELL_CMD(id),
+	NANO_SHELL_CMD(imu),
 	NANO_SHELL_CMD(irqstack),
 	NANO_SHELL_CMD(kv),
 	NANO_SHELL_CMD(nina),

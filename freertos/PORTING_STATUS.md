@@ -513,3 +513,46 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
 - 予想と違った点（未調査）: INT1 のエッジが 137 回（予想は約 55。バッチは 54）。終了コードは -140（newlib の ECANCELED。
   報告の -110 は誤記とみられる）。F08 で NuttX 版・Zephyr 版の INT1 の回数と比べる。
 - 残り: `sensor` コマンドは F14（`sensor_shell_os.h`、処理スレッドの出力先）。`hwinfo` は F08。
+
+## あとで判断すること: tick を 1 ms に戻すか（2026-11-17、ユーザーの意向）
+
+- ユーザーの見立て: FreeRTOS に Zephyr・NuttX のような tickless が無いなら、1 tick = 1 ms にして、100 µs 単位の sleep は
+  タイマーで作るほうがよさそう。**全体を組み終えたあと（CP-F4 か CP-F5 のころ）に判断する**。それまでは 100 µs のまま進める。
+- 判断の材料として集めておくもの: アイドル時と計測中の `cpu_active`（今はアイドル約 2%）、計測中の tick の遅れ、フラッシュの
+  消去での遅れ（F04: 1 回 約 46〜50 ms 分）、100 µs 単位の待ちを使う箇所の一覧（NINA の READY のポーリング 100 µs、
+  ほか共有コードの `K_USEC`・`k_usleep`・`k_busy_wait`）と、その待ちが通信の速度に効く度合い。
+- 1 ms にする場合に要ること: 互換層の時間の単位（`K_TICKS`・`K_MSEC` の換算、`Z_USEC_PER_TICK`）を 100 µs のまま保ち、
+  1 ms 未満の待ちを TIMER のアラームで起こす仕組み、時分割 20 ms、`selftest` の期待値。時分割のフックの比較
+  （`-DNANO_SCHED_ZEPHYR=OFF`）と同じ時期にまとめて測る。
+
+## F08 の記録と CP-F2（2026-11-17）
+
+- 実装: 共有の取得サービス 8 本を FreeRTOS 版にリンク（`freertos/drivers/imu/imu.cmake`）。送信と時刻同期は NuttX の T12 の
+  スタブの写し（`imu_raw_mqtt_null.c`、`time_sync_null.c`、Apache-2.0）。`zephyr_hwinfo.c`、IPv4 の `inet_pton`/`inet_ntop` と
+  ソケットのヘッダーの最小限（`drivers/libc/`、`AF_INET` = 2。F09 で確定し `compat.cmake` へ移す）、`imu` コマンド
+  （`cal` は本物の `imu_cal.c`。F14 に残るのは `sensor` と `imu cal` の実機確認）、ホストテスト `freertos/tests/imu`。
+  `common/`・`nuttx/`・`zephyr/` は変えていない。
+- F12・F13 で外す手順は subagent の報告のとおり（`imu.cmake` のスタブを本物に置き換え、スレッドの起動を足す）。
+- メインが確かめたこと: ビルド（既定・selftest、警告 0）、整形、`host_tests.sh`。ソースは読んでいない。
+- **CP-F2（実機、既定のビルド、送信なし）**:
+  - 書き込み直後の最初の計測 52.1 秒: accel 349248・gyro 349250（約 6703 Hz）、batches 1820、エラー・オーバーラン 0、
+    `max_transfer_us` 6420、`cpu_active` 27.5%（NuttX の T12 の送信なしは 38.4〜39.2%）、`us_per_1e6_ticks` 24858301、
+    `tick_read_failures` 0。`dmesg` にスタブの警告 1 行。
+  - 計測中の `ps`: `imu_fifo_worker` 10.2%、`imu_stream_tid` 6.2%、`sysworkq` 1.1%。スタックの空き: `imu_stream_tid` 1104/2048、
+    `imu_fifo_worker` 1256/2048、`sysworkq` 816/1024、`console` 1528/3072。`irqstack` 468/2048。`i2c_dma` errors・fallbacks 0。
+  - **tick の遅れ**: 計測中 55.1 秒で 3 tick。`imu start`（`imu.session` の保存）で 6 tick。アイドル 10 秒で 0。
+  - 開始と停止を 10 回（各 7 秒）: 毎回 `stopped`、連番 +1、約 26800 サンプル（4.0 秒分）、エラー 0。重ねての `imu start` は
+    `Already running`、止まっているときの `imu stop` は `Not running`。
+  - `imu start` から取得の開始まで約 3 秒（共有コードの `CONNECT_WAIT_MS` 3000。スタブは接続しないので毎回待つ）。
+  - 計測中の `kv set`（100 文字 × 100 回、消去 3 回）: 消去のたびに tick が 466・470・504 落ち、FIFO のオーバーランと回復が
+    1 回ずつ（`last_recovery_error` -139 = newlib の EOVERFLOW）、エポック +1。`errors.stream` 0、`max_transfer_us` 42758。
+    NuttX 版の CP-B と同じ振る舞い。計測中に `dmesg`・`ps` の長い出力を 3 回ずつ出してもエラーなし。
+  - 未確認: 計測中に端末を閉じる、長時間、受信側での欠番（Wi-Fi がまだ無い）。
+- INT1 の 137 回（F07）の説明（subagent、ソースからの推定で実測なし）: しきい値の信号はラッチせず、FIFO を読んで水位が
+  下がる途中に新しい語が届くと、しきい値を越え直して余分な立ち上がりが出る。余分な実行は FIFO_STATUS の 2 バイトを読むだけ。
+  Zephyr 版・NuttX 版でも同じになるはず（数える手段が無く未実測）。
+- 未調査の観察（subagent）: 924 バイトの読み出しが最大 5984 µs なら実効は約 1.4 Mbit/s で、1 MHz の SCL の計算と合わない。
+  3 版共通のコア。オシロで SCL を見る価値がある。
+- tick の補正の案は subagent の報告のとおり（フラッシュ操作のあとで `xTaskCatchUpTicks()`、互換層のタイムアウトを tick の
+  数で判定）。入れるか・tick を 1 ms にするかは、全体を組み終えてから判断（ユーザーの意向）。
+- 次: F09（ソケットの接着、名前解決）、F10（Wi-Fi）、F11（Telnet、速度測定）→ CP-F3。

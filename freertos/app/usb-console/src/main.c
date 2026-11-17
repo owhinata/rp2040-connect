@@ -1,7 +1,9 @@
 /* SPDX-License-Identifier: MIT */
 /* The USB console on the Pico SDK and the FreeRTOS kernel: a shell on the
  * USB CDC ACM port, the key-value store, the SPI link to the NINA-W102, I2C0
- * with its DMA reads, the LSM6DSOX and a task that blinks the LED.
+ * with its DMA reads, the LSM6DSOX, the IMU acquisition service (without
+ * its MQTT transport and time synchronization yet) and a task that blinks
+ * the LED.
  */
 #include <stdbool.h>
 #include <stdint.h>
@@ -14,6 +16,7 @@
 #include "app_log.h"
 #include "cli.h"
 #include "fault.h"
+#include "imu_cal.h"
 #include "kv_store.h"
 #include "log_ram.h"
 #include "nano_console.h"
@@ -25,6 +28,7 @@
 #include "nano_shell.h"
 #include "nano_stdio.h"
 #include "priorities.h"
+#include "time_sync.h"
 #include "zephyr_compat.h"
 
 LOG_MODULE_REGISTER(usb_console, LOG_LEVEL_INF);
@@ -192,11 +196,30 @@ static void main_main(void *arg)
 
 	(void)nano_lsm6dso_initialize();
 
+	/* The threads of K_THREAD_DEFINE(), which Zephyr starts before main()
+	 * (z_init_static_threads(), after the devices) and the NuttX build in
+	 * its init task at this point: the IMU service's (common/imu/
+	 * imu_stream.c), which waits for "imu start" at once.  It has a lower
+	 * priority than this task, so it first runs when this task waits.
+	 */
+	ret = K_THREAD_DEFINE_START(imu_stream_tid);
+	if (ret) {
+		LOG_ERR("Could not start imu_stream_tid: %d", ret);
+	}
+
 	LOG_INF("USB console started");
 	ret = kv_store_init();
 	if (ret) {
 		LOG_ERR("Could not initialize settings: %d", ret);
 	}
+	ret = imu_cal_init();
+	if (ret) {
+		LOG_ERR("Could not set up the IMU calibration: %d", ret);
+	}
+	/* The stub until the build has the time synchronization
+	 * (freertos/drivers/imu/time_sync_null.c): nothing to start.
+	 */
+	time_sync_init();
 	vTaskDelete(NULL);
 }
 
