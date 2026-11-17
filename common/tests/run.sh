@@ -90,6 +90,9 @@ run subcmd "${flags[@]}" -Ishell tests/subcmd.c shell/subcmd.c
 run log_ring "${flags[@]}" -Ilog tests/log_ring.c log/log_ring.c
 # The CPU load arithmetic of the idle loop (compat/nano_cpuload.h).
 run nano_cpuload "${flags[@]}" -Icompat tests/nano_cpuload.c
+# The record of a fatal error that the FreeRTOS build keeps across its restart
+# (log/fault_record.c): the check, the watchdog scratch copy and the lines.
+run fault_record "${flags[@]}" -Ilog tests/fault_record.c log/fault_record.c
 
 # The hexadecimal conversions of the "kv" command (compat/lib/utils/hex.c, the copy of Zephyr's
 # lib/utils/hex.c).

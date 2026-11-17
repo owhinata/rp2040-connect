@@ -17,14 +17,30 @@ set(CMAKE_C_STANDARD 11)
 
 pico_sdk_init()
 
+# The sources shared with the Zephyr and NuttX builds (common/ at the root of
+# the repository).
+get_filename_component(COMMON_DIR ${CMAKE_CURRENT_LIST_DIR}/../../../common ABSOLUTE)
+
 add_executable(usb-console
   src/main.c
   src/cli.c
   src/commands.c
+  src/fault.c
+  src/idle.c
+  src/irq_stack.c
+  src/tick.c
+  ${COMMON_DIR}/log/fault_record.c
 )
 
-# FreeRTOSConfig.h
-target_include_directories(usb-console PRIVATE ${CMAKE_CURRENT_LIST_DIR})
+# FreeRTOSConfig.h; priorities_os.h (src/, which FreeRTOSConfig.h includes);
+# priorities.h, cpu_load.h and nano_cpuload.h (common/compat);
+# fault_record.h (common/log).
+target_include_directories(usb-console PRIVATE
+  ${CMAKE_CURRENT_LIST_DIR}
+  ${CMAKE_CURRENT_LIST_DIR}/src
+  ${COMMON_DIR}/compat
+  ${COMMON_DIR}/log
+)
 
 target_compile_options(usb-console PRIVATE -Wall -Wextra)
 
@@ -36,10 +52,19 @@ target_compile_definitions(usb-console PRIVATE
   USBD_DESC_STR_MAX=32
 )
 
+# Fatal errors end in src/fault.c, which defines panic() itself: an empty
+# PICO_PANIC_FUNCTION leaves the SDK's panic() (pico_platform_panic/panic.c)
+# out, and the weak stand-in of custom_panic_function.S gives way to ours.
+target_compile_definitions(usb-console PRIVATE
+  PICO_PANIC_FUNCTION=
+)
+
 target_link_libraries(usb-console
   pico_stdlib
   pico_bootrom
   pico_unique_id
+  hardware_sync
+  hardware_timer
   hardware_watchdog
   FreeRTOS-Kernel
   FreeRTOS-Kernel-Heap4

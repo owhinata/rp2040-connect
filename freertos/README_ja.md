@@ -5,8 +5,8 @@
 Arduino Nano RP2040 Connect 向けに、Raspberry Pi Pico SDK と FreeRTOS カーネルでファームウェアを
 ビルドする環境です。`zephyr/`、`nuttx/`、`openmv/` と同じく、必要なものを `freertos/` の下に取得します。
 
-今あるのは、USB のコマンドライン（CLI）と LED の点滅だけのアプリ `app/usb-console` です。IMU の計測
-（Zephyr 版・NuttX 版）はまだ移していません。
+今あるのは、USB のコマンドライン（CLI）、LED の点滅、Zephyr 版を移す土台になるカーネルの設定・CPU 負荷の
+計測・異常停止の扱いだけのアプリ `app/usb-console` です。IMU の計測（Zephyr 版・NuttX 版）はまだ移していません。
 
 | 項目 | 内容 |
 |---|---|
@@ -90,30 +90,118 @@ USB の CDC ACM ポートがコンソールです（UART0 は使いません）�
 | `version` | FreeRTOS カーネル、Pico SDK、コンパイラーの版 |
 | `id` | ボードの固有 ID（フラッシュの ID、16 桁の 16 進数） |
 | `uptime` | 起動からの時間（RP2040 の TIMER）と tick の数 |
-| `ps` | タスクの一覧: 状態、優先度、スタックの空きの最小値（バイト）、起動からの CPU 時間の割合 |
+| `sleep <ms>` | ms ミリ秒眠る。丸めは Zephyr と同じ（Zephyr 版の `kernel sleep`） |
+| `ps` | タスクの一覧: 状態、優先度、スタックの空きの最小値（バイト）、起動からの CPU 時間の割合。最後に前回の `ps` からの CPU 負荷（`cpu_active`） |
+| `irqstack` | 割り込み用のスタックの起動からの使用量（NuttX 版の `irqstack`） |
+| `fault` | この起動の前の実行を止めた異常停止の記録 |
 | `free` | FreeRTOS のヒープの大きさ、空き、空きの最小値 |
 | `reboot` | 再起動 |
 | `bootsel` | USB のブートローダー（BOOTSEL、`RPI-RP2` ドライブ）で再起動 |
 
 | ファイル | 役割 |
 |---|---|
-| `CMakeLists.txt` | Pico SDK と FreeRTOS カーネルの取り込み、USB の製品名（`FreeRTOS USB Console`） |
+| `CMakeLists.txt` | Pico SDK と FreeRTOS カーネルと `common/` の共有ソースの取り込み、USB の製品名（`FreeRTOS USB Console`） |
 | `FreeRTOSConfig.h` | カーネルの設定 |
-| `src/main.c` | 起動、コンソールのタスク、LED のタスク、カーネルのフック |
+| `src/main.c` | 起動、コンソールのタスク、LED のタスク |
 | `src/cli.[ch]` | 行の編集とコマンドの表。カーネルにも SDK にも依存しません |
 | `src/commands.c` | 上のコマンド |
+| `src/priorities_os.h` | 優先度とスタックの表（`common/compat/priorities.h`）の FreeRTOS の部分 |
+| `src/os_clock.h` | 起動からの時間（TIMER）、tick の数、Zephyr と同じ丸めの sleep |
+| `src/tick.c` | tick フック: 20 ms の時分割 |
+| `src/idle.c` | アイドルフック: CPU 負荷（`cpu_load_get()`、`common/compat/cpu_load.h`） |
+| `src/irq_stack.c` | 割り込み用のスタックの最大使用量 |
+| `src/fault.[ch]` | 異常停止の共通の出口と、前回の記録（`common/log/fault_record.[ch]`） |
 
-- タスクは `console`（優先度 2、スタック 4 KB）と `heartbeat`（優先度 1、LED を 500 ms ごとに反転。
-  GPIO6）で、どちらもスタックを静的に確保します。ほかにカーネルの `IDLE` と `Tmr Svc` があります。
+### タスク、優先度、スタック
+
+優先度は移植の表（`common/compat/priorities.h`。NuttX 版と共有）に従い、その FreeRTOS の部分が
+`src/priorities_os.h` です: FreeRTOS の優先度 = 20 − Zephyr の優先度。Zephyr のプリエンプティブな優先度
+0〜14 は 20〜6、協調の −1 は 21 になります（FreeRTOS では協調スレッドもより高い優先度に割り込まれます。
+NuttX 版と同じ近似です）。スタックは Zephyr と同じくバイトで書き、静的に確保します。
+
+| タスク | 優先度 | スタック | Zephyr 版 |
+|---|---|---|---|
+| `Tmr Svc`（カーネルのタイマータスク） | 31 | 1024 B | 無し（下） |
+| `console`（USB コンソール。コマンドもここで動く） | 6 | 3072 B | シェルのスレッド（14、3072 B） |
+| `heartbeat`（LED を 500 ms ごとに反転。GPIO6） | 1 | 1024 B | 無し（Zephyr 版は LED を使わない） |
+| `IDLE`（CPU 負荷を測る） | 0 | 1024 B | idle（15、256 B） |
+
+- `Tmr Svc` を最高の優先度にしているのは、割り込みハンドラーが Pico SDK のロック（USB の stdio の
+  ミューテックス）を放したときや sleep のアラームが来たときに、待っているタスクをこのタスクが起こすからです。
+  Zephyr では割り込みハンドラーが自分でスレッドを起こします。
+- 割り込み用のスタック（メインスタック）は Pico SDK の `PICO_STACK_SIZE` で 2048 バイト、Zephyr 版の
+  `CONFIG_ISR_STACK_SIZE` と同じ大きさです。`irqstack` が Zephyr 版の `kernel thread stacks` の `IRQ 00` の
+  行と同じ書式で使用量を出します。値は起動からの最大（`main()` の最初でスタックを模様で埋める）で、
+  スケジューラーの開始後もこのスタックに残る `main()` のフレームを含みます。割り込み用のスタックの底には
+  見張りがありません。
+
+### カーネルの設定
+
+- 1 コア（`configNUMBER_OF_CORES` 1）、優先度は 0〜31（数が大きいほど高い）、タスク名は 31 文字まで
+  （`configMAX_TASK_NAME_LEN` 32。Zephyr の `CONFIG_THREAD_MAX_NAME_LEN`）、タスクごとの通知は 2 つ
+  （`configTASK_NOTIFICATION_ARRAY_ENTRIES` 2）、ヒープは `heap_4` の 32 KB。Pico SDK のロックと sleep は、
+  呼んだタスクを待たせます（`configSUPPORT_PICO_SYNC_INTEROP`、`configSUPPORT_PICO_TIME_INTEROP`）。
+- tick は Zephyr 版・NuttX 版と同じ 100 µs（`configTICK_RATE_HZ` 10000）で、幅は 32 ビット（RP2040 ポートは
+  64 ビットの tick を受け付けない）なので約 4.97 日で一周します。起動からの時間は tick ではなく RP2040 の
+  TIMER（64 ビット、1 µs）から得ます。tick は周期割り込み（SysTick）です。Zephyr 版・NuttX 版は tickless
+  です。この周期では `portTICK_PERIOD_MS` が 0 になるので使いません。Pico SDK の `sleep_ms()` も使いません
+  （最後の 150 µs を空回りで待つ）。
+- sleep の丸めは Zephyr と同じです: t の sleep は ⌈t / 100 µs⌉ tick より長く、それより最大 1 tick 長い
+  （`vTaskDelay(⌈t⌉ + 1)`。0 は yield だけ）。
+- 同じ優先度のタスクは、Zephyr 版（`CONFIG_TIMESLICE_SIZE=20`、`CONFIG_TIMESLICE_PRIORITY=0`）と同じく 20 ms
+  ずつ時分割します。tick ごとに切り替える FreeRTOS の時分割は切り（`configUSE_TIME_SLICING` 0）、tick フックが
+  同じタスクが 200 tick 続いたら切り替えを頼みます。時間は、そのタスクが動いているのを最初に見た tick から
+  数えます。
+
+### CPU 負荷
+
+アイドルタスクが、Zephyr 版（`CONFIG_CPU_LOAD` とアイドルフックの方式）・NuttX 版（`up_idle()`）と同じ方法で
+CPU 負荷を測ります: 割り込みを禁止して窓を開き、`wfi` で待ち、窓を閉じて割り込みを許可するので、アイドル中に
+来た割り込みの処理も負荷に数えます。計算は `common/compat/nano_cpuload.h`、`cpu_load_get()`
+（`common/compat/cpu_load.h`）は IMU の取得サービスの `cpu_active`（`imu status`）が使う予定のものです。
+Zephyr 版にも NuttX 版にもこれだけを出すコマンドは無いので、ここでは `ps` の最後の行に、前回の `ps` からの
+負荷を出します（`cpu_load_get()` の窓はリセットしません）:
+
+```
+cpu_active: <負荷>% in the <秒> s since the previous "ps"
+```
+
+100 µs の周期 tick は 1 秒に 10000 回 CPU を起こし、その処理も負荷に入ります。Zephyr 版・NuttX 版にはこの
+割り込みがありません。
+
+### 異常停止
+
+`panic()`（Pico SDK の中の呼び出し、`hard_assert`、`malloc()` のメモリー不足、戻ってしまったタスクの関数も）、
+HardFault の例外、`configASSERT()`・`assert()` の失敗、スタックのあふれ（`configCHECK_FOR_STACK_OVERFLOW` 2）、
+ヒープの不足、`exit()` は、すべて 1 つの出口（`src/fault.c`）に集まります。出口は割り込みを禁止し、理由、
+PC、LR、SP（HardFault では例外フレームの r0〜r3、r12、xPSR も）、例外番号、動いていたタスク、時刻、
+メッセージを、起動処理が消さない RAM（`__uninitialized_ram`、CRC-32 つき）に記録し、理由・PC・LR を
+watchdog の scratch レジスター 0〜3 にも残して、watchdog で再起動します（`reboot` と同じ）。Zephyr 版・
+NuttX 版も異常停止のあとは再起動します。その場ではコンソールに何も出しません（USB の処理には割り込みと
+タスクが要るため）。
+
+再起動のあと、端末を最初につないだときにプロンプトの前に記録を出し、`fault` でも出します。例（値は
+ホストテストのもので、実機のものではありません）:
+
+```
+*** The last run ended with a fatal error ("fault" shows it again):
+Fatal error: HardFault
+In task console, 3723.000042 s after the start
+pc 0x10001234 lr 0x10005679 sp 0x20010f00
+r0 0x30000000 r1 0x00000001 r2 0x00000002 r3 0x00000003
+r12 0x0000000c xpsr 0x61000000
+```
+
+HardFault 以外では、PC は出口を呼んだ場所で、LR は 0（不明）です。記録は起動時に 1 回読んで消すので、その後の
+`reboot` や電源の入れ直しのあとは `No fatal error before this start` と出ます。記録の形式とチェック値は OS に
+依存しない部分（`common/log/fault_record.[ch]`）で、`common/tests/run.sh` がテストします。
+
+### そのほか
+
 - コンソールのタスクは、USB の受信の通知（Pico SDK の `stdio_set_chars_available_callback()`）で起き、
   端末の接続を見るために 50 ms ごとにも起きます。
-- カーネルの設定: 1 コア（`configNUMBER_OF_CORES` 1）、tick は 1 kHz、優先度は 0〜31（数が大きいほど高い）、
-  ヒープは `heap_4` の 32 KB。Pico SDK のロックと sleep は、呼んだタスクを待たせます
-  （`configSUPPORT_PICO_SYNC_INTEROP`、`configSUPPORT_PICO_TIME_INTEROP`）。アサートの失敗、スタックの
-  あふれ（`configCHECK_FOR_STACK_OVERFLOW` 2）、ヒープの不足では `panic()` で止まります。
 - USB の製品名は `FreeRTOS USB Console` です。Pico SDK は USB の文字列を既定で 19 文字に切るので、上限
   （`USBD_DESC_STR_MAX`）を 32 にしています。
-- tick は Zephyr 版・NuttX 版（100 µs）と違います。計測のコードを移すときに決め直します。
 - CLI は FreeRTOS-Plus-CLI ではなく、このリポジトリのものです。
 
 ## 確かめたこと
@@ -127,3 +215,6 @@ USB の CDC ACM ポートがコンソールです（UART0 は使いません）�
 - `help`、`version`、`id`、`uptime`、`ps`、`free` の出力と、無いコマンドへのエラー。
 
 確かめていないこと: `reboot`、1200 bps でのオープンと `picotool` による BOOTSEL、長時間の動作。
+
+100 µs の tick、時分割、CPU 負荷、`sleep`、`irqstack`、異常停止の記録（2026-11-17）は、ビルド（警告なし）と、
+記録の形式のホストテストだけで、実機ではまだ確かめていません。

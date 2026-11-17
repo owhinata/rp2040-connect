@@ -10,12 +10,17 @@
 #include "FreeRTOS.h"
 #include "task.h"
 #include "app.h"
+#include "fault.h"
+#include "priorities.h"
 
-/* Priorities (a higher number is a higher priority) and stacks (words). */
-#define CONSOLE_PRIORITY     (tskIDLE_PRIORITY + 2)
-#define CONSOLE_STACK_SIZE   1024
-#define HEARTBEAT_PRIORITY   (tskIDLE_PRIORITY + 1)
-#define HEARTBEAT_STACK_SIZE 256
+/* Priorities and stacks (bytes): src/priorities_os.h and
+ * common/compat/priorities.h.  The console is the Zephyr build's shell
+ * thread (NANO_PRIO_SHELL, 14 -> 6, 3072 bytes): the commands run in it.
+ */
+#define CONSOLE_PRIORITY     NANO_PRIO_SHELL
+#define CONSOLE_STACK_SIZE   (NANO_STACK_SHELL / sizeof(StackType_t))
+#define HEARTBEAT_PRIORITY   NANO_PRIO_HEARTBEAT
+#define HEARTBEAT_STACK_SIZE (NANO_STACK_HEARTBEAT / sizeof(StackType_t))
 
 #define HEARTBEAT_PERIOD_MS 500
 /* The console task wakes at least this often, to notice the terminal opening
@@ -33,27 +38,12 @@ static TaskHandle_t console_task;
 static StackType_t heartbeat_stack[HEARTBEAT_STACK_SIZE];
 static StaticTask_t heartbeat_tcb;
 
-/* Hooks named in FreeRTOSConfig.h. */
-
+/* The run time of the tasks ("ps"), named in FreeRTOSConfig.h.  The other
+ * hooks are in fault.c (fatal errors), idle.c and tick.c.
+ */
 uint64_t app_run_time_us(void)
 {
 	return time_us_64();
-}
-
-void app_assert_failed(const char *file, int line)
-{
-	panic("FreeRTOS assertion failed: %s:%d", file, line);
-}
-
-void vApplicationStackOverflowHook(TaskHandle_t task, char *name)
-{
-	(void)task;
-	panic("Stack overflow in task %s", name);
-}
-
-void vApplicationMallocFailedHook(void)
-{
-	panic("FreeRTOS heap exhausted");
 }
 
 static void console_write(const char *text, size_t len)
@@ -78,6 +68,21 @@ static void console_chars_available(void *param)
 	}
 }
 
+/* The record of the fatal error that ended the last run, once, at the first
+ * connection of the terminal after the start ("fault" shows it again).
+ */
+static void console_banner(void)
+{
+	static bool shown;
+
+	if (shown || fault_last() == NULL) {
+		return;
+	}
+	shown = true;
+	printf("*** The last run ended with a fatal error (\"fault\" shows it again):\n");
+	fault_print(fault_last());
+}
+
 static void console_main(void *arg)
 {
 	bool connected = false;
@@ -95,6 +100,7 @@ static void console_main(void *arg)
 			connected = !connected;
 			if (connected) {
 				console_write("\r\n", 2);
+				console_banner();
 				cli_prompt(&console_cli);
 			}
 		}
@@ -123,6 +129,12 @@ static void heartbeat_main(void *arg)
 
 int main(void)
 {
+	/* First: the paint for the interrupt stack's high-water mark, and the
+	 * record the last run may have left.
+	 */
+	irq_stack_paint();
+	fault_boot();
+
 	stdio_init_all();
 
 	/* heap_4 sets up its heap at the first allocation and reports no free

@@ -3,6 +3,7 @@
 #include <errno.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include "pico/stdlib.h"
 #include "pico/bootrom.h"
 #include "pico/unique_id.h"
@@ -11,6 +12,8 @@
 #include "FreeRTOS.h"
 #include "task.h"
 #include "app.h"
+#include "fault.h"
+#include "os_clock.h"
 
 #define PS_TASKS_MAX     16
 /* Time for the USB code to send a command's last message before a restart. */
@@ -55,7 +58,29 @@ static int cmd_uptime(int argc, char **argv)
 	(void)argv;
 
 	printf("%llu.%06llu s (TIMER), %lu ticks of 1/%d s\n", us / 1000000u, us % 1000000u,
-	       (unsigned long)xTaskGetTickCount(), configTICK_RATE_HZ);
+	       (unsigned long)os_tick_count(), configTICK_RATE_HZ);
+	return 0;
+}
+
+/* Zephyr's "kernel sleep <ms>": k_msleep(ms), with Zephyr's rounding
+ * (os_sleep_us()).
+ */
+static int cmd_sleep(int argc, char **argv)
+{
+	char *end;
+	unsigned long ms;
+
+	if (argc != 2) {
+		printf("Usage: sleep <ms>\n");
+		return -EINVAL;
+	}
+	errno = 0;
+	ms = strtoul(argv[1], &end, 10);
+	if (errno != 0 || end == argv[1] || *end != '\0') {
+		printf("Unable to parse input (err %d)\n", -EINVAL);
+		return -EINVAL;
+	}
+	os_sleep_us((uint64_t)ms * 1000u);
 	return 0;
 }
 
@@ -80,6 +105,8 @@ static int cmd_ps(int argc, char **argv)
 	static const char states[] = "XRBSD?";
 	configRUN_TIME_COUNTER_TYPE total;
 	UBaseType_t count;
+	uint64_t window_us;
+	int permille_window;
 
 	(void)argc;
 	(void)argv;
@@ -88,7 +115,7 @@ static int cmd_ps(int argc, char **argv)
 		return -ENOMEM;
 	}
 	count = uxTaskGetSystemState(tasks, PS_TASKS_MAX, &total);
-	printf("%-16s %-5s %4s %10s %6s\n", "NAME", "STATE", "PRIO", "STACK FREE", "CPU");
+	printf("%-20s %-5s %4s %10s %6s\n", "NAME", "STATE", "PRIO", "STACK FREE", "CPU");
 	for (UBaseType_t i = 0; i < count; i++) {
 		const TaskStatus_t *t = &tasks[i];
 		unsigned int permille = 0;
@@ -96,13 +123,64 @@ static int cmd_ps(int argc, char **argv)
 		if (total > 0) {
 			permille = (unsigned int)(t->ulRunTimeCounter * 1000u / total);
 		}
-		printf("%-16s %-5c %4lu %10lu %4u.%u%%\n", t->pcTaskName,
+		printf("%-20s %-5c %4lu %10lu %4u.%u%%\n", t->pcTaskName,
 		       states[t->eCurrentState <= eInvalid ? t->eCurrentState : eInvalid],
 		       (unsigned long)t->uxCurrentPriority,
 		       (unsigned long)(t->usStackHighWaterMark * sizeof(StackType_t)),
 		       permille / 10, permille % 10);
 	}
 	printf("STATE: X running, R ready, B blocked, S suspended, D deleted\n");
+
+	/* The load as the IMU service's "cpu_active" measures it: idle windows,
+	 * interrupt handlers count as load (idle.c).
+	 */
+	permille_window = idle_ps_window(&window_us);
+	printf("cpu_active: %d.%d%% in the %llu.%03llu s since the previous \"ps\"\n",
+	       permille_window / 10, permille_window % 10, window_us / 1000000u,
+	       window_us / 1000u % 1000u);
+	return 0;
+}
+
+/* The use of the interrupt stack since the start, in the format of the
+ * "IRQ 00" line of the Zephyr build's "kernel thread stacks" and the NuttX
+ * build's "irqstack".  Arguments are ignored.
+ */
+static int cmd_irqstack(int argc, char **argv)
+{
+	size_t size = irq_stack_size();
+	size_t used = irq_stack_used();
+	size_t unused = used < size ? size - used : 0;
+
+	(void)argc;
+	(void)argv;
+
+	printf("%p %-32s (real size %4zu):\tunused %4zu\tusage %4zu / %4zu (%2zu %%)\n",
+	       (void *)irq_stack_base(), "IRQ 00", size, unused, used, size, used * 100 / size);
+	return 0;
+}
+
+void fault_print(const struct fault_record *r)
+{
+	char line[128];
+
+	for (unsigned int i = 0; fault_record_line(r, i, line, sizeof(line)) > 0; i++) {
+		printf("%s\n", line);
+	}
+}
+
+/* The fatal error that ended the run before this start (fault.c). */
+static int cmd_fault(int argc, char **argv)
+{
+	const struct fault_record *r = fault_last();
+
+	(void)argc;
+	(void)argv;
+
+	if (r == NULL) {
+		printf("No fatal error before this start\n");
+		return 0;
+	}
+	fault_print(r);
 	return 0;
 }
 
@@ -136,8 +214,11 @@ const struct cli_command console_commands[] = {
 	{"help", "", "List the commands", cmd_help},
 	{"version", "", "Show the versions of the kernel, SDK and compiler", cmd_version},
 	{"id", "", "Show the board's unique ID (of the flash)", cmd_id},
-	{"uptime", "", "Show the time since the start", cmd_uptime},
-	{"ps", "", "List the tasks", cmd_ps},
+	{"uptime", "", "Show the time since the start (TIMER) and the ticks", cmd_uptime},
+	{"sleep", "<ms>", "Sleep for ms milliseconds (Zephyr's kernel sleep)", cmd_sleep},
+	{"ps", "", "List the tasks and show the CPU load", cmd_ps},
+	{"irqstack", "", "Show the use of the interrupt stack", cmd_irqstack},
+	{"fault", "", "Show the fatal error that ended the last run", cmd_fault},
 	{"free", "", "Show the use of the FreeRTOS heap", cmd_free},
 	{"reboot", "", "Restart the board", cmd_reboot},
 	{"bootsel", "", "Restart into the USB bootloader (BOOTSEL)", cmd_bootsel},

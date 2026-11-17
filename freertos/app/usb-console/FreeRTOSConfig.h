@@ -4,18 +4,43 @@
 #ifndef FREERTOS_CONFIG_H
 #define FREERTOS_CONFIG_H
 
+#include "priorities_os.h"
+
 /* Scheduler ---------------------------------------------------------------*/
 
+/* The tick is 100 us, as the Zephyr build's CONFIG_SYS_CLOCK_TICKS_PER_SEC=10000
+ * and the NuttX build's CONFIG_USEC_PER_TICK=100, and 32 bits wide (the
+ * RP2040 port has no 64-bit tick); it wraps after about 4.97 days.  The time
+ * since the start comes from the TIMER instead (src/os_clock.h).  Both other
+ * builds are tickless; this one has a periodic tick (SysTick), whose handler
+ * counts as CPU load.  portTICK_PERIOD_MS is 0 at this rate and must not be
+ * used.
+ */
 #define configUSE_PREEMPTION                    1
-#define configUSE_TIME_SLICING                  1
-#define configUSE_TICKLESS_IDLE                 0
-#define configTICK_RATE_HZ                      1000
+#define configTICK_RATE_HZ                      10000
 #define configTICK_TYPE_WIDTH_IN_BITS           TICK_TYPE_WIDTH_32_BITS
+#define configUSE_TICKLESS_IDLE                 0
+
+/* Time slices of 20 ms among tasks of the same priority (Zephyr:
+ * CONFIG_TIMESLICE_SIZE=20, CONFIG_TIMESLICE_PRIORITY=0) are made by the tick
+ * hook (src/tick.c); FreeRTOS's own slicing would switch at every tick.
+ */
+#define configUSE_TIME_SLICING                  0
+#define configUSE_TICK_HOOK                     1
+
+/* Priorities 0..31, a higher number runs first; the port's are
+ * 20 - (Zephyr priority) (src/priorities_os.h, common/compat/priorities.h).
+ * Task names as long as Zephyr's (CONFIG_THREAD_MAX_NAME_LEN=32, with the
+ * terminating null).
+ */
 #define configMAX_PRIORITIES                    32
-#define configMAX_TASK_NAME_LEN                 16
+#define configMAX_TASK_NAME_LEN                 32
+
+/* The idle task measures the CPU load (src/idle.c); no task of the port has
+ * the idle priority.
+ */
 #define configIDLE_SHOULD_YIELD                 1
-#define configUSE_IDLE_HOOK                     0
-#define configUSE_TICK_HOOK                     0
+#define configUSE_IDLE_HOOK                     1
 
 /* The RP2040 port: one core (the second one stays in the boot ROM), and
  * the Pico SDK's locks and sleeps (mutex_enter_blocking(), sleep_ms(), the
@@ -31,21 +56,29 @@
 #define configUSE_RECURSIVE_MUTEXES             1
 #define configUSE_COUNTING_SEMAPHORES           1
 #define configUSE_TASK_NOTIFICATIONS            1
+/* Index 0 for the Pico SDK (pico_async_context_freertos) and the port's
+ * plain notifications, index 1 for the compatibility layer's waits (F02).
+ */
+#define configTASK_NOTIFICATION_ARRAY_ENTRIES   2
 #define configUSE_QUEUE_SETS                    0
 #define configQUEUE_REGISTRY_SIZE               0
 #define configUSE_EVENT_GROUPS                  1
 #define configUSE_STREAM_BUFFERS                1
 
+/* The timer task also wakes the tasks that wait on the Pico SDK's locks and
+ * sleeps when an interrupt handler releases them; its priority and stack
+ * are in src/priorities_os.h.
+ */
 #define configUSE_TIMERS                        1
-#define configTIMER_TASK_PRIORITY               (configMAX_PRIORITIES - 1)
+#define configTIMER_TASK_PRIORITY               NANO_PRIO_TIMER_SVC
 #define configTIMER_QUEUE_LENGTH                10
-#define configTIMER_TASK_STACK_DEPTH            256
+#define configTIMER_TASK_STACK_DEPTH            (NANO_STACK_TIMER_SVC / 4)
 
 /* Memory ----------------------------------------------------------------------*/
 
 /* Stack sizes are in words (4 bytes). */
 
-#define configMINIMAL_STACK_SIZE                256
+#define configMINIMAL_STACK_SIZE                (NANO_STACK_IDLE / 4) /* the idle task */
 #define configSUPPORT_STATIC_ALLOCATION         1
 #define configKERNEL_PROVIDED_STATIC_MEMORY     1   /* idle and timer tasks */
 #define configSUPPORT_DYNAMIC_ALLOCATION        1
@@ -55,6 +88,9 @@
 
 /* Checks ----------------------------------------------------------------------*/
 
+/* Each ends in the common exit of fatal errors, which records the error and
+ * restarts the board (src/fault.c).
+ */
 #define configCHECK_FOR_STACK_OVERFLOW          2
 #define configUSE_MALLOC_FAILED_HOOK            1
 
