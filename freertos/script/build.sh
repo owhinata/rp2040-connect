@@ -80,7 +80,7 @@ fi
 # so only the first configuration needs the network.
 step "cmake ${app}"
 cmake -S "$src_dir" -B "$build_dir" -G "Unix Makefiles" \
-  -DCMAKE_BUILD_TYPE=Release \
+  -DCMAKE_BUILD_TYPE=MinSizeRel \
   -DPICOTOOL_FETCH_FROM_GIT_PATH="${root}/picotool" \
   "${cmake_defs[@]}"
 
