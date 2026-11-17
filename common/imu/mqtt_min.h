@@ -9,11 +9,11 @@
  * Zephyr's TCP transport (subsys/net/lib/mqtt/mqtt_transport_socket_tcp.c)
  * makes, zsock_socket(), zsock_connect(), zsock_send(), zsock_sendmsg(),
  * zsock_recv() and zsock_close(): POSIX's, returning -1 with errno set on
- * failure.  Each OS implements it on its sockets (NuttX:
- * nuttx/apps/imu/mqtt_min_sock.c, with the zsock_*() calls of the
- * compatibility layer's <zephyr/net/socket.h>, NuttX's sockets; a read
- * that does not wait asks the NINA module first, as Zephyr's does); a host
- * test links a fake instead.
+ * failure.  mqtt_min_sock.c implements it on the zsock_*() calls of the
+ * compatibility layer's <zephyr/net/socket.h>, each OS's sockets (NuttX's,
+ * where a read that does not wait asks the NINA module first, as Zephyr's
+ * does; the FreeRTOS build's calls on the NINA core); a host test links a
+ * fake instead.
  */
 
 #ifndef __NUTTX_APPS_IMU_MQTT_MIN_H

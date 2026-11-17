@@ -9,10 +9,11 @@
 # (freertos/drivers/compat/compat.cmake, freertos/drivers/kv/kv.cmake,
 # freertos/drivers/lsm6dso/lsm6dso.cmake: the layer, the key-value store and
 # the device lsm6dsox with its FIFO stream), with freertos_nina() and
-# freertos_wifi() in the same target (the sockets and the Wi-Fi events of
-# the time synchronization).  It adds to the target the
-# NuttX build's sources of CONFIG_NANO_APP_IMU with CONFIG_NANO_TIME_SYNC and
-# without CONFIG_NANO_IMU_RAW_MQTT (nuttx/apps/imu/Makefile), in its order:
+# freertos_wifi() in the same target (the sockets of the MQTT transport and
+# of the time synchronization, the default gateway of the interface, the
+# Wi-Fi events).  It adds to the target the NuttX build's sources of
+# CONFIG_NANO_APP_IMU with CONFIG_NANO_IMU_RAW_MQTT and CONFIG_NANO_TIME_SYNC
+# (nuttx/apps/imu/Makefile), in its order:
 #
 # - the service (common/imu: imu_stream.c, the "imu" command and the thread
 #   imu_stream_tid, which the application starts with
@@ -21,11 +22,18 @@
 #   (imu_cal.c, "imu cal" and the lookup of the stored values for the
 #   driver, imu_cal_init(); imu_cal_codec.c), each with the prelude of the
 #   shared sources (common_prelude.h, -include), as on NuttX;
-# - a STUB for the MQTT transport (imu_raw_mqtt_null.c: every batch is
-#   counted as dropped, nothing is sent; a warning in "dmesg" at every
-#   start), a copy of the NuttX build's.  The build's MQTT transport replaces
-#   it with common/imu/imu_raw_mqtt.c and imu_raw_status.c (and the MQTT
-#   client);
+# - the MQTT transport (common/imu/imu_raw_mqtt.c: the thread
+#   imu_raw_mqtt_tid, which the application starts with
+#   K_THREAD_DEFINE_START(); its JSON messages, imu_raw_status.c), on the
+#   port's minimal MQTT client (common/imu/mqtt_min.c, the part of Zephyr's
+#   MQTT library the transport uses, with the Zephyr build's settings,
+#   mqtt_min.h) and the client's socket layer on the layer's zsock_*()
+#   calls (common/imu/mqtt_min_sock.c, the NuttX build's file;
+#   freertos/drivers/nina/nina_socket.c).  mqtt_min.c is Zephyr's text,
+#   which compares signed with unsigned (13 places under -Wextra, e.g.
+#   "(end - cur) < sizeof(uint8_t)"), as Zephyr's library does: the file is
+#   compiled with -Wno-sign-compare, as in the host tests of the NuttX
+#   build and of common/tests;
 # - the time synchronization (common/imu/time_sync.c with its estimate,
 #   time_offset.c; CONFIG_NANO_TIME_SYNC of the NuttX build): the thread
 #   time_sync_tid, which the application starts with
@@ -48,8 +56,8 @@
 # - the include directories: common/imu and common/drivers/lsm6dso (already
 #   the driver's).
 #
-# The shared sources build without warnings under the application's -Wall
-# -Wextra, so no option of theirs is turned off.
+# Besides mqtt_min.c's -Wno-sign-compare, the shared sources build without
+# warnings under the application's -Wall -Wextra.
 
 get_filename_component(FREERTOS_IMU_DIR ${CMAKE_CURRENT_LIST_DIR} ABSOLUTE)
 
@@ -63,11 +71,14 @@ function(freertos_imu target)
     ${FREERTOS_COMMON_DIR}/imu/imu_raw_queue.c
     ${FREERTOS_COMMON_DIR}/imu/imu_cal.c
     ${FREERTOS_COMMON_DIR}/imu/imu_cal_codec.c
+    ${FREERTOS_COMMON_DIR}/imu/imu_raw_mqtt.c
+    ${FREERTOS_COMMON_DIR}/imu/imu_raw_status.c
+    ${FREERTOS_COMMON_DIR}/imu/mqtt_min.c
+    ${FREERTOS_COMMON_DIR}/imu/mqtt_min_sock.c
   )
 
   target_sources(${target} PRIVATE
     ${imu_common_sources}
-    ${FREERTOS_IMU_DIR}/imu_raw_mqtt_null.c
     ${FREERTOS_COMMON_DIR}/imu/time_sync.c
     ${FREERTOS_COMMON_DIR}/imu/time_offset.c
     ${FREERTOS_COMPAT_DIR}/rp2040/zephyr_hwinfo.c
@@ -85,6 +96,9 @@ function(freertos_imu target)
   set_source_files_properties(${imu_common_sources} ${FREERTOS_COMMON_DIR}/imu/time_offset.c
     PROPERTIES
     COMPILE_OPTIONS "-include;${FREERTOS_COMPAT_DIR}/common_prelude.h"
+  )
+  set_source_files_properties(${FREERTOS_COMMON_DIR}/imu/mqtt_min.c PROPERTIES
+    COMPILE_OPTIONS "-include;${FREERTOS_COMPAT_DIR}/common_prelude.h;-Wno-sign-compare"
   )
   set_source_files_properties(${FREERTOS_COMMON_DIR}/imu/time_sync.c PROPERTIES
     COMPILE_OPTIONS

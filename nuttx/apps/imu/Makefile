@@ -24,8 +24,8 @@
 # imu_tick_clock.c, time_sync.c, time_offset.c, imu_cal.c, imu_cal_codec.c,
 # imu_raw_mqtt.c, kv_store.c and their headers), and the port's MQTT
 # client for the builds on the compatibility layer (mqtt_min.c,
-# mqtt_min.h; its socket layer on NuttX's sockets, mqtt_min_sock.c, is
-# here), are in common/imu; the others named above in common/compat.  They
+# mqtt_min.h, and its socket layer on the layer's zsock_*() calls,
+# mqtt_min_sock.c, shared with the FreeRTOS build), are in common/imu; the others named above in common/compat.  They
 # are found through VPATH and DEPPATH, which are relative to this directory
 # (mkdeps needs relative ones); their objects are made here, each compiled
 # with the prelude of the shared sources (common_prelude.h of the

@@ -1,7 +1,8 @@
 /* SPDX-License-Identifier: MIT */
 /* The zsock_*() calls of the layer's <zephyr/net/socket.h> on the host's
- * sockets, for the host test of the Telnet shell and the iperf3 of "zperf"
- * (freertos/tests/telnet), with what the NINA's sockets do
+ * sockets, for the host tests of the Telnet shell and the iperf3 of "zperf"
+ * (freertos/tests/telnet) and of the MQTT transport against the host's
+ * receiver (freertos/tests/mqtt/live.c), with what the NINA's sockets do
  * (freertos/drivers/nina/nina_socket.c over common/drivers/nina/nina_sock.c)
  * where the code under test depends on it:
  *
@@ -11,7 +12,9 @@
  * - accept never waits (EAGAIN); bind to an address other than any is
  *   EADDRNOTAVAIL; SO_REUSEADDR is ENOPROTOOPT, TCP_NODELAY is taken,
  *   SO_RCVTIMEO is kept; getsockopt and getsockname are EOPNOTSUPP;
- * - a TCP send takes at most 3584 bytes, a read gives at most 512;
+ * - a TCP send takes at most 3584 bytes, a read gives at most 512; sendmsg
+ *   joins the vectors (up to 3584 bytes) into one send (no address, no
+ *   control data);
  * - the waits poll every 20 ms with the kernel's sleep (a blocking send
  *   every 1 ms up to 10 s, then EAGAIN; connect up to 10 s); poll reports
  *   POLLERR for a connection that failed (fake_sock_fail_connections()),
@@ -23,7 +26,8 @@
  * (the port's tick is a signal).  The host's sockets are non-blocking,
  * SO_REUSEADDR for the listening ones (so that the test can run again at
  * once), and the accepted ones have a small send buffer, so that a client
- * that does not read fills it soon.
+ * that does not read fills it soon; so do the connected ones when the test
+ * asks for it (host_sock_connect_sndbuf, host_sock.h).
  */
 
 #include <errno.h>
@@ -59,6 +63,8 @@ struct hsock {
 };
 
 static struct hsock socks[SOCK_MAX];
+
+int host_sock_connect_sndbuf;
 
 static int fail(int err)
 {
@@ -213,6 +219,10 @@ int zsock_connect(int sock, const struct sockaddr *addr, socklen_t addrlen)
 	if (s == NULL) {
 		return fail(EBADF);
 	}
+	if (host_sock_connect_sndbuf > 0) {
+		(void)setsockopt(s->fd, SOL_SOCKET, SO_SNDBUF, &host_sock_connect_sndbuf,
+				 sizeof(host_sock_connect_sndbuf));
+	}
 	if (HOST_CALL(connect(s->fd, addr, addrlen)) == 0) {
 		return 0;
 	}
@@ -272,9 +282,26 @@ ssize_t zsock_sendto(int sock, const void *buf, size_t len, int flags,
 
 ssize_t zsock_sendmsg(int sock, const struct msghdr *msg, int flags)
 {
-	(void)msg;
-	(void)flags;
-	return fail(get(sock) ? EOPNOTSUPP : EBADF);
+	static uint8_t joined[TCP_MAX_IO];
+	size_t len = 0;
+
+	if (get(sock) == NULL) {
+		return fail(EBADF);
+	}
+	if (msg == NULL) {
+		return fail(EINVAL);
+	}
+	if (msg->msg_name != NULL || msg->msg_controllen) {
+		return fail(ENOTSUP);
+	}
+	for (size_t i = 0; i < (size_t)msg->msg_iovlen && len < sizeof(joined); i++) {
+		size_t n = msg->msg_iov[i].iov_len;
+
+		n = n > sizeof(joined) - len ? sizeof(joined) - len : n;
+		memcpy(joined + len, msg->msg_iov[i].iov_base, n);
+		len += n;
+	}
+	return zsock_sendto(sock, joined, len, flags, NULL, 0);
 }
 
 ssize_t zsock_recvfrom(int sock, void *buf, size_t max_len, int flags, struct sockaddr *src_addr,

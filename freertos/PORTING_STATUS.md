@@ -690,3 +690,41 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
   - 未確認: 切断 60 秒後の `not synchronized`、サーバーを名前で指定する経路、長時間（壁時計の step の増え方）。
 - 相談事項: Zephyr 版・NuttX 版にある `date` が FreeRTOS 版に無い（足すか）。`ifconfig` の切断中のマスクを NuttX に合わせるか。
 - 次: F13（MQTT と `imu_raw_mqtt.c`）→ CP-F4。そこで受信器での確認と、3 版の `cpu_active` の比較。
+
+## ユーザーの決定（2026-11-17、F12 のあと）
+
+- `date` コマンドを足す。`ifconfig` の切断中のマスクは 0.0.0.0 のままでよい。
+- `date` は F13 が戻ってからメインが入れる（`commands.c` を F13 の subagent が使っているため）。
+- `date` は NuttX 版の表示（引数なしで `Thu, Jan 01 00:00:00 1970` の形）で小さく自作する（ユーザーの決定。Zephyr の
+  `date get`/`date set` の写しは使わない）。表示だけで、設定は付けない。
+
+## F13 の記録と CP-F4（2026-11-17）
+
+- 実装: スタブ `imu_raw_mqtt_null.c` を共有の `imu_raw_mqtt.c`・`imu_raw_status.c`・`mqtt_min.c` に置き換え。
+  **`mqtt_min_sock.c` を `nuttx/apps/imu/` から `common/imu/` へ移して NuttX 版と共有**（`<nuttx/config.h>` の行とコメントだけ変更）。
+  `imu_raw_mqtt_tid`（優先度 9、2048 B、NuttX 版と同じ起動位置）、ホストテスト `freertos/tests/mqtt`（偽のブローカー）と
+  `live`（ホスト上で本物の `imu-host check` を相手に通す。`host/.venv` が無ければ skip）。
+- メインの追加: `date`（NuttX 版の書式、UTC、表示だけ。ユーザーの決定）。
+- メインが確かめたこと: NuttX の像が snapshot-t24 と一致・NuttX 側のホストテスト全通過、Zephyr の像が基準と一致、FreeRTOS の
+  ビルド（既定・selftest、警告 0）、整形、`host_tests.sh`（44 個）。ソースは読んでいない。
+- **CP-F4（実機、AP 経由、受信器 `imu-host check --port 18830`）**:
+  - `date` が PC の UTC と秒まで一致。
+  - **書き込み直後の最初の計測 56.1 秒**: 受信器 1959 パケット、欠番 0、`unix_invalid` 0、`unix_regressions` 0、`us_per_sample` 中央値
+    149.177、バッチの時刻と対応点の直線との差 -0.319〜+0.313 ms。ボード: エラー・オーバーラン 0、`cpu_active` **45.5%**、
+    `publish_max_us` 37030、`queue_high` 1、`lock_wait_max_us` 20、`max_transfer_us` 8000、`dropped_batches` 0。`imu start` の
+    2 秒後にはもう接続・取得中（3 秒の待ちは無くなった）。送信中に Telnet の接続・`imu status`・切断を 2 回。落ちた tick は
+    46 秒で 2。NTP: `min_us` 4614、`last_residual_us` -147。
+  - 送信中の `ps`（起動からの割合）: `imu_fifo_worker` 6.9%、`imu_raw_mqtt_tid` 6.3%、`imu_stream_tid` 4.5%、`sysworkq` 0.6%。
+    スタックの空き: `imu_raw_mqtt_tid` 920〜952/2048、`imu_stream_tid` 1056、`imu_fifo_worker` 1224、`time_sync_tid` 952。
+  - `--drop-at 10 --drop-for 5`: 再接続（ボード connects 2・failures 5、受信器 connects 2）、ボードの破棄 182・受信器の欠番 183。
+  - `--stall-at 10 --stall-for 3 --rcvbuf 4096`: `queue_high` 12、ボードの破棄 90 = 受信器の欠番 90、接続は 1 回のまま、
+    `publish_max_us` 1226857。
+  - 計測中に `wifi disconnect` → 5 秒 → `wifi cred auto_connect`: MQTT が自動で繋ぎ直る（connects 2、failures 9、破棄 318）、
+    取得のエラー 0（受信器側の集計は取れていない: メインのスクリプトの都合）。
+  - 計測中の `zperf tcp download` 10 秒: 817 kbit/s、`cpu_active` 52.0%、`queue_high` 12、破棄 1 = 受信器の欠番 1。
+  - 開始と停止を 10 回（各 6 秒）: 毎回 `stopped`、連番 +1、publish 208〜209、破棄 0、受信器は接続 10 回・欠番 0。
+    重ねての `imu start` は `Already running`。
+  - 未確認: 長時間、10 秒を超える輻輳、時分割のフックなしとの比較（あとで判断する項目）。
+- **`cpu_active` の比較（送信あり、同じ AP と受信器）**: FreeRTOS 版 45.5%（今回）、NuttX 版 70.0%（今日の CP-B、71 秒、T24 の像）、
+  Zephyr 版 63〜64%（文書の値。今日は測っていない）。Zephyr 版を同じ条件で測るには書き込みが要る（CP-Z）。
+- 次: F14（`sensor` コマンド、`imu cal` の確認）、F15（ホストの差分ファイルと文書）→ CP-F5。

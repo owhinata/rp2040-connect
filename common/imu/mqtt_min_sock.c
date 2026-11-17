@@ -2,19 +2,29 @@
 /* The socket layer of the minimal MQTT client (mqtt_min.h): the zsock_*()
  * calls that Zephyr's TCP transport (subsys/net/lib/mqtt/
  * mqtt_transport_socket_tcp.c) makes, with the same arguments, from the
- * Zephyr compatibility layer (<zephyr/net/socket.h>): NuttX's sockets,
- * the NINA's through usrsock, on the board.  zsock_recv() with
+ * Zephyr compatibility layer (<zephyr/net/socket.h>), shared by the
+ * builds on the layer; each OS's zsock_*() are the NINA's sockets.
+ *
+ * NuttX: NuttX's sockets, the NINA's through usrsock.  zsock_recv() with
  * ZSOCK_MSG_DONTWAIT, which the client's reads use, asks the module first
  * (ioctl(FIONREAD)), as the Zephyr build's recv() does with its CMD_POLL:
  * NuttX's usrsock would answer such a call from the RECVFROM_AVAIL it
  * holds, which nobody refreshes for these sockets (only their callers ask
- * the module, <nina_sockopt.h>), and a
- * packet that arrives in pieces (CONNACK: 2 bytes, then 2) would stop
- * after the first.  The mqtt_min host test links a fake of these functions
- * instead; the imu_raw_mqtt host test builds this file on fake sockets.
+ * the module, <nina_sockopt.h>), and a packet that arrives in pieces
+ * (CONNACK: 2 bytes, then 2) would stop after the first.
+ *
+ * FreeRTOS: the layer's zsock_*() call the shared NINA core in the
+ * caller's task (freertos/drivers/nina/nina_socket.c, the Zephyr build's
+ * socket offload), and each read polls the module itself, as there.
+ *
+ * NuttX's headers come first through the prelude of the shared sources
+ * (common_prelude.h, -include), on FreeRTOS newlib's with the layer's
+ * network headers (freertos/drivers/libc/include).  The mqtt_min host test
+ * links a fake of these functions instead; the NuttX build's imu_raw_mqtt
+ * host test builds this file on fake sockets, the FreeRTOS build's
+ * (freertos/tests/mqtt) on its own zsock_*().
  */
 
-#include <nuttx/config.h> /* NuttX's headers before the compatibility layer's */
 #include <sys/types.h>
 #include <sys/socket.h>
 

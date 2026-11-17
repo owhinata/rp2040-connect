@@ -941,7 +941,7 @@ events that advance them are the same as in the Zephyr build.
   at the start of its start-up work; it waits for `imu start`.
 - The MQTT client is a copy of the part of Zephyr's MQTT library (`subsys/net/lib/mqtt/`) that is
   used (`common/imu/mqtt_min.c`, with the API of the compatibility layer's
-  `<zephyr/net/mqtt.h>`; its socket layer is `nuttx/apps/imu/mqtt_min_sock.c`): MQTT 3.1.1 over TCP only, with the bytes it sends, the defaults and the
+  `<zephyr/net/mqtt.h>`; its socket layer is `common/imu/mqtt_min_sock.c`): MQTT 3.1.1 over TCP only, with the bytes it sends, the defaults and the
   way it reads in pieces of Zephyr's library (the host test `mqtt_min` runs the same test on
   Zephyr's own library as well). A PUBLISH goes as its fixed header and its body in two vectors
   of one `sendmsg()`, which the NINA driver joins into one send command (as in the Zephyr

@@ -8,6 +8,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <time.h>
 #include "pico/stdlib.h"
 #include "pico/bootrom.h"
 #include "pico/unique_id.h"
@@ -16,6 +17,7 @@
 #include "FreeRTOS.h"
 #include "task.h"
 #include <zephyr/shell/shell.h>
+#include <zephyr/sys/clock.h>
 #include "app.h"
 #include "fault.h"
 #include "nano_shell.h"
@@ -81,6 +83,29 @@ static int cmd_uptime(const struct shell *sh, size_t argc, char **argv)
 }
 
 SHELL_CMD_REGISTER(uptime, NULL, "Show the time since the start (TIMER) and the ticks", cmd_uptime);
+
+/* The wall clock (UTC, set by the time synchronization), in the format of the
+ * NuttX build's "date".  It counts from 1970 until the time is known.
+ */
+static int cmd_date(const struct shell *sh, size_t argc, char **argv)
+{
+	struct timespec ts;
+	struct tm tm;
+	char text[32];
+
+	(void)argc;
+	(void)argv;
+
+	if (sys_clock_gettime(SYS_CLOCK_REALTIME, &ts) != 0 || gmtime_r(&ts.tv_sec, &tm) == NULL ||
+	    strftime(text, sizeof(text), "%a, %b %d %H:%M:%S %Y", &tm) == 0) {
+		shell_error(sh, "Could not read the time");
+		return -EIO;
+	}
+	shell_print(sh, "%s", text);
+	return 0;
+}
+
+SHELL_CMD_ARG_REGISTER(date, NULL, "Show the date and time (UTC)", cmd_date, 1, 0);
 
 /* Zephyr's "kernel sleep <ms>": k_msleep(ms), with Zephyr's rounding
  * (os_sleep_us()), and its messages (subsys/shell/modules/kernel_service).
@@ -331,6 +356,7 @@ NANO_SHELL_CMD_DECLARE(zperf);
 /* clang-format off */
 const struct nano_shell_cmd nano_shell_cmds[] = {
 	NANO_SHELL_CMD(bootsel),
+	NANO_SHELL_CMD(date),
 	NANO_SHELL_CMD(devmem),
 	NANO_SHELL_CMD(dmesg),
 	NANO_SHELL_CMD(fault),

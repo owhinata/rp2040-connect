@@ -89,7 +89,7 @@ int test_sem_take(struct k_sem *sem, k_timeout_t timeout);
 #define k_sem_take test_sem_take
 #include "../../common/imu/imu_raw_mqtt.c"
 #undef k_sem_take
-#include "../apps/imu/mqtt_min_sock.c"
+#include "../../common/imu/mqtt_min_sock.c"
 
 #include "imu_raw_batch.h"
 #include "zephyr_kernel_host.h"

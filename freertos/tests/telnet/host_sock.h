@@ -4,6 +4,12 @@
 #ifndef FREERTOS_TESTS_TELNET_HOST_SOCK_H
 #define FREERTOS_TESTS_TELNET_HOST_SOCK_H
 
+/* The send buffer (bytes) of the sockets that connect; 0 leaves the host's.
+ * A small one makes a receiver that stops reading block the sends soon, as
+ * the NINA's small buffers do.
+ */
+extern int host_sock_connect_sndbuf;
+
 /* The descriptors in use. */
 int fake_sock_open_count(void);
 

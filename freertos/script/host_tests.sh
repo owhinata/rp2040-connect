@@ -19,8 +19,12 @@
 #   0's boundary (freertos/drivers/compat/rp2040/nano_gpio.c) under the
 #   layer's gpio0 and the LSM6DSO's FIFO interrupt on fakes of the Pico SDK's
 #   GPIO and IRQ functions (freertos/tests/gpio), and the IMU service's
-#   parts of the build (address conversions, hwinfo, the stub of the MQTT
-#   transport: freertos/tests/imu), and the time synchronization
+#   parts of the build (address conversions, hwinfo: freertos/tests/imu),
+#   and the MQTT transport (common/imu/imu_raw_mqtt.c with the port's MQTT
+#   client and its socket layer, the thread, on fake sockets and a fake
+#   broker, about 20 s; then against the host's receiver, host/imu_host's
+#   "imu-host check" on 127.0.0.1, about 30 s, skipped without
+#   host/.venv: freertos/tests/mqtt), and the time synchronization
 #   (common/imu/time_sync.c on the build's realtime clock, TIMER read and
 #   thread, with fake sockets and a fake NTP server: freertos/tests/time_sync), and the
 #   sockets: the zsock_*() calls (freertos/drivers/nina/nina_socket.c) on the
@@ -41,7 +45,7 @@ verbose=0
 case "${1:-}" in
   "") ;;
   -v) verbose=1 ;;
-  -h|--help) sed -n '2,33p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+  -h|--help) sed -n '2,38p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
   *) printf 'Unknown option: %s\n' "$1" >&2; exit 2 ;;
 esac
 
@@ -262,22 +266,15 @@ fi
 printf 'ok  gpio (GPIO bank 0 boundary, gpio0, FIFO interrupt, FreeRTOS POSIX port)\n'
 
 # The IMU service's FreeRTOS parts (freertos/tests/imu): the address conversions
-# (drivers/libc/inet.c, the layer's <zephyr/net/socket.h> on drivers/libc/include),
+# (drivers/libc/inet.c, the layer's <zephyr/net/socket.h> on drivers/libc/include) and
 # hwinfo_get_device_id() (drivers/compat/rp2040/zephyr_hwinfo.c) on a fake of
-# pico_get_unique_board_id(), and the stub of the MQTT transport (drivers/imu, with
-# common/imu/imu_raw_queue.c and imu_raw_packet.c, with the prelude, as drivers/imu/imu.cmake
-# builds them), on the same kernel and layer objects.  tests/imu/fake (pico/unique_id.h) comes
-# first.
-imuinc=(-Itests/imu/fake -Idrivers/libc/include -I../common/imu -I../common/drivers/lsm6dso)
+# pico_get_unique_board_id(), on the same kernel and layer objects.  tests/imu/fake
+# (pico/unique_id.h) comes first.
+imuinc=(-Itests/imu/fake -Idrivers/libc/include)
 imuobjs=()
-for src in drivers/libc/inet.c drivers/compat/rp2040/zephyr_hwinfo.c drivers/imu/imu_raw_mqtt_null.c \
-           tests/imu/main.c ../common/imu/imu_raw_queue.c ../common/imu/imu_raw_packet.c; do
+for src in drivers/libc/inet.c drivers/compat/rp2040/zephyr_hwinfo.c tests/imu/main.c; do
     obj="$out/imu_$(basename "$src" .c).o"
-    extra=()
-    case $src in
-        ../common/*) extra=(-include drivers/compat/common_prelude.h) ;;
-    esac
-    cc "${flags[@]}" "${strict[@]}" "${imuinc[@]}" "${inc[@]}" "${extra[@]}" -c "$src" -o "$obj"
+    cc "${flags[@]}" "${strict[@]}" "${imuinc[@]}" "${inc[@]}" -c "$src" -o "$obj"
     imuobjs+=("$obj")
 done
 cc "${flags[@]}" "${kernobjs[@]}" "${imuobjs[@]}" -o "$out/imu"
@@ -286,7 +283,75 @@ if (( verbose )); then
 else
     timeout 60 "$out/imu" >"$out/log" 2>&1 || { cat "$out/log"; exit 1; }
 fi
-printf 'ok  imu (address conversions, hwinfo, stub of the transport, FreeRTOS POSIX port)\n'
+printf 'ok  imu (address conversions, hwinfo, FreeRTOS POSIX port)\n'
+
+# The MQTT transport (freertos/tests/mqtt): the shared common/imu/imu_raw_mqtt.c with its JSON
+# messages (imu_raw_status.c), the port's MQTT client (mqtt_min.c, with -Wno-sign-compare) and
+# its socket layer (mqtt_min_sock.c), the queue and the packets (imu_raw_queue.c,
+# imu_raw_packet.c), with the prelude, as drivers/imu/imu.cmake builds them, on the build's
+# interface (drivers/compat/zephyr_net_if.c), fake zsock_*() calls with the NINA's waits and a
+# fake broker (tests/mqtt/main.c), on the same kernel and layer objects: the thread, the
+# connection, the messages, the intervals, congestion, failures, CONNACK, the stop.  It waits
+# for the real intervals: about 20 s.
+mqttsrcs=(drivers/compat/zephyr_net_if.c ../common/imu/imu_raw_mqtt.c ../common/imu/imu_raw_status.c
+          ../common/imu/mqtt_min.c ../common/imu/mqtt_min_sock.c ../common/imu/imu_raw_queue.c
+          ../common/imu/imu_raw_packet.c)
+mqttinc=(-Idrivers/libc/include -I../common/imu -I../common/drivers/lsm6dso)
+mqttobjs=()
+for src in tests/mqtt/main.c drivers/libc/inet.c "${mqttsrcs[@]}"; do
+    obj="$out/mqtt_$(basename "$src" .c).o"
+    extra=()
+    case $src in
+        ../common/*) extra=(-include drivers/compat/common_prelude.h) ;;
+    esac
+    case $src in
+        */mqtt_min.c) extra+=(-Wno-sign-compare) ;;
+    esac
+    cc "${flags[@]}" "${strict[@]}" "${mqttinc[@]}" "${inc[@]}" "${extra[@]}" -c "$src" -o "$obj"
+    mqttobjs+=("$obj")
+done
+cc "${flags[@]}" "${kernobjs[@]}" "${mqttobjs[@]}" -o "$out/mqtt"
+if (( verbose )); then
+    timeout 90 "$out/mqtt"
+else
+    timeout 90 "$out/mqtt" >"$out/log" 2>&1 || { cat "$out/log"; exit 1; }
+fi
+printf 'ok  mqtt (thread, connection, messages, congestion, failures, stop, FreeRTOS POSIX port)\n'
+
+# The same transport against the host's receiver (tests/mqtt/live.c, live.py): the sources
+# above on the zsock_*() calls of tests/telnet/host_sock.c (the host's sockets with the NINA's
+# limits and waits) and the host's network headers, sending to "imu-host check"
+# (host/.venv/bin/imu-host, host/README.md) on 127.0.0.1 and a free port other than 18830: all
+# batches, a receiver that stops reading (the board's queue fills and drops, the receiver's
+# missing batches are the dropped ones), a receiver that drops the connection (reconnection).
+# About 30 s.  Skipped without host/.venv or python3.
+imuhost=../host/.venv/bin/imu-host
+if [[ -x $imuhost ]] && command -v python3 >/dev/null; then
+    liveinc=(-D_GNU_SOURCE -Itests/telnet -I../common/imu -I../common/drivers/lsm6dso)
+    liveobjs=()
+    for src in tests/mqtt/live.c tests/telnet/host_sock.c "${mqttsrcs[@]}"; do
+        obj="$out/live_$(basename "$src" .c).o"
+        extra=()
+        case $src in
+            ../common/*) extra=(-include drivers/compat/common_prelude.h) ;;
+        esac
+        case $src in
+            */mqtt_min.c) extra+=(-Wno-sign-compare) ;;
+        esac
+        cc "${flags[@]}" "${strict[@]}" "${liveinc[@]}" "${inc[@]}" "${extra[@]}" -c "$src" -o "$obj"
+        liveobjs+=("$obj")
+    done
+    cc "${flags[@]}" "${kernobjs[@]}" "${liveobjs[@]}" -o "$out/mqtt_live"
+    if (( verbose )); then
+        timeout 180 python3 tests/mqtt/live.py "$out/mqtt_live" "$imuhost" -v
+    else
+        timeout 180 python3 tests/mqtt/live.py "$out/mqtt_live" "$imuhost" >"$out/log" 2>&1 ||
+            { cat "$out/log"; exit 1; }
+    fi
+    printf 'ok  mqtt live (against imu-host check on 127.0.0.1: all batches, stall, drop)\n'
+else
+    printf 'skip mqtt live (no host/.venv/bin/imu-host or python3)\n'
+fi
 
 # The time synchronization (freertos/tests/time_sync): the shared common/imu/time_sync.c and
 # time_offset.c with the prelude, as drivers/imu/imu.cmake builds them (without

@@ -1,8 +1,8 @@
 /* SPDX-License-Identifier: MIT */
 /* The USB console on the Pico SDK and the FreeRTOS kernel: a shell on the
  * USB CDC ACM port, the key-value store, the SPI link to the NINA-W102, I2C0
- * with its DMA reads, the LSM6DSOX, the IMU acquisition service (without
- * its MQTT transport yet), Wi-Fi with the stored credentials, the time
+ * with its DMA reads, the LSM6DSOX, the IMU acquisition service with its
+ * MQTT transport, Wi-Fi with the stored credentials, the time
  * synchronization with the NTP server, the shell over Telnet, the "zperf"
  * speed test and a task that blinks the LED.
  */
@@ -249,11 +249,13 @@ static void main_main(void *arg)
 	 * (z_init_static_threads(), after the devices) and the NuttX build in
 	 * its init task at this point, in the NuttX build's order: the NINA
 	 * driver's (common/drivers/nina/nina_net.c: scan, connect, link
-	 * monitor), the IMU service's (common/imu/imu_stream.c), the time
-	 * synchronization's (common/imu/time_sync.c) and the Wi-Fi profile's
-	 * reconnection (common/imu/wifi_profile.c).  Each waits for its work
-	 * at once (the monitor polls every 2 s while connected; the time
-	 * synchronization waits for the Wi-Fi events of time_sync_init()).  They
+	 * monitor), the IMU service's (common/imu/imu_stream.c), its MQTT
+	 * transport's (common/imu/imu_raw_mqtt.c), the time synchronization's
+	 * (common/imu/time_sync.c) and the Wi-Fi profile's reconnection
+	 * (common/imu/wifi_profile.c).  Each waits for its work at once (the
+	 * monitor polls every 2 s while connected; the transport waits for
+	 * "imu start"; the time synchronization waits for the Wi-Fi events of
+	 * time_sync_init()).  They
 	 * have lower priorities than this task, so they first run when this
 	 * task waits.
 	 */
@@ -261,6 +263,7 @@ static void main_main(void *arg)
 	start_thread(K_THREAD_DEFINE_START(nina_connect_tid), "nina_connect_tid");
 	start_thread(K_THREAD_DEFINE_START(nina_monitor_tid), "nina_monitor_tid");
 	start_thread(K_THREAD_DEFINE_START(imu_stream_tid), "imu_stream_tid");
+	start_thread(K_THREAD_DEFINE_START(imu_raw_mqtt_tid), "imu_raw_mqtt_tid");
 	start_thread(K_THREAD_DEFINE_START(time_sync_tid), "time_sync_tid");
 	start_thread(K_THREAD_DEFINE_START(wifi_reconnect_tid), "wifi_reconnect_tid");
 	/* The iperf3 server of "zperf tcp download" (common/compat/

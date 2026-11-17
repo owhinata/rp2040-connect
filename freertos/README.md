@@ -105,6 +105,7 @@ The console is the USB CDC ACM port (UART0 is not used). Opening a terminal show
 | `id` | The board's unique ID (16 hexadecimal digits) |
 | `uptime` | Time since the start and the number of ticks |
 | `sleep <ms>` | Sleep for ms milliseconds |
+| `date` | Date and time (UTC, in the format of the NuttX build; counts from 1970 until the time is synchronized) |
 | `devmem <address> [<width> [<value>]]` | Read or write memory. Address and value in hexadecimal, width 8, 16 or 32 bits (default 32). A value writes |
 | `ps` | The tasks (state, priority, least free stack, share of the CPU time), the free interrupt stack (the `(interrupts)` row) and the CPU load since the previous `ps` |
 | `imu start`, `imu stop`, `imu status`, `imu cal [reload\|zero]` | Start and stop the IMU acquisition, show its counters, show and reload the calibration (as in the Zephyr build) |
@@ -131,8 +132,10 @@ The console is the USB CDC ACM port (UART0 is not used). Opening a terminal show
 - The key-value store is in the last 8 KiB of the flash, in the format of the Zephyr and NuttX builds, so
   it survives a change of build. If the area holds other data, `kv` fails with `-138` and `dmesg` says
   what to do; `kv wipe confirm` erases it.
-- There is no transport (MQTT) yet. `imu start` only acquires and counts the batches as dropped (`mqtt:`
-  in `imu status` shows no connection). The acquisition starts about 3 s after `imu start`.
+- `imu start` sends over MQTT to `imu.host` of the key-value store (the default gateway if not set), port
+  `imu.port`. Topics and messages are those of the Zephyr and NuttX builds, so `imu-host` on the PC receives
+  them as they are. Without a receiver it waits about 3 s, then only acquires and counts the batches as
+  dropped.
 - Once Wi-Fi is connected, the board asks the NTP server of the default gateway (the PC, UDP port 123) every
   2 s and keeps its time. Run chrony or similar on the PC.
 - About 4 s after the start the board connects to a stored network by itself, and it reconnects when the

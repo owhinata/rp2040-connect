@@ -815,7 +815,7 @@ status は 0、info は 1 で retain）、クライアント ID（`imu-<device>`
 - スレッド `imu_raw_mqtt_tid`（Zephyr の優先度 11 → 107、スタック 2048 の静的な配列）。init が起動処理の
   最初に始め、`imu start` を待ちます。
 - MQTT のクライアントは、Zephyr の MQTT ライブラリ（`subsys/net/lib/mqtt/`）のうち使う部分の写し
-  （`common/imu/mqtt_min.c`、API は互換層の `<zephyr/net/mqtt.h>`。ソケットの層は `nuttx/apps/imu/mqtt_min_sock.c`）です。MQTT 3.1.1、TCP だけで、
+  （`common/imu/mqtt_min.c`、API は互換層の `<zephyr/net/mqtt.h>`。ソケットの層は `common/imu/mqtt_min_sock.c`）です。MQTT 3.1.1、TCP だけで、
   送るバイト列、既定値、受信の分け方は Zephyr のライブラリと同じです（ホストテスト `mqtt_min` は同じ
   テストを Zephyr の本物のライブラリでも動かします）。PUBLISH は固定ヘッダーと本体を 2 つのベクターの
   `sendmsg()` 1 回で渡し、NINA のドライバーがそれを 1 つの送信の命令にまとめます（Zephyr 版と同じ）。

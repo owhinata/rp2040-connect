@@ -9,23 +9,16 @@
  * - hwinfo_get_device_id() (freertos/drivers/compat/rp2040/zephyr_hwinfo.c)
  *   on a fake of pico_get_unique_board_id(): the 8 bytes unchanged, cut to
  *   the caller's length.
- * - The MQTT transport's stub (freertos/drivers/imu/imu_raw_mqtt_null.c,
- *   with common/imu/imu_raw_queue.c and imu_raw_packet.c): the checks of
- *   imu_raw_mqtt_start() (-EINVAL, -EBUSY until the stop), its warning in
- *   the log, the statistics of a session that never connects (the default
- *   gateway as 0.0.0.0, or the configured address), every valid batch
- *   counted as dropped with -EAGAIN and an invalid one refused with -EINVAL
- *   and not counted, counters reset by the next start.
  *
- * The time synchronization (common/imu/time_sync.c) has its own test,
- * freertos/tests/time_sync.
+ * The time synchronization (common/imu/time_sync.c) and the MQTT transport
+ * (common/imu/imu_raw_mqtt.c) have their own tests, freertos/tests/time_sync
+ * and freertos/tests/mqtt.
  *
  * Built and run by freertos/script/host_tests.sh.
  */
 
 #include <assert.h>
 #include <errno.h>
-#include <stdarg.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
@@ -40,10 +33,7 @@
 
 #include "pico/unique_id.h"
 
-#include "imu_raw_mqtt.h"
-#include "imu_raw_packet.h"
 #include "priorities.h"
-#include "time_sync.h"
 #include "zephyr_os_port.h"
 #include "zephyr_compat.h"
 
@@ -59,51 +49,6 @@ void vApplicationTickHook(void)
 	z_host_isr_depth++;
 	app_tick_hook();
 	z_host_isr_depth--;
-}
-
-/* The board clock of time_sync.h, which the transport's stub reads (the
- * build's is common/imu/time_sync.c, tested by freertos/tests/time_sync):
- * the test port's clock.
- */
-int64_t time_sync_mono_us(void)
-{
-	return (int64_t)nano_mono_us();
-}
-
-/* The log (common/log/app_log.h) into a buffer. */
-static char log_buf[1024];
-
-void app_log_vprintf(int level, const char *module, const char *func, const char *fmt, va_list ap)
-{
-	static const char *const names[] = {"", "err", "wrn", "inf", "dbg"};
-	size_t used = strlen(log_buf);
-
-	(void)func;
-	used += (size_t)snprintf(log_buf + used, sizeof(log_buf) - used, "<%s> %s: ", names[level],
-				 module);
-	assert(used < sizeof(log_buf));
-	used += (size_t)vsnprintf(log_buf + used, sizeof(log_buf) - used, fmt, ap);
-	assert(used + 1 < sizeof(log_buf));
-	strcat(log_buf, "\n");
-}
-
-void app_log_printf(int level, const char *module, const char *func, const char *fmt, ...)
-{
-	va_list ap;
-
-	va_start(ap, fmt);
-	app_log_vprintf(level, module, func, fmt, ap);
-	va_end(ap);
-}
-
-bool app_log_ratelimit_pass(uint32_t *last_ms, uint32_t *skipped, uint32_t rate_ms,
-			    uint32_t *skipped_out)
-{
-	(void)last_ms;
-	(void)skipped;
-	(void)rate_ms;
-	*skipped_out = 0;
-	return true;
 }
 
 /* pico_unique_id's copy of the flash's unique ID. */
@@ -201,99 +146,11 @@ static void test_hwinfo(void)
 	printf("hwinfo: ok\n");
 }
 
-/* The MQTT transport's stub ------------------------------------------------*/
-
-static size_t make_batch(uint8_t *payload, size_t capacity)
-{
-	struct imu_raw_metadata m = {.accel_first_index = 10, .gyro_first_index = 20};
-	const struct lsm6dso_fifo_sample samples[] = {
-		{LSM6DSO_FIFO_ACCEL, {1, 2, 3}},
-		{LSM6DSO_FIFO_GYRO, {4, 5, 6}},
-		{LSM6DSO_FIFO_ACCEL, {7, 8, 9}},
-	};
-	size_t length;
-
-	assert(imu_raw_encode(payload, capacity, &length, &m, samples, 3) == 0);
-	return length;
-}
-
-static void config_init(struct imu_raw_mqtt_config *cfg, const char *device, uint16_t port)
-{
-	memset(cfg, 0, sizeof(*cfg));
-	cfg->port = port;
-	strcpy(cfg->device_id, device);
-	cfg->session_id[0] = 0x50;
-}
-
-static void test_transport(void)
-{
-	static uint8_t payload[IMU_RAW_MAX_SIZE];
-	struct imu_raw_mqtt_config cfg;
-	struct imu_raw_mqtt_stats s;
-	struct imu_raw_status status = {.state = IMU_RAW_STATE_MEASURING};
-	struct imu_raw_info info = {.epoch_id = 1};
-	char long_id[IMU_RAW_MQTT_DEVICE_ID_MAX + 1];
-	size_t length = make_batch(payload, sizeof(payload));
-
-	/* Refused: no checks pass, nothing logged. */
-	config_init(&cfg, "rp2040", 0);
-	assert(imu_raw_mqtt_start(&cfg) == -EINVAL);
-	config_init(&cfg, "", 1883);
-	assert(imu_raw_mqtt_start(&cfg) == -EINVAL);
-	config_init(&cfg, "imu/x", 1883);
-	assert(imu_raw_mqtt_start(&cfg) == -EINVAL);
-	memset(long_id, 'a', sizeof(long_id) - 1);
-	long_id[sizeof(long_id) - 1] = '\0';
-	config_init(&cfg, "", 1883);
-	memcpy(cfg.device_id, long_id, sizeof(long_id));
-	assert(imu_raw_mqtt_start(&cfg) == 0); /* 40 characters: the maximum */
-	imu_raw_mqtt_stop();
-	assert(strstr(log_buf, "<wrn> imu_raw_mqtt: No MQTT transport in this build (stub)") !=
-	       NULL);
-	log_buf[0] = '\0';
-
-	/* A session to the default gateway (imu.host unset), as "imu start". */
-	config_init(&cfg, "rp2040", 18830);
-	assert(imu_raw_mqtt_start(&cfg) == 0);
-	assert(strcmp(log_buf, "<wrn> imu_raw_mqtt: No MQTT transport in this build (stub): "
-			       "batches are counted as dropped\n") == 0);
-	assert(imu_raw_mqtt_start(&cfg) == -EBUSY); /* until the stop */
-	imu_raw_mqtt_get_stats(&s);
-	assert(s.running && !s.connected && s.via_gateway && s.address.s_addr == 0 &&
-	       s.port == 18830);
-	assert(s.published == 0 && s.failures == 0 && s.connects == 0 && s.queued == 0 &&
-	       s.dropped_batches == 0 && s.lock_wait_count == 0 && s.publish_max_us == 0);
-
-	assert(imu_raw_mqtt_submit(NULL, payload, length) == -EAGAIN);
-	assert(imu_raw_mqtt_submit(NULL, payload, length) == -EAGAIN);
-	assert(imu_raw_mqtt_submit(NULL, payload, length - 1) == -EINVAL);
-	imu_raw_mqtt_set_info(&info);
-	imu_raw_mqtt_report(&status);
-	imu_raw_mqtt_get_stats(&s);
-	assert(s.dropped_batches == 2 && s.dropped_accel == 4 && s.dropped_gyro == 2);
-	assert(s.queued == 0 && s.queue_high == 0 && s.lock_wait_count == 3 && s.published == 0);
-
-	imu_raw_mqtt_stop();
-	imu_raw_mqtt_get_stats(&s);
-	assert(!s.running && !s.connected && s.dropped_batches == 2);
-
-	/* A fixed server (imu.host): its address is kept; counters restart. */
-	config_init(&cfg, "board-2_b", 1883);
-	assert(zsock_inet_pton(AF_INET, "10.42.0.1", &cfg.address) == 1);
-	assert(imu_raw_mqtt_start(&cfg) == 0);
-	imu_raw_mqtt_get_stats(&s);
-	assert(s.running && !s.via_gateway && s.address.s_addr == cfg.address.s_addr &&
-	       s.port == 1883 && s.dropped_batches == 0 && s.lock_wait_count == 0);
-	imu_raw_mqtt_stop();
-	printf("imu_raw_mqtt stub: ok\n");
-}
-
 static void runner(void *arg)
 {
 	(void)arg;
 	test_inet();
 	test_hwinfo();
-	test_transport();
 	fflush(stdout);
 	_exit(0);
 }
@@ -309,7 +166,7 @@ int main(void)
 	if (zephyr_compat_initialize() != 0) {
 		return 2;
 	}
-	/* The shell's priority: "imu start" runs in the console's task. */
+	/* The shell's priority: the commands run in the console's task. */
 	if (xTaskCreate(runner, "runner", RUNNER_STACK / sizeof(StackType_t), NULL, NANO_PRIO_SHELL,
 			NULL) != pdPASS) {
 		return 2;
