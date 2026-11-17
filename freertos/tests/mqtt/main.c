@@ -86,7 +86,7 @@
 #define MAX_MESSAGES 1024
 #define JSON_MAX     800
 
-volatile int z_host_isr_depth;
+_Thread_local int z_host_isr_depth;
 
 void app_tick_hook(void);
 

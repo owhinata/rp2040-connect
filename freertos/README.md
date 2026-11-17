@@ -59,7 +59,6 @@ On the first build the Pico SDK fetches the source of `picotool` from GitHub and
 | Option | Default | Content |
 |---|---|---|
 | `-DNANO_SELFTEST=ON` | OFF | Adds the test command `selftest` (the self-test of the Zephyr compatibility layer, I2C0 and the LSM6DSOX; use it with the measurement stopped and the board at rest) |
-| `-DNANO_SCHED_ZEPHYR=OFF` | ON | Leaves the choice among tasks of one priority as FreeRTOS makes it, not as Zephyr does (for comparison) |
 
 ## Host tests
 

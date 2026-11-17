@@ -39,13 +39,12 @@ void nina_os_sleep_ms(uint32_t ms);
 int64_t nina_os_uptime_ms(void);
 
 /* Optional: waiting for the module's READY line on an event instead of
- * sampling it.  Without NINA_OS_WAIT_READY (the Zephyr and NuttX builds,
- * and the FreeRTOS build by default), nina_spi.c samples READY every
- * NINA_READY_POLL_US with nina_os_sleep_us(), as the Zephyr build's
- * nina_wifi.c does.  An OS that defines NINA_OS_WAIT_READY for the
- * compilation of nina_spi.c provides these three instead (the FreeRTOS
- * build with NANO_NINA_READY_IRQ: freertos/drivers/nina/nina_os.c, on a
- * GPIO edge interrupt), and nina_spi.c waits with them:
+ * sampling it.  Without NINA_OS_WAIT_READY (the Zephyr and NuttX builds),
+ * nina_spi.c samples READY every NINA_READY_POLL_US with
+ * nina_os_sleep_us(), as the Zephyr build's nina_wifi.c does.  An OS that
+ * defines NINA_OS_WAIT_READY for the compilation of nina_spi.c provides
+ * these three instead (the FreeRTOS build: freertos/drivers/nina/nina_os.c,
+ * on a GPIO edge interrupt), and nina_spi.c waits with them:
  *
  *   nina_os_ready_arm(DESIRED);
  *   until READY reads DESIRED or the deadline has passed:

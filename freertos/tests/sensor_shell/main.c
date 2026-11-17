@@ -83,7 +83,7 @@
 #define SESSION_STACK 16384
 #define CAPTURE_SIZE  16384
 
-volatile int z_host_isr_depth;
+_Thread_local int z_host_isr_depth;
 
 /* The RAM log (app_log_vprintf() below), printed when a check fails. */
 static char log_text[8192];

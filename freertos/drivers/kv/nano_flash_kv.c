@@ -55,10 +55,10 @@
  * time, as on NuttX (the Zephyr build's driver keeps them off for one
  * flash_write() or flash_erase() call; NVS writes one entry's data, at most
  * two pages, or one ATE per call and erases one sector per call).  What
- * that costs on this build: the 10 kHz SysTick is pending once and handled
+ * that costs on this build: the 1 kHz SysTick is pending once and handled
  * when the interrupts come back, so the FreeRTOS tick (and with it the
  * compatibility layer's timeouts, sleeps and the time slices, tick.c) falls
- * behind by up to about 400 ticks per erase; k_uptime_*() and
+ * behind by up to about 40 ticks per erase; k_uptime_*() and
  * time_us_64() come from the TIMER, which keeps counting.  A fatal error
  * while XIP is off cannot run the fault exit (fault.c is in the flash):
  * the core locks up without a record until the board is reset.

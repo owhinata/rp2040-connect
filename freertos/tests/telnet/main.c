@@ -61,7 +61,7 @@
 #define TASK_STACK 8192
 
 uint16_t test_telnet_port;
-volatile int z_host_isr_depth;
+_Thread_local int z_host_isr_depth;
 
 void app_tick_hook(void);
 

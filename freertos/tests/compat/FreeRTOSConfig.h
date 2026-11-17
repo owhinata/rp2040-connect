@@ -4,9 +4,9 @@
  * freertos/tests/shell, uses it as well): the board's
  * (freertos/app/usb-console/FreeRTOSConfig.h) where the layer depends on it
  * (time slices by the tick hook, two task notifications, mutexes, static and
- * dynamic allocation, the priorities, the length of task names), with a
- * 1 ms tick (the POSIX port's tick is a thread that sleeps a tick between
- * signals) and the C library's heap.
+ * dynamic allocation, the priorities, the length of task names, the 1 ms
+ * tick; the POSIX port's tick is a thread that sleeps a tick between
+ * signals), with the C library's heap.
  */
 
 #ifndef FREERTOS_CONFIG_H
@@ -65,11 +65,5 @@
 #define INCLUDE_eTaskGetState             1
 #define INCLUDE_xTaskAbortDelay           1
 #define INCLUDE_xSemaphoreGetMutexHolder  1
-
-/* Zephyr's choice among the tasks of one priority: a preempted task goes on
- * (the Zephyr compatibility layer, freertos/drivers/compat/zephyr_os_sched.h:
- * traceTASK_SWITCHED_OUT() and traceTASK_SWITCHED_IN()).
- */
-#include "zephyr_os_sched.h"
 
 #endif /* FREERTOS_CONFIG_H */

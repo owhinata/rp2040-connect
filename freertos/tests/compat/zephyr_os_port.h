@@ -8,6 +8,10 @@
  * - The tick hook needs no switch request: xTaskIncrementTick() switches
  *   after the hook when a FromISR call made a higher task ready.  The POSIX
  *   port's portYIELD_FROM_ISR() would switch inside the signal handler.
+ * - The end of a time slice (freertos/app/usb-console/src/tick.c) does call
+ *   portYIELD_FROM_ISR(), so another thread runs while the interrupted one
+ *   is still inside the hook: z_host_isr_depth is per thread, and the task
+ *   switched to is not in an interrupt handler.
  * - The port switches threads at once when a task wakes a higher one inside a
  *   critical section (it does not wait for the section to end), so the lock
  *   of a task also suspends the scheduler: the switch then waits for the
@@ -25,7 +29,7 @@
 #include "FreeRTOS.h"
 #include "task.h"
 
-extern volatile int z_host_isr_depth;
+extern _Thread_local int z_host_isr_depth;
 
 static inline uint64_t nano_mono_us(void)
 {

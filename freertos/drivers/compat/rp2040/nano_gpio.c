@@ -34,9 +34,9 @@
  * (that of gpio_set_irq_callback()) then leaves alone.  The SDK keeps the
  * mask per core and asserts that no two handlers claim a pin; one handler
  * cannot be added twice for two masks, so the pins that may interrupt are
- * fixed here (NANO_GPIO_IRQ_PINS: the LSM6DSOX's INT1, GPIO24, and with
- * NANO_NINA_READY_IRQ the NINA's READY, GPIO10; Zephyr's driver takes any
- * pin) and claimed together.  An interrupt on another pin is refused with
+ * fixed here (NANO_GPIO_IRQ_PINS: the LSM6DSOX's INT1, GPIO24, and the
+ * NINA's READY, GPIO10; Zephyr's driver takes any pin) and claimed
+ * together.  An interrupt on another pin is refused with
  * -ENOTSUP.
  *
  * The interrupt runs at the SDK's default priority (0x80) like every
@@ -65,16 +65,11 @@
 #include "nano_gpio.h"
 
 /* The pins whose interrupt the board uses: GPIO24, the LSM6DSOX's INT1
- * (irq-gpios = <&gpio0 24 0> of the Zephyr build's devicetree), and, with
- * the build option NANO_NINA_READY_IRQ, GPIO10, the NINA-W102's READY
- * (freertos/drivers/nina/nina_os.c waits for its edges; the Zephyr build
- * samples it).
+ * (irq-gpios = <&gpio0 24 0> of the Zephyr build's devicetree), and GPIO10,
+ * the NINA-W102's READY (freertos/drivers/nina/nina_os.c waits for its
+ * edges; the Zephyr build samples it).
  */
-#ifdef NANO_NINA_READY_IRQ
 #define NANO_GPIO_IRQ_PINS ((1u << 24) | (1u << 10))
-#else
-#define NANO_GPIO_IRQ_PINS (1u << 24)
-#endif
 
 /* nano_gpio.h's event bits are the SDK's (and the registers'). */
 _Static_assert(NANO_GPIO_IRQ_LEVEL_LOW == GPIO_IRQ_LEVEL_LOW, "GPIO_IRQ_LEVEL_LOW");

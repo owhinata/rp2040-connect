@@ -10,29 +10,28 @@
  *                                  layer's k_mutex, zephyr_mutex.c)
  *   nina_os_dns_lock(), _unlock()  K_MUTEX_DEFINE(nina_dns_lock), the same
  *   nina_os_sleep_us(us)           k_sleep(K_USEC(us)) = k_usleep(us): us
- *                                  rounded up to ticks, plus one tick
- *                                  (NINA_READY_POLL_US 100 sleeps 2 ticks:
- *                                  200 us with the default 100 us tick, 2 ms
- *                                  with NANO_TICK_HZ=1000)
+ *                                  rounded up to ticks of 1 ms, plus one
+ *                                  tick (the core of this build does not
+ *                                  call it: its waits for READY are the
+ *                                  ones below)
  *   nina_os_sleep_ms(ms)           k_sleep(K_MSEC(ms)) = k_msleep(ms): the
- *                                  same rounding (10 ms: 101 ticks, 750 ms:
- *                                  7501 ticks of 100 us; 11 and 751 of 1 ms)
+ *                                  same rounding (10 ms: 11 ticks, 750 ms:
+ *                                  751 ticks)
  *   nina_os_uptime_ms()            k_uptime_get(): the TIMER in ms, rounded
  *                                  down (Zephyr: the tick count in ms,
- *                                  rounded down; the same with a 100 us
- *                                  tick, except that this one goes on while
- *                                  interrupts are disabled)
+ *                                  rounded down; the same, except that this
+ *                                  one goes on while interrupts are
+ *                                  disabled)
  *
  * The layer's mutex is a FreeRTOS mutex made at its first lock (a mutex
  * left all zero is unlocked, as in Zephyr), so these work from the first
  * task on; not from an interrupt handler (nor does the core call them so).
  * K_FOREVER waits cannot fail: nina_os_lock() returns 0.
  *
- * With NANO_NINA_READY_IRQ (freertos/script/build.sh
- * -DNANO_NINA_READY_IRQ=ON; off by default), the core's waits for READY
- * (nina_spi.c wait_ready(), compiled with NINA_OS_WAIT_READY) sleep on an
- * edge interrupt of the line instead of sampling it every 100 us
- * (nina_os_ready_*() of nina_os.h; the Zephyr and NuttX builds sample):
+ * The core's waits for READY (nina_spi.c wait_ready(), compiled with
+ * NINA_OS_WAIT_READY, nina.cmake) sleep on an edge interrupt of the line
+ * instead of sampling it (nina_os_ready_*() of nina_os.h; the Zephyr and
+ * NuttX builds sample it every 100 us):
  *
  *   nina_os_ready_arm(desired)  drops a wake-up left from before
  *                               (k_sem_reset()), then enables the edge of
@@ -42,7 +41,7 @@
  *                               0 (nano_gpio_irq_configure(): clears an edge
  *                               latched while the event was off, then
  *                               enables it; GPIO10 is one of
- *                               NANO_GPIO_IRQ_PINS with this option,
+ *                               NANO_GPIO_IRQ_PINS,
  *                               freertos/drivers/compat/rp2040/nano_gpio.c);
  *                               the first call adds the callback to the
  *                               layer's gpio0
@@ -58,9 +57,8 @@
  *                               interrupts are masked (a flash erase); in
  *                               slices, the wait passes the deadline by at
  *                               most the ticks lost in the last slice, as
- *                               the sampling does (one read of READY per
- *                               slice while the module stays busy, against
- *                               one per 2 ticks when sampled)
+ *                               a sampling would (one read of READY per
+ *                               slice while the module stays busy)
  *   nina_os_ready_disarm()      disables the edge (no interrupts while CS
  *                               toggles READY during the transfers)
  *
@@ -78,11 +76,10 @@
 
 #include "nina_os.h"
 
-#if defined(NANO_NINA_READY_IRQ) != defined(NINA_OS_WAIT_READY)
-#error "NANO_NINA_READY_IRQ and NINA_OS_WAIT_READY go together (nina.cmake)"
+#ifndef NINA_OS_WAIT_READY
+#error "the core waits for READY with nina_os_ready_*() (nina.cmake)"
 #endif
 
-#ifdef NANO_NINA_READY_IRQ
 #include <zephyr/device.h>
 #include <zephyr/drivers/gpio.h>
 
@@ -131,7 +128,6 @@ void nina_os_ready_disarm(void)
 {
 	(void)nano_gpio_irq_configure(READY_GPIO, 0);
 }
-#endif /* NANO_NINA_READY_IRQ */
 
 static K_MUTEX_DEFINE(nina_lock);
 static K_MUTEX_DEFINE(nina_dns_lock);

@@ -62,7 +62,7 @@
 #define US_PER_SAMPLE    150
 #define SENDBUF          4096
 
-volatile int z_host_isr_depth;
+_Thread_local int z_host_isr_depth;
 
 void app_tick_hook(void);
 

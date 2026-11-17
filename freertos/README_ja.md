@@ -59,7 +59,6 @@ freertos/script/build.sh [--clean] [-j N] [-v] [-DNAME=VALUE ...] [APP]
 | オプション | 既定 | 内容 |
 |---|---|---|
 | `-DNANO_SELFTEST=ON` | OFF | 試験用の `selftest` コマンド（Zephyr 互換層、I2C0、LSM6DSOX の自己診断。計測を止め、ボードを静止させて使う）を入れる |
-| `-DNANO_SCHED_ZEPHYR=OFF` | ON | 同じ優先度のタスクの選び方を、Zephyr に合わせず FreeRTOS 標準のままにする（比較用） |
 
 ## ホストテスト
 

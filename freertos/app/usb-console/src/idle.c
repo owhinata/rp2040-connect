@@ -16,10 +16,9 @@
  * FreeRTOS's idle task calls vApplicationIdleHook() in its loop
  * (configUSE_IDLE_HOOK); without tickless idle (configUSE_TICKLESS_IDLE 0)
  * the RP2040 port never waits with WFI itself.  The tick interrupt
- * (SysTick, every 100 us, or every 1 ms with the build option
- * NANO_TICK_HZ=1000) wakes the CPU every tick and its handler counts as
- * load: the
- * Zephyr and NuttX builds are tickless and have no such interrupt.  When
+ * (SysTick, every 1 ms) wakes the CPU every tick and its handler counts as
+ * load: the Zephyr and NuttX builds are tickless and have no such
+ * interrupt.  When
  * the interrupt makes a task ready, the PendSV it requests is taken right
  * after interrupts are enabled again, and the idle task is left.
  *

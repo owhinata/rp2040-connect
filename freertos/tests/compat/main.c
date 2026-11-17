@@ -24,7 +24,7 @@
 #define RUNNER_STACK 4096
 #define RUNS         2
 
-volatile int z_host_isr_depth;
+_Thread_local int z_host_isr_depth;
 
 /* tick.c's vApplicationTickHook() (time slices and zephyr_compat_tick()),
  * counted as an interrupt handler.

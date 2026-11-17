@@ -54,7 +54,7 @@
 #define SESSION_STACK 8192
 #define CAPTURE_SIZE  4096
 
-volatile int z_host_isr_depth;
+_Thread_local int z_host_isr_depth;
 
 /* tick.c's vApplicationTickHook() (time slices and zephyr_compat_tick()),
  * counted as an interrupt handler.

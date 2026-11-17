@@ -733,8 +733,8 @@ Zephyr 版の NINA と I2C0 のドライバーは、今は自分の `drivers/` �
 
 - §12 の共有ソースを、NuttX 版と同じく互換層の上で動かす。互換層の FreeRTOS の部分は `freertos/drivers/compat/`。
 - 優先度は `FreeRTOS = 20 − Zephyr` で対応させる。協調スレッドは高い優先度で近似し、優先度継承は 1 段だけ
-  （Zephyr は持ち主の連鎖をたどる）。同じ優先度のタスクの選び方は、カーネルのトレースマクロで Zephyr の規則
-  （横取りされたスレッドが続きを走る、時分割 20 ms）に合わせる。
+  （Zephyr は持ち主の連鎖をたどる）。同じ優先度のタスクの選び方は FreeRTOS 標準（切り替えのたびに同じ優先度の
+  次のタスク。Zephyr では横取りされたスレッドが続きを走る）で、時分割 20 ms は tick フックで作る。
 - 独自のコマンドと `wifi cred`・`zperf` は Zephyr 版と同じ構文と出力にする。`wifi` の `connect`・`disconnect`・`scan`・
   `status` は Zephyr の `wifi` コマンドから、このボードで使えるオプションだけを残したもの。`zperf` は iperf3 の方式の
   TCP だけを自作した。そのほかは短い名前（`version`、`reboot`、`ps`、`uptime`、`ifconfig`、`date`）で、シェルから
@@ -746,12 +746,13 @@ Zephyr 版の NINA と I2C0 のドライバーは、今は自分の `drivers/` �
 
 - §7.1 の「ボードの時計」は TIMER で、Zephyr 版・NuttX 版と同じ読み方をする。`k_uptime_get()`、`k_cycle_get_*()`、
   センサーの時計、壁時計、CPU 負荷の時間の源もすべて TIMER。
-- カーネルの tick は 100 µs（32 ビット）の周期の SysTick。FreeRTOS の RP2040 ポートは tickless に対応していない。
-  待ち時間を tick に切り上げて 1 tick 足す規則は Zephyr 版と同じ。
-- 割り込みを止めている間は tick が数えられない。フラッシュの消去を含む `kv set` 1 回で 457〜497 tick（46〜50 ms）
-  遅れた（2026-11-17、3 回）。その分 sleep・遅延ワーク・時分割が遅れるが、時刻（TIMER）は遅れない。
-- `cpu_active` は §11.4 と同じアイドルの窓の方式で測る。100 µs ごとの tick の割り込みは負荷に入る（Zephyr 版・
+- カーネルの tick は 1 ms（32 ビット）の周期の SysTick（Zephyr 版・NuttX 版の tick は 100 µs）。FreeRTOS の RP2040
+  ポートは tickless に対応していない。待ち時間を tick に切り上げて 1 tick 足す規則は Zephyr 版と同じ。
+- 割り込みを止めている間は tick が数えられない。フラッシュの消去を含む `kv set` 1 回で 46〜50 ms 遅れた
+  （2026-11-17、3 回）。その分 sleep・遅延ワーク・時分割が遅れるが、時刻（TIMER）は遅れない。
+- `cpu_active` は §11.4 と同じアイドルの窓の方式で測る。1 ms ごとの tick の割り込みは負荷に入る（Zephyr 版・
   NuttX 版にはこの割り込みが無い）。`ps` の CPU 列は起動からの累積。
+- NINA の READY は GPIO10 のエッジ割り込みで待つ（Zephyr 版・NuttX 版は 100 µs ごとに読む）。
 
 ### 13.3 ソケット
 

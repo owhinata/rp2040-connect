@@ -464,7 +464,7 @@ RAM（264 KB）の割り当て、boot2（0x10000000 の 256 バイト）、コ�
 | TCP の送信（ボード → PC、20 秒） | 2.94 Mbit/s（`zperf`、1024 バイトずつ。PC の `iperf3` の表示は 2.93 Mbit/s） |
 | TCP の受信（PC → ボード、20 秒） | 1.38 Mbit/s（`zperf`） |
 
-- FreeRTOS 版の `cpu_active` には、100 µs ごとの tick の割り込みの時間が入ります（Zephyr 版と NuttX 版にはこの割り込みが
+- FreeRTOS 版の `cpu_active` には、周期の tick の割り込みの時間が入ります（Zephyr 版と NuttX 版にはこの割り込みが
   ありません）。
 - 同じ日に NuttX 版（KV の形式を Zephyr 版にそろえた版）で測った書き込み直後の最初の計測（71 秒、1 回）は、
   `cpu_active` 70.0 % でした。

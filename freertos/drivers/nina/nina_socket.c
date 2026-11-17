@@ -116,11 +116,10 @@
  *
  * The waits are the core's boundary (nina_os.h, freertos/drivers/nina/
  * nina_os.c): nina_os_sleep_ms() is k_sleep(K_MSEC()), the time rounded up
- * to ticks plus one tick (with the default 100 us tick 20 ms: 201 ticks, 1
- * ms: 11 ticks, as in the Zephyr build with its 10 kHz tick; with
- * NANO_TICK_HZ=1000, 21 and 2 ticks of 1 ms), and nina_os_uptime_ms() is
- * k_uptime_get(), the clock of the core's deadlines; the host test
- * (freertos/tests/socket) replaces both.
+ * to ticks plus one tick (20 ms: 21 ticks of 1 ms, 1 ms: 2 ticks; the
+ * Zephyr build with its 10 kHz tick: 201 and 11 ticks of 100 us), and
+ * nina_os_uptime_ms() is k_uptime_get(), the clock of the core's
+ * deadlines; the host test (freertos/tests/socket) replaces both.
  *
  * A descriptor that is not open (or out of range) gives EBADF, as Zephyr's
  * socket layer does, before anything else.  The errors of the module's

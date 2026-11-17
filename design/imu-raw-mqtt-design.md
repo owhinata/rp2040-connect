@@ -846,8 +846,8 @@ and NuttX builds in [`freertos/drivers/README.md`](../freertos/drivers/README.md
   part of the layer is `freertos/drivers/compat/`.
 - Priorities map as `FreeRTOS = 20 − Zephyr`. Cooperative threads are approximated by higher priorities,
   and priority inheritance goes one level only (Zephyr follows the chain of holders). The choice among tasks
-  of one priority follows Zephyr's rule (a preempted thread goes on, 20 ms time slices) through the
-  kernel's trace macros.
+  of one priority is FreeRTOS's (the next task of the priority at every switch; in Zephyr a preempted
+  thread goes on), and the tick hook makes 20 ms time slices.
 - The custom commands, `wifi cred` and `zperf` have the Zephyr build's syntax and output. `connect`,
   `disconnect`, `scan` and `status` of `wifi` are Zephyr's `wifi` command with only the options this board
   can use; `zperf` is a small implementation of the iperf3 protocol, TCP only. The others have short names
@@ -860,14 +860,17 @@ and NuttX builds in [`freertos/drivers/README.md`](../freertos/drivers/README.md
 
 - The "board clock" of section 7.1 is the TIMER, read as in the Zephyr and NuttX builds. `k_uptime_get()`,
   `k_cycle_get_*()`, the sensor clock, the wall clock and the CPU load are all timed by the TIMER.
-- The kernel tick is a periodic SysTick of 100 µs (32 bits); FreeRTOS's RP2040 port has no tickless mode.
-  A wait is rounded up to ticks plus one tick, as in the Zephyr build.
-- Ticks are lost while interrupts are disabled. A `kv set` that included a flash erase lost 457 to 497
-  ticks (46-50 ms; 2026-11-17, 3 times). Sleeps, delayed work and time slices are late by that much; the
-  time (TIMER) is not.
-- `cpu_active` is measured with the idle windows of section 11.4. The tick interrupt every 100 µs counts
+- The kernel tick is a periodic SysTick of 1 ms (32 bits; the Zephyr and NuttX builds' tick is 100 µs);
+  FreeRTOS's RP2040 port has no tickless mode. A wait is rounded up to ticks plus one tick, as in the
+  Zephyr build.
+- Ticks are lost while interrupts are disabled. A `kv set` that included a flash erase lost 46-50 ms
+  (2026-11-17, 3 times). Sleeps, delayed work and time slices are late by that much; the time (TIMER) is
+  not.
+- `cpu_active` is measured with the idle windows of section 11.4. The tick interrupt every 1 ms counts
   as load (the Zephyr and NuttX builds have no such interrupt). The CPU column of `ps` is cumulative since
   the start.
+- The NINA's READY is waited for on GPIO10's edge interrupt (the Zephyr and NuttX builds read it every
+  100 µs).
 
 ### 13.3 Sockets
 

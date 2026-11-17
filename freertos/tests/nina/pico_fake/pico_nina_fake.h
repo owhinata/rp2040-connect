@@ -3,8 +3,8 @@
  * its host test (freertos/tests/nina/main.c, which implements the
  * functions: they record the calls and play the module's side of the
  * lines and of SPI1), and the GPIO interrupt functions of
- * freertos/drivers/compat/rp2040/nano_gpio.c for the test's build with
- * NANO_NINA_READY_IRQ (READY's edges).  hardware/gpio.h, hardware/irq.h,
+ * freertos/drivers/compat/rp2040/nano_gpio.c (READY's edges for
+ * freertos/drivers/nina/nina_os.c).  hardware/gpio.h, hardware/irq.h,
  * hardware/resets.h and hardware/spi.h next to this one include it.  Names
  * and values as in the SDK (hardware_gpio, hardware_irq, hardware_resets,
  * hardware_spi, hardware/regs/intctrl.h, hardware/regs/spi.h).

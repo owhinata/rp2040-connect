@@ -16,7 +16,7 @@ OS に依存しない部分は `common/compat/`、FreeRTOS の部分は `freerto
 | 場所 | 内容 |
 |---|---|
 | `app/usb-console/` | 起動（`main.c`）、FreeRTOS 版だけのコマンド（`commands.c`）、カーネルの設定（`FreeRTOSConfig.h`）、優先度の対応（`priorities_os.h`）、時計（`os_clock.h`）、tick フック（`tick.c`）、CPU 負荷（`idle.c`）、異常停止（`fault.[ch]`）、割り込み用スタックの空き（`irq_stack.c`） |
-| `drivers/compat/` | 互換層の FreeRTOS の部分: カーネル（`zephyr_kernel.c`・`zephyr_mutex.c`・`zephyr_os*.h`）、同じ優先度の選び方（`zephyr_os_sched.h`）、ネットワークのインターフェース（`zephyr_net_if.c`）、壁時計（`zephyr_sys_clock.c`）、センサーの時計、前置きヘッダー（`common_prelude.h`）、自己診断（`zephyr_selftest.[ch]`）、RP2040 の部分（`rp2040/`: GPIO バンク 0、チップ ID） |
+| `drivers/compat/` | 互換層の FreeRTOS の部分: カーネル（`zephyr_kernel.c`・`zephyr_mutex.c`・`zephyr_os*.h`）、ネットワークのインターフェース（`zephyr_net_if.c`）、壁時計（`zephyr_sys_clock.c`）、センサーの時計、前置きヘッダー（`common_prelude.h`）、自己診断（`zephyr_selftest.[ch]`）、RP2040 の部分（`rp2040/`: GPIO バンク 0、チップ ID） |
 | `drivers/shell/` | 行編集（`cli.c`）、コンソールとタスクごとの出力先（`nano_console.c`）、Pico SDK の stdio の差し替え（`nano_stdio.c`）、コマンドの表と実行（`nano_shell.c`）、Zephyr の引数の分割の写し（`shell_argv.c`）、セッションごとの getopt（`getopt_state.c`） |
 | `drivers/libc/` | newlib の FILE 関数の差し替え（`stdio_wrap.c`）、newlib に無いソケット系のヘッダー（`include/`。型と定数だけ）、`inet_pton`・`inet_ntop`（`inet.c`） |
 | `drivers/log/` | RAM ログ（`log_ram.c`。リングは `common/log/log_ring.c`） |
@@ -58,13 +58,12 @@ FreeRTOS 版だけがビルドする共有ファイル: `common/compat/zephyr_wi
 | 優先度 | 小さいほど先、協調 -16〜-1、横取り 0〜14 | `20 − Zephyr`（横取り 0〜14 が 20〜6、協調 -1 が 21）。`Tmr Svc` は 31、アイドルは 0 |
 | 協調スレッド | 横取りされない | 高い優先度で近似（より高いタスクには横取りされる。NuttX 版と同じ） |
 | 優先度継承 | 持ち主の連鎖をたどり、unlock ごとに戻す | 1 段だけ。持っているミューテックスをすべて離したときに戻す |
-| 同じ優先度の選び方 | 横取りされたスレッドが続きを走る。時分割 20 ms | `zephyr_os_sched.h` のトレースマクロで Zephyr の規則にする（カーネル V11.3.3 の内部の名前を使う）。時分割は tick フック（`tick.c`）で 20 ms。準備できたタスクの並びは FreeRTOS のまま |
-| tick と sleep | 100 µs。相対の待ちは「tick に切り上げ + 1 tick」 | 100 µs（`configTICK_RATE_HZ` 10000、32 ビット）、同じ丸め。周期の SysTick（tickless ではない） |
+| 同じ優先度の選び方 | 横取りされたスレッドが続きを走る。時分割 20 ms（そのスレッドに切り替わってから数える） | FreeRTOS 標準: 切り替えのたびに同じ優先度の次のタスクを順に選ぶので、横取りされたタスクは同じ優先度のほかの準備できたタスクの後になる。時分割は tick フック（`tick.c`）で、20 tick ごとの決まった刻み（切り替えから数えない） |
+| tick と sleep | 100 µs。相対の待ちは「tick に切り上げ + 1 tick」 | 1 ms（`configTICK_RATE_HZ` 1000、32 ビット）、同じ丸め（1 ms より短い待ちは 1〜2 ms になる）。周期の SysTick（tickless ではない） |
 
-- `-DNANO_SCHED_ZEPHYR=OFF` でビルドすると、同じ優先度の選び方を FreeRTOS 標準に戻します（比較用）。
-- 32 ビットの tick は約 4.97 日で一周します。割り込みを止めている間（フラッシュの消去）は tick が数えられず
+- 32 ビットの tick は約 49.7 日で一周します。割り込みを止めている間（フラッシュの消去）は tick が数えられず
   遅れます。`vTaskDelay()`、遅延ワーク、時分割はその分遅れ、`k_uptime_*()` は TIMER なので遅れません。
-- `portTICK_PERIOD_MS`（この tick では 0）と Pico SDK の `sleep_ms()`（最後の 150 µs を空回りで待つ）は使いません。
+- Pico SDK の `sleep_ms()`（最後の 150 µs を空回りで待つ）は使いません。
 
 ## タスク
 
@@ -94,7 +93,7 @@ Telnet、`K_THREAD_DEFINE()` のスレッド、KV、校正値、時刻同期、�
 NuttX 版の起動処理の順と同じ）。
 
 **CPU 負荷**（`idle.c`）: アイドルフックで、割り込みを禁止し、窓を開き、`WFI` で待ち、窓を閉じ、割り込みを許可
-します（Zephyr 版の `CONFIG_CPU_LOAD`、NuttX 版の `up_idle()` と同じ測り方）。100 µs ごとの tick の割り込みは負荷に
+します（Zephyr 版の `CONFIG_CPU_LOAD`、NuttX 版の `up_idle()` と同じ測り方）。1 ms ごとの tick の割り込みは負荷に
 入ります（Zephyr 版・NuttX 版にはこの割り込みが無い）。`ps` の CPU 列は起動からの累積で、時間の源は TIMER です。
 
 ## シェルとコンソール
@@ -146,6 +145,9 @@ FreeRTOS 版が実装するのは flash の境界（`common/compat/nano_flash_kv
   CS・READY・RESET・IRQ の 4 本。Zephyr のドライバーと同じ順と値で設定）と `nina_os.h`（`nina_os.c`: 再帰・優先度継承の
   ロック、名前解決のロック、「切り上げ + 1 tick」の sleep、ms の時計）を実装します。境界の意味は
   [`nuttx/drivers/README_ja.md`](../../nuttx/drivers/README_ja.md) の「NINA-W102」の表のとおりです。
+- コアの READY の待ちは、READY のエッジ割り込み（GPIO10）まで眠り、最長 10 ms ごとに READY を読み直します
+  （`nina_os.c`。`nina_os.h` の任意の部分で、ビルドが `NINA_OS_WAIT_READY` で有効にする）。Zephyr 版・NuttX 版は
+  100 µs ごとに READY を読みます。
 - ソケット（`drivers/nina/nina_socket.c`）: 互換層の `zsock_*()` を、10 個の fd の表を介して共有のコアに直接つなぎます。
   Zephyr 版のソケットのオフロードと同じく、呼んだタスクで NINA に問い合わせて待ちます（NuttX 版の usrsock と
   `nina_event` のような、イベントのスレッドはありません）。fd の番号は newlib の fd とは別で、`zsock_*()` だけが使います。
@@ -169,7 +171,7 @@ FreeRTOS 版が実装するのは flash の境界（`common/compat/nano_flash_kv
   （`drivers/lsm6dso/lsm6dso_instance.h`）。
 - GPIO（`drivers/compat/rp2040/nano_gpio.c`）: 互換層の `gpio0` の下の GPIO バンク 0 を、Zephyr の `gpio_rpi_pico.c` と
   同じ Pico SDK の呼び出しで操作します。割り込みは `gpio_add_raw_irq_handler_masked()` で登録し、使えるのは
-  LSM6DSOX の INT1（GPIO24）だけです（ほかのピンは `-ENOTSUP`）。
+  LSM6DSOX の INT1（GPIO24）と NINA の READY（GPIO10）だけです（ほかのピンは `-ENOTSUP`）。
 
 ## 取得、時刻同期、MQTT
 
@@ -190,13 +192,12 @@ MQTT のクライアントは NuttX 版と共有する `common/imu/mqtt_min.c`�
 | オプション | 既定 | 内容 |
 |---|---|---|
 | `NANO_SELFTEST` | OFF | `selftest` コマンドを入れる（下） |
-| `NANO_SCHED_ZEPHYR` | ON | OFF で同じ優先度の選び方を FreeRTOS 標準にする（`selftest` の `timeslice`・`timeslice_preempt` は skipped） |
 
 ## 自己診断（`selftest`）
 
 `-DNANO_SELFTEST=ON` のビルドにだけ入る試験用のコマンドです。計測を止め、ボードを静止させて実行します。
 互換層（`drivers/compat/zephyr_selftest.c`: ミューテックス、セマフォ、sleep、時計、割り込みからの起床、`k_poll`、ワーク、
-spinlock、atomic、静的なスレッド、時分割の 22 項目）、I2C0（`drivers/i2c_dw/i2c_dw_selftest.c`: 6 項目）、LSM6DSOX（`drivers/lsm6dso/lsm6dso_selftest.c`:
+spinlock、atomic、静的なスレッド、時分割の 21 項目）、I2C0（`drivers/i2c_dw/i2c_dw_selftest.c`: 6 項目）、LSM6DSOX（`drivers/lsm6dso/lsm6dso_selftest.c`:
 3 項目）の結果を `N of M tests failed` の形で表示します。
 
 ## ホストテスト
@@ -209,7 +210,7 @@ spinlock、atomic、静的なスレッド、時分割の 22 項目）、I2C0（`
 | `compat` | 互換層の自己診断（`selftest` と同じ `zephyr_selftest.c`） |
 | `shell` | 2 つのセッションのシェル、行編集、出力先 |
 | `kv` | フラッシュの境界と KV（Pico SDK のフラッシュ関数の偽物の上） |
-| `nina` | NINA の SPI と線の境界、カーネルの部分 |
+| `nina` | NINA の SPI と線の境界、READY の割り込み待ち、カーネルの部分 |
 | `i2c_dw` | I2C0 の境界とデバイス、Zephyr の I2C の API |
 | `gpio` | GPIO バンク 0 の境界、`gpio0`、FIFO の割り込み |
 | `imu` | アドレスの変換、`hwinfo` |
@@ -239,7 +240,8 @@ spinlock、atomic、静的なスレッド、時分割の 22 項目）、I2C0（`
 | エラー番号（errno） | Zephyr の値（`EILSEQ` 138） | NuttX の値（`EILSEQ` 84） | newlib の値（Zephyr と同じ。`EILSEQ` 138） |
 | 優先度 | Zephyr | `118 − Zephyr` | `20 − Zephyr` |
 | デバイスの割り込みの優先度 | 0xC0 | 0x80 | 0x80 |
-| カーネルの時計 | SysTick（送信中に遅れる） | TIMER の tickless | 10 kHz の SysTick（消去中に遅れる）。`k_uptime` は TIMER |
+| カーネルの時計 | SysTick（送信中に遅れる） | TIMER の tickless | 1 kHz の SysTick（消去中に遅れる）。`k_uptime` は TIMER |
+| NINA の READY | 100 µs ごとに読む | 100 µs ごとに読む | エッジ割り込み（GPIO10） |
 | ソケット | オフロード（呼んだスレッドで待つ） | usrsock と `nina_event` | 呼んだタスクで待つ（イベントのスレッドなし） |
 | RAM ログ | 4 KiB | 8 KiB | 8 KiB |
 | 異常停止の後 | 再起動、`dmesg` に報告 | 再起動、`dmesg` に報告 | 再起動、`dmesg`・`fault`・バナーに記録 |

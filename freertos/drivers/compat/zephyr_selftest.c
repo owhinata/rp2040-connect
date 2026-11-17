@@ -41,7 +41,12 @@
 #define PRIO_LOW  12
 #define PRIO_MID  11
 #define PRIO_HIGH 10
-#define PRIO_SPIN 13
+/* The time slices' spinners: Zephyr 0, the highest of the sliced priorities
+ * (freertos/app/usb-console/src/tick.c), so that few of the board's tasks
+ * preempt them: a task that preempts a spinner hands the turn to the other
+ * one when it blocks (FreeRTOS's choice), which adds a turn.
+ */
+#define PRIO_SPIN 0
 
 /* Output ----------------------------------------------------------------------*/
 
@@ -1143,12 +1148,6 @@ static void test_timeslice(void)
 	bool ok;
 	int n;
 
-	/* These test Zephyr's rules of zephyr_os_sched.h. */
-	if (IS_ENABLED(NANO_SCHED_FREERTOS)) {
-		st_printf("  skipped: built with FreeRTOS's own choice of the next task\n");
-		return;
-	}
-
 	/* Two tasks of the same priority (above the caller) that never block
 	 * take turns every 20 ms.  Both are started before either runs.
 	 */
@@ -1177,71 +1176,6 @@ static void test_timeslice(void)
 				    SLICE_TICKS * TICK_US + 2 * TICK_US);
 		}
 	}
-}
-
-/* Wakes every KICK_TICKS + 1 ticks until the end: a higher task that keeps
- * preempting the spinners for a moment.
- */
-#define KICK_TICKS (SLICE_TICKS / 5)
-
-struct kicker {
-	struct slices *s;
-	volatile int kicks;
-};
-
-static void kicker_main(void *arg)
-{
-	struct kicker *k = arg;
-
-	while ((int32_t)(st_tick() - k->s->end) < 0) {
-		(void)k_sleep(K_TICKS(KICK_TICKS));
-		k->kicks++;
-	}
-}
-
-static void test_timeslice_preempt(void)
-{
-	static struct slices s;
-	struct spinner a = {&s, 1};
-	struct spinner b = {&s, 2};
-	struct kicker k = {&s, 0};
-	struct helper ha;
-	struct helper hb;
-	struct helper hk;
-	bool ok;
-
-	/* These test Zephyr's rules of zephyr_os_sched.h. */
-	if (IS_ENABLED(NANO_SCHED_FREERTOS)) {
-		st_printf("  skipped: built with FreeRTOS's own choice of the next task\n");
-		return;
-	}
-
-	/* Zephyr (one CPU): a thread preempted by a higher one stays at the head
-	 * of its priority's queue and goes on when the higher one blocks, and
-	 * its time slice starts again when it is switched back in
-	 * (kernel/sched.c next_up(), kswap.h do_swap() z_time_slice_reset()).
-	 * So with a higher thread waking more often than a slice, the first
-	 * spinner keeps the CPU and the second gets no turn until the end.
-	 * FreeRTOS by itself hands the CPU to the next task of the priority at
-	 * every switch (listGET_OWNER_OF_NEXT_ENTRY()); the layer keeps the
-	 * preempted task's place (zephyr_os_sched.h).
-	 */
-	memset(&s, 0, sizeof(s));
-	vTaskSuspendAll();
-	s.end = st_tick() + SLICE_COUNT * SLICE_TICKS;
-	ok = spawn(&ha, "st_spin_a", PRIO_SPIN, spinner_main, &a);
-	ok = spawn(&hb, "st_spin_b", PRIO_SPIN, spinner_main, &b) && ok;
-	ok = spawn(&hk, "st_kicker", PRIO_MID, kicker_main, &k) && ok;
-	(void)xTaskResumeAll();
-	CHECK(ok);
-	CHECK(join(&ha));
-	CHECK(join(&hb));
-	CHECK(join(&hk));
-
-	st_printf("  %d turns, %d preemptions in %d slices\n", s.switches, k.kicks, SLICE_COUNT);
-	CHECK_RANGE(k.kicks, SLICE_COUNT * SLICE_TICKS / (KICK_TICKS + 1) - 1,
-		    SLICE_COUNT * SLICE_TICKS / (KICK_TICKS + 1) + 1);
-	CHECK_EQ(s.switches, 1);
 }
 
 /* The run -------------------------------------------------------------------*/
@@ -1273,7 +1207,6 @@ static const struct test tests[] = {
 	{"static_threads", test_static_threads},
 	{"thread_name", test_thread_name},
 	{"timeslice", test_timeslice},
-	{"timeslice_preempt", test_timeslice_preempt},
 };
 
 int zephyr_selftest_run(void)

@@ -68,7 +68,7 @@
 #define HW_STACK     16384
 #define LOG_SIZE     4096
 
-volatile int z_host_isr_depth;
+_Thread_local int z_host_isr_depth;
 
 /* tick.c's vApplicationTickHook(), counted as an interrupt handler. */
 void app_tick_hook(void);
@@ -609,9 +609,7 @@ static void test_boundary(void)
 
 	(void)k_sem_init(&sem, 0, K_SEM_MAX_LIMIT);
 
-	/* K_MSEC(ms) in ticks (1 ms here, 100 us on the board by default), plus
-	 * one.
-	 */
+	/* K_MSEC(ms) in ticks (1 ms, as on the board), plus one. */
 	start = xTaskGetTickCount();
 	assert(i2c_dw_os_sem_take_ms(&sem, 10) != 0);
 	ticks = xTaskGetTickCount() - start;

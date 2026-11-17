@@ -40,9 +40,8 @@
  *   lines and values (server 10.42.0.1:123 (default gateway), interval_ms
  *   2000, the counters).
  *
- * The test port's tick is 1 ms (tests/compat/FreeRTOSConfig.h), so the polls
- * are 2 ticks apart here (the board: 11 ticks of 100 us by default, 2 ticks
- * as here with NANO_TICK_HZ=1000).  It waits for the real intervals: about
+ * The test port's tick is 1 ms (tests/compat/FreeRTOSConfig.h), as the
+ * board's, so the polls are 2 ticks apart.  It waits for the real intervals: about
  * 12 s.  Built and run by freertos/script/host_tests.sh.
  */
 
@@ -86,7 +85,7 @@
 #define ROUND_TRIP_US    5000
 #define SERVER_HOLD_US   50
 
-volatile int z_host_isr_depth;
+_Thread_local int z_host_isr_depth;
 
 void app_tick_hook(void);
 

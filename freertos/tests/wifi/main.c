@@ -82,7 +82,7 @@
 #define TEST_SSID "TestNet"
 #define TEST_PSK  "test-pass-123"
 
-volatile int z_host_isr_depth;
+_Thread_local int z_host_isr_depth;
 
 void app_tick_hook(void);
 

@@ -932,3 +932,18 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
 - 3 版の送信中の `cpu_active`（2026-11-18、同じ AP と受信器、同じ手順）: Zephyr 49.0〜49.1%、NuttX 55.7〜55.9%、
   FreeRTOS 41.7%（READY 割り込み + tick 1 ms、フックあり、`-Os`）。
 - 実機: NuttX 版（FreeRTOS 版へ戻すには RESET 2 回の操作が要る）。
+
+## FreeRTOS 版: READY 割り込み・tick 1 ms を固定、フックを削除（2026-11-18）
+
+- 実装（subagent）: オプション `NANO_NINA_READY_IRQ`・`NANO_TICK_HZ`・`NANO_SCHED_ZEPHYR` を削除し、常に READY 割り込み + tick 1 ms +
+  FreeRTOS 標準の同優先度の選び方。`zephyr_os_sched.h`、`z_sched_yield_pending`・`z_sched_switched_out`、`tick_slice_restart` を削除。
+  20 ms の時分割（`tick.c`）は決まった刻みで残る（切り替えのたびの数え直しは無い）。共有コアのポーリングの経路は NuttX 版用に残す。
+  `selftest` は `timeslice_preempt` を削除して 21 項目、`timeslice` は優先度を Zephyr 0 に上げて残した（ボード上でほかのタスクが
+  起きると fail になり得る、未確認）。ホストテストは `nina` を 1 本にまとめ、`telnet` の失敗 2 件（テスト環境の `z_host_isr_depth` を
+  スレッドごとに、`client.py` の待ち方）を直した。文書: `freertos/drivers/README`（日英）、設計書 §13.1・§13.2、ルートの README の 1 語。
+- 像: 比較用（3 つのオプションで同じ構成にした像）より 64 バイト小さい。差は読まれないフラグの書き込みと yield の周りだけ（subagent の説明）。
+- メインがしたこと: `freertos/README`（日英）のオプションの表から `-DNANO_SCHED_ZEPHYR=OFF` の行を削除。`common/` はコメントだけの
+  変更で、NuttX を再ビルドして像が `snapshot-rommem` と一致。`CLAUDE.md` の該当箇所を更新。ソースは読んでいない。ビルド・ホストテストは
+  subagent の報告。
+- 実機: **未確認**（実機は NuttX 版。BOOTSEL の操作待ち）。見ること: 書き込み直後の最初の計測、静止時、zperf、送信中の Telnet、
+  `selftest`（0 of 21 か、`timeslice`）、`ntp status`、`dmesg`。

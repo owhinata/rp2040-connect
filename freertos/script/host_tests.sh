@@ -12,8 +12,7 @@
 #   store with the board's flash boundary on fakes of the Pico SDK's flash
 #   functions (freertos/tests/kv), and the NINA link's boundaries
 #   (freertos/drivers/nina) with the shared core on fakes of the Pico SDK's
-#   GPIO and SPI functions (freertos/tests/nina; once more with the build option
-#   NANO_NINA_READY_IRQ, READY's edge interrupt), and I2C0's boundaries
+#   GPIO, SPI and GPIO interrupt functions (freertos/tests/nina), and I2C0's boundaries
 #   (freertos/drivers/i2c_dw, the layer's <zephyr/drivers/i2c.h>) with the
 #   shared core on fakes of the Pico SDK's GPIO, reset, IRQ and sync
 #   functions and of I2C0's registers (freertos/tests/i2c_dw), and GPIO bank
@@ -49,7 +48,7 @@ verbose=0
 case "${1:-}" in
   "") ;;
   -v) verbose=1 ;;
-  -h|--help) sed -n '2,44p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+  -h|--help) sed -n '2,43p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
   *) printf 'Unknown option: %s\n' "$1" >&2; exit 2 ;;
 esac
 
@@ -182,18 +181,23 @@ printf 'ok  kv (flash boundary and store, FreeRTOS POSIX port)\n'
 # The NINA link (freertos/tests/nina): the board's boundaries of the shared core
 # (drivers/nina/nano_nina.c on fakes of the Pico SDK's GPIO, reset and SPI functions,
 # tests/nina/pico_fake; drivers/nina/nina_os.c on the layer) under the shared core
-# (common/drivers/nina/nina_spi.c, with the prelude, as drivers/nina/nina.cmake builds it), on
-# the same kernel and layer objects.
+# (common/drivers/nina/nina_spi.c, with the prelude and NINA_OS_WAIT_READY, as
+# drivers/nina/nina.cmake builds it), on the same kernel and layer objects.  The waits for READY
+# on its edge interrupt (nina_os.c) go through GPIO bank 0's boundary
+# (drivers/compat/rp2040/nano_gpio.c) and the layer's gpio0 (common/compat/zephyr_gpio.c), on
+# fakes of the Pico SDK's GPIO interrupt functions (tests/nina/pico_fake).
 ninainc=(-Itests/nina/pico_fake -I../common/drivers/nina)
 ninaobjs=()
 for src in drivers/nina/nano_nina.c drivers/nina/nina_os.c tests/nina/main.c \
+           drivers/compat/rp2040/nano_gpio.c ../common/compat/zephyr_gpio.c \
            ../common/drivers/nina/nina_spi.c; do
     obj="$out/nina_$(basename "$src" .c).o"
     extra=()
     case $src in
         ../common/*) extra=(-include drivers/compat/common_prelude.h) ;;
     esac
-    cc "${flags[@]}" "${strict[@]}" "${ninainc[@]}" "${inc[@]}" "${extra[@]}" -c "$src" -o "$obj"
+    cc "${flags[@]}" "${strict[@]}" -DNINA_OS_WAIT_READY=1 "${ninainc[@]}" "${inc[@]}" \
+        "${extra[@]}" -c "$src" -o "$obj"
     ninaobjs+=("$obj")
 done
 cc "${flags[@]}" "${kernobjs[@]}" "${ninaobjs[@]}" -o "$out/nina"
@@ -202,33 +206,7 @@ if (( verbose )); then
 else
     timeout 60 "$out/nina" >"$out/log" 2>&1 || { cat "$out/log"; exit 1; }
 fi
-printf 'ok  nina (SPI and line boundary, kernel services, FreeRTOS POSIX port)\n'
-
-# The same with the build option NANO_NINA_READY_IRQ (NINA_OS_WAIT_READY in the core): the waits
-# for READY on its edge interrupt (drivers/nina/nina_os.c), through GPIO bank 0's boundary
-# (drivers/compat/rp2040/nano_gpio.c) and the layer's gpio0 (common/compat/zephyr_gpio.c), on
-# fakes of the Pico SDK's GPIO interrupt functions (tests/nina/pico_fake).
-irqdefs=(-DNANO_NINA_READY_IRQ=1 -DNINA_OS_WAIT_READY=1)
-ninairqobjs=()
-for src in drivers/nina/nano_nina.c drivers/nina/nina_os.c tests/nina/main.c \
-           drivers/compat/rp2040/nano_gpio.c ../common/compat/zephyr_gpio.c \
-           ../common/drivers/nina/nina_spi.c; do
-    obj="$out/nina_irq_$(basename "$src" .c).o"
-    extra=()
-    case $src in
-        ../common/*) extra=(-include drivers/compat/common_prelude.h) ;;
-    esac
-    cc "${flags[@]}" "${strict[@]}" "${irqdefs[@]}" "${ninainc[@]}" "${inc[@]}" "${extra[@]}" \
-        -c "$src" -o "$obj"
-    ninairqobjs+=("$obj")
-done
-cc "${flags[@]}" "${kernobjs[@]}" "${ninairqobjs[@]}" -o "$out/nina_irq"
-if (( verbose )); then
-    timeout 60 "$out/nina_irq"
-else
-    timeout 60 "$out/nina_irq" >"$out/log" 2>&1 || { cat "$out/log"; exit 1; }
-fi
-printf 'ok  nina READY interrupt (NANO_NINA_READY_IRQ, FreeRTOS POSIX port)\n'
+printf 'ok  nina (SPI and line boundary, READY interrupt, kernel services, FreeRTOS POSIX port)\n'
 
 # I2C0 (freertos/tests/i2c_dw): the board's boundary of the shared core (drivers/i2c_dw:
 # i2c_dw_os_impl.h, nano_i2c_instance.h with the device i2c0 and its Zephyr I2C API,

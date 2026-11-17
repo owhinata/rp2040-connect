@@ -61,7 +61,7 @@
 #define WRITES       60
 #define LOG_SIZE     16384
 
-volatile int z_host_isr_depth;
+_Thread_local int z_host_isr_depth;
 
 /* tick.c's vApplicationTickHook(), counted as an interrupt handler. */
 void app_tick_hook(void);

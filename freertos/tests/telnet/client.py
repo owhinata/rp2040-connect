@@ -294,8 +294,15 @@ def test_stall(board):
     log("stall: shut down after %.1f s" % took)
     check(8.0 < took < 20.0, "stall ended after %.1f s" % took)
     d, _ = connect_session(board, exact=False)
-    d.send(b"async off\r\n")  # the async lines come in between
-    d.read_until(PROMPT)
+    # The stalled "lines 100000" may still be running when this client
+    # comes: the rest of its output and its prompt come first, then the
+    # answer to "lines 1".  The async lines come in between.
+    d.send(b"async off\r\nsocks\r\n")
+    while True:
+        out = d.read_until(PROMPT, 30.0)
+        check(out is not None, "closed after the stall")
+        if b"\r\nsocks " in out:
+            break
     out = d.command("stats")
     line = [x for x in out.decode().split("\r\n") if x.startswith("stats ")]
     check(len(line) == 1, "stats: %r" % out)

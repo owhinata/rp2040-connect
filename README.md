@@ -486,7 +486,7 @@ and the steps differ, so the values are not measured under the same conditions a
 | TCP send (board to PC, 20 seconds) | 2.94 Mbit/s (`zperf`, 1024 bytes at a time; the PC's `iperf3` showed 2.93 Mbit/s) |
 | TCP receive (PC to board, 20 seconds) | 1.38 Mbit/s (`zperf`) |
 
-- The FreeRTOS build's `cpu_active` includes the time of the tick interrupt every 100 µs (the Zephyr and
+- The FreeRTOS build's `cpu_active` includes the time of the periodic tick interrupt (the Zephyr and
   NuttX builds have no such interrupt).
 - On the same day, the first measurement after flashing the NuttX build (the build whose key-value store
   uses the Zephyr build's format; 71 seconds, once) gave a `cpu_active` of 70.0%.

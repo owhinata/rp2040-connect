@@ -17,8 +17,8 @@
  * or less) 0, K_FOREVER portMAX_DELAY (for ever, INCLUDE_vTaskSuspend), else
  * ticks + 1, Zephyr's end of a relative wait (z_add_timeout(): the current
  * tick + ticks + 1; FreeRTOS ends a block time of n at the current tick + n),
- * at most portMAX_DELAY - 1 (about 4.97 days with the board's 32-bit tick of
- * 100 us, 49.7 days with NANO_TICK_HZ=1000).
+ * at most portMAX_DELAY - 1 (about 49.7 days with the board's 32-bit tick of
+ * 1 ms).
  */
 TickType_t z_os_wait_ticks(k_timeout_t timeout);
 
@@ -34,8 +34,8 @@ int z_os_task_start(TaskFunction_t fn, const char *name, k_thread_stack_t *stack
 		    int prio, void *arg, TaskHandle_t *handle);
 
 /* Zephyr's k_yield(): gives the turn to the next ready task of the same
- * priority (z_sched_yield_pending, zephyr_os_sched.h), or goes on if there is
- * none.  Not from an interrupt handler.
+ * priority (FreeRTOS's taskYIELD()), or goes on if there is none.  Not from
+ * an interrupt handler.
  */
 void z_os_yield(void);
 

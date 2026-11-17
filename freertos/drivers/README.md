@@ -18,7 +18,7 @@ OS-independent part of the layer is `common/compat/`, the FreeRTOS part `freerto
 | Place | Contents |
 |---|---|
 | `app/usb-console/` | Start-up (`main.c`), the commands of this build only (`commands.c`), the kernel configuration (`FreeRTOSConfig.h`), the priority mapping (`priorities_os.h`), time (`os_clock.h`), the tick hook (`tick.c`), the CPU load (`idle.c`), fatal errors (`fault.[ch]`), the free interrupt stack (`irq_stack.c`) |
-| `drivers/compat/` | The FreeRTOS part of the layer: the kernel (`zephyr_kernel.c`, `zephyr_mutex.c`, `zephyr_os*.h`), the choice among tasks of one priority (`zephyr_os_sched.h`), the network interface (`zephyr_net_if.c`), the wall clock (`zephyr_sys_clock.c`), the sensor clock, the prelude header (`common_prelude.h`), the self-test (`zephyr_selftest.[ch]`), the RP2040 part (`rp2040/`: GPIO bank 0, chip ID) |
+| `drivers/compat/` | The FreeRTOS part of the layer: the kernel (`zephyr_kernel.c`, `zephyr_mutex.c`, `zephyr_os*.h`), the network interface (`zephyr_net_if.c`), the wall clock (`zephyr_sys_clock.c`), the sensor clock, the prelude header (`common_prelude.h`), the self-test (`zephyr_selftest.[ch]`), the RP2040 part (`rp2040/`: GPIO bank 0, chip ID) |
 | `drivers/shell/` | Line editing (`cli.c`), the consoles and each task's output (`nano_console.c`), the replacement of the Pico SDK's stdio driver (`nano_stdio.c`), the command table and execution (`nano_shell.c`), a copy of Zephyr's argument split (`shell_argv.c`), getopt per session (`getopt_state.c`) |
 | `drivers/libc/` | Wrappers of newlib's FILE functions (`stdio_wrap.c`), the socket headers newlib lacks (`include/`, types and constants only), `inet_pton` and `inet_ntop` (`inet.c`) |
 | `drivers/log/` | The RAM log (`log_ram.c`; the ring is `common/log/log_ring.c`) |
@@ -65,16 +65,13 @@ Left as approximations:
 | Priorities | Lower runs first; cooperative -16..-1, preemptible 0..14 | `20 − Zephyr` (preemptible 0..14 become 20..6, cooperative -1 becomes 21). `Tmr Svc` 31, idle 0 |
 | Cooperative threads | Not preempted | Approximated by a higher priority (a still higher task preempts; as on NuttX) |
 | Priority inheritance | Follows a chain of holders, adjusted at each unlock | One level; dropped when the holder has released all its mutexes |
-| Choice among one priority | A preempted thread goes on; 20 ms time slices | Zephyr's rule by trace macros in `zephyr_os_sched.h` (they name internals of kernel V11.3.3); 20 ms slices by the tick hook (`tick.c`). The order of tasks made ready is FreeRTOS's |
-| Tick and sleeps | 100 µs; a relative wait is "rounded up to ticks, plus one tick" | 100 µs (`configTICK_RATE_HZ` 10000, 32 bits), the same rounding. A periodic SysTick (not tickless) |
+| Choice among one priority | A preempted thread goes on; 20 ms time slices, counted from the switch to the thread | FreeRTOS's: at every switch the next ready task of the priority in turn, so a preempted task goes behind the other ready tasks of its priority. 20 ms slices by the tick hook (`tick.c`) on a fixed grid of 20 ticks, not counted from the switch |
+| Tick and sleeps | 100 µs; a relative wait is "rounded up to ticks, plus one tick" | 1 ms (`configTICK_RATE_HZ` 1000, 32 bits), the same rounding: a wait shorter than 1 ms lasts 1 to 2 ms. A periodic SysTick (not tickless) |
 
-- Built with `-DNANO_SCHED_ZEPHYR=OFF`, the choice among tasks of one priority is FreeRTOS's own (for
-  comparison).
-- The 32-bit tick wraps after about 4.97 days. While interrupts are disabled (a flash erase) ticks are
+- The 32-bit tick wraps after about 49.7 days. While interrupts are disabled (a flash erase) ticks are
   lost: `vTaskDelay()`, delayed work and time slices are late by that much; `k_uptime_*()`, from the
   TIMER, is not.
-- `portTICK_PERIOD_MS` (0 at this rate) and the Pico SDK's `sleep_ms()` (which spins the last 150 µs) are
-  not used.
+- The Pico SDK's `sleep_ms()` (which spins the last 150 µs) is not used.
 
 ## Tasks
 
@@ -106,7 +103,7 @@ order (the Zephyr build's initialization order and the NuttX build's start-up or
 
 **CPU load** (`idle.c`): the idle hook disables interrupts, opens the window, waits with `WFI`, closes the
 window and enables interrupts (the measurement of the Zephyr build's `CONFIG_CPU_LOAD` and the NuttX
-build's `up_idle()`). The tick interrupt every 100 µs counts as load (the Zephyr and NuttX builds have no
+build's `up_idle()`). The tick interrupt every 1 ms counts as load (the Zephyr and NuttX builds have no
 such interrupt). The CPU column of `ps` is cumulative since the start, timed by the TIMER.
 
 ## Shell and consoles
@@ -167,6 +164,9 @@ boundary (the four functions of `common/compat/nano_flash_kv.h`, `drivers/kv/nan
   (`nina_os.c`: the recursive lock with priority inheritance, the name resolution lock, the "rounded up,
   plus one tick" sleep, the ms clock). The boundaries mean what the "NINA-W102" tables of
   [`nuttx/drivers/README.md`](../../nuttx/drivers/README.md) say.
+- The core's waits for READY sleep until READY's edge interrupt (GPIO10), in waits of at most 10 ms, after
+  which READY is read again (`nina_os.c`, the optional part of `nina_os.h` that the build turns on with
+  `NINA_OS_WAIT_READY`). The Zephyr and NuttX builds read READY every 100 µs instead.
 - Sockets (`drivers/nina/nina_socket.c`): the layer's `zsock_*()` calls go to the shared core through a
   table of 10 descriptors. As the Zephyr build's socket offload, the calling task asks the NINA and waits
   (there is no event thread like the NuttX build's usrsock and `nina_event`). The descriptors are not
@@ -193,8 +193,8 @@ boundary (the four functions of `common/compat/nano_flash_kv.h`, `drivers/kv/nan
   with the board's values (`drivers/lsm6dso/lsm6dso_instance.h`).
 - GPIO (`drivers/compat/rp2040/nano_gpio.c`): GPIO bank 0 under the layer's `gpio0`, driven with the same
   Pico SDK calls as Zephyr's `gpio_rpi_pico.c`. The interrupt handler is added with
-  `gpio_add_raw_irq_handler_masked()`; only the LSM6DSOX's INT1 (GPIO24) can interrupt (other pins get
-  `-ENOTSUP`).
+  `gpio_add_raw_irq_handler_masked()`; only the LSM6DSOX's INT1 (GPIO24) and the NINA's READY (GPIO10)
+  can interrupt (other pins get `-ENOTSUP`).
 
 ## Acquisition, time synchronization, MQTT
 
@@ -217,14 +217,13 @@ Given as `freertos/script/build.sh -DNAME=VALUE` (kept until `--clean`).
 | Option | Default | Meaning |
 |---|---|---|
 | `NANO_SELFTEST` | OFF | Builds in the `selftest` command (below) |
-| `NANO_SCHED_ZEPHYR` | ON | OFF leaves the choice among tasks of one priority to FreeRTOS (`selftest`'s `timeslice` and `timeslice_preempt` are skipped) |
 
 ## Self-test (`selftest`)
 
 A test command only in builds with `-DNANO_SELFTEST=ON`. Run it with the measurement stopped and the
 board at rest. It prints, as `N of M tests failed`, the results for the layer
 (`drivers/compat/zephyr_selftest.c`: mutexes, semaphores, sleep, clock, wake-ups from interrupts,
-`k_poll`, work, spinlock, atomic, static threads, time slices; 22 items), I2C0
+`k_poll`, work, spinlock, atomic, static threads, time slices; 21 items), I2C0
 (`drivers/i2c_dw/i2c_dw_selftest.c`: 6 items) and the LSM6DSOX (`drivers/lsm6dso/lsm6dso_selftest.c`:
 3 items).
 
@@ -238,7 +237,7 @@ board at rest. It prints, as `N of M tests failed`, the results for the layer
 | `compat` | The layer's self-test (the same `zephyr_selftest.c` as `selftest`) |
 | `shell` | Two shell sessions, line editing, output routing |
 | `kv` | The flash boundary and the key-value store (on fakes of the Pico SDK's flash functions) |
-| `nina` | The NINA's SPI and line boundaries, kernel services |
+| `nina` | The NINA's SPI and line boundaries, the wait for READY on its interrupt, kernel services |
 | `i2c_dw` | I2C0's boundary and device, Zephyr's I2C API |
 | `gpio` | GPIO bank 0's boundary, `gpio0`, the FIFO interrupt |
 | `imu` | Address conversions, `hwinfo` |
@@ -268,7 +267,8 @@ the Zephyr build's syntax and output.
 | Error numbers (errno) | Zephyr's (`EILSEQ` 138) | NuttX's (`EILSEQ` 84) | newlib's (as Zephyr's; `EILSEQ` 138) |
 | Priorities | Zephyr | `118 − Zephyr` | `20 − Zephyr` |
 | Device interrupt priority | 0xC0 | 0x80 | 0x80 |
-| Kernel clock | SysTick (late while sending) | Tickless on the TIMER | 10 kHz SysTick (late during erases); `k_uptime` from the TIMER |
+| Kernel clock | SysTick (late while sending) | Tickless on the TIMER | 1 kHz SysTick (late during erases); `k_uptime` from the TIMER |
+| The NINA's READY | Read every 100 µs | Read every 100 µs | Edge interrupt (GPIO10) |
 | Sockets | Offload (the calling thread waits) | usrsock and `nina_event` | The calling task waits (no event thread) |
 | RAM log | 4 KiB | 8 KiB | 8 KiB |
 | After a fatal error | Restart, report in `dmesg` | Restart, report in `dmesg` | Restart, record in `dmesg`, `fault` and the banner |

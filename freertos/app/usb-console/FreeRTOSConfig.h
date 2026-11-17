@@ -8,23 +8,15 @@
 
 /* Scheduler ---------------------------------------------------------------*/
 
-/* The tick is NANO_TICK_HZ (the build option, CMakeLists.txt): 10000 by
- * default, 100 us, as the Zephyr build's CONFIG_SYS_CLOCK_TICKS_PER_SEC=10000
- * and the NuttX build's CONFIG_USEC_PER_TICK=100, or 1000, 1 ms.  It is 32
- * bits wide (the RP2040 port has no 64-bit tick); it wraps after about 4.97
- * days at 100 us, 49.7 days at 1 ms.  The time since the start comes from
- * the TIMER instead (src/os_clock.h).  Both other builds are tickless; this
- * one has a periodic tick (SysTick), whose handler counts as CPU load.
- * portTICK_PERIOD_MS is 0 at 10000 Hz and must not be used.
+/* The tick is 1 ms (the Zephyr build's CONFIG_SYS_CLOCK_TICKS_PER_SEC=10000
+ * and the NuttX build's CONFIG_USEC_PER_TICK=100 are 100 us).  It is 32 bits
+ * wide (the RP2040 port has no 64-bit tick) and wraps after about 49.7 days;
+ * the time since the start comes from the TIMER instead (src/os_clock.h).
+ * Both other builds are tickless; this one has a periodic tick (SysTick),
+ * whose handler counts as CPU load.
  */
-#ifndef NANO_TICK_HZ
-#define NANO_TICK_HZ 10000
-#endif
-#if NANO_TICK_HZ != 10000 && NANO_TICK_HZ != 1000
-#error "NANO_TICK_HZ must be 10000 or 1000"
-#endif
 #define configUSE_PREEMPTION                    1
-#define configTICK_RATE_HZ                      NANO_TICK_HZ
+#define configTICK_RATE_HZ                      1000
 #define configTICK_TYPE_WIDTH_IN_BITS           TICK_TYPE_WIDTH_32_BITS
 #define configUSE_TICKLESS_IDLE                 0
 
@@ -145,11 +137,5 @@ uint64_t app_run_time_us(void);
 #define INCLUDE_xTimerPendFunctionCall          1
 #define INCLUDE_xTaskAbortDelay                 1
 #define INCLUDE_xSemaphoreGetMutexHolder        1
-
-/* Zephyr's choice among the tasks of one priority: a preempted task goes on
- * (the Zephyr compatibility layer, freertos/drivers/compat/zephyr_os_sched.h:
- * traceTASK_SWITCHED_OUT() and traceTASK_SWITCHED_IN()).
- */
-#include "zephyr_os_sched.h"
 
 #endif /* FREERTOS_CONFIG_H */

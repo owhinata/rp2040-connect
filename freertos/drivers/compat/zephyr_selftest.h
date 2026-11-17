@@ -7,15 +7,14 @@
  * timeouts, the order of the waiters, reset), sleeps and their rounding,
  * the clock, k_sem_give() and k_work_submit() from interrupt handlers,
  * k_poll(), delayable work items, the spin lock, atomics, K_THREAD_DEFINE()
- * threads, thread names, time slices of 20 ms, and Zephyr's rule that a
- * thread preempted by a higher one keeps its turn (zephyr_os_sched.h).
+ * threads, thread names, and time slices of 20 ms.
  *
  * Call it from a task at NANO_PRIO_SHELL (Zephyr 14, the shell's thread)
  * after zephyr_compat_initialize(): the checks of the order in which tasks
  * run assume it.  It prints one line per test and the measured times, after
  * each test (zephyr_selftest_port_quiet() then waits until printing no longer
- * disturbs), and runs for about a second; two tasks spin for 140 ms twice
- * (every lower priority waits then).  The K_THREAD_DEFINE() threads start at the first run
+ * disturbs), and runs for about a second; two tasks spin for 140 ms (every
+ * lower priority waits then).  The K_THREAD_DEFINE() threads start at the first run
  * only (and then wait for ever); later runs skip that test.
  */
 

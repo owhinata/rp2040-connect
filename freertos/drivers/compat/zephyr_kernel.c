@@ -47,9 +47,11 @@
  *   k_usleep()                current tick + ticks + 1; K_NO_WAIT (0 or less)
  *                             yields (z_os_yield(): behind the other tasks of
  *                             the priority); K_FOREVER suspends the task
- *   choice among one priority Zephyr's: a preempted task goes on, a yield or
- *                             the end of a slice gives the turn away
- *                             (zephyr_os_sched.h)
+ *   choice among one priority FreeRTOS's: at every switch the next ready
+ *                             task of the priority in turn, so a task that
+ *                             a higher one preempted waits for its peers
+ *                             (Zephyr: it goes on); 20 ms slices by the
+ *                             application's tick hook
  *   k_busy_wait()             spins on the TIMER
  *
  * Every relative wait (k_sem_take(), k_mutex_lock(), k_poll(), the sleeps)
@@ -72,20 +74,11 @@
 #include "zephyr_compat_os.h"
 #include "zephyr_os_internal.h"
 
-/* Scheduling (zephyr_os_sched.h) -------------------------------------------*/
-
-volatile uint8_t z_sched_yield_pending;
-void *volatile z_sched_switched_out;
+/* Scheduling ------------------------------------------------------------------*/
 
 void z_os_yield(void)
 {
-	/* With interrupts masked the switch (PendSV) waits for the exit, so
-	 * the flag reaches the switch this yield asks for.
-	 */
-	taskENTER_CRITICAL();
-	z_sched_yield_pending = 1;
 	taskYIELD();
-	taskEXIT_CRITICAL();
 }
 
 /* Waits ---------------------------------------------------------------------*/
@@ -582,7 +575,7 @@ void k_busy_wait(uint32_t usec_to_wait)
 /* Timeouts of delayable items -----------------------------------------------*/
 
 /* The longest timeout: the deadlines are compared as signed 32-bit
- * differences (about 2.5 days at 100 us, 24.8 days at 1 ms).
+ * differences (about 24.8 days of 1 ms ticks).
  */
 #define TIMEOUT_TICKS_MAX ((int64_t)INT32_MAX - 1)
 
