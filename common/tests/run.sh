@@ -164,10 +164,11 @@ if [[ -f $ztree/VERSION ]]; then
         compat/lib/utils/getopt/getopt_long.c:lib/utils/getopt/getopt_long.c \
         compat/lib/utils/getopt/getopt_common.h:lib/utils/getopt/getopt_common.h \
         compat/lib/utils/getopt/README:lib/utils/getopt/README \
-        compat/zephyr/sys/sys_getopt.h:include/zephyr/sys/sys_getopt.h; do
+        compat/zephyr/sys/sys_getopt.h:include/zephyr/sys/sys_getopt.h \
+        compat/subsys/net/lib/wifi_credentials/wifi_credentials_shell.c:subsys/net/lib/wifi_credentials/wifi_credentials_shell.c; do
         cmp "${pair%%:*}" "$ztree/${pair#*:}"
     done
-    printf 'ok  zephyr_copies (22 files, Zephyr v4.5.0)\n'
+    printf 'ok  zephyr_copies (23 files, Zephyr v4.5.0)\n'
 else
     printf 'skip zephyr_copies (no zephyr/zephyr: run west update)\n'
 fi

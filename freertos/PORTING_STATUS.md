@@ -588,3 +588,30 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
   IRQ の線（ESP32 の GPIO0 = RP2040 の GPIO2）はあるが、`updateGpio0Pin()` が見るのは古い方式のソケット（`tcpClients`・
   `udps`・`tlsClients`）だけ。ドライバーが使う BSD 風の命令（0x70〜0x7f）のソケットでは上がらない。データの到着待ち
   （20 ms ごとの poll）をイベントにするには、ファームウェアへの 3 件目の修正が要る。実機で線を観測してはいない。
+
+## F10 の記録（2026-11-17）
+
+- 実装: `freertos/drivers/wifi/wifi.cmake`（共有の `nina_net.c`、`net_mgmt`・`wifi_mgmt`・`wifi_utils`、資格情報、
+  `wifi_profile.c`）、`drivers/compat/zephyr_net_if.c`・`zephyr_net_mgmt_os.h`、`drivers/nina/nina_netif.c`、FreeRTOS 用の
+  `wifi_profile_os.h`、ホストテスト `freertos/tests/wifi`（約 25 秒）。`wifi cred` は Zephyr 本体の `wifi_credentials_shell.c` の
+  無改変の写し（`zephyr_copies` 23 本）。`wifi connect/disconnect/scan/status` は Zephyr の `wifi_shell.c`（6289 行）から 4 つだけ
+  取り出した `common/compat/zephyr_wifi_shell.c`（Apache-2.0、約 1200 行。FreeRTOS 版だけがビルド）。
+- 共有ファイルの変更: `shell.h`（`SHELL_SUBCMD_ADD()`、`shell_help()`）、`zshell.c`・`zshell_os.h`（`ZSHELL_OS_ACTIVE_CMD`）。
+  メインが両方を再ビルドし、Zephyr の像が基準と、NuttX の像が snapshot-t24 と一致。NuttX 側のホストテスト全通過。
+- スレッド: `nina_scan_tid` 12・1536、`nina_connect_tid` 12・1024、`nina_monitor_tid` 11・1536、`wifi_reconnect_tid` 12・2048、
+  `net_mgmt` 21・2048。起動の順は NuttX 版の bringup と init と同じ。起動時に KV を消す・書くコードは無い。
+- メインが確かめたこと: Zephyr・NuttX の像、FreeRTOS のビルド（既定・selftest、警告 0）、整形、`host_tests.sh`。ソースは読んでいない。
+- 実機（AP `rp2040-test`、PC 10.42.0.1）:
+  - 書き込み後、**保存済みの資格情報で自動接続**（F04 の GC を何度も経た KV。`wifi status` が `State: COMPLETED`、SSID 一致、
+    RSSI -40）。アドレスは PC の `ip neigh` で 10.42.0.97、ping 4/4。`wifi cred list` は実行していない。
+  - `wifi scan`: `Disconnected` → 表（12 件ほど、`rp2040-test` を含む）→ `Scan request done` → `Connected`、ping 復帰。
+  - `wifi disconnect`: ping 0、`State: DISCONNECTED`、10 秒後も再接続しない。`wifi cred auto_connect`: `Connected`、ping 復帰。
+  - 計測中（`imu start`）に切断 → 5 秒 → 再接続: `errors.stream` 0、オーバーラン 0、`cpu_active` 27.2%、`max_transfer_us` 6650。
+  - `reboot` 後、約 12 秒で ping が戻る。`dmesg` にエラーなし。
+  - スタックの空き: `nina_connect_tid` 496/1024、`nina_scan_tid` 696/1536、`nina_monitor_tid` 1128/1536、`wifi_reconnect_tid`
+    1044/2048、`net_mgmt` 1288/2048、`console` 1532/3072。アイドル（接続中）の `cpu_active` 2.6%。ヒープの空き 31536/32768。
+  - 未確認: AP 側を落としての切断の検出と再接続（AP はユーザーが起動したものなので止めない）、接続の期限 30 秒、長時間。
+- 相談事項: IP アドレスを表示するコマンドが無い（`net iface` を作るか、`wifi status` に足すか）。`wifi` のヘルプは 5 個だけで、
+  `wifi connect` のヘルプが 50 行ある（Zephyr の文面のまま）。互換層の `net_mgmt` の add が重複を除かない（NuttX の像が変わるので
+  直していない）。`net_mgmt`（優先度 21）がイベントの文字を直接コンソールに書く。
+- 次: F11（Telnet、速度測定）→ CP-F3。

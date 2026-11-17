@@ -11,10 +11,23 @@
 #ifndef FREERTOS_DRIVERS_SHELL_ZEPHYR_OS_SHELL_H
 #define FREERTOS_DRIVERS_SHELL_ZEPHYR_OS_SHELL_H
 
+/* Zephyr's <zephyr/shell/shell.h> includes <zephyr/sys/sys_getopt.h> with
+ * CONFIG_SHELL_GETOPT (the Zephyr build has it): the commands copied from
+ * Zephyr unchanged (common/compat/subsys/net/lib/wifi_credentials/
+ * wifi_credentials_shell.c) use sys_getopt_long() through it.  The build's
+ * getopt state is per session (getopt_state.c).
+ */
+#include <zephyr/sys/sys_getopt.h>
+
 struct nano_console;
+struct shell_static_entry;
 
 struct shell {
 	struct nano_console *console;
+	/* The command that runs on this session (its handler), for
+	 * shell_help() (Zephyr: the shell context's active_cmd).
+	 */
+	const struct shell_static_entry *active_cmd;
 };
 
 #endif /* FREERTOS_DRIVERS_SHELL_ZEPHYR_OS_SHELL_H */

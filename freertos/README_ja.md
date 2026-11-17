@@ -108,6 +108,8 @@ USB の CDC ACM ポートがコンソールです（UART0 は使いません）�
 | `devmem <address> [<width> [<value>]]` | メモリーの読み書き。アドレスと値は 16 進、幅は 8・16・32 ビット（省略時 32）。値を付けると書き込み |
 | `ps` | タスクの一覧（状態、優先度、スタックの空きの最小値、CPU 時間の割合）と、前回の `ps` からの CPU 負荷 |
 | `imu start`、`imu stop`、`imu status`、`imu cal [reload\|zero]` | IMU の取得の開始・停止、カウンターの表示、校正値の表示と読み直し（Zephyr 版と同じ） |
+| `wifi connect`、`wifi disconnect`、`wifi scan`、`wifi status` | Wi-Fi の接続・切断・スキャン・状態（Zephyr 版と同じ構文。ほかのサブコマンドは無い） |
+| `wifi cred add`、`wifi cred delete`、`wifi cred list`、`wifi cred auto_connect` | 保存する資格情報の登録・削除・一覧と、保存済みの網への接続。`list` はパスフレーズも表示する |
 | `irqstack` | 割り込み用スタックの使用量 |
 | `dmesg` | RAM ログ（8 KB。再起動をまたいで残る） |
 | `kv set <key> <value>`、`kv sethex <key> <hex>`、`kv get <key>`、`kv delete <key>` | KV（設定と校正値）の読み書き。`get` は 16 進で表示 |
@@ -127,6 +129,9 @@ USB の CDC ACM ポートがコンソールです（UART0 は使いません）�
   別のデータがあると `kv` は `-138` で失敗し、`dmesg` に案内が出ます。消すのは `kv wipe confirm` です。
 - 送信（MQTT）と時刻同期はまだありません。`imu start` は取得だけを行い、バッチは破棄として数えます
   （`imu status` の `mqtt:` は接続なしの値）。取得が始まるのは `imu start` の約 3 秒後です。
+- 起動の約 4 秒後に、保存済みの網へ自動で接続します。切れたら自動で再接続します。`wifi disconnect` で切ると、
+  次に接続するまで自動の再接続は止まります。資格情報は KV にあり、Zephyr 版・NuttX 版と共通です。
+- 取得した IP アドレスを表示するコマンドはまだありません（PC 側で `ip neigh` などを見ます）。
 - `devmem` で存在しないアドレスを読むと異常停止します（例: `devmem 30000000`）。
 
 ## ディレクトリー
@@ -138,6 +143,7 @@ USB の CDC ACM ポートがコンソールです（UART0 は使いません）�
 | `drivers/shell/`、`drivers/log/`、`drivers/libc/` | シェル、RAM ログ、標準出力の接続 |
 | `drivers/kv/` | KV のフラッシュの読み書き |
 | `drivers/nina/` | NINA-W102 の SPI と制御線 |
+| `drivers/wifi/` | Wi-Fi の組み込み（本体は `common/`） |
 | `drivers/i2c_dw/` | I2C0 と DMA（センサーのバス） |
 | `drivers/lsm6dso/` | LSM6DSOX のデバイスの生成と初期化（ドライバー本体は `common/drivers/lsm6dso/`） |
 | `drivers/imu/` | 取得サービスの組み込み（本体は `common/imu/`）と、送信・時刻同期の仮の実装 |

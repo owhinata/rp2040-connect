@@ -67,4 +67,20 @@ static struct shell *zshell_os_backend_get(void);
 static inline void zshell_os_cmd_enter(struct shell *sh);
 static inline void zshell_os_cmd_exit(struct shell *sh);
 
+/* Optional: an OS whose zshell_os_impl.h defines ZSHELL_OS_ACTIVE_CMD
+ * keeps the command that runs on sh (Zephyr: sh->ctx->active_cmd), set
+ * right before its handler and cleared (NULL) after it, and gets
+ * shell_help() (<zephyr/shell/shell.h>), which prints that command's help.
+ * Without it, zshell.c has neither (the NuttX build's commands that print
+ * their help call subcmd_help()).
+ */
+
+#ifdef ZSHELL_OS_ACTIVE_CMD
+static inline void zshell_os_active_cmd_set(struct shell *sh,
+                                            const struct shell_static_entry
+                                            *cmd);
+static inline const struct shell_static_entry *
+zshell_os_active_cmd_get(const struct shell *sh);
+#endif
+
 #endif /* __COMMON_SHELL_ZSHELL_OS_H */

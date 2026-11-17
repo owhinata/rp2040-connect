@@ -37,6 +37,10 @@ include(${CMAKE_CURRENT_LIST_DIR}/../../drivers/lsm6dso/lsm6dso.cmake)
 # The IMU acquisition service and the "imu" command, with stubs for the MQTT
 # transport and the time synchronization (freertos/drivers/imu).
 include(${CMAKE_CURRENT_LIST_DIR}/../../drivers/imu/imu.cmake)
+# Wi-Fi: the NINA's network interface, the net_mgmt events, the stored
+# credentials with the automatic reconnection and the "wifi" command
+# (freertos/drivers/wifi).
+include(${CMAKE_CURRENT_LIST_DIR}/../../drivers/wifi/wifi.cmake)
 
 # The compatibility layer's self-test, the "selftest" command
 # (freertos/drivers/compat/zephyr_selftest.h): a test feature, off by default
@@ -77,6 +81,7 @@ else()
   freertos_lsm6dso(usb-console)
 endif()
 freertos_imu(usb-console)
+freertos_wifi(usb-console)
 
 # FreeRTOSConfig.h; priorities_os.h (src/, which FreeRTOSConfig.h includes);
 # priorities.h, cpu_load.h and nano_cpuload.h (common/compat);

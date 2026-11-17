@@ -567,12 +567,18 @@ static int exec_cmd(struct shell *sh, struct run *r, size_t argc,
   if (sh != NULL)
     {
       zshell_os_cmd_enter(sh);
+#ifdef ZSHELL_OS_ACTIVE_CMD
+      zshell_os_active_cmd_set(sh, &r->active_cmd);
+#endif
     }
 
   ret_val = r->active_cmd.handler(sh, cmd_argc, cmd_argv);
   fflush(stdout);
   if (sh != NULL)
     {
+#ifdef ZSHELL_OS_ACTIVE_CMD
+      zshell_os_active_cmd_set(sh, NULL);
+#endif
       zshell_os_cmd_exit(sh);
     }
 
@@ -723,6 +729,28 @@ static int execute(struct shell *sh, struct run *r,
 
   return exec_cmd(sh, r, cmd_lvl, cmd_with_handler_lvl, &help_entry);
 }
+
+#ifdef ZSHELL_OS_ACTIVE_CMD
+/* shell_help() (subsys/shell/shell.c): the help of the running command, as
+ * shell_internal_help_print() prints it.
+ */
+
+void shell_help(const struct shell *sh)
+{
+  const struct shell_static_entry *cmd;
+
+  if (sh == NULL)
+    {
+      return;
+    }
+
+  cmd = zshell_os_active_cmd_get(sh);
+  if (cmd != NULL)
+    {
+      internal_help_print(cmd);
+    }
+}
+#endif
 
 int z_shell_cmd_main(const struct shell_static_entry *root, int argc,
                      char **argv)

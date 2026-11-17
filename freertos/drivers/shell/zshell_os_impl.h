@@ -57,4 +57,19 @@ static inline void zshell_os_cmd_exit(struct shell *sh)
 	(void)sh;
 }
 
+/* The running command, for shell_help() (common/shell/zshell_os.h): kept in
+ * the session's backend, which only the session's task runs commands on.
+ */
+#define ZSHELL_OS_ACTIVE_CMD 1
+
+static inline void zshell_os_active_cmd_set(struct shell *sh, const struct shell_static_entry *cmd)
+{
+	sh->active_cmd = cmd;
+}
+
+static inline const struct shell_static_entry *zshell_os_active_cmd_get(const struct shell *sh)
+{
+	return sh->active_cmd;
+}
+
 #endif /* FREERTOS_DRIVERS_SHELL_ZSHELL_OS_IMPL_H */

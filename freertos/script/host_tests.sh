@@ -22,7 +22,9 @@
 #   parts of the build (address conversions, hwinfo, the stubs of the MQTT
 #   transport and the time synchronization: freertos/tests/imu), and the
 #   sockets: the zsock_*() calls (freertos/drivers/nina/nina_socket.c) on the
-#   shared NINA core, a fake module and a fake clock (freertos/tests/socket).
+#   shared NINA core, a fake module and a fake clock (freertos/tests/socket), and Wi-Fi: the
+#   interface, the net_mgmt events, the stored credentials (settings "wifi_cred/<n>"), the
+#   reconnection and the "wifi" command on a fake module (freertos/tests/wifi).
 #
 #   freertos/script/host_tests.sh        run them
 #   freertos/script/host_tests.sh -v     also show the tests' output
@@ -306,3 +308,65 @@ else
     timeout 60 "$out/socket" >"$out/log" 2>&1 || { cat "$out/log"; exit 1; }
 fi
 printf 'ok  socket (descriptors, wait loops, options, poll, resolver, FreeRTOS POSIX port)\n'
+
+# Wi-Fi (freertos/tests/wifi): the build's network parts (drivers/compat/zephyr_net_if.c, the
+# "net_mgmt" thread of zephyr_net_mgmt_os.h, drivers/nina/nina_netif.c) under the shared ones as
+# drivers/wifi/wifi.cmake builds them (the NINA driver common/drivers/nina/nina_net.c, the
+# layer's net_mgmt and Wi-Fi requests, the stored credentials and their settings backend, the
+# Wi-Fi profile, the "wifi" command and the copy of Zephyr's wifi_credentials_shell.c, with the
+# prelude, CONFIG_NANO_WIFI_CREDENTIALS and the same per-file options), on the store and the
+# copies of Zephyr's settings and NVS over the shared fake flash (common/tests/kv_flash_fake.c),
+# the build's shell on a console that captures, and a fake module (the test's nina_request());
+# on the same kernel and layer objects.  It waits for the driver's and the profile's real
+# delays (the link monitor's 2 s, the reconnection's 4 s): about 25 s.
+wifiinc=(-D_GNU_SOURCE -DZ_SHELL_CMD_ROOT_GLOBAL -DCONFIG_GETOPT_LONG=1 -DCONFIG_NANO_WIFI_CREDENTIALS=1
+         -U_FORTIFY_SOURCE -Itests/shell -Idrivers/shell -Idrivers/wifi -Idrivers/nina
+         -I../common/shell -I../common/compat/lib/utils/getopt -I../common/drivers/nina
+         -I../common/imu -I../common/tests -I../common/compat/subsys/settings/include
+         -I../common/compat/subsys/settings/src -ffunction-sections -fdata-sections)
+wifiobjs=()
+for src in drivers/compat/zephyr_net_if.c drivers/nina/nina_netif.c tests/wifi/main.c \
+           drivers/shell/cli.c drivers/shell/getopt_state.c drivers/shell/nano_console.c \
+           drivers/shell/nano_shell.c drivers/shell/shell_argv.c drivers/libc/stdio_wrap.c \
+           ../common/shell/zshell.c ../common/shell/subcmd.c \
+           ../common/compat/subsys/portability/posix/c_lib_ext/fnmatch.c \
+           ../common/compat/lib/utils/getopt/getopt.c ../common/compat/lib/utils/getopt/getopt_long.c \
+           ../common/drivers/nina/nina_net.c ../common/compat/zephyr_net_mgmt.c \
+           ../common/compat/zephyr_wifi_mgmt.c ../common/compat/zephyr_wifi_utils.c \
+           ../common/compat/wifi_credentials.c ../common/compat/wifi_credentials_backend_settings.c \
+           ../common/imu/wifi_profile.c ../common/compat/zephyr_wifi_shell.c \
+           ../common/compat/subsys/net/lib/wifi_credentials/wifi_credentials_shell.c \
+           ../common/tests/kv_flash_fake.c ../common/imu/kv_store.c \
+           ../common/compat/kv_store_wipe.c ../common/compat/zephyr_flash_kv.c \
+           ../common/compat/lib/utils/hex.c ../common/compat/subsys/settings/src/settings.c \
+           ../common/compat/subsys/settings/src/settings_store.c \
+           ../common/compat/subsys/settings/src/settings_init.c \
+           ../common/compat/subsys/settings/src/settings_nvs.c \
+           ../common/compat/subsys/crc/crc8_sw.c ../common/compat/subsys/kvss/nvs/nvs.c; do
+    obj="$out/wifi_$(basename "$src" .c).o"
+    extra=()
+    case $src in
+        ../common/tests/*) ;;
+        ../common/shell/*|*/fnmatch.c|*/getopt*.c) ;;
+        ../common/*) extra=(-include drivers/compat/common_prelude.h) ;;
+    esac
+    case $src in
+        */subsys/settings/*|*/subsys/crc/*|*/subsys/kvss/*) extra+=("${kvconfig[@]}") ;;
+    esac
+    case $src in
+        */nvs.c) extra+=(-Wno-format -Wno-sign-compare -Wno-unused-parameter) ;;
+        */wifi_credentials_shell.c) extra+=(-Wno-format -Wno-unused-parameter) ;;
+        */wifi_credentials.c) extra+=(-Wno-type-limits) ;;
+        */wifi_credentials_backend_settings.c) extra+=(-Wno-sign-compare) ;;
+        *zshell.c|*nano_console.c) extra+=(-Dcalloc=test_calloc -Dmalloc=test_malloc -Dfree=test_free) ;;
+    esac
+    cc "${flags[@]}" "${strict[@]}" "${wifiinc[@]}" "${inc[@]}" "${extra[@]}" -c "$src" -o "$obj"
+    wifiobjs+=("$obj")
+done
+cc "${flags[@]}" -Wl,--gc-sections "${wraps[@]}" "${kernobjs[@]}" "${wifiobjs[@]}" -o "$out/wifi"
+if (( verbose )); then
+    timeout 120 "$out/wifi"
+else
+    timeout 120 "$out/wifi" >"$out/log" 2>&1 || { cat "$out/log"; exit 1; }
+fi
+printf 'ok  wifi (interface, events, credentials, reconnection, wifi command, FreeRTOS POSIX port)\n'

@@ -2,8 +2,8 @@
 /* The USB console on the Pico SDK and the FreeRTOS kernel: a shell on the
  * USB CDC ACM port, the key-value store, the SPI link to the NINA-W102, I2C0
  * with its DMA reads, the LSM6DSOX, the IMU acquisition service (without
- * its MQTT transport and time synchronization yet) and a task that blinks
- * the LED.
+ * its MQTT transport and time synchronization yet), Wi-Fi with the stored
+ * credentials and a task that blinks the LED.
  */
 #include <stdbool.h>
 #include <stdint.h>
@@ -25,13 +25,21 @@
 #include "nano_i2c.h"
 #include "nano_lsm6dso.h"
 #include "nano_nina.h"
+#include "nina_net.h"
 #include "nano_shell.h"
 #include "nano_stdio.h"
 #include "priorities.h"
 #include "time_sync.h"
+#include "wifi_profile.h"
+#include <zephyr/net/wifi_credentials.h>
 #include "zephyr_compat.h"
 
 LOG_MODULE_REGISTER(usb_console, LOG_LEVEL_INF);
+
+/* The "wifi" command's SYS_INIT(APPLICATION) in the Zephyr build
+ * (common/compat/zephyr_wifi_shell.c).
+ */
+int wifi_shell_init(void);
 
 /* Priorities and stacks (bytes): src/priorities_os.h and
  * common/compat/priorities.h.  The console is the Zephyr build's shell
@@ -165,6 +173,13 @@ static void console_main(void *arg)
 	}
 }
 
+static void start_thread(int ret, const char *name)
+{
+	if (ret) {
+		LOG_ERR("Could not start %s: %d", name, ret);
+	}
+}
+
 /* The Zephyr build's main() (zephyr/app/usb-console/src/main.c), as the task
  * "main" with its priority (NANO_PRIO_MAIN: Zephyr's 0, above the console) and
  * stack, ending when done as Zephyr's main thread does.  It runs before the
@@ -180,13 +195,15 @@ static void console_main(void *arg)
  * tried) and the start goes on (freertos/drivers/lsm6dso/nano_lsm6dso.h).
  * While the driver waits, the console's task may run; a command that uses
  * the sensor before it is ready gets the error of a device that is not.
- * kv_store_init() is settings_subsys_init(): it checks what the key-value
- * area holds, mounts NVS on it (the "fs_nvs" lines of "dmesg") and reads the
- * settings' handlers.  Data that is neither Zephyr's NVS nor erased is not
- * touched: the check logs it and every call of the store fails with -EILSEQ
- * until "kv wipe confirm" (common/compat/zephyr_flash_kv.c).  In the Zephyr
- * build the Wi-Fi credentials' SYS_INIT() has run settings_subsys_init()
- * before main(); here nothing uses the settings before this task.
+ * The settings are first initialized by wifi_credentials_init(), as the
+ * Wi-Fi credentials' SYS_INIT() does it in the Zephyr build before main():
+ * settings_subsys_init() checks what the key-value area holds, mounts NVS
+ * on it (the "fs_nvs" lines of "dmesg") and reads the settings' handlers;
+ * kv_store_init() at main()'s point calls it again, which does nothing more.
+ * Data that is neither Zephyr's NVS nor erased is not touched: the check
+ * logs it and every call of the store fails with -EILSEQ until "kv wipe
+ * confirm" (common/compat/zephyr_flash_kv.c), and the Wi-Fi part starts
+ * without stored networks.
  */
 static void main_main(void *arg)
 {
@@ -196,16 +213,42 @@ static void main_main(void *arg)
 
 	(void)nano_lsm6dso_initialize();
 
+	/* The NINA-W102's network interface, which Zephyr initializes at boot
+	 * (POST_KERNEL, after the sensor) and the NuttX build in its bringup
+	 * after the sensor: the event thread "net_mgmt", then the interface,
+	 * dormant, with the MAC address read from the module (its first
+	 * command, which resets it: about 760 ms; a module that does not
+	 * answer only fails that request, freertos/drivers/nina/nina_net.h).
+	 */
+	ret = nina_net_initialize();
+	if (ret) {
+		LOG_ERR("Could not set up the NINA's network interface: %d", ret);
+	}
+
+	/* The Wi-Fi credentials library's SYS_INIT(POST_KERNEL), which Zephyr
+	 * runs before the threads below start: initializes the settings (mounts
+	 * NVS on the key-value area; data that is not Zephyr's NVS is left
+	 * alone, and the call fails with -EILSEQ) and reads the stored SSIDs.
+	 * Then the "wifi" command's SYS_INIT(APPLICATION): its event callback.
+	 */
+	(void)wifi_credentials_init();
+	(void)wifi_shell_init();
+
 	/* The threads of K_THREAD_DEFINE(), which Zephyr starts before main()
 	 * (z_init_static_threads(), after the devices) and the NuttX build in
-	 * its init task at this point: the IMU service's (common/imu/
-	 * imu_stream.c), which waits for "imu start" at once.  It has a lower
-	 * priority than this task, so it first runs when this task waits.
+	 * its init task at this point, in the NuttX build's order: the NINA
+	 * driver's (common/drivers/nina/nina_net.c: scan, connect, link
+	 * monitor), the IMU service's (common/imu/imu_stream.c) and the Wi-Fi
+	 * profile's reconnection (common/imu/wifi_profile.c).  Each waits for
+	 * its work at once (the monitor polls every 2 s while connected).  They
+	 * have lower priorities than this task, so they first run when this
+	 * task waits.
 	 */
-	ret = K_THREAD_DEFINE_START(imu_stream_tid);
-	if (ret) {
-		LOG_ERR("Could not start imu_stream_tid: %d", ret);
-	}
+	start_thread(K_THREAD_DEFINE_START(nina_scan_tid), "nina_scan_tid");
+	start_thread(K_THREAD_DEFINE_START(nina_connect_tid), "nina_connect_tid");
+	start_thread(K_THREAD_DEFINE_START(nina_monitor_tid), "nina_monitor_tid");
+	start_thread(K_THREAD_DEFINE_START(imu_stream_tid), "imu_stream_tid");
+	start_thread(K_THREAD_DEFINE_START(wifi_reconnect_tid), "wifi_reconnect_tid");
 
 	LOG_INF("USB console started");
 	ret = kv_store_init();
@@ -220,6 +263,13 @@ static void main_main(void *arg)
 	 * (freertos/drivers/imu/time_sync_null.c): nothing to start.
 	 */
 	time_sync_init();
+	/* The automatic connection: the event callback, the migration of an
+	 * old profile to the stored credentials, and a request to the
+	 * reconnection thread, which connects to a stored network 4 s later
+	 * and retries every 32 s while there is no address (nothing when no
+	 * network is stored).
+	 */
+	(void)wifi_profile_init();
 	vTaskDelete(NULL);
 }
 

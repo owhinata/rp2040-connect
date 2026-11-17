@@ -327,6 +327,40 @@ int z_shell_cmd_main(const struct shell_static_entry *root, int argc,
 #define SHELL_CMD_REGISTER(syntax, subcmd, help, handler) \
   SHELL_CMD_ARG_REGISTER(syntax, subcmd, help, handler, 0, 0)
 
+/* SHELL_SUBCMD_ADD((parent), syntax, subcmd, help, handler, mand, opt):
+ * Zephyr puts the entry in a linker section of the parent command, from
+ * which SHELL_SUBCMD_SET_CREATE(name, (parent)) makes the parent's set,
+ * sorted by name, so that subcommands can come from several sources.  Here
+ * it defines the entry as the global
+ *
+ *   const struct shell_static_entry z_shell_subcmd_<parent>_<syntax>
+ *
+ * and the source that makes the parent's set lists the entries itself, in
+ * Zephyr's order (one parent level only; common/compat/zephyr_wifi_shell.c
+ * for "wifi").
+ */
+
+#define Z_SHELL_UNPAREN(...) __VA_ARGS__
+#define Z_SHELL_SUBCMD_NAME_(parent, syntax) z_shell_subcmd_##parent##_##syntax
+#define Z_SHELL_SUBCMD_NAME(parent, syntax) Z_SHELL_SUBCMD_NAME_(parent, syntax)
+
+#define SHELL_SUBCMD_ADD(_parent, _syntax, _subcmd, _help, _handler, _mand, \
+                         _opt) \
+  extern const struct shell_static_entry \
+    Z_SHELL_SUBCMD_NAME(Z_SHELL_UNPAREN _parent, _syntax); \
+  const struct shell_static_entry \
+    Z_SHELL_SUBCMD_NAME(Z_SHELL_UNPAREN _parent, _syntax) = \
+    SHELL_CMD_ARG(_syntax, _subcmd, _help, _handler, _mand, _opt)
+
+/* Zephyr's shell_help(sh): prints the help of the command that runs (the
+ * deepest one with a handler), as a wrong argument count does.  From the
+ * handler only, in its task.  common/shell/zshell.c, where the OS's part
+ * keeps the running command (ZSHELL_OS_ACTIVE_CMD, common/shell/zshell_os.h;
+ * the FreeRTOS build).
+ */
+
+void shell_help(const struct shell *sh);
+
 /* Devices (common/shell/zshell.c, on the devices of <zephyr/device.h>). */
 
 struct device;
