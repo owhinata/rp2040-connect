@@ -57,7 +57,7 @@ freertos/script/build.sh [--clean] [-j N] [-v] [-DNAME=VALUE ...] [APP]
 
 | オプション | 既定 | 内容 |
 |---|---|---|
-| `-DNANO_SELFTEST=ON` | OFF | 試験用の `selftest` コマンド（Zephyr 互換層の自己診断）を入れる |
+| `-DNANO_SELFTEST=ON` | OFF | 試験用の `selftest` コマンド（Zephyr 互換層と I2C0 の自己診断。計測を止めて使う）を入れる |
 | `-DNANO_SCHED_ZEPHYR=OFF` | ON | 同じ優先度のタスクの選び方を、Zephyr に合わせず FreeRTOS 標準のままにする（比較用） |
 
 ## ホストテスト
@@ -111,6 +111,7 @@ USB の CDC ACM ポートがコンソールです（UART0 は使いません）�
 | `kv set <key> <value>`、`kv sethex <key> <hex>`、`kv get <key>`、`kv delete <key>` | KV（設定と校正値）の読み書き。`get` は 16 進で表示 |
 | `kv wipe confirm` | KV の領域全体（Wi-Fi の資格情報も）を消す |
 | `nina version` | NINA-W102 のファームウェアの版 |
+| `i2c_dma mode [on\|off]`、`i2c_dma stats` | I2C0 の DMA 読み出しの切り替えと表示、回数の表示 |
 | `fault` | 前回の実行を止めた異常停止の記録 |
 | `free` | FreeRTOS のヒープと `malloc()` の使用量 |
 | `reboot` | 再起動 |
@@ -133,6 +134,7 @@ USB の CDC ACM ポートがコンソールです（UART0 は使いません）�
 | `drivers/shell/`、`drivers/log/`、`drivers/libc/` | シェル、RAM ログ、標準出力の接続 |
 | `drivers/kv/` | KV のフラッシュの読み書き |
 | `drivers/nina/` | NINA-W102 の SPI と制御線 |
+| `drivers/i2c_dw/` | I2C0 と DMA（センサーのバス） |
 | `tests/` | ホストテスト |
 | `script/` | `setup.sh`、`build.sh`、`flash.sh`、`format.sh`、`host_tests.sh` |
 | `PORTING_PLAN.md`、`PORTING_STATUS.md` | 移植の計画と、進み具合・確かめたことの記録 |

@@ -12,7 +12,10 @@
 #   store with the board's flash boundary on fakes of the Pico SDK's flash
 #   functions (freertos/tests/kv), and the NINA link's boundaries
 #   (freertos/drivers/nina) with the shared core on fakes of the Pico SDK's
-#   GPIO and SPI functions (freertos/tests/nina).
+#   GPIO and SPI functions (freertos/tests/nina), and I2C0's boundaries
+#   (freertos/drivers/i2c_dw, the layer's <zephyr/drivers/i2c.h>) with the
+#   shared core on fakes of the Pico SDK's GPIO, reset, IRQ and sync
+#   functions and of I2C0's registers (freertos/tests/i2c_dw).
 #
 #   freertos/script/host_tests.sh        run them
 #   freertos/script/host_tests.sh -v     also show the tests' output
@@ -23,7 +26,7 @@ verbose=0
 case "${1:-}" in
   "") ;;
   -v) verbose=1 ;;
-  -h|--help) sed -n '2,18p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+  -h|--help) sed -n '2,21p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
   *) printf 'Unknown option: %s\n' "$1" >&2; exit 2 ;;
 esac
 
@@ -177,3 +180,37 @@ else
     timeout 60 "$out/nina" >"$out/log" 2>&1 || { cat "$out/log"; exit 1; }
 fi
 printf 'ok  nina (SPI and line boundary, kernel services, FreeRTOS POSIX port)\n'
+
+# I2C0 (freertos/tests/i2c_dw): the board's boundary of the shared core (drivers/i2c_dw:
+# i2c_dw_os_impl.h, nano_i2c_instance.h with the device i2c0 and its Zephyr I2C API,
+# nano_dma_instance.h, nano_dma_os.c; drivers/compat/zephyr/drivers/i2c.h) on fakes of the Pico
+# SDK's GPIO, reset, IRQ, sync and DMA-claim functions and of I2C0's registers
+# (tests/i2c_dw/pico_fake), under the shared core (common/drivers/i2c_dw/nano_i2c.c, nano_dma.c,
+# i2c_dw_rp2040_commands.c, with the prelude, as drivers/i2c_dw/i2c_dw.cmake builds them), on the
+# same kernel and layer objects.  The DMA's register addresses are 32-bit constants
+# (common/drivers/i2c_dw/nano_dma.h), which a 64-bit host warns about turning into pointers; the
+# test does not use them.  The host's cc reports -Wsign-compare for two MIN()s of nano_i2c.c (an
+# int count and a uint32_t one, as in Zephyr's i2c_dw.c; the board's arm-none-eabi-gcc 15.2 with
+# the same -Wextra does not).
+i2cinc=(-Itests/i2c_dw/pico_fake -Idrivers/i2c_dw -I../common/drivers/i2c_dw -Wno-int-to-pointer-cast)
+i2cobjs=()
+for src in drivers/i2c_dw/nano_dma_os.c tests/i2c_dw/main.c ../common/drivers/i2c_dw/nano_i2c.c \
+           ../common/drivers/i2c_dw/nano_dma.c ../common/drivers/i2c_dw/i2c_dw_rp2040_commands.c; do
+    obj="$out/i2c_$(basename "$src" .c).o"
+    extra=()
+    case $src in
+        ../common/*) extra=(-include drivers/compat/common_prelude.h) ;;
+    esac
+    case $src in
+        */nano_i2c.c) extra+=(-Wno-sign-compare) ;;
+    esac
+    cc "${flags[@]}" "${strict[@]}" "${i2cinc[@]}" "${inc[@]}" "${extra[@]}" -c "$src" -o "$obj"
+    i2cobjs+=("$obj")
+done
+cc "${flags[@]}" "${kernobjs[@]}" "${i2cobjs[@]}" -o "$out/i2c_dw"
+if (( verbose )); then
+    timeout 60 "$out/i2c_dw"
+else
+    timeout 60 "$out/i2c_dw" >"$out/log" 2>&1 || { cat "$out/log"; exit 1; }
+fi
+printf 'ok  i2c_dw (I2C0 boundary and device, Zephyr I2C API, FreeRTOS POSIX port)\n'

@@ -21,6 +21,7 @@
 #include "nano_shell.h"
 #include "os_clock.h"
 #ifdef NANO_SELFTEST
+#include "i2c_dw_selftest.h"
 #include "zephyr_selftest.h"
 #endif
 
@@ -298,16 +299,21 @@ SHELL_CMD_REGISTER(bootsel, NULL, "Restart into the USB bootloader (BOOTSEL)", c
 
 #ifdef NANO_SELFTEST
 /* The Zephyr compatibility layer's self-test (a build option, NANO_SELFTEST;
- * freertos/drivers/compat/zephyr_selftest.h).  Runs in this task, at the
- * shell's priority, as the test expects.
+ * freertos/drivers/compat/zephyr_selftest.h), then the check of I2C0 on the
+ * board's LSM6DSOX (freertos/drivers/i2c_dw/i2c_dw_selftest.h).  Runs in
+ * this task, at the shell's priority, as the test expects.
  */
 static int cmd_selftest(const struct shell *sh, size_t argc, char **argv)
 {
+	int failed;
+
 	(void)sh;
 	(void)argc;
 	(void)argv;
 
-	return zephyr_selftest_run() == 0 ? 0 : -EIO;
+	failed = zephyr_selftest_run();
+	failed += i2c_dw_selftest_run();
+	return failed == 0 ? 0 : -EIO;
 }
 
 SHELL_CMD_REGISTER(selftest, NULL, "Test the Zephyr compatibility layer (build option)",
@@ -315,10 +321,12 @@ SHELL_CMD_REGISTER(selftest, NULL, "Test the Zephyr compatibility layer (build o
 #endif
 
 /* The commands of other sources: freertos/drivers/log/log_ram.c,
- * common/imu/kv_store.c (with "kv wipe" of common/compat/kv_store_wipe.c)
- * and common/drivers/nina/nina_shell.c.
+ * common/drivers/i2c_dw/i2c_dma_shell.c, common/imu/kv_store.c (with
+ * "kv wipe" of common/compat/kv_store_wipe.c) and
+ * common/drivers/nina/nina_shell.c.
  */
 NANO_SHELL_CMD_DECLARE(dmesg);
+NANO_SHELL_CMD_DECLARE(i2c_dma);
 NANO_SHELL_CMD_DECLARE(kv);
 NANO_SHELL_CMD_DECLARE(nina);
 
@@ -332,6 +340,7 @@ const struct nano_shell_cmd nano_shell_cmds[] = {
 	NANO_SHELL_CMD(fault),
 	NANO_SHELL_CMD(free),
 	NANO_SHELL_CMD(help),
+	NANO_SHELL_CMD(i2c_dma),
 	NANO_SHELL_CMD(id),
 	NANO_SHELL_CMD(irqstack),
 	NANO_SHELL_CMD(kv),

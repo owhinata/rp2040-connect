@@ -57,7 +57,7 @@ On the first build the Pico SDK fetches the source of `picotool` from GitHub and
 
 | Option | Default | Content |
 |---|---|---|
-| `-DNANO_SELFTEST=ON` | OFF | Adds the test command `selftest` (the self-test of the Zephyr compatibility layer) |
+| `-DNANO_SELFTEST=ON` | OFF | Adds the test command `selftest` (the self-test of the Zephyr compatibility layer and of I2C0; use it with the measurement stopped) |
 | `-DNANO_SCHED_ZEPHYR=OFF` | ON | Leaves the choice among tasks of one priority as FreeRTOS makes it, not as Zephyr does (for comparison) |
 
 ## Host tests
@@ -111,6 +111,7 @@ The console is the USB CDC ACM port (UART0 is not used). Opening a terminal show
 | `kv set <key> <value>`, `kv sethex <key> <hex>`, `kv get <key>`, `kv delete <key>` | Read and write the key-value store (settings and calibration). `get` prints hexadecimal |
 | `kv wipe confirm` | Erase the whole key-value area (the Wi-Fi credentials too) |
 | `nina version` | The firmware version of the NINA-W102 |
+| `i2c_dma mode [on\|off]`, `i2c_dma stats` | Switch or show the DMA reads of I2C0; show their counters |
 | `fault` | The record of the fatal error that ended the last run |
 | `free` | Use of the FreeRTOS heap and of `malloc()` |
 | `reboot` | Restart |
@@ -136,6 +137,7 @@ The console is the USB CDC ACM port (UART0 is not used). Opening a terminal show
 | `drivers/shell/`, `drivers/log/`, `drivers/libc/` | The shell, the RAM log, the connection of standard output |
 | `drivers/kv/` | Reading and writing the flash of the key-value store |
 | `drivers/nina/` | The SPI bus and control lines of the NINA-W102 |
+| `drivers/i2c_dw/` | I2C0 and DMA (the sensor's bus) |
 | `tests/` | Host tests |
 | `script/` | `setup.sh`, `build.sh`, `flash.sh`, `format.sh`, `host_tests.sh` |
 | `PORTING_PLAN.md`, `PORTING_STATUS.md` | The plan of the port, and the record of its progress and of what was checked (in Japanese) |

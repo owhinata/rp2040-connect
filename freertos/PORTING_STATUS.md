@@ -463,3 +463,23 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
   `console` のスタックの空き 1680 B、アイドルの `cpu_active` 2.0%。`dmesg` に NINA のエラーなし。
 - **CP-F1 完了**（シェル、RAM ログ、KV、NINA との通信）。未確認: NINA が応答しないときの -116（起こす手段が無い）。
 - 次: F06（I2C0 コアの接着と `i2c_dma`）、F07（LSM6DSOX）、F08（取得サービスと `imu`）→ CP-F2。
+
+## F06 の記録（2026-11-17）
+
+- 実装: `freertos/drivers/i2c_dw/`（境界 `i2c_dw_os_impl.h`、デバイス `i2c0` と Zephyr の I2C API `nano_i2c_instance.h`、DMA の
+  部分、`nano_i2c0_initialize()`）、`freertos/drivers/compat/zephyr/drivers/i2c.h`、`common/drivers/i2c_dw/i2c_dma_shell.c`
+  （Zephyr 版 `i2c_dw.c` の `i2c_dma` コマンドの写し、Apache-2.0。FreeRTOS 版だけがビルドする）、`selftest` の I2C の 6 項目、
+  ホストテスト `freertos/tests/i2c_dw`。`common/`・`nuttx/`・`zephyr/` の既存ファイルは変えていない。
+- 割り込みの優先度は SDK の既定 0x80（NuttX 版と同じ。Zephyr 版は 0xC0）。「デバイスの割り込みは全部同じ高さ」は保つ。
+  I2C の RTIO は不要（Zephyr 版も無効で、FIFO は work から `i2c_burst_read_dt` で読む）。
+- メインが確かめたこと: ビルド（既定・selftest、警告 0）、整形、`host_tests.sh`。ソースは読んでいない。Zephyr・NuttX の像の
+  一致は subagent の報告のまま。
+- 実機（selftest のビルド）: 初期化直後のレジスター（IC_COMP_TYPE 0x44570140、SPKLEN 1、SDA_HOLD 1、pad 0x52、CTRL 0x3、
+  NVIC の bit 11・12・23、優先度 0x80）が期待どおり。`i2c_dma` の `mode`・`stats`・誤った引数。`selftest` 3 回とも
+  `0 of 22` と `i2c: 0 of 6 tests failed`（WHO_AM_I、標準と fast plus、拒否、NACK、DMA 読み出し）。`i2c_dma stats` は
+  1 回ごとに transfers +1、bytes +35。転送後のレジスター（IC_CON 0x165、SS 0x1f4/0x271、FS 0x1f/0x1f、TAR 0x6a、DMA の
+  CTRL 0x100015/0x108821）も期待どおり。`dmesg` に NACK の項目の `<err> i2c_dw:` 3 行（`NACK`、`ABR and STOP`、
+  `IO Fail`。報告の予想は 2 行）。`irqstack` 564/2048。既定のビルドに書き直し、`selftest` が無いこと、`nina version`、
+  `kv get` を確認。
+- 次: F07（LSM6DSOX。`zephyr_device.c` のリンク、stmemsc、GPIO の割り込みは `gpio_add_raw_irq_handler_masked()` の案、
+  gpio0 デバイス、`sysworkq` のスタックの実測）。

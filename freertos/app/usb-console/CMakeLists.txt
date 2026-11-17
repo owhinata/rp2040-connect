@@ -28,6 +28,9 @@ include(${CMAKE_CURRENT_LIST_DIR}/../../drivers/kv/kv.cmake)
 # The SPI link to the NINA-W102 module and the "nina" command
 # (freertos/drivers/nina).
 include(${CMAKE_CURRENT_LIST_DIR}/../../drivers/nina/nina.cmake)
+# I2C0 with its DMA reads (the device i2c0 of the compatibility layer) and the
+# "i2c_dma" command (freertos/drivers/i2c_dw).
+include(${CMAKE_CURRENT_LIST_DIR}/../../drivers/i2c_dw/i2c_dw.cmake)
 
 # The compatibility layer's self-test, the "selftest" command
 # (freertos/drivers/compat/zephyr_selftest.h): a test feature, off by default
@@ -60,6 +63,11 @@ else()
 endif()
 freertos_kv(usb-console)
 freertos_nina(usb-console)
+if(NANO_SELFTEST)
+  freertos_i2c_dw(usb-console SELFTEST)
+else()
+  freertos_i2c_dw(usb-console)
+endif()
 
 # FreeRTOSConfig.h; priorities_os.h (src/, which FreeRTOSConfig.h includes);
 # priorities.h, cpu_load.h and nano_cpuload.h (common/compat);

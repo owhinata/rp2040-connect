@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MIT */
 /* The USB console on the Pico SDK and the FreeRTOS kernel: a shell on the
- * USB CDC ACM port, the key-value store, the SPI link to the NINA-W102 and a
- * task that blinks the LED.
+ * USB CDC ACM port, the key-value store, the SPI link to the NINA-W102, I2C0
+ * with its DMA reads and a task that blinks the LED.
  */
 #include <stdbool.h>
 #include <stdint.h>
@@ -17,7 +17,9 @@
 #include "kv_store.h"
 #include "log_ram.h"
 #include "nano_console.h"
+#include "nano_dma.h"
 #include "nano_flash_kv_os.h"
+#include "nano_i2c.h"
 #include "nano_nina.h"
 #include "nano_shell.h"
 #include "nano_stdio.h"
@@ -249,6 +251,22 @@ int main(void)
 	ret = nano_nina_initialize();
 	if (ret != 0) {
 		LOG_ERR("Could not set up the NINA's SPI bus: %d", ret);
+	}
+
+	/* The DMA for the I2C0 reads (reset, both interrupts) and then I2C0
+	 * (reset, pins, controller registers for 100 kHz, interrupt; the device
+	 * i2c0), as the Zephyr build initializes its DMA device (POST_KERNEL 40)
+	 * before i2c0 (POST_KERNEL 50) and the NuttX build in its bringup, after
+	 * the NINA's SPI bus (freertos/drivers/i2c_dw).  A failure leaves i2c0
+	 * not ready (its calls return -ENODEV) and does not stop the start.
+	 */
+	ret = nano_dma_initialize();
+	if (ret != 0) {
+		LOG_ERR("Could not set up the DMA: %d", ret);
+	}
+	ret = nano_i2c0_initialize();
+	if (ret != 0) {
+		LOG_ERR("Could not set up I2C0: %d", ret);
 	}
 
 	xTaskCreateStatic(main_main, "main", MAIN_STACK_SIZE, NULL, MAIN_PRIORITY, main_stack,
