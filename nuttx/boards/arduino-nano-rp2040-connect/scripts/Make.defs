@@ -36,6 +36,13 @@ LDSCRIPT = nano-flash.ld
 
 ARCHSCRIPT += $(BOARD_DIR)$(DELIM)scripts$(DELIM)$(LDSCRIPT)
 
+# boot2 (boot2_at25sf128a.S, CONFIG_RP2040_FLASH_CHIP): run the flash at
+# clk_sys / 2 (62.5 MHz) instead of that file's default clk_sys / 4, as the
+# Zephyr build and the Pico SDK boards do.  arch/arm/src/rp2040/boot2/Make.defs
+# adds its own flags to these.
+
+BOOT2CFLAGS += -DPICO_FLASH_SPI_CLKDIV=2
+
 CFLAGS := $(ARCHCFLAGS) $(ARCHOPTIMIZATION) $(ARCHCPUFLAGS) $(ARCHINCLUDES) $(ARCHDEFINES) $(EXTRAFLAGS)
 CXXFLAGS := $(ARCHCXXFLAGS) $(ARCHOPTIMIZATION) $(ARCHCPUFLAGS) $(ARCHXXINCLUDES) $(ARCHDEFINES) $(EXTRAFLAGS)
 CPPFLAGS := $(ARCHINCLUDES) $(ARCHDEFINES) $(EXTRAFLAGS)

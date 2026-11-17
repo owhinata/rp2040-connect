@@ -45,11 +45,13 @@ script, delete the corresponding directory and source the script again.
 The script does the following:
 
 1. Configures NuttX (`tools/configure.sh -l -a ../nuttx-apps`) when it has not been configured
-   yet, or when the defconfig, the board's `Kconfig`, a `Kconfig` under `nuttx/drivers/` or
-   `nuttx/apps/`, the set of application directories, the patches or the NuttX/apps commit have
-   changed since the last configure (recorded in `nuttx/build/.configure-stamp`). NuttX reads the
-   board's `Kconfig` and generates `nuttx/apps/Kconfig` only at configure time, so it starts from
-   `make distclean`. Otherwise the build is incremental.
+   yet, or when the defconfig, the board's `Kconfig` or `scripts/Make.defs`, a `Kconfig` under
+   `nuttx/drivers/` or `nuttx/apps/`, the set of application directories, the patches or the
+   NuttX/apps commit have changed since the last configure (recorded in
+   `nuttx/build/.configure-stamp`). NuttX reads the board's `Kconfig` and generates
+   `nuttx/apps/Kconfig` only at configure time, and make does not rebuild boot2 when its flags in
+   `scripts/Make.defs` change, so it starts from `make distclean`. Otherwise the build is
+   incremental.
 2. Runs `make` in `nuttx/nuttx`.
 3. Checks the image: `.boot2` is at 0x10000000 and is 256 bytes (without `PICO_SDK_PATH`, NuttX
    would silently leave boot2 out), `nuttx.bin` covers exactly what the ELF loads into flash,

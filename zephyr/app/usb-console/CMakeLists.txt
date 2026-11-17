@@ -38,6 +38,38 @@ function(use_local_driver_sources target pattern replacement_dir)
   set_property(TARGET ${target} PROPERTY SOURCES "${updated_sources}")
 endfunction()
 
+# boot2: keep the board's choice (boot2_at25sf128a.S) but run the flash at clk_sys / 2 (62.5 MHz)
+# instead of that file's default clk_sys / 4, as the Pico SDK boards do.  hal_rpi_pico has no
+# option for PICO_FLASH_SPI_CLKDIV, so build its bootloader project once more with the define
+# and link that boot2 in place of the one hal_rpi_pico builds.
+if(CONFIG_RP2_REQUIRES_SECOND_STAGE_BOOT)
+  if(NOT CONFIG_RP2_FLASH_AT25SF128A)
+    message(FATAL_ERROR "boot2: expected CONFIG_RP2_FLASH_AT25SF128A")
+  endif()
+  include(ExternalProject)
+  set(nano_boot2_dir ${CMAKE_BINARY_DIR}/nano_boot2)
+  ExternalProject_Add(
+    nano_boot2
+    SOURCE_DIR ${ZEPHYR_BASE}/modules/hal_rpi_pico/bootloader
+    BINARY_DIR ${nano_boot2_dir}
+    CMAKE_ARGS
+      -DCMAKE_SYSTEM_NAME=${CMAKE_SYSTEM_NAME}
+      -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
+      -DCMAKE_ASM_COMPILER=${CMAKE_ASM_COMPILER}
+      -DCMAKE_ASM_FLAGS=-DPICO_FLASH_SPI_CLKDIV=2
+      -DZEPHYR_HAL_RPI_PICO_MODULE_DIR=${ZEPHYR_HAL_RPI_PICO_MODULE_DIR}
+      -DZEPHYR_BASE=${ZEPHYR_BASE}
+      -DFLASH_TYPE=AT25SF128A
+      -DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}
+      -DRP2_BOOTLOADER_BYPRODUCT=${nano_boot2_dir}/boot_stage2.S
+      -DCONFIG_PICOLIBC=${CONFIG_PICOLIBC}
+    INSTALL_COMMAND ""
+    BUILD_BYPRODUCTS ${nano_boot2_dir}/boot_stage2.S
+    BUILD_ALWAYS TRUE)
+  use_local_driver_sources(modules__hal_rpi_pico "(^|/)bootloader/boot_stage2\\.S$" ${nano_boot2_dir})
+  add_dependencies(modules__hal_rpi_pico nano_boot2)
+endif()
+
 use_local_driver_sources(drivers__i2c "(^|/)i2c_dw\\.c$" drivers/i2c_dw)
 if(CONFIG_I2C_DW_RP2040_DMA)
   target_sources(drivers__i2c PRIVATE ${COMMON_DIR}/drivers/i2c_dw/i2c_dw_rp2040_commands.c)

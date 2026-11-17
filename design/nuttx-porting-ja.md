@@ -41,12 +41,13 @@ NuttX が使う機能だけを実装しています。
 
 スクリプトは次のことを行います。
 
-1. まだ configure していないとき、または前回の configure から defconfig、ボードの `Kconfig`、
-   `nuttx/drivers/` と `nuttx/apps/` の下の `Kconfig`、アプリのディレクトリの構成、パッチ、NuttX と
-   apps の commit のどれかが変わったとき（`nuttx/build/.configure-stamp` に記録）は、NuttX を
-   configure します（`tools/configure.sh -l -a ../nuttx-apps`）。NuttX はボードの `Kconfig` を読み込み
-   `nuttx/apps/Kconfig` を生成するのを configure のときにしか行わないため、`make distclean` から
-   やり直します。それ以外のときは差分ビルドです。
+1. まだ configure していないとき、または前回の configure から defconfig、ボードの `Kconfig` と
+   `scripts/Make.defs`、`nuttx/drivers/` と `nuttx/apps/` の下の `Kconfig`、アプリのディレクトリの
+   構成、パッチ、NuttX と apps の commit のどれかが変わったとき（`nuttx/build/.configure-stamp` に
+   記録）は、NuttX を configure します（`tools/configure.sh -l -a ../nuttx-apps`）。NuttX はボードの
+   `Kconfig` を読み込み `nuttx/apps/Kconfig` を生成するのを configure のときにしか行わず、
+   `scripts/Make.defs` にある boot2 のフラグが変わっても make は boot2 を作り直さないため、
+   `make distclean` からやり直します。それ以外のときは差分ビルドです。
 2. `nuttx/nuttx` で `make` を実行します。
 3. イメージを検査します。`.boot2` が 0x10000000 にあって 256 バイトであること（`PICO_SDK_PATH` が
    無いと、NuttX はエラーを出さずに boot2 の無いイメージを作ります）、`nuttx.bin` が ELF の

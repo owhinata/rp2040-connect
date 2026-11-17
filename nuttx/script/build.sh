@@ -88,7 +88,8 @@ config_inputs() {
   local f
   printf 'nuttx %s\n' "$(git -C "$nx" rev-parse HEAD 2>/dev/null || echo unknown)"
   printf 'apps %s\n' "$(git -C "$apps" rev-parse HEAD 2>/dev/null || echo unknown)"
-  for f in "$defconfig" "${root}/${board_rel}/Kconfig"; do
+  # scripts/Make.defs: make does not rebuild boot2 when its flags (BOOT2CFLAGS) change.
+  for f in "$defconfig" "${root}/${board_rel}/Kconfig" "${root}/${board_rel}/scripts/Make.defs"; do
     printf '%s %s\n' "${f#"${root}/"}" "$(sha256sum < "$f" | cut -d' ' -f1)"
   done
   # Kconfig files of the out-of-tree code, and which app directories exist

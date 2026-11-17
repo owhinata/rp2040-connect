@@ -856,3 +856,22 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
 - 1 ms 未満の待ちの一覧（tick を 1 ms にする材料）: 共有コードでは NINA の READY のポーリング（`nina_spi.c` の
   `nina_os_sleep_us(NINA_READY_POLL_US)`）だけ。READY を割り込みにすれば、1 ms 未満の待ちは無くなる。
 - 実機: フックなしの像（`-Os`）。
+
+## Zephyr 版・NuttX 版の boot2 を分周 2 に（2026-11-18）
+
+- 実装（subagent）: Zephyr は `app/usb-console/CMakeLists.txt` で上流の bootloader プロジェクトを `-DPICO_FLASH_SPI_CLKDIV=2` 付きで
+  もう一度ビルドし、`use_local_driver_sources` で hal_rpi_pico の `boot_stage2.S` と差し替える（上流に指定の口が無い）。NuttX は
+  ボードの `scripts/Make.defs` に `BOOT2CFLAGS += -DPICO_FLASH_SPI_CLKDIV=2`、`build.sh` の再構成の入力に同ファイルを追加。
+  設計書（`nuttx-porting`、日英）に build.sh の説明を 1 か所。フラッシュの種類（AT25SF128A 用）は変えていない。
+- メインが確かめたこと: 差分を読んだ。subagent がビルドした像が、基準と 5 バイト（オフセット 0x1c の 4 → 2 と CRC 4 バイト）だけ違い、
+  2 版の新しい boot2 が同一。メイン自身は再ビルドしていない。ホストテストは subagent の報告（両方 rc=0）。
+- 実機: 新しい boot2 を FreeRTOS 版（`-Os`）の UF2 の先頭に入れて書き込み、起動・`devmem 18000014` = 2・送信 60 秒
+  （`cpu_active` 43.1%、欠番 0）を確認。Zephyr 版・NuttX 版そのものでは未確認（CP-Z と NuttX の再確認で測る）。
+- **新しい基準**: `freertos/build/baseline/zephyr/snapshot-clkdiv2/image.bin`、`.../nuttx/snapshot-clkdiv2/image.bin`
+  （以後 `common/` を触ったらこれと比べる。NuttX は従来どおり `SOURCE_DATE_EPOCH=1763337600 ... --clean -j 1`）。
+- README に入れること（未反映）: ルートの README の性能の表は boot2 の変更前の値。Zephyr 版・NuttX 版を測り直したら直す。
+- 除算器と ROM の `memcpy`・`memset` の検討（subagent、実装なし）: Zephyr は `--wrap` で新規 1 ファイル約 70 行 + CMake 約 15 行。
+  NuttX は `memcpy`・`memset` が `LIBC_ARCH_MEMCPY/MEMSET` で約 50 行、除算器は pico-sdk の取得範囲の追加・空ヘッダー 2 つ・
+  `--wrap` で約 20 行。除算器はどちらもコンテキスト切り替えで退避できないので割り込み禁止方式（64 ビットで推定 100 サイクル前後）。
+  現状は両版とも `memcpy`・`memset` がバイト単位のループ、割り算は libgcc。subagent の推奨は「boot2 だけで測ってから、`memcpy`・
+  `memset` の ROM 版を先に、除算器は見送り寄り」。ユーザーの判断待ち。
