@@ -1,0 +1,598 @@
+/* SPDX-License-Identifier: MIT */
+/* The host test of the FreeRTOS build's boundaries of the NINA core on the
+ * FreeRTOS POSIX port: freertos/drivers/nina/nano_nina.c on fakes of the
+ * Pico SDK's GPIO, reset and SPI functions (pico_fake/, implemented here:
+ * they record the calls and play the module), freertos/drivers/nina/
+ * nina_os.c on the FreeRTOS part of the compatibility layer, and the
+ * shared core over both (common/drivers/nina/nina_spi.c), as the board
+ * builds them (freertos/drivers/nina/nina.cmake).
+ *
+ * - Before nano_nina_initialize(): a request fails with -ENODEV and touches
+ *   no line (the board's start makes no request).
+ * - nano_nina_initialize(): the reset of SPI1, the three SPI pins as
+ *   Zephyr's pinctrl sets them (in its order), 8 MHz, mode 0, 8 bits, MSB
+ *   first, SSE, then CS as an output at its inactive (high) level.
+ * - nano_nina_pin_configure() for each mode, as Zephyr's
+ *   gpio_rpi_configure(); nano_nina_pin_set()/_get() with each line's
+ *   polarity.
+ * - "nina version" (0x37) through the core: the reset of the first request
+ *   (RESET active, 10 ms, inactive, 750 ms, IRQ low and an input) with the
+ *   sleeps of the layer (the time rounded up to ticks, plus one tick), the
+ *   frame on SPI, the answer; the second request does not reset again.
+ * - A module that stops answering: the request ends with -ETIMEDOUT after
+ *   the core's 2000 ms (the layer's clock), CS untouched.
+ * - nina_os_lock(): recursive and with priority inheritance; the DNS lock
+ *   is a separate mutex.
+ *
+ * Built and run by freertos/script/host_tests.sh.
+ */
+
+#include <assert.h>
+#include <errno.h>
+#include <stdarg.h>
+#include <stdbool.h>
+#include <stdint.h>
+#include <stdio.h>
+#include <string.h>
+#include <unistd.h>
+
+#include "FreeRTOS.h"
+#include "task.h"
+
+#include <zephyr/kernel.h>
+
+#include "hardware/gpio.h"
+#include "hardware/resets.h"
+#include "hardware/spi.h"
+
+#include "nano_nina.h"
+#include "nina_os.h"
+#include "nina_proto.h"
+#include "priorities.h"
+#include "zephyr_compat.h"
+
+#define RUNNER_STACK 16384
+#define HELPER_STACK 16384
+#define LOG_SIZE     4096
+#define NUM_GPIO     30
+
+#define GPIO_RESET 3
+#define GPIO_CS    9
+#define GPIO_READY 10
+
+volatile int z_host_isr_depth;
+
+/* tick.c's vApplicationTickHook(), counted as an interrupt handler. */
+void app_tick_hook(void);
+
+void vApplicationTickHook(void)
+{
+	z_host_isr_depth++;
+	app_tick_hook();
+	z_host_isr_depth--;
+}
+
+/* The calls -------------------------------------------------------------*/
+
+static char calls[LOG_SIZE];
+static bool recording = true;
+
+static void record(const char *fmt, ...)
+{
+	size_t used = strlen(calls);
+	va_list ap;
+
+	if (!recording) {
+		return;
+	}
+	va_start(ap, fmt);
+	vsnprintf(calls + used, sizeof(calls) - used, fmt, ap);
+	va_end(ap);
+	assert(strlen(calls) + 1 < sizeof(calls));
+	strcat(calls, " ");
+}
+
+static void expect_calls(const char *expected)
+{
+	if (strcmp(calls, expected) != 0) {
+		printf("expected: %s\n     got: %s\n", expected, calls);
+		fflush(stdout);
+		assert(0);
+	}
+	calls[0] = '\0';
+}
+
+/* The lines and the module -------------------------------------------------*/
+
+struct pin {
+	bool out;   /* direction */
+	bool level; /* output level */
+};
+
+static struct pin pins[NUM_GPIO];
+
+/* The module: answers while alive and out of reset.  READY is low (ready)
+ * while CS is high, and the module answers CS going low by releasing READY
+ * (pulled up).  The first CS period after ready takes the command, the next
+ * one sends the answer.
+ */
+static bool module_alive = true;
+static unsigned int module_resets;
+static uint8_t command[64], answer[64];
+static size_t command_len, answer_len, answer_pos;
+static bool answering;
+static unsigned int spi_calls, spi_bytes;
+
+static bool module_running(void)
+{
+	return module_alive && pins[GPIO_RESET].out && pins[GPIO_RESET].level;
+}
+
+static bool cs_asserted(void)
+{
+	return pins[GPIO_CS].out && !pins[GPIO_CS].level;
+}
+
+/* The end of a CS period. */
+static void cs_released(void)
+{
+	if (answering) {
+		answering = false;
+		command_len = 0;
+		return;
+	}
+	if (command_len < 4 || command[0] != 0xe0 || command[1] != 0x37) {
+		command_len = 0;
+		return;
+	}
+	/* The version: START, the reply, one parameter, its length, END. */
+	static const char version[] = "1.5.0";
+
+	answer_len = 0;
+	answer[answer_len++] = 0xe0;
+	answer[answer_len++] = 0x37 | 0x80;
+	answer[answer_len++] = 1;
+	answer[answer_len++] = sizeof(version) - 1;
+	memcpy(answer + answer_len, version, sizeof(version) - 1);
+	answer_len += sizeof(version) - 1;
+	answer[answer_len++] = 0xee;
+	answer_pos = 0;
+	answering = true;
+}
+
+static uint8_t exchange(uint8_t tx)
+{
+	assert(cs_asserted() && module_running());
+	spi_bytes++;
+	if (answering) {
+		return answer_pos < answer_len ? answer[answer_pos++] : 0xff;
+	}
+	assert(command_len < sizeof(command));
+	command[command_len++] = tx;
+	return 0xff;
+}
+
+/* Ticks at the reset sequence's edges (each valid once its flag is set). */
+static TickType_t tick_reset_active, tick_reset_inactive, tick_irq_low;
+static bool seen_reset_active, seen_reset_inactive, seen_irq_low;
+
+/* The fakes of the Pico SDK (pico_fake/pico_nina_fake.h) ---------------------*/
+
+void gpio_init(uint gpio)
+{
+	record("init(%u)", gpio);
+	pins[gpio].out = false;
+	pins[gpio].level = false;
+}
+
+void gpio_set_function(uint gpio, gpio_function_t fn)
+{
+	record("func(%u,%s)", gpio,
+	       fn == GPIO_FUNC_SPI   ? "spi"
+	       : fn == GPIO_FUNC_SIO ? "sio"
+				     : "?");
+}
+
+void gpio_set_pulls(uint gpio, bool up, bool down)
+{
+	record("pulls(%u,%d,%d)", gpio, up, down);
+}
+
+void gpio_set_drive_strength(uint gpio, enum gpio_drive_strength drive)
+{
+	record("drive(%u,%s)", gpio, drive == GPIO_DRIVE_STRENGTH_4MA ? "4mA" : "?");
+}
+
+void gpio_set_slew_rate(uint gpio, enum gpio_slew_rate slew)
+{
+	record("slew(%u,%s)", gpio, slew == GPIO_SLEW_RATE_SLOW ? "slow" : "fast");
+}
+
+void gpio_set_input_hysteresis_enabled(uint gpio, bool enabled)
+{
+	record("schmitt(%u,%d)", gpio, enabled);
+}
+
+void gpio_set_input_enabled(uint gpio, bool enabled)
+{
+	record("ie(%u,%d)", gpio, enabled);
+}
+
+void gpio_set_oeover(uint gpio, uint value)
+{
+	record("oeover(%u,%u)", gpio, value);
+}
+
+void gpio_set_outover(uint gpio, uint value)
+{
+	record("outover(%u,%u)", gpio, value);
+}
+
+void gpio_set_inover(uint gpio, uint value)
+{
+	record("inover(%u,%u)", gpio, value);
+}
+
+void gpio_set_irqover(uint gpio, uint value)
+{
+	record("irqover(%u,%u)", gpio, value);
+}
+
+static void line_changed(uint gpio, bool was_cs)
+{
+	if (gpio == GPIO_CS && was_cs && !cs_asserted()) {
+		cs_released();
+	}
+	if (gpio == GPIO_RESET && pins[gpio].out) {
+		if (!pins[gpio].level && !seen_reset_active) {
+			tick_reset_active = xTaskGetTickCount();
+			seen_reset_active = true;
+		} else if (pins[gpio].level && seen_reset_active && !seen_reset_inactive) {
+			tick_reset_inactive = xTaskGetTickCount();
+			seen_reset_inactive = true;
+			module_resets++;
+		}
+	}
+	if (gpio == 2 && pins[gpio].out && !pins[gpio].level && !seen_irq_low) {
+		tick_irq_low = xTaskGetTickCount();
+		seen_irq_low = true;
+	}
+}
+
+void gpio_set_dir(uint gpio, bool out)
+{
+	bool was_cs = cs_asserted();
+
+	record("dir(%u,%s)", gpio, out ? "out" : "in");
+	pins[gpio].out = out;
+	line_changed(gpio, was_cs);
+}
+
+void gpio_put(uint gpio, bool value)
+{
+	bool was_cs = cs_asserted();
+
+	record("put(%u,%d)", gpio, value);
+	pins[gpio].level = value;
+	line_changed(gpio, was_cs);
+}
+
+bool gpio_get(uint gpio)
+{
+	assert(gpio == GPIO_READY && !pins[gpio].out);
+	/* Pulled up unless the running module pulls it low. */
+	return !(module_running() && !cs_asserted());
+}
+
+void reset_block_num(reset_num_t block_num)
+{
+	record("reset(%d)", (int)block_num);
+}
+
+void unreset_block_num_wait_blocking(reset_num_t block_num)
+{
+	record("unreset(%d)", (int)block_num);
+}
+
+struct spi_inst {
+	spi_hw_t hw;
+};
+
+static struct spi_inst spi1_inst;
+spi_inst_t *const fake_spi1 = &spi1_inst;
+
+spi_hw_t *spi_get_hw(spi_inst_t *spi)
+{
+	return &spi->hw;
+}
+
+void hw_set_bits(volatile uint32_t *addr, uint32_t mask)
+{
+	assert(addr == &spi1_inst.hw.cr1);
+	record("cr1|=%#x", (unsigned int)mask);
+	*addr |= mask;
+}
+
+/* The SDK's result for 8 MHz from clk_peri 125 MHz: CPSDVSR 2, SCR 7. */
+uint spi_set_baudrate(spi_inst_t *spi, uint baudrate)
+{
+	assert(spi == spi1);
+	record("baud(%u)", baudrate);
+	return 7812500;
+}
+
+void spi_set_format(spi_inst_t *spi, uint data_bits, spi_cpol_t cpol, spi_cpha_t cpha,
+		    spi_order_t order)
+{
+	assert(spi == spi1);
+	record("format(%u,%d,%d,%s)", data_bits, (int)cpol, (int)cpha,
+	       order == SPI_MSB_FIRST ? "msb" : "lsb");
+}
+
+int spi_write_read_blocking(spi_inst_t *spi, const uint8_t *src, uint8_t *dst, size_t len)
+{
+	assert(spi == spi1 && (spi1_inst.hw.cr1 & SPI_SSPCR1_SSE_BITS) && len > 0);
+	spi_calls++;
+	for (size_t i = 0; i < len; i++) {
+		dst[i] = exchange(src[i]);
+	}
+	return (int)len;
+}
+
+int spi_write_blocking(spi_inst_t *spi, const uint8_t *src, size_t len)
+{
+	assert(spi == spi1 && (spi1_inst.hw.cr1 & SPI_SSPCR1_SSE_BITS) && len > 0);
+	spi_calls++;
+	for (size_t i = 0; i < len; i++) {
+		(void)exchange(src[i]);
+	}
+	return (int)len;
+}
+
+/* The tests ----------------------------------------------------------------*/
+
+/* The layer's sleeps: the time rounded up to ticks, plus one tick. */
+static TickType_t sleep_ticks(uint32_t us)
+{
+	return (TickType_t)((us + Z_USEC_PER_TICK - 1) / Z_USEC_PER_TICK + 1);
+}
+
+/* A sleep of N ticks ends at the N-th tick; the test allows a few ticks of
+ * the POSIX port's lateness.
+ */
+static void expect_ticks(TickType_t got, TickType_t expected)
+{
+	if (got < expected || got > expected + 5) {
+		printf("ticks: expected %lu, got %lu\n", (unsigned long)expected,
+		       (unsigned long)got);
+		fflush(stdout);
+		assert(0);
+	}
+}
+
+static int version(char *out, size_t cap)
+{
+	size_t len;
+	int ret = nina_request(0x37, NULL, 0, false, false, (uint8_t *)out, cap - 1, &len);
+
+	if (ret == 0) {
+		out[len] = '\0';
+	}
+	return ret;
+}
+
+static void test_before_initialize(void)
+{
+	char v[16];
+
+	assert(!nano_nina_bus_ready());
+	assert(version(v, sizeof(v)) == -ENODEV);
+	expect_calls("");
+}
+
+static void test_initialize(void)
+{
+	assert(nano_nina_initialize() == 0);
+	assert(nano_nina_bus_ready());
+	expect_calls(
+		"reset(17) unreset(17) "
+		"init(14) func(14,spi) pulls(14,0,0) drive(14,4mA) slew(14,slow) schmitt(14,0) "
+		"ie(14,0) oeover(14,0) outover(14,0) inover(14,0) irqover(14,0) "
+		"init(11) func(11,spi) pulls(11,0,0) drive(11,4mA) slew(11,slow) schmitt(11,0) "
+		"ie(11,0) oeover(11,0) outover(11,0) inover(11,0) irqover(11,0) "
+		"init(8) func(8,spi) pulls(8,0,0) drive(8,4mA) slew(8,slow) schmitt(8,0) "
+		"ie(8,1) oeover(8,0) outover(8,0) inover(8,0) irqover(8,0) "
+		"baud(8000000) format(8,0,0,msb) cr1|=0x2 "
+		"pulls(9,0,0) func(9,sio) ie(9,0) put(9,1) dir(9,out) ");
+	assert(spi1_inst.hw.dmacr == 0);
+	assert(pins[GPIO_CS].out && pins[GPIO_CS].level);
+}
+
+static void test_lines(void)
+{
+	/* gpio_rpi_configure() with the devicetree flags of each line. */
+	assert(nano_nina_pin_configure(NANO_NINA_READY, NANO_NINA_INPUT) == 0);
+	expect_calls("pulls(10,1,0) func(10,sio) dir(10,in) ");
+	assert(nano_nina_pin_configure(NANO_NINA_IRQ, NANO_NINA_OUTPUT_HIGH) == 0);
+	expect_calls("pulls(2,0,1) func(2,sio) ie(2,0) put(2,1) dir(2,out) ");
+	assert(nano_nina_pin_configure(NANO_NINA_IRQ, NANO_NINA_OUTPUT_INACTIVE) == 0);
+	expect_calls("pulls(2,0,1) func(2,sio) ie(2,0) put(2,0) dir(2,out) ");
+	assert(nano_nina_pin_configure(NANO_NINA_CS, NANO_NINA_OUTPUT_ACTIVE) == 0);
+	expect_calls("pulls(9,0,0) func(9,sio) ie(9,0) put(9,0) dir(9,out) ");
+	assert(nano_nina_pin_configure(NANO_NINA_CS, NANO_NINA_OUTPUT_HIGH) == 0);
+	expect_calls("pulls(9,0,0) func(9,sio) ie(9,0) put(9,1) dir(9,out) ");
+	assert(nano_nina_pin_configure(4, NANO_NINA_INPUT) == -EINVAL);
+	assert(nano_nina_pin_configure(NANO_NINA_CS, 4) == -EINVAL);
+	expect_calls("");
+
+	/* Logical values: CS, READY and RESET are active low, IRQ high. */
+	assert(nano_nina_pin_set(NANO_NINA_CS, 1) == 0);
+	assert(nano_nina_pin_set(NANO_NINA_CS, 0) == 0);
+	assert(nano_nina_pin_set(NANO_NINA_IRQ, 1) == 0);
+	assert(nano_nina_pin_set(NANO_NINA_IRQ, 0) == 0);
+	expect_calls("put(9,0) put(9,1) put(2,1) put(2,0) ");
+	/* The module is held in reset (GPIO3 not driven yet): READY high. */
+	assert(nano_nina_pin_get(NANO_NINA_READY) == 0);
+	/* The lines as nina_spi.c finds them before its first request. */
+	pins[2].out = false;
+	pins[GPIO_READY].out = false;
+}
+
+static void test_version(void)
+{
+	char v[16];
+	unsigned int resets = module_resets;
+
+	/* test_lines() drove IRQ low; the edges of the reset are measured from
+	 * here.
+	 */
+	seen_reset_active = seen_reset_inactive = seen_irq_low = false;
+	recording = false;
+	assert(version(v, sizeof(v)) == 0);
+	assert(strcmp(v, "1.5.0") == 0);
+	assert(module_resets == resets + 1 && seen_irq_low);
+	/* RESET active for 10 ms, then 750 ms before IRQ goes low. */
+	expect_ticks(tick_reset_inactive - tick_reset_active, sleep_ticks(10000));
+	expect_ticks(tick_irq_low - tick_reset_inactive, sleep_ticks(750000));
+	/* 0x37 with no parameter is START, cmd, 0, END: four bytes, sent in
+	 * single transfers; the answer is ten bytes read in single and bulk
+	 * transfers.
+	 */
+	assert(command_len == 0 && !answering);
+	assert(!cs_asserted() && pins[GPIO_CS].level);
+
+	/* The second request does not reset the module again. */
+	assert(version(v, sizeof(v)) == 0);
+	assert(strcmp(v, "1.5.0") == 0);
+	assert(module_resets == resets + 1);
+	recording = true;
+	calls[0] = '\0';
+	printf("nina: version \"%s\", %u SPI calls, %u bytes\n", v, spi_calls, spi_bytes);
+}
+
+static void test_no_answer(void)
+{
+	char v[16];
+	unsigned int calls_before = spi_calls;
+	int64_t start;
+	int64_t took;
+
+	module_alive = false;
+	recording = false;
+	start = k_uptime_get();
+	assert(version(v, sizeof(v)) == -ETIMEDOUT);
+	took = k_uptime_get() - start;
+	recording = true;
+	calls[0] = '\0';
+	/* wait_ready(1, 2000): polled every 100 us (rounded to the tick, plus
+	 * one) until the clock passes the deadline.
+	 */
+	assert(took >= 2000 && took < 2000 + 50);
+	assert(spi_calls == calls_before && !cs_asserted());
+	module_alive = true;
+	printf("nina: no answer, -ETIMEDOUT after %lld ms\n", (long long)took);
+}
+
+static void test_sleeps(void)
+{
+	TickType_t t;
+
+	t = xTaskGetTickCount();
+	nina_os_sleep_us(100);
+	expect_ticks(xTaskGetTickCount() - t, sleep_ticks(100));
+	t = xTaskGetTickCount();
+	nina_os_sleep_ms(10);
+	expect_ticks(xTaskGetTickCount() - t, sleep_ticks(10000));
+	assert(nina_os_uptime_ms() == k_uptime_get());
+}
+
+static volatile int helper_state;
+
+/* Takes nina_lock, then the DNS lock (ARG non-NULL) or nina_lock only. */
+static void lock_helper(void *arg)
+{
+	helper_state = 1;
+	assert(nina_os_lock() == 0);
+	helper_state = 2;
+	nina_os_unlock();
+	if (arg != NULL) {
+		nina_os_dns_lock();
+		helper_state = 3;
+		nina_os_dns_unlock();
+	}
+	helper_state = 4;
+	vTaskDelete(NULL);
+}
+
+static void start_helper(UBaseType_t priority, void *arg)
+{
+	helper_state = 0;
+	assert(xTaskCreate(lock_helper, "helper", HELPER_STACK / sizeof(StackType_t), arg, priority,
+			   NULL) == pdPASS);
+}
+
+static void test_locks(void)
+{
+	UBaseType_t mine = uxTaskPriorityGet(NULL);
+
+	/* Recursive: the owner takes it twice.  The helper (higher) runs at once
+	 * and waits; this task has its priority until the last unlock, which
+	 * lets the helper run.
+	 */
+	assert(nina_os_lock() == 0);
+	assert(nina_os_lock() == 0);
+	start_helper(mine + 2, NULL);
+	assert(helper_state == 1);
+	assert(uxTaskPriorityGet(NULL) == mine + 2);
+	nina_os_unlock();
+	assert(helper_state == 1);
+	assert(uxTaskPriorityGet(NULL) == mine + 2);
+	nina_os_unlock();
+	assert(helper_state == 4);
+	assert(uxTaskPriorityGet(NULL) == mine);
+
+	/* The DNS lock is another mutex: held here, it does not keep the
+	 * helper from nina_lock, only from itself.
+	 */
+	nina_os_dns_lock();
+	start_helper(mine + 2, "dns");
+	assert(helper_state == 2);
+	assert(uxTaskPriorityGet(NULL) == mine + 2);
+	nina_os_dns_unlock();
+	assert(helper_state == 4);
+	assert(uxTaskPriorityGet(NULL) == mine);
+}
+
+static void runner(void *arg)
+{
+	(void)arg;
+	test_before_initialize();
+	test_initialize();
+	test_lines();
+	test_version();
+	test_no_answer();
+	test_sleeps();
+	test_locks();
+	fflush(stdout);
+	_exit(0);
+}
+
+int main(void)
+{
+	/* printf() must not allocate in a task (the port can switch threads
+	 * while the C library holds its locks).
+	 */
+	static char out[1 << 12];
+
+	setvbuf(stdout, out, _IOLBF, sizeof(out));
+	if (zephyr_compat_initialize() != 0) {
+		return 2;
+	}
+	/* The shell's priority: "nina version" runs in the console's task. */
+	if (xTaskCreate(runner, "runner", RUNNER_STACK / sizeof(StackType_t), NULL, NANO_PRIO_SHELL,
+			NULL) != pdPASS) {
+		return 2;
+	}
+	vTaskStartScheduler();
+	return 3;
+}

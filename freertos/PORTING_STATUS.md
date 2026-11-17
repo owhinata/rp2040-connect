@@ -448,3 +448,18 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
 - 残る点: 消去のたびに tick が約 40〜50 ms 遅れる（`vTaskDelay`・遅延 work・時分割が遅れる。`k_uptime` は TIMER なので進む）。
   補正するかは未決（`xTaskCatchUpTicks()` は互換層のタイムアウトを補正しない）。XIP 停止中の例外は記録できず、ロックアップ
   して手動の RESET が要る（subagent の推論、未確認）。計測中の KV 書き込みの扱いは CP-F2 で NuttX 版と同じか確かめる。
+
+## F05 の記録と CP-F1（2026-11-17）
+
+- 実装: `freertos/drivers/nina/`（`nano_nina.c`: SPI1・GPIO の初期化を Zephyr のドライバーと同じ順と値で、`nina_os.c`:
+  `nina_os.h` の境界）、共有の `nina_spi.c` をリンク、`common/drivers/nina/nina_shell.c`（Zephyr 版 `main.c` の
+  `nina version` の写し。Zephyr 版を載せ替えると像が変わるので Z01 まで写しが 2 か所。SPDX はメインが MIT に直した）、
+  ホストテスト `freertos/tests/nina`。転送はポーリング（3 版とも同じ）。GPIO の割り込みは F05 では不要（F07 で
+  `gpio_add_raw_irq_handler_masked()` の案）。
+- メインが確かめたこと: ビルド（既定・selftest、警告 0）、整形、`host_tests.sh`、`common/tests/run.sh` 31 本。Zephyr・NuttX の
+  像の一致は subagent の報告のまま（`common/` の変更は、どちらもビルドしない新しいファイル 1 つだけ）。ソースは読んでいない。
+- 実機: `nina version` → `NINA firmware: 3.0.2`。1 回目 763 ms（モジュールのリセット）、2〜12 回目 2.1〜2.5 ms（USB の往復込み）。
+  `nina`・`nina bogus` はヘルプ。SPI1 のレジスター: CR0 0x707、CPSR 0x2、CR1 0x2、DMACR 0x0（7.8125 MHz、Zephyr と同じ）。
+  `console` のスタックの空き 1680 B、アイドルの `cpu_active` 2.0%。`dmesg` に NINA のエラーなし。
+- **CP-F1 完了**（シェル、RAM ログ、KV、NINA との通信）。未確認: NINA が応答しないときの -116（起こす手段が無い）。
+- 次: F06（I2C0 コアの接着と `i2c_dma`）、F07（LSM6DSOX）、F08（取得サービスと `imu`）→ CP-F2。

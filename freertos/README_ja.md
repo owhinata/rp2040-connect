@@ -110,6 +110,7 @@ USB の CDC ACM ポートがコンソールです（UART0 は使いません）�
 | `dmesg` | RAM ログ（8 KB。再起動をまたいで残る） |
 | `kv set <key> <value>`、`kv sethex <key> <hex>`、`kv get <key>`、`kv delete <key>` | KV（設定と校正値）の読み書き。`get` は 16 進で表示 |
 | `kv wipe confirm` | KV の領域全体（Wi-Fi の資格情報も）を消す |
+| `nina version` | NINA-W102 のファームウェアの版 |
 | `fault` | 前回の実行を止めた異常停止の記録 |
 | `free` | FreeRTOS のヒープと `malloc()` の使用量 |
 | `reboot` | 再起動 |
@@ -131,6 +132,7 @@ USB の CDC ACM ポートがコンソールです（UART0 は使いません）�
 | `drivers/compat/` | Zephyr 互換層の FreeRTOS の部分（共有ソース `common/` を動かす） |
 | `drivers/shell/`、`drivers/log/`、`drivers/libc/` | シェル、RAM ログ、標準出力の接続 |
 | `drivers/kv/` | KV のフラッシュの読み書き |
+| `drivers/nina/` | NINA-W102 の SPI と制御線 |
 | `tests/` | ホストテスト |
 | `script/` | `setup.sh`、`build.sh`、`flash.sh`、`format.sh`、`host_tests.sh` |
 | `PORTING_PLAN.md`、`PORTING_STATUS.md` | 移植の計画と、進み具合・確かめたことの記録 |

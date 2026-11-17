@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: MIT */
 /* The USB console on the Pico SDK and the FreeRTOS kernel: a shell on the
- * USB CDC ACM port, the key-value store and a task that blinks the LED.
+ * USB CDC ACM port, the key-value store, the SPI link to the NINA-W102 and a
+ * task that blinks the LED.
  */
 #include <stdbool.h>
 #include <stdint.h>
@@ -17,6 +18,7 @@
 #include "log_ram.h"
 #include "nano_console.h"
 #include "nano_flash_kv_os.h"
+#include "nano_nina.h"
 #include "nano_shell.h"
 #include "nano_stdio.h"
 #include "priorities.h"
@@ -200,6 +202,8 @@ static void heartbeat_main(void *arg)
 
 int main(void)
 {
+	int ret;
+
 	/* First: the paint for the interrupt stack's high-water mark, the RAM
 	 * log kept across the restart, and the record the last run may have
 	 * left (fault_boot() also puts it into the RAM log).
@@ -234,6 +238,18 @@ int main(void)
 	 * (freertos/drivers/kv).
 	 */
 	(void)nano_flash_kv_initialize();
+
+	/* SPI1 to the NINA-W102 and its chip select, which the Zephyr build sets
+	 * up at boot (its spi1 device, before main()) and the NuttX build in its
+	 * bringup (freertos/drivers/nina/nano_nina.c).  Nothing is sent to the
+	 * module here: the first request resets it (about 760 ms) and a module
+	 * that does not answer only makes that request fail
+	 * (common/drivers/nina/nina_spi.c), so the start never waits for it.
+	 */
+	ret = nano_nina_initialize();
+	if (ret != 0) {
+		LOG_ERR("Could not set up the NINA's SPI bus: %d", ret);
+	}
 
 	xTaskCreateStatic(main_main, "main", MAIN_STACK_SIZE, NULL, MAIN_PRIORITY, main_stack,
 			  &main_tcb);

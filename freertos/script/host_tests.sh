@@ -10,7 +10,9 @@
 #   (freertos/script/setup.sh) and the host's cc with POSIX threads.
 # - On the same port: the shell (freertos/tests/shell) and the key-value
 #   store with the board's flash boundary on fakes of the Pico SDK's flash
-#   functions (freertos/tests/kv).
+#   functions (freertos/tests/kv), and the NINA link's boundaries
+#   (freertos/drivers/nina) with the shared core on fakes of the Pico SDK's
+#   GPIO and SPI functions (freertos/tests/nina).
 #
 #   freertos/script/host_tests.sh        run them
 #   freertos/script/host_tests.sh -v     also show the tests' output
@@ -21,7 +23,7 @@ verbose=0
 case "${1:-}" in
   "") ;;
   -v) verbose=1 ;;
-  -h|--help) sed -n '2,16p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+  -h|--help) sed -n '2,18p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
   *) printf 'Unknown option: %s\n' "$1" >&2; exit 2 ;;
 esac
 
@@ -150,3 +152,28 @@ else
     timeout 120 "$out/kv" >"$out/log" 2>&1 || { cat "$out/log"; exit 1; }
 fi
 printf 'ok  kv (flash boundary and store, FreeRTOS POSIX port)\n'
+
+# The NINA link (freertos/tests/nina): the board's boundaries of the shared core
+# (drivers/nina/nano_nina.c on fakes of the Pico SDK's GPIO, reset and SPI functions,
+# tests/nina/pico_fake; drivers/nina/nina_os.c on the layer) under the shared core
+# (common/drivers/nina/nina_spi.c, with the prelude, as drivers/nina/nina.cmake builds it), on
+# the same kernel and layer objects.
+ninainc=(-Itests/nina/pico_fake -I../common/drivers/nina)
+ninaobjs=()
+for src in drivers/nina/nano_nina.c drivers/nina/nina_os.c tests/nina/main.c \
+           ../common/drivers/nina/nina_spi.c; do
+    obj="$out/nina_$(basename "$src" .c).o"
+    extra=()
+    case $src in
+        ../common/*) extra=(-include drivers/compat/common_prelude.h) ;;
+    esac
+    cc "${flags[@]}" "${strict[@]}" "${ninainc[@]}" "${inc[@]}" "${extra[@]}" -c "$src" -o "$obj"
+    ninaobjs+=("$obj")
+done
+cc "${flags[@]}" "${kernobjs[@]}" "${ninaobjs[@]}" -o "$out/nina"
+if (( verbose )); then
+    timeout 60 "$out/nina"
+else
+    timeout 60 "$out/nina" >"$out/log" 2>&1 || { cat "$out/log"; exit 1; }
+fi
+printf 'ok  nina (SPI and line boundary, kernel services, FreeRTOS POSIX port)\n'

@@ -25,6 +25,9 @@ include(${CMAKE_CURRENT_LIST_DIR}/../../drivers/compat/compat.cmake)
 # The key-value store and the "kv" command, on the last 8 KiB of the flash,
 # which the linker script keeps the image out of (freertos/drivers/kv).
 include(${CMAKE_CURRENT_LIST_DIR}/../../drivers/kv/kv.cmake)
+# The SPI link to the NINA-W102 module and the "nina" command
+# (freertos/drivers/nina).
+include(${CMAKE_CURRENT_LIST_DIR}/../../drivers/nina/nina.cmake)
 
 # The compatibility layer's self-test, the "selftest" command
 # (freertos/drivers/compat/zephyr_selftest.h): a test feature, off by default
@@ -56,6 +59,7 @@ else()
   freertos_zephyr_compat(usb-console)
 endif()
 freertos_kv(usb-console)
+freertos_nina(usb-console)
 
 # FreeRTOSConfig.h; priorities_os.h (src/, which FreeRTOSConfig.h includes);
 # priorities.h, cpu_load.h and nano_cpuload.h (common/compat);

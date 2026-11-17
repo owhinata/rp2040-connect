@@ -110,6 +110,7 @@ The console is the USB CDC ACM port (UART0 is not used). Opening a terminal show
 | `dmesg` | The RAM log (8 KB; kept across restarts) |
 | `kv set <key> <value>`, `kv sethex <key> <hex>`, `kv get <key>`, `kv delete <key>` | Read and write the key-value store (settings and calibration). `get` prints hexadecimal |
 | `kv wipe confirm` | Erase the whole key-value area (the Wi-Fi credentials too) |
+| `nina version` | The firmware version of the NINA-W102 |
 | `fault` | The record of the fatal error that ended the last run |
 | `free` | Use of the FreeRTOS heap and of `malloc()` |
 | `reboot` | Restart |
@@ -134,6 +135,7 @@ The console is the USB CDC ACM port (UART0 is not used). Opening a terminal show
 | `drivers/compat/` | The FreeRTOS part of the Zephyr compatibility layer (runs the shared sources in `common/`) |
 | `drivers/shell/`, `drivers/log/`, `drivers/libc/` | The shell, the RAM log, the connection of standard output |
 | `drivers/kv/` | Reading and writing the flash of the key-value store |
+| `drivers/nina/` | The SPI bus and control lines of the NINA-W102 |
 | `tests/` | Host tests |
 | `script/` | `setup.sh`, `build.sh`, `flash.sh`, `format.sh`, `host_tests.sh` |
 | `PORTING_PLAN.md`, `PORTING_STATUS.md` | The plan of the port, and the record of its progress and of what was checked (in Japanese) |
