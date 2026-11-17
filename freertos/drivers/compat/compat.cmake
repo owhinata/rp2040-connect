@@ -17,7 +17,12 @@
 #   line editor, the command table and the backend of common/shell/zshell.c;
 #   common/shell/subcmd.c; the copies of Zephyr's fnmatch() and getopt in
 #   common/compat) and newlib's glue (freertos/drivers/libc: the console
-#   streams, -Wl,--wrap=...); malloc() is the Pico SDK's, with its mutex
+#   streams, -Wl,--wrap=...; the types and constants of the network
+#   headers newlib lacks, <sys/socket.h>, <netinet/in.h>, <netinet/tcp.h>,
+#   <arpa/inet.h>, <poll.h>, <netdb.h>, <sys/uio.h>, and inet_pton() and
+#   inet_ntop(), inet.c: the layer's <zephyr/net/socket.h> is on them, its
+#   socket calls are the NINA's, freertos/drivers/nina/nina.cmake);
+#   malloc() is the Pico SDK's, with its mutex
 #   (pico_malloc, PICO_USE_MALLOC_MUTEX with pico_multicore, which the
 #   kernel's port links);
 # - with SELFTEST, the layer's self-test (zephyr_selftest.c and the board's
@@ -25,7 +30,9 @@
 # - the include directories, the board's port header first
 #   (rp2040/zephyr_os_port.h), then the FreeRTOS part (zephyr_os.h, ...),
 #   freertos/drivers/shell, freertos/drivers/include (app_log_os.h),
-#   common/compat (the Zephyr headers), common/log and common/shell;
+#   freertos/drivers/libc/include (headers newlib does not have, so none
+#   hides one of newlib's), common/compat (the Zephyr headers),
+#   common/log and common/shell;
 # - the definitions every source sees: Z_SHELL_CMD_ROOT_GLOBAL (a
 #   SHELL_CMD_REGISTER() makes the root z_shell_root_<syntax> for the
 #   application's table, nano_shell.h), CONFIG_GETOPT_LONG=1 (Zephyr's
@@ -77,6 +84,7 @@ function(freertos_zephyr_compat target)
     ${FREERTOS_DRIVERS_DIR}/shell/nano_stdio.c
     ${FREERTOS_DRIVERS_DIR}/shell/shell_argv.c
     ${FREERTOS_DRIVERS_DIR}/libc/stdio_wrap.c
+    ${FREERTOS_DRIVERS_DIR}/libc/inet.c
     ${common_sources}
     ${zephyr_copies}
   )
@@ -94,6 +102,7 @@ function(freertos_zephyr_compat target)
     ${FREERTOS_COMPAT_DIR}
     ${FREERTOS_DRIVERS_DIR}/shell
     ${FREERTOS_DRIVERS_DIR}/include
+    ${FREERTOS_DRIVERS_DIR}/libc/include
     ${FREERTOS_COMMON_DIR}/compat
     ${FREERTOS_COMMON_DIR}/log
     ${FREERTOS_COMMON_DIR}/shell

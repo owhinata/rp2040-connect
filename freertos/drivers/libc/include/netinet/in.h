@@ -1,12 +1,12 @@
 /* SPDX-License-Identifier: MIT */
-/* The part of POSIX's <netinet/in.h> that the FreeRTOS build needs so far,
- * which newlib does not have: the IPv4 address and socket address types
- * (struct in_addr of common/imu/imu_raw_mqtt.h, through
- * <zephyr/net/net_ip.h>; struct sockaddr_in of the MQTT transport's stub,
- * freertos/drivers/imu/imu_raw_mqtt_null.c).  Addresses and ports are in
- * network byte order, as in POSIX and Zephyr.  The byte order functions are
- * <arpa/inet.h>'s.  Part of newlib's glue of the FreeRTOS build
- * (freertos/drivers/libc).
+/* The part of POSIX's <netinet/in.h> that the FreeRTOS build needs, which
+ * newlib does not have: the IPv4 address and socket address types, the
+ * protocol numbers, and the IPv6 socket address, whose size the MQTT client
+ * takes for an address that is not IPv4 (common/imu/mqtt_min.c; the build
+ * has no IPv6).  Addresses and ports are in network byte order, as in POSIX
+ * and Zephyr.  The byte order functions are <arpa/inet.h>'s.  The values
+ * are Linux's (and Zephyr's and NuttX's): IPPROTO_TCP 6, IPPROTO_UDP 17.
+ * Part of newlib's glue of the FreeRTOS build (freertos/drivers/libc).
  */
 
 #ifndef FREERTOS_DRIVERS_LIBC_NETINET_IN_H
@@ -17,6 +17,10 @@
 
 typedef uint16_t in_port_t;
 typedef uint32_t in_addr_t;
+
+#define IPPROTO_IP  0
+#define IPPROTO_TCP 6
+#define IPPROTO_UDP 17
 
 struct in_addr {
 	in_addr_t s_addr;
@@ -29,7 +33,20 @@ struct sockaddr_in {
 	uint8_t sin_zero[8];
 };
 
-#define INADDR_ANY      ((in_addr_t)0x00000000)
-#define INET_ADDRSTRLEN 16
+struct in6_addr {
+	uint8_t s6_addr[16];
+};
+
+struct sockaddr_in6 {
+	sa_family_t sin6_family;
+	in_port_t sin6_port;
+	uint32_t sin6_flowinfo;
+	struct in6_addr sin6_addr;
+	uint32_t sin6_scope_id;
+};
+
+#define INADDR_ANY       ((in_addr_t)0x00000000)
+#define INET_ADDRSTRLEN  16
+#define INET6_ADDRSTRLEN 46
 
 #endif /* FREERTOS_DRIVERS_LIBC_NETINET_IN_H */

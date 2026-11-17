@@ -20,7 +20,9 @@
 #   layer's gpio0 and the LSM6DSO's FIFO interrupt on fakes of the Pico SDK's
 #   GPIO and IRQ functions (freertos/tests/gpio), and the IMU service's
 #   parts of the build (address conversions, hwinfo, the stubs of the MQTT
-#   transport and the time synchronization: freertos/tests/imu).
+#   transport and the time synchronization: freertos/tests/imu), and the
+#   sockets: the zsock_*() calls (freertos/drivers/nina/nina_socket.c) on the
+#   shared NINA core, a fake module and a fake clock (freertos/tests/socket).
 #
 #   freertos/script/host_tests.sh        run them
 #   freertos/script/host_tests.sh -v     also show the tests' output
@@ -31,7 +33,7 @@ verbose=0
 case "${1:-}" in
   "") ;;
   -v) verbose=1 ;;
-  -h|--help) sed -n '2,27p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+  -h|--help) sed -n '2,30p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
   *) printf 'Unknown option: %s\n' "$1" >&2; exit 2 ;;
 esac
 
@@ -278,3 +280,29 @@ else
     timeout 60 "$out/imu" >"$out/log" 2>&1 || { cat "$out/log"; exit 1; }
 fi
 printf 'ok  imu (address conversions, hwinfo, stubs of the transport and time, FreeRTOS POSIX port)\n'
+
+# The sockets (freertos/tests/socket): the zsock_*() calls of the layer's <zephyr/net/socket.h>
+# (drivers/nina/nina_socket.c: the descriptors, their locks, the Zephyr build's wait loops) on
+# the shared core (common/drivers/nina/nina_sock.c, nina_dns.c, with the prelude, as
+# drivers/nina/nina.cmake builds them) and the address conversions (drivers/libc/inet.c), on a
+# fake module and a fake clock (the test's nina_request() and nina_os.h), on the same kernel and
+# layer objects.  drivers/libc/include (newlib's missing network headers) comes before the host's.
+sockinc=(-Idrivers/libc/include -I../common/drivers/nina)
+sockobjs=()
+for src in drivers/nina/nina_socket.c drivers/libc/inet.c tests/socket/main.c \
+           ../common/drivers/nina/nina_sock.c ../common/drivers/nina/nina_dns.c; do
+    obj="$out/socket_$(basename "$src" .c).o"
+    extra=()
+    case $src in
+        ../common/*) extra=(-include drivers/compat/common_prelude.h) ;;
+    esac
+    cc "${flags[@]}" "${strict[@]}" "${sockinc[@]}" "${inc[@]}" "${extra[@]}" -c "$src" -o "$obj"
+    sockobjs+=("$obj")
+done
+cc "${flags[@]}" "${kernobjs[@]}" "${sockobjs[@]}" -o "$out/socket"
+if (( verbose )); then
+    timeout 60 "$out/socket"
+else
+    timeout 60 "$out/socket" >"$out/log" 2>&1 || { cat "$out/log"; exit 1; }
+fi
+printf 'ok  socket (descriptors, wait loops, options, poll, resolver, FreeRTOS POSIX port)\n'

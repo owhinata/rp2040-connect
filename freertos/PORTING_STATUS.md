@@ -556,3 +556,20 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
 - tick の補正の案は subagent の報告のとおり（フラッシュ操作のあとで `xTaskCatchUpTicks()`、互換層のタイムアウトを tick の
   数で判定）。入れるか・tick を 1 ms にするかは、全体を組み終えてから判断（ユーザーの意向）。
 - 次: F09（ソケットの接着、名前解決）、F10（Wi-Fi）、F11（Telnet、速度測定）→ CP-F3。
+
+## F09 の記録（2026-11-17）
+
+- 実装: `freertos/drivers/nina/nina_socket.c`（`zsock_*` を fd の表 10 本を介して共有の `nina_sock.c` に直接つなぐ。Zephyr の
+  オフロードに近い形: 呼んだスレッドで待つ、イベントスレッドなし）、名前解決（`nina_dns.c`）、newlib に無いヘッダー
+  （`drivers/libc/include/`: `sys/socket.h`・`netinet/in.h`・`netinet/tcp.h`・`poll.h`・`netdb.h`・`sys/uio.h`。型と定数だけ）、
+  ホストテスト `freertos/tests/socket`。インクルードパスと `inet.c` は `compat.cmake` へ移動。まだ呼ぶコードが無いので、
+  既定の像には入らない（`--gc-sections`）。実機では未確認（F10 以降）。
+- 定数は Linux の値（`AF_INET` 2 以外は Zephyr と同じ。`EAI_*` は Zephyr の負の値）。
+- Zephyr 版との違い（subagent の報告）: ロックを 1 本にまとめた、connect の期限の比べ方で最悪 20 ms 長い、閉じた fd は EBADF。
+- 計画との違い: `getsockname` は作らない（Zephyr 版も NuttX 版も EOPNOTSUPP）。`clock_gettime` は F12 で `sys_clock_gettime` として。
+- メインが確かめたこと: ビルド（既定・selftest、警告 0）、整形、`host_tests.sh`。ソースは読んでいない。
+- **100 µs 単位の待ちの一覧（tick を 1 ms にするかの判断材料）**: 1 ms 未満は NINA の READY のポーリング 100 µs
+  （`nina_spi.c:47,62`。今は 2 tick = 200 µs。1 ms の tick では 2 ms になり、全ソケット命令の待ちに効く）だけ。1 ms の待ちは
+  送信のやり直し（`NINA_SEND_RETRY_MS` 1）と NTP の応答のポーリング（`time_sync.c:188`。時刻の精度に出る）。
+- F12 への注意: `time_sync.c` の `TIMER_BASE` が Pico SDK の定義と重なる。F13 への注意: `mqtt_min.c` は `-Wno-sign-compare`、
+  `mqtt_min_sock.c` は NuttX 版の写しで足りる。

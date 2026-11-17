@@ -27,13 +27,12 @@
 #   common/imu/imu_raw_mqtt.c and imu_raw_status.c (and the MQTT client), its
 #   time synchronization the second with common/imu/time_sync.c and
 #   time_offset.c (and the "ntp" command);
-# - the parts of the layer they need: hwinfo_get_device_id()
-#   (freertos/drivers/compat/rp2040/zephyr_hwinfo.c, on pico_unique_id) and
-#   the address conversions of <zephyr/net/socket.h>
-#   (freertos/drivers/compat/zephyr/net) on newlib's missing network headers
-#   and inet_pton()/inet_ntop() (freertos/drivers/libc/include, inet.c);
-# - the include directories: common/imu, common/drivers/lsm6dso (already
-#   the driver's) and freertos/drivers/libc/include.
+# - the part of the layer they need: hwinfo_get_device_id()
+#   (freertos/drivers/compat/rp2040/zephyr_hwinfo.c, on pico_unique_id);
+#   the address conversions of <zephyr/net/socket.h> and newlib's missing
+#   network headers are the layer's (compat.cmake);
+# - the include directories: common/imu and common/drivers/lsm6dso (already
+#   the driver's).
 #
 # The shared sources build without warnings under the application's -Wall
 # -Wextra, so no option of theirs is turned off.
@@ -57,13 +56,11 @@ function(freertos_imu target)
     ${FREERTOS_IMU_DIR}/imu_raw_mqtt_null.c
     ${FREERTOS_IMU_DIR}/time_sync_null.c
     ${FREERTOS_COMPAT_DIR}/rp2040/zephyr_hwinfo.c
-    ${FREERTOS_DRIVERS_DIR}/libc/inet.c
   )
 
   target_include_directories(${target} PRIVATE
     ${FREERTOS_COMMON_DIR}/imu
     ${FREERTOS_COMMON_DIR}/drivers/lsm6dso
-    ${FREERTOS_DRIVERS_DIR}/libc/include
   )
 
   target_link_libraries(${target}
