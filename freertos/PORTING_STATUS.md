@@ -816,3 +816,23 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
   54.5% で、Zephyr 版の値（別の日）まで約 8 ポイント残る。残りは未解明（候補: Zephyr 版は NINA・I2C が共通コアでない自前のドライバー、
   SPI ドライバー、カーネル。Zephyr 版を同じ日・同じ手順で測り直していない）。
 - 試験用の像はスクラッチにあり、ソースは変えていない。実機は既定の像に戻した。
+
+## Zephyr 版に速い boot2・除算器・ROM の `memcpy` を入れた実験（2026-11-18）
+
+- ユーザーの指示: 今の Zephyr 版の測り直しは飛ばし、Zephyr 版の boot2 を差し替え、割り算と `memcpy` をハードウェア除算器と ROM の
+  ルーチンにして測る。
+- 実験用の像（commit していない。パッチと `exp_fastlib.c` はスクラッチ、ビルドは `zephyr/build/exp-fastlib`）:
+  - boot2: UF2 の先頭 256 バイトを FreeRTOS 版のもの（W25Q080 用、分周 2）に差し替え。実機で `devmem 0x18000014` が 2。
+  - 割り算: Pico SDK の `divider_hardware.S`（Zephyr の hal_rpi_pico にある版）を `--wrap` で 32・64 ビットの 6 関数に。Zephyr は
+    コンテキスト切り替えで除算器を退避しないので `PICO_DIVIDER_DISABLE_INTERRUPTS=1`（割り算の間だけ割り込み禁止。FreeRTOS 版は
+    切り替え時に退避する方式）。
+  - `memcpy`・`memset`: ブート ROM のルーチンを初回に引いて呼ぶ自作の包み（SDK の `mem_ops_aeabi.S` は起動時の初期化の順序が
+    合わないので使っていない）。`.data`・`.bss` の準備前は `arch_early_memcpy`・`arch_early_memset` をバイト単位の実装に置き換え。
+  - 最適化は `-Os` のまま。
+- 実測（FreeRTOS 版と同じ手順: `imu start`、10 秒後と 70 秒後に `kernel thread list`、`imu stop`。`imu status` の `cpu_active`、約 71 秒）:
+  48.7%、48.8%（2 回。欠番 0、overruns 0、batches = published）。元の Zephyr 版は 62.6〜63.3%（2026-11-14、今日は測っていない）、
+  FreeRTOS 版の既定は 44.0〜44.3%。スレッドごとの値は集計スクリプトの不備で取れていない。
+- 言えること: この 2 つの変更で Zephyr 版が約 14 ポイント下がり、FreeRTOS 版との差は約 4.5 ポイントになる。boot2 と除算・`memcpy` の
+  内訳は Zephyr 版では分けて測っていない。
+- 併せて確かめたこと: NuttX 版・FreeRTOS 版が書いた KV を Zephyr 版が読み、保存済みの資格情報で自動接続した（`kv get imu.port` も一致）。
+- 実機: 実験用の Zephyr 版のまま（FreeRTOS 版へ戻すには RESET 2 回の操作が要る）。
