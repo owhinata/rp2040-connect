@@ -8,9 +8,12 @@
 #   command) on the FreeRTOS POSIX port, which is in the kernel's tree
 #   (freertos/tests/compat).  Needs freertos/FreeRTOS-Kernel
 #   (freertos/script/setup.sh) and the host's cc with POSIX threads.
+# - On the same port: the shell (freertos/tests/shell) and the key-value
+#   store with the board's flash boundary on fakes of the Pico SDK's flash
+#   functions (freertos/tests/kv).
 #
 #   freertos/script/host_tests.sh        run them
-#   freertos/script/host_tests.sh -v     also show the self-test's output
+#   freertos/script/host_tests.sh -v     also show the tests' output
 set -euo pipefail
 cd "$(dirname "$0")/.."
 
@@ -18,7 +21,7 @@ verbose=0
 case "${1:-}" in
   "") ;;
   -v) verbose=1 ;;
-  -h|--help) sed -n '2,13p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+  -h|--help) sed -n '2,16p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
   *) printf 'Unknown option: %s\n' "$1" >&2; exit 2 ;;
 esac
 
@@ -108,3 +111,42 @@ else
     timeout 60 "$out/shell" >"$out/log" 2>&1 || { cat "$out/log"; exit 1; }
 fi
 printf 'ok  shell (two sessions, FreeRTOS POSIX port)\n'
+
+# The key-value store (freertos/tests/kv): the board's flash boundary (drivers/kv/nano_flash_kv.c)
+# on fakes of the Pico SDK's flash functions (tests/kv/pico_fake), under the shared store as the
+# board builds it (common/imu/kv_store.c, kv_store_wipe.c, zephyr_flash_kv.c, the copies of
+# Zephyr's settings, NVS and hex.c with their options, drivers/kv/kv.cmake), on the same kernel
+# and layer objects.  Unused parts (the "kv" command's table) are left out by --gc-sections.
+kvinc=(-D_GNU_SOURCE -DPICO_FLASH_ASSUME_CORE1_SAFE=1 -DZ_SHELL_CMD_ROOT_GLOBAL -Itests/kv/pico_fake
+       -Idrivers/kv -Idrivers/shell -I../common/imu -I../common/compat/subsys/settings/include
+       -I../common/compat/subsys/settings/src -ffunction-sections -fdata-sections)
+kvconfig=(-include ../common/compat/zephyr_kv_config.h -Wno-undef)
+kvobjs=()
+for src in drivers/kv/nano_flash_kv.c tests/kv/main.c ../common/imu/kv_store.c \
+           ../common/compat/kv_store_wipe.c ../common/compat/zephyr_flash_kv.c \
+           ../common/compat/lib/utils/hex.c ../common/compat/subsys/settings/src/settings.c \
+           ../common/compat/subsys/settings/src/settings_store.c \
+           ../common/compat/subsys/settings/src/settings_init.c \
+           ../common/compat/subsys/settings/src/settings_nvs.c \
+           ../common/compat/subsys/crc/crc8_sw.c ../common/compat/subsys/kvss/nvs/nvs.c; do
+    obj="$out/kv_$(basename "$src" .c).o"
+    extra=()
+    case $src in
+        ../common/*) extra=(-include drivers/compat/common_prelude.h) ;;
+    esac
+    case $src in
+        */subsys/*) extra+=("${kvconfig[@]}") ;;
+    esac
+    case $src in
+        */nvs.c) extra+=(-Wno-format -Wno-sign-compare -Wno-unused-parameter) ;;
+    esac
+    cc "${flags[@]}" "${strict[@]}" "${kvinc[@]}" "${inc[@]}" "${extra[@]}" -c "$src" -o "$obj"
+    kvobjs+=("$obj")
+done
+cc "${flags[@]}" -Wl,--gc-sections "${kernobjs[@]}" "${kvobjs[@]}" -o "$out/kv"
+if (( verbose )); then
+    timeout 120 "$out/kv"
+else
+    timeout 120 "$out/kv" >"$out/log" 2>&1 || { cat "$out/log"; exit 1; }
+fi
+printf 'ok  kv (flash boundary and store, FreeRTOS POSIX port)\n'

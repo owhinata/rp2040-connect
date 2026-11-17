@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 /* The USB console on the Pico SDK and the FreeRTOS kernel: a shell on the
- * USB CDC ACM port and a task that blinks the LED.
+ * USB CDC ACM port, the key-value store and a task that blinks the LED.
  */
 #include <stdbool.h>
 #include <stdint.h>
@@ -13,8 +13,10 @@
 #include "app_log.h"
 #include "cli.h"
 #include "fault.h"
+#include "kv_store.h"
 #include "log_ram.h"
 #include "nano_console.h"
+#include "nano_flash_kv_os.h"
 #include "nano_shell.h"
 #include "nano_stdio.h"
 #include "priorities.h"
@@ -28,6 +30,8 @@ LOG_MODULE_REGISTER(usb_console, LOG_LEVEL_INF);
  */
 #define CONSOLE_PRIORITY     NANO_PRIO_SHELL
 #define CONSOLE_STACK_SIZE   (NANO_STACK_SHELL / sizeof(StackType_t))
+#define MAIN_PRIORITY        NANO_PRIO_MAIN
+#define MAIN_STACK_SIZE      (NANO_STACK_MAIN / sizeof(StackType_t))
 #define HEARTBEAT_PRIORITY   NANO_PRIO_HEARTBEAT
 #define HEARTBEAT_STACK_SIZE (NANO_STACK_HEARTBEAT / sizeof(StackType_t))
 
@@ -49,6 +53,9 @@ static struct cli usb_cli;
 static StackType_t console_stack[CONSOLE_STACK_SIZE];
 static StaticTask_t console_tcb;
 static TaskHandle_t console_task;
+
+static StackType_t main_stack[MAIN_STACK_SIZE];
+static StaticTask_t main_tcb;
 
 static StackType_t heartbeat_stack[HEARTBEAT_STACK_SIZE];
 static StaticTask_t heartbeat_tcb;
@@ -149,6 +156,33 @@ static void console_main(void *arg)
 	}
 }
 
+/* The Zephyr build's main() (zephyr/app/usb-console/src/main.c), as the task
+ * "main" with its priority (NANO_PRIO_MAIN: Zephyr's 0, above the console) and
+ * stack, ending when done as Zephyr's main thread does.  It runs before the
+ * console's task, which has a lower priority, as the Zephyr build's main()
+ * runs before its shell thread.
+ * kv_store_init() is settings_subsys_init(): it checks what the key-value
+ * area holds, mounts NVS on it (the "fs_nvs" lines of "dmesg") and reads the
+ * settings' handlers.  Data that is neither Zephyr's NVS nor erased is not
+ * touched: the check logs it and every call of the store fails with -EILSEQ
+ * until "kv wipe confirm" (common/compat/zephyr_flash_kv.c).  In the Zephyr
+ * build the Wi-Fi credentials' SYS_INIT() has run settings_subsys_init()
+ * before main(); here nothing uses the settings before this task.
+ */
+static void main_main(void *arg)
+{
+	int ret;
+
+	(void)arg;
+
+	LOG_INF("USB console started");
+	ret = kv_store_init();
+	if (ret) {
+		LOG_ERR("Could not initialize settings: %d", ret);
+	}
+	vTaskDelete(NULL);
+}
+
 static void heartbeat_main(void *arg)
 {
 	TickType_t next = xTaskGetTickCount();
@@ -195,13 +229,19 @@ int main(void)
 		panic("zephyr_compat_initialize");
 	}
 
+	/* The bounds of the key-value area from the linker script; until they
+	 * are found right, the store refuses to erase or program the flash
+	 * (freertos/drivers/kv).
+	 */
+	(void)nano_flash_kv_initialize();
+
+	xTaskCreateStatic(main_main, "main", MAIN_STACK_SIZE, NULL, MAIN_PRIORITY, main_stack,
+			  &main_tcb);
 	console_task = xTaskCreateStatic(console_main, "console", CONSOLE_STACK_SIZE, NULL,
 					 CONSOLE_PRIORITY, console_stack, &console_tcb);
 	xTaskCreateStatic(heartbeat_main, "heartbeat", HEARTBEAT_STACK_SIZE, NULL,
 			  HEARTBEAT_PRIORITY, heartbeat_stack, &heartbeat_tcb);
 
-	/* The Zephyr build's main() logs the same line. */
-	LOG_INF("USB console started");
 	vTaskStartScheduler();
 
 	for (;;) {

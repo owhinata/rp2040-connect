@@ -90,7 +90,7 @@ BOOTSEL への入り方:
 - OpenMV 版が動いているとき: REPL で `import machine; machine.bootloader()` を実行します。
 
 **書き込む前に**: 書き込むと Zephyr 版・NuttX 版・OpenMV 版のファームウェアは消えます。フラッシュの
-後ろの領域（Zephyr 版・NuttX 版の KV、OpenMV 版のファイルシステム）には書き込みません。
+末尾 8 KB（KV。Zephyr 版・NuttX 版と共用）は書き換えません。
 
 ## コンソール
 
@@ -108,6 +108,8 @@ USB の CDC ACM ポートがコンソールです（UART0 は使いません）�
 | `ps` | タスクの一覧（状態、優先度、スタックの空きの最小値、CPU 時間の割合）と、前回の `ps` からの CPU 負荷 |
 | `irqstack` | 割り込み用スタックの使用量 |
 | `dmesg` | RAM ログ（8 KB。再起動をまたいで残る） |
+| `kv set <key> <value>`、`kv sethex <key> <hex>`、`kv get <key>`、`kv delete <key>` | KV（設定と校正値）の読み書き。`get` は 16 進で表示 |
+| `kv wipe confirm` | KV の領域全体（Wi-Fi の資格情報も）を消す |
 | `fault` | 前回の実行を止めた異常停止の記録 |
 | `free` | FreeRTOS のヒープと `malloc()` の使用量 |
 | `reboot` | 再起動 |
@@ -117,6 +119,8 @@ USB の CDC ACM ポートがコンソールです（UART0 は使いません）�
   ありません。引用符と `\` の扱いは Zephyr 版のシェルと同じです。
 - 異常停止（HardFault、`panic()`、アサート、スタックのあふれ、ヒープ不足）が起こると、記録を残して自動で
   再起動します。記録は、次に端末をつないだときの表示、`fault`、`dmesg` で見られます。
+- KV はフラッシュの末尾 8 KB にあり、形式は Zephyr 版・NuttX 版と同じです。版を書き換えても残ります。領域に
+  別のデータがあると `kv` は `-138` で失敗し、`dmesg` に案内が出ます。消すのは `kv wipe confirm` です。
 - `devmem` で存在しないアドレスを読むと異常停止します（例: `devmem 30000000`）。
 
 ## ディレクトリー
@@ -126,6 +130,7 @@ USB の CDC ACM ポートがコンソールです（UART0 は使いません）�
 | `app/usb-console/` | アプリ: 起動、コマンド、カーネルの設定（`FreeRTOSConfig.h`） |
 | `drivers/compat/` | Zephyr 互換層の FreeRTOS の部分（共有ソース `common/` を動かす） |
 | `drivers/shell/`、`drivers/log/`、`drivers/libc/` | シェル、RAM ログ、標準出力の接続 |
+| `drivers/kv/` | KV のフラッシュの読み書き |
 | `tests/` | ホストテスト |
 | `script/` | `setup.sh`、`build.sh`、`flash.sh`、`format.sh`、`host_tests.sh` |
 | `PORTING_PLAN.md`、`PORTING_STATUS.md` | 移植の計画と、進み具合・確かめたことの記録 |

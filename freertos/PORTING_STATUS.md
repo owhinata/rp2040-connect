@@ -428,3 +428,23 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
   短い名前は別名で残す。`kv_transfer.py` が送る `kernel version` も通る）。
 - 残り: 文書の本数（共有のテスト 33、NuttX 側 44）は F15 で。異常停止の行の時刻は次の起動の時刻、モジュール名は
   `fault`（Zephyr 版は `os`）。USB の送信バッファー 64 B は CP-F2 で計測中に確かめる。
+
+## F04 の記録（2026-11-17）
+
+- 実装: `freertos/drivers/kv/`（`nano_flash_kv.c`: `flash_safe_execute()` + `PICO_FLASH_ASSUME_CORE1_SAFE=1`、範囲の検査 3 段、
+  読み出しはキャッシュなしの別名から。`ld/`: FLASH の長さ 0xffe000、`__kv_start`/`__kv_end`、ASSERT 3 つ。`kv.cmake`）、
+  `main` タスク（優先度 20、2048 B。`kv_store_init()` のあと自分を消す）、`kv` コマンド、ホストテスト `freertos/tests/kv`。
+  `common/`・`nuttx/`・`zephyr/` は変えていない。
+- 別のデータのときのエラーは newlib では `-138`（EILSEQ。NuttX 版は -84）。
+- メインが確かめたこと: `nano_flash_kv.c` とリンカーの差し替えの全文、ビルド（既定・selftest、警告 0）、整形、
+  `host_tests.sh`、UF2 の全ブロックが 0x10000000〜0x10016000（0x10ffe000 より下）。
+- 実機: 起動時に `fs_nvs` の 3 行、エラーなし。**NuttX 版が書いた KV がそのまま読めた**（`imu.port` = 18830、校正値 2 個が
+  `kv-backup.json` と一致）。`kv set`/`get` → `reboot` 後も残る → `delete` → `-2`。`kv wipe`（引数なし）と `kv wipe no` は
+  消さない。100 文字の値を 90 回書き込み（GC 3 回）: 全部 `Saved`、最後の値と `imu.port` が読め、`reboot` 後も同じ。
+  tick の数え落とし: GC のあった書き込みで 457・497・458 tick（46〜50 ms。その 1 回の `kv set` 全体の分で、消去だけでは
+  ない）、90 回の合計 2256 tick。`console` のスタックの空き 1580 B（3072 中）。`kv wipe confirm` は実行していない。
+- 未確認: Wi-Fi の資格情報が GC のあとも読めること（F10 か、NuttX 版・Zephyr 版に戻したとき）、`main` タスクのスタックの実測
+  （終わると消えるので見えない。見積もり約 1.0 KB / 2048）。
+- 残る点: 消去のたびに tick が約 40〜50 ms 遅れる（`vTaskDelay`・遅延 work・時分割が遅れる。`k_uptime` は TIMER なので進む）。
+  補正するかは未決（`xTaskCatchUpTicks()` は互換層のタイムアウトを補正しない）。XIP 停止中の例外は記録できず、ロックアップ
+  して手動の RESET が要る（subagent の推論、未確認）。計測中の KV 書き込みの扱いは CP-F2 で NuttX 版と同じか確かめる。
