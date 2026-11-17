@@ -13,7 +13,8 @@ PC の時刻を付けて Wi-Fi 経由の MQTT で送信します。
 
 設計の詳細は [IMU RAW・MQTT 配信の設計](design/imu-raw-mqtt-design-ja.md)、ドライバー
 （LSM6DSO、I²C、NINA）は [ローカルドライバーの説明](zephyr/app/usb-console/drivers/README_ja.md) を
-参照してください。
+参照してください。同じファームウェアの NuttX 版（`nuttx/`）と Pico SDK + FreeRTOS 版（`freertos/`）もあります
+（下の「3 つの版と `common/`」）。
 
 現状は実験段階です。計測の開始・停止はシェルからの手動操作で、PC 側には検証用の受信
 スクリプトしかありません。確認できた範囲と未確認の範囲は設計書にまとめています。
@@ -282,7 +283,7 @@ Wi-Fi 接続後は TCP ポート 23 で Telnet のシェルを利用できます
 Zephyr の Settings/NVS に保存します。キーは英数字、`_`、`-`、`.` の 1〜32 文字、値は
 1〜128 バイトです。`set` はテキスト、`sethex` は 16 進数のバイト列を保存し、`get` は 16 進数で
 表示します。`sys.` で始まるキーは内部用です。データは暗号化されません。Wi-Fi の認証情報も
-同じ 8 KiB の領域に保存されます。NuttX 版も同じ場所に同じ形式で保存するので、版を書き換えても
+同じ 8 KiB の領域に保存されます。NuttX 版と FreeRTOS 版も同じ場所に同じ形式で保存するので、版を書き換えても
 KV は残ります。
 
 ### ログ
@@ -301,7 +302,7 @@ zephyr/script/host_tests.sh
 
 FIFO ワードの解析、バッチとペイロード、送信キュー、時刻の対応付け、NTP の推定、ドライバーの
 FIFO 設定と停止処理、NINA の SPI フレーミングなどを、PC 上で実行します。ボードは不要です。
-NuttX 版と共有するソースと、Zephyr の API の互換層・シェルのサブコマンドの処理・RAM ログのリングの
+NuttX 版・FreeRTOS 版と共有するソースと、Zephyr の API の互換層・シェルのサブコマンドの処理・RAM ログのリング・KV の
 OS に依存しない部分のテスト（`common/tests/run.sh`）を先に実行します。
 
 実機での確認は、上の「使い方」の手順で受信器を動かし、終了時の集計（欠番、時刻の有効数と
@@ -320,20 +321,28 @@ OS に依存しない部分のテスト（`common/tests/run.sh`）を先に実�
 
 | 場所 | 内容 |
 |---|---|
-| `zephyr/app/usb-console/src/` | アプリ本体のうち Zephyr 版だけのもの（KV、RAM ログ、起動処理）。NuttX 版と共有するもの（計測、時刻同期、MQTT、Wi-Fi 設定、校正など）は `common/imu/` |
+| `zephyr/app/usb-console/src/` | アプリ本体のうち Zephyr 版だけのもの（KV、RAM ログ、起動処理）。ほかの版と共有するもの（計測、時刻同期、MQTT、Wi-Fi 設定、校正など）は `common/imu/` |
 | `zephyr/app/usb-console/drivers/` | LSM6DSO、I²C、NINA、sensor shell のローカルドライバー |
 | `zephyr/app/usb-console/tests/` | ホストテスト（Zephyr 版だけのもの） |
 | `zephyr/app/blink/` | LED 点滅のサンプル |
 | `zephyr/script/` | 環境構築、ホストテスト |
 | `nuttx/` | NuttX 版（ボード定義、ドライバー、アプリ、パッチ、スクリプト、ホストテスト） |
-| `common/` | Zephyr 版と NuttX 版が同じものを使うソース（`imu/`: 取得サービスと `imu` コマンド、バッチ、パケット、送信キュー、時刻の対応付け、時刻同期と `ntp` コマンド、NTP の推定、校正値の形式と `imu cal`、MQTT の送信、Wi-Fi のプロファイルと自動再接続、KV の API と `kv` コマンド（`kv_store.c`）。`drivers/`: LSM6DSO のドライバー本体と FIFO の解析・単位の変換・ジャイロのゼロ点・FIFO の設定・割り込み・ストリーム・単発取得の RTIO 版、NINA の Wi-Fi のネットワークデバイスと宣言 `nina_proto.h`、NINA の OS に依存しないコア（SPI の転送層、ソケットの表と命令、名前解決と、その境界のヘッダー。今は NuttX 版だけが使う）、sensor シェル、I²C の DMA のコマンド語、I2C0 と DMA のコア（DesignWare の I2C と RP2040 の DMA のドライバーのレジスター操作、その定義、`i2c_dma` のカウンター、OS との境界のヘッダー。今は NuttX 版だけが使う）。`compat/`: NuttX 版などが Zephyr 版の API の代わりに使う互換層のうち OS に依存しない部分と、Zephyr のライブラリーの写し（Wi-Fi の資格情報、KV の NVS と settings など）、KV の領域の flash の境界のヘッダー、スレッドの優先度とスタックの表、CPU 負荷の計算、GPIO の境界のヘッダー（Zephyr 版は使わない）。互換層の MQTT クライアントは `imu/mqtt_min.c`。`shell/`: Zephyr のシェルのコマンド処理（サブコマンドの照合、ワイルドカード、引数の数の検査、ヘルプ）の再現と、サブコマンドの表の処理（Zephyr 版は使わない）。`log/`: `LOG_*` マクロと RAM ログのリング（Zephyr 版は使わない））と、そのホストテスト（`tests/`。`tests/run.sh` を両方の版の `host_tests.sh` が呼ぶ） |
+| `common/` | 3 つの版が同じファイルを使うソース（`imu/`: 取得サービス、送信、時刻同期、校正、Wi-Fi のプロファイル、KV の API と `kv` コマンド。`drivers/`: LSM6DSO のドライバー、sensor シェル、NINA と I2C0・DMA の OS に依存しないコア（NuttX 版と FreeRTOS 版が使う）。`compat/`: NuttX 版と FreeRTOS 版が使う Zephyr の API の互換層の OS に依存しない部分と Zephyr のライブラリーの写し。`shell/`・`log/`: シェルのコマンド処理と RAM ログ（NuttX 版と FreeRTOS 版））と、そのホストテスト（`tests/`。`tests/run.sh` を各版の `host_tests.sh` が呼ぶ）。構成は [設計書](design/imu-raw-mqtt-design-ja.md) の §12 |
 | `openmv/` | OpenMV 版 MicroPython のビルド環境（[`openmv/README_ja.md`](openmv/README_ja.md)） |
-| `freertos/` | Raspberry Pi Pico SDK と FreeRTOS カーネルのビルド環境と、USB コンソールのアプリ（[`freertos/README_ja.md`](freertos/README_ja.md)） |
+| `freertos/` | Pico SDK + FreeRTOS 版（ビルド環境、アプリ、互換層の FreeRTOS の部分、ドライバー、スクリプト、ホストテスト。[`freertos/README_ja.md`](freertos/README_ja.md)） |
 | `zephyr/manifest/west.yml` | Zephyr とモジュールのバージョン |
 | `design/` | 設計と調査手順 |
 | `firmware/nina-fw/` | NINA ファームウェアの修正とビルド |
 | `host/` | PC 側のツール（受信の診断、記録、校正）と、表示用のアプリ `ImuStudio` |
 | `script/` | PC を一時的な AP にするスクリプト、KV の退避と書き戻し（`kv_transfer.py`。別のファームウェアを書くときなど） |
+
+## 3 つの版と `common/`
+
+同じファームウェアに、Zephyr 版（`zephyr/`）、NuttX 版（`nuttx/`）、Pico SDK + FreeRTOS 版（`freertos/`）の 3 つの版が
+あります。取得、送信、時刻同期、校正、KV、ドライバーのソースは `common/` の同じファイルを使います。Zephyr 版は
+それを Zephyr の上で、NuttX 版と FreeRTOS 版は Zephyr の API を Zephyr の名前のまま再現する互換層
+（`common/compat/` と各版の `drivers/compat/`）の上でビルドします。KV は 3 つの版で同じ場所・同じ形式なので、
+版を書き換えても残ります。`common/` の構成と OS ごとの境界は [設計書](design/imu-raw-mqtt-design-ja.md) の §12 にあります。
 
 ## NuttX 版
 
@@ -350,6 +359,21 @@ OS に依存しない部分のテスト（`common/tests/run.sh`）を先に実�
   KV の領域に別のデータ（NuttX 版の以前の形式など）があると、NuttX 版は KV を使わず、`kv wipe confirm` で消して
   から登録し直します（`nuttx/README_ja.md` の「Zephyr 版からの移し替え」）。
 - 設計上の違いは [設計書](design/imu-raw-mqtt-design-ja.md) の §11 にあります。
+
+## FreeRTOS 版
+
+同じファームウェアを Raspberry Pi Pico SDK 2.3.1 と FreeRTOS カーネル V11.3.3 で作ったもの（FreeRTOS 版）が
+[`freertos/`](freertos/README_ja.md) にあります。計測、MQTT の送信、時刻同期、KV、校正、Wi-Fi、Telnet のシェルは
+Zephyr 版と同じ動作で、独自のコマンド（`imu`、`kv`、`ntp`、`nina`、`dmesg`、`i2c_dma`、`sensor`、`wifi cred`）と
+`zperf`（TCP だけ）、`wifi connect`・`disconnect`・`scan`・`status` は構文と出力も同じです。それ以外は短い名前
+（`version`、`reboot`、`ps`、`uptime`、`ifconfig`、`date`）で、`kernel ...`・`net ...` はありません。シェルの `bootsel` で
+BOOTSEL に入るので、書き込みにボタンの操作が要りません。
+
+- 環境構築、ビルド、書き込み、コマンドの一覧は [`freertos/README_ja.md`](freertos/README_ja.md)、内部の説明と
+  Zephyr 版・NuttX 版との違いの表は [`freertos/drivers/README_ja.md`](freertos/drivers/README_ja.md) にあります。
+- PC 側の `imu-host` と `script/kv_transfer.py` は FreeRTOS 版を見分けます（USB の名前とプロンプト `freertos:~$ `、
+  [`host/README_ja.md`](host/README_ja.md) の「ボードのファームウェア」）。
+- 設計上の違いは [設計書](design/imu-raw-mqtt-design-ja.md) の §13 にあります。
 
 ## Zephyr 版と NuttX 版の性能の違い
 
@@ -428,3 +452,19 @@ RAM（264 KB）の割り当て、boot2（0x10000000 の 256 バイト）、コ�
 - アプリの大きな変数は両方で同じ大きさです（送信キュー 29,512 バイト、FIFO 読み出しのブロックプール
   8,192 バイト、NINA の送信バッファ 3,584 バイトなど）。違うのは RAM ログ（NuttX 版は 8 KiB）、シェルの
   コマンド履歴（NuttX 版に 4,108 バイト）などです。
+
+## FreeRTOS 版の性能
+
+2026-11-17 に各 1 回測った値です。AP と PC は上の表と同じですが、日と手順が違うので、上の表の値とは条件が
+そろっていません。
+
+| 項目 | FreeRTOS 版 |
+|---|---|
+| 送信中の `cpu_active` | 45.5 %（書き込み直後の最初の計測、56 秒。欠番 0、`errors`・`fifo` 0） |
+| TCP の送信（ボード → PC、20 秒） | 2.94 Mbit/s（`zperf`、1024 バイトずつ。PC の `iperf3` の表示は 2.93 Mbit/s） |
+| TCP の受信（PC → ボード、20 秒） | 1.38 Mbit/s（`zperf`） |
+
+- FreeRTOS 版の `cpu_active` には、100 µs ごとの tick の割り込みの時間が入ります（Zephyr 版と NuttX 版にはこの割り込みが
+  ありません）。
+- 同じ日に NuttX 版（KV の形式を Zephyr 版にそろえた版）で測った書き込み直後の最初の計測（71 秒、1 回）は、
+  `cpu_active` 70.0 % でした。

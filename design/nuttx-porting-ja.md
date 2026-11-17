@@ -162,7 +162,7 @@ Zephyr 版の `src/log_ram.c` と同じ RAM ログです（`nuttx/drivers/log/`�
 設定と校正値、Wi-Fi の資格情報を flash の末尾 8 KiB（`0x10ffe000`〜`0x10ffffff`、4 KiB の消去単位 2 つ）に
 保存します。Zephyr 版の `storage_partition` と同じ場所に、Zephyr 版と同じ形式（Zephyr の NVS と settings）で
 置くので、Zephyr 版が書いた値を NuttX 版がそのまま読み書きでき、その逆もできます。API とコマンドは Zephyr 版の
-`kv_store.c` そのもの（`common/imu/kv_store.c`。両方の版が使う）です。
+`kv_store.c` そのもの（`common/imu/kv_store.c`。3 つの版が使う）です。
 
 - 構成: `kv_store.c` → Zephyr の settings（`settings_save_one()`・`settings_load_one()`・`settings_delete()`）→
   Zephyr の NVS → 互換層の flash デバイスと flash map（`common/compat/zephyr_flash_kv.c`）→ OS の境界
@@ -1027,8 +1027,8 @@ NuttX 標準のクリティカルセクションの監視（`CONFIG_SCHED_CRITMO
 
 ## ホストテストの詳細
 
-次のファイルは Zephyr 版と NuttX 版が同じものを使い、リポジトリの `common/` に 1 本ずつ置いています（NINA のコアと
-I2C0・DMA のコアは今は NuttX 版だけが使います。下の表）。
+次のファイルは Zephyr 版と NuttX 版（と FreeRTOS 版）が同じものを使い、リポジトリの `common/` に 1 本ずつ置いています（NINA のコアと
+I2C0・DMA のコアは NuttX 版と FreeRTOS 版が使います。下の表。`common/` の全体の構成は設計書の §12）。
 Zephyr 版の `CMakeLists.txt` と NuttX 版の Makefile（`apps/imu/Makefile`、`apps/nina/Makefile`、`apps/wifi/Makefile`、`apps/sensor/Makefile`、
 `drivers/compat/Make.defs`、`drivers/lsm6dso/Make.defs`、`drivers/nina/Make.defs`、ボードの `src/Make.defs`）がそこを参照します。Zephyr の API を
 使うもの（`common/drivers/` の FIFO の設定とストリーム、単発取得の RTIO 版、NINA の Wi-Fi、sensor シェルと、
@@ -1041,15 +1041,16 @@ OS ごとのヘッダー（`sensor_shell_os.h`、`wifi_profile_os.h`、`lsm6dso_
 
 | 置き場所 | 内容 |
 |---|---|
-| `common/imu/` | `imu_stream.c`、`imu_raw_{batch,packet,queue,status,time}`、`imu_tick_clock`、`time_sync.[ch]`、`time_offset`、`imu_cal_codec.c`、`imu_cal.[ch]`、`imu_raw_mqtt.[ch]`、`wifi_profile.[ch]`、`kv_store.h`、`mqtt_min.[ch]`（互換層の上の版の MQTT クライアント。Zephyr 版は使わない） |
+| `common/imu/` | `imu_stream.c`、`imu_raw_{batch,packet,queue,status,time}`、`imu_tick_clock`、`time_sync.[ch]`、`time_offset`、`imu_cal_codec.c`、`imu_cal.[ch]`、`imu_raw_mqtt.[ch]`、`wifi_profile.[ch]`、`kv_store.[ch]`、`mqtt_min.[ch]`・`mqtt_min_sock.c`（互換層の上の版の MQTT クライアントとそのソケットの層。Zephyr 版は使わない） |
 | `common/drivers/lsm6dso/` | `lsm6dso.[ch]`（ドライバー本体。末尾のデバイスは版ごとの `lsm6dso_instance.h`）、`lsm6dso_{fifo,cal,zero,fifo_decoder,fifo_hw,fifo_irq}`、`lsm6dso_stream.c`、`lsm6dso_compat.c`、`lsm6dso_fifo_packet.h`、`lsm6dso_fifo_stats.h`、`lsm6dso_attributes.h` |
-| `common/drivers/nina/` | `nina_net.c`、`nina_proto.h`（両方の版）。NINA のコア `nina_spi.c`・`nina_sock.[ch]`・`nina_dns.[ch]` と、コアの境界のヘッダー `nina_os.h`・`nano_nina.h`、ソケットオプションの `nina_sockopt.h`（今は NuttX 版だけが使う。Zephyr の API を使わず、前置きヘッダーなしでコンパイルする。境界は `nuttx/drivers/README_ja.md` の「NINA-W102」） |
+| `common/drivers/nina/` | `nina_net.c`、`nina_proto.h`（3 つの版）。NINA のコア `nina_spi.c`・`nina_sock.[ch]`・`nina_dns.[ch]` と、コアの境界のヘッダー `nina_os.h`・`nano_nina.h`、ソケットオプションの `nina_sockopt.h`（NuttX 版と FreeRTOS 版が使う。Zephyr の API を使わず、前置きヘッダーなしでコンパイルする。境界は `nuttx/drivers/README_ja.md` の「NINA-W102」） |
 | `common/drivers/sensor_shell/` | `sensor_shell.c` |
-| `common/drivers/i2c_dw/` | `i2c_dw_rp2040_commands.[ch]`（両方の版）。I2C0 と DMA のコア `nano_i2c.c`・`nano_dma.c` と、その定義 `nano_i2c_dw.h`・`nano_i2c_dw_registers.h`・`nano_dma.h`、`i2c_dma` の状態 `nano_i2c_dma.h`、境界のヘッダー `i2c_dw_os.h`（今は NuttX 版だけが使う。前置きヘッダーなしでコンパイルし、OS の部分はボードの `src/` の `i2c_dw_os_impl.h`・`nano_i2c_instance.h`・`nano_dma_instance.h`。境界は `nuttx/drivers/README_ja.md` の「I2C0」） |
+| `common/drivers/stmemsc/` | `stmemsc.h`、`stmemsc_i2c.c`、`stmemsc_mdelay.c`（Zephyr の stmemsc の I2C の部分の写し。NuttX 版と FreeRTOS 版が使い、前置きヘッダーなしでコンパイルする。Zephyr 版は Zephyr のものを使う） |
+| `common/drivers/i2c_dw/` | `i2c_dw_rp2040_commands.[ch]`（3 つの版）。I2C0 と DMA のコア `nano_i2c.c`・`nano_dma.c` と、その定義 `nano_i2c_dw.h`・`nano_i2c_dw_registers.h`・`nano_dma.h`、`i2c_dma` の状態 `nano_i2c_dma.h`、境界のヘッダー `i2c_dw_os.h`（NuttX 版と FreeRTOS 版が使う。前置きヘッダーなしでコンパイルし、OS の部分はボードの `src/` の `i2c_dw_os_impl.h`・`nano_i2c_instance.h`・`nano_dma_instance.h`。境界は `nuttx/drivers/README_ja.md` の「I2C0」） |
 | `common/compat/` | 互換層の OS に依存しない部分（Zephyr の API のヘッダー `zephyr/...`、`zephyr_compat.h`、ワーク、RTIO、ブロックのプール、デバイスの一覧、`gpio0`、`net_mgmt`、Wi-Fi の要求、sensor の既定の iodev）と、互換層の上の版が使う Zephyr のライブラリーの写し（`sensor_shell_stream.c`・`sensor_shell.h`、`wifi_credentials.c`・`wifi_credentials_backend_settings.c`・`wifi_credentials_internal.h`）、境界のヘッダー（`priorities.h`、`cpu_load.h`、`nano_cpuload.h`、`nano_gpio.h`）。Zephyr 版は使わない |
 | `common/shell/` | `subcmd.[ch]`（サブコマンドの表の処理）、`zshell.c`（`<zephyr/shell/shell.h>` で書いたコマンドの処理: 語の照合、ワイルドカード、引数の数の検査、ヘルプ）とその OS との境界 `zshell_os.h`（NuttX 版の部分は `nuttx/apps/subcmd/zshell_os_impl.h`）。前置きヘッダーなしでコンパイルする。Zephyr 版は使わない |
 | `common/log/` | `log_ring.[ch]`（RAM ログのリング、行の前置き、頻度制限）、`app_log.h`（`LOG_*` マクロ。NuttX の部分は `nuttx/drivers/include/app_log_os.h`）、`log_ram.h`（RAM ログの関数。NuttX 版は `nuttx/drivers/log/log_ram.c`）、`fault_record.[ch]`（異常停止の記録の形式、CRC-32、watchdog の scratch への写し、表示の行。FreeRTOS 版だけが使う）。Zephyr 版は使わない |
-| `common/tests/` | 上のファイルを対象にするテスト 24 本（`common/tests/run.sh` が実行し、両方の版の `host_tests.sh` が最初に呼ぶ。互換層の `zephyr_rtio`・`zephyr_work`・`mqtt_min` は偽のカーネルの上、NINA のコアの `nina_spi`・`nina_sock`・`nina_dns` はテストが定義する境界の偽物の上）。`stream_stop.c` は `../drivers/lsm6dso/lsm6dso_stream.c` を読み込む（先に `lsm6dso.h` のインクルードガードを定義するので、そのヘッダーの中身は使わない。`stream_stop.c` が必要な定義を自分で置く） |
+| `common/tests/` | 上のファイルを対象にするテスト 30 本と、写しの照合 `zephyr_copies`（`common/tests/run.sh` が実行し、3 つの版の `host_tests.sh` が最初に呼ぶ。互換層の `zephyr_rtio`・`zephyr_work`・`mqtt_min` は偽のカーネルの上、NINA のコアの `nina_spi`・`nina_sock`・`nina_dns` はテストが定義する境界の偽物の上）。`stream_stop.c` は `../drivers/lsm6dso/lsm6dso_stream.c` を読み込む（先に `lsm6dso.h` のインクルードガードを定義するので、そのヘッダーの中身は使わない。`stream_stop.c` が必要な定義を自分で置く） |
 | `common/tests/fakes/` | テスト用の Zephyr のヘッダーと ST のヘッダーの代わり（`zephyr/drivers/sensor.h`、`zephyr/drivers/sensor_clock.h`、`zephyr/drivers/i2c.h`、`zephyr/rtio/rtio.h`、`lsm6dso_reg.h`） |
 | `common/tests/zephyr_fakes/` | 互換層の偽のカーネル: OS ごとのヘッダー（`zephyr_os.h`・`zephyr_os_spinlock.h`・`zephyr_os_atomic.h`・`zephyr_rtio_workq_os.h`、`zephyr/sys/__assert.h`）とその関数（`zephyr_kernel_host.[ch]`。1 スレッドで、ワークキューとタイマーはテストが回す）。NuttX 版のテストも使う |
 
@@ -1093,7 +1094,7 @@ flash の先頭と末尾 1 MiB のすべてのページ・消去単位で確か�
 さまざまな位置と長さで、書いたバイトだけが変わることで確かめます。起動時の判定は、Zephyr の NVS の索引と
 NuttX の NVS の索引をそれぞれ受け付け、相手の形式の索引の並び（CRC がたまたま合うものを含む、それぞれ
 20 万通り）を受け付けないことを確かめます。`hex` は Zephyr の `lib/utils/hex.c` の写しを確かめます。
-`zephyr_copies` は、Zephyr のツリー（`zephyr/zephyr`）があるとき、写した 15 本が v4.5.0 の元と同じことを
+`zephyr_copies` は、Zephyr のツリー（`zephyr/zephyr`）があるとき、写した 23 本（KV の NVS と settings、fnmatch、getopt、`wifi cred` のシェルなど）が v4.5.0 の元と同じことを
 `cmp` で確かめます。`nuttx/tests/kv_cmd.c` は `kv` のコマンドを `z_shell_main_kv()` から上の KV の上で動かし、
 すべてのサブコマンドの出力（以前の NuttX 版と同じ文）、`sys.` の拒否、上限、`kv wipe`、別のデータがあるときの
 `-EILSEQ` を確かめます。`nuttx/tests/wifi_cred.c` は資格情報を同じ KV の上で確かめます。

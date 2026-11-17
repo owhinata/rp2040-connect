@@ -14,7 +14,8 @@ raw values, adds the PC's time, and sends it over Wi-Fi with MQTT.
 
 See the [IMU RAW and MQTT design](design/imu-raw-mqtt-design.md) for the details and
 [zephyr/app/usb-console/drivers](zephyr/app/usb-console/drivers/README.md) for the drivers (LSM6DSO, I2C,
-NINA).
+NINA). The same firmware also has a NuttX build (`nuttx/`) and a Pico SDK + FreeRTOS build (`freertos/`)
+("The three builds and `common/`" below).
 
 This is experimental. Measurements are started and stopped by hand from the shell, and the
 only software on the PC side is a receiver script for verification. The design document lists
@@ -291,8 +292,8 @@ it on trusted networks only.
 Stored with Zephyr Settings on NVS. Keys are 1 to 32 characters of letters, digits, `_`, `-`
 and `.`; values are 1 to 128 bytes. `set` stores text, `sethex` stores bytes given in hex, and
 `get` prints hex. Keys starting with `sys.` are reserved. Data is not encrypted. Wi-Fi
-credentials share the same 8 KiB area. The NuttX build stores them in the same place and format,
-so the store stays when you switch builds.
+credentials share the same 8 KiB area. The NuttX and FreeRTOS builds store them in the same place and
+format, so the store stays when you switch builds.
 
 ### Log
 
@@ -311,9 +312,9 @@ zephyr/script/host_tests.sh
 
 This runs, on the PC and without a board, the tests for FIFO word parsing, batches and
 payloads, the send queue, time assignment, the NTP estimate, the driver's FIFO setup and stop
-handling, and NINA SPI framing. The tests of the sources shared with the NuttX build and of
-the OS-independent parts of the Zephyr API compatibility layer, the shell's subcommand handling
-and the RAM log's ring (`common/tests/run.sh`) run first.
+handling, and NINA SPI framing. The tests of the sources shared with the NuttX and FreeRTOS builds
+and of the OS-independent parts of the Zephyr API compatibility layer, the shell's subcommand handling,
+the RAM log's ring and the key-value store (`common/tests/run.sh`) run first.
 
 To check on hardware, follow the usage steps with the receiver running and look at its
 summary (missing batches, valid and reversed times) and at the errors in `imu status`.
@@ -331,20 +332,30 @@ summary (missing batches, valid and reversed times) and at the errors in `imu st
 
 | Path | Content |
 |---|---|
-| `zephyr/app/usb-console/src/` | The parts of the application that are the Zephyr build's own: key-value store, RAM log, start-up. Those shared with the NuttX build (measurement, time sync, MQTT, Wi-Fi settings, calibration and others) are in `common/imu/` |
+| `zephyr/app/usb-console/src/` | The parts of the application that are the Zephyr build's own: key-value store, RAM log, start-up. Those shared with the other builds (measurement, time sync, MQTT, Wi-Fi settings, calibration and others) are in `common/imu/` |
 | `zephyr/app/usb-console/drivers/` | Local drivers for the LSM6DSO, I2C, NINA and the sensor shell |
 | `zephyr/app/usb-console/tests/` | Host tests (those of the Zephyr build only) |
 | `zephyr/app/blink/` | LED blink sample |
 | `zephyr/script/` | Setup, host tests |
 | `nuttx/` | The NuttX build (board definition, drivers, applications, patches, scripts, host tests) |
-| `common/` | Sources that the Zephyr and NuttX builds both use (`imu/`: the acquisition service and the `imu` command, batches, packets, the send queue, time assignment, the time sync and the `ntp` command, the NTP estimate, the calibration value format and `imu cal`, the MQTT transport, the Wi-Fi profile and automatic reconnection, the key-value store's API and `kv` command (`kv_store.c`); `drivers/`: the LSM6DSO driver and its FIFO parsing, unit conversion and gyro zero, FIFO setup, interrupt, stream and RTIO single reads, the NINA's Wi-Fi network device and its declarations `nina_proto.h`, the NINA's OS-independent core (the SPI link, the socket table and commands, name resolution, and the headers of its boundary; only the NuttX build uses it now), the sensor shell, the I2C DMA command words, the I2C0 and DMA core (the register work of the DesignWare I2C driver and of the RP2040 DMA, their definitions, the `i2c_dma` counters and the header of its boundary to the OS; only the NuttX build uses it now); `compat/`: the OS-independent part of the compatibility layer that the NuttX build and others use in place of Zephyr's API, with the copies of Zephyr's libraries it needs (the Wi-Fi credentials, the key-value store's NVS and settings and others), the header of the key-value area's flash boundary, the table of thread priorities and stacks, the CPU load arithmetic and the header of the GPIO boundary (the Zephyr build does not use it; the layer's MQTT client is `imu/mqtt_min.c`); `shell/`: the Zephyr shell's command handling (subcommand matching, wildcards, argument count checks, help) and the subcommand tables (the Zephyr build does not use it); `log/`: the `LOG_*` macros and the RAM log's ring (the Zephyr build does not use it)) and their host tests (`tests/`; `tests/run.sh` is called by the `host_tests.sh` of both builds) |
+| `common/` | Sources whose files the three builds share (`imu/`: the acquisition service, transport, time synchronization, calibration, the Wi-Fi profile, the key-value API and the `kv` command; `drivers/`: the LSM6DSO driver, the sensor shell, the OS-independent cores of the NINA and of I2C0 and DMA (used by the NuttX and FreeRTOS builds); `compat/`: the OS-independent part of the Zephyr API compatibility layer that the NuttX and FreeRTOS builds use, with copies of Zephyr's libraries; `shell/` and `log/`: the shell's command handling and the RAM log (NuttX and FreeRTOS builds)) and their host tests (`tests/`; `tests/run.sh` is called by each build's `host_tests.sh`). The layout is in section 12 of the [design](design/imu-raw-mqtt-design.md) |
 | `openmv/` | Build environment for the OpenMV MicroPython firmware ([`openmv/README.md`](openmv/README.md)) |
-| `freertos/` | Build environment for the Raspberry Pi Pico SDK with the FreeRTOS kernel, and a USB console application ([`freertos/README.md`](freertos/README.md)) |
+| `freertos/` | The Pico SDK + FreeRTOS build (build environment, application, the FreeRTOS part of the compatibility layer, drivers, scripts, host tests; [`freertos/README.md`](freertos/README.md)) |
 | `zephyr/manifest/west.yml` | Versions of Zephyr and its modules |
 | `design/` | Design and investigation notes |
 | `firmware/nina-fw/` | Fixes and build for the NINA firmware |
 | `host/` | PC-side tools (receive check, recording, calibration) and the display application `ImuStudio` |
 | `script/` | Script that turns the PC into a temporary access point, and the backup and restore of the KV store (`kv_transfer.py`, for flashing another firmware and the like) |
+
+## The three builds and `common/`
+
+The same firmware comes in three builds: Zephyr (`zephyr/`), NuttX (`nuttx/`) and Pico SDK + FreeRTOS
+(`freertos/`). The sources of acquisition, transport, time synchronization, calibration, the key-value store
+and the drivers are the same files in `common/`. The Zephyr build compiles them on Zephyr; the NuttX and
+FreeRTOS builds compile them on a compatibility layer that reproduces Zephyr's API under Zephyr's names
+(`common/compat/` and each build's `drivers/compat/`). The key-value store has the same place and format in
+the three builds, so it stays when you switch builds. Section 12 of the [design](design/imu-raw-mqtt-design.md)
+describes the layout of `common/` and the boundaries to each OS.
 
 ## NuttX build
 
@@ -365,6 +376,23 @@ replaced by the standard NuttX ones (`wapi`, `ifconfig`, `iperf`, `ps`, `reboot`
   `kv wipe confirm` and store the values again ("Moving the values from the Zephyr build" in
   `nuttx/README.md`).
 - Section 11 of the [design](design/imu-raw-mqtt-design.md) describes the design differences.
+
+## FreeRTOS build
+
+The same firmware built on the Raspberry Pi Pico SDK 2.3.1 and the FreeRTOS kernel V11.3.3 (the FreeRTOS
+build) is in [`freertos/`](freertos/README.md). Acquisition, MQTT delivery, time synchronization, the KV
+store, calibration, Wi-Fi and the Telnet shell behave as in the Zephyr build, and the commands of this
+project (`imu`, `kv`, `ntp`, `nina`, `dmesg`, `i2c_dma`, `sensor`, `wifi cred`), `zperf` (TCP only) and
+`wifi connect`, `disconnect`, `scan` and `status` have the same syntax and output. The others have short
+names (`version`, `reboot`, `ps`, `uptime`, `ifconfig`, `date`); there is no `kernel ...` or `net ...`.
+The shell's `bootsel` enters BOOTSEL, so flashing needs no button.
+
+- See [`freertos/README.md`](freertos/README.md) for setup, building, flashing and the commands, and
+  [`freertos/drivers/README.md`](freertos/drivers/README.md) for the internals and the table of differences
+  from the Zephyr and NuttX builds.
+- `imu-host` and `script/kv_transfer.py` on the PC recognize the FreeRTOS build (by the USB name and the
+  prompt `freertos:~$ `; "Board firmware" in [`host/README.md`](host/README.md)).
+- Section 13 of the [design](design/imu-raw-mqtt-design.md) describes the design differences.
 
 ## Performance of the Zephyr and NuttX builds
 
@@ -446,3 +474,19 @@ key-value store (the last 8 KB of flash, from 0x10ffe000) are the same.
 - The application's large variables have the same size in both (the send queue 29,512 bytes, the FIFO read
   block pool 8,192 bytes, the NINA send buffer 3,584 bytes and so on). The differences are the RAM log (8 KiB
   in the NuttX build), the shell's command history (4,108 bytes in the NuttX build) and the like.
+
+## Performance of the FreeRTOS build
+
+Measured once each on 2026-11-17. The access point and the PC are those of the tables above, but the day
+and the steps differ, so the values are not measured under the same conditions as those above.
+
+| Item | FreeRTOS build |
+|---|---|
+| `cpu_active` while sending | 45.5% (the first measurement after flashing, 56 seconds; no missing batches, `errors` and `fifo` 0) |
+| TCP send (board to PC, 20 seconds) | 2.94 Mbit/s (`zperf`, 1024 bytes at a time; the PC's `iperf3` showed 2.93 Mbit/s) |
+| TCP receive (PC to board, 20 seconds) | 1.38 Mbit/s (`zperf`) |
+
+- The FreeRTOS build's `cpu_active` includes the time of the tick interrupt every 100 µs (the Zephyr and
+  NuttX builds have no such interrupt).
+- On the same day, the first measurement after flashing the NuttX build (the build whose key-value store
+  uses the Zephyr build's format; 71 seconds, once) gave a `cpu_active` of 70.0%.

@@ -2,19 +2,19 @@
 # SPDX-License-Identifier: Apache-2.0
 """KV（設定と校正値）をボードのシェルから退避し、書き戻す。
 
-Zephyr 版と NuttX 版は、フラッシュ末尾 8 KB の KV を同じ形式（Zephyr の NVS と settings）で
-持つ。版を書き換えても KV はそのまま残るので、Zephyr 版と NuttX 版の間の書き換えにこの
+Zephyr 版・NuttX 版・FreeRTOS 版は、フラッシュ末尾 8 KB の KV を同じ形式（Zephyr の NVS と
+settings）で持つ。版を書き換えても KV はそのまま残るので、この 3 つの版の間の書き換えにこの
 スクリプトは要らない。要るのは KV 領域が失われる、または使えない場面:
 
   - 別のファームウェア（OpenMV 版など）が KV 領域を上書きする前に退避し、戻した後で書き戻す。
-  - KV 領域に別のデータ（NuttX 版の以前の形式、別のファームウェアの残り）があり、NuttX 版が
-    KV を使わない（`kv` が -84 などのエラーを返す）とき。`kv wipe confirm` で領域を消して
+  - KV 領域に別のデータ（NuttX 版の以前の形式、別のファームウェアの残り）があり、NuttX 版・
+    FreeRTOS 版が KV を使わない（`kv` が -84、-138 のエラーを返す）とき。`kv wipe confirm` で領域を消して
     から書き戻す。以前の形式の値は、その形式を読めるファームウェア（以前の NuttX 版）で
     退避しておく。
 
 手順:
-  1. 値を読めるファームウェアが動いている状態で backup を実行する（Zephyr 版でも NuttX 版でも
-     よい）。
+  1. 値を読めるファームウェアが動いている状態で backup を実行する（Zephyr 版・NuttX 版・
+     FreeRTOS 版のどれでもよい）。
   2. ファームウェアを書き換える（必要なら `kv wipe confirm`）。
   3. restore を実行する。KV を書き戻し、Wi-Fi の資格情報を `wifi cred add` で登録する。
 
@@ -57,7 +57,7 @@ KEY_RE = re.compile(r'[A-Za-z0-9_.-]{1,32}')
 VALUE_MAX = 128
 ENOENT = 2
 # KV 領域に Zephyr の NVS でも消去済みでもないデータがある（NuttX 版の EILSEQ は 84、
-# newlib の版は 138）。`kv wipe confirm` で消すまで KV は使えない。
+# newlib の FreeRTOS 版は 138）。`kv wipe confirm` で消すまで KV は使えない。
 EILSEQ = (84, 138)
 WIPE_HINT = ('KV 領域に別のデータがあります（Zephyr の NVS でも消去済みでもない）。退避する値は'
              'ありません。書き戻すには、ボードで kv wipe confirm を実行して領域を消してください')
@@ -66,7 +66,10 @@ SSID_MAX = 32
 
 ZEPHYR_USB_GLOB = board.USB_CONSOLE_GLOB
 NUTTX_USB_GLOB = '/dev/serial/by-id/usb-*NuttX_USB_Console*'
-# プロンプト（Zephyr の USB は "uart:~$ "、Telnet は "~$ "、NuttX 版は "nsh$ "）。
+FREERTOS_USB_GLOB = '/dev/serial/by-id/usb-*FreeRTOS_USB_Console*'
+USB_GLOBS = (ZEPHYR_USB_GLOB, NUTTX_USB_GLOB, FREERTOS_USB_GLOB)
+# プロンプト（Zephyr の USB は "uart:~$ "、Telnet は "~$ "、NuttX 版は "nsh$ "、FreeRTOS 版は
+# "freertos:~$ "）。
 _PROMPT = re.compile(r'^[\w.:~/-]*\$\s*')
 
 
@@ -77,12 +80,13 @@ class TransferError(RuntimeError):
 # ---------------------------------------------------------------- 接続
 
 def find_usb():
-    """Zephyr 版と NuttX 版の USB コンソールを探し、1 つに決まればそれを返す。"""
-    found = sorted(set(glob.glob(ZEPHYR_USB_GLOB) + glob.glob(NUTTX_USB_GLOB)))
+    """Zephyr 版・NuttX 版・FreeRTOS 版の USB コンソールを探し、1 つに決まればそれを返す。"""
+    found = sorted({d for g in USB_GLOBS for d in glob.glob(g)})
     if len(found) == 1:
         return found[0]
     if not found:
-        raise TransferError('USB コンソールが見つかりません（Zephyr 版・NuttX 版とも）。ボードを USB で'
+        raise TransferError('USB コンソールが見つかりません（Zephyr 版・NuttX 版・FreeRTOS 版とも）。'
+                            'ボードを USB で'
                             '接続するか、--usb でデバイスを指定してください')
     raise TransferError('USB コンソールが複数あります（%s）。--usb で指定してください' % ', '.join(found))
 
@@ -104,16 +108,34 @@ def _body_lines(output, line):
     return lines
 
 
+# ファームウェアの版を表示するコマンドと、その出力から版を取り出す正規表現。並びは試す順。
+# FreeRTOS 版の version は "FreeRTOS kernel V11.3.3, Pico SDK 2.3.1, GCC 15.2.1 ..." を出す
+# （freertos/app/usb-console/src/commands.c。FreeRTOS 版に kernel version は無い）。
+VERSION_COMMANDS = (
+    ('zephyr', 'kernel version', r'Zephyr version \S+'),
+    ('nuttx', 'uname -a', r'NuttX[^\r\n]*'),
+    ('freertos', 'version', r'FreeRTOS kernel [^\r\n]*'),
+)
+VERSION_HINT = '%s（違えば %s）' % (VERSION_COMMANDS[0][1],
+                                   '、'.join(c[1] for c in VERSION_COMMANDS[1:]))
+
+
 def detect_firmware(sh):
-    """ファームウェアの種類と版を調べる（kernel version → uname -a）。"""
-    out = sh.command('kernel version', wait=1.5)
-    m = re.search(r'Zephyr version \S+', out)
-    if m:
-        return {'kind': 'zephyr', 'version': m.group(0)}
-    out = sh.command('uname -a', wait=1.5)
-    m = re.search(r'NuttX[^\r\n]*', out)
-    if m:
-        return {'kind': 'nuttx', 'version': m.group(0).strip()}
+    """ファームウェアの種類と版を調べる（kernel version、uname -a、version）。
+
+    接続のファームウェアが USB の名前か前のコマンドのプロンプトで分かっていれば（sh.firmware）、
+    その版のコマンドを先に送る。分からなければ上の順に試す。1 つ送るとプロンプトから分かる
+    ことがあり、そのときは次にその版のコマンドを送る。
+    """
+    tried = set()
+    while len(tried) < len(VERSION_COMMANDS):
+        known = getattr(sh.firmware, 'name', None)
+        left = [c for c in VERSION_COMMANDS if c[0] not in tried]
+        kind, line, pattern = next((c for c in left if c[0] == known), left[0])
+        tried.add(kind)
+        m = re.search(pattern, sh.command(line, wait=1.5))
+        if m:
+            return {'kind': kind, 'version': m.group(0).strip()}
     return {'kind': 'unknown', 'version': None}
 
 
@@ -260,9 +282,10 @@ def quote_arg(value, firmware, what):
     Zephyr のシェル（subsys/shell/shell_utils.c の make_argv）は、二重引用符の中で
     \\" と \\xHH を解釈し、それ以外の文字はそのまま渡す。\\、"、$ を \\xHH で送ると、
     エコーに引用符や $ がそのまま出ないので、board._exchange のプロンプト判定
-    （行末の $）を誤らせない。
+    （行末の $）を誤らせない。FreeRTOS 版のシェルの引数の分割は make_argv の写し
+    （freertos/drivers/shell/shell_argv.c）なので、同じ引用で送る。
     """
-    if firmware == 'zephyr':
+    if firmware in ('zephyr', 'freertos'):
         return '"%s"' % ''.join('\\x%02x' % ord(c) if c in '\\"$' else c for c in value)
     if firmware == 'nuttx':
         if not _NUTTX_SAFE.fullmatch(value):
@@ -356,7 +379,7 @@ def run_backup(sh, keys, path, force=False, out=None):
     firmware = detect_firmware(sh)
     print('ボード: %s（%s）' % (sh.name, firmware['version'] or '種類不明'), file=out)
     if firmware['kind'] == 'unknown':
-        print('注意: Zephyr 版でも NuttX 版でもないボードから読み出しています', file=out)
+        print('注意: Zephyr 版・NuttX 版・FreeRTOS 版のどれでもないボードから読み出しています', file=out)
     values = {}
     for key in keys:
         values[key] = read_key(sh, key)
@@ -419,13 +442,13 @@ def dry_run(args, out=None):
     out = out or sys.stdout
     print('（--dry-run: ボードには接続しません）', file=out)
     if args.cmd == 'backup':
-        print('  kernel version（Zephyr でなければ uname -a）', file=out)
+        print('  ' + VERSION_HINT, file=out)
         for key in args.keys:
             print('  kv get %s' % key, file=out)
         print('保存先: %s' % args.out, file=out)
         return 0
     _, values = load_backup(args.infile)
-    print('  kernel version（Zephyr でなければ uname -a）', file=out)
+    print('  ' + VERSION_HINT, file=out)
     if not args.no_kv:
         print('  imu status（計測中なら止める）', file=out)
         for key, value in values.items():
@@ -449,14 +472,14 @@ def dry_run(args, out=None):
     return 0
 
 
-EPILOG = '''Zephyr 版と NuttX 版の間で書き換えるだけなら不要です（KV の形式が同じ）。
+EPILOG = '''Zephyr 版・NuttX 版・FreeRTOS 版の間で書き換えるだけなら不要です（KV の形式が同じ）。
 
 例:
   # 別のファームウェアを書く前に退避する（USB、デバイスは自動で探す）
   host/.venv/bin/python script/kv_transfer.py backup --usb
   # Telnet で、出力先を指定して
   host/.venv/bin/python script/kv_transfer.py backup --board 10.42.0.23 --out kv.json
-  # Zephyr 版か NuttX 版に戻したあとで書き戻す（パスワードは端末で入力）
+  # Zephyr 版・NuttX 版・FreeRTOS 版に戻したあとで書き戻す（パスワードは端末で入力）
   host/.venv/bin/python script/kv_transfer.py restore --usb
   # パスワードをパイプで渡し、SSID を変える
   pass show wifi/ap | host/.venv/bin/python script/kv_transfer.py restore --usb --ssid my-ap
@@ -476,7 +499,7 @@ def parse_args(argv=None):
     common.add_argument('--board', help='ボードの IP アドレス（Telnet。既定: AP に繋がっている機器から探す）')
     common.add_argument('--usb', nargs='?', const='', metavar='DEVICE',
                         help='Telnet ではなく USB コンソールを使う（デバイス省略時は Zephyr 版・'
-                             'NuttX 版の by-id 名から探す）')
+                             'NuttX 版・FreeRTOS 版の by-id 名から探す）')
     common.add_argument('--dry-run', action='store_true',
                         help='ボードに接続せず、送るコマンドを表示する（パスワードは伏せる）')
     sub = ap.add_subparsers(dest='cmd', required=True)
@@ -494,7 +517,7 @@ def parse_args(argv=None):
     p.add_argument('--ssid', default=DEFAULT_SSID, help='Wi-Fi の SSID（既定: %(default)s）')
     p.add_argument('--no-wifi', action='store_true', help='Wi-Fi を登録しない（パスワードを聞かない）')
     p.add_argument('--no-kv', action='store_true', help='KV を書き戻さない')
-    p.add_argument('--firmware', choices=('zephyr', 'nuttx'), default='nuttx',
+    p.add_argument('--firmware', choices=('zephyr', 'nuttx', 'freertos'), default='nuttx',
                    help='--dry-run での引用の仕方（実行時はボードから判定する。既定: %(default)s）')
     args = ap.parse_args(argv)
     if args.cmd == 'backup':

@@ -175,7 +175,7 @@ The settings, the calibration and the Wi-Fi credentials are stored in the last 8
 (`0x10ffe000`-`0x10ffffff`, two 4 KiB erase sectors), the Zephyr build's `storage_partition`, in
 the Zephyr build's format (Zephyr's NVS and settings): the NuttX build reads and writes what the
 Zephyr build stored, and the other way round. The API and the command are the Zephyr build's
-`kv_store.c` itself (`common/imu/kv_store.c`, used by both builds).
+`kv_store.c` itself (`common/imu/kv_store.c`, used by all three builds).
 
 - Layers: `kv_store.c` → Zephyr's settings (`settings_save_one()`, `settings_load_one()`,
   `settings_delete()`) → Zephyr's NVS → the compatibility layer's flash device and flash map
@@ -1186,9 +1186,9 @@ NuttX-only threads are in `nuttx/drivers/include/priorities_os.h`). The Zephyr b
 
 ## Host test details
 
-The following files are used by both the Zephyr and the NuttX build and are kept once each in the
-repository's `common/` (only the NuttX build uses the NINA core and the I2C0 and DMA core now;
-see the table). The Zephyr
+The following files are used by both the Zephyr and the NuttX build (and the FreeRTOS build) and are kept once each in the
+repository's `common/` (the NuttX and FreeRTOS builds use the NINA core and the I2C0 and DMA core;
+see the table; the layout of `common/` as a whole is in §12 of the design document). The Zephyr
 build's `CMakeLists.txt` and the NuttX build's Makefiles
 (`apps/imu/Makefile`, `apps/nina/Makefile`, `apps/wifi/Makefile`, `apps/sensor/Makefile`, `drivers/compat/Make.defs`,
 `drivers/lsm6dso/Make.defs`, `drivers/nina/Make.defs`, the board's `src/Make.defs`) refer to them
@@ -1206,15 +1206,16 @@ with the layer's NuttX implementation (`nuttx/drivers/compat/`; the Zephyr build
 
 | Location | Contents |
 |---|---|
-| `common/imu/` | `imu_stream.c`, `imu_raw_{batch,packet,queue,status,time}`, `imu_tick_clock`, `time_sync.[ch]`, `time_offset`, `imu_cal_codec.c`, `imu_cal.[ch]`, `imu_raw_mqtt.[ch]`, `wifi_profile.[ch]`, `kv_store.h`, `mqtt_min.[ch]` (the MQTT client of the builds on the compatibility layer; the Zephyr build does not use it) |
+| `common/imu/` | `imu_stream.c`, `imu_raw_{batch,packet,queue,status,time}`, `imu_tick_clock`, `time_sync.[ch]`, `time_offset`, `imu_cal_codec.c`, `imu_cal.[ch]`, `imu_raw_mqtt.[ch]`, `wifi_profile.[ch]`, `kv_store.[ch]`, `mqtt_min.[ch]` and `mqtt_min_sock.c` (the MQTT client of the builds on the compatibility layer and its socket layer; the Zephyr build does not use them) |
 | `common/drivers/lsm6dso/` | `lsm6dso.[ch]` (the driver; the device at its end is `lsm6dso_instance.h` of each build), `lsm6dso_{fifo,cal,zero,fifo_decoder,fifo_hw,fifo_irq}`, `lsm6dso_stream.c`, `lsm6dso_compat.c`, `lsm6dso_fifo_packet.h`, `lsm6dso_fifo_stats.h`, `lsm6dso_attributes.h` |
-| `common/drivers/nina/` | `nina_net.c` and `nina_proto.h` (both builds); the NINA core `nina_spi.c`, `nina_sock.[ch]` and `nina_dns.[ch]` with the headers of its boundary, `nina_os.h` and `nano_nina.h`, and its socket options, `nina_sockopt.h` (only the NuttX build uses them now; they do not use Zephyr's API and are compiled without the prelude; the boundary is described under "NINA-W102" in `nuttx/drivers/README.md`) |
+| `common/drivers/nina/` | `nina_net.c` and `nina_proto.h` (all three builds); the NINA core `nina_spi.c`, `nina_sock.[ch]` and `nina_dns.[ch]` with the headers of its boundary, `nina_os.h` and `nano_nina.h`, and its socket options, `nina_sockopt.h` (the NuttX and FreeRTOS builds use them; they do not use Zephyr's API and are compiled without the prelude; the boundary is described under "NINA-W102" in `nuttx/drivers/README.md`) |
 | `common/drivers/sensor_shell/` | `sensor_shell.c` |
-| `common/drivers/i2c_dw/` | `i2c_dw_rp2040_commands.[ch]` (both builds); the I2C0 and DMA core `nano_i2c.c` and `nano_dma.c` with its definitions `nano_i2c_dw.h`, `nano_i2c_dw_registers.h` and `nano_dma.h`, the `i2c_dma` state `nano_i2c_dma.h` and the header of its boundary, `i2c_dw_os.h` (only the NuttX build uses them now; they are compiled without the prelude, and the OS's part is the board's `src/i2c_dw_os_impl.h`, `nano_i2c_instance.h` and `nano_dma_instance.h`; the boundary is described under "I2C0" in `nuttx/drivers/README.md`) |
+| `common/drivers/stmemsc/` | `stmemsc.h`, `stmemsc_i2c.c`, `stmemsc_mdelay.c` (a copy of the I2C part of Zephyr's stmemsc, used by the NuttX and FreeRTOS builds and compiled without the prelude; the Zephyr build uses Zephyr's) |
+| `common/drivers/i2c_dw/` | `i2c_dw_rp2040_commands.[ch]` (all three builds); the I2C0 and DMA core `nano_i2c.c` and `nano_dma.c` with its definitions `nano_i2c_dw.h`, `nano_i2c_dw_registers.h` and `nano_dma.h`, the `i2c_dma` state `nano_i2c_dma.h` and the header of its boundary, `i2c_dw_os.h` (the NuttX and FreeRTOS builds use them; they are compiled without the prelude, and the OS's part is the board's `src/i2c_dw_os_impl.h`, `nano_i2c_instance.h` and `nano_dma_instance.h`; the boundary is described under "I2C0" in `nuttx/drivers/README.md`) |
 | `common/compat/` | the OS-independent part of the compatibility layer (the headers of Zephyr's API `zephyr/...`, `zephyr_compat.h`, work items, RTIO, the block pool, the device list, `gpio0`, `net_mgmt`, the Wi-Fi requests, the sensors' default iodev) and the copies of Zephyr's libraries that the builds on the layer use (`sensor_shell_stream.c`, `sensor_shell.h`, `wifi_credentials.c`, `wifi_credentials_backend_settings.c`, `wifi_credentials_internal.h`), and boundary headers (`priorities.h`, `cpu_load.h`, `nano_cpuload.h`, `nano_gpio.h`); the Zephyr build does not use it |
 | `common/shell/` | `subcmd.[ch]` (the subcommand tables), `zshell.c` (the handling of commands written with `<zephyr/shell/shell.h>`: word matching, wildcards, argument count checks, help) and its boundary to the OS, `zshell_os.h` (the NuttX build's part is `nuttx/apps/subcmd/zshell_os_impl.h`); compiled without the prelude; the Zephyr build does not use it |
 | `common/log/` | `log_ring.[ch]` (the RAM log's ring, line prefix and rate limit), `app_log.h` (the `LOG_*` macros; the NuttX part is `nuttx/drivers/include/app_log_os.h`), `log_ram.h` (the RAM log's functions; in the NuttX build `nuttx/drivers/log/log_ram.c`), `fault_record.[ch]` (the record of a fatal error: its format, CRC-32, the copy in the watchdog's scratch registers and its lines; only the FreeRTOS build uses it); the Zephyr build does not use it |
-| `common/tests/` | the 24 tests of the files above (run by `common/tests/run.sh`, which the `host_tests.sh` of both builds call first; the layer's `zephyr_rtio`, `zephyr_work` and `mqtt_min` on the fake kernel, the NINA core's `nina_spi`, `nina_sock` and `nina_dns` on fakes of its boundary defined by the tests); `stream_stop.c` includes `../drivers/lsm6dso/lsm6dso_stream.c` (with the include guard of `lsm6dso.h` defined first, so nothing of that header is used; `stream_stop.c` provides the definitions it needs) |
+| `common/tests/` | the 30 tests of the files above and the check of the copies, `zephyr_copies` (run by `common/tests/run.sh`, which the `host_tests.sh` of the three builds call first; the layer's `zephyr_rtio`, `zephyr_work` and `mqtt_min` on the fake kernel, the NINA core's `nina_spi`, `nina_sock` and `nina_dns` on fakes of its boundary defined by the tests); `stream_stop.c` includes `../drivers/lsm6dso/lsm6dso_stream.c` (with the include guard of `lsm6dso.h` defined first, so nothing of that header is used; `stream_stop.c` provides the definitions it needs) |
 | `common/tests/fakes/` | stand-ins for the Zephyr and ST headers the tests need (`zephyr/drivers/sensor.h`, `zephyr/drivers/sensor_clock.h`, `zephyr/drivers/i2c.h`, `zephyr/rtio/rtio.h`, `lsm6dso_reg.h`) |
 | `common/tests/zephyr_fakes/` | the compatibility layer's fake kernel: the OS headers (`zephyr_os.h`, `zephyr_os_spinlock.h`, `zephyr_os_atomic.h`, `zephyr_rtio_workq_os.h`, `zephyr/sys/__assert.h`) and their functions (`zephyr_kernel_host.[ch]`: one thread; the test runs the work queues and fires the timers); the NuttX build's tests use it too |
 
@@ -1268,7 +1269,7 @@ by seeing that exactly the written bytes change. For the boot-time check it conf
 and NuttX's NVS entries are each accepted and that the other format's entries (200,000 layouts each,
 including ones that happen to pass the CRC) are not. `hex` checks the copy of Zephyr's
 `lib/utils/hex.c`. `zephyr_copies` checks with `cmp`, when the Zephyr tree (`zephyr/zephyr`) is
-there, that the 15 copied files are the v4.5.0 originals. `nuttx/tests/kv_cmd.c` runs the `kv`
+there, that the 23 copied files (the key-value store's NVS and settings, fnmatch, getopt, the `wifi cred` shell and others) are the v4.5.0 originals. `nuttx/tests/kv_cmd.c` runs the `kv`
 command through `z_shell_main_kv()` on that store and checks the output of every subcommand (the
 earlier NuttX build's text), the `sys.` refusal, the limits, `kv wipe`, and `-EILSEQ` with other
 data. `nuttx/tests/wifi_cred.c` checks the credentials on the same store.

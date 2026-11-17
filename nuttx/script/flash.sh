@@ -43,6 +43,7 @@ byid_dir="${NANO_FLASH_BYID_DIR:-/dev/serial/by-id}"
 
 nuttx_glob='usb-*NuttX_USB_Console*'
 zephyr_glob='usb-Zephyr_Project_Zephyr_USB_Console_*'
+freertos_glob='usb-*FreeRTOS_USB_Console*'
 drive_label=RPI-RP2
 uf2_family=e48bff56          # RP2040
 
@@ -257,9 +258,14 @@ else
   note "no ${drive_label} drive"
   mapfile -t nuttx_consoles < <(list_byid "$nuttx_glob")
   mapfile -t zephyr_consoles < <(list_byid "$zephyr_glob")
+  mapfile -t freertos_consoles < <(list_byid "$freertos_glob")
   if (( ${#nuttx_consoles[@]} + ${#zephyr_consoles[@]} )); then
     note "running on the board now (neither build can enter BOOTSEL from its shell):"
     printf '  %s\n' "${nuttx_consoles[@]}" "${zephyr_consoles[@]}"
+  fi
+  if (( ${#freertos_consoles[@]} )); then
+    note "the FreeRTOS build is running; its \"bootsel\" command enters BOOTSEL:"
+    printf '  %s\n' "${freertos_consoles[@]}"
   fi
   manual_bootsel_help
   if (( dry )); then

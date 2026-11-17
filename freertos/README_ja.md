@@ -67,8 +67,9 @@ freertos/script/build.sh [--clean] [-j N] [-v] [-DNAME=VALUE ...] [APP]
 freertos/script/host_tests.sh [-v]
 ```
 
-共有ソースのテストと、Zephyr 互換層・シェルのテストをホストで走らせます。ボードは要りません。
-`setup.sh` で取得したカーネルと、ホストの `cc` を使います。
+共有ソースのテストと、FreeRTOS 版の各部分のテストをホストで走らせます（約 2 分）。ボードは要りません。
+`setup.sh` で取得したカーネルとホストの `cc` を使い、一部は `python3`、`iperf3`、`host/.venv` も使います（無ければ
+その項目を飛ばします）。項目の一覧は [`drivers/README_ja.md`](drivers/README_ja.md) にあります。
 
 ## 書き込み
 
@@ -163,5 +164,8 @@ USB の CDC ACM ポートがコンソールです（UART0 は使いません）�
 | `tests/` | ホストテスト |
 | `script/` | `setup.sh`、`build.sh`、`flash.sh`、`format.sh`、`host_tests.sh` |
 | `PORTING_PLAN.md`、`PORTING_STATUS.md` | 移植の計画と、進み具合・確かめたことの記録 |
+
+内部の説明（互換層、タスクの一覧、Zephyr 版・NuttX 版との違い）は [`drivers/README_ja.md`](drivers/README_ja.md) にあります。
+KV の退避と書き戻しは、ルートの `script/kv_transfer.py`（`backup --usb`、`restore --usb`）でできます。
 
 ソースの整形は `freertos/script/format.sh`（`--check` で検査だけ）です。

@@ -12,7 +12,8 @@ PC 上のアプリケーションに MQTT で送信する。各軸はセンサ�
 できていない範囲を記す。全体はまだ実験段階で、ペイロード形式やトピックは実装済みだが
 確定ではなく、PC 側の専用アプリの仕様に合わせて見直す前提である。使い方は
 [README](../README_ja.md) を参照。
-NuttX 13.1.0 に移植した版（`nuttx/`）の設計上の違いは §11 に記す。
+NuttX 13.1.0 に移植した版（`nuttx/`）の設計上の違いは §11、3 つの版で共有するソース（`common/`）の構成は §12、
+Pico SDK と FreeRTOS で作った版（`freertos/`）の設計上の違いは §13 に記す。
 
 ### 合意済みの要求
 
@@ -93,8 +94,8 @@ flowchart LR
 | 取得スレッド・回復・シェル（`imu`） | `common/imu/imu_stream.c` |
 | NINA のソケット | `drivers/nina/nina_socket.c`（[ドライバーの説明](../zephyr/app/usb-console/drivers/README_ja.md)） |
 
-`src/`・`drivers/` は `zephyr/app/usb-console` の下、`common/` はリポジトリのルートの下で、NuttX 版と同じ
-ファイルを使う部分。
+`src/`・`drivers/` は `zephyr/app/usb-console` の下、`common/` はリポジトリのルートの下で、NuttX 版・FreeRTOS 版と
+同じファイルを使う部分（§12）。
 
 FIFO 読み出しと送信は独立している。Wi-Fi・MQTT の切断や送信待ちで FIFO の読み出しを
 ブロックしない。スレッドの優先度は、計測（バッチ化）と時刻同期が 9、FIFO の読み出し
@@ -576,10 +577,10 @@ NuttX 版の確認の範囲は §11.7 に分けて書く。
   インスタンス化のマクロ、NuttX 版はボードの値を使うデバイス 1 つ）に出している。NINA の宣言 `nina_proto.h` も
   `common/drivers/nina/` の 1 本を両方の版が使う。NINA の OS に依存しないコア（SPI の転送層 `nina_spi.c`、ソケットの表と
   命令 `nina_sock.[ch]`、名前解決 `nina_dns.[ch]`。狭い境界 `nina_os.h`・`nano_nina.h` だけに依存する）も
-  `common/drivers/nina/` にあり、今は NuttX 版が使う（Zephyr 版は自分の `drivers/nina/` の 3 つのファイル）。
+  `common/drivers/nina/` にあり、NuttX 版と FreeRTOS 版が使う（Zephyr 版は自分の `drivers/nina/` の 3 つのファイル）。
   I2C0 と DMA のレジスターを操作するコア（`common/drivers/i2c_dw/` の `nano_i2c.c`・`nano_dma.c`。Zephyr 版の
   `i2c_dw.c` と RP2040 の DMA のドライバーの写し）も OS に依存せず、境界 `i2c_dw_os.h`（セマフォ、時計、割り込みの
-  登録、リセットとピン、OS のドライバーモデルへの接続）だけに依存する。今は NuttX 版が使う（Zephyr 版は自分の
+  登録、リセットとピン、OS のドライバーモデルへの接続）だけに依存する。NuttX 版と FreeRTOS 版が使う（Zephyr 版は自分の
   `drivers/i2c_dw/i2c_dw.c`）。
 - 共有するソースは、OS の呼び出しを **Zephyr の名前のまま**提供する互換層（OS に依存しない部分は `common/compat/`、NuttX の実装は `nuttx/drivers/compat/`）の上で動かす。
   互換層は、移したソースが使う部分だけを持つ（`struct device`、センサーの API、RTIO、ワークキュー、
@@ -650,11 +651,12 @@ Zephyr 版は起動からの累積。区間の割合は `/proc/<tid>/critmon` �
   1 回と消去 1 回のそれぞれの間（消去は 34〜40 ms）。
 - KV の領域に Zephyr の NVS でも消去済みでもないデータ（NuttX 版の以前の形式、別のファームウェアの残り）が
   あると、NuttX 版は消さずにエラーを `dmesg` に出し、KV の操作はエラー（`-EILSEQ`）を返す。`kv wipe confirm`
-  （NuttX 版だけ）で消して使い始める。Zephyr 版は Zephyr の NVS のとおりに動く（両方のセクターの末尾が
+  （NuttX 版と FreeRTOS 版）で消して使い始める。Zephyr 版は Zephyr の NVS のとおりに動く（両方のセクターの末尾が
   書かれていればマウントに失敗、どちらかが消去済みなら領域を消して空で始める）。
 - `script/kv_transfer.py` は、KV の領域が失われる場面（別のファームウェアを書くとき、`kv wipe` の前）に、
   シェルの `kv get` で退避し（`backup`）、`kv sethex` で書き戻す（`restore`。校正値の後に `imu cal reload`、
-  Wi-Fi の資格情報はパスワードを入力させて `wifi cred add`）。Zephyr 版と NuttX 版の間の書き換えには要らない。
+  Wi-Fi の資格情報はパスワードを入力させて `wifi cred add`）。Zephyr 版・NuttX 版・FreeRTOS 版の間の書き換えには要らない。
+  どの版かは `kernel version`・`uname -a`・`version` の応答で見分ける。
 
 ### 11.6 異常停止とログ
 
@@ -690,6 +692,107 @@ Zephyr 版は起動からの累積。区間の割合は `/proc/<tid>/critmon` �
 - AP 側を止めたときの切断の検出、実際の MQTT ブローカー、数時間以上の運用。
 - NuttX 版の後で Zephyr 版を書き込んだときの Zephyr 版の動作。
 - ImuStudio の GUI からの操作（シェルの部分はテストで確認）。
+
+## 12. 共有ソース（`common/`）
+
+3 つの版は、OS に依存しない処理と Zephyr の API で書いたドライバー・サービスを、リポジトリの `common/` の 1 本の
+ファイルで共有する。Zephyr 版はそれを Zephyr 本体の上でビルドし、NuttX 版と FreeRTOS 版は Zephyr の API を
+Zephyr の名前のまま提供する互換層の上でビルドする。ホストテスト（`common/tests/run.sh`）は 3 つの版の
+`host_tests.sh` が最初に実行する。
+
+| 場所 | 中身 | 使う版 |
+|---|---|---|
+| `common/imu/` | 取得サービスと `imu`、バッチ・ペイロード・キュー・status、時刻の対応付けと時刻同期・`ntp`、校正と `imu cal`、MQTT の送信、Wi-Fi のプロファイルと自動再接続、KV の API と `kv` | 3 版（MQTT のクライアント `mqtt_min*` は NuttX 版と FreeRTOS 版。Zephyr 版は Zephyr の MQTT ライブラリー） |
+| `common/drivers/lsm6dso/`、`sensor_shell/` | LSM6DSO のドライバー本体と FIFO のストリーム、sensor シェル | 3 版 |
+| `common/drivers/nina/` | `nina_net.c`・`nina_proto.h`、NINA のコア（SPI の転送層、ソケット、名前解決） | `nina_net.c`・`nina_proto.h` は 3 版、コアは NuttX 版と FreeRTOS 版 |
+| `common/drivers/i2c_dw/` | DMA のコマンド語、I2C0 と DMA のコア | コマンド語は 3 版、コアは NuttX 版と FreeRTOS 版 |
+| `common/drivers/stmemsc/` | ST のドライバーと Zephyr の I2C の API のつなぎ | NuttX 版と FreeRTOS 版 |
+| `common/compat/` | 互換層の OS に依存しない部分と、Zephyr のライブラリーの写し（KV の NVS と settings、Wi-Fi の資格情報、getopt など） | NuttX 版と FreeRTOS 版 |
+| `common/shell/`、`common/log/` | Zephyr のシェルのコマンド処理の再現、`LOG_*` と RAM ログのリング | NuttX 版と FreeRTOS 版 |
+
+OS ごとの部分は、狭い境界のヘッダーの実装として各版のディレクトリーに置く。
+
+- 互換層のカーネルの部分（`k_mutex`、`k_sem`、スレッド、時計など。一覧は `common/compat/zephyr/kernel.h` の先頭）:
+  `nuttx/drivers/compat/`、`freertos/drivers/compat/`。
+- 優先度の対応 `priorities_os.h`（`common/compat/priorities.h` が読む）、NINA の `nina_os.h`・`nano_nina.h`、I2C0 と DMA の
+  `i2c_dw_os.h`、KV の flash の `nano_flash_kv.h`、シェルのバックエンド `zshell_os.h`、ログの `app_log_os.h`・`log_ram.h`。
+- 版ごとに違う数行: `sensor_shell_os.h`（`sensor get` の待ち）、`wifi_profile_os.h`、`lsm6dso_instance.h`（デバイスの
+  生成）、`kv_store_os.h`（`kv wipe` の有無）。
+
+Zephyr 版の NINA と I2C0 のドライバーは、今は自分の `drivers/` のもので、共有のコアには載せ替えていない。
+
+## 13. FreeRTOS 版
+
+`freertos/` に、同じファームウェアを Raspberry Pi Pico SDK 2.3.1 と FreeRTOS カーネル V11.3.3（1 コア）で作ったもの
+（FreeRTOS 版）がある。§1〜§10 の設計はそのまま同じで、この節は OS が違うことによる設計上の違いだけを記す。
+使い方とコマンドは [`freertos/README_ja.md`](../freertos/README_ja.md)、内部の説明と Zephyr 版・NuttX 版との違いの表は
+[`freertos/drivers/README_ja.md`](../freertos/drivers/README_ja.md) にある。
+
+### 13.1 方針
+
+- §12 の共有ソースを、NuttX 版と同じく互換層の上で動かす。互換層の FreeRTOS の部分は `freertos/drivers/compat/`。
+- 優先度は `FreeRTOS = 20 − Zephyr` で対応させる。協調スレッドは高い優先度で近似し、優先度継承は 1 段だけ
+  （Zephyr は持ち主の連鎖をたどる）。同じ優先度のタスクの選び方は、カーネルのトレースマクロで Zephyr の規則
+  （横取りされたスレッドが続きを走る、時分割 20 ms）に合わせる。
+- 独自のコマンドと `wifi cred`・`zperf` は Zephyr 版と同じ構文と出力にする。`wifi` の `connect`・`disconnect`・`scan`・
+  `status` は Zephyr の `wifi` コマンドから、このボードで使えるオプションだけを残したもの。`zperf` は iperf3 の方式の
+  TCP だけを自作した。そのほかは短い名前（`version`、`reboot`、`ps`、`uptime`、`ifconfig`、`date`）で、シェルから
+  BOOTSEL に入る `bootsel` がある。PC 側のツールとの違いは USB コンソールの名前とプロンプト（`freertos:~$ `）だけで、
+  `host/firmware_profiles.toml` に書く。
+- エラー番号は newlib の値で、Zephyr 版と同じ（`EILSEQ` は 138）。
+
+### 13.2 時計と tick
+
+- §7.1 の「ボードの時計」は TIMER で、Zephyr 版・NuttX 版と同じ読み方をする。`k_uptime_get()`、`k_cycle_get_*()`、
+  センサーの時計、壁時計、CPU 負荷の時間の源もすべて TIMER。
+- カーネルの tick は 100 µs（32 ビット）の周期の SysTick。FreeRTOS の RP2040 ポートは tickless に対応していない。
+  待ち時間を tick に切り上げて 1 tick 足す規則は Zephyr 版と同じ。
+- 割り込みを止めている間は tick が数えられない。フラッシュの消去を含む `kv set` 1 回で 457〜497 tick（46〜50 ms）
+  遅れた（2026-11-17、3 回）。その分 sleep・遅延ワーク・時分割が遅れるが、時刻（TIMER）は遅れない。
+- `cpu_active` は §11.4 と同じアイドルの窓の方式で測る。100 µs ごとの tick の割り込みは負荷に入る（Zephyr 版・
+  NuttX 版にはこの割り込みが無い）。`ps` の CPU 列は起動からの累積。
+
+### 13.3 ソケット
+
+`zsock_*()` は共有の NINA のコアを、呼び出したタスクで直接呼ぶ（Zephyr 版のソケットのオフロードと同じく、呼び出した
+スレッドが NINA に問い合わせて待つ）。NuttX 版の `nina_event` のようなイベントのスレッドは無い。
+
+### 13.4 KV
+
+§11.5 と同じ場所・同じ形式で、Zephyr の NVS と settings の写しを使う。flash の境界は Pico SDK の
+`flash_range_program()`・`flash_range_erase()` を、このコアの割り込みを止めて呼ぶ。リンカースクリプトで像を領域の
+外に置き、書き込みと消去の要求を 3 か所で範囲の検査をする。NuttX 版が書いた KV をそのまま読めることを確かめた。
+
+### 13.5 異常停止とログ
+
+`panic()`、HardFault、アサート、スタックのあふれ、ヒープ不足は 1 つの出口に入り、記録を RAM と watchdog の scratch
+レジスターに残して watchdog で再起動する。記録は次の起動で `dmesg`・`fault`・コンソールのバナーに出る（`devmem` で
+存在しないアドレスを読んで確かめた）。RAM ログは NuttX 版と同じ 8 KiB。
+
+### 13.6 FreeRTOS 版で確認した範囲・未確認の範囲
+
+確認した範囲（2026-11-17、実機。各 1 回）:
+
+- USB と Telnet のシェル、`flash.sh`（`bootsel` の自動送信）、`reboot`、異常停止の後の自動再起動と記録。
+- KV の読み書き・再起動後の保持・整理（消去）、NuttX 版が書いた KV と Wi-Fi の資格情報の読み込み。
+- NINA の転送、I2C0 と DMA の読み出し、LSM6DSOX の初期化と FIFO のストリーム。
+- Wi-Fi: 保存した資格情報での自動接続、スキャン後の復帰、手動切断の後に再接続しないこと、計測中の切断と再接続。
+- Telnet の 1 接続と 2 本目の拒否、短い間隔での繋ぎ直し、`zperf` の送信と受信。
+- NTP の同期、Wi-Fi の切断で問い合わせが止まり、再接続で同期に戻ること。
+- 6667 Hz での取得と MQTT の送信（`imu-host check` で、書き込み直後の最初の計測、受信器の切断と読み出しの停止、
+  ボード側の Wi-Fi の切断、送信中の Telnet の接続と切断、開始と停止の繰り返し）。欠番、時刻の有効数と逆行、
+  `imu status` の `errors`・`fifo`。計測中の KV の整理（FIFO のオーバーランと自動の回復が 1 回。NuttX 版と同じ）。
+- 校正値の読み込み、`imu cal` の各サブコマンド、レンジ変更での切り替え、`sensor` の `get`・`attr_set`・`stream` と計測との排他。
+
+未確認の範囲:
+
+- 数十分以上の連続の計測、10 秒を超える輻輳、AP 側を止めたときの切断の検出。
+- 切断が続いたときに時刻が無効になること、NTP サーバーを名前で指定する経路。
+- `kv wipe confirm`、FreeRTOS 版が書いた KV を Zephyr 版・NuttX 版が読むこと。
+- フラッシュの消去中の異常停止、NINA が応答しないとき。
+- `imu-host` の `record`・`write`、`script/kv_transfer.py`（USB の自動検出を含む）を FreeRTOS 版に対して使うこと。
+- Zephyr 版・NuttX 版との同じ日・同じ条件での比較（README の FreeRTOS 版の値は 2026-11-17 に各 1 回測ったもの）。
+- 電源断、USB の抜き差し、RESET ボタン。
 
 ## 参考資料
 

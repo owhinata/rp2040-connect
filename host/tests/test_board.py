@@ -15,6 +15,7 @@ IAC_WILL_ECHO = b'\xff\xfb\x01'
 IAC_WONT_ECHO = b'\xff\xfc\x01'
 ZEPHYR_BY_ID = '/dev/serial/by-id/usb-Zephyr_Project_Zephyr_USB_Console_503533748A8C9218-if00'
 NUTTX_BY_ID = '/dev/serial/by-id/usb-NuttX_NuttX_USB_Console_503533748A8C9218-if00'
+FREERTOS_BY_ID = '/dev/serial/by-id/usb-Raspberry_Pi_FreeRTOS_USB_Console_503533748A8C9218-if00'
 
 
 def by_name(name):
@@ -64,6 +65,17 @@ def nuttx(outputs, telnet=True):
                     lambda line: line.encode() + b'\r\n' + post + outputs[line] + pre + b'nsh$ \x1b[K')
 
 
+def freertos_telnet(outputs):
+    """FreeRTOS 版の Telnet: Zephyr 版と同じくエコーなし・接続直後は無言、プロンプト "freertos:~$ "。"""
+    return FakeLink(b'', lambda line: b'\r\n' + outputs[line] + b'freertos:~$ ')
+
+
+def freertos_usb(outputs):
+    """FreeRTOS 版の USB: 端末を開くとプロンプト、エコーあり、プロンプト "freertos:~$ "。"""
+    return FakeLink(b'freertos:~$ ',
+                    lambda line: line.encode() + b'\r\n' + outputs[line] + b'freertos:~$ ')
+
+
 OUTPUTS = {
     'imu status': b'state: idle\r\n',
     'kv sethex imu.cal.accel.244 0102': b'Saved\r\n',
@@ -74,9 +86,14 @@ OUTPUTS = {
 
 
 class ProfileTest(unittest.TestCase):
-    def test_file_has_both_firmwares_and_zephyr_first(self):
+    def test_file_has_every_firmware_and_zephyr_first(self):
         names = [p.name for p in board.load_profiles()]
-        self.assertEqual(names, ['zephyr', 'nuttx'])
+        self.assertEqual(names, ['zephyr', 'nuttx', 'freertos'])
+
+    def test_freertos_values(self):
+        f = by_name('freertos')
+        self.assertEqual(f.usb_glob, '/dev/serial/by-id/usb-*FreeRTOS_USB_Console*')
+        self.assertEqual(f.prompt, 'freertos:~$ ')
 
     def test_zephyr_values_are_the_old_hard_coded_ones(self):
         z = board.load_profiles()[0]
@@ -104,6 +121,7 @@ class DetectTest(unittest.TestCase):
     def test_usb_by_id_name(self):
         self.assertEqual(board.firmware_from_device(ZEPHYR_BY_ID).name, 'zephyr')
         self.assertEqual(board.firmware_from_device(NUTTX_BY_ID).name, 'nuttx')
+        self.assertEqual(board.firmware_from_device(FREERTOS_BY_ID).name, 'freertos')
         self.assertIsNone(board.firmware_from_device('/dev/serial/by-id/usb-STMicroelectronics_STLINK-V3_X-if02'))
 
     def test_usb_device_behind_the_by_id_link(self):
@@ -119,7 +137,9 @@ class DetectTest(unittest.TestCase):
 
     def test_prompt(self):
         cases = {'state: idle\nuart:~$ ': 'zephyr', 'state: idle\n~$ ': 'zephyr', '~$': 'zephyr',
-                 'state: idle\nnsh$ ': 'nuttx', 'nsh$': 'nuttx', 'Saved\n': None, '': None}
+                 'state: idle\nnsh$ ': 'nuttx', 'nsh$': 'nuttx',
+                 'state: idle\nfreertos:~$ ': 'freertos', 'freertos:~$': 'freertos',
+                 'Saved\n': None, '': None}
         for text, name in cases.items():
             fw = board.firmware_from_prompt(text)
             self.assertEqual(fw.name if fw else None, name, text)
@@ -175,6 +195,17 @@ class ShellTest(unittest.TestCase):
         sh, out, _ = self.run_shell(nuttx(OUTPUTS, telnet=False), usb=NUTTX_BY_ID)
         self.check(out)
         self.assertEqual(sh.firmware.name, 'nuttx')
+
+    def test_freertos_telnet(self):
+        sh, out, link = self.run_shell(freertos_telnet(OUTPUTS), ip='10.42.0.97')
+        self.check(out)
+        self.assertEqual(sh.firmware.name, 'freertos')
+        self.assertEqual(link.sent, list(OUTPUTS))
+
+    def test_freertos_usb(self):
+        sh, out, _ = self.run_shell(freertos_usb(OUTPUTS), usb=FREERTOS_BY_ID)
+        self.check(out)
+        self.assertEqual(sh.firmware.name, 'freertos')
 
 
 class PromptInOutputTest(unittest.TestCase):

@@ -2,8 +2,10 @@
 #
 # imu_host がボードに送るコマンド（imu start / stop / status、kv sethex / get、
 # imu cal reload）と、応答で照合する文字列（Streaming、port N、state:、Saved、
-# 16 進の値、accel: / gyro: の行と calibrated）は、Zephyr 版と NuttX 版で同じなので
-# ここには書かない。違うのは USB コンソールの名前とプロンプトだけ。
+# 16 進の値、accel: / gyro: の行と calibrated）は、Zephyr 版・NuttX 版・FreeRTOS 版で
+# 同じなのでここには書かない。違うのは USB コンソールの名前とプロンプトだけ。
+# （ファームウェアの版を調べるコマンドは版ごとに違い、script/kv_transfer.py の
+# detect_firmware が持つ: Zephyr 版 kernel version、NuttX 版 uname -a、FreeRTOS 版 version。）
 #
 # usb_glob  USB コンソールの /dev/serial/by-id/ の名前（USB の製造者・製品文字列から付く）。
 #           --usb でデバイスを省いたときはすべての usb_glob で探し、1 つに決まればそれを使う。
@@ -27,3 +29,11 @@ prompt = "$ "
 name = "nuttx"
 usb_glob = "/dev/serial/by-id/usb-NuttX_NuttX_USB_Console_*"
 prompt = "nsh$ "
+
+[[firmware]]
+# Pico SDK + FreeRTOS 版（freertos/app/usb-console）。プロンプトは USB・Telnet とも "freertos:~$ "。
+# USB の製造者は Pico SDK の既定の "Raspberry Pi"、製品は "FreeRTOS USB Console"。
+# Telnet はエコーなし、接続しただけでは何も送らない（Zephyr 版と同じ）。
+name = "freertos"
+usb_glob = "/dev/serial/by-id/usb-*FreeRTOS_USB_Console*"
+prompt = "freertos:~$ "

@@ -19,7 +19,7 @@ corresponding sources inside Zephyr's driver libraries for the copies. Kconfig, 
 bindings and the ST HAL are Zephyr's. If Zephyr's layout changes and a source to replace is
 not found, the build fails.
 
-The parts that are the same files as the NuttX build's (the LSM6DSO driver itself, `lsm6dso.[ch]`, and its `lsm6dso_fifo.[ch]`,
+The parts that are the same files as the NuttX and FreeRTOS builds' (the LSM6DSO driver itself, `lsm6dso.[ch]`, and its `lsm6dso_fifo.[ch]`,
 `lsm6dso_fifo_packet.h`, `lsm6dso_cal.[ch]`, `lsm6dso_zero.[ch]`, `lsm6dso_fifo_decoder.[ch]`,
 `lsm6dso_fifo_hw.[ch]`, `lsm6dso_fifo_irq.[ch]`, `lsm6dso_stream.c`, `lsm6dso_compat.c`,
 `lsm6dso_fifo_stats.h` and `lsm6dso_attributes.h`, the sensor shell's `sensor_shell.c`, the NINA's
@@ -38,7 +38,7 @@ values). `lsm6dso/lsm6dso_shub.c` and `lsm6dso_trigger.c` (copies of Zephyr's, b
 in `common/drivers/nina/` (the same file as the NuttX build's) and are read by the three files of
 `nina/`, by `nina_net.c` and by `src/main.c` (`CMakeLists.txt` adds the directory to the application's
 include path). The NINA core in `common/drivers/nina/` (`nina_spi.c`, `nina_sock.[ch]`,
-`nina_dns.[ch]`) is used only by the NuttX build now (this build uses the files of `nina/`).
+`nina_dns.[ch]`) is used by the NuttX and FreeRTOS builds now (this build uses the files of `nina/`).
 The file names in the tables below cover both places.
 
 ## LSM6DSO FIFO streaming
@@ -301,7 +301,7 @@ examine sending delays and ACK behaviour at the level of radio frames.
 ## Tests
 
 `zephyr/script/host_tests.sh` tests these parts of the drivers on the PC with fake Zephyr headers.
-All but `nina_spi` are tests shared with the NuttX build (`common/tests/`, run by
+All but `nina_wifi_spi` are tests shared with the NuttX and FreeRTOS builds (`common/tests/`, run by
 `common/tests/run.sh`).
 
 | Test | Covers |
@@ -311,4 +311,4 @@ All but `nina_spi` are tests shared with the NuttX build (`common/tests/`, run b
 | `fifo_decoder` | Decoder for FIFO buffers |
 | `stream_stop` | Stopping, canceling and error termination of the stream |
 | `i2c_dma_commands` | Argument handling of `i2c_dma` |
-| `nina_spi` | NINA SPI framing and reply parsing |
+| `nina_wifi_spi` | NINA SPI framing and reply parsing (this build's `nina/nina_wifi.c`; the shared core `common/drivers/nina/nina_spi.c` is tested by `nina_spi` in `common/tests/`) |

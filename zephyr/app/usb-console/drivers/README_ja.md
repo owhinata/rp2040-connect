@@ -19,7 +19,7 @@
 ST の HAL は Zephyr のものを使います。Zephyr 側の構成が変わって差し替え対象が見つからない
 場合は、ビルドをエラーにします。
 
-このうち NuttX 版と同じファイルを使う部分（LSM6DSO のドライバー本体 `lsm6dso.[ch]` と `lsm6dso_fifo.[ch]`、`lsm6dso_fifo_packet.h`、`lsm6dso_cal.[ch]`、
+このうち NuttX 版・FreeRTOS 版と同じファイルを使う部分（LSM6DSO のドライバー本体 `lsm6dso.[ch]` と `lsm6dso_fifo.[ch]`、`lsm6dso_fifo_packet.h`、`lsm6dso_cal.[ch]`、
 `lsm6dso_zero.[ch]`、`lsm6dso_fifo_decoder.[ch]`、`lsm6dso_fifo_hw.[ch]`、`lsm6dso_fifo_irq.[ch]`、`lsm6dso_stream.c`、
 `lsm6dso_compat.c`、`lsm6dso_fifo_stats.h`、`lsm6dso_attributes.h`、sensor シェルの `sensor_shell.c`、NINA の `nina_net.c` と、
 I²C の `i2c_dw_rp2040_commands.[ch]`）は、リポジトリの `common/drivers/lsm6dso/`・`common/drivers/sensor_shell/`・
@@ -33,7 +33,7 @@ I²C の `i2c_dw_rp2040_commands.[ch]`）は、リポジトリの `common/driver
 このディレクトリーに残り、`lsm6dso.h` を `common/drivers/lsm6dso/` から読みます。NINA の宣言 `nina_proto.h` は
 `common/drivers/nina/` にあり（NuttX 版と同じファイル）、`nina/` の 3 つのファイル、`nina_net.c`、`src/main.c` が読みます
 （`CMakeLists.txt` がそこをアプリのインクルードパスに加えます）。`common/drivers/nina/` の NINA のコア（`nina_spi.c`、
-`nina_sock.[ch]`、`nina_dns.[ch]`）は、今は NuttX 版だけが使います（Zephyr 版は `nina/` のファイル）。下の表のファイル名はどちらの場所のものも含みます。
+`nina_sock.[ch]`、`nina_dns.[ch]`）は、今は NuttX 版と FreeRTOS 版が使います（Zephyr 版は `nina/` のファイル）。下の表のファイル名はどちらの場所のものも含みます。
 
 ## LSM6DSO の FIFO ストリーム
 
@@ -282,7 +282,7 @@ MQTT の接続と送信ができること、ホスト名の不一致・期限切
 ## テスト
 
 `zephyr/script/host_tests.sh` が、偽の Zephyr ヘッダーを使ってドライバーの次の部分を PC 上で
-テストします。`nina_spi` 以外は NuttX 版と共有するテスト（`common/tests/`、`common/tests/run.sh` が実行）です。
+テストします。`nina_wifi_spi` 以外は NuttX 版・FreeRTOS 版と共有するテスト（`common/tests/`、`common/tests/run.sh` が実行）です。
 
 | テスト | 対象 |
 |---|---|
@@ -291,4 +291,4 @@ MQTT の接続と送信ができること、ホスト名の不一致・期限切
 | `fifo_decoder` | FIFO バッファの decoder |
 | `stream_stop` | ストリームの停止、キャンセル、エラー時の終了 |
 | `i2c_dma_commands` | `i2c_dma` コマンドの引数の解釈 |
-| `nina_spi` | NINA の SPI フレーミングと応答の解析 |
+| `nina_wifi_spi` | NINA の SPI フレーミングと応答の解析（この版の `nina/nina_wifi.c`。共有のコア `common/drivers/nina/nina_spi.c` は `common/tests/` の `nina_spi`） |

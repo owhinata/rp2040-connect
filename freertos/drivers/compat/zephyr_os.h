@@ -6,7 +6,7 @@
  * priorities, the calling thread and the cycle counter.  The functions on
  * them are zephyr_kernel.c and zephyr_mutex.c.  Part of the FreeRTOS
  * implementation of the layer (freertos/drivers/compat, the counterpart of
- * nuttx/drivers/compat; see freertos/README.md).
+ * nuttx/drivers/compat; see freertos/drivers/README.md).
  *
  * What the application provides: FreeRTOSConfig.h (the tick, two task
  * notifications per task, mutexes and recursive mutexes, static and dynamic

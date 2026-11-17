@@ -15,12 +15,13 @@ over MQTT directly and do three things.
 See [`../README.md`](../README.md) for the board side. The desktop application that displays
 the received data is in [`ImuStudio/`](ImuStudio/README.md).
 
-The tools work with both board firmwares, the Zephyr build (`zephyr/app/usb-console`) and the
-NuttX build ([`../nuttx/`](../nuttx/README.md)); see "Board firmware" below.
+The tools work with all three board firmwares, the Zephyr build (`zephyr/app/usb-console`), the
+NuttX build ([`../nuttx/`](../nuttx/README.md)) and the FreeRTOS build
+([`../freertos/`](../freertos/README.md)); see "Board firmware" below.
 
 ## Requirements
 
-- Python 3.10 or later (3.11 or later to find a NuttX board on USB automatically and to tell the
+- Python 3.10 or later (3.11 or later to find a NuttX or FreeRTOS board on USB automatically and to tell the
   prompts apart, because `firmware_profiles.toml` is read with the standard library's `tomllib`)
 - A PC that runs the access point the board connects to (the one `script/wifi_ap.sh` creates)
 - Docker, for `calib`. The calibration uses
@@ -49,15 +50,15 @@ when the two differ.
 
 The commands that `record` and `write` send to the board (`imu start`, `stop`, `status`,
 `kv sethex`, `get`, `imu cal reload`) and the strings they look for in the replies are the same
-on the Zephyr and the NuttX builds. Only the name of the USB console and the shell prompt
+on all three builds. Only the name of the USB console and the shell prompt
 differ, and [`firmware_profiles.toml`](firmware_profiles.toml) holds that difference.
 
-| | Zephyr build | NuttX build |
-|---|---|---|
-| USB console (`/dev/serial/by-id/`) | `usb-Zephyr_Project_Zephyr_USB_Console_*` | `usb-NuttX_NuttX_USB_Console_*` |
-| Prompt | `uart:~$ ` on USB, `~$ ` on Telnet | `nsh$ ` on both |
-| Right after a Telnet connection | Sends nothing | Sends the prompt |
-| Echo of the input on Telnet | None | Yes (with `IAC WILL/WONT ECHO` around each line) |
+| | Zephyr build | NuttX build | FreeRTOS build |
+|---|---|---|---|
+| USB console (`/dev/serial/by-id/`) | `usb-Zephyr_Project_Zephyr_USB_Console_*` | `usb-NuttX_NuttX_USB_Console_*` | `usb-*FreeRTOS_USB_Console*` |
+| Prompt | `uart:~$ ` on USB, `~$ ` on Telnet | `nsh$ ` on both | `freertos:~$ ` on both |
+| Right after a Telnet connection | Sends nothing | Sends the prompt | Sends nothing |
+| Echo of the input on Telnet | None | Yes (with `IAC WILL/WONT ECHO` around each line) | None |
 
 `imu_host/board.py` tells which firmware it talks to as follows.
 
@@ -65,14 +66,15 @@ differ, and [`firmware_profiles.toml`](firmware_profiles.toml) holds that differ
   points to it). Without a device after `--usb`, it searches with every `usb_glob` and uses the
   device if there is exactly one.
 - Telnet: from the prompt on the last line of the reply to the first command (the longest prompt
-  that the line ends with; `nsh$` also ends with `$`, so it is the NuttX build).
+  that the line ends with; `nsh$` and `freertos:~$` also end with `$`, so they are the NuttX and
+  the FreeRTOS build).
 
 Until the firmware is known, a line that ends with any of the prompts ends a command (the Zephyr
 prompt is written as `$ `, which every line ending in `$` matches; this is the earlier check).
 Once the board is known to be the NuttX build, it waits for a line ending in `nsh$`, so a line of
 output that happens to end in `$` (the ASCII column of `i2c dump`, for example) does not end the
-command early. The echo and the Telnet commands are dropped, so the output is handled the same
-way for both.
+command early (the same holds for `freertos:~$` on the FreeRTOS build). The echo and the Telnet
+commands are dropped, so the output is handled the same way for every build.
 
 `firmware_profiles.toml` lives in `host/`, and `board.py` reads it from there (one directory above
 `imu_host/`, with the `pip install -e .` installation). If the file is missing, or with Python
@@ -265,7 +267,7 @@ argument can also be a `calibration.json` file.
 3. Runs `imu cal reload` and checks that the board now uses the calibration.
 
 Telnet and the USB console differ only in the path; the commands sent are the same. Without a
-device name, `--usb` looks in `/dev/serial/by-id/` for the name of either firmware.
+device name, `--usb` looks in `/dev/serial/by-id/` for the name of any of the three firmwares.
 
 | Option | Meaning |
 |---|---|
@@ -315,6 +317,9 @@ works without NTP synchronization.
   (USB found automatically, a given device, Telnet found automatically, `--board`, and the
   refusal during a measurement), and `calib` reading a recording made with the NuttX build were
   checked. The values written were the ones already on the board.
+- With the FreeRTOS build on the board, `check` was used (one measurement of 56 s on 2026-11-17,
+  with the receiver stopped and stalled once each). `record`, `write` and the USB detection have
+  not been checked on that build.
 - `write` was verified over both Telnet and the USB console. With the calibration written,
   the board's output matched the PC applying the calibration to the board's uncalibrated
   output in the same pose, within 0.2 mg and 7×10⁻⁵ rad/s.
@@ -332,5 +337,6 @@ works without NTP synchronization.
 | `imu_host/board.py` | Finding the board's IP address, shell commands over Telnet and the USB console, and telling the firmware apart |
 | `firmware_profiles.toml` | What differs between the firmwares (the USB console name and the prompt) |
 | `tests/test_board.py` | Tests of the firmware detection and of the prompt handling (no board needed) |
+| `tests/test_kv_transfer.py` | Tests of the firmware detection of `../script/kv_transfer.py` and of its parts that differ between builds (no board needed) |
 | `imu_host/recording.py` | Reading and writing recordings, and tick-to-time conversion |
 | `imu_host/check.py`, `record.py`, `calib.py` | The commands (`write` is in `calib.py`) |

@@ -138,7 +138,8 @@ the NuttX USB console and prints its path. It stops if there is more than one dr
 The key-value store (the calibration, the `imu.*` settings, the Wi-Fi credentials) is in the same
 place as in the Zephyr build (the last 8 KiB of the flash, `0xffe000`-`0xffffff`) and in the same
 format (Zephyr's NVS and settings). It stays when you switch between the Zephyr and the NuttX build,
-and each build reads what the other stored. Nothing has to be moved.
+and each build reads what the other stored. Nothing has to be moved. The FreeRTOS build
+(`freertos/`) uses the same place and format too; it was checked to read what the NuttX build stored.
 
 If the key-value area holds data that is neither Zephyr's NVS nor erased (the NuttX build's earlier
 format, what another firmware such as the OpenMV build left), the NuttX build leaves it as it is and
@@ -476,10 +477,10 @@ NuttX puts at the start of a stack (2048 → 2008 and so on).
 nuttx/script/host_tests.sh
 ```
 
-This builds and runs the 39 host tests of the OS-independent parts on the PC. The first 24 are the
-tests of the sources shared with the Zephyr build and of the shared parts of the layer, the
-shell and the RAM log's ring, run by
-`common/tests/run.sh`. It needs no board, only
+This builds and runs the 44 host tests of the OS-independent parts on the PC. The first 31 are the
+tests of the sources shared by the three builds and of the shared parts of the layer, the
+shell, the RAM log's ring and the key-value store (the last one, `zephyr_copies`, checks that the
+copied Zephyr files are the same as the originals), run by `common/tests/run.sh`. It needs no board, only
 the host's `cc` (C17). Without ST's `lsm6dso_reg.c` (fetched by `setup.sh`), the 3 tests that use it
 (`lsm6dso_driver`, `imu_cal`, `sensor_shell`) print `skip`. It stops at the first failure. What each
 test checks, and the list of files copied unchanged from the Zephyr build (to be replaced when the
@@ -495,5 +496,5 @@ Zephyr build changes), are in "Host test details" in [`design/nuttx-porting.md`]
 | `patches/` | Patches to NuttX and nuttx-apps |
 | `script/` | `setup.sh`, `build.sh`, `flash.sh`, `host_tests.sh`, `bin2uf2.py`, `kconfig-tweak` |
 | `tests/` | Host tests (those of the NuttX build only) |
-| `../common/` | Sources shared with the Zephyr build (`imu/`, `drivers/lsm6dso/`, `drivers/nina/`, `drivers/sensor_shell/`, `drivers/i2c_dw/`; the NINA core in `drivers/nina/` and the I2C0 and DMA core in `drivers/i2c_dw/`, which only this build uses now), the OS-independent part of the compatibility layer (`compat/`), the shell's command handling (`shell/`), the `LOG_*` macros and the RAM log's ring (`log/`) and their host tests. The build finds them through `VPATH` and compiles each but the NINA core, the I2C0 and DMA core, `shell/` and `log/` with the prelude (`drivers/compat/common_prelude.h`); the objects are made in `apps/imu`, `apps/wifi`, `apps/sensor`, `apps/subcmd`, `drivers` and the board's directory |
+| `../common/` | Sources shared with the Zephyr and FreeRTOS builds (`imu/`, `drivers/lsm6dso/`, `drivers/stmemsc/`, `drivers/nina/`, `drivers/sensor_shell/`, `drivers/i2c_dw/`; the NINA core in `drivers/nina/` and the I2C0 and DMA core in `drivers/i2c_dw/` are used by this build and the FreeRTOS build), the OS-independent part of the compatibility layer (`compat/`), the shell's command handling (`shell/`), the `LOG_*` macros and the RAM log's ring (`log/`) and their host tests. The build finds them through `VPATH` and compiles each but the NINA core, the I2C0 and DMA core, stmemsc, `shell/` and `log/` with the prelude (`drivers/compat/common_prelude.h`); the objects are made in `apps/imu`, `apps/wifi`, `apps/sensor`, `apps/subcmd`, `drivers` and the board's directory |
 | `nuttx/`, `nuttx-apps/`, `pico-sdk/`, `toolchain/`, `stmemsc/`, `.venv/`, `build/` | What `setup.sh` fetches and the build products (not in Git) |

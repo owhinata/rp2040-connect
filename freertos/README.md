@@ -67,8 +67,10 @@ On the first build the Pico SDK fetches the source of `picotool` from GitHub and
 freertos/script/host_tests.sh [-v]
 ```
 
-Runs the tests of the shared sources and of the Zephyr compatibility layer and the shell on the host. No
-board is needed. It uses the kernel fetched by `setup.sh` and the host's `cc`.
+Runs the tests of the shared sources and of the parts of the FreeRTOS build on the host (about 2 minutes).
+No board is needed. It uses the kernel fetched by `setup.sh` and the host's `cc`; some tests also use
+`python3`, `iperf3` and `host/.venv` and are skipped without them. The list is in
+[`drivers/README.md`](drivers/README.md).
 
 ## Flashing
 
@@ -170,5 +172,9 @@ The console is the USB CDC ACM port (UART0 is not used). Opening a terminal show
 | `tests/` | Host tests |
 | `script/` | `setup.sh`, `build.sh`, `flash.sh`, `format.sh`, `host_tests.sh` |
 | `PORTING_PLAN.md`, `PORTING_STATUS.md` | The plan of the port, and the record of its progress and of what was checked (in Japanese) |
+
+The internals (the compatibility layer, the tasks, the differences from the Zephyr and NuttX builds) are in
+[`drivers/README.md`](drivers/README.md). The key-value store is saved and restored with `script/kv_transfer.py`
+at the root (`backup --usb`, `restore --usb`).
 
 Sources are formatted with `freertos/script/format.sh` (`--check` only checks).

@@ -20,7 +20,7 @@
  * thread holds -EBUSY, a timeout -EAGAIN; unlocking a mutex that nobody
  * holds -EINVAL, one that another thread holds -EPERM.
  *
- * Priority inheritance (approximation, see freertos/README.md): FreeRTOS
+ * Priority inheritance (approximation, see freertos/drivers/README.md): FreeRTOS
  * raises the holder to the priority of the highest waiter, one level only
  * (Zephyr follows a chain of holders), and drops it back only when the holder
  * has released every mutex it holds (Zephyr adjusts it at each unlock); a

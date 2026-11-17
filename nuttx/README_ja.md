@@ -127,6 +127,7 @@ NuttX 版の USB コンソールが現れるのを待ってそのパスを表示
 KV（校正値、`imu.*` の設定、Wi-Fi の資格情報）は、Zephyr 版と同じ場所（フラッシュ末尾 8 KB、`0xffe000`〜
 `0xffffff`）に Zephyr 版と同じ形式（Zephyr の NVS と settings）で置きます。Zephyr 版と NuttX 版の間で
 書き換えても KV はそのまま残り、どちらの版が書いた値もそのまま読めます。移し替えの作業はありません。
+FreeRTOS 版（`freertos/`）も同じ場所・同じ形式で、NuttX 版が書いた KV をそのまま読めることを確かめています。
 
 KV の領域に、Zephyr の NVS でも消去済みでもないデータ（NuttX 版の以前の形式、OpenMV 版などの別の
 ファームウェアの残り）があると、NuttX 版はそれを消さずに残し、KV を使いません。`dmesg` に次の行が出て、
@@ -438,8 +439,9 @@ Zephyr 版の `i2c write`、`gpio`、`log`、`device`、`history`、`clear`、`r
 nuttx/script/host_tests.sh
 ```
 
-OS に依存しない部分のホストテスト 39 本を PC 上でビルドして実行します。最初の 24 本は Zephyr 版と共有する
-ソースと、互換層・シェル・RAM ログのリングの共通部分のテストで、`common/tests/run.sh` が実行します。ボードは不要で、ホストの `cc`（C17）だけを
+OS に依存しない部分のホストテスト 44 本を PC 上でビルドして実行します。最初の 31 本は 3 つの版で共有する
+ソースと、互換層・シェル・RAM ログのリング・KV の共通部分のテスト（最後の `zephyr_copies` は、写した Zephyr の
+ファイルが元と同じことの照合）で、`common/tests/run.sh` が実行します。ボードは不要で、ホストの `cc`（C17）だけを
 使います。ST の `lsm6dso_reg.c`（`setup.sh` が取得）が無ければ、それを使う 3 本（`lsm6dso_driver`、`imu_cal`、
 `sensor_shell`）は `skip` になります。失敗したところで止まります。各テストの内容と、Zephyr 版から変更せずに
 写したファイルの一覧（Zephyr 版を直したときに置き換えるもの）は [`design/nuttx-porting-ja.md`](../design/nuttx-porting-ja.md) の
@@ -455,5 +457,5 @@ OS に依存しない部分のホストテスト 39 本を PC 上でビルドし
 | `patches/` | NuttX と nuttx-apps へのパッチ |
 | `script/` | `setup.sh`、`build.sh`、`flash.sh`、`host_tests.sh`、`bin2uf2.py`、`kconfig-tweak` |
 | `tests/` | ホストテスト（NuttX 版だけのもの） |
-| `../common/` | Zephyr 版と共有するソース（`imu/`、`drivers/lsm6dso/`、`drivers/nina/`、`drivers/sensor_shell/`、`drivers/i2c_dw/`。`drivers/nina/` の NINA のコアと `drivers/i2c_dw/` の I2C0・DMA のコアは今はこの版だけが使う）、互換層の OS に依存しない部分（`compat/`）、シェルのコマンド処理（`shell/`）、`LOG_*` マクロと RAM ログのリング（`log/`）とそれらのホストテスト。ビルドは `VPATH` でそこを参照し、NINA のコア、I2C0・DMA のコア、`shell/`、`log/` を除く各ファイルに前置きヘッダー（`drivers/compat/common_prelude.h`）を付けてコンパイルする。オブジェクトは `apps/imu`・`apps/wifi`・`apps/sensor`・`apps/subcmd`・`drivers`・ボードのディレクトリーにできる |
+| `../common/` | Zephyr 版・FreeRTOS 版と共有するソース（`imu/`、`drivers/lsm6dso/`、`drivers/stmemsc/`、`drivers/nina/`、`drivers/sensor_shell/`、`drivers/i2c_dw/`。`drivers/nina/` の NINA のコアと `drivers/i2c_dw/` の I2C0・DMA のコアは、この版と FreeRTOS 版が使う）、互換層の OS に依存しない部分（`compat/`）、シェルのコマンド処理（`shell/`）、`LOG_*` マクロと RAM ログのリング（`log/`）とそれらのホストテスト。ビルドは `VPATH` でそこを参照し、NINA のコア、I2C0・DMA のコア、stmemsc、`shell/`、`log/` を除く各ファイルに前置きヘッダー（`drivers/compat/common_prelude.h`）を付けてコンパイルする。オブジェクトは `apps/imu`・`apps/wifi`・`apps/sensor`・`apps/subcmd`・`drivers`・ボードのディレクトリーにできる |
 | `nuttx/`、`nuttx-apps/`、`pico-sdk/`、`toolchain/`、`stmemsc/`、`.venv/`、`build/` | `setup.sh` が取得するものとビルドの生成物（Git 管理外） |

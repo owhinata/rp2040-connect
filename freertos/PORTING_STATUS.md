@@ -750,3 +750,19 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
   大半の組、`get` の加速度・角速度以外の 70 チャネル。FreeRTOS 版だけで隠す案 A（`trig` を外す）、B（A + `stream` を絞る）、
   C（B + チャネル名・属性名を絞る）。共有ソースは変えず、FreeRTOS 側で `#include` して表だけ作り直す。ユーザーに相談中。
 - 次: F15（ホストの差分ファイル、`kv_transfer.py`、文書）→ CP-F5。
+
+## F15 の記録と CP-F5（2026-11-17）
+
+- PC 側: `host/firmware_profiles.toml` に FreeRTOS 版、`script/kv_transfer.py`（`version` で判定、`--firmware freertos`）、
+  `nuttx/script/flash.sh`（FreeRTOS 版が動いていれば `bootsel` を案内）、`host/tests/test_kv_transfer.py`（新規）と
+  `test_board.py`。`imu-host` の calib・record・check は版に依らない。
+- 文書（日英）: 新規 `freertos/drivers/README`（内部の説明、246/275 行）。設計書に §12「共有ソース」と §13「FreeRTOS 版」。
+  ルートの README に「3 つの版と `common/`」「FreeRTOS 版」「FreeRTOS 版の性能」。古い数字（テストの本数、`zephyr_copies`）と
+  共有化で変わったパスを修正。未調査・推定の事柄は文書に入れていない（subagent の報告に一覧）。
+- メインの追加: `freertos/README`（日英）から `drivers/README` と `kv_transfer.py` への案内、ソースのコメント 2 か所の参照先、
+  `CLAUDE.md` の FreeRTOS 版の節の書き直し（未追跡）。
+- メインが確かめたこと: ホスト側のテスト 27 個、実機で `kv_transfer.py backup --usb`（FreeRTOS 版と判定、校正値 2 個と
+  `imu.port` が以前の退避と一致）と `--board 10.42.0.97`（Telnet、USB と同じ結果）、`restore --dry-run`。ルートの README（日）の
+  差分を読んだ。ほかの文書は読んでいない（subagent の報告のまま）。`restore` の実行、`imu-host write`・`record`、ImuStudio は未確認。
+- **CP-F5（F01〜F15）完了**。残り: `sensor` の使えないサブコマンドの扱い（相談中）、あとで判断する 3 項目、P4（Zephyr 版の
+  載せ替え: Z01 NINA、Z02 I2C は着手前に相談）、CP-Z。
