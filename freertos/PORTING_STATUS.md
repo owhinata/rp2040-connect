@@ -1,0 +1,396 @@
+# 共通化と FreeRTOS 版の進捗
+
+計画は `freertos/PORTING_PLAN.md`。このファイルと計画は未追跡のまま置く（commit しない）。状態が変わるたびに、
+次の作業へ進む前にここを更新する。再開時は、この 2 ファイルと `git log`・`git status` を読み、実機の状態を
+確認してから続ける。
+
+## 現在の状態（2026-11-17）
+
+- 計画は 2026-11-17 にユーザーが承認した（フェーズの順序、LSM6DSOX を C 層に残すこと、`common/` の構成、
+  FreeRTOS の tick 100 µs、KV を Zephyr 版と同じ形式にする第 1 候補、新しいファイルの MIT 表記）。
+- 計画・進捗・調査メモ（`PORTING_*.md`）は `freertos/` に置く（ユーザーの指示、2026-11-17）。
+- P1（T10〜T13）は完了（2026-11-17）。Zephyr の像は最初の基準（0f14ce0）とバイト単位で同じまま。NuttX の像は
+  T12b と T13 で変わった（基準は `snapshot-t13`）。P2 の T20 を進行中。CP-A は省略（ユーザーの決定）。
+
+## ユーザーが決めたこと
+
+- FreeRTOS 版は全機能同等（2026-11-17）。
+- タスクごとに `main` へ commit、push しない（2026-11-17）。
+- subagent は `model: opus`（2026-11-17）。
+- コーディングスタイルは Zephyr に合わせる。README にコーディングスタイルの節は置かない（2026-11-16）。
+- ツールチェーンは最新の GCC。必要なツールは `setup.sh` で入れる（2026-11-16）。
+- T01b の結果への回答（2026-11-17）: tick は 32 ビット・10 kHz で `k_uptime_*` は TIMER から。速度測定は iperf3 互換を
+  最小限に自作。優先度継承が 1 段、協調優先度の近似は受け入れる。KV 領域に別のデータがあれば自動では消さず、
+  エラー表示と消去用のコマンド。
+- CP-A（P1 の後の Zephyr 版の実機確認）は省く（2026-11-17）。像が作業前と同じため。
+- **NuttX 版の KV も Zephyr の NVS の形式にそろえる**（2026-11-17 の指示。計画の T24）。
+- `freertos/app/usb-console` の SPDX 表記は MIT（2026-11-16）。既存の Apache-2.0 の表記（385 か所）は指示が
+  あるまで触らない。
+
+## タスクの状態
+
+| ID | 状態 | commit | メモ |
+|---|---|---|---|
+| T00 `freertos/` の環境を commit | 完了 | 0f14ce0 | `freertos/PORTING_*.md` と `CLAUDE.md` は含めていない |
+| T01 事前調査 | 完了（2026-11-17） | – | 結果は `freertos/PORTING_NOTES_T01a.md`・`_T01b.md`。計画への反映は `PORTING_PLAN.md` の「T01 の結果による修正」。記録は下 |
+| T10 A 層を `common/` へ | 完了（2026-11-17） | f4ec105 | 両方の像が基準と一致。記録は下 |
+| T11 同一の C 層を `common/` へ | 完了（2026-11-17） | c2a07de | 両方の像が基準と一致。記録は下 |
+| T12a 少差分の一本化（シェルの登録を除く） | 完了（2026-11-17） | acbd898 | 両方の像が基準と一致。記録は下 |
+| T12b `imu_stream.c`・`time_sync.c` とシェルの登録 | 完了（2026-11-17。**NuttX の像が変わった。実機は CP-B で確認**） | 7f78570 | 記録は下 |
+| T13 `lsm6dso.c`・`lsm6dso.h` の一本化 | 完了（2026-11-17。**NuttX の像が変わった。実機は CP-B で確認**） | 61a4cf2 | 記録は下 |
+| CP-A | **省略**（ユーザーの決定、2026-11-17）。Zephyr の像が作業前の基準とバイト単位で同じため。Zephyr 版の実機確認は CP-Z で行う | – | |
+| T20 互換層を共通部と NuttX 部に分ける | 完了（2026-11-17） | ce2bee5 | 両方の像が基準と一致。記録は下 |
+| T21 NINA のコアを `common/` へ | 完了（2026-11-17） | eaebb16 | 両方の像が基準と一致。記録は下 |
+| T22 I2C0 と DMA のコア | 完了（2026-11-17） | 82d6c4e | 両方の像が基準と一致。記録は下 |
+| T23 シェル・ログ・境界のヘッダーを `common/` へ | 完了（2026-11-17） | 6b541ca | 両方の像が基準と一致。記録は下 |
+| T24 KV を Zephyr の NVS の形式に | 完了（2026-11-17） | `daae9ec` | Zephyr 一致、NuttX は変化（基準は `snapshot-t24`、279316 B） |
+| CP-B | 未着手 | – | |
+| F01〜F15 | 未着手 | – | |
+| Z01、Z02、CP-Z | 未着手 | – | |
+
+## 機能差分（残っているもの）
+
+NuttX 版が共通化で変わった点（どれも Zephyr 版の動作に近づく方向。**実機では未確認、CP-B で見る**）:
+
+- T12b: `imu`・`ntp` コマンドが `subcmd` の表ではなく `zshell.c`（`sensor` と同じ経路）で動く。
+  - ハンドラーに渡る `sh` が NULL ではなく端末のバックエンドになり、出力は `fflush(stdout)` の後に fd へ直接 `write()` する
+    （行き先は同じ）。
+  - 一致するワイルドカードの後にハンドラーのあるサブコマンドが続く行（例 `imu s* status`）は、旧版は `imu` のヘルプ、新版は
+    `Error: requested multiple function executions`。30 語を越える行は `wrong parameter count` → `Too many arguments in the
+    command.`。512 バイトを越える行は何も出さずに失敗する（未テスト）。ヘルプ、引数の数の誤り、存在しないサブコマンドの
+    出力は同じ（`nuttx/tests/shell_register.c` が 49 通りを旧い表と比べる）。
+  - コマンドのタスク（スタック 3072 B）の最大の使用量が約 0.4 KB 増えうる（`-fstack-usage` からの見積もり）。コマンドの
+    たびにヒープを約 1.2 KB 確保して解放する。
+
+- T13: LSM6DSOX のドライバーが `lsm6dso_os_*` の包みではなく互換層の `k_*` を直接呼ぶ。
+  - `k_cycle_get_32()`（FIFO の読み出し時間の計測）は、TIMERAWL を 1 回読む形から、H → L → H を読んで上位が一致するまで
+    読み直す形（`nano_mono_us()` の下位 32 ビット）になった。数えるものは同じ（1 MHz）。
+  - 0 以下の sleep は何もしない → yield（Zephyr と同じ）。ドライバーが渡す値は正の定数なので、動作は変わらない。
+
+CP-B で見ること（上に対応）: USB と Telnet での `imu`・`imu --help`・`imu start`/`stop`/`status`/`cal`・`ntp status` の出力、
+`ps` のスタックの使用量（`imu`・`ntp` のタスク）、`ntp status` の時刻の値。
+
+## ユーザーに確認待ち
+
+T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` の最後の節）:
+
+- 周期 tick の負荷が大きすぎたときに自作の tickless へ進むか（F01 で実測してから相談）。
+- `PICO_USE_STACK_GUARDS` で割り込み用スタックのあふれを検出するか（F01 で調べてから相談）。
+
+## 実機の状態
+
+- 2026-11-16 の夜の時点: FreeRTOS 版（`freertos/app/usb-console`、CLI と LED だけ）が入っている。Zephyr 版・NuttX 版の
+  KV は消えたものとして扱う（その前に OpenMV 版を書いている）。
+- ユーザーが picocom でコンソールを開いていることがある。開いている間は読み書きしない。
+
+## タスクごとの記録
+
+### T00（完了、0f14ce0）
+
+`.gitignore`、ルートの README（日英）、`freertos/`（`PORTING_*.md` を除く）を commit した。
+
+### T01 事前調査（完了、2026-11-17）
+
+- subagent 2 つ（opus）。T01a は 121 回のツール呼び出し・約 35 分、T01b は 72 回・約 15 分。
+- メインの確認: T01b の要点 5 つ（tick の幅 `portmacro.h:66-78`、トピックの作り方 `imu_raw_mqtt.c:375-379`、
+  `hwinfo_rpi_pico.c` の `flash_get_unique_id`、`pico_flash/flash.c:177-182` の `NOT_PERMITTED`、NVS が `subsys/kvss/nvs`）を
+  ソースで確かめた。T01a は、基準（`freertos/build/baseline/`）と `compare.py` があること、NuttX のワークスペースの状態
+  （`git -C nuttx/nuttx status` がパッチ 8 本の `M` だけ、`boards/arm/rp2040/common/board` の symlink がある）を確かめ、
+  ノートの 1〜4 節を読んだ。移動の実験と再現性の結果は subagent の報告のままで、メインは再実行していない。
+- **事故**: T01a が NuttX のワークスペースを tar で写して `distclean` し、絶対パスの symlink をたどって元の
+  ワークスペースの symlink とオブジェクトを消した。subagent が作り直してビルドし直した。以後の指示に注意を入れる。
+- 状態の変化: `zephyr/build/usb-console` は今のソースのビルド。`nuttx/build/nuttx.uf2` は `-j 1`・日時固定のビルドに
+  上書きされている。`freertos/build/t01b-*` は T01b の実験のビルドで、消してよい。
+- ユーザーの回答（2026-11-17）: tick 32 ビット、速度測定は最小限の自作、近似 2 点の受け入れ、KV 領域の別データの
+  扱い、NuttX 版の KV の統一（T24）。
+
+### T10 A 層を `common/` へ（完了、f4ec105）
+
+- 移したもの: `common/imu`（`imu_raw_*` 5 組、`imu_tick_clock`、`time_offset`、`imu_cal_codec.c`、`imu_cal.h`）、
+  `common/drivers/lsm6dso`（`lsm6dso_fifo`・`_cal`・`_zero`・`_fifo_decoder`、`lsm6dso_fifo_packet.h`）、
+  `common/drivers/i2c_dw`（コマンド語）、`common/tests`（テスト 12 本、`fakes` 5 本、`run.sh`）。
+- **T11 に回したもの**: テスト `fifo_hw`・`stream_stop`（対象の `lsm6dso_fifo_hw.c`・`lsm6dso_stream.c` が T11 で移るため）。
+  今は各版の `tests/` に残り、各 `host_tests.sh` が走らせる。同一のテストは 15 本ではなく 14 本だった（ノートの数え違い）。
+- **T12 で直すもの**: `imu_stream.c` の `"../drivers/lsm6dso/lsm6dso_fifo.h"` は、`-I common/imu` の後ろにパスが付く形で
+  見つかっている。`"lsm6dso_fifo.h"` に直す。
+- メインの確認（subagent とは別に実行）: Zephyr 版を `west build -p always` して `zephyr.bin` が基準と一致、NuttX 版を
+  `SOURCE_DATE_EPOCH=1763337600 ./script/build.sh --clean -j 1` して `nuttx.bin` が基準と一致、`zephyr/script/host_tests.sh`
+  16 個と `nuttx/script/host_tests.sh` 38 個がすべて `ok`、`common/` にオブジェクトなし。ビルド定義の差分と、ルートの
+  README・設計書の差分を読んだ。ほかの文書（`nuttx/`・`host/`・ドライバー説明）の差分は行数を見ただけ。
+- 実機では未確認（像が同じなので CP-A・CP-B まで確認しない）。
+- `git` は移動を `nuttx/... -> common/...` の rename と表示する（同一内容の削除が 2 つあるため）。
+
+### T11 同一の C 層を `common/` へ（完了、c2a07de）
+
+- 移したもの: `common/drivers/lsm6dso` に `lsm6dso_fifo_hw.[ch]`、`lsm6dso_stream.c`、`lsm6dso_fifo_irq.[ch]`、
+  `lsm6dso_fifo_stats.h`、`lsm6dso_attributes.h`。`common/tests` に `fifo_hw.c`、`stream_stop.c`（共通のテストは 14 本）。
+- ソースの変更は、両方の `sensor_shell.c` の `#include "lsm6dso_attributes.h"` の 1 行だけ。
+- 計画に無かったこと: `common/tests/fakes/lsm6dso.h`（ガードだけの偽ヘッダー。`stream_stop` が `lsm6dso_stream.c` の
+  `#include "lsm6dso.h"` を開けるようにするため）、`nuttx/apps/imu/Makefile` の使われなくなった `-I $(APPDIR)/external` の削除。
+- `imu_stream.c` は変えていない。`"../drivers/lsm6dso/lsm6dso_fifo_stats.h"` は `-I common/imu` の後ろに付く形で見つかる
+  （T12b で `"lsm6dso_fifo.h"`・`"lsm6dso_fifo_stats.h"` に直す）。
+- メインの確認（別に実行）: Zephyr・NuttX の像が基準と一致、ホストテスト 16 個と 38 個が `ok`、`common/` に
+  オブジェクトなし。ビルド定義・ソース・偽ヘッダーの差分を読んだ。文書の差分は読んでいない（subagent の報告のまま）。
+- `zephyr/app/usb-console/tests/fakes/` に残っていた空のディレクトリー（未追跡）はメインが消した。
+
+### T12a 少差分の一本化（完了、acbd898）
+
+- 1 本にしたもの（`common/`）: `imu/imu_cal.c`、`imu_raw_mqtt.[ch]`、`wifi_profile.[ch]`、`kv_store.h`、`time_sync.h`、
+  `drivers/nina/nina_net.c`、`drivers/lsm6dso/lsm6dso_compat.c`、`drivers/sensor_shell/sensor_shell.c`。
+- Zephyr の文面に入れた変更（メインが commit 済みの Zephyr 版と `diff` して確認）: `lsm6dso_compat.c` の `<inttypes.h>` と
+  `PRIu32`・`PRId32` 2 か所、`sensor_shell.c` の `"sensor_shell_os.h"`・`sensor_shell_os_get_arm()`・`_get_wait()`・`PRI*` 1 か所、
+  `wifi_profile.c` の `extern const k_tid_t ...` → `#include "wifi_profile_os.h"`。ほかの 7 本は Zephyr 版のまま。
+- NuttX 側: 前置きヘッダー `nuttx/drivers/compat/common_prelude.h`（`common/` のソースにだけ `-include`）、互換層に
+  `<zephyr/logging/log.h>`・`<zephyr/net/net_ip.h>`。前置きにソケットのヘッダーは入れない（`lsm6dso_zero.c` の `static` 関数
+  `accept` と衝突する）。
+- **OS ごとに残った差**: `sensor_shell_os.h`（`sensor get` の待ち。Zephyr 版は何もしない）、`wifi_profile_os.h`
+  （`wifi_reconnect_tid` の `const`。互換層の `K_THREAD_DEFINE()` が起動時に書くため。T20 で `k_tid_t` の作りを変えれば消せる）。
+- NuttX だけのテスト（`imu_cal`、`imu_raw_mqtt`、`sensor_shell`）は `nuttx/tests` に残した（偽物が `common/` に無い）。
+- 計画 10 項の `<zephyr/types.h>`・`<zephyr/sys/sys_io.h>` は T12b・T13 で足す。
+- メインの確認（別に実行）: Zephyr・NuttX の像が基準と一致、ホストテスト 16 個と 38 個が `ok`。新しいヘッダー 7 本と
+  CMake の差分を読んだ。新しいファイルの SPDX 表記はメインが MIT に直した（T11 の `common/tests/fakes/lsm6dso.h` も）。
+  NuttX の Makefile 類と文書の差分は読んでいない。
+
+### T12b `imu_stream.c`・`time_sync.c` とシェルの登録（完了、7f78570）
+
+- `common/imu/imu_stream.c`: Zephyr の文面への変更は `#include "lsm6dso_fifo.h"`・`"lsm6dso_fifo_stats.h"` と `PRId32` 1 か所
+  だけ。`common/imu/time_sync.c`: Zephyr 版と同一。OS ごとに残った差は無い。
+- 互換層: `SHELL_CMD_REGISTER()` の入口は既定で `main`、`-DZ_SHELL_CMD_NAMED_MAIN` を付けたファイルでは
+  `z_shell_main_<syntax>`（`time_sync.c` → `ntp_main.c` が呼ぶ）。`<zephyr/sys/sys_io.h>`（`sys_read32()`）、`devicetree.h` の
+  `DT_REG_ADDR(DT_NODELABEL(timer))`、前置きヘッダーに `CONFIG_NINA_NTP_*` の対応。
+- `time_sync_mono_us()`: Zephyr 版、旧 NuttX 版（`nano_mono_us()`）、新 NuttX 版とも TIMERAWH → TIMERAWL → TIMERAWH を
+  読み、上位が一致するまで読み直す（subagent の比較。新しい関数の命令列は旧 `nano_mono_us` と同じとのこと）。
+- 像: Zephyr は基準と一致。NuttX は 278956 → 278996 B。変わったオブジェクトは `imu_stream.o`・`time_sync.o`・`ntp_main.o`。
+  **NuttX の新しい基準は `freertos/build/baseline/nuttx/snapshot-t12b/`**（T13 以降はこれと比べる）。
+- メインの確認（別に実行）: Zephyr の像が基準と一致、NuttX の像が `snapshot-t12b` と一致（再現する）、`compare.py` で
+  変わった関数が `imu_main`・`ntp_main`・`sync_thread`・`time_sync_mono_us`・`z_shell_fprintf_` と登録のデータだけである
+  こと、ホストテスト 16 個と 39 個が `ok`。1 本にした 2 ファイルを commit 済みの Zephyr 版と `diff`、互換層の差分を読んだ。
+  「ハンドラーの命令列が再配置まで一致」と「スタックの見積もり」は subagent の報告のままで、再実行していない。
+  文書の差分は読んでいない。
+- `compare.py` は `i2c_dw_rp2040_commands.c.txt: only in A` を出す（T10 で `common/` へ移ったファイルをスクリプトが
+  探さないため。スクリプトの限界で、差ではない）。
+
+### T13 `lsm6dso.c`・`lsm6dso.h` の一本化（完了、61a4cf2）
+
+- `common/drivers/lsm6dso/lsm6dso.h`: Zephyr 版と同一。`lsm6dso.c`: Zephyr の文面への変更は `#if` → `#ifdef
+  CONFIG_LSM6DSO_TRIGGER` の 1 行と、末尾（デバイスの生成、元の 1346〜1448 行）を `#include "lsm6dso_instance.h"` に置き換えた
+  ことだけ（メインが commit 済みの Zephyr 版と `diff` して確認。Zephyr 版の断片は元の 103 行と同一）。
+- OS ごとに残ったもの: `lsm6dso_instance.h`（Zephyr 版は `zephyr/app/usb-console/drivers/lsm6dso/`、NuttX 版は
+  `nuttx/drivers/lsm6dso/`）。`lsm6dso_os.[ch]` は消した。
+- 互換層: `k_busy_wait()`（`up_udelay()`）、`k_msleep()`・`k_usleep()`（`nxsched_msleep()`・`nxsched_usleep()`）、
+  `k_cyc_to_ns_floor64()`（×1000）、`DT_HAS_COMPAT_ON_BUS_STATUS_OKAY()`、`<zephyr/types.h>`、`<zephyr/init.h>`、前置きヘッダーに
+  `CONFIG_SENSOR_ASYNC_API`。
+- 計画に無かったこと: `common/tests/fakes/lsm6dso.h`（T11 で足した偽ヘッダー）を消した（本物が同じディレクトリーに来て
+  読まれなくなった）。Zephyr の CMake で、shub・trigger の差し替えを該当の Kconfig があるときだけにした。
+- 像: Zephyr は基準と一致。NuttX は 278996 → 279044 B。**NuttX の新しい基準は `freertos/build/baseline/nuttx/snapshot-t13/`**。
+- メインの確認（別に実行）: Zephyr の像が基準と一致、NuttX の像が `snapshot-t13` と一致、`compare.py` で変わった関数が
+  `lsm6dso_*` の 17 個と `lsm6dso_init`・`stmemsc_mdelay`、増減が `k_busy_wait`・`k_msleep`・`k_usleep` と `lsm6dso_os_*` だけで
+  あること、ホストテスト 16 個と 39 個が `ok`。互換層の追加と旧 `lsm6dso_os.c` を並べて読んだ。「対照実験（旧ソースを
+  マクロで互換層に向けたものと一致）」と「テストのイベント 1835 行の一致」は subagent の報告のままで、再実行していない。
+  文書の差分は読んでいない。
+- **ユーザーが `common/drivers/nina/nina_net.c` を vim で開いていた**（スワップファイルがあった。commit の時点では消えていた）。
+  `git add` はファイルを指定して行う。
+
+### T20 互換層を共通部と NuttX 部に分ける（完了、ce2bee5）
+
+- `common/compat/`: Zephyr の API のヘッダー 31 本（`zephyr/...`）と `zephyr_compat.h`、OS に依存しない `.c` 10 本
+  （`zephyr_work`、`zephyr_rtio`、`zephyr_rtio_workq`、`zephyr_mem_blocks`、`sensor_default_rtio`、`zephyr_wifi_utils`、
+  `zephyr_wifi_mgmt`、`zephyr_device`、`zephyr_gpio`、`zephyr_net_mgmt`）、Zephyr 本体の写し（`sensor_shell_stream.c`、
+  `sensor_shell.h`、`wifi_credentials.c`、`wifi_credentials_backend_settings.c`、`wifi_credentials_internal.h`）。`mqtt_min.[ch]` は
+  `common/imu`。
+- `nuttx/drivers/compat/` に残ったもの: `zephyr_kernel.c`、`zephyr_mutex.c`、`zephyr_i2c.c`、`zephyr_net_if.c`、`zephyr_hwinfo.c`、
+  `zephyr_sensor_clock.c`、`common_prelude.h`、ヘッダー `zephyr/net/socket.h`・`net_if.h`・`sys/clock.h`・`sys/__assert.h`・
+  `drivers/i2c.h`（T22）・`shell/shell.h`（T23）、OS ごとのヘッダー `zephyr_os.h`・`zephyr_os_spinlock.h`・`zephyr_os_atomic.h`・
+  `zephyr_rtio_workq_os.h`・`zephyr_net_mgmt_os.h`。
+- **FreeRTOS 版（F02 ほか）が用意するもの**は `common/compat/zephyr/kernel.h` の先頭のコメントに一覧がある。そのほか
+  `socket.h`・`net_if.h`・`sys/clock.h`・`__assert.h`・（当面）`i2c.h`・`shell.h` を OS ごとに書く。境界のヘッダー
+  `priorities.h`・`nano_gpio.h`・`app_log.h`・`cpu_load.h`・`sensor_shell_os.h`、構成 `CONFIG_NANO_LSM6DSO_STREAM`・
+  `CONFIG_NANO_WIFI_CREDENTIALS*` も要る。
+- NuttX に残したアプリ側: `settings_nvs.c`（T24 で置き換わる）、`mqtt_min_sock.c`（F09/F13 で決める）、
+  `wifi_credentials_shell.c`（getopt と `subcmd` に依存。T23）。
+- テスト: `common/tests` に `zephyr_fakes/` と `zephyr_rtio`・`zephyr_work`・`mqtt_min`。共通のテストは 17 本
+  （Zephyr 側 19 個、NuttX 側 39 個）。
+- **やっていないこと**: `k_tid_t` の作り直し（`wifi_profile_os.h` の `const` の差が残る）。案: `K_THREAD_DEFINE` が
+  `struct k_thread` と `const k_tid_t` を作り、OS のハンドルを構造体に持たせる。NuttX の像が変わる。FreeRTOS の互換層を
+  書く F02 のときに、やるかどうかを決める。
+- メインの確認（別に実行）: Zephyr の像が基準と一致、NuttX の像が `snapshot-t13` と一致、ホストテスト 19 個と 39 個が `ok`、
+  `common/` にオブジェクトなし。`kernel.h` の先頭の一覧と、ディレクトリーの構成を見た。個々のヘッダーの分け方と文書の
+  差分は読んでいない（像が一致しているので、展開結果は変わっていない）。共通の互換層が FreeRTOS でコンパイルできるかは
+  未確認（F02 で分かる）。
+
+### T21 NINA のコアを `common/` へ（完了、eaebb16）
+
+- `common/drivers/nina/`: `nina_spi.c`、`nina_sock.[ch]`、`nina_dns.[ch]`、`nina_proto.h`（Zephyr 版の同一の写しと 1 本化）、
+  境界の `nina_os.h`・`nano_nina.h`、`nina_sockopt.h`（T12a で移した `nina_net.c` もここ）。`common/tests/` に `nina_spi`・
+  `nina_sock`・`nina_dns`（共通のテストは 20 本。Zephyr 側 22 個、NuttX 側 39 個）。Zephyr 版だけのテストは `nina_wifi_spi` に改名。
+- NuttX に残したもの: `nina_os.c`、`nina_usrsock.[ch]`、`nina_poller.c`、`nina_netdev.c`、`wifi_profile_null.c`、`include/nina_net.h`、
+  ボードの `nano_nina.c`。
+- **FreeRTOS 版（F05・F09）が実装する境界**: `nina_os.h` の 7 関数（再帰・優先度継承のロック、DNS のロック、
+  「切り上げ + 1 tick」の sleep、ms の時計）、`nano_nina.h` の 6 関数（SPI1 のポーリング転送、ピン 4 本。極性は
+  `nuttx/drivers/README_ja.md` の NINA の節の表）。構成 `CONFIG_NANO_NINA_TCP_MAX_IO`（3584）・`_SEND_RETRY_MS`（1）は
+  無ければ既定値。コアが POSIX のヘッダーから使うもの（F09 で用意）は subagent の報告のとおり: `ssize_t`、`struct sockaddr`・
+  `sockaddr_in`・`iovec`・`addrinfo`、`AF_INET`・`SOCK_*`・`IPPROTO_*`・`MSG_DONTWAIT`・`TCP_NODELAY`・`POLL*`・`AI_*`・`EAI_*`、
+  `inet_pton()`、`htons()`。
+- Zephyr 側の変更: `src/main.c` の `#include "nina_proto.h"`、`CMakeLists.txt` の `-I` 1 か所（メインが差分を確認）。
+- 残っている古い記述: 移したファイルの中のコメントのパス（`nuttx/drivers/nina/...`）とインクルードガード
+  （`__NUTTX_DRIVERS_*`）は、内容を変えない方針のためそのまま。Z01 でコアに手を入れるときにまとめて直す。
+- メインの確認（別に実行）: Zephyr の像が基準と一致、NuttX の像が `snapshot-t13` と一致、ホストテスト 22 個と 39 個が `ok`。
+  NuttX の Makefile 類と文書の差分は読んでいない。
+- **ユーザーが `zephyr/app/usb-console/CMakeLists.txt` を vim で開いている**（スワップファイルあり、未追跡。commit に
+  入れていない）。subagent がこのファイルを直した後に開かれたとのこと。ユーザーが保存すると、以後の変更と食い違う
+  おそれがあるので、次にこのファイルを触るタスク（T22）の前後で `git diff` を見る。
+
+### T22 I2C0 と DMA のコア（完了、82d6c4e）
+
+- `common/drivers/i2c_dw/`: コア `nano_i2c.c`（転送の状態機械 `i2c_dw_transfer_msgs()`、割り込みの本体 `i2c_dw_isr_handler()`、
+  DMA 読み出し、`i2c_dma` のカウンター）、`nano_dma.c`（チャネル、`dma_rpi_pico_isr_handler()`）、`nano_dma.h`、`nano_i2c_dw.h`、
+  `nano_i2c_dw_registers.h`、`nano_i2c_dma.h`、境界の一覧 `i2c_dw_os.h`（新規）。`common/tests/nano_i2c_dw.c`（共通のテスト 21 本。
+  Zephyr 側 23 個、NuttX 側 39 個）。
+- NuttX への接続（ボードの `src/`）: `i2c_dw_os_impl.h`（inline の包み）、`nano_i2c_instance.h`（`i2c_master_s`、割り込みの包み、
+  ピン、初期化。`nano_i2c.c` の末尾で読む）、`nano_dma_instance.h`。
+- **FreeRTOS 版（F06）が用意するもの**は `common/drivers/i2c_dw/i2c_dw_os.h` のコメントと `nuttx/drivers/README_ja.md` の
+  I2C0 の節の表にある。要点: セマフォ（割り込みから give）、期限つきの take、割り込み禁止、ms の時計と sleep、
+  I2C0・DMA_IRQ_0/1 の割り込みの登録、I2C0 と DMA のリセット、GPIO12・13 の設定、Zephyr の `struct i2c_msg` を読むマクロ 3 つ。
+  subagent が偽の OS 実装で GCC 15.2 のコンパイルを確かめた（`-Wextra` では `MIN` に `-Wsign-compare` が 2 件。F06 では
+  このファイルにだけ `-Wno-sign-compare`）。
+- 動かさなかったもの: `nuttx/apps/i2c_dma`（T23・F06）、互換層の `zephyr_i2c.c`・`zephyr/drivers/i2c.h`（F07 で FreeRTOS 用を書く）、
+  `nano_i2c.h`（NuttX の API）。
+- 形の選び方: 境界を static inline とマクロにし、OS の断片を先頭と末尾で `#include` する。`always_inline` や一部の inline 化では
+  命令列や関数の並びが変わったので、元と同じになる形を選んだ（subagent の報告）。
+- 像: Zephyr も NuttX も基準と一致（NuttX は `snapshot-t13` のまま）。
+- メインの確認（別に実行）: Zephyr の像が基準と一致、NuttX の像が `snapshot-t13` と一致、ホストテスト 23 個と 39 個が `ok`。
+  `i2c_dw_os.h` の先頭を読んだ。コアと断片の中身、文書の差分は読んでいない（像が一致しているので、コンパイル結果は
+  変わっていない）。
+- `CONFIG_NANO_I2C0_DMA=n` の構成（出荷の構成ではない）では、転送の関数のスタックの割り当てと関数の並びが変わる
+  （subagent の報告。動作は同じとのこと）。
+- ユーザーのエディターのスワップファイルが `common/compat/` に出たり消えたりしている（`.wifi_credentials.c.swp`、
+  `.zephyr_net_mgmt.c.swp`）。commit に入れていない。
+
+### T23 シェル・ログ・境界のヘッダーを `common/` へ（完了、6b541ca）
+
+- `common/shell/`: `subcmd.[ch]`（中身は変えていない。メインが `cmp` で確認）、`zshell.c`（共通の部分。バックエンドは
+  `nuttx/apps/subcmd/zshell_os_impl.h`、境界の一覧は `zshell_os.h`）。`common/compat/zephyr/shell/shell.h`（`struct shell` は OS の
+  `zephyr_os_shell.h`）。
+- `common/log/`: `log_ring.[ch]`（`.c` は変えていない。メインが `cmp` で確認）、`log_ram.h`、`app_log.h`（OS の部分は
+  `app_log_os.h`）。`log_ram.c` は NuttX に残した。
+- `common/compat/`: `priorities.h`（OS の番号は `priorities_os.h`）、`cpu_load.h`、`nano_cpuload.h`、`nano_gpio.h`。
+- NuttX に残したもの: `nano_timer.h`、`nano_timeconv.h`、`nina_net.h`。`kv_hex`・`kv_name` は T24。
+- テスト: `common/tests/` に `subcmd`・`log_ring`（旧 `log_ram`）・`nano_cpuload`。共通のテストは 24 本（Zephyr 側 26 個、
+  NuttX 側 39 個）。
+- **FreeRTOS 版が実装するもの（F01・F03）**: シェルは `struct shell`、`zshell_os_backend_get()`、`zshell_os_cmd_enter()`・
+  `_exit()`、`z_shell_backend_vfprintf()`、`fnmatch()`。ログは `app_log_printf()`・`app_log_vprintf()`・`app_log_ratelimit_pass()`・
+  `log_ram_initialize()`・`log_ram_piece()`。ほかに `NANO_PRIO_FROM_ZEPHYR(p)`、`cpu_load_get()`、`nano_gpio.h` の 3 関数。
+- **F03 への持ち越し（設計の前提）**: `zshell.c` と `subcmd.c` はヘルプとエラーを `printf`・`fprintf(stderr)` で出すので、
+  コマンドを実行するタスクの stdout・stderr がそのセッションの端末である必要がある。USB と Telnet のシェルを別の
+  タスクにして、タスクごとに行き先を選ぶ `_write` を用意する案。Pico SDK の `_write` を置き換えられるかは未確認。
+  NuttX のコマンド（`kv`・`nina`・`dmesg`・`i2c_dma`・`wifi`）を共有する案: `-Dmain=nano_cmd_<名前>` と静的な表、
+  `getopt` は呼び出しごとの状態（newlib の `__getopt_long_r`）、シェルのタスクのスタックは 3072 以上。
+- メインの確認（別に実行）: Zephyr の像が基準と一致、NuttX の像が `snapshot-t13` と一致、ホストテスト 26 個と 39 個が `ok`、
+  `subcmd.c`・`log_ring.c` が元と同じ。分けたファイル（`zshell.c`、`app_log.h`、`priorities.h`）の中身と文書の差分は
+  読んでいない（像が一致しているので、展開結果は変わっていない）。
+
+## T24 の記録（2026-11-17、commit daae9ec）
+
+- Zephyr v4.5.0 の NVS・settings・crc8・hex を無改変で `common/compat/{subsys,lib,zephyr}` に写した
+  （`common/tests/run.sh` の `zephyr_copies` が 15 本を上流と照合）。改変した写しは
+  `wifi_credentials_backend_settings.c` だけ（`buf` の整列、`%zu`）。
+- flash の境界は `common/compat/nano_flash_kv.h` の `nano_flash_kv_os_{ready,read,program,erase}`。
+  FreeRTOS 版（F04）はこの 4 つを実装すればよい。flash デバイスと flash map は `zephyr_flash_kv.c`。
+- `kv_store.c` は `common/imu` の 1 本。OS ごとの差は `kv_store_os.h`（Zephyr は空、ほかは `kv wipe`）。
+- 別のデータ: 自動で消さず `-EILSEQ`（NuttX では 84）、`dmesg` に `flash_kv` の 2 行。消去は `kv wipe confirm`。
+- NuttX の比較の基準は以後 `freertos/build/baseline/nuttx/snapshot-t24/`。
+- メインが確かめたこと: 両方の再ビルド（Zephyr は基準と一致、NuttX は snapshot-t24 と一致）、ホストテスト
+  （Zephyr 30、NuttX 41）、写しが上流と同一、`kv_store.c`・Zephyr 側の差分、`zephyr_flash_kv.c`・
+  `kv_store_wipe.c` の全文、wipe 後の再初期化（`settings_store_init()` が読み込み元の一覧を作り直す）。
+- メインが確かめていないこと: `nano_flash_kv.h` の判定関数とテストの中身、文書と `kv_transfer.py` の差分、
+  スタックの見積もり、像の差の関数ごとの内訳（subagent の報告のまま）。
+- CP-B で見ること（追加）: Zephyr 版が書いた KV を NuttX 版が読むこと（今の実機は FreeRTOS 版の前が OpenMV
+  なので、まず領域の判定結果と `kv wipe confirm` → `kv_transfer.py restore`）、起動時の `fs_nvs` 3 行、
+  `ps` のスタック（init、kv、wifi、imu、`wifi_reconnect`）、計測中の `kv set` で GC が走ったときの欠番、
+  `/dev/config` が無いこと、`wifi cred list` の長さ違いのエラーが -2。
+
+## CP-B の途中経過（2026-11-17）
+
+- 実機（FreeRTOS 版が動いていた）に `bootsel` を送り、T24 の NuttX 版（daae9ec）を書き込んだ。
+- 起動時の `dmesg`: `flash_kv: Key-value area 0xffe000-0xffffff holds the NuttX build's earlier format`、
+  `Not used; "kv wipe confirm" erases it`、資格情報と settings の初期化が -84。`kv get imu.port` は
+  `KV read failed: -84`。`/dev/config` は無い。`imu status` は `state: idle`。つまり KV 領域は OpenMV 版と
+  FreeRTOS 版を書いたあとも以前の NuttX の形式のまま残っていた。
+- `ps`（起動直後、KV なし）: init 752/2008、nsh 1760/3032、telnetd 848/2008。
+- まだ: `kv wipe confirm`（ユーザーの承認待ち）、`kv_transfer.py restore`、Wi-Fi、計測、Telnet、Zephyr 版との読み合い。
+- 2026-11-17（ユーザー承認）: `kv wipe confirm` → `Erased`、`fs_nvs` の 3 行（`alloc wra: 0, fe8`、`data wra: 0, 0`）。
+  `kv_transfer.py restore --usb --no-wifi` で校正値 2 個と `imu.port` を書き戻し、読み返し OK、`imu cal reload` で反映。
+  Wi-Fi の資格情報はユーザーの入力待ち（AP は起動済み）。
+- 2026-11-17 CP-B の計測（NuttX 版 daae9ec、AP 経由、受信器 `imu-host check --port 18830`）:
+  - 資格情報の登録（ユーザー）後、接続（10.42.0.97）。再起動後も `fs_nvs` 3 行（`alloc wra: 0, ea8`）、エラーなし、
+    自動接続、`imu.port`・校正値が残る。
+  - 書き込み後の最初の計測 71 秒: 欠番 0、`unix_regressions` 0、エラー・オーバーラン 0、`cpu_active` 70.0%。
+    送信中に Telnet の接続・`imu status`・切断を 2 回（5 秒間隔）、`kv set` 20 回。
+  - 計測中の `kv set` 260 回（95 秒）: GC の消去 1 回（書き込み 140〜160 回目）で FIFO オーバーラン 1 回、回復 1 回
+    （-75）、受信側の欠番 0、エポック 0→1。`max_transfer_us` 47437。設計書（日英）に 1 文を足した（未 commit）。
+  - 450 回の回は受信器が先に終わったので参考（オーバーラン 2 回、KV の失敗 0）。
+  - スタック（計測後）: init 976/2008、nsh 1760/3032、imu_raw_mqtt 1272/1992、time_sync 1224/2000、telnetd 872/2008。
+  - 見ていないもの: Wi-Fi スキャン、切断からの復帰、`imu`・`ntp` の端のケース、Zephyr 版との KV の読み合い（CP-Z）、長時間。
+  - 追加（同日）: `imu`・`imu bogus`・`imu st*` はヘルプを出して終了状態 1、`ntp status` は synchronized、
+    `kv` のヘルプに `wipe`、`kv wipe` は引数の数のエラー、`kv wipe no` は何も消さない。NuttX 版の `wifi` には `scan` が無い
+    （`cred` だけ。以前から）。**CP-B は完了とする**（切断からの復帰と長時間は見ていない）。
+
+## F01 の記録（2026-11-17）
+
+- 実装: tick 10 kHz・32 ビット、時分割 20 ms（`configUSE_TIME_SLICING` 0 と tick フック `tick.c`、優先度 1〜20 だけ）、
+  `priorities_os.h`（FreeRTOS = 20 − Zephyr、`Tmr Svc` 31）、`os_clock.h`（`nano_mono_us()`、`os_sleep_us()` は n+1 tick）、
+  `idle.c`（`cpu_load_get()`、`ps` の最後に `cpu_active`）、`irq_stack.c`（`irqstack`）、`fault.[ch]` と
+  `common/log/fault_record.[ch]`（RAM と watchdog scratch[0..3]、`fault` コマンドとバナー）、`sleep <ms>`。
+- メインが確かめたこと: クリーンビルド警告 0、`format.sh --check`、`common/tests/run.sh` 29 本、`tick.c`・`idle.c`・`fault.c`・
+  `os_clock.h` の全文。Zephyr・NuttX の像の一致は subagent の報告のまま（`common/` の変更はテストと新規ファイルだけ）。
+- 実機（FreeRTOS 版を書き込み）: tick 231543 / 23.154258 s = 10000.0/s。アイドル 21 秒の `cpu_active` 2.0%。
+  sleep の往復時間（USB 込み、9 回の中央値）: コマンドだけ 0.87 ms、`sleep 0` 1.00、`sleep 1` 1.99、`sleep 10` 11.10、
+  `sleep 100` 101.16、`sleep 1000` 1001.21 ms（コマンドの往復を引くと N + 0.1〜0.3 ms）。`irqstack` 468/2048、
+  `console` の空き 2264 B（3072 中）。`fault` は `No fatal error before this start`。
+- 実機で未確認: 異常停止の記録（起こす手段が無い。`devmem` を足すかはユーザーに相談中）、時分割（同じ優先度で回る
+  タスクがまだ無い。F08 以降）。
+- 決めたこと・残ること: 再起動は watchdog（T01b の案の AIRCR ではない）。`PICO_USE_STACK_GUARDS` は使わない
+  （MSP があふれるとロックアップして再起動しない、というのは subagent がソースから推測したもの）。フラッシュ消去中の
+  異常停止は記録できないかもしれない（F04）。文書のテストの本数（`nuttx/README*`、`design/nuttx-porting*` の 39/24）が
+  古い → F15 で直す。
+
+## ユーザーの指示（2026-11-17、F01 のあと）
+
+- `devmem` を入れる。書き込みも入れ、Zephyr 版と同じ書式（`devmem <address> [<width> [<value>]]`）。F02 が戻ってからメインが実装。
+- `sleep <ms>` は残す。
+- `selftest`（F02 の自己診断）は、確認が終わったら外す。メインの解釈: 既定のビルドには入れない（オプションで入れられる形で
+  ソースは残す）。この形でユーザーが承認（同日）。
+
+## F02 の記録（2026-11-17）
+
+- 実装: `freertos/drivers/compat/`（`zephyr_os*.h`、`zephyr_kernel.c`、`zephyr_mutex.c`、`zephyr_os_sched.h`、
+  `zephyr_selftest.[ch]`、`rp2040/`）、`freertos/drivers/log/app_log_min.c`（F03 で置き換える）、`freertos/tests/compat/`
+  （POSIX ポート）、`freertos/script/host_tests.sh`、`build.sh` の `-DNAME=VALUE`。共有ソースが使う API だけを作った
+  （`k_thread_create`・`k_timer`・`k_msgq`・`k_fifo`・`k_condvar`・`k_event`・`k_poll_signal`・`sys_timepoint_*` は無い。
+  F09 以降で要るものが出たら足す）。
+- `k_tid_t`: 作り直さない（`TaskHandle_t` の変数、NuttX 版と同じ）。F10 で FreeRTOS 用の `wifi_profile_os.h` が要る。
+- **実機で分かった違いと対応**: FreeRTOS は横取りのたびに同じ優先度の次のタスクを選ぶ（Zephyr は横取りされたスレッドが
+  続きを走る）。USB の割り込み → `Tmr Svc`（31）の一瞬の横取りで実際に交代した。`zephyr_os_sched.h` のトレースマクロ
+  （`traceTASK_SWITCHED_OUT/IN`、カーネル V11.3.3 の内部の名前を使う。**カーネルの版を上げるときは見直す**）で Zephyr の
+  規則にした。残る近似は README と同ヘッダーのコメント。
+- メインが追加: `devmem <addr> [<bits> [<val>]]`（Zephyr と同じ書式と出力、読み書き）。
+- 実機: 修正前は sleep（1 回目）と timeslice（3 回中 2 回）が失敗。修正後は `selftest` 4 回とも `0 of 22 tests failed`
+  （timeslice 200×6、timeslice_preempt `1 turns, 35 preemptions`、ISR からの起床 26〜29 µs）。`devmem 30000000` →
+  HardFault → 自動再起動 → バナーと `fault`（task console、pc = `cmd_devmem` の `ldr r1,[r4]`）→ `reboot` 後は記録なし。
+  既定のビルド（selftest なし）に書き直し済み。アイドルの `cpu_active` は 3.0%（F01 は 2.0%。tick フックに互換層の
+  タイムアウト処理が入った分とみられるが、内訳は測っていない）。
+- メインが確かめたこと: ビルド（両方、警告 0）、整形、`host_tests.sh`、`zephyr_mutex.c`・セマフォと poll の部分・
+  `zephyr_os_sched.h` の全文、実機の上記。読んでいない: `zephyr_selftest.c`、work とスレッドの起動の部分、README の互換層の節。
+- 残り: F07 で `sysworkq`（1024 B）のスタックを実測。gpio0 デバイスの初期化は F07。`selftest` は既定 OFF でソースを残す
+  （ユーザー承認済み）。
+
+## 文書の分担（2026-11-17、ユーザー承認）
+
+- `freertos/README`（日英）はメインだけが編集する。使い方だけを書く（必要なもの、環境構築、ビルド、書き込み、コマンドの表、
+  短い注意）。subagent には触らせず、README に入れる内容は報告に書かせる。仕組みの説明はソースのコメントに。
+- `PORTING_PLAN.md`・`PORTING_STATUS.md` はメインが書く（subagent の報告は要約して STATUS に）。subagent 用のノートは作らない。
+- 設計書・既存のドライバー説明（日英）は、Zephyr 版・NuttX 版の動作や構成が変わったときだけ subagent が最小限に直し、
+  メインがレビューする。FreeRTOS 版の内部の説明は F15 でまとめて書く（材料はソースのコメントと STATUS）。
+- `freertos/PORTING_*.md` は Git 管理にする（以前の「未追跡のまま」を変更）。タスクの commit に STATUS の更新を含める。
+  `CLAUDE.md` は未追跡のまま。
+- 残り: `freertos/README`（360 行）を使い方だけに整理する。F03 が戻ってからメインがやる。
