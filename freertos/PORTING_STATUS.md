@@ -1094,3 +1094,29 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
   ファームウェアは 4 つのパッチの案で進める。問い合わせ間隔 5 ms の測定はしない。送信のやり直しの改善は、ファームウェアと別に改善の
   余地があれば正式版に向けて入れる。KV は退避済みなので必要なら復元すればよい。NINA のファームウェアの転送を、専用の Arduino の
   スケッチではなくコマンドでできるようにしたい（ユーザーの意向）。
+
+## 除算器（方式 B）、パッチの仕組み、NINA のファームウェアのパッチ（2026-11-18）
+
+- ユーザーの決定: 0 除算の結果は Pico SDK のルーチンのまま（32 ビットは飽和した商・余り 0。3 版でそろえる）。NINA のファームウェアは
+  4 つのパッチで進める。`memcpy`・`memset` は全部パッチ。
+- **Zephyr 版**（subagent、commit 済み）: `west patch`（`zephyr/manifest/zephyr/patches.yml`・`patches/`）+ `setup.sh` の `_zephyr_patch`
+  （当てた集合の写しを `.west/nano-patches` に持ち、集合が変わったら戻して当て直す。commit は作らない）。パッチ 3 つ: hal_rpi_pico の boot2 の
+  分周 2（アプリの `nano_boot2` を削除。この時点の像は `snapshot-z01` と一致）、`swap_helper.S`（PendSV）での除算器の退避
+  （`CONFIG_ARM_RP2040_DIVIDER_SAVE`、`struct _thread_arch` に 20 B、切り替え 1 回で約 20〜26 命令、DIRTY のときだけ 4 レジスターを退避）、
+  SoC の ROM の `memcpy`・`memset`（`CONFIG_RP2040_ROM_MEM_OPS`、`--wrap` は SoC の CMake から。アプリの `NANO_ROM_MEM_OPS` と
+  `src/rom_mem_early.c` を削除）。アプリの `CONFIG_NANO_HW_DIVIDER`（既定 y）が SDK の `divider_hardware.S` を 6 記号に `--wrap`。
+  既定の像 364396 B、libgcc の除算は像に残らない。
+- **NuttX 版**（subagent、commit 済み）: パッチ `nuttx/0009`（`RP2040_HW_DIVIDER`、`struct xcptcontext` に 20 B、`arm_doirq()` の切り替えで
+  退避・復元、`arm_sigdeliver` の扱い）、ボードの `NANO_HW_DIVIDER`（既定 y）、pico-sdk の sparse checkout に除算器の 2 ファイルを追加
+  （blob の遅延取得でネットワークを使う）、`build.sh` の検査。無効の像は `snapshot-ready` と一致。有効の像 279092 B（−472）。
+  subagent が足した 0 除算を libgcc にそろえる pico-sdk のパッチは、ユーザーの決定により外す（続きの作業で、ROM の `memcpy` のパッチ化と
+  `common/drivers/rp2040_rom/` の削除と一緒に依頼中）。
+- **試験の像**（commit しない、`scratchpad/div/`）: Zephyr「退避なし」81 秒で食い違い 30（最低優先度の 3 スレッドだけ、割り込みと高優先度は 0）、
+  「退避あり」361 秒・約 4,070 万回で食い違い 0。NuttX の試験の像は未実行。
+- **NINA のファームウェア**（subagent、commit 済み、**書き込みはしていない**）: パッチ 0003（0x6A capabilities）、0004（スキャン中の接続維持）、
+  0005（非同期のスキャン: 0x36 開始、0x6B 状態、0x27 結果）、0006（ソケットの事象を IRQ の線で。見張りのタスク、one-shot の登録、次の命令の
+  先頭で線を下げる、最短 5 µs）。`build.sh` が足りないパッチだけ当てる。docker でビルド済み（像 `source/NINA_W102.bin`、sha256 b04f0796…、
+  アプリ +5,040 バイト）。元の 2 パッチの像は `firmware/nina-fw/images/`（Git 管理外）に退避、sha256 ee0f213b…。ドライバー向けの仕様は
+  `firmware/nina-fw/README.md` の「Host interface of 0003 to 0006」。実機では何も確かめていない。
+- メインはどのソースも読んでいない。ビルド・テストは各 subagent の報告。
+- 実機: Zephyr の「退避あり」の試験の像。
