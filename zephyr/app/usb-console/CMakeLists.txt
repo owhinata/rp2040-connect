@@ -38,20 +38,6 @@ set_property(SOURCE ${nina_socket_sources} APPEND PROPERTY COMPILE_DEFINITIONS
 # every 100 us.  Without this line they sample.
 set_property(SOURCE ${nina_dir}/nina_spi.c drivers/nina/nina_os.c APPEND PROPERTY
   COMPILE_DEFINITIONS NINA_OS_WAIT_READY)
-# memcpy() and memset() through the bootrom (common/drivers/rp2040_rom, shared with the NuttX
-# build): picolibc defines the plain names, so the references are wrapped to __wrap_memcpy, ...
-if(CONFIG_NANO_ROM_MEM_OPS)
-  set(rom_mem_dir ${COMMON_DIR}/drivers/rp2040_rom)
-  target_sources(app PRIVATE src/rom_mem_early.c ${rom_mem_dir}/rp2040_rom_mem_lookup.c
-    ${rom_mem_dir}/rp2040_rom_mem_ops.S)
-  set_source_files_properties(${rom_mem_dir}/rp2040_rom_mem_ops.S PROPERTIES
-    COMPILE_DEFINITIONS RP2040_ROM_MEM_WRAP)
-  foreach(sym memcpy memset __aeabi_memcpy __aeabi_memcpy4 __aeabi_memcpy8 __aeabi_memset
-          __aeabi_memset4 __aeabi_memset8)
-    zephyr_ld_options(-Wl,--wrap=${sym})
-  endforeach()
-endif()
-
 # Integer division through the SIO divider: the Pico SDK's pico_divider (hal_rpi_pico), as the
 # SDK's pico_divider_hardware links it.  libgcc defines the plain names, so the references are
 # wrapped to the SDK's __wrap___aeabi_idiv, ...  The routines save the divider when they

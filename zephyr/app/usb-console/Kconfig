@@ -6,17 +6,6 @@ config I2C_DW_RP2040_DMA
 	depends on SOC_RP2040 && I2C_DW && DMA_RPI_PICO && SHELL && !SMP
 	depends on !I2C_DW_LPSS_DMA
 
-config NANO_ROM_MEM_OPS
-	bool "memcpy() and memset() through the RP2040 bootrom"
-	default y
-	depends on SOC_RP2040
-	help
-	  Wrap memcpy(), memset(), __aeabi_memcpy*() and __aeabi_memset*()
-	  (the linker's --wrap) to the bootrom's routines, as the Pico SDK's
-	  pico_mem_ops does (common/drivers/rp2040_rom). Without it they are
-	  picolibc's byte loops. The early boot's arch_early_memcpy() and
-	  arch_early_memset() keep picolibc's (src/rom_mem_early.c).
-
 config NANO_HW_DIVIDER
 	bool "Integer division through the RP2040 hardware divider"
 	default y

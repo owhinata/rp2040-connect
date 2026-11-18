@@ -28,3 +28,13 @@ patches:
     comments: |
       CONFIG_ARM_RP2040_DIVIDER_SAVE: the SIO divider saved and restored in
       PendSV, for the Pico SDK's pico_divider (app CONFIG_NANO_HW_DIVIDER).
+  - path: zephyr/0002-soc-rp2040-rom-mem-ops.patch
+    sha256sum: 1e9cfbfac28612b09001b64eca497fc78e54e90ae34c83f58cc5e6bc553aa294
+    module: zephyr
+    author: rp2040-connect
+    email: noreply@example.invalid
+    date: 2026-11-18
+    upstreamable: false
+    comments: |
+      CONFIG_RP2040_ROM_MEM_OPS: memcpy() and memset() through the bootrom's
+      routines (--wrap), enabled in the app's prj.conf.
