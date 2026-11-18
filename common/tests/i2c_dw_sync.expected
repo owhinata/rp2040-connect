@@ -1,0 +1,385 @@
+--- zephyr i2c_dw_error_chk
++++ core i2c_dw_error_chk
+@@
+-static int i2c_dw_error_chk(const struct device *dw) {
+-struct i2c_dw_dev_config *const dw = dw->data;
++static int i2c_dw_error_chk(struct i2c_dw_dev_config *dw) {
+--- zephyr i2c_dw_data_ask
++++ core i2c_dw_data_ask
+@@
+-static inline void i2c_dw_data_ask(const struct device *dw) {
+-struct i2c_dw_dev_config *const dw = dw->data;
++static inline void i2c_dw_data_ask(struct i2c_dw_dev_config *dw) {
+@@
+-union ic_comp_param_1_register ic_comp_param_1;
+@@
+-ic_comp_param_1.raw = read_comp_param_1(reg_base);
+-rx_buffer_depth = ic_comp_param_1.bits.rx_buffer_depth + 1;
+-tx_buffer_depth = ic_comp_param_1.bits.tx_buffer_depth + 1;
+-if (i2c_dw_rp2040_controller(dw)) {
+@@
+-}
+@@
+-if (!i2c_dw_rp2040_controller(dw)) {
+-return;
+-}
+@@
+-data = IC_DATA_CMD_CMD;
+-if (dw->xfr_flags & I2C_MSG_RESTART) {
+-data |= IC_DATA_CMD_RESTART;
+-dw->xfr_flags &= ~(I2C_MSG_RESTART);
+-}
+-if ((dw->xfr_flags & I2C_MSG_STOP) && (dw->request_bytes == 1U)) {
+-data |= IC_DATA_CMD_STOP;
+-}
++data = nano_i2c_dw_read_cmd(&dw->xfr_flags, dw->request_bytes);
+--- zephyr i2c_dw_data_read
++++ core i2c_dw_data_read
+@@
+-static void i2c_dw_data_read(const struct device *dw) {
+-struct i2c_dw_dev_config *const dw = dw->data;
++static void i2c_dw_data_read(struct i2c_dw_dev_config *dw) {
+--- zephyr i2c_dw_data_send
++++ core i2c_dw_data_send
+@@
+-static int i2c_dw_data_send(const struct device *dw) {
+-struct i2c_dw_dev_config *const dw = dw->data;
++static int i2c_dw_data_send(struct i2c_dw_dev_config *dw) {
+@@
+-data = dw->xfr_buf[0];
+-if (dw->xfr_flags & I2C_MSG_RESTART) {
+-data |= IC_DATA_CMD_RESTART;
+-dw->xfr_flags &= ~(I2C_MSG_RESTART);
+-}
+-if ((dw->xfr_len == 1U) && (dw->xfr_flags & I2C_MSG_STOP)) {
+-data |= IC_DATA_CMD_STOP;
+-}
++data = nano_i2c_dw_write_cmd(&dw->xfr_flags, dw->xfr_buf[0], dw->xfr_len);
+--- zephyr i2c_dw_transfer_complete
++++ core i2c_dw_transfer_complete
+@@
+-static inline void i2c_dw_transfer_complete(const struct device *dw) {
+-struct i2c_dw_dev_config *const dw = dw->data;
+-uint32_t value;
++static inline void i2c_dw_transfer_complete(struct i2c_dw_dev_config *dw) {
+@@
+-value = read_clr_intr(reg_base);
++(void)read_clr_intr(reg_base);
+--- zephyr i2c_dw_rp_dma_callback
++++ core i2c_dw_rp_dma_callback
+@@
+-static void i2c_dw_rp_dma_callback(const struct device *dma, void *user_data, uint32_t channel, int status) {
++static void i2c_dw_rp_dma_callback(void *user_data, uint32_t channel, int status) {
+@@
+-ARG_UNUSED(dma);
+@@
+-i2c_dw_rp_dma_notify(dw, status < 0 ? RP_DMA_ERROR : (channel == dw->rp_dma_tx_channel ? RP_DMA_TX_DONE : RP_DMA_RX_DONE));
++i2c_dw_rp_dma_notify(dw, status < 0 ? RP_DMA_ERROR : (channel == (uint32_t)dw->rp_dma_tx_channel ? RP_DMA_TX_DONE : RP_DMA_RX_DONE));
+--- zephyr i2c_dw_rp_dma_stop
++++ core i2c_dw_rp_dma_stop
+@@
+-static bool i2c_dw_rp_dma_stop(const struct device *dma, int tx, int rx) {
++static bool i2c_dw_rp_dma_stop(int tx, int rx) {
+--- zephyr i2c_dw_rp_dma_read
++++ core i2c_dw_rp_dma_read
+@@
+-static int i2c_dw_rp_dma_read(const struct device *dw, struct i2c_msg *msg) {
+-const struct device *dma = DEVICE_DT_GET(DT_NODELABEL(dma));
+-const struct i2c_dw_rom_config *rom = dw->config;
+-struct i2c_dw_dev_config *dw = dw->data;
++static int i2c_dw_rp_dma_read(struct i2c_dw_dev_config *dw, uint8_t *buf, uint32_t len, uint8_t msg_flags) {
+@@
+-if (!rp_dma_enabled || dw != DEVICE_DT_GET(DT_NODELABEL(i2c0)) || !device_is_ready(dma) || len < 32 || len > I2C_DW_RP2040_DMA_MAX_READ || !(msg->flags & I2C_MSG_STOP) || (msg->flags & I2C_MSG_ADDR_10_BITS) || (dw->app_config & I2C_ADDR_10_BITS)) {
++if (!rp_dma_enabled || !nano_dma_is_ready() || len < 32 || len > I2C_DW_RP2040_DMA_MAX_READ || !(msg_flags & I2C_MSG_STOP) || (msg_flags & I2C_MSG_ADDR_10_BITS)) {
+@@
+-if (ret && !i2c_dw_rp_dma_stop(dma, tx, rx)) {
++if (ret && !i2c_dw_rp_dma_stop(tx, rx)) {
+--- zephyr nano_i2c_dma_get_stats
++++ core nano_i2c_dma_get_stats
+@@
+-stats->transfers = (uint32_t)rp_dma_transfers;
+-stats->bytes = (uint32_t)rp_dma_bytes;
+-stats->errors = (uint32_t)rp_dma_errors;
+-stats->fallbacks = (uint32_t)rp_dma_fallbacks;
++stats->transfers = rp_dma_transfers;
++stats->bytes = rp_dma_bytes;
++stats->errors = rp_dma_errors;
++stats->fallbacks = rp_dma_fallbacks;
+--- zephyr nano_i2c_dma_enabled
++++ core nano_i2c_dma_enabled
+@@
+-return rp_dma_enabled != 0;
++return rp_dma_enabled;
+--- zephyr nano_i2c_dma_set_enabled
++++ core nano_i2c_dma_set_enabled
+@@
+-rp_dma_enabled = enabled ? 1 : 0;
++rp_dma_enabled = enabled;
+--- zephyr i2c_dw_isr
++++ core i2c_dw_isr_handler
+@@
+-static void i2c_dw_isr(const struct device *dw) {
+-struct i2c_dw_dev_config *const dw = dw->data;
++static inline void i2c_dw_isr_handler(struct i2c_dw_dev_config *const dw) {
+@@
+-uint32_t value;
+@@
+-value = read_clr_tx_abrt(reg_base);
++(void)read_clr_tx_abrt(reg_base);
+@@
+-value = read_clr_stop_det(reg_base);
++(void)read_clr_stop_det(reg_base);
+@@
+-}
+-else {
+--- zephyr i2c_dw_setup
++++ core i2c_dw_setup
+@@
+-static int i2c_dw_setup(const struct device *dw, uint16_t target_address) {
+-struct i2c_dw_dev_config *const dw = dw->data;
+-uint32_t value;
++static int i2c_dw_setup(struct i2c_dw_dev_config *dw, uint16_t target_address) {
+@@
+-value = read_clr_intr(reg_base);
+-if (I2C_MODE_CONTROLLER & dw->app_config) {
++(void)read_clr_intr(reg_base);
+@@
++ic_con.bits.restart_en = 1U;
++if (rp_dma_enabled) {
++ic_con.raw |= BIT(9);
+@@
+-else {
+-return -EINVAL;
+-}
+-ic_con.bits.restart_en = 1U;
+-if (dw == DEVICE_DT_GET(DT_NODELABEL(i2c0)) && rp_dma_enabled) {
+-ic_con.raw |= I2C_IC_CON_RX_FIFO_FULL_HLD_CTRL_BITS;
+-}
+-if (I2C_MSG_ADDR_10_BITS & dw->app_config) {
+-ic_con.bits.addr_master_10bit = 1U;
+-}
+-else {
+@@
+-}
+-switch (I2C_SPEED_GET(dw->app_config)) {
+-case I2C_SPEED_STANDARD: write_ss_scl_lcnt(dw->lcnt, reg_base);
++switch (dw->speed) {
++case NANO_I2C_SPEED_STANDARD: write_ss_scl_lcnt(dw->lcnt, reg_base);
+@@
+-case I2C_SPEED_FAST: __fallthrough;
+-case I2C_SPEED_FAST_PLUS: write_fs_scl_lcnt(dw->lcnt, reg_base);
++case NANO_I2C_SPEED_FAST: case NANO_I2C_SPEED_FAST_PLUS: write_fs_scl_lcnt(dw->lcnt, reg_base);
+@@
+-case I2C_SPEED_HIGH: if (!dw->support_hs_mode) {
++case NANO_I2C_SPEED_HIGH: if (!dw->support_hs_mode) {
+@@
+-if (test_bit_con_master_mode(reg_base)) {
+@@
+-}
+-else {
+-write_sar(target_address, reg_base);
+-}
+-if (I2C_MSG_ADDR_10_BITS & dw->app_config) {
+-ic_tar.bits.ic_10bitaddr_master = 1U;
+-}
+-else {
+@@
+-}
+--- zephyr i2c_dw_is_busy
++++ core i2c_dw_is_busy
+@@
+-bool i2c_dw_is_busy(const struct device *dw) {
+-struct i2c_dw_dev_config *const dw = dw->data;
++static bool i2c_dw_is_busy(struct i2c_dw_dev_config *dw) {
+--- zephyr i2c_dw_transfer
++++ core i2c_dw_transfer_msgs
+@@
+-static int i2c_dw_transfer(const struct device *dw, struct i2c_msg *msgs, uint8_t num_msgs, uint16_t target_address) {
+-const struct i2c_dw_rom_config *const rom = dw->config;
+-struct i2c_dw_dev_config *const dw = dw->data;
+-struct i2c_msg *cur_msg = msgs;
+-uint8_t msg_left = num_msgs;
++static inline int i2c_dw_transfer_msgs(struct i2c_dw_dev_config *const dw, i2c_dw_os_msg_t *msgs, int count, uint16_t target_address, uint32_t speed) {
++i2c_dw_os_msg_t *cur_msg = msgs;
++int msg_left = count;
+@@
++uint8_t mflags;
+@@
++int i;
+@@
+-uint32_t value = 0;
+-__ASSERT_NO_MSG(msgs);
+-ret = pm_device_runtime_get(dw);
+-if (ret < 0) {
+-return ret;
+-}
+-ret = k_sem_take(&dw->bus_sem, K_FOREVER);
++ret = i2c_dw_os_bus_lock(&dw->bus_sem);
+@@
+-pm_device_runtime_put(dw);
+@@
++}
++if (speed != dw->speed) {
++ret = i2c_dw_configure(dw, speed);
++if (ret) {
++i2c_dw_os_bus_unlock(&dw->bus_sem);
++return ret;
++}
+@@
+-}
+-if (i2c_check_bus(dw)) {
+-ret = -ETIME;
+-goto error;
+@@
+-if (IS_ENABLED(CONFIG_I2C_DW_PM_POLICY_STATE_LOCK)) {
+-pm_policy_state_lock_get(PM_STATE_SUSPEND_TO_IDLE, PM_ALL_SUBSTATES);
++while (msg_left > 0) {
++i = count - msg_left;
++mflags = I2C_DW_OS_MSG_FLAGS(msgs, cur_msg, i, msg_left);
++pflags = dw->xfr_flags;
++dw->xfr_buf = I2C_DW_OS_MSG_BUF(cur_msg);
++dw->xfr_len = I2C_DW_OS_MSG_LEN(cur_msg);
++if ((dw->xfr_len == 0) && (I2C_DW_OS_MSG_BUF(cur_msg) != NULL)) {
++dw->xfr_len = 1;
+@@
+-pm_device_busy_set(dw);
+-while (msg_left > 0) {
+-if ((cur_msg->len == 0) && (cur_msg->buf != NULL)) {
+-cur_msg->len = 1;
+-}
+-pflags = dw->xfr_flags;
+-dw->xfr_buf = cur_msg->buf;
+-dw->xfr_len = cur_msg->len;
+-dw->xfr_flags = cur_msg->flags;
++dw->xfr_flags = mflags;
+@@
+-if ((pflags & I2C_MSG_RW_MASK) != (dw->xfr_flags & I2C_MSG_RW_MASK)) {
+-dw->xfr_flags |= I2C_MSG_RESTART;
+-}
++dw->xfr_flags = nano_i2c_dw_next_flags(pflags, dw->xfr_flags);
+@@
+-ret = i2c_dw_rp_dma_read(dw, cur_msg);
++ret = i2c_dw_rp_dma_read(dw, I2C_DW_OS_MSG_BUF(cur_msg), I2C_DW_OS_MSG_LEN(cur_msg), mflags);
+@@
+-if (test_bit_con_master_mode(reg_base)) {
+@@
+-}
+-else {
+-write_intr_mask(DW_ENABLE_TX_INT_I2C_TARGET, reg_base);
+-}
+-ret = k_sem_take(&dw->device_sync_sem, rom->transfer_timeout);
++ret = i2c_dw_os_sem_take_ms(&dw->device_sync_sem, NANO_I2C_DW_TRANSFER_TIMEOUT_MS);
+@@
+-if (test_bit_con_master_mode(reg_base)) {
+@@
+-(void)k_sem_take(&dw->device_sync_sem, K_MSEC(1));
+-}
++(void)i2c_dw_os_sem_take_ms(&dw->device_sync_sem, 1);
+@@
+-value = read_clr_intr(reg_base);
++(void)read_clr_intr(reg_base);
+@@
+-pm_device_busy_clear(dw);
+-if (IS_ENABLED(CONFIG_I2C_DW_PM_POLICY_STATE_LOCK)) {
+-pm_policy_state_lock_put(PM_STATE_SUSPEND_TO_IDLE, PM_ALL_SUBSTATES);
+-}
+@@
+-if (dw->i2c_stat_not_ready == I2C_DW_MAGIC_KEY) {
+-dw->not_ready_cnt++;
+-if (dw->not_ready_cnt >= 3) {
+-dw->i2c_stat_not_ready = 0;
+-dw->not_ready_cnt = 0;
+-}
+-}
+-else {
+-dw->i2c_stat_not_ready = 0;
+-dw->not_ready_cnt = 0;
+-}
+-i2c_dw_os_sem_give(&dw->bus_sem);
+-pm_device_runtime_put(dw);
++i2c_dw_os_bus_unlock(&dw->bus_sem);
+--- zephyr i2c_dw_configure
++++ core nano_i2c_dw_scl_counts
+@@
+-static int i2c_dw_configure(const struct device *dw, uint32_t config) {
+-struct i2c_dw_dev_config *const dw = dw->data;
+-const struct i2c_dw_rom_config *const rom = dw->config;
++static inline int nano_i2c_dw_scl_counts(uint32_t speed, uint32_t clock_mhz, bool support_hs_mode, uint16_t *hcnt, uint16_t *lcnt) {
+@@
+-uint32_t value = 0U;
+-uint32_t rc = 0U;
+-mm_reg_t reg_base = dw->base;
+-switch (I2C_SPEED_GET(config)) {
+-case I2C_SPEED_STANDARD: lcnt_val = I2C_STD_LCNT + rom->lcnt_offset;
+-hcnt_val = I2C_STD_HCNT + rom->hcnt_offset;
++int rc = 0;
++switch (speed) {
++case NANO_I2C_SPEED_STANDARD: lcnt_val = I2C_STD_LCNT(clock_mhz) + NANO_I2C_DW_LCNT_OFFSET;
++hcnt_val = I2C_STD_HCNT(clock_mhz) + NANO_I2C_DW_HCNT_OFFSET;
+@@
+-case I2C_SPEED_FAST: lcnt_val = I2C_FS_LCNT + rom->lcnt_offset;
+-hcnt_val = I2C_FS_HCNT + rom->hcnt_offset;
++case NANO_I2C_SPEED_FAST: lcnt_val = I2C_FS_LCNT(clock_mhz) + NANO_I2C_DW_LCNT_OFFSET;
++hcnt_val = I2C_FS_HCNT(clock_mhz) + NANO_I2C_DW_HCNT_OFFSET;
+@@
+-case I2C_SPEED_FAST_PLUS: lcnt_val = I2C_FSP_LCNT + rom->lcnt_offset;
+-hcnt_val = I2C_FSP_HCNT + rom->hcnt_offset;
++case NANO_I2C_SPEED_FAST_PLUS: lcnt_val = I2C_FSP_LCNT(clock_mhz) + NANO_I2C_DW_LCNT_OFFSET;
++hcnt_val = I2C_FSP_HCNT(clock_mhz) + NANO_I2C_DW_HCNT_OFFSET;
+@@
+-case I2C_SPEED_HIGH: if (dw->support_hs_mode) {
+-lcnt_val = I2C_HS_LCNT + rom->lcnt_offset;
+-hcnt_val = I2C_HS_HCNT + rom->hcnt_offset;
++case NANO_I2C_SPEED_HIGH: if (support_hs_mode) {
++lcnt_val = I2C_HS_LCNT(clock_mhz) + NANO_I2C_DW_LCNT_OFFSET;
++hcnt_val = I2C_HS_HCNT(clock_mhz) + NANO_I2C_DW_HCNT_OFFSET;
+@@
+-if (I2C_SPEED_GET(config) == I2C_SPEED_HIGH) {
+-lcnt_val = I2C_ENSURE_MIN_SCL_LCNT(lcnt_val, rom->hs_spk_len);
+-hcnt_val = I2C_ENSURE_MIN_SCL_HCNT(hcnt_val, rom->hs_spk_len);
++if (speed == NANO_I2C_SPEED_HIGH) {
++lcnt_val = I2C_ENSURE_MIN_SCL_LCNT(lcnt_val, NANO_I2C_DW_HS_SPK_LEN);
++hcnt_val = I2C_ENSURE_MIN_SCL_HCNT(hcnt_val, NANO_I2C_DW_HS_SPK_LEN);
+@@
+-lcnt_val = I2C_ENSURE_MIN_SCL_LCNT(lcnt_val, rom->fs_spk_len);
+-hcnt_val = I2C_ENSURE_MIN_SCL_HCNT(hcnt_val, rom->fs_spk_len);
++lcnt_val = I2C_ENSURE_MIN_SCL_LCNT(lcnt_val, NANO_I2C_DW_FS_SPK_LEN);
++hcnt_val = I2C_ENSURE_MIN_SCL_HCNT(hcnt_val, NANO_I2C_DW_FS_SPK_LEN);
+@@
+-dw->lcnt = lcnt_val;
+-dw->hcnt = hcnt_val;
+-if (rc == 0) {
+-dw->app_config = config;
+-}
+-value = read_clr_intr(reg_base);
+-dw->app_config |= I2C_MODE_CONTROLLER;
++*lcnt = (uint16_t)lcnt_val;
++*hcnt = (uint16_t)hcnt_val;
+--- zephyr i2c_dw_init_config
++++ core i2c_dw_init_config
+@@
+-static int i2c_dw_init_config(const struct device *dw) {
+-const struct i2c_dw_rom_config *const rom = dw->config;
+-struct i2c_dw_dev_config *const dw = dw->data;
++static int i2c_dw_init_config(struct i2c_dw_dev_config *dw) {
+@@
+-if (rom->sda_hold_tx != SDA_HOLD_INVALID) {
+-sda_hold.bits.sdahold_tx = rom->sda_hold_tx;
+-}
+-if (rom->sda_hold_rx != SDA_HOLD_INVALID) {
+-sda_hold.bits.sdahold_rx = rom->sda_hold_rx;
+-}
+@@
+-write_fs_spklen(rom->fs_spk_len, reg_base);
+-write_hs_spklen(rom->hs_spk_len, reg_base);
+-dw->app_config = I2C_MODE_CONTROLLER | i2c_map_dt_bitrate(rom->bitrate);
+-if (i2c_dw_configure(dw, dw->app_config) != 0) {
++write_fs_spklen(NANO_I2C_DW_FS_SPK_LEN, reg_base);
++write_hs_spklen(NANO_I2C_DW_HS_SPK_LEN, reg_base);
++if (i2c_dw_configure(dw, NANO_I2C_SPEED_STANDARD) != 0) {
+--- zephyr i2c_dw_probe_hw
++++ core i2c_dw_probe_hw
+@@
+-static int i2c_dw_probe_hw(const struct device *dw) {
+-struct i2c_dw_dev_config *const dw = dw->data;
++static int i2c_dw_probe_hw(struct i2c_dw_dev_config *dw) {

@@ -8,15 +8,15 @@
 /* Definitions and pure functions of the I2C0 driver (nano_i2c.c), without
  * OS headers, so the host tests (common/tests/nano_i2c_dw.c) can check them:
  *
- * - the definitions of the Zephyr build's i2c_dw.h
- *   (zephyr/app/usb-console/drivers/i2c_dw/i2c_dw.h) that the controller
+ * - the definitions of the Zephyr build's i2c_dw.h (Zephyr's, with the
+ *   local patch 0003, see nano_i2c.c; i2c_dw_rp2040.h) that the controller
  *   path uses: state bits, interrupt sets, the SCL count formulas and the
  *   DesignWare speed codes, with Zephyr's message flags and speed classes
  *   (zephyr/include/zephyr/drivers/i2c.h);
- * - the SCL counts of i2c_dw_configure() (i2c_dw.c:1385-1455);
+ * - the SCL counts of i2c_dw_configure() (i2c_dw.c:1145-1215);
  * - the command words that i2c_dw_data_send() and i2c_dw_data_ask() write
- *   to IC_DATA_CMD (i2c_dw.c:516-546, 428-456), and the RESTART that
- *   i2c_dw_transfer() adds when the direction changes (i2c_dw.c:1262-1272);
+ *   to IC_DATA_CMD (i2c_dw.c:498-528, 410-438), and the RESTART that
+ *   i2c_dw_transfer() adds when the direction changes (i2c_dw.c:1022-1032);
  * - what the NuttX build adds: the NuttX message flags (I2C_M_*) turned
  *   into Zephyr's (I2C_MSG_*) for one message of a transfer, and the NuttX
  *   frequency turned into a Zephyr speed class (its part of the driver,
@@ -136,13 +136,13 @@
 
 #define SDA_HOLD_INVALID UINT32_MAX
 
-/* i2c_dw.c:63-68 */
+/* i2c_dw_rp2040.h:20-25 */
 
 #define RP2040_I2C_FIFO_DEPTH 16U
 #define RP2040_I2C_RX_BATCH 4U
 
 /* The constant part of the Zephyr build's i2c_dw_rom_config for i2c0
- * (i2c_dw.c:2001-2015 with the devicetree of the build): no SDA hold
+ * (i2c_dw.c:1761-1775 with the devicetree of the build): no SDA hold
  * property (SDA_HOLD_INVALID: IC_SDA_HOLD keeps its reset value), offsets
  * 0, spike lengths MAX(0, DW_IC_SPKLEN_MIN) = 1, transfer timeout
  * CONFIG_I2C_TRANSFER_TIMEOUT_MS = 1000 ms.
@@ -154,7 +154,7 @@
 #define NANO_I2C_DW_HS_SPK_LEN        DW_IC_SPKLEN_MIN
 #define NANO_I2C_DW_TRANSFER_TIMEOUT_MS 1000
 
-/* The SCL counts of i2c_dw_configure() (i2c_dw.c:1397-1435) for a speed
+/* The SCL counts of i2c_dw_configure() (i2c_dw.c:1157-1195) for a speed
  * class.  Returns 0, or -EINVAL for a class the controller does not run
  * (as i2c_dw_configure() does; it still stores the minimum counts then,
  * see nano_i2c.c).
@@ -258,7 +258,7 @@ static inline uint8_t nano_i2c_dw_msg_flags(uint16_t prev, uint16_t cur,
 	return flags;
 }
 
-/* i2c_dw_transfer() (i2c_dw.c:1262-1272): the flags of the next message,
+/* i2c_dw_transfer() (i2c_dw.c:1022-1032): the flags of the next message,
  * with a RESTART when the direction differs from the message before it
  * (pflags: dw->xfr_flags, which keeps the last message of the previous
  * transfer at the start of a transfer).
@@ -272,7 +272,7 @@ static inline uint8_t nano_i2c_dw_next_flags(uint8_t pflags, uint8_t flags)
 	return flags;
 }
 
-/* One write command of i2c_dw_data_send() (i2c_dw.c:518-529): the byte,
+/* One write command of i2c_dw_data_send() (i2c_dw.c:500-511): the byte,
  * RESTART on the first command of the message if asked (and cleared from
  * *flags), STOP on the last byte (len: bytes left, this one included).
  */
@@ -292,7 +292,7 @@ static inline uint32_t nano_i2c_dw_write_cmd(uint8_t *flags, uint8_t byte,
 	return data;
 }
 
-/* One read request of i2c_dw_data_ask() (i2c_dw.c:430-441); request_bytes:
+/* One read request of i2c_dw_data_ask() (i2c_dw.c:412-423); request_bytes:
  * requests left, this one included.
  */
 

@@ -673,10 +673,10 @@ version's; what has been verified on the NuttX port is listed separately in 11.7
   layer; in the Zephyr build, `drivers/nina/nano_nina.c` (the devicetree's lines and SPI),
   `nina_os.c` (mutexes, sleeps, clock, the READY interrupt) and `nina_socket.c` (the socket offload). The core that works on the I2C0 and DMA
   registers (`nano_i2c.c` and `nano_dma.c` in `common/drivers/i2c_dw/`, copies of the Zephyr
-  build's `i2c_dw.c` and RP2040 DMA driver) does not depend on the OS either; it depends only on the
+  build's patched `i2c_dw.c` and RP2040 DMA driver) does not depend on the OS either; it depends only on the
   boundary of `i2c_dw_os.h` (semaphores, clock, interrupt connection, reset and pins, the link to
-  the OS's driver model) and is used by the NuttX and FreeRTOS builds (the Zephyr build uses its own
-  `drivers/i2c_dw/i2c_dw.c`).
+  the OS's driver model) and is used by the NuttX and FreeRTOS builds (the Zephyr build uses Zephyr's
+  driver with a local patch, §12).
 - The shared sources run on top of a compatibility layer
   (its OS-independent part in `common/compat/`, its NuttX implementation in
   `nuttx/drivers/compat/`) that provides the OS calls **under Zephyr's names**. The layer has only what the copied sources use
@@ -847,7 +847,7 @@ host tests (`common/tests/run.sh`) run first in the `host_tests.sh` of each of t
 | `common/imu/` | The acquisition service and `imu`, batches, payload, queue, status, time assignment and time synchronization with `ntp`, calibration and `imu cal`, the MQTT transport, the Wi-Fi profile and automatic reconnection, the key-value API and `kv` | All three (the MQTT client `mqtt_min*` NuttX and FreeRTOS; the Zephyr build uses Zephyr's MQTT library) |
 | `common/drivers/lsm6dso/`, `sensor_shell/` | The LSM6DSO driver with its FIFO stream, the sensor shell | All three |
 | `common/drivers/nina/` | `nina_net.c` and `nina_proto.h`, the NINA core (SPI link, sockets, name resolution, the socket waits `nina_wait.[ch]`), the decisions of the esptool passthrough `nina_passthrough_logic.h` | All three |
-| `common/drivers/i2c_dw/` | The DMA command words, the I2C0 and DMA core | The command words all three, the core NuttX and FreeRTOS |
+| `common/drivers/i2c_dw/` | The DMA command words, the `i2c_dma` command, the I2C0 and DMA core | The command words all three, `i2c_dma` Zephyr and FreeRTOS, the core NuttX and FreeRTOS |
 | `common/drivers/stmemsc/` | The glue between ST's driver and Zephyr's I2C API | NuttX and FreeRTOS |
 | `common/compat/` | The OS-independent part of the compatibility layer and copies of Zephyr's libraries (the key-value store's NVS and settings, the Wi-Fi credentials, getopt and others) | NuttX and FreeRTOS |
 | `common/shell/`, `common/log/` | Zephyr's shell command handling, the `LOG_*` macros and the RAM log's ring | NuttX and FreeRTOS |
@@ -862,8 +862,25 @@ The OS parts are implementations of narrow boundary headers in each build's dire
 - A few lines that differ per build: `sensor_shell_os.h` (the wait of `sensor get`), `wifi_profile_os.h`,
   `lsm6dso_instance.h` (the device), `kv_store_os.h` (whether there is `kv wipe`).
 
-The Zephyr build's I2C0 driver is still its own in `drivers/`; it has not been moved onto the shared core
-(the NINA uses the shared core).
+The Zephyr build's I2C0 driver is Zephyr's `drivers/i2c/i2c_dw.c` with a local patch
+(`zephyr/manifest/zephyr/patches/zephyr/0003-i2c-dw-rp2040-fifo-and-dma.patch`); it is not moved onto the
+shared core (the NINA uses the shared core). The shared core is a copy of the patched driver, and the
+intended differences (the OS's calls, what the Zephyr build does not use left out, i2c0 as the only
+instance and so on) are only those listed at the top of `nano_i2c.c`. To keep the two the same:
+
+- A change to either goes into the other as well (or the reason not to goes into the list at the top of
+  `nano_i2c.c`).
+- The host test `i2c_dw_sync` (`common/tests/i2c_dw_sync.py`, which `common/tests/run.sh` runs when the
+  Zephyr tree is there) compares the core with the tree's files at HEAD with the patch applied. It fails
+  when the definitions of both headers, the SCL counts at 125 MHz, the DMA path's lower limit, thresholds,
+  interrupt mask, IC_CON bit, waits and timeout, or the spike lengths differ, and when the differences of
+  the pairs of functions (with the differences of names evened out, compared statement by statement)
+  are not those saved in `common/tests/i2c_dw_sync.expected`. A change to one side alone makes it fail;
+  after an intended change, check the differences and rewrite them with `--update`. Comments and line
+  breaks are not compared. Drift in the functions it does not pair (Zephyr's initialization, PM, target
+  mode, the OS's parts) is not detected.
+- The `i2c_dma` command of the Zephyr and FreeRTOS builds is `common/drivers/i2c_dw/i2c_dma_shell.c`; the
+  patched driver and the core define the same three functions (`nano_i2c_dma.h`).
 
 Three low-level RP2040 items are not in `common/` but changes to each OS (the FreeRTOS build keeps the Pico
 SDK's defaults).

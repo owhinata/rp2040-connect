@@ -1,11 +1,6 @@
 mainmenu "USB console"
 source "Kconfig.zephyr"
 
-config I2C_DW_RP2040_DMA
-	bool "RP2040 I2C0 DMA reads"
-	depends on SOC_RP2040 && I2C_DW && DMA_RPI_PICO && SHELL && !SMP
-	depends on !I2C_DW_LPSS_DMA
-
 config NANO_HW_DIVIDER
 	bool "Integer division through the RP2040 hardware divider"
 	default y

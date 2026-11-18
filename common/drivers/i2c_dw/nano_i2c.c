@@ -9,12 +9,16 @@
  ****************************************************************************/
 
 /* I2C0 of the RP2040 (a DesignWare DW_apb_i2c block): a port of the
- * controller path of the Zephyr build's driver,
- * zephyr/app/usb-console/drivers/i2c_dw/i2c_dw.c (Zephyr's i2c_dw.c with
- * the RP2040 changes and the DMA reads), with the same functions, branches,
- * order, register values, timeout and error values.  The NuttX build uses
- * it in place of NuttX's own arch/arm/src/rp2040/rp2040_i2c.c
- * (CONFIG_RP2040_I2C off).
+ * controller path of the Zephyr build's driver, Zephyr's
+ * drivers/i2c/i2c_dw.c with the local patch
+ * 0003-i2c-dw-rp2040-fifo-and-dma.patch (zephyr/manifest/zephyr/patches/
+ * zephyr/: the RP2040 changes and the DMA reads, i2c_dw_rp2040.h and
+ * i2c_dw_rp2040_dma.h; the line numbers here are those of the patched
+ * files), with the same functions, branches, order, register values,
+ * timeout and error values.  The NuttX build uses it in place of NuttX's
+ * own arch/arm/src/rp2040/rp2040_i2c.c (CONFIG_RP2040_I2C off).
+ * common/tests/i2c_dw_sync.py checks that the two stay the same, but for
+ * the differences listed here.
  *
  * This file is the OS-independent core.  The OS's part is in i2c_dw_os.h
  * (semaphores, clock, sleeps, critical section, the form of the messages:
@@ -49,8 +53,8 @@
  * and other instances than i2c0.
  *
  * The DMA reads of i2c0 (CONFIG_I2C_DW_RP2040_DMA of the Zephyr build,
- * i2c_dw.c:578-801, 816-837, 1045-1049, 1191-1196, 1290-1302, 1469-1473,
- * 1891-1893) are CONFIG_NANO_I2C0_DMA: the same conditions, command words,
+ * i2c_dw_rp2040_dma.h, i2c_dw.c:576-597, 805-809, 951-956, 1050-1062,
+ * 1229-1233, 1651-1653) are CONFIG_NANO_I2C0_DMA: the same conditions, command words,
  * thresholds, interrupt mask, start order, completion and timeout, clean-up
  * and stop sequence, quarantine, counters and log lines, on nano_dma.c (a
  * port of Zephyr's dma_rpi_pico.c).  atomic_t becomes a volatile word with
@@ -137,7 +141,7 @@ struct i2c_dw_dev_config {
 
 static struct i2c_dw_dev_config i2c_0_runtime;
 
-/* No recover-bus callback is registered (i2c_dw.c:108-122). */
+/* No recover-bus callback is registered (i2c_dw.c:90-104). */
 
 static int i2c_recovery_bus(struct i2c_dw_dev_config *dw)
 {
@@ -211,7 +215,7 @@ static inline void i2c_dw_data_ask(struct i2c_dw_dev_config *dw)
 		return;
 	}
 
-	/* RP2040 does not implement IC_COMP_PARAM_1 (i2c_dw.c:63-66, 387-394). */
+	/* RP2040 does not implement IC_COMP_PARAM_1 (i2c_dw_rp2040.h:20-23, i2c_dw.c:369-376). */
 	rx_buffer_depth = RP2040_I2C_FIFO_DEPTH;
 	tx_buffer_depth = RP2040_I2C_FIFO_DEPTH;
 
@@ -558,8 +562,9 @@ release:
 	return ret;
 }
 
-/* The i2c_dma shell command's side (i2c_dw.c:770-801): nuttx/apps/i2c_dma
- * prints and parses; see nano_i2c_dma.h.
+/* The i2c_dma shell command's side (i2c_dw_rp2040_dma.h:223-243): the
+ * command (i2c_dma_shell.c, nuttx/apps/i2c_dma) prints and parses; see
+ * nano_i2c_dma.h.
  */
 
 void nano_i2c_dma_get_stats(struct nano_i2c_dma_stats *stats)
@@ -797,7 +802,7 @@ static bool i2c_dw_is_busy(struct i2c_dw_dev_config *dw)
 	return false;
 }
 
-/* i2c_dw_configure() (i2c_dw.c:1385-1455) for a speed class.  Zephyr
+/* i2c_dw_configure() (i2c_dw.c:1145-1215) for a speed class.  Zephyr
  * stores the (minimum) counts even when the class is refused and keeps the
  * old class, so the next transfer runs the old class with them; here a
  * refused class changes nothing.
@@ -852,7 +857,7 @@ static inline int i2c_dw_transfer_msgs(struct i2c_dw_dev_config *const dw,
 	}
 
 #ifdef CONFIG_NANO_I2C0_DMA
-	/* Also what i2c_dw_runtime_configure() returns (i2c_dw.c:1469-1473). */
+	/* Also what i2c_dw_runtime_configure() returns (i2c_dw.c:1229-1233). */
 	if (dw->rp_dma_quarantined) {
 		ret = -EIO;
 		goto error;

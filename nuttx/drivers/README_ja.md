@@ -311,7 +311,7 @@ FreeRTOS 版の `freertos/drivers/nina/nina_passthrough.c` と同じ仕様で、
 
 | ファイル | 役割 |
 |---|---|
-| `common/drivers/i2c_dw/nano_i2c.c` | I2C0 のコントローラーのコア。Zephyr 版の `drivers/i2c_dw/i2c_dw.c` のコントローラーの部分（転送の状態機械、割り込みハンドラーの本体、`i2c_dw_data_ask()`・`_read()`・`_send()`、`i2c_dw_setup()`、`i2c_dw_configure()`、初期化のレジスター操作）と DMA での読み出し（`i2c_dw_rp_dma_read()` など）と `i2c_dma` のカウンターを、関数・分岐・順序・レジスター値・期限・エラー値を合わせて写したもの。末尾でボードの `nano_i2c_instance.h` を読む |
+| `common/drivers/i2c_dw/nano_i2c.c` | I2C0 のコントローラーのコア。Zephyr 版の `i2c_dw.c`（Zephyr のドライバーにローカルのパッチ 0003 を当てたもの）のコントローラーの部分（転送の状態機械、割り込みハンドラーの本体、`i2c_dw_data_ask()`・`_read()`・`_send()`、`i2c_dw_setup()`、`i2c_dw_configure()`、初期化のレジスター操作）と DMA での読み出し（`i2c_dw_rp_dma_read()` など）と `i2c_dma` のカウンターを、関数・分岐・順序・レジスター値・期限・エラー値を合わせて写したもの。末尾でボードの `nano_i2c_instance.h` を読む |
 | `common/drivers/i2c_dw/nano_dma.c`・`nano_dma.h` | DMA 読み出しが使う RP2040 の DMA のコア。Zephyr の `drivers/dma/dma_rpi_pico.c`（`dma_config()`・`dma_start()`・`dma_stop()`・割り込みハンドラーの本体）と、DMA API のチャネルの確保・解放（`dma_request_channel()`・`dma_release_channel()`）、`i2c_dw.c` が直接呼ぶ pico-sdk の関数（`dma_channel_is_busy()`・`dma_irqn_acknowledge_channel()`・`dma_hw->abort`）をレジスターで書いたもの（レジスターの番地は `nano_dma.h`）。末尾でボードの `nano_dma_instance.h` を読む |
 | `common/drivers/i2c_dw/i2c_dw_os.h` | 境界: 2 つのコアが OS に求めるもの（下の表）。先頭でボードの `i2c_dw_os_impl.h` を読み、その実装が満たすべき関数を宣言する |
 | `common/drivers/i2c_dw/nano_i2c_dw.h` | OS に依存しない定義と純粋な関数: Zephyr 版の `i2c_dw.h` の定義、SCL のカウント、周波数から速さの区分、NuttX のフラグ（`I2C_M_*`）から Zephyr のフラグ（`I2C_MSG_*`）への変換、`IC_DATA_CMD` に書く語。ホストテスト `common/tests/nano_i2c_dw.c` |

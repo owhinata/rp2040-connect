@@ -4,8 +4,9 @@
 # compatibility layer (common/compat), the shell's subcommand dispatch (common/shell) and the
 # RAM log's ring (common/log).  They use the fake headers of tests/fakes, the fake kernel of
 # tests/zephyr_fakes or (the NINA core) fakes of its boundary defined by the tests, and need no
-# board and no Zephyr tree (the check that the copies of Zephyr's files are unchanged runs when
-# the tree is there).  zephyr/script/host_tests.sh and nuttx/script/host_tests.sh run this
+# board and no Zephyr tree (the checks that the copies of Zephyr's files are unchanged and that
+# the I2C0 core matches the Zephyr build's patched driver run when the tree is there).
+# zephyr/script/host_tests.sh and nuttx/script/host_tests.sh run this
 # before their own tests.
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -181,6 +182,22 @@ if [[ -f $ztree/VERSION ]]; then
         cmp "${pair%%:*}" "$ztree/${pair#*:}"
     done
     printf 'ok  zephyr_copies (23 files, Zephyr v4.5.0)\n'
+
+    # The I2C0 core (drivers/i2c_dw) against the Zephyr build's driver, Zephyr's with the local
+    # patch 0003 (made from the tree's HEAD and the patch): the definitions and values both
+    # take, and the pairs of functions, whose differences must be those of
+    # tests/i2c_dw_sync.expected (tests/i2c_dw_sync.py; --update rewrites it after an intended
+    # change).  The Kconfig values and devicetree properties are checked too when the Zephyr
+    # build is there.
+    sync=(tests/i2c_dw_sync.py "$ztree" ../zephyr/manifest/zephyr/patches/zephyr/0003-i2c-dw-rp2040-fifo-and-dma.patch)
+    zbuild=../zephyr/build/usb-console
+    if [[ -f $zbuild/zephyr/.config && -f $zbuild/zephyr/zephyr.dts ]]; then
+        sync+=(--build "$zbuild")
+    fi
+    python3 "${sync[@]}" > "$out/i2c_dw_sync.log"
+    printf 'ok  i2c_dw_sync (%d checks; %s)\n' "$(grep -c '^ok' "$out/i2c_dw_sync.log")" \
+        "$(grep -q '^skip' "$out/i2c_dw_sync.log" && printf 'no Zephyr build' || printf 'with the Zephyr build')"
 else
     printf 'skip zephyr_copies (no zephyr/zephyr: run west update)\n'
+    printf 'skip i2c_dw_sync (no zephyr/zephyr: run west update)\n'
 fi

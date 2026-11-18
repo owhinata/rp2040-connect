@@ -34,8 +34,8 @@ OS に依存しない部分は `common/compat/`、FreeRTOS の部分は `freerto
 
 FreeRTOS 版だけがビルドする共有ファイル: `common/compat/zephyr_wifi_shell.c`（Zephyr の `wifi_shell.c` から
 `connect`・`disconnect`・`scan`・`status` を取り出したもの）、`zephyr_zperf_shell.c`・`zperf_iperf3.[ch]`（`zperf`）、
-`common/drivers/nina/nina_shell.c`（`nina version`）、`common/drivers/i2c_dw/i2c_dma_shell.c`（`i2c_dma`）、
-`common/log/fault_record.[ch]`（異常停止の記録の形式）。
+`common/drivers/nina/nina_shell.c`（`nina version`）、`common/log/fault_record.[ch]`（異常停止の記録の形式）。
+`i2c_dma` の `common/drivers/i2c_dw/i2c_dma_shell.c` は Zephyr 版もビルドする。
 
 ## Zephyr 互換層の FreeRTOS の部分
 

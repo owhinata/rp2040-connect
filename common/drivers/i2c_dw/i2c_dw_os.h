@@ -6,7 +6,7 @@
  * compile.
  *
  * The core is the register work of the Zephyr build's I2C0 driver
- * (zephyr/app/usb-console/drivers/i2c_dw/i2c_dw.c) and of its DMA driver
+ * (Zephyr's i2c_dw.c with a local patch, see nano_i2c.c) and of its DMA driver
  * (Zephyr's dma_rpi_pico.c): the transfer's state machine, the interrupt
  * handlers' bodies, the DMA reads, the DMA channels and the i2c_dma
  * counters (nano_i2c_dma.h).  The OS's part gives it semaphores, a clock,

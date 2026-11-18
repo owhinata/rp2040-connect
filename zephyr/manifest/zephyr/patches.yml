@@ -38,3 +38,14 @@ patches:
     comments: |
       CONFIG_RP2040_ROM_MEM_OPS: memcpy() and memset() through the bootrom's
       routines (--wrap), enabled in the app's prj.conf.
+  - path: zephyr/0003-i2c-dw-rp2040-fifo-and-dma.patch
+    sha256sum: 6e3b9d30f758f4aecf807bb945f03caeea4b4121b67685131e1325a0ea6df9eb
+    module: zephyr
+    author: rp2040-connect
+    email: noreply@example.invalid
+    date: 2026-11-18
+    upstreamable: false
+    comments: |
+      The DesignWare I2C driver on the RP2040: the FIFO depth and RX batch of
+      its controllers, and CONFIG_I2C_DW_RP2040_DMA (i2c0 reads through the
+      DMA controller, the "i2c_dma" command), enabled in the app's prj.conf.

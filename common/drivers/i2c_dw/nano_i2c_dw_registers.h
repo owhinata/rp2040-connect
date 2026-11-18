@@ -8,8 +8,8 @@
 #ifndef __COMMON_DRIVERS_I2C_DW_NANO_I2C_DW_REGISTERS_H
 #define __COMMON_DRIVERS_I2C_DW_NANO_I2C_DW_REGISTERS_H
 
-/* Copy of zephyr/app/usb-console/drivers/i2c_dw/i2c_dw_registers.h (the
- * Zephyr build's DesignWare I2C register map and accessors).  Changes:
+/* Copy of Zephyr's drivers/i2c/i2c_dw_registers.h (v4.5.0, which the
+ * Zephyr build uses unchanged: its register map and accessors).  Changes:
  * this comment, the include guard, "__packed" dropped from the bit-fields
  * (Zephyr's macro; the layouts are the same with GCC on Arm), and the
  * accessor macros of i2c_dw.h (DEFINE_MM_REG_READ() ...) defined here on

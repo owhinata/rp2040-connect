@@ -590,9 +590,9 @@ NuttX 版の確認の範囲は §11.7 に分けて書く。
   Zephyr 版は `drivers/nina/` の `nano_nina.c`（devicetree の線と SPI）、`nina_os.c`（mutex、sleep、時計、READY の
   割り込み待ち）、`nina_socket.c`（ソケットのオフロード）。
   I2C0 と DMA のレジスターを操作するコア（`common/drivers/i2c_dw/` の `nano_i2c.c`・`nano_dma.c`。Zephyr 版の
-  `i2c_dw.c` と RP2040 の DMA のドライバーの写し）も OS に依存せず、境界 `i2c_dw_os.h`（セマフォ、時計、割り込みの
-  登録、リセットとピン、OS のドライバーモデルへの接続）だけに依存する。NuttX 版と FreeRTOS 版が使う（Zephyr 版は自分の
-  `drivers/i2c_dw/i2c_dw.c`）。
+  パッチ後の `i2c_dw.c` と RP2040 の DMA のドライバーの写し）も OS に依存せず、境界 `i2c_dw_os.h`（セマフォ、時計、割り込みの
+  登録、リセットとピン、OS のドライバーモデルへの接続）だけに依存する。NuttX 版と FreeRTOS 版が使う（Zephyr 版は
+  Zephyr のドライバーにローカルのパッチを当てて使う。§12）。
 - 共有するソースは、OS の呼び出しを **Zephyr の名前のまま**提供する互換層（OS に依存しない部分は `common/compat/`、NuttX の実装は `nuttx/drivers/compat/`）の上で動かす。
   互換層は、移したソースが使う部分だけを持つ（`struct device`、センサーの API、RTIO、ワークキュー、
   `k_sem`・`k_mutex`・`k_poll` の一部、`net_mgmt` のイベント、`zsock_*()`、シェルのコマンドの表）。
@@ -730,7 +730,7 @@ Zephyr の名前のまま提供する互換層の上でビルドする。ホス�
 | `common/imu/` | 取得サービスと `imu`、バッチ・ペイロード・キュー・status、時刻の対応付けと時刻同期・`ntp`、校正と `imu cal`、MQTT の送信、Wi-Fi のプロファイルと自動再接続、KV の API と `kv` | 3 版（MQTT のクライアント `mqtt_min*` は NuttX 版と FreeRTOS 版。Zephyr 版は Zephyr の MQTT ライブラリー） |
 | `common/drivers/lsm6dso/`、`sensor_shell/` | LSM6DSO のドライバー本体と FIFO のストリーム、sensor シェル | 3 版 |
 | `common/drivers/nina/` | `nina_net.c`・`nina_proto.h`、NINA のコア（SPI の転送層、ソケット、名前解決、ソケットの待ち `nina_wait.[ch]`）、esptool の中継の判断 `nina_passthrough_logic.h` | 3 版 |
-| `common/drivers/i2c_dw/` | DMA のコマンド語、I2C0 と DMA のコア | コマンド語は 3 版、コアは NuttX 版と FreeRTOS 版 |
+| `common/drivers/i2c_dw/` | DMA のコマンド語、`i2c_dma` コマンド、I2C0 と DMA のコア | コマンド語は 3 版、`i2c_dma` は Zephyr 版と FreeRTOS 版、コアは NuttX 版と FreeRTOS 版 |
 | `common/drivers/stmemsc/` | ST のドライバーと Zephyr の I2C の API のつなぎ | NuttX 版と FreeRTOS 版 |
 | `common/compat/` | 互換層の OS に依存しない部分と、Zephyr のライブラリーの写し（KV の NVS と settings、Wi-Fi の資格情報、getopt など） | NuttX 版と FreeRTOS 版 |
 | `common/shell/`、`common/log/` | Zephyr のシェルのコマンド処理の再現、`LOG_*` と RAM ログのリング | NuttX 版と FreeRTOS 版 |
@@ -744,7 +744,20 @@ OS ごとの部分は、狭い境界のヘッダーの実装として各版の�
 - 版ごとに違う数行: `sensor_shell_os.h`（`sensor get` の待ち）、`wifi_profile_os.h`、`lsm6dso_instance.h`（デバイスの
   生成）、`kv_store_os.h`（`kv wipe` の有無）。
 
-Zephyr 版の I2C0 のドライバーは、今は自分の `drivers/` のもので、共有のコアには載せ替えていない（NINA は共有のコアを使う）。
+Zephyr 版の I2C0 のドライバーは、Zephyr の `drivers/i2c/i2c_dw.c` にローカルのパッチ
+（`zephyr/manifest/zephyr/patches/zephyr/0003-i2c-dw-rp2040-fifo-and-dma.patch`）を当てて使う。共有のコアには載せ替えない
+（NINA は共有のコアを使う）。共有のコアはそのパッチ後のドライバーの写しで、意図した違い（OS の呼び出し、Zephyr 版で
+使わない機能の省略、i2c0 だけのインスタンスなど）は `nano_i2c.c` の冒頭の一覧に限る。両者をそろえて保つ手順は次のとおり。
+
+- どちらかを直したら、もう一方にも同じ変更を入れる（入れない場合は理由を `nano_i2c.c` の冒頭の一覧に書く）。
+- ホストテストの `i2c_dw_sync`（`common/tests/i2c_dw_sync.py`。Zephyr のツリーがあるときに `common/tests/run.sh` が実行）が、
+  ツリーの HEAD のファイルにパッチを当てたものとコアを比べる。両方のヘッダーの定義、125 MHz での SCL のカウント、DMA の
+  下限・しきい値・割り込みのマスク・IC_CON のビット・待ち・タイムアウト、スパイク長が食い違うと失敗し、対になる関数
+  （名前の違いをそろえて文ごとに比べる）の差分が保存した `common/tests/i2c_dw_sync.expected` と違っても失敗する。
+  片方だけを変えれば失敗するので、意図した変更なら差分を確かめてから `--update` で書き直す。コメントと改行だけの違いは
+  見ない。比べていない関数（Zephyr の初期化、PM、target モード、OS の部分）のずれは検出しない。
+- `i2c_dma` コマンドは Zephyr 版と FreeRTOS 版が `common/drivers/i2c_dw/i2c_dma_shell.c` を使い、パッチ後のドライバーと
+  コアが同じ 3 つの関数（`nano_i2c_dma.h`）を定義する。
 
 RP2040 の低い層の 3 つは `common/` に置かず、各 OS への変更として持つ（FreeRTOS 版は Pico SDK の既定のまま）。
 

@@ -97,11 +97,18 @@ function(use_local_driver_sources target pattern replacement_dir)
   set_property(TARGET ${target} PROPERTY SOURCES "${updated_sources}")
 endfunction()
 
-use_local_driver_sources(drivers__i2c "(^|/)i2c_dw\\.c$" drivers/i2c_dw)
+# The DesignWare I2C driver is Zephyr's with a local patch (manifest/zephyr/patches/zephyr/
+# 0003-i2c-dw-rp2040-fifo-and-dma.patch: the RP2040's FIFO depth and CONFIG_I2C_DW_RP2040_DMA).
+# The DMA reads take their command words from common/drivers/i2c_dw/i2c_dw_rp2040_commands.c; the
+# "i2c_dma" command is the shared one (common/drivers/i2c_dw/i2c_dma_shell.c, on the functions of
+# nano_i2c_dma.h that the patched driver defines).
 if(CONFIG_I2C_DW_RP2040_DMA)
   target_sources(drivers__i2c PRIVATE ${COMMON_DIR}/drivers/i2c_dw/i2c_dw_rp2040_commands.c)
+  if(CONFIG_SHELL)
+    target_sources(drivers__i2c PRIVATE ${COMMON_DIR}/drivers/i2c_dw/i2c_dma_shell.c)
+  endif()
+  target_include_directories(drivers__i2c PRIVATE ${COMMON_DIR}/drivers/i2c_dw)
 endif()
-target_include_directories(drivers__i2c PRIVATE "${ZEPHYR_BASE}/drivers/i2c" ${COMMON_DIR}/drivers/i2c_dw)
 
 # lsm6dso.c is in common/drivers/lsm6dso; lsm6dso_shub.c and lsm6dso_trigger.c, which Zephyr
 # builds only with CONFIG_LSM6DSO_SENSORHUB and CONFIG_LSM6DSO_TRIGGER (off here), stay in

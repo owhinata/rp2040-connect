@@ -9,7 +9,6 @@
 | ディレクトリ | 内容 | 元 |
 |---|---|---|
 | `lsm6dso/` | LSM6DSO センサードライバーに FIFO ストリームを追加 | Zephyr v4.5.0 のコピー |
-| `i2c_dw/` | DesignWare I²C ドライバーに RP2040 の DMA 読み出しを追加 | Zephyr v4.5.0 のコピー |
 | `sensor_shell/` | sensor シェルの修正と独自属性の追加 | Zephyr v4.5.0 のコピー |
 | `nina/` | NINA-W102（SPI）の Wi-Fi・ソケットドライバーの Zephyr 側（コアは `common/drivers/nina/`） | このリポジトリで作成 |
 
@@ -17,12 +16,13 @@
 著作権と Apache-2.0 の表示を維持しています。アプリの `CMakeLists.txt` が、Zephyr の
 ドライバーライブラリー内の対象ソースをコピーに差し替えます。Kconfig、devicetree binding、
 ST の HAL は Zephyr のものを使います。Zephyr 側の構成が変わって差し替え対象が見つからない
-場合は、ビルドをエラーにします。
+場合は、ビルドをエラーにします。DesignWare I²C ドライバーはコピーを置かず、Zephyr のものにローカルのパッチを当てて
+使います（下の「I²C」と「Zephyr へのローカルのパッチ」）。
 
 このうち NuttX 版・FreeRTOS 版と同じファイルを使う部分（LSM6DSO のドライバー本体 `lsm6dso.[ch]` と `lsm6dso_fifo.[ch]`、`lsm6dso_fifo_packet.h`、`lsm6dso_cal.[ch]`、
 `lsm6dso_zero.[ch]`、`lsm6dso_fifo_decoder.[ch]`、`lsm6dso_fifo_hw.[ch]`、`lsm6dso_fifo_irq.[ch]`、`lsm6dso_stream.c`、
 `lsm6dso_compat.c`、`lsm6dso_fifo_stats.h`、`lsm6dso_attributes.h`、sensor シェルの `sensor_shell.c`、NINA のドライバーのコアと、
-I²C の `i2c_dw_rp2040_commands.[ch]`）は、リポジトリの `common/drivers/lsm6dso/`・`common/drivers/sensor_shell/`・
+I²C の `i2c_dw_rp2040_commands.[ch]` と `i2c_dma` コマンドの `i2c_dma_shell.c`）は、リポジトリの `common/drivers/lsm6dso/`・`common/drivers/sensor_shell/`・
 `common/drivers/nina/`・`common/drivers/i2c_dw/` に置いています。`CMakeLists.txt` がそこをドライバーのライブラリー
 （NINA はアプリ）に加え、sensor シェルの `lsm6dso_attributes.h` もそこから読みます。このディレクトリーに残る
 `sensor_shell/sensor_shell_os.h` は、共有の `sensor_shell.c` が最初に読む Zephyr 版の部分です（何もしない
@@ -140,6 +140,7 @@ out = M · (raw − bias)
 
 ## I²C（`i2c_dw`）
 
+Zephyr の `drivers/i2c/i2c_dw.c` にローカルのパッチ `zephyr/0003-i2c-dw-rp2040-fifo-and-dma.patch` を当てたものです。
 RP2040 向けに次を変えています。他のコントローラーの処理は Zephyr のままです。
 
 - RX・TX FIFO の深さを 16、RX しきい値を 4 バイトとし、短い読み出しと末尾ではしきい値を
@@ -154,6 +155,10 @@ i2c_dma mode          現在の方式を表示
 i2c_dma mode on|off   切り替え（ストリームと転送が止まっているときだけ）
 i2c_dma stats         DMA 転送数、バイト数、エラー、割り込み方式への切り替え回数（累積）
 ```
+
+`i2c_dma` コマンドは FreeRTOS 版と同じ `common/drivers/i2c_dw/i2c_dma_shell.c` で、パッチ後のドライバーが
+`nano_i2c_dma.h` の 3 つの関数（方式の取得・設定、カウンターの取得）を定義します。NuttX 版・FreeRTOS 版の I²C0 のコア
+（`common/drivers/i2c_dw/nano_i2c.c`）はパッチ後のドライバーの写しで、両者のずれはホストテストの `i2c_dw_sync` が検出します。
 
 FIFO の取得だけを行った過去の測定（6667 Hz、1 MHz、各 1 回）では、watermark 128 のとき
 `cpu_active` が DMA なしで 45.7%、DMA ありで 22.5% でした。
@@ -382,6 +387,7 @@ Zephyr 本体とモジュールの一部の変更は、Zephyr の `west patch` �
 | `hal_rpi_pico/0001-boot2-at25sf128a-clkdiv-2.patch` | hal_rpi_pico | ボードの boot2（`boot2_at25sf128a.S`）のフラッシュのクロックを clk_sys の 1/4（31.25 MHz）から 1/2（62.5 MHz）に。hal_rpi_pico には値を渡す口が無いので既定値を変える |
 | `zephyr/0001-arm-cortex-m-rp2040-divider-save.patch` | zephyr | `CONFIG_ARM_RP2040_DIVIDER_SAVE`: スレッドの切り替え（PendSV、`swap_helper.S`）で SIO の除算器を退避・復元する |
 | `zephyr/0002-soc-rp2040-rom-mem-ops.patch` | zephyr | `CONFIG_RP2040_ROM_MEM_OPS`: `memcpy`・`memset` をブート ROM のルーチンにする |
+| `zephyr/0003-i2c-dw-rp2040-fifo-and-dma.patch` | zephyr | DesignWare I²C ドライバー（`drivers/i2c/i2c_dw.c`）: RP2040 の FIFO の深さと RX のしきい値、`CONFIG_I2C_DW_RP2040_DMA` の I²C0 の DMA 読み出し（「I²C」）。定数と DMA の塊は新しいファイル `i2c_dw_rp2040.h`・`i2c_dw_rp2040_dma.h` に置き、上流のファイルに入るのは 17 か所（`i2c_dw.c` 14、`i2c_dw.h` 2、`Kconfig.dw` 1） |
 
 - **当て方**: `source script/setup.sh` が `west patch apply` で各モジュールの作業ツリーに当てます（commit は作りません。
   `git -C zephyr/zephyr status` には変更として出ます）。当てたものは飛ばすので、何度読み込んでも同じです。当てた集合の写しを
@@ -391,10 +397,13 @@ Zephyr 本体とモジュールの一部の変更は、Zephyr の `west patch` �
   読み込み直します。
 - **戻し方**: `zephyr/` で `west patch reverse` を実行し、`zephyr/.west/nano-patches/` を消します。戻せないときは、
   `setup.sh` の表示のとおり各ツリーを `git -C <ツリー> checkout -- .` で戻してから写しを消し、読み込み直します。
-  戻したツリーでは、このアプリはビルドできません（`prj.conf` がパッチの `CONFIG_RP2040_ROM_MEM_OPS` を使い、
+  戻したツリーでは、このアプリはビルドできません（`prj.conf` がパッチの `CONFIG_RP2040_ROM_MEM_OPS`・`CONFIG_I2C_DW_RP2040_DMA` を使い、
   `CONFIG_NANO_HW_DIVIDER` は `CONFIG_ARM_RP2040_DIVIDER_SAVE` が無いと CMake で止まります）。
 - **Zephyr を上げるとき**: 先に上の手順でパッチを戻し、`manifest/west.yml` の版を変えて `west update` します。新しいツリーで
   各パッチを作り直して `patches/` に置き、`sha256sum` を直し、`source script/setup.sh` で当ててからビルドします。
+  0003 を作り直したら `script/host_tests.sh` を実行し、`i2c_dw_sync` が示す上流の変更を共有のコア（`common/drivers/i2c_dw/`）に
+  入れるか、入れない理由を `nano_i2c.c` の冒頭の一覧に書いてから、`common/tests/i2c_dw_sync.py ... --update` で期待する差分を
+  書き直します（「テスト」）。
 
 ### boot2 の分周 2
 
@@ -438,6 +447,7 @@ picolibc の中からの呼び出しと、GCC が構造体のコピーやルー�
 | `fifo_decoder` | FIFO バッファの decoder |
 | `stream_stop` | ストリームの停止、キャンセル、エラー時の終了 |
 | `i2c_dma_commands` | `i2c_dma` コマンドの引数の解釈 |
+| `i2c_dw_sync` | 共有の I²C0 のコア（`common/drivers/i2c_dw/`）とパッチ後のドライバー（Zephyr のツリーの HEAD のファイルにパッチ 0003 を当てて作る）の一致。両方のヘッダーの定義（状態、割り込み、レジスター、IC_DATA_CMD のビット、FIFO の深さ 16・バッチ 4、DMA の上限 3584）、125 MHz での SCL のカウント、DMA の下限 32・しきい値 8/0・割り込みのマスク・IC_CON の bit 9・停止の待ち 100 ms・タイムアウト 1000 ms、スパイク長、対になる関数（名前の違いをそろえて文ごとに比べ、差分が `common/tests/i2c_dw_sync.expected` と同じこと）。ビルドがあれば `.config` と `zephyr.dts` の値も見る。Zephyr のツリーがあるときだけ |
 | `nina_spi`、`nina_spi_wait_ready` | NINA の SPI フレーミング、応答の解析（ファームウェアのエラーの応答 0xEF を含む）、READY の期限、追加機能の問い合わせ（0x6A）（共有のコア `nina_spi.c`。偽の境界） |
 | `nina_wait`、`nina_wait_no_events` | ソケットの待ち（`nina_wait.c`）：間隔、IRQ の線のエッジ、100 ms の時間切れ、期限、休み（偽の時計と線） |
 | `nina_sock`、`nina_dns`、`nina_dns_offload` | NINA のソケットの命令、名前解決（`nina_dns_offload` はこの版と同じ `NINA_OS_DNS_OFFLOAD` の形） |

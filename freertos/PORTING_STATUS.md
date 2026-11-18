@@ -1366,3 +1366,27 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
   共有のコアとの間に、写しのあと片方だけに入った修正は無い。推奨は P（上流 + ローカルのパッチ、写し約 2,640 行を削除、コアとパッチのずれを
   検出するホストテストを追加）。A（共有のコアへ載せ替え）は見送り。**ユーザーの返事待ち**。
 - 実機: FreeRTOS 版、AP 接続中。
+
+## Z02: Zephyr 版の I2C0 を「上流のドライバー + ローカルのパッチ」に（2026-11-18、commit 済み）
+
+- ユーザーの決定: 案 P で進める。`i2c_dma` コマンドは共通化する。共有のコアへの載せ替え（案 A）は行わない。
+- 実装（subagent）: パッチ `zephyr/manifest/zephyr/patches/zephyr/0003-i2c-dw-rp2040-fifo-and-dma.patch`（620 行。上流の `i2c_dw.c` に 14 か所
+  +130/−6、`i2c_dw.h` +14、`Kconfig.dw` +14、新規 `i2c_dw_rp2040.h`・`i2c_dw_rp2040_dma.h`）。アプリの `drivers/i2c_dw/` の 3 ファイル（約 2,640 行）と
+  CMake の差し替えを削除。`CONFIG_I2C_DW_RP2040_DMA` はパッチの Kconfig へ（`prj.conf` で有効）。
+  - 段階 1（パッチ化だけ）の像は `snapshot-1118b` とバイト単位で一致（メインも `zephyr-stage1.bin` の一致を確認）。
+  - ずれを検出するテスト `common/tests/i2c_dw_sync.py` + `.expected`（値 135 個とアクセサー 71 個、125 MHz の SCL、DMA の定数、関数 19 対の正規化した
+    差分。壊した版 15 通りで失敗を確認、subagent）。Zephyr のツリーが無ければ skip。意図した変更のあとは `--update`。
+  - 段階 3: `i2c_dma` は共有の `common/drivers/i2c_dw/i2c_dma_shell.c`（パッチ側は `nano_i2c_dma_*` の 3 関数）。像 370144 → 370200 B（+56）。
+    NuttX 版の `i2c_dma`（`nuttx/apps/i2c_dma`）は別の実装のまま。
+  - 文書（日英）: Zephyr のドライバー説明、設計書 §11・§12、ルートの README の構成の表、ほか写しのパスの参照。
+    直していない古い参照: `nuttx/apps/i2c_dma/Kconfig:12`・`i2c_dma_main.c:3`、`nuttx/boards/.../Kconfig:137`。
+- メインが確かめたこと: `common/` のコメントの変更後も NuttX の像は `snapshot-1118b` と一致（再ビルド）。FreeRTOS は subagent の報告（前後で一致）。
+  ソースは読んでいない。
+- **実機（Zephyr の最終の像、`zephyr/script/flash.sh` で書き込み、書き込み直後から）**: 送信 約 71 秒 `cpu_active` 48.2%、欠番 0、overruns 0、
+  `i2c_errors` 0、`max_transfer_us` 7812。`i2c_dma mode` → `i2c_dma=on`、`i2c_dma stats` → `dma_transfers=7717 dma_bytes=7115444 dma_errors=0
+  dma_fallbacks=0`、`i2c_dma` だけでヘルプ、`i2c_dma mode x` → `Expected on or off`。`i2c_dma mode off` で送信 約 72 秒: 69.8%、欠番 0、
+  DMA の転送数は増えない。`on` に戻した。`sensor get` は加速度・角速度とも妥当な値。`dmesg` に `<err>`・`<wrn>` なし。
+- **新しい基準**: Zephyr は `freertos/build/baseline/zephyr/snapshot-1118c/image.bin`（370200 B）。NuttX は `snapshot-1118b` のまま。
+- これで計画の P4（Z01・Z02）は完了。残り: `zephyr/script/flash.sh` などで 1 回出た書き込みの失敗の原因（未調査）、最終版での確認
+  （AP を落とす切断復帰・輻輳・長時間。ユーザーの決定で今回は行わない）。
+- 実機: FreeRTOS 版、AP 接続中。

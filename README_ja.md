@@ -354,7 +354,7 @@ OS に依存しない部分のテスト（`common/tests/run.sh`）を先に実�
 | 場所 | 内容 |
 |---|---|
 | `zephyr/app/usb-console/src/` | アプリ本体のうち Zephyr 版だけのもの（KV、RAM ログ、起動処理）。ほかの版と共有するもの（計測、時刻同期、MQTT、Wi-Fi 設定、校正など）は `common/imu/` |
-| `zephyr/app/usb-console/drivers/` | LSM6DSO、I²C、sensor shell のローカルドライバーと、NINA の Zephyr 側（ソケットのオフロード、コアの境界） |
+| `zephyr/app/usb-console/drivers/` | LSM6DSO、sensor shell のローカルドライバーと、NINA の Zephyr 側（ソケットのオフロード、コアの境界） |
 | `zephyr/app/usb-console/tests/` | ホストテスト（Zephyr 版だけのもの） |
 | `zephyr/app/blink/` | LED 点滅のサンプル |
 | `zephyr/script/` | 環境構築、ホストテスト |

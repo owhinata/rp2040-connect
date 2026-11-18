@@ -562,7 +562,8 @@ iperf 2 の方式）を使います。PC 側は `iperf3` ではなく `iperf`（
 ## I2C0（`i2c`）
 
 I2C0 には LSM6DSOX（0x6A）と ATECC608A（0x60）が載っています。ドライバーは、Zephyr 版が使っている
-DesignWare I2C のドライバー（`zephyr/app/usb-console/drivers/i2c_dw/i2c_dw.c`）のコントローラーの部分を
+DesignWare I2C のドライバー（Zephyr の `drivers/i2c/i2c_dw.c` にローカルのパッチ
+`zephyr/manifest/zephyr/patches/zephyr/0003-i2c-dw-rp2040-fifo-and-dma.patch` を当てたもの）のコントローラーの部分を
 写したものです。レジスターを操作するコア（`common/drivers/i2c_dw/nano_i2c.c`、DMA は `nano_dma.c`）は OS に
 依存せず、セマフォ・時計・割り込みの登録・リセットとピン・NuttX の `struct i2c_master_s` はボード側の
 `src/i2c_dw_os_impl.h`・`nano_i2c_instance.h`・`nano_dma_instance.h` が受け持ちます（境界は

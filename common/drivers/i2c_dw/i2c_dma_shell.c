@@ -1,20 +1,20 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /* The "i2c_dma" shell command: i2c_dw_dma_mode(), i2c_dw_dma_stats() and the
- * command's registration from zephyr/app/usb-console/drivers/i2c_dw/
- * i2c_dw.c:770-801, with the same syntax, help and output, on the state of
- * the shared I2C0 core (nano_i2c_dma.h) in place of the Zephyr driver's
- * atomics (atomic_get() and atomic_set() of one word each: plain reads and
- * writes here).  The FreeRTOS build uses it (freertos/drivers/i2c_dw/
- * i2c_dw.cmake), on the shared shell (common/shell/zshell.c).
+ * command's registration, on the state of the I2C0 driver (nano_i2c_dma.h:
+ * the shared core's nano_i2c.c, or the Zephyr build's patched driver,
+ * i2c_dw_rp2040_dma.h of Zephyr's drivers/i2c).  The Zephyr build
+ * (zephyr/app/usb-console/CMakeLists.txt) uses it on Zephyr's shell, the
+ * FreeRTOS build (freertos/drivers/i2c_dw/i2c_dw.cmake) on the shared shell
+ * (common/shell/zshell.c).  The text is that of the command the Zephyr
+ * build had in its driver until 2026-11-18, with the same syntax, help and
+ * output.
  *
  * "mode" takes 0 or 1 argument, "stats" none; more is the shell's "wrong
  * parameter count".  "i2c_dma" alone prints the help.  "mode on|off" only
  * sets the flag, as in the Zephyr build: nothing waits for a transfer in
  * progress, so switch while no stream or transfer runs.
  *
- * The Zephyr build keeps these lines in its driver (moving them would change
- * its image until its driver moves onto the core, Z02).  The NuttX build has
- * the same command as a builtin application on subcmd
+ * The NuttX build has the same command as a builtin application on subcmd
  * (nuttx/apps/i2c_dma/i2c_dma_main.c); moving it onto this file changes its
  * image too (its help and errors would come from zshell.c).
  */

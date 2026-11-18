@@ -642,7 +642,8 @@ Instead of the Zephyr build's `zperf` (iperf 3 protocol), the port uses NuttX's 
 
 I2C0 carries the LSM6DSOX (0x6A) and the ATECC608A (0x60). The driver is a copy of the controller
 part of the DesignWare I2C driver that the Zephyr version uses
-(`zephyr/app/usb-console/drivers/i2c_dw/i2c_dw.c`). Its core, which works on the registers
+(Zephyr's `drivers/i2c/i2c_dw.c` with the local patch
+`zephyr/manifest/zephyr/patches/zephyr/0003-i2c-dw-rp2040-fifo-and-dma.patch`). Its core, which works on the registers
 (`common/drivers/i2c_dw/nano_i2c.c`, and `nano_dma.c` for the DMA), does not depend on the OS; the
 semaphores, the clock, the interrupt connection, the reset and the pins and NuttX's
 `struct i2c_master_s` are in the board's `src/i2c_dw_os_impl.h`, `nano_i2c_instance.h` and

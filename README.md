@@ -366,7 +366,7 @@ summary (missing batches, valid and reversed times) and at the errors in `imu st
 | Path | Content |
 |---|---|
 | `zephyr/app/usb-console/src/` | The parts of the application that are the Zephyr build's own: key-value store, RAM log, start-up. Those shared with the other builds (measurement, time sync, MQTT, Wi-Fi settings, calibration and others) are in `common/imu/` |
-| `zephyr/app/usb-console/drivers/` | Local drivers for the LSM6DSO, I2C and the sensor shell, and the Zephyr side of the NINA (the socket offload, the core's boundaries) |
+| `zephyr/app/usb-console/drivers/` | Local drivers for the LSM6DSO and the sensor shell, and the Zephyr side of the NINA (the socket offload, the core's boundaries) |
 | `zephyr/app/usb-console/tests/` | Host tests (those of the Zephyr build only) |
 | `zephyr/app/blink/` | LED blink sample |
 | `zephyr/script/` | Setup, host tests |

@@ -37,8 +37,8 @@ OS-independent part of the layer is `common/compat/`, the FreeRTOS part `freerto
 Shared files only the FreeRTOS build compiles: `common/compat/zephyr_wifi_shell.c` (`connect`,
 `disconnect`, `scan` and `status` taken from Zephyr's `wifi_shell.c`), `zephyr_zperf_shell.c` and
 `zperf_iperf3.[ch]` (`zperf`), `common/drivers/nina/nina_shell.c` (`nina version`),
-`common/drivers/i2c_dw/i2c_dma_shell.c` (`i2c_dma`), `common/log/fault_record.[ch]` (the format of the
-fatal error record).
+`common/log/fault_record.[ch]` (the format of the fatal error record). `i2c_dma`'s
+`common/drivers/i2c_dw/i2c_dma_shell.c` is built by the Zephyr build too.
 
 ## The FreeRTOS part of the Zephyr compatibility layer
 

@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /* common/drivers/i2c_dw/nano_i2c_dw.h: the OS-independent
  * pieces of the I2C0 driver (nano_i2c.c) against the Zephyr build's
- * driver (zephyr/app/usb-console/drivers/i2c_dw/i2c_dw.c, i2c_dw.h) and
+ * driver (Zephyr's i2c_dw.c and i2c_dw.h with the local patch 0003) and
  * Zephyr's i2c.h, written out below as the reference:
  *
  * - SCL counts of i2c_dw_configure() for CONFIG_I2C_DW_CLOCK_SPEED=125 (and
@@ -24,7 +24,7 @@
 
 /* ---- Reference: Zephyr's i2c_dw.h:82-133 with CONFIG_I2C_DW_CLOCK_SPEED
  * as a variable and IC_CLK_FREQ_OPTIMIZATION off; i2c_dw_configure()
- * (i2c_dw.c:1397-1435) with offsets 0 and spike lengths 1.
+ * (i2c_dw.c:1157-1195) with offsets 0 and spike lengths 1.
  */
 
 static int ref_configure(uint32_t speed, uint32_t mhz, bool hs, uint32_t *h, uint32_t *l)
@@ -144,7 +144,7 @@ static int port_words(uint8_t *xfr_flags, const struct msg *m, int count, uint32
 }
 
 /* Reference: Zephyr.  z_impl_i2c_transfer() (i2c.h:1012-1018) sets STOP on
- * the last message; i2c_dw_transfer() (i2c_dw.c:1262-1272) adds RESTART on
+ * the last message; i2c_dw_transfer() (i2c_dw.c:1022-1032) adds RESTART on
  * a change of direction; i2c_dw_data_send() (:518-529) and
  * i2c_dw_data_ask() (:430-441) write the words.  Written out here, not
  * through nano_i2c_dw.h.

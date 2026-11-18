@@ -1,0 +1,620 @@
+Subject: [PATCH] drivers: i2c: dw: RP2040 FIFO depth and i2c0 DMA reads
+
+Local patch of this workspace (zephyr/manifest/zephyr/patches.yml), not
+meant for upstream.
+
+The RP2040's controllers do not implement IC_COMP_PARAM_1, whose depths
+read as 1; their FIFOs have 16 entries (i2c_dw_rp2040.h). On them,
+i2c_dw_data_ask() masks the level-triggered TX_EMPTY while the RX FIFO has
+no room and sets the RX threshold to a batch of 4 (or the bytes left), and
+i2c_dw_isr() completes a read without STOP when its last bytes arrive and
+drains the bytes left at STOP_DET. i2c_dw_runtime_configure() takes
+bus_sem around i2c_dw_configure() and returns its result.
+
+CONFIG_I2C_DW_RP2040_DMA (off by default) reads through the DMA
+controller on i2c0 (i2c_dw_rp2040_dma.h): the last message of a transfer
+when it is a read of 32 to 3584 bytes with a STOP and a 7-bit address.
+i2c_dw_setup() then sets IC_CON.RX_FIFO_FULL_HLD_CTRL, i2c_dw_isr() only
+reports the end and the errors of the DMA read, and a controller whose
+channels or abort did not stop is refused from then on (quarantine).
+
+The application provides the read commands (i2c_dw_rp2040_commands.h,
+i2c_dw_rp2040_read_commands()) and the "i2c_dma" shell command, for which
+the driver defines nano_i2c_dma_get_stats(), nano_i2c_dma_enabled() and
+nano_i2c_dma_set_enabled() (nano_i2c_dma.h): the same functions as the
+I2C0 driver of the workspace's other builds.
+
+diff --git a/drivers/i2c/Kconfig.dw b/drivers/i2c/Kconfig.dw
+index 4e1c923..987aa20 100644
+--- a/drivers/i2c/Kconfig.dw
++++ b/drivers/i2c/Kconfig.dw
+@@ -30,6 +30,20 @@ config I2C_DW_LPSS_DMA
+ 	  data transfers. All Tx operations are done using dma channel 0 and
+ 	  all Rx operations are done using dma channel 1.
+ 
++config I2C_DW_RP2040_DMA
++	bool "RP2040 I2C0 DMA reads"
++	depends on SOC_RP2040 && DMA_RPI_PICO && !SMP
++	depends on !I2C_DW_LPSS_DMA
++	help
++	  Read through two channels of the RP2040's DMA controller on i2c0:
++	  a read of 32 to 3584 bytes that is the last message of a transfer,
++	  with a STOP and a 7-bit address. Other messages, and reads when no
++	  channel is free, take the interrupt path. The application provides
++	  i2c_dw_rp2040_commands.h and i2c_dw_rp2040_read_commands(), which
++	  build the read commands, and nano_i2c_dma.h, whose functions the
++	  driver defines for the application's "i2c_dma" shell command. A
++	  local patch of this workspace, not meant for upstream.
++
+ config I2C_DW_EXTENDED_SUPPORT
+ 	bool "Extended DW features"
+ 	help
+diff --git a/drivers/i2c/i2c_dw.c b/drivers/i2c/i2c_dw.c
+index 1dff501..8fe5669 100644
+--- a/drivers/i2c/i2c_dw.c
++++ b/drivers/i2c/i2c_dw.c
+@@ -34,6 +34,15 @@
+ #include <zephyr/sys/util.h>
+ #include <zephyr/sys/minmax.h>
+ 
++#ifdef CONFIG_I2C_DW_RP2040_DMA
++#include <zephyr/drivers/dma.h>
++#include <zephyr/dt-bindings/dma/rpi-pico-dma-rp2040.h>
++#include <hardware/dma.h>
++#include <hardware/regs/i2c.h>
++#include "i2c_dw_rp2040_commands.h"
++#include "nano_i2c_dma.h"
++#endif
++
+ #if defined(CONFIG_I2C_DW_LPSS_DMA)
+ #include <zephyr/drivers/dma.h>
+ #include <zephyr/drivers/dma/dma_intel_lpss.h>
+@@ -51,6 +60,8 @@ LOG_MODULE_REGISTER(i2c_dw);
+ 
+ #include "i2c-priv.h"
+ 
++#include "i2c_dw_rp2040.h"
++
+ /*
+  * @param dev: DW I2C device instance
+  * @param wrapper_dev: Callers device instance
+@@ -359,15 +370,20 @@ static inline void i2c_dw_data_ask(const struct device *dev)
+ 	ic_comp_param_1.raw = read_comp_param_1(reg_base);
+ 	rx_buffer_depth = ic_comp_param_1.bits.rx_buffer_depth + 1;
+ 	tx_buffer_depth = ic_comp_param_1.bits.tx_buffer_depth + 1;
++	if (i2c_dw_rp2040_controller(dev)) {
++		rx_buffer_depth = RP2040_I2C_FIFO_DEPTH;
++		tx_buffer_depth = RP2040_I2C_FIFO_DEPTH;
++	}
+ 
+ 	/* How many bytes we can actually ask */
+ 	rx_empty = (rx_buffer_depth - read_rxflr(reg_base)) - dw->rx_pending;
+ 
+ 	if (rx_empty < 0) {
+-		/* RX FIFO expected to be full.
+-		 * So don't request any bytes, yet.
+-		 */
+-		return;
++		if (!i2c_dw_rp2040_controller(dev)) {
++			return;
++		}
++		/* Continue to the RX wait path so TX_EMPTY can be masked. */
++		rx_empty = 0;
+ 	}
+ 
+ 	/* How many empty slots in TX FIFO (as command queue) */
+@@ -377,6 +393,20 @@ static inline void i2c_dw_data_ask(const struct device *dev)
+ 	cnt = MIN(rx_buffer_depth, dw->request_bytes);
+ 	cnt = min3(tx_empty, rx_empty, cnt);
+ 
++	/* TX_EMPTY is level-triggered. When the RX FIFO has no safe space,
++	 * mask it until pending reads make enough progress for RX_FULL.
++	 */
++	if (i2c_dw_rp2040_controller(dev) && cnt == 0 && dw->rx_pending > 0U) {
++		uint32_t threshold = MIN(RP2040_I2C_RX_BATCH,
++					 MIN(dw->xfr_len, dw->rx_pending));
++
++		if (threshold > 0U) {
++			write_rx_tl(threshold - 1U, reg_base);
++			clear_bit_intr_mask_tx_empty(reg_base);
++			return;
++		}
++	}
++
+ 	while (cnt > 0) {
+ 		/* Tell controller to get another byte */
+ 		data = IC_DATA_CMD_CMD;
+@@ -436,6 +466,13 @@ static void i2c_dw_data_read(const struct device *dev)
+ 		}
+ 	}
+ #endif
++	/* Lower the threshold for the last short portion of a read. */
++	if (i2c_dw_rp2040_controller(dev) && dw->xfr_len > 0U) {
++		write_rx_tl(MIN(RP2040_I2C_RX_BATCH, dw->xfr_len) - 1U, reg_base);
++		if (dw->request_bytes > 0U) {
++			set_bit_intr_mask_tx_empty(reg_base);
++		}
++	}
+ 	/* Nothing to receive anymore */
+ 	if (dw->xfr_len == 0U) {
+ 		dw->state &= ~I2C_DW_CMD_RECV;
+@@ -520,6 +557,10 @@ static void i2c_dw_target_read_clear_intr_bits(const struct device *dev,
+ 					       union ic_interrupt_register intr_stat);
+ #endif
+ 
++#ifdef CONFIG_I2C_DW_RP2040_DMA
++#include "i2c_dw_rp2040_dma.h"
++#endif
++
+ static void i2c_dw_isr(const struct device *port)
+ {
+ 	struct i2c_dw_dev_config *const dw = port->data;
+@@ -532,6 +573,28 @@ static void i2c_dw_isr(const struct device *port)
+ 	 * so there is no need to read the register multiple times.
+ 	 */
+ 	intr_stat.raw = read_intr_stat(reg_base);
++#ifdef CONFIG_I2C_DW_RP2040_DMA
++	if (atomic_get(&dw->rp_dma_active)) {
++		atomic_val_t events = 0;
++		if (intr_stat.raw &
++		    (DW_INTR_STAT_TX_ABRT | DW_INTR_STAT_TX_OVER | DW_INTR_STAT_RX_OVER |
++		     DW_INTR_STAT_RX_UNDER | DW_INTR_STAT_SCL_STUCK_LOW)) {
++			dw->state |= I2C_DW_CMD_ERROR;
++			(void)i2c_dw_error_chk(port);
++			events |= RP_DMA_ERROR;
++		}
++		if (intr_stat.raw & DW_INTR_STAT_STOP_DET) {
++#if CONFIG_I2C_ALLOW_NO_STOP_TRANSACTIONS
++			dw->need_setup = true;
++#endif
++			events |= RP_DMA_STOP;
++		}
++		write_intr_mask(0, reg_base);
++		(void)read_clr_intr(reg_base);
++		i2c_dw_rp_dma_notify(dw, events);
++		return;
++	}
++#endif
+ 
+ 	/*
+ 	 * Causes of an interrupt:
+@@ -576,6 +639,13 @@ static void i2c_dw_isr(const struct device *port)
+ 		/* Check if the RX FIFO reached threshold */
+ 		if (intr_stat.bits.rx_full) {
+ 			i2c_dw_data_read(port);
++			/* TX_EMPTY may be masked while waiting for the last RX batch.
++			 * A no-STOP message must still complete when its data arrives.
++			 */
++			if (i2c_dw_rp2040_controller(port) && dw->xfr_len == 0U &&
++			    !(dw->xfr_flags & I2C_MSG_STOP)) {
++				goto done;
++			}
+ 		}
+ 
+ #ifdef CONFIG_I2C_TARGET
+@@ -606,6 +676,12 @@ static void i2c_dw_isr(const struct device *port)
+ 
+ 		/* STOP detected: finish processing this message */
+ 		if (intr_stat.bits.stop_det) {
++			/* Drain any final bytes even if the RX threshold was not met. */
++			if (i2c_dw_rp2040_controller(port) &&
++			    (dw->xfr_flags & I2C_MSG_RW_MASK) == I2C_MSG_READ &&
++			    dw->xfr_len > 0U) {
++				i2c_dw_data_read(port);
++			}
+ 			value = read_clr_stop_det(reg_base);
+ #if CONFIG_I2C_ALLOW_NO_STOP_TRANSACTIONS
+ 			dw->need_setup = true;
+@@ -726,6 +802,11 @@ static int i2c_dw_setup(const struct device *dev, uint16_t target_address)
+ 	}
+ 
+ 	ic_con.bits.restart_en = 1U;
++#ifdef CONFIG_I2C_DW_RP2040_DMA
++	if (dev == DEVICE_DT_GET(DT_NODELABEL(i2c0)) && atomic_get(&rp_dma_enabled)) {
++		ic_con.raw |= I2C_IC_CON_RX_FIFO_FULL_HLD_CTRL_BITS;
++	}
++#endif
+ 
+ 	/* Set addressing mode - (initialization = 7 bit) */
+ 	if (I2C_MSG_ADDR_10_BITS & dw->app_config) {
+@@ -867,6 +948,13 @@ static int i2c_dw_transfer(const struct device *dev, struct i2c_msg *msgs, uint8
+ 		return ret;
+ 	}
+ 
++#ifdef CONFIG_I2C_DW_RP2040_DMA
++	if (dw->rp_dma_quarantined) {
++		ret = -EIO;
++		goto error;
++	}
++#endif
++
+ 	/* check if the state is sda/scl stuck at low state */
+ 	if (dw->state & I2C_DW_STUCK_ERR_MASK) {
+ 		/* try to recovery */
+@@ -953,6 +1041,26 @@ static int i2c_dw_transfer(const struct device *dev, struct i2c_msg *msgs, uint8
+ 			dw->request_bytes = dw->xfr_len;
+ 		}
+ 
++		/* Short reads must not wait for a full RX batch. */
++		if (i2c_dw_rp2040_controller(dev) && test_bit_con_master_mode(reg_base) &&
++		    (dw->xfr_flags & I2C_MSG_RW_MASK) == I2C_MSG_READ && dw->xfr_len > 0U) {
++			write_rx_tl(MIN(RP2040_I2C_RX_BATCH, dw->xfr_len) - 1U, reg_base);
++		}
++
++#ifdef CONFIG_I2C_DW_RP2040_DMA
++		if (msg_left == 1 && (dw->xfr_flags & I2C_MSG_RW_MASK) == I2C_MSG_READ) {
++			ret = i2c_dw_rp_dma_read(dev, cur_msg);
++			if (ret != -EAGAIN) {
++				if (ret) {
++					break;
++				}
++				cur_msg++;
++				msg_left--;
++				continue;
++			}
++		}
++#endif
++
+ 		/* Enable interrupts to trigger ISR */
+ 		if (test_bit_con_master_mode(reg_base)) {
+ 			/* Enable necessary interrupts */
+@@ -1115,11 +1223,18 @@ static int i2c_dw_runtime_configure(const struct device *dev, uint32_t config)
+ 		return ret;
+ 	}
+ 
+-	ret = i2c_dw_configure(dev, config);
++	struct i2c_dw_dev_config *const dw = dev->data;
+ 
++	k_sem_take(&dw->bus_sem, K_FOREVER);
++#ifdef CONFIG_I2C_DW_RP2040_DMA
++	ret = dw->rp_dma_quarantined ? -EIO : i2c_dw_configure(dev, config);
++#else
++	ret = i2c_dw_configure(dev, config);
++#endif
++	k_sem_give(&dw->bus_sem);
+ 	pm_device_runtime_put(dev);
+ 
+-	return 0;
++	return ret;
+ }
+ 
+ #ifdef CONFIG_I2C_TARGET
+@@ -1533,6 +1648,9 @@ static int i2c_dw_initialize(const struct device *dev)
+ 
+ 	k_sem_init(&dw->device_sync_sem, 0, K_SEM_MAX_LIMIT);
+ 	k_sem_init(&dw->bus_sem, 1, 1);
++#ifdef CONFIG_I2C_DW_RP2040_DMA
++	k_sem_init(&dw->rp_dma_sem, 0, K_SEM_MAX_LIMIT);
++#endif
+ 
+ 	LOG_DBG("initialize done");
+ 
+diff --git a/drivers/i2c/i2c_dw.h b/drivers/i2c/i2c_dw.h
+index 6ebfd9d..0336126 100644
+--- a/drivers/i2c/i2c_dw.h
++++ b/drivers/i2c/i2c_dw.h
+@@ -11,6 +11,10 @@
+ #include <zephyr/drivers/i2c.h>
+ #include <zephyr/sys/sys_io.h>
+ #include <stdbool.h>
++#ifdef CONFIG_I2C_DW_RP2040_DMA
++#include <zephyr/sys/atomic.h>
++#define I2C_DW_RP2040_DMA_MAX_READ (512U * 7U)
++#endif
+ 
+ #define DT_DRV_COMPAT snps_designware_i2c
+ 
+@@ -191,6 +195,16 @@ struct i2c_dw_dev_config {
+ 	DEVICE_MMIO_RAM;
+ 	struct k_sem device_sync_sem;
+ 	struct k_sem bus_sem;
++#ifdef CONFIG_I2C_DW_RP2040_DMA
++	struct k_sem rp_dma_sem;
++	atomic_t rp_dma_events;
++	atomic_t rp_dma_active;
++	int rp_dma_tx_channel;
++	int rp_dma_rx_channel;
++	bool rp_dma_quarantined;
++	uint16_t rp_dma_commands[I2C_DW_RP2040_DMA_MAX_READ];
++	uint8_t rp_dma_buffer[I2C_DW_RP2040_DMA_MAX_READ];
++#endif
+ 	uint32_t app_config;
+ 
+ 	volatile uint8_t *xfr_buf;
+diff --git a/drivers/i2c/i2c_dw_rp2040.h b/drivers/i2c/i2c_dw_rp2040.h
+new file mode 100644
+index 0000000..f90f193
+--- /dev/null
++++ b/drivers/i2c/i2c_dw_rp2040.h
+@@ -0,0 +1,40 @@
++/*
++ * Copyright (c) 2026 rp2040-connect contributors
++ *
++ * SPDX-License-Identifier: Apache-2.0
++ */
++
++/*
++ * The RP2040's two I2C controllers in the DesignWare driver: the depth of
++ * their FIFOs, which IC_COMP_PARAM_1 does not give, the RX batch that
++ * i2c_dw_data_ask(), i2c_dw_data_read(), i2c_dw_isr() and i2c_dw_transfer()
++ * use for the RX threshold, and the check that a device is one of them.
++ *
++ * Included once, by i2c_dw.c (a local patch of this workspace, not meant for
++ * upstream: zephyr/manifest/zephyr/patches.yml).
++ */
++
++#ifndef ZEPHYR_DRIVERS_I2C_I2C_DW_RP2040_H_
++#define ZEPHYR_DRIVERS_I2C_I2C_DW_RP2040_H_
++
++/* RP2040 does not implement IC_COMP_PARAM_1; its encoded depths read as zero
++ * even though its RX and TX FIFOs each contain 16 entries. Limit this
++ * workaround to the RP2040 I2C controllers.
++ */
++#define RP2040_I2C_FIFO_DEPTH 16U
++#define RP2040_I2C_RX_BATCH 4U
++
++static bool i2c_dw_rp2040_controller(const struct device *dev)
++{
++#ifdef CONFIG_SOC_RP2040
++	mm_reg_t base = DEVICE_MMIO_GET(dev);
++
++	return base == DT_REG_ADDR(DT_NODELABEL(i2c0)) ||
++	       base == DT_REG_ADDR(DT_NODELABEL(i2c1));
++#else
++	ARG_UNUSED(dev);
++	return false;
++#endif
++}
++
++#endif /* ZEPHYR_DRIVERS_I2C_I2C_DW_RP2040_H_ */
+diff --git a/drivers/i2c/i2c_dw_rp2040_dma.h b/drivers/i2c/i2c_dw_rp2040_dma.h
+new file mode 100644
+index 0000000..80d278d
+--- /dev/null
++++ b/drivers/i2c/i2c_dw_rp2040_dma.h
+@@ -0,0 +1,245 @@
++/*
++ * Copyright (c) 2026 rp2040-connect contributors
++ *
++ * SPDX-License-Identifier: Apache-2.0
++ */
++
++/*
++ * CONFIG_I2C_DW_RP2040_DMA: reads of the RP2040's i2c0 through two channels
++ * of its DMA controller (Zephyr's dma_rpi_pico.c), one writing the read
++ * commands to IC_DATA_CMD, the other taking the bytes from it.
++ *
++ * i2c_dw_rp_dma_read() takes the last message of a transfer when it is a
++ * read of 32 to I2C_DW_RP2040_DMA_MAX_READ bytes with a STOP and a 7-bit
++ * address, and returns -EAGAIN for any other, or when no channel can be
++ * had, which sends the message to the interrupt path. The command words
++ * come from i2c_dw_rp2040_read_commands() (i2c_dw_rp2040_commands.h), which
++ * the application provides.
++ *
++ * nano_i2c_dma_get_stats(), nano_i2c_dma_enabled() and
++ * nano_i2c_dma_set_enabled() (nano_i2c_dma.h) give the counters and switch
++ * the DMA reads, for the application's "i2c_dma" shell command.
++ *
++ * Included once, by i2c_dw.c, after its declarations and before
++ * i2c_dw_isr(): these are i2c_dw.c's own static functions and variables, on
++ * its register accessors and log module, and i2c_dw_isr(), i2c_dw_setup()
++ * and i2c_dw_transfer() use them. A local patch of this workspace, not meant
++ * for upstream (zephyr/manifest/zephyr/patches.yml).
++ */
++
++#ifndef ZEPHYR_DRIVERS_I2C_I2C_DW_RP2040_DMA_H_
++#define ZEPHYR_DRIVERS_I2C_I2C_DW_RP2040_DMA_H_
++
++#define RP_DMA_TX_DONE BIT(0)
++static atomic_t rp_dma_transfers, rp_dma_bytes, rp_dma_errors, rp_dma_fallbacks;
++static atomic_t rp_dma_enabled = ATOMIC_INIT(1);
++#define RP_DMA_RX_DONE BIT(1)
++#define RP_DMA_STOP    BIT(2)
++#define RP_DMA_ERROR   BIT(3)
++#define RP_DMA_DONE    (RP_DMA_TX_DONE | RP_DMA_RX_DONE | RP_DMA_STOP)
++
++static void i2c_dw_rp_dma_notify(struct i2c_dw_dev_config *dw, atomic_val_t events)
++{
++	atomic_val_t all = atomic_or(&dw->rp_dma_events, events) | events;
++	if ((all & RP_DMA_ERROR) || (all & RP_DMA_DONE) == RP_DMA_DONE) {
++		k_sem_give(&dw->rp_dma_sem);
++	}
++}
++
++static void i2c_dw_rp_dma_callback(const struct device *dma, void *user_data, uint32_t channel,
++				   int status)
++{
++	struct i2c_dw_dev_config *dw = user_data;
++	ARG_UNUSED(dma);
++	if (!atomic_get(&dw->rp_dma_active)) {
++		return;
++	}
++	i2c_dw_rp_dma_notify(dw, status < 0 ? RP_DMA_ERROR
++					    : (channel == dw->rp_dma_tx_channel ? RP_DMA_TX_DONE
++										: RP_DMA_RX_DONE));
++}
++
++/* A stop only requests an abort in Zephyr's RP2040 DMA driver.  Wait for BUSY,
++ * then acknowledge late completions (RP2040-E13) before releasing channels.
++ */
++static bool i2c_dw_rp_dma_stop(const struct device *dma, int tx, int rx)
++{
++	int64_t deadline = k_uptime_get() + 100;
++	(void)dma_stop(dma, tx);
++	(void)dma_stop(dma, rx);
++	while (dma_channel_is_busy(tx) || dma_channel_is_busy(rx) || dma_hw->abort) {
++		if (k_uptime_get() >= deadline) {
++			return false;
++		}
++		k_sleep(K_MSEC(1));
++	}
++	dma_irqn_acknowledge_channel(0, tx);
++	dma_irqn_acknowledge_channel(1, tx);
++	dma_irqn_acknowledge_channel(0, rx);
++	dma_irqn_acknowledge_channel(1, rx);
++	return true;
++}
++
++static int i2c_dw_rp_dma_read(const struct device *dev, struct i2c_msg *msg)
++{
++	const struct device *dma = DEVICE_DT_GET(DT_NODELABEL(dma));
++	const struct i2c_dw_rom_config *rom = dev->config;
++	struct i2c_dw_dev_config *dw = dev->data;
++	mm_reg_t base = DEVICE_MMIO_GET(dev);
++	struct dma_block_config tx_block = {0}, rx_block = {0};
++	struct dma_config tx_cfg = {0}, rx_cfg = {0};
++	int tx, rx, ret;
++	bool started = false;
++
++	if (!atomic_get(&rp_dma_enabled) || dev != DEVICE_DT_GET(DT_NODELABEL(i2c0)) ||
++	    !device_is_ready(dma) || msg->len < 32 || msg->len > I2C_DW_RP2040_DMA_MAX_READ ||
++	    !(msg->flags & I2C_MSG_STOP) || (msg->flags & I2C_MSG_ADDR_10_BITS) ||
++	    (dw->app_config & I2C_ADDR_10_BITS)) {
++		return -EAGAIN;
++	}
++	tx = dma_request_channel(dma, NULL);
++	if (tx < 0) {
++		atomic_inc(&rp_dma_fallbacks);
++		return -EAGAIN;
++	}
++	rx = dma_request_channel(dma, NULL);
++	if (rx < 0) {
++		atomic_inc(&rp_dma_fallbacks);
++		dma_release_channel(dma, tx);
++		return -EAGAIN;
++	}
++	dw->rp_dma_tx_channel = tx;
++	dw->rp_dma_rx_channel = rx;
++	i2c_dw_rp2040_read_commands(dw->rp_dma_commands, ARRAY_SIZE(dw->rp_dma_commands), msg->len,
++				    dw->xfr_flags & I2C_MSG_RESTART);
++	tx_block.source_address = (uintptr_t)dw->rp_dma_commands;
++	tx_block.dest_address = base + DW_IC_REG_DATA_CMD;
++	tx_block.block_size = msg->len * sizeof(uint16_t);
++	tx_block.source_addr_adj = DMA_ADDR_ADJ_INCREMENT;
++	tx_block.dest_addr_adj = DMA_ADDR_ADJ_NO_CHANGE;
++	tx_cfg.dma_slot = RPI_PICO_DMA_SLOT_I2C0_TX;
++	tx_cfg.channel_direction = MEMORY_TO_PERIPHERAL;
++	tx_cfg.source_data_size = 2;
++	tx_cfg.dest_data_size = 2;
++	tx_cfg.block_count = 1;
++	tx_cfg.head_block = &tx_block;
++	tx_cfg.dma_callback = i2c_dw_rp_dma_callback;
++	tx_cfg.user_data = dw;
++	rx_block.source_address = base + DW_IC_REG_DATA_CMD;
++	rx_block.dest_address = (uintptr_t)dw->rp_dma_buffer;
++	rx_block.block_size = msg->len;
++	rx_block.source_addr_adj = DMA_ADDR_ADJ_NO_CHANGE;
++	rx_block.dest_addr_adj = DMA_ADDR_ADJ_INCREMENT;
++	rx_cfg.dma_slot = RPI_PICO_DMA_SLOT_I2C0_RX;
++	rx_cfg.channel_direction = PERIPHERAL_TO_MEMORY;
++	rx_cfg.source_data_size = 1;
++	rx_cfg.dest_data_size = 1;
++	rx_cfg.block_count = 1;
++	rx_cfg.head_block = &rx_block;
++	rx_cfg.dma_callback = i2c_dw_rp_dma_callback;
++	rx_cfg.user_data = dw;
++	ret = dma_config(dma, tx, &tx_cfg);
++	if (!ret) {
++		ret = dma_config(dma, rx, &rx_cfg);
++	}
++	if (ret) {
++		atomic_inc(&rp_dma_fallbacks);
++		ret = -EAGAIN;
++		goto release;
++	}
++	atomic_set(&dw->rp_dma_events, 0);
++	k_sem_reset(&dw->rp_dma_sem);
++	atomic_set(&dw->rp_dma_active, 1);
++	sys_write32(8, base + 0x8c); /* TX FIFO threshold */
++	sys_write32(0, base + 0x90); /* RX FIFO threshold */
++	write_intr_mask(DW_INTR_STAT_STOP_DET | DW_INTR_STAT_TX_ABRT | DW_INTR_STAT_TX_OVER |
++				DW_INTR_STAT_RX_OVER | DW_INTR_STAT_RX_UNDER |
++				DW_INTR_STAT_SCL_STUCK_LOW,
++			base);
++	started = true;
++	ret = dma_start(dma, rx);
++	if (!ret) {
++		ret = dma_start(dma, tx);
++	}
++	if (!ret) {
++		k_timepoint_t deadline = sys_timepoint_calc(rom->transfer_timeout);
++		write_dma_cr(3, base);
++		while ((atomic_get(&dw->rp_dma_events) & RP_DMA_DONE) != RP_DMA_DONE) {
++			if (atomic_get(&dw->rp_dma_events) & RP_DMA_ERROR) {
++				ret = -EIO;
++				break;
++			}
++			if (k_sem_take(&dw->rp_dma_sem, sys_timepoint_timeout(deadline))) {
++				ret = -ETIMEDOUT;
++				break;
++			}
++		}
++		if (atomic_get(&dw->rp_dma_events) & RP_DMA_ERROR) {
++			ret = -EIO;
++		}
++	}
++	write_dma_cr(0, base);
++	write_intr_mask(0, base);
++	atomic_set(&dw->rp_dma_active, 0);
++	if (ret) {
++		set_bit_enable_abort(base);
++	}
++	if (ret && !i2c_dw_rp_dma_stop(dma, tx, rx)) {
++		dw->rp_dma_quarantined = true;
++		atomic_inc(&rp_dma_errors);
++		LOG_ERR("DMA channels did not stop; I2C controller quarantined");
++		return -EIO;
++	}
++	(void)read_clr_intr(base);
++	if (ret) {
++		int64_t abort_deadline = k_uptime_get() + 100;
++		while (test_bit_enable_abort(base)) {
++			if (k_uptime_get() >= abort_deadline) {
++				dw->rp_dma_quarantined = true;
++				LOG_ERR("I2C abort did not finish; controller quarantined");
++				break;
++			}
++			k_sleep(K_MSEC(1));
++		}
++		(void)read_clr_intr(base);
++	}
++	if (!ret) {
++		atomic_inc(&rp_dma_transfers);
++		atomic_add(&rp_dma_bytes, msg->len);
++		memcpy(msg->buf, dw->rp_dma_buffer, msg->len);
++		dw->xfr_len = 0;
++	}
++release:
++	if (ret && ret != -EAGAIN) {
++		atomic_inc(&rp_dma_errors);
++	}
++	if (!started || !dw->rp_dma_quarantined) {
++		dma_release_channel(dma, tx);
++		dma_release_channel(dma, rx);
++	}
++	return ret;
++}
++
++/* The state of the "i2c_dma" shell command, which the application provides
++ * (nano_i2c_dma.h): the same functions as the I2C0 driver of this
++ * workspace's other builds.
++ */
++void nano_i2c_dma_get_stats(struct nano_i2c_dma_stats *stats)
++{
++	stats->transfers = (uint32_t)atomic_get(&rp_dma_transfers);
++	stats->bytes = (uint32_t)atomic_get(&rp_dma_bytes);
++	stats->errors = (uint32_t)atomic_get(&rp_dma_errors);
++	stats->fallbacks = (uint32_t)atomic_get(&rp_dma_fallbacks);
++}
++
++bool nano_i2c_dma_enabled(void)
++{
++	return atomic_get(&rp_dma_enabled) != 0;
++}
++
++void nano_i2c_dma_set_enabled(bool enabled)
++{
++	atomic_set(&rp_dma_enabled, enabled ? 1 : 0);
++}
++
++#endif /* ZEPHYR_DRIVERS_I2C_I2C_DW_RP2040_DMA_H_ */
