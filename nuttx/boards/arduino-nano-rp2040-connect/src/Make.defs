@@ -31,6 +31,10 @@ CSRCS = nano_boardinitialize.c
 CSRCS += nano_bringup.c
 CSRCS += nano_chipid.c
 
+# The restarts into BOOTSEL and through the watchdog (include/nano_reset.h).
+
+CSRCS += nano_reset.c
+
 ifeq ($(CONFIG_BOARD_USBDEV_SERIALSTR),y)
 CSRCS += nano_usbserial.c
 endif
@@ -136,6 +140,15 @@ ifeq ($(CONFIG_NANO_I2C0_DMA),y)
 CSRCS += nano_dma.c
 CSRCS += i2c_dw_rp2040_commands.c
 i2c_dw_rp2040_commands$(OBJEXT): CFLAGS += -include $(TOPDIR)$(DELIM)external$(DELIM)compat$(DELIM)common_prelude.h
+endif
+
+# The NINA passthrough mode (include/nano_nina_passthrough.h).  Its
+# decisions, nina_passthrough_logic.h, are in common/drivers/nina (the -I
+# below); the header reads <zephyr/shell/shell.h> of the compatibility
+# layer (the -I of nuttx/drivers/compat and common/compat below).
+
+ifeq ($(CONFIG_NANO_NINA_PASSTHROUGH),y)
+CSRCS += nano_nina_passthrough.c
 endif
 
 # The stack sentinel in the scheduler's switch hook.

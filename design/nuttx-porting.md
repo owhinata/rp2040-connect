@@ -109,6 +109,9 @@ picocom /dev/serial/by-id/usb-NuttX_NuttX_USB_Console_*-if00
   `<name>: command not found`).
 - `reboot` restarts the board (the Zephyr build's `kernel reboot`). It also restarts when given
   an argument, `reboot --help` included.
+- `bootsel` restarts into BOOTSEL (the USB mass storage `RPI-RP2`), as in the FreeRTOS build (the
+  boot ROM's `reset_usb_boot(0, 0)`). No confirmation word; arguments are ignored. It saves pressing
+  RESET twice before writing an image.
 - `irqstack` prints the peak use of the interrupt stack since boot in one line (the format of the
   `IRQ 00` line of the Zephyr build's `kernel thread stacks`; see "Thread priorities and
   stacks").
@@ -390,6 +393,23 @@ NINA firmware: 3.0.2
   NINA to answer CS by releasing READY, and 10000 ms for the answer to be ready. Up to 1000 bytes
   are read looking for the start of the answer (0xE0). A recursive mutex (with priority
   inheritance) serializes the requests, and the SPI runs at the priority of the calling thread.
+
+### Passthrough mode (`nina passthrough confirm`)
+
+A mode for reading and writing the NINA's firmware with esptool on the PC (in place of Arduino's
+SerialNINAPassthrough sketch; the FreeRTOS build's mode). `nina passthrough confirm` restarts the
+board with its USB serial port connected to the NINA's UART (without the confirmation word the
+command refuses). The UART is on the pins of the SPI's MISO and CS (GPIO8, GPIO9), so in this mode the
+NINA's SPI, Wi-Fi, Telnet, MQTT, time synchronization, nsh and the key-value store do not run.
+
+- The PC's DTR and RTS: RTS set releases the NINA's reset, DTR set pulls the NINA's GPIO0 low (boot
+  mode). Opening the port (both set) starts the ESP32's ROM download mode; closing it holds the NINA in
+  reset. The UART follows the rate the PC sets (8N1).
+- Way out: close the port at 300 bps (`stty -F /dev/ttyACM0 300`), or press RESET. The NINA is started
+  normally again, then the board restarts into the normal firmware. Nothing is written to the flash.
+- At the start, at each close of the port and at the end, the bytes each way and the bytes lost go to the
+  RAM log (`dmesg` after the way out).
+- How it works: "Passthrough mode" in `nuttx/drivers/README.md`.
 
 ### Wi-Fi (`wapi`, `ifconfig`)
 
@@ -1139,6 +1159,7 @@ NuttX-only threads are in `nuttx/drivers/include/priorities_os.h`). The Zephyr b
 | `RTIO WQ 0` (RTIO work queue; compatibility layer; single reads; `RTIO_WQ_0` in `ps`) | 0 | 118 | 1024 |
 | `sensor_shell_processing_tid` (prints the results of `sensor get` and `sensor stream`) | 0 | 118 | 3072 |
 | `main` (NuttX: init, which drops to the shell's priority after the start-up work) | 0 | 118 | 2048 |
+| init, `nina_pt_rx`, `nina_pt_tx` (in the NINA passthrough mode only; NuttX's init and two kernel threads) | – | 120 | 2048 |
 | Shell (nsh session, commands; `nsh` on USB, `nsh_telnet` on Telnet) | 14 | 104 | 3072 |
 | `telnetd` (accepts Telnet clients; the Zephyr build's `net_socket_service`) | 15 → 14 | 104 | 2048 |
 | `iperf_traffic`, `iperf_report` (`iperf`'s pthreads; the Zephyr build's `zperf_work_q`) | 15 → 14 | 100, 101 | 4096, 4096 |
@@ -1263,6 +1284,16 @@ semaphores and clock and of GPIO bank 0: READY changing during the wait (both di
 timeout at the deadline after a single wait, a change right after the core's read (the wait
 returns at once), a wake-up and a latched edge left from before (dropped), the edge enabled only
 during a wait, and at most one count in the semaphore.
+
+`nuttx/tests/nina_passthrough.c` checks the NuttX side of the NINA passthrough mode: the board's
+`src/nano_nina_passthrough_glue.h` (from cdcacm's control line bits and the bytes of the line
+coding's rate to the module's lines, the way out, the count of closes and UART1's rate; esptool's
+port opened, its custom reset sequence and the close, the way out with `stty 300`, a port opened at a
+stale 300 bps), the words of UART1's data register (a break is no data, an overrun and a framing
+error are counted and kept, a full ring drops and counts), and `nina passthrough` of `apps/nina` (the
+order of the help, the confirmation word, the argument counts, the messages, and the board's request
+made only with `confirm`). The shared decisions (`common/drivers/nina/nina_passthrough_logic.h`) are
+tested by `freertos/tests/passthrough`.
 
 `common/tests/nano_cpuload.c` and `common/tests/log_ring.c` test shared parts that the Zephyr
 build does not use. The first compares the arithmetic of `common/compat/nano_cpuload.h` with the

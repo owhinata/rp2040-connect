@@ -17,6 +17,16 @@
 #include <zephyr/shell/shell.h>
 #include "nina_proto.h"
 
+/* The Zephyr build's "nina passthrough" (zephyr/app/usb-console/drivers/
+ * nina/nina_passthrough.h); the FreeRTOS build adds its own to this set
+ * (freertos/drivers/nina/nina_passthrough.c).
+ */
+#ifdef CONFIG_NANO_NINA_PASSTHROUGH
+#include "nina_passthrough.h"
+#else
+#define NINA_PASSTHROUGH_SHELL_CMD
+#endif
+
 static int cmd_nina_version(const struct shell *sh, size_t argc, char **argv)
 {
 	uint8_t version[16];
@@ -37,7 +47,7 @@ static int cmd_nina_version(const struct shell *sh, size_t argc, char **argv)
 	return 0;
 }
 
-SHELL_STATIC_SUBCMD_SET_CREATE(nina_commands,
+SHELL_STATIC_SUBCMD_SET_CREATE(nina_commands, NINA_PASSTHROUGH_SHELL_CMD
 	SHELL_CMD(version, NULL, "Show NINA firmware version", cmd_nina_version),
 	SHELL_SUBCMD_SET_END);
 SHELL_CMD_REGISTER(nina, &nina_commands, "NINA Wi-Fi module", NULL);

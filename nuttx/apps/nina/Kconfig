@@ -10,7 +10,10 @@ config NANO_APP_NINA
 	---help---
 		"nina version": the Zephyr build's nina command
 		(src/main.c, cmd_nina_version()) with the same output, on
-		nina_request() of nuttx/drivers/nina (NANO_NINA).
+		nina_request() of nuttx/drivers/nina (NANO_NINA).  With the
+		board's NANO_NINA_PASSTHROUGH, also "nina passthrough confirm"
+		(the FreeRTOS build's): a restart into the NINA passthrough
+		mode for esptool.
 
 if NANO_APP_NINA
 

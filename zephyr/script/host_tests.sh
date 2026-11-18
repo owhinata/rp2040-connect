@@ -23,12 +23,23 @@ run() {
 # the READY and IRQ edge interrupts; the socket loops' waits, nina_wait.c), on fakes of the Zephyr
 # calls: framing, reset, READY waits, the socket events' waits.  With NINA_OS_WAIT_READY and
 # NINA_OS_EVENTS as CMakeLists.txt builds it, with NINA_OS_WAIT_READY only, and without (sampling).
+# With CONFIG_NANO_NINA_PASSTHROUGH as well (the build's default), the NINA passthrough mode's gate:
+# no bus, no line touched while the mode is active (drivers/nina/nina_passthrough.h).
 nina_boundary=(-std=gnu17 -Wall -Wextra -Werror -I"$app/tests/nina_fakes" -I../common/drivers/nina
                "$app/tests/nina_boundary.c" "$app/drivers/nina/nano_nina.c"
                "$app/drivers/nina/nina_os.c" ../common/drivers/nina/nina_wait.c)
+run nina_boundary_passthrough -DCONFIG_NANO_NINA_PASSTHROUGH -DNINA_OS_WAIT_READY -DNINA_OS_EVENTS \
+    "${nina_boundary[@]}"
 run nina_boundary_events -DNINA_OS_WAIT_READY -DNINA_OS_EVENTS "${nina_boundary[@]}"
 run nina_boundary_irq -DNINA_OS_WAIT_READY "${nina_boundary[@]}"
 run nina_boundary_poll "${nina_boundary[@]}"
+# The NINA passthrough mode (drivers/nina/nina_passthrough.c, which the test includes) on fakes of
+# the Zephyr calls and of the RP2040 hardware (nina_passthrough_hw.h): the request at the start,
+# the lines and the rate on the USB stack's messages and the tick, both data paths with their
+# interrupts and handovers, the way out, the command.  The decisions themselves are
+# common/drivers/nina/nina_passthrough_logic.h's (freertos/tests/passthrough).
+run passthrough -std=gnu17 -Wall -Wextra -Werror -I"$app/tests/passthrough_fakes" \
+    -I"$app/drivers/nina" -I../common/drivers/nina "$app/tests/passthrough.c"
 # The socket offload (drivers/nina/nina_socket.c) on the shared core (nina_sock.c, nina_dns.c with
 # NINA_OS_DNS_OFFLOAD, as CMakeLists.txt builds them), on fakes of zvfs, the kernel and the
 # module: descriptors, the wait loops and their sleeps, options, accept, sendmsg, datagrams,

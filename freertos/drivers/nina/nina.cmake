@@ -30,7 +30,7 @@
 #   hardware_uart, hardware_irq and hardware_watchdog;
 # - the include directories freertos/drivers/nina (nina_passthrough.h) and
 #   common/drivers/nina (nina_os.h, nano_nina.h, nina_proto.h, nina_sock.h,
-#   nina_dns.h).
+#   nina_dns.h, nina_passthrough_logic.h).
 #
 # nina_sock.c and nina_dns.c take the defaults of CONFIG_NANO_NINA_TCP_MAX_IO
 # (3584) and CONFIG_NANO_NINA_SEND_RETRY_MS (1), the Zephyr build's values.

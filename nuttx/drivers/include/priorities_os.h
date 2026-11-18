@@ -49,6 +49,17 @@
 #define NANO_PRIO_NINA_EVENT         106
 #define NANO_STACK_NINA_EVENT        1536
 
+/* The NINA passthrough mode (the board's src/nano_nina_passthrough.c): the
+ * init task while it runs the mode, "nina_pt_rx" and "nina_pt_tx".  No
+ * Zephyr thread (the FreeRTOS build runs the mode in one loop without the
+ * scheduler).  Above every thread of the normal firmware, none of which
+ * runs in this mode.  The stacks hold a write or read of /dev/ttyACM0
+ * through the serial driver and cdcacm.
+ */
+
+#define NANO_PRIO_NINA_PT            120
+#define NANO_STACK_NINA_PT           2048
+
 /* Not used by the port; for reference (see nuttx/README.md):
  *   rx_q[0]        -1 (cooperative)  -> 119, 1504 (Zephyr's IP stack, idle)
  *   tcp_work      -14 (cooperative)  -> 132, 1024 (Zephyr's IP stack, idle)

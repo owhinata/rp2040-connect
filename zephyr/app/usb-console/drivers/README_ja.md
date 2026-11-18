@@ -186,11 +186,13 @@ NINA-W102 のドライバーの中身は、NuttX 版・FreeRTOS 版と共有す�
 | `nina_net.c` | `common/drivers/nina/` | ネットワークインターフェース、Wi-Fi の接続・切断・スキャン・状態、DHCP の結果（アドレス・ゲートウェイ）の反映、接続監視 |
 | `nina_sock.[ch]` | `common/drivers/nina/` | ソケットの表と命令（待ちのループの 1 回分ずつ） |
 | `nina_dns.[ch]` | `common/drivers/nina/` | 名前解決（モジュールのリゾルバー） |
-| `nina_shell.c` | `common/drivers/nina/` | `nina version` コマンド |
+| `nina_shell.c` | `common/drivers/nina/` | `nina version` コマンド（この版では `nina passthrough` も。下の「esptool の中継」） |
+| `nina_passthrough_logic.h` | `common/drivers/nina/` | esptool の中継の判断（再起動の印、DTR・RTS とモジュールの線の対応、レート、出口、受信のリング）。FreeRTOS 版と共有 |
 | `nina_wait.[ch]` | `common/drivers/nina/` | ソケットの待ちのループの、パスの間の待ち（間隔、または IRQ の線のエッジ） |
 | `nano_nina.c` | `nina/` | コアの境界 `nano_nina.h` の Zephyr 版：devicetree の `spi1` と 4 本の線（CS、READY、RESET、IRQ）、Zephyr の GPIO・SPI の呼び出し |
 | `nina_os.c` | `nina/` | コアの境界 `nina_os.h` の Zephyr 版：mutex、sleep、時計、READY の割り込み待ち、IRQ の線（GPIO2）のエッジの待ち |
 | `nina_socket.c` | `nina/` | ソケットのオフロード（ファイル記述子、errno、`O_NONBLOCK`、`SO_RCVTIMEO`、待ちのループと sleep、poll）と、名前解決を `getaddrinfo` のオフロードとして登録 |
+| `nina_passthrough.[ch]`、`nina_passthrough_hw.h` | `nina/` | esptool の中継（`nina passthrough confirm`）。`_hw.h` は RP2040 のレジスター（watchdog、UART1、GPIO）の部分 |
 | `posix/` | `nina/` | コアが使う POSIX のソケットの名前（`struct sockaddr_in`、`AF_INET`、`POLLIN` など）を Zephyr の名前に対応させるヘッダー（コアと `nina_socket.c` だけが読む） |
 
 Zephyr の標準機能のうち、Telnet シェル、MQTT クライアント、zperf がこのソケットの上で動きます。
@@ -276,6 +278,44 @@ close、bind、listen、accept、connect、send、recv、sendto、recvfrom、ioc
 - NINA 以外の記述子を含む `poll` は、最長 20 ms ごとに見直します（その記述子の変化は従来どおり）。
 - `CMakeLists.txt` の `NINA_OS_EVENTS` の行を消すと、ビット 2 があっても従来の間隔で待ちます。
 
+### esptool の中継（`nina passthrough confirm`）
+
+`nina passthrough confirm` で、USB のシリアル（CDC ACM）を NINA の UART（ESP32 の UART0、ROM のブートローダーが使う）へ
+中継するモードで再起動します。PC の esptool で NINA のフラッシュを読み書きするためのもので、Arduino の
+SerialNINAPassthrough スケッチの代わりです（RP2040 のファームウェアは書き換えません）。FreeRTOS 版と同じ仕様で、
+判断の部分は共有の `common/drivers/nina/nina_passthrough_logic.h` です。`CONFIG_NANO_NINA_PASSTHROUGH`（既定で有効）。
+
+- 配線：GPIO8 = UART1 TX → ESP32 の UART0 RX、GPIO9 = UART1 RX。SPI の MISO・CS と同じピンなので、中継の間は
+  NINA の SPI を使えません。GPIO2 = ESP32 の GPIO0（起動モード）、GPIO3 = RESETN。RTS が有効でリセットを解除し、
+  DTR が有効で GPIO0 を LOW にします（スケッチの mbed の分岐と同じ）。ポートを開くと ROM のダウンロードモードで起動し、
+  閉じるとリセットに保持します。DTR が無効のままリセットを解除した（NINA のファームウェアで起動した）ときは、750 ms 後に
+  GPIO0 を離し、GPIO8 を駆動しません。UART1 のレートはホストの line coding に従います（8N1）。
+- 入り方：コマンドが watchdog の scratch 0〜3 に印を書いて watchdog で再起動します。起動時（`POST_KERNEL` の 0）に印を
+  読んですぐ消すので、RESET やそのあとの再起動は通常の起動です。フラッシュ（KV）には何も書きません。
+- 中継の起動でも Zephyr は通常どおり起動しますが、NINA のコアには SPI のバスが無いように見せます
+  （`nano_nina_bus_ready()` が偽）。Wi-Fi のインターフェースの初期化、Telnet の待ち受けのソケット、`nina version` などは
+  `-ENODEV` で失敗し、SPI1 と NINA の線に触りません（RAM のログに Telnet のエラーが残ります）。`main()` は設定・校正・
+  時刻同期・Wi-Fi の接続を行わずに中継を動かします。CDC ACM の割り込みのコールバックを中継のものに差し替えるので
+  （`POST_KERNEL` の 99）、シェルは入力を受けず、出力もポートに出ません。ログは RAM だけに出ます。
+- 取りこぼし：モジュール → PC は、UART1 の受信割り込み（優先度 0、FIFO に 4 バイトで発生）が 16 KiB のリングへ移します。
+  PC が読まない間を 921600 bps で 178 ms 分保持し、あふれた分は数えます。PC → モジュールは 1 パケット（64 バイト）ずつで、
+  UART の FIFO に入りきらない分は送信割り込みが書き、その間は CDC ACM の受信を止める（ホストが待つ）ので失われません。
+  DTR・RTS とレートは USB のスタックの通知（システムのワークキュー）と 1 ms ごとの確認で反映します。データは CDC ACM の
+  コールバック（専用のワークキュー、下の注意）で動かします。
+- 出方：ポートを 300 bps にして閉じる（例 `stty -F /dev/ttyACM0 300`）か、RESET。NINA を自分のファームウェアで起動し直して
+  （GPIO0 HIGH、RESETN を 10 ms LOW、750 ms 後に GPIO0 を離す）から、watchdog で再起動します。
+- RAM のログ（出たあとの `dmesg`）に、開始・ポートを閉じるたび・終了の行が残ります（送受信のバイト数、USB が無い間に
+  捨てた数、リングからあふれた数と最大の滞留、UART のオーバーラン・ブレーク・フレーミングエラー、レート）。
+- esptool 5.3.0 は `--before no-reset` では繋がりません（FreeRTOS 版で確認）。手順は README を見てください。
+- この版の中継は実機で確認していません。
+
+### CDC ACM の専用のワークキュー
+
+`prj.conf` の `CONFIG_USBD_CDC_ACM_WORKQUEUE=y` で、CDC ACM（USB のシェルの送信完了）をシステムのワークキューから専用の
+ワークキューへ移しています。Zephyr 4.5.0 の zperf の iperf3 サーバーは、`zperf tcp download stop` で `srv_lock` を持ったまま
+シェルに印字し、同じシステムのワークキューの `idle_work_handler()` が `srv_lock` を待つので、シェル（`shell_uart`）と
+システムのワークキューが互いを待って止まっていました（実機で確認。どちらも優先度 -1 で pending）。
+
 ### 実機で確認した範囲
 
 各 1 回ずつの確認です。
@@ -334,7 +374,7 @@ NuttX 版と共有の `common/drivers/rp2040_rom/`）。無効にすると picol
 ## テスト
 
 `zephyr/script/host_tests.sh` が、偽の Zephyr ヘッダーを使ってドライバーの次の部分を PC 上で
-テストします。`nina_boundary_*` と `nina_socket*` 以外は NuttX 版・FreeRTOS 版と共有するテスト（`common/tests/`、`common/tests/run.sh` が実行）です。
+テストします。`nina_boundary_*`、`passthrough`、`nina_socket*` 以外は NuttX 版・FreeRTOS 版と共有するテスト（`common/tests/`、`common/tests/run.sh` が実行）です。
 
 | テスト | 対象 |
 |---|---|
@@ -347,4 +387,6 @@ NuttX 版と共有の `common/drivers/rp2040_rom/`）。無効にすると picol
 | `nina_wait`、`nina_wait_no_events` | ソケットの待ち（`nina_wait.c`）：間隔、IRQ の線のエッジ、100 ms の時間切れ、期限、休み（偽の時計と線） |
 | `nina_sock`、`nina_dns`、`nina_dns_offload` | NINA のソケットの命令、名前解決（`nina_dns_offload` はこの版と同じ `NINA_OS_DNS_OFFLOAD` の形） |
 | `nina_boundary_events`、`nina_boundary_irq`、`nina_boundary_poll` | 共有の `nina_spi.c` をこの版の `nina/nano_nina.c`・`nina_os.c` に載せたもの：フレーミング、線と設定の対応、リセットの手順、READY の割り込み待ち（コールバックの登録、セマフォのリセット、エッジの向き、転送前の無効化、10 ms の上限）とポーリング。`nina_boundary_events` は IRQ の線のエッジの待ち（GPIO2 のコールバックと立ち上がりのエッジ、エッジの数、エッジで終わる待ち、時間切れ、待つ直前のエッジ） |
+| `nina_boundary_passthrough` | 上と同じものを `CONFIG_NANO_NINA_PASSTHROUGH` で。中継の間はバスが無く、線にも SPI にも触れずに `-ENODEV`、中継でなくなれば通常どおり |
+| `passthrough` | 中継 `nina/nina_passthrough.c` を偽の Zephyr と偽のハードウェア（`nina_passthrough_hw.h`）に載せたもの：起動時の印の扱い、USB の通知と tick での線とレート、両方向のデータと割り込みの受け渡し、ブレーク・オーバーラン、USB が無い間の破棄、出口の手順、コマンド。判断そのものは FreeRTOS 版のテスト `freertos/tests/passthrough` |
 | `nina_socket`、`nina_socket_events` | ソケットのオフロード `nina/nina_socket.c` を共有のコアに載せたもの：ファイル記述子、待ちのループと sleep、オプション、accept、sendmsg、データグラム、poll、リゾルバーの登録。`nina_socket_events` は IRQ の線のエッジの待ち（パスの間のエッジ、時間切れ、期限、送信の待ち方、NINA 以外の記述子を含む `poll`） |

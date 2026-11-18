@@ -77,6 +77,43 @@
 #include "rp2040_common_bringup.h"
 #endif /* CONFIG_ARCH_BOARD_COMMON */
 
+#ifdef CONFIG_NANO_NINA_PASSTHROUGH
+#  include <arch/board/nano_nina_passthrough.h>
+#endif
+
+/****************************************************************************
+ * Private Functions
+ ****************************************************************************/
+
+/****************************************************************************
+ * Name: nano_usb_initialize
+ ****************************************************************************/
+
+static int nano_usb_initialize(void)
+{
+  int ret = OK;
+
+#ifdef CONFIG_CDCACM
+  /* The console: USB CDC ACM, /dev/ttyACM0 (minor 0).  It is not a NuttX
+   * console device (CDCACM_CONSOLE is off); the init task (nuttx/apps/init)
+   * opens it and runs nsh on it.  The serial number string must be ready
+   * before the host asks for the descriptors.
+   */
+
+#  ifdef CONFIG_BOARD_USBDEV_SERIALSTR
+  nano_usbserial_initialize();
+#  endif
+
+  ret = cdcacm_initialize(0, NULL);
+  if (ret < 0)
+    {
+      syslog(LOG_ERR, "ERROR: cdcacm_initialize() failed: %d\n", ret);
+    }
+#endif
+
+  return ret;
+}
+
 /****************************************************************************
  * Public Functions
  ****************************************************************************/
@@ -104,6 +141,20 @@ int nano_bringup(void)
 #endif /* CONFIG_ARCH_BOARD_COMMON */
 
   /* --- Place any board specific bringup code here --- */
+
+#ifdef CONFIG_NANO_NINA_PASSTHROUGH
+  /* The NINA passthrough mode (<arch/board/nano_nina_passthrough.h>): the
+   * USB device only.  SPI1 shares GPIO8 and GPIO9 with the UART1 of the
+   * mode and stays off; nothing here talks to the module, the sensor or
+   * the key-value flash.  The init task runs the mode.
+   */
+
+  if (nano_nina_passthrough_active())
+    {
+      ret = nano_usb_initialize();
+      return ret < 0 ? ret : result;
+    }
+#endif
 
 #ifdef CONFIG_NANO_NINA
   /* SPI1 to the NINA-W102 and its chip select.  The Zephyr build sets up
@@ -220,24 +271,11 @@ int nano_bringup(void)
     }
 #endif
 
-#ifdef CONFIG_CDCACM
-  /* The console: USB CDC ACM, /dev/ttyACM0 (minor 0).  It is not a NuttX
-   * console device (CDCACM_CONSOLE is off); the init task (nuttx/apps/init)
-   * opens it and runs nsh on it.  The serial number string must be ready
-   * before the host asks for the descriptors.
-   */
-
-#  ifdef CONFIG_BOARD_USBDEV_SERIALSTR
-  nano_usbserial_initialize();
-#  endif
-
-  ret = cdcacm_initialize(0, NULL);
+  ret = nano_usb_initialize();
   if (ret < 0)
     {
-      syslog(LOG_ERR, "ERROR: cdcacm_initialize() failed: %d\n", ret);
       result = ret;
     }
-#endif
 
   UNUSED(ret);
   return result;

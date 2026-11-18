@@ -289,6 +289,64 @@ Bit 2 on NuttX:
 - `nuttx/tests/nina_os.c` (`nina_os_events`) tests the interrupt and the waits of `nina/nina_os.c`.
   The passes of `nina_event` at the edges and the layer's waits have no host test.
 
+### Passthrough mode (`nina passthrough confirm`)
+
+A relay between the USB CDC ACM port and the NINA's UART (the ESP32's UART0), for reading and writing the
+module's flash with esptool on the PC. It follows the FreeRTOS build's
+`freertos/drivers/nina/nina_passthrough.c`, and its decisions (the request's mark, the lines, the rate,
+the way out, the ring) are the ones shared by the three builds,
+`common/drivers/nina/nina_passthrough_logic.h`. The NuttX side is the board's
+`src/nano_nina_passthrough.c` (its parts without the hardware in `src/nano_nina_passthrough_glue.h`)
+and `include/nano_nina_passthrough.h`, with `CONFIG_NANO_NINA_PASSTHROUGH` (default y).
+
+| RP2040 | Passthrough mode | Normal firmware |
+|---|---|---|
+| GPIO8 | UART1 TX -> the module's UART0 RX | SPI1 RX (MISO) |
+| GPIO9 | UART1 RX <- the module's UART0 TX | CS |
+| GPIO2 | the module's GPIO0 (boot strap) | IRQ |
+| GPIO3 | the module's RESETN (active low) | RESET |
+
+- Way in: `nina passthrough confirm` (`nuttx/apps/nina`) writes a mark into the watchdog's scratch
+  registers 0..3 and restarts through the watchdog (`nano_watchdog_reboot()` of the board's
+  `src/nano_reset.c`, as the Pico SDK's `watchdog_reboot(0, 0, 0)`). `rp2040_boardinitialize()` reads
+  and clears the mark first, so RESET, any later restart and a fatal error start the normal firmware.
+  Nothing is written to the flash (key-value store).
+- The start of the mode: `nano_bringup()` sets up the USB device only (CDC ACM, the same descriptors and
+  serial number), none of SPI1, the NINA, I2C0, the sensor, `wlan0` or the key-value flash. The init
+  task runs `nano_nina_passthrough_run()` (priority 120) instead of nsh, Telnet, Wi-Fi and the threads.
+- Lines and rate: cdcacm's callback (`CAIOC_REGISTERCB`, called from the USB interrupt) reads the new
+  state with `CAIOC_GETCTRLLINE` and `CAIOC_GETLINECODING` and applies it to the pins at once (RTS set
+  releases the reset, DTR set pulls GPIO0 low), so every change of the host is applied in its order,
+  however short. UART1 follows the line coding's rate (8N1 always). The release of GPIO0 after 750 ms,
+  the log of a close, the LED (GPIO6) blinking at 5 Hz and the way out are done by the init task,
+  which waits on a semaphore.
+- Module to PC: UART1's receive interrupt (at 4 bytes in the FIFO, or after 32 bit times without more)
+  moves the bytes into a 16 KiB ring (taken from the heap in this mode only); the kernel thread
+  `nina_pt_rx` writes it to `/dev/ttyACM0`. At 921600 bps the 28 bytes left in the FIFO (300 us) are
+  the margin for the interrupt's latency, and the ring holds 178 ms for the times the PC does not read.
+  Bytes that find it full are counted.
+- PC to module: `nina_pt_tx` reads `/dev/ttyACM0` and puts the bytes into UART1's transmit FIFO,
+  waiting for the transmit interrupt while it is full. It reads no more until they are in, so the
+  serial driver's receive buffer fills, cdcacm stops taking packets (the host waits) and nothing is lost.
+- `/dev/ttyACM0` is not a console: no translation, no echo (the termios flags are cleared as well).
+- Way out: closing the port at 300 bps (`stty -F /dev/ttyACM0 300`), or RESET. The module is started
+  into its own firmware as `init_nina()` does it (GPIO0 high, RESETN low for 10 ms, 750 ms, GPIO0 an
+  input), then the watchdog restarts the board.
+- The RAM log (`dmesg` after the way out) gets a line at the start, at each close of the port and at the
+  end, with the bytes each way, the bytes lost, and UART1's overruns, breaks and framing errors.
+- No signal is used (the waits are semaphores, sleeps and blocking reads and writes). NuttX's UART1
+  driver (`CONFIG_RP2040_UART1`) would take the pins at boot and is not used (UART1's registers are
+  driven directly).
+- The host test `nuttx/tests/nina_passthrough.c` (`script/host_tests.sh`) checks the conversion of
+  cdcacm's values into the pins, the way out and the rate, the handling of the words of UART1's data
+  register, and the confirmation word, argument counts and messages of `nina passthrough`. The shared
+  decisions are tested by `freertos/tests/passthrough`. The interrupts, threads and cdcacm together
+  have no host test.
+
+The `bootsel` command (`nuttx/apps/bootsel`) restarts into BOOTSEL (`RPI-RP2`) through the board's
+`nano_reset_usb_boot()` (`include/nano_reset.h`), the boot ROM's `reset_usb_boot(0, 0)` (no activity
+LED, both the mass storage and PICOBOOT interfaces on).
+
 ## I2C0
 
 The core is in the repository's `common/drivers/i2c_dw/` (it does not depend on the OS; the board's

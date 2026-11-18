@@ -27,6 +27,14 @@ set(nina_dir ${COMMON_DIR}/drivers/nina)
 target_sources(app PRIVATE ${nina_dir}/nina_spi.c drivers/nina/nano_nina.c drivers/nina/nina_os.c
   ${nina_dir}/nina_net.c ${nina_dir}/nina_sock.c drivers/nina/nina_socket.c ${nina_dir}/nina_dns.c
   ${nina_dir}/nina_shell.c ${nina_dir}/nina_wait.c)
+# The NINA passthrough mode for esptool (drivers/nina/nina_passthrough.c, on the Pico SDK's
+# registers of hal_rpi_pico): main() runs it on request, and its "nina passthrough" is an entry of
+# nina_shell.c's set; both read drivers/nina/nina_passthrough.h.
+if(CONFIG_NANO_NINA_PASSTHROUGH)
+  target_sources(app PRIVATE drivers/nina/nina_passthrough.c)
+endif()
+set_property(SOURCE src/main.c ${nina_dir}/nina_shell.c APPEND PROPERTY INCLUDE_DIRECTORIES
+  ${CMAKE_CURRENT_SOURCE_DIR}/drivers/nina)
 set(nina_socket_sources ${nina_dir}/nina_sock.c drivers/nina/nina_socket.c ${nina_dir}/nina_dns.c)
 set_property(SOURCE ${nina_socket_sources} APPEND PROPERTY INCLUDE_DIRECTORIES
   ${CMAKE_CURRENT_SOURCE_DIR}/drivers/nina/posix)

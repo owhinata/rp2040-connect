@@ -215,6 +215,15 @@ run shell_register -D_DEFAULT_SOURCE -DZ_SHELL_CMD_NAMED_MAIN -DIMU_SHELL_INC="\
     -Idrivers/compat -I"$ccompat" -I"$cshell" -Iapps/subcmd "$cshell/zshell.c" "$cshell/subcmd.c"
 # The i2c_dma command's output (fake driver side; nano_i2c_dma.h of the I2C0 core).
 run i2c_dma_app -I../common/drivers/i2c_dw -Iapps/i2c_dma -I"$cshell" "$cshell/subcmd.c"
+# The NINA passthrough mode's NuttX side: the board's glue (nano_nina_passthrough_glue.h) between
+# cdcacm's lines and line coding, UART1's data words and the shared decisions
+# (common/drivers/nina/nina_passthrough_logic.h, which reads the layer's <zephyr/shell/shell.h>),
+# and "nina passthrough" of apps/nina (CONFIG_NANO_NINA_PASSTHROUGH) on the subcommand dispatch,
+# with fakes of the NINA requests and of the board's request (tests/nina_passthrough_fakes: the
+# board's real <arch/board/nano_nina_passthrough.h>).
+run nina_passthrough -DCONFIG_NANO_NINA_PASSTHROUGH=1 -Itests/nina_passthrough_fakes \
+    -Iboards/arduino-nano-rp2040-connect/src -I../common/drivers/nina -Idrivers/compat -I"$ccompat" \
+    -Iapps/nina -I"$cshell" "$cshell/subcmd.c"
 # The time synchronization (common/imu/time_sync.c, shared with the Zephyr build) on the
 # compatibility layer with a fake NINA socket, clock (the TIMER's registers), interface and
 # realtime clock: the NTP request and the checks of the reply, where t1 and t4 are read, the

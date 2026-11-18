@@ -30,6 +30,19 @@ config WIFI_NINA_LOCAL
 	select NET_SOCKETS
 	select NET_SOCKETS_OFFLOAD
 
+config NANO_NINA_PASSTHROUGH
+	bool "NINA passthrough mode for esptool"
+	default y
+	depends on WIFI_NINA_LOCAL && SOC_RP2040 && SHELL
+	depends on USBD_CDC_ACM_CLASS && CDC_ACM_SERIAL_INITIALIZE_AT_BOOT && UART_LINE_CTRL
+	help
+	  The "nina passthrough confirm" command: a restart into a mode that
+	  relays the USB CDC ACM port to the NINA-W102's UART (UART1 on
+	  GPIO8 and GPIO9, the pins of the NINA's SPI link), with DTR and RTS
+	  on the module's GPIO0 and RESETN, so that esptool on the PC reads
+	  and writes the module's flash (drivers/nina/nina_passthrough.c).
+	  Closing the port at 300 bps or the RESET button ends it.
+
 config NINA_SPI_FREQUENCY
 	int "NINA SPI frequency in Hz"
 	default 8000000

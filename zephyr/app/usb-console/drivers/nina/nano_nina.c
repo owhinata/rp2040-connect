@@ -18,7 +18,10 @@
  *
  * Zephyr initializes spi1 and its cs-gpios at boot, so this build has no
  * nano_nina_initialize(); nina_spi.c configures the other lines on the
- * first request.  The host test (tests/nina_boundary.c) builds this file
+ * first request.  In the NINA passthrough mode (nina_passthrough.h) the
+ * bus is never ready: GPIO8 and GPIO9 are UART1's then, and the mode owns
+ * the module's lines, so every request fails with -ENODEV before any of
+ * them is touched.  The host test (tests/nina_boundary.c) builds this file
  * on fakes of the Zephyr calls.
  */
 
@@ -32,6 +35,7 @@
 #include <zephyr/drivers/spi.h>
 
 #include "nano_nina.h"
+#include "nina_passthrough.h"
 
 #define NINA_NODE DT_NODELABEL(nina_w102)
 
@@ -61,6 +65,9 @@ static const struct gpio_dt_spec *line(enum nano_nina_pin pin)
 
 bool nano_nina_bus_ready(void)
 {
+	if (nina_passthrough_active()) {
+		return false;
+	}
 	return device_is_ready(spi) && gpio_is_ready_dt(&ready) && gpio_is_ready_dt(&reset) &&
 	       gpio_is_ready_dt(&irq) && gpio_is_ready_dt(&cs);
 }

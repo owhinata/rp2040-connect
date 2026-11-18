@@ -41,7 +41,7 @@
 # - The kernel tick's catch-up of ticks lost while interrupts are masked
 #   (freertos/app/usb-console/src/tick_catchup.h) on a model of SysTick
 #   (freertos/tests/tick, no kernel).
-# - The NINA passthrough mode's decisions (freertos/drivers/nina/
+# - The NINA passthrough mode's decisions (common/drivers/nina/
 #   nina_passthrough_logic.h: the request in the watchdog's scratch
 #   registers, DTR and RTS on the module's lines, the rate, the way out, the
 #   buffer from the UART's interrupt, the "nina" subcommands;
@@ -126,9 +126,9 @@ printf 'ok  tick (catch-up of lost ticks, model of SysTick)\n'
 # watchdog's scratch registers against the fatal error record's (common/log/fault_record.c),
 # DTR and RTS on the module's lines, the rate and the way out, the buffer from the UART's
 # interrupt (also on two threads), and the "nina" subcommands
-# (drivers/nina/nina_passthrough_logic.h).  Not linked with the kernel (its headers come in
-# through the layer's <zephyr/shell/shell.h>).
-cc "${flags[@]}" "${strict[@]}" -Idrivers/nina -Idrivers/shell "${inc[@]}" \
+# (../common/drivers/nina/nina_passthrough_logic.h).  Not linked with the kernel (its headers
+# come in through the layer's <zephyr/shell/shell.h>).
+cc "${flags[@]}" "${strict[@]}" -I../common/drivers/nina -Idrivers/shell "${inc[@]}" \
     tests/passthrough/main.c ../common/log/fault_record.c -o "$out/passthrough"
 if (( verbose )); then
     timeout 60 "$out/passthrough"

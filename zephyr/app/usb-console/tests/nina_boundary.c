@@ -23,6 +23,11 @@
  *   end of its time without an edge, and an edge between the caller's
  *   read of the count and its k_sem_take() (the count left ends it at
  *   once); a count left from an earlier edge does not end a later wait.
+ * - With CONFIG_NANO_NINA_PASSTHROUGH (as the build has it), the NINA
+ *   passthrough mode (drivers/nina/nina_passthrough.h): while it is
+ *   active the bus is never ready, so a request is -ENODEV before any line
+ *   or SPI call, the module is not reset, and the link works again once
+ *   the mode is gone.
  */
 #include <assert.h>
 #include <errno.h>
@@ -43,6 +48,14 @@ static size_t request_len, response_len, response_offset;
 static unsigned int phase, calls, bulk_calls;
 static int cs_active, fail_bulk;
 static bool bus_ready = true;
+#ifdef CONFIG_NANO_NINA_PASSTHROUGH
+static bool passthrough;
+
+bool nina_passthrough_active(void)
+{
+	return passthrough;
+}
+#endif
 
 /* The clock (microseconds) and the module's READY: "busy" is how many more
  * samples (or, with the interrupt, waits) READY stays away from the level
@@ -475,6 +488,34 @@ static void test_reset(void)
 	}
 }
 
+#ifdef CONFIG_NANO_NINA_PASSTHROUGH
+/* The passthrough mode owns GPIO8, GPIO9 and the module's lines: no bus. */
+static void test_passthrough(void)
+{
+	const uint8_t reply[] = {0xe0, 0xb7, 1, 5, '3', '.', '0', '.', '2', 0xee};
+	unsigned int sleeps_before;
+	uint8_t version[16];
+	size_t n;
+
+	reset_fake(reply, sizeof(reply));
+	initialized = false;
+	passthrough = true;
+	sleeps_before = sleeps;
+	trace_len = 0;
+	tracing = true;
+	assert(!nano_nina_bus_ready());
+	assert(nina_request(0x37, NULL, 0, false, false, version, sizeof(version), &n) == -ENODEV);
+	assert(nina_request(0x37, NULL, 0, false, false, version, sizeof(version), &n) == -ENODEV);
+	assert(trace_len == 0 && !initialized && calls == 0 && sleeps == sleeps_before);
+
+	passthrough = false;
+	assert(nano_nina_bus_ready());
+	assert(nina_request(0x37, NULL, 0, false, false, version, sizeof(version), &n) == 0);
+	tracing = false;
+	assert(n == 5 && !memcmp(version, "3.0.2", 5) && initialized);
+}
+#endif
+
 /* The module answers late: READY stays busy for a while before each half,
  * then for good (the 2000 ms deadline of the first wait). */
 static void test_ready_waits(void)
@@ -590,6 +631,9 @@ int main(void)
 {
 	test_framing();
 	test_reset();
+#ifdef CONFIG_NANO_NINA_PASSTHROUGH
+	test_passthrough();
+#endif
 	test_ready_waits();
 #ifdef NINA_OS_EVENTS
 	test_events();

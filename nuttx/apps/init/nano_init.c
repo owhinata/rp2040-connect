@@ -83,6 +83,10 @@
 #  include "time_sync.h"
 #endif
 
+#ifdef CONFIG_NANO_NINA_PASSTHROUGH
+#  include <arch/board/nano_nina_passthrough.h>
+#endif
+
 /* nuttx/apps/wifi: <zephyr/net/wifi_credentials.h> and <wifi_profile.h>
  * declare these, but this file does not include the Zephyr compatibility
  * layer's headers (see zephyr_compat.h).
@@ -230,6 +234,19 @@ int nano_init_main(int argc, FAR char *argv[])
   struct sched_param param;
 #if defined(CONFIG_NANO_KV_STORE) || defined(CONFIG_NANO_APP_IMU)
   int ret;
+#endif
+
+#ifdef CONFIG_NANO_NINA_PASSTHROUGH
+  /* "nina passthrough confirm" asked for the NINA passthrough mode (the
+   * board's include/nano_nina_passthrough.h): it runs here instead of all
+   * that follows (no nsh, Telnet, Wi-Fi, key-value store or threads),
+   * until it restarts the board into the normal firmware.
+   */
+
+  if (nano_nina_passthrough_active())
+    {
+      nano_nina_passthrough_run();
+    }
 #endif
 
   nsh_initialize();

@@ -103,6 +103,9 @@ picocom /dev/serial/by-id/usb-NuttX_NuttX_USB_Console_*-if00
   `nsh: <名前>: command not found` と出ます（Zephyr 版は `<名前>: command not found`）。
 - `reboot` でボードを再起動します（Zephyr 版の `kernel reboot`）。引数を付けても（`reboot --help` でも）
   再起動します。
+- `bootsel` で BOOTSEL（USB マスストレージの `RPI-RP2`）に再起動します（FreeRTOS 版と同じ。ブート ROM の
+  `reset_usb_boot(0, 0)`）。確認の語はなく、引数は無視します。書き込みのときに RESET ボタンを 2 回押す
+  代わりに使えます。
 - `irqstack` は割り込み用のスタックの起動からの最大使用量を 1 行で出します（Zephyr 版の
   `kernel thread stacks` の `IRQ 00` の行と同じ書式。「スレッドの優先度とスタック」の節）。
 - Wi-Fi は NuttX 標準の `wapi` と `ifconfig` で扱います（「Wi-Fi（`wapi`、`ifconfig`）」の節）。資格情報の
@@ -346,6 +349,22 @@ NINA firmware: 3.0.2
   2000 ms、CS を下げてから NINA が READY を戻すまで 20 ms、応答の準備は 10000 ms で `-ETIMEDOUT`。
   応答の先頭（0xE0）は最大 1000 バイト探します。要求は再帰可能なミューテックス（優先度継承あり）で
   直列化し、呼び出したスレッドの優先度で SPI を動かします。
+
+### 中継モード（`nina passthrough confirm`）
+
+PC の esptool で NINA のファームウェアを読み書きするためのモードです（Arduino の SerialNINAPassthrough の
+スケッチの代わり。FreeRTOS 版と同じ仕様）。`nina passthrough confirm` でボードが再起動し、USB のシリアルが
+NINA の UART に繋がります（確認の語がなければ断ります）。UART は SPI の MISO・CS と同じピン（GPIO8、GPIO9）なので、
+このモードでは NINA の SPI・Wi-Fi・Telnet・MQTT・時刻同期・nsh・KV は動きません。
+
+- PC の DTR と RTS: RTS が有効 → NINA のリセットを解く、DTR が有効 → NINA の GPIO0 を LOW（起動モード）。
+  ポートを開く（両方有効）と ESP32 の ROM のダウンロードモードで起動し、閉じるとリセットで止まります。
+  UART のレートは PC が設定したレートに追従します（8N1）。
+- 抜けるには、ポートを 300 bps にして閉じる（`stty -F /dev/ttyACM0 300`）か、RESET ボタン。NINA を通常の
+  起動に戻してから、通常のファームウェアで再起動します。フラッシュには何も書きません。
+- 開始・ポートを閉じるたび・終了のときに、送受信のバイト数と取りこぼしの数を RAM ログに残します（抜けたあと
+  `dmesg` で見られます）。
+- 仕組みは `nuttx/drivers/README_ja.md` の「中継モード」です。
 
 ### Wi-Fi（`wapi`、`ifconfig`）
 
@@ -985,6 +1004,7 @@ NuttX 標準のクリティカルセクションの監視（`CONFIG_SCHED_CRITMO
 | `RTIO WQ 0`（RTIO のワークキュー。互換層。単発取得。`ps` では `RTIO_WQ_0`） | 0 | 118 | 1024 |
 | `sensor_shell_processing_tid`（`sensor get`・`sensor stream` の結果の表示） | 0 | 118 | 3072 |
 | `main`（NuttX は init。起動処理の後シェルの優先度に下げる） | 0 | 118 | 2048 |
+| init、`nina_pt_rx`、`nina_pt_tx`（NINA の中継モードのときだけ。NuttX の init と、カーネルスレッド 2 つ） | – | 120 | 2048 |
 | シェル（nsh のセッション、コマンド。USB の `nsh`、Telnet の `nsh_telnet`） | 14 | 104 | 3072 |
 | `telnetd`（Telnet の受け付け。Zephyr 版は `net_socket_service`） | 15 → 14 | 104 | 2048 |
 | `iperf_traffic`・`iperf_report`（`iperf` の pthread。Zephyr 版の `zperf_work_q` に当たる） | 15 → 14 | 100・101 | 4096・4096 |
@@ -1089,6 +1109,14 @@ OS ごとのヘッダー（`sensor_shell_os.h`、`wifi_profile_os.h`、`lsm6dso_
 `common/compat/zephyr_gpio.c` を通る）を、NuttX のセマフォと時計、GPIO バンク 0 の偽物の上で確かめます。待ちの途中の
 READY の変化（両方の向き）、1 回の待ちのあとの期限でのタイムアウト、コアが読んだ直後の変化（待ちがすぐ返る）、
 前から残った起床とラッチされたエッジ（捨てる）、待ちの間だけエッジが有効なこと、セマフォの数が 1 を超えないことです。
+
+`nuttx/tests/nina_passthrough.c` は、NINA の中継モードの NuttX 側を確かめます。ボードの `src/nano_nina_passthrough_glue.h`
+（cdcacm の制御線のビットと line coding のレートのバイトから、モジュールの線・出口・閉じた回数・UART のレートへ。
+esptool のポートを開く・独自のリセットの手順・閉じる、`stty 300` での出口、古い 300 bps で開いたポート）と、UART1 の
+データレジスターの語（ブレークはデータにしない、オーバーランとフレーミングエラーは数えて残す、リングが満杯なら
+数えて捨てる）、`apps/nina` の `nina passthrough`（ヘルプの順、確認の語、引数の数、メッセージ、`confirm` のときだけ
+ボードの要求を呼ぶこと）です。共有の判断（`common/drivers/nina/nina_passthrough_logic.h`）は `freertos/tests/passthrough` が
+確かめます。
 
 `common/tests/nano_cpuload.c` と `common/tests/log_ring.c` は、Zephyr 版が使わない共通の部分のテストです。前者は
 `common/compat/nano_cpuload.h` の計算を Zephyr の `cpu_load_get_cpu()` の手順（リセット、開いている区間、0 の扱い、

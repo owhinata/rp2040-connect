@@ -1074,6 +1074,20 @@ static void test_events(void)
 	zvfs_free_fd(native);
 	assert(z_close(fd) == 0);
 	edge_socket = -1;
+
+	/* A connected socket closed by another thread while a poll without a
+	 * timeout waits for its edge (zperf's "download stop" while the
+	 * socket service thread polls): the next pass sees POLLNVAL and the
+	 * poll returns; no lock is held across the wait. */
+	fd = connected_tcp(&id);
+	fw[id].polls_until_write = -1;
+	p[0] = (struct pollfd){.fd = fd, .events = POLLIN};
+	close_at_lock = fd;
+	reset_counts();
+	assert(z_poll(p, 1, -1) == 1);
+	assert(p[0].revents == POLLNVAL && close_at_lock == -1 && !fw[id].open);
+	assert(!socket_lock.held && event_waits <= 1);
+	zvfs_free_fd(fd);
 }
 #endif
 

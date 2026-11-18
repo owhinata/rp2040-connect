@@ -253,6 +253,55 @@ NuttX 版のビット 2 の待ち:
 - `nina/nina_os.c` の割り込みと待ちは `nuttx/tests/nina_os.c`（`nina_os_events`）が確かめます。`nina_event` の
   エッジでの周と、互換層の待ちは、ホストテストで確かめていません。
 
+### 中継モード（`nina passthrough confirm`）
+
+PC の esptool で NINA のフラッシュを読み書きするための、USB の CDC ACM と NINA の UART（ESP32 の UART0）の中継です。
+FreeRTOS 版の `freertos/drivers/nina/nina_passthrough.c` と同じ仕様で、判断（要求の印、線の対応、レート、出口、
+リング）は 3 版で共有する `common/drivers/nina/nina_passthrough_logic.h` を使います。NuttX 側はボードの
+`src/nano_nina_passthrough.c`（ハードウェアを触らない部分は `src/nano_nina_passthrough_glue.h`）と
+`include/nano_nina_passthrough.h`、`CONFIG_NANO_NINA_PASSTHROUGH`（既定 y）です。
+
+| RP2040 | 中継モード | 通常のファームウェア |
+|---|---|---|
+| GPIO8 | UART1 TX → モジュールの UART0 RX | SPI1 RX（MISO） |
+| GPIO9 | UART1 RX ← モジュールの UART0 TX | CS |
+| GPIO2 | モジュールの GPIO0（起動モード） | IRQ |
+| GPIO3 | モジュールの RESETN（アクティブ low） | RESET |
+
+- 入り方: `nina passthrough confirm`（`nuttx/apps/nina`）が watchdog の scratch 0〜3 に印を書き、watchdog で
+  再起動します（ボードの `src/nano_reset.c` の `nano_watchdog_reboot()`。Pico SDK の `watchdog_reboot(0, 0, 0)` と
+  同じ）。`rp2040_boardinitialize()` が最初に印を読んで消すので、RESET・以後の再起動・異常停止は通常の起動に
+  なります。フラッシュ（KV）には何も書きません。
+- 中継モードの起動: `nano_bringup()` は USB（CDC ACM、同じ記述子とシリアル番号）だけを用意し、SPI1・NINA・I2C0・
+  センサー・`wlan0`・KV のフラッシュを起こしません。init タスクは nsh・Telnet・Wi-Fi・スレッドの代わりに
+  `nano_nina_passthrough_run()` を実行します（優先度 120）。
+- 線とレート: cdcacm のコールバック（`CAIOC_REGISTERCB`。USB の割り込みから呼ばれる）が、
+  `CAIOC_GETCTRLLINE`・`CAIOC_GETLINECODING` で新しい状態を読み、その場でピンに反映します（RTS が有効 → リセット解除、
+  DTR が有効 → GPIO0 を LOW）。ホストの変化はどれほど短くても順に反映されます。UART1 は line coding のレートに
+  追従します（8N1 固定）。GPIO0 を 750 ms 後に離すこと、閉じたときのログ、LED（GPIO6）の 5 Hz の点滅、出口は
+  init タスクがセマフォで待って行います。
+- モジュール → PC: UART1 の受信割り込み（FIFO に 4 バイト、または 32 ビット時間の無受信で発生）が 16 KiB の
+  リング（中継モードのときだけヒープから取る）へ移し、カーネルスレッド `nina_pt_rx` が `/dev/ttyACM0` に書きます。
+  921600 bps で FIFO の残り 28 バイト（300 µs）が割り込みの遅れの許容で、リングは PC が読まない間の 178 ms 分です。
+  溢れたバイトは数えます。
+- PC → モジュール: `nina_pt_tx` が `/dev/ttyACM0` を読んで UART1 の送信 FIFO に入れ、満杯の間は送信割り込みを待ちます。
+  入れ終わるまで次を読まないので、シリアルドライバーの受信バッファーが埋まると cdcacm がパケットを受け取らず
+  （ホストが待つ）、取りこぼしません。
+- `/dev/ttyACM0` はコンソールではないので変換もエコーもありません（termios のフラグも 0 にします）。
+- 出口: ポートを 300 bps にして閉じる（`stty -F /dev/ttyACM0 300`）か RESET。モジュールを `init_nina()` と同じ手順
+  （GPIO0 を HIGH、RESETN を 10 ms LOW、750 ms、GPIO0 を入力）で通常の起動に戻してから watchdog で再起動します。
+- RAM のログ（抜けたあとの `dmesg`）に、開始・ポートを閉じるたび・終了の行が、送受信のバイト数、溢れ、UART の
+  オーバーラン・ブレーク・フレーミングエラーの数とともに残ります。
+- シグナルは使いません（待ちはセマフォ、sleep、ブロッキングの read・write）。NuttX の UART1 ドライバー
+  （`CONFIG_RP2040_UART1`）は起動時にピンを取るので使いません（UART1 のレジスターを直接扱う）。
+- ホストテスト `nuttx/tests/nina_passthrough.c`（`script/host_tests.sh`）が、cdcacm の値からピン・出口・レートへの
+  変換、UART のデータレジスターの語の扱い、`nina passthrough` の確認の語と引数とメッセージを確かめます。共有の判断は
+  `freertos/tests/passthrough` が確かめます。割り込み・スレッド・cdcacm との組み合わせはホストテストでは確かめていません。
+
+`bootsel` コマンド（`nuttx/apps/bootsel`）は、ボードの `nano_reset_usb_boot()`（`include/nano_reset.h`）で
+ブート ROM の `reset_usb_boot(0, 0)`（活動 LED なし、マスストレージと PICOBOOT の両方を有効）を呼び、BOOTSEL
+（`RPI-RP2`）に再起動します。
+
 ## I2C0
 
 コアはリポジトリの `common/drivers/i2c_dw/` にあり（OS に依存しない。ボードの `src/Make.defs` が `VPATH` で参照し、

@@ -112,4 +112,9 @@ void k_sem_reset(struct k_sem *sem);
 int k_sem_take(struct k_sem *sem, k_timeout_t timeout);
 void k_sem_give(struct k_sem *sem);
 
+/* <zephyr/shell/shell.h>, for drivers/nina/nina_passthrough.h (built with
+ * CONFIG_NANO_NINA_PASSTHROUGH; the test defines nina_passthrough_active()).
+ */
+struct shell;
+
 #endif

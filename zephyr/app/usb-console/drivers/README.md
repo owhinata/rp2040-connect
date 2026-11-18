@@ -198,11 +198,13 @@ The driver itself is the core shared with the NuttX and FreeRTOS builds (`common
 | `nina_net.c` | `common/drivers/nina/` | Network interface; Wi-Fi connect, disconnect, scan, status; applying the DHCP result (address, gateway); link monitoring |
 | `nina_sock.[ch]` | `common/drivers/nina/` | The socket table and commands (one pass of each wait loop at a time) |
 | `nina_dns.[ch]` | `common/drivers/nina/` | Name resolution (the module's resolver) |
-| `nina_shell.c` | `common/drivers/nina/` | The `nina version` command |
+| `nina_shell.c` | `common/drivers/nina/` | The `nina version` command (in this build `nina passthrough` too; "The esptool passthrough" below) |
+| `nina_passthrough_logic.h` | `common/drivers/nina/` | The decisions of the esptool passthrough (the restart's request, DTR and RTS on the module's lines, the rate, the way out, the receive buffer), shared with the FreeRTOS build |
 | `nina_wait.[ch]` | `common/drivers/nina/` | The waits between the passes of the socket loops (an interval, or the IRQ line's edge) |
 | `nano_nina.c` | `nina/` | Zephyr's side of the core's `nano_nina.h`: the devicetree's `spi1` and the four lines (CS, READY, RESET, IRQ), Zephyr's GPIO and SPI calls |
 | `nina_os.c` | `nina/` | Zephyr's side of the core's `nina_os.h`: mutexes, sleeps, clock, the READY interrupt, the waits for the IRQ line's (GPIO2) edges |
 | `nina_socket.c` | `nina/` | Socket offload (file descriptors, errno, `O_NONBLOCK`, `SO_RCVTIMEO`, the wait loops and their sleeps, poll), and the resolver registered as the `getaddrinfo` offload |
+| `nina_passthrough.[ch]`, `nina_passthrough_hw.h` | `nina/` | The esptool passthrough (`nina passthrough confirm`); `_hw.h` is its part on the RP2040's registers (watchdog, UART1, GPIO) |
 | `posix/` | `nina/` | Headers that map the POSIX socket names the core uses (`struct sockaddr_in`, `AF_INET`, `POLLIN`, ...) to Zephyr's (read by the core and `nina_socket.c` only) |
 
 Zephyr's Telnet shell, MQTT client and zperf run on these sockets.
@@ -298,6 +300,54 @@ How bit 2 is used (`common/drivers/nina/nina_wait.h`):
 - Removing the `NINA_OS_EVENTS` line of `CMakeLists.txt` keeps the intervals whatever the
   firmware.
 
+### The esptool passthrough (`nina passthrough confirm`)
+
+`nina passthrough confirm` restarts the board into a mode that relays the USB serial port (CDC ACM)
+to the NINA's UART (the ESP32's UART0, which its ROM bootloader uses), so that esptool on the PC reads
+and writes the NINA's flash, instead of Arduino's SerialNINAPassthrough sketch (the RP2040's firmware
+stays). It behaves as the FreeRTOS build's; the decisions are the shared
+`common/drivers/nina/nina_passthrough_logic.h`. `CONFIG_NANO_NINA_PASSTHROUGH` (on by default).
+
+- Wiring: GPIO8 = UART1 TX -> the ESP32's UART0 RX, GPIO9 = UART1 RX. They are the SPI link's MISO and
+  CS, so the NINA's SPI cannot run meanwhile. GPIO2 = the ESP32's GPIO0 (boot mode), GPIO3 = RESETN.
+  RTS set releases the reset, DTR set pulls GPIO0 low (the sketch's mbed branch). Opening the port
+  starts the ROM's download mode, closing it holds the module in reset. When the reset is released
+  with DTR clear (the NINA's own firmware starts), GPIO0 is released after 750 ms and GPIO8 is not
+  driven. UART1's rate follows the host's line coding (8N1).
+- The way in: the command leaves a request in the watchdog's scratch registers 0..3 and restarts with
+  the watchdog. The start reads and clears it at once (`POST_KERNEL` 0), so RESET and any later
+  restart are normal starts. Nothing is written to the flash (the key-value store).
+- Zephyr starts as usual in this mode, but the NINA core sees no SPI bus (`nano_nina_bus_ready()` is
+  false): the Wi-Fi interface's initialization, the Telnet server's socket, `nina version` and the
+  like fail with `-ENODEV` without touching SPI1 or the NINA's lines (the Telnet errors stay in the RAM
+  log). `main()` runs the relay without settings, calibration, time synchronization or a Wi-Fi
+  connection. The CDC ACM interrupt callback is replaced by the relay's (`POST_KERNEL` 99), so the
+  shell gets no input and its output does not reach the port. The log goes to RAM only.
+- No byte lost: module to PC, UART1's receive interrupt (priority 0, at 4 bytes in the FIFO) moves the
+  bytes into a 16 KiB buffer, which holds 178 ms at 921600 bps while the PC does not read; what does
+  not fit is counted. PC to module, one packet (64 bytes) at a time; what the UART's FIFO cannot take
+  is written by its transmit interrupt, and the CDC ACM receive side stops meanwhile (the host waits),
+  so nothing is lost. DTR, RTS and the rate are taken from the USB stack's messages (the system work
+  queue) and checked every millisecond. The data move in the CDC ACM callback (on its own work
+  queue, below).
+- The way out: close the port at 300 bps (for example `stty -F /dev/ttyACM0 300`), or RESET. The NINA
+  is started again into its own firmware (GPIO0 high, RESETN low for 10 ms, GPIO0 released after
+  750 ms), then the watchdog restarts the board.
+- The RAM log (`dmesg` afterwards) gets a line at the start, each time the port closes and at the way
+  out (bytes each way, bytes dropped while USB was not configured, bytes lost to a full buffer and
+  the most waiting, the UART's overruns, breaks and framing errors, the rate).
+- esptool 5.3.0 does not connect with `--before no-reset` (found with the FreeRTOS build); the README
+  has the procedure.
+- This build's relay has not been tried on the board.
+
+### The CDC ACM work queue
+
+`CONFIG_USBD_CDC_ACM_WORKQUEUE=y` in `prj.conf` moves the CDC ACM class (the USB shell's transmit
+completions) from the system work queue to its own. Zephyr 4.5.0's zperf iperf3 server prints to the
+shell while it holds `srv_lock` on `zperf tcp download stop`, and its `idle_work_handler()` on the
+system work queue waits for `srv_lock`, so the shell (`shell_uart`) and the system work queue waited
+for each other (seen on the board: both pending at priority -1).
+
 ### Verified on hardware
 
 Single runs each.
@@ -361,7 +411,7 @@ fake function table).
 ## Tests
 
 `zephyr/script/host_tests.sh` tests these parts of the drivers on the PC with fake Zephyr headers.
-All but `nina_boundary_*` and `nina_socket*` are tests shared with the NuttX and FreeRTOS builds
+All but `nina_boundary_*`, `passthrough` and `nina_socket*` are tests shared with the NuttX and FreeRTOS builds
 (`common/tests/`, run by `common/tests/run.sh`).
 
 | Test | Covers |
@@ -375,4 +425,6 @@ All but `nina_boundary_*` and `nina_socket*` are tests shared with the NuttX and
 | `nina_wait`, `nina_wait_no_events` | The socket waits (`nina_wait.c`): the intervals, the IRQ line's edges, the 100 ms timeout, the deadline, the back-off (fake clock and line) |
 | `nina_sock`, `nina_dns`, `nina_dns_offload` | The NINA socket commands, name resolution (`nina_dns_offload` in this build's form, `NINA_OS_DNS_OFFLOAD`) |
 | `nina_boundary_events`, `nina_boundary_irq`, `nina_boundary_poll` | The shared `nina_spi.c` on this build's `nina/nano_nina.c` and `nina_os.c`: framing, lines and flags, the reset sequence, the READY interrupt (callback, semaphore reset, edge direction, off before transfers, 10 ms bound) and sampling; `nina_boundary_events` the waits for the IRQ line's edges (GPIO2's callback and rising edge, the count, a wait ended by an edge, the timeout, an edge just before the wait) |
+| `nina_boundary_passthrough` | The same with `CONFIG_NANO_NINA_PASSTHROUGH`: no bus while the passthrough runs (`-ENODEV` without touching a line or SPI), as usual once it is gone |
+| `passthrough` | The passthrough `nina/nina_passthrough.c` on fake Zephyr calls and fake hardware (`nina_passthrough_hw.h`): the request at the start, the lines and the rate from the USB messages and the tick, both data paths and the handovers between the interrupts, breaks and overruns, the bytes dropped without USB, the way out, the command. The decisions themselves: the FreeRTOS build's test `freertos/tests/passthrough` |
 | `nina_socket`, `nina_socket_events` | The socket offload `nina/nina_socket.c` on the shared core: descriptors, the wait loops and sleeps, options, accept, sendmsg, datagrams, poll, the resolver's registration; `nina_socket_events` the waits for the IRQ line's edges (an edge during a pass, the timeout, the deadline, the send's waits, a `poll` with another kind of descriptor) |
