@@ -984,3 +984,29 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
   READY 割り込みの像（上、各 1 回）は送信 3.19、受信 1.14。NuttX 版では送信が約 6% 増、受信は変わらない（回数が少ない）。
   FreeRTOS 版の受信 2.31 Mbit/s との差の原因は未調査。
 - 実機: ポーリングの NuttX 版（比較のために書いた。Z01 の確認のあと FreeRTOS 版へ戻す）。
+
+## Z01（Zephyr 版の NINA を共通コアへ）と READY の割り込み待ち: 実機の途中経過（2026-11-18）
+
+- ユーザーの決定: NuttX 版の READY 割り込みは残す。Zephyr 版ができたら書く。
+- 実装（subagent、**未 commit**）: `nina_wifi.c`・`nina_dns.c` を削除し共通の `nina_spi.c`・`nina_dns.c` に、`nina_socket.c` を共通の `nina_sock.c` への
+  オフロードの接着に書き換え。新規 `nano_nina.c`・`nina_os.c`（READY の割り込み待ちは `NINA_OS_WAIT_READY`、CMake の 2 行で戻せる）、
+  POSIX の名前の対応ヘッダー 7 本、ホストテスト `nina_boundary_irq/poll`・`nina_socket`。`common/` は `NINA_OS_DNS_OFFLOAD` の任意の境界と
+  コメント・ガード名。`i2c_dma_shell.c` の写しは Z02 まで残る。像 +1448 バイト、bss +613。動作の違いの一覧は subagent の報告（connect の期限の
+  起点、SO_RCVTIMEO の起点、ロックの粒度、iovec の写し直し、DNS の結果の大きさ）。
+- メインが確かめたこと: `common/` の変更後も NuttX の像は READY 割り込みの像と、FreeRTOS の像は変更前と一致（再ビルド）。ソースは読んでいない。
+- 実機（Z01 の像、書き込み直後から）: 起動、`nina version`、KV、自動接続。送信 約 71 秒 × 3 回 `cpu_active` 51.2%・51.4%・51.5%（載せ替え前 49.0〜49.1%）、
+  欠番 0、`time` のカウンター 0。zperf 送信 3.02・3.30、受信 1.78・1.89 Mbit/s（載せ替え前の同日の値は無い。2026-11-14 は 3.00・1.57）。
+  `ntp status` の `last_us` 4.8〜6.6 ms（1 点 13.9 ms）。`wifi disconnect` → `auto_connect` で復帰。`dmesg` に `<err>`・`<wrn>` なし。
+  スタック: `imu_raw_mqtt_tid` 1284/2048、`shell_uart` 1972/3072、`nina_scan_tid` 912/1536、ほか 60% 未満。
+  送信中の Telnet 3 回 OK（drop 0）。送信中の `wifi scan`: drop 395/905、overruns 1、`publish_max_us` 3.3 秒、failures 8（載せ替え前の
+  Zephyr 版で同じ試験をしていないので、変化かどうかは不明）。
+- **見つかった不具合**: 書き込み直後の起動で、zperf を 2 往復したあと Telnet に繋がらなくなった（connect がタイムアウト、ping は通る、
+  ログなし、`shell_telnet` のスタック未使用）。再起動で復帰。subagent の分析: `zperf tcp download stop` の close と、Zephyr の
+  `net_socket_service` スレッドの poll が重なると `do_poll()` が -EBADF で全体を失敗させ、スレッドが `poll failed` で終わる
+  （`CONFIG_NET_SOCKETS_LOG_LEVEL=0` でログも出ない）。メインが実機で再現: 接続中に `download stop` を繰り返すと 6 回目で
+  `kernel thread list` から `net_socket_service` が消え、Telnet がタイムアウト。旧ドライバーにも同じ窓がある（-EIO）というのは subagent の
+  読みで、実機では未確認。2026-11-12 の「Telnet を短い間隔で繋ぎ直すと繋がらなくなる」も同じ経路の可能性（未確認）。
+  修正（subagent が実装中）: 消えたソケットは `POLLNVAL`、1 つのソケットの poll の失敗は全体を失敗させず `POLLERR`。
+- 未解明: `cpu_active` の +2 ポイント。subagent の仮説は、READY 割り込みで往復が短くなり、送信バッファ満杯のときの全量の送り直しが
+  増える。切り分けは同じソースのポーリングの像（`ready/zephyr-poll.uf2`）との比較（BOOTSEL の操作が要る）。
+- 実機: Z01 の像（修正前）。
