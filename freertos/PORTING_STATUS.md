@@ -1137,3 +1137,25 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
 - 手順の案（ユーザーに提示）: FreeRTOS 版 → `nina passthrough confirm` → `read_flash` で NINA を退避（まず 115200、次に高速で読み直して
   一致を見る）→ 了承を得てから `write_flash`。
 - 実機: NuttX の「退避あり」の試験の像（メモリーを使い切った状態）。
+
+## NuttX の続き、中継コマンドの実機確認、NINA の退避（2026-11-18）
+
+- NuttX 版（subagent、commit 済み）: pico-sdk の 0 除算のパッチと、pico-sdk にパッチを当てる仕組みを削除（0 除算は SDK の結果、3 版で同じ）。
+  ROM の `memcpy`・`memset` はパッチ `nuttx/0010`（`RP2040_ROM_MEM_OPS`、チップのディレクトリーに 3 ファイル、`rp2040_start.c` のループに
+  `START_LOOP_BARRIER()`＝メモリーを clobber する空の asm）。ボードのフラグの行と VPATH の差し込みを削除、`build.sh` の `__start` の検査は残す。
+  `common/drivers/rp2040_rom/` と `common/tests/rp2040_rom_mem.c` を削除（Zephyr 版も自分のパッチへ移行済み）。既定の像 279108 B。
+- 除算器の試験コードの不具合の原因（subagent）: `kill()` が NuttX ではカーネルスレッドのグループ全体へのシグナルになり、走れないスレッドに
+  保留が溜まっていた（配送先が idle というのは推定）。`pthread_kill()` に直し、割り算の途中のタスクへ配送される場合を作った。出力に起動の行、
+  方式、free を追加。正式の変更は確保・解放をしない（subagent の説明）。直した試験の像は**実機未実行**。
+- **`nina passthrough confirm` の実機確認（FreeRTOS 版）**: 通常動作は変わらず（書き込み直後の送信 60 秒 41.6%、欠番 0）。確認の語なしは拒否。
+  モードへ入り、300 bps で閉じると通常の起動に戻り、`nina version`・自動接続・KV とも正常。
+  - esptool 5.3.0 の `--before no-reset` では繋がらなかった（応答なし）。pyserial で直接開く（DTR・RTS とも有効）と、ROM の
+    `waiting for download` の表示と同期の応答が返った。esptool には設定ファイル（`ESPTOOL_CFGFILE`）で
+    `custom_reset_sequence = R0|D1|W0.2|R1|W0.6` を与え、`--before default-reset --after no-reset` で繋がった（RTS を有効にしたままに
+    する必要がある。esptool 5.3 が no-reset で線をどう扱うかは未確認）。README に書くときはこの手順にする。
+  - **NINA の flash の退避**: `read-flash 0 0x200000` を 115200 bps（191 秒）と 921600 bps（26 秒）で行い、2 つは一致。中継の記録は
+    約 423 万バイトを受けて取りこぼし 0、オーバーラン 0。置き場所 `firmware/nina-fw/images/backup-20261118-115200.bin`・`-921600.bin`
+    （Git 管理外、認証情報を含みうる。sha256 の先頭 1da388c18bbf7090）。
+  - 退避した像のアプリの領域は、`images/NINA_W102_ALL-3.0.2-p0002.bin`（11-10 にビルドした 2 パッチの像）と大半のブロックが違う。
+    実機に入っているのはそのビルドそのものではない（何が入っているかは未調査）。復元には今日の退避を使う。
+- 実機: FreeRTOS 版（中継コマンド入り）、AP 接続中。NINA は未変更。
