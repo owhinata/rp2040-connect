@@ -6,10 +6,13 @@
  * - The request in the watchdog's scratch registers: the words, a damaged
  *   copy, and the fatal error record of the same registers
  *   (common/log/fault_record.c): neither is taken for the other.
- * - The lines from DTR and RTS: esptool with "--before no_reset" (the port
- *   opened: download mode; "--after hard_reset": RTS pulsed; closed: held
- *   in reset), a start into the module's own firmware (GPIO0 released after
- *   750 ms, GPIO8 not driven, DTR ignored), the clock's wrap.
+ * - The lines from DTR and RTS: the port opened (download mode), RTS
+ *   pulsed ("--after hard_reset"), closed (held in reset), DTR then RTS
+ *   (esptool's "--before default-reset --after no-reset" with the
+ *   custom_reset_sequence R0|D1|W0.2|R1|W0.6 of ESPTOOL_CFGFILE, which
+ *   keeps RTS set), a start into the module's own firmware (GPIO0
+ *   released after 750 ms, GPIO8 not driven, DTR ignored), the clock's
+ *   wrap.
  * - The rate: the exit rate and those out of range keep the UART's rate.
  * - The way out: only the port closed at 300 bps; a port opened at the
  *   stale 300 bps and set to 115200 before it closes does not leave.

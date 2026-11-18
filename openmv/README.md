@@ -81,7 +81,8 @@ write `git -C openmv/openmv diff` to the patches, then restore the clone with
 
 ## Flashing
 
-Copy `openmv/build/firmware.uf2` to the `RPI-RP2` drive in BOOTSEL mode. There is no script for it.
+Copy `openmv/build/firmware.uf2` to the `RPI-RP2` drive in BOOTSEL mode (by hand, or with
+`script/flash_uf2.sh`, below).
 
 ```bash
 cp openmv/build/firmware.uf2 /media/$USER/RPI-RP2/ && sync
@@ -89,7 +90,8 @@ cp openmv/build/firmware.uf2 /media/$USER/RPI-RP2/ && sync
 
 Entering BOOTSEL:
 
-- While the Zephyr or NuttX build is running: press the RESET button twice quickly.
+- While the Zephyr, NuttX or FreeRTOS build is running: run `bootsel` in its shell, or let
+  `script/flash_uf2.sh openmv/build/firmware.uf2` send it and copy the UF2.
 - While this firmware is running: run `import machine; machine.bootloader()` in the REPL.
 
 **Before flashing**: MicroPython uses the last 14 MB of the flash for its file system (FAT,

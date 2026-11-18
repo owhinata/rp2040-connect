@@ -74,20 +74,23 @@ No board is needed. It uses the kernel fetched by `setup.sh` and the host's `cc`
 ## Flashing
 
 ```bash
-freertos/script/flash.sh [--build] [--wait SEC] [UF2]
+freertos/script/flash.sh [--build] [--wait SEC] [--dry-run] [UF2]
 ```
 
 1. If there is an `RPI-RP2` drive (an RP2040 in BOOTSEL), the UF2 is copied to it.
-2. Otherwise, if this firmware's USB console is there, the script sends it the `bootsel` command and
-   waits for the drive. Nothing has to be done by hand.
-3. Otherwise it explains how to enter BOOTSEL and waits for the drive.
+2. Otherwise, if the USB console of one of the three builds (Zephyr, NuttX, FreeRTOS) is there, the script
+   sends it the `bootsel` command and waits for the drive. Nothing has to be done by hand (nothing is sent
+   while another program has the console open).
+3. If neither is there, or the shell does not answer, it explains how to enter BOOTSEL and waits for the drive.
+
+`--dry-run` only prints what would be done. The work is done by `script/flash_uf2.sh`, shared by the three builds.
 
 After the copy it prints the path of the USB console (`/dev/serial/by-id/usb-*FreeRTOS_USB_Console*`).
 
 Entering BOOTSEL:
 
 - With this firmware running: the `bootsel` command.
-- With the Zephyr or NuttX build running: the `bootsel` command of its shell. With an image from before
+- With the Zephyr or NuttX build running: the `bootsel` command of its shell (`flash.sh` sends it). With an image from before
   2026-11-18, press the RESET button twice quickly; if that does not work, connect REC to GND and press RESET.
 - With the OpenMV build running: run `import machine; machine.bootloader()` in the REPL.
 

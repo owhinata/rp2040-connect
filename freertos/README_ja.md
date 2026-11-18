@@ -73,20 +73,22 @@ freertos/script/host_tests.sh [-v]
 ## 書き込み
 
 ```bash
-freertos/script/flash.sh [--build] [--wait 秒] [UF2]
+freertos/script/flash.sh [--build] [--wait 秒] [--dry-run] [UF2]
 ```
 
 1. `RPI-RP2` ドライブ（BOOTSEL モードの RP2040）があれば、そこへ UF2 をコピーします。
-2. 無くて、このファームウェアの USB コンソールがあれば、`bootsel` コマンドを送ってドライブを待ちます。
-   操作は要りません。
-3. どちらも無ければ、BOOTSEL への入り方を表示してドライブを待ちます。
+2. 無くて、3 つの版（Zephyr、NuttX、FreeRTOS）のどれかの USB コンソールがあれば、`bootsel` コマンドを送ってドライブを
+   待ちます。操作は要りません（コンソールを別のプログラムで開いているときは送りません）。
+3. どちらも無いか、シェルが応答しなければ、BOOTSEL への入り方を表示してドライブを待ちます。
+
+`--dry-run` は、何をするかを表示するだけです。本体は 3 つの版で共通の `script/flash_uf2.sh` です。
 
 コピーのあと、USB コンソール（`/dev/serial/by-id/usb-*FreeRTOS_USB_Console*`）のパスを表示します。
 
 BOOTSEL への入り方:
 
 - このファームウェアが動いているとき: `bootsel` コマンド。
-- Zephyr 版・NuttX 版が動いているとき: そのシェルの `bootsel` コマンド。2026-11-18 より前のイメージでは、RESET ボタンを
+- Zephyr 版・NuttX 版が動いているとき: そのシェルの `bootsel` コマンド（`flash.sh` が自動で送ります）。2026-11-18 より前のイメージでは、RESET ボタンを
   素早く 2 回押します。効かなければ、REC を GND につないで RESET を押します。
 - OpenMV 版が動いているとき: REPL で `import machine; machine.bootloader()` を実行します。
 

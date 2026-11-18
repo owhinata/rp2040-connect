@@ -120,21 +120,19 @@ These options of the board's Kconfig are on by default.
 The UF2 goes in through the RP2040 USB bootloader (BOOTSEL mode, in which a USB drive named
 `RPI-RP2` appears).
 
-1. Enter BOOTSEL. With a firmware running (any of the three builds), run `bootsel` in its shell. If
-   the shell does not answer, press the RESET button twice quickly. If that does not work, connect
-   `REC` to `GND` with a jumper wire, press RESET, and remove the wire when the drive appears.
-2. Write the image:
-
 ```bash
 nuttx/script/flash.sh            # write nuttx/build/nuttx.uf2
 nuttx/script/flash.sh --build    # build first, then write
 ```
 
-`flash.sh` checks that the UF2 is for the RP2040 and looks for the `RPI-RP2` drive of the RP2040 boot
-ROM. Without one, it explains how to enter BOOTSEL and waits for the drive (it does not send
-`bootsel`; run it in the shell yourself). If the drive is
-not mounted it mounts it with `udisksctl` (no sudo), checks `INFO_UF2.TXT`, copies the UF2, waits for
-the NuttX USB console and prints its path. It stops if there is more than one drive.
+`flash.sh` (shared with the Zephyr and FreeRTOS builds: `script/flash_uf2.sh`) checks that the UF2 is
+for the RP2040 and looks for the `RPI-RP2` drive of the RP2040 boot ROM. Without one, it sends
+`bootsel` to the USB shell of whichever of the three builds is running (not when the console is open in
+another program) and waits for the drive. When no shell answers, it explains how to enter BOOTSEL by
+hand (press the RESET button twice quickly; if that does not work, connect `REC` to `GND` with a
+jumper wire, press RESET, and remove the wire when the drive appears) and waits. If the drive is not
+mounted it mounts it with `udisksctl` (no sudo), checks `INFO_UF2.TXT`, copies the UF2, waits for the
+NuttX USB console and prints its path. It stops if there is more than one drive.
 
 | Argument / option | Effect |
 |---|---|

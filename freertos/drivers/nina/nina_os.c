@@ -31,7 +31,7 @@
  * The core's waits for READY (nina_spi.c wait_ready(), compiled with
  * NINA_OS_WAIT_READY, nina.cmake) sleep on an edge interrupt of the line
  * instead of sampling it (nina_os_ready_*() of nina_os.h; the Zephyr and
- * NuttX builds sample it every 100 us):
+ * NuttX builds wait on its interrupt in the same way):
  *
  *   nina_os_ready_arm(desired)  drops a wake-up left from before
  *                               (k_sem_reset()), then enables the edge of

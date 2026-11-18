@@ -52,18 +52,20 @@ Python パッケージ、Zephyr SDK を用意し、Zephyr とモジュールに�
 
 ```bash
 west build -b arduino_nano_connect app/usb-console -d build/usb-console
-west flash -d build/usb-console -r uf2
+./script/flash.sh            # build/usb-console/zephyr/zephyr.uf2 を書き込む（--build で先にビルド）
 ```
 
 構成は `zephyr/app/usb-console/prj.conf` の 1 つだけです。`memcpy`・`memset` はブート ROM のルーチン
 （`CONFIG_RP2040_ROM_MEM_OPS`）、整数の割り算はハードウェアの除算器（`CONFIG_NANO_HW_DIVIDER`）を使い、
 `nina passthrough confirm` は `CONFIG_NANO_NINA_PASSTHROUGH` で入ります（どれも既定で有効）。
 
-書き込みの前に、ボードを USB に接続してブートローダーモード（`RPI-RP2` という USB
-ストレージが現れる状態）にします。ファームウェアが動いていれば、シェルで `bootsel` を実行します（3 つの版とも。
-ストレージがマウントされるまで数秒かかります）。シェルが応答しないときは RESET ボタンを素早く 2 回押します。
-それでも入れない場合は、`REC` と `GND` をジャンパー線で接続したまま RESET ボタンを押し、ストレージが現れたら
-ジャンパー線を外します。
+UF2 はブートローダーモード（BOOTSEL。`RPI-RP2` という USB ストレージが現れる状態）から書きます。
+`flash.sh`（NuttX 版・FreeRTOS 版と共通の `script/flash_uf2.sh`）は、このストレージに UF2 をコピーします。
+ストレージが無ければ、3 つの版のどれが動いていても、その USB のシェルに `bootsel` を送り（コンソールを別の
+プログラムで開いているときは送りません）、ストレージが現れてマウントされるのを待ち、コピーのあと新しい USB
+コンソールを表示します。シェルが応答しないときは、BOOTSEL への入り方を表示して待ちます。RESET ボタンを素早く
+2 回押すか、それでも入れない場合は、`REC` と `GND` をジャンパー線で接続したまま RESET ボタンを押し、
+ストレージが現れたらジャンパー線を外します。`--dry-run` は何をするかを表示するだけです。
 
 `zephyr/app/blink` は `led0` を 500 ms ごとに切り替える最小のサンプルです。
 
@@ -365,7 +367,7 @@ OS に依存しない部分のテスト（`common/tests/run.sh`）を先に実�
 | `design/` | 設計と調査手順 |
 | `firmware/nina-fw/` | NINA ファームウェアの修正とビルド |
 | `host/` | PC 側のツール（受信の診断、記録、校正）と、表示用のアプリ `ImuStudio` |
-| `script/` | PC を一時的な AP にするスクリプト、KV の退避と書き戻し（`kv_transfer.py`。別のファームウェアを書くときなど） |
+| `script/` | PC を一時的な AP にするスクリプト、KV の退避と書き戻し（`kv_transfer.py`。別のファームウェアを書くときなど）、3 つの版の `flash.sh` が共有する UF2 の書き込み（`flash_uf2.sh`） |
 
 ## 3 つの版と `common/`
 

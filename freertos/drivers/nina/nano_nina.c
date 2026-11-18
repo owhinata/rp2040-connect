@@ -70,7 +70,7 @@
  *
  * No GPIO interrupt is used here: nina_os.c waits for READY's edges
  * (GPIO10, active low, as in lines[] below) through the layer's GPIO bank
- * 0, where the Zephyr and NuttX builds poll READY every 100 us; the line's
+ * 0, as the Zephyr and NuttX builds wait on READY's interrupt; the line's
  * configuration here is the same as theirs.  IRQ is only driven at the
  * reset, as in both builds; afterwards nina_os.c may enable its rising
  * edge (the module's socket events, through the same bank).

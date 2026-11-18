@@ -1345,3 +1345,24 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
   `nuttx/script/flash.sh`・`freertos/script/flash.sh` が Zephyr 版・NuttX 版に `bootsel` を送らないこと、Zephyr 版に書き込みのスクリプトが無いこと。
   Zephyr を上げる手順と `west patch reverse` は文書に書いたが実際には試していない。
 - 実機: FreeRTOS 版（表示の修正の前のビルド）、AP 接続中。
+
+## 片づけ: 古いコメント、書き込みのスクリプト（2026-11-18）
+
+- subagent: コメントだけの修正 5 か所（`nina_passthrough_logic.h`・`freertos/tests/passthrough/main.c` の `--before no_reset`、
+  `freertos/drivers/nina/nina_os.c`・`nano_nina.c` と `nuttx/drivers/nina/nina_os.c` の「100 µs ごと」）。FreeRTOS の像は前後で一致（subagent）。
+  **Zephyr・NuttX はメインが再ビルドし、`snapshot-1118b` と一致**。
+- 書き込みのスクリプト: 共有の `script/flash_uf2.sh`（新規）と、それを呼ぶだけの `zephyr/script/flash.sh`（新規）・`nuttx/script/flash.sh`・
+  `freertos/script/flash.sh`。`RPI-RP2` があれば書く、無ければ 3 版のどれかの USB コンソールに Ctrl-C → プロンプトが返れば `bootsel`、
+  応答が無い・ほかのプログラムが開いている・コンソールが 2 つ以上なら手動の入り方を表示して待つ。`--dry-run` を追加。
+  文書: ルートの README・`nuttx/README`・`openmv/README`（日英）。`freertos/README`（日英）はメインが直した。
+- 実機（メイン）: `--dry-run`、BOOTSEL のドライブへの直接の書き込み、FreeRTOS → NuttX、NuttX → Zephyr、Zephyr → NuttX、NuttX → FreeRTOS が
+  スクリプトだけで通った（毎回 `its shell answered; sent "bootsel"`、新しいコンソールのパスを表示）。
+  - 1 回だけ、Zephyr → NuttX でコピーのあと 30 秒たってもドライブが残り、書き込まれなかった（次の FreeRTOS の書き込みは成功、
+    同じ組み合わせの再試行も成功）。原因は未調査。そのときは `found the RPI-RP2 drive: /dev/sda1`（マウント先の表示なし＝自動マウント前に
+    見つけた経路）だった。
+  - 未確認: 中継モード中・picocom で開いているときの動作（偽の環境では確認済み、subagent）、`zephyr/script/flash.sh --build`。
+- ユーザーの意向: I2C（Z02）は「パッチ対応のほうがよいのでは」。調査（subagent）: 今の Zephyr 版の `i2c_dw.c` は上流 v4.5.0 に +364/−6 行、
+  `i2c_dw.h` +14 行、`i2c_dw_registers.h` は上流と同じ。上流のファイルにその差分を当てた像は `snapshot-1118b` とバイト単位で一致（scratch で確認）。
+  共有のコアとの間に、写しのあと片方だけに入った修正は無い。推奨は P（上流 + ローカルのパッチ、写し約 2,640 行を削除、コアとパッチのずれを
+  検出するホストテストを追加）。A（共有のコアへ載せ替え）は見送り。**ユーザーの返事待ち**。
+- 実機: FreeRTOS 版、AP 接続中。

@@ -92,11 +92,11 @@ static inline void nina_pt_lines_init(struct nina_pt_lines *l)
 /* The host set DTR and RTS at NOW_MS.  The mapping is the Arduino sketch's
  * (WiFiNINA's SerialNINAPassthrough for the mbed core): RESETN follows RTS
  * (RTS set releases the reset), GPIO0 is low while DTR is set.  So opening
- * the port (Linux sets both at once) starts the module in the ROM's
- * download mode, and closing it (both clear) holds it in reset; esptool
- * runs with "--before no_reset".  The caller applies GPIO0 before RESETN,
- * so a request that changes both releases the reset with GPIO0 already
- * set.
+ * the port (Linux sets both at once) starts the ROM's download mode, and
+ * closing it holds the module in reset; esptool keeps RTS set ("--before
+ * default-reset --after no-reset", custom_reset_sequence R0|D1|W0.2|R1|W0.6
+ * in ESPTOOL_CFGFILE).  The caller applies GPIO0 before RESETN, so a
+ * request that changes both releases the reset with GPIO0 already set.
  */
 static inline void nina_pt_lines_set(struct nina_pt_lines *l, bool dtr, bool rts, uint32_t now_ms)
 {

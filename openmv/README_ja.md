@@ -76,8 +76,8 @@ openmv/script/build.sh [--clean] [-j N] [-v]
 
 ## 書き込み
 
-`openmv/build/firmware.uf2` を、BOOTSEL モードの `RPI-RP2` ドライブにコピーします。書き込み用の
-スクリプトはありません。
+`openmv/build/firmware.uf2` を、BOOTSEL モードの `RPI-RP2` ドライブにコピーします（手で、または下の
+`script/flash_uf2.sh` で）。
 
 ```bash
 cp openmv/build/firmware.uf2 /media/$USER/RPI-RP2/ && sync
@@ -85,7 +85,8 @@ cp openmv/build/firmware.uf2 /media/$USER/RPI-RP2/ && sync
 
 BOOTSEL への入り方:
 
-- Zephyr 版・NuttX 版が動いているとき: RESET ボタンを素早く 2 回押します。
+- Zephyr 版・NuttX 版・FreeRTOS 版が動いているとき: シェルで `bootsel` を実行します。
+  `script/flash_uf2.sh openmv/build/firmware.uf2` なら、`bootsel` を送ってコピーまで行います。
 - このファームウェアが動いているとき: REPL で `import machine; machine.bootloader()` を実行します。
 
 **書き込む前に**: MicroPython はフラッシュの後ろ 14 MB をファイルシステム（FAT）に使います

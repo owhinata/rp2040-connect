@@ -54,18 +54,21 @@ current shell. Source it again in every new terminal. "Local patches of Zephyr" 
 
 ```bash
 west build -b arduino_nano_connect app/usb-console -d build/usb-console
-west flash -d build/usb-console -r uf2
+./script/flash.sh            # write build/usb-console/zephyr/zephyr.uf2 (--build: build first)
 ```
 
 There is one configuration, `zephyr/app/usb-console/prj.conf`. `memcpy` and `memset` use the boot ROM's
 routines (`CONFIG_RP2040_ROM_MEM_OPS`), integer division the hardware divider (`CONFIG_NANO_HW_DIVIDER`),
 and `CONFIG_NANO_NINA_PASSTHROUGH` adds `nina passthrough confirm` (all on by default).
 
-Before flashing, connect the board over USB and put it into bootloader mode, in which a USB
-drive named `RPI-RP2` appears. With a firmware running, run `bootsel` in its shell (all three builds;
-the drive takes a few seconds to be mounted). If the shell does not answer, press RESET twice quickly.
-If that does not do it either, press RESET while `REC` and `GND` are joined with a jumper wire, and
-remove the wire once the drive appears.
+The UF2 goes in through the bootloader mode (BOOTSEL), in which a USB drive named `RPI-RP2` appears.
+`flash.sh` (shared with the NuttX and FreeRTOS builds: `script/flash_uf2.sh`) copies the UF2 to that
+drive. Without the drive, it sends `bootsel` to the USB shell of whichever of the three builds is
+running (not when the console is open in another program), waits for the drive and its mount, and
+after the copy prints the new USB console. When no shell answers, it shows how to enter BOOTSEL by
+hand and waits: press RESET twice quickly, or, if that does not do it either, press RESET while `REC`
+and `GND` are joined with a jumper wire, and remove the wire once the drive appears. `--dry-run`
+only shows what it would do.
 
 `zephyr/app/blink` is a minimal sample that toggles `led0` every 500 ms.
 
@@ -376,7 +379,7 @@ summary (missing batches, valid and reversed times) and at the errors in `imu st
 | `design/` | Design and investigation notes |
 | `firmware/nina-fw/` | Fixes and build for the NINA firmware |
 | `host/` | PC-side tools (receive check, recording, calibration) and the display application `ImuStudio` |
-| `script/` | Script that turns the PC into a temporary access point, and the backup and restore of the KV store (`kv_transfer.py`, for flashing another firmware and the like) |
+| `script/` | Script that turns the PC into a temporary access point, the backup and restore of the KV store (`kv_transfer.py`, for flashing another firmware and the like), and the writing of a UF2 shared by the three builds' `flash.sh` (`flash_uf2.sh`) |
 
 ## The three builds and `common/`
 

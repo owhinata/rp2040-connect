@@ -22,7 +22,7 @@
  *
  * The core's waits for READY (nina_spi.c wait_ready(), compiled with
  * NINA_OS_WAIT_READY, nina/Make.defs) sleep on an edge interrupt of the
- * line instead of sampling it every 100 us as the Zephyr build does
+ * line instead of sampling it every 100 us, as the other builds do
  * (nina_os_ready_*() of nina_os.h):
  *
  *   nina_os_ready_arm(desired)  drops a wake-up left from before
