@@ -980,3 +980,7 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
   未確認: 送信中の Telnet、スキャン、切断復帰、KV の書き込みのあと。
 - 残っている古いコメント: `common/compat/nano_gpio.h` の冒頭（gpio0 を使う線に GPIO10 が無い）。Z01 の作業が終わってから直す。
 - 実機: READY 割り込みの NuttX 版。
+- 同じ日のポーリングの NuttX 版（`snapshot-rommem` の像）の `iperf`、2 回: 送信 3.01・2.97 Mbit/s、受信 1.16・1.16 Mbit/s。
+  READY 割り込みの像（上、各 1 回）は送信 3.19、受信 1.14。NuttX 版では送信が約 6% 増、受信は変わらない（回数が少ない）。
+  FreeRTOS 版の受信 2.31 Mbit/s との差の原因は未調査。
+- 実機: ポーリングの NuttX 版（比較のために書いた。Z01 の確認のあと FreeRTOS 版へ戻す）。
