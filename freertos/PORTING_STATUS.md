@@ -1462,3 +1462,18 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
   - Telnet のクライアントは ^C を IAC IP で送ることが多く、3 版とも捨てているので、止める操作に Enter を含めるのが確実。
   - 書式の案: `watch [-n 秒] [-c 回数] <コマンド…>`（nsh に合わせる）。`ps_interval` の前回の値は全セッションで 1 組なので、片方で `watch ps` を
     動かすと、もう片方の `ps` の区間も短くなる。
+
+## Zephyr 版の tickless と刻みが負荷に占める分: 測定だけ、設定は変えない（2026-11-18、ユーザーの決定）
+
+- きっかけ: 送信中の `cpu_active` が FreeRTOS 版（約 40%）より Zephyr 版（48〜50%）・NuttX 版（約 51%）で高い。tickless が上げていないか（ユーザーの問い）。
+- 設定: FreeRTOS は周期 tick 1 ms。Zephyr は `CONFIG_TICKLESS_KERNEL=y`・`CONFIG_SYS_CLOCK_TICKS_PER_SEC=10000`、NuttX は
+  `CONFIG_SCHED_TICKLESS=y`・`CONFIG_USEC_PER_TICK=100`。
+- 測定（Zephyr、同じソースに追加の `.conf` を足した試験用のイメージ、送信 6667 Hz 約 70 秒、各 2 回、どれも欠番 0・`unix_regressions` 0）:
+  - tickless・100 µs（現行、`snapshot-1118d` と同じイメージ）: 48.4%・48.4%
+  - tickless・1 ms（`SYS_CLOCK_TICKS_PER_SEC=1000`）: 47.6%・47.5%
+  - 周期 tick・1 ms（`TICKLESS_KERNEL=n` も）: 46.5%・46.7%
+- 読み方: 刻みで約 0.9 ポイント、tickless で約 0.9 ポイント、合わせて約 1.8 ポイント。FreeRTOS 版との差の大半（6〜7 ポイント）は別の要因。
+  1 ポイント前後の差はイメージの配置による変動（±1.3 ポイント）と同じ大きさで、内訳は不確か。
+- 確かめていない: 周期 tick のイメージでの Telnet・スキャン・切断復帰・スタック、静止時の負荷、NuttX 版。
+- **ユーザーの決定: tickless は使えるなら使っておく。設定は変えない**（リポジトリの変更なし）。
+- 実機: 測定のあと FreeRTOS 版に戻した。
