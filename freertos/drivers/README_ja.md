@@ -146,8 +146,8 @@ FreeRTOS 版が実装するのは flash の境界（`common/compat/nano_flash_kv
   ロック、名前解決のロック、「切り上げ + 1 tick」の sleep、ms の時計）を実装します。境界の意味は
   [`nuttx/drivers/README_ja.md`](../../nuttx/drivers/README_ja.md) の「NINA-W102」の表のとおりです。
 - コアの READY の待ちは、READY のエッジ割り込み（GPIO10）まで眠り、最長 10 ms ごとに READY を読み直します
-  （`nina_os.c`。`nina_os.h` の任意の部分で、ビルドが `NINA_OS_WAIT_READY` で有効にする）。Zephyr 版・NuttX 版は
-  100 µs ごとに READY を読みます。
+  （`nina_os.c`。`nina_os.h` の任意の部分で、ビルドが `NINA_OS_WAIT_READY` で有効にする）。Zephyr 版も同じで、
+  NuttX 版は 10 ms に区切らずに待ちます。
 - ソケット（`drivers/nina/nina_socket.c`）: 互換層の `zsock_*()` を、10 個の fd の表を介して共有のコアに直接つなぎます。
   Zephyr 版のソケットのオフロードと同じく、呼んだタスクで NINA に問い合わせて待ちます（NuttX 版の usrsock と
   `nina_event` のような、イベントのスレッドはありません）。fd の番号は newlib の fd とは別で、`zsock_*()` だけが使います。
@@ -241,7 +241,7 @@ spinlock、atomic、静的なスレッド、時分割の 21 項目）、I2C0（`
 | 優先度 | Zephyr | `118 − Zephyr` | `20 − Zephyr` |
 | デバイスの割り込みの優先度 | 0xC0 | 0x80 | 0x80 |
 | カーネルの時計 | SysTick（送信中に遅れる） | TIMER の tickless | 1 kHz の SysTick（消去中に遅れる）。`k_uptime` は TIMER |
-| NINA の READY | 100 µs ごとに読む | 100 µs ごとに読む | エッジ割り込み（GPIO10） |
+| NINA の READY | エッジ割り込み（GPIO10、10 ms ごとに読み直す） | エッジ割り込み（GPIO10） | エッジ割り込み（GPIO10、10 ms ごとに読み直す） |
 | ソケット | オフロード（呼んだスレッドで待つ） | usrsock と `nina_event` | 呼んだタスクで待つ（イベントのスレッドなし） |
 | RAM ログ | 4 KiB | 8 KiB | 8 KiB |
 | 異常停止の後 | 再起動、`dmesg` に報告 | 再起動、`dmesg` に報告 | 再起動、`dmesg`・`fault`・バナーに記録 |

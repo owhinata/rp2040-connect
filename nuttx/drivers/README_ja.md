@@ -29,7 +29,7 @@ NINA のドライバーは、OS に依存しないコア（リポジトリの `c
 
 | ファイル | 役割 |
 |---|---|
-| `common/drivers/nina/nina_spi.c` | コマンドと応答のフレーミング（`nina_request()`、`nina_ip_config()`）。Zephyr 版の `drivers/nina/nina_wifi.c` の同名の関数と、分岐・順序・定数・エラー値を 1 対 1 で対応させた写し |
+| `common/drivers/nina/nina_spi.c` | コマンドと応答のフレーミング（`nina_request()`、`nina_ip_config()`）。もとは Zephyr 版の `nina_wifi.c` の同名の関数を、分岐・順序・定数・エラー値を 1 対 1 で対応させて移したもの。今は 3 つの版が使う |
 | `common/drivers/nina/nina_proto.h` | 公開する宣言。Zephyr 版も同じファイルを使う |
 | `common/drivers/nina/nina_os.h`、`nina/nina_os.c` | ロック（再帰可能なミューテックス、優先度継承あり）、sleep、ms の時計、READY の割り込みでの待ち。Zephyr の `K_MUTEX`・`k_sleep()`・`k_uptime_get()` に当たる |
 | `common/drivers/nina/nano_nina.h`、ボードの `src/nano_nina.c` | SPI1 と 4 本の信号線（CS、READY、RESET、IRQ）。Zephyr のデバイスツリーと SPI・GPIO ドライバーが行っていた設定に当たる |
@@ -42,7 +42,7 @@ NINA のドライバーは、OS に依存しないコア（リポジトリの `c
   最初の転送でモード 0・8 ビット・`CONFIG_NANO_NINA_SPI_FREQUENCY` を設定します。`SPI_SELECT` は
   使いません。
 - READY の待ち: コアの `wait_ready()` は READY（GPIO10、アクティブ low）を 100 µs ごとに見る代わりに、
-  その変化の割り込みで眠ります（FreeRTOS 版と同じ。Zephyr 版は 100 µs ごとに見ます）。`nina_os_ready_arm()` が
+  その変化の割り込みで眠ります（Zephyr 版・FreeRTOS 版と同じ）。`nina_os_ready_arm()` が
   セマフォを 0 にしてから、望む向きのエッジ（準備できた＝立ち下がり、準備でなくなった＝立ち上がり）を
   ボードの `src/nano_gpio.c`（`nano_gpio_irq_configure()`。止めていた間にラッチされたエッジを消してから有効にする）で
   有効にし、コアはそのあとで READY を読みます。読んだあとの変化はセマフォに残るので、待ちはすぐ返ります。
@@ -66,7 +66,7 @@ Zephyr 版はソケットのオフロード（`drivers/nina/nina_socket.c`）で
 
 | ファイル | 役割 |
 |---|---|
-| `common/drivers/nina/nina_sock.[ch]` | ソケットの表（10 個）と NINA のソケット命令。Zephyr 版の `nina_socket.c` の `nina_socket_create()`・`do_bind()`・`do_listen()`・`do_accept()`・`do_connect()`・`do_close()`・`do_setsockopt()` と、送受信の `udp_send()`・`do_send()`・`do_sendmsg()`・`udp_recv()`・`do_recv()` を、名前・分岐・順序・定数・errno の名前を保って移したもの（送受信の待ちのループは要求 1 回で 1 周）。`FIONREAD`（`nina_sock_fionread()`）と独自のソケットオプション `NINA_SO_CALLER_POLLS`・`NINA_SO_POLL`（`nina_sock_poll_revents()`、`common/drivers/nina/nina_sockopt.h`）は Zephyr 版には無い。OS に依存しない |
+| `common/drivers/nina/nina_sock.[ch]` | ソケットの表（10 個）と NINA のソケット命令。もとは Zephyr 版の `nina_socket.c` の `nina_socket_create()`・`do_bind()`・`do_listen()`・`do_accept()`・`do_connect()`・`do_close()`・`do_setsockopt()` と、送受信の `udp_send()`・`do_send()`・`do_sendmsg()`・`udp_recv()`・`do_recv()` を、名前・分岐・順序・定数・errno の名前を保って移したもの（送受信の待ちのループは要求 1 回で 1 周）で、今は Zephyr 版もこのファイルを使う。`FIONREAD`（`nina_sock_fionread()`）と独自のソケットオプション `NINA_SO_CALLER_POLLS`・`NINA_SO_POLL`（`nina_sock_poll_revents()`、`common/drivers/nina/nina_sockopt.h`）は Zephyr 版では使わない。OS に依存しない |
 | `nina/nina_usrsock.c` | usrsock の要求を上の関数に振り分け、応答（ACK）を返す |
 | `nina/nina_poller.c` | スレッド `nina_event`。NINA のソケットの状態を見て usrsock のイベントにする（呼び出し元だけが問い合わせるソケットは接続中だけ）。待つ送信の再試行の時間も計る |
 | `nina/nina_usrsock.h` | 上の 2 つの間の宣言 |
@@ -155,7 +155,7 @@ Zephyr 版はソケットのオフロード（`drivers/nina/nina_socket.c`）で
 
 ### 名前解決
 
-`common/drivers/nina/nina_dns.c` は Zephyr 版の `drivers/nina/nina_dns.c` を行単位で移したもので、名前を NINA の名前解決の
+`common/drivers/nina/nina_dns.c` は Zephyr 版の `nina_dns.c` を行単位で移したもの（今は Zephyr 版もこのファイルを使う）で、名前を NINA の名前解決の
 命令（0x34 で名前を渡し、0x35 でアドレスを読む）で IPv4 のアドレス 1 つにします。数値のアドレスは NINA に
 尋ねません。Zephyr 版はソケットのオフロードの `getaddrinfo()` として登録し、`zsock_getaddrinfo()` がこれを
 使います。NuttX 版は専用の関数 `nina_getaddrinfo()`・`nina_freeaddrinfo()`（`common/drivers/nina/nina_dns.h`）で、互換層の
@@ -647,7 +647,7 @@ Zephyr の API を、Zephyr の名前のまま最小限だけ用意したもの�
   スレッドで、ソケットごとに `getsockopt(NINA_SOL, NINA_SO_POLL)`（NINA の poll 命令を 1 回）で尋ね、求めた
   `ZSOCK_POLLIN`・`ZSOCK_POLLOUT` と、`ZSOCK_POLLERR`（NINA のエラーフラグ）・`ZSOCK_POLLHUP`（NINA 側のソケットが
   まだ無い TCP）を返します。どれも無ければ `k_sleep(K_MSEC(20))` の後に尋ね直し、`k_uptime_get()` で待ち時間
-  （-1 は無期限）が過ぎたら 0 を返します。NINA の poll の失敗は -1 とその errno です。NINA のソケットでない
+  （-1 は無期限）が過ぎたら 0 を返します。NINA の poll の失敗は -1 とその errno です（Zephyr 版はそのソケットだけ `ZSOCK_POLLERR` にして、呼び出し全体は失敗させません）。NINA のソケットでない
   ファイル記述子は NuttX の `poll()` を待たずに 1 回呼んだ結果（不正なものは `ZSOCK_POLLNVAL`）で、これも
   Zephyr 版と同じです。NuttX の `poll()` と `nina_event` は使いません。`imu_raw_mqtt.c` の受信の確認（100 ms
   ごと、待ち時間 0）と CONNACK の待ち（5000 ms）が使います。

@@ -407,8 +407,13 @@ NTP の往復時間は、送信中で中央値 約 7 ms、推定に使われた�
 | 角速度のバイアスの追従（記録の再生、計測中、`sensor stream`、`imu cal zero`） | 済み（§10.5） |
 | 角速度のバイアスの追従：動かしながらの実機確認、範囲外の拒否 | 未（記録の再生とホストテストのみ） |
 
-負荷の目安として、時刻付与まで含めた 6667 Hz 送信中の `cpu_active` は 62〜66% だった
+負荷の目安として、時刻付与まで含めた 6667 Hz 送信中の `cpu_active` は 51.2〜51.5% だった（2026-11-18、
+約 71 秒 × 4 回）。boot2 の読み出しを速くして `memcpy`・`memset` をブート ROM のものにする前は 62〜66%
 （診断用の USB 照合を並行させると約 72%）。
+
+上の表の実機の確認は、ほとんどが NINA のドライバーを共有のコアへ載せ替える前の像のもの。載せ替えた像（2026-11-18）では、
+書き込み直後の送信、送信中の Telnet、手動の切断と復帰、`zperf` の受信を繰り返したあとの Telnet、ほかの版が書いた KV と
+資格情報での自動接続を確かめた。AP 断からの復帰、受信側の輻輳、長時間の連続はこの像では未確認。
 
 ## 9. 未決定事項
 
@@ -685,14 +690,15 @@ Zephyr 版は起動からの累積。区間の割合は `/proc/<tid>/critmon` �
 - 校正値の読み込み・`imu cal` の各サブコマンド・レンジ変更での切り替え、`sensor` の各サブコマンドと計測との排他。
 - 異常停止の後の自動再起動と報告。
 - `imu-host` の `record`・`check`・`write`（USB と Telnet）と、NuttX 版で取った記録の `calib` による読み込み。
+- Zephyr 版・FreeRTOS 版と同じ日・同じ手順での、送信中の CPU 負荷と TCP の速度の比較（2026-11-18。値は README）。
+- NuttX 版の後で書き込んだ Zephyr 版が、KV と保存済みの Wi-Fi の資格情報をそのまま使うこと（2026-11-18）。
 
 未確認の範囲:
 
-- Zephyr 版と同じ条件での比較（CPU 負荷、NTP の往復、`sensor stream` の高い ODR）。
+- 今の像での Zephyr 版との NTP の往復、`sensor stream` の高い ODR の比較。
 - FIFO のエラーからの自動再開、CQE のあふれ、計測中の KV の整理など、実機で起こしていない経路。
 - 電源断（KV の耐性、RAM ログが消えること）、USB の抜き差し・RESET ボタン・PC のサスペンド。
 - AP 側を止めたときの切断の検出、実際の MQTT ブローカー、数時間以上の運用。
-- NuttX 版の後で Zephyr 版を書き込んだときの Zephyr 版の動作。
 - ImuStudio の GUI からの操作（シェルの部分はテストで確認）。
 
 ## 12. 共有ソース（`common/`）
@@ -706,7 +712,7 @@ Zephyr の名前のまま提供する互換層の上でビルドする。ホス�
 |---|---|---|
 | `common/imu/` | 取得サービスと `imu`、バッチ・ペイロード・キュー・status、時刻の対応付けと時刻同期・`ntp`、校正と `imu cal`、MQTT の送信、Wi-Fi のプロファイルと自動再接続、KV の API と `kv` | 3 版（MQTT のクライアント `mqtt_min*` は NuttX 版と FreeRTOS 版。Zephyr 版は Zephyr の MQTT ライブラリー） |
 | `common/drivers/lsm6dso/`、`sensor_shell/` | LSM6DSO のドライバー本体と FIFO のストリーム、sensor シェル | 3 版 |
-| `common/drivers/nina/` | `nina_net.c`・`nina_proto.h`、NINA のコア（SPI の転送層、ソケット、名前解決） | `nina_net.c`・`nina_proto.h` は 3 版、コアは NuttX 版と FreeRTOS 版 |
+| `common/drivers/nina/` | `nina_net.c`・`nina_proto.h`、NINA のコア（SPI の転送層、ソケット、名前解決） | 3 版 |
 | `common/drivers/i2c_dw/` | DMA のコマンド語、I2C0 と DMA のコア | コマンド語は 3 版、コアは NuttX 版と FreeRTOS 版 |
 | `common/drivers/stmemsc/` | ST のドライバーと Zephyr の I2C の API のつなぎ | NuttX 版と FreeRTOS 版 |
 | `common/drivers/rp2040_rom/` | ブート ROM の `memcpy`・`memset`（`CONFIG_NANO_ROM_MEM_OPS`） | Zephyr 版と NuttX 版（FreeRTOS 版は Pico SDK の `pico_mem_ops`） |
@@ -722,7 +728,7 @@ OS ごとの部分は、狭い境界のヘッダーの実装として各版の�
 - 版ごとに違う数行: `sensor_shell_os.h`（`sensor get` の待ち）、`wifi_profile_os.h`、`lsm6dso_instance.h`（デバイスの
   生成）、`kv_store_os.h`（`kv wipe` の有無）。
 
-Zephyr 版の NINA と I2C0 のドライバーは、今は自分の `drivers/` のもので、共有のコアには載せ替えていない。
+Zephyr 版の I2C0 のドライバーは、今は自分の `drivers/` のもので、共有のコアには載せ替えていない（NINA は共有のコアを使う）。
 
 ## 13. FreeRTOS 版
 
@@ -754,7 +760,7 @@ Zephyr 版の NINA と I2C0 のドライバーは、今は自分の `drivers/` �
   （2026-11-17、3 回）。その分 sleep・遅延ワーク・時分割が遅れるが、時刻（TIMER）は遅れない。
 - `cpu_active` は §11.4 と同じアイドルの窓の方式で測る。1 ms ごとの tick の割り込みは負荷に入る（Zephyr 版・
   NuttX 版にはこの割り込みが無い）。`ps` の CPU 列は起動からの累積。
-- NINA の READY は GPIO10 のエッジ割り込みで待つ（Zephyr 版も同じ。NuttX 版は 100 µs ごとに読む）。
+- NINA の READY は GPIO10 のエッジ割り込みで待つ（Zephyr 版・NuttX 版も同じ）。
 
 ### 13.3 ソケット
 
@@ -788,14 +794,18 @@ Zephyr 版の NINA と I2C0 のドライバーは、今は自分の `drivers/` �
   `imu status` の `errors`・`fifo`。計測中の KV の整理（FIFO のオーバーランと自動の回復が 1 回。NuttX 版と同じ）。
 - 校正値の読み込み、`imu cal` の各サブコマンド、レンジ変更での切り替え、`sensor` の `get`・`attr_set`・`stream` と計測との排他。
 
+最終の既定の像（`-Os`、tick 1 ms、READY の割り込み待ち。2026-11-18、各 1 回）で確かめたこと: 書き込み直後の送信、静止時、
+`zperf` の送信と受信、送信中の `zperf` と Telnet の併用、`selftest`、Zephyr 版・NuttX 版と同じ日・同じ手順での送信中の
+CPU 負荷と TCP の速度の比較（値は README）。受信器の切断と読み出しの停止、計測中の Wi-Fi の切断などの上の項目は
+2026-11-17 の像（`-O3`、tick 100 µs、READY のポーリング）で確かめたもので、最終の像では未確認。
+
 未確認の範囲:
 
 - 数十分以上の連続の計測、10 秒を超える輻輳、AP 側を止めたときの切断の検出。
 - 切断が続いたときに時刻が無効になること、NTP サーバーを名前で指定する経路。
-- `kv wipe confirm`、FreeRTOS 版が書いた KV を Zephyr 版・NuttX 版が読むこと。
+- `kv wipe confirm`、FreeRTOS 版が書いた KV を NuttX 版が読むこと（Zephyr 版は 2026-11-18 に読めた）。
 - フラッシュの消去中の異常停止、NINA が応答しないとき。
 - `imu-host` の `record`・`write`、`script/kv_transfer.py`（USB の自動検出を含む）を FreeRTOS 版に対して使うこと。
-- Zephyr 版・NuttX 版との同じ日・同じ条件での比較（README の FreeRTOS 版の値は 2026-11-17 に各 1 回測ったもの）。
 - 電源断、USB の抜き差し、RESET ボタン。
 
 ## 参考資料

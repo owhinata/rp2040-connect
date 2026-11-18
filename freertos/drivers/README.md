@@ -166,7 +166,7 @@ boundary (the four functions of `common/compat/nano_flash_kv.h`, `drivers/kv/nan
   [`nuttx/drivers/README.md`](../../nuttx/drivers/README.md) say.
 - The core's waits for READY sleep until READY's edge interrupt (GPIO10), in waits of at most 10 ms, after
   which READY is read again (`nina_os.c`, the optional part of `nina_os.h` that the build turns on with
-  `NINA_OS_WAIT_READY`). The Zephyr and NuttX builds read READY every 100 µs instead.
+  `NINA_OS_WAIT_READY`). The Zephyr build does the same; the NuttX build waits without the 10 ms slices.
 - Sockets (`drivers/nina/nina_socket.c`): the layer's `zsock_*()` calls go to the shared core through a
   table of 10 descriptors. As the Zephyr build's socket offload, the calling task asks the NINA and waits
   (there is no event thread like the NuttX build's usrsock and `nina_event`). The descriptors are not
@@ -268,7 +268,7 @@ the Zephyr build's syntax and output.
 | Priorities | Zephyr | `118 − Zephyr` | `20 − Zephyr` |
 | Device interrupt priority | 0xC0 | 0x80 | 0x80 |
 | Kernel clock | SysTick (late while sending) | Tickless on the TIMER | 1 kHz SysTick (late during erases); `k_uptime` from the TIMER |
-| The NINA's READY | Read every 100 µs | Read every 100 µs | Edge interrupt (GPIO10) |
+| The NINA's READY | Edge interrupt (GPIO10, read again every 10 ms) | Edge interrupt (GPIO10) | Edge interrupt (GPIO10, read again every 10 ms) |
 | Sockets | Offload (the calling thread waits) | usrsock and `nina_event` | The calling task waits (no event thread) |
 | RAM log | 4 KiB | 8 KiB | 8 KiB |
 | After a fatal error | Restart, report in `dmesg` | Restart, report in `dmesg` | Restart, record in `dmesg`, `fault` and the banner |

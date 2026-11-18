@@ -457,8 +457,15 @@ the two sides agreed within 1.4 ms.
 | Gyro bias tracking (replayed recordings, during a measurement, `sensor stream`, `imu cal zero`) | Done (§10.5) |
 | Gyro bias tracking: on hardware while moving, rejection of out-of-range readings | Not done (replay and host tests only) |
 
-As a guide to load, `cpu_active` while streaming at 6667 Hz with time stamping was 62 to 66%
-(about 72% with the diagnostic USB probe running alongside).
+As a guide to load, `cpu_active` while streaming at 6667 Hz with time stamping was 51.2 to 51.5%
+(2026-11-18, about 71 seconds, 4 runs). Before boot2 read the flash faster and `memcpy` and `memset` came from
+the boot ROM it was 62 to 66% (about 72% with the diagnostic USB probe running alongside).
+
+Most of the hardware checks in the table above were made with images from before the NINA driver moved onto the
+shared core. With the image that uses it (2026-11-18), the first measurement after flashing, Telnet while
+sending, a manual disconnection and its recovery, Telnet after repeated `zperf` downloads, and connecting by
+itself with the key-value store and credentials another build wrote were checked. Recovery from losing the
+access point, a congested receiver and long runs have not been checked with this image.
 
 ## 9. Open questions
 
@@ -790,17 +797,20 @@ Verified on the board (the conditions and values are kept in the records, not in
 - The automatic restart and the report after a fatal error.
 - `record`, `check` and `write` of `imu-host` (USB and Telnet), and `calib` reading a recording made
   with the NuttX port.
+- Comparison with the Zephyr and FreeRTOS builds on the same day with the same steps: CPU load while
+  sending and TCP rates (2026-11-18; the values are in the README).
+- The Zephyr version, written after the NuttX port, using the key-value store and the stored Wi-Fi
+  credentials as they are (2026-11-18).
 
 Not verified:
 
-- Comparison with the Zephyr version under the same conditions (CPU load, NTP round trip, high-ODR
-  `sensor stream`).
+- Comparison with the Zephyr version with the current images of the NTP round trip and high-ODR
+  `sensor stream`.
 - Paths not triggered on the board, such as the automatic restart after a FIFO error, CQE overflow,
   and a KV garbage collection during a measurement.
 - Power loss (KV robustness, the RAM log being cleared), unplugging USB, the RESET button, suspending
   the PC.
 - Detecting a disconnection when the AP side stops, a real MQTT broker, running for several hours.
-- How the Zephyr version behaves when written after the NuttX port.
 - Operation from the ImuStudio GUI (its shell part is covered by tests).
 
 ## 12. Shared sources (`common/`)
@@ -814,7 +824,7 @@ host tests (`common/tests/run.sh`) run first in the `host_tests.sh` of each of t
 |---|---|---|
 | `common/imu/` | The acquisition service and `imu`, batches, payload, queue, status, time assignment and time synchronization with `ntp`, calibration and `imu cal`, the MQTT transport, the Wi-Fi profile and automatic reconnection, the key-value API and `kv` | All three (the MQTT client `mqtt_min*` NuttX and FreeRTOS; the Zephyr build uses Zephyr's MQTT library) |
 | `common/drivers/lsm6dso/`, `sensor_shell/` | The LSM6DSO driver with its FIFO stream, the sensor shell | All three |
-| `common/drivers/nina/` | `nina_net.c` and `nina_proto.h`, the NINA core (SPI link, sockets, name resolution) | `nina_net.c` and `nina_proto.h` all three, the core NuttX and FreeRTOS |
+| `common/drivers/nina/` | `nina_net.c` and `nina_proto.h`, the NINA core (SPI link, sockets, name resolution) | All three |
 | `common/drivers/i2c_dw/` | The DMA command words, the I2C0 and DMA core | The command words all three, the core NuttX and FreeRTOS |
 | `common/drivers/stmemsc/` | The glue between ST's driver and Zephyr's I2C API | NuttX and FreeRTOS |
 | `common/drivers/rp2040_rom/` | The bootrom's `memcpy` and `memset` (`CONFIG_NANO_ROM_MEM_OPS`) | Zephyr and NuttX (FreeRTOS uses the Pico SDK's `pico_mem_ops`) |
@@ -831,8 +841,8 @@ The OS parts are implementations of narrow boundary headers in each build's dire
 - A few lines that differ per build: `sensor_shell_os.h` (the wait of `sensor get`), `wifi_profile_os.h`,
   `lsm6dso_instance.h` (the device), `kv_store_os.h` (whether there is `kv wipe`).
 
-The Zephyr build's NINA and I2C0 drivers are still its own in `drivers/`; it has not been moved onto the
-shared cores.
+The Zephyr build's I2C0 driver is still its own in `drivers/`; it has not been moved onto the shared core
+(the NINA uses the shared core).
 
 ## 13. The FreeRTOS build
 
@@ -871,8 +881,8 @@ and NuttX builds in [`freertos/drivers/README.md`](../freertos/drivers/README.md
 - `cpu_active` is measured with the idle windows of section 11.4. The tick interrupt every 1 ms counts
   as load (the Zephyr and NuttX builds have no such interrupt). The CPU column of `ps` is cumulative since
   the start.
-- The NINA's READY is waited for on GPIO10's edge interrupt (as in the Zephyr build; the NuttX build
-  reads it every 100 µs).
+- The NINA's READY is waited for on GPIO10's edge interrupt (as in the Zephyr and NuttX
+  builds).
 
 ### 13.3 Sockets
 
@@ -917,17 +927,23 @@ Verified on the board (2026-11-17, once each):
 - Loading the calibration, every subcommand of `imu cal`, the switch on a range change, `get`, `attr_set`
   and `stream` of `sensor` and their exclusion with a measurement.
 
+Checked with the final default image (`-Os`, 1 ms tick, waiting for READY on the interrupt; 2026-11-18, once
+each): the first measurement after flashing, at rest, `zperf` upload and download, `zperf` and Telnet together
+while sending, `selftest`, and the comparison with the Zephyr and NuttX builds on the same day with the same
+steps of the CPU load while sending and the TCP rates (the values are in the README). The other items above,
+such as the receiver dropping the connection and stalling and a Wi-Fi disconnection during a measurement,
+were checked with the image of 2026-11-17 (`-O3`, 100 µs tick, READY polled) and not with the final image.
+
 Not verified:
 
 - Measurements of tens of minutes or more, congestion longer than 10 s, detecting a disconnection when
   the AP side stops.
 - The time becoming invalid after a long disconnection, an NTP server given by name.
-- `kv wipe confirm`, the Zephyr and NuttX builds reading what the FreeRTOS build stored.
+- `kv wipe confirm`, the NuttX build reading what the FreeRTOS build stored (the Zephyr build read it on
+  2026-11-18).
 - A fatal error during a flash erase, a NINA that does not answer.
 - `record` and `write` of `imu-host` and `script/kv_transfer.py` (with the USB detection) against the
   FreeRTOS build.
-- Comparison with the Zephyr and NuttX builds on the same day under the same conditions (the FreeRTOS
-  values in the README were measured once each on 2026-11-17).
 - Power loss, unplugging USB, the RESET button.
 
 ## References

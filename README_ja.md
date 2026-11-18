@@ -53,7 +53,8 @@ west build -b arduino_nano_connect app/usb-console -d build/usb-console
 west flash -d build/usb-console -r uf2
 ```
 
-構成は `zephyr/app/usb-console/prj.conf` の 1 つだけです。
+構成は `zephyr/app/usb-console/prj.conf` の 1 つだけです。`memcpy`・`memset` はブート ROM のルーチンを使います
+（`CONFIG_NANO_ROM_MEM_OPS`、既定で有効。無効にすると C ライブラリのループ）。
 
 書き込みの前に、ボードを USB に接続してブートローダーモード（`RPI-RP2` という USB
 ストレージが現れる状態）にします。RESET ボタンを 2 回押しても入れない場合は、`REC` と `GND` を
@@ -269,8 +270,8 @@ zperf tcp download 5201
 zperf tcp download stop
 ```
 
-実機での 30 秒・1 回ずつの測定では、TCP 送信 2.93 Mbit/s、TCP 受信 1.54 Mbit/s、UDP 送信は
-500 kbit/s の指定で欠落 0 でした。IMU の送信を止めた状態での値で、無線環境によって変わります。
+UDP 送信は 500 kbit/s の指定で欠落 0 でした（2026-11-12、30 秒、1 回）。TCP の速度は最後の節
+「3 つの版の性能」にあります。どちらも IMU の送信を止めた状態での値で、無線環境によって変わります。
 
 ### Wi-Fi 経由のシェル
 
@@ -322,12 +323,12 @@ OS に依存しない部分のテスト（`common/tests/run.sh`）を先に実�
 | 場所 | 内容 |
 |---|---|
 | `zephyr/app/usb-console/src/` | アプリ本体のうち Zephyr 版だけのもの（KV、RAM ログ、起動処理）。ほかの版と共有するもの（計測、時刻同期、MQTT、Wi-Fi 設定、校正など）は `common/imu/` |
-| `zephyr/app/usb-console/drivers/` | LSM6DSO、I²C、NINA、sensor shell のローカルドライバー |
+| `zephyr/app/usb-console/drivers/` | LSM6DSO、I²C、sensor shell のローカルドライバーと、NINA の Zephyr 側（ソケットのオフロード、コアの境界） |
 | `zephyr/app/usb-console/tests/` | ホストテスト（Zephyr 版だけのもの） |
 | `zephyr/app/blink/` | LED 点滅のサンプル |
 | `zephyr/script/` | 環境構築、ホストテスト |
 | `nuttx/` | NuttX 版（ボード定義、ドライバー、アプリ、パッチ、スクリプト、ホストテスト） |
-| `common/` | 3 つの版が同じファイルを使うソース（`imu/`: 取得サービス、送信、時刻同期、校正、Wi-Fi のプロファイル、KV の API と `kv` コマンド。`drivers/`: LSM6DSO のドライバー、sensor シェル、NINA と I2C0・DMA の OS に依存しないコア（NuttX 版と FreeRTOS 版が使う）。`compat/`: NuttX 版と FreeRTOS 版が使う Zephyr の API の互換層の OS に依存しない部分と Zephyr のライブラリーの写し。`shell/`・`log/`: シェルのコマンド処理と RAM ログ（NuttX 版と FreeRTOS 版））と、そのホストテスト（`tests/`。`tests/run.sh` を各版の `host_tests.sh` が呼ぶ）。構成は [設計書](design/imu-raw-mqtt-design-ja.md) の §12 |
+| `common/` | 3 つの版が同じファイルを使うソース（`imu/`: 取得サービス、送信、時刻同期、校正、Wi-Fi のプロファイル、KV の API と `kv` コマンド。`drivers/`: LSM6DSO のドライバー、sensor シェル、NINA の OS に依存しないコア、I2C0・DMA の OS に依存しないコア（NuttX 版と FreeRTOS 版が使う）、ブート ROM の `memcpy`・`memset`（Zephyr 版と NuttX 版）。`compat/`: NuttX 版と FreeRTOS 版が使う Zephyr の API の互換層の OS に依存しない部分と Zephyr のライブラリーの写し。`shell/`・`log/`: シェルのコマンド処理と RAM ログ（NuttX 版と FreeRTOS 版））と、そのホストテスト（`tests/`。`tests/run.sh` を各版の `host_tests.sh` が呼ぶ）。構成は [設計書](design/imu-raw-mqtt-design-ja.md) の §12 |
 | `openmv/` | OpenMV 版 MicroPython のビルド環境（[`openmv/README_ja.md`](openmv/README_ja.md)） |
 | `freertos/` | Pico SDK + FreeRTOS 版（ビルド環境、アプリ、互換層の FreeRTOS の部分、ドライバー、スクリプト、ホストテスト。[`freertos/README_ja.md`](freertos/README_ja.md)） |
 | `zephyr/manifest/west.yml` | Zephyr とモジュールのバージョン |
@@ -339,7 +340,8 @@ OS に依存しない部分のテスト（`common/tests/run.sh`）を先に実�
 ## 3 つの版と `common/`
 
 同じファームウェアに、Zephyr 版（`zephyr/`）、NuttX 版（`nuttx/`）、Pico SDK + FreeRTOS 版（`freertos/`）の 3 つの版が
-あります。取得、送信、時刻同期、校正、KV、ドライバーのソースは `common/` の同じファイルを使います。Zephyr 版は
+あります。取得、送信、時刻同期、校正、KV、ドライバーのソースは `common/` の同じファイルを使います（NINA のドライバーは
+3 つの版で同じコアを使い、I2C0・DMA のドライバーは Zephyr 版だけが自分のものです）。Zephyr 版は
 それを Zephyr の上で、NuttX 版と FreeRTOS 版は Zephyr の API を Zephyr の名前のまま再現する互換層
 （`common/compat/` と各版の `drivers/compat/`）の上でビルドします。KV は 3 つの版で同じ場所・同じ形式なので、
 版を書き換えても残ります。`common/` の構成と OS ごとの境界は [設計書](design/imu-raw-mqtt-design-ja.md) の §12 にあります。
@@ -375,96 +377,24 @@ BOOTSEL に入るので、書き込みにボタンの操作が要りません。
   [`host/README_ja.md`](host/README_ja.md) の「ボードのファームウェア」）。
 - 設計上の違いは [設計書](design/imu-raw-mqtt-design-ja.md) の §13 にあります。
 
-## Zephyr 版と NuttX 版の性能の違い
+## 3 つの版の性能
 
-同じボード、同じ PC、同じ AP で、2 つのファームウェアを書き換えて同じ日（2026-11-14）に測った値です。
-条件は 6667 Hz の計測を MQTT で送信、PC 側は `imu-host check`、1 回 60 秒で、どちらの版も同じ手順
-（USB のシェルから `imu start`、60 秒後に `imu stop`、`imu status`）で測りました。どの回も欠番、
-`imu status` の `errors`・`fifo` は 0 でした。
+同じボード、同じ PC、同じ AP、同じ受信器（`imu-host check`）で、ファームウェアを書き換えて同じ日（2026-11-18）に
+測った値です。送信中の値は、6667 Hz の計測を MQTT で送り、USB のシェルから `imu start`、約 60〜70 秒後に `imu stop` で
+測りました。どの回も欠番は 0 でした。TCP の速度は IMU の送信を止めた状態で、約 10 秒、ボードからの送信は 1024 バイトずつです。
 
-| 項目 | Zephyr 版 | NuttX 版 |
-|---|---|---|
-| 送信中の `cpu_active` | 62.6 %、63.3 %（2 回） | 67.7〜67.9 %（3 回） |
-| 同、`ntp status` を 2 秒ごとに実行しながら | 65.4 %（1 回） | 68.3 %、68.5 %（2 回） |
-| 送信中の NTP の往復時間（`ntp status` の `last_us` の中央値） | 7.6 ms（27 点） | 9.9 ms、10.0 ms（30 点ずつ、2 回） |
-| TCP の送信（ボード → PC、10 秒） | 3.00 Mbit/s（`zperf`、1024 バイトずつ、1 回） | 3.6〜3.9 Mbit/s（`iperf`、5 回） |
-| TCP の受信（PC → ボード、10 秒） | 1.57 Mbit/s（`zperf`、1 回） | 0.95〜1.03 Mbit/s（`iperf`、5 回） |
+| 項目 | Zephyr 版 | NuttX 版 | FreeRTOS 版 |
+|---|---|---|---|
+| 送信中の `cpu_active` | 51.2〜51.5 %（4 回） | 55.8 %、56.2 %（2 回） | 41.5 %（1 回） |
+| TCP の送信（ボード → PC） | 3.02、3.30 Mbit/s（`zperf`） | 3.19 Mbit/s（`iperf`、1 回） | 3.60 Mbit/s（`zperf`、1 回） |
+| TCP の受信（PC → ボード） | 1.78、1.89 Mbit/s（`zperf`） | 1.14 Mbit/s（`iperf`、1 回） | 2.31 Mbit/s（`zperf`、1 回） |
+| イメージの大きさ（`.bin`） | 364,132 バイト | 279,564 バイト | 227,280 バイト |
 
-- NuttX 版は、送信中の CPU 負荷が Zephyr 版より約 5 ポイント高く、NTP の往復が約 2 ms 長くなります。
-  差の原因は特定していません。
-- NuttX 版の値は `ps` に CPU の列を入れた版のものです。入れる前の版は、同じ手順で `cpu_active` 66.0〜66.1 %
-  （3 回）、`ntp status` を見ながら 66.7 %（1 回）、NTP の往復の中央値 8.6 ms（30 点）でした。
-- TCP の速度は測定のコマンドが違うので（Zephyr 版は `zperf`＝iperf 3 の方式、NuttX 版は `iperf`＝iperf 2 の
-  方式で、1 回に送る大きさも違います）、目安としての比較です。
-- `sensor stream` は、どちらの版でも ODR を上げると `Read failed` で止まります。Zephyr 版は 833 Hz 以上、
-  NuttX 版は 3333 Hz 以上で止まりました（watermark 128、USB コンソール、各 1 回）。
-
-### 送信中のスレッドごとの CPU 時間
-
-送信中（`imu start` の 8 秒後から 30 秒間）に、各スレッドの実行時間が全スレッドの合計に占める割合です。
-Zephyr 版は `kernel thread list` の `Total execution cycles`、NuttX 版は `/proc/<tid>/critmon` の実行時間の
-合計を、区間の前後にシェルから読んだ差です。どちらもスレッドの切り替えのときに積算し、割り込みの処理の
-時間は割り込まれたスレッドに入ります（アイドル中の割り込みはアイドルに入るので、アイドルの割合は
-100 % − `cpu_active` と一致しません）。Zephyr 版は 1 回、NuttX 版は 2 回です。この計測の `cpu_active`
-（`imu start` から `imu stop` まで、区間の前後に値を読むコマンドを含む）は Zephyr 版 63.5 %、NuttX 版
-68.8 %・68.3 % でした。
-
-| スレッド | Zephyr 版 | NuttX 版 |
-|---|---|---|
-| アイドル | 41.85 % | 34.58 %、35.17 % |
-| `imu_raw_mqtt_tid` | 20.39 % | 22.83 %、22.28 % |
-| `imu_fifo_worker` | 18.53 % | 19.09 %、18.82 % |
-| `imu_stream_tid` | 16.18 % | 17.40 %、17.73 % |
-| `nina_event`（NuttX 版だけのスレッド。NINA のソケットの状態の問い合わせ、送信の再試行） | – | 3.24 %、3.21 % |
-| `sysworkq` | 1.85 % | 2.24 %、2.16 % |
-| USB（Zephyr 版の `usbd@50110000` と `usbd`。NuttX 版には USB のスレッドが無い） | 0.63 % | – |
-| シェル（Zephyr 版の `shell_uart`、NuttX 版の `nsh`） | 0.38 % | 0.36 %、0.35 % |
-| `time_sync_tid` | 0.17 % | 0.24 %、0.27 % |
-| `nina_monitor_tid` | 0.02 % | 0.02 %、0.02 % |
-
-### メモリの使い方
-
-2026-11-14 のビルドの ELF から、セクションの大きさとシンボルのアドレスを比べたものです。flash（16 MB）と
-RAM（264 KB）の割り当て、boot2（0x10000000 の 256 バイト）、コードの開始（0x10000100）、KV の場所（flash の
-末尾 8 KB、0x10ffe000 から）は同じです。
-
-| flash | Zephyr 版 | NuttX 版 |
-|---|---|---|
-| コード | 266,776 バイト | 274,968 バイト（定数を含む） |
-| 定数 | 85,808 バイト | コードに含む |
-| `.data` の初期値 | 5,232 バイト | 3,716 バイト |
-| イメージの合計 | 362,284 バイト | 約 279,000 バイト |
-| UF2 のファイル | 725,504 バイト | 558,080 バイト |
-
-| RAM | Zephyr 版 | NuttX 版 |
-|---|---|---|
-| `.data` と初期値つきのカーネルオブジェクト | 5,232 バイト | 3,716 バイト（ほかに RAM 上のベクターテーブル 192 バイト） |
-| `.bss` | 94,637 バイト | 109,436 バイト |
-| `.noinit` | 55,712 バイト（全スレッドのスタックと RAM ログ 4 KiB） | 8,208 バイト（RAM ログ 8 KiB） |
-| 静的に確保した分の合計 | 155,584 バイト | 121,564 バイト |
-| その後ろ | 114,752 バイト（libc の malloc が使える領域） | アイドルのスタック 1,024 バイトとヒープ約 147.7 KB |
-| 割り込み用のスタック | 2,048 バイト | 2,048 バイト |
-
-- Zephyr 版は全スレッドのスタックを静的に確保します。NuttX 版は、Zephyr 版から写したスレッド
-  （`imu_stream_tid` など）のスタックは `.bss` に置き、NuttX 側で作るタスク（`nsh`、`telnetd`、`nina_event`
-  など）のスタックはヒープから取ります。NuttX 版のヒープは、計測していないときに約 23.8 KB を使っています
-  （`free` の表示）。
-- アプリの大きな変数は両方で同じ大きさです（送信キュー 29,512 バイト、FIFO 読み出しのブロックプール
-  8,192 バイト、NINA の送信バッファ 3,584 バイトなど）。違うのは RAM ログ（NuttX 版は 8 KiB）、シェルの
-  コマンド履歴（NuttX 版に 4,108 バイト）などです。
-
-## FreeRTOS 版の性能
-
-2026-11-17 に各 1 回測った値です。AP と PC は上の表と同じですが、日と手順が違うので、上の表の値とは条件が
-そろっていません。
-
-| 項目 | FreeRTOS 版 |
-|---|---|
-| 送信中の `cpu_active` | 45.5 %（書き込み直後の最初の計測、56 秒。欠番 0、`errors`・`fifo` 0） |
-| TCP の送信（ボード → PC、20 秒） | 2.94 Mbit/s（`zperf`、1024 バイトずつ。PC の `iperf3` の表示は 2.93 Mbit/s） |
-| TCP の受信（PC → ボード、20 秒） | 1.38 Mbit/s（`zperf`） |
-
-- FreeRTOS 版の `cpu_active` には、周期の tick の割り込みの時間が入ります（Zephyr 版と NuttX 版にはこの割り込みが
-  ありません）。
-- 同じ日に NuttX 版（KV の形式を Zephyr 版にそろえた版）で測った書き込み直後の最初の計測（71 秒、1 回）は、
-  `cpu_active` 70.0 % でした。
+- TCP の速度は測定のコマンドが違うので（Zephyr 版と FreeRTOS 版は `zperf`＝iperf 3 の方式、NuttX 版は `iperf`＝
+  iperf 2 の方式）、目安としての比較です。
+- FreeRTOS 版の `cpu_active` には、1 ms ごとの tick の割り込みの時間が入ります（Zephyr 版と NuttX 版にはこの割り込みが
+  ありません）。静止時（Wi-Fi 接続、計測なし、30 秒、1 回）は 1.4 % でした。
+- boot2 のフラッシュの読み出しを速くし、`memcpy`・`memset` をブート ROM のものにする前（2026-11-14）は、送信中の
+  `cpu_active` が Zephyr 版 62.6〜63.3 %、NuttX 版 67.7〜67.9 % でした。
+- `sensor stream` は、Zephyr 版と NuttX 版のどちらでも ODR を上げると `Read failed` で止まりました。Zephyr 版は
+  833 Hz 以上、NuttX 版は 3333 Hz 以上です（2026-11-14 の像、watermark 128、USB コンソール、各 1 回）。

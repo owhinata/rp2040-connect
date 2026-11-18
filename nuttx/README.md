@@ -105,6 +105,9 @@ image (boot2, the flash range, no overlap with the key-value area) before making
 
 Changes made with `--menuconfig` are lost at the next configure unless saved with `--savedefconfig`.
 
+`memcpy` and `memset` use the boot ROM's routines (`CONFIG_NANO_ROM_MEM_OPS` in the board's Kconfig, on by
+default; off, they are the C library's loops).
+
 ## Flashing
 
 The UF2 goes in through the RP2040 USB bootloader (BOOTSEL mode, in which a USB drive named
@@ -477,7 +480,7 @@ NuttX puts at the start of a stack (2048 → 2008 and so on).
 nuttx/script/host_tests.sh
 ```
 
-This builds and runs the 44 host tests of the OS-independent parts on the PC. The first 31 are the
+This builds and runs the 48 host tests of the OS-independent parts on the PC. The first 34 are the
 tests of the sources shared by the three builds and of the shared parts of the layer, the
 shell, the RAM log's ring and the key-value store (the last one, `zephyr_copies`, checks that the
 copied Zephyr files are the same as the originals), run by `common/tests/run.sh`. It needs no board, only
@@ -496,5 +499,5 @@ Zephyr build changes), are in "Host test details" in [`design/nuttx-porting.md`]
 | `patches/` | Patches to NuttX and nuttx-apps |
 | `script/` | `setup.sh`, `build.sh`, `flash.sh`, `host_tests.sh`, `bin2uf2.py`, `kconfig-tweak` |
 | `tests/` | Host tests (those of the NuttX build only) |
-| `../common/` | Sources shared with the Zephyr and FreeRTOS builds (`imu/`, `drivers/lsm6dso/`, `drivers/stmemsc/`, `drivers/nina/`, `drivers/sensor_shell/`, `drivers/i2c_dw/`; the NINA core in `drivers/nina/` and the I2C0 and DMA core in `drivers/i2c_dw/` are used by this build and the FreeRTOS build), the OS-independent part of the compatibility layer (`compat/`), the shell's command handling (`shell/`), the `LOG_*` macros and the RAM log's ring (`log/`) and their host tests. The build finds them through `VPATH` and compiles each but the NINA core, the I2C0 and DMA core, stmemsc, `shell/` and `log/` with the prelude (`drivers/compat/common_prelude.h`); the objects are made in `apps/imu`, `apps/wifi`, `apps/sensor`, `apps/subcmd`, `drivers` and the board's directory |
+| `../common/` | Sources shared with the Zephyr and FreeRTOS builds (`imu/`, `drivers/lsm6dso/`, `drivers/stmemsc/`, `drivers/nina/`, `drivers/sensor_shell/`, `drivers/i2c_dw/`; the NINA core in `drivers/nina/` is used by the three builds, the I2C0 and DMA core in `drivers/i2c_dw/` by this build and the FreeRTOS build), the OS-independent part of the compatibility layer (`compat/`), the shell's command handling (`shell/`), the `LOG_*` macros and the RAM log's ring (`log/`) and their host tests. The build finds them through `VPATH` and compiles each but the NINA core, the I2C0 and DMA core, stmemsc, `shell/` and `log/` with the prelude (`drivers/compat/common_prelude.h`); the objects are made in `apps/imu`, `apps/wifi`, `apps/sensor`, `apps/subcmd`, `drivers` and the board's directory |
 | `nuttx/`, `nuttx-apps/`, `pico-sdk/`, `toolchain/`, `stmemsc/`, `.venv/`, `build/` | What `setup.sh` fetches and the build products (not in Git) |
