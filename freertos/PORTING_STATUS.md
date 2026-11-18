@@ -1159,3 +1159,21 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
   - 退避した像のアプリの領域は、`images/NINA_W102_ALL-3.0.2-p0002.bin`（11-10 にビルドした 2 パッチの像）と大半のブロックが違う。
     実機に入っているのはそのビルドそのものではない（何が入っているかは未調査）。復元には今日の退避を使う。
 - 実機: FreeRTOS 版（中継コマンド入り）、AP 接続中。NINA は未変更。
+
+## NINA のファームウェアを書き換えた（2026-11-18、ユーザーの了承のうえ）
+
+- 書いた像: `firmware/nina-fw/source/NINA_W102.bin`（sha256 b04f0796…、パッチ 0001〜0006。ソースで 6 つとも当たっていることを確認: 0003〜0006 は
+  写しの上で後ろから順に戻せた、0001・0002 は逆適用の検査が通る）。FreeRTOS 版の `nina passthrough confirm` と esptool 5.3.0
+  （`ESPTOOL_CFGFILE` の `custom_reset_sequence = R0|D1|W0.2|R1|W0.6`、`--before default-reset --after no-reset --baud 921600
+  write-flash 0`）で 19.9 秒、esptool のハッシュ検証 OK。
+- 読み戻し（`images/after-write-20261118.bin`、Git 管理外）: 先頭 0x134c00 バイトが像と一致。像の終わり〜0x1B0000、storage（0x1B0000〜）、
+  nvs（0x1F0000〜）は書き込み前の退避と一致（保存領域は変わっていない）。
+- 元へ戻すとき: `images/backup-20261118-115200.bin`（2 MB 全体）を `write-flash 0`。
+- **今のドライバーのまま（FreeRTOS 版、未対応）での確認**: 起動、`nina version` 3.0.2、自動接続。送信 60 秒 `cpu_active` 41.4%、欠番 0、overruns 0。
+  静止 1.2%。zperf 送信 3.76・受信 2.52 Mbit/s。`ntp status` の `last_us` 5842。送信 + zperf + Telnet の同時実行: drop 521/1440（従来どおり）、
+  overruns 0、zperf 3.28 Mbit/s。Telnet 3 回 OK。`wifi disconnect` → `auto_connect` は 3 秒で復帰。`dmesg` に `<err>`・`<wrn>` なし、異常停止なし。
+  GPIO2 は静止時 0。
+- **気づいた点**: `wifi scan` のあと Wi-Fi が RUNNING に戻るまで約 44 秒（2 回とも）。新しいファームウェアはスキャン中も接続を保つが、今の
+  ドライバーはスキャンを切断の扱いにして繋ぎ直すので、その組み合わせの結果とみられる（書き換え前の所要時間は測っていない）。ドライバーの
+  対応（機能のビットを見て切断の扱いをやめる）で解消する見込み。それまでスキャンは使えるが復帰が遅い。
+- 実機: FreeRTOS 版（中継コマンド入り）、NINA は新しいファームウェア。
