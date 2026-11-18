@@ -16,12 +16,14 @@
 #include "hardware/watchdog.h"
 #include "FreeRTOS.h"
 #include "task.h"
+#include <zephyr/kernel.h>
 #include <zephyr/shell/shell.h>
 #include <zephyr/sys/clock.h>
 #include "app.h"
 #include "fault.h"
 #include "nano_shell.h"
 #include "os_clock.h"
+#include "ps_interval.h"
 #ifdef NANO_SELFTEST
 #include "i2c_dw_selftest.h"
 #include "lsm6dso_selftest.h"
@@ -31,6 +33,8 @@
 #define PS_TASKS_MAX     24
 /* Time for the USB code to send a command's last message before a restart. */
 #define RESTART_DELAY_MS 100
+
+_Static_assert(PS_TASKS_MAX <= PS_INTERVAL_TASKS_MAX, "ps keeps every task");
 
 static int cmd_help(const struct shell *sh, size_t argc, char **argv)
 {
@@ -198,53 +202,70 @@ static int cmd_free(const struct shell *sh, size_t argc, char **argv)
 SHELL_CMD_REGISTER(free, NULL, "Show the use of the FreeRTOS heap and of malloc()", cmd_free);
 
 /* The tasks: state, priority, the least free stack so far and the share of
- * the CPU time since the start.
+ * the CPU time since the previous "ps" (since the start for the first), from
+ * any shell: the run time counters (TIMER, 1 us) of this list less those of
+ * the previous one (common/shell/ps_interval.h; nothing runs between two
+ * lists).  The share is of all the time of the interval, the idle task's
+ * included, so the rows add up to about 100%; interrupt handlers count in
+ * the task they interrupted.  Then the CPU load over the same interval as
+ * the IMU service's "cpu_active" measures it (idle windows, interrupt
+ * handlers count as load: idle.c).
  */
+static K_MUTEX_DEFINE(ps_lock);
+
 static int cmd_ps(const struct shell *sh, size_t argc, char **argv)
 {
 	static TaskStatus_t tasks[PS_TASKS_MAX];
+	static struct ps_interval interval;
+	static unsigned int permille[PS_TASKS_MAX];
 	/* Indexed by eTaskState: running, ready, blocked, suspended, deleted, invalid. */
 	static const char states[] = "XRBSD?";
 	configRUN_TIME_COUNTER_TYPE total;
 	UBaseType_t count;
+	uint64_t elapsed;
 	uint64_t window_us;
 	int permille_window;
 
 	(void)argc;
 	(void)argv;
 
+	k_mutex_lock(&ps_lock, K_FOREVER);
 	if (uxTaskGetNumberOfTasks() > PS_TASKS_MAX) {
+		k_mutex_unlock(&ps_lock);
 		shell_error(sh, "More than %d tasks", PS_TASKS_MAX);
 		return -ENOMEM;
 	}
 	count = uxTaskGetSystemState(tasks, PS_TASKS_MAX, &total);
+	permille_window = idle_ps_window(&window_us);
+	elapsed = ps_interval_begin(&interval, total);
+	for (UBaseType_t i = 0; i < count; i++) {
+		const TaskStatus_t *t = &tasks[i];
+		uint64_t run = ps_interval_task(&interval, (uintptr_t)t->xHandle, t->xTaskNumber,
+						t->ulRunTimeCounter);
+
+		permille[i] = ps_interval_permille(run, elapsed);
+	}
+	ps_interval_end(&interval);
+
 	shell_print(sh, "%-20s %-5s %4s %10s %6s", "NAME", "STATE", "PRIO", "STACK FREE", "CPU");
 	for (UBaseType_t i = 0; i < count; i++) {
 		const TaskStatus_t *t = &tasks[i];
-		unsigned int permille = 0;
 
-		if (total > 0) {
-			permille = (unsigned int)(t->ulRunTimeCounter * 1000u / total);
-		}
 		shell_print(sh, "%-20s %-5c %4lu %10lu %4u.%u%%", t->pcTaskName,
 			    states[t->eCurrentState <= eInvalid ? t->eCurrentState : eInvalid],
 			    (unsigned long)t->uxCurrentPriority,
 			    (unsigned long)(t->usStackHighWaterMark * sizeof(StackType_t)),
-			    permille / 10, permille % 10);
+			    permille[i] / 10, permille[i] % 10);
 	}
 	/* The interrupt stack (the main stack, irq_stack.c): not a task. */
 	shell_print(sh, "%-20s %-5c %4c %10lu %6c", "(interrupts)", '-', '-',
 		    (unsigned long)(irq_stack_size() - MIN(irq_stack_used(), irq_stack_size())),
 		    '-');
 	shell_print(sh, "STATE: X running, R ready, B blocked, S suspended, D deleted");
-
-	/* The load as the IMU service's "cpu_active" measures it: idle windows,
-	 * interrupt handlers count as load (idle.c).
-	 */
-	permille_window = idle_ps_window(&window_us);
 	shell_print(sh, "cpu_active: %d.%d%% in the %llu.%03llu s since the previous \"ps\"",
 		    permille_window / 10, permille_window % 10, window_us / 1000000u,
 		    window_us / 1000u % 1000u);
+	k_mutex_unlock(&ps_lock);
 	return 0;
 }
 

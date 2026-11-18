@@ -1145,8 +1145,10 @@ mechanism; turning this on does not change how it measures.
     nanosecond digit). The total only grows, so the difference of two readings gives the share over
     an interval (what `Total execution cycles` of the Zephyr build's `kernel thread list` gives).
     The longest run goes back to 0 at each read.
-- The CPU of the Zephyr build's `kernel ps` is a whole-number percentage accumulated since boot,
-  and `Total execution cycles` of `kernel thread list` a cycle count since boot. The CPU column of
+- The CPU of the Zephyr build's `kernel ps` and the FreeRTOS build's `ps` is the share since the previous
+  run of the command (in 0.1 % steps, since boot for the first; type it at the start and at the end of
+  the interval of interest), and `Total execution cycles` of the Zephyr build's `kernel thread list` a
+  cycle count since boot. The CPU column of
   NuttX's `ps` is the moving average above.
 - nsh's `top` (which shows the same values over and over) is turned off, as the Zephyr build has
   no such command.

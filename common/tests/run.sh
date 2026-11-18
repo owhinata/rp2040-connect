@@ -113,6 +113,9 @@ run sys_getopt "${flags[@]}" -D_DEFAULT_SOURCE -DCONFIG_GETOPT_LONG=1 -Itests/kv
 run log_ring "${flags[@]}" -Ilog tests/log_ring.c log/log_ring.c
 # The CPU load arithmetic of the idle loop (compat/nano_cpuload.h).
 run nano_cpuload "${flags[@]}" -Icompat tests/nano_cpuload.c
+# The CPU column of "ps" (FreeRTOS) and "kernel ps" (Zephyr): each task's share since the
+# previous list (shell/ps_interval.h).
+run ps_interval "${flags[@]}" -Ishell tests/ps_interval.c
 # The record of a fatal error that the FreeRTOS build keeps across its restart
 # (log/fault_record.c): the check, the watchdog scratch copy and the lines.
 run fault_record "${flags[@]}" -Ilog tests/fault_record.c log/fault_record.c

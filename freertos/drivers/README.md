@@ -110,7 +110,10 @@ order (the Zephyr build's initialization order and the NuttX build's start-up or
 **CPU load** (`idle.c`): the idle hook disables interrupts, opens the window, waits with `WFI`, closes the
 window and enables interrupts (the measurement of the Zephyr build's `CONFIG_CPU_LOAD` and the NuttX
 build's `up_idle()`). The tick interrupt every 1 ms counts as load (the Zephyr and NuttX builds have no
-such interrupt). The CPU column of `ps` is cumulative since the start, timed by the TIMER.
+such interrupt). The CPU column of `ps` is the share of the
+interval since the previous `ps` (from USB or Telnet; since the start for the first) in all the time of
+the interval, idle included, so the rows add up to about 100 % (type it at the start and at the end of
+the interval of interest); timed by the TIMER.
 
 ## Shell and consoles
 

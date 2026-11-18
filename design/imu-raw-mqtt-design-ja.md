@@ -656,7 +656,8 @@ NINA-W102 のソケットは NuttX の usrsock（`CONFIG_NET_USRSOCK_CUSTOM`）�
 スレッドごとの割合は、`ps` の CPU 列（NuttX 標準の `CONFIG_SCHED_CPULOAD_CRITMONITOR`。時間の源は TIMER）で
 見る。Zephyr 版の `CONFIG_SCHED_THREAD_USAGE`（`kernel ps`・`kernel thread list`）と同じく切り替えのときに
 積算し、割り込みの時間は割り込まれたスレッドに入る。`ps` の値は移動平均（約 1 秒ごとに半分に減衰）で、
-Zephyr 版は起動からの累積。区間の割合は `/proc/<tid>/critmon` の実行時間の合計の差で求める
+Zephyr 版は前回の `kernel ps` からの区間の割合（最初は起動から）。NuttX 版の区間の割合は
+`/proc/<tid>/critmon` の実行時間の合計の差で求める
 （`design/nuttx-porting-ja.md` の「CPU 負荷」）。
 
 ### 11.5 KV の形式
@@ -821,7 +822,8 @@ NINA のファームウェアの追加機能（`firmware/nina-fw/` のパッチ 
   遅れていた（2026-11-17、3 回）。入れたあとは、100 文字の `kv set` 90 回のあとも「TIMER の ms − tick」は 2.8〜3.1 だった
   （2026-11-18）。`xTaskCatchUpTicks()` は、タスクからしか呼べず、補った tick で tick フックが呼ばれないので使わない。
 - `cpu_active` は §11.4 と同じアイドルの窓の方式で測る。1 ms ごとの tick の割り込みは負荷に入る（Zephyr 版・
-  NuttX 版にはこの割り込みが無い）。`ps` の CPU 列は起動からの累積。
+  NuttX 版にはこの割り込みが無い）。`ps` の CPU 列は前回の `ps` からの区間の
+  割合（最初は起動から。アイドルを含み、合計は約 100 %）。
 - NINA の READY は GPIO10 のエッジ割り込みで待つ（Zephyr 版・NuttX 版も同じ）。
 
 ### 13.3 ソケット

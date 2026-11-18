@@ -110,7 +110,7 @@ USB の CDC ACM ポートがコンソールです（UART0 は使いません）�
 | `sleep <ms>` | ms ミリ秒眠る |
 | `date` | 日付と時刻（UTC。NuttX 版と同じ形式。時刻同期の前は 1970 年から数える） |
 | `devmem <address> [<width> [<value>]]` | メモリーの読み書き。アドレスと値は 16 進、幅は 8・16・32 ビット（省略時 32）。値を付けると書き込み |
-| `ps` | タスクの一覧（状態、優先度、スタックの空きの最小値、CPU 時間の割合）、割り込み用スタックの空き（`(interrupts)` の行）、前回の `ps` からの CPU 負荷 |
+| `ps` | タスクの一覧（状態、優先度、スタックの空きの最小値、前回の `ps` からの CPU 時間の割合）、割り込み用スタックの空き（`(interrupts)` の行）、前回の `ps` からの CPU 負荷。見たい区間の最初と終わりに 1 回ずつ打ちます |
 | `imu start`、`imu stop`、`imu status`、`imu cal [reload\|zero]` | IMU の取得の開始・停止、カウンターの表示、校正値の表示と読み直し（Zephyr 版と同じ） |
 | `wifi connect`、`wifi disconnect`、`wifi scan`、`wifi status` | Wi-Fi の接続（`connect -s <SSID> -k 1 -p <パスフレーズ>`。`-k 0` は暗号化なし）・切断・スキャン・状態。Zephyr 版の `wifi` のうち、このボードで使えるものだけ |
 | `wifi cred add`、`wifi cred delete`、`wifi cred list`、`wifi cred auto_connect` | 保存する資格情報の登録・削除・一覧と、保存済みの網への接続。`list` はパスフレーズも表示する |

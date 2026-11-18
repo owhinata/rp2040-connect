@@ -991,7 +991,8 @@ NuttX 標準のクリティカルセクションの監視（`CONFIG_SCHED_CRITMO
   - `/proc/<tid>/critmon`: `最長の連続実行時間,起動からの実行時間の合計`（秒、ナノ秒の桁まで）。合計は
     減らないので、2 回読んだ差から区間の割合を求められます（Zephyr 版の `kernel thread list` の
     `Total execution cycles` に当たります）。最長の値は読むたびに 0 に戻ります。
-- Zephyr 版の `kernel ps` の CPU は起動からの累積の整数の %、`kernel thread list` の
+- Zephyr 版・FreeRTOS 版の `kernel ps`・`ps` の CPU は前回のそのコマンドからの区間の割合（0.1 % 単位、最初は
+  起動から。見たい区間の最初と終わりに 1 回ずつ打つ）、Zephyr 版の `kernel thread list` の
   `Total execution cycles` は起動からの累積のサイクル数です。NuttX の `ps` の CPU 列は上の移動平均です。
 - nsh の `top`（同じ値を繰り返し表示する）は無効にしています（Zephyr 版に無いコマンドのため）。
 - PANIC の報告のタスクの一覧にも CPU の列が出ます。

@@ -14,6 +14,10 @@ target_sources(app PRIVATE src/main.c src/log_ram.c ${COMMON_DIR}/imu/kv_store.c
   ${COMMON_DIR}/imu/imu_raw_mqtt.c ${COMMON_DIR}/imu/imu_raw_status.c)
 target_include_directories(app PRIVATE src drivers/lsm6dso ${COMMON_DIR}/imu ${COMMON_DIR}/drivers/lsm6dso
   ${COMMON_DIR}/drivers/nina)
+# "kernel ps" (main.c): the interval arithmetic shared with the FreeRTOS build's "ps", and the
+# kernel's internal headers for the interrupt stack (z_stack_space_get(), as Thread Analyzer).
+set_property(SOURCE src/main.c APPEND PROPERTY INCLUDE_DIRECTORIES ${COMMON_DIR}/shell
+  ${ZEPHYR_BASE}/kernel/include ${ZEPHYR_BASE}/arch/${ARCH}/include)
 
 # NINA-W102: the shared core of common/drivers/nina (the SPI link nina_spi.c, the Wi-Fi
 # interface nina_net.c, the socket table and commands nina_sock.c, the resolver nina_dns.c, the

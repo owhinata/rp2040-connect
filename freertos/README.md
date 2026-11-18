@@ -112,7 +112,7 @@ The console is the USB CDC ACM port (UART0 is not used). Opening a terminal show
 | `sleep <ms>` | Sleep for ms milliseconds |
 | `date` | Date and time (UTC, in the format of the NuttX build; counts from 1970 until the time is synchronized) |
 | `devmem <address> [<width> [<value>]]` | Read or write memory. Address and value in hexadecimal, width 8, 16 or 32 bits (default 32). A value writes |
-| `ps` | The tasks (state, priority, least free stack, share of the CPU time), the free interrupt stack (the `(interrupts)` row) and the CPU load since the previous `ps` |
+| `ps` | The tasks (state, priority, least free stack, share of the CPU time since the previous `ps`), the free interrupt stack (the `(interrupts)` row) and the CPU load since the previous `ps`. Type it at the start and at the end of the interval of interest |
 | `imu start`, `imu stop`, `imu status`, `imu cal [reload\|zero]` | Start and stop the IMU acquisition, show its counters, show and reload the calibration (as in the Zephyr build) |
 | `wifi connect`, `wifi disconnect`, `wifi scan`, `wifi status` | Connect (`connect -s <SSID> -k 1 -p <passphrase>`; `-k 0` for an open network), disconnect, scan, and show the state of Wi-Fi: the part of the Zephyr build's `wifi` that works on this board |
 | `wifi cred add`, `wifi cred delete`, `wifi cred list`, `wifi cred auto_connect` | Add, delete and list the stored credentials, and connect to a stored network. `list` shows the passphrases too |

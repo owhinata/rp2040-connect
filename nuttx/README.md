@@ -328,7 +328,7 @@ nsh$ irqstack
   format.
 - `ps` shows each thread's priority, stack (STACK, USED, FILLED) and CPU share. The CPU column is a
   moving average weighted to the last 1 to 2 seconds, in 0.1 % steps (the Zephyr build's `kernel ps`
-  shows the total since boot). The total run time since boot is the second value of
+  shows the share since the previous `kernel ps`). The total run time since boot is the second value of
   `cat /proc/<tid>/critmon` (seconds).
 - `irqstack` prints the peak use of the interrupt stack since boot (in the format of the `IRQ 00`
   line of the Zephyr build's `kernel thread stacks`).

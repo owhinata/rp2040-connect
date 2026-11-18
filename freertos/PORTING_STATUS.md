@@ -1421,3 +1421,28 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
 - 未調査のまま残したもの: I2C の SCL の実周波数（HCNT/LCNT 31/31）、INT1 の回数の実測、TCP の受信が約 2.5 Mbit/s（NuttX は約 1.2）で
   頭打ちになる理由、NuttX のシグナルハンドラー実行中の固まりの原因（NuttX 版ではハンドラーを登録しない）、Zephyr を上げる手順の実地の確認。
 - 実機: FreeRTOS 版（最終のビルド）、NINA はパッチ 0001〜0006 のファームウェア。push はしていない。
+
+## `ps` のタスクごとの CPU の割合を「前回の `ps` からの区間」に（2026-11-18、完了のあとの修正）
+
+- ユーザーの指摘: FreeRTOS 版の `ps` と Zephyr 版の `kernel ps` で、タスクごとの CPU 使用率が小さすぎる。原因は、どちらも OS の統計の
+  「起動からの累計」をそのまま割っていたこと（FreeRTOS: `ulRunTimeCounter / total`、Zephyr: thread analyzer の
+  `execution_cycles * 100 / all.execution_cycles`、整数の %）。NuttX 版は NuttX 標準の `ps` で、スケジューラーの積算を全体が 2 秒を超えるたびに
+  半分にする方式（直近 1〜2 秒の重みが大きい）なので問題なし。
+- ユーザーの決定: いったん NuttX と同じ挙動（周期の標本化で積算を半分にする案 B）を選んだが、「`ps` のために常に動く処理で負荷を増やしたくない」
+  ので、**A 案（前回の `ps` からの区間。常に動く処理なし）に決定**。NuttX 版とは意味が違うままになる。
+- 実装（subagent）: 共有の `common/shell/ps_interval.h`（ヘッダーだけ。ハンドルで識別、静的な表、ホストテスト `ps_interval`）。FreeRTOS は
+  `cmd_ps` に `ps_lock` を足し、`cpu_active` の窓を読む位置をタスクの読み出しの直後へ。Zephyr は `thread_analyzer_run()` をやめて
+  `k_thread_foreach_unlocked()` と `k_thread_runtime_stats_get()`・`_all_get()`（分母は全体の `execution_cycles`＝アイドルを含む）、小数 1 桁、
+  ISR0 の CPU 欄は `-`、最後に区間の長さの 1 行。上流は変えていない。文書（日英）: `freertos/drivers/README`、設計書、`nuttx-porting`、
+  `nuttx/README` の 1 か所。`freertos/README` の `ps` の行はメインが直した。
+- 実機: FreeRTOS は静止 10 秒で `IDLE` 99.6%（合計 100.0%）、送信 20 秒で `IDLE` 61.6・`imu_raw_mqtt_tid` 13.6・`imu_fifo_worker` 11.9・
+  `imu_stream_tid` 11.4・`sysworkq` 0.8・`telnet_service` 0.5（合計 100.0%）、同じ区間の `cpu_active` 40.4%、欠番 0。Zephyr は静止 10 秒で
+  `idle` 97.6・`net_socket_service` 1.4、送信 20 秒で `idle` 56.2・`imu_raw_mqtt_tid` 15.8・`imu_fifo_worker` 12.7・`imu_stream_tid` 11.8・
+  `net_socket_service` 2.3・`sysworkq` 0.6（合計 100.0%）、`imu status` の `cpu_active` 48.3%、欠番 0、`dmesg` に `<err>`・`<wrn>` なし。
+- **新しい基準**: Zephyr は `freertos/build/baseline/zephyr/snapshot-1118d/image.bin`（370652 B）。NuttX は `snapshot-1118c` のまま（NuttX は
+  新しいヘッダーを使わない。再ビルドでの確認はしていない）。
+- **メインの誤り**: 1 回目の確認のとき、`fuser` の確認と書き込み・確認のスクリプトを 1 つのコマンドにまとめていて、ユーザーの picocom が開いて
+  いるのに `ifconfig`・`ps`・`imu start`/`stop`・`imu status` を送った（書き込みはスクリプトが止めた）。以後、確認は単独のコマンドで行い、結果を
+  見てから操作する。
+- 調査中（subagent、読むだけ）: `watch` コマンド、実行中の Ctrl+C、バックグラウンド実行を 3 版でどこまで作れるか（ユーザーの依頼）。
+- 実機: FreeRTOS 版（新しい `ps`）、AP 接続中。

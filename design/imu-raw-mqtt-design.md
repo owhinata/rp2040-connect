@@ -754,7 +754,8 @@ The per-thread share is shown in the CPU column of `ps` (NuttX's own
 `CONFIG_SCHED_CPULOAD_CRITMONITOR`, timed by the TIMER). Like the Zephyr version's
 `CONFIG_SCHED_THREAD_USAGE` (`kernel ps`, `kernel thread list`) it accounts at switches and puts
 interrupt time in the interrupted thread. The `ps` value is a moving average (halved about once a
-second), the Zephyr version's is accumulated since boot. The share over an interval comes from the
+second), the Zephyr version's is the share since the previous `kernel ps` (since boot for the first).
+In the NuttX version, the share over an interval comes from the
 difference of the total run time in `/proc/<tid>/critmon` ("CPU load" in `design/nuttx-porting.md`).
 
 ### 11.5 KV format
@@ -960,8 +961,8 @@ and NuttX builds in [`freertos/drivers/README.md`](../freertos/drivers/README.md
   3.1 after 90 `kv set` of 100 characters (2026-11-18). `xTaskCatchUpTicks()` is not used: it can be called
   from tasks only, and the tick hook does not run for the ticks it adds.
 - `cpu_active` is measured with the idle windows of section 11.4. The tick interrupt every 1 ms counts
-  as load (the Zephyr and NuttX builds have no such interrupt). The CPU column of `ps` is cumulative since
-  the start.
+  as load (the Zephyr and NuttX builds have no such interrupt). The CPU column of `ps` is the share of the
+  interval since the previous `ps` (since the start for the first; idle included, adding up to about 100 %).
 - The NINA's READY is waited for on GPIO10's edge interrupt (as in the Zephyr and NuttX
   builds).
 

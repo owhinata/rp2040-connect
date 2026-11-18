@@ -300,7 +300,8 @@ nsh$ irqstack
 - `bootsel` で BOOTSEL（`RPI-RP2`）に再起動します。
 - `dmesg` は RAM ログ（8 KiB、`reboot` をまたいで残る）を表示します。行の形式は Zephyr 版のログと同じです。
 - `ps` はスレッドごとの優先度、スタック（STACK・USED・FILLED）と CPU の割合を出します。CPU 列は直近 1〜2 秒の
-  重みが大きい移動平均（0.1 % 単位）です（Zephyr 版の `kernel ps` は起動からの累積）。起動からの実行時間の
+  重みが大きい移動平均（0.1 % 単位）です（Zephyr 版の `kernel ps` は前回の `kernel ps` からの
+  区間の割合）。起動からの実行時間の
   合計は `cat /proc/<tid>/critmon` の 2 つ目の値（秒）です。
 - `irqstack` は割り込み用のスタックの起動からの最大使用量です（Zephyr 版の `kernel thread stacks` の
   `IRQ 00` の行と同じ書式）。
