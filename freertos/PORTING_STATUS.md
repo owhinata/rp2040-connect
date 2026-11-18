@@ -1211,3 +1211,27 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
   （RUNNING のまま、数秒）、スキャン中の送信、zperf の受信、送信中の `cpu_active`（noevent と比較）、Telnet、切断復帰、GPIO2。
 - README（未反映）: 接続中のスキャン、`nina version` の 2 行目、事象を使わないビルドの方法、`nina passthrough confirm` と esptool の手順、
   除算器・パッチの仕組み・tick の追いつき。実機確認のあとにまとめて直す。
+
+## 新しいドライバーの実機確認（FreeRTOS 版）と、spike-nx の Issue #26（2026-11-18）
+
+- ユーザーの指示: A（FreeRTOS 版の新しいドライバー）→ B（NuttX の固まる件）の順。spike-nx（owhinata/spike-nx）の過去の Issue に同じ
+  問題が無かったか調べる（close 済みも含めた調査を subagent に依頼中）。
+- **FreeRTOS 版（新しいドライバー、新しいファームウェア）**: `nina version` の 2 行目 `NINA capabilities: 0x00000007 (in use 0x00000007)`。
+  書き込み直後の送信 60 秒 `cpu_active` 40.4%、欠番 0。
+
+  | 項目 | 事象あり（既定） | 事象なし（比較用の像） |
+  |---|---|---|
+  | 送信 60 秒の `cpu_active` | 40.4%、40.3% | 42.3% |
+  | 静止 30 秒 | 0.7%（3 回） | 1.3%、1.2% |
+  | zperf 送信（Mbit/s） | 3.47、3.84、3.70 | 3.62、3.60 |
+  | zperf 受信（Mbit/s） | 2.41、2.52、2.52 | 2.41、2.52 |
+
+  - 受信速度は事象の有無で変わらない（「20 ms の poll が上限」という見立ては外れ）。負荷は送信中 約 2 ポイント、静止時 約 0.5 ポイント下がった。
+  - 接続中の `wifi scan`（静止時）: 3.5 秒で結果、RUNNING のまま（前は復帰まで 約 44 秒）。
+  - 送信中に 2 回スキャン: 接続は保たれ（connects 1、failures 0）、drop 109/1117、overruns 0、受信側の最長の間隔 1.48 秒
+    （載せ替え前の Zephyr は 1 回のスキャンで drop 395/905・再接続）。スキャン中は無線がチャネルを離れるので送信が滞り、キューがあふれる分が落ちる。
+  - 送信 + zperf + Telnet: drop 468/1443（従来と同程度）、overruns 0。Telnet 3 回 OK。GPIO2 は静止時 0。`dmesg` に `<err>`・`<wrn>` なし。
+- **spike-nx の Issue #26**（open、STM32F413・ARMv7-M・BUILD_PROTECTED、`ostest` の `signest_test` で固まる）: シグナルハンドラーの実行中に
+  `saved_regs` の領域が上書きされ、復帰で PC=0 に飛ぶ、という原因まで確定し、修正の試みは 15 回とも失敗して未解決（テストを skip）。
+  今回の NuttX 版（ARMv6-M、FLAT）の固まりと同じ種類（ハンドラーの実行中の割り込み・切り替えで `saved_regs` が壊れる）。経路が同じかは未確認。
+- 実機: FreeRTOS 版（新しいドライバー、事象あり）。
