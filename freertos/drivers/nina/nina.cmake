@@ -23,8 +23,13 @@
 #   locks, sleeps and clock on the Zephyr compatibility layer) and
 #   nano_nina.c (nano_nina.h: SPI1 and the module's lines on the Pico SDK's
 #   hardware_spi and hardware_gpio), with those libraries;
-# - the include directory common/drivers/nina (nina_os.h, nano_nina.h,
-#   nina_proto.h, nina_sock.h, nina_dns.h).
+# - the NINA passthrough mode and this build's "nina" root with its
+#   "passthrough" subcommand (nina_passthrough.c: USB CDC <-> the module's
+#   UART for esptool, a start of its own that main() runs on request), on
+#   hardware_uart, hardware_irq and hardware_watchdog;
+# - the include directories freertos/drivers/nina (nina_passthrough.h) and
+#   common/drivers/nina (nina_os.h, nano_nina.h, nina_proto.h, nina_sock.h,
+#   nina_dns.h).
 #
 # nina_sock.c and nina_dns.c take the defaults of CONFIG_NANO_NINA_TCP_MAX_IO
 # (3584) and CONFIG_NANO_NINA_SEND_RETRY_MS (1), the Zephyr build's values.
@@ -54,17 +59,22 @@ function(freertos_nina target)
     ${FREERTOS_NINA_DIR}/nano_nina.c
     ${FREERTOS_NINA_DIR}/nina_os.c
     ${FREERTOS_NINA_DIR}/nina_socket.c
+    ${FREERTOS_NINA_DIR}/nina_passthrough.c
     ${nina_common_sources}
   )
 
   target_include_directories(${target} PRIVATE
+    ${FREERTOS_NINA_DIR}
     ${FREERTOS_COMMON_DIR}/drivers/nina
   )
 
   target_link_libraries(${target}
     hardware_gpio
+    hardware_irq
     hardware_resets
     hardware_spi
+    hardware_uart
+    hardware_watchdog
   )
 
   target_compile_definitions(${target} PRIVATE

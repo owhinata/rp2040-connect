@@ -28,6 +28,7 @@
 #include "nano_lsm6dso.h"
 #include "nano_nina.h"
 #include "nina_net.h"
+#include "nina_passthrough.h"
 #include "nano_shell.h"
 #include "nano_stdio.h"
 #include "nano_telnet.h"
@@ -320,15 +321,28 @@ static void heartbeat_main(void *arg)
 
 int main(void)
 {
+	bool passthrough;
 	int ret;
 
 	/* First: the paint for the interrupt stack's high-water mark, the RAM
-	 * log kept across the restart, and the record the last run may have
-	 * left (fault_boot() also puts it into the RAM log).
+	 * log kept across the restart, the request of the NINA passthrough
+	 * mode (in the watchdog's scratch registers 0..3, which fault_boot()
+	 * then clears) and the record the last run may have left (fault_boot()
+	 * also puts it into the RAM log).
 	 */
 	irq_stack_paint();
 	log_ram_initialize();
+	passthrough = nina_passthrough_requested();
 	fault_boot();
+
+	/* "nina passthrough confirm" asked for the NINA passthrough mode
+	 * (freertos/drivers/nina/nina_passthrough.h): it runs instead of all
+	 * that follows (no task, no SPI1, no Wi-Fi), until it restarts the
+	 * board into the normal firmware.
+	 */
+	if (passthrough) {
+		nina_passthrough_run();
+	}
 
 	/* The USB CDC ACM port, and the stdio of the tasks on the consoles
 	 * (freertos/drivers/shell/nano_stdio.h).

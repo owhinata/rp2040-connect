@@ -41,6 +41,11 @@
 # - The kernel tick's catch-up of ticks lost while interrupts are masked
 #   (freertos/app/usb-console/src/tick_catchup.h) on a model of SysTick
 #   (freertos/tests/tick, no kernel).
+# - The NINA passthrough mode's decisions (freertos/drivers/nina/
+#   nina_passthrough_logic.h: the request in the watchdog's scratch
+#   registers, DTR and RTS on the module's lines, the rate, the way out, the
+#   buffer from the UART's interrupt, the "nina" subcommands;
+#   freertos/tests/passthrough, no kernel).
 #
 #   freertos/script/host_tests.sh        run them
 #   freertos/script/host_tests.sh -v     also show the tests' output
@@ -51,7 +56,7 @@ verbose=0
 case "${1:-}" in
   "") ;;
   -v) verbose=1 ;;
-  -h|--help) sed -n '2,46p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+  -h|--help) sed -n '2,51p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
   *) printf 'Unknown option: %s\n' "$1" >&2; exit 2 ;;
 esac
 
@@ -116,6 +121,21 @@ else
     timeout 60 "$out/tick" >"$out/log" 2>&1 || { cat "$out/log"; exit 1; }
 fi
 printf 'ok  tick (catch-up of lost ticks, model of SysTick)\n'
+
+# The NINA passthrough mode's decisions (freertos/tests/passthrough): the request in the
+# watchdog's scratch registers against the fatal error record's (common/log/fault_record.c),
+# DTR and RTS on the module's lines, the rate and the way out, the buffer from the UART's
+# interrupt (also on two threads), and the "nina" subcommands
+# (drivers/nina/nina_passthrough_logic.h).  Not linked with the kernel (its headers come in
+# through the layer's <zephyr/shell/shell.h>).
+cc "${flags[@]}" "${strict[@]}" -Idrivers/nina -Idrivers/shell "${inc[@]}" \
+    tests/passthrough/main.c ../common/log/fault_record.c -o "$out/passthrough"
+if (( verbose )); then
+    timeout 60 "$out/passthrough"
+else
+    timeout 60 "$out/passthrough" >"$out/log" 2>&1 || { cat "$out/log"; exit 1; }
+fi
+printf 'ok  passthrough (NINA passthrough: request, lines, rate, buffer, subcommands)\n'
 
 # The shell (freertos/tests/shell): the line editor, and two sessions at once on two consoles
 # (each task's stdout, the shared zshell.c and subcmd.c, the copies of Zephyr's fnmatch() and
