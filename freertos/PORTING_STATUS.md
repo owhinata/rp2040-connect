@@ -1120,3 +1120,20 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
   `firmware/nina-fw/README.md` の「Host interface of 0003 to 0006」。実機では何も確かめていない。
 - メインはどのソースも読んでいない。ビルド・テストは各 subagent の報告。
 - 実機: Zephyr の「退避あり」の試験の像。
+
+## NuttX の除算器の試験の途中経過、中継コマンド（2026-11-18）
+
+- NuttX「退避なし」の試験の像（実機、起動から 40 秒）: `a 4/686160 b 6/694544 h 0/289512 sig 0/0 isr 0/144756`。食い違いは a・b だけ。
+- **試験コードの問題**: どちらの試験の像でも空きメモリー（`/proc/meminfo` の Umem の free）が約 2.3 KB/秒で減り、55〜60 秒で使い切って
+  コマンドが実行できなくなる（`command not found`・`out of memory`）。`sig` は 0/0 のまま（シグナルの経路が通っていない）。退避ありの像でも
+  同じ速さで減った。退避ありの像の食い違いの数は読めていない（新しい起動の行を確認できなかった）。subagent に試験の修正を依頼中。
+  正式の変更に由来しないことの説明も依頼。**NuttX の退避ありの確認は未了**。
+- 反省: これまで NuttX 版で `dmesg` のエラー行を「数えて 0」としていた確認は、コマンドが実行できなかった場合と区別できない。今日の
+  正常な像（boot2・ROM・READY の各確認）ではコマンドは動いていたはずだが、次に確かめるときはログの中身を見る。
+- FreeRTOS 版の `nina passthrough confirm`（subagent、commit 済み、**実機未確認**）: watchdog の scratch に印を付けて再起動し、スケジューラーも
+  SPI も起こさずに USB CDC ⇄ UART1（GPIO8 = TX、GPIO9 = RX。SPI の MISO・CS と同じピン）を中継する。RTS → RESETN、DTR → GPIO0、
+  line coding のレートに追従、16 KiB の受信リング。出るのは RESET か「300 bps にして閉じる」。フラッシュには書かない。ホストテスト
+  `passthrough`。配線は mbed のボード定義から（回路図は未確認）。README への反映は未了。
+- 手順の案（ユーザーに提示）: FreeRTOS 版 → `nina passthrough confirm` → `read_flash` で NINA を退避（まず 115200、次に高速で読み直して
+  一致を見る）→ 了承を得てから `write_flash`。
+- 実機: NuttX の「退避あり」の試験の像（メモリーを使い切った状態）。
