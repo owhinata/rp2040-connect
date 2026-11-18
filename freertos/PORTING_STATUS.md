@@ -1305,3 +1305,26 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
 - 文書（未反映）: `freertos` の `nina_passthrough.c` の表示とコメントに残る `--before no_reset`（実機で誤りと分かった）を直す。
   README・CLAUDE.md の「Zephyr 版・NuttX 版にはシェルから BOOTSEL に入るコマンドが無い」を直す。
 - 実機: Zephyr の `zephyr-fix`（設定だけ足した像。`bootsel` はまだ無い）。
+
+## 3 版の最終の像の実機確認: `bootsel`・`nina passthrough` と通常動作（2026-11-18）
+
+- **Zephyr（`snapshot-1118b`、370144 B: `bootsel`・`nina passthrough`・`CONFIG_USBD_CDC_ACM_WORKQUEUE=y` 入り）**: 起動、capabilities 0x7。
+  `nina passthrough` は確認の語なしを拒否。送信 約 71 秒 × 2 回 `cpu_active` 49.4%・49.5%、欠番 0。接続中の `zperf tcp download stop` × 6 回で
+  USB・Telnet とも生きたまま、`dmesg` に `<err>`・`<wrn>` なし。
+  - 設定だけを足した像の 51.0〜51.1% は像の配置の影響とみられる（設定なし 48.6〜48.7%、最終 49.4〜49.5%。同じソースの系統で ±1.3 ポイント動く）。
+  - **中継**: `nina passthrough confirm` → esptool 5.3.0 で `read-flash 0 0x200000` を 115200 bps（192 秒）と 921600 bps（26.5 秒）。2 つは一致、
+    書き込み後の退避（`after-write-20261118.bin`）とも一致。取りこぼし 0、オーバーラン 0（リングの peak 42/16384）。300 bps で閉じて通常の起動に
+    戻り、`nina version`・自動接続とも正常。中継の起動の間に `shell_telnet` の `<err>` 2 行（Cannot bind -19。NINA を起こさないため、想定どおり）。
+  - **`bootsel`**: 実行すると `RPI-RP2` が現れた（ドライブのマウントまで数秒かかる）。
+- **NuttX（`snapshot-1118b`、284900 B: `bootsel`・`nina passthrough` 入り）**: Zephyr の `bootsel` から書き込み。起動、capabilities 0x7、KV。
+  送信 約 70 秒 × 2 回 `cpu_active` 50.8%・50.8%（1 つ前の像は 49.4%。配置の影響とみられる）、欠番 0。`iperf` 送信 3.34、受信 1.22 Mbit/s。
+  - **中継**: 同じ手順で 115200 bps（192 秒）と 921600 bps（26.1 秒）。2 つは一致、書き込み後の退避とも一致。取りこぼし 0、オーバーラン 0
+    （peak 21/16384）。300 bps で閉じて通常の起動に戻り、自動接続、`dmesg` に `<err>`・`<wrn>` なし（中身を見た）。
+  - **`bootsel`**: `RPI-RP2` が現れた。そこから FreeRTOS 版を書いた。
+- **FreeRTOS**: NuttX の `bootsel` から現在のビルド（`nina_passthrough_logic.h` の移動後）を書き込み。起動、capabilities 0x7、自動接続、異常停止なし。
+- これで 3 版とも、RESET ボタンなしで互いに書き換えられる（`bootsel`）。NINA のファームウェアの読み書きも 3 版のどれからでもできる
+  （`nina passthrough confirm` + esptool。`ESPTOOL_CFGFILE` の `custom_reset_sequence = R0|D1|W0.2|R1|W0.6`、`--before default-reset --after no-reset`）。
+- **新しい基準**: `freertos/build/baseline/zephyr/snapshot-1118b/image.bin`、`.../nuttx/snapshot-1118b/image.bin`。
+- 残り: 文書の更新（README 3 版・ルート、ドライバー説明、設計書、`CLAUDE.md` は更新済み）、FreeRTOS 版の `nina_passthrough.c` の表示に残る
+  `--before no_reset` の修正、最終版での確認（AP を落とす切断復帰、受信側の輻輳、長時間。3 版とも）、Z02（I2C、着手前に相談）。
+- 実機: FreeRTOS 版、AP 接続中。NINA は新しいファームウェア（パッチ 0001〜0006）。
