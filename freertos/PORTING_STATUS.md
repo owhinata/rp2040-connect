@@ -1283,3 +1283,25 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
   ドライバーの担当の subagent に原因の特定と修正を依頼中。**Zephyr 版の新しいドライバーは、この件が直るまで未完了**。
   FreeRTOS 版は zperf の実装が別（自前）で、同じ手順は試していない。
 - 実機: Zephyr の正式の像（USB のシェルが止まった状態）。
+
+## Zephyr の固まりの原因と対処、`bootsel` と中継コマンドを Zephyr・NuttX に（2026-11-18、commit 済み）
+
+- **Zephyr の固まり（`zperf tcp download stop` を接続中に打つ）**: 原因は Zephyr 4.5.0 本体（subagent の分析）。`srv_disable()` が `srv_lock` を
+  持ったまま `tcp_download_cb` でシェルに `TCP session error.` を印字 → USB のシェルの送信完了は CDC ACM のコールバック（既定では system
+  work queue）待ち → 同じキューで zperf の 1 秒ごとの `idle_work_handler()` が `srv_lock` を待つ。実機のスレッドの状態（`shell_uart` と
+  `sysworkq` がともに優先度 -1 で pending、`net_socket_service` は動く、idle 93%）と一致。NINA のドライバーのロックは輪に入らない。
+  以前 20 周通ったのに今回 1 周目で出る理由は未特定。
+- **対処**: `prj.conf` に `CONFIG_USBD_CDC_ACM_WORKQUEUE=y`（CDC ACM を専用のワークキューで）。この設定だけを足した像で同じ手順を 20 周、
+  毎回 `TCP session error.` が出て USB・Telnet とも生きたまま、`dmesg` に `<err>`・`<wrn>` なし。スタック: `cdc_acm_work_q` 340/1024、
+  `sysworkq` 792/1024。
+  - **気になる点**: この像の送信中の `cpu_active` は 51.0%・51.1%・51.1%（設定なしの正式の像は 48.6%・48.7%）。約 2.4 ポイント高い。
+    設定によるものか、像の配置によるものかは未確認。
+- **`bootsel` と `nina passthrough confirm`（Zephyr・NuttX、subagent、実機未確認）**: 共通部分 `nina_passthrough_logic.h` を
+  `common/drivers/nina/` へ移動（FreeRTOS の像は移動の前後で一致、subagent）。どちらも「scratch の印 + watchdog で再起動 → OS は起動するが
+  NINA・Wi-Fi・ソケット・シェルを起こさず、USB CDC と UART1（レジスター直接）を中継」。出口は 300 bps で閉じるか RESET。`bootsel` は ROM の
+  `reset_usb_boot(0, 0)`。Zephyr: `drivers/nina/nina_passthrough.[ch]`・`_hw.h`、`CONFIG_NANO_NINA_PASSTHROUGH`、像 370144 B（+4388、bss +17.8 KB）。
+  NuttX: ボードの `nano_nina_passthrough.c`・`nano_reset.c`、`apps/bootsel`、像 284900 B（+3736）。シグナルハンドラーは使っていない。
+  ホストテストを両方に追加。メインはソースを読んでいない。
+- 文書（未反映）: `freertos` の `nina_passthrough.c` の表示とコメントに残る `--before no_reset`（実機で誤りと分かった）を直す。
+  README・CLAUDE.md の「Zephyr 版・NuttX 版にはシェルから BOOTSEL に入るコマンドが無い」を直す。
+- 実機: Zephyr の `zephyr-fix`（設定だけ足した像。`bootsel` はまだ無い）。
