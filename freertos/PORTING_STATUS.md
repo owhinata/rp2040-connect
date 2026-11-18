@@ -1390,3 +1390,20 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
 - これで計画の P4（Z01・Z02）は完了。残り: `zephyr/script/flash.sh` などで 1 回出た書き込みの失敗の原因（未調査）、最終版での確認
   （AP を落とす切断復帰・輻輳・長時間。ユーザーの決定で今回は行わない）。
 - 実機: FreeRTOS 版、AP 接続中。
+
+## 残りの片づけ（2026-11-18、commit 済み）
+
+- NuttX 版の `i2c_dma` を共有の `common/drivers/i2c_dw/i2c_dma_shell.c` に一本化（subagent。`sensor` と同じく `zshell.c` で動かす。
+  `nuttx/apps/i2c_dma/i2c_dma_main.c` は削除）。3 版の `i2c_dma` が同じ実装になった。出力の違いは 2 つだけ（複数のサブコマンドに一致する
+  ワイルドカードと 31 語以上の入力で、Zephyr のシェルのエラー文になる）。ホストテスト `i2c_dma_app` を書き直し。像 284900 → 284988 B（+88）。
+- 古い参照の修正（NuttX の Kconfig 2 か所ほか）と文書（`nuttx-porting`、設計書、`nuttx/drivers/README`、日英）。`common/` の古いコメント 2 か所は
+  メインが直した（FreeRTOS・Zephyr・NuttX を再ビルドし、像はそれぞれ変更前・`snapshot-1118c`・subagent の像と一致）。
+- 書き込みのスクリプトで 1 回出た失敗: ユーザーが同じボードへ同時に書き込んでいた可能性が高い（ユーザーの説明。試験の開始時にボードは
+  最初から BOOTSEL だった）。スクリプトの不具合としては扱わない。書き直しの処理は入れない（ユーザーの決定）。ドライブが残ったときの表示に
+  「ほかから同じドライブへ書いていないか確かめて、もう一度実行する」を足しただけ。
+  - 以後、こちらが `bootsel` を送っていないのに `RPI-RP2` が見えているときは、書き込む前にユーザーに確認する。
+- 実機（NuttX、`nuttx/script/flash.sh` で書き込み）: 送信 約 70 秒 `cpu_active` 50.7%、欠番 0、overruns 0。`i2c_dma`（ヘルプ）、`mode`（`i2c_dma=on`）、
+  `mode x`（`Expected on or off`）、`mode on off`（`mode: wrong parameter count` とヘルプ）、`stats`（`dma_errors=0 dma_fallbacks=0`）、`mode off`/`on`。
+  Telnet からも同じ出力。`dmesg` は 9 行で `<err>`・`<wrn>` なし。
+- **新しい基準**: NuttX は `freertos/build/baseline/nuttx/snapshot-1118c/image.bin`（284988 B）。Zephyr は `snapshot-1118c`（370200 B）。
+- 実機: FreeRTOS 版、AP 接続中。

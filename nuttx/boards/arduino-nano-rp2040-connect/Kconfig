@@ -133,8 +133,10 @@ config NANO_I2C0
 	depends on ARCH_CHIP_RP2040 && I2C && !RP2040_I2C
 	---help---
 		I2C0 on GPIO12 (SDA) and GPIO13 (SCL), a port of the controller
-		path of the Zephyr build's DesignWare driver
-		(zephyr/app/usb-console/drivers/i2c_dw/i2c_dw.c): interrupt
+		path of the Zephyr build's DesignWare driver (Zephyr's
+		drivers/i2c/i2c_dw.c with the local patch
+		zephyr/manifest/zephyr/patches/zephyr/
+		0003-i2c-dw-rp2040-fifo-and-dma.patch): interrupt
 		driven, RX in batches of 4, 1 s transfer timeout with an abort,
 		the Zephyr SCL counts (100 kHz, 400 kHz, 1 MHz).  The core is
 		common/drivers/i2c_dw/nano_i2c.c, its NuttX part

@@ -14,9 +14,9 @@
  * sets the flag, as in the Zephyr build: nothing waits for a transfer in
  * progress, so switch while no stream or transfer runs.
  *
- * The NuttX build has the same command as a builtin application on subcmd
- * (nuttx/apps/i2c_dma/i2c_dma_main.c); moving it onto this file changes its
- * image too (its help and errors would come from zshell.c).
+ * The three builds use this file.  The NuttX build compiles it as the
+ * builtin application "i2c_dma" (nuttx/apps/i2c_dma), where the
+ * compatibility layer's zshell.c runs the command.
  */
 
 #include <errno.h>

@@ -293,7 +293,7 @@ Zephyr 版の `src/log_ram.c` と同じ RAM ログです（`nuttx/drivers/log/`�
   端末の幅を変える `resize` はありません。
 - 終了状態は、成功で 0、失敗・ヘルプ・引数の誤りで 1 です。
 
-`sensor`・`imu`・`ntp` は Zephyr 版と同じソース（`common/`）のコマンドの表なので、同じ部品の `zshell.c`
+`sensor`・`imu`・`ntp`・`i2c_dma` は Zephyr 版と同じソース（`common/`）のコマンドの表なので、同じ部品の `zshell.c`
 （`z_shell_cmd_main()`）で動きます。規則は上と同じで、加えて Zephyr のシェルと同じく、動的なサブコマンド
 （デバイス名、チャネル名など）、`SHELL_HELP()` の説明と `Usage:` の行、一致するサブコマンドがあるワイルドカードの
 展開（その後にハンドラーのあるサブコマンドが続くと `Error: requested multiple function executions`）、30 語
@@ -614,9 +614,10 @@ i2c_dma mode on|off   切り替え（ストリームと転送が止まってい�
 i2c_dma stats         DMA 転送数、バイト数、エラー、割り込み方式への切り替え回数（起動からの累積）
 ```
 
-出力は Zephyr 版と同じです（`dma_transfers=0 dma_bytes=0 dma_errors=0 dma_fallbacks=0`、`on`・`off`
-以外は `Expected on or off`）。切り替えは Zephyr 版と同じく値を変えるだけで、進行中の転送を待ったり
-止めたりしません。「止まっているときだけ」は使い方の約束で、コマンドは確かめません。優先度 104、
+コマンドは Zephyr 版・FreeRTOS 版と同じ `common/drivers/i2c_dw/i2c_dma_shell.c` を `zshell.c` で動かすもので
+（`nuttx/apps/i2c_dma` は組み込みコマンドの main のソースとしてビルドするだけ）、出力・ヘルプ・エラーは同じです
+（`dma_transfers=0 dma_bytes=0 dma_errors=0 dma_fallbacks=0`、`on`・`off` 以外は `Expected on or off`）。
+切り替えは Zephyr 版と同じく値を変えるだけで、進行中の転送を待ったり止めたりしません。「止まっているときだけ」は使い方の約束で、コマンドは確かめません。優先度 104、
 スタック 3072 です。
 
 ### `i2c` ツールと Zephyr 版の `i2c` コマンド
@@ -1138,7 +1139,7 @@ OS ごとのヘッダー（`sensor_shell_os.h`、`wifi_profile_os.h`、`lsm6dso_
 書いたものだけです。
 
 `nuttx/tests/fakes/nuttx/config.h`（空）は NuttX 版だけのもので、`<nuttx/config.h>` を読む `nuttx/apps` の
-ソースをホストテストでビルドするために置いています（`i2c_dma_app`）。
+ソースをホストテストでビルドするために置いています（`nina_passthrough`: `apps/nina/nina_main.c`）。
 
 `nuttx/tests/nano_timeconv.c` は NuttX 版だけのテストです。`src/nano_timeconv.h` の換算を、C の
 `/`・`%` と、NuttX 13.1.0 の汎用の換算（`oneshot.h`・`clkcnt.h` の計算を 1 MHz・100 µs で書き写した
@@ -1198,6 +1199,9 @@ NuttX の NVS の索引をそれぞれ受け付け、相手の形式の索引の
 呼び出しと `argc`・`argv`、標準出力、標準エラー、両方を 1 つのファイルにしたときの順序が同じこと（ハンドラーは
 `shell_print()`・`shell_warn()`・`shell_error()` で行を書く。標準出力は NuttX 版と同じ 64 バイトの行バッファー）と、
 違う場合（一致するワイルドカードの後のサブコマンド、30 語を越える行）の Zephyr のシェルの出力を確かめます。
+`nuttx/tests/i2c_dma_app.c` は `i2c_dma` のコマンド（`common/drivers/i2c_dw/i2c_dma_shell.c`）を同じやり方で
+`zshell.c` の上で動かし、2026-11-18 までの NuttX 版のコマンド（同じ表を `subcmd` で書いたもの）と比べ、出力の文と
+違う場合を確かめます（I2C0 のコアの側は偽物）。
 
 `nuttx/tests/wifi_cred.c` は `common/compat/` の Zephyr のライブラリの写し（`wifi_credentials.c`、settings の
 バックエンド）と `wifi cred` のコマンド（`wifi_credentials_shell.c` の写し、`subcmd`、互換層の

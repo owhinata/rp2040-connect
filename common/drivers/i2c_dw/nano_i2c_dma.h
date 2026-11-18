@@ -4,10 +4,10 @@
  * the state that the "i2c_dma" shell command reads and sets (rp_dma_enabled
  * and the counters rp_dma_transfers, rp_dma_bytes, rp_dma_errors,
  * rp_dma_fallbacks).  No OS header: the command of each build calls these
- * directly (Zephyr and FreeRTOS: i2c_dma_shell.c; NuttX:
- * nuttx/apps/i2c_dma, which the flat build links with the board's I2C0
- * driver).  The Zephyr build's patched driver defines the same functions
- * (i2c_dw_rp2040_dma.h of Zephyr's drivers/i2c, see nano_i2c.c).
+ * directly (i2c_dma_shell.c in the three builds; on NuttX it is the builtin
+ * application nuttx/apps/i2c_dma, which the flat build links with the
+ * board's I2C0 driver).  The Zephyr build's patched driver defines the same
+ * functions (i2c_dw_rp2040_dma.h of Zephyr's drivers/i2c, see nano_i2c.c).
  */
 
 #ifndef __COMMON_DRIVERS_I2C_DW_NANO_I2C_DMA_H

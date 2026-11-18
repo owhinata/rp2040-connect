@@ -328,7 +328,7 @@ number of arguments) is `SUBCMD()`, and `SHELL_CMD_ARG()` (mandatory and optiona
   empty line, as in Zephyr. There is no `resize` command to change the terminal width.
 - The exit status is 0 on success and 1 on failure, help or a wrong number of arguments.
 
-`sensor`, `imu` and `ntp`, whose command tables are in the sources shared with the Zephyr build
+`sensor`, `imu`, `ntp` and `i2c_dma`, whose command tables are in the sources shared with the Zephyr build
 (`common/`), run on `zshell.c` (`z_shell_cmd_main()`) of the same part. The rules are the ones
 above; in addition, as in the Zephyr shell, it handles dynamic subcommands (device names, channel
 names and so on), the `SHELL_HELP()` description with its `Usage:` line, the expansion of a
@@ -699,7 +699,9 @@ i2c_dma mode on|off   switch (only while no stream or transfer runs)
 i2c_dma stats         DMA transfers, bytes, errors, fallbacks to interrupts (since boot)
 ```
 
-The output is the Zephyr build's (`dma_transfers=0 dma_bytes=0 dma_errors=0 dma_fallbacks=0`;
+The command is the one of the Zephyr and FreeRTOS builds, `common/drivers/i2c_dw/i2c_dma_shell.c`,
+run on `zshell.c` (`nuttx/apps/i2c_dma` only builds it as the builtin command's main source), so the
+output, help and errors are the same (`dma_transfers=0 dma_bytes=0 dma_errors=0 dma_fallbacks=0`;
 anything but `on` or `off` gives `Expected on or off`). As in the Zephyr build, switching only
 sets the value: it neither waits for nor stops a transfer in progress. "Only while no stream or
 transfer runs" is a rule for the user; the command does not check it. Priority 104, stack 3072.
@@ -1315,7 +1317,7 @@ into the copies. `common/compat/sensor_shell_stream.c` and `sensor_shell.h` are 
 the differences listed in "Sensor command (`sensor`)".
 
 `nuttx/tests/fakes/nuttx/config.h` (empty) is the NuttX build's own: it lets a host test build a
-source of `nuttx/apps` that includes `<nuttx/config.h>` (`i2c_dma_app`).
+source of `nuttx/apps` that includes `<nuttx/config.h>` (`nina_passthrough`: `apps/nina/nina_main.c`).
 
 `nuttx/tests/nano_timeconv.c` is a test of the NuttX build only. It compares the conversions of
 `src/nano_timeconv.h` with C's `/` and `%` and with the generic conversions of NuttX 13.1.0 (the
@@ -1391,7 +1393,10 @@ handler calls with their `argc` and `argv`, standard output, standard error, and
 two on one file are the same (the handlers write lines with `shell_print()`, `shell_warn()` and
 `shell_error()`; standard output has the NuttX build's 64-byte line buffer), and the Zephyr
 shell's output where the two differ (a subcommand after a wildcard that matches, a line of more
-than 30 words).
+than 30 words). `nuttx/tests/i2c_dma_app.c` does the same for the `i2c_dma` command
+(`common/drivers/i2c_dw/i2c_dma_shell.c` on `zshell.c`, against the NuttX build's command until
+2026-11-18, the same table as a `subcmd` table), with the text itself and where the two differ
+(fakes for the I2C0 core's side).
 
 `nuttx/tests/wifi_cred.c` checks the copies of Zephyr's library in `common/compat/`
 (`wifi_credentials.c`, the settings backend) and the `wifi cred` command (the copy of

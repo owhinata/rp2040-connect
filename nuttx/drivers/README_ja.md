@@ -317,7 +317,7 @@ FreeRTOS 版の `freertos/drivers/nina/nina_passthrough.c` と同じ仕様で、
 | `common/drivers/i2c_dw/nano_i2c_dw.h` | OS に依存しない定義と純粋な関数: Zephyr 版の `i2c_dw.h` の定義、SCL のカウント、周波数から速さの区分、NuttX のフラグ（`I2C_M_*`）から Zephyr のフラグ（`I2C_MSG_*`）への変換、`IC_DATA_CMD` に書く語。ホストテスト `common/tests/nano_i2c_dw.c` |
 | `common/drivers/i2c_dw/nano_i2c_dw_registers.h` | Zephyr 版の `i2c_dw_registers.h` の写し（アクセス関数は 32 ビットの volatile のアクセスで定義） |
 | `common/drivers/i2c_dw/i2c_dw_rp2040_commands.[ch]` | DMA で送るコマンド語。Zephyr 版と同じファイル。ホストテスト `common/tests/i2c_dma_commands.c` |
-| `common/drivers/i2c_dw/nano_i2c_dma.h` | `i2c_dma` コマンド（`nuttx/apps/i2c_dma`）が読み書きする状態: DMA の有効・無効と 4 つのカウンター |
+| `common/drivers/i2c_dw/nano_i2c_dma.h` | `i2c_dma` コマンド（3 版で共有の `common/drivers/i2c_dw/i2c_dma_shell.c`。この版のビルドは `nuttx/apps/i2c_dma`）が読み書きする状態: DMA の有効・無効と 4 つのカウンター |
 | ボードの `src/i2c_dw_os_impl.h` | 境界の NuttX の実装: セマフォ（`sem_t`。`nxsem_post()`、`nxsem_tickwait_uninterruptible()`、`nxsem_wait_uninterruptible()`、`nxsem_reset()`）、時刻（システムの tick）、`nxsched_msleep()`、`up_irq_save()`、メッセージ（`struct i2c_msg_s` と、`nano_i2c_dw_msg_flags()` での Zephyr のフラグへの変換）、`I2C_DW_CLOCK_SPEED`（`BOARD_PERI_FREQ`） |
 | ボードの `src/nano_i2c_instance.h` | I2C0 の NuttX の部分: `struct i2c_master_s` の操作表（`I2C_TRANSFER()` は要求を確かめて周波数から速さを決め、コアの転送を呼ぶ。`I2C_RESET()`）、`irq_attach()` で登録する割り込みハンドラー、リセットとピン（`i2c_dw_pinctrl()`）、`nano_i2c0_initialize()` |
 | ボードの `src/nano_dma_instance.h` | DMA の NuttX の部分: DMA ブロックのリセットと、DMA_IRQ_0・1 の割り込みハンドラーの登録 |

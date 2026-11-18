@@ -487,7 +487,9 @@ if consoles="$(wait_for_console "$wait_s")"; then
   exit 0
 fi
 if pick_drive; then
-  die "the ${drive_label} drive is still there after ${wait_s} s"
+  printf 'flash.sh: the %s drive is still there after %s s; the image was not taken.\n' "$drive_label" "$wait_s" >&2
+  printf '  Check that no other program or person is writing to the same drive, then run flash.sh again.\n' >&2
+  exit 1
 fi
 others="$(list_byid 'usb-*')"
 if [[ -n "$others" ]]; then
