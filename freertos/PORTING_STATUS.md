@@ -947,3 +947,13 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
   subagent の報告。
 - 実機: **未確認**（実機は NuttX 版。BOOTSEL の操作待ち）。見ること: 書き込み直後の最初の計測、静止時、zperf、送信中の Telnet、
   `selftest`（0 of 21 か、`timeslice`）、`ntp status`、`dmesg`。
+- **実機（最終の既定の像、書き込み直後から）**: 送信 60 秒 `cpu_active` 41.5%、欠番 0、overruns 0、`time` の各カウンター 0。静止 30 秒 1.4%。
+  zperf 送信 3.60・受信 2.31 Mbit/s。送信 + zperf + Telnet の `ps` 繰り返し: drop 533/1438（回線の取り合い、従来どおり）、overruns 0、
+  zperf 3.27 Mbit/s。`dmesg` に `<err>`・`<wrn>` なし、異常停止の記録なし。静止時の `ntp status` の `last_us` は 5.5 ms 前後（8 点、1 点 7.5 ms。
+  zperf の直後に読んだ 1 点は 49.5 ms）。`ps` のタスクは 19 本で以前と同じ（READY のポーリングは独立したタスクではなく、NINA の命令を
+  出したタスクの中の待ちだった）。
+- `selftest`（最終の selftest の像、21 項目）: Wi-Fi 接続中の 1 回目に 1 件 fail（`k_poll(K_TICKS(3))`: 4134 µs、期待 3001..4080。
+  許容幅が 80 µs で、1 ms の tick に対して狭い）。2 回目と Wi-Fi 切断中は 0 of 21。`timeslice` は 3 回とも「8 turns in 7 slices」、
+  間隔 20 tick。i2c 0 of 6、lsm6dso 0 of 3。許容幅の見直しは未着手。
+- 実機: 最終の既定の像（FreeRTOS 版、`-Os`、新しい boot2 ではなく Pico SDK の boot2）。`selftest` の中で `wifi disconnect` を実行したあと
+  書き直したので、起動時の自動接続に戻っている。
