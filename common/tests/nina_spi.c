@@ -19,12 +19,14 @@
  * unknown bits, the OS's events started only for bit 2 (and the bit
  * dropped when they cannot start), one request only.
  *
- * Built a second time with NINA_OS_WAIT_READY (common/tests/run.sh), the
+ * Every case runs twice (main()): with nina_os_ready_start() failing, the
+ * waits for READY sample the line every 100 us; with it succeeding, the
  * waits of an OS that reports READY's changes (nina_os_ready_*() of
  * nina_os.h, fakes here: a wait sleeps the whole time it is given, as when
  * the line does not change): the same results and deadlines, READY read
  * once before and once after the wait, armed before the first read and
- * disarmed at the end.
+ * disarmed at the end.  nina_os_ready_start() is called once, by the
+ * first request's reset.
  */
 
 #include <assert.h>
@@ -46,10 +48,9 @@ static int ready_stuck_phase = -1;       /* READY stays on with CS in it */
 static int lock_depth, lock_calls, lock_result;
 static long long now_us;
 static unsigned int polls;
-#ifdef NINA_OS_WAIT_READY
+static int ready_start_result;           /* what nina_os_ready_start() returns */
 static int armed = -1; /* the level armed for, -1 when disarmed */
 static unsigned int arms, waits;
-#endif
 static char events[4096];
 
 static void event(const char *e)
@@ -102,10 +103,10 @@ int nano_nina_pin_set(enum nano_nina_pin pin, int value)
 int nano_nina_pin_get(enum nano_nina_pin pin)
 {
 	assert(pin == NANO_NINA_READY && lock_depth > 0);
-#ifdef NINA_OS_WAIT_READY
-	/* Read only while armed: a change after the read wakes the wait. */
-	assert(armed >= 0);
-#endif
+	/* With the OS's waits, read only while armed: a change after the read
+	 * wakes the wait.
+	 */
+	assert(!ready_irq || armed >= 0);
 	polls++;
 	if (ready_never_from >= 0 && (int)phase >= ready_never_from && !cs_active) {
 		return 0;
@@ -174,7 +175,7 @@ void nina_os_unlock(void)
 
 void nina_os_sleep_us(uint32_t us)
 {
-	assert(us == 100);
+	assert(us == 100 && !ready_irq);
 	now_us += us;
 }
 
@@ -192,10 +193,16 @@ int64_t nina_os_uptime_ms(void)
 	return now_us / 1000;
 }
 
-#ifdef NINA_OS_WAIT_READY
+int nina_os_ready_start(void)
+{
+	assert(lock_depth > 0);
+	event("ready_start");
+	return ready_start_result;
+}
+
 void nina_os_ready_arm(int desired)
 {
-	assert(lock_depth > 0 && armed < 0);
+	assert(ready_irq && lock_depth > 0 && armed < 0);
 	assert(desired == 0 || desired == 1);
 	armed = desired;
 	arms++;
@@ -213,7 +220,6 @@ void nina_os_ready_disarm(void)
 	assert(lock_depth > 0 && armed >= 0);
 	armed = -1;
 }
-#endif
 
 /* nina_wait.c: the OS's events started by the probe. */
 static unsigned int event_starts;
@@ -242,20 +248,15 @@ static void reset_fake(const uint8_t *reply, size_t len)
 	polls = 0;
 	events[0] = '\0';
 	initialized = true;
-#ifdef NINA_OS_WAIT_READY
+	ready_irq = ready_start_result == 0;
 	assert(armed < 0);
 	arms = waits = 0;
-#endif
 }
 
 /* READY reads of a wait that times out: every 100 us, or (with the OS's
  * waits) once before and once after the one wait.
  */
-#ifdef NINA_OS_WAIT_READY
-#define TIMEOUT_POLLS(ms) 2
-#else
-#define TIMEOUT_POLLS(ms) ((ms) * 10)
-#endif
+#define TIMEOUT_POLLS(ms) (ready_irq ? 2u : (ms) * 10u)
 
 /* nina_request() with no parameters and an 8-bit answer. */
 static int simple(uint8_t cmd, uint8_t *out, size_t cap, size_t *n)
@@ -544,9 +545,8 @@ static void ready_cases(void)
 	assert(polls == TIMEOUT_POLLS(2000) && now_us == 2000000 && phase == 0 &&
 	       events[0] == '\0');
 	assert(lock_depth == 0 && n == 77);
-#ifdef NINA_OS_WAIT_READY
-	assert(arms == 1 && waits == 1 && armed < 0);
-#endif
+	assert(ready_irq ? arms == 1 && waits == 1 : arms == 0);
+	assert(armed < 0);
 	/* It does not answer CS by releasing READY: 20 ms, nothing sent, CS
 	 * released.
 	 */
@@ -554,9 +554,8 @@ static void ready_cases(void)
 	ready_stuck_phase = 1;
 	assert(simple(0x37, out, 15, &n) == -ETIMEDOUT);
 	assert(polls == 1 + TIMEOUT_POLLS(20) && now_us == 20000 && calls == 0 && !cs_active);
-#ifdef NINA_OS_WAIT_READY
-	assert(arms == 2 && waits == 1 && armed < 0);
-#endif
+	assert(ready_irq ? arms == 2 && waits == 1 : arms == 0);
+	assert(armed < 0);
 	assert(strcmp(events, "CS1 CS0 ") == 0);
 	/* It never gets ready to answer: 10000 ms after the request. */
 	reset_fake(reply, sizeof(reply));
@@ -573,9 +572,8 @@ static void ready_cases(void)
 	/* A ready module costs one poll per wait and no sleep. */
 	reset_fake(reply, sizeof(reply));
 	assert(simple(0x37, out, 15, &n) == 0 && polls == 4 && now_us == 0);
-#ifdef NINA_OS_WAIT_READY
-	assert(arms == 4 && waits == 0 && armed < 0);
-#endif
+	assert(ready_irq ? arms == 4 && waits == 0 : arms == 0);
+	assert(armed < 0);
 }
 
 static void init_cases(void)
@@ -586,15 +584,19 @@ static void init_cases(void)
 
 	/* The first request resets the module: the lines as nina_wifi.c's
 	 * init_nina() sets them, 10 ms in reset, 750 ms to boot, then IRQ
-	 * low and an input.
+	 * low and an input; then the OS's waits for READY are started, and
+	 * its result chooses how the waits of the request itself wait.
 	 */
 	reset_fake(reply, sizeof(reply));
 	initialized = false;
+	ready_irq = ready_start_result != 0; /* the opposite: set by the start */
 	assert(simple(0x37, out, 15, &n) == 0 && n == 1);
 	assert(strcmp(events,
 		      "CS=inactive READY=input IRQ=high RESET=active sleep10 RESET=0 "
-		      "sleep750 IRQ=0 IRQ=input CS1 CS0 CS1 CS0 ") == 0);
+		      "sleep750 IRQ=0 IRQ=input ready_start CS1 CS0 CS1 CS0 ") == 0);
 	assert(now_us == 760000 && initialized);
+	assert(ready_irq == (ready_start_result == 0));
+	assert(ready_irq ? arms == 4 : arms == 0);
 	/* Only once. */
 	reset_fake(reply, sizeof(reply));
 	assert(simple(0x37, out, 15, &n) == 0 && strcmp(events, "CS1 CS0 CS1 CS0 ") == 0);
@@ -739,7 +741,7 @@ static void capability_cases(void)
 	assert(nina_probe_capabilities() == 0 && phase == 0);
 }
 
-int main(void)
+static void all_cases(void)
 {
 	zephyr_cases();
 	framing_cases();
@@ -750,10 +752,17 @@ int main(void)
 	ip_config_cases();
 	error_reply_cases();
 	capability_cases();
-#ifdef NINA_OS_WAIT_READY
-	puts("NINA SPI framing, answers, timeouts and reset tests passed (OS waits for READY)");
-#else
-	puts("NINA SPI framing, answers, timeouts and reset tests passed");
-#endif
+}
+
+int main(void)
+{
+	/* The OS has no READY interrupt: the waits sample the line. */
+	ready_start_result = -ENOTSUP;
+	all_cases();
+	/* The OS waits for READY's changes. */
+	ready_start_result = 0;
+	all_cases();
+	puts("NINA SPI framing, answers, timeouts and reset tests passed (sampled and OS waits "
+	     "for READY)");
 	return 0;
 }

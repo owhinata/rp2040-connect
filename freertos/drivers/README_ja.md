@@ -154,8 +154,9 @@ FreeRTOS 版が実装するのは flash の境界（`common/compat/nano_flash_kv
   ロック、名前解決のロック、「切り上げ + 1 tick」の sleep、ms の時計）を実装します。境界の意味は
   [`nuttx/drivers/README_ja.md`](../../nuttx/drivers/README_ja.md) の「NINA-W102」の表のとおりです。
 - コアの READY の待ちは、READY のエッジ割り込み（GPIO10）まで眠り、最長 10 ms ごとに READY を読み直します
-  （`nina_os.c`。`nina_os.h` の任意の部分で、ビルドが `NINA_OS_WAIT_READY` で有効にする）。Zephyr 版も同じで、
-  NuttX 版は 10 ms に区切らずに待ちます。
+  （`nina_os.c`）。Zephyr 版も同じで、NuttX 版は 10 ms に区切らずに待ちます。割り込みを使うかどうかは実行時に
+  決まり、最初のリセットのあと `nina_os_ready_start()` がコールバックの登録に失敗したときは 100 µs ごとに
+  READY を読みます（3 版とも同じ）。
 - ソケット（`drivers/nina/nina_socket.c`）: 互換層の `zsock_*()` を、10 個の fd の表を介して共有のコアに直接つなぎます。
   Zephyr 版のソケットのオフロードと同じく、呼んだタスクで NINA に問い合わせて待ちます（NuttX 版の usrsock と
   `nina_event` のような、イベントのスレッドはありません）。fd の番号は newlib の fd とは別で、`zsock_*()` だけが使います。
@@ -164,9 +165,8 @@ FreeRTOS 版が実装するのは flash の境界（`common/compat/nano_flash_kv
   [`zephyr/app/usb-console/drivers/README_ja.md`](../../zephyr/app/usb-console/drivers/README_ja.md) の同名の節）。
   接続中のスキャンで接続を保つ・非同期のスキャン（`nina_net.c`）、ソケットの事象での待ち（`common/drivers/nina/nina_wait.c`
   と `nina_socket.c` の待ちのループ）。事象は IRQ の線（GPIO2）の立ち上がりのエッジの割り込みで、`nina_os.c` が数を
-  数え、待っている全タスクを起こします（`k_sem_reset()` のあと `k_sem_give()`。`nina_os.h` の任意の部分で、ビルドが
-  `NINA_OS_EVENTS` で有効にする）。`drivers/nina/nina.cmake` の `NINA_OS_EVENTS=1` を外すと、ビット 2 があっても
-  従来の間隔（20 ms、送信は 1 ms）で待ちます。TCP 送信の再試行で、全量を送り直す前に poll 命令で書き込み可能を
+  数え、待っている全タスクを起こします（`k_sem_reset()` のあと `k_sem_give()`）。`nina_os_event_start()` が
+  失敗したときは、ビット 2 があっても従来の間隔（20 ms、送信は 1 ms）で待ちます。TCP 送信の再試行で、全量を送り直す前に poll 命令で書き込み可能を
   確かめるのは、ファームウェアに依らない変更です。
 - Wi-Fi: Zephyr 版と同じ `common/drivers/nina/nina_net.c`、資格情報（Zephyr の `wifi_credentials` の写し）、自動再接続
   （`common/imu/wifi_profile.c`）を、互換層の `net_if`・`net_mgmt`・`wifi_mgmt`（`zephyr_net_if.c`、`drivers/nina/nina_netif.c`）

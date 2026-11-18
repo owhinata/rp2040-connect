@@ -26,9 +26,9 @@
  * not use); nina_request() and nina_ip_config() then return its error
  * untouched.
  *
- * An option of the OS: with NINA_OS_WAIT_READY, the waits for READY sleep
- * until the OS reports a change of the line (nina_os_ready_*() of
- * nina_os.h) instead of sampling it every 100 us; see wait_ready().
+ * The waits for READY sleep until the OS reports a change of the line
+ * (nina_os_ready_*() of nina_os.h) when nina_os_ready_start() succeeds,
+ * else they sample it every 100 us; see wait_ready().
  *
  * Added for the firmware's patches 0003 to 0006 (firmware/nina-fw/
  * README.md, "Host interface of 0003 to 0006"): a firmware answers a
@@ -64,12 +64,17 @@
 
 static bool initialized;
 
-#ifdef NINA_OS_WAIT_READY
+/* How often the module's ready line is sampled while waiting for it. */
+#define NINA_READY_POLL_US 100
+
+/* nina_os_ready_start() succeeded (init_nina()). */
+static bool ready_irq;
+
 /* The OS wakes the wait when READY changes (nina_os.h).  The same deadline
  * and results as the sampling below; READY is read once more after the
  * last wait, so a module that gets ready at the deadline is not missed.
  */
-static int wait_ready(int desired, int timeout_ms)
+static int wait_ready_irq(int desired, int timeout_ms)
 {
 	int64_t deadline = nina_os_uptime_ms() + timeout_ms;
 	int64_t now;
@@ -91,15 +96,16 @@ static int wait_ready(int desired, int timeout_ms)
 	nina_os_ready_disarm();
 	return value < 0 ? value : 0;
 }
-#else
-/* How often the module's ready line is sampled while waiting for it. */
-#define NINA_READY_POLL_US 100
 
 static int wait_ready(int desired, int timeout_ms)
 {
-	int64_t deadline = nina_os_uptime_ms() + timeout_ms;
+	int64_t deadline;
 	int value;
 
+	if (ready_irq) {
+		return wait_ready_irq(desired, timeout_ms);
+	}
+	deadline = nina_os_uptime_ms() + timeout_ms;
 	do {
 		value = nano_nina_pin_get(NANO_NINA_READY);
 		if (value < 0) {
@@ -112,7 +118,6 @@ static int wait_ready(int desired, int timeout_ms)
 	} while (nina_os_uptime_ms() < deadline);
 	return -ETIMEDOUT;
 }
-#endif
 
 static int init_nina(void)
 {
@@ -139,6 +144,8 @@ static int init_nina(void)
 	    (ret = nano_nina_pin_configure(NANO_NINA_IRQ, NANO_NINA_INPUT))) {
 		return ret;
 	}
+	/* Once: initialized stays true from here on. */
+	ready_irq = nina_os_ready_start() == 0;
 	initialized = true;
 	return 0;
 }

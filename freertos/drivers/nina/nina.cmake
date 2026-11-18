@@ -37,16 +37,13 @@
 #
 # The core's waits for the module's READY line sleep until an edge interrupt
 # of the line (GPIO10; freertos/drivers/compat/rp2040/nano_gpio.c handles
-# it) instead of sampling it: NINA_OS_WAIT_READY, defined for every source
-# of the target, makes nina_spi.c take the waits of nina_os.h
-# (nina_os_ready_*()), which nina_os.c implements.
+# it) instead of sampling it (nina_os_ready_*() of nina_os.h, nina_os.c).
 #
 # The socket loops (nina_socket.c) wait between their passes with
-# common/drivers/nina/nina_wait.c: NINA_OS_EVENTS, defined for every source
-# of the target too, lets them wait for the rising edges of the module's IRQ
-# line (GPIO2, nina_os.c) when its firmware reports socket events
-# (nina_proto.h, NINA_CAP_SOCKET_EVENTS); without the definition, or with
-# an older firmware, they sleep their poll intervals.
+# common/drivers/nina/nina_wait.c: they wait for the rising edges of the
+# module's IRQ line (GPIO2, nina_os.c) when its firmware reports socket
+# events (nina_proto.h, NINA_CAP_SOCKET_EVENTS); with an older firmware they
+# sleep their poll intervals.
 #
 # The application calls nano_nina_initialize() once at the start, before
 # the tasks (the Zephyr build initializes spi1 at boot); the module itself
@@ -84,11 +81,6 @@ function(freertos_nina target)
     hardware_spi
     hardware_uart
     hardware_watchdog
-  )
-
-  target_compile_definitions(${target} PRIVATE
-    NINA_OS_WAIT_READY=1
-    NINA_OS_EVENTS=1
   )
 
   set_source_files_properties(${nina_common_sources} PROPERTIES

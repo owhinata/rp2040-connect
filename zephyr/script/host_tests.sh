@@ -21,18 +21,15 @@ run() {
 # The shared NINA SPI link (common/drivers/nina/nina_spi.c) on this build's boundary
 # (drivers/nina/nano_nina.c: the devicetree's lines and SPI calls; nina_os.c: the kernel's, and
 # the READY and IRQ edge interrupts; the socket loops' waits, nina_wait.c), on fakes of the Zephyr
-# calls: framing, reset, READY waits, the socket events' waits.  With NINA_OS_WAIT_READY and
-# NINA_OS_EVENTS as CMakeLists.txt builds it, with NINA_OS_WAIT_READY only, and without (sampling).
-# With CONFIG_NANO_NINA_PASSTHROUGH as well (the build's default), the NINA passthrough mode's gate:
+# calls: framing, reset, READY waits (sampled when the READY callback cannot be added, else on the
+# edge interrupt), the socket events' waits and their start, failed and successful.  With
+# CONFIG_NANO_NINA_PASSTHROUGH as well (the build's default), the NINA passthrough mode's gate:
 # no bus, no line touched while the mode is active (drivers/nina/nina_passthrough.h).
 nina_boundary=(-std=gnu17 -Wall -Wextra -Werror -I"$app/tests/nina_fakes" -I../common/drivers/nina
                "$app/tests/nina_boundary.c" "$app/drivers/nina/nano_nina.c"
                "$app/drivers/nina/nina_os.c" ../common/drivers/nina/nina_wait.c)
-run nina_boundary_passthrough -DCONFIG_NANO_NINA_PASSTHROUGH -DNINA_OS_WAIT_READY -DNINA_OS_EVENTS \
-    "${nina_boundary[@]}"
-run nina_boundary_events -DNINA_OS_WAIT_READY -DNINA_OS_EVENTS "${nina_boundary[@]}"
-run nina_boundary_irq -DNINA_OS_WAIT_READY "${nina_boundary[@]}"
-run nina_boundary_poll "${nina_boundary[@]}"
+run nina_boundary_passthrough -DCONFIG_NANO_NINA_PASSTHROUGH "${nina_boundary[@]}"
+run nina_boundary "${nina_boundary[@]}"
 # The NINA passthrough mode (drivers/nina/nina_passthrough.c, which the test includes) on fakes of
 # the Zephyr calls and of the RP2040 hardware (nina_passthrough_hw.h): the request at the start,
 # the lines and the rate on the USB stack's messages and the tick, both data paths with their
@@ -44,15 +41,14 @@ run passthrough -std=gnu17 -Wall -Wextra -Werror -I"$app/tests/passthrough_fakes
 # NINA_OS_DNS_OFFLOAD, as CMakeLists.txt builds them), on fakes of zvfs, the kernel and the
 # module: descriptors, the wait loops and their sleeps, options, accept, sendmsg, datagrams,
 # poll, the resolver's registration.
-# The waits between the passes are nina_wait.c's: built a second time with NINA_OS_EVENTS and the
-# events started (the IRQ line's edges, fakes in the test).
+# The waits between the passes are nina_wait.c's: the poll intervals after a start of the events
+# that failed, then the IRQ line's edges once they are started (fakes in the test).
 nina_socket=(-std=gnu17 -Wall -Wextra -Werror -D_DEFAULT_SOURCE -DNINA_OS_DNS_OFFLOAD
              -DCONFIG_NANO_NINA_TCP_MAX_IO=3584 -I"$app/tests/socket_fakes" -I../common/drivers/nina
              "$app/tests/nina_socket.c" "$app/drivers/nina/nina_socket.c"
              ../common/drivers/nina/nina_sock.c ../common/drivers/nina/nina_dns.c
              ../common/drivers/nina/nina_wait.c)
 run nina_socket "${nina_socket[@]}"
-run nina_socket_events -DNINA_OS_EVENTS "${nina_socket[@]}"
 
 # The local patches (manifest/zephyr/patches.yml, applied by script/setup.sh): every patch file
 # is listed once, and the sha256sum of each entry is that of its file ("west patch" refuses the

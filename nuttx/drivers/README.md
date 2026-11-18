@@ -23,7 +23,7 @@ What the core needs from the OS and the board (its boundary):
 
 | Boundary | NuttX implementation | What it must do |
 |---|---|---|
-| `common/drivers/nina/nina_os.h` | `nina/nina_os.c` | `nina_os_lock()`, `nina_os_unlock()`: a recursive lock with priority inheritance (the Zephyr version's `K_MUTEX_DEFINE(nina_lock)`); `nina_os_lock()` returns 0 or a negative errno, which `nina_request()` and `nina_ip_config()` return untouched. `nina_os_dns_lock()`, `nina_os_dns_unlock()`: a lock with priority inheritance held across the two resolver commands. `nina_os_sleep_us()`, `nina_os_sleep_ms()`: sleep for the time rounded up to ticks plus one tick, as Zephyr's `k_sleep()`, not ended by signals. `nina_os_uptime_ms()`: the kernel clock in milliseconds, rounded down (`k_uptime_get()`). `nina_os_ready_arm()`, `nina_os_ready_wait()`, `nina_os_ready_disarm()`: waiting for a change of READY on its interrupt (`NINA_OS_WAIT_READY`, defined by `nina/Make.defs`; see "Waiting for READY" below). `nina_os_event_start()`, `nina_os_event_seq()`, `nina_os_event_wait()`: counting the rising edges of the IRQ line (GPIO2) and waking every waiting thread (`NINA_OS_EVENTS`, defined by `nina/Make.defs`; see "Firmware additions" below) |
+| `common/drivers/nina/nina_os.h` | `nina/nina_os.c` | `nina_os_lock()`, `nina_os_unlock()`: a recursive lock with priority inheritance (the Zephyr version's `K_MUTEX_DEFINE(nina_lock)`); `nina_os_lock()` returns 0 or a negative errno, which `nina_request()` and `nina_ip_config()` return untouched. `nina_os_dns_lock()`, `nina_os_dns_unlock()`: a lock with priority inheritance held across the two resolver commands. `nina_os_sleep_us()`, `nina_os_sleep_ms()`: sleep for the time rounded up to ticks plus one tick, as Zephyr's `k_sleep()`, not ended by signals. `nina_os_uptime_ms()`: the kernel clock in milliseconds, rounded down (`k_uptime_get()`). `nina_os_ready_start()`, `nina_os_ready_arm()`, `nina_os_ready_wait()`, `nina_os_ready_disarm()`: waiting for a change of READY on its interrupt (`nina_os_ready_start()` registers the callback; if it fails, the core samples READY every 100 µs; see "Waiting for READY" below). `nina_os_event_start()`, `nina_os_event_seq()`, `nina_os_event_wait()`: counting the rising edges of the IRQ line (GPIO2) and waking every waiting thread (if `nina_os_event_start()` fails, the waits keep their intervals; see "Firmware additions" below) |
 | `common/drivers/nina/nano_nina.h` | the board's `src/nano_nina.c` | `nano_nina_initialize()`: called once at boot, sets up the SPI and its pins and drives CS inactive (leaves READY, RESET and IRQ alone). `nano_nina_bus_ready()`: whether the SPI and the four lines can be used. `nano_nina_pin_configure()`, `nano_nina_pin_set()`, `nano_nina_pin_get()`: logical values (1 is active); the board knows each line's polarity and pull (CS GPIO9 active low, READY GPIO10 active low with pull-up, RESET GPIO3 active low, IRQ GPIO2 active high with pull-down). `nano_nina_transceive()`: a synchronous transfer in mode 0, 8 bits, MSB first (only a write when RX is NULL), without touching CS |
 | Configuration | `nina/Kconfig` | `CONFIG_NANO_NINA_TCP_MAX_IO` (default 3584) and `CONFIG_NANO_NINA_SEND_RETRY_MS` (default 1), read by `nina_sock.h`, which uses the defaults without them |
 | C library | NuttX's libc | `nina_sock.[ch]` and `nina_dns.[ch]` use the types and constants of POSIX's `<sys/socket.h>`, `<sys/types.h>`, `<sys/uio.h>`, `<netinet/in.h>`, `<netinet/tcp.h>`, `<arpa/inet.h>`, `<poll.h>` and `<netdb.h>` (`struct sockaddr_in`, `struct iovec`, `struct addrinfo`, `AF_INET`, `MSG_DONTWAIT`, `POLLIN`, `EAI_*` and so on) and `inet_pton()`, `htons()`, `malloc()` and `free()`. The `POLL*` bits of `nina_sock_poll_revents()` and the `EAI_*` values are those of the same headers as the callers' |
@@ -57,7 +57,9 @@ What the core needs from the OS and the board (its boundary):
   interrupts are masked (a flash erase); the FreeRTOS build waits in slices of 10 ms because its
   tick stands still meanwhile and catches up with the TIMER afterwards. `nina_os_ready_disarm()` disables the edge, so CS toggling READY during
   the transfers raises no interrupts. `gpio0` and `src/nano_gpio.c` are built with
-  `CONFIG_NANO_LSM6DSO_STREAM`, so `CONFIG_NANO_NINA` depends on it.
+  `CONFIG_NANO_LSM6DSO_STREAM`, so `CONFIG_NANO_NINA` depends on it. The callback is added to
+  `gpio0` by `nina_os_ready_start()` after the first reset; if that fails, the core reads READY
+  every 100 µs instead (same deadlines and results).
 - The time limits and the wiring are in the "NINA-W102 (`nina`)" section of
   `design/nuttx-porting.md`.
 - `common/drivers/nina/nina_spi.c` is checked by a host test (`common/tests/nina_spi.c`, run by
@@ -284,9 +286,8 @@ Bit 2 on NuttX:
   past the send's deadline); after a pass that sent and got zero bytes, 1 ms later as before.
 - The layer's `zsock_recv()` and `zsock_poll()` use the same waits (`nina_wait()`). A
   `zsock_poll()` that includes a NuttX socket (not a NINA one) looks again at least every 20 ms.
-- Without `-DNINA_OS_EVENTS` in `nina/Make.defs`, the waits keep their intervals whatever the
-  firmware.
-- `nuttx/tests/nina_os.c` (`nina_os_events`) tests the interrupt and the waits of `nina/nina_os.c`.
+- If `nina_os_event_start()` fails, the waits keep their intervals whatever the firmware.
+- `nuttx/tests/nina_os.c` (`nina_os`) tests the interrupt and the waits of `nina/nina_os.c`.
   The passes of `nina_event` at the edges and the layer's waits have no host test.
 
 ### Passthrough mode (`nina passthrough confirm`)

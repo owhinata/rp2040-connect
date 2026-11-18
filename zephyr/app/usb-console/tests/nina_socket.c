@@ -25,9 +25,10 @@
  * - the resolver registered as the offload's, its results on the heap.
  *
  * The waits between passes are common/drivers/nina/nina_wait.c, linked in:
- * without its events (the 3.0.2 firmware) they are the sleeps above.
- * Built a second time with NINA_OS_EVENTS and the events started (fakes of
- * nina_os_event_*() here): each loop waits for the IRQ line's edge after
+ * without its events they are the sleeps above.  The cases above run after
+ * a start of the events that failed (nina_os_event_start() of the fakes
+ * here returns -ENOTSUP; the 3.0.2 firmware, which never starts them, waits
+ * the same way); then the events are started (test_events()): each loop waits for the IRQ line's edge after
  * the count it noted before its pass (an edge during the pass's commands
  * ends the wait at once), at most 100 ms and not past its deadline, with
  * no sleep; a send waits for the edge only after a pass that polled
@@ -136,7 +137,6 @@ void nina_os_sleep_ms(uint32_t ms)
 	(void)k_sleep(K_MSEC(ms));
 }
 
-#ifdef NINA_OS_EVENTS
 /* The IRQ line: the edge count; an edge during the next CMD_POLL (after
  * its answer: the event the poll armed comes at once) or when a wait
  * starts, which also makes the socket EDGE_SOCKET writable or gives it
@@ -148,14 +148,21 @@ static int64_t event_waited_ms;
 static bool edge_in_poll, edge_in_wait;
 static int edge_socket = -1;
 static const char *edge_data;
+static int event_start_result = -ENOTSUP;
+static bool events_started;
 
 int nina_os_event_start(void)
 {
-	return 0;
+	if (!event_start_result) {
+		events_started = true;
+	}
+	return event_start_result;
 }
 
+/* Only after a start that succeeded (nina_os.h). */
 uint32_t nina_os_event_seq(void)
 {
+	assert(events_started);
 	return edges;
 }
 
@@ -163,7 +170,7 @@ static void edge(void);
 
 void nina_os_event_wait(uint32_t seq, uint32_t ms)
 {
-	assert(!socket_lock.held);
+	assert(events_started && !socket_lock.held);
 	event_waits++;
 	event_wait_last_ms = ms;
 	if (edges != seq) {
@@ -177,7 +184,6 @@ void nina_os_event_wait(uint32_t seq, uint32_t ms)
 	now_ms += ms;
 	event_waited_ms += ms;
 }
-#endif
 
 static const struct socket_dns_offload *dns_registered;
 
@@ -346,7 +352,6 @@ int nina_request(uint8_t cmd, const struct nina_param *p, size_t nparams, bool w
 	case 0x7c: { /* poll */
 		uint8_t state = f->extra_state;
 
-#ifdef NINA_OS_EVENTS
 		if (edge_in_poll) {
 			/* The answer is the state before the edge. */
 			edge_in_poll = false;
@@ -355,7 +360,6 @@ int nina_request(uint8_t cmd, const struct nina_param *p, size_t nparams, bool w
 			edge();
 			break;
 		}
-#endif
 		if (poll_link_error) {
 			int ret = poll_link_error;
 
@@ -487,10 +491,8 @@ static void reset_counts(void)
 	memset(count, 0, sizeof(count));
 	sleeps = 0;
 	slept_ms = 0;
-#ifdef NINA_OS_EVENTS
 	event_waits = 0;
 	event_waited_ms = 0;
-#endif
 }
 
 /* A connected TCP socket on firmware socket *ID. */
@@ -977,7 +979,6 @@ static void test_accept(void)
 	assert(z_close(fd) == 0);
 }
 
-#ifdef NINA_OS_EVENTS
 static void edge(void)
 {
 	edges++;
@@ -998,6 +999,7 @@ static void test_events(void)
 	struct pollfd p[2];
 	int fd, id, native;
 
+	event_start_result = 0;
 	assert(nina_wait_start_events() == 0 && nina_wait_events());
 
 	/* A receive whose data comes right after its poll said none (the edge
@@ -1089,7 +1091,6 @@ static void test_events(void)
 	assert(!socket_lock.held && event_waits <= 1);
 	zvfs_free_fd(fd);
 }
-#endif
 
 static void test_dns(void)
 {
@@ -1108,6 +1109,8 @@ static void test_dns(void)
 
 int main(void)
 {
+	/* The OS cannot wait for the events: the loops keep their sleeps. */
+	assert(nina_wait_start_events() == -ENOTSUP && !nina_wait_events());
 	test_descriptors();
 	test_connect();
 	test_send();
@@ -1116,9 +1119,7 @@ int main(void)
 	test_poll();
 	test_options();
 	test_accept();
-#ifdef NINA_OS_EVENTS
 	test_events();
-#endif
 	test_dns();
 	for (int i = 0; i < NINA_SOCK_MAX; i++) {
 		assert(!g_nina_sockets[i].used);

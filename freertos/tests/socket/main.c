@@ -14,7 +14,8 @@
  * - the descriptors: the lowest free number, ten at most (EMFILE), a
  *   closed or out-of-range one (EBADF, POLLNVAL), reuse after close, the
  *   firmware socket made on first use;
- * - the Zephyr build's wait loops and their sleeps: connect (every 20 ms,
+ * - the Zephyr build's wait loops and their sleeps (the socket events
+ *   cannot start here: nina_os_event_start() fails): connect (every 20 ms,
  *   also on a non-blocking socket, the lwIP error, ETIMEDOUT), TCP send
  *   (1 ms between passes, EAGAIN at the deadline, EPIPE), receive (every
  *   20 ms until data or SO_RCVTIMEO; a poll on every pass, also after
@@ -57,6 +58,7 @@
 #include "nina_proto.h"
 #include "nina_sock.h"
 #include "nina_sockopt.h"
+#include "nina_wait.h"
 #include "priorities.h"
 #include "zephyr_compat.h"
 
@@ -121,6 +123,29 @@ void nina_os_sleep_ms(uint32_t ms)
 int64_t nina_os_uptime_ms(void)
 {
 	return fake_ms;
+}
+
+/* The socket events cannot start here, so the waits are the sleeps above
+ * (nina_wait.c); the other two are then never called (nina_os.h).  The
+ * waits on the events are common/tests/nina_wait.c's and the Zephyr
+ * build's tests/nina_socket.c's.
+ */
+int nina_os_event_start(void)
+{
+	return -ENOTSUP;
+}
+
+uint32_t nina_os_event_seq(void)
+{
+	assert(0);
+	return 0;
+}
+
+void nina_os_event_wait(uint32_t seq, uint32_t ms)
+{
+	(void)seq;
+	(void)ms;
+	assert(0);
 }
 
 /* The fake module ---------------------------------------------------------*/
@@ -1118,6 +1143,7 @@ static void test_dns(void)
 static void runner(void *arg)
 {
 	(void)arg;
+	assert(nina_wait_start_events() == -ENOTSUP && !nina_wait_events());
 	test_constants();
 	test_descriptors();
 	test_options();

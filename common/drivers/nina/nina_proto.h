@@ -31,7 +31,7 @@ void nina_dns_init(void);
  * with 3.0.2.  Later calls return the first answer.
  * nina_capabilities() returns the bits in use: the module's known bits,
  * without NINA_CAP_SOCKET_EVENTS when the OS does not wait for the events
- * (no NINA_OS_EVENTS, or nina_os_event_start() failed); 0 before the probe.
+ * (nina_os_event_start() failed); 0 before the probe.
  * nina_module_capabilities() returns the module's own bits (0 before).
  */
 uint32_t nina_probe_capabilities(void);

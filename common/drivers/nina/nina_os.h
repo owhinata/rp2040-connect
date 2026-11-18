@@ -41,12 +41,17 @@ void nina_os_sleep_ms(uint32_t ms);
 
 int64_t nina_os_uptime_ms(void);
 
-/* Optional: waiting for the module's READY line on an event instead of
- * sampling it.  Without NINA_OS_WAIT_READY, nina_spi.c samples READY every
- * NINA_READY_POLL_US with nina_os_sleep_us().  An OS that defines
- * NINA_OS_WAIT_READY for the compilation of nina_spi.c provides these
- * three instead (on a GPIO edge interrupt of the line), and nina_spi.c
- * waits with them:
+/* Waiting for the module's READY line on an event instead of sampling it
+ * (on a GPIO edge interrupt of the line).
+ *
+ * nina_os_ready_start(): called once by nina_spi.c (init_nina(), after the
+ * module's first reset), before any of the three below; registers what the
+ * waits need (the line's interrupt handler).  Not from an interrupt
+ * handler.  0: nina_spi.c waits for READY with the three below.  A negative
+ * errno (an OS without a usable GPIO interrupt returns -ENOTSUP): it
+ * samples READY every NINA_READY_POLL_US with nina_os_sleep_us() instead,
+ * and never calls the three below (they can then be empty).  The deadlines
+ * and results are the same either way.  The waits:
  *
  *   nina_os_ready_arm(DESIRED);
  *   until READY reads DESIRED or the deadline has passed:
@@ -69,27 +74,26 @@ int64_t nina_os_uptime_ms(void);
  * interrupt handler.
  */
 
-#ifdef NINA_OS_WAIT_READY
+int nina_os_ready_start(void);
 void nina_os_ready_arm(int desired);
 void nina_os_ready_wait(uint32_t ms);
 void nina_os_ready_disarm(void);
-#endif
 
-/* Optional: the module's socket events on its IRQ line (NANO_NINA_IRQ,
- * GPIO2, active high; firmware/nina-fw/README.md, "Socket events on the IRQ
- * line"): the line rises when an event that a command armed happens, and
- * falls when the module begins the next command.  Without NINA_OS_EVENTS,
- * the socket loops sleep their poll intervals (nina_wait.c).  An OS that
- * defines NINA_OS_EVENTS for the compilation of nina_wait.c (and its
- * nina_os.c) provides these three, on a GPIO edge interrupt of the line:
+/* The module's socket events on its IRQ line (NANO_NINA_IRQ, GPIO2, active
+ * high; firmware/nina-fw/README.md, "Socket events on the IRQ line"): the
+ * line rises when an event that a command armed happens, and falls when the
+ * module begins the next command.  On a GPIO edge interrupt of the line:
  *
  * nina_os_event_start(): from its return on, every rising edge of the line
  * adds one to the count of nina_os_event_seq() and ends every
  * nina_os_event_wait() in progress.  Called once (nina_wait.c, from the
- * capability probe of nina_spi.c), after the module's reset: init_nina()
- * drives the line during the reset (a boot mode pin of the module), so no
- * edge is looked at before.  Not from an interrupt handler.  0, or a
- * negative errno: the events are then not used.
+ * capability probe of nina_spi.c) when the module reports socket events,
+ * after the module's reset: init_nina() drives the line during the reset
+ * (a boot mode pin of the module), so no edge is looked at before.  Not
+ * from an interrupt handler.  0, or a negative errno (an OS without a
+ * usable GPIO interrupt returns -ENOTSUP): the socket loops then sleep
+ * their poll intervals (nina_wait.c), and the two below are never called
+ * (they can then be empty).
  *
  * nina_os_event_seq(): the count of rising edges since the start (wraps
  * around).  Any thread or interrupt handler.
@@ -104,11 +108,9 @@ void nina_os_ready_disarm(void);
  * from an interrupt handler.
  */
 
-#ifdef NINA_OS_EVENTS
 int nina_os_event_start(void);
 uint32_t nina_os_event_seq(void);
 void nina_os_event_wait(uint32_t seq, uint32_t ms);
-#endif
 
 /* Optional: the resolver's results and its registration.  Without
  * NINA_OS_DNS_OFFLOAD, nina_dns.c takes its results from malloc() and

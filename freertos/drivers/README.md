@@ -174,8 +174,10 @@ boundary (the four functions of `common/compat/nano_flash_kv.h`, `drivers/kv/nan
   plus one tick" sleep, the ms clock). The boundaries mean what the "NINA-W102" tables of
   [`nuttx/drivers/README.md`](../../nuttx/drivers/README.md) say.
 - The core's waits for READY sleep until READY's edge interrupt (GPIO10), in waits of at most 10 ms, after
-  which READY is read again (`nina_os.c`, the optional part of `nina_os.h` that the build turns on with
-  `NINA_OS_WAIT_READY`). The Zephyr build does the same; the NuttX build waits without the 10 ms slices.
+  which READY is read again (`nina_os.c`). The Zephyr build does the same; the NuttX build waits without
+  the 10 ms slices. Whether the interrupt is used is decided at run time: if `nina_os_ready_start()` fails
+  to register the callback after the first reset, READY is read every 100 µs instead (in all three
+  builds).
 - Sockets (`drivers/nina/nina_socket.c`): the layer's `zsock_*()` calls go to the shared core through a
   table of 10 descriptors. As the Zephyr build's socket offload, the calling task asks the NINA and waits
   (there is no event thread like the NuttX build's usrsock and `nina_event`). The descriptors are not
@@ -187,8 +189,7 @@ boundary (the four functions of `common/compat/nano_flash_kv.h`, `drivers/kv/nan
   while connected that keeps the link and the asynchronous scan (`nina_net.c`), the waits for socket
   events (`common/drivers/nina/nina_wait.c` and the wait loops of `nina_socket.c`). The events are the
   rising edges of the IRQ line (GPIO2) on its interrupt; `nina_os.c` counts them and wakes every waiting
-  task (`k_sem_reset()`, then `k_sem_give()`; an optional part of `nina_os.h` that the build enables
-  with `NINA_OS_EVENTS`). Without `NINA_OS_EVENTS=1` in `drivers/nina/nina.cmake` the waits keep their
+  task (`k_sem_reset()`, then `k_sem_give()`). If `nina_os_event_start()` fails, the waits keep their
   intervals (20 ms, 1 ms for sends) whatever the firmware. Checking with a poll command that the socket
   is writable before a TCP send's data goes again does not depend on the firmware.
 - Wi-Fi: the Zephyr build's `common/drivers/nina/nina_net.c`, the credentials (a copy of Zephyr's

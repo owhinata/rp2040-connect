@@ -20,7 +20,7 @@ NINA のドライバーは、OS に依存しないコア（リポジトリの `c
 
 | 境界 | NuttX 版の実装 | 満たすこと |
 |---|---|---|
-| `common/drivers/nina/nina_os.h` | `nina/nina_os.c` | `nina_os_lock()`・`nina_os_unlock()`: 再帰可能で優先度継承のあるロック（Zephyr 版の `K_MUTEX_DEFINE(nina_lock)`）。`nina_os_lock()` は 0 か負の errno を返し、失敗は `nina_request()`・`nina_ip_config()` がそのまま返す。`nina_os_dns_lock()`・`nina_os_dns_unlock()`: 名前解決の 2 つの命令の間に持つ、優先度継承のあるロック。`nina_os_sleep_us()`・`nina_os_sleep_ms()`: Zephyr の `k_sleep()` と同じく tick に切り上げて 1 tick 足した時間眠り、シグナルでは終わらない。`nina_os_uptime_ms()`: カーネルの時計の ms（切り捨て。`k_uptime_get()`）。`nina_os_ready_arm()`・`nina_os_ready_wait()`・`nina_os_ready_disarm()`: READY の変化を割り込みで待つ（`NINA_OS_WAIT_READY`。`nina/Make.defs` が定義する。下の「READY の待ち」）。`nina_os_event_start()`・`nina_os_event_seq()`・`nina_os_event_wait()`: IRQ の線（GPIO2）の立ち上がりのエッジを数え、待っている全スレッドを起こす（`NINA_OS_EVENTS`。`nina/Make.defs` が定義する。下の「ファームウェアの追加機能」） |
+| `common/drivers/nina/nina_os.h` | `nina/nina_os.c` | `nina_os_lock()`・`nina_os_unlock()`: 再帰可能で優先度継承のあるロック（Zephyr 版の `K_MUTEX_DEFINE(nina_lock)`）。`nina_os_lock()` は 0 か負の errno を返し、失敗は `nina_request()`・`nina_ip_config()` がそのまま返す。`nina_os_dns_lock()`・`nina_os_dns_unlock()`: 名前解決の 2 つの命令の間に持つ、優先度継承のあるロック。`nina_os_sleep_us()`・`nina_os_sleep_ms()`: Zephyr の `k_sleep()` と同じく tick に切り上げて 1 tick 足した時間眠り、シグナルでは終わらない。`nina_os_uptime_ms()`: カーネルの時計の ms（切り捨て。`k_uptime_get()`）。`nina_os_ready_start()`・`nina_os_ready_arm()`・`nina_os_ready_wait()`・`nina_os_ready_disarm()`: READY の変化を割り込みで待つ（`nina_os_ready_start()` がコールバックを登録し、失敗したらコアは 100 µs ごとに読む。下の「READY の待ち」）。`nina_os_event_start()`・`nina_os_event_seq()`・`nina_os_event_wait()`: IRQ の線（GPIO2）の立ち上がりのエッジを数え、待っている全スレッドを起こす（`nina_os_event_start()` が失敗したら従来の間隔で待つ。下の「ファームウェアの追加機能」） |
 | `common/drivers/nina/nano_nina.h` | ボードの `src/nano_nina.c` | `nano_nina_initialize()`: 起動時に 1 回、SPI とそのピンを設定して CS を非アクティブにする（READY・RESET・IRQ には触れない）。`nano_nina_bus_ready()`: SPI と 4 本の線が使えるか。`nano_nina_pin_configure()`・`nano_nina_pin_set()`・`nano_nina_pin_get()`: 論理値（1 がアクティブ）。極性とプルはボードが知る（CS GPIO9 アクティブ low、READY GPIO10 アクティブ low・プルアップ、RESET GPIO3 アクティブ low、IRQ GPIO2 アクティブ high・プルダウン）。`nano_nina_transceive()`: モード 0・8 ビット・MSB first の同期転送（RX が NULL なら書くだけ）、CS には触れない |
 | 構成 | `nina/Kconfig` | `CONFIG_NANO_NINA_TCP_MAX_IO`（既定 3584）と `CONFIG_NANO_NINA_SEND_RETRY_MS`（既定 1）。`nina_sock.h` が読み、無ければ既定値を使う |
 | C ライブラリ | NuttX の libc | `nina_sock.[ch]`・`nina_dns.[ch]` は POSIX の `<sys/socket.h>`・`<sys/types.h>`・`<sys/uio.h>`・`<netinet/in.h>`・`<netinet/tcp.h>`・`<arpa/inet.h>`・`<poll.h>`・`<netdb.h>` の型と定数（`struct sockaddr_in`、`struct iovec`、`struct addrinfo`、`AF_INET`、`MSG_DONTWAIT`、`POLLIN`、`EAI_*` など）と、`inet_pton()`・`htons()`・`malloc()`・`free()` を使う。`nina_sock_poll_revents()` が返す `POLL*` と `EAI_*` の値は、呼び出す側と同じヘッダーのもの |
@@ -53,6 +53,8 @@ NINA のドライバーは、OS に依存しないコア（リポジトリの `c
   その間 tick が止まり、あとで TIMER に追いつくので、10 ms ごとに区切ります）。`nina_os_ready_disarm()` でエッジを止め、転送中の CS による
   READY の変化では割り込みを起こしません。`gpio0` と `src/nano_gpio.c` は `CONFIG_NANO_LSM6DSO_STREAM` で
   ビルドされるので、`CONFIG_NANO_NINA` はそれに依存します。
+  コールバックは最初のリセットのあとに `nina_os_ready_start()` が `gpio0` に登録します。登録に失敗したときは、
+  コアは 100 µs ごとに READY を読みます（期限と結果は同じ）。
 - 期限と配線は `design/nuttx-porting-ja.md` の「NINA-W102（`nina`）」の節にあります。
 - `common/drivers/nina/nina_spi.c` はホストテスト（`common/tests/nina_spi.c`。`common/tests/run.sh` が走らせる）で、偽のボードと時計を
   使って確かめます。READY の割り込みでの待ち（`nina/nina_os.c` とコアの `wait_ready()`）は `nuttx/tests/nina_os.c`
@@ -249,8 +251,8 @@ NuttX 版のビット 2 の待ち:
   変わったとき（最長 100 ms、送信の期限まで）、データを送って 0 バイトだった周のあとは従来どおり 1 ms 後です。
 - 互換層の `zsock_recv()`・`zsock_poll()` も同じ待ち（`nina_wait()`）を使います。NuttX のソケット（NINA 以外）を
   含む `zsock_poll()` は最長 20 ms ごとに見直します。
-- `nina/Make.defs` の `-DNINA_OS_EVENTS` を外すと、ビット 2 があっても従来の間隔で待ちます。
-- `nina/nina_os.c` の割り込みと待ちは `nuttx/tests/nina_os.c`（`nina_os_events`）が確かめます。`nina_event` の
+- `nina_os_event_start()` が失敗したときは、ビット 2 があっても従来の間隔で待ちます。
+- `nina/nina_os.c` の割り込みと待ちは `nuttx/tests/nina_os.c`（`nina_os`）が確かめます。`nina_event` の
   エッジでの周と、互換層の待ちは、ホストテストで確かめていません。
 
 ### 中継モード（`nina passthrough confirm`）

@@ -11,9 +11,8 @@
  *   nina_os_dns_lock(), _unlock()  K_MUTEX_DEFINE(nina_dns_lock), the same
  *   nina_os_sleep_us(us)           k_sleep(K_USEC(us)) = k_usleep(us): us
  *                                  rounded up to ticks of 1 ms, plus one
- *                                  tick (the core of this build does not
- *                                  call it: its waits for READY are the
- *                                  ones below)
+ *                                  tick (the core calls it only when
+ *                                  nina_os_ready_start() below fails)
  *   nina_os_sleep_ms(ms)           k_sleep(K_MSEC(ms)) = k_msleep(ms): the
  *                                  same rounding (10 ms: 11 ticks, 750 ms:
  *                                  751 ticks)
@@ -28,11 +27,14 @@
  * task on; not from an interrupt handler (nor does the core call them so).
  * K_FOREVER waits cannot fail: nina_os_lock() returns 0.
  *
- * The core's waits for READY (nina_spi.c wait_ready(), compiled with
- * NINA_OS_WAIT_READY, nina.cmake) sleep on an edge interrupt of the line
- * instead of sampling it (nina_os_ready_*() of nina_os.h; the Zephyr and
- * NuttX builds wait on its interrupt in the same way):
+ * The core's waits for READY (nina_spi.c wait_ready()) sleep on an edge
+ * interrupt of the line instead of sampling it (nina_os_ready_*() of
+ * nina_os.h; the Zephyr and NuttX builds wait on its interrupt in the same
+ * way):
  *
+ *   nina_os_ready_start()       adds the callback to the layer's gpio0; its
+ *                               error (the core then samples READY) is
+ *                               gpio_add_callback()'s
  *   nina_os_ready_arm(desired)  drops a wake-up left from before
  *                               (k_sem_reset()), then enables the edge of
  *                               READY (GPIO10, active low: nano_nina.c)
@@ -42,9 +44,7 @@
  *                               latched while the event was off, then
  *                               enables it; GPIO10 is one of
  *                               NANO_GPIO_IRQ_PINS,
- *                               freertos/drivers/compat/rp2040/nano_gpio.c);
- *                               the first call adds the callback to the
- *                               layer's gpio0
+ *                               freertos/drivers/compat/rp2040/nano_gpio.c)
  *   the interrupt               the bank's handler acknowledges the edge and
  *                               runs the callback, which gives the
  *                               semaphore (k_sem_give() from the handler:
@@ -69,9 +69,8 @@
  * wake a wait early; the core reads the line again after every wake-up.
  * One waiter at a time: the core calls these with nina_lock held.
  *
- * With NINA_OS_EVENTS (nina.cmake), the waits of the socket loops for the
- * module's socket events on its IRQ line (nina_os_event_*() of nina_os.h,
- * nina_wait.c):
+ * The waits of the socket loops for the module's socket events on its IRQ
+ * line (nina_os_event_*() of nina_os.h, nina_wait.c):
  *
  *   nina_os_event_start()       adds the callback to the layer's gpio0 and
  *                               enables the rising edge of GPIO2 (the IRQ
@@ -101,10 +100,6 @@
 
 #include "nina_os.h"
 
-#ifndef NINA_OS_WAIT_READY
-#error "the core waits for READY with nina_os_ready_*() (nina.cmake)"
-#endif
-
 #include <zephyr/device.h>
 #include <zephyr/drivers/gpio.h>
 
@@ -118,7 +113,6 @@
 
 static K_SEM_DEFINE(ready_sem, 0, 1);
 static struct gpio_callback ready_cb;
-static bool ready_cb_added;
 
 /* In the GPIO bank's interrupt handler. */
 static void ready_changed(const struct device *port, struct gpio_callback *cb,
@@ -130,16 +124,17 @@ static void ready_changed(const struct device *port, struct gpio_callback *cb,
 	k_sem_give(&ready_sem);
 }
 
+int nina_os_ready_start(void)
+{
+	gpio_init_callback(&ready_cb, ready_changed, BIT(READY_GPIO));
+	return gpio_add_callback(DEVICE_DT_GET(DT_NODELABEL(gpio0)), &ready_cb);
+}
+
 void nina_os_ready_arm(int desired)
 {
 	/* Active low: ready (1) is the falling edge. */
 	uint32_t edge = desired ? NANO_GPIO_IRQ_EDGE_FALL : NANO_GPIO_IRQ_EDGE_RISE;
 
-	if (!ready_cb_added) {
-		gpio_init_callback(&ready_cb, ready_changed, BIT(READY_GPIO));
-		(void)gpio_add_callback(DEVICE_DT_GET(DT_NODELABEL(gpio0)), &ready_cb);
-		ready_cb_added = true;
-	}
 	k_sem_reset(&ready_sem);
 	(void)nano_gpio_irq_configure(READY_GPIO, edge);
 }
@@ -154,7 +149,6 @@ void nina_os_ready_disarm(void)
 	(void)nano_gpio_irq_configure(READY_GPIO, 0);
 }
 
-#ifdef NINA_OS_EVENTS
 /* The IRQ line: GPIO2, active high (nano_nina.c, irq-gpios). */
 #define IRQ_GPIO 2
 
@@ -203,7 +197,6 @@ void nina_os_event_wait(uint32_t seq, uint32_t ms)
 		left = end - nina_os_uptime_ms();
 	}
 }
-#endif /* NINA_OS_EVENTS */
 
 static K_MUTEX_DEFINE(nina_lock);
 static K_MUTEX_DEFINE(nina_dns_lock);

@@ -26,8 +26,9 @@
  * - A module that gets ready while a request waits: the request goes on
  *   within a few ticks of it.
  *
- * The core is built with NINA_OS_WAIT_READY, as on the board: nina_os.c's
- * waits on READY's edge interrupt, through drivers/compat/rp2040/nano_gpio.c
+ * As on the board, nina_os_ready_start() succeeds (the core's first
+ * request calls it), and the core waits with nina_os.c's waits on READY's
+ * edge interrupt, through drivers/compat/rp2040/nano_gpio.c
  * and the layer's gpio0 (common/compat/zephyr_gpio.c), on fakes of the
  * SDK's GPIO interrupt functions that latch READY's edges and run the
  * bank's handler as an interrupt handler.  So the test also checks:
@@ -39,7 +40,7 @@
  * - a change right after the core's read of READY (before it waits) is not
  *   lost: the wait returns at once.
  *
- * With NINA_OS_EVENTS, as on the board, nina_os.c's waits for the socket
+ * nina_os.c's waits for the socket
  * events on the IRQ line (GPIO2, also claimed by the bank's handler):
  * nina_os_event_start() enables its rising edge; each edge counts one and
  * ends the waits of every task that waits (two at once here); a wait

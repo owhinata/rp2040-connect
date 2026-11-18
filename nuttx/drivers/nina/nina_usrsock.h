@@ -49,7 +49,7 @@ void nina_poller_kick(uint32_t mark);
 void nina_poller_retry(int usockid, uint32_t mark);
 void nina_poller_cancel(int usockid);
 
-/* From nina_os.c's interrupt of the module's IRQ line (NINA_OS_EVENTS):
+/* From nina_os.c's interrupt of the module's IRQ line:
  * wakes the thread to look at the edge count.  Not under the usrsock lock.
  */
 

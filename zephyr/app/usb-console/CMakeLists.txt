@@ -47,15 +47,6 @@ set_property(SOURCE ${nina_socket_sources} APPEND PROPERTY INCLUDE_DIRECTORIES
 set_property(SOURCE ${nina_socket_sources} APPEND PROPERTY COMPILE_DEFINITIONS
   CONFIG_NANO_NINA_TCP_MAX_IO=CONFIG_NINA_TCP_MAX_IO
   CONFIG_NANO_NINA_SEND_RETRY_MS=CONFIG_NINA_SEND_RETRY_MS NINA_OS_DNS_OFFLOAD)
-# The waits for READY sleep until the line's edge interrupt (nina_os.c) instead of sampling it
-# every 100 us.  Without this line they sample.
-set_property(SOURCE ${nina_dir}/nina_spi.c drivers/nina/nina_os.c APPEND PROPERTY
-  COMPILE_DEFINITIONS NINA_OS_WAIT_READY)
-# The socket loops wait for the edges of the module's IRQ line when its firmware reports socket
-# events (nina_wait.c, nina_os.c's GPIO2 interrupt).  Without this line they keep their poll
-# intervals whatever the firmware.
-set_property(SOURCE ${nina_dir}/nina_wait.c drivers/nina/nina_os.c APPEND PROPERTY
-  COMPILE_DEFINITIONS NINA_OS_EVENTS)
 # Integer division through the SIO divider: the Pico SDK's pico_divider (hal_rpi_pico), as the
 # SDK's pico_divider_hardware links it.  libgcc defines the plain names, so the references are
 # wrapped to the SDK's __wrap___aeabi_idiv, ...  The routines save the divider when they

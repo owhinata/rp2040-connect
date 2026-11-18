@@ -10,12 +10,13 @@
  *   nina_os_sleep_ms(ms)           k_sleep(K_MSEC(ms))
  *   nina_os_uptime_ms()            k_uptime_get()
  *
- * With NINA_OS_WAIT_READY (CMakeLists.txt; nina_spi.c is compiled with it
- * too), the core's waits for the module's READY line sleep until an edge
+ * The core's waits for the module's READY line sleep until an edge
  * interrupt of the line instead of sampling it every 100 us
- * (nina_os_ready_*() of nina_os.h).  Without it they sample, and this file
- * has only the services above.
+ * (nina_os_ready_*() of nina_os.h):
  *
+ *   nina_os_ready_start()       adds the callback to the line's port
+ *                               (gpio0); its error (the core then samples
+ *                               READY) is gpio_add_callback_dt()'s
  *   nina_os_ready_arm(desired)  drops a wake-up left from before
  *                               (k_sem_reset()), then enables the edge of
  *                               READY towards DESIRED with
@@ -25,8 +26,7 @@
  *                               low, so these are the falling and the
  *                               rising edge.  The RP2040 GPIO driver clears
  *                               an edge latched while the event was off
- *                               before it enables it.  The first call adds
- *                               the callback to the line's port (gpio0).
+ *                               before it enables it
  *   the interrupt               the GPIO driver's handler (IO_IRQ_BANK0)
  *                               acknowledges the edge and runs the
  *                               callback, which gives the semaphore
@@ -45,16 +45,17 @@
  * deadline and the wait are on the same kernel clock.  One waiter at a
  * time: the core calls these with nina_lock held, not from an interrupt.
  *
- * With NINA_OS_EVENTS (CMakeLists.txt), it also has the waits for the
- * module's socket events on its IRQ line (nina_os_event_*() of nina_os.h,
- * at the end of this file).
+ * It also has the waits for the module's socket events on its IRQ line
+ * (nina_os_event_*() of nina_os.h, at the end of this file).
  *
  * The host test (tests/nina_boundary.c) builds this file on fakes of the
- * Zephyr calls, with and without NINA_OS_WAIT_READY and NINA_OS_EVENTS.
+ * Zephyr calls, whose registration of the callbacks succeeds or fails.
  */
 
 #include <stdint.h>
 
+#include <zephyr/device.h>
+#include <zephyr/drivers/gpio.h>
 #include <zephyr/kernel.h>
 
 #include "nina_os.h"
@@ -97,20 +98,12 @@ int64_t nina_os_uptime_ms(void)
 	return k_uptime_get();
 }
 
-#ifdef NINA_OS_WAIT_READY
-
-#include <stdbool.h>
-
-#include <zephyr/device.h>
-#include <zephyr/drivers/gpio.h>
-
 /* The longest single wait (see above). */
 #define READY_WAIT_SLICE_MS 10
 
 static const struct gpio_dt_spec ready = GPIO_DT_SPEC_GET(DT_NODELABEL(nina_w102), ready_gpios);
 static K_SEM_DEFINE(ready_sem, 0, 1);
 static struct gpio_callback ready_cb;
-static bool ready_cb_added;
 
 /* In the GPIO driver's interrupt handler. */
 static void ready_changed(const struct device *port, struct gpio_callback *cb,
@@ -122,13 +115,14 @@ static void ready_changed(const struct device *port, struct gpio_callback *cb,
 	k_sem_give(&ready_sem);
 }
 
+int nina_os_ready_start(void)
+{
+	gpio_init_callback(&ready_cb, ready_changed, BIT(ready.pin));
+	return gpio_add_callback_dt(&ready, &ready_cb);
+}
+
 void nina_os_ready_arm(int desired)
 {
-	if (!ready_cb_added) {
-		gpio_init_callback(&ready_cb, ready_changed, BIT(ready.pin));
-		(void)gpio_add_callback_dt(&ready, &ready_cb);
-		ready_cb_added = true;
-	}
 	k_sem_reset(&ready_sem);
 	(void)gpio_pin_interrupt_configure_dt(&ready, desired ? GPIO_INT_EDGE_TO_ACTIVE
 							      : GPIO_INT_EDGE_TO_INACTIVE);
@@ -144,15 +138,7 @@ void nina_os_ready_disarm(void)
 	(void)gpio_pin_interrupt_configure_dt(&ready, GPIO_INT_DISABLE);
 }
 
-#endif /* NINA_OS_WAIT_READY */
-
-#ifdef NINA_OS_EVENTS
-
-#include <zephyr/device.h>
-#include <zephyr/drivers/gpio.h>
-
-/* The module's socket events (nina_os.h, NINA_OS_EVENTS; CMakeLists.txt
- * compiles this file and nina_wait.c with it):
+/* The module's socket events (nina_os.h):
  *
  *   nina_os_event_start()     adds the callback to the IRQ line's port
  *                             (irq-gpios: GPIO2, active high) and enables
@@ -223,5 +209,3 @@ void nina_os_event_wait(uint32_t seq, uint32_t ms)
 		left = end - k_uptime_get();
 	}
 }
-
-#endif /* NINA_OS_EVENTS */

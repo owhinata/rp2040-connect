@@ -225,7 +225,10 @@ Zephyr's Telnet shell, MQTT client and zperf run on these sockets.
   (`nina/nina_os.c`). The interrupt is enabled before READY is read, so a change after the read is
   not missed; it is off during the transfers. Each wait lasts at most 10 ms, and READY is read
   again after it. Past the deadline (2 s before a command, 10 s for the reply (2 s for
-  `nina_ip_config()`), 20 ms after CS is asserted) the result is `-ETIMEDOUT`.
+  `nina_ip_config()`), 20 ms after CS is asserted) the result is `-ETIMEDOUT`. Whether the
+  interrupt is used is decided at run time: after the first reset `nina_os_ready_start()` registers
+  READY's callback, and if that fails READY is read every 100 µs instead (same deadlines and
+  results).
 - One TCP send carries at most 3584 bytes (`CONFIG_NINA_TCP_MAX_IO`), the most that fits the
   module's command buffer. A RAW batch of up to 2448 bytes goes out in one command.
 
@@ -305,8 +308,9 @@ How bit 2 is used (`common/drivers/nina/nina_wait.h`):
   deadline (`SO_RCVTIMEO` for receiving, the `poll` timeout, 10 s for connect and send).
 - A `poll` that includes a descriptor other than a NINA socket looks again at least every 20 ms
   (for that descriptor, as before).
-- Removing the `NINA_OS_EVENTS` line of `CMakeLists.txt` keeps the intervals whatever the
-  firmware.
+- When the edge interrupt cannot be used (`nina_os_event_start()` fails to register the IRQ
+  line's callback or to enable its edge), the waits keep the intervals whatever the firmware, and
+  bit 2 is dropped from the bits in use.
 
 ### The esptool passthrough (`nina passthrough confirm`)
 
@@ -495,10 +499,10 @@ All but `nina_boundary_*`, `passthrough` and `nina_socket*` are tests shared wit
 | `stream_stop` | Stopping, canceling and error termination of the stream |
 | `i2c_dma_commands` | Argument handling of `i2c_dma` |
 | `i2c_dw_sync` | The shared I2C0 core (`common/drivers/i2c_dw/`) against the patched driver (made from the Zephyr tree's files at HEAD and patch 0003): the definitions of both headers (state, interrupts, registers, the IC_DATA_CMD bits, FIFO depth 16 and batch 4, the DMA limit 3584), the SCL counts at 125 MHz, the DMA path's lower limit 32, thresholds 8/0, interrupt mask, IC_CON bit 9, stop waits of 100 ms and timeout of 1000 ms, the spike lengths, and the pairs of functions (Zephyr's names turned into the core's, compared statement by statement; the differences must be those of `common/tests/i2c_dw_sync.expected`). With the build, the values of its `.config` and `zephyr.dts` too. Only when the Zephyr tree is there |
-| `nina_spi`, `nina_spi_wait_ready` | NINA SPI framing, reply parsing (the firmware's error reply 0xEF included), READY deadlines, the capability probe (0x6A) (the shared core `nina_spi.c`, fake boundaries) |
-| `nina_wait`, `nina_wait_no_events` | The socket waits (`nina_wait.c`): the intervals, the IRQ line's edges, the 100 ms timeout, the deadline, the back-off (fake clock and line) |
+| `nina_spi` | NINA SPI framing, reply parsing (the firmware's error reply 0xEF included), READY deadlines, the capability probe (0x6A) (the shared core `nina_spi.c`, fake boundaries); each both with the waits on READY's interrupt and, when they cannot start, with READY read every 100 µs |
+| `nina_wait` | The socket waits (`nina_wait.c`): the intervals (before the events start, and after they could not), the IRQ line's edges, the 100 ms timeout, the deadline, the back-off (fake clock and line) |
 | `nina_sock`, `nina_dns`, `nina_dns_offload` | The NINA socket commands, name resolution (`nina_dns_offload` in this build's form, `NINA_OS_DNS_OFFLOAD`) |
-| `nina_boundary_events`, `nina_boundary_irq`, `nina_boundary_poll` | The shared `nina_spi.c` on this build's `nina/nano_nina.c` and `nina_os.c`: framing, lines and flags, the reset sequence, the READY interrupt (callback, semaphore reset, edge direction, off before transfers, 10 ms bound) and sampling; `nina_boundary_events` the waits for the IRQ line's edges (GPIO2's callback and rising edge, the count, a wait ended by an edge, the timeout, an edge just before the wait) |
+| `nina_boundary` | The shared `nina_spi.c` on this build's `nina/nano_nina.c` and `nina_os.c`: framing, lines and flags, the reset sequence, the READY interrupt (callback, semaphore reset, edge direction, off before transfers, 10 ms bound) and the sampling when the callback cannot be registered; the waits for the IRQ line's edges (a start that fails, GPIO2's callback and rising edge, the count, a wait ended by an edge, the timeout, an edge just before the wait) |
 | `nina_boundary_passthrough` | The same with `CONFIG_NANO_NINA_PASSTHROUGH`: no bus while the passthrough runs (`-ENODEV` without touching a line or SPI), as usual once it is gone |
 | `passthrough` | The passthrough `nina/nina_passthrough.c` on fake Zephyr calls and fake hardware (`nina_passthrough_hw.h`): the request at the start, the lines and the rate from the USB messages and the tick, both data paths and the handovers between the interrupts, breaks and overruns, the bytes dropped without USB, the way out, the command. The decisions themselves: the FreeRTOS build's test `freertos/tests/passthrough` |
-| `nina_socket`, `nina_socket_events` | The socket offload `nina/nina_socket.c` on the shared core: descriptors, the wait loops and sleeps, options, accept, sendmsg, datagrams, poll, the resolver's registration; `nina_socket_events` the waits for the IRQ line's edges (an edge during a pass, the timeout, the deadline, the send's waits, a `poll` with another kind of descriptor) |
+| `nina_socket` | The socket offload `nina/nina_socket.c` on the shared core: descriptors, the wait loops and sleeps (after the events could not start), options, accept, sendmsg, datagrams, poll, the resolver's registration; the waits for the IRQ line's edges once the events are started (an edge during a pass, the timeout, the deadline, the send's waits, a `poll` with another kind of descriptor) |

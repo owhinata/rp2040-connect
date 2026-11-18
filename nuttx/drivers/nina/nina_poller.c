@@ -103,11 +103,7 @@ static clock_t g_retry_edge_from[NINA_SOCK_MAX];
 
 static uint32_t event_seq(void)
 {
-#ifdef NINA_OS_EVENTS
   return nina_wait_events() ? nina_os_event_seq() : 0;
-#else
-  return 0;
-#endif
 }
 
 static bool edge_since(uint32_t mark)

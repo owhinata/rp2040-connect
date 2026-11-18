@@ -2,7 +2,7 @@
 /* The waits of the NINA socket loops (nina_wait.c): between two passes of
  * a loop that found nothing (a connect in progress, a receive or poll with
  * nothing to report, a send without room), either the loop's poll interval
- * (the 3.0.2 firmware, or an OS without NINA_OS_EVENTS), or, when the
+ * (the 3.0.2 firmware, or nina_os_event_start() failed), or, when the
  * module reports socket events on its IRQ line (NINA_CAP_SOCKET_EVENTS,
  * nina_proto.h), the next rising edge of the line, at most
  * NINA_EVENT_TIMEOUT_MS.  The loops: Zephyr's and FreeRTOS's nina_socket.c,
@@ -54,8 +54,8 @@ struct nina_wait {
 
 /* Called once by nina_probe_capabilities() (nina_spi.c) when the module
  * reports socket events: nina_os_event_start(), and the waits use the
- * events from then on.  0, or a negative errno (-ENOTSUP without
- * NINA_OS_EVENTS): the waits keep the poll intervals.
+ * events from then on.  0, or nina_os_event_start()'s negative errno: the
+ * waits keep the poll intervals.
  */
 int nina_wait_start_events(void);
 

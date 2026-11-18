@@ -2,12 +2,12 @@
 /* Host test of common/drivers/nina/nina_wait.c (the waits of the socket
  * loops) on fakes of nina_os.h: a clock in milliseconds that only the
  * sleeps and the waits move, and an IRQ line whose edges are planned at
- * given times.  Built twice (common/tests/run.sh): with NINA_OS_EVENTS, as
- * the three builds compile it, and without.
+ * given times.  nina_os_event_start() fails or succeeds as the test says.
  *
  * Checked:
- * - before the events are started (and always without NINA_OS_EVENTS):
- *   each wait is a sleep of the loop's interval, nothing else;
+ * - before the events are started, and after a start that failed (an OS
+ *   without a usable interrupt, -ENOTSUP): each wait is a sleep of the
+ *   loop's interval, nothing else, and the other event calls are not made;
  * - the start: nina_os_event_start() once, its failure keeps the sleeps;
  * - an edge after the mark ends the wait at the edge, within
  *   NINA_EVENT_TIMEOUT_MS;
@@ -37,10 +37,9 @@
 static int64_t now = 1000;
 static unsigned int sleeps, waits;
 static uint32_t last_sleep, last_wait_ms;
-#ifdef NINA_OS_EVENTS
 static unsigned int starts;
 static int start_result;
-#endif
+static int started; /* nina_os_event_start() has returned 0 */
 
 #define MAX_EDGES 8
 static int64_t edges[MAX_EDGES]; /* planned edge times, ascending; 0 none */
@@ -81,15 +80,20 @@ void nina_os_sleep_ms(uint32_t ms)
 	run_to(now + ms);
 }
 
-#ifdef NINA_OS_EVENTS
 int nina_os_event_start(void)
 {
+	assert(!started);
 	starts++;
+	if (!start_result) {
+		started = 1;
+	}
 	return start_result;
 }
 
+/* Only after a start that succeeded (nina_os.h). */
 uint32_t nina_os_event_seq(void)
 {
+	assert(started);
 	return count;
 }
 
@@ -97,6 +101,7 @@ uint32_t nina_os_event_seq(void)
  * else after MS. */
 void nina_os_event_wait(uint32_t seq, uint32_t ms)
 {
+	assert(started);
 	waits++;
 	last_wait_ms = ms;
 	if (count != seq) {
@@ -108,7 +113,6 @@ void nina_os_event_wait(uint32_t seq, uint32_t ms)
 	}
 	run_to(now + ms);
 }
-#endif
 
 /* Unused by nina_wait.c; the boundary's other functions. */
 int nina_os_lock(void)
@@ -157,9 +161,17 @@ static void test_backoff_values(void)
 	assert(NINA_EVENT_TIMEOUT_MS == 100);
 }
 
-#ifdef NINA_OS_EVENTS
+/* The OS cannot wait for the events: the waits stay sleeps. */
+static void test_start_fails(void)
+{
+	start_result = -ENOTSUP;
+	assert(nina_wait_start_events() == -ENOTSUP && starts == 1 && !nina_wait_events());
+	test_without_events();
+}
+
 static void test_start(void)
 {
+	starts = 0;
 	start_result = -EIO;
 	assert(nina_wait_start_events() == -EIO && starts == 1 && !nina_wait_events());
 	start_result = 0;
@@ -263,22 +275,16 @@ static void test_backoff_sequence(void)
 		assert(w.woken == i + 1);
 	}
 }
-#endif
 
 int main(void)
 {
 	test_backoff_values();
 	test_without_events();
-#ifdef NINA_OS_EVENTS
+	test_start_fails();
 	test_start();
 	test_edges();
 	test_deadline();
 	test_backoff_sequence();
-	puts("NINA socket waits: tests passed (events)");
-#else
-	assert(nina_wait_start_events() == -ENOTSUP && !nina_wait_events());
-	test_without_events();
-	puts("NINA socket waits: tests passed (no events)");
-#endif
+	puts("NINA socket waits: tests passed (start failed, then events)");
 	return 0;
 }

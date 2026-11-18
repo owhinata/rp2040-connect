@@ -1,9 +1,10 @@
 /* SPDX-License-Identifier: MIT */
 /* The waits for NINA's READY line on NuttX: drivers/nina/nina_os.c
  * (nina_os_ready_*(), on an edge interrupt) under the shared core's
- * wait_ready() (common/drivers/nina/nina_spi.c, built with
- * NINA_OS_WAIT_READY as nina/Make.defs builds it, and included here to
- * reach the static function), with the compatibility layer's gpio0
+ * wait_ready() (common/drivers/nina/nina_spi.c, included here to reach the
+ * static function; nina_os_ready_start() succeeds, as on the board: the
+ * layer's gpio_add_callback() does not fail, and the sampling after a
+ * failed start is common/tests/nina_spi.c's), with the compatibility layer's gpio0
  * (common/compat/zephyr_gpio.c), on fakes of NuttX's semaphores, mutexes,
  * sleeps and clock (tests/nina_os_fakes) and of the board's GPIO bank 0
  * (<nano_gpio.h>, the board's src/nano_gpio.c on the target).
@@ -24,8 +25,8 @@
  * - the edge is enabled only during a wait, in the direction of the
  *   desired level, and the semaphore never counts more than one.
  *
- * Built a second time with NINA_OS_EVENTS (and CONFIG_NANO_NINA_USRSOCK),
- * as nina/Make.defs builds nina_os.c: the socket events on the IRQ line
+ * With CONFIG_NANO_NINA_USRSOCK, as nina/Make.defs builds nina_os.c, the
+ * socket events on the IRQ line
  * (GPIO2): the start (the callback on gpio0, GPIO2's rising edge), the
  * count of the edges, the event thread woken by each
  * (nina_poller_edge()), a wait that ends at an edge, at once when the
@@ -53,7 +54,6 @@
 #define READY_GPIO 10
 #define IRQ_GPIO   2
 
-#ifdef NINA_OS_EVENTS
 static uint64_t irq_edge_at = UINT64_MAX; /* tick of a planned IRQ edge */
 static bool irq_edge_in_wait;           /* an edge at the next wait's start */
 static unsigned int poller_edges;
@@ -64,7 +64,6 @@ void nina_poller_edge(void)
 {
 	poller_edges++;
 }
-#endif
 
 /* Fake clock and kernel --------------------------------------------------*/
 
@@ -95,12 +94,10 @@ static void advance(uint64_t ticks)
 			change_at = UINT64_MAX;
 			set_ready_high(change_to_high);
 		}
-#ifdef NINA_OS_EVENTS
 		if (now == irq_edge_at) {
 			irq_edge_at = UINT64_MAX;
 			irq_edge();
 		}
-#endif
 	}
 }
 
@@ -178,13 +175,11 @@ int nxsem_tickwait_uninterruptible(sem_t *sem, uint32_t delay)
 
 	waits++;
 	last_delay = delay;
-#ifdef NINA_OS_EVENTS
 	/* The edge between the caller's read of the count and its wait. */
 	if (irq_edge_in_wait) {
 		irq_edge_in_wait = false;
 		irq_edge();
 	}
-#endif
 	if (sem->count > 0) {
 		sem->count--;
 		return 0;
@@ -226,7 +221,6 @@ uint32_t nano_gpio_get_all(void)
 	return ready_high ? 1U << READY_GPIO : 0;
 }
 
-#ifdef NINA_OS_EVENTS
 static uint32_t irq_inte;       /* GPIO2's enabled events */
 static unsigned int irq_irqs;
 
@@ -238,18 +232,15 @@ static void irq_edge(void)
 		nano_gpio_irq_handler(IRQ_GPIO);
 	}
 }
-#endif
 
 /* As the board's: clears the pin's latched edges, then enables EVENTS. */
 int nano_gpio_irq_configure(unsigned int pin, uint32_t events)
 {
-#ifdef NINA_OS_EVENTS
 	if (pin == IRQ_GPIO) {
 		assert(events == NANO_GPIO_IRQ_EDGE_RISE);
 		irq_inte = events;
 		return 0;
 	}
-#endif
 	assert(pin == READY_GPIO);
 	assert(events == 0 || events == NANO_GPIO_IRQ_EDGE_FALL ||
 	       events == NANO_GPIO_IRQ_EDGE_RISE);
@@ -454,7 +445,6 @@ static void test_edges(void)
 	assert(max_count == 1);
 }
 
-#ifdef NINA_OS_EVENTS
 static void test_events(void)
 {
 	uint32_t seq;
@@ -510,10 +500,12 @@ static void test_events(void)
 	irq_edge();
 	assert(max_count == 1);
 }
-#endif
 
 int main(void)
 {
+	/* As the core's init_nina(): the waits for READY on its interrupt. */
+	assert(nina_os_ready_start() == 0);
+	ready_irq = true;
 	test_at_level();
 	test_ready_during_wait();
 	test_busy_during_wait();
@@ -521,9 +513,7 @@ int main(void)
 	test_change_after_read();
 	test_stale_wakeup();
 	test_edges();
-#ifdef NINA_OS_EVENTS
 	test_events();
-#endif
 	printf("nina_os: ok\n");
 	return 0;
 }

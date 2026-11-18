@@ -215,11 +215,13 @@ printf 'ok  kv (flash boundary and store, FreeRTOS POSIX port)\n'
 # The NINA link (freertos/tests/nina): the board's boundaries of the shared core
 # (drivers/nina/nano_nina.c on fakes of the Pico SDK's GPIO, reset and SPI functions,
 # tests/nina/pico_fake; drivers/nina/nina_os.c on the layer) under the shared core
-# (common/drivers/nina/nina_spi.c and nina_wait.c, with the prelude, NINA_OS_WAIT_READY and
-# NINA_OS_EVENTS, as drivers/nina/nina.cmake builds them), on the same kernel and layer objects.  The waits for READY
-# on its edge interrupt (nina_os.c) go through GPIO bank 0's boundary
-# (drivers/compat/rp2040/nano_gpio.c) and the layer's gpio0 (common/compat/zephyr_gpio.c), on
-# fakes of the Pico SDK's GPIO interrupt functions (tests/nina/pico_fake).
+# (common/drivers/nina/nina_spi.c and nina_wait.c, with the prelude, as drivers/nina/nina.cmake
+# builds them), on the same kernel and layer objects.  The waits for READY on its edge interrupt
+# (nina_os.c) go through GPIO bank 0's boundary (drivers/compat/rp2040/nano_gpio.c) and the
+# layer's gpio0 (common/compat/zephyr_gpio.c), on fakes of the Pico SDK's GPIO interrupt
+# functions (tests/nina/pico_fake).  The layer's gpio_add_callback() does not fail, so
+# nina_os_ready_start() succeeds here; the sampling after a failed start is
+# common/tests/nina_spi.c's.
 ninainc=(-Itests/nina/pico_fake -I../common/drivers/nina)
 ninaobjs=()
 for src in drivers/nina/nano_nina.c drivers/nina/nina_os.c tests/nina/main.c \
@@ -230,7 +232,7 @@ for src in drivers/nina/nano_nina.c drivers/nina/nina_os.c tests/nina/main.c \
     case $src in
         ../common/*) extra=(-include drivers/compat/common_prelude.h) ;;
     esac
-    cc "${flags[@]}" "${strict[@]}" -DNINA_OS_WAIT_READY=1 -DNINA_OS_EVENTS=1 "${ninainc[@]}" "${inc[@]}" \
+    cc "${flags[@]}" "${strict[@]}" "${ninainc[@]}" "${inc[@]}" \
         "${extra[@]}" -c "$src" -o "$obj"
     ninaobjs+=("$obj")
 done

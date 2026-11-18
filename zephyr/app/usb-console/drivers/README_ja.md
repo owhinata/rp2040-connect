@@ -211,6 +211,8 @@ Zephyr の標準機能のうち、Telnet シェル、MQTT クライアント、z
   割り込みを有効にしてから READY を読むので、読んだあとの変化を取りこぼしません。転送中は割り込みを
   止めます。1 回の待ちは最長 10 ms で、そのたびに READY を読み直します。期限（コマンドの前 2 秒、
   応答まで 10 秒（`nina_ip_config()` は 2 秒）、CS を有効にしたあと 20 ms）を過ぎると `-ETIMEDOUT` です。
+  割り込みを使うかどうかは実行時に決まります。最初のリセットのあと `nina_os_ready_start()` が READY の
+  コールバックを登録し、登録に失敗したときは 100 µs ごとに READY を読みます（期限と結果は同じ）。
 - 1 回の TCP 送信は最大 3584 バイトです（`CONFIG_NINA_TCP_MAX_IO`）。NINA 側のコマンド
   バッファに収まる上限で、RAW バッチ 1 個（最大 2448 バイト）を 1 コマンドで送れます。
 
@@ -282,7 +284,8 @@ close、bind、listen、accept、connect、send、recv、sendto、recvfrom、ioc
   （書き込み可能でなかった）のあとにエッジを待ちます。待ちは呼び出しの期限（受信の `SO_RCVTIMEO`、`poll` の
   timeout、connect と送信の 10 秒）を越えません。
 - NINA 以外の記述子を含む `poll` は、最長 20 ms ごとに見直します（その記述子の変化は従来どおり）。
-- `CMakeLists.txt` の `NINA_OS_EVENTS` の行を消すと、ビット 2 があっても従来の間隔で待ちます。
+- エッジの割り込みを使えなかったとき（`nina_os_event_start()` が IRQ の線のコールバックの登録かエッジの
+  有効化に失敗したとき）は、ビット 2 があっても従来の間隔で待ちます。使っているビットからビット 2 が外れます。
 
 ### esptool の中継（`nina passthrough confirm`）
 
@@ -448,10 +451,10 @@ picolibc の中からの呼び出しと、GCC が構造体のコピーやルー�
 | `stream_stop` | ストリームの停止、キャンセル、エラー時の終了 |
 | `i2c_dma_commands` | `i2c_dma` コマンドの引数の解釈 |
 | `i2c_dw_sync` | 共有の I²C0 のコア（`common/drivers/i2c_dw/`）とパッチ後のドライバー（Zephyr のツリーの HEAD のファイルにパッチ 0003 を当てて作る）の一致。両方のヘッダーの定義（状態、割り込み、レジスター、IC_DATA_CMD のビット、FIFO の深さ 16・バッチ 4、DMA の上限 3584）、125 MHz での SCL のカウント、DMA の下限 32・しきい値 8/0・割り込みのマスク・IC_CON の bit 9・停止の待ち 100 ms・タイムアウト 1000 ms、スパイク長、対になる関数（名前の違いをそろえて文ごとに比べ、差分が `common/tests/i2c_dw_sync.expected` と同じこと）。ビルドがあれば `.config` と `zephyr.dts` の値も見る。Zephyr のツリーがあるときだけ |
-| `nina_spi`、`nina_spi_wait_ready` | NINA の SPI フレーミング、応答の解析（ファームウェアのエラーの応答 0xEF を含む）、READY の期限、追加機能の問い合わせ（0x6A）（共有のコア `nina_spi.c`。偽の境界） |
-| `nina_wait`、`nina_wait_no_events` | ソケットの待ち（`nina_wait.c`）：間隔、IRQ の線のエッジ、100 ms の時間切れ、期限、休み（偽の時計と線） |
+| `nina_spi` | NINA の SPI フレーミング、応答の解析（ファームウェアのエラーの応答 0xEF を含む）、READY の期限、追加機能の問い合わせ（0x6A）（共有のコア `nina_spi.c`。偽の境界）。どれも READY の割り込み待ちを始められたときと始められなかったとき（100 µs ごとに読む）の両方で |
+| `nina_wait` | ソケットの待ち（`nina_wait.c`）：間隔（事象を始める前と、始められなかったあと）、IRQ の線のエッジ、100 ms の時間切れ、期限、休み（偽の時計と線） |
 | `nina_sock`、`nina_dns`、`nina_dns_offload` | NINA のソケットの命令、名前解決（`nina_dns_offload` はこの版と同じ `NINA_OS_DNS_OFFLOAD` の形） |
-| `nina_boundary_events`、`nina_boundary_irq`、`nina_boundary_poll` | 共有の `nina_spi.c` をこの版の `nina/nano_nina.c`・`nina_os.c` に載せたもの：フレーミング、線と設定の対応、リセットの手順、READY の割り込み待ち（コールバックの登録、セマフォのリセット、エッジの向き、転送前の無効化、10 ms の上限）とポーリング。`nina_boundary_events` は IRQ の線のエッジの待ち（GPIO2 のコールバックと立ち上がりのエッジ、エッジの数、エッジで終わる待ち、時間切れ、待つ直前のエッジ） |
+| `nina_boundary` | 共有の `nina_spi.c` をこの版の `nina/nano_nina.c`・`nina_os.c` に載せたもの：フレーミング、線と設定の対応、リセットの手順、READY の割り込み待ち（コールバックの登録、セマフォのリセット、エッジの向き、転送前の無効化、10 ms の上限）と、コールバックを登録できなかったときのポーリング。IRQ の線のエッジの待ち（始められないとき、GPIO2 のコールバックと立ち上がりのエッジ、エッジの数、エッジで終わる待ち、時間切れ、待つ直前のエッジ） |
 | `nina_boundary_passthrough` | 上と同じものを `CONFIG_NANO_NINA_PASSTHROUGH` で。中継の間はバスが無く、線にも SPI にも触れずに `-ENODEV`、中継でなくなれば通常どおり |
 | `passthrough` | 中継 `nina/nina_passthrough.c` を偽の Zephyr と偽のハードウェア（`nina_passthrough_hw.h`）に載せたもの：起動時の印の扱い、USB の通知と tick での線とレート、両方向のデータと割り込みの受け渡し、ブレーク・オーバーラン、USB が無い間の破棄、出口の手順、コマンド。判断そのものは FreeRTOS 版のテスト `freertos/tests/passthrough` |
-| `nina_socket`、`nina_socket_events` | ソケットのオフロード `nina/nina_socket.c` を共有のコアに載せたもの：ファイル記述子、待ちのループと sleep、オプション、accept、sendmsg、データグラム、poll、リゾルバーの登録。`nina_socket_events` は IRQ の線のエッジの待ち（パスの間のエッジ、時間切れ、期限、送信の待ち方、NINA 以外の記述子を含む `poll`） |
+| `nina_socket` | ソケットのオフロード `nina/nina_socket.c` を共有のコアに載せたもの：ファイル記述子、待ちのループと sleep（事象を始められなかったあと）、オプション、accept、sendmsg、データグラム、poll、リゾルバーの登録。事象を始めたあとの IRQ の線のエッジの待ち（パスの間のエッジ、時間切れ、期限、送信の待ち方、NINA 以外の記述子を含む `poll`） |

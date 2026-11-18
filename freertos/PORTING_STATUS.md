@@ -1477,3 +1477,25 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
 - 確かめていない: 周期 tick のイメージでの Telnet・スキャン・切断復帰・スタック、静止時の負荷、NuttX 版。
 - **ユーザーの決定: tickless は使えるなら使っておく。設定は変えない**（リポジトリの変更なし）。
 - 実機: 測定のあと FreeRTOS 版に戻した。
+
+## NINA: `NINA_OS_WAIT_READY`・`NINA_OS_EVENTS` を無くし、実行時に選ぶ（2026-11-18、ユーザーの提案）
+
+- 変更前: 共通コアの 2 つの分岐（READY を割り込みで待つか 100 µs おきに読むか、ソケットの事象を IRQ の線で待つか）はビルド時のマクロで選び、
+  3 版とも定義していた（定義なしの分岐を通るビルドが無かった）。
+- 変更後: マクロは無い。OS の境界（`common/drivers/nina/nina_os.h`）の 7 関数は必須。
+  - READY: 新しい `nina_os_ready_start()` を `init_nina()` の最後で 1 回呼ぶ（起動ごとに 1 回）。0 なら `nina_os_ready_arm/wait/disarm()` で待ち、
+    負なら共通コアが `NINA_READY_POLL_US`（100 µs）おきに読む。3 版の実装は、コールバックの登録を最初の `arm()` からここへ移しただけ
+    （3 版とも、いまの GPIO の層では登録は失敗しない）。
+  - 事象: 実行時の判断（capabilities のビットと `nina_os_event_start()` の結果）は変えていない。`#ifdef` だけ消した。
+  - 割り込みを使えない OS は 2 つの `_start()` から負の値（`-ENOTSUP`）を返せばよく、残りの関数は呼ばれない。
+- ホストテスト: マクロあり・なしの 2 回ビルドをやめ、1 つのバイナリーで `_start()` の成功・失敗の両方を通す（`common/tests/nina_spi.c`・`nina_wait.c`、
+  Zephyr の `nina_boundary.c`・`nina_socket.c`、NuttX の `nina_os.c`、FreeRTOS の `tests/socket`）。Zephyr 41、NuttX 50、FreeRTOS 51 の `ok`、失敗 0。
+  `format.sh --check` も通る。
+- ビルド（メインが再ビルド、警告の増加なし）: FreeRTOS 232320 → 232416 B、Zephyr 370908 → 371012 B、NuttX 284988 → 285060 B。
+  実行時の分岐が増えたので、イメージは前の基準と一致しない。**新しい基準**: `freertos/build/baseline/zephyr/snapshot-1118e/image.bin`（371012 B）、
+  `.../nuttx/snapshot-1118e/image.bin`（285060 B）。
+- 実機（書き込み直後の最初の計測、送信 6667 Hz 約 70 秒、各 1 回）: FreeRTOS `cpu_active` 40.2%、Zephyr 48.8%、NuttX 49.8%。どれも欠番 0・
+  `unix_regressions` 0・`overruns` 0、`nina version` は `in use 0x00000007`、`dmesg` にエラー行なし。
+- 確かめていない: 実機で `_start()` が失敗する経路（ホストテストだけ）、Telnet・スキャン・切断復帰。
+- 文書（日英）: 3 版の `drivers/README`。
+- 実機: FreeRTOS 版（この変更のビルド）。
