@@ -11,12 +11,33 @@ target_sources(app PRIVATE src/main.c src/log_ram.c ${COMMON_DIR}/imu/kv_store.c
   ${COMMON_DIR}/imu/time_sync.c ${COMMON_DIR}/imu/time_offset.c
   ${COMMON_DIR}/imu/imu_stream.c ${COMMON_DIR}/imu/imu_raw_batch.c ${COMMON_DIR}/imu/imu_raw_packet.c
   ${COMMON_DIR}/imu/imu_raw_time.c ${COMMON_DIR}/imu/imu_tick_clock.c ${COMMON_DIR}/imu/imu_raw_queue.c
-  ${COMMON_DIR}/imu/imu_raw_mqtt.c ${COMMON_DIR}/imu/imu_raw_status.c
-  drivers/nina/nina_wifi.c ${COMMON_DIR}/drivers/nina/nina_net.c drivers/nina/nina_socket.c
-  drivers/nina/nina_dns.c)
-# common/drivers/nina: nina_proto.h for src/main.c and drivers/nina.
+  ${COMMON_DIR}/imu/imu_raw_mqtt.c ${COMMON_DIR}/imu/imu_raw_status.c)
 target_include_directories(app PRIVATE src drivers/lsm6dso ${COMMON_DIR}/imu ${COMMON_DIR}/drivers/lsm6dso
   ${COMMON_DIR}/drivers/nina)
+
+# NINA-W102: the shared core of common/drivers/nina (the SPI link nina_spi.c, the Wi-Fi
+# interface nina_net.c, the socket table and commands nina_sock.c, the resolver nina_dns.c and
+# the "nina" command nina_shell.c) and the Zephyr side in drivers/nina: the core's two
+# boundaries (nano_nina.c: spi1 and the module's lines from the devicetree; nina_os.c: locks,
+# sleeps, clock and the READY interrupt) and the socket offload (nina_socket.c).  The core's
+# POSIX socket names come from drivers/nina/posix, on the include path of these three sources
+# only.
+set(nina_dir ${COMMON_DIR}/drivers/nina)
+target_sources(app PRIVATE ${nina_dir}/nina_spi.c drivers/nina/nano_nina.c drivers/nina/nina_os.c
+  ${nina_dir}/nina_net.c ${nina_dir}/nina_sock.c drivers/nina/nina_socket.c ${nina_dir}/nina_dns.c
+  ${nina_dir}/nina_shell.c)
+set(nina_socket_sources ${nina_dir}/nina_sock.c drivers/nina/nina_socket.c ${nina_dir}/nina_dns.c)
+set_property(SOURCE ${nina_socket_sources} APPEND PROPERTY INCLUDE_DIRECTORIES
+  ${CMAKE_CURRENT_SOURCE_DIR}/drivers/nina/posix)
+# The core's names of CONFIG_NINA_TCP_MAX_IO and CONFIG_NINA_SEND_RETRY_MS (nina_sock.h), and the
+# resolver registered as the offload's, its results on drivers/nina's heap (nina_os.h).
+set_property(SOURCE ${nina_socket_sources} APPEND PROPERTY COMPILE_DEFINITIONS
+  CONFIG_NANO_NINA_TCP_MAX_IO=CONFIG_NINA_TCP_MAX_IO
+  CONFIG_NANO_NINA_SEND_RETRY_MS=CONFIG_NINA_SEND_RETRY_MS NINA_OS_DNS_OFFLOAD)
+# The waits for READY sleep until the line's edge interrupt (nina_os.c) instead of sampling it
+# every 100 us.  Without this line they sample.
+set_property(SOURCE ${nina_dir}/nina_spi.c drivers/nina/nina_os.c APPEND PROPERTY
+  COMPILE_DEFINITIONS NINA_OS_WAIT_READY)
 # memcpy() and memset() through the bootrom (common/drivers/rp2040_rom, shared with the NuttX
 # build): picolibc defines the plain names, so the references are wrapped to __wrap_memcpy, ...
 if(CONFIG_NANO_ROM_MEM_OPS)

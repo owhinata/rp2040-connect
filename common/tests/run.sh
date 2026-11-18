@@ -84,6 +84,10 @@ run nina_spi_wait_ready "${flags[@]}" -DNINA_OS_WAIT_READY -I"$nina" tests/nina_
 run nina_sock "${flags[@]}" -D_DEFAULT_SOURCE -I"$nina" tests/nina_sock.c "$nina/nina_sock.c"
 # Name resolution: hints, service, numeric addresses, the resolver commands (fake module).
 run nina_dns "${flags[@]}" -D_DEFAULT_SOURCE -I"$nina" tests/nina_dns.c "$nina/nina_dns.c"
+# The same with the results on the OS's heap and the registration (NINA_OS_DNS_OFFLOAD, as the
+# Zephyr build compiles it).
+run nina_dns_offload "${flags[@]}" -D_DEFAULT_SOURCE -DNINA_OS_DNS_OFFLOAD -I"$nina" tests/nina_dns.c \
+    "$nina/nina_dns.c"
 
 # The lookup of the bootrom's memcpy() and memset() (drivers/rp2040_rom/rp2040_rom_mem_lookup.c,
 # which the test includes): the codes, the entries stored on first use (fake function table).

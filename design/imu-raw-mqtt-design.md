@@ -104,7 +104,7 @@ flowchart LR
 | Send queue | `common/imu/imu_raw_queue.*` |
 | MQTT sending, reconnecting, status / info | `common/imu/imu_raw_mqtt.*`, `common/imu/imu_raw_status.*` |
 | Acquisition thread, recovery, shell (`imu`) | `common/imu/imu_stream.c` |
-| NINA sockets | `drivers/nina/nina_socket.c` (see the [driver README](../zephyr/app/usb-console/drivers/README.md)) |
+| NINA sockets | `drivers/nina/nina_socket.c`, `common/drivers/nina/nina_sock.*` (see the [driver README](../zephyr/app/usb-console/drivers/README.md)) |
 
 `src/` and `drivers/` are under `zephyr/app/usb-console`; `common/` is under the repository's root and
 holds the parts whose files are the same as the NuttX and FreeRTOS builds' (section 12).
@@ -654,9 +654,11 @@ version's; what has been verified on the NuttX port is listed separately in 11.7
   instance macros, one device with the board's values on NuttX). The NINA's declarations,
   `nina_proto.h`, are also one file in `common/drivers/nina/` that both builds use. The NINA's
   OS-independent core (the SPI link `nina_spi.c`, the socket table and commands `nina_sock.[ch]`,
-  name resolution `nina_dns.[ch]`, which depend only on the narrow boundary of `nina_os.h` and
-  `nano_nina.h`) is in `common/drivers/nina/` too and is used by the NuttX and FreeRTOS builds (the Zephyr
-  build uses the three files of its own `drivers/nina/`). The core that works on the I2C0 and DMA
+  name resolution `nina_dns.[ch]`, the `nina version` command `nina_shell.c`, which depend only on
+  the narrow boundary of `nina_os.h` and `nano_nina.h`) is in `common/drivers/nina/` too and is used
+  by the three builds. Each build's part is the boundary's implementation and the glue to its socket
+  layer; in the Zephyr build, `drivers/nina/nano_nina.c` (the devicetree's lines and SPI),
+  `nina_os.c` (mutexes, sleeps, clock, the READY interrupt) and `nina_socket.c` (the socket offload). The core that works on the I2C0 and DMA
   registers (`nano_i2c.c` and `nano_dma.c` in `common/drivers/i2c_dw/`, copies of the Zephyr
   build's `i2c_dw.c` and RP2040 DMA driver) does not depend on the OS either; it depends only on the
   boundary of `i2c_dw_os.h` (semaphores, clock, interrupt connection, reset and pins, the link to
@@ -869,8 +871,8 @@ and NuttX builds in [`freertos/drivers/README.md`](../freertos/drivers/README.md
 - `cpu_active` is measured with the idle windows of section 11.4. The tick interrupt every 1 ms counts
   as load (the Zephyr and NuttX builds have no such interrupt). The CPU column of `ps` is cumulative since
   the start.
-- The NINA's READY is waited for on GPIO10's edge interrupt (the Zephyr and NuttX builds read it every
-  100 µs).
+- The NINA's READY is waited for on GPIO10's edge interrupt (as in the Zephyr build; the NuttX build
+  reads it every 100 µs).
 
 ### 13.3 Sockets
 

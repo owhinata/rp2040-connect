@@ -1,15 +1,21 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /* The NINA socket table and the firmware's BSD-style socket commands
- * (0x70..0x7f): the Zephyr build's drivers/nina/nina_socket.c without the
- * Zephyr socket layer (file descriptors, errno, the waiting loops' sleeps).
+ * (0x70..0x7f), shared by the Zephyr, NuttX and FreeRTOS builds: the Zephyr
+ * build's former drivers/nina/nina_socket.c (line numbers: nina_sock.h)
+ * without the socket layer (file descriptors, errno, the waiting loops'
+ * sleeps), which each build adds (nina_sock.h names the callers).
  * Each command is a single lwIP socket call made inside the module's SPI
  * command handler, which serves Wi-Fi management and every socket.  A call
  * that blocks there stalls all of them, so every socket is made
  * non-blocking as soon as it exists and waiting is done on this side by
- * polling: in nina_poller.c, which turns the polls into usrsock events.
+ * polling: in the calling thread on Zephyr and FreeRTOS (their
+ * nina_socket.c makes the loops of the former file around one pass here),
+ * in nina_poller.c on NuttX, which turns the polls into usrsock events.
  *
- * The functions keep the Zephyr build's names, branches, order, constants
- * and errno names (nina_sock.h gives the line of each).  The differences:
+ * The functions keep the former file's names, branches, order, constants
+ * and errno names (nina_sock.h gives the line of each).  The differences,
+ * written for NuttX (the Zephyr and FreeRTOS callers put back what their
+ * socket layer needs; see their nina_socket.c):
  *
  * - fail(err) (errno = err, return -1) becomes "return -err".
  * - socket_lock is the caller's lock (nina_sock.h), so open_socket() no

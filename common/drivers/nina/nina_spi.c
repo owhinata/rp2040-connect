@@ -1,11 +1,12 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /* NINA Arduino firmware SPI protocol: WiFiNINA / Arduino_SpiNINA.
  *
- * A line-for-line port of the Zephyr build's drivers/nina/nina_wifi.c:
- * the same branches, order, constants, timeouts and error values.  Only
- * the calls into the system are replaced:
+ * Shared by the Zephyr, NuttX and FreeRTOS builds.  It was the Zephyr
+ * build's drivers/nina/nina_wifi.c; the branches, order, constants,
+ * timeouts and error values are that file's.  The calls into the system
+ * are the two boundaries of the core:
  *
- *   Zephyr                              here
+ *   Zephyr (nina_wifi.c)                here
  *   device_is_ready(), gpio_is_ready_dt nano_nina_bus_ready()
  *   gpio_pin_configure_dt()             nano_nina_pin_configure()
  *   gpio_pin_set_dt(), gpio_pin_get_dt  nano_nina_pin_set(), _get()
@@ -13,14 +14,17 @@
  *   K_MUTEX_DEFINE(nina_lock)           nina_os_lock(), nina_os_unlock()
  *   k_sleep(), k_uptime_get()           nina_os_sleep_us/_ms(), _uptime_ms()
  *
- * nano_nina_*() are the board's (<nano_nina.h>,
- * boards/arduino-nano-rp2040-connect/src/nano_nina.c), nina_os_*() are in
- * nina_os.c.  The host test (nuttx/tests/nina_spi.c) builds this file with
- * fakes of both.
+ * nano_nina_*() are the board's (<nano_nina.h>), nina_os_*() the kernel's
+ * (<nina_os.h>); each build implements both (zephyr/app/usb-console/
+ * drivers/nina/nano_nina.c and nina_os.c, nuttx/boards/arduino-nano-rp2040-connect/src/
+ * nano_nina.c and
+ * nuttx/drivers/nina/nina_os.c, freertos/drivers/nina/).  The host test
+ * (common/tests/nina_spi.c) builds this file with fakes of both.
  *
  * One difference: nina_os_lock() can fail where k_mutex_lock(K_FOREVER)
- * cannot (only with pthread cancellation, which this build does not use);
- * nina_request() and nina_ip_config() then return its error untouched.
+ * cannot (on NuttX, only with pthread cancellation, which that build does
+ * not use); nina_request() and nina_ip_config() then return its error
+ * untouched.
  *
  * An option of the OS: with NINA_OS_WAIT_READY, the waits for READY sleep
  * until the OS reports a change of the line (nina_os_ready_*() of

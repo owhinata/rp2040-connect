@@ -1,9 +1,12 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-/* Host test of nuttx/drivers/nina/nina_dns.c (the Zephyr build's
- * drivers/nina/nina_dns.c) with a fake nina_request() and a fake lock:
- * the hints (defaults, refused flags, families, socket types), the
- * service, numeric addresses without the module, a name with the commands
- * 0x34 and 0x35 under the lock, and each failure's EAI_* value.
+/* Host test of common/drivers/nina/nina_dns.c with a fake nina_request()
+ * and a fake lock: the hints (defaults, refused flags, families, socket
+ * types), the service, numeric addresses without the module, a name with
+ * the commands 0x34 and 0x35 under the lock, and each failure's EAI_*
+ * value.  Built twice: as the NuttX and FreeRTOS builds compile it
+ * (malloc()), and with NINA_OS_DNS_OFFLOAD as the Zephyr build does (the
+ * results on the OS's heap, here a fake one of two entries, and
+ * nina_dns_init() registering the resolver).
  */
 
 #include <assert.h>
@@ -34,6 +37,44 @@ void nina_os_dns_unlock(void)
 	assert(locked);
 	locked = 0;
 }
+
+#ifdef NINA_OS_DNS_OFFLOAD
+/* The OS's heap: room for two results. */
+static unsigned char heap[2][256];
+static bool heap_used[2];
+static int allocs, frees, registers;
+
+void *nina_os_dns_alloc(size_t size)
+{
+	assert(size <= sizeof(heap[0]));
+	for (int i = 0; i < 2; i++) {
+		if (!heap_used[i]) {
+			heap_used[i] = true;
+			allocs++;
+			return heap[i];
+		}
+	}
+	return NULL;
+}
+
+void nina_os_dns_free(void *ptr)
+{
+	for (int i = 0; i < 2; i++) {
+		if (ptr == heap[i]) {
+			assert(heap_used[i]);
+			heap_used[i] = false;
+			frees++;
+			return;
+		}
+	}
+	assert(0);
+}
+
+void nina_os_dns_register(void)
+{
+	registers++;
+}
+#endif
 
 struct step {
 	uint8_t cmd;
@@ -202,6 +243,28 @@ int main(void)
 	assert(nina_getaddrinfo(longname, NULL, NULL, &res) == EAI_NONAME);
 	done();
 	assert(host_param_len == 253);
+
+#ifdef NINA_OS_DNS_OFFLOAD
+	/* Every result came from the OS's heap and went back; a full heap is
+	 * EAI_MEMORY; nina_dns_init() registers the resolver. */
+	{
+		struct addrinfo *a, *b;
+
+		assert(allocs > 0 && allocs == frees);
+		reset();
+		assert(nina_getaddrinfo("10.0.0.1", NULL, NULL, &a) == 0);
+		assert(nina_getaddrinfo("10.0.0.2", NULL, NULL, &b) == 0);
+		assert(nina_getaddrinfo("10.0.0.3", NULL, NULL, &res) == EAI_MEMORY);
+		nina_freeaddrinfo(a);
+		nina_freeaddrinfo(b);
+		done();
+		assert(allocs == frees);
+		nina_dns_init();
+		assert(registers == 1);
+	}
+#else
+	nina_dns_init();
+#endif
 
 	puts("nina_dns: ok");
 	return 0;

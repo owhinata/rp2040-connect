@@ -1,25 +1,32 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-/* The NINA socket table and the socket commands of the Zephyr build's
- * drivers/nina/nina_socket.c, without the Zephyr socket layer around them
- * (nina_sock.c).  nina_usrsock.c turns NuttX's usrsock requests into these
- * calls and nina_poller.c turns the module's socket state into usrsock
- * events; the host test (nuttx/tests/nina_sock.c) runs them on a fake
+/* The NINA socket table and the socket commands (nina_sock.c), without a
+ * socket layer around them.  The callers: the Zephyr build's socket offload
+ * (zephyr/app/usb-console/drivers/nina/nina_socket.c), the FreeRTOS build's
+ * zsock_*() calls (freertos/drivers/nina/nina_socket.c), both with the wait
+ * loops in the calling thread, and the NuttX build's usrsock daemon
+ * (nuttx/drivers/nina/nina_usrsock.c turns usrsock requests into these
+ * calls, nina_poller.c turns the module's socket state into usrsock
+ * events).  The host test (common/tests/nina_sock.c) runs them on a fake
  * nina_request().
+ *
+ * The code was the Zephyr build's drivers/nina/nina_socket.c; the line
+ * numbers below ("nina_socket.c:17-26", ":175-210", ...) are that file's
+ * before the Zephyr build moved onto this core (commit 477be30).
  *
  * Sockets are numbered 0..NINA_SOCK_MAX-1 (the usrsock "usockid").  Every
  * function takes the number, returns 0 (or the value it describes) on
  * success and a negative errno on failure, where the Zephyr build sets
  * errno and returns -1: the same errno names.
  *
- * The caller holds the table lock.  On NuttX that is the usrsock lock
- * (usrsock_lock()), which every usrsock request holds and nina_poller.c
- * takes; it stands for the Zephyr build's socket_lock and for the per-socket
- * lock its socket layer takes around each call.  nina_request() takes the
- * NINA lock inside it, so the order is always: table lock, then NINA lock.
+ * The caller holds the table lock: on Zephyr and FreeRTOS the socket_lock
+ * of their nina_socket.c, on NuttX the usrsock lock (usrsock_lock()), which
+ * every usrsock request holds and nina_poller.c takes.  nina_request()
+ * takes the NINA lock inside it, so the order is always: table lock, then
+ * NINA lock.
  */
 
-#ifndef __NUTTX_DRIVERS_NINA_NINA_SOCK_H
-#define __NUTTX_DRIVERS_NINA_NINA_SOCK_H
+#ifndef NINA_SOCK_H_
+#define NINA_SOCK_H_
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -297,4 +304,4 @@ uint8_t nina_sock_watch(const struct nina_sock *s);
 uint8_t nina_sock_events(const struct nina_sock *s, int poll_result,
                          uint8_t state);
 
-#endif /* __NUTTX_DRIVERS_NINA_NINA_SOCK_H */
+#endif /* NINA_SOCK_H_ */

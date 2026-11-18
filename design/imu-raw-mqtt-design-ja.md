@@ -92,7 +92,7 @@ flowchart LR
 | 送信キュー | `common/imu/imu_raw_queue.*` |
 | MQTT 送信・再接続・status / info | `common/imu/imu_raw_mqtt.*`、`common/imu/imu_raw_status.*` |
 | 取得スレッド・回復・シェル（`imu`） | `common/imu/imu_stream.c` |
-| NINA のソケット | `drivers/nina/nina_socket.c`（[ドライバーの説明](../zephyr/app/usb-console/drivers/README_ja.md)） |
+| NINA のソケット | `drivers/nina/nina_socket.c`、`common/drivers/nina/nina_sock.*`（[ドライバーの説明](../zephyr/app/usb-console/drivers/README_ja.md)） |
 
 `src/`・`drivers/` は `zephyr/app/usb-console` の下、`common/` はリポジトリのルートの下で、NuttX 版・FreeRTOS 版と
 同じファイルを使う部分（§12）。
@@ -576,8 +576,10 @@ NuttX 版の確認の範囲は §11.7 に分けて書く。
   `wifi_profile_os.h`、`lsm6dso.c` が末尾で読む LSM6DSO のデバイスの `lsm6dso_instance.h`。Zephyr 版はデバイスツリーの
   インスタンス化のマクロ、NuttX 版はボードの値を使うデバイス 1 つ）に出している。NINA の宣言 `nina_proto.h` も
   `common/drivers/nina/` の 1 本を両方の版が使う。NINA の OS に依存しないコア（SPI の転送層 `nina_spi.c`、ソケットの表と
-  命令 `nina_sock.[ch]`、名前解決 `nina_dns.[ch]`。狭い境界 `nina_os.h`・`nano_nina.h` だけに依存する）も
-  `common/drivers/nina/` にあり、NuttX 版と FreeRTOS 版が使う（Zephyr 版は自分の `drivers/nina/` の 3 つのファイル）。
+  命令 `nina_sock.[ch]`、名前解決 `nina_dns.[ch]`、`nina version` の `nina_shell.c`。狭い境界 `nina_os.h`・`nano_nina.h`
+  だけに依存する）も `common/drivers/nina/` にあり、3 つの版が使う。版ごとの部分は境界の実装とソケット層への接着で、
+  Zephyr 版は `drivers/nina/` の `nano_nina.c`（devicetree の線と SPI）、`nina_os.c`（mutex、sleep、時計、READY の
+  割り込み待ち）、`nina_socket.c`（ソケットのオフロード）。
   I2C0 と DMA のレジスターを操作するコア（`common/drivers/i2c_dw/` の `nano_i2c.c`・`nano_dma.c`。Zephyr 版の
   `i2c_dw.c` と RP2040 の DMA のドライバーの写し）も OS に依存せず、境界 `i2c_dw_os.h`（セマフォ、時計、割り込みの
   登録、リセットとピン、OS のドライバーモデルへの接続）だけに依存する。NuttX 版と FreeRTOS 版が使う（Zephyr 版は自分の
@@ -752,7 +754,7 @@ Zephyr 版の NINA と I2C0 のドライバーは、今は自分の `drivers/` �
   （2026-11-17、3 回）。その分 sleep・遅延ワーク・時分割が遅れるが、時刻（TIMER）は遅れない。
 - `cpu_active` は §11.4 と同じアイドルの窓の方式で測る。1 ms ごとの tick の割り込みは負荷に入る（Zephyr 版・
   NuttX 版にはこの割り込みが無い）。`ps` の CPU 列は起動からの累積。
-- NINA の READY は GPIO10 のエッジ割り込みで待つ（Zephyr 版・NuttX 版は 100 µs ごとに読む）。
+- NINA の READY は GPIO10 のエッジ割り込みで待つ（Zephyr 版も同じ。NuttX 版は 100 µs ごとに読む）。
 
 ### 13.3 ソケット
 

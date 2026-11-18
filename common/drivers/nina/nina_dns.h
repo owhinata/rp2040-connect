@@ -1,20 +1,19 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-/* Name resolution through the NINA-W102's own resolver
- * (nuttx/drivers/nina/nina_dns.c), the Zephyr build's
- * drivers/nina/nina_dns.c.  There it is registered as the socket offload's
- * getaddrinfo(), so zsock_getaddrinfo() resolves through the module; here
- * it is a function of its own (NuttX's getaddrinfo() comes with
- * CONFIG_LIBC_NETDB, which this build leaves out), and the Zephyr
- * compatibility layer's <zephyr/net/socket.h> maps zsock_getaddrinfo() and
- * zsock_freeaddrinfo() to it.
+/* Name resolution through the NINA-W102's own resolver (nina_dns.c).  The
+ * Zephyr build registers it as the socket offload's getaddrinfo()
+ * (NINA_OS_DNS_OFFLOAD, nina_os.h), so zsock_getaddrinfo() resolves through
+ * the module.  On NuttX and FreeRTOS it is a function of its own (NuttX's
+ * getaddrinfo() comes with CONFIG_LIBC_NETDB, which that build leaves out),
+ * and the Zephyr compatibility layer's <zephyr/net/socket.h> maps
+ * zsock_getaddrinfo() and zsock_freeaddrinfo() to it.
  *
- * nina_getaddrinfo() returns 0 or a getaddrinfo() error (EAI_*, NuttX's
- * values, the names of the Zephyr build's DNS_EAI_*).  It gives one IPv4
- * address.  Release the result with nina_freeaddrinfo().
+ * nina_getaddrinfo() returns 0 or a getaddrinfo() error (EAI_*: the OS's
+ * values; on Zephyr its DNS_EAI_*).  It gives one IPv4 address.  Release
+ * the result with nina_freeaddrinfo().
  */
 
-#ifndef __NUTTX_DRIVERS_INCLUDE_NINA_DNS_H
-#define __NUTTX_DRIVERS_INCLUDE_NINA_DNS_H
+#ifndef NINA_DNS_H_
+#define NINA_DNS_H_
 
 #include <netdb.h>
 
@@ -31,4 +30,4 @@ void nina_freeaddrinfo(struct addrinfo *res);
 }
 #endif
 
-#endif /* __NUTTX_DRIVERS_INCLUDE_NINA_DNS_H */
+#endif /* NINA_DNS_H_ */

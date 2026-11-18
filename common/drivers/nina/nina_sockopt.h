@@ -30,8 +30,8 @@
  * the socket's usrsock daemon.
  */
 
-#ifndef __NUTTX_DRIVERS_INCLUDE_NINA_SOCKOPT_H
-#define __NUTTX_DRIVERS_INCLUDE_NINA_SOCKOPT_H
+#ifndef NINA_SOCKOPT_H_
+#define NINA_SOCKOPT_H_
 
 #define NINA_SOL                     0x4e49 /* "NI" */
 #define NINA_SO_CALLER_POLLS         1
@@ -43,4 +43,4 @@
 
 #define NINA_POLL_INTERVAL_MS        20
 
-#endif /* __NUTTX_DRIVERS_INCLUDE_NINA_SOCKOPT_H */
+#endif /* NINA_SOCKOPT_H_ */

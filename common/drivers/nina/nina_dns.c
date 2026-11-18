@@ -1,17 +1,22 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /* Name resolution with the module's resolver commands (0x34 starts it with
- * the name, 0x35 reads the address): the Zephyr build's
- * drivers/nina/nina_dns.c, line for line, with these differences:
+ * the name, 0x35 reads the address), shared by the Zephyr, NuttX and
+ * FreeRTOS builds.  It was the Zephyr build's drivers/nina/nina_dns.c, where
+ * resolve() and free_result() were the socket offload's resolver; here they
+ * are nina_getaddrinfo() and nina_freeaddrinfo() (<nina_dns.h>), with the
+ * same branches and results:
  *
- * - resolve() and free_result() are nina_getaddrinfo() and
- *   nina_freeaddrinfo() (<nina_dns.h>), not a socket offload.
- * - The errors are NuttX's EAI_* (the Zephyr build's DNS_EAI_* names).
- * - The result comes from the heap (malloc()), not a 2048-byte k_heap.
- * - nina_dns_lock is the NuttX mutex of nina_os_dns_lock().
- * - nina_dns_init() registers nothing (see there).
+ * - The errors are the OS's EAI_* (Zephyr's DNS_EAI_*, NuttX's and
+ *   FreeRTOS's EAI_* through <netdb.h>).
+ * - The result comes from malloc(), or from the OS's heap with
+ *   NINA_OS_DNS_OFFLOAD (nina_os.h; the Zephyr build: its 2048-byte k_heap).
+ * - nina_dns_lock is nina_os_dns_lock().
+ * - nina_dns_init() registers the resolver with NINA_OS_DNS_OFFLOAD
+ *   (nina_os_dns_register()), and does nothing without it.
  *
- * OS-independent apart from nina_os.h; the host test
- * (nuttx/tests/nina_dns.c) runs it on a fake nina_request().
+ * OS-independent apart from nina_os.h and the POSIX names of the sockets
+ * (on Zephyr: zephyr/app/usb-console/drivers/nina/posix); the host test
+ * (common/tests/nina_dns.c) runs it on a fake nina_request().
  */
 
 #include <errno.h>
@@ -27,6 +32,14 @@
 #include "nina_dns.h"
 #include "nina_os.h"
 #include "nina_proto.h"
+
+#ifdef NINA_OS_DNS_OFFLOAD
+#  define dns_alloc nina_os_dns_alloc
+#  define dns_free  nina_os_dns_free
+#else
+#  define dns_alloc malloc
+#  define dns_free  free
+#endif
 
 /* Protect NINA's single shared DNS result across both protocol commands:
  * nina_os_dns_lock(). */
@@ -118,7 +131,7 @@ int nina_getaddrinfo(const char *host, const char *service,
 		}
 	}
 
-	entry = malloc(sizeof(*entry));
+	entry = dns_alloc(sizeof(*entry));
 	if (!entry) {
 		return EAI_MEMORY;
 	}
@@ -139,14 +152,18 @@ int nina_getaddrinfo(const char *host, const char *service,
 void nina_freeaddrinfo(struct addrinfo *result)
 {
 	/* The entry starts with its struct addrinfo. */
-	free(result);
+	dns_free(result);
 }
 
-/* The Zephyr build registers resolve() as the socket offload's resolver
- * here (from iface_init() of nina_net.c).  The port's callers reach
- * nina_getaddrinfo() directly (zsock_getaddrinfo() of the compatibility
- * layer), so there is nothing to register.
+/* With NINA_OS_DNS_OFFLOAD (the Zephyr build), the OS makes
+ * nina_getaddrinfo() the resolver of its sockets (from iface_init() of
+ * nina_net.c).  Elsewhere the callers reach nina_getaddrinfo() directly
+ * (zsock_getaddrinfo() of the compatibility layers), so there is nothing
+ * to register.
  */
 void nina_dns_init(void)
 {
+#ifdef NINA_OS_DNS_OFFLOAD
+	nina_os_dns_register();
+#endif
 }

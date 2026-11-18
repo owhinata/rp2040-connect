@@ -11,7 +11,7 @@
 | `lsm6dso/` | LSM6DSO センサードライバーに FIFO ストリームを追加 | Zephyr v4.5.0 のコピー |
 | `i2c_dw/` | DesignWare I²C ドライバーに RP2040 の DMA 読み出しを追加 | Zephyr v4.5.0 のコピー |
 | `sensor_shell/` | sensor シェルの修正と独自属性の追加 | Zephyr v4.5.0 のコピー |
-| `nina/` | NINA-W102（SPI）の Wi-Fi・ソケットドライバー | このリポジトリで作成 |
+| `nina/` | NINA-W102（SPI）の Wi-Fi・ソケットドライバーの Zephyr 側（コアは `common/drivers/nina/`） | このリポジトリで作成 |
 
 コピー元は Zephyr v4.5.0（コミット `41d10b59730406bbab4ca9f1fbbe9e96aafb4966`）で、各ソースの
 著作権と Apache-2.0 の表示を維持しています。アプリの `CMakeLists.txt` が、Zephyr の
@@ -21,19 +21,18 @@ ST の HAL は Zephyr のものを使います。Zephyr 側の構成が変わっ
 
 このうち NuttX 版・FreeRTOS 版と同じファイルを使う部分（LSM6DSO のドライバー本体 `lsm6dso.[ch]` と `lsm6dso_fifo.[ch]`、`lsm6dso_fifo_packet.h`、`lsm6dso_cal.[ch]`、
 `lsm6dso_zero.[ch]`、`lsm6dso_fifo_decoder.[ch]`、`lsm6dso_fifo_hw.[ch]`、`lsm6dso_fifo_irq.[ch]`、`lsm6dso_stream.c`、
-`lsm6dso_compat.c`、`lsm6dso_fifo_stats.h`、`lsm6dso_attributes.h`、sensor シェルの `sensor_shell.c`、NINA の `nina_net.c` と、
+`lsm6dso_compat.c`、`lsm6dso_fifo_stats.h`、`lsm6dso_attributes.h`、sensor シェルの `sensor_shell.c`、NINA のドライバーのコアと、
 I²C の `i2c_dw_rp2040_commands.[ch]`）は、リポジトリの `common/drivers/lsm6dso/`・`common/drivers/sensor_shell/`・
 `common/drivers/nina/`・`common/drivers/i2c_dw/` に置いています。`CMakeLists.txt` がそこをドライバーのライブラリー
-（`nina_net.c` はアプリ）に加え、sensor シェルの `lsm6dso_attributes.h` もそこから読みます。このディレクトリーに残る
+（NINA はアプリ）に加え、sensor シェルの `lsm6dso_attributes.h` もそこから読みます。このディレクトリーに残る
 `sensor_shell/sensor_shell_os.h` は、共有の `sensor_shell.c` が最初に読む Zephyr 版の部分です（何もしない
 マクロ 2 つ。NuttX 版は同名のヘッダーで `sensor get` が結果の表示を待ちます）。`lsm6dso/lsm6dso_instance.h` は、共有の
 `lsm6dso.c` が末尾で読む Zephyr 版の部分で、ドライバーのデバイスツリーのインスタンス化のマクロをそのまま置いています
 （NuttX 版は同名のヘッダーでボードの値を使うデバイスを 1 つ定義します）。`lsm6dso/lsm6dso_shub.c`・`lsm6dso_trigger.c`
 （Zephyr の写し。無効にしてある `CONFIG_LSM6DSO_SENSORHUB`・`CONFIG_LSM6DSO_TRIGGER` のときだけビルドされる）は
-このディレクトリーに残り、`lsm6dso.h` を `common/drivers/lsm6dso/` から読みます。NINA の宣言 `nina_proto.h` は
-`common/drivers/nina/` にあり（NuttX 版と同じファイル）、`nina/` の 3 つのファイル、`nina_net.c`、`src/main.c` が読みます
-（`CMakeLists.txt` がそこをアプリのインクルードパスに加えます）。`common/drivers/nina/` の NINA のコア（`nina_spi.c`、
-`nina_sock.[ch]`、`nina_dns.[ch]`）は、今は NuttX 版と FreeRTOS 版が使います（Zephyr 版は `nina/` のファイル）。下の表のファイル名はどちらの場所のものも含みます。
+このディレクトリーに残り、`lsm6dso.h` を `common/drivers/lsm6dso/` から読みます。NINA のコア（`nina_spi.c`、`nina_net.c`、`nina_sock.[ch]`、
+`nina_dns.[ch]`、`nina_shell.c`、宣言の `nina_proto.h`、境界のヘッダー `nano_nina.h`・`nina_os.h` ほか）は
+`common/drivers/nina/` にあり、3 版で共有します。`nina/` には Zephyr 版の部分だけが残ります（下の NINA の節）。下の表のファイル名はどちらの場所のものも含みます。
 
 ## LSM6DSO の FIFO ストリーム
 
@@ -178,19 +177,31 @@ Wi-Fi と TCP/IP は NINA のファームウェア（lwIP）が処理します�
 Wi-Fi の接続とソケットを操作するだけで、パケットは扱いません。Zephyr から見ると、Wi-Fi 管理
 API とソケットのオフロードです。
 
-| ファイル | 役割 |
-|---|---|
-| `nina_wifi.c` | SPI のコマンド・応答のフレーミング、Wi-Fi の接続・切断・スキャン・状態 |
-| `nina_net.c` | ネットワークインターフェース、DHCP の結果（アドレス・ゲートウェイ）の反映、接続監視 |
-| `nina_socket.c` | ソケットのオフロード（TCP クライアント・待ち受け、UDP、poll） |
-| `nina_dns.c` | `getaddrinfo` のオフロード（名前解決） |
+NINA-W102 のドライバーの中身は、NuttX 版・FreeRTOS 版と共有するコア（`common/drivers/nina/`）です。
+`nina/` には、コアの OS 側の境界と、Zephyr のソケット層への接着だけを置いています。
+
+| ファイル | 場所 | 役割 |
+|---|---|---|
+| `nina_spi.c` | `common/drivers/nina/` | SPI のコマンド・応答のフレーミング、モジュールのリセット、READY の待ち |
+| `nina_net.c` | `common/drivers/nina/` | ネットワークインターフェース、Wi-Fi の接続・切断・スキャン・状態、DHCP の結果（アドレス・ゲートウェイ）の反映、接続監視 |
+| `nina_sock.[ch]` | `common/drivers/nina/` | ソケットの表と命令（待ちのループの 1 回分ずつ） |
+| `nina_dns.[ch]` | `common/drivers/nina/` | 名前解決（モジュールのリゾルバー） |
+| `nina_shell.c` | `common/drivers/nina/` | `nina version` コマンド |
+| `nano_nina.c` | `nina/` | コアの境界 `nano_nina.h` の Zephyr 版：devicetree の `spi1` と 4 本の線（CS、READY、RESET、IRQ）、Zephyr の GPIO・SPI の呼び出し |
+| `nina_os.c` | `nina/` | コアの境界 `nina_os.h` の Zephyr 版：mutex、sleep、時計、READY の割り込み待ち |
+| `nina_socket.c` | `nina/` | ソケットのオフロード（ファイル記述子、errno、`O_NONBLOCK`、`SO_RCVTIMEO`、待ちのループと sleep、poll）と、名前解決を `getaddrinfo` のオフロードとして登録 |
+| `posix/` | `nina/` | コアが使う POSIX のソケットの名前（`struct sockaddr_in`、`AF_INET`、`POLLIN` など）を Zephyr の名前に対応させるヘッダー（コアと `nina_socket.c` だけが読む） |
 
 Zephyr の標準機能のうち、Telnet シェル、MQTT クライアント、zperf がこのソケットの上で動きます。
 
 ### SPI のコマンド
 
-- コマンドは 1 つずつ処理されます。RP2040 側は mutex で直列化し、NINA の ready 信号を
-  100 µs 間隔で見て応答を待ちます。SPI は 8 MHz です（`CONFIG_NINA_SPI_FREQUENCY`）。
+- コマンドは 1 つずつ処理されます。RP2040 側は mutex で直列化します。SPI は 8 MHz です
+  （`CONFIG_NINA_SPI_FREQUENCY`）。
+- NINA の READY（GPIO10）の変化は、GPIO のエッジ割り込みで待ちます（`nina/nina_os.c`）。待つ前に
+  割り込みを有効にしてから READY を読むので、読んだあとの変化を取りこぼしません。転送中は割り込みを
+  止めます。1 回の待ちは最長 10 ms で、そのたびに READY を読み直します。期限（コマンドの前 2 秒、
+  応答まで 10 秒（`nina_ip_config()` は 2 秒）、CS を有効にしたあと 20 ms）を過ぎると `-ETIMEDOUT` です。
 - 1 回の TCP 送信は最大 3584 バイトです（`CONFIG_NINA_TCP_MAX_IO`）。NINA 側のコマンド
   バッファに収まる上限で、RAW バッチ 1 個（最大 2448 バイト）を 1 コマンドで送れます。
 
@@ -219,6 +230,8 @@ close、bind、listen、accept、connect、send、recv、sendto、recvfrom、ioc
 - **UDP** は 1 データグラム 512 バイトまでです。受信バッファに収まらない分は lwIP が捨てます
   （データグラムの境界は保たれます）。`connect` した UDP ソケットは、他の送信元からの
   データグラムをドライバーで読み捨てます。
+- `poll` は、1 つのソケットでモジュールへの問い合わせが失敗しても呼び出し全体を失敗させず、そのソケットに
+  `POLLERR` を返します。待ちの途中で別のスレッドが閉じたソケットには `POLLNVAL` を返します。
 - `bind` は任意アドレス（0.0.0.0）のみ、IPv4 のみです。マルチキャストには
   対応していません。
 
@@ -290,7 +303,7 @@ NuttX 版と共有の `common/drivers/rp2040_rom/`）。無効にすると picol
 ## テスト
 
 `zephyr/script/host_tests.sh` が、偽の Zephyr ヘッダーを使ってドライバーの次の部分を PC 上で
-テストします。`nina_wifi_spi` 以外は NuttX 版・FreeRTOS 版と共有するテスト（`common/tests/`、`common/tests/run.sh` が実行）です。
+テストします。`nina_boundary_*` と `nina_socket` 以外は NuttX 版・FreeRTOS 版と共有するテスト（`common/tests/`、`common/tests/run.sh` が実行）です。
 
 | テスト | 対象 |
 |---|---|
@@ -299,4 +312,7 @@ NuttX 版と共有の `common/drivers/rp2040_rom/`）。無効にすると picol
 | `fifo_decoder` | FIFO バッファの decoder |
 | `stream_stop` | ストリームの停止、キャンセル、エラー時の終了 |
 | `i2c_dma_commands` | `i2c_dma` コマンドの引数の解釈 |
-| `nina_wifi_spi` | NINA の SPI フレーミングと応答の解析（この版の `nina/nina_wifi.c`。共有のコア `common/drivers/nina/nina_spi.c` は `common/tests/` の `nina_spi`） |
+| `nina_spi`、`nina_spi_wait_ready` | NINA の SPI フレーミング、応答の解析、READY の期限（共有のコア `nina_spi.c`。偽の境界） |
+| `nina_sock`、`nina_dns`、`nina_dns_offload` | NINA のソケットの命令、名前解決（`nina_dns_offload` はこの版と同じ `NINA_OS_DNS_OFFLOAD` の形） |
+| `nina_boundary_irq`、`nina_boundary_poll` | 共有の `nina_spi.c` をこの版の `nina/nano_nina.c`・`nina_os.c` に載せたもの：フレーミング、線と設定の対応、リセットの手順、READY の割り込み待ち（コールバックの登録、セマフォのリセット、エッジの向き、転送前の無効化、10 ms の上限）とポーリング |
+| `nina_socket` | ソケットのオフロード `nina/nina_socket.c` を共有のコアに載せたもの：ファイル記述子、待ちのループと sleep、オプション、accept、sendmsg、データグラム、poll、リゾルバーの登録 |

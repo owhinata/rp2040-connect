@@ -1,15 +1,12 @@
 /* SPDX-License-Identifier: MIT */
 /* The "nina" shell command: "nina version" asks the module for its firmware
- * version (nina_request(), nina_spi.c).  The text of the Zephyr build's
- * src/main.c (cmd_nina_version() and the registration), unchanged; the
- * FreeRTOS build uses it (freertos/drivers/nina/nina.cmake).
- *
- * The Zephyr build keeps its own lines in src/main.c for now: building this
- * file there instead changes the image (the linker orders three flash
- * veneers differently), so the move waits for Z01, which changes the image
- * anyway.  The NuttX build has the same command as a builtin application on
- * subcmd (nuttx/apps/nina/nina_main.c); moving it onto this file changes
- * its image too (its help and errors would come from zshell.c).
+ * version (nina_request(), nina_spi.c).  It was the Zephyr build's
+ * src/main.c (cmd_nina_version() and the registration); the Zephyr and
+ * FreeRTOS builds use it (zephyr/app/usb-console/CMakeLists.txt,
+ * freertos/drivers/nina/nina.cmake).  The NuttX build has the same command
+ * as a builtin application on subcmd (nuttx/apps/nina/nina_main.c); moving
+ * it onto this file changes its image (its help and errors would come from
+ * zshell.c).
  */
 
 #include <stdbool.h>

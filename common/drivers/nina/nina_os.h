@@ -1,27 +1,30 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-/* The kernel services nina_spi.c uses, in the terms of the Zephyr build's
- * drivers/nina/nina_wifi.c.  nina_os.c implements them on NuttX; the host
- * test (nuttx/tests/nina_spi.c) replaces them with fakes.
+/* The kernel services the shared NINA core uses (nina_spi.c, nina_sock.c,
+ * nina_dns.c), in the terms of Zephyr's calls, which the core had before it
+ * was shared.  Each build implements them: zephyr/app/usb-console/drivers/
+ * nina/nina_os.c, nuttx/drivers/nina/nina_os.c and
+ * freertos/drivers/nina/nina_os.c; the host tests (common/tests/nina_*.c)
+ * replace them with fakes.
  */
 
-#ifndef __NUTTX_DRIVERS_NINA_NINA_OS_H
-#define __NUTTX_DRIVERS_NINA_NINA_OS_H
+#ifndef NINA_OS_H_
+#define NINA_OS_H_
 
 #include <stdint.h>
 
 /* k_mutex_lock(&nina_lock, K_FOREVER) / k_mutex_unlock(): a recursive
  * mutex with priority inheritance.  nina_os_lock() returns 0, or a
- * negative errno if the wait was cancelled (never: NuttX's mutex wait only
- * fails like that with pthread cancellation points, which this build does
- * not use; a signal does not end the wait).
+ * negative errno if the wait was cancelled (never on Zephyr and FreeRTOS;
+ * on NuttX the mutex wait only fails like that with pthread cancellation
+ * points, which that build does not use, and a signal does not end it).
  */
 
 int nina_os_lock(void);
 void nina_os_unlock(void);
 
-/* K_MUTEX_DEFINE(nina_dns_lock) of drivers/nina/nina_dns.c: held across
- * the two resolver commands (nina_dns.c).  A mutex with priority
- * inheritance; the wait is not ended by signals.
+/* K_MUTEX_DEFINE(nina_dns_lock): held across the two resolver commands
+ * (nina_dns.c).  A mutex with priority inheritance; the wait is not ended
+ * by signals.
  */
 
 void nina_os_dns_lock(void);
@@ -39,12 +42,11 @@ void nina_os_sleep_ms(uint32_t ms);
 int64_t nina_os_uptime_ms(void);
 
 /* Optional: waiting for the module's READY line on an event instead of
- * sampling it.  Without NINA_OS_WAIT_READY (the Zephyr and NuttX builds),
- * nina_spi.c samples READY every NINA_READY_POLL_US with
- * nina_os_sleep_us(), as the Zephyr build's nina_wifi.c does.  An OS that
- * defines NINA_OS_WAIT_READY for the compilation of nina_spi.c provides
- * these three instead (the FreeRTOS build: freertos/drivers/nina/nina_os.c,
- * on a GPIO edge interrupt), and nina_spi.c waits with them:
+ * sampling it.  Without NINA_OS_WAIT_READY, nina_spi.c samples READY every
+ * NINA_READY_POLL_US with nina_os_sleep_us().  An OS that defines
+ * NINA_OS_WAIT_READY for the compilation of nina_spi.c provides these
+ * three instead (on a GPIO edge interrupt of the line), and nina_spi.c
+ * waits with them:
  *
  *   nina_os_ready_arm(DESIRED);
  *   until READY reads DESIRED or the deadline has passed:
@@ -73,4 +75,28 @@ void nina_os_ready_wait(uint32_t ms);
 void nina_os_ready_disarm(void);
 #endif
 
-#endif /* __NUTTX_DRIVERS_NINA_NINA_OS_H */
+/* Optional: the resolver's results and its registration.  Without
+ * NINA_OS_DNS_OFFLOAD, nina_dns.c takes its results from malloc() and
+ * free(), and its nina_dns_init() does nothing (the callers call
+ * nina_getaddrinfo() themselves).  An OS that defines NINA_OS_DNS_OFFLOAD
+ * for the compilation of nina_dns.c provides these three instead (the
+ * Zephyr build: zephyr/app/usb-console/drivers/nina/nina_socket.c):
+ *
+ * nina_os_dns_alloc(), nina_os_dns_free(): a result of SIZE bytes, or
+ * NULL when there is no room (nina_getaddrinfo() then returns EAI_MEMORY),
+ * and its release.  Not from an interrupt handler.
+ *
+ * nina_os_dns_register(): called by nina_dns_init() (once, from
+ * iface_init() of nina_net.c): makes nina_getaddrinfo() and
+ * nina_freeaddrinfo() the resolver of the OS's sockets.
+ */
+
+#ifdef NINA_OS_DNS_OFFLOAD
+#include <stddef.h>
+
+void *nina_os_dns_alloc(size_t size);
+void nina_os_dns_free(void *ptr);
+void nina_os_dns_register(void);
+#endif
+
+#endif /* NINA_OS_H_ */

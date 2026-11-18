@@ -11,7 +11,7 @@ NINA-W102.
 | `lsm6dso/` | LSM6DSO sensor driver with FIFO streaming added | Copy from Zephyr v4.5.0 |
 | `i2c_dw/` | DesignWare I2C driver with DMA reads on the RP2040 added | Copy from Zephyr v4.5.0 |
 | `sensor_shell/` | Sensor shell with fixes and the private attributes | Copy from Zephyr v4.5.0 |
-| `nina/` | Wi-Fi and socket driver for the NINA-W102 over SPI | Written here |
+| `nina/` | The Zephyr side of the Wi-Fi and socket driver for the NINA-W102 over SPI (its core is in `common/drivers/nina/`) | Written here |
 
 The copies come from Zephyr v4.5.0 (commit `41d10b59730406bbab4ca9f1fbbe9e96aafb4966`) and keep
 each source's copyright and Apache-2.0 notices. The application's `CMakeLists.txt` swaps the
@@ -22,10 +22,10 @@ not found, the build fails.
 The parts that are the same files as the NuttX and FreeRTOS builds' (the LSM6DSO driver itself, `lsm6dso.[ch]`, and its `lsm6dso_fifo.[ch]`,
 `lsm6dso_fifo_packet.h`, `lsm6dso_cal.[ch]`, `lsm6dso_zero.[ch]`, `lsm6dso_fifo_decoder.[ch]`,
 `lsm6dso_fifo_hw.[ch]`, `lsm6dso_fifo_irq.[ch]`, `lsm6dso_stream.c`, `lsm6dso_compat.c`,
-`lsm6dso_fifo_stats.h` and `lsm6dso_attributes.h`, the sensor shell's `sensor_shell.c`, the NINA's
-`nina_net.c`, and the I2C driver's `i2c_dw_rp2040_commands.[ch]`) are kept in the repository's
+`lsm6dso_fifo_stats.h` and `lsm6dso_attributes.h`, the sensor shell's `sensor_shell.c`, the NINA
+driver's core, and the I2C driver's `i2c_dw_rp2040_commands.[ch]`) are kept in the repository's
 `common/drivers/lsm6dso/`, `common/drivers/sensor_shell/`, `common/drivers/nina/` and
-`common/drivers/i2c_dw/`. `CMakeLists.txt` adds them from there to the driver libraries (`nina_net.c`
+`common/drivers/i2c_dw/`. `CMakeLists.txt` adds them from there to the driver libraries (the NINA core
 to the application), and the sensor shell reads `lsm6dso_attributes.h` from there.
 `sensor_shell/sensor_shell_os.h`, which stays in this directory, is the Zephyr part that the shared
 `sensor_shell.c` includes first (two macros that do nothing; the NuttX build's header of the same name
@@ -34,12 +34,10 @@ that the shared `lsm6dso.c` includes at its end: Zephyr's devicetree instance ma
 unchanged (the NuttX build's header of the same name defines its one device with the board's
 values). `lsm6dso/lsm6dso_shub.c` and `lsm6dso_trigger.c` (copies of Zephyr's, built only with
 `CONFIG_LSM6DSO_SENSORHUB` and `CONFIG_LSM6DSO_TRIGGER`, which are off) stay here and read
-`lsm6dso.h` from `common/drivers/lsm6dso/`. The NINA's declarations, `nina_proto.h`, are
-in `common/drivers/nina/` (the same file as the NuttX build's) and are read by the three files of
-`nina/`, by `nina_net.c` and by `src/main.c` (`CMakeLists.txt` adds the directory to the application's
-include path). The NINA core in `common/drivers/nina/` (`nina_spi.c`, `nina_sock.[ch]`,
-`nina_dns.[ch]`) is used by the NuttX and FreeRTOS builds now (this build uses the files of `nina/`).
-The file names in the tables below cover both places.
+`lsm6dso.h` from `common/drivers/lsm6dso/`. The NINA core (`nina_spi.c`, `nina_net.c`, `nina_sock.[ch]`,
+`nina_dns.[ch]`, `nina_shell.c`, the declarations `nina_proto.h`, the boundary headers `nano_nina.h` and
+`nina_os.h`, and others) is in `common/drivers/nina/`, shared by the three builds; `nina/` keeps only
+this build's part (see the NINA section below). The file names in the tables below cover both places.
 
 ## LSM6DSO FIFO streaming
 
@@ -191,20 +189,32 @@ Wi-Fi and TCP/IP are handled by the NINA firmware (lwIP). The RP2040 only issues
 to manage the Wi-Fi connection and sockets; it never sees packets. To Zephyr this is a Wi-Fi
 management API plus socket offload.
 
-| File | Role |
-|---|---|
-| `nina_wifi.c` | Framing of SPI commands and replies; Wi-Fi connect, disconnect, scan, status |
-| `nina_net.c` | Network interface, applying the DHCP result (address, gateway), link monitoring |
-| `nina_socket.c` | Socket offload: TCP clients and listeners, UDP, poll |
-| `nina_dns.c` | `getaddrinfo` offload (name resolution) |
+The driver itself is the core shared with the NuttX and FreeRTOS builds (`common/drivers/nina/`);
+`nina/` holds only the OS side of the core's boundaries and the glue to Zephyr's socket layer.
+
+| File | Place | Role |
+|---|---|---|
+| `nina_spi.c` | `common/drivers/nina/` | Framing of SPI commands and replies, the module's reset, the waits for READY |
+| `nina_net.c` | `common/drivers/nina/` | Network interface; Wi-Fi connect, disconnect, scan, status; applying the DHCP result (address, gateway); link monitoring |
+| `nina_sock.[ch]` | `common/drivers/nina/` | The socket table and commands (one pass of each wait loop at a time) |
+| `nina_dns.[ch]` | `common/drivers/nina/` | Name resolution (the module's resolver) |
+| `nina_shell.c` | `common/drivers/nina/` | The `nina version` command |
+| `nano_nina.c` | `nina/` | Zephyr's side of the core's `nano_nina.h`: the devicetree's `spi1` and the four lines (CS, READY, RESET, IRQ), Zephyr's GPIO and SPI calls |
+| `nina_os.c` | `nina/` | Zephyr's side of the core's `nina_os.h`: mutexes, sleeps, clock, the READY interrupt |
+| `nina_socket.c` | `nina/` | Socket offload (file descriptors, errno, `O_NONBLOCK`, `SO_RCVTIMEO`, the wait loops and their sleeps, poll), and the resolver registered as the `getaddrinfo` offload |
+| `posix/` | `nina/` | Headers that map the POSIX socket names the core uses (`struct sockaddr_in`, `AF_INET`, `POLLIN`, ...) to Zephyr's (read by the core and `nina_socket.c` only) |
 
 Zephyr's Telnet shell, MQTT client and zperf run on these sockets.
 
 ### SPI commands
 
-- Commands are handled one at a time. The RP2040 serializes them with a mutex and samples the
-  module's ready line every 100 us while waiting for a reply. SPI runs at 8 MHz
+- Commands are handled one at a time. The RP2040 serializes them with a mutex. SPI runs at 8 MHz
   (`CONFIG_NINA_SPI_FREQUENCY`).
+- Changes of the module's READY line (GPIO10) are waited for on a GPIO edge interrupt
+  (`nina/nina_os.c`). The interrupt is enabled before READY is read, so a change after the read is
+  not missed; it is off during the transfers. Each wait lasts at most 10 ms, and READY is read
+  again after it. Past the deadline (2 s before a command, 10 s for the reply (2 s for
+  `nina_ip_config()`), 20 ms after CS is asserted) the result is `-ETIMEDOUT`.
 - One TCP send carries at most 3584 bytes (`CONFIG_NINA_TCP_MAX_IO`), the most that fits the
   module's command buffer. A RAW batch of up to 2448 bytes goes out in one command.
 
@@ -234,6 +244,8 @@ independent of each other. The older per-type client commands are not used.
 - **UDP** carries up to 512 bytes per datagram. What does not fit the receive buffer is
   dropped by lwIP, which keeps datagram boundaries. A connected UDP socket has datagrams from
   other senders discarded by the driver.
+- `poll` does not fail as a whole when asking the module about one socket fails: that socket gets
+  `POLLERR`. A socket that another thread closes while the poll runs gets `POLLNVAL`.
 - `bind` accepts the any address (0.0.0.0) only, IPv4 only. Multicast is not
   supported.
 
@@ -311,8 +323,8 @@ fake function table).
 ## Tests
 
 `zephyr/script/host_tests.sh` tests these parts of the drivers on the PC with fake Zephyr headers.
-All but `nina_wifi_spi` are tests shared with the NuttX and FreeRTOS builds (`common/tests/`, run by
-`common/tests/run.sh`).
+All but `nina_boundary_*` and `nina_socket` are tests shared with the NuttX and FreeRTOS builds
+(`common/tests/`, run by `common/tests/run.sh`).
 
 | Test | Covers |
 |---|---|
@@ -321,4 +333,7 @@ All but `nina_wifi_spi` are tests shared with the NuttX and FreeRTOS builds (`co
 | `fifo_decoder` | Decoder for FIFO buffers |
 | `stream_stop` | Stopping, canceling and error termination of the stream |
 | `i2c_dma_commands` | Argument handling of `i2c_dma` |
-| `nina_wifi_spi` | NINA SPI framing and reply parsing (this build's `nina/nina_wifi.c`; the shared core `common/drivers/nina/nina_spi.c` is tested by `nina_spi` in `common/tests/`) |
+| `nina_spi`, `nina_spi_wait_ready` | NINA SPI framing, reply parsing, READY deadlines (the shared core `nina_spi.c`, fake boundaries) |
+| `nina_sock`, `nina_dns`, `nina_dns_offload` | The NINA socket commands, name resolution (`nina_dns_offload` in this build's form, `NINA_OS_DNS_OFFLOAD`) |
+| `nina_boundary_irq`, `nina_boundary_poll` | The shared `nina_spi.c` on this build's `nina/nano_nina.c` and `nina_os.c`: framing, lines and flags, the reset sequence, the READY interrupt (callback, semaphore reset, edge direction, off before transfers, 10 ms bound) and sampling |
+| `nina_socket` | The socket offload `nina/nina_socket.c` on the shared core: descriptors, the wait loops and sleeps, options, accept, sendmsg, datagrams, poll, the resolver's registration |

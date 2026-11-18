@@ -1010,3 +1010,20 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
 - 未解明: `cpu_active` の +2 ポイント。subagent の仮説は、READY 割り込みで往復が短くなり、送信バッファ満杯のときの全量の送り直しが
   増える。切り分けは同じソースのポーリングの像（`ready/zephyr-poll.uf2`）との比較（BOOTSEL の操作が要る）。
 - 実機: Z01 の像（修正前）。
+
+## Z01 の修正と確認、commit（2026-11-18）
+
+- ユーザーの決定: 負荷の +2 ポイントの切り分けは省く（原因未解明のまま残す）。
+- 修正（subagent）: Zephyr の `nina_socket.c` の `do_poll()`。表から消えたソケット（-EBADF）は `POLLNVAL`、1 つのソケットの poll の失敗は
+  そのソケットだけ `POLLERR`、呼び出し全体は失敗させない。ホストテスト 2 件追加（修正前のコードで失敗することを確認、subagent）。
+  ドライバー説明（日英）に 1 項目。利用者（Telnet、zperf、MQTT）はエラーの fd を閉じるか作り直すので空回りしない（subagent の読み）。
+  FreeRTOS 版・NuttX 版には、待ち受けが永久に止まる同じ経路は無い（subagent が読んだだけ）。
+- 実機（修正入りの Z01 の像、書き込み直後から）: 送信 約 71 秒 `cpu_active` 51.3%、欠番 0。接続中に `zperf tcp download stop` を 20 回
+  繰り返しても `net_socket_service` が残り、Telnet に繋がる（修正前は 6 回目で消えた）。送信中の Telnet 3 回 OK、drop 0、overruns 0。
+  `dmesg` に `<err>`・`<wrn>` なし。
+- **新しい基準**: `freertos/build/baseline/zephyr/snapshot-z01/image.bin`、`.../nuttx/snapshot-ready/image.bin`。
+- 未確認・未解明: `cpu_active` の +2 ポイント（49.0〜49.1% → 51.2〜51.5%）、送信中の `wifi scan` での drop とオーバーラン 1 回が載せ替え前から
+  あるか、AP を落とす切断復帰、輻輳（`--drop-at`・`--stall-at`）、長時間。
+- README に入れること（未反映、READY が 3 版に入ったのでまとめて行う）: ルートの性能の節、`zephyr/README`・`nuttx/README` のオプションの 1 行、
+  NINA が共通コアになったこと。`common/compat/nano_gpio.h` の古いコメントも未修正。
+- 実機: 修正入りの Zephyr 版（FreeRTOS 版へ戻すには RESET 2 回）。
