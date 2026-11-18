@@ -1235,3 +1235,20 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
   `saved_regs` の領域が上書きされ、復帰で PC=0 に飛ぶ、という原因まで確定し、修正の試みは 15 回とも失敗して未解決（テストを skip）。
   今回の NuttX 版（ARMv6-M、FLAT）の固まりと同じ種類（ハンドラーの実行中の割り込み・切り替えで `saved_regs` が壊れる）。経路が同じかは未確認。
 - 実機: FreeRTOS 版（新しいドライバー、事象あり）。
+
+## NuttX のシグナルの固まり: 除算器と無関係であることを実機で確認、spike-nx の調査（2026-11-18）
+
+- **実機（`nuttx-divtest-libgcc-sig-nofix.uf2`: libgcc の割り算、除算器のパッチの処理なし、シグナルあり、修正の候補なし）**: 試験の開始から
+  1.77 秒（シグナル 221 回を配送したあと）で止まり、watchdog（3 秒）がリセットした。記録: `previous boot 2: test running, reset reason
+  0x1 (watchdog), ms 1765, last feed at ms 1746, signals 221/221`。**固まりは除算器（パッチ 0009）と無関係**で、NuttX 本体の側にある。
+  （1 回目は、前の試験の `.noinit` の記録と書き込み時の watchdog リセットを「前回固まった」と取り違えて試験を始めなかった。`reboot` で実行。）
+- 修正の候補（scratch の `nuttx-0011-candidate-…`）ありの像は実行していない。
+- **spike-nx（owhinata/spike-nx）の Issue の調査**（subagent、全 160 件を検索し約 30 件を読んだ）: シグナルの仕組みそのものの不具合は #26（open、
+  #38 は重複）だけ。`ostest` の `signest_test`（`pthread_kill`、優先度 101・102 の 2 スレッド）で固まる。PROTECTED ビルドでは「ハンドラーの中の
+  syscall の SVC のフレームが `saved_regs` に重なって壊す」まで確定、修正の試み 15 回は全敗、テストを skip して運用。FLAT ビルドの時期
+  （2026-04-07〜04-18）にも同じハングがあり、原因は未確定（「timing-sensitive な race」、計装を足し引きすると止まる位置が動く）。
+  ほかは使い方の記録: #108（SIGKILL では pipe の待ちを起こせない）、#152・#166・#122（SIGINT・SIGTERM のハンドラーはフラグを立てるだけ）、
+  #185（`TTY_SIGINT` 無効で Ctrl-C が効かない、open）。#100・#99・#96 などはシグナルと無関係（PendSV が走れない別の原因）。
+  spike-nx の NuttX は 12.13 系のフォーク。上流での修正の有無は記録なし。
+- 方針の案（ユーザーに提示）: 修正の候補は正式には入れず、「NuttX 版ではシグナルハンドラーを登録しない」ことを文書に明記する。
+- 実機: NuttX の試験の像（試験は止まった状態、シェルは使える）。
