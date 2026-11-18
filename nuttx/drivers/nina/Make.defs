@@ -20,7 +20,10 @@
 # compiled with the prelude of the shared sources (compat/common_prelude.h);
 # the core is not (it reads NuttX's configuration through NuttX's headers).
 # Include paths: common/drivers/nina (the core's headers) and common/imu
-# (wifi_profile.h).
+# (wifi_profile.h).  NINA_OS_WAIT_READY is defined for the directory (for
+# the core and nina_os.c; on CFLAGS, which mkdeps reads too): the core's waits for READY sleep on the line's edge
+# interrupt (nina_os.c, through the board's src/nano_gpio.c and the
+# compatibility layer's gpio0, common/compat/zephyr_gpio.c).
 ############################################################################
 
 ifeq ($(CONFIG_NANO_NINA),y)
@@ -42,6 +45,7 @@ VPATH += :nina
 DEPPATH += --dep-path ../../common/drivers/nina
 VPATH += :../../common/drivers/nina
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)drivers$(DELIM)nina
+CFLAGS += -DNINA_OS_WAIT_READY
 ifeq ($(CONFIG_NANO_NINA_NET),y)
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)imu
 nina_net$(OBJEXT): CFLAGS += -include $(TOPDIR)$(DELIM)external$(DELIM)compat$(DELIM)common_prelude.h

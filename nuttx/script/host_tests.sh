@@ -135,6 +135,20 @@ fi
 # <zephyr/shell/shell.h>, ...).  Its RTIO and work items are tested in common/tests/run.sh.
 # <zephyr/net/socket.h> reads <nina_dns.h> and <nina_sockopt.h> of the NINA core (common/drivers/nina).
 cnina=../common/drivers/nina
+# The waits for NINA's READY on its edge interrupt (drivers/nina/nina_os.c, nina_os_ready_*())
+# under the shared core's wait_ready() (common/drivers/nina/nina_spi.c, included by the test),
+# both with NINA_OS_WAIT_READY as drivers/nina/Make.defs builds them, through the layer's gpio0
+# (common/compat/zephyr_gpio.c, with the prelude and the fake kernel's spin lock), on fakes of
+# NuttX's semaphores, mutexes, sleeps and clock (tests/nina_os_fakes) and of the board's GPIO
+# bank 0: ready during the wait, the timeout, a change right after the read, stale wake-ups.
+ninaos=(-DNINA_OS_WAIT_READY -Itests/nina_os_fakes -Itests/fakes -I"$ccompat" -I"$cnina")
+cc "${flags[@]}" "${ninaos[@]}" -I"$zfakes" -c drivers/nina/nina_os.c -o "$out/nina_os_os.o"
+cc "${flags[@]}" -include "$prelude" -I"$zfakes" -I"$ccompat" -c "$ccompat/zephyr_gpio.c" \
+    -o "$out/nina_os_gpio.o"
+cc "${flags[@]}" "${ninaos[@]}" tests/nina_os.c "$out/nina_os_os.o" "$out/nina_os_gpio.o" \
+    "$link" -o "$out/nina_os"
+"$out/nina_os" >/dev/null
+printf 'ok  nina_os\n'
 zinc=(-D_DEFAULT_SOURCE -I"$zfakes" -Idrivers/compat -I"$ccompat" -Idrivers/include -I"$clog" -I"$cnina")
 # The layer's pieces for the IMU service: K_MUTEX_DEFINE, K_THREAD_DEFINE and its start,
 # k_uptime_get's tick rounding, k_sleep, byteorder, snprintk, hwinfo (fake chip ID), the

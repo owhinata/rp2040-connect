@@ -7,6 +7,7 @@ config NANO_NINA
 	bool "NINA-W102 SPI link (nina_request())"
 	default y
 	depends on RP2040_SPI1 && !RP2040_SPI_DMA
+	depends on NANO_LSM6DSO_STREAM
 	---help---
 		common/drivers/nina/nina_spi.c: nina_request() and nina_ip_config() of the
 		Zephyr build's drivers/nina/nina_wifi.c (the WiFiNINA SPI
@@ -15,7 +16,10 @@ config NANO_NINA
 		module is reset on the first request).  The board provides SPI1
 		and the module's lines (src/nano_nina.c).  SPI1 is polled, as in
 		the Zephyr build (CONFIG_SPI_PL022_INTERRUPT and _DMA off), so
-		RP2040_SPI_DMA must be off.
+		RP2040_SPI_DMA must be off.  The waits for the module's READY
+		line (GPIO10) sleep on its edge interrupt (nina/nina_os.c),
+		through the compatibility layer's gpio0 and the board's
+		src/nano_gpio.c, which are built with NANO_LSM6DSO_STREAM.
 
 if NANO_NINA
 

@@ -341,7 +341,8 @@ NINA firmware: 3.0.2
   最初の要求は、起動処理が `wlan0` を用意するときに MAC アドレスを読む命令です（Zephyr 版と同じく起動時）。
   そのため USB のコンソールが現れるのはこの待ちの後です。
 - 要求の手順と値は Zephyr 版の `drivers/nina/nina_wifi.c` と同じです（`common/drivers/nina/nina_spi.c`）。
-  READY を 100 µs ごと（tick に切り上げて 1 tick 足すので、実際は 100〜200 µs ごと）に見て、送信前は
+  READY は 100 µs ごとに見る代わりに、その変化の GPIO 割り込みで待ちます（Zephyr 版は 100 µs ごとに見る。
+  仕組みは `nuttx/drivers/README_ja.md` の「READY の待ち」）。期限は同じで、送信前は
   2000 ms、CS を下げてから NINA が READY を戻すまで 20 ms、応答の準備は 10000 ms で `-ETIMEDOUT`。
   応答の先頭（0xE0）は最大 1000 バイト探します。要求は再帰可能なミューテックス（優先度継承あり）で
   直列化し、呼び出したスレッドの優先度で SPI を動かします。
@@ -1083,6 +1084,11 @@ OS ごとのヘッダー（`sensor_shell_os.h`、`wifi_profile_os.h`、`lsm6dso_
 もの）と比べます。対象は 1 バイトずつの除算が正しい範囲の全数、境界値（0、99、100、2^32 前後、
 2^32×100 前後、2^63、2^64−1 など）の前後 300、最初の 10^7 µs の全数、2^32 の倍数 256 個の前後 2000、
 乱数 400 万個です。
+
+`nuttx/tests/nina_os.c` は、NINA の READY の割り込みでの待ち（コアの `wait_ready()` の下の `drivers/nina/nina_os.c`、
+`common/compat/zephyr_gpio.c` を通る）を、NuttX のセマフォと時計、GPIO バンク 0 の偽物の上で確かめます。待ちの途中の
+READY の変化（両方の向き）、1 回の待ちのあとの期限でのタイムアウト、コアが読んだ直後の変化（待ちがすぐ返る）、
+前から残った起床とラッチされたエッジ（捨てる）、待ちの間だけエッジが有効なこと、セマフォの数が 1 を超えないことです。
 
 `common/tests/nano_cpuload.c` と `common/tests/log_ring.c` は、Zephyr 版が使わない共通の部分のテストです。前者は
 `common/compat/nano_cpuload.h` の計算を Zephyr の `cpu_load_get_cpu()` の手順（リセット、開いている区間、0 の扱い、

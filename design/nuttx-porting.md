@@ -384,8 +384,9 @@ NINA firmware: 3.0.2
   code sets up `wlan0` (at boot, as in the Zephyr build), so the USB console appears after these
   waits.
 - The steps and values of a request are those of the Zephyr build's `drivers/nina/nina_wifi.c`
-  (`common/drivers/nina/nina_spi.c`). READY is sampled every 100 µs (rounded up to ticks plus one
-  tick, so every 100 to 200 µs), with `-ETIMEDOUT` after 2000 ms before sending, 20 ms for the
+  (`common/drivers/nina/nina_spi.c`). READY is not sampled every 100 µs (as the Zephyr build does)
+  but waited for on its GPIO interrupt (see "Waiting for READY" in `nuttx/drivers/README.md`),
+  with the same limits: `-ETIMEDOUT` after 2000 ms before sending, 20 ms for the
   NINA to answer CS by releasing READY, and 10000 ms for the answer to be ready. Up to 1000 bytes
   are read looking for the start of the answer (0xE0). A recursive mutex (with priority
   inheritance) serializes the requests, and the SPI runs at the priority of the calling thread.
@@ -1255,6 +1256,13 @@ arithmetic of `oneshot.h` and `clkcnt.h` written out for 1 MHz and 100 µs): eve
 range where the one-byte division step must be exact, 300 values on each side of edge values (0,
 99, 100, around 2^32, around 2^32 × 100, 2^63, 2^64 − 1 and others), every count of the first
 10^7 µs, 2000 values on each side of 256 multiples of 2^32, and 4 million random values.
+
+`nuttx/tests/nina_os.c` checks the waits for NINA's READY on its interrupt (`drivers/nina/nina_os.c`
+under the core's `wait_ready()`, through `common/compat/zephyr_gpio.c`) on fakes of NuttX's
+semaphores and clock and of GPIO bank 0: READY changing during the wait (both directions), the
+timeout at the deadline after a single wait, a change right after the core's read (the wait
+returns at once), a wake-up and a latched edge left from before (dropped), the edge enabled only
+during a wait, and at most one count in the semaphore.
 
 `common/tests/nano_cpuload.c` and `common/tests/log_ring.c` test shared parts that the Zephyr
 build does not use. The first compares the arithmetic of `common/compat/nano_cpuload.h` with the
