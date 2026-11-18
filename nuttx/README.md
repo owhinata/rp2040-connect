@@ -20,7 +20,7 @@ Further reading:
 - The drivers (NINA, I2C0, LSM6DSOX) and the Zephyr API compatibility layer:
   [`drivers/README.md`](drivers/README.md)
 - The design summary: [§11](../design/imu-raw-mqtt-design.md) of the design document ("11. The NuttX port")
-- Performance compared with the Zephyr build: "Performance of the Zephyr and NuttX builds" in the
+- Performance compared with the other builds: "Performance of the three builds" in the
   top-level [`README.md`](../README.md)
 - The plan, history and verified facts of the port (work logs, in Japanese):
   [`PORTING_PLAN.md`](PORTING_PLAN.md), [`PORTING_STATUS.md`](PORTING_STATUS.md),
@@ -48,7 +48,7 @@ source nuttx/script/setup.sh
 |---|---|---|
 | `nuttx/nuttx` | NuttX | tag `nuttx-13.1.0` (shallow clone) |
 | `nuttx/nuttx-apps` | NuttX applications | tag `nuttx-13.1.0` (shallow clone) |
-| `nuttx/pico-sdk` | Only the parts of the Raspberry Pi Pico SDK that the boot2 build reads (about 4 MB). A full checkout already there is used as it is | tag `2.2.0` (partial clone and sparse checkout) |
+| `nuttx/pico-sdk` | Only the parts of the Raspberry Pi Pico SDK that the builds of boot2 and of the divider routines (`divider_hardware.S`) read (about 4 MB). A full checkout already there is used as it is. Files an earlier partial checkout lacks are added (this needs the network) | tag `2.2.0` (partial clone and sparse checkout) |
 | `nuttx/toolchain/` | Arm GNU Toolchain (arm-none-eabi, for x86_64 Linux) | 13.2.Rel1 (SHA-256 checked) |
 | `nuttx/.venv` | Python venv (kconfiglib, used by NuttX's `menuconfig` and `olddefconfig`) | kconfiglib 14.1.0 |
 | `nuttx/stmemsc/` | ST's LSM6DSO register driver (`lsm6dso_reg.c`, `lsm6dso_reg.h`) | lsm6dso-pid v3.2.2 (the same content as Zephyr's hal_st; SHA-256 checked) |
@@ -76,6 +76,8 @@ with its purpose and the Zephyr code it matches.
 | `nuttx/0006-telnet-crlf-line-end` | Ends Telnet output lines with CR LF |
 | `nuttx/0007-sched-critmon-cpuload-in-perf-counts` | Accumulates the CPU column of `ps` in 1 µs units and fixes the values going wrong when a task exits |
 | `nuttx/0008-sched-critmon-irqcount-only-for-csection-busywait` | Makes `SCHED_CRITMONITOR` select `IRQCOUNT` only when it is used |
+| `nuttx/0009-armv6m-rp2040-save-hw-divider-on-context-switch` | Saves and restores the RP2040's divider on task switches (`RP2040_HW_DIVIDER`) |
+| `nuttx/0010-rp2040-rom-memcpy-memset` | `memcpy` and `memset` through the boot ROM's routines (`RP2040_ROM_MEM_OPS`) |
 | `apps/0001-readline-echo-in-readline` | readline echoes the line being typed |
 | `apps/0002-readline-cr-lf-line-end` | CR, LF, CR LF and LF CR each make one Enter |
 | `apps/0003-readline-ctrl-c` | Ctrl-C drops the line being typed and shows a new prompt |
@@ -105,18 +107,22 @@ image (boot2, the flash range, no overlap with the key-value area) before making
 
 Changes made with `--menuconfig` are lost at the next configure unless saved with `--savedefconfig`.
 
-`memcpy` and `memset` use the boot ROM's routines (`CONFIG_NANO_ROM_MEM_OPS` in the board's Kconfig, on by
-default; off, they are the C library's loops).
+These options of the board's Kconfig are on by default.
+
+| Option | Effect |
+|---|---|
+| `CONFIG_NANO_ROM_MEM_OPS` | `memcpy` and `memset` through the boot ROM's routines (patch 0010; off, the C library's loops). `build.sh` checks that `__start()` calls neither |
+| `CONFIG_NANO_HW_DIVIDER` | Integer division on the RP2040's hardware divider (the Pico SDK's routines, patch 0009; off, libgcc's). `build.sh` checks that no libgcc division is left in the image |
+| `CONFIG_NANO_NINA_PASSTHROUGH` | `nina passthrough confirm` ("Other commands" below) |
 
 ## Flashing
 
 The UF2 goes in through the RP2040 USB bootloader (BOOTSEL mode, in which a USB drive named
-`RPI-RP2` appears). There is no shell command that enters BOOTSEL (as in the Zephyr build), so put
-the board into BOOTSEL by hand every time:
+`RPI-RP2` appears).
 
-1. Connect the board to USB and press the RESET button twice quickly. If that does not work,
-   connect `REC` to `GND` with a jumper wire, press RESET, and remove the wire when the drive
-   appears.
+1. Enter BOOTSEL. With a firmware running (any of the three builds), run `bootsel` in its shell. If
+   the shell does not answer, press the RESET button twice quickly. If that does not work, connect
+   `REC` to `GND` with a jumper wire, press RESET, and remove the wire when the drive appears.
 2. Write the image:
 
 ```bash
@@ -125,7 +131,8 @@ nuttx/script/flash.sh --build    # build first, then write
 ```
 
 `flash.sh` checks that the UF2 is for the RP2040 and looks for the `RPI-RP2` drive of the RP2040 boot
-ROM. Without one, it explains how to enter BOOTSEL by hand and waits for the drive. If the drive is
+ROM. Without one, it explains how to enter BOOTSEL and waits for the drive (it does not send
+`bootsel`; run it in the shell yourself). If the drive is
 not mounted it mounts it with `udisksctl` (no sudo), checks `INFO_UF2.TXT`, copies the UF2, waits for
 the NuttX USB console and prints its path. It stops if there is more than one drive.
 
@@ -304,6 +311,7 @@ of `sensor`, not to the RAW data sent by MQTT.
 ```text
 nsh$ nina version
 NINA firmware: 3.0.2
+NINA capabilities: 0x00000007 (in use 0x00000007)
 nsh$ i2c_dma stats
 dma_transfers=... dma_bytes=... dma_errors=0 dma_fallbacks=0
 nsh$ i2c get -a 6a -r 0f
@@ -312,6 +320,12 @@ nsh$ irqstack
 0x20002f88 IRQ 00                           (real size 2048):	unused 1684	usage  364 / 2048 (17 %)
 ```
 
+- The second line of `nina version` gives the NINA module's capability bits and those in use (as in the
+  Zephyr build).
+- `nina passthrough confirm` restarts the board with its USB serial port relayed to the NINA's UART, for
+  reading and writing the NINA firmware with esptool ("Reading and writing the NINA firmware" in the
+  top-level README). Closing the port at 300 bps, or RESET, goes back to the normal start.
+- `bootsel` restarts into BOOTSEL (`RPI-RP2`).
 - `dmesg` prints the RAM log (8 KiB, kept across `reboot`). The lines have the Zephyr build's log
   format.
 - `ps` shows each thread's priority, stack (STACK, USED, FILLED) and CPU share. The CPU column is a
@@ -342,6 +356,8 @@ datagrams at 512 bytes or less, as in `-u -l 500`.
 | `kv set` / `sethex` / `get` / `delete` | Same | The storage format is the same too |
 | (none) | `kv wipe confirm` | Erases the key-value area. NuttX build only |
 | `nina version` | Same | |
+| `nina passthrough confirm` | Same | |
+| `bootsel` | Same | The FreeRTOS build has it too |
 | `sensor get` / `attr_set` / `attr_get` / `stream` / `trig` | Same | Neither has `sensor info` |
 | `i2c_dma mode` / `stats` | Same | |
 | `dmesg` | Same | |
@@ -349,7 +365,7 @@ datagrams at 512 bytes or less, as in `-u -l 500`.
 | `wifi connect -s <SSID> -p <passphrase> -k 1` | `wapi psk wlan0 <passphrase> 3`, then `wapi essid wlan0 <SSID> 1` | |
 | `wifi connect -s <SSID> -k 0` | `wapi essid wlan0 <SSID> 1` | |
 | `wifi disconnect` | `wapi disconnect wlan0` | |
-| `wifi scan` | `wapi scan wlan0` | While connected, it counts as a disconnection and asks for a reconnection afterwards (as in the Zephyr build) |
+| `wifi scan` | `wapi scan wlan0` | Without patch 0004 in the NINA firmware, a scan while connected counts as a disconnection and asks for a reconnection afterwards (as in the Zephyr build) |
 | `wifi status` | `wapi show wlan0` and `ifconfig wlan0` | |
 | `net iface` | `ifconfig` | |
 | `zperf tcp upload <PC> 5201 30 1024` | `iperf -c <PC> -t 30 -l 1024` (`iperf -s` on the PC) | iperf 2, port 5001 |
@@ -480,7 +496,7 @@ NuttX puts at the start of a stack (2048 → 2008 and so on).
 nuttx/script/host_tests.sh
 ```
 
-This builds and runs the 48 host tests of the OS-independent parts on the PC. The first 34 are the
+This builds and runs the 51 host tests of the OS-independent parts on the PC. The first 35 are the
 tests of the sources shared by the three builds and of the shared parts of the layer, the
 shell, the RAM log's ring and the key-value store (the last one, `zephyr_copies`, checks that the
 copied Zephyr files are the same as the originals), run by `common/tests/run.sh`. It needs no board, only
@@ -495,7 +511,7 @@ Zephyr build changes), are in "Host test details" in [`design/nuttx-porting.md`]
 |---|---|
 | `boards/arduino-nano-rp2040-connect/` | Board definition (`configs/imu/defconfig`, `include/board.h`, linker script, and in `src/` the bring-up, clocks, the NuttX part of I2C0 and the DMA, key-value flash and so on) |
 | `drivers/` | Kernel-side code: NINA (`nina/`), LSM6DSOX (`lsm6dso/`), RAM log (`log/`; its ring is in `../common/log/`), the NuttX implementation of the Zephyr API compatibility layer (`compat/`), the NuttX parts of shared headers (`include/`) |
-| `apps/` | Applications: `init` (start-up and Telnet), `imu` (acquisition, MQTT, time synchronization, calibration, key-value store), `kv`, `nina`, `ntp`, `wifi`, `sensor`, `i2c_dma`, `dmesg`, `irqstack`, `subcmd` (the Zephyr shell's command handling and the subcommand handling: the sources are in `../common/shell/`, the NuttX shell backends here) |
+| `apps/` | Applications: `init` (start-up and Telnet), `imu` (acquisition, MQTT, time synchronization, calibration, key-value store), `kv`, `nina`, `ntp`, `wifi`, `sensor`, `i2c_dma`, `dmesg`, `irqstack`, `bootsel`, `subcmd` (the Zephyr shell's command handling and the subcommand handling: the sources are in `../common/shell/`, the NuttX shell backends here) |
 | `patches/` | Patches to NuttX and nuttx-apps |
 | `script/` | `setup.sh`, `build.sh`, `flash.sh`, `host_tests.sh`, `bin2uf2.py`, `kconfig-tweak` |
 | `tests/` | Host tests (those of the NuttX build only) |

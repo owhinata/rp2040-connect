@@ -11,8 +11,11 @@ NuttX 版の各機能の動作の詳しい説明です。使い方は `nuttx/REA
 
 取得するものの表は `nuttx/README_ja.md` の「環境構築」にあります。表に書いていない扱い:
 
-- `nuttx/pico-sdk` は、全体を取得済みのものがあればそのまま使います。部分取得の小さいものにするには、
-  一度削除してから `setup.sh` を読み込み直します。
+- `nuttx/pico-sdk` は、boot2 のビルドが読むものと、ボードがビルドする除算器のルーチン（`divider_hardware.S` と、それが読む
+  `divider_helper.S`。`CONFIG_NANO_HW_DIVIDER`）だけを sparse checkout で取得します。以前の部分取得のクローンに足りない
+  パスは sparse checkout に足し、そのときファイルを取得します（blob を後から取る部分取得なので、ネットワークが要ります）。
+  全体を取得済みのものがあればそのまま使います。部分取得の小さいものにするには、一度削除してから `setup.sh` を
+  読み込み直します。
 - argtable3 の版は nuttx-apps 13.1.0 の `CONFIG_SYSTEM_ARGTABLE3_VERSION` の既定です。nuttx-apps の Makefile は
   `nuttx/nuttx-apps/system/argtable3/argtable3` にクローンがあれば使い、無ければビルドのたびに GitHub から取得し、
   `make distclean` で消します。
@@ -53,8 +56,10 @@ NuttX が使う機能だけを実装しています。
    無いと、NuttX はエラーを出さずに boot2 の無いイメージを作ります）、`nuttx.bin` が ELF の
    flash に載せる範囲とちょうど一致すること、イメージが 0x10ffe000 より前で終わることです。
    flash の末尾 8 KB（0x10ffe000〜0x10ffffff）は、Zephyr 版と同じく KV のためにイメージから
-   外してあります。`CONFIG_NANO_ROM_MEM_OPS` のときは、`__start()` が `memcpy`・`memset` を呼ばないことも
-   確かめます（「C ライブラリの `memcpy`・`memset`」の節）。
+   外してあります。`CONFIG_RP2040_ROM_MEM_OPS` のときは、`__start()` が `memcpy`・`memset` を呼ばないことも
+   確かめます（「C ライブラリの `memcpy`・`memset`」の節）。`CONFIG_NANO_HW_DIVIDER` のときは、6 つの `__wrap___aeabi_*` が
+   あり、libgcc の割り算（`__aeabi_idiv`、`__divsi3`、`__udivmoddi4` など）がイメージに残っていないことを確かめます
+   （「整数の割り算」の節）。
 4. `nuttx/nuttx/nuttx.bin`（0x10000000 からの生のイメージ。boot2 を含む）を
    `nuttx/script/bin2uf2.py` で `nuttx/build/nuttx.uf2` に変換し、パスとサイズを表示します。
    変換の前に boot2 のチェックサムを確かめ、256 バイトのペイロードと RP2040 のファミリー ID
@@ -364,6 +369,10 @@ NINA の UART に繋がります（確認の語がなければ断ります）。
   起動に戻してから、通常のファームウェアで再起動します。フラッシュには何も書きません。
 - 開始・ポートを閉じるたび・終了のときに、送受信のバイト数と取りこぼしの数を RAM ログに残します（抜けたあと
   `dmesg` で見られます）。
+- PC 側の esptool の手順（`ESPTOOL_CFGFILE` の `custom_reset_sequence = R0|D1|W0.2|R1|W0.6` と
+  `--before default-reset --after no-reset`。`--before no-reset` では繋がらない）はルートの `README_ja.md` の
+  「NINA のファームウェアの読み書き」です。実機で 2 MB 全体の読み出しを 115200 bps と 921600 bps で行い、一致しました
+  （2026-11-18）。
 - 仕組みは `nuttx/drivers/README_ja.md` の「中継モード」です。
 
 ### Wi-Fi（`wapi`、`ifconfig`）
@@ -1050,12 +1059,43 @@ NuttX 標準のクリティカルセクションの監視（`CONFIG_SCHED_CRITMO
 
 ## C ライブラリの `memcpy`・`memset`
 
-`CONFIG_NANO_ROM_MEM_OPS`（ボードの `Kconfig`、既定で有効）で、`memcpy`・`memset`・`__aeabi_memcpy*`・`__aeabi_memset*`
-を RP2040 のブート ROM のルーチンにします（Pico SDK の `pico_mem_ops` と同じ使い分け。Zephyr 版と共有の
-`common/drivers/rp2040_rom/`）。`LIBC_ARCH_MEMCPY`・`LIBC_ARCH_MEMSET` を選び、`libs/libc/string` のバイト単位のループを
-外します。ROM のルーチンは初回の呼び出しで引いて `.bss` に置くので、`.bss` をゼロにする前には呼べません。
-`__start()` の `.bss` のゼロ化のループを GCC が `memset` の呼び出しに変えるため、ボードの `scripts/Make.defs` が
-`rp2040_start.c` だけを `-fno-tree-loop-distribute-patterns` でコンパイルし、`build.sh` がその結果を確かめます。
+`CONFIG_NANO_ROM_MEM_OPS`（ボードの `Kconfig`、既定で有効）が NuttX へのパッチ `nuttx/0010` の `CONFIG_RP2040_ROM_MEM_OPS` を
+select し、`memcpy`・`memset`・`__aeabi_memcpy*`・`__aeabi_memset*` を RP2040 のブート ROM のルーチンにします（Pico SDK の
+`pico_mem_ops` と同じ使い分け。Zephyr 版は Zephyr の SoC へのローカルのパッチで同じことをします）。`LIBC_ARCH_MEMCPY`・
+`LIBC_ARCH_MEMSET` を選び、`libs/libc/string` のバイト単位のループを外します。コードはチップのディレクトリーの
+`rp2040_rom_mem_ops.S`・`rp2040_rom_mem_lookup.c` です。ROM のルーチンは初回の呼び出しで ROM の関数表から引いて `.bss` に
+置くので（リセットの前から RAM に残った値は使わない）、`.bss` をゼロにする前には呼べません。GCC は `rp2040_start.c` の
+`.bss` のゼロ化と `.data` のコピーのループを `memset`・`memcpy` の呼び出しに変えるので、パッチがループに
+`START_LOOP_BARRIER()`（メモリーを clobber する空の asm）を入れてループのまま残し、`build.sh` がその結果を確かめます。
+
+## 整数の割り算
+
+`CONFIG_NANO_HW_DIVIDER`（ボードの `Kconfig`、既定で有効）で、コンパイラーが出す整数の割り算（`__aeabi_idiv`・`__aeabi_idivmod`・
+`__aeabi_uidiv`・`__aeabi_uidivmod`・`__aeabi_ldivmod`・`__aeabi_uldivmod`）を、libgcc のシフトと減算のループの代わりに
+SIO のハードウェアの除算器で行います。Pico SDK の `pico_divider`（`divider_hardware.S`。`nuttx/pico-sdk` から、ボードの
+`src/pico_sdk` の最小のヘッダーでビルド）を、ボードの `scripts/Make.defs` の `ld --wrap` でつなぎます。
+
+- ルーチンは割り込みを止めません（`PICO_DIVIDER_DISABLE_INTERRUPTS` 0）。割り算の途中に割り込みハンドラーが割り算をすると、
+  ルーチンが DIRTY を見て除算器を退避・復元します。
+- タスクが割り算の途中で切り替わる場合は、NuttX へのパッチ `nuttx/0009` の `CONFIG_RP2040_HW_DIVIDER`（`CONFIG_NANO_HW_DIVIDER` が
+  select する）が退避します。ARMv6-M の切り替えはすべて `arm_doirq()` を通るので、タスクが変わるときに、古いタスクの除算器を
+  DIRTY のときだけ `struct xcptcontext` の 20 バイトに置き、新しいタスクのものを戻します（割り算の途中でなかったタスクは
+  DIRTY が落ちた状態で戻る）。`arm_sigdeliver()` の最後の切り替えの前にも退避します。FreeRTOS 版（Pico SDK のポート）は
+  切り替えのたびに 4 語を退避します。
+- 0 での割り算は Pico SDK のルーチンの結果です（Zephyr 版・FreeRTOS 版と同じ）。32 ビットは飽和した商（0xffffffff、
+  0x7fffffff、0x80000000。0 / 0 は 0）と余り 0（libgcc は商 0 と被除数）、64 ビットは libgcc と同じです。
+- ルーチンは SIO とスタックだけを使うので、`__start()` の最初から、割り込みハンドラーと異常停止の処理でも使えます。
+- 試験の像（2026-11-18、実機）: 退避ありの像は 250 秒・約 1,128 万回の割り算で食い違い 0、退避なしの像は 40 秒で 10 回でした。
+
+## シグナルハンドラー
+
+NuttX 版のコードはシグナルハンドラーを登録しません（`sigaction()`・`signal()`、SIGEV_SIGNAL のタイマー、`kill()`・
+`pthread_kill()` でハンドラーを走らせる使い方をしない）。待ちはセマフォ、sleep、ブロッキングの入出力で書きます。
+
+シグナルハンドラーの実行中にタスクの切り替え（1 ms ごとの起床と優先度の入れ替え）が重なる負荷を掛けると、数秒以内に
+ログを残さずに固まることを実機で確かめました（2026-11-18。libgcc の割り算で除算器のパッチの処理が無い像でも同じ）。
+原因は特定しておらず、修正も入れていません。今のコードにはハンドラーの登録が無く、
+通常の動作ではこの経路を通りません。
 
 ## ホストテストの詳細
 
@@ -1075,14 +1115,14 @@ OS ごとのヘッダー（`sensor_shell_os.h`、`wifi_profile_os.h`、`lsm6dso_
 |---|---|
 | `common/imu/` | `imu_stream.c`、`imu_raw_{batch,packet,queue,status,time}`、`imu_tick_clock`、`time_sync.[ch]`、`time_offset`、`imu_cal_codec.c`、`imu_cal.[ch]`、`imu_raw_mqtt.[ch]`、`wifi_profile.[ch]`、`kv_store.[ch]`、`mqtt_min.[ch]`・`mqtt_min_sock.c`（互換層の上の版の MQTT クライアントとそのソケットの層。Zephyr 版は使わない） |
 | `common/drivers/lsm6dso/` | `lsm6dso.[ch]`（ドライバー本体。末尾のデバイスは版ごとの `lsm6dso_instance.h`）、`lsm6dso_{fifo,cal,zero,fifo_decoder,fifo_hw,fifo_irq}`、`lsm6dso_stream.c`、`lsm6dso_compat.c`、`lsm6dso_fifo_packet.h`、`lsm6dso_fifo_stats.h`、`lsm6dso_attributes.h` |
-| `common/drivers/nina/` | `nina_net.c`、`nina_proto.h`（3 つの版）。NINA のコア `nina_spi.c`・`nina_sock.[ch]`・`nina_dns.[ch]` と、コアの境界のヘッダー `nina_os.h`・`nano_nina.h`、ソケットオプションの `nina_sockopt.h`（3 つの版が使う。Zephyr の API を使わず、NuttX 版では前置きヘッダーなしでコンパイルする。境界は `nuttx/drivers/README_ja.md` の「NINA-W102」） |
+| `common/drivers/nina/` | `nina_net.c`、`nina_proto.h`（3 つの版）。NINA のコア `nina_spi.c`・`nina_sock.[ch]`・`nina_dns.[ch]`・`nina_wait.[ch]`、esptool の中継の判断 `nina_passthrough_logic.h` と、コアの境界のヘッダー `nina_os.h`・`nano_nina.h`、ソケットオプションの `nina_sockopt.h`（3 つの版が使う。Zephyr の API を使わず、NuttX 版では前置きヘッダーなしでコンパイルする。境界は `nuttx/drivers/README_ja.md` の「NINA-W102」） |
 | `common/drivers/sensor_shell/` | `sensor_shell.c` |
 | `common/drivers/stmemsc/` | `stmemsc.h`、`stmemsc_i2c.c`、`stmemsc_mdelay.c`（Zephyr の stmemsc の I2C の部分の写し。NuttX 版と FreeRTOS 版が使い、前置きヘッダーなしでコンパイルする。Zephyr 版は Zephyr のものを使う） |
 | `common/drivers/i2c_dw/` | `i2c_dw_rp2040_commands.[ch]`（3 つの版）。I2C0 と DMA のコア `nano_i2c.c`・`nano_dma.c` と、その定義 `nano_i2c_dw.h`・`nano_i2c_dw_registers.h`・`nano_dma.h`、`i2c_dma` の状態 `nano_i2c_dma.h`、境界のヘッダー `i2c_dw_os.h`（NuttX 版と FreeRTOS 版が使う。前置きヘッダーなしでコンパイルし、OS の部分はボードの `src/` の `i2c_dw_os_impl.h`・`nano_i2c_instance.h`・`nano_dma_instance.h`。境界は `nuttx/drivers/README_ja.md` の「I2C0」） |
 | `common/compat/` | 互換層の OS に依存しない部分（Zephyr の API のヘッダー `zephyr/...`、`zephyr_compat.h`、ワーク、RTIO、ブロックのプール、デバイスの一覧、`gpio0`、`net_mgmt`、Wi-Fi の要求、sensor の既定の iodev）と、互換層の上の版が使う Zephyr のライブラリーの写し（`sensor_shell_stream.c`・`sensor_shell.h`、`wifi_credentials.c`・`wifi_credentials_backend_settings.c`・`wifi_credentials_internal.h`）、境界のヘッダー（`priorities.h`、`cpu_load.h`、`nano_cpuload.h`、`nano_gpio.h`）。Zephyr 版は使わない |
 | `common/shell/` | `subcmd.[ch]`（サブコマンドの表の処理）、`zshell.c`（`<zephyr/shell/shell.h>` で書いたコマンドの処理: 語の照合、ワイルドカード、引数の数の検査、ヘルプ）とその OS との境界 `zshell_os.h`（NuttX 版の部分は `nuttx/apps/subcmd/zshell_os_impl.h`）。前置きヘッダーなしでコンパイルする。Zephyr 版は使わない |
 | `common/log/` | `log_ring.[ch]`（RAM ログのリング、行の前置き、頻度制限）、`app_log.h`（`LOG_*` マクロ。NuttX の部分は `nuttx/drivers/include/app_log_os.h`）、`log_ram.h`（RAM ログの関数。NuttX 版は `nuttx/drivers/log/log_ram.c`）、`fault_record.[ch]`（異常停止の記録の形式、CRC-32、watchdog の scratch への写し、表示の行。FreeRTOS 版だけが使う）。Zephyr 版は使わない |
-| `common/tests/` | 上のファイルを対象にするテスト 33 本と、写しの照合 `zephyr_copies`（`common/tests/run.sh` が実行し、3 つの版の `host_tests.sh` が最初に呼ぶ。互換層の `zephyr_rtio`・`zephyr_work`・`mqtt_min` は偽のカーネルの上、NINA のコアの `nina_spi`・`nina_sock`・`nina_dns` はテストが定義する境界の偽物の上）。`stream_stop.c` は `../drivers/lsm6dso/lsm6dso_stream.c` を読み込む（先に `lsm6dso.h` のインクルードガードを定義するので、そのヘッダーの中身は使わない。`stream_stop.c` が必要な定義を自分で置く） |
+| `common/tests/` | 上のファイルを対象にするテスト 34 本と、写しの照合 `zephyr_copies`（`common/tests/run.sh` が実行し、3 つの版の `host_tests.sh` が最初に呼ぶ。互換層の `zephyr_rtio`・`zephyr_work`・`mqtt_min` は偽のカーネルの上、NINA のコアの `nina_spi`・`nina_sock`・`nina_dns` はテストが定義する境界の偽物の上）。`stream_stop.c` は `../drivers/lsm6dso/lsm6dso_stream.c` を読み込む（先に `lsm6dso.h` のインクルードガードを定義するので、そのヘッダーの中身は使わない。`stream_stop.c` が必要な定義を自分で置く） |
 | `common/tests/fakes/` | テスト用の Zephyr のヘッダーと ST のヘッダーの代わり（`zephyr/drivers/sensor.h`、`zephyr/drivers/sensor_clock.h`、`zephyr/drivers/i2c.h`、`zephyr/rtio/rtio.h`、`lsm6dso_reg.h`） |
 | `common/tests/zephyr_fakes/` | 互換層の偽のカーネル: OS ごとのヘッダー（`zephyr_os.h`・`zephyr_os_spinlock.h`・`zephyr_os_atomic.h`・`zephyr_rtio_workq_os.h`、`zephyr/sys/__assert.h`）とその関数（`zephyr_kernel_host.[ch]`。1 スレッドで、ワークキューとタイマーはテストが回す）。NuttX 版のテストも使う |
 

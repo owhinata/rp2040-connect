@@ -15,13 +15,13 @@ OS に依存しない部分は `common/compat/`、FreeRTOS の部分は `freerto
 
 | 場所 | 内容 |
 |---|---|
-| `app/usb-console/` | 起動（`main.c`）、FreeRTOS 版だけのコマンド（`commands.c`）、カーネルの設定（`FreeRTOSConfig.h`）、優先度の対応（`priorities_os.h`）、時計（`os_clock.h`）、tick フック（`tick.c`）、CPU 負荷（`idle.c`）、異常停止（`fault.[ch]`）、割り込み用スタックの空き（`irq_stack.c`） |
+| `app/usb-console/` | 起動（`main.c`）、FreeRTOS 版だけのコマンド（`commands.c`）、カーネルの設定（`FreeRTOSConfig.h`）、優先度の対応（`priorities_os.h`）、時計（`os_clock.h`）、tick フック（`tick.c`。tick の追いつきの判定は `tick_catchup.h`）、CPU 負荷（`idle.c`）、異常停止（`fault.[ch]`）、割り込み用スタックの空き（`irq_stack.c`） |
 | `drivers/compat/` | 互換層の FreeRTOS の部分: カーネル（`zephyr_kernel.c`・`zephyr_mutex.c`・`zephyr_os*.h`）、ネットワークのインターフェース（`zephyr_net_if.c`）、壁時計（`zephyr_sys_clock.c`）、センサーの時計、前置きヘッダー（`common_prelude.h`）、自己診断（`zephyr_selftest.[ch]`）、RP2040 の部分（`rp2040/`: GPIO バンク 0、チップ ID） |
 | `drivers/shell/` | 行編集（`cli.c`）、コンソールとタスクごとの出力先（`nano_console.c`）、Pico SDK の stdio の差し替え（`nano_stdio.c`）、コマンドの表と実行（`nano_shell.c`）、Zephyr の引数の分割の写し（`shell_argv.c`）、セッションごとの getopt（`getopt_state.c`） |
 | `drivers/libc/` | newlib の FILE 関数の差し替え（`stdio_wrap.c`）、newlib に無いソケット系のヘッダー（`include/`。型と定数だけ）、`inet_pton`・`inet_ntop`（`inet.c`） |
 | `drivers/log/` | RAM ログ（`log_ram.c`。リングは `common/log/log_ring.c`） |
 | `drivers/kv/` | KV のフラッシュの境界（`nano_flash_kv.c`）とリンカースクリプトの差し替え（`ld/`、`kv.cmake`） |
-| `drivers/nina/` | NINA-W102 の SPI1 と制御線（`nano_nina.c`）、境界 `nina_os.h` の実装（`nina_os.c`）、ソケット（`nina_socket.c`）、インターフェース（`nina_netif.c`） |
+| `drivers/nina/` | NINA-W102 の SPI1 と制御線（`nano_nina.c`）、境界 `nina_os.h` の実装（`nina_os.c`）、ソケット（`nina_socket.c`）、インターフェース（`nina_netif.c`）、esptool の中継（`nina_passthrough.c`） |
 | `drivers/i2c_dw/` | I2C0 と DMA のコア（`common/drivers/i2c_dw/`）の FreeRTOS の部分、自己診断 |
 | `drivers/lsm6dso/` | LSM6DSOX のデバイスの生成（`lsm6dso_instance.h`）と初期化（`nano_lsm6dso.c`）、自己診断 |
 | `drivers/imu/` | 取得サービス・MQTT・時刻同期（`common/imu/`）の組み込み（`imu.cmake`）、`time_sync.c` の前置き |
@@ -61,8 +61,13 @@ FreeRTOS 版だけがビルドする共有ファイル: `common/compat/zephyr_wi
 | 同じ優先度の選び方 | 横取りされたスレッドが続きを走る。時分割 20 ms（そのスレッドに切り替わってから数える） | FreeRTOS 標準: 切り替えのたびに同じ優先度の次のタスクを順に選ぶので、横取りされたタスクは同じ優先度のほかの準備できたタスクの後になる。時分割は tick フック（`tick.c`）で、20 tick ごとの決まった刻み（切り替えから数えない） |
 | tick と sleep | 100 µs。相対の待ちは「tick に切り上げ + 1 tick」 | 1 ms（`configTICK_RATE_HZ` 1000、32 ビット）、同じ丸め（1 ms より短い待ちは 1〜2 ms になる）。周期の SysTick（tickless ではない） |
 
-- 32 ビットの tick は約 49.7 日で一周します。割り込みを止めている間（フラッシュの消去）は tick が数えられず
-  遅れます。`vTaskDelay()`、遅延ワーク、時分割はその分遅れ、`k_uptime_*()` は TIMER なので遅れません。
+- 32 ビットの tick は約 49.7 日で一周します。
+- 割り込みを止めている間（フラッシュの消去・書き込み。消去 1 回で約 40〜50 ms）は SysTick の割り込みが 1 回分しか保留されず、
+  残りの tick は失われます。tick フック（`tick.c`、判定は `tick_catchup.h`）が tick ごとに TIMER と比べ、1 tick 以上遅れていれば
+  SysTick を保留にし直すので、失われた tick はポートの通常のハンドラーが 1 つずつ数えます（起床、切り替えの要求、tick フックの
+  互換層のタイムアウトと時分割も各 tick で動く）。tick は TIMER より先に進みません。そのため tick は、割り込みを止めている間を
+  除いて、TIMER から 1 tick 以内に保たれます。`xTaskCatchUpTicks()` は使いません（タスクからしか呼べず、補った tick では
+  tick フックが呼ばれないため）。`main.c` は clk_sys が tick の整数倍であることを確かめます。`k_uptime_*()` は TIMER です。
 - Pico SDK の `sleep_ms()`（最後の 150 µs を空回りで待つ）は使いません。
 
 ## タスク
@@ -134,7 +139,8 @@ FreeRTOS 版が実装するのは flash の境界（`common/compat/nano_flash_kv
 - 書き込みと消去の要求は、`zephyr_flash_kv.c`、境界の関数、フラッシュに触れる直前（割り込み禁止の中）の 3 回、
   領域の中かを確かめます。リンカーの記号と定数が一致するまで、書き込みと消去は断ります。
 - `flash_range_program()`・`flash_range_erase()` は `flash_safe_execute()` から呼び、`PICO_FLASH_ASSUME_CORE1_SAFE=1` で
-  このコアの割り込みだけを止めます（コア 1 は使わない）。消去の間は割り込みが止まり、tick が遅れます。
+  このコアの割り込みだけを止めます（コア 1 は使わない）。消去の間は割り込みが止まり、tick はそのあと TIMER に追いつきます
+  （上の「Zephyr 互換層の FreeRTOS の部分」）。
 - 領域に Zephyr の NVS でも消去済みでもないデータがあれば、消さずに `dmesg` に出し、KV の操作は `-EILSEQ`
   （newlib では 138）を返します。消すのは `kv wipe confirm` です（`common/compat/kv_store_wipe.c`）。
 
@@ -165,6 +171,20 @@ FreeRTOS 版が実装するのは flash の境界（`common/compat/nano_flash_kv
   の上で動かします。`wifi` コマンドは `common/compat/zephyr_wifi_shell.c` で、このボードで使えるオプションだけを残しています。
   `wifi cred` は Zephyr の `wifi_credentials_shell.c` の無改変の写しです。`ifconfig`（`drivers/wifi/nano_ifconfig.c`）は
   NuttX 版と同じ形式で表示します。
+
+- esptool の中継（`drivers/nina/nina_passthrough.c`、`nina passthrough confirm`）: Zephyr 版・NuttX 版と同じ仕様で、判断は
+  共有の `common/drivers/nina/nina_passthrough_logic.h` です（配線と線の対応は
+  [`zephyr/app/usb-console/drivers/README_ja.md`](../../zephyr/app/usb-console/drivers/README_ja.md) の「esptool の中継」）。
+  コマンドが watchdog の scratch 0〜3 に印を書いて再起動し、`main()` は何より先に印を見て、タスクもスケジューラーも
+  SPI1・NINA・I2C・KV も起こさずに、1 つのループで TinyUSB（`tud_task()`）と UART1 を中継します。モジュール → PC は UART1 の
+  受信割り込みが 16 KiB のバッファー（FreeRTOS のヒープから取る）へ移します。LED は 5 Hz で点滅します。ホストテストは `passthrough`。
+
+## 除算器、`memcpy`・`memset`、boot2
+
+Pico SDK の既定のままです。整数の割り算は `pico_divider` のハードウェアの除算器で、ポート（`portUSE_DIVIDER_SAVE_RESTORE`）が
+切り替えのたびに除算器の 4 語を退避・復元します（Zephyr 版・NuttX 版はローカルのパッチで、割り算の途中（DIRTY）のときだけ
+退避）。0 での割り算は Pico SDK のルーチンの結果で、3 版で同じです。`memcpy`・`memset` は `pico_mem_ops` のブート ROM の
+ルーチン、boot2 は Pico SDK のボード定義の W25Q080 用（分周 2、62.5 MHz）です。
 
 ## I2C0 と DMA、LSM6DSOX、GPIO の割り込み
 
@@ -205,7 +225,7 @@ MQTT のクライアントは NuttX 版と共有する `common/imu/mqtt_min.c`�
 
 `-DNANO_SELFTEST=ON` のビルドにだけ入る試験用のコマンドです。計測を止め、ボードを静止させて実行します。
 互換層（`drivers/compat/zephyr_selftest.c`: ミューテックス、セマフォ、sleep、時計、割り込みからの起床、`k_poll`、ワーク、
-spinlock、atomic、静的なスレッド、時分割の 21 項目）、I2C0（`drivers/i2c_dw/i2c_dw_selftest.c`: 6 項目）、LSM6DSOX（`drivers/lsm6dso/lsm6dso_selftest.c`:
+spinlock、atomic、静的なスレッド、時分割、割り込みを 50 ms 止めたあとの tick の追いつきの 22 項目）、I2C0（`drivers/i2c_dw/i2c_dw_selftest.c`: 6 項目）、LSM6DSOX（`drivers/lsm6dso/lsm6dso_selftest.c`:
 3 項目）の結果を `N of M tests failed` の形で表示します。
 
 ## ホストテスト
@@ -216,6 +236,8 @@ spinlock、atomic、静的なスレッド、時分割の 21 項目）、I2C0（`
 | テスト | 対象 |
 |---|---|
 | `compat` | 互換層の自己診断（`selftest` と同じ `zephyr_selftest.c`） |
+| `tick` | tick の追いつき（`tick_catchup.h`）: 判定の 1 歩と、SysTick と CPU の模型（割り込みの遅れ、0〜60 tick の割り込みの停止）の上で、tick が TIMER より先に進まず、追いついたあとの遅れが 1 tick 以内であること |
+| `passthrough` | esptool の中継: 要求の印、DTR・RTS とモジュールの線、レート、受信のバッファー、`nina` のサブコマンド |
 | `shell` | 2 つのセッションのシェル、行編集、出力先 |
 | `kv` | フラッシュの境界と KV（Pico SDK のフラッシュ関数の偽物の上） |
 | `nina` | NINA の SPI と線の境界、READY の割り込み待ち、IRQ の線のエッジの待ち（2 つのタスクを 1 つのエッジで起こす、時間切れ）、カーネルの部分 |
@@ -241,14 +263,15 @@ spinlock、atomic、静的なスレッド、時分割の 21 項目）、I2C0（`
 | IP アドレスの表示、日時 | `net iface`、`date get` | `ifconfig`、`date` | `ifconfig`、`date`（UTC、表示だけ） |
 | `wifi` | Zephyr 標準のすべて | `wifi cred` だけ（接続は `wapi`） | `connect`（`-s`・`-p`・`-k 0/1`）、`disconnect`、`scan`、`status`、`cred` |
 | 速度測定 | `zperf`（iperf3 の方式、TCP と UDP） | `iperf`（iperf2 の方式） | `zperf`（iperf3 の方式、TCP だけ） |
-| シェルから BOOTSEL | なし | なし | `bootsel` |
+| シェルから BOOTSEL | `bootsel` | `bootsel` | `bootsel` |
 | `sensor get` | すぐ戻り、結果はプロンプトの後に出る | 結果が出るまで最長 2 秒待つ | NuttX 版と同じ |
 | Telnet に接続した直後 | 何も送らない | プロンプトを送る | 何も送らない |
 | Telnet のエコー | なし | あり | なし |
 | エラー番号（errno） | Zephyr の値（`EILSEQ` 138） | NuttX の値（`EILSEQ` 84） | newlib の値（Zephyr と同じ。`EILSEQ` 138） |
 | 優先度 | Zephyr | `118 − Zephyr` | `20 − Zephyr` |
 | デバイスの割り込みの優先度 | 0xC0 | 0x80 | 0x80 |
-| カーネルの時計 | SysTick（送信中に遅れる） | TIMER の tickless | 1 kHz の SysTick（消去中に遅れる）。`k_uptime` は TIMER |
+| カーネルの時計 | SysTick（送信中に遅れる） | TIMER の tickless | 1 kHz の SysTick（割り込みを止めたあと TIMER に追いつく）。`k_uptime` は TIMER |
+| 除算器の退避 | 切り替えで DIRTY のときだけ（ローカルのパッチ） | 切り替えで DIRTY のときだけ（パッチ 0009） | 切り替えのたびに 4 語（Pico SDK のポート） |
 | NINA の READY | エッジ割り込み（GPIO10、10 ms ごとに読み直す） | エッジ割り込み（GPIO10） | エッジ割り込み（GPIO10、10 ms ごとに読み直す） |
 | ソケット | オフロード（呼んだスレッドで待つ） | usrsock と `nina_event` | 呼んだタスクで待つ（イベントのスレッドなし） |
 | RAM ログ | 4 KiB | 8 KiB | 8 KiB |

@@ -26,11 +26,48 @@ byte-for-byte reproducible (the build embeds its time).
 0006 (`main/SocketEvents.c`) with the host's `cc`.
 
 The RP2040 driver uses the firmware's BSD-style socket commands (0x70 to
-0x7f), including the fixed socket poll, for every socket. Updating the NINA
-requires a separate passthrough image on the RP2040 and a compatible flashing
-tool; consult the upstream README before attempting it. Preserve a recovery
-image and check compatibility with the current driver first. Images built
-earlier can be kept in the ignored `images/` directory.
+0x7f), including the fixed socket poll, for every socket. It asks 0x6A once
+at start-up and uses what 0003 to 0006 add; with an older firmware (3.0.2,
+or 0001 and 0002 only) it works as before. Images built earlier and backups
+can be kept in the ignored `images/` directory.
+
+## Reading and writing the module's flash
+
+The three RP2040 builds (Zephyr, NuttX, FreeRTOS) can relay their USB serial
+port to the module's UART for esptool: `nina passthrough confirm` restarts
+the board into that mode (RTS drives the module's RESETN, DTR its GPIO0, and
+the UART follows the port's rate). Neither a separate passthrough image nor
+the Arduino SerialNINAPassthrough sketch is needed, and the RP2040's firmware
+and key-value store stay as they are. To leave the mode, set the port to
+300 bps and close it (`stty -F <port> 300`), or press RESET; the board then
+starts its normal firmware.
+
+esptool 5.3.0 gets no answer with `--before no-reset`. Give it a
+configuration file whose reset sequence leaves RTS set, and use
+`--before default-reset --after no-reset`:
+
+```sh
+cat > esptool.cfg <<'EOF'
+[esptool]
+custom_reset_sequence = R0|D1|W0.2|R1|W0.6
+EOF
+export ESPTOOL_CFGFILE=$PWD/esptool.cfg
+port=/dev/serial/by-id/usb-...   # the board's USB port
+# Back up the whole 2 MB flash first (about 190 s at 115200 bps, 26 s at 921600 bps)
+esptool --port "$port" --baud 921600 --before default-reset --after no-reset \
+  read-flash 0 0x200000 firmware/nina-fw/images/backup.bin
+# Write the image built here (about 20 s at 921600 bps)
+esptool --port "$port" --baud 921600 --before default-reset --after no-reset \
+  write-flash 0 firmware/nina-fw/source/NINA_W102.bin
+stty -F "$port" 300              # leave the passthrough
+```
+
+The times were measured on 2026-11-18 (reading through each of the three
+builds, writing once through the FreeRTOS build). Writing
+`NINA_W102.bin` leaves the `storage` and `nvs` partitions as they were; to go
+back, write the whole backup at 0. A backup may hold credentials: keep it
+private (`images/` is not tracked by Git). Check that the driver supports a
+firmware before writing it.
 
 ## Patches
 

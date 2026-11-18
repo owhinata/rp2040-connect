@@ -55,7 +55,7 @@ What the core needs from the OS and the board (its boundary):
   milliseconds rounded up to ticks, plus one tick). The deadline (`nina_os_uptime_ms()`) and the
   timeout are both on the tickless tick read from the TIMER, so they do not drift apart while
   interrupts are masked (a flash erase); the FreeRTOS build waits in slices of 10 ms because its
-  tick falls behind. `nina_os_ready_disarm()` disables the edge, so CS toggling READY during
+  tick stands still meanwhile and catches up with the TIMER afterwards. `nina_os_ready_disarm()` disables the edge, so CS toggling READY during
   the transfers raises no interrupts. `gpio0` and `src/nano_gpio.c` are built with
   `CONFIG_NANO_LSM6DSO_STREAM`, so `CONFIG_NANO_NINA` depends on it.
 - The time limits and the wiring are in the "NINA-W102 (`nina`)" section of
@@ -342,6 +342,9 @@ and `include/nano_nina_passthrough.h`, with `CONFIG_NANO_NINA_PASSTHROUGH` (defa
   register, and the confirmation word, argument counts and messages of `nina passthrough`. The shared
   decisions are tested by `freertos/tests/passthrough`. The interrupts, threads and cdcacm together
   have no host test.
+- On the board (2026-11-18): esptool's `read-flash 0 0x200000` at 115200 bps (192 s) and at 921600 bps
+  (26.1 s) gave the same data, with no bytes lost and no overruns. Closing the port at 300 bps went
+  back to the normal start.
 
 The `bootsel` command (`nuttx/apps/bootsel`) restarts into BOOTSEL (`RPI-RP2`) through the board's
 `nano_reset_usb_boot()` (`include/nano_reset.h`), the boot ROM's `reset_usb_boot(0, 0)` (no activity
@@ -530,6 +533,47 @@ compatibility layer (next section). They behave as in the Zephyr version:
   error); the words left in the FIFO are dropped.
 - The stream does not change the ODRs (`imu start` sets them and they stay after the stop, as in
   the Zephyr version).
+
+## The RP2040's divider, `memcpy` and `memset` (patches 0009 and 0010)
+
+Both are Kconfig symbols of patches of NuttX (`nuttx/patches/nuttx/`), selected by options of the board's
+Kconfig. With the patches' symbols off, the patched code is upstream's.
+
+- **Divider** (the board's `CONFIG_NANO_HW_DIVIDER`, default y): the integer divisions the compiler emits
+  (`__aeabi_idiv`, `__aeabi_idivmod`, `__aeabi_uidiv`, `__aeabi_uidivmod`, `__aeabi_ldivmod`,
+  `__aeabi_uldivmod`) go to the Pico SDK's `divider_hardware.S` (from `nuttx/pico-sdk`, built with the
+  minimal headers of the board's `src/pico_sdk`) through `ld --wrap` (`scripts/Make.defs`). The routines
+  do not mask interrupts (`PICO_DIVIDER_DISABLE_INTERRUPTS` 0); when an interrupt handler divides in the
+  middle of a division, the routine sees DIRTY and saves the divider itself. When a task is switched out
+  in the middle of one, `RP2040_HW_DIVIDER` of patch 0009 saves it: every switch on the ARMv6-M goes
+  through `arm_doirq()`, which, when the task changes, keeps the old task's divider (only when DIRTY is
+  set) in 20 bytes of `struct xcptcontext` and restores the new one's (a task that was not dividing comes
+  back with DIRTY clear). The last switch of `arm_sigdeliver()` saves it too. The FreeRTOS build's Pico
+  SDK port saves the four words at every switch. A division by zero gives the Pico SDK routines' results
+  (for 32 bits a saturated quotient and a remainder of 0, for 64 bits the same as libgcc's; the same in
+  the three builds). The routines use only the SIO and the stack, so they work from the start of
+  `__start()`, in interrupt handlers and in the fatal error handling. `build.sh` checks that the six
+  `__wrap_*` are there and that no libgcc division (`__divsi3` and so on) is in the image.
+- **`memcpy` and `memset`** (the board's `CONFIG_NANO_ROM_MEM_OPS`, default y): `RP2040_ROM_MEM_OPS` of
+  patch 0010 selects `LIBC_ARCH_MEMCPY` and `LIBC_ARCH_MEMSET`, and `rp2040_rom_mem_*` in the chip's
+  directory jump from `memcpy`, `memset`, `__aeabi_memcpy*` and `__aeabi_memset*` to the boot ROM's
+  routines (split as the Pico SDK's `pico_mem_ops` does). Each routine is looked up in the ROM's function
+  table on its first call and kept in `.bss`, so neither can be called before `.bss` is cleared. GCC
+  turns the loops of `rp2040_start.c` that clear `.bss` and copy `.data` into calls of `memset` and
+  `memcpy`, so the patch puts `START_LOOP_BARRIER()` (an empty asm with a memory clobber) in them, and
+  `build.sh` checks that `__start()` calls neither. The Zephyr build has the same routines as a patch of
+  Zephyr's SoC.
+- On the board (2026-11-18, test images): with the divider and the saving, no mismatch in 250 seconds and
+  about 11.28 million divisions; without the saving, 10 in 40 seconds.
+
+## No signal handlers
+
+The NuttX build's code registers no signal handler (no `sigaction()` or `signal()`, no SIGEV_SIGNAL
+timer, no `kill()` or `pthread_kill()` to run a handler). A load where task switches (wake-ups every
+1 ms and priority changes) overlap a running signal handler froze the board within seconds, with nothing
+in the log (seen on the board, 2026-11-18, with and without the divider changes). The cause has not been
+found and no fix is applied. The present code registers no handler, so normal operation does not take
+this path. Write waits with semaphores, sleeps and blocking I/O.
 
 ## Zephyr API compatibility layer (`compat`)
 

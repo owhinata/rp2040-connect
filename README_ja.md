@@ -43,8 +43,10 @@ source script/setup.sh
 ```
 
 スクリプトは必要に応じて `zephyr/` の下に `.venv`、west ワークスペース（Zephyr v4.5.0 とモジュール）、
-Python パッケージ、Zephyr SDK を用意し、現在のシェルに `ZEPHYR_SDK_INSTALL_DIR` と `west` の
-エイリアスを設定します。新しいターミナルでは再度読み込んでください。
+Python パッケージ、Zephyr SDK を用意し、Zephyr とモジュールにこのリポジトリのローカルのパッチ
+（`zephyr/manifest/zephyr/patches.yml`）を当て、現在のシェルに `ZEPHYR_SDK_INSTALL_DIR` と `west` の
+エイリアスを設定します。新しいターミナルでは再度読み込んでください。パッチの内容と戻し方は
+[ドライバーの説明](zephyr/app/usb-console/drivers/README_ja.md) の「Zephyr へのローカルのパッチ」にあります。
 
 ## ビルドと書き込み
 
@@ -53,12 +55,15 @@ west build -b arduino_nano_connect app/usb-console -d build/usb-console
 west flash -d build/usb-console -r uf2
 ```
 
-構成は `zephyr/app/usb-console/prj.conf` の 1 つだけです。`memcpy`・`memset` はブート ROM のルーチンを使います
-（`CONFIG_NANO_ROM_MEM_OPS`、既定で有効。無効にすると C ライブラリのループ）。
+構成は `zephyr/app/usb-console/prj.conf` の 1 つだけです。`memcpy`・`memset` はブート ROM のルーチン
+（`CONFIG_RP2040_ROM_MEM_OPS`）、整数の割り算はハードウェアの除算器（`CONFIG_NANO_HW_DIVIDER`）を使い、
+`nina passthrough confirm` は `CONFIG_NANO_NINA_PASSTHROUGH` で入ります（どれも既定で有効）。
 
 書き込みの前に、ボードを USB に接続してブートローダーモード（`RPI-RP2` という USB
-ストレージが現れる状態）にします。RESET ボタンを 2 回押しても入れない場合は、`REC` と `GND` を
-ジャンパー線で接続したまま RESET ボタンを押し、ストレージが現れたらジャンパー線を外します。
+ストレージが現れる状態）にします。ファームウェアが動いていれば、シェルで `bootsel` を実行します（3 つの版とも。
+ストレージがマウントされるまで数秒かかります）。シェルが応答しないときは RESET ボタンを素早く 2 回押します。
+それでも入れない場合は、`REC` と `GND` をジャンパー線で接続したまま RESET ボタンを押し、ストレージが現れたら
+ジャンパー線を外します。
 
 `zephyr/app/blink` は `led0` を 500 ms ごとに切り替える最小のサンプルです。
 
@@ -66,9 +71,31 @@ west flash -d build/usb-console -r uf2
 west build -b arduino_nano_connect app/blink -d build/blink
 ```
 
-NINA-W102 側は、Arduino の NINA ファームウェア 3.0.2 に 2 件の修正を当てたものを前提に
-しています。ビルドと注意点は [NINA ファームウェアの説明](firmware/nina-fw/README.md) を参照して
-ください。ボードに入っているバージョンは `nina version` で確認できます。
+NINA-W102 側は、Arduino の NINA ファームウェア 3.0.2 にこのリポジトリのパッチ（0001〜0006）を当てたものを
+前提にしています。0003〜0006 の追加機能（接続中のスキャンで接続を保つ、ソケットの事象の通知など）が無い
+ファームウェアでも、ドライバーは従来どおりに動きます。ビルドと注意点は [NINA ファームウェアの説明](firmware/nina-fw/README.md)
+を参照してください。`nina version` の 1 行目がバージョン、2 行目（`NINA capabilities: 0x… (in use 0x…)`）が
+モジュールの追加機能のビットと使っているビットです。
+
+### NINA のファームウェアの読み書き
+
+`nina passthrough confirm` でボードが再起動し、USB のシリアルが NINA の UART に繋がります（3 つの版とも。
+RP2040 のファームウェアと KV はそのまま）。PC の esptool で読み書きします（下の例はリポジトリのルートで実行）。esptool 5.3.0 は `--before no-reset` では
+繋がらないので、RTS を有効にしたままにする設定ファイルを使います。
+
+```bash
+printf '[esptool]\ncustom_reset_sequence = R0|D1|W0.2|R1|W0.6\n' > esptool.cfg
+export ESPTOOL_CFGFILE=$PWD/esptool.cfg
+esptool --port <ポート> --baud 921600 --before default-reset --after no-reset \
+  read-flash 0 0x200000 firmware/nina-fw/images/backup.bin      # 退避（約 26 秒）
+esptool --port <ポート> --baud 921600 --before default-reset --after no-reset \
+  write-flash 0 firmware/nina-fw/source/NINA_W102.bin           # 書き込み（約 20 秒）
+stty -F <ポート> 300                                             # 中継を抜ける
+```
+
+ポートを 300 bps にして閉じるか RESET で、通常の起動に戻ります。退避したファイルは認証情報を含みうるので
+公開しないでください（`firmware/nina-fw/images/` は Git の管理外）。Arduino の SerialNINAPassthrough スケッチは
+要りません。
 
 ## 使い方
 
@@ -97,7 +124,8 @@ net iface
 - パスフレーズは端末に表示されます。`wifi cred list` でも表示されます。
 - `wifi connect` は接続だけを行い、設定を保存しません。
 - `wifi disconnect` で切断した場合は、次の起動か手動接続まで再接続しません。
-- `wifi scan` は接続を一時的に切り、終わると保存済みの設定で接続し直します。
+- `wifi scan` は、NINA のファームウェアにパッチ 0004 があれば接続を保ちます。無ければ接続を一時的に切り、
+  終わると保存済みの設定で接続し直します。
 
 PC 側の Wi-Fi アダプターを一時的な AP にするには `script/wifi_ap.sh` が使えます。
 
@@ -182,7 +210,9 @@ kv delete imu.port
 | `imu cal` / `imu cal reload` / `imu cal zero` | `sensor get` / `stream` の変換の表示、KV の読み直し、静止時の角速度バイアスの取り直し |
 | `ntp status` | PC 時刻との同期の状態 |
 | `wifi ...`、`net ...` | Wi-Fi と IP の操作（Zephyr 標準） |
-| `nina version` | NINA ファームウェアのバージョン |
+| `nina version` | NINA ファームウェアのバージョンと追加機能のビット |
+| `nina passthrough confirm` | USB のシリアルを NINA の UART に中継するモードで再起動（esptool 用） |
+| `bootsel` | BOOTSEL（`RPI-RP2`）で再起動 |
 | `kv set` / `sethex` / `get` / `delete` | KV ストレージ |
 | `sensor ...` | センサーの単発取得・ストリーム・属性（Zephyr 標準を拡張） |
 | `i2c_dma mode` / `stats` | I²C 読み出しの DMA 切り替えと統計 |
@@ -284,8 +314,7 @@ Wi-Fi 接続後は TCP ポート 23 で Telnet のシェルを利用できます
 Zephyr の Settings/NVS に保存します。キーは英数字、`_`、`-`、`.` の 1〜32 文字、値は
 1〜128 バイトです。`set` はテキスト、`sethex` は 16 進数のバイト列を保存し、`get` は 16 進数で
 表示します。`sys.` で始まるキーは内部用です。データは暗号化されません。Wi-Fi の認証情報も
-同じ 8 KiB の領域に保存されます。NuttX 版と FreeRTOS 版も同じ場所に同じ形式で保存するので、版を書き換えても
-KV は残ります。
+同じ 8 KiB の領域に保存されます。
 
 ### ログ
 
@@ -328,10 +357,11 @@ OS に依存しない部分のテスト（`common/tests/run.sh`）を先に実�
 | `zephyr/app/blink/` | LED 点滅のサンプル |
 | `zephyr/script/` | 環境構築、ホストテスト |
 | `nuttx/` | NuttX 版（ボード定義、ドライバー、アプリ、パッチ、スクリプト、ホストテスト） |
-| `common/` | 3 つの版が同じファイルを使うソース（`imu/`: 取得サービス、送信、時刻同期、校正、Wi-Fi のプロファイル、KV の API と `kv` コマンド。`drivers/`: LSM6DSO のドライバー、sensor シェル、NINA の OS に依存しないコア、I2C0・DMA の OS に依存しないコア（NuttX 版と FreeRTOS 版が使う）、ブート ROM の `memcpy`・`memset`（Zephyr 版と NuttX 版）。`compat/`: NuttX 版と FreeRTOS 版が使う Zephyr の API の互換層の OS に依存しない部分と Zephyr のライブラリーの写し。`shell/`・`log/`: シェルのコマンド処理と RAM ログ（NuttX 版と FreeRTOS 版））と、そのホストテスト（`tests/`。`tests/run.sh` を各版の `host_tests.sh` が呼ぶ）。構成は [設計書](design/imu-raw-mqtt-design-ja.md) の §12 |
+| `common/` | 3 つの版が同じファイルを使うソース（`imu/`: 取得サービス、送信、時刻同期、校正、Wi-Fi のプロファイル、KV の API と `kv` コマンド。`drivers/`: LSM6DSO のドライバー、sensor シェル、NINA の OS に依存しないコア、I2C0・DMA の OS に依存しないコア（NuttX 版と FreeRTOS 版が使う）。`compat/`: NuttX 版と FreeRTOS 版が使う Zephyr の API の互換層の OS に依存しない部分と Zephyr のライブラリーの写し。`shell/`・`log/`: シェルのコマンド処理と RAM ログ（NuttX 版と FreeRTOS 版））と、そのホストテスト（`tests/`。`tests/run.sh` を各版の `host_tests.sh` が呼ぶ）。構成は [設計書](design/imu-raw-mqtt-design-ja.md) の §12 |
 | `openmv/` | OpenMV 版 MicroPython のビルド環境（[`openmv/README_ja.md`](openmv/README_ja.md)） |
 | `freertos/` | Pico SDK + FreeRTOS 版（ビルド環境、アプリ、互換層の FreeRTOS の部分、ドライバー、スクリプト、ホストテスト。[`freertos/README_ja.md`](freertos/README_ja.md)） |
 | `zephyr/manifest/west.yml` | Zephyr とモジュールのバージョン |
+| `zephyr/manifest/zephyr/` | Zephyr とモジュールへのローカルのパッチ（`patches.yml`、`patches/`） |
 | `design/` | 設計と調査手順 |
 | `firmware/nina-fw/` | NINA ファームウェアの修正とビルド |
 | `host/` | PC 側のツール（受信の診断、記録、校正）と、表示用のアプリ `ImuStudio` |
@@ -357,8 +387,7 @@ OS に依存しない部分のテスト（`common/tests/run.sh`）を先に実�
   コマンドと NuttX 版のコマンドの対応表、エラー番号（errno）の対応表、Zephyr 版との違いもそこにあります。
 - PC 側のツール（`host/` の `imu-host`、`ImuStudio`）は、どちらのファームウェアにも使えます
   （[`host/README_ja.md`](host/README_ja.md) の「ボードのファームウェア」）。
-- KV（設定、校正値、Wi-Fi の資格情報）は Zephyr 版と同じ場所・同じ形式なので、版を書き換えても残ります。
-  KV の領域に別のデータ（NuttX 版の以前の形式など）があると、NuttX 版は KV を使わず、`kv wipe confirm` で消して
+- KV の領域に別のデータ（NuttX 版の以前の形式など）があると、NuttX 版は KV を使わず、`kv wipe confirm` で消して
   から登録し直します（`nuttx/README_ja.md` の「Zephyr 版からの移し替え」）。
 - 設計上の違いは [設計書](design/imu-raw-mqtt-design-ja.md) の §11 にあります。
 
@@ -368,8 +397,7 @@ OS に依存しない部分のテスト（`common/tests/run.sh`）を先に実�
 [`freertos/`](freertos/README_ja.md) にあります。計測、MQTT の送信、時刻同期、KV、校正、Wi-Fi、Telnet のシェルは
 Zephyr 版と同じ動作で、独自のコマンド（`imu`、`kv`、`ntp`、`nina`、`dmesg`、`i2c_dma`、`sensor`、`wifi cred`）と
 `zperf`（TCP だけ）、`wifi connect`・`disconnect`・`scan`・`status` は構文と出力も同じです。それ以外は短い名前
-（`version`、`reboot`、`ps`、`uptime`、`ifconfig`、`date`）で、`kernel ...`・`net ...` はありません。シェルの `bootsel` で
-BOOTSEL に入るので、書き込みにボタンの操作が要りません。
+（`version`、`reboot`、`ps`、`uptime`、`ifconfig`、`date`）で、`kernel ...`・`net ...` はありません。
 
 - 環境構築、ビルド、書き込み、コマンドの一覧は [`freertos/README_ja.md`](freertos/README_ja.md)、内部の説明と
   Zephyr 版・NuttX 版との違いの表は [`freertos/drivers/README_ja.md`](freertos/drivers/README_ja.md) にあります。
@@ -382,19 +410,22 @@ BOOTSEL に入るので、書き込みにボタンの操作が要りません。
 同じボード、同じ PC、同じ AP、同じ受信器（`imu-host check`）で、ファームウェアを書き換えて同じ日（2026-11-18）に
 測った値です。送信中の値は、6667 Hz の計測を MQTT で送り、USB のシェルから `imu start`、約 60〜70 秒後に `imu stop` で
 測りました。どの回も欠番は 0 でした。TCP の速度は IMU の送信を止めた状態で、約 10 秒、ボードからの送信は 1024 バイトずつです。
+NINA は 0001〜0006 のファームウェアです。
 
 | 項目 | Zephyr 版 | NuttX 版 | FreeRTOS 版 |
 |---|---|---|---|
-| 送信中の `cpu_active` | 51.2〜51.5 %（4 回） | 55.8 %、56.2 %（2 回） | 41.5 %（1 回） |
-| TCP の送信（ボード → PC） | 3.02、3.30 Mbit/s（`zperf`） | 3.19 Mbit/s（`iperf`、1 回） | 3.60 Mbit/s（`zperf`、1 回） |
-| TCP の受信（PC → ボード） | 1.78、1.89 Mbit/s（`zperf`） | 1.14 Mbit/s（`iperf`、1 回） | 2.31 Mbit/s（`zperf`、1 回） |
-| イメージの大きさ（`.bin`） | 364,132 バイト | 279,564 バイト | 227,280 バイト |
+| 送信中の `cpu_active` | 49.4 %、49.5 %（2 回） | 50.8 %、50.8 %（2 回） | 40.3 %、40.4 %（2 回） |
+| 静止時の `cpu_active` | 測っていない | 測っていない | 0.7 %（30 秒、3 回） |
+| TCP の送信（ボード → PC） | 3.36、3.47 Mbit/s（`zperf`） | 3.34 Mbit/s（`iperf`、1 回） | 3.47〜3.84 Mbit/s（`zperf`、3 回） |
+| TCP の受信（PC → ボード） | 1.89、1.99 Mbit/s（`zperf`） | 1.22 Mbit/s（`iperf`、1 回） | 2.41〜2.52 Mbit/s（`zperf`、3 回） |
+| イメージの大きさ（`.bin`） | 370,144 バイト | 284,900 バイト | 231,872 バイト |
 
 - TCP の速度は測定のコマンドが違うので（Zephyr 版と FreeRTOS 版は `zperf`＝iperf 3 の方式、NuttX 版は `iperf`＝
   iperf 2 の方式）、目安としての比較です。
+- `cpu_active` は、機能が同じでもイメージの配置が変わるだけで 1 ポイント程度動きます。
 - FreeRTOS 版の `cpu_active` には、1 ms ごとの tick の割り込みの時間が入ります（Zephyr 版と NuttX 版にはこの割り込みが
-  ありません）。静止時（Wi-Fi 接続、計測なし、30 秒、1 回）は 1.4 % でした。
-- boot2 のフラッシュの読み出しを速くし、`memcpy`・`memset` をブート ROM のものにする前（2026-11-14）は、送信中の
-  `cpu_active` が Zephyr 版 62.6〜63.3 %、NuttX 版 67.7〜67.9 % でした。
+  ありません）。
+- 2026-11-14 の像（boot2 の分周 4、C ライブラリの `memcpy`・`memset` と割り算、NINA はパッチ 0001・0002 のファームウェア）では、
+  送信中の `cpu_active` が Zephyr 版 62.6〜63.3 %、NuttX 版 67.7〜67.9 % でした。
 - `sensor stream` は、Zephyr 版と NuttX 版のどちらでも ODR を上げると `Read failed` で止まりました。Zephyr 版は
   833 Hz 以上、NuttX 版は 3333 Hz 以上です（2026-11-14 の像、watermark 128、USB コンソール、各 1 回）。

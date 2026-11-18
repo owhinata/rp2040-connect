@@ -70,6 +70,7 @@ in section 10.6.
 
 ```sh
 cd zephyr
+source script/setup.sh    # applies the local patches to Zephyr and its modules
 west build -b arduino_nano_connect app/usb-console -d build/usb-console
 ./script/host_tests.sh
 ```
@@ -457,15 +458,20 @@ the two sides agreed within 1.4 ms.
 | Gyro bias tracking (replayed recordings, during a measurement, `sensor stream`, `imu cal zero`) | Done (§10.5) |
 | Gyro bias tracking: on hardware while moving, rejection of out-of-range readings | Not done (replay and host tests only) |
 
-As a guide to load, `cpu_active` while streaming at 6667 Hz with time stamping was 51.2 to 51.5%
-(2026-11-18, about 71 seconds, 4 runs). Before boot2 read the flash faster and `memcpy` and `memset` came from
-the boot ROM it was 62 to 66% (about 72% with the diagnostic USB probe running alongside).
+As a guide to load, `cpu_active` while streaming at 6667 Hz with time stamping was 49.4% and 49.5% (the final
+image of 2026-11-18, about 71 seconds, 2 runs). With the image of 2026-11-14 (boot2 at clock divider 4, the C
+library's `memcpy`, `memset` and division, the NINA firmware with patches 0001 and 0002) it was 62 to 66% (about
+72% with the diagnostic USB probe running alongside).
 
 Most of the hardware checks in the table above were made with images from before the NINA driver moved onto the
-shared core. With the image that uses it (2026-11-18), the first measurement after flashing, Telnet while
-sending, a manual disconnection and its recovery, Telnet after repeated `zperf` downloads, and connecting by
-itself with the key-value store and credentials another build wrote were checked. Recovery from losing the
-access point, a congested receiver and long runs have not been checked with this image.
+shared core. With the image that uses it (2026-11-18), the first measurement after flashing, Telnet and
+`wifi scan` while sending, a manual disconnection and its recovery, Telnet after repeated `zperf` downloads, and
+connecting by itself with the key-value store and credentials another build wrote were checked. With the final
+image (2026-11-18: boot2 at divider 2, the ROM's `memcpy` and `memset`, the divider, support for the new firmware
+with 0001 to 0006, `bootsel`, `nina passthrough`), the first measurement after flashing, the USB and Telnet shells
+after repeated `zperf tcp download stop` during a connection, reading the NINA's flash through the passthrough
+and `bootsel` were checked. Recovery from losing the access point, a congested receiver and long runs have not
+been checked with the final image (in any of the three builds).
 
 ## 9. Open questions
 
@@ -686,6 +692,15 @@ version's; what has been verified on the NuttX port is listed separately in 11.7
   name and the prompt, which are in `host/firmware_profiles.toml`.
 - Error numbers are shown with NuttX's values (not converted to the Zephyr version's), the
   `raw_error` and `error` of the MQTT status included. The map is in `nuttx/README.md`.
+- Changes to NuttX and nuttx-apps are patches in `nuttx/patches/`. Saving the RP2040's divider on context
+  switches (`nuttx/0009`) and the boot ROM's `memcpy` and `memset` (`nuttx/0010`) are the Zephyr build's local
+  patches (section 12) made for NuttX.
+- The NuttX build's code registers no signal handler (no `sigaction()` or `signal()`, no SIGEV_SIGNAL timer,
+  no `kill()` or `pthread_kill()` to run a handler). A load where task switches (wake-ups every 1 ms and
+  priority changes) overlap a running signal handler froze the board within seconds, with nothing in the
+  log (seen on the board, 2026-11-18, with and without the divider changes). The cause has not been found
+  and no fix is applied. The present code registers no handler, so normal operation does not take this
+  path.
 
 ### 11.2 Sockets (usrsock)
 
@@ -803,6 +818,10 @@ Verified on the board (the conditions and values are kept in the records, not in
   sending and TCP rates (2026-11-18; the values are in the README).
 - The Zephyr version, written after the NuttX port, using the key-value store and the stored Wi-Fi
   credentials as they are (2026-11-18).
+- The final image (2026-11-18: the divider, the ROM's `memcpy` and `memset`, support for the new firmware,
+  `bootsel`, `nina passthrough`): the first measurement after flashing, the capability bits of
+  `nina version`, `iperf`, reading the NINA's flash through the passthrough, `bootsel` (Telnet with the
+  image before). Saving the divider was checked with test images (`nuttx/drivers/README.md`).
 
 Not verified:
 
@@ -812,7 +831,8 @@ Not verified:
   and a KV garbage collection during a measurement.
 - Power loss (KV robustness, the RAM log being cleared), unplugging USB, the RESET button, suspending
   the PC.
-- Detecting a disconnection when the AP side stops, a real MQTT broker, running for several hours.
+- Detecting a disconnection when the AP side stops, a congested receiver, a real MQTT broker, running for
+  several hours (with the final image, a manual disconnection and its recovery and a stopped receiver too).
 - Operation from the ImuStudio GUI (its shell part is covered by tests).
 
 ## 12. Shared sources (`common/`)
@@ -826,10 +846,9 @@ host tests (`common/tests/run.sh`) run first in the `host_tests.sh` of each of t
 |---|---|---|
 | `common/imu/` | The acquisition service and `imu`, batches, payload, queue, status, time assignment and time synchronization with `ntp`, calibration and `imu cal`, the MQTT transport, the Wi-Fi profile and automatic reconnection, the key-value API and `kv` | All three (the MQTT client `mqtt_min*` NuttX and FreeRTOS; the Zephyr build uses Zephyr's MQTT library) |
 | `common/drivers/lsm6dso/`, `sensor_shell/` | The LSM6DSO driver with its FIFO stream, the sensor shell | All three |
-| `common/drivers/nina/` | `nina_net.c` and `nina_proto.h`, the NINA core (SPI link, sockets, name resolution) | All three |
+| `common/drivers/nina/` | `nina_net.c` and `nina_proto.h`, the NINA core (SPI link, sockets, name resolution, the socket waits `nina_wait.[ch]`), the decisions of the esptool passthrough `nina_passthrough_logic.h` | All three |
 | `common/drivers/i2c_dw/` | The DMA command words, the I2C0 and DMA core | The command words all three, the core NuttX and FreeRTOS |
 | `common/drivers/stmemsc/` | The glue between ST's driver and Zephyr's I2C API | NuttX and FreeRTOS |
-| `common/drivers/rp2040_rom/` | The bootrom's `memcpy` and `memset` (`CONFIG_NANO_ROM_MEM_OPS`) | Zephyr and NuttX (FreeRTOS uses the Pico SDK's `pico_mem_ops`) |
 | `common/compat/` | The OS-independent part of the compatibility layer and copies of Zephyr's libraries (the key-value store's NVS and settings, the Wi-Fi credentials, getopt and others) | NuttX and FreeRTOS |
 | `common/shell/`, `common/log/` | Zephyr's shell command handling, the `LOG_*` macros and the RAM log's ring | NuttX and FreeRTOS |
 
@@ -845,6 +864,26 @@ The OS parts are implementations of narrow boundary headers in each build's dire
 
 The Zephyr build's I2C0 driver is still its own in `drivers/`; it has not been moved onto the shared core
 (the NINA uses the shared core).
+
+Three low-level RP2040 items are not in `common/` but changes to each OS (the FreeRTOS build keeps the Pico
+SDK's defaults).
+
+| Item | Zephyr build | NuttX build | FreeRTOS build |
+|---|---|---|---|
+| boot2's flash clock (divider 2, 62.5 MHz) | Local patch of hal_rpi_pico | The board's `scripts/Make.defs` | The Pico SDK's boot2 |
+| Integer division on the hardware divider | `CONFIG_NANO_HW_DIVIDER` and a patch of Zephyr (saved in PendSV, only when DIRTY) | `CONFIG_NANO_HW_DIVIDER` and `nuttx/0009` (saved in `arm_doirq()`, only when DIRTY) | `pico_divider` (the port saves four words at every switch) |
+| `memcpy` and `memset` from the boot ROM | `CONFIG_RP2040_ROM_MEM_OPS` (a patch of Zephyr's SoC) | `CONFIG_NANO_ROM_MEM_OPS` and `nuttx/0010` | `pico_mem_ops` |
+
+A division by zero gives the Pico SDK routines' results in every build (for 32 bits a saturated quotient and a
+remainder of 0, for 64 bits the same as libgcc's). The Zephyr build's patches are listed in
+`zephyr/manifest/zephyr/patches.yml`, and `source zephyr/script/setup.sh` applies them with `west patch` (see
+"Local patches of Zephyr" in the [driver notes](../zephyr/app/usb-console/drivers/README.md)).
+
+`nina passthrough confirm` (all three builds) restarts the board with the USB CDC ACM port relayed to the NINA's
+UART, so that esptool on the PC reads and writes the NINA's flash. The decisions (the restart mark, DTR and RTS
+on the module's lines, the rate, the way out) are the shared `nina_passthrough_logic.h`; the hardware part is
+each build's. In every build it is a start of its own that does not start the NINA's SPI link (the UART and
+the SPI share pins).
 
 The NINA firmware's additions (the patches 0003 to 0006 of `firmware/nina-fw/`; the specification is
 "Host interface of 0003 to 0006" in `firmware/nina-fw/README.md`) are handled by the shared core, the
@@ -896,9 +935,13 @@ and NuttX builds in [`freertos/drivers/README.md`](../freertos/drivers/README.md
 - The kernel tick is a periodic SysTick of 1 ms (32 bits; the Zephyr and NuttX builds' tick is 100 µs);
   FreeRTOS's RP2040 port has no tickless mode. A wait is rounded up to ticks plus one tick, as in the
   Zephyr build.
-- Ticks are lost while interrupts are disabled. A `kv set` that included a flash erase lost 46-50 ms
-  (2026-11-17, 3 times). Sleeps, delayed work and time slices are late by that much; the time (TIMER) is
-  not.
+- SysTick interrupts are lost while interrupts are disabled (flash erases and programs). The tick hook
+  compares the count with the TIMER at every tick and, when it is a whole tick behind, pends SysTick again,
+  so that the port's usual handler counts the lost ticks one by one
+  (`freertos/app/usb-console/src/tick_catchup.h`; the tick never gets ahead of the TIMER). Without it a
+  `kv set` that included an erase lost 46-50 ms (2026-11-17, 3 times); with it, "TIMER ms − tick" was 2.8 to
+  3.1 after 90 `kv set` of 100 characters (2026-11-18). `xTaskCatchUpTicks()` is not used: it can be called
+  from tasks only, and the tick hook does not run for the ticks it adds.
 - `cpu_active` is measured with the idle windows of section 11.4. The tick interrupt every 1 ms counts
   as load (the Zephyr and NuttX builds have no such interrupt). The CPU column of `ps` is cumulative since
   the start.
@@ -950,15 +993,19 @@ Verified on the board (2026-11-17, once each):
 
 Checked with the final default image (`-Os`, 1 ms tick, waiting for READY on the interrupt; 2026-11-18, once
 each): the first measurement after flashing, at rest, `zperf` upload and download, `zperf` and Telnet together
-while sending, `selftest`, and the comparison with the Zephyr and NuttX builds on the same day with the same
-steps of the CPU load while sending and the TCP rates (the values are in the README). The other items above,
+while sending, `selftest` (22 items, the tick's catch-up included), the comparison with the Zephyr and NuttX
+builds on the same day with the same steps of the CPU load while sending and the TCP rates (the values are in
+the README), support for the new firmware with 0001 to 0006 (the capability bits, `wifi scan` while connected
+keeping the connection, a manual disconnection and its recovery), reading and writing the NINA's flash through
+the passthrough, and `bootsel`. The other items above,
 such as the receiver dropping the connection and stalling and a Wi-Fi disconnection during a measurement,
 were checked with the image of 2026-11-17 (`-O3`, 100 µs tick, READY polled) and not with the final image.
 
 Not verified:
 
 - Measurements of tens of minutes or more, congestion longer than 10 s, detecting a disconnection when
-  the AP side stops.
+  the AP side stops (with the final image, a stopped receiver too).
+- The tick after a `kv set` during a measurement.
 - The time becoming invalid after a long disconnection, an NTP server given by name.
 - `kv wipe confirm`, the NuttX build reading what the FreeRTOS build stored (the Zephyr build read it on
   2026-11-18).

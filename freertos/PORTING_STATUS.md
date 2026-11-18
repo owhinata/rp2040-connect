@@ -1328,3 +1328,20 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
 - 残り: 文書の更新（README 3 版・ルート、ドライバー説明、設計書、`CLAUDE.md` は更新済み）、FreeRTOS 版の `nina_passthrough.c` の表示に残る
   `--before no_reset` の修正、最終版での確認（AP を落とす切断復帰、受信側の輻輳、長時間。3 版とも）、Z02（I2C、着手前に相談）。
 - 実機: FreeRTOS 版、AP 接続中。NINA は新しいファームウェア（パッチ 0001〜0006）。
+
+## 文書の更新（2026-11-18 の後半の分）
+
+- ユーザーの決定: 最終版での確認（AP を落とす切断復帰、受信側の輻輳、長時間）は今回は行わない（最終の像で性能は測ったので）。
+  設計書の「未確認の範囲」に残す。
+- subagent: ルートの README（性能の節を最終の像の値に、`bootsel`・`nina passthrough confirm`・esptool の手順の小節、オプション名、
+  `setup.sh` がパッチを当てること。日英とも純増 31 行）、`nuttx/README`、3 版のドライバー説明（Zephyr はローカルのパッチの節に書き直し、
+  NuttX は除算器・ROM と「シグナルハンドラーを使わない」＝事実だけで原因は特定していないと記載、FreeRTOS は tick の追いつき・中継・比較表）、
+  設計書 §1・§8・§11・§12・§13、`nuttx-porting`、`firmware/nina-fw/README.md`。`freertos/drivers/nina/nina_passthrough.c` の表示を
+  `(for esptool)` に（ビルド警告 0、`.bin` 231,872 B、ホストテスト 51 項目 ok）。
+- メイン: `freertos/README`（日英）にコマンドの行（`nina version` の 2 行目、`nina passthrough confirm`）、BOOTSEL の入り方、スキャン、
+  esptool の手順（日 170 → 178 行）。subagent の文書は読んでいない。
+- 直していないもの: `common/drivers/nina/nina_passthrough_logic.h` と `freertos/tests/passthrough/main.c` のコメントに残る
+  `--before no_reset`、`freertos/drivers/nina/nina_os.c` の古いコメント（Zephyr・NuttX は 100 µs ごと）、`openmv/README` の BOOTSEL の入り方、
+  `nuttx/script/flash.sh`・`freertos/script/flash.sh` が Zephyr 版・NuttX 版に `bootsel` を送らないこと、Zephyr 版に書き込みのスクリプトが無いこと。
+  Zephyr を上げる手順と `west patch reverse` は文書に書いたが実際には試していない。
+- 実機: FreeRTOS 版（表示の修正の前のビルド）、AP 接続中。

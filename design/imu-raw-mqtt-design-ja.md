@@ -60,6 +60,7 @@ Pico SDK と FreeRTOS で作った版（`freertos/`）の設計上の違いは �
 
 ```sh
 cd zephyr
+source script/setup.sh    # Zephyr とモジュールにローカルのパッチを当てる
 west build -b arduino_nano_connect app/usb-console -d build/usb-console
 ./script/host_tests.sh
 ```
@@ -407,13 +408,16 @@ NTP の往復時間は、送信中で中央値 約 7 ms、推定に使われた�
 | 角速度のバイアスの追従（記録の再生、計測中、`sensor stream`、`imu cal zero`） | 済み（§10.5） |
 | 角速度のバイアスの追従：動かしながらの実機確認、範囲外の拒否 | 未（記録の再生とホストテストのみ） |
 
-負荷の目安として、時刻付与まで含めた 6667 Hz 送信中の `cpu_active` は 51.2〜51.5% だった（2026-11-18、
-約 71 秒 × 4 回）。boot2 の読み出しを速くして `memcpy`・`memset` をブート ROM のものにする前は 62〜66%
-（診断用の USB 照合を並行させると約 72%）。
+負荷の目安として、時刻付与まで含めた 6667 Hz 送信中の `cpu_active` は 49.4%、49.5% だった（2026-11-18 の最終の像、
+約 71 秒 × 2 回）。2026-11-14 の像（boot2 の分周 4、C ライブラリの `memcpy`・`memset` と割り算、NINA はパッチ 0001・0002 の
+ファームウェア）では 62〜66%（診断用の USB 照合を並行させると約 72%）。
 
 上の表の実機の確認は、ほとんどが NINA のドライバーを共有のコアへ載せ替える前の像のもの。載せ替えた像（2026-11-18）では、
-書き込み直後の送信、送信中の Telnet、手動の切断と復帰、`zperf` の受信を繰り返したあとの Telnet、ほかの版が書いた KV と
-資格情報での自動接続を確かめた。AP 断からの復帰、受信側の輻輳、長時間の連続はこの像では未確認。
+書き込み直後の送信、送信中の Telnet と `wifi scan`、手動の切断と復帰、`zperf` の受信を繰り返したあとの Telnet、ほかの版が
+書いた KV と資格情報での自動接続を確かめた。最終の像（2026-11-18。boot2 の分周 2、ROM の `memcpy`・`memset`、除算器、
+新しいファームウェア（0001〜0006）への対応、`bootsel`、`nina passthrough`）では、書き込み直後の送信、接続中の
+`zperf tcp download stop` の繰り返しのあとの USB と Telnet のシェル、中継での NINA の flash の読み出し、`bootsel` を確かめた。
+AP 断からの復帰、受信側の輻輳、長時間の連続は最終の像では未確認（3 版とも）。
 
 ## 9. 未決定事項
 
@@ -601,6 +605,13 @@ NuttX 版の確認の範囲は §11.7 に分けて書く。
   USB コンソールの名前とプロンプトだけになり、`host/firmware_profiles.toml` に書く。
 - エラー番号は NuttX の値のまま表示する（Zephyr 版の値へ変換しない）。MQTT の status の
   `raw_error`・`error` も NuttX の値になる。対応表は `nuttx/README_ja.md` にある。
+- NuttX 本体と nuttx-apps への変更は `nuttx/patches/` のパッチにする。RP2040 の除算器の切り替え時の退避（`nuttx/0009`）と
+  ブート ROM の `memcpy`・`memset`（`nuttx/0010`）は、Zephyr 版のローカルのパッチ（§12）と同じ変更を NuttX に入れたもの。
+- NuttX 版のコードはシグナルハンドラーを登録しない（`sigaction()`・`signal()`、SIGEV_SIGNAL のタイマー、`kill()`・
+  `pthread_kill()` でハンドラーを走らせる使い方をしない）。シグナルハンドラーの実行中にタスクの切り替え（1 ms ごとの起床と
+  優先度の入れ替え）が重なる負荷を掛けると、数秒以内にログを残さずに固まることを実機で確かめた（2026-11-18。除算器の
+  変更の有無に依らない）。原因は特定しておらず、修正も入れていない。今のコードにはハンドラーの登録が無く、通常の動作では
+  この経路を通らない。
 
 ### 11.2 ソケット（usrsock）
 
@@ -694,13 +705,17 @@ Zephyr 版は起動からの累積。区間の割合は `/proc/<tid>/critmon` �
 - `imu-host` の `record`・`check`・`write`（USB と Telnet）と、NuttX 版で取った記録の `calib` による読み込み。
 - Zephyr 版・FreeRTOS 版と同じ日・同じ手順での、送信中の CPU 負荷と TCP の速度の比較（2026-11-18。値は README）。
 - NuttX 版の後で書き込んだ Zephyr 版が、KV と保存済みの Wi-Fi の資格情報をそのまま使うこと（2026-11-18）。
+- 最終の像（2026-11-18。除算器、ROM の `memcpy`・`memset`、新しいファームウェアへの対応、`bootsel`、`nina passthrough`）:
+  書き込み直後の送信、`nina version` の機能のビット、`iperf`、中継での NINA の flash の読み出し、`bootsel`（Telnet は 1 つ前の像で確認）。
+  除算器の退避は試験の像で確かめた（`nuttx/drivers/README_ja.md`）。
 
 未確認の範囲:
 
 - 今の像での Zephyr 版との NTP の往復、`sensor stream` の高い ODR の比較。
 - FIFO のエラーからの自動再開、CQE のあふれ、計測中の KV の整理など、実機で起こしていない経路。
 - 電源断（KV の耐性、RAM ログが消えること）、USB の抜き差し・RESET ボタン・PC のサスペンド。
-- AP 側を止めたときの切断の検出、実際の MQTT ブローカー、数時間以上の運用。
+- AP 側を止めたときの切断の検出、受信側の輻輳、実際の MQTT ブローカー、数時間以上の運用（最終の像では、手動の切断と
+  復帰、受信器の停止も未確認）。
 - ImuStudio の GUI からの操作（シェルの部分はテストで確認）。
 
 ## 12. 共有ソース（`common/`）
@@ -714,10 +729,9 @@ Zephyr の名前のまま提供する互換層の上でビルドする。ホス�
 |---|---|---|
 | `common/imu/` | 取得サービスと `imu`、バッチ・ペイロード・キュー・status、時刻の対応付けと時刻同期・`ntp`、校正と `imu cal`、MQTT の送信、Wi-Fi のプロファイルと自動再接続、KV の API と `kv` | 3 版（MQTT のクライアント `mqtt_min*` は NuttX 版と FreeRTOS 版。Zephyr 版は Zephyr の MQTT ライブラリー） |
 | `common/drivers/lsm6dso/`、`sensor_shell/` | LSM6DSO のドライバー本体と FIFO のストリーム、sensor シェル | 3 版 |
-| `common/drivers/nina/` | `nina_net.c`・`nina_proto.h`、NINA のコア（SPI の転送層、ソケット、名前解決） | 3 版 |
+| `common/drivers/nina/` | `nina_net.c`・`nina_proto.h`、NINA のコア（SPI の転送層、ソケット、名前解決、ソケットの待ち `nina_wait.[ch]`）、esptool の中継の判断 `nina_passthrough_logic.h` | 3 版 |
 | `common/drivers/i2c_dw/` | DMA のコマンド語、I2C0 と DMA のコア | コマンド語は 3 版、コアは NuttX 版と FreeRTOS 版 |
 | `common/drivers/stmemsc/` | ST のドライバーと Zephyr の I2C の API のつなぎ | NuttX 版と FreeRTOS 版 |
-| `common/drivers/rp2040_rom/` | ブート ROM の `memcpy`・`memset`（`CONFIG_NANO_ROM_MEM_OPS`） | Zephyr 版と NuttX 版（FreeRTOS 版は Pico SDK の `pico_mem_ops`） |
 | `common/compat/` | 互換層の OS に依存しない部分と、Zephyr のライブラリーの写し（KV の NVS と settings、Wi-Fi の資格情報、getopt など） | NuttX 版と FreeRTOS 版 |
 | `common/shell/`、`common/log/` | Zephyr のシェルのコマンド処理の再現、`LOG_*` と RAM ログのリング | NuttX 版と FreeRTOS 版 |
 
@@ -731,6 +745,22 @@ OS ごとの部分は、狭い境界のヘッダーの実装として各版の�
   生成）、`kv_store_os.h`（`kv wipe` の有無）。
 
 Zephyr 版の I2C0 のドライバーは、今は自分の `drivers/` のもので、共有のコアには載せ替えていない（NINA は共有のコアを使う）。
+
+RP2040 の低い層の 3 つは `common/` に置かず、各 OS への変更として持つ（FreeRTOS 版は Pico SDK の既定のまま）。
+
+| 項目 | Zephyr 版 | NuttX 版 | FreeRTOS 版 |
+|---|---|---|---|
+| boot2 のフラッシュのクロック（分周 2、62.5 MHz） | hal_rpi_pico へのローカルのパッチ | ボードの `scripts/Make.defs` | Pico SDK の boot2 |
+| 整数の割り算をハードウェアの除算器で | `CONFIG_NANO_HW_DIVIDER` + Zephyr へのパッチ（PendSV で DIRTY のときだけ退避） | `CONFIG_NANO_HW_DIVIDER` + `nuttx/0009`（`arm_doirq()` で DIRTY のときだけ退避） | `pico_divider`（ポートが切り替えのたびに 4 語を退避） |
+| `memcpy`・`memset` をブート ROM で | `CONFIG_RP2040_ROM_MEM_OPS`（Zephyr の SoC へのパッチ） | `CONFIG_NANO_ROM_MEM_OPS` + `nuttx/0010` | `pico_mem_ops` |
+
+0 での割り算は、どの版も Pico SDK のルーチンの結果（32 ビットは飽和した商と余り 0、64 ビットは libgcc と同じ）。Zephyr 版の
+パッチは `zephyr/manifest/zephyr/patches.yml` にあり、`source zephyr/script/setup.sh` が `west patch` で当てる（仕組みは
+[ドライバーの説明](../zephyr/app/usb-console/drivers/README_ja.md)の「Zephyr へのローカルのパッチ」）。
+
+`nina passthrough confirm`（3 版）は、USB の CDC ACM を NINA の UART に中継するモードで再起動する（PC の esptool で NINA の
+flash を読み書きする）。判断（再起動の印、DTR・RTS とモジュールの線、レート、出口）は共有の `nina_passthrough_logic.h`、
+ハードウェアの部分は各版。どの版も通常の起動とは別の起動で、NINA の SPI を起こさない（UART と SPI がピンを共有するため）。
 
 NINA のファームウェアの追加機能（`firmware/nina-fw/` のパッチ 0003〜0006。仕様は `firmware/nina-fw/README.md` の
 「Host interface of 0003 to 0006」）は、共有のコアが 3 版で同じに扱う（詳しくは
@@ -772,8 +802,11 @@ NINA のファームウェアの追加機能（`firmware/nina-fw/` のパッチ 
   センサーの時計、壁時計、CPU 負荷の時間の源もすべて TIMER。
 - カーネルの tick は 1 ms（32 ビット）の周期の SysTick（Zephyr 版・NuttX 版の tick は 100 µs）。FreeRTOS の RP2040
   ポートは tickless に対応していない。待ち時間を tick に切り上げて 1 tick 足す規則は Zephyr 版と同じ。
-- 割り込みを止めている間は tick が数えられない。フラッシュの消去を含む `kv set` 1 回で 46〜50 ms 遅れた
-  （2026-11-17、3 回）。その分 sleep・遅延ワーク・時分割が遅れるが、時刻（TIMER）は遅れない。
+- 割り込みを止めている間（フラッシュの消去・書き込み）は SysTick の割り込みが失われる。tick フックが tick ごとに TIMER と
+  比べ、1 tick 以上遅れていれば SysTick を保留にし直して、失われた tick をポートの通常のハンドラーで 1 つずつ数えさせる
+  （`freertos/app/usb-console/src/tick_catchup.h`。tick は TIMER より先に進まない）。これが無いと `kv set` 1 回で 46〜50 ms
+  遅れていた（2026-11-17、3 回）。入れたあとは、100 文字の `kv set` 90 回のあとも「TIMER の ms − tick」は 2.8〜3.1 だった
+  （2026-11-18）。`xTaskCatchUpTicks()` は、タスクからしか呼べず、補った tick で tick フックが呼ばれないので使わない。
 - `cpu_active` は §11.4 と同じアイドルの窓の方式で測る。1 ms ごとの tick の割り込みは負荷に入る（Zephyr 版・
   NuttX 版にはこの割り込みが無い）。`ps` の CPU 列は起動からの累積。
 - NINA の READY は GPIO10 のエッジ割り込みで待つ（Zephyr 版・NuttX 版も同じ）。
@@ -811,13 +844,15 @@ NINA のファームウェアの追加機能（`firmware/nina-fw/` のパッチ 
 - 校正値の読み込み、`imu cal` の各サブコマンド、レンジ変更での切り替え、`sensor` の `get`・`attr_set`・`stream` と計測との排他。
 
 最終の既定の像（`-Os`、tick 1 ms、READY の割り込み待ち。2026-11-18、各 1 回）で確かめたこと: 書き込み直後の送信、静止時、
-`zperf` の送信と受信、送信中の `zperf` と Telnet の併用、`selftest`、Zephyr 版・NuttX 版と同じ日・同じ手順での送信中の
-CPU 負荷と TCP の速度の比較（値は README）。受信器の切断と読み出しの停止、計測中の Wi-Fi の切断などの上の項目は
+`zperf` の送信と受信、送信中の `zperf` と Telnet の併用、`selftest`（22 項目。tick の追いつきを含む）、Zephyr 版・NuttX 版と
+同じ日・同じ手順での送信中の CPU 負荷と TCP の速度の比較（値は README）、新しいファームウェア（0001〜0006）への対応（機能の
+ビット、接続中の `wifi scan` で接続が保たれること、手動の切断と復帰）、中継での NINA の flash の読み出しと書き込み、`bootsel`。受信器の切断と読み出しの停止、計測中の Wi-Fi の切断などの上の項目は
 2026-11-17 の像（`-O3`、tick 100 µs、READY のポーリング）で確かめたもので、最終の像では未確認。
 
 未確認の範囲:
 
-- 数十分以上の連続の計測、10 秒を超える輻輳、AP 側を止めたときの切断の検出。
+- 数十分以上の連続の計測、10 秒を超える輻輳、AP 側を止めたときの切断の検出（最終の像では受信器の停止も未確認）。
+- 計測中の `kv set` のあとの tick。
 - 切断が続いたときに時刻が無効になること、NTP サーバーを名前で指定する経路。
 - `kv wipe confirm`、FreeRTOS 版が書いた KV を NuttX 版が読むこと（Zephyr 版は 2026-11-18 に読めた）。
 - フラッシュの消去中の異常停止、NINA が応答しないとき。

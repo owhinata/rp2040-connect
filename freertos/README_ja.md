@@ -86,8 +86,8 @@ freertos/script/flash.sh [--build] [--wait 秒] [UF2]
 BOOTSEL への入り方:
 
 - このファームウェアが動いているとき: `bootsel` コマンド。
-- Zephyr 版・NuttX 版が動いているとき: RESET ボタンを素早く 2 回押します。効かなければ、REC を GND に
-  つないで RESET を押します。
+- Zephyr 版・NuttX 版が動いているとき: そのシェルの `bootsel` コマンド。2026-11-18 より前のイメージでは、RESET ボタンを
+  素早く 2 回押します。効かなければ、REC を GND につないで RESET を押します。
 - OpenMV 版が動いているとき: REPL で `import machine; machine.bootloader()` を実行します。
 
 **書き込む前に**: 書き込むと Zephyr 版・NuttX 版・OpenMV 版のファームウェアは消えます。フラッシュの
@@ -118,7 +118,8 @@ USB の CDC ACM ポートがコンソールです（UART0 は使いません）�
 | `dmesg` | RAM ログ（8 KB。再起動をまたいで残る） |
 | `kv set <key> <value>`、`kv sethex <key> <hex>`、`kv get <key>`、`kv delete <key>` | KV（設定と校正値）の読み書き。`get` は 16 進で表示 |
 | `kv wipe confirm` | KV の領域全体（Wi-Fi の資格情報も）を消す |
-| `nina version` | NINA-W102 のファームウェアの版 |
+| `nina version` | NINA-W102 のファームウェアの版と、対応機能（2 行目。`in use` がこのファームウェアの使う機能） |
+| `nina passthrough confirm` | NINA の中継モードで再起動（USB のシリアル ⇄ NINA の UART。`esptool` で NINA のファームウェアを読み書きする）。抜けるにはポートを 300 bps にして閉じるか RESET |
 | `i2c_dma mode [on\|off]`、`i2c_dma stats` | I2C0 の DMA 読み出しの切り替えと表示、回数の表示 |
 | `fault` | 前回の実行を止めた異常停止の記録 |
 | `free` | FreeRTOS のヒープと `malloc()` の使用量 |
@@ -144,6 +145,13 @@ USB の CDC ACM ポートがコンソールです（UART0 は使いません）�
   （例: `sensor attr_set lsm6dsox@6a accel_xyz sampling_frequency 104 gyro_xyz sampling_frequency 104`）。ストリームは
   `sensor stream lsm6dsox@6a on fifo_wm incl` と `off` です。計測中（`imu start`）は `sensor` の読み出しは使えません（-16）。
 - `devmem` で存在しないアドレスを読むと異常停止します（例: `devmem 30000000`）。
+
+- 接続中の `wifi scan` は接続を切りません（NINA のファームウェアが対応している場合。`nina version` の 2 行目で分かります）。スキャンの
+  間は無線が AP のチャネルを離れるので、通信は遅くなります。
+- NINA のファームウェアの読み書き: `nina passthrough confirm` のあと、PC の `esptool` をこのボードのシリアルポートに対して使います。
+  `esptool` には、`[esptool]` と `custom_reset_sequence = R0|D1|W0.2|R1|W0.6` の 2 行を書いた設定ファイルを `ESPTOOL_CFGFILE` で渡し、
+  `--before default-reset --after no-reset` を付けます（例: `read-flash 0 0x200000 <ファイル>`、`write-flash 0 NINA_W102.bin`）。
+  中継モードはフラッシュ（KV を含む）に何も書きません。読み出したファイルには Wi-Fi の資格情報が含まれうるので、公開しないでください。
 
 ## ディレクトリー
 

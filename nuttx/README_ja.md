@@ -17,7 +17,7 @@
 - 各機能の動作の詳しい説明: [`design/nuttx-porting-ja.md`](../design/nuttx-porting-ja.md)
 - ドライバー（NINA、I2C0、LSM6DSOX）と Zephyr の API の互換層: [`drivers/README_ja.md`](drivers/README_ja.md)
 - 設計の要約: 設計書 [§11](../design/imu-raw-mqtt-design-ja.md)（「11. NuttX 版」）
-- Zephyr 版との性能の比較: ルートの [`README_ja.md`](../README_ja.md) の「Zephyr 版と NuttX 版の性能の違い」
+- Zephyr 版との性能の比較: ルートの [`README_ja.md`](../README_ja.md) の「3 つの版の性能」
 - 移植の計画・経緯・確かめた事実（作業ログ）: [`PORTING_PLAN.md`](PORTING_PLAN.md)、
   [`PORTING_STATUS.md`](PORTING_STATUS.md)、[`PORTING_NOTES.md`](PORTING_NOTES.md)
 
@@ -42,7 +42,7 @@ source nuttx/script/setup.sh
 |---|---|---|
 | `nuttx/nuttx` | NuttX 本体 | タグ `nuttx-13.1.0`（shallow clone） |
 | `nuttx/nuttx-apps` | NuttX のアプリ | タグ `nuttx-13.1.0`（shallow clone） |
-| `nuttx/pico-sdk` | Raspberry Pi Pico SDK のうち boot2 のビルドが読む部分だけ（約 4 MB）。全体を取得済みならそのまま使う | タグ `2.2.0`（部分取得と sparse checkout） |
+| `nuttx/pico-sdk` | Raspberry Pi Pico SDK のうち boot2 と除算器のルーチン（`divider_hardware.S`）のビルドが読む部分だけ（約 4 MB）。全体を取得済みならそのまま使う。以前の部分取得に足りないファイルは足す（そのときネットワークが要る） | タグ `2.2.0`（部分取得と sparse checkout） |
 | `nuttx/toolchain/` | Arm GNU Toolchain（arm-none-eabi、x86_64 Linux 用） | 13.2.Rel1（SHA-256 を検証） |
 | `nuttx/.venv` | Python の venv（NuttX の `menuconfig`・`olddefconfig` が使う kconfiglib） | kconfiglib 14.1.0 |
 | `nuttx/stmemsc/` | ST の LSM6DSO レジスタドライバー（`lsm6dso_reg.c`、`lsm6dso_reg.h`） | lsm6dso-pid v3.2.2（Zephyr の hal_st と同じ内容。SHA-256 を検証） |
@@ -68,6 +68,8 @@ source nuttx/script/setup.sh
 | `nuttx/0006-telnet-crlf-line-end` | Telnet の出力の改行を CR LF にする |
 | `nuttx/0007-sched-critmon-cpuload-in-perf-counts` | `ps` の CPU 列の積算を 1 µs 単位で行い、終了したタスクで値が壊れるのを直す |
 | `nuttx/0008-sched-critmon-irqcount-only-for-csection-busywait` | `SCHED_CRITMONITOR` が `IRQCOUNT` を選ぶのを、使うときだけにする |
+| `nuttx/0009-armv6m-rp2040-save-hw-divider-on-context-switch` | タスクの切り替えで RP2040 の除算器を退避・復元する（`RP2040_HW_DIVIDER`） |
+| `nuttx/0010-rp2040-rom-memcpy-memset` | `memcpy`・`memset` をブート ROM のルーチンにする（`RP2040_ROM_MEM_OPS`） |
 | `apps/0001-readline-echo-in-readline` | 行の入力中のエコーを readline が行う |
 | `apps/0002-readline-cr-lf-line-end` | CR、LF、CR LF、LF CR のどれでも 1 回の Enter にする |
 | `apps/0003-readline-ctrl-c` | Ctrl-C で入力中の行を捨てて新しいプロンプトを出す |
@@ -96,15 +98,20 @@ UF2 にします（[`design/nuttx-porting-ja.md`](../design/nuttx-porting-ja.md)
 
 `--menuconfig` で変えた内容は、`--savedefconfig` で保存しないと次の configure で消えます。
 
-`memcpy`・`memset` はブート ROM のルーチンを使います（ボードの Kconfig の `CONFIG_NANO_ROM_MEM_OPS`、既定で有効。
-無効にすると C ライブラリのループ）。
+ボードの Kconfig の次のオプションは既定で有効です。
+
+| オプション | 内容 |
+|---|---|
+| `CONFIG_NANO_ROM_MEM_OPS` | `memcpy`・`memset` をブート ROM のルーチンにする（パッチ 0010。無効にすると C ライブラリのループ）。`build.sh` は `__start()` がそれらを呼ばないことを確かめる |
+| `CONFIG_NANO_HW_DIVIDER` | 整数の割り算を RP2040 のハードウェアの除算器で行う（Pico SDK のルーチン、パッチ 0009。無効にすると libgcc）。`build.sh` は libgcc の割り算がイメージに残っていないことを確かめる |
+| `CONFIG_NANO_NINA_PASSTHROUGH` | `nina passthrough confirm`（下の「そのほかのコマンド」） |
 
 ## 書き込み
 
 UF2 は RP2040 の USB ブートローダー（BOOTSEL。`RPI-RP2` という USB ストレージが現れる状態）から書きます。
-シェルから BOOTSEL に入るコマンドはないので（Zephyr 版と同じ）、毎回手動で BOOTSEL に入れます。
 
-1. ボードを USB に接続し、RESET ボタンを素早く 2 回押します。入らない場合は、`REC` と `GND` を
+1. BOOTSEL に入れます。ファームウェア（3 つの版のどれでも）が動いていれば、シェルで `bootsel` を実行します。
+   シェルが応答しないときは RESET ボタンを素早く 2 回押します。入らない場合は、`REC` と `GND` を
    ジャンパー線で接続したまま RESET ボタンを押し、ストレージが現れたら線を外します。
 2. 書き込みます。
 
@@ -114,7 +121,8 @@ nuttx/script/flash.sh --build    # ビルドしてから書き込む
 ```
 
 `flash.sh` は、UF2 が RP2040 用であることを確かめ、`RPI-RP2` のストレージ（RP2040 のブート ROM のもの）を
-探します。無ければ手動で BOOTSEL に入れる方法を表示してストレージが現れるのを待ちます。ストレージが
+探します。無ければ BOOTSEL に入れる方法を表示してストレージが現れるのを待ちます（`bootsel` は送らないので、
+シェルで自分で実行します）。ストレージが
 マウントされていなければ `udisksctl` でマウントし（sudo 不要）、`INFO_UF2.TXT` を確かめてコピーし、
 NuttX 版の USB コンソールが現れるのを待ってそのパスを表示します。ストレージが複数あるときは止まります。
 
@@ -278,6 +286,7 @@ conversion:
 ```text
 nsh$ nina version
 NINA firmware: 3.0.2
+NINA capabilities: 0x00000007 (in use 0x00000007)
 nsh$ i2c_dma stats
 dma_transfers=... dma_bytes=... dma_errors=0 dma_fallbacks=0
 nsh$ i2c get -a 6a -r 0f
@@ -286,6 +295,11 @@ nsh$ irqstack
 0x20002f88 IRQ 00                           (real size 2048):	unused 1684	usage  364 / 2048 (17 %)
 ```
 
+- `nina version` の 2 行目は、NINA のモジュールの追加機能のビットと使っているビットです（Zephyr 版と同じ）。
+- `nina passthrough confirm` で、USB のシリアルを NINA の UART に中継するモードで再起動します（esptool で NINA の
+  ファームウェアを読み書きする。手順はルートの README の「NINA のファームウェアの読み書き」）。300 bps にして閉じるか RESET で
+  通常の起動に戻ります。
+- `bootsel` で BOOTSEL（`RPI-RP2`）に再起動します。
 - `dmesg` は RAM ログ（8 KiB、`reboot` をまたいで残る）を表示します。行の形式は Zephyr 版のログと同じです。
 - `ps` はスレッドごとの優先度、スタック（STACK・USED・FILLED）と CPU の割合を出します。CPU 列は直近 1〜2 秒の
   重みが大きい移動平均（0.1 % 単位）です（Zephyr 版の `kernel ps` は起動からの累積）。起動からの実行時間の
@@ -314,6 +328,8 @@ iperf -s -B 0.0.0.0
 | `kv set` / `sethex` / `get` / `delete` | 同じ | 保存形式も同じ |
 | （なし） | `kv wipe confirm` | KV の領域を消す。NuttX 版だけ |
 | `nina version` | 同じ | |
+| `nina passthrough confirm` | 同じ | |
+| `bootsel` | 同じ | FreeRTOS 版も同じ |
 | `sensor get` / `attr_set` / `attr_get` / `stream` / `trig` | 同じ | `sensor info` はどちらにも無い |
 | `i2c_dma mode` / `stats` | 同じ | |
 | `dmesg` | 同じ | |
@@ -321,7 +337,7 @@ iperf -s -B 0.0.0.0
 | `wifi connect -s <SSID> -p <パスフレーズ> -k 1` | `wapi psk wlan0 <パスフレーズ> 3` の後に `wapi essid wlan0 <SSID> 1` | |
 | `wifi connect -s <SSID> -k 0` | `wapi essid wlan0 <SSID> 1` | |
 | `wifi disconnect` | `wapi disconnect wlan0` | |
-| `wifi scan` | `wapi scan wlan0` | 接続中は切断として扱い、終わった後で再接続を頼む（Zephyr 版と同じ） |
+| `wifi scan` | `wapi scan wlan0` | NINA のファームウェアにパッチ 0004 が無ければ、接続中は切断として扱い、終わった後で再接続を頼む（Zephyr 版と同じ） |
 | `wifi status` | `wapi show wlan0` と `ifconfig wlan0` | |
 | `net iface` | `ifconfig` | |
 | `zperf tcp upload <PC> 5201 30 1024` | `iperf -c <PC> -t 30 -l 1024`（PC は `iperf -s`） | iperf 2、ポート 5001 |
@@ -442,7 +458,7 @@ Zephyr 版の `i2c write`、`gpio`、`log`、`device`、`history`、`clear`、`r
 nuttx/script/host_tests.sh
 ```
 
-OS に依存しない部分のホストテスト 48 本を PC 上でビルドして実行します。最初の 34 本は 3 つの版で共有する
+OS に依存しない部分のホストテスト 51 本を PC 上でビルドして実行します。最初の 35 本は 3 つの版で共有する
 ソースと、互換層・シェル・RAM ログのリング・KV の共通部分のテスト（最後の `zephyr_copies` は、写した Zephyr の
 ファイルが元と同じことの照合）で、`common/tests/run.sh` が実行します。ボードは不要で、ホストの `cc`（C17）だけを
 使います。ST の `lsm6dso_reg.c`（`setup.sh` が取得）が無ければ、それを使う 3 本（`lsm6dso_driver`、`imu_cal`、
@@ -456,7 +472,7 @@ OS に依存しない部分のホストテスト 48 本を PC 上でビルドし
 |---|---|
 | `boards/arduino-nano-rp2040-connect/` | ボード定義（`configs/imu/defconfig`、`include/board.h`、リンカースクリプト、`src/` の起動処理・時計・I2C0 と DMA の NuttX の部分・KV の flash など） |
 | `drivers/` | カーネル側のコード: NINA（`nina/`）、LSM6DSOX（`lsm6dso/`）、RAM ログ（`log/`。リングは `../common/log/`）、Zephyr の API の互換層の NuttX の実装（`compat/`）、共通のヘッダーの NuttX の部分（`include/`） |
-| `apps/` | アプリ: `init`（起動処理と Telnet）、`imu`（取得・MQTT・時刻同期・校正・KV）、`kv`、`nina`、`ntp`、`wifi`、`sensor`、`i2c_dma`、`dmesg`、`irqstack`、`subcmd`（Zephyr のシェルのコマンド処理とサブコマンドの処理。ソースは `../common/shell/`、ここには NuttX のシェルのバックエンド） |
+| `apps/` | アプリ: `init`（起動処理と Telnet）、`imu`（取得・MQTT・時刻同期・校正・KV）、`kv`、`nina`、`ntp`、`wifi`、`sensor`、`i2c_dma`、`dmesg`、`irqstack`、`bootsel`、`subcmd`（Zephyr のシェルのコマンド処理とサブコマンドの処理。ソースは `../common/shell/`、ここには NuttX のシェルのバックエンド） |
 | `patches/` | NuttX と nuttx-apps へのパッチ |
 | `script/` | `setup.sh`、`build.sh`、`flash.sh`、`host_tests.sh`、`bin2uf2.py`、`kconfig-tweak` |
 | `tests/` | ホストテスト（NuttX 版だけのもの） |

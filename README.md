@@ -45,8 +45,10 @@ source script/setup.sh
 ```
 
 It prepares, under `zephyr/`, `.venv`, the west workspace (Zephyr v4.5.0 and modules), Python packages and the
-Zephyr SDK as needed, and sets `ZEPHYR_SDK_INSTALL_DIR` and a `west` alias in the current shell.
-Source it again in every new terminal.
+Zephyr SDK as needed, applies this repository's local patches to Zephyr and its modules
+(`zephyr/manifest/zephyr/patches.yml`), and sets `ZEPHYR_SDK_INSTALL_DIR` and a `west` alias in the
+current shell. Source it again in every new terminal. "Local patches of Zephyr" in the
+[driver notes](zephyr/app/usb-console/drivers/README.md) describes the patches and how to take them back.
 
 ## Build and flash
 
@@ -56,11 +58,14 @@ west flash -d build/usb-console -r uf2
 ```
 
 There is one configuration, `zephyr/app/usb-console/prj.conf`. `memcpy` and `memset` use the boot ROM's
-routines (`CONFIG_NANO_ROM_MEM_OPS`, on by default; off, they are the C library's loops).
+routines (`CONFIG_RP2040_ROM_MEM_OPS`), integer division the hardware divider (`CONFIG_NANO_HW_DIVIDER`),
+and `CONFIG_NANO_NINA_PASSTHROUGH` adds `nina passthrough confirm` (all on by default).
 
 Before flashing, connect the board over USB and put it into bootloader mode, in which a USB
-drive named `RPI-RP2` appears. If pressing RESET twice does not do it, press RESET while `REC`
-and `GND` are joined with a jumper wire, and remove the wire once the drive appears.
+drive named `RPI-RP2` appears. With a firmware running, run `bootsel` in its shell (all three builds;
+the drive takes a few seconds to be mounted). If the shell does not answer, press RESET twice quickly.
+If that does not do it either, press RESET while `REC` and `GND` are joined with a jumper wire, and
+remove the wire once the drive appears.
 
 `zephyr/app/blink` is a minimal sample that toggles `led0` every 500 ms.
 
@@ -68,9 +73,31 @@ and `GND` are joined with a jumper wire, and remove the wire once the drive appe
 west build -b arduino_nano_connect app/blink -d build/blink
 ```
 
-The NINA-W102 is expected to run Arduino NINA firmware 3.0.2 with two fixes applied. See
-[firmware/nina-fw](firmware/nina-fw/README.md) for the build and cautions. `nina version` shows
-the version on the board.
+The NINA-W102 is expected to run Arduino NINA firmware 3.0.2 with this repository's patches (0001 to
+0006). The driver also works, as before, with a firmware that lacks what 0003 to 0006 add (a scan that
+keeps the connection, socket events, and so on). See [firmware/nina-fw](firmware/nina-fw/README.md) for
+the build and cautions. The first line of `nina version` is the version, the second
+(`NINA capabilities: 0x... (in use 0x...)`) the module's capability bits and those in use.
+
+### Reading and writing the NINA firmware
+
+`nina passthrough confirm` restarts the board with its USB serial port relayed to the NINA's UART (all
+three builds; the RP2040's firmware and KV store stay). esptool on the PC then reads and writes the module (run the example from the repository root).
+esptool 5.3.0 gets no answer with `--before no-reset`, so give it a configuration file that leaves RTS set:
+
+```bash
+printf '[esptool]\ncustom_reset_sequence = R0|D1|W0.2|R1|W0.6\n' > esptool.cfg
+export ESPTOOL_CFGFILE=$PWD/esptool.cfg
+esptool --port <port> --baud 921600 --before default-reset --after no-reset \
+  read-flash 0 0x200000 firmware/nina-fw/images/backup.bin      # back up (about 26 s)
+esptool --port <port> --baud 921600 --before default-reset --after no-reset \
+  write-flash 0 firmware/nina-fw/source/NINA_W102.bin           # write (about 20 s)
+stty -F <port> 300                                               # leave the passthrough
+```
+
+Setting the port to 300 bps and closing it, or RESET, starts the normal firmware again. A backup may hold
+credentials; keep it private (`firmware/nina-fw/images/` is not tracked by Git). The Arduino
+SerialNINAPassthrough sketch is not needed.
 
 ## Usage
 
@@ -99,7 +126,8 @@ net iface
 - The passphrase is echoed to the terminal, and `wifi cred list` prints it too.
 - `wifi connect` only connects; it does not store the settings.
 - After `wifi disconnect` the board stays disconnected until the next boot or manual connect.
-- `wifi scan` interrupts the connection and reconnects with the stored settings afterwards.
+- `wifi scan` keeps the connection when the NINA firmware has patch 0004. Without it, the scan
+  interrupts the connection and reconnects with the stored settings afterwards.
 
 `script/wifi_ap.sh` turns a Wi-Fi adapter on the PC into a temporary access point.
 
@@ -185,7 +213,9 @@ A session ID is assigned at every start from the chip's unique ID and a stored c
 | `imu cal` / `imu cal reload` / `imu cal zero` | Show the conversion `sensor get` / `stream` use; read the KV store again; take the gyro bias at rest |
 | `ntp status` | State of the synchronization with PC time |
 | `wifi ...`, `net ...` | Wi-Fi and IP (Zephyr) |
-| `nina version` | NINA firmware version |
+| `nina version` | NINA firmware version and capability bits |
+| `nina passthrough confirm` | Restart with the USB serial port relayed to the NINA's UART (for esptool) |
+| `bootsel` | Restart into BOOTSEL (`RPI-RP2`) |
 | `kv set` / `sethex` / `get` / `delete` | Key-value store |
 | `sensor ...` | One-shot reads, streaming and attributes (Zephyr, extended) |
 | `i2c_dma mode` / `stats` | DMA for I2C reads: switch and counters |
@@ -293,8 +323,7 @@ it on trusted networks only.
 Stored with Zephyr Settings on NVS. Keys are 1 to 32 characters of letters, digits, `_`, `-`
 and `.`; values are 1 to 128 bytes. `set` stores text, `sethex` stores bytes given in hex, and
 `get` prints hex. Keys starting with `sys.` are reserved. Data is not encrypted. Wi-Fi
-credentials share the same 8 KiB area. The NuttX and FreeRTOS builds store them in the same place and
-format, so the store stays when you switch builds.
+credentials share the same 8 KiB area.
 
 ### Log
 
@@ -339,10 +368,11 @@ summary (missing batches, valid and reversed times) and at the errors in `imu st
 | `zephyr/app/blink/` | LED blink sample |
 | `zephyr/script/` | Setup, host tests |
 | `nuttx/` | The NuttX build (board definition, drivers, applications, patches, scripts, host tests) |
-| `common/` | Sources whose files the three builds share (`imu/`: the acquisition service, transport, time synchronization, calibration, the Wi-Fi profile, the key-value API and the `kv` command; `drivers/`: the LSM6DSO driver, the sensor shell, the OS-independent core of the NINA, the OS-independent core of I2C0 and DMA (used by the NuttX and FreeRTOS builds), the boot ROM's `memcpy` and `memset` (Zephyr and NuttX builds); `compat/`: the OS-independent part of the Zephyr API compatibility layer that the NuttX and FreeRTOS builds use, with copies of Zephyr's libraries; `shell/` and `log/`: the shell's command handling and the RAM log (NuttX and FreeRTOS builds)) and their host tests (`tests/`; `tests/run.sh` is called by each build's `host_tests.sh`). The layout is in section 12 of the [design](design/imu-raw-mqtt-design.md) |
+| `common/` | Sources whose files the three builds share (`imu/`: the acquisition service, transport, time synchronization, calibration, the Wi-Fi profile, the key-value API and the `kv` command; `drivers/`: the LSM6DSO driver, the sensor shell, the OS-independent core of the NINA, the OS-independent core of I2C0 and DMA (used by the NuttX and FreeRTOS builds); `compat/`: the OS-independent part of the Zephyr API compatibility layer that the NuttX and FreeRTOS builds use, with copies of Zephyr's libraries; `shell/` and `log/`: the shell's command handling and the RAM log (NuttX and FreeRTOS builds)) and their host tests (`tests/`; `tests/run.sh` is called by each build's `host_tests.sh`). The layout is in section 12 of the [design](design/imu-raw-mqtt-design.md) |
 | `openmv/` | Build environment for the OpenMV MicroPython firmware ([`openmv/README.md`](openmv/README.md)) |
 | `freertos/` | The Pico SDK + FreeRTOS build (build environment, application, the FreeRTOS part of the compatibility layer, drivers, scripts, host tests; [`freertos/README.md`](freertos/README.md)) |
 | `zephyr/manifest/west.yml` | Versions of Zephyr and its modules |
+| `zephyr/manifest/zephyr/` | Local patches of Zephyr and its modules (`patches.yml`, `patches/`) |
 | `design/` | Design and investigation notes |
 | `firmware/nina-fw/` | Fixes and build for the NINA firmware |
 | `host/` | PC-side tools (receive check, recording, calibration) and the display application `ImuStudio` |
@@ -372,10 +402,8 @@ replaced by the standard NuttX ones (`wapi`, `ifconfig`, `iperf`, `ps`, `reboot`
   the differences from the Zephyr build.
 - The PC tools (`imu-host` and `ImuStudio` in `host/`) work with either firmware ("Board firmware"
   in [`host/README.md`](host/README.md)).
-- The KV store (settings, calibration, Wi-Fi credentials) is in the same place and format as the
-  Zephyr build's, so it stays when you switch builds. If the key-value area holds other data (the
-  NuttX build's earlier format, for example), the NuttX build does not use it; erase it with
-  `kv wipe confirm` and store the values again ("Moving the values from the Zephyr build" in
+- If the key-value area holds other data (the NuttX build's earlier format, for example), the NuttX
+  build does not use it; erase it with `kv wipe confirm` and store the values again ("Moving the values from the Zephyr build" in
   `nuttx/README.md`).
 - Section 11 of the [design](design/imu-raw-mqtt-design.md) describes the design differences.
 
@@ -387,7 +415,6 @@ store, calibration, Wi-Fi and the Telnet shell behave as in the Zephyr build, an
 project (`imu`, `kv`, `ntp`, `nina`, `dmesg`, `i2c_dma`, `sensor`, `wifi cred`), `zperf` (TCP only) and
 `wifi connect`, `disconnect`, `scan` and `status` have the same syntax and output. The others have short
 names (`version`, `reboot`, `ps`, `uptime`, `ifconfig`, `date`); there is no `kernel ...` or `net ...`.
-The shell's `bootsel` enters BOOTSEL, so flashing needs no button.
 
 - See [`freertos/README.md`](freertos/README.md) for setup, building, flashing and the commands, and
   [`freertos/drivers/README.md`](freertos/drivers/README.md) for the internals and the table of differences
@@ -402,20 +429,24 @@ Measured on the same board, PC, access point and receiver (`imu-host check`) on 
 flashing one firmware after the other. The values while sending are from a 6667 Hz measurement sent over MQTT,
 with `imu start` from the USB shell and `imu stop` 60 to 70 seconds later. No run had missing batches. The TCP
 rates were taken with IMU streaming stopped, for about 10 seconds, the board sending 1024 bytes at a time.
+The NINA ran the firmware with patches 0001 to 0006.
 
 | Item | Zephyr build | NuttX build | FreeRTOS build |
 |---|---|---|---|
-| `cpu_active` while sending | 51.2 to 51.5% (4 runs) | 55.8% and 56.2% (2 runs) | 41.5% (1 run) |
-| TCP send (board to PC) | 3.02 and 3.30 Mbit/s (`zperf`) | 3.19 Mbit/s (`iperf`, 1 run) | 3.60 Mbit/s (`zperf`, 1 run) |
-| TCP receive (PC to board) | 1.78 and 1.89 Mbit/s (`zperf`) | 1.14 Mbit/s (`iperf`, 1 run) | 2.31 Mbit/s (`zperf`, 1 run) |
-| Image size (`.bin`) | 364,132 bytes | 279,564 bytes | 227,280 bytes |
+| `cpu_active` while sending | 49.4% and 49.5% (2 runs) | 50.8% and 50.8% (2 runs) | 40.3% and 40.4% (2 runs) |
+| `cpu_active` at rest | not measured | not measured | 0.7% (30 seconds, 3 runs) |
+| TCP send (board to PC) | 3.36 and 3.47 Mbit/s (`zperf`) | 3.34 Mbit/s (`iperf`, 1 run) | 3.47 to 3.84 Mbit/s (`zperf`, 3 runs) |
+| TCP receive (PC to board) | 1.89 and 1.99 Mbit/s (`zperf`) | 1.22 Mbit/s (`iperf`, 1 run) | 2.41 to 2.52 Mbit/s (`zperf`, 3 runs) |
+| Image size (`.bin`) | 370,144 bytes | 284,900 bytes | 231,872 bytes |
 
 - The TCP rates come from different commands (`zperf` in the Zephyr and FreeRTOS builds speaks the iperf 3
   protocol, `iperf` in the NuttX build the iperf 2 protocol), so they are a rough comparison.
+- `cpu_active` moves by about one point when only the layout of the image changes, with the same functions.
 - The FreeRTOS build's `cpu_active` includes the time of the tick interrupt every 1 ms (the Zephyr and NuttX
-  builds have no such interrupt). At rest (Wi-Fi connected, no measurement, 30 seconds, one run) it was 1.4%.
-- Before boot2 read the flash faster and `memcpy` and `memset` came from the boot ROM (2026-11-14), the
-  `cpu_active` while sending was 62.6 to 63.3% in the Zephyr build and 67.7 to 67.9% in the NuttX build.
+  builds have no such interrupt).
+- With the images of 2026-11-14 (boot2 at clock divider 4, the C library's `memcpy`, `memset` and division,
+  the NINA firmware with patches 0001 and 0002), the `cpu_active` while sending was 62.6 to 63.3% in the
+  Zephyr build and 67.7 to 67.9% in the NuttX build.
 - `sensor stream` stopped with `Read failed` at higher output data rates in both the Zephyr and the NuttX
   build: at 833 Hz and above in the Zephyr build, at 3333 Hz and above in the NuttX build (the images of
   2026-11-14, watermark 128, USB console, one run each).

@@ -47,7 +47,10 @@
  * - Lines: tud_cdc_line_state_cb() maps DTR and RTS as the sketch does
  *   (nina_passthrough_logic.h: RTS set releases RESETN, DTR set pulls GPIO0
  *   low), so opening the port starts the ROM's download mode and closing it
- *   holds the module in reset; esptool runs with "--before no_reset".
+ *   holds the module in reset.  esptool keeps RTS set with
+ *   "--before default-reset --after no-reset" and a custom_reset_sequence
+ *   of "R0|D1|W0.2|R1|W0.6" (ESPTOOL_CFGFILE); with "--before no-reset"
+ *   esptool 5.3.0 got no answer.
  *   Unlike the sketch, when the module leaves reset into its own firmware
  *   (DTR clear), GPIO0 is released after 750 ms and GPIO8 stops driving,
  *   as the firmware drives both nets.
@@ -427,7 +430,7 @@ static int cmd_nina_passthrough(const struct shell *sh, size_t argc, char **argv
 		return -EINVAL;
 	}
 	shell_print(sh, "Restarting into the NINA passthrough: the USB port relays to the "
-			"NINA's UART (esptool --before no_reset).");
+			"NINA's UART (for esptool).");
 	shell_print(sh, "To leave it: close the port at %u bps, or press RESET.",
 		    NINA_PT_EXIT_BAUD);
 	vTaskDelay(pdMS_TO_TICKS(PT_RESTART_DELAY_MS));

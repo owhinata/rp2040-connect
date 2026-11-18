@@ -17,13 +17,13 @@ OS-independent part of the layer is `common/compat/`, the FreeRTOS part `freerto
 
 | Place | Contents |
 |---|---|
-| `app/usb-console/` | Start-up (`main.c`), the commands of this build only (`commands.c`), the kernel configuration (`FreeRTOSConfig.h`), the priority mapping (`priorities_os.h`), time (`os_clock.h`), the tick hook (`tick.c`), the CPU load (`idle.c`), fatal errors (`fault.[ch]`), the free interrupt stack (`irq_stack.c`) |
+| `app/usb-console/` | Start-up (`main.c`), the commands of this build only (`commands.c`), the kernel configuration (`FreeRTOSConfig.h`), the priority mapping (`priorities_os.h`), time (`os_clock.h`), the tick hook (`tick.c`; the catch-up's decision in `tick_catchup.h`), the CPU load (`idle.c`), fatal errors (`fault.[ch]`), the free interrupt stack (`irq_stack.c`) |
 | `drivers/compat/` | The FreeRTOS part of the layer: the kernel (`zephyr_kernel.c`, `zephyr_mutex.c`, `zephyr_os*.h`), the network interface (`zephyr_net_if.c`), the wall clock (`zephyr_sys_clock.c`), the sensor clock, the prelude header (`common_prelude.h`), the self-test (`zephyr_selftest.[ch]`), the RP2040 part (`rp2040/`: GPIO bank 0, chip ID) |
 | `drivers/shell/` | Line editing (`cli.c`), the consoles and each task's output (`nano_console.c`), the replacement of the Pico SDK's stdio driver (`nano_stdio.c`), the command table and execution (`nano_shell.c`), a copy of Zephyr's argument split (`shell_argv.c`), getopt per session (`getopt_state.c`) |
 | `drivers/libc/` | Wrappers of newlib's FILE functions (`stdio_wrap.c`), the socket headers newlib lacks (`include/`, types and constants only), `inet_pton` and `inet_ntop` (`inet.c`) |
 | `drivers/log/` | The RAM log (`log_ram.c`; the ring is `common/log/log_ring.c`) |
 | `drivers/kv/` | The flash boundary of the key-value store (`nano_flash_kv.c`) and the linker script override (`ld/`, `kv.cmake`) |
-| `drivers/nina/` | The NINA-W102's SPI1 and lines (`nano_nina.c`), the `nina_os.h` boundary (`nina_os.c`), sockets (`nina_socket.c`), the interface (`nina_netif.c`) |
+| `drivers/nina/` | The NINA-W102's SPI1 and lines (`nano_nina.c`), the `nina_os.h` boundary (`nina_os.c`), sockets (`nina_socket.c`), the interface (`nina_netif.c`), the esptool passthrough (`nina_passthrough.c`) |
 | `drivers/i2c_dw/` | The FreeRTOS part of the I2C0 and DMA core (`common/drivers/i2c_dw/`), self-test |
 | `drivers/lsm6dso/` | The LSM6DSOX device (`lsm6dso_instance.h`) and its initialization (`nano_lsm6dso.c`), self-test |
 | `drivers/imu/` | Builds in the acquisition service, MQTT and time synchronization (`common/imu/`; `imu.cmake`), the prelude of `time_sync.c` |
@@ -68,9 +68,15 @@ Left as approximations:
 | Choice among one priority | A preempted thread goes on; 20 ms time slices, counted from the switch to the thread | FreeRTOS's: at every switch the next ready task of the priority in turn, so a preempted task goes behind the other ready tasks of its priority. 20 ms slices by the tick hook (`tick.c`) on a fixed grid of 20 ticks, not counted from the switch |
 | Tick and sleeps | 100 µs; a relative wait is "rounded up to ticks, plus one tick" | 1 ms (`configTICK_RATE_HZ` 1000, 32 bits), the same rounding: a wait shorter than 1 ms lasts 1 to 2 ms. A periodic SysTick (not tickless) |
 
-- The 32-bit tick wraps after about 49.7 days. While interrupts are disabled (a flash erase) ticks are
-  lost: `vTaskDelay()`, delayed work and time slices are late by that much; `k_uptime_*()`, from the
-  TIMER, is not.
+- The 32-bit tick wraps after about 49.7 days.
+- While interrupts are disabled (a flash erase or program; about 40 to 50 ms per erase), SysTick keeps one
+  interrupt pending and the other ticks are lost. The tick hook (`tick.c`, decision in `tick_catchup.h`)
+  compares the count with the TIMER at every tick and, when it is a whole tick behind, pends SysTick
+  again, so the port's usual handler counts the lost ticks one by one (wake-ups, switch requests, and the
+  tick hook's timeouts of the layer and time slices run on each). The tick never gets ahead of the
+  TIMER, so apart from the time interrupts are disabled it stays within one tick of it.
+  `xTaskCatchUpTicks()` is not used (it can be called from tasks only, and the tick hook does not run for
+  the ticks it adds). `main.c` checks that clk_sys is a whole number of ticks. `k_uptime_*()` is the TIMER.
 - The Pico SDK's `sleep_ms()` (which spins the last 150 µs) is not used.
 
 ## Tasks
@@ -151,7 +157,7 @@ boundary (the four functions of `common/compat/nano_flash_kv.h`, `drivers/kv/nan
   symbols are found equal to the constants, programs and erases are refused.
 - `flash_range_program()` and `flash_range_erase()` are called through `flash_safe_execute()` with
   `PICO_FLASH_ASSUME_CORE1_SAFE=1`, which disables this core's interrupts only (core 1 is not used).
-  Interrupts stay disabled during an erase, and ticks are lost.
+  Interrupts stay disabled during an erase; the tick catches up with the TIMER afterwards (above).
 - Data that is neither Zephyr's NVS nor erased is left alone and logged to `dmesg`; the store's calls
   return `-EILSEQ` (138 with newlib). `kv wipe confirm` erases it (`common/compat/kv_store_wipe.c`).
 
@@ -188,6 +194,24 @@ boundary (the four functions of `common/compat/nano_flash_kv.h`, `drivers/kv/nan
   is `common/compat/zephyr_wifi_shell.c`, keeping only the options this board can use; `wifi cred` is an
   unchanged copy of Zephyr's `wifi_credentials_shell.c`. `ifconfig` (`drivers/wifi/nano_ifconfig.c`)
   prints in the NuttX build's format.
+
+- The esptool passthrough (`drivers/nina/nina_passthrough.c`, `nina passthrough confirm`): the same as the
+  Zephyr and NuttX builds', with the decisions in the shared `common/drivers/nina/nina_passthrough_logic.h`
+  (wiring and lines in "The esptool passthrough" of
+  [`zephyr/app/usb-console/drivers/README.md`](../../zephyr/app/usb-console/drivers/README.md)). The command
+  leaves a mark in the watchdog's scratch registers 0 to 3 and restarts; `main()` sees it before anything
+  else and, with no task, scheduler, SPI1, NINA, I2C or KV store, relays between TinyUSB (`tud_task()`) and
+  UART1 in one loop. From the module to the PC, UART1's receive interrupt moves the bytes into a 16 KiB
+  buffer (from the FreeRTOS heap). The LED blinks at 5 Hz. The host test is `passthrough`.
+
+## Divider, `memcpy` and `memset`, boot2
+
+The Pico SDK's defaults. Integer division is `pico_divider` on the hardware divider, and the port
+(`portUSE_DIVIDER_SAVE_RESTORE`) saves and restores the divider's four words at every switch (the Zephyr
+and NuttX builds, with local patches, save it only in the middle of a division, DIRTY). A division by
+zero gives the Pico SDK routines' results, the same in the three builds. `memcpy` and `memset` are
+`pico_mem_ops`, the boot ROM's routines; boot2 is the Pico SDK board definition's, for the W25Q080
+(divider 2, 62.5 MHz).
 
 ## I2C0 and DMA, LSM6DSOX, GPIO interrupt
 
@@ -233,7 +257,7 @@ Given as `freertos/script/build.sh -DNAME=VALUE` (kept until `--clean`).
 A test command only in builds with `-DNANO_SELFTEST=ON`. Run it with the measurement stopped and the
 board at rest. It prints, as `N of M tests failed`, the results for the layer
 (`drivers/compat/zephyr_selftest.c`: mutexes, semaphores, sleep, clock, wake-ups from interrupts,
-`k_poll`, work, spinlock, atomic, static threads, time slices; 21 items), I2C0
+`k_poll`, work, spinlock, atomic, static threads, time slices, the tick's catch-up after interrupts are disabled for 50 ms; 22 items), I2C0
 (`drivers/i2c_dw/i2c_dw_selftest.c`: 6 items) and the LSM6DSOX (`drivers/lsm6dso/lsm6dso_selftest.c`:
 3 items).
 
@@ -245,6 +269,8 @@ board at rest. It prints, as `N of M tests failed`, the results for the layer
 | Test | Subject |
 |---|---|
 | `compat` | The layer's self-test (the same `zephyr_selftest.c` as `selftest`) |
+| `tick` | The tick's catch-up (`tick_catchup.h`): the step itself, and on a model of SysTick and the CPU (interrupt latencies, interrupts disabled for 0 to 60 ticks) that the tick never gets ahead of the TIMER and is at most one tick behind once caught up |
+| `passthrough` | The esptool passthrough: the request mark, DTR and RTS on the module's lines, the rate, the receive buffer, the `nina` subcommand |
 | `shell` | Two shell sessions, line editing, output routing |
 | `kv` | The flash boundary and the key-value store (on fakes of the Pico SDK's flash functions) |
 | `nina` | The NINA's SPI and line boundaries, the wait for READY on its interrupt, the waits for the IRQ line's edges (two tasks woken by one edge, the timeout), kernel services |
@@ -270,14 +296,15 @@ the Zephyr build's syntax and output.
 | IP address, date | `net iface`, `date get` | `ifconfig`, `date` | `ifconfig`, `date` (UTC, show only) |
 | `wifi` | All of Zephyr's | `wifi cred` only (`wapi` connects) | `connect` (`-s`, `-p`, `-k 0/1`), `disconnect`, `scan`, `status`, `cred` |
 | Speed test | `zperf` (iperf3 protocol, TCP and UDP) | `iperf` (iperf2 protocol) | `zperf` (iperf3 protocol, TCP only) |
-| BOOTSEL from the shell | No | No | `bootsel` |
+| BOOTSEL from the shell | `bootsel` | `bootsel` | `bootsel` |
 | `sensor get` | Returns at once; the result comes after the prompt | Waits up to 2 s for the result | As NuttX |
 | Right after a Telnet connection | Sends nothing | Sends the prompt | Sends nothing |
 | Echo on Telnet | No | Yes | No |
 | Error numbers (errno) | Zephyr's (`EILSEQ` 138) | NuttX's (`EILSEQ` 84) | newlib's (as Zephyr's; `EILSEQ` 138) |
 | Priorities | Zephyr | `118 − Zephyr` | `20 − Zephyr` |
 | Device interrupt priority | 0xC0 | 0x80 | 0x80 |
-| Kernel clock | SysTick (late while sending) | Tickless on the TIMER | 1 kHz SysTick (late during erases); `k_uptime` from the TIMER |
+| Kernel clock | SysTick (late while sending) | Tickless on the TIMER | 1 kHz SysTick (catches up with the TIMER after interrupts were disabled); `k_uptime` from the TIMER |
+| Saving the divider | At switches, only when DIRTY (local patch) | At switches, only when DIRTY (patch 0009) | Four words at every switch (the Pico SDK port) |
 | The NINA's READY | Edge interrupt (GPIO10, read again every 10 ms) | Edge interrupt (GPIO10) | Edge interrupt (GPIO10, read again every 10 ms) |
 | Sockets | Offload (the calling thread waits) | usrsock and `nina_event` | The calling task waits (no event thread) |
 | RAM log | 4 KiB | 8 KiB | 8 KiB |

@@ -87,8 +87,8 @@ After the copy it prints the path of the USB console (`/dev/serial/by-id/usb-*Fr
 Entering BOOTSEL:
 
 - With this firmware running: the `bootsel` command.
-- With the Zephyr or NuttX build running: press the RESET button twice quickly. If that does not work,
-  connect REC to GND and press RESET.
+- With the Zephyr or NuttX build running: the `bootsel` command of its shell. With an image from before
+  2026-11-18, press the RESET button twice quickly; if that does not work, connect REC to GND and press RESET.
 - With the OpenMV build running: run `import machine; machine.bootloader()` in the REPL.
 
 **Before flashing**: flashing replaces the firmware of the Zephyr, NuttX or OpenMV build. It does not
@@ -119,7 +119,8 @@ The console is the USB CDC ACM port (UART0 is not used). Opening a terminal show
 | `dmesg` | The RAM log (8 KB; kept across restarts) |
 | `kv set <key> <value>`, `kv sethex <key> <hex>`, `kv get <key>`, `kv delete <key>` | Read and write the key-value store (settings and calibration). `get` prints hexadecimal |
 | `kv wipe confirm` | Erase the whole key-value area (the Wi-Fi credentials too) |
-| `nina version` | The firmware version of the NINA-W102 |
+| `nina version` | The firmware version of the NINA-W102 and its capabilities (second line; `in use` are those this firmware uses) |
+| `nina passthrough confirm` | Restart into the NINA passthrough (USB serial <-> the NINA's UART, for reading and writing the NINA's firmware with `esptool`). Leave it by closing the port at 300 bps, or with RESET |
 | `i2c_dma mode [on\|off]`, `i2c_dma stats` | Switch or show the DMA reads of I2C0; show their counters |
 | `fault` | The record of the fatal error that ended the last run |
 | `free` | Use of the FreeRTOS heap and of `malloc()` |
@@ -152,6 +153,15 @@ The console is the USB CDC ACM port (UART0 is not used). Opening a terminal show
   `sensor` are refused (-16).
 - Reading an address that does not exist with `devmem` ends in a fatal error (for example
   `devmem 30000000`).
+
+- `wifi scan` while connected keeps the connection (when the NINA's firmware supports it; the second line of
+  `nina version` tells). During the scan the radio leaves the AP's channel, so traffic slows down.
+- Reading and writing the NINA's firmware: after `nina passthrough confirm`, use `esptool` on the PC with this
+  board's serial port. Give `esptool` a configuration file with the two lines `[esptool]` and
+  `custom_reset_sequence = R0|D1|W0.2|R1|W0.6` through `ESPTOOL_CFGFILE`, and pass
+  `--before default-reset --after no-reset` (for example `read-flash 0 0x200000 <file>`,
+  `write-flash 0 NINA_W102.bin`). The passthrough writes nothing to the flash (the key-value store included).
+  A file read from the NINA may contain Wi-Fi credentials: keep it private.
 
 ## Directories
 

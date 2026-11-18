@@ -13,8 +13,11 @@ and `nuttx/PORTING_PLAN.md` (in Japanese). A section named in quotes is a sectio
 
 The table of what is fetched is in "Setup" in `nuttx/README.md`. What the table does not say:
 
-- A full checkout already in `nuttx/pico-sdk` is used as it is. To get the small partial one,
-  delete it and source `setup.sh` again.
+- `nuttx/pico-sdk` is a sparse checkout of what the boot2 build reads and of the divider routines the
+  board builds (`divider_hardware.S` and the `divider_helper.S` it includes; `CONFIG_NANO_HW_DIVIDER`).
+  Paths an earlier partial clone lacks are added to its sparse checkout, and their files are fetched then
+  (the clone fetches blobs later, so this needs the network). A full checkout already in `nuttx/pico-sdk`
+  is used as it is. To get the small partial one, delete it and source `setup.sh` again.
 - The argtable3 version is the default `CONFIG_SYSTEM_ARGTABLE3_VERSION` of nuttx-apps 13.1.0.
   nuttx-apps' Makefile uses a clone in `nuttx/nuttx-apps/system/argtable3/argtable3` if there is
   one; otherwise it fetches it from GitHub on every build and removes it at `make distclean`.
@@ -57,8 +60,10 @@ The script does the following:
    would silently leave boot2 out), `nuttx.bin` covers exactly what the ELF loads into flash,
    and the image ends before 0x10ffe000. The last 8 KB of the flash (0x10ffe000–0x10ffffff) is
    kept out of the image for the key-value store, as in the Zephyr build. With
-   `CONFIG_NANO_ROM_MEM_OPS` it also checks that `__start()` calls neither `memcpy` nor `memset`
-   (section "The C library's `memcpy` and `memset`").
+   `CONFIG_RP2040_ROM_MEM_OPS` it also checks that `__start()` calls neither `memcpy` nor `memset`
+   (section "The C library's `memcpy` and `memset`"). With `CONFIG_NANO_HW_DIVIDER` it checks that the six
+   `__wrap___aeabi_*` are there and that no libgcc division (`__aeabi_idiv`, `__divsi3`, `__udivmoddi4` and
+   so on) is left in the image (section "Integer division").
 4. Converts `nuttx/nuttx/nuttx.bin` (raw image from 0x10000000, boot2 included) to
    `nuttx/build/nuttx.uf2` with `nuttx/script/bin2uf2.py` and prints the path and size. The
    converter checks the boot2 checksum first and writes 256-byte payloads with the RP2040 family
@@ -409,6 +414,10 @@ NINA's SPI, Wi-Fi, Telnet, MQTT, time synchronization, nsh and the key-value sto
   normally again, then the board restarts into the normal firmware. Nothing is written to the flash.
 - At the start, at each close of the port and at the end, the bytes each way and the bytes lost go to the
   RAM log (`dmesg` after the way out).
+- The esptool steps on the PC (`custom_reset_sequence = R0|D1|W0.2|R1|W0.6` in `ESPTOOL_CFGFILE` and
+  `--before default-reset --after no-reset`; `--before no-reset` does not connect) are in "Reading and
+  writing the NINA firmware" in the top-level `README.md`. On the board, the whole 2 MB was read at
+  115200 bps and at 921600 bps with the same result (2026-11-18).
 - How it works: "Passthrough mode" in `nuttx/drivers/README.md`.
 
 ### Wi-Fi (`wapi`, `ifconfig`)
@@ -1212,14 +1221,50 @@ NuttX-only threads are in `nuttx/drivers/include/priorities_os.h`). The Zephyr b
 
 ## The C library's `memcpy` and `memset`
 
-With `CONFIG_NANO_ROM_MEM_OPS` (board `Kconfig`, on by default), `memcpy`, `memset`,
-`__aeabi_memcpy*` and `__aeabi_memset*` are the RP2040 bootrom's routines, split as the Pico SDK's
-`pico_mem_ops` does (`common/drivers/rp2040_rom/`, shared with the Zephyr build). It selects
-`LIBC_ARCH_MEMCPY` and `LIBC_ARCH_MEMSET`, which leave out the byte loops of `libs/libc/string`. The
-routines are looked up on first use and kept in `.bss`, so they cannot be called before `.bss` is
-cleared. GCC turns the `.bss` clearing loop of `__start()` into a call to `memset`, so the board's
-`scripts/Make.defs` compiles `rp2040_start.c` alone with `-fno-tree-loop-distribute-patterns`, and
-`build.sh` checks the result.
+`CONFIG_NANO_ROM_MEM_OPS` (board `Kconfig`, on by default) selects `CONFIG_RP2040_ROM_MEM_OPS` of the NuttX
+patch `nuttx/0010`, which makes `memcpy`, `memset`, `__aeabi_memcpy*` and `__aeabi_memset*` the RP2040 boot
+ROM's routines, split as the Pico SDK's `pico_mem_ops` does (the Zephyr build does the same with a local patch
+of Zephyr's SoC). It selects `LIBC_ARCH_MEMCPY` and `LIBC_ARCH_MEMSET`, which leave out the byte loops of
+`libs/libc/string`. The code is `rp2040_rom_mem_ops.S` and `rp2040_rom_mem_lookup.c` in the chip's directory.
+Each routine is looked up in the ROM's function table on its first call and kept in `.bss` (a value left in
+RAM from before a reset is not used), so neither can be called before `.bss` is cleared. GCC turns the loops
+of `rp2040_start.c` that clear `.bss` and copy `.data` into calls of `memset` and `memcpy`, so the patch puts
+`START_LOOP_BARRIER()` (an empty asm with a memory clobber) in them to keep them loops, and `build.sh` checks
+the result.
+
+## Integer division
+
+With `CONFIG_NANO_HW_DIVIDER` (board `Kconfig`, on by default), the integer divisions the compiler emits
+(`__aeabi_idiv`, `__aeabi_idivmod`, `__aeabi_uidiv`, `__aeabi_uidivmod`, `__aeabi_ldivmod`, `__aeabi_uldivmod`)
+run on the SIO hardware divider instead of libgcc's shift-and-subtract loops. The Pico SDK's `pico_divider`
+(`divider_hardware.S`, from `nuttx/pico-sdk`, built with the minimal headers of the board's `src/pico_sdk`) is
+linked in with `ld --wrap` in the board's `scripts/Make.defs`.
+
+- The routines do not mask interrupts (`PICO_DIVIDER_DISABLE_INTERRUPTS` 0). When an interrupt handler
+  divides in the middle of a division, the routine sees DIRTY and saves and restores the divider.
+- When a task is switched out in the middle of a division, `CONFIG_RP2040_HW_DIVIDER` of the NuttX patch
+  `nuttx/0009` (selected by `CONFIG_NANO_HW_DIVIDER`) saves it. Every switch on the ARMv6-M goes through
+  `arm_doirq()`, which, when the task changes, keeps the old task's divider, only when DIRTY is set, in 20
+  bytes of `struct xcptcontext` and restores the new one's (a task that was not dividing comes back with DIRTY
+  clear). It is also saved before the last switch of `arm_sigdeliver()`. The FreeRTOS build (the Pico SDK's
+  port) saves four words at every switch.
+- A division by zero gives the Pico SDK routines' results (as in the Zephyr and FreeRTOS builds): for 32 bits
+  a saturated quotient (0xffffffff, 0x7fffffff or 0x80000000; 0 for 0 / 0) and a remainder of 0 (libgcc gave a
+  quotient of 0 and the dividend); for 64 bits the same as libgcc's.
+- The routines use only the SIO and the stack, so they work from the start of `__start()`, in interrupt
+  handlers and in the fatal error handling.
+- Test images (2026-11-18, on the board): with the saving, no mismatch in 250 seconds and about 11.28 million
+  divisions; without it, 10 in 40 seconds.
+
+## Signal handlers
+
+The NuttX build's code registers no signal handler (no `sigaction()` or `signal()`, no SIGEV_SIGNAL timer, no
+`kill()` or `pthread_kill()` to run a handler). Waits are written with semaphores, sleeps and blocking I/O.
+
+A load where task switches (wake-ups every 1 ms and priority changes) overlap a running signal handler froze
+the board within seconds, with nothing in the log (seen on the board, 2026-11-18; the same with an image using
+libgcc's division and none of the divider patch's code). The cause has not been found and no fix is applied.
+The present code registers no handler, so normal operation does not take this path.
 
 ## Host test details
 
@@ -1245,14 +1290,14 @@ with the layer's NuttX implementation (`nuttx/drivers/compat/`; the Zephyr build
 |---|---|
 | `common/imu/` | `imu_stream.c`, `imu_raw_{batch,packet,queue,status,time}`, `imu_tick_clock`, `time_sync.[ch]`, `time_offset`, `imu_cal_codec.c`, `imu_cal.[ch]`, `imu_raw_mqtt.[ch]`, `wifi_profile.[ch]`, `kv_store.[ch]`, `mqtt_min.[ch]` and `mqtt_min_sock.c` (the MQTT client of the builds on the compatibility layer and its socket layer; the Zephyr build does not use them) |
 | `common/drivers/lsm6dso/` | `lsm6dso.[ch]` (the driver; the device at its end is `lsm6dso_instance.h` of each build), `lsm6dso_{fifo,cal,zero,fifo_decoder,fifo_hw,fifo_irq}`, `lsm6dso_stream.c`, `lsm6dso_compat.c`, `lsm6dso_fifo_packet.h`, `lsm6dso_fifo_stats.h`, `lsm6dso_attributes.h` |
-| `common/drivers/nina/` | `nina_net.c` and `nina_proto.h` (all three builds); the NINA core `nina_spi.c`, `nina_sock.[ch]` and `nina_dns.[ch]` with the headers of its boundary, `nina_os.h` and `nano_nina.h`, and its socket options, `nina_sockopt.h` (the three builds use them; they do not use Zephyr's API and the NuttX build compiles them without the prelude; the boundary is described under "NINA-W102" in `nuttx/drivers/README.md`) |
+| `common/drivers/nina/` | `nina_net.c` and `nina_proto.h` (all three builds); the NINA core `nina_spi.c`, `nina_sock.[ch]`, `nina_dns.[ch]` and `nina_wait.[ch]`, the decisions of the esptool passthrough `nina_passthrough_logic.h`, with the headers of its boundary, `nina_os.h` and `nano_nina.h`, and its socket options, `nina_sockopt.h` (the three builds use them; they do not use Zephyr's API and the NuttX build compiles them without the prelude; the boundary is described under "NINA-W102" in `nuttx/drivers/README.md`) |
 | `common/drivers/sensor_shell/` | `sensor_shell.c` |
 | `common/drivers/stmemsc/` | `stmemsc.h`, `stmemsc_i2c.c`, `stmemsc_mdelay.c` (a copy of the I2C part of Zephyr's stmemsc, used by the NuttX and FreeRTOS builds and compiled without the prelude; the Zephyr build uses Zephyr's) |
 | `common/drivers/i2c_dw/` | `i2c_dw_rp2040_commands.[ch]` (all three builds); the I2C0 and DMA core `nano_i2c.c` and `nano_dma.c` with its definitions `nano_i2c_dw.h`, `nano_i2c_dw_registers.h` and `nano_dma.h`, the `i2c_dma` state `nano_i2c_dma.h` and the header of its boundary, `i2c_dw_os.h` (the NuttX and FreeRTOS builds use them; they are compiled without the prelude, and the OS's part is the board's `src/i2c_dw_os_impl.h`, `nano_i2c_instance.h` and `nano_dma_instance.h`; the boundary is described under "I2C0" in `nuttx/drivers/README.md`) |
 | `common/compat/` | the OS-independent part of the compatibility layer (the headers of Zephyr's API `zephyr/...`, `zephyr_compat.h`, work items, RTIO, the block pool, the device list, `gpio0`, `net_mgmt`, the Wi-Fi requests, the sensors' default iodev) and the copies of Zephyr's libraries that the builds on the layer use (`sensor_shell_stream.c`, `sensor_shell.h`, `wifi_credentials.c`, `wifi_credentials_backend_settings.c`, `wifi_credentials_internal.h`), and boundary headers (`priorities.h`, `cpu_load.h`, `nano_cpuload.h`, `nano_gpio.h`); the Zephyr build does not use it |
 | `common/shell/` | `subcmd.[ch]` (the subcommand tables), `zshell.c` (the handling of commands written with `<zephyr/shell/shell.h>`: word matching, wildcards, argument count checks, help) and its boundary to the OS, `zshell_os.h` (the NuttX build's part is `nuttx/apps/subcmd/zshell_os_impl.h`); compiled without the prelude; the Zephyr build does not use it |
 | `common/log/` | `log_ring.[ch]` (the RAM log's ring, line prefix and rate limit), `app_log.h` (the `LOG_*` macros; the NuttX part is `nuttx/drivers/include/app_log_os.h`), `log_ram.h` (the RAM log's functions; in the NuttX build `nuttx/drivers/log/log_ram.c`), `fault_record.[ch]` (the record of a fatal error: its format, CRC-32, the copy in the watchdog's scratch registers and its lines; only the FreeRTOS build uses it); the Zephyr build does not use it |
-| `common/tests/` | the 33 tests of the files above and the check of the copies, `zephyr_copies` (run by `common/tests/run.sh`, which the `host_tests.sh` of the three builds call first; the layer's `zephyr_rtio`, `zephyr_work` and `mqtt_min` on the fake kernel, the NINA core's `nina_spi`, `nina_sock` and `nina_dns` on fakes of its boundary defined by the tests); `stream_stop.c` includes `../drivers/lsm6dso/lsm6dso_stream.c` (with the include guard of `lsm6dso.h` defined first, so nothing of that header is used; `stream_stop.c` provides the definitions it needs) |
+| `common/tests/` | the 34 tests of the files above and the check of the copies, `zephyr_copies` (run by `common/tests/run.sh`, which the `host_tests.sh` of the three builds call first; the layer's `zephyr_rtio`, `zephyr_work` and `mqtt_min` on the fake kernel, the NINA core's `nina_spi`, `nina_sock` and `nina_dns` on fakes of its boundary defined by the tests); `stream_stop.c` includes `../drivers/lsm6dso/lsm6dso_stream.c` (with the include guard of `lsm6dso.h` defined first, so nothing of that header is used; `stream_stop.c` provides the definitions it needs) |
 | `common/tests/fakes/` | stand-ins for the Zephyr and ST headers the tests need (`zephyr/drivers/sensor.h`, `zephyr/drivers/sensor_clock.h`, `zephyr/drivers/i2c.h`, `zephyr/rtio/rtio.h`, `lsm6dso_reg.h`) |
 | `common/tests/zephyr_fakes/` | the compatibility layer's fake kernel: the OS headers (`zephyr_os.h`, `zephyr_os_spinlock.h`, `zephyr_os_atomic.h`, `zephyr_rtio_workq_os.h`, `zephyr/sys/__assert.h`) and their functions (`zephyr_kernel_host.[ch]`: one thread; the test runs the work queues and fires the timers); the NuttX build's tests use it too |
 

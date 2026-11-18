@@ -50,7 +50,7 @@ NINA のドライバーは、OS に依存しないコア（リポジトリの `c
   セマフォを post するだけです（数は 1 まで）。`nina_os_ready_wait()` はタイムアウト付きの待ち（ms を tick に
   切り上げて 1 tick 足す）を 1 回で行います。期限（`nina_os_uptime_ms()`）と待ちのタイムアウトはどちらも
   TIMER から読む tickless の tick なので、割り込みを止めている間（フラッシュの消去）にずれません（FreeRTOS 版は
-  tick が遅れるので 10 ms ごとに区切ります）。`nina_os_ready_disarm()` でエッジを止め、転送中の CS による
+  その間 tick が止まり、あとで TIMER に追いつくので、10 ms ごとに区切ります）。`nina_os_ready_disarm()` でエッジを止め、転送中の CS による
   READY の変化では割り込みを起こしません。`gpio0` と `src/nano_gpio.c` は `CONFIG_NANO_LSM6DSO_STREAM` で
   ビルドされるので、`CONFIG_NANO_NINA` はそれに依存します。
 - 期限と配線は `design/nuttx-porting-ja.md` の「NINA-W102（`nina`）」の節にあります。
@@ -297,6 +297,8 @@ FreeRTOS 版の `freertos/drivers/nina/nina_passthrough.c` と同じ仕様で、
 - ホストテスト `nuttx/tests/nina_passthrough.c`（`script/host_tests.sh`）が、cdcacm の値からピン・出口・レートへの
   変換、UART のデータレジスターの語の扱い、`nina passthrough` の確認の語と引数とメッセージを確かめます。共有の判断は
   `freertos/tests/passthrough` が確かめます。割り込み・スレッド・cdcacm との組み合わせはホストテストでは確かめていません。
+- 実機（2026-11-18）: esptool で `read-flash 0 0x200000` を 115200 bps（192 秒）と 921600 bps（26.1 秒）で行い、2 つの読み出しが
+  一致し、取りこぼしとオーバーランは 0 でした。300 bps で閉じると通常の起動に戻りました。
 
 `bootsel` コマンド（`nuttx/apps/bootsel`）は、ボードの `nano_reset_usb_boot()`（`include/nano_reset.h`）で
 ブート ROM の `reset_usb_boot(0, 0)`（活動 LED なし、マスストレージと PICOBOOT の両方を有効）を呼び、BOOTSEL
@@ -473,6 +475,40 @@ FIFO のデコーダーの出力で、取得サービスが MQTT で送る RAW �
   バッチ化を止めずにそのまま停止して `-ECANCELED`（停止の失敗ならそのエラー）で終えます。FIFO に残った
   ワードは捨てます。
 - ストリームを動かしても ODR は変えません（`imu start` が設定し、停止後もそのまま。Zephyr 版と同じ）。
+
+## RP2040 の除算器と `memcpy`・`memset`（パッチ 0009・0010）
+
+どちらも NuttX 本体へのパッチ（`nuttx/patches/nuttx/`）の Kconfig を、ボードの Kconfig のオプションが select します。
+パッチの記号が無効のときは、パッチの入ったコードも上流のものと同じです。
+
+- **除算器**（ボードの `CONFIG_NANO_HW_DIVIDER`、既定 y）: コンパイラーが出す整数の割り算（`__aeabi_idiv`・`__aeabi_idivmod`・
+  `__aeabi_uidiv`・`__aeabi_uidivmod`・`__aeabi_ldivmod`・`__aeabi_uldivmod`）を、Pico SDK の `divider_hardware.S`（`nuttx/pico-sdk` から、
+  ボードの `src/pico_sdk` の最小のヘッダーでビルド）へ `ld --wrap`（`scripts/Make.defs`）で回します。ルーチンは割り込みを止めず
+  （`PICO_DIVIDER_DISABLE_INTERRUPTS` 0）、割り込みハンドラーが割り算の途中に入った場合は DIRTY を見て自分で退避します。
+  タスクが割り算の途中で切り替わる場合は、パッチ 0009 の `RP2040_HW_DIVIDER` が退避します: ARMv6-M の切り替えはすべて
+  `arm_doirq()` を通るので、タスクが変わるときに古いタスクの除算器を（DIRTY のときだけ）`struct xcptcontext` の 20 バイトに置き、
+  新しいタスクのものを戻します（割り算の途中でなかったタスクは DIRTY を落として戻る）。`arm_sigdeliver()` の最後の切り替えでも
+  退避します。FreeRTOS 版の Pico SDK のポートは、切り替えのたびに 4 語を退避します。0 での割り算は Pico SDK のルーチンの結果
+  （32 ビットは飽和した商と余り 0、64 ビットは libgcc と同じ。3 版で同じ）です。ルーチンは SIO とスタックだけを使うので、
+  `__start()` の最初から、割り込みハンドラーと異常停止の処理でも使えます。`build.sh` は `__wrap_*` の 6 つがあり、libgcc の
+  割り算（`__divsi3` など）がイメージに無いことを確かめます。
+- **`memcpy`・`memset`**（ボードの `CONFIG_NANO_ROM_MEM_OPS`、既定 y）: パッチ 0010 の `RP2040_ROM_MEM_OPS` が
+  `LIBC_ARCH_MEMCPY`・`LIBC_ARCH_MEMSET` を select し、チップのディレクトリーの `rp2040_rom_mem_*` が `memcpy`・`memset`・
+  `__aeabi_memcpy*`・`__aeabi_memset*` をブート ROM のルーチンへ飛ばします（Pico SDK の `pico_mem_ops` と同じ使い分け）。
+  ルーチンは初回の呼び出しで ROM の関数表から引いて `.bss` に置くので、`.bss` をゼロにする前には呼べません。GCC は
+  `rp2040_start.c` の `.bss` のゼロ化と `.data` のコピーのループを `memset`・`memcpy` の呼び出しに変えるので、パッチがループに
+  `START_LOOP_BARRIER()`（メモリーを clobber する空の asm）を入れ、`build.sh` が `__start()` にそれらの呼び出しが無いことを
+  確かめます。Zephyr 版は同じルーチンを Zephyr の SoC へのパッチで持ちます。
+- 実機（2026-11-18、試験の像）: 除算器と退避ありの像で 250 秒・約 1,128 万回の割り算の食い違いは 0、退避なしの像では
+  40 秒で 10 回でした。
+
+## シグナルハンドラーを使わない
+
+NuttX 版のコードは、シグナルハンドラーを登録しません（`sigaction()`・`signal()`、SIGEV_SIGNAL のタイマー、`kill()`・
+`pthread_kill()` でハンドラーを走らせる使い方をしない）。シグナルハンドラーの実行中にタスクの切り替え（1 ms ごとの起床と
+優先度の入れ替え）が重なる負荷を掛けると、数秒以内にログを残さずに固まることを実機で確かめました（2026-11-18。除算器の
+変更の有無に依らない）。原因は特定しておらず、修正も入れていません。今のコードにはハンドラーの登録が無く、通常の動作では
+この経路を通りません。待ちはセマフォ・sleep・ブロッキングの入出力で書きます。
 
 ## Zephyr の API の互換層（`compat`）
 

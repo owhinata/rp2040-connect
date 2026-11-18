@@ -180,8 +180,9 @@ watermark of 128, `cpu_active` was 45.7% without DMA and 22.5% with it.
 ## NINA-W102 (`nina`)
 
 A driver that lets Zephyr use the NINA-W102 (an ESP32) as Wi-Fi and sockets over SPI. The
-module is expected to run Arduino NINA firmware 3.0.2 with two fixes applied (see
-[firmware/nina-fw](../../../../firmware/nina-fw/README.md)).
+module is expected to run Arduino NINA firmware 3.0.2 with patches 0001 to 0006 (see
+[firmware/nina-fw](../../../../firmware/nina-fw/README.md)); without 0003 to 0006 it works as before
+("Firmware additions" below).
 
 ### Division of work
 
@@ -336,9 +337,13 @@ stays). It behaves as the FreeRTOS build's; the decisions are the shared
 - The RAM log (`dmesg` afterwards) gets a line at the start, each time the port closes and at the way
   out (bytes each way, bytes dropped while USB was not configured, bytes lost to a full buffer and
   the most waiting, the UART's overruns, breaks and framing errors, the rate).
-- esptool 5.3.0 does not connect with `--before no-reset` (found with the FreeRTOS build); the README
-  has the procedure.
-- This build's relay has not been tried on the board.
+- esptool 5.3.0 does not connect with `--before no-reset`. Use `custom_reset_sequence = R0|D1|W0.2|R1|W0.6`
+  in `ESPTOOL_CFGFILE` and `--before default-reset --after no-reset`, which keep RTS set (the procedure
+  is in "Reading and writing the NINA firmware" in the root README).
+- On the board (2026-11-18): `read-flash 0 0x200000` at 115200 bps (192 s) and at 921600 bps (26.5 s) gave
+  the same data, with no bytes lost and no overruns. Closing the port at 300 bps went back to the normal
+  start. A passthrough start leaves two `<err>` lines of the Telnet listener in `dmesg` (the NINA is
+  not started).
 
 ### The CDC ACM work queue
 
@@ -346,11 +351,13 @@ stays). It behaves as the FreeRTOS build's; the decisions are the shared
 completions) from the system work queue to its own. Zephyr 4.5.0's zperf iperf3 server prints to the
 shell while it holds `srv_lock` on `zperf tcp download stop`, and its `idle_work_handler()` on the
 system work queue waits for `srv_lock`, so the shell (`shell_uart`) and the system work queue waited
-for each other (seen on the board: both pending at priority -1).
+for each other (seen on the board: both pending at priority -1). With the setting, 20 runs of
+`zperf tcp download stop` during a connection left the USB and Telnet shells working (2026-11-18).
 
 ### Verified on hardware
 
-Single runs each.
+The next four items were checked with the images from before the NINA driver moved to the shared core
+(single runs each).
 
 - NTP (UDP), Telnet (TCP listener) and MQTT (TCP client).
 - 360 UDP datagrams echoed without loss or corruption while RAW streaming at 6667 Hz (MQTT)
@@ -360,6 +367,10 @@ Single runs each.
 
 - zperf with iperf3 on the PC, 30 s each: 2.93 Mbit/s for TCP sending, 1.54 Mbit/s for TCP
   receiving, and no loss for UDP sending at the requested 500 kbit/s.
+
+With the shared core and the new firmware (0001 to 0006, 2026-11-18): sending right after flashing,
+Telnet and `wifi scan` while sending, a manual disconnection and the reconnection, and the USB and
+Telnet shells after repeated `zperf tcp download stop` during a connection.
 
 Not verified: several TCP clients at once, ten sockets at once, and the timeout path when a
 server does not answer.
@@ -398,15 +409,66 @@ generator when no proper source is available.
 [Tracing TCP ACKs with a Wi-Fi monitor](../../../../design/wifi-monitor-debug.md) describes how to
 examine sending delays and ACK behaviour at the level of radio frames.
 
-## The bootrom's `memcpy` and `memset`
+## Local patches of Zephyr
 
-With `CONFIG_NANO_ROM_MEM_OPS` (the application's Kconfig, on by default), `memcpy`, `memset`,
-`__aeabi_memcpy*` and `__aeabi_memset*` are wrapped (the linker's `--wrap`) to the RP2040 bootrom's
-routines, split as the Pico SDK's `pico_mem_ops` does (`common/drivers/rp2040_rom/`, shared with the
-NuttX build). Without it they are picolibc's byte loops. The routines are looked up on first use and
-kept in `.bss`, so `arch_early_memset` and `arch_early_memcpy`, which clear `.bss` and copy `.data`,
-use picolibc's (`src/rom_mem_early.c`). The host test is `rp2040_rom_mem` in `common/tests/` (a
-fake function table).
+Some changes to Zephyr and its modules are local patches for Zephyr's `west patch`. They are listed in
+`zephyr/manifest/zephyr/patches.yml`; the files are in `zephyr/manifest/zephyr/patches/<module>/`.
+
+| Patch | Module | Change |
+|---|---|---|
+| `hal_rpi_pico/0001-boot2-at25sf128a-clkdiv-2.patch` | hal_rpi_pico | The board's boot2 (`boot2_at25sf128a.S`) runs the flash at clk_sys / 2 (62.5 MHz) instead of clk_sys / 4 (31.25 MHz). hal_rpi_pico has no way to pass the value, so the default changes |
+| `zephyr/0001-arm-cortex-m-rp2040-divider-save.patch` | zephyr | `CONFIG_ARM_RP2040_DIVIDER_SAVE`: the thread switches (PendSV, `swap_helper.S`) save and restore the SIO divider |
+| `zephyr/0002-soc-rp2040-rom-mem-ops.patch` | zephyr | `CONFIG_RP2040_ROM_MEM_OPS`: `memcpy` and `memset` through the boot ROM's routines |
+
+- **Applying**: `source script/setup.sh` applies them to the modules' working trees with `west patch apply`
+  (no commits; `git -C zephyr/zephyr status` shows them as changes). Patches already applied are skipped,
+  so sourcing it again changes nothing. A copy of the set applied is kept in `zephyr/.west/nano-patches/`;
+  when `patches.yml` or a patch changes, that set is taken back first and the current one applied (a patch
+  removed from the list does not stay in a tree). When applying fails, the patches applied are taken back.
+- **After changing a patch**: set its `sha256sum` in `patches.yml` to the value of `sha256sum <file>`, then
+  source `script/setup.sh` again.
+- **Taking them back**: run `west patch reverse` in `zephyr/` and remove `zephyr/.west/nano-patches/`. If
+  that fails, restore each tree with `git -C <tree> checkout -- .` as `setup.sh` says, remove the copy and
+  source it again. The application does not build on trees without the patches (`prj.conf` sets the
+  patch's `CONFIG_RP2040_ROM_MEM_OPS`, and `CONFIG_NANO_HW_DIVIDER` stops in CMake without
+  `CONFIG_ARM_RP2040_DIVIDER_SAVE`).
+- **Moving to a newer Zephyr**: take the patches back first as above, change the versions in
+  `manifest/west.yml` and run `west update`. Remake each patch on the new trees, put it in `patches/`,
+  update its `sha256sum`, apply them with `source script/setup.sh` and build.
+
+### boot2 at clock divider 2
+
+The read boot2 uses (EBh) is rated for 108 MHz or more by the AT25SF128A's data sheet. With clk_sys at
+125 MHz the divider is even, so 62.5 MHz is the most (the same divider as the FreeRTOS build's Pico SDK
+boot2). On the board, `devmem 0x18000014` (the SSI's BAUDR) reads 2.
+
+### The divider (`CONFIG_NANO_HW_DIVIDER`)
+
+The application's `CONFIG_NANO_HW_DIVIDER` (on by default) builds the Pico SDK's `divider_hardware.S` from
+hal_rpi_pico and wraps `__aeabi_idiv`, `__aeabi_idivmod`, `__aeabi_uidiv`, `__aeabi_uidivmod`,
+`__aeabi_ldivmod` and `__aeabi_uldivmod` to it (the linker's `--wrap`, `CMakeLists.txt`). Without it they
+are libgcc's shift-and-subtract loops.
+
+- The routines do not lock interrupts (`PICO_DIVIDER_DISABLE_INTERRUPTS=0`). When an interrupt handler
+  divides in the middle of a division, the routine sees DIRTY and saves the divider itself. When a thread
+  is switched out in the middle of one, the patch's `CONFIG_ARM_RP2040_DIVIDER_SAVE` (selected by
+  `CONFIG_NANO_HW_DIVIDER`) saves it in PendSV: only when DIRTY is set, the four registers go to 20 bytes
+  of `struct _thread_arch`, and a thread that was not dividing comes back with DIRTY clear (the Pico SDK's
+  FreeRTOS port of the FreeRTOS build saves the four words at every switch).
+- A division by zero gives the Pico SDK routines' results (the same in the three builds): for 32 bits a
+  saturated quotient (0 for 0 / 0) and a remainder of 0; for 64 bits the same as libgcc's.
+- Test images (2026-11-18): without the saving, 30 mismatches in 81 seconds (in the lowest-priority
+  threads only); with it, none in 361 seconds and about 40.7 million divisions.
+
+### The boot ROM's `memcpy` and `memset` (`CONFIG_RP2040_ROM_MEM_OPS`)
+
+With the patch's `CONFIG_RP2040_ROM_MEM_OPS` (set in `prj.conf`), the SoC's CMake wraps `memcpy`,
+`memset`, `__aeabi_memcpy*` and `__aeabi_memset*` (the linker's `--wrap`) to the RP2040 boot ROM's
+routines, split as the Pico SDK's `pico_mem_ops` does. This covers the calls from inside picolibc and
+those GCC emits for struct copies and loops. Without it they are picolibc's byte loops. The routines are
+looked up in the ROM's function table on first use and kept in `.bss`, so `arch_early_memset` and
+`arch_early_memcpy`, which clear `.bss` and copy `.data`, call picolibc's. The NuttX build has the same
+routines as a patch of NuttX (`nuttx/patches/nuttx/0010`).
 
 ## Tests
 

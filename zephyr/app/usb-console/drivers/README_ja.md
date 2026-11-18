@@ -168,8 +168,9 @@ FIFO の取得だけを行った過去の測定（6667 Hz、1 MHz、各 1 回）
 ## NINA-W102（`nina`）
 
 NINA-W102（ESP32）を、SPI 経由の Wi-Fi・ソケットとして Zephyr から使うためのドライバーです。
-NINA 側は Arduino の NINA ファームウェア 3.0.2 に 2 件の修正を当てたものを前提にします
-（[ファームウェアの説明](../../../../firmware/nina-fw/README.md)）。
+NINA 側は Arduino の NINA ファームウェア 3.0.2 にパッチ 0001〜0006 を当てたものを前提にします
+（[ファームウェアの説明](../../../../firmware/nina-fw/README.md)）。0003〜0006 の無いファームウェアでも従来どおりに
+動きます（下の「ファームウェアの追加機能」）。
 
 ### 役割分担
 
@@ -306,19 +307,24 @@ SerialNINAPassthrough スケッチの代わりです（RP2040 のファームウ
   （GPIO0 HIGH、RESETN を 10 ms LOW、750 ms 後に GPIO0 を離す）から、watchdog で再起動します。
 - RAM のログ（出たあとの `dmesg`）に、開始・ポートを閉じるたび・終了の行が残ります（送受信のバイト数、USB が無い間に
   捨てた数、リングからあふれた数と最大の滞留、UART のオーバーラン・ブレーク・フレーミングエラー、レート）。
-- esptool 5.3.0 は `--before no-reset` では繋がりません（FreeRTOS 版で確認）。手順は README を見てください。
-- この版の中継は実機で確認していません。
+- esptool 5.3.0 は `--before no-reset` では繋がりません。`ESPTOOL_CFGFILE` の `custom_reset_sequence = R0|D1|W0.2|R1|W0.6` と
+  `--before default-reset --after no-reset` で RTS を有効にしたまま使います（手順はルートの README の「NINA のファームウェアの
+  読み書き」）。
+- 実機（2026-11-18）: `read-flash 0 0x200000` を 115200 bps（192 秒）と 921600 bps（26.5 秒）で行い、2 つの読み出しが一致し、
+  取りこぼしとオーバーランは 0 でした。300 bps で閉じると通常の起動に戻りました。中継の起動では `dmesg` に Telnet の
+  待ち受けの `<err>` が 2 行残ります（NINA を起こさないため）。
 
 ### CDC ACM の専用のワークキュー
 
 `prj.conf` の `CONFIG_USBD_CDC_ACM_WORKQUEUE=y` で、CDC ACM（USB のシェルの送信完了）をシステムのワークキューから専用の
 ワークキューへ移しています。Zephyr 4.5.0 の zperf の iperf3 サーバーは、`zperf tcp download stop` で `srv_lock` を持ったまま
 シェルに印字し、同じシステムのワークキューの `idle_work_handler()` が `srv_lock` を待つので、シェル（`shell_uart`）と
-システムのワークキューが互いを待って止まっていました（実機で確認。どちらも優先度 -1 で pending）。
+システムのワークキューが互いを待って止まっていました（実機で確認。どちらも優先度 -1 で pending）。この設定を足した像では、
+接続中の `zperf tcp download stop` を 20 回繰り返しても、USB と Telnet のシェルは止まりませんでした（2026-11-18）。
 
 ### 実機で確認した範囲
 
-各 1 回ずつの確認です。
+次の 4 項目は、NINA のドライバーを共有のコアに載せ替える前の像での確認です（各 1 回）。
 
 - NTP（UDP）、Telnet（TCP の待ち受け）、MQTT（TCP クライアント）の動作。
 - 6667 Hz の RAW 送信（MQTT）と Telnet を動かしたまま、UDP のデータグラム 360 個を往復させて、
@@ -327,6 +333,9 @@ SerialNINAPassthrough スケッチの代わりです（RP2040 のファームウ
 
 - zperf（PC 側は iperf3、各 30 秒）：TCP 送信 2.93 Mbit/s、TCP 受信 1.54 Mbit/s、UDP 送信は
   500 kbit/s の指定で欠落 0。
+
+共有のコアと新しいファームウェア（0001〜0006）の像（2026-11-18）では、書き込み直後の送信、送信中の Telnet と
+`wifi scan`、手動の切断と復帰、接続中の `zperf tcp download stop` の繰り返しのあとの USB と Telnet のシェルを確かめました。
 
 確認していないもの：TCP クライアントを複数同時に開く場合、10 ソケット同時、接続先が応答
 しないときのタイムアウトの経路。
@@ -363,13 +372,59 @@ MQTT の接続と送信ができること、ホスト名の不一致・期限切
 送信の遅れや ACK の挙動を無線フレームの段階で調べる手順は、
 [Wi-Fi モニターによる TCP ACK 調査手順](../../../../design/wifi-monitor-debug-ja.md) にあります。
 
-## ブート ROM の `memcpy`・`memset`
+## Zephyr へのローカルのパッチ
 
-`CONFIG_NANO_ROM_MEM_OPS`（アプリの Kconfig、既定で有効）で、`memcpy`・`memset`・`__aeabi_memcpy*`・`__aeabi_memset*`
-をリンカーの `--wrap` で RP2040 のブート ROM のルーチンへ回します（Pico SDK の `pico_mem_ops` と同じ使い分け。
-NuttX 版と共有の `common/drivers/rp2040_rom/`）。無効にすると picolibc のバイト単位のループです。ROM のルーチンは
-初回の呼び出しで引いて `.bss` に置くので、`.bss` のゼロ化と `.data` のコピーを行う `arch_early_memset`・`arch_early_memcpy`
-は picolibc のものを使います（`src/rom_mem_early.c`）。ホストテストは `common/tests/` の `rp2040_rom_mem`（偽の関数表）。
+Zephyr 本体とモジュールの一部の変更は、Zephyr の `west patch` のローカルのパッチにしています。パッチの一覧は
+`zephyr/manifest/zephyr/patches.yml`、ファイルは `zephyr/manifest/zephyr/patches/<モジュール>/` です。
+
+| パッチ | 対象 | 内容 |
+|---|---|---|
+| `hal_rpi_pico/0001-boot2-at25sf128a-clkdiv-2.patch` | hal_rpi_pico | ボードの boot2（`boot2_at25sf128a.S`）のフラッシュのクロックを clk_sys の 1/4（31.25 MHz）から 1/2（62.5 MHz）に。hal_rpi_pico には値を渡す口が無いので既定値を変える |
+| `zephyr/0001-arm-cortex-m-rp2040-divider-save.patch` | zephyr | `CONFIG_ARM_RP2040_DIVIDER_SAVE`: スレッドの切り替え（PendSV、`swap_helper.S`）で SIO の除算器を退避・復元する |
+| `zephyr/0002-soc-rp2040-rom-mem-ops.patch` | zephyr | `CONFIG_RP2040_ROM_MEM_OPS`: `memcpy`・`memset` をブート ROM のルーチンにする |
+
+- **当て方**: `source script/setup.sh` が `west patch apply` で各モジュールの作業ツリーに当てます（commit は作りません。
+  `git -C zephyr/zephyr status` には変更として出ます）。当てたものは飛ばすので、何度読み込んでも同じです。当てた集合の写しを
+  `zephyr/.west/nano-patches/` に持ち、`patches.yml` かパッチが変わっていれば、写しの集合を先に戻してから今の集合を当てます
+  （一覧から消したパッチがツリーに残りません）。当てるのに失敗したときは、当てた分を戻して止まります。
+- **パッチを直したとき**: `patches.yml` の `sha256sum` を `sha256sum <ファイル>` の値に直してから、`source script/setup.sh` を
+  読み込み直します。
+- **戻し方**: `zephyr/` で `west patch reverse` を実行し、`zephyr/.west/nano-patches/` を消します。戻せないときは、
+  `setup.sh` の表示のとおり各ツリーを `git -C <ツリー> checkout -- .` で戻してから写しを消し、読み込み直します。
+  戻したツリーでは、このアプリはビルドできません（`prj.conf` がパッチの `CONFIG_RP2040_ROM_MEM_OPS` を使い、
+  `CONFIG_NANO_HW_DIVIDER` は `CONFIG_ARM_RP2040_DIVIDER_SAVE` が無いと CMake で止まります）。
+- **Zephyr を上げるとき**: 先に上の手順でパッチを戻し、`manifest/west.yml` の版を変えて `west update` します。新しいツリーで
+  各パッチを作り直して `patches/` に置き、`sha256sum` を直し、`source script/setup.sh` で当ててからビルドします。
+
+### boot2 の分周 2
+
+boot2 が使う読み出し（EBh）の最高周波数は、AT25SF128A のデータシートで 108 MHz 以上です。clk_sys 125 MHz では分周は偶数なので、
+62.5 MHz が上限です（FreeRTOS 版の Pico SDK の boot2 と同じ分周）。実機では `devmem 0x18000014`（SSI の BAUDR）が 2 になります。
+
+### 除算器（`CONFIG_NANO_HW_DIVIDER`）
+
+アプリの `CONFIG_NANO_HW_DIVIDER`（既定で有効）が、hal_rpi_pico の Pico SDK の `divider_hardware.S` をビルドし、
+`__aeabi_idiv`・`__aeabi_idivmod`・`__aeabi_uidiv`・`__aeabi_uidivmod`・`__aeabi_ldivmod`・`__aeabi_uldivmod` をリンカーの `--wrap` で
+そこへ回します（`CMakeLists.txt`）。無効にすると libgcc のシフトと減算のループです。
+
+- ルーチンは割り込みを止めません（`PICO_DIVIDER_DISABLE_INTERRUPTS=0`）。割り込みハンドラーが割り算の途中に入った場合は、
+  ルーチン自身が DIRTY を見て退避します。スレッドが割り算の途中で切り替わる場合は、パッチの `CONFIG_ARM_RP2040_DIVIDER_SAVE`
+  （`CONFIG_NANO_HW_DIVIDER` が select する）が PendSV で退避します。退避は DIRTY のときだけ 4 つのレジスターを
+  `struct _thread_arch` の 20 バイトに置き、割り算の途中でなかったスレッドは DIRTY が落ちた状態で戻ります（FreeRTOS 版の
+  Pico SDK のポートは、切り替えのたびに 4 語を退避します）。
+- 0 での割り算は Pico SDK のルーチンの結果です（3 版で同じ）。32 ビットは飽和した商（0 / 0 は 0）と余り 0、64 ビットは
+  libgcc と同じです。
+- 試験の像（2026-11-18）: 退避なしでは 81 秒で食い違いが 30 回（最も低い優先度のスレッドだけ）、退避ありでは 361 秒・
+  約 4,070 万回の割り算で 0 でした。
+
+### ブート ROM の `memcpy`・`memset`（`CONFIG_RP2040_ROM_MEM_OPS`）
+
+パッチの `CONFIG_RP2040_ROM_MEM_OPS`（`prj.conf` で有効）で、SoC の CMake が `memcpy`・`memset`・`__aeabi_memcpy*`・
+`__aeabi_memset*` をリンカーの `--wrap` で RP2040 のブート ROM のルーチンへ回します（Pico SDK の `pico_mem_ops` と同じ使い分け）。
+picolibc の中からの呼び出しと、GCC が構造体のコピーやループに出す呼び出しも含みます。無効にすると picolibc のバイト単位の
+ループです。ROM のルーチンは初回の呼び出しで ROM の関数表から引いて `.bss` に置くので、`.bss` のゼロ化と `.data` のコピーを
+行う `arch_early_memset`・`arch_early_memcpy` は picolibc のものを呼びます。NuttX 版は同じ仕組みを NuttX へのパッチ
+（`nuttx/patches/nuttx/0010`）で持ちます。
 
 ## テスト
 
