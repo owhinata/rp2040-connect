@@ -50,18 +50,6 @@ ifeq ($(CONFIG_NANO_PERF),y)
 CSRCS += nano_perf.c
 endif
 
-# memcpy() and memset() through the bootrom, shared with the Zephyr build
-# (common/drivers/rp2040_rom; VPATH and DEPPATH as for i2c_dw below).  The
-# Kconfig option selects LIBC_ARCH_MEMCPY and LIBC_ARCH_MEMSET, which leave
-# libc's out.
-
-ifeq ($(CONFIG_NANO_ROM_MEM_OPS),y)
-ASRCS += rp2040_rom_mem_ops.S
-CSRCS += rp2040_rom_mem_lookup.c
-DEPPATH += --dep-path board/../../../../common/drivers/rp2040_rom
-VPATH += :board/../../../../common/drivers/rp2040_rom
-endif
-
 # Integer division on the SIO divider: the Pico SDK's pico_divider
 # (divider_hardware.S from nuttx/pico-sdk, PICO_SDK_PATH, which setup.sh
 # sets), assembled with the SDK's headers and, for the two that the SDK's

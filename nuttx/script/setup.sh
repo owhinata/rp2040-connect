@@ -255,7 +255,6 @@ _nuttx_setup() {
 
   _nuttx_patch "${root}/nuttx" "${root}/patches/nuttx" || return 1
   _nuttx_patch "${root}/nuttx-apps" "${root}/patches/apps" || return 1
-  _nuttx_patch "${root}/pico-sdk" "${root}/patches/pico-sdk" || return 1
 
   # Out-of-tree kernel code and applications (filled by later tasks).
   _nuttx_link ../drivers "${root}/nuttx/external" || return 1

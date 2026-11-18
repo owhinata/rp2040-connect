@@ -1,0 +1,373 @@
+rp2040: memcpy() and memset() through the bootrom
+
+Purpose: libc's memcpy() and memset() (libs/libc/string) are byte loops on
+this build; the RP2040 bootrom has fast ones (word copies, unrolled), which
+the Pico SDK uses in place of the C library's (pico_mem_ops,
+mem_ops_aeabi.S).  The board enables this with CONFIG_NANO_ROM_MEM_OPS
+(boards/arduino-nano-rp2040-connect).
+
+- arch/arm/src/rp2040/Kconfig: RP2040_ROM_MEM_OPS (default n), which
+  selects LIBC_ARCH_MEMCPY and LIBC_ARCH_MEMSET to leave libc's out.
+- arch/arm/src/rp2040/rp2040_rom_mem_ops.S, rp2040_rom_mem_lookup.c,
+  rp2040_rom_mem.h (new): memcpy(), memset(), __aeabi_memcpy{,4,8}() and
+  __aeabi_memset{,4,8}() jump to the bootrom's 'MC', 'C4', 'MS' and 'S4'
+  routines.  Each routine is looked up in the bootrom's function table on
+  its first call and kept in .bss (an entry left in RAM from before a reset
+  is never used).  The weak __aeabi_memclr*() of libs/libc/machine/arm call
+  memset().
+- arch/arm/src/rp2040/Make.defs: build them with RP2040_ROM_MEM_OPS.
+- arch/arm/src/rp2040/rp2040_start.c: as the routines need .bss cleared,
+  __start() must not call them before; GCC turns its loops that clear .bss
+  and copy .data into calls of memset() and memcpy().  With
+  RP2040_ROM_MEM_OPS, an empty asm with a memory clobber in each loop keeps
+  them as loops (nuttx/script/build.sh checks that __start() calls
+  neither).
+
+With RP2040_ROM_MEM_OPS off the code is upstream's.
+Zephyr: the Zephyr build has the same routines as a local patch to its SoC
+(CONFIG_RP2040_ROM_MEM_OPS, zephyr/manifest/zephyr/patches/zephyr/0002).
+
+--- a/arch/arm/src/rp2040/Kconfig
++++ b/arch/arm/src/rp2040/Kconfig
+@@ -25,6 +25,21 @@
+ 		that interrupts another one, which covers interrupt handlers).
+ 		Only selects the saving: the board links the routines.
+ 
++config RP2040_ROM_MEM_OPS
++	bool "memcpy() and memset() through the bootrom"
++	default n
++	select LIBC_ARCH_MEMCPY
++	select LIBC_ARCH_MEMSET
++	---help---
++		memcpy(), memset(), __aeabi_memcpy*() and __aeabi_memset*()
++		jump to the bootrom's routines (rp2040_rom_mem_ops.S), as the
++		Pico SDK's pico_mem_ops does, instead of libc's byte loops
++		(LIBC_ARCH_MEMCPY and LIBC_ARCH_MEMSET leave those out; the
++		weak __aeabi_memclr*() of libs/libc/machine/arm call memset()).
++		The routines are looked up on first use and kept in .bss, so
++		__start() keeps GCC from turning its .bss and .data loops into
++		calls of them.
++
+ #####################################################################
+ #  UART Configuration
+ #####################################################################
+--- a/arch/arm/src/rp2040/Make.defs
++++ b/arch/arm/src/rp2040/Make.defs
+@@ -41,6 +41,11 @@
+ CHIP_CSRCS += rp2040_pll.c
+ CHIP_CSRCS += rp2040_hwspinlock.c
+ 
++ifeq ($(CONFIG_RP2040_ROM_MEM_OPS),y)
++CHIP_ASRCS += rp2040_rom_mem_ops.S
++CHIP_CSRCS += rp2040_rom_mem_lookup.c
++endif
++
+ ifeq ($(CONFIG_SMP),y)
+ CHIP_CSRCS += rp2040_cpustart.c
+ CHIP_CSRCS += rp2040_smpcall.c
+--- a/arch/arm/src/rp2040/rp2040_start.c
++++ b/arch/arm/src/rp2040/rp2040_start.c
+@@ -45,6 +45,20 @@
+ 
+ #define IDLE_STACK ((uint32_t)_ebss + CONFIG_IDLETHREAD_STACKSIZE)
+ 
++/* With CONFIG_RP2040_ROM_MEM_OPS, memset() and memcpy() keep the bootrom
++ * routines they have looked up in .bss (rp2040_rom_mem_lookup.c), so they
++ * must not run before .bss is cleared.  GCC turns the loops below that
++ * clear .bss and copy .data into calls of memset() and memcpy()
++ * (-ftree-loop-distribute-patterns, on at -O2 and -Os); an empty asm that
++ * may touch memory, in each loop, keeps them as loops.
++ */
++
++#ifdef CONFIG_RP2040_ROM_MEM_OPS
++#  define START_LOOP_BARRIER() __asm__ __volatile__ ("" ::: "memory")
++#else
++#  define START_LOOP_BARRIER()
++#endif
++
+ /****************************************************************************
+  * Public Data
+  ****************************************************************************/
+@@ -108,6 +122,7 @@
+   for (dest = (uint32_t *)_sbss; dest < (uint32_t *)_ebss; )
+     {
+       *dest++ = 0;
++      START_LOOP_BARRIER();
+     }
+ 
+   /* Set up clock */
+@@ -139,6 +154,7 @@
+       )
+     {
+       *dest++ = *src++;
++      START_LOOP_BARRIER();
+     }
+ #endif
+ 
+--- /dev/null
++++ b/arch/arm/src/rp2040/rp2040_rom_mem.h
+@@ -0,0 +1,61 @@
++/****************************************************************************
++ * arch/arm/src/rp2040/rp2040_rom_mem.h
++ *
++ * SPDX-License-Identifier: MIT
++ *
++ * memcpy() and memset() through the RP2040 bootrom's routines
++ * (CONFIG_RP2040_ROM_MEM_OPS), as the Pico SDK's pico_mem_ops does
++ * (src/rp2_common/pico_mem_ops/mem_ops_aeabi.S).  Local to this workspace
++ * (nuttx/patches/nuttx/0010), not part of upstream NuttX.
++ *
++ * rp2040_rom_mem_ops.S defines memcpy(), memset(), __aeabi_memcpy{,4,8}()
++ * and __aeabi_memset{,4,8}().  Each loads its bootrom routine from
++ * g_rp2040_rom_mem_fn[] and jumps to it; while the entry is still NULL it
++ * calls rp2040_rom_mem_resolve() (rp2040_rom_mem_lookup.c) first, which
++ * looks the routine up in the bootrom's function table and stores it.
++ *
++ * g_rp2040_rom_mem_fn[] is in .bss: the routines may only be called once
++ * .bss is zero.  __start() (rp2040_start.c) clears .bss and copies .data
++ * with loops that it keeps GCC from turning into calls of these.
++ *
++ * This header is included by the assembler too.
++ *
++ ****************************************************************************/
++
++#ifndef __ARCH_ARM_SRC_RP2040_RP2040_ROM_MEM_H
++#define __ARCH_ARM_SRC_RP2040_RP2040_ROM_MEM_H
++
++/****************************************************************************
++ * Pre-processor Definitions
++ ****************************************************************************/
++
++/* Byte offsets of the entries of g_rp2040_rom_mem_fn[]. */
++
++#define RP2040_ROM_MEM_MEMSET   0   /* 'M','S': memset(ptr, c, n) */
++#define RP2040_ROM_MEM_MEMCPY   4   /* 'M','C': memcpy(dest, src, n) */
++#define RP2040_ROM_MEM_MEMSET4  8   /* 'S','4': memset4(), ptr word aligned */
++#define RP2040_ROM_MEM_MEMCPY44 12  /* 'C','4': memcpy44(), both aligned */
++#define RP2040_ROM_MEM_COUNT    4
++
++#ifndef __ASSEMBLY__
++
++/****************************************************************************
++ * Public Data
++ ****************************************************************************/
++
++/* The routines found so far (NULL: not looked up yet). */
++
++extern void *g_rp2040_rom_mem_fn[RP2040_ROM_MEM_COUNT];
++
++/****************************************************************************
++ * Public Function Prototypes
++ ****************************************************************************/
++
++/* Look up the routine of an entry (offset: RP2040_ROM_MEM_*), store it in
++ * g_rp2040_rom_mem_fn[] and return it.
++ */
++
++void *rp2040_rom_mem_resolve(unsigned int offset);
++
++#endif /* __ASSEMBLY__ */
++#endif /* __ARCH_ARM_SRC_RP2040_RP2040_ROM_MEM_H */
+--- /dev/null
++++ b/arch/arm/src/rp2040/rp2040_rom_mem_lookup.c
+@@ -0,0 +1,85 @@
++/****************************************************************************
++ * arch/arm/src/rp2040/rp2040_rom_mem_lookup.c
++ *
++ * SPDX-License-Identifier: MIT
++ *
++ * The lookup of the bootrom's memcpy() and memset() routines for
++ * rp2040_rom_mem_ops.S (rp2040_rom_mem.h, CONFIG_RP2040_ROM_MEM_OPS).
++ *
++ * The entries are looked up on first use instead of at a fixed point of the
++ * boot, so no call can come before them, as long as .bss is zero by then:
++ * an entry left over in RAM from before a reset is never trusted.  .data
++ * need not be copied yet: nothing here is in .data.
++ *
++ * Interrupts and threads can call a routine while another context is
++ * looking the same entry up: both look up the same address and store it
++ * with one word write, so either one's result is right.
++ *
++ ****************************************************************************/
++
++/****************************************************************************
++ * Included Files
++ ****************************************************************************/
++
++#include <nuttx/config.h>
++
++#include <stdint.h>
++
++#include "rp2040_rom.h"
++#include "rp2040_rom_mem.h"
++
++/****************************************************************************
++ * Public Data
++ ****************************************************************************/
++
++void *g_rp2040_rom_mem_fn[RP2040_ROM_MEM_COUNT];
++
++/****************************************************************************
++ * Private Data
++ ****************************************************************************/
++
++static const uint16_t g_rp2040_rom_mem_code[RP2040_ROM_MEM_COUNT] =
++{
++  [RP2040_ROM_MEM_MEMSET / 4]   = ROM_MEMSET,
++  [RP2040_ROM_MEM_MEMCPY / 4]   = ROM_MEMCPY,
++  [RP2040_ROM_MEM_MEMSET4 / 4]  = ROM_MEMSET4,
++  [RP2040_ROM_MEM_MEMCPY44 / 4] = ROM_MEMCPY44,
++};
++
++/****************************************************************************
++ * Private Functions
++ ****************************************************************************/
++
++/* The bootrom's halfword at 0x14 is the address of its function table, the
++ * one at 0x18 the address of rom_table_lookup(table, code) (RP2040
++ * datasheet, "Bootrom Contents"; ROM_LOOKUP() of rp2040_rom.h).  The asm
++ * hides the constant address from the compiler, which warns about reads of
++ * the first page.
++ */
++
++static void *rp2040_rom_lookup(uint32_t code)
++{
++  uintptr_t base = 0x14;
++  const volatile uint16_t *hword;
++  rom_table_lookup_fn lookup;
++
++  __asm__ ("" : "+r"(base));
++
++  hword  = (const volatile uint16_t *)base;
++  lookup = (rom_table_lookup_fn)(uintptr_t)hword[2];
++
++  return lookup((uint16_t *)(uintptr_t)hword[0], code);
++}
++
++/****************************************************************************
++ * Public Functions
++ ****************************************************************************/
++
++void *rp2040_rom_mem_resolve(unsigned int offset)
++{
++  unsigned int i = offset / 4;
++  void *fn = rp2040_rom_lookup(g_rp2040_rom_mem_code[i]);
++
++  g_rp2040_rom_mem_fn[i] = fn;
++  return fn;
++}
+--- /dev/null
++++ b/arch/arm/src/rp2040/rp2040_rom_mem_ops.S
+@@ -0,0 +1,112 @@
++/****************************************************************************
++ * arch/arm/src/rp2040/rp2040_rom_mem_ops.S
++ *
++ * SPDX-License-Identifier: MIT
++ *
++ * memcpy(), memset() and the ARM EABI's __aeabi_memcpy*() and
++ * __aeabi_memset*() through the RP2040 bootrom's routines
++ * (rp2040_rom_mem.h, CONFIG_RP2040_ROM_MEM_OPS, which selects
++ * LIBC_ARCH_MEMCPY and LIBC_ARCH_MEMSET to leave libc's out).
++ *
++ * The same split as the Pico SDK's mem_ops_aeabi.S:
++ *   memcpy, __aeabi_memcpy      -> 'M','C' (memcpy)
++ *   __aeabi_memcpy4, 8          -> 'C','4' (memcpy44: dest and src aligned)
++ *   memset                      -> 'M','S' (memset)
++ *   __aeabi_memset              -> 'M','S' with n and c swapped
++ *   __aeabi_memset4, 8          -> 'S','4' (memset4: dest aligned), swapped
++ * The EABI's memset has the arguments (dest, n, c), the bootrom's
++ * (dest, c, n).  __aeabi_memclr*() are left to the weak ones of
++ * libs/libc/machine/arm, which call memset().
++ *
++ * Each entry loads its routine from g_rp2040_rom_mem_fn[] and jumps to it
++ * with the caller's registers and return address, as the Pico SDK's do; the
++ * only addition is the test for NULL, an entry not looked up yet, which
++ * goes to rp2040_rom_mem_slow below once per entry.
++ *
++ ****************************************************************************/
++
++/****************************************************************************
++ * Included Files
++ ****************************************************************************/
++
++#include <nuttx/config.h>
++
++#include "rp2040_rom_mem.h"
++
++	.syntax	unified
++	.cpu	cortex-m0plus
++	.thumb
++	.file	"rp2040_rom_mem_ops.S"
++
++	.macro	rom_mem_func name
++	.global	\name
++	.type	\name, %function
++	.thumb_func
++\name:
++	.endm
++
++/* Load the entry at \offset into r3 and jump to it; r0-r2 are the
++ * arguments of the bootrom's routine.
++ */
++
++	.macro	rom_mem_jump offset
++	ldr	r3, =g_rp2040_rom_mem_fn
++	ldr	r3, [r3, #\offset]
++	cmp	r3, #0
++	beq	1f
++	bx	r3
++1:
++	movs	r3, #\offset
++	b	rp2040_rom_mem_slow
++	.endm
++
++/* One section: the entries reach rp2040_rom_mem_slow with a short branch. */
++
++	.section .text.rp2040_rom_mem_ops, "ax", %progbits
++	.align	2
++
++rom_mem_func memcpy
++rom_mem_func __aeabi_memcpy
++	rom_mem_jump RP2040_ROM_MEM_MEMCPY
++
++rom_mem_func __aeabi_memcpy4
++rom_mem_func __aeabi_memcpy8
++	rom_mem_jump RP2040_ROM_MEM_MEMCPY44
++
++rom_mem_func memset
++	rom_mem_jump RP2040_ROM_MEM_MEMSET
++
++rom_mem_func __aeabi_memset
++	/* (dest, n, c) -> (dest, c, n) */
++	eors	r2, r1
++	eors	r1, r2
++	eors	r2, r1
++	rom_mem_jump RP2040_ROM_MEM_MEMSET
++
++rom_mem_func __aeabi_memset4
++rom_mem_func __aeabi_memset8
++	eors	r2, r1
++	eors	r1, r2
++	eors	r2, r1
++	rom_mem_jump RP2040_ROM_MEM_MEMSET4
++
++/* r0-r2: the routine's arguments, r3: the entry's offset, lr: the caller's
++ * return address.  Look the routine up (a C function: r0-r3, r12 and lr are
++ * not kept), then jump to it with the arguments and lr restored.  Four words
++ * pushed keep the stack 8-byte aligned.
++ */
++
++	.type	rp2040_rom_mem_slow, %function
++	.thumb_func
++rp2040_rom_mem_slow:
++	push	{r0, r1, r2, lr}
++	movs	r0, r3
++	bl	rp2040_rom_mem_resolve
++	mov	r12, r0
++	pop	{r0, r1, r2, r3}
++	mov	lr, r3
++	bx	r12
++	.size	rp2040_rom_mem_slow, . - rp2040_rom_mem_slow
++
++	.ltorg
++	.end

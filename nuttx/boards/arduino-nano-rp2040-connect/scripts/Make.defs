@@ -43,17 +43,6 @@ ARCHSCRIPT += $(BOARD_DIR)$(DELIM)scripts$(DELIM)$(LDSCRIPT)
 
 BOOT2CFLAGS += -DPICO_FLASH_SPI_CLKDIV=2
 
-# The bootrom's memcpy() and memset() (CONFIG_NANO_ROM_MEM_OPS,
-# common/drivers/rp2040_rom) keep the routines they have looked up in .bss,
-# so nothing may call them before __start() has cleared .bss.  GCC turns the
-# clearing loop of __start() (arch/arm/src/rp2040/rp2040_start.c) into a call
-# to memset(): keep its loops as they are written.  nuttx/script/build.sh
-# checks that __start() calls neither.
-
-ifeq ($(CONFIG_NANO_ROM_MEM_OPS),y)
-chip/rp2040_start.c_CFLAGS += -fno-tree-loop-distribute-patterns
-endif
-
 # Integer division on the SIO divider (CONFIG_NANO_HW_DIVIDER): every call
 # to libgcc's division helpers goes to the Pico SDK's routines
 # (divider_hardware.S, src/Make.defs), which define them as __wrap_<name>.

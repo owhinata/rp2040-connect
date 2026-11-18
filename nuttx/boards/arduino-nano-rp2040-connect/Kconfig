@@ -54,17 +54,14 @@ config NANO_ROM_MEM_OPS
 	bool "memcpy() and memset() through the RP2040 bootrom"
 	default y
 	depends on ARCH_CHIP_RP2040
-	select LIBC_ARCH_MEMCPY
-	select LIBC_ARCH_MEMSET
+	select RP2040_ROM_MEM_OPS
 	---help---
 		memcpy(), memset(), __aeabi_memcpy*() and __aeabi_memset*() jump
-		to the bootrom's routines, as the Pico SDK's pico_mem_ops does
-		(common/drivers/rp2040_rom, shared with the Zephyr build's
-		CONFIG_NANO_ROM_MEM_OPS).  LIBC_ARCH_MEMCPY and LIBC_ARCH_MEMSET
-		leave the byte loops of libs/libc/string out; the weak
-		__aeabi_memclr*() of libs/libc/machine/arm call memset().  The
-		routines are looked up on first use and kept in .bss, which
-		__start() clears with an inline loop before calling anything.
+		to the bootrom's routines, as the Pico SDK's pico_mem_ops does:
+		RP2040_ROM_MEM_OPS of nuttx/patches/nuttx/0010 (the code is in
+		arch/arm/src/rp2040, rp2040_rom_mem_*), the counterpart of the
+		Zephyr build's CONFIG_RP2040_ROM_MEM_OPS.  nuttx/script/build.sh
+		checks that __start() calls neither before it has cleared .bss.
 
 config NANO_HW_DIVIDER
 	bool "Integer division on the RP2040 SIO divider"
@@ -82,9 +79,13 @@ config NANO_HW_DIVIDER
 		and restore the divider around a division that interrupts
 		another one (PICO_DIVIDER_DISABLE_INTERRUPTS 0), and
 		RP2040_HW_DIVIDER (nuttx/patches/nuttx/0009) moves the divider
-		with the task at every context switch.  nuttx/patches/pico-sdk/0001
-		keeps libgcc's results for a 32-bit division by zero.  The
-		routines use only the SIO and the stack, so they work from the
+		with the task at every context switch.  A division by zero
+		gives the SDK's results, as in the Zephyr and FreeRTOS builds:
+		for 32 bits a saturated quotient (0xffffffff, 0x7fffffff or
+		0x80000000; 0 for 0 / 0) and a remainder of 0 (libgcc's gave a
+		quotient of 0 and the dividend); for 64 bits the same as
+		libgcc's (saturated quotient, remainder 0).  The routines use
+		only the SIO and the stack, so they work from the
 		start of __start(), in interrupt handlers and in the fatal error
 		handling.  nuttx/script/build.sh checks that no libgcc integer
 		division is left in the image.

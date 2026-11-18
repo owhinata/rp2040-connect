@@ -210,13 +210,13 @@ bin_size=$(stat -c %s "$bin")
   die "nuttx.bin is ${bin_size} bytes but the ELF loads up to $(printf 0x%08x "$image_end")"
 (( image_end <= image_limit )) || \
   die "image ends at $(printf 0x%08x "$image_end"), beyond $(printf 0x%08x "$image_limit") (key-value area)"
-# With the bootrom's memcpy() and memset() (CONFIG_NANO_ROM_MEM_OPS), __start()
-# must not call them before it has cleared .bss (scripts/Make.defs).
-if [[ "$(config_value CONFIG_NANO_ROM_MEM_OPS)" == y ]]; then
+# With the bootrom's memcpy() and memset() (CONFIG_RP2040_ROM_MEM_OPS, nuttx/patches/nuttx/0010),
+# __start() must not call them before it has cleared .bss (rp2040_start.c keeps its loops).
+if [[ "$(config_value CONFIG_RP2040_ROM_MEM_OPS)" == y ]]; then
   start_dis="$(arm-none-eabi-objdump -d --disassemble=__start "$elf")"
   grep -q '<__start>:' <<< "$start_dis" || die "__start is missing from the ELF"
   if grep -qE '<(memcpy|memset|__aeabi_mem[a-z0-9]*)>' <<< "$start_dis"; then
-    die "__start calls memcpy() or memset(), which need .bss cleared (CONFIG_NANO_ROM_MEM_OPS)"
+    die "__start calls memcpy() or memset(), which need .bss cleared (CONFIG_RP2040_ROM_MEM_OPS)"
   fi
 fi
 # With the SIO divider (CONFIG_NANO_HW_DIVIDER), every integer division goes
