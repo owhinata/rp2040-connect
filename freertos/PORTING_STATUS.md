@@ -965,3 +965,18 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
 - 起床の遅れの許容を `WAKE_SLACK_US` 300 µs に分けた（空回りの待ちの検査は `SLACK_US` 80 µs のまま）。1 ms の tick では同じ tick で
   優先度の高いタスクも起きるので遅れが増える（実測 134 µs）。メインが修正。実機で Wi-Fi 接続中に 5 回、すべて 0 of 21・i2c 0 of 6・lsm6dso 0 of 3。
 - 実機: 最終の既定の像。
+
+## NuttX 版の READY の割り込み待ち（2026-11-18）
+
+- 実装（subagent）: `nuttx/drivers/nina/nina_os.c` に `nina_os_ready_arm/wait/disarm`（互換層の `gpio0` のコールバック + `sem_t`、GPIO10 の
+  エッジ、GPIO24 と同じ IRQ を共有）。`NINA_OS_WAIT_READY` を常に定義。待ちは 10 ms に区切らず 1 回（NuttX は tickless で、期限と
+  待ちが同じ TIMER の上にあるため）。`NANO_NINA` が `NANO_LSM6DSO_STREAM` に依存（`gpio0` のため。既定の構成は変わらない）。
+  ホストテスト `nina_os`（壊した版 6 通りが失敗することも確認、subagent）。文書: `nuttx/drivers/README`、`nuttx-porting`（日英）。
+  `common/` は変更なし。像 +160 バイト、変わったオブジェクトは `nina_os.o` と `nina_spi.o` だけ（subagent）。
+- メインはソースを読んでいない。ビルドとホストテストは subagent の報告。
+- 実機（NuttX 版、書き込み直後から）: 起動、自動接続。送信 約 70 秒 × 2 回 `cpu_active` 56.2%・55.8%（ポーリングの像は 55.7%・55.9%）、
+  欠番 0、overruns 0。`iperf` 送信 3.19 Mbit/s（12 秒）、受信 1.14 Mbit/s（11 秒）、各 1 回。`dmesg` にエラーなし。
+  ポーリングの像の `iperf` を同じ日に測っていないので、速度の変化はまだ言えない（2026-11-14 の値は送信 3.6〜3.9、受信 0.95〜1.03）。
+  未確認: 送信中の Telnet、スキャン、切断復帰、KV の書き込みのあと。
+- 残っている古いコメント: `common/compat/nano_gpio.h` の冒頭（gpio0 を使う線に GPIO10 が無い）。Z01 の作業が終わってから直す。
+- 実機: READY 割り込みの NuttX 版。
