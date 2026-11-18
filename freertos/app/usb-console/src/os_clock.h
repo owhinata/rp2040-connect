@@ -5,8 +5,9 @@
  * The tick is 1 ms (configTICK_RATE_HZ 1000, FreeRTOSConfig.h; the Zephyr
  * and NuttX builds' is 100 us) and 32 bits wide (the RP2040 port takes no
  * 64-bit tick): it wraps after 2^32 / configTICK_RATE_HZ s, about 49.7 days,
- * and loses counts while interrupts stay disabled for longer than a tick (a
- * flash erase).  So the time since the start is not counted in ticks but
+ * and stands still while interrupts stay disabled for longer than a tick (a
+ * flash erase), catching up when they are enabled again (tick.c,
+ * tick_catchup.h).  So the time since the start is not counted in ticks but
  * read from the TIMER (64 bits, 1 us, from the 12 MHz crystal), the time
  * base of the Zephyr build's time_sync_mono_us() and the NuttX build's
  * nano_mono_us().  The compatibility layer's k_uptime_*() and k_cycle_*()

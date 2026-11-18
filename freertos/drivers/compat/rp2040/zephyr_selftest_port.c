@@ -2,12 +2,15 @@
 /* The board's part of the compatibility layer's self-test
  * (zephyr_selftest.h): a hardware interrupt from an alarm of the Pico SDK's
  * default alarm pool (a TIMER alarm interrupt), the wait until the USB
- * console has sent what the test wrote, and real-time checks on.
+ * console has sent what the test wrote, real-time checks on, and interrupts
+ * masked for a while.
  */
 
 #include <errno.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include "hardware/sync.h"
+#include "hardware/timer.h"
 #include "pico/stdio.h"
 #include "pico/time.h"
 #include "FreeRTOS.h"
@@ -60,4 +63,16 @@ void zephyr_selftest_port_quiet(void)
 bool zephyr_selftest_port_realtime(void)
 {
 	return true;
+}
+
+/* PRIMASK, as flash_safe_execute() masks them for a flash erase
+ * (freertos/drivers/kv/nano_flash_kv.c).
+ */
+int zephyr_selftest_port_mask_irqs(uint32_t us)
+{
+	uint32_t primask = save_and_disable_interrupts();
+
+	busy_wait_us_32(us);
+	restore_interrupts(primask);
+	return 0;
 }

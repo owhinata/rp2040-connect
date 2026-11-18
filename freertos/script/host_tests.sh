@@ -38,6 +38,9 @@
 #   (freertos/drivers/sensor_shell with the shared sensor shell, its processing thread and
 #   "imu cal") on the shared LSM6DSO driver and a fake sensor, from two sessions
 #   (freertos/tests/sensor_shell; skipped without freertos/stmemsc/lsm6dso_reg.c).
+# - The kernel tick's catch-up of ticks lost while interrupts are masked
+#   (freertos/app/usb-console/src/tick_catchup.h) on a model of SysTick
+#   (freertos/tests/tick, no kernel).
 #
 #   freertos/script/host_tests.sh        run them
 #   freertos/script/host_tests.sh -v     also show the tests' output
@@ -48,7 +51,7 @@ verbose=0
 case "${1:-}" in
   "") ;;
   -v) verbose=1 ;;
-  -h|--help) sed -n '2,43p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+  -h|--help) sed -n '2,46p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
   *) printf 'Unknown option: %s\n' "$1" >&2; exit 2 ;;
 esac
 
@@ -102,6 +105,17 @@ else
     timeout 120 "$out/compat_selftest" >"$out/log" || { cat "$out/log"; exit 1; }
 fi
 printf 'ok  compat_selftest (FreeRTOS POSIX port)\n'
+
+# The kernel tick's catch-up (freertos/tests/tick): the step of the board's tick hook
+# (app/usb-console/src/tick_catchup.h) alone and on a model of SysTick, its pending bit and
+# masked interrupts.  No kernel.
+cc "${flags[@]}" "${strict[@]}" -Iapp/usb-console/src tests/tick/main.c -o "$out/tick"
+if (( verbose )); then
+    timeout 60 "$out/tick"
+else
+    timeout 60 "$out/tick" >"$out/log" 2>&1 || { cat "$out/log"; exit 1; }
+fi
+printf 'ok  tick (catch-up of lost ticks, model of SysTick)\n'
 
 # The shell (freertos/tests/shell): the line editor, and two sessions at once on two consoles
 # (each task's stdout, the shared zshell.c and subcmd.c, the copies of Zephyr's fnmatch() and

@@ -1182,6 +1182,83 @@ static void test_timeslice(void)
 	}
 }
 
+/* The tick's catch-up ---------------------------------------------------------*/
+
+/* Interrupts masked as long as a flash erase (about 40-50 ms) lose the tick
+ * interrupts of that time but the first; the application's tick hook counts
+ * them as soon as the interrupts come back
+ * (freertos/app/usb-console/src/tick.c), so the tick count keeps up with the
+ * TIMER, and a sleep and a timeout of the layer that came due meanwhile end
+ * then, not CATCHUP_WAIT_TICKS later.
+ */
+#define CATCHUP_MASK_US    50000
+#define CATCHUP_WAIT_TICKS 10
+/* Allowed lateness after the unmask: the lost ticks one after another (a few
+ * us each), the interrupts held back meanwhile (USB), the switch.
+ */
+#define CATCHUP_SLACK_US   2000
+
+struct tick_sleeper {
+	volatile uint64_t us;
+};
+
+static void tick_sleeper_main(void *arg)
+{
+	struct tick_sleeper *s = arg;
+
+	(void)k_sleep(K_TICKS(CATCHUP_WAIT_TICKS));
+	s->us = st_us();
+}
+
+static void test_tick_catchup(void)
+{
+	K_SEM_DEFINE(sem, 0, 1);
+	struct isr_call c = {.sem = &sem};
+	struct tick_sleeper s = {0};
+	struct helper h;
+	uint32_t t0;
+	uint32_t ticks;
+	uint64_t u0;
+	uint64_t unmask;
+	uint64_t u1;
+	bool ok;
+
+	if (zephyr_selftest_port_mask_irqs(0) == -ENOTSUP) {
+		st_printf("  skipped: the tick cannot catch up here\n");
+		return;
+	}
+
+	/* The sleeper (above this task) runs at once and sleeps; the timeout
+	 * runs in the tick interrupt; both are due inside the masked time.
+	 */
+	st_tick_sync();
+	t0 = st_tick();
+	u0 = st_us();
+	ok = spawn(&h, "st_sleeper", PRIO_HIGH, tick_sleeper_main, &s);
+	isr_call_after(&c, CATCHUP_WAIT_TICKS);
+	unmask = st_us() + CATCHUP_MASK_US;
+	CHECK_EQ(zephyr_selftest_port_mask_irqs(CATCHUP_MASK_US), 0);
+	/* The lost ticks and the sleeper have run before this task again. */
+	ticks = st_tick() - t0;
+	u1 = st_us();
+	CHECK(ok);
+	CHECK_EQ(k_sem_take(&sem, K_MSEC(100)), 0);
+	CHECK(join(&h));
+	CHECK(c.in_isr);
+
+	st_printf("  masked %d us: %lu ticks in %llu us; after the unmask the timeout ran "
+		  "%lld us, the sleeper woke %lld us\n",
+		  CATCHUP_MASK_US, (unsigned long)ticks, (unsigned long long)(u1 - u0),
+		  (long long)(c.us - unmask), (long long)(s.us - unmask));
+	/* Not ahead of the TIMER (u0 is less than a tick after the tick t0),
+	 * and not behind it by more than a tick at the unmask.
+	 */
+	CHECK_RANGE(ticks, (long long)((unmask - u0) / TICK_US) - 1,
+		    (long long)((u1 - u0) / TICK_US) + 1);
+	CHECK_RANGE((long long)(c.us - unmask), 0, CATCHUP_SLACK_US);
+	CHECK_RANGE((long long)(s.us - unmask), 0, CATCHUP_SLACK_US);
+}
+
 /* The run -------------------------------------------------------------------*/
 
 struct test {
@@ -1211,6 +1288,7 @@ static const struct test tests[] = {
 	{"static_threads", test_static_threads},
 	{"thread_name", test_thread_name},
 	{"timeslice", test_timeslice},
+	{"tick_catchup", test_tick_catchup},
 };
 
 int zephyr_selftest_run(void)

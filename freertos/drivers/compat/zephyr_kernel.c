@@ -41,8 +41,9 @@
  *                             cannot run while interrupts are masked)
  *   k_thread_name_set()       the name in the task's control block
  *   k_uptime_get()            the TIMER in ms, rounded down (not the tick:
- *                             it is 32 bits wide and stops while interrupts
- *                             are masked for longer than a tick)
+ *                             it is 32 bits wide and stands still while
+ *                             interrupts are masked for longer than a tick,
+ *                             until the application's tick hook catches up)
  *   k_sleep(), k_msleep(),    vTaskDelay(ticks + 1): Zephyr's wake-up at the
  *   k_usleep()                current tick + ticks + 1; K_NO_WAIT (0 or less)
  *                             yields (z_os_yield(): behind the other tasks of

@@ -17,6 +17,11 @@
  *   of a task also suspends the scheduler: the switch then waits for the
  *   unlock, as on the board and in Zephyr.
  * - The clock is CLOCK_MONOTONIC.
+ * - The tick hook's catch-up (freertos/app/usb-console/src/tick.c) reads the
+ *   same clock, and cannot add a tick: the port's tick is a thread's
+ *   usleep() and a signal, with nothing to pend, so z_os_tick_pend() does
+ *   nothing and the count stays behind the clock as the port makes it.  The
+ *   catch-up itself is checked by freertos/tests/tick, on a model of SysTick.
  */
 
 #ifndef FREERTOS_TESTS_COMPAT_ZEPHYR_OS_PORT_H
@@ -67,6 +72,15 @@ static inline void z_os_busy_wait_us(uint32_t us)
 
 	while (nano_mono_us() < end) {
 	}
+}
+
+static inline uint32_t z_os_tick_now_us32(void)
+{
+	return (uint32_t)nano_mono_us();
+}
+
+static inline void z_os_tick_pend(void)
+{
 }
 
 #endif /* FREERTOS_TESTS_COMPAT_ZEPHYR_OS_PORT_H */

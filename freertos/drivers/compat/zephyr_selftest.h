@@ -7,7 +7,8 @@
  * timeouts, the order of the waiters, reset), sleeps and their rounding,
  * the clock, k_sem_give() and k_work_submit() from interrupt handlers,
  * k_poll(), delayable work items, the spin lock, atomics, K_THREAD_DEFINE()
- * threads, thread names, and time slices of 20 ms.
+ * threads, thread names, time slices of 20 ms, and the tick's catch-up
+ * after interrupts were masked for 50 ms (the board only).
  *
  * Call it from a task at NANO_PRIO_SHELL (Zephyr 14, the shell's thread)
  * after zephyr_compat_initialize(): the checks of the order in which tasks
@@ -48,5 +49,13 @@ void zephyr_selftest_port_quiet(void);
  * thread's usleep() and only the tick counts are checked there.
  */
 bool zephyr_selftest_port_realtime(void);
+
+/* Masks every interrupt for us microseconds (spinning on the TIMER), as a
+ * flash erase does, and returns 0 (the board: the tick hook then counts the
+ * ticks lost meanwhile, freertos/app/usb-console/src/tick.c); -ENOTSUP where
+ * the tick cannot catch up (the host: the POSIX port's tick is a thread's
+ * usleep()).
+ */
+int zephyr_selftest_port_mask_irqs(uint32_t us);
 
 #endif /* FREERTOS_DRIVERS_COMPAT_ZEPHYR_SELFTEST_H */

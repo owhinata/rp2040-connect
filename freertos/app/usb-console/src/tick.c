@@ -23,7 +23,16 @@
  *
  * The hook also runs the Zephyr compatibility layer's timeouts (the timers
  * of delayable work items, z_add_timeout(): zephyr_compat_tick() of
- * freertos/drivers/compat), first, in the same interrupt.
+ * freertos/drivers/compat), before the slices, in the same interrupt.
+ *
+ * Before both, it keeps the count up with the TIMER (tick_catchup.h): when tick
+ * interrupts were lost while interrupts were masked (a flash erase), it pends
+ * SysTick again, once per lost tick, so the port's handler counts each of
+ * them as a tick of its own, through this hook too (the layer's timeouts and
+ * the slices).  FreeRTOS's xTaskCatchUpTicks() is not used: it must be
+ * called from a task with the scheduler running, and the ticks it adds do
+ * not call the tick hook (xTaskResumeAll() unwinds them with xPendedTicks
+ * set), so the layer's timeouts would stay behind.
  */
 
 #include <stdint.h>
@@ -31,6 +40,8 @@
 #include "task.h"
 #include "priorities.h"
 #include "zephyr_compat_os.h"
+#include "zephyr_os_port.h"
+#include "tick_catchup.h"
 
 #define TIMESLICE_MS    20
 #define TIMESLICE_TICKS (TIMESLICE_MS * configTICK_RATE_HZ / 1000)
@@ -48,10 +59,18 @@
 
 /* Used in the tick interrupt only. */
 static uint32_t slice_ticks;
+static struct tick_catchup catchup;
 
 void vApplicationTickHook(void)
 {
 	UBaseType_t prio;
+
+	/* First: the least latency since the tick's interrupt.  The pended
+	 * SysTick runs after this one returns.
+	 */
+	if (tick_catchup_step(&catchup, z_os_tick_now_us32())) {
+		z_os_tick_pend();
+	}
 
 	zephyr_compat_tick();
 

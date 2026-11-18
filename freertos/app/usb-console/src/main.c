@@ -9,6 +9,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
+#include "hardware/clocks.h"
 #include "pico/stdlib.h"
 #include "pico/stdio_usb.h"
 #include "FreeRTOS.h"
@@ -391,6 +392,15 @@ int main(void)
 					 CONSOLE_PRIORITY, console_stack, &console_tcb);
 	xTaskCreateStatic(heartbeat_main, "heartbeat", HEARTBEAT_STACK_SIZE, NULL,
 			  HEARTBEAT_PRIORITY, heartbeat_stack, &heartbeat_tcb);
+
+	/* The tick hook's catch-up (tick.c, tick_catchup.h) takes SysTick's
+	 * period (clock_get_hz(clk_sys) / configTICK_RATE_HZ cycles, the RP2040
+	 * port's vPortSetupTimerInterrupt()) for exactly one tick of the TIMER:
+	 * a shorter one would let the count run ahead of the time.
+	 */
+	if (clock_get_hz(clk_sys) % configTICK_RATE_HZ != 0) {
+		panic("clk_sys is not a whole number of ticks");
+	}
 
 	vTaskStartScheduler();
 

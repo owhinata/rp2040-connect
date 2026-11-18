@@ -57,6 +57,16 @@ bool zephyr_selftest_port_realtime(void)
 	return false;
 }
 
+/* The POSIX port's tick is a thread's usleep() and a signal: nothing to
+ * pend, so the tick hook cannot catch up here (freertos/tests/tick checks the
+ * catch-up on a model of SysTick).
+ */
+int zephyr_selftest_port_mask_irqs(uint32_t us)
+{
+	(void)us;
+	return -ENOTSUP;
+}
+
 static void runner(void *arg)
 {
 	int failed = 0;

@@ -57,8 +57,10 @@
  * two pages, or one ATE per call and erases one sector per call).  What
  * that costs on this build: the 1 kHz SysTick is pending once and handled
  * when the interrupts come back, so the FreeRTOS tick (and with it the
- * compatibility layer's timeouts, sleeps and the time slices, tick.c) falls
- * behind by up to about 40 ticks per erase; k_uptime_*() and
+ * compatibility layer's timeouts, sleeps and the time slices) stands still
+ * for up to about 40 ticks per erase; the tick hook then counts the lost
+ * ticks at once, from the TIMER (tick.c, tick_catchup.h), so the waits end
+ * at the end of the erase instead of that much later.  k_uptime_*() and
  * time_us_64() come from the TIMER, which keeps counting.  A fatal error
  * while XIP is off cannot run the fault exit (fault.c is in the flash):
  * the core locks up without a record until the board is reset.

@@ -1075,3 +1075,22 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
   パススルーのスケッチ → NINA の flash の退避（認証情報を含みうる、非公開）→ 書き込み → RP2040 を戻す → KV の復元（Wi-Fi のパスワードは
   ユーザーが入力）。ユーザーの BOOTSEL 2 回以上。未確認: select 中の close の動作、接続中のスキャンで TCP が保たれるか、パススルーが KV を消すか。
 - ユーザーへの相談待ち（ファームウェアの書き換えは承認のあと）。
+
+## FreeRTOS 版: 割り込み禁止のあと tick が TIMER に追いつく（2026-11-18）
+
+- 実装（subagent）: tick フック（`tick.c`、判定は新規 `tick_catchup.h`）が tick ごとに TIMER と比べ、1 tick 以上遅れていれば SysTick を
+  保留にし直す。失われた tick はポートの通常のハンドラーが 1 回ずつ数え、tick フック（互換層のタイムアウト、時分割）も各 tick で呼ばれる。
+  `xTaskCatchUpTicks()` は使わない（タスクからしか呼べず、補った tick で tick フックが呼ばれない）。tick は TIMER より先に進まない
+  （1 µs の余裕。まれに 1 tick 遅れたままの 1 ms 未満の窓で始めた待ちが最大 1 tick 短くなり得る、subagent の説明）。`main.c` に
+  clk_sys が tick の整数倍であることの検査。`selftest` に `tick_catchup`（割り込みを 50 ms 止める）で 22 項目、ホストテスト `tick`。
+  カーネル・Pico SDK は無変更。F04・CP-F2 の「消去のたびに tick が遅れる、補正は未決」はこれで決着。
+- メインはソースを読んでいない。ビルド・ホストテストは subagent の報告。
+- 実機: `selftest` 2 回とも 0 of 22（`masked 50000 us: 50 ticks in 50316 us`、解除後のタイムアウト 27・40 µs、sleep の起床 126・134 µs）。
+  既定の像で `uptime` の「TIMER の ms − tick」は 2.5〜2.9、100 文字の `kv set` 90 回のあと 2.8〜3.1（修正前は F04 で 90 回に 2256 tick の遅れ）。
+  書き込み直後の送信 60 秒: `cpu_active` 41.4%、欠番 0、overruns 0。異常停止の記録なし。試験のキー `test.tick` は削除した。
+  未確認: 計測中の `kv set`。
+- 文書（未反映）: `freertos/drivers/README` の tick・KV・自己診断・ホストテストの表・比較表、設計書 §13 の tick の項（subagent の報告に文案）。
+- ユーザーの決定（同日）: `memcpy`・`memset` は全部パッチにする（案 1。`common/drivers/rp2040_rom/` とホストテストは削除）。NINA の
+  ファームウェアは 4 つのパッチの案で進める。問い合わせ間隔 5 ms の測定はしない。送信のやり直しの改善は、ファームウェアと別に改善の
+  余地があれば正式版に向けて入れる。KV は退避済みなので必要なら復元すればよい。NINA のファームウェアの転送を、専用の Arduino の
+  スケッチではなくコマンドでできるようにしたい（ユーザーの意向）。

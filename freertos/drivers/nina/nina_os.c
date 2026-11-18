@@ -53,12 +53,12 @@
  *                               READY_WAIT_SLICE_MS at a time: the same
  *                               rounding as the sleeps.  The core's deadline
  *                               is on the TIMER (nina_os_uptime_ms()), the
- *                               wait on the tick, which falls behind while
- *                               interrupts are masked (a flash erase); in
- *                               slices, the wait passes the deadline by at
- *                               most the ticks lost in the last slice, as
- *                               a sampling would (one read of READY per
- *                               slice while the module stays busy)
+ *                               wait on the tick, which stands still while
+ *                               interrupts are masked (a flash erase) until
+ *                               the tick hook catches up (tick.c); in
+ *                               slices, as a sampling would (one read of
+ *                               READY per slice while the module stays
+ *                               busy)
  *   nina_os_ready_disarm()      disables the edge (no interrupts while CS
  *                               toggles READY during the transfers)
  *
