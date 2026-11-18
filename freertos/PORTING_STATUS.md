@@ -957,3 +957,11 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
   間隔 20 tick。i2c 0 of 6、lsm6dso 0 of 3。許容幅の見直しは未着手。
 - 実機: 最終の既定の像（FreeRTOS 版、`-Os`、新しい boot2 ではなく Pico SDK の boot2）。`selftest` の中で `wifi disconnect` を実行したあと
   書き直したので、起動時の自動接続に戻っている。
+
+## `selftest` の許容幅（2026-11-18）
+
+- ユーザーの決定: `selftest` の許容幅を直す。除算器は保留。README の更新は READY の割り込み化（Zephyr 版・NuttX 版）が終わってから。
+  Zephyr 版・NuttX 版の READY の割り込み化を進める（NuttX は境界の実装、Zephyr は Z01 = NINA の共通コアへの載せ替えと一緒。subagent 2 つが作業中）。
+- 起床の遅れの許容を `WAKE_SLACK_US` 300 µs に分けた（空回りの待ちの検査は `SLACK_US` 80 µs のまま）。1 ms の tick では同じ tick で
+  優先度の高いタスクも起きるので遅れが増える（実測 134 µs）。メインが修正。実機で Wi-Fi 接続中に 5 回、すべて 0 of 21・i2c 0 of 6・lsm6dso 0 of 3。
+- 実機: 最終の既定の像。

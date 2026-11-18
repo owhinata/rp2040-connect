@@ -7,7 +7,7 @@
  * after a tick (st_tick_sync()), so a relative wait of n ticks, which Zephyr
  * ends at the current tick + n + 1, reads n + 1.  "us" are microseconds of the
  * TIMER (k_cycle_get_64()), checked on the board only: such a wait lasts more
- * than n and at most n + 1 ticks, plus the time to switch (SLACK_US).
+ * than n and at most n + 1 ticks, plus the time to switch (WAKE_SLACK_US).
  */
 
 #include <errno.h>
@@ -24,13 +24,17 @@
 
 #include "zephyr_selftest.h"
 
-#define TICK_US     Z_USEC_PER_TICK
+#define TICK_US       Z_USEC_PER_TICK
 /* Ticks of 1 ms, rounded up (K_MSEC(1)). */
-#define MS_TICKS    ((1000 + TICK_US - 1) / TICK_US)
-/* Allowed lateness of a wake-up on the board (interrupts, the switch). */
-#define SLACK_US    80
+#define MS_TICKS      ((1000 + TICK_US - 1) / TICK_US)
+/* Allowed excess of a busy wait on the board (interrupts). */
+#define SLACK_US      80
+/* Allowed lateness of a wake-up on the board: interrupts, the switch, and the
+ * tasks of a higher priority that the same tick wakes (Wi-Fi connected).
+ */
+#define WAKE_SLACK_US 300
 /* Zephyr's CONFIG_TIMESLICE_SIZE=20 (freertos/app/usb-console/src/tick.c). */
-#define SLICE_TICKS (20000 / TICK_US)
+#define SLICE_TICKS   (20000 / TICK_US)
 
 #define HELPER_STACK 1024
 #define JOIN_TIMEOUT K_MSEC(2000)
@@ -152,7 +156,7 @@ static uint64_t st_us(void)
 }
 
 /* A wait of n ticks after st_tick_sync(): n + 1 ticks, and in real time more
- * than n ticks and at most n + 1 ticks and SLACK_US.
+ * than n ticks and at most n + 1 ticks and WAKE_SLACK_US.
  */
 static void check_wait(const char *what, uint32_t ticks, uint64_t us, uint32_t n, int line)
 {
@@ -160,7 +164,7 @@ static void check_wait(const char *what, uint32_t ticks, uint64_t us, uint32_t n
 	check_eq(ticks, (long long)n + 1, line, what);
 	if (zephyr_selftest_port_realtime()) {
 		check_range((long long)us, (long long)n * TICK_US + 1,
-			    ((long long)n + 1) * TICK_US + SLACK_US, line, what);
+			    ((long long)n + 1) * TICK_US + WAKE_SLACK_US, line, what);
 	}
 }
 
@@ -712,7 +716,7 @@ static void test_isr_alarm(void)
 	st_printf("  alarm after %llu us, task woken %llu us after the give\n",
 		  (unsigned long long)(c.us - u0), (unsigned long long)(woke - c.us));
 	CHECK(c.us - u0 >= 1000);
-	CHECK_RANGE(woke - c.us, 0, SLACK_US);
+	CHECK_RANGE(woke - c.us, 0, WAKE_SLACK_US);
 }
 
 /* Polling -------------------------------------------------------------------*/
