@@ -1,0 +1,602 @@
+diff --git a/main/CommandHandler.cpp b/main/CommandHandler.cpp
+index 801cd3d..d846f5d 100644
+--- a/main/CommandHandler.cpp
++++ b/main/CommandHandler.cpp
+@@ -39,6 +39,12 @@
+ #include "esp_wifi.h"
+ #include "driver/adc_deprecated.h"
+ #include <lwip/priv/sockets_priv.h>
++#include "esp_rom_sys.h"
++#include "esp_timer.h"
++#include "esp_vfs.h"
++#include "esp_vfs_eventfd.h"
++#include <unistd.h>
++#include "SocketEvents.h"
+ 
+ #ifdef LWIP_PROVIDE_ERRNO
+ int errno;
+@@ -1809,19 +1815,29 @@ int brErrorCode(const uint8_t command[], uint8_t response[])
+ static const uint32_t capabilities = 0
+   | NINA_CAP_SCAN_KEEPS_LINK
+   | NINA_CAP_ASYNC_SCAN
++  | NINA_CAP_SOCKET_EVENTS
+   ;
+ 
++static bool socketEventsReady(void);
++
+ int getCapabilities(const uint8_t command[], uint8_t response[])
+ {
+   //[0]     CMD_START   < 0xE0   >
+   //[1]     Command     < 1 byte >
+   //[2]     N args      < 1 byte >
++  uint32_t caps = capabilities;
++
++  // Without its task (no eventfd at boot) the line never reports events.
++  if (!socketEventsReady()) {
++    caps &= ~NINA_CAP_SOCKET_EVENTS;
++  }
++
+   response[2] = 1; // number of parameters
+   response[3] = 4; // parameter 1 length, little endian
+-  response[4] = (capabilities >> 0) & 0xff;
+-  response[5] = (capabilities >> 8) & 0xff;
+-  response[6] = (capabilities >> 16) & 0xff;
+-  response[7] = (capabilities >> 24) & 0xff;
++  response[4] = (caps >> 0) & 0xff;
++  response[5] = (caps >> 8) & 0xff;
++  response[6] = (caps >> 16) & 0xff;
++  response[7] = (caps >> 24) & 0xff;
+ 
+   return 9;
+ }
+@@ -3008,10 +3024,259 @@ CommandHandlerClass::CommandHandlerClass()
+ 
+ static const int GPIO_IRQ = 0;
+ 
++//
++// Socket events on the IRQ line (GPIO0, the host's GPIO2)
++//
++// A BSD-style socket command that shows the host waiting for a socket arms
++// that event (SocketEvents.h: poll without data, recv/accept with nothing,
++// send that took nothing, connect in progress). The task socketEvents()
++// waits for the armed events with select(); the first one it sees is
++// disarmed and raises the line, which stays high until the next command
++// begins: handle() lowers it before running the command and arms after, so
++// an event after the command's own answer always raises the line again.
++// The line is high while either this or the older sockets' check
++// (updateGpio0Pin()) says so.
++//
++// Locking: evLock (a mutex) covers the table, the line's state and the
++// pin. A socket is closed (close command, Wi-Fi disconnection) only after
++// it is disarmed and, if the task's select() has it, after select() has
++// returned (forgetSocket()).
++
++#define EV_MIN_HIGH_US 5          // shortest time the line stays high
++#define EV_SELECT_TIMEOUT_S 1     // select() looks at the table again after this
++#define EV_CLOSE_WAIT_MS 1000     // longest wait of a close for select() to return
++
++static SemaphoreHandle_t evLock;
++static SemaphoreHandle_t evLeftSelect;   // given once per waiting close
++static struct sockev_table evTable;
++static uint32_t evSelected;              // sockets in the select() running now
++static int evCloseWaiters;
++static bool evPending;                   // an event was seen since the last command began
++static bool evOldAvailable;              // updateGpio0Pin()'s answer
++static int64_t evRaisedAt;
++static int evWakeFd = -1;
++
++static bool socketEventsReady(void)
++{
++  return evWakeFd >= 0;
++}
++
++// With evLock held.
++static void evWritePin(void)
++{
++  digitalWrite(GPIO_IRQ, (evPending || evOldAvailable) ? HIGH : LOW);
++}
++
++static void evWake(void)
++{
++  uint64_t one = 1;
++
++  if (evWakeFd >= 0) {
++    write(evWakeFd, &one, sizeof(one));
++  }
++}
++
++static void evSetOldAvailable(bool available)
++{
++  if (!evLock) {
++    digitalWrite(GPIO_IRQ, available ? HIGH : LOW);
++    return;
++  }
++  xSemaphoreTake(evLock, portMAX_DELAY);
++  evOldAvailable = available;
++  evWritePin();
++  xSemaphoreGive(evLock);
++}
++
++// Before socket FD is closed: no more events for it, and no select() on it.
++static void forgetSocket(int fd)
++{
++  int index = sockev_index(fd, LWIP_SOCKET_OFFSET, MAX_SOCKETS);
++  bool wait;
++
++  if (index < 0 || !evLock) {
++    return;
++  }
++  xSemaphoreTake(evLock, portMAX_DELAY);
++  sockev_disarm(&evTable, index);
++  wait = (evSelected & (1u << index)) != 0;
++  if (wait) {
++    evCloseWaiters++;
++  }
++  xSemaphoreGive(evLock);
++  if (wait) {
++    evWake();
++    xSemaphoreTake(evLeftSelect, pdMS_TO_TICKS(EV_CLOSE_WAIT_MS));
++  }
++}
++
++static void socketEventsBefore(const uint8_t command[])
++{
++  if (!evLock) {
++    return;
++  }
++  xSemaphoreTake(evLock, portMAX_DELAY);
++  if (evPending) {
++    int64_t high = esp_timer_get_time() - evRaisedAt;
++
++    if (high < EV_MIN_HIGH_US) {
++      esp_rom_delay_us(EV_MIN_HIGH_US - high);
++    }
++    evPending = false;
++    evWritePin();
++  }
++  xSemaphoreGive(evLock);
++
++  if (command[1] == 0x71) {
++    forgetSocket(command[4]);
++  }
++}
++
++static void socketEventsAfter(const uint8_t command[], const uint8_t response[], int err)
++{
++  struct sockev_action action;
++  int index;
++  bool added = false;
++
++  if (!evLock) {
++    return;
++  }
++  action = sockev_after_command(command, response, err);
++  index = sockev_index(action.fd, LWIP_SOCKET_OFFSET, MAX_SOCKETS);
++  if (index < 0) {
++    return;
++  }
++  xSemaphoreTake(evLock, portMAX_DELAY);
++  if (action.forget) {
++    sockev_disarm(&evTable, index);
++  }
++  if (action.arm) {
++    added = sockev_arm(&evTable, index, action.arm);
++  }
++  xSemaphoreGive(evLock);
++  if (added) {
++    evWake();
++  }
++}
++
++static void socketEvents(void*)
++{
++  for (;;) {
++    fd_set rset, wset, xset;
++    uint32_t selected = 0;
++    int maxfd = evWakeFd;
++    bool fired = false;
++    int waiters;
++
++    FD_ZERO(&rset);
++    FD_ZERO(&wset);
++    FD_ZERO(&xset);
++    FD_SET(evWakeFd, &rset);
++
++    xSemaphoreTake(evLock, portMAX_DELAY);
++    for (int i = 0; i < MAX_SOCKETS; i++) {
++      uint8_t armed = sockev_armed(&evTable, i);
++      int fd = LWIP_SOCKET_OFFSET + i;
++
++      if (!armed) {
++        continue;
++      }
++      if (armed & SOCKEV_READ) {
++        FD_SET(fd, &rset);
++      }
++      if (armed & SOCKEV_WRITE) {
++        FD_SET(fd, &wset);
++      }
++      FD_SET(fd, &xset);
++      selected |= 1u << i;
++      if (fd > maxfd) {
++        maxfd = fd;
++      }
++    }
++    evSelected = selected;
++    xSemaphoreGive(evLock);
++
++    // The VFS select(): the sockets and the eventfd together.
++    struct timeval tv = { .tv_sec = EV_SELECT_TIMEOUT_S, .tv_usec = 0 };
++    int n = esp_vfs_select(maxfd + 1, &rset, &wset, &xset, &tv);
++
++    xSemaphoreTake(evLock, portMAX_DELAY);
++    evSelected = 0;
++    if (n < 0) {
++      // A socket went away under select(): forget every event, and let the
++      // host look at its sockets again (its polls arm them again).
++      if (selected) {
++        evTable.read = 0;
++        evTable.write = 0;
++        fired = true;
++      }
++    } else if (n > 0) {
++      for (int i = 0; i < MAX_SOCKETS; i++) {
++        int fd = LWIP_SOCKET_OFFSET + i;
++
++        if (!(selected & (1u << i))) {
++          continue;
++        }
++        if (sockev_fire(&evTable, i, FD_ISSET(fd, &rset), FD_ISSET(fd, &wset),
++                        FD_ISSET(fd, &xset))) {
++          fired = true;
++        }
++      }
++    }
++    if (fired && !evPending) {
++      evPending = true;
++      evRaisedAt = esp_timer_get_time();
++      evWritePin();
++    }
++    waiters = evCloseWaiters;
++    evCloseWaiters = 0;
++    xSemaphoreGive(evLock);
++
++    while (waiters-- > 0) {
++      xSemaphoreGive(evLeftSelect);
++    }
++    if (n > 0 && FD_ISSET(evWakeFd, &rset)) {
++      uint64_t value;
++
++      read(evWakeFd, &value, sizeof(value));
++    }
++    if (n < 0) {
++      vTaskDelay(1);
++    }
++  }
++}
++
++static void socketEventsBegin(void)
++{
++  esp_vfs_eventfd_config_t config = ESP_VFS_EVENTD_CONFIG_DEFAULT();
++
++  evLock = xSemaphoreCreateMutex();
++  evLeftSelect = xSemaphoreCreateCounting(MAX_SOCKETS + 2, 0);
++  if (!evLock || !evLeftSelect) {
++    evLock = NULL;
++    return;
++  }
++  if (esp_vfs_eventfd_register(&config) != ESP_OK) {
++    return;
++  }
++  int fd = eventfd(0, 0);
++
++  if (fd < 0) {
++    return;
++  }
++  evWakeFd = fd;
++  if (xTaskCreatePinnedToCore(socketEvents, "socketEvents", 3072, NULL, 2, NULL, 1) != pdPASS) {
++    evWakeFd = -1;
++    close(fd);
++  }
++}
++
+ void CommandHandlerClass::begin()
+ {
+   pinMode(GPIO_IRQ, OUTPUT);
+ 
++  socketEventsBegin();
++
+   for (int i = 0; i < MAX_SOCKETS; i++) {
+     socketTypes[i] = 255;
+   }
+@@ -3035,7 +3300,9 @@ int CommandHandlerClass::handle(const uint8_t command[], uint8_t response[])
+     CommandHandlerType commandHandlerType = commandHandlers[command[1]];
+ 
+     if (commandHandlerType) {
++      socketEventsBefore(command);
+       responseLength = commandHandlerType(command, response);
++      socketEventsAfter(command, response, errno);
+     }
+   }
+ 
+@@ -3096,11 +3363,7 @@ void CommandHandlerClass::updateGpio0Pin()
+     }
+   }
+ 
+-  if (available) {
+-    digitalWrite(GPIO_IRQ, HIGH);
+-  } else {
+-    digitalWrite(GPIO_IRQ, LOW);
+-  }
++  evSetOldAvailable(available);
+ 
+   vTaskDelay(1);
+ }
+@@ -3136,6 +3399,7 @@ void CommandHandlerClass::handleWiFiDisconnect()
+ 
+     if (addr.sin_addr.s_addr != 0) {
+       // non-listening socket, close
++      forgetSocket(socket);
+       close(socket);
+     }
+   }
+diff --git a/main/SocketEvents.c b/main/SocketEvents.c
+new file mode 100644
+index 0000000..f0daa20
+--- /dev/null
++++ b/main/SocketEvents.c
+@@ -0,0 +1,166 @@
++/* SPDX-License-Identifier: MIT */
++/* See SocketEvents.h. */
++
++#include <errno.h>
++
++#include "SocketEvents.h"
++
++#define CMD_SOCKET   0x70
++#define CMD_CLOSE    0x71
++#define CMD_ERRNO    0x72
++#define CMD_ACCEPT   0x75
++#define CMD_CONNECT  0x76
++#define CMD_SEND     0x77
++#define CMD_RECV     0x78
++#define CMD_SENDTO   0x79
++#define CMD_RECVFROM 0x7A
++#define CMD_POLL     0x7C
++#define CMD_LAST     0x7F
++
++/* socket_poll()'s flags (CommandHandler.cpp). */
++#define POLL_RD   0x01
++#define POLL_WR   0x02
++#define POLL_FAIL 0x80
++
++/* The firmware's "no socket" (socket and accept report -1 as 255). */
++#define NO_SOCKET 255
++
++int sockev_index(int fd, int first, int count)
++{
++  if (fd < first || fd >= first + count || count > 32) {
++    return -1;
++  }
++  return fd - first;
++}
++
++int sockev_command_socket(const uint8_t command[])
++{
++  uint8_t cmd = command[1];
++
++  if (cmd <= CMD_SOCKET || cmd > CMD_LAST || cmd == CMD_ERRNO) {
++    return -1;
++  }
++  return (cmd == CMD_SEND || cmd == CMD_SENDTO) ? command[5] : command[4];
++}
++
++static bool would_block(int err)
++{
++  return err == EAGAIN || err == EWOULDBLOCK;
++}
++
++struct sockev_action sockev_after_command(const uint8_t command[], const uint8_t response[],
++                                          int err)
++{
++  struct sockev_action action = {-1, 0, false};
++  uint8_t cmd = command[1];
++  unsigned int count;
++
++  if (cmd == CMD_SOCKET) {
++    if (response[4] != NO_SOCKET) {
++      action.fd = response[4];
++      action.forget = true;
++    }
++    return action;
++  }
++
++  action.fd = sockev_command_socket(command);
++  if (action.fd < 0) {
++    return action;
++  }
++
++  switch (cmd) {
++  case CMD_POLL:
++    if (!(response[4] & POLL_FAIL)) {
++      if (!(response[4] & POLL_RD)) {
++        action.arm |= SOCKEV_READ;
++      }
++      if (!(response[4] & POLL_WR)) {
++        action.arm |= SOCKEV_WRITE;
++      }
++    }
++    break;
++  case CMD_RECV:
++    count = ((unsigned int)response[3] << 8) | response[4];
++    if (count == 0 && would_block(err)) {
++      action.arm = SOCKEV_READ;
++    }
++    break;
++  case CMD_RECVFROM:
++    count = ((unsigned int)response[13] << 8) | response[14];
++    if (count == 0 && would_block(err)) {
++      action.arm = SOCKEV_READ;
++    }
++    break;
++  case CMD_ACCEPT:
++    if (response[4] == NO_SOCKET && would_block(err)) {
++      action.arm = SOCKEV_READ;
++    }
++    break;
++  case CMD_SEND:
++  case CMD_SENDTO:
++    count = ((unsigned int)response[4] << 8) | response[5];
++    if (count == 0 && (would_block(err) || err == ENOMEM)) {
++      action.arm = SOCKEV_WRITE;
++    }
++    break;
++  case CMD_CONNECT:
++    if (response[4] == 0 && (err == EINPROGRESS || err == EALREADY)) {
++      action.arm = SOCKEV_WRITE;
++    }
++    break;
++  default:
++    break;
++  }
++  if (!action.arm) {
++    action.fd = -1;
++  }
++  return action;
++}
++
++bool sockev_arm(struct sockev_table *table, int index, uint8_t events)
++{
++  uint32_t bit = (uint32_t)1 << index;
++  bool added = false;
++
++  if ((events & SOCKEV_READ) && !(table->read & bit)) {
++    table->read |= bit;
++    added = true;
++  }
++  if ((events & SOCKEV_WRITE) && !(table->write & bit)) {
++    table->write |= bit;
++    added = true;
++  }
++  return added;
++}
++
++void sockev_disarm(struct sockev_table *table, int index)
++{
++  uint32_t bit = (uint32_t)1 << index;
++
++  table->read &= ~bit;
++  table->write &= ~bit;
++}
++
++uint8_t sockev_armed(const struct sockev_table *table, int index)
++{
++  uint32_t bit = (uint32_t)1 << index;
++
++  return ((table->read & bit) ? SOCKEV_READ : 0) | ((table->write & bit) ? SOCKEV_WRITE : 0);
++}
++
++uint8_t sockev_fire(struct sockev_table *table, int index, bool readable, bool writable,
++                    bool exception)
++{
++  uint32_t bit = (uint32_t)1 << index;
++  uint8_t fired = 0;
++
++  if ((table->read & bit) && (readable || exception)) {
++    table->read &= ~bit;
++    fired |= SOCKEV_READ;
++  }
++  if ((table->write & bit) && (writable || exception)) {
++    table->write &= ~bit;
++    fired |= SOCKEV_WRITE;
++  }
++  return fired;
++}
+diff --git a/main/SocketEvents.h b/main/SocketEvents.h
+new file mode 100644
+index 0000000..a24f84f
+--- /dev/null
++++ b/main/SocketEvents.h
+@@ -0,0 +1,82 @@
++/* SPDX-License-Identifier: MIT */
++/* The bookkeeping of the socket events on the IRQ line (GPIO0), without
++ * ESP-IDF: which BSD-style socket command (0x70..0x7F) arms which event of
++ * which socket, and the table of armed events.  CommandHandler.cpp keeps
++ * the table under its lock, waits for the events with select() and drives
++ * the line; firmware/nina-fw/tests/ builds this file on the host.
++ *
++ * An event is armed when a command shows that the host waits for it, and
++ * is armed once: the first time select() reports it, it is disarmed (and
++ * the line raised) until a later command arms it again.
++ */
++
++#ifndef SOCKET_EVENTS_H
++#define SOCKET_EVENTS_H
++
++#include <stdbool.h>
++#include <stdint.h>
++
++#ifdef __cplusplus
++extern "C" {
++#endif
++
++#define SOCKEV_READ  0x01 /* readable: data, a connection to accept, the end, an error */
++#define SOCKEV_WRITE 0x02 /* writable: room to send, a connection made, an error */
++
++/* One bit per socket (index = descriptor - first descriptor). */
++struct sockev_table {
++  uint32_t read;
++  uint32_t write;
++};
++
++/* What a command asks for after it ran: arm EVENTS of socket FD, or
++ * forget FD (a new socket: nothing left from an earlier one). */
++struct sockev_action {
++  int fd;          /* -1: none */
++  uint8_t arm;     /* SOCKEV_* */
++  bool forget;
++};
++
++/* The table index of descriptor FD, or -1 outside FIRST..FIRST+COUNT-1. */
++int sockev_index(int fd, int first, int count);
++
++/* The socket a command names: COMMAND[4], or COMMAND[5] for send (0x77)
++ * and sendto (0x79), whose parameters have 16-bit lengths; -1 for other
++ * commands and for socket (0x70) and errno (0x72), which name none. */
++int sockev_command_socket(const uint8_t command[]);
++
++/* After a command ran, from its command and response buffers and the
++ * errno it left (ERR):
++ *   poll    (0x7C)  READ if not readable, WRITE if not writable (none on
++ *                   its failure flag 0x80)
++ *   recv    (0x78), recvfrom (0x7A), accept (0x75)
++ *                   READ when nothing came and ERR is EAGAIN/EWOULDBLOCK
++ *   send    (0x77), sendto (0x79)
++ *                   WRITE when nothing was taken and ERR is EAGAIN,
++ *                   EWOULDBLOCK or ENOMEM
++ *   connect (0x76)  WRITE when it failed with EINPROGRESS or EALREADY
++ *   socket  (0x70)  forget the new socket's events
++ * Anything else: none.  close (0x71) is handled before the command runs
++ * (sockev_command_socket()). */
++struct sockev_action sockev_after_command(const uint8_t command[], const uint8_t response[],
++                                          int err);
++
++/* Arms EVENTS of socket INDEX; returns true if an event was not armed. */
++bool sockev_arm(struct sockev_table *table, int index, uint8_t events);
++
++void sockev_disarm(struct sockev_table *table, int index);
++
++/* The armed events of socket INDEX. */
++uint8_t sockev_armed(const struct sockev_table *table, int index);
++
++/* What select() said of socket INDEX: the armed events it reports (READ:
++ * readable or an exception; WRITE: writable or an exception), which are
++ * disarmed. */
++uint8_t sockev_fire(struct sockev_table *table, int index, bool readable, bool writable,
++                    bool exception);
++
++#ifdef __cplusplus
++}
++#endif
++
++#endif /* SOCKET_EVENTS_H */

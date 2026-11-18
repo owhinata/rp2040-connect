@@ -1,0 +1,45 @@
+diff --git a/main/CommandHandler.cpp b/main/CommandHandler.cpp
+index 988ac11..a6c84d7 100644
+--- a/main/CommandHandler.cpp
++++ b/main/CommandHandler.cpp
+@@ -1784,6 +1784,31 @@ int brErrorCode(const uint8_t command[], uint8_t response[])
+   return len + 5;
+ }
+ 
++// What this firmware adds to 3.0.2, for the host to detect (command 0x6A).
++// Each patch of firmware/nina-fw/patches sets its own bit; firmware without
++// the command answers it with the error reply (0xEF 0x00 0xEE).
++#define NINA_CAP_SCAN_KEEPS_LINK (1u << 0) // 0004: a scan while connected keeps the link
++#define NINA_CAP_ASYNC_SCAN      (1u << 1) // 0005: 0x36 starts a scan, 0x6B reports it
++#define NINA_CAP_SOCKET_EVENTS   (1u << 2) // 0006: socket events on the IRQ line (GPIO0)
++
++static const uint32_t capabilities = 0
++  ;
++
++int getCapabilities(const uint8_t command[], uint8_t response[])
++{
++  //[0]     CMD_START   < 0xE0   >
++  //[1]     Command     < 1 byte >
++  //[2]     N args      < 1 byte >
++  response[2] = 1; // number of parameters
++  response[3] = 4; // parameter 1 length, little endian
++  response[4] = (capabilities >> 0) & 0xff;
++  response[5] = (capabilities >> 8) & 0xff;
++  response[6] = (capabilities >> 16) & 0xff;
++  response[7] = (capabilities >> 24) & 0xff;
++
++  return 9;
++}
++
+ //
+ // Low-level BSD-like sockets functions
+ //
+@@ -2937,7 +2962,7 @@ const CommandHandlerType commandHandlers[] = {
+   getFwVersionU32, setTime,
+ 
+   // 0x60 -> 0x6f
+-  writeFile, readFile, deleteFile, existsFile, downloadFile,  applyOTA, renameFile, downloadOTA, brSetECTrustAnchor, brErrorCode, NULL, NULL, NULL, NULL, NULL, NULL,
++  writeFile, readFile, deleteFile, existsFile, downloadFile,  applyOTA, renameFile, downloadOTA, brSetECTrustAnchor, brErrorCode, getCapabilities, NULL, NULL, NULL, NULL, NULL,
+ 
+   // Low-level BSD-like sockets functions.
+   // 0x70 -> 0x7f

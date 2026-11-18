@@ -1,0 +1,235 @@
+diff --git a/arduino/libraries/WiFi/src/WiFi.cpp b/arduino/libraries/WiFi/src/WiFi.cpp
+index 7e72660..db86510 100644
+--- a/arduino/libraries/WiFi/src/WiFi.cpp
++++ b/arduino/libraries/WiFi/src/WiFi.cpp
+@@ -39,6 +39,8 @@ WiFiClass::WiFiClass() :
+   _status(WL_NO_SHIELD),
+   _reasonCode(0),
+   _interface(WIFI_IF_STA),
++  _scanState(NINA_SCAN_IDLE),
++  _scanKeepsLink(false),
+   _onReceiveCallback(NULL),
+   _onDisconnectCallback(NULL),
+   _wpa2Cert(NULL),
+@@ -207,6 +209,7 @@ uint8_t WiFiClass::begin(const char* ssid, const char* key)
+   _interface = WIFI_IF_STA;
+ 
+   xEventGroupClearBits(_eventGroup, BIT0);
++  cancelScan();
+   esp_wifi_stop();
+   esp_wifi_set_mode(WIFI_MODE_STA);
+   esp_wifi_start();
+@@ -243,6 +246,7 @@ uint8_t WiFiClass::beginAP(const char *ssid, uint8_t channel)
+   _interface = WIFI_IF_AP;
+ 
+   xEventGroupClearBits(_eventGroup, BIT1);
++  cancelScan();
+   esp_wifi_stop();
+   esp_wifi_set_mode(WIFI_MODE_AP);
+ 
+@@ -272,6 +276,7 @@ uint8_t WiFiClass::beginAP(const char *ssid, uint8_t key_idx, const char* key, u
+   _interface = WIFI_IF_AP;
+ 
+   xEventGroupClearBits(_eventGroup, BIT1);
++  cancelScan();
+   esp_wifi_stop();
+   esp_wifi_set_mode(WIFI_MODE_AP);
+ 
+@@ -301,6 +306,7 @@ uint8_t WiFiClass::beginAP(const char *ssid, const char* key, uint8_t channel)
+   _interface = WIFI_IF_AP;
+ 
+   xEventGroupClearBits(_eventGroup, BIT1);
++  cancelScan();
+   esp_wifi_stop();
+   esp_wifi_set_mode(WIFI_MODE_AP);
+ 
+@@ -431,12 +437,14 @@ void WiFiClass::hostname(const char* name)
+ 
+ void WiFiClass::disconnect()
+ {
++  cancelScan();
+   esp_wifi_disconnect();
+   esp_wifi_stop();
+ }
+ 
+ void WiFiClass::end()
+ {
++  cancelScan();
+   esp_wifi_stop();
+ }
+ 
+@@ -530,6 +538,23 @@ uint8_t* WiFiClass::BSSID(uint8_t* bssid)
+ 
+ int8_t WiFiClass::scanNetworks()
+ {
++  // A scan started by startScan() (command 0x36) is waited for and its
++  // results taken; otherwise a scan is started here first, as before.
++  if (_scanState != NINA_SCAN_RUNNING && _scanState != NINA_SCAN_DONE) {
++    if (!startScan()) {
++      return 0;
++    }
++  }
++
++  return finishScan();
++}
++
++bool WiFiClass::startScan()
++{
++  if (_scanState == NINA_SCAN_RUNNING) {
++    return true;
++  }
++
+   // A station connected to an AP scans in the background: the driver goes
+   // back to the AP's channel between the channels it scans, so the link,
+   // the IP configuration and the sockets stay. Otherwise (not connected, or
+@@ -561,10 +586,31 @@ int8_t WiFiClass::scanNetworks()
+ 
+   xEventGroupClearBits(_eventGroup, BIT2);
+ 
++  _scanKeepsLink = keepLink;
+   if (esp_wifi_scan_start(&config, false) != ESP_OK) {
+     if (!keepLink) {
+       _status = WL_NO_SSID_AVAIL;
+     }
++    _scanState = NINA_SCAN_FAILED;
++    return false;
++  }
++
++  _scanState = NINA_SCAN_RUNNING;
++  return true;
++}
++
++uint8_t WiFiClass::scanState()
++{
++  if (_scanState == NINA_SCAN_RUNNING && (xEventGroupGetBits(_eventGroup) & BIT2)) {
++    _scanState = NINA_SCAN_DONE;
++  }
++
++  return _scanState;
++}
++
++int8_t WiFiClass::finishScan()
++{
++  if (_scanState != NINA_SCAN_RUNNING && _scanState != NINA_SCAN_DONE) {
+     return 0;
+   }
+ 
+@@ -581,13 +627,24 @@ int8_t WiFiClass::scanNetworks()
+ 
+   // A link kept through the scan keeps its status, and so does a
+   // disconnection reported meanwhile (handleSystemEvent()).
+-  if (!keepLink) {
++  if (!_scanKeepsLink) {
+     _status = WL_SCAN_COMPLETED;
+   }
++  _scanState = NINA_SCAN_IDLE;
+ 
+   return numNetworks;
+ }
+ 
++// Before Wi-Fi is stopped or reconfigured: a scan still running is stopped
++// and forgotten.
++void WiFiClass::cancelScan()
++{
++  if (_scanState == NINA_SCAN_RUNNING) {
++    esp_wifi_scan_stop();
++  }
++  _scanState = NINA_SCAN_IDLE;
++}
++
+ char* WiFiClass::SSID(uint8_t pos)
+ {
+   return (char*)_scanResults[pos].ssid;
+diff --git a/arduino/libraries/WiFi/src/WiFi.h b/arduino/libraries/WiFi/src/WiFi.h
+index 3a06979..d5c41d7 100644
+--- a/arduino/libraries/WiFi/src/WiFi.h
++++ b/arduino/libraries/WiFi/src/WiFi.h
+@@ -44,6 +44,14 @@ typedef enum {
+ } wl_status_t;
+ 
+ #define MAX_SCAN_RESULTS 10
++
++// The state of a scan started by startScan() (command 0x6B reports it).
++enum {
++  NINA_SCAN_IDLE = 0,    // none started, or its results were taken
++  NINA_SCAN_RUNNING = 1,
++  NINA_SCAN_DONE = 2,    // finished; scanNetworks() returns its results
++  NINA_SCAN_FAILED = 3,  // esp_wifi_scan_start() refused it
++};
+ #define HOSTNAME_MAX_LENGTH 32
+ 
+ class WiFiClass
+@@ -87,6 +95,8 @@ public:
+   uint8_t encryptionType();
+   uint8_t* BSSID(uint8_t* bssid);
+   int8_t scanNetworks();
++  bool startScan();
++  uint8_t scanState();
+   char* SSID(uint8_t pos);
+   int32_t RSSI(uint8_t pos);
+   uint8_t encryptionType(uint8_t pos);
+@@ -110,6 +120,8 @@ public:
+ 
+ private:
+   void init();
++  int8_t finishScan();
++  void cancelScan();
+ 
+   static esp_err_t systemEventHandler(void* ctx, system_event_t* event);
+   void handleSystemEvent(system_event_t* event);
+@@ -126,6 +138,8 @@ private:
+   volatile uint8_t _reasonCode;
+   EventGroupHandle_t _eventGroup;
+   wifi_interface_t _interface;
++  uint8_t _scanState;
++  bool _scanKeepsLink;
+ 
+   wifi_ap_record_t _scanResults[MAX_SCAN_RESULTS];
+   wifi_ap_record_t _apRecord;
+diff --git a/main/CommandHandler.cpp b/main/CommandHandler.cpp
+index 4fed503..801cd3d 100644
+--- a/main/CommandHandler.cpp
++++ b/main/CommandHandler.cpp
+@@ -880,9 +880,24 @@ int getHostByName(const uint8_t command[], uint8_t response[])
+ 
+ int startScanNetworks(const uint8_t command[], uint8_t response[])
+ {
++  // Starts a scan and returns at once (1: started or still running, 0: not
++  // started); getScanState (0x6B) follows it, scanNetworks (0x27) takes
++  // its results.
+   response[2] = 1; // number of parameters
+   response[3] = 1; // parameter 1 length
+-  response[4] = 1;
++  response[4] = WiFi.startScan() ? 1 : 0;
++
++  return 6;
++}
++
++int getScanState(const uint8_t command[], uint8_t response[])
++{
++  //[0]     CMD_START   < 0xE0   >
++  //[1]     Command     < 1 byte >
++  //[2]     N args      < 1 byte >
++  response[2] = 1; // number of parameters
++  response[3] = 1; // parameter 1 length
++  response[4] = WiFi.scanState(); // NINA_SCAN_* of WiFi.h
+ 
+   return 6;
+ }
+@@ -1793,6 +1808,7 @@ int brErrorCode(const uint8_t command[], uint8_t response[])
+ 
+ static const uint32_t capabilities = 0
+   | NINA_CAP_SCAN_KEEPS_LINK
++  | NINA_CAP_ASYNC_SCAN
+   ;
+ 
+ int getCapabilities(const uint8_t command[], uint8_t response[])
+@@ -2963,7 +2979,7 @@ const CommandHandlerType commandHandlers[] = {
+   getFwVersionU32, setTime,
+ 
+   // 0x60 -> 0x6f
+-  writeFile, readFile, deleteFile, existsFile, downloadFile,  applyOTA, renameFile, downloadOTA, brSetECTrustAnchor, brErrorCode, getCapabilities, NULL, NULL, NULL, NULL, NULL,
++  writeFile, readFile, deleteFile, existsFile, downloadFile,  applyOTA, renameFile, downloadOTA, brSetECTrustAnchor, brErrorCode, getCapabilities, getScanState, NULL, NULL, NULL, NULL,
+ 
+   // Low-level BSD-like sockets functions.
+   // 0x70 -> 0x7f

@@ -1,0 +1,77 @@
+diff --git a/arduino/libraries/WiFi/src/WiFi.cpp b/arduino/libraries/WiFi/src/WiFi.cpp
+index bc38d19..7e72660 100644
+--- a/arduino/libraries/WiFi/src/WiFi.cpp
++++ b/arduino/libraries/WiFi/src/WiFi.cpp
+@@ -530,14 +530,25 @@ uint8_t* WiFiClass::BSSID(uint8_t* bssid)
+ 
+ int8_t WiFiClass::scanNetworks()
+ {
+-  xEventGroupClearBits(_eventGroup, BIT0);
+-  esp_wifi_stop();
+-  esp_wifi_set_mode(WIFI_MODE_STA);
+-  esp_wifi_start();
+-  xEventGroupWaitBits(_eventGroup, BIT0, false, true, portMAX_DELAY);
++  // A station connected to an AP scans in the background: the driver goes
++  // back to the AP's channel between the channels it scans, so the link,
++  // the IP configuration and the sockets stay. Otherwise (not connected, or
++  // AP mode) Wi-Fi is restarted in station mode first, as before.
++  wifi_mode_t mode = WIFI_MODE_NULL;
++  bool keepLink = esp_wifi_get_mode(&mode) == ESP_OK && mode == WIFI_MODE_STA &&
++                  _status == WL_CONNECTED;
++
++  if (!keepLink) {
++    xEventGroupClearBits(_eventGroup, BIT0);
++    esp_wifi_stop();
++    esp_wifi_set_mode(WIFI_MODE_STA);
++    esp_wifi_start();
++    xEventGroupWaitBits(_eventGroup, BIT0, false, true, portMAX_DELAY);
++  }
+ 
+   wifi_scan_config_t config;
+ 
++  memset(&config, 0x00, sizeof(config));
+   config.ssid = 0;
+   config.bssid = 0;
+   config.channel = 0;
+@@ -545,11 +556,15 @@ int8_t WiFiClass::scanNetworks()
+   config.scan_type = WIFI_SCAN_TYPE_ACTIVE;
+   config.scan_time.active.min = 100;
+   config.scan_time.active.max = 300;
++  // The time on the AP's channel between two scanned channels (ms).
++  config.home_chan_dwell_time = 30;
+ 
+   xEventGroupClearBits(_eventGroup, BIT2);
+ 
+   if (esp_wifi_scan_start(&config, false) != ESP_OK) {
+-    _status = WL_NO_SSID_AVAIL;
++    if (!keepLink) {
++      _status = WL_NO_SSID_AVAIL;
++    }
+     return 0;
+   }
+ 
+@@ -564,7 +579,11 @@ int8_t WiFiClass::scanNetworks()
+ 
+   esp_wifi_scan_get_ap_records(&numNetworks, _scanResults);
+ 
+-  _status = WL_SCAN_COMPLETED;
++  // A link kept through the scan keeps its status, and so does a
++  // disconnection reported meanwhile (handleSystemEvent()).
++  if (!keepLink) {
++    _status = WL_SCAN_COMPLETED;
++  }
+ 
+   return numNetworks;
+ }
+diff --git a/main/CommandHandler.cpp b/main/CommandHandler.cpp
+index a6c84d7..4fed503 100644
+--- a/main/CommandHandler.cpp
++++ b/main/CommandHandler.cpp
+@@ -1792,6 +1792,7 @@ int brErrorCode(const uint8_t command[], uint8_t response[])
+ #define NINA_CAP_SOCKET_EVENTS   (1u << 2) // 0006: socket events on the IRQ line (GPIO0)
+ 
+ static const uint32_t capabilities = 0
++  | NINA_CAP_SCAN_KEEPS_LINK
+   ;
+ 
+ int getCapabilities(const uint8_t command[], uint8_t response[])
