@@ -219,6 +219,23 @@ if [[ "$(config_value CONFIG_NANO_ROM_MEM_OPS)" == y ]]; then
     die "__start calls memcpy() or memset(), which need .bss cleared (CONFIG_NANO_ROM_MEM_OPS)"
   fi
 fi
+# With the SIO divider (CONFIG_NANO_HW_DIVIDER), every integer division goes
+# to the Pico SDK's routines (ld --wrap, scripts/Make.defs): none of libgcc's
+# may be linked (it would mean a call that the wrapping missed).
+if [[ "$(config_value CONFIG_NANO_HW_DIVIDER)" == y ]]; then
+  syms="$(arm-none-eabi-nm "$elf")"
+  for s in __aeabi_idiv __aeabi_idivmod __aeabi_uidiv __aeabi_uidivmod \
+           __aeabi_ldivmod __aeabi_uldivmod; do
+    grep -qE " T __wrap_${s}\$" <<< "$syms" || die "__wrap_${s} is missing (CONFIG_NANO_HW_DIVIDER)"
+  done
+  for s in __aeabi_idiv __aeabi_idivmod __aeabi_uidiv __aeabi_uidivmod __aeabi_ldivmod \
+           __aeabi_uldivmod __divsi3 __udivsi3 __modsi3 __umodsi3 __divdi3 __udivdi3 \
+           __moddi3 __umoddi3 __udivmoddi4 __gnu_ldivmod_helper __gnu_uldivmod_helper; do
+    if grep -qE " [TtWw] ${s}\$" <<< "$syms"; then
+      die "libgcc's ${s} is linked (CONFIG_NANO_HW_DIVIDER: divisions go to the SIO divider)"
+    fi
+  done
+fi
 printf '.boot2 0x%08x, 256 bytes; image 0x%08x-0x%08x (%d bytes, %d bytes left before 0x%08x)\n' \
   "$flash_base" "$flash_base" $((image_end - 1)) "$bin_size" $((image_limit - image_end)) "$image_limit"
 

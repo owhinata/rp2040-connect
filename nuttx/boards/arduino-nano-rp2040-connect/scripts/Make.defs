@@ -54,6 +54,17 @@ ifeq ($(CONFIG_NANO_ROM_MEM_OPS),y)
 chip/rp2040_start.c_CFLAGS += -fno-tree-loop-distribute-patterns
 endif
 
+# Integer division on the SIO divider (CONFIG_NANO_HW_DIVIDER): every call
+# to libgcc's division helpers goes to the Pico SDK's routines
+# (divider_hardware.S, src/Make.defs), which define them as __wrap_<name>.
+# nuttx/script/build.sh checks that libgcc's are not linked.
+
+ifeq ($(CONFIG_NANO_HW_DIVIDER),y)
+LDFLAGS += --wrap=__aeabi_idiv --wrap=__aeabi_idivmod
+LDFLAGS += --wrap=__aeabi_uidiv --wrap=__aeabi_uidivmod
+LDFLAGS += --wrap=__aeabi_ldivmod --wrap=__aeabi_uldivmod
+endif
+
 CFLAGS := $(ARCHCFLAGS) $(ARCHOPTIMIZATION) $(ARCHCPUFLAGS) $(ARCHINCLUDES) $(ARCHDEFINES) $(EXTRAFLAGS)
 CXXFLAGS := $(ARCHCXXFLAGS) $(ARCHOPTIMIZATION) $(ARCHCPUFLAGS) $(ARCHXXINCLUDES) $(ARCHDEFINES) $(EXTRAFLAGS)
 CPPFLAGS := $(ARCHINCLUDES) $(ARCHDEFINES) $(EXTRAFLAGS)

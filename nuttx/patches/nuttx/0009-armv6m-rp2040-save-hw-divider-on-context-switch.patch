@@ -1,0 +1,279 @@
+armv6-m, rp2040: save the SIO hardware divider on context switches
+
+Purpose: let tasks divide on the RP2040's SIO divider (the board links the
+Pico SDK's pico_divider routines in place of libgcc's division,
+boards/arduino-nano-rp2040-connect, CONFIG_NANO_HW_DIVIDER).  Those routines
+(PICO_DIVIDER_DISABLE_INTERRUPTS 0) save and restore the divider around a
+division that finds it DIRTY, which makes divisions in interrupt handlers
+safe, but a task switched out between writing the operands and reading the
+results would read the results of the next task's division.  As the Pico
+SDK's FreeRTOS port does (portUSE_DIVIDER_SAVE_RESTORE in its PendSV
+handler), the divider goes with the task:
+
+- arch/arm/src/rp2040/Kconfig: RP2040_HW_DIVIDER (default n).
+- arch/arm/include/armv6-m/irq.h: struct xcptcontext gets the four divider
+  registers and a flag, at its end (20 bytes per TCB).  up_initial_state()
+  clears xcp, so a new task starts with the flag clear.
+- arch/arm/src/rp2040/rp2040_divider.h (new): rp2040_divider_save() keeps
+  the registers in the TCB only when CSR.DIRTY is set (a division in
+  progress); rp2040_divider_restore() writes them back (UDIVIDEND, UDIVISOR,
+  REMAINDER, QUOTIENT, as hw_divider_restore_state()) or, for a task that
+  was not dividing, reads QUOTIENT to clear DIRTY.
+- arch/arm/src/armv6-m/arm_doirq.c: every context switch on the ARMv6-M
+  (SVC for the switches of a running task, PendSV for those from interrupt
+  handlers, HardFault for an SVC with interrupts disabled) ends in
+  arm_doirq(); when the task changes, save the old one's divider and
+  restore the new one's.  g_running_tasks[] is NULL after up_exit() (no
+  save: the TCB is gone) and at the end of arm_sigdeliver().
+- arch/arm/src/armv6-m/arm_sigdeliver.c: before that last switch back to
+  the same task, save the divider, so that arm_doirq() restores it as it is.
+
+With RP2040_HW_DIVIDER off the code is upstream's.
+FreeRTOS: the FreeRTOS build (Pico SDK port) saves all four registers at
+every switch, which leaves DIRTY set; here a task that was not dividing
+keeps DIRTY clear, so its divisions take the routines' short path.
+
+diff --git a/arch/arm/include/armv6-m/irq.h b/arch/arm/include/armv6-m/irq.h
+index 0ba5a426..4a345098 100644
+--- a/arch/arm/include/armv6-m/irq.h
++++ b/arch/arm/include/armv6-m/irq.h
+@@ -190,6 +190,16 @@ struct xcptcontext
+    */
+ 
+   uint32_t *regs;
++
++#ifdef CONFIG_RP2040_HW_DIVIDER
++  /* The RP2040's SIO divider of a task switched out in the middle of a
++   * division (arch/arm/src/rp2040/rp2040_divider.h): dividend, divisor,
++   * remainder and quotient, valid when divider_dirty is non-zero.
++   */
++
++  uint32_t divider[4];
++  uint32_t divider_dirty;
++#endif
+ };
+ 
+ /****************************************************************************
+diff --git a/arch/arm/src/armv6-m/arm_doirq.c b/arch/arm/src/armv6-m/arm_doirq.c
+index 4ee54a70..99832efc 100644
+--- a/arch/arm/src/armv6-m/arm_doirq.c
++++ b/arch/arm/src/armv6-m/arm_doirq.c
+@@ -39,6 +39,10 @@
+ #include "exc_return.h"
+ #include "nvic.h"
+ 
++#ifdef CONFIG_RP2040_HW_DIVIDER
++#  include "rp2040_divider.h"
++#endif
++
+ /****************************************************************************
+  * Public Functions
+  ****************************************************************************/
+@@ -112,6 +116,23 @@ uint32_t *arm_doirq(int irq, uint32_t *regs)
+ 
+   nxsched_switch_context(*running_task, tcb);
+ 
++#ifdef CONFIG_RP2040_HW_DIVIDER
++  /* Move the hardware divider with the switch.  *running_task is NULL
++   * after up_exit() (the TCB has been released: nothing to save) and at
++   * the end of arm_sigdeliver(), which saved the divider itself.
++   */
++
++  if (*running_task != tcb)
++    {
++      if (*running_task != NULL)
++        {
++          rp2040_divider_save(*running_task);
++        }
++
++      rp2040_divider_restore(tcb);
++    }
++#endif
++
+   /* Record the new "running" task when context switch occurred.
+    * g_running_tasks[] is only used by assertion logic for reporting
+    * crashes.
+diff --git a/arch/arm/src/armv6-m/arm_sigdeliver.c b/arch/arm/src/armv6-m/arm_sigdeliver.c
+index f61d216c..dcb44d8e 100644
+--- a/arch/arm/src/armv6-m/arm_sigdeliver.c
++++ b/arch/arm/src/armv6-m/arm_sigdeliver.c
+@@ -39,6 +39,10 @@
+ #include "sched/sched.h"
+ #include "arm_internal.h"
+ 
++#ifdef CONFIG_RP2040_HW_DIVIDER
++#  include "rp2040_divider.h"
++#endif
++
+ /****************************************************************************
+  * Public Functions
+  ****************************************************************************/
+@@ -163,6 +167,16 @@ retry:
+   leave_critical_section(up_irq_save());
+ #endif
+ 
++#ifdef CONFIG_RP2040_HW_DIVIDER
++  /* arm_doirq() restores the divider of this task when it finds
++   * g_running_tasks[] NULL.  The divider holds this task's own state (the
++   * signal handler's divisions put back that of the code they interrupted),
++   * so save it to have it restored as it is.
++   */
++
++  rp2040_divider_save(rtcb);
++#endif
++
+   g_running_tasks[this_cpu()] = NULL;
+   rtcb->xcp.regs = rtcb->xcp.saved_regs;
+   arm_fullcontextrestore();
+diff --git a/arch/arm/src/rp2040/Kconfig b/arch/arm/src/rp2040/Kconfig
+index 0b8f3631..3e6d8868 100644
+--- a/arch/arm/src/rp2040/Kconfig
++++ b/arch/arm/src/rp2040/Kconfig
+@@ -10,6 +10,21 @@ config RP2040_DMAC
+ 	default y
+ 	select ARCH_DMA
+ 
++config RP2040_HW_DIVIDER
++	bool "Save the SIO hardware divider on context switches"
++	default n
++	depends on ARCH_ARMV6M
++	---help---
++		Save the SIO divider's registers of a task switched out in the
++		middle of a division in its TCB (struct xcptcontext) and put
++		them back when it is switched in again (rp2040_divider.h,
++		called from arm_doirq()), so that tasks can divide on the
++		divider, e.g. with the Pico SDK's pico_divider routines in
++		place of libgcc's (with PICO_DIVIDER_DISABLE_INTERRUPTS 0:
++		those routines save and restore the divider around a division
++		that interrupts another one, which covers interrupt handlers).
++		Only selects the saving: the board links the routines.
++
+ #####################################################################
+ #  UART Configuration
+ #####################################################################
+diff --git a/arch/arm/src/rp2040/rp2040_divider.h b/arch/arm/src/rp2040/rp2040_divider.h
+new file mode 100644
+index 00000000..ccd5eedb
+--- /dev/null
++++ b/arch/arm/src/rp2040/rp2040_divider.h
+@@ -0,0 +1,120 @@
++/****************************************************************************
++ * arch/arm/src/rp2040/rp2040_divider.h
++ *
++ * SPDX-License-Identifier: MIT
++ *
++ * Save and restore the SIO hardware divider across context switches
++ * (CONFIG_RP2040_HW_DIVIDER).  Local to this workspace
++ * (nuttx/patches/nuttx/0009), not part of upstream NuttX.
++ *
++ ****************************************************************************/
++
++#ifndef __ARCH_ARM_SRC_RP2040_RP2040_DIVIDER_H
++#define __ARCH_ARM_SRC_RP2040_RP2040_DIVIDER_H
++
++/****************************************************************************
++ * Included Files
++ ****************************************************************************/
++
++#include <nuttx/config.h>
++
++#include <stdint.h>
++
++#include <nuttx/sched.h>
++
++#include "arm_internal.h"
++#include "hardware/rp2040_sio.h"
++
++#ifdef CONFIG_RP2040_HW_DIVIDER
++
++/****************************************************************************
++ * Inline Functions
++ ****************************************************************************/
++
++/* The division routines (the Pico SDK's pico_divider, linked in place of
++ * libgcc's) write the operands, wait 8 cycles and read REMAINDER, then
++ * QUOTIENT.  Writing an operand sets CSR.DIRTY and reading QUOTIENT clears
++ * it, so DIRTY is set exactly while a division has been started and its
++ * result not yet taken.  A routine that finds DIRTY set (it interrupted
++ * another one) saves the four registers, divides and puts them back, which
++ * is enough for interrupt handlers but not for a task switched out in the
++ * middle of a division: the next task's divisions would leave DIRTY clear
++ * and overwrite the registers.  So arm_doirq() saves the registers of the
++ * task that it switches away from in its TCB, and restores those of the
++ * task that it switches to, as the Pico SDK's FreeRTOS port does in its
++ * PendSV handler (portUSE_DIVIDER_SAVE_RESTORE), but only for a task that
++ * was in the middle of a division (DIRTY).
++ *
++ * The results are always ready when these run: more than 8 cycles have
++ * passed since the interrupted task's last operand write (the exception
++ * entry alone takes longer), and an interrupt handler that divided in the
++ * meantime either read the results or ended by writing QUOTIENT back,
++ * which also makes them ready.  Restoring writes the operands through
++ * UDIVIDEND and UDIVISOR and then the results, as the SDK's
++ * hw_divider_restore_state() does: writing a result stops the calculation
++ * that the operand writes started, and through the unsigned aliases the
++ * results read back exactly as saved (the signed aliases would negate them
++ * on read when the operands' signs differ).  A task that was preempted
++ * between writing its two operands, or in the SDK's own restore sequence,
++ * still gets the right result: it writes the remaining registers itself,
++ * and each operand write starts a new calculation of the kind (signed or
++ * unsigned) given by the register written.
++ */
++
++/****************************************************************************
++ * Name: rp2040_divider_save
++ *
++ * Description:
++ *   Save the divider into the TCB of the task that is being switched out,
++ *   if that task is in the middle of a division.
++ *
++ ****************************************************************************/
++
++static inline void rp2040_divider_save(struct tcb_s *tcb)
++{
++  struct xcptcontext *xcp = &tcb->xcp;
++
++  if ((getreg32(RP2040_SIO_DIV_CSR) & RP2040_SIO_DIV_CSR_DIRTY) != 0)
++    {
++      xcp->divider[0]    = getreg32(RP2040_SIO_DIV_UDIVIDEND);
++      xcp->divider[1]    = getreg32(RP2040_SIO_DIV_UDIVISOR);
++      xcp->divider[2]    = getreg32(RP2040_SIO_DIV_REMAINDER);
++      xcp->divider[3]    = getreg32(RP2040_SIO_DIV_QUOTIENT);
++      xcp->divider_dirty = 1;
++    }
++  else
++    {
++      xcp->divider_dirty = 0;
++    }
++}
++
++/****************************************************************************
++ * Name: rp2040_divider_restore
++ *
++ * Description:
++ *   Put back the divider of the task that is being switched in, or, if it
++ *   was not in the middle of a division (or never ran: up_initial_state()
++ *   clears the TCB's xcp), clear DIRTY so that its divisions do not save
++ *   and restore registers that nobody needs.
++ *
++ ****************************************************************************/
++
++static inline void rp2040_divider_restore(struct tcb_s *tcb)
++{
++  struct xcptcontext *xcp = &tcb->xcp;
++
++  if (xcp->divider_dirty != 0)
++    {
++      putreg32(xcp->divider[0], RP2040_SIO_DIV_UDIVIDEND);
++      putreg32(xcp->divider[1], RP2040_SIO_DIV_UDIVISOR);
++      putreg32(xcp->divider[2], RP2040_SIO_DIV_REMAINDER);
++      putreg32(xcp->divider[3], RP2040_SIO_DIV_QUOTIENT);
++    }
++  else
++    {
++      (void)getreg32(RP2040_SIO_DIV_QUOTIENT);
++    }
++}
++
++#endif /* CONFIG_RP2040_HW_DIVIDER */
++#endif /* __ARCH_ARM_SRC_RP2040_RP2040_DIVIDER_H */

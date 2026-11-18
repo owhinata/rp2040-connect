@@ -62,6 +62,32 @@ DEPPATH += --dep-path board/../../../../common/drivers/rp2040_rom
 VPATH += :board/../../../../common/drivers/rp2040_rom
 endif
 
+# Integer division on the SIO divider: the Pico SDK's pico_divider
+# (divider_hardware.S from nuttx/pico-sdk, PICO_SDK_PATH, which setup.sh
+# sets), assembled with the SDK's headers and, for the two that the SDK's
+# CMake build generates (pico/version.h, pico/config_autogen.h), the minimal
+# ones of src/pico_sdk.  scripts/Make.defs wraps libgcc's helpers to its
+# routines.
+
+ifeq ($(CONFIG_NANO_HW_DIVIDER),y)
+NANO_PICO_SDK_SRC = $(PICO_SDK_PATH)$(DELIM)src
+NANO_PICO_SDK_INC = ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)arch$(DELIM)$(CONFIG_ARCH)$(DELIM)src$(DELIM)board$(DELIM)board$(DELIM)pico_sdk
+NANO_PICO_SDK_INC += $(foreach d,rp2040$(DELIM)hardware_regs rp2040$(DELIM)pico_platform \
+                       rp2_common$(DELIM)hardware_base rp2_common$(DELIM)hardware_divider \
+                       rp2_common$(DELIM)pico_platform_common rp2_common$(DELIM)pico_platform_compiler \
+                       rp2_common$(DELIM)pico_platform_sections rp2_common$(DELIM)pico_platform_panic \
+                       common$(DELIM)pico_base_headers, \
+                       ${INCDIR_PREFIX}$(NANO_PICO_SDK_SRC)$(DELIM)$(d)$(DELIM)include)
+ASRCS += divider_hardware.S
+DEPPATH += --dep-path $(NANO_PICO_SDK_SRC)$(DELIM)rp2_common$(DELIM)pico_divider
+VPATH += :$(NANO_PICO_SDK_SRC)$(DELIM)rp2_common$(DELIM)pico_divider
+divider_hardware$(OBJEXT): AFLAGS += $(NANO_PICO_SDK_INC)
+
+# The dependencies of all the board's sources are made with CFLAGS.
+
+.depend: CFLAGS += $(NANO_PICO_SDK_INC)
+endif
+
 # The idle loop with the CPU load measurement (cpu_load_get()) in place of
 # the in-tree rp2040_idle.c, which patches/nuttx/0004 leaves out with
 # ARCH_IDLE_CUSTOM.

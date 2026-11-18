@@ -66,6 +66,29 @@ config NANO_ROM_MEM_OPS
 		routines are looked up on first use and kept in .bss, which
 		__start() clears with an inline loop before calling anything.
 
+config NANO_HW_DIVIDER
+	bool "Integer division on the RP2040 SIO divider"
+	default y
+	depends on ARCH_CHIP_RP2040
+	select RP2040_HW_DIVIDER
+	---help---
+		__aeabi_idiv(), __aeabi_idivmod(), __aeabi_uidiv(),
+		__aeabi_uidivmod(), __aeabi_ldivmod() and __aeabi_uldivmod()
+		(every integer division the compiler emits) run on the SIO
+		hardware divider instead of libgcc's shift-and-subtract loops:
+		the Pico SDK's pico_divider (divider_hardware.S, built from
+		nuttx/pico-sdk with the minimal headers of src/pico_sdk),
+		linked with ld --wrap (scripts/Make.defs).  The routines save
+		and restore the divider around a division that interrupts
+		another one (PICO_DIVIDER_DISABLE_INTERRUPTS 0), and
+		RP2040_HW_DIVIDER (nuttx/patches/nuttx/0009) moves the divider
+		with the task at every context switch.  nuttx/patches/pico-sdk/0001
+		keeps libgcc's results for a 32-bit division by zero.  The
+		routines use only the SIO and the stack, so they work from the
+		start of __start(), in interrupt handlers and in the fatal error
+		handling.  nuttx/script/build.sh checks that no libgcc integer
+		division is left in the image.
+
 config NANO_STACK_SENTINEL
 	bool "Stack sentinel (check the lowest stack word)"
 	default y

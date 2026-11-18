@@ -14,15 +14,19 @@ _nuttx_setup() {
   local nuttx_tag=nuttx-13.1.0
   local nuttx_commit=2b5c0de5e933281c209f954a63b99cf10c132346
   local apps_commit=3c772ea35b9245972e18999828f7b533e6fc57cc
-  # pico-sdk, used only to build boot2. 2.2.0 is the version named in
+  # pico-sdk, used to build boot2 and the hardware divider's division
+  # routines. 2.2.0 is the version named in
   # Documentation/platforms/arm/rp2040/index.rst and used by NuttX CI.
   local pico_sdk_tag=2.2.0
   local pico_sdk_commit=a1438dff1d38bd9c65dbd693f0e5db4b9ae91779
   # Only what NuttX's boot2 build reads (arch/arm/src/rp2040/boot2/Make.defs:
   # the second stage source with pad_checksum, and its include directories)
-  # is checked out, about 4 MB instead of the SDK's 31 MB.  A full clone
-  # that is already there is used as it is; remove nuttx/pico-sdk to get
-  # the small one.
+  # and what the board builds of pico_divider (divider_hardware.S and the
+  # divider_helper.S it includes, CONFIG_NANO_HW_DIVIDER) is checked out,
+  # about 4 MB instead of the SDK's 31 MB.  Paths added here are checked out
+  # in an existing sparse clone too (their files are downloaded then, as
+  # the clone is a partial one).  A full clone that is already there is
+  # used as it is; remove nuttx/pico-sdk to get the small one.
   local -a pico_sdk_paths=(
     /LICENSE.TXT
     /src/rp2040/boot_stage2/
@@ -35,6 +39,8 @@ _nuttx_setup() {
     /src/rp2_common/pico_platform_panic/include/
     /src/common/pico_base_headers/include/
     /src/boards/include/boards/pico.h
+    /src/rp2_common/pico_divider/divider_hardware.S
+    /src/rp2_common/hardware_divider/include/hardware/divider_helper.S
   )
   # Arm GNU Toolchain, the version used by NuttX CI (tools/ci/platforms/ubuntu.sh).
   local arm_gnu_version=13.2.rel1
@@ -111,15 +117,30 @@ _nuttx_setup() {
   }
 
   # Like _nuttx_clone, but checks out only the given paths (sparse checkout
-  # patterns) and downloads only their files (a partial clone).
+  # patterns) and downloads only their files (a partial clone).  In an
+  # existing sparse clone, the paths it does not check out yet are added
+  # (which downloads their files: a network connection is needed once).
   _nuttx_clone_sparse() {  # url tag commit dir path...
-    local url=$1 tag=$2 commit=$3 dir=$4 head
+    local url=$1 tag=$2 commit=$3 dir=$4 head p
+    local -a have=() add=()
     shift 4
     if [[ -d "${dir}/.git" ]]; then
       head="$(git -C "$dir" rev-parse HEAD 2>/dev/null)"
       if [[ "$head" != "$commit" ]]; then
         printf 'Note: %s is at %s, not %s (%s); leaving it as it is.\n' \
           "$dir" "${head:-unknown}" "$commit" "$tag" >&2
+      fi
+      [[ "$(git -C "$dir" config --bool core.sparseCheckout 2>/dev/null)" == true ]] || return 0
+      mapfile -t have < <(git -C "$dir" sparse-checkout list 2>/dev/null)
+      for p in "$@"; do
+        printf '%s\n' "${have[@]}" | grep -Fxq -- "$p" || add+=("$p")
+      done
+      (( ${#add[@]} )) || return 0
+      printf 'Adding to the sparse checkout of %s: %s\n' "$dir" "${add[*]}"
+      if ! git -C "$dir" sparse-checkout add "${add[@]}"; then
+        printf 'Cannot check out %s in %s (their files are downloaded from %s).\n' \
+          "${add[*]}" "$dir" "$url" >&2
+        return 1
       fi
       return 0
     fi
@@ -218,7 +239,9 @@ _nuttx_setup() {
     "${root}/nuttx-apps" || return 1
   _nuttx_clone_sparse https://github.com/raspberrypi/pico-sdk.git "$pico_sdk_tag" "$pico_sdk_commit" \
     "${root}/pico-sdk" "${pico_sdk_paths[@]}" || return 1
-  for f in src/rp2040/boot_stage2/boot2_at25sf128a.S src/rp2040/boot_stage2/pad_checksum; do
+  for f in src/rp2040/boot_stage2/boot2_at25sf128a.S src/rp2040/boot_stage2/pad_checksum \
+           src/rp2_common/pico_divider/divider_hardware.S \
+           src/rp2_common/hardware_divider/include/hardware/divider_helper.S; do
     if [[ ! -f "${root}/pico-sdk/${f}" ]]; then
       printf 'pico-sdk lacks %s.\n' "$f" >&2
       return 1
@@ -232,6 +255,7 @@ _nuttx_setup() {
 
   _nuttx_patch "${root}/nuttx" "${root}/patches/nuttx" || return 1
   _nuttx_patch "${root}/nuttx-apps" "${root}/patches/apps" || return 1
+  _nuttx_patch "${root}/pico-sdk" "${root}/patches/pico-sdk" || return 1
 
   # Out-of-tree kernel code and applications (filled by later tasks).
   _nuttx_link ../drivers "${root}/nuttx/external" || return 1

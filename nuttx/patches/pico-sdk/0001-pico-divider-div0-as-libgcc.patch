@@ -1,0 +1,78 @@
+pico_divider: 32-bit division by zero returns what libgcc's does
+
+Purpose: the board links divider_hardware.S in place of libgcc's integer
+division (boards/arduino-nano-rp2040-connect, CONFIG_NANO_HW_DIVIDER).  For
+a 32-bit division by zero, libgcc (13.2, Armv6-M: __udivsi3, __divsi3,
+__aeabi_uidivmod, __aeabi_idivmod) calls __aeabi_idiv0 with 0 and returns
+its result as the quotient, with the dividend as the remainder.  The SDK
+passes a saturated quotient (0xffffffff, or 0x7fffffff / 0x80000000 by the
+dividend's sign, 0 for 0 / 0) and returns a remainder of 0.  Keep libgcc's
+results, so that a division by zero behaves as without the option:
+
+- src/rp2_common/pico_divider/divider_hardware.S: the division by zero
+  paths of the signed and the unsigned 32-bit routines (shared with their
+  _unsafe entries) keep the dividend and return it as the remainder, with a
+  quotient of 0.  r2 (the SIO pointer of the save/restore path) is kept as
+  before; the stack stays 8-byte aligned.
+
+The 64-bit routines already return what libgcc's do (a saturated quotient,
+passed to __aeabi_ldiv0, and a remainder of 0).
+
+diff --git a/src/rp2_common/pico_divider/divider_hardware.S b/src/rp2_common/pico_divider/divider_hardware.S
+index 049c6f7..a36ce3a 100644
+--- a/src/rp2_common/pico_divider/divider_hardware.S
++++ b/src/rp2_common/pico_divider/divider_hardware.S
+@@ -137,21 +137,16 @@ regular_func divmod_s32s32_unsafe
+ #if PICO_DIVIDER_DISABLE_INTERRUPTS
+     msr PRIMASK, r3
+ #endif /* PICO_DIVIDER_DISABLE_INTERRUPTS */
+-    push {r2, lr}
+-    movs r1, #0x80
+-    lsls r1, #24
+-    asrs r2, r0, #31
+-    eors r1, r2
+-    cmp r0, #0
+-    beq 1f
+-    mvns r0, r1
+-1:
++    // NuttX workspace (nuttx/patches/pico-sdk): as libgcc does on Armv6-M,
++    // return a quotient of 0 (passed to __aeabi_idiv0) and the dividend as
++    // the remainder, not the saturated quotient and remainder 0
++    push {r0, r2, r3, lr}
++    movs r0, #0
+ #if PICO_DIVIDER_CALL_IDIV0
+     bl __aeabi_idiv0
+ #endif
+-    movs r1, #0 // remainder 0
+-    // need to restore saved r2 as it hold SIO ptr
+-    pop {r2, pc}
++    // need to restore saved r2 as it hold SIO ptr; r1 = dividend
++    pop {r1, r2, r3, pc}
+ #if !PICO_DIVIDER_DISABLE_INTERRUPTS
+ .align 2
+ regular_func divmod_s32s32_savestate
+@@ -199,18 +194,16 @@ regular_func divmod_u32u32_unsafe
+ #if PICO_DIVIDER_DISABLE_INTERRUPTS
+     msr PRIMASK, r3
+ #endif /* PICO_DIVIDER_DISABLE_INTERRUPTS */
+-    push {r2, lr}
+-    cmp r0, #0
+-    beq 1f
++    // NuttX workspace (nuttx/patches/pico-sdk): as libgcc does on Armv6-M,
++    // return a quotient of 0 (passed to __aeabi_idiv0) and the dividend as
++    // the remainder, not the saturated quotient and remainder 0
++    push {r0, r2, r3, lr}
+     movs r0, #0
+-    mvns r0, r0
+-1:
+ #if PICO_DIVIDER_CALL_IDIV0
+     bl __aeabi_idiv0
+ #endif
+-    movs r1, #0 // remainder 0
+-    // need to restore saved r2 as it hold SIO ptr
+-    pop {r2, pc}
++    // need to restore saved r2 as it hold SIO ptr; r1 = dividend
++    pop {r1, r2, r3, pc}
+ #if !PICO_DIVIDER_DISABLE_INTERRUPTS
+ .align 2
+ regular_func divmod_u32u32_savestate
