@@ -1446,3 +1446,19 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
   見てから操作する。
 - 調査中（subagent、読むだけ）: `watch` コマンド、実行中の Ctrl+C、バックグラウンド実行を 3 版でどこまで作れるか（ユーザーの依頼）。
 - 実機: FreeRTOS 版（新しい `ps`）、AP 接続中。
+
+## `watch`・実行中の Ctrl+C・バックグラウンド実行: 調査だけ、見送り（2026-11-18、ユーザーの決定）
+
+- ユーザーの決定: **この段階では 3 つとも見送る**。実装していない。
+- 調査の結果（subagent、読むだけ。あとで再開するときの材料）:
+  - NuttX: nsh の標準の `watch` はあるが `CONFIG_NSH_DISABLE_WATCH=y` で意図して外してある（「終わらないコマンドは外す」。止める手段が `-c` だけ、
+    コマンドは 1 語しか取らない、`-n 0` で回り続ける）。Ctrl+C を標準の仕組み（`TTY_SIGINT` + `SIG_DEFAULT`）で作ると、既定の動作も sigaction として
+    登録されて `arm_sigdeliver` を通るので、シグナルの固まりの経路を避けられない。シグナルを使わない形（`watch` の待ちを標準入力の `poll()` に
+    して ^C か Enter で止める、nshlib へのパッチ 60〜80 行）なら作れる見込み。`&` は builtin アプリだけで、止める手段が無い。
+  - Zephyr: `watch` に当たるものは無い。上流の `net ping` の形（専用スレッド + `shell_set_bypass()`、スレッドから `shell_execute_cmd()`）で作れる
+    （約 150 行、RAM 約 +3 KB、上流へのパッチ不要）。シェルのスレッドの中で `shell_execute_cmd()` を回す形はシェルの内部の状態を壊す。
+    バックグラウンド実行は `sh->ctx` を並行して使うので危険（dummy バックエンドが要り RAM 約 +4 KB）。
+  - FreeRTOS: `nano_shell_execute()` を中から呼べるので `watch` は易しい（約 100 行）。実行中の入力を見る口（`nano_console` に追加、約 50 行）が要る。
+  - Telnet のクライアントは ^C を IAC IP で送ることが多く、3 版とも捨てているので、止める操作に Enter を含めるのが確実。
+  - 書式の案: `watch [-n 秒] [-c 回数] <コマンド…>`（nsh に合わせる）。`ps_interval` の前回の値は全セッションで 1 組なので、片方で `watch ps` を
+    動かすと、もう片方の `ps` の区間も短くなる。
