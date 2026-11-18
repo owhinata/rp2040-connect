@@ -5,6 +5,42 @@ if [[ "${BASH_SOURCE[0]}" == "$0" ]]; then
   exit 1
 fi
 
+# The local patches of manifest/zephyr/patches.yml (Zephyr's "west patch"): applied to the
+# working trees of zephyr/ and the modules, never committed there.  "west patch apply" skips
+# the patches already applied, so sourcing this again changes nothing.  .west/nano-patches
+# keeps a copy of the set last applied: when patches.yml or a patch changes, that set is
+# taken back first, so a patch removed from the list does not stay in a tree.
+_zephyr_patch() {  # root west
+  local root=$1 west=$2 yml base rec
+  yml="${root}/manifest/zephyr/patches.yml"
+  base="${root}/manifest/zephyr/patches"
+  rec="${root}/.west/nano-patches"
+
+  if [[ -f "${rec}/patches.yml" ]] && \
+     ! { [[ -f "$yml" ]] && cmp -s "$yml" "${rec}/patches.yml" && \
+         diff -r -q "$base" "${rec}/patches" >/dev/null 2>&1; }; then
+    printf 'The local patches changed; taking back the set applied before.\n'
+    if ! (cd "$root" && "$west" patch -l "${rec}/patches.yml" -b "${rec}/patches" reverse); then
+      printf 'Cannot take back the patches recorded in %s.\n' "$rec" >&2
+      printf 'Restore the trees with "git -C <tree> checkout -- ." (zephyr, modules/...),\n' >&2
+      printf 'remove %s and source setup.sh again.\n' "$rec" >&2
+      return 1
+    fi
+    rm -rf "$rec" || return 1
+  fi
+  [[ -f "$yml" ]] || return 0
+
+  if ! (cd "$root" && "$west" -q patch apply); then
+    printf 'Applying the local patches failed; taking back those of them applied.\n' >&2
+    (cd "$root" && "$west" -q patch reverse)
+    return 1
+  fi
+  if [[ ! -f "${rec}/patches.yml" ]]; then
+    mkdir -p "$rec" && cp -- "$yml" "${rec}/patches.yml" && \
+      { [[ ! -d "$base" ]] || cp -r -- "$base" "${rec}/patches"; } || return 1
+  fi
+}
+
 _zephyr_setup() {
   local root python west manifest_path project_status sdk_version sdk_dir quoted_west
   local needs_packages=0
@@ -42,6 +78,8 @@ _zephyr_setup() {
     (cd "$root" && "$west" packages pip --install) || return 1
   fi
 
+  _zephyr_patch "$root" "$west" || return 1
+
   if [[ ! -f "${root}/zephyr/SDK_VERSION" ]]; then
     printf 'Zephyr SDK_VERSION was not found.\n' >&2
     return 1
@@ -69,7 +107,7 @@ _zephyr_setup() {
 
 _zephyr_setup
 _zephyr_setup_status=$?
-unset -f _zephyr_setup
+unset -f _zephyr_setup _zephyr_patch
 if (( _zephyr_setup_status != 0 )); then
   unset _zephyr_setup_status
   return 1

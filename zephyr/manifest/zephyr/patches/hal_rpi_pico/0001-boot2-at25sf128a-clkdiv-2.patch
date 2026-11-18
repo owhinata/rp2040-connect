@@ -1,0 +1,25 @@
+Subject: [PATCH] rp2040: boot_stage2: at25sf128a: run the flash at clk_sys / 2
+
+Local patch of this workspace (zephyr/manifest/zephyr/patches.yml), not
+meant for upstream.
+
+The Arduino Nano RP2040 Connect's boot2 is boot2_at25sf128a.S, whose
+default PICO_FLASH_SPI_CLKDIV of 4 runs the XIP clock at 31.25 MHz with
+clk_sys at 125 MHz. hal_rpi_pico gives no way to pass the define to its
+bootloader project, so change the default to 2 (62.5 MHz, as the Pico
+SDK's boards use). The fast quad read (EBh) is rated for 108 MHz or more
+by the AT25SF128A's data sheet.
+
+diff --git a/src/rp2040/boot_stage2/boot2_at25sf128a.S b/src/rp2040/boot_stage2/boot2_at25sf128a.S
+index 72f751e..caf9f03 100644
+--- a/src/rp2040/boot_stage2/boot2_at25sf128a.S
++++ b/src/rp2040/boot_stage2/boot2_at25sf128a.S
+@@ -41,7 +41,7 @@
+ // as aggressive as possible.
+ 
+ #ifndef PICO_FLASH_SPI_CLKDIV
+-#define PICO_FLASH_SPI_CLKDIV 4
++#define PICO_FLASH_SPI_CLKDIV 2
+ #endif
+ #if PICO_FLASH_SPI_CLKDIV & 1
+ #error PICO_FLASH_SPI_CLKDIV must be even

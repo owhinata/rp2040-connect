@@ -52,6 +52,30 @@ if(CONFIG_NANO_ROM_MEM_OPS)
   endforeach()
 endif()
 
+# Integer division through the SIO divider: the Pico SDK's pico_divider (hal_rpi_pico), as the
+# SDK's pico_divider_hardware links it.  libgcc defines the plain names, so the references are
+# wrapped to the SDK's __wrap___aeabi_idiv, ...  The routines save the divider when they
+# interrupt a division (PICO_DIVIDER_DISABLE_INTERRUPTS=0); the thread switches save it
+# (CONFIG_ARM_RP2040_DIVIDER_SAVE, manifest/zephyr/patches).  Division by zero still calls
+# libgcc's __aeabi_idiv0 and __aeabi_ldiv0, which return; the 64-bit results are libgcc's, but a
+# 32-bit quotient is then saturated (libgcc: 0) and the remainder 0 (libgcc: the dividend).
+if(CONFIG_NANO_HW_DIVIDER)
+  if(NOT CONFIG_ARM_RP2040_DIVIDER_SAVE)
+    message(FATAL_ERROR "CONFIG_NANO_HW_DIVIDER needs CONFIG_ARM_RP2040_DIVIDER_SAVE: "
+      "apply the local patches (source script/setup.sh)")
+  endif()
+  set(pico_src_dir ${ZEPHYR_HAL_RPI_PICO_MODULE_DIR}/src)
+  set(divider_asm ${pico_src_dir}/rp2_common/pico_divider/divider_hardware.S)
+  target_sources(app PRIVATE ${divider_asm})
+  set_source_files_properties(${divider_asm} PROPERTIES
+    COMPILE_DEFINITIONS PICO_DIVIDER_DISABLE_INTERRUPTS=0
+    INCLUDE_DIRECTORIES "${pico_src_dir}/rp2_common/hardware_divider/include;${pico_src_dir}/rp2040/pico_platform/include")
+  foreach(sym __aeabi_idiv __aeabi_idivmod __aeabi_uidiv __aeabi_uidivmod __aeabi_ldivmod
+          __aeabi_uldivmod)
+    zephyr_ld_options(-Wl,--wrap=${sym})
+  endforeach()
+endif()
+
 # Keep Zephyr's Kconfig and devicetree bindings while using local driver copies.
 function(use_local_driver_sources target pattern replacement_dir)
   get_filename_component(dir "${replacement_dir}" ABSOLUTE BASE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
@@ -72,38 +96,6 @@ function(use_local_driver_sources target pattern replacement_dir)
   endif()
   set_property(TARGET ${target} PROPERTY SOURCES "${updated_sources}")
 endfunction()
-
-# boot2: keep the board's choice (boot2_at25sf128a.S) but run the flash at clk_sys / 2 (62.5 MHz)
-# instead of that file's default clk_sys / 4, as the Pico SDK boards do.  hal_rpi_pico has no
-# option for PICO_FLASH_SPI_CLKDIV, so build its bootloader project once more with the define
-# and link that boot2 in place of the one hal_rpi_pico builds.
-if(CONFIG_RP2_REQUIRES_SECOND_STAGE_BOOT)
-  if(NOT CONFIG_RP2_FLASH_AT25SF128A)
-    message(FATAL_ERROR "boot2: expected CONFIG_RP2_FLASH_AT25SF128A")
-  endif()
-  include(ExternalProject)
-  set(nano_boot2_dir ${CMAKE_BINARY_DIR}/nano_boot2)
-  ExternalProject_Add(
-    nano_boot2
-    SOURCE_DIR ${ZEPHYR_BASE}/modules/hal_rpi_pico/bootloader
-    BINARY_DIR ${nano_boot2_dir}
-    CMAKE_ARGS
-      -DCMAKE_SYSTEM_NAME=${CMAKE_SYSTEM_NAME}
-      -DCMAKE_C_COMPILER=${CMAKE_C_COMPILER}
-      -DCMAKE_ASM_COMPILER=${CMAKE_ASM_COMPILER}
-      -DCMAKE_ASM_FLAGS=-DPICO_FLASH_SPI_CLKDIV=2
-      -DZEPHYR_HAL_RPI_PICO_MODULE_DIR=${ZEPHYR_HAL_RPI_PICO_MODULE_DIR}
-      -DZEPHYR_BASE=${ZEPHYR_BASE}
-      -DFLASH_TYPE=AT25SF128A
-      -DPYTHON_EXECUTABLE=${Python3_EXECUTABLE}
-      -DRP2_BOOTLOADER_BYPRODUCT=${nano_boot2_dir}/boot_stage2.S
-      -DCONFIG_PICOLIBC=${CONFIG_PICOLIBC}
-    INSTALL_COMMAND ""
-    BUILD_BYPRODUCTS ${nano_boot2_dir}/boot_stage2.S
-    BUILD_ALWAYS TRUE)
-  use_local_driver_sources(modules__hal_rpi_pico "(^|/)bootloader/boot_stage2\\.S$" ${nano_boot2_dir})
-  add_dependencies(modules__hal_rpi_pico nano_boot2)
-endif()
 
 use_local_driver_sources(drivers__i2c "(^|/)i2c_dw\\.c$" drivers/i2c_dw)
 if(CONFIG_I2C_DW_RP2040_DMA)

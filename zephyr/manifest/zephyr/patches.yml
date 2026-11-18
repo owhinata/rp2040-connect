@@ -1,0 +1,30 @@
+# SPDX-License-Identifier: MIT
+#
+# Local patches of this workspace's Zephyr and modules, applied to their
+# working trees (git apply, no commits) by "west patch apply", which
+# script/setup.sh runs.  The syntax is Zephyr's
+# scripts/schemas/patch-schema.yml.  After changing a patch, update its
+# sha256sum (sha256sum <file>); script/setup.sh then takes back the patches it
+# applied before and applies the new set.
+
+patches:
+  - path: hal_rpi_pico/0001-boot2-at25sf128a-clkdiv-2.patch
+    sha256sum: 1d01e03728a8c35b0e2fb31c9ac809bc4cfa5c750d3da02336cbfbabe1ad1b8c
+    module: hal_rpi_pico
+    author: rp2040-connect
+    email: noreply@example.invalid
+    date: 2026-11-18
+    upstreamable: false
+    comments: |
+      boot2 for the board's AT25SF128A at clk_sys / 2 (62.5 MHz) instead of
+      clk_sys / 4.
+  - path: zephyr/0001-arm-cortex-m-rp2040-divider-save.patch
+    sha256sum: 5019e7f0581623999faf25982c7f318166ee5f0a4f6eb0878eaee532c1fdd76a
+    module: zephyr
+    author: rp2040-connect
+    email: noreply@example.invalid
+    date: 2026-11-18
+    upstreamable: false
+    comments: |
+      CONFIG_ARM_RP2040_DIVIDER_SAVE: the SIO divider saved and restored in
+      PendSV, for the Pico SDK's pico_divider (app CONFIG_NANO_HW_DIVIDER).

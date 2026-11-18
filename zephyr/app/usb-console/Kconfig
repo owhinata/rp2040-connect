@@ -17,6 +17,22 @@ config NANO_ROM_MEM_OPS
 	  picolibc's byte loops. The early boot's arch_early_memcpy() and
 	  arch_early_memset() keep picolibc's (src/rom_mem_early.c).
 
+config NANO_HW_DIVIDER
+	bool "Integer division through the RP2040 hardware divider"
+	default y
+	depends on SOC_RP2040 && !SMP
+	select ARM_RP2040_DIVIDER_SAVE
+	help
+	  Wrap __aeabi_idiv(), __aeabi_idivmod(), __aeabi_uidiv(),
+	  __aeabi_uidivmod(), __aeabi_ldivmod() and __aeabi_uldivmod() (the
+	  linker's --wrap) to the Pico SDK's pico_divider routines
+	  (divider_hardware.S of hal_rpi_pico), which use the SIO divider.
+	  Without it they are libgcc's shift-and-subtract loops. The routines
+	  save the divider around their use when they interrupt another
+	  division; the thread switches save and restore it
+	  (ARM_RP2040_DIVIDER_SAVE, a local patch of Zephyr applied by
+	  script/setup.sh).
+
 config WIFI_NINA_LOCAL
 	bool "NINA SPI Wi-Fi offload"
 	default y

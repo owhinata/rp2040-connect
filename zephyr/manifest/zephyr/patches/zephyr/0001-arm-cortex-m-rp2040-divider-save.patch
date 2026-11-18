@@ -1,0 +1,226 @@
+Subject: [PATCH] arch: arm: cortex_m: save the RP2040 divider in thread switches
+
+Local patch of this workspace (zephyr/manifest/zephyr/patches.yml), not
+meant for upstream.
+
+CONFIG_ARM_RP2040_DIVIDER_SAVE (off by default) saves the RP2040's SIO
+integer divider of the thread switched out in PendSV and restores that of
+the thread switched in, as the Pico SDK's FreeRTOS port does
+(portUSE_DIVIDER_SAVE_RESTORE). The Pico SDK's pico_divider routines can
+then use the divider from threads without locking interrupts: they guard
+themselves against interrupt handlers (DIV_CSR.DIRTY), but not against a
+thread switched out in the middle of a division.
+
+The state goes to struct _thread_arch (rp2040_divider, 20 bytes), and
+only when DIRTY is set; otherwise the thread switched in finds DIRTY
+clear. Both the save and the restore run with interrupts locked. Every
+switch on this port goes through PendSV (k_yield(), blocking, preemption
+from an interrupt, thread abort); the first thread, main, starts without
+a switch and with nothing to restore.
+
+diff --git a/arch/arm/core/cortex_m/Kconfig b/arch/arm/core/cortex_m/Kconfig
+index cbd8c95..496a84d 100644
+--- a/arch/arm/core/cortex_m/Kconfig
++++ b/arch/arm/core/cortex_m/Kconfig
+@@ -410,6 +410,21 @@ config TRAP_UNALIGNED_ACCESS
+ 	  If enabled, the CPU generates a UsageFault exception when executing a
+ 	  halfword or word access.
+ 
++config ARM_RP2040_DIVIDER_SAVE
++	bool "Save the RP2040 hardware divider in thread switches"
++	depends on SOC_RP2040 && !USE_SWITCH && !SMP
++	help
++	  Save the state of the RP2040's SIO integer divider of the thread
++	  switched out and restore that of the thread switched in (PendSV,
++	  swap_helper.S), as the Pico SDK's FreeRTOS port does. Division
++	  routines that use the divider from threads, such as the Pico SDK's
++	  pico_divider, then need no interrupt locking: they save and restore
++	  the divider around their use only when DIV_CSR.DIRTY shows that
++	  they interrupted another division, which covers interrupt handlers
++	  but not a thread switched out in the middle of a division. The
++	  state is saved only when DIRTY is set, and a thread switched in
++	  without a saved state finds DIRTY clear.
++
+ endmenu
+ 
+ # Implement the null pointer detection using either the Data Watchpoint and
+diff --git a/arch/arm/core/cortex_m/swap_helper.S b/arch/arm/core/cortex_m/swap_helper.S
+index 0995298..fd77047 100644
+--- a/arch/arm/core/cortex_m/swap_helper.S
++++ b/arch/arm/core/cortex_m/swap_helper.S
+@@ -30,6 +30,17 @@ GDATA(_kernel)
+ GDATA(z_arm_tls_ptr)
+ #endif
+ 
++#if defined(CONFIG_ARM_RP2040_DIVIDER_SAVE)
++/* RP2040 SIO: base and integer divider registers */
++#define RP2040_SIO_BASE_SHIFTED 0xd /* SIO_BASE 0xd0000000 >> 28 */
++#define RP2040_SIO_DIV_UDIVIDEND 0x60
++#define RP2040_SIO_DIV_UDIVISOR 0x64
++#define RP2040_SIO_DIV_QUOTIENT 0x70
++#define RP2040_SIO_DIV_REMAINDER 0x74
++#define RP2040_SIO_DIV_CSR 0x78
++#define RP2040_SIO_DIV_CSR_DIRTY 0x2
++#endif
++
+ /**
+  *
+  * @brief PendSV exception handler, handling context switches
+@@ -132,6 +143,37 @@ SECTION_FUNC(TEXT, z_arm_pendsv)
+ #error Unknown ARM architecture
+ #endif /* CONFIG_ARMV6_M_ARMV8_M_BASELINE */
+ 
++#if defined(CONFIG_ARM_RP2040_DIVIDER_SAVE)
++    /*
++     * Save the SIO divider of the thread switched out (still in r2), with
++     * interrupts locked. A division the thread left in the middle shows as
++     * DIV_CSR.DIRTY; its result is ready by now (the divider takes 8 cycles,
++     * the exception entry alone more, and an interrupt handler that used
++     * the divider in the meantime has put the state back, results
++     * included). Without DIRTY the registers are dead: the division
++     * routines write both operands every time.
++     *
++     * The registers are read as the Pico SDK's hw_divider_save_state()
++     * reads them, the quotient last (reading it clears DIRTY). Free: r0,
++     * r3-r7; r1 holds _kernel.
++     */
++    movs r3, #RP2040_SIO_BASE_SHIFTED
++    lsls r3, r3, #28
++    ldr r0, =_thread_offset_to_rp2040_divider
++    adds r0, r2, r0
++    ldr r4, [r3, #RP2040_SIO_DIV_CSR]
++    movs r5, #RP2040_SIO_DIV_CSR_DIRTY
++    ands r4, r5
++    str r4, [r0, #16] /* dirty */
++    beq .L_rp2040_div_saved
++    ldr r4, [r3, #RP2040_SIO_DIV_UDIVIDEND]
++    ldr r5, [r3, #RP2040_SIO_DIV_UDIVISOR]
++    ldr r6, [r3, #RP2040_SIO_DIV_REMAINDER]
++    ldr r7, [r3, #RP2040_SIO_DIV_QUOTIENT]
++    stmia r0!, {r4-r7}
++.L_rp2040_div_saved:
++#endif /* CONFIG_ARM_RP2040_DIVIDER_SAVE */
++
+     /*
+      * Prepare to clear PendSV with interrupts unlocked, but
+      * don't clear it yet. PendSV must not be cleared until
+@@ -184,6 +226,37 @@ SECTION_FUNC(TEXT, z_arm_pendsv)
+     str r0, [r4]
+ #endif
+ 
++#if defined(CONFIG_ARM_RP2040_DIVIDER_SAVE)
++    /*
++     * Restore the SIO divider of the thread switched in (r2), interrupts
++     * still locked. A saved state goes back as the Pico SDK's
++     * hw_divider_restore_state() puts it: the operands through the
++     * unsigned registers, then the results, which stops the division the
++     * operands start and leaves DIV_CSR READY and DIRTY. Writing the
++     * results last also keeps the sign of a signed division: the
++     * hardware negates on reading only after a signed division. Without
++     * a saved state, reading the quotient clears the DIRTY that the
++     * thread switched out may have left, so that the next division takes
++     * the routines' short path. Free: r0, r3-r7.
++     */
++    movs r3, #RP2040_SIO_BASE_SHIFTED
++    lsls r3, r3, #28
++    ldr r0, =_thread_offset_to_rp2040_divider
++    adds r0, r2, r0
++    ldr r4, [r0, #16] /* dirty */
++    cmp r4, #0
++    bne .L_rp2040_div_restore
++    ldr r4, [r3, #RP2040_SIO_DIV_QUOTIENT]
++    b .L_rp2040_div_restored
++.L_rp2040_div_restore:
++    ldmia r0!, {r4-r7}
++    str r4, [r3, #RP2040_SIO_DIV_UDIVIDEND]
++    str r5, [r3, #RP2040_SIO_DIV_UDIVISOR]
++    str r6, [r3, #RP2040_SIO_DIV_REMAINDER]
++    str r7, [r3, #RP2040_SIO_DIV_QUOTIENT]
++.L_rp2040_div_restored:
++#endif /* CONFIG_ARM_RP2040_DIVIDER_SAVE */
++
+ #if defined(CONFIG_ARM_STORE_EXC_RETURN)
+     /* Restore EXC_RETURN value. */
+     ldrsb lr, [r2, #_thread_offset_to_mode_exc_return]
+diff --git a/arch/arm/core/cortex_m/thread.c b/arch/arm/core/cortex_m/thread.c
+index 364763f..0622eb5 100644
+--- a/arch/arm/core/cortex_m/thread.c
++++ b/arch/arm/core/cortex_m/thread.c
+@@ -137,6 +137,11 @@ void arch_new_thread(struct k_thread *thread, k_thread_stack_t *stack, char *sta
+ #endif
+ #endif
+ 
++#if defined(CONFIG_ARM_RP2040_DIVIDER_SAVE)
++	/* Not in a division: nothing to restore at the first switch-in */
++	thread->arch.rp2040_divider.dirty = 0U;
++#endif
++
+ 	void *entry_wrapper = z_thread_entry;
+ 
+ #if defined(CONFIG_USERSPACE)
+diff --git a/arch/arm/core/offsets/offsets_aarch32.c b/arch/arm/core/offsets/offsets_aarch32.c
+index f26d0a6..cc267ec 100644
+--- a/arch/arm/core/offsets/offsets_aarch32.c
++++ b/arch/arm/core/offsets/offsets_aarch32.c
+@@ -66,6 +66,10 @@ GEN_OFFSET_SYM(_thread_arch_t, sp_usr);
+ GEN_OFFSET_SYM(_thread_arch_t, preempt_float);
+ #endif
+ 
++#if defined(CONFIG_ARM_RP2040_DIVIDER_SAVE)
++GEN_OFFSET_SYM(_thread_arch_t, rp2040_divider);
++#endif
++
+ GEN_OFFSET_SYM(_basic_sf_t, pc);
+ GEN_OFFSET_SYM(_basic_sf_t, xpsr);
+ 
+diff --git a/arch/arm/include/offsets_short_arch.h b/arch/arm/include/offsets_short_arch.h
+index c3975b5..03023f9 100644
+--- a/arch/arm/include/offsets_short_arch.h
++++ b/arch/arm/include/offsets_short_arch.h
+@@ -70,6 +70,11 @@
+ 	(___thread_t_arch_OFFSET + ___thread_arch_t_pac_keys_OFFSET)
+ #endif
+ 
++#if defined(CONFIG_ARM_RP2040_DIVIDER_SAVE)
++#define _thread_offset_to_rp2040_divider \
++	(___thread_t_arch_OFFSET + ___thread_arch_t_rp2040_divider_OFFSET)
++#endif
++
+ /* end - threads */
+ 
+ #endif /* ZEPHYR_ARCH_ARM_INCLUDE_OFFSETS_SHORT_ARCH_H_ */
+diff --git a/include/zephyr/arch/arm/thread.h b/include/zephyr/arch/arm/thread.h
+index 110bccc..07278f2 100644
+--- a/include/zephyr/arch/arm/thread.h
++++ b/include/zephyr/arch/arm/thread.h
+@@ -79,6 +79,18 @@ struct pac_keys {
+ };
+ #endif
+ 
++#if defined(CONFIG_ARM_RP2040_DIVIDER_SAVE)
++/* The order of the members is that of swap_helper.S. */
++struct _rp2040_divider {
++	uint32_t dividend;
++	uint32_t divisor;
++	uint32_t remainder;
++	uint32_t quotient;
++	/* DIV_CSR.DIRTY at switch-out: the words above are valid only if set */
++	uint32_t dirty;
++};
++#endif
++
+ struct _thread_arch {
+ 
+ #ifndef _ARM_M_SWITCH
+@@ -164,6 +176,11 @@ struct _thread_arch {
+ #if defined(CONFIG_ARM_PAC_PER_THREAD)
+ 	struct pac_keys pac_keys;
+ #endif
++
++#if defined(CONFIG_ARM_RP2040_DIVIDER_SAVE)
++	/* RP2040 SIO divider of the switched-out thread (swap_helper.S) */
++	struct _rp2040_divider rp2040_divider;
++#endif
+ };
+ 
+ #if defined(CONFIG_FPU_SHARING) && defined(CONFIG_MPU_STACK_GUARD)

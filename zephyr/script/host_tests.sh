@@ -36,6 +36,32 @@ run nina_socket -std=gnu17 -Wall -Wextra -Werror -D_DEFAULT_SOURCE -DNINA_OS_DNS
     "$app/tests/nina_socket.c" "$app/drivers/nina/nina_socket.c" ../common/drivers/nina/nina_sock.c \
     ../common/drivers/nina/nina_dns.c
 
+# The local patches (manifest/zephyr/patches.yml, applied by script/setup.sh): every patch file
+# is listed once, and the sha256sum of each entry is that of its file ("west patch" refuses the
+# patch otherwise).
+patch_yml=manifest/zephyr/patches.yml
+patch_dir=manifest/zephyr/patches
+mapfile -t patch_paths < <(sed -n 's/^  - path: //p' "$patch_yml")
+mapfile -t patch_sums < <(sed -n 's/^    sha256sum: //p' "$patch_yml")
+if (( ${#patch_paths[@]} != ${#patch_sums[@]} )); then
+    printf 'FAIL %s: %d paths, %d sha256sums\n' "$patch_yml" "${#patch_paths[@]}" "${#patch_sums[@]}" >&2
+    exit 1
+fi
+for i in "${!patch_paths[@]}"; do
+    sum=$(sha256sum < "$patch_dir/${patch_paths[i]}" | cut -d' ' -f1)
+    if [[ "$sum" != "${patch_sums[i]}" ]]; then
+        printf 'FAIL %s: sha256sum of %s is %s\n' "$patch_yml" "${patch_paths[i]}" "$sum" >&2
+        exit 1
+    fi
+done
+listed=$(printf '%s\n' "${patch_paths[@]}" | sort)
+present=$(cd "$patch_dir" && find . -name '*.patch' -printf '%P\n' | sort)
+if [[ "$listed" != "$present" ]]; then
+    printf 'FAIL %s does not list exactly the files of %s\n' "$patch_yml" "$patch_dir" >&2
+    exit 1
+fi
+printf 'ok  local patches (%d in %s)\n' "${#patch_paths[@]}" "$patch_yml"
+
 for f in ../host/imu_host/*.py; do
     python3 -c 'import sys; compile(open(sys.argv[1]).read(), sys.argv[1], "exec")' "$f"
 done
