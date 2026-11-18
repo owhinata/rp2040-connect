@@ -1195,3 +1195,19 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
 - 未確認: シグナルの経路（0011 の候補ありの像で固まらず食い違い 0 か）、libgcc + シグナル + 修正なしの像でも固まるか（上流の不具合で
   あることの確認）。0011 を正式に入れるかは未決。
 - 実機: NuttX の `nuttx-divtest-nosig` の試験の像。
+
+## NINA のドライバーを新しいファームウェアに対応（2026-11-18、commit 済み、**3 版とも実機未確認**）
+
+- 実装（subagent）: (1) 機能の検出 `nina_probe_capabilities()`（0x6A、未定義の命令の `0xEF 00 EE` は `-ENOTSUP`。`iface_init()` の MAC の
+  読み出しの直後に 1 回）、`nina version` に `NINA capabilities: 0x%08x (in use 0x%08x)` の 1 行。(2) スキャン: ビット 0 で接続中の
+  スキャンを切断の扱いにしない、ビット 1 で 0x36 → 0x6B を 100 ms ごと → 0x27（期限 10 秒）。(3) ソケットの事象: OS 境界
+  `nina_os_event_start/seq/wait`（`NINA_OS_EVENTS`、GPIO2 の立ち上がりで世代番号を進め全員を起こす）、共通の待ち `nina_wait.[ch]`
+  （命令の前に印、最長 100 ms、空振りが続けば 0〜20 ms の休み）。3 版の connect・send・recv・poll の待ちと NuttX の poller を置き換え。
+  `time_sync.c` の 1 ms の試みと MQTT の `poll(0)` は替えていない。(4) 送信の再試行: 続きのパスは先に 0x7C で書き込み可能を確かめる
+  （古いファームウェアでも有効）。ホストテスト多数、わざと壊した版 14 通りで失敗を確認（NuttX の poller のエッジはテストなし）。
+- 像の大きさ: Zephyr 365756 B、NuttX 281164 B。試験用の像は `scratchpad/drv/`（`zephyr.uf2`・`nuttx.uf2`・`freertos.uf2`・
+  `freertos-noevent.uf2` = 事象を使わない比較用）。
+- メインはソースを読んでいない。ビルド・テストは subagent の報告。実機で見ること: `nina version` の 2 行目（0x7）、接続中の `wifi scan`
+  （RUNNING のまま、数秒）、スキャン中の送信、zperf の受信、送信中の `cpu_active`（noevent と比較）、Telnet、切断復帰、GPIO2。
+- README（未反映）: 接続中のスキャン、`nina version` の 2 行目、事象を使わないビルドの方法、`nina passthrough confirm` と esptool の手順、
+  除算器・パッチの仕組み・tick の追いつき。実機確認のあとにまとめて直す。
