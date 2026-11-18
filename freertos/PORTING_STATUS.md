@@ -1252,3 +1252,17 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
   spike-nx の NuttX は 12.13 系のフォーク。上流での修正の有無は記録なし。
 - 方針の案（ユーザーに提示）: 修正の候補は正式には入れず、「NuttX 版ではシグナルハンドラーを登録しない」ことを文書に明記する。
 - 実機: NuttX の試験の像（試験は止まった状態、シェルは使える）。
+
+## NuttX 版の正式の像の実機確認（2026-11-18）
+
+- ユーザーの決定: NuttX のシグナルの問題は修正しない（修正の候補は入れない。「NuttX 版ではシグナルハンドラーを登録しない」を文書に明記する）。
+  修正の候補ありの試験は行わない。
+- 像: コミット済みのツリーをメインが再ビルド（`SOURCE_DATE_EPOCH=1763337600 ... --clean -j 1`、警告は ld の RWX の 1 件）。281164 B。
+  subagent が残した `drv/nuttx.uf2` と一致。中身: boot2 分周 2、ROM の `memcpy`・`memset`（パッチ 0010）、READY 割り込み、除算器（パッチ 0009）、
+  新しい NINA のドライバー。Zephyr も再ビルドして `drv/zephyr.uf2` と一致（365756 B）。
+- **新しい基準**: `freertos/build/baseline/nuttx/snapshot-1118/image.bin`、`.../zephyr/snapshot-1118/image.bin`。
+- 実機（NuttX、書き込み直後から）: 起動、`nina version`（capabilities 0x7、in use 0x7）、KV、自動接続。送信 約 70 秒 × 2 回 `cpu_active`
+  49.4%・49.4%（ドライバーの対応前は 55.8〜56.2%）、欠番 0、overruns 0。`iperf` 送信 3.46・3.36、受信 1.18・1.18 Mbit/s。Telnet 3 回 OK。
+  `dmesg` は 9 行で `<err>`・`<wrn>`・fail・assert なし（今回は中身を見た）。空きメモリー 122264。NuttX 版の `wifi` には `scan` が無い
+  （スキャンの確認はしていない）。
+- 実機: NuttX の正式の像。
