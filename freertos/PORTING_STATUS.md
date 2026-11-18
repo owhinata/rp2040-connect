@@ -1177,3 +1177,21 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
   ドライバーはスキャンを切断の扱いにして繋ぎ直すので、その組み合わせの結果とみられる（書き換え前の所要時間は測っていない）。ドライバーの
   対応（機能のビットを見て切断の扱いをやめる）で解消する見込み。それまでスキャンは使えるが復帰が遅い。
 - 実機: FreeRTOS 版（中継コマンド入り）、NINA は新しいファームウェア。
+
+## NuttX の除算器の試験: シグナルで固まる件（2026-11-18）
+
+- 直した試験の像（`pthread_kill` でシグナルが届く版、退避あり）は、実機で試験の開始（起動 5.8 秒）の直後に毎回固まった。シリアルは列挙された
+  ままで入力を受けず、PANIC もリセットも無し。RESET 1 回のあと RAM ログを読むと `divtest: start (switch save)` の行のあと何も無かった。
+- subagent の分析（コードの上、実機未確認）: 上流の NuttX の armv6-m の不具合。`arm_doirq.c` の PendSV の分岐
+  `if (tcb->sigdeliver) up_schedule_sigaction(tcb)` が、シグナルハンドラーの実行中に PendSV が来ると配送のフレームをもう一度作り、
+  `xcp.saved_regs` を上書きする。除算器のパッチ 0009 とは無関係（0009 はフレームにもスタックポインターにも触れない）。正式の像は
+  ハンドラーを登録するコードが無い（`sigaction`・`kill`・`pthread_kill` なし、SIGCHLD・SIGINT も生成・配送されない）ので、通常の動作では
+  この経路を通らない、という判断。修正の候補（`saved_regs` を NULL に戻し、NULL のときだけフレームを作る）は scratch の
+  `nuttx-0011-candidate-armv6m-sigdeliver-pendsv.patch`。リポジトリには入れていない。
+- 切り分けの像（`scratchpad/div/`、watchdog 3 秒で固まりを検出し、次の起動で前回の記録を出す）: `nuttx-divtest-nosig(-nosave)`、
+  `nuttx-divtest(-nosave)`（0011 の候補あり）、`nuttx-divtest-sig-nofix`、`nuttx-divtest-libgcc-sig-nofix`。
+- **実機（`nuttx-divtest-nosig.uf2`: 除算器 + 退避あり、シグナルなし）**: 250 秒・約 1,128 万回で mismatches 0、free 114016 で一定
+  （1 行だけ 109872）。退避なしの像は、前の版の試験で 40 秒に a・b 合わせて 10 件の食い違い。**切り替えでの退避は NuttX でも正しく動く**。
+- 未確認: シグナルの経路（0011 の候補ありの像で固まらず食い違い 0 か）、libgcc + シグナル + 修正なしの像でも固まるか（上流の不具合で
+  あることの確認）。0011 を正式に入れるかは未決。
+- 実機: NuttX の `nuttx-divtest-nosig` の試験の像。
