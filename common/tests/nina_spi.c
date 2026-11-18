@@ -13,6 +13,12 @@
  * 100 us), the reset sequence of the first request, the order of the CS
  * edges and transfers, and the lock.
  *
+ * The firmware's error reply to a command it does not have (0xEF 0x00
+ * 0xEE): -ENOTSUP after three bytes, in nina_request() and command(); and
+ * the capability probe (0x6A): the bits, an older firmware, a link error,
+ * unknown bits, the OS's events started only for bit 2 (and the bit
+ * dropped when they cannot start), one request only.
+ *
  * Built a second time with NINA_OS_WAIT_READY (common/tests/run.sh), the
  * waits of an OS that reports READY's changes (nina_os_ready_*() of
  * nina_os.h, fakes here: a wait sleeps the whole time it is given, as when
@@ -208,6 +214,16 @@ void nina_os_ready_disarm(void)
 	armed = -1;
 }
 #endif
+
+/* nina_wait.c: the OS's events started by the probe. */
+static unsigned int event_starts;
+static int event_start_result;
+
+int nina_wait_start_events(void)
+{
+	event_starts++;
+	return event_start_result;
+}
 
 /* Helpers ----------------------------------------------------------------*/
 
@@ -638,6 +654,91 @@ static void ip_config_cases(void)
 	assert(nina_ip_config(data) == -ETIMEDOUT && now_us == 20000 && calls == 0 && !cs_active);
 }
 
+static void error_reply_cases(void)
+{
+	uint8_t out[16], data[12];
+	size_t n = 55;
+	const uint8_t error_reply[] = {0xef, 0x00, 0xee};
+
+	/* A command the firmware does not have: three bytes read, -ENOTSUP,
+	 * CS released, n untouched. */
+	reset_fake(error_reply, sizeof(error_reply));
+	assert(simple(0x6a, out, sizeof(out), &n) == -ENOTSUP);
+	assert(single_calls == 4 + 3 && bulk_calls == 0 && !cs_active && n == 55);
+	assert(lock_depth == 0 && strcmp(events, "CS1 CS0 CS1 CS0 ") == 0);
+	/* After other bytes too. */
+	const uint8_t late[] = {0xff, 0xff, 0xef, 0x00, 0xee};
+	reset_fake(late, sizeof(late));
+	assert(simple(0x6a, out, sizeof(out), &n) == -ENOTSUP && single_calls == 4 + 5);
+	/* 0xEF not followed by 0x00 0xEE: -EPROTO. */
+	const uint8_t bad1[] = {0xef, 0x01, 0xee};
+	reset_fake(bad1, sizeof(bad1));
+	assert(simple(0x6a, out, sizeof(out), &n) == -EPROTO && !cs_active);
+	const uint8_t bad2[] = {0xef, 0x00, 0xe0};
+	reset_fake(bad2, sizeof(bad2));
+	assert(simple(0x6a, out, sizeof(out), &n) == -EPROTO && !cs_active);
+	/* A transfer error in the two bytes: that error. */
+	reset_fake(error_reply, sizeof(error_reply));
+	fail_single_at = 4 + 2;
+	assert(simple(0x6a, out, sizeof(out), &n) == -EIO && !cs_active);
+	/* command() (0x21) reads the answer the same way. */
+	reset_fake(error_reply, sizeof(error_reply));
+	assert(nina_ip_config(data) == -ENOTSUP && single_calls == 3 && !cs_active);
+}
+
+/* nina_probe_capabilities() with REPLY: the bits in use. */
+static uint32_t probe(const uint8_t *reply, size_t len)
+{
+	reset_fake(reply, len);
+	caps_probed = false;
+	caps_module = caps_used = 0;
+	event_starts = 0;
+	return nina_probe_capabilities();
+}
+
+static void capability_cases(void)
+{
+	const uint8_t all[] = {0xe0, 0xea, 1, 4, 0x07, 0, 0, 0, 0xee};
+	const uint8_t scan_only[] = {0xe0, 0xea, 1, 4, 0x03, 0, 0, 0, 0xee};
+	const uint8_t unknown[] = {0xe0, 0xea, 1, 4, 0x0f, 0, 0, 0x80, 0xee};
+	const uint8_t short_reply[] = {0xe0, 0xea, 1, 2, 0x07, 0, 0xee};
+	const uint8_t old[] = {0xef, 0x00, 0xee};
+
+	/* Before the probe: none. */
+	caps_probed = false;
+	caps_module = caps_used = 0;
+	assert(nina_capabilities() == 0 && nina_module_capabilities() == 0);
+
+	/* All three: the request is 0x6A without parameters; the events
+	 * started once. */
+	event_start_result = 0;
+	assert(probe(all, sizeof(all)) == 7);
+	assert(request_len == 4 && memcmp(request, "\xe0\x6a\x00\xee", 4) == 0);
+	assert(nina_capabilities() == 7 && nina_module_capabilities() == 7 && event_starts == 1);
+	/* Asked once: later calls return the first answer, no request. */
+	reset_fake(old, sizeof(old));
+	assert(nina_probe_capabilities() == 7 && phase == 0 && event_starts == 1);
+	/* The events cannot start: bit 2 dropped from those in use. */
+	event_start_result = -ENOTSUP;
+	assert(probe(all, sizeof(all)) == 3 && event_starts == 1);
+	assert(nina_module_capabilities() == 7 && nina_capabilities() == 3);
+	event_start_result = 0;
+	/* Without bit 2 the events are not started. */
+	assert(probe(scan_only, sizeof(scan_only)) == 3 && event_starts == 0);
+	/* Unknown bits are the module's, not used. */
+	assert(probe(unknown, sizeof(unknown)) == 7 && nina_module_capabilities() == 0x8000000f);
+	/* An older firmware: 0 at once (three bytes read), as with 3.0.2. */
+	assert(probe(old, sizeof(old)) == 0 && event_starts == 0 && single_calls == 4 + 3);
+	assert(nina_capabilities() == 0 && nina_module_capabilities() == 0);
+	/* A wrong answer or a link error: 0. */
+	assert(probe(short_reply, sizeof(short_reply)) == 0);
+	reset_fake(all, sizeof(all));
+	caps_probed = false;
+	ready_never_from = 0;
+	assert(nina_probe_capabilities() == 0 && event_starts == 0);
+	assert(nina_probe_capabilities() == 0 && phase == 0);
+}
+
 int main(void)
 {
 	zephyr_cases();
@@ -647,6 +748,8 @@ int main(void)
 	ready_cases();
 	init_cases();
 	ip_config_cases();
+	error_reply_cases();
+	capability_cases();
 #ifdef NINA_OS_WAIT_READY
 	puts("NINA SPI framing, answers, timeouts and reset tests passed (OS waits for READY)");
 #else

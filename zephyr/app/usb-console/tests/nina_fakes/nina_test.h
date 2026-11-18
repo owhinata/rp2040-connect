@@ -94,6 +94,7 @@ int gpio_pin_set_dt(const struct gpio_dt_spec *spec, int value);
 int gpio_pin_get_dt(const struct gpio_dt_spec *spec);
 int gpio_pin_interrupt_configure_dt(const struct gpio_dt_spec *spec, gpio_flags_t flags);
 int gpio_add_callback_dt(const struct gpio_dt_spec *spec, struct gpio_callback *callback);
+int gpio_remove_callback_dt(const struct gpio_dt_spec *spec, struct gpio_callback *callback);
 static inline void gpio_init_callback(struct gpio_callback *callback,
 				      gpio_callback_handler_t handler, gpio_port_pins_t pin_mask)
 {

@@ -51,6 +51,13 @@
  *   after k_sleep(K_MSEC(NINA_POLL_INTERVAL_MS)) until the timeout (in
  *   k_uptime_get() milliseconds, -1 for none) has gone by.
  *
+ * The sleeps of both loops are nina_wait() (common/drivers/nina/
+ * nina_wait.h): NINA_POLL_INTERVAL_MS, or, when the module reports socket
+ * events on its IRQ line, until the line's next edge after the edge count
+ * noted before the pass (at most NINA_EVENT_TIMEOUT_MS, not past the poll's
+ * timeout; at most NINA_POLL_INTERVAL_MS while a descriptor that is not a
+ * NINA socket is polled, as before).
+ *
  * A receive that waits (recv() without MSG_DONTWAIT) or NuttX's poll() on
  * a socket from zsock_socket() would wait for an event that does not come:
  * use the zsock_*() calls on these sockets.
@@ -77,6 +84,7 @@
 
 #include <nina_dns.h>
 #include <nina_sockopt.h>
+#include <nina_wait.h>
 
 /* <unistd.h>'s (not included: its getopt() names are macros, see
  * <zephyr/kernel.h>).
@@ -120,12 +128,16 @@ static inline int zsock_socket(int family, int type, int proto)
 
 static inline int zsock_poll(struct zsock_pollfd *fds, int nfds, int timeout)
 {
+  struct nina_wait wait = NINA_WAIT_INIT;
   int64_t deadline = timeout < 0 ? INT64_MAX : k_uptime_get() + timeout;
 
   for (; ; )
     {
+      bool other = false;
       int ready = 0;
       int i;
+
+      nina_wait_mark(&wait);
 
       for (i = 0; i < nfds; i++)
         {
@@ -149,6 +161,7 @@ static inline int zsock_poll(struct zsock_pollfd *fds, int nfds, int timeout)
             {
               struct zsock_pollfd native = fds[i];
 
+              other = true;
               if (poll(&native, 1, 0) < 0)
                 {
                   return -1;
@@ -177,18 +190,23 @@ static inline int zsock_poll(struct zsock_pollfd *fds, int nfds, int timeout)
           return 0;
         }
 
-      k_sleep(K_MSEC(NINA_POLL_INTERVAL_MS));
+      nina_wait(&wait, NINA_POLL_INTERVAL_MS,
+                other && deadline > k_uptime_get() + NINA_POLL_INTERVAL_MS ?
+                k_uptime_get() + NINA_POLL_INTERVAL_MS : deadline);
     }
 }
 
 static inline ssize_t zsock_recv(int sock, void *buf, size_t max_len,
                                  int flags)
 {
+  struct nina_wait wait = NINA_WAIT_INIT;
+
   for (; ; )
     {
       int avail = 0;
       ssize_t n;
 
+      nina_wait_mark(&wait);
       if (ioctl(sock, FIONREAD, &avail) < 0)
         {
           return -1;
@@ -210,7 +228,7 @@ static inline ssize_t zsock_recv(int sock, void *buf, size_t max_len,
           return -1;
         }
 
-      k_sleep(K_MSEC(NINA_POLL_INTERVAL_MS));
+      nina_wait(&wait, NINA_POLL_INTERVAL_MS, INT64_MAX);
     }
 }
 

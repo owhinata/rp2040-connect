@@ -23,6 +23,16 @@
  * - a wake-up and a latched edge left from before the arm are dropped;
  * - the edge is enabled only during a wait, in the direction of the
  *   desired level, and the semaphore never counts more than one.
+ *
+ * Built a second time with NINA_OS_EVENTS (and CONFIG_NANO_NINA_USRSOCK),
+ * as nina/Make.defs builds nina_os.c: the socket events on the IRQ line
+ * (GPIO2): the start (the callback on gpio0, GPIO2's rising edge), the
+ * count of the edges, the event thread woken by each
+ * (nina_poller_edge()), a wait that ends at an edge, at once when the
+ * count moved, after its time without an edge (MSEC2TICK(ms) ticks plus
+ * one), an edge between the caller's read of the count and its wait (the
+ * count left ends it at once), a count left from an earlier edge that
+ * does not end a later wait.
  */
 
 #include <assert.h>
@@ -41,6 +51,20 @@
 #include "nina_spi.c"
 
 #define READY_GPIO 10
+#define IRQ_GPIO   2
+
+#ifdef NINA_OS_EVENTS
+static uint64_t irq_edge_at = UINT64_MAX; /* tick of a planned IRQ edge */
+static bool irq_edge_in_wait;           /* an edge at the next wait's start */
+static unsigned int poller_edges;
+static void irq_edge(void);
+
+/* nina_poller.c's: the interrupt wakes the event thread. */
+void nina_poller_edge(void)
+{
+	poller_edges++;
+}
+#endif
 
 /* Fake clock and kernel --------------------------------------------------*/
 
@@ -71,6 +95,12 @@ static void advance(uint64_t ticks)
 			change_at = UINT64_MAX;
 			set_ready_high(change_to_high);
 		}
+#ifdef NINA_OS_EVENTS
+		if (now == irq_edge_at) {
+			irq_edge_at = UINT64_MAX;
+			irq_edge();
+		}
+#endif
 	}
 }
 
@@ -111,8 +141,17 @@ int nxmutex_unlock(mutex_t *m)
 	return 0;
 }
 
+/* The semaphore the test waits on (a NuttX waiter: the count reads one
+ * less, -1 at 0), and whether a post has handed it its count. */
+static sem_t *waiting_sem;
+static bool handed;
+
 int nxsem_post(sem_t *sem)
 {
+	if (sem == waiting_sem && !handed && sem->count == 0) {
+		handed = true;
+		return 0;
+	}
 	sem->count++;
 	if (sem->count > max_count) {
 		max_count = sem->count;
@@ -122,7 +161,7 @@ int nxsem_post(sem_t *sem)
 
 int nxsem_get_value(sem_t *sem, int *sval)
 {
-	*sval = sem->count;
+	*sval = sem->count - (sem == waiting_sem && !handed ? 1 : 0);
 	return 0;
 }
 
@@ -139,12 +178,26 @@ int nxsem_tickwait_uninterruptible(sem_t *sem, uint32_t delay)
 
 	waits++;
 	last_delay = delay;
+#ifdef NINA_OS_EVENTS
+	/* The edge between the caller's read of the count and its wait. */
+	if (irq_edge_in_wait) {
+		irq_edge_in_wait = false;
+		irq_edge();
+	}
+#endif
+	if (sem->count > 0) {
+		sem->count--;
+		return 0;
+	}
+	waiting_sem = sem;
+	handed = false;
 	for (;;) {
-		if (sem->count > 0) {
-			sem->count--;
+		if (handed) {
+			waiting_sem = NULL;
 			return 0;
 		}
 		if (now >= end) {
+			waiting_sem = NULL;
 			return -ETIMEDOUT;
 		}
 		advance(1);
@@ -173,9 +226,30 @@ uint32_t nano_gpio_get_all(void)
 	return ready_high ? 1U << READY_GPIO : 0;
 }
 
+#ifdef NINA_OS_EVENTS
+static uint32_t irq_inte;       /* GPIO2's enabled events */
+static unsigned int irq_irqs;
+
+/* A rising edge of the IRQ line: the bank's interrupt if it is enabled. */
+static void irq_edge(void)
+{
+	if (irq_inte & NANO_GPIO_IRQ_EDGE_RISE) {
+		irq_irqs++;
+		nano_gpio_irq_handler(IRQ_GPIO);
+	}
+}
+#endif
+
 /* As the board's: clears the pin's latched edges, then enables EVENTS. */
 int nano_gpio_irq_configure(unsigned int pin, uint32_t events)
 {
+#ifdef NINA_OS_EVENTS
+	if (pin == IRQ_GPIO) {
+		assert(events == NANO_GPIO_IRQ_EDGE_RISE);
+		irq_inte = events;
+		return 0;
+	}
+#endif
 	assert(pin == READY_GPIO);
 	assert(events == 0 || events == NANO_GPIO_IRQ_EDGE_FALL ||
 	       events == NANO_GPIO_IRQ_EDGE_RISE);
@@ -380,6 +454,64 @@ static void test_edges(void)
 	assert(max_count == 1);
 }
 
+#ifdef NINA_OS_EVENTS
+static void test_events(void)
+{
+	uint32_t seq;
+
+	/* Nothing before the start. */
+	irq_edge();
+	assert(irq_irqs == 0 && nina_os_event_seq() == 0);
+	assert(nina_os_event_start() == 0 && irq_inte == NANO_GPIO_IRQ_EDGE_RISE);
+	/* An edge: the count, the event thread woken, one count left on the
+	 * semaphore (none waits). */
+	max_count = 0;
+	irq_edge();
+	assert(irq_irqs == 1 && nina_os_event_seq() == 1 && poller_edges == 1 && max_count == 1);
+
+	/* The count moved since SEQ: at once. */
+	reset(true);
+	nina_os_event_wait(0, 100);
+	assert(waits == 0 && now == start);
+
+	/* The next edge 7 ms (70 ticks) later: the count left is taken (one
+	 * wait at once), then the wait ends at the edge. */
+	seq = nina_os_event_seq();
+	reset(true);
+	irq_edge_at = now + 70;
+	nina_os_event_wait(seq, 100);
+	assert(nina_os_event_seq() == seq + 1 && now - start == 70 && waits == 2);
+	assert(poller_edges == 2);
+
+	/* No edge: MSEC2TICK(100) ticks plus one, after taking the count left
+	 * by the last edge. */
+	seq = nina_os_event_seq();
+	reset(true);
+	nina_os_event_wait(seq, 100);
+	assert(nina_os_event_seq() == seq && waits >= 2);
+	assert(now - start >= MSEC2TICK(100) && now - start <= MSEC2TICK(100) + 10);
+
+	/* An edge after the caller read the count, before its wait: the
+	 * count it leaves ends the wait at once. */
+	seq = nina_os_event_seq();
+	reset(true);
+	irq_edge_in_wait = true;
+	nina_os_event_wait(seq, 100);
+	assert(nina_os_event_seq() == seq + 1 && now == start && waits == 1);
+
+	/* 0 ms: no wait. */
+	seq = nina_os_event_seq();
+	reset(true);
+	nina_os_event_wait(seq, 0);
+	assert(waits == 0);
+	/* Two edges before a waiter runs: one count. */
+	max_count = 0;
+	irq_edge();
+	irq_edge();
+	assert(max_count == 1);
+}
+#endif
+
 int main(void)
 {
 	test_at_level();
@@ -389,6 +521,9 @@ int main(void)
 	test_change_after_read();
 	test_stale_wakeup();
 	test_edges();
+#ifdef NINA_OS_EVENTS
+	test_events();
+#endif
 	printf("nina_os: ok\n");
 	return 0;
 }

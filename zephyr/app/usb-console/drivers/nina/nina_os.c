@@ -45,8 +45,12 @@
  * deadline and the wait are on the same kernel clock.  One waiter at a
  * time: the core calls these with nina_lock held, not from an interrupt.
  *
+ * With NINA_OS_EVENTS (CMakeLists.txt), it also has the waits for the
+ * module's socket events on its IRQ line (nina_os_event_*() of nina_os.h,
+ * at the end of this file).
+ *
  * The host test (tests/nina_boundary.c) builds this file on fakes of the
- * Zephyr calls, with and without NINA_OS_WAIT_READY.
+ * Zephyr calls, with and without NINA_OS_WAIT_READY and NINA_OS_EVENTS.
  */
 
 #include <stdint.h>
@@ -141,3 +145,83 @@ void nina_os_ready_disarm(void)
 }
 
 #endif /* NINA_OS_WAIT_READY */
+
+#ifdef NINA_OS_EVENTS
+
+#include <zephyr/device.h>
+#include <zephyr/drivers/gpio.h>
+
+/* The module's socket events (nina_os.h, NINA_OS_EVENTS; CMakeLists.txt
+ * compiles this file and nina_wait.c with it):
+ *
+ *   nina_os_event_start()     adds the callback to the IRQ line's port
+ *                             (irq-gpios: GPIO2, active high) and enables
+ *                             its edge to active (rising) with
+ *                             gpio_pin_interrupt_configure_dt(), which
+ *                             clears an edge latched before.  The line
+ *                             stays an input with its pull-down
+ *                             (nina_spi.c init_nina()); the probe calls
+ *                             this after the module's reset, during which
+ *                             the line is driven
+ *   the interrupt             the GPIO driver's handler runs the callback:
+ *                             the count goes up, k_sem_reset() wakes every
+ *                             thread in k_sem_take() of event_sem (-EAGAIN:
+ *                             a broadcast), then k_sem_give() leaves one
+ *                             count for a thread that read the old count
+ *                             but has not reached k_sem_take() yet
+ *   nina_os_event_seq()       the count (written by the interrupt only)
+ *   nina_os_event_wait()      while the count is SEQ and the time is not
+ *                             up: k_sem_take() for the time left.  A count
+ *                             left by an earlier edge ends one k_sem_take()
+ *                             early; the count is read again then, so the
+ *                             wait goes on
+ */
+
+static const struct gpio_dt_spec irq = GPIO_DT_SPEC_GET(DT_NODELABEL(nina_w102), irq_gpios);
+static K_SEM_DEFINE(event_sem, 0, 1);
+static struct gpio_callback event_cb;
+static volatile uint32_t event_count;
+
+/* In the GPIO driver's interrupt handler. */
+static void event_edge(const struct device *port, struct gpio_callback *cb, gpio_port_pins_t pins)
+{
+	ARG_UNUSED(port);
+	ARG_UNUSED(cb);
+	ARG_UNUSED(pins);
+	event_count++;
+	k_sem_reset(&event_sem);
+	k_sem_give(&event_sem);
+}
+
+int nina_os_event_start(void)
+{
+	int ret;
+
+	gpio_init_callback(&event_cb, event_edge, BIT(irq.pin));
+	ret = gpio_add_callback_dt(&irq, &event_cb);
+	if (!ret) {
+		ret = gpio_pin_interrupt_configure_dt(&irq, GPIO_INT_EDGE_TO_ACTIVE);
+		if (ret) {
+			(void)gpio_remove_callback_dt(&irq, &event_cb);
+		}
+	}
+	return ret;
+}
+
+uint32_t nina_os_event_seq(void)
+{
+	return event_count;
+}
+
+void nina_os_event_wait(uint32_t seq, uint32_t ms)
+{
+	int64_t end = k_uptime_get() + ms;
+	int64_t left = ms;
+
+	while (event_count == seq && left > 0) {
+		(void)k_sem_take(&event_sem, K_MSEC(left));
+		left = end - k_uptime_get();
+	}
+}
+
+#endif /* NINA_OS_EVENTS */

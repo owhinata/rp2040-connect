@@ -135,6 +135,7 @@ struct nina_sock
    */
 
   bool send_waiting;
+  bool send_polled;           /* the last pass polled only, did not send */
   int64_t send_deadline;
   int64_t send_next_state_check;
   const void *send_key;
@@ -228,6 +229,15 @@ int nina_sock_setsockopt(int usockid, int level, int option,
  * (the k_sleep() of the loop) with the same data.  -EAGAIN with *RETRY
  * clear is the final answer (a non-blocking call, the NINA_SEND_WAIT_MS
  * deadline, a datagram the module did not take).
+ *
+ * A pass that continues a waiting call first polls the socket (CMD_POLL)
+ * and sends the data only when it is writable: when not, it returns
+ * -EAGAIN with *RETRY set without sending, and sets send_polled (the module
+ * armed the socket's writable event: the caller may wait for the IRQ
+ * line's edge, nina_wait.h).  send_polled is clear after a pass that sent
+ * (a wait of NINA_SEND_RETRY_MS then: the module may take nothing although
+ * the socket is writable, ENOMEM).  The poll's error ends the call as the
+ * state check's did: -EPIPE, or the poll's errno.  Not with MSG_DONTWAIT.
  */
 
 ssize_t nina_sock_send(int usockid, const void *buf, size_t len, int flags,

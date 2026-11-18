@@ -255,7 +255,14 @@ static struct {
 	uint8_t link; /* the status the module reports (0x20) */
 	int up_after; /* polls of 0x20 after a connection until WL_CONNECTED */
 	unsigned int connects, disconnects, scans, mac_reads;
-	char ssid[33]; /* of the last connection */
+	/* The asynchronous scan (0x36, 0x6B): 0x36's answer, the states 0x6B
+	 * gives in turn (the last one again after them), the commands seen. */
+	uint8_t scan_start_reply;
+	uint8_t scan_states[64];
+	unsigned int nscan_states, scan_state_polls, scan_starts;
+	uint8_t scan_state;      /* the last state 0x6B gave */
+	bool lose_link_at_start; /* 0x36 also drops the link (WL_DISCONNECTED) */
+	char ssid[33];           /* of the last connection */
 	char psk[65];
 	bool with_psk;
 } fw = {.link = WL_DISCONNECTED};
@@ -274,6 +281,27 @@ static void put_le32(uint8_t *b, int32_t v)
 	for (int i = 0; i < 4; i++) {
 		b[i] = (uint8_t)(u >> (8 * i));
 	}
+}
+
+/* The firmware's capability bits (common/drivers/nina/nina_spi.c, here a
+ * fake): what the test sets; the probe counted. */
+static uint32_t fake_caps;
+static unsigned int probes;
+
+uint32_t nina_probe_capabilities(void)
+{
+	probes++;
+	return fake_caps;
+}
+
+uint32_t nina_capabilities(void)
+{
+	return fake_caps;
+}
+
+uint32_t nina_module_capabilities(void)
+{
+	return fake_caps;
 }
 
 /* Two networks: index 0 WPA2 on channel 6, 1 open on channel 11. */
@@ -342,9 +370,29 @@ int nina_request(uint8_t cmd, const struct nina_param *p, size_t nparams, bool w
 		put_le32(b, -45);
 		reply(out, cap, out_len, b, 4);
 		break;
+	case 0x36: /* start a scan (0005) */
+		assert(fake_caps & NINA_CAP_ASYNC_SCAN);
+		fw.scan_starts++;
+		fw.scan_state_polls = 0;
+		fw.scan_state = 1;
+		if (fw.lose_link_at_start) {
+			fw.link = WL_DISCONNECTED;
+		}
+		reply(out, cap, out_len, &fw.scan_start_reply, 1);
+		break;
+	case 0x6b: { /* the scan's state (0005) */
+		unsigned int i = fw.scan_state_polls++;
+
+		assert(fake_caps & NINA_CAP_ASYNC_SCAN);
+		fw.scan_state = fw.scan_states[i < fw.nscan_states ? i : fw.nscan_states - 1];
+		reply(out, cap, out_len, &fw.scan_state, 1);
+		break;
+	}
 	case 0x27: { /* scan */
 		size_t n = 0;
 
+		/* After the asynchronous scan only when it is done. */
+		assert(!(fake_caps & NINA_CAP_ASYNC_SCAN) || fw.scan_state == 2);
 		fw.scans++;
 		for (size_t i = 0; i < ARRAY_SIZE(scan_ssids); i++) {
 			size_t len = strlen(scan_ssids[i]);
@@ -827,6 +875,130 @@ static void test_auto_connect(void)
 	report("ok  auto_connect, reconnect\n");
 }
 
+/* The scan's states that 0x6B gives: RUNNING times 1, then LAST. */
+static void scan_script(uint8_t start, unsigned int running, uint8_t last)
+{
+	vTaskSuspendAll();
+	fw.scan_start_reply = start;
+	assert(running + 1 <= sizeof(fw.scan_states));
+	for (unsigned int i = 0; i < running; i++) {
+		fw.scan_states[i] = 1;
+	}
+	fw.scan_states[running] = last;
+	fw.nscan_states = running + 1;
+	fw.scan_starts = fw.scan_state_polls = fw.scans = 0;
+	fw.scan_state = 0;
+	(void)xTaskResumeAll();
+}
+
+/* "Scan request failed (ERR)" of the shell. */
+static void wait_scan_failed(int err, int ms)
+{
+	char text[64];
+
+	snprintf(text, sizeof(text), "Scan request failed (%d)", err);
+	wait_text(text, ms);
+}
+
+static void expect_connected(void)
+{
+	struct net_if *iface = net_if_get_default();
+
+	assert(net_if_ipv4_get_global_addr(iface, NET_ADDR_PREFERRED) != NULL);
+	assert(!net_if_is_dormant(iface));
+}
+
+static void test_scan_capabilities(void)
+{
+	unsigned int connects;
+
+	/* Connected, with a firmware that keeps the link through a scan and
+	 * scans asynchronously: 0x36, 0x6B every 100 ms until done, then 0x27;
+	 * the link and the address stay, no disconnection, no reconnection. */
+	assert(probes == 1);
+	expect_connected();
+	fake_caps = NINA_CAP_SCAN_KEEPS_LINK | NINA_CAP_ASYNC_SCAN;
+	scan_script(1, 3, 2);
+	connects = fw.connects;
+	cap_clear();
+	events[0] = '\0';
+	assert(run("wifi scan") == 0);
+	expect_text("Scan requested");
+	wait_text("Scan request done", 3000);
+	expect_text("1    | TestAP-1 ");
+	assert(fw.scan_starts == 1 && fw.scan_state_polls == 4 && fw.scans == 1);
+	vTaskDelay(pdMS_TO_TICKS(500));
+	assert(events[0] == '\0' && fw.connects == connects);
+	expect_connected();
+	expect_ifconfig("RUNNING", "10.42.0.97 DRaddr:10.42.0.1 Mask:255.255.255.0");
+
+	/* It could not start (0x36 answers 0): failed, no 0x6B, no 0x27. */
+	scan_script(0, 0, 2);
+	cap_clear();
+	assert(run("wifi scan") == 0);
+	wait_scan_failed(-EIO, 1000);
+	assert(fw.scan_starts == 1 && fw.scan_state_polls == 0 && fw.scans == 0);
+	/* It failed while running (3), or was stopped (0): no 0x27. */
+	scan_script(1, 2, 3);
+	cap_clear();
+	assert(run("wifi scan") == 0);
+	wait_scan_failed(-EIO, 1000);
+	assert(fw.scan_state_polls == 3 && fw.scans == 0);
+	scan_script(1, 1, 0);
+	cap_clear();
+	assert(run("wifi scan") == 0);
+	wait_scan_failed(-ECANCELED, 1000);
+	assert(fw.scan_state_polls == 2 && fw.scans == 0);
+	/* It never ends: given up after NINA_SCAN_WAIT_MS (1 s in this test),
+	 * without 0x27, which would wait for it. */
+	scan_script(1, 63, 1);
+	cap_clear();
+	assert(run("wifi scan") == 0);
+	vTaskDelay(pdMS_TO_TICKS(500));
+	assert(strstr(cap.text, "Scan request failed") == NULL);
+	wait_scan_failed(-ETIMEDOUT, 1500);
+	assert(fw.scan_state_polls >= 9 && fw.scan_state_polls <= 11 && fw.scans == 0);
+	assert(events[0] == '\0');
+	expect_connected();
+
+	/* The link is lost when a scan starts: the scan ends as usual, the
+	 * monitor sees the loss as any other (twice, 2 s apart), and the
+	 * reconnection follows. */
+	scan_script(1, 8, 2);
+	vTaskSuspendAll();
+	fw.lose_link_at_start = true;
+	(void)xTaskResumeAll();
+	connects = fw.connects;
+	cap_clear();
+	events[0] = '\0';
+	assert(run("wifi scan") == 0);
+	wait_text("Scan request done", 2000);
+	wait_events("D0 ", 7000);
+	vTaskSuspendAll();
+	fw.lose_link_at_start = false;
+	(void)xTaskResumeAll();
+	wait_events("D0 C0 ", 45000);
+	assert(fw.connects > connects);
+	expect_connected();
+
+	/* The 3.0.2 firmware (no bits): a scan while connected gives the link
+	 * up (a disconnection, the address gone) and the reconnection takes it
+	 * up again; 0x27 alone. */
+	fake_caps = 0;
+	scan_script(1, 0, 2);
+	connects = fw.connects;
+	cap_clear();
+	events[0] = '\0';
+	assert(run("wifi scan") == 0);
+	wait_events("D0 ", 1000);
+	wait_text("Scan request done", 2000);
+	assert(fw.scans == 1 && fw.scan_starts == 0);
+	wait_events("D0 C0 ", 45000);
+	assert(fw.connects == connects + 1);
+	expect_connected();
+	report("ok  scans: link kept, asynchronous, failures, link lost, 3.0.2\n");
+}
+
 static void test_gc(void)
 {
 	struct wifi_credentials_personal entry;
@@ -857,6 +1029,7 @@ static void runner(void *arg)
 	test_disconnect_scan();
 	test_open();
 	test_auto_connect();
+	test_scan_capabilities();
 	test_gc();
 	if (strstr(log_buf, "<err>") != NULL) {
 		fail("errors in the log");

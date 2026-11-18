@@ -23,6 +23,16 @@
  *   filter of a connected socket), poll() (POLLHUP, POLLNVAL, other
  *   descriptors);
  * - the resolver registered as the offload's, its results on the heap.
+ *
+ * The waits between passes are common/drivers/nina/nina_wait.c, linked in:
+ * without its events (the 3.0.2 firmware) they are the sleeps above.
+ * Built a second time with NINA_OS_EVENTS and the events started (fakes of
+ * nina_os_event_*() here): each loop waits for the IRQ line's edge after
+ * the count it noted before its pass (an edge during the pass's commands
+ * ends the wait at once), at most 100 ms and not past its deadline, with
+ * no sleep; a send waits for the edge only after a pass that polled
+ * without sending; a poll() with another kind of descriptor waits at most
+ * 20 ms.
  */
 #include <assert.h>
 #include <errno.h>
@@ -38,6 +48,7 @@
 #include "nina_proto.h"
 #include "nina_sock.h"
 #include "nina_sockopt.h"
+#include "nina_wait.h"
 
 extern struct k_mutex socket_lock, sendmsg_lock;
 extern const struct fake_offload fake_offload_nina;
@@ -118,6 +129,55 @@ int64_t nina_os_uptime_ms(void)
 {
 	return now_ms;
 }
+
+/* nina_wait.c's sleep: nina_os.c's k_sleep(K_MSEC()). */
+void nina_os_sleep_ms(uint32_t ms)
+{
+	(void)k_sleep(K_MSEC(ms));
+}
+
+#ifdef NINA_OS_EVENTS
+/* The IRQ line: the edge count; an edge during the next CMD_POLL (after
+ * its answer: the event the poll armed comes at once) or when a wait
+ * starts, which also makes the socket EDGE_SOCKET writable or gives it
+ * EDGE_DATA. */
+static uint32_t edges;
+static unsigned int event_waits;
+static uint32_t event_wait_last_ms;
+static int64_t event_waited_ms;
+static bool edge_in_poll, edge_in_wait;
+static int edge_socket = -1;
+static const char *edge_data;
+
+int nina_os_event_start(void)
+{
+	return 0;
+}
+
+uint32_t nina_os_event_seq(void)
+{
+	return edges;
+}
+
+static void edge(void);
+
+void nina_os_event_wait(uint32_t seq, uint32_t ms)
+{
+	assert(!socket_lock.held);
+	event_waits++;
+	event_wait_last_ms = ms;
+	if (edges != seq) {
+		return;
+	}
+	if (edge_in_wait) {
+		edge_in_wait = false;
+		edge();
+		return;
+	}
+	now_ms += ms;
+	event_waited_ms += ms;
+}
+#endif
 
 static const struct socket_dns_offload *dns_registered;
 
@@ -286,6 +346,16 @@ int nina_request(uint8_t cmd, const struct nina_param *p, size_t nparams, bool w
 	case 0x7c: { /* poll */
 		uint8_t state = f->extra_state;
 
+#ifdef NINA_OS_EVENTS
+		if (edge_in_poll) {
+			/* The answer is the state before the edge. */
+			edge_in_poll = false;
+			out[n++] = state | (f->polls_until_write == 0 ? 0x02 : 0) |
+				   (f->rx_len ? 0x01 : 0);
+			edge();
+			break;
+		}
+#endif
 		if (poll_link_error) {
 			int ret = poll_link_error;
 
@@ -417,6 +487,10 @@ static void reset_counts(void)
 	memset(count, 0, sizeof(count));
 	sleeps = 0;
 	slept_ms = 0;
+#ifdef NINA_OS_EVENTS
+	event_waits = 0;
+	event_waited_ms = 0;
+#endif
 }
 
 /* A connected TCP socket on firmware socket *ID. */
@@ -548,13 +622,22 @@ static void test_send(void)
 	}
 	fd = connected_tcp(&id);
 
-	/* Two sends without room: two sleeps of 1 ms, one state check (the
-	 * next is due 100 ms later). */
+	/* Two sends without room: two sleeps of 1 ms, the state check of the
+	 * first pass, and a poll before each pass that continues (writable:
+	 * the data goes again). */
 	fw[id].zero_sends = 2;
 	reset_counts();
 	assert(CALL(sendto, fd, data, 100, 0, NULL, 0) == 100);
-	assert(count[0x77] == 3 && count[0x7c] == 1 && sleeps == 2 && slept_ms == 2);
+	assert(count[0x77] == 3 && count[0x7c] == 3 && sleeps == 2 && slept_ms == 2);
 	assert(last_send_len == 100 && !memcmp(last_send, data, 100));
+
+	/* Not writable for three polls: the data is not sent again until it
+	 * is (1 ms between the passes, as before). */
+	fw[id].zero_sends = 1;
+	fw[id].polls_until_write = 3;
+	reset_counts();
+	assert(CALL(sendto, fd, data, 10, 0, NULL, 0) == 10);
+	assert(count[0x77] == 2 && count[0x7c] == 4 && sleeps == 3 && slept_ms == 3);
 
 	/* At most CONFIG_NINA_TCP_MAX_IO (3584) bytes in one command. */
 	assert(CALL(sendto, fd, data, sizeof(data), 0, NULL, 0) == 3584);
@@ -585,7 +668,9 @@ static void test_send(void)
 	reset_counts();
 	errno = 0;
 	assert(CALL(sendto, fd, data, 10, 0, NULL, 0) == -1 && errno == EAGAIN);
-	assert(slept_ms >= 9999 && slept_ms <= 10001 && count[0x7c] >= 100 && count[0x7c] <= 101);
+	/* Writable all along: a poll and the data at each pass. */
+	assert(slept_ms >= 9999 && slept_ms <= 10001 && count[0x7c] >= 9999 &&
+	       count[0x7c] <= 10001 && count[0x77] == count[0x7c]);
 	fw[id].zero_sends = 0;
 
 	/* Refusals: other flags, an address on TCP. */
@@ -610,7 +695,7 @@ static void test_send(void)
 		fw[id].zero_sends = 1;
 		reset_counts();
 		assert(CALL(sendmsg, fd, &msg, 0) == 7);
-		assert(count[0x77] == 2 && sleeps == 1 && !sendmsg_lock.held);
+		assert(count[0x77] == 2 && count[0x7c] == 2 && sleeps == 1 && !sendmsg_lock.held);
 		assert(last_send_len == 7 && !memcmp(last_send, data, 3) &&
 		       !memcmp(last_send + 3, data + 100, 4));
 		errno = 0;
@@ -892,6 +977,106 @@ static void test_accept(void)
 	assert(z_close(fd) == 0);
 }
 
+#ifdef NINA_OS_EVENTS
+static void edge(void)
+{
+	edges++;
+	if (edge_socket >= 0) {
+		fw[edge_socket].polls_until_write = 0;
+		if (edge_data) {
+			fw[edge_socket].rx_len = strlen(edge_data);
+			memcpy(fw[edge_socket].rx, edge_data, fw[edge_socket].rx_len);
+		}
+	}
+}
+
+static void test_events(void)
+{
+	struct zsock_timeval tv = {.tv_sec = 0, .tv_usec = 250000};
+	struct sockaddr_in a = addr_of(3, 80);
+	uint8_t buf[16], data[100] = {0};
+	struct pollfd p[2];
+	int fd, id, native;
+
+	assert(nina_wait_start_events() == 0 && nina_wait_events());
+
+	/* A receive whose data comes right after its poll said none (the edge
+	 * during the pass): the wait ends at once, no time, no sleep. */
+	fd = connected_tcp(&id);
+	edge_socket = id;
+	edge_data = "late";
+	edge_in_poll = true;
+	reset_counts();
+	assert(CALL(recvfrom, fd, buf, sizeof(buf), 0, NULL, NULL) == 4 && !memcmp(buf, "late", 4));
+	assert(count[0x7c] == 2 && event_waits == 1 && event_waited_ms == 0 && sleeps == 0);
+	/* Data at the edge in the wait: one wait, then the read. */
+	edge_data = "edge";
+	edge_in_wait = true;
+	reset_counts();
+	assert(CALL(recvfrom, fd, buf, sizeof(buf), 0, NULL, NULL) == 4 && !memcmp(buf, "edge", 4));
+	assert(count[0x7c] == 2 && event_waits == 1 && event_waited_ms == 0 && sleeps == 0);
+	/* No edge: 100 ms waits, the last one cut at SO_RCVTIMEO (250 ms). */
+	edge_data = NULL;
+	assert(CALL(setsockopt, fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) == 0);
+	reset_counts();
+	errno = 0;
+	assert(CALL(recvfrom, fd, buf, sizeof(buf), 0, NULL, NULL) == -1 && errno == EAGAIN);
+	assert(event_waits == 3 && event_wait_last_ms == 50 && event_waited_ms == 250);
+	assert(count[0x7c] == 4 && sleeps == 0);
+
+	/* A send without room: after the pass that sent, 1 ms as before; after
+	 * the pass that polled only, the edge (the socket writable then). */
+	fw[id].zero_sends = 1;
+	fw[id].polls_until_write = -1;
+	edge_in_wait = true;
+	reset_counts();
+	assert(CALL(sendto, fd, data, 10, 0, NULL, 0) == 10);
+	assert(count[0x77] == 2 && count[0x7c] == 3 && sleeps == 1 && slept_ms == 1);
+	assert(event_waits == 1 && event_waited_ms == 0);
+	/* Never writable: 100 ms waits up to the 10 s deadline, no data sent
+	 * again. */
+	fw[id].zero_sends = 1;
+	fw[id].polls_until_write = -1;
+	reset_counts();
+	errno = 0;
+	assert(CALL(sendto, fd, data, 10, 0, NULL, 0) == -1 && errno == EAGAIN);
+	assert(count[0x77] == 1 && sleeps == 1 && slept_ms + event_waited_ms == 10000);
+	assert(event_waits >= 99 && event_waits <= 101 && count[0x7c] == event_waits + 2);
+	fw[id].polls_until_write = 0;
+	assert(z_close(fd) == 0);
+
+	/* A connect whose handshake ends right after the first poll: no wait. */
+	fd = z_socket(SOCK_STREAM);
+	id = next_fw();
+	memset(&fw_next, 0, sizeof(fw_next));
+	fw_next.polls_until_write = -1;
+	edge_socket = id;
+	edge_in_poll = true;
+	reset_counts();
+	assert(CALL(connect, fd, (struct sockaddr *)&a, sizeof(a)) == 0);
+	assert(count[0x7c] == 2 && event_waits == 1 && event_waited_ms == 0 && sleeps == 0);
+
+	/* poll(): the edge, or 100 ms; with another kind of descriptor, at
+	 * most 20 ms per wait. */
+	fw[id].polls_until_write = -1;
+	edge_socket = -1;
+	p[0] = (struct pollfd){.fd = fd, .events = POLLIN};
+	reset_counts();
+	assert(z_poll(p, 1, 150) == 0);
+	assert(event_waits == 2 && event_wait_last_ms == 50 && event_waited_ms == 150);
+	native = zvfs_reserve_fd();
+	table[native].obj = &native_polls;
+	table[native].vtable = &native_vtable;
+	p[1] = (struct pollfd){.fd = native, .events = POLLOUT};
+	reset_counts();
+	assert(z_poll(p, 2, 50) == 0);
+	assert(event_waits == 3 && event_wait_last_ms == 10 && event_waited_ms == 50);
+	zvfs_free_fd(native);
+	assert(z_close(fd) == 0);
+	edge_socket = -1;
+}
+#endif
+
 static void test_dns(void)
 {
 	struct addrinfo *res;
@@ -917,6 +1102,9 @@ int main(void)
 	test_poll();
 	test_options();
 	test_accept();
+#ifdef NINA_OS_EVENTS
+	test_events();
+#endif
 	test_dns();
 	for (int i = 0; i < NINA_SOCK_MAX; i++) {
 		assert(!g_nina_sockets[i].used);

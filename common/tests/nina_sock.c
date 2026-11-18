@@ -15,7 +15,8 @@
  * The data calls (nina_socket.c:374-659): TCP send (the 3584-byte limit,
  * the answer checks, MSG_DONTWAIT, the passes of a waiting send with its
  * 100 ms state checks and 10000 ms deadline, a new call against a
- * continued one), sendmsg (vectors joined into one command, its refusals),
+ * continued one, a continued pass that polls first and sends only when
+ * writable), sendmsg (vectors joined into one command, its refusals),
  * UDP send (address checks, the connected peer, the 512-byte limit, a
  * datagram not taken), TCP and UDP receive (poll first, the size
  * parameter, the sender's port byte order, the connected peer's filter,
@@ -813,54 +814,76 @@ static void test_send_tcp(void)
 	       (NINA_SOCK_EV_READ | NINA_SOCK_EV_WRITE));
 
 	/* Nothing sent, the call waits: the state is checked at the first
-	 * pass and then every 100 ms; the next pass after NINA_SEND_RETRY_MS. */
+	 * pass; the next pass after NINA_SEND_RETRY_MS. */
 	reset_script();
 	expect_sent(0);
 	expect1(NINA_CMD_POLL, NINA_POLL_WRITE);
 	assert(nina_sock_send(s, data, 100, 0, NULL, 0, &retry) == -EAGAIN && retry);
 	done();
 	param1(1, 0, 3);
-	assert(g_nina_sockets[s].send_waiting);
+	assert(g_nina_sockets[s].send_waiting && !g_nina_sockets[s].send_polled);
 	assert(g_nina_sockets[s].send_deadline == now_ms + NINA_SEND_WAIT_MS);
 	assert(g_nina_sockets[s].send_next_state_check == now_ms + NINA_SEND_STATE_INTERVAL_MS);
 	/* Not polled for room while it waits: its passes are timed. */
 	assert(nina_sock_watch(&g_nina_sockets[s]) == NINA_SOCK_EV_READ);
+	/* The passes that continue it poll first and send only when the
+	 * socket is writable: no data on the link while it is not.  The poll
+	 * is the state check too. */
 	now_ms += 1;
 	reset_script();
-	expect_sent(0);
-	assert(nina_sock_send(s, data, 100, 0, NULL, 0, &retry) == -EAGAIN && retry);
-	now_ms += 98;
-	expect_sent(0);
-	assert(nina_sock_send(s, data, 100, 0, NULL, 0, &retry) == -EAGAIN && retry);
-	now_ms += 1;
-	expect_sent(0);
 	expect1(NINA_CMD_POLL, 0);
 	assert(nina_sock_send(s, data, 100, 0, NULL, 0, &retry) == -EAGAIN && retry);
+	assert(g_nina_sockets[s].send_waiting && g_nina_sockets[s].send_polled);
+	assert(g_nina_sockets[s].send_next_state_check == now_ms + NINA_SEND_STATE_INTERVAL_MS);
+	param1(0, 0, 3);
+	now_ms += 98;
+	expect1(NINA_CMD_POLL, NINA_POLL_READ);
+	assert(nina_sock_send(s, data, 100, 0, NULL, 0, &retry) == -EAGAIN && retry);
+	assert(g_nina_sockets[s].send_polled);
+	/* Writable: the data, without a second poll; nothing taken again. */
+	now_ms += 1;
+	expect1(NINA_CMD_POLL, NINA_POLL_WRITE);
+	expect_sent(0);
+	assert(nina_sock_send(s, data, 100, 0, NULL, 0, &retry) == -EAGAIN && retry);
 	done();
+	param_is(3, 1, data, 100);
+	assert(g_nina_sockets[s].send_waiting && !g_nina_sockets[s].send_polled);
 	assert(g_nina_sockets[s].send_deadline == now_ms - 100 + NINA_SEND_WAIT_MS);
 	/* Room again: the count, the wait over. */
 	reset_script();
+	expect1(NINA_CMD_POLL, NINA_POLL_WRITE);
 	expect_sent(60);
 	assert(nina_sock_send(s, data, 100, 0, NULL, 0, &retry) == 60 && !retry);
 	done();
-	assert(!g_nina_sockets[s].send_waiting);
+	assert(!g_nina_sockets[s].send_waiting && !g_nina_sockets[s].send_polled);
 
-	/* The deadline: EAGAIN without another pass (10000 ms after the first). */
+	/* The deadline: EAGAIN without another pass (10000 ms after the first),
+	 * whether the poll finds room or not. */
 	reset_script();
 	expect_sent(0);
 	expect1(NINA_CMD_POLL, 0);
 	assert(nina_sock_send(s, data, 50, 0, NULL, 0, &retry) == -EAGAIN && retry);
 	now_ms += NINA_SEND_WAIT_MS - 1;
-	expect_sent(0);
 	expect1(NINA_CMD_POLL, 0);
 	assert(nina_sock_send(s, data, 50, 0, NULL, 0, &retry) == -EAGAIN && retry);
 	now_ms += 1;
+	expect1(NINA_CMD_POLL, 0);
+	assert(nina_sock_send(s, data, 50, 0, NULL, 0, &retry) == -EAGAIN && !retry);
+	done();
+	assert(!g_nina_sockets[s].send_waiting && !g_nina_sockets[s].send_polled);
+	reset_script();
+	expect_sent(0);
+	expect1(NINA_CMD_POLL, 0);
+	assert(nina_sock_send(s, data, 50, 0, NULL, 0, &retry) == -EAGAIN && retry);
+	now_ms += NINA_SEND_WAIT_MS;
+	expect1(NINA_CMD_POLL, NINA_POLL_WRITE);
 	expect_sent(0);
 	assert(nina_sock_send(s, data, 50, 0, NULL, 0, &retry) == -EAGAIN && !retry);
 	done();
 	assert(!g_nina_sockets[s].send_waiting);
 
-	/* A new call (other data) starts its own deadline and state check. */
+	/* A new call (other data) starts its own deadline and state check, and
+	 * sends at once. */
 	reset_script();
 	expect_sent(0);
 	expect1(NINA_CMD_POLL, 0);
@@ -871,8 +894,15 @@ static void test_send_tcp(void)
 	assert(nina_sock_send(s, data + 1, 50, 0, NULL, 0, &retry) == -EAGAIN && retry);
 	done();
 	assert(g_nina_sockets[s].send_deadline == now_ms + NINA_SEND_WAIT_MS);
+	/* So does a call that does not wait (MSG_DONTWAIT), even with the same
+	 * data: no poll first. */
+	reset_script();
+	expect_sent(0);
+	assert(nina_sock_send(s, data + 1, 50, MSG_DONTWAIT, NULL, 0, &retry) == -EAGAIN && !retry);
+	done();
 
-	/* The error flag: EPIPE; a failed poll: its error. */
+	/* The error flag: EPIPE; a failed poll: its error, at the first pass
+	 * and at the poll of a pass that continues. */
 	reset_script();
 	expect_sent(0);
 	expect1(NINA_CMD_POLL, NINA_POLL_ERROR | NINA_POLL_WRITE);
@@ -885,15 +915,36 @@ static void test_send_tcp(void)
 	assert(nina_sock_send(s, data, 20, 0, NULL, 0, &retry) == -ETIMEDOUT);
 	done();
 	assert(!g_nina_sockets[s].send_waiting);
+	for (int k = 0; k < 3; k++) {
+		static const int results[] = {-EPIPE, -EIO, -ETIMEDOUT};
+
+		reset_script();
+		expect_sent(0);
+		expect1(NINA_CMD_POLL, 0);
+		assert(nina_sock_send(s, data, 20, 0, NULL, 0, &retry) == -EAGAIN && retry);
+		if (k == 0) {
+			expect1(NINA_CMD_POLL, NINA_POLL_ERROR | NINA_POLL_WRITE);
+		} else if (k == 1) {
+			expect1(NINA_CMD_POLL, NINA_POLL_FAIL);
+		} else {
+			expect(NINA_CMD_POLL, -ETIMEDOUT, NULL, 0);
+		}
+		assert(nina_sock_send(s, data, 20, 0, NULL, 0, &retry) == results[k] && !retry);
+		done();
+		assert(!g_nina_sockets[s].send_waiting);
+	}
 
 	/* Closing ends a wait. */
 	reset_script();
 	expect_sent(0);
 	expect1(NINA_CMD_POLL, 0);
 	assert(nina_sock_send(s, data, 20, 0, NULL, 0, &retry) == -EAGAIN && retry);
+	expect1(NINA_CMD_POLL, 0);
+	assert(nina_sock_send(s, data, 20, 0, NULL, 0, &retry) == -EAGAIN && retry);
+	assert(g_nina_sockets[s].send_polled);
 	done();
 	close_all();
-	assert(!g_nina_sockets[s].send_waiting);
+	assert(!g_nina_sockets[s].send_waiting && !g_nina_sockets[s].send_polled);
 }
 
 static void test_sendmsg(void)
@@ -934,13 +985,13 @@ static void test_sendmsg(void)
 	expect1(NINA_CMD_POLL, 0);
 	assert(nina_sock_sendmsg(s, iov, 3, false, 0, &retry) == -EAGAIN && retry);
 	now_ms += NINA_SEND_STATE_INTERVAL_MS;
-	expect_sent(0);
 	expect1(NINA_CMD_POLL, 0);
 	assert(nina_sock_sendmsg(s, iov, 3, false, 0, &retry) == -EAGAIN && retry);
 	done();
 	assert(g_nina_sockets[s].send_deadline ==
 	       now_ms - NINA_SEND_STATE_INTERVAL_MS + NINA_SEND_WAIT_MS);
 	reset_script();
+	expect1(NINA_CMD_POLL, NINA_POLL_WRITE);
 	expect_sent(115);
 	assert(nina_sock_sendmsg(s, iov, 3, false, 0, &retry) == 115 && !retry);
 	done();

@@ -152,6 +152,14 @@ FreeRTOS 版が実装するのは flash の境界（`common/compat/nano_flash_kv
   Zephyr 版のソケットのオフロードと同じく、呼んだタスクで NINA に問い合わせて待ちます（NuttX 版の usrsock と
   `nina_event` のような、イベントのスレッドはありません）。fd の番号は newlib の fd とは別で、`zsock_*()` だけが使います。
   newlib に無い型と定数は `drivers/libc/include/` にあり、値は Linux と同じです（`EAI_*` は Zephyr の負の値）。
+- ファームウェアの追加機能（パッチ 0003〜0006。命令 0x6A のビット）: 動作は Zephyr 版と同じです（説明は
+  [`zephyr/app/usb-console/drivers/README_ja.md`](../../zephyr/app/usb-console/drivers/README_ja.md) の同名の節）。
+  接続中のスキャンで接続を保つ・非同期のスキャン（`nina_net.c`）、ソケットの事象での待ち（`common/drivers/nina/nina_wait.c`
+  と `nina_socket.c` の待ちのループ）。事象は IRQ の線（GPIO2）の立ち上がりのエッジの割り込みで、`nina_os.c` が数を
+  数え、待っている全タスクを起こします（`k_sem_reset()` のあと `k_sem_give()`。`nina_os.h` の任意の部分で、ビルドが
+  `NINA_OS_EVENTS` で有効にする）。`drivers/nina/nina.cmake` の `NINA_OS_EVENTS=1` を外すと、ビット 2 があっても
+  従来の間隔（20 ms、送信は 1 ms）で待ちます。TCP 送信の再試行で、全量を送り直す前に poll 命令で書き込み可能を
+  確かめるのは、ファームウェアに依らない変更です。
 - Wi-Fi: Zephyr 版と同じ `common/drivers/nina/nina_net.c`、資格情報（Zephyr の `wifi_credentials` の写し）、自動再接続
   （`common/imu/wifi_profile.c`）を、互換層の `net_if`・`net_mgmt`・`wifi_mgmt`（`zephyr_net_if.c`、`drivers/nina/nina_netif.c`）
   の上で動かします。`wifi` コマンドは `common/compat/zephyr_wifi_shell.c` で、このボードで使えるオプションだけを残しています。
@@ -171,7 +179,7 @@ FreeRTOS 版が実装するのは flash の境界（`common/compat/nano_flash_kv
   （`drivers/lsm6dso/lsm6dso_instance.h`）。
 - GPIO（`drivers/compat/rp2040/nano_gpio.c`）: 互換層の `gpio0` の下の GPIO バンク 0 を、Zephyr の `gpio_rpi_pico.c` と
   同じ Pico SDK の呼び出しで操作します。割り込みは `gpio_add_raw_irq_handler_masked()` で登録し、使えるのは
-  LSM6DSOX の INT1（GPIO24）と NINA の READY（GPIO10）だけです（ほかのピンは `-ENOTSUP`）。
+  LSM6DSOX の INT1（GPIO24）、NINA の READY（GPIO10）と IRQ の線（GPIO2）だけです（ほかのピンは `-ENOTSUP`）。
 
 ## 取得、時刻同期、MQTT
 
@@ -210,14 +218,14 @@ spinlock、atomic、静的なスレッド、時分割の 21 項目）、I2C0（`
 | `compat` | 互換層の自己診断（`selftest` と同じ `zephyr_selftest.c`） |
 | `shell` | 2 つのセッションのシェル、行編集、出力先 |
 | `kv` | フラッシュの境界と KV（Pico SDK のフラッシュ関数の偽物の上） |
-| `nina` | NINA の SPI と線の境界、READY の割り込み待ち、カーネルの部分 |
+| `nina` | NINA の SPI と線の境界、READY の割り込み待ち、IRQ の線のエッジの待ち（2 つのタスクを 1 つのエッジで起こす、時間切れ）、カーネルの部分 |
 | `i2c_dw` | I2C0 の境界とデバイス、Zephyr の I2C の API |
 | `gpio` | GPIO バンク 0 の境界、`gpio0`、FIFO の割り込み |
 | `imu` | アドレスの変換、`hwinfo` |
 | `mqtt` | MQTT の送信（偽のブローカー）。続けて、ホストの `imu-host check` を相手にする回（`host/.venv` が無ければ skip） |
 | `time_sync` | 壁時計、TIMER の読み出し、NTP のやり取り、`ntp status` |
 | `socket` | `zsock_*()`、待ちのループ、オプション、poll、名前解決 |
-| `wifi` | インターフェース、イベント、資格情報、再接続、`wifi`・`ifconfig` |
+| `wifi` | インターフェース、イベント、資格情報、再接続、`wifi`・`ifconfig`、ファームウェアのビットによるスキャン（接続を保つ、非同期、失敗、終わらない、スキャン中の切断、3.0.2） |
 | `telnet` | Telnet のプロトコル、1 接続、再接続、`zperf`（ホストの python3 と iperf3。iperf3 が無ければその部分を skip） |
 | `sensor_shell` | `sensor` コマンド、2 つのセッション、校正（ST の `lsm6dso_reg.c` が無ければ skip） |
 

@@ -34,9 +34,9 @@
  * (that of gpio_set_irq_callback()) then leaves alone.  The SDK keeps the
  * mask per core and asserts that no two handlers claim a pin; one handler
  * cannot be added twice for two masks, so the pins that may interrupt are
- * fixed here (NANO_GPIO_IRQ_PINS: the LSM6DSOX's INT1, GPIO24, and the
- * NINA's READY, GPIO10; Zephyr's driver takes any pin) and claimed
- * together.  An interrupt on another pin is refused with
+ * fixed here (NANO_GPIO_IRQ_PINS: the LSM6DSOX's INT1, GPIO24, the
+ * NINA's READY, GPIO10, and its IRQ line, GPIO2; Zephyr's driver takes any
+ * pin) and claimed together.  An interrupt on another pin is refused with
  * -ENOTSUP.
  *
  * The interrupt runs at the SDK's default priority (0x80) like every
@@ -44,7 +44,9 @@
  * all its lowest, 3).  nano_gpio_irq_handler() runs the pin's callbacks there;
  * the LSM6DSO's submits a work item (k_work_submit(): the FromISR wake-up of
  * the work queue's task and a switch at the end of the handler), the NINA's
- * READY gives a semaphore (the same wake-up of the waiting task).  The core's
+ * READY gives a semaphore (the same wake-up of the waiting task), its IRQ
+ * line wakes the tasks that wait for socket events (k_sem_reset() and
+ * k_sem_give()).  The core's
  * IO_BANK0 registers are the calling core's (core 0, the only one running).
  *
  * Part of the FreeRTOS implementation of the Zephyr compatibility layer, its
@@ -65,11 +67,13 @@
 #include "nano_gpio.h"
 
 /* The pins whose interrupt the board uses: GPIO24, the LSM6DSOX's INT1
- * (irq-gpios = <&gpio0 24 0> of the Zephyr build's devicetree), and GPIO10,
+ * (irq-gpios = <&gpio0 24 0> of the Zephyr build's devicetree), GPIO10,
  * the NINA-W102's READY (freertos/drivers/nina/nina_os.c waits for its
- * edges; the Zephyr build samples it).
+ * edges), and GPIO2, the NINA's IRQ line (its rising edges are the socket
+ * events of the module's firmware, nina_os.c; enabled only when the
+ * firmware has them).
  */
-#define NANO_GPIO_IRQ_PINS ((1u << 24) | (1u << 10))
+#define NANO_GPIO_IRQ_PINS ((1u << 24) | (1u << 10) | (1u << 2))
 
 /* nano_gpio.h's event bits are the SDK's (and the registers'). */
 _Static_assert(NANO_GPIO_IRQ_LEVEL_LOW == GPIO_IRQ_LEVEL_LOW, "GPIO_IRQ_LEVEL_LOW");

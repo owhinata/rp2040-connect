@@ -16,16 +16,17 @@ target_include_directories(app PRIVATE src drivers/lsm6dso ${COMMON_DIR}/imu ${C
   ${COMMON_DIR}/drivers/nina)
 
 # NINA-W102: the shared core of common/drivers/nina (the SPI link nina_spi.c, the Wi-Fi
-# interface nina_net.c, the socket table and commands nina_sock.c, the resolver nina_dns.c and
-# the "nina" command nina_shell.c) and the Zephyr side in drivers/nina: the core's two
-# boundaries (nano_nina.c: spi1 and the module's lines from the devicetree; nina_os.c: locks,
-# sleeps, clock and the READY interrupt) and the socket offload (nina_socket.c).  The core's
+# interface nina_net.c, the socket table and commands nina_sock.c, the resolver nina_dns.c, the
+# "nina" command nina_shell.c and the socket loops' waits nina_wait.c) and the Zephyr side in
+# drivers/nina: the core's two boundaries (nano_nina.c: spi1 and the module's lines from the
+# devicetree; nina_os.c: locks, sleeps, clock, the READY and IRQ interrupts) and the socket
+# offload (nina_socket.c).  The core's
 # POSIX socket names come from drivers/nina/posix, on the include path of these three sources
 # only.
 set(nina_dir ${COMMON_DIR}/drivers/nina)
 target_sources(app PRIVATE ${nina_dir}/nina_spi.c drivers/nina/nano_nina.c drivers/nina/nina_os.c
   ${nina_dir}/nina_net.c ${nina_dir}/nina_sock.c drivers/nina/nina_socket.c ${nina_dir}/nina_dns.c
-  ${nina_dir}/nina_shell.c)
+  ${nina_dir}/nina_shell.c ${nina_dir}/nina_wait.c)
 set(nina_socket_sources ${nina_dir}/nina_sock.c drivers/nina/nina_socket.c ${nina_dir}/nina_dns.c)
 set_property(SOURCE ${nina_socket_sources} APPEND PROPERTY INCLUDE_DIRECTORIES
   ${CMAKE_CURRENT_SOURCE_DIR}/drivers/nina/posix)
@@ -38,6 +39,11 @@ set_property(SOURCE ${nina_socket_sources} APPEND PROPERTY COMPILE_DEFINITIONS
 # every 100 us.  Without this line they sample.
 set_property(SOURCE ${nina_dir}/nina_spi.c drivers/nina/nina_os.c APPEND PROPERTY
   COMPILE_DEFINITIONS NINA_OS_WAIT_READY)
+# The socket loops wait for the edges of the module's IRQ line when its firmware reports socket
+# events (nina_wait.c, nina_os.c's GPIO2 interrupt).  Without this line they keep their poll
+# intervals whatever the firmware.
+set_property(SOURCE ${nina_dir}/nina_wait.c drivers/nina/nina_os.c APPEND PROPERTY
+  COMPILE_DEFINITIONS NINA_OS_EVENTS)
 # Integer division through the SIO divider: the Pico SDK's pico_divider (hal_rpi_pico), as the
 # SDK's pico_divider_hardware links it.  libgcc defines the plain names, so the references are
 # wrapped to the SDK's __wrap___aeabi_idiv, ...  The routines save the divider when they

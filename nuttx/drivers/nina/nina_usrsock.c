@@ -54,6 +54,10 @@
  *   nothing to receive        -EAGAIN without RECVFROM_AVAIL; nina_poller.c
  *                             polls every NINA_POLL_INTERVAL_MS
  *
+ * With the module's socket events, nina_poller.c's waits end at the IRQ
+ * line's edges after the edge count each request notes before its
+ * commands (nina_wait.h, nina_poller.c).
+ *
  * A socket marked NINA_SO_CALLER_POLLS (<nina_sockopt.h>; the Zephyr
  * compatibility layer's sockets) is not polled by nina_poller.c, nor after
  * a receive: its callers poll it, through FIONREAD and NINA_SO_POLL, in
@@ -82,6 +86,7 @@
 
 #include "nina_sock.h"
 #include "nina_usrsock.h"
+#include "nina_wait.h"
 
 #ifndef CONFIG_NET_USRSOCK_CUSTOM
 #  error CONFIG_NET_USRSOCK_CUSTOM must be set
@@ -451,6 +456,7 @@ static int handle_sendto(const struct usrsock_request_sendto_s *req,
   int16_t usockid = req->usockid;
   int32_t flags = req->flags;
   uint32_t xid = req->head.xid;
+  struct nina_wait wait = NINA_WAIT_INIT;
   bool retry = false;
   ssize_t ret;
   int err;
@@ -467,6 +473,9 @@ static int handle_sendto(const struct usrsock_request_sendto_s *req,
       return send_ack(xid, -EINVAL, 0, false);
     }
 
+  /* The edge count before the pass's commands (nina_wait.h). */
+
+  nina_wait_mark(&wait);
   if (iovcnt == 3)
     {
       ret = nina_sock_send(usockid, iov[2].iov_base, iov[2].iov_len, flags,
@@ -497,7 +506,7 @@ static int handle_sendto(const struct usrsock_request_sendto_s *req,
 
       s->reported &= (uint8_t)~NINA_SOCK_EV_WRITE;
       ret = send_ack(xid, -EAGAIN, 0, false);
-      nina_poller_retry(usockid);
+      nina_poller_retry(usockid, wait.mark);
       return ret;
     }
 
@@ -516,12 +525,16 @@ static int handle_recvfrom(const struct usrsock_request_recvfrom_s *req)
   int16_t usockid = req->usockid;
   uint16_t max_addrlen = req->max_addrlen;
   uint32_t xid = req->head.xid;
+  struct nina_wait wait = NINA_WAIT_INIT;
   uint16_t valuelen;
   ssize_t ret;
 
-  /* The address is wanted when there is room for it (recvfrom()). */
+  /* The address is wanted when there is room for it (recvfrom()).  The
+   * edge count before the pass's commands (nina_wait.h).
+   */
 
   memset(&from, 0, sizeof(from));
+  nina_wait_mark(&wait);
   ret = nina_sock_recv(usockid, g_receive, req->max_buflen, req->flags,
                        max_addrlen > 0 ? &from : NULL);
   s = nina_sock_get(usockid);
@@ -535,7 +548,7 @@ static int handle_recvfrom(const struct usrsock_request_recvfrom_s *req)
       ret = send_dack(xid, -EAGAIN, 0, NULL, 0, 0, NULL);
       if (!s->caller_polls)
         {
-          nina_poller_kick();
+          nina_poller_kick(wait.mark);
         }
 
       return ret;

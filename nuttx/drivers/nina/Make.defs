@@ -24,10 +24,15 @@
 # the core and nina_os.c; on CFLAGS, which mkdeps reads too): the core's waits for READY sleep on the line's edge
 # interrupt (nina_os.c, through the board's src/nano_gpio.c and the
 # compatibility layer's gpio0, common/compat/zephyr_gpio.c).
+# NINA_OS_EVENTS, defined the same way, lets the socket loops' waits
+# (nina_wait.c of common/drivers/nina, nina_poller.c, the layer's zsock_*())
+# end at the rising edges of the module's IRQ line (GPIO2, nina_os.c) when
+# its firmware reports socket events; without it, or with an older
+# firmware, they keep their poll intervals.
 ############################################################################
 
 ifeq ($(CONFIG_NANO_NINA),y)
-CSRCS += nina_spi.c nina_os.c
+CSRCS += nina_spi.c nina_os.c nina_wait.c
 ifeq ($(CONFIG_NANO_NINA_USRSOCK),y)
 CSRCS += nina_sock.c nina_usrsock.c nina_poller.c
 endif
@@ -45,7 +50,7 @@ VPATH += :nina
 DEPPATH += --dep-path ../../common/drivers/nina
 VPATH += :../../common/drivers/nina
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)drivers$(DELIM)nina
-CFLAGS += -DNINA_OS_WAIT_READY
+CFLAGS += -DNINA_OS_WAIT_READY -DNINA_OS_EVENTS
 ifeq ($(CONFIG_NANO_NINA_NET),y)
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)imu
 nina_net$(OBJEXT): CFLAGS += -include $(TOPDIR)$(DELIM)external$(DELIM)compat$(DELIM)common_prelude.h

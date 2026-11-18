@@ -696,9 +696,11 @@ the SPI at the caller's priority and serializes with `nina_lock`. The lock order
 "usrsock lock, then the NINA mutex".
 
 - usrsock learns from driver events that a socket can receive, can send or was closed. The NINA
-  does not signal these with an interrupt, so the thread `nina_event` asks the NINA and turns the
-  answers into events (the 1 ms retry of a waiting send, the check that a connect has finished,
-  and polling of plain POSIX sockets such as Telnet's and `iperf`'s every 20 ms).
+  with firmware 3.0.2 does not signal these with an interrupt, so the thread `nina_event` asks the
+  NINA and turns the answers into events (the 1 ms retry of a waiting send, the check that a
+  connect has finished, and polling of plain POSIX sockets such as Telnet's and `iperf`'s every
+  20 ms). With a firmware that reports socket events on the IRQ line ("The NINA firmware's
+  additions" in §12), it asks at the line's edges (100 ms at most) instead.
 - Sockets made with the compatibility layer's `zsock_socket()` (MQTT, NTP) are marked so that only
   the caller polls them on the NINA, and `nina_event` leaves them out of its 20 ms polling.
   `zsock_poll()` and `zsock_recv()` poll the NINA in the calling thread, as the Zephyr driver does.
@@ -843,6 +845,25 @@ The OS parts are implementations of narrow boundary headers in each build's dire
 
 The Zephyr build's I2C0 driver is still its own in `drivers/`; it has not been moved onto the shared core
 (the NINA uses the shared core).
+
+The NINA firmware's additions (the patches 0003 to 0006 of `firmware/nina-fw/`; the specification is
+"Host interface of 0003 to 0006" in `firmware/nina-fw/README.md`) are handled by the shared core, the
+same in the three builds (details: "Firmware additions" in the
+[driver description](../zephyr/app/usb-console/drivers/README.md)).
+
+- Once after initialization, command 0x6A gives the bits. A firmware without the command (3.0.2 and
+  the like) answers `0xEF`: no additions, the behaviour stays as before.
+- Bit 0 (a scan keeps the link): a scan while connected is not treated as a disconnection. A loss of
+  the link during the scan is found by the link monitor.
+- Bit 1 (asynchronous scan): 0x36, then 0x6B (every 100 ms, up to 10 s), then 0x27. The NINA lock is
+  not held for long during the scan.
+- Bit 2 (socket events on the IRQ line): the socket waits (connect, receive, poll, the send retries,
+  the NuttX build's `nina_event`) wake on GPIO2's rising edge. The edge count is noted before the
+  command; after "not yet" the driver waits until it changes or 100 ms pass, then asks again
+  (`common/drivers/nina/nina_wait.c`, the OS boundary `nina_os_event_*()`). One line serves every
+  socket, so each edge wakes every waiting thread.
+- Whatever the firmware, a TCP send's retry checks with a poll command that the socket is writable
+  before the data goes again.
 
 ## 13. The FreeRTOS build
 

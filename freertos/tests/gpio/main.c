@@ -21,7 +21,7 @@
  *   gpio_rpi_pin_interrupt_configure(): all events off (and cleared), then
  *   the mode's events on (rising, falling, both edges, the active level,
  *   inverted for an active-low pin); the bank's handler is added for
- *   GPIO24 and GPIO10 and IO_IRQ_BANK0 enabled at the first enable only;
+ *   GPIO24, GPIO10 and GPIO2 and IO_IRQ_BANK0 enabled at the first enable only;
  *   another pin's interrupt is refused (-ENOTSUP) but may be disabled; an edge latched
  *   while its event was off does not fire once it is on.
  * - The bank's interrupt, as Zephyr's gpio_rpi_isr(): GPIO24's events are
@@ -65,6 +65,7 @@
 #define OTHER        5
 /* The NINA's READY, the bank handler's other pin (nano_gpio.c). */
 #define READY        10
+#define NINA_IRQ     2
 
 _Thread_local int z_host_isr_depth;
 
@@ -286,7 +287,7 @@ static void test_interrupts(void)
 {
 	struct counted a = {.name = "a"}, b = {.name = "b"};
 
-	/* Only GPIO24 and GPIO10 may interrupt; any pin may be turned off. */
+	/* Only GPIO24, GPIO10 and GPIO2 may interrupt; any pin may be turned off. */
 	assert(gpio_pin_interrupt_configure(gpio0, OTHER, GPIO_INT_EDGE_RISING) == -ENOTSUP);
 	assert(gpio_pin_interrupt_configure(gpio0, 30, GPIO_INT_DISABLE) == -EINVAL);
 	expect_calls("");
@@ -295,7 +296,7 @@ static void test_interrupts(void)
 
 	/* The first enable adds the handler for the board's pins. */
 	assert(gpio_pin_interrupt_configure(gpio0, INT1, GPIO_INT_EDGE_TO_ACTIVE) == 0);
-	expect_calls("raw(0x1000400) irq_en(13,1) irq(24,0xf,0) irq(24,0x8,1) ");
+	expect_calls("raw(0x1000404) irq_en(13,1) irq(24,0xf,0) irq(24,0x8,1) ");
 	assert(gpio_pin_interrupt_configure(gpio0, INT1, GPIO_INT_EDGE_BOTH) == 0);
 	expect_calls("irq(24,0xf,0) irq(24,0xc,1) ");
 	assert(gpio_pin_interrupt_configure(gpio0, INT1, GPIO_INT_EDGE_FALLING) == 0);
@@ -354,7 +355,7 @@ static void test_interrupts(void)
 	expect_calls("");
 	assert(gpio_remove_callback(gpio0, &a.cb) == 0);
 	assert(a.calls == 3 && b.calls == 1);
-	assert(raw_mask == ((1u << INT1) | (1u << READY)));
+	assert(raw_mask == ((1u << INT1) | (1u << READY) | (1u << NINA_IRQ)));
 }
 
 /* lsm6dso_fifo_irq ------------------------------------------------------------*/

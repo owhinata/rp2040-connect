@@ -8,9 +8,10 @@
 /* GPIO bank 0 for the Zephyr compatibility layer's gpio0 device
  * (<nano_gpio.h>), as Zephyr's drivers/gpio/gpio_rpi_pico.c drives it on
  * the pico-sdk's hardware_gpio (its interrupts: the LSM6DSOX's INT1,
- * GPIO24, through gpio0's API, and NINA's READY, GPIO10, whose edges
+ * GPIO24, through gpio0's API, NINA's READY, GPIO10, whose edges
  * drivers/nina/nina_os.c enables only while the NINA core waits for it,
- * with a callback on gpio0):
+ * with a callback on gpio0, and NINA's IRQ line, GPIO2, whose rising edge
+ * nina_os.c enables when the module's firmware reports socket events):
  *
  * - gpio_rpi_configure() for an input: gpio_set_pulls(), then
  *   gpio_set_function(GPIO_FUNC_SIO) (pad: input enable on, output disable
@@ -113,8 +114,9 @@ int nano_gpio_irq_configure(unsigned int pin, uint32_t events)
     {
       /* With INTE still clear for the pin.  Clears the latched edges of the
        * pins 8n..8n+7 (setbits_reg32() on INTR); none of the others in
-       * GPIO24's group nor in GPIO10's (NINA's READY; GPIO8, 9, 11 and 14
-       * are its SPI lines) has interrupts.
+       * GPIO24's group, in GPIO10's (NINA's READY; GPIO8, 9, 11 and 14
+       * are its SPI lines) nor in GPIO2's (NINA's IRQ line; GPIO3 is its
+       * RESET) has interrupts.
        */
 
       rp2040_gpio_irq_attach(pin, events, nano_gpio_isr, NULL);

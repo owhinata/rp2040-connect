@@ -24,6 +24,21 @@ K_SEM_DEFINE(connect_request, 0, 1);
 K_SEM_DEFINE(scan_request, 0, 1);
 int nina_socket_create(int family, int type, int proto);
 
+/* The asynchronous scan of the patch 0005 (NINA_CAP_ASYNC_SCAN,
+ * firmware/nina-fw/README.md): 0x36 starts it, 0x6B is asked every
+ * NINA_SCAN_POLL_MS until it reports the scan done, then 0x27 takes the
+ * results.  The NINA lock is held for each command only, so the sockets'
+ * commands go on during the scan, where the 0x27 of 3.0.2 holds it until
+ * the scan ends.  A scan still running after NINA_SCAN_WAIT_MS ends with
+ * -ETIMEDOUT, without 0x27 (which would wait for it).
+ */
+#define NINA_CMD_SCAN_START 0x36
+#define NINA_CMD_SCAN_STATE 0x6b
+#define NINA_SCAN_POLL_MS   100
+#ifndef NINA_SCAN_WAIT_MS
+#define NINA_SCAN_WAIT_MS   10000
+#endif
+
 static int request_one(uint8_t cmd, const uint8_t *data, size_t length,
 		       uint8_t *result, size_t cap, size_t *n)
 {
@@ -58,6 +73,49 @@ static enum wifi_security_type scan_security(uint8_t type)
 	}
 }
 
+/* 0x36, then 0x6B until done (see NINA_SCAN_POLL_MS): 0 when 0x27 may
+ * take the results; -EIO when the scan could not start or failed (0x36
+ * answered 0, or 0x6B 3), -ECANCELED when it was stopped (0x6B 0: a
+ * connection, a disconnection or an AP stops a running scan),
+ * -ETIMEDOUT when it still runs after NINA_SCAN_WAIT_MS, or the error of
+ * the command.
+ */
+static int scan_async(void)
+{
+	int64_t deadline = k_uptime_get() + NINA_SCAN_WAIT_MS;
+	uint8_t state;
+	size_t n;
+	int ret;
+
+	ret = request_one(NINA_CMD_SCAN_START, NULL, 0, &state, 1, &n);
+	if (ret || n != 1) {
+		return ret ? ret : -EPROTO;
+	}
+	if (state != 1) {
+		return -EIO;
+	}
+	for (;;) {
+		k_sleep(K_MSEC(NINA_SCAN_POLL_MS));
+		ret = request_one(NINA_CMD_SCAN_STATE, NULL, 0, &state, 1, &n);
+		if (ret || n != 1) {
+			return ret ? ret : -EPROTO;
+		}
+		switch (state) {
+		case 1: /* running */
+			break;
+		case 2: /* done */
+			return 0;
+		case 0: /* none: stopped */
+			return -ECANCELED;
+		default: /* 3: could not start */
+			return -EIO;
+		}
+		if (k_uptime_get() >= deadline) {
+			return -ETIMEDOUT;
+		}
+	}
+}
+
 static void scan_thread(void *a, void *b, void *c)
 {
 	uint8_t records[10 * (WIFI_SSID_MAX_LEN + 1)];
@@ -77,8 +135,11 @@ static void scan_thread(void *a, void *b, void *c)
 		iface = scan_iface;
 		cb = scan_cb;
 		reconnect = scan_reconnect;
-		ret = nina_request(0x27, NULL, 0, false, false, records,
-				   sizeof(records), &len);
+		ret = (nina_capabilities() & NINA_CAP_ASYNC_SCAN) ? scan_async() : 0;
+		if (!ret) {
+			ret = nina_request(0x27, NULL, 0, false, false, records,
+					   sizeof(records), &len);
+		}
 		while (!ret && offset < len) {
 			struct wifi_scan_result result = {0};
 			uint8_t value[6];
@@ -170,7 +231,13 @@ static int wifi_scan(const struct device *dev, struct net_if *iface,
 		k_mutex_unlock(&connect_state_lock);
 		return -EBUSY;
 	}
-	was_connected = connected;
+	/* 3.0.2 stops Wi-Fi for a scan, so the link is given up here and taken
+	 * up again after it.  A module that keeps the link through a scan
+	 * (NINA_CAP_SCAN_KEEPS_LINK) stays connected: the IP configuration
+	 * stays, and the monitor sees a loss during the scan as any other.
+	 */
+	was_connected = connected &&
+			!(nina_capabilities() & NINA_CAP_SCAN_KEEPS_LINK);
 	if (was_connected) {
 		atomic_inc(&generation);
 		connected = false;
@@ -467,6 +534,9 @@ static void iface_init(struct net_if *iface)
 		net_if_set_link_addr(iface, mac, sizeof(mac),
 				     NET_LINK_ETHERNET);
 	}
+	/* Once, after the module's reset (the first request): what the
+	 * firmware adds to 3.0.2 (nina_proto.h). */
+	(void)nina_probe_capabilities();
 	net_if_socket_offload_set(iface, nina_socket_create);
 	nina_dns_init();
 }

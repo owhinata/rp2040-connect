@@ -38,6 +38,13 @@
  *   slices), a wait that the interrupt ends early twice;
  * - a change right after the core's read of READY (before it waits) is not
  *   lost: the wait returns at once.
+ *
+ * With NINA_OS_EVENTS, as on the board, nina_os.c's waits for the socket
+ * events on the IRQ line (GPIO2, also claimed by the bank's handler):
+ * nina_os_event_start() enables its rising edge; each edge counts one and
+ * ends the waits of every task that waits (two at once here); a wait
+ * without an edge ends after its time; one whose count has moved returns
+ * at once.
  */
 
 #include <assert.h>
@@ -69,6 +76,7 @@
 #define LOG_SIZE     4096
 #define NUM_GPIO     30
 
+#define GPIO_IRQ   2
 #define GPIO_RESET 3
 #define GPIO_CS    9
 #define GPIO_READY 10
@@ -200,6 +208,7 @@ static int alive_after_reads = -1;
  * handler and its mask, IO_IRQ_BANK0's enable.
  */
 static uint32_t ready_intr, ready_inte;
+static uint32_t irq_intr, irq_inte; /* GPIO2's */
 static uint32_t raw_mask;
 static irq_handler_t bank_handler;
 static bool bank_enabled;
@@ -215,7 +224,8 @@ static uint32_t ready_events(void)
  */
 static void bank_irq(void)
 {
-	if (bank_enabled && bank_handler != NULL && (ready_events() & ready_inte) != 0) {
+	if (bank_enabled && bank_handler != NULL &&
+	    ((ready_events() & ready_inte) != 0 || (irq_intr & irq_inte) != 0)) {
 		ready_irqs++;
 		z_host_isr_depth++;
 		bank_handler();
@@ -374,9 +384,21 @@ uint32_t gpio_get_all(void)
 	return ready_high ? 1u << GPIO_READY : 0;
 }
 
+/* A rising edge of the IRQ line (the module's socket event). */
+static void irq_rise(void)
+{
+	irq_intr |= GPIO_IRQ_EDGE_RISE;
+	bank_irq();
+}
+
 /* The SDK's: clear the events (INTR), then set or clear them in INTE. */
 void gpio_set_irq_enabled(uint gpio, uint32_t event_mask, bool enabled)
 {
+	if (gpio == GPIO_IRQ) {
+		irq_intr &= ~(event_mask & 0xcu);
+		irq_inte = enabled ? irq_inte | event_mask : irq_inte & ~event_mask;
+		return;
+	}
 	assert(gpio == GPIO_READY);
 	ready_intr &= ~(event_mask & 0xcu);
 	if (enabled) {
@@ -388,11 +410,18 @@ void gpio_set_irq_enabled(uint gpio, uint32_t event_mask, bool enabled)
 
 uint32_t gpio_get_irq_event_mask(uint gpio)
 {
+	if (gpio == GPIO_IRQ) {
+		return irq_intr & irq_inte;
+	}
 	return gpio == GPIO_READY ? ready_events() & ready_inte : 0;
 }
 
 void gpio_acknowledge_irq(uint gpio, uint32_t event_mask)
 {
+	if (gpio == GPIO_IRQ) {
+		irq_intr &= ~(event_mask & 0xcu);
+		return;
+	}
 	assert(gpio == GPIO_READY);
 	ready_intr &= ~(event_mask & 0xcu);
 }
@@ -662,10 +691,12 @@ static void test_late_ready(void)
 	printf("nina: ready after %lld ms, %u reads of READY\n", (long long)took, reads);
 }
 
-/* The bank's handler claims both pins; READY's edge is off between waits. */
+/* The bank's handler claims the three pins; READY's edge is off between
+ * waits. */
 static void test_irq_setup(void)
 {
-	assert(raw_mask == ((1u << 24) | (1u << GPIO_READY)));
+	assert(raw_mask == ((1u << 24) | (1u << GPIO_READY) | (1u << GPIO_IRQ)));
+	assert(irq_inte == 0);
 	assert(bank_enabled && bank_handler != NULL && ready_inte == 0);
 }
 
@@ -697,6 +728,71 @@ static void test_ready_between_read_and_wait(void)
 	assert(took < 20 && reads == 5 && irqs >= 1 && ready_inte == 0);
 	printf("nina: ready between the read and the wait: %lld ms, %u interrupts\n",
 	       (long long)took, irqs);
+}
+
+/* A task that waits for the next edge (ARG: its slot) and notes when. */
+static volatile int64_t event_woke[2];
+static volatile uint32_t event_mark;
+
+static void event_helper(void *arg)
+{
+	int slot = (int)(intptr_t)arg;
+
+	nina_os_event_wait(event_mark, 1000);
+	event_woke[slot] = k_uptime_get();
+	vTaskDelete(NULL);
+}
+
+static void test_events(void)
+{
+	UBaseType_t mine = uxTaskPriorityGet(NULL);
+	uint32_t seq;
+	int64_t start, took;
+
+	/* The start: GPIO2's rising edge, nothing else of the line. */
+	assert(irq_inte == 0);
+	assert(nina_os_event_start() == 0);
+	assert(irq_inte == GPIO_IRQ_EDGE_RISE && ready_inte == 0);
+
+	/* Two tasks wait; one edge 30 ms later ends both waits (a
+	 * broadcast), and counts one. */
+	seq = nina_os_event_seq();
+	event_mark = seq;
+	event_woke[0] = event_woke[1] = -1;
+	assert(xTaskCreate(event_helper, "ev0", HELPER_STACK / sizeof(StackType_t), (void *)0,
+			   mine + 1, NULL) == pdPASS);
+	assert(xTaskCreate(event_helper, "ev1", HELPER_STACK / sizeof(StackType_t), (void *)1,
+			   mine + 1, NULL) == pdPASS);
+	k_msleep(30);
+	assert(event_woke[0] == -1 && event_woke[1] == -1);
+	start = k_uptime_get();
+	irq_rise();
+	k_msleep(5);
+	assert(nina_os_event_seq() == seq + 1);
+	assert(event_woke[0] >= start && event_woke[0] < start + 5);
+	assert(event_woke[1] >= start && event_woke[1] < start + 5);
+
+	/* The count moved: at once. */
+	start = k_uptime_get();
+	nina_os_event_wait(seq, 100);
+	assert(k_uptime_get() - start <= 1);
+
+	/* No edge: the time (100 ms), the count left by the edge taken on the
+	 * way. */
+	seq = nina_os_event_seq();
+	start = k_uptime_get();
+	nina_os_event_wait(seq, 100);
+	took = k_uptime_get() - start;
+	/* The POSIX port's ticks lag its clock by a few ms. */
+	assert(nina_os_event_seq() == seq && took >= 100 && took <= 120);
+
+	/* An edge before the wait (after the caller read the count): at once. */
+	seq = nina_os_event_seq();
+	irq_rise();
+	start = k_uptime_get();
+	nina_os_event_wait(seq, 100);
+	assert(k_uptime_get() - start <= 1 && nina_os_event_seq() == seq + 1);
+	printf("nina: socket events, two waiters woken by one edge\n");
 }
 
 static void test_sleeps(void)
@@ -780,6 +876,7 @@ static void runner(void *arg)
 	test_late_ready();
 	test_irq_setup();
 	test_ready_between_read_and_wait();
+	test_events();
 	test_sleeps();
 	test_locks();
 	fflush(stdout);

@@ -1,7 +1,8 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /* Between the usrsock requests (nina_usrsock.c) and the thread that turns
  * the module's socket state into usrsock events (nina_poller.c).  Every
- * function is called with the usrsock lock held (nina_sock.h).
+ * function is called with the usrsock lock held (nina_sock.h), except
+ * nina_poller_edge().
  */
 
 #ifndef __NUTTX_DRIVERS_NINA_NINA_USRSOCK_H
@@ -30,17 +31,28 @@ void nina_poller_wake(void);
 
 /* Makes the thread look at the sockets within NINA_POLL_INTERVAL_MS: a
  * receive found nothing (the Zephyr build's receive loop and poll() check
- * again after that interval).
+ * again after that interval).  With the module's socket events
+ * (nina_wait_events()): after an edge since MARK, the edge count that the
+ * request noted before its commands, or after NINA_EVENT_TIMEOUT_MS.
  */
 
-void nina_poller_kick(void);
+void nina_poller_kick(uint32_t mark);
 
 /* The next pass of a TCP send that waits for room: SENDTO_READY for the
- * socket after NINA_SEND_RETRY_MS, if the send still waits then.
- * nina_poller_cancel() drops the timer (the socket is closed).
+ * socket after NINA_SEND_RETRY_MS, if the send still waits then.  With the
+ * events, when the pass only polled (the core's send_polled): after an
+ * edge since MARK (noted before the pass), or after NINA_EVENT_TIMEOUT_MS
+ * (not past the send's deadline).  nina_poller_cancel() drops the timer
+ * (the socket is closed).
  */
 
-void nina_poller_retry(int usockid);
+void nina_poller_retry(int usockid, uint32_t mark);
 void nina_poller_cancel(int usockid);
+
+/* From nina_os.c's interrupt of the module's IRQ line (NINA_OS_EVENTS):
+ * wakes the thread to look at the edge count.  Not under the usrsock lock.
+ */
+
+void nina_poller_edge(void);
 
 #endif /* __NUTTX_DRIVERS_NINA_NINA_USRSOCK_H */

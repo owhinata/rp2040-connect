@@ -187,8 +187,9 @@ NINA-W102 のドライバーの中身は、NuttX 版・FreeRTOS 版と共有す�
 | `nina_sock.[ch]` | `common/drivers/nina/` | ソケットの表と命令（待ちのループの 1 回分ずつ） |
 | `nina_dns.[ch]` | `common/drivers/nina/` | 名前解決（モジュールのリゾルバー） |
 | `nina_shell.c` | `common/drivers/nina/` | `nina version` コマンド |
+| `nina_wait.[ch]` | `common/drivers/nina/` | ソケットの待ちのループの、パスの間の待ち（間隔、または IRQ の線のエッジ） |
 | `nano_nina.c` | `nina/` | コアの境界 `nano_nina.h` の Zephyr 版：devicetree の `spi1` と 4 本の線（CS、READY、RESET、IRQ）、Zephyr の GPIO・SPI の呼び出し |
-| `nina_os.c` | `nina/` | コアの境界 `nina_os.h` の Zephyr 版：mutex、sleep、時計、READY の割り込み待ち |
+| `nina_os.c` | `nina/` | コアの境界 `nina_os.h` の Zephyr 版：mutex、sleep、時計、READY の割り込み待ち、IRQ の線（GPIO2）のエッジの待ち |
 | `nina_socket.c` | `nina/` | ソケットのオフロード（ファイル記述子、errno、`O_NONBLOCK`、`SO_RCVTIMEO`、待ちのループと sleep、poll）と、名前解決を `getaddrinfo` のオフロードとして登録 |
 | `posix/` | `nina/` | コアが使う POSIX のソケットの名前（`struct sockaddr_in`、`AF_INET`、`POLLIN` など）を Zephyr の名前に対応させるヘッダー（コアと `nina_socket.c` だけが読む） |
 
@@ -221,10 +222,12 @@ close、bind、listen、accept、connect、send、recv、sendto、recvfrom、ioc
 - **必ず非ブロッキング**にします。命令は NINA の SPI ハンドラーの中で実行されるので、
   ブロックする呼び出しは Wi-Fi の管理を含む全体を止めます。ソケットは作成直後に
   非ブロッキングにし、接続完了・受信・送信可能の待ちは、ドライバー側で poll 命令を
-  20 ms 間隔で繰り返します。
+  20 ms 間隔で繰り返します（ファームウェアがソケットの事象を通知する場合は、IRQ の線のエッジで
+  起きます。下の「ファームウェアの追加機能」）。
 - **失敗と「0 バイト」は応答で区別できません**。受信は先に poll で読めることを確かめます
-  （読めるのに 0 バイトなら相手が閉じた）。TCP 送信で 0 が返ったときは、100 ms 間隔で poll の
-  エラーフラグを見て切断を判定します。接続の成否は SO_ERROR で確認します。
+  （読めるのに 0 バイトなら相手が閉じた）。TCP 送信で 0 が返ったときは、1 ms 後に poll 命令で
+  書き込み可能を確かめ、可能になってからデータを送り直します（全量を毎回 SPI で送り直すことは
+  しません）。poll のエラーフラグで切断を判定します。接続の成否は SO_ERROR で確認します。
 - **TCP の接続**は最長 10 秒待ちます。送信は、送信バッファが空かない状態が 10 秒続くと
   エラーにします。AP が消えたときの切断検出に約 9 秒かかるのはこのためです。
 - **UDP** は 1 データグラム 512 バイトまでです。受信バッファに収まらない分は lwIP が捨てます
@@ -243,7 +246,35 @@ close、bind、listen、accept、connect、send、recv、sendto、recvfrom、ioc
 - 認証情報は Zephyr の `wifi cred`（Settings/NVS）に保存します。起動時と予期しない切断の
   あとは、保存済みの設定で接続を試み続けます。`wifi disconnect` のあとは再接続しません。
   複数の設定を登録した場合、どれに繋がるかは保証しません。
-- スキャン中は NINA が Wi-Fi を止めるため、接続は一時的に切れます。結果は最大 10 件です。
+- ファームウェア 3.0.2 はスキャン中に Wi-Fi を止めるため、接続は一時的に切れます（ドライバーは切断として
+  扱い、スキャンのあとで繋ぎ直します）。接続を保つファームウェアでは切れません（下の節）。結果は最大 10 件です。
+
+### ファームウェアの追加機能（パッチ 0003〜0006）
+
+`firmware/nina-fw/` のパッチ 0003〜0006 を当てたファームウェアは、命令 0x6A で追加機能のビットを返します
+（仕様は `firmware/nina-fw/README.md` の「Host interface of 0003 to 0006」）。ドライバーはインターフェースの
+初期化（MAC アドレスの読み出しのあと）で 1 回だけ尋ね、ビットごとに動作を切り替えます。3.0.2 など命令を持たない
+ファームウェアは `0xEF 0x00 0xEE` と答えるので、3 バイトを読んだところで「機能なし」と判定し、従来どおりに
+動きます。`nina version` の 2 行目に、モジュールのビットと使っているビットを表示します。
+
+| ビット | 機能 | ドライバーの動作 |
+|---|---|---|
+| 0 | 接続中のスキャンで接続を保つ | 接続中のスキャンを切断として扱いません（アドレスはそのまま、切断のイベントも繋ぎ直しもありません）。スキャン中に接続が切れたときは、接続監視（2 秒ごと）がほかの切断と同じく検出します |
+| 1 | 非同期のスキャン | 0x36 で始め、0x6B を 100 ms ごとに尋ね、終わったら 0x27 で結果を読みます。NINA のロックは命令ごとにしか持たないので、スキャン中も送信は止まりません。10 秒たっても終わらなければ 0x27 を送らずに失敗（`-ETIMEDOUT`）にします。始められない・失敗は `-EIO`、接続や切断で止められたときは `-ECANCELED` です |
+| 2 | ソケットの事象を IRQ の線で通知 | ソケットの待ち（connect、受信、`poll`、送信の再試行）が、20 ms（送信は 1 ms）の間隔の代わりに、GPIO2 の立ち上がりのエッジの割り込みで起きます（最長 100 ms で聞き直す） |
+
+ビット 2 の待ち方（`common/drivers/nina/nina_wait.h`）:
+
+- ファームウェアの規則どおり、事象を登録しうる命令（poll、recv、accept、send、connect）の前にエッジの数を控え、
+  「まだ」の答えのあとは、数が変わるか 100 ms たつまで待って尋ね直します。命令の前のエッジは 1 回余分に
+  尋ねるだけで、取りこぼしたエッジは最長 100 ms の遅れになるだけです（正しさは尋ね直しが保ちます）。
+- 線はすべてのソケットで共通なので、エッジのたびに待っているすべてのスレッドが起きます。起きても何も
+  見つからないことが続いたスレッドは、次に待つ前に少し休みます（1、2、4、8、16 ms、以後 20 ms）。
+- 送信は、データを送って 0 バイトだったパスのあとは従来どおり 1 ms 待ち、poll だけをしたパス
+  （書き込み可能でなかった）のあとにエッジを待ちます。待ちは呼び出しの期限（受信の `SO_RCVTIMEO`、`poll` の
+  timeout、connect と送信の 10 秒）を越えません。
+- NINA 以外の記述子を含む `poll` は、最長 20 ms ごとに見直します（その記述子の変化は従来どおり）。
+- `CMakeLists.txt` の `NINA_OS_EVENTS` の行を消すと、ビット 2 があっても従来の間隔で待ちます。
 
 ### 実機で確認した範囲
 
@@ -303,7 +334,7 @@ NuttX 版と共有の `common/drivers/rp2040_rom/`）。無効にすると picol
 ## テスト
 
 `zephyr/script/host_tests.sh` が、偽の Zephyr ヘッダーを使ってドライバーの次の部分を PC 上で
-テストします。`nina_boundary_*` と `nina_socket` 以外は NuttX 版・FreeRTOS 版と共有するテスト（`common/tests/`、`common/tests/run.sh` が実行）です。
+テストします。`nina_boundary_*` と `nina_socket*` 以外は NuttX 版・FreeRTOS 版と共有するテスト（`common/tests/`、`common/tests/run.sh` が実行）です。
 
 | テスト | 対象 |
 |---|---|
@@ -312,7 +343,8 @@ NuttX 版と共有の `common/drivers/rp2040_rom/`）。無効にすると picol
 | `fifo_decoder` | FIFO バッファの decoder |
 | `stream_stop` | ストリームの停止、キャンセル、エラー時の終了 |
 | `i2c_dma_commands` | `i2c_dma` コマンドの引数の解釈 |
-| `nina_spi`、`nina_spi_wait_ready` | NINA の SPI フレーミング、応答の解析、READY の期限（共有のコア `nina_spi.c`。偽の境界） |
+| `nina_spi`、`nina_spi_wait_ready` | NINA の SPI フレーミング、応答の解析（ファームウェアのエラーの応答 0xEF を含む）、READY の期限、追加機能の問い合わせ（0x6A）（共有のコア `nina_spi.c`。偽の境界） |
+| `nina_wait`、`nina_wait_no_events` | ソケットの待ち（`nina_wait.c`）：間隔、IRQ の線のエッジ、100 ms の時間切れ、期限、休み（偽の時計と線） |
 | `nina_sock`、`nina_dns`、`nina_dns_offload` | NINA のソケットの命令、名前解決（`nina_dns_offload` はこの版と同じ `NINA_OS_DNS_OFFLOAD` の形） |
-| `nina_boundary_irq`、`nina_boundary_poll` | 共有の `nina_spi.c` をこの版の `nina/nano_nina.c`・`nina_os.c` に載せたもの：フレーミング、線と設定の対応、リセットの手順、READY の割り込み待ち（コールバックの登録、セマフォのリセット、エッジの向き、転送前の無効化、10 ms の上限）とポーリング |
-| `nina_socket` | ソケットのオフロード `nina/nina_socket.c` を共有のコアに載せたもの：ファイル記述子、待ちのループと sleep、オプション、accept、sendmsg、データグラム、poll、リゾルバーの登録 |
+| `nina_boundary_events`、`nina_boundary_irq`、`nina_boundary_poll` | 共有の `nina_spi.c` をこの版の `nina/nano_nina.c`・`nina_os.c` に載せたもの：フレーミング、線と設定の対応、リセットの手順、READY の割り込み待ち（コールバックの登録、セマフォのリセット、エッジの向き、転送前の無効化、10 ms の上限）とポーリング。`nina_boundary_events` は IRQ の線のエッジの待ち（GPIO2 のコールバックと立ち上がりのエッジ、エッジの数、エッジで終わる待ち、時間切れ、待つ直前のエッジ） |
+| `nina_socket`、`nina_socket_events` | ソケットのオフロード `nina/nina_socket.c` を共有のコアに載せたもの：ファイル記述子、待ちのループと sleep、オプション、accept、sendmsg、データグラム、poll、リゾルバーの登録。`nina_socket_events` は IRQ の線のエッジの待ち（パスの間のエッジ、時間切れ、期限、送信の待ち方、NINA 以外の記述子を含む `poll`） |

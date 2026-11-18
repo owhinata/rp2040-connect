@@ -172,6 +172,16 @@ boundary (the four functions of `common/compat/nano_flash_kv.h`, `drivers/kv/nan
   (there is no event thread like the NuttX build's usrsock and `nina_event`). The descriptors are not
   newlib's; only the `zsock_*()` calls take them. The types and constants newlib lacks are in
   `drivers/libc/include/`, with Linux's values (`EAI_*` are Zephyr's negative values).
+- The firmware additions (patches 0003 to 0006, the bits of command 0x6A) work as in the Zephyr build
+  (described in the section of the same name in
+  [`zephyr/app/usb-console/drivers/README.md`](../../zephyr/app/usb-console/drivers/README.md)): a scan
+  while connected that keeps the link and the asynchronous scan (`nina_net.c`), the waits for socket
+  events (`common/drivers/nina/nina_wait.c` and the wait loops of `nina_socket.c`). The events are the
+  rising edges of the IRQ line (GPIO2) on its interrupt; `nina_os.c` counts them and wakes every waiting
+  task (`k_sem_reset()`, then `k_sem_give()`; an optional part of `nina_os.h` that the build enables
+  with `NINA_OS_EVENTS`). Without `NINA_OS_EVENTS=1` in `drivers/nina/nina.cmake` the waits keep their
+  intervals (20 ms, 1 ms for sends) whatever the firmware. Checking with a poll command that the socket
+  is writable before a TCP send's data goes again does not depend on the firmware.
 - Wi-Fi: the Zephyr build's `common/drivers/nina/nina_net.c`, the credentials (a copy of Zephyr's
   `wifi_credentials`) and the automatic reconnection (`common/imu/wifi_profile.c`) run on the layer's
   `net_if`, `net_mgmt` and `wifi_mgmt` (`zephyr_net_if.c`, `drivers/nina/nina_netif.c`). The `wifi` command
@@ -193,7 +203,7 @@ boundary (the four functions of `common/compat/nano_flash_kv.h`, `drivers/kv/nan
   with the board's values (`drivers/lsm6dso/lsm6dso_instance.h`).
 - GPIO (`drivers/compat/rp2040/nano_gpio.c`): GPIO bank 0 under the layer's `gpio0`, driven with the same
   Pico SDK calls as Zephyr's `gpio_rpi_pico.c`. The interrupt handler is added with
-  `gpio_add_raw_irq_handler_masked()`; only the LSM6DSOX's INT1 (GPIO24) and the NINA's READY (GPIO10)
+  `gpio_add_raw_irq_handler_masked()`; only the LSM6DSOX's INT1 (GPIO24), the NINA's READY (GPIO10) and its IRQ line (GPIO2)
   can interrupt (other pins get `-ENOTSUP`).
 
 ## Acquisition, time synchronization, MQTT
@@ -237,14 +247,14 @@ board at rest. It prints, as `N of M tests failed`, the results for the layer
 | `compat` | The layer's self-test (the same `zephyr_selftest.c` as `selftest`) |
 | `shell` | Two shell sessions, line editing, output routing |
 | `kv` | The flash boundary and the key-value store (on fakes of the Pico SDK's flash functions) |
-| `nina` | The NINA's SPI and line boundaries, the wait for READY on its interrupt, kernel services |
+| `nina` | The NINA's SPI and line boundaries, the wait for READY on its interrupt, the waits for the IRQ line's edges (two tasks woken by one edge, the timeout), kernel services |
 | `i2c_dw` | I2C0's boundary and device, Zephyr's I2C API |
 | `gpio` | GPIO bank 0's boundary, `gpio0`, the FIFO interrupt |
 | `imu` | Address conversions, `hwinfo` |
 | `mqtt` | The MQTT transport (fake broker); then a run against the host's `imu-host check` (skipped without `host/.venv`) |
 | `time_sync` | Wall clock, TIMER read, NTP exchanges, `ntp status` |
 | `socket` | `zsock_*()`, wait loops, options, poll, name resolution |
-| `wifi` | Interface, events, credentials, reconnection, `wifi` and `ifconfig` |
+| `wifi` | Interface, events, credentials, reconnection, `wifi` and `ifconfig`, the scans by the firmware's bits (link kept, asynchronous, failures, one that never ends, the link lost during it, 3.0.2) |
 | `telnet` | The Telnet protocol, one client, reconnections, `zperf` (with the host's python3 and iperf3; that part is skipped without iperf3) |
 | `sensor_shell` | The `sensor` command, two sessions, calibration (skipped without ST's `lsm6dso_reg.c`) |
 

@@ -34,7 +34,12 @@
  *   that finds no room waits NINA_SEND_RETRY_MS for SENDTO_READY from
  *   nina_poller.c, and usrsock then repeats the request: the next pass,
  *   again in the calling thread.  The send keeps its deadline and its
- *   next state check in struct nina_sock between passes.
+ *   next state check in struct nina_sock between passes.  (With the
+ *   module's socket events, the waits end at the IRQ line's edges instead:
+ *   nina_wait.h.)
+ * - A pass that continues a send whose last pass sent nothing polls first
+ *   and sends the data again only when the socket is writable (do_send()).
+ *   The former file sent the data at every pass.
  * - A poll that found data is remembered (read_hint) and stands for the
  *   first poll of the next receive.
  * - A socket can be marked as asked about by its callers only
@@ -142,6 +147,7 @@ static void close_id(struct nina_sock *s)
 	 * change. */
 	s->connecting = false;
 	s->send_waiting = false;
+	s->send_polled = false;
 	s->read_hint = false;
 }
 
@@ -472,6 +478,7 @@ static ssize_t do_send(struct nina_sock *s, const void *buf, size_t len, int fla
 	int ret;
 	struct nina_param p[2];
 	unsigned int written;
+	bool continuing;
 
 	*retry = false;
 	if (s->udp) {
@@ -495,11 +502,37 @@ static ssize_t do_send(struct nina_sock *s, const void *buf, size_t len, int fla
 	p[1] = (struct nina_param){buf, len};
 	/* The loop's "deadline" and "next_state_check", set when a call
 	 * starts, kept by the passes that continue it. */
-	if (!s->send_waiting || s->send_key != key || s->send_key_len != key_len) {
+	continuing = s->send_waiting && s->send_key == key && s->send_key_len == key_len;
+	if (!continuing) {
 		s->send_deadline = nina_os_uptime_ms() + NINA_SEND_WAIT_MS;
 		s->send_next_state_check = 0;
 	}
 	s->send_waiting = false;
+	s->send_polled = false;
+
+	/* A pass that continues a call whose last pass sent nothing: the data
+	 * (up to NINA_TCP_MAX_IO bytes on the link) goes again only when one
+	 * short poll says that the socket is writable.  The poll is also the
+	 * state check (the error is found at this pass, not within
+	 * NINA_SEND_STATE_INTERVAL_MS of it).  The former file sent the data
+	 * at every pass.
+	 */
+	if (continuing && !(flags & MSG_DONTWAIT)) {
+		uint8_t state;
+
+		ret = poll_state(s, &state);
+		if (ret || (state & NINA_POLL_ERROR)) {
+			return ret ? ret : -EPIPE;
+		}
+		s->send_next_state_check = nina_os_uptime_ms() + NINA_SEND_STATE_INTERVAL_MS;
+		if (!(state & NINA_POLL_WRITE)) {
+			if (nina_os_uptime_ms() >= s->send_deadline) {
+				return -EAGAIN;
+			}
+			s->send_polled = true;
+			goto wait;
+		}
+	}
 
 	ret = nina_request(NINA_CMD_SEND, p, 2, true, false, answer,
 			   sizeof(answer), &n);
@@ -536,6 +569,7 @@ static ssize_t do_send(struct nina_sock *s, const void *buf, size_t len, int fla
 	}
 	/* k_sleep(K_MSEC(CONFIG_NINA_SEND_RETRY_MS)), then the next pass:
 	 * the caller's. */
+wait:
 	s->send_waiting = true;
 	s->send_key = key;
 	s->send_key_len = key_len;
@@ -810,6 +844,7 @@ int nina_sock_close(int usockid)
 	s->connect_xid = 0;
 	s->reported = 0;
 	s->send_waiting = false;
+	s->send_polled = false;
 	s->read_hint = false;
 	s->caller_polls = false;
 	return ret;

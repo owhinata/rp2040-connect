@@ -199,8 +199,9 @@ The driver itself is the core shared with the NuttX and FreeRTOS builds (`common
 | `nina_sock.[ch]` | `common/drivers/nina/` | The socket table and commands (one pass of each wait loop at a time) |
 | `nina_dns.[ch]` | `common/drivers/nina/` | Name resolution (the module's resolver) |
 | `nina_shell.c` | `common/drivers/nina/` | The `nina version` command |
+| `nina_wait.[ch]` | `common/drivers/nina/` | The waits between the passes of the socket loops (an interval, or the IRQ line's edge) |
 | `nano_nina.c` | `nina/` | Zephyr's side of the core's `nano_nina.h`: the devicetree's `spi1` and the four lines (CS, READY, RESET, IRQ), Zephyr's GPIO and SPI calls |
-| `nina_os.c` | `nina/` | Zephyr's side of the core's `nina_os.h`: mutexes, sleeps, clock, the READY interrupt |
+| `nina_os.c` | `nina/` | Zephyr's side of the core's `nina_os.h`: mutexes, sleeps, clock, the READY interrupt, the waits for the IRQ line's (GPIO2) edges |
 | `nina_socket.c` | `nina/` | Socket offload (file descriptors, errno, `O_NONBLOCK`, `SO_RCVTIMEO`, the wait loops and their sleeps, poll), and the resolver registered as the `getaddrinfo` offload |
 | `posix/` | `nina/` | Headers that map the POSIX socket names the core uses (`struct sockaddr_in`, `AF_INET`, `POLLIN`, ...) to Zephyr's (read by the core and `nina_socket.c` only) |
 
@@ -235,10 +236,13 @@ independent of each other. The older per-type client commands are not used.
 - **Always non-blocking.** Commands run inside the module's SPI handler, so a blocking call
   stalls everything including Wi-Fi management. A socket is made non-blocking as soon as it is
   created, and the driver waits for connect completion, readable data and send space by
-  repeating the poll command every 20 ms.
+  repeating the poll command every 20 ms (with a firmware that reports socket events, on the
+  edges of the IRQ line instead: see "Firmware additions" below).
 - **A reply cannot tell a failure from zero bytes.** Receiving polls first (readable with zero
-  bytes means the peer closed). When a TCP send returns zero, the poll error flag is checked
-  every 100 ms to detect a broken connection. Connect results are read from SO_ERROR.
+  bytes means the peer closed). When a TCP send returns zero, a poll command 1 ms later checks
+  whether the socket is writable, and the data goes again only once it is (the full data is not
+  sent over SPI at every try). The poll's error flag tells a broken connection. Connect results
+  are read from SO_ERROR.
 - **TCP connect** waits up to 10 s. A send fails when no buffer space appears for 10 s; this
   is why a vanished access point takes about 9 s to be recognized as a disconnection.
 - **UDP** carries up to 512 bytes per datagram. What does not fit the receive buffer is
@@ -258,7 +262,41 @@ independent of each other. The older per-type client commands are not used.
 - Credentials are stored with Zephyr's `wifi cred` (Settings on NVS). At boot and after an
   unexpected disconnection the driver keeps trying the stored settings. It does not reconnect
   after `wifi disconnect`. With several stored networks, which one is used is not guaranteed.
-- The module stops Wi-Fi while scanning, so the connection drops briefly. At most 10 results.
+- Firmware 3.0.2 stops Wi-Fi while scanning, so the connection drops briefly (the driver treats
+  it as a disconnection and connects again after the scan). A firmware that keeps the link does
+  not drop it (next section). At most 10 results.
+
+### Firmware additions (patches 0003 to 0006)
+
+A firmware with the patches 0003 to 0006 of `firmware/nina-fw/` answers command 0x6A with the
+bits of what it adds (the specification: "Host interface of 0003 to 0006" in
+`firmware/nina-fw/README.md`). The driver asks once, when the interface is initialized (after
+reading the MAC address), and switches its behaviour bit by bit. A firmware without the command
+(3.0.2 and the like) answers `0xEF 0x00 0xEE`; after those three bytes the driver takes it as
+"no additions" and works as before. The second line of `nina version` shows the module's bits
+and those in use.
+
+| Bit | Addition | What the driver does |
+|---|---|---|
+| 0 | A scan while connected keeps the link | A scan while connected is not treated as a disconnection (the address stays, no disconnection event, no reconnection). A loss of the link during the scan is found by the link monitor (every 2 s) as any other |
+| 1 | Asynchronous scan | 0x36 starts it, 0x6B is asked every 100 ms, 0x27 reads the results when it is done. The NINA lock is held for one command at a time, so sending goes on during the scan. A scan still running after 10 s fails (`-ETIMEDOUT`) without 0x27. Could not start or failed: `-EIO`; stopped by a connection or disconnection: `-ECANCELED` |
+| 2 | Socket events on the IRQ line | The socket waits (connect, receive, `poll`, the send retries) wake on GPIO2's rising edge interrupt instead of every 20 ms (1 ms for sends), asking again after 100 ms at most |
+
+How bit 2 is used (`common/drivers/nina/nina_wait.h`):
+
+- As the firmware's rule says: the edge count is noted before a command that may arm an event
+  (poll, recv, accept, send, connect); after a "not yet" answer the driver waits until the count
+  changes or 100 ms pass, and asks again. An edge from before the command costs one more ask; a
+  lost edge costs at most 100 ms (the asking keeps it correct).
+- One line serves every socket, so each edge wakes every waiting thread. A thread whose wake-ups
+  keep finding nothing rests a little before it waits again (1, 2, 4, 8, 16 ms, then 20 ms).
+- A send waits 1 ms after a pass that sent data and got zero bytes, as before, and for the edge
+  after a pass that only polled (the socket was not writable). No wait goes past the call's
+  deadline (`SO_RCVTIMEO` for receiving, the `poll` timeout, 10 s for connect and send).
+- A `poll` that includes a descriptor other than a NINA socket looks again at least every 20 ms
+  (for that descriptor, as before).
+- Removing the `NINA_OS_EVENTS` line of `CMakeLists.txt` keeps the intervals whatever the
+  firmware.
 
 ### Verified on hardware
 
@@ -323,7 +361,7 @@ fake function table).
 ## Tests
 
 `zephyr/script/host_tests.sh` tests these parts of the drivers on the PC with fake Zephyr headers.
-All but `nina_boundary_*` and `nina_socket` are tests shared with the NuttX and FreeRTOS builds
+All but `nina_boundary_*` and `nina_socket*` are tests shared with the NuttX and FreeRTOS builds
 (`common/tests/`, run by `common/tests/run.sh`).
 
 | Test | Covers |
@@ -333,7 +371,8 @@ All but `nina_boundary_*` and `nina_socket` are tests shared with the NuttX and 
 | `fifo_decoder` | Decoder for FIFO buffers |
 | `stream_stop` | Stopping, canceling and error termination of the stream |
 | `i2c_dma_commands` | Argument handling of `i2c_dma` |
-| `nina_spi`, `nina_spi_wait_ready` | NINA SPI framing, reply parsing, READY deadlines (the shared core `nina_spi.c`, fake boundaries) |
+| `nina_spi`, `nina_spi_wait_ready` | NINA SPI framing, reply parsing (the firmware's error reply 0xEF included), READY deadlines, the capability probe (0x6A) (the shared core `nina_spi.c`, fake boundaries) |
+| `nina_wait`, `nina_wait_no_events` | The socket waits (`nina_wait.c`): the intervals, the IRQ line's edges, the 100 ms timeout, the deadline, the back-off (fake clock and line) |
 | `nina_sock`, `nina_dns`, `nina_dns_offload` | The NINA socket commands, name resolution (`nina_dns_offload` in this build's form, `NINA_OS_DNS_OFFLOAD`) |
-| `nina_boundary_irq`, `nina_boundary_poll` | The shared `nina_spi.c` on this build's `nina/nano_nina.c` and `nina_os.c`: framing, lines and flags, the reset sequence, the READY interrupt (callback, semaphore reset, edge direction, off before transfers, 10 ms bound) and sampling |
-| `nina_socket` | The socket offload `nina/nina_socket.c` on the shared core: descriptors, the wait loops and sleeps, options, accept, sendmsg, datagrams, poll, the resolver's registration |
+| `nina_boundary_events`, `nina_boundary_irq`, `nina_boundary_poll` | The shared `nina_spi.c` on this build's `nina/nano_nina.c` and `nina_os.c`: framing, lines and flags, the reset sequence, the READY interrupt (callback, semaphore reset, edge direction, off before transfers, 10 ms bound) and sampling; `nina_boundary_events` the waits for the IRQ line's edges (GPIO2's callback and rising edge, the count, a wait ended by an edge, the timeout, an edge just before the wait) |
+| `nina_socket`, `nina_socket_events` | The socket offload `nina/nina_socket.c` on the shared core: descriptors, the wait loops and sleeps, options, accept, sendmsg, datagrams, poll, the resolver's registration; `nina_socket_events` the waits for the IRQ line's edges (an edge during a pass, the timeout, the deadline, the send's waits, a `poll` with another kind of descriptor) |

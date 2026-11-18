@@ -12,7 +12,8 @@
 #   nina_request() and nina_ip_config(), the WiFiNINA SPI protocol with the
 #   Zephyr build's framing, timeouts and lazy reset of the module) and the
 #   "nina version" command (common/drivers/nina/nina_shell.c, the Zephyr
-#   build's text);
+#   build's text), and the waits of the socket loops
+#   (common/drivers/nina/nina_wait.c);
 # - the sockets: the shared socket table and commands
 #   (common/drivers/nina/nina_sock.c) and resolver (nina_dns.c), and the
 #   zsock_*() calls of the layer's <zephyr/net/socket.h> on them
@@ -40,6 +41,13 @@
 # of the target, makes nina_spi.c take the waits of nina_os.h
 # (nina_os_ready_*()), which nina_os.c implements.
 #
+# The socket loops (nina_socket.c) wait between their passes with
+# common/drivers/nina/nina_wait.c: NINA_OS_EVENTS, defined for every source
+# of the target too, lets them wait for the rising edges of the module's IRQ
+# line (GPIO2, nina_os.c) when its firmware reports socket events
+# (nina_proto.h, NINA_CAP_SOCKET_EVENTS); without the definition, or with
+# an older firmware, they sleep their poll intervals.
+#
 # The application calls nano_nina_initialize() once at the start, before
 # the tasks (the Zephyr build initializes spi1 at boot); the module itself
 # is reset by the first request.  Each shared source is compiled with the
@@ -53,6 +61,7 @@ function(freertos_nina target)
     ${FREERTOS_COMMON_DIR}/drivers/nina/nina_shell.c
     ${FREERTOS_COMMON_DIR}/drivers/nina/nina_sock.c
     ${FREERTOS_COMMON_DIR}/drivers/nina/nina_dns.c
+    ${FREERTOS_COMMON_DIR}/drivers/nina/nina_wait.c
   )
 
   target_sources(${target} PRIVATE
@@ -79,6 +88,7 @@ function(freertos_nina target)
 
   target_compile_definitions(${target} PRIVATE
     NINA_OS_WAIT_READY=1
+    NINA_OS_EVENTS=1
   )
 
   set_source_files_properties(${nina_common_sources} PROPERTIES

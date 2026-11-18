@@ -718,12 +718,13 @@ static void test_send(void)
 	struct fw_sock *f;
 	int fd;
 
-	/* No room twice: the state check at the first, 1 ms between passes. */
+	/* No room twice: the state check at the first, 1 ms between passes; a
+	 * pass that continues polls first and sends again when writable. */
 	fd = connected_tcp();
 	f = fw_of(fd);
 	f->zero_writes = 2;
 	assert(zsock_send(fd, "0123456789", 10, 0) == 10);
-	log_expect("send poll send send");
+	log_expect("send poll poll send poll send");
 	sleeps_expect(2, 2);
 	assert(sleep_last_ms == NINA_SEND_RETRY_MS);
 	assert(f->sent_len == 10 && !memcmp(f->sent, "0123456789", 10));
@@ -748,12 +749,13 @@ static void test_send(void)
 	sleeps_expect(0, 0);
 	assert(zsock_fcntl(fd, F_SETFL, 0) == 0);
 
-	/* The deadline: each send moves the clock by 3000 ms; the state check
-	 * every pass (100 ms gone by); EAGAIN at the fourth. */
+	/* The deadline: each send moves the clock by 3000 ms; the poll before
+	 * each later pass (writable), and the state check after each send
+	 * (100 ms gone by since the last); EAGAIN at the fourth. */
 	f->zero_writes = -1;
 	f->advance_on_send = 3000;
 	CHECK_FAIL(zsock_send(fd, "a", 1, 0), EAGAIN);
-	log_expect("send poll send poll send poll send poll");
+	log_expect("send poll poll send poll poll send poll poll send poll");
 	sleeps_expect(3, 3);
 	f->advance_on_send = 0;
 

@@ -79,6 +79,11 @@ run nina_spi "${flags[@]}" -I"$nina" tests/nina_spi.c
 # The same with the OS's waits for READY (NINA_OS_WAIT_READY, as the FreeRTOS build
 # compiles it): the same results and deadlines (fake waits).
 run nina_spi_wait_ready "${flags[@]}" -DNINA_OS_WAIT_READY -I"$nina" tests/nina_spi.c
+# The waits of the socket loops (nina_wait.c): the poll intervals, or the IRQ line's edges with
+# their timeout, deadline and back-off (NINA_OS_EVENTS, as the three builds compile it; fake
+# clock and line).
+run nina_wait "${flags[@]}" -DNINA_OS_EVENTS -I"$nina" tests/nina_wait.c "$nina/nina_wait.c"
+run nina_wait_no_events "${flags[@]}" -I"$nina" tests/nina_wait.c "$nina/nina_wait.c"
 # Sockets: the table, the socket commands and the data calls of the Zephyr build's
 # nina_socket.c (fake nina_request() and clock).
 run nina_sock "${flags[@]}" -D_DEFAULT_SOURCE -I"$nina" tests/nina_sock.c "$nina/nina_sock.c"

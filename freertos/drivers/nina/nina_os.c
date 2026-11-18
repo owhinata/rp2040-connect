@@ -68,6 +68,31 @@
  * seen by the read.  An edge left latched from an earlier wait could only
  * wake a wait early; the core reads the line again after every wake-up.
  * One waiter at a time: the core calls these with nina_lock held.
+ *
+ * With NINA_OS_EVENTS (nina.cmake), the waits of the socket loops for the
+ * module's socket events on its IRQ line (nina_os_event_*() of nina_os.h,
+ * nina_wait.c):
+ *
+ *   nina_os_event_start()       adds the callback to the layer's gpio0 and
+ *                               enables the rising edge of GPIO2 (the IRQ
+ *                               line, active high: nano_nina.c), through
+ *                               the board's GPIO bank 0 (GPIO2 is one of
+ *                               NANO_GPIO_IRQ_PINS); the line stays an
+ *                               input with its pull-down.  The probe calls
+ *                               it after the module's reset, during which
+ *                               the line is driven
+ *   the interrupt               the count goes up, k_sem_reset() ends every
+ *                               task's k_sem_take() on event_sem (-EAGAIN:
+ *                               a broadcast), then k_sem_give() leaves one
+ *                               count for a task that read the old count
+ *                               but has not reached k_sem_take() yet
+ *   nina_os_event_seq()         the count (written by the interrupt only)
+ *   nina_os_event_wait()        while the count is SEQ and the time
+ *                               (nina_os_uptime_ms(), the TIMER) is not up:
+ *                               k_sem_take() for the time left.  A count
+ *                               left by an earlier edge ends one
+ *                               k_sem_take() early; the count is read again
+ *                               then, so the wait goes on
  */
 
 #include <stdint.h>
@@ -128,6 +153,57 @@ void nina_os_ready_disarm(void)
 {
 	(void)nano_gpio_irq_configure(READY_GPIO, 0);
 }
+
+#ifdef NINA_OS_EVENTS
+/* The IRQ line: GPIO2, active high (nano_nina.c, irq-gpios). */
+#define IRQ_GPIO 2
+
+static K_SEM_DEFINE(event_sem, 0, 1);
+static struct gpio_callback event_cb;
+static volatile uint32_t event_count;
+
+/* In the GPIO bank's interrupt handler. */
+static void event_edge(const struct device *port, struct gpio_callback *cb, gpio_port_pins_t pins)
+{
+	(void)port;
+	(void)cb;
+	(void)pins;
+	event_count++;
+	k_sem_reset(&event_sem);
+	k_sem_give(&event_sem);
+}
+
+int nina_os_event_start(void)
+{
+	int ret;
+
+	gpio_init_callback(&event_cb, event_edge, BIT(IRQ_GPIO));
+	ret = gpio_add_callback(DEVICE_DT_GET(DT_NODELABEL(gpio0)), &event_cb);
+	if (!ret) {
+		ret = nano_gpio_irq_configure(IRQ_GPIO, NANO_GPIO_IRQ_EDGE_RISE);
+		if (ret) {
+			(void)gpio_remove_callback(DEVICE_DT_GET(DT_NODELABEL(gpio0)), &event_cb);
+		}
+	}
+	return ret;
+}
+
+uint32_t nina_os_event_seq(void)
+{
+	return event_count;
+}
+
+void nina_os_event_wait(uint32_t seq, uint32_t ms)
+{
+	int64_t end = nina_os_uptime_ms() + ms;
+	int64_t left = ms;
+
+	while (event_count == seq && left > 0) {
+		(void)k_sem_take(&event_sem, K_MSEC(left));
+		left = end - nina_os_uptime_ms();
+	}
+}
+#endif /* NINA_OS_EVENTS */
 
 static K_MUTEX_DEFINE(nina_lock);
 static K_MUTEX_DEFINE(nina_dns_lock);

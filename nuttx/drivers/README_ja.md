@@ -20,7 +20,7 @@ NINA のドライバーは、OS に依存しないコア（リポジトリの `c
 
 | 境界 | NuttX 版の実装 | 満たすこと |
 |---|---|---|
-| `common/drivers/nina/nina_os.h` | `nina/nina_os.c` | `nina_os_lock()`・`nina_os_unlock()`: 再帰可能で優先度継承のあるロック（Zephyr 版の `K_MUTEX_DEFINE(nina_lock)`）。`nina_os_lock()` は 0 か負の errno を返し、失敗は `nina_request()`・`nina_ip_config()` がそのまま返す。`nina_os_dns_lock()`・`nina_os_dns_unlock()`: 名前解決の 2 つの命令の間に持つ、優先度継承のあるロック。`nina_os_sleep_us()`・`nina_os_sleep_ms()`: Zephyr の `k_sleep()` と同じく tick に切り上げて 1 tick 足した時間眠り、シグナルでは終わらない。`nina_os_uptime_ms()`: カーネルの時計の ms（切り捨て。`k_uptime_get()`）。`nina_os_ready_arm()`・`nina_os_ready_wait()`・`nina_os_ready_disarm()`: READY の変化を割り込みで待つ（`NINA_OS_WAIT_READY`。`nina/Make.defs` が定義する。下の「READY の待ち」） |
+| `common/drivers/nina/nina_os.h` | `nina/nina_os.c` | `nina_os_lock()`・`nina_os_unlock()`: 再帰可能で優先度継承のあるロック（Zephyr 版の `K_MUTEX_DEFINE(nina_lock)`）。`nina_os_lock()` は 0 か負の errno を返し、失敗は `nina_request()`・`nina_ip_config()` がそのまま返す。`nina_os_dns_lock()`・`nina_os_dns_unlock()`: 名前解決の 2 つの命令の間に持つ、優先度継承のあるロック。`nina_os_sleep_us()`・`nina_os_sleep_ms()`: Zephyr の `k_sleep()` と同じく tick に切り上げて 1 tick 足した時間眠り、シグナルでは終わらない。`nina_os_uptime_ms()`: カーネルの時計の ms（切り捨て。`k_uptime_get()`）。`nina_os_ready_arm()`・`nina_os_ready_wait()`・`nina_os_ready_disarm()`: READY の変化を割り込みで待つ（`NINA_OS_WAIT_READY`。`nina/Make.defs` が定義する。下の「READY の待ち」）。`nina_os_event_start()`・`nina_os_event_seq()`・`nina_os_event_wait()`: IRQ の線（GPIO2）の立ち上がりのエッジを数え、待っている全スレッドを起こす（`NINA_OS_EVENTS`。`nina/Make.defs` が定義する。下の「ファームウェアの追加機能」） |
 | `common/drivers/nina/nano_nina.h` | ボードの `src/nano_nina.c` | `nano_nina_initialize()`: 起動時に 1 回、SPI とそのピンを設定して CS を非アクティブにする（READY・RESET・IRQ には触れない）。`nano_nina_bus_ready()`: SPI と 4 本の線が使えるか。`nano_nina_pin_configure()`・`nano_nina_pin_set()`・`nano_nina_pin_get()`: 論理値（1 がアクティブ）。極性とプルはボードが知る（CS GPIO9 アクティブ low、READY GPIO10 アクティブ low・プルアップ、RESET GPIO3 アクティブ low、IRQ GPIO2 アクティブ high・プルダウン）。`nano_nina_transceive()`: モード 0・8 ビット・MSB first の同期転送（RX が NULL なら書くだけ）、CS には触れない |
 | 構成 | `nina/Kconfig` | `CONFIG_NANO_NINA_TCP_MAX_IO`（既定 3584）と `CONFIG_NANO_NINA_SEND_RETRY_MS`（既定 1）。`nina_sock.h` が読み、無ければ既定値を使う |
 | C ライブラリ | NuttX の libc | `nina_sock.[ch]`・`nina_dns.[ch]` は POSIX の `<sys/socket.h>`・`<sys/types.h>`・`<sys/uio.h>`・`<netinet/in.h>`・`<netinet/tcp.h>`・`<arpa/inet.h>`・`<poll.h>`・`<netdb.h>` の型と定数（`struct sockaddr_in`、`struct iovec`、`struct addrinfo`、`AF_INET`、`MSG_DONTWAIT`、`POLLIN`、`EAI_*` など）と、`inet_pton()`・`htons()`・`malloc()`・`free()` を使う。`nina_sock_poll_revents()` が返す `POLL*` と `EAI_*` の値は、呼び出す側と同じヘッダーのもの |
@@ -68,7 +68,7 @@ Zephyr 版はソケットのオフロード（`drivers/nina/nina_socket.c`）で
 |---|---|
 | `common/drivers/nina/nina_sock.[ch]` | ソケットの表（10 個）と NINA のソケット命令。もとは Zephyr 版の `nina_socket.c` の `nina_socket_create()`・`do_bind()`・`do_listen()`・`do_accept()`・`do_connect()`・`do_close()`・`do_setsockopt()` と、送受信の `udp_send()`・`do_send()`・`do_sendmsg()`・`udp_recv()`・`do_recv()` を、名前・分岐・順序・定数・errno の名前を保って移したもの（送受信の待ちのループは要求 1 回で 1 周）で、今は Zephyr 版もこのファイルを使う。`FIONREAD`（`nina_sock_fionread()`）と独自のソケットオプション `NINA_SO_CALLER_POLLS`・`NINA_SO_POLL`（`nina_sock_poll_revents()`、`common/drivers/nina/nina_sockopt.h`）は Zephyr 版では使わない。OS に依存しない |
 | `nina/nina_usrsock.c` | usrsock の要求を上の関数に振り分け、応答（ACK）を返す |
-| `nina/nina_poller.c` | スレッド `nina_event`。NINA のソケットの状態を見て usrsock のイベントにする（呼び出し元だけが問い合わせるソケットは接続中だけ）。待つ送信の再試行の時間も計る |
+| `nina/nina_poller.c` | スレッド `nina_event`。NINA のソケットの状態を見て usrsock のイベントにする（呼び出し元だけが問い合わせるソケットは接続中だけ）。待つ送信の再試行の時間も計る。ファームウェアがソケットの事象を通知するときは IRQ の線のエッジで起きる |
 | `nina/nina_usrsock.h` | 上の 2 つの間の宣言 |
 
 - 要求は、呼び出したスレッドの文脈で、その優先度のまま同期して処理します（Zephyr 版のソケット呼び出しと
@@ -85,6 +85,8 @@ Zephyr 版はソケットのオフロード（`drivers/nina/nina_socket.c`）で
   書ける → `SENDTO_READY`、接続済み TCP のエラーフラグか poll の失敗 → `REMOTE_CLOSED`。UDP のエラー
   フラグは伝えません（Zephyr 版でもデータグラムの呼び出しはその後も続きます）。usrsock が既に持っている
   イベントのソケットは問い合わせず、問い合わせるものが無ければスレッドは要求で起こされるまで眠ります。
+  ファームウェアがソケットの事象を通知する場合（下の「ファームウェアの追加機能」）は、20 ms の代わりに IRQ の線の
+  エッジ（最長 100 ms）で問い合わせます。
 - 呼び出し元だけが問い合わせるソケット: 互換層の `zsock_socket()` は、作ったソケットにドライバー独自の
   ソケットオプション `NINA_SO_CALLER_POLLS`（レベル `NINA_SOL`、`nina_sockopt.h`）を付けます（MQTT と
   時刻同期のソケット）。印の付いたソケットは、`nina_event` が接続中の確認のほかは問い合わせず、受信の後の
@@ -185,7 +187,8 @@ Zephyr 版はソケットのオフロード（`drivers/nina/nina_socket.c`）で
   500 ms ごとに最大 60 回状態を見て、接続できたら省電力を切り（0x17）、IP の設定（0x21）を読んで
   インターフェースに入れ、結果のイベント（失敗は `-ETIMEDOUT` など）を出します。要求の世代
   （`generation`／`request_generation`）が変わった古い接続は結果を出さずに終わります。スキャンは接続中なら
-  先に切断として扱い、終わった後に再接続を頼みます。手動の切断は再接続を止めます（`wifi_profile_pause_reconnect()`）。
+  先に切断として扱い、終わった後に再接続を頼みます（ファームウェアが接続を保つ場合を除く。下の「ファームウェアの
+  追加機能」）。手動の切断は再接続を止めます（`wifi_profile_pause_reconnect()`）。
   パスフレーズはログに出しません。
 - 起動: ボードの起動処理が `nina_net_initialize()` を LSM6DSOX の後、KV の前に呼びます（Zephyr 版がインターフェースを
   `POST_KERNEL` でセンサーの後に初期化し、NVS を `main()` で用意するのと同じ順）。`net_mgmt` のスレッドを始め、
@@ -224,6 +227,31 @@ wapi の ioctl（`d_ioctl`。呼び出したスレッドで処理）は次のと
   （`NET_EVENT_WIFI_CONNECT_RESULT`）、`net_if_get_wifi_sta()`、`net_if_ipv4_get_global_addr()`、`k_current_get()` を
   Zephyr 版と同じ形で使います。`nina_net.c` は接続の要求のたびに `wifi_profile_connection_allowed()` を呼び、
   再接続のスレッドからの要求を、手動の切断の後は `-ECANCELED` で断ります（Zephyr 版と同じ）。
+
+### ファームウェアの追加機能（パッチ 0003〜0006）
+
+コア（`nina_spi.c`、`nina_net.c`、`nina_sock.c`、`nina_wait.c`）の動作は Zephyr 版と同じです（説明は
+`zephyr/app/usb-console/drivers/README_ja.md` の同名の節、仕様は `firmware/nina-fw/README.md` の
+「Host interface of 0003 to 0006」）: インターフェースの初期化で 1 回 0x6A を尋ね（古いファームウェアは `0xEF` の
+応答で「機能なし」）、ビット 0 で接続中のスキャンを切断として扱わず、ビット 1 で 0x36 → 0x6B（100 ms ごと、10 秒まで）
+→ 0x27 の非同期のスキャンにし、ビット 2 でソケットの待ちを IRQ の線（GPIO2）のエッジで起こします。`nina version` は
+2 行目にモジュールのビットと使っているビットを出します。TCP 送信の再試行で、全量を送り直す前に poll 命令で書き込み
+可能を確かめるのは、ファームウェアに依らない変更です。
+
+NuttX 版のビット 2 の待ち:
+
+- `nina/nina_os.c` の GPIO2 の割り込み（ボードの `src/nano_gpio.c`、互換層の `gpio0` のコールバック）がエッジを数え、
+  待っている全スレッドの `sem_t` を post し（ブロードキャスト）、`nina_event` も起こします（`nina_poller_edge()`）。
+- `nina_event` は、前の周の前に控えたエッジの数（または受信の要求が命令の前に控えた数）から数が変わったら、
+  20 ms を待たずに次の周を始めます。変わらなければ 100 ms（接続中のソケットがあればその期限まで）で周を始めます。
+  エッジで始めた周が何も伝えないことが続くと、次のエッジまでに少し間を置きます（1、2、4、8、16 ms、以後 20 ms）。
+- 待つ TCP 送信の次の周: poll だけをした周（書き込み可能でなかった）のあとは、その要求が命令の前に控えた数から
+  変わったとき（最長 100 ms、送信の期限まで）、データを送って 0 バイトだった周のあとは従来どおり 1 ms 後です。
+- 互換層の `zsock_recv()`・`zsock_poll()` も同じ待ち（`nina_wait()`）を使います。NuttX のソケット（NINA 以外）を
+  含む `zsock_poll()` は最長 20 ms ごとに見直します。
+- `nina/Make.defs` の `-DNINA_OS_EVENTS` を外すと、ビット 2 があっても従来の間隔で待ちます。
+- `nina/nina_os.c` の割り込みと待ちは `nuttx/tests/nina_os.c`（`nina_os_events`）が確かめます。`nina_event` の
+  エッジでの周と、互換層の待ちは、ホストテストで確かめていません。
 
 ## I2C0
 
@@ -444,7 +472,7 @@ Zephyr の API を、Zephyr の名前のまま最小限だけ用意したもの�
 | `zephyr/sys/printk.h`、`zephyr/sys/byteorder.h`、`zephyr/sys/cpu_load.h` | `snprintk()`（Zephyr 版の構成 `CONFIG_PICOLIBC=y` と同じく `snprintf()`）、`sys_put_be16/32()`・`sys_get_be16/32()`・`sys_get_le32()`、`cpu_load_get()`（`cpu_load.h`。実装はボード） |
 | `zephyr/drivers/hwinfo.h` | `hwinfo_get_device_id()`（下） |
 | `zephyr/shell/shell.h` | `shell_print()`・`shell_info()`・`shell_warn()`・`shell_error()`・`shell_fprintf()`、`struct shell`（シェルのバックエンド。中身は OS の部分 `zephyr_os_shell.h`）、コマンドの表のマクロ（`SHELL_CMD_REGISTER()`、`SHELL_STATIC_SUBCMD_SET_CREATE()`、`SHELL_DYNAMIC_CMD_CREATE()`、`SHELL_CMD_ARG()`、`SHELL_CMD()`、`SHELL_COND_CMD()`、`SHELL_EXPR_CMD_ARG()`、`SHELL_HELP()`、`SHELL_SUBCMD_SET_END`）、`shell_device_get_binding()`・`shell_device_filter()`（下） |
-| `zephyr/net/socket.h`（NuttX） | `zsock_inet_pton()`・`zsock_inet_ntop()`（C ライブラリの `inet_pton()`・`inet_ntop()`）、`zsock_getaddrinfo()`・`zsock_freeaddrinfo()`（NINA の名前解決、`nina_getaddrinfo()`。エラーは NuttX の `EAI_*`）、`zsock_socket()`（NuttX の `socket()` に `NINA_SO_CALLER_POLLS` を付ける。付けられなければ閉じて -1）、`zsock_sendto()`・`zsock_close()`（NuttX の `sendto()`・`close()`）、`zsock_recv()`（先に `ioctl(FIONREAD)` で NINA にその場で尋ね、あれば `recv(MSG_DONTWAIT)` で読む。`ZSOCK_MSG_DONTWAIT` のときは何も無ければ `EAGAIN`、無いときは 20 ms ごとに尋ね直す。Zephyr 版の NINA の `recv()`（`do_recv()`・`udp_recv()`）が呼ばれるたびに尋ね、待つときは 20 ms ごとに尋ね直すのに合わせるため。`SO_RCVTIMEO`・`O_NONBLOCK` は見ない）、`ZSOCK_MSG_DONTWAIT`、`zsock_connect()`・`zsock_send()`・`zsock_sendmsg()`（`connect()`・`send()`・`sendmsg()`）、`zsock_poll()`・`struct zsock_pollfd`・`ZSOCK_POLLIN` など（`poll()` と `struct pollfd`。NINA への尋ね方は下） |
+| `zephyr/net/socket.h`（NuttX） | `zsock_inet_pton()`・`zsock_inet_ntop()`（C ライブラリの `inet_pton()`・`inet_ntop()`）、`zsock_getaddrinfo()`・`zsock_freeaddrinfo()`（NINA の名前解決、`nina_getaddrinfo()`。エラーは NuttX の `EAI_*`）、`zsock_socket()`（NuttX の `socket()` に `NINA_SO_CALLER_POLLS` を付ける。付けられなければ閉じて -1）、`zsock_sendto()`・`zsock_close()`（NuttX の `sendto()`・`close()`）、`zsock_recv()`（先に `ioctl(FIONREAD)` で NINA にその場で尋ね、あれば `recv(MSG_DONTWAIT)` で読む。`ZSOCK_MSG_DONTWAIT` のときは何も無ければ `EAGAIN`、無いときは 20 ms ごと（ソケットの事象があれば IRQ の線のエッジ、最長 100 ms）に尋ね直す。Zephyr 版の NINA の `recv()`（`do_recv()`・`udp_recv()`）が呼ばれるたびに尋ね、待つときは 20 ms ごとに尋ね直すのに合わせるため。`SO_RCVTIMEO`・`O_NONBLOCK` は見ない）、`ZSOCK_MSG_DONTWAIT`、`zsock_connect()`・`zsock_send()`・`zsock_sendmsg()`（`connect()`・`send()`・`sendmsg()`）、`zsock_poll()`・`struct zsock_pollfd`・`ZSOCK_POLLIN` など（`poll()` と `struct pollfd`。NINA への尋ね方は下） |
 | `zephyr/sys/clock.h`（NuttX） | `sys_clock_gettime()`・`sys_clock_settime()`（`SYS_CLOCK_REALTIME`。NuttX の `clock_gettime()`・`clock_settime()` の `CLOCK_REALTIME`。0 か `-EINVAL`）、`NSEC_PER_USEC`・`USEC_PER_SEC` |
 | `zephyr/net/net_if.h`（NuttX） | `struct net_if`（NuttX のネットワークデバイス 1 つ）、`net_if_get_default()`・`net_if_get_wifi_sta()`、IPv4 のアドレス・ネットマスク・ゲートウェイ（`net_if_ipv4_addr_add()`・`_rm()`・`net_if_ipv4_get_global_addr()`・`net_if_ipv4_set_netmask_by_addr()`・`net_if_ipv4_set_gw()`・`net_if_ipv4_get_gw()`）、`net_if_dormant_on()`・`_off()`、`net_if_is_admin_up()`、`net_if_set_link_addr()`（下） |
 | `zephyr/net/net_mgmt.h` | `net_mgmt()`（要求）、`struct net_mgmt_event_callback`、`net_mgmt_init_event_callback()`・`net_mgmt_add_event_callback()`・`_del_event_callback()`、`net_mgmt_event_notify_with_info()`（下） |

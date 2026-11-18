@@ -29,6 +29,14 @@
  * An option of the OS: with NINA_OS_WAIT_READY, the waits for READY sleep
  * until the OS reports a change of the line (nina_os_ready_*() of
  * nina_os.h) instead of sampling it every 100 us; see wait_ready().
+ *
+ * Added for the firmware's patches 0003 to 0006 (firmware/nina-fw/
+ * README.md, "Host interface of 0003 to 0006"): a firmware answers a
+ * command it does not have with 0xEF 0x00 0xEE instead of the reply;
+ * find_start() returns -ENOTSUP for it at once, where the START search
+ * read 1000 bytes and returned -EPROTO before (the driver sent no such
+ * command then).  The capability probe (nina_probe_capabilities(), 0x6A)
+ * relies on it to tell an older firmware.
  */
 
 #include <errno.h>
@@ -39,11 +47,16 @@
 
 #include "nano_nina.h"
 #include "nina_os.h"
+#include "nina_wait.h"
 
 #define NINA_START 0xe0
 #define NINA_END   0xee
+#define NINA_ERR   0xef
 #define NINA_DUMMY 0xff
 #define NINA_REPLY 0x80
+
+/* The capability command of the patches 0003 to 0006. */
+#define NINA_CMD_CAPABILITIES 0x6a
 
 #ifndef MIN
 #  define MIN(a, b) ((a) < (b) ? (a) : (b))
@@ -159,11 +172,41 @@ static int transfer_read(uint8_t *data, size_t len)
 	return 0;
 }
 
+/* The START search of an answer, CS asserted: up to 1000 bytes until START
+ * (0).  The firmware's error reply, 0xEF 0x00 0xEE (padded to 4 bytes),
+ * answers a command it does not have: -ENOTSUP once its two other bytes
+ * are read, -EPROTO if they are not those.  -EPROTO when START never
+ * comes, or the transfer's error.
+ */
+static int find_start(void)
+{
+	uint8_t c = 0, rest[2];
+	int ret;
+
+	for (size_t i = 0; i < 1000; i++) {
+		ret = transfer(NINA_DUMMY, &c);
+		if (ret) {
+			return ret;
+		}
+		if (c == NINA_START) {
+			return 0;
+		}
+		if (c == NINA_ERR) {
+			if ((ret = transfer(NINA_DUMMY, &rest[0])) ||
+			    (ret = transfer(NINA_DUMMY, &rest[1]))) {
+				return ret;
+			}
+			return rest[0] == 0x00 && rest[1] == NINA_END ? -ENOTSUP : -EPROTO;
+		}
+	}
+	return -EPROTO;
+}
+
 static int command(uint8_t cmd, const uint8_t *a, size_t alen, const uint8_t *b,
 		   size_t blen, uint8_t *out, size_t cap, size_t *outlen)
 {
 	uint8_t c, tx[108];
-	size_t n = 0, len = 0, i, p, count;
+	size_t n = 0, len = 0, p, count;
 	int ret;
 
 	if (alen > 32 || blen > 63) {
@@ -215,14 +258,8 @@ static int command(uint8_t cmd, const uint8_t *a, size_t alen, const uint8_t *b,
 	}
 
 	ret = wait_ready(0, 20);
-	for (i = 0; !ret && i < 1000; i++) {
-		ret = transfer(NINA_DUMMY, &c);
-		if (ret || c == NINA_START) {
-			break;
-		}
-	}
-	if (!ret && c != NINA_START) {
-		ret = -EPROTO;
+	if (!ret) {
+		ret = find_start();
 	}
 	if (!ret) {
 		ret = transfer(NINA_DUMMY, &c);
@@ -326,14 +363,8 @@ int nina_request(uint8_t cmd, const struct nina_param *params, size_t nparams,
 	}
 	if (!ret) {
 		ret = wait_ready(0, 20);
-		for (i = 0; !ret && i < 1000; i++) {
-			ret = transfer(NINA_DUMMY, &c);
-			if (c == NINA_START) {
-				break;
-			}
-		}
-		if (!ret && c != NINA_START) {
-			ret = -EPROTO;
+		if (!ret) {
+			ret = find_start();
 		}
 		if (!ret) {
 			ret = transfer(NINA_DUMMY, &c);
@@ -403,4 +434,48 @@ int nina_ip_config(uint8_t data[12])
 	ret = command(0x21, &dummy, 1, NULL, 0, data, 12, &len);
 	nina_os_unlock();
 	return ret ? ret : (len == 12 ? 0 : -EPROTO);
+}
+
+/* The answer of 0x6A (nina_proto.h).  Written once by the probe; a 32-bit
+ * store, read without a lock (0 until then: the 3.0.2 behaviour).
+ */
+static bool caps_probed;
+static volatile uint32_t caps_module, caps_used;
+
+uint32_t nina_probe_capabilities(void)
+{
+	uint8_t value[4];
+	size_t n = 0;
+	uint32_t caps = 0;
+	int ret;
+
+	if (caps_probed) {
+		return caps_used;
+	}
+	caps_probed = true;
+	/* One parameter of 4 bytes, little endian.  An older firmware answers
+	 * 0xEF (-ENOTSUP): no capabilities.
+	 */
+	ret = nina_request(NINA_CMD_CAPABILITIES, NULL, 0, false, false, value, sizeof(value), &n);
+	if (!ret && n == sizeof(value)) {
+		caps = (uint32_t)value[0] | ((uint32_t)value[1] << 8) | ((uint32_t)value[2] << 16) |
+		       ((uint32_t)value[3] << 24);
+	}
+	caps_module = caps;
+	caps &= NINA_CAP_KNOWN;
+	if ((caps & NINA_CAP_SOCKET_EVENTS) && nina_wait_start_events() != 0) {
+		caps &= ~NINA_CAP_SOCKET_EVENTS;
+	}
+	caps_used = caps;
+	return caps;
+}
+
+uint32_t nina_capabilities(void)
+{
+	return caps_used;
+}
+
+uint32_t nina_module_capabilities(void)
+{
+	return caps_module;
 }

@@ -64,6 +64,32 @@
  * arm (and could only wake a wait early; the core reads the line again
  * after every wake-up).  One waiter at a time: the core calls these with
  * nina_lock held, never from an interrupt handler.
+ *
+ * With NINA_OS_EVENTS (nina/Make.defs), the waits of the socket loops for
+ * the module's socket events on its IRQ line (nina_os_event_*() of
+ * nina_os.h, common/drivers/nina/nina_wait.c):
+ *
+ *   nina_os_event_start()       adds the callback to gpio0 and enables the
+ *                               rising edge of GPIO2 (the IRQ line, active
+ *                               high, BOARD_NINA_IRQ_GPIO) through the
+ *                               board's GPIO bank 0; the line stays an input
+ *                               with its pull-down.  The probe calls it
+ *                               after the module's reset, during which the
+ *                               line is driven
+ *   the interrupt               the count goes up; g_event_sem is posted
+ *                               until no thread waits on it (a broadcast),
+ *                               then once more if it is at 0, for a thread
+ *                               that read the old count but does not wait
+ *                               yet (at most one count); the event thread
+ *                               of the sockets is woken too
+ *                               (nina_poller_edge(), nina_poller.c, which
+ *                               waits on its own semaphore)
+ *   nina_os_event_seq()         the count (written by the interrupt only)
+ *   nina_os_event_wait()        while the count is SEQ and the time is not
+ *                               up: nxsem_tickwait_uninterruptible() for the
+ *                               time left.  A count left by an earlier edge
+ *                               ends one wait early; the count is read again
+ *                               then, so the wait goes on
  */
 
 #include <nuttx/config.h>
@@ -82,6 +108,9 @@
 
 #include "nano_gpio.h"
 #include "nina_os.h"
+#ifdef CONFIG_NANO_NINA_USRSOCK
+#  include "nina_usrsock.h"
+#endif
 
 #ifndef NINA_OS_WAIT_READY
 #  error "the core waits for READY with nina_os_ready_*() (nina/Make.defs)"
@@ -99,6 +128,16 @@ static mutex_t g_dns_lock = NXMUTEX_INITIALIZER;
 static sem_t g_ready_sem = SEM_INITIALIZER(0);
 static struct gpio_callback g_ready_cb;
 static bool g_ready_cb_added;
+
+#ifdef NINA_OS_EVENTS
+/* The IRQ line: GPIO2, active high (nano_nina.c, BOARD_NINA_IRQ_GPIO). */
+
+#  define IRQ_GPIO 2
+
+static sem_t g_event_sem = SEM_INITIALIZER(0);
+static struct gpio_callback g_event_cb;
+static volatile uint32_t g_event_count;
+#endif
 
 /* In the GPIO bank's interrupt handler. */
 
@@ -143,6 +182,72 @@ void nina_os_ready_disarm(void)
 {
   nano_gpio_irq_configure(READY_GPIO, 0);
 }
+
+#ifdef NINA_OS_EVENTS
+/* In the GPIO bank's interrupt handler. */
+
+static void event_edge(const struct device *port, struct gpio_callback *cb,
+                       gpio_port_pins_t pins)
+{
+  int value = 0;
+
+  (void)port;
+  (void)cb;
+  (void)pins;
+
+  g_event_count++;
+  while (nxsem_get_value(&g_event_sem, &value) == 0 && value < 0)
+    {
+      nxsem_post(&g_event_sem);
+    }
+
+  if (value == 0)
+    {
+      nxsem_post(&g_event_sem);
+    }
+
+#  ifdef CONFIG_NANO_NINA_USRSOCK
+  nina_poller_edge();
+#  endif
+}
+
+int nina_os_event_start(void)
+{
+  const struct device *port = DEVICE_DT_GET(DT_NODELABEL(gpio0));
+  int ret;
+
+  gpio_init_callback(&g_event_cb, event_edge, BIT(IRQ_GPIO));
+  ret = gpio_add_callback(port, &g_event_cb);
+  if (ret == 0)
+    {
+      ret = nano_gpio_irq_configure(IRQ_GPIO, NANO_GPIO_IRQ_EDGE_RISE);
+      if (ret != 0)
+        {
+          gpio_remove_callback(port, &g_event_cb);
+        }
+    }
+
+  return ret;
+}
+
+uint32_t nina_os_event_seq(void)
+{
+  return g_event_count;
+}
+
+void nina_os_event_wait(uint32_t seq, uint32_t ms)
+{
+  int64_t end = nina_os_uptime_ms() + ms;
+  int64_t left = ms;
+
+  while (g_event_count == seq && left > 0)
+    {
+      nxsem_tickwait_uninterruptible(&g_event_sem,
+                                     MSEC2TICK((uint32_t)left));
+      left = end - nina_os_uptime_ms();
+    }
+}
+#endif /* NINA_OS_EVENTS */
 
 int nina_os_lock(void)
 {

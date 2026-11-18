@@ -1,6 +1,8 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /* The "nina" command: cmd_nina_version() and the command's registration
- * from zephyr/app/usb-console/src/main.c, with the same syntax and output.
+ * from zephyr/app/usb-console/src/main.c, with the same syntax and output
+ * (common/drivers/nina/nina_shell.c today, with the line of the module's
+ * capability bits and those in use, nina_proto.h).
  *
  * "version" is SHELL_CMD() (no argument count check: extra words are
  * ignored).  "nina" alone or with an unknown word prints the help, as the
@@ -34,6 +36,8 @@ static int cmd_nina_version(int argc, char **argv)
 	}
 	version[len] = '\0';
 	printf("NINA firmware: %s\n", version);
+	printf("NINA capabilities: 0x%08x (in use 0x%08x)\n",
+	       (unsigned int)nina_module_capabilities(), (unsigned int)nina_capabilities());
 	return 0;
 }
 

@@ -28,6 +28,16 @@
  *   ZSOCK_POLLERR on that socket; the call fails only when a descriptor of
  *   another kind does (see poll_failed_revents()).
  *
+ * The sleeps between the passes are nina_wait() (common/drivers/nina/
+ * nina_wait.h): the intervals above, or, when the module reports socket
+ * events on its IRQ line, until the line's next edge (at most
+ * NINA_EVENT_TIMEOUT_MS, not past the call's deadline).  Each loop notes
+ * the edge count (nina_wait_mark()) before its pass's commands.  A send
+ * waits for the edge only after a pass that polled without sending (the
+ * core's send_polled); after a pass that sent, CONFIG_NINA_SEND_RETRY_MS
+ * as before.  A poll() with a descriptor of another kind waits at most
+ * NINA_POLL_INTERVAL_MS, as before, for that descriptor.
+ *
  * The locks. socket_lock is the core's table lock (nina_sock.h): every core
  * call holds it, for one pass of a loop (a few NINA commands at most), never
  * across a sleep. It also protects the core's datagram buffer (udp_lock
@@ -55,6 +65,7 @@
 #include "nina_os.h"
 #include "nina_proto.h"
 #include "nina_sock.h"
+#include "nina_wait.h"
 
 #ifndef NINA_OS_DNS_OFFLOAD
 #error "nina_dns.c is compiled with NINA_OS_DNS_OFFLOAD (CMakeLists.txt)"
@@ -148,16 +159,33 @@ static int do_accept(void *obj, struct net_sockaddr *addr, net_socklen_t *addrle
 	return fd;
 }
 
+/* The deadline of a pass that is to be continued (connect or send), read
+ * under socket_lock right after it. */
+static int64_t pass_deadline(int id, bool connect)
+{
+	struct nina_sock *s = nina_sock_get(id);
+
+	if (!s) {
+		return 0;
+	}
+	return connect ? s->connect_deadline : s->send_deadline;
+}
+
 static int do_connect(void *obj, const struct net_sockaddr *addr, net_socklen_t addrlen)
 {
+	struct nina_wait wait = NINA_WAIT_INIT;
 	int id = id_of(obj), ret;
+	int64_t deadline;
 
+	nina_wait_mark(&wait);
 	k_mutex_lock(&socket_lock, K_FOREVER);
 	ret = nina_sock_connect(id, addr, addrlen);
+	deadline = pass_deadline(id, true);
 	k_mutex_unlock(&socket_lock);
 	/* 1 while the handshake is in progress. */
 	while (ret == 1) {
-		k_sleep(K_MSEC(NINA_POLL_INTERVAL_MS));
+		nina_wait(&wait, NINA_POLL_INTERVAL_MS, deadline);
+		nina_wait_mark(&wait);
 		k_mutex_lock(&socket_lock, K_FOREVER);
 		ret = nina_sock_connect_check(id, k_uptime_get());
 		k_mutex_unlock(&socket_lock);
@@ -165,34 +193,52 @@ static int do_connect(void *obj, const struct net_sockaddr *addr, net_socklen_t 
 	return ret ? fail(ret) : 0;
 }
 
+/* After a send pass that sent nothing and waits: the edge after a pass
+ * that only polled, else CONFIG_NINA_SEND_RETRY_MS. */
+static void send_wait(struct nina_wait *wait, bool polled, int64_t deadline)
+{
+	if (polled) {
+		nina_wait(wait, CONFIG_NINA_SEND_RETRY_MS, deadline);
+	} else {
+		k_sleep(K_MSEC(CONFIG_NINA_SEND_RETRY_MS));
+	}
+}
+
 static ssize_t do_send(void *obj, const void *buf, size_t len, int flags,
 		       const struct net_sockaddr *to, net_socklen_t tolen)
 {
+	struct nina_wait wait = NINA_WAIT_INIT;
 	int id = id_of(obj);
+	int64_t deadline;
 	ssize_t ret;
-	bool retry;
+	bool retry, polled;
 
 	/* The core waits unless MSG_DONTWAIT; UDP never waits. */
 	if (fds[id].nonblocking) {
 		flags |= ZSOCK_MSG_DONTWAIT;
 	}
 	for (;;) {
+		nina_wait_mark(&wait);
 		k_mutex_lock(&socket_lock, K_FOREVER);
 		ret = nina_sock_send(id, buf, len, flags, to, tolen, &retry);
+		polled = retry && nina_sock_get(id)->send_polled;
+		deadline = pass_deadline(id, false);
 		k_mutex_unlock(&socket_lock);
 		if (ret != -EAGAIN || !retry) {
 			break;
 		}
-		k_sleep(K_MSEC(CONFIG_NINA_SEND_RETRY_MS));
+		send_wait(&wait, polled, deadline);
 	}
 	return ret < 0 ? fail((int)ret) : ret;
 }
 
 static ssize_t do_sendmsg(void *obj, const struct net_msghdr *msg, int flags)
 {
+	struct nina_wait wait = NINA_WAIT_INIT;
 	int id = id_of(obj);
+	int64_t deadline;
 	ssize_t ret;
-	bool retry;
+	bool retry, polled;
 
 	if (!msg) {
 		return fail(EINVAL);
@@ -206,14 +252,17 @@ static ssize_t do_sendmsg(void *obj, const struct net_msghdr *msg, int flags)
 	 */
 	k_mutex_lock(&sendmsg_lock, K_FOREVER);
 	for (;;) {
+		nina_wait_mark(&wait);
 		k_mutex_lock(&socket_lock, K_FOREVER);
 		ret = nina_sock_sendmsg(id, msg->msg_iov, msg->msg_iovlen,
 					msg->msg_name || msg->msg_controllen, flags, &retry);
+		polled = retry && nina_sock_get(id)->send_polled;
+		deadline = pass_deadline(id, false);
 		k_mutex_unlock(&socket_lock);
 		if (ret != -EAGAIN || !retry) {
 			break;
 		}
-		k_sleep(K_MSEC(CONFIG_NINA_SEND_RETRY_MS));
+		send_wait(&wait, polled, deadline);
 	}
 	k_mutex_unlock(&sendmsg_lock);
 	return ret < 0 ? fail((int)ret) : ret;
@@ -222,6 +271,7 @@ static ssize_t do_sendmsg(void *obj, const struct net_msghdr *msg, int flags)
 static ssize_t do_recv(void *obj, void *buf, size_t len, int flags, struct net_sockaddr *from,
 		       net_socklen_t *fromlen)
 {
+	struct nina_wait wait = NINA_WAIT_INIT;
 	int id = id_of(obj);
 	struct net_sockaddr_in sender;
 	struct nina_sock *s;
@@ -239,6 +289,7 @@ static ssize_t do_recv(void *obj, void *buf, size_t len, int flags, struct net_s
 	deadline = fds[id].receive_timeout_ms > 0 ? k_uptime_get() + fds[id].receive_timeout_ms
 						  : INT64_MAX;
 	for (;;) {
+		nina_wait_mark(&wait);
 		k_mutex_lock(&socket_lock, K_FOREVER);
 		s = nina_sock_get(id);
 		if (s) {
@@ -249,7 +300,7 @@ static ssize_t do_recv(void *obj, void *buf, size_t len, int flags, struct net_s
 		if (ret != -EAGAIN || nonblocking || k_uptime_get() >= deadline) {
 			break;
 		}
-		k_sleep(K_MSEC(NINA_POLL_INTERVAL_MS));
+		nina_wait(&wait, NINA_POLL_INTERVAL_MS, deadline);
 	}
 	if (ret < 0) {
 		return fail((int)ret);
@@ -301,10 +352,14 @@ static short poll_failed_revents(int ret)
 
 static int do_poll(struct zsock_pollfd *fds_in, int nfds, int timeout)
 {
+	struct nina_wait wait = NINA_WAIT_INIT;
 	int64_t deadline = timeout < 0 ? INT64_MAX : k_uptime_get() + timeout;
 
 	for (;;) {
+		bool other = false;
 		int ready = 0;
+
+		nina_wait_mark(&wait);
 
 		for (int i = 0; i < nfds; i++) {
 			void *obj;
@@ -321,6 +376,7 @@ static int do_poll(struct zsock_pollfd *fds_in, int nfds, int timeout)
 			} else if (vtable != (const struct fd_op_vtable *)&socket_ops) {
 				struct zsock_pollfd native = fds_in[i];
 
+				other = true;
 				ret = zsock_poll(&native, 1, 0);
 				if (ret < 0) {
 					return -1;
@@ -352,7 +408,8 @@ static int do_poll(struct zsock_pollfd *fds_in, int nfds, int timeout)
 		if (k_uptime_get() >= deadline) {
 			return 0;
 		}
-		k_sleep(K_MSEC(NINA_POLL_INTERVAL_MS));
+		nina_wait(&wait, NINA_POLL_INTERVAL_MS,
+			  other ? MIN(deadline, k_uptime_get() + NINA_POLL_INTERVAL_MS) : deadline);
 	}
 }
 

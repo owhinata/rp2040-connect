@@ -1,6 +1,8 @@
 /* SPDX-License-Identifier: MIT */
 /* The "nina" shell command: "nina version" asks the module for its firmware
- * version (nina_request(), nina_spi.c).  It was the Zephyr build's
+ * version (nina_request(), nina_spi.c) and prints the capability bits of
+ * the firmware's patches 0003 to 0006 (the module's and those in use,
+ * nina_proto.h).  It was the Zephyr build's
  * src/main.c (cmd_nina_version() and the registration); the Zephyr and
  * FreeRTOS builds use it (zephyr/app/usb-console/CMakeLists.txt,
  * freertos/drivers/nina/nina.cmake).  The NuttX build has the same command
@@ -30,6 +32,8 @@ static int cmd_nina_version(const struct shell *sh, size_t argc, char **argv)
 	}
 	version[len] = '\0';
 	shell_print(sh, "NINA firmware: %s", version);
+	shell_print(sh, "NINA capabilities: 0x%08x (in use 0x%08x)",
+		    (unsigned int)nina_module_capabilities(), (unsigned int)nina_capabilities());
 	return 0;
 }
 

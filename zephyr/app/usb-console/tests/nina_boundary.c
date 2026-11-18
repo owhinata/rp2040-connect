@@ -2,9 +2,10 @@
 /* Host test of this build's side of the shared NINA core: the SPI link
  * (common/drivers/nina/nina_spi.c, which the test includes) on the board's
  * boundary drivers/nina/nano_nina.c and the kernel's drivers/nina/nina_os.c,
- * built on fakes of the Zephyr calls (tests/nina_fakes).  Built twice: with
- * NINA_OS_WAIT_READY (as CMakeLists.txt builds the core and nina_os.c), and
- * without it (the sampling of READY).
+ * built on fakes of the Zephyr calls (tests/nina_fakes).  Built three
+ * times: with NINA_OS_WAIT_READY and NINA_OS_EVENTS (as CMakeLists.txt
+ * builds the core, nina_wait.c and nina_os.c), with NINA_OS_WAIT_READY
+ * only, and without either (the sampling of READY).
  *
  * - Framing and bulk transfers of nina_request() (the tests of the former
  *   drivers/nina/nina_wifi.c), through spi_transceive() and spi_write().
@@ -15,6 +16,13 @@
  *   before the edge is enabled; the edge towards the level waited for; the
  *   edge disabled again before any SPI transfer; waits of at most 10 ms;
  *   the same 2000 ms deadline).
+ * - With NINA_OS_EVENTS, the socket events on the IRQ line (GPIO2): the
+ *   start (the callback for GPIO2 only, its rising edge), the count of the
+ *   edges, a wait that ends at an edge (k_sem_reset() waking the waiter,
+ *   one count left by k_sem_give()), at once when the count moved, at the
+ *   end of its time without an edge, and an edge between the caller's
+ *   read of the count and its k_sem_take() (the count left ends it at
+ *   once); a count left from an earlier edge does not end a later wait.
  */
 #include <assert.h>
 #include <errno.h>
@@ -46,6 +54,24 @@ static int64_t longest_take_us;
 static gpio_flags_t irq_mode = GPIO_INT_DISABLE;
 static struct gpio_callback *callback;
 static struct k_sem *ready_sem_seen;
+#ifdef NINA_OS_EVENTS
+/* The IRQ line: its callback and edge, the semaphore its interrupt uses,
+ * the planned edge (microseconds; -1 none), an edge to come right before
+ * the next k_sem_take(). */
+static gpio_flags_t event_mode = GPIO_INT_DISABLE;
+static struct gpio_callback *event_callback;
+static struct k_sem *event_sem_seen;
+static bool in_event_isr, edge_before_take;
+static int64_t edge_at_us = -1;
+static unsigned int event_takes, event_removes;
+
+static void fire_edge(void)
+{
+	in_event_isr = true;
+	event_callback->handler(&fake_device, event_callback, BIT(PIN_IRQ));
+	in_event_isr = false;
+}
+#endif
 
 /* What the board's calls did, in order. */
 static char trace[64][24];
@@ -113,6 +139,13 @@ int gpio_pin_get_dt(const struct gpio_dt_spec *spec)
 
 int gpio_pin_interrupt_configure_dt(const struct gpio_dt_spec *spec, gpio_flags_t flags)
 {
+#ifdef NINA_OS_EVENTS
+	if (spec->pin == PIN_IRQ) {
+		assert(flags == GPIO_INT_EDGE_TO_ACTIVE && event_callback);
+		event_mode = flags;
+		return 0;
+	}
+#endif
 	assert(spec->pin == PIN_READY);
 	assert(flags == GPIO_INT_DISABLE || flags == GPIO_INT_EDGE_TO_ACTIVE ||
 	       flags == GPIO_INT_EDGE_TO_INACTIVE);
@@ -127,9 +160,26 @@ int gpio_pin_interrupt_configure_dt(const struct gpio_dt_spec *spec, gpio_flags_
 
 int gpio_add_callback_dt(const struct gpio_dt_spec *spec, struct gpio_callback *cb)
 {
+#ifdef NINA_OS_EVENTS
+	if (spec->pin == PIN_IRQ) {
+		assert(cb->pin_mask == BIT(PIN_IRQ) && cb->handler && !event_callback);
+		event_callback = cb;
+		return 0;
+	}
+#endif
 	assert(spec->pin == PIN_READY && cb->pin_mask == BIT(PIN_READY) && cb->handler);
 	callback = cb;
 	adds++;
+	return 0;
+}
+
+int gpio_remove_callback_dt(const struct gpio_dt_spec *spec, struct gpio_callback *cb)
+{
+	(void)spec;
+	(void)cb;
+#ifdef NINA_OS_EVENTS
+	event_removes++;
+#endif
 	return 0;
 }
 
@@ -224,6 +274,14 @@ int64_t k_uptime_get(void)
 
 void k_sem_reset(struct k_sem *sem)
 {
+#ifdef NINA_OS_EVENTS
+	if (in_event_isr) {
+		assert(!event_sem_seen || event_sem_seen == sem);
+		event_sem_seen = sem;
+		sem->count = 0;
+		return;
+	}
+#endif
 	ready_sem_seen = sem;
 	sem->count = 0;
 	resets++;
@@ -240,6 +298,32 @@ void k_sem_give(struct k_sem *sem)
  * enabled for it (the GPIO driver's handler runs the callback). */
 int k_sem_take(struct k_sem *sem, k_timeout_t timeout)
 {
+#ifdef NINA_OS_EVENTS
+	/* The events' wait: a count left is taken at once; else the planned
+	 * edge within the timeout runs the interrupt, whose k_sem_reset()
+	 * wakes this waiter with -EAGAIN (its k_sem_give() leaves a count);
+	 * else the time runs out. */
+	if (event_sem_seen && sem == event_sem_seen) {
+		assert(timeout.us >= 0);
+		event_takes++;
+		if (edge_before_take) {
+			edge_before_take = false;
+			fire_edge();
+		}
+		if (sem->count) {
+			sem->count--;
+			return 0;
+		}
+		if (edge_at_us >= 0 && edge_at_us <= now_us + timeout.us) {
+			now_us = edge_at_us > now_us ? edge_at_us : now_us;
+			edge_at_us = -1;
+			fire_edge();
+			return -EAGAIN;
+		}
+		now_us += timeout.us;
+		return -EAGAIN;
+	}
+#endif
 	assert(sem == ready_sem_seen);
 	assert(timeout.us > 0 && timeout.us <= 10000);
 	assert(irq_mode == (cs_active ? GPIO_INT_EDGE_TO_INACTIVE : GPIO_INT_EDGE_TO_ACTIVE));
@@ -446,11 +530,70 @@ static void test_ready_waits(void)
 #endif
 }
 
+#ifdef NINA_OS_EVENTS
+static void test_events(void)
+{
+	uint32_t seq;
+	int64_t start;
+
+	/* The start: GPIO2's callback, then its rising edge. */
+	assert(nina_os_event_start() == 0);
+	assert(event_callback && event_mode == GPIO_INT_EDGE_TO_ACTIVE && event_removes == 0);
+	/* The first edge names the semaphore (the fake learns it). */
+	seq = nina_os_event_seq();
+	fire_edge();
+	assert(nina_os_event_seq() == seq + 1 && event_sem_seen && event_sem_seen->count == 1);
+
+	/* The count moved since SEQ: at once, no take. */
+	event_takes = 0;
+	start = now_us;
+	nina_os_event_wait(seq, 100);
+	assert(event_takes == 0 && now_us == start);
+
+	/* A wait for the next edge, which comes 7 ms later: the count left by
+	 * the first edge is taken, then the wait ends at the edge. */
+	seq = nina_os_event_seq();
+	now_us = (now_us / 1000 + 1) * 1000;
+	start = now_us;
+	edge_at_us = start + 7000;
+	event_takes = 0;
+	nina_os_event_wait(seq, 100);
+	assert(nina_os_event_seq() == seq + 1 && now_us == start + 7000 && event_takes == 2);
+
+	/* No edge: the time (100 ms), the count left taken first. */
+	seq = nina_os_event_seq();
+	start = now_us;
+	event_takes = 0;
+	nina_os_event_wait(seq, 100);
+	assert(nina_os_event_seq() == seq && event_takes == 2);
+	assert(now_us - start >= 100 * 1000 && now_us - start <= 101 * 1000);
+	assert(event_sem_seen->count == 0);
+
+	/* An edge after the caller read the count, before its k_sem_take():
+	 * the count it leaves ends the wait at once. */
+	seq = nina_os_event_seq();
+	start = now_us;
+	edge_before_take = true;
+	event_takes = 0;
+	nina_os_event_wait(seq, 100);
+	assert(nina_os_event_seq() == seq + 1 && now_us == start && event_takes == 1);
+
+	/* 0 ms: no wait. */
+	seq = nina_os_event_seq();
+	event_takes = 0;
+	nina_os_event_wait(seq, 0);
+	assert(event_takes == 0);
+}
+#endif
+
 int main(void)
 {
 	test_framing();
 	test_reset();
 	test_ready_waits();
+#ifdef NINA_OS_EVENTS
+	test_events();
+#endif
 	puts("NINA SPI link on the Zephyr boundary: tests passed");
 	return 0;
 }

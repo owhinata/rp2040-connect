@@ -140,7 +140,8 @@ cnina=../common/drivers/nina
 # both with NINA_OS_WAIT_READY as drivers/nina/Make.defs builds them, through the layer's gpio0
 # (common/compat/zephyr_gpio.c, with the prelude and the fake kernel's spin lock), on fakes of
 # NuttX's semaphores, mutexes, sleeps and clock (tests/nina_os_fakes) and of the board's GPIO
-# bank 0: ready during the wait, the timeout, a change right after the read, stale wake-ups.
+# bank 0: ready during the wait, the timeout, a change right after the read, stale wake-ups.  Also
+# with NINA_OS_EVENTS (the socket events on the IRQ line).
 ninaos=(-DNINA_OS_WAIT_READY -Itests/nina_os_fakes -Itests/fakes -I"$ccompat" -I"$cnina")
 cc "${flags[@]}" "${ninaos[@]}" -I"$zfakes" -c drivers/nina/nina_os.c -o "$out/nina_os_os.o"
 cc "${flags[@]}" -include "$prelude" -I"$zfakes" -I"$ccompat" -c "$ccompat/zephyr_gpio.c" \
@@ -149,6 +150,14 @@ cc "${flags[@]}" "${ninaos[@]}" tests/nina_os.c "$out/nina_os_os.o" "$out/nina_o
     "$link" -o "$out/nina_os"
 "$out/nina_os" >/dev/null
 printf 'ok  nina_os\n'
+# The same with NINA_OS_EVENTS (and CONFIG_NANO_NINA_USRSOCK), as nina/Make.defs builds nina_os.c:
+# the socket events on the IRQ line (GPIO2), with the socket loops' waits (nina_wait.c).
+ninaev=("${ninaos[@]}" -DNINA_OS_EVENTS -DCONFIG_NANO_NINA_USRSOCK=1)
+cc "${flags[@]}" "${ninaev[@]}" -I"$zfakes" -c drivers/nina/nina_os.c -o "$out/nina_os_ev.o"
+cc "${flags[@]}" "${ninaev[@]}" tests/nina_os.c "$out/nina_os_ev.o" "$out/nina_os_gpio.o" \
+    "$cnina/nina_wait.c" "$link" -o "$out/nina_os_events"
+"$out/nina_os_events" >/dev/null
+printf 'ok  nina_os_events\n'
 zinc=(-D_DEFAULT_SOURCE -I"$zfakes" -Idrivers/compat -I"$ccompat" -Idrivers/include -I"$clog" -I"$cnina")
 # The layer's pieces for the IMU service: K_MUTEX_DEFINE, K_THREAD_DEFINE and its start,
 # k_uptime_get's tick rounding, k_sleep, byteorder, snprintk, hwinfo (fake chip ID), the

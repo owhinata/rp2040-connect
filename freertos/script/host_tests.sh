@@ -215,8 +215,8 @@ printf 'ok  kv (flash boundary and store, FreeRTOS POSIX port)\n'
 # The NINA link (freertos/tests/nina): the board's boundaries of the shared core
 # (drivers/nina/nano_nina.c on fakes of the Pico SDK's GPIO, reset and SPI functions,
 # tests/nina/pico_fake; drivers/nina/nina_os.c on the layer) under the shared core
-# (common/drivers/nina/nina_spi.c, with the prelude and NINA_OS_WAIT_READY, as
-# drivers/nina/nina.cmake builds it), on the same kernel and layer objects.  The waits for READY
+# (common/drivers/nina/nina_spi.c and nina_wait.c, with the prelude, NINA_OS_WAIT_READY and
+# NINA_OS_EVENTS, as drivers/nina/nina.cmake builds them), on the same kernel and layer objects.  The waits for READY
 # on its edge interrupt (nina_os.c) go through GPIO bank 0's boundary
 # (drivers/compat/rp2040/nano_gpio.c) and the layer's gpio0 (common/compat/zephyr_gpio.c), on
 # fakes of the Pico SDK's GPIO interrupt functions (tests/nina/pico_fake).
@@ -224,13 +224,13 @@ ninainc=(-Itests/nina/pico_fake -I../common/drivers/nina)
 ninaobjs=()
 for src in drivers/nina/nano_nina.c drivers/nina/nina_os.c tests/nina/main.c \
            drivers/compat/rp2040/nano_gpio.c ../common/compat/zephyr_gpio.c \
-           ../common/drivers/nina/nina_spi.c; do
+           ../common/drivers/nina/nina_spi.c ../common/drivers/nina/nina_wait.c; do
     obj="$out/nina_$(basename "$src" .c).o"
     extra=()
     case $src in
         ../common/*) extra=(-include drivers/compat/common_prelude.h) ;;
     esac
-    cc "${flags[@]}" "${strict[@]}" -DNINA_OS_WAIT_READY=1 "${ninainc[@]}" "${inc[@]}" \
+    cc "${flags[@]}" "${strict[@]}" -DNINA_OS_WAIT_READY=1 -DNINA_OS_EVENTS=1 "${ninainc[@]}" "${inc[@]}" \
         "${extra[@]}" -c "$src" -o "$obj"
     ninaobjs+=("$obj")
 done
@@ -444,7 +444,8 @@ printf 'ok  time_sync (realtime clock, TIMER read, thread, NTP exchanges, ntp st
 sockinc=(-Idrivers/libc/include -I../common/drivers/nina)
 sockobjs=()
 for src in drivers/nina/nina_socket.c drivers/libc/inet.c tests/socket/main.c \
-           ../common/drivers/nina/nina_sock.c ../common/drivers/nina/nina_dns.c; do
+           ../common/drivers/nina/nina_sock.c ../common/drivers/nina/nina_dns.c \
+           ../common/drivers/nina/nina_wait.c; do
     obj="$out/socket_$(basename "$src" .c).o"
     extra=()
     case $src in
@@ -471,7 +472,9 @@ printf 'ok  socket (descriptors, wait loops, options, poll, resolver, FreeRTOS P
 # copies of Zephyr's settings and NVS over the shared fake flash (common/tests/kv_flash_fake.c),
 # the build's shell on a console that captures, and a fake module (the test's nina_request());
 # on the same kernel and layer objects.  It waits for the driver's and the profile's real
-# delays (the link monitor's 2 s, the reconnection's 4 s): about 25 s.
+# delays (the link monitor's 2 s, the reconnection's 4 s): about 45 s.  The scans with the
+# firmware's capability bits (a fake nina_probe_capabilities()): the link kept, the asynchronous
+# scan and its failures, a loss of the link during the scan.
 wifiinc=(-D_GNU_SOURCE -DZ_SHELL_CMD_ROOT_GLOBAL -DCONFIG_GETOPT_LONG=1 -DCONFIG_NANO_WIFI_CREDENTIALS=1
          -U_FORTIFY_SOURCE -Itests/shell -Idrivers/shell -Idrivers/wifi -Idrivers/nina
          -I../common/shell -I../common/compat/lib/utils/getopt -I../common/drivers/nina
@@ -513,6 +516,8 @@ for src in drivers/compat/zephyr_net_if.c drivers/nina/nina_netif.c drivers/wifi
         */wifi_credentials.c) extra+=(-Wno-type-limits) ;;
         */wifi_credentials_backend_settings.c) extra+=(-Wno-sign-compare) ;;
         *zshell.c|*nano_console.c) extra+=(-Dcalloc=test_calloc -Dmalloc=test_malloc -Dfree=test_free) ;;
+        # A scan that never ends gives up after 1 s here (10 s on the board).
+        */nina_net.c) extra+=(-DNINA_SCAN_WAIT_MS=1000) ;;
     esac
     cc "${flags[@]}" "${strict[@]}" "${wifiinc[@]}" "${inc[@]}" "${extra[@]}" -c "$src" -o "$obj"
     wifiobjs+=("$obj")

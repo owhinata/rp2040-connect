@@ -89,6 +89,23 @@ int64_t test_uptime_get(void)
 	return test_now_us / 1000;
 }
 
+/* common/drivers/nina/nina_wait.c without the module's socket events (the
+ * layer's zsock_recv() and zsock_poll() wait with it): the loop's interval,
+ * nina_os_sleep_ms() (nxsched_msleep(), the same ticks as
+ * k_sleep(K_MSEC())); here the test's sleep.
+ */
+void nina_wait_mark(struct nina_wait *w)
+{
+	(void)w;
+}
+
+void nina_wait(struct nina_wait *w, uint32_t poll_ms, int64_t deadline)
+{
+	(void)w;
+	(void)deadline;
+	(void)k_sleep(K_MSEC(poll_ms));
+}
+
 static int sleeps;
 static int64_t slept_ticks;
 
