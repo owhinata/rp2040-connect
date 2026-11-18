@@ -1266,3 +1266,20 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
   `dmesg` は 9 行で `<err>`・`<wrn>`・fail・assert なし（今回は中身を見た）。空きメモリー 122264。NuttX 版の `wifi` には `scan` が無い
   （スキャンの確認はしていない）。
 - 実機: NuttX の正式の像。
+
+## Zephyr 版の正式の像の実機確認: 退行が 1 件（2026-11-18）
+
+- ユーザーの要望: `bootsel` と NINA の中継コマンド（`nina passthrough confirm`）を、正式の機能として NuttX 版と Zephyr 版にも入れる
+  （subagent 2 つが作業中。`nina_passthrough_logic.h` は Zephyr の担当が `common/drivers/nina/` へ移す）。
+- 像: コミット済みのツリーから再ビルド、365756 B（`snapshot-1118`）。boot2 分周 2・ROM の `memcpy`・除算器（いずれもパッチ）、NINA は共通コア、
+  新しいドライバー。
+- 実機（書き込み直後から）: 起動、`nina version`（capabilities 0x7、in use 0x7）、KV、自動接続。送信 約 71 秒 × 2 回 `cpu_active` 48.6%・48.7%
+  （Z01 の時点 51.2〜51.5%）、欠番 0、`time` のカウンター 0。zperf 送信 3.36・3.47、受信 1.99・1.89 Mbit/s。`ntp status` の `last_us` 5.4〜12.8 ms。
+  送信中に Telnet 4 回と `wifi scan` 1 回: Telnet 4/4、drop 57/1886（Z01 の時点は 395/905）、overruns 1。`wifi disconnect` → `auto_connect` で復帰。
+  `dmesg` に `<err>`・`<wrn>` なし。スタック: `sysworkq` 792/1024（77%、以前 480）、`imu_raw_mqtt_tid` 1332/2048、`shell_telnet` 1584/3072。
+- **退行**: `zperf tcp download` → PC の `iperf3 -c … -t 6` の接続中に `zperf tcp download stop` を打つと、最初の 1 回で USB のシェルが応答しなく
+  なった（エコーも返らない。USB の書き込みは受け付ける）。そのあと Telnet も connect がタイムアウト。ping は通る。リセットは起きない。
+  Z01 の `do_poll()` の修正の時点では同じ手順が 20 周通っていたので、ドライバーの対応（事象の待ち・送信前の poll）で入った退行とみられる。
+  ドライバーの担当の subagent に原因の特定と修正を依頼中。**Zephyr 版の新しいドライバーは、この件が直るまで未完了**。
+  FreeRTOS 版は zperf の実装が別（自前）で、同じ手順は試していない。
+- 実機: Zephyr の正式の像（USB のシェルが止まった状態）。
