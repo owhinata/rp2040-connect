@@ -1053,3 +1053,25 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
   `rp2040_rom` の行が無い。boot2 と `memcpy`・`memset` の入れ方をパッチに変える話が進行中なので、それが決まってから直す。
 - ユーザーの決定（同日）: 除算器は方式 B（切り替え時に退避、上流へのローカルのパッチ）。Zephyr 版の boot2 もパッチにする。
   `memcpy`・`memset` もパッチにできないかの質問あり（3 案を提示、返事待ち）。スキャン中の接続維持を NINA のファームウェアの計画に追加。
+
+## NINA のファームウェアの計画: 受信データの割り込みと、スキャン中の接続維持（2026-11-18、subagent の調査。実装は未着手）
+
+- 事実（ソース）: IRQ の線（ESP32 GPIO0 = RP2040 GPIO2）は BSD 風の命令（0x70〜0x7f）のソケットを反映しない（`updateGpio0Pin()`、
+  `CommandHandler.cpp:3024-3064`）。`scanNetworks()`（`WiFi.cpp:531-570`）は最初に `esp_wifi_stop()`／`start()` を呼ぶので接続が切れ、
+  接続済みのソケットは `handleWiFiDisconnect()` で閉じられる。0x27 はスキャンが終わるまでブロックし、0x36 は何もしない。
+  ドライバーの 20 ms の poll: `NINA_POLL_INTERVAL_MS`（`nina_sockopt.h:44`）、利用箇所は Zephyr・FreeRTOS の `nina_socket.c`、NuttX の
+  `nina_poller.c` ほか。NTP と MQTT の受信は 20 ms の poll に依らない。送信の再試行は 1 ms ごとに全量（最大 3584 バイト）を送り直す。
+- 実機（メイン、FreeRTOS 版、静止時）: `devmem d0000004` の bit 2（GPIO2）は 20 回とも 0。
+- 案（subagent の推奨）: 新しい命令 0x6A（capabilities）で機能を検出し、古いファームウェアでは今の動作に戻る。パッチは 4 つに分ける:
+  0003 capabilities、0004 スキャン中の接続維持（接続中は stop/start を省く、`home_chan_dwell_time` 30、`_status` を保つ。約 20 行）、
+  0005 非同期のスキャン（0x36 を開始だけにし、状態の命令を足す。任意。0x27 の間 NINA のロックで送信が数秒止まるのを避ける）、
+  0006 受信の割り込み（案 A: 待っているソケットだけを one-shot で登録し、見張りのタスクが `select()` で待って線を上げる。次の命令の
+  先頭で下げる。約 150〜200 行）。ドライバーは `nina_os_event_seq/wait`（複数の待ち手へのブロードキャスト）を 3 版に。
+- 効果の見込み（推測）: TCP の受信は今「受信窓 5744 バイト ÷ 20 ms = 2.30 Mbit/s」で頭打ち（FreeRTOS の 2.31 と一致）に見える。割り込みで
+  この上限が外れる。NTP の往復はほぼ変わらない。CPU は分からない。
+- ファームウェアを変えずに試せること: (a) poll 間隔を一時的に 5 ms にして受信速度が伸びるか（上の仮説の確認）、(b) 送信が 0 だったあと
+  全量を送り直す前に poll で書き込み可能を確かめる（空振りの転送を減らす）。
+- 書き込み: この PC に docker の `espressif/idf:v4.4.8`、esptool、arduino-cli、SerialNINAPassthrough がある（確認だけ）。手順は KV の退避 →
+  パススルーのスケッチ → NINA の flash の退避（認証情報を含みうる、非公開）→ 書き込み → RP2040 を戻す → KV の復元（Wi-Fi のパスワードは
+  ユーザーが入力）。ユーザーの BOOTSEL 2 回以上。未確認: select 中の close の動作、接続中のスキャンで TCP が保たれるか、パススルーが KV を消すか。
+- ユーザーへの相談待ち（ファームウェアの書き換えは承認のあと）。
