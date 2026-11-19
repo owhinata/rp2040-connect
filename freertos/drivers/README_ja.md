@@ -7,7 +7,7 @@ FreeRTOS 版（`freertos/`）の内部の説明です。使い方とコマンド
 コメントに書いてあり、ここではファイルの場所と、Zephyr 版・NuttX 版との関係を示します。
 
 FreeRTOS 版のソースの大半は、3 つの版で共有する `common/` にあります（取得、送信、時刻同期、校正、KV、
-LSM6DSO・NINA・I2C0 のドライバー、シェルのコマンド処理）。共有ソースは Zephyr の API で書かれているので、
+LSM6DSO・NINA・I2C のドライバー、シェルのコマンド処理）。共有ソースは Zephyr の API で書かれているので、
 FreeRTOS 版は NuttX 版と同じく、Zephyr の API を Zephyr の名前のまま提供する互換層の上で動かします。互換層の
 OS に依存しない部分は `common/compat/`、FreeRTOS の部分は `freertos/drivers/compat/` です。
 
@@ -136,8 +136,8 @@ Zephyr の NVS と settings の形式で置きます（写しは `common/compat/
 [`nuttx/drivers/README_ja.md`](../../nuttx/drivers/README_ja.md) の「KV: Zephyr の NVS と settings の写し」）。
 FreeRTOS 版が実装するのは flash の境界（`common/compat/nano_flash_kv.h` の 4 つの関数、`drivers/kv/nano_flash_kv.c`）です。
 
-- リンカースクリプト（`drivers/kv/ld/`、`kv.cmake`）が FLASH の長さを `0xffe000` にして像を領域の外に置き、
-  `__kv_start`・`__kv_end` と像の終わりを `ASSERT` で確かめます。
+- リンカースクリプト（`drivers/kv/ld/`、`kv.cmake`）が FLASH の長さを `0xffe000` にしてイメージを領域の外に置き、
+  `__kv_start`・`__kv_end` とイメージの終わりを `ASSERT` で確かめます。
 - 書き込みと消去の要求は、`zephyr_flash_kv.c`、境界の関数、フラッシュに触れる直前（割り込み禁止の中）の 3 回、
   領域の中かを確かめます。リンカーの記号と定数が一致するまで、書き込みと消去は断ります。
 - `flash_range_program()`・`flash_range_erase()` は `flash_safe_execute()` から呼び、`PICO_FLASH_ASSUME_CORE1_SAFE=1` で
@@ -166,8 +166,8 @@ FreeRTOS 版が実装するのは flash の境界（`common/compat/nano_flash_kv
   接続中のスキャンで接続を保つ・非同期のスキャン（`nina_net.c`）、ソケットの事象での待ち（`common/drivers/nina/nina_wait.c`
   と `nina_socket.c` の待ちのループ）。事象は IRQ の線（GPIO2）の立ち上がりのエッジの割り込みで、`nina_os.c` が数を
   数え、待っている全タスクを起こします（`k_sem_reset()` のあと `k_sem_give()`）。`nina_os_event_start()` が
-  失敗したときは、ビット 2 があっても従来の間隔（20 ms、送信は 1 ms）で待ちます。TCP 送信の再試行で、全量を送り直す前に poll 命令で書き込み可能を
-  確かめるのは、ファームウェアに依らない変更です。
+  失敗したときは、ビット 2 があっても、ビット 2 が無いときの間隔（20 ms、送信は 1 ms）で待ちます。TCP 送信の再試行で、全量を送り直す前に poll 命令で書き込み可能を
+  確かめるのは、ファームウェアに依りません。
 - Wi-Fi: Zephyr 版と同じ `common/drivers/nina/nina_net.c`、資格情報（Zephyr の `wifi_credentials` の写し）、自動再接続
   （`common/imu/wifi_profile.c`）を、互換層の `net_if`・`net_mgmt`・`wifi_mgmt`（`zephyr_net_if.c`、`drivers/nina/nina_netif.c`）
   の上で動かします。`wifi` コマンドは `common/compat/zephyr_wifi_shell.c` で、このボードで使えるオプションだけを残しています。
@@ -190,32 +190,33 @@ Pico SDK の既定のままです。整数の割り算は `pico_divider` のハ�
 
 ## I2C0 と DMA、LSM6DSOX、GPIO の割り込み
 
-- I2C0 は共有のコア（`common/drivers/i2c_dw/i2c_dw.c`）で、FreeRTOS 版は境界 `i2c_dw_os.h` を
-  `drivers/i2c_dw/i2c_dw_os_impl.h`（セマフォ、時計、割り込み禁止）と `i2c_dw_instance.h`
-  （互換層のデバイス `i2c0` と Zephyr の I2C の API、割り込みの登録、リセット、ピン）で実装します。境界の一覧は
+- **ドライバー**: I2C0 と I2C1 は、NuttX 版と共有する I2C のコア（`common/drivers/i2c_dw/`）です（コアそのものと
+  Zephyr 版のドライバーとの関係は[設計書](../../design/imu-raw-mqtt-design-ja.md)の §12）。FreeRTOS 版はコアの境界
+  `i2c_dw_os.h` を `drivers/i2c_dw/i2c_dw_os_impl.h`（セマフォ、時計、割り込み禁止）と `i2c_dw_instance.h`
+  （互換層のデバイスと Zephyr の I2C の API、割り込みの登録、リセット、ピン）で実装します。境界の一覧は
   [`nuttx/drivers/README_ja.md`](../../nuttx/drivers/README_ja.md) の「I2C0」の表です。
-- インスタンスは NuttX 版の Kconfig と同じ形で選びます。`drivers/i2c_dw/i2c_dw.cmake` が `CONFIG_I2C_DW_I2C0` を常に
+- **インスタンス**は NuttX 版の Kconfig と同じ形で選びます。`drivers/i2c_dw/i2c_dw.cmake` が `CONFIG_I2C_DW_I2C0` を常に
   定義し（LSM6DSOX がつながっているため。無いと `drivers/lsm6dso/lsm6dso.cmake` が構成を止めます）、CMake の
   オプション `I2C_DW_I2C1`（既定で無効）のとき `CONFIG_I2C_DW_I2C1` を定義します。インスタンスごとのデバイス、
   割り込みハンドラー、速さの区分、起動（`i2c_dw_controllers.h` の `i2c_dw_i2c0_initialize()`・`i2c_dw_i2c1_initialize()`）は
   それぞれのシンボルの下にあり、API、ピンの設定、リセット、割り込みの接続は共有です。
-- I2C1（ボード上では何もつながっていない）は互換層のデバイス `i2c1`（`DEVICE_DT_GET(DT_NODELABEL(i2c1))`、名前は
+- **I2C1**（ボード上では何もつながっていない）は互換層のデバイス `i2c1`（`DEVICE_DT_GET(DT_NODELABEL(i2c1))`、名前は
   `i2c@40048000`）で、`i2c0` と同じ Zephyr の I2C の API を持ち、GPIO18（SDA、Arduino の D6）と GPIO19（SCL、D7）を
   内部プルアップ付きで使い（`i2c_dw_instance.h` の `I2C1_SDA_GPIO`・`I2C1_SCL_GPIO`）、常に割り込みで転送します
   （DMA 読み出しと `i2c_dma` は I2C0 だけ）。`main()` で I2C0 のあとに起動し、失敗してもログに残して `i2c1` が
   準備できないだけです。互換層のデバイスの一覧（`device_get_binding()`）には入りません。`-DNANO_SELFTEST=ON` では
   `selftest` が確かめます（下）。I2C1 はビルドとホストテストで確かめただけで、実際のデバイスで使ったことはありません。
-- I2C0 の DMA 読み出しは、コアの 2 つ目の境界 `i2c_dw_dma_os.h` を通して Pico SDK 自身の DMA（`hardware_dma`、
+- **I2C0 の DMA 読み出し**は、コアの 2 つ目の境界 `i2c_dw_dma_os.h` を通して Pico SDK 自身の DMA（`hardware_dma`、
   `hardware_irq`）を使います。実装は `drivers/i2c_dw/i2c_dw_dma_os.c` です。読み出しごとに
   `dma_claim_unused_channel(false)` でチャネルを 2 つ取り（空きが無ければ割り込みで読み、フォールバックを数えます）、
   SDK のチャネル設定で設定し（TX: 16 ビットのコマンド語を IC_DATA_CMD へ、DREQ 32。RX: そこからバイトを、DREQ 33）、
-  `dma_channel_start()` で始め、`dma_channel_unclaim()` で返します。割り込みは DMA_IRQ_1 で、
-  `irq_add_shared_handler()`（既定の順位）で加えたハンドラーが、読み出しの持つチャネルだけを見ます。停止は
-  チャネルのビットを CHAN_ABORT に書き、コアが上限付きで待ちます（100 ms、過ぎればコントローラーを隔離）。
-  SDK の `dma_channel_abort()` は上限なしで待つので使いません。起動時に何もリセットしません。
-- このビルドのほかのコードも、DMA を通常の方法で使えます。チャネルは SDK の割り当てで取り、割り込みの線は
-  `irq_add_shared_handler()` で共有します。してはいけないこと: 読み出しが持っている 2 つのチャネル（読み出しの間、
-  SDK の記録で取得済み）に触れる。DMA_IRQ_1 に排他的なハンドラーを入れる（共有のハンドラーがあると
+  `dma_channel_start()` で始め、`dma_channel_unclaim()` で返します。起動時に何もリセットしません。
+- **その割り込みと停止**: 割り込みは DMA_IRQ_1 で、`irq_add_shared_handler()`（既定の順位）で加えたハンドラーが、
+  読み出しの持つチャネルだけを見ます。停止はチャネルのビットを CHAN_ABORT に書き、コアが上限付きで待ちます（100 ms、
+  過ぎればコントローラーを隔離）。SDK の `dma_channel_abort()` は上限なしで待つので使いません。
+- **DMA を使うほかのコード**: このビルドのほかのコードも、DMA を通常の方法で使えます。チャネルは SDK の割り当てで取り、
+  割り込みの線は `irq_add_shared_handler()` で共有します。してはいけないこと: 読み出しが持っている 2 つのチャネル
+  （読み出しの間、SDK の記録で取得済み）に触れる。DMA_IRQ_1 に排他的なハンドラーを入れる（共有のハンドラーがあると
   `irq_set_exclusive_handler()` が panic します）、共有の線のハンドラーでほかのチャネルのフラグを消す。DMA の
   ブロックをリセットする、INTE0/INTE1・INTS0/INTS1・CHAN_ABORT を丸ごと書く（自分のチャネルのビットだけにする）。
   読み出しに DMA を使わせたいときに 12 チャネルすべてを持ち続ける（そのあいだ読み出しは割り込みに戻ります）。

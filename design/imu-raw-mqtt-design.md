@@ -8,7 +8,7 @@ Acceleration and angular rate are read from the LSM6DSO of an Arduino Nano RP204
 sent to an application on a PC with MQTT. Each axis is sent as the sensor's signed 16-bit raw
 integer.
 
-This document describes the design of the implementation (`zephyr/app/usb-console`, and `host/` on the PC) as of 2026-11-12
+This document describes the design of the implementation (`zephyr/app/usb-console`, and `host/` on the PC)
 and what has and has not been verified on hardware. The whole is still experimental: the
 payload format and topics are implemented but not final, and are expected to be revised
 against the specification of a dedicated PC application. See the [README](../README.md) for
@@ -160,8 +160,8 @@ measurement with the error when
 
 A packet containing an unexpected tag has its remainder dropped, the epoch advances and the
 measurement continues. Recovery was verified by provoking overruns with a test command that
-stalled FIFO handling on purpose. That command was removed in the cleanup, so overruns can no
-longer be reproduced on the current firmware. I2C faults, the give-up path and unexpected tags
+stalled FIFO handling on purpose. The present firmware does not have that command, so overruns cannot
+be reproduced on it. I2C faults, the give-up path and unexpected tags
 have not been produced on hardware.
 
 ## 4. Communication and behaviour when disconnected
@@ -394,8 +394,7 @@ has not been measured.
 ### 7.3 The board clock and PC time
 
 The board queries the PC in NTP format. The server is the default gateway (the PC acting as
-access point) by default, or a fixed server set with `CONFIG_NINA_NTP_SERVER`. Synchronizing
-with a public server was dropped. The PC runs chrony and allows queries from the access
+access point) by default, or a fixed server set with `CONFIG_NINA_NTP_SERVER`. The PC runs chrony and allows queries from the access
 point's subnet (`allow 10.42.0.0/24`, `local stratum 10`).
 
 - A query is sent every 2 s (`CONFIG_NINA_NTP_INTERVAL_MS`) and the reply is polled for at
@@ -418,8 +417,8 @@ immediately with its estimated time, and the PC's send and receive times bracket
 30712 such probes over 30 minutes none fell outside; at closest the estimate was 0.15 to
 0.57 ms after the send time and 1.4 to 2.3 ms before the receive time. If the error was
 constant during the test, it lay between -2.3 and +0.6 ms. This is a path other than Wi-Fi,
-so the bound includes the bias from an asymmetric Wi-Fi round trip. (The probe command was
-removed in the cleanup.)
+so the bound includes the bias from an asymmetric Wi-Fi round trip. (The present firmware does not
+have the probe command.)
 
 The NTP round trip while streaming had a median of about 7 ms, and the exchanges used for the
 estimate 4 to 6 ms.
@@ -671,14 +670,9 @@ version's; what has been verified on the NuttX port is listed separately in 11.7
   the narrow boundary of `nina_os.h` and `nano_nina.h`) is in `common/drivers/nina/` too and is used
   by the three builds. Each build's part is the boundary's implementation and the glue to its socket
   layer; in the Zephyr build, `drivers/nina/nano_nina.c` (the devicetree's lines and SPI),
-  `nina_os.c` (mutexes, sleeps, clock, the READY interrupt) and `nina_socket.c` (the socket offload). The core that works on the I2C0
-  registers (`i2c_dw.c` in `common/drivers/i2c_dw/`, a copy of the Zephyr build's patched `i2c_dw.c`)
-  does not depend on the OS either; it depends only on the boundary of `i2c_dw_os.h` (semaphores,
-  clock, interrupt connection, reset and pins, the link to the OS's driver model) and, for its DMA
-  reads, on that of `i2c_dw_dma_os.h` (two channels per read, their setup, start, stop and
-  interrupt), which each build implements on the OS's own DMA driver (the Pico SDK's, NuttX's
-  `rp2040_dmac.c`), so that other code may use that DMA as usual. It is used by the NuttX and FreeRTOS
-  builds (the Zephyr build uses Zephyr's driver with a local patch, §12).
+  `nina_os.c` (mutexes, sleeps, clock, the READY interrupt) and `nina_socket.c` (the socket offload).
+  The I2C core (`common/drivers/i2c_dw/`, a copy of the Zephyr build's patched `i2c_dw.c`) does not depend on the OS
+  either; the NuttX and FreeRTOS builds use it (the Zephyr build uses Zephyr's driver with a local patch, §12).
 - The shared sources run on top of a compatibility layer
   (its OS-independent part in `common/compat/`, its NuttX implementation in
   `nuttx/drivers/compat/`) that provides the OS calls **under Zephyr's names**. The layer has only what the copied sources use
@@ -788,7 +782,7 @@ difference of the total run time in `/proc/<tid>/critmon` ("CPU load" in `design
 
 - On an exception, `PANIC()`, a failed assertion or the stack sentinel, the NuttX port writes a
   report to the RAM log and restarts by itself (`CONFIG_BOARD_RESET_ON_ASSERT=2`). The Zephyr
-  version is now configured to reboot after a fatal error as well (`CONFIG_RESET_ON_FATAL_ERROR=y`; checked
+  version reboots after a fatal error as well (`CONFIG_RESET_ON_FATAL_ERROR=y`; checked
   once by reading an unmapped address with the shell's `devmem`: the HardFault report stayed in the RAM log
   and the board rebooted).
 - The RAM log has the Zephyr version's format and the same `dmesg`, but is 8 KiB so that the
@@ -850,7 +844,7 @@ host tests (`common/tests/run.sh`) run first in the `host_tests.sh` of each of t
 | `common/imu/` | The acquisition service and `imu`, batches, payload, queue, status, time assignment and time synchronization with `ntp`, calibration and `imu cal`, the MQTT transport, the Wi-Fi profile and automatic reconnection, the key-value API and `kv` | All three (the MQTT client `mqtt_min*` NuttX and FreeRTOS; the Zephyr build uses Zephyr's MQTT library) |
 | `common/drivers/lsm6dso/`, `sensor_shell/` | The LSM6DSO driver with its FIFO stream, the sensor shell | All three |
 | `common/drivers/nina/` | `nina_net.c` and `nina_proto.h`, the NINA core (SPI link, sockets, name resolution, the socket waits `nina_wait.[ch]`), the decisions of the esptool passthrough `nina_passthrough_logic.h` | All three |
-| `common/drivers/i2c_dw/` | The I2C0 core (file names as Zephyr's: `i2c_dw.c`, `i2c_dw.h`, `i2c_dw_registers.h`, `i2c_dw_rp2040.h`, `i2c_dw_rp2040_dma_priv.h` with the DMA reads and their command words), its boundaries `i2c_dw_os.h` and `i2c_dw_dma_os.h` | NuttX and FreeRTOS (the Zephyr build has the same command words in patch 0003) |
+| `common/drivers/i2c_dw/` | The I2C core (I2C0 and I2C1; file names as Zephyr's: `i2c_dw.c`, `i2c_dw.h`, `i2c_dw_registers.h`, `i2c_dw_rp2040.h`, `i2c_dw_rp2040_dma_priv.h` with the DMA reads and their command words), the declarations of the `i2c_dma` functions `i2c_dw_rp2040_dma.h`, the boundaries `i2c_dw_os.h` and `i2c_dw_dma_os.h` | NuttX and FreeRTOS (the Zephyr build: the same driver in patch 0003, below) |
 | `common/drivers/stmemsc/` | The glue between ST's driver and Zephyr's I2C API | NuttX and FreeRTOS |
 | `common/compat/` | The OS-independent part of the compatibility layer and copies of Zephyr's libraries (the key-value store's NVS and settings, the Wi-Fi credentials, getopt and others) | NuttX and FreeRTOS |
 | `common/shell/`, `common/log/` | Zephyr's shell command handling, the `i2c_dma` command, the `LOG_*` macros and the RAM log's ring | NuttX and FreeRTOS (`i2c_dma` all three) |
@@ -860,43 +854,62 @@ The OS parts are implementations of narrow boundary headers in each build's dire
 - The kernel part of the compatibility layer (`k_mutex`, `k_sem`, threads, clocks and so on; listed at the
   top of `common/compat/zephyr/kernel.h`): `nuttx/drivers/compat/`, `freertos/drivers/compat/`.
 - The priority mapping `priorities_os.h` (read by `common/compat/priorities.h`), the NINA's `nina_os.h` and
-  `nano_nina.h`, I2C0's `i2c_dw_os.h` and the DMA reads' `i2c_dw_dma_os.h`, the key-value flash's `nano_flash_kv.h`, the shell backend
+  `nano_nina.h`, the I2C core's `i2c_dw_os.h` and the DMA reads' `i2c_dw_dma_os.h`, the key-value flash's `nano_flash_kv.h`, the shell backend
   `zshell_os.h`, the log's `app_log_os.h` and `log_ram.h`.
 - A few lines that differ per build: `sensor_shell_os.h` (the wait of `sensor get`), `wifi_profile_os.h`,
   `lsm6dso_instance.h` (the device), `kv_store_os.h` (whether there is `kv wipe`).
 
-The Zephyr build's I2C0 driver is Zephyr's `drivers/i2c/i2c_dw.c` with a local patch
-(`zephyr/manifest/zephyr/patches/zephyr/0003-i2c-dw-rp2040-fifo-and-dma.patch`); it is not moved onto the
-shared core (the NINA uses the shared core). The shared core is a copy of the patched driver, and the
-intended differences (the OS's calls, what the Zephyr build does not use left out, and so on) are only
-those listed at the top of `i2c_dw.c`. Like the patched driver, the core has an instance for i2c0 and,
-in the NuttX and FreeRTOS builds' option `I2C_DW_I2C1` (off by default), one for i2c1 (the DMA reads
-are i2c0's; i2c1 has been built and host-tested, never used with a real device). Where the patch calls Zephyr's DMA
-API (and the Pico SDK's register helpers in its stop), the core calls the DMA boundary `i2c_dw_dma_os.h`,
-one call for each, but the setup of a channel (two calls, for the TX and the RX side, in place of
-`dma_config()` and its structures) and the stop's wait (each channel's own abort, not every channel's).
-To keep the two the same:
+**The I2C core (`common/drivers/i2c_dw/`)** is the I2C driver of the NuttX and FreeRTOS builds (the details of the OS
+parts are in the I2C sections of each build's driver notes).
+
+- **What it is**: a copy of the Zephyr build's driver (Zephyr's `drivers/i2c/i2c_dw.c` with the local patch
+  `zephyr/manifest/zephyr/patches/zephyr/0003-i2c-dw-rp2040-fifo-and-dma.patch`). The intended differences (the OS's
+  calls, what the Zephyr build does not use left out, and so on) are only those listed at the top of `i2c_dw.c`. The
+  Zephyr build does not use the core; it uses the patched driver (the NINA driver is the shared core in all three
+  builds).
+- **I2C0 and I2C1**: like the patched driver, the core has an instance for each controller that is built. i2c0 is
+  needed by the LSM6DSOX, so the NuttX build builds it with `CONFIG_I2C_DW_I2C0` (on by default) and the FreeRTOS
+  build always. i2c1 only with the NuttX build's `CONFIG_I2C_DW_I2C1` or the FreeRTOS build's `-DI2C_DW_I2C1=ON` (both
+  off by default). i2c1 has been built and host-tested, never used with a real device.
+- **The OS part**: each build implements the boundary `i2c_dw_os.h` (semaphores, clock, interrupt connection, reset
+  and pins, the link to the OS's driver model).
+- **DMA reads** (`CONFIG_I2C_DW_RP2040_DMA`): i2c0 only. The conditions, command words, thresholds, stop, quarantine and
+  counters are the patch's. Where the patch calls Zephyr's DMA API (and the Pico SDK's register helpers in its stop),
+  the core calls the DMA boundary `i2c_dw_dma_os.h`, one call for each. The only differences are the setup of a
+  channel (two calls, for the TX and the RX side, in place of `dma_config()` and its structures) and the stop's wait
+  (each channel's own abort, not every channel's). Each build implements the boundary on the OS's own DMA driver (the
+  Pico SDK's in the FreeRTOS build, `rp2040_dmac.c` in the NuttX build). The core touches no DMA register, and no
+  function of the boundary waits for another user of the DMA.
+- **Other code that uses DMA**: other code of the same program may use the OS's DMA as usual. It must not touch the
+  two channels a read holds, reset the DMA block, or write the registers that the channels share (interrupt enable
+  and status, CHAN_ABORT) as a whole (only its own channels' bits). The rules of each build, such as those for the
+  interrupt line, are in its driver notes.
+- **The `i2c_dma` command**: `common/shell/i2c_dma_shell.c` in all three builds (NuttX: on `zshell.c`). The patched
+  driver and the core define the same three functions, and the command reads their declarations from
+  `<zephyr/drivers/i2c/i2c_dw_rp2040_dma.h>`: in the Zephyr build the header that the patch adds to Zephyr's tree, in
+  the NuttX and FreeRTOS builds the header of the same name in `common/compat`, which includes the core's
+  `common/drivers/i2c_dw/i2c_dw_rp2040_dma.h`.
+
+The patched driver and the core are kept the same as follows.
 
 - A change to either goes into the other as well (or the reason not to goes into the list at the top of
   `i2c_dw.c`).
-- The host test `i2c_dw_sync` (`common/tests/i2c_dw_sync.py`, which `common/tests/run.sh` runs when the
-  Zephyr tree is there) compares the core with the tree's files at HEAD with the patch applied. It fails
-  when the definitions of both headers, the SCL counts at 125 MHz, the DMA path's lower limit, thresholds,
-  interrupt mask, IC_CON bit, waits and timeout, or the spike lengths differ, and when the differences of
-  the pairs of functions (with the differences of names evened out, compared statement by statement)
-  are not those saved in `common/tests/i2c_dw_sync.expected`. A change to one side alone makes it fail;
-  after an intended change, check the differences and rewrite them with `--update`. Comments and line
-  breaks are not compared. Drift in the functions it does not pair (Zephyr's initialization, PM, target
-  mode, the OS's parts, among them each build's implementation of `i2c_dw_dma_os.h`, which host tests
-  of their own check on fakes of the OS's DMA) is not detected. It also checks that
-  the function that builds the read commands (static in `i2c_dw_rp2040_dma_priv.h` of the patch and of
-  the core) is the same statement by statement, that
-  `include/zephyr/drivers/i2c/i2c_dw_rp2040_dma.h`, which the patch adds and `common/compat` holds too,
-  is the same byte for byte, and that the patched driver needs no header outside Zephyr's tree.
-- The `i2c_dma` command of the three builds is `common/shell/i2c_dma_shell.c` (NuttX: on
-  `zshell.c`); the patched driver and the core define the same three functions, declared in
-  `<zephyr/drivers/i2c/i2c_dw_rp2040_dma.h>` (in Zephyr's tree with the patch; the NuttX and FreeRTOS
-  builds have the same file in `common/compat`).
+- The host test `i2c_dw_sync` (`common/tests/i2c_dw_sync.py`, which `common/tests/run.sh` runs when the Zephyr tree
+  is there) compares the core with the tree's files at HEAD with the patch applied. It fails when any of these differ:
+  - the definitions of both headers, the SCL counts at 125 MHz, the DMA path's lower limit, thresholds, interrupt
+    mask, IC_CON bit, waits and timeout, the spike lengths (and, with a build, the values of its `.config` and
+    `zephyr.dts`);
+  - the pairs of functions: compared statement by statement with the differences of names evened out, their
+    differences must be those saved in `common/tests/i2c_dw_sync.expected`. Comments and line breaks are not compared;
+  - the function that builds the read commands, `i2c_dw_rp2040_read_commands()` (static in `i2c_dw_rp2040_dma_priv.h`
+    of the patch and of the core), statement by statement;
+  - `include/zephyr/drivers/i2c/i2c_dw_rp2040_dma.h`, which the patch adds, against the core's `i2c_dw_rp2040_dma.h`,
+    once the comments and include guards are taken out;
+  - and the patched driver must need no header outside Zephyr's tree.
+- A change to one side alone makes it fail; after an intended change, check the differences and rewrite them with
+  `--update`.
+- Drift in the functions it does not pair (Zephyr's initialization, PM, target mode, the OS's parts) is not detected.
+  Each build's implementation of `i2c_dw_dma_os.h` is checked by host tests of its own on fakes of the OS's DMA.
 
 Three low-level RP2040 items are not in `common/` but changes to each OS (the FreeRTOS build keeps the Pico
 SDK's defaults).
@@ -924,7 +937,7 @@ same in the three builds (details: "Firmware additions" in the
 [driver description](../zephyr/app/usb-console/drivers/README.md)).
 
 - Once after initialization, command 0x6A gives the bits. A firmware without the command (3.0.2 and
-  the like) answers `0xEF`: no additions, the behaviour stays as before.
+  the like) answers `0xEF`: no additions, and the driver works without them.
 - Bit 0 (a scan keeps the link): a scan while connected is not treated as a disconnection. A loss of
   the link during the scan is found by the link monitor.
 - Bit 1 (asynchronous scan): 0x36, then 0x6B (every 100 ms, up to 10 s), then 0x27. The NINA lock is

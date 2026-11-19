@@ -75,7 +75,7 @@ west build -b arduino_nano_connect app/blink -d build/blink
 
 NINA-W102 側は、Arduino の NINA ファームウェア 3.0.2 にこのリポジトリのパッチ（0001〜0006）を当てたものを
 前提にしています。0003〜0006 の追加機能（接続中のスキャンで接続を保つ、ソケットの事象の通知など）が無い
-ファームウェアでも、ドライバーは従来どおりに動きます。ビルドと注意点は [NINA ファームウェアの説明](firmware/nina-fw/README.md)
+ファームウェアでも、ドライバーはその機能を使わずに動きます。ビルドと注意点は [NINA ファームウェアの説明](firmware/nina-fw/README.md)
 を参照してください。`nina version` の 1 行目がバージョン、2 行目（`NINA capabilities: 0x… (in use 0x…)`）が
 モジュールの追加機能のビットと使っているビットです。
 
@@ -353,59 +353,38 @@ OS に依存しない部分のテスト（`common/tests/run.sh`）を先に実�
 
 | 場所 | 内容 |
 |---|---|
-| `zephyr/app/usb-console/src/` | アプリ本体のうち Zephyr 版だけのもの（KV、RAM ログ、起動処理）。ほかの版と共有するもの（計測、時刻同期、MQTT、Wi-Fi 設定、校正など）は `common/imu/` |
-| `zephyr/app/usb-console/drivers/` | LSM6DSO、sensor shell のローカルドライバーと、NINA の Zephyr 側（ソケットのオフロード、コアの境界） |
-| `zephyr/app/usb-console/tests/` | ホストテスト（Zephyr 版だけのもの） |
+| `zephyr/app/usb-console/src/` | Zephyr 版だけのアプリのソース（KV、RAM ログ、起動処理） |
+| `zephyr/app/usb-console/drivers/` | Zephyr 版のローカルドライバー（LSM6DSO、sensor シェル、NINA の Zephyr 側） |
+| `zephyr/app/usb-console/tests/` | Zephyr 版だけのホストテスト |
 | `zephyr/app/blink/` | LED 点滅のサンプル |
 | `zephyr/script/` | 環境構築、ホストテスト |
-| `nuttx/` | NuttX 版（ボード定義、ドライバー、アプリ、パッチ、スクリプト、ホストテスト） |
-| `common/` | 3 つの版が同じファイルを使うソース（`imu/`: 取得サービス、送信、時刻同期、校正、Wi-Fi のプロファイル、KV の API と `kv` コマンド。`drivers/`: LSM6DSO のドライバー、sensor シェル、NINA の OS に依存しないコア、I2C0・DMA の OS に依存しないコア（NuttX 版と FreeRTOS 版が使う）。`compat/`: NuttX 版と FreeRTOS 版が使う Zephyr の API の互換層の OS に依存しない部分と Zephyr のライブラリーの写し。`shell/`・`log/`: シェルのコマンド処理と RAM ログ（NuttX 版と FreeRTOS 版））と、そのホストテスト（`tests/`。`tests/run.sh` を各版の `host_tests.sh` が呼ぶ）。構成は [設計書](design/imu-raw-mqtt-design-ja.md) の §12 |
-| `openmv/` | OpenMV 版 MicroPython のビルド環境（[`openmv/README_ja.md`](openmv/README_ja.md)） |
-| `freertos/` | Pico SDK + FreeRTOS 版（ビルド環境、アプリ、互換層の FreeRTOS の部分、ドライバー、スクリプト、ホストテスト。[`freertos/README_ja.md`](freertos/README_ja.md)） |
 | `zephyr/manifest/west.yml` | Zephyr とモジュールのバージョン |
-| `zephyr/manifest/zephyr/` | Zephyr とモジュールへのローカルのパッチ（`patches.yml`、`patches/`） |
+| `zephyr/manifest/zephyr/` | Zephyr とモジュールへのローカルのパッチ |
+| `common/` | 3 つの版が共有するソースとそのホストテスト（構成は[設計書](design/imu-raw-mqtt-design-ja.md)の §12） |
+| `nuttx/` | NuttX 版 |
+| `freertos/` | Pico SDK + FreeRTOS 版 |
+| `openmv/` | OpenMV 版 MicroPython のビルド環境（[`openmv/README_ja.md`](openmv/README_ja.md)） |
 | `design/` | 設計と調査手順 |
 | `firmware/nina-fw/` | NINA ファームウェアの修正とビルド |
-| `host/` | PC 側のツール（受信の診断、記録、校正）と、表示用のアプリ `ImuStudio` |
-| `script/` | PC を一時的な AP にするスクリプト、KV の退避と書き戻し（`kv_transfer.py`。別のファームウェアを書くときなど）、3 つの版の `flash.sh` が共有する UF2 の書き込み（`flash_uf2.sh`） |
+| `host/` | PC 側のツールと表示用のアプリ `ImuStudio` |
+| `script/` | PC を一時的な AP にするスクリプト、KV の退避と書き戻し、3 つの版が共有する UF2 の書き込み |
 
 ## 3 つの版と `common/`
 
-同じファームウェアに、Zephyr 版（`zephyr/`）、NuttX 版（`nuttx/`）、Pico SDK + FreeRTOS 版（`freertos/`）の 3 つの版が
-あります。取得、送信、時刻同期、校正、KV、ドライバーのソースは `common/` の同じファイルを使います（NINA のドライバーは
-3 つの版で同じコアを使い、I2C0・DMA のドライバーは Zephyr 版だけが自分のものです）。Zephyr 版は
-それを Zephyr の上で、NuttX 版と FreeRTOS 版は Zephyr の API を Zephyr の名前のまま再現する互換層
-（`common/compat/` と各版の `drivers/compat/`）の上でビルドします。KV は 3 つの版で同じ場所・同じ形式なので、
-版を書き換えても残ります。`common/` の構成と OS ごとの境界は [設計書](design/imu-raw-mqtt-design-ja.md) の §12 にあります。
+同じファームウェアに、Zephyr 版（`zephyr/`）、NuttX 版（`nuttx/`、NuttX 13.1.0）、Pico SDK + FreeRTOS 版（`freertos/`、
+Pico SDK 2.3.1 と FreeRTOS カーネル V11.3.3）の 3 つの版があります。ソースの大半は `common/` の同じファイルで、NuttX 版と
+FreeRTOS 版は Zephyr の API を Zephyr の名前のまま再現する互換層の上でそれをビルドします。計測、MQTT の送信、時刻同期、
+KV（同じ場所・同じ形式なので、版を書き換えても残ります）、校正、Wi-Fi、Telnet のシェルの動作と、独自のコマンド（`imu`、
+`kv`、`ntp`、`nina`、`dmesg`、`i2c_dma`、`sensor`、`wifi cred`）の構文と出力は 3 つの版で同じです。
 
-## NuttX 版
+| 版 | 使い方 | 使う側から見た違い |
+|---|---|---|
+| Zephyr 版 | この README | それ以外のコマンドは Zephyr 標準（`wifi`、`net`、`kernel`、`zperf` など） |
+| NuttX 版 | [`nuttx/README_ja.md`](nuttx/README_ja.md) | それ以外のコマンドは NuttX 標準（`wapi`、`ifconfig`、`iperf`、`ps`、`reboot` など） |
+| FreeRTOS 版 | [`freertos/README_ja.md`](freertos/README_ja.md) | それ以外のコマンドは短い名前（`version`、`reboot`、`ps`、`ifconfig` など）、`zperf` は TCP だけ |
 
-同じファームウェアを NuttX 13.1.0 に移植したもの（NuttX 版）が [`nuttx/`](nuttx/README_ja.md) にあります。
-計測、MQTT の送信、時刻同期、KV、校正、Wi-Fi、Telnet のシェルは Zephyr 版と同じ動作で、独自のコマンド
-（`imu`、`kv`、`ntp`、`nina`、`dmesg`、`i2c_dma`、`sensor`、`wifi cred`）は構文と出力も同じです。それ以外の
-コマンドは NuttX 標準のもの（`wapi`、`ifconfig`、`iperf`、`ps`、`reboot` など）に置き換わります。
-
-- 環境構築、ビルド、書き込み、使い方は [`nuttx/README_ja.md`](nuttx/README_ja.md) を見てください。Zephyr 版の
-  コマンドと NuttX 版のコマンドの対応表、エラー番号（errno）の対応表、Zephyr 版との違いもそこにあります。
-- PC 側のツール（`host/` の `imu-host`、`ImuStudio`）は、どちらのファームウェアにも使えます
-  （[`host/README_ja.md`](host/README_ja.md) の「ボードのファームウェア」）。
-- KV の領域に別のデータ（NuttX 版の以前の形式など）があると、NuttX 版は KV を使わず、`kv wipe confirm` で消して
-  から登録し直します（`nuttx/README_ja.md` の「Zephyr 版からの移し替え」）。
-- 設計上の違いは [設計書](design/imu-raw-mqtt-design-ja.md) の §11 にあります。
-
-## FreeRTOS 版
-
-同じファームウェアを Raspberry Pi Pico SDK 2.3.1 と FreeRTOS カーネル V11.3.3 で作ったもの（FreeRTOS 版）が
-[`freertos/`](freertos/README_ja.md) にあります。計測、MQTT の送信、時刻同期、KV、校正、Wi-Fi、Telnet のシェルは
-Zephyr 版と同じ動作で、独自のコマンド（`imu`、`kv`、`ntp`、`nina`、`dmesg`、`i2c_dma`、`sensor`、`wifi cred`）と
-`zperf`（TCP だけ）、`wifi connect`・`disconnect`・`scan`・`status` は構文と出力も同じです。それ以外は短い名前
-（`version`、`reboot`、`ps`、`uptime`、`ifconfig`、`date`）で、`kernel ...`・`net ...` はありません。
-
-- 環境構築、ビルド、書き込み、コマンドの一覧は [`freertos/README_ja.md`](freertos/README_ja.md)、内部の説明と
-  Zephyr 版・NuttX 版との違いの表は [`freertos/drivers/README_ja.md`](freertos/drivers/README_ja.md) にあります。
-- PC 側の `imu-host` と `script/kv_transfer.py` は FreeRTOS 版を見分けます（USB の名前とプロンプト `freertos:~$ `、
-  [`host/README_ja.md`](host/README_ja.md) の「ボードのファームウェア」）。
-- 設計上の違いは [設計書](design/imu-raw-mqtt-design-ja.md) の §13 にあります。
+PC 側のツールはどの版にも使えます（[`host/README_ja.md`](host/README_ja.md) の「ボードのファームウェア」）。`common/` の構成は
+[設計書](design/imu-raw-mqtt-design-ja.md)の §12、NuttX 版と FreeRTOS 版の設計上の違いは §11 と §13 にあります。
 
 ## 3 つの版の性能
 
@@ -427,7 +406,7 @@ NINA は 0001〜0006 のファームウェアです。
 - `cpu_active` は、機能が同じでもイメージの配置が変わるだけで 1 ポイント程度動きます。
 - FreeRTOS 版の `cpu_active` には、1 ms ごとの tick の割り込みの時間が入ります（Zephyr 版と NuttX 版にはこの割り込みが
   ありません）。
-- 2026-11-14 の像（boot2 の分周 4、C ライブラリの `memcpy`・`memset` と割り算、NINA はパッチ 0001・0002 のファームウェア）では、
+- 2026-11-14 のイメージ（boot2 の分周 4、C ライブラリの `memcpy`・`memset` と割り算、NINA はパッチ 0001・0002 のファームウェア）では、
   送信中の `cpu_active` が Zephyr 版 62.6〜63.3 %、NuttX 版 67.7〜67.9 % でした。
 - `sensor stream` は、Zephyr 版と NuttX 版のどちらでも ODR を上げると `Read failed` で止まりました。Zephyr 版は
-  833 Hz 以上、NuttX 版は 3333 Hz 以上です（2026-11-14 の像、watermark 128、USB コンソール、各 1 回）。
+  833 Hz 以上、NuttX 版は 3333 Hz 以上です（2026-11-14 のイメージ、watermark 128、USB コンソール、各 1 回）。

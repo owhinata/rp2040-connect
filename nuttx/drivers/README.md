@@ -32,7 +32,7 @@ What the core needs from the OS and the board (its boundary):
 
 | File | Role |
 |---|---|
-| `common/drivers/nina/nina_spi.c` | Framing of commands and answers (`nina_request()`, `nina_ip_config()`). Originally a port of the functions of the same names in the Zephyr version's `nina_wifi.c`, with the branches, order, constants and error values matching one to one; now used by the three builds |
+| `common/drivers/nina/nina_spi.c` | Framing of commands and answers (`nina_request()`, `nina_ip_config()`). Used by the three builds |
 | `common/drivers/nina/nina_proto.h` | The public declarations; the Zephyr version uses the same file |
 | `common/drivers/nina/nina_os.h`, `nina/nina_os.c` | The lock (a recursive mutex with priority inheritance), sleeps, the millisecond clock and the wait for READY on its interrupt: Zephyr's `K_MUTEX`, `k_sleep()` and `k_uptime_get()` |
 | `common/drivers/nina/nano_nina.h`, the board's `src/nano_nina.c` | SPI1 and the four lines (CS, READY, RESET, IRQ): what Zephyr's devicetree and its SPI and GPIO drivers set up |
@@ -75,7 +75,7 @@ TCP/IP stack is not used (`NET_TCP_NO_STACK`, `NET_UDP_NO_STACK`).
 
 | File | Role |
 |---|---|
-| `common/drivers/nina/nina_sock.[ch]` | The socket table (10 sockets) and the NINA's socket commands: `nina_socket_create()`, `do_bind()`, `do_listen()`, `do_accept()`, `do_connect()`, `do_close()` and `do_setsockopt()`, originally of the Zephyr version's `nina_socket.c`, and for sending and receiving `udp_send()`, `do_send()`, `do_sendmsg()`, `udp_recv()` and `do_recv()`, with the names, branches, order, constants and errno names kept (one pass of a send or receive wait loop per request); the Zephyr version now uses this file too. `FIONREAD` (`nina_sock_fionread()`) and the driver's own socket options `NINA_SO_CALLER_POLLS` and `NINA_SO_POLL` (`nina_sock_poll_revents()`, `common/drivers/nina/nina_sockopt.h`) are not used by the Zephyr version. OS-independent |
+| `common/drivers/nina/nina_sock.[ch]` | The socket table (10 sockets) and the NINA's socket commands: `nina_socket_create()`, `do_bind()`, `do_listen()`, `do_accept()`, `do_connect()`, `do_close()` and `do_setsockopt()`, and for sending and receiving `udp_send()`, `do_send()`, `do_sendmsg()`, `udp_recv()` and `do_recv()`, (one pass of a send or receive wait loop per request). Used by the three builds. `FIONREAD` (`nina_sock_fionread()`) and the driver's own socket options `NINA_SO_CALLER_POLLS` and `NINA_SO_POLL` (`nina_sock_poll_revents()`, `common/drivers/nina/nina_sockopt.h`) are not used by the Zephyr version. OS-independent |
 | `nina/nina_usrsock.c` | Dispatches usrsock's requests to the functions above and answers them (ACK) |
 | `nina/nina_poller.c` | The thread `nina_event`: turns the state of the NINA's sockets into usrsock events (for a socket whose callers poll, only while it connects), and times the retries of a waiting send; with a firmware that reports socket events, it wakes on the IRQ line's edges |
 | `nina/nina_usrsock.h` | The declarations between the two |
@@ -181,7 +181,7 @@ TCP/IP stack is not used (`NET_TCP_NO_STACK`, `NET_UDP_NO_STACK`).
 
 ### Name resolution
 
-`common/drivers/nina/nina_dns.c` is a line-by-line port of the Zephyr version's `nina_dns.c` (the Zephyr version now uses this file too): it
+`common/drivers/nina/nina_dns.c` (used by the three builds)
 resolves a name with the NINA's resolver commands (0x34 with the name, 0x35 to read the address) to
 one IPv4 address. A numeric address is not sent to the NINA. The Zephyr version registers it as the
 socket offload's `getaddrinfo()`, used by `zsock_getaddrinfo()`; the NuttX version has functions of
@@ -194,7 +194,7 @@ server over UDP itself) is not used; `CONFIG_NANO_NINA_DNS` cannot be on togethe
 address of the wrong length, `EAI_BADFLAGS`/`EAI_FAMILY`/`EAI_SOCKTYPE` for bad hints, `EAI_SERVICE`
 for a bad service, `EAI_MEMORY`). A mutex covers the two commands (the NINA keeps one result). The
 result comes from `malloc()`, not the Zephyr version's 2 KB heap. The host test is
-`common/tests/nina_dns.c`. The only user now is the time synchronization when its NTP server is
+`common/tests/nina_dns.c`. The only user is the time synchronization when its NTP server is
 given by name (the default is the gateway).
 
 ### Wi-Fi (network device `wlan0`)
@@ -283,7 +283,7 @@ Bit 2 on NuttX:
   4, 8, 16 ms, then 20 ms).
 - A waiting TCP send's next pass: after a pass that only polled (the socket was not writable),
   when the count has changed since the request noted it before its commands (100 ms at most, not
-  past the send's deadline); after a pass that sent and got zero bytes, 1 ms later as before.
+  past the send's deadline); after a pass that sent and got zero bytes, 1 ms later, as without bit 2.
 - The layer's `zsock_recv()` and `zsock_poll()` use the same waits (`nina_wait()`). A
   `zsock_poll()` that includes a NuttX socket (not a NINA one) looks again at least every 20 ms.
 - If `nina_os_event_start()` fails, the waits keep their intervals whatever the firmware.
@@ -353,9 +353,11 @@ LED, both the mass storage and PICOBOOT interfaces on).
 
 ## I2C0
 
-The core is in the repository's `common/drivers/i2c_dw/` (it does not depend on the OS; the board's
-`src/Make.defs` finds it through `VPATH`, and the objects are made in the board's directory); the
-NuttX part is in the board's `src/`.
+The driver of I2C0 and I2C1 is the I2C core shared with the FreeRTOS build (the core itself, its relation to the
+Zephyr build's driver and the common part of the rules for other code that uses DMA are in section 12 of the
+[design](../../design/imu-raw-mqtt-design.md)). NuttX's `rp2040_i2c.c` (`CONFIG_RP2040_I2C`) is not used. The core is
+in the repository's `common/drivers/i2c_dw/` (the board's `src/Make.defs` finds it through `VPATH`, and the objects are
+made in the board's directory); the NuttX part is in the board's `src/`.
 
 | File | Role |
 |---|---|
@@ -364,7 +366,7 @@ NuttX part is in the board's `src/`.
 | `common/drivers/i2c_dw/i2c_dw_dma_os.h` | The DMA boundary of the DMA reads: what they need from the OS's own DMA driver (the second table below), one call for each call of Zephyr's DMA API in the patched driver. No OS name; the core touches no DMA register |
 | `common/drivers/i2c_dw/i2c_dw.h` | Definitions and pure functions without OS headers: the definitions of the Zephyr version's `i2c_dw.h`, the SCL counts, the speed class of a frequency, the NuttX flags (`I2C_M_*`) turned into Zephyr's (`I2C_MSG_*`) and the words written to `IC_DATA_CMD`. Host test `common/tests/i2c_dw.c` |
 | `common/drivers/i2c_dw/i2c_dw_registers.h` | A copy of the Zephyr version's `i2c_dw_registers.h` (the accessors are defined on plain volatile 32-bit accesses, the addresses are `uintptr_t` in place of Zephyr's `mm_reg_t`) |
-| `common/compat/zephyr/drivers/i2c/i2c_dw_rp2040_dma.h` | The state that the `i2c_dma` command (`common/shell/i2c_dma_shell.c`, shared by the three builds; this build's is built by `nuttx/apps/i2c_dma`) reads and sets: DMA on or off and the four counters (`i2c_dw_rp2040_dma_get_stats()`, `_enabled()`, `_set_enabled()`). The same file as the one that patch 0003 adds to Zephyr's `include/zephyr/drivers/i2c` (`i2c_dw_sync` checks) |
+| `common/drivers/i2c_dw/i2c_dw_rp2040_dma.h` | The state that the `i2c_dma` command (`common/shell/i2c_dma_shell.c`, shared by the three builds; this build's is built by `nuttx/apps/i2c_dma`) reads and sets: DMA on or off and the four counters (`i2c_dw_rp2040_dma_get_stats()`, `_enabled()`, `_set_enabled()`). The command includes it by Zephyr's name, `<zephyr/drivers/i2c/i2c_dw_rp2040_dma.h>`: the header of that name in `common/compat/zephyr/drivers/i2c/` includes this file. The declarations are those of the header that patch 0003 adds to Zephyr's tree (`i2c_dw_sync` checks) |
 | The board's `src/i2c_dw_os_impl.h` | The NuttX implementation of the boundary: semaphores (`sem_t`: `nxsem_post()`, `nxsem_tickwait_uninterruptible()`, `nxsem_wait_uninterruptible()`, `nxsem_reset()`), time (the system ticks), `nxsched_msleep()`, `up_irq_save()`, the messages (`struct i2c_msg_s`, with Zephyr's flags made by `i2c_dw_msg_flags()`), `I2C_DW_CLOCK_SPEED` (`BOARD_PERI_FREQ`) |
 | The board's `src/i2c_dw_instance.h` | The NuttX part of I2C0 and I2C1: the operations of `struct i2c_master_s` (`I2C_TRANSFER()` checks the request, takes the speed from the frequency and calls the core's transfer; `I2C_RESET()`), the interrupt handler attached with `irq_attach()`, the reset and the pins (`i2c_dw_pinctrl()`), shared by both, `i2c_dw_i2c0_initialize()` and `i2c_dw_i2c1_initialize()`. Host test `nuttx/tests/i2c_dw_instance.c` |
 | The board's `src/i2c_dw_dma_os.c` | The NuttX implementation of the DMA boundary on NuttX's own DMA driver, `arch/arm/src/rp2040/rp2040_dmac.c` (`CONFIG_RP2040_DMAC`). Host test `nuttx/tests/i2c_dw_dma_os.c` |
@@ -395,19 +397,6 @@ marked "interrupt" are called from the interrupt handlers.
 | `CONFIG_I2C_DW_I2C0`, `CONFIG_I2C_DW_I2C1` | The instances to build (Zephyr: the devicetree's enabled nodes) | Kconfig (`I2C_DW_I2C0` on, `I2C_DW_I2C1` off by default) |
 | `CONFIG_I2C_DW_RP2040_DMA` | Build the DMA reads of I2C0 (the same symbol as the Zephyr version's) | Kconfig |
 
-The OS's I2C0 device (`i2c_dw_instance.h`) sets `base` of `i2c_0_runtime` (0x40044000), initializes
-the semaphores (`device_sync_sem` and `rp2040_dma_sem` to 0, `bus_sem` to 1), calls
-`i2c_dw_dma_os_initialize()` and then `i2c_dw_turn_on()` once at boot, and sets `ready` when the latter
-succeeds. The I2C1 device does the same for `i2c_1_runtime` (0x40048000) without the DMA part and its
-semaphore. Each device has its own semaphores, so transfers on the two buses run side by side. The
-transfer entry (one for both)
-refuses what the Zephyr API cannot express (no message array, more than 255 messages, addresses or
-speeds that differ between messages, a 10-bit address, a missing buffer, a device that is not ready),
-returns 0 for no message, and otherwise returns `i2c_dw_transfer_msgs(dw, msgs, count, address,
-speed)` (`speed` is Zephyr's speed class). The I2C0 and DMA interrupts run at the same priority
-(`CONFIG_ARCH_IRQPRIO` off: every interrupt at the default), and the handlers and the transfers run on
-one core.
-
 What the OS's DMA driver provides at the DMA boundary (`i2c_dw_dma_os.h`). These are ordinary
 functions of `src/i2c_dw_dma_os.c` (once per read, not per byte). Only the transfer that holds the bus
 semaphore calls them, from its thread; the callback is called from the DMA interrupt. None waits for
@@ -428,6 +417,20 @@ another user of the DMA.
 The writes of INTE0 (through the set and clear aliases), INTS0 and CHAN_ABORT carry only the channel's
 own bit, as `rp2040_dmac.c` writes them; other channels are not touched.
 
+**Devices and transfers**
+
+The OS's I2C0 device (`i2c_dw_instance.h`) sets `base` of `i2c_0_runtime` (0x40044000), initializes
+the semaphores (`device_sync_sem` and `rp2040_dma_sem` to 0, `bus_sem` to 1), calls
+`i2c_dw_dma_os_initialize()` and then `i2c_dw_turn_on()` once at boot, and sets `ready` when the latter
+succeeds. The I2C1 device does the same for `i2c_1_runtime` (0x40048000) without the DMA part and its
+semaphore. Each device has its own semaphores, so transfers on the two buses run side by side. The
+transfer entry (one for both) refuses what the Zephyr API cannot express (no message array, more than 255 messages, addresses or
+speeds that differ between messages, a 10-bit address, a missing buffer, a device that is not ready),
+returns 0 for no message, and otherwise returns `i2c_dw_transfer_msgs(dw, msgs, count, address,
+speed)` (`speed` is Zephyr's speed class). The I2C0 and DMA interrupts run at the same priority
+(`CONFIG_ARCH_IRQPRIO` off: every interrupt at the default), and the handlers and the transfers run on
+one core.
+
 - The calling thread drives a transfer and the interrupt handler moves the bytes. The caller waits
   for the end on a semaphore (1 s; after that the transfer is aborted and returns `-ETIMEDOUT`). A
   bus semaphore serializes whole transfers (no priority inheritance, as in the Zephyr version).
@@ -441,64 +444,73 @@ own bit, as `rp2040_dmac.c` writes them; other channels are not touched.
 - Not ported: target (slave) mode, Intel LPSS DMA, `CONFIG_I2C_ALLOW_NO_STOP_TRANSACTIONS`, the SDA/SCL
   timeouts (`CONFIG_I2C_DW_EXTENDED_SUPPORT`), power management, PCIe, code for other SoCs, the bus
   recovery and check callbacks (not registered on this board; recovery does nothing).
-- I2C1 (`CONFIG_I2C_DW_I2C1`, off by default; nothing is connected to it on the board): the second
-  instance of the same core, on GPIO18 (SDA, Arduino D6) and GPIO19 (SCL, D7) with the internal
-  pull-ups (`BOARD_I2C1_SDA_GPIO`, `BOARD_I2C1_SCL_GPIO` in the board's `include/board.h`), always on
-  the interrupts (the DMA reads are I2C0's), `/dev/i2c1` with `CONFIG_I2C_DRIVER`. A failure of its
-  start is logged and changes nothing else. To build it without changing the defconfig: after a
-  build, `printf 'CONFIG_I2C_DW_I2C1=y\nCONFIG_I2CTOOL_MAXBUS=1\n' >> nuttx/nuttx/.config`,
-  `make -C nuttx/nuttx olddefconfig`, then `nuttx/script/build.sh` (without `--clean`, which goes
-  back to the defconfig). The i2c tool's bus 1 (`i2c dev -b 1 0x08 0x77`) needs
-  `CONFIG_I2CTOOL_MAXBUS` 1. I2C1 has been built and host-tested (`nuttx/tests/i2c_dw_instance.c`)
-  but never used with a real device.
-- The DMA reads (`CONFIG_I2C_DW_RP2040_DMA`, on by default, the same symbol as the Zephyr
-  version's) copy the DMA part of `i2c_dw.c` and `i2c_dw_rp2040_dma_priv.h` with the same branches,
-  order and values (`common/drivers/i2c_dw/i2c_dw_rp2040_dma_priv.h`, included once by `i2c_dw.c`):
-  - Conditions: DMA on (`i2c_dma mode`), the DMA ready (its two channels had at boot), 32 to 3584
-    bytes (`I2C_DW_RP2040_DMA_MAX_READ`), ending with STOP, the last message of the transfer, a 7-bit
-    address. Otherwise `-EAGAIN` sends the read to the interrupt path. When a channel cannot be had
-    or configured, `dma_fallbacks` is counted and the read also goes to the interrupt path (nothing
-    has been started yet). In this build the two channels are kept from boot, so a channel is always
-    there for the one read at a time: `dma_fallbacks` stays 0 unless a setup is refused (a channel
-    still busy).
-  - The TX channel writes the read command words (16 bits: READ on each, RESTART on the first only
-    when one is needed, STOP on the last) to `IC_DATA_CMD`; the RX channel takes the data from
-    `IC_DATA_CMD` 8 bits at a time. `IC_DMA_TDLR` is 8, `IC_DMA_RDLR` 0, the only interrupts are
-    STOP_DET, TX_ABRT, TX_OVER, RX_OVER, RX_UNDER and SCL_STUCK_LOW. The RX channel starts first,
-    then TX, then `IC_DMA_CR` gets 3.
-  - The read ends when TX done, RX done and STOP have all come, or on an error (an I2C error
-    interrupt, a DMA bus error). The wait uses the transfer time limit (1 s) as one deadline and
-    waits for what is left of it. An error gives `-EIO`, the deadline `-ETIMEDOUT`.
-  - Clean-up: `IC_DMA_CR` 0, interrupt mask 0; on failure abort the I2C and stop both DMA channels
-    (interrupt off, CHAN_ABORT, wait in 1 ms steps for at most 100 ms until each channel's BUSY and
-    its bit of CHAN_ABORT clear (the Zephyr version waits for all of CHAN_ABORT), then acknowledge
-    late completions (RP2040-E13)). If they do not
-    stop, the controller is quarantined (`<err> i2c_dw: DMA channels did not stop; I2C controller
-    quarantined`, `-EIO`, the channels are not released) and every later transfer gives `-EIO` until
-    a reboot. Otherwise the interrupts are cleared and, on failure, the abort is given at most 100 ms
-    to finish (else quarantine and `<err> i2c_dw: I2C abort did not finish; controller quarantined`).
-  - The DMA is NuttX's own driver, `rp2040_dmac.c` (`CONFIG_RP2040_DMAC`, on; `arm_dma_initialize()`
-    runs in `up_initialize()`, before the board's bring-up). It has one interrupt line, DMA_IRQ_0,
-    for every channel; its `rp2040_dmachannel()` waits while all twelve channels are taken and its
-    `rp2040_dmastop()` waits for CHAN_ABORT without a limit, so the board's `i2c_dw_dma_os.c` takes
-    its two channels once at boot (a read never waits for one) and stops a channel by writing
-    CHAN_ABORT itself (the core waits with its limit). NuttX's handler writes a failed channel's
-    error flags back through CTRL_TRIG, a trigger register, which can start the channel again from
-    where it stopped; the board's callback then aborts it at once. Its status of an earlier channel
-    of the same interrupt also carries over to later ones, so another user's bus error served in
-    the same interrupt fails this read too (`-EIO`, one `dma_errors`). No local patch of
-    `rp2040_dmac.c` is needed.
-  - Other code of this build may use NuttX's DMA the usual way (`rp2040_dmachannel()` and the rest;
-    the other ten channels). It must not touch the two channels of the reads (they are allocated in
-    `rp2040_dmac.c`'s table, so its allocation never hands them out), reset the DMA block or write
-    whole registers shared by the channels (INTE0, INTS0, CHAN_ABORT: only its own bits, as
-    `rp2040_dmac.c` does), take DMA_IRQ_0 from `rp2040_dmac.c` with `irq_attach()`, or route its
-    channels' interrupts to DMA_IRQ_1 without its own handler there. `CONFIG_RP2040_SPI_DMA`, which
-    `RP2040_DMAC` makes available and turns on by default, is off in the `imu` configuration: the
-    NINA's SPI stays polled, as in the Zephyr version (with it on, the SPI driver would take two
-    more channels at boot).
-  - `rp2040_dma_events` is updated with interrupts off (Zephyr's `atomic_or()`); the four counters are
-    written only by the transfer, which holds the bus semaphore (32 bits, wrapping).
+
+**I2C1** (`CONFIG_I2C_DW_I2C1`, off by default; nothing is connected to it on the board)
+
+- The second instance of the same core, on GPIO18 (SDA, Arduino D6) and GPIO19 (SCL, D7) with the internal
+  pull-ups (`BOARD_I2C1_SDA_GPIO`, `BOARD_I2C1_SCL_GPIO` in the board's `include/board.h`). It always transfers on
+  the interrupts (the DMA reads are I2C0's). With `CONFIG_I2C_DRIVER` it is registered as `/dev/i2c1`. A failure of
+  its start is logged and changes nothing else.
+- To build it without changing the defconfig: after a build,
+  `printf 'CONFIG_I2C_DW_I2C1=y\nCONFIG_I2CTOOL_MAXBUS=1\n' >> nuttx/nuttx/.config`, `make -C nuttx/nuttx olddefconfig`,
+  then `nuttx/script/build.sh` (without `--clean`, which goes back to the defconfig). The i2c tool's bus 1
+  (`i2c dev -b 1 0x08 0x77`) needs `CONFIG_I2CTOOL_MAXBUS` 1.
+- I2C1 has been built and host-tested (`nuttx/tests/i2c_dw_instance.c`) but never used with a real device.
+
+**DMA reads** (`CONFIG_I2C_DW_RP2040_DMA`, on by default, the same symbol as the Zephyr version's)
+
+The core's `common/drivers/i2c_dw/i2c_dw_rp2040_dma_priv.h` (included once by `i2c_dw.c`) copies the DMA part of the
+patched driver with the same branches, order and values.
+
+- Conditions: DMA on (`i2c_dma mode`), the DMA ready (its two channels had at boot), 32 to 3584
+  bytes (`I2C_DW_RP2040_DMA_MAX_READ`), ending with STOP, the last message of the transfer, a 7-bit
+  address. Otherwise `-EAGAIN` sends the read to the interrupt path. When a channel cannot be had
+  or configured, `dma_fallbacks` is counted and the read also goes to the interrupt path (nothing
+  has been started yet).
+- The read: the TX channel writes the read command words (16 bits: READ on each, RESTART on the first only
+  when one is needed, STOP on the last) to `IC_DATA_CMD`; the RX channel takes the data from
+  `IC_DATA_CMD` 8 bits at a time. `IC_DMA_TDLR` is 8, `IC_DMA_RDLR` 0, the only interrupts are
+  STOP_DET, TX_ABRT, TX_OVER, RX_OVER, RX_UNDER and SCL_STUCK_LOW. The RX channel starts first,
+  then TX, then `IC_DMA_CR` gets 3.
+- The end: when TX done, RX done and STOP have all come, or on an error (an I2C error
+  interrupt, a DMA bus error). The wait uses the transfer time limit (1 s) as one deadline and
+  waits for what is left of it. An error gives `-EIO`, the deadline `-ETIMEDOUT`.
+- Clean-up: `IC_DMA_CR` 0, interrupt mask 0; on failure abort the I2C and stop both DMA channels
+  (interrupt off, CHAN_ABORT, wait in 1 ms steps for at most 100 ms until each channel's BUSY and
+  its bit of CHAN_ABORT clear, then acknowledge late completions (RP2040-E13)). If they do not
+  stop, the controller is quarantined (`<err> i2c_dw: DMA channels did not stop; I2C controller
+  quarantined`, `-EIO`, the channels are not released) and every later transfer gives `-EIO` until
+  a reboot. Otherwise the interrupts are cleared and, on failure, the abort is given at most 100 ms
+  to finish (else quarantine and `<err> i2c_dw: I2C abort did not finish; controller quarantined`).
+- `rp2040_dma_events` is updated with interrupts off (Zephyr's `atomic_or()`); the four counters are
+  written only by the transfer, which holds the bus semaphore (32 bits, wrapping).
+
+**On NuttX's DMA driver** (the board's `src/i2c_dw_dma_os.c`)
+
+- The DMA is NuttX's own driver, `rp2040_dmac.c` (`CONFIG_RP2040_DMAC`, on; `arm_dma_initialize()`
+  runs in `up_initialize()`, before the board's bring-up). It has one interrupt line, DMA_IRQ_0,
+  for every channel. No local patch of `rp2040_dmac.c` is needed.
+- `rp2040_dmachannel()` waits while all twelve channels are taken, so `i2c_dw_dma_os.c` takes its two
+  channels once at boot and keeps them for the reads. A read never waits for a channel, and the one read at a
+  time always has its channels, so `dma_fallbacks` stays 0 unless a setup is refused (a channel still busy).
+- `rp2040_dmastop()` waits for CHAN_ABORT without a limit, so `i2c_dw_dma_os.c` stops a channel by writing
+  CHAN_ABORT itself and the core waits with its limit (100 ms). The Zephyr version waits for all of CHAN_ABORT.
+- NuttX's handler writes a failed channel's error flags back through CTRL_TRIG, a trigger register, which can
+  start the channel again from where it stopped; the board's callback then aborts it at once.
+- The handler's status of an earlier channel of the same interrupt also carries over to later ones, so another
+  user's bus error served in the same interrupt fails this read too (`-EIO`, one `dma_errors`).
+
+**Other code that uses DMA**
+
+- Other code of this build may use NuttX's DMA the usual way (`rp2040_dmachannel()` and the rest; the other ten
+  channels).
+- It must not: touch the two channels of the reads (they are allocated in `rp2040_dmac.c`'s table, so its
+  allocation never hands them out); reset the DMA block; write whole registers shared by the channels (INTE0,
+  INTS0, CHAN_ABORT: only its own bits, as `rp2040_dmac.c` does); take DMA_IRQ_0 from `rp2040_dmac.c` with
+  `irq_attach()`; or route its channels' interrupts to DMA_IRQ_1 without its own handler there.
+- `CONFIG_RP2040_SPI_DMA`, which `RP2040_DMAC` makes available and turns on by default, is off in the `imu`
+  configuration: the NINA's SPI stays polled, as in the Zephyr version (with it on, the SPI driver would take two
+  more channels at boot).
 
 ## LSM6DSOX (`lsm6dso`)
 

@@ -70,7 +70,7 @@ differ, and [`firmware_profiles.toml`](firmware_profiles.toml) holds that differ
   the FreeRTOS build).
 
 Until the firmware is known, a line that ends with any of the prompts ends a command (the Zephyr
-prompt is written as `$ `, which every line ending in `$` matches; this is the earlier check).
+prompt is written as `$ `, which every line ending in `$` matches).
 Once the board is known to be the NuttX build, it waits for a line ending in `nsh$`, so a line of
 output that happens to end in `$` (the ASCII column of `i2c dump`, for example) does not end the
 command early (the same holds for `freertos:~$` on the FreeRTOS build). The echo and the Telnet
@@ -79,7 +79,7 @@ commands are dropped, so the output is handled the same way for every build.
 `firmware_profiles.toml` lives in `host/`, and `board.py` reads it from there (one directory above
 `imu_host/`, with the `pip install -e .` installation). If the file is missing, or with Python
 3.10, which has no `tomllib`, `board.py` uses the values of the first entry (the Zephyr build),
-which it also holds itself, so a Zephyr board works as before. A malformed file is an error.
+which it also holds itself, so a Zephyr board works without the file. A malformed file is an error.
 
 The detection can be checked without a board:
 

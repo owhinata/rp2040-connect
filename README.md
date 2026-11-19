@@ -77,7 +77,7 @@ west build -b arduino_nano_connect app/blink -d build/blink
 ```
 
 The NINA-W102 is expected to run Arduino NINA firmware 3.0.2 with this repository's patches (0001 to
-0006). The driver also works, as before, with a firmware that lacks what 0003 to 0006 add (a scan that
+0006). The driver also works, without those additions, with a firmware that lacks what 0003 to 0006 add (a scan that
 keeps the connection, socket events, and so on). See [firmware/nina-fw](firmware/nina-fw/README.md) for
 the build and cautions. The first line of `nina version` is the version, the second
 (`NINA capabilities: 0x... (in use 0x...)`) the module's capability bits and those in use.
@@ -365,66 +365,40 @@ summary (missing batches, valid and reversed times) and at the errors in `imu st
 
 | Path | Content |
 |---|---|
-| `zephyr/app/usb-console/src/` | The parts of the application that are the Zephyr build's own: key-value store, RAM log, start-up. Those shared with the other builds (measurement, time sync, MQTT, Wi-Fi settings, calibration and others) are in `common/imu/` |
-| `zephyr/app/usb-console/drivers/` | Local drivers for the LSM6DSO and the sensor shell, and the Zephyr side of the NINA (the socket offload, the core's boundaries) |
-| `zephyr/app/usb-console/tests/` | Host tests (those of the Zephyr build only) |
+| `zephyr/app/usb-console/src/` | Application sources of the Zephyr build only (key-value store, RAM log, start-up) |
+| `zephyr/app/usb-console/drivers/` | Local drivers of the Zephyr build (LSM6DSO, sensor shell, the Zephyr side of the NINA) |
+| `zephyr/app/usb-console/tests/` | Host tests of the Zephyr build only |
 | `zephyr/app/blink/` | LED blink sample |
 | `zephyr/script/` | Setup, host tests |
-| `nuttx/` | The NuttX build (board definition, drivers, applications, patches, scripts, host tests) |
-| `common/` | Sources whose files the three builds share (`imu/`: the acquisition service, transport, time synchronization, calibration, the Wi-Fi profile, the key-value API and the `kv` command; `drivers/`: the LSM6DSO driver, the sensor shell, the OS-independent core of the NINA, the OS-independent core of I2C0 and DMA (used by the NuttX and FreeRTOS builds); `compat/`: the OS-independent part of the Zephyr API compatibility layer that the NuttX and FreeRTOS builds use, with copies of Zephyr's libraries; `shell/` and `log/`: the shell's command handling and the RAM log (NuttX and FreeRTOS builds)) and their host tests (`tests/`; `tests/run.sh` is called by each build's `host_tests.sh`). The layout is in section 12 of the [design](design/imu-raw-mqtt-design.md) |
-| `openmv/` | Build environment for the OpenMV MicroPython firmware ([`openmv/README.md`](openmv/README.md)) |
-| `freertos/` | The Pico SDK + FreeRTOS build (build environment, application, the FreeRTOS part of the compatibility layer, drivers, scripts, host tests; [`freertos/README.md`](freertos/README.md)) |
 | `zephyr/manifest/west.yml` | Versions of Zephyr and its modules |
-| `zephyr/manifest/zephyr/` | Local patches of Zephyr and its modules (`patches.yml`, `patches/`) |
+| `zephyr/manifest/zephyr/` | Local patches of Zephyr and its modules |
+| `common/` | Sources shared by the three builds, with their host tests (layout in section 12 of the [design](design/imu-raw-mqtt-design.md)) |
+| `nuttx/` | The NuttX build |
+| `freertos/` | The Pico SDK + FreeRTOS build |
+| `openmv/` | Build environment for the OpenMV MicroPython firmware ([`openmv/README.md`](openmv/README.md)) |
 | `design/` | Design and investigation notes |
 | `firmware/nina-fw/` | Fixes and build for the NINA firmware |
-| `host/` | PC-side tools (receive check, recording, calibration) and the display application `ImuStudio` |
-| `script/` | Script that turns the PC into a temporary access point, the backup and restore of the KV store (`kv_transfer.py`, for flashing another firmware and the like), and the writing of a UF2 shared by the three builds' `flash.sh` (`flash_uf2.sh`) |
+| `host/` | PC-side tools and the display application `ImuStudio` |
+| `script/` | Temporary access point on the PC, backup and restore of the key-value store, the UF2 writing shared by the three builds |
 
 ## The three builds and `common/`
 
-The same firmware comes in three builds: Zephyr (`zephyr/`), NuttX (`nuttx/`) and Pico SDK + FreeRTOS
-(`freertos/`). The sources of acquisition, transport, time synchronization, calibration, the key-value store
-and the drivers are the same files in `common/` (the three builds use the same NINA core; only the Zephyr
-build has its own I2C0 and DMA driver). The Zephyr build compiles them on Zephyr; the NuttX and
-FreeRTOS builds compile them on a compatibility layer that reproduces Zephyr's API under Zephyr's names
-(`common/compat/` and each build's `drivers/compat/`). The key-value store has the same place and format in
-the three builds, so it stays when you switch builds. Section 12 of the [design](design/imu-raw-mqtt-design.md)
-describes the layout of `common/` and the boundaries to each OS.
+The same firmware comes in three builds: Zephyr (`zephyr/`), NuttX (`nuttx/`, NuttX 13.1.0) and Pico SDK + FreeRTOS
+(`freertos/`, Pico SDK 2.3.1 and the FreeRTOS kernel V11.3.3). Most sources are the same files in `common/`; the NuttX and
+FreeRTOS builds compile them on a compatibility layer that reproduces Zephyr's API under Zephyr's names. Acquisition, MQTT
+delivery, time synchronization, the key-value store (same place and format, so it stays when you switch builds),
+calibration, Wi-Fi and the Telnet shell behave the same, and the commands of this project (`imu`, `kv`, `ntp`, `nina`,
+`dmesg`, `i2c_dma`, `sensor`, `wifi cred`) have the same syntax and output in the three builds.
 
-## NuttX build
+| Build | Usage | What differs for the user |
+|---|---|---|
+| Zephyr | this README | The other commands are Zephyr's standard ones (`wifi`, `net`, `kernel`, `zperf` and so on) |
+| NuttX | [`nuttx/README.md`](nuttx/README.md) | The other commands are NuttX's standard ones (`wapi`, `ifconfig`, `iperf`, `ps`, `reboot` and so on) |
+| FreeRTOS | [`freertos/README.md`](freertos/README.md) | The other commands have short names (`version`, `reboot`, `ps`, `ifconfig` and so on); `zperf` is TCP only |
 
-A port of the same firmware to NuttX 13.1.0 (the NuttX build) is in [`nuttx/`](nuttx/README.md).
-Acquisition, MQTT delivery, time synchronization, the KV store, calibration, Wi-Fi and the Telnet
-shell behave as in the Zephyr build, and the commands of this project (`imu`, `kv`, `ntp`, `nina`,
-`dmesg`, `i2c_dma`, `sensor`, `wifi cred`) have the same syntax and output. The other commands are
-replaced by the standard NuttX ones (`wapi`, `ifconfig`, `iperf`, `ps`, `reboot` and so on).
-
-- See [`nuttx/README.md`](nuttx/README.md) for setup, building, flashing and usage. It also has the
-  table of Zephyr commands and their NuttX counterparts, the table of error numbers (errno), and
-  the differences from the Zephyr build.
-- The PC tools (`imu-host` and `ImuStudio` in `host/`) work with either firmware ("Board firmware"
-  in [`host/README.md`](host/README.md)).
-- If the key-value area holds other data (the NuttX build's earlier format, for example), the NuttX
-  build does not use it; erase it with `kv wipe confirm` and store the values again ("Moving the values from the Zephyr build" in
-  `nuttx/README.md`).
-- Section 11 of the [design](design/imu-raw-mqtt-design.md) describes the design differences.
-
-## FreeRTOS build
-
-The same firmware built on the Raspberry Pi Pico SDK 2.3.1 and the FreeRTOS kernel V11.3.3 (the FreeRTOS
-build) is in [`freertos/`](freertos/README.md). Acquisition, MQTT delivery, time synchronization, the KV
-store, calibration, Wi-Fi and the Telnet shell behave as in the Zephyr build, and the commands of this
-project (`imu`, `kv`, `ntp`, `nina`, `dmesg`, `i2c_dma`, `sensor`, `wifi cred`), `zperf` (TCP only) and
-`wifi connect`, `disconnect`, `scan` and `status` have the same syntax and output. The others have short
-names (`version`, `reboot`, `ps`, `uptime`, `ifconfig`, `date`); there is no `kernel ...` or `net ...`.
-
-- See [`freertos/README.md`](freertos/README.md) for setup, building, flashing and the commands, and
-  [`freertos/drivers/README.md`](freertos/drivers/README.md) for the internals and the table of differences
-  from the Zephyr and NuttX builds.
-- `imu-host` and `script/kv_transfer.py` on the PC recognize the FreeRTOS build (by the USB name and the
-  prompt `freertos:~$ `; "Board firmware" in [`host/README.md`](host/README.md)).
-- Section 13 of the [design](design/imu-raw-mqtt-design.md) describes the design differences.
+The PC tools work with every build ("Board firmware" in [`host/README.md`](host/README.md)). Section 12 of the
+[design](design/imu-raw-mqtt-design.md) describes the layout of `common/`, sections 11 and 13 the design differences of the
+NuttX and FreeRTOS builds.
 
 ## Performance of the three builds
 

@@ -28,7 +28,7 @@ byte-for-byte reproducible (the build embeds its time).
 The RP2040 driver uses the firmware's BSD-style socket commands (0x70 to
 0x7f), including the fixed socket poll, for every socket. It asks 0x6A once
 at start-up and uses what 0003 to 0006 add; with an older firmware (3.0.2,
-or 0001 and 0002 only) it works as before. Images built earlier and backups
+or 0001 and 0002 only) it works without those additions. Images built earlier and backups
 can be kept in the ignored `images/` directory.
 
 ## Reading and writing the module's flash
@@ -183,7 +183,7 @@ Events can be missed, so the host still asks on a timeout: bit 2 of 0x6A is
 0 (an older firmware, or the task did not start); the firmware's select()
 failed (every event is then forgotten and the line raised, so the host
 asks again and re-arms); an edge was lost on the host. A timeout of about
-100 ms keeps the worst case short; without bit 2 the host polls as before.
+100 ms keeps the worst case short; without bit 2 the host polls at fixed intervals.
 
 Inside the firmware a task waits for the armed events with the VFS
 `select()` (an eventfd wakes it when events are armed). A socket is closed

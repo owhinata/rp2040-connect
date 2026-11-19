@@ -8,7 +8,7 @@ The internals of the FreeRTOS build (`freertos/`). How to use it and the list of
 file; this page shows where the files are and how they relate to the Zephyr and NuttX builds.
 
 Most of the FreeRTOS build's sources are in `common/`, which the three builds share (acquisition,
-transport, time synchronization, calibration, key-value store, the LSM6DSO, NINA and I2C0 drivers, the
+transport, time synchronization, calibration, key-value store, the LSM6DSO, NINA and I2C drivers, the
 shell's command handling). The shared sources are written on Zephyr's API, so the FreeRTOS build, like the
 NuttX build, runs them on a compatibility layer that provides Zephyr's API under Zephyr's names. The
 OS-independent part of the layer is `common/compat/`, the FreeRTOS part `freertos/drivers/compat/`.
@@ -219,39 +219,41 @@ zero gives the Pico SDK routines' results, the same in the three builds. `memcpy
 
 ## I2C0 and DMA, LSM6DSOX, GPIO interrupt
 
-- I2C0 is the shared core (`common/drivers/i2c_dw/i2c_dw.c`); the FreeRTOS build implements the
-  `i2c_dw_os.h` boundary in `drivers/i2c_dw/i2c_dw_os_impl.h` (semaphores, clock, interrupt masking) and
-  `i2c_dw_instance.h` (the layer's `i2c0` device with Zephyr's I2C API, the interrupt registration, reset,
+- **The driver**: I2C0 and I2C1 are the I2C core shared with the NuttX build (`common/drivers/i2c_dw/`;
+  the core itself and its relation to the Zephyr build's driver are in section 12 of the
+  [design](../../design/imu-raw-mqtt-design.md)). The FreeRTOS build implements the core's `i2c_dw_os.h`
+  boundary in `drivers/i2c_dw/i2c_dw_os_impl.h` (semaphores, clock, interrupt masking) and
+  `i2c_dw_instance.h` (the layer's devices with Zephyr's I2C API, the interrupt registration, reset,
   pins). The boundary is listed in the "I2C0" table of
   [`nuttx/drivers/README.md`](../../nuttx/drivers/README.md).
-- The instances are chosen as in the NuttX build's Kconfig: `drivers/i2c_dw/i2c_dw.cmake` defines
+- **The instances** are chosen as in the NuttX build's Kconfig: `drivers/i2c_dw/i2c_dw.cmake` defines
   `CONFIG_I2C_DW_I2C0` always (the LSM6DSOX is on it; `drivers/lsm6dso/lsm6dso.cmake` stops the
   configuration without it) and `CONFIG_I2C_DW_I2C1` with the CMake option `I2C_DW_I2C1` (off by
   default). Each instance has its own device, interrupt handler, speed class and start-up
   (`i2c_dw_i2c0_initialize()`, `i2c_dw_i2c1_initialize()` in `i2c_dw_controllers.h`) under its symbol;
   the API, the pins' setup, the reset and the interrupt's connection are shared.
-- I2C1 (nothing is connected to it on the board) is the device `i2c1`
+- **I2C1** (nothing is connected to it on the board) is the device `i2c1`
   (`DEVICE_DT_GET(DT_NODELABEL(i2c1))`, name `i2c@40048000`), with the same Zephyr I2C API as `i2c0`, on
   GPIO18 (SDA, Arduino D6) and GPIO19 (SCL, D7) with the internal pull-ups (`I2C1_SDA_GPIO`,
   `I2C1_SCL_GPIO` in `i2c_dw_instance.h`), always on the interrupts (the DMA reads and `i2c_dma` are
   I2C0's). It starts after I2C0 in `main()`; a failure is logged and leaves `i2c1` not ready. It is not
   in the layer's device list (`device_get_binding()`). With `-DNANO_SELFTEST=ON` the `selftest`
   command checks it (below). I2C1 has been built and host-tested but never used with a real device.
-- The DMA reads of I2C0 use the Pico SDK's own DMA (`hardware_dma`, `hardware_irq`) through the core's
-  second boundary, `i2c_dw_dma_os.h`, implemented in `drivers/i2c_dw/i2c_dw_dma_os.c`: per read, two
-  channels from `dma_claim_unused_channel(false)` (none free: the read takes the interrupts and counts a
-  fallback), set up with the SDK's channel configuration (TX: 16-bit command words to IC_DATA_CMD, DREQ 32;
-  RX: bytes from it, DREQ 33), started with `dma_channel_start()`, given back with
-  `dma_channel_unclaim()`. Their interrupts go to DMA_IRQ_1, on a handler added with
+- **The DMA reads of I2C0** use the Pico SDK's own DMA (`hardware_dma`, `hardware_irq`) through the core's
+  second boundary, `i2c_dw_dma_os.h`, implemented in `drivers/i2c_dw/i2c_dw_dma_os.c`. Per read, two
+  channels come from `dma_claim_unused_channel(false)` (none free: the read takes the interrupts and counts a
+  fallback); they are set up with the SDK's channel configuration (TX: 16-bit command words to IC_DATA_CMD,
+  DREQ 32; RX: bytes from it, DREQ 33), started with `dma_channel_start()` and given back with
+  `dma_channel_unclaim()`. Nothing is reset at start-up.
+- **Their interrupt and stop**: the channels' interrupts go to DMA_IRQ_1, on a handler added with
   `irq_add_shared_handler()` (the default order priority) that looks only at the channels the read holds.
   A stop writes the channel's bit to CHAN_ABORT and the core waits for it with a bound (100 ms, then the
-  controller is quarantined); the SDK's `dma_channel_abort()` would wait without one. Nothing is reset at
-  start-up.
-- Other code of this build may use the DMA the usual way: claim channels with the SDK's allocation, and
-  share the interrupt lines with `irq_add_shared_handler()`. It must not: touch the two channels a read
-  holds (claimed in the SDK's record during the read); install an exclusive handler on DMA_IRQ_1
-  (`irq_set_exclusive_handler()` panics when a shared one is there) or acknowledge other channels' flags in
-  its handler of a shared line; reset the DMA block or write the whole of INTE0/INTE1, INTS0/INTS1 or
+  controller is quarantined); the SDK's `dma_channel_abort()` is not used, as it would wait without one.
+- **Other code that uses DMA**: other code of this build may use the DMA the usual way: claim channels with
+  the SDK's allocation, and share the interrupt lines with `irq_add_shared_handler()`. It must not: touch the
+  two channels a read holds (claimed in the SDK's record during the read); install an exclusive handler on
+  DMA_IRQ_1 (`irq_set_exclusive_handler()` panics when a shared one is there) or acknowledge other channels'
+  flags in its handler of a shared line; reset the DMA block or write the whole of INTE0/INTE1, INTS0/INTS1 or
   CHAN_ABORT (only its own channels' bits); claim all twelve channels for good if the reads are to keep the
   DMA (they then fall back to the interrupts).
 - Interrupt priorities stay at the Pico SDK's default 0x80, so all device interrupts are at one level (as

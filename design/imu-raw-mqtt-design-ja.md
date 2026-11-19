@@ -8,7 +8,7 @@ Arduino Nano RP2040 Connect の LSM6DSO から加速度と角速度を取得し�
 PC 上のアプリケーションに MQTT で送信する。各軸はセンサーの符号付き
 16-bit RAW 整数のまま送る。
 
-この文書は、2026-11-12 時点の実装（`zephyr/app/usb-console`、PC 側の `host/`）の設計と、実機で確認できた範囲・
+この文書は、実装（`zephyr/app/usb-console`、PC 側の `host/`）の設計と、実機で確認できた範囲・
 できていない範囲を記す。全体はまだ実験段階で、ペイロード形式やトピックは実装済みだが
 確定ではなく、PC 側の専用アプリの仕様に合わせて見直す前提である。使い方は
 [README](../README_ja.md) を参照。
@@ -141,7 +141,7 @@ PC 側は現状、`host/` の `imu-host` が MQTT クライアント 1 台を直
 
 想定外のタグを含むパケットは、その残りを捨てて epoch を進め、計測を続ける。
 回復は、FIFO 処理を意図的に止める試験用コマンドでオーバーランを起こして確認した。
-このコマンドは整理の際に削除したので、現在の実機では再現できない。I²C 障害、回復を
+このコマンドは今のファームウェアに無いので、今の実機では再現できない。I²C 障害、回復を
 諦める経路、想定外タグは実機で発生させていない。
 
 ## 4. 通信と切断時の動作
@@ -355,7 +355,7 @@ tick が、センサーが実際にサンプリングした瞬間とどう対応
 
 ボードは NTP 形式で PC に問い合わせる。問い合わせ先は既定でデフォルトゲートウェイ
 （AP になっている PC）で、`CONFIG_NINA_NTP_SERVER` で固定のサーバーも指定できる。
-公開サーバーへの同期はやめた。PC には chrony を導入し、AP 側のサブネットからの
+PC には chrony を導入し、AP 側のサブネットからの
 問い合わせを許可する（`allow 10.42.0.0/24`、`local stratum 10`）。
 
 - 2 秒ごと（`CONFIG_NINA_NTP_INTERVAL_MS`）に問い合わせ、応答は 1 ms 間隔で確認する。
@@ -370,7 +370,7 @@ tick が、センサーが実際にサンプリングした瞬間とどう対応
 とき）だけ即時に合わせる。カーネルの実時間時計（`date`）は前にしか動かさない。
 
 **確認できた精度。** USB でボードに 1 バイト送り、ボードが即座に返す推定時刻を、PC の
-送信時刻と受信時刻で挟む照合を行った（照合用のコマンドは整理の際に削除した）。30 分・30712 回の照合で範囲外は
+送信時刻と受信時刻で挟む照合を行った（照合用のコマンドは今のファームウェアに無い）。30 分・30712 回の照合で範囲外は
 0 回、推定時刻は送信時刻の 0.15〜0.57 ms 後、受信時刻の 1.4〜2.3 ms 前に最も近づいた。
 誤差が試験中一定だったとすれば、−2.3〜+0.6 ms の範囲にあったことになる。Wi-Fi とは
 別の経路での確認であり、往復の非対称による偏りも含む上限である。
@@ -408,16 +408,16 @@ NTP の往復時間は、送信中で中央値 約 7 ms、推定に使われた�
 | 角速度のバイアスの追従（記録の再生、計測中、`sensor stream`、`imu cal zero`） | 済み（§10.5） |
 | 角速度のバイアスの追従：動かしながらの実機確認、範囲外の拒否 | 未（記録の再生とホストテストのみ） |
 
-負荷の目安として、時刻付与まで含めた 6667 Hz 送信中の `cpu_active` は 49.4%、49.5% だった（2026-11-18 の最終の像、
-約 71 秒 × 2 回）。2026-11-14 の像（boot2 の分周 4、C ライブラリの `memcpy`・`memset` と割り算、NINA はパッチ 0001・0002 の
+負荷の目安として、時刻付与まで含めた 6667 Hz 送信中の `cpu_active` は 49.4%、49.5% だった（2026-11-18 の最終のイメージ、
+約 71 秒 × 2 回）。2026-11-14 のイメージ（boot2 の分周 4、C ライブラリの `memcpy`・`memset` と割り算、NINA はパッチ 0001・0002 の
 ファームウェア）では 62〜66%（診断用の USB 照合を並行させると約 72%）。
 
-上の表の実機の確認は、ほとんどが NINA のドライバーを共有のコアへ載せ替える前の像のもの。載せ替えた像（2026-11-18）では、
+上の表の実機の確認は、ほとんどが NINA のドライバーを共有のコアへ載せ替える前のイメージのもの。載せ替えたイメージ（2026-11-18）では、
 書き込み直後の送信、送信中の Telnet と `wifi scan`、手動の切断と復帰、`zperf` の受信を繰り返したあとの Telnet、ほかの版が
-書いた KV と資格情報での自動接続を確かめた。最終の像（2026-11-18。boot2 の分周 2、ROM の `memcpy`・`memset`、除算器、
+書いた KV と資格情報での自動接続を確かめた。最終のイメージ（2026-11-18。boot2 の分周 2、ROM の `memcpy`・`memset`、除算器、
 新しいファームウェア（0001〜0006）への対応、`bootsel`、`nina passthrough`）では、書き込み直後の送信、接続中の
 `zperf tcp download stop` の繰り返しのあとの USB と Telnet のシェル、中継での NINA の flash の読み出し、`bootsel` を確かめた。
-AP 断からの復帰、受信側の輻輳、長時間の連続は最終の像では未確認（3 版とも）。
+AP 断からの復帰、受信側の輻輳、長時間の連続は最終のイメージでは未確認（3 版とも）。
 
 ## 9. 未決定事項
 
@@ -589,12 +589,8 @@ NuttX 版の確認の範囲は §11.7 に分けて書く。
   だけに依存する）も `common/drivers/nina/` にあり、3 つの版が使う。版ごとの部分は境界の実装とソケット層への接着で、
   Zephyr 版は `drivers/nina/` の `nano_nina.c`（devicetree の線と SPI）、`nina_os.c`（mutex、sleep、時計、READY の
   割り込み待ち）、`nina_socket.c`（ソケットのオフロード）。
-  I2C0 のレジスターを操作するコア（`common/drivers/i2c_dw/` の `i2c_dw.c`。Zephyr 版のパッチ後の `i2c_dw.c` の写し）も
-  OS に依存せず、境界 `i2c_dw_os.h`（セマフォ、時計、割り込みの登録、リセットとピン、OS のドライバーモデルへの接続）と、
-  DMA 読み出しでは境界 `i2c_dw_dma_os.h`（読み出しごとに 2 つのチャネル、その設定・開始・停止・割り込み）だけに依存する。
-  後者は各版が OS 自身の DMA ドライバー（Pico SDK のもの、NuttX の `rp2040_dmac.c`）の上に実装するので、ほかのコードも
-  その DMA を通常どおり使える。NuttX 版と FreeRTOS 版が使う（Zephyr 版は Zephyr のドライバーにローカルのパッチを当てて
-  使う。§12）。
+  I2C のコア（`common/drivers/i2c_dw/`。Zephyr 版のパッチ後の `i2c_dw.c` の写し）も OS に依存せず、NuttX 版と FreeRTOS 版が
+  使う（Zephyr 版は Zephyr のドライバーにローカルのパッチを当てて使う。§12）。
 - 共有するソースは、OS の呼び出しを **Zephyr の名前のまま**提供する互換層（OS に依存しない部分は `common/compat/`、NuttX の実装は `nuttx/drivers/compat/`）の上で動かす。
   互換層は、移したソースが使う部分だけを持つ（`struct device`、センサーの API、RTIO、ワークキュー、
   `k_sem`・`k_mutex`・`k_poll` の一部、`net_mgmt` のイベント、`zsock_*()`、シェルのコマンドの表）。
@@ -684,7 +680,7 @@ Zephyr 版は前回の `kernel ps` からの区間の割合（最初は起動か
 ### 11.6 異常停止とログ
 
 - NuttX 版は、例外・`PANIC()`・assert の失敗・スタックの番兵で、報告を RAM ログに書いてから自動で
-  再起動する（`CONFIG_BOARD_RESET_ON_ASSERT=2`）。Zephyr 版も致命的なエラーの後に再起動する設定にした
+  再起動する（`CONFIG_BOARD_RESET_ON_ASSERT=2`）。Zephyr 版も致命的なエラーの後に再起動する
   （`CONFIG_RESET_ON_FATAL_ERROR=y`。シェルの `devmem` で存在しないアドレスを読んで HardFault を起こし、
   報告が RAM ログに残って再起動することを 1 回確認した）。
 - RAM ログは Zephyr 版と同じ形式・同じ `dmesg` だが、異常停止の報告が収まるように 8 KiB にした
@@ -708,16 +704,16 @@ Zephyr 版は前回の `kernel ps` からの区間の割合（最初は起動か
 - `imu-host` の `record`・`check`・`write`（USB と Telnet）と、NuttX 版で取った記録の `calib` による読み込み。
 - Zephyr 版・FreeRTOS 版と同じ日・同じ手順での、送信中の CPU 負荷と TCP の速度の比較（2026-11-18。値は README）。
 - NuttX 版の後で書き込んだ Zephyr 版が、KV と保存済みの Wi-Fi の資格情報をそのまま使うこと（2026-11-18）。
-- 最終の像（2026-11-18。除算器、ROM の `memcpy`・`memset`、新しいファームウェアへの対応、`bootsel`、`nina passthrough`）:
-  書き込み直後の送信、`nina version` の機能のビット、`iperf`、中継での NINA の flash の読み出し、`bootsel`（Telnet は 1 つ前の像で確認）。
-  除算器の退避は試験の像で確かめた（`nuttx/drivers/README_ja.md`）。
+- 最終のイメージ（2026-11-18。除算器、ROM の `memcpy`・`memset`、新しいファームウェアへの対応、`bootsel`、`nina passthrough`）:
+  書き込み直後の送信、`nina version` の機能のビット、`iperf`、中継での NINA の flash の読み出し、`bootsel`（Telnet は 1 つ前のイメージで確認）。
+  除算器の退避は試験のイメージで確かめた（`nuttx/drivers/README_ja.md`）。
 
 未確認の範囲:
 
-- 今の像での Zephyr 版との NTP の往復、`sensor stream` の高い ODR の比較。
+- 今のイメージでの Zephyr 版との NTP の往復、`sensor stream` の高い ODR の比較。
 - FIFO のエラーからの自動再開、CQE のあふれ、計測中の KV の整理など、実機で起こしていない経路。
 - 電源断（KV の耐性、RAM ログが消えること）、USB の抜き差し・RESET ボタン・PC のサスペンド。
-- AP 側を止めたときの切断の検出、受信側の輻輳、実際の MQTT ブローカー、数時間以上の運用（最終の像では、手動の切断と
+- AP 側を止めたときの切断の検出、受信側の輻輳、実際の MQTT ブローカー、数時間以上の運用（最終のイメージでは、手動の切断と
   復帰、受信器の停止も未確認）。
 - ImuStudio の GUI からの操作（シェルの部分はテストで確認）。
 
@@ -733,7 +729,7 @@ Zephyr の名前のまま提供する互換層の上でビルドする。ホス�
 | `common/imu/` | 取得サービスと `imu`、バッチ・ペイロード・キュー・status、時刻の対応付けと時刻同期・`ntp`、校正と `imu cal`、MQTT の送信、Wi-Fi のプロファイルと自動再接続、KV の API と `kv` | 3 版（MQTT のクライアント `mqtt_min*` は NuttX 版と FreeRTOS 版。Zephyr 版は Zephyr の MQTT ライブラリー） |
 | `common/drivers/lsm6dso/`、`sensor_shell/` | LSM6DSO のドライバー本体と FIFO のストリーム、sensor シェル | 3 版 |
 | `common/drivers/nina/` | `nina_net.c`・`nina_proto.h`、NINA のコア（SPI の転送層、ソケット、名前解決、ソケットの待ち `nina_wait.[ch]`）、esptool の中継の判断 `nina_passthrough_logic.h` | 3 版 |
-| `common/drivers/i2c_dw/` | I2C0 のコア（ファイル名は Zephyr のものに合わせる: `i2c_dw.c`・`i2c_dw.h`・`i2c_dw_registers.h`・`i2c_dw_rp2040.h`・`i2c_dw_rp2040_dma_priv.h`（DMA 読み出しとそのコマンド語））と、その境界 `i2c_dw_os.h`・`i2c_dw_dma_os.h` | NuttX 版と FreeRTOS 版（Zephyr 版はパッチ 0003 に同じコマンド語を持つ） |
+| `common/drivers/i2c_dw/` | I2C のコア（I2C0 と I2C1。ファイル名は Zephyr のものに合わせる: `i2c_dw.c`・`i2c_dw.h`・`i2c_dw_registers.h`・`i2c_dw_rp2040.h`・`i2c_dw_rp2040_dma_priv.h`（DMA 読み出しとそのコマンド語））、`i2c_dma` の関数の宣言 `i2c_dw_rp2040_dma.h`、境界 `i2c_dw_os.h`・`i2c_dw_dma_os.h` | NuttX 版と FreeRTOS 版（Zephyr 版はパッチ 0003 の同じドライバー。下） |
 | `common/drivers/stmemsc/` | ST のドライバーと Zephyr の I2C の API のつなぎ | NuttX 版と FreeRTOS 版 |
 | `common/compat/` | 互換層の OS に依存しない部分と、Zephyr のライブラリーの写し（KV の NVS と settings、Wi-Fi の資格情報、getopt など） | NuttX 版と FreeRTOS 版 |
 | `common/shell/`、`common/log/` | Zephyr のシェルのコマンド処理の再現、`i2c_dma` コマンド、`LOG_*` と RAM ログのリング | NuttX 版と FreeRTOS 版（`i2c_dma` は 3 版） |
@@ -742,35 +738,55 @@ OS ごとの部分は、狭い境界のヘッダーの実装として各版の�
 
 - 互換層のカーネルの部分（`k_mutex`、`k_sem`、スレッド、時計など。一覧は `common/compat/zephyr/kernel.h` の先頭）:
   `nuttx/drivers/compat/`、`freertos/drivers/compat/`。
-- 優先度の対応 `priorities_os.h`（`common/compat/priorities.h` が読む）、NINA の `nina_os.h`・`nano_nina.h`、I2C0 の
+- 優先度の対応 `priorities_os.h`（`common/compat/priorities.h` が読む）、NINA の `nina_os.h`・`nano_nina.h`、I2C の
   `i2c_dw_os.h` と DMA 読み出しの `i2c_dw_dma_os.h`、KV の flash の `nano_flash_kv.h`、シェルのバックエンド `zshell_os.h`、ログの `app_log_os.h`・`log_ram.h`。
 - 版ごとに違う数行: `sensor_shell_os.h`（`sensor get` の待ち）、`wifi_profile_os.h`、`lsm6dso_instance.h`（デバイスの
   生成）、`kv_store_os.h`（`kv wipe` の有無）。
 
-Zephyr 版の I2C0 のドライバーは、Zephyr の `drivers/i2c/i2c_dw.c` にローカルのパッチ
-（`zephyr/manifest/zephyr/patches/zephyr/0003-i2c-dw-rp2040-fifo-and-dma.patch`）を当てて使う。共有のコアには載せ替えない
-（NINA は共有のコアを使う）。共有のコアはそのパッチ後のドライバーの写しで、意図した違い（OS の呼び出し、Zephyr 版で
-使わない機能の省略など）は `i2c_dw.c` の冒頭の一覧に限る。パッチ後のドライバーと同じく、コアは i2c0 のインスタンスと、
-NuttX 版・FreeRTOS 版のオプション `I2C_DW_I2C1`（既定で無効）のときは i2c1 のインスタンスを持つ（DMA 読み出しは i2c0 だけ。
-i2c1 はビルドとホストテストで確かめただけで、実際のデバイスで使ったことはない）。パッチが Zephyr の DMA API（と、停止の
-中の Pico SDK のレジスターの関数）を呼ぶところでは、コアは DMA の境界 `i2c_dw_dma_os.h` を 1 つずつ呼ぶ。違うのは
-チャネルの設定（`dma_config()` とその構造体の代わりに TX 側と RX 側の 2 つの呼び出し）と、停止の待ち（すべてのチャネルの
-abort ではなく、各チャネル自身の abort を待つ）だけ。両者をそろえて保つ手順は次のとおり。
+**I2C のコア（`common/drivers/i2c_dw/`）** は、NuttX 版と FreeRTOS 版の I2C のドライバーである（OS の部分の細部は、
+各版のドライバーの説明の I2C の節）。
+
+- **何か**: Zephyr 版のドライバー（Zephyr の `drivers/i2c/i2c_dw.c` にローカルのパッチ
+  `zephyr/manifest/zephyr/patches/zephyr/0003-i2c-dw-rp2040-fifo-and-dma.patch` を当てたもの）の写し。意図した違い（OS の
+  呼び出し、Zephyr 版で使わない機能の省略など）は `i2c_dw.c` の冒頭の一覧に限る。Zephyr 版はこのコアに載せず、パッチ後の
+  ドライバーを使う（NINA のドライバーは 3 版とも共有のコア）。
+- **I2C0 と I2C1**: パッチ後のドライバーと同じく、コアはビルドしたコントローラーごとにインスタンスを持つ。i2c0 は
+  LSM6DSOX に要るので、NuttX 版では `CONFIG_I2C_DW_I2C0`（既定で有効）、FreeRTOS 版では常にビルドする。i2c1 は NuttX 版の
+  `CONFIG_I2C_DW_I2C1`、FreeRTOS 版の `-DI2C_DW_I2C1=ON`（どちらも既定で無効）のときだけ。i2c1 はビルドとホストテストで
+  確かめただけで、実際のデバイスで使ったことはない。
+- **OS の部分**: 境界 `i2c_dw_os.h`（セマフォ、時計、割り込みの登録、リセットとピン、OS のドライバーモデルへの接続）を
+  各版が実装する。
+- **DMA 読み出し**（`CONFIG_I2C_DW_RP2040_DMA`）: i2c0 だけ。条件、コマンド語、しきい値、停止、隔離、カウンターはパッチと
+  同じ。パッチが Zephyr の DMA API（と、停止の中の Pico SDK のレジスターの関数）を呼ぶところで、コアは DMA の境界
+  `i2c_dw_dma_os.h` を 1 つずつ呼ぶ。違うのは、チャネルの設定（`dma_config()` とその構造体の代わりに TX 側と RX 側の
+  2 つの呼び出し）と、停止の待ち（すべてのチャネルの abort ではなく、各チャネル自身の abort を待つ）だけ。境界は各版が
+  OS 自身の DMA ドライバー（FreeRTOS 版は Pico SDK のもの、NuttX 版は `rp2040_dmac.c`）の上に実装する。コアは DMA の
+  レジスターに触れず、境界の関数はどれも DMA のほかの利用者を待たない。
+- **DMA を使うほかのコード**: 同じプログラムのほかのコードも、OS の DMA を通常どおり使える。読み出しが持つ 2 つの
+  チャネルに触れない、DMA のブロックをリセットしない、チャネルが共有するレジスター（割り込みの有効・状態、CHAN_ABORT）を
+  丸ごと書かない（自分のチャネルのビットだけにする）。割り込みの線の扱いなど、版ごとの規則は各版のドライバーの説明にある。
+- **`i2c_dma` コマンド**: 3 版とも `common/shell/i2c_dma_shell.c`（NuttX 版は `zshell.c` の上）。パッチ後のドライバーと
+  コアが同じ 3 つの関数を定義し、コマンドはその宣言を `<zephyr/drivers/i2c/i2c_dw_rp2040_dma.h>` で読む。Zephyr 版では
+  パッチが Zephyr のツリーに足すヘッダー、NuttX 版と FreeRTOS 版では `common/compat` の同名のヘッダーで、後者はコアの
+  `common/drivers/i2c_dw/i2c_dw_rp2040_dma.h` を読む。
+
+パッチ後のドライバーとコアは次のようにしてそろえて保つ。
 
 - どちらかを直したら、もう一方にも同じ変更を入れる（入れない場合は理由を `i2c_dw.c` の冒頭の一覧に書く）。
 - ホストテストの `i2c_dw_sync`（`common/tests/i2c_dw_sync.py`。Zephyr のツリーがあるときに `common/tests/run.sh` が実行）が、
-  ツリーの HEAD のファイルにパッチを当てたものとコアを比べる。両方のヘッダーの定義、125 MHz での SCL のカウント、DMA の
-  下限・しきい値・割り込みのマスク・IC_CON のビット・待ち・タイムアウト、スパイク長が食い違うと失敗し、対になる関数
-  （名前の違いをそろえて文ごとに比べる）の差分が保存した `common/tests/i2c_dw_sync.expected` と違っても失敗する。
-  片方だけを変えれば失敗するので、意図した変更なら差分を確かめてから `--update` で書き直す。コメントと改行だけの違いは
-  見ない。比べていない関数（Zephyr の初期化、PM、target モード、
-  OS の部分。各版の `i2c_dw_dma_os.h` の実装は、OS の DMA の偽物の上の各版のホストテストで確かめる）のずれは検出しない。読み出しのコマンド語を作る関数（パッチとコアのそれぞれの `i2c_dw_rp2040_dma_priv.h` の
-  静的関数）が文ごとに
-  同じであること、パッチが足し `common/compat` にもある `include/zephyr/drivers/i2c/i2c_dw_rp2040_dma.h` がバイト単位で
-  同じであること、パッチ後のドライバーが Zephyr のツリーの外のヘッダーを読まないことも確かめる。
-- `i2c_dma` コマンドは 3 版とも `common/shell/i2c_dma_shell.c` を使い（NuttX 版は `zshell.c` の上）、パッチ後の
-  ドライバーとコアが同じ 3 つの関数を定義する。宣言は `<zephyr/drivers/i2c/i2c_dw_rp2040_dma.h>`（パッチ後の Zephyr の
-  ツリーにあり、NuttX 版・FreeRTOS 版は同じファイルを `common/compat` に持つ）。
+  ツリーの HEAD のファイルにパッチを当てたものとコアを比べる。次のどれかが食い違うと失敗する。
+  - 両方のヘッダーにある定義、125 MHz での SCL のカウント、DMA の下限・しきい値・割り込みのマスク・IC_CON のビット・待ち・
+    タイムアウト、スパイク長（ビルドがあれば、その `.config` と `zephyr.dts` の値も）。
+  - 対になる関数: 名前の違いをそろえて文ごとに比べ、差分が保存した `common/tests/i2c_dw_sync.expected` と同じでなければ
+    失敗する。コメントと改行の違いは見ない。
+  - 読み出しのコマンド語を作る関数 `i2c_dw_rp2040_read_commands()`（パッチとコアのそれぞれの `i2c_dw_rp2040_dma_priv.h` の
+    静的関数）が、文ごとに同じであること。
+  - パッチが足す `include/zephyr/drivers/i2c/i2c_dw_rp2040_dma.h` とコアの `i2c_dw_rp2040_dma.h` が、コメントとインクルード
+    ガードを除いて同じであること。
+  - パッチ後のドライバーが、Zephyr のツリーの外のヘッダーを読まないこと。
+- 片方だけを変えれば失敗するので、意図した変更なら差分を確かめてから `--update` で書き直す。
+- 比べていない関数（Zephyr の初期化、PM、target モード、OS の部分）のずれは検出しない。各版の `i2c_dw_dma_os.h` の実装は、
+  OS の DMA の偽物の上の各版のホストテストで確かめる。
 
 RP2040 の低い層の 3 つは `common/` に置かず、各 OS への変更として持つ（FreeRTOS 版は Pico SDK の既定のまま）。
 
@@ -793,7 +809,7 @@ NINA のファームウェアの追加機能（`firmware/nina-fw/` のパッチ 
 [ドライバーの説明](../zephyr/app/usb-console/drivers/README_ja.md)の「ファームウェアの追加機能」）。
 
 - 初期化のあと 1 回、命令 0x6A で機能のビットを得る。命令を持たないファームウェア（3.0.2 など）は `0xEF` で答えるので、
-  機能なしとして従来の動作のままにする。
+  機能なしとして、追加機能を使わずに動く。
 - ビット 0（スキャン中も接続を保つ）: 接続中のスキャンを切断として扱わない。スキャン中の切断は接続監視が検出する。
 - ビット 1（非同期のスキャン）: 0x36 → 0x6B（100 ms ごと、10 秒まで）→ 0x27。スキャンの間も NINA のロックを長く持たない。
 - ビット 2（ソケットの事象を IRQ の線で通知）: ソケットの待ち（connect、受信、poll、送信の再試行、NuttX 版の `nina_event`）を
@@ -846,7 +862,7 @@ NINA のファームウェアの追加機能（`firmware/nina-fw/` のパッチ 
 ### 13.4 KV
 
 §11.5 と同じ場所・同じ形式で、Zephyr の NVS と settings の写しを使う。flash の境界は Pico SDK の
-`flash_range_program()`・`flash_range_erase()` を、このコアの割り込みを止めて呼ぶ。リンカースクリプトで像を領域の
+`flash_range_program()`・`flash_range_erase()` を、このコアの割り込みを止めて呼ぶ。リンカースクリプトでイメージを領域の
 外に置き、書き込みと消去の要求を 3 か所で範囲の検査をする。NuttX 版が書いた KV をそのまま読めることを確かめた。
 
 ### 13.5 異常停止とログ
@@ -870,15 +886,15 @@ NINA のファームウェアの追加機能（`firmware/nina-fw/` のパッチ 
   `imu status` の `errors`・`fifo`。計測中の KV の整理（FIFO のオーバーランと自動の回復が 1 回。NuttX 版と同じ）。
 - 校正値の読み込み、`imu cal` の各サブコマンド、レンジ変更での切り替え、`sensor` の `get`・`attr_set`・`stream` と計測との排他。
 
-最終の既定の像（`-Os`、tick 1 ms、READY の割り込み待ち。2026-11-18、各 1 回）で確かめたこと: 書き込み直後の送信、静止時、
+最終の既定のイメージ（`-Os`、tick 1 ms、READY の割り込み待ち。2026-11-18、各 1 回）で確かめたこと: 書き込み直後の送信、静止時、
 `zperf` の送信と受信、送信中の `zperf` と Telnet の併用、`selftest`（22 項目。tick の追いつきを含む）、Zephyr 版・NuttX 版と
 同じ日・同じ手順での送信中の CPU 負荷と TCP の速度の比較（値は README）、新しいファームウェア（0001〜0006）への対応（機能の
 ビット、接続中の `wifi scan` で接続が保たれること、手動の切断と復帰）、中継での NINA の flash の読み出しと書き込み、`bootsel`。受信器の切断と読み出しの停止、計測中の Wi-Fi の切断などの上の項目は
-2026-11-17 の像（`-O3`、tick 100 µs、READY のポーリング）で確かめたもので、最終の像では未確認。
+2026-11-17 のイメージ（`-O3`、tick 100 µs、READY のポーリング）で確かめたもので、最終のイメージでは未確認。
 
 未確認の範囲:
 
-- 数十分以上の連続の計測、10 秒を超える輻輳、AP 側を止めたときの切断の検出（最終の像では受信器の停止も未確認）。
+- 数十分以上の連続の計測、10 秒を超える輻輳、AP 側を止めたときの切断の検出（最終のイメージでは受信器の停止も未確認）。
 - 計測中の `kv set` のあとの tick。
 - 切断が続いたときに時刻が無効になること、NTP サーバーを名前で指定する経路。
 - `kv wipe confirm`、FreeRTOS 版が書いた KV を NuttX 版が読むこと（Zephyr 版は 2026-11-18 に読めた）。

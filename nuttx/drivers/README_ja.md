@@ -20,7 +20,7 @@ NINA のドライバーは、OS に依存しないコア（リポジトリの `c
 
 | 境界 | NuttX 版の実装 | 満たすこと |
 |---|---|---|
-| `common/drivers/nina/nina_os.h` | `nina/nina_os.c` | `nina_os_lock()`・`nina_os_unlock()`: 再帰可能で優先度継承のあるロック（Zephyr 版の `K_MUTEX_DEFINE(nina_lock)`）。`nina_os_lock()` は 0 か負の errno を返し、失敗は `nina_request()`・`nina_ip_config()` がそのまま返す。`nina_os_dns_lock()`・`nina_os_dns_unlock()`: 名前解決の 2 つの命令の間に持つ、優先度継承のあるロック。`nina_os_sleep_us()`・`nina_os_sleep_ms()`: Zephyr の `k_sleep()` と同じく tick に切り上げて 1 tick 足した時間眠り、シグナルでは終わらない。`nina_os_uptime_ms()`: カーネルの時計の ms（切り捨て。`k_uptime_get()`）。`nina_os_ready_start()`・`nina_os_ready_arm()`・`nina_os_ready_wait()`・`nina_os_ready_disarm()`: READY の変化を割り込みで待つ（`nina_os_ready_start()` がコールバックを登録し、失敗したらコアは 100 µs ごとに読む。下の「READY の待ち」）。`nina_os_event_start()`・`nina_os_event_seq()`・`nina_os_event_wait()`: IRQ の線（GPIO2）の立ち上がりのエッジを数え、待っている全スレッドを起こす（`nina_os_event_start()` が失敗したら従来の間隔で待つ。下の「ファームウェアの追加機能」） |
+| `common/drivers/nina/nina_os.h` | `nina/nina_os.c` | `nina_os_lock()`・`nina_os_unlock()`: 再帰可能で優先度継承のあるロック（Zephyr 版の `K_MUTEX_DEFINE(nina_lock)`）。`nina_os_lock()` は 0 か負の errno を返し、失敗は `nina_request()`・`nina_ip_config()` がそのまま返す。`nina_os_dns_lock()`・`nina_os_dns_unlock()`: 名前解決の 2 つの命令の間に持つ、優先度継承のあるロック。`nina_os_sleep_us()`・`nina_os_sleep_ms()`: Zephyr の `k_sleep()` と同じく tick に切り上げて 1 tick 足した時間眠り、シグナルでは終わらない。`nina_os_uptime_ms()`: カーネルの時計の ms（切り捨て。`k_uptime_get()`）。`nina_os_ready_start()`・`nina_os_ready_arm()`・`nina_os_ready_wait()`・`nina_os_ready_disarm()`: READY の変化を割り込みで待つ（`nina_os_ready_start()` がコールバックを登録し、失敗したらコアは 100 µs ごとに読む。下の「READY の待ち」）。`nina_os_event_start()`・`nina_os_event_seq()`・`nina_os_event_wait()`: IRQ の線（GPIO2）の立ち上がりのエッジを数え、待っている全スレッドを起こす（`nina_os_event_start()` が失敗したらビット 2 が無いときの間隔で待つ。下の「ファームウェアの追加機能」） |
 | `common/drivers/nina/nano_nina.h` | ボードの `src/nano_nina.c` | `nano_nina_initialize()`: 起動時に 1 回、SPI とそのピンを設定して CS を非アクティブにする（READY・RESET・IRQ には触れない）。`nano_nina_bus_ready()`: SPI と 4 本の線が使えるか。`nano_nina_pin_configure()`・`nano_nina_pin_set()`・`nano_nina_pin_get()`: 論理値（1 がアクティブ）。極性とプルはボードが知る（CS GPIO9 アクティブ low、READY GPIO10 アクティブ low・プルアップ、RESET GPIO3 アクティブ low、IRQ GPIO2 アクティブ high・プルダウン）。`nano_nina_transceive()`: モード 0・8 ビット・MSB first の同期転送（RX が NULL なら書くだけ）、CS には触れない |
 | 構成 | `nina/Kconfig` | `CONFIG_NANO_NINA_TCP_MAX_IO`（既定 3584）と `CONFIG_NANO_NINA_SEND_RETRY_MS`（既定 1）。`nina_sock.h` が読み、無ければ既定値を使う |
 | C ライブラリ | NuttX の libc | `nina_sock.[ch]`・`nina_dns.[ch]` は POSIX の `<sys/socket.h>`・`<sys/types.h>`・`<sys/uio.h>`・`<netinet/in.h>`・`<netinet/tcp.h>`・`<arpa/inet.h>`・`<poll.h>`・`<netdb.h>` の型と定数（`struct sockaddr_in`、`struct iovec`、`struct addrinfo`、`AF_INET`、`MSG_DONTWAIT`、`POLLIN`、`EAI_*` など）と、`inet_pton()`・`htons()`・`malloc()`・`free()` を使う。`nina_sock_poll_revents()` が返す `POLL*` と `EAI_*` の値は、呼び出す側と同じヘッダーのもの |
@@ -29,7 +29,7 @@ NINA のドライバーは、OS に依存しないコア（リポジトリの `c
 
 | ファイル | 役割 |
 |---|---|
-| `common/drivers/nina/nina_spi.c` | コマンドと応答のフレーミング（`nina_request()`、`nina_ip_config()`）。もとは Zephyr 版の `nina_wifi.c` の同名の関数を、分岐・順序・定数・エラー値を 1 対 1 で対応させて移したもの。今は 3 つの版が使う |
+| `common/drivers/nina/nina_spi.c` | コマンドと応答のフレーミング（`nina_request()`、`nina_ip_config()`）。3 つの版が使う |
 | `common/drivers/nina/nina_proto.h` | 公開する宣言。Zephyr 版も同じファイルを使う |
 | `common/drivers/nina/nina_os.h`、`nina/nina_os.c` | ロック（再帰可能なミューテックス、優先度継承あり）、sleep、ms の時計、READY の割り込みでの待ち。Zephyr の `K_MUTEX`・`k_sleep()`・`k_uptime_get()` に当たる |
 | `common/drivers/nina/nano_nina.h`、ボードの `src/nano_nina.c` | SPI1 と 4 本の信号線（CS、READY、RESET、IRQ）。Zephyr のデバイスツリーと SPI・GPIO ドライバーが行っていた設定に当たる |
@@ -68,7 +68,7 @@ Zephyr 版はソケットのオフロード（`drivers/nina/nina_socket.c`）で
 
 | ファイル | 役割 |
 |---|---|
-| `common/drivers/nina/nina_sock.[ch]` | ソケットの表（10 個）と NINA のソケット命令。もとは Zephyr 版の `nina_socket.c` の `nina_socket_create()`・`do_bind()`・`do_listen()`・`do_accept()`・`do_connect()`・`do_close()`・`do_setsockopt()` と、送受信の `udp_send()`・`do_send()`・`do_sendmsg()`・`udp_recv()`・`do_recv()` を、名前・分岐・順序・定数・errno の名前を保って移したもの（送受信の待ちのループは要求 1 回で 1 周）で、今は Zephyr 版もこのファイルを使う。`FIONREAD`（`nina_sock_fionread()`）と独自のソケットオプション `NINA_SO_CALLER_POLLS`・`NINA_SO_POLL`（`nina_sock_poll_revents()`、`common/drivers/nina/nina_sockopt.h`）は Zephyr 版では使わない。OS に依存しない |
+| `common/drivers/nina/nina_sock.[ch]` | ソケットの表（10 個）と NINA のソケット命令: `nina_socket_create()`・`do_bind()`・`do_listen()`・`do_accept()`・`do_connect()`・`do_close()`・`do_setsockopt()` と、送受信の `udp_send()`・`do_send()`・`do_sendmsg()`・`udp_recv()`・`do_recv()`（送受信の待ちのループは要求 1 回で 1 周）。3 つの版が使う。`FIONREAD`（`nina_sock_fionread()`）と独自のソケットオプション `NINA_SO_CALLER_POLLS`・`NINA_SO_POLL`（`nina_sock_poll_revents()`、`common/drivers/nina/nina_sockopt.h`）は Zephyr 版では使わない。OS に依存しない |
 | `nina/nina_usrsock.c` | usrsock の要求を上の関数に振り分け、応答（ACK）を返す |
 | `nina/nina_poller.c` | スレッド `nina_event`。NINA のソケットの状態を見て usrsock のイベントにする（呼び出し元だけが問い合わせるソケットは接続中だけ）。待つ送信の再試行の時間も計る。ファームウェアがソケットの事象を通知するときは IRQ の線のエッジで起きる |
 | `nina/nina_usrsock.h` | 上の 2 つの間の宣言 |
@@ -159,7 +159,7 @@ Zephyr 版はソケットのオフロード（`drivers/nina/nina_socket.c`）で
 
 ### 名前解決
 
-`common/drivers/nina/nina_dns.c` は Zephyr 版の `nina_dns.c` を行単位で移したもの（今は Zephyr 版もこのファイルを使う）で、名前を NINA の名前解決の
+`common/drivers/nina/nina_dns.c`（3 つの版が使う）は、名前を NINA の名前解決の
 命令（0x34 で名前を渡し、0x35 でアドレスを読む）で IPv4 のアドレス 1 つにします。数値のアドレスは NINA に
 尋ねません。Zephyr 版はソケットのオフロードの `getaddrinfo()` として登録し、`zsock_getaddrinfo()` がこれを
 使います。NuttX 版は専用の関数 `nina_getaddrinfo()`・`nina_freeaddrinfo()`（`common/drivers/nina/nina_dns.h`）で、互換層の
@@ -170,7 +170,7 @@ Zephyr 版はソケットのオフロード（`drivers/nina/nina_socket.c`）で
 `EAI_AGAIN`、アドレスの長さが違う `EAI_FAIL`、ヒントの誤り `EAI_BADFLAGS`・`EAI_FAMILY`・`EAI_SOCKTYPE`、
 サービスの誤り `EAI_SERVICE`、メモリー不足 `EAI_MEMORY`）。2 つの命令の間はミューテックスで守ります
 （NINA の名前解決の結果は 1 つしかないため）。結果は Zephyr 版の 2 KB の専用ヒープではなく `malloc()` で
-取ります。ホストテストは `common/tests/nina_dns.c` です。今これを使うのは、時刻同期の NTP サーバーを名前で
+取ります。ホストテストは `common/tests/nina_dns.c` です。これを使うのは、時刻同期の NTP サーバーを名前で
 指定したときだけです（既定はゲートウェイ）。
 
 ### Wi-Fi（ネットワークデバイス `wlan0`）
@@ -248,10 +248,10 @@ NuttX 版のビット 2 の待ち:
   20 ms を待たずに次の周を始めます。変わらなければ 100 ms（接続中のソケットがあればその期限まで）で周を始めます。
   エッジで始めた周が何も伝えないことが続くと、次のエッジまでに少し間を置きます（1、2、4、8、16 ms、以後 20 ms）。
 - 待つ TCP 送信の次の周: poll だけをした周（書き込み可能でなかった）のあとは、その要求が命令の前に控えた数から
-  変わったとき（最長 100 ms、送信の期限まで）、データを送って 0 バイトだった周のあとは従来どおり 1 ms 後です。
+  変わったとき（最長 100 ms、送信の期限まで）、データを送って 0 バイトだった周のあとはビット 2 が無いときと同じく 1 ms 後です。
 - 互換層の `zsock_recv()`・`zsock_poll()` も同じ待ち（`nina_wait()`）を使います。NuttX のソケット（NINA 以外）を
   含む `zsock_poll()` は最長 20 ms ごとに見直します。
-- `nina_os_event_start()` が失敗したときは、ビット 2 があっても従来の間隔で待ちます。
+- `nina_os_event_start()` が失敗したときは、ビット 2 があっても、ビット 2 が無いときの間隔で待ちます。
 - `nina/nina_os.c` の割り込みと待ちは `nuttx/tests/nina_os.c`（`nina_os`）が確かめます。`nina_event` の
   エッジでの周と、互換層の待ちは、ホストテストで確かめていません。
 
@@ -308,8 +308,10 @@ FreeRTOS 版の `freertos/drivers/nina/nina_passthrough.c` と同じ仕様で、
 
 ## I2C0
 
-コアはリポジトリの `common/drivers/i2c_dw/` にあり（OS に依存しない。ボードの `src/Make.defs` が `VPATH` で参照し、
-オブジェクトはボードのディレクトリーにできる）、NuttX の部分はボードの `src/` にあります。
+I2C0 と I2C1 のドライバーは、FreeRTOS 版と共有する I2C のコアです（コアそのもの、Zephyr 版のドライバーとの関係、
+DMA を使うほかのコードの規則の共通の部分は[設計書](../../design/imu-raw-mqtt-design-ja.md)の §12）。NuttX の
+`rp2040_i2c.c`（`CONFIG_RP2040_I2C`）は使いません。コアはリポジトリの `common/drivers/i2c_dw/` にあり（ボードの
+`src/Make.defs` が `VPATH` で参照し、オブジェクトはボードのディレクトリーにできる）、NuttX の部分はボードの `src/` にあります。
 
 | ファイル | 役割 |
 |---|---|
@@ -318,7 +320,7 @@ FreeRTOS 版の `freertos/drivers/nina/nina_passthrough.c` と同じ仕様で、
 | `common/drivers/i2c_dw/i2c_dw_dma_os.h` | DMA 読み出しの DMA の境界: OS 自身の DMA ドライバーに求めるもの（下の 2 つ目の表）。パッチを当てたドライバーの Zephyr の DMA API の呼び出しに 1 つずつ対応する。OS の名前を含まず、コアは DMA のレジスターに触れない |
 | `common/drivers/i2c_dw/i2c_dw.h` | OS に依存しない定義と純粋な関数: Zephyr 版の `i2c_dw.h` の定義、SCL のカウント、周波数から速さの区分、NuttX のフラグ（`I2C_M_*`）から Zephyr のフラグ（`I2C_MSG_*`）への変換、`IC_DATA_CMD` に書く語。ホストテスト `common/tests/i2c_dw.c` |
 | `common/drivers/i2c_dw/i2c_dw_registers.h` | Zephyr 版の `i2c_dw_registers.h` の写し（アクセス関数は 32 ビットの volatile のアクセスで定義。番地の型は Zephyr の `mm_reg_t` の代わりに `uintptr_t`） |
-| `common/compat/zephyr/drivers/i2c/i2c_dw_rp2040_dma.h` | `i2c_dma` コマンド（3 版で共有の `common/shell/i2c_dma_shell.c`。この版のビルドは `nuttx/apps/i2c_dma`）が読み書きする状態: DMA の有効・無効と 4 つのカウンター（`i2c_dw_rp2040_dma_get_stats()`・`_enabled()`・`_set_enabled()`）。パッチ 0003 が Zephyr の `include/zephyr/drivers/i2c` に足すものと同じファイル（`i2c_dw_sync` が確かめる） |
+| `common/drivers/i2c_dw/i2c_dw_rp2040_dma.h` | `i2c_dma` コマンド（3 版で共有の `common/shell/i2c_dma_shell.c`。この版のビルドは `nuttx/apps/i2c_dma`）が読み書きする状態: DMA の有効・無効と 4 つのカウンター（`i2c_dw_rp2040_dma_get_stats()`・`_enabled()`・`_set_enabled()`）。コマンドは Zephyr の名前 `<zephyr/drivers/i2c/i2c_dw_rp2040_dma.h>` で読み、それは `common/compat/zephyr/drivers/i2c/` の同名のヘッダーがこのファイルを読む形です。宣言はパッチ 0003 が Zephyr のツリーに足すヘッダーと同じ（`i2c_dw_sync` が確かめる） |
 | ボードの `src/i2c_dw_os_impl.h` | 境界の NuttX の実装: セマフォ（`sem_t`。`nxsem_post()`、`nxsem_tickwait_uninterruptible()`、`nxsem_wait_uninterruptible()`、`nxsem_reset()`）、時刻（システムの tick）、`nxsched_msleep()`、`up_irq_save()`、メッセージ（`struct i2c_msg_s` と、`i2c_dw_msg_flags()` での Zephyr のフラグへの変換）、`I2C_DW_CLOCK_SPEED`（`BOARD_PERI_FREQ`） |
 | ボードの `src/i2c_dw_instance.h` | I2C0 と I2C1 の NuttX の部分: `struct i2c_master_s` の操作表（`I2C_TRANSFER()` は要求を確かめて周波数から速さを決め、コアの転送を呼ぶ。`I2C_RESET()`）、`irq_attach()` で登録する割り込みハンドラー、リセットとピン（`i2c_dw_pinctrl()`）は両方で共有し、`i2c_dw_i2c0_initialize()` と `i2c_dw_i2c1_initialize()`。ホストテストは `nuttx/tests/i2c_dw_instance.c` |
 | ボードの `src/i2c_dw_dma_os.c` | DMA の境界の NuttX の実装。NuttX 自身の DMA ドライバー `arch/arm/src/rp2040/rp2040_dmac.c`（`CONFIG_RP2040_DMAC`）の上に作る。ホストテストは `nuttx/tests/i2c_dw_dma_os.c` |
@@ -348,17 +350,6 @@ FreeRTOS 版の `freertos/drivers/nina/nina_passthrough.c` と同じ仕様で、
 | `CONFIG_I2C_DW_I2C0`・`CONFIG_I2C_DW_I2C1` | 作るインスタンス（Zephyr ではデバイスツリーの有効なノード） | Kconfig（既定で `I2C_DW_I2C0` は有効、`I2C_DW_I2C1` は無効） |
 | `CONFIG_I2C_DW_RP2040_DMA` | I2C0 の DMA 読み出しを作る（Zephyr 版と同じ名前のシンボル） | Kconfig |
 
-OS の I2C0 のデバイス（`i2c_dw_instance.h`）は、`i2c_0_runtime` の `base`（0x40044000）を設定し、セマフォを
-初期化し（`device_sync_sem` と `rp2040_dma_sem` は 0、`bus_sem` は 1）、起動時に `i2c_dw_dma_os_initialize()`、
-続いて `i2c_dw_turn_on()` を 1 回呼び、後者が成功したら `ready` を立てます。I2C1 のデバイスは `i2c_1_runtime`
-（0x40048000）に同じことを、DMA の部分とそのセマフォを除いて行います。デバイスごとにセマフォを持つので、2 つのバスの
-転送は並んで進みます。転送の入口（両方で 1 つ）は、Zephyr の API で表せない要求
-（メッセージの配列がない、256 個以上、メッセージごとに違うアドレスや速さ、10 ビットアドレス、バッファーがない、
-準備ができていない）を断り、
-メッセージが 0 個なら 0 を返し、ほかは `i2c_dw_transfer_msgs(dw, msgs, count, address, speed)` の結果を返します
-（`speed` は Zephyr の速さの区分）。I2C0 と DMA の割り込みは同じ優先度で（`CONFIG_ARCH_IRQPRIO` は無効で、
-すべての割り込みが既定の優先度）、ハンドラーと転送は 1 つのコアで動きます。
-
 DMA の境界（`i2c_dw_dma_os.h`）で OS の DMA ドライバーが提供するもの。`src/i2c_dw_dma_os.c` の普通の関数です
 （読み出しごとに呼ばれ、バイトごとではない）。呼ぶのはバスのセマフォを持った転送のスレッドだけで、コールバックは
 DMA の割り込みから呼ばれます。どれも DMA のほかの利用者を待ちません。
@@ -378,6 +369,18 @@ DMA の割り込みから呼ばれます。どれも DMA のほかの利用者�
 INTE0（セットとクリアのエイリアス経由）、INTS0、CHAN_ABORT への書き込みは、`rp2040_dmac.c` と同じく
 そのチャネルのビットだけで、ほかのチャネルには触れません。
 
+**デバイスと転送**
+
+OS の I2C0 のデバイス（`i2c_dw_instance.h`）は、`i2c_0_runtime` の `base`（0x40044000）を設定し、セマフォを
+初期化し（`device_sync_sem` と `rp2040_dma_sem` は 0、`bus_sem` は 1）、起動時に `i2c_dw_dma_os_initialize()`、
+続いて `i2c_dw_turn_on()` を 1 回呼び、後者が成功したら `ready` を立てます。I2C1 のデバイスは `i2c_1_runtime`
+（0x40048000）に同じことを、DMA の部分とそのセマフォを除いて行います。デバイスごとにセマフォを持つので、2 つのバスの
+転送は並んで進みます。転送の入口（両方で 1 つ）は、Zephyr の API で表せない要求（メッセージの配列がない、
+256 個以上、メッセージごとに違うアドレスや速さ、10 ビットアドレス、バッファーがない、準備ができていない）を断り、
+メッセージが 0 個なら 0 を返し、ほかは `i2c_dw_transfer_msgs(dw, msgs, count, address, speed)` の結果を返します
+（`speed` は Zephyr の速さの区分）。I2C0 と DMA の割り込みは同じ優先度で（`CONFIG_ARCH_IRQPRIO` は無効で、
+すべての割り込みが既定の優先度）、ハンドラーと転送は 1 つのコアで動きます。
+
 - 転送は呼び出したスレッドが進め、バイトの出し入れは割り込みで行います。呼び出し元はセマフォで完了を
   待ちます（期限 1 秒。過ぎると abort して `-ETIMEDOUT`）。転送の全体をバスのセマフォで直列化します
   （Zephyr 版と同じく優先度継承なし）。
@@ -391,58 +394,68 @@ INTE0（セットとクリアのエイリアス経由）、INTS0、CHAN_ABORT �
 - 移していないもの: ターゲット（スレーブ）モード、Intel LPSS の DMA、`CONFIG_I2C_ALLOW_NO_STOP_TRANSACTIONS`、
   SDA/SCL の期限（`CONFIG_I2C_DW_EXTENDED_SUPPORT`）、電源管理、PCIe、ほかの SoC 向けの処理、バスのリカバリーと
   確認のコールバック（このボードでは登録されず、何もしない）。
-- I2C1（`CONFIG_I2C_DW_I2C1`、既定で無効。ボード上では何もつながっていない）: 同じコアの 2 つ目のインスタンスで、
-  GPIO18（SDA、Arduino の D6）と GPIO19（SCL、D7）を内部プルアップ付きで使い（ボードの `include/board.h` の
-  `BOARD_I2C1_SDA_GPIO`・`BOARD_I2C1_SCL_GPIO`）、常に割り込みで転送し（DMA での読み出しは I2C0 だけ）、
-  `CONFIG_I2C_DRIVER` があれば `/dev/i2c1` に登録します。起動に失敗してもログに残すだけで、ほかは変わりません。
-  defconfig を変えずに作るには、一度ビルドしたあと `printf 'CONFIG_I2C_DW_I2C1=y\nCONFIG_I2CTOOL_MAXBUS=1\n' >> nuttx/nuttx/.config`、
+
+**I2C1**（`CONFIG_I2C_DW_I2C1`、既定で無効。ボード上では何もつながっていない）
+
+- 同じコアの 2 つ目のインスタンスで、GPIO18（SDA、Arduino の D6）と GPIO19（SCL、D7）を内部プルアップ付きで使います
+  （ボードの `include/board.h` の `BOARD_I2C1_SDA_GPIO`・`BOARD_I2C1_SCL_GPIO`）。常に割り込みで転送します（DMA での
+  読み出しは I2C0 だけ）。`CONFIG_I2C_DRIVER` があれば `/dev/i2c1` に登録します。起動に失敗してもログに残すだけで、
+  ほかは変わりません。
+- defconfig を変えずに作るには、一度ビルドしたあと `printf 'CONFIG_I2C_DW_I2C1=y\nCONFIG_I2CTOOL_MAXBUS=1\n' >> nuttx/nuttx/.config`、
   `make -C nuttx/nuttx olddefconfig`、`nuttx/script/build.sh`（`--clean` を付けない。付けると defconfig に戻る）。
-  i2c ツールのバス 1（`i2c dev -b 1 0x08 0x77`）には `CONFIG_I2CTOOL_MAXBUS` 1 が要ります。I2C1 はビルドとホスト
-  テスト（`nuttx/tests/i2c_dw_instance.c`）で確かめただけで、実際のデバイスにつないで使ったことはありません。
-- DMA での読み出し（`CONFIG_I2C_DW_RP2040_DMA`、既定で有効。Zephyr 版と同じ名前のシンボル）は
-  `i2c_dw.c`・`i2c_dw_rp2040_dma_priv.h` の DMA の部分を同じ分岐・順序・値で写したものです
-  （`common/drivers/i2c_dw/i2c_dw_rp2040_dma_priv.h`。`i2c_dw.c` が 1 回だけ読み込む）:
-  - 使う条件: DMA が有効（`i2c_dma mode`）、DMA の準備ができている（起動時に 2 つのチャネルが取れた）、
-    32〜3584 バイト（`I2C_DW_RP2040_DMA_MAX_READ`）、STOP で終わる、転送の最後のメッセージ、7 ビットアドレス。
-    外れると `-EAGAIN` で割り込みの処理に戻ります。チャネルの確保か設定に失敗したときも、`dma_fallbacks` を
-    数えて割り込みの処理に戻ります（転送はまだ始まっていません）。この版では 2 つのチャネルを起動時から
-    持っているので、1 度に 1 つの読み出しには必ずチャネルがあり、`dma_fallbacks` は設定を断られたとき
-    （チャネルがまだ動いている）しか増えません。
-  - TX のチャネルが読み出しのコマンド語（16 ビット。各語に READ、先頭は RESTART が要るときだけ RESTART、
-    最後に STOP）を `IC_DATA_CMD` に書き、RX のチャネルが `IC_DATA_CMD` から 8 ビットずつ受け取ります。
-    `IC_DMA_TDLR` は 8、`IC_DMA_RDLR` は 0、割り込みは STOP_DET・TX_ABRT・TX_OVER・RX_OVER・RX_UNDER・
-    SCL_STUCK_LOW だけ。RX、TX の順にチャネルを始め、`IC_DMA_CR` に 3 を書きます。
-  - TX の完了、RX の完了、STOP の 3 つがそろうか、エラー（I2C の異常の割り込み、DMA のバスエラー）で
-    終わります。待ちは転送の期限（1 秒）を全体の期限として、残りの時間で待ちます。エラーは `-EIO`、
-    期限切れは `-ETIMEDOUT`。
-  - 後始末: `IC_DMA_CR` を 0、割り込みマスクを 0 にし、失敗なら I2C を abort、DMA の 2 チャネルを止めます
-    （割り込みを外し、CHAN_ABORT を書いて、各チャネルの BUSY と CHAN_ABORT のそのビットが落ちるまで 1 ms ごとに
-    最長 100 ms 待ち（Zephyr 版は CHAN_ABORT の全体が落ちるまで待つ）、遅れて来た完了（RP2040-E13）のフラグを
-    消す）。止まらなければコントローラーを
-    隔離し（`<err> i2c_dw: DMA channels did not stop; I2C controller quarantined`、`-EIO`、チャネルは解放
-    しない）、以後の転送は `-EIO` です（再起動で戻ります）。止まれば割り込みを消し、失敗なら abort の
-    完了を最長 100 ms 待ちます（終わらなければ隔離して
-    `<err> i2c_dw: I2C abort did not finish; controller quarantined`）。
-  - DMA は NuttX 自身のドライバー `rp2040_dmac.c`（`CONFIG_RP2040_DMAC`、有効。`arm_dma_initialize()` は
-    `up_initialize()` の中、ボードの起動処理より前に動く）です。割り込みの線は DMA_IRQ_0 の 1 本ですべての
-    チャネルを扱い、`rp2040_dmachannel()` は 12 チャネルがすべて使われていると待ち、`rp2040_dmastop()` は
-    CHAN_ABORT を期限なしに待ちます。そこでボードの `i2c_dw_dma_os.c` は起動時に 2 つのチャネルを 1 度だけ取り
-    （読み出しがチャネルを待つことはない）、停止は自分で CHAN_ABORT を書きます（待つのはコアで、上限付き）。
-    NuttX のハンドラーは失敗したチャネルのエラーのフラグをトリガーのレジスターである CTRL_TRIG に書き戻すので、
-    チャネルが止まったところから再び動き出すことがあり、ボードのコールバックがそのチャネルをすぐ abort します。
-    また、同じ割り込みで先に処理したチャネルの状態があとのチャネルにも残るので、ほかの利用者のバスエラーが
-    同じ割り込みで処理されると、この読み出しも失敗します（`-EIO`、`dma_errors` が 1）。`rp2040_dmac.c` への
-    ローカルのパッチは要りません。
-  - このビルドのほかのコードも、NuttX の DMA を通常の方法で使えます（`rp2040_dmachannel()` など。残りの 10
-    チャネル）。してはいけないこと: 読み出しの 2 つのチャネルに触れる（`rp2040_dmac.c` の表で確保済みなので、
-    その割り当てが渡すことはない）。DMA ブロックをリセットする、チャネルが共有するレジスター（INTE0、INTS0、
-    CHAN_ABORT）を丸ごと書く（`rp2040_dmac.c` と同じく自分のビットだけにする）。`irq_attach()` で DMA_IRQ_0 を
-    `rp2040_dmac.c` から取り上げる、自分のハンドラーなしに自分のチャネルの割り込みを DMA_IRQ_1 に回す。
-    `RP2040_DMAC` で選べるようになり既定で有効になる `CONFIG_RP2040_SPI_DMA` は、`imu` の構成では無効です。
-    NINA の SPI は Zephyr 版と同じくポーリングのままです（有効にすると SPI のドライバーが起動時にさらに 2 つの
-    チャネルを取ります）。
-  - `rp2040_dma_events` の更新は割り込みを禁止して行い（Zephyr の `atomic_or()`）、4 つのカウンターは
-    バスのセマフォを持った転送だけが書きます（32 ビットで一周します）。
+  i2c ツールのバス 1（`i2c dev -b 1 0x08 0x77`）には `CONFIG_I2CTOOL_MAXBUS` 1 が要ります。
+- I2C1 はビルドとホストテスト（`nuttx/tests/i2c_dw_instance.c`）で確かめただけで、実際のデバイスにつないで使ったことは
+  ありません。
+
+**DMA での読み出し**（`CONFIG_I2C_DW_RP2040_DMA`、既定で有効。Zephyr 版と同じ名前のシンボル）
+
+コアの `common/drivers/i2c_dw/i2c_dw_rp2040_dma_priv.h`（`i2c_dw.c` が 1 回だけ読み込む）が、パッチ後のドライバーの
+DMA の部分を同じ分岐・順序・値で写したものです。
+
+- 使う条件: DMA が有効（`i2c_dma mode`）、DMA の準備ができている（起動時に 2 つのチャネルが取れた）、
+  32〜3584 バイト（`I2C_DW_RP2040_DMA_MAX_READ`）、STOP で終わる、転送の最後のメッセージ、7 ビットアドレス。
+  外れると `-EAGAIN` で割り込みの処理に戻ります。チャネルの確保か設定に失敗したときも、`dma_fallbacks` を
+  数えて割り込みの処理に戻ります（転送はまだ始まっていません）。
+- 読み出し: TX のチャネルが読み出しのコマンド語（16 ビット。各語に READ、先頭は RESTART が要るときだけ RESTART、
+  最後に STOP）を `IC_DATA_CMD` に書き、RX のチャネルが `IC_DATA_CMD` から 8 ビットずつ受け取ります。
+  `IC_DMA_TDLR` は 8、`IC_DMA_RDLR` は 0、割り込みは STOP_DET・TX_ABRT・TX_OVER・RX_OVER・RX_UNDER・
+  SCL_STUCK_LOW だけ。RX、TX の順にチャネルを始め、`IC_DMA_CR` に 3 を書きます。
+- 終わり: TX の完了、RX の完了、STOP の 3 つがそろうか、エラー（I2C の異常の割り込み、DMA のバスエラー）で
+  終わります。待ちは転送の期限（1 秒）を全体の期限として、残りの時間で待ちます。エラーは `-EIO`、
+  期限切れは `-ETIMEDOUT`。
+- 後始末: `IC_DMA_CR` を 0、割り込みマスクを 0 にし、失敗なら I2C を abort、DMA の 2 チャネルを止めます
+  （割り込みを外し、CHAN_ABORT を書いて、各チャネルの BUSY と CHAN_ABORT のそのビットが落ちるまで 1 ms ごとに
+  最長 100 ms 待ち、遅れて来た完了（RP2040-E13）のフラグを消す）。止まらなければコントローラーを隔離し
+  （`<err> i2c_dw: DMA channels did not stop; I2C controller quarantined`、`-EIO`、チャネルは解放しない）、以後の
+  転送は `-EIO` です（再起動で戻ります）。止まれば割り込みを消し、失敗なら abort の完了を最長 100 ms 待ちます
+  （終わらなければ隔離して `<err> i2c_dw: I2C abort did not finish; controller quarantined`）。
+- `rp2040_dma_events` の更新は割り込みを禁止して行い（Zephyr の `atomic_or()`）、4 つのカウンターは
+  バスのセマフォを持った転送だけが書きます（32 ビットで一周します）。
+
+**NuttX の DMA ドライバーの上の実装**（ボードの `src/i2c_dw_dma_os.c`）
+
+- DMA は NuttX 自身のドライバー `rp2040_dmac.c`（`CONFIG_RP2040_DMAC`、有効。`arm_dma_initialize()` は
+  `up_initialize()` の中、ボードの起動処理より前に動く）です。割り込みの線は DMA_IRQ_0 の 1 本ですべてのチャネルを
+  扱います。`rp2040_dmac.c` へのローカルのパッチは要りません。
+- `rp2040_dmachannel()` は 12 チャネルがすべて使われていると待つので、`i2c_dw_dma_os.c` は起動時に 2 つのチャネルを
+  1 度だけ取り、読み出し用に持ち続けます。読み出しがチャネルを待つことはなく、1 度に 1 つの読み出しには必ず
+  チャネルがあるので、`dma_fallbacks` は設定を断られたとき（チャネルがまだ動いている）しか増えません。
+- `rp2040_dmastop()` は CHAN_ABORT を期限なしに待つので、停止は `i2c_dw_dma_os.c` が自分で CHAN_ABORT を書き、
+  コアが上限付き（100 ms）で待ちます。Zephyr 版は CHAN_ABORT の全体が落ちるまで待ちます。
+- NuttX のハンドラーは失敗したチャネルのエラーのフラグをトリガーのレジスターである CTRL_TRIG に書き戻すので、
+  チャネルが止まったところから再び動き出すことがあり、ボードのコールバックがそのチャネルをすぐ abort します。
+- 同じ割り込みで先に処理したチャネルの状態があとのチャネルにも残るので、ほかの利用者のバスエラーが同じ割り込みで
+  処理されると、この読み出しも失敗します（`-EIO`、`dma_errors` が 1）。
+
+**DMA を使うほかのコード**
+
+- このビルドのほかのコードも、NuttX の DMA を通常の方法で使えます（`rp2040_dmachannel()` など。残りの 10 チャネル）。
+- してはいけないこと: 読み出しの 2 つのチャネルに触れる（`rp2040_dmac.c` の表で確保済みなので、その割り当てが渡す
+  ことはない）。DMA ブロックをリセットする。チャネルが共有するレジスター（INTE0、INTS0、CHAN_ABORT）を丸ごと書く
+  （`rp2040_dmac.c` と同じく自分のビットだけにする）。`irq_attach()` で DMA_IRQ_0 を `rp2040_dmac.c` から取り上げる。
+  自分のハンドラーなしに自分のチャネルの割り込みを DMA_IRQ_1 に回す。
+- `RP2040_DMAC` で選べるようになり既定で有効になる `CONFIG_RP2040_SPI_DMA` は、`imu` の構成では無効です。NINA の SPI は
+  Zephyr 版と同じくポーリングのままです（有効にすると SPI のドライバーが起動時にさらに 2 つのチャネルを取ります）。
 
 ## LSM6DSOX（`lsm6dso`）
 
@@ -546,7 +559,7 @@ FIFO のデコーダーの出力で、取得サービスが MQTT で送る RAW �
   `rp2040_start.c` の `.bss` のゼロ化と `.data` のコピーのループを `memset`・`memcpy` の呼び出しに変えるので、パッチがループに
   `START_LOOP_BARRIER()`（メモリーを clobber する空の asm）を入れ、`build.sh` が `__start()` にそれらの呼び出しが無いことを
   確かめます。Zephyr 版は同じルーチンを Zephyr の SoC へのパッチで持ちます。
-- 実機（2026-11-18、試験の像）: 除算器と退避ありの像で 250 秒・約 1,128 万回の割り算の食い違いは 0、退避なしの像では
+- 実機（2026-11-18、試験のイメージ）: 除算器と退避ありのイメージで 250 秒・約 1,128 万回の割り算の食い違いは 0、退避なしのイメージでは
   40 秒で 10 回でした。
 
 ## シグナルハンドラーを使わない
