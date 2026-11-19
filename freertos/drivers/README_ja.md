@@ -22,7 +22,7 @@ OS に依存しない部分は `common/compat/`、FreeRTOS の部分は `freerto
 | `drivers/log/` | RAM ログ（`log_ram.c`。リングは `common/log/log_ring.c`） |
 | `drivers/kv/` | KV のフラッシュの境界（`nano_flash_kv.c`）とリンカースクリプトの差し替え（`ld/`、`kv.cmake`） |
 | `drivers/nina/` | NINA-W102 の SPI1 と制御線（`nano_nina.c`）、境界 `nina_os.h` の実装（`nina_os.c`）、ソケット（`nina_socket.c`）、インターフェース（`nina_netif.c`）、esptool の中継（`nina_passthrough.c`） |
-| `drivers/i2c_dw/` | I2C0 のコア（`common/drivers/i2c_dw/`）の FreeRTOS の部分、Pico SDK の DMA での DMA 読み出し（`i2c_dw_dma_os.c`）、自己診断 |
+| `drivers/i2c_dw/` | I2C のコア（`common/drivers/i2c_dw/`。I2C0 と、オプションで I2C1）の FreeRTOS の部分、Pico SDK の DMA での I2C0 の DMA 読み出し（`i2c_dw_dma_os.c`）、自己診断 |
 | `drivers/lsm6dso/` | LSM6DSOX のデバイスの生成（`lsm6dso_instance.h`）と初期化（`nano_lsm6dso.c`）、自己診断 |
 | `drivers/imu/` | 取得サービス・MQTT・時刻同期（`common/imu/`）の組み込み（`imu.cmake`）、`time_sync.c` の前置き |
 | `drivers/wifi/` | Wi-Fi（`common/drivers/nina/nina_net.c`、資格情報、自動再接続）の組み込みと `ifconfig` |
@@ -194,6 +194,17 @@ Pico SDK の既定のままです。整数の割り算は `pico_divider` のハ�
   `drivers/i2c_dw/i2c_dw_os_impl.h`（セマフォ、時計、割り込み禁止）と `i2c_dw_instance.h`
   （互換層のデバイス `i2c0` と Zephyr の I2C の API、割り込みの登録、リセット、ピン）で実装します。境界の一覧は
   [`nuttx/drivers/README_ja.md`](../../nuttx/drivers/README_ja.md) の「I2C0」の表です。
+- インスタンスは NuttX 版の Kconfig と同じ形で選びます。`drivers/i2c_dw/i2c_dw.cmake` が `CONFIG_I2C_DW_I2C0` を常に
+  定義し（LSM6DSOX がつながっているため。無いと `drivers/lsm6dso/lsm6dso.cmake` が構成を止めます）、CMake の
+  オプション `I2C_DW_I2C1`（既定で無効）のとき `CONFIG_I2C_DW_I2C1` を定義します。インスタンスごとのデバイス、
+  割り込みハンドラー、速さの区分、起動（`i2c_dw_controllers.h` の `i2c_dw_i2c0_initialize()`・`i2c_dw_i2c1_initialize()`）は
+  それぞれのシンボルの下にあり、API、ピンの設定、リセット、割り込みの接続は共有です。
+- I2C1（ボード上では何もつながっていない）は互換層のデバイス `i2c1`（`DEVICE_DT_GET(DT_NODELABEL(i2c1))`、名前は
+  `i2c@40048000`）で、`i2c0` と同じ Zephyr の I2C の API を持ち、GPIO18（SDA、Arduino の D6）と GPIO19（SCL、D7）を
+  内部プルアップ付きで使い（`i2c_dw_instance.h` の `I2C1_SDA_GPIO`・`I2C1_SCL_GPIO`）、常に割り込みで転送します
+  （DMA 読み出しと `i2c_dma` は I2C0 だけ）。`main()` で I2C0 のあとに起動し、失敗してもログに残して `i2c1` が
+  準備できないだけです。互換層のデバイスの一覧（`device_get_binding()`）には入りません。`-DNANO_SELFTEST=ON` では
+  `selftest` が確かめます（下）。I2C1 はビルドとホストテストで確かめただけで、実際のデバイスで使ったことはありません。
 - I2C0 の DMA 読み出しは、コアの 2 つ目の境界 `i2c_dw_dma_os.h` を通して Pico SDK 自身の DMA（`hardware_dma`、
   `hardware_irq`）を使います。実装は `drivers/i2c_dw/i2c_dw_dma_os.c` です。読み出しごとに
   `dma_claim_unused_channel(false)` でチャネルを 2 つ取り（空きが無ければ割り込みで読み、フォールバックを数えます）、
@@ -236,12 +247,15 @@ MQTT のクライアントは NuttX 版と共有する `common/imu/mqtt_min.c`�
 | オプション | 既定 | 内容 |
 |---|---|---|
 | `NANO_SELFTEST` | OFF | `selftest` コマンドを入れる（下） |
+| `I2C_DW_I2C1` | OFF | I2C1（デバイス `i2c1`）を入れる（上） |
 
 ## 自己診断（`selftest`）
 
 `-DNANO_SELFTEST=ON` のビルドにだけ入る試験用のコマンドです。計測を止め、ボードを静止させて実行します。
 互換層（`drivers/compat/zephyr_selftest.c`: ミューテックス、セマフォ、sleep、時計、割り込みからの起床、`k_poll`、ワーク、
-spinlock、atomic、静的なスレッド、時分割、割り込みを 50 ms 止めたあとの tick の追いつきの 22 項目）、I2C0（`drivers/i2c_dw/i2c_dw_selftest.c`: 6 項目）、LSM6DSOX（`drivers/lsm6dso/lsm6dso_selftest.c`:
+spinlock、atomic、静的なスレッド、時分割、割り込みを 50 ms 止めたあとの tick の追いつきの 22 項目）、I2C0（`drivers/i2c_dw/i2c_dw_selftest.c`: 6 項目。I2C1 を入れたビルドでは 7 項目目の `i2c1`: 何もつながっていない
+状態で、i2c1 の準備ができている、ピンがプルアップ付きの I2C、0x10 からの読み出しが 100 ms 未満で `-EIO`、IC_CON に DMA の
+ビットが無い、40 バイトの読み出しで DMA のカウンターが変わらない、i2c0 がまだ応答する）、LSM6DSOX（`drivers/lsm6dso/lsm6dso_selftest.c`:
 3 項目）の結果を `N of M tests failed` の形で表示します。
 
 ## ホストテスト
@@ -257,7 +271,7 @@ spinlock、atomic、静的なスレッド、時分割、割り込みを 50 ms �
 | `shell` | 2 つのセッションのシェル、行編集、出力先 |
 | `kv` | フラッシュの境界と KV（Pico SDK のフラッシュ関数の偽物の上） |
 | `nina` | NINA の SPI と線の境界、READY の割り込み待ち、IRQ の線のエッジの待ち（2 つのタスクを 1 つのエッジで起こす、時間切れ）、カーネルの部分 |
-| `i2c_dw` | I2C0 の境界とデバイス、Zephyr の I2C の API。Pico SDK の DMA の偽物の上の DMA の部分（`i2c_dw_dma_os.c`）: チャネルの取得、設定、開始、共有のハンドラー（終了、バスエラー、ほかの利用者のチャネル）、停止、返却。その上のコアの DMA 読み出し: 読み出し、32 バイトの下限、フォールバック、TX と RX のバスエラー、タイムアウト、DMA 読み出しの無効、終わらない停止（隔離）、カウンター。コアの DMA のコマンド語 |
+| `i2c_dw` | I2C0 の境界とデバイス、Zephyr の I2C の API（2 回作る: i2c0 だけと、`CONFIG_I2C_DW_I2C1` 付き。後者は i2c1 の起動、ピン、転送、応答の無いアドレス、DMA を使わない長い読み出し、影響を受けない i2c0、2 つのタスクからの両バスの転送を加える）。Pico SDK の DMA の偽物の上の DMA の部分（`i2c_dw_dma_os.c`）: チャネルの取得、設定、開始、共有のハンドラー（終了、バスエラー、ほかの利用者のチャネル）、停止、返却。その上のコアの DMA 読み出し: 読み出し、32 バイトの下限、フォールバック、TX と RX のバスエラー、タイムアウト、DMA 読み出しの無効、終わらない停止（隔離）、カウンター。コアの DMA のコマンド語 |
 | `gpio` | GPIO バンク 0 の境界、`gpio0`、FIFO の割り込み |
 | `imu` | アドレスの変換、`hwinfo` |
 | `mqtt` | MQTT の送信（偽のブローカー）。続けて、ホストの `imu-host check` を相手にする回（`host/.venv` が無ければ skip） |

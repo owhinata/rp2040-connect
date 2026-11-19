@@ -7,7 +7,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-/* I2C0 of the RP2040 (a DesignWare DW_apb_i2c block): a port of the
+/* I2C0 and I2C1 of the RP2040 (DesignWare DW_apb_i2c blocks): a port of the
  * controller path of the Zephyr build's driver, Zephyr's
  * drivers/i2c/i2c_dw.c with the local patch
  * 0003-i2c-dw-rp2040-fifo-and-dma.patch (zephyr/manifest/zephyr/patches/
@@ -32,14 +32,22 @@
  * i2c_dw_os_impl.h of the OS's build) and in i2c_dw_instance.h of the
  * OS's build, read at the end of this file, which defines
  * i2c_dw_os_prepare() and i2c_dw_os_irq_enable() (below) and makes the
- * device of the OS's driver model: it initializes the semaphores and
- * dw->base of i2c_0_runtime, calls i2c_dw_turn_on() once and then sets
- * dw->ready, and calls i2c_dw_transfer_msgs() for a transfer and
- * i2c_dw_isr_handler() from the I2C0 interrupt.
+ * device of the OS's driver model for each instance: it initializes the
+ * semaphores and dw->base of i2c_0_runtime or i2c_1_runtime, calls
+ * i2c_dw_turn_on() once and then sets dw->ready, and calls
+ * i2c_dw_transfer_msgs() for a transfer and i2c_dw_isr_handler() from the
+ * controller's interrupt.
  *
  *   Zephyr                                here
+ *   I2C_DEVICE_INIT_DW(n) for each        CONFIG_I2C_DW_I2C0 and
+ *   enabled node (i2c0, i2c1)             CONFIG_I2C_DW_I2C1 of the OS's
+ *                                         build (at least one): i2c_0_runtime
+ *                                         and i2c_1_runtime (below)
  *   struct device, dev->data, dev->config struct i2c_dw_dev_config, the
- *                                         constants of i2c_dw.h
+ *                                         constants of i2c_dw.h (the same
+ *                                         for both nodes)
+ *   dev->name, dev == DEVICE_DT_GET(      i2c_dw_name(dw), i2c_dw_is_i2c0(dw)
+ *   DT_NODELABEL(i2c0))                   (I2C_DW_INST(), below)
  *   i2c_transfer() (msgs, num, addr)      i2c_dw_transfer_msgs() (the OS's
  *                                         messages, I2C_DW_OS_MSG_*())
  *   i2c_configure() (speed class)         the speed of each transfer,
@@ -56,8 +64,10 @@
  * (need_setup), CONFIG_I2C_DW_EXTENDED_SUPPORT (SDA/SCL timeouts), power
  * management, PCIe, the RTS5912 quirk, the recover/check-bus callbacks
  * (only wrappers of other SoCs register them; without one the recovery
- * does nothing and returns 0), the never-set i2c_stat_not_ready counter,
- * and other instances than i2c0.
+ * does nothing and returns 0), and the never-set i2c_stat_not_ready
+ * counter.  The calls of i2c_dw_rp2040_controller() (i2c_dw_rp2040.h) are
+ * left out too: both instances are RP2040 controllers, so the check is
+ * always true here.
  *
  * The DMA reads of i2c0 (CONFIG_I2C_DW_RP2040_DMA of the Zephyr build,
  * i2c_dw_rp2040_dma_priv.h, i2c_dw.c:55-57, 566-587, 795-799, 941-946,
@@ -71,11 +81,13 @@
  * channels' own aborts, not for any channel's).  atomic_t becomes a volatile word with the read-modify-write under
  * i2c_dw_os_irq_lock() where an interrupt also writes it
  * (rp2040_dma_events); the counters are only written by the transfer,
- * which holds bus_sem.  As in the patched driver, the read's
- * semaphore, events, channels, command words and buffer are static
- * variables for i2c0 (i2c_dw_rp2040_dma_priv.h:57-63), and rp2040_dma_active
- * and rp2040_dma_quarantined are members of struct i2c_dw_dev_config
- * (i2c_dw.h:194-197).  The semaphore is an i2c_dw_os_sem_t, which the OS's
+ * which holds bus_sem.  As in the patched driver, the DMA reads are
+ * i2c0's only (i2c1 always takes the interrupt path, and its IC_CON never
+ * gets RX_FIFO_FULL_HLD_CTRL), the read's semaphore, events, channels,
+ * command words and buffer are static variables for i2c0
+ * (i2c_dw_rp2040_dma_priv.h:57-63), and rp2040_dma_active and
+ * rp2040_dma_quarantined are members of struct i2c_dw_dev_config
+ * (i2c_dw.h:194-197).  CONFIG_I2C_DW_RP2040_DMA needs CONFIG_I2C_DW_I2C0.  The semaphore is an i2c_dw_os_sem_t, which the OS's
  * part (i2c_dw_instance.h) initializes to 0 with the controller's
  * semaphores, in place of K_SEM_DEFINE().
  *
@@ -104,9 +116,17 @@ LOG_MODULE_REGISTER(i2c_dw);
 
 #include "i2c_dw_rp2040.h"
 
-/* The devicetree name of the Zephyr build's controller (dev->name). */
+#if !defined(CONFIG_I2C_DW_I2C0) && !defined(CONFIG_I2C_DW_I2C1)
+#error "i2c_dw.c: no instance (CONFIG_I2C_DW_I2C0, CONFIG_I2C_DW_I2C1)"
+#endif
+#if defined(CONFIG_I2C_DW_RP2040_DMA) && !defined(CONFIG_I2C_DW_I2C0)
+#error "i2c_dw.c: the DMA reads (CONFIG_I2C_DW_RP2040_DMA) are i2c0's"
+#endif
 
-#define I2C_DW_NAME "i2c@40044000"
+/* The devicetree names of the Zephyr build's controllers (dev->name). */
+
+#define I2C_DW_I2C0_NAME "i2c@40044000"
+#define I2C_DW_I2C1_NAME "i2c@40048000"
 
 struct i2c_dw_dev_config {
 	I2C_DW_OS_DEV_HEAD
@@ -135,11 +155,37 @@ struct i2c_dw_dev_config {
 #endif
 };
 
-/* In .bss, as Zephyr's i2c_0_runtime; the OS's part (i2c_dw_instance.h)
- * sets it up.
+/* The instances, in .bss as Zephyr's i2c_##n##_runtime of
+ * I2C_DEVICE_INIT_DW(n) (i2c_dw.c:1772); the OS's part (i2c_dw_instance.h)
+ * sets them up.
  */
 
+#ifdef CONFIG_I2C_DW_I2C0
 static struct i2c_dw_dev_config i2c_0_runtime;
+#endif
+#ifdef CONFIG_I2C_DW_I2C1
+static struct i2c_dw_dev_config i2c_1_runtime;
+#endif
+
+/* I2C_DW_INST(dw, v0, v1): v0 for i2c0's instance, v1 for i2c1's, as
+ * Zephyr's per-instance values (DT_INST_*(n), dev->name).  With only one
+ * instance built, that one's value without a test (so a build of one
+ * instance compiles as if the value were written in).  For the OS's part
+ * too (its pins, reset, interrupt and base address).
+ */
+
+#if defined(CONFIG_I2C_DW_I2C0) && defined(CONFIG_I2C_DW_I2C1)
+#define I2C_DW_INST(dw, v0, v1) ((dw) == &i2c_0_runtime ? (v0) : (v1))
+#elif defined(CONFIG_I2C_DW_I2C0)
+#define I2C_DW_INST(dw, v0, v1) (v0)
+#else
+#define I2C_DW_INST(dw, v0, v1) (v1)
+#endif
+
+/* dev->name and dev == DEVICE_DT_GET(DT_NODELABEL(i2c0)) */
+
+#define i2c_dw_name(dw)    I2C_DW_INST(dw, I2C_DW_I2C0_NAME, I2C_DW_I2C1_NAME)
+#define i2c_dw_is_i2c0(dw) I2C_DW_INST(dw, true, false)
 
 /* No recover-bus callback is registered (i2c_dw.c:84-98). */
 
@@ -164,37 +210,37 @@ static int i2c_dw_error_chk(struct i2c_dw_dev_config *dw)
 		/* check 7bit NACK Tx Abort */
 		if (ic_txabrt_src.bits.ADDR7BNACK) {
 			dw->state |= I2C_DW_NACK;
-			LOG_ERR_RATELIMIT("NACK on %s", I2C_DW_NAME);
+			LOG_ERR_RATELIMIT("NACK on %s", i2c_dw_name(dw));
 		}
 		/* check SDA stuck low Tx abort, need to do bus recover */
 		if (ic_txabrt_src.bits.SDASTUCKLOW) {
 			dw->state |= I2C_DW_SDA_STUCK;
-			LOG_ERR("SDA Stuck Low on %s", I2C_DW_NAME);
+			LOG_ERR("SDA Stuck Low on %s", i2c_dw_name(dw));
 		}
 		/* check if user abort the transmit */
 		if (ic_txabrt_src.bits.USRABRT) {
 			dw->state |= I2C_DW_USER_ABRT;
-			LOG_ERR("User Abort on %s", I2C_DW_NAME);
+			LOG_ERR("User Abort on %s", i2c_dw_name(dw));
 		}
 		/* check if user abort the transmit */
 		if (ic_txabrt_src.bits.ARBLOST) {
 			dw->state |= I2C_DW_USER_ABRT;
-			LOG_ERR("ARB lost on %s", I2C_DW_NAME);
+			LOG_ERR("ARB lost on %s", i2c_dw_name(dw));
 		}
 		/* TX abrt because STOP */
 		if (intr_stat.bits.stop_det) {
 			dw->state |= I2C_DW_USER_ABRT;
-			LOG_ERR_RATELIMIT("ABR and STOP on %s", I2C_DW_NAME);
+			LOG_ERR_RATELIMIT("ABR and STOP on %s", i2c_dw_name(dw));
 		}
 	}
 
 	/* check SCL stuck low */
 	if (intr_stat.bits.scl_stuck_low) {
 		dw->state |= I2C_DW_SCL_STUCK;
-		LOG_ERR("SCL Stuck Low on %s", I2C_DW_NAME);
+		LOG_ERR("SCL Stuck Low on %s", i2c_dw_name(dw));
 	}
 	if (dw->state & I2C_DW_ERR_MASK) {
-		LOG_ERR_RATELIMIT("IO Fail on %s", I2C_DW_NAME);
+		LOG_ERR_RATELIMIT("IO Fail on %s", i2c_dw_name(dw));
 		return -EIO;
 	}
 	return 0;
@@ -349,8 +395,8 @@ static inline void i2c_dw_transfer_complete(struct i2c_dw_dev_config *dw)
 #include "i2c_dw_rp2040_dma_priv.h"
 #endif
 
-/* i2c_dw_isr(): the body of the I2C0 interrupt handler, which the OS's
- * handler (i2c_dw_instance.h) calls with &i2c_0_runtime.  Interrupt.
+/* i2c_dw_isr(): the body of the controller's interrupt handler, which the
+ * OS's handler (i2c_dw_instance.h) calls with the instance.  Interrupt.
  */
 
 static inline void i2c_dw_isr_handler(struct i2c_dw_dev_config *const dw)
@@ -484,9 +530,9 @@ static int i2c_dw_setup(struct i2c_dw_dev_config *dw, uint16_t target_address)
 	ic_con.bits.restart_en = 1U;
 #ifdef CONFIG_I2C_DW_RP2040_DMA
 	/* I2C_IC_CON_RX_FIFO_FULL_HLD_CTRL_BITS (bit 9) with the DMA reads
-	 * enabled (i2c0 is the only instance here).
+	 * enabled, on i2c0.
 	 */
-	if (rp2040_dma_enabled) {
+	if (i2c_dw_is_i2c0(dw) && rp2040_dma_enabled) {
 		ic_con.raw |= BIT(9);
 	}
 #endif
@@ -801,15 +847,16 @@ static int i2c_dw_init_config(struct i2c_dw_dev_config *dw)
 
 /* The I2C block's clock, reset_line_toggle_dt() (reset_block_num(), then
  * unreset_block_num_wait_blocking()) and pinctrl_apply_state() of the
- * board's i2c0_default group (GPIO12 SDA, GPIO13 SCL as Zephyr's
- * pinctrl_rpi_pico.c sets them: function I2C, no pulls, 4 mA, slow slew,
- * input and Schmitt trigger enabled).  0 or a negative errno.
+ * instance's pins as Zephyr's pinctrl_rpi_pico.c sets them (i2c0: the
+ * board's i2c0_default group, GPIO12 SDA, GPIO13 SCL: function I2C, no
+ * pulls, 4 mA, slow slew, input and Schmitt trigger enabled; i2c1: the OS's
+ * pins, the same with pull-ups, i2c_dw_os.h).  0 or a negative errno.
  */
 
 static int i2c_dw_os_prepare(struct i2c_dw_dev_config *dw);
 
-/* IRQ_CONNECT() and irq_enable() of I2C0_IRQ: a handler that calls
- * i2c_dw_isr_handler(dw), then enabled.
+/* IRQ_CONNECT() and irq_enable() of the instance's interrupt (I2C0_IRQ,
+ * I2C1_IRQ): a handler that calls i2c_dw_isr_handler(dw), then enabled.
  */
 
 static void i2c_dw_os_irq_enable(struct i2c_dw_dev_config *dw);

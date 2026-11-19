@@ -126,6 +126,17 @@
 #define BOARD_LSM6DSOX_INT1_FLAGS    0   /* <&gpio0 24 0>: active high, no pull */
 #define BOARD_ATECC608A_I2C_ADDR     0x60
 
+/* I2C1 (CONFIG_I2C_DW_I2C1, off by default): nothing is connected to it on
+ * the board.  Arduino D6/D7, which nothing else here uses (other choices of
+ * the RP2040: SDA GPIO2/6/10/14/22/26, SCL GPIO3/7/11/15/23/27; GPIO2, 3,
+ * 10, 11 and 14 are the NINA's, 6/7 the LED and SPI0, 26/27 the ADC in the
+ * Zephyr build).  With the internal pull-ups, as nothing on the board pulls
+ * these pins up (I2C0's pins have the board's own, and no internal ones).
+ */
+
+#define BOARD_I2C1_SDA_GPIO          18  /* D6 */
+#define BOARD_I2C1_SCL_GPIO          19  /* D7 */
+
 /* The properties of the LSM6DSOX node of the Zephyr build's devicetree
  * (zephyr/build/usb-console/zephyr/zephyr.dts, lsm6dsox@6a: the board's
  * arduino_nano_connect.dts and app/usb-console/app.overlay; the others are

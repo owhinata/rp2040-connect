@@ -1,12 +1,12 @@
 /****************************************************************************
- * boards/arduino-nano-rp2040-connect/src/i2c_dw_i2c0.h
+ * boards/arduino-nano-rp2040-connect/src/i2c_dw_controllers.h
  *
  * SPDX-License-Identifier: Apache-2.0
  *
  ****************************************************************************/
 
-#ifndef __BOARDS_ARDUINO_NANO_RP2040_CONNECT_SRC_I2C_DW_I2C0_H
-#define __BOARDS_ARDUINO_NANO_RP2040_CONNECT_SRC_I2C_DW_I2C0_H
+#ifndef __BOARDS_ARDUINO_NANO_RP2040_CONNECT_SRC_I2C_DW_CONTROLLERS_H
+#define __BOARDS_ARDUINO_NANO_RP2040_CONNECT_SRC_I2C_DW_CONTROLLERS_H
 
 #include <nuttx/config.h>
 
@@ -24,6 +24,23 @@ struct i2c_master_s;
  *
  ****************************************************************************/
 
+#ifdef CONFIG_I2C_DW_I2C0
 struct i2c_master_s *i2c_dw_i2c0_initialize(void);
+#endif
 
-#endif /* __BOARDS_ARDUINO_NANO_RP2040_CONNECT_SRC_I2C_DW_I2C0_H */
+/****************************************************************************
+ * Name: i2c_dw_i2c1_initialize
+ *
+ * Description:
+ *   The same for I2C1 (BOARD_I2C1_SDA_GPIO, BOARD_I2C1_SCL_GPIO: GPIO18,
+ *   D6, and GPIO19, D7, with the internal pull-ups), a second instance of
+ *   the same driver, without the DMA reads.  From nano_bringup(), after
+ *   I2C0.
+ *
+ ****************************************************************************/
+
+#ifdef CONFIG_I2C_DW_I2C1
+struct i2c_master_s *i2c_dw_i2c1_initialize(void);
+#endif
+
+#endif /* __BOARDS_ARDUINO_NANO_RP2040_CONNECT_SRC_I2C_DW_CONTROLLERS_H */

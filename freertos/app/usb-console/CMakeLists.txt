@@ -28,8 +28,9 @@ include(${CMAKE_CURRENT_LIST_DIR}/../../drivers/kv/kv.cmake)
 # The SPI link to the NINA-W102 module and the "nina" command
 # (freertos/drivers/nina).
 include(${CMAKE_CURRENT_LIST_DIR}/../../drivers/nina/nina.cmake)
-# I2C0 with its DMA reads (the device i2c0 of the compatibility layer) and the
-# "i2c_dma" command (freertos/drivers/i2c_dw).
+# I2C0 with its DMA reads (the device i2c0 of the compatibility layer), I2C1
+# as an option (the device i2c1) and the "i2c_dma" command
+# (freertos/drivers/i2c_dw).
 include(${CMAKE_CURRENT_LIST_DIR}/../../drivers/i2c_dw/i2c_dw.cmake)
 # The LSM6DSOX with its FIFO stream, on i2c0 and the layer's gpio0 and RTIO
 # (freertos/drivers/lsm6dso).
@@ -54,6 +55,15 @@ include(${CMAKE_CURRENT_LIST_DIR}/../../drivers/sensor_shell/sensor_shell.cmake)
 # (freertos/script/build.sh -DNANO_SELFTEST=ON).
 option(NANO_SELFTEST "Build the selftest command" OFF)
 
+# I2C1 (the device i2c1 on GPIO18/D6 and GPIO19/D7, freertos/drivers/i2c_dw):
+# off by default (freertos/script/build.sh -DI2C_DW_I2C1=ON).  I2C0 has no
+# option: the LSM6DSOX is on it.
+option(I2C_DW_I2C1 "Build the I2C1 controller (device i2c1)" OFF)
+set(i2c_dw_options)
+if(I2C_DW_I2C1)
+  list(APPEND i2c_dw_options I2C1)
+endif()
+
 add_executable(usb-console
   src/main.c
   src/commands.c
@@ -72,10 +82,10 @@ endif()
 freertos_kv(usb-console)
 freertos_nina(usb-console)
 if(NANO_SELFTEST)
-  freertos_i2c_dw(usb-console SELFTEST)
+  freertos_i2c_dw(usb-console SELFTEST ${i2c_dw_options})
   freertos_lsm6dso(usb-console SELFTEST)
 else()
-  freertos_i2c_dw(usb-console)
+  freertos_i2c_dw(usb-console ${i2c_dw_options})
   freertos_lsm6dso(usb-console)
 endif()
 freertos_imu(usb-console)

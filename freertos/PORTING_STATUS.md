@@ -1652,3 +1652,29 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
   実際に共有した場合。
 - **新しい基準**: NuttX は `freertos/build/baseline/nuttx/snapshot-1119d/image.bin`（284856 B）。Zephyr は `snapshot-1119b` のまま。
 - 実機: FreeRTOS 版。
+
+## 共有コアを I2C1 に対応（既定 OFF）（2026-11-19、ユーザーの決定）
+
+- 理由（ユーザー）: I2C1 を OS のドライバーに任せると、同じ種類のハードウェアにドライバーが 2 本になる。共有コアで両方を動かす。I2C1 に何かをつなぐ予定は無く、
+  使える状態になっていればよい。
+- コア（`i2c_dw.c`）: Zephyr の `I2C_DEVICE_INIT_DW(n)` に当たる形で、`CONFIG_I2C_DW_I2C0` が `i2c_0_runtime`、`CONFIG_I2C_DW_I2C1` が `i2c_1_runtime` を作る。
+  番号ごとに違う値は `I2C_DW_INST(dw, v0, v1)`（片方だけのビルドでは判定なし＝既定のイメージが変わらない）。DMA の読み出しは i2c0 だけ（パッチと同じ）、
+  FIFO の扱いは両方。
+- FreeRTOS: `i2c_dw.cmake` が 2 つの記号を同じ場所で定義。`CONFIG_I2C_DW_I2C0` は常に 1（LSM6DSOX が必要。外すと `lsm6dso.cmake` が設定で止める）、
+  `CONFIG_I2C_DW_I2C1` はオプション `-DI2C_DW_I2C1=ON`（既定 OFF）。デバイスは `DEVICE_DT_GET(DT_NODELABEL(i2c1))`、Zephyr の I2C の API。
+  ビルドのオプションは `-DNANO_SELFTEST=ON` と合わせて 2 つになった（ユーザーの了解）。
+- NuttX: Kconfig の `I2C_DW_I2C1`（既定 n）。2 つ目の `struct i2c_master_s`、`CONFIG_I2C_DRIVER` があれば `/dev/i2c1`。defconfig を変えずに有効にする手順:
+  ビルドのあと `.config` に `CONFIG_I2C_DW_I2C1=y` と `CONFIG_I2CTOOL_MAXBUS=1` を足し、`make -C nuttx/nuttx olddefconfig`、`--clean` なしでビルド。
+- ピン: SDA GPIO18（D6）、SCL GPIO19（D7）。3 版のボードの定義で未使用。I2C1 は内蔵プルアップを有効にする（ボードに外付けのプルアップが無いため）。
+  I2C0 は従来どおりプルなし（ボードが外付けで引き上げている）。定義は FreeRTOS が `i2c_dw_instance.h`、NuttX が `include/board.h`。
+- 各 OS の側の公開ヘッダーは `i2c_dw_i2c0.h` → `i2c_dw_controllers.h`。
+- 確認（メインが再ビルド）: 既定のビルドは 3 版とも基準と一致（FreeRTOS は同じ日付の前後、NuttX `snapshot-1119d`、Zephyr `snapshot-1119b`）。
+  ホストテスト: FreeRTOS 50（`i2c_dw` を i2c0 だけ・i2c1 つきの 2 回）、NuttX 51（新しい `i2c_dw_instance`）、Zephyr 40。`format.sh --check` も通る。
+  I2C1 つきのビルド: FreeRTOS +336 B（`.bss` +80 B）、NuttX 284856 → 285280 B。警告の増加なし。
+- 実機（I2C1 に何もつないでいない）:
+  - FreeRTOS（`-DI2C_DW_I2C1=ON -DNANO_SELFTEST=ON`）: `selftest` は 22 項目すべて通過、I2C は 7 項目（`i2c1` を含む: デバイスが ready、ピンの設定、
+    応答の無いアドレスが 100 ms 未満で `-EIO`、40 バイトの読み出しでも DMA を使わない）。I2C0 の送信 約 70 秒は `cpu_active` 39.6%、欠番 0、DMA のエラー 0。
+  - NuttX（I2C1 つき）: `i2c bus` は 0・1 とも YES、`i2c dev -b 1 0x08 0x77` は全アドレス応答なしですぐ戻る、`-b 0` は 0x60 と 0x6a、`/dev/i2c1` あり、
+    `dmesg` に `NACK on i2c@40048000`。I2C0 の送信 約 70 秒は `cpu_active` 53.0%、欠番 0、DMA のエラー 0。
+- 確かめていない: I2C1 で実際のデバイスとのやり取り、内蔵プルアップだけでの波形と速度の上限。
+- 実機: 既定の FreeRTOS 版（I2C1 なし）。

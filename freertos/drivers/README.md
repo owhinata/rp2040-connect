@@ -24,7 +24,7 @@ OS-independent part of the layer is `common/compat/`, the FreeRTOS part `freerto
 | `drivers/log/` | The RAM log (`log_ram.c`; the ring is `common/log/log_ring.c`) |
 | `drivers/kv/` | The flash boundary of the key-value store (`nano_flash_kv.c`) and the linker script override (`ld/`, `kv.cmake`) |
 | `drivers/nina/` | The NINA-W102's SPI1 and lines (`nano_nina.c`), the `nina_os.h` boundary (`nina_os.c`), sockets (`nina_socket.c`), the interface (`nina_netif.c`), the esptool passthrough (`nina_passthrough.c`) |
-| `drivers/i2c_dw/` | The FreeRTOS part of the I2C0 core (`common/drivers/i2c_dw/`), its DMA reads on the Pico SDK's DMA (`i2c_dw_dma_os.c`), self-test |
+| `drivers/i2c_dw/` | The FreeRTOS part of the I2C core (`common/drivers/i2c_dw/`; I2C0, and I2C1 as an option), I2C0's DMA reads on the Pico SDK's DMA (`i2c_dw_dma_os.c`), self-test |
 | `drivers/lsm6dso/` | The LSM6DSOX device (`lsm6dso_instance.h`) and its initialization (`nano_lsm6dso.c`), self-test |
 | `drivers/imu/` | Builds in the acquisition service, MQTT and time synchronization (`common/imu/`; `imu.cmake`), the prelude of `time_sync.c` |
 | `drivers/wifi/` | Builds in Wi-Fi (`common/drivers/nina/nina_net.c`, credentials, reconnection) and `ifconfig` |
@@ -224,6 +224,19 @@ zero gives the Pico SDK routines' results, the same in the three builds. `memcpy
   `i2c_dw_instance.h` (the layer's `i2c0` device with Zephyr's I2C API, the interrupt registration, reset,
   pins). The boundary is listed in the "I2C0" table of
   [`nuttx/drivers/README.md`](../../nuttx/drivers/README.md).
+- The instances are chosen as in the NuttX build's Kconfig: `drivers/i2c_dw/i2c_dw.cmake` defines
+  `CONFIG_I2C_DW_I2C0` always (the LSM6DSOX is on it; `drivers/lsm6dso/lsm6dso.cmake` stops the
+  configuration without it) and `CONFIG_I2C_DW_I2C1` with the CMake option `I2C_DW_I2C1` (off by
+  default). Each instance has its own device, interrupt handler, speed class and start-up
+  (`i2c_dw_i2c0_initialize()`, `i2c_dw_i2c1_initialize()` in `i2c_dw_controllers.h`) under its symbol;
+  the API, the pins' setup, the reset and the interrupt's connection are shared.
+- I2C1 (nothing is connected to it on the board) is the device `i2c1`
+  (`DEVICE_DT_GET(DT_NODELABEL(i2c1))`, name `i2c@40048000`), with the same Zephyr I2C API as `i2c0`, on
+  GPIO18 (SDA, Arduino D6) and GPIO19 (SCL, D7) with the internal pull-ups (`I2C1_SDA_GPIO`,
+  `I2C1_SCL_GPIO` in `i2c_dw_instance.h`), always on the interrupts (the DMA reads and `i2c_dma` are
+  I2C0's). It starts after I2C0 in `main()`; a failure is logged and leaves `i2c1` not ready. It is not
+  in the layer's device list (`device_get_binding()`). With `-DNANO_SELFTEST=ON` the `selftest`
+  command checks it (below). I2C1 has been built and host-tested but never used with a real device.
 - The DMA reads of I2C0 use the Pico SDK's own DMA (`hardware_dma`, `hardware_irq`) through the core's
   second boundary, `i2c_dw_dma_os.h`, implemented in `drivers/i2c_dw/i2c_dw_dma_os.c`: per read, two
   channels from `dma_claim_unused_channel(false)` (none free: the read takes the interrupts and counts a
@@ -272,6 +285,7 @@ Given as `freertos/script/build.sh -DNAME=VALUE` (kept until `--clean`).
 | Option | Default | Meaning |
 |---|---|---|
 | `NANO_SELFTEST` | OFF | Builds in the `selftest` command (below) |
+| `I2C_DW_I2C1` | OFF | Builds in I2C1, the device `i2c1` (above) |
 
 ## Self-test (`selftest`)
 
@@ -279,7 +293,9 @@ A test command only in builds with `-DNANO_SELFTEST=ON`. Run it with the measure
 board at rest. It prints, as `N of M tests failed`, the results for the layer
 (`drivers/compat/zephyr_selftest.c`: mutexes, semaphores, sleep, clock, wake-ups from interrupts,
 `k_poll`, work, spinlock, atomic, static threads, time slices, the tick's catch-up after interrupts are disabled for 50 ms; 22 items), I2C0
-(`drivers/i2c_dw/i2c_dw_selftest.c`: 6 items) and the LSM6DSOX (`drivers/lsm6dso/lsm6dso_selftest.c`:
+(`drivers/i2c_dw/i2c_dw_selftest.c`: 6 items; with I2C1 built, a 7th, `i2c1`: with nothing connected,
+i2c1 is ready, its pins are I2C with the pull-ups, a read from 0x10 ends with `-EIO` in under 100 ms,
+IC_CON has no DMA bit, a 40-byte read leaves the DMA counters alone, and i2c0 still answers) and the LSM6DSOX (`drivers/lsm6dso/lsm6dso_selftest.c`:
 3 items).
 
 ## Host tests
@@ -295,7 +311,7 @@ board at rest. It prints, as `N of M tests failed`, the results for the layer
 | `shell` | Two shell sessions, line editing, output routing |
 | `kv` | The flash boundary and the key-value store (on fakes of the Pico SDK's flash functions) |
 | `nina` | The NINA's SPI and line boundaries, the wait for READY on its interrupt, the waits for the IRQ line's edges (two tasks woken by one edge, the timeout), kernel services |
-| `i2c_dw` | I2C0's boundary and device, Zephyr's I2C API; the DMA part (`i2c_dw_dma_os.c`) on fakes of the Pico SDK's DMA: claims, setup, start, the shared handler (end, bus error, other users' channels), stop, release; the core's DMA reads on it: the read, the 32-byte limit, fallbacks, bus errors on TX and RX, timeout, the reads off, a stop that does not end (quarantine), the counters; the core's DMA command words |
+| `i2c_dw` | I2C0's boundary and device, Zephyr's I2C API (built twice: i2c0 only, and with `CONFIG_I2C_DW_I2C1`, which adds i2c1's start, pins, transfers, an unanswered address, long reads that never take the DMA, i2c0 unaffected, and transfers on both buses from two tasks); the DMA part (`i2c_dw_dma_os.c`) on fakes of the Pico SDK's DMA: claims, setup, start, the shared handler (end, bus error, other users' channels), stop, release; the core's DMA reads on it: the read, the 32-byte limit, fallbacks, bus errors on TX and RX, timeout, the reads off, a stop that does not end (quarantine), the counters; the core's DMA command words |
 | `gpio` | GPIO bank 0's boundary, `gpio0`, the FIFO interrupt |
 | `imu` | Address conversions, `hwinfo` |
 | `mqtt` | The MQTT transport (fake broker); then a run against the host's `imu-host check` (skipped without `host/.venv`) |

@@ -5,7 +5,7 @@
 # RAM log's ring (common/log).  They use the fake headers of tests/fakes, the fake kernel of
 # tests/zephyr_fakes or (the NINA core) fakes of its boundary defined by the tests, and need no
 # board and no Zephyr tree (the checks that the copies of Zephyr's files are unchanged and that
-# the I2C0 core matches the Zephyr build's patched driver run when the tree is there).
+# the I2C core matches the Zephyr build's patched driver run when the tree is there).
 # zephyr/script/host_tests.sh and nuttx/script/host_tests.sh run this
 # before their own tests.
 set -euo pipefail
@@ -49,7 +49,7 @@ run lsm6dso_zero "${flags[@]}" "${inc[@]}" tests/lsm6dso_zero.c "$lsm/lsm6dso_ze
 run stream_stop "${flags[@]}" "${inc[@]}" tests/stream_stop.c \
     "$lsm/lsm6dso_fifo.c" "$lsm/lsm6dso_cal.c"
 
-# The I2C0 core's definitions (drivers/i2c_dw/i2c_dw.h): SCL counts, speeds and the
+# The I2C core's definitions (drivers/i2c_dw/i2c_dw.h): SCL counts, speeds and the
 # IC_DATA_CMD words of whole transfers against the Zephyr build's, and the NuttX build's
 # message flags.
 run i2c_dw "${flags[@]}" -Idrivers/i2c_dw tests/i2c_dw.c
@@ -180,7 +180,7 @@ if [[ -f $ztree/VERSION ]]; then
     done
     printf 'ok  zephyr_copies (23 files, Zephyr v4.5.0)\n'
 
-    # The I2C0 core (drivers/i2c_dw) against the Zephyr build's driver, Zephyr's with the local
+    # The I2C core (drivers/i2c_dw) against the Zephyr build's driver, Zephyr's with the local
     # patch 0003 (made from the tree's HEAD and the patch): the definitions and values both
     # take, and the pairs of functions, whose differences must be those of
     # tests/i2c_dw_sync.expected (tests/i2c_dw_sync.py; --update rewrites it after an intended

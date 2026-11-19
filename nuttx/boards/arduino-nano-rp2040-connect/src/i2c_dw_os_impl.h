@@ -9,7 +9,7 @@
  *
  ****************************************************************************/
 
-/* The NuttX part of the I2C0 core's boundary
+/* The NuttX part of the I2C core's boundary
  * (common/drivers/i2c_dw/i2c_dw_os.h, which includes this file first in
  * i2c_dw.c): the NuttX headers, and the types and calls
  * behind the boundary's names:
@@ -27,8 +27,10 @@
  *   irq_lock() (atomic_or())     up_irq_save(), up_irq_restore()
  *   struct i2c_msg               struct i2c_msg_s (i2c_dw_msg_flags()
  *                                turns the NuttX flags into I2C_MSG_*)
- *   the device                   struct i2c_master_s first in the
+ *   the devices                  struct i2c_master_s first in the
  *                                controller's data (i2c_dw_instance.h)
+ *   the nodes i2c0, i2c1         CONFIG_I2C_DW_I2C0, CONFIG_I2C_DW_I2C1
+ *                                (the board's Kconfig)
  */
 
 #ifndef __BOARDS_ARDUINO_NANO_RP2040_CONNECT_SRC_I2C_DW_OS_IMPL_H
@@ -58,7 +60,7 @@
 #include "hardware/rp2040_resets.h"
 #include "rp2040_gpio.h"
 
-#include "i2c_dw_i2c0.h"
+#include "i2c_dw_controllers.h"
 
 /* <nuttx/i2c/i2c_master.h> names the bus frequencies I2C_SPEED_*; the core
  * uses these names for Zephyr's speed classes (i2c_dw.h), as the

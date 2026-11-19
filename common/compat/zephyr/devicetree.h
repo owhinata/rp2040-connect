@@ -11,6 +11,13 @@
  *   label     node                                 defined in
  *   gpio0     /soc/gpio@40014000/gpio-port@0       compat/zephyr_gpio.c
  *   i2c0      /soc/i2c@40044000 ("i2c@40044000")   board src/nano_lsm6dso.c
+ *                                                  (FreeRTOS: drivers/i2c_dw/
+ *                                                  i2c_dw_instance.h)
+ *   i2c1      /soc/i2c@40048000 ("i2c@40048000")   FreeRTOS with
+ *                                                  CONFIG_I2C_DW_I2C1 only:
+ *                                                  drivers/i2c_dw/
+ *                                                  i2c_dw_instance.h (not in
+ *                                                  zephyr_device.c's list)
  *   lsm6dsox  /soc/i2c@40044000/lsm6dsox@6a        drivers/lsm6dso/
  *                                                  lsm6dso_instance.h
  *   timer     /soc/timer@40054000                  (no device: its address,
@@ -65,6 +72,7 @@
 struct device;
 DEVICE_DT_DECLARE(gpio0);
 DEVICE_DT_DECLARE(i2c0);
+DEVICE_DT_DECLARE(i2c1);
 DEVICE_DT_DECLARE(lsm6dsox);
 
 #endif /* __NUTTX_DRIVERS_COMPAT_ZEPHYR_DEVICETREE_H */

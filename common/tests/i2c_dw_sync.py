@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT
-"""The I2C0 core (common/drivers/i2c_dw) against the Zephyr build's driver.
+"""The I2C core (common/drivers/i2c_dw) against the Zephyr build's driver.
 
 The Zephyr build uses Zephyr's DesignWare driver with a local patch
 (zephyr/manifest/zephyr/patches/zephyr/0003-i2c-dw-rp2040-fifo-and-dma.patch);
@@ -68,7 +68,9 @@ CORE_FILES = ('i2c_dw.c', 'i2c_dw.h', 'i2c_dw_registers.h', 'i2c_dw_rp2040.h',
 # against the build's .config when there is one.
 ZEPHYR_ON = {'CONFIG_I2C_DW_RP2040_DMA', 'CONFIG_SOC_RP2040', 'CONFIG_SHELL', 'CONFIG_PINCTRL',
              'CONFIG_RESET'}
-CORE_ON = {'CONFIG_I2C_DW_RP2040_DMA'}
+# The core with both instances (CONFIG_I2C_DW_I2C0, CONFIG_I2C_DW_I2C1), as Zephyr's driver serves
+# every enabled node.
+CORE_ON = {'CONFIG_I2C_DW_RP2040_DMA', 'CONFIG_I2C_DW_I2C0', 'CONFIG_I2C_DW_I2C1'}
 # The devicetree's conditionals: i2c0 has clocks and is "raspberrypi,pico-i2c", not on PCIe
 # (checked against the build's zephyr.dts when there is one).
 ZEPHYR_DT = {'DT_ANY_INST_HAS_PROP_STATUS_OKAY(clocks)': '1',
@@ -131,7 +133,9 @@ RENAMES = [
     (r'\bmsg->buf\b', 'buf'),
     (r'\bmin3\((\w+), (\w+), (\w+)\)', r'MIN(MIN(\1, \2), \3)'),
     (r'\bDEVICE_MMIO_GET\((dev|port)\)', 'dw->base'),
-    (r'\b(dev|port)->name\b', 'I2C_DW_NAME'),
+    (r'\b(dev|port)->name\b', 'i2c_dw_name(dw)'),
+    (r'\b(dev|port) == DEVICE_DT_GET\(DT_NODELABEL\(i2c0\)\)', 'i2c_dw_is_i2c0(dw)'),
+    (r'\b(dev|port) != DEVICE_DT_GET\(DT_NODELABEL\(i2c0\)\)', '!i2c_dw_is_i2c0(dw)'),
     (r'\bLOG_DBG\("(?:[^"\\]|\\.)*"(?: "(?:[^"\\]|\\.)*")*(?:, [^;]*)?\); ', ''),
     (r'\bi2c_dw_rp2040_controller\((dev|port)\) && ', ''),
     (r'\b(dev|port)\b', 'dw'),

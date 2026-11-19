@@ -1,10 +1,11 @@
 /* SPDX-License-Identifier: MIT */
 /* The USB console on the Pico SDK and the FreeRTOS kernel: a shell on the
  * USB CDC ACM port, the key-value store, the SPI link to the NINA-W102, I2C0
- * with its DMA reads, the LSM6DSOX, the IMU acquisition service with its
- * MQTT transport, Wi-Fi with the stored credentials, the time
- * synchronization with the NTP server, the shell over Telnet, the "zperf"
- * speed test, the "sensor" command and a task that blinks the LED.
+ * with its DMA reads (and I2C1 as a build option), the LSM6DSOX, the IMU
+ * acquisition service with its MQTT transport, Wi-Fi with the stored
+ * credentials, the time synchronization with the NTP server, the shell over
+ * Telnet, the "zperf" speed test, the "sensor" command and a task that
+ * blinks the LED.
  */
 #include <stdbool.h>
 #include <stdint.h>
@@ -18,7 +19,7 @@
 #include "app_log.h"
 #include "cli.h"
 #include "fault.h"
-#include "i2c_dw_i2c0.h"
+#include "i2c_dw_controllers.h"
 #include "imu_cal.h"
 #include "kv_store.h"
 #include "log_ram.h"
@@ -383,10 +384,22 @@ int main(void)
 	 * SPI bus (freertos/drivers/i2c_dw).  A failure leaves i2c0 not ready
 	 * (its calls return -ENODEV) and does not stop the start.
 	 */
+#ifdef CONFIG_I2C_DW_I2C0
 	ret = i2c_dw_i2c0_initialize();
 	if (ret != 0) {
 		LOG_ERR("Could not set up I2C0: %d", ret);
 	}
+#endif
+
+#ifdef CONFIG_I2C_DW_I2C1
+	/* I2C1 (the device i2c1), after i2c0 as Zephyr's devicetree order has
+	 * them; a failure leaves i2c1 not ready and nothing else changes.
+	 */
+	ret = i2c_dw_i2c1_initialize();
+	if (ret != 0) {
+		LOG_ERR("Could not set up I2C1: %d", ret);
+	}
+#endif
 
 	/* The bounds of the key-value area from the linker script; until they
 	 * are found right, the store refuses to erase or program the flash

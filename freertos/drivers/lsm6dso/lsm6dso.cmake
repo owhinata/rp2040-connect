@@ -8,7 +8,8 @@
 # after freertos_zephyr_compat(<target>) and freertos_i2c_dw(<target>)
 # (freertos/drivers/compat/compat.cmake, freertos/drivers/i2c_dw/
 # i2c_dw.cmake: the layer's kernel, work queues and RTIO, and the device
-# i2c0).  It adds to the target the same sources as the NuttX build's
+# i2c0; the configuration stops if CONFIG_I2C_DW_I2C0 is not on, as the
+# NuttX build's NANO_LSM6DSO depends on I2C_DW_I2C0).  It adds to the target the same sources as the NuttX build's
 # CONFIG_NANO_LSM6DSO and CONFIG_NANO_LSM6DSO_STREAM (nuttx/drivers/lsm6dso/
 # Make.defs, nuttx/drivers/compat/Make.defs):
 #
@@ -48,6 +49,13 @@ get_filename_component(FREERTOS_STMEMSC_DIR ${CMAKE_CURRENT_LIST_DIR}/../../stme
 
 function(freertos_lsm6dso target)
   cmake_parse_arguments(ARG "SELFTEST" "" "" ${ARGN})
+
+  get_target_property(defs ${target} COMPILE_DEFINITIONS)
+  if(NOT "CONFIG_I2C_DW_I2C0=1" IN_LIST defs)
+    message(FATAL_ERROR "freertos_lsm6dso: the LSM6DSOX is on i2c0, but "
+      "CONFIG_I2C_DW_I2C0 is not on for ${target} (call freertos_i2c_dw() "
+      "first; freertos/drivers/i2c_dw/i2c_dw.cmake)")
+  endif()
 
   if(NOT EXISTS ${FREERTOS_STMEMSC_DIR}/lsm6dso_reg.c)
     message(FATAL_ERROR "${FREERTOS_STMEMSC_DIR}/lsm6dso_reg.c is missing; "

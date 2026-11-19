@@ -56,9 +56,9 @@
 #  include "nina_net.h"
 #endif
 
-#ifdef CONFIG_I2C_DW_I2C0
+#if defined(CONFIG_I2C_DW_I2C0) || defined(CONFIG_I2C_DW_I2C1)
 #  include <nuttx/i2c/i2c_master.h>
-#  include "i2c_dw_i2c0.h"
+#  include "i2c_dw_controllers.h"
 #endif
 
 #ifdef CONFIG_NANO_LSM6DSO
@@ -221,6 +221,34 @@ int nano_bringup(void)
     if (i2c != NULL)
       {
         (void)nano_lsm6dso_initialize(i2c);
+      }
+#  endif
+  }
+#endif
+
+#ifdef CONFIG_I2C_DW_I2C1
+  /* I2C1 (nothing connected on the board): reset, pins, controller
+   * registers and interrupt, as I2C0's (no DMA reads), then /dev/i2c1.
+   * After I2C0 and the LSM6DSOX (Zephyr brings i2c1 up right after i2c0,
+   * before the sensor; nothing here depends on the order).  A failure is
+   * logged and changes nothing else.
+   */
+
+  {
+    struct i2c_master_s *i2c = i2c_dw_i2c1_initialize();
+
+    if (i2c == NULL)
+      {
+        syslog(LOG_ERR, "ERROR: i2c_dw_i2c1_initialize() failed\n");
+      }
+#  ifdef CONFIG_I2C_DRIVER
+    else
+      {
+        ret = i2c_register(i2c, 1);
+        if (ret < 0)
+          {
+            syslog(LOG_ERR, "ERROR: i2c_register(1) failed: %d\n", ret);
+          }
       }
 #  endif
   }

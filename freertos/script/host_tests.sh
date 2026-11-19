@@ -12,10 +12,10 @@
 #   store with the board's flash boundary on fakes of the Pico SDK's flash
 #   functions (freertos/tests/kv), and the NINA link's boundaries
 #   (freertos/drivers/nina) with the shared core on fakes of the Pico SDK's
-#   GPIO, SPI and GPIO interrupt functions (freertos/tests/nina), and I2C0's boundaries
+#   GPIO, SPI and GPIO interrupt functions (freertos/tests/nina), and I2C0's and I2C1's boundaries
 #   (freertos/drivers/i2c_dw, the layer's <zephyr/drivers/i2c.h>) with the
 #   shared core on fakes of the Pico SDK's GPIO, reset, IRQ and sync
-#   functions and of I2C0's registers (freertos/tests/i2c_dw), and GPIO bank
+#   functions and of the controllers' registers (freertos/tests/i2c_dw), and GPIO bank
 #   0's boundary (freertos/drivers/compat/rp2040/nano_gpio.c) under the
 #   layer's gpio0 and the LSM6DSO's FIFO interrupt on fakes of the Pico SDK's
 #   GPIO and IRQ functions (freertos/tests/gpio), and the IMU service's
@@ -244,35 +244,43 @@ else
 fi
 printf 'ok  nina (SPI and line boundary, READY interrupt, kernel services, FreeRTOS POSIX port)\n'
 
-# I2C0 (freertos/tests/i2c_dw): the board's boundaries of the shared core (drivers/i2c_dw:
-# i2c_dw_os_impl.h, i2c_dw_instance.h with the device i2c0 and its Zephyr I2C API,
-# i2c_dw_dma_os.c with the DMA reads' channels; drivers/compat/zephyr/drivers/i2c.h) on fakes of
-# the Pico SDK's GPIO, reset, IRQ, sync and DMA functions and of I2C0's and the DMA's registers
-# (tests/i2c_dw/pico_fake), under the shared core (common/drivers/i2c_dw/i2c_dw.c, through
-# tests/i2c_dw/i2c_dw_core.c, which gives the test the core's static command words, with the
-# prelude, as drivers/i2c_dw/i2c_dw.cmake builds it), on the same kernel and layer objects.
-# The host's cc reports -Wsign-compare for two MIN()s of
+# I2C0 and I2C1 (freertos/tests/i2c_dw): the board's boundaries of the shared core
+# (drivers/i2c_dw: i2c_dw_os_impl.h, i2c_dw_instance.h with the devices i2c0 and i2c1 and their
+# Zephyr I2C API, i2c_dw_dma_os.c with the DMA reads' channels;
+# drivers/compat/zephyr/drivers/i2c.h) on fakes of the Pico SDK's GPIO, reset, IRQ, sync and DMA
+# functions and of the controllers' and the DMA's registers (tests/i2c_dw/pico_fake), under the
+# shared core (common/drivers/i2c_dw/i2c_dw.c, through tests/i2c_dw/i2c_dw_core.c, which gives
+# the test the core's static command words, with the prelude, as drivers/i2c_dw/i2c_dw.cmake
+# builds it), on the same kernel and layer objects.  Twice: as the default build (i2c0 only,
+# CONFIG_I2C_DW_I2C0), and with CONFIG_I2C_DW_I2C1 too (-DI2C_DW_I2C1=ON), whose run adds the
+# tests of i2c1.  The host's cc reports -Wsign-compare for two MIN()s of
 # i2c_dw.c (an int count and a uint32_t one, as in Zephyr's i2c_dw.c; the board's
 # arm-none-eabi-gcc 15.2 with the same -Wextra does not).
 i2cinc=(-Itests/i2c_dw/pico_fake -Idrivers/i2c_dw -I../common/drivers/i2c_dw)
-i2cobjs=()
-for src in drivers/i2c_dw/i2c_dw_dma_os.c tests/i2c_dw/main.c tests/i2c_dw/i2c_dw_core.c; do
-    obj="$out/i2c_$(basename "$src" .c).o"
-    extra=()
-    case $src in
-        */i2c_dw_core.c) extra=(-include drivers/compat/common_prelude.h -Wno-sign-compare) ;;
-    esac
-    cc "${flags[@]}" "${strict[@]}" "${i2cinc[@]}" "${inc[@]}" "${extra[@]}" -c "$src" -o "$obj"
-    i2cobjs+=("$obj")
+for variant in i2c0 i2c1; do
+    i2cdefs=(-DCONFIG_I2C_DW_I2C0=1)
+    [[ $variant == i2c1 ]] && i2cdefs+=(-DCONFIG_I2C_DW_I2C1=1)
+    i2cobjs=()
+    for src in drivers/i2c_dw/i2c_dw_dma_os.c tests/i2c_dw/main.c tests/i2c_dw/i2c_dw_core.c; do
+        obj="$out/i2c_${variant}_$(basename "$src" .c).o"
+        extra=()
+        case $src in
+            */i2c_dw_core.c) extra=(-include drivers/compat/common_prelude.h -Wno-sign-compare) ;;
+        esac
+        cc "${flags[@]}" "${strict[@]}" "${i2cdefs[@]}" "${i2cinc[@]}" "${inc[@]}" "${extra[@]}" \
+            -c "$src" -o "$obj"
+        i2cobjs+=("$obj")
+    done
+    # The test keeps each write of CHAN_ABORT through the stop of the DMA part (main.c).
+    cc "${flags[@]}" -Wl,--wrap=i2c_dw_dma_os_stop "${kernobjs[@]}" "${i2cobjs[@]}" \
+        -o "$out/i2c_dw_$variant"
+    if (( verbose )); then
+        timeout 60 "$out/i2c_dw_$variant"
+    else
+        timeout 60 "$out/i2c_dw_$variant" >"$out/log" 2>&1 || { cat "$out/log"; exit 1; }
+    fi
 done
-# The test keeps each write of CHAN_ABORT through the stop of the DMA part (main.c).
-cc "${flags[@]}" -Wl,--wrap=i2c_dw_dma_os_stop "${kernobjs[@]}" "${i2cobjs[@]}" -o "$out/i2c_dw"
-if (( verbose )); then
-    timeout 60 "$out/i2c_dw"
-else
-    timeout 60 "$out/i2c_dw" >"$out/log" 2>&1 || { cat "$out/log"; exit 1; }
-fi
-printf 'ok  i2c_dw (I2C0 boundary and device, DMA reads on the Pico SDK DMA, Zephyr I2C API, FreeRTOS POSIX port)\n'
+printf 'ok  i2c_dw (I2C0 and I2C1 boundaries and devices, DMA reads on the Pico SDK DMA, Zephyr I2C API, FreeRTOS POSIX port)\n'
 
 # GPIO bank 0 (freertos/tests/gpio): the board's boundary of the layer's gpio0
 # (drivers/compat/rp2040/nano_gpio.c) on fakes of the Pico SDK's GPIO and IRQ functions

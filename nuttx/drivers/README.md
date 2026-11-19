@@ -359,16 +359,16 @@ NuttX part is in the board's `src/`.
 
 | File | Role |
 |---|---|
-| `common/drivers/i2c_dw/i2c_dw.c` | The core of the I2C0 controller. A copy of the controller part of the Zephyr version's `i2c_dw.c` (Zephyr's driver with the local patch 0003; the transfer's state machine, the body of the interrupt handler, `i2c_dw_data_ask()`, `_read()`, `_send()`, `i2c_dw_setup()`, `i2c_dw_configure()`, the register work of the initialization), of the DMA reads (`i2c_dw_rp2040_dma_read()` and the rest) and of the `i2c_dma` counters, with the same functions, branches, order, register values, time limit and error values. Its files are named as the patched driver's: the DMA reads and their command words are in `i2c_dw_rp2040_dma_priv.h` and the RP2040's FIFO depth and RX batch in `i2c_dw_rp2040.h`, which it includes once. It includes the board's `i2c_dw_instance.h` at its end |
+| `common/drivers/i2c_dw/i2c_dw.c` | The core of the I2C0 and I2C1 controllers: one instance each (`i2c_0_runtime`, `i2c_1_runtime`, under `CONFIG_I2C_DW_I2C0` and `CONFIG_I2C_DW_I2C1`), as Zephyr's driver makes one for each enabled node; the values that differ between them come from `I2C_DW_INST()`. A copy of the controller part of the Zephyr version's `i2c_dw.c` (Zephyr's driver with the local patch 0003; the transfer's state machine, the body of the interrupt handler, `i2c_dw_data_ask()`, `_read()`, `_send()`, `i2c_dw_setup()`, `i2c_dw_configure()`, the register work of the initialization), of the DMA reads (`i2c_dw_rp2040_dma_read()` and the rest) and of the `i2c_dma` counters, with the same functions, branches, order, register values, time limit and error values. Its files are named as the patched driver's: the DMA reads and their command words are in `i2c_dw_rp2040_dma_priv.h` and the RP2040's FIFO depth and RX batch in `i2c_dw_rp2040.h`, which it includes once. It includes the board's `i2c_dw_instance.h` at its end |
 | `common/drivers/i2c_dw/i2c_dw_os.h` | The boundary: what the core needs from the OS (the table below). It includes the board's `i2c_dw_os_impl.h` first and declares the functions that it must define |
 | `common/drivers/i2c_dw/i2c_dw_dma_os.h` | The DMA boundary of the DMA reads: what they need from the OS's own DMA driver (the second table below), one call for each call of Zephyr's DMA API in the patched driver. No OS name; the core touches no DMA register |
 | `common/drivers/i2c_dw/i2c_dw.h` | Definitions and pure functions without OS headers: the definitions of the Zephyr version's `i2c_dw.h`, the SCL counts, the speed class of a frequency, the NuttX flags (`I2C_M_*`) turned into Zephyr's (`I2C_MSG_*`) and the words written to `IC_DATA_CMD`. Host test `common/tests/i2c_dw.c` |
 | `common/drivers/i2c_dw/i2c_dw_registers.h` | A copy of the Zephyr version's `i2c_dw_registers.h` (the accessors are defined on plain volatile 32-bit accesses, the addresses are `uintptr_t` in place of Zephyr's `mm_reg_t`) |
 | `common/compat/zephyr/drivers/i2c/i2c_dw_rp2040_dma.h` | The state that the `i2c_dma` command (`common/shell/i2c_dma_shell.c`, shared by the three builds; this build's is built by `nuttx/apps/i2c_dma`) reads and sets: DMA on or off and the four counters (`i2c_dw_rp2040_dma_get_stats()`, `_enabled()`, `_set_enabled()`). The same file as the one that patch 0003 adds to Zephyr's `include/zephyr/drivers/i2c` (`i2c_dw_sync` checks) |
 | The board's `src/i2c_dw_os_impl.h` | The NuttX implementation of the boundary: semaphores (`sem_t`: `nxsem_post()`, `nxsem_tickwait_uninterruptible()`, `nxsem_wait_uninterruptible()`, `nxsem_reset()`), time (the system ticks), `nxsched_msleep()`, `up_irq_save()`, the messages (`struct i2c_msg_s`, with Zephyr's flags made by `i2c_dw_msg_flags()`), `I2C_DW_CLOCK_SPEED` (`BOARD_PERI_FREQ`) |
-| The board's `src/i2c_dw_instance.h` | The NuttX part of I2C0: the operations of `struct i2c_master_s` (`I2C_TRANSFER()` checks the request, takes the speed from the frequency and calls the core's transfer; `I2C_RESET()`), the interrupt handler attached with `irq_attach()`, the reset and the pins (`i2c_dw_pinctrl()`), `i2c_dw_i2c0_initialize()` |
+| The board's `src/i2c_dw_instance.h` | The NuttX part of I2C0 and I2C1: the operations of `struct i2c_master_s` (`I2C_TRANSFER()` checks the request, takes the speed from the frequency and calls the core's transfer; `I2C_RESET()`), the interrupt handler attached with `irq_attach()`, the reset and the pins (`i2c_dw_pinctrl()`), shared by both, `i2c_dw_i2c0_initialize()` and `i2c_dw_i2c1_initialize()`. Host test `nuttx/tests/i2c_dw_instance.c` |
 | The board's `src/i2c_dw_dma_os.c` | The NuttX implementation of the DMA boundary on NuttX's own DMA driver, `arch/arm/src/rp2040/rp2040_dmac.c` (`CONFIG_RP2040_DMAC`). Host test `nuttx/tests/i2c_dw_dma_os.c` |
-| The board's `src/i2c_dw_i2c0.h` | `i2c_dw_i2c0_initialize()` (called by `nano_bringup()` at boot, which registers `/dev/i2c0`) |
+| The board's `src/i2c_dw_controllers.h` | `i2c_dw_i2c0_initialize()` and, with `CONFIG_I2C_DW_I2C1`, `i2c_dw_i2c1_initialize()` (called by `nano_bringup()` at boot, I2C1 after I2C0, which registers `/dev/i2c0` and `/dev/i2c1`) |
 
 What the OS provides at the boundary (`i2c_dw_os.h`). All are static inline functions or macros, and
 the OS's interrupt handlers and transfer entry call static inline functions of the core, so the
@@ -389,15 +389,18 @@ marked "interrupt" are called from the interrupt handlers.
 | `i2c_dw_os_msg_t`, `I2C_DW_OS_MSG_BUF()`, `_LEN()`, `_FLAGS()` | One message of a transfer (for Zephyr's `struct i2c_msg`: `buf`, `len`, `flags`, with STOP on the last message) | `struct i2c_msg_s`; the flags are made from it and its neighbours by `i2c_dw_msg_flags()` |
 | `I2C_DW_OS_DEV_HEAD` | The OS's device at the start of the controller's data (may be empty) | `struct i2c_master_s dev;` |
 | `I2C_DW_CLOCK_SPEED` | `CONFIG_I2C_DW_CLOCK_SPEED` (MHz, 125) | `BOARD_PERI_FREQ / 1000000` |
-| `i2c_dw_os_prepare(dw)` (`i2c_dw_instance.h`) | `reset_line_toggle_dt()` and `pinctrl_apply_state()`: reset I2C0, GPIO12 and 13 as I2C (no pulls, 4 mA, slow slew, Schmitt trigger and input enabled) | RESETS and `rp2040_gpio_*()` (`i2c_dw_pinctrl()`, the steps of Zephyr's `pinctrl_rpi_pico.c`) |
-| `i2c_dw_os_irq_enable(dw)` (same) | `IRQ_CONNECT()`, `irq_enable()`: a handler of I2C0_IRQ that calls `i2c_dw_isr_handler(dw)` | `irq_attach()`, `up_enable_irq()` |
+| `i2c_dw_os_prepare(dw)` (`i2c_dw_instance.h`) | `reset_line_toggle_dt()` and `pinctrl_apply_state()`: reset I2C0 or I2C1, its pins as I2C (4 mA, slow slew, Schmitt trigger and input enabled; I2C0's GPIO12 and 13 without pulls, I2C1's with the internal pull-ups) | RESETS and `rp2040_gpio_*()` (`i2c_dw_pinctrl()`, the steps of Zephyr's `pinctrl_rpi_pico.c`) |
+| `i2c_dw_os_irq_enable(dw)` (same) | `IRQ_CONNECT()`, `irq_enable()`: a handler of I2C0_IRQ or I2C1_IRQ that calls `i2c_dw_isr_handler(dw)` | `irq_attach()`, `up_enable_irq()` |
 | `app_log.h` | `LOG_MODULE_REGISTER()`, `LOG_ERR()`, `LOG_ERR_RATELIMIT()` (at the level 3 that the core sets) | `common/log/app_log.h` with its NuttX part `nuttx/drivers/include/app_log_os.h` (the RAM log) |
-| `CONFIG_I2C_DW_RP2040_DMA` | Build the DMA reads (the same symbol as the Zephyr version's) | Kconfig |
+| `CONFIG_I2C_DW_I2C0`, `CONFIG_I2C_DW_I2C1` | The instances to build (Zephyr: the devicetree's enabled nodes) | Kconfig (`I2C_DW_I2C0` on, `I2C_DW_I2C1` off by default) |
+| `CONFIG_I2C_DW_RP2040_DMA` | Build the DMA reads of I2C0 (the same symbol as the Zephyr version's) | Kconfig |
 
 The OS's I2C0 device (`i2c_dw_instance.h`) sets `base` of `i2c_0_runtime` (0x40044000), initializes
 the semaphores (`device_sync_sem` and `rp2040_dma_sem` to 0, `bus_sem` to 1), calls
 `i2c_dw_dma_os_initialize()` and then `i2c_dw_turn_on()` once at boot, and sets `ready` when the latter
-succeeds. Its transfer entry
+succeeds. The I2C1 device does the same for `i2c_1_runtime` (0x40048000) without the DMA part and its
+semaphore. Each device has its own semaphores, so transfers on the two buses run side by side. The
+transfer entry (one for both)
 refuses what the Zephyr API cannot express (no message array, more than 255 messages, addresses or
 speeds that differ between messages, a 10-bit address, a missing buffer, a device that is not ready),
 returns 0 for no message, and otherwise returns `i2c_dw_transfer_msgs(dw, msgs, count, address,
@@ -437,7 +440,17 @@ own bit, as `rp2040_dmac.c` writes them; other channels are not touched.
   and gives `-EINVAL` (the Zephyr version keeps the minimum counts then).
 - Not ported: target (slave) mode, Intel LPSS DMA, `CONFIG_I2C_ALLOW_NO_STOP_TRANSACTIONS`, the SDA/SCL
   timeouts (`CONFIG_I2C_DW_EXTENDED_SUPPORT`), power management, PCIe, code for other SoCs, the bus
-  recovery and check callbacks (not registered on this board; recovery does nothing), i2c1.
+  recovery and check callbacks (not registered on this board; recovery does nothing).
+- I2C1 (`CONFIG_I2C_DW_I2C1`, off by default; nothing is connected to it on the board): the second
+  instance of the same core, on GPIO18 (SDA, Arduino D6) and GPIO19 (SCL, D7) with the internal
+  pull-ups (`BOARD_I2C1_SDA_GPIO`, `BOARD_I2C1_SCL_GPIO` in the board's `include/board.h`), always on
+  the interrupts (the DMA reads are I2C0's), `/dev/i2c1` with `CONFIG_I2C_DRIVER`. A failure of its
+  start is logged and changes nothing else. To build it without changing the defconfig: after a
+  build, `printf 'CONFIG_I2C_DW_I2C1=y\nCONFIG_I2CTOOL_MAXBUS=1\n' >> nuttx/nuttx/.config`,
+  `make -C nuttx/nuttx olddefconfig`, then `nuttx/script/build.sh` (without `--clean`, which goes
+  back to the defconfig). The i2c tool's bus 1 (`i2c dev -b 1 0x08 0x77`) needs
+  `CONFIG_I2CTOOL_MAXBUS` 1. I2C1 has been built and host-tested (`nuttx/tests/i2c_dw_instance.c`)
+  but never used with a real device.
 - The DMA reads (`CONFIG_I2C_DW_RP2040_DMA`, on by default, the same symbol as the Zephyr
   version's) copy the DMA part of `i2c_dw.c` and `i2c_dw_rp2040_dma_priv.h` with the same branches,
   order and values (`common/drivers/i2c_dw/i2c_dw_rp2040_dma_priv.h`, included once by `i2c_dw.c`):

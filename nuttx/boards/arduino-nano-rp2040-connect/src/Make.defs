@@ -102,14 +102,15 @@ ifeq ($(CONFIG_NANO_NINA),y)
 CSRCS += nano_nina.c
 endif
 
-# I2C0 (the LSM6DSOX and the ATECC608A), in place of the in-tree
-# rp2040_i2c.c (RP2040_I2C off).  Its OS-independent core is in
-# common/drivers/i2c_dw (i2c_dw.c); its NuttX part is here
-# (i2c_dw_os_impl.h, i2c_dw_instance.h), found through the board's -I
-# below.  VPATH and DEPPATH are relative to the directory where the
-# board's objects are made, through the board symlink, as mkdeps needs.
+# I2C0 (the LSM6DSOX and the ATECC608A) and I2C1, in place of the in-tree
+# rp2040_i2c.c (RP2040_I2C off).  Their OS-independent core is in
+# common/drivers/i2c_dw (i2c_dw.c, one source for both instances); its
+# NuttX part is here (i2c_dw_os_impl.h, i2c_dw_instance.h), found through
+# the board's -I below.  VPATH and DEPPATH are relative to the directory
+# where the board's objects are made, through the board symlink, as mkdeps
+# needs.
 
-ifeq ($(CONFIG_I2C_DW_I2C0),y)
+ifneq ($(CONFIG_I2C_DW_I2C0)$(CONFIG_I2C_DW_I2C1),)
 CSRCS += i2c_dw.c
 DEPPATH += --dep-path board/../../../../common/drivers/i2c_dw
 VPATH += :board/../../../../common/drivers/i2c_dw

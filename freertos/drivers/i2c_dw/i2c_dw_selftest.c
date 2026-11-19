@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: MIT */
-/* The board's check of I2C0 for the "selftest" command (a test feature:
+/* The board's check of I2C0, and of I2C1 when it is built, for the
+ * "selftest" command (a test feature:
  * built with -DNANO_SELFTEST=ON only, freertos/drivers/i2c_dw/i2c_dw.cmake),
  * through Zephyr's I2C API on the device i2c0 and the board's LSM6DSOX at
  * 0x6a, with the controller's and the DMA's registers read back:
@@ -32,6 +33,18 @@
  *              again (i2c_dw_dma_os.c); then the same read
  *              with the DMA reads off: 0, the counters unchanged, IC_CON
  *              without RX_FIFO_FULL_HLD_CTRL (0x165)
+ *   i2c1       with CONFIG_I2C_DW_I2C1 only (-DI2C_DW_I2C1=ON), nothing
+ *              connected to I2C1: i2c1 is ready; GPIO18 and GPIO19 are
+ *              FUNCSEL I2C (3) with the pads IE, 4 mA, SCHMITT and the
+ *              pull-up (0x5a); a 1-byte read from 0x10 at 100 kHz ends
+ *              with -EIO (the NACK of an unanswered address; "NACK on
+ *              i2c@40048000" and "IO Fail on i2c@40048000" in dmesg) in
+ *              under 100 ms (not the 1 s timeout); IC_TAR 0x10, IC_CON
+ *              0x163 (no RX_FIFO_FULL_HLD_CTRL: no DMA reads on i2c1); a
+ *              40-byte read from 0x10, which the DMA path would take on
+ *              i2c0: -EIO, the DMA counters unchanged; then WHO_AM_I on
+ *              i2c0 still reads 0x6c.  An SDA or SCL held low on the pins
+ *              gives -ETIME or -EIO instead (a FAIL)
  *
  * It ends with the DMA reads as they were and the bus at the standard speed
  * (the class at the start of the board).  Run it while the IMU is idle (no
@@ -47,9 +60,14 @@
 #include "hardware/dma.h"
 #include "hardware/structs/dma.h"
 #include "hardware/structs/i2c.h"
+#ifdef CONFIG_I2C_DW_I2C1
+#include "hardware/structs/io_bank0.h"
+#include "hardware/structs/pads_bank0.h"
+#endif
 
 #include <zephyr/device.h>
 #include <zephyr/drivers/i2c.h>
+#include <zephyr/kernel.h>
 
 #include <zephyr/drivers/i2c/i2c_dw_rp2040_dma.h>
 
@@ -65,6 +83,9 @@
 #define IC_CON_DMA_STANDARD  0x363u
 #define IC_CON_DMA_FAST_PLUS 0x365u
 #define IC_CON_FAST_PLUS     0x165u
+#define IC_CON_STANDARD      0x163u
+#define PAD_I2C_PULL_UP      0x5au /* IE, DRIVE 4 mA, PUE, SCHMITT */
+#define I2C1_READ_LEN        40
 #define DMA_CTRL_TX          0x00100015u
 #define DMA_CTRL_RX          0x00108821u
 
@@ -189,6 +210,43 @@ static void test_dma(void)
 	i2c_dw_rp2040_dma_set_enabled(was_enabled);
 }
 
+#ifdef CONFIG_I2C_DW_I2C1
+static void test_i2c1(void)
+{
+	const struct device *const bus = DEVICE_DT_GET(DT_NODELABEL(i2c1));
+	struct i2c_dw_rp2040_dma_stats before, after;
+	uint8_t buf[I2C1_READ_LEN];
+	int64_t start, elapsed;
+
+	CHECK(device_is_ready(bus));
+	if (!device_is_ready(bus)) {
+		return;
+	}
+	for (unsigned int gpio = 18; gpio <= 19; gpio++) {
+		CHECK_EQ(io_bank0_hw->io[gpio].ctrl & 0x1f, 3);
+		CHECK_EQ(pads_bank0_hw->io[gpio] & 0xff, PAD_I2C_PULL_UP);
+	}
+	CHECK_EQ(i2c_configure(bus, I2C_MODE_CONTROLLER | I2C_SPEED_SET(I2C_SPEED_STANDARD)), 0);
+	start = k_uptime_get();
+	CHECK_EQ(i2c_read(bus, buf, 1, ABSENT_ADDR), -EIO);
+	elapsed = k_uptime_get() - start;
+	CHECK(elapsed < 100);
+	CHECK_EQ(i2c1_hw->tar & 0x3ff, ABSENT_ADDR);
+	CHECK_EQ(i2c1_hw->ss_scl_hcnt, 500);
+	CHECK_EQ(i2c1_hw->con, IC_CON_STANDARD);
+
+	i2c_dw_rp2040_dma_get_stats(&before);
+	CHECK_EQ(i2c_read(bus, buf, sizeof(buf), ABSENT_ADDR), -EIO);
+	i2c_dw_rp2040_dma_get_stats(&after);
+	CHECK_EQ(after.transfers - before.transfers, 0);
+	CHECK_EQ(after.fallbacks - before.fallbacks, 0);
+	CHECK_EQ(after.errors - before.errors, 0);
+	CHECK_EQ(i2c1_hw->dma_cr, 0);
+
+	CHECK_EQ(who_am_i(), LSM6DSOX_ID);
+}
+#endif
+
 static const struct {
 	const char *name;
 	void (*fn)(void);
@@ -200,6 +258,9 @@ static const struct {
 	{"refused", test_refused},
 	{"nack", test_nack},
 	{"dma", test_dma},
+#ifdef CONFIG_I2C_DW_I2C1
+	{"i2c1", test_i2c1},
+#endif
 	/* clang-format on */
 };
 

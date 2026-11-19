@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /* common/drivers/i2c_dw/i2c_dw.h: the OS-independent
- * pieces of the I2C0 driver (i2c_dw.c) against the Zephyr build's
+ * pieces of the I2C driver (i2c_dw.c) against the Zephyr build's
  * driver (Zephyr's i2c_dw.c and i2c_dw.h with the local patch 0003) and
  * Zephyr's i2c.h, written out below as the reference:
  *

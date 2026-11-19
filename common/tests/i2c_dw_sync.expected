@@ -107,8 +107,8 @@
 -0}
 -;
 @@
--if (!rp2040_dma_enabled || dw != DEVICE_DT_GET(DT_NODELABEL(i2c0)) || !i2c_dw_dma_os_is_ready() || len < 32 || len > I2C_DW_RP2040_DMA_MAX_READ || !(msg->flags & I2C_MSG_STOP) || (msg->flags & I2C_MSG_ADDR_10_BITS) || (dw->app_config & I2C_ADDR_10_BITS)) {
-+if (!rp2040_dma_enabled || !i2c_dw_dma_os_is_ready() || len < 32 || len > I2C_DW_RP2040_DMA_MAX_READ || !(msg_flags & I2C_MSG_STOP) || (msg_flags & I2C_MSG_ADDR_10_BITS)) {
+-if (!rp2040_dma_enabled || !i2c_dw_is_i2c0(dw) || !i2c_dw_dma_os_is_ready() || len < 32 || len > I2C_DW_RP2040_DMA_MAX_READ || !(msg->flags & I2C_MSG_STOP) || (msg->flags & I2C_MSG_ADDR_10_BITS) || (dw->app_config & I2C_ADDR_10_BITS)) {
++if (!rp2040_dma_enabled || !i2c_dw_is_i2c0(dw) || !i2c_dw_dma_os_is_ready() || len < 32 || len > I2C_DW_RP2040_DMA_MAX_READ || !(msg_flags & I2C_MSG_STOP) || (msg_flags & I2C_MSG_ADDR_10_BITS)) {
 @@
 -tx_block.source_address = (uintptr_t)rp2040_dma_commands;
 -tx_block.dest_address = base + DW_IC_REG_DATA_CMD;
@@ -194,17 +194,14 @@
 -if (I2C_MODE_CONTROLLER & dw->app_config) {
 +(void)read_clr_intr(reg_base);
 @@
-+ic_con.bits.restart_en = 1U;
-+if (rp2040_dma_enabled) {
-+ic_con.raw |= BIT(9);
-@@
+-}
 -else {
 -return -EINVAL;
 -}
--ic_con.bits.restart_en = 1U;
--if (dw == DEVICE_DT_GET(DT_NODELABEL(i2c0)) && rp2040_dma_enabled) {
+@@
 -ic_con.raw |= I2C_IC_CON_RX_FIFO_FULL_HLD_CTRL_BITS;
--}
++ic_con.raw |= BIT(9);
+@@
 -if (I2C_MSG_ADDR_10_BITS & dw->app_config) {
 -ic_con.bits.addr_master_10bit = 1U;
 -}

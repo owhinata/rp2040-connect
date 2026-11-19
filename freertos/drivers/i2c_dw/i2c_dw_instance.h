@@ -1,9 +1,16 @@
 /* SPDX-License-Identifier: MIT */
-/* The FreeRTOS part of the I2C0 core (common/drivers/i2c_dw/i2c_dw.c,
- * which includes this file at its end): I2C0 as the device i2c0 of the
- * Zephyr compatibility layer with Zephyr's I2C API (<zephyr/drivers/i2c.h>
- * of freertos/drivers/compat), its interrupt, reset and pins on the Pico
- * SDK, and i2c_dw_i2c0_initialize() (i2c_dw_i2c0.h).
+/* The FreeRTOS part of the I2C core (common/drivers/i2c_dw/i2c_dw.c,
+ * which includes this file at its end): I2C0 and, with CONFIG_I2C_DW_I2C1,
+ * I2C1 as the devices i2c0 and i2c1 of the Zephyr compatibility layer with
+ * Zephyr's I2C API (<zephyr/drivers/i2c.h> of freertos/drivers/compat),
+ * their interrupts, resets and pins on the Pico SDK, and
+ * i2c_dw_i2c0_initialize() and i2c_dw_i2c1_initialize()
+ * (i2c_dw_controllers.h).  Each instance's device, interrupt handler,
+ * speed class and start-up are under its own symbol (CONFIG_I2C_DW_I2C0,
+ * CONFIG_I2C_DW_I2C1, i2c_dw.cmake); the functions of the API, the pins'
+ * setup, the reset and the interrupt's connection are shared and take the
+ * instance's values with I2C_DW_INST() (i2c_dw.c), as Zephyr's driver has
+ * one API for all its instances.
  *
  *   Zephyr (i2c_dw.c of the Zephyr build)  here
  *   i2c_dw_transfer()                      i2c_dw_transfer(): the checks
@@ -16,18 +23,20 @@
  *                                          counts and the clear of the
  *                                          interrupts, as Zephyr's)
  *   IRQ_CONNECT(), irq_enable() of         irq_set_exclusive_handler(),
- *   I2C0_IRQ (23)                          irq_set_enabled()
+ *   I2C0_IRQ (23), I2C1_IRQ (24)           irq_set_enabled()
  *   clock_control_on(clk_sys)              nothing: clk_sys runs from the
  *                                          start (Zephyr sets bit 11 of
  *                                          CLK_SYS_CTRL, which clk_sys does
  *                                          not have; NuttX writes nothing)
- *   reset_line_toggle_dt() (Zephyr's       reset_block_num(RESET_I2C0), then
+ *   reset_line_toggle_dt() (Zephyr's       reset_block_num(RESET_I2Cn), then
  *   reset_rpi_pico.c, on these SDK calls)  unreset_block_num_wait_blocking()
  *   pinctrl_apply_state() (Zephyr's        i2c_dw_pinctrl(): the same SDK
  *   pinctrl_rpi_pico.c)                    calls in the same order
- *   DEVICE_DT_INST_DEFINE(): k_sem_init(), i2c_dw_i2c0_initialize(), from the
- *   then i2c_dw_turn_on() at boot          application's start: the same,
- *   (POST_KERNEL 50, after the DMA's 40)   after i2c_dw_dma_os_initialize()
+ *   DEVICE_DT_INST_DEFINE(): k_sem_init(), i2c_dw_i2c0_initialize(), then
+ *   then i2c_dw_turn_on() at boot          i2c_dw_i2c1_initialize(), from the
+ *   (POST_KERNEL 50, after the DMA's 40;   application's start: the same,
+ *   i2c0, then i2c1)                       i2c0's after
+ *                                          i2c_dw_dma_os_initialize()
  *                                          (i2c_dw_dma_os.c: the DMA
  *                                          interrupt's shared handler)
  *
@@ -43,7 +52,8 @@
  * counts, see i2c_dw.c).  The mode bits are ignored (Zephyr forces
  * controller mode).
  *
- * The speed class of a transfer is read when the transfer starts; a
+ * The speed class (one for each device) of a transfer is read when the
+ * transfer starts; a
  * transfer that races with an i2c_configure() of another task may run at
  * the class before it (and set the controller to it for that transfer),
  * after which the next transfer takes the configured class again.
@@ -58,12 +68,13 @@
  * task with a FromISR task notification and asks for the switch at the end
  * of the handler (PendSV): the task runs right after the handler, not
  * through the timer task.  irq_set_exclusive_handler() panics if a handler
- * is already installed on I2C0_IRQ (hard_assert(), on in this Release
- * build); nothing else in this build uses I2C0 or its pins (the Pico SDK's
- * board header names GPIO12/13 as PICO_DEFAULT_I2C_SDA_PIN/_SCL_PIN, which
- * only examples and the RP2350's PSRAM code read; the SDK's start-up code
- * leaves the pins at their reset state and takes I2C0 out of reset, which
- * the reset here repeats).
+ * is already installed on the line (hard_assert(), on in this Release
+ * build); nothing else in this build uses I2C0, I2C1 or their pins (the
+ * Pico SDK's board header names GPIO12/13 as PICO_DEFAULT_I2C_SDA_PIN/
+ * _SCL_PIN, which only examples and the RP2350's PSRAM code read; GPIO18/19
+ * are D6/D7 of the header, which nothing of this build sets; the SDK's
+ * start-up code leaves the pins at their reset state and takes I2C0 and
+ * I2C1 out of reset, which the reset here repeats).
  */
 
 #ifndef FREERTOS_DRIVERS_I2C_DW_I2C_DW_INSTANCE_H
@@ -76,16 +87,35 @@
 
 #include <zephyr/device.h>
 
-#include "i2c_dw_i2c0.h"
+#include "i2c_dw_controllers.h"
 
-/* The board's i2c0 node (arduino_nano_connect.dts, -pinctrl.dtsi). */
+/* The pins of each controller.  i2c0: the board's i2c0 node
+ * (arduino_nano_connect.dts, -pinctrl.dtsi), no pulls (the board has its
+ * own pull-ups on the LSM6DSOX's bus).  i2c1: free pins of the header (also
+ * possible: SDA GPIO2/6/10/14/22/26, SCL GPIO3/7/11/15/23/27, of which GPIO2,
+ * 3, 10, 11, 14 are the NINA's, 6/7 SPI0 and the LED, 26/27 the ADC in the
+ * Zephyr build), with the internal pull-ups (nothing on the board pulls
+ * them up).
+ */
 #define I2C0_SDA_GPIO 12
 #define I2C0_SCL_GPIO 13
+#define I2C0_PULL_UP  false
+#define I2C1_SDA_GPIO 18 /* D6 */
+#define I2C1_SCL_GPIO 19 /* D7 */
+#define I2C1_PULL_UP  true
 
-/* The speed class that i2c_configure() last set (at first the devicetree's
- * clock-frequency, I2C_BITRATE_STANDARD, which i2c_dw_init_config() sets).
+/* The speed class that i2c_configure() last set on each device (at first
+ * the devicetree's clock-frequency, I2C_BITRATE_STANDARD, which
+ * i2c_dw_init_config() sets).
  */
+#ifdef CONFIG_I2C_DW_I2C0
 static volatile uint32_t i2c0_speed;
+#endif
+#ifdef CONFIG_I2C_DW_I2C1
+static volatile uint32_t i2c1_speed;
+#endif
+
+#define I2C_DW_OS_SPEED(dw) (*I2C_DW_INST(dw, &i2c0_speed, &i2c1_speed))
 
 static int i2c_dw_transfer(const struct device *dev, struct i2c_msg *msgs, uint8_t num_msgs,
 			   uint16_t addr)
@@ -111,7 +141,7 @@ static int i2c_dw_transfer(const struct device *dev, struct i2c_msg *msgs, uint8
 		}
 	}
 
-	return i2c_dw_transfer_msgs(dw, msgs, num_msgs, addr, i2c0_speed);
+	return i2c_dw_transfer_msgs(dw, msgs, num_msgs, addr, I2C_DW_OS_SPEED(dw));
 }
 
 static int i2c_dw_runtime_configure(const struct device *dev, uint32_t config)
@@ -134,7 +164,7 @@ static int i2c_dw_runtime_configure(const struct device *dev, uint32_t config)
 	ret = i2c_dw_configure(dw, speed);
 #endif
 	if (ret == 0) {
-		i2c0_speed = speed;
+		I2C_DW_OS_SPEED(dw) = speed;
 	}
 	i2c_dw_os_bus_unlock(&dw->bus_sem);
 
@@ -146,25 +176,38 @@ static DEVICE_API(i2c, i2c_dw_funcs) = {
 	.transfer = i2c_dw_transfer,
 };
 
-DEVICE_DT_DEFINE(i2c0, I2C_DW_NAME, NULL, &i2c_0_runtime, NULL, &i2c_dw_funcs);
+/* Each instance's device and Zephyr's i2c_dw_isr() for it. */
 
-/* Zephyr's i2c_dw_isr() for i2c0. */
-static void i2c_dw_isr(void)
+#ifdef CONFIG_I2C_DW_I2C0
+DEVICE_DT_DEFINE(i2c0, I2C_DW_I2C0_NAME, NULL, &i2c_0_runtime, NULL, &i2c_dw_funcs);
+
+static void i2c_dw_isr_0(void)
 {
 	i2c_dw_isr_handler(&i2c_0_runtime);
 }
+#endif
 
-/* pinctrl_configure_pin() of Zephyr's RP2040 pinctrl for the board's
- * i2c0_default group: pinmux I2C0_SDA_P12, I2C0_SCL_P13 (function I2C),
- * input-enable, input-schmitt-enable; the defaults otherwise: no pulls,
- * drive-strength 4 mA, slow slew, no overrides.  The pad ends as 0x52 (IE,
- * DRIVE 4 mA, SCHMITT), the IO_BANK0 control as 0x3 (FUNCSEL I2C).
+#ifdef CONFIG_I2C_DW_I2C1
+DEVICE_DT_DEFINE(i2c1, I2C_DW_I2C1_NAME, NULL, &i2c_1_runtime, NULL, &i2c_dw_funcs);
+
+static void i2c_dw_isr_1(void)
+{
+	i2c_dw_isr_handler(&i2c_1_runtime);
+}
+#endif
+
+/* pinctrl_configure_pin() of Zephyr's RP2040 pinctrl for the pins of an
+ * I2C group: pinmux I2Cn_SDA_Pxx, I2Cn_SCL_Pxx (function I2C),
+ * input-enable, input-schmitt-enable, bias-pull-up if pull_up; the
+ * defaults otherwise: drive-strength 4 mA, slow slew, no overrides.  i2c0's
+ * pads end as 0x52 (IE, DRIVE 4 mA, SCHMITT), i2c1's as 0x5a (and PUE), the
+ * IO_BANK0 control as 0x3 (FUNCSEL I2C).
  */
-static void i2c_dw_pinctrl(unsigned int gpio)
+static void i2c_dw_pinctrl(unsigned int gpio, bool pull_up)
 {
 	gpio_init(gpio);
 	gpio_set_function(gpio, GPIO_FUNC_I2C);
-	gpio_set_pulls(gpio, false, false);
+	gpio_set_pulls(gpio, pull_up, false);
 	gpio_set_drive_strength(gpio, GPIO_DRIVE_STRENGTH_4MA);
 	gpio_set_slew_rate(gpio, GPIO_SLEW_RATE_SLOW);
 	gpio_set_input_hysteresis_enabled(gpio, true);
@@ -179,12 +222,14 @@ static int i2c_dw_os_prepare(struct i2c_dw_dev_config *dw)
 {
 	(void)dw;
 
-	reset_block_num(RESET_I2C0);
-	unreset_block_num_wait_blocking(RESET_I2C0);
+	reset_block_num(I2C_DW_INST(dw, RESET_I2C0, RESET_I2C1));
+	unreset_block_num_wait_blocking(I2C_DW_INST(dw, RESET_I2C0, RESET_I2C1));
 
 	/* pinctrl-0: the group's pins in their order. */
-	i2c_dw_pinctrl(I2C0_SDA_GPIO);
-	i2c_dw_pinctrl(I2C0_SCL_GPIO);
+	i2c_dw_pinctrl(I2C_DW_INST(dw, I2C0_SDA_GPIO, I2C1_SDA_GPIO),
+		       I2C_DW_INST(dw, I2C0_PULL_UP, I2C1_PULL_UP));
+	i2c_dw_pinctrl(I2C_DW_INST(dw, I2C0_SCL_GPIO, I2C1_SCL_GPIO),
+		       I2C_DW_INST(dw, I2C0_PULL_UP, I2C1_PULL_UP));
 
 	return 0;
 }
@@ -193,14 +238,16 @@ static void i2c_dw_os_irq_enable(struct i2c_dw_dev_config *dw)
 {
 	(void)dw;
 
-	irq_set_exclusive_handler(I2C0_IRQ, i2c_dw_isr);
-	irq_set_enabled(I2C0_IRQ, true);
+	irq_set_exclusive_handler(I2C_DW_INST(dw, I2C0_IRQ, I2C1_IRQ),
+				  I2C_DW_INST(dw, i2c_dw_isr_0, i2c_dw_isr_1));
+	irq_set_enabled(I2C_DW_INST(dw, I2C0_IRQ, I2C1_IRQ), true);
 }
 
-int i2c_dw_i2c0_initialize(void)
+/* i2c_dw_initialize() and the end of Zephyr's do_device_init() for the
+ * instance dw, its device dev.
+ */
+static inline int i2c_dw_os_initialize(const struct device *dev, struct i2c_dw_dev_config *dw)
 {
-	struct i2c_dw_dev_config *const dw = &i2c_0_runtime;
-	const struct device *dev = DEVICE_DT_GET(DT_NODELABEL(i2c0));
 	int ret;
 
 	if (dw->ready) {
@@ -208,18 +255,20 @@ int i2c_dw_i2c0_initialize(void)
 	}
 
 	/* i2c_dw_initialize() */
-	dw->base = I2C0_BASE;
+	dw->base = I2C_DW_INST(dw, I2C0_BASE, I2C1_BASE);
 	(void)k_sem_init(&dw->device_sync_sem, 0, K_SEM_MAX_LIMIT);
 	(void)k_sem_init(&dw->bus_sem, 1, 1);
 #ifdef CONFIG_I2C_DW_RP2040_DMA
-	(void)k_sem_init(&rp2040_dma_sem, 0, K_SEM_MAX_LIMIT);
+	if (i2c_dw_is_i2c0(dw)) {
+		(void)k_sem_init(&rp2040_dma_sem, 0, K_SEM_MAX_LIMIT);
 
-	/* The DMA device, which Zephyr initializes before i2c0 (POST_KERNEL 40).
-	 * Without it the reads take the interrupts.
-	 */
-	ret = i2c_dw_dma_os_initialize();
-	if (ret < 0) {
-		LOG_ERR("No DMA for the reads: %d", ret);
+		/* The DMA device, which Zephyr initializes before i2c0
+		 * (POST_KERNEL 40).  Without it the reads take the interrupts.
+		 */
+		ret = i2c_dw_dma_os_initialize();
+		if (ret < 0) {
+			LOG_ERR("No DMA for the reads: %d", ret);
+		}
 	}
 #endif
 
@@ -231,11 +280,25 @@ int i2c_dw_i2c0_initialize(void)
 		return ret;
 	}
 
-	i2c0_speed = dw->speed;
+	I2C_DW_OS_SPEED(dw) = dw->speed;
 	dw->ready = true;
 	dev->state->init_res = 0;
 	dev->state->initialized = true;
 	return 0;
 }
+
+#ifdef CONFIG_I2C_DW_I2C0
+int i2c_dw_i2c0_initialize(void)
+{
+	return i2c_dw_os_initialize(DEVICE_DT_GET(DT_NODELABEL(i2c0)), &i2c_0_runtime);
+}
+#endif
+
+#ifdef CONFIG_I2C_DW_I2C1
+int i2c_dw_i2c1_initialize(void)
+{
+	return i2c_dw_os_initialize(DEVICE_DT_GET(DT_NODELABEL(i2c1)), &i2c_1_runtime);
+}
+#endif
 
 #endif /* FREERTOS_DRIVERS_I2C_DW_I2C_DW_INSTANCE_H */

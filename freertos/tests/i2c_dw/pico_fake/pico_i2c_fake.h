@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: MIT */
-/* The part of the Pico SDK that the FreeRTOS part of the I2C0 core uses
+/* The part of the Pico SDK that the FreeRTOS part of the I2C core uses
  * (freertos/drivers/i2c_dw: i2c_dw_os_impl.h, i2c_dw_instance.h,
  * i2c_dw_dma_os.c), for its host test (freertos/tests/i2c_dw/main.c, which
  * implements the functions: they record the calls).  pico.h and the
@@ -7,7 +7,8 @@
  * the SDK (SYS_CLK_HZ of hardware/platform_defs.h, hardware_gpio,
  * hardware_resets, hardware_irq, hardware/regs/intctrl.h, hardware_sync,
  * hardware_dma, hardware/regs/dma.h, hardware/regs/dreq.h), except the
- * registers: the I2C0 block's are the array fake_i2c0_regs, the DMA's the
+ * registers: the I2C0 and I2C1 blocks' are the arrays fake_i2c0_regs and
+ * fake_i2c1_regs, the DMA's the
  * structure fake_dma_hw (with the channels' addresses as uintptr_t, a
  * host's pointers being wider than the RP2040's registers, and only the
  * registers that i2c_dw_dma_os.c uses).
@@ -25,9 +26,13 @@ typedef unsigned int uint;
 /* hardware/platform_defs.h */
 #define SYS_CLK_HZ 125000000u
 
-/* hardware/regs/addressmap.h: the registers of I2C0 (0x100 bytes). */
+/* hardware/regs/addressmap.h: the registers of I2C0 and I2C1 (0x100 bytes
+ * each).
+ */
 extern volatile uint32_t fake_i2c0_regs[64];
+extern volatile uint32_t fake_i2c1_regs[64];
 #define I2C0_BASE ((uintptr_t)fake_i2c0_regs)
+#define I2C1_BASE ((uintptr_t)fake_i2c1_regs)
 
 /* hardware_gpio */
 typedef enum gpio_function {
@@ -64,6 +69,7 @@ void gpio_set_irqover(uint gpio, uint value);
 /* hardware_resets */
 enum reset_num_rp2040 {
 	RESET_I2C0 = 3,
+	RESET_I2C1 = 4,
 };
 
 void reset_block_num(uint32_t block_num);
@@ -73,6 +79,7 @@ void unreset_block_num_wait_blocking(uint32_t block_num);
 #define DMA_IRQ_0 11
 #define DMA_IRQ_1 12
 #define I2C0_IRQ  23
+#define I2C1_IRQ  24
 
 typedef void (*irq_handler_t)(void);
 

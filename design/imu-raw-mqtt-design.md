@@ -868,8 +868,10 @@ The OS parts are implementations of narrow boundary headers in each build's dire
 The Zephyr build's I2C0 driver is Zephyr's `drivers/i2c/i2c_dw.c` with a local patch
 (`zephyr/manifest/zephyr/patches/zephyr/0003-i2c-dw-rp2040-fifo-and-dma.patch`); it is not moved onto the
 shared core (the NINA uses the shared core). The shared core is a copy of the patched driver, and the
-intended differences (the OS's calls, what the Zephyr build does not use left out, i2c0 as the only
-instance and so on) are only those listed at the top of `i2c_dw.c`. Where the patch calls Zephyr's DMA
+intended differences (the OS's calls, what the Zephyr build does not use left out, and so on) are only
+those listed at the top of `i2c_dw.c`. Like the patched driver, the core has an instance for i2c0 and,
+in the NuttX and FreeRTOS builds' option `I2C_DW_I2C1` (off by default), one for i2c1 (the DMA reads
+are i2c0's; i2c1 has been built and host-tested, never used with a real device). Where the patch calls Zephyr's DMA
 API (and the Pico SDK's register helpers in its stop), the core calls the DMA boundary `i2c_dw_dma_os.h`,
 one call for each, but the setup of a channel (two calls, for the TX and the RX side, in place of
 `dma_config()` and its structures) and the stop's wait (each channel's own abort, not every channel's).

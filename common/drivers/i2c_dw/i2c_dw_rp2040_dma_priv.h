@@ -148,11 +148,10 @@ static int i2c_dw_rp2040_dma_read(struct i2c_dw_dev_config *dw, uint8_t *buf, ui
 	int tx, rx, ret;
 	bool started = false;
 
-	/* dev != i2c0 cannot happen: i2c0 is the only instance.  10-bit
-	 * addresses are refused before (no I2C_MSG_ADDR_10_BITS here, and
+	/* 10-bit addresses are refused before (no I2C_MSG_ADDR_10_BITS here, and
 	 * app_config never has I2C_ADDR_10_BITS).
 	 */
-	if (!rp2040_dma_enabled || !i2c_dw_dma_os_is_ready() || len < 32 ||
+	if (!rp2040_dma_enabled || !i2c_dw_is_i2c0(dw) || !i2c_dw_dma_os_is_ready() || len < 32 ||
 	    len > I2C_DW_RP2040_DMA_MAX_READ || !(msg_flags & I2C_MSG_STOP) ||
 	    (msg_flags & I2C_MSG_ADDR_10_BITS)) {
 		return -EAGAIN;

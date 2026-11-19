@@ -1,17 +1,19 @@
 /* SPDX-License-Identifier: MIT */
-/* The host test of the FreeRTOS part of the I2C0 core on the FreeRTOS POSIX
- * port: freertos/drivers/i2c_dw (the boundary i2c_dw_os_impl.h, the device
- * i2c0 and its Zephyr I2C API in i2c_dw_instance.h, the DMA reads' channels
- * in i2c_dw_dma_os.c) and freertos/drivers/compat/zephyr/drivers/i2c.h,
+/* The host test of the FreeRTOS part of the I2C core on the FreeRTOS POSIX
+ * port: freertos/drivers/i2c_dw (the boundary i2c_dw_os_impl.h, the devices
+ * i2c0 and i2c1 and their Zephyr I2C API in i2c_dw_instance.h, the DMA
+ * reads' channels in i2c_dw_dma_os.c) and freertos/drivers/compat/zephyr/drivers/i2c.h,
  * under the shared core (common/drivers/i2c_dw/i2c_dw.c, through
  * i2c_dw_core.c here, with the prelude, as
  * freertos/drivers/i2c_dw/i2c_dw.cmake builds it), on fakes of the Pico
  * SDK's GPIO, reset, IRQ, sync and DMA functions (pico_fake/, implemented
- * here: they record the calls), on an array in place of I2C0's registers and
- * a structure in place of the DMA's, which a task of this test plays the
- * controller, the DMA and the LSM6DSOX on (it calls the I2C0 handler and
- * the DMA line's shared handlers that the driver installed, as interrupt
- * handlers).
+ * here: they record the calls), on arrays in place of I2C0's and I2C1's
+ * registers and a structure in place of the DMA's, which a task of this test
+ * plays the controllers, the DMA, the LSM6DSOX on i2c0 and a device at 0x50
+ * on i2c1 on (it calls the controllers' handlers and the DMA line's shared
+ * handlers that the driver installed, as interrupt handlers).  Built twice
+ * (freertos/script/host_tests.sh): i2c0 only, as the default build, and
+ * with CONFIG_I2C_DW_I2C1, which adds the tests of i2c1 (the last item).
  *
  * - Before the start: i2c0 is not ready; its calls return -ENODEV; the DMA
  *   part is not ready and gives no channel (-ENODEV).
@@ -65,6 +67,18 @@
  *   the core's i2c_dw_rp2040_dma_priv.h, through i2c_dw_core.c): READ on
  *   each, RESTART on the first when asked, STOP on the last; no buffer, no
  *   length or one longer than the buffer: -EINVAL.
+ * - With CONFIG_I2C_DW_I2C1: i2c1 not ready before its start; a block that
+ *   is not a DesignWare I2C: -EIO, i2c1 not ready, i2c0 ready; the start:
+ *   I2C1's reset, GPIO18 then GPIO19 with the pull-ups, I2C1_IRQ (24), no
+ *   DMA handler, the name i2c@40048000, the same API as i2c0's and its own
+ *   data, i2c0's registers untouched, a second call does nothing; a write
+ *   and a read on its registers (IC_TAR, the counts, IC_CON without
+ *   RX_FIFO_FULL_HLD_CTRL); i2c_configure() of i2c1 changes i2c1 only; an
+ *   unanswered address: -EIO at once with i2c1's name in the log, and the
+ *   next transfer works; reads of 40 bytes as the last message take the
+ *   interrupts (no channel, no counter); i2c0's DMA read still works; 50
+ *   transfers on each bus from two tasks at once, each bus seeing only its
+ *   own commands.
  *
  * Built and run by freertos/script/host_tests.sh.
  */
@@ -90,7 +104,7 @@
 
 #include "i2c_dw_os_impl.h"
 #include "i2c_dw_dma_os.h"
-#include "i2c_dw_i2c0.h"
+#include "i2c_dw_controllers.h"
 #include "priorities.h"
 
 #define RUNNER_STACK 16384
@@ -181,6 +195,7 @@ static void expect_log(const char *expected)
 /* The fakes of the Pico SDK (pico_fake/pico_i2c_fake.h) ----------------------*/
 
 volatile uint32_t fake_i2c0_regs[64];
+volatile uint32_t fake_i2c1_regs[64];
 
 static irq_handler_t handlers[32];
 static int irq_masked;
@@ -242,7 +257,7 @@ void gpio_set_irqover(uint gpio, uint value)
 
 static const char *block_name(uint32_t block)
 {
-	return block == RESET_I2C0 ? "i2c0" : "?";
+	return block == RESET_I2C0 ? "i2c0" : block == RESET_I2C1 ? "i2c1" : "?";
 }
 
 void reset_block_num(uint32_t block_num)
@@ -500,47 +515,67 @@ static void expect_hw(const char *expected)
 	hw_log[0] = '\0';
 }
 
+/* A controller's interrupt (I2C0's: interrupt()), as its handler sees it. */
+static void bus_interrupt(volatile uint32_t *regs, uint irq, uint32_t intr_stat, uint32_t status)
+{
+	regs[IC_INTR_STAT / 4] = intr_stat;
+	regs[IC_STATUS / 4] = status;
+	z_host_isr_depth++;
+	handlers[irq]();
+	z_host_isr_depth--;
+	regs[IC_INTR_STAT / 4] = 0;
+}
+
 static void interrupt(uint32_t intr_stat, uint32_t status)
 {
-	REG(IC_INTR_STAT) = intr_stat;
-	REG(IC_STATUS) = status;
-	z_host_isr_depth++;
-	handlers[I2C0_IRQ]();
-	z_host_isr_depth--;
-	REG(IC_INTR_STAT) = 0;
+	bus_interrupt(fake_i2c0_regs, I2C0_IRQ, intr_stat, status);
 }
 
 /* One message, armed by the core (its interrupt mask set): the controller
  * asks for the first command (TX_EMPTY); for a read, the byte arrives
- * (RX_FULL); STOP_DET after a command with STOP.  Messages of one byte.
+ * (RX_FULL): answer(the register last written); STOP_DET after a command
+ * with STOP.  Messages of one byte.  In mode HW_NACK nothing acks the
+ * address.  The commands go to the log through note().
  */
-static void hw_message(void)
+static void bus_message(volatile uint32_t *regs, uint irq, enum hw_mode mode, uint8_t *reg,
+			uint8_t (*answer)(uint8_t reg), void (*note)(const char *fmt, ...))
 {
 	uint32_t cmd;
 
-	if (hw_mode == HW_NACK) {
-		REG(IC_TX_ABRT_SRC) = 1; /* ADDR7BNACK */
-		interrupt(STAT_TX_ABRT, STATUS_TFNF);
-		REG(IC_TX_ABRT_SRC) = 0;
-		hw_record("nack");
+	if (mode == HW_NACK) {
+		regs[IC_TX_ABRT_SRC / 4] = 1; /* ADDR7BNACK */
+		bus_interrupt(regs, irq, STAT_TX_ABRT, STATUS_TFNF);
+		regs[IC_TX_ABRT_SRC / 4] = 0;
+		note("nack");
 		return;
 	}
-	REG(IC_DATA_CMD) = CMD_NONE;
-	interrupt(STAT_TX_EMPTY, STATUS_TFNF);
-	cmd = REG(IC_DATA_CMD);
-	hw_record("0x%x", (unsigned int)cmd);
+	regs[IC_DATA_CMD / 4] = CMD_NONE;
+	bus_interrupt(regs, irq, STAT_TX_EMPTY, STATUS_TFNF);
+	cmd = regs[IC_DATA_CMD / 4];
+	note("0x%x", (unsigned int)cmd);
 	if (cmd == CMD_NONE) {
 		return;
 	}
 	if (cmd & CMD_READ) {
-		REG(IC_DATA_CMD) = device_reg == LSM6DSOX_WHO_AM_I ? LSM6DSOX_ID : 0;
-		interrupt(STAT_RX_FULL, STATUS_TFNF | STATUS_RFNE);
+		regs[IC_DATA_CMD / 4] = answer(*reg);
+		bus_interrupt(regs, irq, STAT_RX_FULL, STATUS_TFNF | STATUS_RFNE);
 	} else {
-		device_reg = (uint8_t)cmd;
+		*reg = (uint8_t)cmd;
 	}
 	if (cmd & CMD_STOP) {
-		interrupt(STAT_STOP_DET, STATUS_TFNF);
+		bus_interrupt(regs, irq, STAT_STOP_DET, STATUS_TFNF);
 	}
+}
+
+static uint8_t lsm6dsox_answer(uint8_t reg)
+{
+	return reg == LSM6DSOX_WHO_AM_I ? LSM6DSOX_ID : 0;
+}
+
+/* I2C0's message, the LSM6DSOX answering. */
+static void hw_message(void)
+{
+	bus_message(fake_i2c0_regs, I2C0_IRQ, hw_mode, &device_reg, lsm6dsox_answer, hw_record);
 }
 
 /* The DMA read seen by the bus: the TX channel's command words (copied when
@@ -622,6 +657,10 @@ static void hw_dma(void)
 	}
 }
 
+#ifdef CONFIG_I2C_DW_I2C1
+static void hw1_message(void);
+#endif
+
 static void hw_main(void *arg)
 {
 	(void)arg;
@@ -637,6 +676,9 @@ static void hw_main(void *arg)
 		if (hw_mode != HW_OFF && (REG(IC_INTR_MASK) & STAT_TX_EMPTY)) {
 			hw_message();
 		}
+#ifdef CONFIG_I2C_DW_I2C1
+		hw1_message();
+#endif
 	}
 }
 
@@ -675,6 +717,10 @@ static void test_before_start(void)
 	assert(i2c_configure(i2c0, I2C_SPEED_SET(I2C_SPEED_FAST_PLUS)) == -ENODEV);
 	assert(!i2c_dw_dma_os_is_ready());
 	assert(i2c_dw_dma_os_request_channel() == -ENODEV);
+#ifdef CONFIG_I2C_DW_I2C1
+	assert(!device_is_ready(DEVICE_DT_GET(DT_NODELABEL(i2c1))));
+	assert(i2c_read(DEVICE_DT_GET(DT_NODELABEL(i2c1)), &byte, 1, 0x50) == -ENODEV);
+#endif
 	expect_calls("");
 }
 
@@ -1199,6 +1245,267 @@ static void test_dma_reads(void)
 	expect_log("");
 }
 
+#ifdef CONFIG_I2C_DW_I2C1
+/* I2C1 (CONFIG_I2C_DW_I2C1) ---------------------------------------------------*/
+
+#define REG1(off) fake_i2c1_regs[(off) / 4]
+
+/* IC_CON of i2c1: never RX_FIFO_FULL_HLD_CTRL (the DMA reads are i2c0's). */
+#define CON1_STD  0x963u
+#define CON1_FAST 0x965u
+
+/* A device at 0x50 on i2c1 that answers a read with its register + 0x30. */
+#define DEV1_ADDR 0x50
+
+static const struct device *const i2c1 = DEVICE_DT_GET(DT_NODELABEL(i2c1));
+
+static volatile enum hw_mode hw1_mode = HW_OFF;
+static char hw1_log[LOG_SIZE];
+static uint8_t device1_reg;
+
+static void hw1_record(const char *fmt, ...)
+{
+	size_t used = strlen(hw1_log);
+	va_list ap;
+
+	va_start(ap, fmt);
+	vsnprintf(hw1_log + used, sizeof(hw1_log) - used, fmt, ap);
+	va_end(ap);
+	strcat(hw1_log, " ");
+}
+
+static void expect_hw1(const char *expected)
+{
+	if (strcmp(hw1_log, expected) != 0) {
+		printf("expected bus 1: %s\n     got bus 1: %s\n", expected, hw1_log);
+		fflush(stdout);
+		assert(0);
+	}
+	hw1_log[0] = '\0';
+}
+
+static uint8_t dev1_answer(uint8_t reg)
+{
+	return (uint8_t)(reg + 0x30);
+}
+
+/* From hw_main(): I2C1's message of the interrupt path. */
+static void hw1_message(void)
+{
+	if (hw1_mode != HW_OFF && (REG1(IC_INTR_MASK) & STAT_TX_EMPTY)) {
+		bus_message(fake_i2c1_regs, I2C1_IRQ, hw1_mode, &device1_reg, dev1_answer,
+			    hw1_record);
+	}
+}
+
+static int dev1_read(uint8_t reg)
+{
+	uint8_t value = 0;
+	int ret = i2c_write_read(i2c1, DEV1_ADDR, &reg, 1, &value, 1);
+
+	return ret != 0 ? ret : value;
+}
+
+#define PINS_PULL_UP(n)                                                                            \
+	"init(" #n ") func(" #n ",i2c) pulls(" #n ",1,0) drive(" #n ",4mA) slew(" #n ",slow) "     \
+	"schmitt(" #n ",1) ie(" #n ",1) oeover(" #n ",0) outover(" #n ",0) inover(" #n ",0) "      \
+	"irqover(" #n ",0) "
+
+/* The start of I2C1, after i2c0's: its reset, GPIO18 and GPIO19 with the
+ * pull-ups, I2C1_IRQ (no DMA handler); a block that is not a DesignWare
+ * I2C: -EIO, i2c1 not ready, i2c0 untouched.
+ */
+static void test_i2c1_start(void)
+{
+	uint32_t i2c0_before[64];
+
+	for (int i = 0; i < 64; i++) {
+		i2c0_before[i] = fake_i2c0_regs[i];
+	}
+	REG1(IC_COMP_TYPE) = 0;
+	REG1(IC_CON) = 0x65;
+	REG1(IC_SDA_HOLD) = 1;
+	REG1(IC_FS_SPKLEN) = 7;
+	REG1(IC_ENABLE) = 1;
+
+	assert(i2c_dw_i2c1_initialize() == -EIO);
+	expect_calls("reset(i2c1) unreset(i2c1) " PINS_PULL_UP(18) PINS_PULL_UP(19));
+	assert(!device_is_ready(i2c1));
+	assert(i2c1->state->init_res == EIO);
+	assert(device_is_ready(i2c0));
+
+	REG1(IC_COMP_TYPE) = DW_MAGIC;
+	assert(i2c_dw_i2c1_initialize() == 0);
+	expect_calls("reset(i2c1) unreset(i2c1) " PINS_PULL_UP(18)
+			     PINS_PULL_UP(19) "handler(24) irq(24,1) ");
+	assert(device_is_ready(i2c1));
+	assert(i2c1->state->init_res == 0);
+	assert(strcmp(i2c1->name, "i2c@40048000") == 0);
+	assert(i2c1->api == i2c0->api);
+	assert(i2c1->data != i2c0->data);
+	assert((REG1(IC_ENABLE) & 1) == 0);
+	assert(REG1(IC_FS_SPKLEN) == 1 && REG1(IC_HS_SPKLEN) == 1 && REG1(IC_SDA_HOLD) == 1);
+	assert(i2c_dw_i2c1_initialize() == 0);
+	expect_calls("");
+	for (int i = 0; i < 64; i++) {
+		assert(fake_i2c0_regs[i] == i2c0_before[i]);
+	}
+	expect_log("");
+}
+
+/* Transfers on i2c1: a write and a read through the fake device, IC_TAR,
+ * the counts and IC_CON without RX_FIFO_FULL_HLD_CTRL; i2c_configure() of
+ * i2c1 alone; an unanswered address (-EIO, the log with i2c1's name, the
+ * next transfer works); a long last read never takes the DMA path; i2c0
+ * unaffected throughout.
+ */
+static void test_i2c1_transfers(void)
+{
+	static const uint8_t write[2] = {0x12, 0x44};
+	static uint8_t buf[64];
+	uint32_t i2c0_con = REG(IC_CON);
+
+	stats_mark();
+	hw1_mode = HW_DEVICE;
+	hw_mode = HW_DEVICE;
+	assert(dev1_read(0x05) == 0x35);
+	expect_hw1("0x5 0x700 ");
+	assert((REG1(IC_TAR) & 0x3ff) == DEV1_ADDR);
+	assert(REG1(IC_SS_SCL_HCNT) == 500 && REG1(IC_SS_SCL_LCNT) == 625);
+	assert(REG1(IC_CON) == CON1_STD);
+	assert(i2c_write(i2c1, write, sizeof(write), DEV1_ADDR) == 0);
+	expect_hw1("0x244 ");
+	expect_hw("");
+	assert(REG(IC_CON) == i2c0_con);
+
+	/* The speed class of i2c1 only. */
+	assert(i2c_configure(i2c1, I2C_SPEED_SET(I2C_SPEED_FAST)) == 0);
+	assert(dev1_read(0x06) == 0x36);
+	expect_hw1("0x6 0x700 ");
+	assert(REG1(IC_FS_SCL_HCNT) == 93 && REG1(IC_FS_SCL_LCNT) == 109);
+	assert(REG1(IC_CON) == CON1_FAST);
+	assert(who_am_i() == LSM6DSOX_ID);
+	expect_hw(WHO_AM_I_BUS_AFTER_READ);
+	assert(REG(IC_CON) == CON_STD_DMA);
+	assert(i2c_configure(i2c1, I2C_SPEED_SET(I2C_SPEED_STANDARD)) == 0);
+
+	/* An address that nothing answers: -EIO at once, not a timeout. */
+	TickType_t start = xTaskGetTickCount();
+
+	hw1_mode = HW_NACK;
+	assert(i2c_read(i2c1, buf, 1, 0x10) == -EIO);
+	assert(xTaskGetTickCount() - start < 100);
+	expect_hw1("nack ");
+	expect_log("<1> i2c_dw: NACK on i2c@40048000\n<1> i2c_dw: IO Fail on i2c@40048000\n");
+
+	/* A read of 40 bytes, the last message (the DMA path's on i2c0): the
+	 * interrupts, no channel, no counter.
+	 */
+	assert(i2c_read(i2c1, buf, 40, 0x10) == -EIO);
+	expect_hw1("nack ");
+	expect_log("<1> i2c_dw: NACK on i2c@40048000\n<1> i2c_dw: IO Fail on i2c@40048000\n");
+	assert(i2c_burst_read(i2c1, 0x10, 0x78, buf, 40) == -EIO);
+	expect_hw1("nack ");
+	expect_log("<1> i2c_dw: NACK on i2c@40048000\n<1> i2c_dw: IO Fail on i2c@40048000\n");
+	expect_calls("");
+	expect_stats(0, 0, 0, 0);
+	assert(REG1(IC_DMA_CR) == 0 && REG1(IC_INTR_MASK) == 0);
+	assert(REG1(IC_CON) == CON1_STD);
+
+	/* The next transfer works (no RESTART on its first command: the last
+	 * message, the burst read's register address, was a write).
+	 */
+	hw1_mode = HW_DEVICE;
+	assert(dev1_read(0x07) == 0x37);
+	expect_hw1("0x7 0x700 ");
+
+	/* i2c0's DMA reads still work (and stay on i2c0's registers; channels
+	 * 0 and 1 are still held since the quarantine of test_dma_reads()).
+	 */
+	hw_mode = HW_DMA;
+	assert(i2c_burst_read_dt(&imu, FIFO_DATA_OUT_TAG, buf, 40) == 0);
+	expect_hw("0x478 dma(40,40) ");
+	expect_calls("claim(2) claim(3) configure(2) configure(3) start(3) start(2) unclaim(2) "
+		     "unclaim(3) ");
+	expect_stats(1, 40, 0, 0);
+	assert(REG(IC_CON) == CON_STD_DMA);
+	hw_mode = HW_DEVICE;
+	expect_hw1("");
+	expect_log("");
+}
+
+/* Transfers on both buses from two tasks at once: each bus has its own lock
+ * and semaphores.
+ */
+#define INTERLEAVED 50
+
+/* A bus log of count pairs "0x<first> 0x700 ", the first commands from lo
+ * to hi in order (all lo when lo == hi).
+ */
+static void expect_pairs(const char *log, int count, unsigned int lo, unsigned int hi)
+{
+	const char *p = log;
+
+	for (int i = 0; i < count; i++) {
+		unsigned int first, read;
+		int used = 0;
+
+		assert(sscanf(p, "0x%x 0x%x %n", &first, &read, &used) == 2 && used > 0);
+		assert(first == (lo == hi ? lo : lo + (unsigned int)i) && first <= hi);
+		assert(read == (CMD_READ | CMD_STOP | CMD_RESTART));
+		p += used;
+	}
+	assert(*p == '\0');
+}
+
+static volatile int bus1_done;
+static volatile int bus1_failures;
+
+static void bus1_main(void *arg)
+{
+	(void)arg;
+	for (int i = 0; i < INTERLEAVED; i++) {
+		if (dev1_read((uint8_t)i) != ((i + 0x30) & 0xff)) {
+			bus1_failures++;
+		}
+	}
+	bus1_done = 1;
+	vTaskDelete(NULL);
+}
+
+static void test_i2c1_interleaved(void)
+{
+	int failures = 0;
+
+	hw_mode = HW_DEVICE;
+	hw1_mode = HW_DEVICE;
+	bus1_done = 0;
+	bus1_failures = 0;
+	assert(xTaskCreate(bus1_main, "bus1", HW_STACK / sizeof(StackType_t), NULL, NANO_PRIO_SHELL,
+			   NULL) == pdPASS);
+	for (int i = 0; i < INTERLEAVED; i++) {
+		if (who_am_i() != LSM6DSOX_ID) {
+			failures++;
+		}
+	}
+	while (!bus1_done) {
+		vTaskDelay(1);
+	}
+	assert(failures == 0 && bus1_failures == 0);
+	/* Each bus saw only its own commands, in pairs: WHO_AM_I's on i2c0
+	 * (0x40f, then a read), the device's registers 0 to 49 on i2c1 (0x4nn,
+	 * then a read).
+	 */
+	expect_pairs(hw_log, INTERLEAVED, 0x40f, 0x40f);
+	expect_pairs(hw1_log, INTERLEAVED, 0x400, 0x400 + INTERLEAVED - 1);
+	hw_log[0] = '\0';
+	hw1_log[0] = '\0';
+	expect_log("");
+	expect_calls("");
+	hw1_mode = HW_OFF;
+}
+#endif /* CONFIG_I2C_DW_I2C1 */
+
 static void give_from_isr(void *arg)
 {
 	z_host_isr_depth++;
@@ -1306,10 +1613,19 @@ static void runner(void *arg)
 	test_timeout();
 	test_dma_glue();
 	test_dma_reads();
+#ifdef CONFIG_I2C_DW_I2C1
+	test_i2c1_start();
+	test_i2c1_transfers();
+	test_i2c1_interleaved();
+#endif
 	test_boundary();
 	test_read_commands();
 	assert(irq_masked == 0);
+#ifdef CONFIG_I2C_DW_I2C1
+	printf("i2c_dw: all tests passed (with i2c1)\n");
+#else
 	printf("i2c_dw: all tests passed\n");
+#endif
 	fflush(stdout);
 	_exit(0);
 }

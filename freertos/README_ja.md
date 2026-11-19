@@ -59,6 +59,7 @@ freertos/script/build.sh [--clean] [-j N] [-v] [-DNAME=VALUE ...] [APP]
 | オプション | 既定 | 内容 |
 |---|---|---|
 | `-DNANO_SELFTEST=ON` | OFF | 試験用の `selftest` コマンド（Zephyr 互換層、I2C0、LSM6DSOX の自己診断。計測を止め、ボードを静止させて使う）を入れる |
+| `-DI2C_DW_I2C1=ON` | OFF | I2C1（SDA は GPIO18 = D6、SCL は GPIO19 = D7、内蔵プルアップ）を I2C0 と同じドライバーで使えるようにする。実際のデバイスをつないだ確認はしていない。 |
 
 ## ホストテスト
 

@@ -8,8 +8,8 @@
  * i2c_dw_data_ask(), i2c_dw_data_read(), i2c_dw_isr_handler() and
  * i2c_dw_transfer_msgs() use for the RX threshold.  Zephyr's file also has
  * i2c_dw_rp2040_controller(), the check that a device is one of the
- * RP2040's controllers: the core drives only i2c0, so its calls are left
- * out (i2c_dw.c).
+ * RP2040's controllers (i2c0 or i2c1): the core's instances are those two,
+ * so its calls are left out (i2c_dw.c).
  *
  * Included once, by i2c_dw.c.  No OS header.
  */

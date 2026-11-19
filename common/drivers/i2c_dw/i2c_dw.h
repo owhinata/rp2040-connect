@@ -2,7 +2,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-/* Definitions and pure functions of the I2C0 driver (i2c_dw.c), without
+/* Definitions and pure functions of the I2C driver (i2c_dw.c), without
  * OS headers, so the host tests (common/tests/i2c_dw.c) can check them:
  *
  * - the definitions of the Zephyr build's i2c_dw.h (Zephyr's, with the
@@ -142,7 +142,8 @@
 
 #define SDA_HOLD_INVALID UINT32_MAX
 
-/* The constant part of the Zephyr build's i2c_dw_rom_config for i2c0
+/* The constant part of the Zephyr build's i2c_dw_rom_config for i2c0, the
+ * same for i2c1, whose node has none of these properties either
  * (i2c_dw.c:1748-1762 with the devicetree of the build): no SDA hold
  * property (SDA_HOLD_INVALID: IC_SDA_HOLD keeps its reset value), offsets
  * 0, spike lengths MAX(0, DW_IC_SPKLEN_MIN) = 1, transfer timeout
