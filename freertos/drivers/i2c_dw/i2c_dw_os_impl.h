@@ -1,9 +1,9 @@
 /* SPDX-License-Identifier: MIT */
-/* The FreeRTOS part of the I2C0 and DMA core's boundary
+/* The FreeRTOS part of the I2C0 core's boundary
  * (common/drivers/i2c_dw/i2c_dw_os.h, which includes this file first in
- * i2c_dw.c and dma_rpi_pico.c): the types and calls behind the boundary's
- * names, on the FreeRTOS part of the Zephyr compatibility layer
- * (freertos/drivers/compat) and the Pico SDK:
+ * i2c_dw.c): the types and calls behind the boundary's names, on the
+ * FreeRTOS part of the Zephyr compatibility layer (freertos/drivers/compat)
+ * and the Pico SDK:
  *
  *   Zephyr                       here
  *   k_sem (no priority inh.)     the layer's k_sem (Zephyr's rules: a give

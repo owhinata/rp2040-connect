@@ -148,7 +148,7 @@ config I2C_DW_I2C0
 config I2C_DW_RP2040_DMA
 	bool "DMA reads on I2C0"
 	default y
-	depends on I2C_DW_I2C0 && !RP2040_DMAC
+	depends on I2C_DW_I2C0 && RP2040_DMAC
 	---help---
 		The Zephyr build's CONFIG_I2C_DW_RP2040_DMA (the same symbol,
 		on there): a read
@@ -158,14 +158,14 @@ config I2C_DW_RP2040_DMA
 		transfers, and reads when no DMA channel can be had, run on the
 		interrupts.  The "i2c_dma" command (nuttx/apps/i2c_dma) switches
 		it and shows its counters.
-		common/drivers/i2c_dw/dma_rpi_pico.c (with
-		src/dma_rpi_pico_instance.h) drives the DMA as the
-		Zephyr build's dma_rpi_pico.c does (channel 0 on DMA_IRQ_0, the
-		others on DMA_IRQ_1, a channel request that never waits, a stop
-		that does not wait), so NuttX's own DMA layer
-		(arch/arm/src/rp2040/rp2040_dmac.c) must be off: RP2040_DMAC
-		takes DMA_IRQ_0 for every channel.  Nothing else in this port
-		uses the DMA.
+		The channels come from NuttX's own DMA driver
+		(arch/arm/src/rp2040/rp2040_dmac.c, RP2040_DMAC), through
+		src/i2c_dw_dma_os.c: two channels taken at start-up with
+		rp2040_dmachannel() and kept for the reads, so that a read never
+		waits for a channel; other code may use the driver's other
+		channels as usual.  RP2040_SPI_DMA, which RP2040_DMAC also
+		offers, stays off in the imu configuration (the NINA's SPI runs
+		without DMA, as in the Zephyr build).
 
 config NANO_NINA_PASSTHROUGH
 	bool "NINA passthrough mode (nina passthrough confirm)"

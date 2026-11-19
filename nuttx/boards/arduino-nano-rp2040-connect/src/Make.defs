@@ -129,13 +129,14 @@ ifeq ($(CONFIG_NANO_LSM6DSO_STREAM),y)
 CSRCS += nano_gpio.c
 endif
 
-# Its DMA reads: the DMA channels (dma_rpi_pico.c in common/drivers/i2c_dw,
-# VPATH above, in place of the in-tree rp2040_dmac.c, RP2040_DMAC off; its
-# NuttX part is dma_rpi_pico_instance.h here).  The command words are part
-# of i2c_dw.c (i2c_dw_rp2040_dma_priv.h).
+# Its DMA reads: the two DMA channels on NuttX's own DMA driver
+# (arch/arm/src/rp2040/rp2040_dmac.c, RP2040_DMAC), the boundary
+# common/drivers/i2c_dw/i2c_dw_dma_os.h (found through the -I above).  The
+# reads themselves and their command words are part of i2c_dw.c
+# (i2c_dw_rp2040_dma_priv.h).
 
 ifeq ($(CONFIG_I2C_DW_RP2040_DMA),y)
-CSRCS += dma_rpi_pico.c
+CSRCS += i2c_dw_dma_os.c
 endif
 
 # The NINA passthrough mode (include/nano_nina_passthrough.h).  Its

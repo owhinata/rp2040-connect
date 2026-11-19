@@ -1620,3 +1620,35 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
   どちらも欠番 0、`unix_regressions` 0、`overruns` 0、`dma_errors=0`、`dma_fallbacks=0`。FreeRTOS は `i2c_dma mode off` → `sensor get` → `on` も動いた。
 - **新しい基準**: NuttX は `freertos/build/baseline/nuttx/snapshot-1119c/image.bin`（285036 B）。Zephyr は `snapshot-1119b` のまま。
 - 実機: FreeRTOS 版。
+
+## I2C0 の DMA の読み出しを各 OS の DMA の上に（`dma_rpi_pico.[ch]` を削除）（2026-11-19、ユーザーの決定）
+
+- 理由（ユーザー）: ほかの用途で DMA を使うとき、FreeRTOS なら Pico SDK の、NuttX なら NuttX の DMA をそのまま使いたい。コアが DMA のブロック全体を
+  持つ作り（リセット、両方の割り込みの線、チャンネルの割り当て。FreeRTOS は SDK の記録で全 12 チャンネルを確保、NuttX は `RP2040_DMAC` を禁止）をやめる。
+- 境界: `common/drivers/i2c_dw/i2c_dw_dma_os.h`（OS や SDK の名前なし）。`i2c_dw_dma_os_initialize()`・`_is_ready()`・`_request_channel()`（待たない）・
+  `_release_channel()`・`_config_tx()`（16 ビットのコマンド語、DREQ 32）・`_config_rx()`（バイト、DREQ 33）・`_start()`・`_stop()`（中断を頼むだけで待たない）・
+  `_is_busy()`・`_acknowledge()`、割り込みからのコールバック（0 か `-EIO`）。コアの条件・コマンド語・しきい値・待ち（100 ms）・カウンター・使用停止は変えていない。
+- FreeRTOS（`freertos/drivers/i2c_dw/i2c_dw_dma_os.c`）: 読み出しごとに `dma_claim_unused_channel(false)` で 2 本、終わったら返す。割り込みは
+  `irq_add_shared_handler(DMA_IRQ_1, …)` で、自分が持つチャンネルだけを処理。中断は自分で CHAN_ABORT に書く（SDK の `dma_channel_abort()` は待ちに上限が無い）。
+- NuttX（`nuttx/boards/…/src/i2c_dw_dma_os.c`）: 起動時に `rp2040_dmachannel()` で 2 本取り、持ち続ける（この関数は空きが無いと待つので、読み出しのたびには呼ばない）。
+  設定は `rp2040_txdmasetup()`・`rp2040_rxdmasetup()`、開始は `rp2040_dmastart()`、割り込みは本体のハンドラー（DMA_IRQ_0）。中断は自分で書き、
+  `rp2040_dmastop()`（待ちに上限が無い）は呼ばない。Kconfig は `depends on … RP2040_DMAC`、defconfig は `RP2040_DMAC` 有効・`RP2040_SPI_DMA` 無効
+  （NINA の SPI は DMA なしのまま）。本体へのパッチは不要だった。
+- 以前と違う点: (1) NuttX の `fallbacks` は「起動時に取った 2 本が busy で設定を断られた回数」になり、実質 0。起動時に取れなければ割り込みの経路で動き、
+  ログに `No DMA for the reads`。(2) 中断の待ちは自分の 2 本だけを見る。(3) DMA のブロックをリセットしない。(4) NuttX 本体のハンドラーの性質
+  （subagent がコードから読み取った。実機では未確認）: エラー時にエラーフラグを起動レジスターへ書き戻すので、アダプターがそのチャンネルをすぐ中断する。
+  同じ割り込みの中では、番号の小さいチャンネルのエラーが後のチャンネルにも伝わるので、他人のバスエラーで読み出しが `-EIO` になりうる。
+- ほかのコードが守ること（ドライバー説明に記載）: 読み出しが持つ 2 本に触れない、DMA のブロックをリセットしない、INTE・INTS・CHAN_ABORT は自分のビットだけ書く、
+  FreeRTOS では DMA_IRQ_1 に排他のハンドラーを入れない、NuttX では DMA_IRQ_0 を本体から奪わない。
+- 削除: `common/drivers/i2c_dw/dma_rpi_pico.[ch]`、各 OS の `dma_rpi_pico_instance.h`、`freertos/drivers/i2c_dw/dma_rpi_pico_os.c`（全チャンネルの確保も）。
+  `i2c_dw_sync.py` の DMA のドライバーの比較も削除（読み替えの規則は境界の関数へ）。
+- ホストテスト: FreeRTOS 50（DMA の読み出しを SDK の DMA の fake の上で実行: 完了、短い読み出し、チャンネルなし、TX・RX のエラー、タイムアウト、mode off、
+  終わらない中断 → 使用停止、カウンター。接着の単体も）、NuttX 50（新しい `i2c_dw_dma_os`: `rp2040_dmac.h` の fake）、Zephyr 40。`format.sh --check` も通る。
+- ビルド（メインが再ビルド、警告の増加なし）: FreeRTOS 232376 → 231616 B、NuttX 285036 → 284856 B、Zephyr は `snapshot-1119b` と一致。
+- 実機（書き込み直後の最初の計測、送信 約 70 秒）: FreeRTOS `cpu_active` 40.2%（1 回）、欠番 0、`dma_transfers=7651 dma_errors=0 dma_fallbacks=0`、
+  `i2c_dma mode off` → `sensor get` → `on` も動く、`dmesg` にエラーなし。NuttX 52.1%・52.3%（2 回。変更前は 50.5%。約 1.7 ポイント増。原因は調べていない）、
+  欠番 0、`dma_errors=0 dma_fallbacks=0`、`mode off`・`sensor get`・`on`、Telnet の接続も動く。
+- 確かめていない: エラー・タイムアウト・使用停止の経路（実機で起こす手段が無い。ホストテストだけ）、FreeRTOS の `selftest`、長時間、ほかの利用者と DMA を
+  実際に共有した場合。
+- **新しい基準**: NuttX は `freertos/build/baseline/nuttx/snapshot-1119d/image.bin`（284856 B）。Zephyr は `snapshot-1119b` のまま。
+- 実機: FreeRTOS 版。

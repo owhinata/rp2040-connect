@@ -26,8 +26,10 @@
  *   pinctrl_apply_state() (Zephyr's        i2c_dw_pinctrl(): the same SDK
  *   pinctrl_rpi_pico.c)                    calls in the same order
  *   DEVICE_DT_INST_DEFINE(): k_sem_init(), i2c_dw_i2c0_initialize(), from the
- *   then i2c_dw_turn_on() at boot          application's start after
- *   (POST_KERNEL 50, after the DMA's 40)   dma_rpi_pico_initialize()
+ *   then i2c_dw_turn_on() at boot          application's start: the same,
+ *   (POST_KERNEL 50, after the DMA's 40)   after i2c_dw_dma_os_initialize()
+ *                                          (i2c_dw_dma_os.c: the DMA
+ *                                          interrupt's shared handler)
  *
  * The transfer refuses what the core does not do and Zephyr's driver
  * would do wrong or not at all: a device that is not ready (-ENODEV; in
@@ -51,7 +53,7 @@
  *
  * The interrupt handler runs at the Pico SDK's default priority for the
  * peripherals (0x80, the same as the DMA's and the USB's; see
- * dma_rpi_pico_instance.h), calls the core's body and, through
+ * i2c_dw_dma_os.c), calls the core's body and, through
  * i2c_dw_os_sem_give(), the layer's k_sem_give(), which wakes the waiting
  * task with a FromISR task notification and asks for the switch at the end
  * of the handler (PendSV): the task runs right after the handler, not
@@ -211,6 +213,14 @@ int i2c_dw_i2c0_initialize(void)
 	(void)k_sem_init(&dw->bus_sem, 1, 1);
 #ifdef CONFIG_I2C_DW_RP2040_DMA
 	(void)k_sem_init(&rp2040_dma_sem, 0, K_SEM_MAX_LIMIT);
+
+	/* The DMA device, which Zephyr initializes before i2c0 (POST_KERNEL 40).
+	 * Without it the reads take the interrupts.
+	 */
+	ret = i2c_dw_dma_os_initialize();
+	if (ret < 0) {
+		LOG_ERR("No DMA for the reads: %d", ret);
+	}
 #endif
 
 	/* pm_device_driver_init(): i2c_dw_turn_on() */

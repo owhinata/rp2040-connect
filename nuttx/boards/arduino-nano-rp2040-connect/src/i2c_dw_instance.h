@@ -23,6 +23,9 @@
  *                                         (i2c_dw_speed())
  *   i2c_recover_bus()                     I2C_RESET()
  *   IRQ_CONNECT(), irq_enable()           irq_attach(), up_enable_irq()
+ *   the DMA device (POST_KERNEL 40)       i2c_dw_dma_os_initialize()
+ *                                         (i2c_dw_dma_os.c, on NuttX's
+ *                                         rp2040_dmac.c) first
  *   reset_line_toggle_dt()                RESETS (set, clear, RESET_DONE)
  *   pinctrl_apply_state()                 i2c_dw_pinctrl() (Zephyr's
  *                                         pinctrl_rpi_pico.c steps)
@@ -169,6 +172,16 @@ struct i2c_master_s *i2c_dw_i2c0_initialize(void)
 	nxsem_init(&dw->bus_sem, 0, 1);
 #ifdef CONFIG_I2C_DW_RP2040_DMA
 	nxsem_init(&rp2040_dma_sem, 0, 0);
+
+	/* The DMA device, which Zephyr initializes before i2c0 (POST_KERNEL 40):
+	 * the two channels of the reads from NuttX's rp2040_dmac.c
+	 * (i2c_dw_dma_os.c).  Without them the reads take the interrupts.
+	 */
+	int ret = i2c_dw_dma_os_initialize();
+
+	if (ret < 0) {
+		LOG_ERR("No DMA for the reads: %d", ret);
+	}
 #endif
 
 	if (i2c_dw_turn_on(dw) < 0) {

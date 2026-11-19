@@ -80,6 +80,13 @@
 @@
 -static bool i2c_dw_rp2040_dma_stop(const struct device *dma, int tx, int rx) {
 +static bool i2c_dw_rp2040_dma_stop(int tx, int rx) {
+@@
+-while (i2c_dw_dma_os_is_busy(tx) || i2c_dw_dma_os_is_busy(rx) || dma_hw->abort) {
++while (i2c_dw_dma_os_is_busy(tx) || i2c_dw_dma_os_is_busy(rx)) {
+@@
+-dma_irqn_acknowledge_channel(1, tx);
+@@
+-dma_irqn_acknowledge_channel(1, rx);
 --- zephyr i2c_dw_rp2040_dma_read
 +++ core i2c_dw_rp2040_dma_read
 @@
@@ -89,8 +96,51 @@
 -struct i2c_dw_dev_config *dw = dw->data;
 +static int i2c_dw_rp2040_dma_read(struct i2c_dw_dev_config *dw, uint8_t *buf, uint32_t len, uint8_t msg_flags) {
 @@
--if (!rp2040_dma_enabled || dw != DEVICE_DT_GET(DT_NODELABEL(i2c0)) || !device_is_ready(dma) || len < 32 || len > I2C_DW_RP2040_DMA_MAX_READ || !(msg->flags & I2C_MSG_STOP) || (msg->flags & I2C_MSG_ADDR_10_BITS) || (dw->app_config & I2C_ADDR_10_BITS)) {
-+if (!rp2040_dma_enabled || !dma_rpi_pico_is_ready() || len < 32 || len > I2C_DW_RP2040_DMA_MAX_READ || !(msg_flags & I2C_MSG_STOP) || (msg_flags & I2C_MSG_ADDR_10_BITS)) {
+-struct dma_block_config tx_block = {
+-0}
+-, rx_block = {
+-0}
+-;
+-struct dma_config tx_cfg = {
+-0}
+-, rx_cfg = {
+-0}
+-;
+@@
+-if (!rp2040_dma_enabled || dw != DEVICE_DT_GET(DT_NODELABEL(i2c0)) || !i2c_dw_dma_os_is_ready() || len < 32 || len > I2C_DW_RP2040_DMA_MAX_READ || !(msg->flags & I2C_MSG_STOP) || (msg->flags & I2C_MSG_ADDR_10_BITS) || (dw->app_config & I2C_ADDR_10_BITS)) {
++if (!rp2040_dma_enabled || !i2c_dw_dma_os_is_ready() || len < 32 || len > I2C_DW_RP2040_DMA_MAX_READ || !(msg_flags & I2C_MSG_STOP) || (msg_flags & I2C_MSG_ADDR_10_BITS)) {
+@@
+-tx_block.source_address = (uintptr_t)rp2040_dma_commands;
+-tx_block.dest_address = base + DW_IC_REG_DATA_CMD;
+-tx_block.block_size = len * sizeof(uint16_t);
+-tx_block.source_addr_adj = DMA_ADDR_ADJ_INCREMENT;
+-tx_block.dest_addr_adj = DMA_ADDR_ADJ_NO_CHANGE;
+-tx_cfg.dma_slot = RPI_PICO_DMA_SLOT_I2C0_TX;
+-tx_cfg.channel_direction = MEMORY_TO_PERIPHERAL;
+-tx_cfg.source_data_size = 2;
+-tx_cfg.dest_data_size = 2;
+-tx_cfg.block_count = 1;
+-tx_cfg.head_block = &tx_block;
+-tx_cfg.dma_callback = i2c_dw_rp2040_dma_callback;
+-tx_cfg.user_data = dw;
+-rx_block.source_address = base + DW_IC_REG_DATA_CMD;
+-rx_block.dest_address = (uintptr_t)rp2040_dma_buffer;
+-rx_block.block_size = len;
+-rx_block.source_addr_adj = DMA_ADDR_ADJ_NO_CHANGE;
+-rx_block.dest_addr_adj = DMA_ADDR_ADJ_INCREMENT;
+-rx_cfg.dma_slot = RPI_PICO_DMA_SLOT_I2C0_RX;
+-rx_cfg.channel_direction = PERIPHERAL_TO_MEMORY;
+-rx_cfg.source_data_size = 1;
+-rx_cfg.dest_data_size = 1;
+-rx_cfg.block_count = 1;
+-rx_cfg.head_block = &rx_block;
+-rx_cfg.dma_callback = i2c_dw_rp2040_dma_callback;
+-rx_cfg.user_data = dw;
+-ret = dma_config(dma, tx, &tx_cfg);
++ret = i2c_dw_dma_os_config_tx(tx, rp2040_dma_commands, base + DW_IC_REG_DATA_CMD, len, i2c_dw_rp2040_dma_callback, dw);
+@@
+-ret = dma_config(dma, rx, &rx_cfg);
++ret = i2c_dw_dma_os_config_rx(rx, base + DW_IC_REG_DATA_CMD, rp2040_dma_buffer, len, i2c_dw_rp2040_dma_callback, dw);
 @@
 -if (ret && !i2c_dw_rp2040_dma_stop(dma, tx, rx)) {
 +if (ret && !i2c_dw_rp2040_dma_stop(tx, rx)) {
@@ -378,71 +428,3 @@
 -static int i2c_dw_probe_hw(const struct device *dw) {
 -struct i2c_dw_dev_config *const dw = dw->data;
 +static int i2c_dw_probe_hw(struct i2c_dw_dev_config *dw) {
---- zephyr dma_request_channel
-+++ core dma_rpi_pico_request_channel
-@@
--int dma_request_channel(void *filter_param) {
--int i = 0;
-+int dma_rpi_pico_request_channel(void) {
-@@
--const struct dma_driver_api *api = DEVICE_API_GET(dma, dev);
--struct dma_context *dma_ctx = (struct dma_context *)dev->data;
--if (dma_ctx->magic != DMA_MAGIC) {
-+i2c_dw_os_irqstate_t flags;
-+if (!dma_rpi_pico0_ready) {
-@@
--for (i = 0;
--i < dma_ctx->dma_channels;
-+flags = i2c_dw_os_irq_lock();
-+for (int i = 0;
-+i < DMA_RPI_PICO_CHANNELS;
-@@
--if (!atomic_test_and_set_bit(dma_ctx->atomic, i)) {
--if (api->chan_filter && !api->chan_filter(i, filter_param)) {
--atomic_clear_bit(dma_ctx->atomic, i);
--continue;
--}
-+if ((dma_rpi_pico_atomic0 & (1u << i)) == 0) {
-+dma_rpi_pico_atomic0 |= 1u << i;
-@@
-+i2c_dw_os_irq_unlock(flags);
---- zephyr dma_release_channel
-+++ core dma_rpi_pico_release_channel
-@@
--void dma_release_channel(uint32_t channel) {
--const struct dma_driver_api *api = DEVICE_API_GET(dma, dev);
--struct dma_context *dma_ctx = (struct dma_context *)dev->data;
--if (dma_ctx->magic != DMA_MAGIC) {
-+void dma_rpi_pico_release_channel(uint32_t channel) {
-+i2c_dw_os_irqstate_t flags;
-+if (!dma_rpi_pico0_ready) {
-@@
--if ((int)channel < dma_ctx->dma_channels) {
--if (api->chan_release) {
--api->chan_release(channel);
--}
--atomic_clear_bit(dma_ctx->atomic, channel);
-+if (channel < DMA_RPI_PICO_CHANNELS) {
-+flags = i2c_dw_os_irq_lock();
-+dma_rpi_pico_atomic0 &= ~(1u << channel);
-+i2c_dw_os_irq_unlock(flags);
---- zephyr dma_rpi_pico_init
-+++ core dma_rpi_pico_initialize
-@@
--int dma_rpi_pico_init(void) {
--const struct dma_rpi_pico_config *cfg = &dma_rpi_pico0_config;
--(void)reset_line_toggle_dt(&cfg->reset);
--cfg->irq_configure();
-+int dma_rpi_pico_initialize(void) {
-+if (dma_rpi_pico0_ready) {
-@@
-+dma_rpi_pico_os_reset();
-+dma_rpi_pico_os_irq_enable();
-+dma_rpi_pico0_ready = true;
-+return 0;
-+}
---- zephyr dma_rpi_pico_isr
-+++ core dma_rpi_pico_isr_handler
-@@
--static void dma_rpi_pico_isr(void) {
-+static inline void dma_rpi_pico_isr_handler(void) {

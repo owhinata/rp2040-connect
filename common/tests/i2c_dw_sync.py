@@ -1,13 +1,14 @@
 #!/usr/bin/env python3
 # SPDX-License-Identifier: MIT
-"""The I2C0 and DMA core (common/drivers/i2c_dw) against the Zephyr build's drivers.
+"""The I2C0 core (common/drivers/i2c_dw) against the Zephyr build's driver.
 
 The Zephyr build uses Zephyr's DesignWare driver with a local patch
-(zephyr/manifest/zephyr/patches/zephyr/0003-i2c-dw-rp2040-fifo-and-dma.patch)
-and Zephyr's RP2040 DMA driver (drivers/dma/dma_rpi_pico.c, unpatched); the
-core that the NuttX and FreeRTOS builds use is a port of the two, with the
-differences listed at the top of i2c_dw.c and of dma_rpi_pico.c.  This check
-fails when one of them changes without the other:
+(zephyr/manifest/zephyr/patches/zephyr/0003-i2c-dw-rp2040-fifo-and-dma.patch);
+the core that the NuttX and FreeRTOS builds use is a port of it, with the
+differences listed at the top of i2c_dw.c.  Its DMA reads use the OS's own
+DMA driver through the boundary of common/drivers/i2c_dw/i2c_dw_dma_os.h in
+place of Zephyr's DMA API (RENAMES turns those calls into the boundary's).
+This check fails when one of them changes without the other:
 
 - values: the definitions that both headers have (state bits, interrupt
   bits and sets, register offsets, IC_DATA_CMD command bits, FIFO depth and
@@ -15,13 +16,9 @@ fails when one of them changes without the other:
   build's clock, the DMA path's lower limit, FIFO thresholds, interrupt
   masks, IC_CON bit, waits and timeout, the spike lengths;
 - functions: the pairs of PAIRS, with Zephyr's names turned into the core's
-  (RENAMES), compared statement by statement, and the same for the DMA
-  driver: the pairs of DMA_PAIRS (Zephyr's drivers/dma/dma_rpi_pico.c and,
-  for the channel allocation, the inline functions of
-  include/zephyr/drivers/dma.h, against common/drivers/i2c_dw/dma_rpi_pico.c)
-  with DMA_RENAMES; the differences must be those of i2c_dw_sync.expected
-  (the I2C pairs first, then the DMA pairs).  After an intended change of
-  either side, look at the new differences and write them with --update;
+  (RENAMES), compared statement by statement; the differences must be those
+  of i2c_dw_sync.expected.  After an intended change of either side, look at
+  the new differences and write them with --update;
 - declarations: the public header that the patch adds and the one of the
   core (COPIES: <zephyr/drivers/i2c/i2c_dw_rp2040_dma.h> and
   common/drivers/i2c_dw/i2c_dw_rp2040_dma.h) must be the same once the
@@ -34,8 +31,7 @@ fails when one of them changes without the other:
   its <zephyr/...> includes a file of the tree's include/.
 
 The patched driver is made here from Zephyr's files at the tree's HEAD and
-the patch, and the DMA driver is read at the tree's HEAD, whatever the tree's
-working files hold.  The build's .config and
+the patch, whatever the tree's working files hold.  The build's .config and
 zephyr.dts, when given, check the Kconfig values and devicetree properties
 that the core takes as constants.
 
@@ -120,13 +116,14 @@ RENAMES = [
      'i2c_dw_os_sem_take_until(&rp2040_dma_sem, deadline)'),
     (r'\bk_timepoint_t deadline = sys_timepoint_calc\(rom->transfer_timeout\)',
      'i2c_dw_os_timepoint_t deadline = i2c_dw_os_timepoint_calc(I2C_DW_TRANSFER_TIMEOUT_MS)'),
-    (r'\bdma_request_channel\(dma, NULL\)', 'dma_rpi_pico_request_channel()'),
-    (r'\bdma_(stop|release_channel|config|start)\(dma, ', r'dma_rpi_pico_\1('),
-    (r'\bstruct dma_block_config\b', 'struct dma_rpi_pico_block_config'),
-    (r'\bstruct dma_config\b', 'struct dma_rpi_pico_channel_config'),
-    (r'\bDMA_ADDR_ADJ_', 'DMA_RPI_PICO_ADDR_ADJ_'),
-    (r'\bRPI_PICO_DMA_SLOT_', 'DMA_RPI_PICO_SLOT_'),
-    (r'\b(MEMORY_TO_PERIPHERAL|PERIPHERAL_TO_MEMORY)\b', r'DMA_RPI_PICO_\1'),
+    # Zephyr's DMA API and the Pico SDK's calls of the stop: the boundary of i2c_dw_dma_os.h
+    # (the setup of a channel, dma_config() with its structures, is two calls there: the
+    # differences of i2c_dw_sync.expected).
+    (r'\bdevice_is_ready\(dma\)', 'i2c_dw_dma_os_is_ready()'),
+    (r'\bdma_request_channel\(dma, NULL\)', 'i2c_dw_dma_os_request_channel()'),
+    (r'\bdma_(stop|release_channel|start)\(dma, ', r'i2c_dw_dma_os_\1('),
+    (r'\bdma_channel_is_busy\(', 'i2c_dw_dma_os_is_busy('),
+    (r'\bdma_irqn_acknowledge_channel\(0, (\w+)\)', r'i2c_dw_dma_os_acknowledge(\1)'),
     (r'\bsys_write32\(', 'i2c_dw_write32('),
     # Zephyr's register address type: the core's is uintptr_t, which mm_reg_t is on Arm.
     (r'\bmm_reg_t\b', 'uintptr_t'),
@@ -139,50 +136,6 @@ RENAMES = [
     (r'\bi2c_dw_rp2040_controller\((dev|port)\) && ', ''),
     (r'\b(dev|port)\b', 'dw'),
 ]
-
-# The DMA driver: Zephyr's files at the tree's HEAD (drivers/dma/dma_rpi_pico.c, and dma.h for
-# the channel allocation of the DMA API), and the core's port.
-DMA_ZEPHYR = 'drivers/dma/dma_rpi_pico.c'
-DMA_API = 'include/zephyr/drivers/dma.h'
-DMA_CORE = 'dma_rpi_pico.c'
-# (Zephyr function, core function, Zephyr's file).  Left out of the port: dma_rpi_pico_reload(),
-# _get_status(), _api_chan_filter() (not used by i2c_dw.c).
-DMA_PAIRS = [
-    ('rpi_pico_dma_channel_clear_error_flags', 'rpi_pico_dma_channel_clear_error_flags',
-     DMA_ZEPHYR),
-    ('rpi_pico_dma_channel_get_error_flags', 'rpi_pico_dma_channel_get_error_flags', DMA_ZEPHYR),
-    ('rpi_pico_dma_channel_abort', 'rpi_pico_dma_channel_abort', DMA_ZEPHYR),
-    ('dma_rpi_pico_transfer_size', 'dma_rpi_pico_transfer_size', DMA_ZEPHYR),
-    ('dma_rpi_pico_channel_irq', 'dma_rpi_pico_channel_irq', DMA_ZEPHYR),
-    ('dma_rpi_pico_config', 'dma_rpi_pico_config', DMA_ZEPHYR),
-    ('dma_rpi_pico_start', 'dma_rpi_pico_start', DMA_ZEPHYR),
-    ('dma_rpi_pico_stop', 'dma_rpi_pico_stop', DMA_ZEPHYR),
-    ('dma_request_channel', 'dma_rpi_pico_request_channel', DMA_API),
-    ('dma_release_channel', 'dma_rpi_pico_release_channel', DMA_API),
-    ('dma_rpi_pico_init', 'dma_rpi_pico_initialize', DMA_ZEPHYR),
-    ('dma_rpi_pico_isr', 'dma_rpi_pico_isr_handler', DMA_ZEPHYR),
-]
-# The systematic differences of the port (applied to the Zephyr side, in order): one instance
-# and no struct device (its configuration and data are the instance's const objects, the
-# device argument goes, from the callback too), the public functions of the core's
-# dma_rpi_pico.h for the driver API's static ones, and the names of the DMA API's definitions
-# that the core's header gives.
-DMA_RENAMES = [
-    (r'\bstatic (inline )?(int|void) (dma_request_channel|dma_release_channel)\(', r'\2 \3('),
-    (r'\bstatic int (dma_rpi_pico_(config|start|stop|init))\(', r'int \1('),
-    (r'\(const struct device \*dev\)', '(void)'),
-    (r'\bconst struct device \*dev, ', ''),
-    (r'\bconst struct dma_rpi_pico_config \*cfg = dev->config;',
-     'const struct dma_rpi_pico_config *cfg = &dma_rpi_pico0_config;'),
-    (r'\bstruct dma_rpi_pico_data \*data = dev->data;',
-     'const struct dma_rpi_pico_data *data = &dma_rpi_pico0_data;'),
-    (r'\(dev, ', '('),
-    (r'\bstruct dma_config\b', 'struct dma_rpi_pico_channel_config'),
-    (r'\bDMA_ADDR_ADJ_', 'DMA_RPI_PICO_ADDR_ADJ_'),
-    (r'\bRPI_PICO_DMA_SLOT_', 'DMA_RPI_PICO_SLOT_'),
-    (r'\b(MEMORY_TO_PERIPHERAL|PERIPHERAL_TO_MEMORY)\b', r'DMA_RPI_PICO_\1'),
-]
-
 
 def git_show(tree, path):
     return subprocess.run(['git', '-C', tree, 'show', 'HEAD:' + path], check=True,
@@ -564,14 +517,9 @@ def main():
 
         # The functions.
         lines = []
-        dma = {f: preprocess(git_show(args.tree, f), ZEPHYR_ON) for f in (DMA_ZEPHYR, DMA_API)}
-        dma_core = preprocess(read(os.path.join(core, DMA_CORE)), CORE_ON)
-        pairs = ([(zc, zname, RENAMES, False, core_c, cname) for zname, cname in PAIRS] +
-                 [(dma[f], zname, DMA_RENAMES, True, dma_core, cname)
-                  for zname, cname, f in DMA_PAIRS])
-        for ztext, zname, renames, code_only, ctext, cname in pairs:
-            z = statements(function(ztext, zname), renames, code_only)
-            c = statements(function(ctext, cname))
+        for zname, cname in PAIRS:
+            z = statements(function(zc, zname), RENAMES)
+            c = statements(function(core_c, cname))
             for d in difflib.unified_diff(z, c, 'zephyr ' + zname, 'core ' + cname, n=0,
                                           lineterm=''):
                 lines.append('@@' if d.startswith('@@') else d)
@@ -583,8 +531,8 @@ def main():
         else:
             expected = read(EXPECTED)
             if actual == expected:
-                print('ok  i2c_dw_sync functions (%d I2C and %d DMA pairs, %d lines of expected '
-                      'differences)' % (len(PAIRS), len(DMA_PAIRS), sum(1 for x in lines if x[:1] in '+-' and
+                print('ok  i2c_dw_sync functions (%d pairs, %d lines of expected differences)' %
+                      (len(PAIRS), sum(1 for x in lines if x[:1] in '+-' and
                                        not x.startswith(('+++', '---')))))
             else:
                 print('FAIL i2c_dw_sync functions: the differences are not those of %s:' %

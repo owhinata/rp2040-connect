@@ -24,7 +24,7 @@
  * definitions, and the pure functions that the host tests check),
  * i2c_dw_registers.h (Zephyr's register map), i2c_dw_rp2040.h (the RP2040's
  * FIFO depth and RX batch) and i2c_dw_rp2040_dma_priv.h (the DMA reads,
- * included once below).  Zephyr's address type mm_reg_t is uintptr_t here
+ * included once below, on the DMA boundary i2c_dw_dma_os.h).  Zephyr's address type mm_reg_t is uintptr_t here
  * (the same type on Arm).
  *
  * This is the OS-independent core.  The OS's part is in i2c_dw_os.h
@@ -64,8 +64,11 @@
  * 1040-1052, 1219-1223) are CONFIG_I2C_DW_RP2040_DMA here too, with the same
  * conditions, command words, thresholds, interrupt mask, start order,
  * completion and timeout, clean-up and stop sequence, quarantine, counters
- * and log lines, on dma_rpi_pico.c (a port of Zephyr's dma_rpi_pico.c).
- * atomic_t becomes a volatile word with the read-modify-write under
+ * and log lines, on the OS's own DMA driver through the boundary of
+ * i2c_dw_dma_os.h in place of Zephyr's DMA API (one call for each of
+ * Zephyr's, the channel's setup as two calls, for the TX and the RX side, in
+ * place of the dma_config() structures; the stop waits for the two
+ * channels' own aborts, not for any channel's).  atomic_t becomes a volatile word with the read-modify-write under
  * i2c_dw_os_irq_lock() where an interrupt also writes it
  * (rp2040_dma_events); the counters are only written by the transfer,
  * which holds bus_sem.  As in the patched driver, the read's

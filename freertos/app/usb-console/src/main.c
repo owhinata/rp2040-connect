@@ -17,7 +17,6 @@
 #include "app.h"
 #include "app_log.h"
 #include "cli.h"
-#include "dma_rpi_pico.h"
 #include "fault.h"
 #include "i2c_dw_i2c0.h"
 #include "imu_cal.h"
@@ -377,17 +376,13 @@ int main(void)
 		LOG_ERR("Could not set up the NINA's SPI bus: %d", ret);
 	}
 
-	/* The DMA for the I2C0 reads (reset, both interrupts) and then I2C0
-	 * (reset, pins, controller registers for 100 kHz, interrupt; the device
-	 * i2c0), as the Zephyr build initializes its DMA device (POST_KERNEL 40)
-	 * before i2c0 (POST_KERNEL 50) and the NuttX build in its bringup, after
-	 * the NINA's SPI bus (freertos/drivers/i2c_dw).  A failure leaves i2c0
-	 * not ready (its calls return -ENODEV) and does not stop the start.
+	/* I2C0 (the DMA interrupt's handler for its DMA reads, then reset, pins,
+	 * controller registers for 100 kHz, interrupt; the device i2c0), as the
+	 * Zephyr build initializes its DMA device (POST_KERNEL 40) before i2c0
+	 * (POST_KERNEL 50) and the NuttX build in its bringup, after the NINA's
+	 * SPI bus (freertos/drivers/i2c_dw).  A failure leaves i2c0 not ready
+	 * (its calls return -ENODEV) and does not stop the start.
 	 */
-	ret = dma_rpi_pico_initialize();
-	if (ret != 0) {
-		LOG_ERR("Could not set up the DMA: %d", ret);
-	}
 	ret = i2c_dw_i2c0_initialize();
 	if (ret != 0) {
 		LOG_ERR("Could not set up I2C0: %d", ret);

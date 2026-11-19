@@ -24,7 +24,7 @@ OS-independent part of the layer is `common/compat/`, the FreeRTOS part `freerto
 | `drivers/log/` | The RAM log (`log_ram.c`; the ring is `common/log/log_ring.c`) |
 | `drivers/kv/` | The flash boundary of the key-value store (`nano_flash_kv.c`) and the linker script override (`ld/`, `kv.cmake`) |
 | `drivers/nina/` | The NINA-W102's SPI1 and lines (`nano_nina.c`), the `nina_os.h` boundary (`nina_os.c`), sockets (`nina_socket.c`), the interface (`nina_netif.c`), the esptool passthrough (`nina_passthrough.c`) |
-| `drivers/i2c_dw/` | The FreeRTOS part of the I2C0 and DMA core (`common/drivers/i2c_dw/`), self-test |
+| `drivers/i2c_dw/` | The FreeRTOS part of the I2C0 core (`common/drivers/i2c_dw/`), its DMA reads on the Pico SDK's DMA (`i2c_dw_dma_os.c`), self-test |
 | `drivers/lsm6dso/` | The LSM6DSOX device (`lsm6dso_instance.h`) and its initialization (`nano_lsm6dso.c`), self-test |
 | `drivers/imu/` | Builds in the acquisition service, MQTT and time synchronization (`common/imu/`; `imu.cmake`), the prelude of `time_sync.c` |
 | `drivers/wifi/` | Builds in Wi-Fi (`common/drivers/nina/nina_net.c`, credentials, reconnection) and `ifconfig` |
@@ -102,7 +102,7 @@ use a stack of their own (MSP, 2048 bytes; the `(interrupts)` row of `ps`).
 The heap is FreeRTOS's heap_4 with 32 KiB (`free`). Task stacks are allocated statically.
 
 **Start-up** (`main.c`): `main()` sets up the RAM log, reads the fatal error record, sets up the console,
-the layer, the NINA's SPI, DMA, I2C0 and the flash of the key-value store; then the task `main` starts the
+the layer, the NINA's SPI, I2C0 (first the DMA interrupt's handler for its reads) and the flash of the key-value store; then the task `main` starts the
 LSM6DSOX, the NINA's network interface, the Wi-Fi credentials, Telnet, the `K_THREAD_DEFINE()` threads,
 the key-value store, the calibration, the time synchronization and the automatic connection, in this
 order (the Zephyr build's initialization order and the NuttX build's start-up order).
@@ -219,11 +219,28 @@ zero gives the Pico SDK routines' results, the same in the three builds. `memcpy
 
 ## I2C0 and DMA, LSM6DSOX, GPIO interrupt
 
-- I2C0 and DMA are the shared core (`common/drivers/i2c_dw/i2c_dw.c`, `dma_rpi_pico.c`); the FreeRTOS build
-  implements the `i2c_dw_os.h` boundary in `drivers/i2c_dw/i2c_dw_os_impl.h` (semaphores, clock, interrupt
-  masking) and `i2c_dw_instance.h`, `dma_rpi_pico_instance.h` (the layer's `i2c0` device with Zephyr's I2C
-  API, the interrupt registration, resets, pins). The boundary is listed in the "I2C0" table of
+- I2C0 is the shared core (`common/drivers/i2c_dw/i2c_dw.c`); the FreeRTOS build implements the
+  `i2c_dw_os.h` boundary in `drivers/i2c_dw/i2c_dw_os_impl.h` (semaphores, clock, interrupt masking) and
+  `i2c_dw_instance.h` (the layer's `i2c0` device with Zephyr's I2C API, the interrupt registration, reset,
+  pins). The boundary is listed in the "I2C0" table of
   [`nuttx/drivers/README.md`](../../nuttx/drivers/README.md).
+- The DMA reads of I2C0 use the Pico SDK's own DMA (`hardware_dma`, `hardware_irq`) through the core's
+  second boundary, `i2c_dw_dma_os.h`, implemented in `drivers/i2c_dw/i2c_dw_dma_os.c`: per read, two
+  channels from `dma_claim_unused_channel(false)` (none free: the read takes the interrupts and counts a
+  fallback), set up with the SDK's channel configuration (TX: 16-bit command words to IC_DATA_CMD, DREQ 32;
+  RX: bytes from it, DREQ 33), started with `dma_channel_start()`, given back with
+  `dma_channel_unclaim()`. Their interrupts go to DMA_IRQ_1, on a handler added with
+  `irq_add_shared_handler()` (the default order priority) that looks only at the channels the read holds.
+  A stop writes the channel's bit to CHAN_ABORT and the core waits for it with a bound (100 ms, then the
+  controller is quarantined); the SDK's `dma_channel_abort()` would wait without one. Nothing is reset at
+  start-up.
+- Other code of this build may use the DMA the usual way: claim channels with the SDK's allocation, and
+  share the interrupt lines with `irq_add_shared_handler()`. It must not: touch the two channels a read
+  holds (claimed in the SDK's record during the read); install an exclusive handler on DMA_IRQ_1
+  (`irq_set_exclusive_handler()` panics when a shared one is there) or acknowledge other channels' flags in
+  its handler of a shared line; reset the DMA block or write the whole of INTE0/INTE1, INTS0/INTS1 or
+  CHAN_ABORT (only its own channels' bits); claim all twelve channels for good if the reads are to keep the
+  DMA (they then fall back to the interrupts).
 - Interrupt priorities stay at the Pico SDK's default 0x80, so all device interrupts are at one level (as
   on NuttX; the Zephyr build uses 0xC0).
 - The LSM6DSOX runs on the shared driver (`common/drivers/lsm6dso/`), ST's `lsm6dso_reg.c` (fetched to
@@ -278,7 +295,7 @@ board at rest. It prints, as `N of M tests failed`, the results for the layer
 | `shell` | Two shell sessions, line editing, output routing |
 | `kv` | The flash boundary and the key-value store (on fakes of the Pico SDK's flash functions) |
 | `nina` | The NINA's SPI and line boundaries, the wait for READY on its interrupt, the waits for the IRQ line's edges (two tasks woken by one edge, the timeout), kernel services |
-| `i2c_dw` | I2C0's boundary and device, Zephyr's I2C API, the core's DMA command words |
+| `i2c_dw` | I2C0's boundary and device, Zephyr's I2C API; the DMA part (`i2c_dw_dma_os.c`) on fakes of the Pico SDK's DMA: claims, setup, start, the shared handler (end, bus error, other users' channels), stop, release; the core's DMA reads on it: the read, the 32-byte limit, fallbacks, bus errors on TX and RX, timeout, the reads off, a stop that does not end (quarantine), the counters; the core's DMA command words |
 | `gpio` | GPIO bank 0's boundary, `gpio0`, the FIFO interrupt |
 | `imu` | Address conversions, `hwinfo` |
 | `mqtt` | The MQTT transport (fake broker); then a run against the host's `imu-host check` (skipped without `host/.venv`) |

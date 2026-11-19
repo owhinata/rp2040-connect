@@ -1,39 +1,39 @@
 /* SPDX-License-Identifier: MIT */
-/* What the I2C0 and DMA core (i2c_dw.c and dma_rpi_pico.c here) needs from
- * the OS.  Both files include this header before anything else; it
+/* What the I2C0 core (i2c_dw.c here) needs from the OS.  The core includes
+ * this header before anything else; it
  * includes the OS's part, "i2c_dw_os_impl.h", then declares the inline
  * functions that part must define, so a missing or different one does not
  * compile.
  *
  * The core is the register work of the Zephyr build's I2C0 driver (Zephyr's
- * i2c_dw.c with a local patch, see i2c_dw.c) and of its DMA driver (Zephyr's
- * dma_rpi_pico.c): the transfer's state machine, the interrupt handlers'
- * bodies, the DMA reads, the DMA channels and the i2c_dma counters
+ * i2c_dw.c with a local patch, see i2c_dw.c): the transfer's state machine,
+ * the interrupt handler's body, the DMA reads and the i2c_dma counters
  * (i2c_dw_rp2040_dma.h).  The OS's part
  * gives it semaphores, a clock, sleeps and a critical section, connects the
- * interrupts, resets the blocks, sets the pins, and makes the I2C0 device of
- * the OS's driver model.  The boundary is made of static inline functions and
+ * interrupt, resets the block, sets the pins, and makes the I2C0 device of
+ * the OS's driver model.  The DMA reads use the OS's own DMA driver through
+ * a second boundary, i2c_dw_dma_os.h (functions of a source of the OS's
+ * part; they run once per read, not per FIFO word).  The boundary is made of static inline functions and
  * macros, and the OS's interrupt handlers and transfer entry call the core's
  * static inline functions, so that the compiler makes one function of each,
  * as if the core called the OS directly (the interrupt and transfer paths run
  * for every FIFO read at 6667 Hz).
  *
- * Each OS's build puts these files on the include path of i2c_dw.c and
- * dma_rpi_pico.c (the NuttX build's are in nuttx/boards/arduino-nano-rp2040-
- * connect/src; nuttx/drivers/README.md, "I2C0"):
+ * Each OS's build puts these files on the include path of i2c_dw.c (the
+ * NuttX build's are in nuttx/boards/arduino-nano-rp2040-connect/src;
+ * nuttx/drivers/README.md, "I2C0"):
  *
  *   i2c_dw_os_impl.h     the types, macros and inline functions below, and
  *                        CONFIG_I2C_DW_RP2040_DMA defined to build the DMA
  *                        reads (the symbol of the Zephyr build's patch, on
- *                        there; dma_rpi_pico.c is then built too)
+ *                        there; the OS's part then also builds its
+ *                        implementation of i2c_dw_dma_os.h)
  *   app_log.h            LOG_MODULE_REGISTER(name), LOG_ERR() and
  *                        LOG_ERR_RATELIMIT() as Zephyr's (the rate limit:
  *                        LOG_RATELIMIT_INTERVAL_MS), at the level of
  *                        LOG_LEVEL, which the core defines (3) before it
  *                        includes the file
  *   i2c_dw_instance.h    read at the end of i2c_dw.c (below)
- *   dma_rpi_pico_instance.h
- *                        read at the end of dma_rpi_pico.c (below)
  *
  * Nothing else: the core defines BIT(), MIN() and ARRAY_SIZE() itself
  * (i2c_dw_registers.h, i2c_dw.h) unless the OS's headers, read first,
@@ -87,32 +87,20 @@
  *   and the OS's device: it sets dw->base of i2c_0_runtime (0x40044000),
  *   initializes device_sync_sem and the static rp2040_dma_sem (of the DMA
  *   reads, with CONFIG_I2C_DW_RP2040_DMA) to 0 and bus_sem to 1, calls
- *   i2c_dw_turn_on(dw) once at start-up (after dma_rpi_pico_initialize(), as
- *   Zephyr initializes the DMA device first) and sets dw->ready if it
- *   returned 0.  Its transfer entry refuses what the Zephyr API cannot express
- *   (no message array, more than 255 messages, a 10-bit address, a missing
- *   buffer, a device that is not ready), returns 0 for no message, and
+ *   i2c_dw_dma_os_initialize() (with CONFIG_I2C_DW_RP2040_DMA; as Zephyr
+ *   initializes the DMA device first) and then i2c_dw_turn_on(dw) once at
+ *   start-up, and sets dw->ready if the latter returned 0.  Its transfer
+ *   entry refuses what the Zephyr API cannot express (no message array,
+ *   more than 255 messages, a 10-bit address, a missing buffer, a device
+ *   that is not ready), returns 0 for no message, and
  *   otherwise returns i2c_dw_transfer_msgs(dw, msgs, count, target_address,
  *   speed) with the speed class of the transfer (I2C_SPEED_STANDARD, _FAST or
  *   _FAST_PLUS of i2c_dw.h: the OS's part keeps what i2c_configure() set, or
  *   takes it from the messages).
  *
- * dma_rpi_pico_instance.h (end of dma_rpi_pico.c) defines:
- *
- *   static void dma_rpi_pico_os_reset(void)
- *       reset the DMA block (set its RESETS bit, clear it, wait for
- *       RESET_DONE)
- *   static void dma_rpi_pico_os_irq_enable(void)
- *       DMA_IRQ_0 and DMA_IRQ_1 on one handler that calls
- *       dma_rpi_pico_isr_handler(), then both enabled
- *
- *   The OS's start-up calls dma_rpi_pico_initialize() before
- *   i2c_dw_turn_on().  No other user may own the DMA's interrupts or
- *   channels (the channel allocation of dma_rpi_pico.c knows no other users).
- *
- * The I2C0 and DMA interrupts run at the same priority (as in the Zephyr
- * and NuttX builds), and the interrupt handlers and the transfers run on
- * one core.
+ * The I2C0 interrupt and the DMA interrupt that ends the DMA reads run at
+ * the same priority (as in the Zephyr build), and the interrupt handlers
+ * and the transfers run on one core.
  */
 
 #ifndef COMMON_DRIVERS_I2C_DW_I2C_DW_OS_H_

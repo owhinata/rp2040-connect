@@ -61,10 +61,6 @@
 #  include "i2c_dw_i2c0.h"
 #endif
 
-#ifdef CONFIG_I2C_DW_RP2040_DMA
-#  include "dma_rpi_pico.h"
-#endif
-
 #ifdef CONFIG_NANO_LSM6DSO
 #  include "nano_lsm6dso.h"
 #endif
@@ -185,24 +181,13 @@ int nano_bringup(void)
     }
 #endif
 
-#ifdef CONFIG_I2C_DW_RP2040_DMA
-  /* The DMA for the I2C0 reads: reset, both interrupts.  The Zephyr build
-   * brings up its DMA device before i2c0 (CONFIG_DMA_INIT_PRIORITY 40,
-   * CONFIG_I2C_INIT_PRIORITY 50, both POST_KERNEL).
-   */
-
-  ret = dma_rpi_pico_initialize();
-  if (ret < 0)
-    {
-      syslog(LOG_ERR, "ERROR: dma_rpi_pico_initialize() failed: %d\n", ret);
-      result = ret;
-    }
-#endif
-
 #ifdef CONFIG_I2C_DW_I2C0
-  /* I2C0: reset, pins, controller registers and interrupt, as the Zephyr
-   * build's i2c0 is set up at boot (POST_KERNEL), then /dev/i2c0 for the
-   * i2c tool.
+  /* I2C0: with CONFIG_I2C_DW_RP2040_DMA first the two DMA channels of its
+   * reads from NuttX's rp2040_dmac.c (initialized in up_initialize(),
+   * before this), as the Zephyr build brings up its DMA device before i2c0
+   * (CONFIG_DMA_INIT_PRIORITY 40, CONFIG_I2C_INIT_PRIORITY 50); then reset,
+   * pins, controller registers and interrupt, as the Zephyr build's i2c0 is
+   * set up at boot (POST_KERNEL), then /dev/i2c0 for the i2c tool.
    */
 
   {

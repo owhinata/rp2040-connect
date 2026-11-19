@@ -644,11 +644,12 @@ I2C0 carries the LSM6DSOX (0x6A) and the ATECC608A (0x60). The driver is a copy 
 part of the DesignWare I2C driver that the Zephyr version uses
 (Zephyr's `drivers/i2c/i2c_dw.c` with the local patch
 `zephyr/manifest/zephyr/patches/zephyr/0003-i2c-dw-rp2040-fifo-and-dma.patch`). Its core, which works on the registers
-(`common/drivers/i2c_dw/i2c_dw.c`, and `dma_rpi_pico.c` for the DMA), does not depend on the OS; the
-semaphores, the clock, the interrupt connection, the reset and the pins and NuttX's
-`struct i2c_master_s` are in the board's `src/i2c_dw_os_impl.h`, `i2c_dw_instance.h` and
-`dma_rpi_pico_instance.h` (the boundary is `common/drivers/i2c_dw/i2c_dw_os.h`; the table is in the
-"I2C0" section of `nuttx/drivers/README.md`). NuttX's `rp2040_i2c.c` (`CONFIG_RP2040_I2C`) is not
+(`common/drivers/i2c_dw/i2c_dw.c`), does not depend on the OS; the semaphores, the clock, the
+interrupt connection, the reset and the pins and NuttX's `struct i2c_master_s` are in the board's
+`src/i2c_dw_os_impl.h` and `i2c_dw_instance.h` (the boundary is `common/drivers/i2c_dw/i2c_dw_os.h`),
+and the DMA channels of its DMA reads, on NuttX's own `rp2040_dmac.c`, in `src/i2c_dw_dma_os.c` (the
+boundary is `common/drivers/i2c_dw/i2c_dw_dma_os.h`; the tables are in the "I2C0" section of
+`nuttx/drivers/README.md`). NuttX's `rp2040_i2c.c` (`CONFIG_RP2040_I2C`) is not
 used. It is registered as `/dev/i2c0` for NuttX's `i2c` tool. Reads
 that meet the conditions run on DMA (see "DMA reads (`i2c_dma`)" below).
 
@@ -690,8 +691,13 @@ read that meets all of the following runs on DMA; other reads and all writes are
   the DMA channels do not stop within 100 ms, I2C0 is quarantined
   (`<err> i2c_dw: DMA channels did not stop; I2C controller quarantined`) and every later transfer
   gives `-EIO` until a reboot. The steps are in the "I2C0" section of `nuttx/drivers/README.md`.
-- NuttX's DMA layer (`CONFIG_RP2040_DMAC`) is off; only `common/drivers/i2c_dw/dma_rpi_pico.c` (which
-  behaves as Zephyr's RP2040 DMA driver) uses the DMA.
+- The DMA is NuttX's own driver (`CONFIG_RP2040_DMAC`, `arch/arm/src/rp2040/rp2040_dmac.c`). The board
+  takes two channels from it at boot and keeps them for the reads (its channel request would wait
+  while all are taken), so a read never waits for a channel and `dma_fallbacks` stays 0 in this
+  build unless a channel's setup is refused (still busy); a stop writes CHAN_ABORT and the core waits for it at most 100 ms (NuttX's own stop waits
+  without a limit). Other code may use the other channels through `rp2040_dmac.c` as usual (what it
+  must not do is in the "I2C0" section of `nuttx/drivers/README.md`). `CONFIG_RP2040_SPI_DMA` stays
+  off: the NINA's SPI is polled, as in the Zephyr version.
 
 ```text
 i2c_dma mode          show the mode (i2c_dma=on or i2c_dma=off)
@@ -1298,7 +1304,7 @@ with the layer's NuttX implementation (`nuttx/drivers/compat/`; the Zephyr build
 | `common/drivers/nina/` | `nina_net.c` and `nina_proto.h` (all three builds); the NINA core `nina_spi.c`, `nina_sock.[ch]`, `nina_dns.[ch]` and `nina_wait.[ch]`, the decisions of the esptool passthrough `nina_passthrough_logic.h`, with the headers of its boundary, `nina_os.h` and `nano_nina.h`, and its socket options, `nina_sockopt.h` (the three builds use them; they do not use Zephyr's API and the NuttX build compiles them without the prelude; the boundary is described under "NINA-W102" in `nuttx/drivers/README.md`) |
 | `common/drivers/sensor_shell/` | `sensor_shell.c` |
 | `common/drivers/stmemsc/` | `stmemsc.h`, `stmemsc_i2c.c`, `stmemsc_mdelay.c` (a copy of the I2C part of Zephyr's stmemsc, used by the NuttX and FreeRTOS builds and compiled without the prelude; the Zephyr build uses Zephyr's) |
-| `common/drivers/i2c_dw/` | The I2C0 and DMA core `i2c_dw.c` and `dma_rpi_pico.c` with its definitions `i2c_dw.h`, `i2c_dw_registers.h`, `i2c_dw_rp2040.h` and `dma_rpi_pico.h` and its DMA reads `i2c_dw_rp2040_dma_priv.h`, with the DMA command words (the Zephyr build has the same function in patch 0003) (the file names of Zephyr's patched driver and DMA driver), the header of its boundary, `i2c_dw_os.h` (the NuttX and FreeRTOS builds use them; they are compiled without the prelude, and the OS's part is the board's `src/i2c_dw_os_impl.h`, `i2c_dw_instance.h` and `dma_rpi_pico_instance.h`; the boundary is described under "I2C0" in `nuttx/drivers/README.md`) |
+| `common/drivers/i2c_dw/` | The I2C0 core `i2c_dw.c` with its definitions `i2c_dw.h`, `i2c_dw_registers.h`, `i2c_dw_rp2040.h` and its DMA reads `i2c_dw_rp2040_dma_priv.h`, with the DMA command words (the Zephyr build has the same function in patch 0003) (the file names of Zephyr's patched driver), the headers of its boundaries, `i2c_dw_os.h` and, for the DMA reads, `i2c_dw_dma_os.h` (the NuttX and FreeRTOS builds use them; they are compiled without the prelude, and the OS's part is the board's `src/i2c_dw_os_impl.h`, `i2c_dw_instance.h` and `i2c_dw_dma_os.c`; the boundaries are described under "I2C0" in `nuttx/drivers/README.md`) |
 | `common/compat/` | the OS-independent part of the compatibility layer (the headers of Zephyr's API `zephyr/...`, among them the `i2c_dma` state `zephyr/drivers/i2c/i2c_dw_rp2040_dma.h`, the same file as patch 0003 adds to Zephyr's tree, `zephyr_compat.h`, work items, RTIO, the block pool, the device list, `gpio0`, `net_mgmt`, the Wi-Fi requests, the sensors' default iodev) and the copies of Zephyr's libraries that the builds on the layer use (`sensor_shell_stream.c`, `sensor_shell.h`, `wifi_credentials.c`, `wifi_credentials_backend_settings.c`, `wifi_credentials_internal.h`), and boundary headers (`priorities.h`, `cpu_load.h`, `nano_cpuload.h`, `nano_gpio.h`); the Zephyr build does not use it |
 | `common/shell/` | `subcmd.[ch]` (the subcommand tables), `zshell.c` (the handling of commands written with `<zephyr/shell/shell.h>`: word matching, wildcards, argument count checks, help) and its boundary to the OS, `zshell_os.h` (the NuttX build's part is `nuttx/apps/subcmd/zshell_os_impl.h`); compiled without the prelude; the Zephyr build does not use them. Also `i2c_dma_shell.c` (the `i2c_dma` command of the three builds, written on Zephyr's shell API; the NuttX build's `nuttx/apps/i2c_dma` builds it with the prelude) |
 | `common/log/` | `log_ring.[ch]` (the RAM log's ring, line prefix and rate limit), `app_log.h` (the `LOG_*` macros; the NuttX part is `nuttx/drivers/include/app_log_os.h`), `log_ram.h` (the RAM log's functions; in the NuttX build `nuttx/drivers/log/log_ram.c`), `fault_record.[ch]` (the record of a fatal error: its format, CRC-32, the copy in the watchdog's scratch registers and its lines; only the FreeRTOS build uses it); the Zephyr build does not use it |

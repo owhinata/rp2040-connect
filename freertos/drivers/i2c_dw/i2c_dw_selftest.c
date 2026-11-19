@@ -22,12 +22,14 @@
  *              as the FIFO stream reads; the FIFO is in bypass mode while
  *              idle, so the bytes are not checked) with the DMA reads on:
  *              0, dma_transfers +1, dma_bytes +35, no error or fallback;
- *              DMA channels 0 (TX, on DMA_IRQ_0) and 1 (RX, on DMA_IRQ_1)
+ *              DMA channels 0 (TX) and 1 (RX: the lowest unclaimed in the
+ *              Pico SDK's record, as nothing else of this build claims one)
  *              with Zephyr's CTRL values (0x00100015: 16 bits, read
  *              increment, DREQ 32, chained to itself, enabled; 0x00108821:
  *              8 bits, write increment, DREQ 33, chained to itself,
  *              enabled), IC_DMA_TDLR 8, IC_DMA_RDLR 0, IC_DMA_CR 0 after,
- *              neither channel's interrupt left enabled; then the same read
+ *              neither channel's interrupt left enabled and both unclaimed
+ *              again (i2c_dw_dma_os.c); then the same read
  *              with the DMA reads off: 0, the counters unchanged, IC_CON
  *              without RX_FIFO_FULL_HLD_CTRL (0x165)
  *
@@ -42,6 +44,7 @@
 #include <stdint.h>
 #include <stdio.h>
 
+#include "hardware/dma.h"
 #include "hardware/structs/dma.h"
 #include "hardware/structs/i2c.h"
 
@@ -169,6 +172,8 @@ static void test_dma(void)
 	CHECK_EQ(dma_hw->ch[1].transfer_count, 0);
 	CHECK_EQ(dma_hw->inte0 & 0x3u, 0);
 	CHECK_EQ(dma_hw->inte1 & 0x3u, 0);
+	CHECK_EQ(dma_channel_is_claimed(0), false);
+	CHECK_EQ(dma_channel_is_claimed(1), false);
 	CHECK_EQ(i2c0_hw->dma_tdlr, 8);
 	CHECK_EQ(i2c0_hw->dma_rdlr, 0);
 	CHECK_EQ(i2c0_hw->dma_cr, 0);

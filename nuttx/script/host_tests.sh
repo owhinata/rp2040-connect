@@ -167,6 +167,14 @@ cc "${flags[@]}" -D_DEFAULT_SOURCE -D__NuttX__ -Itests/zephyr_mutex_fakes -Idriv
     -o "$out/zephyr_mutex"
 "$out/zephyr_mutex" >/dev/null
 printf 'ok  zephyr_mutex\n'
+# The DMA part of the I2C0 reads (boards/arduino-nano-rp2040-connect/src/i2c_dw_dma_os.c, the
+# boundary of common/drivers/i2c_dw/i2c_dw_dma_os.h) on a fake of NuttX's rp2040_dmac.c and of
+# the DMA's registers (tests/i2c_dw_dma_os_fakes, and the test itself): the channels, their
+# setup, start, interrupt, stop and release.
+cc "${flags[@]}" -D_DEFAULT_SOURCE -Itests/i2c_dw_dma_os_fakes -Itests/fakes \
+    -I../common/drivers/i2c_dw tests/i2c_dw_dma_os.c "$link" -o "$out/i2c_dw_dma_os"
+"$out/i2c_dw_dma_os" >/dev/null
+printf 'ok  i2c_dw_dma_os\n'
 # The test of the minimal MQTT client (common/tests/mqtt_min.c; the client, common/imu/mqtt_min.c,
 # is tested in common/tests/run.sh) on Zephyr's own library when the Zephyr tree is there
 # (tests/mqtt_ref: its log, mutex and socket names on the host, with this build's

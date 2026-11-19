@@ -12,10 +12,10 @@
 /* Resets I2C0, sets up GPIO12 (SDA) and GPIO13 (SCL), checks the block
  * (IC_COMP_TYPE), writes the controller's registers for 100 kHz (the
  * devicetree's clock-frequency) and enables its interrupt; the device i2c0
- * is ready after it.  Once, before the scheduler starts, after
- * dma_rpi_pico_initialize() (common/drivers/i2c_dw/dma_rpi_pico.h): the
- * Zephyr build initializes its DMA device (POST_KERNEL 40) before i2c0
- * (POST_KERNEL 50).
+ * is ready after it.  Before, the shared handler of the DMA interrupt for
+ * the DMA reads (i2c_dw_dma_os.c), as the Zephyr build initializes its DMA
+ * device (POST_KERNEL 40) before i2c0 (POST_KERNEL 50).  Once, before the
+ * scheduler starts.
  * Returns 0, or a negative errno (-EIO: not a DesignWare I2C block); i2c0
  * then stays not ready and its calls return -ENODEV.
  */

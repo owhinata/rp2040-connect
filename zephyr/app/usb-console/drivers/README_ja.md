@@ -166,7 +166,9 @@ i2c_dma stats         DMA 転送数、バイト数、エラー、割り込み方
 `i2c_dma` コマンドは FreeRTOS 版と同じ `common/shell/i2c_dma_shell.c` をアプリに入れたもので、
 `<zephyr/drivers/i2c/i2c_dw_rp2040_dma.h>` を読みます（NuttX 版・FreeRTOS 版は同じファイルを `common/compat` に持ちます）。
 NuttX 版・FreeRTOS 版の I²C0 のコア（`common/drivers/i2c_dw/i2c_dw.c`）はパッチ後のドライバーの写しで同じ関数を定義し、
-読み出しのコマンド語を作る同じ関数を、パッチと同じくコアの `i2c_dw_rp2040_dma_priv.h` に静的関数として持ちます。両者のずれはホストテストの `i2c_dw_sync` が検出します。
+読み出しのコマンド語を作る同じ関数を、パッチと同じくコアの `i2c_dw_rp2040_dma_priv.h` に静的関数として持ちます。その DMA 読み出しは、
+パッチが Zephyr の DMA API を呼ぶところで、コアの境界 `i2c_dw_dma_os.h` を通して各 OS 自身の DMA ドライバー（Pico SDK のもの、NuttX の
+`rp2040_dmac.c`）を呼びます。両者のずれはホストテストの `i2c_dw_sync` が検出します。
 
 FIFO の取得だけを行った過去の測定（6667 Hz、1 MHz、各 1 回）では、watermark 128 のとき
 `cpu_active` が DMA なしで 45.7%、DMA ありで 22.5% でした。
@@ -457,7 +459,7 @@ picolibc の中からの呼び出しと、GCC が構造体のコピーやルー�
 | `fifo_hw` | FIFO の設定手順と失敗時の巻き戻し、状態の読み取り |
 | `fifo_decoder` | FIFO バッファの decoder |
 | `stream_stop` | ストリームの停止、キャンセル、エラー時の終了 |
-| `i2c_dw_sync` | 共有の I²C0 と DMA のコア（`common/drivers/i2c_dw/`）と、パッチ後のドライバー（Zephyr のツリーの HEAD のファイルにパッチ 0003 を当てて作る）・DMA のドライバー（HEAD の `drivers/dma/dma_rpi_pico.c` と `include/zephyr/drivers/dma.h` のチャネルの確保）の一致。両方のヘッダーの定義（状態、割り込み、レジスター、IC_DATA_CMD のビット、FIFO の深さ 16・バッチ 4、DMA の上限 3584）、125 MHz での SCL のカウント、DMA の下限 32・しきい値 8/0・割り込みのマスク・IC_CON の bit 9・停止の待ち 100 ms・タイムアウト 1000 ms、スパイク長、I²C と DMA のドライバーの対になる関数（名前の違いをそろえて文ごとに比べ、差分が `common/tests/i2c_dw_sync.expected` と同じこと）、読み出しのコマンド語を作る関数 `i2c_dw_rp2040_read_commands()`（パッチとコアのそれぞれの `i2c_dw_rp2040_dma_priv.h` の静的関数）が文ごとに同じでコマンドのビットも同じこと、パッチが足し `common/compat` にもある `zephyr/drivers/i2c/i2c_dw_rp2040_dma.h` がバイト単位で同じこと、パッチ後のドライバーが読むヘッダーがすべてツリーの中にあること。ビルドがあれば `.config` と `zephyr.dts` の値も見る。Zephyr のツリーがあるときだけ |
+| `i2c_dw_sync` | 共有の I²C0 のコア（`common/drivers/i2c_dw/`）と、パッチ後のドライバー（Zephyr のツリーの HEAD のファイルにパッチ 0003 を当てて作る）の一致。両方のヘッダーの定義（状態、割り込み、レジスター、IC_DATA_CMD のビット、FIFO の深さ 16・バッチ 4、DMA の上限 3584）、125 MHz での SCL のカウント、DMA の下限 32・しきい値 8/0・割り込みのマスク・IC_CON の bit 9・停止の待ち 100 ms・タイムアウト 1000 ms、スパイク長、対になる関数（Zephyr の DMA API の呼び出しを含めて名前をコアのもの（DMA は境界 `i2c_dw_dma_os.h`）にそろえて文ごとに比べ、差分が `common/tests/i2c_dw_sync.expected` と同じこと）、読み出しのコマンド語を作る関数 `i2c_dw_rp2040_read_commands()`（パッチとコアのそれぞれの `i2c_dw_rp2040_dma_priv.h` の静的関数）が文ごとに同じでコマンドのビットも同じこと、パッチが足し `common/compat` にもある `zephyr/drivers/i2c/i2c_dw_rp2040_dma.h` がバイト単位で同じこと、パッチ後のドライバーが読むヘッダーがすべてツリーの中にあること。ビルドがあれば `.config` と `zephyr.dts` の値も見る。Zephyr のツリーがあるときだけ |
 | `nina_spi` | NINA の SPI フレーミング、応答の解析（ファームウェアのエラーの応答 0xEF を含む）、READY の期限、追加機能の問い合わせ（0x6A）（共有のコア `nina_spi.c`。偽の境界）。どれも READY の割り込み待ちを始められたときと始められなかったとき（100 µs ごとに読む）の両方で |
 | `nina_wait` | ソケットの待ち（`nina_wait.c`）：間隔（事象を始める前と、始められなかったあと）、IRQ の線のエッジ、100 ms の時間切れ、期限、休み（偽の時計と線） |
 | `nina_sock`、`nina_dns`、`nina_dns_offload` | NINA のソケットの命令、名前解決（`nina_dns_offload` はこの版と同じ `NINA_OS_DNS_OFFLOAD` の形） |

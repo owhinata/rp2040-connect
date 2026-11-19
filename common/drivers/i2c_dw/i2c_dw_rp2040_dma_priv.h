@@ -7,7 +7,8 @@
  * (local patch 0003; i2c_dw.c lists the differences): the events, the
  * counters, the static state of the read in progress, the command words
  * (i2c_dw_rp2040_read_commands()), i2c_dw_rp2040_dma_notify(), _callback(),
- * _stop() and _read() on dma_rpi_pico.c, and the functions of the "i2c_dma" command
+ * _stop() and _read() on the OS's DMA through i2c_dw_dma_os.h (in place of
+ * Zephyr's DMA API), and the functions of the "i2c_dma" command
  * (i2c_dw_rp2040_dma_get_stats(), _enabled(), _set_enabled()).
  *
  * Included once, by i2c_dw.c, with CONFIG_I2C_DW_RP2040_DMA: these are
@@ -17,8 +18,7 @@
  * after its declarations (struct i2c_dw_dev_config is in Zephyr's i2c_dw.h);
  * here the structure holds the OS's types and is defined in i2c_dw.c, so
  * the file is included after it, where the functions were before
- * (after i2c_dw_transfer_complete(), so the order of the functions in the
- * translation unit, and with it the image, stays the same).
+ * (after i2c_dw_transfer_complete()).
  */
 
 #ifndef COMMON_DRIVERS_I2C_DW_I2C_DW_RP2040_DMA_PRIV_H_
@@ -26,7 +26,7 @@
 
 #include "i2c_dw_rp2040_dma.h"
 
-#include "dma_rpi_pico.h"
+#include "i2c_dw_dma_os.h"
 
 /* i2c_dw_rp2040_dma_priv.h:46: the longest read the DMA path takes (its
  * buffers are this long).
@@ -118,24 +118,23 @@ static void i2c_dw_rp2040_dma_callback(void *user_data, uint32_t channel, int st
 						       : RP2040_DMA_RX_DONE));
 }
 
-/* A stop only requests an abort in Zephyr's RP2040 DMA driver.  Wait for BUSY,
- * then acknowledge late completions (RP2040-E13) before releasing channels.
+/* A stop only requests an abort (i2c_dw_dma_os_stop()).  Wait for BUSY and
+ * the channels' aborts, then acknowledge late completions (RP2040-E13)
+ * before releasing channels.
  */
 static bool i2c_dw_rp2040_dma_stop(int tx, int rx)
 {
 	int64_t deadline = rp2040_dma_uptime_ms() + 100;
-	(void)dma_rpi_pico_stop(tx);
-	(void)dma_rpi_pico_stop(rx);
-	while (dma_channel_is_busy(tx) || dma_channel_is_busy(rx) || dma_hw->abort) {
+	(void)i2c_dw_dma_os_stop(tx);
+	(void)i2c_dw_dma_os_stop(rx);
+	while (i2c_dw_dma_os_is_busy(tx) || i2c_dw_dma_os_is_busy(rx)) {
 		if (rp2040_dma_uptime_ms() >= deadline) {
 			return false;
 		}
 		i2c_dw_os_msleep(1);
 	}
-	dma_irqn_acknowledge_channel(0, tx);
-	dma_irqn_acknowledge_channel(1, tx);
-	dma_irqn_acknowledge_channel(0, rx);
-	dma_irqn_acknowledge_channel(1, rx);
+	i2c_dw_dma_os_acknowledge(tx);
+	i2c_dw_dma_os_acknowledge(rx);
 	return true;
 }
 
@@ -146,8 +145,6 @@ static int i2c_dw_rp2040_dma_read(struct i2c_dw_dev_config *dw, uint8_t *buf, ui
 				  uint8_t msg_flags)
 {
 	uintptr_t base = dw->base;
-	struct dma_rpi_pico_block_config tx_block = {0}, rx_block = {0};
-	struct dma_rpi_pico_channel_config tx_cfg = {0}, rx_cfg = {0};
 	int tx, rx, ret;
 	bool started = false;
 
@@ -155,55 +152,31 @@ static int i2c_dw_rp2040_dma_read(struct i2c_dw_dev_config *dw, uint8_t *buf, ui
 	 * addresses are refused before (no I2C_MSG_ADDR_10_BITS here, and
 	 * app_config never has I2C_ADDR_10_BITS).
 	 */
-	if (!rp2040_dma_enabled || !dma_rpi_pico_is_ready() || len < 32 ||
+	if (!rp2040_dma_enabled || !i2c_dw_dma_os_is_ready() || len < 32 ||
 	    len > I2C_DW_RP2040_DMA_MAX_READ || !(msg_flags & I2C_MSG_STOP) ||
 	    (msg_flags & I2C_MSG_ADDR_10_BITS)) {
 		return -EAGAIN;
 	}
-	tx = dma_rpi_pico_request_channel();
+	tx = i2c_dw_dma_os_request_channel();
 	if (tx < 0) {
 		rp2040_dma_fallbacks++;
 		return -EAGAIN;
 	}
-	rx = dma_rpi_pico_request_channel();
+	rx = i2c_dw_dma_os_request_channel();
 	if (rx < 0) {
 		rp2040_dma_fallbacks++;
-		dma_rpi_pico_release_channel(tx);
+		i2c_dw_dma_os_release_channel(tx);
 		return -EAGAIN;
 	}
 	rp2040_dma_tx_channel = tx;
 	rp2040_dma_rx_channel = rx;
 	i2c_dw_rp2040_read_commands(rp2040_dma_commands, ARRAY_SIZE(rp2040_dma_commands), len,
 				    dw->xfr_flags & I2C_MSG_RESTART);
-	tx_block.source_address = (uintptr_t)rp2040_dma_commands;
-	tx_block.dest_address = base + DW_IC_REG_DATA_CMD;
-	tx_block.block_size = len * sizeof(uint16_t);
-	tx_block.source_addr_adj = DMA_RPI_PICO_ADDR_ADJ_INCREMENT;
-	tx_block.dest_addr_adj = DMA_RPI_PICO_ADDR_ADJ_NO_CHANGE;
-	tx_cfg.dma_slot = DMA_RPI_PICO_SLOT_I2C0_TX;
-	tx_cfg.channel_direction = DMA_RPI_PICO_MEMORY_TO_PERIPHERAL;
-	tx_cfg.source_data_size = 2;
-	tx_cfg.dest_data_size = 2;
-	tx_cfg.block_count = 1;
-	tx_cfg.head_block = &tx_block;
-	tx_cfg.dma_callback = i2c_dw_rp2040_dma_callback;
-	tx_cfg.user_data = dw;
-	rx_block.source_address = base + DW_IC_REG_DATA_CMD;
-	rx_block.dest_address = (uintptr_t)rp2040_dma_buffer;
-	rx_block.block_size = len;
-	rx_block.source_addr_adj = DMA_RPI_PICO_ADDR_ADJ_NO_CHANGE;
-	rx_block.dest_addr_adj = DMA_RPI_PICO_ADDR_ADJ_INCREMENT;
-	rx_cfg.dma_slot = DMA_RPI_PICO_SLOT_I2C0_RX;
-	rx_cfg.channel_direction = DMA_RPI_PICO_PERIPHERAL_TO_MEMORY;
-	rx_cfg.source_data_size = 1;
-	rx_cfg.dest_data_size = 1;
-	rx_cfg.block_count = 1;
-	rx_cfg.head_block = &rx_block;
-	rx_cfg.dma_callback = i2c_dw_rp2040_dma_callback;
-	rx_cfg.user_data = dw;
-	ret = dma_rpi_pico_config(tx, &tx_cfg);
+	ret = i2c_dw_dma_os_config_tx(tx, rp2040_dma_commands, base + DW_IC_REG_DATA_CMD, len,
+				      i2c_dw_rp2040_dma_callback, dw);
 	if (!ret) {
-		ret = dma_rpi_pico_config(rx, &rx_cfg);
+		ret = i2c_dw_dma_os_config_rx(rx, base + DW_IC_REG_DATA_CMD, rp2040_dma_buffer, len,
+					      i2c_dw_rp2040_dma_callback, dw);
 	}
 	if (ret) {
 		rp2040_dma_fallbacks++;
@@ -220,9 +193,9 @@ static int i2c_dw_rp2040_dma_read(struct i2c_dw_dev_config *dw, uint8_t *buf, ui
 				DW_INTR_STAT_SCL_STUCK_LOW,
 			base);
 	started = true;
-	ret = dma_rpi_pico_start(rx);
+	ret = i2c_dw_dma_os_start(rx);
 	if (!ret) {
-		ret = dma_rpi_pico_start(tx);
+		ret = i2c_dw_dma_os_start(tx);
 	}
 	if (!ret) {
 		/* sys_timepoint_calc(rom->transfer_timeout) */
@@ -280,8 +253,8 @@ release:
 		rp2040_dma_errors++;
 	}
 	if (!started || !dw->rp2040_dma_quarantined) {
-		dma_rpi_pico_release_channel(tx);
-		dma_rpi_pico_release_channel(rx);
+		i2c_dw_dma_os_release_channel(tx);
+		i2c_dw_dma_os_release_channel(rx);
 	}
 	return ret;
 }

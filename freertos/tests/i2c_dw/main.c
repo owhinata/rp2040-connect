@@ -1,28 +1,26 @@
 /* SPDX-License-Identifier: MIT */
-/* The host test of the FreeRTOS part of the I2C0 and DMA core on the
- * FreeRTOS POSIX port: freertos/drivers/i2c_dw (the boundary
- * i2c_dw_os_impl.h, the device i2c0 and its Zephyr I2C API in
- * i2c_dw_instance.h, dma_rpi_pico_instance.h, dma_rpi_pico_os.c) and
- * freertos/drivers/compat/zephyr/drivers/i2c.h, under the shared core
- * (common/drivers/i2c_dw/i2c_dw.c, through i2c_dw_core.c here, and
- * dma_rpi_pico.c, with the prelude, as freertos/drivers/i2c_dw/i2c_dw.cmake
- * builds them), on
- * fakes of the Pico SDK's GPIO, reset, IRQ, sync and DMA-claim functions
- * (pico_fake/, implemented here: they record the calls) and on an array in
- * place of I2C0's registers, which a task of this test plays the
- * controller and the LSM6DSOX on (it calls the I2C0 handler that the driver
- * installed, as an interrupt handler).  DMA reads are not run (the DMA
- * registers are at fixed addresses; reads under 32 bytes, or with the DMA
- * reads off, take the interrupt path).
+/* The host test of the FreeRTOS part of the I2C0 core on the FreeRTOS POSIX
+ * port: freertos/drivers/i2c_dw (the boundary i2c_dw_os_impl.h, the device
+ * i2c0 and its Zephyr I2C API in i2c_dw_instance.h, the DMA reads' channels
+ * in i2c_dw_dma_os.c) and freertos/drivers/compat/zephyr/drivers/i2c.h,
+ * under the shared core (common/drivers/i2c_dw/i2c_dw.c, through
+ * i2c_dw_core.c here, with the prelude, as
+ * freertos/drivers/i2c_dw/i2c_dw.cmake builds it), on fakes of the Pico
+ * SDK's GPIO, reset, IRQ, sync and DMA functions (pico_fake/, implemented
+ * here: they record the calls), on an array in place of I2C0's registers and
+ * a structure in place of the DMA's, which a task of this test plays the
+ * controller, the DMA and the LSM6DSOX on (it calls the I2C0 handler and
+ * the DMA line's shared handlers that the driver installed, as interrupt
+ * handlers).
  *
- * - Before the start: i2c0 is not ready; its calls return -ENODEV.
+ * - Before the start: i2c0 is not ready; its calls return -ENODEV; the DMA
+ *   part is not ready and gives no channel (-ENODEV).
  * - A block that is not a DesignWare I2C (IC_COMP_TYPE): -EIO, i2c0 not
- *   ready, its init_res EIO.
- * - The start: the DMA's channels claimed, its reset and both lines
- *   (DMA_IRQ_0, DMA_IRQ_1) on one handler, enabled; I2C0's reset, GPIO12
- *   then GPIO13 as Zephyr's pinctrl sets them (in its order), the I2C0
- *   line; the controller off, the spike lengths 1, SDA hold kept; i2c0
- *   ready.  A second call does nothing.
+ *   ready, its init_res EIO; the DMA part's shared handler on DMA_IRQ_1
+ *   (the default order priority) and the line enabled before, once.
+ * - The start: I2C0's reset, GPIO12 then GPIO13 as Zephyr's pinctrl sets
+ *   them (in its order), the I2C0 line; the controller off, the spike
+ *   lengths 1, SDA hold kept; i2c0 ready.  A second call does nothing.
  * - WHO_AM_I through i2c_burst_read_dt() at 100 kHz: the commands (0x0f;
  *   then READ|STOP|RESTART), the byte, IC_TAR, the SCL counts 500/625,
  *   IC_CON with the DMA reads' RX_FIFO_FULL_HLD_CTRL, and without it once
@@ -35,6 +33,32 @@
  * - No interrupt: -ETIMEDOUT after the core's 1000 ms (the layer's ticks),
  *   the abort requested, the interrupts masked, and the next transfer
  *   works (the semaphore was reset).
+ * - The DMA part (i2c_dw_dma_os.c) on its own: the lowest unclaimed channel
+ *   of the SDK's record, -EBUSY when none is left; the setup of each side
+ *   (addresses, count, CTRL: data size, increments, DREQ 32 or 33, chained
+ *   to itself, enabled, normal priority; no trigger), refused on a busy or
+ *   not held channel; the start (flag cleared, interrupt enabled on
+ *   DMA_IRQ_1, the SDK's start); the handler: the end of a channel gives 0,
+ *   a bus error -EIO with the channel's error flags cleared, its flag
+ *   cleared and its interrupt disabled; another user's channel on the
+ *   shared line is left as it is, and so is DMA_IRQ_0's enable; the stop
+ *   (interrupt disabled, CHAN_ABORT, no wait), busy until both BUSY and the
+ *   abort are clear, no callback after it, the acknowledge; the release
+ *   (unclaimed, no callback after it).
+ * - The DMA reads of the core on it: a 40-byte read (the command words, the
+ *   setup of both channels, RX started before TX, the bytes, the
+ *   thresholds, IC_DMA_CR and the interrupt mask after, both channels
+ *   unclaimed); 32 bytes take the DMA, 31 and the 1-byte WHO_AM_I the
+ *   interrupts (no channel claimed); no channel, or only one: a fallback,
+ *   on the interrupts; a bus error of the TX or the RX channel: -EIO, one
+ *   error, both channels stopped and their late flags (RP2040-E13)
+ *   cleared, the controller's abort waited for, the channels unclaimed, and
+ *   the next transfer works; no end: -ETIMEDOUT after the core's 1000 ms,
+ *   one error; the DMA reads off: the interrupts, no channel; a stop that
+ *   does not end: -EIO, one error, the core's log line, the channels kept
+ *   (never unclaimed) and the controller quarantined (-EIO for the next
+ *   transfer).  The counters (transfers, bytes, errors, fallbacks) after
+ *   each.
  * - The boundary's semaphore and time functions: K_MSEC() rounding, the
  *   deadline's last try without waiting, a give from an interrupt handler.
  * - The command words of the DMA reads (i2c_dw_rp2040_read_commands() of
@@ -65,7 +89,7 @@
 #include "pico_i2c_fake.h"
 
 #include "i2c_dw_os_impl.h"
-#include "dma_rpi_pico.h"
+#include "i2c_dw_dma_os.h"
 #include "i2c_dw_i2c0.h"
 #include "priorities.h"
 
@@ -218,7 +242,7 @@ void gpio_set_irqover(uint gpio, uint value)
 
 static const char *block_name(uint32_t block)
 {
-	return block == RESET_DMA ? "dma" : block == RESET_I2C0 ? "i2c0" : "?";
+	return block == RESET_I2C0 ? "i2c0" : "?";
 }
 
 void reset_block_num(uint32_t block_num)
@@ -238,6 +262,31 @@ void irq_set_exclusive_handler(uint num, irq_handler_t handler)
 	record("handler(%u)", num);
 }
 
+/* The shared handlers of each line, in the order of their order priorities
+ * (higher first, as the SDK runs them).
+ */
+#define SHARED_MAX 4
+
+static struct {
+	irq_handler_t handler;
+	uint8_t order;
+} shared[32][SHARED_MAX];
+
+void irq_add_shared_handler(uint num, irq_handler_t handler, uint8_t order_priority)
+{
+	int i = SHARED_MAX - 1;
+
+	assert(num < 32 && handlers[num] == NULL && shared[num][i].handler == NULL);
+	while (i > 0 &&
+	       (shared[num][i - 1].handler == NULL || shared[num][i - 1].order < order_priority)) {
+		shared[num][i] = shared[num][i - 1];
+		i--;
+	}
+	shared[num][i].handler = handler;
+	shared[num][i].order = order_priority;
+	record("shared(%u,%u)", num, order_priority);
+}
+
 void irq_set_enabled(uint num, bool enabled)
 {
 	record("irq(%u,%d)", num, enabled);
@@ -253,9 +302,114 @@ void restore_interrupts(uint32_t status)
 	irq_masked = (int)status;
 }
 
-void dma_claim_mask(uint32_t channel_mask)
+/* The DMA's registers, and the SDK's record of the claimed channels (the
+ * test claims some for "another user").
+ */
+dma_hw_t fake_dma_hw;
+static uint32_t fake_claimed;
+
+int dma_claim_unused_channel(bool required)
 {
-	record("claim(0x%x)", (unsigned int)channel_mask);
+	assert(!required);
+	for (int ch = 0; ch < (int)NUM_DMA_CHANNELS; ch++) {
+		if (!(fake_claimed & (1u << ch))) {
+			fake_claimed |= 1u << ch;
+			record("claim(%d)", ch);
+			return ch;
+		}
+	}
+	record("claim(-1)");
+	return -1;
+}
+
+void dma_channel_unclaim(uint channel)
+{
+	assert(fake_claimed & (1u << channel));
+	fake_claimed &= ~(1u << channel);
+	record("unclaim(%u)", channel);
+}
+
+void dma_channel_configure(uint channel, const dma_channel_config_t *config,
+			   volatile void *write_addr, const volatile void *read_addr,
+			   uint32_t encoded_transfer_count, bool trigger)
+{
+	dma_channel_hw_t *ch = &fake_dma_hw.ch[channel];
+
+	assert(!trigger && !(ch->al1_ctrl & DMA_CH0_CTRL_TRIG_BUSY_BITS));
+	ch->read_addr = (uintptr_t)read_addr;
+	ch->write_addr = (uintptr_t)write_addr;
+	ch->transfer_count = encoded_transfer_count;
+	ch->al1_ctrl = config->ctrl;
+	record("configure(%u)", channel);
+}
+
+void dma_channel_start(uint channel)
+{
+	fake_dma_hw.ch[channel].al1_ctrl |= DMA_CH0_CTRL_TRIG_BUSY_BITS;
+	record("start(%u)", channel);
+}
+
+#define DMA_ERROR_FLAGS (DMA_CH0_CTRL_TRIG_READ_ERROR_BITS | DMA_CH0_CTRL_TRIG_WRITE_ERROR_BITS)
+
+void hw_set_bits(io_rw_32 *addr, uint32_t mask)
+{
+	for (uint32_t i = 0; i < NUM_DMA_CHANNELS; i++) {
+		if (addr == &fake_dma_hw.ch[i].al1_ctrl) {
+			/* The error flags are write 1 to clear; AHB_ERROR is their OR. */
+			uint32_t v =
+				(*addr | (mask & ~DMA_ERROR_FLAGS)) & ~(mask & DMA_ERROR_FLAGS);
+
+			v &= ~DMA_CH0_CTRL_TRIG_AHB_ERROR_BITS;
+			*addr = v | (v & DMA_ERROR_FLAGS ? DMA_CH0_CTRL_TRIG_AHB_ERROR_BITS : 0);
+			record("setbits(al1_ctrl %u,0x%x)", i, (unsigned int)mask);
+			return;
+		}
+	}
+	assert(0);
+}
+
+/* CHAN_ABORT: a write of 1 aborts that channel, 0 changes nothing, and the
+ * bit reads 1 until the abort has ended.  The structure keeps only the last
+ * value written, so the stop is wrapped (-Wl,--wrap, host_tests.sh) to keep
+ * the bits of each write until the test's DMA ends them (hw_dma()).
+ */
+static uint32_t fake_aborts;
+
+int __real_i2c_dw_dma_os_stop(uint32_t channel);
+int __wrap_i2c_dw_dma_os_stop(uint32_t channel);
+
+int __wrap_i2c_dw_dma_os_stop(uint32_t channel)
+{
+	int ret = __real_i2c_dw_dma_os_stop(channel);
+
+	fake_aborts |= fake_dma_hw.abort;
+	fake_dma_hw.abort = fake_aborts;
+	return ret;
+}
+
+/* A channel stopped by a bus error: its error flag, AHB_ERROR, its end flag. */
+static void dma_fail(int ch, uint32_t error)
+{
+	fake_dma_hw.ch[ch].al1_ctrl = (fake_dma_hw.ch[ch].al1_ctrl & ~DMA_CH0_CTRL_TRIG_BUSY_BITS) |
+				      error | DMA_CH0_CTRL_TRIG_AHB_ERROR_BITS;
+	fake_dma_hw.irq_ctrl[0].intr |= 1u << ch;
+}
+
+/* The end of a channel's transfers: not busy, its flag. */
+static void dma_end(int ch)
+{
+	fake_dma_hw.ch[ch].al1_ctrl &= ~DMA_CH0_CTRL_TRIG_BUSY_BITS;
+	fake_dma_hw.irq_ctrl[0].intr |= 1u << ch;
+}
+
+/* DMA_IRQ_1 (or 0) asserted: its shared handlers, as interrupt handlers. */
+static void dma_interrupt(uint num)
+{
+	z_host_isr_depth++;
+	for (int i = 0; i < SHARED_MAX && shared[num][i].handler != NULL; i++) {
+		shared[num][i].handler();
+	}
+	z_host_isr_depth--;
 }
 
 /* I2C0's registers and the bus ----------------------------------------------*/
@@ -276,6 +430,9 @@ void dma_claim_mask(uint32_t channel_mask)
 #define IC_STATUS      0x70
 #define IC_SDA_HOLD    0x7c
 #define IC_TX_ABRT_SRC 0x80
+#define IC_DMA_CR      0x88
+#define IC_DMA_TDLR    0x8c
+#define IC_DMA_RDLR    0x90
 #define IC_FS_SPKLEN   0xa0
 #define IC_HS_SPKLEN   0xa4
 #define IC_COMP_TYPE   0xfc
@@ -301,11 +458,21 @@ void dma_claim_mask(uint32_t channel_mask)
 #define LSM6DSOX_WHO_AM_I 0x0f
 #define LSM6DSOX_ID       0x6c
 
-/* The task that plays the controller's interrupts and the LSM6DSOX. */
+/* The task that plays the controller's interrupts, the DMA and the
+ * LSM6DSOX.  In the DMA modes the LSM6DSOX answers the interrupt path's
+ * messages as in HW_DEVICE, the controller ends an abort (IC_ENABLE.ABORT)
+ * and the DMA an abort of a channel (CHAN_ABORT; then, as RP2040-E13 allows,
+ * the channel flags its end late), except in HW_DMA_STUCK.
+ */
 enum hw_mode {
-	HW_OFF,    /* no interrupt at all (a dead bus) */
-	HW_DEVICE, /* the LSM6DSOX answers */
-	HW_NACK,   /* nothing at the address: the address byte is not acked */
+	HW_OFF,          /* no interrupt at all (a dead bus) */
+	HW_DEVICE,       /* the LSM6DSOX answers */
+	HW_NACK,         /* nothing at the address: the address byte is not acked */
+	HW_DMA,          /* the DMA read ends: both channels, then STOP_DET */
+	HW_DMA_TX_ERROR, /* the TX channel stops on a read bus error */
+	HW_DMA_RX_ERROR, /* the RX channel stops on a write bus error */
+	HW_DMA_SILENT,   /* the DMA read never ends */
+	HW_DMA_STUCK,    /* never ends, and the channels' aborts never end */
 };
 
 static volatile enum hw_mode hw_mode = HW_OFF;
@@ -376,13 +543,98 @@ static void hw_message(void)
 	}
 }
 
+/* The DMA read seen by the bus: the TX channel's command words (copied when
+ * it ends) and the RX channel's bytes (0xa0, 0xa1, ...).
+ */
+static uint16_t dma_words[4096];
+static uint32_t dma_word_count;
+
+/* The started channel (BUSY) paced by dreq, or -1. */
+static int dma_busy_channel(uint32_t dreq)
+{
+	for (int ch = 0; ch < (int)NUM_DMA_CHANNELS; ch++) {
+		uint32_t ctrl = fake_dma_hw.ch[ch].al1_ctrl;
+
+		if ((ctrl & DMA_CH0_CTRL_TRIG_BUSY_BITS) &&
+		    ((ctrl & DMA_CH0_CTRL_TRIG_TREQ_SEL_BITS) >> DMA_CH0_CTRL_TRIG_TREQ_SEL_LSB) ==
+			    dreq) {
+			return ch;
+		}
+	}
+	return -1;
+}
+
+static void hw_dma(void)
+{
+	uint32_t abort = fake_dma_hw.abort;
+	int tx, rx;
+
+	if (abort && hw_mode != HW_DMA_STUCK) {
+		for (int ch = 0; ch < (int)NUM_DMA_CHANNELS; ch++) {
+			if (abort & (1u << ch)) {
+				dma_end(ch);
+			}
+		}
+		fake_aborts = 0;
+		fake_dma_hw.abort = 0;
+		hw_record("abort(0x%x)", (unsigned int)abort);
+	}
+	if ((REG(IC_ENABLE) & 2) && hw_mode != HW_DMA_STUCK) {
+		REG(IC_ENABLE) &= ~2u;
+		hw_record("i2c-abort");
+	}
+	tx = dma_busy_channel(DREQ_I2C0_TX);
+	rx = dma_busy_channel(DREQ_I2C0_RX);
+	if (REG(IC_DMA_CR) != 3 || tx < 0 || rx < 0) {
+		return;
+	}
+	switch (hw_mode) {
+	case HW_DMA: {
+		const dma_channel_hw_t *t = &fake_dma_hw.ch[tx];
+		const dma_channel_hw_t *r = &fake_dma_hw.ch[rx];
+
+		assert(t->transfer_count <= ARRAY_SIZE(dma_words));
+		dma_word_count = t->transfer_count;
+		memcpy(dma_words, (const void *)t->read_addr, dma_word_count * sizeof(uint16_t));
+		for (uint32_t i = 0; i < r->transfer_count; i++) {
+			((uint8_t *)r->write_addr)[i] = (uint8_t)(0xa0 + i);
+		}
+		hw_record("dma(%u,%u)", (unsigned int)t->transfer_count,
+			  (unsigned int)r->transfer_count);
+		dma_end(tx);
+		dma_end(rx);
+		dma_interrupt(DMA_IRQ_1);
+		interrupt(STAT_STOP_DET, STATUS_TFNF);
+		break;
+	}
+	case HW_DMA_TX_ERROR:
+		dma_fail(tx, DMA_CH0_CTRL_TRIG_READ_ERROR_BITS);
+		hw_record("tx-error");
+		dma_interrupt(DMA_IRQ_1);
+		break;
+	case HW_DMA_RX_ERROR:
+		dma_fail(rx, DMA_CH0_CTRL_TRIG_WRITE_ERROR_BITS);
+		hw_record("rx-error");
+		dma_interrupt(DMA_IRQ_1);
+		break;
+	default:
+		break;
+	}
+}
+
 static void hw_main(void *arg)
 {
 	(void)arg;
 
 	for (;;) {
 		vTaskDelay(1);
-		if (hw_mode != HW_OFF && REG(IC_INTR_MASK) != 0) {
+		if (hw_mode >= HW_DMA) {
+			hw_dma();
+		}
+		/* A message of the interrupt path (TX_EMPTY on; the DMA reads'
+		 * mask has no TX_EMPTY).
+		 */
+		if (hw_mode != HW_OFF && (REG(IC_INTR_MASK) & STAT_TX_EMPTY)) {
 			hw_message();
 		}
 	}
@@ -421,6 +673,8 @@ static void test_before_start(void)
 	assert(!i2c_is_ready_dt(&imu));
 	assert(i2c_burst_read_dt(&imu, LSM6DSOX_WHO_AM_I, &byte, 1) == -ENODEV);
 	assert(i2c_configure(i2c0, I2C_SPEED_SET(I2C_SPEED_FAST_PLUS)) == -ENODEV);
+	assert(!i2c_dw_dma_os_is_ready());
+	assert(i2c_dw_dma_os_request_channel() == -ENODEV);
 	expect_calls("");
 }
 
@@ -438,16 +692,14 @@ static void test_start(void)
 	REG(IC_FS_SPKLEN) = 7;
 	REG(IC_ENABLE) = 1;
 
-	assert(dma_rpi_pico_initialize() == 0);
-	expect_calls("claim(0xfff) reset(dma) unreset(dma) handler(11) irq(11,1) handler(12) "
-		     "irq(12,1) ");
-	assert(dma_rpi_pico_is_ready());
-
-	/* Not a DesignWare block: refused after the reset and the pins. */
+	/* Not a DesignWare block: refused after the reset and the pins.  The
+	 * DMA part's handler first (the DMA device before i2c0), once.
+	 */
 	assert(i2c_dw_i2c0_initialize() == -EIO);
-	expect_calls("reset(i2c0) unreset(i2c0) " PINS(12) PINS(13));
+	expect_calls("shared(12,128) irq(12,1) reset(i2c0) unreset(i2c0) " PINS(12) PINS(13));
 	assert(!device_is_ready(i2c0));
 	assert(i2c0->state->init_res == EIO);
+	assert(i2c_dw_dma_os_is_ready());
 
 	REG(IC_COMP_TYPE) = DW_MAGIC;
 	assert(i2c_dw_i2c0_initialize() == 0);
@@ -461,7 +713,7 @@ static void test_start(void)
 	assert(REG(IC_SDA_HOLD) == 1);
 	assert(REG(IC_SS_SCL_HCNT) == 0); /* written at the first transfer */
 
-	assert(dma_rpi_pico_initialize() == 0);
+	assert(i2c_dw_dma_os_initialize() == 0);
 	assert(i2c_dw_i2c0_initialize() == 0);
 	expect_calls("");
 	assert(i2c_dw_rp2040_dma_enabled());
@@ -593,6 +845,360 @@ static void test_timeout(void)
 	expect_hw(WHO_AM_I_BUS);
 }
 
+/* The DMA part (i2c_dw_dma_os.c) ---------------------------------------------*/
+
+static char dma_cb_log[LOG_SIZE];
+
+static void dma_cb(void *user_data, uint32_t channel, int status)
+{
+	size_t used = strlen(dma_cb_log);
+
+	assert(z_host_isr_depth > 0);
+	snprintf(dma_cb_log + used, sizeof(dma_cb_log) - used, "cb(%s,%u,%d) ",
+		 (const char *)user_data, (unsigned int)channel, status);
+}
+
+static void expect_cb(const char *expected)
+{
+	if (strcmp(dma_cb_log, expected) != 0) {
+		printf("expected callbacks: %s\n     got callbacks: %s\n", expected, dma_cb_log);
+		fflush(stdout);
+		assert(0);
+	}
+	dma_cb_log[0] = '\0';
+}
+
+/* CTRL as Zephyr's driver writes it for the two sides on channels 0 and 1:
+ * 16 bits, read increment, DREQ 32, chained to 0, enabled; 8 bits, write
+ * increment, DREQ 33, chained to 1, enabled.
+ */
+#define CTRL_TX0 0x00100015u
+#define CTRL_RX1 0x00108821u
+
+#define INTE1 fake_dma_hw.irq_ctrl[1].inte
+#define INTE0 fake_dma_hw.irq_ctrl[0].inte
+#define INTR  fake_dma_hw.irq_ctrl[0].intr
+
+static void test_dma_glue(void)
+{
+	static const uint16_t words[40];
+	static uint8_t bytes[40];
+	const uintptr_t data_cmd = I2C0_BASE + IC_DATA_CMD;
+	int tx, rx;
+
+	/* The lowest unclaimed channels; none left: -EBUSY, without waiting. */
+	fake_claimed = 0;
+	tx = i2c_dw_dma_os_request_channel();
+	rx = i2c_dw_dma_os_request_channel();
+	assert(tx == 0 && rx == 1);
+	fake_claimed = 0xfff;
+	assert(i2c_dw_dma_os_request_channel() == -EBUSY);
+	fake_claimed = 0x3;
+	expect_calls("claim(0) claim(1) claim(-1) ");
+
+	/* The two sides' setup, without trigger. */
+	assert(i2c_dw_dma_os_config_tx(tx, words, data_cmd, 40, dma_cb, "tx") == 0);
+	assert(i2c_dw_dma_os_config_rx(rx, data_cmd, bytes, 40, dma_cb, "rx") == 0);
+	expect_calls("configure(0) configure(1) ");
+	assert(fake_dma_hw.ch[0].read_addr == (uintptr_t)words);
+	assert(fake_dma_hw.ch[0].write_addr == data_cmd);
+	assert(fake_dma_hw.ch[0].transfer_count == 40);
+	assert(fake_dma_hw.ch[0].al1_ctrl == CTRL_TX0);
+	assert(fake_dma_hw.ch[1].read_addr == data_cmd);
+	assert(fake_dma_hw.ch[1].write_addr == (uintptr_t)bytes);
+	assert(fake_dma_hw.ch[1].transfer_count == 40);
+	assert(fake_dma_hw.ch[1].al1_ctrl == CTRL_RX1);
+	/* A channel not held: refused, nothing written. */
+	assert(i2c_dw_dma_os_config_tx(5, words, data_cmd, 40, dma_cb, "x") == -EINVAL);
+	assert(i2c_dw_dma_os_start(5) == -EINVAL);
+	assert(i2c_dw_dma_os_stop(5) == -EINVAL);
+	expect_calls("");
+
+	/* The start: an old flag cleared, the interrupt on DMA_IRQ_1, the SDK's
+	 * start; RX first, as the core starts them.
+	 */
+	INTR = 0x3;
+	assert(i2c_dw_dma_os_start(rx) == 0);
+	assert(i2c_dw_dma_os_start(tx) == 0);
+	expect_calls("start(1) start(0) ");
+	assert(INTR == 0 && INTE1 == 0x3 && INTE0 == 0);
+	assert(i2c_dw_dma_os_is_busy(tx) && i2c_dw_dma_os_is_busy(rx));
+	/* Busy: no new setup, no second start. */
+	assert(i2c_dw_dma_os_config_tx(tx, words, data_cmd, 40, dma_cb, "tx") == -EBUSY);
+	assert(i2c_dw_dma_os_start(tx) == -EBUSY);
+	expect_calls("");
+
+	/* Another user's channel 5 on the shared line: left with its flag and
+	 * enable.  Channel 0 also enabled on DMA_IRQ_0 (as if by someone else):
+	 * the handler of DMA_IRQ_1 leaves that enable alone.
+	 */
+	INTE1 |= 1u << 5;
+	INTE0 |= 1u << 0;
+	INTR |= 1u << 5;
+	dma_interrupt(DMA_IRQ_1);
+	expect_cb("");
+	dma_end(tx);
+	dma_interrupt(DMA_IRQ_1);
+	expect_cb("cb(tx,0,0) ");
+	assert(INTR == 1u << 5 && INTE1 == ((1u << 5) | 0x2) && INTE0 == 1u << 0);
+	INTE0 = 0;
+	INTE1 &= ~(1u << 5);
+	INTR = 0;
+
+	/* A bus error: -EIO, the error flags cleared through the set alias. */
+	dma_fail(rx, DMA_CH0_CTRL_TRIG_WRITE_ERROR_BITS);
+	dma_interrupt(DMA_IRQ_1);
+	expect_cb("cb(rx,1,-5) ");
+	expect_calls("setbits(al1_ctrl 1,0x60000000) ");
+	assert((fake_dma_hw.ch[1].al1_ctrl & 0xe0000000u) == 0);
+	assert(INTR == 0 && INTE1 == 0);
+	assert(!i2c_dw_dma_os_is_busy(tx) && !i2c_dw_dma_os_is_busy(rx));
+
+	/* The stop: interrupt off, CHAN_ABORT, no wait; busy until BUSY and
+	 * the abort are clear; a late end calls nothing, the acknowledge clears
+	 * it.
+	 */
+	assert(i2c_dw_dma_os_config_tx(tx, words, data_cmd, 40, dma_cb, "tx") == 0);
+	assert(i2c_dw_dma_os_start(tx) == 0);
+	expect_calls("configure(0) start(0) ");
+	assert(i2c_dw_dma_os_stop(tx) == 0);
+	assert(fake_dma_hw.abort == 1u << 0 && INTE1 == 0);
+	assert(i2c_dw_dma_os_is_busy(tx));
+	dma_end(tx);
+	assert(i2c_dw_dma_os_is_busy(tx));
+	fake_aborts = 0;
+	fake_dma_hw.abort = 0;
+	assert(!i2c_dw_dma_os_is_busy(tx));
+	dma_interrupt(DMA_IRQ_1);
+	expect_cb("");
+	assert(INTR == 1u << 0);
+	i2c_dw_dma_os_acknowledge(tx);
+	assert(INTR == 0);
+
+	/* The release: unclaimed, no callback after it, a second release does
+	 * nothing.
+	 */
+	assert(i2c_dw_dma_os_config_rx(rx, data_cmd, bytes, 40, dma_cb, "rx") == 0);
+	assert(i2c_dw_dma_os_start(rx) == 0);
+	i2c_dw_dma_os_release_channel(tx);
+	i2c_dw_dma_os_release_channel(rx);
+	i2c_dw_dma_os_release_channel(rx);
+	expect_calls("configure(1) start(1) unclaim(0) unclaim(1) ");
+	assert(INTE1 == 0);
+	dma_end(rx);
+	INTE1 = 0x2;
+	dma_interrupt(DMA_IRQ_1);
+	expect_cb("");
+	assert(i2c_dw_dma_os_start(rx) == -EINVAL);
+	INTE1 = 0;
+	INTR = 0;
+	assert(fake_claimed == 0);
+	expect_calls("");
+}
+
+/* The DMA reads of the core ------------------------------------------------*/
+
+/* i2c_dw_core.c */
+void i2c_dw_test_clear_quarantine(void);
+
+static struct i2c_dw_rp2040_dma_stats stats_before;
+
+static void stats_mark(void)
+{
+	i2c_dw_rp2040_dma_get_stats(&stats_before);
+}
+
+/* The counters' changes since stats_mark(). */
+static void expect_stats(uint32_t transfers, uint32_t bytes, uint32_t errors, uint32_t fallbacks)
+{
+	struct i2c_dw_rp2040_dma_stats now;
+
+	i2c_dw_rp2040_dma_get_stats(&now);
+	if (now.transfers - stats_before.transfers != transfers ||
+	    now.bytes - stats_before.bytes != bytes || now.errors - stats_before.errors != errors ||
+	    now.fallbacks - stats_before.fallbacks != fallbacks) {
+		printf("expected +%u/%u/%u/%u, got +%u/%u/%u/%u\n", (unsigned int)transfers,
+		       (unsigned int)bytes, (unsigned int)errors, (unsigned int)fallbacks,
+		       (unsigned int)(now.transfers - stats_before.transfers),
+		       (unsigned int)(now.bytes - stats_before.bytes),
+		       (unsigned int)(now.errors - stats_before.errors),
+		       (unsigned int)(now.fallbacks - stats_before.fallbacks));
+		fflush(stdout);
+		assert(0);
+	}
+	stats_mark();
+}
+
+/* After a read, DMA or not: the controller's DMA off, its interrupts
+ * masked, no channel's interrupt or flag left, no abort pending.
+ */
+static void expect_dma_idle(void)
+{
+	assert(REG(IC_DMA_CR) == 0);
+	assert(REG(IC_INTR_MASK) == 0);
+	assert(INTE1 == 0 && INTE0 == 0 && INTR == 0);
+	assert(fake_dma_hw.abort == 0);
+}
+
+#define FIFO_DATA_OUT_TAG 0x78
+
+static void test_dma_reads(void)
+{
+	static uint8_t buf[64];
+	TickType_t start, ticks;
+	int ret;
+
+	stats_mark();
+
+	/* A DMA read of 40 bytes (after the register address on the
+	 * interrupts): the commands (RESTART on the first, STOP on the last),
+	 * both sides set up, RX started before TX, the bytes, the controller's
+	 * thresholds, the channels released.
+	 */
+	hw_mode = HW_DMA;
+	memset(buf, 0, sizeof(buf));
+	assert(i2c_burst_read_dt(&imu, FIFO_DATA_OUT_TAG, buf, 40) == 0);
+	expect_hw("0x478 dma(40,40) ");
+	expect_calls("claim(0) claim(1) configure(0) configure(1) start(1) start(0) unclaim(0) "
+		     "unclaim(1) ");
+	expect_stats(1, 40, 0, 0);
+	for (int i = 0; i < 40; i++) {
+		assert(buf[i] == 0xa0 + i);
+	}
+	assert(buf[40] == 0);
+	assert(dma_word_count == 40);
+	assert(dma_words[0] == (CMD_READ | CMD_RESTART));
+	for (int i = 1; i < 39; i++) {
+		assert(dma_words[i] == CMD_READ);
+	}
+	assert(dma_words[39] == (CMD_READ | CMD_STOP));
+	assert(fake_dma_hw.ch[0].al1_ctrl == CTRL_TX0);
+	assert(fake_dma_hw.ch[0].write_addr == I2C0_BASE + IC_DATA_CMD);
+	assert(fake_dma_hw.ch[1].al1_ctrl == CTRL_RX1);
+	assert(fake_dma_hw.ch[1].read_addr == I2C0_BASE + IC_DATA_CMD);
+	assert(REG(IC_DMA_TDLR) == 8 && REG(IC_DMA_RDLR) == 0);
+	expect_dma_idle();
+	assert(fake_claimed == 0);
+	expect_log("");
+
+	/* 32 bytes take the DMA; 31, and WHO_AM_I's one, the interrupts (no
+	 * claim: a NACK ends the 31-byte read at once).
+	 */
+	assert(i2c_burst_read_dt(&imu, FIFO_DATA_OUT_TAG, buf, 32) == 0);
+	expect_hw("0x478 dma(32,32) ");
+	expect_calls("claim(0) claim(1) configure(0) configure(1) start(1) start(0) unclaim(0) "
+		     "unclaim(1) ");
+	expect_stats(1, 32, 0, 0);
+	hw_mode = HW_DEVICE;
+	assert(who_am_i() == LSM6DSOX_ID);
+	expect_hw(WHO_AM_I_BUS_AFTER_READ);
+	hw_mode = HW_NACK;
+	assert(i2c_read(i2c0, buf, 31, 0x10) == -EIO);
+	expect_hw("nack ");
+	expect_log("<1> i2c_dw: NACK on i2c@40044000\n<1> i2c_dw: IO Fail on i2c@40044000\n");
+	expect_calls("");
+	expect_stats(0, 0, 0, 0);
+
+	/* No channel left (another user holds them all), or only one: a
+	 * fallback each, then the interrupts.
+	 */
+	fake_claimed = 0xfff;
+	assert(i2c_read(i2c0, buf, 40, 0x10) == -EIO);
+	expect_hw("nack ");
+	expect_calls("claim(-1) ");
+	fake_claimed = 0xffe;
+	assert(i2c_read(i2c0, buf, 40, 0x10) == -EIO);
+	expect_hw("nack ");
+	expect_calls("claim(0) claim(-1) unclaim(0) ");
+	fake_claimed = 0;
+	expect_log("<1> i2c_dw: NACK on i2c@40044000\n<1> i2c_dw: IO Fail on i2c@40044000\n"
+		   "<1> i2c_dw: NACK on i2c@40044000\n<1> i2c_dw: IO Fail on i2c@40044000\n");
+	expect_stats(0, 0, 0, 2);
+
+	/* The DMA reads off: the interrupts, no channel. */
+	i2c_dw_rp2040_dma_set_enabled(false);
+	assert(i2c_read(i2c0, buf, 40, 0x10) == -EIO);
+	expect_hw("nack ");
+	expect_calls("");
+	expect_log("<1> i2c_dw: NACK on i2c@40044000\n<1> i2c_dw: IO Fail on i2c@40044000\n");
+	expect_stats(0, 0, 0, 0);
+	i2c_dw_rp2040_dma_set_enabled(true);
+
+	/* A bus error of either channel: -EIO and one error; both stopped, the
+	 * controller's abort waited for, the late flags cleared, both
+	 * released; the next transfer works.
+	 */
+	for (int side = 0; side < 2; side++) {
+		hw_mode = side == 0 ? HW_DMA_TX_ERROR : HW_DMA_RX_ERROR;
+		assert(i2c_burst_read_dt(&imu, FIFO_DATA_OUT_TAG, buf, 40) == -EIO);
+		expect_calls(
+			side == 0 ? "claim(0) claim(1) configure(0) configure(1) start(1) start(0) "
+				    "setbits(al1_ctrl 0,0x60000000) unclaim(0) unclaim(1) "
+				  : "claim(0) claim(1) configure(0) configure(1) start(1) start(0) "
+				    "setbits(al1_ctrl 1,0x60000000) unclaim(0) unclaim(1) ");
+		expect_stats(0, 0, 1, 0);
+		expect_dma_idle();
+		assert(!i2c_dw_dma_os_is_busy(0) && !i2c_dw_dma_os_is_busy(1));
+		assert((REG(IC_ENABLE) & 2) == 0);
+		hw_log[0] = '\0';
+		expect_log("");
+		hw_mode = HW_DEVICE;
+		assert(who_am_i() == LSM6DSOX_ID);
+		expect_hw(WHO_AM_I_BUS_AFTER_READ);
+	}
+
+	/* No end: -ETIMEDOUT after the core's 1000 ms, one error, released. */
+	hw_mode = HW_DMA_SILENT;
+	start = xTaskGetTickCount();
+	ret = i2c_burst_read_dt(&imu, FIFO_DATA_OUT_TAG, buf, 40);
+	ticks = xTaskGetTickCount() - start;
+	assert(ret == -ETIMEDOUT);
+	assert(ticks >= 1001 && ticks <= 1030);
+	expect_calls("claim(0) claim(1) configure(0) configure(1) start(1) start(0) unclaim(0) "
+		     "unclaim(1) ");
+	expect_stats(0, 0, 1, 0);
+	expect_dma_idle();
+	hw_log[0] = '\0';
+	expect_log("");
+
+	/* Aborts that never end: after the timeout and the 100 ms wait, -EIO,
+	 * one error, the log line, the channels kept, the controller
+	 * quarantined.
+	 */
+	hw_mode = HW_DMA_STUCK;
+	start = xTaskGetTickCount();
+	ret = i2c_burst_read_dt(&imu, FIFO_DATA_OUT_TAG, buf, 40);
+	ticks = xTaskGetTickCount() - start;
+	assert(ret == -EIO);
+	/* 1000 ms in ticks, then 100 ms of k_uptime_get() (the host's clock,
+	 * which the POSIX port's ticks follow loosely).
+	 */
+	assert(ticks >= 1080 && ticks <= 1160);
+	expect_calls("claim(0) claim(1) configure(0) configure(1) start(1) start(0) ");
+	expect_stats(0, 0, 1, 0);
+	expect_log("<1> i2c_dw: DMA channels did not stop; I2C controller quarantined\n");
+	assert(fake_claimed == 0x3);
+	assert(i2c_dw_dma_os_is_busy(0) && i2c_dw_dma_os_is_busy(1));
+	hw_mode = HW_DEVICE;
+	assert(who_am_i() == -EIO);
+	assert(i2c_configure(i2c0, I2C_SPEED_SET(I2C_SPEED_STANDARD)) == -EIO);
+	hw_log[0] = '\0';
+	expect_calls("");
+
+	/* For the tests after this one: the controller back, the DMA idle (the
+	 * two channels stay held, as on the board).
+	 */
+	i2c_dw_test_clear_quarantine();
+	fake_dma_hw.ch[0].al1_ctrl &= ~DMA_CH0_CTRL_TRIG_BUSY_BITS;
+	fake_dma_hw.ch[1].al1_ctrl &= ~DMA_CH0_CTRL_TRIG_BUSY_BITS;
+	fake_aborts = 0;
+	fake_dma_hw.abort = 0;
+	REG(IC_ENABLE) &= ~2u;
+	assert(who_am_i() == LSM6DSOX_ID);
+	hw_log[0] = '\0';
+	expect_log("");
+}
+
 static void give_from_isr(void *arg)
 {
 	z_host_isr_depth++;
@@ -698,6 +1304,8 @@ static void runner(void *arg)
 	test_refused();
 	test_nack();
 	test_timeout();
+	test_dma_glue();
+	test_dma_reads();
 	test_boundary();
 	test_read_commands();
 	assert(irq_masked == 0);

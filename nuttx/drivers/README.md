@@ -360,14 +360,14 @@ NuttX part is in the board's `src/`.
 | File | Role |
 |---|---|
 | `common/drivers/i2c_dw/i2c_dw.c` | The core of the I2C0 controller. A copy of the controller part of the Zephyr version's `i2c_dw.c` (Zephyr's driver with the local patch 0003; the transfer's state machine, the body of the interrupt handler, `i2c_dw_data_ask()`, `_read()`, `_send()`, `i2c_dw_setup()`, `i2c_dw_configure()`, the register work of the initialization), of the DMA reads (`i2c_dw_rp2040_dma_read()` and the rest) and of the `i2c_dma` counters, with the same functions, branches, order, register values, time limit and error values. Its files are named as the patched driver's: the DMA reads and their command words are in `i2c_dw_rp2040_dma_priv.h` and the RP2040's FIFO depth and RX batch in `i2c_dw_rp2040.h`, which it includes once. It includes the board's `i2c_dw_instance.h` at its end |
-| `common/drivers/i2c_dw/dma_rpi_pico.c`, `dma_rpi_pico.h` | The core of the RP2040 DMA used by the DMA reads: Zephyr's `drivers/dma/dma_rpi_pico.c` (`dma_config()`, `dma_start()`, `dma_stop()`, the body of the interrupt handler), the channel allocation of the DMA API (`dma_request_channel()`, `dma_release_channel()`) written in the order, names and statements of Zephyr's file (`i2c_dw_sync` compares the functions). `dma_rpi_pico.h` writes out, with the Pico SDK's names and values, the parts of the SDK that it and `i2c_dw.c` call (`hardware/dma.h`: `dma_channel_configure()`, `dma_channel_is_busy()`, `dma_irqn_acknowledge_channel()`, ...; `hardware/structs/dma.h`: `dma_hw`; `hardware/regs/dma.h`: `DMA_CH0_CTRL_TRIG_*`). It includes the board's `dma_rpi_pico_instance.h` at its end |
-| `common/drivers/i2c_dw/i2c_dw_os.h` | The boundary: what the two cores need from the OS (the table below). It includes the board's `i2c_dw_os_impl.h` first and declares the functions that it must define |
+| `common/drivers/i2c_dw/i2c_dw_os.h` | The boundary: what the core needs from the OS (the table below). It includes the board's `i2c_dw_os_impl.h` first and declares the functions that it must define |
+| `common/drivers/i2c_dw/i2c_dw_dma_os.h` | The DMA boundary of the DMA reads: what they need from the OS's own DMA driver (the second table below), one call for each call of Zephyr's DMA API in the patched driver. No OS name; the core touches no DMA register |
 | `common/drivers/i2c_dw/i2c_dw.h` | Definitions and pure functions without OS headers: the definitions of the Zephyr version's `i2c_dw.h`, the SCL counts, the speed class of a frequency, the NuttX flags (`I2C_M_*`) turned into Zephyr's (`I2C_MSG_*`) and the words written to `IC_DATA_CMD`. Host test `common/tests/i2c_dw.c` |
 | `common/drivers/i2c_dw/i2c_dw_registers.h` | A copy of the Zephyr version's `i2c_dw_registers.h` (the accessors are defined on plain volatile 32-bit accesses, the addresses are `uintptr_t` in place of Zephyr's `mm_reg_t`) |
 | `common/compat/zephyr/drivers/i2c/i2c_dw_rp2040_dma.h` | The state that the `i2c_dma` command (`common/shell/i2c_dma_shell.c`, shared by the three builds; this build's is built by `nuttx/apps/i2c_dma`) reads and sets: DMA on or off and the four counters (`i2c_dw_rp2040_dma_get_stats()`, `_enabled()`, `_set_enabled()`). The same file as the one that patch 0003 adds to Zephyr's `include/zephyr/drivers/i2c` (`i2c_dw_sync` checks) |
 | The board's `src/i2c_dw_os_impl.h` | The NuttX implementation of the boundary: semaphores (`sem_t`: `nxsem_post()`, `nxsem_tickwait_uninterruptible()`, `nxsem_wait_uninterruptible()`, `nxsem_reset()`), time (the system ticks), `nxsched_msleep()`, `up_irq_save()`, the messages (`struct i2c_msg_s`, with Zephyr's flags made by `i2c_dw_msg_flags()`), `I2C_DW_CLOCK_SPEED` (`BOARD_PERI_FREQ`) |
 | The board's `src/i2c_dw_instance.h` | The NuttX part of I2C0: the operations of `struct i2c_master_s` (`I2C_TRANSFER()` checks the request, takes the speed from the frequency and calls the core's transfer; `I2C_RESET()`), the interrupt handler attached with `irq_attach()`, the reset and the pins (`i2c_dw_pinctrl()`), `i2c_dw_i2c0_initialize()` |
-| The board's `src/dma_rpi_pico_instance.h` | The NuttX part of the DMA: the reset of the DMA block and the handler of DMA_IRQ_0 and 1 |
+| The board's `src/i2c_dw_dma_os.c` | The NuttX implementation of the DMA boundary on NuttX's own DMA driver, `arch/arm/src/rp2040/rp2040_dmac.c` (`CONFIG_RP2040_DMAC`). Host test `nuttx/tests/i2c_dw_dma_os.c` |
 | The board's `src/i2c_dw_i2c0.h` | `i2c_dw_i2c0_initialize()` (called by `nano_bringup()` at boot, which registers `/dev/i2c0`) |
 
 What the OS provides at the boundary (`i2c_dw_os.h`). All are static inline functions or macros, and
@@ -385,25 +385,45 @@ marked "interrupt" are called from the interrupt handlers.
 | `i2c_dw_os_bus_lock()`, `_unlock()` | `k_sem_take(K_FOREVER)` and `k_sem_give()` on `bus_sem`; the errno of a failed lock is what the transfer returns | `nxsem_wait_uninterruptible()`, `nxsem_post()` |
 | `i2c_dw_os_msleep(ms)` | `k_msleep()` | `nxsched_msleep()` |
 | `i2c_dw_os_uptime_ms()` | `k_uptime_get()` (may be a macro) | `TICK2MSEC(clock_systime_ticks())` (a macro) |
-| `i2c_dw_os_irq_lock()`, `_unlock()` (interrupt) | `irq_lock()` (for `atomic_or()` and the DMA's channel table); nests | `up_irq_save()`, `up_irq_restore()` |
+| `i2c_dw_os_irq_lock()`, `_unlock()` (interrupt) | `irq_lock()` (for `atomic_or()`); nests | `up_irq_save()`, `up_irq_restore()` |
 | `i2c_dw_os_msg_t`, `I2C_DW_OS_MSG_BUF()`, `_LEN()`, `_FLAGS()` | One message of a transfer (for Zephyr's `struct i2c_msg`: `buf`, `len`, `flags`, with STOP on the last message) | `struct i2c_msg_s`; the flags are made from it and its neighbours by `i2c_dw_msg_flags()` |
 | `I2C_DW_OS_DEV_HEAD` | The OS's device at the start of the controller's data (may be empty) | `struct i2c_master_s dev;` |
 | `I2C_DW_CLOCK_SPEED` | `CONFIG_I2C_DW_CLOCK_SPEED` (MHz, 125) | `BOARD_PERI_FREQ / 1000000` |
 | `i2c_dw_os_prepare(dw)` (`i2c_dw_instance.h`) | `reset_line_toggle_dt()` and `pinctrl_apply_state()`: reset I2C0, GPIO12 and 13 as I2C (no pulls, 4 mA, slow slew, Schmitt trigger and input enabled) | RESETS and `rp2040_gpio_*()` (`i2c_dw_pinctrl()`, the steps of Zephyr's `pinctrl_rpi_pico.c`) |
 | `i2c_dw_os_irq_enable(dw)` (same) | `IRQ_CONNECT()`, `irq_enable()`: a handler of I2C0_IRQ that calls `i2c_dw_isr_handler(dw)` | `irq_attach()`, `up_enable_irq()` |
-| `dma_rpi_pico_os_reset()`, `dma_rpi_pico_os_irq_enable()` (`dma_rpi_pico_instance.h`) | The reset of the DMA block; a handler of DMA_IRQ_0 and 1 that calls `dma_rpi_pico_isr_handler()` | RESETS, `irq_attach()`, `up_enable_irq()` |
 | `app_log.h` | `LOG_MODULE_REGISTER()`, `LOG_ERR()`, `LOG_ERR_RATELIMIT()` (at the level 3 that the core sets) | `common/log/app_log.h` with its NuttX part `nuttx/drivers/include/app_log_os.h` (the RAM log) |
 | `CONFIG_I2C_DW_RP2040_DMA` | Build the DMA reads (the same symbol as the Zephyr version's) | Kconfig |
 
 The OS's I2C0 device (`i2c_dw_instance.h`) sets `base` of `i2c_0_runtime` (0x40044000), initializes
-the semaphores (`device_sync_sem` and `rp2040_dma_sem` to 0, `bus_sem` to 1), calls `i2c_dw_turn_on()`
-once at boot after `dma_rpi_pico_initialize()`, and sets `ready` when that succeeds. Its transfer entry
+the semaphores (`device_sync_sem` and `rp2040_dma_sem` to 0, `bus_sem` to 1), calls
+`i2c_dw_dma_os_initialize()` and then `i2c_dw_turn_on()` once at boot, and sets `ready` when the latter
+succeeds. Its transfer entry
 refuses what the Zephyr API cannot express (no message array, more than 255 messages, addresses or
 speeds that differ between messages, a 10-bit address, a missing buffer, a device that is not ready),
 returns 0 for no message, and otherwise returns `i2c_dw_transfer_msgs(dw, msgs, count, address,
-speed)` (`speed` is Zephyr's speed class). The I2C0 and DMA interrupts run at the same priority, and
-the handlers and the transfers run on one core. The DMA's channel allocation knows no other users and
-the initialization resets the DMA block, so nothing else may use the DMA.
+speed)` (`speed` is Zephyr's speed class). The I2C0 and DMA interrupts run at the same priority
+(`CONFIG_ARCH_IRQPRIO` off: every interrupt at the default), and the handlers and the transfers run on
+one core.
+
+What the OS's DMA driver provides at the DMA boundary (`i2c_dw_dma_os.h`). These are ordinary
+functions of `src/i2c_dw_dma_os.c` (once per read, not per byte). Only the transfer that holds the bus
+semaphore calls them, from its thread; the callback is called from the DMA interrupt. None waits for
+another user of the DMA.
+
+| Boundary | Meaning (Zephyr) | NuttX build |
+|---|---|---|
+| `i2c_dw_dma_os_initialize()` | The DMA device's start-up, before I2C0's; nothing is reset | `rp2040_dmachannel()` twice (the lowest free channels), their interrupts off; the two channels stay the reads' |
+| `i2c_dw_dma_os_is_ready()` | `device_is_ready(dma)` | The two channels were had |
+| `i2c_dw_dma_os_request_channel()`, `_release_channel()` | `dma_request_channel(dma, NULL)`, `dma_release_channel()`; the request never waits (`-EBUSY`, `-ENODEV`) | One of the two that the read in progress has not taken; the release frees it for the next read |
+| `i2c_dw_dma_os_config_tx()`, `_config_rx()` | `dma_config()` of each side: 16-bit command words to `IC_DATA_CMD` paced by DREQ 32, bytes from it paced by DREQ 33, normal priority | `rp2040_txdmasetup()` (`RP2040_DMA_DREQ_I2C0_TX`, `RP2040_DMA_SIZE_HALFWORD`, read address incrementing), `rp2040_rxdmasetup()` (`RP2040_DMA_DREQ_I2C0_RX`, `RP2040_DMA_SIZE_BYTE`, write address incrementing) |
+| `i2c_dw_dma_os_start()` | `dma_start()`: the channel's old flag cleared, its interrupt enabled | The channel's bit to INTS0 and INTE0, then `rp2040_dmastart()` with the callback |
+| callback (interrupt) | The end of a channel (0) or its bus error (`-EIO`) | From `rp2040_dmac.c`'s handler of DMA_IRQ_0 (its status `EIO` becomes `-EIO`; on an error the channel is aborted at once, see below) |
+| `i2c_dw_dma_os_stop()` | `dma_stop()`: interrupt off and abort requested, no wait | The channel's bit off in INTE0, its bit to CHAN_ABORT (not `rp2040_dmastop()`, which waits without a limit) |
+| `i2c_dw_dma_os_is_busy()` | `dma_channel_is_busy()` and the channel's bit of CHAN_ABORT | BUSY of the channel's CTRL_TRIG (`rp2040_dma_register()`), CHAN_ABORT |
+| `i2c_dw_dma_os_acknowledge()` | A late completion flag (RP2040-E13) cleared | The channel's bit to INTS0 |
+
+The writes of INTE0 (through the set and clear aliases), INTS0 and CHAN_ABORT carry only the channel's
+own bit, as `rp2040_dmac.c` writes them; other channels are not touched.
 
 - The calling thread drives a transfer and the interrupt handler moves the bytes. The caller waits
   for the end on a semaphore (1 s; after that the transfer is aborted and returns `-ETIMEDOUT`). A
@@ -421,11 +441,13 @@ the initialization resets the DMA block, so nothing else may use the DMA.
 - The DMA reads (`CONFIG_I2C_DW_RP2040_DMA`, on by default, the same symbol as the Zephyr
   version's) copy the DMA part of `i2c_dw.c` and `i2c_dw_rp2040_dma_priv.h` with the same branches,
   order and values (`common/drivers/i2c_dw/i2c_dw_rp2040_dma_priv.h`, included once by `i2c_dw.c`):
-  - Conditions: DMA on (`i2c_dma mode`), the DMA ready, 32 to 3584 bytes
-    (`I2C_DW_RP2040_DMA_MAX_READ`), ending with STOP, the last message of the transfer, a 7-bit
+  - Conditions: DMA on (`i2c_dma mode`), the DMA ready (its two channels had at boot), 32 to 3584
+    bytes (`I2C_DW_RP2040_DMA_MAX_READ`), ending with STOP, the last message of the transfer, a 7-bit
     address. Otherwise `-EAGAIN` sends the read to the interrupt path. When a channel cannot be had
     or configured, `dma_fallbacks` is counted and the read also goes to the interrupt path (nothing
-    has been started yet).
+    has been started yet). In this build the two channels are kept from boot, so a channel is always
+    there for the one read at a time: `dma_fallbacks` stays 0 unless a setup is refused (a channel
+    still busy).
   - The TX channel writes the read command words (16 bits: READ on each, RESTART on the first only
     when one is needed, STOP on the last) to `IC_DATA_CMD`; the RX channel takes the data from
     `IC_DATA_CMD` 8 bits at a time. `IC_DMA_TDLR` is 8, `IC_DMA_RDLR` 0, the only interrupts are
@@ -435,17 +457,33 @@ the initialization resets the DMA block, so nothing else may use the DMA.
     interrupt, a DMA bus error). The wait uses the transfer time limit (1 s) as one deadline and
     waits for what is left of it. An error gives `-EIO`, the deadline `-ETIMEDOUT`.
   - Clean-up: `IC_DMA_CR` 0, interrupt mask 0; on failure abort the I2C and stop both DMA channels
-    (interrupt off, CHAN_ABORT, wait in 1 ms steps for at most 100 ms until BUSY and CHAN_ABORT clear,
-    then acknowledge late completions (RP2040-E13) on both DMA_IRQ_0 and DMA_IRQ_1). If they do not
+    (interrupt off, CHAN_ABORT, wait in 1 ms steps for at most 100 ms until each channel's BUSY and
+    its bit of CHAN_ABORT clear (the Zephyr version waits for all of CHAN_ABORT), then acknowledge
+    late completions (RP2040-E13)). If they do not
     stop, the controller is quarantined (`<err> i2c_dw: DMA channels did not stop; I2C controller
     quarantined`, `-EIO`, the channels are not released) and every later transfer gives `-EIO` until
     a reboot. Otherwise the interrupts are cleared and, on failure, the abort is given at most 100 ms
     to finish (else quarantine and `<err> i2c_dw: I2C abort did not finish; controller quarantined`).
-  - As in Zephyr's RP2040 DMA driver, channel 0 is on DMA_IRQ_0 and the others on DMA_IRQ_1, a
-    channel request never waits and a stop does not wait (the I2C side above waits). NuttX's
-    `rp2040_dmac.c` (`CONFIG_RP2040_DMAC`) uses DMA_IRQ_0 for every channel, waits for a free channel
-    and waits without a limit in its stop, so it is off (these reads are the only DMA user; the
-    NINA's SPI does not use DMA).
+  - The DMA is NuttX's own driver, `rp2040_dmac.c` (`CONFIG_RP2040_DMAC`, on; `arm_dma_initialize()`
+    runs in `up_initialize()`, before the board's bring-up). It has one interrupt line, DMA_IRQ_0,
+    for every channel; its `rp2040_dmachannel()` waits while all twelve channels are taken and its
+    `rp2040_dmastop()` waits for CHAN_ABORT without a limit, so the board's `i2c_dw_dma_os.c` takes
+    its two channels once at boot (a read never waits for one) and stops a channel by writing
+    CHAN_ABORT itself (the core waits with its limit). NuttX's handler writes a failed channel's
+    error flags back through CTRL_TRIG, a trigger register, which can start the channel again from
+    where it stopped; the board's callback then aborts it at once. Its status of an earlier channel
+    of the same interrupt also carries over to later ones, so another user's bus error served in
+    the same interrupt fails this read too (`-EIO`, one `dma_errors`). No local patch of
+    `rp2040_dmac.c` is needed.
+  - Other code of this build may use NuttX's DMA the usual way (`rp2040_dmachannel()` and the rest;
+    the other ten channels). It must not touch the two channels of the reads (they are allocated in
+    `rp2040_dmac.c`'s table, so its allocation never hands them out), reset the DMA block or write
+    whole registers shared by the channels (INTE0, INTS0, CHAN_ABORT: only its own bits, as
+    `rp2040_dmac.c` does), take DMA_IRQ_0 from `rp2040_dmac.c` with `irq_attach()`, or route its
+    channels' interrupts to DMA_IRQ_1 without its own handler there. `CONFIG_RP2040_SPI_DMA`, which
+    `RP2040_DMAC` makes available and turns on by default, is off in the `imu` configuration: the
+    NINA's SPI stays polled, as in the Zephyr version (with it on, the SPI driver would take two
+    more channels at boot).
   - `rp2040_dma_events` is updated with interrupts off (Zephyr's `atomic_or()`); the four counters are
     written only by the transfer, which holds the bus semaphore (32 bits, wrapping).
 
@@ -789,8 +827,8 @@ of the NuttX implementation on the include path.
 - **Sensor clock**: the Zephyr version uses the system clock (SysTick, 125 MHz,
   `k_cycle_get_64()`), the NuttX port the board's TIMER (1 MHz from the crystal). Stream batch and
   single read times are whole microseconds.
-- **Start-up**: the board's bring-up calls `zephyr_compat_initialize()` before the DMA, I2C0 and the
-  LSM6DSOX; it starts the system work queue (`sysworkq`, priority 119, stack 1024), the RTIO work
+- **Start-up**: the board's bring-up calls `zephyr_compat_initialize()` before I2C0 (with its DMA
+  channels) and the LSM6DSOX; it starts the system work queue (`sysworkq`, priority 119, stack 1024), the RTIO work
   queue and `gpio0` (Zephyr starts them at `POST_KERNEL` before the sensor too). The LSM6DSOX's
   initialization (`lsm6dso_stream_init()`) creates `imu_fifo_worker`.
 - **Static threads** (`K_THREAD_DEFINE()`): Zephyr's arguments define a thread with a static stack,

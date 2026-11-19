@@ -7,27 +7,26 @@
 # after freertos_zephyr_compat(<target>) (freertos/drivers/compat/compat.cmake,
 # whose layer and shell it needs).  It adds to the target:
 #
-# - the shared core of the controller and its DMA (common/drivers/i2c_dw:
-#   i2c_dw.c, the Zephyr build's i2c_dw.c with its RP2040 DMA reads, and
-#   dma_rpi_pico.c, the Zephyr build's dma_rpi_pico.c) and the "i2c_dma" command
-#   (common/shell/i2c_dma_shell.c, the Zephyr build's lines);
-# - the core's boundary on FreeRTOS and the Pico SDK (this directory:
-#   i2c_dw_os_impl.h, read first by both core files; i2c_dw_instance.h and
-#   dma_rpi_pico_instance.h, read at their ends: the device i2c0 with
-#   Zephyr's I2C API, the interrupts, resets and pins; dma_rpi_pico_os.c,
-#   the claim of the DMA channels in the SDK's record), with the SDK's
-#   libraries for them;
+# - the shared core of the controller (common/drivers/i2c_dw: i2c_dw.c, the
+#   Zephyr build's i2c_dw.c with its RP2040 DMA reads) and the "i2c_dma"
+#   command (common/shell/i2c_dma_shell.c, the Zephyr build's lines);
+# - the core's boundaries on FreeRTOS and the Pico SDK (this directory:
+#   i2c_dw_os_impl.h, read first by the core; i2c_dw_instance.h, read at its
+#   end: the device i2c0 with Zephyr's I2C API, the interrupt, reset and
+#   pins; i2c_dw_dma_os.c, the DMA reads' channels on the SDK's
+#   hardware_dma, i2c_dw_dma_os.h of the core), with the SDK's libraries for
+#   them;
 # - the include directories: this directory (i2c_dw_i2c0.h, the boundary's
-#   parts) and common/drivers/i2c_dw (dma_rpi_pico.h, i2c_dw_rp2040_dma.h:
+#   parts) and common/drivers/i2c_dw (i2c_dw_dma_os.h, i2c_dw_rp2040_dma.h:
 #   the "i2c_dma" state, which <zephyr/drivers/i2c/i2c_dw_rp2040_dma.h> of
 #   common/compat includes);
 # - with SELFTEST, the board's check of I2C0 (i2c_dw_selftest.c, part of the
 #   "selftest" command).
 #
-# The application calls dma_rpi_pico_initialize() and then
-# i2c_dw_i2c0_initialize() once at the start, before the scheduler
-# (i2c_dw_i2c0.h).  Each shared source is compiled with the prelude of the
-# shared sources (common_prelude.h), as in compat.cmake.
+# The application calls i2c_dw_i2c0_initialize() once at the start, before
+# the scheduler (i2c_dw_i2c0.h).  Each shared source is compiled with the
+# prelude of the shared sources (common_prelude.h), as in compat.cmake;
+# i2c_dw_dma_os.c, a source of this directory, without it.
 
 get_filename_component(FREERTOS_I2C_DW_DIR ${CMAKE_CURRENT_LIST_DIR} ABSOLUTE)
 
@@ -36,12 +35,11 @@ function(freertos_i2c_dw target)
 
   set(i2c_dw_common_sources
     ${FREERTOS_COMMON_DIR}/drivers/i2c_dw/i2c_dw.c
-    ${FREERTOS_COMMON_DIR}/drivers/i2c_dw/dma_rpi_pico.c
     ${FREERTOS_COMMON_DIR}/shell/i2c_dma_shell.c
   )
 
   target_sources(${target} PRIVATE
-    ${FREERTOS_I2C_DW_DIR}/dma_rpi_pico_os.c
+    ${FREERTOS_I2C_DW_DIR}/i2c_dw_dma_os.c
     ${i2c_dw_common_sources}
   )
 

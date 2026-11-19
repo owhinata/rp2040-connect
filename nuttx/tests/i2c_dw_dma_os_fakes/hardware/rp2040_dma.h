@@ -1,0 +1,39 @@
+/* SPDX-License-Identifier: MIT */
+/* arch/arm/src/rp2040/hardware/rp2040_dma.h (NuttX 13.1.0) for the host test
+ * of the board's i2c_dw_dma_os.c: the registers and bits it and the fake
+ * rp2040_dmac.c of the test use, with NuttX's names and values.
+ */
+#ifndef TEST_I2C_DW_DMA_RP2040_DMA_H
+#define TEST_I2C_DW_DMA_RP2040_DMA_H
+#include "hardware/rp2040_memorymap.h"
+#define RP2040_DMA_READ_ADDR_OFFSET   0x000000
+#define RP2040_DMA_WRITE_ADDR_OFFSET  0x000004
+#define RP2040_DMA_TRANS_COUNT_OFFSET 0x000008
+#define RP2040_DMA_CTRL_TRIG_OFFSET   0x00000c
+#define RP2040_DMA_INTR_OFFSET        0x000400
+#define RP2040_DMA_INTE0_OFFSET       0x000404
+#define RP2040_DMA_INTS0_OFFSET       0x00040c
+#define RP2040_DMA_CHAN_ABORT_OFFSET  0x000444
+#define RP2040_DMA_CH(n)              (RP2040_DMA_BASE + (0x0040 * (n)))
+#define RP2040_DMA_READ_ADDR(n)       (RP2040_DMA_CH(n) + RP2040_DMA_READ_ADDR_OFFSET)
+#define RP2040_DMA_WRITE_ADDR(n)      (RP2040_DMA_CH(n) + RP2040_DMA_WRITE_ADDR_OFFSET)
+#define RP2040_DMA_TRANS_COUNT(n)     (RP2040_DMA_CH(n) + RP2040_DMA_TRANS_COUNT_OFFSET)
+#define RP2040_DMA_CTRL_TRIG(n)       (RP2040_DMA_CH(n) + RP2040_DMA_CTRL_TRIG_OFFSET)
+#define RP2040_DMA_INTR               (RP2040_DMA_BASE + RP2040_DMA_INTR_OFFSET)
+#define RP2040_DMA_INTE0              (RP2040_DMA_BASE + RP2040_DMA_INTE0_OFFSET)
+#define RP2040_DMA_INTS0              (RP2040_DMA_BASE + RP2040_DMA_INTS0_OFFSET)
+#define RP2040_DMA_CHAN_ABORT         (RP2040_DMA_BASE + RP2040_DMA_CHAN_ABORT_OFFSET)
+#define RP2040_DMA_CTRL_TRIG_AHB_ERROR       (1u << 31)
+#define RP2040_DMA_CTRL_TRIG_READ_ERROR      (1u << 30)
+#define RP2040_DMA_CTRL_TRIG_WRITE_ERROR     (1u << 29)
+#define RP2040_DMA_CTRL_TRIG_BUSY            (1u << 24)
+#define RP2040_DMA_CTRL_TRIG_TREQ_SEL_SHIFT  (15)
+#define RP2040_DMA_CTRL_TRIG_TREQ_SEL_MASK   (0x3f << RP2040_DMA_CTRL_TRIG_TREQ_SEL_SHIFT)
+#define RP2040_DMA_CTRL_TRIG_CHAIN_TO_SHIFT  (11)
+#define RP2040_DMA_CTRL_TRIG_CHAIN_TO_MASK   (0x0f << RP2040_DMA_CTRL_TRIG_CHAIN_TO_SHIFT)
+#define RP2040_DMA_CTRL_TRIG_INCR_WRITE      (1u << 5)
+#define RP2040_DMA_CTRL_TRIG_INCR_READ       (1u << 4)
+#define RP2040_DMA_CTRL_TRIG_DATA_SIZE_SHIFT (2)
+#define RP2040_DMA_CTRL_TRIG_EN              (1u << 0)
+#define RP2040_DMA_INTS0_MASK                (0xffff)
+#endif

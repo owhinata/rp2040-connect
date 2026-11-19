@@ -9,9 +9,9 @@
  *
  ****************************************************************************/
 
-/* The NuttX part of the I2C0 and DMA core's boundary
+/* The NuttX part of the I2C0 core's boundary
  * (common/drivers/i2c_dw/i2c_dw_os.h, which includes this file first in
- * i2c_dw.c and dma_rpi_pico.c): the NuttX headers, and the types and calls
+ * i2c_dw.c): the NuttX headers, and the types and calls
  * behind the boundary's names:
  *
  *   Zephyr                       here

@@ -22,7 +22,7 @@ OS に依存しない部分は `common/compat/`、FreeRTOS の部分は `freerto
 | `drivers/log/` | RAM ログ（`log_ram.c`。リングは `common/log/log_ring.c`） |
 | `drivers/kv/` | KV のフラッシュの境界（`nano_flash_kv.c`）とリンカースクリプトの差し替え（`ld/`、`kv.cmake`） |
 | `drivers/nina/` | NINA-W102 の SPI1 と制御線（`nano_nina.c`）、境界 `nina_os.h` の実装（`nina_os.c`）、ソケット（`nina_socket.c`）、インターフェース（`nina_netif.c`）、esptool の中継（`nina_passthrough.c`） |
-| `drivers/i2c_dw/` | I2C0 と DMA のコア（`common/drivers/i2c_dw/`）の FreeRTOS の部分、自己診断 |
+| `drivers/i2c_dw/` | I2C0 のコア（`common/drivers/i2c_dw/`）の FreeRTOS の部分、Pico SDK の DMA での DMA 読み出し（`i2c_dw_dma_os.c`）、自己診断 |
 | `drivers/lsm6dso/` | LSM6DSOX のデバイスの生成（`lsm6dso_instance.h`）と初期化（`nano_lsm6dso.c`）、自己診断 |
 | `drivers/imu/` | 取得サービス・MQTT・時刻同期（`common/imu/`）の組み込み（`imu.cmake`）、`time_sync.c` の前置き |
 | `drivers/wifi/` | Wi-Fi（`common/drivers/nina/nina_net.c`、資格情報、自動再接続）の組み込みと `ifconfig` |
@@ -92,8 +92,8 @@ FreeRTOS 版だけがビルドする共有ファイル: `common/compat/zephyr_wi
 
 ヒープは FreeRTOS の heap_4 で 32 KiB です（`free`）。タスクのスタックは静的に確保します。
 
-**起動**（`main.c`）: `main()` で RAM ログ、異常停止の記録の読み出し、コンソール、互換層、NINA の SPI、DMA、
-I2C0、KV のフラッシュの準備を行い、タスク `main` で LSM6DSOX、NINA のインターフェース、Wi-Fi の資格情報、
+**起動**（`main.c`）: `main()` で RAM ログ、異常停止の記録の読み出し、コンソール、互換層、NINA の SPI、
+I2C0（先にその読み出しのための DMA の割り込みハンドラー）、KV のフラッシュの準備を行い、タスク `main` で LSM6DSOX、NINA のインターフェース、Wi-Fi の資格情報、
 Telnet、`K_THREAD_DEFINE()` のスレッド、KV、校正値、時刻同期、自動接続の順に始めます（Zephyr 版の初期化の順、
 NuttX 版の起動処理の順と同じ）。
 
@@ -190,10 +190,24 @@ Pico SDK の既定のままです。整数の割り算は `pico_divider` のハ�
 
 ## I2C0 と DMA、LSM6DSOX、GPIO の割り込み
 
-- I2C0 と DMA は共有のコア（`common/drivers/i2c_dw/i2c_dw.c`・`dma_rpi_pico.c`）で、FreeRTOS 版は境界 `i2c_dw_os.h` を
-  `drivers/i2c_dw/i2c_dw_os_impl.h`（セマフォ、時計、割り込み禁止）と `i2c_dw_instance.h`・`dma_rpi_pico_instance.h`
+- I2C0 は共有のコア（`common/drivers/i2c_dw/i2c_dw.c`）で、FreeRTOS 版は境界 `i2c_dw_os.h` を
+  `drivers/i2c_dw/i2c_dw_os_impl.h`（セマフォ、時計、割り込み禁止）と `i2c_dw_instance.h`
   （互換層のデバイス `i2c0` と Zephyr の I2C の API、割り込みの登録、リセット、ピン）で実装します。境界の一覧は
   [`nuttx/drivers/README_ja.md`](../../nuttx/drivers/README_ja.md) の「I2C0」の表です。
+- I2C0 の DMA 読み出しは、コアの 2 つ目の境界 `i2c_dw_dma_os.h` を通して Pico SDK 自身の DMA（`hardware_dma`、
+  `hardware_irq`）を使います。実装は `drivers/i2c_dw/i2c_dw_dma_os.c` です。読み出しごとに
+  `dma_claim_unused_channel(false)` でチャネルを 2 つ取り（空きが無ければ割り込みで読み、フォールバックを数えます）、
+  SDK のチャネル設定で設定し（TX: 16 ビットのコマンド語を IC_DATA_CMD へ、DREQ 32。RX: そこからバイトを、DREQ 33）、
+  `dma_channel_start()` で始め、`dma_channel_unclaim()` で返します。割り込みは DMA_IRQ_1 で、
+  `irq_add_shared_handler()`（既定の順位）で加えたハンドラーが、読み出しの持つチャネルだけを見ます。停止は
+  チャネルのビットを CHAN_ABORT に書き、コアが上限付きで待ちます（100 ms、過ぎればコントローラーを隔離）。
+  SDK の `dma_channel_abort()` は上限なしで待つので使いません。起動時に何もリセットしません。
+- このビルドのほかのコードも、DMA を通常の方法で使えます。チャネルは SDK の割り当てで取り、割り込みの線は
+  `irq_add_shared_handler()` で共有します。してはいけないこと: 読み出しが持っている 2 つのチャネル（読み出しの間、
+  SDK の記録で取得済み）に触れる。DMA_IRQ_1 に排他的なハンドラーを入れる（共有のハンドラーがあると
+  `irq_set_exclusive_handler()` が panic します）、共有の線のハンドラーでほかのチャネルのフラグを消す。DMA の
+  ブロックをリセットする、INTE0/INTE1・INTS0/INTS1・CHAN_ABORT を丸ごと書く（自分のチャネルのビットだけにする）。
+  読み出しに DMA を使わせたいときに 12 チャネルすべてを持ち続ける（そのあいだ読み出しは割り込みに戻ります）。
 - 割り込みの優先度は Pico SDK の既定の 0x80 のままで、デバイスの割り込みはすべて同じ高さです（NuttX 版と同じ。
   Zephyr 版は 0xC0）。
 - LSM6DSOX は共有のドライバー（`common/drivers/lsm6dso/`）と ST の `lsm6dso_reg.c`（`setup.sh` が `freertos/stmemsc/` に
@@ -243,7 +257,7 @@ spinlock、atomic、静的なスレッド、時分割、割り込みを 50 ms �
 | `shell` | 2 つのセッションのシェル、行編集、出力先 |
 | `kv` | フラッシュの境界と KV（Pico SDK のフラッシュ関数の偽物の上） |
 | `nina` | NINA の SPI と線の境界、READY の割り込み待ち、IRQ の線のエッジの待ち（2 つのタスクを 1 つのエッジで起こす、時間切れ）、カーネルの部分 |
-| `i2c_dw` | I2C0 の境界とデバイス、Zephyr の I2C の API、コアの DMA のコマンド語 |
+| `i2c_dw` | I2C0 の境界とデバイス、Zephyr の I2C の API。Pico SDK の DMA の偽物の上の DMA の部分（`i2c_dw_dma_os.c`）: チャネルの取得、設定、開始、共有のハンドラー（終了、バスエラー、ほかの利用者のチャネル）、停止、返却。その上のコアの DMA 読み出し: 読み出し、32 バイトの下限、フォールバック、TX と RX のバスエラー、タイムアウト、DMA 読み出しの無効、終わらない停止（隔離）、カウンター。コアの DMA のコマンド語 |
 | `gpio` | GPIO バンク 0 の境界、`gpio0`、FIFO の割り込み |
 | `imu` | アドレスの変換、`hwinfo` |
 | `mqtt` | MQTT の送信（偽のブローカー）。続けて、ホストの `imu-host check` を相手にする回（`host/.venv` が無ければ skip） |
