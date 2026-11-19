@@ -101,13 +101,13 @@ void rp2040_boardinitialize(void)
   log_ram_initialize();
 #endif
 
-#ifdef CONFIG_NANO_NINA_PASSTHROUGH
+#ifdef CONFIG_NINA_PASSTHROUGH
   /* The request of the NINA passthrough mode in the watchdog's scratch
    * registers, read and cleared before anything else (nano_bringup() and
-   * the init task ask nano_nina_passthrough_active()).
+   * the init task ask nina_passthrough_active()).
    */
 
-  nano_nina_passthrough_boot();
+  nina_passthrough_boot();
 #endif
 
   /* Read the chip ID here, like rp2040_common_initialize() reads the flash

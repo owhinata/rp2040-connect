@@ -14,8 +14,8 @@
 # imu_cal_init() and time_sync_init() (../imu, and imu_cal.h of common/imu,
 # which includes lsm6dso_cal.h of common/drivers/lsm6dso).  nano_telnet.c
 # runs the Telnet shell (CONFIG_NANO_INIT_TELNET).  When the board's NINA
-# passthrough mode was asked for (CONFIG_NANO_NINA_PASSTHROUGH), it runs
-# that mode instead of all this (<arch/board/nano_nina_passthrough.h>).
+# passthrough mode was asked for (CONFIG_NINA_PASSTHROUGH), it runs
+# that mode instead of all this (<arch/board/nina_passthrough.h>).
 ############################################################################
 
 include $(APPDIR)/Make.defs

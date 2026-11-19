@@ -116,8 +116,8 @@ int nina_request(uint8_t cmd, const struct nina_param *p, size_t nparams, bool w
 	/* The data commands use 16-bit lengths for the data they carry
 	 * (parameters of send, the reply of receive); the others 8-bit
 	 * lengths both ways. */
-	assert(wide_params == (cmd == NINA_CMD_SEND || cmd == NINA_CMD_SENDTO));
-	assert(wide_response == (cmd == NINA_CMD_RECV || cmd == NINA_CMD_RECVFROM));
+	assert(wide_params == (cmd == NINA_CMD_SOCKET_SEND || cmd == NINA_CMD_SOCKET_SENDTO));
+	assert(wide_response == (cmd == NINA_CMD_SOCKET_RECV || cmd == NINA_CMD_SOCKET_RECVFROM));
 	nparams_seen[next_step] = nparams;
 	caps[next_step] = cap;
 	for (size_t i = 0; i < nparams; i++) {
@@ -151,8 +151,8 @@ static void param1(size_t step, size_t i, uint8_t value)
 /* The two commands of a first use: socket (type, protocol) and FIONBIO. */
 static void expect_open(uint8_t id)
 {
-	expect1(NINA_CMD_SOCKET, id);
-	expect(NINA_CMD_IOCTL, 0, (const uint8_t[]){0, 0, 0, 0}, 4);
+	expect1(NINA_CMD_SOCKET_SOCKET, id);
+	expect(NINA_CMD_SOCKET_IOCTL, 0, (const uint8_t[]){0, 0, 0, 0}, 4);
 }
 
 static void check_open(size_t step, bool udp, uint8_t id)
@@ -183,7 +183,7 @@ static void close_all(void)
 		if (g_nina_sockets[i].used) {
 			reset_script();
 			if (g_nina_sockets[i].id != NINA_NO_SOCKET) {
-				expect1(NINA_CMD_CLOSE, 1);
+				expect1(NINA_CMD_SOCKET_CLOSE, 1);
 			}
 			assert(nina_sock_close(i) == 0);
 			done();
@@ -253,7 +253,7 @@ static void test_bind_listen(void)
 	/* First use: socket, FIONBIO, then bind with the port's two bytes. */
 	reset_script();
 	expect_open(4);
-	expect1(NINA_CMD_BIND, 1);
+	expect1(NINA_CMD_SOCKET_BIND, 1);
 	assert(nina_sock_bind(s, (struct sockaddr *)&any, sizeof(any)) == 0);
 	done();
 	check_open(0, false, 4);
@@ -264,9 +264,9 @@ static void test_bind_listen(void)
 
 	/* Listen: backlog clamped to 1..255, answer 1. */
 	reset_script();
-	expect1(NINA_CMD_LISTEN, 0);
+	expect1(NINA_CMD_SOCKET_LISTEN, 0);
 	assert(nina_sock_listen(s, 0) == -EIO);
-	expect1(NINA_CMD_LISTEN, 1);
+	expect1(NINA_CMD_SOCKET_LISTEN, 1);
 	assert(nina_sock_listen(s, 0) == 0);
 	done();
 	param1(0, 0, 4);
@@ -279,9 +279,9 @@ static void test_bind_listen(void)
 	s = nina_sock_create(AF_INET, SOCK_STREAM, 0);
 	reset_script();
 	expect_open(2);
-	expect1(NINA_CMD_BIND, 1);
+	expect1(NINA_CMD_SOCKET_BIND, 1);
 	assert(nina_sock_bind(s, (struct sockaddr *)&any, sizeof(any)) == 0);
-	expect1(NINA_CMD_LISTEN, 1);
+	expect1(NINA_CMD_SOCKET_LISTEN, 1);
 	assert(nina_sock_listen(s, 1000) == 0);
 	done();
 	param1(3, 1, 255);
@@ -291,13 +291,13 @@ static void test_bind_listen(void)
 	u = nina_sock_create(AF_INET, SOCK_DGRAM, 0);
 	reset_script();
 	expect_open(7);
-	expect1(NINA_CMD_BIND, 0);
+	expect1(NINA_CMD_SOCKET_BIND, 0);
 	assert(nina_sock_bind(u, (struct sockaddr *)&any, sizeof(any)) == -EADDRINUSE);
 	done();
 	check_open(0, true, 7);
 	assert(!g_nina_sockets[u].bound && g_nina_sockets[u].id == 7);
 	reset_script();
-	expect1(NINA_CMD_BIND, 1);
+	expect1(NINA_CMD_SOCKET_BIND, 1);
 	assert(nina_sock_bind(u, (struct sockaddr *)&any, sizeof(any)) == 0);
 	assert(nina_sock_listen(u, 1) == -EINVAL);
 	done();
@@ -306,13 +306,13 @@ static void test_bind_listen(void)
 	/* No firmware socket: ENFILE; a failed FIONBIO closes it again. */
 	s = nina_sock_create(AF_INET, SOCK_STREAM, 0);
 	reset_script();
-	expect1(NINA_CMD_SOCKET, NINA_NO_SOCKET);
+	expect1(NINA_CMD_SOCKET_SOCKET, NINA_NO_SOCKET);
 	assert(nina_sock_bind(s, (struct sockaddr *)&any, sizeof(any)) == -ENFILE);
-	expect(NINA_CMD_SOCKET, -ETIMEDOUT, NULL, 0);
+	expect(NINA_CMD_SOCKET_SOCKET, -ETIMEDOUT, NULL, 0);
 	assert(nina_sock_bind(s, (struct sockaddr *)&any, sizeof(any)) == -ETIMEDOUT);
-	expect1(NINA_CMD_SOCKET, 5);
-	expect(NINA_CMD_IOCTL, 0, (const uint8_t[]){0, 0}, 2);
-	expect1(NINA_CMD_CLOSE, 1);
+	expect1(NINA_CMD_SOCKET_SOCKET, 5);
+	expect(NINA_CMD_SOCKET_IOCTL, 0, (const uint8_t[]){0, 0}, 2);
+	expect1(NINA_CMD_SOCKET_CLOSE, 1);
 	assert(nina_sock_bind(s, (struct sockaddr *)&any, sizeof(any)) == -EIO);
 	done();
 	param1(4, 0, 5);
@@ -327,8 +327,8 @@ static int listening_socket(uint8_t id)
 
 	reset_script();
 	expect_open(id);
-	expect1(NINA_CMD_BIND, 1);
-	expect1(NINA_CMD_LISTEN, 1);
+	expect1(NINA_CMD_SOCKET_BIND, 1);
+	expect1(NINA_CMD_SOCKET_LISTEN, 1);
 	assert(nina_sock_bind(s, (struct sockaddr *)&any, sizeof(any)) == 0);
 	assert(nina_sock_listen(s, 5) == 0);
 	done();
@@ -350,14 +350,14 @@ static void test_accept(void)
 
 	l = listening_socket(3);
 	reset_script();
-	expect(NINA_CMD_ACCEPT, 0, (const uint8_t[]){NINA_NO_SOCKET, 0, 0, 0, 0, 0, 0}, 7);
+	expect(NINA_CMD_SOCKET_ACCEPT, 0, (const uint8_t[]){NINA_NO_SOCKET, 0, 0, 0, 0, 0, 0}, 7);
 	assert(nina_sock_accept(l, &peer) == -EAGAIN);
-	expect(NINA_CMD_ACCEPT, 0, reply, 6);
+	expect(NINA_CMD_SOCKET_ACCEPT, 0, reply, 6);
 	assert(nina_sock_accept(l, &peer) == -EAGAIN);
-	expect(NINA_CMD_ACCEPT, -EPROTO, NULL, 0);
+	expect(NINA_CMD_SOCKET_ACCEPT, -EPROTO, NULL, 0);
 	assert(nina_sock_accept(l, &peer) == -EPROTO);
-	expect(NINA_CMD_ACCEPT, 0, reply, 7);
-	expect(NINA_CMD_IOCTL, 0, (const uint8_t[]){0, 0, 0, 0}, 4);
+	expect(NINA_CMD_SOCKET_ACCEPT, 0, reply, 7);
+	expect(NINA_CMD_SOCKET_IOCTL, 0, (const uint8_t[]){0, 0, 0, 0}, 4);
 	c = nina_sock_accept(l, &peer);
 	done();
 	param1(0, 0, 3);
@@ -372,9 +372,9 @@ static void test_accept(void)
 
 	/* FIONBIO fails: the new socket is closed and its entry freed. */
 	reset_script();
-	expect(NINA_CMD_ACCEPT, 0, reply, 7);
-	expect(NINA_CMD_IOCTL, -ETIMEDOUT, NULL, 0);
-	expect1(NINA_CMD_CLOSE, 1);
+	expect(NINA_CMD_SOCKET_ACCEPT, 0, reply, 7);
+	expect(NINA_CMD_SOCKET_IOCTL, -ETIMEDOUT, NULL, 0);
+	expect1(NINA_CMD_SOCKET_CLOSE, 1);
 	assert(nina_sock_accept(l, &peer) == -ETIMEDOUT);
 	done();
 	assert(!g_nina_sockets[2].used);
@@ -395,8 +395,8 @@ static void connect_started(int s, uint8_t id, uint8_t first_state)
 
 	reset_script();
 	expect_open(id);
-	expect1(NINA_CMD_CONNECT, 0);
-	expect1(NINA_CMD_POLL, first_state);
+	expect1(NINA_CMD_SOCKET_CONNECT, 0);
+	expect1(NINA_CMD_SOCKET_POLL, first_state);
 	assert(nina_sock_connect(s, (struct sockaddr *)&to, sizeof(to)) == 1);
 	done();
 	check_open(0, false, id);
@@ -415,7 +415,7 @@ static void expect_so_error(int value)
 	uint8_t v[4] = {value & 0xff, (value >> 8) & 0xff, (value >> 16) & 0xff,
 			(value >> 24) & 0xff};
 
-	expect(NINA_CMD_GETSOCKOPT, 0, v, 4);
+	expect(NINA_CMD_SOCKET_GETSOCKOPT, 0, v, 4);
 }
 
 static void check_so_error_request(size_t step, uint8_t id)
@@ -451,8 +451,8 @@ static void test_connect(void)
 	/* Connected at the first check: writable and SO_ERROR 0. */
 	reset_script();
 	expect_open(1);
-	expect1(NINA_CMD_CONNECT, 0);
-	expect1(NINA_CMD_POLL, NINA_POLL_WRITE);
+	expect1(NINA_CMD_SOCKET_CONNECT, 0);
+	expect1(NINA_CMD_SOCKET_POLL, NINA_POLL_WRITE);
 	expect_so_error(0);
 	assert(nina_sock_connect(s, (struct sockaddr *)&to, sizeof(to)) == 0);
 	done();
@@ -465,9 +465,9 @@ static void test_connect(void)
 	s = nina_sock_create(AF_INET, SOCK_STREAM, 0);
 	connect_started(s, 2, 0);
 	reset_script();
-	expect1(NINA_CMD_POLL, 0);
+	expect1(NINA_CMD_SOCKET_POLL, 0);
 	assert(nina_sock_connect_check(s, now_ms + 20) == 1);
-	expect1(NINA_CMD_POLL, NINA_POLL_WRITE | NINA_POLL_READ);
+	expect1(NINA_CMD_SOCKET_POLL, NINA_POLL_WRITE | NINA_POLL_READ);
 	expect_so_error(0);
 	assert(nina_sock_connect_check(s, now_ms + 40) == 0);
 	done();
@@ -480,9 +480,9 @@ static void test_connect(void)
 		s = nina_sock_create(AF_INET, SOCK_STREAM, 0);
 		connect_started(s, 3, 0);
 		reset_script();
-		expect1(NINA_CMD_POLL, NINA_POLL_WRITE);
+		expect1(NINA_CMD_SOCKET_POLL, NINA_POLL_WRITE);
 		expect_so_error(map[i].lwip);
-		expect1(NINA_CMD_CLOSE, 1);
+		expect1(NINA_CMD_SOCKET_CLOSE, 1);
 		assert(nina_sock_connect_check(s, now_ms + 20) == -map[i].err);
 		done();
 		param1(2, 0, 3);
@@ -496,17 +496,17 @@ static void test_connect(void)
 	s = nina_sock_create(AF_INET, SOCK_STREAM, 0);
 	connect_started(s, 3, 0);
 	reset_script();
-	expect1(NINA_CMD_POLL, NINA_POLL_ERROR);
+	expect1(NINA_CMD_SOCKET_POLL, NINA_POLL_ERROR);
 	expect_so_error(0);
-	expect1(NINA_CMD_CLOSE, 1);
+	expect1(NINA_CMD_SOCKET_CLOSE, 1);
 	assert(nina_sock_connect_check(s, now_ms + 20) == -ECONNREFUSED);
 	done();
 	/* The socket connects again with a new firmware socket. */
 	connect_started(s, 4, 0);
 	reset_script();
-	expect1(NINA_CMD_POLL, NINA_POLL_ERROR);
-	expect(NINA_CMD_GETSOCKOPT, 0, (const uint8_t[]){0, 0}, 2);
-	expect1(NINA_CMD_CLOSE, 1);
+	expect1(NINA_CMD_SOCKET_POLL, NINA_POLL_ERROR);
+	expect(NINA_CMD_SOCKET_GETSOCKOPT, 0, (const uint8_t[]){0, 0}, 2);
+	expect1(NINA_CMD_SOCKET_CLOSE, 1);
 	assert(nina_sock_connect_check(s, now_ms + 20) == -EIO);
 	done();
 	close_all();
@@ -516,9 +516,9 @@ static void test_connect(void)
 	connect_started(s, 5, 0);
 	g_nina_sockets[s].connect_xid = 1234;
 	reset_script();
-	expect1(NINA_CMD_POLL, NINA_POLL_ERROR);
+	expect1(NINA_CMD_SOCKET_POLL, NINA_POLL_ERROR);
 	expect_so_error(116);
-	expect1(NINA_CMD_CLOSE, 1);
+	expect1(NINA_CMD_SOCKET_CLOSE, 1);
 	assert(nina_sock_connect_check(s, now_ms + 20) == -ETIMEDOUT);
 	done();
 	assert(g_nina_sockets[s].connect_xid == 1234 && !g_nina_sockets[s].connecting);
@@ -529,9 +529,9 @@ static void test_connect(void)
 	s = nina_sock_create(AF_INET, SOCK_STREAM, 0);
 	connect_started(s, 5, 0);
 	reset_script();
-	expect1(NINA_CMD_POLL, 0);
+	expect1(NINA_CMD_SOCKET_POLL, 0);
 	assert(nina_sock_connect_check(s, now_ms + NINA_CONNECT_WAIT_MS - 1) == 1);
-	expect1(NINA_CMD_POLL, NINA_POLL_WRITE);
+	expect1(NINA_CMD_SOCKET_POLL, NINA_POLL_WRITE);
 	expect_so_error(0);
 	assert(nina_sock_connect_check(s, now_ms + NINA_CONNECT_WAIT_MS) == 0);
 	done();
@@ -539,8 +539,8 @@ static void test_connect(void)
 	s = nina_sock_create(AF_INET, SOCK_STREAM, 0);
 	connect_started(s, 5, 0);
 	reset_script();
-	expect1(NINA_CMD_POLL, 0);
-	expect1(NINA_CMD_CLOSE, 1);
+	expect1(NINA_CMD_SOCKET_POLL, 0);
+	expect1(NINA_CMD_SOCKET_CLOSE, 1);
 	assert(nina_sock_connect_check(s, now_ms + NINA_CONNECT_WAIT_MS) == -ETIMEDOUT);
 	done();
 	assert(g_nina_sockets[s].id == NINA_NO_SOCKET);
@@ -548,15 +548,15 @@ static void test_connect(void)
 	/* A failed poll (no answer byte, or the firmware's failure bit). */
 	connect_started(s, 6, 0);
 	reset_script();
-	expect1(NINA_CMD_POLL, NINA_POLL_FAIL | NINA_POLL_WRITE);
-	expect1(NINA_CMD_CLOSE, 1);
+	expect1(NINA_CMD_SOCKET_POLL, NINA_POLL_FAIL | NINA_POLL_WRITE);
+	expect1(NINA_CMD_SOCKET_CLOSE, 1);
 	assert(nina_sock_connect_check(s, now_ms + 20) == -EIO);
 	done();
 	reset_script();
 	expect_open(6);
-	expect1(NINA_CMD_CONNECT, 0);
-	expect(NINA_CMD_POLL, 0, NULL, 0);
-	expect1(NINA_CMD_CLOSE, 1);
+	expect1(NINA_CMD_SOCKET_CONNECT, 0);
+	expect(NINA_CMD_SOCKET_POLL, 0, NULL, 0);
+	expect1(NINA_CMD_SOCKET_CLOSE, 1);
 	assert(nina_sock_connect(s, (struct sockaddr *)&to, sizeof(to)) == -EIO);
 	done();
 
@@ -564,12 +564,12 @@ static void test_connect(void)
 	 * returned; both close the firmware socket. */
 	reset_script();
 	expect_open(7);
-	expect(NINA_CMD_CONNECT, 0, NULL, 0);
-	expect1(NINA_CMD_CLOSE, 1);
+	expect(NINA_CMD_SOCKET_CONNECT, 0, NULL, 0);
+	expect1(NINA_CMD_SOCKET_CLOSE, 1);
 	assert(nina_sock_connect(s, (struct sockaddr *)&to, sizeof(to)) == -EPROTO);
 	expect_open(7);
-	expect(NINA_CMD_CONNECT, -ETIMEDOUT, NULL, 0);
-	expect1(NINA_CMD_CLOSE, 1);
+	expect(NINA_CMD_SOCKET_CONNECT, -ETIMEDOUT, NULL, 0);
+	expect1(NINA_CMD_SOCKET_CLOSE, 1);
 	assert(nina_sock_connect(s, (struct sockaddr *)&to, sizeof(to)) == -ETIMEDOUT);
 	done();
 	close_all();
@@ -605,9 +605,9 @@ static void test_close(void)
 
 	reset_script();
 	expect_open(9);
-	expect1(NINA_CMD_BIND, 1);
+	expect1(NINA_CMD_SOCKET_BIND, 1);
 	assert(nina_sock_bind(s, (struct sockaddr *)&any, sizeof(any)) == 0);
-	expect1(NINA_CMD_CLOSE, 0);
+	expect1(NINA_CMD_SOCKET_CLOSE, 0);
 	assert(nina_sock_close(s) == -EIO);
 	done();
 	param1(3, 0, 9);
@@ -617,9 +617,9 @@ static void test_close(void)
 	s = nina_sock_create(AF_INET, SOCK_STREAM, 0);
 	reset_script();
 	expect_open(9);
-	expect1(NINA_CMD_BIND, 1);
+	expect1(NINA_CMD_SOCKET_BIND, 1);
 	assert(nina_sock_bind(s, (struct sockaddr *)&any, sizeof(any)) == 0);
-	expect(NINA_CMD_CLOSE, -ETIMEDOUT, NULL, 0);
+	expect(NINA_CMD_SOCKET_CLOSE, -ETIMEDOUT, NULL, 0);
 	assert(nina_sock_close(s) == -ETIMEDOUT);
 	done();
 	assert(nina_sock_get(s) == NULL);
@@ -675,8 +675,8 @@ static void test_watch_events(void)
 	 * CLOSED, after which nothing more is polled. */
 	assert(listening_socket(2) == 0);
 	reset_script();
-	expect(NINA_CMD_ACCEPT, 0, (const uint8_t[]){5, 10, 42, 0, 1, 0, 80}, 7);
-	expect(NINA_CMD_IOCTL, 0, (const uint8_t[]){0, 0, 0, 0}, 4);
+	expect(NINA_CMD_SOCKET_ACCEPT, 0, (const uint8_t[]){5, 10, 42, 0, 1, 0, 80}, 7);
+	expect(NINA_CMD_SOCKET_IOCTL, 0, (const uint8_t[]){0, 0, 0, 0}, 4);
 	{
 		struct sockaddr_in peer;
 
@@ -707,7 +707,7 @@ static void test_watch_events(void)
 	assert(nina_sock_watch(u) == 0);
 	reset_script();
 	expect_open(1);
-	expect1(NINA_CMD_BIND, 1);
+	expect1(NINA_CMD_SOCKET_BIND, 1);
 	assert(nina_sock_bind(s, (struct sockaddr *)&any, sizeof(any)) == 0);
 	done();
 	u->reported = NINA_SOCK_EV_WRITE;
@@ -722,8 +722,8 @@ static void test_watch_events(void)
 	assert(nina_sock_events(nina_sock_get(s), 0, NINA_POLL_WRITE) == 0);
 	g_nina_sockets[s].reported = NINA_SOCK_EV_WRITE;
 	reset_script();
-	expect1(NINA_CMD_POLL, 0);
-	expect1(NINA_CMD_CLOSE, 1);
+	expect1(NINA_CMD_SOCKET_POLL, 0);
+	expect1(NINA_CMD_SOCKET_CLOSE, 1);
 	assert(nina_sock_connect_check(s, now_ms + NINA_CONNECT_WAIT_MS) == -ETIMEDOUT);
 	done();
 	assert(g_nina_sockets[s].reported == NINA_SOCK_EV_WRITE);
@@ -745,7 +745,7 @@ static int tcp_connected(uint8_t id)
 
 static void expect_sent(unsigned int n)
 {
-	expect(NINA_CMD_SEND, 0, (const uint8_t[]){n >> 8, n & 0xff}, 2);
+	expect(NINA_CMD_SOCKET_SEND, 0, (const uint8_t[]){n >> 8, n & 0xff}, 2);
 }
 
 static uint8_t data[4096];
@@ -798,9 +798,9 @@ static void test_send_tcp(void)
 	reset_script();
 	expect_sent(101);
 	assert(nina_sock_send(s, data, 100, 0, NULL, 0, &retry) == -EPROTO);
-	expect(NINA_CMD_SEND, 0, (const uint8_t[]){0}, 1);
+	expect(NINA_CMD_SOCKET_SEND, 0, (const uint8_t[]){0}, 1);
 	assert(nina_sock_send(s, data, 100, 0, NULL, 0, &retry) == -EPROTO);
-	expect(NINA_CMD_SEND, -ETIMEDOUT, NULL, 0);
+	expect(NINA_CMD_SOCKET_SEND, -ETIMEDOUT, NULL, 0);
 	assert(nina_sock_send(s, data, 100, 0, NULL, 0, &retry) == -ETIMEDOUT);
 	done();
 
@@ -817,7 +817,7 @@ static void test_send_tcp(void)
 	 * pass; the next pass after NINA_SEND_RETRY_MS. */
 	reset_script();
 	expect_sent(0);
-	expect1(NINA_CMD_POLL, NINA_POLL_WRITE);
+	expect1(NINA_CMD_SOCKET_POLL, NINA_POLL_WRITE);
 	assert(nina_sock_send(s, data, 100, 0, NULL, 0, &retry) == -EAGAIN && retry);
 	done();
 	param1(1, 0, 3);
@@ -831,18 +831,18 @@ static void test_send_tcp(void)
 	 * is the state check too. */
 	now_ms += 1;
 	reset_script();
-	expect1(NINA_CMD_POLL, 0);
+	expect1(NINA_CMD_SOCKET_POLL, 0);
 	assert(nina_sock_send(s, data, 100, 0, NULL, 0, &retry) == -EAGAIN && retry);
 	assert(g_nina_sockets[s].send_waiting && g_nina_sockets[s].send_polled);
 	assert(g_nina_sockets[s].send_next_state_check == now_ms + NINA_SEND_STATE_INTERVAL_MS);
 	param1(0, 0, 3);
 	now_ms += 98;
-	expect1(NINA_CMD_POLL, NINA_POLL_READ);
+	expect1(NINA_CMD_SOCKET_POLL, NINA_POLL_READ);
 	assert(nina_sock_send(s, data, 100, 0, NULL, 0, &retry) == -EAGAIN && retry);
 	assert(g_nina_sockets[s].send_polled);
 	/* Writable: the data, without a second poll; nothing taken again. */
 	now_ms += 1;
-	expect1(NINA_CMD_POLL, NINA_POLL_WRITE);
+	expect1(NINA_CMD_SOCKET_POLL, NINA_POLL_WRITE);
 	expect_sent(0);
 	assert(nina_sock_send(s, data, 100, 0, NULL, 0, &retry) == -EAGAIN && retry);
 	done();
@@ -851,7 +851,7 @@ static void test_send_tcp(void)
 	assert(g_nina_sockets[s].send_deadline == now_ms - 100 + NINA_SEND_WAIT_MS);
 	/* Room again: the count, the wait over. */
 	reset_script();
-	expect1(NINA_CMD_POLL, NINA_POLL_WRITE);
+	expect1(NINA_CMD_SOCKET_POLL, NINA_POLL_WRITE);
 	expect_sent(60);
 	assert(nina_sock_send(s, data, 100, 0, NULL, 0, &retry) == 60 && !retry);
 	done();
@@ -861,22 +861,22 @@ static void test_send_tcp(void)
 	 * whether the poll finds room or not. */
 	reset_script();
 	expect_sent(0);
-	expect1(NINA_CMD_POLL, 0);
+	expect1(NINA_CMD_SOCKET_POLL, 0);
 	assert(nina_sock_send(s, data, 50, 0, NULL, 0, &retry) == -EAGAIN && retry);
 	now_ms += NINA_SEND_WAIT_MS - 1;
-	expect1(NINA_CMD_POLL, 0);
+	expect1(NINA_CMD_SOCKET_POLL, 0);
 	assert(nina_sock_send(s, data, 50, 0, NULL, 0, &retry) == -EAGAIN && retry);
 	now_ms += 1;
-	expect1(NINA_CMD_POLL, 0);
+	expect1(NINA_CMD_SOCKET_POLL, 0);
 	assert(nina_sock_send(s, data, 50, 0, NULL, 0, &retry) == -EAGAIN && !retry);
 	done();
 	assert(!g_nina_sockets[s].send_waiting && !g_nina_sockets[s].send_polled);
 	reset_script();
 	expect_sent(0);
-	expect1(NINA_CMD_POLL, 0);
+	expect1(NINA_CMD_SOCKET_POLL, 0);
 	assert(nina_sock_send(s, data, 50, 0, NULL, 0, &retry) == -EAGAIN && retry);
 	now_ms += NINA_SEND_WAIT_MS;
-	expect1(NINA_CMD_POLL, NINA_POLL_WRITE);
+	expect1(NINA_CMD_SOCKET_POLL, NINA_POLL_WRITE);
 	expect_sent(0);
 	assert(nina_sock_send(s, data, 50, 0, NULL, 0, &retry) == -EAGAIN && !retry);
 	done();
@@ -886,11 +886,11 @@ static void test_send_tcp(void)
 	 * sends at once. */
 	reset_script();
 	expect_sent(0);
-	expect1(NINA_CMD_POLL, 0);
+	expect1(NINA_CMD_SOCKET_POLL, 0);
 	assert(nina_sock_send(s, data, 50, 0, NULL, 0, &retry) == -EAGAIN && retry);
 	now_ms += 5000;
 	expect_sent(0);
-	expect1(NINA_CMD_POLL, 0);
+	expect1(NINA_CMD_SOCKET_POLL, 0);
 	assert(nina_sock_send(s, data + 1, 50, 0, NULL, 0, &retry) == -EAGAIN && retry);
 	done();
 	assert(g_nina_sockets[s].send_deadline == now_ms + NINA_SEND_WAIT_MS);
@@ -905,13 +905,13 @@ static void test_send_tcp(void)
 	 * and at the poll of a pass that continues. */
 	reset_script();
 	expect_sent(0);
-	expect1(NINA_CMD_POLL, NINA_POLL_ERROR | NINA_POLL_WRITE);
+	expect1(NINA_CMD_SOCKET_POLL, NINA_POLL_ERROR | NINA_POLL_WRITE);
 	assert(nina_sock_send(s, data, 20, 0, NULL, 0, &retry) == -EPIPE && !retry);
 	expect_sent(0);
-	expect1(NINA_CMD_POLL, NINA_POLL_FAIL);
+	expect1(NINA_CMD_SOCKET_POLL, NINA_POLL_FAIL);
 	assert(nina_sock_send(s, data, 20, 0, NULL, 0, &retry) == -EIO);
 	expect_sent(0);
-	expect(NINA_CMD_POLL, -ETIMEDOUT, NULL, 0);
+	expect(NINA_CMD_SOCKET_POLL, -ETIMEDOUT, NULL, 0);
 	assert(nina_sock_send(s, data, 20, 0, NULL, 0, &retry) == -ETIMEDOUT);
 	done();
 	assert(!g_nina_sockets[s].send_waiting);
@@ -920,14 +920,14 @@ static void test_send_tcp(void)
 
 		reset_script();
 		expect_sent(0);
-		expect1(NINA_CMD_POLL, 0);
+		expect1(NINA_CMD_SOCKET_POLL, 0);
 		assert(nina_sock_send(s, data, 20, 0, NULL, 0, &retry) == -EAGAIN && retry);
 		if (k == 0) {
-			expect1(NINA_CMD_POLL, NINA_POLL_ERROR | NINA_POLL_WRITE);
+			expect1(NINA_CMD_SOCKET_POLL, NINA_POLL_ERROR | NINA_POLL_WRITE);
 		} else if (k == 1) {
-			expect1(NINA_CMD_POLL, NINA_POLL_FAIL);
+			expect1(NINA_CMD_SOCKET_POLL, NINA_POLL_FAIL);
 		} else {
-			expect(NINA_CMD_POLL, -ETIMEDOUT, NULL, 0);
+			expect(NINA_CMD_SOCKET_POLL, -ETIMEDOUT, NULL, 0);
 		}
 		assert(nina_sock_send(s, data, 20, 0, NULL, 0, &retry) == results[k] && !retry);
 		done();
@@ -937,9 +937,9 @@ static void test_send_tcp(void)
 	/* Closing ends a wait. */
 	reset_script();
 	expect_sent(0);
-	expect1(NINA_CMD_POLL, 0);
+	expect1(NINA_CMD_SOCKET_POLL, 0);
 	assert(nina_sock_send(s, data, 20, 0, NULL, 0, &retry) == -EAGAIN && retry);
-	expect1(NINA_CMD_POLL, 0);
+	expect1(NINA_CMD_SOCKET_POLL, 0);
 	assert(nina_sock_send(s, data, 20, 0, NULL, 0, &retry) == -EAGAIN && retry);
 	assert(g_nina_sockets[s].send_polled);
 	done();
@@ -982,16 +982,16 @@ static void test_sendmsg(void)
 	iov[1].iov_len = 100;
 	reset_script();
 	expect_sent(0);
-	expect1(NINA_CMD_POLL, 0);
+	expect1(NINA_CMD_SOCKET_POLL, 0);
 	assert(nina_sock_sendmsg(s, iov, 3, false, 0, &retry) == -EAGAIN && retry);
 	now_ms += NINA_SEND_STATE_INTERVAL_MS;
-	expect1(NINA_CMD_POLL, 0);
+	expect1(NINA_CMD_SOCKET_POLL, 0);
 	assert(nina_sock_sendmsg(s, iov, 3, false, 0, &retry) == -EAGAIN && retry);
 	done();
 	assert(g_nina_sockets[s].send_deadline ==
 	       now_ms - NINA_SEND_STATE_INTERVAL_MS + NINA_SEND_WAIT_MS);
 	reset_script();
-	expect1(NINA_CMD_POLL, NINA_POLL_WRITE);
+	expect1(NINA_CMD_SOCKET_POLL, NINA_POLL_WRITE);
 	expect_sent(115);
 	assert(nina_sock_sendmsg(s, iov, 3, false, 0, &retry) == 115 && !retry);
 	done();
@@ -1041,7 +1041,7 @@ static void test_send_udp(void)
 	/* First use opens the firmware socket; id, address, port, data. */
 	reset_script();
 	expect_open(2);
-	expect(NINA_CMD_SENDTO, 0, (const uint8_t[]){0, 48}, 2);
+	expect(NINA_CMD_SOCKET_SENDTO, 0, (const uint8_t[]){0, 48}, 2);
 	assert(nina_sock_send(u, data, 48, 0, (struct sockaddr *)&to, sizeof(to), &retry) == 48);
 	assert(!retry);
 	done();
@@ -1052,21 +1052,22 @@ static void test_send_udp(void)
 	param_is(2, 3, data, 48);
 	/* The full 512 bytes, MSG_DONTWAIT accepted. */
 	reset_script();
-	expect(NINA_CMD_SENDTO, 0, (const uint8_t[]){NINA_MAX_IO >> 8, NINA_MAX_IO & 0xff}, 2);
+	expect(NINA_CMD_SOCKET_SENDTO, 0,
+	       (const uint8_t[]){NINA_MAX_IO >> 8, NINA_MAX_IO & 0xff}, 2);
 	assert(nina_sock_send(u, data, NINA_MAX_IO, MSG_DONTWAIT, (struct sockaddr *)&to,
 			      sizeof(to), &retry) == NINA_MAX_IO);
 	/* Not taken (any failure is zero bytes): EAGAIN, never a wait. */
-	expect(NINA_CMD_SENDTO, 0, (const uint8_t[]){0, 0}, 2);
+	expect(NINA_CMD_SOCKET_SENDTO, 0, (const uint8_t[]){0, 0}, 2);
 	assert(nina_sock_send(u, data, 48, 0, (struct sockaddr *)&to, sizeof(to), &retry) ==
 	       -EAGAIN && !retry);
-	expect(NINA_CMD_SENDTO, 0, (const uint8_t[]){0}, 1);
+	expect(NINA_CMD_SOCKET_SENDTO, 0, (const uint8_t[]){0}, 1);
 	assert(nina_sock_send(u, data, 48, 0, (struct sockaddr *)&to, sizeof(to), &retry) ==
 	       -EPROTO);
-	expect(NINA_CMD_SENDTO, -ETIMEDOUT, NULL, 0);
+	expect(NINA_CMD_SOCKET_SENDTO, -ETIMEDOUT, NULL, 0);
 	assert(nina_sock_send(u, data, 48, 0, (struct sockaddr *)&to, sizeof(to), &retry) ==
 	       -ETIMEDOUT);
 	/* An empty datagram. */
-	expect(NINA_CMD_SENDTO, 0, (const uint8_t[]){0, 0}, 2);
+	expect(NINA_CMD_SOCKET_SENDTO, 0, (const uint8_t[]){0, 0}, 2);
 	assert(nina_sock_send(u, NULL, 0, 0, (struct sockaddr *)&to, sizeof(to), &retry) == 0);
 	done();
 	assert(param_len[4][3] == 0);
@@ -1074,7 +1075,7 @@ static void test_send_udp(void)
 	/* Connected: the peer when no address is given. */
 	reset_script();
 	assert(nina_sock_connect(u, (struct sockaddr *)&peer, sizeof(peer)) == 0);
-	expect(NINA_CMD_SENDTO, 0, (const uint8_t[]){0, 4}, 2);
+	expect(NINA_CMD_SOCKET_SENDTO, 0, (const uint8_t[]){0, 4}, 2);
 	assert(nina_sock_send(u, data, 4, 0, NULL, 0, &retry) == 4);
 	done();
 	param_is(0, 1, &peer.sin_addr, 4);
@@ -1084,7 +1085,7 @@ static void test_send_udp(void)
 
 static void expect_received(const uint8_t *bytes, size_t n)
 {
-	expect(NINA_CMD_RECV, 0, bytes, n);
+	expect(NINA_CMD_SOCKET_RECV, 0, bytes, n);
 }
 
 static void test_recv_tcp(void)
@@ -1107,16 +1108,16 @@ static void test_recv_tcp(void)
 
 	/* Poll first: nothing there is EAGAIN (the caller waits or not). */
 	reset_script();
-	expect1(NINA_CMD_POLL, NINA_POLL_WRITE);
+	expect1(NINA_CMD_SOCKET_POLL, NINA_POLL_WRITE);
 	assert(nina_sock_recv(s, buf, 10, 0, NULL) == -EAGAIN);
-	expect1(NINA_CMD_POLL, NINA_POLL_FAIL);
+	expect1(NINA_CMD_SOCKET_POLL, NINA_POLL_FAIL);
 	assert(nina_sock_recv(s, buf, 10, MSG_DONTWAIT, NULL) == -EIO);
 	/* Data: the size as two bytes, low first; at most 512. */
-	expect1(NINA_CMD_POLL, NINA_POLL_READ | NINA_POLL_WRITE);
+	expect1(NINA_CMD_SOCKET_POLL, NINA_POLL_READ | NINA_POLL_WRITE);
 	expect_received(data, 7);
 	assert(nina_sock_recv(s, buf, 600, 0, NULL) == 7);
 	assert(!memcmp(buf, data, 7));
-	expect1(NINA_CMD_POLL, NINA_POLL_READ);
+	expect1(NINA_CMD_SOCKET_POLL, NINA_POLL_READ);
 	expect_received(data, 300);
 	assert(nina_sock_recv(s, buf, 300, 0, NULL) == 300);
 	done();
@@ -1127,11 +1128,11 @@ static void test_recv_tcp(void)
 	assert(caps[5] == 300);
 	/* Readable with nothing to read: the end of the stream (0). */
 	reset_script();
-	expect1(NINA_CMD_POLL, NINA_POLL_READ);
+	expect1(NINA_CMD_SOCKET_POLL, NINA_POLL_READ);
 	expect_received(NULL, 0);
 	assert(nina_sock_recv(s, buf, 10, 0, NULL) == 0);
-	expect1(NINA_CMD_POLL, NINA_POLL_READ);
-	expect(NINA_CMD_RECV, -ETIMEDOUT, NULL, 0);
+	expect1(NINA_CMD_SOCKET_POLL, NINA_POLL_READ);
+	expect(NINA_CMD_SOCKET_RECV, -ETIMEDOUT, NULL, 0);
 	assert(nina_sock_recv(s, buf, 10, 0, NULL) == -ETIMEDOUT);
 	done();
 
@@ -1141,24 +1142,24 @@ static void test_recv_tcp(void)
 	{
 		uint8_t state;
 
-		expect1(NINA_CMD_POLL, NINA_POLL_READ);
+		expect1(NINA_CMD_SOCKET_POLL, NINA_POLL_READ);
 		assert(nina_sock_poll_state(&g_nina_sockets[s], &state) == 0);
 		assert(g_nina_sockets[s].read_hint);
 		expect_received(data, 3);
 		assert(nina_sock_recv(s, buf, 10, 0, NULL) == 3);
 		assert(!g_nina_sockets[s].read_hint);
-		expect1(NINA_CMD_POLL, 0);
+		expect1(NINA_CMD_SOCKET_POLL, 0);
 		assert(nina_sock_recv(s, buf, 10, 0, NULL) == -EAGAIN);
-		expect1(NINA_CMD_POLL, NINA_POLL_READ);
+		expect1(NINA_CMD_SOCKET_POLL, NINA_POLL_READ);
 		assert(nina_sock_fionread(s) == 1);
 		expect_received(data, 2);
 		assert(nina_sock_recv(s, buf, 10, 0, NULL) == 2);
 		/* A poll without data clears it. */
-		expect1(NINA_CMD_POLL, NINA_POLL_READ);
+		expect1(NINA_CMD_SOCKET_POLL, NINA_POLL_READ);
 		assert(nina_sock_fionread(s) == 1);
-		expect1(NINA_CMD_POLL, 0);
+		expect1(NINA_CMD_SOCKET_POLL, 0);
 		assert(nina_sock_poll_state(&g_nina_sockets[s], &state) == 0);
-		expect1(NINA_CMD_POLL, 0);
+		expect1(NINA_CMD_SOCKET_POLL, 0);
 		assert(nina_sock_recv(s, buf, 10, 0, NULL) == -EAGAIN);
 	}
 	done();
@@ -1180,7 +1181,7 @@ static void expect_datagram(const char *ip, uint16_t port, const uint8_t *bytes,
 	if (n) {
 		memcpy(reply + 6, bytes, n);
 	}
-	expect(NINA_CMD_RECVFROM, 0, reply, 6 + n);
+	expect(NINA_CMD_SOCKET_RECVFROM, 0, reply, 6 + n);
 }
 
 static void test_recv_udp(void)
@@ -1197,13 +1198,13 @@ static void test_recv_udp(void)
 	/* First use opens the firmware socket; then poll first. */
 	reset_script();
 	expect_open(6);
-	expect1(NINA_CMD_POLL, 0);
+	expect1(NINA_CMD_SOCKET_POLL, 0);
 	assert(nina_sock_recv(u, buf, 48, 0, NULL) == -EAGAIN);
 	done();
 	/* A datagram: its sender (port bytes as in the accept reply), the
 	 * data; the size parameter is the room asked for, at most 512. */
 	reset_script();
-	expect1(NINA_CMD_POLL, NINA_POLL_READ);
+	expect1(NINA_CMD_SOCKET_POLL, NINA_POLL_READ);
 	expect_datagram("10.42.0.1", 0x007b, data, 48);
 	memset(&from, 0xaa, sizeof(from));
 	assert(nina_sock_recv(u, buf, 600, 0, &from) == 48);
@@ -1217,17 +1218,17 @@ static void test_recv_udp(void)
 	/* A short buffer gets the start of the datagram; zero room asks for 1
 	 * byte, and an empty datagram is 0. */
 	reset_script();
-	expect1(NINA_CMD_POLL, NINA_POLL_READ);
+	expect1(NINA_CMD_SOCKET_POLL, NINA_POLL_READ);
 	expect_datagram("10.42.0.1", 123, data, 10);
 	assert(nina_sock_recv(u, buf, 10, 0, NULL) == 10);
-	expect1(NINA_CMD_POLL, NINA_POLL_READ);
+	expect1(NINA_CMD_SOCKET_POLL, NINA_POLL_READ);
 	expect_datagram("10.42.0.1", 123, data, 1);
 	assert(nina_sock_recv(u, buf, 0, 0, NULL) == 0);
-	expect1(NINA_CMD_POLL, NINA_POLL_READ);
+	expect1(NINA_CMD_SOCKET_POLL, NINA_POLL_READ);
 	expect_datagram("10.42.0.1", 123, NULL, 0);
 	assert(nina_sock_recv(u, buf, 48, 0, NULL) == 0);
-	expect1(NINA_CMD_POLL, NINA_POLL_READ);
-	expect(NINA_CMD_RECVFROM, 0, data, 5);
+	expect1(NINA_CMD_SOCKET_POLL, NINA_POLL_READ);
+	expect(NINA_CMD_SOCKET_RECVFROM, 0, data, 5);
 	assert(nina_sock_recv(u, buf, 48, 0, NULL) == -EPROTO);
 	done();
 	param_is(1, 1, (const uint8_t[]){10, 0}, 2);
@@ -1239,14 +1240,14 @@ static void test_recv_udp(void)
 	 * again; the peer's comes through. */
 	reset_script();
 	assert(nina_sock_connect(u, (struct sockaddr *)&peer, sizeof(peer)) == 0);
-	expect1(NINA_CMD_POLL, NINA_POLL_READ);
+	expect1(NINA_CMD_SOCKET_POLL, NINA_POLL_READ);
 	/* peer.sin_port in the firmware's byte order: 123 in network order. */
 	expect_datagram("10.42.0.9", 0x7b00, data, 4);
-	expect1(NINA_CMD_POLL, NINA_POLL_READ);
+	expect1(NINA_CMD_SOCKET_POLL, NINA_POLL_READ);
 	expect_datagram("10.42.0.1", 0x7c00, data, 4);
-	expect1(NINA_CMD_POLL, 0);
+	expect1(NINA_CMD_SOCKET_POLL, 0);
 	assert(nina_sock_recv(u, buf, 48, MSG_DONTWAIT, NULL) == -EAGAIN);
-	expect1(NINA_CMD_POLL, NINA_POLL_READ);
+	expect1(NINA_CMD_SOCKET_POLL, NINA_POLL_READ);
 	expect_datagram("10.42.0.1", 0x7b00, data + 100, 48);
 	assert(nina_sock_recv(u, buf, 48, 0, &from) == 48);
 	done();
@@ -1256,11 +1257,11 @@ static void test_recv_udp(void)
 	/* FIONREAD's finding stands for the first poll: no poll before the
 	 * datagram (the time synchronization's 1 ms polling). */
 	reset_script();
-	expect1(NINA_CMD_POLL, NINA_POLL_READ | NINA_POLL_WRITE);
+	expect1(NINA_CMD_SOCKET_POLL, NINA_POLL_READ | NINA_POLL_WRITE);
 	assert(nina_sock_fionread(u) == 1);
 	expect_datagram("10.42.0.1", 0x7b00, data, 48);
 	assert(nina_sock_recv(u, buf, 48, MSG_DONTWAIT, NULL) == 48);
-	expect1(NINA_CMD_POLL, NINA_POLL_WRITE);
+	expect1(NINA_CMD_SOCKET_POLL, NINA_POLL_WRITE);
 	assert(nina_sock_fionread(u) == 0);
 	done();
 	close_all();
@@ -1283,13 +1284,13 @@ static void test_fionread(void)
 	close_all();
 	s = tcp_connected(7);
 	reset_script();
-	expect1(NINA_CMD_POLL, 0);
+	expect1(NINA_CMD_SOCKET_POLL, 0);
 	assert(nina_sock_fionread(s) == 0);
-	expect1(NINA_CMD_POLL, NINA_POLL_READ);
+	expect1(NINA_CMD_SOCKET_POLL, NINA_POLL_READ);
 	assert(nina_sock_fionread(s) == 1);
-	expect1(NINA_CMD_POLL, NINA_POLL_FAIL | NINA_POLL_READ);
+	expect1(NINA_CMD_SOCKET_POLL, NINA_POLL_FAIL | NINA_POLL_READ);
 	assert(nina_sock_fionread(s) == -EIO);
-	expect(NINA_CMD_POLL, -ETIMEDOUT, NULL, 0);
+	expect(NINA_CMD_SOCKET_POLL, -ETIMEDOUT, NULL, 0);
 	assert(nina_sock_fionread(s) == -ETIMEDOUT);
 	done();
 	param1(0, 0, 7);
@@ -1333,19 +1334,19 @@ static void test_caller_polls(void)
 
 	/* NINA_SO_POLL: one CMD_POLL, its bits as do_poll() gives them. */
 	reset_script();
-	expect1(NINA_CMD_POLL, 0);
+	expect1(NINA_CMD_SOCKET_POLL, 0);
 	assert(nina_sock_poll_revents(s) == 0);
-	expect1(NINA_CMD_POLL, NINA_POLL_READ);
+	expect1(NINA_CMD_SOCKET_POLL, NINA_POLL_READ);
 	assert(nina_sock_poll_revents(s) == POLLIN);
-	expect1(NINA_CMD_POLL, NINA_POLL_WRITE);
+	expect1(NINA_CMD_SOCKET_POLL, NINA_POLL_WRITE);
 	assert(nina_sock_poll_revents(s) == POLLOUT);
-	expect1(NINA_CMD_POLL, NINA_POLL_ERROR);
+	expect1(NINA_CMD_SOCKET_POLL, NINA_POLL_ERROR);
 	assert(nina_sock_poll_revents(s) == POLLERR);
-	expect1(NINA_CMD_POLL, NINA_POLL_READ | NINA_POLL_WRITE | NINA_POLL_ERROR);
+	expect1(NINA_CMD_SOCKET_POLL, NINA_POLL_READ | NINA_POLL_WRITE | NINA_POLL_ERROR);
 	assert(nina_sock_poll_revents(s) == (POLLIN | POLLOUT | POLLERR));
-	expect1(NINA_CMD_POLL, NINA_POLL_FAIL | NINA_POLL_READ);
+	expect1(NINA_CMD_SOCKET_POLL, NINA_POLL_FAIL | NINA_POLL_READ);
 	assert(nina_sock_poll_revents(s) == -EIO);
-	expect(NINA_CMD_POLL, -ETIMEDOUT, NULL, 0);
+	expect(NINA_CMD_SOCKET_POLL, -ETIMEDOUT, NULL, 0);
 	assert(nina_sock_poll_revents(s) == -ETIMEDOUT);
 	done();
 	for (size_t i = 0; i < next_step; i++) {
@@ -1356,8 +1357,8 @@ static void test_caller_polls(void)
 	/* A receive after FIONREAD found data: the read only (the Zephyr
 	 * build's recv(): CMD_POLL, then CMD_RECV). */
 	reset_script();
-	expect1(NINA_CMD_POLL, NINA_POLL_READ);
-	expect(NINA_CMD_RECV, 0, (const uint8_t[]){0xd0, 0x00}, 2);
+	expect1(NINA_CMD_SOCKET_POLL, NINA_POLL_READ);
+	expect(NINA_CMD_SOCKET_RECV, 0, (const uint8_t[]){0xd0, 0x00}, 2);
 	assert(nina_sock_fionread(s) == 1);
 	{
 		uint8_t buf[2];
@@ -1387,7 +1388,7 @@ static void test_caller_polls(void)
 	connect_started(s, 3, 0);
 	assert(nina_sock_watch(nina_sock_get(s)) == NINA_SOCK_WATCH_CONNECT);
 	reset_script();
-	expect1(NINA_CMD_POLL, NINA_POLL_WRITE);
+	expect1(NINA_CMD_SOCKET_POLL, NINA_POLL_WRITE);
 	expect_so_error(0);
 	assert(nina_sock_connect_check(s, now_ms) == 0);
 	done();

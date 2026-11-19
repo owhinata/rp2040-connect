@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: MIT */
-/* The NINA passthrough mode of the Zephyr build (CONFIG_NANO_NINA_PASSTHROUGH):
+/* The NINA passthrough mode of the Zephyr build (CONFIG_NINA_PASSTHROUGH):
  * the USB CDC ACM port relayed byte for byte to the NINA-W102's UART (the
  * ESP32's UART0, which its ROM bootloader uses), with the host's DTR and
  * RTS on the module's GPIO0 and RESETN, so that esptool on the PC reads
@@ -11,10 +11,10 @@
  * explains this one.
  *
  * "nina passthrough confirm" (nina_passthrough_cmd(), a subcommand of the
- * shared "nina", common/drivers/nina/nina_shell.c) leaves a request in the
+ * shared "nina", common/shell/nina_shell.c) leaves a request in the
  * watchdog's scratch registers and restarts the board.  The next start
  * sees it before the drivers start; Zephyr then starts as usual, but the
- * NINA's SPI link reports no bus (nano_nina_bus_ready()), so that nothing
+ * NINA's SPI link reports no bus (nina_bus_ready()), so that nothing
  * touches the module's lines, and main() runs nina_passthrough_run()
  * instead of the application, which never returns: the mode ends with a
  * restart into the normal firmware.
@@ -26,7 +26,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 
-#ifdef CONFIG_NANO_NINA_PASSTHROUGH
+#ifdef CONFIG_NINA_PASSTHROUGH
 
 #include <zephyr/shell/shell.h>
 
@@ -59,6 +59,6 @@ static inline bool nina_passthrough_active(void)
 
 #define NINA_PASSTHROUGH_SHELL_CMD
 
-#endif /* CONFIG_NANO_NINA_PASSTHROUGH */
+#endif /* CONFIG_NINA_PASSTHROUGH */
 
 #endif /* ZEPHYR_APP_DRIVERS_NINA_NINA_PASSTHROUGH_H */

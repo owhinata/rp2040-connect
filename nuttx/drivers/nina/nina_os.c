@@ -30,7 +30,7 @@
  *                               samples READY) is gpio_add_callback()'s
  *   nina_os_ready_arm(desired)  drops a wake-up left from before
  *                               (nxsem_reset() to 0), then enables the edge
- *                               of READY (GPIO10, active low: nano_nina.c)
+ *                               of READY (GPIO10, active low: nina_bus.c)
  *                               towards DESIRED, falling for 1 (ready),
  *                               rising for 0, through the board's GPIO
  *                               bank 0 (nano_gpio_irq_configure(), the
@@ -108,11 +108,11 @@
 
 #include "nano_gpio.h"
 #include "nina_os.h"
-#ifdef CONFIG_NANO_NINA_USRSOCK
+#ifdef CONFIG_NINA_USRSOCK
 #  include "nina_usrsock.h"
 #endif
 
-/* READY: GPIO10, active low (nano_nina.c, BOARD_NINA_READY_GPIO). */
+/* READY: GPIO10, active low (nina_bus.c, BOARD_NINA_READY_GPIO). */
 
 #define READY_GPIO 10
 
@@ -124,7 +124,7 @@ static mutex_t g_dns_lock = NXMUTEX_INITIALIZER;
 static sem_t g_ready_sem = SEM_INITIALIZER(0);
 static struct gpio_callback g_ready_cb;
 
-/* The IRQ line: GPIO2, active high (nano_nina.c, BOARD_NINA_IRQ_GPIO). */
+/* The IRQ line: GPIO2, active high (nina_bus.c, BOARD_NINA_IRQ_GPIO). */
 
 #define IRQ_GPIO 2
 
@@ -197,7 +197,7 @@ static void event_edge(const struct device *port, struct gpio_callback *cb,
       nxsem_post(&g_event_sem);
     }
 
-#ifdef CONFIG_NANO_NINA_USRSOCK
+#ifdef CONFIG_NINA_USRSOCK
   nina_poller_edge();
 #endif
 }

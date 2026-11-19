@@ -30,7 +30,8 @@
  * the default gateway), its UDP port and the interval between queries, the
  * Zephyr build's CONFIG_NINA_NTP_SERVER, CONFIG_NINA_NTP_PORT and
  * CONFIG_NINA_NTP_INTERVAL_MS (zephyr/app/usb-console/Kconfig; the NuttX
- * build's CONFIG_NANO_NINA_NTP_*).  The same values in the three builds.
+ * build has options of the same names).  The same values in the three
+ * builds.
  */
 #define CONFIG_NINA_NTP_SERVER      ""
 #define CONFIG_NINA_NTP_PORT        123

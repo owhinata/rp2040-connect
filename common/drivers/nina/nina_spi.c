@@ -7,17 +7,17 @@
  * are the two boundaries of the core:
  *
  *   Zephyr (nina_wifi.c)                here
- *   device_is_ready(), gpio_is_ready_dt nano_nina_bus_ready()
- *   gpio_pin_configure_dt()             nano_nina_pin_configure()
- *   gpio_pin_set_dt(), gpio_pin_get_dt  nano_nina_pin_set(), _get()
- *   spi_transceive(), spi_write()       nano_nina_transceive()
+ *   device_is_ready(), gpio_is_ready_dt nina_bus_ready()
+ *   gpio_pin_configure_dt()             nina_pin_configure()
+ *   gpio_pin_set_dt(), gpio_pin_get_dt  nina_pin_set(), _get()
+ *   spi_transceive(), spi_write()       nina_bus_transceive()
  *   K_MUTEX_DEFINE(nina_lock)           nina_os_lock(), nina_os_unlock()
  *   k_sleep(), k_uptime_get()           nina_os_sleep_us/_ms(), _uptime_ms()
  *
- * nano_nina_*() are the board's (<nano_nina.h>), nina_os_*() the kernel's
- * (<nina_os.h>); each build implements both (zephyr/app/usb-console/
- * drivers/nina/nano_nina.c and nina_os.c, nuttx/boards/arduino-nano-rp2040-connect/src/
- * nano_nina.c and
+ * nina_bus_*() and nina_pin_*() are the board's (<nina_bus.h>),
+ * nina_os_*() the kernel's (<nina_os.h>); each build implements both
+ * (zephyr/app/usb-console/drivers/nina/nina_bus.c and nina_os.c,
+ * nuttx/boards/arduino-nano-rp2040-connect/src/nina_bus.c and
  * nuttx/drivers/nina/nina_os.c, freertos/drivers/nina/).  The host test
  * (common/tests/nina_spi.c) builds this file with fakes of both.
  *
@@ -45,18 +45,10 @@
 #include <stdint.h>
 #include <string.h>
 
-#include "nano_nina.h"
+#include "nina_bus.h"
+#include "nina_cmd.h"
 #include "nina_os.h"
 #include "nina_wait.h"
-
-#define NINA_START 0xe0
-#define NINA_END   0xee
-#define NINA_ERR   0xef
-#define NINA_DUMMY 0xff
-#define NINA_REPLY 0x80
-
-/* The capability command of the patches 0003 to 0006. */
-#define NINA_CMD_CAPABILITIES 0x6a
 
 #ifndef MIN
 #  define MIN(a, b) ((a) < (b) ? (a) : (b))
@@ -82,7 +74,7 @@ static int wait_ready_irq(int desired, int timeout_ms)
 
 	nina_os_ready_arm(desired);
 	for (;;) {
-		value = nano_nina_pin_get(NANO_NINA_READY);
+		value = nina_pin_get(NINA_PIN_READY);
 		if (value < 0 || value == desired) {
 			break;
 		}
@@ -107,7 +99,7 @@ static int wait_ready(int desired, int timeout_ms)
 	}
 	deadline = nina_os_uptime_ms() + timeout_ms;
 	do {
-		value = nano_nina_pin_get(NANO_NINA_READY);
+		value = nina_pin_get(NINA_PIN_READY);
 		if (value < 0) {
 			return value;
 		}
@@ -126,22 +118,22 @@ static int init_nina(void)
 	if (initialized) {
 		return 0;
 	}
-	if (!nano_nina_bus_ready()) {
+	if (!nina_bus_ready()) {
 		return -ENODEV;
 	}
-	if ((ret = nano_nina_pin_configure(NANO_NINA_CS, NANO_NINA_OUTPUT_INACTIVE)) ||
-	    (ret = nano_nina_pin_configure(NANO_NINA_READY, NANO_NINA_INPUT)) ||
-	    (ret = nano_nina_pin_configure(NANO_NINA_IRQ, NANO_NINA_OUTPUT_HIGH)) ||
-	    (ret = nano_nina_pin_configure(NANO_NINA_RESET, NANO_NINA_OUTPUT_ACTIVE))) {
+	if ((ret = nina_pin_configure(NINA_PIN_CS, NINA_PIN_OUTPUT_INACTIVE)) ||
+	    (ret = nina_pin_configure(NINA_PIN_READY, NINA_PIN_INPUT)) ||
+	    (ret = nina_pin_configure(NINA_PIN_IRQ, NINA_PIN_OUTPUT_HIGH)) ||
+	    (ret = nina_pin_configure(NINA_PIN_RESET, NINA_PIN_OUTPUT_ACTIVE))) {
 		return ret;
 	}
 	nina_os_sleep_ms(10);
-	if ((ret = nano_nina_pin_set(NANO_NINA_RESET, 0))) {
+	if ((ret = nina_pin_set(NINA_PIN_RESET, 0))) {
 		return ret;
 	}
 	nina_os_sleep_ms(750);
-	if ((ret = nano_nina_pin_set(NANO_NINA_IRQ, 0)) ||
-	    (ret = nano_nina_pin_configure(NANO_NINA_IRQ, NANO_NINA_INPUT))) {
+	if ((ret = nina_pin_set(NINA_PIN_IRQ, 0)) ||
+	    (ret = nina_pin_configure(NINA_PIN_IRQ, NINA_PIN_INPUT))) {
 		return ret;
 	}
 	/* Once: initialized stays true from here on. */
@@ -152,13 +144,13 @@ static int init_nina(void)
 
 static int transfer(uint8_t tx, uint8_t *rx)
 {
-	return nano_nina_transceive(&tx, rx, 1);
+	return nina_bus_transceive(&tx, rx, 1);
 }
 
 /* The caller keeps NINA's chip select asserted across these transfers. */
 static int transfer_write(const uint8_t *data, size_t len)
 {
-	return len ? nano_nina_transceive(data, NULL, len) : 0;
+	return len ? nina_bus_transceive(data, NULL, len) : 0;
 }
 
 static int transfer_read(uint8_t *data, size_t len)
@@ -168,7 +160,7 @@ static int transfer_read(uint8_t *data, size_t len)
 	memset(dummy, NINA_DUMMY, sizeof(dummy));
 	while (len) {
 		size_t chunk = MIN(len, sizeof(dummy));
-		int ret = nano_nina_transceive(dummy, data, chunk);
+		int ret = nina_bus_transceive(dummy, data, chunk);
 
 		if (ret) {
 			return ret;
@@ -243,7 +235,7 @@ static int command(uint8_t cmd, const uint8_t *a, size_t alen, const uint8_t *b,
 	while (n % 4) {
 		tx[n++] = NINA_DUMMY;
 	}
-	if ((ret = nano_nina_pin_set(NANO_NINA_CS, 1))) {
+	if ((ret = nina_pin_set(NINA_PIN_CS, 1))) {
 		return ret;
 	}
 
@@ -251,7 +243,7 @@ static int command(uint8_t cmd, const uint8_t *a, size_t alen, const uint8_t *b,
 	if (!ret) {
 		ret = transfer_write(tx, n);
 	}
-	(void)nano_nina_pin_set(NANO_NINA_CS, 0);
+	(void)nina_pin_set(NINA_PIN_CS, 0);
 	memset(tx, 0, sizeof(tx));
 
 	if (ret) {
@@ -260,7 +252,7 @@ static int command(uint8_t cmd, const uint8_t *a, size_t alen, const uint8_t *b,
 	if ((ret = wait_ready(1, 2000))) {
 		return ret;
 	}
-	if ((ret = nano_nina_pin_set(NANO_NINA_CS, 1))) {
+	if ((ret = nina_pin_set(NINA_PIN_CS, 1))) {
 		return ret;
 	}
 
@@ -276,14 +268,14 @@ static int command(uint8_t cmd, const uint8_t *a, size_t alen, const uint8_t *b,
 	}
 	if (!ret) {
 		ret = transfer(NINA_DUMMY, &c);
-		if (!ret && c != (cmd == 0x21 ? 3 : 1)) {
+		if (!ret && c != (cmd == NINA_CMD_GET_IPADDR ? 3 : 1)) {
 			ret = -EPROTO;
 		}
 	}
-	count = cmd == 0x21 ? 3 : 1;
+	count = cmd == NINA_CMD_GET_IPADDR ? 3 : 1;
 	for (p = 0; !ret && p < count; p++) {
 		ret = transfer(NINA_DUMMY, &c);
-		if (!ret && (len + c > cap || (cmd == 0x21 && c != 4))) {
+		if (!ret && (len + c > cap || (cmd == NINA_CMD_GET_IPADDR && c != 4))) {
 			ret = -EMSGSIZE;
 		}
 		if (!ret) {
@@ -297,7 +289,7 @@ static int command(uint8_t cmd, const uint8_t *a, size_t alen, const uint8_t *b,
 			ret = -EPROTO;
 		}
 	}
-	(void)nano_nina_pin_set(NANO_NINA_CS, 0);
+	(void)nina_pin_set(NINA_PIN_CS, 0);
 	if (!ret) {
 		*outlen = len;
 	}
@@ -313,7 +305,8 @@ int nina_request(uint8_t cmd, const struct nina_param *params, size_t nparams,
 	uint8_t c = 0;
 	size_t i, j, sent = 0, len = 0, total = 0;
 	/* accept and recvfrom answer with three parameters. */
-	uint8_t response_count = cmd == 0x75 || cmd == 0x7a ? 3 : 1;
+	uint8_t response_count =
+		cmd == NINA_CMD_SOCKET_ACCEPT || cmd == NINA_CMD_SOCKET_RECVFROM ? 3 : 1;
 	int ret;
 #define SEND_BYTE(v)                                                           \
 	do {                                                                   \
@@ -339,7 +332,7 @@ int nina_request(uint8_t cmd, const struct nina_param *params, size_t nparams,
 		ret = wait_ready(1, 2000);
 	}
 	if (!ret) {
-		ret = nano_nina_pin_set(NANO_NINA_CS, 1);
+		ret = nina_pin_set(NINA_PIN_CS, 1);
 	}
 	if (!ret) {
 		ret = wait_ready(0, 20);
@@ -360,13 +353,13 @@ int nina_request(uint8_t cmd, const struct nina_param *params, size_t nparams,
 		while (!ret && sent % 4) {
 			SEND_BYTE(NINA_DUMMY);
 		}
-		(void)nano_nina_pin_set(NANO_NINA_CS, 0);
+		(void)nina_pin_set(NINA_PIN_CS, 0);
 	}
 	if (!ret) {
 		ret = wait_ready(1, 10000);
 	}
 	if (!ret) {
-		ret = nano_nina_pin_set(NANO_NINA_CS, 1);
+		ret = nina_pin_set(NINA_PIN_CS, 1);
 	}
 	if (!ret) {
 		ret = wait_ready(0, 20);
@@ -381,7 +374,7 @@ int nina_request(uint8_t cmd, const struct nina_param *params, size_t nparams,
 		}
 		if (!ret) {
 			ret = transfer(NINA_DUMMY, &c);
-			if (!ret && cmd == 0x27) {
+			if (!ret && cmd == NINA_CMD_SCAN_NETWORKS) {
 				response_count = c;
 			} else if (!ret && c != response_count) {
 				ret = -EPROTO;
@@ -396,15 +389,17 @@ int nina_request(uint8_t cmd, const struct nina_param *params, size_t nparams,
 			if (!ret) {
 				ret = transfer(NINA_DUMMY, &c);
 				len |= c;
-				if (cmd == 0x27 && (len > 32 || total == cap)) {
+				if (cmd == NINA_CMD_SCAN_NETWORKS && (len > 32 || total == cap)) {
 					ret = -EMSGSIZE;
 				}
-				if (!ret && cmd == 0x27) {
+				if (!ret && cmd == NINA_CMD_SCAN_NETWORKS) {
 					out[total++] = len;
 				}
 				if (len > cap - total ||
-				    (cmd == 0x75 && len != (j == 0 ? 1 : (j == 1 ? 4 : 2))) ||
-				    (cmd == 0x7a && j < 2 && len != (j == 0 ? 4 : 2))) {
+				    (cmd == NINA_CMD_SOCKET_ACCEPT &&
+				     len != (j == 0 ? 1 : (j == 1 ? 4 : 2))) ||
+				    (cmd == NINA_CMD_SOCKET_RECVFROM && j < 2 &&
+				     len != (j == 0 ? 4 : 2))) {
 					ret = -EMSGSIZE;
 				}
 			}
@@ -419,7 +414,7 @@ int nina_request(uint8_t cmd, const struct nina_param *params, size_t nparams,
 				ret = -EPROTO;
 			}
 		}
-		(void)nano_nina_pin_set(NANO_NINA_CS, 0);
+		(void)nina_pin_set(NINA_PIN_CS, 0);
 	}
 	if (!ret) {
 		*out_len = total;
@@ -438,7 +433,7 @@ int nina_ip_config(uint8_t data[12])
 	if ((ret = nina_os_lock())) {
 		return ret;
 	}
-	ret = command(0x21, &dummy, 1, NULL, 0, data, 12, &len);
+	ret = command(NINA_CMD_GET_IPADDR, &dummy, 1, NULL, 0, data, 12, &len);
 	nina_os_unlock();
 	return ret ? ret : (len == 12 ? 0 : -EPROTO);
 }
@@ -463,7 +458,8 @@ uint32_t nina_probe_capabilities(void)
 	/* One parameter of 4 bytes, little endian.  An older firmware answers
 	 * 0xEF (-ENOTSUP): no capabilities.
 	 */
-	ret = nina_request(NINA_CMD_CAPABILITIES, NULL, 0, false, false, value, sizeof(value), &n);
+	ret = nina_request(NINA_CMD_GET_CAPABILITIES, NULL, 0, false, false, value, sizeof(value),
+			   &n);
 	if (!ret && n == sizeof(value)) {
 		caps = (uint32_t)value[0] | ((uint32_t)value[1] << 8) | ((uint32_t)value[2] << 16) |
 		       ((uint32_t)value[3] << 24);

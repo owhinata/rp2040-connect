@@ -21,7 +21,7 @@ OS に依存しない部分は `common/compat/`、FreeRTOS の部分は `freerto
 | `drivers/libc/` | newlib の FILE 関数の差し替え（`stdio_wrap.c`）、newlib に無いソケット系のヘッダー（`include/`。型と定数だけ）、`inet_pton`・`inet_ntop`（`inet.c`） |
 | `drivers/log/` | RAM ログ（`log_ram.c`。リングは `common/log/log_ring.c`） |
 | `drivers/kv/` | KV のフラッシュの境界（`nano_flash_kv.c`）とリンカースクリプトの差し替え（`ld/`、`kv.cmake`） |
-| `drivers/nina/` | NINA-W102 の SPI1 と制御線（`nano_nina.c`）、境界 `nina_os.h` の実装（`nina_os.c`）、ソケット（`nina_socket.c`）、インターフェース（`nina_netif.c`）、esptool の中継（`nina_passthrough.c`） |
+| `drivers/nina/` | NINA-W102 の SPI1 と制御線（`nina_bus.c`）、境界 `nina_os.h` の実装（`nina_os.c`）、ソケット（`nina_socket.c`）、インターフェース（`nina_netif.c`）、esptool の中継（`nina_passthrough.c`） |
 | `drivers/i2c_dw/` | I2C のコア（`common/drivers/i2c_dw/`。I2C0 と、オプションで I2C1）の FreeRTOS の部分、Pico SDK の DMA での I2C0 の DMA 読み出し（`i2c_dw_dma_os.c`）、自己診断 |
 | `drivers/lsm6dso/` | LSM6DSOX のデバイスの生成（`lsm6dso_instance.h`）と初期化（`nano_lsm6dso.c`）、自己診断 |
 | `drivers/imu/` | 取得サービス・MQTT・時刻同期（`common/imu/`）の組み込み（`imu.cmake`）、`time_sync.c` の前置き |
@@ -34,7 +34,7 @@ OS に依存しない部分は `common/compat/`、FreeRTOS の部分は `freerto
 
 FreeRTOS 版だけがビルドする共有ファイル: `common/compat/zephyr_wifi_shell.c`（Zephyr の `wifi_shell.c` から
 `connect`・`disconnect`・`scan`・`status` を取り出したもの）、`zephyr_zperf_shell.c`・`zperf_iperf3.[ch]`（`zperf`）、
-`common/drivers/nina/nina_shell.c`（`nina version`）、`common/log/fault_record.[ch]`（異常停止の記録の形式）。
+`common/shell/nina_shell.c`（`nina version`）、`common/log/fault_record.[ch]`（異常停止の記録の形式）。
 `i2c_dma` の `common/shell/i2c_dma_shell.c` は Zephyr 版もビルドする。
 
 ## Zephyr 互換層の FreeRTOS の部分
@@ -149,7 +149,7 @@ FreeRTOS 版が実装するのは flash の境界（`common/compat/nano_flash_kv
 ## NINA-W102、ソケット、Wi-Fi
 
 - SPI の転送層・ソケットの表と命令・名前解決は共有のコア（`common/drivers/nina/nina_spi.c`・`nina_sock.c`・
-  `nina_dns.c`）です。FreeRTOS 版は境界 `nano_nina.h`（`drivers/nina/nano_nina.c`: SPI1 をポーリングで 7.8125 MHz、
+  `nina_dns.c`）です。FreeRTOS 版は境界 `nina_bus.h`（`drivers/nina/nina_bus.c`: SPI1 をポーリングで 7.8125 MHz、
   CS・READY・RESET・IRQ の 4 本。Zephyr のドライバーと同じ順と値で設定）と `nina_os.h`（`nina_os.c`: 再帰・優先度継承の
   ロック、名前解決のロック、「切り上げ + 1 tick」の sleep、ms の時計）を実装します。境界の意味は
   [`nuttx/drivers/README_ja.md`](../../nuttx/drivers/README_ja.md) の「NINA-W102」の表のとおりです。

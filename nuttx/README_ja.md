@@ -104,7 +104,7 @@ UF2 にします（[`design/nuttx-porting-ja.md`](../design/nuttx-porting-ja.md)
 |---|---|
 | `CONFIG_NANO_ROM_MEM_OPS` | `memcpy`・`memset` をブート ROM のルーチンにする（パッチ 0010。無効にすると C ライブラリのループ）。`build.sh` は `__start()` がそれらを呼ばないことを確かめる |
 | `CONFIG_NANO_HW_DIVIDER` | 整数の割り算を RP2040 のハードウェアの除算器で行う（Pico SDK のルーチン、パッチ 0009。無効にすると libgcc）。`build.sh` は libgcc の割り算がイメージに残っていないことを確かめる |
-| `CONFIG_NANO_NINA_PASSTHROUGH` | `nina passthrough confirm`（下の「そのほかのコマンド」） |
+| `CONFIG_NINA_PASSTHROUGH` | `nina passthrough confirm`（下の「そのほかのコマンド」） |
 
 ## 書き込み
 

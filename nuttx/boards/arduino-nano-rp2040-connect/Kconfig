@@ -182,13 +182,13 @@ config I2C_DW_RP2040_DMA
 		offers, stays off in the imu configuration (the NINA's SPI runs
 		without DMA, as in the Zephyr build).
 
-config NANO_NINA_PASSTHROUGH
+config NINA_PASSTHROUGH
 	bool "NINA passthrough mode (nina passthrough confirm)"
 	default y
 	depends on ARCH_CHIP_RP2040 && CDCACM && BOARD_LATE_INITIALIZE
 	depends on !RP2040_UART1 && !SMP
 	---help---
-		src/nano_nina_passthrough.c, the FreeRTOS build's NINA
+		src/nina_passthrough.c, the FreeRTOS build's NINA
 		passthrough (freertos/drivers/nina/nina_passthrough.c) with the
 		same decisions (common/drivers/nina/nina_passthrough_logic.h):
 		after "nina passthrough confirm" (nuttx/apps/nina) the board

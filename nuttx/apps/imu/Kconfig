@@ -64,7 +64,7 @@ endif
 config NANO_IMU_RAW_MQTT
 	bool "MQTT transport of the IMU service (imu_raw_mqtt.c)"
 	default y
-	depends on NANO_APP_IMU && NANO_NINA_NET && NET_USRSOCK_TCP
+	depends on NANO_APP_IMU && NINA_NET && NET_USRSOCK_TCP
 	---help---
 		imu_raw_mqtt.c (common/imu, shared with the Zephyr build) on the
 		Zephyr compatibility layer: the thread imu_raw_mqtt_tid (Zephyr
@@ -82,13 +82,13 @@ config NANO_IMU_RAW_MQTT
 config NANO_TIME_SYNC
 	bool "Time synchronization with an NTP server (time_sync.c)"
 	default y
-	depends on NANO_APP_IMU && NANO_NINA_NET && NANO_NINA_DNS && NET_USRSOCK_UDP
+	depends on NANO_APP_IMU && NINA_NET && NINA_DNS && NET_USRSOCK_UDP
 	---help---
 		time_sync.c (common/imu, shared with the Zephyr build) on the
 		Zephyr compatibility layer: the thread time_sync_tid (Zephyr
 		priority 9, NuttX 109, 2048-byte stack), which the init task
 		starts at boot, asks the NTP server (the default gateway, or
-		NANO_NINA_NTP_SERVER) every NANO_NINA_NTP_INTERVAL_MS while
+		NINA_NTP_SERVER) every NINA_NTP_INTERVAL_MS while
 		Wi-Fi is connected and keeps the estimate of its time
 		(time_offset.c) that the IMU service puts on its batches
 		(time_sync_unix_us()), and moves the realtime clock forward to
@@ -97,27 +97,27 @@ config NANO_TIME_SYNC
 
 if NANO_TIME_SYNC
 
-config NANO_NINA_NTP_SERVER
+config NINA_NTP_SERVER
 	string "NTP server hostname or IPv4 address"
 	default ""
 	---help---
-		The Zephyr build's CONFIG_NINA_NTP_SERVER.  Empty uses the
+		The same option as the Zephyr build's.  Empty uses the
 		default gateway, normally the PC that provides the Wi-Fi
 		network and runs an NTP server for the board.
 
-config NANO_NINA_NTP_PORT
+config NINA_NTP_PORT
 	int "NTP server UDP port"
 	default 123
 	range 1 65535
 	---help---
-		The Zephyr build's CONFIG_NINA_NTP_PORT.
+		The same option as the Zephyr build's.
 
-config NANO_NINA_NTP_INTERVAL_MS
+config NINA_NTP_INTERVAL_MS
 	int "Interval between NTP queries in milliseconds"
 	default 2000
 	range 250 3600000
 	---help---
-		The Zephyr build's CONFIG_NINA_NTP_INTERVAL_MS.  Queries go to a
+		The same option as the Zephyr build's.  Queries go to a
 		server on the local network.  Do not point short intervals at
 		public servers.
 

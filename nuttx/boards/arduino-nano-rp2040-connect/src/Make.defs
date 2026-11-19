@@ -98,8 +98,8 @@ endif
 
 # SPI1 and the lines of the NINA-W102 (nuttx/drivers/nina uses them).
 
-ifeq ($(CONFIG_NANO_NINA),y)
-CSRCS += nano_nina.c
+ifeq ($(CONFIG_NINA),y)
+CSRCS += nina_bus.c
 endif
 
 # I2C0 (the LSM6DSOX and the ATECC608A) and I2C1, in place of the in-tree
@@ -140,13 +140,12 @@ ifeq ($(CONFIG_I2C_DW_RP2040_DMA),y)
 CSRCS += i2c_dw_dma_os.c
 endif
 
-# The NINA passthrough mode (include/nano_nina_passthrough.h).  Its
+# The NINA passthrough mode (include/nina_passthrough.h).  Its
 # decisions, nina_passthrough_logic.h, are in common/drivers/nina (the -I
-# below); the header reads <zephyr/shell/shell.h> of the compatibility
-# layer (the -I of nuttx/drivers/compat and common/compat below).
+# below).
 
-ifeq ($(CONFIG_NANO_NINA_PASSTHROUGH),y)
-CSRCS += nano_nina_passthrough.c
+ifeq ($(CONFIG_NINA_PASSTHROUGH),y)
+CSRCS += nina_passthrough.c
 endif
 
 # The stack sentinel in the scheduler's switch hook.
@@ -163,7 +162,7 @@ CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)arch$(DELIM)$(CONFIG_ARCH)$(DELIM)src
 # (nina_net.h, and the NuttX parts app_log_os.h and priorities_os.h),
 # common/log (app_log.h, log_ram.h; common/compat has priorities.h,
 # cpu_load.h, nano_cpuload.h and nano_gpio.h).  The NINA core's boundary to
-# the board (nano_nina.h): common/drivers/nina.
+# the board (nina_bus.h): common/drivers/nina.
 
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)include
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)log

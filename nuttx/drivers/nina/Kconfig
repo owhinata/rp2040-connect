@@ -3,7 +3,7 @@
 # see the file kconfig-language.txt in the NuttX tools repository.
 #
 
-config NANO_NINA
+config NINA
 	bool "NINA-W102 SPI link (nina_request())"
 	default y
 	depends on RP2040_SPI1 && !RP2040_SPI_DMA
@@ -14,26 +14,26 @@ config NANO_NINA
 		protocol of the module's Arduino firmware), with the same
 		framing, timeouts, error values and lazy initialization (the
 		module is reset on the first request).  The board provides SPI1
-		and the module's lines (src/nano_nina.c).  SPI1 is polled, as in
+		and the module's lines (src/nina_bus.c).  SPI1 is polled, as in
 		the Zephyr build (CONFIG_SPI_PL022_INTERRUPT and _DMA off), so
 		RP2040_SPI_DMA must be off.  The waits for the module's READY
 		line (GPIO10) sleep on its edge interrupt (nina/nina_os.c),
 		through the compatibility layer's gpio0 and the board's
 		src/nano_gpio.c, which are built with NANO_LSM6DSO_STREAM.
 
-if NANO_NINA
+if NINA
 
-config NANO_NINA_SPI_FREQUENCY
+config NINA_SPI_FREQUENCY
 	int "NINA SPI frequency in Hz"
 	default 8000000
 	range 1000000 10000000
 	---help---
-		The requested SPI clock.  The Zephyr build's
-		CONFIG_NINA_SPI_FREQUENCY (default 8000000).  The PL022 divides
+		The requested SPI clock, the same option as the Zephyr
+		build's (default 8000000).  The PL022 divides
 		clk_peri (125 MHz) by an even number: 8 MHz gives 7.8125 MHz in
 		both builds.
 
-config NANO_NINA_USRSOCK
+config NINA_USRSOCK
 	bool "NINA sockets (usrsock)"
 	default y
 	depends on NET_USRSOCK_CUSTOM
@@ -47,32 +47,32 @@ config NANO_NINA_USRSOCK
 		events, as the Zephyr build's connect() and poll() poll in
 		their callers.
 
-config NANO_NINA_TCP_MAX_IO
+config NINA_TCP_MAX_IO
 	int "Maximum bytes per NINA TCP send"
 	default 3584
 	range 1 3584
-	depends on NANO_NINA_USRSOCK
+	depends on NINA_USRSOCK
 	---help---
-		The Zephyr build's CONFIG_NINA_TCP_MAX_IO.  Bounds each TCP send
+		The same option as the Zephyr build's.  Bounds each TCP send
 		to leave room for framing in the NINA SPI command buffer.  A RAW
 		batch of up to 2448 bytes plus its MQTT header is sent in one
 		command with the default.
 
-config NANO_NINA_SEND_RETRY_MS
+config NINA_SEND_RETRY_MS
 	int "Delay before retrying a full NINA TCP send buffer"
 	default 1
 	range 1 1000
-	depends on NANO_NINA_USRSOCK
+	depends on NINA_USRSOCK
 	---help---
-		The Zephyr build's CONFIG_NINA_SEND_RETRY_MS.  A TCP send that
+		The same option as the Zephyr build's.  A TCP send that
 		waits and finds no room in the module is tried again after this
 		delay (the event thread reports SENDTO_READY and usrsock repeats
 		the request in the caller's thread), until NINA_SEND_WAIT_MS.
 
-config NANO_NINA_NET
+config NINA_NET
 	bool "NINA Wi-Fi network device wlan0 (ifconfig, wapi)"
 	default y
-	depends on NANO_NINA_USRSOCK && NANO_LSM6DSO_STREAM
+	depends on NINA_USRSOCK && NANO_LSM6DSO_STREAM
 	depends on DRIVERS_IEEE80211 && NETDEV_WIRELESS_IOCTL && NET_IPv4
 	---help---
 		nina_net.c (common/drivers/nina, shared with the Zephyr build:
@@ -86,7 +86,7 @@ config NANO_NINA_NET
 		NANO_LSM6DSO_STREAM, and its net_if, net_mgmt and wifi_mgmt parts
 		(the "net_mgmt" event thread).
 
-config NANO_NINA_DNS
+config NINA_DNS
 	bool "Name resolution with the NINA resolver (nina_getaddrinfo())"
 	default y
 	depends on !LIBC_NETDB
@@ -98,4 +98,4 @@ config NANO_NINA_DNS
 		zsock_getaddrinfo() uses it.  Not with LIBC_NETDB (NuttX's own
 		getaddrinfo()).
 
-endif # NANO_NINA
+endif # NINA

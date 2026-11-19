@@ -665,11 +665,12 @@ version's; what has been verified on the NuttX port is listed separately in 11.7
   `lsm6dso_instance.h`, which `lsm6dso.c` includes at its end: the Zephyr build's devicetree
   instance macros, one device with the board's values on NuttX). The NINA's declarations,
   `nina_proto.h`, are also one file in `common/drivers/nina/` that both builds use. The NINA's
-  OS-independent core (the SPI link `nina_spi.c`, the socket table and commands `nina_sock.[ch]`,
-  name resolution `nina_dns.[ch]`, the `nina version` command `nina_shell.c`, which depend only on
-  the narrow boundary of `nina_os.h` and `nano_nina.h`) is in `common/drivers/nina/` too and is used
-  by the three builds. Each build's part is the boundary's implementation and the glue to its socket
-  layer; in the Zephyr build, `drivers/nina/nano_nina.c` (the devicetree's lines and SPI),
+  OS-independent core (the SPI link `nina_spi.c`, the protocol's command and reply bytes
+  `nina_cmd.h`, the socket table and commands `nina_sock.[ch]`, name resolution `nina_dns.[ch]`,
+  which depend only on the narrow boundary of `nina_os.h` and `nina_bus.h`) is in
+  `common/drivers/nina/` too and is used by the three builds, and so is the `nina version` command
+  `common/shell/nina_shell.c`. Each build's part is the boundary's implementation and the glue to its socket
+  layer; in the Zephyr build, `drivers/nina/nina_bus.c` (the devicetree's lines and SPI),
   `nina_os.c` (mutexes, sleeps, clock, the READY interrupt) and `nina_socket.c` (the socket offload).
   The I2C core (`common/drivers/i2c_dw/`, a copy of the Zephyr build's patched `i2c_dw.c`) does not depend on the OS
   either; the NuttX and FreeRTOS builds use it (the Zephyr build uses Zephyr's driver with a local patch, §12).
@@ -847,14 +848,14 @@ host tests (`common/tests/run.sh`) run first in the `host_tests.sh` of each of t
 | `common/drivers/i2c_dw/` | The I2C core (I2C0 and I2C1; file names as Zephyr's: `i2c_dw.c`, `i2c_dw.h`, `i2c_dw_registers.h`, `i2c_dw_rp2040.h`, `i2c_dw_rp2040_dma_priv.h` with the DMA reads and their command words), the declarations of the `i2c_dma` functions `i2c_dw_rp2040_dma.h`, the boundaries `i2c_dw_os.h` and `i2c_dw_dma_os.h` | NuttX and FreeRTOS (the Zephyr build: the same driver in patch 0003, below) |
 | `common/drivers/stmemsc/` | The glue between ST's driver and Zephyr's I2C API | NuttX and FreeRTOS |
 | `common/compat/` | The OS-independent part of the compatibility layer and copies of Zephyr's libraries (the key-value store's NVS and settings, the Wi-Fi credentials, getopt and others) | NuttX and FreeRTOS |
-| `common/shell/`, `common/log/` | Zephyr's shell command handling, the `i2c_dma` command, the `LOG_*` macros and the RAM log's ring | NuttX and FreeRTOS (`i2c_dma` all three) |
+| `common/shell/`, `common/log/` | Zephyr's shell command handling, the `i2c_dma` and `nina` commands, the `LOG_*` macros and the RAM log's ring | NuttX and FreeRTOS (`i2c_dma` all three, `nina` Zephyr and FreeRTOS) |
 
 The OS parts are implementations of narrow boundary headers in each build's directory.
 
 - The kernel part of the compatibility layer (`k_mutex`, `k_sem`, threads, clocks and so on; listed at the
   top of `common/compat/zephyr/kernel.h`): `nuttx/drivers/compat/`, `freertos/drivers/compat/`.
 - The priority mapping `priorities_os.h` (read by `common/compat/priorities.h`), the NINA's `nina_os.h` and
-  `nano_nina.h`, the I2C core's `i2c_dw_os.h` and the DMA reads' `i2c_dw_dma_os.h`, the key-value flash's `nano_flash_kv.h`, the shell backend
+  `nina_bus.h`, the I2C core's `i2c_dw_os.h` and the DMA reads' `i2c_dw_dma_os.h`, the key-value flash's `nano_flash_kv.h`, the shell backend
   `zshell_os.h`, the log's `app_log_os.h` and `log_ram.h`.
 - A few lines that differ per build: `sensor_shell_os.h` (the wait of `sensor get`), `wifi_profile_os.h`,
   `lsm6dso_instance.h` (the device), `kv_store_os.h` (whether there is `kv wipe`).

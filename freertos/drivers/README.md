@@ -23,7 +23,7 @@ OS-independent part of the layer is `common/compat/`, the FreeRTOS part `freerto
 | `drivers/libc/` | Wrappers of newlib's FILE functions (`stdio_wrap.c`), the socket headers newlib lacks (`include/`, types and constants only), `inet_pton` and `inet_ntop` (`inet.c`) |
 | `drivers/log/` | The RAM log (`log_ram.c`; the ring is `common/log/log_ring.c`) |
 | `drivers/kv/` | The flash boundary of the key-value store (`nano_flash_kv.c`) and the linker script override (`ld/`, `kv.cmake`) |
-| `drivers/nina/` | The NINA-W102's SPI1 and lines (`nano_nina.c`), the `nina_os.h` boundary (`nina_os.c`), sockets (`nina_socket.c`), the interface (`nina_netif.c`), the esptool passthrough (`nina_passthrough.c`) |
+| `drivers/nina/` | The NINA-W102's SPI1 and lines (`nina_bus.c`), the `nina_os.h` boundary (`nina_os.c`), sockets (`nina_socket.c`), the interface (`nina_netif.c`), the esptool passthrough (`nina_passthrough.c`) |
 | `drivers/i2c_dw/` | The FreeRTOS part of the I2C core (`common/drivers/i2c_dw/`; I2C0, and I2C1 as an option), I2C0's DMA reads on the Pico SDK's DMA (`i2c_dw_dma_os.c`), self-test |
 | `drivers/lsm6dso/` | The LSM6DSOX device (`lsm6dso_instance.h`) and its initialization (`nano_lsm6dso.c`), self-test |
 | `drivers/imu/` | Builds in the acquisition service, MQTT and time synchronization (`common/imu/`; `imu.cmake`), the prelude of `time_sync.c` |
@@ -36,7 +36,7 @@ OS-independent part of the layer is `common/compat/`, the FreeRTOS part `freerto
 
 Shared files only the FreeRTOS build compiles: `common/compat/zephyr_wifi_shell.c` (`connect`,
 `disconnect`, `scan` and `status` taken from Zephyr's `wifi_shell.c`), `zephyr_zperf_shell.c` and
-`zperf_iperf3.[ch]` (`zperf`), `common/drivers/nina/nina_shell.c` (`nina version`),
+`zperf_iperf3.[ch]` (`zperf`), `common/shell/nina_shell.c` (`nina version`),
 `common/log/fault_record.[ch]` (the format of the fatal error record). `i2c_dma`'s
 `common/shell/i2c_dma_shell.c` is built by the Zephyr build too.
 
@@ -168,7 +168,7 @@ boundary (the four functions of `common/compat/nano_flash_kv.h`, `drivers/kv/nan
 
 - The SPI transport, the socket table and commands, and name resolution are the shared core
   (`common/drivers/nina/nina_spi.c`, `nina_sock.c`, `nina_dns.c`). The FreeRTOS build implements the
-  boundaries `nano_nina.h` (`drivers/nina/nano_nina.c`: SPI1 polled at 7.8125 MHz and the CS, READY, RESET
+  boundaries `nina_bus.h` (`drivers/nina/nina_bus.c`: SPI1 polled at 7.8125 MHz and the CS, READY, RESET
   and IRQ lines, set up in the order and with the values of Zephyr's drivers) and `nina_os.h`
   (`nina_os.c`: the recursive lock with priority inheritance, the name resolution lock, the "rounded up,
   plus one tick" sleep, the ms clock). The boundaries mean what the "NINA-W102" tables of

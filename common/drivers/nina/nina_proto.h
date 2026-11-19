@@ -4,6 +4,7 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <stdbool.h>
+#include "nina_cmd.h"
 struct nina_param {
 	const uint8_t *data;
 	size_t len;

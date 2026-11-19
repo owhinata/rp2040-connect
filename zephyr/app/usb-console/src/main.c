@@ -164,7 +164,7 @@ int main(void)
 	 * follows (no settings, no Wi-Fi, no time synchronization), until it
 	 * restarts the board into the normal firmware.
 	 */
-#ifdef CONFIG_NANO_NINA_PASSTHROUGH
+#ifdef CONFIG_NINA_PASSTHROUGH
 	if (nina_passthrough_active()) {
 		nina_passthrough_run();
 	}

@@ -68,7 +68,7 @@ run zephyr_work "${flags[@]}" "${zinc[@]}" tests/zephyr_work.c "${compat[@]}"
 run mqtt_min "${flags[@]}" -Wno-sign-compare "${zinc[@]}" -I"$imu" tests/mqtt_min.c \
     "$imu/mqtt_min.c" "${compat[@]}"
 
-# The NINA-W102 core (drivers/nina) on fakes of its boundary (nano_nina.h: the SPI bus and the
+# The NINA-W102 core (drivers/nina) on fakes of its boundary (nina_bus.h: the SPI bus and the
 # module's lines; nina_os.h: locks, sleeps, clock), defined by the tests.
 nina=drivers/nina
 # SPI link (nina_spi.c, which the test includes): framing, answers, READY timeouts, reset

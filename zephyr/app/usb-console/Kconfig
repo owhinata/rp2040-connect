@@ -25,7 +25,7 @@ config WIFI_NINA_LOCAL
 	select NET_SOCKETS
 	select NET_SOCKETS_OFFLOAD
 
-config NANO_NINA_PASSTHROUGH
+config NINA_PASSTHROUGH
 	bool "NINA passthrough mode for esptool"
 	default y
 	depends on WIFI_NINA_LOCAL && SOC_RP2040 && SHELL

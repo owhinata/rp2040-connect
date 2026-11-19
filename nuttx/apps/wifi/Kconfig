@@ -6,7 +6,7 @@
 config NANO_WIFI_CREDENTIALS
 	bool "Stored Wi-Fi credentials (wifi_credentials.c)"
 	default y
-	depends on NANO_NINA_NET && NANO_KV_STORE
+	depends on NINA_NET && NANO_KV_STORE
 	---help---
 		The Zephyr build's Wi-Fi credentials library
 		(subsys/net/lib/wifi_credentials/ with its settings backend,

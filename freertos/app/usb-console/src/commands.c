@@ -358,7 +358,7 @@ SHELL_CMD_REGISTER(selftest, NULL, "Test the Zephyr compatibility layer (build o
  * common/shell/i2c_dma_shell.c, common/imu/imu_stream.c,
  * common/imu/kv_store.c (with "kv wipe" of common/compat/kv_store_wipe.c),
  * freertos/drivers/nina/nina_passthrough.c ("nina": the shared
- * common/drivers/nina/nina_shell.c with "passthrough"),
+ * common/shell/nina_shell.c with "passthrough"),
  * common/compat/zephyr_wifi_shell.c
  * ("wifi", with "wifi cred" of the copy of Zephyr's
  * wifi_credentials_shell.c), freertos/drivers/wifi/nano_ifconfig.c,

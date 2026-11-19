@@ -11,7 +11,7 @@ symlink で、`libexternal.a` になります）。ボード側の部分は `nut
 ## NINA-W102（`nina`）
 
 NINA のドライバーは、OS に依存しないコア（リポジトリの `common/drivers/nina/`。ほかの版と共有する）と、NuttX への
-接続（`nuttx/drivers/nina/` とボードの `src/nano_nina.c`）に分かれています。コアの `.c` は `nina/Make.defs` が
+接続（`nuttx/drivers/nina/` とボードの `src/nina_bus.c`）に分かれています。コアの `.c` は `nina/Make.defs` が
 `VPATH` で参照し、オブジェクトは `nuttx/drivers` にできます。コアには前置きヘッダーを付けません（構成の値は、NuttX の
 ヘッダーが読む `<nuttx/config.h>` から入ります）。コアのヘッダーは `common/drivers/nina/` にあり、カーネル側
 （`nina/Make.defs`）、ボード、`nina`・`imu` のアプリがインクルードパスに足します。
@@ -21,8 +21,8 @@ NINA のドライバーは、OS に依存しないコア（リポジトリの `c
 | 境界 | NuttX 版の実装 | 満たすこと |
 |---|---|---|
 | `common/drivers/nina/nina_os.h` | `nina/nina_os.c` | `nina_os_lock()`・`nina_os_unlock()`: 再帰可能で優先度継承のあるロック（Zephyr 版の `K_MUTEX_DEFINE(nina_lock)`）。`nina_os_lock()` は 0 か負の errno を返し、失敗は `nina_request()`・`nina_ip_config()` がそのまま返す。`nina_os_dns_lock()`・`nina_os_dns_unlock()`: 名前解決の 2 つの命令の間に持つ、優先度継承のあるロック。`nina_os_sleep_us()`・`nina_os_sleep_ms()`: Zephyr の `k_sleep()` と同じく tick に切り上げて 1 tick 足した時間眠り、シグナルでは終わらない。`nina_os_uptime_ms()`: カーネルの時計の ms（切り捨て。`k_uptime_get()`）。`nina_os_ready_start()`・`nina_os_ready_arm()`・`nina_os_ready_wait()`・`nina_os_ready_disarm()`: READY の変化を割り込みで待つ（`nina_os_ready_start()` がコールバックを登録し、失敗したらコアは 100 µs ごとに読む。下の「READY の待ち」）。`nina_os_event_start()`・`nina_os_event_seq()`・`nina_os_event_wait()`: IRQ の線（GPIO2）の立ち上がりのエッジを数え、待っている全スレッドを起こす（`nina_os_event_start()` が失敗したらビット 2 が無いときの間隔で待つ。下の「ファームウェアの追加機能」） |
-| `common/drivers/nina/nano_nina.h` | ボードの `src/nano_nina.c` | `nano_nina_initialize()`: 起動時に 1 回、SPI とそのピンを設定して CS を非アクティブにする（READY・RESET・IRQ には触れない）。`nano_nina_bus_ready()`: SPI と 4 本の線が使えるか。`nano_nina_pin_configure()`・`nano_nina_pin_set()`・`nano_nina_pin_get()`: 論理値（1 がアクティブ）。極性とプルはボードが知る（CS GPIO9 アクティブ low、READY GPIO10 アクティブ low・プルアップ、RESET GPIO3 アクティブ low、IRQ GPIO2 アクティブ high・プルダウン）。`nano_nina_transceive()`: モード 0・8 ビット・MSB first の同期転送（RX が NULL なら書くだけ）、CS には触れない |
-| 構成 | `nina/Kconfig` | `CONFIG_NANO_NINA_TCP_MAX_IO`（既定 3584）と `CONFIG_NANO_NINA_SEND_RETRY_MS`（既定 1）。`nina_sock.h` が読み、無ければ既定値を使う |
+| `common/drivers/nina/nina_bus.h` | ボードの `src/nina_bus.c` | `nina_bus_initialize()`: 起動時に 1 回、SPI とそのピンを設定して CS を非アクティブにする（READY・RESET・IRQ には触れない）。`nina_bus_ready()`: SPI と 4 本の線が使えるか。`nina_pin_configure()`・`nina_pin_set()`・`nina_pin_get()`: 論理値（1 がアクティブ）。極性とプルはボードが知る（CS GPIO9 アクティブ low、READY GPIO10 アクティブ low・プルアップ、RESET GPIO3 アクティブ low、IRQ GPIO2 アクティブ high・プルダウン）。`nina_bus_transceive()`: モード 0・8 ビット・MSB first の同期転送（RX が NULL なら書くだけ）、CS には触れない |
+| 構成 | `nina/Kconfig` | `CONFIG_NINA_TCP_MAX_IO`（既定 3584）と `CONFIG_NINA_SEND_RETRY_MS`（既定 1）。`nina_sock.h` が読み、無ければ既定値を使う |
 | C ライブラリ | NuttX の libc | `nina_sock.[ch]`・`nina_dns.[ch]` は POSIX の `<sys/socket.h>`・`<sys/types.h>`・`<sys/uio.h>`・`<netinet/in.h>`・`<netinet/tcp.h>`・`<arpa/inet.h>`・`<poll.h>`・`<netdb.h>` の型と定数（`struct sockaddr_in`、`struct iovec`、`struct addrinfo`、`AF_INET`、`MSG_DONTWAIT`、`POLLIN`、`EAI_*` など）と、`inet_pton()`・`htons()`・`malloc()`・`free()` を使う。`nina_sock_poll_revents()` が返す `POLL*` と `EAI_*` の値は、呼び出す側と同じヘッダーのもの |
 
 ### SPI の転送層
@@ -32,14 +32,14 @@ NINA のドライバーは、OS に依存しないコア（リポジトリの `c
 | `common/drivers/nina/nina_spi.c` | コマンドと応答のフレーミング（`nina_request()`、`nina_ip_config()`）。3 つの版が使う |
 | `common/drivers/nina/nina_proto.h` | 公開する宣言。Zephyr 版も同じファイルを使う |
 | `common/drivers/nina/nina_os.h`、`nina/nina_os.c` | ロック（再帰可能なミューテックス、優先度継承あり）、sleep、ms の時計、READY の割り込みでの待ち。Zephyr の `K_MUTEX`・`k_sleep()`・`k_uptime_get()` に当たる |
-| `common/drivers/nina/nano_nina.h`、ボードの `src/nano_nina.c` | SPI1 と 4 本の信号線（CS、READY、RESET、IRQ）。Zephyr のデバイスツリーと SPI・GPIO ドライバーが行っていた設定に当たる |
+| `common/drivers/nina/nina_bus.h`、ボードの `src/nina_bus.c` | SPI1 と 4 本の信号線（CS、READY、RESET、IRQ）。Zephyr のデバイスツリーと SPI・GPIO ドライバーが行っていた設定に当たる |
 
 - 要求は呼び出したスレッドの文脈で同期して処理します。ミューテックスで直列化し、CS を下げてから
   応答を読み終えるまで（READY を待つ間も）CS を保持します。
 - NINA のリセットは最初の要求のときに 1 回だけ行います（10 ms、750 ms）。起動時にはボードが SPI1 と
   そのピンを設定し、CS を非アクティブにするだけです。
 - SPI は NuttX の `rp2040_spi.c` をポーリングで使います（DMA なし）。転送ごとに `SPI_LOCK` を取り、
-  最初の転送でモード 0・8 ビット・`CONFIG_NANO_NINA_SPI_FREQUENCY` を設定します。`SPI_SELECT` は
+  最初の転送でモード 0・8 ビット・`CONFIG_NINA_SPI_FREQUENCY` を設定します。`SPI_SELECT` は
   使いません。
 - READY の待ち: コアの `wait_ready()` は READY（GPIO10、アクティブ low）を 100 µs ごとに見る代わりに、
   その変化の割り込みで眠ります（Zephyr 版・FreeRTOS 版と同じ）。`nina_os_ready_arm()` が
@@ -52,7 +52,7 @@ NINA のドライバーは、OS に依存しないコア（リポジトリの `c
   TIMER から読む tickless の tick なので、割り込みを止めている間（フラッシュの消去）にずれません（FreeRTOS 版は
   その間 tick が止まり、あとで TIMER に追いつくので、10 ms ごとに区切ります）。`nina_os_ready_disarm()` でエッジを止め、転送中の CS による
   READY の変化では割り込みを起こしません。`gpio0` と `src/nano_gpio.c` は `CONFIG_NANO_LSM6DSO_STREAM` で
-  ビルドされるので、`CONFIG_NANO_NINA` はそれに依存します。
+  ビルドされるので、`CONFIG_NINA` はそれに依存します。
   コールバックは最初のリセットのあとに `nina_os_ready_start()` が `gpio0` に登録します。登録に失敗したときは、
   コアは 100 µs ごとに READY を読みます（期限と結果は同じ）。
 - 期限と配線は `design/nuttx-porting-ja.md` の「NINA-W102（`nina`）」の節にあります。
@@ -114,7 +114,7 @@ Zephyr 版はソケットのオフロード（`drivers/nina/nina_socket.c`）で
   `getsockopt` の `NINA_SO_POLL`）です。`ioctl` は `FIONREAD`（下）のほかは `ENOTTY` を返して NuttX 自身の処理（ネットワーク
   デバイスの `SIOC*` など）に任せます。`socket(AF_INET, SOCK_CTRL)`（`ifconfig` などが使う）は `ENOTSUP` で
   NuttX 自身に任せます。
-- 送受信の値は Zephyr 版と同じです: TCP の送信は 1 回 3584 バイトまで（`CONFIG_NANO_NINA_TCP_MAX_IO`）、
+- 送受信の値は Zephyr 版と同じです: TCP の送信は 1 回 3584 バイトまで（`CONFIG_NINA_TCP_MAX_IO`）、
   UDP は 512 バイトまで（超えると `EMSGSIZE`）、受信は 1 回 512 バイトまで。`sendmsg` は複数のベクターを
   3584 バイトまで 1 つにつなげて 1 回の命令で書きます（MQTT のヘッダーと本体を 1 回で出すため。NuttX の
   usrsock はベクターを分けたまま渡します）。1 つのベクターの送信は `send`・`sendto`、複数なら `sendmsg` として
@@ -122,7 +122,7 @@ Zephyr 版はソケットのオフロード（`drivers/nina/nina_socket.c`）で
 - 送受信の待ち方: 要求 1 回で Zephyr 版の待ちのループを 1 周、呼び出したスレッドで行い、周と周の間は
   usrsock が待ちます。
   - 待つ TCP の送信で NINA が 1 バイトも受け取らなかったときは、`SENDTO_READY` を落として `EAGAIN` で
-    応え、`CONFIG_NANO_NINA_SEND_RETRY_MS`（既定 1 ms。Zephyr 版の `CONFIG_NINA_SEND_RETRY_MS`）の後に
+    応え、`CONFIG_NINA_SEND_RETRY_MS`（既定 1 ms。Zephyr 版と同じ）の後に
     `nina_event` が `SENDTO_READY` を送り、usrsock が同じ要求を出し直します（次の周）。最初の周と以後
     100 ms ごとに NINA の poll で状態を確かめ（エラーフラグなら `EPIPE`）、最初の周から 10 秒で `EAGAIN` を
     返します。期限と次の確認の時刻はソケットごとに持ち、同じ呼び出しの続きかどうかはデータのアドレスと
@@ -165,7 +165,7 @@ Zephyr 版はソケットのオフロード（`drivers/nina/nina_socket.c`）で
 使います。NuttX 版は専用の関数 `nina_getaddrinfo()`・`nina_freeaddrinfo()`（`common/drivers/nina/nina_dns.h`）で、互換層の
 `<zephyr/net/socket.h>` が `zsock_getaddrinfo()`・`zsock_freeaddrinfo()`・`struct zsock_addrinfo` をこれに
 つなぎます。NuttX の `getaddrinfo()`（`CONFIG_LIBC_NETDB`。DNS サーバーへ自分で UDP で問い合わせる）は
-使わず、`CONFIG_NANO_NINA_DNS` は `CONFIG_LIBC_NETDB` と同時には有効にできません。エラーは NuttX の
+使わず、`CONFIG_NINA_DNS` は `CONFIG_LIBC_NETDB` と同時には有効にできません。エラーは NuttX の
 `EAI_*` の値で、名前は Zephyr 版の `DNS_EAI_*` と同じです（名前が引けない `EAI_NONAME`、SPI の失敗
 `EAI_AGAIN`、アドレスの長さが違う `EAI_FAIL`、ヒントの誤り `EAI_BADFLAGS`・`EAI_FAMILY`・`EAI_SOCKTYPE`、
 サービスの誤り `EAI_SERVICE`、メモリー不足 `EAI_MEMORY`）。2 つの命令の間はミューテックスで守ります
@@ -260,8 +260,8 @@ NuttX 版のビット 2 の待ち:
 PC の esptool で NINA のフラッシュを読み書きするための、USB の CDC ACM と NINA の UART（ESP32 の UART0）の中継です。
 FreeRTOS 版の `freertos/drivers/nina/nina_passthrough.c` と同じ仕様で、判断（要求の印、線の対応、レート、出口、
 リング）は 3 版で共有する `common/drivers/nina/nina_passthrough_logic.h` を使います。NuttX 側はボードの
-`src/nano_nina_passthrough.c`（ハードウェアを触らない部分は `src/nano_nina_passthrough_glue.h`）と
-`include/nano_nina_passthrough.h`、`CONFIG_NANO_NINA_PASSTHROUGH`（既定 y）です。
+`src/nina_passthrough.c`（ハードウェアを触らない部分は `src/nina_passthrough_glue.h`）と
+`include/nina_passthrough.h`、`CONFIG_NINA_PASSTHROUGH`（既定 y）です。
 
 | RP2040 | 中継モード | 通常のファームウェア |
 |---|---|---|
@@ -276,7 +276,7 @@ FreeRTOS 版の `freertos/drivers/nina/nina_passthrough.c` と同じ仕様で、
   なります。フラッシュ（KV）には何も書きません。
 - 中継モードの起動: `nano_bringup()` は USB（CDC ACM、同じ記述子とシリアル番号）だけを用意し、SPI1・NINA・I2C0・
   センサー・`wlan0`・KV のフラッシュを起こしません。init タスクは nsh・Telnet・Wi-Fi・スレッドの代わりに
-  `nano_nina_passthrough_run()` を実行します（優先度 120）。
+  `nina_passthrough_run()` を実行します（優先度 120）。
 - 線とレート: cdcacm のコールバック（`CAIOC_REGISTERCB`。USB の割り込みから呼ばれる）が、
   `CAIOC_GETCTRLLINE`・`CAIOC_GETLINECODING` で新しい状態を読み、その場でピンに反映します（RTS が有効 → リセット解除、
   DTR が有効 → GPIO0 を LOW）。ホストの変化はどれほど短くても順に反映されます。UART1 は line coding のレートに
@@ -650,8 +650,8 @@ Zephyr の API を、Zephyr の名前のまま最小限だけ用意したもの�
 | `zephyr_device.c` | デバイスの初期化と一覧（`gpio0`、`i2c0`、`lsm6dsox` を Zephyr 版の初期化の順に、ノードのラベルと sensor の API かどうかと共に。`gpio0` は OS の構成の `CONFIG_NANO_LSM6DSO_STREAM` のとき） |
 | `zephyr_i2c.c`（NuttX） | I2C（NuttX の I2C マスターの上） |
 | `zephyr_hwinfo.c`（NuttX） | `hwinfo_get_device_id()`。ボードのチップ ID（`nano_chip_id()`） |
-| `zephyr_net_if.c`（NuttX）、`zephyr_net_mgmt.c`、`zephyr_wifi_mgmt.c` | インターフェース（NuttX のネットワークデバイスの値）、`net_mgmt` のイベントの待ち行列とスレッド（スレッドは OS の部分 `zephyr_net_mgmt_os.h`。スタックの大きさは `priorities.h` の `NANO_STACK_NET_MGMT`）、Wi-Fi の要求の処理（Zephyr の `subsys/net/l2/wifi/wifi_mgmt.c` の検査の写し）とイベント、`NET_REQUEST_WIFI_CONNECT_STORED`（同じファイルの `connect_stored_command()` の写し。`CONFIG_NANO_WIFI_CREDENTIALS` のとき）。`CONFIG_NANO_NINA_NET` のときだけ |
-| `zephyr_wifi_utils.c` | `wifi_security_txt()`・`wifi_band_txt()`（Zephyr の `wifi_mgmt.c`）、チャネルの検査（`wifi_utils.c`）、`net_bytes_from_str()`（`subsys/net/ip/utils.c`）の写し。`wifi cred` が使う。OS に依存しない。`CONFIG_NANO_NINA_NET` のときだけ |
+| `zephyr_net_if.c`（NuttX）、`zephyr_net_mgmt.c`、`zephyr_wifi_mgmt.c` | インターフェース（NuttX のネットワークデバイスの値）、`net_mgmt` のイベントの待ち行列とスレッド（スレッドは OS の部分 `zephyr_net_mgmt_os.h`。スタックの大きさは `priorities.h` の `NANO_STACK_NET_MGMT`）、Wi-Fi の要求の処理（Zephyr の `subsys/net/l2/wifi/wifi_mgmt.c` の検査の写し）とイベント、`NET_REQUEST_WIFI_CONNECT_STORED`（同じファイルの `connect_stored_command()` の写し。`CONFIG_NANO_WIFI_CREDENTIALS` のとき）。`CONFIG_NINA_NET` のときだけ |
+| `zephyr_wifi_utils.c` | `wifi_security_txt()`・`wifi_band_txt()`（Zephyr の `wifi_mgmt.c`）、チャネルの検査（`wifi_utils.c`）、`net_bytes_from_str()`（`subsys/net/ip/utils.c`）の写し。`wifi cred` が使う。OS に依存しない。`CONFIG_NINA_NET` のときだけ |
 | `sensor_shell_stream.c` | Zephyr の `drivers/sensor/sensor_shell_stream.c` の写し（sensor シェルの処理スレッド）。OS の `sensor_shell_os.h` を最初に読み、処理スレッドのコールバックを `sensor_shell_os_processing_callback()` にした（NuttX 版は `nuttx/apps/sensor/sensor_shell_nuttx.c`）。`apps/sensor` がビルドする |
 | `wifi_credentials.c`、`wifi_credentials_backend_settings.c` | Zephyr の `subsys/net/lib/wifi_credentials/` の写し（保存した Wi-Fi の資格情報）。`apps/wifi` がビルドする。バックエンドの変更は 2 つ: 読み込みのバッファーを 8 バイトに揃えた（構造体として読むため。Cortex-M0+ は揃っていない読み出しで止まる）、番号の書式を `%zu` にした |
 | `subsys/kvss/nvs/`、`subsys/settings/`、`subsys/crc/crc8_sw.c`、`lib/utils/hex.c` | Zephyr v4.5.0 の NVS、settings、CRC-8、16 進の変換の写し（無改変。下の「KV」）。`apps/imu` がビルドする |
@@ -712,8 +712,7 @@ Zephyr の API を、Zephyr の名前のまま最小限だけ用意したもの�
   ファイルに `-imacros autoconf.h` で構成を読ませるのと同じ形）。中身は `<nuttx/config.h>`、互換層より先に要る
   NuttX のヘッダー（`<zephyr/kernel.h>` が先に読むもの: `<sys/types.h>`、`<nuttx/irq.h>`、`<nuttx/mutex.h>`、
   `<nuttx/semaphore.h>`、`<nuttx/wdog.h>`、`<stdio.h>`）と、共有するソースが使う Zephyr の Kconfig の値
-  （`CONFIG_SENSOR_LOG_LEVEL` 3。Zephyr 版の構成と同じ値）と名前（`time_sync.c` の `CONFIG_NINA_NTP_SERVER`・
-  `_PORT`・`_INTERVAL_MS` を、NuttX 版の選択肢 `CONFIG_NANO_NINA_NTP_*` の値にする。`lsm6dso.c`・`lsm6dso.h` の
+  （`CONFIG_SENSOR_LOG_LEVEL` 3。Zephyr 版の構成と同じ値。`lsm6dso.c`・`lsm6dso.h` の
   `CONFIG_SENSOR_ASYNC_API` を、`CONFIG_NANO_LSM6DSO_STREAM` があれば定義する）です。そのため共有する
   ソースには NuttX のヘッダーの行がありません。ソケットのヘッダーは入れていません（`accept()` などの名前がソースの
   関数と重なる。必要なファイルは互換層の `<zephyr/net/socket.h>` が読む）。ホストテストも同じヘッダーを付けます

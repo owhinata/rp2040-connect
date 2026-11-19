@@ -35,9 +35,10 @@ unchanged (the NuttX build's header of the same name defines its one device with
 values). `lsm6dso/lsm6dso_shub.c` and `lsm6dso_trigger.c` (copies of Zephyr's, built only with
 `CONFIG_LSM6DSO_SENSORHUB` and `CONFIG_LSM6DSO_TRIGGER`, which are off) stay here and read
 `lsm6dso.h` from `common/drivers/lsm6dso/`. The NINA core (`nina_spi.c`, `nina_net.c`, `nina_sock.[ch]`,
-`nina_dns.[ch]`, `nina_shell.c`, the declarations `nina_proto.h`, the boundary headers `nano_nina.h` and
-`nina_os.h`, and others) is in `common/drivers/nina/`, shared by the three builds; `nina/` keeps only
-this build's part (see the NINA section below). The file names in the tables below cover both places.
+`nina_dns.[ch]`, the declarations `nina_proto.h`, the protocol's command and reply bytes
+`nina_cmd.h`, the boundary headers `nina_bus.h` and `nina_os.h`, and others) is in
+`common/drivers/nina/` and the `nina` command `nina_shell.c` in `common/shell/`, shared by the three
+builds; `nina/` keeps only this build's part (see the NINA section below). The file names in the tables below cover both places.
 
 ## LSM6DSO FIFO streaming
 
@@ -218,10 +219,11 @@ The driver itself is the core shared with the NuttX and FreeRTOS builds (`common
 | `nina_net.c` | `common/drivers/nina/` | Network interface; Wi-Fi connect, disconnect, scan, status; applying the DHCP result (address, gateway); link monitoring |
 | `nina_sock.[ch]` | `common/drivers/nina/` | The socket table and commands (one pass of each wait loop at a time) |
 | `nina_dns.[ch]` | `common/drivers/nina/` | Name resolution (the module's resolver) |
-| `nina_shell.c` | `common/drivers/nina/` | The `nina version` command (in this build `nina passthrough` too; "The esptool passthrough" below) |
+| `nina_cmd.h` | `common/drivers/nina/` | The names of the protocol's bytes: framing, the commands the driver sends, the values of their replies |
+| `nina_shell.c` | `common/shell/` | The `nina version` command (in this build `nina passthrough` too; "The esptool passthrough" below) |
 | `nina_passthrough_logic.h` | `common/drivers/nina/` | The decisions of the esptool passthrough (the restart's request, DTR and RTS on the module's lines, the rate, the way out, the receive buffer), shared with the FreeRTOS build |
 | `nina_wait.[ch]` | `common/drivers/nina/` | The waits between the passes of the socket loops (an interval, or the IRQ line's edge) |
-| `nano_nina.c` | `nina/` | Zephyr's side of the core's `nano_nina.h`: the devicetree's `spi1` and the four lines (CS, READY, RESET, IRQ), Zephyr's GPIO and SPI calls |
+| `nina_bus.c` | `nina/` | Zephyr's side of the core's `nina_bus.h`: the devicetree's `spi1` and the four lines (CS, READY, RESET, IRQ), Zephyr's GPIO and SPI calls |
 | `nina_os.c` | `nina/` | Zephyr's side of the core's `nina_os.h`: mutexes, sleeps, clock, the READY interrupt, the waits for the IRQ line's (GPIO2) edges |
 | `nina_socket.c` | `nina/` | Socket offload (file descriptors, errno, `O_NONBLOCK`, `SO_RCVTIMEO`, the wait loops and their sleeps, poll), and the resolver registered as the `getaddrinfo` offload |
 | `nina_passthrough.[ch]`, `nina_passthrough_hw.h` | `nina/` | The esptool passthrough (`nina passthrough confirm`); `_hw.h` is its part on the RP2040's registers (watchdog, UART1, GPIO) |
@@ -330,7 +332,7 @@ How bit 2 is used (`common/drivers/nina/nina_wait.h`):
 to the NINA's UART (the ESP32's UART0, which its ROM bootloader uses), so that esptool on the PC reads
 and writes the NINA's flash, instead of Arduino's SerialNINAPassthrough sketch (the RP2040's firmware
 stays). It behaves as the FreeRTOS build's; the decisions are the shared
-`common/drivers/nina/nina_passthrough_logic.h`. `CONFIG_NANO_NINA_PASSTHROUGH` (on by default).
+`common/drivers/nina/nina_passthrough_logic.h`. `CONFIG_NINA_PASSTHROUGH` (on by default).
 
 - Wiring: GPIO8 = UART1 TX -> the ESP32's UART0 RX, GPIO9 = UART1 RX. They are the SPI link's MISO and
   CS, so the NINA's SPI cannot run meanwhile. GPIO2 = the ESP32's GPIO0 (boot mode), GPIO3 = RESETN.
@@ -341,7 +343,7 @@ stays). It behaves as the FreeRTOS build's; the decisions are the shared
 - The way in: the command leaves a request in the watchdog's scratch registers 0..3 and restarts with
   the watchdog. The start reads and clears it at once (`POST_KERNEL` 0), so RESET and any later
   restart are normal starts. Nothing is written to the flash (the key-value store).
-- Zephyr starts as usual in this mode, but the NINA core sees no SPI bus (`nano_nina_bus_ready()` is
+- Zephyr starts as usual in this mode, but the NINA core sees no SPI bus (`nina_bus_ready()` is
   false): the Wi-Fi interface's initialization, the Telnet server's socket, `nina version` and the
   like fail with `-ENODEV` without touching SPI1 or the NINA's lines (the Telnet errors stay in the RAM
   log). `main()` runs the relay without settings, calibration, time synchronization or a Wi-Fi
@@ -513,7 +515,7 @@ All but `nina_boundary_*`, `passthrough` and `nina_socket*` are tests shared wit
 | `nina_spi` | NINA SPI framing, reply parsing (the firmware's error reply 0xEF included), READY deadlines, the capability probe (0x6A) (the shared core `nina_spi.c`, fake boundaries); each both with the waits on READY's interrupt and, when they cannot start, with READY read every 100 µs |
 | `nina_wait` | The socket waits (`nina_wait.c`): the intervals (before the events start, and after they could not), the IRQ line's edges, the 100 ms timeout, the deadline, the back-off (fake clock and line) |
 | `nina_sock`, `nina_dns`, `nina_dns_offload` | The NINA socket commands, name resolution (`nina_dns_offload` in this build's form, `NINA_OS_DNS_OFFLOAD`) |
-| `nina_boundary` | The shared `nina_spi.c` on this build's `nina/nano_nina.c` and `nina_os.c`: framing, lines and flags, the reset sequence, the READY interrupt (callback, semaphore reset, edge direction, off before transfers, 10 ms bound) and the sampling when the callback cannot be registered; the waits for the IRQ line's edges (a start that fails, GPIO2's callback and rising edge, the count, a wait ended by an edge, the timeout, an edge just before the wait) |
-| `nina_boundary_passthrough` | The same with `CONFIG_NANO_NINA_PASSTHROUGH`: no bus while the passthrough runs (`-ENODEV` without touching a line or SPI), as usual once it is gone |
+| `nina_boundary` | The shared `nina_spi.c` on this build's `nina/nina_bus.c` and `nina_os.c`: framing, lines and flags, the reset sequence, the READY interrupt (callback, semaphore reset, edge direction, off before transfers, 10 ms bound) and the sampling when the callback cannot be registered; the waits for the IRQ line's edges (a start that fails, GPIO2's callback and rising edge, the count, a wait ended by an edge, the timeout, an edge just before the wait) |
+| `nina_boundary_passthrough` | The same with `CONFIG_NINA_PASSTHROUGH`: no bus while the passthrough runs (`-ENODEV` without touching a line or SPI), as usual once it is gone |
 | `passthrough` | The passthrough `nina/nina_passthrough.c` on fake Zephyr calls and fake hardware (`nina_passthrough_hw.h`): the request at the start, the lines and the rate from the USB messages and the tick, both data paths and the handovers between the interrupts, breaks and overruns, the bytes dropped without USB, the way out, the command. The decisions themselves: the FreeRTOS build's test `freertos/tests/passthrough` |
 | `nina_socket` | The socket offload `nina/nina_socket.c` on the shared core: descriptors, the wait loops and sleeps (after the events could not start), options, accept, sendmsg, datagrams, poll, the resolver's registration; the waits for the IRQ line's edges once the events are started (an edge during a pass, the timeout, the deadline, the send's waits, a `poll` with another kind of descriptor) |

@@ -40,18 +40,6 @@
 
 #define CONFIG_SENSOR_LOG_LEVEL 3
 
-/* The Zephyr build's names of the port's NuttX options that the shared
- * sources use: the NTP server, port and interval of the time
- * synchronization (time_sync.c), CONFIG_NANO_NINA_NTP_* of
- * nuttx/apps/imu/Kconfig.
- */
-
-#ifdef CONFIG_NANO_NINA_NTP_PORT
-#  define CONFIG_NINA_NTP_SERVER      CONFIG_NANO_NINA_NTP_SERVER
-#  define CONFIG_NINA_NTP_PORT        CONFIG_NANO_NINA_NTP_PORT
-#  define CONFIG_NINA_NTP_INTERVAL_MS CONFIG_NANO_NINA_NTP_INTERVAL_MS
-#endif
-
 /* The FIFO stream of the LSM6DSO driver, CONFIG_SENSOR_ASYNC_API in the
  * Zephyr build (lsm6dso.c, lsm6dso.h): CONFIG_NANO_LSM6DSO_STREAM of
  * nuttx/drivers/lsm6dso/Kconfig.

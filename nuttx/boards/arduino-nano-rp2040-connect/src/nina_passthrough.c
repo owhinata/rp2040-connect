@@ -1,18 +1,18 @@
 /****************************************************************************
- * boards/arduino-nano-rp2040-connect/src/nano_nina_passthrough.c
+ * boards/arduino-nano-rp2040-connect/src/nina_passthrough.c
  *
  * SPDX-License-Identifier: MIT
  *
  ****************************************************************************/
 
-/* The NINA passthrough mode (<arch/board/nano_nina_passthrough.h>): esptool
+/* The NINA passthrough mode (<arch/board/nina_passthrough.h>): esptool
  * on the PC talks through the board's USB port to the ESP32 ROM bootloader
  * of the NINA-W102, as WiFiNINA's SerialNINAPassthrough sketch (mbed core)
  * does, without replacing this firmware or touching the flash.  The
  * FreeRTOS build's mode (freertos/drivers/nina/nina_passthrough.c) on
  * NuttX, with its decisions shared (nina_passthrough_logic.h of
  * common/drivers/nina) and the NuttX side of them in
- * nano_nina_passthrough_glue.h.
+ * nina_passthrough_glue.h.
  *
  * The board (the mbed core's variants/NANO_RP2040_CONNECT; board.h):
  *
@@ -27,7 +27,7 @@
  * (nuttx/apps/nina) leaves the request (four words, nina_pt_mark()) in the
  * watchdog's scratch registers 0..3 and restarts through the watchdog
  * (nano_watchdog_reboot(), src/nano_reset.c, which keeps them).
- * rp2040_boardinitialize() calls nano_nina_passthrough_boot() first thing:
+ * rp2040_boardinitialize() calls nina_passthrough_boot() first thing:
  * it reads and clears the request, so the RESET button, any later restart
  * and a fatal error start the normal firmware again.  NuttX itself does not
  * use these registers.  Nothing is written to the flash; the state is in
@@ -37,7 +37,7 @@
  * /dev/ttyACM0, the same descriptors and serial number) and nothing of the
  * NINA, I2C0, the sensor, the network device or the key-value flash; SPI1
  * keeps the pin functions of rp2040_common_initialize() but is never
- * started.  The init task calls nano_nina_passthrough_run() instead of
+ * started.  The init task calls nina_passthrough_run() instead of
  * starting nsh, Telnet, the Wi-Fi, MQTT and time threads.  The mode:
  *
  * - The lines: cdcacm calls pt_cdc_event() from the USB interrupt at each
@@ -113,7 +113,7 @@
 #include <nuttx/usb/cdcacm.h>
 
 #include <arch/board/board.h>
-#include <arch/board/nano_nina_passthrough.h>
+#include <arch/board/nina_passthrough.h>
 #include <arch/board/nano_reset.h>
 #include <arch/board/nano_timer.h>
 
@@ -128,7 +128,7 @@
 #include "app_log.h"
 #include "priorities.h"
 #include "nano_connect.h"
-#include "nano_nina_passthrough_glue.h"
+#include "nina_passthrough_glue.h"
 
 /****************************************************************************
  * Pre-processor Definitions
@@ -176,13 +176,13 @@ static bool g_active;             /* pt_cdc_event() acts */
 static volatile bool g_leaving;   /* leave() has begun */
 
 static struct file g_usb;         /* /dev/ttyACM0, shared by the threads */
-static struct nano_pt_host g_host;
+static struct nina_pt_host g_host;
 static struct nina_pt_pins g_applied;
 static bool g_applied_valid;
 static uint32_t g_baud;
 
 static struct nina_pt_ring g_ring;
-static struct nano_pt_uart_counts g_counts;
+static struct nina_pt_uart_counts g_counts;
 static uint64_t g_to_nina;
 static uint64_t g_from_nina;
 static uint64_t g_discarded;      /* from the module while USB was down */
@@ -302,7 +302,7 @@ static void host_coding(void)
   if (file_ioctl(&g_usb, CAIOC_GETLINECODING,
                  (unsigned long)(uintptr_t)&coding) >= 0)
     {
-      set_baud(nano_pt_host_coding(&g_host, nano_pt_coding_rate(coding.baud),
+      set_baud(nina_pt_host_coding(&g_host, nina_pt_coding_rate(coding.baud),
                                    g_baud));
     }
 }
@@ -315,7 +315,7 @@ static void host_ctrlline(void)
   if (file_ioctl(&g_usb, CAIOC_GETCTRLLINE,
                  (unsigned long)(uintptr_t)&ctrlline) >= 0)
     {
-      nano_pt_host_ctrlline(&g_host, ctrlline, now);
+      nina_pt_host_ctrlline(&g_host, ctrlline, now);
       apply_pins(nina_pt_lines_pins(&g_host.lines, now));
     }
 }
@@ -362,7 +362,7 @@ static int pt_uart_interrupt(int irq, FAR void *context, FAR void *arg)
 
   while ((getreg32(PT_UART(UARTFR)) & RP2040_UART_UARTFR_RXFE) == 0)
     {
-      nano_pt_uart_word(&g_ring, &g_counts, getreg32(PT_UART(UARTDR)));
+      nina_pt_uart_word(&g_ring, &g_counts, getreg32(PT_UART(UARTDR)));
     }
 
   putreg32(RP2040_UART_UARTICR_RTIC, PT_UART(UARTICR));
@@ -520,7 +520,7 @@ static void hw_initialize(void)
 {
   /* The module's lines: held in reset, GPIO0 high (apply_pins() below).
    * RESETN without pulls (Zephyr's reset-gpios), GPIO0 with the pull-down
-   * (irq-gpios), as src/nano_nina.c sets them.
+   * (irq-gpios), as src/nina_bus.c sets them.
    */
 
   rp2040_gpio_init(PT_PIN_RESETN);
@@ -630,7 +630,7 @@ static uint32_t wait_ms(uint32_t now, uint32_t led_at)
  * registers.  The request is cleared at once.
  */
 
-void nano_nina_passthrough_boot(void)
+void nina_passthrough_boot(void)
 {
   uint32_t s[NINA_PT_MARK_WORDS];
   int i;
@@ -650,12 +650,12 @@ void nano_nina_passthrough_boot(void)
     }
 }
 
-bool nano_nina_passthrough_active(void)
+bool nina_passthrough_active(void)
 {
   return g_requested;
 }
 
-void nano_nina_passthrough_request(void)
+void nina_passthrough_request(void)
 {
   uint32_t s[NINA_PT_MARK_WORDS];
   irqstate_t flags;
@@ -672,7 +672,7 @@ void nano_nina_passthrough_request(void)
   nano_watchdog_reboot();
 }
 
-void nano_nina_passthrough_run(void)
+void nina_passthrough_run(void)
 {
   struct sched_param param;
   FAR uint8_t *buf;
@@ -692,7 +692,7 @@ void nano_nina_passthrough_run(void)
     }
 
   nina_pt_ring_init(&g_ring, buf, PT_RING_SIZE);
-  nano_pt_host_init(&g_host);
+  nina_pt_host_init(&g_host);
   nxsem_init(&g_line_sem, 0, 0);
   nxsem_init(&g_rx_sem, 0, 0);
   nxsem_init(&g_tx_sem, 0, 0);

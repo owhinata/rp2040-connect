@@ -1,12 +1,12 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /* The "nina" command: cmd_nina_version() and the command's registration
  * from zephyr/app/usb-console/src/main.c, with the same syntax and output
- * (common/drivers/nina/nina_shell.c today, with the line of the module's
+ * (common/shell/nina_shell.c today, with the line of the module's
  * capability bits and those in use, nina_proto.h).  With the board's NINA
- * passthrough mode (CONFIG_NANO_NINA_PASSTHROUGH), also the FreeRTOS
+ * passthrough mode (CONFIG_NINA_PASSTHROUGH), also the FreeRTOS
  * build's "passthrough confirm" (freertos/drivers/nina/nina_passthrough.c
  * cmd_nina_passthrough()), with its messages: it restarts the board into
- * the mode (<arch/board/nano_nina_passthrough.h>).
+ * the mode (<arch/board/nina_passthrough.h>).
  *
  * "version" is SHELL_CMD() (no argument count check: extra words are
  * ignored).  "nina" alone or with an unknown word prints the help, as the
@@ -25,12 +25,12 @@
 #include "nina_proto.h"
 #include "subcmd.h"
 
-#ifdef CONFIG_NANO_NINA_PASSTHROUGH
+#ifdef CONFIG_NINA_PASSTHROUGH
 #  include <errno.h>
 #  include <string.h>
 #  include <unistd.h>
 
-#  include <arch/board/nano_nina_passthrough.h>
+#  include <arch/board/nina_passthrough.h>
 
 #  include "nina_passthrough_logic.h"
 
@@ -49,7 +49,8 @@ static int cmd_nina_version(int argc, char **argv)
 
 	(void)argc;
 	(void)argv;
-	ret = nina_request(0x37, NULL, 0, false, false, version, sizeof(version) - 1, &len);
+	ret = nina_request(NINA_CMD_GET_FW_VERSION, NULL, 0, false, false, version,
+			   sizeof(version) - 1, &len);
 	if (ret) {
 		fprintf(stderr, "NINA version request failed: %d\n", ret);
 		return ret;
@@ -61,7 +62,7 @@ static int cmd_nina_version(int argc, char **argv)
 	return 0;
 }
 
-#ifdef CONFIG_NANO_NINA_PASSTHROUGH
+#ifdef CONFIG_NINA_PASSTHROUGH
 static int cmd_nina_passthrough(int argc, char **argv)
 {
 	(void)argc;
@@ -75,14 +76,14 @@ static int cmd_nina_passthrough(int argc, char **argv)
 	printf("To leave it: close the port at %u bps, or press RESET.\n", NINA_PT_EXIT_BAUD);
 	fflush(stdout);
 	usleep(PASSTHROUGH_RESTART_DELAY_MS * 1000);
-	nano_nina_passthrough_request();
+	nina_passthrough_request();
 	return 0;
 }
 #endif
 
 /* Sorted by name, as Zephyr's shell lists them. */
 static const struct subcmd nina_commands[] = {
-#ifdef CONFIG_NANO_NINA_PASSTHROUGH
+#ifdef CONFIG_NINA_PASSTHROUGH
 	SUBCMD_ARG(passthrough, NULL,
 		   "Restart into the NINA passthrough for esptool: passthrough confirm\n"
 		   "(USB <-> the NINA's UART; leave it by closing the port at 300 bps, "

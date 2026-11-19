@@ -25,15 +25,14 @@ K_SEM_DEFINE(scan_request, 0, 1);
 int nina_socket_create(int family, int type, int proto);
 
 /* The asynchronous scan of the patch 0005 (NINA_CAP_ASYNC_SCAN,
- * firmware/nina-fw/README.md): 0x36 starts it, 0x6B is asked every
- * NINA_SCAN_POLL_MS until it reports the scan done, then 0x27 takes the
+ * firmware/nina-fw/README.md): 0x36 (NINA_CMD_START_SCAN_NETWORKS) starts
+ * it, 0x6B (NINA_CMD_GET_SCAN_STATE) is asked every NINA_SCAN_POLL_MS
+ * until it reports the scan done, then 0x27 (NINA_CMD_SCAN_NETWORKS) takes the
  * results.  The NINA lock is held for each command only, so the sockets'
  * commands go on during the scan, where the 0x27 of 3.0.2 holds it until
  * the scan ends.  A scan still running after NINA_SCAN_WAIT_MS ends with
  * -ETIMEDOUT, without 0x27 (which would wait for it).
  */
-#define NINA_CMD_SCAN_START 0x36
-#define NINA_CMD_SCAN_STATE 0x6b
 #define NINA_SCAN_POLL_MS   100
 #ifndef NINA_SCAN_WAIT_MS
 #define NINA_SCAN_WAIT_MS   10000
@@ -60,13 +59,13 @@ static void clear_ip_config(struct net_if *iface)
 static enum wifi_security_type scan_security(uint8_t type)
 {
 	switch (type) {
-	case 7:
+	case NINA_ENC_TYPE_NONE:
 		return WIFI_SECURITY_TYPE_NONE;
-	case 5:
+	case NINA_ENC_TYPE_WEP:
 		return WIFI_SECURITY_TYPE_WEP;
-	case 2:
+	case NINA_ENC_TYPE_TKIP:
 		return WIFI_SECURITY_TYPE_WPA_PSK;
-	case 4:
+	case NINA_ENC_TYPE_CCMP:
 		return WIFI_SECURITY_TYPE_PSK;
 	default:
 		return WIFI_SECURITY_TYPE_UNKNOWN;
@@ -87,27 +86,28 @@ static int scan_async(void)
 	size_t n;
 	int ret;
 
-	ret = request_one(NINA_CMD_SCAN_START, NULL, 0, &state, 1, &n);
+	ret = request_one(NINA_CMD_START_SCAN_NETWORKS, NULL, 0, &state, 1, &n);
 	if (ret || n != 1) {
 		return ret ? ret : -EPROTO;
 	}
-	if (state != 1) {
+	if (state != 1) { /* not started */
 		return -EIO;
 	}
 	for (;;) {
 		k_sleep(K_MSEC(NINA_SCAN_POLL_MS));
-		ret = request_one(NINA_CMD_SCAN_STATE, NULL, 0, &state, 1, &n);
+		ret = request_one(NINA_CMD_GET_SCAN_STATE, NULL, 0, &state, 1,
+				  &n);
 		if (ret || n != 1) {
 			return ret ? ret : -EPROTO;
 		}
 		switch (state) {
-		case 1: /* running */
+		case NINA_SCAN_RUNNING:
 			break;
-		case 2: /* done */
+		case NINA_SCAN_DONE:
 			return 0;
-		case 0: /* none: stopped */
+		case NINA_SCAN_IDLE: /* stopped */
 			return -ECANCELED;
-		default: /* 3: could not start */
+		default: /* NINA_SCAN_FAILED */
 			return -EIO;
 		}
 		if (k_uptime_get() >= deadline) {
@@ -137,7 +137,8 @@ static void scan_thread(void *a, void *b, void *c)
 		reconnect = scan_reconnect;
 		ret = (nina_capabilities() & NINA_CAP_ASYNC_SCAN) ? scan_async() : 0;
 		if (!ret) {
-			ret = nina_request(0x27, NULL, 0, false, false, records,
+			ret = nina_request(NINA_CMD_SCAN_NETWORKS, NULL, 0,
+					   false, false, records,
 					   sizeof(records), &len);
 		}
 		while (!ret && offset < len) {
@@ -155,22 +156,22 @@ static void scan_thread(void *a, void *b, void *c)
 			offset += ssid_len;
 			result.band = WIFI_FREQ_BAND_2_4_GHZ;
 			result.mfp = WIFI_MFP_UNKNOWN;
-			ret = request_one(0x32, &index, 1, value, sizeof(value),
-					  &n);
+			ret = request_one(NINA_CMD_GET_IDX_RSSI, &index, 1,
+					  value, sizeof(value), &n);
 			if (ret || n != 4) {
 				ret = ret ? ret : -EPROTO;
 				break;
 			}
 			result.rssi = (int32_t)sys_get_le32(value);
-			ret = request_one(0x33, &index, 1, value, sizeof(value),
-					  &n);
+			ret = request_one(NINA_CMD_GET_IDX_ENCT, &index, 1,
+					  value, sizeof(value), &n);
 			if (ret || n != 1) {
 				ret = ret ? ret : -EPROTO;
 				break;
 			}
 			result.security = scan_security(value[0]);
-			ret = request_one(0x3c, &index, 1, value, sizeof(value),
-					  &n);
+			ret = request_one(NINA_CMD_GET_IDX_BSSID, &index, 1,
+					  value, sizeof(value), &n);
 			if (ret || n != WIFI_MAC_ADDR_LEN) {
 				ret = ret ? ret : -EPROTO;
 				break;
@@ -180,8 +181,8 @@ static void scan_thread(void *a, void *b, void *c)
 					value[WIFI_MAC_ADDR_LEN - 1 - i];
 			}
 			result.mac_length = WIFI_MAC_ADDR_LEN;
-			ret = request_one(0x3d, &index, 1, value, sizeof(value),
-					  &n);
+			ret = request_one(NINA_CMD_GET_IDX_CHANNEL, &index, 1,
+					  value, sizeof(value), &n);
 			if (ret || n != 1) {
 				ret = ret ? ret : -EPROTO;
 				break;
@@ -270,18 +271,21 @@ static void connect_thread(void *a, void *b, void *c)
 		id = atomic_get(&request_generation);
 
 		for (int i = 0; i < 60 && id == atomic_get(&generation); i++) {
-			ret = request_one(0x20, NULL, 0, &value, 1, &n);
+			ret = request_one(NINA_CMD_GET_CONN_STATUS, NULL, 0,
+					  &value, 1, &n);
 			if (ret || n != 1) {
 				if (!ret) {
 					ret = -EPROTO;
 				}
 				break;
 			}
-			if (value == 3) {
+			if (value == NINA_WL_CONNECTED) {
 				uint8_t no_power_save = 0, power_reply;
 
 				/* Reapply after every association, including reconnects. */
-				ret = request_one(0x17, &no_power_save, 1, &power_reply, 1, &n);
+				ret = request_one(NINA_CMD_SET_POWER_MODE,
+						  &no_power_save, 1,
+						  &power_reply, 1, &n);
 				if (ret || n != 1 || power_reply != 1) {
 					ret = ret ? ret : -EIO;
 					break;
@@ -384,7 +388,9 @@ static int wifi_connect(const struct device *dev, struct net_if *iface,
 	atomic_inc(&generation);
 	atomic_set(&request_generation, atomic_get(&generation));
 	ret = nina_request(
-		params->security == WIFI_SECURITY_TYPE_NONE ? 0x10 : 0x11, args,
+		params->security == WIFI_SECURITY_TYPE_NONE ?
+			NINA_CMD_SET_NET : NINA_CMD_SET_PASSPHRASE,
+		args,
 		params->security == WIFI_SECURITY_TYPE_NONE ? 1 : 2, false,
 		false, &answer, 1, &n);
 	if (ret || n != 1 || answer != 1) {
@@ -400,7 +406,7 @@ static int wifi_connect(const struct device *dev, struct net_if *iface,
 
 static int wifi_disconnect(const struct device *dev, struct net_if *iface)
 {
-	uint8_t dummy = 0xff, answer;
+	uint8_t dummy = NINA_DUMMY, answer;
 	size_t n;
 	int ret;
 
@@ -409,7 +415,7 @@ static int wifi_disconnect(const struct device *dev, struct net_if *iface)
 	k_mutex_lock(&connect_state_lock, K_FOREVER);
 	wifi_profile_pause_reconnect();
 	atomic_inc(&generation);
-	ret = request_one(0x30, &dummy, 1, &answer, 1, &n);
+	ret = request_one(NINA_CMD_DISCONNECT, &dummy, 1, &answer, 1, &n);
 	if (ret || n != 1 || answer != 1) {
 		k_mutex_unlock(&connect_state_lock);
 		return ret ? ret : -EIO;
@@ -446,9 +452,10 @@ static void monitor_thread(void *a, void *b, void *c)
 			continue;
 		}
 
-		ret = request_one(0x20, NULL, 0, &state, 1, &n);
+		ret = request_one(NINA_CMD_GET_CONN_STATUS, NULL, 0, &state, 1,
+				  &n);
 		if (!ret && n == 1) {
-			if (state == 3) {
+			if (state == NINA_WL_CONNECTED) {
 				disconnected_checks = 0;
 			} else if (++disconnected_checks >= 2) {
 				atomic_inc(&generation);
@@ -472,7 +479,7 @@ K_THREAD_DEFINE(nina_monitor_tid, 1536, monitor_thread, NULL, NULL, NULL, 9, 0,
 static int wifi_status(const struct device *dev, struct net_if *iface,
 		       struct wifi_iface_status *status)
 {
-	uint8_t state, dummy = 0xff;
+	uint8_t state, dummy = NINA_DUMMY;
 	uint8_t rssi[4], bssid[WIFI_MAC_ADDR_LEN];
 	size_t n;
 	int ret;
@@ -480,30 +487,31 @@ static int wifi_status(const struct device *dev, struct net_if *iface,
 	ARG_UNUSED(dev);
 	ARG_UNUSED(iface);
 
-	ret = request_one(0x20, NULL, 0, &state, 1, &n);
+	ret = request_one(NINA_CMD_GET_CONN_STATUS, NULL, 0, &state, 1, &n);
 	if (ret || n != 1) {
 		return ret ? ret : -EPROTO;
 	}
-	status->state =
-		state == 3 ? WIFI_STATE_COMPLETED : WIFI_STATE_DISCONNECTED;
+	status->state = state == NINA_WL_CONNECTED ? WIFI_STATE_COMPLETED
+						     : WIFI_STATE_DISCONNECTED;
 	status->security = WIFI_SECURITY_TYPE_UNKNOWN;
 	status->mfp = WIFI_MFP_UNKNOWN;
 	status->link_mode = WIFI_LINK_MODE_UNKNOWN;
 	status->band = WIFI_FREQ_BAND_UNKNOWN;
 	status->iface_mode = WIFI_MODE_INFRA;
-	if (state != 3) {
+	if (state != NINA_WL_CONNECTED) {
 		return 0;
 	}
 
-	ret = request_one(0x23, &dummy, 1, (uint8_t *)status->ssid,
-			  WIFI_SSID_MAX_LEN, &n);
+	ret = request_one(NINA_CMD_GET_CURR_SSID, &dummy, 1,
+			  (uint8_t *)status->ssid, WIFI_SSID_MAX_LEN, &n);
 	if (ret) {
 		return ret;
 	}
 	status->ssid_len = n;
 	status->ssid[n] = '\0';
 
-	ret = request_one(0x24, &dummy, 1, bssid, sizeof(bssid), &n);
+	ret = request_one(NINA_CMD_GET_CURR_BSSID, &dummy, 1, bssid,
+			  sizeof(bssid), &n);
 	if (ret || n != sizeof(bssid)) {
 		return ret ? ret : -EPROTO;
 	}
@@ -513,7 +521,8 @@ static int wifi_status(const struct device *dev, struct net_if *iface,
 		status->bssid[i] = bssid[sizeof(bssid) - 1 - i];
 	}
 
-	ret = request_one(0x25, &dummy, 1, rssi, sizeof(rssi), &n);
+	ret = request_one(NINA_CMD_GET_CURR_RSSI, &dummy, 1, rssi, sizeof(rssi),
+			  &n);
 	if (ret || n != sizeof(rssi)) {
 		return ret ? ret : -EPROTO;
 	}
@@ -524,12 +533,13 @@ static int wifi_status(const struct device *dev, struct net_if *iface,
 
 static void iface_init(struct net_if *iface)
 {
-	uint8_t dummy = 0xff;
+	uint8_t dummy = NINA_DUMMY;
 	size_t n = 0;
 
 	nina_iface = iface;
 	net_if_dormant_on(iface);
-	if (!request_one(0x22, &dummy, 1, mac, sizeof(mac), &n) &&
+	if (!request_one(NINA_CMD_GET_MACADDR, &dummy, 1, mac, sizeof(mac),
+			 &n) &&
 	    n == sizeof(mac)) {
 		net_if_set_link_addr(iface, mac, sizeof(mac),
 				     NET_LINK_ETHERNET);

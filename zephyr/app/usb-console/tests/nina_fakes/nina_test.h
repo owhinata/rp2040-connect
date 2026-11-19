@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-/* Fakes of the Zephyr calls of drivers/nina/nano_nina.c and nina_os.c for
+/* Fakes of the Zephyr calls of drivers/nina/nina_bus.c and nina_os.c for
  * the host test tests/nina_boundary.c, which defines the functions.  The
  * devicetree's lines are numbered as on the board (CS 9, READY 10, RESET 3,
  * IRQ 2); the flags are distinct values the test can tell apart.
@@ -113,7 +113,7 @@ int k_sem_take(struct k_sem *sem, k_timeout_t timeout);
 void k_sem_give(struct k_sem *sem);
 
 /* <zephyr/shell/shell.h>, for drivers/nina/nina_passthrough.h (built with
- * CONFIG_NANO_NINA_PASSTHROUGH; the test defines nina_passthrough_active()).
+ * CONFIG_NINA_PASSTHROUGH; the test defines nina_passthrough_active()).
  */
 struct shell;
 

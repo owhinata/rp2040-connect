@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /* Host test of nuttx/drivers/nina/nina_spi.c with a fake board
- * (<nano_nina.h>: SPI, CS, READY, RESET, IRQ) and fake kernel services
+ * (<nina_bus.h>: SPI, CS, READY, RESET, IRQ) and fake kernel services
  * (nina_os.h: lock, sleeps, clock).
  *
  * The first half repeats the Zephyr build's tests/nina_spi.c case by case
@@ -60,12 +60,12 @@ static void event(const char *e)
 	strcat(events, " ");
 }
 
-bool nano_nina_bus_ready(void)
+bool nina_bus_ready(void)
 {
 	return bus_ready;
 }
 
-int nano_nina_pin_configure(enum nano_nina_pin pin, enum nano_nina_mode mode)
+int nina_pin_configure(enum nina_pin pin, enum nina_pin_mode mode)
 {
 	static const char *const pins[] = {"CS", "READY", "RESET", "IRQ"};
 	static const char *const modes[] = {"inactive", "active", "high", "input"};
@@ -74,16 +74,16 @@ int nano_nina_pin_configure(enum nano_nina_pin pin, enum nano_nina_mode mode)
 	assert(lock_depth > 0);
 	snprintf(e, sizeof(e), "%s=%s", pins[pin], modes[mode]);
 	event(e);
-	if (pin == NANO_NINA_CS) {
-		cs_active = mode == NANO_NINA_OUTPUT_ACTIVE;
+	if (pin == NINA_PIN_CS) {
+		cs_active = mode == NINA_PIN_OUTPUT_ACTIVE;
 	}
 	return 0;
 }
 
-int nano_nina_pin_set(enum nano_nina_pin pin, int value)
+int nina_pin_set(enum nina_pin pin, int value)
 {
 	assert(lock_depth > 0);
-	if (pin == NANO_NINA_CS) {
+	if (pin == NINA_PIN_CS) {
 		/* The test's requests never assert CS twice in a row. */
 		assert(cs_active != value);
 		cs_active = value;
@@ -94,15 +94,15 @@ int nano_nina_pin_set(enum nano_nina_pin pin, int value)
 	} else {
 		char e[16];
 
-		snprintf(e, sizeof(e), "%s=%d", pin == NANO_NINA_RESET ? "RESET" : "IRQ", value);
+		snprintf(e, sizeof(e), "%s=%d", pin == NINA_PIN_RESET ? "RESET" : "IRQ", value);
 		event(e);
 	}
 	return 0;
 }
 
-int nano_nina_pin_get(enum nano_nina_pin pin)
+int nina_pin_get(enum nina_pin pin)
 {
-	assert(pin == NANO_NINA_READY && lock_depth > 0);
+	assert(pin == NINA_PIN_READY && lock_depth > 0);
 	/* With the OS's waits, read only while armed: a change after the read
 	 * wakes the wait.
 	 */
@@ -120,7 +120,7 @@ int nano_nina_pin_get(enum nano_nina_pin pin)
 	return !cs_active;
 }
 
-int nano_nina_transceive(const uint8_t *tx, uint8_t *rx, size_t len)
+int nina_bus_transceive(const uint8_t *tx, uint8_t *rx, size_t len)
 {
 	assert(lock_depth > 0 && cs_active && tx != NULL && len > 0);
 	calls++;

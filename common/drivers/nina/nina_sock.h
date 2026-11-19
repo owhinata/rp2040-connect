@@ -52,41 +52,29 @@
 
 #include "nina_sockopt.h"
 
-/* CONFIG_NINA_TCP_MAX_IO of the Zephyr build. */
+/* CONFIG_NINA_TCP_MAX_IO of the Zephyr and NuttX builds. */
 
-#ifdef CONFIG_NANO_NINA_TCP_MAX_IO
-#  define NINA_TCP_MAX_IO            CONFIG_NANO_NINA_TCP_MAX_IO
+#ifdef CONFIG_NINA_TCP_MAX_IO
+#  define NINA_TCP_MAX_IO            CONFIG_NINA_TCP_MAX_IO
 #else
 #  define NINA_TCP_MAX_IO            3584
 #endif
 
-/* CONFIG_NINA_SEND_RETRY_MS of the Zephyr build: the wait before a TCP send
- * that found no room is tried again.
+/* CONFIG_NINA_SEND_RETRY_MS of the Zephyr and NuttX builds: the wait
+ * before a TCP send that found no room is tried again.
  */
 
-#ifdef CONFIG_NANO_NINA_SEND_RETRY_MS
-#  define NINA_SEND_RETRY_MS         CONFIG_NANO_NINA_SEND_RETRY_MS
+#ifdef CONFIG_NINA_SEND_RETRY_MS
+#  define NINA_SEND_RETRY_MS         CONFIG_NINA_SEND_RETRY_MS
 #else
 #  define NINA_SEND_RETRY_MS         1
 #endif
 
 /* The firmware's socket commands (nina_socket.c:28-40). */
 
-#define NINA_CMD_SOCKET              0x70
-#define NINA_CMD_CLOSE               0x71
-#define NINA_CMD_BIND                0x73
-#define NINA_CMD_LISTEN              0x74
-#define NINA_CMD_ACCEPT              0x75
-#define NINA_CMD_CONNECT             0x76
-#define NINA_CMD_SEND                0x77
-#define NINA_CMD_RECV                0x78
-#define NINA_CMD_SENDTO              0x79
-#define NINA_CMD_RECVFROM            0x7a
-#define NINA_CMD_IOCTL               0x7b
-#define NINA_CMD_POLL                0x7c
-#define NINA_CMD_GETSOCKOPT          0x7e
+#include "nina_cmd.h"
 
-/* The state byte of NINA_CMD_POLL (nina_socket.c:42-45). */
+/* The state byte of NINA_CMD_SOCKET_POLL (nina_socket.c:42-45). */
 
 #define NINA_POLL_READ               0x01
 #define NINA_POLL_WRITE              0x02

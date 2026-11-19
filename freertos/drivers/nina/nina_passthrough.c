@@ -6,7 +6,7 @@
  *
  * The board (the mbed core's variants/NANO_RP2040_CONNECT: pins_arduino.h
  * SerialNina = Serial3 on D25/D26, NINA_GPIO0 D20, NINA_RESETN D24, and
- * variant.cpp's pin table; common/drivers/nina/nano_nina.h):
+ * variant.cpp's pin table; common/drivers/nina/nina_bus.h):
  *
  *   RP2040   UART1 in this mode                SPI link of the normal firmware
  *   GPIO8    TX  -> the module's UART0 RX      SPI1 RX (MISO)
@@ -88,6 +88,7 @@
 #include "nano_shell.h"
 #include "nina_passthrough.h"
 #include "nina_passthrough_logic.h"
+#include "nina_shell.h"
 
 LOG_MODULE_REGISTER(nina_passthrough, LOG_LEVEL_INF);
 
@@ -369,7 +370,7 @@ void nina_passthrough_run(void)
 
 	/* The module's lines as the port closed (DTR, RTS clear) wants them:
 	 * held in reset, GPIO0 high.  RESETN without pulls (Zephyr's
-	 * reset-gpios), GPIO0 with the pull-down (irq-gpios), as nano_nina.c.
+	 * reset-gpios), GPIO0 with the pull-down (irq-gpios), as nina_bus.c.
 	 */
 	gpio_init(PT_PIN_RESETN);
 	gpio_disable_pulls(PT_PIN_RESETN);
@@ -443,7 +444,7 @@ static int cmd_nina_passthrough(const struct shell *sh, size_t argc, char **argv
 	return 0;
 }
 
-/* "nina": the shared command (common/drivers/nina/nina_shell.c, which
+/* "nina": the shared command (common/shell/nina_shell.c, which
  * the Zephyr build uses as well) with this build's "passthrough".  The
  * shared set is static and defined there; this root's set is dynamic and
  * merges the two by name.  commands.c lists this root instead of the

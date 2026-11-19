@@ -35,7 +35,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#define CONFIG_NANO_NINA_PASSTHROUGH 1
+#define CONFIG_NINA_PASSTHROUGH 1
 
 #include "nina_passthrough_logic.h"
 

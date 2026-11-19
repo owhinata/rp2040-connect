@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 /* The little of NuttX's <nuttx/compiler.h> that the board's
- * include/nano_nina_passthrough.h uses (host test nina_passthrough).
+ * include/nina_passthrough.h uses (host test nina_passthrough).
  */
 #ifndef TEST_FAKE_NUTTX_COMPILER_H
 #define TEST_FAKE_NUTTX_COMPILER_H

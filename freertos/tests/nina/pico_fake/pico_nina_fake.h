@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: MIT */
-/* The part of the Pico SDK that freertos/drivers/nina/nano_nina.c uses, for
+/* The part of the Pico SDK that freertos/drivers/nina/nina_bus.c uses, for
  * its host test (freertos/tests/nina/main.c, which implements the
  * functions: they record the calls and play the module's side of the
  * lines and of SPI1), and the GPIO interrupt functions of

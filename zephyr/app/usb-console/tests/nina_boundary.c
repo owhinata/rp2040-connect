@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /* Host test of this build's side of the shared NINA core: the SPI link
  * (common/drivers/nina/nina_spi.c, which the test includes) on the board's
- * boundary drivers/nina/nano_nina.c and the kernel's drivers/nina/nina_os.c,
+ * boundary drivers/nina/nina_bus.c and the kernel's drivers/nina/nina_os.c,
  * built on fakes of the Zephyr calls (tests/nina_fakes), whose
  * registration of the callbacks fails or succeeds as the test says.
  *
@@ -24,7 +24,7 @@
  *   end of its time without an edge, and an edge between the caller's
  *   read of the count and its k_sem_take() (the count left ends it at
  *   once); a count left from an earlier edge does not end a later wait.
- * - With CONFIG_NANO_NINA_PASSTHROUGH (as the build has it), the NINA
+ * - With CONFIG_NINA_PASSTHROUGH (as the build has it), the NINA
  *   passthrough mode (drivers/nina/nina_passthrough.h): while it is
  *   active the bus is never ready, so a request is -ENODEV before any line
  *   or SPI call, the module is not reset, and the link works again once
@@ -49,7 +49,7 @@ static size_t request_len, response_len, response_offset;
 static unsigned int phase, calls, bulk_calls;
 static int cs_active, fail_bulk;
 static bool bus_ready = true;
-#ifdef CONFIG_NANO_NINA_PASSTHROUGH
+#ifdef CONFIG_NINA_PASSTHROUGH
 static bool passthrough;
 
 bool nina_passthrough_active(void)
@@ -488,7 +488,7 @@ static void test_reset(int ready_result)
 	}
 }
 
-#ifdef CONFIG_NANO_NINA_PASSTHROUGH
+#ifdef CONFIG_NINA_PASSTHROUGH
 /* The passthrough mode owns GPIO8, GPIO9 and the module's lines: no bus. */
 static void test_passthrough(void)
 {
@@ -503,13 +503,13 @@ static void test_passthrough(void)
 	sleeps_before = sleeps;
 	trace_len = 0;
 	tracing = true;
-	assert(!nano_nina_bus_ready());
+	assert(!nina_bus_ready());
 	assert(nina_request(0x37, NULL, 0, false, false, version, sizeof(version), &n) == -ENODEV);
 	assert(nina_request(0x37, NULL, 0, false, false, version, sizeof(version), &n) == -ENODEV);
 	assert(trace_len == 0 && !initialized && calls == 0 && sleeps == sleeps_before);
 
 	passthrough = false;
-	assert(nano_nina_bus_ready());
+	assert(nina_bus_ready());
 	assert(nina_request(0x37, NULL, 0, false, false, version, sizeof(version), &n) == 0);
 	tracing = false;
 	assert(n == 5 && !memcmp(version, "3.0.2", 5) && initialized);
@@ -642,7 +642,7 @@ int main(void)
 	/* nina_os_ready_start() fails: READY is sampled. */
 	test_framing();
 	test_reset(-ENOTSUP);
-#ifdef CONFIG_NANO_NINA_PASSTHROUGH
+#ifdef CONFIG_NINA_PASSTHROUGH
 	test_passthrough();
 #endif
 	test_ready_waits();

@@ -59,7 +59,7 @@ west build -b arduino_nano_connect app/usb-console -d build/usb-console
 
 There is one configuration, `zephyr/app/usb-console/prj.conf`. `memcpy` and `memset` use the boot ROM's
 routines (`CONFIG_RP2040_ROM_MEM_OPS`), integer division the hardware divider (`CONFIG_NANO_HW_DIVIDER`),
-and `CONFIG_NANO_NINA_PASSTHROUGH` adds `nina passthrough confirm` (all on by default).
+and `CONFIG_NINA_PASSTHROUGH` adds `nina passthrough confirm` (all on by default).
 
 The UF2 goes in through the bootloader mode (BOOTSEL), in which a USB drive named `RPI-RP2` appears.
 `flash.sh` (shared with the NuttX and FreeRTOS builds: `script/flash_uf2.sh`) copies the UF2 to that

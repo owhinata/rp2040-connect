@@ -60,7 +60,7 @@ int64_t nina_os_uptime_ms(void);
  *
  * nina_os_ready_arm(): from its return on, a change of READY to the
  * logical level DESIRED (1: active, the module is ready; as
- * nano_nina_pin_get()) ends the current or the next nina_os_ready_wait()
+ * nina_pin_get()) ends the current or the next nina_os_ready_wait()
  * early; a wake-up left from before the call is dropped.  Armed before
  * READY is read, so a change between the read and the wait is not lost.
  *
@@ -79,7 +79,7 @@ void nina_os_ready_arm(int desired);
 void nina_os_ready_wait(uint32_t ms);
 void nina_os_ready_disarm(void);
 
-/* The module's socket events on its IRQ line (NANO_NINA_IRQ, GPIO2, active
+/* The module's socket events on its IRQ line (NINA_PIN_IRQ, GPIO2, active
  * high; firmware/nina-fw/README.md, "Socket events on the IRQ line"): the
  * line rises when an event that a command armed happens, and falls when the
  * module begins the next command.  On a GPIO edge interrupt of the line:

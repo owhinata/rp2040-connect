@@ -19,16 +19,16 @@ run() {
 }
 
 # The shared NINA SPI link (common/drivers/nina/nina_spi.c) on this build's boundary
-# (drivers/nina/nano_nina.c: the devicetree's lines and SPI calls; nina_os.c: the kernel's, and
+# (drivers/nina/nina_bus.c: the devicetree's lines and SPI calls; nina_os.c: the kernel's, and
 # the READY and IRQ edge interrupts; the socket loops' waits, nina_wait.c), on fakes of the Zephyr
 # calls: framing, reset, READY waits (sampled when the READY callback cannot be added, else on the
 # edge interrupt), the socket events' waits and their start, failed and successful.  With
-# CONFIG_NANO_NINA_PASSTHROUGH as well (the build's default), the NINA passthrough mode's gate:
+# CONFIG_NINA_PASSTHROUGH as well (the build's default), the NINA passthrough mode's gate:
 # no bus, no line touched while the mode is active (drivers/nina/nina_passthrough.h).
 nina_boundary=(-std=gnu17 -Wall -Wextra -Werror -I"$app/tests/nina_fakes" -I../common/drivers/nina
-               "$app/tests/nina_boundary.c" "$app/drivers/nina/nano_nina.c"
+               "$app/tests/nina_boundary.c" "$app/drivers/nina/nina_bus.c"
                "$app/drivers/nina/nina_os.c" ../common/drivers/nina/nina_wait.c)
-run nina_boundary_passthrough -DCONFIG_NANO_NINA_PASSTHROUGH "${nina_boundary[@]}"
+run nina_boundary_passthrough -DCONFIG_NINA_PASSTHROUGH "${nina_boundary[@]}"
 run nina_boundary "${nina_boundary[@]}"
 # The NINA passthrough mode (drivers/nina/nina_passthrough.c, which the test includes) on fakes of
 # the Zephyr calls and of the RP2040 hardware (nina_passthrough_hw.h): the request at the start,
@@ -44,7 +44,7 @@ run passthrough -std=gnu17 -Wall -Wextra -Werror -I"$app/tests/passthrough_fakes
 # The waits between the passes are nina_wait.c's: the poll intervals after a start of the events
 # that failed, then the IRQ line's edges once they are started (fakes in the test).
 nina_socket=(-std=gnu17 -Wall -Wextra -Werror -D_DEFAULT_SOURCE -DNINA_OS_DNS_OFFLOAD
-             -DCONFIG_NANO_NINA_TCP_MAX_IO=3584 -I"$app/tests/socket_fakes" -I../common/drivers/nina
+             -DCONFIG_NINA_TCP_MAX_IO=3584 -I"$app/tests/socket_fakes" -I../common/drivers/nina
              "$app/tests/nina_socket.c" "$app/drivers/nina/nina_socket.c"
              ../common/drivers/nina/nina_sock.c ../common/drivers/nina/nina_dns.c
              ../common/drivers/nina/nina_wait.c)

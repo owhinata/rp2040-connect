@@ -48,11 +48,11 @@
 
 #include "nano_connect.h"
 
-#ifdef CONFIG_NANO_NINA
-#  include "nano_nina.h"
+#ifdef CONFIG_NINA
+#  include "nina_bus.h"
 #endif
 
-#ifdef CONFIG_NANO_NINA_NET
+#ifdef CONFIG_NINA_NET
 #  include "nina_net.h"
 #endif
 
@@ -73,8 +73,8 @@
 #include "rp2040_common_bringup.h"
 #endif /* CONFIG_ARCH_BOARD_COMMON */
 
-#ifdef CONFIG_NANO_NINA_PASSTHROUGH
-#  include <arch/board/nano_nina_passthrough.h>
+#ifdef CONFIG_NINA_PASSTHROUGH
+#  include <arch/board/nina_passthrough.h>
 #endif
 
 /****************************************************************************
@@ -138,30 +138,30 @@ int nano_bringup(void)
 
   /* --- Place any board specific bringup code here --- */
 
-#ifdef CONFIG_NANO_NINA_PASSTHROUGH
-  /* The NINA passthrough mode (<arch/board/nano_nina_passthrough.h>): the
+#ifdef CONFIG_NINA_PASSTHROUGH
+  /* The NINA passthrough mode (<arch/board/nina_passthrough.h>): the
    * USB device only.  SPI1 shares GPIO8 and GPIO9 with the UART1 of the
    * mode and stays off; nothing here talks to the module, the sensor or
    * the key-value flash.  The init task runs the mode.
    */
 
-  if (nano_nina_passthrough_active())
+  if (nina_passthrough_active())
     {
       ret = nano_usb_initialize();
       return ret < 0 ? ret : result;
     }
 #endif
 
-#ifdef CONFIG_NANO_NINA
+#ifdef CONFIG_NINA
   /* SPI1 to the NINA-W102 and its chip select.  The Zephyr build sets up
    * spi1 (and drives cs-gpios inactive) at boot; the module itself is
    * reset on the first request (common/drivers/nina/nina_spi.c).
    */
 
-  ret = nano_nina_initialize();
+  ret = nina_bus_initialize();
   if (ret < 0)
     {
-      syslog(LOG_ERR, "ERROR: nano_nina_initialize() failed: %d\n", ret);
+      syslog(LOG_ERR, "ERROR: nina_bus_initialize() failed: %d\n", ret);
       result = ret;
     }
 #endif
@@ -254,7 +254,7 @@ int nano_bringup(void)
   }
 #endif
 
-#ifdef CONFIG_NANO_NINA_NET
+#ifdef CONFIG_NINA_NET
   /* The NINA-W102 network device wlan0.  The Zephyr build initializes its
    * interface at boot (POST_KERNEL, CONFIG_WIFI_INIT_PRIORITY 80, after
    * the sensor): dormant, and the MAC address read from the module, whose

@@ -44,8 +44,8 @@
 # - The NINA passthrough mode's decisions (common/drivers/nina/
 #   nina_passthrough_logic.h: the request in the watchdog's scratch
 #   registers, DTR and RTS on the module's lines, the rate, the way out, the
-#   buffer from the UART's interrupt, the "nina" subcommands;
-#   freertos/tests/passthrough, no kernel).
+#   buffer from the UART's interrupt) and the "nina" subcommands
+#   (common/shell/nina_shell.h; freertos/tests/passthrough, no kernel).
 #
 #   freertos/script/host_tests.sh        run them
 #   freertos/script/host_tests.sh -v     also show the tests' output
@@ -125,10 +125,11 @@ printf 'ok  tick (catch-up of lost ticks, model of SysTick)\n'
 # The NINA passthrough mode's decisions (freertos/tests/passthrough): the request in the
 # watchdog's scratch registers against the fatal error record's (common/log/fault_record.c),
 # DTR and RTS on the module's lines, the rate and the way out, the buffer from the UART's
-# interrupt (also on two threads), and the "nina" subcommands
-# (../common/drivers/nina/nina_passthrough_logic.h).  Not linked with the kernel (its headers
+# interrupt (also on two threads) (../common/drivers/nina/nina_passthrough_logic.h), and the
+# "nina" subcommands (../common/shell/nina_shell.h).  Not linked with the kernel (its headers
 # come in through the layer's <zephyr/shell/shell.h>).
-cc "${flags[@]}" "${strict[@]}" -I../common/drivers/nina -Idrivers/shell "${inc[@]}" \
+cc "${flags[@]}" "${strict[@]}" -I../common/drivers/nina -I../common/shell -Idrivers/shell \
+    "${inc[@]}" \
     tests/passthrough/main.c ../common/log/fault_record.c -o "$out/passthrough"
 if (( verbose )); then
     timeout 60 "$out/passthrough"
@@ -213,7 +214,7 @@ fi
 printf 'ok  kv (flash boundary and store, FreeRTOS POSIX port)\n'
 
 # The NINA link (freertos/tests/nina): the board's boundaries of the shared core
-# (drivers/nina/nano_nina.c on fakes of the Pico SDK's GPIO, reset and SPI functions,
+# (drivers/nina/nina_bus.c on fakes of the Pico SDK's GPIO, reset and SPI functions,
 # tests/nina/pico_fake; drivers/nina/nina_os.c on the layer) under the shared core
 # (common/drivers/nina/nina_spi.c and nina_wait.c, with the prelude, as drivers/nina/nina.cmake
 # builds them), on the same kernel and layer objects.  The waits for READY on its edge interrupt
@@ -224,7 +225,7 @@ printf 'ok  kv (flash boundary and store, FreeRTOS POSIX port)\n'
 # common/tests/nina_spi.c's.
 ninainc=(-Itests/nina/pico_fake -I../common/drivers/nina)
 ninaobjs=()
-for src in drivers/nina/nano_nina.c drivers/nina/nina_os.c tests/nina/main.c \
+for src in drivers/nina/nina_bus.c drivers/nina/nina_os.c tests/nina/main.c \
            drivers/compat/rp2040/nano_gpio.c ../common/compat/zephyr_gpio.c \
            ../common/drivers/nina/nina_spi.c ../common/drivers/nina/nina_wait.c; do
     obj="$out/nina_$(basename "$src" .c).o"

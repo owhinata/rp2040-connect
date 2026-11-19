@@ -10,7 +10,7 @@
 # (freertos/drivers/compat/compat.cmake, freertos/drivers/kv/kv.cmake,
 # freertos/drivers/nina/nina.cmake: the layer and its shell, the settings
 # on the key-value area, the NINA link).  It adds to the target what the
-# NuttX build has with CONFIG_NANO_NINA_NET, CONFIG_NANO_WIFI_CREDENTIALS
+# NuttX build has with CONFIG_NINA_NET, CONFIG_NANO_WIFI_CREDENTIALS
 # and CONFIG_NANO_WIFI_PROFILE (nuttx/drivers/nina/Make.defs,
 # nuttx/drivers/compat/Make.defs, nuttx/apps/wifi/Makefile):
 #

@@ -1,19 +1,19 @@
 /* SPDX-License-Identifier: MIT */
 /* The host test of the FreeRTOS build's boundaries of the NINA core on the
- * FreeRTOS POSIX port: freertos/drivers/nina/nano_nina.c on fakes of the
+ * FreeRTOS POSIX port: freertos/drivers/nina/nina_bus.c on fakes of the
  * Pico SDK's GPIO, reset and SPI functions (pico_fake/, implemented here:
  * they record the calls and play the module), freertos/drivers/nina/
  * nina_os.c on the FreeRTOS part of the compatibility layer, and the
  * shared core over both (common/drivers/nina/nina_spi.c), as the board
  * builds them (freertos/drivers/nina/nina.cmake).
  *
- * - Before nano_nina_initialize(): a request fails with -ENODEV and touches
+ * - Before nina_bus_initialize(): a request fails with -ENODEV and touches
  *   no line (the board's start makes no request).
- * - nano_nina_initialize(): the reset of SPI1, the three SPI pins as
+ * - nina_bus_initialize(): the reset of SPI1, the three SPI pins as
  *   Zephyr's pinctrl sets them (in its order), 8 MHz, mode 0, 8 bits, MSB
  *   first, SSE, then CS as an output at its inactive (high) level.
- * - nano_nina_pin_configure() for each mode, as Zephyr's
- *   gpio_rpi_configure(); nano_nina_pin_set()/_get() with each line's
+ * - nina_pin_configure() for each mode, as Zephyr's
+ *   gpio_rpi_configure(); nina_pin_set()/_get() with each line's
  *   polarity.
  * - "nina version" (0x37) through the core: the reset of the first request
  *   (RESET active, 10 ms, inactive, 750 ms, IRQ low and an input) with the
@@ -66,7 +66,7 @@
 #include "hardware/resets.h"
 #include "hardware/spi.h"
 
-#include "nano_nina.h"
+#include "nina_bus.h"
 #include "nina_os.h"
 #include "nina_proto.h"
 #include "priorities.h"
@@ -541,15 +541,15 @@ static void test_before_initialize(void)
 {
 	char v[16];
 
-	assert(!nano_nina_bus_ready());
+	assert(!nina_bus_ready());
 	assert(version(v, sizeof(v)) == -ENODEV);
 	expect_calls("");
 }
 
 static void test_initialize(void)
 {
-	assert(nano_nina_initialize() == 0);
-	assert(nano_nina_bus_ready());
+	assert(nina_bus_initialize() == 0);
+	assert(nina_bus_ready());
 	expect_calls(
 		"reset(17) unreset(17) "
 		"init(14) func(14,spi) pulls(14,0,0) drive(14,4mA) slew(14,slow) schmitt(14,0) "
@@ -567,28 +567,28 @@ static void test_initialize(void)
 static void test_lines(void)
 {
 	/* gpio_rpi_configure() with the devicetree flags of each line. */
-	assert(nano_nina_pin_configure(NANO_NINA_READY, NANO_NINA_INPUT) == 0);
+	assert(nina_pin_configure(NINA_PIN_READY, NINA_PIN_INPUT) == 0);
 	expect_calls("pulls(10,1,0) func(10,sio) dir(10,in) ");
-	assert(nano_nina_pin_configure(NANO_NINA_IRQ, NANO_NINA_OUTPUT_HIGH) == 0);
+	assert(nina_pin_configure(NINA_PIN_IRQ, NINA_PIN_OUTPUT_HIGH) == 0);
 	expect_calls("pulls(2,0,1) func(2,sio) ie(2,0) put(2,1) dir(2,out) ");
-	assert(nano_nina_pin_configure(NANO_NINA_IRQ, NANO_NINA_OUTPUT_INACTIVE) == 0);
+	assert(nina_pin_configure(NINA_PIN_IRQ, NINA_PIN_OUTPUT_INACTIVE) == 0);
 	expect_calls("pulls(2,0,1) func(2,sio) ie(2,0) put(2,0) dir(2,out) ");
-	assert(nano_nina_pin_configure(NANO_NINA_CS, NANO_NINA_OUTPUT_ACTIVE) == 0);
+	assert(nina_pin_configure(NINA_PIN_CS, NINA_PIN_OUTPUT_ACTIVE) == 0);
 	expect_calls("pulls(9,0,0) func(9,sio) ie(9,0) put(9,0) dir(9,out) ");
-	assert(nano_nina_pin_configure(NANO_NINA_CS, NANO_NINA_OUTPUT_HIGH) == 0);
+	assert(nina_pin_configure(NINA_PIN_CS, NINA_PIN_OUTPUT_HIGH) == 0);
 	expect_calls("pulls(9,0,0) func(9,sio) ie(9,0) put(9,1) dir(9,out) ");
-	assert(nano_nina_pin_configure(4, NANO_NINA_INPUT) == -EINVAL);
-	assert(nano_nina_pin_configure(NANO_NINA_CS, 4) == -EINVAL);
+	assert(nina_pin_configure(4, NINA_PIN_INPUT) == -EINVAL);
+	assert(nina_pin_configure(NINA_PIN_CS, 4) == -EINVAL);
 	expect_calls("");
 
 	/* Logical values: CS, READY and RESET are active low, IRQ high. */
-	assert(nano_nina_pin_set(NANO_NINA_CS, 1) == 0);
-	assert(nano_nina_pin_set(NANO_NINA_CS, 0) == 0);
-	assert(nano_nina_pin_set(NANO_NINA_IRQ, 1) == 0);
-	assert(nano_nina_pin_set(NANO_NINA_IRQ, 0) == 0);
+	assert(nina_pin_set(NINA_PIN_CS, 1) == 0);
+	assert(nina_pin_set(NINA_PIN_CS, 0) == 0);
+	assert(nina_pin_set(NINA_PIN_IRQ, 1) == 0);
+	assert(nina_pin_set(NINA_PIN_IRQ, 0) == 0);
 	expect_calls("put(9,0) put(9,1) put(2,1) put(2,0) ");
 	/* The module is held in reset (GPIO3 not driven yet): READY high. */
-	assert(nano_nina_pin_get(NANO_NINA_READY) == 0);
+	assert(nina_pin_get(NINA_PIN_READY) == 0);
 	/* The lines as nina_spi.c finds them before its first request. */
 	pins[2].out = false;
 	pins[GPIO_READY].out = false;

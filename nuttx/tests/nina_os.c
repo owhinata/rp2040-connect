@@ -25,7 +25,7 @@
  * - the edge is enabled only during a wait, in the direction of the
  *   desired level, and the semaphore never counts more than one.
  *
- * With CONFIG_NANO_NINA_USRSOCK, as nina/Make.defs builds nina_os.c, the
+ * With CONFIG_NINA_USRSOCK, as nina/Make.defs builds nina_os.c, the
  * socket events on the IRQ line
  * (GPIO2): the start (the callback on gpio0, GPIO2's rising edge), the
  * count of the edges, the event thread woken by each
@@ -271,37 +271,37 @@ static void set_ready_high(bool high)
 	bank_interrupt();
 }
 
-/* Fake board side of the link (<nano_nina.h>) ----------------------------*/
+/* Fake board side of the link (<nina_bus.h>) ----------------------------*/
 
-int nano_nina_initialize(void)
+int nina_bus_initialize(void)
 {
 	return 0;
 }
 
-bool nano_nina_bus_ready(void)
+bool nina_bus_ready(void)
 {
 	return true;
 }
 
-int nano_nina_pin_configure(enum nano_nina_pin pin, enum nano_nina_mode mode)
+int nina_pin_configure(enum nina_pin pin, enum nina_pin_mode mode)
 {
 	(void)pin;
 	(void)mode;
 	return 0;
 }
 
-int nano_nina_pin_set(enum nano_nina_pin pin, int value)
+int nina_pin_set(enum nina_pin pin, int value)
 {
 	(void)pin;
 	(void)value;
 	return 0;
 }
 
-int nano_nina_pin_get(enum nano_nina_pin pin)
+int nina_pin_get(enum nina_pin pin)
 {
 	int value;
 
-	assert(pin == NANO_NINA_READY);
+	assert(pin == NINA_PIN_READY);
 	ready_reads++;
 	value = !ready_high;
 	if (change_after_read) {
@@ -311,7 +311,7 @@ int nano_nina_pin_get(enum nano_nina_pin pin)
 	return value;
 }
 
-int nano_nina_transceive(const uint8_t *tx, uint8_t *rx, size_t len)
+int nina_bus_transceive(const uint8_t *tx, uint8_t *rx, size_t len)
 {
 	(void)tx;
 	(void)rx;

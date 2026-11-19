@@ -671,7 +671,7 @@ int nina_net_initialize(void)
 }
 
 
-#ifndef CONFIG_NANO_NINA_DNS
+#ifndef CONFIG_NINA_DNS
 /* iface_init() of nina_net.c calls it; without nina_dns.c there is no
  * resolver to register (nina_dns.c has an empty one too).
  */

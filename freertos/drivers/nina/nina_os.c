@@ -37,7 +37,7 @@
  *                               gpio_add_callback()'s
  *   nina_os_ready_arm(desired)  drops a wake-up left from before
  *                               (k_sem_reset()), then enables the edge of
- *                               READY (GPIO10, active low: nano_nina.c)
+ *                               READY (GPIO10, active low: nina_bus.c)
  *                               towards DESIRED, falling for 1 (ready),
  *                               rising for 0, through the board's GPIO bank
  *                               0 (nano_gpio_irq_configure(): clears an edge
@@ -74,7 +74,7 @@
  *
  *   nina_os_event_start()       adds the callback to the layer's gpio0 and
  *                               enables the rising edge of GPIO2 (the IRQ
- *                               line, active high: nano_nina.c), through
+ *                               line, active high: nina_bus.c), through
  *                               the board's GPIO bank 0 (GPIO2 is one of
  *                               NANO_GPIO_IRQ_PINS); the line stays an
  *                               input with its pull-down.  The probe calls
@@ -105,7 +105,7 @@
 
 #include "nano_gpio.h"
 
-/* READY: GPIO10, active low (nano_nina.c, the devicetree's ready-gpios). */
+/* READY: GPIO10, active low (nina_bus.c, the devicetree's ready-gpios). */
 #define READY_GPIO 10
 
 /* The longest single wait (see above). */
@@ -149,7 +149,7 @@ void nina_os_ready_disarm(void)
 	(void)nano_gpio_irq_configure(READY_GPIO, 0);
 }
 
-/* The IRQ line: GPIO2, active high (nano_nina.c, irq-gpios). */
+/* The IRQ line: GPIO2, active high (nina_bus.c, irq-gpios). */
 #define IRQ_GPIO 2
 
 static K_SEM_DEFINE(event_sem, 0, 1);

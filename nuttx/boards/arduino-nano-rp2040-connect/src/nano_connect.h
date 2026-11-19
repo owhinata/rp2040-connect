@@ -59,13 +59,13 @@ void nano_usbserial_initialize(void);
 int nano_flash_kv_initialize(void);
 #endif
 
-/* nano_nina_passthrough.c: read and clear the request of the NINA
- * passthrough mode (<arch/board/nano_nina_passthrough.h>); from
+/* nina_passthrough.c: read and clear the request of the NINA
+ * passthrough mode (<arch/board/nina_passthrough.h>); from
  * rp2040_boardinitialize().
  */
 
-#ifdef CONFIG_NANO_NINA_PASSTHROUGH
-void nano_nina_passthrough_boot(void);
+#ifdef CONFIG_NINA_PASSTHROUGH
+void nina_passthrough_boot(void);
 #endif
 
 /* nano_oneshot.c: ALARM0 of the TIMER as a oneshot lower-half; from

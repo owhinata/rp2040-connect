@@ -101,7 +101,7 @@ static int cmd1(uint8_t cmd, uint8_t id, uint8_t *data, size_t cap, size_t *n)
 static int poll_state(struct nina_sock *s, uint8_t *state)
 {
 	size_t n;
-	int ret = cmd1(NINA_CMD_POLL, s->id, state, 1, &n);
+	int ret = cmd1(NINA_CMD_SOCKET_POLL, s->id, state, 1, &n);
 
 	if (ret) {
 		return ret;
@@ -124,7 +124,7 @@ static int set_nonblocking(uint8_t id)
 	uint8_t value[4] = {1, 0, 0, 0}, reply[4];
 	struct nina_param p[] = {{&id, 1}, {cmd, sizeof(cmd)}, {value, sizeof(value)}};
 	size_t n;
-	int ret = nina_request(NINA_CMD_IOCTL, p, 3, false, false, reply, sizeof(reply), &n);
+	int ret = nina_request(NINA_CMD_SOCKET_IOCTL, p, 3, false, false, reply, sizeof(reply), &n);
 
 	return ret ? ret : (n == sizeof(reply) ? 0 : -EIO);
 }
@@ -135,7 +135,7 @@ static void close_id(struct nina_sock *s)
 	size_t n;
 
 	if (s->id != NINA_NO_SOCKET) {
-		(void)cmd1(NINA_CMD_CLOSE, s->id, &result, 1, &n);
+		(void)cmd1(NINA_CMD_SOCKET_CLOSE, s->id, &result, 1, &n);
 		s->id = NINA_NO_SOCKET;
 	}
 	s->bound = false;
@@ -162,7 +162,7 @@ static int open_locked(struct nina_sock *s)
 	if (s->id != NINA_NO_SOCKET) {
 		return 0;
 	}
-	ret = nina_request(NINA_CMD_SOCKET, args, 2, false, false, &result, 1, &n);
+	ret = nina_request(NINA_CMD_SOCKET_SOCKET, args, 2, false, false, &result, 1, &n);
 	if (ret || n != 1 || result == NINA_NO_SOCKET) {
 		return ret ? ret : -ENFILE;
 	}
@@ -187,7 +187,8 @@ static int socket_error(struct nina_sock *s)
 	uint8_t name[4] = {0x07, 0x10, 0, 0}, length = 4, value[4];
 	struct nina_param p[] = {{&s->id, 1}, {name, sizeof(name)}, {&length, 1}};
 	size_t n;
-	int ret = nina_request(NINA_CMD_GETSOCKOPT, p, 3, false, false, value, sizeof(value), &n);
+	int ret = nina_request(NINA_CMD_SOCKET_GETSOCKOPT, p, 3, false, false, value,
+			       sizeof(value), &n);
 
 	if (ret || n != sizeof(value)) {
 		return ret ? ret : -EIO;
@@ -231,7 +232,7 @@ int nina_sock_bind(int usockid, const struct sockaddr *addr, size_t addrlen)
 	if (!ret) {
 		args[0] = (struct nina_param){&s->id, 1};
 		args[1] = (struct nina_param){(const uint8_t *)&in->sin_port, 2};
-		ret = nina_request(NINA_CMD_BIND, args, 2, false, false, &result, 1, &n);
+		ret = nina_request(NINA_CMD_SOCKET_BIND, args, 2, false, false, &result, 1, &n);
 		if (!ret && (n != 1 || result != 1)) {
 			ret = -EADDRINUSE;
 		}
@@ -259,7 +260,7 @@ int nina_sock_listen(int usockid, int backlog)
 	if (s->udp || !s->bound || s->listening) {
 		return -EINVAL;
 	}
-	ret = nina_request(NINA_CMD_LISTEN, p, 2, false, false, &reply, 1, &n);
+	ret = nina_request(NINA_CMD_SOCKET_LISTEN, p, 2, false, false, &reply, 1, &n);
 	if (!ret && (n != 1 || reply != 1)) {
 		ret = -EIO;
 	}
@@ -294,7 +295,7 @@ int nina_sock_accept(int usockid, struct sockaddr_in *peer)
 	if (!client) {
 		return -EMFILE;
 	}
-	ret = cmd1(NINA_CMD_ACCEPT, listener->id, reply, sizeof(reply), &n);
+	ret = cmd1(NINA_CMD_SOCKET_ACCEPT, listener->id, reply, sizeof(reply), &n);
 	if (ret || n != sizeof(reply) || reply[0] == NINA_NO_SOCKET) {
 		return ret ? ret : -EAGAIN;
 	}
@@ -392,7 +393,7 @@ int nina_sock_connect(int usockid, const struct sockaddr *addr, size_t addrlen)
 		p[0] = (struct nina_param){&s->id, 1};
 		p[1] = (struct nina_param){(const uint8_t *)&in->sin_addr, 4};
 		p[2] = (struct nina_param){(const uint8_t *)&in->sin_port, 2};
-		ret = nina_request(NINA_CMD_CONNECT, p, 3, false, false, &result, 1, &n);
+		ret = nina_request(NINA_CMD_SOCKET_CONNECT, p, 3, false, false, &result, 1, &n);
 		if (!ret && n != 1) {
 			ret = -EPROTO;
 		}
@@ -452,7 +453,7 @@ static ssize_t udp_send(struct nina_sock *s, const void *buf, size_t len,
 	p[1] = (struct nina_param){(const uint8_t *)&peer->sin_addr, 4};
 	p[2] = (struct nina_param){(const uint8_t *)&peer->sin_port, 2};
 	p[3] = (struct nina_param){buf, len};
-	ret = nina_request(NINA_CMD_SENDTO, p, 4, true, false, answer, sizeof(answer), &n);
+	ret = nina_request(NINA_CMD_SOCKET_SENDTO, p, 4, true, false, answer, sizeof(answer), &n);
 	if (ret) {
 		return ret;
 	}
@@ -534,7 +535,7 @@ static ssize_t do_send(struct nina_sock *s, const void *buf, size_t len, int fla
 		}
 	}
 
-	ret = nina_request(NINA_CMD_SEND, p, 2, true, false, answer,
+	ret = nina_request(NINA_CMD_SOCKET_SEND, p, 2, true, false, answer,
 			   sizeof(answer), &n);
 	if (ret) {
 		return ret;
@@ -690,7 +691,7 @@ static ssize_t udp_recv(struct nina_sock *s, void *buf, size_t len, int flags,
 		size[1] = copied >> 8;
 		p[0] = (struct nina_param){&s->id, 1};
 		p[1] = (struct nina_param){size, 2};
-		ret = nina_request(NINA_CMD_RECVFROM, p, 2, false, true, udp_buffer,
+		ret = nina_request(NINA_CMD_SOCKET_RECVFROM, p, 2, false, true, udp_buffer,
 				   6 + copied, &n);
 		if (ret || n < 6) {
 			return ret ? ret : -EPROTO;
@@ -755,7 +756,7 @@ ssize_t nina_sock_recv(int usockid, void *buf, size_t len, int flags,
 	bytes[1] = len >> 8;
 	p[0] = (struct nina_param){&s->id, 1};
 	p[1] = (struct nina_param){bytes, 2};
-	ret = nina_request(NINA_CMD_RECV, p, 2, false, true, buf, len, &n);
+	ret = nina_request(NINA_CMD_SOCKET_RECV, p, 2, false, true, buf, len, &n);
 	if (ret) {
 		return ret;
 	}
@@ -830,7 +831,7 @@ int nina_sock_close(int usockid)
 		return -EBADF;
 	}
 	if (s->id != NINA_NO_SOCKET) {
-		ret = cmd1(NINA_CMD_CLOSE, s->id, &result, 1, &n);
+		ret = cmd1(NINA_CMD_SOCKET_CLOSE, s->id, &result, 1, &n);
 		if (!ret && (n != 1 || result != 1)) {
 			ret = -EIO;
 		}

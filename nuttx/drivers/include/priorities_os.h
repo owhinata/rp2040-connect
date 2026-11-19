@@ -49,7 +49,7 @@
 #define NANO_PRIO_NINA_EVENT         106
 #define NANO_STACK_NINA_EVENT        1536
 
-/* The NINA passthrough mode (the board's src/nano_nina_passthrough.c): the
+/* The NINA passthrough mode (the board's src/nina_passthrough.c): the
  * init task while it runs the mode, "nina_pt_rx" and "nina_pt_tx".  No
  * Zephyr thread (the FreeRTOS build runs the mode in one loop without the
  * scheduler).  Above every thread of the normal firmware, none of which

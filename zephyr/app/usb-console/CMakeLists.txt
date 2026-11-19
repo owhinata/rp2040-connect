@@ -20,33 +20,29 @@ set_property(SOURCE src/main.c APPEND PROPERTY INCLUDE_DIRECTORIES ${COMMON_DIR}
   ${ZEPHYR_BASE}/kernel/include ${ZEPHYR_BASE}/arch/${ARCH}/include)
 
 # NINA-W102: the shared core of common/drivers/nina (the SPI link nina_spi.c, the Wi-Fi
-# interface nina_net.c, the socket table and commands nina_sock.c, the resolver nina_dns.c, the
-# "nina" command nina_shell.c and the socket loops' waits nina_wait.c) and the Zephyr side in
-# drivers/nina: the core's two boundaries (nano_nina.c: spi1 and the module's lines from the
-# devicetree; nina_os.c: locks, sleeps, clock, the READY and IRQ interrupts) and the socket
-# offload (nina_socket.c).  The core's
-# POSIX socket names come from drivers/nina/posix, on the include path of these three sources
-# only.
+# interface nina_net.c, the socket table and commands nina_sock.c, the resolver nina_dns.c and
+# the socket loops' waits nina_wait.c), the "nina" command common/shell/nina_shell.c, and the
+# Zephyr side in drivers/nina: the core's two boundaries (nina_bus.c: spi1 and the module's
+# lines from the devicetree; nina_os.c: locks, sleeps, clock, the READY and IRQ interrupts) and
+# the socket offload (nina_socket.c).  The core's POSIX socket names come from
+# drivers/nina/posix, on the include path of these three sources only.
 set(nina_dir ${COMMON_DIR}/drivers/nina)
-target_sources(app PRIVATE ${nina_dir}/nina_spi.c drivers/nina/nano_nina.c drivers/nina/nina_os.c
+target_sources(app PRIVATE ${nina_dir}/nina_spi.c drivers/nina/nina_bus.c drivers/nina/nina_os.c
   ${nina_dir}/nina_net.c ${nina_dir}/nina_sock.c drivers/nina/nina_socket.c ${nina_dir}/nina_dns.c
-  ${nina_dir}/nina_shell.c ${nina_dir}/nina_wait.c)
+  ${COMMON_DIR}/shell/nina_shell.c ${nina_dir}/nina_wait.c)
 # The NINA passthrough mode for esptool (drivers/nina/nina_passthrough.c, on the Pico SDK's
 # registers of hal_rpi_pico): main() runs it on request, and its "nina passthrough" is an entry of
 # nina_shell.c's set; both read drivers/nina/nina_passthrough.h.
-if(CONFIG_NANO_NINA_PASSTHROUGH)
+if(CONFIG_NINA_PASSTHROUGH)
   target_sources(app PRIVATE drivers/nina/nina_passthrough.c)
 endif()
-set_property(SOURCE src/main.c ${nina_dir}/nina_shell.c APPEND PROPERTY INCLUDE_DIRECTORIES
+set_property(SOURCE src/main.c ${COMMON_DIR}/shell/nina_shell.c APPEND PROPERTY INCLUDE_DIRECTORIES
   ${CMAKE_CURRENT_SOURCE_DIR}/drivers/nina)
 set(nina_socket_sources ${nina_dir}/nina_sock.c drivers/nina/nina_socket.c ${nina_dir}/nina_dns.c)
 set_property(SOURCE ${nina_socket_sources} APPEND PROPERTY INCLUDE_DIRECTORIES
   ${CMAKE_CURRENT_SOURCE_DIR}/drivers/nina/posix)
-# The core's names of CONFIG_NINA_TCP_MAX_IO and CONFIG_NINA_SEND_RETRY_MS (nina_sock.h), and the
-# resolver registered as the offload's, its results on drivers/nina's heap (nina_os.h).
-set_property(SOURCE ${nina_socket_sources} APPEND PROPERTY COMPILE_DEFINITIONS
-  CONFIG_NANO_NINA_TCP_MAX_IO=CONFIG_NINA_TCP_MAX_IO
-  CONFIG_NANO_NINA_SEND_RETRY_MS=CONFIG_NINA_SEND_RETRY_MS NINA_OS_DNS_OFFLOAD)
+# The resolver registered as the offload's, its results on drivers/nina's heap (nina_os.h).
+set_property(SOURCE ${nina_socket_sources} APPEND PROPERTY COMPILE_DEFINITIONS NINA_OS_DNS_OFFLOAD)
 # Integer division through the SIO divider: the Pico SDK's pico_divider (hal_rpi_pico), as the
 # SDK's pico_divider_hardware links it.  libgcc defines the plain names, so the references are
 # wrapped to the SDK's __wrap___aeabi_idiv, ...  The routines save the divider when they

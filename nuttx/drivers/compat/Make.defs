@@ -44,7 +44,7 @@ endif
 # requests that the NINA network device (common/drivers/nina/nina_net.c)
 # and the application use.
 
-ifeq ($(CONFIG_NANO_NINA_NET),y)
+ifeq ($(CONFIG_NINA_NET),y)
 CSRCS += zephyr_net_if.c zephyr_net_mgmt.c zephyr_wifi_mgmt.c
 CSRCS += zephyr_wifi_utils.c
 endif

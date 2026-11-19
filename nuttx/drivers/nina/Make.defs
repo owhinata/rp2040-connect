@@ -7,14 +7,14 @@
 # (nina_sock.c, from the Zephyr build's drivers/nina/nina_socket.c), name
 # resolution with the module's resolver (nina_dns.c, from the Zephyr
 # build's drivers/nina/nina_dns.c) and the headers of its boundary
-# (nina_os.h, nano_nina.h).  This directory has the NuttX part: the kernel
+# (nina_os.h, nina_bus.h).  This directory has the NuttX part: the kernel
 # services of nina_os.h (nina_os.c), the sockets as usrsock
 # (nina_usrsock.c, nina_poller.c) and the Wi-Fi network device wlan0
 # (nina_netdev.c, with nina_net.c of common/drivers/nina, shared with the
 # Zephyr build), with the Wi-Fi profile's calls answered by
 # common/imu/wifi_profile.c (CONFIG_NANO_WIFI_PROFILE, nuttx/apps/wifi), or
 # by wifi_profile_null.c without it.  The board provides the pins and the
-# SPI bus (nano_nina.c, <nano_nina.h>).  Included by nuttx/drivers/Makefile.
+# SPI bus (nina_bus.c, <nina_bus.h>).  Included by nuttx/drivers/Makefile.
 # VPATH and DEPPATH of common/drivers/nina are relative to nuttx/drivers
 # (mkdeps needs relative ones); the objects are made there.  nina_net.c is
 # compiled with the prelude of the shared sources (compat/common_prelude.h);
@@ -29,15 +29,15 @@
 # firmware they keep their poll intervals.
 ############################################################################
 
-ifeq ($(CONFIG_NANO_NINA),y)
+ifeq ($(CONFIG_NINA),y)
 CSRCS += nina_spi.c nina_os.c nina_wait.c
-ifeq ($(CONFIG_NANO_NINA_USRSOCK),y)
+ifeq ($(CONFIG_NINA_USRSOCK),y)
 CSRCS += nina_sock.c nina_usrsock.c nina_poller.c
 endif
-ifeq ($(CONFIG_NANO_NINA_DNS),y)
+ifeq ($(CONFIG_NINA_DNS),y)
 CSRCS += nina_dns.c
 endif
-ifeq ($(CONFIG_NANO_NINA_NET),y)
+ifeq ($(CONFIG_NINA_NET),y)
 CSRCS += nina_net.c nina_netdev.c
 ifneq ($(CONFIG_NANO_WIFI_PROFILE),y)
 CSRCS += wifi_profile_null.c
@@ -48,7 +48,7 @@ VPATH += :nina
 DEPPATH += --dep-path ../../common/drivers/nina
 VPATH += :../../common/drivers/nina
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)drivers$(DELIM)nina
-ifeq ($(CONFIG_NANO_NINA_NET),y)
+ifeq ($(CONFIG_NINA_NET),y)
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)imu
 nina_net$(OBJEXT): CFLAGS += -include $(TOPDIR)$(DELIM)external$(DELIM)compat$(DELIM)common_prelude.h
 endif

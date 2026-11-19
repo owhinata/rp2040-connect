@@ -13,7 +13,7 @@ Zephyr version, are in `nuttx/README.md`, and how each part works in detail is i
 
 The NINA driver is in two parts: an OS-independent core (the repository's `common/drivers/nina/`,
 shared with the other builds) and its connection to NuttX (`nuttx/drivers/nina/` and the board's
-`src/nano_nina.c`). `nina/Make.defs` finds the core's `.c` files through `VPATH`, and the objects are
+`src/nina_bus.c`). `nina/Make.defs` finds the core's `.c` files through `VPATH`, and the objects are
 made in `nuttx/drivers`. The core is compiled without the prelude (the configuration values come in
 through `<nuttx/config.h>`, which NuttX's headers read). Its headers are in `common/drivers/nina/`;
 the kernel side (`nina/Make.defs`), the board and the `nina` and `imu` applications add that
@@ -24,8 +24,8 @@ What the core needs from the OS and the board (its boundary):
 | Boundary | NuttX implementation | What it must do |
 |---|---|---|
 | `common/drivers/nina/nina_os.h` | `nina/nina_os.c` | `nina_os_lock()`, `nina_os_unlock()`: a recursive lock with priority inheritance (the Zephyr version's `K_MUTEX_DEFINE(nina_lock)`); `nina_os_lock()` returns 0 or a negative errno, which `nina_request()` and `nina_ip_config()` return untouched. `nina_os_dns_lock()`, `nina_os_dns_unlock()`: a lock with priority inheritance held across the two resolver commands. `nina_os_sleep_us()`, `nina_os_sleep_ms()`: sleep for the time rounded up to ticks plus one tick, as Zephyr's `k_sleep()`, not ended by signals. `nina_os_uptime_ms()`: the kernel clock in milliseconds, rounded down (`k_uptime_get()`). `nina_os_ready_start()`, `nina_os_ready_arm()`, `nina_os_ready_wait()`, `nina_os_ready_disarm()`: waiting for a change of READY on its interrupt (`nina_os_ready_start()` registers the callback; if it fails, the core samples READY every 100 µs; see "Waiting for READY" below). `nina_os_event_start()`, `nina_os_event_seq()`, `nina_os_event_wait()`: counting the rising edges of the IRQ line (GPIO2) and waking every waiting thread (if `nina_os_event_start()` fails, the waits keep their intervals; see "Firmware additions" below) |
-| `common/drivers/nina/nano_nina.h` | the board's `src/nano_nina.c` | `nano_nina_initialize()`: called once at boot, sets up the SPI and its pins and drives CS inactive (leaves READY, RESET and IRQ alone). `nano_nina_bus_ready()`: whether the SPI and the four lines can be used. `nano_nina_pin_configure()`, `nano_nina_pin_set()`, `nano_nina_pin_get()`: logical values (1 is active); the board knows each line's polarity and pull (CS GPIO9 active low, READY GPIO10 active low with pull-up, RESET GPIO3 active low, IRQ GPIO2 active high with pull-down). `nano_nina_transceive()`: a synchronous transfer in mode 0, 8 bits, MSB first (only a write when RX is NULL), without touching CS |
-| Configuration | `nina/Kconfig` | `CONFIG_NANO_NINA_TCP_MAX_IO` (default 3584) and `CONFIG_NANO_NINA_SEND_RETRY_MS` (default 1), read by `nina_sock.h`, which uses the defaults without them |
+| `common/drivers/nina/nina_bus.h` | the board's `src/nina_bus.c` | `nina_bus_initialize()`: called once at boot, sets up the SPI and its pins and drives CS inactive (leaves READY, RESET and IRQ alone). `nina_bus_ready()`: whether the SPI and the four lines can be used. `nina_pin_configure()`, `nina_pin_set()`, `nina_pin_get()`: logical values (1 is active); the board knows each line's polarity and pull (CS GPIO9 active low, READY GPIO10 active low with pull-up, RESET GPIO3 active low, IRQ GPIO2 active high with pull-down). `nina_bus_transceive()`: a synchronous transfer in mode 0, 8 bits, MSB first (only a write when RX is NULL), without touching CS |
+| Configuration | `nina/Kconfig` | `CONFIG_NINA_TCP_MAX_IO` (default 3584) and `CONFIG_NINA_SEND_RETRY_MS` (default 1), read by `nina_sock.h`, which uses the defaults without them |
 | C library | NuttX's libc | `nina_sock.[ch]` and `nina_dns.[ch]` use the types and constants of POSIX's `<sys/socket.h>`, `<sys/types.h>`, `<sys/uio.h>`, `<netinet/in.h>`, `<netinet/tcp.h>`, `<arpa/inet.h>`, `<poll.h>` and `<netdb.h>` (`struct sockaddr_in`, `struct iovec`, `struct addrinfo`, `AF_INET`, `MSG_DONTWAIT`, `POLLIN`, `EAI_*` and so on) and `inet_pton()`, `htons()`, `malloc()` and `free()`. The `POLL*` bits of `nina_sock_poll_revents()` and the `EAI_*` values are those of the same headers as the callers' |
 
 ### SPI transfer layer
@@ -35,14 +35,14 @@ What the core needs from the OS and the board (its boundary):
 | `common/drivers/nina/nina_spi.c` | Framing of commands and answers (`nina_request()`, `nina_ip_config()`). Used by the three builds |
 | `common/drivers/nina/nina_proto.h` | The public declarations; the Zephyr version uses the same file |
 | `common/drivers/nina/nina_os.h`, `nina/nina_os.c` | The lock (a recursive mutex with priority inheritance), sleeps, the millisecond clock and the wait for READY on its interrupt: Zephyr's `K_MUTEX`, `k_sleep()` and `k_uptime_get()` |
-| `common/drivers/nina/nano_nina.h`, the board's `src/nano_nina.c` | SPI1 and the four lines (CS, READY, RESET, IRQ): what Zephyr's devicetree and its SPI and GPIO drivers set up |
+| `common/drivers/nina/nina_bus.h`, the board's `src/nina_bus.c` | SPI1 and the four lines (CS, READY, RESET, IRQ): what Zephyr's devicetree and its SPI and GPIO drivers set up |
 
 - A request is handled synchronously in the calling thread. The mutex serializes requests, and CS
   stays asserted from the start of a phase until its last byte, including the wait for READY.
 - The NINA is reset once, on the first request (10 ms, 750 ms). At boot the board only sets up
   SPI1 and its pins and drives CS inactive.
 - The SPI is NuttX's `rp2040_spi.c`, polled (no DMA). Each transfer takes `SPI_LOCK`; the first
-  one sets mode 0, 8 bits and `CONFIG_NANO_NINA_SPI_FREQUENCY`. `SPI_SELECT` is not used.
+  one sets mode 0, 8 bits and `CONFIG_NINA_SPI_FREQUENCY`. `SPI_SELECT` is not used.
 - Waiting for READY: instead of sampling READY (GPIO10, active low) every 100 µs, the core's
   `wait_ready()` sleeps until the line's interrupt reports a change (as in the Zephyr and FreeRTOS
   builds). `nina_os_ready_arm()` sets the semaphore to 0, then enables
@@ -57,7 +57,7 @@ What the core needs from the OS and the board (its boundary):
   interrupts are masked (a flash erase); the FreeRTOS build waits in slices of 10 ms because its
   tick stands still meanwhile and catches up with the TIMER afterwards. `nina_os_ready_disarm()` disables the edge, so CS toggling READY during
   the transfers raises no interrupts. `gpio0` and `src/nano_gpio.c` are built with
-  `CONFIG_NANO_LSM6DSO_STREAM`, so `CONFIG_NANO_NINA` depends on it. The callback is added to
+  `CONFIG_NANO_LSM6DSO_STREAM`, so `CONFIG_NINA` depends on it. The callback is added to
   `gpio0` by `nina_os_ready_start()` after the first reset; if that fails, the core reads READY
   every 100 µs instead (same deadlines and results).
 - The time limits and the wiring are in the "NINA-W102 (`nina`)" section of
@@ -130,7 +130,7 @@ TCP/IP stack is not used (`NET_TCP_NO_STACK`, `NET_UDP_NO_STACK`).
   `SIOC*` and so on). `socket(AF_INET, SOCK_CTRL)` (used by `ifconfig` and others) is answered
   `ENOTSUP`, which leaves it to NuttX.
 - Sending and receiving use the Zephyr version's values: a TCP send takes at most 3584 bytes a
-  call (`CONFIG_NANO_NINA_TCP_MAX_IO`), a datagram at most 512 (more gives `EMSGSIZE`), a receive at
+  call (`CONFIG_NINA_TCP_MAX_IO`), a datagram at most 512 (more gives `EMSGSIZE`), a receive at
   most 512. `sendmsg` joins several vectors, up to 3584 bytes, and writes them with one command (so
   that MQTT's header and payload go out together; NuttX's usrsock passes the vectors separately). A
   send with one vector is treated as `send`/`sendto`, with more as `sendmsg` (UDP `sendmsg` gives
@@ -138,8 +138,8 @@ TCP/IP stack is not used (`NET_TCP_NO_STACK`, `NET_UDP_NO_STACK`).
 - How sending and receiving wait: each request makes one pass of the Zephyr version's wait loop in
   the calling thread, and usrsock waits between passes.
   - When a waiting TCP send finds that the NINA took nothing, the answer is `EAGAIN` with
-    `SENDTO_READY` dropped; after `CONFIG_NANO_NINA_SEND_RETRY_MS` (default 1 ms, the Zephyr
-    version's `CONFIG_NINA_SEND_RETRY_MS`) `nina_event` reports `SENDTO_READY` and usrsock repeats
+    `SENDTO_READY` dropped; after `CONFIG_NINA_SEND_RETRY_MS` (default 1 ms, as in the
+    Zephyr version) `nina_event` reports `SENDTO_READY` and usrsock repeats
     the request (the next pass). The state is checked with the NINA's poll at the first pass and
     then every 100 ms (the error flag gives `EPIPE`), and the call gives `EAGAIN` 10 s after its
     first pass. The deadline and the next check are kept per socket; a continued call is told from
@@ -188,7 +188,7 @@ socket offload's `getaddrinfo()`, used by `zsock_getaddrinfo()`; the NuttX versi
 its own, `nina_getaddrinfo()` and `nina_freeaddrinfo()` (`common/drivers/nina/nina_dns.h`), and the compatibility
 layer's `<zephyr/net/socket.h>` maps `zsock_getaddrinfo()`, `zsock_freeaddrinfo()` and
 `struct zsock_addrinfo` to them. NuttX's `getaddrinfo()` (`CONFIG_LIBC_NETDB`, which queries a DNS
-server over UDP itself) is not used; `CONFIG_NANO_NINA_DNS` cannot be on together with
+server over UDP itself) is not used; `CONFIG_NINA_DNS` cannot be on together with
 `CONFIG_LIBC_NETDB`. Errors are NuttX's `EAI_*` values under the Zephyr version's `DNS_EAI_*` names
 (`EAI_NONAME` for a name that does not resolve, `EAI_AGAIN` for an SPI failure, `EAI_FAIL` for an
 address of the wrong length, `EAI_BADFLAGS`/`EAI_FAMILY`/`EAI_SOCKTYPE` for bad hints, `EAI_SERVICE`
@@ -297,8 +297,8 @@ module's flash with esptool on the PC. It follows the FreeRTOS build's
 `freertos/drivers/nina/nina_passthrough.c`, and its decisions (the request's mark, the lines, the rate,
 the way out, the ring) are the ones shared by the three builds,
 `common/drivers/nina/nina_passthrough_logic.h`. The NuttX side is the board's
-`src/nano_nina_passthrough.c` (its parts without the hardware in `src/nano_nina_passthrough_glue.h`)
-and `include/nano_nina_passthrough.h`, with `CONFIG_NANO_NINA_PASSTHROUGH` (default y).
+`src/nina_passthrough.c` (its parts without the hardware in `src/nina_passthrough_glue.h`)
+and `include/nina_passthrough.h`, with `CONFIG_NINA_PASSTHROUGH` (default y).
 
 | RP2040 | Passthrough mode | Normal firmware |
 |---|---|---|
@@ -314,7 +314,7 @@ and `include/nano_nina_passthrough.h`, with `CONFIG_NANO_NINA_PASSTHROUGH` (defa
   Nothing is written to the flash (key-value store).
 - The start of the mode: `nano_bringup()` sets up the USB device only (CDC ACM, the same descriptors and
   serial number), none of SPI1, the NINA, I2C0, the sensor, `wlan0` or the key-value flash. The init
-  task runs `nano_nina_passthrough_run()` (priority 120) instead of nsh, Telnet, Wi-Fi and the threads.
+  task runs `nina_passthrough_run()` (priority 120) instead of nsh, Telnet, Wi-Fi and the threads.
 - Lines and rate: cdcacm's callback (`CAIOC_REGISTERCB`, called from the USB interrupt) reads the new
   state with `CAIOC_GETCTRLLINE` and `CAIOC_GETLINECODING` and applies it to the pins at once (RTS set
   releases the reset, DTR set pulls GPIO0 low), so every change of the host is applied in its order,
@@ -725,8 +725,8 @@ of the NuttX implementation on the include path.
 | `zephyr_device.c` | Device initialization and the list of devices (`gpio0`, `i2c0`, `lsm6dsox` in the Zephyr build's order of initialization, with their node labels and whether the API is a sensor API; `gpio0` with the OS's configuration `CONFIG_NANO_LSM6DSO_STREAM`) |
 | `zephyr_i2c.c` (NuttX) | I2C (on a NuttX I2C master) |
 | `zephyr_hwinfo.c` (NuttX) | `hwinfo_get_device_id()` on the board's chip ID (`nano_chip_id()`) |
-| `zephyr_net_if.c` (NuttX), `zephyr_net_mgmt.c`, `zephyr_wifi_mgmt.c` | The interface (values of the NuttX network device), the `net_mgmt` event queue and thread (the thread is the OS part `zephyr_net_mgmt_os.h`; its stack size is `NANO_STACK_NET_MGMT` of `priorities.h`), the Wi-Fi requests (a copy of the checks of Zephyr's `subsys/net/l2/wifi/wifi_mgmt.c`) and events, `NET_REQUEST_WIFI_CONNECT_STORED` (a copy of `connect_stored_command()` of the same file; with `CONFIG_NANO_WIFI_CREDENTIALS`). Only with `CONFIG_NANO_NINA_NET` |
-| `zephyr_wifi_utils.c` | Copies of `wifi_security_txt()` and `wifi_band_txt()` (Zephyr's `wifi_mgmt.c`), the channel checks (`wifi_utils.c`) and `net_bytes_from_str()` (`subsys/net/ip/utils.c`), for `wifi cred`. OS-independent. Only with `CONFIG_NANO_NINA_NET` |
+| `zephyr_net_if.c` (NuttX), `zephyr_net_mgmt.c`, `zephyr_wifi_mgmt.c` | The interface (values of the NuttX network device), the `net_mgmt` event queue and thread (the thread is the OS part `zephyr_net_mgmt_os.h`; its stack size is `NANO_STACK_NET_MGMT` of `priorities.h`), the Wi-Fi requests (a copy of the checks of Zephyr's `subsys/net/l2/wifi/wifi_mgmt.c`) and events, `NET_REQUEST_WIFI_CONNECT_STORED` (a copy of `connect_stored_command()` of the same file; with `CONFIG_NANO_WIFI_CREDENTIALS`). Only with `CONFIG_NINA_NET` |
+| `zephyr_wifi_utils.c` | Copies of `wifi_security_txt()` and `wifi_band_txt()` (Zephyr's `wifi_mgmt.c`), the channel checks (`wifi_utils.c`) and `net_bytes_from_str()` (`subsys/net/ip/utils.c`), for `wifi cred`. OS-independent. Only with `CONFIG_NINA_NET` |
 | `sensor_shell_stream.c` | A copy of Zephyr's `drivers/sensor/sensor_shell_stream.c` (the sensor shell's processing thread). It includes the OS's `sensor_shell_os.h` first, and the processing thread's callback is `sensor_shell_os_processing_callback()` (in the NuttX build, `nuttx/apps/sensor/sensor_shell_nuttx.c`). Built by `apps/sensor` |
 | `wifi_credentials.c`, `wifi_credentials_backend_settings.c` | Copies of Zephyr's `subsys/net/lib/wifi_credentials/` (the stored Wi-Fi credentials). Built by `apps/wifi`. Two changes in the backend: the read buffer is aligned to 8 bytes (it is read as a struct; the Cortex-M0+ faults on an unaligned access) and the index formats are `%zu` |
 | `subsys/kvss/nvs/`, `subsys/settings/`, `subsys/crc/crc8_sw.c`, `lib/utils/hex.c` | Unchanged copies of Zephyr v4.5.0's NVS, settings, CRC-8 and hex conversions ("Key-value store" below). Built by `apps/imu` |
@@ -797,9 +797,8 @@ of the NuttX implementation on the include path.
   headers needed before the layer (those that `<zephyr/kernel.h>` reads first: `<sys/types.h>`,
   `<nuttx/irq.h>`, `<nuttx/mutex.h>`, `<nuttx/semaphore.h>`, `<nuttx/wdog.h>`, `<stdio.h>`) and the
   values of the Zephyr Kconfig options that the shared sources use (`CONFIG_SENSOR_LOG_LEVEL` 3, the
-  Zephyr build's value) and their names (`CONFIG_NINA_NTP_SERVER`, `_PORT` and `_INTERVAL_MS` of
-  `time_sync.c`, set to the NuttX build's options `CONFIG_NANO_NINA_NTP_*`; `CONFIG_SENSOR_ASYNC_API`
-  of `lsm6dso.c` and `lsm6dso.h`, set when `CONFIG_NANO_LSM6DSO_STREAM` is). So the shared sources
+  Zephyr build's value; `CONFIG_SENSOR_ASYNC_API` of `lsm6dso.c` and `lsm6dso.h`, set when
+  `CONFIG_NANO_LSM6DSO_STREAM` is). So the shared sources
   have no lines that include NuttX headers. The socket headers are not in it (names such as
   `accept()` would collide with the sources' own functions; the layer's `<zephyr/net/socket.h>`
   reads them for the files that need them). The host tests use the same prelude (without

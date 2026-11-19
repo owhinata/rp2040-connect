@@ -6,12 +6,12 @@
 config NANO_APP_NINA
 	tristate "nina command (NINA-W102 module)"
 	default y
-	depends on NANO_NINA && NANO_SUBCMD
+	depends on NINA && NANO_SUBCMD
 	---help---
 		"nina version": the Zephyr build's nina command
 		(src/main.c, cmd_nina_version()) with the same output, on
-		nina_request() of nuttx/drivers/nina (NANO_NINA).  With the
-		board's NANO_NINA_PASSTHROUGH, also "nina passthrough confirm"
+		nina_request() of nuttx/drivers/nina (NINA).  With the
+		board's NINA_PASSTHROUGH, also "nina passthrough confirm"
 		(the FreeRTOS build's): a restart into the NINA passthrough
 		mode for esptool.
 

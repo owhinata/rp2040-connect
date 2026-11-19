@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 /* The board's side of the NINA-W102 SPI link on the Pico SDK
- * (common/drivers/nina/nano_nina.h): SPI1 and the module's four lines, set
+ * (common/drivers/nina/nina_bus.h): SPI1 and the module's four lines, set
  * up and driven as the Zephyr build's drivers do it.  The Zephyr build's
  * RP2040 drivers are written on the same hardware_gpio functions, so the
  * calls below are theirs, in their order.
@@ -27,10 +27,10 @@
  *   7.8125 MHz.  spi_pl022_xfer() polls the FIFOs in the caller's thread, at
  *   most 8 bytes in flight, until every byte has come back.
  *
- * The NuttX build (nuttx/boards/arduino-nano-rp2040-connect/src/nano_nina.c)
+ * The NuttX build (nuttx/boards/arduino-nano-rp2040-connect/src/nina_bus.c)
  * does the same on its own SPI driver.  Here:
  *
- * - nano_nina_initialize(): the reset of SPI1 (as spi_init() does), the
+ * - nina_bus_initialize(): the reset of SPI1 (as spi_init() does), the
  *   pins as pinctrl does, the format and the rate at once (Zephyr's first
  *   configuration at boot is its lowest rate and its 8 MHz configuration
  *   comes with the first transfer; nothing is sent in between, so the
@@ -45,7 +45,7 @@
  *   pico-sdk/src/boards/include/boards/arduino_nano_rp2040_connect.h, names
  *   none of them; stdio is USB only); so do the Zephyr and NuttX builds
  *   until this point.
- * - nano_nina_transceive(): the SDK's spi_write_read_blocking() (both
+ * - nina_bus_transceive(): the SDK's spi_write_read_blocking() (both
  *   buffers) or spi_write_blocking() (no RX buffer: received bytes are
  *   dropped and it waits until the shifter is idle), which poll the FIFOs
  *   in the calling task with at most 8 bytes in flight, as
@@ -58,12 +58,12 @@
  *   bus's context lock, but SPI1 has no other user and nina_spi.c calls this
  *   only with nina_lock held (nina_os.c).  CS is not touched (nina_spi.c
  *   drives it, as nina_wifi.c does: its spi_config has no CS).
- * - nano_nina_pin_configure(): gpio_rpi_configure() of Zephyr's RP2040 GPIO
+ * - nina_pin_configure(): gpio_rpi_configure() of Zephyr's RP2040 GPIO
  *   driver (drivers/gpio/gpio_rpi_pico.c) for a push-pull line after
  *   gpio_pin_configure_dt() has folded in the devicetree flags: the pulls,
  *   the SIO function (which sets input enable and clears output disable),
  *   input enable off unless an input, then the level and the direction.
- * - nano_nina_pin_set() / _get(): gpio_put() / gpio_get() with the line's
+ * - nina_pin_set() / _get(): gpio_put() / gpio_get() with the line's
  *   polarity (gpio_pin_set_dt() / gpio_pin_get_dt()).  The pins are on SIO,
  *   so no other task's GPIO calls interfere: SIO's set and clear registers
  *   change only the bits written.
@@ -85,10 +85,10 @@
 #include "hardware/resets.h"
 #include "hardware/spi.h"
 
-#include "nano_nina.h"
+#include "nina_bus.h"
 
-/* The Zephyr build's CONFIG_NINA_SPI_FREQUENCY (Kconfig default; the NuttX
- * build's CONFIG_NANO_NINA_SPI_FREQUENCY).
+/* CONFIG_NINA_SPI_FREQUENCY of the Zephyr and NuttX builds (their Kconfig
+ * default).
  */
 #ifndef CONFIG_NINA_SPI_FREQUENCY
 #define CONFIG_NINA_SPI_FREQUENCY 8000000
@@ -113,10 +113,10 @@ struct nina_line {
 };
 
 static const struct nina_line lines[] = {
-	[NANO_NINA_CS] = {NINA_CS_GPIO, true, false, false},
-	[NANO_NINA_READY] = {NINA_READY_GPIO, true, true, false},
-	[NANO_NINA_RESET] = {NINA_RESET_GPIO, true, false, false},
-	[NANO_NINA_IRQ] = {NINA_IRQ_GPIO, false, false, true},
+	[NINA_PIN_CS] = {NINA_CS_GPIO, true, false, false},
+	[NINA_PIN_READY] = {NINA_READY_GPIO, true, true, false},
+	[NINA_PIN_RESET] = {NINA_RESET_GPIO, true, false, false},
+	[NINA_PIN_IRQ] = {NINA_IRQ_GPIO, false, false, true},
 };
 
 static bool bus_ready;
@@ -139,7 +139,7 @@ static void spi_pin(unsigned int gpio, bool input_enable)
 	gpio_set_irqover(gpio, GPIO_OVERRIDE_NORMAL);
 }
 
-int nano_nina_initialize(void)
+int nina_bus_initialize(void)
 {
 	reset_block_num(NINA_SPI_RESET);
 	unreset_block_num_wait_blocking(NINA_SPI_RESET);
@@ -153,15 +153,15 @@ int nano_nina_initialize(void)
 	hw_set_bits(&spi_get_hw(NINA_SPI)->cr1, SPI_SSPCR1_SSE_BITS);
 	bus_ready = true;
 
-	return nano_nina_pin_configure(NANO_NINA_CS, NANO_NINA_OUTPUT_INACTIVE);
+	return nina_pin_configure(NINA_PIN_CS, NINA_PIN_OUTPUT_INACTIVE);
 }
 
-bool nano_nina_bus_ready(void)
+bool nina_bus_ready(void)
 {
 	return bus_ready;
 }
 
-int nano_nina_pin_configure(enum nano_nina_pin pin, enum nano_nina_mode mode)
+int nina_pin_configure(enum nina_pin pin, enum nina_pin_mode mode)
 {
 	const struct nina_line *line;
 	bool level;
@@ -170,16 +170,16 @@ int nano_nina_pin_configure(enum nano_nina_pin pin, enum nano_nina_mode mode)
 		return -EINVAL;
 	}
 	switch (mode) {
-	case NANO_NINA_OUTPUT_INACTIVE:
+	case NINA_PIN_OUTPUT_INACTIVE:
 		level = lines[pin].active_low;
 		break;
-	case NANO_NINA_OUTPUT_ACTIVE:
+	case NINA_PIN_OUTPUT_ACTIVE:
 		level = !lines[pin].active_low;
 		break;
-	case NANO_NINA_OUTPUT_HIGH:
+	case NINA_PIN_OUTPUT_HIGH:
 		level = true;
 		break;
-	case NANO_NINA_INPUT:
+	case NINA_PIN_INPUT:
 		level = false;
 		break;
 	default:
@@ -189,7 +189,7 @@ int nano_nina_pin_configure(enum nano_nina_pin pin, enum nano_nina_mode mode)
 	line = &lines[pin];
 	gpio_set_pulls(line->gpio, line->pull_up, line->pull_down);
 	gpio_set_function(line->gpio, GPIO_FUNC_SIO);
-	if (mode == NANO_NINA_INPUT) {
+	if (mode == NINA_PIN_INPUT) {
 		gpio_set_dir(line->gpio, GPIO_IN);
 		return 0;
 	}
@@ -199,7 +199,7 @@ int nano_nina_pin_configure(enum nano_nina_pin pin, enum nano_nina_mode mode)
 	return 0;
 }
 
-int nano_nina_pin_set(enum nano_nina_pin pin, int value)
+int nina_pin_set(enum nina_pin pin, int value)
 {
 	const struct nina_line *line = &lines[pin];
 
@@ -207,14 +207,14 @@ int nano_nina_pin_set(enum nano_nina_pin pin, int value)
 	return 0;
 }
 
-int nano_nina_pin_get(enum nano_nina_pin pin)
+int nina_pin_get(enum nina_pin pin)
 {
 	const struct nina_line *line = &lines[pin];
 
 	return gpio_get(line->gpio) != line->active_low;
 }
 
-int nano_nina_transceive(const uint8_t *tx, uint8_t *rx, size_t len)
+int nina_bus_transceive(const uint8_t *tx, uint8_t *rx, size_t len)
 {
 	if (len == 0) {
 		return 0;

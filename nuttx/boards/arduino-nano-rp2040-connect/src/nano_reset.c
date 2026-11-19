@@ -25,7 +25,7 @@
  *   of the power-on state machine but the oscillators selected for the
  *   watchdog's reset (PSM WDSEL), then the reset triggered at once.  The
  *   scratch registers 0..3 survive it (the NINA passthrough's request,
- *   nano_nina_passthrough.c).  NuttX's board_reset() (SYSRESETREQ) is not
+ *   nina_passthrough.c).  NuttX's board_reset() (SYSRESETREQ) is not
  *   used for that, so that the restart is the same as the FreeRTOS
  *   build's.
  */

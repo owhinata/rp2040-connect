@@ -114,10 +114,10 @@ int nina_getaddrinfo(const char *host, const char *service,
 		}
 		param = (struct nina_param){(const uint8_t *)host, host_len};
 		nina_os_dns_lock();
-		ret = nina_request(0x34, &param, 1, false, false, &answer, 1,
+		ret = nina_request(NINA_CMD_REQ_HOST_BY_NAME, &param, 1, false, false, &answer, 1,
 				   &n);
 		if (!ret && n == 1 && answer == 1) {
-			ret = nina_request(0x35, NULL, 0, false, false, ip,
+			ret = nina_request(NINA_CMD_GET_HOST_BY_NAME, NULL, 0, false, false, ip,
 					   sizeof(ip), &n);
 		} else if (!ret) {
 			ret = -ENOENT;

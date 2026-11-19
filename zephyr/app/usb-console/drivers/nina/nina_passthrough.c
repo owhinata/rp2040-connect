@@ -21,7 +21,7 @@
  *   this file takes the USB device stack's messages (usbd_msg_register_cb()
  *   on the context of CONFIG_CDC_ACM_SERIAL_INITIALIZE_AT_BOOT, before
  *   that enables it at APPLICATION).
- * - The NINA core (common/drivers/nina) sees no bus (nano_nina_bus_ready()
+ * - The NINA core (common/drivers/nina) sees no bus (nina_bus_ready()
  *   is false), so the Wi-Fi interface's start (net_init) and every later
  *   request (the Telnet server's socket, "nina version", ...) fail with
  *   -ENODEV without touching SPI1 or the module's lines.  spi1 itself is

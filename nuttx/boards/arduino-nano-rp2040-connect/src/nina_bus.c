@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-/* The board's side of the NINA-W102 SPI link (<nano_nina.h>): SPI1 and the
+/* The board's side of the NINA-W102 SPI link (<nina_bus.h>): SPI1 and the
  * module's lines, set up as the Zephyr build sets them up.
  *
  * Zephyr build (zephyr/boards/arduino/nano_connect/arduino_nano_connect.dts
@@ -26,8 +26,8 @@
  * Here: NuttX's SPI1 driver (arch/arm/src/rp2040/rp2040_spi.c, polled with
  * RP2040_SPI_DMA off).  boards/arm/rp2040/common sets the pin functions and
  * makes CONFIG_RP2040_SPI1_CS_GPIO an output at 1 before this runs
- * (rp2040_common_initialize()); nano_nina_initialize() then sets the pads
- * as Zephyr's pinctrl and GPIO drivers do.  Each nano_nina_transceive()
+ * (rp2040_common_initialize()); nina_bus_initialize() then sets the pads
+ * as Zephyr's pinctrl and GPIO drivers do.  Each nina_bus_transceive()
  * takes the bus lock (SPI_LOCK) like each Zephyr spi_transceive() takes its
  * context lock, and sets mode, word size and frequency the first time,
  * like Zephyr's spi_pl022_configure() does when the configuration changes
@@ -50,7 +50,7 @@
 #include "rp2040_gpio.h"
 #include "rp2040_spi.h"
 
-#include "nano_nina.h"
+#include "nina_bus.h"
 
 #if CONFIG_RP2040_SPI1_SCK_GPIO != BOARD_NINA_SPI1_SCK_GPIO || \
     CONFIG_RP2040_SPI1_TX_GPIO != BOARD_NINA_SPI1_TX_GPIO || \
@@ -69,10 +69,10 @@ struct nina_line
 
 static const struct nina_line g_lines[] =
 {
-  [NANO_NINA_CS]    = { BOARD_NINA_CS_GPIO,    true,  false, false },
-  [NANO_NINA_READY] = { BOARD_NINA_READY_GPIO, true,  true,  false },
-  [NANO_NINA_RESET] = { BOARD_NINA_RESET_GPIO, true,  false, false },
-  [NANO_NINA_IRQ]   = { BOARD_NINA_IRQ_GPIO,   false, false, true  },
+  [NINA_PIN_CS]    = { BOARD_NINA_CS_GPIO,    true,  false, false },
+  [NINA_PIN_READY] = { BOARD_NINA_READY_GPIO, true,  true,  false },
+  [NINA_PIN_RESET] = { BOARD_NINA_RESET_GPIO, true,  false, false },
+  [NINA_PIN_IRQ]   = { BOARD_NINA_IRQ_GPIO,   false, false, true  },
 };
 
 static struct spi_dev_s *g_spi;
@@ -100,7 +100,7 @@ static void spi_pin(uint32_t gpio, bool input_enable)
   set_input_enabled(gpio, input_enable);
 }
 
-int nano_nina_initialize(void)
+int nina_bus_initialize(void)
 {
   spi_pin(BOARD_NINA_SPI1_RX_GPIO, true);
   spi_pin(BOARD_NINA_SPI1_TX_GPIO, false);
@@ -112,10 +112,10 @@ int nano_nina_initialize(void)
       return -ENODEV;
     }
 
-  return nano_nina_pin_configure(NANO_NINA_CS, NANO_NINA_OUTPUT_INACTIVE);
+  return nina_pin_configure(NINA_PIN_CS, NINA_PIN_OUTPUT_INACTIVE);
 }
 
-bool nano_nina_bus_ready(void)
+bool nina_bus_ready(void)
 {
   return g_spi != NULL;
 }
@@ -127,10 +127,10 @@ bool nano_nina_bus_ready(void)
  * the direction.
  */
 
-int nano_nina_pin_configure(enum nano_nina_pin pin, enum nano_nina_mode mode)
+int nina_pin_configure(enum nina_pin pin, enum nina_pin_mode mode)
 {
   const struct nina_line *line;
-  bool input = mode == NANO_NINA_INPUT;
+  bool input = mode == NINA_PIN_INPUT;
   int level;
 
   if ((unsigned int)pin >= sizeof(g_lines) / sizeof(g_lines[0]))
@@ -150,13 +150,13 @@ int nano_nina_pin_configure(enum nano_nina_pin pin, enum nano_nina_mode mode)
   set_input_enabled(line->gpio, false);
   switch (mode)
     {
-      case NANO_NINA_OUTPUT_INACTIVE:
+      case NINA_PIN_OUTPUT_INACTIVE:
         level = line->active_low;
         break;
-      case NANO_NINA_OUTPUT_ACTIVE:
+      case NINA_PIN_OUTPUT_ACTIVE:
         level = !line->active_low;
         break;
-      case NANO_NINA_OUTPUT_HIGH:
+      case NINA_PIN_OUTPUT_HIGH:
         level = 1;
         break;
       default:
@@ -168,7 +168,7 @@ int nano_nina_pin_configure(enum nano_nina_pin pin, enum nano_nina_mode mode)
   return 0;
 }
 
-int nano_nina_pin_set(enum nano_nina_pin pin, int value)
+int nina_pin_set(enum nina_pin pin, int value)
 {
   const struct nina_line *line = &g_lines[pin];
 
@@ -176,14 +176,14 @@ int nano_nina_pin_set(enum nano_nina_pin pin, int value)
   return 0;
 }
 
-int nano_nina_pin_get(enum nano_nina_pin pin)
+int nina_pin_get(enum nina_pin pin)
 {
   const struct nina_line *line = &g_lines[pin];
 
   return rp2040_gpio_get(line->gpio) != line->active_low;
 }
 
-int nano_nina_transceive(const uint8_t *tx, uint8_t *rx, size_t len)
+int nina_bus_transceive(const uint8_t *tx, uint8_t *rx, size_t len)
 {
   int ret;
 
@@ -206,7 +206,7 @@ int nano_nina_transceive(const uint8_t *tx, uint8_t *rx, size_t len)
     {
       SPI_SETMODE(g_spi, SPIDEV_MODE0);
       SPI_SETBITS(g_spi, 8);
-      SPI_SETFREQUENCY(g_spi, CONFIG_NANO_NINA_SPI_FREQUENCY);
+      SPI_SETFREQUENCY(g_spi, CONFIG_NINA_SPI_FREQUENCY);
       g_configured = true;
     }
 

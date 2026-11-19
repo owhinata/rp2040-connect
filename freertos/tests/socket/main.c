@@ -258,13 +258,13 @@ int nina_request(uint8_t cmd, const struct nina_param *p, size_t nparams, bool w
 
 	(void)wide_params;
 	(void)wide_response;
-	if (cmd >= NINA_CMD_SOCKET && cmd != NINA_CMD_SOCKET) {
+	if (cmd >= NINA_CMD_SOCKET_SOCKET && cmd != NINA_CMD_SOCKET_SOCKET) {
 		assert(nparams >= 1 && p[0].len == 1 && p[0].data[0] < FW_MAX);
 		s = &fw[p[0].data[0]];
 		assert(s->open);
 	}
 	switch (cmd) {
-	case NINA_CMD_SOCKET: {
+	case NINA_CMD_SOCKET_SOCKET: {
 		int id;
 
 		log_cmd("socket");
@@ -275,26 +275,26 @@ int nina_request(uint8_t cmd, const struct nina_param *p, size_t nparams, bool w
 		reply(out, cap, out_len, b, 1);
 		return 0;
 	}
-	case NINA_CMD_IOCTL:
+	case NINA_CMD_SOCKET_IOCTL:
 		log_cmd("ioctl");
 		s->nonblocking = true;
 		reply(out, cap, out_len, "\0\0\0\0", 4);
 		return 0;
-	case NINA_CMD_CLOSE:
+	case NINA_CMD_SOCKET_CLOSE:
 		log_cmd("close");
 		s->open = false;
 		reply(out, cap, out_len, &close_reply, 1);
 		return 0;
-	case NINA_CMD_BIND:
+	case NINA_CMD_SOCKET_BIND:
 		log_cmd("bind");
 		reply(out, cap, out_len, "\1", 1);
 		return 0;
-	case NINA_CMD_LISTEN:
+	case NINA_CMD_SOCKET_LISTEN:
 		log_cmd("listen");
 		s->listening = true;
 		reply(out, cap, out_len, "\1", 1);
 		return 0;
-	case NINA_CMD_ACCEPT: {
+	case NINA_CMD_SOCKET_ACCEPT: {
 		int id;
 
 		log_cmd("accept");
@@ -313,12 +313,12 @@ int nina_request(uint8_t cmd, const struct nina_param *p, size_t nparams, bool w
 		reply(out, cap, out_len, b, 7);
 		return 0;
 	}
-	case NINA_CMD_CONNECT:
+	case NINA_CMD_SOCKET_CONNECT:
 		log_cmd("connect");
 		assert(nparams == 3 && p[1].len == 4 && p[2].len == 2);
 		reply(out, cap, out_len, "\0", 1);
 		return 0;
-	case NINA_CMD_POLL: {
+	case NINA_CMD_SOCKET_POLL: {
 		uint8_t state = 0;
 
 		log_cmd("poll");
@@ -351,7 +351,7 @@ int nina_request(uint8_t cmd, const struct nina_param *p, size_t nparams, bool w
 		reply(out, cap, out_len, &state, 1);
 		return 0;
 	}
-	case NINA_CMD_GETSOCKOPT:
+	case NINA_CMD_SOCKET_GETSOCKOPT:
 		log_cmd("getsockopt");
 		b[0] = s->lwip_error & 0xff;
 		b[1] = (s->lwip_error >> 8) & 0xff;
@@ -359,7 +359,7 @@ int nina_request(uint8_t cmd, const struct nina_param *p, size_t nparams, bool w
 		b[3] = 0;
 		reply(out, cap, out_len, b, 4);
 		return 0;
-	case NINA_CMD_SEND: {
+	case NINA_CMD_SOCKET_SEND: {
 		size_t written = p[1].len;
 
 		log_cmd("send");
@@ -379,7 +379,7 @@ int nina_request(uint8_t cmd, const struct nina_param *p, size_t nparams, bool w
 		reply(out, cap, out_len, b, 2);
 		return 0;
 	}
-	case NINA_CMD_RECV: {
+	case NINA_CMD_SOCKET_RECV: {
 		size_t size = p[1].data[0] | (p[1].data[1] << 8), n = MIN(size, s->len);
 
 		log_cmd("recv");
@@ -390,7 +390,7 @@ int nina_request(uint8_t cmd, const struct nina_param *p, size_t nparams, bool w
 		*out_len = n;
 		return 0;
 	}
-	case NINA_CMD_SENDTO:
+	case NINA_CMD_SOCKET_SENDTO:
 		log_cmd("sendto");
 		assert(nparams == 4);
 		assert(s->sent_len + p[3].len <= sizeof(s->sent));
@@ -400,7 +400,7 @@ int nina_request(uint8_t cmd, const struct nina_param *p, size_t nparams, bool w
 		b[1] = p[3].len & 0xff;
 		reply(out, cap, out_len, b, 2);
 		return 0;
-	case NINA_CMD_RECVFROM: {
+	case NINA_CMD_SOCKET_RECVFROM: {
 		size_t size = p[1].data[0] | (p[1].data[1] << 8), n;
 		struct dgram d;
 

@@ -73,7 +73,7 @@
 #  include "kv_store.h"
 #endif
 
-#if defined(CONFIG_NANO_APP_IMU) || defined(CONFIG_NANO_NINA_NET) || \
+#if defined(CONFIG_NANO_APP_IMU) || defined(CONFIG_NINA_NET) || \
     defined(CONFIG_NANO_WIFI_PROFILE) || defined(CONFIG_NANO_APP_SENSOR)
 #  include "zephyr_compat.h"
 #endif
@@ -83,8 +83,8 @@
 #  include "time_sync.h"
 #endif
 
-#ifdef CONFIG_NANO_NINA_PASSTHROUGH
-#  include <arch/board/nano_nina_passthrough.h>
+#ifdef CONFIG_NINA_PASSTHROUGH
+#  include <arch/board/nina_passthrough.h>
 #endif
 
 /* nuttx/apps/wifi: <zephyr/net/wifi_credentials.h> and <wifi_profile.h>
@@ -236,16 +236,16 @@ int nano_init_main(int argc, FAR char *argv[])
   int ret;
 #endif
 
-#ifdef CONFIG_NANO_NINA_PASSTHROUGH
+#ifdef CONFIG_NINA_PASSTHROUGH
   /* "nina passthrough confirm" asked for the NINA passthrough mode (the
-   * board's include/nano_nina_passthrough.h): it runs here instead of all
+   * board's include/nina_passthrough.h): it runs here instead of all
    * that follows (no nsh, Telnet, Wi-Fi, key-value store or threads),
    * until it restarts the board into the normal firmware.
    */
 
-  if (nano_nina_passthrough_active())
+  if (nina_passthrough_active())
     {
-      nano_nina_passthrough_run();
+      nina_passthrough_run();
     }
 #endif
 
@@ -264,7 +264,7 @@ int nano_init_main(int argc, FAR char *argv[])
    * (z_init_static_threads()).  Each waits for its work at once.
    */
 
-#ifdef CONFIG_NANO_NINA_NET
+#ifdef CONFIG_NINA_NET
   K_THREAD_DEFINE_START(nina_scan_tid);     /* common/drivers/nina/nina_net.c */
   K_THREAD_DEFINE_START(nina_connect_tid);
   K_THREAD_DEFINE_START(nina_monitor_tid);

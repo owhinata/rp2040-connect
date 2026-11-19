@@ -1,7 +1,8 @@
 /* SPDX-License-Identifier: MIT */
 /* Host test of the NINA passthrough mode's decisions
  * (common/drivers/nina/nina_passthrough_logic.h, which
- * freertos/drivers/nina/nina_passthrough.c runs on the board).
+ * freertos/drivers/nina/nina_passthrough.c runs on the board), and of the
+ * merge of its "nina" subcommand (common/shell/nina_shell.h).
  *
  * - The request in the watchdog's scratch registers: the words, a damaged
  *   copy, and the fatal error record of the same registers
@@ -32,6 +33,7 @@
 
 #include "fault_record.h"
 #include "nina_passthrough_logic.h"
+#include "nina_shell.h"
 
 static int failures;
 

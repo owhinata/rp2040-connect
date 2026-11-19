@@ -1692,3 +1692,27 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
   `prj.conf` が有効にする、など）。リンクと、文書に出てくるパスの実在を確認。
 - あとの整理に回したもの: Zephyr のドライバー説明の `i2c_dw_sync` の行が長い、`nuttx-porting` の「テスト 34 本」の数が未確認、設計書 §1 の合意済みの要求と
   確認済みの項目が早い時期の記述のまま、英語版で "Zephyr version" と "Zephyr build" が混在。
+
+## NINA のリファクタリング: 方針と、段階 1・2（名前、シェルの移動）（2026-11-19、ユーザーの決定）
+
+- 方針: NINA には写しのもとの上流のドライバーが無いので、I2C の指針のうち「上流 + パッチ」「ずれの検査」は当てはまらない（ファームウェアとの突き合わせの
+  検査も入れない）。行うこと: `nano` の名前を無くす（Arduino Nano は RP2040 の機種だけではない。リポジトリ全体の `nano_` は別の作業）、コマンド番号に名前、
+  `common/drivers/nina` に Zephyr の定義を入れない、`nina_net.c` の Wi-Fi の操作を OS 非依存のコアの関数にして NuttX 版はそれを直接呼ぶ。
+- 構成（ユーザーの提案）: ドライバーは自分のつなぎも一緒に持つ。`common/drivers/nina/` がコア（OS の定義なし）、その下の `zephyr/`・`nuttx/` が各 OS の API への
+  つなぎ。FreeRTOS 版は `zephyr/` のつなぎを互換層の上でビルドし、そのために要る Zephyr の層（ソケットのオフロードなど）を `common/compat` に実装する。
+  ボードやチップに固有の部分は各版に残す。うまく行けば `i2c_dw` も同じ形に移す。
+- 順番: (1) 名前、(2) シェルを `common/shell/` へ、(3) Wi-Fi の操作をコアへ・つなぎをサブディレクトリーへ・NuttX は直接、(4) OS の境界の実装を Zephyr 版と
+  FreeRTOS 版で 1 つに、(5) ソケットのオフロードの層を互換層に、(6) 残りの洗い出し。指針は `CLAUDE.md` の 9・10 番。
+- 段階 1（名前）: `nano_nina.h` → `nina_bus.h`（`nina_bus_transceive()`・`nina_bus_ready()`・`nina_bus_initialize()`・`nina_pin_*()`・`NINA_PIN_*`）、各版の
+  `nano_nina.c` → `nina_bus.c`、NuttX のボードの `nano_nina_passthrough*` → `nina_passthrough*`（`nano_pt_*` → `nina_pt_*`）、`CONFIG_NANO_NINA*` → `CONFIG_NINA*`
+  （3 版。NuttX の名前が Zephyr 版と同じになったので、読み替えの 2 か所を削除）。コマンド番号と応答の値は新しい `nina_cmd.h`（名前は Arduino の WiFiNINA の
+  `wifi_spi.h`・`wl_definitions.h`、無いものはファームウェアの関数名から。例: `NINA_CMD_SET_PASSPHRASE` 0x11、`NINA_CMD_START_SCAN_NETWORKS` 0x36、
+  `NINA_CMD_GET_CAPABILITIES` 0x6a、`NINA_CMD_SOCKET_POLL` 0x7c）。
+- 段階 2（シェル）: `nina_shell.c` と、`nina_passthrough_logic.h` にあった `nina_pt_subcmd_get()`（→ `common/shell/nina_shell.h`）を `common/shell/` へ。
+  `nina_passthrough_logic.h` は Zephyr のヘッダーを読まなくなった。`common/drivers/nina/` に残る Zephyr の定義は `nina_net.c` だけ。
+- NINA のファイルに残る `nano`: ボード全体の名前（`nano_gpio`、`nano_bringup`、`NANO_PRIO_*`、`CONFIG_NANO_APP_NINA*`、`NANO_SUBCMD` など）。別の作業。
+- 確認（メインが再ビルド）: FreeRTOS は同じ日付でビルドした前後が一致、Zephyr は `snapshot-1119b` と一致。NuttX は大きさは同じ（284856 B）で、
+  `nano_bringup.c` のエラーメッセージ 1 行（関数名）が 1 文字短くなった分だけ違う（文字列の比較で違うのはこの 1 行。subagent が、その 1 行を戻した対照のビルドで
+  基準と一致することを確認）。ホストテスト: FreeRTOS 50、NuttX 51、Zephyr 40 の `ok`。`format.sh --check` も通る。
+- NuttX 版は実機に書いていない（違いがエラーメッセージ 1 行だけで、次の段階で実機の確認を一通り行うため）。
+- **新しい基準**: NuttX は `freertos/build/baseline/nuttx/snapshot-1119e/image.bin`（284856 B）。Zephyr は `snapshot-1119b` のまま。

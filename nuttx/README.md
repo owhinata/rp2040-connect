@@ -113,7 +113,7 @@ These options of the board's Kconfig are on by default.
 |---|---|
 | `CONFIG_NANO_ROM_MEM_OPS` | `memcpy` and `memset` through the boot ROM's routines (patch 0010; off, the C library's loops). `build.sh` checks that `__start()` calls neither |
 | `CONFIG_NANO_HW_DIVIDER` | Integer division on the RP2040's hardware divider (the Pico SDK's routines, patch 0009; off, libgcc's). `build.sh` checks that no libgcc division is left in the image |
-| `CONFIG_NANO_NINA_PASSTHROUGH` | `nina passthrough confirm` ("Other commands" below) |
+| `CONFIG_NINA_PASSTHROUGH` | `nina passthrough confirm` ("Other commands" below) |
 
 ## Flashing
 

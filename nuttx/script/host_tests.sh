@@ -140,9 +140,9 @@ cnina=../common/drivers/nina
 # through the layer's gpio0 (common/compat/zephyr_gpio.c, with the prelude and the fake kernel's
 # spin lock), on fakes of NuttX's semaphores, mutexes, sleeps and clock (tests/nina_os_fakes) and
 # of the board's GPIO bank 0: ready during the wait, the timeout, a change right after the read,
-# stale wake-ups.  Also the socket events on the IRQ line (GPIO2, with CONFIG_NANO_NINA_USRSOCK as
+# stale wake-ups.  Also the socket events on the IRQ line (GPIO2, with CONFIG_NINA_USRSOCK as
 # nina/Make.defs builds nina_os.c), with the socket loops' waits (nina_wait.c).
-ninaos=(-DCONFIG_NANO_NINA_USRSOCK=1 -Itests/nina_os_fakes -Itests/fakes -I"$ccompat" -I"$cnina")
+ninaos=(-DCONFIG_NINA_USRSOCK=1 -Itests/nina_os_fakes -Itests/fakes -I"$ccompat" -I"$cnina")
 cc "${flags[@]}" "${ninaos[@]}" -I"$zfakes" -c drivers/nina/nina_os.c -o "$out/nina_os_os.o"
 cc "${flags[@]}" -include "$prelude" -I"$zfakes" -I"$ccompat" -c "$ccompat/zephyr_gpio.c" \
     -o "$out/nina_os_gpio.o"
@@ -239,15 +239,15 @@ run shell_register -D_DEFAULT_SOURCE -DZ_SHELL_CMD_NAMED_MAIN -DIMU_SHELL_INC="\
 run i2c_dma_app -D_DEFAULT_SOURCE -DZ_SHELL_CMD_NAMED_MAIN -include "$prelude" \
     -Idrivers/compat -I"$ccompat" -I"$cshell" -Iapps/subcmd \
     "$cshell/zshell.c" "$cshell/subcmd.c"
-# The NINA passthrough mode's NuttX side: the board's glue (nano_nina_passthrough_glue.h) between
+# The NINA passthrough mode's NuttX side: the board's glue (nina_passthrough_glue.h) between
 # cdcacm's lines and line coding, UART1's data words and the shared decisions
-# (common/drivers/nina/nina_passthrough_logic.h, which reads the layer's <zephyr/shell/shell.h>),
-# and "nina passthrough" of apps/nina (CONFIG_NANO_NINA_PASSTHROUGH) on the subcommand dispatch,
-# with fakes of the NINA requests and of the board's request (tests/nina_passthrough_fakes: the
-# board's real <arch/board/nano_nina_passthrough.h>).
-run nina_passthrough -DCONFIG_NANO_NINA_PASSTHROUGH=1 -Itests/nina_passthrough_fakes \
-    -Iboards/arduino-nano-rp2040-connect/src -I../common/drivers/nina -Idrivers/compat -I"$ccompat" \
-    -Iapps/nina -I"$cshell" "$cshell/subcmd.c"
+# (common/drivers/nina/nina_passthrough_logic.h), and "nina passthrough" of apps/nina
+# (CONFIG_NINA_PASSTHROUGH) on the subcommand dispatch, with fakes of the NINA requests and of
+# the board's request (tests/nina_passthrough_fakes: the board's real
+# <arch/board/nina_passthrough.h>).
+run nina_passthrough -DCONFIG_NINA_PASSTHROUGH=1 -Itests/nina_passthrough_fakes \
+    -Iboards/arduino-nano-rp2040-connect/src -I../common/drivers/nina -Iapps/nina -I"$cshell" \
+    "$cshell/subcmd.c"
 # The time synchronization (common/imu/time_sync.c, shared with the Zephyr build) on the
 # compatibility layer with a fake NINA socket, clock (the TIMER's registers), interface and
 # realtime clock: the NTP request and the checks of the reply, where t1 and t4 are read, the

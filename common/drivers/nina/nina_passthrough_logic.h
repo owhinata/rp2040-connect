@@ -19,9 +19,6 @@
  * - The buffer from the UART's receive interrupt to the USB side
  *   (nina_pt_ring_*()): one producer (the interrupt), one consumer (the
  *   main loop).
- * - The "nina" command's subcommands: the shared set
- *   (common/drivers/nina/nina_shell.c) with this build's "passthrough"
- *   merged in by name (nina_pt_subcmd_get()).
  */
 
 #ifndef NINA_PASSTHROUGH_LOGIC_H
@@ -31,8 +28,6 @@
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
-
-#include <zephyr/shell/shell.h>
 
 /* The request ----------------------------------------------------------*/
 
@@ -239,35 +234,6 @@ static inline void nina_pt_ring_consume(struct nina_pt_ring *r, uint32_t n)
 {
 	NINA_PT_BARRIER();
 	r->tail = r->tail + n;
-}
-
-/* The "nina" subcommands -----------------------------------------------*/
-
-/* The IDX-th of the static set SHARED (ending with an entry without a
- * syntax) with EXTRA put in by name, in ENTRY (no syntax past the end),
- * for a dynamic set (Zephyr sorts a command's subcommands by name).
- */
-static inline void nina_pt_subcmd_get(const struct shell_static_entry *shared,
-				      const struct shell_static_entry *extra, size_t idx,
-				      struct shell_static_entry *entry)
-{
-	size_t before = 0; /* the shared entries before EXTRA */
-	size_t n = 0;
-
-	while (shared[n].syntax != NULL) {
-		if (strcmp(shared[n].syntax, extra->syntax) < 0) {
-			before = n + 1;
-		}
-		n++;
-	}
-	memset(entry, 0, sizeof(*entry));
-	if (idx < before) {
-		*entry = shared[idx];
-	} else if (idx == before) {
-		*entry = *extra;
-	} else if (idx <= n) {
-		*entry = shared[idx - 1];
-	}
 }
 
 #endif /* NINA_PASSTHROUGH_LOGIC_H */
