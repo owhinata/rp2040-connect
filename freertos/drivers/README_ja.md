@@ -35,7 +35,7 @@ OS に依存しない部分は `common/compat/`、FreeRTOS の部分は `freerto
 FreeRTOS 版だけがビルドする共有ファイル: `common/compat/zephyr_wifi_shell.c`（Zephyr の `wifi_shell.c` から
 `connect`・`disconnect`・`scan`・`status` を取り出したもの）、`zephyr_zperf_shell.c`・`zperf_iperf3.[ch]`（`zperf`）、
 `common/drivers/nina/nina_shell.c`（`nina version`）、`common/log/fault_record.[ch]`（異常停止の記録の形式）。
-`i2c_dma` の `common/drivers/i2c_dw/i2c_dma_shell.c` は Zephyr 版もビルドする。
+`i2c_dma` の `common/shell/i2c_dma_shell.c` は Zephyr 版もビルドする。
 
 ## Zephyr 互換層の FreeRTOS の部分
 
@@ -190,8 +190,8 @@ Pico SDK の既定のままです。整数の割り算は `pico_divider` のハ�
 
 ## I2C0 と DMA、LSM6DSOX、GPIO の割り込み
 
-- I2C0 と DMA は共有のコア（`common/drivers/i2c_dw/nano_i2c.c`・`nano_dma.c`）で、FreeRTOS 版は境界 `i2c_dw_os.h` を
-  `drivers/i2c_dw/i2c_dw_os_impl.h`（セマフォ、時計、割り込み禁止）と `nano_i2c_instance.h`・`nano_dma_instance.h`
+- I2C0 と DMA は共有のコア（`common/drivers/i2c_dw/i2c_dw.c`・`dma_rpi_pico.c`）で、FreeRTOS 版は境界 `i2c_dw_os.h` を
+  `drivers/i2c_dw/i2c_dw_os_impl.h`（セマフォ、時計、割り込み禁止）と `i2c_dw_instance.h`・`dma_rpi_pico_instance.h`
   （互換層のデバイス `i2c0` と Zephyr の I2C の API、割り込みの登録、リセット、ピン）で実装します。境界の一覧は
   [`nuttx/drivers/README_ja.md`](../../nuttx/drivers/README_ja.md) の「I2C0」の表です。
 - 割り込みの優先度は Pico SDK の既定の 0x80 のままで、デバイスの割り込みはすべて同じ高さです（NuttX 版と同じ。
@@ -243,7 +243,7 @@ spinlock、atomic、静的なスレッド、時分割、割り込みを 50 ms �
 | `shell` | 2 つのセッションのシェル、行編集、出力先 |
 | `kv` | フラッシュの境界と KV（Pico SDK のフラッシュ関数の偽物の上） |
 | `nina` | NINA の SPI と線の境界、READY の割り込み待ち、IRQ の線のエッジの待ち（2 つのタスクを 1 つのエッジで起こす、時間切れ）、カーネルの部分 |
-| `i2c_dw` | I2C0 の境界とデバイス、Zephyr の I2C の API |
+| `i2c_dw` | I2C0 の境界とデバイス、Zephyr の I2C の API、コアの DMA のコマンド語 |
 | `gpio` | GPIO バンク 0 の境界、`gpio0`、FIFO の割り込み |
 | `imu` | アドレスの変換、`hwinfo` |
 | `mqtt` | MQTT の送信（偽のブローカー）。続けて、ホストの `imu-host check` を相手にする回（`host/.venv` が無ければ skip） |

@@ -1,5 +1,5 @@
 /****************************************************************************
- * boards/arduino-nano-rp2040-connect/src/nano_i2c_instance.h
+ * boards/arduino-nano-rp2040-connect/src/i2c_dw_instance.h
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -8,19 +8,19 @@
  *
  ****************************************************************************/
 
-/* The NuttX part of the I2C0 core (common/drivers/i2c_dw/nano_i2c.c, which
+/* The NuttX part of the I2C0 core (common/drivers/i2c_dw/i2c_dw.c, which
  * includes this file at its end): I2C0 as a NuttX I2C master
  * (struct i2c_master_s: I2C_TRANSFER(), and I2C_RESET() with
  * CONFIG_I2C_RESET), its interrupt, reset and pins, and
- * nano_i2c0_initialize() (nano_i2c.h).
+ * i2c_dw_i2c0_initialize() (i2c_dw_i2c0.h).
  *
  *   Zephyr                                here
  *   i2c_transfer() (msgs, num, addr)      I2C_TRANSFER() (struct i2c_msg_s:
- *                                         nano_i2c_dw_msg_flags() turns the
+ *                                         i2c_dw_msg_flags() turns the
  *                                         NuttX flags into I2C_MSG_*,
  *                                         i2c_dw_os_impl.h)
  *   i2c_configure() (speed class)         the message frequency
- *                                         (nano_i2c_dw_speed())
+ *                                         (i2c_dw_speed())
  *   i2c_recover_bus()                     I2C_RESET()
  *   IRQ_CONNECT(), irq_enable()           irq_attach(), up_enable_irq()
  *   reset_line_toggle_dt()                RESETS (set, clear, RESET_DONE)
@@ -33,12 +33,12 @@
  * i2c_configure(); one address per transfer; no 10-bit addresses.
  */
 
-#ifndef __BOARDS_ARDUINO_NANO_RP2040_CONNECT_SRC_NANO_I2C_INSTANCE_H
-#define __BOARDS_ARDUINO_NANO_RP2040_CONNECT_SRC_NANO_I2C_INSTANCE_H
+#ifndef __BOARDS_ARDUINO_NANO_RP2040_CONNECT_SRC_I2C_DW_INSTANCE_H
+#define __BOARDS_ARDUINO_NANO_RP2040_CONNECT_SRC_I2C_DW_INSTANCE_H
 
-#if NANO_I2C_M_READ != I2C_M_READ || NANO_I2C_M_TEN != I2C_M_TEN || \
-    NANO_I2C_M_NOSTOP != I2C_M_NOSTOP || NANO_I2C_M_NOSTART != I2C_M_NOSTART
-#  error "nano_i2c_dw.h: the I2C_M_* values do not match NuttX's"
+#if I2C_DW_M_READ != I2C_M_READ || I2C_DW_M_TEN != I2C_M_TEN || \
+    I2C_DW_M_NOSTOP != I2C_M_NOSTOP || I2C_DW_M_NOSTART != I2C_M_NOSTART
+#  error "i2c_dw.h: the I2C_M_* values do not match NuttX's"
 #endif
 
 static int i2c_dw_transfer(struct i2c_master_s *dev, struct i2c_msg_s *msgs, int count)
@@ -58,7 +58,7 @@ static int i2c_dw_transfer(struct i2c_master_s *dev, struct i2c_msg_s *msgs, int
 		return 0;
 	}
 	target_address = msgs[0].addr;
-	speed = nano_i2c_dw_speed(msgs[0].frequency);
+	speed = i2c_dw_speed(msgs[0].frequency);
 	if (speed == 0 || target_address > 0x7f) {
 		return -EINVAL;
 	}
@@ -155,7 +155,7 @@ static void i2c_dw_os_irq_enable(struct i2c_dw_dev_config *dw)
 	up_enable_irq(RP2040_I2C0_IRQ);
 }
 
-struct i2c_master_s *nano_i2c0_initialize(void)
+struct i2c_master_s *i2c_dw_i2c0_initialize(void)
 {
 	struct i2c_dw_dev_config *const dw = &i2c_0_runtime;
 
@@ -167,8 +167,8 @@ struct i2c_master_s *nano_i2c0_initialize(void)
 	dw->base = RP2040_I2C0_BASE;
 	nxsem_init(&dw->device_sync_sem, 0, 0);
 	nxsem_init(&dw->bus_sem, 0, 1);
-#ifdef CONFIG_NANO_I2C0_DMA
-	nxsem_init(&dw->rp_dma_sem, 0, 0);
+#ifdef CONFIG_I2C_DW_RP2040_DMA
+	nxsem_init(&rp2040_dma_sem, 0, 0);
 #endif
 
 	if (i2c_dw_turn_on(dw) < 0) {
@@ -179,4 +179,4 @@ struct i2c_master_s *nano_i2c0_initialize(void)
 	return &dw->dev;
 }
 
-#endif /* __BOARDS_ARDUINO_NANO_RP2040_CONNECT_SRC_NANO_I2C_INSTANCE_H */
+#endif /* __BOARDS_ARDUINO_NANO_RP2040_CONNECT_SRC_I2C_DW_INSTANCE_H */

@@ -49,13 +49,10 @@ run lsm6dso_zero "${flags[@]}" "${inc[@]}" tests/lsm6dso_zero.c "$lsm/lsm6dso_ze
 run stream_stop "${flags[@]}" "${inc[@]}" tests/stream_stop.c \
     "$lsm/lsm6dso_fifo.c" "$lsm/lsm6dso_cal.c"
 
-# RP2040 I2C DMA command parsing.
-run i2c_dma_commands "${flags[@]}" -Idrivers/i2c_dw tests/i2c_dma_commands.c \
-    drivers/i2c_dw/i2c_dw_rp2040_commands.c
-# The I2C0 core's definitions (drivers/i2c_dw/nano_i2c_dw.h): SCL counts, speeds and the
+# The I2C0 core's definitions (drivers/i2c_dw/i2c_dw.h): SCL counts, speeds and the
 # IC_DATA_CMD words of whole transfers against the Zephyr build's, and the NuttX build's
 # message flags.
-run nano_i2c_dw "${flags[@]}" -Idrivers/i2c_dw tests/nano_i2c_dw.c
+run i2c_dw "${flags[@]}" -Idrivers/i2c_dw tests/i2c_dw.c
 
 # The compatibility layer on the fake kernel (tests/zephyr_fakes: the OS part, zephyr_os*.h,
 # and its functions): RTIO (pool, completions, multishot, cancellation, work queue), work items

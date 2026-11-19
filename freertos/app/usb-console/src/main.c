@@ -17,14 +17,14 @@
 #include "app.h"
 #include "app_log.h"
 #include "cli.h"
+#include "dma_rpi_pico.h"
 #include "fault.h"
+#include "i2c_dw_i2c0.h"
 #include "imu_cal.h"
 #include "kv_store.h"
 #include "log_ram.h"
 #include "nano_console.h"
-#include "nano_dma.h"
 #include "nano_flash_kv_os.h"
-#include "nano_i2c.h"
 #include "nano_lsm6dso.h"
 #include "nano_nina.h"
 #include "nina_net.h"
@@ -384,11 +384,11 @@ int main(void)
 	 * the NINA's SPI bus (freertos/drivers/i2c_dw).  A failure leaves i2c0
 	 * not ready (its calls return -ENODEV) and does not stop the start.
 	 */
-	ret = nano_dma_initialize();
+	ret = dma_rpi_pico_initialize();
 	if (ret != 0) {
 		LOG_ERR("Could not set up the DMA: %d", ret);
 	}
-	ret = nano_i2c0_initialize();
+	ret = i2c_dw_i2c0_initialize();
 	if (ret != 0) {
 		LOG_ERR("Could not set up I2C0: %d", ret);
 	}

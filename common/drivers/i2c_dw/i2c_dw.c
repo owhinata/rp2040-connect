@@ -1,28 +1,35 @@
-/****************************************************************************
- * common/drivers/i2c_dw/nano_i2c.c
- *
- * SPDX-License-Identifier: Apache-2.0
- *
+/* i2c_dw.c - I2C file for Design Ware */
+
+/*
  * Copyright (c) 2015 Intel Corporation
  * Copyright (c) 2022 Andrei-Edward Popa
  *
- ****************************************************************************/
+ * SPDX-License-Identifier: Apache-2.0
+ */
 
 /* I2C0 of the RP2040 (a DesignWare DW_apb_i2c block): a port of the
  * controller path of the Zephyr build's driver, Zephyr's
  * drivers/i2c/i2c_dw.c with the local patch
  * 0003-i2c-dw-rp2040-fifo-and-dma.patch (zephyr/manifest/zephyr/patches/
  * zephyr/: the RP2040 changes and the DMA reads, i2c_dw_rp2040.h and
- * i2c_dw_rp2040_dma.h; the line numbers here are those of the patched
- * files), with the same functions, branches, order, register values,
- * timeout and error values.  The NuttX build uses it in place of NuttX's
- * own arch/arm/src/rp2040/rp2040_i2c.c (CONFIG_RP2040_I2C off).
+ * i2c_dw_rp2040_dma_priv.h; a file name with a line number, as
+ * i2c_dw.c:55, is one of those patched files), with the same functions,
+ * branches, order, register values, timeout and error values.  The NuttX
+ * build uses it in place of NuttX's own arch/arm/src/rp2040/rp2040_i2c.c
+ * (CONFIG_RP2040_I2C off).
  * common/tests/i2c_dw_sync.py checks that the two stay the same, but for
  * the differences listed here.
  *
- * This file is the OS-independent core.  The OS's part is in i2c_dw_os.h
+ * The files follow Zephyr's: this file (i2c_dw.c), i2c_dw.h (Zephyr's
+ * definitions, and the pure functions that the host tests check),
+ * i2c_dw_registers.h (Zephyr's register map), i2c_dw_rp2040.h (the RP2040's
+ * FIFO depth and RX batch) and i2c_dw_rp2040_dma_priv.h (the DMA reads,
+ * included once below).  Zephyr's address type mm_reg_t is uintptr_t here
+ * (the same type on Arm).
+ *
+ * This is the OS-independent core.  The OS's part is in i2c_dw_os.h
  * (semaphores, clock, sleeps, critical section, the form of the messages:
- * i2c_dw_os_impl.h of the OS's build) and in nano_i2c_instance.h of the
+ * i2c_dw_os_impl.h of the OS's build) and in i2c_dw_instance.h of the
  * OS's build, read at the end of this file, which defines
  * i2c_dw_os_prepare() and i2c_dw_os_irq_enable() (below) and makes the
  * device of the OS's driver model: it initializes the semaphores and
@@ -32,7 +39,7 @@
  *
  *   Zephyr                                here
  *   struct device, dev->data, dev->config struct i2c_dw_dev_config, the
- *                                         constants of nano_i2c_dw.h
+ *                                         constants of i2c_dw.h
  *   i2c_transfer() (msgs, num, addr)      i2c_dw_transfer_msgs() (the OS's
  *                                         messages, I2C_DW_OS_MSG_*())
  *   i2c_configure() (speed class)         the speed of each transfer,
@@ -53,14 +60,21 @@
  * and other instances than i2c0.
  *
  * The DMA reads of i2c0 (CONFIG_I2C_DW_RP2040_DMA of the Zephyr build,
- * i2c_dw_rp2040_dma.h, i2c_dw.c:576-597, 805-809, 951-956, 1050-1062,
- * 1229-1233, 1651-1653) are CONFIG_NANO_I2C0_DMA: the same conditions, command words,
- * thresholds, interrupt mask, start order, completion and timeout, clean-up
- * and stop sequence, quarantine, counters and log lines, on nano_dma.c (a
- * port of Zephyr's dma_rpi_pico.c).  atomic_t becomes a volatile word with
- * the read-modify-write under i2c_dw_os_irq_lock() where an interrupt also
- * writes it (rp_dma_events); the counters are only written by the
- * transfer, which holds bus_sem.
+ * i2c_dw_rp2040_dma_priv.h, i2c_dw.c:55-57, 566-587, 795-799, 941-946,
+ * 1040-1052, 1219-1223) are CONFIG_I2C_DW_RP2040_DMA here too, with the same
+ * conditions, command words, thresholds, interrupt mask, start order,
+ * completion and timeout, clean-up and stop sequence, quarantine, counters
+ * and log lines, on dma_rpi_pico.c (a port of Zephyr's dma_rpi_pico.c).
+ * atomic_t becomes a volatile word with the read-modify-write under
+ * i2c_dw_os_irq_lock() where an interrupt also writes it
+ * (rp2040_dma_events); the counters are only written by the transfer,
+ * which holds bus_sem.  As in the patched driver, the read's
+ * semaphore, events, channels, command words and buffer are static
+ * variables for i2c0 (i2c_dw_rp2040_dma_priv.h:57-63), and rp2040_dma_active
+ * and rp2040_dma_quarantined are members of struct i2c_dw_dev_config
+ * (i2c_dw.h:194-197).  The semaphore is an i2c_dw_os_sem_t, which the OS's
+ * part (i2c_dw_instance.h) initializes to 0 with the controller's
+ * semaphores, in place of K_SEM_DEFINE().
  *
  * A transfer is the Zephyr one with the speed class as an argument (the
  * OS's part keeps what i2c_configure() set, or takes it from the
@@ -80,23 +94,12 @@
 #define LOG_LEVEL 3
 #include "app_log.h"
 
-#include "nano_i2c_dw.h"
-
-#ifdef CONFIG_NANO_I2C0_DMA
-#  include "i2c_dw_rp2040_commands.h"
-#  include "nano_dma.h"
-#  include "nano_i2c_dma.h"
-#endif
+#include "i2c_dw.h"
+#include "i2c_dw_registers.h"
 
 LOG_MODULE_REGISTER(i2c_dw);
 
-#ifndef ARRAY_SIZE
-#  define ARRAY_SIZE(a) (sizeof(a) / sizeof((a)[0]))
-#endif
-
-#ifndef MIN
-#  define MIN(a, b) (((a) < (b)) ? (a) : (b))
-#endif
+#include "i2c_dw_rp2040.h"
 
 /* The devicetree name of the Zephyr build's controller (dev->name). */
 
@@ -104,7 +107,7 @@ LOG_MODULE_REGISTER(i2c_dw);
 
 struct i2c_dw_dev_config {
 	I2C_DW_OS_DEV_HEAD
-	mm_reg_t base;
+	uintptr_t base;
 	i2c_dw_os_sem_t device_sync_sem;
 	i2c_dw_os_sem_t bus_sem;
 	uint32_t speed; /* the speed class of Zephyr's app_config */
@@ -122,26 +125,20 @@ struct i2c_dw_dev_config {
 	bool support_hs_mode;
 	bool ready;
 
-#ifdef CONFIG_NANO_I2C0_DMA
-	/* i2c_dw.h:198-207 */
-	i2c_dw_os_sem_t rp_dma_sem;
-	volatile uint32_t rp_dma_events;
-	volatile uint32_t rp_dma_active;
-	int rp_dma_tx_channel;
-	int rp_dma_rx_channel;
-	bool rp_dma_quarantined;
-	uint16_t rp_dma_commands[I2C_DW_RP2040_DMA_MAX_READ];
-	uint8_t rp_dma_buffer[I2C_DW_RP2040_DMA_MAX_READ];
+#ifdef CONFIG_I2C_DW_RP2040_DMA
+	/* i2c_dw.h:194-197 */
+	volatile uint32_t rp2040_dma_active;
+	bool rp2040_dma_quarantined;
 #endif
 };
 
-/* In .bss, as Zephyr's i2c_0_runtime (the DMA buffers make it about
- * 11 KiB); the OS's part (nano_i2c_instance.h) sets it up.
+/* In .bss, as Zephyr's i2c_0_runtime; the OS's part (i2c_dw_instance.h)
+ * sets it up.
  */
 
 static struct i2c_dw_dev_config i2c_0_runtime;
 
-/* No recover-bus callback is registered (i2c_dw.c:90-104). */
+/* No recover-bus callback is registered (i2c_dw.c:84-98). */
 
 static int i2c_recovery_bus(struct i2c_dw_dev_config *dw)
 {
@@ -151,7 +148,7 @@ static int i2c_recovery_bus(struct i2c_dw_dev_config *dw)
 
 static int i2c_dw_error_chk(struct i2c_dw_dev_config *dw)
 {
-	mm_reg_t reg_base = dw->base;
+	uintptr_t reg_base = dw->base;
 	union ic_interrupt_register intr_stat;
 	union ic_txabrt_register ic_txabrt_src;
 	/* Cache ic_intr_stat and txabrt_src for processing,
@@ -207,7 +204,7 @@ static inline void i2c_dw_data_ask(struct i2c_dw_dev_config *dw)
 	int rx_empty;
 	int cnt;
 	int rx_buffer_depth, tx_buffer_depth;
-	mm_reg_t reg_base = dw->base;
+	uintptr_t reg_base = dw->base;
 
 	/* No more bytes to request, so command queue is no longer needed */
 	if (dw->request_bytes == 0U) {
@@ -215,7 +212,7 @@ static inline void i2c_dw_data_ask(struct i2c_dw_dev_config *dw)
 		return;
 	}
 
-	/* RP2040 does not implement IC_COMP_PARAM_1 (i2c_dw_rp2040.h:20-23, i2c_dw.c:369-376). */
+	/* RP2040 does not implement IC_COMP_PARAM_1 (i2c_dw_rp2040.h:20-23, i2c_dw.c:363-370). */
 	rx_buffer_depth = RP2040_I2C_FIFO_DEPTH;
 	tx_buffer_depth = RP2040_I2C_FIFO_DEPTH;
 
@@ -252,7 +249,7 @@ static inline void i2c_dw_data_ask(struct i2c_dw_dev_config *dw)
 		/* Tell controller to get another byte, RESTART and STOP as
 		 * needed.
 		 */
-		data = nano_i2c_dw_read_cmd(&dw->xfr_flags, dw->request_bytes);
+		data = i2c_dw_read_cmd(&dw->xfr_flags, dw->request_bytes);
 
 		write_cmd_data(data, reg_base);
 
@@ -268,7 +265,7 @@ static inline void i2c_dw_data_ask(struct i2c_dw_dev_config *dw)
 
 static void i2c_dw_data_read(struct i2c_dw_dev_config *dw)
 {
-	mm_reg_t reg_base = dw->base;
+	uintptr_t reg_base = dw->base;
 
 	while (test_bit_status_rfne(reg_base) && (dw->xfr_len > 0)) {
 		dw->xfr_buf[0] = (uint8_t)read_cmd_data(reg_base);
@@ -302,7 +299,7 @@ static void i2c_dw_data_read(struct i2c_dw_dev_config *dw)
 static int i2c_dw_data_send(struct i2c_dw_dev_config *dw)
 {
 	uint32_t data = 0U;
-	mm_reg_t reg_base = dw->base;
+	uintptr_t reg_base = dw->base;
 
 	/* Nothing to send anymore, mask the interrupt */
 	if (dw->xfr_len == 0U) {
@@ -317,8 +314,8 @@ static int i2c_dw_data_send(struct i2c_dw_dev_config *dw)
 		/* We have something to transmit to a specific host, with
 		 * RESTART and STOP as needed.
 		 */
-		data = nano_i2c_dw_write_cmd(&dw->xfr_flags, dw->xfr_buf[0],
-					     dw->xfr_len);
+		data = i2c_dw_write_cmd(&dw->xfr_flags, dw->xfr_buf[0],
+					dw->xfr_len);
 
 		write_cmd_data(data, reg_base);
 		dw->xfr_len--;
@@ -338,284 +335,47 @@ static int i2c_dw_data_send(struct i2c_dw_dev_config *dw)
 
 static inline void i2c_dw_transfer_complete(struct i2c_dw_dev_config *dw)
 {
-	mm_reg_t reg_base = dw->base;
+	uintptr_t reg_base = dw->base;
 
 	write_intr_mask(DW_DISABLE_ALL_I2C_INT, reg_base);
 	(void)read_clr_intr(reg_base);
 	i2c_dw_os_sem_give(&dw->device_sync_sem);
 }
 
-#ifdef CONFIG_NANO_I2C0_DMA
-#define RP_DMA_TX_DONE BIT(0)
-static volatile uint32_t rp_dma_transfers, rp_dma_bytes, rp_dma_errors, rp_dma_fallbacks;
-static volatile bool rp_dma_enabled = true;
-#define RP_DMA_RX_DONE BIT(1)
-#define RP_DMA_STOP    BIT(2)
-#define RP_DMA_ERROR   BIT(3)
-#define RP_DMA_DONE    (RP_DMA_TX_DONE | RP_DMA_RX_DONE | RP_DMA_STOP)
-
-/* atomic_or(): returns the old value. */
-
-static uint32_t rp_dma_atomic_or(volatile uint32_t *target, uint32_t value)
-{
-	i2c_dw_os_irqstate_t flags = i2c_dw_os_irq_lock();
-	uint32_t old = *target;
-
-	*target = old | value;
-	i2c_dw_os_irq_unlock(flags);
-	return old;
-}
-
-/* k_uptime_get(): milliseconds since boot. */
-
-static int64_t rp_dma_uptime_ms(void)
-{
-	return i2c_dw_os_uptime_ms();
-}
-
-static void i2c_dw_rp_dma_notify(struct i2c_dw_dev_config *dw, uint32_t events)
-{
-	uint32_t all = rp_dma_atomic_or(&dw->rp_dma_events, events) | events;
-	if ((all & RP_DMA_ERROR) || (all & RP_DMA_DONE) == RP_DMA_DONE) {
-		i2c_dw_os_sem_give(&dw->rp_dma_sem);
-	}
-}
-
-static void i2c_dw_rp_dma_callback(void *user_data, uint32_t channel, int status)
-{
-	struct i2c_dw_dev_config *dw = user_data;
-	if (!dw->rp_dma_active) {
-		return;
-	}
-	i2c_dw_rp_dma_notify(dw, status < 0 ? RP_DMA_ERROR
-					    : (channel == (uint32_t)dw->rp_dma_tx_channel
-						       ? RP_DMA_TX_DONE
-						       : RP_DMA_RX_DONE));
-}
-
-/* A stop only requests an abort in Zephyr's RP2040 DMA driver.  Wait for BUSY,
- * then acknowledge late completions (RP2040-E13) before releasing channels.
- */
-static bool i2c_dw_rp_dma_stop(int tx, int rx)
-{
-	int64_t deadline = rp_dma_uptime_ms() + 100;
-	(void)nano_dma_stop(tx);
-	(void)nano_dma_stop(rx);
-	while (nano_dma_channel_is_busy(tx) || nano_dma_channel_is_busy(rx) ||
-	       nano_dma_abort_pending()) {
-		if (rp_dma_uptime_ms() >= deadline) {
-			return false;
-		}
-		i2c_dw_os_msleep(1);
-	}
-	nano_dma_irqn_acknowledge_channel(0, tx);
-	nano_dma_irqn_acknowledge_channel(1, tx);
-	nano_dma_irqn_acknowledge_channel(0, rx);
-	nano_dma_irqn_acknowledge_channel(1, rx);
-	return true;
-}
-
-/* i2c_dw_rp_dma_read(dev, msg): msg->buf, msg->len and msg->flags (the
- * Zephyr flags of the message, see nano_i2c_dw_msg_flags()).
- */
-static int i2c_dw_rp_dma_read(struct i2c_dw_dev_config *dw, uint8_t *buf, uint32_t len,
-			      uint8_t msg_flags)
-{
-	mm_reg_t base = dw->base;
-	struct nano_dma_block_config tx_block = {0}, rx_block = {0};
-	struct nano_dma_config tx_cfg = {0}, rx_cfg = {0};
-	int tx, rx, ret;
-	bool started = false;
-
-	/* dev != i2c0 cannot happen: i2c0 is the only instance.  10-bit
-	 * addresses are refused before (no I2C_MSG_ADDR_10_BITS here, and
-	 * app_config never has I2C_ADDR_10_BITS).
-	 */
-	if (!rp_dma_enabled || !nano_dma_is_ready() || len < 32 ||
-	    len > I2C_DW_RP2040_DMA_MAX_READ || !(msg_flags & I2C_MSG_STOP) ||
-	    (msg_flags & I2C_MSG_ADDR_10_BITS)) {
-		return -EAGAIN;
-	}
-	tx = nano_dma_request_channel();
-	if (tx < 0) {
-		rp_dma_fallbacks++;
-		return -EAGAIN;
-	}
-	rx = nano_dma_request_channel();
-	if (rx < 0) {
-		rp_dma_fallbacks++;
-		nano_dma_release_channel(tx);
-		return -EAGAIN;
-	}
-	dw->rp_dma_tx_channel = tx;
-	dw->rp_dma_rx_channel = rx;
-	i2c_dw_rp2040_read_commands(dw->rp_dma_commands, ARRAY_SIZE(dw->rp_dma_commands), len,
-				    dw->xfr_flags & I2C_MSG_RESTART);
-	tx_block.source_address = (uintptr_t)dw->rp_dma_commands;
-	tx_block.dest_address = base + DW_IC_REG_DATA_CMD;
-	tx_block.block_size = len * sizeof(uint16_t);
-	tx_block.source_addr_adj = NANO_DMA_ADDR_ADJ_INCREMENT;
-	tx_block.dest_addr_adj = NANO_DMA_ADDR_ADJ_NO_CHANGE;
-	tx_cfg.dma_slot = NANO_DMA_SLOT_I2C0_TX;
-	tx_cfg.channel_direction = NANO_DMA_MEMORY_TO_PERIPHERAL;
-	tx_cfg.source_data_size = 2;
-	tx_cfg.dest_data_size = 2;
-	tx_cfg.block_count = 1;
-	tx_cfg.head_block = &tx_block;
-	tx_cfg.dma_callback = i2c_dw_rp_dma_callback;
-	tx_cfg.user_data = dw;
-	rx_block.source_address = base + DW_IC_REG_DATA_CMD;
-	rx_block.dest_address = (uintptr_t)dw->rp_dma_buffer;
-	rx_block.block_size = len;
-	rx_block.source_addr_adj = NANO_DMA_ADDR_ADJ_NO_CHANGE;
-	rx_block.dest_addr_adj = NANO_DMA_ADDR_ADJ_INCREMENT;
-	rx_cfg.dma_slot = NANO_DMA_SLOT_I2C0_RX;
-	rx_cfg.channel_direction = NANO_DMA_PERIPHERAL_TO_MEMORY;
-	rx_cfg.source_data_size = 1;
-	rx_cfg.dest_data_size = 1;
-	rx_cfg.block_count = 1;
-	rx_cfg.head_block = &rx_block;
-	rx_cfg.dma_callback = i2c_dw_rp_dma_callback;
-	rx_cfg.user_data = dw;
-	ret = nano_dma_config(tx, &tx_cfg);
-	if (!ret) {
-		ret = nano_dma_config(rx, &rx_cfg);
-	}
-	if (ret) {
-		rp_dma_fallbacks++;
-		ret = -EAGAIN;
-		goto release;
-	}
-	dw->rp_dma_events = 0;
-	i2c_dw_os_sem_reset(&dw->rp_dma_sem);
-	dw->rp_dma_active = 1;
-	nano_dw_write32(8, base + 0x8c); /* TX FIFO threshold */
-	nano_dw_write32(0, base + 0x90); /* RX FIFO threshold */
-	write_intr_mask(DW_INTR_STAT_STOP_DET | DW_INTR_STAT_TX_ABRT | DW_INTR_STAT_TX_OVER |
-				DW_INTR_STAT_RX_OVER | DW_INTR_STAT_RX_UNDER |
-				DW_INTR_STAT_SCL_STUCK_LOW,
-			base);
-	started = true;
-	ret = nano_dma_start(rx);
-	if (!ret) {
-		ret = nano_dma_start(tx);
-	}
-	if (!ret) {
-		/* sys_timepoint_calc(rom->transfer_timeout) */
-		i2c_dw_os_timepoint_t deadline =
-			i2c_dw_os_timepoint_calc(NANO_I2C_DW_TRANSFER_TIMEOUT_MS);
-		write_dma_cr(3, base);
-		while ((dw->rp_dma_events & RP_DMA_DONE) != RP_DMA_DONE) {
-			if (dw->rp_dma_events & RP_DMA_ERROR) {
-				ret = -EIO;
-				break;
-			}
-			/* sys_timepoint_timeout(deadline) */
-			if (i2c_dw_os_sem_take_until(&dw->rp_dma_sem, deadline)) {
-				ret = -ETIMEDOUT;
-				break;
-			}
-		}
-		if (dw->rp_dma_events & RP_DMA_ERROR) {
-			ret = -EIO;
-		}
-	}
-	write_dma_cr(0, base);
-	write_intr_mask(0, base);
-	dw->rp_dma_active = 0;
-	if (ret) {
-		set_bit_enable_abort(base);
-	}
-	if (ret && !i2c_dw_rp_dma_stop(tx, rx)) {
-		dw->rp_dma_quarantined = true;
-		rp_dma_errors++;
-		LOG_ERR("DMA channels did not stop; I2C controller quarantined");
-		return -EIO;
-	}
-	(void)read_clr_intr(base);
-	if (ret) {
-		int64_t abort_deadline = rp_dma_uptime_ms() + 100;
-		while (test_bit_enable_abort(base)) {
-			if (rp_dma_uptime_ms() >= abort_deadline) {
-				dw->rp_dma_quarantined = true;
-				LOG_ERR("I2C abort did not finish; controller quarantined");
-				break;
-			}
-			i2c_dw_os_msleep(1);
-		}
-		(void)read_clr_intr(base);
-	}
-	if (!ret) {
-		rp_dma_transfers++;
-		rp_dma_bytes += len;
-		memcpy(buf, dw->rp_dma_buffer, len);
-		dw->xfr_len = 0;
-	}
-release:
-	if (ret && ret != -EAGAIN) {
-		rp_dma_errors++;
-	}
-	if (!started || !dw->rp_dma_quarantined) {
-		nano_dma_release_channel(tx);
-		nano_dma_release_channel(rx);
-	}
-	return ret;
-}
-
-/* The i2c_dma shell command's side (i2c_dw_rp2040_dma.h:223-243): the
- * command (i2c_dma_shell.c, nuttx/apps/i2c_dma) prints and parses; see
- * nano_i2c_dma.h.
- */
-
-void nano_i2c_dma_get_stats(struct nano_i2c_dma_stats *stats)
-{
-	stats->transfers = rp_dma_transfers;
-	stats->bytes = rp_dma_bytes;
-	stats->errors = rp_dma_errors;
-	stats->fallbacks = rp_dma_fallbacks;
-}
-
-bool nano_i2c_dma_enabled(void)
-{
-	return rp_dma_enabled;
-}
-
-void nano_i2c_dma_set_enabled(bool enabled)
-{
-	rp_dma_enabled = enabled;
-}
+#ifdef CONFIG_I2C_DW_RP2040_DMA
+#include "i2c_dw_rp2040_dma_priv.h"
 #endif
 
 /* i2c_dw_isr(): the body of the I2C0 interrupt handler, which the OS's
- * handler (nano_i2c_instance.h) calls with &i2c_0_runtime.  Interrupt.
+ * handler (i2c_dw_instance.h) calls with &i2c_0_runtime.  Interrupt.
  */
 
 static inline void i2c_dw_isr_handler(struct i2c_dw_dev_config *const dw)
 {
 	union ic_interrupt_register intr_stat;
 	int ret = 0;
-	mm_reg_t reg_base = dw->base;
+	uintptr_t reg_base = dw->base;
 
 	/* Cache I2C Interrupt Status Register(ic_intr_stat) for processing,
 	 * so there is no need to read the register multiple times.
 	 */
 	intr_stat.raw = read_intr_stat(reg_base);
-#ifdef CONFIG_NANO_I2C0_DMA
-	if (dw->rp_dma_active) {
+#ifdef CONFIG_I2C_DW_RP2040_DMA
+	if (dw->rp2040_dma_active) {
 		uint32_t events = 0;
 		if (intr_stat.raw &
 		    (DW_INTR_STAT_TX_ABRT | DW_INTR_STAT_TX_OVER | DW_INTR_STAT_RX_OVER |
 		     DW_INTR_STAT_RX_UNDER | DW_INTR_STAT_SCL_STUCK_LOW)) {
 			dw->state |= I2C_DW_CMD_ERROR;
 			(void)i2c_dw_error_chk(dw);
-			events |= RP_DMA_ERROR;
+			events |= RP2040_DMA_ERROR;
 		}
 		if (intr_stat.raw & DW_INTR_STAT_STOP_DET) {
-			events |= RP_DMA_STOP;
+			events |= RP2040_DMA_STOP;
 		}
 		write_intr_mask(0, reg_base);
 		(void)read_clr_intr(reg_base);
-		i2c_dw_rp_dma_notify(dw, events);
+		i2c_dw_rp2040_dma_notify(events);
 		return;
 	}
 #endif
@@ -694,7 +454,7 @@ static int i2c_dw_setup(struct i2c_dw_dev_config *dw, uint16_t target_address)
 {
 	union ic_con_register ic_con;
 	union ic_tar_register ic_tar;
-	mm_reg_t reg_base = dw->base;
+	uintptr_t reg_base = dw->base;
 
 	ic_con.raw = 0U;
 
@@ -719,11 +479,11 @@ static int i2c_dw_setup(struct i2c_dw_dev_config *dw, uint16_t target_address)
 	ic_con.bits.slave_disable = 1U;
 
 	ic_con.bits.restart_en = 1U;
-#ifdef CONFIG_NANO_I2C0_DMA
+#ifdef CONFIG_I2C_DW_RP2040_DMA
 	/* I2C_IC_CON_RX_FIFO_FULL_HLD_CTRL_BITS (bit 9) with the DMA reads
 	 * enabled (i2c0 is the only instance here).
 	 */
-	if (rp_dma_enabled) {
+	if (rp2040_dma_enabled) {
 		ic_con.raw |= BIT(9);
 	}
 #endif
@@ -733,20 +493,20 @@ static int i2c_dw_setup(struct i2c_dw_dev_config *dw, uint16_t target_address)
 
 	/* Setup the clock frequency and speed mode */
 	switch (dw->speed) {
-	case NANO_I2C_SPEED_STANDARD:
+	case I2C_SPEED_STANDARD:
 		write_ss_scl_lcnt(dw->lcnt, reg_base);
 		write_ss_scl_hcnt(dw->hcnt, reg_base);
 		ic_con.bits.speed = I2C_DW_SPEED_STANDARD;
 
 		break;
-	case NANO_I2C_SPEED_FAST:
-	case NANO_I2C_SPEED_FAST_PLUS:
+	case I2C_SPEED_FAST:
+	case I2C_SPEED_FAST_PLUS:
 		write_fs_scl_lcnt(dw->lcnt, reg_base);
 		write_fs_scl_hcnt(dw->hcnt, reg_base);
 		ic_con.bits.speed = I2C_DW_SPEED_FAST;
 
 		break;
-	case NANO_I2C_SPEED_HIGH:
+	case I2C_SPEED_HIGH:
 		if (!dw->support_hs_mode) {
 			return -EINVAL;
 		}
@@ -793,7 +553,7 @@ static int i2c_dw_setup(struct i2c_dw_dev_config *dw, uint16_t target_address)
 
 static bool i2c_dw_is_busy(struct i2c_dw_dev_config *dw)
 {
-	mm_reg_t reg_base = dw->base;
+	uintptr_t reg_base = dw->base;
 
 	if (test_bit_status_activity(reg_base) || (dw->state & I2C_DW_BUSY)) {
 		return true;
@@ -802,7 +562,7 @@ static bool i2c_dw_is_busy(struct i2c_dw_dev_config *dw)
 	return false;
 }
 
-/* i2c_dw_configure() (i2c_dw.c:1145-1215) for a speed class.  Zephyr
+/* i2c_dw_configure() (i2c_dw.c:1135-1205) for a speed class.  Zephyr
  * stores the (minimum) counts even when the class is refused and keeps the
  * old class, so the next transfer runs the old class with them; here a
  * refused class changes nothing.
@@ -814,8 +574,8 @@ static int i2c_dw_configure(struct i2c_dw_dev_config *dw, uint32_t speed)
 	uint16_t hcnt_val;
 	int rc;
 
-	rc = nano_i2c_dw_scl_counts(speed, I2C_DW_CLOCK_SPEED, dw->support_hs_mode,
-				    &hcnt_val, &lcnt_val);
+	rc = i2c_dw_scl_counts(speed, I2C_DW_CLOCK_SPEED, dw->support_hs_mode,
+			       &hcnt_val, &lcnt_val);
 	if (rc == 0) {
 		dw->lcnt = lcnt_val;
 		dw->hcnt = hcnt_val;
@@ -834,7 +594,7 @@ static int i2c_dw_configure(struct i2c_dw_dev_config *dw, uint32_t speed)
  * the OS's part has checked: 1 to 255 messages (count), a 7-bit address,
  * a buffer for every message that is not empty, and speed, the Zephyr
  * speed class of the transfer (one that differs from the last runs
- * i2c_configure() first).  The OS's transfer entry (nano_i2c_instance.h)
+ * i2c_configure() first).  The OS's transfer entry (i2c_dw_instance.h)
  * calls it; it returns 0 or a negative errno.
  */
 
@@ -848,7 +608,7 @@ static inline int i2c_dw_transfer_msgs(struct i2c_dw_dev_config *const dw,
 	uint8_t mflags;
 	int ret;
 	int i;
-	mm_reg_t reg_base = dw->base;
+	uintptr_t reg_base = dw->base;
 
 	/* semaphore to support I2C_CALLBACK */
 	ret = i2c_dw_os_bus_lock(&dw->bus_sem);
@@ -856,9 +616,9 @@ static inline int i2c_dw_transfer_msgs(struct i2c_dw_dev_config *const dw,
 		return ret;
 	}
 
-#ifdef CONFIG_NANO_I2C0_DMA
-	/* Also what i2c_dw_runtime_configure() returns (i2c_dw.c:1229-1233). */
-	if (dw->rp_dma_quarantined) {
+#ifdef CONFIG_I2C_DW_RP2040_DMA
+	/* Also what i2c_dw_runtime_configure() returns (i2c_dw.c:1219-1223). */
+	if (dw->rp2040_dma_quarantined) {
 		ret = -EIO;
 		goto error;
 	}
@@ -917,7 +677,7 @@ static inline int i2c_dw_transfer_msgs(struct i2c_dw_dev_config *const dw,
 		dw->rx_pending = 0U;
 
 		/* Need to RESTART if changing transfer direction */
-		dw->xfr_flags = nano_i2c_dw_next_flags(pflags, dw->xfr_flags);
+		dw->xfr_flags = i2c_dw_next_flags(pflags, dw->xfr_flags);
 
 		dw->state &= ~(I2C_DW_CMD_SEND | I2C_DW_CMD_RECV);
 
@@ -935,10 +695,10 @@ static inline int i2c_dw_transfer_msgs(struct i2c_dw_dev_config *const dw,
 			write_rx_tl(MIN(RP2040_I2C_RX_BATCH, dw->xfr_len) - 1U, reg_base);
 		}
 
-#ifdef CONFIG_NANO_I2C0_DMA
+#ifdef CONFIG_I2C_DW_RP2040_DMA
 		if (msg_left == 1 && (dw->xfr_flags & I2C_MSG_RW_MASK) == I2C_MSG_READ) {
-			ret = i2c_dw_rp_dma_read(dw, I2C_DW_OS_MSG_BUF(cur_msg),
-						 I2C_DW_OS_MSG_LEN(cur_msg), mflags);
+			ret = i2c_dw_rp2040_dma_read(dw, I2C_DW_OS_MSG_BUF(cur_msg),
+						     I2C_DW_OS_MSG_LEN(cur_msg), mflags);
 			if (ret != -EAGAIN) {
 				if (ret) {
 					break;
@@ -957,7 +717,7 @@ static inline int i2c_dw_transfer_msgs(struct i2c_dw_dev_config *const dw,
 
 		/* Wait for transfer to be done */
 		ret = i2c_dw_os_sem_take_ms(&dw->device_sync_sem,
-					    NANO_I2C_DW_TRANSFER_TIMEOUT_MS);
+					    I2C_DW_TRANSFER_TIMEOUT_MS);
 		if (ret != 0) {
 			/* Trigger abort and wait for it to complete. */
 			set_bit_enable_abort(reg_base);
@@ -1004,7 +764,7 @@ error:
 static int i2c_dw_init_config(struct i2c_dw_dev_config *dw)
 {
 	union ic_sdahold_register sda_hold;
-	mm_reg_t reg_base = dw->base;
+	uintptr_t reg_base = dw->base;
 
 	clear_bit_enable_en(reg_base);
 
@@ -1021,11 +781,11 @@ static int i2c_dw_init_config(struct i2c_dw_dev_config *dw)
 	clear_bit_enable_block(reg_base);
 
 	/* Set spike length */
-	write_fs_spklen(NANO_I2C_DW_FS_SPK_LEN, reg_base);
-	write_hs_spklen(NANO_I2C_DW_HS_SPK_LEN, reg_base);
+	write_fs_spklen(I2C_DW_FS_SPK_LEN, reg_base);
+	write_hs_spklen(I2C_DW_HS_SPK_LEN, reg_base);
 
 	/* clock-frequency = <I2C_BITRATE_STANDARD> in the board devicetree */
-	if (i2c_dw_configure(dw, NANO_I2C_SPEED_STANDARD) != 0) {
+	if (i2c_dw_configure(dw, I2C_SPEED_STANDARD) != 0) {
 		return -EIO;
 	}
 
@@ -1034,7 +794,7 @@ static int i2c_dw_init_config(struct i2c_dw_dev_config *dw)
 	return 0;
 }
 
-/* The OS's part (nano_i2c_instance.h). */
+/* The OS's part (i2c_dw_instance.h). */
 
 /* The I2C block's clock, reset_line_toggle_dt() (reset_block_num(), then
  * unreset_block_num_wait_blocking()) and pinctrl_apply_state() of the
@@ -1054,7 +814,7 @@ static void i2c_dw_os_irq_enable(struct i2c_dw_dev_config *dw);
 static int i2c_dw_probe_hw(struct i2c_dw_dev_config *dw)
 {
 	union ic_con_register ic_con;
-	mm_reg_t reg_base = dw->base;
+	uintptr_t reg_base = dw->base;
 
 	if (read_comp_type(reg_base) != I2C_DW_MAGIC_KEY) {
 		return -EIO;
@@ -1107,4 +867,4 @@ static int i2c_dw_turn_on(struct i2c_dw_dev_config *dw)
  * and transfer entry, and the device.
  */
 
-#include "nano_i2c_instance.h"
+#include "i2c_dw_instance.h"

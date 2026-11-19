@@ -1,9 +1,9 @@
 /* SPDX-License-Identifier: MIT */
-/* The FreeRTOS part of the I2C0 core (common/drivers/i2c_dw/nano_i2c.c,
+/* The FreeRTOS part of the I2C0 core (common/drivers/i2c_dw/i2c_dw.c,
  * which includes this file at its end): I2C0 as the device i2c0 of the
  * Zephyr compatibility layer with Zephyr's I2C API (<zephyr/drivers/i2c.h>
  * of freertos/drivers/compat), its interrupt, reset and pins on the Pico
- * SDK, and nano_i2c0_initialize() (nano_i2c.h).
+ * SDK, and i2c_dw_i2c0_initialize() (i2c_dw_i2c0.h).
  *
  *   Zephyr (i2c_dw.c of the Zephyr build)  here
  *   i2c_dw_transfer()                      i2c_dw_transfer(): the checks
@@ -25,9 +25,9 @@
  *   reset_rpi_pico.c, on these SDK calls)  unreset_block_num_wait_blocking()
  *   pinctrl_apply_state() (Zephyr's        i2c_dw_pinctrl(): the same SDK
  *   pinctrl_rpi_pico.c)                    calls in the same order
- *   DEVICE_DT_INST_DEFINE(): k_sem_init(), nano_i2c0_initialize(), from the
+ *   DEVICE_DT_INST_DEFINE(): k_sem_init(), i2c_dw_i2c0_initialize(), from the
  *   then i2c_dw_turn_on() at boot          application's start after
- *   (POST_KERNEL 50, after the DMA's 40)   nano_dma_initialize()
+ *   (POST_KERNEL 50, after the DMA's 40)   dma_rpi_pico_initialize()
  *
  * The transfer refuses what the core does not do and Zephyr's driver
  * would do wrong or not at all: a device that is not ready (-ENODEV; in
@@ -38,7 +38,7 @@
  * I2C_ADDR_10_BITS in the word (-EINVAL) and, through i2c_dw_configure(),
  * any class but standard, fast and fast plus (the RP2040's I2C has no high
  * speed); a refused class changes nothing (Zephyr's stores the minimum
- * counts, see nano_i2c.c).  The mode bits are ignored (Zephyr forces
+ * counts, see i2c_dw.c).  The mode bits are ignored (Zephyr forces
  * controller mode).
  *
  * The speed class of a transfer is read when the transfer starts; a
@@ -51,7 +51,7 @@
  *
  * The interrupt handler runs at the Pico SDK's default priority for the
  * peripherals (0x80, the same as the DMA's and the USB's; see
- * nano_dma_instance.h), calls the core's body and, through
+ * dma_rpi_pico_instance.h), calls the core's body and, through
  * i2c_dw_os_sem_give(), the layer's k_sem_give(), which wakes the waiting
  * task with a FromISR task notification and asks for the switch at the end
  * of the handler (PendSV): the task runs right after the handler, not
@@ -64,8 +64,8 @@
  * the reset here repeats).
  */
 
-#ifndef FREERTOS_DRIVERS_I2C_DW_NANO_I2C_INSTANCE_H
-#define FREERTOS_DRIVERS_I2C_DW_NANO_I2C_INSTANCE_H
+#ifndef FREERTOS_DRIVERS_I2C_DW_I2C_DW_INSTANCE_H
+#define FREERTOS_DRIVERS_I2C_DW_I2C_DW_INSTANCE_H
 
 #include "hardware/gpio.h"
 #include "hardware/irq.h"
@@ -74,7 +74,7 @@
 
 #include <zephyr/device.h>
 
-#include "nano_i2c.h"
+#include "i2c_dw_i2c0.h"
 
 /* The board's i2c0 node (arduino_nano_connect.dts, -pinctrl.dtsi). */
 #define I2C0_SDA_GPIO 12
@@ -126,8 +126,8 @@ static int i2c_dw_runtime_configure(const struct device *dev, uint32_t config)
 	}
 
 	(void)i2c_dw_os_bus_lock(&dw->bus_sem);
-#ifdef CONFIG_NANO_I2C0_DMA
-	ret = dw->rp_dma_quarantined ? -EIO : i2c_dw_configure(dw, speed);
+#ifdef CONFIG_I2C_DW_RP2040_DMA
+	ret = dw->rp2040_dma_quarantined ? -EIO : i2c_dw_configure(dw, speed);
 #else
 	ret = i2c_dw_configure(dw, speed);
 #endif
@@ -195,7 +195,7 @@ static void i2c_dw_os_irq_enable(struct i2c_dw_dev_config *dw)
 	irq_set_enabled(I2C0_IRQ, true);
 }
 
-int nano_i2c0_initialize(void)
+int i2c_dw_i2c0_initialize(void)
 {
 	struct i2c_dw_dev_config *const dw = &i2c_0_runtime;
 	const struct device *dev = DEVICE_DT_GET(DT_NODELABEL(i2c0));
@@ -209,8 +209,8 @@ int nano_i2c0_initialize(void)
 	dw->base = I2C0_BASE;
 	(void)k_sem_init(&dw->device_sync_sem, 0, K_SEM_MAX_LIMIT);
 	(void)k_sem_init(&dw->bus_sem, 1, 1);
-#ifdef CONFIG_NANO_I2C0_DMA
-	(void)k_sem_init(&dw->rp_dma_sem, 0, K_SEM_MAX_LIMIT);
+#ifdef CONFIG_I2C_DW_RP2040_DMA
+	(void)k_sem_init(&rp2040_dma_sem, 0, K_SEM_MAX_LIMIT);
 #endif
 
 	/* pm_device_driver_init(): i2c_dw_turn_on() */
@@ -228,4 +228,4 @@ int nano_i2c0_initialize(void)
 	return 0;
 }
 
-#endif /* FREERTOS_DRIVERS_I2C_DW_NANO_I2C_INSTANCE_H */
+#endif /* FREERTOS_DRIVERS_I2C_DW_I2C_DW_INSTANCE_H */

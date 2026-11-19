@@ -11,7 +11,7 @@
 
 /* The NuttX part of the I2C0 and DMA core's boundary
  * (common/drivers/i2c_dw/i2c_dw_os.h, which includes this file first in
- * nano_i2c.c and nano_dma.c): the NuttX headers, and the types and calls
+ * i2c_dw.c and dma_rpi_pico.c): the NuttX headers, and the types and calls
  * behind the boundary's names:
  *
  *   Zephyr                       here
@@ -25,10 +25,10 @@
  *   k_msleep()                   nxsched_msleep()
  *   k_uptime_get()               TICK2MSEC(clock_systime_ticks())
  *   irq_lock() (atomic_or())     up_irq_save(), up_irq_restore()
- *   struct i2c_msg               struct i2c_msg_s (nano_i2c_dw_msg_flags()
+ *   struct i2c_msg               struct i2c_msg_s (i2c_dw_msg_flags()
  *                                turns the NuttX flags into I2C_MSG_*)
  *   the device                   struct i2c_master_s first in the
- *                                controller's data (nano_i2c_instance.h)
+ *                                controller's data (i2c_dw_instance.h)
  */
 
 #ifndef __BOARDS_ARDUINO_NANO_RP2040_CONNECT_SRC_I2C_DW_OS_IMPL_H
@@ -58,7 +58,18 @@
 #include "hardware/rp2040_resets.h"
 #include "rp2040_gpio.h"
 
-#include "nano_i2c.h"
+#include "i2c_dw_i2c0.h"
+
+/* <nuttx/i2c/i2c_master.h> names the bus frequencies I2C_SPEED_*; the core
+ * uses these names for Zephyr's speed classes (i2c_dw.h), as the
+ * compatibility layer's <zephyr/drivers/i2c.h> does.  Nothing here uses the
+ * frequencies.
+ */
+
+#undef I2C_SPEED_STANDARD
+#undef I2C_SPEED_FAST
+#undef I2C_SPEED_FAST_PLUS
+#undef I2C_SPEED_HIGH
 
 /* CONFIG_I2C_DW_CLOCK_SPEED of the Zephyr build: clk_peri in MHz. */
 
@@ -72,7 +83,7 @@ typedef clock_t i2c_dw_os_timepoint_t;
 typedef irqstate_t i2c_dw_os_irqstate_t;
 
 /* The messages of I2C_TRANSFER(): Zephyr's flags from the NuttX flags of
- * the message and its neighbours (nano_i2c_dw.h).
+ * the message and its neighbours (i2c_dw.h).
  */
 
 typedef struct i2c_msg_s i2c_dw_os_msg_t;
@@ -80,12 +91,12 @@ typedef struct i2c_msg_s i2c_dw_os_msg_t;
 #define I2C_DW_OS_MSG_BUF(m) ((m)->buffer)
 #define I2C_DW_OS_MSG_LEN(m) ((uint32_t)(m)->length)
 #define I2C_DW_OS_MSG_FLAGS(msgs, cur, i, left)                                \
-	nano_i2c_dw_msg_flags((i) > 0 ? (msgs)[(i) - 1].flags : 0, (cur)->flags,  \
-			      (left) > 1 ? (msgs)[(i) + 1].flags : 0, (i) == 0,      \
-			      (left) == 1)
+	i2c_dw_msg_flags((i) > 0 ? (msgs)[(i) - 1].flags : 0, (cur)->flags,       \
+			 (left) > 1 ? (msgs)[(i) + 1].flags : 0, (i) == 0,           \
+			 (left) == 1)
 
 /* NuttX's I2C master: first, so that the driver's operations find the
- * controller from it (nano_i2c_instance.h).
+ * controller from it (i2c_dw_instance.h).
  */
 
 #define I2C_DW_OS_DEV_HEAD struct i2c_master_s dev;

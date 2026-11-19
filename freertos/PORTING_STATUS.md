@@ -1499,3 +1499,124 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
 - 確かめていない: 実機で `_start()` が失敗する経路（ホストテストだけ）、Telnet・スキャン・切断復帰。
 - 文書（日英）: 3 版の `drivers/README`。
 - 実機: FreeRTOS 版（この変更のビルド）。
+
+## Zephyr 版の I2C のパッチ（0003）を作り直し: ツリーだけで完結、DMA の配列は 1 組、名前は `i2c_dw_rp2040_...`（2026-11-19、ユーザーの指摘）
+
+- 指摘 1: パッチ後の `i2c_dw.c` が読む `nano_i2c_dma.h` と `i2c_dw_rp2040_commands.h` が Zephyr のツリーに無く、アプリが include パスとソースを
+  足していた（別のアプリで `CONFIG_I2C_DW_RP2040_DMA=y` にするとビルドできない）。
+- 指摘 2: `rp_dma_commands`・`rp_dma_buffer`（合わせて 10,752 B）が `struct i2c_dw_dev_config` のメンバーで、I2C のインスタンスごとに付く（DMA が動くのは
+  i2c0 だけ。このボードは i2c0 だけ有効なので実際の無駄は無かった）。
+- 直し方（ユーザーの決定: 新しいパッチを足さず 0003 を作り直す。名前は `nano_i2c_dma` ではなく `i2c_dw_rp2040_...`）:
+  - パッチが足すファイル: `drivers/i2c/i2c_dw_rp2040.h`（変更なし）、`i2c_dw_rp2040_dma_priv.h`（旧 `i2c_dw_rp2040_dma.h`）、
+    `i2c_dw_rp2040_commands.[ch]`、公開ヘッダー `include/zephyr/drivers/i2c/i2c_dw_rp2040_dma.h`。上流のファイルに食い込む箇所は 17 → 14
+    （`i2c_dw.c` 11、`i2c_dw.h` 1、`Kconfig.dw` 1、`drivers/i2c/CMakeLists.txt` 1）。
+  - 関数は `i2c_dw_rp2040_dma_get_stats()`・`_enabled()`・`_set_enabled()`、構造体は `struct i2c_dw_rp2040_dma_stats`。3 版で同じ名前。
+    共有側の宣言は `common/compat/zephyr/drivers/i2c/i2c_dw_rp2040_dma.h`（`nano_i2c_dma.h` は削除）で、`i2c_dma_shell.c` は 3 版とも
+    `<zephyr/drivers/i2c/i2c_dw_rp2040_dma.h>` を読む。
+  - 構造体から出して静的にしたもの（i2c0 用の 1 組）: 2 つの配列、`rp_dma_sem`、`rp_dma_events`、`rp_dma_tx_channel`・`rp_dma_rx_channel`。
+    `rp_dma_active`・`rp_dma_quarantined` は全インスタンスの経路が読むので残した。共有コア（FreeRTOS・NuttX）は構造体のまま（イメージを変えない）。
+  - アプリの `CMakeLists.txt` は `drivers__i2c` に何も足さない。`i2c_dma_shell.c` は `app` に入れる。
+  - 同じ内容が 2 か所（パッチと `common/`）にあるファイルは `common/tests/i2c_dw_sync.py` がバイト単位で比べる（31 checks）。
+- 確認（メインが再ビルド）: FreeRTOS は `SOURCE_DATE_EPOCH=1795003200` で基準（`freertos/build/baseline/freertos/snapshot-1118e/image.bin`、232416 B）と
+  一致（日付を固定しないと `__DATE__` の 1 バイトだけ違う）。NuttX は `snapshot-1118e` と一致。Zephyr は 371012 → 370788 B、`i2c_0_runtime` は
+  10904 → 116 B、RAM の合計はほぼ同じ（177419 → 177415 B）。ホストテスト: Zephyr 41、NuttX 50、FreeRTOS 51 の `ok`。`format.sh --check` も通る。
+  subagent の確認: 無関係の `samples/hello_world` が `CONFIG_I2C_DW_RP2040_DMA=y` でビルドできる。`setup.sh` で旧 0003 から新 0003 へ当て直せる。
+- 実機（Zephyr、書き込み直後の最初の計測、送信 約 70 秒、1 回）: `cpu_active` 47.0%、欠番 0、`unix_regressions` 0、`overruns` 0、
+  `i2c_dma stats` は `dma_transfers=7700 dma_errors=0 dma_fallbacks=0`、`dmesg` に `<err>`・`<wrn>` なし。
+- **新しい基準**: Zephyr は `freertos/build/baseline/zephyr/snapshot-1119a/image.bin`（370788 B）。NuttX は `snapshot-1118e` のまま。
+- 実機: FreeRTOS 版。
+
+## 共有コアの I2C0 でも DMA の配列などを構造体から出す（2026-11-19、ユーザーの指示）
+
+- 共有コア（`common/drivers/i2c_dw/nano_i2c.c`、FreeRTOS 版・NuttX 版）も、パッチ後の Zephyr のドライバーと同じ置き方にした: `rp_dma_sem`・
+  `rp_dma_events`・`rp_dma_tx_channel`・`rp_dma_rx_channel`・`rp_dma_commands[]`・`rp_dma_buffer[]` はファイル内の静的変数、
+  `rp_dma_active`・`rp_dma_quarantined` は構造体に残す。`i2c_dw_rp_dma_notify()` は `dw` の引数が無くなった。
+- セマフォの初期化は場所も順序も同じ（各版の `nano_i2c_instance.h` の `nano_i2c0_initialize()`。対象が静的変数になっただけ）。
+- `i2c_dw_sync.py`: この違いを隠していた読み替えの規則を削除。expected は 285 → 281 行（`notify` の宣言と呼び出しの違いが消えた）。
+- ビルド（メインが再ビルド、警告の増加なし）: FreeRTOS 232416 → 232432 B、NuttX 285060 → 285084 B（静的変数を直接指すコードの分）。`i2c_0_runtime` は
+  FreeRTOS 10856 → 76 B、NuttX は 88 B。Zephyr は `snapshot-1119a` と一致。ホストテスト: FreeRTOS 51、NuttX 50、Zephyr 41 の `ok`。
+- 実機（書き込み直後の最初の計測、送信 約 70 秒、各 1 回）: FreeRTOS `cpu_active` 40.1%・`dma_transfers=7613`、NuttX 49.8%・`dma_transfers=7476`。
+  どちらも欠番 0、`unix_regressions` 0、`overruns` 0、`dma_errors=0`、`dma_fallbacks=0`。
+- **新しい基準**: NuttX は `freertos/build/baseline/nuttx/snapshot-1119a/image.bin`（285084 B）。Zephyr は `snapshot-1119a` のまま。
+- Kconfig.dw の help の行（タブ 1 つ + スペース 2 つ）は上流の書き方なので変えない（ユーザーの了解）。
+- 実機: FreeRTOS 版。
+
+## I2C の DMA の内部の名前を `i2c_dw_rp2040_dma_...`・`rp2040_dma_...` にそろえ、Zephyr のパッチはコマンド列の関数を 1 ファイルに（2026-11-19、ユーザーの決定）
+
+- 名前（Zephyr のパッチ 0003 と共有コアの両方）: 内部の関数は `i2c_dw_rp2040_dma_notify()`・`_callback()`・`_stop()`・`_read()`
+  （旧 `i2c_dw_rp_dma_*`）、変数と構造体のメンバーは `rp2040_dma_*`（旧 `rp_dma_*`）、マクロは `RP2040_DMA_*`（旧 `RP_DMA_*`）。
+  これより前の節の記述は旧名のまま。`i2c_dma` コマンドの出力は変えていない。
+- Zephyr のパッチ: `i2c_dw_rp2040_read_commands()` を `drivers/i2c/i2c_dw_rp2040_dma_priv.h` の static 関数にして、`i2c_dw_rp2040_commands.[ch]` と
+  `drivers/i2c/CMakeLists.txt` の 1 行を外した（ユーザーの決定: Zephyr 版はまとめる）。パッチが足すファイルは 3 つ、上流のファイルに食い込む箇所は
+  14 → 13（`i2c_dw.c` 11、`i2c_dw.h` 1、`Kconfig.dw` 1）。`common/drivers/i2c_dw/i2c_dw_rp2040_commands.[ch]` は共有コアとホストテスト用に残る。
+- `i2c_dw_sync.py`: コマンド列の関数は本文を文単位で比べ、コマンドのビットの値も比べる（33 checks）。公開ヘッダーはバイト単位の比較のまま。
+- 確認（メインが再ビルド）: NuttX は `snapshot-1119a` と一致。FreeRTOS は 232432 B のまま（同じ `SOURCE_DATE_EPOCH` での前後の一致は subagent が確認）。
+  Zephyr は 370788 → 370732 B（関数が `i2c_dw_transfer()` に取り込まれた分）。ホストテスト: FreeRTOS 51、NuttX 50、Zephyr 41 の `ok`。
+  subagent の確認: `samples/hello_world` が `CONFIG_I2C_DW_RP2040_DMA=y` でビルドできる、`setup.sh` で旧 0003 から当て直せる。
+- 実機（Zephyr、書き込み直後の最初の計測、送信 約 70 秒、1 回）: `cpu_active` 47.2%、欠番 0、`unix_regressions` 0、`overruns` 0、
+  `dma_transfers=7722 dma_errors=0 dma_fallbacks=0`、`dmesg` に `<err>`・`<wrn>` なし。
+- **新しい基準**: Zephyr は `freertos/build/baseline/zephyr/snapshot-1119b/image.bin`（370732 B）。NuttX は `snapshot-1119a` のまま。
+- 実機: FreeRTOS 版。
+
+## Zephyr 版で `CONFIG_I2C_DW_RP2040_DMA=n` の確認（2026-11-19、ユーザーの依頼）
+
+- ビルド: 追加の `.conf` で `CONFIG_I2C_DW_RP2040_DMA=n` にした試験用のイメージ（`zephyr/build/usb-console-nodma/`、リポジトリの変更なし）。
+  警告なし、368544 B、`rp2040_dma_*` の記号なし、`i2c_0_runtime` は 108 B。`CONFIG_DMA`・`CONFIG_DMA_RPI_PICO` は `y` のまま。
+- 実機（書き込み直後の最初の計測、送信 約 70 秒、1 回）: 欠番 0、`unix_regressions` 0、`overruns` 0、`i2c_errors` 0、`recoveries` 0、
+  `cpu_active` 69.4%（DMA ありは 47.2%）。`sensor get` は値を返す。`i2c_dma` は `command not found`（意図どおり）。`dmesg` に `<err>`・`<wrn>` なし。
+- 確かめていない: 長時間、Telnet・スキャン・切断復帰と重ねた場合（負荷が高いので余裕は小さい）。
+- 実機: FreeRTOS 版に戻した。
+
+## 共有の I2C0 コアのファイル名と名前を Zephyr のドライバーに合わせ、Zephyr の定義を持ち込まない（2026-11-19、ユーザーの決定）
+
+- 方針（ユーザー）: `common/drivers/i2c_dw` は OS 非依存のドライバーとして `common/drivers` に残す。そのために Zephyr の定義を入れない。
+  ファイル名と名前は、写しのもとの Zephyr のドライバーに合わせる。これより前の節の記述は旧名のまま。
+- ファイル名: `nano_i2c.c` → `i2c_dw.c`、`nano_i2c_dw.h` → `i2c_dw.h`、`nano_i2c_dw_registers.h` → `i2c_dw_registers.h`、
+  `nano_dma.[ch]` → `dma_rpi_pico.[ch]`。Zephyr のパッチと同じ区切りで `i2c_dw_rp2040.h`（FIFO の定数）と `i2c_dw_rp2040_dma_priv.h`（DMA の読み出し。
+  `i2c_dw.c` が 1 回読む）に分けた。各 OS の側は `i2c_dw_instance.h`・`dma_rpi_pico_instance.h`・`i2c_dw_i2c0.h`（旧 `nano_i2c.h`）、
+  FreeRTOS の `dma_rpi_pico_os.c`。テストは `common/tests/i2c_dw.c`。
+- 名前: `nano_dma_*` → `dma_rpi_pico_*`（構造体は `dma_rpi_pico_channel_config`・`dma_rpi_pico_block_config`。`dma_rpi_pico_config` は関数名とぶつかる）、
+  `nano_i2c0_initialize()` → `i2c_dw_i2c0_initialize()`、`nano_i2c_dw_*`・`nano_dw_*` → `i2c_dw_*`、`NANO_I2C_DW_*` → `I2C_DW_*`、
+  `NANO_I2C_SPEED_*` → `I2C_SPEED_*`（Zephyr と同じ書き方と値。NuttX の `i2c_master.h` の同名の Hz の定義は NuttX の `i2c_dw_os_impl.h` が `#undef`）、
+  `CONFIG_NANO_I2C0_DMA` → `CONFIG_I2C_DW_RP2040_DMA`（NuttX の Kconfig の記号も）。
+- Zephyr の定義: `mm_reg_t` は `uintptr_t` に。`MIN()`・`ARRAY_SIZE()` はコアの `i2c_dw.h` が `#ifndef` で定義。`BIT()`・`I2C_MSG_*`・`LOG_*()`・
+  関数名と構造体名はそのまま（ユーザーの決定）。`common/drivers/i2c_dw/` に `<zephyr/...>` の include は無い。
+- 公開の宣言: コアの `common/drivers/i2c_dw/i2c_dw_rp2040_dma.h`（メインが追加）。`common/compat/zephyr/drivers/i2c/i2c_dw_rp2040_dma.h` はそれを読むだけの
+  ヘッダーにした。`i2c_dw_sync.py` は、パッチの公開ヘッダーとコアのヘッダーを、コメントと include ガードを除いた宣言で比べる（バイト単位の比較をやめた）。
+- `i2c_dma_shell.c` は `common/shell/` へ（Zephyr のシェルの API で書いたコマンドなので）。
+- パッチ 0003: 公開ヘッダーのコメントの古い名前（`nano_i2c.c`、`CONFIG_NANO_I2C0_DMA`、シェルの場所）だけ直した（メインが作り直し、`setup.sh` で当て直した）。
+- NuttX の Kconfig の記号も変えた（ユーザーの指示）: `NANO_I2C0` → `I2C_DW_I2C0`、`NANO_APP_I2C_DMA`（と `_PRIORITY`・`_STACKSIZE`）→
+  `I2C_DW_RP2040_DMA_SHELL`。イメージは変わらない（下の基準と一致）。
+- 確認（メインが再ビルド）: Zephyr は `snapshot-1119b` と一致。FreeRTOS は同じ日付でビルドした前後が一致。NuttX は 285084 → 285092 B
+  （`nano_bringup.c` の 2 つのエラーメッセージが関数名を含むため。subagent が、その 2 つを戻した対照のビルドで基準と一致することを確認）。
+  ホストテスト: FreeRTOS 51、NuttX 50、Zephyr 41 の `ok`、`i2c_dw_sync` 33 checks。`format.sh --check` も通る。
+- 実機（NuttX、書き込み直後の最初の計測、送信 約 70 秒、1 回）: `cpu_active` 49.9%、欠番 0、`unix_regressions` 0、`overruns` 0、
+  `dma_transfers=7474 dma_errors=0 dma_fallbacks=0`。
+- **新しい基準**: NuttX は `freertos/build/baseline/nuttx/snapshot-1119b/image.bin`（285092 B）。Zephyr は `snapshot-1119b` のまま。
+- 確かめていない: FreeRTOS の `-DNANO_SELFTEST=ON` のビルド。
+- 実機: FreeRTOS 版。
+
+## `dma_rpi_pico.[ch]` を Zephyr のスタイルと Pico SDK の名前に、コマンド列の関数はコアでも 1 ファイルに（2026-11-19、ユーザーの指示）
+
+- `common/drivers/i2c_dw/dma_rpi_pico.c`: NuttX のスタイルだったものを、写しのもとの `zephyr/drivers/dma/dma_rpi_pico.c` のスタイル・順序・名前・文に合わせて書き直した
+  （`RPI_PICO_DMA_INIT(0)` に当たる実体は `dma_rpi_pico0_config`・`dma_rpi_pico0_data` などとして書き下した）。Zephyr のファイルとの
+  `diff -u` の `+`/`-` の行は 806 → 352。残る違い: 移植の説明のコメント、include、`struct device` が無いこと、OS の側に出した reset と割り込みの登録、
+  使わない関数（reload・get_status・chan_filter・API の表）が無いこと、DMA の API のチャンネル確保を書き下した関数、公開の関数にした config・start・stop。
+- `dma_rpi_pico.h`（Zephyr に同名のファイルは無い。名前はそのまま＝ユーザーの決定）: レジスターの定義を Pico SDK の名前にした（`DMA_BASE`、
+  `DMA_CH0_*_OFFSET`、`DMA_CH0_CTRL_TRIG_*_BITS`/`_LSB`、`dma_hw_t` と `dma_hw`、`hw_set_bits()`・`hw_clear_bits()`、`dma_channel_config`、
+  `channel_config_set_*()`、`dma_channel_configure()`、`dma_channel_is_busy()`、`dma_irqn_*()`）。SDK のヘッダーは読まない。SDK のヘッダーが先に
+  読まれている翻訳単位では、SDK の include ガードの名前を見て自分の定義を出さない（FreeRTOS の `dma_rpi_pico_os.c` がそれで、マクロの一致をコンパイル時に確かめる形になる）。
+  Zephyr の DMA の API に当たる名前（`DMA_RPI_PICO_ADDR_ADJ_*` など）と移植の関数名は変えていない。
+- `i2c_dw_rp2040_commands.[ch]` を削除し、`i2c_dw_rp2040_read_commands()` はコアの `i2c_dw_rp2040_dma_priv.h` の static 関数にした（Zephyr のパッチと同じ）。
+  単独のホストテスト（`common/tests/i2c_dma_commands.c`）は削除し、項目は FreeRTOS のホストテスト（`freertos/tests/i2c_dw/`、コアを 1 つの翻訳単位で
+  ビルドする `i2c_dw_core.c`）へ移した。ホストテストの数は FreeRTOS 51 → 50、NuttX 50 → 49、Zephyr 41 → 40（3 版が共通に流していた 1 項目の分）。
+- ほかのファイル: NuttX 風の見出しのコメント、`#  define`、include ガードの名前を Zephyr のスタイルに（コードの変更なし）。
+- `i2c_dw_sync.py`: DMA も比べる（Zephyr の `dma_rpi_pico.c` の 10 関数と `dma.h` の 2 関数。意図した違いは同じ expected に 50 行）。
+- パッチ 0003: コアのファイル名を挙げたコメント 1 か所だけ直した（メインが作り直し、`setup.sh` で当て直した）。
+- 確認（メインが再ビルド、警告の増加なし）: Zephyr は `snapshot-1119b` と一致。FreeRTOS 232432 → 232376 B、NuttX 285092 → 285036 B
+  （コマンド列の関数が `i2c_dw_transfer()` に取り込まれた分と、`dma_hw->` の形のアドレス計算。subagent の確認: レジスターへのアクセスの順序は逆アセンブルで同じ、
+  ホスト上で新旧の `dma_rpi_pico.c` を同じ入力で動かした出力が一致）。ホストテスト: FreeRTOS 50、NuttX 49、Zephyr 40 の `ok`。`format.sh --check` も通る。
+- 実機（書き込み直後の最初の計測、送信 約 70 秒、各 1 回）: FreeRTOS `cpu_active` 40.6%・`dma_transfers=7627`、NuttX 50.5%・`dma_transfers=7477`。
+  どちらも欠番 0、`unix_regressions` 0、`overruns` 0、`dma_errors=0`、`dma_fallbacks=0`。FreeRTOS は `i2c_dma mode off` → `sensor get` → `on` も動いた。
+- **新しい基準**: NuttX は `freertos/build/baseline/nuttx/snapshot-1119c/image.bin`（285036 B）。Zephyr は `snapshot-1119b` のまま。
+- 実機: FreeRTOS 版。

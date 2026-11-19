@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MIT */
 /* The part of the Pico SDK that the FreeRTOS part of the I2C0 and DMA core
- * uses (freertos/drivers/i2c_dw: i2c_dw_os_impl.h, nano_i2c_instance.h,
- * nano_dma_instance.h, nano_dma_os.c), for its host test
+ * uses (freertos/drivers/i2c_dw: i2c_dw_os_impl.h, i2c_dw_instance.h,
+ * dma_rpi_pico_instance.h, dma_rpi_pico_os.c), for its host test
  * (freertos/tests/i2c_dw/main.c, which implements the functions: they
  * record the calls).  pico.h and the hardware/ headers next to this one
  * include it.  Names and values as in the SDK (SYS_CLK_HZ of

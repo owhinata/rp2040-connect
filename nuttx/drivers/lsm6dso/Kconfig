@@ -6,7 +6,7 @@
 config NANO_LSM6DSO
 	bool "LSM6DSOX IMU driver (Zephyr build's LSM6DSO driver)"
 	default y
-	depends on NANO_I2C0
+	depends on I2C_DW_I2C0
 	---help---
 		common/drivers/lsm6dso/lsm6dso.c: the Zephyr build's driver
 		(Zephyr's LSM6DSO driver with the FIFO, calibration and

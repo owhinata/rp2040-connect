@@ -2,10 +2,11 @@
 /* The host test of the FreeRTOS part of the I2C0 and DMA core on the
  * FreeRTOS POSIX port: freertos/drivers/i2c_dw (the boundary
  * i2c_dw_os_impl.h, the device i2c0 and its Zephyr I2C API in
- * nano_i2c_instance.h, nano_dma_instance.h, nano_dma_os.c) and
+ * i2c_dw_instance.h, dma_rpi_pico_instance.h, dma_rpi_pico_os.c) and
  * freertos/drivers/compat/zephyr/drivers/i2c.h, under the shared core
- * (common/drivers/i2c_dw/nano_i2c.c, nano_dma.c, i2c_dw_rp2040_commands.c,
- * with the prelude, as freertos/drivers/i2c_dw/i2c_dw.cmake builds them), on
+ * (common/drivers/i2c_dw/i2c_dw.c, through i2c_dw_core.c here, and
+ * dma_rpi_pico.c, with the prelude, as freertos/drivers/i2c_dw/i2c_dw.cmake
+ * builds them), on
  * fakes of the Pico SDK's GPIO, reset, IRQ, sync and DMA-claim functions
  * (pico_fake/, implemented here: they record the calls) and on an array in
  * place of I2C0's registers, which a task of this test plays the
@@ -36,6 +37,10 @@
  *   works (the semaphore was reset).
  * - The boundary's semaphore and time functions: K_MSEC() rounding, the
  *   deadline's last try without waiting, a give from an interrupt handler.
+ * - The command words of the DMA reads (i2c_dw_rp2040_read_commands() of
+ *   the core's i2c_dw_rp2040_dma_priv.h, through i2c_dw_core.c): READ on
+ *   each, RESTART on the first when asked, STOP on the last; no buffer, no
+ *   length or one longer than the buffer: -EINVAL.
  *
  * Built and run by freertos/script/host_tests.sh.
  */
@@ -55,13 +60,13 @@
 #include <zephyr/kernel.h>
 #include <zephyr/device.h>
 #include <zephyr/drivers/i2c.h>
+#include <zephyr/drivers/i2c/i2c_dw_rp2040_dma.h>
 
 #include "pico_i2c_fake.h"
 
 #include "i2c_dw_os_impl.h"
-#include "nano_dma.h"
-#include "nano_i2c.h"
-#include "nano_i2c_dma.h"
+#include "dma_rpi_pico.h"
+#include "i2c_dw_i2c0.h"
 #include "priorities.h"
 
 #define RUNNER_STACK 16384
@@ -433,19 +438,19 @@ static void test_start(void)
 	REG(IC_FS_SPKLEN) = 7;
 	REG(IC_ENABLE) = 1;
 
-	assert(nano_dma_initialize() == 0);
+	assert(dma_rpi_pico_initialize() == 0);
 	expect_calls("claim(0xfff) reset(dma) unreset(dma) handler(11) irq(11,1) handler(12) "
 		     "irq(12,1) ");
-	assert(nano_dma_is_ready());
+	assert(dma_rpi_pico_is_ready());
 
 	/* Not a DesignWare block: refused after the reset and the pins. */
-	assert(nano_i2c0_initialize() == -EIO);
+	assert(i2c_dw_i2c0_initialize() == -EIO);
 	expect_calls("reset(i2c0) unreset(i2c0) " PINS(12) PINS(13));
 	assert(!device_is_ready(i2c0));
 	assert(i2c0->state->init_res == EIO);
 
 	REG(IC_COMP_TYPE) = DW_MAGIC;
-	assert(nano_i2c0_initialize() == 0);
+	assert(i2c_dw_i2c0_initialize() == 0);
 	expect_calls("reset(i2c0) unreset(i2c0) " PINS(12) PINS(13) "handler(23) irq(23,1) ");
 	assert(device_is_ready(i2c0));
 	assert(i2c0->state->init_res == 0);
@@ -456,10 +461,10 @@ static void test_start(void)
 	assert(REG(IC_SDA_HOLD) == 1);
 	assert(REG(IC_SS_SCL_HCNT) == 0); /* written at the first transfer */
 
-	assert(nano_dma_initialize() == 0);
-	assert(nano_i2c0_initialize() == 0);
+	assert(dma_rpi_pico_initialize() == 0);
+	assert(i2c_dw_i2c0_initialize() == 0);
 	expect_calls("");
-	assert(nano_i2c_dma_enabled());
+	assert(i2c_dw_rp2040_dma_enabled());
 }
 
 static void test_who_am_i(void)
@@ -480,11 +485,11 @@ static void test_who_am_i(void)
 	expect_hw(WHO_AM_I_BUS_AFTER_READ);
 
 	/* The DMA reads off: IC_CON without RX_FIFO_FULL_HLD_CTRL. */
-	nano_i2c_dma_set_enabled(false);
+	i2c_dw_rp2040_dma_set_enabled(false);
 	assert(who_am_i() == LSM6DSOX_ID);
 	expect_hw(WHO_AM_I_BUS_AFTER_READ);
 	assert(REG(IC_CON) == CON_STD);
-	nano_i2c_dma_set_enabled(true);
+	i2c_dw_rp2040_dma_set_enabled(true);
 
 	/* A write of two bytes: the last command carries STOP (the first, which
 	 * the array does not keep, has RESTART after the read).
@@ -660,6 +665,28 @@ static void test_boundary(void)
 	assert(I2C_DW_CLOCK_SPEED == 125);
 }
 
+/* i2c_dw_core.c */
+int i2c_dw_test_read_commands(uint16_t *commands, size_t capacity, size_t length, bool restart);
+
+static void test_read_commands(void)
+{
+	static uint16_t commands[3585];
+
+	assert(i2c_dw_test_read_commands(NULL, 4, 1, false) == -EINVAL);
+	assert(i2c_dw_test_read_commands(commands, 4, 0, false) == -EINVAL);
+	assert(i2c_dw_test_read_commands(commands, 4, 5, false) == -EINVAL);
+	assert(i2c_dw_test_read_commands(commands, 4, 1, true) == 0);
+	assert(commands[0] == 0x700);
+	assert(i2c_dw_test_read_commands(commands, 4, 4, false) == 0);
+	assert(commands[0] == 0x100 && commands[1] == 0x100 && commands[2] == 0x100 &&
+	       commands[3] == 0x300);
+	assert(i2c_dw_test_read_commands(commands, 3584, 3584, true) == 0);
+	assert(commands[0] == 0x500 && commands[3583] == 0x300 && commands[3584] == 0);
+	for (size_t i = 1; i < 3583; i++) {
+		assert(commands[i] == 0x100);
+	}
+}
+
 static void runner(void *arg)
 {
 	(void)arg;
@@ -672,6 +699,7 @@ static void runner(void *arg)
 	test_nack();
 	test_timeout();
 	test_boundary();
+	test_read_commands();
 	assert(irq_masked == 0);
 	printf("i2c_dw: all tests passed\n");
 	fflush(stdout);

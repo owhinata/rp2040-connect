@@ -589,7 +589,7 @@ NuttX 版の確認の範囲は §11.7 に分けて書く。
   だけに依存する）も `common/drivers/nina/` にあり、3 つの版が使う。版ごとの部分は境界の実装とソケット層への接着で、
   Zephyr 版は `drivers/nina/` の `nano_nina.c`（devicetree の線と SPI）、`nina_os.c`（mutex、sleep、時計、READY の
   割り込み待ち）、`nina_socket.c`（ソケットのオフロード）。
-  I2C0 と DMA のレジスターを操作するコア（`common/drivers/i2c_dw/` の `nano_i2c.c`・`nano_dma.c`。Zephyr 版の
+  I2C0 と DMA のレジスターを操作するコア（`common/drivers/i2c_dw/` の `i2c_dw.c`・`dma_rpi_pico.c`。Zephyr 版の
   パッチ後の `i2c_dw.c` と RP2040 の DMA のドライバーの写し）も OS に依存せず、境界 `i2c_dw_os.h`（セマフォ、時計、割り込みの
   登録、リセットとピン、OS のドライバーモデルへの接続）だけに依存する。NuttX 版と FreeRTOS 版が使う（Zephyr 版は
   Zephyr のドライバーにローカルのパッチを当てて使う。§12）。
@@ -731,10 +731,10 @@ Zephyr の名前のまま提供する互換層の上でビルドする。ホス�
 | `common/imu/` | 取得サービスと `imu`、バッチ・ペイロード・キュー・status、時刻の対応付けと時刻同期・`ntp`、校正と `imu cal`、MQTT の送信、Wi-Fi のプロファイルと自動再接続、KV の API と `kv` | 3 版（MQTT のクライアント `mqtt_min*` は NuttX 版と FreeRTOS 版。Zephyr 版は Zephyr の MQTT ライブラリー） |
 | `common/drivers/lsm6dso/`、`sensor_shell/` | LSM6DSO のドライバー本体と FIFO のストリーム、sensor シェル | 3 版 |
 | `common/drivers/nina/` | `nina_net.c`・`nina_proto.h`、NINA のコア（SPI の転送層、ソケット、名前解決、ソケットの待ち `nina_wait.[ch]`）、esptool の中継の判断 `nina_passthrough_logic.h` | 3 版 |
-| `common/drivers/i2c_dw/` | DMA のコマンド語、`i2c_dma` コマンド、I2C0 と DMA のコア | コマンド語と `i2c_dma` は 3 版、コアは NuttX 版と FreeRTOS 版 |
+| `common/drivers/i2c_dw/` | I2C0 と DMA のコア（ファイル名は Zephyr のものに合わせる: `i2c_dw.c`・`i2c_dw.h`・`i2c_dw_registers.h`・`i2c_dw_rp2040.h`・`i2c_dw_rp2040_dma_priv.h`（DMA のコマンド語を含む）・`dma_rpi_pico.[ch]`） | NuttX 版と FreeRTOS 版（Zephyr 版はパッチ 0003 に同じコマンド語を持つ） |
 | `common/drivers/stmemsc/` | ST のドライバーと Zephyr の I2C の API のつなぎ | NuttX 版と FreeRTOS 版 |
 | `common/compat/` | 互換層の OS に依存しない部分と、Zephyr のライブラリーの写し（KV の NVS と settings、Wi-Fi の資格情報、getopt など） | NuttX 版と FreeRTOS 版 |
-| `common/shell/`、`common/log/` | Zephyr のシェルのコマンド処理の再現、`LOG_*` と RAM ログのリング | NuttX 版と FreeRTOS 版 |
+| `common/shell/`、`common/log/` | Zephyr のシェルのコマンド処理の再現、`i2c_dma` コマンド、`LOG_*` と RAM ログのリング | NuttX 版と FreeRTOS 版（`i2c_dma` は 3 版） |
 
 OS ごとの部分は、狭い境界のヘッダーの実装として各版のディレクトリーに置く。
 
@@ -748,17 +748,26 @@ OS ごとの部分は、狭い境界のヘッダーの実装として各版の�
 Zephyr 版の I2C0 のドライバーは、Zephyr の `drivers/i2c/i2c_dw.c` にローカルのパッチ
 （`zephyr/manifest/zephyr/patches/zephyr/0003-i2c-dw-rp2040-fifo-and-dma.patch`）を当てて使う。共有のコアには載せ替えない
 （NINA は共有のコアを使う）。共有のコアはそのパッチ後のドライバーの写しで、意図した違い（OS の呼び出し、Zephyr 版で
-使わない機能の省略、i2c0 だけのインスタンスなど）は `nano_i2c.c` の冒頭の一覧に限る。両者をそろえて保つ手順は次のとおり。
+使わない機能の省略、i2c0 だけのインスタンスなど）は `i2c_dw.c` の冒頭の一覧に限る。DMA の部分 `dma_rpi_pico.c` は、
+パッチを当てない Zephyr の `drivers/dma/dma_rpi_pico.c` を、そのファイルの順序・名前・文のまま写したもので、違い（インスタンスは
+1 つで `struct device` を持たない、DMA API のチャネルの確保を書き下す、OS の部分）はファイルの冒頭に挙げる。`dma_rpi_pico.h` は、
+両方のファイルが呼ぶ Pico SDK の部分を SDK の名前と値で書く。両者をそろえて保つ手順は次のとおり。
 
-- どちらかを直したら、もう一方にも同じ変更を入れる（入れない場合は理由を `nano_i2c.c` の冒頭の一覧に書く）。
+- どちらかを直したら、もう一方にも同じ変更を入れる（入れない場合は理由を `i2c_dw.c` の冒頭の一覧に書く）。
 - ホストテストの `i2c_dw_sync`（`common/tests/i2c_dw_sync.py`。Zephyr のツリーがあるときに `common/tests/run.sh` が実行）が、
-  ツリーの HEAD のファイルにパッチを当てたものとコアを比べる。両方のヘッダーの定義、125 MHz での SCL のカウント、DMA の
+  ツリーの HEAD のファイルにパッチを当てたものとコアを比べ、`dma_rpi_pico.c` を HEAD の `drivers/dma/dma_rpi_pico.c` と
+  `include/zephyr/drivers/dma.h` のチャネルの確保と比べる。両方のヘッダーの定義、125 MHz での SCL のカウント、DMA の
   下限・しきい値・割り込みのマスク・IC_CON のビット・待ち・タイムアウト、スパイク長が食い違うと失敗し、対になる関数
   （名前の違いをそろえて文ごとに比べる）の差分が保存した `common/tests/i2c_dw_sync.expected` と違っても失敗する。
   片方だけを変えれば失敗するので、意図した変更なら差分を確かめてから `--update` で書き直す。コメントと改行だけの違いは
-  見ない。比べていない関数（Zephyr の初期化、PM、target モード、OS の部分）のずれは検出しない。
-- `i2c_dma` コマンドは 3 版とも `common/drivers/i2c_dw/i2c_dma_shell.c` を使い（NuttX 版は `zshell.c` の上）、パッチ後の
-  ドライバーとコアが同じ 3 つの関数（`nano_i2c_dma.h`）を定義する。
+  見ない。比べていない関数（Zephyr の初期化、PM、target モード、DMA のドライバーの reload・状態の取得・フィルター、
+  OS の部分）のずれは検出しない。読み出しのコマンド語を作る関数（パッチとコアのそれぞれの `i2c_dw_rp2040_dma_priv.h` の
+  静的関数）が文ごとに
+  同じであること、パッチが足し `common/compat` にもある `include/zephyr/drivers/i2c/i2c_dw_rp2040_dma.h` がバイト単位で
+  同じであること、パッチ後のドライバーが Zephyr のツリーの外のヘッダーを読まないことも確かめる。
+- `i2c_dma` コマンドは 3 版とも `common/shell/i2c_dma_shell.c` を使い（NuttX 版は `zshell.c` の上）、パッチ後の
+  ドライバーとコアが同じ 3 つの関数を定義する。宣言は `<zephyr/drivers/i2c/i2c_dw_rp2040_dma.h>`（パッチ後の Zephyr の
+  ツリーにあり、NuttX 版・FreeRTOS 版は同じファイルを `common/compat` に持つ）。
 
 RP2040 の低い層の 3 つは `common/` に置かず、各 OS への変更として持つ（FreeRTOS 版は Pico SDK の既定のまま）。
 

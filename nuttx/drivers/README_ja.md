@@ -313,17 +313,16 @@ FreeRTOS 版の `freertos/drivers/nina/nina_passthrough.c` と同じ仕様で、
 
 | ファイル | 役割 |
 |---|---|
-| `common/drivers/i2c_dw/nano_i2c.c` | I2C0 のコントローラーのコア。Zephyr 版の `i2c_dw.c`（Zephyr のドライバーにローカルのパッチ 0003 を当てたもの）のコントローラーの部分（転送の状態機械、割り込みハンドラーの本体、`i2c_dw_data_ask()`・`_read()`・`_send()`、`i2c_dw_setup()`、`i2c_dw_configure()`、初期化のレジスター操作）と DMA での読み出し（`i2c_dw_rp_dma_read()` など）と `i2c_dma` のカウンターを、関数・分岐・順序・レジスター値・期限・エラー値を合わせて写したもの。末尾でボードの `nano_i2c_instance.h` を読む |
-| `common/drivers/i2c_dw/nano_dma.c`・`nano_dma.h` | DMA 読み出しが使う RP2040 の DMA のコア。Zephyr の `drivers/dma/dma_rpi_pico.c`（`dma_config()`・`dma_start()`・`dma_stop()`・割り込みハンドラーの本体）と、DMA API のチャネルの確保・解放（`dma_request_channel()`・`dma_release_channel()`）、`i2c_dw.c` が直接呼ぶ pico-sdk の関数（`dma_channel_is_busy()`・`dma_irqn_acknowledge_channel()`・`dma_hw->abort`）をレジスターで書いたもの（レジスターの番地は `nano_dma.h`）。末尾でボードの `nano_dma_instance.h` を読む |
+| `common/drivers/i2c_dw/i2c_dw.c` | I2C0 のコントローラーのコア。Zephyr 版の `i2c_dw.c`（Zephyr のドライバーにローカルのパッチ 0003 を当てたもの）のコントローラーの部分（転送の状態機械、割り込みハンドラーの本体、`i2c_dw_data_ask()`・`_read()`・`_send()`、`i2c_dw_setup()`、`i2c_dw_configure()`、初期化のレジスター操作）と DMA での読み出し（`i2c_dw_rp2040_dma_read()` など）と `i2c_dma` のカウンターを、関数・分岐・順序・レジスター値・期限・エラー値を合わせて写したもの。ファイル名はパッチ後のドライバーに合わせ、DMA での読み出しとそのコマンド語は `i2c_dw_rp2040_dma_priv.h`、RP2040 の FIFO の深さと RX のまとめ数は `i2c_dw_rp2040.h` にあり、どちらも 1 回だけ読み込む。末尾でボードの `i2c_dw_instance.h` を読む |
+| `common/drivers/i2c_dw/dma_rpi_pico.c`・`dma_rpi_pico.h` | DMA 読み出しが使う RP2040 の DMA のコア。Zephyr の `drivers/dma/dma_rpi_pico.c`（`dma_config()`・`dma_start()`・`dma_stop()`・割り込みハンドラーの本体）と、DMA API のチャネルの確保・解放（`dma_request_channel()`・`dma_release_channel()`）を、Zephyr のファイルの順序・名前・文のまま書いたもの（関数は `i2c_dw_sync` が比べる）。`dma_rpi_pico.h` は、これと `i2c_dw.c` が呼ぶ Pico SDK の部分（`hardware/dma.h` の `dma_channel_configure()`・`dma_channel_is_busy()`・`dma_irqn_acknowledge_channel()` など、`hardware/structs/dma.h` の `dma_hw`、`hardware/regs/dma.h` の `DMA_CH0_CTRL_TRIG_*`）を SDK の名前と値で書く。末尾でボードの `dma_rpi_pico_instance.h` を読む |
 | `common/drivers/i2c_dw/i2c_dw_os.h` | 境界: 2 つのコアが OS に求めるもの（下の表）。先頭でボードの `i2c_dw_os_impl.h` を読み、その実装が満たすべき関数を宣言する |
-| `common/drivers/i2c_dw/nano_i2c_dw.h` | OS に依存しない定義と純粋な関数: Zephyr 版の `i2c_dw.h` の定義、SCL のカウント、周波数から速さの区分、NuttX のフラグ（`I2C_M_*`）から Zephyr のフラグ（`I2C_MSG_*`）への変換、`IC_DATA_CMD` に書く語。ホストテスト `common/tests/nano_i2c_dw.c` |
-| `common/drivers/i2c_dw/nano_i2c_dw_registers.h` | Zephyr 版の `i2c_dw_registers.h` の写し（アクセス関数は 32 ビットの volatile のアクセスで定義） |
-| `common/drivers/i2c_dw/i2c_dw_rp2040_commands.[ch]` | DMA で送るコマンド語。Zephyr 版と同じファイル。ホストテスト `common/tests/i2c_dma_commands.c` |
-| `common/drivers/i2c_dw/nano_i2c_dma.h` | `i2c_dma` コマンド（3 版で共有の `common/drivers/i2c_dw/i2c_dma_shell.c`。この版のビルドは `nuttx/apps/i2c_dma`）が読み書きする状態: DMA の有効・無効と 4 つのカウンター |
-| ボードの `src/i2c_dw_os_impl.h` | 境界の NuttX の実装: セマフォ（`sem_t`。`nxsem_post()`、`nxsem_tickwait_uninterruptible()`、`nxsem_wait_uninterruptible()`、`nxsem_reset()`）、時刻（システムの tick）、`nxsched_msleep()`、`up_irq_save()`、メッセージ（`struct i2c_msg_s` と、`nano_i2c_dw_msg_flags()` での Zephyr のフラグへの変換）、`I2C_DW_CLOCK_SPEED`（`BOARD_PERI_FREQ`） |
-| ボードの `src/nano_i2c_instance.h` | I2C0 の NuttX の部分: `struct i2c_master_s` の操作表（`I2C_TRANSFER()` は要求を確かめて周波数から速さを決め、コアの転送を呼ぶ。`I2C_RESET()`）、`irq_attach()` で登録する割り込みハンドラー、リセットとピン（`i2c_dw_pinctrl()`）、`nano_i2c0_initialize()` |
-| ボードの `src/nano_dma_instance.h` | DMA の NuttX の部分: DMA ブロックのリセットと、DMA_IRQ_0・1 の割り込みハンドラーの登録 |
-| ボードの `src/nano_i2c.h` | `nano_i2c0_initialize()`（起動時に `nano_bringup()` が呼び、`/dev/i2c0` に登録する） |
+| `common/drivers/i2c_dw/i2c_dw.h` | OS に依存しない定義と純粋な関数: Zephyr 版の `i2c_dw.h` の定義、SCL のカウント、周波数から速さの区分、NuttX のフラグ（`I2C_M_*`）から Zephyr のフラグ（`I2C_MSG_*`）への変換、`IC_DATA_CMD` に書く語。ホストテスト `common/tests/i2c_dw.c` |
+| `common/drivers/i2c_dw/i2c_dw_registers.h` | Zephyr 版の `i2c_dw_registers.h` の写し（アクセス関数は 32 ビットの volatile のアクセスで定義。番地の型は Zephyr の `mm_reg_t` の代わりに `uintptr_t`） |
+| `common/compat/zephyr/drivers/i2c/i2c_dw_rp2040_dma.h` | `i2c_dma` コマンド（3 版で共有の `common/shell/i2c_dma_shell.c`。この版のビルドは `nuttx/apps/i2c_dma`）が読み書きする状態: DMA の有効・無効と 4 つのカウンター（`i2c_dw_rp2040_dma_get_stats()`・`_enabled()`・`_set_enabled()`）。パッチ 0003 が Zephyr の `include/zephyr/drivers/i2c` に足すものと同じファイル（`i2c_dw_sync` が確かめる） |
+| ボードの `src/i2c_dw_os_impl.h` | 境界の NuttX の実装: セマフォ（`sem_t`。`nxsem_post()`、`nxsem_tickwait_uninterruptible()`、`nxsem_wait_uninterruptible()`、`nxsem_reset()`）、時刻（システムの tick）、`nxsched_msleep()`、`up_irq_save()`、メッセージ（`struct i2c_msg_s` と、`i2c_dw_msg_flags()` での Zephyr のフラグへの変換）、`I2C_DW_CLOCK_SPEED`（`BOARD_PERI_FREQ`） |
+| ボードの `src/i2c_dw_instance.h` | I2C0 の NuttX の部分: `struct i2c_master_s` の操作表（`I2C_TRANSFER()` は要求を確かめて周波数から速さを決め、コアの転送を呼ぶ。`I2C_RESET()`）、`irq_attach()` で登録する割り込みハンドラー、リセットとピン（`i2c_dw_pinctrl()`）、`i2c_dw_i2c0_initialize()` |
+| ボードの `src/dma_rpi_pico_instance.h` | DMA の NuttX の部分: DMA ブロックのリセットと、DMA_IRQ_0・1 の割り込みハンドラーの登録 |
+| ボードの `src/i2c_dw_i2c0.h` | `i2c_dw_i2c0_initialize()`（起動時に `nano_bringup()` が呼び、`/dev/i2c0` に登録する） |
 
 境界（`i2c_dw_os.h`）で OS が用意するもの。どれも static inline の関数かマクロで、OS の割り込みハンドラーと転送の入口は
 コアの static inline の関数を呼ぶので、コンパイラーがそれぞれを 1 つの関数にします（転送と割り込みの経路に呼び出しが
@@ -340,17 +339,17 @@ FreeRTOS 版の `freertos/drivers/nina/nina_passthrough.c` と同じ仕様で、
 | `i2c_dw_os_msleep(ms)` | `k_msleep()` | `nxsched_msleep()` |
 | `i2c_dw_os_uptime_ms()` | `k_uptime_get()`（マクロでもよい） | `TICK2MSEC(clock_systime_ticks())`（マクロ） |
 | `i2c_dw_os_irq_lock()`・`_unlock()`（割り込み） | `irq_lock()`（`atomic_or()` と DMA のチャネルの表）。入れ子にできる | `up_irq_save()`・`up_irq_restore()` |
-| `i2c_dw_os_msg_t`、`I2C_DW_OS_MSG_BUF()`・`_LEN()`・`_FLAGS()` | 転送の 1 つのメッセージ（Zephyr の `struct i2c_msg` なら `buf`・`len`・`flags`。最後のメッセージには STOP） | `struct i2c_msg_s`、フラグは前後のメッセージから `nano_i2c_dw_msg_flags()` で作る |
+| `i2c_dw_os_msg_t`、`I2C_DW_OS_MSG_BUF()`・`_LEN()`・`_FLAGS()` | 転送の 1 つのメッセージ（Zephyr の `struct i2c_msg` なら `buf`・`len`・`flags`。最後のメッセージには STOP） | `struct i2c_msg_s`、フラグは前後のメッセージから `i2c_dw_msg_flags()` で作る |
 | `I2C_DW_OS_DEV_HEAD` | コントローラーのデータの先頭に置く OS のデバイス（空でもよい） | `struct i2c_master_s dev;` |
 | `I2C_DW_CLOCK_SPEED` | `CONFIG_I2C_DW_CLOCK_SPEED`（MHz、125） | `BOARD_PERI_FREQ / 1000000` |
-| `i2c_dw_os_prepare(dw)`（`nano_i2c_instance.h`） | `reset_line_toggle_dt()` と `pinctrl_apply_state()`: I2C0 のリセット、GPIO12・13 を I2C（プルなし、4 mA、遅いスルー、シュミットと入力を有効） | RESETS と `rp2040_gpio_*()`（`i2c_dw_pinctrl()`。Zephyr の `pinctrl_rpi_pico.c` の手順） |
+| `i2c_dw_os_prepare(dw)`（`i2c_dw_instance.h`） | `reset_line_toggle_dt()` と `pinctrl_apply_state()`: I2C0 のリセット、GPIO12・13 を I2C（プルなし、4 mA、遅いスルー、シュミットと入力を有効） | RESETS と `rp2040_gpio_*()`（`i2c_dw_pinctrl()`。Zephyr の `pinctrl_rpi_pico.c` の手順） |
 | `i2c_dw_os_irq_enable(dw)`（同） | `IRQ_CONNECT()`・`irq_enable()`: I2C0_IRQ で `i2c_dw_isr_handler(dw)` を呼ぶハンドラー | `irq_attach()`・`up_enable_irq()` |
-| `nano_dma_os_reset()`・`nano_dma_os_irq_enable()`（`nano_dma_instance.h`） | DMA ブロックのリセット。DMA_IRQ_0・1 で `dma_rpi_pico_isr_handler()` を呼ぶハンドラー | RESETS、`irq_attach()`・`up_enable_irq()` |
+| `dma_rpi_pico_os_reset()`・`dma_rpi_pico_os_irq_enable()`（`dma_rpi_pico_instance.h`） | DMA ブロックのリセット。DMA_IRQ_0・1 で `dma_rpi_pico_isr_handler()` を呼ぶハンドラー | RESETS、`irq_attach()`・`up_enable_irq()` |
 | `app_log.h` | `LOG_MODULE_REGISTER()`、`LOG_ERR()`、`LOG_ERR_RATELIMIT()`（レベルはコアが定める 3） | `common/log/app_log.h` と NuttX の部分 `nuttx/drivers/include/app_log_os.h`（RAM ログ） |
-| `CONFIG_NANO_I2C0_DMA` | DMA 読み出しを作る（Zephyr 版の `CONFIG_I2C_DW_RP2040_DMA`） | Kconfig |
+| `CONFIG_I2C_DW_RP2040_DMA` | DMA 読み出しを作る（Zephyr 版と同じ名前のシンボル） | Kconfig |
 
-OS の I2C0 のデバイス（`nano_i2c_instance.h`）は、`i2c_0_runtime` の `base`（0x40044000）を設定し、セマフォを
-初期化し（`device_sync_sem` と `rp_dma_sem` は 0、`bus_sem` は 1）、起動時に `nano_dma_initialize()` の後で
+OS の I2C0 のデバイス（`i2c_dw_instance.h`）は、`i2c_0_runtime` の `base`（0x40044000）を設定し、セマフォを
+初期化し（`device_sync_sem` と `rp2040_dma_sem` は 0、`bus_sem` は 1）、起動時に `dma_rpi_pico_initialize()` の後で
 `i2c_dw_turn_on()` を 1 回呼び、成功したら `ready` を立てます。転送の入口は、Zephyr の API で表せない要求
 （メッセージの配列がない、256 個以上、メッセージごとに違うアドレスや速さ、10 ビットアドレス、バッファーがない、
 準備ができていない）を断り、
@@ -372,8 +371,9 @@ DMA のチャネルの確保はほかの利用者を知らず、初期化で DMA
 - 移していないもの: ターゲット（スレーブ）モード、Intel LPSS の DMA、`CONFIG_I2C_ALLOW_NO_STOP_TRANSACTIONS`、
   SDA/SCL の期限（`CONFIG_I2C_DW_EXTENDED_SUPPORT`）、電源管理、PCIe、ほかの SoC 向けの処理、バスのリカバリーと
   確認のコールバック（このボードでは登録されず、何もしない）、i2c1。
-- DMA での読み出し（`CONFIG_NANO_I2C0_DMA`、既定で有効。Zephyr 版の `CONFIG_I2C_DW_RP2040_DMA`）は
-  `i2c_dw.c` の DMA の部分を同じ分岐・順序・値で写したものです:
+- DMA での読み出し（`CONFIG_I2C_DW_RP2040_DMA`、既定で有効。Zephyr 版と同じ名前のシンボル）は
+  `i2c_dw.c`・`i2c_dw_rp2040_dma_priv.h` の DMA の部分を同じ分岐・順序・値で写したものです
+  （`common/drivers/i2c_dw/i2c_dw_rp2040_dma_priv.h`。`i2c_dw.c` が 1 回だけ読み込む）:
   - 使う条件: DMA が有効（`i2c_dma mode`）、DMA の準備ができている、32〜3584 バイト
     （`I2C_DW_RP2040_DMA_MAX_READ`）、STOP で終わる、転送の最後のメッセージ、7 ビットアドレス。外れると
     `-EAGAIN` で割り込みの処理に戻ります。チャネルの確保か設定に失敗したときも、`dma_fallbacks` を
@@ -396,7 +396,7 @@ DMA のチャネルの確保はほかの利用者を知らず、初期化で DMA
     チャネルの確保は待たず、停止も待ちません（待つのは上の I2C 側）。NuttX の `rp2040_dmac.c`
     （`CONFIG_RP2040_DMAC`）は DMA_IRQ_0 をすべてのチャネルで使い、確保で空きを待ち、停止で期限なしに
     待つので、切ってあります（DMA を使うのはこの読み出しだけ。NINA の SPI は DMA を使いません）。
-  - `rp_dma_events` の更新は割り込みを禁止して行い（Zephyr の `atomic_or()`）、4 つのカウンターは
+  - `rp2040_dma_events` の更新は割り込みを禁止して行い（Zephyr の `atomic_or()`）、4 つのカウンターは
     バスのセマフォを持った転送だけが書きます（32 ビットで一周します）。
 
 ## LSM6DSOX（`lsm6dso`）

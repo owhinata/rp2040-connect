@@ -1,11 +1,12 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /* Host test of the NuttX build's "i2c_dma" command: the command of the
- * Zephyr and FreeRTOS builds, common/drivers/i2c_dw/i2c_dma_shell.c
+ * Zephyr and FreeRTOS builds, common/shell/i2c_dma_shell.c
  * (included below, compiled as nuttx/apps/i2c_dma/Makefile builds it, with
  * the prelude; Z_SHELL_CMD_NAMED_MAIN turns its main() into
  * z_shell_main_i2c_dma()), on common/shell/zshell.c with the NuttX
  * backends (apps/subcmd/zshell_os_impl.h), with the I2C0 core's side
- * (common/drivers/i2c_dw/nano_i2c_dma.h) replaced by fakes.
+ * (i2c_dw_rp2040_dma.h of common/drivers/i2c_dw) replaced by
+ * fakes.
  *
  * Against the command that the NuttX build had until 2026-11-18
  * (nuttx/apps/i2c_dma/i2c_dma_main.c: the same set as a
@@ -31,7 +32,8 @@
 #include <string.h>
 #include <unistd.h>
 
-#include "nano_i2c_dma.h"
+#include <zephyr/drivers/i2c/i2c_dw_rp2040_dma.h>
+
 #include "subcmd.h"
 
 /* The shared command (its SHELL_CMD_REGISTER() makes z_shell_main_i2c_dma()). */
@@ -44,20 +46,20 @@ int z_shell_main_i2c_dma(int argc, char *argv[]);
 static bool fake_enabled = true;
 static int set_calls;
 static int get_calls;
-static struct nano_i2c_dma_stats fake_stats;
+static struct i2c_dw_rp2040_dma_stats fake_stats;
 
-void nano_i2c_dma_get_stats(struct nano_i2c_dma_stats *stats)
+void i2c_dw_rp2040_dma_get_stats(struct i2c_dw_rp2040_dma_stats *stats)
 {
 	get_calls++;
 	*stats = fake_stats;
 }
 
-bool nano_i2c_dma_enabled(void)
+bool i2c_dw_rp2040_dma_enabled(void)
 {
 	return fake_enabled;
 }
 
-void nano_i2c_dma_set_enabled(bool enabled)
+void i2c_dw_rp2040_dma_set_enabled(bool enabled)
 {
 	set_calls++;
 	fake_enabled = enabled;
@@ -67,11 +69,11 @@ void nano_i2c_dma_set_enabled(bool enabled)
 
 static int ref_stats(int argc, char **argv)
 {
-	struct nano_i2c_dma_stats stats;
+	struct i2c_dw_rp2040_dma_stats stats;
 
 	(void)argc;
 	(void)argv;
-	nano_i2c_dma_get_stats(&stats);
+	i2c_dw_rp2040_dma_get_stats(&stats);
 	printf("dma_transfers=%u dma_bytes=%u dma_errors=%u dma_fallbacks=%u\n",
 	       (unsigned int)stats.transfers, (unsigned int)stats.bytes,
 	       (unsigned int)stats.errors, (unsigned int)stats.fallbacks);
@@ -82,15 +84,15 @@ static int ref_mode(int argc, char **argv)
 {
 	if (argc == 2) {
 		if (!strcmp(argv[1], "on")) {
-			nano_i2c_dma_set_enabled(true);
+			i2c_dw_rp2040_dma_set_enabled(true);
 		} else if (!strcmp(argv[1], "off")) {
-			nano_i2c_dma_set_enabled(false);
+			i2c_dw_rp2040_dma_set_enabled(false);
 		} else {
 			fprintf(stderr, "Expected on or off\n");
 			return -EINVAL;
 		}
 	}
-	printf("i2c_dma=%s\n", nano_i2c_dma_enabled() ? "on" : "off");
+	printf("i2c_dma=%s\n", i2c_dw_rp2040_dma_enabled() ? "on" : "off");
 	return 0;
 }
 
@@ -261,7 +263,7 @@ int main(void)
 	assert(!strcmp(b.out, "dma_transfers=0 dma_bytes=0 dma_errors=0 dma_fallbacks=0\n"));
 
 	/* 32-bit counters, printed unsigned. */
-	fake_stats = (struct nano_i2c_dma_stats){6454, 4294967295u, 1, 2};
+	fake_stats = (struct i2c_dw_rp2040_dma_stats){6454, 4294967295u, 1, 2};
 	same("i2c_dma stats");
 	assert(!strcmp(b.out,
 		       "dma_transfers=6454 dma_bytes=4294967295 dma_errors=1 dma_fallbacks=2\n"));

@@ -19,7 +19,7 @@
  *     RESTART and STOP: msgs {I2C_M_NOSTOP}, {I2C_M_READ}
  *   i2c_write(): one write with STOP: msg {0}
  * (the board's driver turns the NuttX flags back into Zephyr's,
- * nano_i2c_dw.h nano_i2c_dw_msg_flags()).  The result is the driver's: 0 or
+ * i2c_dw.h i2c_dw_msg_flags()).  The result is the driver's: 0 or
  * a negative errno.
  *
  * NuttX's <nuttx/i2c/i2c_master.h> has functions named i2c_write() and

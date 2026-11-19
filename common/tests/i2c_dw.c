@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-/* common/drivers/i2c_dw/nano_i2c_dw.h: the OS-independent
- * pieces of the I2C0 driver (nano_i2c.c) against the Zephyr build's
+/* common/drivers/i2c_dw/i2c_dw.h: the OS-independent
+ * pieces of the I2C0 driver (i2c_dw.c) against the Zephyr build's
  * driver (Zephyr's i2c_dw.c and i2c_dw.h with the local patch 0003) and
  * Zephyr's i2c.h, written out below as the reference:
  *
@@ -20,11 +20,11 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "nano_i2c_dw.h"
+#include "i2c_dw.h"
 
-/* ---- Reference: Zephyr's i2c_dw.h:82-133 with CONFIG_I2C_DW_CLOCK_SPEED
+/* ---- Reference: Zephyr's i2c_dw.h:78-129 with CONFIG_I2C_DW_CLOCK_SPEED
  * as a variable and IC_CLK_FREQ_OPTIMIZATION off; i2c_dw_configure()
- * (i2c_dw.c:1157-1195) with offsets 0 and spike lengths 1.
+ * (i2c_dw.c:1147-1185) with offsets 0 and spike lengths 1.
  */
 
 static int ref_configure(uint32_t speed, uint32_t mhz, bool hs, uint32_t *h, uint32_t *l)
@@ -63,22 +63,22 @@ static void test_scl_counts(void)
 	int hs;
 
 	/* The values the Zephyr build writes (125 MHz clk_peri). */
-	assert(nano_i2c_dw_scl_counts(NANO_I2C_SPEED_STANDARD, 125, false, &h, &l) == 0);
+	assert(i2c_dw_scl_counts(I2C_SPEED_STANDARD, 125, false, &h, &l) == 0);
 	assert(h == 500 && l == 625);
-	assert(nano_i2c_dw_scl_counts(NANO_I2C_SPEED_FAST, 125, false, &h, &l) == 0);
+	assert(i2c_dw_scl_counts(I2C_SPEED_FAST, 125, false, &h, &l) == 0);
 	assert(h == 93 && l == 109);
-	assert(nano_i2c_dw_scl_counts(NANO_I2C_SPEED_FAST_PLUS, 125, false, &h, &l) == 0);
+	assert(i2c_dw_scl_counts(I2C_SPEED_FAST_PLUS, 125, false, &h, &l) == 0);
 	assert(h == 31 && l == 31);
 	/* RP2040 has no high speed (IC_CON resets to FAST). */
-	assert(nano_i2c_dw_scl_counts(NANO_I2C_SPEED_HIGH, 125, false, &h, &l) == -EINVAL);
+	assert(i2c_dw_scl_counts(I2C_SPEED_HIGH, 125, false, &h, &l) == -EINVAL);
 	assert(h == 7 && l == 9);
-	assert(nano_i2c_dw_scl_counts(NANO_I2C_SPEED_ULTRA, 125, false, &h, &l) == -EINVAL);
-	assert(nano_i2c_dw_scl_counts(0, 125, false, &h, &l) == -EINVAL);
+	assert(i2c_dw_scl_counts(I2C_SPEED_ULTRA, 125, false, &h, &l) == -EINVAL);
+	assert(i2c_dw_scl_counts(0, 125, false, &h, &l) == -EINVAL);
 
 	for (mhz = 1; mhz <= 400; mhz++) {
 		for (speed = 0; speed <= 6; speed++) {
 			for (hs = 0; hs <= 1; hs++) {
-				int rc = nano_i2c_dw_scl_counts(speed, mhz, hs, &h, &l);
+				int rc = i2c_dw_scl_counts(speed, mhz, hs, &h, &l);
 				int rrc = ref_configure(speed, mhz, hs, &rh, &rl);
 
 				assert(rc == rrc && h == rh && l == rl);
@@ -89,15 +89,15 @@ static void test_scl_counts(void)
 
 static void test_speed(void)
 {
-	assert(nano_i2c_dw_speed(100000) == NANO_I2C_SPEED_STANDARD);
-	assert(nano_i2c_dw_speed(400000) == NANO_I2C_SPEED_FAST);
-	assert(nano_i2c_dw_speed(1000000) == NANO_I2C_SPEED_FAST_PLUS);
-	assert(nano_i2c_dw_speed(3400000) == NANO_I2C_SPEED_HIGH);
-	assert(nano_i2c_dw_speed(5000000) == NANO_I2C_SPEED_ULTRA);
-	assert(nano_i2c_dw_speed(0) == 0);
-	assert(nano_i2c_dw_speed(50000) == 0);
-	assert(nano_i2c_dw_speed(99999) == 0);
-	assert(nano_i2c_dw_speed(1000001) == 0);
+	assert(i2c_dw_speed(100000) == I2C_SPEED_STANDARD);
+	assert(i2c_dw_speed(400000) == I2C_SPEED_FAST);
+	assert(i2c_dw_speed(1000000) == I2C_SPEED_FAST_PLUS);
+	assert(i2c_dw_speed(3400000) == I2C_SPEED_HIGH);
+	assert(i2c_dw_speed(5000000) == I2C_SPEED_ULTRA);
+	assert(i2c_dw_speed(0) == 0);
+	assert(i2c_dw_speed(50000) == 0);
+	assert(i2c_dw_speed(99999) == 0);
+	assert(i2c_dw_speed(1000001) == 0);
 }
 
 /* ---- The words a transfer writes to IC_DATA_CMD (FIFO splits aside). */
@@ -110,7 +110,7 @@ struct msg {
 
 #define MAXW 64
 
-/* The port: nano_i2c.c's i2c_dw_transfer() loop with the helpers that
+/* The port: i2c_dw.c's i2c_dw_transfer() loop with the helpers that
  * i2c_dw_data_send() and i2c_dw_data_ask() call.  *xfr_flags carries over
  * between transfers as dw->xfr_flags does.
  */
@@ -120,7 +120,7 @@ static int port_words(uint8_t *xfr_flags, const struct msg *m, int count, uint32
 	int n = 0;
 
 	for (int i = 0; i < count; i++) {
-		uint8_t f = nano_i2c_dw_msg_flags(i > 0 ? m[i - 1].flags : 0, m[i].flags,
+		uint8_t f = i2c_dw_msg_flags(i > 0 ? m[i - 1].flags : 0, m[i].flags,
 						  i + 1 < count ? m[i + 1].flags : 0, i == 0,
 						  i == count - 1);
 		uint32_t len = m[i].len;
@@ -129,14 +129,14 @@ static int port_words(uint8_t *xfr_flags, const struct msg *m, int count, uint32
 		if (len == 0 && m[i].buf != NULL) {
 			len = 1;
 		}
-		*xfr_flags = nano_i2c_dw_next_flags(pflags, f);
+		*xfr_flags = i2c_dw_next_flags(pflags, f);
 		if ((*xfr_flags & I2C_MSG_RW_MASK) == I2C_MSG_WRITE) {
 			for (uint32_t k = 0; k < len; k++) {
-				w[n++] = nano_i2c_dw_write_cmd(xfr_flags, m[i].buf[k], len - k);
+				w[n++] = i2c_dw_write_cmd(xfr_flags, m[i].buf[k], len - k);
 			}
 		} else {
 			for (uint32_t k = 0; k < len; k++) {
-				w[n++] = nano_i2c_dw_read_cmd(xfr_flags, len - k);
+				w[n++] = i2c_dw_read_cmd(xfr_flags, len - k);
 			}
 		}
 	}
@@ -144,10 +144,10 @@ static int port_words(uint8_t *xfr_flags, const struct msg *m, int count, uint32
 }
 
 /* Reference: Zephyr.  z_impl_i2c_transfer() (i2c.h:1012-1018) sets STOP on
- * the last message; i2c_dw_transfer() (i2c_dw.c:1022-1032) adds RESTART on
+ * the last message; i2c_dw_transfer() (i2c_dw.c:1012-1022) adds RESTART on
  * a change of direction; i2c_dw_data_send() (:518-529) and
  * i2c_dw_data_ask() (:430-441) write the words.  Written out here, not
- * through nano_i2c_dw.h.
+ * through i2c_dw.h.
  */
 
 static int zephyr_words(uint8_t *xfr_flags, struct msg *m, int num, uint32_t *w)
@@ -191,9 +191,9 @@ static int zephyr_words(uint8_t *xfr_flags, struct msg *m, int num, uint32_t *w)
 #define ZS BIT(1)
 #define ZRS BIT(2)
 /* NuttX flags */
-#define NR NANO_I2C_M_READ
-#define NNS NANO_I2C_M_NOSTOP
-#define NNST NANO_I2C_M_NOSTART
+#define NR I2C_DW_M_READ
+#define NNS I2C_DW_M_NOSTOP
+#define NNST I2C_DW_M_NOSTART
 
 static uint8_t g_port_flags, g_zephyr_flags;
 
@@ -333,23 +333,23 @@ static void test_words(void)
 static void test_msg_flags(void)
 {
 	/* Single message: STOP, no RESTART. */
-	assert(nano_i2c_dw_msg_flags(0, 0, 0, true, true) == (I2C_MSG_WRITE | I2C_MSG_STOP));
-	assert(nano_i2c_dw_msg_flags(0, NR, 0, true, true) == (I2C_MSG_READ | I2C_MSG_STOP));
+	assert(i2c_dw_msg_flags(0, 0, 0, true, true) == (I2C_MSG_WRITE | I2C_MSG_STOP));
+	assert(i2c_dw_msg_flags(0, NR, 0, true, true) == (I2C_MSG_READ | I2C_MSG_STOP));
 	/* NOSTART on the first message is ignored. */
-	assert(nano_i2c_dw_msg_flags(0, NNST, 0, true, true) == I2C_MSG_STOP);
+	assert(i2c_dw_msg_flags(0, NNST, 0, true, true) == I2C_MSG_STOP);
 	/* NOSTOP / next NOSTART suppress STOP before the last message. */
-	assert(nano_i2c_dw_msg_flags(0, NNS, NR, true, false) == I2C_MSG_WRITE);
-	assert(nano_i2c_dw_msg_flags(0, 0, NNST, true, false) == I2C_MSG_WRITE);
-	assert(nano_i2c_dw_msg_flags(0, 0, 0, true, false) == I2C_MSG_STOP);
+	assert(i2c_dw_msg_flags(0, NNS, NR, true, false) == I2C_MSG_WRITE);
+	assert(i2c_dw_msg_flags(0, 0, NNST, true, false) == I2C_MSG_WRITE);
+	assert(i2c_dw_msg_flags(0, 0, 0, true, false) == I2C_MSG_STOP);
 	/* RESTART only after a message without STOP and without NOSTART. */
-	assert(nano_i2c_dw_msg_flags(NNS, NR, 0, false, true) ==
+	assert(i2c_dw_msg_flags(NNS, NR, 0, false, true) ==
 	       (I2C_MSG_READ | I2C_MSG_STOP | I2C_MSG_RESTART));
-	assert(nano_i2c_dw_msg_flags(NNS, NNST, 0, false, true) == I2C_MSG_STOP);
-	assert(nano_i2c_dw_msg_flags(0, NR, 0, false, true) == (I2C_MSG_READ | I2C_MSG_STOP));
+	assert(i2c_dw_msg_flags(NNS, NNST, 0, false, true) == I2C_MSG_STOP);
+	assert(i2c_dw_msg_flags(0, NR, 0, false, true) == (I2C_MSG_READ | I2C_MSG_STOP));
 	/* Direction change adds RESTART; same direction keeps the flags. */
-	assert(nano_i2c_dw_next_flags(I2C_MSG_WRITE, I2C_MSG_READ) ==
+	assert(i2c_dw_next_flags(I2C_MSG_WRITE, I2C_MSG_READ) ==
 	       (I2C_MSG_READ | I2C_MSG_RESTART));
-	assert(nano_i2c_dw_next_flags(I2C_MSG_READ | I2C_MSG_STOP, I2C_MSG_READ) == I2C_MSG_READ);
+	assert(i2c_dw_next_flags(I2C_MSG_READ | I2C_MSG_STOP, I2C_MSG_READ) == I2C_MSG_READ);
 }
 
 /* The register map copy keeps Zephyr's layout. */
@@ -382,6 +382,6 @@ int main(void)
 	test_msg_flags();
 	test_words();
 	test_registers();
-	printf("nano_i2c_dw: ok\n");
+	printf("i2c_dw: ok\n");
 	return 0;
 }

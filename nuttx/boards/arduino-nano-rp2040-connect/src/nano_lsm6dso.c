@@ -8,7 +8,7 @@
 /* The devices of the Zephyr build's devicetree that the ported LSM6DSO
  * driver uses (<zephyr/devicetree.h> of common/compat):
  *
- *   i2c0      /soc/i2c@40044000: the I2C0 master of nano_i2c.c, as a bus
+ *   i2c0      /soc/i2c@40044000: the I2C0 master of i2c_dw.c, as a bus
  *             device of the compatibility layer, at the devicetree's
  *             clock-frequency (100 kHz) until i2c_configure() changes it
  *   lsm6dsox  /soc/i2c@40044000/lsm6dsox@6a: defined by
@@ -18,7 +18,7 @@
  * Zephyr initializes i2c0 (POST_KERNEL, CONFIG_I2C_INIT_PRIORITY 50) and
  * then the sensor (POST_KERNEL, CONFIG_SENSOR_INIT_PRIORITY 90) before
  * main(), which mounts the key-value store; nano_bringup() calls this after
- * nano_i2c0_initialize() and before nano_flash_kv_initialize() for the
+ * i2c_dw_i2c0_initialize() and before nano_flash_kv_initialize() for the
  * same order.  A failed sensor initialization leaves the device not ready
  * (device_is_ready() false), as in Zephyr, and boot goes on.
  */
@@ -50,7 +50,7 @@ static struct i2c_compat_bus g_i2c0_bus;
  * Public Data
  ****************************************************************************/
 
-/* No init function: the board's nano_i2c0_initialize() has set up the
+/* No init function: the board's i2c_dw_i2c0_initialize() has set up the
  * controller; i2c_compat_bind() makes the device ready.
  */
 

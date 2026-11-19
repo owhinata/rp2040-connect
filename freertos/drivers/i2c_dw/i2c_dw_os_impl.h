@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MIT */
 /* The FreeRTOS part of the I2C0 and DMA core's boundary
  * (common/drivers/i2c_dw/i2c_dw_os.h, which includes this file first in
- * nano_i2c.c and nano_dma.c): the types and calls behind the boundary's
+ * i2c_dw.c and dma_rpi_pico.c): the types and calls behind the boundary's
  * names, on the FreeRTOS part of the Zephyr compatibility layer
  * (freertos/drivers/compat) and the Pico SDK:
  *
@@ -37,13 +37,14 @@
  *                                flags; i2c_transfer() has put STOP on the
  *                                last message, as z_impl_i2c_transfer()
  *   the device                   the layer's struct device i2c0
- *                                (nano_i2c_instance.h); nothing in the
+ *                                (i2c_dw_instance.h); nothing in the
  *                                controller's data (I2C_DW_OS_DEV_HEAD empty)
  *   CONFIG_I2C_DW_CLOCK_SPEED    the I2C block's clock, clk_sys
  *                                (SYS_CLK_HZ: 125 MHz, the Pico SDK's
  *                                default for the RP2040, which its start-up
  *                                code sets; the Zephyr build's 125)
- *   CONFIG_I2C_DW_RP2040_DMA=y   CONFIG_NANO_I2C0_DMA (the DMA reads)
+ *   CONFIG_I2C_DW_RP2040_DMA=y   the same symbol, defined below (the DMA
+ *                                reads)
  */
 
 #ifndef FREERTOS_DRIVERS_I2C_DW_I2C_DW_OS_IMPL_H
@@ -61,8 +62,8 @@
 #include <zephyr/kernel.h>
 #include <zephyr/drivers/i2c.h>
 
-#ifndef CONFIG_NANO_I2C0_DMA
-#define CONFIG_NANO_I2C0_DMA 1
+#ifndef CONFIG_I2C_DW_RP2040_DMA
+#define CONFIG_I2C_DW_RP2040_DMA 1
 #endif
 
 #if SYS_CLK_HZ % 1000000 != 0

@@ -205,13 +205,14 @@ grep -q 'KV_STORE_OS_COMMANDS' "$out/kv_shell.inc"
 run shell_register -D_DEFAULT_SOURCE -DZ_SHELL_CMD_NAMED_MAIN -DIMU_SHELL_INC="\"$out/imu_shell.inc\"" \
     -DNTP_SHELL_INC="\"$out/ntp_shell.inc\"" -DKV_SHELL_INC="\"$out/kv_shell.inc\"" \
     -Idrivers/compat -I"$ccompat" -I"$cshell" -Iapps/subcmd "$cshell/zshell.c" "$cshell/subcmd.c"
-# The "i2c_dma" command (common/drivers/i2c_dw/i2c_dma_shell.c, shared with the Zephyr and
+# The "i2c_dma" command (common/shell/i2c_dma_shell.c, shared with the Zephyr and
 # FreeRTOS builds, with the prelude as apps/i2c_dma/Makefile builds it and
-# Z_SHELL_CMD_NAMED_MAIN) on common/shell/zshell.c, with a fake driver side (nano_i2c_dma.h of
-# the I2C0 core): the same exit status, calls and output as the NuttX build's earlier command on
-# subcmd_main(), the text itself, and where the two differ.
+# Z_SHELL_CMD_NAMED_MAIN) on common/shell/zshell.c, with a fake driver side (the I2C0 core's
+# functions of <zephyr/drivers/i2c/i2c_dw_rp2040_dma.h>, common/compat): the same exit status,
+# calls and output as the NuttX build's earlier command on subcmd_main(), the text itself, and
+# where the two differ.
 run i2c_dma_app -D_DEFAULT_SOURCE -DZ_SHELL_CMD_NAMED_MAIN -include "$prelude" \
-    -I../common/drivers/i2c_dw -Idrivers/compat -I"$ccompat" -I"$cshell" -Iapps/subcmd \
+    -Idrivers/compat -I"$ccompat" -I"$cshell" -Iapps/subcmd \
     "$cshell/zshell.c" "$cshell/subcmd.c"
 # The NINA passthrough mode's NuttX side: the board's glue (nano_nina_passthrough_glue.h) between
 # cdcacm's lines and line coding, UART1's data words and the shared decisions

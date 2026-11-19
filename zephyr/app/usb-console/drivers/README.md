@@ -23,11 +23,10 @@ The parts that are the same files as the NuttX and FreeRTOS builds' (the LSM6DSO
 `lsm6dso_fifo_packet.h`, `lsm6dso_cal.[ch]`, `lsm6dso_zero.[ch]`, `lsm6dso_fifo_decoder.[ch]`,
 `lsm6dso_fifo_hw.[ch]`, `lsm6dso_fifo_irq.[ch]`, `lsm6dso_stream.c`, `lsm6dso_compat.c`,
 `lsm6dso_fifo_stats.h` and `lsm6dso_attributes.h`, the sensor shell's `sensor_shell.c`, the NINA
-driver's core, and the I2C driver's `i2c_dw_rp2040_commands.[ch]` and the `i2c_dma` command's
-`i2c_dma_shell.c`) are kept in the repository's
+driver's core, and the `i2c_dma` command's `i2c_dma_shell.c`) are kept in the repository's
 `common/drivers/lsm6dso/`, `common/drivers/sensor_shell/`, `common/drivers/nina/` and
-`common/drivers/i2c_dw/`. `CMakeLists.txt` adds them from there to the driver libraries (the NINA core
-to the application), and the sensor shell reads `lsm6dso_attributes.h` from there.
+`common/shell/`. `CMakeLists.txt` adds them from there to the driver libraries (the NINA core
+and `i2c_dma_shell.c` to the application), and the sensor shell reads `lsm6dso_attributes.h` from there.
 `sensor_shell/sensor_shell_os.h`, which stays in this directory, is the Zephyr part that the shared
 `sensor_shell.c` includes first (two macros that do nothing; the NuttX build's header of the same name
 makes `sensor get` wait for its result to be printed). `lsm6dso/lsm6dso_instance.h` is the Zephyr part
@@ -168,10 +167,20 @@ i2c_dma mode on|off   switch, only while no stream or transfer is active
 i2c_dma stats         DMA transfers, bytes, errors and fallbacks (cumulative)
 ```
 
-The `i2c_dma` command is the FreeRTOS build's, `common/drivers/i2c_dw/i2c_dma_shell.c`; the patched
-driver defines the three functions of `nano_i2c_dma.h` (get and set the mode, get the counters). The
-NuttX and FreeRTOS builds' I2C0 core (`common/drivers/i2c_dw/nano_i2c.c`) is a port of the patched
-driver, and the host test `i2c_dw_sync` detects where the two drift apart.
+The patch holds everything the driver needs, in Zephyr's tree: the application adds no source or include
+path to the driver's library. The DMA code, with the function that builds the read commands, is
+`drivers/i2c/i2c_dw_rp2040_dma_priv.h` (included once by `i2c_dw.c`), and the three functions that
+get and set the mode and get the counters are declared in
+`include/zephyr/drivers/i2c/i2c_dw_rp2040_dma.h`. The DMA's command words and buffer (10,752 bytes),
+semaphore, events and channels are static variables of the driver, for I2C0 alone; the driver's
+per-instance data only holds whether a DMA read is in progress and whether the controller is quarantined.
+
+The `i2c_dma` command is the FreeRTOS build's, `common/shell/i2c_dma_shell.c`, built into the
+application; it includes `<zephyr/drivers/i2c/i2c_dw_rp2040_dma.h>`, which the NuttX and FreeRTOS builds
+find in `common/compat` (the same file). Their I2C0 core (`common/drivers/i2c_dw/i2c_dw.c`) is a port
+of the patched driver and defines the same functions, with the same read commands' function, static
+in its `i2c_dw_rp2040_dma_priv.h` as in the patch's; the host test `i2c_dw_sync` detects where the two
+drift apart.
 
 In an earlier measurement of FIFO acquisition alone (6667 Hz, 1 MHz, single runs) with a
 watermark of 128, `cpu_active` was 45.7% without DMA and 22.5% with it.
@@ -430,7 +439,7 @@ Some changes to Zephyr and its modules are local patches for Zephyr's `west patc
 | `hal_rpi_pico/0001-boot2-at25sf128a-clkdiv-2.patch` | hal_rpi_pico | The board's boot2 (`boot2_at25sf128a.S`) runs the flash at clk_sys / 2 (62.5 MHz) instead of clk_sys / 4 (31.25 MHz). hal_rpi_pico has no way to pass the value, so the default changes |
 | `zephyr/0001-arm-cortex-m-rp2040-divider-save.patch` | zephyr | `CONFIG_ARM_RP2040_DIVIDER_SAVE`: the thread switches (PendSV, `swap_helper.S`) save and restore the SIO divider |
 | `zephyr/0002-soc-rp2040-rom-mem-ops.patch` | zephyr | `CONFIG_RP2040_ROM_MEM_OPS`: `memcpy` and `memset` through the boot ROM's routines |
-| `zephyr/0003-i2c-dw-rp2040-fifo-and-dma.patch` | zephyr | The DesignWare I2C driver (`drivers/i2c/i2c_dw.c`): the RP2040's FIFO depth and RX threshold, and I2C0's DMA reads with `CONFIG_I2C_DW_RP2040_DMA` (I2C). The constants and the DMA code are in new files, `i2c_dw_rp2040.h` and `i2c_dw_rp2040_dma.h`; 17 places go into the upstream files (`i2c_dw.c` 14, `i2c_dw.h` 2, `Kconfig.dw` 1) |
+| `zephyr/0003-i2c-dw-rp2040-fifo-and-dma.patch` | zephyr | The DesignWare I2C driver (`drivers/i2c/i2c_dw.c`): the RP2040's FIFO depth and RX threshold, and I2C0's DMA reads with `CONFIG_I2C_DW_RP2040_DMA` (I2C). The constants are in a new file `drivers/i2c/i2c_dw_rp2040.h`, the DMA code with the read commands in `i2c_dw_rp2040_dma_priv.h`, and the declarations of the `i2c_dma` command's functions in `include/zephyr/drivers/i2c/i2c_dw_rp2040_dma.h`; 13 places go into the upstream files (`i2c_dw.c` 11, `i2c_dw.h` 1, `Kconfig.dw` 1) |
 
 - **Applying**: `source script/setup.sh` applies them to the modules' working trees with `west patch apply`
   (no commits; `git -C zephyr/zephyr status` shows them as changes). Patches already applied are skipped,
@@ -448,7 +457,7 @@ Some changes to Zephyr and its modules are local patches for Zephyr's `west patc
   `manifest/west.yml` and run `west update`. Remake each patch on the new trees, put it in `patches/`,
   update its `sha256sum`, apply them with `source script/setup.sh` and build. After remaking 0003, run
   `script/host_tests.sh`: bring the upstream changes that `i2c_dw_sync` shows into the shared core
-  (`common/drivers/i2c_dw/`), or add the reason not to to the list at the top of `nano_i2c.c`, then
+  (`common/drivers/i2c_dw/`), or add the reason not to to the list at the top of `i2c_dw.c`, then
   rewrite the expected differences with `common/tests/i2c_dw_sync.py ... --update` ([Tests](#tests)).
 
 ### boot2 at clock divider 2
@@ -497,8 +506,7 @@ All but `nina_boundary_*`, `passthrough` and `nina_socket*` are tests shared wit
 | `fifo_hw` | FIFO setup sequence, rollback on failure, status |
 | `fifo_decoder` | Decoder for FIFO buffers |
 | `stream_stop` | Stopping, canceling and error termination of the stream |
-| `i2c_dma_commands` | Argument handling of `i2c_dma` |
-| `i2c_dw_sync` | The shared I2C0 core (`common/drivers/i2c_dw/`) against the patched driver (made from the Zephyr tree's files at HEAD and patch 0003): the definitions of both headers (state, interrupts, registers, the IC_DATA_CMD bits, FIFO depth 16 and batch 4, the DMA limit 3584), the SCL counts at 125 MHz, the DMA path's lower limit 32, thresholds 8/0, interrupt mask, IC_CON bit 9, stop waits of 100 ms and timeout of 1000 ms, the spike lengths, and the pairs of functions (Zephyr's names turned into the core's, compared statement by statement; the differences must be those of `common/tests/i2c_dw_sync.expected`). With the build, the values of its `.config` and `zephyr.dts` too. Only when the Zephyr tree is there |
+| `i2c_dw_sync` | The shared I2C0 and DMA core (`common/drivers/i2c_dw/`) against the patched driver (made from the Zephyr tree's files at HEAD and patch 0003) and the DMA driver (`drivers/dma/dma_rpi_pico.c` and the channel allocation of `include/zephyr/drivers/dma.h`, at HEAD): the definitions of both headers (state, interrupts, registers, the IC_DATA_CMD bits, FIFO depth 16 and batch 4, the DMA limit 3584), the SCL counts at 125 MHz, the DMA path's lower limit 32, thresholds 8/0, interrupt mask, IC_CON bit 9, stop waits of 100 ms and timeout of 1000 ms, the spike lengths, and the pairs of functions of the I2C driver and of the DMA driver (Zephyr's names turned into the core's, compared statement by statement; the differences must be those of `common/tests/i2c_dw_sync.expected`); the read commands' function `i2c_dw_rp2040_read_commands()`, static in `i2c_dw_rp2040_dma_priv.h` of the patch and of the core, statement by statement, with its command bits; `zephyr/drivers/i2c/i2c_dw_rp2040_dma.h`, which the patch adds and `common/compat` holds too, byte for byte; and that the patched driver's includes are all in the tree. With the build, the values of its `.config` and `zephyr.dts` too. Only when the Zephyr tree is there |
 | `nina_spi` | NINA SPI framing, reply parsing (the firmware's error reply 0xEF included), READY deadlines, the capability probe (0x6A) (the shared core `nina_spi.c`, fake boundaries); each both with the waits on READY's interrupt and, when they cannot start, with READY read every 100 µs |
 | `nina_wait` | The socket waits (`nina_wait.c`): the intervals (before the events start, and after they could not), the IRQ line's edges, the 100 ms timeout, the deadline, the back-off (fake clock and line) |
 | `nina_sock`, `nina_dns`, `nina_dns_offload` | The NINA socket commands, name resolution (`nina_dns_offload` in this build's form, `NINA_OS_DNS_OFFLOAD`) |

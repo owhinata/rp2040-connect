@@ -48,8 +48,9 @@
 #include <zephyr/device.h>
 #include <zephyr/drivers/i2c.h>
 
+#include <zephyr/drivers/i2c/i2c_dw_rp2040_dma.h>
+
 #include "i2c_dw_selftest.h"
-#include "nano_i2c_dma.h"
 
 #define LSM6DSOX_ADDR      0x6a
 #define LSM6DSOX_WHO_AM_I  0x0f
@@ -109,7 +110,7 @@ static void test_standard(void)
 	CHECK_EQ(i2c0_hw->ss_scl_hcnt, 500);
 	CHECK_EQ(i2c0_hw->ss_scl_lcnt, 625);
 	CHECK_EQ(i2c0_hw->fs_spklen, 1);
-	if (nano_i2c_dma_enabled()) {
+	if (i2c_dw_rp2040_dma_enabled()) {
 		CHECK_EQ(i2c0_hw->con, IC_CON_DMA_STANDARD);
 	}
 }
@@ -120,7 +121,7 @@ static void test_fast_plus(void)
 	CHECK_EQ(who_am_i(), LSM6DSOX_ID);
 	CHECK_EQ(i2c0_hw->fs_scl_hcnt, 31);
 	CHECK_EQ(i2c0_hw->fs_scl_lcnt, 31);
-	if (nano_i2c_dma_enabled()) {
+	if (i2c_dw_rp2040_dma_enabled()) {
 		CHECK_EQ(i2c0_hw->con, IC_CON_DMA_FAST_PLUS);
 	}
 }
@@ -150,14 +151,14 @@ static void test_nack(void)
 
 static void test_dma(void)
 {
-	bool was_enabled = nano_i2c_dma_enabled();
-	struct nano_i2c_dma_stats before, after;
+	bool was_enabled = i2c_dw_rp2040_dma_enabled();
+	struct i2c_dw_rp2040_dma_stats before, after;
 	uint8_t buf[DMA_READ_LEN];
 
-	nano_i2c_dma_set_enabled(true);
-	nano_i2c_dma_get_stats(&before);
+	i2c_dw_rp2040_dma_set_enabled(true);
+	i2c_dw_rp2040_dma_get_stats(&before);
 	CHECK_EQ(i2c_burst_read_dt(&imu, LSM6DSOX_FIFO_DATA, buf, sizeof(buf)), 0);
-	nano_i2c_dma_get_stats(&after);
+	i2c_dw_rp2040_dma_get_stats(&after);
 	CHECK_EQ(after.transfers - before.transfers, 1);
 	CHECK_EQ(after.bytes - before.bytes, DMA_READ_LEN);
 	CHECK_EQ(after.errors - before.errors, 0);
@@ -172,15 +173,15 @@ static void test_dma(void)
 	CHECK_EQ(i2c0_hw->dma_rdlr, 0);
 	CHECK_EQ(i2c0_hw->dma_cr, 0);
 
-	nano_i2c_dma_set_enabled(false);
+	i2c_dw_rp2040_dma_set_enabled(false);
 	CHECK_EQ(i2c_burst_read_dt(&imu, LSM6DSOX_FIFO_DATA, buf, sizeof(buf)), 0);
-	nano_i2c_dma_get_stats(&before);
+	i2c_dw_rp2040_dma_get_stats(&before);
 	CHECK_EQ(before.transfers, after.transfers);
 	CHECK_EQ(before.bytes, after.bytes);
 	CHECK_EQ(i2c0_hw->con, IC_CON_FAST_PLUS);
 	CHECK_EQ(who_am_i(), LSM6DSOX_ID);
 
-	nano_i2c_dma_set_enabled(was_enabled);
+	i2c_dw_rp2040_dma_set_enabled(was_enabled);
 }
 
 static const struct {

@@ -1,19 +1,19 @@
 /****************************************************************************
- * boards/arduino-nano-rp2040-connect/src/nano_i2c.h
+ * boards/arduino-nano-rp2040-connect/src/i2c_dw_i2c0.h
  *
  * SPDX-License-Identifier: Apache-2.0
  *
  ****************************************************************************/
 
-#ifndef __BOARDS_ARDUINO_NANO_RP2040_CONNECT_SRC_NANO_I2C_H
-#define __BOARDS_ARDUINO_NANO_RP2040_CONNECT_SRC_NANO_I2C_H
+#ifndef __BOARDS_ARDUINO_NANO_RP2040_CONNECT_SRC_I2C_DW_I2C0_H
+#define __BOARDS_ARDUINO_NANO_RP2040_CONNECT_SRC_I2C_DW_I2C0_H
 
 #include <nuttx/config.h>
 
 struct i2c_master_s;
 
 /****************************************************************************
- * Name: nano_i2c0_initialize
+ * Name: i2c_dw_i2c0_initialize
  *
  * Description:
  *   Bring up I2C0 (GPIO12 SDA, GPIO13 SCL: the LSM6DSOX and the ATECC608A)
@@ -24,6 +24,6 @@ struct i2c_master_s;
  *
  ****************************************************************************/
 
-struct i2c_master_s *nano_i2c0_initialize(void);
+struct i2c_master_s *i2c_dw_i2c0_initialize(void);
 
-#endif /* __BOARDS_ARDUINO_NANO_RP2040_CONNECT_SRC_NANO_I2C_H */
+#endif /* __BOARDS_ARDUINO_NANO_RP2040_CONNECT_SRC_I2C_DW_I2C0_H */

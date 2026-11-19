@@ -1,8 +1,10 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /* The "i2c_dma" shell command: i2c_dw_dma_mode(), i2c_dw_dma_stats() and the
- * command's registration, on the state of the I2C0 driver (nano_i2c_dma.h:
- * the shared core's nano_i2c.c, or the Zephyr build's patched driver,
- * i2c_dw_rp2040_dma.h of Zephyr's drivers/i2c).  The Zephyr build
+ * command's registration, on the state of the I2C0 driver
+ * (<zephyr/drivers/i2c/i2c_dw_rp2040_dma.h>: in the Zephyr build, the
+ * patched driver's i2c_dw_rp2040_dma_priv.h of Zephyr's drivers/i2c and the
+ * header of Zephyr's tree; in the others, the shared core's i2c_dw.c and
+ * its i2c_dw_rp2040_dma.h, through a header of that name in common/compat).  The Zephyr build
  * (zephyr/app/usb-console/CMakeLists.txt) uses it on Zephyr's shell, the
  * FreeRTOS build (freertos/drivers/i2c_dw/i2c_dw.cmake) on the shared shell
  * (common/shell/zshell.c).  The text is that of the command the Zephyr
@@ -26,15 +28,15 @@
 
 #include <zephyr/shell/shell.h>
 
-#include "nano_i2c_dma.h"
+#include <zephyr/drivers/i2c/i2c_dw_rp2040_dma.h>
 
 static int i2c_dw_dma_stats(const struct shell *sh, size_t argc, char **argv)
 {
-	struct nano_i2c_dma_stats stats;
+	struct i2c_dw_rp2040_dma_stats stats;
 
 	ARG_UNUSED(argc);
 	ARG_UNUSED(argv);
-	nano_i2c_dma_get_stats(&stats);
+	i2c_dw_rp2040_dma_get_stats(&stats);
 	shell_print(sh, "dma_transfers=%u dma_bytes=%u dma_errors=%u dma_fallbacks=%u",
 		    (unsigned int)stats.transfers, (unsigned int)stats.bytes,
 		    (unsigned int)stats.errors, (unsigned int)stats.fallbacks);
@@ -45,15 +47,15 @@ static int i2c_dw_dma_mode(const struct shell *sh, size_t argc, char **argv)
 {
 	if (argc == 2) {
 		if (!strcmp(argv[1], "on")) {
-			nano_i2c_dma_set_enabled(true);
+			i2c_dw_rp2040_dma_set_enabled(true);
 		} else if (!strcmp(argv[1], "off")) {
-			nano_i2c_dma_set_enabled(false);
+			i2c_dw_rp2040_dma_set_enabled(false);
 		} else {
 			shell_error(sh, "Expected on or off");
 			return -EINVAL;
 		}
 	}
-	shell_print(sh, "i2c_dma=%s", nano_i2c_dma_enabled() ? "on" : "off");
+	shell_print(sh, "i2c_dma=%s", i2c_dw_rp2040_dma_enabled() ? "on" : "off");
 	return 0;
 }
 

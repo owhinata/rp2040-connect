@@ -17,7 +17,7 @@
  * chip's reset and its configuration (ranges 8 g and 2000 dps, both off,
  * FIFO in bypass mode).  From a task (the driver sleeps and waits for I2C0),
  * once, after zephyr_compat_initialize() (gpio0, the work queues) and
- * nano_i2c0_initialize().  Returns 0; -ENODEV without touching the sensor
+ * i2c_dw_i2c0_initialize().  Returns 0; -ENODEV without touching the sensor
  * when i2c0 is not ready (the NuttX build skips the sensor then too); or
  * the driver's -EIO, after which the device is not ready (its calls fail,
  * device_is_ready() is false, as in Zephyr) and the driver has logged why.

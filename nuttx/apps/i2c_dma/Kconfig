@@ -3,21 +3,21 @@
 # see the file kconfig-language.txt in the NuttX tools repository.
 #
 
-config NANO_APP_I2C_DMA
+config I2C_DW_RP2040_DMA_SHELL
 	tristate "i2c_dma command (I2C0 DMA reads)"
 	default y
-	depends on NANO_I2C0_DMA && NANO_SUBCMD
+	depends on I2C_DW_RP2040_DMA && NANO_SUBCMD
 	---help---
 		"i2c_dma mode [on|off]" and "i2c_dma stats": the command of the
 		Zephyr and FreeRTOS builds
-		(common/drivers/i2c_dw/i2c_dma_shell.c), with the same syntax,
+		(common/shell/i2c_dma_shell.c), with the same syntax,
 		help and output, on the Zephyr shell's command handling of
 		common/shell/zshell.c and the board's I2C driver
-		(NANO_I2C0_DMA).
+		(I2C_DW_RP2040_DMA).
 
-if NANO_APP_I2C_DMA
+if I2C_DW_RP2040_DMA_SHELL
 
-config NANO_APP_I2C_DMA_PRIORITY
+config I2C_DW_RP2040_DMA_SHELL_PRIORITY
 	int "i2c_dma task priority"
 	default 104
 	---help---
@@ -25,7 +25,7 @@ config NANO_APP_I2C_DMA_PRIORITY
 		common/compat/priorities.h): the Zephyr build runs shell
 		commands in its shell thread.
 
-config NANO_APP_I2C_DMA_STACKSIZE
+config I2C_DW_RP2040_DMA_SHELL_STACKSIZE
 	int "i2c_dma stack size"
 	default 3072
 	---help---

@@ -56,13 +56,13 @@
 #  include "nina_net.h"
 #endif
 
-#ifdef CONFIG_NANO_I2C0
+#ifdef CONFIG_I2C_DW_I2C0
 #  include <nuttx/i2c/i2c_master.h>
-#  include "nano_i2c.h"
+#  include "i2c_dw_i2c0.h"
 #endif
 
-#ifdef CONFIG_NANO_I2C0_DMA
-#  include "nano_dma.h"
+#ifdef CONFIG_I2C_DW_RP2040_DMA
+#  include "dma_rpi_pico.h"
 #endif
 
 #ifdef CONFIG_NANO_LSM6DSO
@@ -185,32 +185,32 @@ int nano_bringup(void)
     }
 #endif
 
-#ifdef CONFIG_NANO_I2C0_DMA
+#ifdef CONFIG_I2C_DW_RP2040_DMA
   /* The DMA for the I2C0 reads: reset, both interrupts.  The Zephyr build
    * brings up its DMA device before i2c0 (CONFIG_DMA_INIT_PRIORITY 40,
    * CONFIG_I2C_INIT_PRIORITY 50, both POST_KERNEL).
    */
 
-  ret = nano_dma_initialize();
+  ret = dma_rpi_pico_initialize();
   if (ret < 0)
     {
-      syslog(LOG_ERR, "ERROR: nano_dma_initialize() failed: %d\n", ret);
+      syslog(LOG_ERR, "ERROR: dma_rpi_pico_initialize() failed: %d\n", ret);
       result = ret;
     }
 #endif
 
-#ifdef CONFIG_NANO_I2C0
+#ifdef CONFIG_I2C_DW_I2C0
   /* I2C0: reset, pins, controller registers and interrupt, as the Zephyr
    * build's i2c0 is set up at boot (POST_KERNEL), then /dev/i2c0 for the
    * i2c tool.
    */
 
   {
-    struct i2c_master_s *i2c = nano_i2c0_initialize();
+    struct i2c_master_s *i2c = i2c_dw_i2c0_initialize();
 
     if (i2c == NULL)
       {
-        syslog(LOG_ERR, "ERROR: nano_i2c0_initialize() failed\n");
+        syslog(LOG_ERR, "ERROR: i2c_dw_i2c0_initialize() failed\n");
         result = -ENODEV;
       }
 #  ifdef CONFIG_I2C_DRIVER

@@ -5,82 +5,82 @@
  *
  * SPDX-License-Identifier: Apache-2.0
  */
-#ifndef __COMMON_DRIVERS_I2C_DW_NANO_I2C_DW_REGISTERS_H
-#define __COMMON_DRIVERS_I2C_DW_NANO_I2C_DW_REGISTERS_H
+#ifndef COMMON_DRIVERS_I2C_DW_I2C_DW_REGISTERS_H_
+#define COMMON_DRIVERS_I2C_DW_I2C_DW_REGISTERS_H_
 
 /* Copy of Zephyr's drivers/i2c/i2c_dw_registers.h (v4.5.0, which the
  * Zephyr build uses unchanged: its register map and accessors).  Changes:
  * this comment, the include guard, "__packed" dropped from the bit-fields
  * (Zephyr's macro; the layouts are the same with GCC on Arm), and the
- * accessor macros of i2c_dw.h (DEFINE_MM_REG_READ() ...) defined here on
- * plain volatile 32-bit accesses, as Zephyr's sys_read32()/sys_write32()/
- * sys_set_bit()/sys_clear_bit()/sys_test_bit() do on Arm (a read-modify-
- * write without a lock for the bit operations).  Host tests include this
- * file too (no OS header).
+ * accessor macros of Zephyr's i2c_dw.h (DEFINE_MM_REG_READ() ...) defined
+ * here on plain volatile 32-bit accesses, i2c_dw_read32()/i2c_dw_write32()/
+ * i2c_dw_set_bit()/i2c_dw_clear_bit()/i2c_dw_test_bit(), as Zephyr's
+ * sys_read32()/sys_write32()/sys_set_bit()/sys_clear_bit()/sys_test_bit()
+ * do on Arm (a read-modify-write without a lock for the bit operations),
+ * with the addresses as uintptr_t (Zephyr's mm_reg_t, the same type on Arm).
+ * Host tests include this file too (no OS header).
  */
 
 #include <stdint.h>
 
 #ifndef BIT
-#  define BIT(nr)            (1ul << (nr))
+#define BIT(nr)            (1ul << (nr))
 #endif
 
-typedef uintptr_t mm_reg_t;
-
-static inline uint32_t nano_dw_read32(mm_reg_t addr)
+static inline uint32_t i2c_dw_read32(uintptr_t addr)
 {
 	return *(volatile uint32_t *)addr;
 }
 
-static inline void nano_dw_write32(uint32_t data, mm_reg_t addr)
+static inline void i2c_dw_write32(uint32_t data, uintptr_t addr)
 {
 	*(volatile uint32_t *)addr = data;
 }
 
-static inline void nano_dw_set_bit(mm_reg_t addr, unsigned int bit)
+static inline void i2c_dw_set_bit(uintptr_t addr, unsigned int bit)
 {
-	nano_dw_write32(nano_dw_read32(addr) | (1u << bit), addr);
+	i2c_dw_write32(i2c_dw_read32(addr) | (1u << bit), addr);
 }
 
-static inline void nano_dw_clear_bit(mm_reg_t addr, unsigned int bit)
+static inline void i2c_dw_clear_bit(uintptr_t addr, unsigned int bit)
 {
-	nano_dw_write32(nano_dw_read32(addr) & ~(1u << bit), addr);
+	i2c_dw_write32(i2c_dw_read32(addr) & ~(1u << bit), addr);
 }
 
-static inline int nano_dw_test_bit(mm_reg_t addr, unsigned int bit)
+static inline int i2c_dw_test_bit(uintptr_t addr, unsigned int bit)
 {
-	return (nano_dw_read32(addr) & (1u << bit)) != 0;
+	return (i2c_dw_read32(addr) & (1u << bit)) != 0;
 }
 
-/* i2c_dw.h:215-251 */
+/* i2c_dw.h:205-241 */
 
 #define DEFINE_MM_REG_READ(__reg, __off, __sz)                                                     \
-	static inline uint32_t read_##__reg(mm_reg_t addr)                                         \
+	static inline uint32_t read_##__reg(uintptr_t addr)                                        \
 	{                                                                                          \
-		return nano_dw_read32(addr + __off);                                               \
+		return i2c_dw_read32(addr + __off);                                               \
 	}
 #define DEFINE_MM_REG_WRITE(__reg, __off, __sz)                                                    \
-	static inline void write_##__reg(uint32_t data, mm_reg_t addr)                             \
+	static inline void write_##__reg(uint32_t data, uintptr_t addr)                            \
 	{                                                                                          \
-		nano_dw_write32(data, addr + __off);                                               \
+		i2c_dw_write32(data, addr + __off);                                               \
 	}
 
 #define DEFINE_SET_BIT_OP(__reg_bit, __reg_off, __bit)                                             \
-	static inline void set_bit_##__reg_bit(mm_reg_t addr)                                      \
+	static inline void set_bit_##__reg_bit(uintptr_t addr)                                     \
 	{                                                                                          \
-		nano_dw_set_bit(addr + __reg_off, __bit);                                          \
+		i2c_dw_set_bit(addr + __reg_off, __bit);                                          \
 	}
 
 #define DEFINE_CLEAR_BIT_OP(__reg_bit, __reg_off, __bit)                                           \
-	static inline void clear_bit_##__reg_bit(mm_reg_t addr)                                    \
+	static inline void clear_bit_##__reg_bit(uintptr_t addr)                                   \
 	{                                                                                          \
-		nano_dw_clear_bit(addr + __reg_off, __bit);                                        \
+		i2c_dw_clear_bit(addr + __reg_off, __bit);                                        \
 	}
 
 #define DEFINE_TEST_BIT_OP(__reg_bit, __reg_off, __bit)                                            \
-	static inline int test_bit_##__reg_bit(mm_reg_t addr)                                      \
+	static inline int test_bit_##__reg_bit(uintptr_t addr)                                     \
 	{                                                                                          \
-		return nano_dw_test_bit(addr + __reg_off, __bit);                                  \
+		return i2c_dw_test_bit(addr + __reg_off, __bit);                                  \
 	}
 
 #ifdef __cplusplus
@@ -398,4 +398,4 @@ DEFINE_MM_REG_READ(comp_type, DW_IC_REG_COMP_TYPE, 32)
 }
 #endif
 
-#endif /* __COMMON_DRIVERS_I2C_DW_NANO_I2C_DW_REGISTERS_H */
+#endif /* COMMON_DRIVERS_I2C_DW_I2C_DW_REGISTERS_H_ */

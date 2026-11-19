@@ -38,7 +38,7 @@ Shared files only the FreeRTOS build compiles: `common/compat/zephyr_wifi_shell.
 `disconnect`, `scan` and `status` taken from Zephyr's `wifi_shell.c`), `zephyr_zperf_shell.c` and
 `zperf_iperf3.[ch]` (`zperf`), `common/drivers/nina/nina_shell.c` (`nina version`),
 `common/log/fault_record.[ch]` (the format of the fatal error record). `i2c_dma`'s
-`common/drivers/i2c_dw/i2c_dma_shell.c` is built by the Zephyr build too.
+`common/shell/i2c_dma_shell.c` is built by the Zephyr build too.
 
 ## The FreeRTOS part of the Zephyr compatibility layer
 
@@ -219,9 +219,9 @@ zero gives the Pico SDK routines' results, the same in the three builds. `memcpy
 
 ## I2C0 and DMA, LSM6DSOX, GPIO interrupt
 
-- I2C0 and DMA are the shared core (`common/drivers/i2c_dw/nano_i2c.c`, `nano_dma.c`); the FreeRTOS build
+- I2C0 and DMA are the shared core (`common/drivers/i2c_dw/i2c_dw.c`, `dma_rpi_pico.c`); the FreeRTOS build
   implements the `i2c_dw_os.h` boundary in `drivers/i2c_dw/i2c_dw_os_impl.h` (semaphores, clock, interrupt
-  masking) and `nano_i2c_instance.h`, `nano_dma_instance.h` (the layer's `i2c0` device with Zephyr's I2C
+  masking) and `i2c_dw_instance.h`, `dma_rpi_pico_instance.h` (the layer's `i2c0` device with Zephyr's I2C
   API, the interrupt registration, resets, pins). The boundary is listed in the "I2C0" table of
   [`nuttx/drivers/README.md`](../../nuttx/drivers/README.md).
 - Interrupt priorities stay at the Pico SDK's default 0x80, so all device interrupts are at one level (as
@@ -278,7 +278,7 @@ board at rest. It prints, as `N of M tests failed`, the results for the layer
 | `shell` | Two shell sessions, line editing, output routing |
 | `kv` | The flash boundary and the key-value store (on fakes of the Pico SDK's flash functions) |
 | `nina` | The NINA's SPI and line boundaries, the wait for READY on its interrupt, the waits for the IRQ line's edges (two tasks woken by one edge, the timeout), kernel services |
-| `i2c_dw` | I2C0's boundary and device, Zephyr's I2C API |
+| `i2c_dw` | I2C0's boundary and device, Zephyr's I2C API, the core's DMA command words |
 | `gpio` | GPIO bank 0's boundary, `gpio0`, the FIFO interrupt |
 | `imu` | Address conversions, `hwinfo` |
 | `mqtt` | The MQTT transport (fake broker); then a run against the host's `imu-host check` (skipped without `host/.venv`) |

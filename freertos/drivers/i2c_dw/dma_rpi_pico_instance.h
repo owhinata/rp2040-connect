@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: MIT */
-/* The FreeRTOS part of the DMA core (common/drivers/i2c_dw/nano_dma.c,
+/* The FreeRTOS part of the DMA core (common/drivers/i2c_dw/dma_rpi_pico.c,
  * which includes this file at its end), on the Pico SDK, as the Zephyr
  * build's dma_rpi_pico_init() does it:
  *
@@ -11,7 +11,7 @@
  *   irq_enable() of DMA_IRQ_0 (11) and    irq_set_enabled() of DMA_IRQ_0 and
  *   DMA_IRQ_1 (12), one handler           DMA_IRQ_1, one handler
  *
- * - The DMA is the core's alone (nano_dma.c allocates its channels without
+ * - The DMA is the core's alone (dma_rpi_pico.c allocates its channels without
  *   knowing other users).  The Pico SDK has its own record of the channels
  *   (dma_claim_unused_channel()); nothing in this build uses it (the USB
  *   stdio, TinyUSB, the flash and the FreeRTOS port use no DMA), and the
@@ -36,16 +36,17 @@
  *   lost.
  */
 
-#ifndef FREERTOS_DRIVERS_I2C_DW_NANO_DMA_INSTANCE_H
-#define FREERTOS_DRIVERS_I2C_DW_NANO_DMA_INSTANCE_H
+#ifndef FREERTOS_DRIVERS_I2C_DW_DMA_RPI_PICO_INSTANCE_H
+#define FREERTOS_DRIVERS_I2C_DW_DMA_RPI_PICO_INSTANCE_H
 
 #include "hardware/irq.h"
 #include "hardware/resets.h"
 
-/* dma_claim_mask() of all the channels (nano_dma_os.c: the SDK's
- * hardware/dma.h has functions of the names that nano_dma.c defines).
+/* dma_claim_mask() of all the channels (dma_rpi_pico_os.c: the SDK's
+ * hardware/dma.h cannot follow dma_rpi_pico.h, which writes out its types
+ * and functions).
  */
-void nano_dma_os_claim(void);
+void dma_rpi_pico_os_claim(void);
 
 /* The handler of DMA_IRQ_0 and DMA_IRQ_1 (Zephyr's dma_rpi_pico_isr()). */
 static void dma_rpi_pico_isr(void)
@@ -53,14 +54,14 @@ static void dma_rpi_pico_isr(void)
 	dma_rpi_pico_isr_handler();
 }
 
-static void nano_dma_os_reset(void)
+static void dma_rpi_pico_os_reset(void)
 {
-	nano_dma_os_claim();
+	dma_rpi_pico_os_claim();
 	reset_block_num(RESET_DMA);
 	unreset_block_num_wait_blocking(RESET_DMA);
 }
 
-static void nano_dma_os_irq_enable(void)
+static void dma_rpi_pico_os_irq_enable(void)
 {
 	irq_set_exclusive_handler(DMA_IRQ_0, dma_rpi_pico_isr);
 	irq_set_enabled(DMA_IRQ_0, true);
@@ -68,4 +69,4 @@ static void nano_dma_os_irq_enable(void)
 	irq_set_enabled(DMA_IRQ_1, true);
 }
 
-#endif /* FREERTOS_DRIVERS_I2C_DW_NANO_DMA_INSTANCE_H */
+#endif /* FREERTOS_DRIVERS_I2C_DW_DMA_RPI_PICO_INSTANCE_H */
