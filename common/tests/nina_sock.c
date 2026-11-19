@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-/* Host test of nuttx/drivers/nina/nina_sock.c (the socket table and the
- * socket commands of the Zephyr build's drivers/nina/nina_socket.c) with a
+/* Host test of common/drivers/nina/nina_sock.c (the socket table and the
+ * socket commands of the Zephyr build's socket offload) with a
  * fake nina_request() that checks each command and its parameters and
  * gives scripted answers, and a fake clock.
  *

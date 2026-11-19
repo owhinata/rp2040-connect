@@ -1,12 +1,11 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /* NINA Arduino firmware SPI protocol: WiFiNINA / Arduino_SpiNINA.
  *
- * Shared by the Zephyr, NuttX and FreeRTOS builds.  It was the Zephyr
- * build's drivers/nina/nina_wifi.c; the branches, order, constants,
- * timeouts and error values are that file's.  The calls into the system
- * are the two boundaries of the core:
+ * Shared by the Zephyr, NuttX and FreeRTOS builds.  The calls into the
+ * system are the two boundaries of the core, in place of the Zephyr calls
+ * that the code had before it was shared:
  *
- *   Zephyr (nina_wifi.c)                here
+ *   Zephyr                              here
  *   device_is_ready(), gpio_is_ready_dt nina_bus_ready()
  *   gpio_pin_configure_dt()             nina_pin_configure()
  *   gpio_pin_set_dt(), gpio_pin_get_dt  nina_pin_set(), _get()
@@ -16,9 +15,10 @@
  *
  * nina_bus_*() and nina_pin_*() are the board's (<nina_bus.h>),
  * nina_os_*() the kernel's (<nina_os.h>); each build implements both
- * (zephyr/app/usb-console/drivers/nina/nina_bus.c and nina_os.c,
+ * (zephyr/app/usb-console/drivers/nina/nina_bus.c and
+ * common/drivers/nina/zephyr/nina_os.c,
  * nuttx/boards/arduino-nano-rp2040-connect/src/nina_bus.c and
- * nuttx/drivers/nina/nina_os.c, freertos/drivers/nina/).  The host test
+ * common/drivers/nina/nuttx/nina_os.c, freertos/drivers/nina/).  The host test
  * (common/tests/nina_spi.c) builds this file with fakes of both.
  *
  * One difference: nina_os_lock() can fail where k_mutex_lock(K_FOREVER)

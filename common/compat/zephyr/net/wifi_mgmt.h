@@ -1,7 +1,9 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /* The part of Zephyr's <zephyr/net/wifi.h>, <zephyr/net/wifi_mgmt.h> and
- * <zephyr/net/offloaded_netdev.h> (Zephyr v4.5.0) that the NINA network
- * device (common/drivers/nina/nina_net.c) and the application use, with Zephyr's
+ * <zephyr/net/offloaded_netdev.h> (Zephyr v4.5.0) that the NINA core's
+ * Zephyr binding (common/drivers/nina/zephyr/nina_net.c, on the FreeRTOS
+ * build), the applications and, on NuttX, the binding's management of the
+ * applications (common/drivers/nina/nuttx/nina_wifi_mgmt.c) use, with Zephyr's
  * names, types and values:
  *
  *   the Wi-Fi types (security, band, MFP, state, mode), struct
@@ -289,9 +291,9 @@ struct net_wifi_mgmt_offload
 /* NET_DEVICE_DT_OFFLOAD_DEFINE(node_id, init_fn, pm, data, config, prio,
  * api, mtu): Zephyr defines the device and its interface and calls
  * init_fn and then api's iface_api.init at boot.  Here it names the two
- * for the NuttX network device (drivers/nina/nina_netdev.c), which calls
- * them in the same order when it registers wlan0.  The other arguments
- * are not used.
+ * for the FreeRTOS build's interface (freertos/drivers/nina/nina_netif.c),
+ * which calls them in the same order when it registers the interface.  The
+ * other arguments are not used.
  */
 
 #define NET_DEVICE_DT_OFFLOAD_DEFINE(node_id, init_fn, pm, data, config, \

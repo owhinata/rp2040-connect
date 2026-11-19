@@ -24,8 +24,8 @@ void nina_dns_init(void);
 #define NINA_CAP_SOCKET_EVENTS   (1u << 2) /* socket events on the IRQ line */
 #define NINA_CAP_KNOWN           0x7u
 
-/* nina_probe_capabilities() asks the module once (nina_net.c iface_init(),
- * after the module's reset), starts the OS's waits for the socket events
+/* nina_probe_capabilities() asks the module once (nina_wifi_init() of
+ * nina_wifi.c, after the module's reset), starts the OS's waits for the socket events
  * when the module has them (nina_wait.c), and returns the bits in use.  A
  * firmware without the command (it answers 0xEF: -ENOTSUP of
  * nina_request()) or a failed request gives 0: the driver then works as

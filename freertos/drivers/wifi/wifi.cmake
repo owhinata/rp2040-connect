@@ -14,9 +14,11 @@
 # and CONFIG_NANO_WIFI_PROFILE (nuttx/drivers/nina/Make.defs,
 # nuttx/drivers/compat/Make.defs, nuttx/apps/wifi/Makefile):
 #
-# - the NINA's network interface: the driver (common/drivers/nina/
-#   nina_net.c: the Wi-Fi operations and the threads nina_scan_tid,
-#   nina_connect_tid and nina_monitor_tid) and its interface on FreeRTOS
+# - the NINA's network interface: the core's Wi-Fi operations
+#   (common/drivers/nina/nina_wifi.c), its Zephyr binding on the layer
+#   (common/drivers/nina/zephyr/nina_net.c: Zephyr's Wi-Fi management and
+#   interface, the threads nina_scan_tid, nina_connect_tid and
+#   nina_monitor_tid) and the interface on FreeRTOS
 #   (freertos/drivers/nina/nina_netif.c: nina_net_initialize());
 # - the layer's network part: the interface (freertos/drivers/compat/
 #   zephyr_net_if.c, <zephyr/net/net_if.h>), the net_mgmt events
@@ -62,7 +64,8 @@ get_filename_component(FREERTOS_WIFI_DIR ${CMAKE_CURRENT_LIST_DIR} ABSOLUTE)
 
 function(freertos_wifi target)
   set(wifi_common_sources
-    ${FREERTOS_COMMON_DIR}/drivers/nina/nina_net.c
+    ${FREERTOS_COMMON_DIR}/drivers/nina/nina_wifi.c
+    ${FREERTOS_COMMON_DIR}/drivers/nina/zephyr/nina_net.c
     ${FREERTOS_COMMON_DIR}/compat/zephyr_net_mgmt.c
     ${FREERTOS_COMMON_DIR}/compat/zephyr_wifi_mgmt.c
     ${FREERTOS_COMMON_DIR}/compat/zephyr_wifi_utils.c

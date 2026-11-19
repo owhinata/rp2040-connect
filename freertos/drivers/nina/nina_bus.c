@@ -19,7 +19,7 @@
  *   slew, Schmitt trigger off, input enable only where asked, no overrides.
  * - nina_w102: cs-gpios GPIO9 active low; ready-gpios GPIO10 active low with
  *   pull-up; reset-gpios GPIO3 active low; irq-gpios GPIO2 with pull-down.
- *   nina_wifi.c configures READY, RESET and IRQ only at the first request
+ *   nina_spi.c configures READY, RESET and IRQ only at the first request
  *   (common/drivers/nina/nina_spi.c, init_nina()).
  * - Each transfer: SPI_WORD_SET(8) | SPI_TRANSFER_MSB, so mode 0 (CPOL 0,
  *   CPHA 0), MSB first, at CONFIG_NINA_SPI_FREQUENCY (8 MHz), which the
@@ -57,7 +57,7 @@
  *   save.  It takes no lock of its own: Zephyr's spi_transceive() takes the
  *   bus's context lock, but SPI1 has no other user and nina_spi.c calls this
  *   only with nina_lock held (nina_os.c).  CS is not touched (nina_spi.c
- *   drives it, as nina_wifi.c does: its spi_config has no CS).
+ *   drives it: the Zephyr build's spi_config has no CS).
  * - nina_pin_configure(): gpio_rpi_configure() of Zephyr's RP2040 GPIO
  *   driver (drivers/gpio/gpio_rpi_pico.c) for a push-pull line after
  *   gpio_pin_configure_dt() has folded in the devicetree flags: the pulls,

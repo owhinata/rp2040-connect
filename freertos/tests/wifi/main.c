@@ -3,7 +3,8 @@
  * the build's network parts (freertos/drivers/compat/zephyr_net_if.c, the
  * thread "net_mgmt" of zephyr_net_mgmt_os.h, freertos/drivers/nina/
  * nina_netif.c) under the shared ones as freertos/drivers/wifi/wifi.cmake
- * builds them (common/drivers/nina/nina_net.c, common/compat/
+ * builds them (common/drivers/nina/nina_wifi.c and its Zephyr binding
+ * common/drivers/nina/zephyr/nina_net.c, common/compat/
  * zephyr_net_mgmt.c, zephyr_wifi_mgmt.c, zephyr_wifi_utils.c,
  * wifi_credentials.c and its settings backend, common/imu/wifi_profile.c,
  * the "wifi" command of common/compat/zephyr_wifi_shell.c and the copy of
@@ -68,6 +69,7 @@
 #include "nano_console.h"
 #include "nano_shell.h"
 #include "nina_net.h"
+#include "nina_os.h"
 #include "nina_proto.h"
 #include "pico/stdio.h"
 #include "priorities.h"
@@ -281,6 +283,44 @@ static void put_le32(uint8_t *b, int32_t v)
 	for (int i = 0; i < 4; i++) {
 		b[i] = (uint8_t)(u >> (8 * i));
 	}
+}
+
+/* The kernel services of nina_os.h that the Wi-Fi operations use
+ * (common/drivers/nina/nina_wifi.c), on the layer as drivers/nina/nina_os.c
+ * has them (tested in tests/nina); the rest of that file, the waits on the
+ * module's lines, is not needed here. */
+static K_MUTEX_DEFINE(connect_state_lock);
+static K_SEM_DEFINE(scan_request, 0, 1);
+static K_SEM_DEFINE(connect_request, 0, 1);
+
+void nina_os_wifi_lock(void)
+{
+	(void)k_mutex_lock(&connect_state_lock, K_FOREVER);
+}
+
+void nina_os_wifi_unlock(void)
+{
+	(void)k_mutex_unlock(&connect_state_lock);
+}
+
+void nina_os_wifi_post(unsigned int which)
+{
+	k_sem_give(which == NINA_OS_WIFI_SCAN ? &scan_request : &connect_request);
+}
+
+void nina_os_wifi_wait(unsigned int which)
+{
+	(void)k_sem_take(which == NINA_OS_WIFI_SCAN ? &scan_request : &connect_request, K_FOREVER);
+}
+
+void nina_os_sleep_ms(uint32_t ms)
+{
+	(void)k_msleep((int32_t)ms);
+}
+
+int64_t nina_os_uptime_ms(void)
+{
+	return k_uptime_get();
 }
 
 /* The firmware's capability bits (common/drivers/nina/nina_spi.c, here a

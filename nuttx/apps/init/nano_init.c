@@ -73,9 +73,13 @@
 #  include "kv_store.h"
 #endif
 
-#if defined(CONFIG_NANO_APP_IMU) || defined(CONFIG_NINA_NET) || \
-    defined(CONFIG_NANO_WIFI_PROFILE) || defined(CONFIG_NANO_APP_SENSOR)
+#if defined(CONFIG_NANO_APP_IMU) || defined(CONFIG_NANO_WIFI_PROFILE) || \
+    defined(CONFIG_NANO_APP_SENSOR)
 #  include "zephyr_compat.h"
+#endif
+
+#ifdef CONFIG_NINA_NET
+#  include "nina_net.h"
 #endif
 
 #ifdef CONFIG_NANO_APP_IMU
@@ -265,9 +269,7 @@ int nano_init_main(int argc, FAR char *argv[])
    */
 
 #ifdef CONFIG_NINA_NET
-  K_THREAD_DEFINE_START(nina_scan_tid);     /* common/drivers/nina/nina_net.c */
-  K_THREAD_DEFINE_START(nina_connect_tid);
-  K_THREAD_DEFINE_START(nina_monitor_tid);
+  nina_net_start();  /* nina_scan_tid, _connect_tid, _monitor_tid */
 #endif
 #ifdef CONFIG_NANO_APP_IMU
   K_THREAD_DEFINE_START(imu_stream_tid);  /* common/imu/imu_stream.c */

@@ -2,31 +2,33 @@
 # nuttx/drivers/nina/Make.defs
 #
 # The NINA-W102 driver.  Its OS-independent core is in common/drivers/nina,
-# shared with the other builds: the SPI link (nina_spi.c, a port of the
-# Zephyr build's drivers/nina/nina_wifi.c), the socket table and commands
-# (nina_sock.c, from the Zephyr build's drivers/nina/nina_socket.c), name
-# resolution with the module's resolver (nina_dns.c, from the Zephyr
-# build's drivers/nina/nina_dns.c) and the headers of its boundary
-# (nina_os.h, nina_bus.h).  This directory has the NuttX part: the kernel
-# services of nina_os.h (nina_os.c), the sockets as usrsock
-# (nina_usrsock.c, nina_poller.c) and the Wi-Fi network device wlan0
-# (nina_netdev.c, with nina_net.c of common/drivers/nina, shared with the
-# Zephyr build), with the Wi-Fi profile's calls answered by
-# common/imu/wifi_profile.c (CONFIG_NANO_WIFI_PROFILE, nuttx/apps/wifi), or
-# by wifi_profile_null.c without it.  The board provides the pins and the
-# SPI bus (nina_bus.c, <nina_bus.h>).  Included by nuttx/drivers/Makefile.
-# VPATH and DEPPATH of common/drivers/nina are relative to nuttx/drivers
-# (mkdeps needs relative ones); the objects are made there.  nina_net.c is
-# compiled with the prelude of the shared sources (compat/common_prelude.h);
-# the core is not (it reads NuttX's configuration through NuttX's headers).
-# Include paths: common/drivers/nina (the core's headers) and common/imu
-# (wifi_profile.h).  The core's waits for READY sleep on the line's edge
-# interrupt (nina_os.c, through the board's src/nano_gpio.c and the
-# compatibility layer's gpio0, common/compat/zephyr_gpio.c).  The socket
-# loops' waits (nina_wait.c of common/drivers/nina, nina_poller.c, the
-# layer's zsock_*()) end at the rising edges of the module's IRQ line
-# (GPIO2, nina_os.c) when its firmware reports socket events; with an older
-# firmware they keep their poll intervals.
+# shared with the other builds: the SPI link (nina_spi.c), the socket table
+# and commands (nina_sock.c), name resolution with the module's resolver
+# (nina_dns.c), the Wi-Fi operations (nina_wifi.c: scan, connect,
+# disconnect, the link monitor, status) and the headers of its boundary
+# (nina_os.h, nina_bus.h).  Its NuttX binding is in common/drivers/nina/nuttx:
+# the kernel services of nina_os.h (nina_os.c), the sockets as usrsock
+# (nina_usrsock.c, nina_poller.c), the Wi-Fi network device wlan0 with
+# wapi's ioctls on the core (nina_netdev.c, nina_net.h) and the Zephyr Wi-Fi
+# management of the compatibility layer that the applications use, on the
+# core (nina_wifi_mgmt.c, with the Wi-Fi profile's reconnection of
+# common/imu/wifi_profile.c under CONFIG_NANO_WIFI_PROFILE).  This file and
+# Kconfig stay here: nuttx/drivers is the directory that NuttX builds as
+# external/ (a symlink made by script/setup.sh), whose Makefile includes
+# this file and whose Kconfig sources ./nina/Kconfig.  The board provides
+# the pins and the SPI bus (nina_bus.c, <nina_bus.h>).  VPATH and DEPPATH
+# of common/drivers/nina and of its nuttx/ are relative to nuttx/drivers
+# (mkdeps needs relative ones); the objects are made there.  The core is
+# compiled as it is (it reads NuttX's configuration through NuttX's
+# headers).  Include paths: common/drivers/nina (the core's headers),
+# common/drivers/nina/nuttx (the binding's) and common/imu (wifi_profile.h).
+# The core's waits for READY sleep on the line's edge interrupt (nina_os.c,
+# through the board's src/nano_gpio.c and the compatibility layer's gpio0,
+# common/compat/zephyr_gpio.c).  The socket loops' waits (nina_wait.c of
+# common/drivers/nina, nina_poller.c, the layer's zsock_*()) end at the
+# rising edges of the module's IRQ line (GPIO2, nina_os.c) when its firmware
+# reports socket events; with an older firmware they keep their poll
+# intervals.
 ############################################################################
 
 ifeq ($(CONFIG_NINA),y)
@@ -38,18 +40,15 @@ ifeq ($(CONFIG_NINA_DNS),y)
 CSRCS += nina_dns.c
 endif
 ifeq ($(CONFIG_NINA_NET),y)
-CSRCS += nina_net.c nina_netdev.c
-ifneq ($(CONFIG_NANO_WIFI_PROFILE),y)
-CSRCS += wifi_profile_null.c
+CSRCS += nina_wifi.c nina_netdev.c nina_wifi_mgmt.c
 endif
-endif
-DEPPATH += --dep-path nina
-VPATH += :nina
 DEPPATH += --dep-path ../../common/drivers/nina
 VPATH += :../../common/drivers/nina
+DEPPATH += --dep-path ../../common/drivers/nina/nuttx
+VPATH += :../../common/drivers/nina/nuttx
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)drivers$(DELIM)nina
+CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)drivers$(DELIM)nina$(DELIM)nuttx
 ifeq ($(CONFIG_NINA_NET),y)
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)imu
-nina_net$(OBJEXT): CFLAGS += -include $(TOPDIR)$(DELIM)external$(DELIM)compat$(DELIM)common_prelude.h
 endif
 endif

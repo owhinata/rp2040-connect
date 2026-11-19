@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: MIT */
-/* The waits for NINA's READY line on NuttX: drivers/nina/nina_os.c
+/* The waits for NINA's READY line on NuttX: common/drivers/nina/nuttx/nina_os.c
  * (nina_os_ready_*(), on an edge interrupt) under the shared core's
  * wait_ready() (common/drivers/nina/nina_spi.c, included here to reach the
  * static function; nina_os_ready_start() succeeds, as on the board: the
@@ -34,6 +34,10 @@
  * one), an edge between the caller's read of the count and its wait (the
  * count left ends it at once), a count left from an earlier edge that
  * does not end a later wait.
+ *
+ * With CONFIG_NINA_NET, the Wi-Fi operations' lock (an rmutex of its own)
+ * and the requests of their threads (a semaphore each, at most one count,
+ * the check and the post in one critical section).
  */
 
 #include <assert.h>
@@ -42,6 +46,7 @@
 #include <stdio.h>
 
 #include <nuttx/clock.h>
+#include <nuttx/irq.h>
 #include <nuttx/mutex.h>
 #include <nuttx/sched.h>
 #include <nuttx/semaphore.h>
@@ -111,8 +116,12 @@ void nxsched_msleep(unsigned int msec)
 	advance(MSEC2TICK(msec) + 1);
 }
 
+static rmutex_t *last_rmutex;
+static sem_t *last_posted;
+
 int nxrmutex_lock(rmutex_t *m)
 {
+	last_rmutex = m;
 	m->depth++;
 	return 0;
 }
@@ -145,6 +154,7 @@ static bool handed;
 
 int nxsem_post(sem_t *sem)
 {
+	last_posted = sem;
 	if (sem == waiting_sem && !handed && sem->count == 0) {
 		handed = true;
 		return 0;
@@ -501,8 +511,66 @@ static void test_events(void)
 	assert(max_count == 1);
 }
 
+/* The Wi-Fi operations' lock and requests (CONFIG_NINA_NET, as
+ * nina/Make.defs builds nina_os.c with the network device). */
+static int critical;
+static unsigned int criticals;
+
+irqstate_t enter_critical_section(void)
+{
+	assert(!critical);
+	critical = 1;
+	criticals++;
+	return 7;
+}
+
+void leave_critical_section(irqstate_t flags)
+{
+	assert(critical && flags == 7);
+	critical = 0;
+}
+
+int nxsem_wait_uninterruptible(sem_t *sem)
+{
+	assert(sem->count > 0);
+	sem->count--;
+	return 0;
+}
+
+static void test_wifi(void)
+{
+	rmutex_t *nina, *wifi;
+	sem_t *scan, *connect;
+
+	assert(nina_os_lock() == 0);
+	nina = last_rmutex;
+	nina_os_unlock();
+	nina_os_wifi_lock();
+	wifi = last_rmutex;
+	assert(wifi != nina && wifi->depth == 1 && nina->depth == 0);
+	nina_os_wifi_unlock();
+	assert(wifi->depth == 0);
+
+	/* Two posts leave one request; the scan's and the connection's are
+	 * apart; each post checks and posts in one critical section. */
+	criticals = 0;
+	nina_os_wifi_post(NINA_OS_WIFI_SCAN);
+	scan = last_posted;
+	last_posted = NULL;
+	nina_os_wifi_post(NINA_OS_WIFI_SCAN);
+	assert(last_posted == NULL && scan->count == 1);
+	nina_os_wifi_post(NINA_OS_WIFI_CONNECT);
+	connect = last_posted;
+	assert(connect != scan && connect->count == 1);
+	assert(criticals == 3 && !critical);
+	nina_os_wifi_wait(NINA_OS_WIFI_SCAN);
+	nina_os_wifi_wait(NINA_OS_WIFI_CONNECT);
+	assert(scan->count == 0 && connect->count == 0);
+}
+
 int main(void)
 {
+	test_wifi();
 	/* As the core's init_nina(): the waits for READY on its interrupt. */
 	assert(nina_os_ready_start() == 0);
 	ready_irq = true;

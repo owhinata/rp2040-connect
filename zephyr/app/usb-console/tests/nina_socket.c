@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: MIT */
-/* Host test of this build's socket offload (drivers/nina/nina_socket.c) on
+/* Host test of this build's socket offload
+ * (common/drivers/nina/zephyr/nina_socket.c) on
  * the shared core (common/drivers/nina/nina_sock.c, nina_dns.c), as
  * CMakeLists.txt builds them (NINA_OS_DNS_OFFLOAD), on fakes of the Zephyr
  * calls (tests/socket_fakes: the descriptor table, mutexes, the clock and

@@ -11,7 +11,7 @@
  *
  * Sockets: zsock_sendto() and zsock_close() are NuttX's sendto() and
  * close() (the NINA's sockets through usrsock,
- * nuttx/drivers/nina/nina_usrsock.c), -1 and errno as in Zephyr;
+ * common/drivers/nina/nuttx/nina_usrsock.c), -1 and errno as in Zephyr;
  * zsock_connect(), zsock_send() and zsock_sendmsg() are connect(), send()
  * and sendmsg() (the calls of Zephyr's MQTT TCP transport,
  * mqtt_transport_socket_tcp.c; a blocking socket waits in the driver as in
@@ -19,7 +19,8 @@
  * NINA_POLL_INTERVAL_MS by the NINA's event thread, a send that finds no
  * room up to NINA_SEND_WAIT_MS, its passes in the calling thread).
  *
- * The Zephyr build's NINA sockets (drivers/nina/nina_socket.c) are asked
+ * The Zephyr build's NINA sockets (common/drivers/nina/zephyr/nina_socket.c)
+ * are asked
  * about only by the threads that use them: recv() polls the module
  * (CMD_POLL) on every call, poll() polls each socket at once and then every
  * NINA_POLL_INTERVAL_MS (20 ms) until one is ready or the timeout ends

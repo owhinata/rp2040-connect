@@ -4,7 +4,7 @@
  * names, their poll, the module's name resolution, and the address
  * conversions.  The calls are implemented on the shared NINA core by
  * freertos/drivers/nina/nina_socket.c (the Zephyr build's socket offload,
- * drivers/nina/nina_socket.c, with the Zephyr socket layer's parts it
+ * common/drivers/nina/zephyr/nina_socket.c, with the Zephyr socket layer's parts it
  * relies on: the descriptor table, its per-descriptor lock, the dispatch).
  * Their results are Zephyr's: 0 or a count on success, -1 with errno on
  * failure (newlib's errno values, which are Zephyr's), except

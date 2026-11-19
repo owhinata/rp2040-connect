@@ -1,7 +1,8 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /* The "wifi" command of the Zephyr build (Zephyr v4.5.0) for the ports
  * without Zephyr's network shell: the part of subsys/net/l2/wifi/wifi_shell.c
- * that the NINA-W102 driver (common/drivers/nina/nina_net.c) can serve,
+ * that the NINA-W102 driver (common/drivers/nina/nina_wifi.c through its
+ * Zephyr binding, common/drivers/nina/zephyr/nina_net.c) can serve,
  * "wifi connect", "wifi disconnect", "wifi scan" and "wifi status", with
  * their messages, return values and net_mgmt event output, and the root
  * command "wifi" with those and "wifi cred" (the copy of Zephyr's
@@ -13,8 +14,8 @@
  *
  * Only the options the driver can serve are kept: "wifi connect" has
  * -s/--ssid, -p/--passphrase and -k/--key-mgmt with 0 (None) and
- * 1 (WPA2-PSK), the only types the module joins with (nina_net.c's
- * wifi_connect() refuses the others), and Zephyr's --help (and its -h,
+ * 1 (WPA2-PSK), the only types the module joins with (nina_wifi.c's
+ * nina_wifi_connect() refuses the others), and Zephyr's --help (and its -h,
  * which takes an argument there); "wifi scan", "wifi disconnect" and
  * "wifi status" have none.  Zephyr's other options (channel, band, PBKDF2,
  * MFP, BSSID, timeout, the enterprise ones, 802.11r, SSID protection, the

@@ -20,5 +20,6 @@ int nxsem_post(sem_t *sem);
 int nxsem_get_value(sem_t *sem, int *sval);
 int nxsem_reset(sem_t *sem, int16_t count);
 int nxsem_tickwait_uninterruptible(sem_t *sem, uint32_t delay);
+int nxsem_wait_uninterruptible(sem_t *sem);
 
 #endif /* TEST_NINA_OS_NUTTX_SEMAPHORE_H */

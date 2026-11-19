@@ -60,8 +60,9 @@ config NANO_WIFI_PROFILE
 		request and then every 32 s while there is no address, from
 		boot when networks are stored and after a lost connection;
 		a disconnection asked for (wapi disconnect) stops it until the
-		next successful connection.  Replaces nuttx/drivers/nina/
-		wifi_profile_null.c.
+		next successful connection.  Without it the NINA's connections
+		are all allowed and nothing reconnects
+		(common/drivers/nina/nuttx/nina_wifi_mgmt.c).
 
 config NANO_APP_WIFI
 	tristate "wifi command (wifi cred)"

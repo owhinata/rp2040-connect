@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-/* Host test of nuttx/drivers/nina/nina_spi.c with a fake board
+/* Host test of common/drivers/nina/nina_spi.c with a fake board
  * (<nina_bus.h>: SPI, CS, READY, RESET, IRQ) and fake kernel services
  * (nina_os.h: lock, sleeps, clock).
  *
@@ -582,7 +582,7 @@ static void init_cases(void)
 	size_t n;
 	const uint8_t reply[] = {0xe0, 0xb7, 1, 1, 'x', 0xee};
 
-	/* The first request resets the module: the lines as nina_wifi.c's
+	/* The first request resets the module: the lines as
 	 * init_nina() sets them, 10 ms in reset, 750 ms to boot, then IRQ
 	 * low and an input; then the OS's waits for READY are started, and
 	 * its result chooses how the waits of the request itself wait.

@@ -159,14 +159,16 @@ VPATH += :board
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)arch$(DELIM)$(CONFIG_ARCH)$(DELIM)src$(DELIM)board$(DELIM)board
 
 # Headers shared with nuttx/drivers and the applications: nuttx/drivers/include
-# (nina_net.h, and the NuttX parts app_log_os.h and priorities_os.h),
-# common/log (app_log.h, log_ram.h; common/compat has priorities.h,
-# cpu_load.h, nano_cpuload.h and nano_gpio.h).  The NINA core's boundary to
-# the board (nina_bus.h): common/drivers/nina.
+# (the NuttX parts app_log_os.h and priorities_os.h), common/log (app_log.h,
+# log_ram.h; common/compat has priorities.h, cpu_load.h, nano_cpuload.h and
+# nano_gpio.h).  The NINA core's boundary to the board (nina_bus.h):
+# common/drivers/nina; its NuttX binding's wlan0 (nina_net.h):
+# common/drivers/nina/nuttx.
 
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)include
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)log
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)drivers$(DELIM)nina
+CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)drivers$(DELIM)nina$(DELIM)nuttx
 
 # The small Zephyr compatibility layer (<zephyr/device.h>, ...): its NuttX
 # implementation, nuttx/drivers/compat, then its OS-independent part,

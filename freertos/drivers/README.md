@@ -27,7 +27,7 @@ OS-independent part of the layer is `common/compat/`, the FreeRTOS part `freerto
 | `drivers/i2c_dw/` | The FreeRTOS part of the I2C core (`common/drivers/i2c_dw/`; I2C0, and I2C1 as an option), I2C0's DMA reads on the Pico SDK's DMA (`i2c_dw_dma_os.c`), self-test |
 | `drivers/lsm6dso/` | The LSM6DSOX device (`lsm6dso_instance.h`) and its initialization (`nano_lsm6dso.c`), self-test |
 | `drivers/imu/` | Builds in the acquisition service, MQTT and time synchronization (`common/imu/`; `imu.cmake`), the prelude of `time_sync.c` |
-| `drivers/wifi/` | Builds in Wi-Fi (`common/drivers/nina/nina_net.c`, credentials, reconnection) and `ifconfig` |
+| `drivers/wifi/` | Builds in Wi-Fi (the NINA core's `common/drivers/nina/nina_wifi.c` with its Zephyr binding `common/drivers/nina/zephyr/nina_net.c`, credentials, reconnection) and `ifconfig` |
 | `drivers/telnet/` | The Telnet shell (`nano_telnet.c`) |
 | `drivers/zperf/` | Builds in `zperf` (the code is `common/compat/zperf_iperf3.c` and `zephyr_zperf_shell.c`) |
 | `drivers/sensor_shell/` | The FreeRTOS part of the `sensor` command (`sensor_shell_os.[ch]`) |
@@ -166,12 +166,12 @@ boundary (the four functions of `common/compat/nano_flash_kv.h`, `drivers/kv/nan
 
 ## NINA-W102, sockets, Wi-Fi
 
-- The SPI transport, the socket table and commands, and name resolution are the shared core
-  (`common/drivers/nina/nina_spi.c`, `nina_sock.c`, `nina_dns.c`). The FreeRTOS build implements the
+- The SPI transport, the socket table and commands, name resolution and the Wi-Fi operations are the
+  shared core (`common/drivers/nina/nina_spi.c`, `nina_sock.c`, `nina_dns.c`, `nina_wifi.c`). The FreeRTOS build implements the
   boundaries `nina_bus.h` (`drivers/nina/nina_bus.c`: SPI1 polled at 7.8125 MHz and the CS, READY, RESET
   and IRQ lines, set up in the order and with the values of Zephyr's drivers) and `nina_os.h`
-  (`nina_os.c`: the recursive lock with priority inheritance, the name resolution lock, the "rounded up,
-  plus one tick" sleep, the ms clock). The boundaries mean what the "NINA-W102" tables of
+  (`nina_os.c`: the recursive lock with priority inheritance, the name resolution lock, the Wi-Fi
+  operations' lock and their threads' requests, the "rounded up, plus one tick" sleep, the ms clock). The boundaries mean what the "NINA-W102" tables of
   [`nuttx/drivers/README.md`](../../nuttx/drivers/README.md) say.
 - The core's waits for READY sleep until READY's edge interrupt (GPIO10), in waits of at most 10 ms, after
   which READY is read again (`nina_os.c`). The Zephyr build does the same; the NuttX build waits without
@@ -186,15 +186,18 @@ boundary (the four functions of `common/compat/nano_flash_kv.h`, `drivers/kv/nan
 - The firmware additions (patches 0003 to 0006, the bits of command 0x6A) work as in the Zephyr build
   (described in the section of the same name in
   [`zephyr/app/usb-console/drivers/README.md`](../../zephyr/app/usb-console/drivers/README.md)): a scan
-  while connected that keeps the link and the asynchronous scan (`nina_net.c`), the waits for socket
+  while connected that keeps the link and the asynchronous scan (`nina_wifi.c`), the waits for socket
   events (`common/drivers/nina/nina_wait.c` and the wait loops of `nina_socket.c`). The events are the
   rising edges of the IRQ line (GPIO2) on its interrupt; `nina_os.c` counts them and wakes every waiting
   task (`k_sem_reset()`, then `k_sem_give()`). If `nina_os_event_start()` fails, the waits keep their
   intervals (20 ms, 1 ms for sends) whatever the firmware. Checking with a poll command that the socket
   is writable before a TCP send's data goes again does not depend on the firmware.
-- Wi-Fi: the Zephyr build's `common/drivers/nina/nina_net.c`, the credentials (a copy of Zephyr's
-  `wifi_credentials`) and the automatic reconnection (`common/imu/wifi_profile.c`) run on the layer's
-  `net_if`, `net_mgmt` and `wifi_mgmt` (`zephyr_net_if.c`, `drivers/nina/nina_netif.c`). The `wifi` command
+- Wi-Fi: the core's Wi-Fi operations with the Zephyr build's binding of them
+  (`common/drivers/nina/zephyr/nina_net.c`: Zephyr's Wi-Fi management and interface, the three threads),
+  the credentials (a copy of Zephyr's `wifi_credentials`) and the automatic reconnection
+  (`common/imu/wifi_profile.c`) run on the layer's `net_if`, `net_mgmt` and `wifi_mgmt` (`zephyr_net_if.c`,
+  `drivers/nina/nina_netif.c`); this build has no network layer of its own, so it uses the Zephyr
+  binding. The `wifi` command
   is `common/compat/zephyr_wifi_shell.c`, keeping only the options this board can use; `wifi cred` is an
   unchanged copy of Zephyr's `wifi_credentials_shell.c`. `ifconfig` (`drivers/wifi/nano_ifconfig.c`)
   prints in the NuttX build's format.

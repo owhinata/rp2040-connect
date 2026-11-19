@@ -1,11 +1,12 @@
 /* SPDX-License-Identifier: MIT */
 /* The NINA-W102 as the network interface of the FreeRTOS build
- * (nina_netif.c, with common/drivers/nina/nina_net.c, shared with the Zephyr
- * and NuttX builds).  The Wi-Fi operations themselves are reached as in the
- * Zephyr build, through the compatibility layer's net_mgmt() requests and
- * events (<zephyr/net/wifi_mgmt.h>) and the interface functions
- * (<zephyr/net/net_if.h>).  The NuttX build's is
- * nuttx/drivers/include/nina_net.h.
+ * (nina_netif.c, with the core's Zephyr binding
+ * common/drivers/nina/zephyr/nina_net.c, shared with the Zephyr build).  The
+ * Wi-Fi operations themselves (common/drivers/nina/nina_wifi.c) are reached
+ * as in the Zephyr build, through the compatibility layer's net_mgmt()
+ * requests and events (<zephyr/net/wifi_mgmt.h>) and the interface
+ * functions (<zephyr/net/net_if.h>).  The NuttX build's is
+ * common/drivers/nina/nuttx/nina_net.h.
  */
 
 #ifndef FREERTOS_DRIVERS_NINA_NINA_NET_H

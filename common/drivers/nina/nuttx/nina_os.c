@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-/* The kernel services of nina_spi.c on NuttX (see nina_os.h).
+/* The kernel services of the shared NINA core on NuttX (see nina_os.h).
  *
- * Zephyr build (drivers/nina/nina_wifi.c):
+ * Zephyr build (common/drivers/nina/zephyr/nina_os.c):
  * - K_MUTEX_DEFINE(nina_lock): recursive, priority inheritance.  Here an
  *   rmutex_t, whose mutex inherits priority with
  *   CONFIG_PRIORITY_INHERITANCE.  The wait is repeated when a signal ends
@@ -19,6 +19,12 @@
  *   inherits priority.
  * - k_uptime_get(): ticks converted to milliseconds, rounded down
  *   (k_ticks_to_ms_floor64()).  TICK2MSEC() rounds down too.
+ * - K_MUTEX_DEFINE(connect_state_lock) of nina_wifi.c (with
+ *   CONFIG_NINA_NET): an rmutex_t, as nina_lock.
+ * - K_SEM_DEFINE(scan_request, 0, 1) and connect_request of nina_wifi.c:
+ *   a sem_t each (SEM_INITIALIZER: no priority inheritance), posted only
+ *   when no count is pending (the limit of 1), the check and the post in
+ *   one critical section; the wait is nxsem_wait_uninterruptible().
  *
  * The core's waits for READY (nina_spi.c wait_ready()) sleep on an edge
  * interrupt of the line instead of sampling it every 100 us, as the other
@@ -99,6 +105,7 @@
 #include <stdint.h>
 
 #include <nuttx/clock.h>
+#include <nuttx/irq.h>
 #include <nuttx/mutex.h>
 #include <nuttx/sched.h>
 #include <nuttx/semaphore.h>
@@ -268,6 +275,45 @@ void nina_os_dns_unlock(void)
 {
   nxmutex_unlock(&g_dns_lock);
 }
+
+#ifdef CONFIG_NINA_NET
+static rmutex_t g_wifi_lock = NXRMUTEX_INITIALIZER;
+static sem_t g_wifi_request[2] =
+{
+  SEM_INITIALIZER(0),           /* NINA_OS_WIFI_SCAN */
+  SEM_INITIALIZER(0),           /* NINA_OS_WIFI_CONNECT */
+};
+
+void nina_os_wifi_lock(void)
+{
+  while (nxrmutex_lock(&g_wifi_lock) == -EINTR)
+    {
+    }
+}
+
+void nina_os_wifi_unlock(void)
+{
+  nxrmutex_unlock(&g_wifi_lock);
+}
+
+void nina_os_wifi_post(unsigned int which)
+{
+  irqstate_t flags = enter_critical_section();
+  int value;
+
+  if (nxsem_get_value(&g_wifi_request[which], &value) == 0 && value <= 0)
+    {
+      nxsem_post(&g_wifi_request[which]);
+    }
+
+  leave_critical_section(flags);
+}
+
+void nina_os_wifi_wait(unsigned int which)
+{
+  nxsem_wait_uninterruptible(&g_wifi_request[which]);
+}
+#endif
 
 void nina_os_sleep_us(uint32_t us)
 {

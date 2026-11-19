@@ -12,18 +12,22 @@ Zephyr version, are in `nuttx/README.md`, and how each part works in detail is i
 ## NINA-W102 (`nina`)
 
 The NINA driver is in two parts: an OS-independent core (the repository's `common/drivers/nina/`,
-shared with the other builds) and its connection to NuttX (`nuttx/drivers/nina/` and the board's
-`src/nina_bus.c`). `nina/Make.defs` finds the core's `.c` files through `VPATH`, and the objects are
-made in `nuttx/drivers`. The core is compiled without the prelude (the configuration values come in
-through `<nuttx/config.h>`, which NuttX's headers read). Its headers are in `common/drivers/nina/`;
-the kernel side (`nina/Make.defs`), the board and the `nina` and `imu` applications add that
-directory to their include paths.
+shared with the other builds) and its binding to NuttX's APIs (`common/drivers/nina/nuttx/`), with
+the board's `src/nina_bus.c`. `nuttx/drivers/nina/` keeps only `Kconfig` and `Make.defs`, because
+NuttX builds `nuttx/drivers` as its `external/` directory (`nuttx/nuttx/external` is a symlink to
+it, made by `script/setup.sh`): its `Makefile` includes `nina/Make.defs` and its `Kconfig` sources
+`nina/Kconfig`. `nina/Make.defs` finds the `.c` files of the core and of the binding through `VPATH`
+(paths relative to `nuttx/drivers`), and the objects are made in `nuttx/drivers`. Neither is
+compiled with the prelude (the configuration values come in through `<nuttx/config.h>`, which
+NuttX's headers read). The core's headers are in `common/drivers/nina/` and the binding's in
+`common/drivers/nina/nuttx/`; the kernel side (`nina/Make.defs`), the board and the `nina`, `imu`
+and `init` applications add those directories to their include paths.
 
 What the core needs from the OS and the board (its boundary):
 
 | Boundary | NuttX implementation | What it must do |
 |---|---|---|
-| `common/drivers/nina/nina_os.h` | `nina/nina_os.c` | `nina_os_lock()`, `nina_os_unlock()`: a recursive lock with priority inheritance (the Zephyr version's `K_MUTEX_DEFINE(nina_lock)`); `nina_os_lock()` returns 0 or a negative errno, which `nina_request()` and `nina_ip_config()` return untouched. `nina_os_dns_lock()`, `nina_os_dns_unlock()`: a lock with priority inheritance held across the two resolver commands. `nina_os_sleep_us()`, `nina_os_sleep_ms()`: sleep for the time rounded up to ticks plus one tick, as Zephyr's `k_sleep()`, not ended by signals. `nina_os_uptime_ms()`: the kernel clock in milliseconds, rounded down (`k_uptime_get()`). `nina_os_ready_start()`, `nina_os_ready_arm()`, `nina_os_ready_wait()`, `nina_os_ready_disarm()`: waiting for a change of READY on its interrupt (`nina_os_ready_start()` registers the callback; if it fails, the core samples READY every 100 µs; see "Waiting for READY" below). `nina_os_event_start()`, `nina_os_event_seq()`, `nina_os_event_wait()`: counting the rising edges of the IRQ line (GPIO2) and waking every waiting thread (if `nina_os_event_start()` fails, the waits keep their intervals; see "Firmware additions" below) |
+| `common/drivers/nina/nina_os.h` | `common/drivers/nina/nuttx/nina_os.c` | `nina_os_lock()`, `nina_os_unlock()`: a recursive lock with priority inheritance (the Zephyr version's `K_MUTEX_DEFINE(nina_lock)`); `nina_os_lock()` returns 0 or a negative errno, which `nina_request()` and `nina_ip_config()` return untouched. `nina_os_dns_lock()`, `nina_os_dns_unlock()`: a lock with priority inheritance held across the two resolver commands. `nina_os_wifi_lock()`, `nina_os_wifi_unlock()`: the Wi-Fi operations' lock (an `rmutex_t`). `nina_os_wifi_post()`, `nina_os_wifi_wait()`: the requests to the scan and connect threads (a semaphore each, at most one count). `nina_os_sleep_us()`, `nina_os_sleep_ms()`: sleep for the time rounded up to ticks plus one tick, as Zephyr's `k_sleep()`, not ended by signals. `nina_os_uptime_ms()`: the kernel clock in milliseconds, rounded down (`k_uptime_get()`). `nina_os_ready_start()`, `nina_os_ready_arm()`, `nina_os_ready_wait()`, `nina_os_ready_disarm()`: waiting for a change of READY on its interrupt (`nina_os_ready_start()` registers the callback; if it fails, the core samples READY every 100 µs; see "Waiting for READY" below). `nina_os_event_start()`, `nina_os_event_seq()`, `nina_os_event_wait()`: counting the rising edges of the IRQ line (GPIO2) and waking every waiting thread (if `nina_os_event_start()` fails, the waits keep their intervals; see "Firmware additions" below) |
 | `common/drivers/nina/nina_bus.h` | the board's `src/nina_bus.c` | `nina_bus_initialize()`: called once at boot, sets up the SPI and its pins and drives CS inactive (leaves READY, RESET and IRQ alone). `nina_bus_ready()`: whether the SPI and the four lines can be used. `nina_pin_configure()`, `nina_pin_set()`, `nina_pin_get()`: logical values (1 is active); the board knows each line's polarity and pull (CS GPIO9 active low, READY GPIO10 active low with pull-up, RESET GPIO3 active low, IRQ GPIO2 active high with pull-down). `nina_bus_transceive()`: a synchronous transfer in mode 0, 8 bits, MSB first (only a write when RX is NULL), without touching CS |
 | Configuration | `nina/Kconfig` | `CONFIG_NINA_TCP_MAX_IO` (default 3584) and `CONFIG_NINA_SEND_RETRY_MS` (default 1), read by `nina_sock.h`, which uses the defaults without them |
 | C library | NuttX's libc | `nina_sock.[ch]` and `nina_dns.[ch]` use the types and constants of POSIX's `<sys/socket.h>`, `<sys/types.h>`, `<sys/uio.h>`, `<netinet/in.h>`, `<netinet/tcp.h>`, `<arpa/inet.h>`, `<poll.h>` and `<netdb.h>` (`struct sockaddr_in`, `struct iovec`, `struct addrinfo`, `AF_INET`, `MSG_DONTWAIT`, `POLLIN`, `EAI_*` and so on) and `inet_pton()`, `htons()`, `malloc()` and `free()`. The `POLL*` bits of `nina_sock_poll_revents()` and the `EAI_*` values are those of the same headers as the callers' |
@@ -34,7 +38,7 @@ What the core needs from the OS and the board (its boundary):
 |---|---|
 | `common/drivers/nina/nina_spi.c` | Framing of commands and answers (`nina_request()`, `nina_ip_config()`). Used by the three builds |
 | `common/drivers/nina/nina_proto.h` | The public declarations; the Zephyr version uses the same file |
-| `common/drivers/nina/nina_os.h`, `nina/nina_os.c` | The lock (a recursive mutex with priority inheritance), sleeps, the millisecond clock and the wait for READY on its interrupt: Zephyr's `K_MUTEX`, `k_sleep()` and `k_uptime_get()` |
+| `common/drivers/nina/nina_os.h`, `common/drivers/nina/nuttx/nina_os.c` | The lock (a recursive mutex with priority inheritance), sleeps, the millisecond clock and the wait for READY on its interrupt: Zephyr's `K_MUTEX`, `k_sleep()` and `k_uptime_get()` |
 | `common/drivers/nina/nina_bus.h`, the board's `src/nina_bus.c` | SPI1 and the four lines (CS, READY, RESET, IRQ): what Zephyr's devicetree and its SPI and GPIO drivers set up |
 
 - A request is handled synchronously in the calling thread. The mutex serializes requests, and CS
@@ -64,21 +68,21 @@ What the core needs from the OS and the board (its boundary):
   `design/nuttx-porting.md`.
 - `common/drivers/nina/nina_spi.c` is checked by a host test (`common/tests/nina_spi.c`, run by
   `common/tests/run.sh`) with a fake board and clock. The wait for READY on its interrupt
-  (`nina/nina_os.c` with the core's `wait_ready()`) is checked by `nuttx/tests/nina_os.c`
+  (`common/drivers/nina/nuttx/nina_os.c` with the core's `wait_ready()`) is checked by `nuttx/tests/nina_os.c`
   (`script/host_tests.sh`) on a fake GPIO bank and kernel.
 
 ### Sockets (usrsock)
 
-The Zephyr version uses a socket offload (`drivers/nina/nina_socket.c`); the NuttX version uses
+The Zephyr version uses a socket offload (`common/drivers/nina/zephyr/nina_socket.c`); the NuttX version uses
 usrsock, with `usrsock_request()` in the kernel (NuttX's `CONFIG_NET_USRSOCK_CUSTOM`). NuttX's own
 TCP/IP stack is not used (`NET_TCP_NO_STACK`, `NET_UDP_NO_STACK`).
 
 | File | Role |
 |---|---|
 | `common/drivers/nina/nina_sock.[ch]` | The socket table (10 sockets) and the NINA's socket commands: `nina_socket_create()`, `do_bind()`, `do_listen()`, `do_accept()`, `do_connect()`, `do_close()` and `do_setsockopt()`, and for sending and receiving `udp_send()`, `do_send()`, `do_sendmsg()`, `udp_recv()` and `do_recv()`, (one pass of a send or receive wait loop per request). Used by the three builds. `FIONREAD` (`nina_sock_fionread()`) and the driver's own socket options `NINA_SO_CALLER_POLLS` and `NINA_SO_POLL` (`nina_sock_poll_revents()`, `common/drivers/nina/nina_sockopt.h`) are not used by the Zephyr version. OS-independent |
-| `nina/nina_usrsock.c` | Dispatches usrsock's requests to the functions above and answers them (ACK) |
-| `nina/nina_poller.c` | The thread `nina_event`: turns the state of the NINA's sockets into usrsock events (for a socket whose callers poll, only while it connects), and times the retries of a waiting send; with a firmware that reports socket events, it wakes on the IRQ line's edges |
-| `nina/nina_usrsock.h` | The declarations between the two |
+| `common/drivers/nina/nuttx/nina_usrsock.c` | Dispatches usrsock's requests to the functions above and answers them (ACK) |
+| `common/drivers/nina/nuttx/nina_poller.c` | The thread `nina_event`: turns the state of the NINA's sockets into usrsock events (for a socket whose callers poll, only while it connects), and times the retries of a waiting send; with a firmware that reports socket events, it wakes on the IRQ line's edges |
+| `common/drivers/nina/nuttx/nina_usrsock.h` | The declarations between the two |
 
 - A request is handled synchronously in the calling thread, at its priority (as the Zephyr
   version's socket calls). usrsock passes one request at a time and holds the usrsock lock
@@ -201,29 +205,30 @@ given by name (the default is the gateway).
 
 | File | Role |
 |---|---|
-| `common/drivers/nina/nina_net.c` | The same file as the Zephyr version's (the repository's `common/`; `nina/Make.defs` finds it through `VPATH` and compiles it with the prelude, and the object is made in `nuttx/drivers`): scan, connect, disconnect, status, and the three threads `nina_scan_tid`, `nina_connect_tid` and `nina_monitor_tid` |
-| `nina/nina_netdev.c` | Registers the NINA as the NuttX network device `wlan0` and turns wapi's wireless ioctls into the Zephyr Wi-Fi requests (`net_mgmt()`). NuttX port only |
-| `nina/wifi_profile_null.c` | Empty versions of the Wi-Fi profile functions `nina_net.c` calls (`wifi_profile_pause_reconnect()` and so on), used only in a build without the stored credentials and automatic reconnection (`common/imu/wifi_profile.c`, the same file as the Zephyr version's, built by `nuttx/apps/wifi/`; when `CONFIG_NANO_WIFI_PROFILE` is not set) |
-| `include/nina_net.h` | `nina_net_initialize()`. The `wifi_profile.h` that `nina_net.c` includes is the Zephyr version's own file, `common/imu/wifi_profile.h` (`nina/Make.defs` adds it to the include path) |
+| `common/drivers/nina/nina_wifi.[ch]` | The core's Wi-Fi operations, the same files as the other builds': scan, connect, disconnect, status, the link monitor, and the bodies of the three threads `nina_scan_tid`, `nina_connect_tid` and `nina_monitor_tid`; what happens comes back through the binding's callbacks (`struct nina_wifi_ops`) |
+| `common/drivers/nina/nuttx/nina_netdev.c` | Registers the NINA as the NuttX network device `wlan0`, turns wapi's wireless ioctls into the core's calls, puts the core's results on `wlan0` (addresses, carrier) and starts the three threads. NuttX port only |
+| `common/drivers/nina/nuttx/nina_wifi_mgmt.[ch]` | The Zephyr Wi-Fi management that the applications use (the compatibility layer's `net_mgmt()`), on the core: the interface of `net_if_get_default()`, `NET_REQUEST_WIFI_CONNECT` (which `NET_REQUEST_WIFI_CONNECT_STORED` makes for each stored network), the connection's events, and the Wi-Fi profile's reconnection as the core's hooks (`common/imu/wifi_profile.c` with `CONFIG_NANO_WIFI_PROFILE`; without it every connection is allowed and nothing reconnects) |
+| `common/drivers/nina/nuttx/nina_net.h` | `nina_net_initialize()` (the board's bring-up) and `nina_net_start()` (the init task) |
 
-- `nina_net.c` uses Zephyr's APIs (`net_if`, `net_mgmt`, `wifi_mgmt`, kernel objects) through the
-  compatibility layer (see "Zephyr API compatibility layer" below), so it runs as the same code as in
-  the Zephyr version. Values and behaviour are the Zephyr version's: every 2 seconds, while
-  connected, the monitor reads the NINA's state (0x20); after two disconnected readings in a row it
-  treats the link as lost, clears the IP configuration, raises the disconnect event and asks for a
-  reconnection. A connection hands the SSID (and passphrase) to the NINA, then reads the state every
-  500 ms up to 60 times; once associated it turns power saving off (0x17), reads the IP
-  configuration (0x21) into the interface, and raises the result event (failures as `-ETIMEDOUT` and
-  so on). A connection whose request generation (`generation`/`request_generation`) has changed ends
-  without a result. A scan while connected first treats the link as disconnected and asks for a
-  reconnection when it ends (unless the firmware keeps the link: "Firmware additions" below). A manual disconnect stops reconnection (`wifi_profile_pause_reconnect()`).
-  The passphrase is never logged.
+- The operations are the Zephyr version's: every 2 seconds, while connected, the monitor reads the
+  NINA's state (0x20); after two disconnected readings in a row it treats the link as lost, clears
+  the IP configuration, raises the disconnect event and asks for a reconnection. A connection hands
+  the SSID (and passphrase) to the NINA, then reads the state every 500 ms up to 60 times; once
+  associated it turns power saving off (0x17), reads the IP configuration (0x21) into the interface,
+  and raises the result event (failures as `-ETIMEDOUT` and so on). A connection whose request
+  generation (`generation`/`request_generation`) has changed ends without a result. A scan while
+  connected first treats the link as disconnected and asks for a reconnection when it ends (unless
+  the firmware keeps the link: "Firmware additions" below). A manual disconnect stops reconnection
+  (`wifi_profile_pause_reconnect()`). The passphrase is never logged.
 - Start-up: the board's bring-up calls `nina_net_initialize()` after the LSM6DSOX and before the KV
   store (the Zephyr version initializes the interface at `POST_KERNEL` after the sensor and sets up
-  NVS in `main()`). It starts the `net_mgmt` thread, registers `wlan0` as `NET_LL_IEEE80211` with
-  `IFF_UP`, and calls `driver_init()` and `iface_init()` (dormant, MAC address read from the NINA,
-  0x22) in Zephyr's order. That is the first command to the NINA, so the NINA reset (10 ms, 750 ms)
-  happens here. The init task starts the three threads with `K_THREAD_DEFINE_START()`.
+  NVS in `main()`). It starts the `net_mgmt` thread and registers the compatibility layer's
+  interface, registers `wlan0` as `NET_LL_IEEE80211` with `IFF_UP` and no carrier, and reads the MAC
+  address from the NINA (0x22) and its capabilities (`nina_wifi_init()`), in Zephyr's order. That is
+  the first command to the NINA, so the NINA reset (10 ms, 750 ms) happens here. The init task
+  starts the three threads with `nina_net_start()` where Zephyr starts its static threads: kernel
+  threads on static stacks (`kthread_create_with_stack()`) at the priorities and with the stacks of
+  `priorities.h` (110, 110, 109; 1536, 1024, 1536 bytes), each running before the next starts.
 - Interface values: the IPv4 address, netmask and gateway are `wlan0`'s `d_ipaddr`, `d_netmask` and
   `d_draddr`, the MAC address is `d_mac`. NuttX's `ifconfig` (`/proc/net/wlan0`), `SIOCGIFADDR` and
   so on read them there. Zephyr's "dormant" is `IFF_RUNNING` clear (`RUNNING` appears when
@@ -237,13 +242,13 @@ wapi's ioctls (`d_ioctl`, handled in the calling thread):
 
 | ioctl | Handling |
 |---|---|
-| `SIOCSIWSCAN` | `NET_REQUEST_WIFI_SCAN`. An ESSID, a passive scan or channels are passed on, and the driver refuses them with `-ENOTSUP` as in the Zephyr version |
-| `SIOCGIWSCAN` | `-EAGAIN` while scanning, the scan's error if it failed, else the results (up to 10 collected from the `SCAN_RESULT` events, in the NINA's order, as wireless events: BSSID, channel, RSSI in dBm, SSID, encrypted or not; nothing about encryption when the type is unknown). `-E2BIG` if the buffer is too small |
+| `SIOCSIWSCAN` | `nina_wifi_scan()`. An ESSID, a passive scan or channels are refused with `-ENOTSUP`, as the Zephyr version's driver refuses them |
+| `SIOCGIWSCAN` | `-EAGAIN` while scanning, the scan's error if it failed, else the results (up to 10 collected from the core's scan callback, in the NINA's order, as wireless events: BSSID, channel, RSSI in dBm, SSID, encrypted or not; nothing about encryption when the type is unknown). `-E2BIG` if the buffer is too small |
 | `SIOCSIWAUTH` | Keeps the WPA version and the pairwise cipher |
 | `SIOCSIWENCODEEXT` | Keeps the passphrase. What these two keep is used and forgotten by the next `SIOCSIWESSID` (the passphrase is wiped), so a `wapi essid` without a `wapi psk` before it connects without encryption |
-| `SIOCSIWESSID` | `NET_REQUEST_WIFI_CONNECT` with the kept settings: WPA2 → `WIFI_SECURITY_TYPE_PSK`, none → `_NONE`, WPA → `_WPA_PSK`, WPA3 → `_SAE`, WEP → `_WEP` (the driver takes only NONE and PSK). With a passphrase but no version set: PSK (as Zephyr's `wifi connect` without `-k`). Flags 0 (the random SSID of wapi's `disconnect`) does nothing |
-| `SIOCSIWAP` | 00:00:00:00:00:00 or ff:ff:ff:ff:ff:ff: `NET_REQUEST_WIFI_DISCONNECT`; anything else `-ENOTSUP` |
-| `SIOCGIWESSID`, `SIOCGIWAP`, `SIOCGIWSENS` | SSID, BSSID and RSSI from `NET_REQUEST_WIFI_IFACE_STATUS` (asks the NINA). While disconnected: empty SSID, zero BSSID, `-ENOTCONN` for the RSSI |
+| `SIOCSIWESSID` | `nina_wifi_connect()` with the kept settings: WPA2 → PSK, none → open, WPA, WPA3 and WEP → refused by the core (`-ENOTSUP`), after the checks of Zephyr's Wi-Fi management on the key (`-EINVAL`: a WEP key of other than 5, 10, 13 or 26 bytes, another key of other than 8 to 64 bytes, no key for a security that needs one). With a passphrase but no version set: PSK (as Zephyr's `wifi connect` without `-k`). Flags 0 (the random SSID of wapi's `disconnect`) does nothing |
+| `SIOCSIWAP` | 00:00:00:00:00:00 or ff:ff:ff:ff:ff:ff: `nina_wifi_disconnect()`; anything else `-ENOTSUP` |
+| `SIOCGIWESSID`, `SIOCGIWAP`, `SIOCGIWSENS` | SSID, BSSID and RSSI from `nina_wifi_status()` (asks the NINA). While disconnected: empty SSID, zero BSSID, `-ENOTCONN` for the RSSI |
 | `SIOCGIWMODE`, `SIOCSIWMODE` | Managed (`IW_MODE_INFRA`) only |
 
 Other wireless ioctls return `-ENOTTY`. The connection's result is not what `wapi essid` returns
@@ -255,13 +260,16 @@ the IP address in `ifconfig`, or the ESSID in `wapi show`.
   "Stored Wi-Fi credentials and automatic reconnection (`wifi cred`)" in `design/nuttx-porting.md`) use the layer's
   `net_mgmt()` (`NET_REQUEST_WIFI_CONNECT_STORED`), `net_mgmt_add_event_callback()`
   (`NET_EVENT_WIFI_CONNECT_RESULT`), `net_if_get_wifi_sta()`, `net_if_ipv4_get_global_addr()` and
-  `k_current_get()` as the Zephyr version does. `nina_net.c` calls
-  `wifi_profile_connection_allowed()` for every connection request and refuses one from the
+  `k_current_get()` as the Zephyr version does; `nina_wifi_mgmt.c` serves them on the core. The
+  core asks `wifi_profile_connection_allowed()` for every connection request and refuses one from the
   reconnection thread with `-ECANCELED` after a disconnection asked for (as in the Zephyr version).
+- Host tests: the core's operations `common/tests/nina_wifi.c` (`common/tests/run.sh`), `wlan0` and
+  wapi's ioctls on the core `nuttx/tests/nina_netdev.c`, and the applications' management
+  `nuttx/tests/nina_wifi_mgmt.c` (`script/host_tests.sh`).
 
 ### Firmware additions (patches 0003 to 0006)
 
-The core (`nina_spi.c`, `nina_net.c`, `nina_sock.c`, `nina_wait.c`) behaves as in the Zephyr version
+The core (`nina_spi.c`, `nina_wifi.c`, `nina_sock.c`, `nina_wait.c`) behaves as in the Zephyr version
 (described in the section of the same name in `zephyr/app/usb-console/drivers/README.md`; the
 specification is "Host interface of 0003 to 0006" in `firmware/nina-fw/README.md`): 0x6A is asked
 once when the interface is initialized (an older firmware's `0xEF` answer means no additions); with
@@ -273,7 +281,7 @@ again is a change that does not depend on the firmware.
 
 Bit 2 on NuttX:
 
-- The GPIO2 interrupt of `nina/nina_os.c` (the board's `src/nano_gpio.c`, a callback of the layer's
+- The GPIO2 interrupt of `common/drivers/nina/nuttx/nina_os.c` (the board's `src/nano_gpio.c`, a callback of the layer's
   `gpio0`) counts the edges, posts the `sem_t` of every waiting thread (a broadcast) and wakes
   `nina_event` (`nina_poller_edge()`).
 - `nina_event` starts its next pass as soon as the count has changed since the count noted before
@@ -287,7 +295,8 @@ Bit 2 on NuttX:
 - The layer's `zsock_recv()` and `zsock_poll()` use the same waits (`nina_wait()`). A
   `zsock_poll()` that includes a NuttX socket (not a NINA one) looks again at least every 20 ms.
 - If `nina_os_event_start()` fails, the waits keep their intervals whatever the firmware.
-- `nuttx/tests/nina_os.c` (`nina_os`) tests the interrupt and the waits of `nina/nina_os.c`.
+- `nuttx/tests/nina_os.c` (`nina_os`) tests the interrupt and the waits of `nina_os.c`, and the
+  Wi-Fi operations' lock and requests.
   The passes of `nina_event` at the edges and the layer's waits have no host test.
 
 ### Passthrough mode (`nina passthrough confirm`)
@@ -694,7 +703,7 @@ of the NuttX implementation on the include path.
 | `zephyr/shell/shell.h` | `shell_print()`, `shell_info()`, `shell_warn()`, `shell_error()`, `shell_fprintf()`, `struct shell` (a shell backend; its members are the OS part `zephyr_os_shell.h`), the command table macros (`SHELL_CMD_REGISTER()`, `SHELL_STATIC_SUBCMD_SET_CREATE()`, `SHELL_DYNAMIC_CMD_CREATE()`, `SHELL_CMD_ARG()`, `SHELL_CMD()`, `SHELL_COND_CMD()`, `SHELL_EXPR_CMD_ARG()`, `SHELL_HELP()`, `SHELL_SUBCMD_SET_END`), `shell_device_get_binding()`, `shell_device_filter()` (below) |
 | `zephyr/net/socket.h` (NuttX) | `zsock_inet_pton()`, `zsock_inet_ntop()` (the C library's `inet_pton()`, `inet_ntop()`), `zsock_getaddrinfo()`, `zsock_freeaddrinfo()` (the NINA's resolver, `nina_getaddrinfo()`; errors are NuttX's `EAI_*`), `zsock_socket()` (NuttX's `socket()` marked `NINA_SO_CALLER_POLLS`; if the mark is refused, closed and -1), `zsock_sendto()`, `zsock_close()` (NuttX's `sendto()`, `close()`), `zsock_recv()` (asks the NINA there and then with `ioctl(FIONREAD)` and reads with `recv(MSG_DONTWAIT)` when something is there; nothing there: `EAGAIN` with `ZSOCK_MSG_DONTWAIT`, otherwise asks again every 20 ms (with socket events, at the IRQ line's edge, 100 ms at most); as the Zephyr version's NINA `recv()`, `do_recv()` and `udp_recv()`, asks on every call and every 20 ms while it waits; `SO_RCVTIMEO` and `O_NONBLOCK` are not looked at), `ZSOCK_MSG_DONTWAIT`, `zsock_connect()`, `zsock_send()`, `zsock_sendmsg()` (`connect()`, `send()`, `sendmsg()`), `zsock_poll()`, `struct zsock_pollfd`, `ZSOCK_POLLIN` and the others (`poll()` and `struct pollfd`; how the NINA is asked, below) |
 | `zephyr/sys/clock.h` (NuttX) | `sys_clock_gettime()`, `sys_clock_settime()` (`SYS_CLOCK_REALTIME`: NuttX's `clock_gettime()`, `clock_settime()` with `CLOCK_REALTIME`; 0 or `-EINVAL`), `NSEC_PER_USEC`, `USEC_PER_SEC` |
-| `zephyr/net/net_if.h` (NuttX) | `struct net_if` (one NuttX network device), `net_if_get_default()`, `net_if_get_wifi_sta()`, the IPv4 address, netmask and gateway (`net_if_ipv4_addr_add()`, `_rm()`, `net_if_ipv4_get_global_addr()`, `net_if_ipv4_set_netmask_by_addr()`, `net_if_ipv4_set_gw()`, `net_if_ipv4_get_gw()`), `net_if_dormant_on()`/`_off()`, `net_if_is_admin_up()`, `net_if_set_link_addr()` (below) |
+| `zephyr/net/net_if.h` (NuttX) | `struct net_if` (one NuttX network device), `net_if_get_default()`, `net_if_get_wifi_sta()`, the IPv4 address and gateway as the applications read them (`net_if_ipv4_get_global_addr()`, `net_if_ipv4_get_gw()`), `net_if_is_admin_up()` (below); the NINA's binding sets the device's values itself |
 | `zephyr/net/net_mgmt.h` | `net_mgmt()` (requests), `struct net_mgmt_event_callback`, `net_mgmt_init_event_callback()`, `net_mgmt_add_event_callback()`, `_del_event_callback()`, `net_mgmt_event_notify_with_info()` (below) |
 | `zephyr/net/wifi_mgmt.h` | The Wi-Fi types (security, band, MFP, state, mode; Zephyr's values), `struct wifi_scan_params`, `wifi_scan_result`, `wifi_connect_req_params`, `wifi_iface_status`, `wifi_status`, `struct wifi_mgmt_ops`, the offloaded interface API and `NET_DEVICE_DT_OFFLOAD_DEFINE()`, the requests `NET_REQUEST_WIFI_SCAN`, `_CONNECT`, `_DISCONNECT`, `_IFACE_STATUS`, `_CONNECT_STORED` (with `CONFIG_NANO_WIFI_CREDENTIALS`), the events `NET_EVENT_WIFI_SCAN_RESULT`, `_SCAN_DONE`, `_CONNECT_RESULT`, `_DISCONNECT_RESULT`, `wifi_mgmt_raise_connect_result_event()`, `_disconnect_result_event()` (below), `wifi_security_txt()`, `wifi_band_txt()` |
 | `zephyr/net/wifi_credentials.h` | A copy of Zephyr's header of that name: `struct wifi_credentials_header`, `_personal`, `WIFI_CREDENTIALS_FLAG_*`, `wifi_credentials_set_personal_struct()`, `_get_by_ssid_personal_struct()`, `_delete_by_ssid()`, `_for_each_ssid()`, `_is_empty()` and the rest. The configuration values (`CONFIG_WIFI_CREDENTIALS_MAX_ENTRIES` and so on) come from the OS's `CONFIG_NANO_WIFI_CREDENTIALS_*` (in the NuttX build, `nuttx/apps/wifi/Kconfig`). The port's own `wifi_credentials_init()` (called by init; Zephyr's `SYS_INIT()`). The functions are in `common/compat/wifi_credentials.c` (the copy of Zephyr's library) and `wifi_credentials_backend_settings.c`, which stores them in the settings |
@@ -725,7 +734,7 @@ of the NuttX implementation on the include path.
 | `zephyr_device.c` | Device initialization and the list of devices (`gpio0`, `i2c0`, `lsm6dsox` in the Zephyr build's order of initialization, with their node labels and whether the API is a sensor API; `gpio0` with the OS's configuration `CONFIG_NANO_LSM6DSO_STREAM`) |
 | `zephyr_i2c.c` (NuttX) | I2C (on a NuttX I2C master) |
 | `zephyr_hwinfo.c` (NuttX) | `hwinfo_get_device_id()` on the board's chip ID (`nano_chip_id()`) |
-| `zephyr_net_if.c` (NuttX), `zephyr_net_mgmt.c`, `zephyr_wifi_mgmt.c` | The interface (values of the NuttX network device), the `net_mgmt` event queue and thread (the thread is the OS part `zephyr_net_mgmt_os.h`; its stack size is `NANO_STACK_NET_MGMT` of `priorities.h`), the Wi-Fi requests (a copy of the checks of Zephyr's `subsys/net/l2/wifi/wifi_mgmt.c`) and events, `NET_REQUEST_WIFI_CONNECT_STORED` (a copy of `connect_stored_command()` of the same file; with `CONFIG_NANO_WIFI_CREDENTIALS`). Only with `CONFIG_NINA_NET` |
+| `zephyr_net_if.c` (NuttX), `zephyr_net_mgmt.c`, `zephyr_wifi_mgmt.c` | The interface (values of the NuttX network device), the `net_mgmt` event queue and thread (the thread is the OS part `zephyr_net_mgmt_os.h`; its stack size is `NANO_STACK_NET_MGMT` of `priorities.h`), the Wi-Fi requests (a copy of the checks of Zephyr's `subsys/net/l2/wifi/wifi_mgmt.c`) and events, `NET_REQUEST_WIFI_CONNECT_STORED` (a copy of `connect_stored_command()` of the same file; with `CONFIG_NANO_WIFI_CREDENTIALS`). Only with `CONFIG_NINA_NET`. The NINA's binding (`common/drivers/nina/nuttx/nina_wifi_mgmt.c`) serves them on the core for the applications |
 | `zephyr_wifi_utils.c` | Copies of `wifi_security_txt()` and `wifi_band_txt()` (Zephyr's `wifi_mgmt.c`), the channel checks (`wifi_utils.c`) and `net_bytes_from_str()` (`subsys/net/ip/utils.c`), for `wifi cred`. OS-independent. Only with `CONFIG_NINA_NET` |
 | `sensor_shell_stream.c` | A copy of Zephyr's `drivers/sensor/sensor_shell_stream.c` (the sensor shell's processing thread). It includes the OS's `sensor_shell_os.h` first, and the processing thread's callback is `sensor_shell_os_processing_callback()` (in the NuttX build, `nuttx/apps/sensor/sensor_shell_nuttx.c`). Built by `apps/sensor` |
 | `wifi_credentials.c`, `wifi_credentials_backend_settings.c` | Copies of Zephyr's `subsys/net/lib/wifi_credentials/` (the stored Wi-Fi credentials). Built by `apps/wifi`. Two changes in the backend: the read buffer is aligned to 8 bytes (it is read as a struct; the Cortex-M0+ faults on an unaligned access) and the index formats are `%zu` |
@@ -944,11 +953,11 @@ of the NuttX implementation on the include path.
   `k_cyc_to_ns_floor64()` multiplies by 1000. `imu_raw_mqtt.c` times its queue lock waits and its
   publishes with it, the LSM6DSO driver its FIFO reads.
 - **Interface** (`net_if.h`): the one interface is the NINA's `wlan0`; `net_if_get_default()` and
-  `net_if_get_wifi_sta()` both return it (NULL before it is registered). It has one address (adding
-  replaces it), always "preferred" (the Zephyr version's configuration has no IPv4 duplicate
-  detection either), so `net_if_ipv4_get_global_addr(iface, NET_ADDR_PREFERRED)` returns it while
-  there is one. Values are read and written under the network device's lock (`netdev_lock()`, as
-  `ifconfig`'s ioctls do). `net_in_addr` is NuttX's `in_addr`. Interface events (`NET_EVENT_IF_UP`
+  `net_if_get_wifi_sta()` both return it (NULL before `nina_wifi_mgmt.c` registers it). It has one
+  address, which the NINA's binding sets (`nina_netdev.c`), always "preferred" (the Zephyr version's
+  configuration has no IPv4 duplicate detection either), so
+  `net_if_ipv4_get_global_addr(iface, NET_ADDR_PREFERRED)` returns it while there is one. Values are
+  read under the network device's lock (`netdev_lock()`, as `ifconfig`'s ioctls do). `net_in_addr` is NuttX's `in_addr`. Interface events (`NET_EVENT_IF_UP`
   and so on, address added or removed) are not raised (nothing in the port uses them).
 - **`net_mgmt`**: a request `net_mgmt(NET_REQUEST_X, iface, data, len)` calls
   `net_mgmt_NET_REQUEST_X()` in the calling thread, as Zephyr's macro does. Events follow the Zephyr
@@ -959,9 +968,10 @@ of the NuttX implementation on the include path.
   finds no room within 10 ms is dropped (the Zephyr version's warning is compiled out at log level
   0). Event codes are bits of this port (not Zephyr's 64-bit layer and command values) compared by
   the same names. `nina_net_initialize()` starts the thread before the interface (Zephyr's
-  `net_init()` order).
+  `net_init()` order; `nina_wifi_mgmt_initialize()`).
 - **Wi-Fi requests** (`zephyr_wifi_mgmt.c`): as in Zephyr's `wifi_mgmt.c`, `-ENOTSUP` if the
-  interface's API (named with `NET_DEVICE_DT_OFFLOAD_DEFINE()`) lacks the driver's operation,
+  interface's API lacks the driver's operation (on NuttX the interface has only the connection,
+  `nina_wifi_mgmt.c`: the scan, the disconnection and the status are wapi's, on the core),
   `-ENETDOWN` without `IFF_UP`, and the same checks of the connection parameters (channel, SSID length
   1 to 32, passphrase length 8 to 64 (5/10/13/26 for WEP), required fields per security type) before
   the driver is called (the Zephyr version's configuration has no wpa_supplicant). Scan results

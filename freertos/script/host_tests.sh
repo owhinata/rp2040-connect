@@ -471,7 +471,8 @@ printf 'ok  socket (descriptors, wait loops, options, poll, resolver, FreeRTOS P
 
 # Wi-Fi (freertos/tests/wifi): the build's network parts (drivers/compat/zephyr_net_if.c, the
 # "net_mgmt" thread of zephyr_net_mgmt_os.h, drivers/nina/nina_netif.c) under the shared ones as
-# drivers/wifi/wifi.cmake builds them (the NINA driver common/drivers/nina/nina_net.c, the
+# drivers/wifi/wifi.cmake builds them (the NINA core's Wi-Fi operations common/drivers/nina/
+# nina_wifi.c and its Zephyr binding common/drivers/nina/zephyr/nina_net.c, the
 # layer's net_mgmt and Wi-Fi requests, the stored credentials and their settings backend, the
 # Wi-Fi profile, the "wifi" command and the copy of Zephyr's wifi_credentials_shell.c, with the
 # "ifconfig" command (drivers/wifi/nano_ifconfig.c), with the
@@ -495,7 +496,8 @@ for src in drivers/compat/zephyr_net_if.c drivers/nina/nina_netif.c drivers/wifi
            ../common/shell/zshell.c ../common/shell/subcmd.c \
            ../common/compat/subsys/portability/posix/c_lib_ext/fnmatch.c \
            ../common/compat/lib/utils/getopt/getopt.c ../common/compat/lib/utils/getopt/getopt_long.c \
-           ../common/drivers/nina/nina_net.c ../common/compat/zephyr_net_mgmt.c \
+           ../common/drivers/nina/nina_wifi.c ../common/drivers/nina/zephyr/nina_net.c \
+           ../common/compat/zephyr_net_mgmt.c \
            ../common/compat/zephyr_wifi_mgmt.c ../common/compat/zephyr_wifi_utils.c \
            ../common/compat/wifi_credentials.c ../common/compat/wifi_credentials_backend_settings.c \
            ../common/imu/wifi_profile.c ../common/compat/zephyr_wifi_shell.c \
@@ -524,7 +526,7 @@ for src in drivers/compat/zephyr_net_if.c drivers/nina/nina_netif.c drivers/wifi
         */wifi_credentials_backend_settings.c) extra+=(-Wno-sign-compare) ;;
         *zshell.c|*nano_console.c) extra+=(-Dcalloc=test_calloc -Dmalloc=test_malloc -Dfree=test_free) ;;
         # A scan that never ends gives up after 1 s here (10 s on the board).
-        */nina_net.c) extra+=(-DNINA_SCAN_WAIT_MS=1000) ;;
+        */nina_wifi.c) extra+=(-DNINA_SCAN_WAIT_MS=1000) ;;
     esac
     cc "${flags[@]}" "${strict[@]}" "${wifiinc[@]}" "${inc[@]}" "${extra[@]}" -c "$src" -o "$obj"
     wifiobjs+=("$obj")

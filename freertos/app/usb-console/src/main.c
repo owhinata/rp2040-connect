@@ -250,9 +250,10 @@ static void main_main(void *arg)
 	/* The threads of K_THREAD_DEFINE(), which Zephyr starts before main()
 	 * (z_init_static_threads(), after the devices) and the NuttX build in
 	 * its init task at this point, in the NuttX build's order: the NINA
-	 * driver's (common/drivers/nina/nina_net.c: scan, connect, link
-	 * monitor), the IMU service's (common/imu/imu_stream.c), its MQTT
-	 * transport's (common/imu/imu_raw_mqtt.c), the time synchronization's
+	 * driver's (common/drivers/nina/zephyr/nina_net.c, the core's
+	 * nina_wifi.c: scan, connect, link monitor), the IMU service's
+	 * (common/imu/imu_stream.c), its MQTT transport's
+	 * (common/imu/imu_raw_mqtt.c), the time synchronization's
 	 * (common/imu/time_sync.c), the Wi-Fi profile's reconnection
 	 * (common/imu/wifi_profile.c) and the sensor shell's processing thread
 	 * (common/compat/sensor_shell_stream.c).  Each waits for its work at

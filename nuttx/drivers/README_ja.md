@@ -10,17 +10,20 @@ symlink で、`libexternal.a` になります）。ボード側の部分は `nut
 
 ## NINA-W102（`nina`）
 
-NINA のドライバーは、OS に依存しないコア（リポジトリの `common/drivers/nina/`。ほかの版と共有する）と、NuttX への
-接続（`nuttx/drivers/nina/` とボードの `src/nina_bus.c`）に分かれています。コアの `.c` は `nina/Make.defs` が
-`VPATH` で参照し、オブジェクトは `nuttx/drivers` にできます。コアには前置きヘッダーを付けません（構成の値は、NuttX の
-ヘッダーが読む `<nuttx/config.h>` から入ります）。コアのヘッダーは `common/drivers/nina/` にあり、カーネル側
-（`nina/Make.defs`）、ボード、`nina`・`imu` のアプリがインクルードパスに足します。
+NINA のドライバーは、OS に依存しないコア（リポジトリの `common/drivers/nina/`。ほかの版と共有する）と、その NuttX の
+API へのつなぎ（`common/drivers/nina/nuttx/`）とボードの `src/nina_bus.c` に分かれています。`nuttx/drivers/nina/` には
+`Kconfig` と `Make.defs` だけが残ります。NuttX は `nuttx/drivers` を `external/` としてビルドし（`nuttx/nuttx/external` は
+`script/setup.sh` が作るそこへの symlink）、その `Makefile` が `nina/Make.defs` を、`Kconfig` が `nina/Kconfig` を読むからです。
+コアとつなぎの `.c` は `nina/Make.defs` が `VPATH`（`nuttx/drivers` からの相対パス）で参照し、オブジェクトは `nuttx/drivers` に
+できます。どちらにも前置きヘッダーを付けません（構成の値は、NuttX のヘッダーが読む `<nuttx/config.h>` から入ります）。
+コアのヘッダーは `common/drivers/nina/`、つなぎのヘッダーは `common/drivers/nina/nuttx/` にあり、カーネル側
+（`nina/Make.defs`）、ボード、`nina`・`imu`・`init` のアプリがインクルードパスに足します。
 
 コアが OS とボードに求めるもの（境界）:
 
 | 境界 | NuttX 版の実装 | 満たすこと |
 |---|---|---|
-| `common/drivers/nina/nina_os.h` | `nina/nina_os.c` | `nina_os_lock()`・`nina_os_unlock()`: 再帰可能で優先度継承のあるロック（Zephyr 版の `K_MUTEX_DEFINE(nina_lock)`）。`nina_os_lock()` は 0 か負の errno を返し、失敗は `nina_request()`・`nina_ip_config()` がそのまま返す。`nina_os_dns_lock()`・`nina_os_dns_unlock()`: 名前解決の 2 つの命令の間に持つ、優先度継承のあるロック。`nina_os_sleep_us()`・`nina_os_sleep_ms()`: Zephyr の `k_sleep()` と同じく tick に切り上げて 1 tick 足した時間眠り、シグナルでは終わらない。`nina_os_uptime_ms()`: カーネルの時計の ms（切り捨て。`k_uptime_get()`）。`nina_os_ready_start()`・`nina_os_ready_arm()`・`nina_os_ready_wait()`・`nina_os_ready_disarm()`: READY の変化を割り込みで待つ（`nina_os_ready_start()` がコールバックを登録し、失敗したらコアは 100 µs ごとに読む。下の「READY の待ち」）。`nina_os_event_start()`・`nina_os_event_seq()`・`nina_os_event_wait()`: IRQ の線（GPIO2）の立ち上がりのエッジを数え、待っている全スレッドを起こす（`nina_os_event_start()` が失敗したらビット 2 が無いときの間隔で待つ。下の「ファームウェアの追加機能」） |
+| `common/drivers/nina/nina_os.h` | `common/drivers/nina/nuttx/nina_os.c` | `nina_os_lock()`・`nina_os_unlock()`: 再帰可能で優先度継承のあるロック（Zephyr 版の `K_MUTEX_DEFINE(nina_lock)`）。`nina_os_wifi_lock()`・`nina_os_wifi_unlock()`: Wi-Fi の操作のロック（`rmutex_t`）。`nina_os_wifi_post()`・`nina_os_wifi_wait()`: スキャンと接続のスレッドへの要求（それぞれセマフォ 1 つ、数は最大 1）。`nina_os_lock()` は 0 か負の errno を返し、失敗は `nina_request()`・`nina_ip_config()` がそのまま返す。`nina_os_dns_lock()`・`nina_os_dns_unlock()`: 名前解決の 2 つの命令の間に持つ、優先度継承のあるロック。`nina_os_sleep_us()`・`nina_os_sleep_ms()`: Zephyr の `k_sleep()` と同じく tick に切り上げて 1 tick 足した時間眠り、シグナルでは終わらない。`nina_os_uptime_ms()`: カーネルの時計の ms（切り捨て。`k_uptime_get()`）。`nina_os_ready_start()`・`nina_os_ready_arm()`・`nina_os_ready_wait()`・`nina_os_ready_disarm()`: READY の変化を割り込みで待つ（`nina_os_ready_start()` がコールバックを登録し、失敗したらコアは 100 µs ごとに読む。下の「READY の待ち」）。`nina_os_event_start()`・`nina_os_event_seq()`・`nina_os_event_wait()`: IRQ の線（GPIO2）の立ち上がりのエッジを数え、待っている全スレッドを起こす（`nina_os_event_start()` が失敗したらビット 2 が無いときの間隔で待つ。下の「ファームウェアの追加機能」） |
 | `common/drivers/nina/nina_bus.h` | ボードの `src/nina_bus.c` | `nina_bus_initialize()`: 起動時に 1 回、SPI とそのピンを設定して CS を非アクティブにする（READY・RESET・IRQ には触れない）。`nina_bus_ready()`: SPI と 4 本の線が使えるか。`nina_pin_configure()`・`nina_pin_set()`・`nina_pin_get()`: 論理値（1 がアクティブ）。極性とプルはボードが知る（CS GPIO9 アクティブ low、READY GPIO10 アクティブ low・プルアップ、RESET GPIO3 アクティブ low、IRQ GPIO2 アクティブ high・プルダウン）。`nina_bus_transceive()`: モード 0・8 ビット・MSB first の同期転送（RX が NULL なら書くだけ）、CS には触れない |
 | 構成 | `nina/Kconfig` | `CONFIG_NINA_TCP_MAX_IO`（既定 3584）と `CONFIG_NINA_SEND_RETRY_MS`（既定 1）。`nina_sock.h` が読み、無ければ既定値を使う |
 | C ライブラリ | NuttX の libc | `nina_sock.[ch]`・`nina_dns.[ch]` は POSIX の `<sys/socket.h>`・`<sys/types.h>`・`<sys/uio.h>`・`<netinet/in.h>`・`<netinet/tcp.h>`・`<arpa/inet.h>`・`<poll.h>`・`<netdb.h>` の型と定数（`struct sockaddr_in`、`struct iovec`、`struct addrinfo`、`AF_INET`、`MSG_DONTWAIT`、`POLLIN`、`EAI_*` など）と、`inet_pton()`・`htons()`・`malloc()`・`free()` を使う。`nina_sock_poll_revents()` が返す `POLL*` と `EAI_*` の値は、呼び出す側と同じヘッダーのもの |
@@ -31,7 +34,7 @@ NINA のドライバーは、OS に依存しないコア（リポジトリの `c
 |---|---|
 | `common/drivers/nina/nina_spi.c` | コマンドと応答のフレーミング（`nina_request()`、`nina_ip_config()`）。3 つの版が使う |
 | `common/drivers/nina/nina_proto.h` | 公開する宣言。Zephyr 版も同じファイルを使う |
-| `common/drivers/nina/nina_os.h`、`nina/nina_os.c` | ロック（再帰可能なミューテックス、優先度継承あり）、sleep、ms の時計、READY の割り込みでの待ち。Zephyr の `K_MUTEX`・`k_sleep()`・`k_uptime_get()` に当たる |
+| `common/drivers/nina/nina_os.h`、`common/drivers/nina/nuttx/nina_os.c` | ロック（再帰可能なミューテックス、優先度継承あり）、sleep、ms の時計、READY の割り込みでの待ち。Zephyr の `K_MUTEX`・`k_sleep()`・`k_uptime_get()` に当たる |
 | `common/drivers/nina/nina_bus.h`、ボードの `src/nina_bus.c` | SPI1 と 4 本の信号線（CS、READY、RESET、IRQ）。Zephyr のデバイスツリーと SPI・GPIO ドライバーが行っていた設定に当たる |
 
 - 要求は呼び出したスレッドの文脈で同期して処理します。ミューテックスで直列化し、CS を下げてから
@@ -57,21 +60,21 @@ NINA のドライバーは、OS に依存しないコア（リポジトリの `c
   コアは 100 µs ごとに READY を読みます（期限と結果は同じ）。
 - 期限と配線は `design/nuttx-porting-ja.md` の「NINA-W102（`nina`）」の節にあります。
 - `common/drivers/nina/nina_spi.c` はホストテスト（`common/tests/nina_spi.c`。`common/tests/run.sh` が走らせる）で、偽のボードと時計を
-  使って確かめます。READY の割り込みでの待ち（`nina/nina_os.c` とコアの `wait_ready()`）は `nuttx/tests/nina_os.c`
+  使って確かめます。READY の割り込みでの待ち（`common/drivers/nina/nuttx/nina_os.c` とコアの `wait_ready()`）は `nuttx/tests/nina_os.c`
   （`script/host_tests.sh`）が、偽の GPIO バンクとカーネルで確かめます。
 
 ### ソケット（usrsock）
 
-Zephyr 版はソケットのオフロード（`drivers/nina/nina_socket.c`）で、NuttX 版は usrsock です。NuttX の
+Zephyr 版はソケットのオフロード（`common/drivers/nina/zephyr/nina_socket.c`）で、NuttX 版は usrsock です。NuttX の
 `CONFIG_NET_USRSOCK_CUSTOM` で、カーネル内に `usrsock_request()` を置きます。NuttX 自身の TCP/IP スタックは
 使いません（`NET_TCP_NO_STACK`、`NET_UDP_NO_STACK`）。
 
 | ファイル | 役割 |
 |---|---|
 | `common/drivers/nina/nina_sock.[ch]` | ソケットの表（10 個）と NINA のソケット命令: `nina_socket_create()`・`do_bind()`・`do_listen()`・`do_accept()`・`do_connect()`・`do_close()`・`do_setsockopt()` と、送受信の `udp_send()`・`do_send()`・`do_sendmsg()`・`udp_recv()`・`do_recv()`（送受信の待ちのループは要求 1 回で 1 周）。3 つの版が使う。`FIONREAD`（`nina_sock_fionread()`）と独自のソケットオプション `NINA_SO_CALLER_POLLS`・`NINA_SO_POLL`（`nina_sock_poll_revents()`、`common/drivers/nina/nina_sockopt.h`）は Zephyr 版では使わない。OS に依存しない |
-| `nina/nina_usrsock.c` | usrsock の要求を上の関数に振り分け、応答（ACK）を返す |
-| `nina/nina_poller.c` | スレッド `nina_event`。NINA のソケットの状態を見て usrsock のイベントにする（呼び出し元だけが問い合わせるソケットは接続中だけ）。待つ送信の再試行の時間も計る。ファームウェアがソケットの事象を通知するときは IRQ の線のエッジで起きる |
-| `nina/nina_usrsock.h` | 上の 2 つの間の宣言 |
+| `common/drivers/nina/nuttx/nina_usrsock.c` | usrsock の要求を上の関数に振り分け、応答（ACK）を返す |
+| `common/drivers/nina/nuttx/nina_poller.c` | スレッド `nina_event`。NINA のソケットの状態を見て usrsock のイベントにする（呼び出し元だけが問い合わせるソケットは接続中だけ）。待つ送信の再試行の時間も計る。ファームウェアがソケットの事象を通知するときは IRQ の線のエッジで起きる |
+| `common/drivers/nina/nuttx/nina_usrsock.h` | 上の 2 つの間の宣言 |
 
 - 要求は、呼び出したスレッドの文脈で、その優先度のまま同期して処理します（Zephyr 版のソケット呼び出しと
   同じ）。usrsock は要求を 1 つずつ渡し、その間は usrsock のロックを持っています。NINA の命令は
@@ -177,15 +180,13 @@ Zephyr 版はソケットのオフロード（`drivers/nina/nina_socket.c`）で
 
 | ファイル | 役割 |
 |---|---|
-| `common/drivers/nina/nina_net.c` | Zephyr 版と同じファイル（リポジトリの `common/`。`nina/Make.defs` が `VPATH` で参照し、前置きヘッダーを付けてコンパイルする。オブジェクトは `nuttx/drivers` にできる）。スキャン・接続・切断・状態の取得と、3 つのスレッド `nina_scan_tid`・`nina_connect_tid`・`nina_monitor_tid` |
-| `nina/nina_netdev.c` | NINA を NuttX のネットワークデバイス `wlan0` として登録し、wapi の無線の ioctl を Zephyr の Wi-Fi の要求（`net_mgmt()`）にする。NuttX 版だけ |
-| `nina/wifi_profile_null.c` | `nina_net.c` が呼ぶ Wi-Fi のプロファイルの関数（`wifi_profile_pause_reconnect()` など）の空の実装。保存した資格情報と自動再接続（`common/imu/wifi_profile.c`、Zephyr 版と同じファイル。`nuttx/apps/wifi/` がビルドする）を入れない構成（`CONFIG_NANO_WIFI_PROFILE` が無いとき）だけで使う |
-| `include/nina_net.h` | `nina_net_initialize()`。`nina_net.c` が読む `wifi_profile.h` は Zephyr 版と同じファイル `common/imu/wifi_profile.h`（`nina/Make.defs` がインクルードパスに足す） |
+| `common/drivers/nina/nina_wifi.[ch]` | コアの Wi-Fi の操作（ほかの版と同じファイル）。スキャン・接続・切断・状態・接続の監視と、3 つのスレッド `nina_scan_tid`・`nina_connect_tid`・`nina_monitor_tid` の本体。起きたことはつなぎのコールバック（`struct nina_wifi_ops`）に返す |
+| `common/drivers/nina/nuttx/nina_netdev.c` | NINA を NuttX のネットワークデバイス `wlan0` として登録し、wapi の無線の ioctl をコアの呼び出しにし、コアの結果を `wlan0`（アドレス、キャリア）に反映し、3 つのスレッドを始める。NuttX 版だけ |
+| `common/drivers/nina/nuttx/nina_wifi_mgmt.[ch]` | アプリが使う Zephyr の Wi-Fi 管理（互換層の `net_mgmt()`）をコアの上で：`net_if_get_default()` のインターフェース、`NET_REQUEST_WIFI_CONNECT`（`NET_REQUEST_WIFI_CONNECT_STORED` が保存したネットワークごとに出す）、接続のイベント、Wi-Fi のプロファイルの再接続をコアのフックに（`CONFIG_NANO_WIFI_PROFILE` のとき `common/imu/wifi_profile.c`。無ければ接続はすべて許し、再接続しない） |
+| `common/drivers/nina/nuttx/nina_net.h` | `nina_net_initialize()`（ボードの起動処理）と `nina_net_start()`（init） |
 
-- `nina_net.c` は Zephyr の API（`net_if`、`net_mgmt`、`wifi_mgmt`、カーネルのオブジェクト）を互換層
-  （下の「Zephyr の API の互換層」）で使うので、Zephyr 版と同じコードのまま動きます。値と動作は Zephyr 版と
-  同じです: 監視は 2 秒ごとに、接続中なら NINA の状態（0x20）を見て、2 回続けて未接続なら切断として IP の設定を
-  消し、切断のイベントを出して再接続を頼みます。接続は NINA に SSID（とパスフレーズ）を渡した後、
+- 操作は Zephyr 版と同じです: 監視は 2 秒ごとに、接続中なら NINA の状態（0x20）を見て、2 回続けて未接続なら切断として
+  IP の設定を消し、切断のイベントを出して再接続を頼みます。接続は NINA に SSID（とパスフレーズ）を渡した後、
   500 ms ごとに最大 60 回状態を見て、接続できたら省電力を切り（0x17）、IP の設定（0x21）を読んで
   インターフェースに入れ、結果のイベント（失敗は `-ETIMEDOUT` など）を出します。要求の世代
   （`generation`／`request_generation`）が変わった古い接続は結果を出さずに終わります。スキャンは接続中なら
@@ -193,11 +194,12 @@ Zephyr 版はソケットのオフロード（`drivers/nina/nina_socket.c`）で
   追加機能」）。手動の切断は再接続を止めます（`wifi_profile_pause_reconnect()`）。
   パスフレーズはログに出しません。
 - 起動: ボードの起動処理が `nina_net_initialize()` を LSM6DSOX の後、KV の前に呼びます（Zephyr 版がインターフェースを
-  `POST_KERNEL` でセンサーの後に初期化し、NVS を `main()` で用意するのと同じ順）。`net_mgmt` のスレッドを始め、
-  `wlan0` を `NET_LL_IEEE80211` で登録して `IFF_UP` にし、Zephyr と同じ順に `driver_init()` と `iface_init()`
-  （休止の状態にし、NINA から MAC アドレス（0x22）を読む）を呼びます。これが NINA への最初の命令なので、
-  ここで NINA のリセット（10 ms、750 ms）が入ります。3 つのスレッドは init が `K_THREAD_DEFINE_START()` で
-  始めます。
+  `POST_KERNEL` でセンサーの後に初期化し、NVS を `main()` で用意するのと同じ順）。`net_mgmt` のスレッドを始めて互換層の
+  インターフェースを登録し、`wlan0` を `NET_LL_IEEE80211` で登録して `IFF_UP`・キャリアなしにし、NINA から MAC アドレス
+  （0x22）と追加機能を読みます（`nina_wifi_init()`。Zephyr と同じ順）。これが NINA への最初の命令なので、ここで NINA の
+  リセット（10 ms、750 ms）が入ります。3 つのスレッドは、Zephyr が静的なスレッドを始めるところで init が
+  `nina_net_start()` で始めます。静的なスタックのカーネルスレッド（`kthread_create_with_stack()`）で、優先度とスタックは
+  `priorities.h` の値（110、110、109。1536、1024、1536 バイト）、1 つが動き出してから次を始めます。
 - インターフェースの値: IPv4 のアドレス・ネットマスク・ゲートウェイは `wlan0` の `d_ipaddr`・`d_netmask`・
   `d_draddr`、MAC アドレスは `d_mac` に書きます。NuttX の `ifconfig`（`/proc/net/wlan0`）と `SIOCGIFADDR` などは
   そこを読みます。Zephyr の「休止（dormant）」は `IFF_RUNNING` が無い状態です（接続すると `RUNNING` が付く）。
@@ -211,13 +213,13 @@ wapi の ioctl（`d_ioctl`。呼び出したスレッドで処理）は次のと
 
 | ioctl | 処理 |
 |---|---|
-| `SIOCSIWSCAN` | `NET_REQUEST_WIFI_SCAN`。ESSID の指定、パッシブ、チャネルの指定は渡して、ドライバーが Zephyr 版と同じく `-ENOTSUP` で断る |
-| `SIOCGIWSCAN` | スキャン中は `-EAGAIN`、失敗ならそのエラー、終わっていれば結果（`SCAN_RESULT` のイベントで集めた最大 10 件を、NINA の順に、BSSID・チャネル・RSSI（dBm）・SSID・暗号化の有無の無線イベントにする。暗号化の種類が不明なら有無を付けない）。バッファーが足りなければ `-E2BIG` |
+| `SIOCSIWSCAN` | `nina_wifi_scan()`。ESSID の指定、パッシブ、チャネルの指定は、Zephyr 版のドライバーと同じく `-ENOTSUP` で断る |
+| `SIOCGIWSCAN` | スキャン中は `-EAGAIN`、失敗ならそのエラー、終わっていれば結果（コアのスキャンのコールバックで集めた最大 10 件を、NINA の順に、BSSID・チャネル・RSSI（dBm）・SSID・暗号化の有無の無線イベントにする。暗号化の種類が不明なら有無を付けない）。バッファーが足りなければ `-E2BIG` |
 | `SIOCSIWAUTH` | WPA の版と pairwise の暗号を覚える |
 | `SIOCSIWENCODEEXT` | パスフレーズを覚える。この 2 つで覚えた設定は次の `SIOCSIWESSID` で使って忘れる（パスフレーズは消す）ので、`wapi psk` を付けない `wapi essid` は暗号化なしの接続になる |
-| `SIOCSIWESSID` | 覚えた設定で `NET_REQUEST_WIFI_CONNECT`。WPA2 → `WIFI_SECURITY_TYPE_PSK`、無し → `_NONE`、WPA → `_WPA_PSK`、WPA3 → `_SAE`、WEP → `_WEP`（ドライバーが受け付けるのは NONE と PSK だけ）。版を設定せずにパスフレーズだけがあれば PSK（Zephyr の `wifi connect` で `-k` を省いたときと同じ）。フラグ 0（wapi の `disconnect` が送る乱数の SSID）は何もしない |
-| `SIOCSIWAP` | 00:00:00:00:00:00 か ff:ff:ff:ff:ff:ff なら `NET_REQUEST_WIFI_DISCONNECT`。ほかは `-ENOTSUP` |
-| `SIOCGIWESSID`、`SIOCGIWAP`、`SIOCGIWSENS` | `NET_REQUEST_WIFI_IFACE_STATUS`（NINA に尋ねる）の SSID、BSSID、RSSI。未接続なら SSID は空、BSSID は 0、RSSI は `-ENOTCONN` |
+| `SIOCSIWESSID` | 覚えた設定で `nina_wifi_connect()`。WPA2 → PSK、無し → 暗号化なし、WPA・WPA3・WEP はコアが断る（`-ENOTSUP`）。その前に Zephyr の Wi-Fi 管理と同じ鍵の検査をする（`-EINVAL`: WEP の鍵が 5・10・13・26 バイト以外、ほかの鍵が 8〜64 バイト以外、鍵の要るセキュリティで鍵が無い）。版を設定せずにパスフレーズだけがあれば PSK（Zephyr の `wifi connect` で `-k` を省いたときと同じ）。フラグ 0（wapi の `disconnect` が送る乱数の SSID）は何もしない |
+| `SIOCSIWAP` | 00:00:00:00:00:00 か ff:ff:ff:ff:ff:ff なら `nina_wifi_disconnect()`。ほかは `-ENOTSUP` |
+| `SIOCGIWESSID`、`SIOCGIWAP`、`SIOCGIWSENS` | `nina_wifi_status()`（NINA に尋ねる）の SSID、BSSID、RSSI。未接続なら SSID は空、BSSID は 0、RSSI は `-ENOTCONN` |
 | `SIOCGIWMODE`、`SIOCSIWMODE` | managed（`IW_MODE_INFRA`）だけ |
 
 ほかの無線の ioctl は `-ENOTTY` です。接続の結果は `wapi essid` の戻りでは分からず（Zephyr 版の `wifi connect` も
@@ -227,12 +229,14 @@ wapi の ioctl（`d_ioctl`。呼び出したスレッドで処理）は次のと
   `subsys/net/lib/wifi_credentials/` の写し、`wifi cred`。`design/nuttx-porting-ja.md` の「Wi-Fi の資格情報と自動再接続（`wifi cred`）」）は、
   互換層の `net_mgmt()`（`NET_REQUEST_WIFI_CONNECT_STORED`）、`net_mgmt_add_event_callback()`
   （`NET_EVENT_WIFI_CONNECT_RESULT`）、`net_if_get_wifi_sta()`、`net_if_ipv4_get_global_addr()`、`k_current_get()` を
-  Zephyr 版と同じ形で使います。`nina_net.c` は接続の要求のたびに `wifi_profile_connection_allowed()` を呼び、
+  Zephyr 版と同じ形で使い、`nina_wifi_mgmt.c` がそれをコアの上で受けます。コアは接続の要求のたびに `wifi_profile_connection_allowed()` を呼び、
   再接続のスレッドからの要求を、手動の切断の後は `-ECANCELED` で断ります（Zephyr 版と同じ）。
+- ホストテスト: コアの操作は `common/tests/nina_wifi.c`（`common/tests/run.sh`）、`wlan0` と wapi の ioctl をコアの上で
+  `nuttx/tests/nina_netdev.c`、アプリの管理を `nuttx/tests/nina_wifi_mgmt.c`（`script/host_tests.sh`）が確かめます。
 
 ### ファームウェアの追加機能（パッチ 0003〜0006）
 
-コア（`nina_spi.c`、`nina_net.c`、`nina_sock.c`、`nina_wait.c`）の動作は Zephyr 版と同じです（説明は
+コア（`nina_spi.c`、`nina_wifi.c`、`nina_sock.c`、`nina_wait.c`）の動作は Zephyr 版と同じです（説明は
 `zephyr/app/usb-console/drivers/README_ja.md` の同名の節、仕様は `firmware/nina-fw/README.md` の
 「Host interface of 0003 to 0006」）: インターフェースの初期化で 1 回 0x6A を尋ね（古いファームウェアは `0xEF` の
 応答で「機能なし」）、ビット 0 で接続中のスキャンを切断として扱わず、ビット 1 で 0x36 → 0x6B（100 ms ごと、10 秒まで）
@@ -242,7 +246,7 @@ wapi の ioctl（`d_ioctl`。呼び出したスレッドで処理）は次のと
 
 NuttX 版のビット 2 の待ち:
 
-- `nina/nina_os.c` の GPIO2 の割り込み（ボードの `src/nano_gpio.c`、互換層の `gpio0` のコールバック）がエッジを数え、
+- `common/drivers/nina/nuttx/nina_os.c` の GPIO2 の割り込み（ボードの `src/nano_gpio.c`、互換層の `gpio0` のコールバック）がエッジを数え、
   待っている全スレッドの `sem_t` を post し（ブロードキャスト）、`nina_event` も起こします（`nina_poller_edge()`）。
 - `nina_event` は、前の周の前に控えたエッジの数（または受信の要求が命令の前に控えた数）から数が変わったら、
   20 ms を待たずに次の周を始めます。変わらなければ 100 ms（接続中のソケットがあればその期限まで）で周を始めます。
@@ -252,7 +256,7 @@ NuttX 版のビット 2 の待ち:
 - 互換層の `zsock_recv()`・`zsock_poll()` も同じ待ち（`nina_wait()`）を使います。NuttX のソケット（NINA 以外）を
   含む `zsock_poll()` は最長 20 ms ごとに見直します。
 - `nina_os_event_start()` が失敗したときは、ビット 2 があっても、ビット 2 が無いときの間隔で待ちます。
-- `nina/nina_os.c` の割り込みと待ちは `nuttx/tests/nina_os.c`（`nina_os`）が確かめます。`nina_event` の
+- `nina_os.c` の割り込みと待ち、Wi-Fi の操作のロックと要求は `nuttx/tests/nina_os.c`（`nina_os`）が確かめます。`nina_event` の
   エッジでの周と、互換層の待ちは、ホストテストで確かめていません。
 
 ### 中継モード（`nina passthrough confirm`）
@@ -619,7 +623,7 @@ Zephyr の API を、Zephyr の名前のまま最小限だけ用意したもの�
 | `zephyr/shell/shell.h` | `shell_print()`・`shell_info()`・`shell_warn()`・`shell_error()`・`shell_fprintf()`、`struct shell`（シェルのバックエンド。中身は OS の部分 `zephyr_os_shell.h`）、コマンドの表のマクロ（`SHELL_CMD_REGISTER()`、`SHELL_STATIC_SUBCMD_SET_CREATE()`、`SHELL_DYNAMIC_CMD_CREATE()`、`SHELL_CMD_ARG()`、`SHELL_CMD()`、`SHELL_COND_CMD()`、`SHELL_EXPR_CMD_ARG()`、`SHELL_HELP()`、`SHELL_SUBCMD_SET_END`）、`shell_device_get_binding()`・`shell_device_filter()`（下） |
 | `zephyr/net/socket.h`（NuttX） | `zsock_inet_pton()`・`zsock_inet_ntop()`（C ライブラリの `inet_pton()`・`inet_ntop()`）、`zsock_getaddrinfo()`・`zsock_freeaddrinfo()`（NINA の名前解決、`nina_getaddrinfo()`。エラーは NuttX の `EAI_*`）、`zsock_socket()`（NuttX の `socket()` に `NINA_SO_CALLER_POLLS` を付ける。付けられなければ閉じて -1）、`zsock_sendto()`・`zsock_close()`（NuttX の `sendto()`・`close()`）、`zsock_recv()`（先に `ioctl(FIONREAD)` で NINA にその場で尋ね、あれば `recv(MSG_DONTWAIT)` で読む。`ZSOCK_MSG_DONTWAIT` のときは何も無ければ `EAGAIN`、無いときは 20 ms ごと（ソケットの事象があれば IRQ の線のエッジ、最長 100 ms）に尋ね直す。Zephyr 版の NINA の `recv()`（`do_recv()`・`udp_recv()`）が呼ばれるたびに尋ね、待つときは 20 ms ごとに尋ね直すのに合わせるため。`SO_RCVTIMEO`・`O_NONBLOCK` は見ない）、`ZSOCK_MSG_DONTWAIT`、`zsock_connect()`・`zsock_send()`・`zsock_sendmsg()`（`connect()`・`send()`・`sendmsg()`）、`zsock_poll()`・`struct zsock_pollfd`・`ZSOCK_POLLIN` など（`poll()` と `struct pollfd`。NINA への尋ね方は下） |
 | `zephyr/sys/clock.h`（NuttX） | `sys_clock_gettime()`・`sys_clock_settime()`（`SYS_CLOCK_REALTIME`。NuttX の `clock_gettime()`・`clock_settime()` の `CLOCK_REALTIME`。0 か `-EINVAL`）、`NSEC_PER_USEC`・`USEC_PER_SEC` |
-| `zephyr/net/net_if.h`（NuttX） | `struct net_if`（NuttX のネットワークデバイス 1 つ）、`net_if_get_default()`・`net_if_get_wifi_sta()`、IPv4 のアドレス・ネットマスク・ゲートウェイ（`net_if_ipv4_addr_add()`・`_rm()`・`net_if_ipv4_get_global_addr()`・`net_if_ipv4_set_netmask_by_addr()`・`net_if_ipv4_set_gw()`・`net_if_ipv4_get_gw()`）、`net_if_dormant_on()`・`_off()`、`net_if_is_admin_up()`、`net_if_set_link_addr()`（下） |
+| `zephyr/net/net_if.h`（NuttX） | `struct net_if`（NuttX のネットワークデバイス 1 つ）、`net_if_get_default()`・`net_if_get_wifi_sta()`、アプリが読む IPv4 のアドレスとゲートウェイ（`net_if_ipv4_get_global_addr()`・`net_if_ipv4_get_gw()`）、`net_if_is_admin_up()`（下）。デバイスの値は NINA のつなぎが自分で書く |
 | `zephyr/net/net_mgmt.h` | `net_mgmt()`（要求）、`struct net_mgmt_event_callback`、`net_mgmt_init_event_callback()`・`net_mgmt_add_event_callback()`・`_del_event_callback()`、`net_mgmt_event_notify_with_info()`（下） |
 | `zephyr/net/wifi_mgmt.h` | Wi-Fi の型（セキュリティ、帯域、MFP、状態、モード。Zephyr と同じ値）、`struct wifi_scan_params`・`wifi_scan_result`・`wifi_connect_req_params`・`wifi_iface_status`・`wifi_status`、`struct wifi_mgmt_ops`、オフロードのインターフェースの API と `NET_DEVICE_DT_OFFLOAD_DEFINE()`、要求 `NET_REQUEST_WIFI_SCAN`・`_CONNECT`・`_DISCONNECT`・`_IFACE_STATUS`・`_CONNECT_STORED`（`CONFIG_NANO_WIFI_CREDENTIALS` のとき）、イベント `NET_EVENT_WIFI_SCAN_RESULT`・`_SCAN_DONE`・`_CONNECT_RESULT`・`_DISCONNECT_RESULT`、`wifi_mgmt_raise_connect_result_event()`・`_disconnect_result_event()`（下）、`wifi_security_txt()`・`wifi_band_txt()` |
 | `zephyr/net/wifi_credentials.h` | Zephyr の同名のヘッダーの写し: `struct wifi_credentials_header`・`_personal`、`WIFI_CREDENTIALS_FLAG_*`、`wifi_credentials_set_personal_struct()`・`_get_by_ssid_personal_struct()`・`_delete_by_ssid()`・`_for_each_ssid()`・`_is_empty()` など。設定の値（`CONFIG_WIFI_CREDENTIALS_MAX_ENTRIES` など）は OS の構成の `CONFIG_NANO_WIFI_CREDENTIALS_*`（NuttX 版は `nuttx/apps/wifi/Kconfig`）から。Zephyr に無い `wifi_credentials_init()`（init が呼ぶ。Zephyr の `SYS_INIT()`）。関数は `common/compat/wifi_credentials.c`（Zephyr のライブラリーの写し）と、設定に保存する `wifi_credentials_backend_settings.c` |
@@ -650,7 +654,7 @@ Zephyr の API を、Zephyr の名前のまま最小限だけ用意したもの�
 | `zephyr_device.c` | デバイスの初期化と一覧（`gpio0`、`i2c0`、`lsm6dsox` を Zephyr 版の初期化の順に、ノードのラベルと sensor の API かどうかと共に。`gpio0` は OS の構成の `CONFIG_NANO_LSM6DSO_STREAM` のとき） |
 | `zephyr_i2c.c`（NuttX） | I2C（NuttX の I2C マスターの上） |
 | `zephyr_hwinfo.c`（NuttX） | `hwinfo_get_device_id()`。ボードのチップ ID（`nano_chip_id()`） |
-| `zephyr_net_if.c`（NuttX）、`zephyr_net_mgmt.c`、`zephyr_wifi_mgmt.c` | インターフェース（NuttX のネットワークデバイスの値）、`net_mgmt` のイベントの待ち行列とスレッド（スレッドは OS の部分 `zephyr_net_mgmt_os.h`。スタックの大きさは `priorities.h` の `NANO_STACK_NET_MGMT`）、Wi-Fi の要求の処理（Zephyr の `subsys/net/l2/wifi/wifi_mgmt.c` の検査の写し）とイベント、`NET_REQUEST_WIFI_CONNECT_STORED`（同じファイルの `connect_stored_command()` の写し。`CONFIG_NANO_WIFI_CREDENTIALS` のとき）。`CONFIG_NINA_NET` のときだけ |
+| `zephyr_net_if.c`（NuttX）、`zephyr_net_mgmt.c`、`zephyr_wifi_mgmt.c` | インターフェース（NuttX のネットワークデバイスの値）、`net_mgmt` のイベントの待ち行列とスレッド（スレッドは OS の部分 `zephyr_net_mgmt_os.h`。スタックの大きさは `priorities.h` の `NANO_STACK_NET_MGMT`）、Wi-Fi の要求の処理（Zephyr の `subsys/net/l2/wifi/wifi_mgmt.c` の検査の写し）とイベント、`NET_REQUEST_WIFI_CONNECT_STORED`（同じファイルの `connect_stored_command()` の写し。`CONFIG_NANO_WIFI_CREDENTIALS` のとき）。`CONFIG_NINA_NET` のときだけ。NINA のつなぎ（`common/drivers/nina/nuttx/nina_wifi_mgmt.c`）がコアの上でアプリに提供する |
 | `zephyr_wifi_utils.c` | `wifi_security_txt()`・`wifi_band_txt()`（Zephyr の `wifi_mgmt.c`）、チャネルの検査（`wifi_utils.c`）、`net_bytes_from_str()`（`subsys/net/ip/utils.c`）の写し。`wifi cred` が使う。OS に依存しない。`CONFIG_NINA_NET` のときだけ |
 | `sensor_shell_stream.c` | Zephyr の `drivers/sensor/sensor_shell_stream.c` の写し（sensor シェルの処理スレッド）。OS の `sensor_shell_os.h` を最初に読み、処理スレッドのコールバックを `sensor_shell_os_processing_callback()` にした（NuttX 版は `nuttx/apps/sensor/sensor_shell_nuttx.c`）。`apps/sensor` がビルドする |
 | `wifi_credentials.c`、`wifi_credentials_backend_settings.c` | Zephyr の `subsys/net/lib/wifi_credentials/` の写し（保存した Wi-Fi の資格情報）。`apps/wifi` がビルドする。バックエンドの変更は 2 つ: 読み込みのバッファーを 8 バイトに揃えた（構造体として読むため。Cortex-M0+ は揃っていない読み出しで止まる）、番号の書式を `%zu` にした |
@@ -830,9 +834,9 @@ Zephyr の API を、Zephyr の名前のまま最小限だけ用意したもの�
   `imu_raw_mqtt.c` がキューのロックの待ちと送信の時間を、LSM6DSO のドライバーが FIFO の読み出しの時間を計るのに
   使います。
 - **インターフェース**（`net_if.h`）: インターフェースは NINA の `wlan0` 1 つで、`net_if_get_default()` と
-  `net_if_get_wifi_sta()` はどちらもそれを返します（登録前は NULL）。アドレスは 1 つ（足すと置き換え）で、
-  足したアドレスは常に「優先」（IPv4 の重複検出は Zephyr 版の構成でも無い）なので、
-  `net_if_ipv4_get_global_addr(iface, NET_ADDR_PREFERRED)` はアドレスがある間それを返します。値の読み書きは
+  `net_if_get_wifi_sta()` はどちらもそれを返します（`nina_wifi_mgmt.c` が登録する前は NULL）。アドレスは 1 つで、
+  NINA のつなぎ（`nina_netdev.c`）が書きます。常に「優先」（IPv4 の重複検出は Zephyr 版の構成でも無い）なので、
+  `net_if_ipv4_get_global_addr(iface, NET_ADDR_PREFERRED)` はアドレスがある間それを返します。値の読み出しは
   ネットワークデバイスのロック（`netdev_lock()`。`ifconfig` の ioctl と同じ）の下で行います。`net_in_addr` は
   NuttX の `in_addr` です。インターフェースのイベント（`NET_EVENT_IF_UP` など、アドレスの追加・削除）は出しません
   （移植の中で使うものが無い）。
@@ -843,9 +847,10 @@ Zephyr の API を、Zephyr の名前のまま最小限だけ用意したもの�
   バックを呼びます（`cb->info`・`info_length` を付け、コールバックの一覧のロックの下で）。10 ms で空きが
   できなければ捨てます（Zephyr 版の警告はログのレベル 0 で消えている）。イベントの番号はこの移植の
   ビット（Zephyr の 64 ビットの層と命令の値とは違う）で、同じ名前で比べます。`nina_net_initialize()` が
-  インターフェースより先にスレッドを始めます（Zephyr の `net_init()` と同じ順）。
+  インターフェースより先にスレッドを始めます（Zephyr の `net_init()` と同じ順。`nina_wifi_mgmt_initialize()`）。
 - **Wi-Fi の要求**（`zephyr_wifi_mgmt.c`）: Zephyr の `wifi_mgmt.c` と同じく、インターフェースの API
-  （`NET_DEVICE_DT_OFFLOAD_DEFINE()` で名前を付けたもの）にドライバーの操作が無ければ `-ENOTSUP`、
+  にドライバーの操作が無ければ `-ENOTSUP`（NuttX 版のインターフェースは接続だけを持つ。`nina_wifi_mgmt.c`。スキャン・切断・状態は
+  wapi がコアを直接呼ぶ）、
   `IFF_UP` でなければ `-ENETDOWN`、接続の引数は同じ検査（チャネル、SSID の長さ 1〜32、パスフレーズの
   長さ 8〜64（WEP は 5/10/13/26）、セキュリティの種類ごとの必須項目）をしてからドライバーを呼びます
   （Zephyr 版の構成には wpa_supplicant が無い）。スキャンの結果は 1 件ずつ `NET_EVENT_WIFI_SCAN_RESULT`、

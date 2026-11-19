@@ -1,4 +1,6 @@
 cmake_minimum_required(VERSION 3.28.0)
+# The NINA-W102's devicetree binding (arduino,nina-spi) is its Zephyr binding's.
+list(APPEND DTS_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../../../common/drivers/nina/zephyr)
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(usb_console)
 
@@ -20,16 +22,21 @@ set_property(SOURCE src/main.c APPEND PROPERTY INCLUDE_DIRECTORIES ${COMMON_DIR}
   ${ZEPHYR_BASE}/kernel/include ${ZEPHYR_BASE}/arch/${ARCH}/include)
 
 # NINA-W102: the shared core of common/drivers/nina (the SPI link nina_spi.c, the Wi-Fi
-# interface nina_net.c, the socket table and commands nina_sock.c, the resolver nina_dns.c and
-# the socket loops' waits nina_wait.c), the "nina" command common/shell/nina_shell.c, and the
-# Zephyr side in drivers/nina: the core's two boundaries (nina_bus.c: spi1 and the module's
-# lines from the devicetree; nina_os.c: locks, sleeps, clock, the READY and IRQ interrupts) and
-# the socket offload (nina_socket.c).  The core's POSIX socket names come from
-# drivers/nina/posix, on the include path of these three sources only.
+# operations nina_wifi.c, the socket table and commands nina_sock.c, the resolver nina_dns.c and
+# the socket loops' waits nina_wait.c), its Zephyr binding in common/drivers/nina/zephyr (the
+# Wi-Fi management and network interface nina_net.c, the kernel services of nina_os.h nina_os.c:
+# locks, requests, sleeps, clock, the READY and IRQ interrupts, and the socket offload
+# nina_socket.c), the "nina" command common/shell/nina_shell.c, and this board's side in
+# drivers/nina: nina_bus.c (spi1 and the module's lines from the devicetree, and the passthrough
+# mode's gate).  The core's POSIX socket names come from common/drivers/nina/zephyr/posix, on the
+# include path of the socket sources only.  The binding's devicetree binding and options are its
+# own (zephyr/dts/bindings, zephyr/Kconfig: DTS_ROOT above, the app's Kconfig).
 set(nina_dir ${COMMON_DIR}/drivers/nina)
-target_sources(app PRIVATE ${nina_dir}/nina_spi.c drivers/nina/nina_bus.c drivers/nina/nina_os.c
-  ${nina_dir}/nina_net.c ${nina_dir}/nina_sock.c drivers/nina/nina_socket.c ${nina_dir}/nina_dns.c
-  ${COMMON_DIR}/shell/nina_shell.c ${nina_dir}/nina_wait.c)
+set(nina_zephyr_dir ${nina_dir}/zephyr)
+target_sources(app PRIVATE ${nina_dir}/nina_spi.c drivers/nina/nina_bus.c ${nina_zephyr_dir}/nina_os.c
+  ${nina_dir}/nina_wifi.c ${nina_zephyr_dir}/nina_net.c ${nina_dir}/nina_sock.c
+  ${nina_zephyr_dir}/nina_socket.c ${nina_dir}/nina_dns.c ${COMMON_DIR}/shell/nina_shell.c
+  ${nina_dir}/nina_wait.c)
 # The NINA passthrough mode for esptool (drivers/nina/nina_passthrough.c, on the Pico SDK's
 # registers of hal_rpi_pico): main() runs it on request, and its "nina passthrough" is an entry of
 # nina_shell.c's set; both read drivers/nina/nina_passthrough.h.
@@ -38,10 +45,11 @@ if(CONFIG_NINA_PASSTHROUGH)
 endif()
 set_property(SOURCE src/main.c ${COMMON_DIR}/shell/nina_shell.c APPEND PROPERTY INCLUDE_DIRECTORIES
   ${CMAKE_CURRENT_SOURCE_DIR}/drivers/nina)
-set(nina_socket_sources ${nina_dir}/nina_sock.c drivers/nina/nina_socket.c ${nina_dir}/nina_dns.c)
+set(nina_socket_sources ${nina_dir}/nina_sock.c ${nina_zephyr_dir}/nina_socket.c
+  ${nina_dir}/nina_dns.c)
 set_property(SOURCE ${nina_socket_sources} APPEND PROPERTY INCLUDE_DIRECTORIES
-  ${CMAKE_CURRENT_SOURCE_DIR}/drivers/nina/posix)
-# The resolver registered as the offload's, its results on drivers/nina's heap (nina_os.h).
+  ${nina_zephyr_dir}/posix)
+# The resolver registered as the offload's, its results on nina_socket.c's heap (nina_os.h).
 set_property(SOURCE ${nina_socket_sources} APPEND PROPERTY COMPILE_DEFINITIONS NINA_OS_DNS_OFFLOAD)
 # Integer division through the SIO divider: the Pico SDK's pico_divider (hal_rpi_pico), as the
 # SDK's pico_divider_hardware links it.  libgcc defines the plain names, so the references are

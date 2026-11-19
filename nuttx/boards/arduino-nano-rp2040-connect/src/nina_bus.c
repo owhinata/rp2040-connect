@@ -16,7 +16,7 @@
  *   no overrides.
  * - nina_w102: cs-gpios GPIO9 active low; ready-gpios GPIO10 active low
  *   with pull-up; reset-gpios GPIO3 active low; irq-gpios GPIO2 with
- *   pull-down.  nina_wifi.c configures READY, RESET and IRQ only on the
+ *   pull-down.  nina_spi.c configures READY, RESET and IRQ only on the
  *   first request.
  * - The transfer: SPI_WORD_SET(8) | SPI_TRANSFER_MSB, so mode 0 (CPOL 0,
  *   CPHA 0), MSB first, at CONFIG_NINA_SPI_FREQUENCY (8 MHz).  The PL022
@@ -32,7 +32,7 @@
  * context lock, and sets mode, word size and frequency the first time,
  * like Zephyr's spi_pl022_configure() does when the configuration changes
  * (no other user of SPI1).  SPI_SELECT is not used: nina_spi.c drives CS
- * itself, as nina_wifi.c does (its spi_config has no CS).
+ * itself (the Zephyr build's spi_config has no CS).
  */
 
 #include <nuttx/config.h>

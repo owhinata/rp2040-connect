@@ -41,8 +41,10 @@ CSRCS += zephyr_hwinfo.c
 endif
 
 # The network interface, net_mgmt requests and events, and the Wi-Fi
-# requests that the NINA network device (common/drivers/nina/nina_net.c)
-# and the application use.
+# requests that the applications use (wifi_profile.c, "wifi cred",
+# time_sync.c, imu_raw_mqtt.c), which the NINA binding serves on the core
+# (common/drivers/nina/nuttx/nina_wifi_mgmt.c), and the helpers of "wifi
+# cred" (zephyr_wifi_utils.c).
 
 ifeq ($(CONFIG_NINA_NET),y)
 CSRCS += zephyr_net_if.c zephyr_net_mgmt.c zephyr_wifi_mgmt.c

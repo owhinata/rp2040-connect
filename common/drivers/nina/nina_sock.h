@@ -1,10 +1,10 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /* The NINA socket table and the socket commands (nina_sock.c), without a
  * socket layer around them.  The callers: the Zephyr build's socket offload
- * (zephyr/app/usb-console/drivers/nina/nina_socket.c), the FreeRTOS build's
+ * (common/drivers/nina/zephyr/nina_socket.c), the FreeRTOS build's
  * zsock_*() calls (freertos/drivers/nina/nina_socket.c), both with the wait
  * loops in the calling thread, and the NuttX build's usrsock daemon
- * (nuttx/drivers/nina/nina_usrsock.c turns usrsock requests into these
+ * (common/drivers/nina/nuttx/nina_usrsock.c turns usrsock requests into these
  * calls, nina_poller.c turns the module's socket state into usrsock
  * events).  The host test (common/tests/nina_sock.c) runs them on a fake
  * nina_request().

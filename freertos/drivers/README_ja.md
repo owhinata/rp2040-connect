@@ -25,7 +25,7 @@ OS に依存しない部分は `common/compat/`、FreeRTOS の部分は `freerto
 | `drivers/i2c_dw/` | I2C のコア（`common/drivers/i2c_dw/`。I2C0 と、オプションで I2C1）の FreeRTOS の部分、Pico SDK の DMA での I2C0 の DMA 読み出し（`i2c_dw_dma_os.c`）、自己診断 |
 | `drivers/lsm6dso/` | LSM6DSOX のデバイスの生成（`lsm6dso_instance.h`）と初期化（`nano_lsm6dso.c`）、自己診断 |
 | `drivers/imu/` | 取得サービス・MQTT・時刻同期（`common/imu/`）の組み込み（`imu.cmake`）、`time_sync.c` の前置き |
-| `drivers/wifi/` | Wi-Fi（`common/drivers/nina/nina_net.c`、資格情報、自動再接続）の組み込みと `ifconfig` |
+| `drivers/wifi/` | Wi-Fi（NINA のコアの `common/drivers/nina/nina_wifi.c` と、その Zephyr へのつなぎ `common/drivers/nina/zephyr/nina_net.c`、資格情報、自動再接続）の組み込みと `ifconfig` |
 | `drivers/telnet/` | Telnet のシェル（`nano_telnet.c`） |
 | `drivers/zperf/` | `zperf` の組み込み（本体は `common/compat/zperf_iperf3.c`・`zephyr_zperf_shell.c`） |
 | `drivers/sensor_shell/` | `sensor` コマンドの FreeRTOS の部分（`sensor_shell_os.[ch]`） |
@@ -148,10 +148,10 @@ FreeRTOS 版が実装するのは flash の境界（`common/compat/nano_flash_kv
 
 ## NINA-W102、ソケット、Wi-Fi
 
-- SPI の転送層・ソケットの表と命令・名前解決は共有のコア（`common/drivers/nina/nina_spi.c`・`nina_sock.c`・
-  `nina_dns.c`）です。FreeRTOS 版は境界 `nina_bus.h`（`drivers/nina/nina_bus.c`: SPI1 をポーリングで 7.8125 MHz、
+- SPI の転送層・ソケットの表と命令・名前解決・Wi-Fi の操作は共有のコア（`common/drivers/nina/nina_spi.c`・`nina_sock.c`・
+  `nina_dns.c`・`nina_wifi.c`）です。FreeRTOS 版は境界 `nina_bus.h`（`drivers/nina/nina_bus.c`: SPI1 をポーリングで 7.8125 MHz、
   CS・READY・RESET・IRQ の 4 本。Zephyr のドライバーと同じ順と値で設定）と `nina_os.h`（`nina_os.c`: 再帰・優先度継承の
-  ロック、名前解決のロック、「切り上げ + 1 tick」の sleep、ms の時計）を実装します。境界の意味は
+  ロック、名前解決のロック、Wi-Fi の操作のロックとそのスレッドへの要求、「切り上げ + 1 tick」の sleep、ms の時計）を実装します。境界の意味は
   [`nuttx/drivers/README_ja.md`](../../nuttx/drivers/README_ja.md) の「NINA-W102」の表のとおりです。
 - コアの READY の待ちは、READY のエッジ割り込み（GPIO10）まで眠り、最長 10 ms ごとに READY を読み直します
   （`nina_os.c`）。Zephyr 版も同じで、NuttX 版は 10 ms に区切らずに待ちます。割り込みを使うかどうかは実行時に
@@ -163,14 +163,15 @@ FreeRTOS 版が実装するのは flash の境界（`common/compat/nano_flash_kv
   newlib に無い型と定数は `drivers/libc/include/` にあり、値は Linux と同じです（`EAI_*` は Zephyr の負の値）。
 - ファームウェアの追加機能（パッチ 0003〜0006。命令 0x6A のビット）: 動作は Zephyr 版と同じです（説明は
   [`zephyr/app/usb-console/drivers/README_ja.md`](../../zephyr/app/usb-console/drivers/README_ja.md) の同名の節）。
-  接続中のスキャンで接続を保つ・非同期のスキャン（`nina_net.c`）、ソケットの事象での待ち（`common/drivers/nina/nina_wait.c`
+  接続中のスキャンで接続を保つ・非同期のスキャン（`nina_wifi.c`）、ソケットの事象での待ち（`common/drivers/nina/nina_wait.c`
   と `nina_socket.c` の待ちのループ）。事象は IRQ の線（GPIO2）の立ち上がりのエッジの割り込みで、`nina_os.c` が数を
   数え、待っている全タスクを起こします（`k_sem_reset()` のあと `k_sem_give()`）。`nina_os_event_start()` が
   失敗したときは、ビット 2 があっても、ビット 2 が無いときの間隔（20 ms、送信は 1 ms）で待ちます。TCP 送信の再試行で、全量を送り直す前に poll 命令で書き込み可能を
   確かめるのは、ファームウェアに依りません。
-- Wi-Fi: Zephyr 版と同じ `common/drivers/nina/nina_net.c`、資格情報（Zephyr の `wifi_credentials` の写し）、自動再接続
-  （`common/imu/wifi_profile.c`）を、互換層の `net_if`・`net_mgmt`・`wifi_mgmt`（`zephyr_net_if.c`、`drivers/nina/nina_netif.c`）
-  の上で動かします。`wifi` コマンドは `common/compat/zephyr_wifi_shell.c` で、このボードで使えるオプションだけを残しています。
+- Wi-Fi: コアの Wi-Fi の操作と、Zephyr 版と同じそのつなぎ（`common/drivers/nina/zephyr/nina_net.c`: Zephyr の Wi-Fi 管理と
+  インターフェース、3 つのスレッド）、資格情報（Zephyr の `wifi_credentials` の写し）、自動再接続（`common/imu/wifi_profile.c`）を、
+  互換層の `net_if`・`net_mgmt`・`wifi_mgmt`（`zephyr_net_if.c`、`drivers/nina/nina_netif.c`）の上で動かします。この版は
+  ネットワーク層を持たないので Zephyr へのつなぎを使います。`wifi` コマンドは `common/compat/zephyr_wifi_shell.c` で、このボードで使えるオプションだけを残しています。
   `wifi cred` は Zephyr の `wifi_credentials_shell.c` の無改変の写しです。`ifconfig`（`drivers/wifi/nano_ifconfig.c`）は
   NuttX 版と同じ形式で表示します。
 

@@ -1716,3 +1716,36 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
   基準と一致することを確認）。ホストテスト: FreeRTOS 50、NuttX 51、Zephyr 40 の `ok`。`format.sh --check` も通る。
 - NuttX 版は実機に書いていない（違いがエラーメッセージ 1 行だけで、次の段階で実機の確認を一通り行うため）。
 - **新しい基準**: NuttX は `freertos/build/baseline/nuttx/snapshot-1119e/image.bin`（284856 B）。Zephyr は `snapshot-1119b` のまま。
+
+## NINA のリファクタリング: 段階 3（Wi-Fi の操作をコアへ、つなぎを `zephyr/`・`nuttx/` のサブディレクトリーへ）（2026-11-19）
+
+- コア: `common/drivers/nina/nina_wifi.[ch]`（`nina_net.c` から移したコード。Zephyr の定義なし）。`nina_wifi_init()`・`_scan()`・`_connect()`・`_disconnect()`・
+  `_status()` と、スレッドの本体 `nina_wifi_scan_thread()`・`_connect_thread()`・`_monitor_thread()`。上の層へはコールバックの表 `struct nina_wifi_ops`
+  （`ip_set`・`link_up`・`link_down`・`connect_result`・`disconnected`、任意の `connection_allowed`・`reconnect_pause`・`reconnect_request`）。
+  `nina_os.h` に足したのは `nina_os_wifi_lock()`・`_unlock()` と `nina_os_wifi_post()`・`_wait()`。スレッドの起動は境界に足さず、各つなぎが自分の OS で起こす
+  （名前・スタック・優先度をそのまま保つため）。ロックなしで読む値は C11 の `<stdatomic.h>` の読み書きだけ。
+- つなぎ: `common/drivers/nina/zephyr/`（`nina_net.c`＝Wi-Fi の管理への登録、`nina_os.c`、`nina_socket.c`、`posix/`、ドライバーの Kconfig と dts の binding）、
+  `common/drivers/nina/nuttx/`（`nina_netdev.c`＝wapi の ioctl からコアを直接呼ぶ、`nina_wifi_mgmt.[ch]`、`nina_os.c`、`nina_usrsock.[ch]`、`nina_poller.c`、`nina_net.h`）。
+  NuttX の `Kconfig` と `Make.defs` は `nuttx/drivers/nina/` に残る（NuttX が `nuttx/drivers` を `external/` として読む仕組みのため。`VPATH` で新しい場所を指す）。
+  各版に残したもの: Zephyr の `nina_bus.c`（ボードの `spi1` のラベルと中継の判定を持つ）と `nina_passthrough*`、NuttX のボードの `nina_bus.c`・`nina_passthrough*`、
+  FreeRTOS の `nina_os.c`・`nina_socket.c`・`nina_netif.c`・`nina_bus.c`・`nina_passthrough*`（段階 4・5 の対象）。FreeRTOS は `zephyr/nina_net.c` を互換層の上でビルドする。
+- NuttX: wapi の ioctl → `nina_netdev.c` → コア。互換層のうち NuttX でビルドしなくなったもの: `net_if` のアドレス設定の関数、オフロードの表を通るスキャン・切断・状態の経路。
+  まだ Zephyr の Wi-Fi の管理の API を使う NuttX のアプリ（`common/imu/wifi_profile.c`、`wifi cred auto_connect`、`time_sync.c`、`imu_raw_mqtt.c`）には、
+  `nina_wifi_mgmt.c` が `.connect` だけの登録と 2 つのイベント（接続の結果、切断の結果）を出して応える。ここをどうするかは別の判断。
+- コアの独立の検査: `common/tests/run.sh` の `nina_core_independent`（コアの 15 ファイルを、C ライブラリーと POSIX のソケットのヘッダーだけでコンパイル）。
+- ホストテスト（メインが実行）: FreeRTOS 52、NuttX 55、Zephyr 43 の `ok`。新しいもの: `common/tests/nina_wifi.c`（コマンドの順序・間隔・エラー）、Zephyr の `nina_net`、
+  NuttX の `nina_netdev`・`nina_wifi_mgmt`。`format.sh --check` も通る。
+- ビルド（メインが再ビルド、警告の増加なし）: Zephyr 370732 → 371340 B、NuttX 284856 → 284388 B、FreeRTOS 231616 → 232128 B。
+- 実機（各 1 回）:
+  - FreeRTOS: 起動後 2 秒で接続、`wifi status`、`wifi scan`（結果あり、接続は保たれる）、送信中のスキャン 1 回で 40/1048 バッチが落ちる（11-18 の記録は 2 回で
+    109/1117。スキャン中は無線がチャネルを離れるため）、`wifi disconnect` で切断、`wifi cred auto_connect` で 3 秒で再接続、Telnet、`dmesg` にエラーなし。
+    スレッドは `nina_scan_tid`・`nina_connect_tid`（優先度 12）、`nina_monitor_tid`（11）。
+  - Zephyr: 起動後 31 秒で接続、`wifi scan`、送信 20 秒は欠番 0・`cpu_active` 45.5%、切断と再接続（3 秒）、Telnet、`dmesg` にエラーなし。スタックの使用量は
+    scan 920/1536、connect 576/1024、monitor 496/1536。
+  - NuttX: 起動時に接続済み、`wapi show`、`wapi scan`（結果あり、接続は保たれる）、送信 20 秒は欠番 0・`cpu_active` 51.0%、`wapi disconnect` で切断、
+    `wifi cred auto_connect` で 3 秒で再接続、`ntp status` は synchronized、Telnet、`dmesg` にエラーなし。スレッドの優先度は 110・110・109。
+- 確かめていない: AP を落とす切断からの復帰、元のファームウェア（3.0.2）での動作、手動の `wifi connect`・`wapi psk`、長時間。
+- subagent が挙げた違い: Zephyr のつなぎはスキャンのコールバックを静的変数に置く（Zephyr の管理層が常に同じものを渡す前提）。NuttX で手動の `ifconfig` のアドレスが
+  プロファイルの「アドレスあり」に数えられる。NuttX はスキャンの結果のイベントを出さなくなった（聞く側が無い）。`nuttx/patches/nuttx/0005` の説明文に古いパスが残る。
+- **新しい基準**: Zephyr `freertos/build/baseline/zephyr/snapshot-1119c/image.bin`（371340 B）、NuttX `.../nuttx/snapshot-1119f/image.bin`（284388 B）。
+- 実機: FreeRTOS 版。

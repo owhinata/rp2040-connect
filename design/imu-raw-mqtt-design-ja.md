@@ -93,7 +93,7 @@ flowchart LR
 | 送信キュー | `common/imu/imu_raw_queue.*` |
 | MQTT 送信・再接続・status / info | `common/imu/imu_raw_mqtt.*`、`common/imu/imu_raw_status.*` |
 | 取得スレッド・回復・シェル（`imu`） | `common/imu/imu_stream.c` |
-| NINA のソケット | `drivers/nina/nina_socket.c`、`common/drivers/nina/nina_sock.*`（[ドライバーの説明](../zephyr/app/usb-console/drivers/README_ja.md)） |
+| NINA のソケット | `common/drivers/nina/zephyr/nina_socket.c`、`common/drivers/nina/nina_sock.*`（[ドライバーの説明](../zephyr/app/usb-console/drivers/README_ja.md)） |
 
 `src/`・`drivers/` は `zephyr/app/usb-console` の下、`common/` はリポジトリのルートの下で、NuttX 版・FreeRTOS 版と
 同じファイルを使う部分（§12）。
@@ -577,7 +577,7 @@ NuttX 版の確認の範囲は §11.7 に分けて書く。
   同じホストテスト（`common/tests/`）を両方の版の `host_tests.sh` から動かす。Zephyr の API を使うが両方の版で
   同一のドライバーのファイル（LSM6DSO の FIFO の設定とストリーム、`lsm6dso_fifo_stats.h`、`lsm6dso_attributes.h`）も
   `common/` に置き、NuttX 版では下の互換層の上で動かす。OS を呼ぶソースのうち `imu_stream.c`、`time_sync.c`、
-  `imu_raw_mqtt.c`、`imu_cal.c`、`wifi_profile.c`、`nina_net.c`、LSM6DSO のドライバー（`lsm6dso.[ch]`）、`lsm6dso_compat.c`、
+  `imu_raw_mqtt.c`、`imu_cal.c`、`wifi_profile.c`、LSM6DSO のドライバー（`lsm6dso.[ch]`）、`lsm6dso_compat.c`、
   sensor シェルの `sensor_shell.c` と、
   ヘッダーの `kv_store.h` も `common/` の 1 本を両方の版が使う（コマンドの登録も Zephyr 版の文のまま）。NuttX 版では
   各ファイルに前置きヘッダー（NuttX の設定と、互換層より先に読む NuttX のヘッダー、ファイルが使う Zephyr の Kconfig の
@@ -585,10 +585,13 @@ NuttX 版の確認の範囲は §11.7 に分けて書く。
   `wifi_profile_os.h`、`lsm6dso.c` が末尾で読む LSM6DSO のデバイスの `lsm6dso_instance.h`。Zephyr 版はデバイスツリーの
   インスタンス化のマクロ、NuttX 版はボードの値を使うデバイス 1 つ）に出している。NINA の宣言 `nina_proto.h` も
   `common/drivers/nina/` の 1 本を両方の版が使う。NINA の OS に依存しないコア（SPI の転送層 `nina_spi.c`、プロトコルのコマンドと
-  応答のバイト `nina_cmd.h`、ソケットの表と命令 `nina_sock.[ch]`、名前解決 `nina_dns.[ch]`。狭い境界 `nina_os.h`・`nina_bus.h`
-  だけに依存する）も `common/drivers/nina/` にあり、3 つの版が使う。`nina version` の `common/shell/nina_shell.c` も同じ。版ごとの部分は境界の実装とソケット層への接着で、
-  Zephyr 版は `drivers/nina/` の `nina_bus.c`（devicetree の線と SPI）、`nina_os.c`（mutex、sleep、時計、READY の
-  割り込み待ち）、`nina_socket.c`（ソケットのオフロード）。
+  応答のバイト `nina_cmd.h`、ソケットの表と命令 `nina_sock.[ch]`、名前解決 `nina_dns.[ch]`、Wi-Fi の操作 `nina_wifi.[ch]`。
+  狭い境界 `nina_os.h`・`nina_bus.h` だけに依存する）も `common/drivers/nina/` にあり、3 つの版が使う。`nina version` の
+  `common/shell/nina_shell.c` も同じ。コアの各 OS の API へのつなぎは OS の名前のサブディレクトリーにある:
+  `common/drivers/nina/zephyr/`（Zephyr の Wi-Fi 管理とネットワークインターフェース `nina_net.c`、`nina_os.c`、ソケットの
+  オフロード `nina_socket.c`。FreeRTOS 版は互換層の上で 1 つ目をビルドする）と `common/drivers/nina/nuttx/`（wapi の ioctl を
+  コアの上で受けるネットワークデバイス `wlan0`、アプリが使う Zephyr の Wi-Fi 管理をコアの上で、`nina_os.c`、usrsock）。
+  ボードのものは各版のディレクトリーに残る（Zephyr 版は `drivers/nina/nina_bus.c`（devicetree の線と SPI）と esptool の中継）。
   I2C のコア（`common/drivers/i2c_dw/`。Zephyr 版のパッチ後の `i2c_dw.c` の写し）も OS に依存せず、NuttX 版と FreeRTOS 版が
   使う（Zephyr 版は Zephyr のドライバーにローカルのパッチを当てて使う。§12）。
 - 共有するソースは、OS の呼び出しを **Zephyr の名前のまま**提供する互換層（OS に依存しない部分は `common/compat/`、NuttX の実装は `nuttx/drivers/compat/`）の上で動かす。
@@ -629,8 +632,10 @@ NINA-W102 のソケットは NuttX の usrsock（`CONFIG_NET_USRSOCK_CUSTOM`）�
   なる。
 - Zephyr 版の「待つ TCP 送信は 10 秒で `EAGAIN`」「NINA が受け取らなかったデータグラムはすぐ `EAGAIN`」を
   作るため、NuttX の usrsock に小さなパッチを当てる（`nuttx/patches/nuttx/0005`）。
-- NINA は NuttX のネットワークデバイス `wlan0` としても登録し、`wapi`・`ifconfig` の要求をドライバー
-  （Zephyr 版と共有する `common/drivers/nina/nina_net.c`）の操作に変える。
+- NINA は NuttX のネットワークデバイス `wlan0` としても登録し、`wapi`・`ifconfig` の要求は NuttX へのつなぎ
+  （`common/drivers/nina/nuttx/nina_netdev.c`）からコアの Wi-Fi の操作（ほかの版と共有する `common/drivers/nina/nina_wifi.c`）を
+  呼ぶ。アプリが使う Zephyr の Wi-Fi 管理（保存したネットワークへの接続、接続のイベント、インターフェースのアドレス）は
+  `common/drivers/nina/nuttx/nina_wifi_mgmt.c` がコアの上で提供する。
 
 ### 11.3 時計と tick
 
@@ -728,7 +733,8 @@ Zephyr の名前のまま提供する互換層の上でビルドする。ホス�
 |---|---|---|
 | `common/imu/` | 取得サービスと `imu`、バッチ・ペイロード・キュー・status、時刻の対応付けと時刻同期・`ntp`、校正と `imu cal`、MQTT の送信、Wi-Fi のプロファイルと自動再接続、KV の API と `kv` | 3 版（MQTT のクライアント `mqtt_min*` は NuttX 版と FreeRTOS 版。Zephyr 版は Zephyr の MQTT ライブラリー） |
 | `common/drivers/lsm6dso/`、`sensor_shell/` | LSM6DSO のドライバー本体と FIFO のストリーム、sensor シェル | 3 版 |
-| `common/drivers/nina/` | `nina_net.c`・`nina_proto.h`、NINA のコア（SPI の転送層、ソケット、名前解決、ソケットの待ち `nina_wait.[ch]`）、esptool の中継の判断 `nina_passthrough_logic.h` | 3 版 |
+| `common/drivers/nina/` | NINA のコア（SPI の転送層、ソケット、名前解決、Wi-Fi の操作 `nina_wifi.[ch]`、ソケットの待ち `nina_wait.[ch]`、宣言 `nina_proto.h`）と esptool の中継の判断 `nina_passthrough_logic.h`。OS の定義を持たない | 3 版 |
+| `common/drivers/nina/zephyr/`、`nuttx/` | コアの Zephyr の API へのつなぎ（Wi-Fi 管理とインターフェース、カーネルの機能、ソケットのオフロード、devicetree binding とオプション）と NuttX の API へのつなぎ（`wlan0` と wapi、アプリが使う Zephyr の Wi-Fi 管理、カーネルの機能、usrsock） | `zephyr/` は Zephyr 版と FreeRTOS 版（Wi-Fi のつなぎを互換層の上で）、`nuttx/` は NuttX 版 |
 | `common/drivers/i2c_dw/` | I2C のコア（I2C0 と I2C1。ファイル名は Zephyr のものに合わせる: `i2c_dw.c`・`i2c_dw.h`・`i2c_dw_registers.h`・`i2c_dw_rp2040.h`・`i2c_dw_rp2040_dma_priv.h`（DMA 読み出しとそのコマンド語））、`i2c_dma` の関数の宣言 `i2c_dw_rp2040_dma.h`、境界 `i2c_dw_os.h`・`i2c_dw_dma_os.h` | NuttX 版と FreeRTOS 版（Zephyr 版はパッチ 0003 の同じドライバー。下） |
 | `common/drivers/stmemsc/` | ST のドライバーと Zephyr の I2C の API のつなぎ | NuttX 版と FreeRTOS 版 |
 | `common/compat/` | 互換層の OS に依存しない部分と、Zephyr のライブラリーの写し（KV の NVS と settings、Wi-Fi の資格情報、getopt など） | NuttX 版と FreeRTOS 版 |
@@ -738,7 +744,8 @@ OS ごとの部分は、狭い境界のヘッダーの実装として各版の�
 
 - 互換層のカーネルの部分（`k_mutex`、`k_sem`、スレッド、時計など。一覧は `common/compat/zephyr/kernel.h` の先頭）:
   `nuttx/drivers/compat/`、`freertos/drivers/compat/`。
-- 優先度の対応 `priorities_os.h`（`common/compat/priorities.h` が読む）、NINA の `nina_os.h`・`nina_bus.h`、I2C の
+- 優先度の対応 `priorities_os.h`（`common/compat/priorities.h` が読む）、NINA の `nina_os.h`・`nina_bus.h`（`nina_os.h` の Zephyr 版と
+  NuttX 版の実装はコアのつなぎ `common/drivers/nina/zephyr/`・`nuttx/` にある）、I2C の
   `i2c_dw_os.h` と DMA 読み出しの `i2c_dw_dma_os.h`、KV の flash の `nano_flash_kv.h`、シェルのバックエンド `zshell_os.h`、ログの `app_log_os.h`・`log_ram.h`。
 - 版ごとに違う数行: `sensor_shell_os.h`（`sensor get` の待ち）、`wifi_profile_os.h`、`lsm6dso_instance.h`（デバイスの
   生成）、`kv_store_os.h`（`kv wipe` の有無）。

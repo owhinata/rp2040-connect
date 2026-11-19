@@ -1,14 +1,15 @@
 /* SPDX-License-Identifier: MIT */
-/* The NINA-W102's network interface on the FreeRTOS build.  The Zephyr build
- * defines it with NET_DEVICE_DT_OFFLOAD_DEFINE() (common/drivers/nina/
- * nina_net.c); Zephyr's net_init() starts the event thread and then calls
- * the device's init (driver_init()) and the interface's (iface_init():
- * dormant, MAC address from the module, the resolver).  Here
- * nina_net_initialize() does the same in the same order on the layer's one
- * interface (<zephyr/net/net_if.h>, zephyr_net_if.c), as the NuttX build's
- * nuttx/drivers/nina/nina_netdev.c does on its network device.  The
- * interface's requests go through net_mgmt() (common/compat/
- * zephyr_wifi_mgmt.c) to the driver's operations in nina_net.c.
+/* The NINA-W102's network interface on the FreeRTOS build.  The core's
+ * Zephyr binding defines it with NET_DEVICE_DT_OFFLOAD_DEFINE()
+ * (common/drivers/nina/zephyr/nina_net.c); Zephyr's net_init() starts the
+ * event thread and then calls the device's init (driver_init()) and the
+ * interface's (iface_init(): dormant, MAC address from the module, the
+ * resolver).  Here nina_net_initialize() does the same in the same order on
+ * the layer's one interface (<zephyr/net/net_if.h>, zephyr_net_if.c), as
+ * the NuttX build's common/drivers/nina/nuttx/nina_netdev.c does on its
+ * network device.  The interface's requests go through net_mgmt()
+ * (common/compat/zephyr_wifi_mgmt.c) to the binding's operations, which
+ * call the core's (common/drivers/nina/nina_wifi.c).
  */
 
 #include <zephyr/kernel.h>
@@ -18,8 +19,8 @@
 
 #include "nina_net.h"
 
-/* NET_DEVICE_DT_OFFLOAD_DEFINE(..., 1500) of nina_net.c (the NuttX build's
- * NINA_NET_MTU, nuttx/drivers/nina/nina_netdev.c).
+/* NET_DEVICE_DT_OFFLOAD_DEFINE(..., 1500) of zephyr/nina_net.c (the NuttX
+ * build's NINA_NET_MTU, common/drivers/nina/nuttx/nina_netdev.c).
  */
 #define NINA_NET_MTU 1500
 

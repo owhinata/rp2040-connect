@@ -1,12 +1,12 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /* Host test of this build's side of the shared NINA core: the SPI link
  * (common/drivers/nina/nina_spi.c, which the test includes) on the board's
- * boundary drivers/nina/nina_bus.c and the kernel's drivers/nina/nina_os.c,
+ * boundary drivers/nina/nina_bus.c and the kernel's
+ * common/drivers/nina/zephyr/nina_os.c,
  * built on fakes of the Zephyr calls (tests/nina_fakes), whose
  * registration of the callbacks fails or succeeds as the test says.
  *
- * - Framing and bulk transfers of nina_request() (the tests of the former
- *   drivers/nina/nina_wifi.c), through spi_transceive() and spi_write().
+ * - Framing and bulk transfers of nina_request(), through spi_transceive() and spi_write().
  * - The lines of the devicetree and the flags: the reset sequence, CS on
  *   GPIO9 around each half, a bus that is not ready.
  * - The waits for READY: sampled every 100 us when nina_os_ready_start()
@@ -24,6 +24,10 @@
  *   end of its time without an edge, and an edge between the caller's
  *   read of the count and its k_sem_take() (the count left ends it at
  *   once); a count left from an earlier edge does not end a later wait.
+ * - The Wi-Fi operations' lock and requests (nina_os_wifi_*()): a mutex of
+ *   its own taken for ever, and one semaphore of limit 1 for each request
+ *   (two posts leave one, the scan's and the connection's apart), taken
+ *   for ever.
  * - With CONFIG_NINA_PASSTHROUGH (as the build has it), the NINA
  *   passthrough mode (drivers/nina/nina_passthrough.h): while it is
  *   active the bus is never ready, so a request is -ENODEV before any line
@@ -255,10 +259,13 @@ int spi_write(const struct device *dev, const struct spi_config *cfg, const stru
 	return 0;
 }
 
+static struct k_mutex *last_mutex;
+static unsigned int forever_takes;
+
 int k_mutex_lock(struct k_mutex *lock, k_timeout_t timeout)
 {
-	(void)lock;
 	assert(timeout.us == -1);
+	last_mutex = lock;
 	return 0;
 }
 
@@ -311,6 +318,14 @@ int k_sem_take(struct k_sem *sem, k_timeout_t timeout)
 	 * edge within the timeout runs the interrupt, whose k_sem_reset()
 	 * wakes this waiter with -EAGAIN (its k_sem_give() leaves a count);
 	 * else the time runs out. */
+	/* The Wi-Fi operations' requests: taken for ever, here only when one
+	 * is pending. */
+	if (timeout.us == -1) {
+		assert(sem->count == 1 && sem->limit == 1);
+		sem->count--;
+		forever_takes++;
+		return 0;
+	}
 	if (event_sem_seen && sem == event_sem_seen) {
 		assert(timeout.us >= 0);
 		event_takes++;
@@ -637,8 +652,33 @@ static void test_events(void)
 	assert(event_takes == 0);
 }
 
+static void test_wifi(void)
+{
+	struct k_mutex *nina, *wifi;
+
+	(void)nina_os_lock();
+	nina = last_mutex;
+	nina_os_unlock();
+	nina_os_wifi_lock();
+	wifi = last_mutex;
+	nina_os_wifi_unlock();
+	assert(nina && wifi && nina != wifi);
+
+	/* Two posts leave one request; each request has its own. */
+	nina_os_wifi_post(NINA_OS_WIFI_SCAN);
+	nina_os_wifi_post(NINA_OS_WIFI_SCAN);
+	nina_os_wifi_post(NINA_OS_WIFI_CONNECT);
+	nina_os_wifi_wait(NINA_OS_WIFI_CONNECT);
+	nina_os_wifi_wait(NINA_OS_WIFI_SCAN);
+	assert(forever_takes == 2);
+	nina_os_wifi_post(NINA_OS_WIFI_SCAN);
+	nina_os_wifi_wait(NINA_OS_WIFI_SCAN);
+	assert(forever_takes == 3);
+}
+
 int main(void)
 {
+	test_wifi();
 	/* nina_os_ready_start() fails: READY is sampled. */
 	test_framing();
 	test_reset(-ENOTSUP);

@@ -17,13 +17,7 @@ config NANO_HW_DIVIDER
 	  (ARM_RP2040_DIVIDER_SAVE, a local patch of Zephyr applied by
 	  script/setup.sh).
 
-config WIFI_NINA_LOCAL
-	bool "NINA SPI Wi-Fi offload"
-	default y
-	select NET_L2_WIFI_MGMT
-	select WIFI_OFFLOAD
-	select NET_SOCKETS
-	select NET_SOCKETS_OFFLOAD
+rsource "../../../common/drivers/nina/zephyr/Kconfig"
 
 config NINA_PASSTHROUGH
 	bool "NINA passthrough mode for esptool"
@@ -37,28 +31,6 @@ config NINA_PASSTHROUGH
 	  on the module's GPIO0 and RESETN, so that esptool on the PC reads
 	  and writes the module's flash (drivers/nina/nina_passthrough.c).
 	  Closing the port at 300 bps or the RESET button ends it.
-
-config NINA_SPI_FREQUENCY
-	int "NINA SPI frequency in Hz"
-	default 8000000
-	range 1000000 10000000
-	depends on WIFI_NINA_LOCAL
-
-config NINA_TCP_MAX_IO
-	int "Maximum bytes per NINA TCP send"
-	default 3584
-	range 1 3584
-	depends on WIFI_NINA_LOCAL
-	help
-	  Bounds each TCP send to leave room for framing in the NINA SPI
-	  command buffer. A RAW batch of up to 2448 bytes plus its MQTT
-	  header is sent in one command with the default.
-
-config NINA_SEND_RETRY_MS
-	int "Delay before retrying a full NINA TCP send buffer"
-	default 1
-	range 1 1000
-	depends on WIFI_NINA_LOCAL
 
 config NINA_NTP_SERVER
 	string "NTP server hostname or IPv4 address"

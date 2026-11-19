@@ -22,7 +22,11 @@
  * - A module that stops answering: the request ends with -ETIMEDOUT after
  *   the core's 2000 ms (the layer's clock), CS untouched.
  * - nina_os_lock(): recursive and with priority inheritance; the DNS lock
- *   is a separate mutex.
+ *   is a separate mutex, and so is the Wi-Fi operations' lock
+ *   (nina_os_wifi_lock(), with priority inheritance).
+ * - The Wi-Fi operations' requests (nina_os_wifi_post(), _wait()): a
+ *   waiting task runs at the post; two posts before the wait leave one;
+ *   the scan's and the connection's are apart.
  * - A module that gets ready while a request waits: the request goes on
  *   within a few ticks of it.
  *
@@ -811,6 +815,17 @@ static void test_sleeps(void)
 
 static volatile int helper_state;
 
+/* Takes the Wi-Fi operations' lock. */
+static void wifi_lock_helper(void *arg)
+{
+	(void)arg;
+	helper_state = 1;
+	nina_os_wifi_lock();
+	nina_os_wifi_unlock();
+	helper_state = 4;
+	vTaskDelete(NULL);
+}
+
 /* Takes nina_lock, then the DNS lock (ARG non-NULL) or nina_lock only. */
 static void lock_helper(void *arg)
 {
@@ -864,6 +879,51 @@ static void test_locks(void)
 	nina_os_dns_unlock();
 	assert(helper_state == 4);
 	assert(uxTaskPriorityGet(NULL) == mine);
+
+	/* The Wi-Fi lock is a third one, with priority inheritance. */
+	nina_os_wifi_lock();
+	start_helper(mine + 2, "dns");
+	assert(helper_state == 4);
+	helper_state = 0;
+	assert(xTaskCreate(wifi_lock_helper, "helper", HELPER_STACK / sizeof(StackType_t), NULL,
+			   mine + 2, NULL) == pdPASS);
+	assert(helper_state == 1);
+	assert(uxTaskPriorityGet(NULL) == mine + 2);
+	nina_os_wifi_unlock();
+	assert(helper_state == 4);
+	assert(uxTaskPriorityGet(NULL) == mine);
+}
+
+static volatile unsigned int requests_taken;
+
+/* Takes the request ARG (NINA_OS_WIFI_*) for ever. */
+static void request_helper(void *arg)
+{
+	for (;;) {
+		nina_os_wifi_wait((unsigned int)(uintptr_t)arg);
+		requests_taken++;
+	}
+}
+
+static void test_wifi_requests(void)
+{
+	UBaseType_t mine = uxTaskPriorityGet(NULL);
+	TaskHandle_t task;
+
+	/* Two posts before the wait leave one request. */
+	nina_os_wifi_post(NINA_OS_WIFI_CONNECT);
+	nina_os_wifi_post(NINA_OS_WIFI_CONNECT);
+	requests_taken = 0;
+	assert(xTaskCreate(request_helper, "request", HELPER_STACK / sizeof(StackType_t),
+			   (void *)(uintptr_t)NINA_OS_WIFI_CONNECT, mine + 1, &task) == pdPASS);
+	assert(requests_taken == 1);
+	/* The scan's request does not wake it; its own does, at the post. */
+	nina_os_wifi_post(NINA_OS_WIFI_SCAN);
+	assert(requests_taken == 1);
+	nina_os_wifi_post(NINA_OS_WIFI_CONNECT);
+	assert(requests_taken == 2);
+	vTaskDelete(task);
+	nina_os_wifi_wait(NINA_OS_WIFI_SCAN);
 }
 
 static void runner(void *arg)
@@ -880,6 +940,7 @@ static void runner(void *arg)
 	test_events();
 	test_sleeps();
 	test_locks();
+	test_wifi_requests();
 	fflush(stdout);
 	_exit(0);
 }

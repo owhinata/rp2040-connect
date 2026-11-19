@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 /* The part of Zephyr's <zephyr/net/net_if.h> (Zephyr v4.5.0) that the NINA
- * network interface (common/drivers/nina/nina_net.c), the Wi-Fi profile
+ * network interface (common/drivers/nina/zephyr/nina_net.c), the Wi-Fi profile
  * (common/imu/wifi_profile.c), the "wifi" command and the IMU service use,
  * with Zephyr's names and meanings, on the one interface of the FreeRTOS
  * build (zephyr_net_if.c), the NINA-W102's, which does TCP/IP and DHCP

@@ -1,6 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-/* Fakes of the Zephyr calls of drivers/nina/nina_bus.c and nina_os.c for
- * the host test tests/nina_boundary.c, which defines the functions.  The
+/* Fakes of the Zephyr calls of drivers/nina/nina_bus.c and
+ * common/drivers/nina/zephyr/nina_os.c for the host test
+ * tests/nina_boundary.c, which defines the functions.  The
  * devicetree's lines are numbered as on the board (CS 9, READY 10, RESET 3,
  * IRQ 2); the flags are distinct values the test can tell apart.
  */

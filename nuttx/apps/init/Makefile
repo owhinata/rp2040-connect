@@ -9,8 +9,9 @@
 # from common/log and priorities.h from common/compat, their NuttX parts
 # (app_log_os.h, priorities_os.h) from nuttx/drivers/include
 # ($(TOPDIR)/external/include).
-# It starts the IMU service's thread (zephyr_compat.h of common/compat,
-# without the layer's Zephyr headers) and calls
+# It starts the NINA's Wi-Fi threads (nina_net.h of common/drivers/nina/nuttx)
+# and the IMU service's thread (zephyr_compat.h of common/compat, without
+# the layer's Zephyr headers) and calls
 # imu_cal_init() and time_sync_init() (../imu, and imu_cal.h of common/imu,
 # which includes lsm6dso_cal.h of common/drivers/lsm6dso).  nano_telnet.c
 # runs the Telnet shell (CONFIG_NANO_INIT_TELNET).  When the board's NINA
@@ -31,5 +32,6 @@ CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)com
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)lsm6dso
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)imu
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)drivers$(DELIM)lsm6dso
+CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)drivers$(DELIM)nina$(DELIM)nuttx
 
 include $(APPDIR)/Application.mk

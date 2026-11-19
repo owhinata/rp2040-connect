@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: MIT */
-/* Fakes of the Zephyr calls of drivers/nina/nina_socket.c for the host test
+/* Fakes of the Zephyr calls of common/drivers/nina/zephyr/nina_socket.c for
+ * the host test
  * tests/nina_socket.c, which defines the functions: the kernel's mutexes,
  * sleep, clock and heap, the descriptor table (zvfs) and the socket
  * offload's registration.  Zephyr's socket names map to the host's (the

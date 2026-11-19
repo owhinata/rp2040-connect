@@ -15,7 +15,7 @@
  *   (nina_os_dns_register()), and does nothing without it.
  *
  * OS-independent apart from nina_os.h and the POSIX names of the sockets
- * (on Zephyr: zephyr/app/usb-console/drivers/nina/posix); the host test
+ * (on Zephyr: common/drivers/nina/zephyr/posix); the host test
  * (common/tests/nina_dns.c) runs it on a fake nina_request().
  */
 
@@ -157,7 +157,7 @@ void nina_freeaddrinfo(struct addrinfo *result)
 
 /* With NINA_OS_DNS_OFFLOAD (the Zephyr build), the OS makes
  * nina_getaddrinfo() the resolver of its sockets (from iface_init() of
- * nina_net.c).  Elsewhere the callers reach nina_getaddrinfo() directly
+ * zephyr/nina_net.c).  Elsewhere the callers reach nina_getaddrinfo() directly
  * (zsock_getaddrinfo() of the compatibility layers), so there is nothing
  * to register.
  */

@@ -1,10 +1,10 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /* The kernel services the shared NINA core uses (nina_spi.c, nina_sock.c,
- * nina_dns.c), in the terms of Zephyr's calls, which the core had before it
- * was shared.  Each build implements them: zephyr/app/usb-console/drivers/
- * nina/nina_os.c, nuttx/drivers/nina/nina_os.c and
- * freertos/drivers/nina/nina_os.c; the host tests (common/tests/nina_*.c)
- * replace them with fakes.
+ * nina_dns.c, nina_wifi.c), in the terms of Zephyr's calls, which the core
+ * had before it was shared.  Each build implements them:
+ * common/drivers/nina/zephyr/nina_os.c, common/drivers/nina/nuttx/nina_os.c
+ * and freertos/drivers/nina/nina_os.c; the host tests
+ * (common/tests/nina_*.c) replace them with fakes.
  */
 
 #ifndef NINA_OS_H_
@@ -29,6 +29,31 @@ void nina_os_unlock(void);
 
 void nina_os_dns_lock(void);
 void nina_os_dns_unlock(void);
+
+/* The Wi-Fi operations' state (nina_wifi.c), K_MUTEX_DEFINE(connect_state_lock)
+ * of the core before it was shared: a mutex with priority inheritance, not
+ * ended by signals.  nina_wifi.c never takes it twice in one thread, and
+ * takes nina_os_lock() (a module command) while it holds it, never the other
+ * way round.  Not from an interrupt handler.
+ */
+
+void nina_os_wifi_lock(void);
+void nina_os_wifi_unlock(void);
+
+/* The requests to the Wi-Fi operations' threads (nina_wifi.c):
+ * K_SEM_DEFINE(name, 0, 1) of the core before, one for each WHICH.
+ * nina_os_wifi_post() makes one request pending (a second one before the
+ * thread takes it leaves one); nina_os_wifi_wait() waits, as long as it
+ * takes and not ended by signals, until one is pending and takes it.  One
+ * waiter for each WHICH: the thread of that request.  Not from an
+ * interrupt handler.
+ */
+
+#define NINA_OS_WIFI_SCAN    0 /* the scan thread's request */
+#define NINA_OS_WIFI_CONNECT 1 /* the connect thread's request */
+
+void nina_os_wifi_post(unsigned int which);
+void nina_os_wifi_wait(unsigned int which);
 
 /* k_sleep(K_USEC(us)) and k_sleep(K_MSEC(ms)): the time rounded up to
  * ticks, plus one tick.  Not ended by signals.
@@ -117,14 +142,14 @@ void nina_os_event_wait(uint32_t seq, uint32_t ms);
  * free(), and its nina_dns_init() does nothing (the callers call
  * nina_getaddrinfo() themselves).  An OS that defines NINA_OS_DNS_OFFLOAD
  * for the compilation of nina_dns.c provides these three instead (the
- * Zephyr build: zephyr/app/usb-console/drivers/nina/nina_socket.c):
+ * Zephyr build: common/drivers/nina/zephyr/nina_socket.c):
  *
  * nina_os_dns_alloc(), nina_os_dns_free(): a result of SIZE bytes, or
  * NULL when there is no room (nina_getaddrinfo() then returns EAI_MEMORY),
  * and its release.  Not from an interrupt handler.
  *
  * nina_os_dns_register(): called by nina_dns_init() (once, from
- * iface_init() of nina_net.c): makes nina_getaddrinfo() and
+ * iface_init() of zephyr/nina_net.c): makes nina_getaddrinfo() and
  * nina_freeaddrinfo() the resolver of the OS's sockets.
  */
 

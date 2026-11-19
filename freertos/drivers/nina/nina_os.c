@@ -2,13 +2,18 @@
 /* The kernel services of the shared NINA core on FreeRTOS
  * (common/drivers/nina/nina_os.h), on the Zephyr compatibility layer
  * (freertos/drivers/compat), with the calls of the Zephyr build's
- * drivers/nina/nina_wifi.c and nina_dns.c:
+ * (common/drivers/nina/zephyr/nina_os.c):
  *
  *   nina_os_lock(), _unlock()      K_MUTEX_DEFINE(nina_lock),
  *                                  k_mutex_lock(K_FOREVER): recursive, with
  *                                  priority inheritance (one level: the
  *                                  layer's k_mutex, zephyr_mutex.c)
  *   nina_os_dns_lock(), _unlock()  K_MUTEX_DEFINE(nina_dns_lock), the same
+ *   nina_os_wifi_lock(), _unlock() K_MUTEX_DEFINE(connect_state_lock), the
+ *                                  same
+ *   nina_os_wifi_post(which),      K_SEM_DEFINE(scan_request, 0, 1) and
+ *   nina_os_wifi_wait(which)       connect_request: k_sem_give(),
+ *                                  k_sem_take(K_FOREVER)
  *   nina_os_sleep_us(us)           k_sleep(K_USEC(us)) = k_usleep(us): us
  *                                  rounded up to ticks of 1 ms, plus one
  *                                  tick (the core calls it only when
@@ -219,6 +224,35 @@ void nina_os_dns_lock(void)
 void nina_os_dns_unlock(void)
 {
 	(void)k_mutex_unlock(&nina_dns_lock);
+}
+
+static K_MUTEX_DEFINE(connect_state_lock);
+static K_SEM_DEFINE(scan_request, 0, 1);
+static K_SEM_DEFINE(connect_request, 0, 1);
+
+void nina_os_wifi_lock(void)
+{
+	(void)k_mutex_lock(&connect_state_lock, K_FOREVER);
+}
+
+void nina_os_wifi_unlock(void)
+{
+	(void)k_mutex_unlock(&connect_state_lock);
+}
+
+static struct k_sem *wifi_request(unsigned int which)
+{
+	return which == NINA_OS_WIFI_SCAN ? &scan_request : &connect_request;
+}
+
+void nina_os_wifi_post(unsigned int which)
+{
+	k_sem_give(wifi_request(which));
+}
+
+void nina_os_wifi_wait(unsigned int which)
+{
+	(void)k_sem_take(wifi_request(which), K_FOREVER);
 }
 
 void nina_os_sleep_us(uint32_t us)
