@@ -27,6 +27,7 @@
 #include "nano_flash_kv_os.h"
 #include "nano_lsm6dso.h"
 #include "nina_bus.h"
+#include "nina_freertos.h"
 #include "nina_net.h"
 #include "nina_passthrough.h"
 #include "nano_shell.h"
@@ -366,13 +367,17 @@ int main(void)
 		panic("zephyr_compat_initialize");
 	}
 
-	/* SPI1 to the NINA-W102 and its chip select, which the Zephyr build sets
-	 * up at boot (its spi1 device, before main()) and the NuttX build in its
-	 * bringup (freertos/drivers/nina/nina_bus.c).  Nothing is sent to the
+	/* The NINA core's mutexes and semaphores, before any task can make a
+	 * request (common/drivers/nina/freertos/nina_freertos.h; Zephyr and
+	 * NuttX define theirs statically).  Then SPI1 to the NINA-W102 and its
+	 * chip select, which the Zephyr build sets up at boot (its spi1 device,
+	 * before main()) and the NuttX build in its bringup
+	 * (freertos/drivers/nina/nina_bus.c).  Nothing is sent to the
 	 * module here: the first request resets it (about 760 ms) and a module
 	 * that does not answer only makes that request fail
 	 * (common/drivers/nina/nina_spi.c), so the start never waits for it.
 	 */
+	nina_os_initialize();
 	ret = nina_bus_initialize();
 	if (ret != 0) {
 		LOG_ERR("Could not set up the NINA's SPI bus: %d", ret);

@@ -1,13 +1,14 @@
 /* SPDX-License-Identifier: MIT */
-/* The part of the Pico SDK that freertos/drivers/nina/nina_bus.c uses, for
- * its host test (freertos/tests/nina/main.c, which implements the
- * functions: they record the calls and play the module's side of the
- * lines and of SPI1), and the GPIO interrupt functions of
- * freertos/drivers/compat/rp2040/nano_gpio.c (READY's edges for
- * freertos/drivers/nina/nina_os.c).  hardware/gpio.h, hardware/irq.h,
- * hardware/resets.h and hardware/spi.h next to this one include it.  Names
+/* The part of the Pico SDK that freertos/drivers/nina/nina_bus.c and the
+ * NINA core's FreeRTOS binding (common/drivers/nina/freertos/nina_os.c: the
+ * GPIO interrupt functions for READY's and the IRQ line's edges, the TIMER)
+ * use, for their host test (freertos/tests/nina/main.c, which implements
+ * the functions: they record the calls and play the module's side of the
+ * lines and of SPI1).  hardware/gpio.h, hardware/irq.h, hardware/resets.h,
+ * hardware/spi.h and hardware/timer.h next to this one include it.  Names
  * and values as in the SDK (hardware_gpio, hardware_irq, hardware_resets,
- * hardware_spi, hardware/regs/intctrl.h, hardware/regs/spi.h).
+ * hardware_spi, hardware_timer, hardware/regs/intctrl.h,
+ * hardware/regs/spi.h).
  */
 
 #ifndef FREERTOS_TESTS_NINA_PICO_FAKE_PICO_NINA_FAKE_H
@@ -129,6 +130,9 @@ void spi_set_format(spi_inst_t *spi, uint data_bits, spi_cpol_t cpol, spi_cpha_t
 		    spi_order_t order);
 int spi_write_read_blocking(spi_inst_t *spi, const uint8_t *src, uint8_t *dst, size_t len);
 int spi_write_blocking(spi_inst_t *spi, const uint8_t *src, size_t len);
+
+/* hardware_timer */
+uint64_t time_us_64(void);
 
 /* hardware/address_mapped.h */
 void hw_set_bits(volatile uint32_t *addr, uint32_t mask);

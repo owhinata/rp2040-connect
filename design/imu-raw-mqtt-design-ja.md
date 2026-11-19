@@ -589,8 +589,9 @@ NuttX 版の確認の範囲は §11.7 に分けて書く。
   狭い境界 `nina_os.h`・`nina_bus.h` だけに依存する）も `common/drivers/nina/` にあり、3 つの版が使う。`nina version` の
   `common/shell/nina_shell.c` も同じ。コアの各 OS の API へのつなぎは OS の名前のサブディレクトリーにある:
   `common/drivers/nina/zephyr/`（Zephyr の Wi-Fi 管理とネットワークインターフェース `nina_net.c`、`nina_os.c`、ソケットの
-  オフロード `nina_socket.c`。FreeRTOS 版は互換層の上で 1 つ目をビルドする）と `common/drivers/nina/nuttx/`（wapi の ioctl を
-  コアの上で受けるネットワークデバイス `wlan0`、アプリが使う Zephyr の Wi-Fi 管理をコアの上で、`nina_os.c`、usrsock）。
+  オフロード `nina_socket.c`。FreeRTOS 版は互換層の上で 1 つ目をビルドする）、`common/drivers/nina/nuttx/`（wapi の ioctl を
+  コアの上で受けるネットワークデバイス `wlan0`、アプリが使う Zephyr の Wi-Fi 管理をコアの上で、`nina_os.c`、usrsock）、
+  `common/drivers/nina/freertos/`（FreeRTOS 版の `nina_os.c`。FreeRTOS と Pico SDK の上）。
   ボードのものは各版のディレクトリーに残る（Zephyr 版は `drivers/nina/nina_bus.c`（devicetree の線と SPI）と esptool の中継）。
   I2C のコア（`common/drivers/i2c_dw/`。Zephyr 版のパッチ後の `i2c_dw.c` の写し）も OS に依存せず、NuttX 版と FreeRTOS 版が
   使う（Zephyr 版は Zephyr のドライバーにローカルのパッチを当てて使う。§12）。
@@ -734,7 +735,7 @@ Zephyr の名前のまま提供する互換層の上でビルドする。ホス�
 | `common/imu/` | 取得サービスと `imu`、バッチ・ペイロード・キュー・status、時刻の対応付けと時刻同期・`ntp`、校正と `imu cal`、MQTT の送信、Wi-Fi のプロファイルと自動再接続、KV の API と `kv` | 3 版（MQTT のクライアント `mqtt_min*` は NuttX 版と FreeRTOS 版。Zephyr 版は Zephyr の MQTT ライブラリー） |
 | `common/drivers/lsm6dso/`、`sensor_shell/` | LSM6DSO のドライバー本体と FIFO のストリーム、sensor シェル | 3 版 |
 | `common/drivers/nina/` | NINA のコア（SPI の転送層、ソケット、名前解決、Wi-Fi の操作 `nina_wifi.[ch]`、ソケットの待ち `nina_wait.[ch]`、宣言 `nina_proto.h`）と esptool の中継の判断 `nina_passthrough_logic.h`。OS の定義を持たない | 3 版 |
-| `common/drivers/nina/zephyr/`、`nuttx/` | コアの Zephyr の API へのつなぎ（Wi-Fi 管理とインターフェース、カーネルの機能、ソケットのオフロード、devicetree binding とオプション）と NuttX の API へのつなぎ（`wlan0` と wapi、アプリが使う Zephyr の Wi-Fi 管理、カーネルの機能、usrsock） | `zephyr/` は Zephyr 版と FreeRTOS 版（Wi-Fi のつなぎを互換層の上で）、`nuttx/` は NuttX 版 |
+| `common/drivers/nina/zephyr/`、`nuttx/`、`freertos/` | コアの Zephyr の API へのつなぎ（Wi-Fi 管理とインターフェース、カーネルの機能、ソケットのオフロード、devicetree binding とオプション）、NuttX の API へのつなぎ（`wlan0` と wapi、アプリが使う Zephyr の Wi-Fi 管理、カーネルの機能、usrsock）、FreeRTOS と Pico SDK へのつなぎ（カーネルの機能 `nina_os.c`: ロック、要求、sleep、時計、READY と IRQ の線のエッジ割り込みでの待ち） | `zephyr/` は Zephyr 版と FreeRTOS 版（Wi-Fi のつなぎを互換層の上で）、`nuttx/` は NuttX 版、`freertos/` は FreeRTOS 版 |
 | `common/drivers/i2c_dw/` | I2C のコア（I2C0 と I2C1。ファイル名は Zephyr のものに合わせる: `i2c_dw.c`・`i2c_dw.h`・`i2c_dw_registers.h`・`i2c_dw_rp2040.h`・`i2c_dw_rp2040_dma_priv.h`（DMA 読み出しとそのコマンド語））、`i2c_dma` の関数の宣言 `i2c_dw_rp2040_dma.h`、境界 `i2c_dw_os.h`・`i2c_dw_dma_os.h` | NuttX 版と FreeRTOS 版（Zephyr 版はパッチ 0003 の同じドライバー。下） |
 | `common/drivers/stmemsc/` | ST のドライバーと Zephyr の I2C の API のつなぎ | NuttX 版と FreeRTOS 版 |
 | `common/compat/` | 互換層の OS に依存しない部分と、Zephyr のライブラリーの写し（KV の NVS と settings、Wi-Fi の資格情報、getopt など） | NuttX 版と FreeRTOS 版 |
@@ -744,8 +745,8 @@ OS ごとの部分は、狭い境界のヘッダーの実装として各版の�
 
 - 互換層のカーネルの部分（`k_mutex`、`k_sem`、スレッド、時計など。一覧は `common/compat/zephyr/kernel.h` の先頭）:
   `nuttx/drivers/compat/`、`freertos/drivers/compat/`。
-- 優先度の対応 `priorities_os.h`（`common/compat/priorities.h` が読む）、NINA の `nina_os.h`・`nina_bus.h`（`nina_os.h` の Zephyr 版と
-  NuttX 版の実装はコアのつなぎ `common/drivers/nina/zephyr/`・`nuttx/` にある）、I2C の
+- 優先度の対応 `priorities_os.h`（`common/compat/priorities.h` が読む）、NINA の `nina_os.h`・`nina_bus.h`（`nina_os.h` の各版の
+  実装はコアのつなぎ `common/drivers/nina/zephyr/`・`nuttx/`・`freertos/` にある）、I2C の
   `i2c_dw_os.h` と DMA 読み出しの `i2c_dw_dma_os.h`、KV の flash の `nano_flash_kv.h`、シェルのバックエンド `zshell_os.h`、ログの `app_log_os.h`・`log_ram.h`。
 - 版ごとに違う数行: `sensor_shell_os.h`（`sensor get` の待ち）、`wifi_profile_os.h`、`lsm6dso_instance.h`（デバイスの
   生成）、`kv_store_os.h`（`kv wipe` の有無）。

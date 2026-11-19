@@ -20,8 +20,11 @@
 #   (nina_socket.c: the descriptors, the Zephyr build's wait loops), which
 #   the time synchronization, the MQTT transport, Telnet and the speed test
 #   use; nothing calls them yet, so --gc-sections leaves most out;
-# - the two boundaries of the core on FreeRTOS: nina_os.c (nina_os.h: the
-#   locks, sleeps and clock on the Zephyr compatibility layer) and
+# - the two boundaries of the core on FreeRTOS: the core's FreeRTOS binding
+#   common/drivers/nina/freertos/nina_os.c (nina_os.h: the locks, requests,
+#   sleeps, clock and the waits on the lines' edge interrupts, on FreeRTOS
+#   and the Pico SDK's hardware_gpio, hardware_irq and hardware_timer; the
+#   application calls its nina_os_initialize() of nina_freertos.h first) and
 #   nina_bus.c (nina_bus.h: SPI1 and the module's lines on the Pico SDK's
 #   hardware_spi and hardware_gpio), with those libraries;
 # - the NINA passthrough mode and this build's "nina" root with its
@@ -29,23 +32,24 @@
 #   UART for esptool, a start of its own that main() runs on request;
 #   common/shell/nina_shell.h merges the subcommand in), on hardware_uart,
 #   hardware_irq and hardware_watchdog;
-# - the include directories freertos/drivers/nina (nina_passthrough.h) and
+# - the include directories freertos/drivers/nina (nina_passthrough.h),
 #   common/drivers/nina (nina_os.h, nina_bus.h, nina_proto.h, nina_cmd.h,
-#   nina_sock.h, nina_dns.h, nina_passthrough_logic.h); common/shell is on
-#   the include path through compat.cmake.
+#   nina_sock.h, nina_dns.h, nina_passthrough_logic.h) and
+#   common/drivers/nina/freertos (nina_freertos.h); common/shell is on the
+#   include path through compat.cmake.
 #
 # nina_sock.c and nina_dns.c take the defaults of CONFIG_NINA_TCP_MAX_IO
 # (3584) and CONFIG_NINA_SEND_RETRY_MS (1), the Zephyr build's values.
 #
 # The core's waits for the module's READY line sleep until an edge interrupt
-# of the line (GPIO10; freertos/drivers/compat/rp2040/nano_gpio.c handles
-# it) instead of sampling it (nina_os_ready_*() of nina_os.h, nina_os.c).
+# of the line (GPIO10; the binding's own handler of IO_IRQ_BANK0) instead of
+# sampling it (nina_os_ready_*() of nina_os.h).
 #
 # The socket loops (nina_socket.c) wait between their passes with
 # common/drivers/nina/nina_wait.c: they wait for the rising edges of the
-# module's IRQ line (GPIO2, nina_os.c) when its firmware reports socket
-# events (nina_proto.h, NINA_CAP_SOCKET_EVENTS); with an older firmware they
-# sleep their poll intervals.
+# module's IRQ line (GPIO2, the same handler) when its firmware reports
+# socket events (nina_proto.h, NINA_CAP_SOCKET_EVENTS); with an older
+# firmware they sleep their poll intervals.
 #
 # The application calls nina_bus_initialize() once at the start, before
 # the tasks (the Zephyr build initializes spi1 at boot); the module itself
@@ -64,8 +68,8 @@ function(freertos_nina target)
   )
 
   target_sources(${target} PRIVATE
+    ${FREERTOS_COMMON_DIR}/drivers/nina/freertos/nina_os.c
     ${FREERTOS_NINA_DIR}/nina_bus.c
-    ${FREERTOS_NINA_DIR}/nina_os.c
     ${FREERTOS_NINA_DIR}/nina_socket.c
     ${FREERTOS_NINA_DIR}/nina_passthrough.c
     ${nina_common_sources}
@@ -74,6 +78,7 @@ function(freertos_nina target)
   target_include_directories(${target} PRIVATE
     ${FREERTOS_NINA_DIR}
     ${FREERTOS_COMMON_DIR}/drivers/nina
+    ${FREERTOS_COMMON_DIR}/drivers/nina/freertos
   )
 
   target_link_libraries(${target}
@@ -81,6 +86,7 @@ function(freertos_nina target)
     hardware_irq
     hardware_resets
     hardware_spi
+    hardware_timer
     hardware_uart
     hardware_watchdog
   )

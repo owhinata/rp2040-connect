@@ -32,8 +32,8 @@ ST の HAL は Zephyr のものを使います。Zephyr 側の構成が変わっ
 （Zephyr の写し。無効にしてある `CONFIG_LSM6DSO_SENSORHUB`・`CONFIG_LSM6DSO_TRIGGER` のときだけビルドされる）は
 このディレクトリーに残り、`lsm6dso.h` を `common/drivers/lsm6dso/` から読みます。NINA のコア（`nina_spi.c`、`nina_wifi.[ch]`、`nina_sock.[ch]`、
 `nina_dns.[ch]`、宣言の `nina_proto.h`、プロトコルのコマンドと応答のバイト `nina_cmd.h`、境界のヘッダー `nina_bus.h`・`nina_os.h` ほか）は
-`common/drivers/nina/` に、`nina` コマンドの `nina_shell.c` は `common/shell/` にあり、3 版で共有します。コアの Zephyr の API へのつなぎ（FreeRTOS 版もビルドする）は
-`common/drivers/nina/zephyr/` にあり、`nina/` にはこのボードの部分だけが残ります（下の NINA の節）。下の表のファイル名はそのすべての場所のものを含みます。
+`common/drivers/nina/` に、`nina` コマンドの `nina_shell.c` は `common/shell/` にあり、3 版で共有します。コアの Zephyr の API へのつなぎは
+`common/drivers/nina/zephyr/` にあり（FreeRTOS 版はその Wi-Fi の部分 `nina_net.c` もビルドし、`nina_os.c` は自分のもの `common/drivers/nina/freertos/` を使う）、`nina/` にはこのボードの部分だけが残ります（下の NINA の節）。下の表のファイル名はそのすべての場所のものを含みます。
 
 ## LSM6DSO の FIFO ストリーム
 
@@ -197,7 +197,8 @@ Wi-Fi の接続とソケットを操作するだけで、パケットは扱い�
 API とソケットのオフロードです。
 
 NINA-W102 のドライバーの中身は、NuttX 版・FreeRTOS 版と共有するコア（`common/drivers/nina/`。OS の定義を持たない）です。
-コアの Zephyr の API へのつなぎは `common/drivers/nina/zephyr/`（FreeRTOS 版は互換層の上でこれをビルドする）、このボードに固有のものは
+コアの Zephyr の API へのつなぎは `common/drivers/nina/zephyr/`（FreeRTOS 版はその Wi-Fi の部分 `nina_net.c` を互換層の上でビルドし、カーネルの部分は
+FreeRTOS と Pico SDK で書いた自分のつなぎ `common/drivers/nina/freertos/nina_os.c` を使う）、このボードに固有のものは
 `nina/` にあります。アプリの `CMakeLists.txt` がそこからビルドし、つなぎの devicetree binding は `DTS_ROOT` で、オプションはアプリの
 `Kconfig`（`rsource`）で読み込みます。
 

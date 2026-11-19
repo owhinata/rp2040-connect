@@ -1,8 +1,8 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /* The board's GPIO bank 0 (GPIO0..29) for the Zephyr compatibility layer's
  * gpio0 device (zephyr_gpio.c here), which the LSM6DSOX's INT1 line
- * (GPIO24) and the NINA's READY line (GPIO10, the waits of nina_os.c) and
- * IRQ line (GPIO2, its socket events, nina_os.c) use.
+ * (GPIO24) and, on NuttX, the NINA's READY line (GPIO10, the waits of
+ * nina_os.c) and IRQ line (GPIO2, its socket events, nina_os.c) use.
  * Each OS implements it as Zephyr's RP2040 GPIO driver does
  * (drivers/gpio/gpio_rpi_pico.c, on the pico-sdk's hardware_gpio): on
  * NuttX the board's src/nano_gpio.c (BOARD_LSM6DSOX_INT1_GPIO), on FreeRTOS

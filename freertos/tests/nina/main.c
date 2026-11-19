@@ -1,11 +1,16 @@
 /* SPDX-License-Identifier: MIT */
 /* The host test of the FreeRTOS build's boundaries of the NINA core on the
- * FreeRTOS POSIX port: freertos/drivers/nina/nina_bus.c on fakes of the
- * Pico SDK's GPIO, reset and SPI functions (pico_fake/, implemented here:
- * they record the calls and play the module), freertos/drivers/nina/
- * nina_os.c on the FreeRTOS part of the compatibility layer, and the
- * shared core over both (common/drivers/nina/nina_spi.c), as the board
- * builds them (freertos/drivers/nina/nina.cmake).
+ * FreeRTOS POSIX port: freertos/drivers/nina/nina_bus.c and the core's
+ * FreeRTOS binding (common/drivers/nina/freertos/nina_os.c, on FreeRTOS and
+ * the Pico SDK alone: no compatibility layer is linked) on fakes of the
+ * Pico SDK's GPIO, GPIO interrupt, reset, SPI and TIMER functions
+ * (pico_fake/, implemented here: they record the calls and play the
+ * module), and the shared core over both (common/drivers/nina/nina_spi.c),
+ * as the board builds them (freertos/drivers/nina/nina.cmake).
+ * freertos/script/host_tests.sh runs it twice: with the board's 1 ms tick,
+ * and with a 4 ms one (configTICK_RATE_HZ 250); both times the kernel's
+ * tick count starts 5 s before it wraps, and the fake TIMER 4.5 s before
+ * its low 32 bits wrap.
  *
  * - Before nina_bus_initialize(): a request fails with -ENODEV and touches
  *   no line (the board's start makes no request).
@@ -17,10 +22,10 @@
  *   polarity.
  * - "nina version" (0x37) through the core: the reset of the first request
  *   (RESET active, 10 ms, inactive, 750 ms, IRQ low and an input) with the
- *   sleeps of the layer (the time rounded up to ticks, plus one tick), the
+ *   binding's sleeps (the time rounded up to ticks, plus one tick), the
  *   frame on SPI, the answer; the second request does not reset again.
  * - A module that stops answering: the request ends with -ETIMEDOUT after
- *   the core's 2000 ms (the layer's clock), CS untouched.
+ *   the core's 2000 ms (the binding's clock), CS untouched.
  * - nina_os_lock(): recursive and with priority inheritance; the DNS lock
  *   is a separate mutex, and so is the Wi-Fi operations' lock
  *   (nina_os_wifi_lock(), with priority inheritance).
@@ -29,27 +34,39 @@
  *   the scan's and the connection's are apart.
  * - A module that gets ready while a request waits: the request goes on
  *   within a few ticks of it.
+ * - The sleeps' and waits' ticks: the time rounded up to ticks, plus one
+ *   tick (0: a yield, or no wait); a sleep of UINT32_MAX ms (clamped to
+ *   INT32_MAX) stays asleep; nina_os_uptime_ms() is the TIMER in ms,
+ *   rounded down, and goes on across the wrap of the tick count and of the
+ *   TIMER's low word.
  *
  * As on the board, nina_os_ready_start() succeeds (the core's first
- * request calls it), and the core waits with nina_os.c's waits on READY's
- * edge interrupt, through drivers/compat/rp2040/nano_gpio.c
- * and the layer's gpio0 (common/compat/zephyr_gpio.c), on fakes of the
- * SDK's GPIO interrupt functions that latch READY's edges and run the
- * bank's handler as an interrupt handler.  So the test also checks:
- * - the bank's handler claims GPIO24 and GPIO10; READY's edge is enabled
- *   only during a wait (falling towards ready, rising towards busy) and
- *   off after each request;
- * - a wait that times out reads READY once per 10 ms (nina_os.c's
+ * request calls it), and the core waits with the binding's waits on
+ * READY's edge interrupt, on fakes of the SDK's GPIO interrupt functions
+ * that latch the edges and run the raw handlers of IO_IRQ_BANK0.  A handler
+ * for GPIO24 stands for the board's GPIO bank 0 backend (nano_gpio.c, the
+ * LSM6DSOX's INT1).  So the test also checks:
+ * - the binding adds one raw handler, for GPIO10 and GPIO2 only, beside the
+ *   backend's for GPIO24 (no pin in two masks), and each handler looks at
+ *   and acknowledges only its own pins, also when both have an edge;
+ *   READY's edge is enabled only during a wait (falling towards ready,
+ *   rising towards busy) and off after each request;
+ * - a wait that times out reads READY once per 10 ms (the binding's
  *   slices), a wait that the interrupt ends early twice;
  * - a change right after the core's read of READY (before it waits) is not
- *   lost: the wait returns at once.
+ *   lost: the wait returns at once;
+ * - the arm drops a wake-up left from an earlier wait, and an edge latched
+ *   while READY's event was off does not fire once it is on.
  *
- * nina_os.c's waits for the socket
- * events on the IRQ line (GPIO2, also claimed by the bank's handler):
+ * The binding's waits for the socket events on the IRQ line (GPIO2):
  * nina_os_event_start() enables its rising edge; each edge counts one and
  * ends the waits of every task that waits (two at once here); a wait
- * without an edge ends after its time; one whose count has moved returns
- * at once.
+ * without an edge ends after its time (0: at once); one whose count has
+ * moved returns at once; a notification left from before does not end a
+ * wait; a waiter that timed out is not woken by a later edge.  A start
+ * that fails cannot happen here (the binding's starts return 0); the
+ * fallback after a failed start is common/tests/nina_wait.c's and
+ * nina_spi.c's.
  */
 
 #include <assert.h>
@@ -61,20 +78,21 @@
 #include <string.h>
 #include <unistd.h>
 
+#include <time.h>
+
 #include "FreeRTOS.h"
 #include "task.h"
 
-#include <zephyr/kernel.h>
-
 #include "hardware/gpio.h"
+#include "hardware/irq.h"
 #include "hardware/resets.h"
 #include "hardware/spi.h"
+#include "hardware/timer.h"
 
 #include "nina_bus.h"
+#include "nina_freertos.h"
 #include "nina_os.h"
 #include "nina_proto.h"
-#include "priorities.h"
-#include "zephyr_compat.h"
 
 #define RUNNER_STACK 16384
 #define HELPER_STACK 16384
@@ -85,17 +103,42 @@
 #define GPIO_RESET 3
 #define GPIO_CS    9
 #define GPIO_READY 10
+#define GPIO_INT1  24
 
-_Thread_local int z_host_isr_depth;
+/* The shell's priority (NANO_PRIO_SHELL): "nina version" runs in the
+ * console's task.
+ */
+#define RUNNER_PRIORITY 6
 
-/* tick.c's vApplicationTickHook(), counted as an interrupt handler. */
-void app_tick_hook(void);
+/* The tick in ms, rounded up (the slack of the timing checks). */
+#define TICK_MS ((1000 + configTICK_RATE_HZ - 1) / configTICK_RATE_HZ)
 
+/* Where the fake TIMER starts (host_tests.sh: 4.5 s before its low word
+ * wraps).
+ */
+#ifndef TEST_TIMER_START_US
+#define TEST_TIMER_START_US 0
+#endif
+
+/* The configuration has a tick hook (the board's catch-up, not used here). */
 void vApplicationTickHook(void)
 {
-	z_host_isr_depth++;
-	app_tick_hook();
-	z_host_isr_depth--;
+}
+
+/* The fake TIMER: the host's monotonic clock from TEST_TIMER_START_US. */
+static uint64_t host_start_us;
+
+static uint64_t host_us(void)
+{
+	struct timespec t;
+
+	clock_gettime(CLOCK_MONOTONIC, &t);
+	return (uint64_t)t.tv_sec * 1000000u + (uint64_t)t.tv_nsec / 1000u;
+}
+
+uint64_t time_us_64(void)
+{
+	return host_us() - host_start_us + TEST_TIMER_START_US;
 }
 
 /* The calls -------------------------------------------------------------*/
@@ -209,32 +252,62 @@ static bool ready_high = true;
 static unsigned int ready_reads;
 static int alive_after_reads = -1;
 
-/* GPIO10's latched edges (INTR) and enabled events (PROC0_INTE), the bank's
- * handler and its mask, IO_IRQ_BANK0's enable.
+/* GPIO10's latched edges (INTR) and enabled events (PROC0_INTE), GPIO2's
+ * and GPIO24's, the raw handlers of IO_IRQ_BANK0 and their masks, its
+ * enable.
  */
 static uint32_t ready_intr, ready_inte;
-static uint32_t irq_intr, irq_inte; /* GPIO2's */
+static uint32_t irq_intr, irq_inte;   /* GPIO2's */
+static uint32_t int1_intr, int1_inte; /* GPIO24's (the backend's pin) */
+
+#define MAX_HANDLERS 4
+
+static irq_handler_t handlers[MAX_HANDLERS];
+static uint32_t handler_masks[MAX_HANDLERS];
+static unsigned int num_handlers;
 static uint32_t raw_mask;
-static irq_handler_t bank_handler;
 static bool bank_enabled;
-static unsigned int ready_irqs;
+static unsigned int bank_irqs;
+
+/* The mask of the handler that runs (0: none), which the fakes check. */
+static uint32_t running_mask;
 
 static uint32_t ready_events(void)
 {
 	return ready_intr | (ready_high ? GPIO_IRQ_LEVEL_HIGH : GPIO_IRQ_LEVEL_LOW);
 }
 
-/* The NVIC: the bank's handler runs, as an interrupt handler, if an enabled
- * event of GPIO10 is pending.
+/* The NVIC: IO_IRQ_BANK0's raw handlers run in turn, as the SDK's shared
+ * handlers, if an enabled event of a pin is pending.
  */
 static void bank_irq(void)
 {
-	if (bank_enabled && bank_handler != NULL &&
-	    ((ready_events() & ready_inte) != 0 || (irq_intr & irq_inte) != 0)) {
-		ready_irqs++;
-		z_host_isr_depth++;
-		bank_handler();
-		z_host_isr_depth--;
+	if (!bank_enabled || ((ready_events() & ready_inte) == 0 && (irq_intr & irq_inte) == 0 &&
+			      (int1_intr & int1_inte) == 0)) {
+		return;
+	}
+	bank_irqs++;
+	for (unsigned int i = 0; i < num_handlers; i++) {
+		running_mask = handler_masks[i];
+		handlers[i]();
+		running_mask = 0;
+	}
+}
+
+/* A handler may only look at and acknowledge the pins of its mask. */
+static void check_own_pin(uint gpio)
+{
+	assert(running_mask == 0 || (running_mask & (1u << gpio)) != 0);
+}
+
+/* The board's backend for GPIO24 (nano_gpio.c's handler). */
+static unsigned int int1_handled;
+
+static void backend_isr(void)
+{
+	if (gpio_get_irq_event_mask(GPIO_INT1) != 0) {
+		gpio_acknowledge_irq(GPIO_INT1, 0xfu);
+		int1_handled++;
 	}
 }
 
@@ -396,9 +469,17 @@ static void irq_rise(void)
 	bank_irq();
 }
 
-/* The SDK's: clear the events (INTR), then set or clear them in INTE. */
+/* The SDK's: clear the events (INTR), then set or clear them in INTE.  Only
+ * the binding calls it here (for its two pins), and not in its handler.
+ */
 void gpio_set_irq_enabled(uint gpio, uint32_t event_mask, bool enabled)
 {
+	assert(running_mask == 0);
+	if (enabled) {
+		/* The SDK asserts that the bank has a handler. */
+		assert(num_handlers > 0);
+	}
+	record("irq(%u,%#x,%d)", gpio, (unsigned int)event_mask, enabled);
 	if (gpio == GPIO_IRQ) {
 		irq_intr &= ~(event_mask & 0xcu);
 		irq_inte = enabled ? irq_inte | event_mask : irq_inte & ~event_mask;
@@ -415,27 +496,44 @@ void gpio_set_irq_enabled(uint gpio, uint32_t event_mask, bool enabled)
 
 uint32_t gpio_get_irq_event_mask(uint gpio)
 {
+	check_own_pin(gpio);
 	if (gpio == GPIO_IRQ) {
 		return irq_intr & irq_inte;
+	}
+	if (gpio == GPIO_INT1) {
+		return int1_intr & int1_inte;
 	}
 	return gpio == GPIO_READY ? ready_events() & ready_inte : 0;
 }
 
 void gpio_acknowledge_irq(uint gpio, uint32_t event_mask)
 {
+	check_own_pin(gpio);
 	if (gpio == GPIO_IRQ) {
 		irq_intr &= ~(event_mask & 0xcu);
+		return;
+	}
+	if (gpio == GPIO_INT1) {
+		int1_intr &= ~(event_mask & 0xcu);
 		return;
 	}
 	assert(gpio == GPIO_READY);
 	ready_intr &= ~(event_mask & 0xcu);
 }
 
+/* The SDK's: hard_assert() that no pin is claimed twice, then a shared
+ * handler of IO_IRQ_BANK0.
+ */
 void gpio_add_raw_irq_handler_masked(uint32_t gpio_mask, irq_handler_t handler)
 {
-	assert(raw_mask == 0 && bank_handler == NULL);
-	raw_mask = gpio_mask;
-	bank_handler = handler;
+	assert((raw_mask & gpio_mask) == 0 && num_handlers < MAX_HANDLERS);
+	for (unsigned int i = 0; i < num_handlers; i++) {
+		assert(handlers[i] != handler);
+	}
+	record("raw(%#x)", (unsigned int)gpio_mask);
+	raw_mask |= gpio_mask;
+	handler_masks[num_handlers] = gpio_mask;
+	handlers[num_handlers++] = handler;
 }
 
 void irq_set_enabled(uint num, bool enabled)
@@ -511,10 +609,14 @@ int spi_write_blocking(spi_inst_t *spi, const uint8_t *src, size_t len)
 
 /* The tests ----------------------------------------------------------------*/
 
-/* The layer's sleeps: the time rounded up to ticks, plus one tick. */
-static TickType_t sleep_ticks(uint32_t us)
+/* The binding's sleeps and waits: the time rounded up to ticks, plus one
+ * tick (none for 0).
+ */
+static TickType_t sleep_ticks(uint64_t us)
 {
-	return (TickType_t)((us + Z_USEC_PER_TICK - 1) / Z_USEC_PER_TICK + 1);
+	uint64_t ticks = (us * configTICK_RATE_HZ + 999999u) / 1000000u;
+
+	return ticks == 0 ? 0 : (TickType_t)(ticks + 1);
 }
 
 /* A sleep of N ticks ends at the N-th tick; the test allows a few ticks of
@@ -528,6 +630,11 @@ static void expect_ticks(TickType_t got, TickType_t expected)
 		fflush(stdout);
 		assert(0);
 	}
+}
+
+static int64_t now_ms(void)
+{
+	return (int64_t)(time_us_64() / 1000u);
 }
 
 static int version(char *out, size_t cap)
@@ -641,17 +748,17 @@ static void test_no_answer(void)
 	set_module_alive(false);
 	recording = false;
 	reads = ready_reads;
-	start = k_uptime_get();
+	start = now_ms();
 	assert(version(v, sizeof(v)) == -ETIMEDOUT);
-	took = k_uptime_get() - start;
+	took = now_ms() - start;
 	reads = ready_reads - reads;
 	recording = true;
 	calls[0] = '\0';
-	/* wait_ready(1, 2000): waits of 10 ms (nina_os.c READY_WAIT_SLICE_MS)
-	 * until the clock passes the deadline, READY read before the first and
-	 * after each.
+	/* wait_ready(1, 2000): waits of 10 ms (the binding's
+	 * READY_WAIT_SLICE_MS) until the clock passes the deadline, READY read
+	 * before the first and after each.
 	 */
-	assert(took >= 2000 && took < 2000 + 50);
+	assert(took >= 2000 && took < 2000 + 50 + 4 * TICK_MS);
 	assert(spi_calls == calls_before && !cs_asserted());
 	assert(reads >= 2 && reads <= 2000 / 10 + 1 && ready_inte == 0);
 	set_module_alive(true);
@@ -668,9 +775,9 @@ static void wake_helper(void *arg)
 
 /* The module gets ready while the request waits for it (a helper task
  * above the runner brings it up after 50 ms): the request goes on within a
- * few ticks.  The first wait reads READY once before
- * its first 10 ms slice and once after each (the last ended by the
- * interrupt), the other three once each.
+ * few ticks.  The first wait reads READY once before its first 10 ms slice
+ * and once after each (the last ended by the interrupt), the other three
+ * once each.
  */
 static void test_late_ready(void)
 {
@@ -684,25 +791,29 @@ static void test_late_ready(void)
 	assert(xTaskCreate(wake_helper, "wake", HELPER_STACK / sizeof(StackType_t), (void *)50,
 			   uxTaskPriorityGet(NULL) + 1, NULL) == pdPASS);
 	reads = ready_reads;
-	start = k_uptime_get();
+	start = now_ms();
 	assert(version(v, sizeof(v)) == 0);
-	took = k_uptime_get() - start;
+	took = now_ms() - start;
 	reads = ready_reads - reads;
 	recording = true;
 	calls[0] = '\0';
 	assert(strcmp(v, "1.5.0") == 0);
-	assert(took >= 50 && took < 50 + 20);
+	assert(took >= 50 - TICK_MS && took < 50 + 20 + 2 * TICK_MS);
 	assert(reads >= 5 && reads <= 1 + 50 / 10 + 1 + 3 && ready_inte == 0);
 	printf("nina: ready after %lld ms, %u reads of READY\n", (long long)took, reads);
 }
 
-/* The bank's handler claims the three pins; READY's edge is off between
- * waits. */
+/* The binding's raw handler claims GPIO10 and GPIO2, beside the backend's
+ * for GPIO24; READY's edge is off between waits.
+ */
 static void test_irq_setup(void)
 {
-	assert(raw_mask == ((1u << 24) | (1u << GPIO_READY) | (1u << GPIO_IRQ)));
+	assert(num_handlers == 2 && handlers[0] == backend_isr);
+	assert(handler_masks[0] == (1u << GPIO_INT1));
+	assert(handler_masks[1] == ((1u << GPIO_READY) | (1u << GPIO_IRQ)));
+	assert(raw_mask == ((1u << GPIO_INT1) | (1u << GPIO_READY) | (1u << GPIO_IRQ)));
 	assert(irq_inte == 0);
-	assert(bank_enabled && bank_handler != NULL && ready_inte == 0);
+	assert(bank_enabled && ready_inte == 0);
 }
 
 /* The module gets ready right after the core's first read of READY, before
@@ -721,12 +832,12 @@ static void test_ready_between_read_and_wait(void)
 	recording = false;
 	alive_after_reads = 1;
 	reads = ready_reads;
-	irqs = ready_irqs;
-	start = k_uptime_get();
+	irqs = bank_irqs;
+	start = now_ms();
 	assert(version(v, sizeof(v)) == 0);
-	took = k_uptime_get() - start;
+	took = now_ms() - start;
 	reads = ready_reads - reads;
-	irqs = ready_irqs - irqs;
+	irqs = bank_irqs - irqs;
 	recording = true;
 	calls[0] = '\0';
 	assert(strcmp(v, "1.5.0") == 0 && alive_after_reads == -1);
@@ -735,17 +846,94 @@ static void test_ready_between_read_and_wait(void)
 	       (long long)took, irqs);
 }
 
+/* The READY waits' calls and ticks, directly (as the core makes them, one
+ * waiter): the arm's events, the slice, a wake-up left from before and an
+ * edge latched while the event was off.
+ */
+static void test_ready_waits(void)
+{
+	TickType_t t;
+	unsigned int irqs;
+
+	set_module_alive(false);
+	assert(ready_high);
+
+	/* Towards ready: all events off, then the falling edge; the disarm. */
+	nina_os_ready_arm(1);
+	expect_calls("irq(10,0xf,0) irq(10,0x4,1) ");
+	nina_os_ready_disarm();
+	expect_calls("irq(10,0xf,0) ");
+	/* Towards busy: the rising edge. */
+	nina_os_ready_arm(0);
+	expect_calls("irq(10,0xf,0) irq(10,0x8,1) ");
+	nina_os_ready_disarm();
+	calls[0] = '\0';
+
+	/* No edge: the time rounded up to ticks, plus one; at most 10 ms; 0 at
+	 * once.
+	 */
+	nina_os_ready_arm(1);
+	t = xTaskGetTickCount();
+	nina_os_ready_wait(3);
+	expect_ticks(xTaskGetTickCount() - t, sleep_ticks(3000));
+	t = xTaskGetTickCount();
+	nina_os_ready_wait(25);
+	expect_ticks(xTaskGetTickCount() - t, sleep_ticks(10000));
+	t = xTaskGetTickCount();
+	nina_os_ready_wait(0);
+	assert(xTaskGetTickCount() - t <= 1);
+
+	/* An edge before the wait: the wait returns at once. */
+	irqs = bank_irqs;
+	set_module_alive(true);
+	assert(bank_irqs == irqs + 1);
+	t = xTaskGetTickCount();
+	nina_os_ready_wait(10);
+	assert(xTaskGetTickCount() - t <= 1);
+
+	/* A wake-up left from before the arm is dropped: the edge gave the
+	 * semaphore, nobody took it before the disarm.
+	 */
+	set_module_alive(false); /* rising: its event is off */
+	set_module_alive(true);  /* falling: gives */
+	nina_os_ready_disarm();
+	/* Edges latched while the events are off. */
+	set_module_alive(false);
+	set_module_alive(true);
+	set_module_alive(false);
+	assert((ready_intr & (GPIO_IRQ_EDGE_FALL | GPIO_IRQ_EDGE_RISE)) != 0);
+	irqs = bank_irqs;
+	nina_os_ready_arm(1);
+	/* The latched falling edge was cleared by the enable: no interrupt. */
+	assert(bank_irqs == irqs && (ready_intr & GPIO_IRQ_EDGE_FALL) == 0);
+	t = xTaskGetTickCount();
+	nina_os_ready_wait(10);
+	expect_ticks(xTaskGetTickCount() - t, sleep_ticks(10000));
+	nina_os_ready_disarm();
+	set_module_alive(true);
+	ready_intr = 0;
+	calls[0] = '\0';
+	printf("nina: READY waits: arm, slice, stale wake-up, latched edge\n");
+}
+
 /* A task that waits for the next edge (ARG: its slot) and notes when. */
-static volatile int64_t event_woke[2];
+static volatile int64_t event_woke[3];
 static volatile uint32_t event_mark;
+static volatile uint32_t event_wait_ms;
 
 static void event_helper(void *arg)
 {
 	int slot = (int)(intptr_t)arg;
 
-	nina_os_event_wait(event_mark, 1000);
-	event_woke[slot] = k_uptime_get();
+	nina_os_event_wait(event_mark, event_wait_ms);
+	event_woke[slot] = now_ms();
 	vTaskDelete(NULL);
+}
+
+static void start_event_helper(int slot, UBaseType_t priority)
+{
+	assert(xTaskCreate(event_helper, "ev", HELPER_STACK / sizeof(StackType_t),
+			   (void *)(intptr_t)slot, priority, NULL) == pdPASS);
 }
 
 static void test_events(void)
@@ -753,51 +941,108 @@ static void test_events(void)
 	UBaseType_t mine = uxTaskPriorityGet(NULL);
 	uint32_t seq;
 	int64_t start, took;
+	TickType_t t;
 
-	/* The start: GPIO2's rising edge, nothing else of the line. */
+	/* The start: GPIO2's events off, then its rising edge, nothing else of
+	 * the line; the handler is not added again.
+	 */
 	assert(irq_inte == 0);
 	assert(nina_os_event_start() == 0);
-	assert(irq_inte == GPIO_IRQ_EDGE_RISE && ready_inte == 0);
+	expect_calls("irq(2,0xf,0) irq(2,0x8,1) ");
+	assert(irq_inte == GPIO_IRQ_EDGE_RISE && ready_inte == 0 && num_handlers == 2);
 
 	/* Two tasks wait; one edge 30 ms later ends both waits (a
-	 * broadcast), and counts one. */
+	 * broadcast), and counts one.
+	 */
 	seq = nina_os_event_seq();
 	event_mark = seq;
+	event_wait_ms = 1000;
 	event_woke[0] = event_woke[1] = -1;
-	assert(xTaskCreate(event_helper, "ev0", HELPER_STACK / sizeof(StackType_t), (void *)0,
-			   mine + 1, NULL) == pdPASS);
-	assert(xTaskCreate(event_helper, "ev1", HELPER_STACK / sizeof(StackType_t), (void *)1,
-			   mine + 1, NULL) == pdPASS);
-	k_msleep(30);
+	start_event_helper(0, mine + 1);
+	start_event_helper(1, mine + 1);
+	vTaskDelay(pdMS_TO_TICKS(30));
 	assert(event_woke[0] == -1 && event_woke[1] == -1);
-	start = k_uptime_get();
+	start = now_ms();
 	irq_rise();
-	k_msleep(5);
+	vTaskDelay(pdMS_TO_TICKS(5));
 	assert(nina_os_event_seq() == seq + 1);
 	assert(event_woke[0] >= start && event_woke[0] < start + 5);
 	assert(event_woke[1] >= start && event_woke[1] < start + 5);
 
 	/* The count moved: at once. */
-	start = k_uptime_get();
+	start = now_ms();
 	nina_os_event_wait(seq, 100);
-	assert(k_uptime_get() - start <= 1);
+	assert(now_ms() - start <= 1);
 
-	/* No edge: the time (100 ms), the count left by the edge taken on the
-	 * way. */
+	/* No edge: the time (100 ms), rounded up to ticks, plus one. */
 	seq = nina_os_event_seq();
-	start = k_uptime_get();
+	t = xTaskGetTickCount();
+	start = now_ms();
 	nina_os_event_wait(seq, 100);
-	took = k_uptime_get() - start;
+	took = now_ms() - start;
+	expect_ticks(xTaskGetTickCount() - t, sleep_ticks(100000));
 	/* The POSIX port's ticks lag its clock by a few ms. */
-	assert(nina_os_event_seq() == seq && took >= 100 && took <= 120);
+	assert(nina_os_event_seq() == seq && took >= 100 && took <= 120 + 2 * TICK_MS);
+
+	/* 0 ms: at once. */
+	t = xTaskGetTickCount();
+	nina_os_event_wait(seq, 0);
+	assert(xTaskGetTickCount() - t <= 1);
 
 	/* An edge before the wait (after the caller read the count): at once. */
 	seq = nina_os_event_seq();
 	irq_rise();
-	start = k_uptime_get();
+	start = now_ms();
 	nina_os_event_wait(seq, 100);
-	assert(k_uptime_get() - start <= 1 && nina_os_event_seq() == seq + 1);
+	assert(now_ms() - start <= 1 && nina_os_event_seq() == seq + 1);
+
+	/* A notification left on the binding's index (a waiter that timed out
+	 * as it was woken) does not end the next wait early.
+	 */
+	seq = nina_os_event_seq();
+	(void)xTaskNotifyGiveIndexed(xTaskGetCurrentTaskHandle(), 2);
+	t = xTaskGetTickCount();
+	nina_os_event_wait(seq, 20);
+	expect_ticks(xTaskGetTickCount() - t, sleep_ticks(20000));
+
+	/* A waiter that timed out has left the list: a later edge wakes only
+	 * the one that still waits.
+	 */
+	seq = nina_os_event_seq();
+	event_mark = seq;
+	event_wait_ms = 10;
+	event_woke[2] = -1;
+	start_event_helper(2, mine + 1);
+	vTaskDelay(pdMS_TO_TICKS(40));
+	assert(event_woke[2] != -1);
+	event_wait_ms = 1000;
+	event_woke[0] = -1;
+	start_event_helper(0, mine + 1);
+	start = now_ms();
+	irq_rise();
+	assert(event_woke[0] >= start && nina_os_event_seq() == seq + 1);
 	printf("nina: socket events, two waiters woken by one edge\n");
+}
+
+/* The backend's pin and the binding's interrupt at once: each handler
+ * acknowledges its own pins only (check_own_pin()).
+ */
+static void test_shared_bank(void)
+{
+	uint32_t seq = nina_os_event_seq();
+	unsigned int handled = int1_handled;
+
+	int1_inte = GPIO_IRQ_EDGE_RISE;
+	int1_intr = GPIO_IRQ_EDGE_RISE;
+	irq_rise();
+	assert(int1_handled == handled + 1 && int1_intr == 0);
+	assert(nina_os_event_seq() == seq + 1 && irq_intr == 0);
+	/* GPIO24 alone: the binding's handler leaves it and counts nothing. */
+	int1_intr = GPIO_IRQ_EDGE_RISE;
+	bank_irq();
+	assert(int1_handled == handled + 2 && nina_os_event_seq() == seq + 1);
+	int1_inte = 0;
+	printf("nina: IO_IRQ_BANK0 shared with the backend's handler\n");
 }
 
 static void test_sleeps(void)
@@ -808,9 +1053,75 @@ static void test_sleeps(void)
 	nina_os_sleep_us(100);
 	expect_ticks(xTaskGetTickCount() - t, sleep_ticks(100));
 	t = xTaskGetTickCount();
+	nina_os_sleep_us(1500);
+	expect_ticks(xTaskGetTickCount() - t, sleep_ticks(1500));
+	t = xTaskGetTickCount();
 	nina_os_sleep_ms(10);
 	expect_ticks(xTaskGetTickCount() - t, sleep_ticks(10000));
-	assert(nina_os_uptime_ms() == k_uptime_get());
+	t = xTaskGetTickCount();
+	nina_os_sleep_ms(7);
+	expect_ticks(xTaskGetTickCount() - t, sleep_ticks(7000));
+	/* 0: a yield, no tick. */
+	t = xTaskGetTickCount();
+	nina_os_sleep_us(0);
+	nina_os_sleep_ms(0);
+	assert(xTaskGetTickCount() - t <= 1);
+}
+
+/* A task that sleeps for UINT32_MAX ms (clamped to INT32_MAX ms: about
+ * 24.8 days); the test checks that it is still asleep, then deletes it.
+ */
+static volatile bool long_sleep_done;
+
+static void long_sleep_helper(void *arg)
+{
+	(void)arg;
+	nina_os_sleep_ms(UINT32_MAX);
+	long_sleep_done = true;
+	vTaskDelete(NULL);
+}
+
+static void test_long_sleep(void)
+{
+	TaskHandle_t task;
+
+	long_sleep_done = false;
+	assert(xTaskCreate(long_sleep_helper, "sleep", HELPER_STACK / sizeof(StackType_t), NULL,
+			   uxTaskPriorityGet(NULL) + 1, &task) == pdPASS);
+	vTaskDelay(pdMS_TO_TICKS(20));
+	assert(!long_sleep_done && eTaskGetState(task) == eBlocked);
+	vTaskDelete(task);
+}
+
+/* The clock: the TIMER in ms, rounded down, also across the wrap of the
+ * tick count (host_tests.sh starts it 5 s before) and of the TIMER's low
+ * word (4.5 s): sampled at every tick until both have wrapped.
+ */
+static void test_uptime(void)
+{
+	TickType_t last_tick = xTaskGetTickCount();
+	int64_t last = nina_os_uptime_ms();
+	bool tick_wrapped = false;
+	int64_t start = last;
+
+	while (!tick_wrapped || time_us_64() <= (UINT64_C(1) << 32) + 1000) {
+		uint64_t before = time_us_64();
+		int64_t ms = nina_os_uptime_ms();
+		uint64_t after = time_us_64();
+		TickType_t tick = xTaskGetTickCount();
+
+		assert(ms >= (int64_t)(before / 1000) && ms <= (int64_t)(after / 1000));
+		assert(ms >= last);
+		if (tick < last_tick) {
+			tick_wrapped = true;
+		}
+		last_tick = tick;
+		last = ms;
+		assert(last - start < 10000);
+		vTaskDelay(1);
+	}
+	printf("nina: uptime %lld ms across the wrap of the tick and of the TIMER's low word\n",
+	       (long long)last);
 }
 
 static volatile int helper_state;
@@ -868,6 +1179,11 @@ static void test_locks(void)
 	nina_os_unlock();
 	assert(helper_state == 4);
 	assert(uxTaskPriorityGet(NULL) == mine);
+
+	/* An unlock by a task that does not hold it changes nothing. */
+	nina_os_unlock();
+	assert(nina_os_lock() == 0);
+	nina_os_unlock();
 
 	/* The DNS lock is another mutex: held here, it does not keep the
 	 * helper from nina_lock, only from itself.
@@ -937,10 +1253,15 @@ static void runner(void *arg)
 	test_late_ready();
 	test_irq_setup();
 	test_ready_between_read_and_wait();
+	test_ready_waits();
 	test_events();
+	test_shared_bank();
 	test_sleeps();
+	test_long_sleep();
 	test_locks();
 	test_wifi_requests();
+	test_uptime();
+	printf("nina: tick %d Hz\n", configTICK_RATE_HZ);
 	fflush(stdout);
 	_exit(0);
 }
@@ -953,11 +1274,16 @@ int main(void)
 	static char out[1 << 12];
 
 	setvbuf(stdout, out, _IOLBF, sizeof(out));
-	if (zephyr_compat_initialize() != 0) {
-		return 2;
-	}
-	/* The shell's priority: "nina version" runs in the console's task. */
-	if (xTaskCreate(runner, "runner", RUNNER_STACK / sizeof(StackType_t), NULL, NANO_PRIO_SHELL,
+	host_start_us = host_us();
+	/* As main() on the board: the binding's objects before the tasks.  The
+	 * backend's handler for GPIO24, as nano_gpio.c adds it when the
+	 * LSM6DSOX's interrupt is first enabled.
+	 */
+	nina_os_initialize();
+	gpio_add_raw_irq_handler_masked(1u << GPIO_INT1, backend_isr);
+	bank_enabled = true;
+	calls[0] = '\0';
+	if (xTaskCreate(runner, "runner", RUNNER_STACK / sizeof(StackType_t), NULL, RUNNER_PRIORITY,
 			NULL) != pdPASS) {
 		return 2;
 	}

@@ -286,9 +286,10 @@ static void put_le32(uint8_t *b, int32_t v)
 }
 
 /* The kernel services of nina_os.h that the Wi-Fi operations use
- * (common/drivers/nina/nina_wifi.c), on the layer as drivers/nina/nina_os.c
- * has them (tested in tests/nina); the rest of that file, the waits on the
- * module's lines, is not needed here. */
+ * (common/drivers/nina/nina_wifi.c), as fakes on the layer with the same
+ * behaviour as the FreeRTOS binding's (common/drivers/nina/freertos/nina_os.c,
+ * tested in tests/nina); the rest of the binding, the waits on the module's
+ * lines, is not needed here. */
 static K_MUTEX_DEFINE(connect_state_lock);
 static K_SEM_DEFINE(scan_request, 0, 1);
 static K_SEM_DEFINE(connect_request, 0, 1);

@@ -21,7 +21,7 @@ OS に依存しない部分は `common/compat/`、FreeRTOS の部分は `freerto
 | `drivers/libc/` | newlib の FILE 関数の差し替え（`stdio_wrap.c`）、newlib に無いソケット系のヘッダー（`include/`。型と定数だけ）、`inet_pton`・`inet_ntop`（`inet.c`） |
 | `drivers/log/` | RAM ログ（`log_ram.c`。リングは `common/log/log_ring.c`） |
 | `drivers/kv/` | KV のフラッシュの境界（`nano_flash_kv.c`）とリンカースクリプトの差し替え（`ld/`、`kv.cmake`） |
-| `drivers/nina/` | NINA-W102 の SPI1 と制御線（`nina_bus.c`）、境界 `nina_os.h` の実装（`nina_os.c`）、ソケット（`nina_socket.c`）、インターフェース（`nina_netif.c`）、esptool の中継（`nina_passthrough.c`） |
+| `drivers/nina/` | NINA-W102 の SPI1 と制御線（`nina_bus.c`）、ソケット（`nina_socket.c`）、インターフェース（`nina_netif.c`）、esptool の中継（`nina_passthrough.c`）。境界 `nina_os.h` の実装はコアの FreeRTOS へのつなぎ（`common/drivers/nina/freertos/nina_os.c`） |
 | `drivers/i2c_dw/` | I2C のコア（`common/drivers/i2c_dw/`。I2C0 と、オプションで I2C1）の FreeRTOS の部分、Pico SDK の DMA での I2C0 の DMA 読み出し（`i2c_dw_dma_os.c`）、自己診断 |
 | `drivers/lsm6dso/` | LSM6DSOX のデバイスの生成（`lsm6dso_instance.h`）と初期化（`nano_lsm6dso.c`）、自己診断 |
 | `drivers/imu/` | 取得サービス・MQTT・時刻同期（`common/imu/`）の組み込み（`imu.cmake`）、`time_sync.c` の前置き |
@@ -150,13 +150,17 @@ FreeRTOS 版が実装するのは flash の境界（`common/compat/nano_flash_kv
 
 - SPI の転送層・ソケットの表と命令・名前解決・Wi-Fi の操作は共有のコア（`common/drivers/nina/nina_spi.c`・`nina_sock.c`・
   `nina_dns.c`・`nina_wifi.c`）です。FreeRTOS 版は境界 `nina_bus.h`（`drivers/nina/nina_bus.c`: SPI1 をポーリングで 7.8125 MHz、
-  CS・READY・RESET・IRQ の 4 本。Zephyr のドライバーと同じ順と値で設定）と `nina_os.h`（`nina_os.c`: 再帰・優先度継承の
-  ロック、名前解決のロック、Wi-Fi の操作のロックとそのスレッドへの要求、「切り上げ + 1 tick」の sleep、ms の時計）を実装します。境界の意味は
+  CS・READY・RESET・IRQ の 4 本。Zephyr のドライバーと同じ順と値で設定）と `nina_os.h`（コアの FreeRTOS へのつなぎ
+  `common/drivers/nina/freertos/nina_os.c`。互換層を使わず FreeRTOS と Pico SDK で直接書いたもの: NINA のロック・名前解決のロック・
+  Wi-Fi の操作のロックは優先度継承のある FreeRTOS の再帰ミューテックス、Wi-Fi のスレッドへの要求は 2 値セマフォ、「切り上げ + 1 tick」の
+  sleep、時計は TIMER の ms）を実装します。つなぎのオブジェクトは静的で、`main()` がタスクより前に `nina_os_initialize()`
+  （`nina_freertos.h`）で作ります。境界の意味は
   [`nuttx/drivers/README_ja.md`](../../nuttx/drivers/README_ja.md) の「NINA-W102」の表のとおりです。
-- コアの READY の待ちは、READY のエッジ割り込み（GPIO10）まで眠り、最長 10 ms ごとに READY を読み直します
-  （`nina_os.c`）。Zephyr 版も同じで、NuttX 版は 10 ms に区切らずに待ちます。割り込みを使うかどうかは実行時に
-  決まり、最初のリセットのあと `nina_os_ready_start()` がコールバックの登録に失敗したときは 100 µs ごとに
-  READY を読みます（3 版とも同じ）。
+- コアの READY の待ちは、READY のエッジ割り込み（GPIO10）が与える 2 値セマフォで眠り、最長 10 ms ごとに READY を読み直します。
+  つなぎは GPIO10 と GPIO2 のための `IO_IRQ_BANK0` の raw ハンドラーを自分で持ちます（`gpio_add_raw_irq_handler_masked()`。
+  GPIO24 のための GPIO バンク 0（`nano_gpio.c`）のハンドラーと並び、それぞれ自分のピンだけを確認・クリアする）。Zephyr 版も同じで、
+  NuttX 版は 10 ms に区切らずに待ちます。割り込みを使うかどうかは実行時に決まり、最初のリセットのあと
+  `nina_os_ready_start()` が失敗したときは 100 µs ごとに READY を読みます（3 版とも同じ。FreeRTOS のつなぎのものは失敗しません）。
 - ソケット（`drivers/nina/nina_socket.c`）: 互換層の `zsock_*()` を、10 個の fd の表を介して共有のコアに直接つなぎます。
   Zephyr 版のソケットのオフロードと同じく、呼んだタスクで NINA に問い合わせて待ちます（NuttX 版の usrsock と
   `nina_event` のような、イベントのスレッドはありません）。fd の番号は newlib の fd とは別で、`zsock_*()` だけが使います。
@@ -164,8 +168,8 @@ FreeRTOS 版が実装するのは flash の境界（`common/compat/nano_flash_kv
 - ファームウェアの追加機能（パッチ 0003〜0006。命令 0x6A のビット）: 動作は Zephyr 版と同じです（説明は
   [`zephyr/app/usb-console/drivers/README_ja.md`](../../zephyr/app/usb-console/drivers/README_ja.md) の同名の節）。
   接続中のスキャンで接続を保つ・非同期のスキャン（`nina_wifi.c`）、ソケットの事象での待ち（`common/drivers/nina/nina_wait.c`
-  と `nina_socket.c` の待ちのループ）。事象は IRQ の線（GPIO2）の立ち上がりのエッジの割り込みで、`nina_os.c` が数を
-  数え、待っている全タスクを起こします（`k_sem_reset()` のあと `k_sem_give()`）。`nina_os_event_start()` が
+  と `nina_socket.c` の待ちのループ）。事象は IRQ の線（GPIO2）の立ち上がりのエッジの割り込みで、つなぎが数を
+  数え、待っている全タスクを起こします（待つタスクを並べた表から、それぞれのタスク通知 2 で）。`nina_os_event_start()` が
   失敗したときは、ビット 2 があっても、ビット 2 が無いときの間隔（20 ms、送信は 1 ms）で待ちます。TCP 送信の再試行で、全量を送り直す前に poll 命令で書き込み可能を
   確かめるのは、ファームウェアに依りません。
 - Wi-Fi: コアの Wi-Fi の操作と、Zephyr 版と同じそのつなぎ（`common/drivers/nina/zephyr/nina_net.c`: Zephyr の Wi-Fi 管理と
@@ -228,7 +232,7 @@ Pico SDK の既定のままです。整数の割り算は `pico_divider` のハ�
   （`drivers/lsm6dso/lsm6dso_instance.h`）。
 - GPIO（`drivers/compat/rp2040/nano_gpio.c`）: 互換層の `gpio0` の下の GPIO バンク 0 を、Zephyr の `gpio_rpi_pico.c` と
   同じ Pico SDK の呼び出しで操作します。割り込みは `gpio_add_raw_irq_handler_masked()` で登録し、使えるのは
-  LSM6DSOX の INT1（GPIO24）、NINA の READY（GPIO10）と IRQ の線（GPIO2）だけです（ほかのピンは `-ENOTSUP`）。
+  LSM6DSOX の INT1（GPIO24）だけです（ほかのピンは `-ENOTSUP`。NINA の READY と IRQ の線は NINA のつなぎのハンドラー）。
 
 ## 取得、時刻同期、MQTT
 
@@ -272,7 +276,7 @@ spinlock、atomic、静的なスレッド、時分割、割り込みを 50 ms �
 | `passthrough` | esptool の中継: 要求の印、DTR・RTS とモジュールの線、レート、受信のバッファー、`nina` のサブコマンド |
 | `shell` | 2 つのセッションのシェル、行編集、出力先 |
 | `kv` | フラッシュの境界と KV（Pico SDK のフラッシュ関数の偽物の上） |
-| `nina` | NINA の SPI と線の境界、READY の割り込み待ち、IRQ の線のエッジの待ち（2 つのタスクを 1 つのエッジで起こす、時間切れ）、カーネルの部分 |
+| `nina` | NINA の SPI と線の境界と、`nina_os.h` の FreeRTOS へのつなぎ（互換層なし。tick 1 ms と 4 ms で 2 回ビルド）: READY の割り込み待ち、IRQ の線のエッジの待ち（2 つのタスクを 1 つのエッジで起こす、時間切れ）、共有のバンクの割り込み、ロック、要求、sleep の tick 数、tick の一周をまたぐ時計 |
 | `i2c_dw` | I2C0 の境界とデバイス、Zephyr の I2C の API（2 回作る: i2c0 だけと、`CONFIG_I2C_DW_I2C1` 付き。後者は i2c1 の起動、ピン、転送、応答の無いアドレス、DMA を使わない長い読み出し、影響を受けない i2c0、2 つのタスクからの両バスの転送を加える）。Pico SDK の DMA の偽物の上の DMA の部分（`i2c_dw_dma_os.c`）: チャネルの取得、設定、開始、共有のハンドラー（終了、バスエラー、ほかの利用者のチャネル）、停止、返却。その上のコアの DMA 読み出し: 読み出し、32 バイトの下限、フォールバック、TX と RX のバスエラー、タイムアウト、DMA 読み出しの無効、終わらない停止（隔離）、カウンター。コアの DMA のコマンド語 |
 | `gpio` | GPIO バンク 0 の境界、`gpio0`、FIFO の割り込み |
 | `imu` | アドレスの変換、`hwinfo` |

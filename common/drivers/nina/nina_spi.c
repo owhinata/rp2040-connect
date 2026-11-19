@@ -15,10 +15,10 @@
  *
  * nina_bus_*() and nina_pin_*() are the board's (<nina_bus.h>),
  * nina_os_*() the kernel's (<nina_os.h>); each build implements both
- * (zephyr/app/usb-console/drivers/nina/nina_bus.c and
- * common/drivers/nina/zephyr/nina_os.c,
+ * (zephyr/app/usb-console/drivers/nina/nina_bus.c,
  * nuttx/boards/arduino-nano-rp2040-connect/src/nina_bus.c and
- * common/drivers/nina/nuttx/nina_os.c, freertos/drivers/nina/).  The host test
+ * freertos/drivers/nina/nina_bus.c; the nina_os.c of the bindings in
+ * zephyr/, nuttx/ and freertos/ next to this file).  The host test
  * (common/tests/nina_spi.c) builds this file with fakes of both.
  *
  * One difference: nina_os_lock() can fail where k_mutex_lock(K_FOREVER)

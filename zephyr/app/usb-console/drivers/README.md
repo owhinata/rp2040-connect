@@ -38,8 +38,9 @@ values). `lsm6dso/lsm6dso_shub.c` and `lsm6dso_trigger.c` (copies of Zephyr's, b
 `nina_dns.[ch]`, the declarations `nina_proto.h`, the protocol's command and reply bytes
 `nina_cmd.h`, the boundary headers `nina_bus.h` and `nina_os.h`, and others) is in
 `common/drivers/nina/` and the `nina` command `nina_shell.c` in `common/shell/`, shared by the three
-builds; the core's binding to Zephyr's APIs (also built by the FreeRTOS build) is in
-`common/drivers/nina/zephyr/`, and `nina/` keeps only this board's part (see the NINA section below).
+builds; the core's binding to Zephyr's APIs is in `common/drivers/nina/zephyr/` (the FreeRTOS build
+also builds its Wi-Fi part, `nina_net.c`, and has its own `nina_os.c` in `common/drivers/nina/freertos/`),
+and `nina/` keeps only this board's part (see the NINA section below).
 The file names in the tables below cover all those places.
 
 ## LSM6DSO FIFO streaming
@@ -214,7 +215,9 @@ management API plus socket offload.
 
 The driver itself is the core shared with the NuttX and FreeRTOS builds (`common/drivers/nina/`),
 with no OS of its own; its binding to Zephyr's APIs is `common/drivers/nina/zephyr/` (the FreeRTOS
-build compiles it on its compatibility layer), and `nina/` holds what is this board's. The
+build compiles its Wi-Fi part, `nina_net.c`, on its compatibility layer; its kernel services are its own
+binding, `common/drivers/nina/freertos/nina_os.c`, on FreeRTOS and the Pico SDK), and `nina/` holds what
+is this board's. The
 application's `CMakeLists.txt` builds them from there; the binding's devicetree binding is found
 through `DTS_ROOT` and its options through the application's `Kconfig` (`rsource`).
 

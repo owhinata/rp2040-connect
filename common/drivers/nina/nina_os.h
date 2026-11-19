@@ -3,7 +3,7 @@
  * nina_dns.c, nina_wifi.c), in the terms of Zephyr's calls, which the core
  * had before it was shared.  Each build implements them:
  * common/drivers/nina/zephyr/nina_os.c, common/drivers/nina/nuttx/nina_os.c
- * and freertos/drivers/nina/nina_os.c; the host tests
+ * and common/drivers/nina/freertos/nina_os.c; the host tests
  * (common/tests/nina_*.c) replace them with fakes.
  */
 

@@ -23,7 +23,7 @@ OS-independent part of the layer is `common/compat/`, the FreeRTOS part `freerto
 | `drivers/libc/` | Wrappers of newlib's FILE functions (`stdio_wrap.c`), the socket headers newlib lacks (`include/`, types and constants only), `inet_pton` and `inet_ntop` (`inet.c`) |
 | `drivers/log/` | The RAM log (`log_ram.c`; the ring is `common/log/log_ring.c`) |
 | `drivers/kv/` | The flash boundary of the key-value store (`nano_flash_kv.c`) and the linker script override (`ld/`, `kv.cmake`) |
-| `drivers/nina/` | The NINA-W102's SPI1 and lines (`nina_bus.c`), the `nina_os.h` boundary (`nina_os.c`), sockets (`nina_socket.c`), the interface (`nina_netif.c`), the esptool passthrough (`nina_passthrough.c`) |
+| `drivers/nina/` | The NINA-W102's SPI1 and lines (`nina_bus.c`), sockets (`nina_socket.c`), the interface (`nina_netif.c`), the esptool passthrough (`nina_passthrough.c`); the `nina_os.h` boundary is the core's FreeRTOS binding (`common/drivers/nina/freertos/nina_os.c`) |
 | `drivers/i2c_dw/` | The FreeRTOS part of the I2C core (`common/drivers/i2c_dw/`; I2C0, and I2C1 as an option), I2C0's DMA reads on the Pico SDK's DMA (`i2c_dw_dma_os.c`), self-test |
 | `drivers/lsm6dso/` | The LSM6DSOX device (`lsm6dso_instance.h`) and its initialization (`nano_lsm6dso.c`), self-test |
 | `drivers/imu/` | Builds in the acquisition service, MQTT and time synchronization (`common/imu/`; `imu.cmake`), the prelude of `time_sync.c` |
@@ -170,14 +170,20 @@ boundary (the four functions of `common/compat/nano_flash_kv.h`, `drivers/kv/nan
   shared core (`common/drivers/nina/nina_spi.c`, `nina_sock.c`, `nina_dns.c`, `nina_wifi.c`). The FreeRTOS build implements the
   boundaries `nina_bus.h` (`drivers/nina/nina_bus.c`: SPI1 polled at 7.8125 MHz and the CS, READY, RESET
   and IRQ lines, set up in the order and with the values of Zephyr's drivers) and `nina_os.h`
-  (`nina_os.c`: the recursive lock with priority inheritance, the name resolution lock, the Wi-Fi
-  operations' lock and their threads' requests, the "rounded up, plus one tick" sleep, the ms clock). The boundaries mean what the "NINA-W102" tables of
+  (the core's FreeRTOS binding `common/drivers/nina/freertos/nina_os.c`, written on FreeRTOS and the
+  Pico SDK without the compatibility layer: FreeRTOS recursive mutexes with priority inheritance for the
+  NINA lock, the name resolution lock and the Wi-Fi operations' lock, binary semaphores for the Wi-Fi
+  threads' requests, the "rounded up, plus one tick" sleep, the TIMER in ms as the clock). Its objects are
+  static and made by `nina_os_initialize()` (`nina_freertos.h`), which `main()` calls before the tasks.
+  The boundaries mean what the "NINA-W102" tables of
   [`nuttx/drivers/README.md`](../../nuttx/drivers/README.md) say.
-- The core's waits for READY sleep until READY's edge interrupt (GPIO10), in waits of at most 10 ms, after
-  which READY is read again (`nina_os.c`). The Zephyr build does the same; the NuttX build waits without
-  the 10 ms slices. Whether the interrupt is used is decided at run time: if `nina_os_ready_start()` fails
-  to register the callback after the first reset, READY is read every 100 µs instead (in all three
-  builds).
+- The core's waits for READY sleep on a binary semaphore that READY's edge interrupt (GPIO10) gives, in
+  waits of at most 10 ms, after which READY is read again. The binding has its own raw handler of
+  `IO_IRQ_BANK0` for GPIO10 and GPIO2 (`gpio_add_raw_irq_handler_masked()`, beside the GPIO bank 0
+  backend's for GPIO24; each handler acknowledges only its own pins). The Zephyr build does the same; the
+  NuttX build waits without the 10 ms slices. Whether the interrupt is used is decided at run time: if
+  `nina_os_ready_start()` fails after the first reset, READY is read every 100 µs instead (in all three
+  builds; the FreeRTOS binding's does not fail).
 - Sockets (`drivers/nina/nina_socket.c`): the layer's `zsock_*()` calls go to the shared core through a
   table of 10 descriptors. As the Zephyr build's socket offload, the calling task asks the NINA and waits
   (there is no event thread like the NuttX build's usrsock and `nina_event`). The descriptors are not
@@ -188,8 +194,8 @@ boundary (the four functions of `common/compat/nano_flash_kv.h`, `drivers/kv/nan
   [`zephyr/app/usb-console/drivers/README.md`](../../zephyr/app/usb-console/drivers/README.md)): a scan
   while connected that keeps the link and the asynchronous scan (`nina_wifi.c`), the waits for socket
   events (`common/drivers/nina/nina_wait.c` and the wait loops of `nina_socket.c`). The events are the
-  rising edges of the IRQ line (GPIO2) on its interrupt; `nina_os.c` counts them and wakes every waiting
-  task (`k_sem_reset()`, then `k_sem_give()`). If `nina_os_event_start()` fails, the waits keep their
+  rising edges of the IRQ line (GPIO2) on its interrupt; the binding counts them and wakes every waiting
+  task (the waiters are on a list, each woken on its task notification 2). If `nina_os_event_start()` fails, the waits keep their
   intervals (20 ms, 1 ms for sends) whatever the firmware. Checking with a poll command that the socket
   is writable before a TCP send's data goes again does not depend on the firmware.
 - Wi-Fi: the core's Wi-Fi operations with the Zephyr build's binding of them
@@ -266,8 +272,8 @@ zero gives the Pico SDK routines' results, the same in the three builds. `memcpy
   with the board's values (`drivers/lsm6dso/lsm6dso_instance.h`).
 - GPIO (`drivers/compat/rp2040/nano_gpio.c`): GPIO bank 0 under the layer's `gpio0`, driven with the same
   Pico SDK calls as Zephyr's `gpio_rpi_pico.c`. The interrupt handler is added with
-  `gpio_add_raw_irq_handler_masked()`; only the LSM6DSOX's INT1 (GPIO24), the NINA's READY (GPIO10) and its IRQ line (GPIO2)
-  can interrupt (other pins get `-ENOTSUP`).
+  `gpio_add_raw_irq_handler_masked()`; only the LSM6DSOX's INT1 (GPIO24) can interrupt through `gpio0`
+  (other pins get `-ENOTSUP`; the NINA's READY and IRQ line are on the NINA binding's handler).
 
 ## Acquisition, time synchronization, MQTT
 
@@ -315,7 +321,7 @@ IC_CON has no DMA bit, a 40-byte read leaves the DMA counters alone, and i2c0 st
 | `passthrough` | The esptool passthrough: the request mark, DTR and RTS on the module's lines, the rate, the receive buffer, the `nina` subcommand |
 | `shell` | Two shell sessions, line editing, output routing |
 | `kv` | The flash boundary and the key-value store (on fakes of the Pico SDK's flash functions) |
-| `nina` | The NINA's SPI and line boundaries, the wait for READY on its interrupt, the waits for the IRQ line's edges (two tasks woken by one edge, the timeout), kernel services |
+| `nina` | The NINA's SPI and line boundaries and the FreeRTOS binding of `nina_os.h` (no compatibility layer; built twice, with a 1 ms and a 4 ms tick): the wait for READY on its interrupt, the waits for the IRQ line's edges (two tasks woken by one edge, the timeout), the shared bank interrupt, locks, requests, sleeps' ticks, the clock across the tick's wrap |
 | `i2c_dw` | I2C0's boundary and device, Zephyr's I2C API (built twice: i2c0 only, and with `CONFIG_I2C_DW_I2C1`, which adds i2c1's start, pins, transfers, an unanswered address, long reads that never take the DMA, i2c0 unaffected, and transfers on both buses from two tasks); the DMA part (`i2c_dw_dma_os.c`) on fakes of the Pico SDK's DMA: claims, setup, start, the shared handler (end, bus error, other users' channels), stop, release; the core's DMA reads on it: the read, the 32-byte limit, fallbacks, bus errors on TX and RX, timeout, the reads off, a stop that does not end (quarantine), the counters; the core's DMA command words |
 | `gpio` | GPIO bank 0's boundary, `gpio0`, the FIFO interrupt |
 | `imu` | Address conversions, `hwinfo` |

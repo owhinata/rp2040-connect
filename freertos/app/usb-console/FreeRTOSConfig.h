@@ -56,9 +56,11 @@
 #define configUSE_COUNTING_SEMAPHORES           1
 #define configUSE_TASK_NOTIFICATIONS            1
 /* Index 0 for the Pico SDK (pico_async_context_freertos) and the port's
- * plain notifications, index 1 for the compatibility layer's waits (F02).
+ * plain notifications, index 1 for the compatibility layer's waits (F02),
+ * index 2 for the NINA's socket event waits
+ * (common/drivers/nina/freertos/nina_os.c).
  */
-#define configTASK_NOTIFICATION_ARRAY_ENTRIES   2
+#define configTASK_NOTIFICATION_ARRAY_ENTRIES   3
 #define configUSE_QUEUE_SETS                    0
 #define configQUEUE_REGISTRY_SIZE               0
 #define configUSE_EVENT_GROUPS                  1

@@ -11,8 +11,10 @@
 # - On the same port: the shell (freertos/tests/shell) and the key-value
 #   store with the board's flash boundary on fakes of the Pico SDK's flash
 #   functions (freertos/tests/kv), and the NINA link's boundaries
-#   (freertos/drivers/nina) with the shared core on fakes of the Pico SDK's
-#   GPIO, SPI and GPIO interrupt functions (freertos/tests/nina), and I2C0's and I2C1's boundaries
+#   (freertos/drivers/nina/nina_bus.c and the core's FreeRTOS binding
+#   common/drivers/nina/freertos/nina_os.c) with the shared core on fakes of
+#   the Pico SDK's GPIO, SPI, GPIO interrupt and TIMER functions, at two
+#   ticks (freertos/tests/nina), and I2C0's and I2C1's boundaries
 #   (freertos/drivers/i2c_dw, the layer's <zephyr/drivers/i2c.h>) with the
 #   shared core on fakes of the Pico SDK's GPIO, reset, IRQ and sync
 #   functions and of the controllers' registers (freertos/tests/i2c_dw), and GPIO bank
@@ -56,7 +58,7 @@ verbose=0
 case "${1:-}" in
   "") ;;
   -v) verbose=1 ;;
-  -h|--help) sed -n '2,51p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+  -h|--help) sed -n '2,53p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
   *) printf 'Unknown option: %s\n' "$1" >&2; exit 2 ;;
 esac
 
@@ -214,36 +216,45 @@ fi
 printf 'ok  kv (flash boundary and store, FreeRTOS POSIX port)\n'
 
 # The NINA link (freertos/tests/nina): the board's boundaries of the shared core
-# (drivers/nina/nina_bus.c on fakes of the Pico SDK's GPIO, reset and SPI functions,
-# tests/nina/pico_fake; drivers/nina/nina_os.c on the layer) under the shared core
-# (common/drivers/nina/nina_spi.c and nina_wait.c, with the prelude, as drivers/nina/nina.cmake
-# builds them), on the same kernel and layer objects.  The waits for READY on its edge interrupt
-# (nina_os.c) go through GPIO bank 0's boundary (drivers/compat/rp2040/nano_gpio.c) and the
-# layer's gpio0 (common/compat/zephyr_gpio.c), on fakes of the Pico SDK's GPIO interrupt
-# functions (tests/nina/pico_fake).  The layer's gpio_add_callback() does not fail, so
-# nina_os_ready_start() succeeds here; the sampling after a failed start is
-# common/tests/nina_spi.c's.
-ninainc=(-Itests/nina/pico_fake -I../common/drivers/nina)
-ninaobjs=()
-for src in drivers/nina/nina_bus.c drivers/nina/nina_os.c tests/nina/main.c \
-           drivers/compat/rp2040/nano_gpio.c ../common/compat/zephyr_gpio.c \
-           ../common/drivers/nina/nina_spi.c ../common/drivers/nina/nina_wait.c; do
-    obj="$out/nina_$(basename "$src" .c).o"
-    extra=()
-    case $src in
-        ../common/*) extra=(-include drivers/compat/common_prelude.h) ;;
-    esac
-    cc "${flags[@]}" "${strict[@]}" "${ninainc[@]}" "${inc[@]}" \
-        "${extra[@]}" -c "$src" -o "$obj"
-    ninaobjs+=("$obj")
+# (drivers/nina/nina_bus.c, and the core's FreeRTOS binding common/drivers/nina/freertos/nina_os.c
+# with its waits on READY's and the IRQ line's edge interrupts and its own raw handler of
+# IO_IRQ_BANK0) on fakes of the Pico SDK's GPIO, GPIO interrupt, reset, SPI and TIMER functions
+# (tests/nina/pico_fake), under the shared core (common/drivers/nina/nina_spi.c and nina_wait.c,
+# with the prelude, as drivers/nina/nina.cmake builds them), on a kernel of its own and no
+# compatibility layer (none of its include directories either).  Twice: with the board's 1 ms
+# tick, and with a 4 ms one (configTICK_RATE_HZ 250); both times the tick count starts 5 s before
+# it wraps (configINITIAL_TICK_COUNT) and the fake TIMER 4.5 s before its low word wraps.
+ninainc=(-Itests/nina/pico_fake -I../common/drivers/nina -I../common/drivers/nina/freertos
+         -Itests/compat -Iapp/usb-console/src -I"$kernel/include" -I"$posix" -I"$posix/utils")
+for hz in 1000 250; do
+    ninadefs=(-DconfigTICK_RATE_HZ=$hz "-DconfigINITIAL_TICK_COUNT=((TickType_t)0 - 5 * $hz)"
+              "-DTEST_TIMER_START_US=((UINT64_C(1) << 32) - 4500000)")
+    ninaobjs=()
+    for src in "$kernel/tasks.c" "$kernel/list.c" "$kernel/queue.c" \
+               "$kernel/portable/MemMang/heap_3.c" "$posix/port.c" "$posix/utils/wait_for_event.c"; do
+        obj="$out/nina${hz}_kernel_$(basename "$src" .c).o"
+        cc "${flags[@]}" -w "${ninainc[@]}" "${ninadefs[@]}" -c "$src" -o "$obj"
+        ninaobjs+=("$obj")
+    done
+    for src in drivers/nina/nina_bus.c ../common/drivers/nina/freertos/nina_os.c tests/nina/main.c \
+               ../common/drivers/nina/nina_spi.c ../common/drivers/nina/nina_wait.c; do
+        obj="$out/nina${hz}_$(basename "$src" .c).o"
+        extra=()
+        case $src in
+            ../common/drivers/nina/nina_*.c) extra=(-include drivers/compat/common_prelude.h) ;;
+        esac
+        cc "${flags[@]}" "${strict[@]}" "${ninainc[@]}" "${ninadefs[@]}" \
+            "${extra[@]}" -c "$src" -o "$obj"
+        ninaobjs+=("$obj")
+    done
+    cc "${flags[@]}" "${ninaobjs[@]}" -o "$out/nina$hz"
+    if (( verbose )); then
+        timeout 60 "$out/nina$hz"
+    else
+        timeout 60 "$out/nina$hz" >"$out/log" || { cat "$out/log"; exit 1; }
+    fi
+    printf 'ok  nina (SPI and line boundary, FreeRTOS binding: READY and event interrupts, locks, sleeps, clock; %s Hz tick, FreeRTOS POSIX port)\n' "$hz"
 done
-cc "${flags[@]}" "${kernobjs[@]}" "${ninaobjs[@]}" -o "$out/nina"
-if (( verbose )); then
-    timeout 60 "$out/nina"
-else
-    timeout 60 "$out/nina" >"$out/log" 2>&1 || { cat "$out/log"; exit 1; }
-fi
-printf 'ok  nina (SPI and line boundary, READY interrupt, kernel services, FreeRTOS POSIX port)\n'
 
 # I2C0 and I2C1 (freertos/tests/i2c_dw): the board's boundaries of the shared core
 # (drivers/i2c_dw: i2c_dw_os_impl.h, i2c_dw_instance.h with the devices i2c0 and i2c1 and their

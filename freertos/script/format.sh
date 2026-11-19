@@ -1,6 +1,7 @@
 #!/usr/bin/env bash
-# Format the C sources under freertos/app/, freertos/drivers/ and
-# freertos/tests/ with clang-format and
+# Format the C sources under freertos/app/, freertos/drivers/,
+# freertos/tests/ and common/drivers/*/freertos/ (the shared drivers'
+# FreeRTOS bindings) with clang-format and
 # freertos/.clang-format (the Zephyr project's style).  Run it from anywhere;
 # it sources freertos/script/setup.sh itself, which installs clang-format.
 #
@@ -18,7 +19,7 @@ check=0
 case "${1:-}" in
   "") ;;
   --check) check=1 ;;
-  -h|--help) sed -n '2,11p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+  -h|--help) sed -n '2,12p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
   *) printf 'Unknown option: %s\n' "$1" >&2; exit 2 ;;
 esac
 
@@ -30,7 +31,8 @@ setup_status=$?
 set -eu
 (( setup_status == 0 )) || { printf 'format.sh: freertos/script/setup.sh failed\n' >&2; exit 1; }
 
-mapfile -t files < <(find "${root}/app" "${root}/drivers" "${root}/tests" -type f \
+mapfile -t files < <(find "${root}/app" "${root}/drivers" "${root}/tests" \
+  "${root}"/../common/drivers/*/freertos -type f \
   \( -name '*.c' -o -name '*.h' \) ! -name FreeRTOSConfig.h | sort)
 (( ${#files[@]} )) || { printf 'format.sh: no sources under %s\n' "${root}" >&2; exit 1; }
 

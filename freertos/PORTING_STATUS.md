@@ -1749,3 +1749,34 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
   プロファイルの「アドレスあり」に数えられる。NuttX はスキャンの結果のイベントを出さなくなった（聞く側が無い）。`nuttx/patches/nuttx/0005` の説明文に古いパスが残る。
 - **新しい基準**: Zephyr `freertos/build/baseline/zephyr/snapshot-1119c/image.bin`（371340 B）、NuttX `.../nuttx/snapshot-1119f/image.bin`（284388 B）。
 - 実機: FreeRTOS 版。
+
+## NINA のリファクタリング: 段階 4（FreeRTOS 版の OS の境界を FreeRTOS と Pico SDK で直接実装）（2026-11-19）
+
+- 段階 3 の補足: FreeRTOS 版の「送信だけ」（約 70 秒）を測り直した結果は欠番 0、`cpu_active` 40.0%（段階 3 の節の FreeRTOS の行は、送信中にスキャンを入れた確認だけだった）。
+- 方針の見直し（ユーザーの指摘）: I2C の DMA は各 OS の API を直接使うのに、NINA の READY と事象の待ちは Zephyr の GPIO の API を互換層に足して借りる、という案
+  （Zephyr 版と FreeRTOS 版の `nina_os.c` を 1 つにする）は食い違っている。決めた線引き: **つなぎは、その版が本来持っているものを使う。FreeRTOS 版が持っていないもの
+  （ネットワーク層）だけ Zephyr のものを借りる**。1 つにする案は取りやめた（調べると、FreeRTOS 版は READY のピンを Pico SDK で設定するので Zephyr の API の
+  「アクティブ Low」の情報が入らず、逆のエッジで待つことになる落とし穴もあった）。
+- 実装: `common/drivers/nina/freertos/nina_os.c`（と `nina_freertos.h`）。FreeRTOS と Pico SDK（`hardware/gpio.h`・`irq.h`・`timer.h`）だけで、Zephyr の名前も互換層の
+  ヘッダーも使わない。`freertos/drivers/nina/nina_os.c` は削除。互換層には何も足していない。
+  - ロック 3 つ: 再帰できるミューテックス（静的に確保。互換層の `k_mutex` が FreeRTOS の上で作っていたものと同じ）。Wi-Fi の依頼と READY: 2 値のセマフォ。
+  - スリープと待ちの tick: 互換層と同じ丸め（切り上げて +1 tick）。時計: `time_us_64() / 1000`（互換層と同じ TIMER）。
+  - READY: 古い合図を捨ててから、ピンの事象をすべて無効にし、待つエッジを有効にする（これまでと同じ順序）。10 ms ごとの区切り。
+  - 事象: 待つ側が自分を一覧に載せ、割り込みが数を進めて一覧の全員にタスク通知を出す。専用の通知（index 2）を使うので
+    `configTASK_NOTIFICATION_ARRAY_ENTRIES` を 2 → 3 にした（各タスクの管理ブロックが 8 B 増える）。
+  - カーネルのオブジェクトは `nina_os_initialize()` が作る。`main()` がスケジューラーの開始前、`nina_bus_initialize()` の直前に呼ぶ。作る前に使うと FreeRTOS の
+    `configASSERT` で止まる。
+  - GPIO の割り込み: GPIO10 と GPIO2 をまとめた 1 つのハンドラーを `gpio_add_raw_irq_handler_masked()` で登録（SDK の共有ハンドラーの枠が 6 つしかないため 1 つに）。
+    ボードの GPIO の層（`nano_gpio.c`）のマスクは GPIO24（LSM6DSOX の INT1）だけになった。
+- ホストテスト（メインが実行）: FreeRTOS 53 の `ok`（`tests/nina` は互換層なしでリンクし、tick 1000 Hz と 250 Hz の 2 回、tick と TIMER の下位 32 ビットの数え直しをまたぐ）。
+  NuttX 55・Zephyr 43（subagent）。`format.sh --check` も通る（対象に `common/drivers/*/freertos` を足した）。
+- ビルド（メインが再ビルド、警告なし）: Zephyr は `snapshot-1119c` と一致、NuttX は `snapshot-1119f` と一致。FreeRTOS 232128 → 232872 B、bss +376 B。
+- 実機（FreeRTOS、書き込み直後の最初の計測、各 1 回）: 送信 約 70 秒は欠番 0・`cpu_active` 40.8%。起動時に接続済み、`wifi scan` で接続は保たれる、送信中のスキャン 1 回で
+  27/1048 バッチが落ちる（これまでと同じ水準）、`wifi disconnect` で切断、`wifi cred auto_connect` で 4 秒で再接続、`nina version` は `in use 0x00000007`、Telnet、
+  `dmesg` にエラーなし、`fault` は異常停止なし。
+- 確かめていない: `zperf`、`selftest`（ビルドは警告なし）、長時間。
+- 段階 5 の材料（subagent の調査）: `zephyr/nina_socket.c` が Zephyr に求めるものは、ソケットのオフロードの登録、記述子の表（zvfs）、記述子ごとのロックを持つ呼び出しの
+  振り分け、poll の 2 段の ioctl、DNS のオフロード、`net_` の型の名前、`k_heap`。互換層にあるのは `zsock` の名前の対応だけで、FreeRTOS の `nina_socket.c`（622 行）が
+  直接実装している。互換層に足す量の見積もりは 400〜600 行。FreeRTOS 版が引き継ぐ違い: poll の失敗がそのソケットの `POLLERR` になる（いまは呼び出し全体が失敗）、
+  `sendmsg` の間ずっとロックを持つ、DNS の結果が 2048 B の専用の領域から出る、記述子の番号が変わる。`k_heap` を互換層に足すかどうかは判断が要る。
+- 実機: FreeRTOS 版（この変更のビルド）。

@@ -56,7 +56,7 @@
  *   sends mostly single bytes, for which both would cost more than they
  *   save.  It takes no lock of its own: Zephyr's spi_transceive() takes the
  *   bus's context lock, but SPI1 has no other user and nina_spi.c calls this
- *   only with nina_lock held (nina_os.c).  CS is not touched (nina_spi.c
+ *   only with nina_lock held (nina_os.h).  CS is not touched (nina_spi.c
  *   drives it: the Zephyr build's spi_config has no CS).
  * - nina_pin_configure(): gpio_rpi_configure() of Zephyr's RP2040 GPIO
  *   driver (drivers/gpio/gpio_rpi_pico.c) for a push-pull line after
@@ -68,12 +68,13 @@
  *   so no other task's GPIO calls interfere: SIO's set and clear registers
  *   change only the bits written.
  *
- * No GPIO interrupt is used here: nina_os.c waits for READY's edges
- * (GPIO10, active low, as in lines[] below) through the layer's GPIO bank
- * 0, as the Zephyr and NuttX builds wait on READY's interrupt; the line's
- * configuration here is the same as theirs.  IRQ is only driven at the
- * reset, as in both builds; afterwards nina_os.c may enable its rising
- * edge (the module's socket events, through the same bank).
+ * No GPIO interrupt is used here: the core's FreeRTOS binding
+ * (common/drivers/nina/freertos/nina_os.c) waits for READY's edges
+ * (GPIO10, active low, as in lines[] below) on its own handler of the GPIO
+ * bank's interrupt, as the Zephyr and NuttX builds wait on READY's
+ * interrupt; the line's configuration here is the same as theirs.  IRQ is
+ * only driven at the reset, as in both builds; afterwards the binding may
+ * enable its rising edge (the module's socket events, the same handler).
  */
 
 #include <errno.h>
