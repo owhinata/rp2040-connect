@@ -15,7 +15,7 @@
  *
  * nina_bus_*() and nina_pin_*() are the board's (<nina_bus.h>),
  * nina_os_*() the kernel's (<nina_os.h>); each build implements both
- * (zephyr/app/usb-console/drivers/nina/nina_bus.c,
+ * (zephyr/nina_bus.c next to this file,
  * nuttx/boards/arduino-nano-rp2040-connect/src/nina_bus.c and
  * freertos/drivers/nina/nina_bus.c; the nina_os.c of the bindings in
  * zephyr/, nuttx/ and freertos/ next to this file).  The host test

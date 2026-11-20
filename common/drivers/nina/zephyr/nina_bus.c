@@ -1,8 +1,8 @@
 /* SPDX-License-Identifier: MIT */
-/* The board's side of the NINA-W102 SPI link on Zephyr (nina_bus.h of the
- * shared core, common/drivers/nina): the devicetree's spi1, its cs-gpios
+/* The NINA-W102 SPI link on Zephyr (nina_bus.h of the core, next to this
+ * binding): the devicetree's spi1, its cs-gpios
  * and the nina_w102 node's ready-gpios, reset-gpios and irq-gpios (with
- * their flags: polarity and pulls, arduino_nano_connect.dts), and the
+ * their flags: polarity and pulls; the board's devicetree), and the
  * Zephyr GPIO and SPI calls that nina_spi.c's table names:
  *
  *   nina_bus_ready()       device_is_ready(spi1) and gpio_is_ready_dt()
@@ -18,11 +18,15 @@
  *
  * Zephyr initializes spi1 and its cs-gpios at boot, so this build has no
  * nina_bus_initialize(); nina_spi.c configures the other lines on the
- * first request.  In the NINA passthrough mode (nina_passthrough.h) the
- * bus is never ready: GPIO8 and GPIO9 are UART1's then, and the mode owns
- * the module's lines, so every request fails with -ENODEV before any of
- * them is touched.  The host test (tests/nina_boundary.c) builds this file
- * on fakes of the Zephyr calls.
+ * first request.
+ *
+ * nina_passthrough_active() is the application's: while it returns true
+ * (the NINA passthrough mode, where the module's lines and the SPI pins
+ * belong to the mode) the bus is never ready, so every request fails with
+ * -ENODEV before any line is touched.  An application without such a mode
+ * leaves the weak definition here, which never claims the bus.  The host
+ * test (zephyr/app/usb-console/tests/nina_boundary.c) builds this file on
+ * fakes of the Zephyr calls.
  */
 
 #include <errno.h>
@@ -35,7 +39,8 @@
 #include <zephyr/drivers/spi.h>
 
 #include "nina_bus.h"
-#include "nina_passthrough.h"
+
+bool nina_passthrough_active(void);
 
 #define NINA_NODE DT_NODELABEL(nina_w102)
 
@@ -61,6 +66,11 @@ static const struct gpio_dt_spec *line(enum nina_pin pin)
 	default:
 		return NULL;
 	}
+}
+
+__weak bool nina_passthrough_active(void)
+{
+	return false;
 }
 
 bool nina_bus_ready(void)

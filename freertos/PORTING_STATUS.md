@@ -1819,3 +1819,20 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
 - 残っている Zephyr の名前は 2 種類だけ: コメントの中の対応の説明（`k_mutex_lock()` が `nina_os_lock()` に当たる、など）と、ドライバー自身のオプションの記号 `CONFIG_NINA_*`（I2C の
   `CONFIG_I2C_DW_*` と同じ扱い）。
 - これで NINA の段階 1〜6 は終わり。残りは `i2c_dw` を同じ構成（`common/drivers/i2c_dw/<OS>/`）へ移すこと、sensor、文書の整理。
+
+## NINA: Zephyr 版の `nina_bus.c` をつなぎの側へ（2026-11-20、ユーザーの指摘）
+
+- 段階 3 では SPI とピンを 3 版とも「ボードに固有」として各版のディレクトリーに残したが、Zephyr 版の `nina_bus.c` は devicetree から `spi1` と 4 本の線を引くだけで、
+  ピン番号もチップのレジスターも持たない。Zephyr へのつなぎなので `common/drivers/nina/zephyr/nina_bus.c` へ移した（binding は前からそこの `dts/` にある）。
+  FreeRTOS 版と NuttX 版の `nina_bus.c` は GPIO の番号と SPI1 を直接指定しているので、今の場所のまま。
+- 中継モードとの関係: `nina_bus_ready()` が呼ぶ `nina_passthrough_active()` はアプリのもの（中継は RP2040 の UART を直接触るのでアプリに残る）。つなぎはアプリのヘッダーを
+  読まず、自分で宣言して、常に偽を返す弱い定義を持つ。中継モードを持つアプリ（このアプリ）の定義がそれに取って代わる。
+- `zephyr/app/usb-console/drivers/nina/` に残るのは `nina_passthrough.c`・`.h`・`_hw.h` だけ。ホストテストの偽の `zephyr/shell/shell.h`（`nina_fakes`）は要らなくなったので削除。
+- ビルド: Zephyr のイメージは大きさが同じ（371340 B）で 11 バイトだけ違う。シンボルの表を前後で比べると、違いはリンカーが作る中継コード（veneer、フラッシュの RAM 上の関数への
+  4 つ）の並び順と、それを指す参照だけ（ほかのシンボルの番地は全部同じ。コンパイラーが付ける局所の名前 `CSWTCH.29` が `.30` になっただけ）。弱い定義の区画が 1 つ増えて、
+  リンカーの中での順番が変わったため。**Zephyr の基準を `snapshot-1120a` に更新**。NuttX は `snapshot-1119f` と一致。FreeRTOS は 236136 B のまま（コメントだけの変更）、警告なし。
+- ホストテスト: Zephyr 43 の `ok`（`nina_boundary` は中継モードあり・なしの 2 通り。なしの側が弱い定義を通る）。`format.sh --check` も通る。
+- 実機（Zephyr、書き込み直後の最初の計測、1 回）: 送信 約 70 秒は欠番 0、`cpu_active` 46.7%、`unix_regressions` 0。起動時に接続済み、`nina version` は `in use 0x00000007`、
+  `dmesg` に `<err>`・`<wrn>` なし。
+- 確かめていない: `nina passthrough`（中継モードに入ったときにバスが使えなくなること。ホストテストだけ）。
+- 実機: Zephyr 版（この変更のビルド）。

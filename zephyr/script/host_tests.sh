@@ -19,7 +19,7 @@ run() {
 }
 
 # The shared NINA SPI link (common/drivers/nina/nina_spi.c) on this build's boundary
-# (drivers/nina/nina_bus.c: the devicetree's lines and SPI calls; common/drivers/nina/zephyr/
+# (common/drivers/nina/zephyr/nina_bus.c: the devicetree's lines and SPI calls; its
 # nina_os.c: the kernel's, the Wi-Fi operations' lock and requests, and the READY and IRQ edge
 # interrupts; the socket loops' waits, nina_wait.c), on fakes of the Zephyr
 # calls: framing, reset, READY waits (sampled when the READY callback cannot be added, else on the
@@ -27,7 +27,7 @@ run() {
 # CONFIG_NINA_PASSTHROUGH as well (the build's default), the NINA passthrough mode's gate:
 # no bus, no line touched while the mode is active (drivers/nina/nina_passthrough.h).
 nina_boundary=(-std=gnu17 -Wall -Wextra -Werror -I"$app/tests/nina_fakes" -I../common/drivers/nina
-               "$app/tests/nina_boundary.c" "$app/drivers/nina/nina_bus.c"
+               "$app/tests/nina_boundary.c" ../common/drivers/nina/zephyr/nina_bus.c
                ../common/drivers/nina/zephyr/nina_os.c ../common/drivers/nina/nina_wait.c)
 run nina_boundary_passthrough -DCONFIG_NINA_PASSTHROUGH "${nina_boundary[@]}"
 run nina_boundary "${nina_boundary[@]}"

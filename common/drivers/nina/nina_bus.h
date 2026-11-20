@@ -4,7 +4,7 @@
  * devicetree's spi1, cs-gpios, ready-gpios, reset-gpios and irq-gpios with
  * their flags, and the Zephyr GPIO and SPI calls on them).  nina_spi.c is
  * written against this interface.  Each build implements it:
- * zephyr/app/usb-console/drivers/nina/nina_bus.c (on the devicetree),
+ * zephyr/nina_bus.c next to this file (on the devicetree),
  * nuttx/boards/arduino-nano-rp2040-connect/src/nina_bus.c,
  * freertos/drivers/nina/nina_bus.c; the host test (common/tests/nina_spi.c)
  * replaces it with fakes.

@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-/* Fakes of the Zephyr calls of drivers/nina/nina_bus.c and
+/* Fakes of the Zephyr calls of common/drivers/nina/zephyr/nina_bus.c and
  * common/drivers/nina/zephyr/nina_os.c for the host test
  * tests/nina_boundary.c, which defines the functions.  The
  * devicetree's lines are numbered as on the board (CS 9, READY 10, RESET 3,
@@ -86,6 +86,7 @@ typedef struct {
 #define MIN(a, b)                        ((a) < (b) ? (a) : (b))
 #define BIT(n)                           (1u << (n))
 #define ARG_UNUSED(x)                    (void)(x)
+#define __weak                           __attribute__((__weak__))
 
 extern struct device fake_device;
 bool device_is_ready(const struct device *dev);
@@ -113,9 +114,5 @@ void k_sem_reset(struct k_sem *sem);
 int k_sem_take(struct k_sem *sem, k_timeout_t timeout);
 void k_sem_give(struct k_sem *sem);
 
-/* <zephyr/shell/shell.h>, for drivers/nina/nina_passthrough.h (built with
- * CONFIG_NINA_PASSTHROUGH; the test defines nina_passthrough_active()).
- */
-struct shell;
 
 #endif

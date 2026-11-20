@@ -592,7 +592,7 @@ NuttX 版の確認の範囲は §11.7 に分けて書く。
   オフロード `nina_socket.c`。FreeRTOS 版は、Zephyr のソケット層をソケットの実装の一覧のところまで持つ互換層の上で、1 つ目と最後をビルドする）、`common/drivers/nina/nuttx/`（wapi の ioctl を
   コアの上で受けるネットワークデバイス `wlan0`、アプリが使う Zephyr の Wi-Fi 管理をコアの上で、`nina_os.c`、usrsock）、
   `common/drivers/nina/freertos/`（FreeRTOS 版の `nina_os.c`。FreeRTOS と Pico SDK の上）。
-  ボードのものは各版のディレクトリーに残る（Zephyr 版は `drivers/nina/nina_bus.c`（devicetree の線と SPI）と esptool の中継）。
+  ボードのものは各版のディレクトリーに残る（Zephyr 版は esptool の中継。SPI と線は devicetree から引くので、`nina_bus.c` はつなぎの側にある）。
   I2C のコア（`common/drivers/i2c_dw/`。Zephyr 版のパッチ後の `i2c_dw.c` の写し）も OS に依存せず、NuttX 版と FreeRTOS 版が
   使う（Zephyr 版は Zephyr のドライバーにローカルのパッチを当てて使う。§12）。
 - 共有するソースは、OS の呼び出しを **Zephyr の名前のまま**提供する互換層（OS に依存しない部分は `common/compat/`、NuttX の実装は `nuttx/drivers/compat/`）の上で動かす。

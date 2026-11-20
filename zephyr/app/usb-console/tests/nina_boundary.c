@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /* Host test of this build's side of the shared NINA core: the SPI link
  * (common/drivers/nina/nina_spi.c, which the test includes) on the board's
- * boundary drivers/nina/nina_bus.c and the kernel's
+ * boundary common/drivers/nina/zephyr/nina_bus.c and the kernel's
  * common/drivers/nina/zephyr/nina_os.c,
  * built on fakes of the Zephyr calls (tests/nina_fakes), whose
  * registration of the callbacks fails or succeeds as the test says.

@@ -677,7 +677,7 @@ version's; what has been verified on the NuttX port is listed separately in 11.7
   `wlan0` with wapi's ioctls on the core, the applications' Zephyr Wi-Fi management on the core,
   `nina_os.c`, usrsock) and `common/drivers/nina/freertos/` (the FreeRTOS build's `nina_os.c` on
   FreeRTOS and the Pico SDK). What is the board's stays in each build's directory (the Zephyr build's
-  `drivers/nina/nina_bus.c`, the devicetree's lines and SPI, and the esptool passthrough).
+  esptool passthrough; its SPI and lines come from the devicetree, so `nina_bus.c` is in the binding).
   The I2C core (`common/drivers/i2c_dw/`, a copy of the Zephyr build's patched `i2c_dw.c`) does not depend on the OS
   either; the NuttX and FreeRTOS builds use it (the Zephyr build uses Zephyr's driver with a local patch, §12).
 - The shared sources run on top of a compatibility layer
