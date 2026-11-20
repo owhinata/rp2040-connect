@@ -13,7 +13,7 @@
  * optional hooks.  The core's threads are K_THREAD_DEFINE() threads here.
  *
  * The FreeRTOS build compiles this file on its Zephyr compatibility layer
- * (freertos/drivers/wifi/wifi.cmake, freertos/drivers/nina/nina_netif.c).
+ * (freertos/drivers/wifi/wifi.cmake, freertos/drivers/compat/zephyr_net_init.c).
  */
 
 #include <errno.h>

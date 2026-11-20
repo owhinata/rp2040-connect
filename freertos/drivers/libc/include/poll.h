@@ -1,9 +1,9 @@
 /* SPDX-License-Identifier: MIT */
 /* The types and event bits of POSIX's <poll.h>, which newlib does not
  * have.  There is no poll() here: the build's sockets are polled with
- * zsock_poll() of the Zephyr compatibility layer (<zephyr/net/socket.h>,
- * freertos/drivers/nina/nina_socket.c), whose struct zsock_pollfd and
- * ZSOCK_POLL* are these.  The values are Linux's, Zephyr's and NuttX's.
+ * zsock_poll() of the Zephyr compatibility layer (<zephyr/net/socket.h>),
+ * whose ZSOCK_POLL* are these (its struct zsock_pollfd is Zephyr's struct
+ * zvfs_pollfd, of the same layout).  The values are Linux's, Zephyr's and NuttX's.
  * Part of newlib's glue of the FreeRTOS build (freertos/drivers/libc).
  */
 

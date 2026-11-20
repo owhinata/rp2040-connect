@@ -327,6 +327,27 @@ def test_netdown(board):
     d.close()
 
 
+def test_listendown(board):
+    """The listening socket fails and the first three binds of its restart
+    fail: the restart fails, the service sets the server up again every
+    second without logging, and Telnet works again."""
+    c, _ = connect_session(board)
+    board.drain()
+    c.command("listendown")
+    check(c.wait_closed(3.0), "the client was not ended at the restart")
+    line = board.wait_line("LOG shell_telnet: Telnet socket ")
+    check(line.endswith(" error (0)"), line)
+    board.wait_line("Telnet fatal error, failed to restart server (-5)")
+    start = len(board.all)
+    board.wait_line("Telnet shell backend initialized", timeout=10.0)
+    quiet = [x for x in board.all[start:] if "LOG shell_telnet" in x]
+    check(len(quiet) == 1, "the retries logged: %r" % quiet)
+    c.close()
+    d, _ = connect_session(board)
+    check(d.command("socks") == b"socks 2\r\n", "descriptors after the restart")
+    d.close()
+
+
 def run_iperf3(args, timeout=30):
     p = subprocess.run(["iperf3"] + args, capture_output=True, timeout=timeout)
     log("iperf3", " ".join(args), "->", p.returncode)
@@ -426,6 +447,7 @@ def main():
         refused = test_reconnect(board)
         test_mixing(board)
         test_netdown(board)
+        test_listendown(board)
         test_stall(board)
         if shutil.which("iperf3"):
             test_zperf(board)

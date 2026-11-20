@@ -3,8 +3,8 @@
  * newlib does not have.  There is no getaddrinfo() here: names are resolved
  * by the NINA-W102 (common/drivers/nina/nina_dns.c, nina_getaddrinfo()),
  * which zsock_getaddrinfo() of the Zephyr compatibility layer calls
- * (<zephyr/net/socket.h>, freertos/drivers/nina/nina_socket.c), as the
- * Zephyr build's offloaded resolver.
+ * (<zephyr/net/socket.h>) as the offloaded resolver that the NINA's binding
+ * registers (common/drivers/nina/zephyr/nina_socket.c), as in the Zephyr build.
  *
  * The values are glibc's, which are Zephyr's: the AI_* flags of
  * ZSOCK_AI_*, and the errors of DNS_EAI_* (<zephyr/net/dns_resolve.h>),

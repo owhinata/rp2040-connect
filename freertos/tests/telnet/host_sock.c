@@ -2,9 +2,10 @@
 /* The zsock_*() calls of the layer's <zephyr/net/socket.h> on the host's
  * sockets, for the host tests of the Telnet shell and the iperf3 of "zperf"
  * (freertos/tests/telnet) and of the MQTT transport against the host's
- * receiver (freertos/tests/mqtt/live.c), with what the NINA's sockets do
- * (freertos/drivers/nina/nina_socket.c over common/drivers/nina/nina_sock.c)
- * where the code under test depends on it:
+ * receiver (freertos/tests/mqtt/live.c), in place of the layer's socket
+ * part, with what the NINA's sockets do (the binding
+ * common/drivers/nina/zephyr/nina_socket.c over common/drivers/nina/
+ * nina_sock.c, on the layer) where the code under test depends on it:
  *
  * - ten descriptors, numbered 0..9 from the lowest free one (EMFILE for an
  *   eleventh): a closed descriptor is soon another socket's, as on the
@@ -18,7 +19,8 @@
  * - the waits poll every 20 ms with the kernel's sleep (a blocking send
  *   every 1 ms up to 10 s, then EAGAIN; connect up to 10 s); poll reports
  *   POLLERR for a connection that failed (fake_sock_fail_connections()),
- *   on which a read gives 0 and a send EPIPE.
+ *   on which a read gives 0 and a send EPIPE, and for a listening socket
+ *   that failed (fake_sock_fail_listeners(), with binds that fail);
  *
  * The host calls themselves never block: the tasks of the FreeRTOS POSIX
  * port are threads of which one runs at a time.  They are made with the
@@ -63,6 +65,7 @@ struct hsock {
 };
 
 static struct hsock socks[SOCK_MAX];
+static int bind_failures;
 
 int host_sock_connect_sndbuf;
 
@@ -169,6 +172,10 @@ int zsock_bind(int sock, const struct sockaddr *addr, socklen_t addrlen)
 	}
 	if (in->sin_addr.s_addr != htonl(INADDR_ANY)) {
 		return fail(EADDRNOTAVAIL);
+	}
+	if (bind_failures > 0) {
+		bind_failures--;
+		return fail(EIO);
 	}
 	(void)setsockopt(s->fd, SOL_SOCKET, SO_REUSEADDR, &on, sizeof(on));
 	return HOST_CALL(bind(s->fd, addr, addrlen)) < 0 ? -1 : 0;
@@ -477,6 +484,16 @@ int fake_sock_open_count(void)
 		n += socks[i].used ? 1 : 0;
 	}
 	return n;
+}
+
+void fake_sock_fail_listeners(int failures)
+{
+	bind_failures = failures;
+	for (int i = 0; i < SOCK_MAX; i++) {
+		if (socks[i].used && socks[i].listening) {
+			socks[i].failed = true;
+		}
+	}
 }
 
 void fake_sock_fail_connections(void)

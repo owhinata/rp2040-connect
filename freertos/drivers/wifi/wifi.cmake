@@ -18,8 +18,9 @@
 #   (common/drivers/nina/nina_wifi.c), its Zephyr binding on the layer
 #   (common/drivers/nina/zephyr/nina_net.c: Zephyr's Wi-Fi management and
 #   interface, the threads nina_scan_tid, nina_connect_tid and
-#   nina_monitor_tid) and the interface on FreeRTOS
-#   (freertos/drivers/nina/nina_netif.c: nina_net_initialize());
+#   nina_monitor_tid) and the start of the layer's network part, which
+#   registers the driver's interface as Zephyr's net_init() does
+#   (freertos/drivers/compat/zephyr_net_init.c: zephyr_net_initialize());
 # - the layer's network part: the interface (freertos/drivers/compat/
 #   zephyr_net_if.c, <zephyr/net/net_if.h>), the net_mgmt events
 #   (common/compat/zephyr_net_mgmt.c with the thread "net_mgmt" of
@@ -43,10 +44,10 @@
 #   common/compat/subsys/net/lib/wifi_credentials);
 # - the "ifconfig" command (nano_ifconfig.c here: the NuttX build's lines
 #   for wlan0, on the interface's state);
-# - the include directories: this directory, freertos/drivers/nina
-#   (nina_net.h), common/imu (wifi_profile.h, kv_store.h).
+# - the include directories: this directory, common/imu (wifi_profile.h,
+#   kv_store.h).
 #
-# The application calls nina_net_initialize(), wifi_credentials_init() and
+# The application calls zephyr_net_initialize(), wifi_credentials_init() and
 # wifi_shell_init() in its task "main", starts the threads with
 # K_THREAD_DEFINE_START() and calls wifi_profile_init() after
 # kv_store_init(), in the order of the Zephyr build's boot (see main.c).
@@ -83,7 +84,7 @@ function(freertos_wifi target)
 
   target_sources(${target} PRIVATE
     ${FREERTOS_COMPAT_DIR}/zephyr_net_if.c
-    ${FREERTOS_NINA_DIR}/nina_netif.c
+    ${FREERTOS_COMPAT_DIR}/zephyr_net_init.c
     ${FREERTOS_WIFI_DIR}/nano_ifconfig.c
     ${wifi_common_sources}
     ${wifi_zephyr_copies}
@@ -91,7 +92,6 @@ function(freertos_wifi target)
 
   target_include_directories(${target} PRIVATE
     ${FREERTOS_WIFI_DIR}
-    ${FREERTOS_NINA_DIR}
     ${FREERTOS_COMMON_DIR}/imu
   )
 

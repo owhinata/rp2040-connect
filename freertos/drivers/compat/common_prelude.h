@@ -37,6 +37,19 @@
 #define CONFIG_NINA_NTP_PORT        123
 #define CONFIG_NINA_NTP_INTERVAL_MS 2000
 
+/* The NINA's sockets: the largest TCP send of one command and the wait
+ * before a send that found no room is tried again (the core,
+ * common/drivers/nina/nina_sock.h, and its Zephyr binding
+ * common/drivers/nina/zephyr/nina_socket.c), and the priority with which
+ * the binding registers its sockets (NET_SOCKET_OFFLOAD_REGISTER() of the
+ * layer's <zephyr/net/socket.h>): the Zephyr build's CONFIG_NINA_TCP_MAX_IO,
+ * CONFIG_NINA_SEND_RETRY_MS (common/drivers/nina/zephyr/Kconfig) and
+ * CONFIG_NET_SOCKETS_OFFLOAD_PRIORITY.
+ */
+#define CONFIG_NINA_TCP_MAX_IO              3584
+#define CONFIG_NINA_SEND_RETRY_MS           1
+#define CONFIG_NET_SOCKETS_OFFLOAD_PRIORITY 40
+
 /* The FIFO stream of the LSM6DSO driver, CONFIG_SENSOR_ASYNC_API in the
  * Zephyr build (lsm6dso.c, lsm6dso.h): on with the driver
  * (CONFIG_NANO_LSM6DSO_STREAM, which freertos/drivers/lsm6dso/lsm6dso.cmake

@@ -39,7 +39,8 @@ values). `lsm6dso/lsm6dso_shub.c` and `lsm6dso_trigger.c` (copies of Zephyr's, b
 `nina_cmd.h`, the boundary headers `nina_bus.h` and `nina_os.h`, and others) is in
 `common/drivers/nina/` and the `nina` command `nina_shell.c` in `common/shell/`, shared by the three
 builds; the core's binding to Zephyr's APIs is in `common/drivers/nina/zephyr/` (the FreeRTOS build
-also builds its Wi-Fi part, `nina_net.c`, and has its own `nina_os.c` in `common/drivers/nina/freertos/`),
+also builds its Wi-Fi and socket parts, `nina_net.c` and `nina_socket.c`, and has its own `nina_os.c` in
+`common/drivers/nina/freertos/`),
 and `nina/` keeps only this board's part (see the NINA section below).
 The file names in the tables below cover all those places.
 
@@ -215,7 +216,8 @@ management API plus socket offload.
 
 The driver itself is the core shared with the NuttX and FreeRTOS builds (`common/drivers/nina/`),
 with no OS of its own; its binding to Zephyr's APIs is `common/drivers/nina/zephyr/` (the FreeRTOS
-build compiles its Wi-Fi part, `nina_net.c`, on its compatibility layer; its kernel services are its own
+build compiles its Wi-Fi and socket parts, `nina_net.c` and `nina_socket.c`, on its compatibility layer,
+which has Zephyr's socket layer down to the list of socket implementations; its kernel services are its own
 binding, `common/drivers/nina/freertos/nina_os.c`, on FreeRTOS and the Pico SDK), and `nina/` holds what
 is this board's. The
 application's `CMakeLists.txt` builds them from there; the binding's devicetree binding is found
@@ -233,7 +235,7 @@ through `DTS_ROOT` and its options through the application's `Kconfig` (`rsource
 | `nina_wait.[ch]` | `common/drivers/nina/` | The waits between the passes of the socket loops (an interval, or the IRQ line's edge) |
 | `nina_net.c` | `common/drivers/nina/zephyr/` | Zephyr's Wi-Fi management and network interface on the core: the device (`NET_DEVICE_DT_OFFLOAD_DEFINE()`), Zephyr's parameters checked and passed on, the results as Zephyr's structures and events, the address, netmask, gateway and dormant state on the interface, the Wi-Fi profile's reconnection as the core's hooks, the three threads (`K_THREAD_DEFINE()`) |
 | `nina_os.c` | `common/drivers/nina/zephyr/` | Zephyr's side of the core's `nina_os.h`: mutexes, the Wi-Fi threads' requests, sleeps, clock, the READY interrupt, the waits for the IRQ line's (GPIO2) edges |
-| `nina_socket.c` | `common/drivers/nina/zephyr/` | Socket offload (file descriptors, errno, `O_NONBLOCK`, `SO_RCVTIMEO`, the wait loops and their sleeps, poll), and the resolver registered as the `getaddrinfo` offload |
+| `nina_socket.c` | `common/drivers/nina/zephyr/` | Socket offload (file descriptors, errno, `O_NONBLOCK`, `SO_RCVTIMEO`, the wait loops and their sleeps, poll), and the resolver registered as the `getaddrinfo` offload (the FreeRTOS build's sockets too) |
 | `nina_passthrough.[ch]`, `nina_passthrough_hw.h` | `nina/` | The esptool passthrough (`nina passthrough confirm`); `_hw.h` is its part on the RP2040's registers (watchdog, UART1, GPIO) |
 | `posix/` | `common/drivers/nina/zephyr/` | Headers that map the POSIX socket names the core uses (`struct sockaddr_in`, `AF_INET`, `POLLIN`, ...) to Zephyr's (read by the core and `nina_socket.c` only) |
 | `Kconfig`, `dts/bindings/wifi/arduino,nina-spi.yaml` | `common/drivers/nina/zephyr/` | The driver's options (`CONFIG_WIFI_NINA_LOCAL`, `CONFIG_NINA_SPI_FREQUENCY`, `CONFIG_NINA_TCP_MAX_IO`, `CONFIG_NINA_SEND_RETRY_MS`) and the devicetree binding of the `nina_w102` node |

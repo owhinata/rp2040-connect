@@ -32,6 +32,8 @@
 #include "zephyr_os_port.h"
 #include "priorities.h"
 
+#include <zephyr/sys/clock.h> /* MSEC_PER_SEC, ..., as Zephyr's <zephyr/kernel.h> */
+
 /* Timeouts are kernel ticks, as in Zephyr: the FreeRTOS tick
  * (configTICK_RATE_HZ 1000, 1 ms, on the board and in the host tests; the
  * Zephyr build's CONFIG_SYS_CLOCK_TICKS_PER_SEC is 10000).  K_MSEC(),
@@ -131,6 +133,33 @@ static inline k_tid_t k_current_get(void)
 {
 	return xTaskGetCurrentTaskHandle();
 }
+
+/* k_heap: a heap of a fixed size in its own static buffer (Zephyr's
+ * K_HEAP_DEFINE(), k_heap_alloc(), k_heap_free(); zephyr_heap.c): first fit,
+ * an 8-byte header before each block, blocks rounded up to 8 bytes and
+ * joined again when freed, so an allocation fails (NULL) when no free block
+ * of the buffer is large enough, as Zephyr's (whose sys_heap keeps a little
+ * of the buffer for itself and 4 bytes per block).  Only K_NO_WAIT: nothing
+ * in the build waits for memory, and another timeout does not wait either.
+ * Any task (not interrupt handlers); OS-independent (k_spin_lock()), kept
+ * here because only the FreeRTOS build uses it (the NINA's name resolution,
+ * common/drivers/nina/zephyr/nina_socket.c).  k_heap_alloc() is a macro on
+ * z_heap_alloc() because this header comes before k_timeout_t.
+ */
+struct k_heap {
+	uint8_t *buf;
+	size_t size; /* bytes, a multiple of 8 */
+	bool ready;  /* the buffer holds its first free block */
+};
+
+#define K_HEAP_DEFINE(name, bytes)                                                                 \
+	static uint8_t __attribute__((aligned(8))) z_heap_mem_##name[(bytes) & ~(size_t)7];        \
+	struct k_heap name = {.buf = z_heap_mem_##name, .size = (bytes) & ~(size_t)7}
+
+void *z_heap_alloc(struct k_heap *heap, size_t bytes, int64_t timeout_ticks);
+void k_heap_free(struct k_heap *heap, void *mem);
+
+#define k_heap_alloc(heap, bytes, timeout) z_heap_alloc((heap), (bytes), (timeout).ticks)
 
 /* The cycle counter: the board's monotonic clock, the RP2040 TIMER
  * (nano_mono_us(), 1 MHz from the crystal; see <zephyr/kernel.h>).

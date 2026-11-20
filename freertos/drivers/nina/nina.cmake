@@ -16,10 +16,12 @@
 #   (common/drivers/nina/nina_wait.c);
 # - the sockets: the shared socket table and commands
 #   (common/drivers/nina/nina_sock.c) and resolver (nina_dns.c), and the
-#   zsock_*() calls of the layer's <zephyr/net/socket.h> on them
-#   (nina_socket.c: the descriptors, the Zephyr build's wait loops), which
-#   the time synchronization, the MQTT transport, Telnet and the speed test
-#   use; nothing calls them yet, so --gc-sections leaves most out;
+#   core's Zephyr binding of them, compiled as the Zephyr build compiles it
+#   (common/drivers/nina/zephyr/nina_socket.c: Zephyr's socket offload, the
+#   wait loops, the resolver registered as the offload's with its results on
+#   a 2048-byte k_heap; NINA_OS_DNS_OFFLOAD), on the layer's socket part
+#   (freertos/drivers/compat/compat.cmake): the time synchronization, the
+#   MQTT transport, Telnet and the speed test call the layer's zsock_*();
 # - the two boundaries of the core on FreeRTOS: the core's FreeRTOS binding
 #   common/drivers/nina/freertos/nina_os.c (nina_os.h: the locks, requests,
 #   sleeps, clock and the waits on the lines' edge interrupts, on FreeRTOS
@@ -38,14 +40,18 @@
 #   common/drivers/nina/freertos (nina_freertos.h); common/shell is on the
 #   include path through compat.cmake.
 #
-# nina_sock.c and nina_dns.c take the defaults of CONFIG_NINA_TCP_MAX_IO
-# (3584) and CONFIG_NINA_SEND_RETRY_MS (1), the Zephyr build's values.
+# CONFIG_NINA_TCP_MAX_IO (3584), CONFIG_NINA_SEND_RETRY_MS (1) and
+# CONFIG_NET_SOCKETS_OFFLOAD_PRIORITY (40) are the Zephyr build's values, in
+# the prelude of the shared sources (common_prelude.h).  The core's POSIX
+# names are the build's freertos/drivers/libc/include, the binding's net_*
+# names the layer's <zephyr/net/net_ip.h> on them (the Zephyr build's
+# common/drivers/nina/zephyr/posix maps the other way).
 #
 # The core's waits for the module's READY line sleep until an edge interrupt
 # of the line (GPIO10; the binding's own handler of IO_IRQ_BANK0) instead of
 # sampling it (nina_os_ready_*() of nina_os.h).
 #
-# The socket loops (nina_socket.c) wait between their passes with
+# The socket loops (zephyr/nina_socket.c) wait between their passes with
 # common/drivers/nina/nina_wait.c: they wait for the rising edges of the
 # module's IRQ line (GPIO2, the same handler) when its firmware reports
 # socket events (nina_proto.h, NINA_CAP_SOCKET_EVENTS); with an older
@@ -65,12 +71,12 @@ function(freertos_nina target)
     ${FREERTOS_COMMON_DIR}/drivers/nina/nina_sock.c
     ${FREERTOS_COMMON_DIR}/drivers/nina/nina_dns.c
     ${FREERTOS_COMMON_DIR}/drivers/nina/nina_wait.c
+    ${FREERTOS_COMMON_DIR}/drivers/nina/zephyr/nina_socket.c
   )
 
   target_sources(${target} PRIVATE
     ${FREERTOS_COMMON_DIR}/drivers/nina/freertos/nina_os.c
     ${FREERTOS_NINA_DIR}/nina_bus.c
-    ${FREERTOS_NINA_DIR}/nina_socket.c
     ${FREERTOS_NINA_DIR}/nina_passthrough.c
     ${nina_common_sources}
   )
@@ -93,5 +99,14 @@ function(freertos_nina target)
 
   set_source_files_properties(${nina_common_sources} PROPERTIES
     COMPILE_OPTIONS "-include;${FREERTOS_COMPAT_DIR}/common_prelude.h"
+  )
+  # The resolver registered as the offload's, its results on the binding's
+  # heap (nina_os.h), as in the Zephyr build (zephyr/app/usb-console/
+  # CMakeLists.txt).
+  set_source_files_properties(
+    ${FREERTOS_COMMON_DIR}/drivers/nina/nina_sock.c
+    ${FREERTOS_COMMON_DIR}/drivers/nina/nina_dns.c
+    ${FREERTOS_COMMON_DIR}/drivers/nina/zephyr/nina_socket.c
+    PROPERTIES COMPILE_DEFINITIONS NINA_OS_DNS_OFFLOAD
   )
 endfunction()

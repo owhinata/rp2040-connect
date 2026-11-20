@@ -289,20 +289,23 @@ struct net_wifi_mgmt_offload
 };
 
 /* NET_DEVICE_DT_OFFLOAD_DEFINE(node_id, init_fn, pm, data, config, prio,
- * api, mtu): Zephyr defines the device and its interface and calls
- * init_fn and then api's iface_api.init at boot.  Here it names the two
- * for the FreeRTOS build's interface (freertos/drivers/nina/nina_netif.c),
- * which calls them in the same order when it registers the interface.  The
- * other arguments are not used.
+ * api, mtu): Zephyr defines the device and its interface with the MTU and
+ * calls init_fn and then api's iface_api.init at boot.  Here it names the
+ * three for the FreeRTOS build's interface
+ * (freertos/drivers/compat/zephyr_net_init.c), which sets the MTU and calls
+ * the two in the same order when it registers the interface.  The other
+ * arguments are not used.
  */
 
 #define NET_DEVICE_DT_OFFLOAD_DEFINE(node_id, init_fn, pm, data, config, \
                                      prio, api, mtu) \
   int (*const z_net_offload_init)(const struct device *dev) = (init_fn); \
-  const struct net_wifi_mgmt_offload *const z_net_offload_api = (api)
+  const struct net_wifi_mgmt_offload *const z_net_offload_api = (api); \
+  const uint16_t z_net_offload_mtu = (mtu)
 
 extern int (*const z_net_offload_init)(const struct device *dev);
 extern const struct net_wifi_mgmt_offload *const z_net_offload_api;
+extern const uint16_t z_net_offload_mtu;
 
 /* Requests (net_mgmt(), <zephyr/net/net_mgmt.h>).  The numbers only tell
  * the requests apart.

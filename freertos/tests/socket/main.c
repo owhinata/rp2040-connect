@@ -1,37 +1,49 @@
 /* SPDX-License-Identifier: MIT */
 /* The host test of the FreeRTOS build's sockets on the FreeRTOS POSIX port:
- * the zsock_*() calls (freertos/drivers/nina/nina_socket.c) on the shared
+ * the zsock_*() calls of the layer's socket part (freertos/drivers/compat:
+ * subsys/net/lib/sockets, lib/os/zvfs) on the NINA's Zephyr binding
+ * (common/drivers/nina/zephyr/nina_socket.c, registered with
+ * NET_SOCKET_OFFLOAD_REGISTER(), with NINA_OS_DNS_OFFLOAD) on the shared
  * NINA core (common/drivers/nina/nina_sock.c, nina_dns.c) and the address
  * conversions (freertos/drivers/libc/inet.c), as the board builds them
- * (freertos/drivers/nina/nina.cmake), on a fake module (nina_request(),
- * here: the firmware's sockets as a small model that logs each command)
- * and a fake clock (nina_os.h, here: the time moves only with the sleeps
- * and when a test moves it; each sleep also sleeps for real, so that the
- * other tasks run).  The core's own behaviour (each command's parameters
- * and replies, the deadlines of one pass) is common/tests/nina_sock.c's;
- * this test covers what nina_socket.c adds:
+ * (freertos/drivers/compat/compat.cmake, freertos/drivers/nina/nina.cmake),
+ * on a fake module (nina_request(), here: the firmware's sockets as a small
+ * model that logs each command) and a fake clock (nina_os.h, and the
+ * binding's k_uptime_get() and k_sleep(), wrapped here with -Wl,--wrap: the
+ * time moves only with the sleeps and when a test moves it; each sleep also
+ * sleeps for real, so that the other tasks run).  The core's own behaviour
+ * (each command's parameters and replies, the deadlines of one pass) is
+ * common/tests/nina_sock.c's, the layer's alone freertos/tests/sockets';
+ * this test covers what the binding on the layer gives the build:
  *
- * - the descriptors: the lowest free number, ten at most (EMFILE), a
- *   closed or out-of-range one (EBADF, POLLNVAL), reuse after close, the
- *   firmware socket made on first use;
+ * - the descriptors: the lowest free number, ten sockets at most (EMFILE
+ *   from the binding; the layer's table has 16), a closed or out-of-range
+ *   one (EBADF, POLLNVAL), reuse after close, the firmware socket made on
+ *   first use;
  * - the Zephyr build's wait loops and their sleeps (the socket events
  *   cannot start here: nina_os_event_start() fails): connect (every 20 ms,
  *   also on a non-blocking socket, the lwIP error, ETIMEDOUT), TCP send
  *   (1 ms between passes, EAGAIN at the deadline, EPIPE), receive (every
  *   20 ms until data or SO_RCVTIMEO; a poll on every pass, also after
  *   zsock_poll() found data), poll (every 20 ms until the timeout);
- * - non-blocking: O_NONBLOCK by zsock_fcntl() and MSG_DONTWAIT: one
+ * - non-blocking: O_NONBLOCK (ZVFS_O_NONBLOCK) by zsock_fcntl() and MSG_DONTWAIT: one
  *   command, EAGAIN, no sleep;
+ * - poll: a failed poll of the module is POLLERR on that socket (the call
+ *   does not fail);
  * - the options: SO_RCVTIMEO's checks, TCP_NODELAY accepted on TCP only,
  *   the rest ENOPROTOOPT; getsockopt(), getsockname() EOPNOTSUPP,
  *   shutdown() ENOTSUP; zsock_fcntl()'s commands;
  * - accept (never waits; the peer's address and its length; a blocking
  *   descriptor), sendmsg (the vectors joined, the refusals), datagrams
  *   (the sender's address and its length);
- * - the descriptor's lock: a close waits for a receive in progress on
- *   another task, a poll does not;
- * - name resolution through zsock_getaddrinfo() (the module's commands,
- *   a numeric address without them, Zephyr's DNS_EAI_* values);
+ * - the descriptor's lock: a close and a poll both wait for a receive in
+ *   progress on another task (Zephyr's VTABLE_CALL(), zvfs_close() and the
+ *   POLL_PREPARE of zvfs_poll() take it);
+ * - name resolution through zsock_getaddrinfo() (EAI_FAIL until the
+ *   binding's resolver is registered; then the module's commands, a numeric
+ *   address without them, Zephyr's DNS_EAI_* values, the results on the
+ *   binding's 2048-byte k_heap: EAI_MEMORY when it is full, the room back
+ *   after zsock_freeaddrinfo());
  * - the constants of the network headers against Zephyr's values.
  *
  * Built and run by freertos/script/host_tests.sh.
@@ -53,7 +65,9 @@
 
 #include <zephyr/kernel.h>
 #include <zephyr/net/socket.h>
+#include <zephyr/sys/fdtable.h>
 
+#include "nina_dns.h"
 #include "nina_os.h"
 #include "nina_proto.h"
 #include "nina_sock.h"
@@ -123,6 +137,27 @@ void nina_os_sleep_ms(uint32_t ms)
 int64_t nina_os_uptime_ms(void)
 {
 	return fake_ms;
+}
+
+/* The binding's own clock and sleeps (k_uptime_get(), k_sleep() of the
+ * layer): the same fake clock and count.
+ */
+int32_t __real_k_sleep(k_timeout_t timeout);
+
+int64_t __wrap_k_uptime_get(void)
+{
+	return fake_ms;
+}
+
+int32_t __wrap_k_sleep(k_timeout_t timeout)
+{
+	int32_t ms = (int32_t)(timeout.ticks * Z_USEC_PER_TICK / 1000);
+
+	sleeps++;
+	sleep_total_ms += ms;
+	sleep_last_ms = ms;
+	fake_ms += ms;
+	return __real_k_sleep(timeout);
 }
 
 /* The socket events cannot start here, so the waits are the sleeps above
@@ -235,6 +270,10 @@ static int fw_alloc(bool udp)
 	return -1;
 }
 
+/* The binding numbers its sockets as the layer its descriptors, from the
+ * lowest free one, so with only NINA sockets open a descriptor is its
+ * socket's number in the core's table.
+ */
 static struct fw_sock *fw_of(int fd)
 {
 	struct nina_sock *s = nina_sock_get(fd);
@@ -474,10 +513,13 @@ static int connected_tcp(void)
 
 static void close_all(void)
 {
-	for (int fd = 0; fd < NINA_SOCK_MAX; fd++) {
-		if (nina_sock_get(fd)) {
+	for (int fd = 0; fd < 16; fd++) {
+		if (zvfs_get_fd_obj(fd, NULL, 0)) {
 			assert(zsock_close(fd) == 0);
 		}
+	}
+	for (int id = 0; id < NINA_SOCK_MAX; id++) {
+		assert(!nina_sock_get(id));
 	}
 	cmd_log[0] = '\0';
 	sleeps = 0;
@@ -634,10 +676,10 @@ static void test_options(void)
 	assert(zsock_setsockopt(udp, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) == 0);
 
 	assert(zsock_fcntl(tcp, F_GETFL) == 0);
-	assert(zsock_fcntl(tcp, F_SETFL, O_NONBLOCK) == 0);
-	assert(zsock_fcntl(tcp, F_GETFL) == O_NONBLOCK);
-	CHECK_FAIL(zsock_fcntl(tcp, F_SETFL, O_NONBLOCK | O_APPEND), EOPNOTSUPP);
-	assert(zsock_fcntl(tcp, F_GETFL) == O_NONBLOCK);
+	assert(zsock_fcntl(tcp, F_SETFL, ZVFS_O_NONBLOCK) == 0);
+	assert(zsock_fcntl(tcp, F_GETFL) == ZVFS_O_NONBLOCK);
+	CHECK_FAIL(zsock_fcntl(tcp, F_SETFL, ZVFS_O_NONBLOCK | ZVFS_O_APPEND), EOPNOTSUPP);
+	assert(zsock_fcntl(tcp, F_GETFL) == ZVFS_O_NONBLOCK);
 	assert(zsock_fcntl(udp, F_GETFL) == 0);
 	assert(zsock_fcntl(tcp, F_SETFL, 0) == 0);
 	assert(zsock_fcntl(tcp, F_GETFL) == 0);
@@ -655,7 +697,7 @@ static void test_options(void)
 	tv.tv_sec = 5;
 	tv.tv_usec = 0;
 	assert(zsock_setsockopt(tcp, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) == 0);
-	assert(zsock_fcntl(tcp, F_SETFL, O_NONBLOCK) == 0);
+	assert(zsock_fcntl(tcp, F_SETFL, ZVFS_O_NONBLOCK) == 0);
 	assert(zsock_close(tcp) == 0);
 	assert(zsock_socket(AF_INET, SOCK_STREAM, 0) == tcp);
 	assert(zsock_fcntl(tcp, F_GETFL) == 0);
@@ -679,7 +721,7 @@ static void test_connect(void)
 	/* The handshake takes three more polls: three sleeps of 20 ms.  A
 	 * non-blocking socket waits as well, as in the Zephyr build. */
 	fd = zsock_socket(AF_INET, SOCK_STREAM, 0);
-	assert(zsock_fcntl(fd, F_SETFL, O_NONBLOCK) == 0);
+	assert(zsock_fcntl(fd, F_SETFL, ZVFS_O_NONBLOCK) == 0);
 	/* The firmware socket exists after the first command: make it now. */
 	assert(zsock_bind(fd, (struct sockaddr *)&(struct sockaddr_in){.sin_family = AF_INET},
 			  sizeof(struct sockaddr_in)) == 0);
@@ -761,11 +803,11 @@ static void test_send(void)
 	assert(f->sent_len == NINA_TCP_MAX_IO);
 	log_expect("send");
 
-	/* Non-blocking (O_NONBLOCK or MSG_DONTWAIT): one command, EAGAIN. */
+	/* Non-blocking (ZVFS_O_NONBLOCK or MSG_DONTWAIT): one command, EAGAIN. */
 	f->zero_writes = 1;
 	CHECK_FAIL(zsock_send(fd, "a", 1, MSG_DONTWAIT), EAGAIN);
 	log_expect("send");
-	assert(zsock_fcntl(fd, F_SETFL, O_NONBLOCK) == 0);
+	assert(zsock_fcntl(fd, F_SETFL, ZVFS_O_NONBLOCK) == 0);
 	f->zero_writes = 1;
 	CHECK_FAIL(zsock_send(fd, "a", 1, 0), EAGAIN);
 	f->zero_writes = 1;
@@ -851,8 +893,8 @@ static void test_recv(void)
 	sleeps_expect(3, 60);
 	assert(sleep_last_ms == NINA_POLL_INTERVAL_MS);
 
-	/* O_NONBLOCK: one poll, EAGAIN, no sleep. */
-	assert(zsock_fcntl(fd, F_SETFL, O_NONBLOCK) == 0);
+	/* ZVFS_O_NONBLOCK: one poll, EAGAIN, no sleep. */
+	assert(zsock_fcntl(fd, F_SETFL, ZVFS_O_NONBLOCK) == 0);
 	CHECK_FAIL(zsock_recv(fd, buf, sizeof(buf), 0), EAGAIN);
 	log_expect("poll");
 	sleeps_expect(0, 0);
@@ -985,10 +1027,13 @@ static void test_poll(void)
 	log_expect("poll poll poll");
 	sleeps_expect(2, 40);
 
-	/* A failed poll of the module ends the call. */
+	/* A failed poll of the module is POLLERR on that socket, at once; the
+	 * call does not fail (the Zephyr build's binding). */
 	f->poll_fail = true;
-	CHECK_FAIL(zsock_poll(p, 1, 1000), EIO);
+	p[0].events = ZSOCK_POLLIN;
+	assert(zsock_poll(p, 1, 1000) == 1 && p[0].revents == ZSOCK_POLLERR);
 	log_expect("poll");
+	sleeps_expect(0, 0);
 	f->poll_fail = false;
 	close_all();
 	printf("ok  poll\n");
@@ -1010,7 +1055,7 @@ static void test_accept(void)
 	assert(zsock_bind(listener, (struct sockaddr *)&any, sizeof(any)) == 0);
 	assert(zsock_listen(listener, 1) == 0);
 	log_expect("socket ioctl bind listen");
-	assert(zsock_fcntl(listener, F_SETFL, O_NONBLOCK) == 0);
+	assert(zsock_fcntl(listener, F_SETFL, ZVFS_O_NONBLOCK) == 0);
 
 	len = sizeof(peer);
 	CHECK_FAIL(zsock_accept(listener, (struct sockaddr *)&peer, NULL), EINVAL);
@@ -1028,7 +1073,7 @@ static void test_accept(void)
 	f->pending = 1;
 	memcpy(f->peer_ip, (uint8_t[]){10, 42, 0, 1}, 4);
 	f->peer_port = 51000;
-	assert(zsock_fcntl(listener, F_SETFL, O_NONBLOCK) == 0);
+	assert(zsock_fcntl(listener, F_SETFL, ZVFS_O_NONBLOCK) == 0);
 	memset(&peer, 0, sizeof(peer));
 	len = sizeof(peer);
 	client = zsock_accept(listener, (struct sockaddr *)&peer, &len);
@@ -1067,14 +1112,11 @@ static void receiver(void *arg)
 	vTaskDelete(NULL);
 }
 
-static void test_lock(void)
+/* A receive of 200 ms (ten passes) on FD in another task, under way. */
+static void start_receiver(int fd)
 {
-	struct timeval tv = {0, 200000};
-	struct zsock_pollfd p;
-	int fd = connected_tcp();
 	UBaseType_t mine = uxTaskPriorityGet(NULL);
 
-	assert(zsock_setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) == 0);
 	helper_state = 0;
 	helper_errno = 0;
 	assert(xTaskCreate(receiver, "receiver", HELPER_STACK / sizeof(StackType_t),
@@ -1082,13 +1124,28 @@ static void test_lock(void)
 	while (helper_state == 0) {
 		k_msleep(1);
 	}
-	/* The receive waits (200 ms: ten passes); a poll does not wait for it. */
 	k_msleep(30);
 	assert(helper_state == 1);
+}
+
+static void test_lock(void)
+{
+	struct timeval tv = {0, 200000};
+	struct zsock_pollfd p;
+	int fd = connected_tcp();
+
+	assert(zsock_setsockopt(fd, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv)) == 0);
+
+	/* A poll waits for the receive (zvfs_poll() takes the descriptor's
+	 * lock for its POLL_PREPARE), then polls. */
+	start_receiver(fd);
 	p = (struct zsock_pollfd){.fd = fd, .events = ZSOCK_POLLIN};
 	assert(zsock_poll(&p, 1, 0) == 0);
-	assert(helper_state == 1);
+	assert(helper_state == 2 && helper_errno == EAGAIN);
+	cmd_log[0] = '\0';
+
 	/* A close waits for the receive to end, then closes. */
+	start_receiver(fd);
 	assert(zsock_close(fd) == 0);
 	assert(helper_state == 2 && helper_errno == EAGAIN);
 	assert(!nina_sock_get(fd));
@@ -1102,8 +1159,14 @@ static void test_lock(void)
 static void test_dns(void)
 {
 	struct zsock_addrinfo hints = {.ai_family = AF_INET, .ai_socktype = SOCK_DGRAM};
-	struct zsock_addrinfo *res = NULL;
+	struct zsock_addrinfo *res = NULL, *all[64];
 	struct sockaddr_in *in;
+	int n, again;
+
+	/* Before the binding registers its resolver (nina_dns_init(), from
+	 * the interface's init): the layer has none. */
+	assert(zsock_getaddrinfo("10.1.2.3", "1883", NULL, &res) == EAI_FAIL && !res);
+	nina_dns_init();
 
 	/* A numeric address: no command. */
 	assert(zsock_getaddrinfo("10.1.2.3", "1883", NULL, &res) == 0 && res);
@@ -1136,6 +1199,31 @@ static void test_dns(void)
 	assert(zsock_getaddrinfo("pool.ntp.org", NULL, &hints, &res) == -1);
 	hints.ai_flags = 0;
 	assert(zsock_getaddrinfo("10.1.2.3", "x", &hints, &res) == -8);
+	log_expect("");
+
+	/* The results come from the binding's 2048-byte k_heap: EAI_MEMORY
+	 * when it is full, all of it back after they are freed. */
+	for (n = 0; n < (int)ARRAY_SIZE(all); n++) {
+		int ret = zsock_getaddrinfo("10.1.2.3", "1883", NULL, &all[n]);
+
+		if (ret == EAI_MEMORY) {
+			break;
+		}
+		assert(ret == 0);
+	}
+	assert(n > 10 && n < (int)ARRAY_SIZE(all) && n * 64 <= 2048);
+	for (int i = 0; i < n; i++) {
+		zsock_freeaddrinfo(all[i]);
+	}
+	for (again = 0; again < (int)ARRAY_SIZE(all); again++) {
+		if (zsock_getaddrinfo("10.1.2.3", "1883", NULL, &all[again]) != 0) {
+			break;
+		}
+	}
+	assert(again == n);
+	for (int i = 0; i < again; i++) {
+		zsock_freeaddrinfo(all[i]);
+	}
 	log_expect("");
 	printf("ok  dns\n");
 }

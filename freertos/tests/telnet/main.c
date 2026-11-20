@@ -23,6 +23,8 @@
  *   lines <n>       prints "line 1" .. "line <n>"
  *   async on|off    the 10 ms task prints "async <k>" to this session
  *   netdown         200 ms later every connection fails (a Wi-Fi drop)
+ *   listendown      200 ms later the listening socket fails and the next
+ *                   three binds fail (the NINA not answering)
  *   socks           the descriptors in use
  *   stats           the 10 ms task's worst lateness and print time, the
  *                   USB session's runs and failures (and resets the worst)
@@ -267,6 +269,7 @@ static void usb_main(void *arg)
 
 static const struct shell *volatile async_sh;
 static volatile int64_t netdown_at;
+static volatile int64_t listendown_at;
 static volatile uint32_t late_max_us;
 static volatile uint32_t async_max_us;
 static uint32_t async_count;
@@ -299,6 +302,10 @@ static void monitor_main(void *arg)
 		if (netdown_at != 0 && k_uptime_get() >= netdown_at) {
 			netdown_at = 0;
 			fake_sock_fail_connections();
+		}
+		if (listendown_at != 0 && k_uptime_get() >= listendown_at) {
+			listendown_at = 0;
+			fake_sock_fail_listeners(3);
 		}
 	}
 }
@@ -338,6 +345,18 @@ static int cmd_netdown(const struct shell *sh, size_t argc, char **argv)
 }
 
 SHELL_CMD_REGISTER(netdown, NULL, "Fail the connections in 200 ms", cmd_netdown);
+
+static int cmd_listendown(const struct shell *sh, size_t argc, char **argv)
+{
+	(void)sh;
+	(void)argc;
+	(void)argv;
+	listendown_at = k_uptime_get() + 200;
+	return 0;
+}
+
+SHELL_CMD_REGISTER(listendown, NULL, "Fail the listening socket and 3 binds in 200 ms",
+		   cmd_listendown);
 
 static int cmd_socks(const struct shell *sh, size_t argc, char **argv)
 {
@@ -397,6 +416,7 @@ const struct nano_shell_cmd nano_shell_cmds[] = {
 	NANO_SHELL_CMD(async),
 	NANO_SHELL_CMD(help),
 	NANO_SHELL_CMD(lines),
+	NANO_SHELL_CMD(listendown),
 	NANO_SHELL_CMD(netdown),
 	NANO_SHELL_CMD(quit),
 	NANO_SHELL_CMD(socks),

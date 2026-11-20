@@ -28,7 +28,6 @@
 #include "nano_lsm6dso.h"
 #include "nina_bus.h"
 #include "nina_freertos.h"
-#include "nina_net.h"
 #include "nina_passthrough.h"
 #include "nano_shell.h"
 #include "nano_stdio.h"
@@ -38,6 +37,7 @@
 #include "wifi_profile.h"
 #include <zephyr/net/wifi_credentials.h>
 #include "zephyr_compat.h"
+#include "zephyr_compat_os.h"
 
 LOG_MODULE_REGISTER(usb_console, LOG_LEVEL_INF);
 
@@ -223,9 +223,10 @@ static void main_main(void *arg)
 	 * after the sensor: the event thread "net_mgmt", then the interface,
 	 * dormant, with the MAC address read from the module (its first
 	 * command, which resets it: about 760 ms; a module that does not
-	 * answer only fails that request, freertos/drivers/nina/nina_net.h).
+	 * answer only fails that request), as Zephyr's net_init() does it
+	 * (the layer's zephyr_net_initialize(), zephyr_compat_os.h).
 	 */
-	ret = nina_net_initialize();
+	ret = zephyr_net_initialize();
 	if (ret) {
 		LOG_ERR("Could not set up the NINA's network interface: %d", ret);
 	}

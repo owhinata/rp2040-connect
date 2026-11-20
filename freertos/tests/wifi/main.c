@@ -1,14 +1,13 @@
 /* SPDX-License-Identifier: MIT */
 /* The host test of the FreeRTOS build's Wi-Fi on the FreeRTOS POSIX port:
  * the build's network parts (freertos/drivers/compat/zephyr_net_if.c, the
- * thread "net_mgmt" of zephyr_net_mgmt_os.h, freertos/drivers/nina/
- * nina_netif.c) under the shared ones as freertos/drivers/wifi/wifi.cmake
- * builds them (common/drivers/nina/nina_wifi.c and its Zephyr binding
- * common/drivers/nina/zephyr/nina_net.c, common/compat/
- * zephyr_net_mgmt.c, zephyr_wifi_mgmt.c, zephyr_wifi_utils.c,
- * wifi_credentials.c and its settings backend, common/imu/wifi_profile.c,
- * the "wifi" command of common/compat/zephyr_wifi_shell.c and the copy of
- * Zephyr's wifi_credentials_shell.c), on the store as the board builds it
+ * thread "net_mgmt" of zephyr_net_mgmt_os.h, the start of the network part
+ * freertos/drivers/compat/zephyr_net_init.c) under the shared ones as
+ * freertos/drivers/wifi/wifi.cmake builds them (common/drivers/nina/nina_wifi.c and its Zephyr
+ * binding common/drivers/nina/zephyr/nina_net.c, common/compat/zephyr_net_mgmt.c,
+ * zephyr_wifi_mgmt.c, zephyr_wifi_utils.c, wifi_credentials.c and its settings backend,
+ * common/imu/wifi_profile.c, the "wifi" command of common/compat/zephyr_wifi_shell.c and the copy
+ * of Zephyr's wifi_credentials_shell.c), on the store as the board builds it
  * (common/imu/kv_store.c, the copies of Zephyr's settings and NVS) over the
  * shared fake of the key-value area's flash (common/tests/kv_flash_fake.c),
  * the build's shell (freertos/drivers/shell) on a console that captures,
@@ -68,13 +67,13 @@
 #include "kv_store.h"
 #include "nano_console.h"
 #include "nano_shell.h"
-#include "nina_net.h"
 #include "nina_os.h"
 #include "nina_proto.h"
 #include "pico/stdio.h"
 #include "priorities.h"
 #include "wifi_profile.h"
 #include "zephyr_compat.h"
+#include "zephyr_compat_os.h"
 
 #define RUNNER_STACK 16384
 #define CAPTURE_SIZE 16384
@@ -641,7 +640,7 @@ static void test_start(void)
 
 	/* A module that does not answer: nothing waits for it. */
 	fw.dead = true;
-	assert(nina_net_initialize() == 0);
+	assert(zephyr_net_initialize() == 0);
 	iface = net_if_get_default();
 	assert(iface != NULL && net_if_get_wifi_sta() == iface);
 	assert(net_if_is_admin_up(iface) && net_if_is_dormant(iface));

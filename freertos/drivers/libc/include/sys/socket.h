@@ -3,7 +3,7 @@
  * needs, which newlib does not have.  There are no calls here: the build's
  * sockets are the NINA-W102's, reached through the zsock_*() calls of the
  * Zephyr compatibility layer (<zephyr/net/socket.h>,
- * freertos/drivers/nina/nina_socket.c), as in the Zephyr build.
+ * common/drivers/nina/zephyr/nina_socket.c), as in the Zephyr build.
  *
  * The values are Linux's (glibc's), which are Zephyr's (ZSOCK_*, NET_*)
  * except for the address family: Zephyr's NET_AF_INET is 1, Linux's,

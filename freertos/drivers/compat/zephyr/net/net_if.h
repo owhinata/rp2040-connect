@@ -24,15 +24,14 @@
 #ifndef FREERTOS_DRIVERS_COMPAT_ZEPHYR_NET_NET_IF_H
 #define FREERTOS_DRIVERS_COMPAT_ZEPHYR_NET_NET_IF_H
 
-#include <netinet/in.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
-/* Zephyr's struct net_in_addr is <netinet/in.h>'s struct in_addr (s_addr in
- * network byte order).
+/* struct net_in_addr: <netinet/in.h>'s struct in_addr (s_addr in network
+ * byte order).
  */
-#define net_in_addr in_addr
+#include <zephyr/net/net_ip.h>
 
 struct net_if {
 	const void *api; /* struct net_wifi_mgmt_offload */
@@ -82,7 +81,7 @@ struct net_linkaddr {
 /* Makes IFACE the interface that net_if_get_default() and
  * net_if_get_wifi_sta() return, administratively up (Zephyr brings an
  * interface up when it is initialized), dormant, with no address
- * (freertos/drivers/nina/nina_netif.c).
+ * (freertos/drivers/compat/zephyr_net_init.c).
  */
 void z_net_if_register(struct net_if *iface);
 
@@ -140,16 +139,16 @@ struct net_linkaddr *net_if_get_link_addr(struct net_if *iface);
 
 /* The MTU, which Zephyr takes from the device definition
  * (NET_DEVICE_DT_OFFLOAD_DEFINE(..., mtu): 1500 for the NINA) and the
- * FreeRTOS build's interface sets at its start (freertos/drivers/nina/
- * nina_netif.c).  0 until set.
+ * FreeRTOS build's interface sets at its start (freertos/drivers/compat/
+ * zephyr_net_init.c).  0 until set.
  */
 void net_if_set_mtu(struct net_if *iface, uint16_t mtu);
 uint16_t net_if_get_mtu(struct net_if *iface);
 
-/* Zephyr routes the sockets of an offloaded interface to the driver's
- * socket(); the FreeRTOS build's zsock_*() calls go to the NINA's sockets
- * directly (freertos/drivers/nina/nina_socket.c), so there is nothing to
- * set.
+/* Zephyr's dispatcher of offloaded interfaces (SO_BINDTODEVICE) routes a
+ * socket bound to the interface to the driver's socket(); the layer has no
+ * dispatcher (zsock_socket() takes the registered implementations,
+ * <zephyr/net/socket.h>), so there is nothing to set.
  */
 #define net_if_socket_offload_set(iface, socket_create) ((void)(iface))
 

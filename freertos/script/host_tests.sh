@@ -29,7 +29,9 @@
 #   host/.venv: freertos/tests/mqtt), and the time synchronization
 #   (common/imu/time_sync.c on the build's realtime clock, TIMER read and
 #   thread, with fake sockets and a fake NTP server: freertos/tests/time_sync), and the
-#   sockets: the zsock_*() calls (freertos/drivers/nina/nina_socket.c) on the
+#   layer's socket part (the reduced copies of Zephyr's socket layer and descriptor table,
+#   k_heap) on fake implementations (freertos/tests/sockets), and the sockets: the zsock_*()
+#   calls on the NINA's Zephyr binding (common/drivers/nina/zephyr/nina_socket.c) and the
 #   shared NINA core, a fake module and a fake clock (freertos/tests/socket), and Wi-Fi: the
 #   interface, the net_mgmt events, the stored credentials (settings "wifi_cred/<n>"), the
 #   reconnection, the "wifi" and "ifconfig" commands on a fake module (freertos/tests/wifi), and the
@@ -58,7 +60,7 @@ verbose=0
 case "${1:-}" in
   "") ;;
   -v) verbose=1 ;;
-  -h|--help) sed -n '2,53p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+  -h|--help) sed -n '2,55p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
   *) printf 'Unknown option: %s\n' "$1" >&2; exit 2 ;;
 esac
 
@@ -453,26 +455,62 @@ else
 fi
 printf 'ok  time_sync (realtime clock, TIMER read, thread, NTP exchanges, ntp status, FreeRTOS POSIX port)\n'
 
-# The sockets (freertos/tests/socket): the zsock_*() calls of the layer's <zephyr/net/socket.h>
-# (drivers/nina/nina_socket.c: the descriptors, their locks, the Zephyr build's wait loops) on
-# the shared core (common/drivers/nina/nina_sock.c, nina_dns.c, with the prelude, as
-# drivers/nina/nina.cmake builds them) and the address conversions (drivers/libc/inet.c), on a
-# fake module and a fake clock (the test's nina_request() and nina_os.h), on the same kernel and
+# The layer's socket part (freertos/tests/sockets): the reduced copies of Zephyr's socket layer
+# and descriptor table (drivers/compat/subsys/net/lib/sockets, drivers/compat/lib/os/zvfs, with
+# -Wno-sign-compare as drivers/compat/compat.cmake builds them) and k_heap
+# (drivers/compat/zephyr_heap.c), on fake socket implementations registered with
+# NET_SOCKET_REGISTER() and NET_SOCKET_OFFLOAD_REGISTER() and the host linker's section of them
+# (tests/sockets/net_socket_register.ld), on the same kernel and layer objects: the descriptor
+# table, the list of implementations, the dispatch of every call, fcntl, poll, the resolver.
+socksrcs=(drivers/compat/subsys/net/lib/sockets/sockets.c drivers/compat/subsys/net/lib/sockets/getaddrinfo.c
+          drivers/compat/subsys/net/lib/sockets/socket_offload.c drivers/compat/lib/os/zvfs/zvfs_fdtable.c
+          drivers/compat/lib/os/zvfs/zvfs_poll.c drivers/compat/zephyr_heap.c)
+sockld=(-Wl,-T,tests/sockets/net_socket_register.ld)
+layerobjs=()
+for src in tests/sockets/main.c "${socksrcs[@]}"; do
+    obj="$out/sockets_$(basename "$src" .c).o"
+    extra=()
+    case $src in
+        */subsys/*|*/lib/os/*) extra=(-Wno-sign-compare) ;;
+    esac
+    cc "${flags[@]}" "${strict[@]}" -Idrivers/libc/include "${inc[@]}" "${extra[@]}" -c "$src" -o "$obj"
+    layerobjs+=("$obj")
+done
+cc "${flags[@]}" "${sockld[@]}" "${kernobjs[@]}" "${layerobjs[@]}" -o "$out/sockets"
+if (( verbose )); then
+    timeout 60 "$out/sockets"
+else
+    timeout 60 "$out/sockets" >"$out/log" 2>&1 || { cat "$out/log"; exit 1; }
+fi
+printf 'ok  sockets (descriptor table, implementations, dispatch, fcntl, poll, resolver, k_heap, FreeRTOS POSIX port)\n'
+
+# The sockets (freertos/tests/socket): the NINA's Zephyr binding
+# (../common/drivers/nina/zephyr/nina_socket.c: the offload, its wait loops, its resolver on its
+# k_heap) on the layer's socket part as above and on the shared core
+# (common/drivers/nina/nina_sock.c, nina_dns.c, nina_wait.c), with the prelude and
+# NINA_OS_DNS_OFFLOAD, as drivers/nina/nina.cmake builds them, and the address conversions
+# (drivers/libc/inet.c), on a fake module and a fake clock (the test's nina_request(), nina_os.h,
+# and the binding's k_uptime_get() and k_sleep() through -Wl,--wrap), on the same kernel and
 # layer objects.  drivers/libc/include (newlib's missing network headers) comes before the host's.
 sockinc=(-Idrivers/libc/include -I../common/drivers/nina)
 sockobjs=()
-for src in drivers/nina/nina_socket.c drivers/libc/inet.c tests/socket/main.c \
+for src in ../common/drivers/nina/zephyr/nina_socket.c drivers/libc/inet.c tests/socket/main.c \
            ../common/drivers/nina/nina_sock.c ../common/drivers/nina/nina_dns.c \
-           ../common/drivers/nina/nina_wait.c; do
+           ../common/drivers/nina/nina_wait.c "${socksrcs[@]}"; do
     obj="$out/socket_$(basename "$src" .c).o"
     extra=()
     case $src in
         ../common/*) extra=(-include drivers/compat/common_prelude.h) ;;
+        */subsys/*|*/lib/os/*) extra=(-Wno-sign-compare) ;;
+    esac
+    case $src in
+        */nina_socket.c|*/nina_sock.c|*/nina_dns.c) extra+=(-DNINA_OS_DNS_OFFLOAD) ;;
     esac
     cc "${flags[@]}" "${strict[@]}" "${sockinc[@]}" "${inc[@]}" "${extra[@]}" -c "$src" -o "$obj"
     sockobjs+=("$obj")
 done
-cc "${flags[@]}" "${kernobjs[@]}" "${sockobjs[@]}" -o "$out/socket"
+cc "${flags[@]}" "${sockld[@]}" -Wl,--wrap=k_uptime_get -Wl,--wrap=k_sleep "${kernobjs[@]}" \
+    "${sockobjs[@]}" -o "$out/socket"
 if (( verbose )); then
     timeout 60 "$out/socket"
 else
@@ -481,7 +519,7 @@ fi
 printf 'ok  socket (descriptors, wait loops, options, poll, resolver, FreeRTOS POSIX port)\n'
 
 # Wi-Fi (freertos/tests/wifi): the build's network parts (drivers/compat/zephyr_net_if.c, the
-# "net_mgmt" thread of zephyr_net_mgmt_os.h, drivers/nina/nina_netif.c) under the shared ones as
+# "net_mgmt" thread of zephyr_net_mgmt_os.h, drivers/compat/zephyr_net_init.c) under the shared ones as
 # drivers/wifi/wifi.cmake builds them (the NINA core's Wi-Fi operations common/drivers/nina/
 # nina_wifi.c and its Zephyr binding common/drivers/nina/zephyr/nina_net.c, the
 # layer's net_mgmt and Wi-Fi requests, the stored credentials and their settings backend, the
@@ -495,12 +533,12 @@ printf 'ok  socket (descriptors, wait loops, options, poll, resolver, FreeRTOS P
 # firmware's capability bits (a fake nina_probe_capabilities()): the link kept, the asynchronous
 # scan and its failures, a loss of the link during the scan.
 wifiinc=(-D_GNU_SOURCE -DZ_SHELL_CMD_ROOT_GLOBAL -DCONFIG_GETOPT_LONG=1 -DCONFIG_NANO_WIFI_CREDENTIALS=1
-         -U_FORTIFY_SOURCE -Itests/shell -Idrivers/shell -Idrivers/wifi -Idrivers/nina
+         -U_FORTIFY_SOURCE -Itests/shell -Idrivers/shell -Idrivers/wifi
          -I../common/shell -I../common/compat/lib/utils/getopt -I../common/drivers/nina
          -I../common/imu -I../common/tests -I../common/compat/subsys/settings/include
          -I../common/compat/subsys/settings/src -ffunction-sections -fdata-sections)
 wifiobjs=()
-for src in drivers/compat/zephyr_net_if.c drivers/nina/nina_netif.c drivers/wifi/nano_ifconfig.c \
+for src in drivers/compat/zephyr_net_if.c drivers/compat/zephyr_net_init.c drivers/wifi/nano_ifconfig.c \
            tests/wifi/main.c \
            drivers/shell/cli.c drivers/shell/getopt_state.c drivers/shell/nano_console.c \
            drivers/shell/nano_shell.c drivers/shell/shell_argv.c drivers/libc/stdio_wrap.c \

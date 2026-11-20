@@ -8,7 +8,9 @@
  *   sys_clock_settime(id, ts)  0, or -EINVAL for a clock other than
  *                              SYS_CLOCK_REALTIME or a time whose tv_nsec
  *                              is not in 0..999999999
- *   NSEC_PER_USEC, USEC_PER_SEC, NSEC_PER_SEC
+ *   NSEC_PER_USEC, USEC_PER_MSEC, MSEC_PER_SEC, USEC_PER_SEC, NSEC_PER_SEC
+ *   (the layer's <zephyr/kernel.h> includes this header, as Zephyr's
+ *   includes its <zephyr/sys_clock.h>)
  *
  * The monotonic clock is the RP2040 TIMER (nano_mono_us(), microseconds
  * since the start), and the realtime clock is that plus a base that
@@ -30,6 +32,14 @@
 
 #ifndef NSEC_PER_USEC
 #define NSEC_PER_USEC 1000U
+#endif
+
+#ifndef USEC_PER_MSEC
+#define USEC_PER_MSEC 1000U
+#endif
+
+#ifndef MSEC_PER_SEC
+#define MSEC_PER_SEC 1000U
 #endif
 
 #ifndef USEC_PER_SEC

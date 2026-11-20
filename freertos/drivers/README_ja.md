@@ -16,12 +16,12 @@ OS に依存しない部分は `common/compat/`、FreeRTOS の部分は `freerto
 | 場所 | 内容 |
 |---|---|
 | `app/usb-console/` | 起動（`main.c`）、FreeRTOS 版だけのコマンド（`commands.c`）、カーネルの設定（`FreeRTOSConfig.h`）、優先度の対応（`priorities_os.h`）、時計（`os_clock.h`）、tick フック（`tick.c`。tick の追いつきの判定は `tick_catchup.h`）、CPU 負荷（`idle.c`）、異常停止（`fault.[ch]`）、割り込み用スタックの空き（`irq_stack.c`） |
-| `drivers/compat/` | 互換層の FreeRTOS の部分: カーネル（`zephyr_kernel.c`・`zephyr_mutex.c`・`zephyr_os*.h`）、ネットワークのインターフェース（`zephyr_net_if.c`）、壁時計（`zephyr_sys_clock.c`）、センサーの時計、前置きヘッダー（`common_prelude.h`）、自己診断（`zephyr_selftest.[ch]`）、RP2040 の部分（`rp2040/`: GPIO バンク 0、チップ ID） |
+| `drivers/compat/` | 互換層の FreeRTOS の部分: カーネル（`zephyr_kernel.c`・`zephyr_mutex.c`・`zephyr_os*.h`、`k_heap` は `zephyr_heap.c`）、ネットワークのインターフェースとその開始（`zephyr_net_if.c`・`zephyr_net_init.c`）、Zephyr のソケット層（`subsys/net/lib/sockets/`・`lib/os/zvfs/` の Zephyr のファイルを縮めた写し、ヘッダーは `zephyr/` の下、リンカースクリプトの部分 `ld/`）、壁時計（`zephyr_sys_clock.c`）、センサーの時計、前置きヘッダー（`common_prelude.h`）、自己診断（`zephyr_selftest.[ch]`）、RP2040 の部分（`rp2040/`: GPIO バンク 0、チップ ID） |
 | `drivers/shell/` | 行編集（`cli.c`）、コンソールとタスクごとの出力先（`nano_console.c`）、Pico SDK の stdio の差し替え（`nano_stdio.c`）、コマンドの表と実行（`nano_shell.c`）、Zephyr の引数の分割の写し（`shell_argv.c`）、セッションごとの getopt（`getopt_state.c`） |
 | `drivers/libc/` | newlib の FILE 関数の差し替え（`stdio_wrap.c`）、newlib に無いソケット系のヘッダー（`include/`。型と定数だけ）、`inet_pton`・`inet_ntop`（`inet.c`） |
 | `drivers/log/` | RAM ログ（`log_ram.c`。リングは `common/log/log_ring.c`） |
 | `drivers/kv/` | KV のフラッシュの境界（`nano_flash_kv.c`）とリンカースクリプトの差し替え（`ld/`、`kv.cmake`） |
-| `drivers/nina/` | NINA-W102 の SPI1 と制御線（`nina_bus.c`）、ソケット（`nina_socket.c`）、インターフェース（`nina_netif.c`）、esptool の中継（`nina_passthrough.c`）。境界 `nina_os.h` の実装はコアの FreeRTOS へのつなぎ（`common/drivers/nina/freertos/nina_os.c`） |
+| `drivers/nina/` | NINA-W102 の SPI1 と制御線（`nina_bus.c`）、esptool の中継（`nina_passthrough.c`）。境界 `nina_os.h` の実装はコアの FreeRTOS へのつなぎ（`common/drivers/nina/freertos/nina_os.c`）、ソケットとインターフェースは Zephyr へのつなぎのもの（`common/drivers/nina/zephyr/nina_socket.c`・`nina_net.c`） |
 | `drivers/i2c_dw/` | I2C のコア（`common/drivers/i2c_dw/`。I2C0 と、オプションで I2C1）の FreeRTOS の部分、Pico SDK の DMA での I2C0 の DMA 読み出し（`i2c_dw_dma_os.c`）、自己診断 |
 | `drivers/lsm6dso/` | LSM6DSOX のデバイスの生成（`lsm6dso_instance.h`）と初期化（`nano_lsm6dso.c`）、自己診断 |
 | `drivers/imu/` | 取得サービス・MQTT・時刻同期（`common/imu/`）の組み込み（`imu.cmake`）、`time_sync.c` の前置き |
@@ -161,20 +161,34 @@ FreeRTOS 版が実装するのは flash の境界（`common/compat/nano_flash_kv
   GPIO24 のための GPIO バンク 0（`nano_gpio.c`）のハンドラーと並び、それぞれ自分のピンだけを確認・クリアする）。Zephyr 版も同じで、
   NuttX 版は 10 ms に区切らずに待ちます。割り込みを使うかどうかは実行時に決まり、最初のリセットのあと
   `nina_os_ready_start()` が失敗したときは 100 µs ごとに READY を読みます（3 版とも同じ。FreeRTOS のつなぎのものは失敗しません）。
-- ソケット（`drivers/nina/nina_socket.c`）: 互換層の `zsock_*()` を、10 個の fd の表を介して共有のコアに直接つなぎます。
-  Zephyr 版のソケットのオフロードと同じく、呼んだタスクで NINA に問い合わせて待ちます（NuttX 版の usrsock と
-  `nina_event` のような、イベントのスレッドはありません）。fd の番号は newlib の fd とは別で、`zsock_*()` だけが使います。
-  newlib に無い型と定数は `drivers/libc/include/` にあり、値は Linux と同じです（`EAI_*` は Zephyr の負の値）。
+- ソケット: 互換層は、Zephyr のソケット層をソケットの実装の一覧のところまで持ちます（Zephyr の `sockets.c`・`getaddrinfo.c`・
+  `socket_offload.c`・`zvfs_fdtable.c`・`zvfs_poll.c` を縮めた写し。省いたものはそれぞれの先頭に書いてあります）。実装は
+  `NET_SOCKET_OFFLOAD_REGISTER()` か `NET_SOCKET_REGISTER()` で自分を登録し、リンカースクリプトが登録を優先度の順に並べます
+  （`drivers/compat/ld/section_extra_post_text.incl`）。`zsock_socket()` は、ファミリーが合い `is_supported()` が受け付ける最初の
+  実装を使います。ほかの呼び出しは fd の表から実装の `struct socket_op_vtable` へ fd ごとのミューテックスの下で渡り、`poll` は
+  `ZFD_IOCTL_POLL_PREPARE` と `ZFD_IOCTL_POLL_OFFLOAD` を通り、`zsock_getaddrinfo()` は登録された名前解決へ行きます。NINA の
+  ソケットは Zephyr 版のつなぎを変えずにビルドしたもの（`common/drivers/nina/zephyr/nina_socket.c`、優先度 40）で、Zephyr 版と
+  同じく、呼んだタスクで NINA に問い合わせて待ちます（NuttX 版の usrsock と `nina_event` のような、イベントのスレッドはありません）。
+  fd の表は 16 個で、空いている最も小さい番号から 0〜15（Zephyr 版と同じく、標準入出力のための 0〜2 は取っておきません）。NINA の
+  ソケットは 10 個なので、11 個目は `EMFILE` です。fd の番号は newlib の fd とは別で、`zsock_*()` だけが使います。newlib に無い型と
+  定数は `drivers/libc/include/` にあり、値は Linux と同じです（`EAI_*` は Zephyr の負の値）。互換層の `<zephyr/net/net_ip.h>` が
+  それらに Zephyr の `net_*` の名前を付けます。
+- ソケットの動作は Zephyr 版と同じです: モジュールへの poll が失敗したソケットは `POLLERR` になります（呼び出しは失敗しません）。
+  `poll` は fd ごとのミューテックスを取るので、ほかのタスクがそのソケットで進めている呼び出し（待っている受信、接続）を待ちます。
+  `sendmsg` は 1 つずつ（sleep を含めて）動きます。名前解決の結果は 2048 バイトのヒープから取ります（解放されていない結果が
+  約 36 個になると `EAI_MEMORY`）。Telnet のサーバーは、待ち受けのソケットのエラーのあと作り直し、それが失敗する間は 1 秒ごとに
+  作り直します。
 - ファームウェアの追加機能（パッチ 0003〜0006。命令 0x6A のビット）: 動作は Zephyr 版と同じです（説明は
   [`zephyr/app/usb-console/drivers/README_ja.md`](../../zephyr/app/usb-console/drivers/README_ja.md) の同名の節）。
   接続中のスキャンで接続を保つ・非同期のスキャン（`nina_wifi.c`）、ソケットの事象での待ち（`common/drivers/nina/nina_wait.c`
-  と `nina_socket.c` の待ちのループ）。事象は IRQ の線（GPIO2）の立ち上がりのエッジの割り込みで、つなぎが数を
+  と `zephyr/nina_socket.c` の待ちのループ）。事象は IRQ の線（GPIO2）の立ち上がりのエッジの割り込みで、つなぎが数を
   数え、待っている全タスクを起こします（待つタスクを並べた表から、それぞれのタスク通知 2 で）。`nina_os_event_start()` が
   失敗したときは、ビット 2 があっても、ビット 2 が無いときの間隔（20 ms、送信は 1 ms）で待ちます。TCP 送信の再試行で、全量を送り直す前に poll 命令で書き込み可能を
   確かめるのは、ファームウェアに依りません。
 - Wi-Fi: コアの Wi-Fi の操作と、Zephyr 版と同じそのつなぎ（`common/drivers/nina/zephyr/nina_net.c`: Zephyr の Wi-Fi 管理と
   インターフェース、3 つのスレッド）、資格情報（Zephyr の `wifi_credentials` の写し）、自動再接続（`common/imu/wifi_profile.c`）を、
-  互換層の `net_if`・`net_mgmt`・`wifi_mgmt`（`zephyr_net_if.c`、`drivers/nina/nina_netif.c`）の上で動かします。この版は
+  互換層の `net_if`・`net_mgmt`・`wifi_mgmt`（`zephyr_net_if.c`。インターフェースは起動時に `zephyr_net_init.c` が Zephyr の
+  `net_init()` と同じく登録）の上で動かします。この版は
   ネットワーク層を持たないので Zephyr へのつなぎを使います。`wifi` コマンドは `common/compat/zephyr_wifi_shell.c` で、このボードで使えるオプションだけを残しています。
   `wifi cred` は Zephyr の `wifi_credentials_shell.c` の無改変の写しです。`ifconfig`（`drivers/wifi/nano_ifconfig.c`）は
   NuttX 版と同じ形式で表示します。
@@ -282,7 +296,8 @@ spinlock、atomic、静的なスレッド、時分割、割り込みを 50 ms �
 | `imu` | アドレスの変換、`hwinfo` |
 | `mqtt` | MQTT の送信（偽のブローカー）。続けて、ホストの `imu-host check` を相手にする回（`host/.venv` が無ければ skip） |
 | `time_sync` | 壁時計、TIMER の読み出し、NTP のやり取り、`ntp status` |
-| `socket` | `zsock_*()`、待ちのループ、オプション、poll、名前解決 |
+| `sockets` | 偽の実装の上の互換層のソケットの部分: fd の表、登録の順、全呼び出しの振り分け、fcntl、poll（オフロード、ほかの種類、混在）、名前解決、`k_heap` |
+| `socket` | 互換層の上の NINA のソケット: fd、待ちのループ、オプション、poll、fd のロック、名前解決 |
 | `wifi` | インターフェース、イベント、資格情報、再接続、`wifi`・`ifconfig`、ファームウェアのビットによるスキャン（接続を保つ、非同期、失敗、終わらない、スキャン中の切断、3.0.2） |
 | `telnet` | Telnet のプロトコル、1 接続、再接続、`zperf`（ホストの python3 と iperf3。iperf3 が無ければその部分を skip） |
 | `sensor_shell` | `sensor` コマンド、2 つのセッション、校正（ST の `lsm6dso_reg.c` が無ければ skip） |
@@ -309,7 +324,7 @@ spinlock、atomic、静的なスレッド、時分割、割り込みを 50 ms �
 | カーネルの時計 | SysTick（送信中に遅れる） | TIMER の tickless | 1 kHz の SysTick（割り込みを止めたあと TIMER に追いつく）。`k_uptime` は TIMER |
 | 除算器の退避 | 切り替えで DIRTY のときだけ（ローカルのパッチ） | 切り替えで DIRTY のときだけ（パッチ 0009） | 切り替えのたびに 4 語（Pico SDK のポート） |
 | NINA の READY | エッジ割り込み（GPIO10、10 ms ごとに読み直す） | エッジ割り込み（GPIO10） | エッジ割り込み（GPIO10、10 ms ごとに読み直す） |
-| ソケット | オフロード（呼んだスレッドで待つ） | usrsock と `nina_event` | 呼んだタスクで待つ（イベントのスレッドなし） |
+| ソケット | オフロード（呼んだスレッドで待つ） | usrsock と `nina_event` | 互換層のソケット層の上の Zephyr 版のオフロード（呼んだタスクで待つ） |
 | RAM ログ | 4 KiB | 8 KiB | 8 KiB |
 | 異常停止の後 | 再起動、`dmesg` に報告 | 再起動、`dmesg` に報告 | 再起動、`dmesg`・`fault`・バナーに記録 |
 | `ifconfig` の切断中のマスク | – | 残る | 0.0.0.0 |

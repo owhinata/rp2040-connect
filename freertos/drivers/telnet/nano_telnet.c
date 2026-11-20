@@ -47,12 +47,13 @@
  * - the connection ends when the client closes it, when a read fails, when
  *   poll reports an error on it ("Telnet socket <fd> error (<n>)"; the
  *   NINA's sockets have no SO_ERROR, so n is 0; ENETDOWN would log "Network
- *   is down"), and when a send of the session fails ("Failed to send <errno>,
- *   shutting down", then "Error <-errno>, shutting down" or "Network
- *   disconnected, shutting down"); then the next client is accepted.  An
- *   error on the listening socket restarts the server (closes both, sets it
- *   up again; "Telnet fatal error, failed to restart server" and no more
- *   Telnet if that fails);
+ *   is down"; a failed poll of the module is an error on that socket, as in
+ *   the Zephyr build, common/drivers/nina/zephyr/nina_socket.c), and when a
+ *   send of the session fails ("Failed to send <errno>, shutting down", then
+ *   "Error <-errno>, shutting down" or "Network disconnected, shutting
+ *   down"); then the next client is accepted.  An error on the listening
+ *   socket restarts the server (closes both, sets it up again; "Telnet fatal
+ *   error, failed to restart server" if that fails);
  * - output from another task to the session's backend (the "wifi" events of
  *   a command run here, the "zperf tcp download" reports) goes to the
  *   client; LOG_*() goes to the RAM log only, and printf() of a task that is
@@ -85,9 +86,13 @@
  *   does, would otherwise be refused);
  * - after an accept error the service waits 100 ms (Zephyr polls again at
  *   once; a lasting error, such as no free NINA socket, would turn into a
- *   busy loop with a log line each time); a failed poll (the NINA does not
- *   answer) is logged once and retried every 100 ms (Zephyr's socket service
- *   thread ends, which ends Telnet and the zperf server).
+ *   busy loop with a log line each time); a failed poll call is logged once
+ *   and retried every 100 ms (Zephyr's socket service thread ends, which
+ *   ends Telnet and the zperf server);
+ * - when the restart of the server fails (the NINA does not answer at that
+ *   moment), the service sets it up again every RESTART_RETRY_MS without
+ *   logging the failures, and logs "Telnet shell backend initialized" when
+ *   it succeeds (Zephyr's service ends: no more Telnet until a reboot).
  */
 
 #include <ctype.h>
@@ -129,6 +134,10 @@ LOG_MODULE_REGISTER(shell_telnet, LOG_LEVEL_INF);
  */
 #define SEND_WAIT_MS     10000
 #define SEND_RETRY_MS    10
+/* How often the service tries to set the server up again after a failed
+ * restart.
+ */
+#define RESTART_RETRY_MS 1000
 /* How long another task waits for the console's mutex. */
 #define OTHER_LOCK_MS    TELNET_TIMEOUT
 /* Bytes read from the socket, and taken by the session, at a time. */
@@ -348,7 +357,8 @@ static void line_flush(bool block)
 
 /* The service ----------------------------------------------------------------*/
 
-static int telnet_setup_server(void)
+/* QUIET: without the error messages (the retries after a failed restart). */
+static int telnet_setup_server(bool quiet)
 {
 	struct sockaddr_in addr = {
 		.sin_family = AF_INET,
@@ -361,24 +371,32 @@ static int telnet_setup_server(void)
 	fd = zsock_socket(AF_INET, SOCK_STREAM, IPPROTO_TCP);
 	if (fd < 0) {
 		ret = -errno;
-		LOG_ERR("Failed to create telnet NET_AF_INET socket");
+		if (!quiet) {
+			LOG_ERR("Failed to create telnet NET_AF_INET socket");
+		}
 		goto error;
 	}
 	if (zsock_bind(fd, (struct sockaddr *)&addr, sizeof(addr)) < 0) {
 		ret = -errno;
-		LOG_ERR("Cannot bind on family NET_AF_INET (%d)", ret);
+		if (!quiet) {
+			LOG_ERR("Cannot bind on family NET_AF_INET (%d)", ret);
+		}
 		goto error;
 	}
 	if (zsock_listen(fd, 1) < 0) {
 		ret = -errno;
-		LOG_ERR("Cannot listen on family NET_AF_INET (%d)", ret);
+		if (!quiet) {
+			LOG_ERR("Cannot listen on family NET_AF_INET (%d)", ret);
+		}
 		goto error;
 	}
 	tn.listen_fd = fd;
 	return 0;
 
 error:
-	LOG_ERR("Unable to start telnet on NET_AF_INET (%d)", ret);
+	if (!quiet) {
+		LOG_ERR("Unable to start telnet on NET_AF_INET (%d)", ret);
+	}
 	if (fd >= 0) {
 		(void)zsock_close(fd);
 	}
@@ -396,8 +414,11 @@ static void telnet_end_client_connection(void)
 	xSemaphoreGive(tn.conn_lock);
 }
 
-/* An error on the listening socket: close everything and start again. */
-static bool telnet_restart_server(void)
+/* An error on the listening socket: close everything and start again.  When
+ * that fails, the listening descriptor stays -1 and the service tries again
+ * (service_main()).
+ */
+static void telnet_restart_server(void)
 {
 	int ret;
 
@@ -406,16 +427,15 @@ static bool telnet_restart_server(void)
 		tn.listen_fd = -1;
 	}
 	telnet_end_client_connection();
-	ret = telnet_setup_server();
+	ret = telnet_setup_server(false);
 	if (ret < 0) {
 		LOG_ERR("Telnet fatal error, failed to restart server (%d)", ret);
-		return false;
+		return;
 	}
 	LOG_INF("Telnet shell backend initialized");
-	return true;
 }
 
-static bool telnet_event(const struct zsock_pollfd *pfd);
+static void telnet_event(const struct zsock_pollfd *pfd);
 
 static void telnet_accept(void)
 {
@@ -437,7 +457,7 @@ static void telnet_accept(void)
 		struct zsock_pollfd pfd = {.fd = tn.client_fd, .events = ZSOCK_POLLIN};
 
 		if (zsock_poll(&pfd, 1, 0) > 0) {
-			(void)telnet_event(&pfd);
+			telnet_event(&pfd);
 		}
 	}
 	if (tn.client_fd >= 0) {
@@ -540,10 +560,8 @@ static void telnet_recv(void)
 	xTaskNotifyGive(tn.session_task);
 }
 
-/* Zephyr's telnet_server_cb() for one descriptor; false when the server is
- * gone for good.
- */
-static bool telnet_event(const struct zsock_pollfd *pfd)
+/* Zephyr's telnet_server_cb() for one descriptor. */
+static void telnet_event(const struct zsock_pollfd *pfd)
 {
 	if (pfd->revents & (ZSOCK_POLLERR | ZSOCK_POLLNVAL)) {
 		int sock_error = 0;
@@ -560,19 +578,19 @@ static bool telnet_event(const struct zsock_pollfd *pfd)
 		}
 		if (pfd->fd == tn.client_fd) {
 			telnet_end_client_connection();
-			return true;
+			return;
 		}
-		return telnet_restart_server();
+		telnet_restart_server();
+		return;
 	}
 	if (!(pfd->revents & ZSOCK_POLLIN)) {
-		return true;
+		return;
 	}
 	if (pfd->fd == tn.listen_fd) {
 		telnet_accept();
 	} else if (pfd->fd == tn.client_fd) {
 		telnet_recv();
 	}
-	return true;
 }
 
 static void service_main(void *arg)
@@ -586,6 +604,14 @@ static void service_main(void *arg)
 		bool room;
 		int ret;
 
+		if (tn.listen_fd < 0) {
+			/* A restart failed: set the server up again. */
+			k_msleep(RESTART_RETRY_MS);
+			if (telnet_setup_server(true) == 0) {
+				LOG_INF("Telnet shell backend initialized");
+			}
+			continue;
+		}
 		if (tn.broken) {
 			telnet_end_client_connection();
 		}
@@ -612,20 +638,15 @@ static void service_main(void *arg)
 		if (ret == 0) {
 			continue;
 		}
-		if (fds[0].revents != 0 && !telnet_event(&fds[0])) {
-			break;
+		if (fds[0].revents != 0) {
+			telnet_event(&fds[0]);
 		}
 		if (fds[0].fd != tn.listen_fd) {
-			continue; /* restarted: the client is gone */
+			continue; /* restarted, or to be set up again: the client is gone */
 		}
 		if (fds[1].fd >= 0 && fds[1].fd == tn.client_fd && fds[1].revents != 0) {
-			(void)telnet_event(&fds[1]);
+			telnet_event(&fds[1]);
 		}
-	}
-
-	/* Zephyr unregisters the service: no more Telnet. */
-	for (;;) {
-		k_sleep(K_FOREVER);
 	}
 }
 
@@ -736,7 +757,7 @@ int nano_telnet_init(const char *prompt)
 	nano_console_init(&telnet_console, "telnet", telnet_out, NULL);
 	nano_console_set_other_lock_timeout(&telnet_console, OTHER_LOCK_MS);
 
-	ret = telnet_setup_server();
+	ret = telnet_setup_server(false);
 	if (ret < 0) {
 		return ret;
 	}

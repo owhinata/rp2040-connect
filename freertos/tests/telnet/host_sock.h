@@ -18,4 +18,9 @@ int fake_sock_open_count(void);
  */
 void fake_sock_fail_connections(void);
 
+/* The listening sockets fail (poll reports POLLERR), and the next
+ * BIND_FAILURES binds fail with EIO, as when the NINA does not answer.
+ */
+void fake_sock_fail_listeners(int bind_failures);
+
 #endif /* FREERTOS_TESTS_TELNET_HOST_SOCK_H */

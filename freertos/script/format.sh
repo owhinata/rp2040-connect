@@ -9,7 +9,10 @@
 #   freertos/script/format.sh --check    only report them (exit status 1)
 #
 # FreeRTOSConfig.h (of the application and of the host test) is left out: it
-# keeps the layout of a table of settings.
+# keeps the layout of a table of settings.  So are the reduced copies of
+# Zephyr's files in the compatibility layer (drivers/compat/lib,
+# drivers/compat/subsys, zephyr/sys/fdtable.h, zephyr/net/socket_offload.h):
+# they keep Zephyr's text.
 
 set -euo pipefail
 
@@ -19,7 +22,7 @@ check=0
 case "${1:-}" in
   "") ;;
   --check) check=1 ;;
-  -h|--help) sed -n '2,12p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+  -h|--help) sed -n '2,15p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
   *) printf 'Unknown option: %s\n' "$1" >&2; exit 2 ;;
 esac
 
@@ -33,7 +36,10 @@ set -eu
 
 mapfile -t files < <(find "${root}/app" "${root}/drivers" "${root}/tests" \
   "${root}"/../common/drivers/*/freertos -type f \
-  \( -name '*.c' -o -name '*.h' \) ! -name FreeRTOSConfig.h | sort)
+  \( -name '*.c' -o -name '*.h' \) ! -name FreeRTOSConfig.h \
+  ! -path "${root}/drivers/compat/lib/*" ! -path "${root}/drivers/compat/subsys/*" \
+  ! -path "${root}/drivers/compat/zephyr/sys/fdtable.h" \
+  ! -path "${root}/drivers/compat/zephyr/net/socket_offload.h" | sort)
 (( ${#files[@]} )) || { printf 'format.sh: no sources under %s\n' "${root}" >&2; exit 1; }
 
 if (( check )); then

@@ -18,12 +18,12 @@ OS-independent part of the layer is `common/compat/`, the FreeRTOS part `freerto
 | Place | Contents |
 |---|---|
 | `app/usb-console/` | Start-up (`main.c`), the commands of this build only (`commands.c`), the kernel configuration (`FreeRTOSConfig.h`), the priority mapping (`priorities_os.h`), time (`os_clock.h`), the tick hook (`tick.c`; the catch-up's decision in `tick_catchup.h`), the CPU load (`idle.c`), fatal errors (`fault.[ch]`), the free interrupt stack (`irq_stack.c`) |
-| `drivers/compat/` | The FreeRTOS part of the layer: the kernel (`zephyr_kernel.c`, `zephyr_mutex.c`, `zephyr_os*.h`), the network interface (`zephyr_net_if.c`), the wall clock (`zephyr_sys_clock.c`), the sensor clock, the prelude header (`common_prelude.h`), the self-test (`zephyr_selftest.[ch]`), the RP2040 part (`rp2040/`: GPIO bank 0, chip ID) |
+| `drivers/compat/` | The FreeRTOS part of the layer: the kernel (`zephyr_kernel.c`, `zephyr_mutex.c`, `zephyr_os*.h`, `k_heap` in `zephyr_heap.c`), the network interface and its start (`zephyr_net_if.c`, `zephyr_net_init.c`), Zephyr's socket layer (reduced copies of Zephyr's files in `subsys/net/lib/sockets/` and `lib/os/zvfs/`, their headers under `zephyr/`, the linker script's part `ld/`), the wall clock (`zephyr_sys_clock.c`), the sensor clock, the prelude header (`common_prelude.h`), the self-test (`zephyr_selftest.[ch]`), the RP2040 part (`rp2040/`: GPIO bank 0, chip ID) |
 | `drivers/shell/` | Line editing (`cli.c`), the consoles and each task's output (`nano_console.c`), the replacement of the Pico SDK's stdio driver (`nano_stdio.c`), the command table and execution (`nano_shell.c`), a copy of Zephyr's argument split (`shell_argv.c`), getopt per session (`getopt_state.c`) |
 | `drivers/libc/` | Wrappers of newlib's FILE functions (`stdio_wrap.c`), the socket headers newlib lacks (`include/`, types and constants only), `inet_pton` and `inet_ntop` (`inet.c`) |
 | `drivers/log/` | The RAM log (`log_ram.c`; the ring is `common/log/log_ring.c`) |
 | `drivers/kv/` | The flash boundary of the key-value store (`nano_flash_kv.c`) and the linker script override (`ld/`, `kv.cmake`) |
-| `drivers/nina/` | The NINA-W102's SPI1 and lines (`nina_bus.c`), sockets (`nina_socket.c`), the interface (`nina_netif.c`), the esptool passthrough (`nina_passthrough.c`); the `nina_os.h` boundary is the core's FreeRTOS binding (`common/drivers/nina/freertos/nina_os.c`) |
+| `drivers/nina/` | The NINA-W102's SPI1 and lines (`nina_bus.c`), the esptool passthrough (`nina_passthrough.c`); the `nina_os.h` boundary is the core's FreeRTOS binding (`common/drivers/nina/freertos/nina_os.c`), the sockets and the interface are the Zephyr binding's (`common/drivers/nina/zephyr/nina_socket.c`, `nina_net.c`) |
 | `drivers/i2c_dw/` | The FreeRTOS part of the I2C core (`common/drivers/i2c_dw/`; I2C0, and I2C1 as an option), I2C0's DMA reads on the Pico SDK's DMA (`i2c_dw_dma_os.c`), self-test |
 | `drivers/lsm6dso/` | The LSM6DSOX device (`lsm6dso_instance.h`) and its initialization (`nano_lsm6dso.c`), self-test |
 | `drivers/imu/` | Builds in the acquisition service, MQTT and time synchronization (`common/imu/`; `imu.cmake`), the prelude of `time_sync.c` |
@@ -184,16 +184,33 @@ boundary (the four functions of `common/compat/nano_flash_kv.h`, `drivers/kv/nan
   NuttX build waits without the 10 ms slices. Whether the interrupt is used is decided at run time: if
   `nina_os_ready_start()` fails after the first reset, READY is read every 100 µs instead (in all three
   builds; the FreeRTOS binding's does not fail).
-- Sockets (`drivers/nina/nina_socket.c`): the layer's `zsock_*()` calls go to the shared core through a
-  table of 10 descriptors. As the Zephyr build's socket offload, the calling task asks the NINA and waits
-  (there is no event thread like the NuttX build's usrsock and `nina_event`). The descriptors are not
-  newlib's; only the `zsock_*()` calls take them. The types and constants newlib lacks are in
-  `drivers/libc/include/`, with Linux's values (`EAI_*` are Zephyr's negative values).
+- Sockets: the layer has Zephyr's socket layer down to its list of socket implementations (reduced
+  copies of Zephyr's `sockets.c`, `getaddrinfo.c`, `socket_offload.c`, `zvfs_fdtable.c` and
+  `zvfs_poll.c`; what each leaves out is in its header). An implementation registers itself with
+  `NET_SOCKET_OFFLOAD_REGISTER()` or `NET_SOCKET_REGISTER()`; the linker script collects the
+  registrations sorted by priority (`drivers/compat/ld/section_extra_post_text.incl`), and
+  `zsock_socket()` takes the first whose family matches and whose `is_supported()` accepts. The other
+  calls go through the descriptor table to the implementation's `struct socket_op_vtable` under the
+  descriptor's mutex, `poll` through `ZFD_IOCTL_POLL_PREPARE` and `ZFD_IOCTL_POLL_OFFLOAD`, and
+  `zsock_getaddrinfo()` to the registered resolver. The NINA's sockets are the Zephyr build's binding,
+  compiled unchanged (`common/drivers/nina/zephyr/nina_socket.c`, priority 40): as in the Zephyr build,
+  the calling task asks the NINA and waits (there is no event thread like the NuttX build's usrsock and
+  `nina_event`). The table has 16 descriptors, 0 to 15 from the lowest free one (none kept for stdin,
+  stdout and stderr, as in the Zephyr build); the NINA has ten sockets, so an eleventh gets `EMFILE`.
+  The descriptors are not newlib's; only the `zsock_*()` calls take them. The types and constants newlib
+  lacks are in `drivers/libc/include/`, with Linux's values (`EAI_*` are Zephyr's negative values); the
+  layer's `<zephyr/net/net_ip.h>` gives them Zephyr's `net_*` names.
+- What the sockets do is the Zephyr build's: a poll of the module that fails is `POLLERR` on that
+  socket (the call does not fail); a `poll` takes each descriptor's mutex, so it waits for a call in
+  progress on one of its sockets in another task (a blocking receive, a connect); one `sendmsg` runs at a
+  time, sleeps included; name resolution's results come from a 2048-byte heap (`EAI_MEMORY` when about
+  36 results are not freed). The Telnet server restarts its listening socket after an error on it, and
+  sets it up again every second while that fails.
 - The firmware additions (patches 0003 to 0006, the bits of command 0x6A) work as in the Zephyr build
   (described in the section of the same name in
   [`zephyr/app/usb-console/drivers/README.md`](../../zephyr/app/usb-console/drivers/README.md)): a scan
   while connected that keeps the link and the asynchronous scan (`nina_wifi.c`), the waits for socket
-  events (`common/drivers/nina/nina_wait.c` and the wait loops of `nina_socket.c`). The events are the
+  events (`common/drivers/nina/nina_wait.c` and the wait loops of `zephyr/nina_socket.c`). The events are the
   rising edges of the IRQ line (GPIO2) on its interrupt; the binding counts them and wakes every waiting
   task (the waiters are on a list, each woken on its task notification 2). If `nina_os_event_start()` fails, the waits keep their
   intervals (20 ms, 1 ms for sends) whatever the firmware. Checking with a poll command that the socket
@@ -201,9 +218,9 @@ boundary (the four functions of `common/compat/nano_flash_kv.h`, `drivers/kv/nan
 - Wi-Fi: the core's Wi-Fi operations with the Zephyr build's binding of them
   (`common/drivers/nina/zephyr/nina_net.c`: Zephyr's Wi-Fi management and interface, the three threads),
   the credentials (a copy of Zephyr's `wifi_credentials`) and the automatic reconnection
-  (`common/imu/wifi_profile.c`) run on the layer's `net_if`, `net_mgmt` and `wifi_mgmt` (`zephyr_net_if.c`,
-  `drivers/nina/nina_netif.c`); this build has no network layer of its own, so it uses the Zephyr
-  binding. The `wifi` command
+  (`common/imu/wifi_profile.c`) run on the layer's `net_if`, `net_mgmt` and `wifi_mgmt` (`zephyr_net_if.c`;
+  `zephyr_net_init.c` registers the interface at the start, as Zephyr's `net_init()`); this build has no
+  network layer of its own, so it uses the Zephyr binding. The `wifi` command
   is `common/compat/zephyr_wifi_shell.c`, keeping only the options this board can use; `wifi cred` is an
   unchanged copy of Zephyr's `wifi_credentials_shell.c`. `ifconfig` (`drivers/wifi/nano_ifconfig.c`)
   prints in the NuttX build's format.
@@ -327,7 +344,8 @@ IC_CON has no DMA bit, a 40-byte read leaves the DMA counters alone, and i2c0 st
 | `imu` | Address conversions, `hwinfo` |
 | `mqtt` | The MQTT transport (fake broker); then a run against the host's `imu-host check` (skipped without `host/.venv`) |
 | `time_sync` | Wall clock, TIMER read, NTP exchanges, `ntp status` |
-| `socket` | `zsock_*()`, wait loops, options, poll, name resolution |
+| `sockets` | The layer's socket part on fake implementations: the descriptor table, the registrations' order, the dispatch of every call, fcntl, poll (offloaded, other kinds, mixed), the resolver, `k_heap` |
+| `socket` | The NINA's sockets on the layer: descriptors, wait loops, options, poll, the descriptor's lock, name resolution |
 | `wifi` | Interface, events, credentials, reconnection, `wifi` and `ifconfig`, the scans by the firmware's bits (link kept, asynchronous, failures, one that never ends, the link lost during it, 3.0.2) |
 | `telnet` | The Telnet protocol, one client, reconnections, `zperf` (with the host's python3 and iperf3; that part is skipped without iperf3) |
 | `sensor_shell` | The `sensor` command, two sessions, calibration (skipped without ST's `lsm6dso_reg.c`) |
@@ -354,7 +372,7 @@ the Zephyr build's syntax and output.
 | Kernel clock | SysTick (late while sending) | Tickless on the TIMER | 1 kHz SysTick (catches up with the TIMER after interrupts were disabled); `k_uptime` from the TIMER |
 | Saving the divider | At switches, only when DIRTY (local patch) | At switches, only when DIRTY (patch 0009) | Four words at every switch (the Pico SDK port) |
 | The NINA's READY | Edge interrupt (GPIO10, read again every 10 ms) | Edge interrupt (GPIO10) | Edge interrupt (GPIO10, read again every 10 ms) |
-| Sockets | Offload (the calling thread waits) | usrsock and `nina_event` | The calling task waits (no event thread) |
+| Sockets | Offload (the calling thread waits) | usrsock and `nina_event` | The Zephyr build's offload on the layer's socket layer (the calling task waits) |
 | RAM log | 4 KiB | 8 KiB | 8 KiB |
 | After a fatal error | Restart, report in `dmesg` | Restart, report in `dmesg` | Restart, record in `dmesg`, `fault` and the banner |
 | `ifconfig` netmask while disconnected | – | Kept | 0.0.0.0 |

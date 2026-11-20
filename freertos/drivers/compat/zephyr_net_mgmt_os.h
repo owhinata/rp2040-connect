@@ -3,7 +3,7 @@
  * which includes this file at its end): the thread "net_mgmt", a task on the
  * file's static mgmt_stack (NANO_PRIO_NET_MGMT, Zephyr's -1 -> 21;
  * NANO_STACK_NET_MGMT 2048 bytes), and its start, net_mgmt_event_init()
- * (freertos/drivers/nina/nina_netif.c, before the interface is initialized,
+ * (freertos/drivers/compat/zephyr_net_init.c, before the interface is initialized,
  * as Zephyr's net_init()).  Part of the FreeRTOS implementation of the
  * Zephyr compatibility layer (freertos/drivers/compat; NuttX's is
  * nuttx/drivers/compat/zephyr_net_mgmt_os.h).

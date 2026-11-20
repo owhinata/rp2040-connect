@@ -14,8 +14,8 @@
  * (CONNACK: 2 bytes, then 2) would stop after the first.
  *
  * FreeRTOS: the layer's zsock_*() call the shared NINA core in the
- * caller's task (freertos/drivers/nina/nina_socket.c, the Zephyr build's
- * socket offload), and each read polls the module itself, as there.
+ * caller's task (the Zephyr build's socket offload,
+ * common/drivers/nina/zephyr/nina_socket.c), each read polling the module.
  *
  * NuttX's headers come first through the prelude of the shared sources
  * (common_prelude.h, -include), on FreeRTOS newlib's with the layer's

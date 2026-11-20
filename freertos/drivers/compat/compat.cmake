@@ -22,11 +22,19 @@
 #   streams, -Wl,--wrap=...; the types and constants of the network
 #   headers newlib lacks, <sys/socket.h>, <netinet/in.h>, <netinet/tcp.h>,
 #   <arpa/inet.h>, <poll.h>, <netdb.h>, <sys/uio.h>, and inet_pton() and
-#   inet_ntop(), inet.c: the layer's <zephyr/net/socket.h> is on them, its
-#   socket calls are the NINA's, freertos/drivers/nina/nina.cmake);
+#   inet_ntop(), inet.c: the layer's <zephyr/net/socket.h> is on them);
 #   malloc() is the Pico SDK's, with its mutex
 #   (pico_malloc, PICO_USE_MALLOC_MUTEX with pico_multicore, which the
 #   kernel's port links);
+# - the layer's socket part, Zephyr's socket layer down to its list of
+#   socket implementations (<zephyr/net/socket.h>, <zephyr/net/socket_offload.h>,
+#   <zephyr/sys/fdtable.h>): reduced copies of Zephyr's
+#   subsys/net/lib/sockets/sockets.c, getaddrinfo.c and socket_offload.c and
+#   of lib/os/zvfs/zvfs_fdtable.c and zvfs_poll.c (v4.5.0, see their
+#   headers), the linker script's section of the registered implementations
+#   (ld/section_extra_post_text.incl, pico_add_linker_script_override_path()),
+#   and k_heap (zephyr_heap.c); the NINA's sockets register themselves
+#   (freertos/drivers/nina/nina.cmake);
 # - with SELFTEST, the layer's self-test (zephyr_selftest.c and the board's
 #   part, rp2040/zephyr_selftest_port.c) and NANO_SELFTEST=1;
 # - the include directories, the board's port header first
@@ -75,10 +83,22 @@ function(freertos_zephyr_compat target)
     ${FREERTOS_COMMON_DIR}/compat/lib/utils/getopt/getopt_long.c
   )
 
+  # Reduced copies of Zephyr's files (v4.5.0; what was left out is in each
+  # header).  Their loops compare an int with ARRAY_SIZE() as Zephyr's do.
+  set(zephyr_socket_copies
+    ${FREERTOS_COMPAT_DIR}/lib/os/zvfs/zvfs_fdtable.c
+    ${FREERTOS_COMPAT_DIR}/lib/os/zvfs/zvfs_poll.c
+    ${FREERTOS_COMPAT_DIR}/subsys/net/lib/sockets/sockets.c
+    ${FREERTOS_COMPAT_DIR}/subsys/net/lib/sockets/getaddrinfo.c
+    ${FREERTOS_COMPAT_DIR}/subsys/net/lib/sockets/socket_offload.c
+  )
+
   target_sources(${target} PRIVATE
     ${FREERTOS_COMPAT_DIR}/zephyr_kernel.c
     ${FREERTOS_COMPAT_DIR}/zephyr_mutex.c
+    ${FREERTOS_COMPAT_DIR}/zephyr_heap.c
     ${FREERTOS_COMPAT_DIR}/zephyr_sys_clock.c
+    ${zephyr_socket_copies}
     ${FREERTOS_DRIVERS_DIR}/log/log_ram.c
     ${FREERTOS_DRIVERS_DIR}/shell/cli.c
     ${FREERTOS_DRIVERS_DIR}/shell/getopt_state.c
@@ -122,6 +142,14 @@ function(freertos_zephyr_compat target)
   target_link_options(${target} PRIVATE
     -Wl,--wrap=fputs -Wl,--wrap=fwrite -Wl,--wrap=fputc -Wl,--wrap=putc
     -Wl,--wrap=fprintf -Wl,--wrap=vfprintf -Wl,--wrap=fflush
+  )
+
+  pico_add_linker_script_override_path(${target} ${FREERTOS_COMPAT_DIR}/ld
+    FILES section_extra_post_text.incl
+  )
+
+  set_source_files_properties(${zephyr_socket_copies} PROPERTIES
+    COMPILE_OPTIONS "-Wno-sign-compare"
   )
 
   # Source file properties are scoped to the directory that calls this

@@ -1780,3 +1780,31 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
   直接実装している。互換層に足す量の見積もりは 400〜600 行。FreeRTOS 版が引き継ぐ違い: poll の失敗がそのソケットの `POLLERR` になる（いまは呼び出し全体が失敗）、
   `sendmsg` の間ずっとロックを持つ、DNS の結果が 2048 B の専用の領域から出る、記述子の番号が変わる。`k_heap` を互換層に足すかどうかは判断が要る。
 - 実機: FreeRTOS 版（この変更のビルド）。
+
+## NINA のリファクタリング: 段階 5（FreeRTOS の互換層に Zephyr のソケット層、ソケットのつなぎを Zephyr 版と共有）（2026-11-20、ユーザーの決定）
+
+- 範囲（ユーザーの決定）: ソケット層の「実装の一覧」まで。FreeRTOS 版は `common/drivers/nina/zephyr/nina_socket.c`（Zephyr 版と同じファイル）をビルドする。
+  `freertos/drivers/nina/nina_socket.c`（622 行）・`nina_netif.c`・`nina_net.h` は削除。`freertos/drivers/nina/` に残るのはボードに固有のもの
+  （`nina_bus.c`、`nina_passthrough*`、`nina.cmake`）だけ。
+- 互換層に足したもの（`freertos/drivers/compat/`。置き場とファイル名は Zephyr のツリーに合わせた）:
+  - `subsys/net/lib/sockets/sockets.c`（`zsock_*` の振り分け）、`socket_offload.c`（DNS のオフロード）、`getaddrinfo.c`。
+  - `lib/os/zvfs/zvfs_fdtable.c`（記述子の表、記述子ごとのロック）、`zvfs_poll.c`（poll の 2 段の ioctl）。
+  - ヘッダー: `zephyr/sys/fdtable.h`、`zephyr/net/socket_offload.h`、`zephyr/net/net_ip.h`、`zephyr/net/socket.h`（`NET_SOCKET_OFFLOAD_REGISTER` ほか）。
+  - `zephyr_heap.c`（`K_HEAP_DEFINE`・`k_heap_alloc`・`k_heap_free`）、`zephyr_net_init.c`、リンカーの `ld/section_extra_post_text.incl`（実装の一覧の区画）。
+- 値: 記述子の表は 16、`CONFIG_ZVFS_POLL_MAX` は 16。
+- FreeRTOS 版の動きの違い（Zephyr 版と同じになったもの）: poll の失敗がそのソケットの `POLLERR` になる、`sendmsg` の間ずっとロックを持つ、DNS の結果が専用の領域から出る、
+  記述子の番号が変わる。poll の経路のスタックが約 504 B 深くなる。
+- Telnet（`nano_telnet.c`）: リスナーの再開に失敗したら 1 秒ごとに再試行する形にした。
+- ホストテスト: FreeRTOS 54 の `ok`（`tests/sockets` を新設。メインが実行）、NuttX 55・Zephyr 43（subagent）。`format.sh --check` も通る。
+- ビルド（メインが再ビルド、警告なし）: Zephyr は `snapshot-1119c` と一致、NuttX は `snapshot-1119f` と一致。FreeRTOS 232872 → 236136 B（+3264 B）、RAM は約 +3 KB。
+- 実機（FreeRTOS、各 1 回）:
+  - 送信 約 70 秒: 欠番 0、`cpu_active` 41.0%、`unix_regressions` 0、`publish_max_us` 75155、`queue_high` 2。
+  - 送信中に `wifi disconnect` → 6 秒後に `wifi cred auto_connect`: 3 秒で再接続、MQTT はつなぎ直す（基板の `connects` 2、受信器の接続 2 回）。落ちたのは切断の間の
+    1 か所だけ（基板の `dropped_batches` 351、受信器の欠番 352、約 10.1 秒）。
+  - Telnet: 送信中と、切断から戻ったあとの両方でつながり `version` に応答。
+  - `zperf`（PC は `iperf3`、10 秒）: upload 3.58 Mbit/s（エラー 0）、download 2.47 Mbit/s。
+  - `ntp status` は synchronized、`dmesg` に `<err>`・`<wrn>` なし、`fault` は異常停止なし。
+  - スタックの残り（上のすべてのあとの `ps`）: `telnet_service` 1016、`shell_telnet` 1772、`zperf_server_tid` 872、`imu_raw_mqtt_tid` 848、最小は `nina_connect_tid` の 584。
+- 確認の途中で Wi-Fi につながらない場面があったが、PC の AP が落ちていたため（AP を起動し直して解消。変更とは無関係）。
+- 確かめていない: `selftest`、長時間、AP を落とす切断、記述子を使い切る場面（ホストテストだけ）、書き込み直後の最初の計測（AP が無く、最初の計測は AP の復帰後になった）。
+- 実機: FreeRTOS 版（この変更のビルド）。

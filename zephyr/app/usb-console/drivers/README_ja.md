@@ -33,7 +33,7 @@ ST の HAL は Zephyr のものを使います。Zephyr 側の構成が変わっ
 このディレクトリーに残り、`lsm6dso.h` を `common/drivers/lsm6dso/` から読みます。NINA のコア（`nina_spi.c`、`nina_wifi.[ch]`、`nina_sock.[ch]`、
 `nina_dns.[ch]`、宣言の `nina_proto.h`、プロトコルのコマンドと応答のバイト `nina_cmd.h`、境界のヘッダー `nina_bus.h`・`nina_os.h` ほか）は
 `common/drivers/nina/` に、`nina` コマンドの `nina_shell.c` は `common/shell/` にあり、3 版で共有します。コアの Zephyr の API へのつなぎは
-`common/drivers/nina/zephyr/` にあり（FreeRTOS 版はその Wi-Fi の部分 `nina_net.c` もビルドし、`nina_os.c` は自分のもの `common/drivers/nina/freertos/` を使う）、`nina/` にはこのボードの部分だけが残ります（下の NINA の節）。下の表のファイル名はそのすべての場所のものを含みます。
+`common/drivers/nina/zephyr/` にあり（FreeRTOS 版はその Wi-Fi とソケットの部分 `nina_net.c`・`nina_socket.c` もビルドし、`nina_os.c` は自分のもの `common/drivers/nina/freertos/` を使う）、`nina/` にはこのボードの部分だけが残ります（下の NINA の節）。下の表のファイル名はそのすべての場所のものを含みます。
 
 ## LSM6DSO の FIFO ストリーム
 
@@ -197,7 +197,7 @@ Wi-Fi の接続とソケットを操作するだけで、パケットは扱い�
 API とソケットのオフロードです。
 
 NINA-W102 のドライバーの中身は、NuttX 版・FreeRTOS 版と共有するコア（`common/drivers/nina/`。OS の定義を持たない）です。
-コアの Zephyr の API へのつなぎは `common/drivers/nina/zephyr/`（FreeRTOS 版はその Wi-Fi の部分 `nina_net.c` を互換層の上でビルドし、カーネルの部分は
+コアの Zephyr の API へのつなぎは `common/drivers/nina/zephyr/`（FreeRTOS 版はその Wi-Fi とソケットの部分 `nina_net.c`・`nina_socket.c` を、Zephyr のソケット層をソケットの実装の一覧のところまで持つ互換層の上でビルドし、カーネルの部分は
 FreeRTOS と Pico SDK で書いた自分のつなぎ `common/drivers/nina/freertos/nina_os.c` を使う）、このボードに固有のものは
 `nina/` にあります。アプリの `CMakeLists.txt` がそこからビルドし、つなぎの devicetree binding は `DTS_ROOT` で、オプションはアプリの
 `Kconfig`（`rsource`）で読み込みます。
@@ -214,7 +214,7 @@ FreeRTOS と Pico SDK で書いた自分のつなぎ `common/drivers/nina/freert
 | `nina_wait.[ch]` | `common/drivers/nina/` | ソケットの待ちのループの、パスの間の待ち（間隔、または IRQ の線のエッジ） |
 | `nina_net.c` | `common/drivers/nina/zephyr/` | コアの上の Zephyr の Wi-Fi 管理とネットワークインターフェース：デバイス（`NET_DEVICE_DT_OFFLOAD_DEFINE()`）、Zephyr のパラメーターの確認と受け渡し、結果を Zephyr の構造体とイベントに、アドレス・ネットマスク・ゲートウェイと dormant をインターフェースに、Wi-Fi のプロファイルの再接続をコアのフック、3 つのスレッド（`K_THREAD_DEFINE()`） |
 | `nina_os.c` | `common/drivers/nina/zephyr/` | コアの境界 `nina_os.h` の Zephyr 版：mutex、Wi-Fi のスレッドへの要求、sleep、時計、READY の割り込み待ち、IRQ の線（GPIO2）のエッジの待ち |
-| `nina_socket.c` | `common/drivers/nina/zephyr/` | ソケットのオフロード（ファイル記述子、errno、`O_NONBLOCK`、`SO_RCVTIMEO`、待ちのループと sleep、poll）と、名前解決を `getaddrinfo` のオフロードとして登録 |
+| `nina_socket.c` | `common/drivers/nina/zephyr/` | ソケットのオフロード（ファイル記述子、errno、`O_NONBLOCK`、`SO_RCVTIMEO`、待ちのループと sleep、poll）と、名前解決を `getaddrinfo` のオフロードとして登録（FreeRTOS 版のソケットも） |
 | `nina_passthrough.[ch]`、`nina_passthrough_hw.h` | `nina/` | esptool の中継（`nina passthrough confirm`）。`_hw.h` は RP2040 のレジスター（watchdog、UART1、GPIO）の部分 |
 | `posix/` | `common/drivers/nina/zephyr/` | コアが使う POSIX のソケットの名前（`struct sockaddr_in`、`AF_INET`、`POLLIN` など）を Zephyr の名前に対応させるヘッダー（コアと `nina_socket.c` だけが読む） |
 | `Kconfig`、`dts/bindings/wifi/arduino,nina-spi.yaml` | `common/drivers/nina/zephyr/` | ドライバーのオプション（`CONFIG_WIFI_NINA_LOCAL`、`CONFIG_NINA_SPI_FREQUENCY`、`CONFIG_NINA_TCP_MAX_IO`、`CONFIG_NINA_SEND_RETRY_MS`）と `nina_w102` のノードの devicetree binding |
