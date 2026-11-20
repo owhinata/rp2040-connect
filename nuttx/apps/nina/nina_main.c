@@ -3,10 +3,10 @@
  * from zephyr/app/usb-console/src/main.c, with the same syntax and output
  * (common/shell/nina_shell.c today, with the line of the module's
  * capability bits and those in use, nina_proto.h).  With the board's NINA
- * passthrough mode (CONFIG_NINA_PASSTHROUGH), also the FreeRTOS
- * build's "passthrough confirm" (freertos/drivers/nina/nina_passthrough.c
+ * passthrough mode (CONFIG_NINA_PASSTHROUGH), also "passthrough confirm"
+ * of the Zephyr and FreeRTOS builds (common/shell/nina_shell.c
  * cmd_nina_passthrough()), with its messages: it restarts the board into
- * the mode (<arch/board/nina_passthrough.h>).
+ * the mode (nina_passthrough_request() of common/drivers/nina).
  *
  * "version" is SHELL_CMD() (no argument count check: extra words are
  * ignored).  "nina" alone or with an unknown word prints the help, as the
@@ -30,12 +30,10 @@
 #  include <string.h>
 #  include <unistd.h>
 
-#  include <arch/board/nina_passthrough.h>
-
-#  include "nina_passthrough_logic.h"
+#  include "nina_passthrough.h"
 
 /* Time for the USB device (or Telnet) to send the messages before the
- * restart (the FreeRTOS build's PT_RESTART_DELAY_MS).
+ * restart (common/shell/nina_shell.c's PASSTHROUGH_RESTART_DELAY_MS).
  */
 
 #  define PASSTHROUGH_RESTART_DELAY_MS 100

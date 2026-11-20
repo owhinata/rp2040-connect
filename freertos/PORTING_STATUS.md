@@ -1836,3 +1836,31 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
   `dmesg` に `<err>`・`<wrn>` なし。
 - 確かめていない: `nina passthrough`（中継モードに入ったときにバスが使えなくなること。ホストテストだけ）。
 - 実機: Zephyr 版（この変更のビルド）。
+
+## NINA: 中継モード（passthrough）をコアへ（2026-11-20、ユーザーの決定）
+
+- ユーザーの方針: `common/drivers` のモジュールは単体で機能を提供する。`common/drivers/nina` は、中継でファームウェアを読み書きする機能も自分で持つ。
+  これまでは中継の本体が 3 版に 1 本ずつあり、共有は判断の部分（`nina_passthrough_logic.h`）だけだった。
+- 決めた形（案 A）: コアが中継の動きを持ち、境界を 2 つに分ける。チップに固有のモジュール側は各版に残す（Zephyr 版を Zephyr の UART・GPIO の API で書き直す案 B は見送り）。
+  - コア `common/drivers/nina/nina_passthrough.c`・`.h`（C ライブラリーだけ）: 再起動の印、DTR・RTS とモジュールの線の対応、ボーレートの追従、16 KiB のバッファ、両方向のデータ、
+    数の集計、LED、終了の条件と手順、`nina_passthrough_active()`。`nina_passthrough_logic.h` は取り込んで削除。
+  - モジュール側の境界 `nina_passthrough_bus.h`（`nina_pt_bus_*`: 印と再起動、RESETN・GPIO0・UART の TX のピン、UART、LED）。実装は各版:
+    `zephyr/app/usb-console/drivers/nina/nina_passthrough_bus.c`（もとの `nina_passthrough_hw.h` のレジスター操作）、`freertos/drivers/nina/nina_passthrough_bus.c`、
+    NuttX のボードの `src/nina_passthrough_bus.c`。
+  - PC 側の境界 `nina_passthrough_os.h`（`nina_pt_os_*`: 時計、待ち、USB シリアルへの書き込み、割り込みのうちつなぎの担当分、ログ）。実装はつなぎ:
+    `common/drivers/nina/zephyr/`（CDC ACM と USB スタックの通知）、`freertos/`（TinyUSB と Pico SDK を直接。スケジューラーなしの 1 本のループ）、`nuttx/`（cdcacm と 2 本のスレッド）の
+    `nina_passthrough_os.c`。
+  - シェル: `nina passthrough` の本体は `common/shell/nina_shell.c`（Zephyr と FreeRTOS が共有。`nina_shell.h` は削除）。NuttX は `apps/nina` からコアの `nina_passthrough_request()` を呼ぶ。
+  - Zephyr の `nina_bus.c` の弱い定義は削除（`nina_passthrough_active()` はコアのもの。`CONFIG_NINA_PASSTHROUGH` が無いビルドでは呼ばない）。
+- テスト: コアのホストテスト `common/tests/nina_passthrough.c` を新設（3 版のテストにあった判断の部分を集め、起動の順序・両方向のデータ・tick・終了の手順を足した）。
+  各版のテストはつなぎとコマンドだけに。`freertos/tests/passthrough/`・`nuttx/tests/nina_passthrough_fakes/` は削除。
+- 動きの違い（subagent の報告。外から見える結果は同じ）: FreeRTOS は `nina passthrough confirm` のあとの再起動が約 100 ms 早い。Zephyr は `to_nina` を数える時点が UART の FIFO に
+  入れたときになった。LED の点滅は「遅れたら追いつく」数え方になった（Zephyr・FreeRTOS）。NuttX は割り込みの中の順序と、次に寝る時間の計算の起点が変わった。
+- ホストテスト（メインが実行）: Zephyr 44、NuttX 56、FreeRTOS 54 の `ok`。`format.sh --check` も通る。
+- ビルド（メインが再ビルド、新しい警告なし）: Zephyr 371340 → 371908 B、NuttX 284388 → 284980 B、FreeRTOS 236136 → 236400 B。**基準を更新: Zephyr `snapshot-1120b`、NuttX `snapshot-1120a`**。
+  中継モードなしの構成（Zephyr の `CONFIG_NINA_PASSTHROUGH=n`、NuttX のオプション OFF）もビルドできる（subagent が確認。中継のシンボルは 0 個）。
+- 実機（3 版とも、各 1 回）: `nina passthrough confirm` で中継に入り、`esptool` 5.3.0 で NINA のフラッシュ 2 MB を 115200 bps（約 190 秒）と 921600 bps（約 26 秒）で読み出し。
+  2 回の読み出しは一致し、2026-11-18 の書き込み後の退避とも一致。300 bps でポートを閉じて通常のファームウェアに戻る。バッファのあふれ（lost）は 3 版とも 0
+  （最大の滞留は Zephyr 39、NuttX 18 バイト）。戻ったあとの送信 約 70 秒は 3 版とも欠番 0（`cpu_active`: Zephyr 46.5%、NuttX 48.8%、FreeRTOS 40.7%）。
+- 確かめていない: 中継での書き込み（`write-flash`）、RESET ボタンでの終了、中継なしの構成の実機での動作、3 版のモジュール側と FreeRTOS・NuttX のつなぎ（ホストテストが無い。前から）。
+- 実機: FreeRTOS 版（この変更のビルド）。

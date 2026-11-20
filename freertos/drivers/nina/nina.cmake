@@ -29,16 +29,20 @@
 #   application calls its nina_os_initialize() of nina_freertos.h first) and
 #   nina_bus.c (nina_bus.h: SPI1 and the module's lines on the Pico SDK's
 #   hardware_spi and hardware_gpio), with those libraries;
-# - the NINA passthrough mode and this build's "nina" root with its
-#   "passthrough" subcommand (nina_passthrough.c: USB CDC <-> the module's
-#   UART for esptool, a start of its own that main() runs on request;
-#   common/shell/nina_shell.h merges the subcommand in), on hardware_uart,
-#   hardware_irq and hardware_watchdog;
-# - the include directories freertos/drivers/nina (nina_passthrough.h),
-#   common/drivers/nina (nina_os.h, nina_bus.h, nina_proto.h, nina_cmd.h,
-#   nina_sock.h, nina_dns.h, nina_passthrough_logic.h) and
-#   common/drivers/nina/freertos (nina_freertos.h); common/shell is on the
-#   include path through compat.cmake.
+# - the NINA passthrough mode (USB CDC <-> the module's UART for esptool, a
+#   start of its own that main() runs on request; "nina passthrough" of
+#   nina_shell.c, CONFIG_NINA_PASSTHROUGH of the prelude): the shared core
+#   common/drivers/nina/nina_passthrough.c, its host's side on TinyUSB
+#   common/drivers/nina/freertos/nina_passthrough_os.c and its module's
+#   side nina_passthrough_bus.c (UART1, the module's lines, the watchdog's
+#   scratch registers, the LED), on hardware_uart, hardware_irq and
+#   hardware_watchdog.  The core's receive path runs from RAM, as the
+#   bus's interrupt handler (NINA_PASSTHROUGH_ISR_SECTION);
+# - the include directories common/drivers/nina (nina_os.h, nina_bus.h,
+#   nina_proto.h, nina_cmd.h, nina_sock.h, nina_dns.h, nina_passthrough.h
+#   and its two boundaries) and common/drivers/nina/freertos
+#   (nina_freertos.h); common/shell is on the include path through
+#   compat.cmake.
 #
 # CONFIG_NINA_TCP_MAX_IO (3584), CONFIG_NINA_SEND_RETRY_MS (1) and
 # CONFIG_NET_SOCKETS_OFFLOAD_PRIORITY (40) are the Zephyr build's values, in
@@ -72,17 +76,18 @@ function(freertos_nina target)
     ${FREERTOS_COMMON_DIR}/drivers/nina/nina_dns.c
     ${FREERTOS_COMMON_DIR}/drivers/nina/nina_wait.c
     ${FREERTOS_COMMON_DIR}/drivers/nina/zephyr/nina_socket.c
+    ${FREERTOS_COMMON_DIR}/drivers/nina/nina_passthrough.c
   )
 
   target_sources(${target} PRIVATE
     ${FREERTOS_COMMON_DIR}/drivers/nina/freertos/nina_os.c
+    ${FREERTOS_COMMON_DIR}/drivers/nina/freertos/nina_passthrough_os.c
     ${FREERTOS_NINA_DIR}/nina_bus.c
-    ${FREERTOS_NINA_DIR}/nina_passthrough.c
+    ${FREERTOS_NINA_DIR}/nina_passthrough_bus.c
     ${nina_common_sources}
   )
 
   target_include_directories(${target} PRIVATE
-    ${FREERTOS_NINA_DIR}
     ${FREERTOS_COMMON_DIR}/drivers/nina
     ${FREERTOS_COMMON_DIR}/drivers/nina/freertos
   )
@@ -108,5 +113,11 @@ function(freertos_nina target)
     ${FREERTOS_COMMON_DIR}/drivers/nina/nina_dns.c
     ${FREERTOS_COMMON_DIR}/drivers/nina/zephyr/nina_socket.c
     PROPERTIES COMPILE_DEFINITIONS NINA_OS_DNS_OFFLOAD
+  )
+  # The core's part of UART1's interrupt in RAM, as the Pico SDK's
+  # __not_in_flash_func() places it.
+  set_source_files_properties(
+    ${FREERTOS_COMMON_DIR}/drivers/nina/nina_passthrough.c
+    PROPERTIES COMPILE_DEFINITIONS "NINA_PASSTHROUGH_ISR_SECTION=\".time_critical.nina_passthrough_uart_isr\""
   )
 endfunction()

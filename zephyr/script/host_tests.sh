@@ -25,19 +25,20 @@ run() {
 # calls: framing, reset, READY waits (sampled when the READY callback cannot be added, else on the
 # edge interrupt), the socket events' waits and their start, failed and successful.  With
 # CONFIG_NINA_PASSTHROUGH as well (the build's default), the NINA passthrough mode's gate:
-# no bus, no line touched while the mode is active (drivers/nina/nina_passthrough.h).
+# no bus, no line touched while the mode is active (common/drivers/nina/nina_passthrough.h).
 nina_boundary=(-std=gnu17 -Wall -Wextra -Werror -I"$app/tests/nina_fakes" -I../common/drivers/nina
                "$app/tests/nina_boundary.c" ../common/drivers/nina/zephyr/nina_bus.c
                ../common/drivers/nina/zephyr/nina_os.c ../common/drivers/nina/nina_wait.c)
 run nina_boundary_passthrough -DCONFIG_NINA_PASSTHROUGH "${nina_boundary[@]}"
 run nina_boundary "${nina_boundary[@]}"
-# The NINA passthrough mode (drivers/nina/nina_passthrough.c, which the test includes) on fakes of
-# the Zephyr calls and of the RP2040 hardware (nina_passthrough_hw.h): the request at the start,
-# the lines and the rate on the USB stack's messages and the tick, both data paths with their
-# interrupts and handovers, the way out, the command.  The decisions themselves are
-# common/drivers/nina/nina_passthrough_logic.h's (freertos/tests/passthrough).
+# The NINA passthrough mode's Zephyr binding (common/drivers/nina/zephyr/nina_passthrough_os.c)
+# and "nina passthrough" (common/shell/nina_shell.c), which the test includes, with the shared
+# core (common/drivers/nina/nina_passthrough.c) on fakes of the Zephyr calls and of the module's
+# side (nina_passthrough_bus.h): the request at the start, the lines and the rate on the USB
+# stack's messages and the tick, both data paths with their interrupts and handovers, the way
+# out, the command.  The core itself is common/tests/nina_passthrough.c's.
 run passthrough -std=gnu17 -Wall -Wextra -Werror -I"$app/tests/passthrough_fakes" \
-    -I"$app/drivers/nina" -I../common/drivers/nina "$app/tests/passthrough.c"
+    -I../common/drivers/nina "$app/tests/passthrough.c" ../common/drivers/nina/nina_passthrough.c
 # The socket offload (common/drivers/nina/zephyr/nina_socket.c) on the shared core (nina_sock.c, nina_dns.c with
 # NINA_OS_DNS_OFFLOAD, as CMakeLists.txt builds them), on fakes of zvfs, the kernel and the
 # module: descriptors, the wait loops and their sleeps, options, accept, sendmsg, datagrams,

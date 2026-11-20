@@ -16,7 +16,8 @@
 # which includes lsm6dso_cal.h of common/drivers/lsm6dso).  nano_telnet.c
 # runs the Telnet shell (CONFIG_NANO_INIT_TELNET).  When the board's NINA
 # passthrough mode was asked for (CONFIG_NINA_PASSTHROUGH), it runs
-# that mode instead of all this (<arch/board/nina_passthrough.h>).
+# that mode instead of all this (nina_passthrough.h of
+# common/drivers/nina).
 ############################################################################
 
 include $(APPDIR)/Make.defs
@@ -33,5 +34,6 @@ CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)lsm6dso
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)imu
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)drivers$(DELIM)lsm6dso
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)drivers$(DELIM)nina$(DELIM)nuttx
+CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)drivers$(DELIM)nina
 
 include $(APPDIR)/Application.mk

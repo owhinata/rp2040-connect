@@ -1,7 +1,8 @@
 /* SPDX-License-Identifier: MIT */
-/* Fakes of the Zephyr calls of drivers/nina/nina_passthrough.c for the host
- * test tests/passthrough.c, which defines the functions (and the fake of
- * nina_passthrough_hw.h).  Every <zephyr/...> header of the file is this
+/* Fakes of the Zephyr calls of common/drivers/nina/zephyr/
+ * nina_passthrough_os.c and common/shell/nina_shell.c for the host test
+ * tests/passthrough.c, which defines the functions (and the fake of
+ * nina_passthrough_bus.h).  Every <zephyr/...> header of the files is this
  * one.
  */
 #ifndef PT_FAKES_H_
@@ -12,7 +13,7 @@
 #include <stdint.h>
 #include <stdio.h>
 
-#define ARG_UNUSED(x) (void)(x)
+#define ARG_UNUSED(x)           (void)(x)
 #define BUILD_ASSERT(cond, msg) _Static_assert(cond, msg)
 #define CONFIG_SYSTEM_WORKQUEUE_PRIORITY -1
 
@@ -27,12 +28,6 @@ extern const struct device fake_cdc_dev;
 /* SYS_INIT(): the test calls the functions itself. */
 #define SYS_INIT(fn, level, prio)                                                                  \
 	static int (*const sys_init_##fn)(void) __attribute__((unused)) = fn
-
-/* Interrupts. */
-void fake_irq_connect(unsigned int irq, unsigned int prio, void (*isr)(const void *arg));
-#define IRQ_CONNECT(irq, prio, isr, arg, flags) fake_irq_connect((irq), (prio), (isr))
-void irq_enable(unsigned int irq);
-void irq_disable(unsigned int irq);
 
 /* The kernel. */
 typedef struct {
@@ -81,7 +76,7 @@ extern unsigned int fake_logs;
 #define LOG_INF(...)                     (fake_logs++, snprintf(fake_log, sizeof(fake_log), __VA_ARGS__))
 #define LOG_ERR(...)                     (fake_logs++, snprintf(fake_log, sizeof(fake_log), __VA_ARGS__))
 
-/* The shell: what the command printed. */
+/* The shell: what the command printed, and its sets as arrays. */
 struct shell {
 	int unused;
 };
@@ -98,6 +93,15 @@ extern char fake_shell_out[512];
 	((void)(sh), snprintf(fake_shell_out, sizeof(fake_shell_out), __VA_ARGS__))
 #define shell_error(sh, ...)                                                                       \
 	((void)(sh), snprintf(fake_shell_out, sizeof(fake_shell_out), __VA_ARGS__))
+#define SHELL_CMD_ARG(syn, sub, hlp, fn, mand, opt)                                                \
+	{.syntax = #syn, .help = (hlp), .subcmd = (sub), .handler = (fn), .mandatory = (mand),     \
+	 .optional = (opt)}
+#define SHELL_CMD(syn, sub, hlp, fn) SHELL_CMD_ARG(syn, sub, hlp, fn, 0, 0)
+#define SHELL_SUBCMD_SET_END         {.syntax = NULL}
+#define SHELL_STATIC_SUBCMD_SET_CREATE(name, ...)                                                  \
+	static const struct shell_static_entry name[] = {__VA_ARGS__}
+#define SHELL_CMD_REGISTER(syn, sub, hlp, fn)                                                      \
+	const struct shell_static_entry *const fake_shell_root_##syn = *(sub)
 
 /* The UART API of the CDC ACM port. */
 #define UART_LINE_CTRL_BAUD_RATE 1

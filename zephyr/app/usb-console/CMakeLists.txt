@@ -36,15 +36,15 @@ target_sources(app PRIVATE ${nina_dir}/nina_spi.c ${nina_zephyr_dir}/nina_bus.c 
   ${nina_dir}/nina_wifi.c ${nina_zephyr_dir}/nina_net.c ${nina_dir}/nina_sock.c
   ${nina_zephyr_dir}/nina_socket.c ${nina_dir}/nina_dns.c ${COMMON_DIR}/shell/nina_shell.c
   ${nina_dir}/nina_wait.c)
-# The NINA passthrough mode for esptool (drivers/nina/nina_passthrough.c, on the Pico SDK's
-# registers of hal_rpi_pico): main() runs it on request, and its "nina passthrough" is an entry of
-# nina_shell.c's set; both read drivers/nina/nina_passthrough.h.  While the mode is active its
-# nina_passthrough_active() keeps nina_bus.c from the module's lines.
+# The NINA passthrough mode for esptool: the driver's core common/drivers/nina/nina_passthrough.c,
+# its host's side on Zephyr's USB device stack (the binding's nina_passthrough_os.c) and its
+# module's side on the Pico SDK's registers of hal_rpi_pico (drivers/nina/nina_passthrough_bus.c).
+# main() runs it on request, and "nina passthrough" is an entry of nina_shell.c's set.  While the
+# mode is active nina_passthrough_active() keeps nina_bus.c from the module's lines.
 if(CONFIG_NINA_PASSTHROUGH)
-  target_sources(app PRIVATE drivers/nina/nina_passthrough.c)
+  target_sources(app PRIVATE ${nina_dir}/nina_passthrough.c ${nina_zephyr_dir}/nina_passthrough_os.c
+    drivers/nina/nina_passthrough_bus.c)
 endif()
-set_property(SOURCE src/main.c ${COMMON_DIR}/shell/nina_shell.c APPEND PROPERTY INCLUDE_DIRECTORIES
-  ${CMAKE_CURRENT_SOURCE_DIR}/drivers/nina)
 set(nina_socket_sources ${nina_dir}/nina_sock.c ${nina_zephyr_dir}/nina_socket.c
   ${nina_dir}/nina_dns.c)
 set_property(SOURCE ${nina_socket_sources} APPEND PROPERTY INCLUDE_DIRECTORIES

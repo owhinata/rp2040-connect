@@ -29,7 +29,7 @@
  *   (two posts leave one, the scan's and the connection's apart), taken
  *   for ever.
  * - With CONFIG_NINA_PASSTHROUGH (as the build has it), the NINA
- *   passthrough mode (drivers/nina/nina_passthrough.h): while it is
+ *   passthrough mode (common/drivers/nina/nina_passthrough.h): while it is
  *   active the bus is never ready, so a request is -ENODEV before any line
  *   or SPI call, the module is not reset, and the link works again once
  *   the mode is gone.

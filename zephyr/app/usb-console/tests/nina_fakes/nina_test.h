@@ -86,7 +86,6 @@ typedef struct {
 #define MIN(a, b)                        ((a) < (b) ? (a) : (b))
 #define BIT(n)                           (1u << (n))
 #define ARG_UNUSED(x)                    (void)(x)
-#define __weak                           __attribute__((__weak__))
 
 extern struct device fake_device;
 bool device_is_ready(const struct device *dev);

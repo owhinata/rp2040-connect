@@ -402,7 +402,8 @@ NINA firmware: 3.0.2
 ### Passthrough mode (`nina passthrough confirm`)
 
 A mode for reading and writing the NINA's firmware with esptool on the PC (in place of Arduino's
-SerialNINAPassthrough sketch; the FreeRTOS build's mode). `nina passthrough confirm` restarts the
+SerialNINAPassthrough sketch; the same mode in the three builds, the NINA driver's
+`common/drivers/nina/nina_passthrough.c`). `nina passthrough confirm` restarts the
 board with its USB serial port connected to the NINA's UART (without the confirmation word the
 command refuses). The UART is on the pins of the SPI's MISO and CS (GPIO8, GPIO9), so in this mode the
 NINA's SPI, Wi-Fi, Telnet, MQTT, time synchronization, nsh and the key-value store do not run.
@@ -1296,14 +1297,14 @@ with the layer's NuttX implementation (`nuttx/drivers/compat/`; the Zephyr build
 |---|---|
 | `common/imu/` | `imu_stream.c`, `imu_raw_{batch,packet,queue,status,time}`, `imu_tick_clock`, `time_sync.[ch]`, `time_offset`, `imu_cal_codec.c`, `imu_cal.[ch]`, `imu_raw_mqtt.[ch]`, `wifi_profile.[ch]`, `kv_store.[ch]`, `mqtt_min.[ch]` and `mqtt_min_sock.c` (the MQTT client of the builds on the compatibility layer and its socket layer; the Zephyr build does not use them) |
 | `common/drivers/lsm6dso/` | `lsm6dso.[ch]` (the driver; the device at its end is `lsm6dso_instance.h` of each build), `lsm6dso_{fifo,cal,zero,fifo_decoder,fifo_hw,fifo_irq}`, `lsm6dso_stream.c`, `lsm6dso_compat.c`, `lsm6dso_fifo_packet.h`, `lsm6dso_fifo_stats.h`, `lsm6dso_attributes.h` |
-| `common/drivers/nina/` | `nina_proto.h` (all three builds); the NINA core `nina_spi.c`, `nina_wifi.[ch]`, `nina_sock.[ch]`, `nina_dns.[ch]` and `nina_wait.[ch]`, the names of the protocol's bytes `nina_cmd.h`, the decisions of the esptool passthrough `nina_passthrough_logic.h`, with the headers of its boundary, `nina_os.h` and `nina_bus.h`, and its socket options, `nina_sockopt.h` (the three builds use them; they do not use Zephyr's API and the NuttX build compiles them without the prelude; the boundary is described under "NINA-W102" in `nuttx/drivers/README.md`); the core's bindings in `zephyr/` (the Zephyr and FreeRTOS builds) and `nuttx/` (this build: `wlan0`, the applications' Wi-Fi management, `nina_os.c`, usrsock) |
+| `common/drivers/nina/` | `nina_proto.h` (all three builds); the NINA core `nina_spi.c`, `nina_wifi.[ch]`, `nina_sock.[ch]`, `nina_dns.[ch]` and `nina_wait.[ch]`, the names of the protocol's bytes `nina_cmd.h`, the esptool passthrough `nina_passthrough.[ch]`, with the headers of its boundaries, `nina_os.h` and `nina_bus.h` (the passthrough's `nina_passthrough_bus.h` and `nina_passthrough_os.h`), and its socket options, `nina_sockopt.h` (the three builds use them; they do not use Zephyr's API and the NuttX build compiles them without the prelude; the boundary is described under "NINA-W102" in `nuttx/drivers/README.md`); the core's bindings in `zephyr/` (the Zephyr and FreeRTOS builds) and `nuttx/` (this build: `wlan0`, the applications' Wi-Fi management, `nina_os.c`, usrsock, the passthrough's host side `nina_passthrough_os.c`) |
 | `common/drivers/sensor_shell/` | `sensor_shell.c` |
 | `common/drivers/stmemsc/` | `stmemsc.h`, `stmemsc_i2c.c`, `stmemsc_mdelay.c` (a copy of the I2C part of Zephyr's stmemsc, used by the NuttX and FreeRTOS builds and compiled without the prelude; the Zephyr build uses Zephyr's) |
 | `common/drivers/i2c_dw/` | The I2C core `i2c_dw.c` (I2C0, and I2C1 with `CONFIG_I2C_DW_I2C1`, off by default) with its definitions `i2c_dw.h`, `i2c_dw_registers.h`, `i2c_dw_rp2040.h` and its DMA reads `i2c_dw_rp2040_dma_priv.h`, with the DMA command words (the Zephyr build has the same function in patch 0003) (the file names of Zephyr's patched driver), the declarations of the `i2c_dma` functions `i2c_dw_rp2040_dma.h`, the headers of its boundaries, `i2c_dw_os.h` and, for the DMA reads, `i2c_dw_dma_os.h` (the NuttX and FreeRTOS builds use them; they are compiled without the prelude, and the OS's part is the board's `src/i2c_dw_os_impl.h`, `i2c_dw_instance.h` and `i2c_dw_dma_os.c`; the boundaries are described under "I2C0" in `nuttx/drivers/README.md`) |
 | `common/compat/` | the OS-independent part of the compatibility layer (the headers of Zephyr's API `zephyr/...`, among them the `i2c_dma` state `zephyr/drivers/i2c/i2c_dw_rp2040_dma.h`, which includes the I2C core's `common/drivers/i2c_dw/i2c_dw_rp2040_dma.h`, `zephyr_compat.h`, work items, RTIO, the block pool, the device list, `gpio0`, `net_mgmt`, the Wi-Fi requests, the sensors' default iodev) and the copies of Zephyr's libraries that the builds on the layer use (`sensor_shell_stream.c`, `sensor_shell.h`, `wifi_credentials.c`, `wifi_credentials_backend_settings.c`, `wifi_credentials_internal.h`), and boundary headers (`priorities.h`, `cpu_load.h`, `nano_cpuload.h`, `nano_gpio.h`); the Zephyr build does not use it |
 | `common/shell/` | `subcmd.[ch]` (the subcommand tables), `zshell.c` (the handling of commands written with `<zephyr/shell/shell.h>`: word matching, wildcards, argument count checks, help) and its boundary to the OS, `zshell_os.h` (the NuttX build's part is `nuttx/apps/subcmd/zshell_os_impl.h`); compiled without the prelude; the Zephyr build does not use them. Also `i2c_dma_shell.c` (the `i2c_dma` command of the three builds, written on Zephyr's shell API; the NuttX build's `nuttx/apps/i2c_dma` builds it with the prelude), and `nina_shell.c` (the `nina` command of the Zephyr and FreeRTOS builds; the NuttX build has its own, `nuttx/apps/nina`) |
 | `common/log/` | `log_ring.[ch]` (the RAM log's ring, line prefix and rate limit), `app_log.h` (the `LOG_*` macros; the NuttX part is `nuttx/drivers/include/app_log_os.h`), `log_ram.h` (the RAM log's functions; in the NuttX build `nuttx/drivers/log/log_ram.c`), `fault_record.[ch]` (the record of a fatal error: its format, CRC-32, the copy in the watchdog's scratch registers and its lines; only the FreeRTOS build uses it); the Zephyr build does not use it |
-| `common/tests/` | the 36 tests of the files above and the check of the copies, `zephyr_copies` (run by `common/tests/run.sh`, which the `host_tests.sh` of the three builds call first; the layer's `zephyr_rtio`, `zephyr_work` and `mqtt_min` on the fake kernel, the NINA core's `nina_spi`, `nina_sock`, `nina_wifi` and `nina_dns` on fakes of its boundary defined by the tests, and `nina_core_independent`, each core file compiled with the C library and its own headers only); `stream_stop.c` includes `../drivers/lsm6dso/lsm6dso_stream.c` (with the include guard of `lsm6dso.h` defined first, so nothing of that header is used; `stream_stop.c` provides the definitions it needs) |
+| `common/tests/` | the 37 tests of the files above and the check of the copies, `zephyr_copies` (run by `common/tests/run.sh`, which the `host_tests.sh` of the three builds call first; the layer's `zephyr_rtio`, `zephyr_work` and `mqtt_min` on the fake kernel, the NINA core's `nina_spi`, `nina_sock`, `nina_wifi`, `nina_dns` and `nina_passthrough` on fakes of its boundaries defined by the tests, and `nina_core_independent`, each core file compiled with the C library and its own headers only); `stream_stop.c` includes `../drivers/lsm6dso/lsm6dso_stream.c` (with the include guard of `lsm6dso.h` defined first, so nothing of that header is used; `stream_stop.c` provides the definitions it needs) |
 | `common/tests/fakes/` | stand-ins for the Zephyr and ST headers the tests need (`zephyr/drivers/sensor.h`, `zephyr/drivers/sensor_clock.h`, `zephyr/drivers/i2c.h`, `zephyr/rtio/rtio.h`, `lsm6dso_reg.h`) |
 | `common/tests/zephyr_fakes/` | the compatibility layer's fake kernel: the OS headers (`zephyr_os.h`, `zephyr_os_spinlock.h`, `zephyr_os_atomic.h`, `zephyr_rtio_workq_os.h`, `zephyr/sys/__assert.h`) and their functions (`zephyr_kernel_host.[ch]`: one thread; the test runs the work queues and fires the timers); the NuttX build's tests use it too |
 
@@ -1337,15 +1338,12 @@ returns at once), a wake-up and a latched edge left from before (dropped), the e
 during a wait, and at most one count in the semaphore; and the Wi-Fi operations' lock and the
 requests of their threads.
 
-`nuttx/tests/nina_passthrough.c` checks the NuttX side of the NINA passthrough mode: the board's
-`src/nina_passthrough_glue.h` (from cdcacm's control line bits and the bytes of the line
-coding's rate to the module's lines, the way out, the count of closes and UART1's rate; esptool's
-port opened, its custom reset sequence and the close, the way out with `stty 300`, a port opened at a
-stale 300 bps), the words of UART1's data register (a break is no data, an overrun and a framing
-error are counted and kept, a full ring drops and counts), and `nina passthrough` of `apps/nina` (the
-order of the help, the confirmation word, the argument counts, the messages, and the board's request
-made only with `confirm`). The shared decisions (`common/drivers/nina/nina_passthrough_logic.h`) are
-tested by `freertos/tests/passthrough`.
+`nuttx/tests/nina_passthrough.c` checks `nina passthrough` of `apps/nina` (the order of the help,
+the confirmation word, the argument counts, the messages, and the driver's request made only with
+`confirm`). The mode itself (`common/drivers/nina/nina_passthrough.c`: the lines, the way out, the
+rate, UART1's words, the ring) is tested by `common/tests/nina_passthrough.c`; its NuttX side
+(`common/drivers/nina/nuttx/nina_passthrough_os.c`, the board's `src/nina_passthrough_bus.c`) has no
+host test.
 
 `common/tests/nano_cpuload.c` and `common/tests/log_ring.c` test shared parts that the Zephyr
 build does not use. The first compares the arithmetic of `common/compat/nano_cpuload.h` with the

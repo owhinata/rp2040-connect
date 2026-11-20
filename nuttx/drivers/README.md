@@ -302,12 +302,12 @@ Bit 2 on NuttX:
 ### Passthrough mode (`nina passthrough confirm`)
 
 A relay between the USB CDC ACM port and the NINA's UART (the ESP32's UART0), for reading and writing the
-module's flash with esptool on the PC. It follows the FreeRTOS build's
-`freertos/drivers/nina/nina_passthrough.c`, and its decisions (the request's mark, the lines, the rate,
-the way out, the ring) are the ones shared by the three builds,
-`common/drivers/nina/nina_passthrough_logic.h`. The NuttX side is the board's
-`src/nina_passthrough.c` (its parts without the hardware in `src/nina_passthrough_glue.h`)
-and `include/nina_passthrough.h`, with `CONFIG_NINA_PASSTHROUGH` (default y).
+module's flash with esptool on the PC. The mode itself (the request's mark, the lines, the rate, the
+data both ways with the ring, the way out, the counts, the LED) is the NINA driver's core shared by the
+three builds, `common/drivers/nina/nina_passthrough.c` (`nina_passthrough.h`). The NuttX side is its
+host side on cdcacm, `common/drivers/nina/nuttx/nina_passthrough_os.c` (built with the NINA driver,
+`nuttx/drivers/nina/Make.defs`), and its module side on the RP2040's registers, the board's
+`src/nina_passthrough_bus.c`, with `CONFIG_NINA_PASSTHROUGH` (default y).
 
 | RP2040 | Passthrough mode | Normal firmware |
 |---|---|---|
@@ -347,11 +347,10 @@ and `include/nina_passthrough.h`, with `CONFIG_NINA_PASSTHROUGH` (default y).
 - No signal is used (the waits are semaphores, sleeps and blocking reads and writes). NuttX's UART1
   driver (`CONFIG_RP2040_UART1`) would take the pins at boot and is not used (UART1's registers are
   driven directly).
-- The host test `nuttx/tests/nina_passthrough.c` (`script/host_tests.sh`) checks the conversion of
-  cdcacm's values into the pins, the way out and the rate, the handling of the words of UART1's data
-  register, and the confirmation word, argument counts and messages of `nina passthrough`. The shared
-  decisions are tested by `freertos/tests/passthrough`. The interrupts, threads and cdcacm together
-  have no host test.
+- The host test `nuttx/tests/nina_passthrough.c` (`script/host_tests.sh`) checks the confirmation
+  word, argument counts and messages of `nina passthrough`. The shared core is tested by
+  `common/tests/nina_passthrough.c` (`common/tests/run.sh`). The NuttX side (the interrupts, threads
+  and cdcacm together) has no host test.
 - On the board (2026-11-18): esptool's `read-flash 0 0x200000` at 115200 bps (192 s) and at 921600 bps
   (26.1 s) gave the same data, with no bytes lost and no overruns. Closing the port at 300 bps went
   back to the normal start.

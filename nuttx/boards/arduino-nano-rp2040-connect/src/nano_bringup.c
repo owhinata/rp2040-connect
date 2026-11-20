@@ -74,7 +74,7 @@
 #endif /* CONFIG_ARCH_BOARD_COMMON */
 
 #ifdef CONFIG_NINA_PASSTHROUGH
-#  include <arch/board/nina_passthrough.h>
+#  include "nina_passthrough.h"
 #endif
 
 /****************************************************************************
@@ -139,7 +139,7 @@ int nano_bringup(void)
   /* --- Place any board specific bringup code here --- */
 
 #ifdef CONFIG_NINA_PASSTHROUGH
-  /* The NINA passthrough mode (<arch/board/nina_passthrough.h>): the
+  /* The NINA passthrough mode (nina_passthrough.h of common/drivers/nina): the
    * USB device only.  SPI1 shares GPIO8 and GPIO9 with the UART1 of the
    * mode and stays off; nothing here talks to the module, the sensor or
    * the key-value flash.  The init task runs the mode.

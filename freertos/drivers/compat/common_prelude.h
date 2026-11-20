@@ -50,6 +50,14 @@
 #define CONFIG_NINA_SEND_RETRY_MS           1
 #define CONFIG_NET_SOCKETS_OFFLOAD_PRIORITY 40
 
+/* The NINA passthrough mode (common/drivers/nina/nina_passthrough.c, the
+ * Zephyr build's CONFIG_NINA_PASSTHROUGH, zephyr/app/usb-console/Kconfig):
+ * "nina passthrough" of the shared "nina" command
+ * (common/shell/nina_shell.c).  The FreeRTOS build always has the mode
+ * (freertos/drivers/nina/nina.cmake).
+ */
+#define CONFIG_NINA_PASSTHROUGH 1
+
 /* The FIFO stream of the LSM6DSO driver, CONFIG_SENSOR_ASYNC_API in the
  * Zephyr build (lsm6dso.c, lsm6dso.h): on with the driver
  * (CONFIG_NANO_LSM6DSO_STREAM, which freertos/drivers/lsm6dso/lsm6dso.cmake

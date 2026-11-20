@@ -20,13 +20,12 @@
  * nina_bus_initialize(); nina_spi.c configures the other lines on the
  * first request.
  *
- * nina_passthrough_active() is the application's: while it returns true
- * (the NINA passthrough mode, where the module's lines and the SPI pins
- * belong to the mode) the bus is never ready, so every request fails with
- * -ENODEV before any line is touched.  An application without such a mode
- * leaves the weak definition here, which never claims the bus.  The host
- * test (zephyr/app/usb-console/tests/nina_boundary.c) builds this file on
- * fakes of the Zephyr calls.
+ * With CONFIG_NINA_PASSTHROUGH, while nina_passthrough_active() is true
+ * (the NINA passthrough mode, nina_passthrough.h, where the module's lines
+ * and the SPI pins belong to the mode) the bus is never ready, so every
+ * request fails with -ENODEV before any line is touched.  The host test
+ * (zephyr/app/usb-console/tests/nina_boundary.c) builds this file on fakes
+ * of the Zephyr calls.
  */
 
 #include <errno.h>
@@ -39,8 +38,9 @@
 #include <zephyr/drivers/spi.h>
 
 #include "nina_bus.h"
-
-bool nina_passthrough_active(void);
+#ifdef CONFIG_NINA_PASSTHROUGH
+#include "nina_passthrough.h"
+#endif
 
 #define NINA_NODE DT_NODELABEL(nina_w102)
 
@@ -68,16 +68,13 @@ static const struct gpio_dt_spec *line(enum nina_pin pin)
 	}
 }
 
-__weak bool nina_passthrough_active(void)
-{
-	return false;
-}
-
 bool nina_bus_ready(void)
 {
+#ifdef CONFIG_NINA_PASSTHROUGH
 	if (nina_passthrough_active()) {
 		return false;
 	}
+#endif
 	return device_is_ready(spi) && gpio_is_ready_dt(&ready) && gpio_is_ready_dt(&reset) &&
 	       gpio_is_ready_dt(&irq) && gpio_is_ready_dt(&cs);
 }

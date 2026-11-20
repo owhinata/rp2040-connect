@@ -188,14 +188,15 @@ config NINA_PASSTHROUGH
 	depends on ARCH_CHIP_RP2040 && CDCACM && BOARD_LATE_INITIALIZE
 	depends on !RP2040_UART1 && !SMP
 	---help---
-		src/nina_passthrough.c, the FreeRTOS build's NINA
-		passthrough (freertos/drivers/nina/nina_passthrough.c) with the
-		same decisions (common/drivers/nina/nina_passthrough_logic.h):
-		after "nina passthrough confirm" (nuttx/apps/nina) the board
-		restarts into a mode that relays the USB CDC ACM port to the
-		NINA-W102's UART (UART1 on GPIO8 and GPIO9, the pins of SPI1's
-		MISO and CS) with DTR and RTS on the module's GPIO0 and RESETN,
-		for esptool.  The request is kept in the watchdog's scratch
+		The NINA driver's passthrough mode
+		(common/drivers/nina/nina_passthrough.c, shared with the Zephyr
+		and FreeRTOS builds; its NuttX side
+		common/drivers/nina/nuttx/nina_passthrough_os.c, its module side
+		src/nina_passthrough_bus.c): after "nina passthrough confirm"
+		(nuttx/apps/nina) the board restarts into a mode that relays
+		the USB CDC ACM port to the NINA-W102's UART (UART1 on GPIO8
+		and GPIO9, the pins of SPI1's MISO and CS) with DTR and RTS on
+		the module's GPIO0 and RESETN, for esptool.  The request is kept in the watchdog's scratch
 		registers 0..3 over the restart; in the mode, nano_bringup()
 		starts the USB device only and the init task runs the mode
 		instead of nsh and the threads.  Closing the port at 300 bps,

@@ -88,7 +88,7 @@
 #endif
 
 #ifdef CONFIG_NINA_PASSTHROUGH
-#  include <arch/board/nina_passthrough.h>
+#  include "nina_passthrough.h"
 #endif
 
 /* nuttx/apps/wifi: <zephyr/net/wifi_credentials.h> and <wifi_profile.h>
@@ -241,8 +241,8 @@ int nano_init_main(int argc, FAR char *argv[])
 #endif
 
 #ifdef CONFIG_NINA_PASSTHROUGH
-  /* "nina passthrough confirm" asked for the NINA passthrough mode (the
-   * board's include/nina_passthrough.h): it runs here instead of all
+  /* "nina passthrough confirm" asked for the NINA passthrough mode
+   * (common/drivers/nina/nina_passthrough.h): it runs here instead of all
    * that follows (no nsh, Telnet, Wi-Fi, key-value store or threads),
    * until it restarts the board into the normal firmware.
    */

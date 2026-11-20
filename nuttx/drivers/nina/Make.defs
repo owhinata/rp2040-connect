@@ -28,7 +28,10 @@
 # common/drivers/nina, nina_poller.c, the layer's zsock_*()) end at the
 # rising edges of the module's IRQ line (GPIO2, nina_os.c) when its firmware
 # reports socket events; with an older firmware they keep their poll
-# intervals.
+# intervals.  The board's NINA passthrough mode (CONFIG_NINA_PASSTHROUGH)
+# is the core's nina_passthrough.c with its host's side on cdcacm
+# (nina_passthrough_os.c of common/drivers/nina/nuttx); the module's side
+# is the board's (src/nina_passthrough_bus.c).
 ############################################################################
 
 ifeq ($(CONFIG_NINA),y)
@@ -42,13 +45,21 @@ endif
 ifeq ($(CONFIG_NINA_NET),y)
 CSRCS += nina_wifi.c nina_netdev.c nina_wifi_mgmt.c
 endif
+endif
+
+ifeq ($(CONFIG_NINA_PASSTHROUGH),y)
+CSRCS += nina_passthrough.c nina_passthrough_os.c
+endif
+
+ifneq ($(CONFIG_NINA)$(CONFIG_NINA_PASSTHROUGH),)
 DEPPATH += --dep-path ../../common/drivers/nina
 VPATH += :../../common/drivers/nina
 DEPPATH += --dep-path ../../common/drivers/nina/nuttx
 VPATH += :../../common/drivers/nina/nuttx
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)drivers$(DELIM)nina
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)drivers$(DELIM)nina$(DELIM)nuttx
-ifeq ($(CONFIG_NINA_NET),y)
-CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)imu
 endif
+
+ifeq ($(CONFIG_NINA)$(CONFIG_NINA_NET),yy)
+CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)imu
 endif

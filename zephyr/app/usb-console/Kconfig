@@ -29,7 +29,7 @@ config NINA_PASSTHROUGH
 	  relays the USB CDC ACM port to the NINA-W102's UART (UART1 on
 	  GPIO8 and GPIO9, the pins of the NINA's SPI link), with DTR and RTS
 	  on the module's GPIO0 and RESETN, so that esptool on the PC reads
-	  and writes the module's flash (drivers/nina/nina_passthrough.c).
+	  and writes the module's flash (common/drivers/nina/nina_passthrough.c).
 	  Closing the port at 300 bps or the RESET button ends it.
 
 config NINA_NTP_SERVER

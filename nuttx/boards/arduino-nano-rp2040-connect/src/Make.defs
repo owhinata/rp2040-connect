@@ -140,12 +140,13 @@ ifeq ($(CONFIG_I2C_DW_RP2040_DMA),y)
 CSRCS += i2c_dw_dma_os.c
 endif
 
-# The NINA passthrough mode (include/nina_passthrough.h).  Its
-# decisions, nina_passthrough_logic.h, are in common/drivers/nina (the -I
-# below).
+# The NINA passthrough mode's module side (nina_passthrough_bus.h of
+# common/drivers/nina, the -I below: UART1, the module's lines, the
+# watchdog's scratch registers, the LED).  The mode itself and its host's
+# side are built with the NINA driver (nuttx/drivers/nina/Make.defs).
 
 ifeq ($(CONFIG_NINA_PASSTHROUGH),y)
-CSRCS += nina_passthrough.c
+CSRCS += nina_passthrough_bus.c
 endif
 
 # The stack sentinel in the scheduler's switch hook.

@@ -101,6 +101,14 @@ run nina_dns "${flags[@]}" -D_DEFAULT_SOURCE -I"$nina" tests/nina_dns.c "$nina/n
 run nina_dns_offload "${flags[@]}" -D_DEFAULT_SOURCE -DNINA_OS_DNS_OFFLOAD -I"$nina" tests/nina_dns.c \
     "$nina/nina_dns.c"
 
+# The NINA passthrough mode (nina_passthrough.c, which the test includes) on fakes of its two
+# boundaries (nina_passthrough_bus.h: the scratch registers, the module's lines, the UART, the LED;
+# nina_passthrough_os.h: the clock, the host's writes, the log): the request against the fatal
+# error record of the same registers (log/fault_record.c), DTR and RTS on the module's lines, the
+# rate and the way out, the buffer from the UART's interrupt (also on two threads), the start, the
+# data both ways with their counts, the tick and the way out's sequence.
+run nina_passthrough "${flags[@]}" -I"$nina" -Ilog tests/nina_passthrough.c log/fault_record.c
+
 # The shell's subcommand dispatch with the Zephyr shell's output (shell/subcmd.c: the kv, nina,
 # ... tables of the NuttX build).
 run subcmd "${flags[@]}" -Ishell tests/subcmd.c shell/subcmd.c

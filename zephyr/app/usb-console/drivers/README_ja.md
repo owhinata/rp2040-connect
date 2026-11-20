@@ -10,7 +10,7 @@
 |---|---|---|
 | `lsm6dso/` | LSM6DSO センサードライバーに FIFO ストリームを追加 | Zephyr v4.5.0 のコピー |
 | `sensor_shell/` | sensor シェルの修正と独自属性の追加 | Zephyr v4.5.0 のコピー |
-| `nina/` | NINA-W102 への esptool の中継（このボードに固有。Wi-Fi・ソケットドライバーのコアは `common/drivers/nina/`、Zephyr へのつなぎは `common/drivers/nina/zephyr/`） | このリポジトリで作成 |
+| `nina/` | NINA-W102 への esptool の中継のモジュール側（RP2040 のレジスター。このボードに固有。中継を含むドライバーのコアは `common/drivers/nina/`、Zephyr へのつなぎは `common/drivers/nina/zephyr/`） | このリポジトリで作成 |
 
 コピー元は Zephyr v4.5.0（コミット `41d10b59730406bbab4ca9f1fbbe9e96aafb4966`）で、各ソースの
 著作権と Apache-2.0 の表示を維持しています。アプリの `CMakeLists.txt` が、Zephyr の
@@ -198,7 +198,7 @@ API とソケットのオフロードです。
 
 NINA-W102 のドライバーの中身は、NuttX 版・FreeRTOS 版と共有するコア（`common/drivers/nina/`。OS の定義を持たない）です。
 コアの Zephyr の API へのつなぎは `common/drivers/nina/zephyr/`（FreeRTOS 版はその Wi-Fi とソケットの部分 `nina_net.c`・`nina_socket.c` を、Zephyr のソケット層をソケットの実装の一覧のところまで持つ互換層の上でビルドし、カーネルの部分は
-FreeRTOS と Pico SDK で書いた自分のつなぎ `common/drivers/nina/freertos/nina_os.c` を使う）、このボードに固有のもの（esptool の中継）は
+FreeRTOS と Pico SDK で書いた自分のつなぎ `common/drivers/nina/freertos/nina_os.c` を使う）、このボードに固有のもの（esptool の中継のモジュール側）は
 `nina/` にあります。アプリの `CMakeLists.txt` がそこからビルドし、つなぎの devicetree binding は `DTS_ROOT` で、オプションはアプリの
 `Kconfig`（`rsource`）で読み込みます。
 
@@ -210,15 +210,16 @@ FreeRTOS と Pico SDK で書いた自分のつなぎ `common/drivers/nina/freert
 | `nina_dns.[ch]` | `common/drivers/nina/` | 名前解決（モジュールのリゾルバー） |
 | `nina_cmd.h` | `common/drivers/nina/` | プロトコルのバイトの名前：フレーミング、ドライバーが送るコマンド、その応答の値 |
 | `nina_shell.c` | `common/shell/` | `nina version` コマンド（この版では `nina passthrough` も。下の「esptool の中継」） |
-| `nina_passthrough_logic.h` | `common/drivers/nina/` | esptool の中継の判断（再起動の印、DTR・RTS とモジュールの線の対応、レート、出口、受信のリング）。FreeRTOS 版と共有 |
+| `nina_passthrough.[ch]` | `common/drivers/nina/` | esptool の中継（NuttX 版・FreeRTOS 版と共有）：再起動の印、DTR・RTS とモジュールの線の対応、レート、16 KiB のバッファーを通した両方向のデータ、出口、数、LED。2 つの境界 `nina_passthrough_bus.h`（モジュール側）と `nina_passthrough_os.h`（ホスト側）の上 |
 | `nina_wait.[ch]` | `common/drivers/nina/` | ソケットの待ちのループの、パスの間の待ち（間隔、または IRQ の線のエッジ） |
 | `nina_net.c` | `common/drivers/nina/zephyr/` | コアの上の Zephyr の Wi-Fi 管理とネットワークインターフェース：デバイス（`NET_DEVICE_DT_OFFLOAD_DEFINE()`）、Zephyr のパラメーターの確認と受け渡し、結果を Zephyr の構造体とイベントに、アドレス・ネットマスク・ゲートウェイと dormant をインターフェースに、Wi-Fi のプロファイルの再接続をコアのフック、3 つのスレッド（`K_THREAD_DEFINE()`） |
 | `nina_os.c` | `common/drivers/nina/zephyr/` | コアの境界 `nina_os.h` の Zephyr 版：mutex、Wi-Fi のスレッドへの要求、sleep、時計、READY の割り込み待ち、IRQ の線（GPIO2）のエッジの待ち |
 | `nina_socket.c` | `common/drivers/nina/zephyr/` | ソケットのオフロード（ファイル記述子、errno、`O_NONBLOCK`、`SO_RCVTIMEO`、待ちのループと sleep、poll）と、名前解決を `getaddrinfo` のオフロードとして登録（FreeRTOS 版のソケットも） |
-| `nina_passthrough.[ch]`、`nina_passthrough_hw.h` | `nina/` | esptool の中継（`nina passthrough confirm`）。`_hw.h` は RP2040 のレジスター（watchdog、UART1、GPIO）の部分 |
+| `nina_passthrough_os.c` | `common/drivers/nina/zephyr/` | 中継の境界 `nina_passthrough_os.h` の Zephyr 版：CDC ACM のポートと USB スタックの通知、1 ms の tick、起動（`SYS_INIT`）と `main()` での出口 |
+| `nina_passthrough_bus.c` | `nina/` | 中継のモジュール側（`nina_passthrough_bus.h`）を RP2040 のレジスターで：watchdog の scratch レジスターと再起動、UART1 とその割り込み、GPIO2・GPIO3・GPIO8、LED |
 | `posix/` | `common/drivers/nina/zephyr/` | コアが使う POSIX のソケットの名前（`struct sockaddr_in`、`AF_INET`、`POLLIN` など）を Zephyr の名前に対応させるヘッダー（コアと `nina_socket.c` だけが読む） |
 | `Kconfig`、`dts/bindings/wifi/arduino,nina-spi.yaml` | `common/drivers/nina/zephyr/` | ドライバーのオプション（`CONFIG_WIFI_NINA_LOCAL`、`CONFIG_NINA_SPI_FREQUENCY`、`CONFIG_NINA_TCP_MAX_IO`、`CONFIG_NINA_SEND_RETRY_MS`）と `nina_w102` のノードの devicetree binding |
-| `nina_bus.c` | `common/drivers/nina/zephyr/` | コアの境界 `nina_bus.h` の Zephyr 版：devicetree の `spi1` と 4 本の線（CS、READY、RESET、IRQ）、Zephyr の GPIO・SPI の呼び出し。アプリの `nina_passthrough_active()` が真の間（esptool の中継）はバスなし |
+| `nina_bus.c` | `common/drivers/nina/zephyr/` | コアの境界 `nina_bus.h` の Zephyr 版：devicetree の `spi1` と 4 本の線（CS、READY、RESET、IRQ）、Zephyr の GPIO・SPI の呼び出し。`CONFIG_NINA_PASSTHROUGH` のとき、`nina_passthrough_active()` が真の間（esptool の中継）はバスなし |
 
 Zephyr の標準機能のうち、Telnet シェル、MQTT クライアント、zperf がこのソケットの上で動きます。
 
@@ -310,8 +311,10 @@ close、bind、listen、accept、connect、send、recv、sendto、recvfrom、ioc
 
 `nina passthrough confirm` で、USB のシリアル（CDC ACM）を NINA の UART（ESP32 の UART0、ROM のブートローダーが使う）へ
 中継するモードで再起動します。PC の esptool で NINA のフラッシュを読み書きするためのもので、Arduino の
-SerialNINAPassthrough スケッチの代わりです（RP2040 のファームウェアは書き換えません）。FreeRTOS 版と同じ仕様で、
-判断の部分は共有の `common/drivers/nina/nina_passthrough_logic.h` です。`CONFIG_NINA_PASSTHROUGH`（既定で有効）。
+SerialNINAPassthrough スケッチの代わりです（RP2040 のファームウェアは書き換えません）。中継そのものは NuttX 版・FreeRTOS 版と
+共有するドライバーのコア（`common/drivers/nina/nina_passthrough.c`）で、この版の部分は Zephyr の USB デバイススタックの上のホスト側
+（`common/drivers/nina/zephyr/nina_passthrough_os.c`）と RP2040 のレジスターのモジュール側（`nina/nina_passthrough_bus.c`）です。
+`CONFIG_NINA_PASSTHROUGH`（既定で有効）。
 
 - 配線：GPIO8 = UART1 TX → ESP32 の UART0 RX、GPIO9 = UART1 RX。SPI の MISO・CS と同じピンなので、中継の間は
   NINA の SPI を使えません。GPIO2 = ESP32 の GPIO0（起動モード）、GPIO3 = RESETN。RTS が有効でリセットを解除し、
@@ -476,6 +479,7 @@ picolibc の中からの呼び出しと、GCC が構造体のコピーやルー�
 | `nina_sock`、`nina_dns`、`nina_dns_offload` | NINA のソケットの命令、名前解決（`nina_dns_offload` はこの版と同じ `NINA_OS_DNS_OFFLOAD` の形） |
 | `nina_boundary` | 共有の `nina_spi.c` を `common/drivers/nina/zephyr/` の `nina_bus.c`・`nina_os.c`（Wi-Fi のスレッドのロックと要求も）に載せたもの：フレーミング、線と設定の対応、リセットの手順、READY の割り込み待ち（コールバックの登録、セマフォのリセット、エッジの向き、転送前の無効化、10 ms の上限）と、コールバックを登録できなかったときのポーリング。IRQ の線のエッジの待ち（始められないとき、GPIO2 のコールバックと立ち上がりのエッジ、エッジの数、エッジで終わる待ち、時間切れ、待つ直前のエッジ） |
 | `nina_boundary_passthrough` | 上と同じものを `CONFIG_NINA_PASSTHROUGH` で。中継の間はバスが無く、線にも SPI にも触れずに `-ENODEV`、中継でなくなれば通常どおり |
-| `passthrough` | 中継 `nina/nina_passthrough.c` を偽の Zephyr と偽のハードウェア（`nina_passthrough_hw.h`）に載せたもの：起動時の印の扱い、USB の通知と tick での線とレート、両方向のデータと割り込みの受け渡し、ブレーク・オーバーラン、USB が無い間の破棄、出口の手順、コマンド。判断そのものは FreeRTOS 版のテスト `freertos/tests/passthrough` |
+| `nina_passthrough` | 中継のコア（`nina_passthrough.c`）を偽の境界で：再起動の印と異常停止の記録の区別、DTR・RTS とモジュールの線の対応、レートと出口、バッファー（2 つのスレッドでも）、起動、両方向のデータとその数（ブレーク、オーバーラン、バッファーの満杯、ホストが無いとき）、tick（GPIO0 を離す時刻、LED）、出口の手順 |
+| `passthrough` | 中継の Zephyr 側 `common/drivers/nina/zephyr/nina_passthrough_os.c` と `nina_shell.c` の `nina passthrough` を本物のコアと、偽の Zephyr と偽のモジュール側で：起動時の印の扱い、USB の通知と tick での線とレート、両方向のデータと割り込みの受け渡し、USB が無い間の破棄、出口の手順、コマンド |
 | `nina_socket` | ソケットのオフロード `common/drivers/nina/zephyr/nina_socket.c` を共有のコアに載せたもの：ファイル記述子、待ちのループと sleep（事象を始められなかったあと）、オプション、accept、sendmsg、データグラム、poll、リゾルバーの登録。事象を始めたあとの IRQ の線のエッジの待ち（パスの間のエッジ、時間切れ、期限、送信の待ち方、NINA 以外の記述子を含む `poll`） |
 | `nina_net` | Zephyr へのつなぎ `common/drivers/nina/zephyr/nina_net.c` を、偽の Zephyr の宣言と偽のコアで：デバイス、インターフェースの初期化、スキャンのパラメーターと結果、接続・切断・状態、コアのコールバックのインターフェースと Zephyr のイベントへの反映、プロファイルのフック、スレッドのスタックと優先度 |

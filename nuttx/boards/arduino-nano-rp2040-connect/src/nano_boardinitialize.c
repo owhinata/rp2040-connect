@@ -50,6 +50,10 @@
 #  include "log_ram.h"
 #endif
 
+#ifdef CONFIG_NINA_PASSTHROUGH
+#  include "nina_passthrough.h"
+#endif
+
 /****************************************************************************
  * Pre-processor Definitions
  ****************************************************************************/
@@ -107,7 +111,7 @@ void rp2040_boardinitialize(void)
    * the init task ask nina_passthrough_active()).
    */
 
-  nina_passthrough_boot();
+  nina_passthrough_check();
 #endif
 
   /* Read the chip ID here, like rp2040_common_initialize() reads the flash

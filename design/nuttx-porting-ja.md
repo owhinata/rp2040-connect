@@ -358,7 +358,7 @@ NINA firmware: 3.0.2
 ### 中継モード（`nina passthrough confirm`）
 
 PC の esptool で NINA のファームウェアを読み書きするためのモードです（Arduino の SerialNINAPassthrough の
-スケッチの代わり。FreeRTOS 版と同じ仕様）。`nina passthrough confirm` でボードが再起動し、USB のシリアルが
+スケッチの代わり。3 版で同じもので、NINA のドライバーの `common/drivers/nina/nina_passthrough.c`）。`nina passthrough confirm` でボードが再起動し、USB のシリアルが
 NINA の UART に繋がります（確認の語がなければ断ります）。UART は SPI の MISO・CS と同じピン（GPIO8、GPIO9）なので、
 このモードでは NINA の SPI・Wi-Fi・Telnet・MQTT・時刻同期・nsh・KV は動きません。
 
@@ -1121,14 +1121,14 @@ OS ごとのヘッダー（`sensor_shell_os.h`、`wifi_profile_os.h`、`lsm6dso_
 |---|---|
 | `common/imu/` | `imu_stream.c`、`imu_raw_{batch,packet,queue,status,time}`、`imu_tick_clock`、`time_sync.[ch]`、`time_offset`、`imu_cal_codec.c`、`imu_cal.[ch]`、`imu_raw_mqtt.[ch]`、`wifi_profile.[ch]`、`kv_store.[ch]`、`mqtt_min.[ch]`・`mqtt_min_sock.c`（互換層の上の版の MQTT クライアントとそのソケットの層。Zephyr 版は使わない） |
 | `common/drivers/lsm6dso/` | `lsm6dso.[ch]`（ドライバー本体。末尾のデバイスは版ごとの `lsm6dso_instance.h`）、`lsm6dso_{fifo,cal,zero,fifo_decoder,fifo_hw,fifo_irq}`、`lsm6dso_stream.c`、`lsm6dso_compat.c`、`lsm6dso_fifo_packet.h`、`lsm6dso_fifo_stats.h`、`lsm6dso_attributes.h` |
-| `common/drivers/nina/` | `nina_proto.h`（3 つの版）。NINA のコア `nina_spi.c`・`nina_wifi.[ch]`・`nina_sock.[ch]`・`nina_dns.[ch]`・`nina_wait.[ch]`、プロトコルのバイトの名前 `nina_cmd.h`、esptool の中継の判断 `nina_passthrough_logic.h` と、コアの境界のヘッダー `nina_os.h`・`nina_bus.h`、ソケットオプションの `nina_sockopt.h`（3 つの版が使う。Zephyr の API を使わず、NuttX 版では前置きヘッダーなしでコンパイルする。境界は `nuttx/drivers/README_ja.md` の「NINA-W102」）。コアのつなぎは `zephyr/`（Zephyr 版と FreeRTOS 版）と `nuttx/`（この版: `wlan0`、アプリの Wi-Fi 管理、`nina_os.c`、usrsock） |
+| `common/drivers/nina/` | `nina_proto.h`（3 つの版）。NINA のコア `nina_spi.c`・`nina_wifi.[ch]`・`nina_sock.[ch]`・`nina_dns.[ch]`・`nina_wait.[ch]`、プロトコルのバイトの名前 `nina_cmd.h`、esptool の中継 `nina_passthrough.[ch]` と、コアの境界のヘッダー `nina_os.h`・`nina_bus.h`（中継のものは `nina_passthrough_bus.h`・`nina_passthrough_os.h`）、ソケットオプションの `nina_sockopt.h`（3 つの版が使う。Zephyr の API を使わず、NuttX 版では前置きヘッダーなしでコンパイルする。境界は `nuttx/drivers/README_ja.md` の「NINA-W102」）。コアのつなぎは `zephyr/`（Zephyr 版と FreeRTOS 版）と `nuttx/`（この版: `wlan0`、アプリの Wi-Fi 管理、`nina_os.c`、usrsock、中継のホスト側 `nina_passthrough_os.c`） |
 | `common/drivers/sensor_shell/` | `sensor_shell.c` |
 | `common/drivers/stmemsc/` | `stmemsc.h`、`stmemsc_i2c.c`、`stmemsc_mdelay.c`（Zephyr の stmemsc の I2C の部分の写し。NuttX 版と FreeRTOS 版が使い、前置きヘッダーなしでコンパイルする。Zephyr 版は Zephyr のものを使う） |
 | `common/drivers/i2c_dw/` | I2C のコア `i2c_dw.c`（I2C0 と、`CONFIG_I2C_DW_I2C1`（既定で無効）のとき I2C1） と、その定義 `i2c_dw.h`・`i2c_dw_registers.h`・`i2c_dw_rp2040.h`、DMA での読み出し `i2c_dw_rp2040_dma_priv.h`（DMA のコマンド語を含む。Zephyr 版はパッチ 0003 に同じ関数を持つ）（ファイル名はパッチ後の Zephyr のドライバーに合わせる）、`i2c_dma` の関数の宣言 `i2c_dw_rp2040_dma.h`、境界のヘッダー `i2c_dw_os.h` と、DMA 読み出しの `i2c_dw_dma_os.h`（NuttX 版と FreeRTOS 版が使う。前置きヘッダーなしでコンパイルし、OS の部分はボードの `src/` の `i2c_dw_os_impl.h`・`i2c_dw_instance.h`・`i2c_dw_dma_os.c`。境界は `nuttx/drivers/README_ja.md` の「I2C0」） |
 | `common/compat/` | 互換層の OS に依存しない部分（Zephyr の API のヘッダー `zephyr/...`。`i2c_dma` の状態 `zephyr/drivers/i2c/i2c_dw_rp2040_dma.h` は I2C のコアの `common/drivers/i2c_dw/i2c_dw_rp2040_dma.h` を読む。`zephyr_compat.h`、ワーク、RTIO、ブロックのプール、デバイスの一覧、`gpio0`、`net_mgmt`、Wi-Fi の要求、sensor の既定の iodev）と、互換層の上の版が使う Zephyr のライブラリーの写し（`sensor_shell_stream.c`・`sensor_shell.h`、`wifi_credentials.c`・`wifi_credentials_backend_settings.c`・`wifi_credentials_internal.h`）、境界のヘッダー（`priorities.h`、`cpu_load.h`、`nano_cpuload.h`、`nano_gpio.h`）。Zephyr 版は使わない |
 | `common/shell/` | `subcmd.[ch]`（サブコマンドの表の処理）、`zshell.c`（`<zephyr/shell/shell.h>` で書いたコマンドの処理: 語の照合、ワイルドカード、引数の数の検査、ヘルプ）とその OS との境界 `zshell_os.h`（NuttX 版の部分は `nuttx/apps/subcmd/zshell_os_impl.h`）。前置きヘッダーなしでコンパイルする。Zephyr 版は使わない。ほかに `i2c_dma_shell.c`（3 版の `i2c_dma` コマンド。Zephyr のシェルの API で書いてあり、NuttX 版では `nuttx/apps/i2c_dma` が前置きヘッダー付きでビルドする）と `nina_shell.c`（Zephyr 版と FreeRTOS 版の `nina` コマンド。NuttX 版は自前の `nuttx/apps/nina`） |
 | `common/log/` | `log_ring.[ch]`（RAM ログのリング、行の前置き、頻度制限）、`app_log.h`（`LOG_*` マクロ。NuttX の部分は `nuttx/drivers/include/app_log_os.h`）、`log_ram.h`（RAM ログの関数。NuttX 版は `nuttx/drivers/log/log_ram.c`）、`fault_record.[ch]`（異常停止の記録の形式、CRC-32、watchdog の scratch への写し、表示の行。FreeRTOS 版だけが使う）。Zephyr 版は使わない |
-| `common/tests/` | 上のファイルを対象にするテスト 36 本と、写しの照合 `zephyr_copies`（`common/tests/run.sh` が実行し、3 つの版の `host_tests.sh` が最初に呼ぶ。互換層の `zephyr_rtio`・`zephyr_work`・`mqtt_min` は偽のカーネルの上、NINA のコアの `nina_spi`・`nina_sock`・`nina_wifi`・`nina_dns` はテストが定義する境界の偽物の上。`nina_core_independent` はコアの各ファイルを C ライブラリーと自分のヘッダーだけでコンパイルする）。`stream_stop.c` は `../drivers/lsm6dso/lsm6dso_stream.c` を読み込む（先に `lsm6dso.h` のインクルードガードを定義するので、そのヘッダーの中身は使わない。`stream_stop.c` が必要な定義を自分で置く） |
+| `common/tests/` | 上のファイルを対象にするテスト 37 本と、写しの照合 `zephyr_copies`（`common/tests/run.sh` が実行し、3 つの版の `host_tests.sh` が最初に呼ぶ。互換層の `zephyr_rtio`・`zephyr_work`・`mqtt_min` は偽のカーネルの上、NINA のコアの `nina_spi`・`nina_sock`・`nina_wifi`・`nina_dns`・`nina_passthrough` はテストが定義する境界の偽物の上。`nina_core_independent` はコアの各ファイルを C ライブラリーと自分のヘッダーだけでコンパイルする）。`stream_stop.c` は `../drivers/lsm6dso/lsm6dso_stream.c` を読み込む（先に `lsm6dso.h` のインクルードガードを定義するので、そのヘッダーの中身は使わない。`stream_stop.c` が必要な定義を自分で置く） |
 | `common/tests/fakes/` | テスト用の Zephyr のヘッダーと ST のヘッダーの代わり（`zephyr/drivers/sensor.h`、`zephyr/drivers/sensor_clock.h`、`zephyr/drivers/i2c.h`、`zephyr/rtio/rtio.h`、`lsm6dso_reg.h`） |
 | `common/tests/zephyr_fakes/` | 互換層の偽のカーネル: OS ごとのヘッダー（`zephyr_os.h`・`zephyr_os_spinlock.h`・`zephyr_os_atomic.h`・`zephyr_rtio_workq_os.h`、`zephyr/sys/__assert.h`）とその関数（`zephyr_kernel_host.[ch]`。1 スレッドで、ワークキューとタイマーはテストが回す）。NuttX 版のテストも使う |
 
@@ -1157,13 +1157,10 @@ READY の変化（両方の向き）、1 回の待ちのあとの期限でのタ
 前から残った起床とラッチされたエッジ（捨てる）、待ちの間だけエッジが有効なこと、セマフォの数が 1 を超えないこと、
 Wi-Fi の操作のロックとそのスレッドへの要求です。
 
-`nuttx/tests/nina_passthrough.c` は、NINA の中継モードの NuttX 側を確かめます。ボードの `src/nina_passthrough_glue.h`
-（cdcacm の制御線のビットと line coding のレートのバイトから、モジュールの線・出口・閉じた回数・UART のレートへ。
-esptool のポートを開く・独自のリセットの手順・閉じる、`stty 300` での出口、古い 300 bps で開いたポート）と、UART1 の
-データレジスターの語（ブレークはデータにしない、オーバーランとフレーミングエラーは数えて残す、リングが満杯なら
-数えて捨てる）、`apps/nina` の `nina passthrough`（ヘルプの順、確認の語、引数の数、メッセージ、`confirm` のときだけ
-ボードの要求を呼ぶこと）です。共有の判断（`common/drivers/nina/nina_passthrough_logic.h`）は `freertos/tests/passthrough` が
-確かめます。
+`nuttx/tests/nina_passthrough.c` は、`apps/nina` の `nina passthrough`（ヘルプの順、確認の語、引数の数、メッセージ、
+`confirm` のときだけドライバーの要求を呼ぶこと）を確かめます。中継そのもの（`common/drivers/nina/nina_passthrough.c`: 線、出口、
+レート、UART1 の語、リング）は `common/tests/nina_passthrough.c` が確かめます。その NuttX 側
+（`common/drivers/nina/nuttx/nina_passthrough_os.c`、ボードの `src/nina_passthrough_bus.c`）はホストテストで確かめていません。
 
 `common/tests/nano_cpuload.c` と `common/tests/log_ring.c` は、Zephyr 版が使わない共通の部分のテストです。前者は
 `common/compat/nano_cpuload.h` の計算を Zephyr の `cpu_load_get_cpu()` の手順（リセット、開いている区間、0 の扱い、

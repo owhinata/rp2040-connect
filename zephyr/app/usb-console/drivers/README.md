@@ -10,7 +10,7 @@ NINA-W102.
 |---|---|---|
 | `lsm6dso/` | LSM6DSO sensor driver with FIFO streaming added | Copy from Zephyr v4.5.0 |
 | `sensor_shell/` | Sensor shell with fixes and the private attributes | Copy from Zephyr v4.5.0 |
-| `nina/` | The esptool passthrough to the NINA-W102, which is this board's (the Wi-Fi and socket driver's core is in `common/drivers/nina/`, its Zephyr binding in `common/drivers/nina/zephyr/`) | Written here |
+| `nina/` | The module side of the NINA-W102's esptool passthrough on the RP2040's registers, which is this board's (the driver's core, the passthrough's included, is in `common/drivers/nina/`, its Zephyr binding in `common/drivers/nina/zephyr/`) | Written here |
 
 The copies come from Zephyr v4.5.0 (commit `41d10b59730406bbab4ca9f1fbbe9e96aafb4966`) and keep
 each source's copyright and Apache-2.0 notices. The application's `CMakeLists.txt` swaps the
@@ -219,7 +219,7 @@ with no OS of its own; its binding to Zephyr's APIs is `common/drivers/nina/zeph
 build compiles its Wi-Fi and socket parts, `nina_net.c` and `nina_socket.c`, on its compatibility layer,
 which has Zephyr's socket layer down to the list of socket implementations; its kernel services are its own
 binding, `common/drivers/nina/freertos/nina_os.c`, on FreeRTOS and the Pico SDK), and `nina/` holds what
-is this board's, the esptool passthrough. The
+is this board's, the esptool passthrough's module side. The
 application's `CMakeLists.txt` builds them from there; the binding's devicetree binding is found
 through `DTS_ROOT` and its options through the application's `Kconfig` (`rsource`).
 
@@ -231,15 +231,16 @@ through `DTS_ROOT` and its options through the application's `Kconfig` (`rsource
 | `nina_dns.[ch]` | `common/drivers/nina/` | Name resolution (the module's resolver) |
 | `nina_cmd.h` | `common/drivers/nina/` | The names of the protocol's bytes: framing, the commands the driver sends, the values of their replies |
 | `nina_shell.c` | `common/shell/` | The `nina version` command (in this build `nina passthrough` too; "The esptool passthrough" below) |
-| `nina_passthrough_logic.h` | `common/drivers/nina/` | The decisions of the esptool passthrough (the restart's request, DTR and RTS on the module's lines, the rate, the way out, the receive buffer), shared with the FreeRTOS build |
+| `nina_passthrough.[ch]` | `common/drivers/nina/` | The esptool passthrough (shared with the NuttX and FreeRTOS builds): the restart's request, DTR and RTS on the module's lines, the rate, the data both ways with the 16 KiB buffer, the way out, the counts, the LED; on its two boundaries `nina_passthrough_bus.h` (the module's side) and `nina_passthrough_os.h` (the host's side) |
 | `nina_wait.[ch]` | `common/drivers/nina/` | The waits between the passes of the socket loops (an interval, or the IRQ line's edge) |
 | `nina_net.c` | `common/drivers/nina/zephyr/` | Zephyr's Wi-Fi management and network interface on the core: the device (`NET_DEVICE_DT_OFFLOAD_DEFINE()`), Zephyr's parameters checked and passed on, the results as Zephyr's structures and events, the address, netmask, gateway and dormant state on the interface, the Wi-Fi profile's reconnection as the core's hooks, the three threads (`K_THREAD_DEFINE()`) |
 | `nina_os.c` | `common/drivers/nina/zephyr/` | Zephyr's side of the core's `nina_os.h`: mutexes, the Wi-Fi threads' requests, sleeps, clock, the READY interrupt, the waits for the IRQ line's (GPIO2) edges |
 | `nina_socket.c` | `common/drivers/nina/zephyr/` | Socket offload (file descriptors, errno, `O_NONBLOCK`, `SO_RCVTIMEO`, the wait loops and their sleeps, poll), and the resolver registered as the `getaddrinfo` offload (the FreeRTOS build's sockets too) |
-| `nina_passthrough.[ch]`, `nina_passthrough_hw.h` | `nina/` | The esptool passthrough (`nina passthrough confirm`); `_hw.h` is its part on the RP2040's registers (watchdog, UART1, GPIO) |
+| `nina_passthrough_os.c` | `common/drivers/nina/zephyr/` | Zephyr's side of the passthrough's `nina_passthrough_os.h`: the CDC ACM port and the USB stack's messages, the 1 ms tick, the start (`SYS_INIT`) and `main()`'s way out |
+| `nina_passthrough_bus.c` | `nina/` | The passthrough's module side (`nina_passthrough_bus.h`) on the RP2040's registers: the watchdog's scratch registers and restart, UART1 with its interrupt, GPIO2, GPIO3, GPIO8, the LED |
 | `posix/` | `common/drivers/nina/zephyr/` | Headers that map the POSIX socket names the core uses (`struct sockaddr_in`, `AF_INET`, `POLLIN`, ...) to Zephyr's (read by the core and `nina_socket.c` only) |
 | `Kconfig`, `dts/bindings/wifi/arduino,nina-spi.yaml` | `common/drivers/nina/zephyr/` | The driver's options (`CONFIG_WIFI_NINA_LOCAL`, `CONFIG_NINA_SPI_FREQUENCY`, `CONFIG_NINA_TCP_MAX_IO`, `CONFIG_NINA_SEND_RETRY_MS`) and the devicetree binding of the `nina_w102` node |
-| `nina_bus.c` | `common/drivers/nina/zephyr/` | Zephyr's side of the core's `nina_bus.h`: the devicetree's `spi1` and the four lines (CS, READY, RESET, IRQ), Zephyr's GPIO and SPI calls; no bus while the application's `nina_passthrough_active()` is true (the esptool passthrough) |
+| `nina_bus.c` | `common/drivers/nina/zephyr/` | Zephyr's side of the core's `nina_bus.h`: the devicetree's `spi1` and the four lines (CS, READY, RESET, IRQ), Zephyr's GPIO and SPI calls; with `CONFIG_NINA_PASSTHROUGH`, no bus while `nina_passthrough_active()` is true (the esptool passthrough) |
 
 Zephyr's Telnet shell, MQTT client and zperf run on these sockets.
 
@@ -343,8 +344,10 @@ How bit 2 is used (`common/drivers/nina/nina_wait.h`):
 `nina passthrough confirm` restarts the board into a mode that relays the USB serial port (CDC ACM)
 to the NINA's UART (the ESP32's UART0, which its ROM bootloader uses), so that esptool on the PC reads
 and writes the NINA's flash, instead of Arduino's SerialNINAPassthrough sketch (the RP2040's firmware
-stays). It behaves as the FreeRTOS build's; the decisions are the shared
-`common/drivers/nina/nina_passthrough_logic.h`. `CONFIG_NINA_PASSTHROUGH` (on by default).
+stays). The mode is the driver's core, shared with the NuttX and FreeRTOS builds
+(`common/drivers/nina/nina_passthrough.c`); this build's parts are its host side on Zephyr's USB device
+stack (`common/drivers/nina/zephyr/nina_passthrough_os.c`) and its module side on the RP2040's registers
+(`nina/nina_passthrough_bus.c`). `CONFIG_NINA_PASSTHROUGH` (on by default).
 
 - Wiring: GPIO8 = UART1 TX -> the ESP32's UART0 RX, GPIO9 = UART1 RX. They are the SPI link's MISO and
   CS, so the NINA's SPI cannot run meanwhile. GPIO2 = the ESP32's GPIO0 (boot mode), GPIO3 = RESETN.
@@ -531,6 +534,7 @@ All but `nina_boundary_*`, `passthrough`, `nina_socket*` and `nina_net` are test
 | `nina_sock`, `nina_dns`, `nina_dns_offload` | The NINA socket commands, name resolution (`nina_dns_offload` in this build's form, `NINA_OS_DNS_OFFLOAD`) |
 | `nina_boundary` | The shared `nina_spi.c` on `nina_bus.c` and `nina_os.c` of `common/drivers/nina/zephyr/` (also the Wi-Fi threads' lock and requests): framing, lines and flags, the reset sequence, the READY interrupt (callback, semaphore reset, edge direction, off before transfers, 10 ms bound) and the sampling when the callback cannot be registered; the waits for the IRQ line's edges (a start that fails, GPIO2's callback and rising edge, the count, a wait ended by an edge, the timeout, an edge just before the wait) |
 | `nina_boundary_passthrough` | The same with `CONFIG_NINA_PASSTHROUGH`: no bus while the passthrough runs (`-ENODEV` without touching a line or SPI), as usual once it is gone |
-| `passthrough` | The passthrough `nina/nina_passthrough.c` on fake Zephyr calls and fake hardware (`nina_passthrough_hw.h`): the request at the start, the lines and the rate from the USB messages and the tick, both data paths and the handovers between the interrupts, breaks and overruns, the bytes dropped without USB, the way out, the command. The decisions themselves: the FreeRTOS build's test `freertos/tests/passthrough` |
+| `nina_passthrough` | The passthrough's core (`nina_passthrough.c`) on fake boundaries: the request against the fatal error record, DTR and RTS on the module's lines, the rate and the way out, the buffer (also on two threads), the start, both data paths with their counts (breaks, overruns, a full buffer, no host), the tick (GPIO0's release, the LED), the way out's sequence |
+| `passthrough` | The passthrough's Zephyr side `common/drivers/nina/zephyr/nina_passthrough_os.c` and `nina passthrough` of `nina_shell.c` with the real core, on fake Zephyr calls and a fake module side: the request at the start, the lines and the rate from the USB messages and the tick, both data paths and the handovers between the interrupts, the bytes dropped without USB, the way out, the command |
 | `nina_socket` | The socket offload `common/drivers/nina/zephyr/nina_socket.c` on the shared core: descriptors, the wait loops and sleeps (after the events could not start), options, accept, sendmsg, datagrams, poll, the resolver's registration; the waits for the IRQ line's edges once the events are started (an edge during a pass, the timeout, the deadline, the send's waits, a `poll` with another kind of descriptor) |
 | `nina_net` | The Zephyr binding `common/drivers/nina/zephyr/nina_net.c` on fake Zephyr declarations and a fake core: the device, the interface's init, the scan's parameters and results, connect, disconnect and status, the core's callbacks on the interface and as Zephyr's events, the profile's hooks, the threads' stacks and priorities |

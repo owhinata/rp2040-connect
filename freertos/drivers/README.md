@@ -23,7 +23,7 @@ OS-independent part of the layer is `common/compat/`, the FreeRTOS part `freerto
 | `drivers/libc/` | Wrappers of newlib's FILE functions (`stdio_wrap.c`), the socket headers newlib lacks (`include/`, types and constants only), `inet_pton` and `inet_ntop` (`inet.c`) |
 | `drivers/log/` | The RAM log (`log_ram.c`; the ring is `common/log/log_ring.c`) |
 | `drivers/kv/` | The flash boundary of the key-value store (`nano_flash_kv.c`) and the linker script override (`ld/`, `kv.cmake`) |
-| `drivers/nina/` | The NINA-W102's SPI1 and lines (`nina_bus.c`), the esptool passthrough (`nina_passthrough.c`); the `nina_os.h` boundary is the core's FreeRTOS binding (`common/drivers/nina/freertos/nina_os.c`), the sockets and the interface are the Zephyr binding's (`common/drivers/nina/zephyr/nina_socket.c`, `nina_net.c`) |
+| `drivers/nina/` | The NINA-W102's SPI1 and lines (`nina_bus.c`), the esptool passthrough's module side (`nina_passthrough_bus.c`: UART1, the module's lines, the watchdog's scratch registers, the LED); the `nina_os.h` boundary is the core's FreeRTOS binding (`common/drivers/nina/freertos/nina_os.c`), the passthrough's host side too (`nina_passthrough_os.c` there), the sockets and the interface are the Zephyr binding's (`common/drivers/nina/zephyr/nina_socket.c`, `nina_net.c`) |
 | `drivers/i2c_dw/` | The FreeRTOS part of the I2C core (`common/drivers/i2c_dw/`; I2C0, and I2C1 as an option), I2C0's DMA reads on the Pico SDK's DMA (`i2c_dw_dma_os.c`), self-test |
 | `drivers/lsm6dso/` | The LSM6DSOX device (`lsm6dso_instance.h`) and its initialization (`nano_lsm6dso.c`), self-test |
 | `drivers/imu/` | Builds in the acquisition service, MQTT and time synchronization (`common/imu/`; `imu.cmake`), the prelude of `time_sync.c` |
@@ -36,9 +36,9 @@ OS-independent part of the layer is `common/compat/`, the FreeRTOS part `freerto
 
 Shared files only the FreeRTOS build compiles: `common/compat/zephyr_wifi_shell.c` (`connect`,
 `disconnect`, `scan` and `status` taken from Zephyr's `wifi_shell.c`), `zephyr_zperf_shell.c` and
-`zperf_iperf3.[ch]` (`zperf`), `common/shell/nina_shell.c` (`nina version`),
-`common/log/fault_record.[ch]` (the format of the fatal error record). `i2c_dma`'s
-`common/shell/i2c_dma_shell.c` is built by the Zephyr build too.
+`zperf_iperf3.[ch]` (`zperf`), `common/log/fault_record.[ch]` (the format of the fatal error record).
+`i2c_dma`'s `common/shell/i2c_dma_shell.c` and `nina`'s `common/shell/nina_shell.c` (`nina version`,
+`nina passthrough`) are built by the Zephyr build too.
 
 ## The FreeRTOS part of the Zephyr compatibility layer
 
@@ -225,14 +225,16 @@ boundary (the four functions of `common/compat/nano_flash_kv.h`, `drivers/kv/nan
   unchanged copy of Zephyr's `wifi_credentials_shell.c`. `ifconfig` (`drivers/wifi/nano_ifconfig.c`)
   prints in the NuttX build's format.
 
-- The esptool passthrough (`drivers/nina/nina_passthrough.c`, `nina passthrough confirm`): the same as the
-  Zephyr and NuttX builds', with the decisions in the shared `common/drivers/nina/nina_passthrough_logic.h`
+- The esptool passthrough (`nina passthrough confirm`): the NINA driver's core shared with the Zephyr and
+  NuttX builds (`common/drivers/nina/nina_passthrough.c`), with its host side on TinyUSB and the Pico SDK
+  (`common/drivers/nina/freertos/nina_passthrough_os.c`) and its module side (`drivers/nina/nina_passthrough_bus.c`)
   (wiring and lines in "The esptool passthrough" of
   [`zephyr/app/usb-console/drivers/README.md`](../../zephyr/app/usb-console/drivers/README.md)). The command
   leaves a mark in the watchdog's scratch registers 0 to 3 and restarts; `main()` sees it before anything
   else and, with no task, scheduler, SPI1, NINA, I2C or KV store, relays between TinyUSB (`tud_task()`) and
   UART1 in one loop. From the module to the PC, UART1's receive interrupt moves the bytes into a 16 KiB
-  buffer (from the FreeRTOS heap). The LED blinks at 5 Hz. The host test is `passthrough`.
+  buffer (from the FreeRTOS heap); that interrupt and the core's part of it run from RAM. The LED blinks at
+  5 Hz. The core's host test is `nina_passthrough` of `common/tests/run.sh`.
 
 ## Divider, `memcpy` and `memset`, boot2
 
@@ -335,7 +337,6 @@ IC_CON has no DMA bit, a 40-byte read leaves the DMA counters alone, and i2c0 st
 |---|---|
 | `compat` | The layer's self-test (the same `zephyr_selftest.c` as `selftest`) |
 | `tick` | The tick's catch-up (`tick_catchup.h`): the step itself, and on a model of SysTick and the CPU (interrupt latencies, interrupts disabled for 0 to 60 ticks) that the tick never gets ahead of the TIMER and is at most one tick behind once caught up |
-| `passthrough` | The esptool passthrough: the request mark, DTR and RTS on the module's lines, the rate, the receive buffer, the `nina` subcommand |
 | `shell` | Two shell sessions, line editing, output routing |
 | `kv` | The flash boundary and the key-value store (on fakes of the Pico SDK's flash functions) |
 | `nina` | The NINA's SPI and line boundaries and the FreeRTOS binding of `nina_os.h` (no compatibility layer; built twice, with a 1 ms and a 4 ms tick): the wait for READY on its interrupt, the waits for the IRQ line's edges (two tasks woken by one edge, the timeout), the shared bank interrupt, locks, requests, sleeps' ticks, the clock across the tick's wrap |

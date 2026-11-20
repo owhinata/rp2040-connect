@@ -2,29 +2,33 @@
 /* The "nina" shell command: "nina version" asks the module for its firmware
  * version (nina_request(), nina_spi.c) and prints the capability bits of
  * the firmware's patches 0003 to 0006 (the module's and those in use,
- * nina_proto.h).  It was the Zephyr build's src/main.c (cmd_nina_version()
- * and the registration); the Zephyr and FreeRTOS builds use it
- * (zephyr/app/usb-console/CMakeLists.txt, freertos/drivers/nina/nina.cmake;
- * the FreeRTOS build merges its own "passthrough" into this set with
- * nina_shell.h).  The NuttX build has the same command as a builtin
- * application on subcmd (nuttx/apps/nina/nina_main.c); moving it onto this
- * file changes its image (its help and errors would come from zshell.c).
+ * nina_proto.h); with CONFIG_NINA_PASSTHROUGH, "nina passthrough confirm"
+ * restarts the board into the NINA passthrough mode
+ * (common/drivers/nina/nina_passthrough.h).  It was the Zephyr build's
+ * src/main.c (cmd_nina_version() and the registration); the Zephyr and
+ * FreeRTOS builds use it (zephyr/app/usb-console/CMakeLists.txt,
+ * freertos/drivers/nina/nina.cmake).  The NuttX build has the same command
+ * as a builtin application on subcmd (nuttx/apps/nina/nina_main.c); moving
+ * it onto this file changes its image (its help and errors would come from
+ * zshell.c).
  */
 
+#include <errno.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <string.h>
+#include <zephyr/kernel.h>
 #include <zephyr/shell/shell.h>
 #include "nina_proto.h"
 
-/* The Zephyr build's "nina passthrough" (zephyr/app/usb-console/drivers/
- * nina/nina_passthrough.h); the FreeRTOS build adds its own to this set
- * (freertos/drivers/nina/nina_passthrough.c).
- */
 #ifdef CONFIG_NINA_PASSTHROUGH
 #include "nina_passthrough.h"
-#else
-#define NINA_PASSTHROUGH_SHELL_CMD
+
+/* Time for the USB code to send the command's last message before the
+ * restart.
+ */
+#define PASSTHROUGH_RESTART_DELAY_MS 100
 #endif
 
 static int cmd_nina_version(const struct shell *sh, size_t argc, char **argv)
@@ -47,6 +51,34 @@ static int cmd_nina_version(const struct shell *sh, size_t argc, char **argv)
 		    (unsigned int)nina_module_capabilities(), (unsigned int)nina_capabilities());
 	return 0;
 }
+
+#ifdef CONFIG_NINA_PASSTHROUGH
+/* "nina passthrough confirm": the request, then the restart. */
+static int cmd_nina_passthrough(const struct shell *sh, size_t argc, char **argv)
+{
+	ARG_UNUSED(argc);
+	if (strcmp(argv[1], "confirm") != 0) {
+		shell_error(sh, "Type \"nina passthrough confirm\" to restart into the NINA "
+				"passthrough");
+		return -EINVAL;
+	}
+	shell_print(sh, "Restarting into the NINA passthrough: the USB port relays to the "
+			"NINA's UART (for esptool).");
+	shell_print(sh, "To leave it: close the port at %u bps, or press RESET.",
+		    NINA_PT_EXIT_BAUD);
+	(void)k_msleep(PASSTHROUGH_RESTART_DELAY_MS);
+	nina_passthrough_request();
+}
+
+#define NINA_PASSTHROUGH_SHELL_CMD                                                                 \
+	SHELL_CMD_ARG(passthrough, NULL,                                                           \
+		      "Restart into the NINA passthrough for esptool: passthrough confirm\n"       \
+		      "(USB <-> the NINA's UART; leave it by closing the port at 300 bps, "        \
+		      "or with RESET)",                                                            \
+		      cmd_nina_passthrough, 2, 0),
+#else
+#define NINA_PASSTHROUGH_SHELL_CMD
+#endif
 
 SHELL_STATIC_SUBCMD_SET_CREATE(nina_commands, NINA_PASSTHROUGH_SHELL_CMD
 	SHELL_CMD(version, NULL, "Show NINA firmware version", cmd_nina_version),

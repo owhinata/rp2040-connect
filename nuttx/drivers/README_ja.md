@@ -262,10 +262,10 @@ NuttX 版のビット 2 の待ち:
 ### 中継モード（`nina passthrough confirm`）
 
 PC の esptool で NINA のフラッシュを読み書きするための、USB の CDC ACM と NINA の UART（ESP32 の UART0）の中継です。
-FreeRTOS 版の `freertos/drivers/nina/nina_passthrough.c` と同じ仕様で、判断（要求の印、線の対応、レート、出口、
-リング）は 3 版で共有する `common/drivers/nina/nina_passthrough_logic.h` を使います。NuttX 側はボードの
-`src/nina_passthrough.c`（ハードウェアを触らない部分は `src/nina_passthrough_glue.h`）と
-`include/nina_passthrough.h`、`CONFIG_NINA_PASSTHROUGH`（既定 y）です。
+中継そのもの（要求の印、線の対応、レート、リングを通した両方向のデータ、出口、数、LED）は 3 版で共有する NINA の
+ドライバーのコア `common/drivers/nina/nina_passthrough.c`（`nina_passthrough.h`）です。NuttX 側は、cdcacm の上の
+ホスト側 `common/drivers/nina/nuttx/nina_passthrough_os.c`（NINA のドライバーと一緒にビルド。`nuttx/drivers/nina/Make.defs`）と、
+RP2040 のレジスターのモジュール側（ボードの `src/nina_passthrough_bus.c`）、`CONFIG_NINA_PASSTHROUGH`（既定 y）です。
 
 | RP2040 | 中継モード | 通常のファームウェア |
 |---|---|---|
@@ -300,9 +300,9 @@ FreeRTOS 版の `freertos/drivers/nina/nina_passthrough.c` と同じ仕様で、
   オーバーラン・ブレーク・フレーミングエラーの数とともに残ります。
 - シグナルは使いません（待ちはセマフォ、sleep、ブロッキングの read・write）。NuttX の UART1 ドライバー
   （`CONFIG_RP2040_UART1`）は起動時にピンを取るので使いません（UART1 のレジスターを直接扱う）。
-- ホストテスト `nuttx/tests/nina_passthrough.c`（`script/host_tests.sh`）が、cdcacm の値からピン・出口・レートへの
-  変換、UART のデータレジスターの語の扱い、`nina passthrough` の確認の語と引数とメッセージを確かめます。共有の判断は
-  `freertos/tests/passthrough` が確かめます。割り込み・スレッド・cdcacm との組み合わせはホストテストでは確かめていません。
+- ホストテスト `nuttx/tests/nina_passthrough.c`（`script/host_tests.sh`）が、`nina passthrough` の確認の語と引数と
+  メッセージを確かめます。共有のコアは `common/tests/nina_passthrough.c`（`common/tests/run.sh`）が確かめます。
+  NuttX 側（割り込み・スレッド・cdcacm との組み合わせ）はホストテストでは確かめていません。
 - 実機（2026-11-18）: esptool で `read-flash 0 0x200000` を 115200 bps（192 秒）と 921600 bps（26.1 秒）で行い、2 つの読み出しが
   一致し、取りこぼしとオーバーランは 0 でした。300 bps で閉じると通常の起動に戻りました。
 

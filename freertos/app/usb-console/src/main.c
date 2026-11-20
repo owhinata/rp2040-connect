@@ -335,11 +335,11 @@ int main(void)
 	 */
 	irq_stack_paint();
 	log_ram_initialize();
-	passthrough = nina_passthrough_requested();
+	passthrough = nina_passthrough_check();
 	fault_boot();
 
 	/* "nina passthrough confirm" asked for the NINA passthrough mode
-	 * (freertos/drivers/nina/nina_passthrough.h): it runs instead of all
+	 * (common/drivers/nina/nina_passthrough.h): it runs instead of all
 	 * that follows (no task, no SPI1, no Wi-Fi), until it restarts the
 	 * board into the normal firmware.
 	 */
