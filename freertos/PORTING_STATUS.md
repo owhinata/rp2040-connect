@@ -1808,3 +1808,14 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
 - 確認の途中で Wi-Fi につながらない場面があったが、PC の AP が落ちていたため（AP を起動し直して解消。変更とは無関係）。
 - 確かめていない: `selftest`、長時間、AP を落とす切断、記述子を使い切る場面（ホストテストだけ）、書き込み直後の最初の計測（AP が無く、最初の計測は AP の復帰後になった）。
 - 実機: FreeRTOS 版（この変更のビルド）。
+
+## NINA のリファクタリング: 段階 6（コアに残った Zephyr の定義の洗い出し）（2026-11-20）
+
+- 結果: 直すものは無かった。`common/drivers/nina/` のコア（`nina_spi.c`・`nina_sock.c`・`nina_dns.c`・`nina_wait.c`・`nina_wifi.c` とヘッダー）は、
+  `<zephyr/...>` を読まず、Zephyr の型・関数・マクロを使っていない。読むのは C ライブラリーと POSIX のソケットのヘッダー（`netinet/in.h`・`sys/socket.h`・`poll.h`・`netdb.h` など）だけ。
+  `MIN()`・`CLAMP()` はコアが自分で定義している。ログ（`LOG_*`）も使っていない。
+- 確かめ方: コアの 5 つの `.c` を、include パスをコアのディレクトリーだけにして PC の gcc で `-fsyntax-only -Wall`（`CONFIG_NINA_SPI_FREQUENCY`・`CONFIG_NINA_SEND_RETRY_MS`・
+  `CONFIG_NINA_TCP_MAX_IO` を `-D` で与える）。すべて警告なしで通る。
+- 残っている Zephyr の名前は 2 種類だけ: コメントの中の対応の説明（`k_mutex_lock()` が `nina_os_lock()` に当たる、など）と、ドライバー自身のオプションの記号 `CONFIG_NINA_*`（I2C の
+  `CONFIG_I2C_DW_*` と同じ扱い）。
+- これで NINA の段階 1〜6 は終わり。残りは `i2c_dw` を同じ構成（`common/drivers/i2c_dw/<OS>/`）へ移すこと、sensor、文書の整理。
