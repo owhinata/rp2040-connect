@@ -117,6 +117,8 @@ nmcli --wait 30 connection add type wifi ifname "$interface" \
     connection.uuid "$profile_uuid" 802-11-wireless.mode ap \
     802-11-wireless.band bg 802-11-wireless.channel "$channel" \
     802-11-wireless-security.key-mgmt wpa-psk \
+    802-11-wireless-security.proto rsn 802-11-wireless-security.pairwise ccmp \
+    802-11-wireless-security.group ccmp 802-11-wireless-security.pmf disable \
     802-11-wireless-security.psk-flags 2 ipv4.method shared ipv6.method disabled
 created=true
 nmcli --wait 30 connection up uuid "$profile_uuid" ifname "$interface" \
