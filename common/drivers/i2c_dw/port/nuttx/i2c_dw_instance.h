@@ -80,7 +80,14 @@ static int i2c_dw_transfer(struct i2c_master_s *dev, struct i2c_msg_s *msgs, int
 		}
 	}
 
-	return i2c_dw_transfer_msgs(dw, msgs, count, target_address, speed);
+	/* The bus is given up with the transfer: a last message that asks to
+	 * keep it (no STOP, for a next call to go on) cannot be served.
+	 */
+	if (msgs[count - 1].flags & I2C_M_NOSTOP) {
+		return -ENOTSUP;
+	}
+
+	return i2c_dw_transfer_msgs(dw, msgs, count, target_address, &speed);
 }
 
 #ifdef CONFIG_I2C_RESET
@@ -167,10 +174,15 @@ static int i2c_dw_os_prepare(struct i2c_dw_dev_config *dw)
 	return 0;
 }
 
-static void i2c_dw_os_irq_enable(struct i2c_dw_dev_config *dw)
+static int i2c_dw_os_irq_enable(struct i2c_dw_dev_config *dw)
 {
-	irq_attach(I2C_DW_INST(dw, RP2040_I2C0_IRQ, RP2040_I2C1_IRQ), i2c_dw_isr, dw);
+	int ret = irq_attach(I2C_DW_INST(dw, RP2040_I2C0_IRQ, RP2040_I2C1_IRQ), i2c_dw_isr, dw);
+
+	if (ret < 0) {
+		return ret;
+	}
 	up_enable_irq(I2C_DW_INST(dw, RP2040_I2C0_IRQ, RP2040_I2C1_IRQ));
+	return 0;
 }
 
 /* i2c_dw_initialize() for the instance dw.  Always inlined (inline_function),

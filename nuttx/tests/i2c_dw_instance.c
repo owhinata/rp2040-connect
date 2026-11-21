@@ -149,11 +149,16 @@ void up_irq_restore(irqstate_t flags)
 static xcpt_t g_isr[64];
 static void *g_isr_arg[64];
 
+static int g_attach_ret; /* what irq_attach() returns */
+
 int irq_attach(int irq, xcpt_t isr, void *arg)
 {
+	record("attach(%d)", irq - RP2040_IRQ_EXTINT);
+	if (g_attach_ret < 0) {
+		return g_attach_ret;
+	}
 	g_isr[irq] = isr;
 	g_isr_arg[irq] = arg;
-	record("attach(%d)", irq - RP2040_IRQ_EXTINT);
 	return 0;
 }
 
@@ -486,6 +491,12 @@ static void test_i2c0(void)
 	uint8_t buf[40];
 
 	reset_values(fake_i2c0_regs, DW_MAGIC);
+	/* The handler cannot be attached: no device, the interrupt not enabled. */
+	g_attach_ret = -ENOMEM;
+	assert(i2c_dw_i2c0_initialize() == NULL);
+	expect_calls("dma-init reset(0x8) unreset(0x8) " PINS(12, 0) PINS(13, 0) "attach(23) ");
+	g_attach_ret = 0;
+	reset_values(fake_i2c0_regs, DW_MAGIC);
 	g_i2c0 = i2c_dw_i2c0_initialize();
 	assert(g_i2c0 != NULL);
 	expect_calls("dma-init reset(0x8) unreset(0x8) " PINS(12, 0) PINS(13, 0)
@@ -498,6 +509,18 @@ static void test_i2c0(void)
 	i2c_dw_rp2040_dma_get_stats(&g_stats);
 	g_bus[0].mode = BUS_DEVICE;
 	assert(dev_read(g_i2c0, DEV0_ADDR, 100000, 0x0f) == 0x1f);
+	/* A last message that would keep the bus (no STOP) is refused before
+	 * anything is sent.
+	 */
+	{
+		uint8_t byte = 0x0f;
+		struct i2c_msg_s hold = {.frequency = 100000, .addr = DEV0_ADDR,
+					 .flags = I2C_M_NOSTOP, .buffer = &byte, .length = 1};
+
+		g_calls[0] = '\0';
+		assert(I2C_TRANSFER(g_i2c0, &hold, 1) == -ENOTSUP);
+		expect_calls("");
+	}
 	expect_bus(0, "0xf 0x700 ");
 	assert((fake_i2c0_regs[IC_TAR / 4] & 0x3ff) == DEV0_ADDR);
 	assert(fake_i2c0_regs[IC_SS_SCL_HCNT / 4] == 500);

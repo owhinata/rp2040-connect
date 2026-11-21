@@ -241,8 +241,9 @@
 -struct i2c_dw_dev_config *const dw = dw->data;
 -struct i2c_msg *cur_msg = msgs;
 -uint8_t msg_left = num_msgs;
-+static inline int i2c_dw_transfer_msgs(struct i2c_dw_dev_config *const dw, i2c_dw_os_msg_t *msgs, int count, uint16_t target_address, uint32_t speed) {
++static inline int i2c_dw_transfer_msgs(struct i2c_dw_dev_config *const dw, i2c_dw_os_msg_t *msgs, int count, uint16_t target_address, const volatile uint32_t *speed_of_transfer) {
 +i2c_dw_os_msg_t *cur_msg = msgs;
++uint32_t speed;
 +int msg_left = count;
 @@
 +uint8_t mflags;
@@ -261,6 +262,7 @@
 -pm_device_runtime_put(dw);
 @@
 +}
++speed = *speed_of_transfer;
 +if (speed != dw->speed) {
 +ret = i2c_dw_configure(dw, speed);
 +if (ret) {

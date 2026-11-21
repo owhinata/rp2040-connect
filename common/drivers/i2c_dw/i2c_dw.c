@@ -651,9 +651,11 @@ static int i2c_dw_configure(struct i2c_dw_dev_config *dw, uint32_t speed)
 
 static inline int i2c_dw_transfer_msgs(struct i2c_dw_dev_config *const dw,
 				       i2c_dw_os_msg_t *msgs, int count,
-				       uint16_t target_address, uint32_t speed)
+				       uint16_t target_address,
+				       const volatile uint32_t *speed_of_transfer)
 {
 	i2c_dw_os_msg_t *cur_msg = msgs;
+	uint32_t speed;
 	int msg_left = count;
 	uint8_t pflags;
 	uint8_t mflags;
@@ -675,7 +677,11 @@ static inline int i2c_dw_transfer_msgs(struct i2c_dw_dev_config *const dw,
 	}
 #endif
 
-	/* i2c_configure() with the speed of this transfer */
+	/* i2c_configure() with the speed of this transfer, read under the
+	 * bus lock: a speed that another task sets while this one waits for
+	 * the lock is the one this transfer runs at.
+	 */
+	speed = *speed_of_transfer;
 	if (speed != dw->speed) {
 		ret = i2c_dw_configure(dw, speed);
 		if (ret) {
@@ -859,9 +865,11 @@ static int i2c_dw_os_prepare(struct i2c_dw_dev_config *dw);
 
 /* IRQ_CONNECT() and irq_enable() of the instance's interrupt (I2C0_IRQ,
  * I2C1_IRQ): a handler that calls i2c_dw_isr_handler(dw), then enabled.
+ * 0, or a negative errno when the handler could not be connected: the
+ * interrupt stays disabled and the instance is not ready.
  */
 
-static void i2c_dw_os_irq_enable(struct i2c_dw_dev_config *dw);
+static int i2c_dw_os_irq_enable(struct i2c_dw_dev_config *dw);
 
 static int i2c_dw_probe_hw(struct i2c_dw_dev_config *dw)
 {
@@ -910,9 +918,7 @@ static int i2c_dw_turn_on(struct i2c_dw_dev_config *dw)
 	}
 
 	/* Configure IRQ */
-	i2c_dw_os_irq_enable(dw);
-
-	return 0;
+	return i2c_dw_os_irq_enable(dw);
 }
 
 /* The OS's part: the functions declared above, the OS's interrupt handler

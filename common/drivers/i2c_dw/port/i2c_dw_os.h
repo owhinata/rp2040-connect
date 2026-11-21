@@ -89,9 +89,10 @@
  *       choice of pins (GPIO18, D6, and GPIO19, D7, by default) with the
  *       internal pull-ups (bias-pull-up: nothing on the board pulls them
  *       up).  0, or a negative errno
- *   static void i2c_dw_os_irq_enable(struct i2c_dw_dev_config *dw)
+ *   static int i2c_dw_os_irq_enable(struct i2c_dw_dev_config *dw)
  *       IRQ_CONNECT() and irq_enable(): I2C0_IRQ (23) or I2C1_IRQ (24) on a
- *       handler that calls i2c_dw_isr_handler(dw), then enabled
+ *       handler that calls i2c_dw_isr_handler(dw), then enabled; 0, or a
+ *       negative errno with the interrupt left disabled
  *
  *   and the OS's device of each instance: it sets dw->base of
  *   i2c_0_runtime (0x40044000) or i2c_1_runtime (0x40048000), initializes

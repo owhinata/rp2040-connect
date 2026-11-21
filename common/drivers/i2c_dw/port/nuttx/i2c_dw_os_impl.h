@@ -73,12 +73,14 @@
 #undef I2C_SPEED_FAST_PLUS
 #undef I2C_SPEED_HIGH
 
-/* CONFIG_I2C_DW_CLOCK_SPEED of the Zephyr build: clk_peri in MHz. */
+/* CONFIG_I2C_DW_CLOCK_SPEED of the Zephyr build: the clock of the RP2040's
+ * I2C blocks, clk_sys, in MHz.
+ */
 
-#if BOARD_PERI_FREQ % 1000000 != 0
-#  error "clk_peri is not a whole number of MHz"
+#if BOARD_SYS_FREQ % 1000000 != 0
+#  error "clk_sys is not a whole number of MHz"
 #endif
-#define I2C_DW_CLOCK_SPEED (BOARD_PERI_FREQ / 1000000)
+#define I2C_DW_CLOCK_SPEED (BOARD_SYS_FREQ / 1000000)
 
 typedef sem_t i2c_dw_os_sem_t;
 typedef clock_t i2c_dw_os_timepoint_t;

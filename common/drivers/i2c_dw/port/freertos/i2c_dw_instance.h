@@ -56,14 +56,10 @@
  * counts, see i2c_dw.c).  The mode bits are ignored (Zephyr forces
  * controller mode).
  *
- * The speed class (one for each device) of a transfer is read when the
- * transfer starts; a
- * transfer that races with an i2c_configure() of another task may run at
- * the class before it (and set the controller to it for that transfer),
- * after which the next transfer takes the configured class again.
- * (Zephyr's driver reads its class under bus_sem; the core takes bus_sem
- * itself.)  The IMU service configures the bus once, before it starts
- * reading.
+ * The speed class (one for each device) of a transfer is read by the core
+ * under bus_sem, as Zephyr's driver reads its class: a transfer that waits
+ * for the bus while another task's i2c_configure() completes runs at the
+ * class that call set.
  *
  * The interrupt handler runs at the Pico SDK's default priority for the
  * peripherals (0x80, the same as the DMA's and the USB's; see
@@ -145,7 +141,7 @@ static int i2c_dw_transfer(const struct device *dev, struct i2c_msg *msgs, uint8
 		}
 	}
 
-	return i2c_dw_transfer_msgs(dw, msgs, num_msgs, addr, I2C_DW_OS_SPEED(dw));
+	return i2c_dw_transfer_msgs(dw, msgs, num_msgs, addr, &I2C_DW_OS_SPEED(dw));
 }
 
 static int i2c_dw_runtime_configure(const struct device *dev, uint32_t config)
@@ -238,13 +234,14 @@ static int i2c_dw_os_prepare(struct i2c_dw_dev_config *dw)
 	return 0;
 }
 
-static void i2c_dw_os_irq_enable(struct i2c_dw_dev_config *dw)
+static int i2c_dw_os_irq_enable(struct i2c_dw_dev_config *dw)
 {
 	(void)dw;
 
 	irq_set_exclusive_handler(I2C_DW_INST(dw, I2C0_IRQ, I2C1_IRQ),
 				  I2C_DW_INST(dw, i2c_dw_isr_0, i2c_dw_isr_1));
 	irq_set_enabled(I2C_DW_INST(dw, I2C0_IRQ, I2C1_IRQ), true);
+	return 0;
 }
 
 /* i2c_dw_initialize() and the end of Zephyr's do_device_init() for the
