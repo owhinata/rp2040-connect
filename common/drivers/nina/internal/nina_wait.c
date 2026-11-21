@@ -12,7 +12,6 @@
 #include <stdint.h>
 
 #include "nina_os.h"
-#include "nina_sockopt.h"
 #include "nina_wait.h"
 
 /* Set once by nina_wait_start_events(), read by every loop. */

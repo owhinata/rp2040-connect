@@ -71,7 +71,6 @@
 #include "nina_os.h"
 #include "nina_proto.h"
 #include "nina_sock.h"
-#include "nina_sockopt.h"
 #include "nina_wait.h"
 #include "priorities.h"
 #include "zephyr_compat.h"
@@ -556,9 +555,6 @@ static void test_constants(void)
 	_Static_assert(INET_ADDRSTRLEN == 16, "INET_ADDRSTRLEN");
 	_Static_assert(sizeof(struct sockaddr_in) == 16 && sizeof(struct sockaddr) == 16,
 		       "sockaddr");
-	/* The core's own level must not be one of these. */
-	_Static_assert(NINA_SOL != SOL_SOCKET && NINA_SOL != IPPROTO_TCP && NINA_SOL != IPPROTO_UDP,
-		       "NINA_SOL");
 	assert(NINA_SOCK_MAX == 10 && NINA_POLL_INTERVAL_MS == 20 && NINA_SEND_RETRY_MS == 1 &&
 	       NINA_TCP_MAX_IO == 3584);
 	printf("ok  constants\n");
@@ -655,9 +651,6 @@ static void test_options(void)
 	CHECK_FAIL(zsock_setsockopt(tcp, IPPROTO_TCP, TCP_NODELAY, NULL, sizeof(one)), EINVAL);
 	CHECK_FAIL(zsock_setsockopt(udp, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one)), ENOPROTOOPT);
 	CHECK_FAIL(zsock_setsockopt(tcp, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one)), ENOPROTOOPT);
-	CHECK_FAIL(zsock_setsockopt(tcp, NINA_SOL, NINA_SO_CALLER_POLLS, &one, sizeof(one)),
-		   ENOPROTOOPT);
-	assert(!nina_sock_get(tcp)->caller_polls);
 
 	CHECK_FAIL(zsock_setsockopt(tcp, SOL_SOCKET, SO_RCVTIMEO, &tv, sizeof(tv) - 1), EINVAL);
 	CHECK_FAIL(zsock_setsockopt(tcp, SOL_SOCKET, SO_RCVTIMEO, NULL, sizeof(tv)), EINVAL);

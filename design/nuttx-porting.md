@@ -351,7 +351,7 @@ The Wi-Fi module NINA-W102 is reached over SPI1. Its firmware is the Zephyr buil
 firmware 3.0.2 with fixes, `firmware/nina-fw/README.md`) and is not changed. The driver consists of the
 transfer layer that sends one command and receives its answer (`nina_request()`,
 `nina_ip_config()`), `nina version`, the sockets (NuttX's usrsock: socket, close, bind, listen,
-accept, connect, setsockopt, sending and receiving, `FIONREAD`), the NINA's name resolution
+accept, connect, setsockopt, sending and receiving), the NINA's name resolution
 (`nina_dns_getaddrinfo()`), and the Wi-Fi network device `wlan0` (scan, connect, disconnect, status,
 link monitor) ("Sockets (usrsock)", "Name resolution" and "Wi-Fi" in `nuttx/drivers/README.md`).
 Stored credentials and automatic reconnection (`wifi cred`) are in their own section below.
@@ -988,16 +988,19 @@ events that advance them are the same as in the Zephyr build.
 - The socket stays blocking (as in the Zephyr build). A connection waits up to 10 s, a send
   that finds no room up to 10 s, before failing (the NINA driver's deadlines; "Sockets (usrsock)"
   in `nuttx/drivers/README.md`).
-- The socket is made with the compatibility layer's `zsock_socket()`, which marks it as asked
-  about by its callers only (`NINA_SO_CALLER_POLLS`). `nina_event` does not query it except to check
-  the connection; only `imu_raw_mqtt_tid` asks the NINA about it, as in the Zephyr build ("Sockets
-  (usrsock)" in `nuttx/drivers/README.md`).
-- The input check (`zsock_poll()`, every 100 ms) and the CONNACK wait (`zsock_poll()`, 5000 ms) ask
-  the NINA in the calling thread (one `CMD_POLL`) and, with nothing there, again every 20 ms, as the
-  Zephyr build's NINA `poll()` does. A failed connection that the NINA reports (POLL_ERROR) is
-  `ZSOCK_POLLERR`, as in the Zephyr build. A read that does not wait (`zsock_recv()` with
-  `ZSOCK_MSG_DONTWAIT`) asks first with `ioctl(FIONREAD)`. The commands the NINA receives (a poll,
-  and when something is there a poll and a read) are those of the Zephyr build.
+- The compatibility layer's `zsock_socket()`, `zsock_poll()` and `zsock_recv()` are NuttX's
+  `socket()`, `poll()` and `recv()`, so the socket is an ordinary usrsock socket: `nina_event` asks
+  the NINA about it (every 20 ms, or at the IRQ line's edges with the socket events) and reports
+  what it finds as events ("Sockets (usrsock)" in `nuttx/drivers/README.md`). The Zephyr build asks
+  the NINA only from `imu_raw_mqtt_tid` (one `CMD_POLL` per input check, every 100 ms).
+- The input check (`zsock_poll()`, every 100 ms, timeout 0) and the CONNACK wait (`zsock_poll()`,
+  5000 ms) answer from the events usrsock holds; the CONNACK wait ends at the event. A failed
+  connection that the NINA reports (POLL_ERROR, or a failed poll) is `ZSOCK_POLLHUP` (usrsock's
+  `REMOTE_CLOSED`; the Zephyr build gives `ZSOCK_POLLERR`); `imu_raw_mqtt.c` ends the connection on
+  either. The reads (`zsock_recv()` with `ZSOCK_MSG_DONTWAIT`) reach the driver only while usrsock
+  holds `RECVFROM_AVAIL`; the CONNACK, read as 2 bytes and then 2, gets its second piece because
+  the driver keeps `RECVFROM_AVAIL` after a receive that filled its request (the next read then
+  asks the NINA, as each read of the Zephyr build does).
 - Difference from the Zephyr build: the `lock_wait_*` and `publish_*` times are the 125 MHz
   SysTick cycles (`k_cycle_get_*()`, which fall behind while streaming) in microseconds in the
   Zephyr build, and the TIMER (1 µs) here (the compatibility layer's `k_cycle_get_*()`).
@@ -1038,18 +1041,17 @@ Subcommands:
   `timeouts`, one that fails the checks in `rejected`, and the next query follows at the next
   interval. When there is no address, no socket or the send fails, the error goes to `last_error`
   and the thread tries again after 5 seconds.
-- Waiting for the reply: the Zephyr build calls `recv(MSG_DONTWAIT)` about every millisecond,
-  and its NINA driver asks the module for the socket's state each time (`CMD_POLL`) and reads what
-  has arrived. NuttX's usrsock answers a receive that does not wait from the readable mark it holds
-  (`RECVFROM_AVAIL`), so the compatibility layer's `zsock_recv()` with `ZSOCK_MSG_DONTWAIT` first
-  calls `ioctl(FIONREAD)` (one `CMD_POLL` in the calling thread) and reads with `recv(MSG_DONTWAIT)`
-  only when something is there (the driver uses that poll's answer and does not poll again). The
-  module sees the Zephyr build's sequence: a poll, a read when something has arrived, about 1 ms
-  of wait, again.
-- The socket is made with the compatibility layer's `zsock_socket()`, so it is marked as asked
-  about by its callers only (`NINA_SO_CALLER_POLLS`) and `nina_event` does not query it. As in the
-  Zephyr build, the NINA is asked only when a receive is called (see "Sockets (usrsock)" in
-  `nuttx/drivers/README.md`).
+- Waiting for the reply: the file calls `zsock_recv()` with `ZSOCK_MSG_DONTWAIT` about every
+  millisecond. In the Zephyr build its NINA driver asks the module for the socket's state each time
+  (`CMD_POLL`) and reads what has arrived. Here it is NuttX's `recv(MSG_DONTWAIT)`, which usrsock
+  answers `EAGAIN` itself until it holds the readable mark (`RECVFROM_AVAIL`); `nina_event` raises
+  the mark from its polls of the socket (the first right after the first send, which creates the
+  NINA's socket; then every 20 ms, or at the IRQ line's edge with the socket events), and the
+  receive then reads the datagram without another poll (the driver uses that poll's answer). So t4
+  is read when `nina_event` has seen the reply: with the socket events, soon after the reply's edge;
+  without them, up to 20 ms late, which enters the round trip and half of it the offset (the
+  estimate uses the shortest round trip of the last 8). See "Sockets (usrsock)" in
+  `nuttx/drivers/README.md`.
 - Difference from the Zephyr build: `k_uptime_get()` (the 250 ms wait, the 60 s check,
   `last_reply_ms_ago`) comes from the TIMER in the NuttX build. The Zephyr build's is the
   SysTick kernel clock, which falls behind while streaming.
@@ -1297,7 +1299,7 @@ with the layer's NuttX implementation (`nuttx/drivers/compat/`; the Zephyr build
 |---|---|
 | `common/imu/` | `imu_stream.c`, `imu_raw_{batch,packet,queue,status,time}`, `imu_tick_clock`, `time_sync.[ch]`, `time_offset`, `imu_cal_codec.c`, `imu_cal.[ch]`, `imu_raw_mqtt.[ch]`, `wifi_profile.[ch]`, `kv_store.[ch]`, `mqtt_min.[ch]` and `mqtt_min_sock.c` (the MQTT client of the builds on the compatibility layer and its socket layer; the Zephyr build does not use them) |
 | `common/drivers/lsm6dso/` | `lsm6dso.[ch]` (the driver; the device at its end is `lsm6dso_instance.h` of each build), `lsm6dso_{fifo,cal,zero,fifo_decoder,fifo_hw,fifo_irq}`, `lsm6dso_stream.c`, `lsm6dso_compat.c`, `lsm6dso_fifo_packet.h`, `lsm6dso_fifo_stats.h`, `lsm6dso_attributes.h` |
-| `common/drivers/nina/` | The NINA core: at the top `nina_wifi.[ch]`, `nina_sock.[ch]`, `nina_dns.[ch]`, the esptool passthrough `nina_passthrough.[ch]` and its socket options `nina_sockopt.h`; in `internal/` `nina_proto.[ch]` and `nina_wait.[ch]`; in `port/` the headers of its boundaries, `nina_os.h` and `nina_bus.h` (the passthrough's `nina_passthrough_bus.h` and `nina_passthrough_os.h`) (the three builds use them; they do not use Zephyr's API and the NuttX build compiles them without the prelude; the boundary is described under "NINA-W102" in `nuttx/drivers/README.md`); the core's bindings in `port/zephyr/` (the Zephyr and FreeRTOS builds) and `port/nuttx/` (this build: `wlan0`, the applications' Wi-Fi management, `nina_os.c`, usrsock, the passthrough's host side `nina_passthrough_os.c`, the RP2040's SPI and lines `nina_bus_rp2040.c`, the passthrough's module side `nina_passthrough_bus_rp2040.c`) |
+| `common/drivers/nina/` | The NINA core: at the top `nina_wifi.[ch]`, `nina_sock.[ch]`, `nina_dns.[ch]`, the esptool passthrough `nina_passthrough.[ch]`; in `internal/` `nina_proto.[ch]` and `nina_wait.[ch]`; in `port/` the headers of its boundaries, `nina_os.h` and `nina_bus.h` (the passthrough's `nina_passthrough_bus.h` and `nina_passthrough_os.h`) (the three builds use them; they do not use Zephyr's API and the NuttX build compiles them without the prelude; the boundary is described under "NINA-W102" in `nuttx/drivers/README.md`); the core's bindings in `port/zephyr/` (the Zephyr and FreeRTOS builds) and `port/nuttx/` (this build: `wlan0`, the applications' Wi-Fi management, `nina_os.c`, usrsock, the passthrough's host side `nina_passthrough_os.c`, the RP2040's SPI and lines `nina_bus_rp2040.c`, the passthrough's module side `nina_passthrough_bus_rp2040.c`) |
 | `common/drivers/sensor_shell/` | `sensor_shell.c` |
 | `common/drivers/stmemsc/` | `stmemsc.h`, `stmemsc_i2c.c`, `stmemsc_mdelay.c` (a copy of the I2C part of Zephyr's stmemsc, used by the NuttX and FreeRTOS builds and compiled without the prelude; the Zephyr build uses Zephyr's) |
 | `common/drivers/i2c_dw/` | The I2C core `i2c_dw.c` (I2C0, and I2C1 with `CONFIG_I2C_DW_I2C1`, off by default) with its definitions `i2c_dw.h`, `i2c_dw_registers.h`, `i2c_dw_rp2040.h` and its DMA reads `i2c_dw_rp2040_dma_priv.h`, with the DMA command words (the Zephyr build has the same function in patch 0003) (the file names of Zephyr's patched driver), the declarations of the `i2c_dma` functions `i2c_dw_rp2040_dma.h`, the headers of its boundaries, `i2c_dw_os.h` and, for the DMA reads, `i2c_dw_dma_os.h` (the NuttX and FreeRTOS builds use them; they are compiled without the prelude, and the OS's part is the board's `src/i2c_dw_os_impl.h`, `i2c_dw_instance.h` and `i2c_dw_dma_os.c`; the boundaries are described under "I2C0" in `nuttx/drivers/README.md`) |
@@ -1508,16 +1510,15 @@ types, the table of 10 and `EMFILE`, creating the NINA's socket on first use (ty
 FIONBIO), bind, listen (backlog clamped to 1..255), accept (the peer's address and the byte order of
 its port, `EAGAIN`, `EMFILE`), connect (UDP; TCP in progress, the errno of each SO_ERROR value, the
 error flag, the 10000 ms limit, a failed poll, closing the NINA's socket after a failure), close,
-setsockopt, what `nina_event` queries and turns into events (a socket marked as polled by its
-callers only: only while it connects), and `NINA_SO_POLL` (the Zephyr build's `do_poll()` for one
-socket). For sending and receiving: TCP
+setsockopt, what `nina_event` queries and turns into events, and `nina_sock_poll_revents()` (the
+Zephyr and FreeRTOS builds' `do_poll()` for one socket). For sending and receiving: TCP
 send (at most 3584 bytes a call, the answer checks, `MSG_DONTWAIT`, the passes of a waiting send
 with its state check every 100 ms and its 10000 ms limit, a continued call told from a new one),
 `sendmsg` (vectors joined into one command, what it refuses), UDP send (the address checks, the
 connected peer, the 512-byte limit, a datagram the NINA did not take), TCP and UDP receive (the
 poll first, the size parameter, the byte order of the sender's port, dropping datagrams from other
-than the connected peer, an empty datagram), a poll that found data standing for the next
-receive's first poll, and `FIONREAD`.
+than the connected peer, an empty datagram), and a poll that found data standing for the next
+receive's first poll.
 
 `common/tests/nina_dns.c` checks `common/drivers/nina/nina_dns.c` with a fake `nina_request()` and lock:
 the hints' defaults and the refused flags, families and socket types, the service (a port number),

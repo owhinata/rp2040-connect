@@ -77,7 +77,7 @@
 #define PRODUCER_STACK 16384
 
 /* The fake module's waits, as the build's NINA sockets
- * (common/drivers/nina/nina_sock.h, nina_sockopt.h).
+ * (common/drivers/nina/nina_sock.h, internal/nina_wait.h).
  */
 #define POLL_INTERVAL_MS 20
 #define SEND_RETRY_MS    1

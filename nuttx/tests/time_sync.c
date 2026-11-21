@@ -9,18 +9,17 @@
  *   the first read in bytes 40..47 (big endian), the rest zero, to the
  *   server's address.  t1 is the clock read right before sendto(), t4 the
  *   read right after the receive that returned the reply.
- * - The wait (the layer's zsock_recv() with ZSOCK_MSG_DONTWAIT): one
- *   FIONREAD (one poll of the module) per pass, recv() only when it says
- *   something is there, k_sleep(K_MSEC(1)) between passes that found
+ * - The wait (the layer's zsock_recv() with ZSOCK_MSG_DONTWAIT, NuttX's
+ *   recv()): one recv(MSG_DONTWAIT) per pass, which usrsock answers -1
+ *   with EAGAIN until it holds RECVFROM_AVAIL (raised by the NINA's event
+ *   thread some time after the datagram arrived: the fake's event delay,
+ *   which ends up in t4), k_sleep(K_MSEC(1)) between passes that found
  *   nothing, the next pass at once after a datagram that is not the reply
  *   (a late reply to an earlier request), -ETIMEDOUT once 250 ms have gone
  *   by, other errors passed on.
- * - The socket (the layer's zsock_socket()): socket() marked
- *   NINA_SO_CALLER_POLLS, so that only this thread asks the module about
- *   it, as in the Zephyr build; a refused mark closes it (-1, the errno).
- *   A receive that waits (the layer's zsock_recv() without
- *   ZSOCK_MSG_DONTWAIT, not used by the file): one FIONREAD now and after
- *   each k_sleep(K_MSEC(20)), as the Zephyr build's udp_recv(), then recv().
+ * - The socket calls: the layer's zsock_socket(), zsock_recv() and
+ *   zsock_close() are NuttX's socket(), recv() (its flags as given; one
+ *   without ZSOCK_MSG_DONTWAIT waits in NuttX) and close().
  * - The checks of the reply (-EPROTO): mode, leap indicator 3, stratum
  *   0 and 16, no transmit time, transmit before receive, receive time
  *   before 2020, a round trip shorter than the server's time.  The NTP era
@@ -47,7 +46,6 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <netinet/in.h>
-#include <sys/ioctl.h>
 #include <sys/socket.h>
 
 /* The test's clock: the TIMER's registers read by time_sync_mono_us()
@@ -59,13 +57,11 @@ int64_t test_now_us = 1000000;
 #define k_uptime_get test_uptime_get
 #define k_sleep      test_sleep
 
-/* The fake socket calls and realtime clock that the file under test (and
- * the layer's inline zsock_recv() and sys_clock_*()) call.
+/* The fake socket calls and realtime clock that the file under test (through
+ * the layer's zsock_*() and sys_clock_*()) calls.
  */
 #define socket(f, t, p) fake_socket(f, t, p)
-#define setsockopt(fd, l, o, v, n) fake_setsockopt(fd, l, o, v, n)
 #define close(fd) fake_close(fd)
-#define ioctl(fd, req, ...) fake_ioctl(fd, req, __VA_ARGS__)
 #define recv(fd, buf, len, flags) fake_recv(fd, buf, len, flags)
 #define sendto(fd, buf, len, flags, to, tolen) fake_sendto(fd, buf, len, flags, to, tolen)
 #define clock_gettime(id, ts) fake_clock_gettime(id, ts)
@@ -73,9 +69,7 @@ int64_t test_now_us = 1000000;
 
 struct timespec;
 int fake_socket(int family, int type, int protocol);
-int fake_setsockopt(int fd, int level, int option, const void *value, socklen_t len);
 int fake_close(int fd);
-int fake_ioctl(int fd, int req, int *arg);
 ssize_t fake_recv(int fd, void *buf, size_t len, int flags);
 ssize_t fake_sendto(int fd, const void *buf, size_t len, int flags, const struct sockaddr *to,
 		    socklen_t tolen);
@@ -87,23 +81,6 @@ int fake_clock_settime(clockid_t id, const struct timespec *ts);
 int64_t test_uptime_get(void)
 {
 	return test_now_us / 1000;
-}
-
-/* common/drivers/nina/internal/nina_wait.c without the module's socket events (the
- * layer's zsock_recv() and zsock_poll() wait with it): the loop's interval,
- * nina_os_sleep_ms() (nxsched_msleep(), the same ticks as
- * k_sleep(K_MSEC())); here the test's sleep.
- */
-void nina_wait_mark(struct nina_wait *w)
-{
-	(void)w;
-}
-
-void nina_wait(struct nina_wait *w, uint32_t poll_ms, int64_t deadline)
-{
-	(void)w;
-	(void)deadline;
-	(void)k_sleep(K_MSEC(poll_ms));
 }
 
 static int sleeps;
@@ -128,14 +105,19 @@ static struct {
 	int64_t arrival_us;
 } queue[4];
 static int queued;
-static int polls, recvs, sends;
-static int ioctl_error, recv_error, send_error;
+/* recv() calls, those that read a datagram, sendto() calls. */
+static int calls, reads, sends;
+static int recv_error, send_error;
 static int64_t send_entry_us, recv_exit_us;
 static uint8_t sent[64];
 static size_t sent_len;
 static struct sockaddr_in sent_to;
-/* What one call costs on the module (SPI and its wait). */
-static int64_t poll_cost_us = 0, recv_cost_us = 400, send_cost_us = 300;
+/* What one call costs on the module (SPI and its wait).  A recv() that
+ * usrsock answers itself (EAGAIN) costs nothing.
+ */
+static int64_t recv_cost_us = 400, send_cost_us = 300;
+/* From a datagram's arrival to the RECVFROM_AVAIL of the event thread. */
+static int64_t event_delay_us;
 /* The server's answer to the next request: arrives this long after the
  * request has been sent, takes server_hold_us, its clock is the board's
  * plus server_offset_us.
@@ -173,10 +155,10 @@ static void push(const uint8_t *data, size_t len, int64_t arrival_us)
 
 static bool available(void)
 {
-	return queued > 0 && queue[0].arrival_us <= test_now_us;
+	return queued > 0 && queue[0].arrival_us + event_delay_us <= test_now_us;
 }
 
-static int sockets_open, marks, mark_error;
+static int sockets_open;
 
 int fake_socket(int family, int type, int protocol)
 {
@@ -184,18 +166,6 @@ int fake_socket(int family, int type, int protocol)
 	assert(sockets_open == 0);
 	sockets_open++;
 	return FAKE_FD;
-}
-
-int fake_setsockopt(int fd, int level, int option, const void *value, socklen_t len)
-{
-	assert(fd == FAKE_FD && sockets_open == 1 && level == NINA_SOL &&
-	       option == NINA_SO_CALLER_POLLS && len == sizeof(int) && *(const int *)value == 1);
-	if (mark_error) {
-		errno = mark_error;
-		return -1;
-	}
-	marks++;
-	return 0;
 }
 
 /* The test's own descriptors (the pipes of run_ntp()) are the host's. */
@@ -209,33 +179,32 @@ int fake_close(int fd)
 	return 0;
 }
 
-int fake_ioctl(int fd, int req, int *arg)
-{
-	assert(fd == FAKE_FD && req == FIONREAD);
-	polls++;
-	test_now_us += poll_cost_us;
-	if (ioctl_error) {
-		errno = ioctl_error;
-		return -1;
-	}
-	*arg = available() ? 1 : 0;
-	return 0;
-}
-
+/* NuttX's recv() on a usrsock socket: without RECVFROM_AVAIL, -1 with
+ * EAGAIN at once (MSG_DONTWAIT) or a wait for it (blocking); then one
+ * request to the driver, which reads the datagram.
+ */
 ssize_t fake_recv(int fd, void *buf, size_t len, int flags)
 {
 	size_t n;
 
-	assert(fd == FAKE_FD && flags == MSG_DONTWAIT);
-	recvs++;
-	test_now_us += recv_cost_us;
-	recv_exit_us = test_now_us;
+	assert(fd == FAKE_FD && (flags == MSG_DONTWAIT || flags == 0));
+	calls++;
 	if (recv_error) {
+		test_now_us += recv_cost_us;
 		errno = recv_error;
 		return -1;
 	}
-	/* FIONREAD said there is something. */
-	assert(available());
+	if (!available()) {
+		if (flags & MSG_DONTWAIT) {
+			errno = EAGAIN;
+			return -1;
+		}
+		assert(queued > 0);
+		test_now_us = queue[0].arrival_us + event_delay_us;
+	}
+	reads++;
+	test_now_us += recv_cost_us;
+	recv_exit_us = test_now_us;
 	n = queue[0].len < len ? queue[0].len : len;
 	memcpy(buf, queue[0].data, n);
 	queued--;
@@ -350,10 +319,10 @@ void nina_dns_freeaddrinfo(struct addrinfo *res)
 static void reset_net(void)
 {
 	queued = 0;
-	polls = recvs = sends = 0;
+	calls = reads = sends = 0;
 	sleeps = 0;
-	ioctl_error = recv_error = send_error = 0;
-	poll_cost_us = 0;
+	recv_error = send_error = 0;
+	event_delay_us = 0;
 	recv_cost_us = 400;
 	send_cost_us = 300;
 	reply_after_us = 5000;
@@ -446,9 +415,9 @@ static void test_exchange_ok(void)
 	       sent_to.sin_addr.s_addr == htonl(0x0a2a0001));
 	/* Polled every K_MSEC(1) (10 + 1 ticks) until the reply was there
 	 * (5.05 ms after the send ended): passes at 0, 1.1, ..., 5.5 ms, the
-	 * last one found it.  One FIONREAD per pass, recv() only then.
+	 * last one found it.  One recv() per pass.
 	 */
-	assert(polls == 6 && recvs == 1 && sleeps == 5 && slept_ticks == 10);
+	assert(calls == 6 && reads == 1 && sleeps == 5 && slept_ticks == 10);
 	/* t4 right after the receive. */
 	t4 = recv_exit_us;
 	t2 = send_entry_us + send_cost_us + reply_after_us / 2 + server_offset_us;
@@ -474,7 +443,7 @@ static void test_exchange_late_reply(void)
 	before = test_now_us;
 	assert(exchange(FAKE_FD, &sample) == 0);
 	/* Read at once, then the reply, without a sleep between. */
-	assert(recvs == 2 && polls == 2 && sleeps == 0);
+	assert(reads == 2 && calls == 2 && sleeps == 0);
 	assert(test_now_us - before < 2000);
 	/* A datagram of another size is skipped the same way. */
 	reset_net();
@@ -482,7 +451,29 @@ static void test_exchange_late_reply(void)
 	reply_after_us = 0;
 	server_hold_us = 0;
 	push(late, 20, test_now_us);
-	assert(exchange(FAKE_FD, &sample) == 0 && recvs == 2 && sleeps == 0);
+	assert(exchange(FAKE_FD, &sample) == 0 && reads == 2 && sleeps == 0);
+}
+
+static void test_exchange_event_delay(void)
+{
+	struct time_offset_sample sample;
+	int64_t sent_us;
+
+	/* RECVFROM_AVAIL 15 ms after the reply arrived (a poll of the event
+	 * thread without the module's socket events): the passes find it at
+	 * the first one after that, and t4 is read then.
+	 */
+	reset_net();
+	server_offset_us = 1794614400LL * 1000000 - test_now_us;
+	event_delay_us = 15000;
+	assert(exchange(FAKE_FD, &sample) == 0);
+	sent_us = send_entry_us + send_cost_us;
+	assert(reads == 1 && calls == sleeps + 1);
+	assert(recv_exit_us - sent_us >= reply_after_us + server_hold_us + event_delay_us);
+	assert(recv_exit_us - sent_us < reply_after_us + server_hold_us + event_delay_us + 1100 +
+					     recv_cost_us);
+	/* The round trip carries the delay. */
+	assert(sample.delay_us >= event_delay_us + reply_after_us);
 }
 
 static void test_exchange_timeout(void)
@@ -496,22 +487,16 @@ static void test_exchange_timeout(void)
 	assert(exchange(FAKE_FD, &sample) == -ETIMEDOUT);
 	/* 250 ms after the send, on k_uptime_get(). */
 	assert(test_now_us - start >= 250000 && test_now_us - start < 252000);
-	assert(recvs == 0 && polls > 200 && polls == sleeps + 1);
+	assert(reads == 0 && calls > 200 && calls == sleeps + 1);
 }
 
 static void test_socket(void)
 {
 	int fd;
 
-	marks = 0;
 	fd = zsock_socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP);
-	assert(fd == FAKE_FD && sockets_open == 1 && marks == 1);
+	assert(fd == FAKE_FD && sockets_open == 1);
 	assert(zsock_close(fd) == 0 && sockets_open == 0);
-	mark_error = ENOPROTOOPT;
-	errno = 0;
-	assert(zsock_socket(AF_INET, SOCK_DGRAM, IPPROTO_UDP) == -1 && errno == ENOPROTOOPT);
-	assert(sockets_open == 0 && marks == 1);
-	mark_error = 0;
 }
 
 static void test_recv_waits(void)
@@ -519,19 +504,22 @@ static void test_recv_waits(void)
 	uint8_t data[4] = {1, 2, 3, 4}, buf[8];
 	int64_t start;
 
+	/* Without ZSOCK_MSG_DONTWAIT: NuttX's recv() itself waits for the
+	 * event, without the caller's sleeps.
+	 */
 	reset_net();
 	start = test_now_us;
+	event_delay_us = 1000;
 	push(data, sizeof(data), start + 50000);
-	/* FIONREAD at 0, 20.1, 40.2 ms: nothing; 60.3 ms: the datagram. */
 	assert(zsock_recv(FAKE_FD, buf, sizeof(buf), 0) == 4 && !memcmp(buf, data, 4));
-	assert(polls == 4 && sleeps == 3 && slept_ticks == 200 && recvs == 1);
-	assert(recv_exit_us - start == 3 * 20100 + recv_cost_us);
-	/* A failed poll ends it. */
+	assert(calls == 1 && reads == 1 && sleeps == 0);
+	assert(recv_exit_us - start == 50000 + event_delay_us + recv_cost_us);
+	/* Its error is the call's. */
 	reset_net();
-	ioctl_error = EIO;
+	recv_error = EIO;
 	assert(zsock_recv(FAKE_FD, buf, sizeof(buf), 0) == -1 && errno == EIO);
-	assert(polls == 1 && sleeps == 0);
-	ioctl_error = 0;
+	assert(calls == 1 && sleeps == 0);
+	recv_error = 0;
 }
 
 static void test_exchange_errors(void)
@@ -542,17 +530,17 @@ static void test_exchange_errors(void)
 	send_error = ENETUNREACH;
 	assert(exchange(FAKE_FD, &sample) == -ENETUNREACH);
 	reset_net();
-	ioctl_error = ENOTCONN;
+	recv_error = ENOTCONN;
 	assert(exchange(FAKE_FD, &sample) == -ENOTCONN);
 	reset_net();
 	recv_error = EIO;
 	assert(exchange(FAKE_FD, &sample) == -EIO);
-	/* The layer's EAGAIN when FIONREAD says nothing is there. */
+	/* EAGAIN when usrsock holds no RECVFROM_AVAIL. */
 	reset_net();
 	reply_wanted = false;
 	errno = 0;
 	assert(zsock_recv(FAKE_FD, out, 48, ZSOCK_MSG_DONTWAIT) == -1 && errno == EAGAIN);
-	assert(polls == 1 && recvs == 0);
+	assert(calls == 1 && reads == 0);
 }
 
 static void expect_rejected(void)
@@ -787,6 +775,7 @@ int main(void)
 	test_ntp_time();
 	test_exchange_ok();
 	test_exchange_late_reply();
+	test_exchange_event_delay();
 	test_exchange_timeout();
 	test_socket();
 	test_recv_waits();

@@ -28,8 +28,8 @@
 # (wifi_profile.h).  The core's waits for READY sleep on the line's edge
 # interrupt (nina_os.c, through the board's src/nano_gpio.c and the
 # compatibility layer's gpio0, common/compat/zephyr_gpio.c).  The socket
-# loops' waits (nina_wait.c of common/drivers/nina/internal, nina_poller.c,
-# the layer's zsock_*()) end at the rising edges of the module's IRQ line
+# loops' waits (nina_wait.c of common/drivers/nina/internal, nina_poller.c)
+# end at the rising edges of the module's IRQ line
 # (GPIO2, nina_os.c) when its firmware reports socket events; with an older
 # firmware they keep their poll intervals.  The board's NINA passthrough
 # mode (CONFIG_NINA_PASSTHROUGH) is the core's nina_passthrough.c with its

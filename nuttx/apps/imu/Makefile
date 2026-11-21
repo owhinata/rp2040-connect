@@ -43,8 +43,8 @@
 # app_log.h; their NuttX parts in $(TOPDIR)/external/include), common/imu
 # and common/drivers/lsm6dso (imu_stream.c's "lsm6dso_fifo.h" and
 # "lsm6dso_fifo_stats.h", imu_cal.h's "lsm6dso_cal.h"), and
-# common/drivers/nina (<nina_dns.h> and <nina_sockopt.h> of the NINA core,
-# which the layer's <zephyr/net/socket.h> reads).
+# common/drivers/nina (<nina_dns.h> of the NINA core, which the layer's
+# <zephyr/net/socket.h> reads).
 ############################################################################
 
 include $(APPDIR)/Make.defs

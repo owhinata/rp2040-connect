@@ -133,7 +133,7 @@ else
 fi
 # The compatibility layer on the fake kernel, with its NuttX headers (<zephyr/net/socket.h>,
 # <zephyr/shell/shell.h>, ...).  Its RTIO and work items are tested in common/tests/run.sh.
-# <zephyr/net/socket.h> reads <nina_dns.h> and <nina_sockopt.h> of the NINA core (common/drivers/nina).
+# <zephyr/net/socket.h> reads <nina_dns.h> of the NINA core (common/drivers/nina).
 cnina=../common/drivers/nina
 # The waits for NINA's READY on its edge interrupt (common/drivers/nina/port/nuttx/nina_os.c,
 # nina_os_ready_*())
@@ -278,10 +278,11 @@ run i2c_dma_app -D_DEFAULT_SOURCE -DZ_SHELL_CMD_NAMED_MAIN -include "$prelude" \
 run nina_passthrough -DCONFIG_NINA_PASSTHROUGH=1 -I../common/drivers/nina -Iapps/nina -I"$cshell" \
     "$cshell/subcmd.c"
 # The time synchronization (common/imu/time_sync.c, shared with the Zephyr build) on the
-# compatibility layer with a fake NINA socket, clock (the TIMER's registers), interface and
-# realtime clock: the NTP request and the checks of the reply, where t1 and t4 are read, the
-# 1 ms polling of the reply through FIONREAD, the socket marked as polled by its callers only,
-# a receive that waits (FIONREAD every 20 ms), the 60 s age, the forward-only realtime clock,
+# compatibility layer with a fake NINA socket (NuttX's socket calls on usrsock), clock (the
+# TIMER's registers), interface and realtime clock: the NTP request and the checks of the
+# reply, where t1 and t4 are read, the 1 ms polling of the reply through recv(MSG_DONTWAIT),
+# answered from the RECVFROM_AVAIL of the event thread (its delay ends up in t4), a receive
+# that waits in NuttX's recv(), the 60 s age, the forward-only realtime clock,
 # the Wi-Fi events and the "ntp status" lines, through z_shell_main_ntp() (the file is built
 # with Z_SHELL_CMD_NAMED_MAIN, as in the NuttX build) on the Zephyr shell's command handling
 # (common/shell/zshell.c).  The prelude follows the fake <nuttx/config.h>, as on NuttX.
@@ -293,13 +294,14 @@ cc "${flags[@]}" -D_DEFAULT_SOURCE -DZ_SHELL_CMD_NAMED_MAIN -include tests/time_
 printf 'ok  time_sync\n'
 # The MQTT transport (common/imu/imu_raw_mqtt.c, shared with the Zephyr build) with the
 # port's MQTT client and its socket layer on the compatibility layer's zsock_*() calls, on a
-# fake socket, clock and interface: the start checks and topics, the thread, the socket calls
-# in order (the socket marked as polled by its callers only, FIONREAD before every read that
-# does not wait, poll() as the Zephyr build's: one NINA_SO_POLL at once and every 20 ms),
-# CONNECT, the CONNACK wait, the order of info, status and batch with header and body in one
+# fake socket (NuttX's socket calls on usrsock, with the RECVFROM_AVAIL that the NINA driver
+# keeps or drops after a receive), clock and interface: the start checks and topics, the
+# thread, the socket calls in order (NuttX's poll() for the CONNACK wait and the input,
+# receives with MSG_DONTWAIT, a CONNACK in two pieces), CONNECT, the CONNACK wait, the order
+# of info, status and batch with header and body in one
 # sendmsg(), the status and input intervals, dropped batches and the error paths.
 cc "${flags[@]}" -Wno-sign-compare -D_DEFAULT_SOURCE -include "$prelude" -Itests/time_sync_fakes \
-    "${zinc[@]}" "${inc[@]}" tests/imu_raw_mqtt.c "$cimu/mqtt_min.c" "${lib[@]}" "${compat[@]}" "$link" \
+    -Itests/lsm6dso_fakes "${zinc[@]}" "${inc[@]}" tests/imu_raw_mqtt.c "$cimu/mqtt_min.c" "${lib[@]}" "${compat[@]}" "$link" \
     -o "$out/imu_raw_mqtt"
 "$out/imu_raw_mqtt" >/dev/null
 printf 'ok  imu_raw_mqtt\n'

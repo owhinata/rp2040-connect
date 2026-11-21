@@ -584,8 +584,8 @@ NuttX 版の確認の範囲は §11.7 に分けて書く。
   値と名前）を付けてコンパイルし、版ごとに違う数行は OS ごとの小さなヘッダー（`sensor_shell_os.h`、
   `wifi_profile_os.h`、`lsm6dso.c` が末尾で読む LSM6DSO のデバイスの `lsm6dso_instance.h`。Zephyr 版はデバイスツリーの
   インスタンス化のマクロ、NuttX 版はボードの値を使うデバイス 1 つ）に出している。NINA の OS に依存しないコアも `common/drivers/nina/` にあり、3 つの版が使う。直下はドライバーが提供する機能
-  （Wi-Fi の操作 `nina_wifi.[ch]`、ソケットの表と命令 `nina_sock.[ch]`、名前解決 `nina_dns.[ch]`、esptool の中継 `nina_passthrough.[ch]`、
-  ソケットオプション `nina_sockopt.h`）、`internal/` はコアの内側の部品（プロトコルのバイトと SPI の転送層 `nina_proto.[ch]`、ソケットのループの
+  （Wi-Fi の操作 `nina_wifi.[ch]`、ソケットの表と命令 `nina_sock.[ch]`、名前解決 `nina_dns.[ch]`、esptool の中継 `nina_passthrough.[ch]`）、
+  `internal/` はコアの内側の部品（プロトコルのバイトと SPI の転送層 `nina_proto.[ch]`、ソケットのループの
   待ち `nina_wait.[ch]`）、`port/` は各版が実装する狭い境界のヘッダー（`nina_os.h`・`nina_bus.h`、中継の `nina_passthrough_os.h`・
   `nina_passthrough_bus.h`）とその実装。`nina version` の
   `common/shell/nina_shell.c` も 3 つの版が使う。コアの各 OS の API へのつなぎは `port/` の下の OS の名前のサブディレクトリーにある:
@@ -626,13 +626,12 @@ NINA-W102 のソケットは NuttX の usrsock（`CONFIG_NET_USRSOCK_CUSTOM`）�
 
 - usrsock は、受信できる・送信できる・切れた、をドライバーからのイベントで知る。ファームウェア 3.0.2 の NINA は
   割り込みで知らせないので、スレッド `nina_event` が NINA に問い合わせてイベントにする（待っている送信の 1 ms
-  ごとの再試行、接続の完了の確認、Telnet・`iperf` など素の POSIX のソケットの 20 ms ごとの問い合わせ）。ソケットの
-  事象を IRQ の線で知らせるファームウェア（§12 の「NINA のファームウェアの追加機能」）では、その問い合わせを線の
-  エッジ（最長 100 ms）で行う。
-- 互換層の `zsock_socket()` で作るソケット（MQTT、NTP）には、呼び出し元だけが NINA に問い合わせる印を
-  付け、`nina_event` の 20 ms ごとの問い合わせから外す。`zsock_poll()`・`zsock_recv()` は Zephyr 版の
-  ドライバーと同じく、呼び出したスレッドで NINA に問い合わせる。NINA に届く命令の並びは Zephyr 版と同じに
-  なる。
+  ごとの再試行、接続の完了の確認、ソケットの 20 ms ごとの問い合わせ）。ソケットの事象を IRQ の線で知らせる
+  ファームウェア（§12 の「NINA のファームウェアの追加機能」）では、その問い合わせを線のエッジ（最長 100 ms）で行う。
+- 互換層の `zsock_*()` は NuttX のソケットの呼び出しなので、MQTT と NTP のソケットも Telnet・`iperf` と同じ素の
+  POSIX のソケットで、これらのイベントを待つ。Zephyr 版は呼び出したスレッドで NINA に尋ねる（MQTT の受信の確認は
+  100 ms ごと、NTP の応答は 1 ms ごと）ので、NINA に届く命令とその時刻は版によって違う。NTP の応答に気づくのは
+  `nina_event` が伝えたとき（ソケットの事象があれば IRQ の線のエッジ、無ければ最大 20 ms 遅れる）。
 - Zephyr 版の「待つ TCP 送信は 10 秒で `EAGAIN`」「NINA が受け取らなかったデータグラムはすぐ `EAGAIN`」を
   作るため、NuttX の usrsock に小さなパッチを当てる（`nuttx/patches/nuttx/0005`）。
 - NINA は NuttX のネットワークデバイス `wlan0` としても登録し、`wapi`・`ifconfig` の要求は NuttX へのつなぎ

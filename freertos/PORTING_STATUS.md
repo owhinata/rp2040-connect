@@ -1901,3 +1901,30 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
 - 残っている不一致: `internal/nina_proto.h` の関数（`nina_request()`・`nina_ip_config()`・`nina_capabilities()` など。`nina_proto_` が付いていない）と、そこで宣言している `nina_dns_init()`。
 - 確認: イメージは 3 版とも変更前とバイト一致（Zephyr・NuttX は基準、FreeRTOS は前後を同じ `SOURCE_DATE_EPOCH` で）。ホストテスト 44・56・54、`format.sh --check` も通る。実機には書いていない
   （実機のイメージは 1 つ前の commit のビルドで、中身は同じ）。
+
+## NuttX 版のソケットを NuttX の標準の経路へ（案 B）（2026-11-21、ユーザーの決定）
+
+- きっかけ: 3 層に分けたあと、NuttX の互換層の `<zephyr/net/socket.h>` がドライバーの `internal/nina_wait.h` を読んでいた。ユーザーの指摘「この設計が間違ってないですか？」。
+  もとの形: 互換層のインライン関数が、Zephyr 版のポーリングのループを NINA 独自のソケットオプション（`NINA_SO_CALLER_POLLS`・`NINA_SO_POLL`）と `nina_wait()` で作っていた
+  （モジュールから見たコマンドを Zephyr 版と同じにするため）。汎用の互換層が特定のドライバーを知り、待ち方がドライバーの外にあり、待ちの仕組みが 2 つあった。
+- 変更（subagent、メインがレビュー）: `zsock_socket()`・`zsock_poll()`・`zsock_recv()` を NuttX の `socket()`・`poll()`・`recv()` の読み替えだけにした。待ちはつなぎ（usrsock と事象スレッド
+  `nina_poller.c`）が受け持つ。互換層が読む NINA のヘッダーは `nina_dns.h` だけ。
+  - 削除: `nina_sockopt.h`、コアの `caller_polls` とその分岐、`nina_sock_fionread()`、usrsock の GETSOCKOPT と FIONREAD の処理、Zephyr のつなぎの `NINA_SOL` の拒否、それらのテスト。
+    `NINA_POLL_INTERVAL_MS` は `internal/nina_wait.h` へ。
+  - `nina_usrsock.c` に 2 つ: TCP の受信が要求の長さいっぱいに読めたときは RECVFROM_AVAIL を残す（MQTT の CONNACK を 2 バイトずつ読むため。事象スレッドは MQTT のスレッドより
+    優先度が低く、2 回の読み出しのあいだに印を立て直せない）。UDP のソケットの最初の送信で事象スレッドを起こす（NTP は `connect()` なしの `sendto()` で、返事の事象を予約する問い合わせがほかに無い）。
+  - Zephyr 版との違い（NuttX の `poll()`）: 接続していない TCP は POLLIN|POLLOUT|POLLHUP、モジュールのエラーや問い合わせの失敗は POLLERR ではなく POLLHUP。`service_input()` はどちらも -EIO。
+  - NuttX のテスト `imu_raw_mqtt`・`time_sync` は、usrsock の `poll()`・`recv()` の偽物（RECVFROM_AVAIL を持ち、ドライバーの残す・落とすの規則に従う）の上に書き直し。
+- あわせて、MQTT の接続が失敗したときのログを 1 行足した（ユーザーの了解。`common/imu/imu_raw_mqtt.c`、3 版）: `<wrn> imu_raw_mqtt: MQTT <段階> failed: <エラー>`。段階は
+  `connect`・`info`・`status`・`publish`・`input`。同じ段階・同じエラーが続くあいだは 1 回だけ。
+- イメージ: Zephyr 371908 → 372120 B、NuttX 284980 → 283724 B、FreeRTOS 236408 → 236520 B。**基準を更新: Zephyr・NuttX とも `snapshot-1121a`**。ホストテスト 44・56・54、`format.sh --check` も通る。
+- 実機（NuttX 版、各 約 70 秒）:
+  - 変更前 24 回（同じ日）: 欠番 0、到着の最大の空き 221 ms、NTP の往復の遅れ（中央値）6.3〜6.9 ms、`cpu_active` 49.0%（2 回）。
+  - 変更後 64 回: 62 回は欠番 0、`cpu_active` 48.1〜48.5%、NTP の遅れ 6.3〜7.6 ms、時刻の逆行 0。**午前の 24 回のうち 2 回で欠番**: 1 回は開始 約 1 秒で MQTT の接続が失敗してつなぎ直し（欠番 37、
+    キューは 3 まで）、1 回は到着が 387 ms 空いてキューがあふれた（欠番 2、接続はそのまま）。そのあとの 40 回と、開始 6 秒で止める短い計測 149 回では出ていない。**原因は分かっていない**
+    （変更のせいか、その時間帯の電波かを切り分けられていない。ログの行はこのあとに足したので、次に起きれば段階とエラーが残る）。
+  - 短い計測の 150 回のうち 1 回の失敗（publish -32、connect -104）は計測側の都合（受信器が 600 秒で終了した）。
+  - 送信中の `wapi disconnect wlan0` → `wifi cred auto_connect`: 2 秒で再接続、MQTT はつなぎ直し（1 回）。Telnet は送信中と復帰後に応答（各 1 回）。
+- 実機（Zephyr 版、FreeRTOS 版、書き込み直後の各 1 回 約 70 秒）: 欠番 0、時刻の逆行 0、`cpu_active` 45.7%・40.5%。この 2 版で変わるのはコアの削除分とログの行だけ。
+- 確かめていない: 事象の無いファームウェア（3.0.2）での NuttX 版（NTP の返事に気づくのが最大 20 ms 遅れうる）、長時間、AP を落とす切断、`zperf`、スタックの使用量（MQTT のスレッドにログの呼び出しが増えた）。
+- 実機: FreeRTOS 版（この変更のビルド）。

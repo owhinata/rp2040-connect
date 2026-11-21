@@ -313,7 +313,7 @@ Wi-Fi モジュール NINA-W102 とは SPI1 でやり取りします。NINA の�
 （Arduino の NINA ファームウェア 3.0.2 に修正を当てたもの、`firmware/nina-fw/README.md`）で、書き換えません。
 ドライバーは、コマンドを 1 つ送って応答を受け取る転送層（`nina_request()`、`nina_ip_config()`）、
 `nina version`、ソケット（NuttX の usrsock。socket・close・bind・listen・accept・connect・setsockopt と
-送受信・`FIONREAD`）、NINA の名前解決（`nina_dns_getaddrinfo()`）、Wi-Fi のネットワークデバイス `wlan0`
+送受信）、NINA の名前解決（`nina_dns_getaddrinfo()`）、Wi-Fi のネットワークデバイス `wlan0`
 （スキャン、接続、切断、状態、接続の監視）からなります（`nuttx/drivers/README_ja.md` の「ソケット（usrsock）」
 「名前解決」「Wi-Fi」）。資格情報の保存と自動再接続（`wifi cred`）は下の節です。
 
@@ -857,14 +857,17 @@ status は 0、info は 1 で retain）、クライアント ID（`imu-<device>`
   `sendmsg()` 1 回で渡し、NINA のドライバーがそれを 1 つの送信の命令にまとめます（Zephyr 版と同じ）。
 - ソケットはブロッキングのまま使います（Zephyr 版と同じ）。接続は最大 10 秒、空きのない送信は最大
   10 秒待ってから失敗します（NINA のドライバーの期限。`nuttx/drivers/README_ja.md` の「ソケット（usrsock）」）。
-- ソケットは互換層の `zsock_socket()` で作り、呼び出し元だけが NINA に問い合わせるソケットの印
-  （`NINA_SO_CALLER_POLLS`）が付きます。`nina_event` は接続の確認のほかはこのソケットを問い合わせず、
-  Zephyr 版と同じく `imu_raw_mqtt_tid` だけが問い合わせます（`nuttx/drivers/README_ja.md` の「ソケット（usrsock）」）。
-- 受信の確認（`zsock_poll()`、100 ms ごと）と CONNACK の待ち（`zsock_poll()`、5000 ms）は、Zephyr 版の NINA の
-  `poll()` と同じく、呼び出したスレッドで NINA に問い合わせ（`CMD_POLL` を 1 回）、何も無ければ 20 ms ごとに
-  問い合わせ直します。NINA が報告する接続の異常（POLL_ERROR）は Zephyr 版と同じく `ZSOCK_POLLERR` です。
-  待たない受信（`zsock_recv()` の `ZSOCK_MSG_DONTWAIT`）は先に `ioctl(FIONREAD)` で問い合わせます。NINA に届く
-  命令の並び（問い合わせ、届いていれば問い合わせと読み出し）は Zephyr 版と同じです。
+- 互換層の `zsock_socket()`・`zsock_poll()`・`zsock_recv()` は NuttX の `socket()`・`poll()`・`recv()` なので、
+  ソケットは普通の usrsock のソケットです: `nina_event` が NINA に問い合わせ（20 ms ごと、ソケットの事象があれば
+  IRQ の線のエッジ）、見つけたものをイベントにします（`nuttx/drivers/README_ja.md` の「ソケット（usrsock）」）。
+  Zephyr 版は `imu_raw_mqtt_tid` だけが問い合わせます（受信の確認のたびに `CMD_POLL` を 1 回、100 ms ごと）。
+- 受信の確認（`zsock_poll()`、100 ms ごと、待ち時間 0）と CONNACK の待ち（`zsock_poll()`、5000 ms）は、usrsock が
+  持っているイベントで答え、CONNACK の待ちはイベントで終わります。NINA が報告する接続の異常（POLL_ERROR、
+  または poll の失敗）は `ZSOCK_POLLHUP` です（usrsock の `REMOTE_CLOSED`。Zephyr 版は `ZSOCK_POLLERR`）。
+  `imu_raw_mqtt.c` はどちらでも接続を終えます。受信（`zsock_recv()` の `ZSOCK_MSG_DONTWAIT`）がドライバーに届くのは
+  usrsock が `RECVFROM_AVAIL` を持っている間だけです。2 バイトずつ 2 回に分けて読む CONNACK の 2 回目は、求めた
+  長さをすべて受け取った受信のあとドライバーが `RECVFROM_AVAIL` を保つので届きます（次の受信は NINA に尋ねます。
+  Zephyr 版の受信も毎回尋ねます）。
 - Zephyr 版との違い: `lock_wait_*`・`publish_*` の時間は、Zephyr 版は 125 MHz の SysTick の周期
   （`k_cycle_get_*()`。送信中は遅れる）を µs にしたもの、NuttX 版は TIMER（1 µs）です（互換層の
   `k_cycle_get_*()`）。
@@ -900,15 +903,14 @@ Subcommands:
   （2000 ms）です。応答は 250 ms 待ち、来なければ `timeouts`、検査に通らなければ `rejected` に数えて次の
   周期へ進みます。アドレスが決まらない、ソケットを作れない、送信に失敗した、などのときは `last_error` に
   入れて 5 秒後にやり直します。
-- 応答の待ち方: Zephyr 版は `recv(MSG_DONTWAIT)` を約 1 ms ごとに呼び、NINA のドライバーがそのたびに
-  ソケットの状態を問い合わせ（`CMD_POLL`）、届いていれば読みます。NuttX の usrsock は、待たない受信に、
-  保持している受信可の印（`RECVFROM_AVAIL`）で答えるので、互換層の `zsock_recv()` は `ZSOCK_MSG_DONTWAIT` の
-  とき、先に `ioctl(FIONREAD)`（呼び出したスレッドで `CMD_POLL` を 1 回）を呼び、何か届いているときだけ
-  `recv(MSG_DONTWAIT)` で読みます（ドライバーは直前の問い合わせの結果を使い、`CMD_POLL` を重ねません）。NINA に
-  届く命令の並び（問い合わせ、届いていれば読み出し、約 1 ms 待って繰り返し）は Zephyr 版と同じです。
-- ソケットは互換層の `zsock_socket()` で作るので、呼び出し元だけが問い合わせる印（`NINA_SO_CALLER_POLLS`）が
-  付き、`nina_event` は問い合わせません。Zephyr 版と同じく、受信を呼んだときだけ問い合わせます
-  （`nuttx/drivers/README_ja.md` の「ソケット（usrsock）」の節）。
+- 応答の待ち方: ファイルは `zsock_recv()` を `ZSOCK_MSG_DONTWAIT` で約 1 ms ごとに呼びます。Zephyr 版では NINA の
+  ドライバーがそのたびにソケットの状態を問い合わせ（`CMD_POLL`）、届いていれば読みます。こちらでは NuttX の
+  `recv(MSG_DONTWAIT)` で、usrsock は受信可の印（`RECVFROM_AVAIL`）を持つまで自分で `EAGAIN` を返します。印は
+  `nina_event` がソケットの poll から立て（最初は NINA 側のソケットを作る最初の送信の直後、以後 20 ms ごと、
+  ソケットの事象があれば IRQ の線のエッジ）、受信はその poll の結果を使って poll を重ねずにデータグラムを
+  読みます。そのため t4 は `nina_event` が応答に気づいたときに読みます: ソケットの事象があれば応答のエッジの
+  すぐ後、無ければ最大 20 ms 遅れ、その遅れが往復に入り、半分がオフセットに入ります（推定は直近 8 回のうち往復が
+  最短のものを使う）。`nuttx/drivers/README_ja.md` の「ソケット（usrsock）」の節。
 - Zephyr 版との違い: `k_uptime_get()`（応答の待ち 250 ms、60 秒の判定、`last_reply_ms_ago`）は NuttX 版では
   TIMER から求めます。Zephyr 版は SysTick のカーネル時計で、送信中は遅れます。
 - 実時間時計（`CLOCK_REALTIME`）は、推定より 20 ms 以上遅れているときだけ推定に合わせ（`realtime_clock_steps`
@@ -1121,7 +1123,7 @@ OS ごとのヘッダー（`sensor_shell_os.h`、`wifi_profile_os.h`、`lsm6dso_
 |---|---|
 | `common/imu/` | `imu_stream.c`、`imu_raw_{batch,packet,queue,status,time}`、`imu_tick_clock`、`time_sync.[ch]`、`time_offset`、`imu_cal_codec.c`、`imu_cal.[ch]`、`imu_raw_mqtt.[ch]`、`wifi_profile.[ch]`、`kv_store.[ch]`、`mqtt_min.[ch]`・`mqtt_min_sock.c`（互換層の上の版の MQTT クライアントとそのソケットの層。Zephyr 版は使わない） |
 | `common/drivers/lsm6dso/` | `lsm6dso.[ch]`（ドライバー本体。末尾のデバイスは版ごとの `lsm6dso_instance.h`）、`lsm6dso_{fifo,cal,zero,fifo_decoder,fifo_hw,fifo_irq}`、`lsm6dso_stream.c`、`lsm6dso_compat.c`、`lsm6dso_fifo_packet.h`、`lsm6dso_fifo_stats.h`、`lsm6dso_attributes.h` |
-| `common/drivers/nina/` | NINA のコア: 直下に `nina_wifi.[ch]`・`nina_sock.[ch]`・`nina_dns.[ch]`・esptool の中継 `nina_passthrough.[ch]`・ソケットオプションの `nina_sockopt.h`、`internal/` に `nina_proto.[ch]`・`nina_wait.[ch]`、`port/` にコアの境界のヘッダー `nina_os.h`・`nina_bus.h`（中継のものは `nina_passthrough_bus.h`・`nina_passthrough_os.h`）（3 つの版が使う。Zephyr の API を使わず、NuttX 版では前置きヘッダーなしでコンパイルする。境界は `nuttx/drivers/README_ja.md` の「NINA-W102」）。コアのつなぎは `port/zephyr/`（Zephyr 版と FreeRTOS 版）と `port/nuttx/`（この版: `wlan0`、アプリの Wi-Fi 管理、`nina_os.c`、usrsock、中継のホスト側 `nina_passthrough_os.c`、RP2040 の SPI と線 `nina_bus_rp2040.c`、中継のモジュール側 `nina_passthrough_bus_rp2040.c`） |
+| `common/drivers/nina/` | NINA のコア: 直下に `nina_wifi.[ch]`・`nina_sock.[ch]`・`nina_dns.[ch]`・esptool の中継 `nina_passthrough.[ch]`、`internal/` に `nina_proto.[ch]`・`nina_wait.[ch]`、`port/` にコアの境界のヘッダー `nina_os.h`・`nina_bus.h`（中継のものは `nina_passthrough_bus.h`・`nina_passthrough_os.h`）（3 つの版が使う。Zephyr の API を使わず、NuttX 版では前置きヘッダーなしでコンパイルする。境界は `nuttx/drivers/README_ja.md` の「NINA-W102」）。コアのつなぎは `port/zephyr/`（Zephyr 版と FreeRTOS 版）と `port/nuttx/`（この版: `wlan0`、アプリの Wi-Fi 管理、`nina_os.c`、usrsock、中継のホスト側 `nina_passthrough_os.c`、RP2040 の SPI と線 `nina_bus_rp2040.c`、中継のモジュール側 `nina_passthrough_bus_rp2040.c`） |
 | `common/drivers/sensor_shell/` | `sensor_shell.c` |
 | `common/drivers/stmemsc/` | `stmemsc.h`、`stmemsc_i2c.c`、`stmemsc_mdelay.c`（Zephyr の stmemsc の I2C の部分の写し。NuttX 版と FreeRTOS 版が使い、前置きヘッダーなしでコンパイルする。Zephyr 版は Zephyr のものを使う） |
 | `common/drivers/i2c_dw/` | I2C のコア `i2c_dw.c`（I2C0 と、`CONFIG_I2C_DW_I2C1`（既定で無効）のとき I2C1） と、その定義 `i2c_dw.h`・`i2c_dw_registers.h`・`i2c_dw_rp2040.h`、DMA での読み出し `i2c_dw_rp2040_dma_priv.h`（DMA のコマンド語を含む。Zephyr 版はパッチ 0003 に同じ関数を持つ）（ファイル名はパッチ後の Zephyr のドライバーに合わせる）、`i2c_dma` の関数の宣言 `i2c_dw_rp2040_dma.h`、境界のヘッダー `i2c_dw_os.h` と、DMA 読み出しの `i2c_dw_dma_os.h`（NuttX 版と FreeRTOS 版が使う。前置きヘッダーなしでコンパイルし、OS の部分はボードの `src/` の `i2c_dw_os_impl.h`・`i2c_dw_instance.h`・`i2c_dw_dma_os.c`。境界は `nuttx/drivers/README_ja.md` の「I2C0」） |
@@ -1289,13 +1291,13 @@ Zephyr のフラグへの変換、`IC_DATA_CMD` に書く語の列（`i2c` ツ�
 最初に使うときに作ること（種類とプロトコル、FIONBIO）、bind、listen（backlog を 1〜255 に丸める）、accept
 （相手のアドレスとポートのバイト順、`EAGAIN`、`EMFILE`）、connect（UDP、TCP の処理中、SO_ERROR の各値の
 errno、エラーフラグ、10000 ms の期限、poll の失敗、失敗後に NINA 側のソケットを閉じること）、close、
-setsockopt、`nina_event` が何を問い合わせ、何をイベントにするか（呼び出し元だけが問い合わせる印の付いたソケットは
-接続中だけ）、`NINA_SO_POLL`（Zephyr 版の `do_poll()` のソケット 1 つ分）。送受信では、TCP の送信（1 回 3584 バイトまで、
+setsockopt、`nina_event` が何を問い合わせ、何をイベントにするか、`nina_sock_poll_revents()`（Zephyr 版と FreeRTOS 版の
+`do_poll()` のソケット 1 つ分）。送受信では、TCP の送信（1 回 3584 バイトまで、
 応答の検査、`MSG_DONTWAIT`、待つ送信の各回と 100 ms ごとの状態確認・10000 ms の期限、同じ呼び出しの続きと
 新しい呼び出しの区別）、`sendmsg`（複数のベクターを 1 つの命令にまとめること、受け付けないもの）、UDP の送信
 （アドレスの検査、接続した相手、512 バイトの上限、NINA が受け取らなかったデータグラム）、TCP と UDP の受信
 （先に poll すること、サイズのパラメーター、送信元のポートのバイト順、接続した相手以外を捨てること、空の
-データグラム）、データを見つけた poll を次の受信の最初の poll に使うこと、`FIONREAD`。
+データグラム）、データを見つけた poll を次の受信の最初の poll に使うこと。
 
 `common/tests/nina_dns.c` は `common/drivers/nina/nina_dns.c` を、偽の `nina_request()` とロックで確かめます: ヒントの
 既定値と受け付けないフラグ・ファミリー・ソケットの種類、サービス（ポート番号）、数値のアドレス（NINA に問い合わせ

@@ -666,8 +666,8 @@ version's; what has been verified on the NuttX port is listed separately in 11.7
   instance macros, one device with the board's values on NuttX). The NINA's
   OS-independent core is in `common/drivers/nina/` too and is used by the three builds. Its top
   holds what the driver offers (the Wi-Fi operations `nina_wifi.[ch]`, the socket table and commands
-  `nina_sock.[ch]`, name resolution `nina_dns.[ch]`, the esptool passthrough `nina_passthrough.[ch]`,
-  the socket options `nina_sockopt.h`), `internal/` the parts inside the core (the protocol's bytes
+  `nina_sock.[ch]`, name resolution `nina_dns.[ch]`, the esptool passthrough
+  `nina_passthrough.[ch]`), `internal/` the parts inside the core (the protocol's bytes
   and the SPI link `nina_proto.[ch]`, the waits of the socket loops `nina_wait.[ch]`), and `port/`
   the headers of the narrow boundaries that each build implements (`nina_os.h` and `nina_bus.h`, the
   passthrough's `nina_passthrough_os.h` and `nina_passthrough_bus.h`) with their implementations.
@@ -721,13 +721,14 @@ the SPI at the caller's priority and serializes with `nina_lock`. The lock order
 - usrsock learns from driver events that a socket can receive, can send or was closed. The NINA
   with firmware 3.0.2 does not signal these with an interrupt, so the thread `nina_event` asks the
   NINA and turns the answers into events (the 1 ms retry of a waiting send, the check that a
-  connect has finished, and polling of plain POSIX sockets such as Telnet's and `iperf`'s every
-  20 ms). With a firmware that reports socket events on the IRQ line ("The NINA firmware's
-  additions" in §12), it asks at the line's edges (100 ms at most) instead.
-- Sockets made with the compatibility layer's `zsock_socket()` (MQTT, NTP) are marked so that only
-  the caller polls them on the NINA, and `nina_event` leaves them out of its 20 ms polling.
-  `zsock_poll()` and `zsock_recv()` poll the NINA in the calling thread, as the Zephyr driver does.
-  The commands that reach the NINA are in the Zephyr version's order.
+  connect has finished, and polling of the sockets every 20 ms). With a firmware that reports
+  socket events on the IRQ line ("The NINA firmware's additions" in §12), it asks at the line's
+  edges (100 ms at most) instead.
+- The compatibility layer's `zsock_*()` calls are NuttX's socket calls, so the MQTT and NTP sockets
+  are plain POSIX sockets, as Telnet's and `iperf`'s, and wait for these events. The Zephyr version
+  asks the NINA from the calling thread instead (MQTT's input every 100 ms, NTP's reply every 1 ms),
+  so the NINA sees other commands at other times; the reply of an NTP exchange is seen when
+  `nina_event` reports it (at the IRQ line's edge with the socket events, else up to 20 ms late).
 - To get the Zephyr version's "a waiting TCP send gives `EAGAIN` after 10 s" and "a datagram the
   NINA did not take gives `EAGAIN` at once", a small patch is applied to NuttX's usrsock
   (`nuttx/patches/nuttx/0005`).

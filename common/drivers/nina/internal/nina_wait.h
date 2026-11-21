@@ -6,9 +6,10 @@
  * module reports socket events on its IRQ line (NINA_CAP_SOCKET_EVENTS,
  * nina_proto.h), the next rising edge of the line, at most
  * NINA_EVENT_TIMEOUT_MS.  The loops: Zephyr's and FreeRTOS's nina_socket.c,
- * the NuttX build's compatibility layer (<zephyr/net/socket.h>) and its
- * event thread (nina_poller.c, which uses nina_wait_events(),
- * nina_os_event_seq() and nina_wait_backoff_ms() itself).
+ * and the NuttX build's event thread (nina_poller.c, which uses
+ * nina_wait_events(), nina_os_event_seq() and nina_wait_backoff_ms()
+ * itself, from the edge counts that the usrsock requests of nina_usrsock.c
+ * note before their commands).
  *
  * The rule of the firmware (firmware/nina-fw/README.md): note the edge
  * count before the command that may arm an event; if the answer is "not
@@ -44,6 +45,12 @@
 
 /* The longest wait for an edge (the README's "about 100 ms"). */
 #define NINA_EVENT_TIMEOUT_MS 100
+
+/* The Zephyr build's NINA_POLL_INTERVAL_MS (nina_socket.c:26): how often a
+ * waiting poll(), receive or connect asks the module again without the
+ * events.
+ */
+#define NINA_POLL_INTERVAL_MS 20
 
 struct nina_wait {
 	uint32_t mark;    /* the edge count before the pass */

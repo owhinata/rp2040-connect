@@ -437,10 +437,6 @@ static int do_setsockopt(void *obj, int level, int optname, const void *optval,
 		fds[id_of(obj)].receive_timeout_ms = (int32_t)ms;
 		return 0;
 	}
-	/* The NuttX build's own options (nina_sockopt.h) are not Zephyr's. */
-	if (level == NINA_SOL) {
-		return fail(ENOPROTOOPT);
-	}
 	k_mutex_lock(&socket_lock, K_FOREVER);
 	ret = nina_sock_setsockopt(id_of(obj), level, optname, optval, optlen);
 	k_mutex_unlock(&socket_lock);

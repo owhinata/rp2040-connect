@@ -5,13 +5,11 @@
  * Zephyr compatibility layer (<zephyr/net/socket.h>), shared by the
  * builds on the layer; each OS's zsock_*() are the NINA's sockets.
  *
- * NuttX: NuttX's sockets, the NINA's through usrsock.  zsock_recv() with
- * ZSOCK_MSG_DONTWAIT, which the client's reads use, asks the module first
- * (ioctl(FIONREAD)), as the Zephyr build's recv() does with its CMD_POLL:
- * NuttX's usrsock would answer such a call from the RECVFROM_AVAIL it
- * holds, which nobody refreshes for these sockets (only their callers ask
- * the module, <nina_sockopt.h>), and a packet that arrives in pieces
- * (CONNACK: 2 bytes, then 2) would stop after the first.
+ * NuttX: NuttX's sockets, the NINA's through usrsock.  The client's reads
+ * (ZSOCK_MSG_DONTWAIT) are answered from the RECVFROM_AVAIL that usrsock
+ * holds, which the NINA's event thread raises from its polls and a
+ * receive that filled its buffer keeps (a packet read in pieces, CONNACK:
+ * 2 bytes, then 2; common/drivers/nina/port/nuttx/nina_usrsock.c).
  *
  * FreeRTOS: the layer's zsock_*() call the shared NINA core in the
  * caller's task (the Zephyr build's socket offload,

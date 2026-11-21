@@ -29,7 +29,6 @@
 #include <stdio.h>
 
 #include "nina_os.h"
-#include "nina_sockopt.h"
 #include "nina_wait.h"
 
 /* Fake clock, sleeps and line ------------------------------------------*/

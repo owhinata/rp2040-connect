@@ -11,22 +11,24 @@
  *   thread imu_raw_mqtt_tid (Zephyr priority 11 = NuttX 107, 2048 bytes).
  * - open_connection(): -ENETUNREACH without a default gateway (no socket),
  *   the configured address or the gateway, the port; the socket calls in
- *   order (socket marked NINA_SO_CALLER_POLLS, connect, send of CONNECT
- *   with keep-alive 60 and no clean session), the CONNACK wait as the
- *   Zephyr build's poll() (do_poll()): one poll of the module
- *   (getsockopt(NINA_SO_POLL)) at once, then one every
- *   k_sleep(K_MSEC(20)) until 5000 ms have gone by, NuttX's poll() never;
- *   every read that does not wait asks the module first (FIONREAD); a
- *   CONNACK that arrives in two pieces; -ETIMEDOUT, -ECONNREFUSED.
+ *   order (NuttX's socket(), connect(), send() of CONNECT with keep-alive
+ *   60 and no clean session), the CONNACK wait in NuttX's poll() (one call,
+ *   5000 ms, until the event of the NINA's event thread, without the
+ *   caller's sleeps); the reads with MSG_DONTWAIT, answered from the
+ *   RECVFROM_AVAIL that usrsock holds; a CONNACK in two pieces, whose
+ *   second piece comes through the RECVFROM_AVAIL that the driver keeps
+ *   after a receive that filled its request; -ETIMEDOUT, -ECONNREFUSED.
  * - serve_connection(): info (QoS 1, retain, message ID 1), then status
  *   (QoS 0), then the batch (QoS 0), each one PUBLISH in one sendmsg()
  *   call with the header and the body as two vectors; status every 1000
  *   ms, input every 100 ms, 5 ms sleeps while the queue is empty; a failed
  *   publish discards the batch (dropped) and ends the connection.
- * - service_input(): one poll of the module that does not wait; its
- *   POLL_ERROR (ZSOCK_POLLERR, as in the Zephyr build), a socket the
- *   module does not have (ZSOCK_POLLHUP) and a failed poll of the module
- *   end the connection with -EIO; a PINGRESP is read.
+ * - service_input(): one poll() that does not wait; the module's
+ *   POLL_ERROR or a failed poll of the module (usrsock's REMOTE_CLOSED:
+ *   ZSOCK_POLLHUP), a socket that is not connected (ZSOCK_POLLHUP) and a
+ *   failed poll() end the connection with -EIO; a PINGRESP is read, and the
+ *   RECVFROM_AVAIL kept after it costs one more receive, which the driver
+ *   answers EAGAIN.
  * - raw_mqtt_thread() started before the network is up (the client not
  *   initialized yet): -ENETUNREACH counted as a failure, 1000 ms, again,
  *   then the connection when the gateway comes; after the stop it waits
@@ -50,13 +52,12 @@
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <netinet/in.h>
-#include <sys/ioctl.h>
 #include <sys/socket.h>
 #include <sys/types.h>
 #include <sys/uio.h>
 
-/* The fake socket calls that the files under test (and the layer's inline
- * zsock_*()) call, and the test's sleep.
+/* The fake socket calls that the files under test (through the layer's
+ * zsock_*(), NuttX's calls) call, and the test's sleep.
  */
 #define socket(f, t, p) fake_socket(f, t, p)
 #define connect(s, a, l) fake_connect(s, a, l)
@@ -64,10 +65,7 @@
 #define sendmsg(s, m, f) fake_sendmsg(s, m, f)
 #define recv(s, b, l, f) fake_recv(s, b, l, f)
 #define close(s) fake_close(s)
-#define ioctl(fd, req, ...) fake_ioctl(fd, req, __VA_ARGS__)
 #define poll(fds, n, t) fake_poll(fds, n, t)
-#define setsockopt(s, l, o, v, n) fake_setsockopt(s, l, o, v, n)
-#define getsockopt(s, l, o, v, n) fake_getsockopt(s, l, o, v, n)
 #define k_sleep test_sleep
 
 int fake_socket(int family, int type, int protocol);
@@ -76,10 +74,7 @@ ssize_t fake_send(int sock, const void *buf, size_t len, int flags);
 ssize_t fake_sendmsg(int sock, const struct msghdr *msg, int flags);
 ssize_t fake_recv(int sock, void *buf, size_t len, int flags);
 int fake_close(int sock);
-int fake_ioctl(int fd, unsigned long req, ...);
 int fake_poll(struct pollfd *fds, nfds_t n, int timeout);
-int fake_setsockopt(int sock, int level, int option, const void *value, socklen_t len);
-int fake_getsockopt(int sock, int level, int option, void *value, socklen_t *len);
 
 #include <zephyr/kernel.h>
 int32_t test_sleep(k_timeout_t timeout);
@@ -94,21 +89,23 @@ int test_sem_take(struct k_sem *sem, k_timeout_t timeout);
 #include "imu_raw_batch.h"
 #include "zephyr_kernel_host.h"
 
-/* common/drivers/nina/internal/nina_wait.c without the module's socket events (the
- * layer's zsock_recv() and zsock_poll() wait with it): the loop's interval,
- * nina_os_sleep_ms() (nxsched_msleep(), the same ticks as
- * k_sleep(K_MSEC())); here the test's sleep.
- */
-void nina_wait_mark(struct nina_wait *w)
-{
-	(void)w;
-}
+/* The log (app_log.h of tests/lsm6dso_fakes): the lines and the last one. */
 
-void nina_wait(struct nina_wait *w, uint32_t poll_ms, int64_t deadline)
+static char log_last[128];
+static int log_lines;
+static const char *step; /* serve_connection()'s */
+
+void test_log(int level, const char *module, const char *fmt, ...)
 {
-	(void)w;
-	(void)deadline;
-	(void)k_sleep(K_MSEC(poll_ms));
+	static const char *const names[] = {"", "err", "wrn", "inf", "dbg"};
+	va_list ap;
+	int n;
+
+	n = snprintf(log_last, sizeof(log_last), "<%s> %s: ", names[level], module);
+	va_start(ap, fmt);
+	vsnprintf(log_last + n, sizeof(log_last) - n, fmt, ap);
+	va_end(ap);
+	log_lines++;
 }
 
 /* The clock ---------------------------------------------------------------*/
@@ -119,6 +116,7 @@ static int64_t stop_at_ms = -1;  /* test_sleep() clears running from then */
 static int sleeps;
 static void (*sleep_hook)(k_timeout_t timeout);
 static jmp_buf thread_waits;     /* raw_mqtt_thread() waits for a start */
+static void event_thread(void);
 
 uint64_t k_cycle_get_64(void)
 {
@@ -143,6 +141,7 @@ int32_t test_sleep(k_timeout_t timeout)
 		sleep_hook(timeout);
 	}
 	set_time_us(now_us + (uint64_t)(timeout.ticks + 1) * Z_USEC_PER_TICK);
+	event_thread();
 	if (stop_at_ms >= 0 && k_uptime_get() >= stop_at_ms) {
 		atomic_clear(&running);
 	}
@@ -183,10 +182,13 @@ struct in_addr net_if_ipv4_get_gw(struct net_if *i)
 
 #define FD 9
 
-/* EV_MARK: setsockopt(NINA_SO_CALLER_POLLS); EV_PSTATE: getsockopt
- * (NINA_SO_POLL), one poll of the module. */
-enum ev { EV_SOCKET, EV_CONNECT, EV_SEND, EV_SENDMSG, EV_RECV, EV_CLOSE, EV_IOCTL, EV_POLL,
-	  EV_MARK, EV_PSTATE };
+/* NuttX's socket calls on a usrsock socket of the NINA driver.  EV_RECV: a
+ * receive that reaches the driver (one usrsock request); EV_RECV_LOCAL: a
+ * receive with MSG_DONTWAIT that usrsock answers EAGAIN itself, as it holds
+ * no RECVFROM_AVAIL; EV_POLL: NuttX's poll().
+ */
+enum ev { EV_SOCKET, EV_CONNECT, EV_SEND, EV_SENDMSG, EV_RECV, EV_RECV_LOCAL, EV_CLOSE,
+	  EV_POLL };
 
 struct event {
 	enum ev type;
@@ -212,11 +214,14 @@ static struct {
 	uint8_t rx[512];
 	size_t rx_len, rx_pos, seg_end[16];
 	int segs, seg;
-	bool hup;        /* the module's POLL_ERROR */
-	bool no_module;  /* the module has no socket: POLLHUP */
-	bool marked;
+	/* What usrsock holds: RECVFROM_AVAIL, REMOTE_CLOSED (the event thread
+	 * found the module's POLL_ERROR or its poll failed). */
+	bool avail;
+	bool closed;
+	bool no_module;  /* not connected: POLLIN, POLLOUT and POLLHUP */
 	uint64_t arrive_at_us;  /* the CONNACK arrives then (0: not) */
-	int ioctl_errno; /* FIONREAD and NINA_SO_POLL fail with it */
+	uint64_t event_delay_us; /* from an arrival to RECVFROM_AVAIL */
+	int poll_errno;
 	int connect_errno;
 } fk;
 
@@ -231,17 +236,28 @@ static void record(enum ev type, long arg, int flags)
 	fk.ev[fk.nev++] = (struct event){type, arg, flags, now_us};
 }
 
-/* Bytes the broker sends, in one piece each call. */
+static bool readable(void)
+{
+	return fk.rx_pos < fk.rx_len;
+}
+
+/* Bytes the broker sends, in one piece each call; the event thread reports
+ * them at once (RECVFROM_AVAIL). */
 static void arrive(const void *data, size_t len)
 {
 	memcpy(&fk.rx[fk.rx_len], data, len);
 	fk.rx_len += len;
 	fk.seg_end[fk.segs++] = fk.rx_len;
+	fk.avail = true;
 }
 
-static bool readable(void)
+/* nina_poller.c, below the caller's priority: it polls while the caller
+ * sleeps or waits. */
+static void event_thread(void)
 {
-	return fk.rx_pos < fk.rx_len;
+	if (readable()) {
+		fk.avail = true;
+	}
 }
 
 int fake_socket(int family, int type, int protocol)
@@ -300,13 +316,24 @@ ssize_t fake_sendmsg(int sock, const struct msghdr *msg, int flags)
 	return (ssize_t)total;
 }
 
+/* usrsock_recvmsg() and the driver's answer (nina_usrsock.c,
+ * handle_recvfrom()): without RECVFROM_AVAIL, EAGAIN without a request;
+ * with it, one request: nothing there is EAGAIN and drops RECVFROM_AVAIL;
+ * data that fills the request keeps it, less drops it (the event thread
+ * raises it again at its next poll). */
 ssize_t fake_recv(int sock, void *buf, size_t len, int flags)
 {
 	size_t n;
 
-	assert(sock == FD && fk.open);
+	assert(sock == FD && fk.open && (flags & MSG_DONTWAIT));
+	if (!fk.avail) {
+		record(EV_RECV_LOCAL, (long)len, flags);
+		errno = EAGAIN;
+		return -1;
+	}
 	record(EV_RECV, (long)len, flags);
 	if (!readable()) {
+		fk.avail = false;
 		errno = EAGAIN;
 		return -1;
 	}
@@ -317,6 +344,7 @@ ssize_t fake_recv(int sock, void *buf, size_t len, int flags)
 	n = n < len ? n : len;
 	memcpy(buf, &fk.rx[fk.rx_pos], n);
 	fk.rx_pos += n;
+	fk.avail = n == len;
 	return (ssize_t)n;
 }
 
@@ -328,66 +356,48 @@ int fake_close(int sock)
 	return 0;
 }
 
-int fake_ioctl(int fd, unsigned long req, ...)
+/* usrsock_poll()'s answer from what usrsock holds. */
+static short revents_now(short events)
 {
-	va_list ap;
-	int *avail;
+	short revents;
 
-	assert(fd == FD && fk.open && req == FIONREAD);
-	va_start(ap, req);
-	avail = va_arg(ap, int *);
-	va_end(ap);
-	record(EV_IOCTL, 0, 0);
-	if (fk.ioctl_errno) {
-		errno = fk.ioctl_errno;
-		return -1;
+	if (fk.no_module) {
+		revents = POLLIN | POLLOUT | POLLHUP;
+	} else if (fk.closed) {
+		revents = POLLHUP | (fk.avail ? POLLIN : 0);
+	} else {
+		revents = POLLOUT | (fk.avail ? POLLIN : 0);
 	}
-	*avail = readable() ? 1 : 0;
-	return 0;
+	return revents & (events | POLLERR | POLLHUP);
 }
 
-/* NuttX's poll(): only for what is not a NINA socket; never here. */
+/* NuttX's poll() of the one socket: what is held now, else a wait for the
+ * event thread's event (a CONNACK that arrives at fk.arrive_at_us, reported
+ * fk.event_delay_us later) or the timeout. */
 int fake_poll(struct pollfd *fds, nfds_t n, int timeout)
 {
-	(void)fds;
-	(void)n;
+	assert(n == 1 && fds[0].fd == FD && fk.open);
 	record(EV_POLL, timeout, 0);
-	assert(0);
-	return -1;
-}
-
-int fake_setsockopt(int sock, int level, int option, const void *value, socklen_t len)
-{
-	assert(sock == FD && fk.open && level == NINA_SOL && option == NINA_SO_CALLER_POLLS &&
-	       len == sizeof(int) && *(const int *)value == 1);
-	record(EV_MARK, 0, 0);
-	fk.marked = true;
-	return 0;
-}
-
-/* The driver's answer (nina_sock_poll_revents()): POLLIN, POLLOUT (a
- * connected TCP socket has room), POLLERR; POLLHUP alone without a module
- * socket. */
-int fake_getsockopt(int sock, int level, int option, void *value, socklen_t *len)
-{
-	int revents;
-
-	assert(sock == FD && fk.open && fk.marked && level == NINA_SOL &&
-	       option == NINA_SO_POLL && *len == sizeof(int));
-	record(EV_PSTATE, 0, 0);
-	if (fk.arrive_at_us && now_us >= fk.arrive_at_us) {
-		static const uint8_t connack[] = {0x20, 0x02, 0x00, 0x00};
-
-		fk.arrive_at_us = 0;
-		arrive(connack, sizeof(connack));
-	}
-	if (fk.ioctl_errno) {
-		errno = fk.ioctl_errno;
+	if (fk.poll_errno) {
+		errno = fk.poll_errno;
 		return -1;
 	}
-	revents = fk.no_module ? POLLHUP :
-		  POLLOUT | (readable() ? POLLIN : 0) | (fk.hup ? POLLERR : 0);
-	memcpy(value, &revents, sizeof(revents));
+	fds[0].revents = revents_now(fds[0].events);
+	if (fds[0].revents || timeout == 0) {
+		return fds[0].revents ? 1 : 0;
+	}
+	assert(timeout > 0);
+	if (fk.arrive_at_us &&
+	    fk.arrive_at_us + fk.event_delay_us <= now_us + (uint64_t)timeout * 1000) {
+		static const uint8_t connack[] = {0x20, 0x02, 0x00, 0x00};
+
+		set_time_us(fk.arrive_at_us + fk.event_delay_us);
+		fk.arrive_at_us = 0;
+		arrive(connack, sizeof(connack));
+		fds[0].revents = revents_now(fds[0].events);
+		return 1;
+	}
+	set_time_us(now_us + (uint64_t)timeout * 1000);
 	return 0;
 }
 
@@ -506,11 +516,13 @@ static void run_before_network(void)
 	static const uint8_t zero[sizeof(client)];
 	struct imu_raw_mqtt_config cfg = {.port = 18830, .device_id = "rp2040"};
 	struct imu_raw_mqtt_stats st;
+	char line[128];
 
 	assert(!memcmp(&client, zero, sizeof(client)));
 	fake_reset();
 	assert(imu_raw_mqtt_start(&cfg) == 0);
 	retry_sleeps = 0;
+	log_lines = 0;
 	sleep_hook = network_comes_up;
 	if (!setjmp(thread_waits)) {
 		raw_mqtt_thread(NULL, NULL, NULL);
@@ -520,6 +532,9 @@ static void run_before_network(void)
 	stop_at_ms = -1;
 	imu_raw_mqtt_get_stats(&st);
 	assert(retry_sleeps == 3 && st.failures == 3 && st.connects == 1 && !st.connected);
+	/* The three failures are of one kind: one line in the log. */
+	snprintf(line, sizeof(line), "<wrn> imu_raw_mqtt: MQTT connect failed: %d", -ENETUNREACH);
+	assert(log_lines == 1 && !strcmp(log_last, line));
 	assert(st.status_published >= 1 && fk.addr.sin_addr.s_addr == htonl(0x0a2a0001));
 	assert(!atomic_get(&worker_active) && !atomic_get(&running) && !fk.open);
 	/* Stopped: the next start is accepted (not -EBUSY). */
@@ -587,19 +602,21 @@ int main(void)
 	have_iface = true;
 	gateway.s_addr = htonl(0x0a2a0001);
 
-	/* A connection: the calls in order.  The CONNACK comes in two pieces;
-	 * every read that does not wait asks the module first. */
+	/* A connection: the calls in order.  The CONNACK comes in two pieces:
+	 * the first read fills its request, so RECVFROM_AVAIL stays and the
+	 * second read reaches the driver. */
 	connect_ok();
 	{
-		static const enum ev seq[] = {EV_SOCKET, EV_MARK, EV_CONNECT, EV_SEND, EV_PSTATE,
-					      EV_IOCTL, EV_RECV, EV_IOCTL, EV_RECV};
-		expect(0, seq, 9);
+		static const enum ev seq[] = {EV_SOCKET, EV_CONNECT, EV_SEND, EV_POLL, EV_RECV,
+					      EV_RECV};
+		expect(0, seq, 6);
 	}
+	assert(fk.ev[3].arg == CONNACK_WAIT_MS);
 	assert(fk.family == AF_INET && fk.type == SOCK_STREAM && fk.protocol == IPPROTO_TCP);
 	assert(fk.addr.sin_family == AF_INET && fk.addr.sin_port == htons(18830) &&
 	       fk.addr.sin_addr.s_addr == htonl(0x0a2a0001));
-	assert(fk.ev[6].arg == 2 && fk.ev[6].flags == MSG_DONTWAIT); /* fixed header */
-	assert(fk.ev[8].arg == 2 && fk.ev[8].flags == MSG_DONTWAIT);
+	assert(fk.ev[4].arg == 2 && fk.ev[4].flags == MSG_DONTWAIT); /* fixed header */
+	assert(fk.ev[5].arg == 2 && fk.ev[5].flags == MSG_DONTWAIT);
 	/* CONNECT: MQTT 3.1.1, no clean session, keep-alive 60, the client ID. */
 	{
 		static const uint8_t connect_pkt[] = {
@@ -627,13 +644,16 @@ int main(void)
 		fk.send_us = 1234;
 		sleeps = 0;
 		stop_at_ms = 0; /* stop at the first sleep */
-		assert(serve_connection() == 0);
+		assert(serve_connection(&step) == 0);
 		assert(fk.nmsg == 3 && sleeps == 1);
+		/* The input: poll() that does not wait, then the read that the
+		 * RECVFROM_AVAIL kept after the CONNACK allows, EAGAIN. */
 		{
-			static const enum ev seq[] = {EV_SENDMSG, EV_SENDMSG, EV_SENDMSG,
-						      EV_PSTATE};
-			expect(from, seq, 4);
+			static const enum ev seq[] = {EV_SENDMSG, EV_SENDMSG, EV_SENDMSG, EV_POLL,
+						      EV_RECV};
+			expect(from, seq, 5);
 		}
+		assert(fk.ev[from + 3].arg == 0 && !fk.avail);
 		for (int i = 0; i < 3; i++) {
 			assert(fk.ev[from + i].arg == 2); /* header and body: two vectors */
 		}
@@ -661,10 +681,11 @@ int main(void)
 		fk.nmsg = 0;
 		from = fk.nev;
 		stop_at_ms = t0 + 2050;
-		assert(serve_connection() == 0);
+		assert(serve_connection(&step) == 0);
 		for (int i = from; i < fk.nev; i++) {
-			polls += fk.ev[i].type == EV_PSTATE;
-			assert(fk.ev[i].type != EV_IOCTL && fk.ev[i].type != EV_POLL);
+			polls += fk.ev[i].type == EV_POLL;
+			assert(fk.ev[i].type != EV_POLL || fk.ev[i].arg == 0);
+			assert(fk.ev[i].type != EV_RECV && fk.ev[i].type != EV_RECV_LOCAL);
 		}
 		for (int i = 0; i < fk.nmsg; i++) {
 			status_msgs += !strcmp(publish_of(i).topic, "imu/rp2040-x_1/status");
@@ -685,24 +706,33 @@ int main(void)
 		arrive(pingresp, 2);
 		assert(service_input() == 0 && !readable());
 		{
-			static const enum ev seq[] = {EV_PSTATE, EV_IOCTL, EV_RECV};
-			expect(from, seq, 3);
+			static const enum ev seq[] = {EV_POLL, EV_RECV};
+			expect(from, seq, 2);
+		}
+		/* The kept RECVFROM_AVAIL: one more read, EAGAIN, then nothing
+		 * held: one poll() that does not wait, no sleep. */
+		from = fk.nev;
+		assert(service_input() == 0);
+		{
+			static const enum ev seq[] = {EV_POLL, EV_RECV};
+			expect(from, seq, 2);
 		}
 		from = fk.nev;
-		assert(service_input() == 0);    /* nothing there: one poll, no sleep */
+		assert(service_input() == 0);
 		{
-			static const enum ev seq[] = {EV_PSTATE};
+			static const enum ev seq[] = {EV_POLL};
 			expect(from, seq, 1);
 		}
-		fk.hup = true;
-		assert(service_input() == -EIO); /* POLL_ERROR: ZSOCK_POLLERR */
-		fk.hup = false;
+		/* The module's POLL_ERROR or a failed poll of it: REMOTE_CLOSED. */
+		fk.closed = true;
+		assert(service_input() == -EIO); /* ZSOCK_POLLHUP */
+		fk.closed = false;
 		fk.no_module = true;
 		assert(service_input() == -EIO); /* ZSOCK_POLLHUP */
 		fk.no_module = false;
-		fk.ioctl_errno = EIO;
+		fk.poll_errno = EIO;
 		assert(service_input() == -EIO);
-		fk.ioctl_errno = 0;
+		fk.poll_errno = 0;
 		assert(sleeps == 0);
 	}
 
@@ -716,7 +746,8 @@ int main(void)
 		assert(imu_raw_mqtt_submit(NULL, batch, batch_len) == 0);
 		fk.sendmsg_errno = EAGAIN;
 		stop_at_ms = -1;
-		assert(serve_connection() == -EAGAIN);
+		assert(serve_connection(&step) == -EAGAIN);
+		assert(!strcmp(step, "info"));
 		imu_raw_mqtt_get_stats(&st);
 		/* The info, published first, failed; the batch is still queued. */
 		assert(st.queued == 1 && st.dropped_batches == dropped && st.published == 1);
@@ -747,48 +778,36 @@ int main(void)
 	fk.sendmsg_errno = 0;
 	finish();
 
-	/* No CONNACK within 5000 ms: -ETIMEDOUT.  The module is polled at
-	 * once and after each k_sleep(K_MSEC(20)) (20.1 ms: 200 ticks + 1)
-	 * until 5000 ms have gone by, as the Zephyr build's do_poll(). */
+	/* No CONNACK within 5000 ms: -ETIMEDOUT.  One poll() that waits the
+	 * 5000 ms itself, without the caller's sleeps. */
 	start("rp2040");
 	fake_reset();
 	sleeps = 0;
 	stop_at_ms = -1;
-	assert(open_connection() == -ETIMEDOUT);
 	{
-		static const enum ev seq[] = {EV_SOCKET, EV_MARK, EV_CONNECT, EV_SEND};
-		int polls = fk.nev - 4;
-		uint64_t first = fk.ev[4].us;
+		static const enum ev seq[] = {EV_SOCKET, EV_CONNECT, EV_SEND, EV_POLL, EV_CLOSE};
+		uint64_t t0 = now_us;
 
-		for (int i = 0; i < 4; i++) {
-			assert(fk.ev[i].type == seq[i]);
-		}
-		for (int i = 4; i < fk.nev; i++) {
-			assert(fk.ev[i].type == EV_PSTATE);
-			assert(i == 4 || fk.ev[i].us - fk.ev[i - 1].us == 20100);
-		}
-		/* 0, 20.1, ..., 4984.8 ms: not yet; 5004.9 ms: over. */
-		assert(polls == 250 && sleeps == polls - 1);
-		assert(fk.ev[fk.nev - 1].us - first == 249 * 20100);
+		assert(open_connection() == -ETIMEDOUT);
+		assert(now_us - t0 == 5000000 && sleeps == 0);
+		finish();
+		expect(0, seq, 5);
+		assert(fk.ev[3].arg == CONNACK_WAIT_MS);
 	}
-	finish();
 
-	/* A CONNACK that arrives during the wait (at +1010 ms) is found by
-	 * the next poll (+1025.1 ms), then read. */
+	/* A CONNACK that arrives during the wait (at +1010 ms) ends it when
+	 * the event thread reports it (15 ms later here), then it is read. */
 	start("rp2040");
 	fake_reset();
 	fk.arrive_at_us = now_us + 1010000;
-	assert(open_connection() == 0);
+	fk.event_delay_us = 15000;
 	{
-		int polls = 0;
+		static const enum ev seq[] = {EV_SOCKET, EV_CONNECT, EV_SEND, EV_POLL, EV_RECV,
+					      EV_RECV};
 
-		for (int i = 0; i < fk.nev; i++) {
-			if (fk.ev[i].type == EV_PSTATE) {
-				polls++;
-				assert(fk.ev[i].us - fk.ev[4].us == (uint64_t)(polls - 1) * 20100);
-			}
-		}
-		assert(polls == 52 && fk.ev[fk.nev - 1].type == EV_RECV);
+		assert(open_connection() == 0);
+		expect(0, seq, 6);
+		assert(fk.ev[4].us - fk.ev[3].us == 1010000 + 15000);
 	}
 	set_connected(false);
 	finish();

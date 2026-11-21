@@ -79,9 +79,9 @@ TCP/IP stack is not used (`NET_TCP_NO_STACK`, `NET_UDP_NO_STACK`).
 
 | File | Role |
 |---|---|
-| `common/drivers/nina/nina_sock.[ch]` | The socket table (10 sockets) and the NINA's socket commands: `nina_socket_create()`, `do_bind()`, `do_listen()`, `do_accept()`, `do_connect()`, `do_close()` and `do_setsockopt()`, and for sending and receiving `udp_send()`, `do_send()`, `do_sendmsg()`, `udp_recv()` and `do_recv()`, (one pass of a send or receive wait loop per request). Used by the three builds. `FIONREAD` (`nina_sock_fionread()`) and the driver's own socket options `NINA_SO_CALLER_POLLS` and `NINA_SO_POLL` (`nina_sock_poll_revents()`, `common/drivers/nina/nina_sockopt.h`) are not used by the Zephyr version. OS-independent |
+| `common/drivers/nina/nina_sock.[ch]` | The socket table (10 sockets) and the NINA's socket commands: `nina_socket_create()`, `do_bind()`, `do_listen()`, `do_accept()`, `do_connect()`, `do_close()` and `do_setsockopt()`, and for sending and receiving `udp_send()`, `do_send()`, `do_sendmsg()`, `udp_recv()` and `do_recv()`, (one pass of a send or receive wait loop per request). Used by the three builds. `nina_sock_poll_revents()` (`do_poll()` for one socket) is used by the Zephyr and FreeRTOS versions only. OS-independent |
 | `common/drivers/nina/port/nuttx/nina_usrsock.c` | Dispatches usrsock's requests to the functions above and answers them (ACK) |
-| `common/drivers/nina/port/nuttx/nina_poller.c` | The thread `nina_event`: turns the state of the NINA's sockets into usrsock events (for a socket whose callers poll, only while it connects), and times the retries of a waiting send; with a firmware that reports socket events, it wakes on the IRQ line's edges |
+| `common/drivers/nina/port/nuttx/nina_poller.c` | The thread `nina_event`: turns the state of the NINA's sockets into usrsock events, and times the retries of a waiting send; with a firmware that reports socket events, it wakes on the IRQ line's edges |
 | `common/drivers/nina/port/nuttx/nina_usrsock.h` | The declarations between the two |
 
 - A request is handled synchronously in the calling thread, at its priority (as the Zephyr
@@ -102,19 +102,13 @@ TCP/IP stack is not used (`NET_TCP_NO_STACK`, `NET_UDP_NO_STACK`).
   whose events usrsock already holds is not queried; with nothing to query the thread sleeps until
   a request wakes it. With a firmware that reports socket events ("Firmware additions" below), the
   queries come at the IRQ line's edges (100 ms at most) instead of every 20 ms.
-- Sockets whose callers poll: the compatibility layer's `zsock_socket()` marks the socket it makes
-  with the driver's own socket option `NINA_SO_CALLER_POLLS` (level `NINA_SOL`,
-  `nina_sockopt.h`): the MQTT and time synchronization sockets. `nina_event` does not query
-  a marked socket except to check a connection in progress, nor after a receive. As with the
-  Zephyr version's NINA sockets, only its users (the layer's `zsock_recv()` and `zsock_poll()`)
-  ask the NINA, in the calling thread (see the layer's "`zsock_poll()`" below). Unmarked sockets
-  (Telnet, iperf, nsh commands) are queried by `nina_event` as above (the Zephyr version's Telnet is
-  also asked every 20 ms, by the socket service's `poll()`). For a marked socket too, `nina_event`
-  checks a connection (every 20 ms, up to 10 s) and times the wait before a waiting send's next pass
-  (1 ms): under usrsock, a request held while waiting would stop the other sockets' requests too;
-  the NINA commands of each pass are sent from the calling thread. A waiting receive (`recv()`
-  without `MSG_DONTWAIT`) or NuttX's `poll()` on a marked socket would wait for an event that does
-  not come: use the layer's calls on these sockets.
+- Every socket is handled so: the MQTT and time synchronization sockets (the compatibility
+  layer's `zsock_*()` calls are NuttX's socket calls) as well as Telnet's, iperf's and the nsh
+  commands'. `nina_event` runs below their threads' priorities (106; MQTT 107, time
+  synchronization 109), so its polls come while they sleep or wait. The Zephyr version asks the
+  NINA only from the threads that use a socket (MQTT's input every 100 ms, the time
+  synchronization's receive every 1 ms while it waits for a reply); here `nina_event` asks about
+  each socket that has something to report, every 20 ms or at the IRQ line's edges.
 - connect: the state is checked once right after the connect command (the first pass of the
   Zephyr version's loop); if the handshake is not done, the request is answered "in progress" and
   `nina_event` checks every 20 ms, up to 10 s after the connect command (`ETIMEDOUT`). Success is
@@ -127,10 +121,8 @@ TCP/IP stack is not used (`NET_TCP_NO_STACK`, `NET_UDP_NO_STACK`).
   next event. The new socket gets `SENDTO_READY`.
 - Unsupported operations give the Zephyr version's errno: `getsockopt`, `getsockname`,
   `getpeername` and `shutdown` give `EOPNOTSUPP`; `setsockopt` other than `TCP_NODELAY` gives
-  `ENOPROTOOPT` (NuttX handles `SO_RCVTIMEO` and `SO_SNDTIMEO` itself). The exceptions are the
-  driver's own two at `NINA_SOL` (`NINA_SO_CALLER_POLLS` for `setsockopt`, `NINA_SO_POLL` for
-  `getsockopt`). `ioctl` other than `FIONREAD`
-  (below) answers `ENOTTY`, which leaves the command to NuttX's own handling (the network device's
+  `ENOPROTOOPT` (NuttX handles `SO_RCVTIMEO` and `SO_SNDTIMEO` itself).
+  `ioctl` answers `ENOTTY`, which leaves the command to NuttX's own handling (the network device's
   `SIOC*` and so on). `socket(AF_INET, SOCK_CTRL)` (used by `ifconfig` and others) is answered
   `ENOTSUP`, which leaves it to NuttX.
 - Sending and receiving use the Zephyr version's values: a TCP send takes at most 3584 bytes a
@@ -160,26 +152,24 @@ TCP/IP stack is not used (`NET_TCP_NO_STACK`, `NET_UDP_NO_STACK`).
   - A receive first checks with the NINA's poll that data is there (as in the Zephyr version: the
     answer cannot tell "nothing" from an empty datagram); if not, the answer is `EAGAIN` with
     `RECVFROM_AVAIL` dropped. A waiting receive waits in usrsock for `RECVFROM_AVAIL`, which
-    `nina_event` reports from its polls every 20 ms (NuttX handles `SO_RCVTIMEO`). After data is
-    received `RECVFROM_AVAIL` is dropped too and `nina_event` polls again at once. usrsock passes a
-    receive to the driver only with `RECVFROM_AVAIL`, so on an unmarked socket the first query of a
-    receive or a `poll()` can wait for `nina_event`'s poll (up to 20 ms; the Zephyr version asks
-    there and then). On a marked socket the layer asks first with `FIONREAD`, without that delay.
-  - A poll that found data (`nina_event`'s, `FIONREAD`'s) stands for the next receive's first poll
-    (nothing takes the data in between).
+    `nina_event` reports from its polls every 20 ms (NuttX handles `SO_RCVTIMEO`). A TCP receive
+    that filled its request (all it asked for, up to 512 bytes) keeps `RECVFROM_AVAIL`: more may
+    be there, and the next receive asks the NINA (as every receive of the Zephyr version does).
+    After other data `RECVFROM_AVAIL` is dropped and `nina_event` polls again at once. usrsock
+    passes a receive to the driver only with `RECVFROM_AVAIL` (without it, a receive with
+    `MSG_DONTWAIT` gets `EAGAIN` from usrsock itself), so a receive or a `poll()` learns of new data
+    only from `nina_event`'s poll (up to 20 ms later, or at the IRQ line's edge; the Zephyr version
+    asks there and then). Without the kept `RECVFROM_AVAIL`, a packet read in pieces (the MQTT
+    client's CONNACK: 2 bytes, then 2) would stop after the first piece, as `nina_event` may come
+    only after the next receive.
+  - A UDP socket's first send, which creates its NINA socket, makes `nina_event` poll it at once
+    (with the socket events, that poll arms the event of the reply, such as the time
+    synchronization's).
+  - A poll that found data (`nina_event`'s) stands for the next receive's first poll (nothing takes
+    the data in between).
 - A TCP receive of 0 means the peer closed or the connection failed (the NINA reports both as zero
   bytes, as in the Zephyr version). A UDP socket connected with `connect()` drops datagrams from
   other senders (as in the Zephyr version).
-- `ioctl(FIONREAD)` is the NuttX version's own: one NINA poll there and then, in the calling thread;
-  1 when data (for TCP also the peer's close) is there, 0 when not (the NINA does not give a byte
-  count). With 1 the answer carries `RECVFROM_AVAIL`, so a following `recv(MSG_DONTWAIT)` reaches
-  the NINA. The compatibility layer's `zsock_recv()` uses it (the Zephyr version's NINA `recv()`
-  sends one poll on every call before it reads: the time synchronization's receive every 1 ms and
-  the MQTT library's `recv(MSG_DONTWAIT)`; see the layer's table below).
-- `getsockopt(NINA_SOL, NINA_SO_POLL)` (an int) is the NuttX version's own too: one pass of the
-  Zephyr version's `do_poll()` for one socket. Without a NINA socket yet the NINA is not asked: TCP
-  gives `POLLHUP`, UDP `POLLOUT`. Otherwise one poll: readable → `POLLIN`, writable → `POLLOUT`, the
-  error flag → `POLLERR`; a failed poll gives its errno. The layer's `zsock_poll()` uses it.
 - `common/drivers/nina/nina_sock.c` is checked by a host test (`common/tests/nina_sock.c`) with a fake
   `nina_request()` and clock.
 
@@ -292,12 +282,10 @@ Bit 2 on NuttX:
 - A waiting TCP send's next pass: after a pass that only polled (the socket was not writable),
   when the count has changed since the request noted it before its commands (100 ms at most, not
   past the send's deadline); after a pass that sent and got zero bytes, 1 ms later, as without bit 2.
-- The layer's `zsock_recv()` and `zsock_poll()` use the same waits (`nina_wait()`). A
-  `zsock_poll()` that includes a NuttX socket (not a NINA one) looks again at least every 20 ms.
 - If `nina_os_event_start()` fails, the waits keep their intervals whatever the firmware.
 - `nuttx/tests/nina_os.c` (`nina_os`) tests the interrupt and the waits of `nina_os.c`, and the
   Wi-Fi operations' lock and requests.
-  The passes of `nina_event` at the edges and the layer's waits have no host test.
+  The passes of `nina_event` at the edges have no host test.
 
 ### Passthrough mode (`nina passthrough confirm`)
 
@@ -700,7 +688,7 @@ of the NuttX implementation on the include path.
 | `zephyr/sys/printk.h`, `zephyr/sys/byteorder.h`, `zephyr/sys/cpu_load.h` | `snprintk()` (`snprintf()`, as in the Zephyr version's configuration with `CONFIG_PICOLIBC=y`), `sys_put_be16/32()`/`sys_get_be16/32()`/`sys_get_le32()`, `cpu_load_get()` (`cpu_load.h`; the board implements it) |
 | `zephyr/drivers/hwinfo.h` | `hwinfo_get_device_id()` (below) |
 | `zephyr/shell/shell.h` | `shell_print()`, `shell_info()`, `shell_warn()`, `shell_error()`, `shell_fprintf()`, `struct shell` (a shell backend; its members are the OS part `zephyr_os_shell.h`), the command table macros (`SHELL_CMD_REGISTER()`, `SHELL_STATIC_SUBCMD_SET_CREATE()`, `SHELL_DYNAMIC_CMD_CREATE()`, `SHELL_CMD_ARG()`, `SHELL_CMD()`, `SHELL_COND_CMD()`, `SHELL_EXPR_CMD_ARG()`, `SHELL_HELP()`, `SHELL_SUBCMD_SET_END`), `shell_device_get_binding()`, `shell_device_filter()` (below) |
-| `zephyr/net/socket.h` (NuttX) | `zsock_inet_pton()`, `zsock_inet_ntop()` (the C library's `inet_pton()`, `inet_ntop()`), `zsock_getaddrinfo()`, `zsock_freeaddrinfo()` (the NINA's resolver, `nina_dns_getaddrinfo()`; errors are NuttX's `EAI_*`), `zsock_socket()` (NuttX's `socket()` marked `NINA_SO_CALLER_POLLS`; if the mark is refused, closed and -1), `zsock_sendto()`, `zsock_close()` (NuttX's `sendto()`, `close()`), `zsock_recv()` (asks the NINA there and then with `ioctl(FIONREAD)` and reads with `recv(MSG_DONTWAIT)` when something is there; nothing there: `EAGAIN` with `ZSOCK_MSG_DONTWAIT`, otherwise asks again every 20 ms (with socket events, at the IRQ line's edge, 100 ms at most); as the Zephyr version's NINA `recv()`, `do_recv()` and `udp_recv()`, asks on every call and every 20 ms while it waits; `SO_RCVTIMEO` and `O_NONBLOCK` are not looked at), `ZSOCK_MSG_DONTWAIT`, `zsock_connect()`, `zsock_send()`, `zsock_sendmsg()` (`connect()`, `send()`, `sendmsg()`), `zsock_poll()`, `struct zsock_pollfd`, `ZSOCK_POLLIN` and the others (`poll()` and `struct pollfd`; how the NINA is asked, below) |
+| `zephyr/net/socket.h` (NuttX) | `zsock_inet_pton()`, `zsock_inet_ntop()` (the C library's `inet_pton()`, `inet_ntop()`), `zsock_getaddrinfo()`, `zsock_freeaddrinfo()` (the NINA's resolver, `nina_dns_getaddrinfo()`; errors are NuttX's `EAI_*`), `zsock_socket()`, `zsock_sendto()`, `zsock_close()`, `zsock_recv()`, `zsock_connect()`, `zsock_send()`, `zsock_sendmsg()`, `zsock_poll()` (NuttX's `socket()`, `sendto()`, `close()`, `recv()`, `connect()`, `send()`, `sendmsg()`, `poll()`), `ZSOCK_MSG_DONTWAIT`, `struct zsock_pollfd`, `ZSOCK_POLLIN` and the others (`MSG_DONTWAIT`, `struct pollfd`, `POLLIN`; how they behave on the NINA's sockets, below) |
 | `zephyr/sys/clock.h` (NuttX) | `sys_clock_gettime()`, `sys_clock_settime()` (`SYS_CLOCK_REALTIME`: NuttX's `clock_gettime()`, `clock_settime()` with `CLOCK_REALTIME`; 0 or `-EINVAL`), `NSEC_PER_USEC`, `USEC_PER_SEC` |
 | `zephyr/net/net_if.h` (NuttX) | `struct net_if` (one NuttX network device), `net_if_get_default()`, `net_if_get_wifi_sta()`, the IPv4 address and gateway as the applications read them (`net_if_ipv4_get_global_addr()`, `net_if_ipv4_get_gw()`), `net_if_is_admin_up()` (below); the NINA's binding sets the device's values itself |
 | `zephyr/net/net_mgmt.h` | `net_mgmt()` (requests), `struct net_mgmt_event_callback`, `net_mgmt_init_event_callback()`, `net_mgmt_add_event_callback()`, `_del_event_callback()`, `net_mgmt_event_notify_with_info()` (below) |
@@ -931,19 +919,15 @@ of the NuttX implementation on the include path.
 - **Network**: `zsock_inet_pton()` and `zsock_inet_ntop()` are the C library's functions. While
   networking is off, `imu` selects `CONFIG_LIBC_IPv4_ADDRCONV` for the IPv4 conversions. Sockets are
   the NINA's usrsock; `zsock_socket()`, `zsock_connect()`, `zsock_send()`, `zsock_sendmsg()`,
-  `zsock_sendto()` and `zsock_close()` are NuttX's functions of the same names (a blocking socket
-  waits with the NINA driver's deadlines).
-- **`zsock_poll()`**: works as the Zephyr version's NINA `poll()` (`do_poll()` in
-  `nina_socket.c`). In the calling thread it asks about each socket with
-  `getsockopt(NINA_SOL, NINA_SO_POLL)` (one NINA poll command) and gives the `ZSOCK_POLLIN` and
-  `ZSOCK_POLLOUT` asked for, `ZSOCK_POLLERR` (the NINA's error flag) and `ZSOCK_POLLHUP` (a TCP
-  socket without a NINA socket yet). When nothing is ready it asks again after
-  `k_sleep(K_MSEC(20))`, and returns 0 once the timeout (on `k_uptime_get()`; -1 for none) has gone
-  by. A failed NINA poll returns -1 with its errno (the Zephyr version marks only that socket
-  `ZSOCK_POLLERR` and does not fail the whole call). A descriptor that is not a NINA socket gets
-  NuttX's `poll()` once without waiting (`ZSOCK_POLLNVAL` for a bad one), as in the Zephyr version.
-  NuttX's `poll()` on the NINA's sockets and `nina_event` are not used. Used by `imu_raw_mqtt.c`
-  for its input check (every 100 ms, timeout 0) and the CONNACK wait (5000 ms).
+  `zsock_sendto()`, `zsock_recv()`, `zsock_poll()` and `zsock_close()` are NuttX's functions
+  (`socket()`, ..., `poll()`, `close()`). A blocking connect or send waits with the NINA driver's
+  deadlines; a receive and `poll()` wait for `nina_event`'s events ("Sockets (usrsock)" above). What
+  `poll()` gives differs from the Zephyr version's NINA `poll()` (`do_poll()` in `nina_socket.c`)
+  in two cases: a TCP socket that is not connected gives `ZSOCK_POLLIN`, `ZSOCK_POLLOUT` and
+  `ZSOCK_POLLHUP` (the Zephyr version: `ZSOCK_POLLHUP` alone), and the NINA's error flag or a
+  failed NINA poll of a connected TCP socket gives `ZSOCK_POLLHUP` (usrsock's `REMOTE_CLOSED`;
+  the Zephyr version: `ZSOCK_POLLERR`). `imu_raw_mqtt.c`, which uses `zsock_poll()` for its input
+  check (every 100 ms, timeout 0) and the CONNACK wait (5000 ms), ends the connection on either.
 - **Cycle counter**: the Zephyr version's `k_cycle_get_*()` counts the 125 MHz SysTick (which falls
   behind under load); the NuttX version's is the board's TIMER (`nano_mono_us()`, 1 MHz from the
   crystal, as for the sensor clock). A cycle is a microsecond, so the conversions to microseconds

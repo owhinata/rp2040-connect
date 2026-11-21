@@ -5,10 +5,13 @@
 #include <errno.h>
 #include <string.h>
 #include <zephyr/kernel.h>
+#include <zephyr/logging/log.h>
 #include <zephyr/net/mqtt.h>
 #include <zephyr/net/net_if.h>
 #include <zephyr/net/socket.h>
 #include <zephyr/sys/atomic.h>
+
+LOG_MODULE_REGISTER(imu_raw_mqtt, LOG_LEVEL_INF);
 
 #define STATUS_INTERVAL_MS  1000
 #define INPUT_POLL_MS       100
@@ -274,7 +277,8 @@ static int service_input(void)
 	return rc == -EAGAIN ? 0 : rc;
 }
 
-static int serve_connection(void)
+/* *STEP names what the connection is doing, for the log of a failure. */
+static int serve_connection(const char **step)
 {
 	int64_t next_input_poll = 0, next_status = 0;
 	k_spinlock_key_t key = k_spin_lock(&report_lock);
@@ -285,11 +289,13 @@ static int serve_connection(void)
 	while (!rc && atomic_get(&running) && atomic_get(&connected)) {
 		int taken;
 
+		*step = "info";
 		rc = publish_info_if_pending();
 		if (rc) {
 			break;
 		}
 		if (k_uptime_get() >= next_status || status_is_forced()) {
+			*step = "status";
 			rc = publish_status();
 			if (rc) {
 				break;
@@ -300,12 +306,14 @@ static int serve_connection(void)
 		taken = imu_raw_queue_take(&queue, &outgoing);
 		k_mutex_unlock(&raw_queue_lock);
 		if (!taken) {
+			*step = "publish";
 			rc = publish_batch();
 			if (rc) {
 				break;
 			}
 		}
 		if (k_uptime_get() >= next_input_poll) {
+			*step = "input";
 			rc = service_input();
 			next_input_poll = k_uptime_get() + INPUT_POLL_MS;
 		}
@@ -323,18 +331,30 @@ static void raw_mqtt_thread(void *a, void *b, void *c)
 	ARG_UNUSED(c);
 	for (;;) {
 		k_sem_take(&raw_start, K_FOREVER);
+		const char *logged_step = NULL;
+		int logged_rc = 0;
+
 		while (atomic_get(&running)) {
+			const char *step = "connect";
 			int rc = open_connection();
 
 			if (!rc && atomic_get(&running)) {
 				set_connected(true);
 				atomic_inc(&connects);
-				rc = serve_connection();
+				logged_step = NULL;
+				rc = serve_connection(&step);
 			}
 			set_connected(false);
 			(void)mqtt_abort(&client);
 			if (rc) {
 				atomic_inc(&failures);
+				/* Once for each kind in a row: a broker that is
+				 * away fails every RECONNECT_DELAY_MS. */
+				if (step != logged_step || rc != logged_rc) {
+					LOG_WRN("MQTT %s failed: %d", step, rc);
+					logged_step = step;
+					logged_rc = rc;
+				}
 			}
 			if (atomic_get(&running)) {
 				k_sleep(K_MSEC(RECONNECT_DELAY_MS));

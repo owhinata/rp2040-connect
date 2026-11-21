@@ -49,7 +49,6 @@
 #include "nina_os.h"
 #include "nina_proto.h"
 #include "nina_sock.h"
-#include "nina_sockopt.h"
 #include "nina_wait.h"
 
 extern struct k_mutex socket_lock, sendmsg_lock;
@@ -912,9 +911,6 @@ static void test_options(void)
 	assert(CALL(setsockopt, tcp, IPPROTO_TCP, TCP_NODELAY, &one, 1) == -1 && errno == EINVAL);
 	errno = 0;
 	assert(CALL(setsockopt, udp, IPPROTO_TCP, TCP_NODELAY, &one, sizeof(one)) == -1 &&
-	       errno == ENOPROTOOPT);
-	errno = 0;
-	assert(CALL(setsockopt, tcp, NINA_SOL, NINA_SO_CALLER_POLLS, &one, sizeof(one)) == -1 &&
 	       errno == ENOPROTOOPT);
 	errno = 0;
 	assert(CALL(setsockopt, tcp, SOL_SOCKET, SO_REUSEADDR, &one, sizeof(one)) == -1 &&
