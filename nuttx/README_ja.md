@@ -71,6 +71,7 @@ source nuttx/script/setup.sh
 | `nuttx/0009-armv6m-rp2040-save-hw-divider-on-context-switch` | タスクの切り替えで RP2040 の除算器を退避・復元する（`RP2040_HW_DIVIDER`） |
 | `nuttx/0010-rp2040-rom-memcpy-memset` | `memcpy`・`memset` をブート ROM のルーチンにする（`RP2040_ROM_MEM_OPS`） |
 | `nuttx/0011-rp2040-dmachannel-trywait` | 待たずに DMA のチャネルを取る関数（`rp2040_dmachannel_trywait()`）。I2C0 の読み出し用 |
+| `nuttx/0012-rp2040-dmac-ints0-own-bit` | DMA のチャネルの確保と解放で、自分のチャネルの割り込みの印だけを消す（ほかのチャネルの保留中の印も消していた） |
 | `apps/0001-readline-echo-in-readline` | 行の入力中のエコーを readline が行う |
 | `apps/0002-readline-cr-lf-line-end` | CR、LF、CR LF、LF CR のどれでも 1 回の Enter にする |
 | `apps/0003-readline-ctrl-c` | Ctrl-C で入力中の行を捨てて新しいプロンプトを出す |
@@ -459,7 +460,7 @@ Zephyr 版の `i2c write`、`gpio`、`log`、`device`、`history`、`clear`、`r
 nuttx/script/host_tests.sh
 ```
 
-OS に依存しない部分のホストテスト 51 本を PC 上でビルドして実行します。最初の 35 本は 3 つの版で共有する
+OS に依存しない部分のホストテスト 59 本を PC 上でビルドして実行します。最初の 39 本は 3 つの版で共有する
 ソースと、互換層・シェル・RAM ログのリング・KV の共通部分のテスト（最後の `zephyr_copies` は、写した Zephyr の
 ファイルが元と同じことの照合）で、`common/tests/run.sh` が実行します。ボードは不要で、ホストの `cc`（C17）だけを
 使います。ST の `lsm6dso_reg.c`（`setup.sh` が取得）が無ければ、それを使う 3 本（`lsm6dso_driver`、`imu_cal`、

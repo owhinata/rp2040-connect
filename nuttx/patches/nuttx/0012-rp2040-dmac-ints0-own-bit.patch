@@ -1,0 +1,53 @@
+rp2040: the DMA allocator clears only its channel's interrupt flag
+
+Purpose: DMA_INTS0 clears the bits that are written as 1.  The allocator
+cleared a channel's flag through the register's atomic aliases:
+rp2040_dmachannel() with setbits_reg32() (the set alias writes the
+register's value with the bit set) and rp2040_dmafree() with
+clrbits_reg32() (the clear alias writes the value with the bit cleared).
+Either way the pending flags of the other channels are written back as 1
+and cleared, so a channel allocated or freed while another channel's
+transfer has just completed can take that channel's completion interrupt
+away.
+
+- arch/arm/src/rp2040/rp2040_dmac.c: rp2040_dmachannel() and
+  rp2040_dmafree() write the channel's bit alone to DMA_INTS0 with
+  putreg32(), as rp2040_dmachannel_trywait() of patch 0011 does.  The
+  writes to DMA_INTE0, an ordinary register, keep the aliases.
+
+Zephyr: Zephyr's RP2040 DMA driver (drivers/dma/dma_rpi_pico.c) acknowledges
+a channel with the Pico SDK's dma_irqn_acknowledge_channel(), which writes
+the channel's bit alone.
+
+diff --git a/arch/arm/src/rp2040/rp2040_dmac.c b/arch/arm/src/rp2040/rp2040_dmac.c
+index 7ff08008..c34c1946 100644
+--- a/arch/arm/src/rp2040/rp2040_dmac.c
++++ b/arch/arm/src/rp2040/rp2040_dmac.c
+@@ -250,7 +250,12 @@ DMA_HANDLE rp2040_dmachannel(void)
+ 
+   nxmutex_unlock(&g_dmac.lock);
+ 
+-  setbits_reg32(bit, RP2040_DMA_INTS0);
++  /* INTS0 clears the bits written as 1: the channel's bit alone (the set
++   * alias would write the other channels' pending bits back and clear
++   * them).
++   */
++
++  putreg32(bit, RP2040_DMA_INTS0);
+   setbits_reg32(bit, RP2040_DMA_INTE0);
+ 
+   /* Since we have reserved a DMA descriptor by taking a count from chansem,
+@@ -367,7 +372,12 @@ void rp2040_dmafree(DMA_HANDLE handle)
+   setbits_reg32(1 << dmach->chan, RP2040_DMA_CHAN_ABORT);
+   putreg32(0, RP2040_DMA_CTRL_TRIG(ch));
+   clrbits_reg32(1 << dmach->chan, RP2040_DMA_INTE0);
+-  clrbits_reg32(1 << dmach->chan, RP2040_DMA_INTS0);
++
++  /* The channel's flag, by writing its bit alone to INTS0 (see
++   * rp2040_dmachannel()).
++   */
++
++  putreg32(1 << dmach->chan, RP2040_DMA_INTS0);
+ 
+   /* Mark the channel no longer in use.  Clearing the in-use flag is an
+    * atomic operation and so should be safe.

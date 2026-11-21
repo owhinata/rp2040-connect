@@ -203,6 +203,20 @@ cc "${flags[@]}" -D_DEFAULT_SOURCE -Itests/i2c_dw_dma_os_fakes -Itests/fakes \
     -I"$i2cdir/port" tests/i2c_dw_dma_os.c "$link" -o "$out/i2c_dw_dma_os"
 "$out/i2c_dw_dma_os" >/dev/null
 printf 'ok  i2c_dw_dma_os\n'
+# The channel allocation of NuttX's RP2040 DMA driver itself (arch/arm/src/rp2040/rp2040_dmac.c
+# of the fetched tree, with the local patches 0011 and 0012) on a model of the DMA's registers
+# and fakes of the kernel's lock and count (tests/rp2040_dmac_fakes): taking and freeing a
+# channel leaves the other channels' pending interrupt flags, and the allocation that does not
+# wait gives the count back when the allocator's lock is taken.
+if [[ -f nuttx/arch/arm/src/rp2040/rp2040_dmac.c ]]; then
+    cc "${flags[@]}" -D_DEFAULT_SOURCE -Wno-unused-function -Wno-unused-parameter \
+        -Wno-sign-compare -Wno-pointer-to-int-cast -Itests/rp2040_dmac_fakes -Inuttx/arch/arm/src/rp2040 \
+        tests/rp2040_dmac.c -o "$out/rp2040_dmac"
+    "$out/rp2040_dmac" >/dev/null
+    printf 'ok  rp2040_dmac\n'
+else
+    printf 'skip rp2040_dmac (no nuttx/nuttx: run script/setup.sh)\n'
+fi
 # The I2C core's NuttX binding (common/drivers/i2c_dw/port/nuttx: i2c_dw_os_impl.h,
 # i2c_dw_instance.h) under the shared core (common/drivers/i2c_dw/i2c_dw.c),
 # on fakes of the NuttX headers (tests/i2c_dw_instance_fakes), the board's include/board.h, the

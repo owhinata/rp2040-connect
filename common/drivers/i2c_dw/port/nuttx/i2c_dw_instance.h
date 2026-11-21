@@ -31,7 +31,8 @@
  *                                         (RP2040_I2C0_IRQ, RP2040_I2C1_IRQ)
  *   the DMA device (POST_KERNEL 40)       i2c_dw_dma_os_initialize()
  *                                         (i2c_dw_dma_os_rp2040.c, on
- *                                         NuttX's rp2040_dmac.c) first
+ *                                         NuttX's rp2040_dmac.c), once
+ *                                         the controller has started
  *   reset_line_toggle_dt()                RESETS (set, clear, RESET_DONE)
  *   pinctrl_apply_state()                 i2c_dw_pinctrl() (Zephyr's
  *                                         pinctrl_rpi_pico.c steps; the
@@ -202,11 +203,19 @@ static inline_function struct i2c_master_s *i2c_dw_os_initialize(struct i2c_dw_d
 #ifdef CONFIG_I2C_DW_RP2040_DMA
 	if (i2c_dw_is_i2c0(dw)) {
 		nxsem_init(&rp2040_dma_sem, 0, 0);
+	}
+#endif
 
-		/* The DMA device, which Zephyr initializes before i2c0
-		 * (POST_KERNEL 40): the two channels of the reads from NuttX's
-		 * rp2040_dmac.c (i2c_dw_dma_os_rp2040.c).  Without them the
-		 * reads take the interrupts.
+	if (i2c_dw_turn_on(dw) < 0) {
+		return NULL;
+	}
+
+#ifdef CONFIG_I2C_DW_RP2040_DMA
+	if (i2c_dw_is_i2c0(dw)) {
+		/* The two channels of the reads from NuttX's rp2040_dmac.c
+		 * (i2c_dw_dma_os_rp2040.c), once the controller is up: one that
+		 * does not start keeps no channel.  Without them the reads take
+		 * the interrupts.
 		 */
 		int ret = i2c_dw_dma_os_initialize();
 
@@ -215,10 +224,6 @@ static inline_function struct i2c_master_s *i2c_dw_os_initialize(struct i2c_dw_d
 		}
 	}
 #endif
-
-	if (i2c_dw_turn_on(dw) < 0) {
-		return NULL;
-	}
 
 	dw->ready = true;
 	return &dw->dev;

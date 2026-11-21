@@ -190,7 +190,10 @@ static struct fake_channel *take_channel(const char *name)
 	for (int ch = 0; ch < RP2040_DMA_NCHANNELS; ch++) {
 		if (!fake_ch[ch].inuse) {
 			fake_ch[ch].inuse = true;
-			setbits_reg32(1u << ch, RP2040_DMA_INTS0);
+			/* As rp2040_dmac.c with the local patches 0011 and
+			 * 0012: the channel's own flag (tests/rp2040_dmac.c).
+			 */
+			REG(RP2040_DMA_INTR) &= ~(1u << ch);
 			REG(RP2040_DMA_INTE0) |= 1u << ch;
 			record("%s()=%d", name, ch);
 			return &fake_ch[ch];
@@ -238,6 +241,7 @@ void rp2040_dmafree(DMA_HANDLE handle)
 	REG(RP2040_DMA_CHAN_ABORT) &= ~(1u << c->chan);
 	REG(RP2040_DMA_CTRL_TRIG(c->chan)) = 0;
 	REG(RP2040_DMA_INTE0) &= ~(1u << c->chan);
+	REG(RP2040_DMA_INTR) &= ~(1u << c->chan);
 	c->inuse = false;
 	record("dmafree(%d)", c->chan);
 }

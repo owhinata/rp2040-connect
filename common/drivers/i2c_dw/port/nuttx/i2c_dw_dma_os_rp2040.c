@@ -41,7 +41,8 @@
  * The register writes of the channel's own bit (INTE0 through the atomic
  * set and clear aliases, INTS0 and CHAN_ABORT, which are write-1) leave the
  * other channels alone; rp2040_dmac.c itself writes INTE0 and INTS0 the
- * same way.  rp2040_dmachannel_trywait() enables the channel's interrupt;
+ * same way (INTS0 with the local patches nuttx/patches/nuttx/0011 and
+ * 0012).  rp2040_dmachannel_trywait() enables the channel's interrupt;
  * this file keeps it disabled between reads, as Zephyr's driver does.
  *
  * The interrupt: rp2040_dmac.c owns DMA_IRQ_0 (arm_dma_initialize(), from

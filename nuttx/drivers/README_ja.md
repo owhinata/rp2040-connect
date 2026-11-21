@@ -350,7 +350,7 @@ DMA の割り込みから呼ばれます。どれも DMA のほかの利用者�
 
 | 境界 | 意味（Zephyr） | NuttX 版 |
 |---|---|---|
-| `i2c_dw_dma_os_initialize()` | DMA のデバイスの起動（I2C0 より前）。何もリセットしない | `rp2040_dmachannel_trywait()` を 2 回（空いている最も小さい番号、待たない）、その割り込みを切る。2 つのチャネルは読み出し用に持ち続ける。2 つとも取れなければ、取れた方を返して `-EBUSY` を返す |
+| `i2c_dw_dma_os_initialize()` | DMA のデバイスの起動（Zephyr では I2C0 より前、ここでは I2C0 のコントローラーが起動したあと）。何もリセットしない | `rp2040_dmachannel_trywait()` を 2 回（空いている最も小さい番号、待たない）、その割り込みを切る。2 つのチャネルは読み出し用に持ち続ける。2 つとも取れなければ、取れた方を返して `-EBUSY` を返す |
 | `i2c_dw_dma_os_is_ready()` | `device_is_ready(dma)` | 2 つのチャネルが取れた |
 | `i2c_dw_dma_os_request_channel()`・`_release_channel()` | `dma_request_channel(dma, NULL)`・`dma_release_channel()`。取得は待たない（`-EBUSY`・`-ENODEV`） | 2 つのうち、実行中の読み出しが取っていないもの。返すと次の読み出しが使える |
 | `i2c_dw_dma_os_config_tx()`・`_config_rx()` | 各側の `dma_config()`: 16 ビットのコマンド語を DREQ 32 の歩調で `IC_DATA_CMD` へ、そこからバイトを DREQ 33 の歩調で。優先度は通常 | `rp2040_txdmasetup()`（`RP2040_DMA_DREQ_I2C0_TX`、`RP2040_DMA_SIZE_HALFWORD`、読み出しアドレスを進める）、`rp2040_rxdmasetup()`（`RP2040_DMA_DREQ_I2C0_RX`、`RP2040_DMA_SIZE_BYTE`、書き込みアドレスを進める） |
@@ -366,8 +366,8 @@ INTE0（セットとクリアのエイリアス経由）、INTS0、CHAN_ABORT �
 **デバイスと転送**
 
 OS の I2C0 のデバイス（`i2c_dw_instance.h`）は、`i2c_0_runtime` の `base`（0x40044000）を設定し、セマフォを
-初期化し（`device_sync_sem` と `rp2040_dma_sem` は 0、`bus_sem` は 1）、起動時に `i2c_dw_dma_os_initialize()`、
-続いて `i2c_dw_turn_on()` を 1 回呼び、後者が成功したら `ready` を立てます。I2C1 のデバイスは `i2c_1_runtime`
+初期化し（`device_sync_sem` と `rp2040_dma_sem` は 0、`bus_sem` は 1）、起動時に `i2c_dw_turn_on()` を 1 回呼び、
+成功したら `i2c_dw_dma_os_initialize()` を呼んで `ready` を立てます（起動しなかったコントローラーは DMA のチャネルを取りません）。I2C1 のデバイスは `i2c_1_runtime`
 （0x40048000）に同じことを、DMA の部分とそのセマフォを除いて行います。デバイスごとにセマフォを持つので、2 つのバスの
 転送は並んで進みます。転送の入口（両方で 1 つ）は、Zephyr の API で表せない要求（メッセージの配列がない、
 256 個以上、メッセージごとに違うアドレスや速さ、10 ビットアドレス、バッファーがない、準備ができていない）を断り、

@@ -402,7 +402,7 @@ another user of the DMA.
 
 | Boundary | Meaning (Zephyr) | NuttX build |
 |---|---|---|
-| `i2c_dw_dma_os_initialize()` | The DMA device's start-up, before I2C0's; nothing is reset | `rp2040_dmachannel_trywait()` twice (the lowest free channels, without waiting), their interrupts off; the two channels stay the reads'. Without both, the one taken is freed again and it returns `-EBUSY` |
+| `i2c_dw_dma_os_initialize()` | The DMA device's start-up (Zephyr: before I2C0's; here after I2C0's controller has started); nothing is reset | `rp2040_dmachannel_trywait()` twice (the lowest free channels, without waiting), their interrupts off; the two channels stay the reads'. Without both, the one taken is freed again and it returns `-EBUSY` |
 | `i2c_dw_dma_os_is_ready()` | `device_is_ready(dma)` | The two channels were had |
 | `i2c_dw_dma_os_request_channel()`, `_release_channel()` | `dma_request_channel(dma, NULL)`, `dma_release_channel()`; the request never waits (`-EBUSY`, `-ENODEV`) | One of the two that the read in progress has not taken; the release frees it for the next read |
 | `i2c_dw_dma_os_config_tx()`, `_config_rx()` | `dma_config()` of each side: 16-bit command words to `IC_DATA_CMD` paced by DREQ 32, bytes from it paced by DREQ 33, normal priority | `rp2040_txdmasetup()` (`RP2040_DMA_DREQ_I2C0_TX`, `RP2040_DMA_SIZE_HALFWORD`, read address incrementing), `rp2040_rxdmasetup()` (`RP2040_DMA_DREQ_I2C0_RX`, `RP2040_DMA_SIZE_BYTE`, write address incrementing) |
@@ -419,8 +419,8 @@ own bit, as `rp2040_dmac.c` writes them; other channels are not touched.
 
 The OS's I2C0 device (`i2c_dw_instance.h`) sets `base` of `i2c_0_runtime` (0x40044000), initializes
 the semaphores (`device_sync_sem` and `rp2040_dma_sem` to 0, `bus_sem` to 1), calls
-`i2c_dw_dma_os_initialize()` and then `i2c_dw_turn_on()` once at boot, and sets `ready` when the latter
-succeeds. The I2C1 device does the same for `i2c_1_runtime` (0x40048000) without the DMA part and its
+`i2c_dw_turn_on()` once at boot and, when it succeeds, `i2c_dw_dma_os_initialize()`, and then sets
+`ready` (a controller that does not start takes no DMA channel). The I2C1 device does the same for `i2c_1_runtime` (0x40048000) without the DMA part and its
 semaphore. Each device has its own semaphores, so transfers on the two buses run side by side. The
 transfer entry (one for both) refuses what the Zephyr API cannot express (no message array, more than 255 messages, addresses or
 speeds that differ between messages, a 10-bit address, a missing buffer, a device that is not ready),

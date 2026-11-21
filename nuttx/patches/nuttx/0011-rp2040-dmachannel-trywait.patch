@@ -14,8 +14,12 @@ where it should go on without the DMA and read on the interrupts.
   holds it (a channel is being allocated or freed), gives the count back
   and returns NULL, so no channel is lost.  A caller may try again.
   Otherwise it does what rp2040_dmachannel() does (the lowest free
-  channel, its flag cleared and its interrupt enabled).
-  rp2040_dmachannel() is unchanged.
+  channel, its flag cleared and its interrupt enabled).  It clears the
+  flag by writing the channel's bit alone to INTS0: the register clears
+  the bits written as 1, so its set alias, which writes the pending bits
+  of the other channels back too, would clear those (patch 0012 corrects
+  rp2040_dmachannel() and rp2040_dmafree() in the same way).
+  rp2040_dmachannel() is unchanged by this patch.
 
 Zephyr: Zephyr's dma_request_channel() (include/zephyr/drivers/dma.h)
 does not wait either; it returns an error when no channel is free.
@@ -93,7 +97,7 @@ index d4914dcb..235e287e 100644
 +
 +  nxmutex_unlock(&g_dmac.lock);
 +
-+  setbits_reg32(bit, RP2040_DMA_INTS0);
++  putreg32(bit, RP2040_DMA_INTS0);
 +  setbits_reg32(bit, RP2040_DMA_INTE0);
 +
 +  DEBUGASSERT(dmach);

@@ -98,10 +98,11 @@
  *   i2c_0_runtime (0x40044000) or i2c_1_runtime (0x40048000), initializes
  *   device_sync_sem to 0 and bus_sem to 1, for i2c0 with
  *   CONFIG_I2C_DW_RP2040_DMA also the static rp2040_dma_sem (of the DMA
- *   reads) to 0 and calls i2c_dw_dma_os_initialize() (as Zephyr
- *   initializes the DMA device first), then calls i2c_dw_turn_on(dw) once
- *   at start-up (i2c1 after i2c0, as Zephyr's devicetree order), and sets
- *   dw->ready if the latter returned 0.  Its transfer
+ *   reads) to 0, calls i2c_dw_turn_on(dw) once at start-up (i2c1 after
+ *   i2c0, as Zephyr's devicetree order) and i2c_dw_dma_os_initialize()
+ *   for i2c0 (before it, as Zephyr initializes the DMA device first, or
+ *   after it, so that a controller that does not start keeps no DMA
+ *   channel), and sets dw->ready if i2c_dw_turn_on() returned 0.  Its transfer
  *   entry refuses what the Zephyr API cannot express (no message array,
  *   more than 255 messages, a 10-bit address, a missing buffer, a device
  *   that is not ready), returns 0 for no message, and

@@ -79,6 +79,7 @@ with its purpose and the Zephyr code it matches.
 | `nuttx/0009-armv6m-rp2040-save-hw-divider-on-context-switch` | Saves and restores the RP2040's divider on task switches (`RP2040_HW_DIVIDER`) |
 | `nuttx/0010-rp2040-rom-memcpy-memset` | `memcpy` and `memset` through the boot ROM's routines (`RP2040_ROM_MEM_OPS`) |
 | `nuttx/0011-rp2040-dmachannel-trywait` | A DMA channel allocation that never waits (`rp2040_dmachannel_trywait()`), for the I2C0 reads |
+| `nuttx/0012-rp2040-dmac-ints0-own-bit` | The DMA allocator clears only its own channel's interrupt flag (it cleared the other channels' pending flags too) |
 | `apps/0001-readline-echo-in-readline` | readline echoes the line being typed |
 | `apps/0002-readline-cr-lf-line-end` | CR, LF, CR LF and LF CR each make one Enter |
 | `apps/0003-readline-ctrl-c` | Ctrl-C drops the line being typed and shows a new prompt |
@@ -496,7 +497,7 @@ NuttX puts at the start of a stack (2048 → 2008 and so on).
 nuttx/script/host_tests.sh
 ```
 
-This builds and runs the 51 host tests of the OS-independent parts on the PC. The first 35 are the
+This builds and runs the 59 host tests of the OS-independent parts on the PC. The first 39 are the
 tests of the sources shared by the three builds and of the shared parts of the layer, the
 shell, the RAM log's ring and the key-value store (the last one, `zephyr_copies`, checks that the
 copied Zephyr files are the same as the originals), run by `common/tests/run.sh`. It needs no board, only

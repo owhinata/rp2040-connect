@@ -506,17 +506,19 @@ static void test_i2c0(void)
 	/* The handler cannot be attached: no device, the interrupt not enabled. */
 	g_attach_ret = -ENOMEM;
 	assert(i2c_dw_i2c0_initialize() == NULL);
-	expect_calls("dma-init reset(0x8) unreset(0x8) " PINS(12, 0) PINS(13, 0) "attach(23) ");
+	/* No DMA channel is taken for a controller that did not start. */
+	expect_calls("reset(0x8) unreset(0x8) " PINS(12, 0) PINS(13, 0) "attach(23) ");
 	g_attach_ret = 0;
 	reset_values(fake_i2c0_regs, DW_MAGIC);
 	g_i2c0 = i2c_dw_i2c0_initialize();
 	assert(g_i2c0 != NULL);
-	expect_calls("dma-init reset(0x8) unreset(0x8) " PINS(12, 0) PINS(13, 0)
-		     "attach(23) enable(23) ");
+	expect_calls("reset(0x8) unreset(0x8) " PINS(12, 0) PINS(13, 0)
+		     "attach(23) enable(23) dma-init ");
 #ifdef TEST_DMA_INIT_FAILS
-	/* Without the DMA, I2C0 still starts (its reads on the interrupts). */
-	expect_log("<1> i2c_dw: No DMA for the reads: -16\n"
-		   "<1> i2c_dw: No DMA for the reads: -16\n");
+	/* Without the DMA, I2C0 still starts (its reads on the interrupts).
+	 * The start that failed above did not ask for the DMA.
+	 */
+	expect_log("<1> i2c_dw: No DMA for the reads: -16\n");
 #endif
 	assert(g_isr_arg[RP2040_I2C0_IRQ] == (void *)g_i2c0);
 	assert(i2c_dw_i2c0_initialize() == g_i2c0);
