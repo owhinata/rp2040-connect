@@ -1,9 +1,9 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-/* The NINA socket driver's own socket options (common/drivers/nina/nuttx),
+/* The NINA socket driver's own socket options (common/drivers/nina/port/nuttx),
  * for the
  * Zephyr compatibility layer's zsock_*() calls (<zephyr/net/socket.h>).
  *
- * The Zephyr build's NINA sockets (common/drivers/nina/zephyr/nina_socket.c)
+ * The Zephyr build's NINA sockets (common/drivers/nina/port/zephyr/nina_socket.c)
  * ask the
  * module about a socket only from the thread that calls recv() or poll():
  * recv() polls the module (CMD_POLL) on every call, poll() polls each

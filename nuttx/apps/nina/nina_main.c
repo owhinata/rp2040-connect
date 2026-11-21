@@ -22,7 +22,7 @@
 #include <stdint.h>
 #include <stdio.h>
 
-#include "nina_proto.h"
+#include "internal/nina_proto.h"
 #include "subcmd.h"
 
 #ifdef CONFIG_NINA_PASSTHROUGH
@@ -71,7 +71,7 @@ static int cmd_nina_passthrough(int argc, char **argv)
 	}
 	printf("Restarting into the NINA passthrough: the USB port relays to the NINA's UART "
 	       "(for esptool).\n");
-	printf("To leave it: close the port at %u bps, or press RESET.\n", NINA_PT_EXIT_BAUD);
+	printf("To leave it: close the port at %u bps, or press RESET.\n", NINA_PASSTHROUGH_EXIT_BAUD);
 	fflush(stdout);
 	usleep(PASSTHROUGH_RESTART_DELAY_MS * 1000);
 	nina_passthrough_request();

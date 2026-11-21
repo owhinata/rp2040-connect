@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /* Host test of the applications' Zephyr Wi-Fi management on NuttX:
- * common/drivers/nina/nuttx/nina_wifi_mgmt.c under the compatibility
+ * common/drivers/nina/port/nuttx/nina_wifi_mgmt.c under the compatibility
  * layer's Wi-Fi requests (common/compat/zephyr_wifi_mgmt.c) and interface
  * (nuttx/drivers/compat/zephyr_net_if.c), as nina/Make.defs and
  * compat/Make.defs build them, on fakes of the network device's lock

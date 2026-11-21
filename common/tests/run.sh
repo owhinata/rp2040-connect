@@ -71,34 +71,36 @@ run mqtt_min "${flags[@]}" -Wno-sign-compare "${zinc[@]}" -I"$imu" tests/mqtt_mi
 # The NINA-W102 core (drivers/nina) on fakes of its boundary (nina_bus.h: the SPI bus and the
 # module's lines; nina_os.h: locks, requests, sleeps, clock), defined by the tests.
 nina=drivers/nina
-# The core has no OS of its own: each of its files (the top of drivers/nina; its OS bindings are
-# in the subdirectories) compiles with the C library and POSIX socket types of the host and its
+nina_inc=(-I"$nina" -I"$nina/internal" -I"$nina/port")
+# The core has no OS of its own: each of its files (the top of drivers/nina, internal/ and the
+# boundary headers of port/; the OS bindings are in port/'s subdirectories) compiles with the C library and POSIX socket types of the host and its
 # own headers only.
-for f in "$nina"/*.c "$nina"/*.h; do
-    printf '#include "%s"\n' "$f" | cc "${flags[@]}" -D_DEFAULT_SOURCE -I. -I"$nina" -fsyntax-only \
-        -x c -
+nina_core=("$nina"/*.c "$nina"/*.h "$nina"/internal/*.c "$nina"/internal/*.h "$nina"/port/*.h)
+for f in "${nina_core[@]}"; do
+    printf '#include "%s"\n' "$f" | cc "${flags[@]}" -D_DEFAULT_SOURCE -I. "${nina_inc[@]}" \
+        -fsyntax-only -x c -
 done
-printf 'ok  nina_core_independent (%d files)\n' "$(ls "$nina"/*.c "$nina"/*.h | wc -l)"
-# SPI link (nina_spi.c, which the test includes): framing, answers, READY timeouts, reset
+printf 'ok  nina_core_independent (%d files)\n' "${#nina_core[@]}"
+# SPI link (nina_proto.c, which the test includes): framing, answers, READY timeouts, reset
 # sequence, CS order (fake board and clock); each case with READY sampled (the OS's
 # nina_os_ready_start() fails) and with the OS's waits for READY (fake waits).
-run nina_spi "${flags[@]}" -I"$nina" tests/nina_spi.c
+run nina_proto "${flags[@]}" "${nina_inc[@]}" tests/nina_proto.c
 # The waits of the socket loops (nina_wait.c): the poll intervals (before the start, or after
 # nina_os_event_start() fails), or the IRQ line's edges with their timeout, deadline and
 # back-off (fake clock and line).
-run nina_wait "${flags[@]}" -I"$nina" tests/nina_wait.c "$nina/nina_wait.c"
+run nina_wait "${flags[@]}" "${nina_inc[@]}" tests/nina_wait.c "$nina/internal/nina_wait.c"
 # Sockets: the table, the socket commands and the data calls of the Zephyr build's
 # nina_socket.c (fake nina_request() and clock).
-run nina_sock "${flags[@]}" -D_DEFAULT_SOURCE -I"$nina" tests/nina_sock.c "$nina/nina_sock.c"
+run nina_sock "${flags[@]}" -D_DEFAULT_SOURCE "${nina_inc[@]}" tests/nina_sock.c "$nina/nina_sock.c"
 # The Wi-Fi operations (nina_wifi.c, which the test includes): connect, its thread and its ends,
 # disconnect, the monitor, the scans of 3.0.2 and of the patched firmware, status (fake module,
 # kernel services and binding).
-run nina_wifi "${flags[@]}" -I"$nina" tests/nina_wifi.c
+run nina_wifi "${flags[@]}" "${nina_inc[@]}" tests/nina_wifi.c
 # Name resolution: hints, service, numeric addresses, the resolver commands (fake module).
-run nina_dns "${flags[@]}" -D_DEFAULT_SOURCE -I"$nina" tests/nina_dns.c "$nina/nina_dns.c"
+run nina_dns "${flags[@]}" -D_DEFAULT_SOURCE "${nina_inc[@]}" tests/nina_dns.c "$nina/nina_dns.c"
 # The same with the results on the OS's heap and the registration (NINA_OS_DNS_OFFLOAD, as the
 # Zephyr build compiles it).
-run nina_dns_offload "${flags[@]}" -D_DEFAULT_SOURCE -DNINA_OS_DNS_OFFLOAD -I"$nina" tests/nina_dns.c \
+run nina_dns_offload "${flags[@]}" -D_DEFAULT_SOURCE -DNINA_OS_DNS_OFFLOAD "${nina_inc[@]}" tests/nina_dns.c \
     "$nina/nina_dns.c"
 
 # The NINA passthrough mode (nina_passthrough.c, which the test includes) on fakes of its two
@@ -107,7 +109,7 @@ run nina_dns_offload "${flags[@]}" -D_DEFAULT_SOURCE -DNINA_OS_DNS_OFFLOAD -I"$n
 # error record of the same registers (log/fault_record.c), DTR and RTS on the module's lines, the
 # rate and the way out, the buffer from the UART's interrupt (also on two threads), the start, the
 # data both ways with their counts, the tick and the way out's sequence.
-run nina_passthrough "${flags[@]}" -I"$nina" -Ilog tests/nina_passthrough.c log/fault_record.c
+run nina_passthrough "${flags[@]}" "${nina_inc[@]}" -Ilog tests/nina_passthrough.c log/fault_record.c
 
 # The shell's subcommand dispatch with the Zephyr shell's output (shell/subcmd.c: the kv, nina,
 # ... tables of the NuttX build).

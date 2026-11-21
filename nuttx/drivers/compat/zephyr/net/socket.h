@@ -11,7 +11,7 @@
  *
  * Sockets: zsock_sendto() and zsock_close() are NuttX's sendto() and
  * close() (the NINA's sockets through usrsock,
- * common/drivers/nina/nuttx/nina_usrsock.c), -1 and errno as in Zephyr;
+ * common/drivers/nina/port/nuttx/nina_usrsock.c), -1 and errno as in Zephyr;
  * zsock_connect(), zsock_send() and zsock_sendmsg() are connect(), send()
  * and sendmsg() (the calls of Zephyr's MQTT TCP transport,
  * mqtt_transport_socket_tcp.c; a blocking socket waits in the driver as in
@@ -19,7 +19,7 @@
  * NINA_POLL_INTERVAL_MS by the NINA's event thread, a send that finds no
  * room up to NINA_SEND_WAIT_MS, its passes in the calling thread).
  *
- * The Zephyr build's NINA sockets (common/drivers/nina/zephyr/nina_socket.c)
+ * The Zephyr build's NINA sockets (common/drivers/nina/port/zephyr/nina_socket.c)
  * are asked
  * about only by the threads that use them: recv() polls the module
  * (CMD_POLL) on every call, poll() polls each socket at once and then every
@@ -53,8 +53,8 @@
  *   k_uptime_get() milliseconds, -1 for none) has gone by.
  *
  * The sleeps of both loops are nina_wait() (common/drivers/nina/
- * nina_wait.h): NINA_POLL_INTERVAL_MS, or, when the module reports socket
- * events on its IRQ line, until the line's next edge after the edge count
+ * internal/nina_wait.h): NINA_POLL_INTERVAL_MS, or, when the module reports
+ * socket events on its IRQ line, until the line's next edge after the edge count
  * noted before the pass (at most NINA_EVENT_TIMEOUT_MS, not past the poll's
  * timeout; at most NINA_POLL_INTERVAL_MS while a descriptor that is not a
  * NINA socket is polled, as before).
@@ -85,7 +85,7 @@
 
 #include <nina_dns.h>
 #include <nina_sockopt.h>
-#include <nina_wait.h>
+#include <internal/nina_wait.h>
 
 /* <unistd.h>'s (not included: its getopt() names are macros, see
  * <zephyr/kernel.h>).
@@ -239,7 +239,7 @@ static inline ssize_t zsock_recv(int sock, void *buf, size_t max_len,
 
 #define zsock_addrinfo addrinfo
 #define zsock_getaddrinfo(host, service, hints, res) \
-  nina_getaddrinfo(host, service, hints, res)
-#define zsock_freeaddrinfo(res) nina_freeaddrinfo(res)
+  nina_dns_getaddrinfo(host, service, hints, res)
+#define zsock_freeaddrinfo(res) nina_dns_freeaddrinfo(res)
 
 #endif /* __NUTTX_DRIVERS_COMPAT_ZEPHYR_NET_SOCKET_H */

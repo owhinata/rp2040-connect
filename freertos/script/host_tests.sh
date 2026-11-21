@@ -11,8 +11,8 @@
 # - On the same port: the shell (freertos/tests/shell) and the key-value
 #   store with the board's flash boundary on fakes of the Pico SDK's flash
 #   functions (freertos/tests/kv), and the NINA link's boundaries
-#   (freertos/drivers/nina/nina_bus.c and the core's FreeRTOS binding
-#   common/drivers/nina/freertos/nina_os.c) with the shared core on fakes of
+#   (nina_bus_rp2040.c and nina_os.c of the core's FreeRTOS binding,
+#   common/drivers/nina/port/freertos) with the shared core on fakes of
 #   the Pico SDK's GPIO, SPI, GPIO interrupt and TIMER functions, at two
 #   ticks (freertos/tests/nina), and I2C0's and I2C1's boundaries
 #   (freertos/drivers/i2c_dw, the layer's <zephyr/drivers/i2c.h>) with the
@@ -31,7 +31,7 @@
 #   thread, with fake sockets and a fake NTP server: freertos/tests/time_sync), and the
 #   layer's socket part (the reduced copies of Zephyr's socket layer and descriptor table,
 #   k_heap) on fake implementations (freertos/tests/sockets), and the sockets: the zsock_*()
-#   calls on the NINA's Zephyr binding (common/drivers/nina/zephyr/nina_socket.c) and the
+#   calls on the NINA's Zephyr binding (common/drivers/nina/port/zephyr/nina_socket.c) and the
 #   shared NINA core, a fake module and a fake clock (freertos/tests/socket), and Wi-Fi: the
 #   interface, the net_mgmt events, the stored credentials (settings "wifi_cred/<n>"), the
 #   reconnection, the "wifi" and "ifconfig" commands on a fake module (freertos/tests/wifi), and the
@@ -196,16 +196,18 @@ else
 fi
 printf 'ok  kv (flash boundary and store, FreeRTOS POSIX port)\n'
 
-# The NINA link (freertos/tests/nina): the board's boundaries of the shared core
-# (drivers/nina/nina_bus.c, and the core's FreeRTOS binding common/drivers/nina/freertos/nina_os.c
+# The NINA link (freertos/tests/nina): the board's boundaries of the shared core (the core's
+# FreeRTOS binding in common/drivers/nina/port/freertos: nina_bus_rp2040.c, and nina_os.c
 # with its waits on READY's and the IRQ line's edge interrupts and its own raw handler of
 # IO_IRQ_BANK0) on fakes of the Pico SDK's GPIO, GPIO interrupt, reset, SPI and TIMER functions
-# (tests/nina/pico_fake), under the shared core (common/drivers/nina/nina_spi.c and nina_wait.c,
-# with the prelude, as drivers/nina/nina.cmake builds them), on a kernel of its own and no
+# (tests/nina/pico_fake), under the shared core (nina_proto.c and nina_wait.c of
+# common/drivers/nina/internal, with the prelude, as drivers/nina/nina.cmake builds them), on a
+# kernel of its own and no
 # compatibility layer (none of its include directories either).  Twice: with the board's 1 ms
 # tick, and with a 4 ms one (configTICK_RATE_HZ 250); both times the tick count starts 5 s before
 # it wraps (configINITIAL_TICK_COUNT) and the fake TIMER 4.5 s before its low word wraps.
-ninainc=(-Itests/nina/pico_fake -I../common/drivers/nina -I../common/drivers/nina/freertos
+ninainc=(-Itests/nina/pico_fake -I../common/drivers/nina -I../common/drivers/nina/internal
+         -I../common/drivers/nina/port -I../common/drivers/nina/port/freertos
          -Itests/compat -Iapp/usb-console/src -I"$kernel/include" -I"$posix" -I"$posix/utils")
 for hz in 1000 250; do
     ninadefs=(-DconfigTICK_RATE_HZ=$hz "-DconfigINITIAL_TICK_COUNT=((TickType_t)0 - 5 * $hz)"
@@ -217,12 +219,13 @@ for hz in 1000 250; do
         cc "${flags[@]}" -w "${ninainc[@]}" "${ninadefs[@]}" -c "$src" -o "$obj"
         ninaobjs+=("$obj")
     done
-    for src in drivers/nina/nina_bus.c ../common/drivers/nina/freertos/nina_os.c tests/nina/main.c \
-               ../common/drivers/nina/nina_spi.c ../common/drivers/nina/nina_wait.c; do
+    for src in ../common/drivers/nina/port/freertos/nina_bus_rp2040.c \
+               ../common/drivers/nina/port/freertos/nina_os.c tests/nina/main.c \
+               ../common/drivers/nina/internal/nina_proto.c ../common/drivers/nina/internal/nina_wait.c; do
         obj="$out/nina${hz}_$(basename "$src" .c).o"
         extra=()
         case $src in
-            ../common/drivers/nina/nina_*.c) extra=(-include drivers/compat/common_prelude.h) ;;
+            ../common/drivers/nina/internal/nina_*.c) extra=(-include drivers/compat/common_prelude.h) ;;
         esac
         cc "${flags[@]}" "${strict[@]}" "${ninainc[@]}" "${ninadefs[@]}" \
             "${extra[@]}" -c "$src" -o "$obj"
@@ -464,18 +467,19 @@ fi
 printf 'ok  sockets (descriptor table, implementations, dispatch, fcntl, poll, resolver, k_heap, FreeRTOS POSIX port)\n'
 
 # The sockets (freertos/tests/socket): the NINA's Zephyr binding
-# (../common/drivers/nina/zephyr/nina_socket.c: the offload, its wait loops, its resolver on its
+# (../common/drivers/nina/port/zephyr/nina_socket.c: the offload, its wait loops, its resolver on its
 # k_heap) on the layer's socket part as above and on the shared core
-# (common/drivers/nina/nina_sock.c, nina_dns.c, nina_wait.c), with the prelude and
+# (common/drivers/nina/nina_sock.c, nina_dns.c, internal/nina_wait.c), with the prelude and
 # NINA_OS_DNS_OFFLOAD, as drivers/nina/nina.cmake builds them, and the address conversions
 # (drivers/libc/inet.c), on a fake module and a fake clock (the test's nina_request(), nina_os.h,
 # and the binding's k_uptime_get() and k_sleep() through -Wl,--wrap), on the same kernel and
 # layer objects.  drivers/libc/include (newlib's missing network headers) comes before the host's.
-sockinc=(-Idrivers/libc/include -I../common/drivers/nina)
+sockinc=(-Idrivers/libc/include -I../common/drivers/nina -I../common/drivers/nina/internal
+         -I../common/drivers/nina/port)
 sockobjs=()
-for src in ../common/drivers/nina/zephyr/nina_socket.c drivers/libc/inet.c tests/socket/main.c \
+for src in ../common/drivers/nina/port/zephyr/nina_socket.c drivers/libc/inet.c tests/socket/main.c \
            ../common/drivers/nina/nina_sock.c ../common/drivers/nina/nina_dns.c \
-           ../common/drivers/nina/nina_wait.c "${socksrcs[@]}"; do
+           ../common/drivers/nina/internal/nina_wait.c "${socksrcs[@]}"; do
     obj="$out/socket_$(basename "$src" .c).o"
     extra=()
     case $src in
@@ -500,7 +504,7 @@ printf 'ok  socket (descriptors, wait loops, options, poll, resolver, FreeRTOS P
 # Wi-Fi (freertos/tests/wifi): the build's network parts (drivers/compat/zephyr_net_if.c, the
 # "net_mgmt" thread of zephyr_net_mgmt_os.h, drivers/compat/zephyr_net_init.c) under the shared ones as
 # drivers/wifi/wifi.cmake builds them (the NINA core's Wi-Fi operations common/drivers/nina/
-# nina_wifi.c and its Zephyr binding common/drivers/nina/zephyr/nina_net.c, the
+# nina_wifi.c and its Zephyr binding common/drivers/nina/port/zephyr/nina_net.c, the
 # layer's net_mgmt and Wi-Fi requests, the stored credentials and their settings backend, the
 # Wi-Fi profile, the "wifi" command and the copy of Zephyr's wifi_credentials_shell.c, with the
 # "ifconfig" command (drivers/wifi/nano_ifconfig.c), with the
@@ -514,6 +518,7 @@ printf 'ok  socket (descriptors, wait loops, options, poll, resolver, FreeRTOS P
 wifiinc=(-D_GNU_SOURCE -DZ_SHELL_CMD_ROOT_GLOBAL -DCONFIG_GETOPT_LONG=1 -DCONFIG_NANO_WIFI_CREDENTIALS=1
          -U_FORTIFY_SOURCE -Itests/shell -Idrivers/shell -Idrivers/wifi
          -I../common/shell -I../common/compat/lib/utils/getopt -I../common/drivers/nina
+         -I../common/drivers/nina/internal -I../common/drivers/nina/port
          -I../common/imu -I../common/tests -I../common/compat/subsys/settings/include
          -I../common/compat/subsys/settings/src -ffunction-sections -fdata-sections)
 wifiobjs=()
@@ -524,7 +529,7 @@ for src in drivers/compat/zephyr_net_if.c drivers/compat/zephyr_net_init.c drive
            ../common/shell/zshell.c ../common/shell/subcmd.c \
            ../common/compat/subsys/portability/posix/c_lib_ext/fnmatch.c \
            ../common/compat/lib/utils/getopt/getopt.c ../common/compat/lib/utils/getopt/getopt_long.c \
-           ../common/drivers/nina/nina_wifi.c ../common/drivers/nina/zephyr/nina_net.c \
+           ../common/drivers/nina/nina_wifi.c ../common/drivers/nina/port/zephyr/nina_net.c \
            ../common/compat/zephyr_net_mgmt.c \
            ../common/compat/zephyr_wifi_mgmt.c ../common/compat/zephyr_wifi_utils.c \
            ../common/compat/wifi_credentials.c ../common/compat/wifi_credentials_backend_settings.c \

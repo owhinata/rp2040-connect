@@ -17,7 +17,7 @@ config NANO_HW_DIVIDER
 	  (ARM_RP2040_DIVIDER_SAVE, a local patch of Zephyr applied by
 	  script/setup.sh).
 
-rsource "../../../common/drivers/nina/zephyr/Kconfig"
+rsource "../../../common/drivers/nina/port/zephyr/Kconfig"
 
 config NINA_PASSTHROUGH
 	bool "NINA passthrough mode for esptool"

@@ -164,7 +164,7 @@ USB の CDC ACM ポートがコンソールです（UART0 は使いません）�
 | `drivers/compat/` | Zephyr 互換層の FreeRTOS の部分（共有ソース `common/` を動かす） |
 | `drivers/shell/`、`drivers/log/`、`drivers/libc/` | シェル、RAM ログ、標準出力の接続 |
 | `drivers/kv/` | KV のフラッシュの読み書き |
-| `drivers/nina/` | NINA-W102 の SPI と制御線 |
+| `drivers/nina/` | NINA-W102 のドライバーをビルドに入れる設定（ドライバーは `../common/drivers/nina/`） |
 | `drivers/wifi/` | Wi-Fi の組み込み（本体は `common/`） |
 | `drivers/telnet/`、`drivers/zperf/` | Telnet のシェルと、速度測定の組み込み |
 | `drivers/i2c_dw/` | I2C0 と DMA（センサーのバス） |

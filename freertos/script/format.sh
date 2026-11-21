@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Format the C sources under freertos/app/, freertos/drivers/,
-# freertos/tests/ and common/drivers/*/freertos/ (the shared drivers'
+# freertos/tests/ and common/drivers/*/port/freertos/ (the shared drivers'
 # FreeRTOS bindings) with clang-format and
 # freertos/.clang-format (the Zephyr project's style).  Run it from anywhere;
 # it sources freertos/script/setup.sh itself, which installs clang-format.
@@ -35,7 +35,7 @@ set -eu
 (( setup_status == 0 )) || { printf 'format.sh: freertos/script/setup.sh failed\n' >&2; exit 1; }
 
 mapfile -t files < <(find "${root}/app" "${root}/drivers" "${root}/tests" \
-  "${root}"/../common/drivers/*/freertos -type f \
+  "${root}"/../common/drivers/*/port/freertos -type f \
   \( -name '*.c' -o -name '*.h' \) ! -name FreeRTOSConfig.h \
   ! -path "${root}/drivers/compat/lib/*" ! -path "${root}/drivers/compat/subsys/*" \
   ! -path "${root}/drivers/compat/zephyr/sys/fdtable.h" \

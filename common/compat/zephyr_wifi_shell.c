@@ -2,7 +2,7 @@
 /* The "wifi" command of the Zephyr build (Zephyr v4.5.0) for the ports
  * without Zephyr's network shell: the part of subsys/net/l2/wifi/wifi_shell.c
  * that the NINA-W102 driver (common/drivers/nina/nina_wifi.c through its
- * Zephyr binding, common/drivers/nina/zephyr/nina_net.c) can serve,
+ * Zephyr binding, common/drivers/nina/port/zephyr/nina_net.c) can serve,
  * "wifi connect", "wifi disconnect", "wifi scan" and "wifi status", with
  * their messages, return values and net_mgmt event output, and the root
  * command "wifi" with those and "wifi cred" (the copy of Zephyr's

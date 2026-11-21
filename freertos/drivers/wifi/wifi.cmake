@@ -16,7 +16,7 @@
 #
 # - the NINA's network interface: the core's Wi-Fi operations
 #   (common/drivers/nina/nina_wifi.c), its Zephyr binding on the layer
-#   (common/drivers/nina/zephyr/nina_net.c: Zephyr's Wi-Fi management and
+#   (common/drivers/nina/port/zephyr/nina_net.c: Zephyr's Wi-Fi management and
 #   interface, the threads nina_scan_tid, nina_connect_tid and
 #   nina_monitor_tid) and the start of the layer's network part, which
 #   registers the driver's interface as Zephyr's net_init() does
@@ -66,7 +66,7 @@ get_filename_component(FREERTOS_WIFI_DIR ${CMAKE_CURRENT_LIST_DIR} ABSOLUTE)
 function(freertos_wifi target)
   set(wifi_common_sources
     ${FREERTOS_COMMON_DIR}/drivers/nina/nina_wifi.c
-    ${FREERTOS_COMMON_DIR}/drivers/nina/zephyr/nina_net.c
+    ${FREERTOS_COMMON_DIR}/drivers/nina/port/zephyr/nina_net.c
     ${FREERTOS_COMMON_DIR}/compat/zephyr_net_mgmt.c
     ${FREERTOS_COMMON_DIR}/compat/zephyr_wifi_mgmt.c
     ${FREERTOS_COMMON_DIR}/compat/zephyr_wifi_utils.c

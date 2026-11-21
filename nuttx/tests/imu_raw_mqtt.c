@@ -94,7 +94,7 @@ int test_sem_take(struct k_sem *sem, k_timeout_t timeout);
 #include "imu_raw_batch.h"
 #include "zephyr_kernel_host.h"
 
-/* common/drivers/nina/nina_wait.c without the module's socket events (the
+/* common/drivers/nina/internal/nina_wait.c without the module's socket events (the
  * layer's zsock_recv() and zsock_poll() wait with it): the loop's interval,
  * nina_os_sleep_ms() (nxsched_msleep(), the same ticks as
  * k_sleep(K_MSEC())); here the test's sleep.

@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /* Host test of the NINA core's NuttX binding, wlan0:
- * common/drivers/nina/nuttx/nina_netdev.c (included), on NuttX's own
+ * common/drivers/nina/port/nuttx/nina_netdev.c (included), on NuttX's own
  * <nuttx/wireless/wireless.h> (the fetched tree) and fakes of the other
  * NuttX declarations it uses (tests/nina_netdev_fakes: the network device,
  * mutexes, semaphores, kernel threads), of the core's Wi-Fi functions
@@ -40,7 +40,7 @@
 #include <stdarg.h>
 #include <stdio.h>
 
-#include "../../common/drivers/nina/nuttx/nina_netdev.c"
+#include "../../common/drivers/nina/port/nuttx/nina_netdev.c"
 
 static char log_buf[4096];
 

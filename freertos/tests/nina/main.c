@@ -1,11 +1,11 @@
 /* SPDX-License-Identifier: MIT */
 /* The host test of the FreeRTOS build's boundaries of the NINA core on the
- * FreeRTOS POSIX port: freertos/drivers/nina/nina_bus.c and the core's
- * FreeRTOS binding (common/drivers/nina/freertos/nina_os.c, on FreeRTOS and
+ * FreeRTOS POSIX port: common/drivers/nina/port/freertos/nina_bus_rp2040.c and the core's
+ * FreeRTOS binding (common/drivers/nina/port/freertos/nina_os.c, on FreeRTOS and
  * the Pico SDK alone: no compatibility layer is linked) on fakes of the
  * Pico SDK's GPIO, GPIO interrupt, reset, SPI and TIMER functions
  * (pico_fake/, implemented here: they record the calls and play the
- * module), and the shared core over both (common/drivers/nina/nina_spi.c),
+ * module), and the shared core over both (common/drivers/nina/internal/nina_proto.c),
  * as the board builds them (freertos/drivers/nina/nina.cmake).
  * freertos/script/host_tests.sh runs it twice: with the board's 1 ms tick,
  * and with a 4 ms one (configTICK_RATE_HZ 250); both times the kernel's
@@ -66,7 +66,7 @@
  * wait; a waiter that timed out is not woken by a later edge.  A start
  * that fails cannot happen here (the binding's starts return 0); the
  * fallback after a failed start is common/tests/nina_wait.c's and
- * nina_spi.c's.
+ * nina_proto.c's.
  */
 
 #include <assert.h>
@@ -700,7 +700,7 @@ static void test_lines(void)
 	expect_calls("put(9,0) put(9,1) put(2,1) put(2,0) ");
 	/* The module is held in reset (GPIO3 not driven yet): READY high. */
 	assert(nina_pin_get(NINA_PIN_READY) == 0);
-	/* The lines as nina_spi.c finds them before its first request. */
+	/* The lines as nina_proto.c finds them before its first request. */
 	pins[2].out = false;
 	pins[GPIO_READY].out = false;
 }

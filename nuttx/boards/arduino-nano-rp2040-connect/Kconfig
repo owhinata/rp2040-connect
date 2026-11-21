@@ -191,8 +191,8 @@ config NINA_PASSTHROUGH
 		The NINA driver's passthrough mode
 		(common/drivers/nina/nina_passthrough.c, shared with the Zephyr
 		and FreeRTOS builds; its NuttX side
-		common/drivers/nina/nuttx/nina_passthrough_os.c, its module side
-		src/nina_passthrough_bus.c): after "nina passthrough confirm"
+		common/drivers/nina/port/nuttx/nina_passthrough_os.c, its module side
+		port/nuttx/nina_passthrough_bus_rp2040.c): after "nina passthrough confirm"
 		(nuttx/apps/nina) the board restarts into a mode that relays
 		the USB CDC ACM port to the NINA-W102's UART (UART1 on GPIO8
 		and GPIO9, the pins of SPI1's MISO and CS) with DTR and RTS on

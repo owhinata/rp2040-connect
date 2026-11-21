@@ -38,7 +38,7 @@
  * driver takes any pin) and claimed together.  An interrupt on another pin
  * is refused with -ENOTSUP.  The NINA's READY (GPIO10) and IRQ line (GPIO2)
  * have a raw handler of their own, added the same way by the NINA core's
- * FreeRTOS binding (common/drivers/nina/freertos/nina_os.c); each handler
+ * FreeRTOS binding (common/drivers/nina/port/freertos/nina_os.c); each handler
  * looks at and acknowledges only its own pins.
  *
  * The interrupt runs at the SDK's default priority (0x80) like every

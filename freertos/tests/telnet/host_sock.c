@@ -4,7 +4,7 @@
  * (freertos/tests/telnet) and of the MQTT transport against the host's
  * receiver (freertos/tests/mqtt/live.c), in place of the layer's socket
  * part, with what the NINA's sockets do (the binding
- * common/drivers/nina/zephyr/nina_socket.c over common/drivers/nina/
+ * common/drivers/nina/port/zephyr/nina_socket.c over common/drivers/nina/
  * nina_sock.c, on the layer) where the code under test depends on it:
  *
  * - ten descriptors, numbered 0..9 from the lowest free one (EMFILE for an

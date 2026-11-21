@@ -3,7 +3,8 @@
 #
 # The "nina" builtin command (see Kconfig).  nina_request() is in the
 # kernel side (common/drivers/nina, built by nuttx/drivers/nina; the flat
-# build links it in); its header nina_proto.h is in common/drivers/nina.
+# build links it in); its header nina_proto.h is in
+# common/drivers/nina/internal.
 # subcmd.c is in common/shell (built by ../subcmd), and so is subcmd.h.
 # "nina passthrough confirm" calls nina_passthrough_request() of the
 # NINA driver (nina_passthrough.h, also in common/drivers/nina).

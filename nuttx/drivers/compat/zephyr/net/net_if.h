@@ -6,7 +6,7 @@
  *
  *   struct net_if: the interface of a NuttX network device (struct
  *   net_driver_s: wlan0, whose binding,
- *   common/drivers/nina/nuttx/nina_netdev.c, sets its addresses and
+ *   common/drivers/nina/port/nuttx/nina_netdev.c, sets its addresses and
  *   flags; nina_wifi_mgmt.c registers the interface).  Zephyr's one IPv4
  *   address and gateway of the interface are the device's d_ipaddr and
  *   d_draddr, which ifconfig shows; administratively up is IFF_UP.
@@ -57,7 +57,7 @@ enum net_addr_state
 };
 
 /* Makes IFACE the interface net_if_get_default() and
- * net_if_get_wifi_sta() return (common/drivers/nina/nuttx/nina_wifi_mgmt.c).
+ * net_if_get_wifi_sta() return (common/drivers/nina/port/nuttx/nina_wifi_mgmt.c).
  */
 
 void z_net_if_register(struct net_if *iface);

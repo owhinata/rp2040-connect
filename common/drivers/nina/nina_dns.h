@@ -7,9 +7,9 @@
  * and the Zephyr compatibility layer's <zephyr/net/socket.h> maps
  * zsock_getaddrinfo() and zsock_freeaddrinfo() to it.
  *
- * nina_getaddrinfo() returns 0 or a getaddrinfo() error (EAI_*: the OS's
+ * nina_dns_getaddrinfo() returns 0 or a getaddrinfo() error (EAI_*: the OS's
  * values; on Zephyr its DNS_EAI_*).  It gives one IPv4 address.  Release
- * the result with nina_freeaddrinfo().
+ * the result with nina_dns_freeaddrinfo().
  */
 
 #ifndef NINA_DNS_H_
@@ -22,9 +22,9 @@ extern "C"
 {
 #endif
 
-int nina_getaddrinfo(const char *host, const char *service,
+int nina_dns_getaddrinfo(const char *host, const char *service,
                      const struct addrinfo *hints, struct addrinfo **res);
-void nina_freeaddrinfo(struct addrinfo *res);
+void nina_dns_freeaddrinfo(struct addrinfo *res);
 
 #ifdef __cplusplus
 }

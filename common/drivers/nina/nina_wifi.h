@@ -1,14 +1,14 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /* The NINA-W102's Wi-Fi operations (nina_wifi.c): scan, connect,
  * disconnect, the link monitor and the status, on the module's commands
- * (nina_request(), nina_cmd.h) and the kernel services of nina_os.h.
+ * (nina_request(), nina_proto.h) and the kernel services of nina_os.h.
  * Each OS's binding makes them its own interface:
  *
- *   common/drivers/nina/zephyr/nina_net.c    Zephyr's Wi-Fi management and
+ *   common/drivers/nina/port/zephyr/nina_net.c    Zephyr's Wi-Fi management and
  *                                            network interface (also the
  *                                            FreeRTOS build's, on the
  *                                            compatibility layer)
- *   common/drivers/nina/nuttx/nina_netdev.c  NuttX's network device wlan0
+ *   common/drivers/nina/port/nuttx/nina_netdev.c  NuttX's network device wlan0
  *                                            and its wireless ioctls (wapi)
  *
  * A binding calls nina_wifi_init() once, before any other function here,
@@ -44,7 +44,7 @@ struct nina_wifi_scan_result {
 	uint8_t ssid[NINA_WIFI_SSID_MAX_LEN];
 	uint8_t ssid_len;
 	int32_t rssi;                     /* dBm */
-	uint8_t enc_type;                 /* NINA_ENC_TYPE_* (nina_cmd.h), as reported */
+	uint8_t enc_type;                 /* NINA_ENC_TYPE_* (nina_proto.h), as reported */
 	uint8_t bssid[NINA_WIFI_MAC_LEN]; /* in transmission order */
 	uint8_t channel;
 };
@@ -131,7 +131,7 @@ struct nina_wifi_ops {
 /* Keeps OPS, reads the module's MAC address into MAC and asks the module
  * for its capabilities (nina_probe_capabilities(), nina_proto.h): the
  * module's first commands, after its reset, so this waits for it (10 ms +
- * 750 ms in nina_spi.c).  0, or the MAC request's negative errno (-EPROTO
+ * 750 ms in nina_proto.c).  0, or the MAC request's negative errno (-EPROTO
  * for a short answer); the capabilities are asked either way.
  */
 int nina_wifi_init(const struct nina_wifi_ops *ops, uint8_t mac[NINA_WIFI_MAC_LEN]);

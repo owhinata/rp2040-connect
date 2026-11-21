@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 /* Host test of this build's socket offload
- * (common/drivers/nina/zephyr/nina_socket.c) on
+ * (common/drivers/nina/port/zephyr/nina_socket.c) on
  * the shared core (common/drivers/nina/nina_sock.c, nina_dns.c), as
  * CMakeLists.txt builds them (NINA_OS_DNS_OFFLOAD), on fakes of the Zephyr
  * calls (tests/socket_fakes: the descriptor table, mutexes, the clock and
@@ -25,7 +25,7 @@
  *   descriptors);
  * - the resolver registered as the offload's, its results on the heap.
  *
- * The waits between passes are common/drivers/nina/nina_wait.c, linked in:
+ * The waits between passes are common/drivers/nina/internal/nina_wait.c, linked in:
  * without its events they are the sleeps above.  The cases above run after
  * a start of the events that failed (nina_os_event_start() of the fakes
  * here returns -ENOTSUP; the 3.0.2 firmware, which never starts them, waits
@@ -1099,8 +1099,8 @@ static void test_dns(void)
 
 	dns_registered = NULL;
 	nina_dns_init();
-	assert(dns_registered && dns_registered->getaddrinfo == nina_getaddrinfo &&
-	       dns_registered->freeaddrinfo == nina_freeaddrinfo);
+	assert(dns_registered && dns_registered->getaddrinfo == nina_dns_getaddrinfo &&
+	       dns_registered->freeaddrinfo == nina_dns_freeaddrinfo);
 	assert(dns_registered->getaddrinfo("10.1.2.3", "1883", NULL, &res) == 0);
 	assert(heap_blocks == 1 && res->ai_family == AF_INET);
 	assert(((struct sockaddr_in *)res->ai_addr)->sin_port == htons(1883));

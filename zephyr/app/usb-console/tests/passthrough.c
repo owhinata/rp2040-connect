@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 /* Host test of the NINA passthrough mode's Zephyr binding
- * (common/drivers/nina/zephyr/nina_passthrough_os.c, which the test
+ * (common/drivers/nina/port/zephyr/nina_passthrough_os.c, which the test
  * includes) and of "nina passthrough" (common/shell/nina_shell.c, included
  * too), on fakes of the Zephyr calls (tests/passthrough_fakes) and of the
  * module's side (nina_passthrough_bus.h, defined here: the scratch
@@ -63,7 +63,7 @@ static void note(const char *fmt, ...)
 }
 
 static int resetn = -1;    /* -1: not driven */
-static int gpio0 = -1;     /* enum nina_pt_gpio0, -1: untouched */
+static int gpio0 = -1;     /* enum nina_passthrough_gpio0, -1: untouched */
 static int tx_driven = -1; /* GPIO8: 1 UART1 TX, 0 input */
 static unsigned int uart_inits;
 static uint32_t uart_rate;
@@ -80,83 +80,83 @@ static unsigned int txfifo_len;
 static uint8_t wire[8192]; /* what left UART1 for the module */
 static unsigned int wire_len;
 
-void nina_pt_bus_mark_get(uint32_t s[NINA_PT_MARK_WORDS])
+void nina_passthrough_bus_mark_get(uint32_t s[NINA_PASSTHROUGH_MARK_WORDS])
 {
-	memcpy(s, scratch, NINA_PT_MARK_WORDS * sizeof(uint32_t));
+	memcpy(s, scratch, NINA_PASSTHROUGH_MARK_WORDS * sizeof(uint32_t));
 }
 
-void nina_pt_bus_mark_set(const uint32_t s[NINA_PT_MARK_WORDS])
+void nina_passthrough_bus_mark_set(const uint32_t s[NINA_PASSTHROUGH_MARK_WORDS])
 {
-	memcpy(scratch, s, NINA_PT_MARK_WORDS * sizeof(uint32_t));
+	memcpy(scratch, s, NINA_PASSTHROUGH_MARK_WORDS * sizeof(uint32_t));
 	note("mark");
 }
 
-void nina_pt_bus_restart(void)
+void nina_passthrough_bus_restart(void)
 {
 	restarts++;
 	note("restart");
 	longjmp(restart_jmp, 1);
 }
 
-void nina_pt_bus_lines_init(void)
+void nina_passthrough_bus_lines_init(void)
 {
 	resetn = 0;
-	gpio0 = NINA_PT_GPIO0_HIGH;
+	gpio0 = NINA_PASSTHROUGH_GPIO0_HIGH;
 	note("lines init");
 }
 
-void nina_pt_bus_resetn(bool released)
+void nina_passthrough_bus_resetn(bool released)
 {
 	resetn = released;
 	note("resetn %d", released);
 }
 
-void nina_pt_bus_gpio0(enum nina_pt_gpio0 state)
+void nina_passthrough_bus_gpio0(enum nina_passthrough_gpio0 state)
 {
 	gpio0 = (int)state;
 	note("gpio0 %d", (int)state);
 }
 
-void nina_pt_bus_uart_tx_connect(bool connected)
+void nina_passthrough_bus_uart_tx_connect(bool connected)
 {
 	tx_driven = connected;
 	note("tx %d", connected);
 }
 
-void nina_pt_bus_uart_set_baud(uint32_t baud)
+void nina_passthrough_bus_uart_set_baud(uint32_t baud)
 {
 	uart_rate = baud;
 }
 
-void nina_pt_bus_uart_init(uint32_t baud)
+void nina_passthrough_bus_uart_init(uint32_t baud)
 {
 	uart_inits++;
 	uart_rate = baud;
 	tx_driven = 0;
 }
 
-void nina_pt_bus_uart_irq_on(void)
+void nina_passthrough_bus_uart_irq_on(void)
 {
 	irq_on = true;
 }
 
-void nina_pt_bus_uart_irq_off(void)
+void nina_passthrough_bus_uart_irq_off(void)
 {
 	irq_on = false;
 	txim = false;
 }
 
-void nina_pt_bus_uart_tx_irq(bool on)
+void nina_passthrough_bus_uart_tx_irq(bool on)
 {
 	txim = on;
 }
 
-bool nina_pt_bus_uart_tx_irq_on(void)
+bool nina_passthrough_bus_uart_tx_irq_on(void)
 {
 	return txim;
 }
 
-bool nina_pt_bus_uart_rx(uint32_t *word)
+bool nina_passthrough_bus_uart_rx(uint32_t *word)
 {
 	if (rxq_head == rxq_tail) {
 		return false;
@@ -165,7 +165,7 @@ bool nina_pt_bus_uart_rx(uint32_t *word)
 	return true;
 }
 
-bool nina_pt_bus_uart_tx(uint8_t c)
+bool nina_passthrough_bus_uart_tx(uint8_t c)
 {
 	if (txfifo_len == TXFIFO) {
 		return false;
@@ -174,17 +174,17 @@ bool nina_pt_bus_uart_tx(uint8_t c)
 	return true;
 }
 
-void nina_pt_bus_led_init(void)
+void nina_passthrough_bus_led_init(void)
 {
 	led_on = false;
 }
 
-void nina_pt_bus_led(bool on)
+void nina_passthrough_bus_led(bool on)
 {
 	led_on = on;
 }
 
-#include "../../../../common/drivers/nina/zephyr/nina_passthrough_os.c"
+#include "../../../../common/drivers/nina/port/zephyr/nina_passthrough_os.c"
 #include "../../../../common/shell/nina_shell.c"
 
 /* The fakes of the Zephyr calls -------------------------------------------*/
@@ -400,7 +400,7 @@ uint32_t nina_module_capabilities(void)
 /* Helpers -----------------------------------------------------------------*/
 
 /* The counts as the log has them now. */
-static struct nina_pt_counts counts;
+static struct nina_passthrough_counts counts;
 
 static void take_counts(void)
 {
@@ -493,7 +493,7 @@ static void parse_counts(void)
 		      "%lu lost (buffer full, peak %lu of %lu), UART: %lu overruns, %lu breaks, "
 		      "%lu framing errors, %lu bps",
 		      &to, &from, &disc, &lost, &peak, &size, &over, &brk, &fram, &rate) == 10);
-	counts = (struct nina_pt_counts){to, from, disc, lost, peak, size, over, brk, fram, rate};
+	counts = (struct nina_passthrough_counts){to, from, disc, lost, peak, size, over, brk, fram, rate};
 }
 
 /* The tests ---------------------------------------------------------------*/
@@ -520,10 +520,10 @@ static void test_start(void)
 	trace_len = 0;
 	assert(pt_check() == 0);
 	assert(nina_passthrough_active());
-	for (int i = 0; i < NINA_PT_MARK_WORDS; i++) {
+	for (int i = 0; i < NINA_PASSTHROUGH_MARK_WORDS; i++) {
 		assert(scratch[i] == 0);
 	}
-	assert(TRACED("mark", "lines init") && resetn == 0 && gpio0 == NINA_PT_GPIO0_HIGH);
+	assert(TRACED("mark", "lines init") && resetn == 0 && gpio0 == NINA_PASSTHROUGH_GPIO0_HIGH);
 	assert(msg_cb == usb_msg && !configured);
 
 	trace_len = 0;
@@ -545,12 +545,12 @@ static void test_lines(void)
 	 * ROM's download mode.
 	 */
 	lines_msg(1, 1);
-	assert(resetn == 1 && gpio0 == NINA_PT_GPIO0_LOW && tx_driven == 1);
+	assert(resetn == 1 && gpio0 == NINA_PASSTHROUGH_GPIO0_LOW && tx_driven == 1);
 	lines_msg(1, 0);
-	assert(resetn == 0 && gpio0 == NINA_PT_GPIO0_LOW);
+	assert(resetn == 0 && gpio0 == NINA_PASSTHROUGH_GPIO0_LOW);
 	now += 200;
 	lines_msg(1, 1);
-	assert(resetn == 1 && gpio0 == NINA_PT_GPIO0_LOW && tx_driven == 1);
+	assert(resetn == 1 && gpio0 == NINA_PASSTHROUGH_GPIO0_LOW && tx_driven == 1);
 
 	/* The same state again changes nothing. */
 	trace_len = 0;
@@ -569,19 +569,19 @@ static void test_lines(void)
 	cdc_rts = 1;
 	now += 10;
 	tick(NULL);
-	assert(resetn == 1 && gpio0 == NINA_PT_GPIO0_HIGH && tx_driven == 0);
+	assert(resetn == 1 && gpio0 == NINA_PASSTHROUGH_GPIO0_HIGH && tx_driven == 0);
 	now += 749;
 	tick(NULL);
-	assert(gpio0 == NINA_PT_GPIO0_HIGH);
+	assert(gpio0 == NINA_PASSTHROUGH_GPIO0_HIGH);
 	now += 1;
 	tick(NULL);
-	assert(gpio0 == NINA_PT_GPIO0_RELEASED && tx_driven == 0);
+	assert(gpio0 == NINA_PASSTHROUGH_GPIO0_RELEASED && tx_driven == 0);
 
 	/* Closed (both clear): held in reset, GPIO0 high, GPIO8 driven idle. */
 	lines_msg(1, 1);
 	fake_log[0] = '\0';
 	lines_msg(0, 0);
-	assert(resetn == 0 && gpio0 == NINA_PT_GPIO0_HIGH && tx_driven == 1);
+	assert(resetn == 0 && gpio0 == NINA_PASSTHROUGH_GPIO0_HIGH && tx_driven == 1);
 	assert(!strncmp(fake_log, "Port closed: ", 13));
 }
 
@@ -589,7 +589,7 @@ static void test_rate(void)
 {
 	coding_msg(921600);
 	assert(uart_rate == 921600);
-	coding_msg(NINA_PT_EXIT_BAUD);
+	coding_msg(NINA_PASSTHROUGH_EXIT_BAUD);
 	assert(uart_rate == 921600);
 	cdc_rate = 460800;
 	tick(NULL);
@@ -672,7 +672,7 @@ static void test_nina_to_host(void)
 	room = 1u << 30;
 
 	/* A break is no data: the transmit interrupt stays off. */
-	module_sends(data, 3, NINA_PT_UART_BREAK);
+	module_sends(data, 3, NINA_PASSTHROUGH_UART_BREAK);
 	assert(!cdc_tx_on);
 
 	/* The tick turns it on when something waits (a missed turn: taken
@@ -704,7 +704,7 @@ static void test_way_out(void)
 {
 	/* Opened at the stale 300 bps, set to 115200, closed: stays. */
 	lines_msg(0, 0);
-	cdc_rate = NINA_PT_EXIT_BAUD;
+	cdc_rate = NINA_PASSTHROUGH_EXIT_BAUD;
 	lines_msg(1, 1);
 	coding_msg(115200);
 	lines_msg(0, 0);
@@ -712,7 +712,7 @@ static void test_way_out(void)
 
 	/* Closed at 300 bps: everything off, then main()'s way out. */
 	lines_msg(1, 1);
-	coding_msg(NINA_PT_EXIT_BAUD);
+	coding_msg(NINA_PASSTHROUGH_EXIT_BAUD);
 	lines_msg(0, 0);
 	assert(leaving && leave_sem.count == 1 && !irq_on && !txim && !cdc_rx_on && !cdc_tx_on);
 	assert(resetn == 0);

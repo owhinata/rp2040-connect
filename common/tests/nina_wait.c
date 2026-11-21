@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: MIT */
-/* Host test of common/drivers/nina/nina_wait.c (the waits of the socket
+/* Host test of common/drivers/nina/internal/nina_wait.c (the waits of the socket
  * loops) on fakes of nina_os.h: a clock in milliseconds that only the
  * sleeps and the waits move, and an IRQ line whose edges are planned at
  * given times.  nina_os_event_start() fails or succeeds as the test says.

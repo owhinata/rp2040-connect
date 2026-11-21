@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /* Host test of the NINA core's Zephyr binding,
- * common/drivers/nina/zephyr/nina_net.c (included), on fakes of the Zephyr
+ * common/drivers/nina/port/zephyr/nina_net.c (included), on fakes of the Zephyr
  * declarations it uses (tests/net_fakes) and of the core's Wi-Fi functions
  * (nina_wifi.h), which record what they are asked.  The mapping:
  *
@@ -35,7 +35,7 @@
 #include <stdio.h>
 #include <string.h>
 
-#include "../../../../common/drivers/nina/zephyr/nina_net.c"
+#include "../../../../common/drivers/nina/port/zephyr/nina_net.c"
 
 static char log_buf[4096];
 

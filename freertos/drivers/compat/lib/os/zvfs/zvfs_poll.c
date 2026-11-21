@@ -12,7 +12,7 @@
  * zvfs_poll_internal() is Zephyr's text: each descriptor's POLL_PREPARE
  * under its lock; an offloaded socket answers -EXDEV and the whole call goes
  * to its implementation's POLL_OFFLOAD (the NINA's sockets,
- * common/drivers/nina/zephyr/nina_socket.c); otherwise the events that
+ * common/drivers/nina/port/zephyr/nina_socket.c); otherwise the events that
  * POLL_PREPARE gave wait in k_poll() (the layer's: semaphores) and each
  * descriptor's POLL_UPDATE gives its revents.  A descriptor that is not
  * open is POLLNVAL; without an offloaded one, the call first waits for the

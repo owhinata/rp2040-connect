@@ -508,7 +508,7 @@ Zephyr build changes), are in "Host test details" in [`design/nuttx-porting.md`]
 | Location | Contents |
 |---|---|
 | `boards/arduino-nano-rp2040-connect/` | Board definition (`configs/imu/defconfig`, `include/board.h`, linker script, and in `src/` the bring-up, clocks, the NuttX part of I2C0 and the DMA, key-value flash and so on) |
-| `drivers/` | Kernel-side code: NINA (`nina/`: its options and build rules; the driver is `../common/drivers/nina/` with its NuttX binding `nuttx/`), LSM6DSOX (`lsm6dso/`), RAM log (`log/`; its ring is in `../common/log/`), the NuttX implementation of the Zephyr API compatibility layer (`compat/`), the NuttX parts of shared headers (`include/`) |
+| `drivers/` | Kernel-side code: NINA (`nina/`: its options and build rules; the driver is `../common/drivers/nina/` with its NuttX binding `port/nuttx/`), LSM6DSOX (`lsm6dso/`), RAM log (`log/`; its ring is in `../common/log/`), the NuttX implementation of the Zephyr API compatibility layer (`compat/`), the NuttX parts of shared headers (`include/`) |
 | `apps/` | Applications: `init` (start-up and Telnet), `imu` (acquisition, MQTT, time synchronization, calibration, key-value store), `kv`, `nina`, `ntp`, `wifi`, `sensor`, `i2c_dma`, `dmesg`, `irqstack`, `bootsel`, `subcmd` (the Zephyr shell's command handling and the subcommand handling: the sources are in `../common/shell/`, the NuttX shell backends here) |
 | `patches/` | Patches to NuttX and nuttx-apps |
 | `script/` | `setup.sh`, `build.sh`, `flash.sh`, `host_tests.sh`, `bin2uf2.py`, `kconfig-tweak` |

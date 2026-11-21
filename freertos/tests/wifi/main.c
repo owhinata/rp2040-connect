@@ -4,7 +4,7 @@
  * thread "net_mgmt" of zephyr_net_mgmt_os.h, the start of the network part
  * freertos/drivers/compat/zephyr_net_init.c) under the shared ones as
  * freertos/drivers/wifi/wifi.cmake builds them (common/drivers/nina/nina_wifi.c and its Zephyr
- * binding common/drivers/nina/zephyr/nina_net.c, common/compat/zephyr_net_mgmt.c,
+ * binding common/drivers/nina/port/zephyr/nina_net.c, common/compat/zephyr_net_mgmt.c,
  * zephyr_wifi_mgmt.c, zephyr_wifi_utils.c, wifi_credentials.c and its settings backend,
  * common/imu/wifi_profile.c, the "wifi" command of common/compat/zephyr_wifi_shell.c and the copy
  * of Zephyr's wifi_credentials_shell.c), on the store as the board builds it
@@ -286,7 +286,7 @@ static void put_le32(uint8_t *b, int32_t v)
 
 /* The kernel services of nina_os.h that the Wi-Fi operations use
  * (common/drivers/nina/nina_wifi.c), as fakes on the layer with the same
- * behaviour as the FreeRTOS binding's (common/drivers/nina/freertos/nina_os.c,
+ * behaviour as the FreeRTOS binding's (common/drivers/nina/port/freertos/nina_os.c,
  * tested in tests/nina); the rest of the binding, the waits on the module's
  * lines, is not needed here. */
 static K_MUTEX_DEFINE(connect_state_lock);
@@ -323,7 +323,7 @@ int64_t nina_os_uptime_ms(void)
 	return k_uptime_get();
 }
 
-/* The firmware's capability bits (common/drivers/nina/nina_spi.c, here a
+/* The firmware's capability bits (common/drivers/nina/internal/nina_proto.c, here a
  * fake): what the test sets; the probe counted. */
 static uint32_t fake_caps;
 static unsigned int probes;
@@ -468,7 +468,7 @@ out:
 	return ret;
 }
 
-/* 10.42.0.97/24 via 10.42.0.1 (common/drivers/nina/nina_spi.c's layout). */
+/* 10.42.0.97/24 via 10.42.0.1 (common/drivers/nina/internal/nina_proto.c's layout). */
 int nina_ip_config(uint8_t data[12])
 {
 	static const uint8_t config[12] = {10, 42, 0, 97, 255, 255, 255, 0, 10, 42, 0, 1};

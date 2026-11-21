@@ -39,7 +39,7 @@
 #define NANO_PRIO_FROM_ZEPHYR(p)     (118 - (p))
 
 /* "nina_event", the kernel thread that turns NINA socket polling into
- * usrsock events (common/drivers/nina/nuttx/nina_poller.c).  No Zephyr thread:
+ * usrsock events (common/drivers/nina/port/nuttx/nina_poller.c).  No Zephyr thread:
  * Zephyr polls in the caller of connect() and poll() (imu_raw_mqtt_tid 11
  * -> 107, net_socket_service 14 -> 104 for Telnet).  106: below the
  * application threads, above the shell.  The stack holds a NINA request
@@ -49,7 +49,7 @@
 #define NANO_PRIO_NINA_EVENT         106
 #define NANO_STACK_NINA_EVENT        1536
 
-/* The NINA passthrough mode (common/drivers/nina/nuttx/nina_passthrough_os.c): the
+/* The NINA passthrough mode (common/drivers/nina/port/nuttx/nina_passthrough_os.c): the
  * init task while it runs the mode, "nina_pt_rx" and "nina_pt_tx".  No
  * Zephyr thread (the FreeRTOS build runs the mode in one loop without the
  * scheduler).  Above every thread of the normal firmware, none of which

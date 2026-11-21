@@ -53,7 +53,7 @@ extern "C" {
  * restarts normally), as the "1200 bps touch" of Arduino boards does: for
  * example "stty -F /dev/ttyACM0 300".  esptool never uses it.
  */
-#define NINA_PT_EXIT_BAUD 300u
+#define NINA_PASSTHROUGH_EXIT_BAUD 300u
 
 /* The buffer from the module to the host: 178 ms at 921600 bps. */
 #define NINA_PASSTHROUGH_RING_SIZE 16384u
@@ -96,7 +96,7 @@ void nina_passthrough_hold(void);
 void nina_passthrough_begin(uint8_t *ring);
 
 /* The UART's interrupt (the bus's handler calls it): its receive FIFO into
- * the buffer, then nina_pt_os_uart_irq().
+ * the buffer, then nina_passthrough_os_uart_irq().
  */
 void nina_passthrough_uart_isr(void);
 
@@ -105,7 +105,7 @@ void nina_passthrough_uart_isr(void);
  */
 uint32_t nina_passthrough_to_module(const uint8_t *data, uint32_t len);
 
-/* Module to host: the buffer to nina_pt_os_write() until it is empty or
+/* Module to host: the buffer to nina_passthrough_os_write() until it is empty or
  * the host takes no more.  Returns true when some bytes went.  The
  * buffer's consumer: one caller at a time, not from the UART's interrupt.
  */
@@ -121,17 +121,17 @@ bool nina_passthrough_waiting(void);
 
 /* The host's DTR and RTS, with RATE the rate of its line coding at the
  * time: the module's lines follow, and closing the port at
- * NINA_PT_EXIT_BAUD asks for the way out (nina_passthrough_exit_requested()).
+ * NINA_PASSTHROUGH_EXIT_BAUD asks for the way out (nina_passthrough_exit_requested()).
  * Returns true when this change closed the port (DTR set, then clear).
  */
 bool nina_passthrough_host_lines(bool dtr, bool rts, uint32_t rate);
 
 /* The host's line coding at RATE: the UART follows (8N1 always), but not
- * to NINA_PT_EXIT_BAUD or out of its range.
+ * to NINA_PASSTHROUGH_EXIT_BAUD or out of its range.
  */
 void nina_passthrough_host_rate(uint32_t rate);
 
-/* Whether the port was closed at NINA_PT_EXIT_BAUD. */
+/* Whether the port was closed at NINA_PASSTHROUGH_EXIT_BAUD. */
 bool nina_passthrough_exit_requested(void);
 
 /* The module's lines at the time (GPIO0 is released 750 ms after a start

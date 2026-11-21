@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-/* Fakes of the Zephyr declarations that common/drivers/nina/zephyr/nina_net.c
+/* Fakes of the Zephyr declarations that common/drivers/nina/port/zephyr/nina_net.c
  * uses (<zephyr/kernel.h>, <zephyr/net/net_if.h>, <zephyr/net/wifi_mgmt.h>),
  * for the host test tests/nina_net.c, which defines the functions.  The
  * structures have Zephyr's member names (Zephyr v4.5.0); only the members

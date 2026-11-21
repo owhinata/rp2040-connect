@@ -105,7 +105,7 @@ flowchart LR
 | Send queue | `common/imu/imu_raw_queue.*` |
 | MQTT sending, reconnecting, status / info | `common/imu/imu_raw_mqtt.*`, `common/imu/imu_raw_status.*` |
 | Acquisition thread, recovery, shell (`imu`) | `common/imu/imu_stream.c` |
-| NINA sockets | `common/drivers/nina/zephyr/nina_socket.c`, `common/drivers/nina/nina_sock.*` (see the [driver README](../zephyr/app/usb-console/drivers/README.md)) |
+| NINA sockets | `common/drivers/nina/port/zephyr/nina_socket.c`, `common/drivers/nina/nina_sock.*` (see the [driver README](../zephyr/app/usb-console/drivers/README.md)) |
 
 `src/` and `drivers/` are under `zephyr/app/usb-console`; `common/` is under the repository's root and
 holds the parts whose files are the same as the NuttX and FreeRTOS builds' (section 12).
@@ -663,23 +663,26 @@ version's; what has been verified on the NuttX port is listed separately in 11.7
   and names of the Zephyr Kconfig options the files use), and the few lines that differ between the builds
   are in small headers of each OS (`sensor_shell_os.h`, `wifi_profile_os.h`, and the LSM6DSO device
   `lsm6dso_instance.h`, which `lsm6dso.c` includes at its end: the Zephyr build's devicetree
-  instance macros, one device with the board's values on NuttX). The NINA's declarations,
-  `nina_proto.h`, are also one file in `common/drivers/nina/` that both builds use. The NINA's
-  OS-independent core (the SPI link `nina_spi.c`, the protocol's command and reply bytes
-  `nina_cmd.h`, the socket table and commands `nina_sock.[ch]`, name resolution `nina_dns.[ch]`, the
-  Wi-Fi operations `nina_wifi.[ch]`, which depend only on the narrow boundary of `nina_os.h` and
-  `nina_bus.h`) is in `common/drivers/nina/` too and is used by the three builds, and so is the
-  `nina version` command `common/shell/nina_shell.c`. The core's bindings to each OS's APIs are in
-  subdirectories named after the OS: `common/drivers/nina/zephyr/` (Zephyr's Wi-Fi management and
+  instance macros, one device with the board's values on NuttX). The NINA's
+  OS-independent core is in `common/drivers/nina/` too and is used by the three builds. Its top
+  holds what the driver offers (the Wi-Fi operations `nina_wifi.[ch]`, the socket table and commands
+  `nina_sock.[ch]`, name resolution `nina_dns.[ch]`, the esptool passthrough `nina_passthrough.[ch]`,
+  the socket options `nina_sockopt.h`), `internal/` the parts inside the core (the protocol's bytes
+  and the SPI link `nina_proto.[ch]`, the waits of the socket loops `nina_wait.[ch]`), and `port/`
+  the headers of the narrow boundaries that each build implements (`nina_os.h` and `nina_bus.h`, the
+  passthrough's `nina_passthrough_os.h` and `nina_passthrough_bus.h`) with their implementations.
+  The `nina version` command `common/shell/nina_shell.c` is shared by the three builds as well. The
+  core's bindings to each OS's APIs are in subdirectories of `port/` named after the OS: `common/drivers/nina/port/zephyr/` (Zephyr's Wi-Fi management and
   network interface `nina_net.c`, `nina_os.c`, the socket offload `nina_socket.c`; the FreeRTOS build
   compiles the first and the last on its compatibility layer, which has Zephyr's socket layer down to
-  the list of socket implementations), `common/drivers/nina/nuttx/` (the network device
+  the list of socket implementations), `common/drivers/nina/port/nuttx/` (the network device
   `wlan0` with wapi's ioctls on the core, the applications' Zephyr Wi-Fi management on the core,
-  `nina_os.c`, usrsock) and `common/drivers/nina/freertos/` (the FreeRTOS build's `nina_os.c` on
+  `nina_os.c`, usrsock) and `common/drivers/nina/port/freertos/` (the FreeRTOS build's `nina_os.c` on
   FreeRTOS and the Pico SDK); each also has the esptool passthrough's host side
-  (`nina_passthrough_os.c`). What is the board's stays in each build's directory (the passthrough's
-  module side `nina_passthrough_bus.c` on the RP2040's registers; the Zephyr build's SPI and lines come
-  from the devicetree, so its `nina_bus.c` is in the binding).
+  (`nina_passthrough_os.c`). What is the chip's and the board's is in the same places, with `_rp2040` in its name (the SPI and
+  lines `nina_bus_rp2040.c`, the passthrough's module side `nina_passthrough_bus_rp2040.c`, on the
+  RP2040's registers or its SDK; the Zephyr build's SPI and lines come from the devicetree, so its
+  `nina_bus.c` does not depend on the chip).
   The I2C core (`common/drivers/i2c_dw/`, a copy of the Zephyr build's patched `i2c_dw.c`) does not depend on the OS
   either; the NuttX and FreeRTOS builds use it (the Zephyr build uses Zephyr's driver with a local patch, §12).
 - The shared sources run on top of a compatibility layer
@@ -730,9 +733,9 @@ the SPI at the caller's priority and serializes with `nina_lock`. The lock order
   (`nuttx/patches/nuttx/0005`).
 - The NINA is also registered as the NuttX network device `wlan0`, and the requests of `wapi` and
   `ifconfig` call the core's Wi-Fi operations (`common/drivers/nina/nina_wifi.c`, shared with the
-  other builds) through the NuttX binding (`common/drivers/nina/nuttx/nina_netdev.c`); the
+  other builds) through the NuttX binding (`common/drivers/nina/port/nuttx/nina_netdev.c`); the
   applications' Zephyr Wi-Fi management (the stored networks' connection, the connection events,
-  the interface's addresses) is served on the core by `common/drivers/nina/nuttx/nina_wifi_mgmt.c`.
+  the interface's addresses) is served on the core by `common/drivers/nina/port/nuttx/nina_wifi_mgmt.c`.
 
 ### 11.3 Clocks and tick
 
@@ -855,7 +858,7 @@ host tests (`common/tests/run.sh`) run first in the `host_tests.sh` of each of t
 | `common/imu/` | The acquisition service and `imu`, batches, payload, queue, status, time assignment and time synchronization with `ntp`, calibration and `imu cal`, the MQTT transport, the Wi-Fi profile and automatic reconnection, the key-value API and `kv` | All three (the MQTT client `mqtt_min*` NuttX and FreeRTOS; the Zephyr build uses Zephyr's MQTT library) |
 | `common/drivers/lsm6dso/`, `sensor_shell/` | The LSM6DSO driver with its FIFO stream, the sensor shell | All three |
 | `common/drivers/nina/` | The NINA core (SPI link, sockets, name resolution, the Wi-Fi operations `nina_wifi.[ch]`, the socket waits `nina_wait.[ch]`, the declarations `nina_proto.h`), the esptool passthrough `nina_passthrough.[ch]` with its boundaries `nina_passthrough_bus.h` and `nina_passthrough_os.h`, with no OS of its own | All three |
-| `common/drivers/nina/zephyr/`, `nuttx/`, `freertos/` | The core's bindings to Zephyr's APIs (Wi-Fi management and interface, kernel services, socket offload, the devicetree binding and options), to NuttX's (`wlan0` and wapi, the applications' Zephyr Wi-Fi management, kernel services, usrsock) and to FreeRTOS and the Pico SDK (kernel services `nina_os.c`: locks, requests, sleeps, the clock, the waits on READY's and the IRQ line's edge interrupts); in each, the passthrough's host side `nina_passthrough_os.c` (Zephyr's CDC ACM, cdcacm, TinyUSB) | `zephyr/`: Zephyr and FreeRTOS (its Wi-Fi and socket bindings, on the compatibility layer); `nuttx/`: NuttX; `freertos/`: FreeRTOS |
+| `common/drivers/nina/port/zephyr/`, `nuttx/`, `freertos/` | The core's bindings to Zephyr's APIs (Wi-Fi management and interface, kernel services, socket offload, the devicetree binding and options), to NuttX's (`wlan0` and wapi, the applications' Zephyr Wi-Fi management, kernel services, usrsock) and to FreeRTOS and the Pico SDK (kernel services `nina_os.c`: locks, requests, sleeps, the clock, the waits on READY's and the IRQ line's edge interrupts); in each, the passthrough's host side `nina_passthrough_os.c` (Zephyr's CDC ACM, cdcacm, TinyUSB) | `zephyr/`: Zephyr and FreeRTOS (its Wi-Fi and socket bindings, on the compatibility layer); `nuttx/`: NuttX; `freertos/`: FreeRTOS |
 | `common/drivers/i2c_dw/` | The I2C core (I2C0 and I2C1; file names as Zephyr's: `i2c_dw.c`, `i2c_dw.h`, `i2c_dw_registers.h`, `i2c_dw_rp2040.h`, `i2c_dw_rp2040_dma_priv.h` with the DMA reads and their command words), the declarations of the `i2c_dma` functions `i2c_dw_rp2040_dma.h`, the boundaries `i2c_dw_os.h` and `i2c_dw_dma_os.h` | NuttX and FreeRTOS (the Zephyr build: the same driver in patch 0003, below) |
 | `common/drivers/stmemsc/` | The glue between ST's driver and Zephyr's I2C API | NuttX and FreeRTOS |
 | `common/compat/` | The OS-independent part of the compatibility layer and copies of Zephyr's libraries (the key-value store's NVS and settings, the Wi-Fi credentials, getopt and others) | NuttX and FreeRTOS |
@@ -867,7 +870,7 @@ The OS parts are implementations of narrow boundary headers in each build's dire
   top of `common/compat/zephyr/kernel.h`): `nuttx/drivers/compat/`, `freertos/drivers/compat/`.
 - The priority mapping `priorities_os.h` (read by `common/compat/priorities.h`), the NINA's `nina_os.h` and
   `nina_bus.h` (`nina_os.h`'s implementations are in the core's bindings,
-  `common/drivers/nina/zephyr/`, `nuttx/` and `freertos/`), the I2C core's `i2c_dw_os.h` and the DMA reads' `i2c_dw_dma_os.h`, the key-value flash's `nano_flash_kv.h`, the shell backend
+  `common/drivers/nina/port/zephyr/`, `nuttx/` and `freertos/`), the I2C core's `i2c_dw_os.h` and the DMA reads' `i2c_dw_dma_os.h`, the key-value flash's `nano_flash_kv.h`, the shell backend
   `zshell_os.h`, the log's `app_log_os.h` and `log_ram.h`.
 - A few lines that differ per build: `sensor_shell_os.h` (the wait of `sensor get`), `wifi_profile_os.h`,
   `lsm6dso_instance.h` (the device), `kv_store_os.h` (whether there is `kv wipe`).
@@ -959,7 +962,7 @@ same in the three builds (details: "Firmware additions" in the
 - Bit 2 (socket events on the IRQ line): the socket waits (connect, receive, poll, the send retries,
   the NuttX build's `nina_event`) wake on GPIO2's rising edge. The edge count is noted before the
   command; after "not yet" the driver waits until it changes or 100 ms pass, then asks again
-  (`common/drivers/nina/nina_wait.c`, the OS boundary `nina_os_event_*()`). One line serves every
+  (`common/drivers/nina/internal/nina_wait.c`, the OS boundary `nina_os_event_*()`). One line serves every
   socket, so each edge wakes every waiting thread.
 - Whatever the firmware, a TCP send's retry checks with a poll command that the socket is writable
   before the data goes again.

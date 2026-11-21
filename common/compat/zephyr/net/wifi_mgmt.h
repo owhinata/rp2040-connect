@@ -1,9 +1,9 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /* The part of Zephyr's <zephyr/net/wifi.h>, <zephyr/net/wifi_mgmt.h> and
  * <zephyr/net/offloaded_netdev.h> (Zephyr v4.5.0) that the NINA core's
- * Zephyr binding (common/drivers/nina/zephyr/nina_net.c, on the FreeRTOS
+ * Zephyr binding (common/drivers/nina/port/zephyr/nina_net.c, on the FreeRTOS
  * build), the applications and, on NuttX, the binding's management of the
- * applications (common/drivers/nina/nuttx/nina_wifi_mgmt.c) use, with Zephyr's
+ * applications (common/drivers/nina/port/nuttx/nina_wifi_mgmt.c) use, with Zephyr's
  * names, types and values:
  *
  *   the Wi-Fi types (security, band, MFP, state, mode), struct

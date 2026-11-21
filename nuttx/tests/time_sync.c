@@ -89,7 +89,7 @@ int64_t test_uptime_get(void)
 	return test_now_us / 1000;
 }
 
-/* common/drivers/nina/nina_wait.c without the module's socket events (the
+/* common/drivers/nina/internal/nina_wait.c without the module's socket events (the
  * layer's zsock_recv() and zsock_poll() wait with it): the loop's interval,
  * nina_os_sleep_ms() (nxsched_msleep(), the same ticks as
  * k_sleep(K_MSEC())); here the test's sleep.
@@ -329,7 +329,7 @@ void net_mgmt_add_event_callback(struct net_mgmt_event_callback *cb)
 	added = cb;
 }
 
-int nina_getaddrinfo(const char *host, const char *service, const struct addrinfo *hints,
+int nina_dns_getaddrinfo(const char *host, const char *service, const struct addrinfo *hints,
 		     struct addrinfo **res)
 {
 	(void)host;
@@ -340,7 +340,7 @@ int nina_getaddrinfo(const char *host, const char *service, const struct addrinf
 	return EAI_FAIL;
 }
 
-void nina_freeaddrinfo(struct addrinfo *res)
+void nina_dns_freeaddrinfo(struct addrinfo *res)
 {
 	(void)res;
 }

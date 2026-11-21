@@ -32,7 +32,7 @@
  *   (no resolver of the layer's own).
  *
  * The NINA-W102's sockets register themselves in the Zephyr binding of the
- * shared driver, common/drivers/nina/zephyr/nina_socket.c, which the
+ * shared driver, common/drivers/nina/port/zephyr/nina_socket.c, which the
  * FreeRTOS build compiles as the Zephyr build does.
  *
  * The types and constants are POSIX's of freertos/drivers/libc/include

@@ -135,9 +135,9 @@ fi
 # <zephyr/shell/shell.h>, ...).  Its RTIO and work items are tested in common/tests/run.sh.
 # <zephyr/net/socket.h> reads <nina_dns.h> and <nina_sockopt.h> of the NINA core (common/drivers/nina).
 cnina=../common/drivers/nina
-# The waits for NINA's READY on its edge interrupt (common/drivers/nina/nuttx/nina_os.c,
+# The waits for NINA's READY on its edge interrupt (common/drivers/nina/port/nuttx/nina_os.c,
 # nina_os_ready_*())
-# under the shared core's wait_ready() (common/drivers/nina/nina_spi.c, included by the test),
+# under the shared core's wait_ready() (common/drivers/nina/internal/nina_proto.c, included by the test),
 # through the layer's gpio0 (common/compat/zephyr_gpio.c, with the prelude and the fake kernel's
 # spin lock), on fakes of NuttX's semaphores, mutexes, sleeps and clock (tests/nina_os_fakes) and
 # of the board's GPIO bank 0: ready during the wait, the timeout, a change right after the read,
@@ -145,23 +145,23 @@ cnina=../common/drivers/nina
 # nina/Make.defs builds nina_os.c), with the socket loops' waits (nina_wait.c), and the Wi-Fi
 # operations' lock and requests (CONFIG_NINA_NET).
 ninaos=(-DCONFIG_NINA_USRSOCK=1 -DCONFIG_NINA_NET=1 -Itests/nina_os_fakes -Itests/fakes -I"$ccompat"
-        -I"$cnina" -I"$cnina/nuttx")
-cc "${flags[@]}" "${ninaos[@]}" -I"$zfakes" -c "$cnina/nuttx/nina_os.c" -o "$out/nina_os_os.o"
+        -I"$cnina" -I"$cnina/internal" -I"$cnina/port" -I"$cnina/port/nuttx")
+cc "${flags[@]}" "${ninaos[@]}" -I"$zfakes" -c "$cnina/port/nuttx/nina_os.c" -o "$out/nina_os_os.o"
 cc "${flags[@]}" -include "$prelude" -I"$zfakes" -I"$ccompat" -c "$ccompat/zephyr_gpio.c" \
     -o "$out/nina_os_gpio.o"
 cc "${flags[@]}" "${ninaos[@]}" tests/nina_os.c "$out/nina_os_os.o" "$out/nina_os_gpio.o" \
-    "$cnina/nina_wait.c" "$link" -o "$out/nina_os"
+    "$cnina/internal/nina_wait.c" "$link" -o "$out/nina_os"
 "$out/nina_os" >/dev/null
 printf 'ok  nina_os\n'
-# The NINA core's NuttX binding, wlan0 (common/drivers/nina/nuttx/nina_netdev.c, which the test
+# The NINA core's NuttX binding, wlan0 (common/drivers/nina/port/nuttx/nina_netdev.c, which the test
 # includes), on NuttX's own <nuttx/wireless/wireless.h> (the fetched tree) and fakes of the other
 # NuttX declarations it uses (tests/nina_netdev_fakes), of the core's Wi-Fi functions and of the
 # applications' management: the start, the core's operations on the device, wapi's ioctls (scan,
 # its results as wireless events, the settings and the connection with Zephyr's checks of the
 # key, disconnect, status, modes), the threads.  The operations themselves are
 # common/tests/nina_wifi.c's.
-ndinc=(-D_DEFAULT_SOURCE -DFAR= -Itests/nina_netdev_fakes -Itests/fakes -I"$cnina" -I"$cnina/nuttx"
-       -I"$ccompat" -Idrivers/include)
+ndinc=(-D_DEFAULT_SOURCE -DFAR= -Itests/nina_netdev_fakes -Itests/fakes -I"$cnina"
+       -I"$cnina/internal" -I"$cnina/port" -I"$cnina/port/nuttx" -I"$ccompat" -Idrivers/include)
 if [[ -f nuttx/include/nuttx/wireless/wireless.h ]]; then
     cc "${flags[@]}" "${ndinc[@]}" tests/nina_netdev.c "$link" -o "$out/nina_netdev"
     "$out/nina_netdev" >/dev/null
@@ -169,7 +169,7 @@ if [[ -f nuttx/include/nuttx/wireless/wireless.h ]]; then
 else
     printf 'skip nina_netdev (no nuttx/nuttx: run script/setup.sh)\n'
 fi
-# The applications' Zephyr Wi-Fi management on the core (common/drivers/nina/nuttx/
+# The applications' Zephyr Wi-Fi management on the core (common/drivers/nina/port/nuttx/
 # nina_wifi_mgmt.c) under the layer's Wi-Fi requests (common/compat/zephyr_wifi_mgmt.c) and
 # interface (drivers/compat/zephyr_net_if.c), on fakes of the device's lock, net_mgmt's events, the
 # core's connect and the Wi-Fi profile, with CONFIG_NANO_WIFI_PROFILE and without: the start,
@@ -178,7 +178,7 @@ for variant in profile no_profile; do
     wdefs=()
     [[ $variant == profile ]] && wdefs=(-DCONFIG_NANO_WIFI_PROFILE=1)
     cc "${flags[@]}" "${wdefs[@]}" "${ndinc[@]}" -I"$zfakes" -Idrivers/compat -I"$clog" -I"$cimu" \
-        tests/nina_wifi_mgmt.c "$cnina/nuttx/nina_wifi_mgmt.c" "$ccompat/zephyr_wifi_mgmt.c" \
+        tests/nina_wifi_mgmt.c "$cnina/port/nuttx/nina_wifi_mgmt.c" "$ccompat/zephyr_wifi_mgmt.c" \
         drivers/compat/zephyr_net_if.c "$link" -o "$out/nina_wifi_mgmt_$variant"
     "$out/nina_wifi_mgmt_$variant" >/dev/null
 done

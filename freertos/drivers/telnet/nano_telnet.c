@@ -48,7 +48,7 @@
  *   poll reports an error on it ("Telnet socket <fd> error (<n>)"; the
  *   NINA's sockets have no SO_ERROR, so n is 0; ENETDOWN would log "Network
  *   is down"; a failed poll of the module is an error on that socket, as in
- *   the Zephyr build, common/drivers/nina/zephyr/nina_socket.c), and when a
+ *   the Zephyr build, common/drivers/nina/port/zephyr/nina_socket.c), and when a
  *   send of the session fails ("Failed to send <errno>, shutting down", then
  *   "Error <-errno>, shutting down" or "Network disconnected, shutting
  *   down"); then the next client is accepted.  An error on the listening

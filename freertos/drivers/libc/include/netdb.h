@@ -1,10 +1,10 @@
 /* SPDX-License-Identifier: MIT */
 /* The types and constants of POSIX's <netdb.h> for getaddrinfo(), which
  * newlib does not have.  There is no getaddrinfo() here: names are resolved
- * by the NINA-W102 (common/drivers/nina/nina_dns.c, nina_getaddrinfo()),
+ * by the NINA-W102 (common/drivers/nina/nina_dns.c, nina_dns_getaddrinfo()),
  * which zsock_getaddrinfo() of the Zephyr compatibility layer calls
  * (<zephyr/net/socket.h>) as the offloaded resolver that the NINA's binding
- * registers (common/drivers/nina/zephyr/nina_socket.c), as in the Zephyr build.
+ * registers (common/drivers/nina/port/zephyr/nina_socket.c), as in the Zephyr build.
  *
  * The values are glibc's, which are Zephyr's: the AI_* flags of
  * ZSOCK_AI_*, and the errors of DNS_EAI_* (<zephyr/net/dns_resolve.h>),

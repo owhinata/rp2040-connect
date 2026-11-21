@@ -170,7 +170,7 @@ int nina_request(uint8_t cmd, const struct nina_param *params, size_t nparams, b
 		return s->ret;
 	}
 	if (s->len > cap) {
-		return -EMSGSIZE; /* as nina_spi.c */
+		return -EMSGSIZE; /* as nina_proto.c */
 	}
 	memcpy(out, s->reply, s->len);
 	*out_len = s->len;

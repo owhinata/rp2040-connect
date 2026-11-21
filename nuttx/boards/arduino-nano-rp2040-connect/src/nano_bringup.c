@@ -155,7 +155,7 @@ int nano_bringup(void)
 #ifdef CONFIG_NINA
   /* SPI1 to the NINA-W102 and its chip select.  The Zephyr build sets up
    * spi1 (and drives cs-gpios inactive) at boot; the module itself is
-   * reset on the first request (common/drivers/nina/nina_spi.c).
+   * reset on the first request (common/drivers/nina/internal/nina_proto.c).
    */
 
   ret = nina_bus_initialize();

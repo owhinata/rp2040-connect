@@ -29,7 +29,7 @@
 #   MQTT library the transport uses, with the Zephyr build's settings,
 #   mqtt_min.h) and the client's socket layer on the layer's zsock_*()
 #   calls (common/imu/mqtt_min_sock.c, the NuttX build's file; the NINA's
-#   common/drivers/nina/zephyr/nina_socket.c).  mqtt_min.c is Zephyr's text,
+#   common/drivers/nina/port/zephyr/nina_socket.c).  mqtt_min.c is Zephyr's text,
 #   which compares signed with unsigned (13 places under -Wextra, e.g.
 #   "(end - cur) < sizeof(uint8_t)"), as Zephyr's library does: the file is
 #   compiled with -Wno-sign-compare, as in the host tests of the NuttX

@@ -1,6 +1,6 @@
 cmake_minimum_required(VERSION 3.28.0)
 # The NINA-W102's devicetree binding (arduino,nina-spi) is its Zephyr binding's.
-list(APPEND DTS_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../../../common/drivers/nina/zephyr)
+list(APPEND DTS_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../../../common/drivers/nina/port/zephyr)
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(usb_console)
 
@@ -15,35 +15,38 @@ target_sources(app PRIVATE src/main.c src/log_ram.c ${COMMON_DIR}/imu/kv_store.c
   ${COMMON_DIR}/imu/imu_raw_time.c ${COMMON_DIR}/imu/imu_tick_clock.c ${COMMON_DIR}/imu/imu_raw_queue.c
   ${COMMON_DIR}/imu/imu_raw_mqtt.c ${COMMON_DIR}/imu/imu_raw_status.c)
 target_include_directories(app PRIVATE src drivers/lsm6dso ${COMMON_DIR}/imu ${COMMON_DIR}/drivers/lsm6dso
-  ${COMMON_DIR}/drivers/nina)
+  ${COMMON_DIR}/drivers/nina ${COMMON_DIR}/drivers/nina/internal ${COMMON_DIR}/drivers/nina/port)
 # "kernel ps" (main.c): the interval arithmetic shared with the FreeRTOS build's "ps", and the
 # kernel's internal headers for the interrupt stack (z_stack_space_get(), as Thread Analyzer).
 set_property(SOURCE src/main.c APPEND PROPERTY INCLUDE_DIRECTORIES ${COMMON_DIR}/shell
   ${ZEPHYR_BASE}/kernel/include ${ZEPHYR_BASE}/arch/${ARCH}/include)
 
-# NINA-W102: the shared core of common/drivers/nina (the SPI link nina_spi.c, the Wi-Fi
-# operations nina_wifi.c, the socket table and commands nina_sock.c, the resolver nina_dns.c and
-# the socket loops' waits nina_wait.c), its Zephyr binding in common/drivers/nina/zephyr (the
-# Wi-Fi management and network interface nina_net.c, the kernel services of nina_os.h nina_os.c:
-# locks, requests, sleeps, clock, the READY and IRQ interrupts, the socket offload
-# nina_socket.c, and spi1 and the module's lines from the devicetree nina_bus.c) and the "nina"
-# command common/shell/nina_shell.c.  The core's POSIX socket names come from common/drivers/nina/zephyr/posix, on the
-# include path of the socket sources only.  The binding's devicetree binding and options are its
-# own (zephyr/dts/bindings, zephyr/Kconfig: DTS_ROOT above, the app's Kconfig).
+# NINA-W102: the shared core of common/drivers/nina (the Wi-Fi operations nina_wifi.c, the
+# socket table and commands nina_sock.c, the resolver nina_dns.c; in internal/ the SPI link
+# nina_proto.c and the socket loops' waits nina_wait.c), its Zephyr binding in
+# common/drivers/nina/port/zephyr (the Wi-Fi management and network interface nina_net.c, the
+# kernel services of port/nina_os.h nina_os.c: locks, requests, sleeps, clock, the READY and IRQ
+# interrupts, the socket offload nina_socket.c, and spi1 and the module's lines from the
+# devicetree nina_bus.c) and the "nina" command common/shell/nina_shell.c.  The core's POSIX
+# socket names come from common/drivers/nina/port/zephyr/posix, on the include path of the
+# socket sources only.  The binding's devicetree binding and options are its own
+# (port/zephyr/dts/bindings, port/zephyr/Kconfig: DTS_ROOT above, the app's Kconfig).
 set(nina_dir ${COMMON_DIR}/drivers/nina)
-set(nina_zephyr_dir ${nina_dir}/zephyr)
-target_sources(app PRIVATE ${nina_dir}/nina_spi.c ${nina_zephyr_dir}/nina_bus.c ${nina_zephyr_dir}/nina_os.c
-  ${nina_dir}/nina_wifi.c ${nina_zephyr_dir}/nina_net.c ${nina_dir}/nina_sock.c
+set(nina_internal_dir ${nina_dir}/internal)
+set(nina_zephyr_dir ${nina_dir}/port/zephyr)
+target_sources(app PRIVATE ${nina_internal_dir}/nina_proto.c ${nina_zephyr_dir}/nina_bus.c
+  ${nina_zephyr_dir}/nina_os.c ${nina_dir}/nina_wifi.c ${nina_zephyr_dir}/nina_net.c ${nina_dir}/nina_sock.c
   ${nina_zephyr_dir}/nina_socket.c ${nina_dir}/nina_dns.c ${COMMON_DIR}/shell/nina_shell.c
-  ${nina_dir}/nina_wait.c)
+  ${nina_internal_dir}/nina_wait.c)
 # The NINA passthrough mode for esptool: the driver's core common/drivers/nina/nina_passthrough.c,
 # its host's side on Zephyr's USB device stack (the binding's nina_passthrough_os.c) and its
-# module's side on the Pico SDK's registers of hal_rpi_pico (drivers/nina/nina_passthrough_bus.c).
-# main() runs it on request, and "nina passthrough" is an entry of nina_shell.c's set.  While the
-# mode is active nina_passthrough_active() keeps nina_bus.c from the module's lines.
+# module's side on the Pico SDK's registers of hal_rpi_pico (the binding's
+# nina_passthrough_bus_rp2040.c).  main() runs it on request, and "nina passthrough" is an entry
+# of nina_shell.c's set.  While the mode is active nina_passthrough_active() keeps nina_bus.c
+# from the module's lines.
 if(CONFIG_NINA_PASSTHROUGH)
   target_sources(app PRIVATE ${nina_dir}/nina_passthrough.c ${nina_zephyr_dir}/nina_passthrough_os.c
-    drivers/nina/nina_passthrough_bus.c)
+    ${nina_zephyr_dir}/nina_passthrough_bus_rp2040.c)
 endif()
 set(nina_socket_sources ${nina_dir}/nina_sock.c ${nina_zephyr_dir}/nina_socket.c
   ${nina_dir}/nina_dns.c)

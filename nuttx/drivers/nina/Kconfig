@@ -9,16 +9,16 @@ config NINA
 	depends on RP2040_SPI1 && !RP2040_SPI_DMA
 	depends on NANO_LSM6DSO_STREAM
 	---help---
-		common/drivers/nina/nina_spi.c: nina_request() and nina_ip_config(),
+		common/drivers/nina/internal/nina_proto.c: nina_request() and nina_ip_config(),
 		shared with the Zephyr build (the WiFiNINA SPI protocol of the
 		module's Arduino firmware), with the same framing, timeouts,
 		error values and lazy initialization (the module is reset on
 		the first request).  The board provides SPI1
-		and the module's lines (src/nina_bus.c).  SPI1 is polled, as in
+		and the module's lines (nina_bus_rp2040.c).  SPI1 is polled, as in
 		the Zephyr build (CONFIG_SPI_PL022_INTERRUPT and _DMA off), so
 		RP2040_SPI_DMA must be off.  The waits for the module's READY
 		line (GPIO10) sleep on its edge interrupt
-		(common/drivers/nina/nuttx/nina_os.c),
+		(common/drivers/nina/port/nuttx/nina_os.c),
 		through the compatibility layer's gpio0 and the board's
 		src/nano_gpio.c, which are built with NANO_LSM6DSO_STREAM.
 
@@ -40,8 +40,8 @@ config NINA_USRSOCK
 	depends on NET_USRSOCK_CUSTOM
 	---help---
 		common/drivers/nina/nina_sock.c, and nina_usrsock.c and
-		nina_poller.c of common/drivers/nina/nuttx: the socket offload
-		of the Zephyr build (common/drivers/nina/zephyr/nina_socket.c) as
+		nina_poller.c of common/drivers/nina/port/nuttx: the socket offload
+		of the Zephyr build (common/drivers/nina/port/zephyr/nina_socket.c) as
 		NuttX's usrsock (usrsock_request() in the kernel, handled in the
 		calling thread), with the same socket table (10 sockets),
 		commands, timeouts and errno names.  The thread "nina_event"
@@ -81,7 +81,7 @@ config NINA_NET
 		scan, connect, disconnect, status and the 2-second link monitor,
 		with its threads nina_scan_tid, nina_connect_tid and
 		nina_monitor_tid) and its NuttX binding in
-		common/drivers/nina/nuttx: nina_netdev.c registers the module as
+		common/drivers/nina/port/nuttx: nina_netdev.c registers the module as
 		the network device wlan0 and turns wapi's wireless ioctls into
 		the core's calls; nina_wifi_mgmt.c serves the applications' Zephyr
 		Wi-Fi management (NET_REQUEST_WIFI_CONNECT of the stored
@@ -92,11 +92,11 @@ config NINA_NET
 		(the "net_mgmt" event thread).
 
 config NINA_DNS
-	bool "Name resolution with the NINA resolver (nina_getaddrinfo())"
+	bool "Name resolution with the NINA resolver (nina_dns_getaddrinfo())"
 	default y
 	depends on !LIBC_NETDB
 	---help---
-		common/drivers/nina/nina_dns.c: nina_getaddrinfo() and nina_freeaddrinfo()
+		common/drivers/nina/nina_dns.c: nina_dns_getaddrinfo() and nina_dns_freeaddrinfo()
 		(<nina_dns.h>), shared with the Zephyr build, which
 		resolves a name with the module's commands 0x34 and 0x35 and
 		gives one IPv4 address.  The Zephyr compatibility layer's

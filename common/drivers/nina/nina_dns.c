@@ -3,7 +3,7 @@
  * the name, 0x35 reads the address), shared by the Zephyr, NuttX and
  * FreeRTOS builds.  It was the Zephyr build's drivers/nina/nina_dns.c, where
  * resolve() and free_result() were the socket offload's resolver; here they
- * are nina_getaddrinfo() and nina_freeaddrinfo() (<nina_dns.h>), with the
+ * are nina_dns_getaddrinfo() and nina_dns_freeaddrinfo() (<nina_dns.h>), with the
  * same branches and results:
  *
  * - The errors are the OS's EAI_* (Zephyr's DNS_EAI_*, NuttX's and
@@ -15,7 +15,7 @@
  *   (nina_os_dns_register()), and does nothing without it.
  *
  * OS-independent apart from nina_os.h and the POSIX names of the sockets
- * (on Zephyr: common/drivers/nina/zephyr/posix); the host test
+ * (on Zephyr: common/drivers/nina/port/zephyr/posix); the host test
  * (common/tests/nina_dns.c) runs it on a fake nina_request().
  */
 
@@ -50,7 +50,7 @@ struct nina_addrinfo {
 	struct sockaddr_in addr;
 };
 
-int nina_getaddrinfo(const char *host, const char *service,
+int nina_dns_getaddrinfo(const char *host, const char *service,
 		     const struct addrinfo *hints,
 		     struct addrinfo **res)
 {
@@ -149,15 +149,15 @@ int nina_getaddrinfo(const char *host, const char *service,
 	return 0;
 }
 
-void nina_freeaddrinfo(struct addrinfo *result)
+void nina_dns_freeaddrinfo(struct addrinfo *result)
 {
 	/* The entry starts with its struct addrinfo. */
 	dns_free(result);
 }
 
 /* With NINA_OS_DNS_OFFLOAD (the Zephyr build), the OS makes
- * nina_getaddrinfo() the resolver of its sockets (from iface_init() of
- * zephyr/nina_net.c).  Elsewhere the callers reach nina_getaddrinfo() directly
+ * nina_dns_getaddrinfo() the resolver of its sockets (from iface_init() of
+ * zephyr/nina_net.c).  Elsewhere the callers reach nina_dns_getaddrinfo() directly
  * (zsock_getaddrinfo() of the compatibility layers), so there is nothing
  * to register.
  */

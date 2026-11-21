@@ -15,7 +15,7 @@
  *
  * FreeRTOS: the layer's zsock_*() call the shared NINA core in the
  * caller's task (the Zephyr build's socket offload,
- * common/drivers/nina/zephyr/nina_socket.c), each read polling the module.
+ * common/drivers/nina/port/zephyr/nina_socket.c), each read polling the module.
  *
  * NuttX's headers come first through the prelude of the shared sources
  * (common_prelude.h, -include), on FreeRTOS newlib's with the layer's

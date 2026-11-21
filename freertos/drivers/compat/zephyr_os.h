@@ -143,7 +143,7 @@ static inline k_tid_t k_current_get(void)
  * in the build waits for memory, and another timeout does not wait either.
  * Any task (not interrupt handlers); OS-independent (k_spin_lock()), kept
  * here because only the FreeRTOS build uses it (the NINA's name resolution,
- * common/drivers/nina/zephyr/nina_socket.c).  k_heap_alloc() is a macro on
+ * common/drivers/nina/port/zephyr/nina_socket.c).  k_heap_alloc() is a macro on
  * z_heap_alloc() because this header comes before k_timeout_t.
  */
 struct k_heap {

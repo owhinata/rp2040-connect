@@ -2,12 +2,13 @@
 # nuttx/drivers/nina/Make.defs
 #
 # The NINA-W102 driver.  Its OS-independent core is in common/drivers/nina,
-# shared with the other builds: the SPI link (nina_spi.c), the socket table
-# and commands (nina_sock.c), name resolution with the module's resolver
-# (nina_dns.c), the Wi-Fi operations (nina_wifi.c: scan, connect,
-# disconnect, the link monitor, status) and the headers of its boundary
-# (nina_os.h, nina_bus.h).  Its NuttX binding is in common/drivers/nina/nuttx:
-# the kernel services of nina_os.h (nina_os.c), the sockets as usrsock
+# shared with the other builds: the socket table and commands (nina_sock.c),
+# name resolution with the module's resolver (nina_dns.c), the Wi-Fi
+# operations (nina_wifi.c: scan, connect, disconnect, the link monitor,
+# status), in internal/ the SPI link (nina_proto.c) and the socket loops'
+# waits (nina_wait.c), and in port/ the headers of its boundary (nina_os.h,
+# nina_bus.h).  Its NuttX binding is in common/drivers/nina/port/nuttx: the
+# kernel services of nina_os.h (nina_os.c), the sockets as usrsock
 # (nina_usrsock.c, nina_poller.c), the Wi-Fi network device wlan0 with
 # wapi's ioctls on the core (nina_netdev.c, nina_net.h) and the Zephyr Wi-Fi
 # management of the compatibility layer that the applications use, on the
@@ -15,27 +16,31 @@
 # common/imu/wifi_profile.c under CONFIG_NANO_WIFI_PROFILE).  This file and
 # Kconfig stay here: nuttx/drivers is the directory that NuttX builds as
 # external/ (a symlink made by script/setup.sh), whose Makefile includes
-# this file and whose Kconfig sources ./nina/Kconfig.  The board provides
-# the pins and the SPI bus (nina_bus.c, <nina_bus.h>).  VPATH and DEPPATH
-# of common/drivers/nina and of its nuttx/ are relative to nuttx/drivers
-# (mkdeps needs relative ones); the objects are made there.  The core is
-# compiled as it is (it reads NuttX's configuration through NuttX's
-# headers).  Include paths: common/drivers/nina (the core's headers),
-# common/drivers/nina/nuttx (the binding's) and common/imu (wifi_profile.h).
-# The core's waits for READY sleep on the line's edge interrupt (nina_os.c,
-# through the board's src/nano_gpio.c and the compatibility layer's gpio0,
-# common/compat/zephyr_gpio.c).  The socket loops' waits (nina_wait.c of
-# common/drivers/nina, nina_poller.c, the layer's zsock_*()) end at the
-# rising edges of the module's IRQ line (GPIO2, nina_os.c) when its firmware
-# reports socket events; with an older firmware they keep their poll
-# intervals.  The board's NINA passthrough mode (CONFIG_NINA_PASSTHROUGH)
-# is the core's nina_passthrough.c with its host's side on cdcacm
-# (nina_passthrough_os.c of common/drivers/nina/nuttx); the module's side
-# is the board's (src/nina_passthrough_bus.c).
+# this file and whose Kconfig sources ./nina/Kconfig.  The pins and the SPI
+# bus (nina_bus_rp2040.c of port/nuttx, <nina_bus.h>) are built by the
+# board's src/Make.defs.  VPATH and DEPPATH of common/drivers/nina, of its
+# internal/ and of its port/nuttx are relative to nuttx/drivers (mkdeps
+# needs relative ones); the objects are made there.  The core is compiled
+# as it is (it reads NuttX's configuration through NuttX's headers).
+# Include paths: common/drivers/nina (the core's headers), its internal/
+# and port/ (the core's internal headers and its boundary),
+# common/drivers/nina/port/nuttx (the binding's) and common/imu
+# (wifi_profile.h).  The core's waits for READY sleep on the line's edge
+# interrupt (nina_os.c, through the board's src/nano_gpio.c and the
+# compatibility layer's gpio0, common/compat/zephyr_gpio.c).  The socket
+# loops' waits (nina_wait.c of common/drivers/nina/internal, nina_poller.c,
+# the layer's zsock_*()) end at the rising edges of the module's IRQ line
+# (GPIO2, nina_os.c) when its firmware reports socket events; with an older
+# firmware they keep their poll intervals.  The board's NINA passthrough
+# mode (CONFIG_NINA_PASSTHROUGH) is the core's nina_passthrough.c with its
+# host's side on cdcacm (nina_passthrough_os.c of
+# common/drivers/nina/port/nuttx); the module's side
+# (nina_passthrough_bus_rp2040.c of port/nuttx) is built by the board's
+# src/Make.defs.
 ############################################################################
 
 ifeq ($(CONFIG_NINA),y)
-CSRCS += nina_spi.c nina_os.c nina_wait.c
+CSRCS += nina_proto.c nina_os.c nina_wait.c
 ifeq ($(CONFIG_NINA_USRSOCK),y)
 CSRCS += nina_sock.c nina_usrsock.c nina_poller.c
 endif
@@ -54,10 +59,14 @@ endif
 ifneq ($(CONFIG_NINA)$(CONFIG_NINA_PASSTHROUGH),)
 DEPPATH += --dep-path ../../common/drivers/nina
 VPATH += :../../common/drivers/nina
-DEPPATH += --dep-path ../../common/drivers/nina/nuttx
-VPATH += :../../common/drivers/nina/nuttx
+DEPPATH += --dep-path ../../common/drivers/nina/internal
+VPATH += :../../common/drivers/nina/internal
+DEPPATH += --dep-path ../../common/drivers/nina/port/nuttx
+VPATH += :../../common/drivers/nina/port/nuttx
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)drivers$(DELIM)nina
-CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)drivers$(DELIM)nina$(DELIM)nuttx
+CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)drivers$(DELIM)nina$(DELIM)internal
+CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)drivers$(DELIM)nina$(DELIM)port
+CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)drivers$(DELIM)nina$(DELIM)port$(DELIM)nuttx
 endif
 
 ifeq ($(CONFIG_NINA)$(CONFIG_NINA_NET),yy)

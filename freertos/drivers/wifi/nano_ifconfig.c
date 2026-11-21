@@ -3,7 +3,7 @@
  * "ifconfig" (nsh) without arguments or with the interface's name, with the
  * same lines, on the state of the layer's one interface
  * (<zephyr/net/net_if.h>, freertos/drivers/compat/zephyr_net_if.c), which
- * the NINA driver's Zephyr binding (common/drivers/nina/zephyr/nina_net.c)
+ * the NINA driver's Zephyr binding (common/drivers/nina/port/zephyr/nina_net.c)
  * keeps as in the Zephyr build (the NuttX build's binding keeps it in
  * wlan0).  It sets nothing (NuttX's "ifconfig <name> <address>
  * ..." is not here).
@@ -17,7 +17,7 @@
  *   "\tinet addr:%s DRaddr:%s Mask:%s\n\n"
  *
  * The name is wlan0 (netdev_register() with NET_LL_IEEE80211; the NuttX
- * build's common/drivers/nina/nuttx/nina_netdev.c), the MAC address in lower case
+ * build's common/drivers/nina/port/nuttx/nina_netdev.c), the MAC address in lower case
  * with colons (ether_ntoa_r()), the state RUNNING with a carrier (the NuttX
  * build turns it on when the core's connection is up: link_up() of its
  * binding), UP without one (the interface is administratively

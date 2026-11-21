@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 /* The "nina" shell command: "nina version" asks the module for its firmware
- * version (nina_request(), nina_spi.c) and prints the capability bits of
+ * version (nina_request(), nina_proto.c) and prints the capability bits of
  * the firmware's patches 0003 to 0006 (the module's and those in use,
  * nina_proto.h); with CONFIG_NINA_PASSTHROUGH, "nina passthrough confirm"
  * restarts the board into the NINA passthrough mode
@@ -20,7 +20,7 @@
 #include <string.h>
 #include <zephyr/kernel.h>
 #include <zephyr/shell/shell.h>
-#include "nina_proto.h"
+#include "internal/nina_proto.h"
 
 #ifdef CONFIG_NINA_PASSTHROUGH
 #include "nina_passthrough.h"
@@ -65,7 +65,7 @@ static int cmd_nina_passthrough(const struct shell *sh, size_t argc, char **argv
 	shell_print(sh, "Restarting into the NINA passthrough: the USB port relays to the "
 			"NINA's UART (for esptool).");
 	shell_print(sh, "To leave it: close the port at %u bps, or press RESET.",
-		    NINA_PT_EXIT_BAUD);
+		    NINA_PASSTHROUGH_EXIT_BAUD);
 	(void)k_msleep(PASSTHROUGH_RESTART_DELAY_MS);
 	nina_passthrough_request();
 }

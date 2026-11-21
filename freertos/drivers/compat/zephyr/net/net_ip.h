@@ -2,7 +2,7 @@
 /* The part of Zephyr's <zephyr/net/net_ip.h> (Zephyr v4.5.0) that the
  * FreeRTOS build uses: the IPv4 address type struct in_addr (imu_raw_mqtt.h)
  * and Zephyr 4.5's net_* names of the socket types and constants, which the
- * Zephyr binding of the NINA's sockets (common/drivers/nina/zephyr/
+ * Zephyr binding of the NINA's sockets (common/drivers/nina/port/zephyr/
  * nina_socket.c) and the layer's socket part (<zephyr/net/socket.h>) are
  * written with.  Zephyr defines the POSIX names on its net_* ones (its
  * namespace compatibility mode, <zephyr/net/net_compat.h>); here it is the

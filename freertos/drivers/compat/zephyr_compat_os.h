@@ -21,10 +21,10 @@ void zephyr_compat_tick(void);
 /* Starts the layer's network part as Zephyr's net_init() does at boot
  * (zephyr_net_init.c): the network event thread ("net_mgmt"), then the
  * one interface of the driver's NET_DEVICE_DT_OFFLOAD_DEFINE() (the NINA's,
- * common/drivers/nina/zephyr/nina_net.c): registered with the device's MTU,
+ * common/drivers/nina/port/zephyr/nina_net.c): registered with the device's MTU,
  * the device's init and the interface's init (the NINA's: dormant, its MAC
  * address read from the module, which is the module's first command and
- * waits for its reset, 10 ms + 750 ms in nina_spi.c, or for its failure when
+ * waits for its reset, 10 ms + 750 ms in nina_proto.c, or for its failure when
  * it does not answer; then its resolver is registered).  From a task, once,
  * before the driver's threads start.  0 or a negative errno (the event
  * thread could not start, or the device's init failed); a module that does

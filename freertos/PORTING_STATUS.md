@@ -1864,3 +1864,40 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
   （最大の滞留は Zephyr 39、NuttX 18 バイト）。戻ったあとの送信 約 70 秒は 3 版とも欠番 0（`cpu_active`: Zephyr 46.5%、NuttX 48.8%、FreeRTOS 40.7%）。
 - 確かめていない: 中継での書き込み（`write-flash`）、RESET ボタンでの終了、中継なしの構成の実機での動作、3 版のモジュール側と FreeRTOS・NuttX のつなぎ（ホストテストが無い。前から）。
 - 実機: FreeRTOS 版（この変更のビルド）。
+
+## NINA: `nina_cmd.h` を `nina_proto.h` へ（2026-11-21）
+
+- ユーザーの指摘: `common/drivers/nina/` のヘッダーが 12 個あって役割が分かりにくい。無理のないものだけまとめる。
+- `nina_cmd.h`（プロトコルのバイトの名前だけ）を `nina_proto.h`（`nina_spi.c` の要求の関数と機能ビット）に入れて削除。`nina_proto.h` はもともと `nina_cmd.h` を読んでいた。
+  `nina_spi.c` が関数の途中で読んでいた `nina_proto.h` は先頭の include へ。文書（Zephyr のドライバー説明、設計書、NuttX の説明、日英）も合わせた。
+- 確認: イメージは 3 版とも変更前とバイト一致（Zephyr・NuttX は基準、FreeRTOS は前後を同じ `SOURCE_DATE_EPOCH` で）。ホストテストは 3 版とも通る。実機には書いていない。
+
+## NINA: `common/drivers/nina/` を 3 層に分ける（2026-11-21、ユーザーの決定）
+
+- ユーザーの案（ヘッダーが多くて役割が分かりにくい、から）: 直下はドライバーが提供する機能、`internal/` はコアの内側の部品、`port/` は各版が実装する境界とその実装。
+  - 直下: `nina_wifi.[ch]`・`nina_sock.[ch]`・`nina_dns.[ch]`・`nina_passthrough.[ch]`・`nina_sockopt.h`（MQTT のコードと NuttX の互換層が読むので直下）。
+  - `internal/`: `nina_proto.[ch]`・`nina_wait.[ch]`。**`nina_spi.c` は `nina_proto.c` に改名**（ヘッダーと対にする。ホストテストも `common/tests/nina_proto.c`、実行名 `nina_proto`）。
+    関数名・ログのモジュール名は変えていない。
+  - `port/`: 境界のヘッダー 4 つ（`nina_os.h`・`nina_bus.h`・`nina_passthrough_os.h`・`nina_passthrough_bus.h`）と、つなぎ `port/zephyr/`・`port/nuttx/`・`port/freertos/`。
+  - **チップに固有の実装も `port/<OS>/` へ移し、名前に `_rp2040` を付けた**（ユーザーの指示）: Zephyr の `nina_passthrough_bus_rp2040.c`（アプリの `drivers/nina/` は無くなった）、
+    FreeRTOS の `nina_bus_rp2040.c`・`nina_passthrough_bus_rp2040.c`（`freertos/drivers/nina/` は `nina.cmake` だけ）、NuttX の同じ 2 つ（ボードの `src/` から。ビルドはボードの
+    `src/Make.defs` のまま、VPATH で読む。リンクの順序を変えないため）。Zephyr の `nina_bus.c` はデバイスツリーで書かれているので名前はそのまま。
+  - include: 3 版とホストテストの include パスに `internal` と `port` を足し、ドライバーの中の `#include "nina_os.h"` などはそのまま。ドライバーの外から `internal/` を読む所が 3 つ残る:
+    `common/shell/nina_shell.c` と NuttX の `apps/nina`（`internal/nina_proto.h`。`nina version` のため）、NuttX の互換層の `<zephyr/net/socket.h>`（`internal/nina_wait.h`。
+    Zephyr 版の待ちのループを互換層で作るため）。前の 2 つは、版と機能ビットの関数を直下に出して無くす予定。
+- 実装は subagent（opus）。**途中で止まった**: ユーザーが vim で開いていたファイル（改名の途中の `internal/nina_spi.h`）のスワップファイルを、subagent の一括置換（未追跡のファイルも対象にしていた）が
+  2 回書き換えた。subagent はそこで止めて報告。スワップファイルは、メインが確かめた時点では無くなっていた（ユーザーが vim を開き直していた）。残り（共有のホストテストの `run.sh`、NuttX の互換層の include、
+  コメント、文書）はメインが仕上げた。同じ一括置換が `PORTING_STATUS.md` の古い節の 1 行も書き換えていたので戻した。**以後、一括置換は `git ls-files`（追跡しているファイル）だけを対象にし、`.*.sw?` を除く。**
+- イメージ: Zephyr・NuttX は基準とバイト一致。FreeRTOS は 236400 → 236408 B（`nina_os.c` の `__FILE__` の文字列が `port/` の分だけ長くなった。イメージの中の文字列で確認。それ以外の差は調べていない）。
+- ホストテスト: Zephyr 44、NuttX 56、FreeRTOS 54 の `ok`。`format.sh --check` も通る。
+- 実機（FreeRTOS 版、1 回）: 書き込み直後の最初の計測 約 70 秒で欠番 0、`unix_regressions` 0、`cpu_active` 40.7%。中継・切断復帰・Telnet はこのイメージでは確かめていない。
+- 実機: FreeRTOS 版（この変更のビルド）。
+
+## NINA: 関数の接頭辞をファイル名に合わせる（2026-11-21、ユーザーの指摘）
+
+- `nina_dns.h`: `nina_getaddrinfo()`・`nina_freeaddrinfo()` → `nina_dns_getaddrinfo()`・`nina_dns_freeaddrinfo()`。
+- 中継の境界: `nina_pt_bus_*` → `nina_passthrough_bus_*`、`nina_pt_os_*` → `nina_passthrough_os_*`、`NINA_PT_*` → `NINA_PASSTHROUGH_*`、`struct nina_pt_counts`・`enum nina_pt_gpio0` も同じ。
+  NuttX のスレッドの名前（`nina_pt_rx`・`nina_pt_tx`。`ps` に出る文字列）と優先度の `NANO_PRIO_NINA_PT` は変えていない。
+- 残っている不一致: `internal/nina_proto.h` の関数（`nina_request()`・`nina_ip_config()`・`nina_capabilities()` など。`nina_proto_` が付いていない）と、そこで宣言している `nina_dns_init()`。
+- 確認: イメージは 3 版とも変更前とバイト一致（Zephyr・NuttX は基準、FreeRTOS は前後を同じ `SOURCE_DATE_EPOCH` で）。ホストテスト 44・56・54、`format.sh --check` も通る。実機には書いていない
+  （実機のイメージは 1 つ前の commit のビルドで、中身は同じ）。

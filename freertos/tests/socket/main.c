@@ -2,7 +2,7 @@
 /* The host test of the FreeRTOS build's sockets on the FreeRTOS POSIX port:
  * the zsock_*() calls of the layer's socket part (freertos/drivers/compat:
  * subsys/net/lib/sockets, lib/os/zvfs) on the NINA's Zephyr binding
- * (common/drivers/nina/zephyr/nina_socket.c, registered with
+ * (common/drivers/nina/port/zephyr/nina_socket.c, registered with
  * NET_SOCKET_OFFLOAD_REGISTER(), with NINA_OS_DNS_OFFLOAD) on the shared
  * NINA core (common/drivers/nina/nina_sock.c, nina_dns.c) and the address
  * conversions (freertos/drivers/libc/inet.c), as the board builds them

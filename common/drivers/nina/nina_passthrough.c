@@ -28,7 +28,7 @@
  * - The rate (uart_baud()) and the way out (exit_decided()) from the host's
  *   line coding (SET_LINE_CODING): the UART follows the rate (esptool's
  *   --baud: the stub's CHANGE_BAUDRATE, then the port's rate), 8N1 always;
- *   closing the port at NINA_PT_EXIT_BAUD ends the mode.  A port opened at
+ *   closing the port at NINA_PASSTHROUGH_EXIT_BAUD ends the mode.  A port opened at
  *   that rate (Linux keeps a tty's last rate) and set to another one before
  *   it is closed does not end it.  1200 bps is the Pico SDK's own: it
  *   restarts into BOOTSEL at once (pico_usb_reset), so the range starts
@@ -49,8 +49,8 @@
  *   until then the USB stack takes no more packets and the host waits
  *   (NAK), so nothing is lost at any rate.
  * - The LED blinks at 5 Hz.
- * - The way out: closing the port at NINA_PT_EXIT_BAUD, or the RESET
- *   button.  The module is reset into its own firmware as nina_spi.c's
+ * - The way out: closing the port at NINA_PASSTHROUGH_EXIT_BAUD, or the RESET
+ *   button.  The module is reset into its own firmware as nina_proto.c's
  *   init_nina() does it (GPIO0 high, RESETN low for 10 ms, 750 ms, GPIO0
  *   released), then the board restarts into the normal firmware.
  * - The log gets a line when the mode starts, the binding's line each time
@@ -108,7 +108,7 @@
 
 /* The request ------------------------------------------------------------*/
 
-static void mark(uint32_t s[NINA_PT_MARK_WORDS])
+static void mark(uint32_t s[NINA_PASSTHROUGH_MARK_WORDS])
 {
 	s[0] = MARK_0;
 	s[1] = MARK_1;
@@ -116,7 +116,7 @@ static void mark(uint32_t s[NINA_PT_MARK_WORDS])
 	s[3] = ~MARK_1;
 }
 
-static bool mark_valid(const uint32_t s[NINA_PT_MARK_WORDS])
+static bool mark_valid(const uint32_t s[NINA_PASSTHROUGH_MARK_WORDS])
 {
 	return s[0] == MARK_0 && s[1] == MARK_1 && s[2] == ~MARK_0 && s[3] == ~MARK_1;
 }
@@ -125,7 +125,7 @@ static bool mark_valid(const uint32_t s[NINA_PT_MARK_WORDS])
 
 struct pins {
 	bool reset_released; /* RESETN high; low holds the module in reset */
-	enum nina_pt_gpio0 gpio0;
+	enum nina_passthrough_gpio0 gpio0;
 	bool uart_tx; /* GPIO8 is the UART's TX; else an input */
 };
 
@@ -172,12 +172,12 @@ static struct pins lines_pins(const struct lines *l, uint32_t now_ms)
 
 	p.reset_released = l->rts;
 	p.uart_tx = true;
-	p.gpio0 = l->dtr ? NINA_PT_GPIO0_LOW : NINA_PT_GPIO0_HIGH;
+	p.gpio0 = l->dtr ? NINA_PASSTHROUGH_GPIO0_LOW : NINA_PASSTHROUGH_GPIO0_HIGH;
 	if (l->rts && l->own_firmware) {
 		p.uart_tx = false;
 		p.gpio0 = (uint32_t)(now_ms - l->run_since) < GPIO0_HOLD_MS
-				  ? NINA_PT_GPIO0_HIGH
-				  : NINA_PT_GPIO0_RELEASED;
+				  ? NINA_PASSTHROUGH_GPIO0_HIGH
+				  : NINA_PASSTHROUGH_GPIO0_RELEASED;
 	}
 	return p;
 }
@@ -189,7 +189,7 @@ static struct pins lines_pins(const struct lines *l, uint32_t now_ms)
  */
 static uint32_t uart_baud(uint32_t requested, uint32_t current)
 {
-	if (requested == NINA_PT_EXIT_BAUD || requested < BAUD_MIN || requested > BAUD_MAX) {
+	if (requested == NINA_PASSTHROUGH_EXIT_BAUD || requested < BAUD_MIN || requested > BAUD_MAX) {
 		return current;
 	}
 	return requested;
@@ -200,13 +200,13 @@ static uint32_t uart_baud(uint32_t requested, uint32_t current)
  */
 static bool exit_decided(bool old_dtr, bool new_dtr, uint32_t rate)
 {
-	return old_dtr && !new_dtr && rate == NINA_PT_EXIT_BAUD;
+	return old_dtr && !new_dtr && rate == NINA_PASSTHROUGH_EXIT_BAUD;
 }
 
 /* The buffer -----------------------------------------------------------*/
 
-#ifndef NINA_PT_BARRIER
-#define NINA_PT_BARRIER() __asm__ volatile("" ::: "memory")
+#ifndef NINA_PASSTHROUGH_BARRIER
+#define NINA_PASSTHROUGH_BARRIER() __asm__ volatile("" ::: "memory")
 #endif
 
 /* SIZE is a power of two.  head and tail count bytes since the start (they
@@ -244,7 +244,7 @@ static inline __attribute__((always_inline)) void ring_put(struct ring *r, uint8
 		return;
 	}
 	r->buf[head & (r->size - 1)] = c;
-	NINA_PT_BARRIER();
+	NINA_PASSTHROUGH_BARRIER();
 	r->head = head + 1;
 }
 
@@ -257,7 +257,7 @@ static uint32_t ring_peek(struct ring *r, const uint8_t **data)
 	uint32_t count = r->head - tail;
 	uint32_t at = tail & (r->size - 1);
 
-	NINA_PT_BARRIER();
+	NINA_PASSTHROUGH_BARRIER();
 	if (count > r->peak) {
 		r->peak = count;
 	}
@@ -267,7 +267,7 @@ static uint32_t ring_peek(struct ring *r, const uint8_t **data)
 
 static void ring_consume(struct ring *r, uint32_t n)
 {
-	NINA_PT_BARRIER();
+	NINA_PASSTHROUGH_BARRIER();
 	r->tail = r->tail + n;
 }
 
@@ -297,13 +297,13 @@ static uint32_t led_at;
 static void apply_pins(struct pins p)
 {
 	if (!applied_valid || p.uart_tx != applied.uart_tx) {
-		nina_pt_bus_uart_tx_connect(p.uart_tx);
+		nina_passthrough_bus_uart_tx_connect(p.uart_tx);
 	}
 	if (!applied_valid || p.gpio0 != applied.gpio0) {
-		nina_pt_bus_gpio0(p.gpio0);
+		nina_passthrough_bus_gpio0(p.gpio0);
 	}
 	if (!applied_valid || p.reset_released != applied.reset_released) {
-		nina_pt_bus_resetn(p.reset_released);
+		nina_passthrough_bus_resetn(p.reset_released);
 	}
 	applied = p;
 	applied_valid = true;
@@ -313,14 +313,14 @@ static void apply_pins(struct pins p)
 
 bool nina_passthrough_check(void)
 {
-	uint32_t s[NINA_PT_MARK_WORDS];
+	uint32_t s[NINA_PASSTHROUGH_MARK_WORDS];
 
-	nina_pt_bus_mark_get(s);
+	nina_passthrough_bus_mark_get(s);
 	if (!mark_valid(s)) {
 		return false;
 	}
 	memset(s, 0, sizeof(s));
-	nina_pt_bus_mark_set(s);
+	nina_passthrough_bus_mark_set(s);
 	requested = true;
 	return true;
 }
@@ -332,11 +332,11 @@ bool nina_passthrough_active(void)
 
 void nina_passthrough_request(void)
 {
-	uint32_t s[NINA_PT_MARK_WORDS];
+	uint32_t s[NINA_PASSTHROUGH_MARK_WORDS];
 
 	mark(s);
-	nina_pt_bus_mark_set(s);
-	nina_pt_bus_restart();
+	nina_passthrough_bus_mark_set(s);
+	nina_passthrough_bus_restart();
 }
 
 /* The start --------------------------------------------------------------*/
@@ -345,20 +345,20 @@ void nina_passthrough_hold(void)
 {
 	lines_init(&lines);
 	baud = BAUD_INIT;
-	nina_pt_bus_lines_init();
+	nina_passthrough_bus_lines_init();
 }
 
 void nina_passthrough_begin(uint8_t *buf)
 {
 	ring_init(&ring, buf, NINA_PASSTHROUGH_RING_SIZE);
-	nina_pt_bus_uart_init(baud);
+	nina_passthrough_bus_uart_init(baud);
 	applied_valid = false;
-	apply_pins(lines_pins(&lines, nina_pt_os_now_ms()));
-	nina_pt_bus_uart_irq_on();
-	nina_pt_bus_led_init();
+	apply_pins(lines_pins(&lines, nina_passthrough_os_now_ms()));
+	nina_passthrough_bus_uart_irq_on();
+	nina_passthrough_bus_led_init();
 	led = false;
-	led_at = nina_pt_os_now_ms();
-	nina_pt_os_log_start(baud);
+	led_at = nina_passthrough_os_now_ms();
+	nina_passthrough_os_log_start(baud);
 }
 
 /* The data ---------------------------------------------------------------*/
@@ -368,28 +368,28 @@ ISR_FUNC void nina_passthrough_uart_isr(void)
 	bool received = false;
 	uint32_t word;
 
-	while (nina_pt_bus_uart_rx(&word)) {
-		if (word & NINA_PT_UART_OVERRUN) {
+	while (nina_passthrough_bus_uart_rx(&word)) {
+		if (word & NINA_PASSTHROUGH_UART_OVERRUN) {
 			uart_overruns++;
 		}
-		if (word & NINA_PT_UART_BREAK) {
+		if (word & NINA_PASSTHROUGH_UART_BREAK) {
 			uart_breaks++;
 			continue;
 		}
-		if (word & NINA_PT_UART_FRAMING) {
+		if (word & NINA_PASSTHROUGH_UART_FRAMING) {
 			uart_framing++;
 		}
 		ring_put(&ring, (uint8_t)word);
 		received = true;
 	}
-	nina_pt_os_uart_irq(received);
+	nina_passthrough_os_uart_irq(received);
 }
 
 uint32_t nina_passthrough_to_module(const uint8_t *data, uint32_t len)
 {
 	uint32_t n = 0;
 
-	while (n < len && nina_pt_bus_uart_tx(data[n])) {
+	while (n < len && nina_passthrough_bus_uart_tx(data[n])) {
 		n++;
 	}
 	to_nina += n;
@@ -403,7 +403,7 @@ bool nina_passthrough_to_host(void)
 	bool wrote = false;
 
 	while ((n = ring_peek(&ring, &data)) > 0) {
-		int done = nina_pt_os_write(data, n);
+		int done = nina_passthrough_os_write(data, n);
 
 		if (done < 0) {
 			ring_consume(&ring, n);
@@ -450,7 +450,7 @@ bool nina_passthrough_host_lines(bool dtr, bool rts, uint32_t rate)
 		exit_requested = true;
 	}
 	closed = lines.dtr && !dtr;
-	now = nina_pt_os_now_ms();
+	now = nina_passthrough_os_now_ms();
 	lines_set(&lines, dtr, rts, now);
 	apply_pins(lines_pins(&lines, now));
 	return closed;
@@ -462,7 +462,7 @@ void nina_passthrough_host_rate(uint32_t rate)
 
 	if (next != baud) {
 		baud = next;
-		nina_pt_bus_uart_set_baud(baud);
+		nina_passthrough_bus_uart_set_baud(baud);
 	}
 }
 
@@ -473,13 +473,13 @@ bool nina_passthrough_exit_requested(void)
 
 uint32_t nina_passthrough_tick(void)
 {
-	uint32_t now = nina_pt_os_now_ms();
+	uint32_t now = nina_passthrough_os_now_ms();
 	uint32_t ms;
 
 	apply_pins(lines_pins(&lines, now));
 	if ((int32_t)(now - led_at) >= 0) {
 		led = !led;
-		nina_pt_bus_led(led);
+		nina_passthrough_bus_led(led);
 		led_at += LED_HALF_MS;
 		if ((int32_t)(now - led_at) >= 0) {
 			led_at = now + LED_HALF_MS;
@@ -488,7 +488,7 @@ uint32_t nina_passthrough_tick(void)
 
 	/* Until the LED's next change, or until GPIO0 is to be released. */
 	ms = (int32_t)(led_at - now) > 0 ? led_at - now : 1;
-	if (lines.rts && lines.own_firmware && applied.gpio0 != NINA_PT_GPIO0_RELEASED) {
+	if (lines.rts && lines.own_firmware && applied.gpio0 != NINA_PASSTHROUGH_GPIO0_RELEASED) {
 		uint32_t held = now - lines.run_since;
 		uint32_t left = held < GPIO0_HOLD_MS ? GPIO0_HOLD_MS - held : 1;
 
@@ -503,7 +503,7 @@ uint32_t nina_passthrough_tick(void)
 
 void nina_passthrough_log_counts(const char *why)
 {
-	struct nina_pt_counts c = {
+	struct nina_passthrough_counts c = {
 		.to_nina = to_nina,
 		.from_nina = from_nina,
 		.discarded = discarded,
@@ -516,25 +516,25 @@ void nina_passthrough_log_counts(const char *why)
 		.baud = baud,
 	};
 
-	nina_pt_os_log_counts(why, &c);
+	nina_passthrough_os_log_counts(why, &c);
 }
 
 void nina_passthrough_stop(void)
 {
-	nina_pt_bus_uart_irq_off();
+	nina_passthrough_bus_uart_irq_off();
 }
 
 void nina_passthrough_leave(void)
 {
 	nina_passthrough_log_counts("Leaving the NINA passthrough");
-	nina_pt_bus_uart_tx_connect(false);
-	nina_pt_bus_gpio0(NINA_PT_GPIO0_HIGH);
-	nina_pt_bus_resetn(false);
-	nina_pt_os_sleep_ms(RESET_MS);
-	nina_pt_bus_resetn(true);
-	nina_pt_os_sleep_ms(GPIO0_HOLD_MS);
-	nina_pt_bus_gpio0(NINA_PT_GPIO0_RELEASED);
-	nina_pt_bus_led(false);
-	nina_pt_os_sleep_ms(RESTART_DELAY_MS);
-	nina_pt_bus_restart();
+	nina_passthrough_bus_uart_tx_connect(false);
+	nina_passthrough_bus_gpio0(NINA_PASSTHROUGH_GPIO0_HIGH);
+	nina_passthrough_bus_resetn(false);
+	nina_passthrough_os_sleep_ms(RESET_MS);
+	nina_passthrough_bus_resetn(true);
+	nina_passthrough_os_sleep_ms(GPIO0_HOLD_MS);
+	nina_passthrough_bus_gpio0(NINA_PASSTHROUGH_GPIO0_RELEASED);
+	nina_passthrough_bus_led(false);
+	nina_passthrough_os_sleep_ms(RESTART_DELAY_MS);
+	nina_passthrough_bus_restart();
 }

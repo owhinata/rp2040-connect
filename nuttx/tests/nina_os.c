@@ -1,10 +1,10 @@
 /* SPDX-License-Identifier: MIT */
-/* The waits for NINA's READY line on NuttX: common/drivers/nina/nuttx/nina_os.c
+/* The waits for NINA's READY line on NuttX: common/drivers/nina/port/nuttx/nina_os.c
  * (nina_os_ready_*(), on an edge interrupt) under the shared core's
- * wait_ready() (common/drivers/nina/nina_spi.c, included here to reach the
+ * wait_ready() (common/drivers/nina/internal/nina_proto.c, included here to reach the
  * static function; nina_os_ready_start() succeeds, as on the board: the
  * layer's gpio_add_callback() does not fail, and the sampling after a
- * failed start is common/tests/nina_spi.c's), with the compatibility layer's gpio0
+ * failed start is common/tests/nina_proto.c's), with the compatibility layer's gpio0
  * (common/compat/zephyr_gpio.c), on fakes of NuttX's semaphores, mutexes,
  * sleeps and clock (tests/nina_os_fakes) and of the board's GPIO bank 0
  * (<nano_gpio.h>, the board's src/nano_gpio.c on the target).
@@ -54,7 +54,7 @@
 #include "nano_gpio.h"
 
 /* The core, with its static wait_ready(). */
-#include "nina_spi.c"
+#include "nina_proto.c"
 
 #define READY_GPIO 10
 #define IRQ_GPIO   2

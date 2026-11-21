@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: MIT */
-/* Fakes of the Zephyr calls of common/drivers/nina/zephyr/
+/* Fakes of the Zephyr calls of common/drivers/nina/port/zephyr/
  * nina_passthrough_os.c and common/shell/nina_shell.c for the host test
  * tests/passthrough.c, which defines the functions (and the fake of
  * nina_passthrough_bus.h).  Every <zephyr/...> header of the files is this

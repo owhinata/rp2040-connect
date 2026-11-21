@@ -148,88 +148,88 @@ int main(void)
 
 	/* No name. */
 	reset();
-	assert(nina_getaddrinfo(NULL, NULL, NULL, &res) == EAI_NONAME);
-	assert(nina_getaddrinfo("", NULL, NULL, &res) == EAI_NONAME);
-	assert(nina_getaddrinfo("a", NULL, NULL, NULL) == EAI_NONAME);
+	assert(nina_dns_getaddrinfo(NULL, NULL, NULL, &res) == EAI_NONAME);
+	assert(nina_dns_getaddrinfo("", NULL, NULL, &res) == EAI_NONAME);
+	assert(nina_dns_getaddrinfo("a", NULL, NULL, NULL) == EAI_NONAME);
 
 	/* A numeric address: no command; TCP by default; the port. */
 	res = (struct addrinfo *)1;
-	assert(nina_getaddrinfo("10.42.0.1", "1883", NULL, &res) == 0);
+	assert(nina_dns_getaddrinfo("10.42.0.1", "1883", NULL, &res) == 0);
 	assert(res->ai_family == AF_INET && res->ai_socktype == SOCK_STREAM &&
 	       res->ai_protocol == IPPROTO_TCP && res->ai_next == NULL);
 	assert(sin_of(res)->sin_family == AF_INET);
 	assert(sin_of(res)->sin_addr.s_addr == inet_addr("10.42.0.1"));
 	assert(ntohs(sin_of(res)->sin_port) == 1883);
-	nina_freeaddrinfo(res);
+	nina_dns_freeaddrinfo(res);
 	done();
 	assert(lock_count == 0);
 
 	/* Hints: UDP from the protocol alone or the type; family. */
 	memset(&hints, 0, sizeof(hints));
 	hints.ai_protocol = IPPROTO_UDP;
-	assert(nina_getaddrinfo("10.42.0.1", NULL, &hints, &res) == 0);
+	assert(nina_dns_getaddrinfo("10.42.0.1", NULL, &hints, &res) == 0);
 	assert(res->ai_socktype == SOCK_DGRAM && res->ai_protocol == IPPROTO_UDP);
 	assert(sin_of(res)->sin_port == 0);
-	nina_freeaddrinfo(res);
+	nina_dns_freeaddrinfo(res);
 	memset(&hints, 0, sizeof(hints));
 	hints.ai_family = AF_INET;
 	hints.ai_socktype = SOCK_DGRAM;
-	assert(nina_getaddrinfo("10.42.0.1", "123", &hints, &res) == 0);
+	assert(nina_dns_getaddrinfo("10.42.0.1", "123", &hints, &res) == 0);
 	assert(res->ai_protocol == IPPROTO_UDP && ntohs(sin_of(res)->sin_port) == 123);
-	nina_freeaddrinfo(res);
+	nina_dns_freeaddrinfo(res);
 	hints.ai_family = AF_INET6;
-	assert(nina_getaddrinfo("10.42.0.1", NULL, &hints, &res) == EAI_FAMILY);
+	assert(nina_dns_getaddrinfo("10.42.0.1", NULL, &hints, &res) == EAI_FAMILY);
 	hints.ai_family = AF_UNSPEC;
 	hints.ai_protocol = IPPROTO_TCP;
-	assert(nina_getaddrinfo("10.42.0.1", NULL, &hints, &res) == EAI_SOCKTYPE);
+	assert(nina_dns_getaddrinfo("10.42.0.1", NULL, &hints, &res) == EAI_SOCKTYPE);
 	hints.ai_socktype = SOCK_RAW;
 	hints.ai_protocol = 0;
-	assert(nina_getaddrinfo("10.42.0.1", NULL, &hints, &res) == EAI_SOCKTYPE);
+	assert(nina_dns_getaddrinfo("10.42.0.1", NULL, &hints, &res) == EAI_SOCKTYPE);
 	memset(&hints, 0, sizeof(hints));
 	hints.ai_flags = AI_PASSIVE;
-	assert(nina_getaddrinfo("10.42.0.1", NULL, &hints, &res) == EAI_BADFLAGS);
+	assert(nina_dns_getaddrinfo("10.42.0.1", NULL, &hints, &res) == EAI_BADFLAGS);
 	hints.ai_flags = AI_NUMERICHOST | AI_NUMERICSERV | AI_ADDRCONFIG;
-	assert(nina_getaddrinfo("10.42.0.1", NULL, &hints, &res) == 0);
-	nina_freeaddrinfo(res);
+	assert(nina_dns_getaddrinfo("10.42.0.1", NULL, &hints, &res) == 0);
+	nina_dns_freeaddrinfo(res);
 	/* A name with AI_NUMERICHOST: no command. */
-	assert(nina_getaddrinfo("pc.local", NULL, &hints, &res) == EAI_NONAME);
+	assert(nina_dns_getaddrinfo("pc.local", NULL, &hints, &res) == EAI_NONAME);
 
 	/* The service: digits only, at most 65535. */
-	assert(nina_getaddrinfo("10.42.0.1", "", NULL, &res) == EAI_SERVICE);
-	assert(nina_getaddrinfo("10.42.0.1", "ntp", NULL, &res) == EAI_SERVICE);
-	assert(nina_getaddrinfo("10.42.0.1", "-1", NULL, &res) == EAI_SERVICE);
-	assert(nina_getaddrinfo("10.42.0.1", "65536", NULL, &res) == EAI_SERVICE);
-	assert(nina_getaddrinfo("10.42.0.1", "65535", NULL, &res) == 0);
-	nina_freeaddrinfo(res);
+	assert(nina_dns_getaddrinfo("10.42.0.1", "", NULL, &res) == EAI_SERVICE);
+	assert(nina_dns_getaddrinfo("10.42.0.1", "ntp", NULL, &res) == EAI_SERVICE);
+	assert(nina_dns_getaddrinfo("10.42.0.1", "-1", NULL, &res) == EAI_SERVICE);
+	assert(nina_dns_getaddrinfo("10.42.0.1", "65536", NULL, &res) == EAI_SERVICE);
+	assert(nina_dns_getaddrinfo("10.42.0.1", "65535", NULL, &res) == 0);
+	nina_dns_freeaddrinfo(res);
 	done();
 
 	/* A name: 0x34 with the name, then 0x35 for the address, locked. */
 	reset();
 	expect(0x34, 0, (const uint8_t[]){1}, 1);
 	expect(0x35, 0, (const uint8_t[]){10, 42, 0, 7}, 4);
-	assert(nina_getaddrinfo("pc.local", "123", NULL, &res) == 0);
+	assert(nina_dns_getaddrinfo("pc.local", "123", NULL, &res) == 0);
 	done();
 	assert(lock_count == 1);
 	assert(host_param_len == 8 && !memcmp(host_param, "pc.local", 8));
 	assert(sin_of(res)->sin_addr.s_addr == inet_addr("10.42.0.7"));
 	assert(ntohs(sin_of(res)->sin_port) == 123);
-	nina_freeaddrinfo(res);
+	nina_dns_freeaddrinfo(res);
 
 	/* Not resolved: EAI_NONAME; an SPI error: EAI_AGAIN (also on the
 	 * second command); a short address: EAI_FAIL. */
 	reset();
 	expect(0x34, 0, (const uint8_t[]){0}, 1);
-	assert(nina_getaddrinfo("nowhere", NULL, NULL, &res) == EAI_NONAME && res == NULL);
+	assert(nina_dns_getaddrinfo("nowhere", NULL, NULL, &res) == EAI_NONAME && res == NULL);
 	expect(0x34, 0, (const uint8_t[]){2}, 1);
-	assert(nina_getaddrinfo("nowhere", NULL, NULL, &res) == EAI_NONAME);
+	assert(nina_dns_getaddrinfo("nowhere", NULL, NULL, &res) == EAI_NONAME);
 	expect(0x34, -ETIMEDOUT, NULL, 0);
-	assert(nina_getaddrinfo("nowhere", NULL, NULL, &res) == EAI_AGAIN);
+	assert(nina_dns_getaddrinfo("nowhere", NULL, NULL, &res) == EAI_AGAIN);
 	expect(0x34, 0, (const uint8_t[]){1}, 1);
 	expect(0x35, -EIO, NULL, 0);
-	assert(nina_getaddrinfo("nowhere", NULL, NULL, &res) == EAI_AGAIN);
+	assert(nina_dns_getaddrinfo("nowhere", NULL, NULL, &res) == EAI_AGAIN);
 	expect(0x34, 0, (const uint8_t[]){1}, 1);
 	expect(0x35, 0, (const uint8_t[]){10, 42, 0}, 3);
-	assert(nina_getaddrinfo("nowhere", NULL, NULL, &res) == EAI_FAIL);
+	assert(nina_dns_getaddrinfo("nowhere", NULL, NULL, &res) == EAI_FAIL);
 	done();
 	assert(lock_count == 5);
 
@@ -237,10 +237,10 @@ int main(void)
 	reset();
 	memset(longname, 'a', sizeof(longname));
 	longname[254] = '\0';
-	assert(nina_getaddrinfo(longname, NULL, NULL, &res) == EAI_NONAME);
+	assert(nina_dns_getaddrinfo(longname, NULL, NULL, &res) == EAI_NONAME);
 	longname[253] = '\0';
 	expect(0x34, 0, (const uint8_t[]){0}, 1);
-	assert(nina_getaddrinfo(longname, NULL, NULL, &res) == EAI_NONAME);
+	assert(nina_dns_getaddrinfo(longname, NULL, NULL, &res) == EAI_NONAME);
 	done();
 	assert(host_param_len == 253);
 
@@ -252,11 +252,11 @@ int main(void)
 
 		assert(allocs > 0 && allocs == frees);
 		reset();
-		assert(nina_getaddrinfo("10.0.0.1", NULL, NULL, &a) == 0);
-		assert(nina_getaddrinfo("10.0.0.2", NULL, NULL, &b) == 0);
-		assert(nina_getaddrinfo("10.0.0.3", NULL, NULL, &res) == EAI_MEMORY);
-		nina_freeaddrinfo(a);
-		nina_freeaddrinfo(b);
+		assert(nina_dns_getaddrinfo("10.0.0.1", NULL, NULL, &a) == 0);
+		assert(nina_dns_getaddrinfo("10.0.0.2", NULL, NULL, &b) == 0);
+		assert(nina_dns_getaddrinfo("10.0.0.3", NULL, NULL, &res) == EAI_MEMORY);
+		nina_dns_freeaddrinfo(a);
+		nina_dns_freeaddrinfo(b);
 		done();
 		assert(allocs == frees);
 		nina_dns_init();

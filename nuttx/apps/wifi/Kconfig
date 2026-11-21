@@ -62,7 +62,7 @@ config NANO_WIFI_PROFILE
 		a disconnection asked for (wapi disconnect) stops it until the
 		next successful connection.  Without it the NINA's connections
 		are all allowed and nothing reconnects
-		(common/drivers/nina/nuttx/nina_wifi_mgmt.c).
+		(common/drivers/nina/port/nuttx/nina_wifi_mgmt.c).
 
 config NANO_APP_WIFI
 	tristate "wifi command (wifi cred)"

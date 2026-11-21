@@ -23,11 +23,11 @@ OS-independent part of the layer is `common/compat/`, the FreeRTOS part `freerto
 | `drivers/libc/` | Wrappers of newlib's FILE functions (`stdio_wrap.c`), the socket headers newlib lacks (`include/`, types and constants only), `inet_pton` and `inet_ntop` (`inet.c`) |
 | `drivers/log/` | The RAM log (`log_ram.c`; the ring is `common/log/log_ring.c`) |
 | `drivers/kv/` | The flash boundary of the key-value store (`nano_flash_kv.c`) and the linker script override (`ld/`, `kv.cmake`) |
-| `drivers/nina/` | The NINA-W102's SPI1 and lines (`nina_bus.c`), the esptool passthrough's module side (`nina_passthrough_bus.c`: UART1, the module's lines, the watchdog's scratch registers, the LED); the `nina_os.h` boundary is the core's FreeRTOS binding (`common/drivers/nina/freertos/nina_os.c`), the passthrough's host side too (`nina_passthrough_os.c` there), the sockets and the interface are the Zephyr binding's (`common/drivers/nina/zephyr/nina_socket.c`, `nina_net.c`) |
+| `drivers/nina/` | Only `nina.cmake`, which adds the NINA driver to the build. The driver is in `common/drivers/nina/`, and this build's parts are its FreeRTOS binding `common/drivers/nina/port/freertos/`: the `nina_os.h` boundary (`nina_os.c`), the passthrough's host side (`nina_passthrough_os.c`), SPI1 and the module's lines on the Pico SDK (`nina_bus_rp2040.c`), the passthrough's module side (`nina_passthrough_bus_rp2040.c`: UART1, the module's lines, the watchdog's scratch registers, the LED); the sockets and the interface are the Zephyr binding's (`common/drivers/nina/port/zephyr/nina_socket.c`, `nina_net.c`) |
 | `drivers/i2c_dw/` | The FreeRTOS part of the I2C core (`common/drivers/i2c_dw/`; I2C0, and I2C1 as an option), I2C0's DMA reads on the Pico SDK's DMA (`i2c_dw_dma_os.c`), self-test |
 | `drivers/lsm6dso/` | The LSM6DSOX device (`lsm6dso_instance.h`) and its initialization (`nano_lsm6dso.c`), self-test |
 | `drivers/imu/` | Builds in the acquisition service, MQTT and time synchronization (`common/imu/`; `imu.cmake`), the prelude of `time_sync.c` |
-| `drivers/wifi/` | Builds in Wi-Fi (the NINA core's `common/drivers/nina/nina_wifi.c` with its Zephyr binding `common/drivers/nina/zephyr/nina_net.c`, credentials, reconnection) and `ifconfig` |
+| `drivers/wifi/` | Builds in Wi-Fi (the NINA core's `common/drivers/nina/nina_wifi.c` with its Zephyr binding `common/drivers/nina/port/zephyr/nina_net.c`, credentials, reconnection) and `ifconfig` |
 | `drivers/telnet/` | The Telnet shell (`nano_telnet.c`) |
 | `drivers/zperf/` | Builds in `zperf` (the code is `common/compat/zperf_iperf3.c` and `zephyr_zperf_shell.c`) |
 | `drivers/sensor_shell/` | The FreeRTOS part of the `sensor` command (`sensor_shell_os.[ch]`) |
@@ -167,10 +167,10 @@ boundary (the four functions of `common/compat/nano_flash_kv.h`, `drivers/kv/nan
 ## NINA-W102, sockets, Wi-Fi
 
 - The SPI transport, the socket table and commands, name resolution and the Wi-Fi operations are the
-  shared core (`common/drivers/nina/nina_spi.c`, `nina_sock.c`, `nina_dns.c`, `nina_wifi.c`). The FreeRTOS build implements the
-  boundaries `nina_bus.h` (`drivers/nina/nina_bus.c`: SPI1 polled at 7.8125 MHz and the CS, READY, RESET
+  shared core (`internal/nina_proto.c`, `nina_sock.c`, `nina_dns.c` and `nina_wifi.c` of `common/drivers/nina/`). The FreeRTOS build implements the
+  boundaries `nina_bus.h` (`common/drivers/nina/port/freertos/nina_bus_rp2040.c`: SPI1 polled at 7.8125 MHz and the CS, READY, RESET
   and IRQ lines, set up in the order and with the values of Zephyr's drivers) and `nina_os.h`
-  (the core's FreeRTOS binding `common/drivers/nina/freertos/nina_os.c`, written on FreeRTOS and the
+  (the core's FreeRTOS binding `common/drivers/nina/port/freertos/nina_os.c`, written on FreeRTOS and the
   Pico SDK without the compatibility layer: FreeRTOS recursive mutexes with priority inheritance for the
   NINA lock, the name resolution lock and the Wi-Fi operations' lock, binary semaphores for the Wi-Fi
   threads' requests, the "rounded up, plus one tick" sleep, the TIMER in ms as the clock). Its objects are
@@ -193,7 +193,7 @@ boundary (the four functions of `common/compat/nano_flash_kv.h`, `drivers/kv/nan
   calls go through the descriptor table to the implementation's `struct socket_op_vtable` under the
   descriptor's mutex, `poll` through `ZFD_IOCTL_POLL_PREPARE` and `ZFD_IOCTL_POLL_OFFLOAD`, and
   `zsock_getaddrinfo()` to the registered resolver. The NINA's sockets are the Zephyr build's binding,
-  compiled unchanged (`common/drivers/nina/zephyr/nina_socket.c`, priority 40): as in the Zephyr build,
+  compiled unchanged (`common/drivers/nina/port/zephyr/nina_socket.c`, priority 40): as in the Zephyr build,
   the calling task asks the NINA and waits (there is no event thread like the NuttX build's usrsock and
   `nina_event`). The table has 16 descriptors, 0 to 15 from the lowest free one (none kept for stdin,
   stdout and stderr, as in the Zephyr build); the NINA has ten sockets, so an eleventh gets `EMFILE`.
@@ -210,13 +210,13 @@ boundary (the four functions of `common/compat/nano_flash_kv.h`, `drivers/kv/nan
   (described in the section of the same name in
   [`zephyr/app/usb-console/drivers/README.md`](../../zephyr/app/usb-console/drivers/README.md)): a scan
   while connected that keeps the link and the asynchronous scan (`nina_wifi.c`), the waits for socket
-  events (`common/drivers/nina/nina_wait.c` and the wait loops of `zephyr/nina_socket.c`). The events are the
+  events (`common/drivers/nina/internal/nina_wait.c` and the wait loops of `port/zephyr/nina_socket.c`). The events are the
   rising edges of the IRQ line (GPIO2) on its interrupt; the binding counts them and wakes every waiting
   task (the waiters are on a list, each woken on its task notification 2). If `nina_os_event_start()` fails, the waits keep their
   intervals (20 ms, 1 ms for sends) whatever the firmware. Checking with a poll command that the socket
   is writable before a TCP send's data goes again does not depend on the firmware.
 - Wi-Fi: the core's Wi-Fi operations with the Zephyr build's binding of them
-  (`common/drivers/nina/zephyr/nina_net.c`: Zephyr's Wi-Fi management and interface, the three threads),
+  (`common/drivers/nina/port/zephyr/nina_net.c`: Zephyr's Wi-Fi management and interface, the three threads),
   the credentials (a copy of Zephyr's `wifi_credentials`) and the automatic reconnection
   (`common/imu/wifi_profile.c`) run on the layer's `net_if`, `net_mgmt` and `wifi_mgmt` (`zephyr_net_if.c`;
   `zephyr_net_init.c` registers the interface at the start, as Zephyr's `net_init()`); this build has no
@@ -227,7 +227,7 @@ boundary (the four functions of `common/compat/nano_flash_kv.h`, `drivers/kv/nan
 
 - The esptool passthrough (`nina passthrough confirm`): the NINA driver's core shared with the Zephyr and
   NuttX builds (`common/drivers/nina/nina_passthrough.c`), with its host side on TinyUSB and the Pico SDK
-  (`common/drivers/nina/freertos/nina_passthrough_os.c`) and its module side (`drivers/nina/nina_passthrough_bus.c`)
+  (`common/drivers/nina/port/freertos/nina_passthrough_os.c`) and its module side (`common/drivers/nina/port/freertos/nina_passthrough_bus_rp2040.c`)
   (wiring and lines in "The esptool passthrough" of
   [`zephyr/app/usb-console/drivers/README.md`](../../zephyr/app/usb-console/drivers/README.md)). The command
   leaves a mark in the watchdog's scratch registers 0 to 3 and restarts; `main()` sees it before anything

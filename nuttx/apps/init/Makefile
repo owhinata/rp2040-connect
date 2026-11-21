@@ -9,7 +9,7 @@
 # from common/log and priorities.h from common/compat, their NuttX parts
 # (app_log_os.h, priorities_os.h) from nuttx/drivers/include
 # ($(TOPDIR)/external/include).
-# It starts the NINA's Wi-Fi threads (nina_net.h of common/drivers/nina/nuttx)
+# It starts the NINA's Wi-Fi threads (nina_net.h of common/drivers/nina/port/nuttx)
 # and the IMU service's thread (zephyr_compat.h of common/compat, without
 # the layer's Zephyr headers) and calls
 # imu_cal_init() and time_sync_init() (../imu, and imu_cal.h of common/imu,
@@ -33,7 +33,7 @@ CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)com
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)lsm6dso
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)imu
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)drivers$(DELIM)lsm6dso
-CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)drivers$(DELIM)nina$(DELIM)nuttx
+CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)drivers$(DELIM)nina$(DELIM)port$(DELIM)nuttx
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)drivers$(DELIM)nina
 
 include $(APPDIR)/Application.mk
