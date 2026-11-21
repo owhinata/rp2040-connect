@@ -205,9 +205,6 @@ static const struct nina_wifi_ops g_ops =
   .link_down          = link_down,
   .connect_result     = nina_wifi_mgmt_connect_result,
   .disconnected       = disconnected,
-  .connection_allowed = nina_wifi_mgmt_connection_allowed,
-  .reconnect_pause    = nina_wifi_mgmt_pause_reconnect,
-  .reconnect_request  = nina_wifi_mgmt_request_reconnect,
 };
 
 /* Scan ------------------------------------------------------------------ */

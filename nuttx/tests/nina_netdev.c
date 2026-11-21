@@ -172,19 +172,6 @@ void nina_wifi_mgmt_disconnect_result(void)
 	note("disconnect_event");
 }
 
-bool nina_wifi_mgmt_connection_allowed(void)
-{
-	return true;
-}
-
-void nina_wifi_mgmt_pause_reconnect(void)
-{
-}
-
-void nina_wifi_mgmt_request_reconnect(void)
-{
-}
-
 /* The core ---------------------------------------------------------------- */
 
 static const struct nina_wifi_ops *core_ops;
@@ -323,9 +310,6 @@ static void test_ops(void)
 	core_ops->disconnected(NINA_WIFI_DISCONNECT_LINK_LOST);
 	expect_log("connect_event(0) connect_event(-5) disconnect_event disconnect_event "
 		   "disconnect_event");
-	assert(core_ops->connection_allowed == nina_wifi_mgmt_connection_allowed);
-	assert(core_ops->reconnect_pause == nina_wifi_mgmt_pause_reconnect);
-	assert(core_ops->reconnect_request == nina_wifi_mgmt_request_reconnect);
 	assert(!netdev_locked);
 }
 

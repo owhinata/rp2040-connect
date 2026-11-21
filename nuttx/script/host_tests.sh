@@ -172,17 +172,11 @@ fi
 # The applications' Zephyr Wi-Fi management on the core (common/drivers/nina/port/nuttx/
 # nina_wifi_mgmt.c) under the layer's Wi-Fi requests (common/compat/zephyr_wifi_mgmt.c) and
 # interface (drivers/compat/zephyr_net_if.c), on fakes of the device's lock, net_mgmt's events, the
-# core's connect and the Wi-Fi profile, with CONFIG_NANO_WIFI_PROFILE and without: the start,
-# NET_REQUEST_WIFI_CONNECT and the requests not served, the events, the addresses, the hooks.
-for variant in profile no_profile; do
-    wdefs=()
-    [[ $variant == profile ]] && wdefs=(-DCONFIG_NANO_WIFI_PROFILE=1)
-    cc "${flags[@]}" "${wdefs[@]}" "${ndinc[@]}" -I"$zfakes" -Idrivers/compat -I"$clog" -I"$cimu" \
-        tests/nina_wifi_mgmt.c "$cnina/port/nuttx/nina_wifi_mgmt.c" "$ccompat/zephyr_wifi_mgmt.c" \
-        drivers/compat/zephyr_net_if.c "$link" -o "$out/nina_wifi_mgmt_$variant"
-    "$out/nina_wifi_mgmt_$variant" >/dev/null
-done
-printf 'ok  nina_wifi_mgmt (with and without CONFIG_NANO_WIFI_PROFILE)\n'
+# core's connect: the start, NET_REQUEST_WIFI_CONNECT and the requests not served, the events,
+# the addresses.
+run nina_wifi_mgmt "${ndinc[@]}" -I"$zfakes" -Idrivers/compat -I"$clog" -I"$cimu" \
+    "$cnina/port/nuttx/nina_wifi_mgmt.c" "$ccompat/zephyr_wifi_mgmt.c" \
+    drivers/compat/zephyr_net_if.c
 zinc=(-D_DEFAULT_SOURCE -I"$zfakes" -Idrivers/compat -I"$ccompat" -Idrivers/include -I"$clog" -I"$cnina/include")
 # The layer's pieces for the IMU service: K_MUTEX_DEFINE, K_THREAD_DEFINE and its start,
 # k_uptime_get's tick rounding, k_sleep, byteorder, snprintk, hwinfo (fake chip ID), the

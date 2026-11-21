@@ -17,8 +17,9 @@
 # wifi_credentials_internal.h), the port's shared headers
 # (common/log: app_log.h; common/compat: priorities.h; their NuttX parts in
 # $(TOPDIR)/external/include), common/shell (subcmd.h), this
-# directory (wifi_profile_os.h, for the file in common/imu) and common/imu
-# (wifi_profile.h, kv_store.h).
+# directory (wifi_profile_os.h, for the file in common/imu), common/imu
+# (wifi_profile.h, kv_store.h) and common/drivers/nina/include (nina_wifi.h:
+# the profile gives the driver its reconnection).
 ############################################################################
 
 include $(APPDIR)/Make.defs
@@ -43,6 +44,7 @@ CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)l
 CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)compat
 CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)compat
 CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)shell
+CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)drivers$(DELIM)nina$(DELIM)include
 CFLAGS   += ${INCDIR_PREFIX}$(APPDIR)$(DELIM)external$(DELIM)wifi
 CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)imu
 

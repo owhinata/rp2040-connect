@@ -227,7 +227,7 @@ through `DTS_ROOT` and its options through the application's `Kconfig` (`rsource
 |---|---|---|
 | `nina_proto.c` | `common/drivers/nina/internal/` | Framing of SPI commands and replies, the module's reset, the waits for READY |
 | `nina_wifi.[ch]` | `common/drivers/nina/` (the header in `include/`) | The Wi-Fi operations: connect (and its wait for the connection and the DHCP result), disconnect, scan, status, the link monitor; the bodies of the threads `nina_scan_tid`, `nina_connect_tid` and `nina_monitor_tid`; what happens goes to the binding's callbacks |
-| `nina_sock.[ch]` | `common/drivers/nina/` (the header in `include/`) | The socket table and commands (one pass of each wait loop at a time) |
+| `nina_sock.[ch]` | `common/drivers/nina/` (the header, for the bindings, in `internal/`) | The socket table and commands (one pass of each wait loop at a time) |
 | `nina_dns.[ch]` | `common/drivers/nina/` (the header in `include/`) | Name resolution (the module's resolver) |
 | `nina_proto.h` | `common/drivers/nina/internal/` | The names of the protocol's bytes (framing, the commands the driver sends, the values of their replies) and the declarations of `nina_proto.c`'s requests and of the module's capabilities |
 | `nina_shell.c` | `common/shell/` | The `nina version` command (in this build `nina passthrough` too; "The esptool passthrough" below) |
@@ -247,7 +247,8 @@ Zephyr's Telnet shell, MQTT client and zperf run on these sockets.
 ### SPI commands
 
 - Commands are handled one at a time. The RP2040 serializes them with a mutex. SPI runs at 8 MHz
-  (`CONFIG_NINA_SPI_FREQUENCY`).
+  (`spi-max-frequency` of the NINA's devicetree node; the SPI bus and the chip select come from that
+  node's parent and `reg` too).
 - Changes of the module's READY line (GPIO10) are waited for on a GPIO edge interrupt
   (`common/drivers/nina/port/zephyr/nina_os.c`). The interrupt is enabled before READY is read, so a change after the read is
   not missed; it is off during the transfers. Each wait lasts at most 10 ms, and READY is read

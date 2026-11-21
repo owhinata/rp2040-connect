@@ -28,12 +28,11 @@
  * makes CONFIG_RP2040_SPI1_CS_GPIO an output at 1 before this runs
  * (rp2040_common_initialize()); nina_bus_initialize(), at the core's
  * first request, then sets the pads as Zephyr's pinctrl and GPIO drivers
- * do.  Each nina_bus_transceive()
- * takes the bus lock (SPI_LOCK) like each Zephyr spi_transceive() takes its
- * context lock, and sets mode, word size and frequency the first time,
- * like Zephyr's spi_pl022_configure() does when the configuration changes
- * (no other user of SPI1).  SPI_SELECT is not used: nina_proto.c drives CS
- * itself (the Zephyr build's spi_config has no CS).
+ * do.  nina_bus_select() takes the bus lock (SPI_LOCK) and sets mode, word
+ * size and frequency, and nina_bus_deselect() gives the lock back, so the
+ * bus is the module's for as long as its CS is active, as the Zephyr
+ * build's spi_config with SPI_LOCK_ON.  SPI_SELECT is not used: CS is a
+ * line of its own (the Zephyr build's spi_config has no CS).
  */
 
 #include <nuttx/config.h>
@@ -80,7 +79,6 @@ static const struct nina_line g_lines[] =
 };
 
 static struct spi_dev_s *g_spi;
-static bool g_configured;
 
 static void set_input_enabled(uint32_t gpio, bool enabled)
 {
@@ -195,7 +193,12 @@ int nina_bus_pin_get(enum nina_bus_pin pin)
   return rp2040_gpio_get(line->gpio) != line->active_low;
 }
 
-int nina_bus_transceive(const uint8_t *tx, uint8_t *rx, size_t len)
+/* The bus lock for as long as the module is selected, and the module's
+ * mode and rate each time, as a NuttX SPI device does: another device on
+ * the bus may have set its own in between.
+ */
+
+int nina_bus_select(void)
 {
   int ret;
 
@@ -214,15 +217,27 @@ int nina_bus_transceive(const uint8_t *tx, uint8_t *rx, size_t len)
       return ret;
     }
 
-  if (!g_configured)
+  SPI_SETMODE(g_spi, SPIDEV_MODE0);
+  SPI_SETBITS(g_spi, 8);
+  SPI_SETFREQUENCY(g_spi, CONFIG_NINA_SPI_FREQUENCY);
+
+  ret = nina_bus_pin_set(NINA_BUS_PIN_CS, 1);
+  if (ret < 0)
     {
-      SPI_SETMODE(g_spi, SPIDEV_MODE0);
-      SPI_SETBITS(g_spi, 8);
-      SPI_SETFREQUENCY(g_spi, CONFIG_NINA_SPI_FREQUENCY);
-      g_configured = true;
+      SPI_LOCK(g_spi, false);
     }
 
-  SPI_EXCHANGE(g_spi, tx, rx, len);
+  return ret;
+}
+
+void nina_bus_deselect(void)
+{
+  nina_bus_pin_set(NINA_BUS_PIN_CS, 0);
   SPI_LOCK(g_spi, false);
+}
+
+int nina_bus_transceive(const uint8_t *tx, uint8_t *rx, size_t len)
+{
+  SPI_EXCHANGE(g_spi, tx, rx, len);
   return 0;
 }

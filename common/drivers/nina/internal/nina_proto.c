@@ -235,7 +235,7 @@ static int command(uint8_t cmd, const uint8_t *a, size_t alen, const uint8_t *b,
 	while (n % 4) {
 		tx[n++] = NINA_DUMMY;
 	}
-	if ((ret = nina_bus_pin_set(NINA_BUS_PIN_CS, 1))) {
+	if ((ret = nina_bus_select())) {
 		return ret;
 	}
 
@@ -243,7 +243,7 @@ static int command(uint8_t cmd, const uint8_t *a, size_t alen, const uint8_t *b,
 	if (!ret) {
 		ret = transfer_write(tx, n);
 	}
-	(void)nina_bus_pin_set(NINA_BUS_PIN_CS, 0);
+	nina_bus_deselect();
 	memset(tx, 0, sizeof(tx));
 
 	if (ret) {
@@ -252,7 +252,7 @@ static int command(uint8_t cmd, const uint8_t *a, size_t alen, const uint8_t *b,
 	if ((ret = wait_ready(1, 2000))) {
 		return ret;
 	}
-	if ((ret = nina_bus_pin_set(NINA_BUS_PIN_CS, 1))) {
+	if ((ret = nina_bus_select())) {
 		return ret;
 	}
 
@@ -289,7 +289,7 @@ static int command(uint8_t cmd, const uint8_t *a, size_t alen, const uint8_t *b,
 			ret = -EPROTO;
 		}
 	}
-	(void)nina_bus_pin_set(NINA_BUS_PIN_CS, 0);
+	nina_bus_deselect();
 	if (!ret) {
 		*outlen = len;
 	}
@@ -331,7 +331,7 @@ int nina_proto_request(uint8_t cmd, const struct nina_proto_param *params, size_
 		ret = wait_ready(1, 2000);
 	}
 	if (!ret) {
-		ret = nina_bus_pin_set(NINA_BUS_PIN_CS, 1);
+		ret = nina_bus_select();
 	}
 	if (!ret) {
 		ret = wait_ready(0, 20);
@@ -352,13 +352,13 @@ int nina_proto_request(uint8_t cmd, const struct nina_proto_param *params, size_
 		while (!ret && sent % 4) {
 			SEND_BYTE(NINA_DUMMY);
 		}
-		(void)nina_bus_pin_set(NINA_BUS_PIN_CS, 0);
+		nina_bus_deselect();
 	}
 	if (!ret) {
 		ret = wait_ready(1, 10000);
 	}
 	if (!ret) {
-		ret = nina_bus_pin_set(NINA_BUS_PIN_CS, 1);
+		ret = nina_bus_select();
 	}
 	if (!ret) {
 		ret = wait_ready(0, 20);
@@ -413,7 +413,7 @@ int nina_proto_request(uint8_t cmd, const struct nina_proto_param *params, size_
 				ret = -EPROTO;
 			}
 		}
-		(void)nina_bus_pin_set(NINA_BUS_PIN_CS, 0);
+		nina_bus_deselect();
 	}
 	if (!ret) {
 		*out_len = total;

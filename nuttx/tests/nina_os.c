@@ -295,6 +295,15 @@ int nina_bus_pin_configure(enum nina_bus_pin pin, enum nina_bus_pin_mode mode)
 	return 0;
 }
 
+int nina_bus_select(void)
+{
+	return 0;
+}
+
+void nina_bus_deselect(void)
+{
+}
+
 int nina_bus_pin_set(enum nina_bus_pin pin, int value)
 {
 	(void)pin;

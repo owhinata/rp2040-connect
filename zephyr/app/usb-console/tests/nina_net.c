@@ -161,19 +161,6 @@ void wifi_mgmt_raise_disconnect_result_event(struct net_if *iface, int status)
 	note("disconnect_event(%d)", status);
 }
 
-/* The Wi-Fi profile: only its addresses are compared. */
-bool wifi_profile_connection_allowed(void)
-{
-	return true;
-}
-
-void wifi_profile_pause_reconnect(void)
-{
-}
-
-void wifi_profile_request_reconnect(void)
-{
-}
 
 void nina_dns_init(void)
 {
@@ -444,9 +431,6 @@ static void test_ops(void)
 	core_ops->disconnected(NINA_WIFI_DISCONNECT_LINK_LOST);
 	expect_log("connect_event(0) connect_event(-110) disconnect_event(0) disconnect_event(0) "
 		   "disconnect_event(0)");
-	assert(core_ops->connection_allowed == wifi_profile_connection_allowed);
-	assert(core_ops->reconnect_pause == wifi_profile_pause_reconnect);
-	assert(core_ops->reconnect_request == wifi_profile_request_reconnect);
 }
 
 static void test_threads(void)

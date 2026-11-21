@@ -65,10 +65,23 @@ int nina_bus_pin_configure(enum nina_bus_pin pin, enum nina_bus_pin_mode mode);
 int nina_bus_pin_set(enum nina_bus_pin pin, int value);
 int nina_bus_pin_get(enum nina_bus_pin pin);
 
-/* spi_transceive() with one TX and one RX buffer of LEN bytes, or
- * spi_write() when RX is NULL: SPI mode 0, 8-bit words, MSB first, at
- * CONFIG_NINA_SPI_FREQUENCY, by polling (Zephyr: its SPI driver's).  Does
- * not touch CS (nina_proto.c drives it).
+/* One phase of a request with the module selected (nina_proto.c: the
+ * command, then the reply).  nina_bus_select() takes the bus from its other
+ * users where the OS has them (Zephyr's and NuttX's bus locks), sets it to
+ * the module's mode and rate, and drives CS active; nina_bus_deselect()
+ * drives CS inactive and gives the bus back.  Between the two the bus is
+ * the module's: no other device's transfer runs while its CS is active.
+ * nina_bus_select() returns 0, or a negative errno with the bus given back
+ * and CS inactive.
+ */
+int nina_bus_select(void);
+void nina_bus_deselect(void);
+
+/* Between nina_bus_select() and nina_bus_deselect(): spi_transceive() with
+ * one TX and one RX buffer of LEN bytes, or spi_write() when RX is NULL:
+ * SPI mode 0, 8-bit words, MSB first, at the module's rate (Zephyr: the
+ * node's spi-max-frequency; elsewhere CONFIG_NINA_SPI_FREQUENCY), by
+ * polling.  Does not touch CS.
  */
 int nina_bus_transceive(const uint8_t *tx, uint8_t *rx, size_t len);
 

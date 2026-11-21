@@ -82,6 +82,14 @@ for f in "${nina_core[@]}"; do
         -fsyntax-only -x c -
 done
 printf 'ok  nina_core_independent (%d files)\n' "${#nina_core[@]}"
+# The headers for the driver's users (include/) compile with that directory alone: none of them
+# reads internal/ or port/.
+nina_public=("$nina"/include/*.h)
+for f in "${nina_public[@]}"; do
+    printf '#include "%s"\n' "${f##*/}" | cc "${flags[@]}" -D_DEFAULT_SOURCE -I"$nina/include" \
+        -fsyntax-only -x c -
+done
+printf 'ok  nina_public_headers (%d files)\n' "${#nina_public[@]}"
 # SPI link (nina_proto.c, which the test includes): framing, answers, READY timeouts, reset
 # sequence, CS order (fake board and clock); each case with READY sampled (the OS's
 # nina_os_ready_start() fails) and with the OS's waits for READY (fake waits).

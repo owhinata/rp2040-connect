@@ -136,7 +136,10 @@ int64_t nina_os_uptime_ms(void)
 /* The longest single wait (see above). */
 #define READY_WAIT_SLICE_MS 10
 
-static const struct gpio_dt_spec ready = GPIO_DT_SPEC_GET(DT_NODELABEL(nina_w102), ready_gpios);
+/* The module's node (nina_bus.c). */
+#define NINA_NODE DT_COMPAT_GET_ANY_STATUS_OKAY(arduino_nina_spi)
+
+static const struct gpio_dt_spec ready = GPIO_DT_SPEC_GET(NINA_NODE, ready_gpios);
 static K_SEM_DEFINE(ready_sem, 0, 1);
 static struct gpio_callback ready_cb;
 
@@ -198,7 +201,7 @@ void nina_os_ready_disarm(void)
  *                             wait goes on
  */
 
-static const struct gpio_dt_spec irq = GPIO_DT_SPEC_GET(DT_NODELABEL(nina_w102), irq_gpios);
+static const struct gpio_dt_spec irq = GPIO_DT_SPEC_GET(NINA_NODE, irq_gpios);
 static K_SEM_DEFINE(event_sem, 0, 1);
 static struct gpio_callback event_cb;
 static volatile uint32_t event_count;

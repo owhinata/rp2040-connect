@@ -110,6 +110,8 @@
 #include <nuttx/sched.h>
 #include <nuttx/semaphore.h>
 
+#include <arch/board/board.h>
+
 #include <zephyr/device.h>
 #include <zephyr/drivers/gpio.h>
 
@@ -119,9 +121,9 @@
 #  include "nina_usrsock.h"
 #endif
 
-/* READY: GPIO10, active low (nina_bus_rp2040.c, BOARD_NINA_READY_GPIO). */
+/* READY, active low (the board's board.h, as nina_bus_rp2040.c). */
 
-#define READY_GPIO 10
+#define READY_GPIO BOARD_NINA_READY_GPIO
 
 static rmutex_t g_nina_lock = NXRMUTEX_INITIALIZER;
 static mutex_t g_dns_lock = NXMUTEX_INITIALIZER;
@@ -131,11 +133,9 @@ static mutex_t g_dns_lock = NXMUTEX_INITIALIZER;
 static sem_t g_ready_sem = SEM_INITIALIZER(0);
 static struct gpio_callback g_ready_cb;
 
-/* The IRQ line: GPIO2, active high (nina_bus_rp2040.c,
- * BOARD_NINA_IRQ_GPIO).
- */
+/* The IRQ line, active high (the board's board.h, as nina_bus_rp2040.c). */
 
-#define IRQ_GPIO 2
+#define IRQ_GPIO BOARD_NINA_IRQ_GPIO
 
 static sem_t g_event_sem = SEM_INITIALIZER(0);
 static struct gpio_callback g_event_cb;

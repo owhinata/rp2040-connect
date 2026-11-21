@@ -310,12 +310,15 @@ static const struct nina_wifi_ops fake_ops = {
 	.link_down = fake_link_down,
 	.connect_result = fake_connect_result,
 	.disconnected = fake_disconnected,
-	.connection_allowed = fake_connection_allowed,
-	.reconnect_pause = fake_reconnect_pause,
-	.reconnect_request = fake_reconnect_request,
 };
 
-/* The same without the optional hooks. */
+static const struct nina_wifi_reconnect_ops fake_reconnect_ops = {
+	.connection_allowed = fake_connection_allowed,
+	.pause = fake_reconnect_pause,
+	.request = fake_reconnect_request,
+};
+
+/* The same, for the runs without the application's reconnection. */
 static const struct nina_wifi_ops bare_ops = {
 	.ip_set = fake_ip_set,
 	.link_up = fake_link_up,
@@ -390,6 +393,7 @@ static void reset(const struct nina_wifi_ops *with)
 	ip_set_ret = 0;
 	answer(NINA_CMD_GET_MACADDR, 0, mac_reply, 6);
 	assert(nina_wifi_init(with, mac) == 0);
+	nina_wifi_set_reconnect_ops(with == &bare_ops ? NULL : &fake_reconnect_ops);
 	steps_done();
 	log_buf[0] = '\0';
 }

@@ -71,7 +71,7 @@ Zephyr 版はソケットのオフロード（`common/drivers/nina/port/zephyr/n
 
 | ファイル | 役割 |
 |---|---|
-| `common/drivers/nina/nina_sock.c`・`include/nina_sock.h` | ソケットの表（10 個）と NINA のソケット命令: `nina_socket_create()`・`do_bind()`・`do_listen()`・`do_accept()`・`do_connect()`・`do_close()`・`do_setsockopt()` と、送受信の `udp_send()`・`do_send()`・`do_sendmsg()`・`udp_recv()`・`do_recv()`（送受信の待ちのループは要求 1 回で 1 周）。3 つの版が使う。`nina_sock_poll_revents()`（ソケット 1 つ分の `do_poll()`）は Zephyr 版と FreeRTOS 版だけが使う。OS に依存しない |
+| `common/drivers/nina/nina_sock.c`・`internal/nina_sock.h` | ソケットの表（10 個）と NINA のソケット命令: `nina_socket_create()`・`do_bind()`・`do_listen()`・`do_accept()`・`do_connect()`・`do_close()`・`do_setsockopt()` と、送受信の `udp_send()`・`do_send()`・`do_sendmsg()`・`udp_recv()`・`do_recv()`（送受信の待ちのループは要求 1 回で 1 周）。3 つの版が使う。`nina_sock_poll_revents()`（ソケット 1 つ分の `do_poll()`）は Zephyr 版と FreeRTOS 版だけが使う。OS に依存しない |
 | `common/drivers/nina/port/nuttx/nina_usrsock.c` | usrsock の要求を上の関数に振り分け、応答（ACK）を返す |
 | `common/drivers/nina/port/nuttx/nina_poller.c` | スレッド `nina_event`。NINA のソケットの状態を見て usrsock のイベントにする。待つ送信の再試行の時間も計る。ファームウェアがソケットの事象を通知するときは IRQ の線のエッジで起きる |
 | `common/drivers/nina/port/nuttx/nina_usrsock.h` | 上の 2 つの間の宣言 |

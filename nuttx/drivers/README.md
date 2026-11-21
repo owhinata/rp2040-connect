@@ -79,7 +79,7 @@ TCP/IP stack is not used (`NET_TCP_NO_STACK`, `NET_UDP_NO_STACK`).
 
 | File | Role |
 |---|---|
-| `common/drivers/nina/nina_sock.c` and `include/nina_sock.h` | The socket table (10 sockets) and the NINA's socket commands: `nina_socket_create()`, `do_bind()`, `do_listen()`, `do_accept()`, `do_connect()`, `do_close()` and `do_setsockopt()`, and for sending and receiving `udp_send()`, `do_send()`, `do_sendmsg()`, `udp_recv()` and `do_recv()`, (one pass of a send or receive wait loop per request). Used by the three builds. `nina_sock_poll_revents()` (`do_poll()` for one socket) is used by the Zephyr and FreeRTOS versions only. OS-independent |
+| `common/drivers/nina/nina_sock.c` and `internal/nina_sock.h` | The socket table (10 sockets) and the NINA's socket commands: `nina_socket_create()`, `do_bind()`, `do_listen()`, `do_accept()`, `do_connect()`, `do_close()` and `do_setsockopt()`, and for sending and receiving `udp_send()`, `do_send()`, `do_sendmsg()`, `udp_recv()` and `do_recv()`, (one pass of a send or receive wait loop per request). Used by the three builds. `nina_sock_poll_revents()` (`do_poll()` for one socket) is used by the Zephyr and FreeRTOS versions only. OS-independent |
 | `common/drivers/nina/port/nuttx/nina_usrsock.c` | Dispatches usrsock's requests to the functions above and answers them (ACK) |
 | `common/drivers/nina/port/nuttx/nina_poller.c` | The thread `nina_event`: turns the state of the NINA's sockets into usrsock events, and times the retries of a waiting send; with a firmware that reports socket events, it wakes on the IRQ line's edges |
 | `common/drivers/nina/port/nuttx/nina_usrsock.h` | The declarations between the two |

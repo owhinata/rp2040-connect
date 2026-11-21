@@ -116,16 +116,6 @@ struct nina_wifi_ops {
 	 * asked for while not connected).  Not under the lock.
 	 */
 	void (*disconnected)(enum nina_wifi_disconnect_reason reason);
-	/* Optional, the application's reconnection (NULL: allowed, nothing
-	 * to do).  connection_allowed(): in nina_wifi_connect()'s caller,
-	 * under the lock; false refuses the connection (-ECANCELED).
-	 * reconnect_pause(): nina_wifi_disconnect(), under the lock.
-	 * reconnect_request(): after a scan that gave the link up, and after
-	 * a lost link, not under the lock.
-	 */
-	bool (*connection_allowed)(void);
-	void (*reconnect_pause)(void);
-	void (*reconnect_request)(void);
 };
 
 /* Keeps OPS, reads the module's MAC address into MAC and asks the module
@@ -135,6 +125,27 @@ struct nina_wifi_ops {
  * for a short answer); the capabilities are asked either way.
  */
 int nina_wifi_init(const struct nina_wifi_ops *ops, uint8_t mac[NINA_WIFI_MAC_LEN]);
+
+/* The application's reconnection, if it has one (none: every connection is
+ * allowed and nothing more is done).  connection_allowed(): in
+ * nina_wifi_connect()'s caller, under the lock; false refuses the
+ * connection (-ECANCELED).  pause(): nina_wifi_disconnect(), under the
+ * lock.  request(): after a scan that gave the link up, and after a lost
+ * link, not under the lock.  Any of them may be NULL.
+ */
+struct nina_wifi_reconnect_ops {
+	bool (*connection_allowed)(void);
+	void (*pause)(void);
+	void (*request)(void);
+};
+
+/* Keeps OPS (NULL: none) from now on.  At any time, from a thread: the
+ * driver's threads read the registration atomically, each call of a hook
+ * through the one it read.  A hook of an earlier registration may
+ * therefore still be running, or start, a moment after this returns, so
+ * every OPS and its functions must stay valid for good (static).
+ */
+void nina_wifi_set_reconnect_ops(const struct nina_wifi_reconnect_ops *ops);
 
 /* Starts a scan in the scan thread; the results come to CB with ARG.
  * Without NINA_CAP_SCAN_KEEPS_LINK a connection is given up first:

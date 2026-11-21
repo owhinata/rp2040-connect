@@ -1961,3 +1961,56 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
   FreeRTOS は `dmesg` に `<err>`・`<wrn>` なし、`fault` なし。NuttX 版で中継モードの出入り（1 回）: 2 MB の読み出しが 115200・921600 bps で一致、書き込み後の退避とも一致、抜けたあと `nina version` が応答。
 - 確かめていない: Zephyr 版・FreeRTOS 版の中継、切断復帰・Telnet（このイメージでは）、モジュールが応答しないときの起動。
 - 実機: Zephyr 版（この変更のビルド）。
+
+## NINA: codex のレビューの 5 点（2026-11-21）
+
+ユーザーが codex にレビューを依頼した結果。5 点ともコードで確かめて指摘のとおりだったので、すべて直した。
+
+1. **SPI のバスをほかのデバイスと安全に共有できない**（高）: コアは CS を下げたまま複数回の転送をするのに、NuttX のつなぎは転送ごとにバスのロックを放し、モードと周波数は最初の 1 回だけ設定していた。
+   → 境界に `nina_bus_select()`・`nina_bus_deselect()` を足し、コアは CS をこれで上げ下げする（要求 1 回に 2 度: コマンドと応答）。NuttX は `SPI_LOCK` を取ってモード・ビット・周波数を毎回設定してから
+   CS を下げ、CS を上げてから放す。Zephyr は `spi_config` に `SPI_LOCK_ON` を付け、バッファなしの `spi_transceive()` でロックを取ってから CS を下げ、CS を上げてから `spi_release()`。
+   FreeRTOS は SPI1 のほかの利用者が無く Pico SDK にバスのロックも無いので、CS だけ。
+2. **Zephyr のデバイスツリーで接続先を変えても反映されない**（高）: SPI のコントローラーを `spi1`、CS をその `cs-gpios[0]` に固定していた。→ NINA のノード
+   （`DT_COMPAT_GET_ANY_STATUS_OKAY(arduino_nina_spi)`）から、親のバス（`DT_BUS`）、`reg` に対応する CS、`spi-max-frequency` を取る。`CONFIG_NINA_SPI_FREQUENCY` は Zephyr の Kconfig から削除
+   （NuttX と FreeRTOS には残る）。`nina_os.c`・`nina_net.c`・中継のモジュール側の `BUILD_ASSERT` も同じノードから。互換層に `DT_COMPAT_GET_ANY_STATUS_OKAY()` を足した（FreeRTOS 版が `nina_net.c` をビルドするため）。
+   （ユーザーの質問「起動時に OS 側で設定してくれるのでは」: ハードウェアの設定は Zephyr がするが、「どのバスのどの CS を使うか」をドライバーが固定していた、という指摘。）
+3. **NuttX で同じ信号のピン番号をボードとつなぎが別々に持つ**（中）: `nina_os.c` が GPIO10・GPIO2 を直に書いていた。→ `board.h` の `BOARD_NINA_READY_GPIO`・`BOARD_NINA_IRQ_GPIO` を読む。
+   FreeRTOS も同じ重複があったので、`port/freertos/nina_board_rp2040.h` に 1 つにまとめた（`nina_bus_rp2040.c` と `nina_os.c` が読む）。
+4. **Zephyr のつなぎがアプリの再接続機能を必須にしている**（中）: `nina_net.c`（と NuttX の `nina_wifi_mgmt.c`）が `common/imu` の `wifi_profile_*` を直接参照していた。→ 3 つのフックを
+   `nina_wifi_ops` から外し、アプリが登録する `nina_wifi_set_reconnect_ops()`（`nina_wifi.h`）にした。`wifi_profile_init()` が登録する。つなぎは `wifi_profile.h` を読まない。
+   NuttX の `nina_wifi_mgmt_*` の 3 つの中継関数と、`CONFIG_NANO_WIFI_PROFILE` の有無で 2 回ビルドしていたテストの変種は削除。
+5. **ソケットの公開ヘッダーと内部の境界があいまい**（中）: `include/nina_sock.h` が `internal/` の 2 つを読み、usrsock 用の `connect_xid` とソケットの表も見せていた。使うのはつなぎだけ。
+   → `internal/nina_sock.h` に戻した。`include/` は `nina_wifi.h`・`nina_dns.h`・`nina_passthrough.h` の 3 つ。`common/tests/run.sh` に `nina_public_headers`（`include/` だけでコンパイルできること）を足した。
+
+- イメージ: Zephyr 372144 → 372216 B、NuttX 283676 → 283676 B（大きさは同じ、中身は違う）、FreeRTOS 236496 → 236496 B（同じく）。**基準を更新: Zephyr・NuttX とも `snapshot-1121d`**。
+  ホストテスト 45・57・55（`nina_public_headers` が増えた）、`format.sh --check` も通る。
+- 実機（3 版、書き込み直後の各 1 回 約 70 秒）: 欠番 0、時刻の逆行 0、`cpu_active` Zephyr 46.6%、NuttX 48.8%、FreeRTOS 39.8%。送信中の切断 → `wifi cred auto_connect`: FreeRTOS・NuttX とも 2 秒で再接続し MQTT も
+  つなぎ直し、Telnet は送信中と復帰後に応答（各 1 回）。Zephyr は送信していない状態で `wifi disconnect` → `wifi cred auto_connect` が 2 秒で再接続、`dmesg` に `<err>`・`<wrn>` なし（1 回）。
+- 確かめていない: SPI1 を別のデバイスと共有した状態（このボードには無い）、別の配線のデバイスツリー、AP を落とす切断（リンクが切れたときの再接続の要求）、中継（このイメージでは）。
+- レビューの最後の点（Wi-Fi の状態とソケットの表のインスタンス化）は、NINA を 2 台扱う要件が無いので手を付けていない。
+- 実機: Zephyr 版（この変更のビルド）。
+
+## NINA: codex の再レビューの 2 点（2026-11-21）
+
+`d9fd4b8` の再レビュー。前回の 5 点は対応済みとの判定で、残りの 2 点を直した。
+
+1. **Zephyr: 空の転送が成功しても、バスのロックを取ったことにならないコントローラーがある**（高）: `nina_bus_select()` はバッファなしの `spi_transceive()` でロックを取ってから CS を下げる。
+   PL022 のドライバー（ポーリング）は先にロックを取るが、同梱の LiteX のドライバーは両方のバッファが NULL だとロックの前に 0 を返す。Zephyr にはロックだけを取る呼び出しが無い。
+   → このやり方をポーリングの PL022 に限定した: `BUILD_ASSERT(DT_NODE_HAS_COMPAT(NINA_BUS, arm_pl022))` と、`CONFIG_SPI_PL022_INTERRUPT`・`_DMA` が無いことの `BUILD_ASSERT`。
+   ほかのコントローラーで使うときは、ここにそのコントローラーでのバスの取り方を足す（コメントに記載）。
+2. **再接続のフックの「いつでも登録できる」に同期が無い**（中）: `nina_wifi_set_reconnect_ops()` は普通のポインターに代入し、接続・切断・監視のスレッドがそれを読んでいた。
+   → ポインターを `_Atomic` にして `atomic_store()`・`atomic_load()` で読み書きする（RP2040 ではロックなしの読み書きとメモリーバリア）。契約をヘッダーに書いた: フックは 1 回の呼び出しごとに
+   読んだ登録を使うので、差し替えた直後にも前の登録のフックが動きうる。登録する構造体と関数は、ずっと有効でなければならない（静的）。
+
+- イメージ: Zephyr 372216 → 372248 B、NuttX 283676 → 283708 B、FreeRTOS 236496 → 236528 B（バリアの分）。**基準を更新: Zephyr・NuttX とも `snapshot-1121e`**。ホストテスト 45・57・55。
+- 実機（3 版、書き込み直後の各 1 回 約 70 秒）: 欠番 0、`cpu_active` Zephyr 46.8%、NuttX 48.7%、FreeRTOS 39.8%。切断 → `wifi cred auto_connect` は 3 版とも 2 秒で再接続
+  （NuttX・FreeRTOS は送信中で MQTT もつなぎ直し、Telnet は送信中と復帰後に応答。Zephyr は送信していない状態）。
+- 確かめていない: 共有の SPI（実機に相手が無い）、PL022 以外のコントローラー、AP を落とす切断。
+- 実機: FreeRTOS 版（この変更のビルド）。
+
+## NINA: codex の 3 回目のレビューの 1 点（2026-11-21）
+
+- `b9c4a98` の確認。再接続フックの同期は解消との判定。残り 1 点: Zephyr で `CONFIG_SPI_ASYNC=y`（`CONFIG_SPI_PERIPHERAL=n`）だと、ポーリングの PL022 でも、同期の `spi_transceive()` が戻るときに
+  `spi_context_release()` が `SPI_LOCK_ON` に関係なくロックを返す（`spi_context.h` で確認）。`CONFIG_SPI_ASYNC` は PL022 の割り込み・DMA と独立なので、前回の `BUILD_ASSERT` を通ってしまう。
+- 対応: `BUILD_ASSERT(!IS_ENABLED(CONFIG_SPI_ASYNC))` を足し、コメントに理由を書いた。この版は `CONFIG_SPI_ASYNC` なし。
+- 確認: Zephyr のイメージは基準（`snapshot-1121e`）とバイト一致、ホストテスト 45。Zephyr のつなぎだけの変更なので NuttX・FreeRTOS はビルドしていない。実機には書いていない。

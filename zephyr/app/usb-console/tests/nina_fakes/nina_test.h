@@ -59,6 +59,14 @@ typedef struct {
 #define FAKE_PIN_irq_gpios   2
 
 #define DT_NODELABEL(x)  0
+#define DT_COMPAT_GET_ANY_STATUS_OKAY(x) 0
+#define DT_BUS(node)     0
+#define DT_NODE_HAS_COMPAT(node, compat) 1
+#define BUILD_ASSERT(cond, msg)          _Static_assert(cond, msg)
+#define IS_ENABLED(option)               0
+#define DT_REG_ADDR_RAW(node) 0
+#define DT_PROP(node, prop) FAKE_PROP_##prop
+#define FAKE_PROP_spi_max_frequency 8000000
 #define DEVICE_DT_GET(x) (&fake_device)
 #define GPIO_DT_SPEC_GET(node, prop)                                                               \
 	{                                                                                          \
@@ -70,6 +78,7 @@ typedef struct {
 	}
 #define SPI_WORD_SET(n)                  (n)
 #define SPI_TRANSFER_MSB                 0
+#define SPI_LOCK_ON                      0x100
 #define GPIO_OUTPUT_INACTIVE             0x11
 #define GPIO_OUTPUT_ACTIVE               0x12
 #define GPIO_OUTPUT_HIGH                 0x13
@@ -82,7 +91,6 @@ typedef struct {
 #define K_FOREVER                        ((k_timeout_t){-1})
 #define K_MSEC(n)                        ((k_timeout_t){(int64_t)(n) * 1000})
 #define K_USEC(n)                        ((k_timeout_t){(int64_t)(n)})
-#define CONFIG_NINA_SPI_FREQUENCY        8000000
 #define MIN(a, b)                        ((a) < (b) ? (a) : (b))
 #define BIT(n)                           (1u << (n))
 #define ARG_UNUSED(x)                    (void)(x)
@@ -105,6 +113,7 @@ static inline void gpio_init_callback(struct gpio_callback *callback,
 int spi_transceive(const struct device *dev, const struct spi_config *cfg,
 		   const struct spi_buf_set *tx, const struct spi_buf_set *rx);
 int spi_write(const struct device *dev, const struct spi_config *cfg, const struct spi_buf_set *tx);
+int spi_release(const struct device *dev, const struct spi_config *cfg);
 int k_mutex_lock(struct k_mutex *lock, k_timeout_t timeout);
 int k_mutex_unlock(struct k_mutex *lock);
 int32_t k_sleep(k_timeout_t timeout);

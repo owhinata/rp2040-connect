@@ -80,18 +80,35 @@ int nina_bus_pin_configure(enum nina_bus_pin pin, enum nina_bus_pin_mode mode)
 	return 0;
 }
 
+static void select_cs(int value)
+{
+	assert(lock_depth > 0);
+	/* The test's requests never assert CS twice in a row. */
+	assert(cs_active != value);
+	cs_active = value;
+	if (value) {
+		phase++;
+	}
+	event(value ? "CS1" : "CS0");
+}
+
+int nina_bus_select(void)
+{
+	select_cs(1);
+	return 0;
+}
+
+void nina_bus_deselect(void)
+{
+	select_cs(0);
+}
+
 int nina_bus_pin_set(enum nina_bus_pin pin, int value)
 {
 	assert(lock_depth > 0);
-	if (pin == NINA_BUS_PIN_CS) {
-		/* The test's requests never assert CS twice in a row. */
-		assert(cs_active != value);
-		cs_active = value;
-		if (value) {
-			phase++;
-		}
-		event(value ? "CS1" : "CS0");
-	} else {
+	/* CS is the bus's (nina_bus_select()). */
+	assert(pin != NINA_BUS_PIN_CS);
+	{
 		char e[16];
 
 		snprintf(e, sizeof(e), "%s=%d", pin == NINA_BUS_PIN_RESET ? "RESET" : "IRQ", value);

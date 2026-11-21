@@ -43,6 +43,22 @@
 #define NINA_MONITOR_LOST_CHECKS 2
 
 static const struct nina_wifi_ops *ops;
+/* Read by the threads while the application may register: atomic. */
+static _Atomic(const struct nina_wifi_reconnect_ops *) reconnect_ops;
+
+void nina_wifi_set_reconnect_ops(const struct nina_wifi_reconnect_ops *hooks)
+{
+	atomic_store(&reconnect_ops, hooks);
+}
+
+static void reconnect_request(void)
+{
+	const struct nina_wifi_reconnect_ops *hooks = atomic_load(&reconnect_ops);
+
+	if (hooks && hooks->request) {
+		hooks->request();
+	}
+}
 static uint8_t assigned_ip[4];
 static bool connected;
 static bool connecting;
@@ -181,8 +197,8 @@ static void scan_once(uint8_t *records, size_t cap)
 	}
 	atomic_store(&scanning, false);
 	cb(arg, ret, NULL);
-	if (reconnect && ops->reconnect_request) {
-		ops->reconnect_request();
+	if (reconnect) {
+		reconnect_request();
 	}
 }
 
@@ -307,6 +323,7 @@ void nina_wifi_connect_thread(void)
 
 int nina_wifi_connect(const struct nina_wifi_connect_params *params)
 {
+	const struct nina_wifi_reconnect_ops *hooks;
 	bool open;
 	uint8_t answer;
 	size_t n;
@@ -327,7 +344,8 @@ int nina_wifi_connect(const struct nina_wifi_connect_params *params)
 		return -EINVAL;
 	}
 	nina_os_wifi_lock();
-	if (ops->connection_allowed && !ops->connection_allowed()) {
+	hooks = atomic_load(&reconnect_ops);
+	if (hooks && hooks->connection_allowed && !hooks->connection_allowed()) {
 		nina_os_wifi_unlock();
 		return -ECANCELED;
 	}
@@ -360,13 +378,15 @@ int nina_wifi_connect(const struct nina_wifi_connect_params *params)
 
 int nina_wifi_disconnect(void)
 {
+	const struct nina_wifi_reconnect_ops *hooks;
 	uint8_t dummy = NINA_DUMMY, answer;
 	size_t n;
 	int ret;
 
 	nina_os_wifi_lock();
-	if (ops->reconnect_pause) {
-		ops->reconnect_pause();
+	hooks = atomic_load(&reconnect_ops);
+	if (hooks && hooks->pause) {
+		hooks->pause();
 	}
 	next_generation();
 	ret = request_one(NINA_CMD_DISCONNECT, &dummy, 1, &answer, 1, &n);
@@ -416,9 +436,7 @@ static void monitor_once(void)
 
 	if (lost) {
 		ops->disconnected(NINA_WIFI_DISCONNECT_LINK_LOST);
-		if (ops->reconnect_request) {
-			ops->reconnect_request();
-		}
+		reconnect_request();
 	}
 }
 

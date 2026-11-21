@@ -51,7 +51,7 @@ struct device fake_device;
 static uint8_t request[2048], response[2048];
 static size_t request_len, response_len, response_offset;
 static unsigned int phase, calls, bulk_calls;
-static int cs_active, fail_bulk;
+static int cs_active, fail_bulk, bus_locked;
 static bool bus_ready = true;
 #ifdef CONFIG_NINA_PASSTHROUGH
 static bool passthrough;
@@ -206,17 +206,27 @@ static void check_transfer(void)
 {
 	/* No edge interrupt while CS toggles READY. */
 	assert(irq_mode == GPIO_INT_DISABLE);
-	assert(cs_active);
+	assert(cs_active && bus_locked);
 }
 
 int spi_transceive(const struct device *dev, const struct spi_config *cfg,
 		   const struct spi_buf_set *tx, const struct spi_buf_set *rx)
 {
-	const uint8_t *src = tx->buffers[0].buf;
-	uint8_t *dst = rx->buffers[0].buf;
-	size_t len = tx->buffers[0].len;
+	const uint8_t *src;
+	uint8_t *dst;
+	size_t len;
 
-	assert(dev == &fake_device && cfg->frequency == 8000000 && cfg->operation == 8);
+	assert(dev == &fake_device && cfg->frequency == 8000000 &&
+	       cfg->operation == (8 | SPI_LOCK_ON));
+	if (!tx && !rx) {
+		/* nina_bus_select(): the bus lock, before CS goes active. */
+		assert(!cs_active && !bus_locked);
+		bus_locked = 1;
+		return 0;
+	}
+	src = tx->buffers[0].buf;
+	dst = rx->buffers[0].buf;
+	len = tx->buffers[0].len;
 	check_transfer();
 	assert(tx->count == 1 && rx->count == 1);
 	assert(len == rx->buffers[0].len);
@@ -238,6 +248,15 @@ int spi_transceive(const struct device *dev, const struct spi_config *cfg,
 			dst[i] = response[response_offset++];
 		}
 	}
+	return 0;
+}
+
+/* nina_bus_deselect(): after CS went inactive. */
+int spi_release(const struct device *dev, const struct spi_config *cfg)
+{
+	assert(dev == &fake_device && cfg->operation == (8 | SPI_LOCK_ON));
+	assert(!cs_active && bus_locked);
+	bus_locked = 0;
 	return 0;
 }
 
@@ -370,7 +389,7 @@ static void reset_fake(const uint8_t *reply, size_t len)
 	memcpy(response, reply, len);
 	response_len = len;
 	response_offset = request_len = phase = calls = bulk_calls = 0;
-	cs_active = fail_bulk = 0;
+	cs_active = fail_bulk = bus_locked = 0;
 	busy = 0;
 	initialized = true;
 }

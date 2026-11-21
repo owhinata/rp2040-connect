@@ -7,8 +7,7 @@
  *   wifi_profile.c (common/imu)  NET_REQUEST_WIFI_CONNECT_STORED,
  *                                NET_EVENT_WIFI_CONNECT_RESULT,
  *                                net_if_get_wifi_sta(),
- *                                net_if_ipv4_get_global_addr(), and the
- *                                core's reconnection hooks
+ *                                net_if_ipv4_get_global_addr()
  *   "wifi cred auto_connect"     NET_REQUEST_WIFI_CONNECT_STORED
  *   (nuttx/apps/wifi)
  *   time_sync.c (common/imu)     NET_EVENT_WIFI_CONNECT_RESULT and
@@ -37,9 +36,6 @@
 
 #include "nina_wifi.h"
 #include "nina_wifi_mgmt.h"
-#ifdef CONFIG_NANO_WIFI_PROFILE
-#  include "wifi_profile.h"
-#endif
 
 static struct net_if g_iface;
 
@@ -108,27 +104,4 @@ void nina_wifi_mgmt_connect_result(int status)
 void nina_wifi_mgmt_disconnect_result(void)
 {
   wifi_mgmt_raise_disconnect_result_event(&g_iface, 0);
-}
-
-bool nina_wifi_mgmt_connection_allowed(void)
-{
-#ifdef CONFIG_NANO_WIFI_PROFILE
-  return wifi_profile_connection_allowed();
-#else
-  return true;
-#endif
-}
-
-void nina_wifi_mgmt_pause_reconnect(void)
-{
-#ifdef CONFIG_NANO_WIFI_PROFILE
-  wifi_profile_pause_reconnect();
-#endif
-}
-
-void nina_wifi_mgmt_request_reconnect(void)
-{
-#ifdef CONFIG_NANO_WIFI_PROFILE
-  wifi_profile_request_reconnect();
-#endif
 }

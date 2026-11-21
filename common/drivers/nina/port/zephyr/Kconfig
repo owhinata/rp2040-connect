@@ -9,12 +9,6 @@ config WIFI_NINA_LOCAL
 	select NET_SOCKETS
 	select NET_SOCKETS_OFFLOAD
 
-config NINA_SPI_FREQUENCY
-	int "NINA SPI frequency in Hz"
-	default 8000000
-	range 1000000 10000000
-	depends on WIFI_NINA_LOCAL
-
 config NINA_TCP_MAX_IO
 	int "Maximum bytes per NINA TCP send"
 	default 3584

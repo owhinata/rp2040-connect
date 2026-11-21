@@ -1,8 +1,9 @@
 /* SPDX-License-Identifier: MIT */
 /* The NINA-W102 SPI link on Zephyr (nina_bus.h of the core, next to this
- * binding): the devicetree's spi1, its cs-gpios
- * and the nina_w102 node's ready-gpios, reset-gpios and irq-gpios (with
- * their flags: polarity and pulls; the board's devicetree), and the
+ * binding): the devicetree's node of the module (compatible
+ * "arduino,nina-spi"), with its ready-gpios, reset-gpios and irq-gpios
+ * (their flags: polarity and pulls), its spi-max-frequency, the SPI bus it
+ * is on and that bus's cs-gpios entry of its reg, and the
  * Zephyr GPIO and SPI calls that nina_proto.c's table names:
  *
  *   nina_bus_initialize()  device_is_ready(spi1) and gpio_is_ready_dt()
@@ -14,7 +15,7 @@
  *   nina_bus_transceive()      spi_transceive() with one TX and one RX
  *                               buffer, or spi_write() without RX: mode 0,
  *                               8-bit words, MSB first, at
- *                               CONFIG_NINA_SPI_FREQUENCY
+ *                               the node's spi-max-frequency
  *
  * Zephyr initializes spi1 and its cs-gpios at boot, so nina_bus_initialize()
  * only looks whether they are ready; nina_proto.c configures the other
@@ -42,15 +43,19 @@
 #include "nina_passthrough.h"
 #endif
 
-#define NINA_NODE DT_NODELABEL(nina_w102)
+/* The module's node, the bus it is on and its chip select there. */
+#define NINA_NODE DT_COMPAT_GET_ANY_STATUS_OKAY(arduino_nina_spi)
+#define NINA_BUS  DT_BUS(NINA_NODE)
 
-static const struct device *const spi = DEVICE_DT_GET(DT_NODELABEL(spi1));
+static const struct device *const spi = DEVICE_DT_GET(NINA_BUS);
 static const struct gpio_dt_spec ready = GPIO_DT_SPEC_GET(NINA_NODE, ready_gpios);
 static const struct gpio_dt_spec reset = GPIO_DT_SPEC_GET(NINA_NODE, reset_gpios);
 static const struct gpio_dt_spec irq = GPIO_DT_SPEC_GET(NINA_NODE, irq_gpios);
-static const struct gpio_dt_spec cs = GPIO_DT_SPEC_GET_BY_IDX(DT_NODELABEL(spi1), cs_gpios, 0);
-static const struct spi_config config = {.frequency = CONFIG_NINA_SPI_FREQUENCY,
-					 .operation = SPI_WORD_SET(8) | SPI_TRANSFER_MSB};
+static const struct gpio_dt_spec cs =
+	GPIO_DT_SPEC_GET_BY_IDX(NINA_BUS, cs_gpios, DT_REG_ADDR_RAW(NINA_NODE));
+static const struct spi_config config = {.frequency = DT_PROP(NINA_NODE, spi_max_frequency),
+					 .operation = SPI_WORD_SET(8) | SPI_TRANSFER_MSB |
+						      SPI_LOCK_ON};
 
 static const struct gpio_dt_spec *line(enum nina_bus_pin pin)
 {
@@ -119,7 +124,49 @@ int nina_bus_pin_get(enum nina_bus_pin pin)
 	return spec ? gpio_pin_get_dt(spec) : -EINVAL;
 }
 
-/* The caller keeps NINA's chip select asserted across these transfers. */
+/* The bus lock with SPI_LOCK_ON: the first transfer of the configuration
+ * takes it and keeps it until spi_release().  A transfer without buffers
+ * takes it before CS goes active.
+ *
+ * Zephyr has no call that only takes the lock, and what a transfer without
+ * buffers does is the SPI driver's: the PL022 driver takes the lock first
+ * and, polled, then finds nothing to move (spi_pl022.c
+ * spi_pl022_transceive_impl()); others return before they take it
+ * (spi_litex_litespi.c), and the PL022's interrupt and DMA modes would
+ * start a transfer of nothing.  With CONFIG_SPI_ASYNC a synchronous
+ * transfer gives the lock back when it ends, SPI_LOCK_ON or not
+ * (spi_context.h spi_context_release()).  So this file builds only for the
+ * polled PL022 without CONFIG_SPI_ASYNC; another controller or
+ * configuration needs its own way to take the bus here.
+ */
+BUILD_ASSERT(DT_NODE_HAS_COMPAT(NINA_BUS, arm_pl022),
+	     "nina_bus_select() takes the bus lock as the PL022 SPI driver does");
+BUILD_ASSERT(!IS_ENABLED(CONFIG_SPI_PL022_INTERRUPT) && !IS_ENABLED(CONFIG_SPI_PL022_DMA),
+	     "nina_bus_select() needs the polled PL022 SPI driver");
+BUILD_ASSERT(!IS_ENABLED(CONFIG_SPI_ASYNC),
+	     "with CONFIG_SPI_ASYNC a transfer does not keep the bus lock for nina_bus_select()");
+
+int nina_bus_select(void)
+{
+	int ret = spi_transceive(spi, &config, NULL, NULL);
+
+	if (ret) {
+		return ret;
+	}
+	ret = gpio_pin_set_dt(&cs, 1);
+	if (ret) {
+		(void)spi_release(spi, &config);
+	}
+	return ret;
+}
+
+void nina_bus_deselect(void)
+{
+	(void)gpio_pin_set_dt(&cs, 0);
+	(void)spi_release(spi, &config);
+}
+
+/* Between nina_bus_select() and nina_bus_deselect(). */
 int nina_bus_transceive(const uint8_t *tx, uint8_t *rx, size_t len)
 {
 	struct spi_buf tb = {.buf = (void *)tx, .len = len};

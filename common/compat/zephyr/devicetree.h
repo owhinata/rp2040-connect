@@ -34,6 +34,9 @@
 
 #define DT_NODELABEL(label)   label
 
+/* The node of a compatible: its name, as a label's. */
+#define DT_COMPAT_GET_ANY_STATUS_OKAY(compat) compat
+
 /* /chosen: none of the properties that the ported code asks for is set
  * (zephyr,settings-partition: the copy of Zephyr's settings_nvs.c then uses
  * the partition storage_partition of <zephyr/storage/flash_map.h>, as in

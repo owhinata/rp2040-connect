@@ -8,6 +8,7 @@
 #include <zephyr/net/wifi_mgmt.h>
 #include <zephyr/settings/settings.h>
 #include "kv_store.h"
+#include "nina_wifi.h"
 #include "wifi_profile.h"
 
 LOG_MODULE_REGISTER(wifi_profile, LOG_LEVEL_INF);
@@ -186,9 +187,18 @@ static void reconnect_thread(void *a, void *b, void *c)
 K_THREAD_DEFINE(wifi_reconnect_tid, 2048, reconnect_thread, NULL, NULL, NULL, 8,
 		0, 0);
 
+/* The NINA driver asks these about its connections. */
+static const struct nina_wifi_reconnect_ops reconnect_ops = {
+	.connection_allowed = wifi_profile_connection_allowed,
+	.pause = wifi_profile_pause_reconnect,
+	.request = wifi_profile_request_reconnect,
+};
+
 int wifi_profile_init(void)
 {
 	int ret = migrate_profile();
+
+	nina_wifi_set_reconnect_ops(&reconnect_ops);
 
 	if (ret) {
 		LOG_WRN("Wi-Fi profile migration deferred: %d", ret);

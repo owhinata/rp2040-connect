@@ -86,6 +86,7 @@
 #include "hardware/resets.h"
 #include "hardware/spi.h"
 
+#include "nina_board_rp2040.h"
 #include "nina_bus.h"
 
 /* CONFIG_NINA_SPI_FREQUENCY of the Zephyr and NuttX builds (their Kconfig
@@ -94,17 +95,6 @@
 #ifndef CONFIG_NINA_SPI_FREQUENCY
 #define CONFIG_NINA_SPI_FREQUENCY 8000000
 #endif
-
-/* The lines (arduino_nano_connect.dts and -pinctrl.dtsi). */
-#define NINA_SPI          spi1
-#define NINA_SPI_RESET    RESET_SPI1
-#define NINA_SPI_SCK_GPIO 14
-#define NINA_SPI_TX_GPIO  11
-#define NINA_SPI_RX_GPIO  8
-#define NINA_CS_GPIO      9
-#define NINA_READY_GPIO   10
-#define NINA_RESET_GPIO   3
-#define NINA_IRQ_GPIO     2
 
 struct nina_line {
 	uint8_t gpio;
@@ -211,6 +201,19 @@ int nina_bus_pin_get(enum nina_bus_pin pin)
 	const struct nina_line *line = &lines[pin];
 
 	return gpio_get(line->gpio) != line->active_low;
+}
+
+/* SPI1 has no other user here and the Pico SDK no bus lock: selecting is
+ * the chip select alone (nina_bus_initialize() set the mode and the rate).
+ */
+int nina_bus_select(void)
+{
+	return nina_bus_pin_set(NINA_BUS_PIN_CS, 1);
+}
+
+void nina_bus_deselect(void)
+{
+	(void)nina_bus_pin_set(NINA_BUS_PIN_CS, 0);
 }
 
 int nina_bus_transceive(const uint8_t *tx, uint8_t *rx, size_t len)

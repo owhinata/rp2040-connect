@@ -5,9 +5,7 @@
  * (nuttx/drivers/compat/zephyr_net_if.c), as nina/Make.defs and
  * compat/Make.defs build them, on fakes of the network device's lock
  * (tests/nina_netdev_fakes), of net_mgmt's event thread and events, of the
- * core's nina_wifi_connect() and of the Wi-Fi profile.  Built twice: with
- * CONFIG_NANO_WIFI_PROFILE (the profile's three functions as the core's
- * hooks) and without (every connection allowed, nothing else).
+ * core's nina_wifi_connect().
  *
  * - The start: net_mgmt's event thread first (its failure is returned),
  *   then the interface of net_if_get_default() and net_if_get_wifi_sta()
@@ -88,26 +86,6 @@ int nina_wifi_connect(const struct nina_wifi_connect_params *params)
 	connects++;
 	return connect_ret;
 }
-
-#ifdef CONFIG_NANO_WIFI_PROFILE
-static unsigned int allowed_calls, pauses, requests;
-
-bool wifi_profile_connection_allowed(void)
-{
-	allowed_calls++;
-	return false;
-}
-
-void wifi_profile_pause_reconnect(void)
-{
-	pauses++;
-}
-
-void wifi_profile_request_reconnect(void)
-{
-	requests++;
-}
-#endif
 
 static void test_start(void)
 {
@@ -196,27 +174,12 @@ static void test_addresses(void)
 	assert(!locked);
 }
 
-static void test_hooks(void)
-{
-#ifdef CONFIG_NANO_WIFI_PROFILE
-	assert(!nina_wifi_mgmt_connection_allowed() && allowed_calls == 1);
-	nina_wifi_mgmt_pause_reconnect();
-	nina_wifi_mgmt_request_reconnect();
-	assert(pauses == 1 && requests == 1);
-#else
-	assert(nina_wifi_mgmt_connection_allowed());
-	nina_wifi_mgmt_pause_reconnect();
-	nina_wifi_mgmt_request_reconnect();
-#endif
-}
-
 int main(void)
 {
 	test_start();
 	test_connect();
 	test_events();
 	test_addresses();
-	test_hooks();
 	printf("nina_wifi_mgmt: ok\n");
 	return 0;
 }

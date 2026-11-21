@@ -1,16 +1,14 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /* The NINA-W102 as Zephyr's offloaded Wi-Fi interface: the Zephyr binding
  * of the core's Wi-Fi operations (nina_wifi.h).  NET_DEVICE_DT_OFFLOAD_DEFINE()
- * registers the device of the nina_w102 node; its operations
+ * registers the device of the module's node (compatible "arduino,nina-spi"); its operations
  * (struct wifi_mgmt_ops: scan, connect, disconnect, iface_status) check
  * Zephyr's parameters and call the core, and the core's struct
  * nina_wifi_ops puts what happens on the interface (the IPv4 address,
  * netmask and gateway, dormant on and off) and raises Zephyr's events
  * (NET_EVENT_WIFI_CONNECT_RESULT, _DISCONNECT_RESULT; the scan's results
  * go to the callback of Zephyr's Wi-Fi management, which raises
- * NET_EVENT_WIFI_SCAN_RESULT and _SCAN_DONE).  The application's
- * reconnection (wifi_profile.h of common/imu) is asked as the core's
- * optional hooks.  The core's threads are K_THREAD_DEFINE() threads here.
+ * NET_EVENT_WIFI_SCAN_RESULT and _SCAN_DONE).  The core's threads are K_THREAD_DEFINE() threads here.
  *
  * The FreeRTOS build compiles this file on its Zephyr compatibility layer
  * (freertos/drivers/wifi/wifi.cmake, freertos/drivers/compat/zephyr_net_init.c).
@@ -24,7 +22,6 @@
 #include "nina_dns.h"
 #include "nina_proto.h"
 #include "nina_wifi.h"
-#include "wifi_profile.h"
 
 static struct net_if *nina_iface;
 /* The interface's link address points here (net_if_set_link_addr()). */
@@ -82,9 +79,6 @@ static const struct nina_wifi_ops ops = {
 	.link_down = link_down,
 	.connect_result = connect_result,
 	.disconnected = disconnected,
-	.connection_allowed = wifi_profile_connection_allowed,
-	.reconnect_pause = wifi_profile_pause_reconnect,
-	.reconnect_request = wifi_profile_request_reconnect,
 };
 
 /* Zephyr's Wi-Fi management ------------------------------------------- */
@@ -249,7 +243,7 @@ static const struct net_wifi_mgmt_offload api = {
 	.wifi_iface.iface_api.init = iface_init,
 	.wifi_iface.get_type = get_type,
 	.wifi_mgmt_api = &mgmt};
-NET_DEVICE_DT_OFFLOAD_DEFINE(DT_NODELABEL(nina_w102), driver_init, NULL, NULL,
+NET_DEVICE_DT_OFFLOAD_DEFINE(DT_COMPAT_GET_ANY_STATUS_OKAY(arduino_nina_spi), driver_init, NULL, NULL,
 			     NULL, CONFIG_WIFI_INIT_PRIORITY, &api, 1500);
 
 /* The core's threads -------------------------------------------------- */

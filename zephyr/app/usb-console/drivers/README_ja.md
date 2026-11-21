@@ -204,7 +204,7 @@ FreeRTOS と Pico SDK で書いた自分のつなぎ `common/drivers/nina/port/f
 |---|---|---|
 | `nina_proto.c` | `common/drivers/nina/internal/` | SPI のコマンド・応答のフレーミング、モジュールのリセット、READY の待ち |
 | `nina_wifi.[ch]` | `common/drivers/nina/`（ヘッダーは `include/`） | Wi-Fi の操作：接続（接続と DHCP の結果の待ちを含む）・切断・スキャン・状態・接続の監視。スレッド `nina_scan_tid`・`nina_connect_tid`・`nina_monitor_tid` の本体。起きたことはつなぎのコールバックに渡す |
-| `nina_sock.[ch]` | `common/drivers/nina/`（ヘッダーは `include/`） | ソケットの表と命令（待ちのループの 1 回分ずつ） |
+| `nina_sock.[ch]` | `common/drivers/nina/`（ヘッダーはつなぎ向けで `internal/`） | ソケットの表と命令（待ちのループの 1 回分ずつ） |
 | `nina_dns.[ch]` | `common/drivers/nina/`（ヘッダーは `include/`） | 名前解決（モジュールのリゾルバー） |
 | `nina_proto.h` | `common/drivers/nina/internal/` | プロトコルのバイトの名前（フレーミング、ドライバーが送るコマンド、その応答の値）と、`nina_proto.c` の要求の関数・モジュールの機能ビットの宣言 |
 | `nina_shell.c` | `common/shell/` | `nina version` コマンド（この版では `nina passthrough` も。下の「esptool の中継」） |
@@ -224,7 +224,7 @@ Zephyr の標準機能のうち、Telnet シェル、MQTT クライアント、z
 ### SPI のコマンド
 
 - コマンドは 1 つずつ処理されます。RP2040 側は mutex で直列化します。SPI は 8 MHz です
-  （`CONFIG_NINA_SPI_FREQUENCY`）。
+  （デバイスツリーの NINA のノードの `spi-max-frequency`。SPI のバスと CS もそのノードの親と `reg` から取ります）。
 - NINA の READY（GPIO10）の変化は、GPIO のエッジ割り込みで待ちます（`common/drivers/nina/port/zephyr/nina_os.c`）。待つ前に
   割り込みを有効にしてから READY を読むので、読んだあとの変化を取りこぼしません。転送中は割り込みを
   止めます。1 回の待ちは最長 10 ms で、そのたびに READY を読み直します。期限（コマンドの前 2 秒、

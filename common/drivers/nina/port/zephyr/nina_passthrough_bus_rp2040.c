@@ -57,9 +57,9 @@
 #define PIN_SCK    14
 #define PIN_LED    6
 
-#define NINA_NODE DT_NODELABEL(nina_w102)
+#define NINA_NODE DT_COMPAT_GET_ANY_STATUS_OKAY(arduino_nina_spi)
 
-BUILD_ASSERT(DT_GPIO_PIN_BY_IDX(DT_NODELABEL(spi1), cs_gpios, 0) == PIN_RX,
+BUILD_ASSERT(DT_GPIO_PIN_BY_IDX(DT_BUS(NINA_NODE), cs_gpios, DT_REG_ADDR_RAW(NINA_NODE)) == PIN_RX,
 	     "the NINA's chip select is UART1 RX");
 BUILD_ASSERT(DT_GPIO_PIN(NINA_NODE, irq_gpios) == PIN_GPIO0, "the NINA's IRQ line is its GPIO0");
 BUILD_ASSERT(DT_GPIO_PIN(NINA_NODE, reset_gpios) == PIN_RESETN, "the NINA's reset line");

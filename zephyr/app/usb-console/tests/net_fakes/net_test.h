@@ -15,6 +15,7 @@
 #define ARG_UNUSED(x)             (void)(x)
 #define ARRAY_SIZE(a)             (sizeof(a) / sizeof((a)[0]))
 #define DT_NODELABEL(x)           0
+#define DT_COMPAT_GET_ANY_STATUS_OKAY(x) 0
 #define CONFIG_WIFI_INIT_PRIORITY 80
 
 /* K_THREAD_DEFINE(): the thread's description, which the test reads. */

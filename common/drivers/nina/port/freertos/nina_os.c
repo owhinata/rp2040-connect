@@ -130,6 +130,7 @@
 #include "task.h"
 #include "semphr.h"
 
+#include "nina_board_rp2040.h"
 #include "nina_os.h"
 
 /* The task notification of the socket events' waits; index 0 is the Pico
@@ -142,11 +143,9 @@
 #error "the NINA's socket event waits use task notification index 2"
 #endif
 
-/* READY: GPIO10, active low; the IRQ line: GPIO2, active high
- * (nina_bus_rp2040.c, the devicetree's ready-gpios and irq-gpios).
- */
-#define READY_GPIO 10
-#define IRQ_GPIO   2
+/* READY, active low; the IRQ line, active high (nina_board_rp2040.h). */
+#define READY_GPIO NINA_READY_GPIO
+#define IRQ_GPIO   NINA_IRQ_GPIO
 
 #define NINA_GPIO_IRQ_PINS ((1u << READY_GPIO) | (1u << IRQ_GPIO))
 
