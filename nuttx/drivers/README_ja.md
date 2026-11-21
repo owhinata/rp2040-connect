@@ -302,23 +302,25 @@ RP2040 のレジスターのモジュール側（`port/nuttx/nina_passthrough_bu
 
 I2C0 と I2C1 のドライバーは、FreeRTOS 版と共有する I2C のコアです（コアそのもの、Zephyr 版のドライバーとの関係、
 DMA を使うほかのコードの規則の共通の部分は[設計書](../../design/imu-raw-mqtt-design-ja.md)の §12）。NuttX の
-`rp2040_i2c.c`（`CONFIG_RP2040_I2C`）は使いません。コアはリポジトリの `common/drivers/i2c_dw/` にあり（ボードの
-`src/Make.defs` が `VPATH` で参照し、オブジェクトはボードのディレクトリーにできる）、NuttX の部分はボードの `src/` にあります。
+`rp2040_i2c.c`（`CONFIG_RP2040_I2C`）は使いません。コアはリポジトリの `common/drivers/i2c_dw/` にあり、NINA のドライバーと同じ
+3 層です。直下に `i2c_dw.c`、ドライバーを使う側のヘッダーは `include/`、コアの内側のヘッダーは `internal/`、2 つの境界は
+`port/`、NuttX のつなぎは `port/nuttx/` にあります（ボードの `src/Make.defs` が `VPATH` でソースを参照し、4 つのディレクトリーを
+include パスに足す。オブジェクトはボードのディレクトリーにできる）。
 
 | ファイル | 役割 |
 |---|---|
-| `common/drivers/i2c_dw/i2c_dw.c` | I2C0 と I2C1 のコントローラーのコア。Zephyr のドライバーが有効なノードごとに作るのと同じく、それぞれ 1 つのインスタンス（`i2c_0_runtime`・`i2c_1_runtime`。`CONFIG_I2C_DW_I2C0`・`CONFIG_I2C_DW_I2C1` で作る）を持ち、両者で違う値は `I2C_DW_INST()` で選ぶ。Zephyr 版の `i2c_dw.c`（Zephyr のドライバーにローカルのパッチ 0003 を当てたもの）のコントローラーの部分（転送の状態機械、割り込みハンドラーの本体、`i2c_dw_data_ask()`・`_read()`・`_send()`、`i2c_dw_setup()`、`i2c_dw_configure()`、初期化のレジスター操作）と DMA での読み出し（`i2c_dw_rp2040_dma_read()` など）と `i2c_dma` のカウンターを、関数・分岐・順序・レジスター値・期限・エラー値を合わせて写したもの。ファイル名はパッチ後のドライバーに合わせ、DMA での読み出しとそのコマンド語は `i2c_dw_rp2040_dma_priv.h`、RP2040 の FIFO の深さと RX のまとめ数は `i2c_dw_rp2040.h` にあり、どちらも 1 回だけ読み込む。末尾でボードの `i2c_dw_instance.h` を読む |
-| `common/drivers/i2c_dw/i2c_dw_os.h` | 境界: コアが OS に求めるもの（下の表）。先頭でボードの `i2c_dw_os_impl.h` を読み、その実装が満たすべき関数を宣言する |
-| `common/drivers/i2c_dw/i2c_dw_dma_os.h` | DMA 読み出しの DMA の境界: OS 自身の DMA ドライバーに求めるもの（下の 2 つ目の表）。パッチを当てたドライバーの Zephyr の DMA API の呼び出しに 1 つずつ対応する。OS の名前を含まず、コアは DMA のレジスターに触れない |
-| `common/drivers/i2c_dw/i2c_dw.h` | OS に依存しない定義と純粋な関数: Zephyr 版の `i2c_dw.h` の定義、SCL のカウント、周波数から速さの区分、NuttX のフラグ（`I2C_M_*`）から Zephyr のフラグ（`I2C_MSG_*`）への変換、`IC_DATA_CMD` に書く語。ホストテスト `common/tests/i2c_dw.c` |
-| `common/drivers/i2c_dw/i2c_dw_registers.h` | Zephyr 版の `i2c_dw_registers.h` の写し（アクセス関数は 32 ビットの volatile のアクセスで定義。番地の型は Zephyr の `mm_reg_t` の代わりに `uintptr_t`） |
-| `common/drivers/i2c_dw/i2c_dw_rp2040_dma.h` | `i2c_dma` コマンド（3 版で共有の `common/shell/i2c_dma_shell.c`。この版のビルドは `nuttx/apps/i2c_dma`）が読み書きする状態: DMA の有効・無効と 4 つのカウンター（`i2c_dw_rp2040_dma_get_stats()`・`_enabled()`・`_set_enabled()`）。コマンドは Zephyr の名前 `<zephyr/drivers/i2c/i2c_dw_rp2040_dma.h>` で読み、それは `common/compat/zephyr/drivers/i2c/` の同名のヘッダーがこのファイルを読む形です。宣言はパッチ 0003 が Zephyr のツリーに足すヘッダーと同じ（`i2c_dw_sync` が確かめる） |
-| ボードの `src/i2c_dw_os_impl.h` | 境界の NuttX の実装: セマフォ（`sem_t`。`nxsem_post()`、`nxsem_tickwait_uninterruptible()`、`nxsem_wait_uninterruptible()`、`nxsem_reset()`）、時刻（システムの tick）、`nxsched_msleep()`、`up_irq_save()`、メッセージ（`struct i2c_msg_s` と、`i2c_dw_msg_flags()` での Zephyr のフラグへの変換）、`I2C_DW_CLOCK_SPEED`（`BOARD_PERI_FREQ`） |
-| ボードの `src/i2c_dw_instance.h` | I2C0 と I2C1 の NuttX の部分: `struct i2c_master_s` の操作表（`I2C_TRANSFER()` は要求を確かめて周波数から速さを決め、コアの転送を呼ぶ。`I2C_RESET()`）、`irq_attach()` で登録する割り込みハンドラー、リセットとピン（`i2c_dw_pinctrl()`）は両方で共有し、`i2c_dw_i2c0_initialize()` と `i2c_dw_i2c1_initialize()`。ホストテストは `nuttx/tests/i2c_dw_instance.c` |
-| ボードの `src/i2c_dw_dma_os.c` | DMA の境界の NuttX の実装。NuttX 自身の DMA ドライバー `arch/arm/src/rp2040/rp2040_dmac.c`（`CONFIG_RP2040_DMAC`）の上に作る。ホストテストは `nuttx/tests/i2c_dw_dma_os.c` |
-| ボードの `src/i2c_dw_controllers.h` | `i2c_dw_i2c0_initialize()` と、`CONFIG_I2C_DW_I2C1` のとき `i2c_dw_i2c1_initialize()`（起動時に `nano_bringup()` が I2C0、I2C1 の順に呼び、`/dev/i2c0`・`/dev/i2c1` に登録する） |
+| `common/drivers/i2c_dw/i2c_dw.c` | I2C0 と I2C1 のコントローラーのコア。Zephyr のドライバーが有効なノードごとに作るのと同じく、それぞれ 1 つのインスタンス（`i2c_0_runtime`・`i2c_1_runtime`。`CONFIG_I2C_DW_I2C0`・`CONFIG_I2C_DW_I2C1` で作る）を持ち、両者で違う値は `I2C_DW_INST()` で選ぶ。Zephyr 版の `i2c_dw.c`（Zephyr のドライバーにローカルのパッチ 0003 を当てたもの）のコントローラーの部分（転送の状態機械、割り込みハンドラーの本体、`i2c_dw_data_ask()`・`_read()`・`_send()`、`i2c_dw_setup()`、`i2c_dw_configure()`、初期化のレジスター操作）と DMA での読み出し（`i2c_dw_rp2040_dma_read()` など）と `i2c_dma` のカウンターを、関数・分岐・順序・レジスター値・期限・エラー値を合わせて写したもの。ファイル名はパッチ後のドライバーに合わせ、DMA での読み出しとそのコマンド語は `internal/i2c_dw_rp2040_dma_priv.h`、RP2040 の FIFO の深さと RX のまとめ数は `internal/i2c_dw_rp2040.h` にあり、どちらも 1 回だけ読み込む。末尾でつなぎの `i2c_dw_instance.h` を読む |
+| `common/drivers/i2c_dw/port/i2c_dw_os.h` | 境界: コアが OS に求めるもの（下の表）。先頭でつなぎの `i2c_dw_os_impl.h` を読み、その実装が満たすべき関数を宣言する |
+| `common/drivers/i2c_dw/port/i2c_dw_dma_os.h` | DMA 読み出しの DMA の境界: OS 自身の DMA ドライバーに求めるもの（下の 2 つ目の表）。パッチを当てたドライバーの Zephyr の DMA API の呼び出しに 1 つずつ対応する。OS の名前を含まず、コアは DMA のレジスターに触れない |
+| `common/drivers/i2c_dw/internal/i2c_dw.h` | OS に依存しない定義と純粋な関数: Zephyr 版の `i2c_dw.h` の定義、SCL のカウント、周波数から速さの区分、NuttX のフラグ（`I2C_M_*`）から Zephyr のフラグ（`I2C_MSG_*`）への変換、`IC_DATA_CMD` に書く語。ホストテスト `common/tests/i2c_dw.c` |
+| `common/drivers/i2c_dw/internal/i2c_dw_registers.h` | Zephyr 版の `i2c_dw_registers.h` の写し（アクセス関数は 32 ビットの volatile のアクセスで定義。番地の型は Zephyr の `mm_reg_t` の代わりに `uintptr_t`） |
+| `common/drivers/i2c_dw/include/i2c_dw_rp2040_dma.h` | `i2c_dma` コマンド（3 版で共有の `common/shell/i2c_dma_shell.c`。この版のビルドは `nuttx/apps/i2c_dma`）が読み書きする状態: DMA の有効・無効と 4 つのカウンター（`i2c_dw_rp2040_dma_get_stats()`・`_enabled()`・`_set_enabled()`）。コマンドは Zephyr の名前 `<zephyr/drivers/i2c/i2c_dw_rp2040_dma.h>` で読み、それは `common/compat/zephyr/drivers/i2c/` の同名のヘッダーがこのファイルを読む形です。宣言はパッチ 0003 が Zephyr のツリーに足すヘッダーと同じ（`i2c_dw_sync` が確かめる）。`include/` のヘッダーはこれだけで、そのディレクトリーだけでコンパイルできる（`common/tests/run.sh` の `i2c_dw_public_headers`） |
+| `common/drivers/i2c_dw/port/nuttx/i2c_dw_os_impl.h` | 境界の NuttX の実装: セマフォ（`sem_t`。`nxsem_post()`、`nxsem_tickwait_uninterruptible()`、`nxsem_wait_uninterruptible()`、`nxsem_reset()`）、時刻（システムの tick）、`nxsched_msleep()`、`up_irq_save()`、メッセージ（`struct i2c_msg_s` と、`i2c_dw_msg_flags()` での Zephyr のフラグへの変換）、`I2C_DW_CLOCK_SPEED`（`BOARD_PERI_FREQ`） |
+| `common/drivers/i2c_dw/port/nuttx/i2c_dw_instance.h` | I2C0 と I2C1 の NuttX の部分: `struct i2c_master_s` の操作表（`I2C_TRANSFER()` は要求を確かめて周波数から速さを決め、コアの転送を呼ぶ。`I2C_RESET()`）、`irq_attach()` で登録する割り込みハンドラー、リセットとピン（`i2c_dw_pinctrl()`）は両方で共有し、`i2c_dw_i2c0_initialize()` と `i2c_dw_i2c1_initialize()`。ホストテストは `nuttx/tests/i2c_dw_instance.c` |
+| `common/drivers/i2c_dw/port/nuttx/i2c_dw_dma_os_rp2040.c` | DMA の境界の NuttX の実装。NuttX 自身の DMA ドライバー `arch/arm/src/rp2040/rp2040_dmac.c`（`CONFIG_RP2040_DMAC`）の上に作る。ホストテストは `nuttx/tests/i2c_dw_dma_os.c` |
+| `common/drivers/i2c_dw/port/nuttx/i2c_dw_controllers_rp2040.h` | `i2c_dw_i2c0_initialize()` と、`CONFIG_I2C_DW_I2C1` のとき `i2c_dw_i2c1_initialize()`（起動時に `nano_bringup()` が I2C0、I2C1 の順に呼び、`/dev/i2c0`・`/dev/i2c1` に登録する）。ボードのコードは include パスの `port/nuttx` で見つける |
 
-境界（`i2c_dw_os.h`）で OS が用意するもの。どれも static inline の関数かマクロで、OS の割り込みハンドラーと転送の入口は
+境界（`port/i2c_dw_os.h`）で OS が用意するもの。どれも static inline の関数かマクロで、OS の割り込みハンドラーと転送の入口は
 コアの static inline の関数を呼ぶので、コンパイラーがそれぞれを 1 つの関数にします（転送と割り込みの経路に呼び出しが
 増えない）。「割り込み」の印のものは割り込みハンドラーから呼ばれます。
 
@@ -342,7 +344,7 @@ DMA を使うほかのコードの規則の共通の部分は[設計書](../../d
 | `CONFIG_I2C_DW_I2C0`・`CONFIG_I2C_DW_I2C1` | 作るインスタンス（Zephyr ではデバイスツリーの有効なノード） | Kconfig（既定で `I2C_DW_I2C0` は有効、`I2C_DW_I2C1` は無効） |
 | `CONFIG_I2C_DW_RP2040_DMA` | I2C0 の DMA 読み出しを作る（Zephyr 版と同じ名前のシンボル） | Kconfig |
 
-DMA の境界（`i2c_dw_dma_os.h`）で OS の DMA ドライバーが提供するもの。`src/i2c_dw_dma_os.c` の普通の関数です
+DMA の境界（`port/i2c_dw_dma_os.h`）で OS の DMA ドライバーが提供するもの。`port/nuttx/i2c_dw_dma_os_rp2040.c` の普通の関数です
 （読み出しごとに呼ばれ、バイトごとではない）。呼ぶのはバスのセマフォを持った転送のスレッドだけで、コールバックは
 DMA の割り込みから呼ばれます。どれも DMA のほかの利用者を待ちません。
 
@@ -401,7 +403,7 @@ OS の I2C0 のデバイス（`i2c_dw_instance.h`）は、`i2c_0_runtime` の `b
 
 **DMA での読み出し**（`CONFIG_I2C_DW_RP2040_DMA`、既定で有効。Zephyr 版と同じ名前のシンボル）
 
-コアの `common/drivers/i2c_dw/i2c_dw_rp2040_dma_priv.h`（`i2c_dw.c` が 1 回だけ読み込む）が、パッチ後のドライバーの
+コアの `common/drivers/i2c_dw/internal/i2c_dw_rp2040_dma_priv.h`（`i2c_dw.c` が 1 回だけ読み込む）が、パッチ後のドライバーの
 DMA の部分を同じ分岐・順序・値で写したものです。
 
 - 使う条件: DMA が有効（`i2c_dma mode`）、DMA の準備ができている（起動時に 2 つのチャネルが取れた）、
@@ -424,18 +426,18 @@ DMA の部分を同じ分岐・順序・値で写したものです。
 - `rp2040_dma_events` の更新は割り込みを禁止して行い（Zephyr の `atomic_or()`）、4 つのカウンターは
   バスのセマフォを持った転送だけが書きます（32 ビットで一周します）。
 
-**NuttX の DMA ドライバーの上の実装**（ボードの `src/i2c_dw_dma_os.c`）
+**NuttX の DMA ドライバーの上の実装**（`port/nuttx/i2c_dw_dma_os_rp2040.c`）
 
 - DMA は NuttX 自身のドライバー `rp2040_dmac.c`（`CONFIG_RP2040_DMAC`、有効。`arm_dma_initialize()` は
   `up_initialize()` の中、ボードの起動処理より前に動く）です。割り込みの線は DMA_IRQ_0 の 1 本ですべてのチャネルを
   扱います。`rp2040_dmac.c` へのローカルのパッチは要りません。
-- `rp2040_dmachannel()` は 12 チャネルがすべて使われていると待つので、`i2c_dw_dma_os.c` は起動時に 2 つのチャネルを
+- `rp2040_dmachannel()` は 12 チャネルがすべて使われていると待つので、`i2c_dw_dma_os_rp2040.c` は起動時に 2 つのチャネルを
   1 度だけ取り、読み出し用に持ち続けます。読み出しがチャネルを待つことはなく、1 度に 1 つの読み出しには必ず
   チャネルがあるので、`dma_fallbacks` は設定を断られたとき（チャネルがまだ動いている）しか増えません。
-- `rp2040_dmastop()` は CHAN_ABORT を期限なしに待つので、停止は `i2c_dw_dma_os.c` が自分で CHAN_ABORT を書き、
+- `rp2040_dmastop()` は CHAN_ABORT を期限なしに待つので、停止は `i2c_dw_dma_os_rp2040.c` が自分で CHAN_ABORT を書き、
   コアが上限付き（100 ms）で待ちます。Zephyr 版は CHAN_ABORT の全体が落ちるまで待ちます。
 - NuttX のハンドラーは失敗したチャネルのエラーのフラグをトリガーのレジスターである CTRL_TRIG に書き戻すので、
-  チャネルが止まったところから再び動き出すことがあり、ボードのコールバックがそのチャネルをすぐ abort します。
+  チャネルが止まったところから再び動き出すことがあり、つなぎのコールバックがそのチャネルをすぐ abort します。
 - 同じ割り込みで先に処理したチャネルの状態があとのチャネルにも残るので、ほかの利用者のバスエラーが同じ割り込みで
   処理されると、この読み出しも失敗します（`-EIO`、`dma_errors` が 1）。
 

@@ -3,7 +3,7 @@
  * layer (freertos/tests/compat, the FreeRTOS POSIX port; the shell's test,
  * freertos/tests/shell, uses it as well): the board's
  * (freertos/app/usb-console/FreeRTOSConfig.h) where the layer depends on it
- * (time slices by the tick hook, three task notifications, mutexes, static
+ * (time slices by the tick hook, four task notifications, mutexes, static
  * and dynamic allocation, the priorities, the length of task names, the 1 ms
  * tick; the POSIX port's tick is a thread that sleeps a tick between
  * signals), with the C library's heap.  The NINA binding's test
@@ -34,7 +34,7 @@
 #define configUSE_RECURSIVE_MUTEXES           1
 #define configUSE_COUNTING_SEMAPHORES         1
 #define configUSE_TASK_NOTIFICATIONS          1
-#define configTASK_NOTIFICATION_ARRAY_ENTRIES 3
+#define configTASK_NOTIFICATION_ARRAY_ENTRIES 4
 #define configUSE_QUEUE_SETS                  0
 #define configQUEUE_REGISTRY_SIZE             0
 #define configUSE_EVENT_GROUPS                0

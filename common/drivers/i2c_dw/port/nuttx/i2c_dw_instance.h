@@ -1,5 +1,5 @@
 /****************************************************************************
- * boards/arduino-nano-rp2040-connect/src/i2c_dw_instance.h
+ * common/drivers/i2c_dw/port/nuttx/i2c_dw_instance.h
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -13,9 +13,9 @@
  * (CONFIG_I2C_DW_I2C1) as NuttX I2C masters (struct i2c_master_s:
  * I2C_TRANSFER(), and I2C_RESET() with CONFIG_I2C_RESET), their
  * interrupts, resets and pins, and i2c_dw_i2c0_initialize() and
- * i2c_dw_i2c1_initialize() (i2c_dw_controllers.h).  The operations, the
- * interrupt handler, the pins' setup, the reset and the start-up are shared
- * and take the instance's values with I2C_DW_INST() (i2c_dw.c); each
+ * i2c_dw_i2c1_initialize() (i2c_dw_controllers_rp2040.h).  The operations,
+ * the interrupt handler, the pins' setup, the reset and the start-up are
+ * shared and take the instance's values with I2C_DW_INST() (i2c_dw.c); each
  * instance's start-up function is under its own symbol.
  *
  *   Zephyr                                here
@@ -29,8 +29,8 @@
  *   IRQ_CONNECT(), irq_enable()           irq_attach(), up_enable_irq()
  *                                         (RP2040_I2C0_IRQ, RP2040_I2C1_IRQ)
  *   the DMA device (POST_KERNEL 40)       i2c_dw_dma_os_initialize()
- *                                         (i2c_dw_dma_os.c, on NuttX's
- *                                         rp2040_dmac.c) first
+ *                                         (i2c_dw_dma_os_rp2040.c, on
+ *                                         NuttX's rp2040_dmac.c) first
  *   reset_line_toggle_dt()                RESETS (set, clear, RESET_DONE)
  *   pinctrl_apply_state()                 i2c_dw_pinctrl() (Zephyr's
  *                                         pinctrl_rpi_pico.c steps; the
@@ -42,8 +42,8 @@
  * i2c_configure(); one address per transfer; no 10-bit addresses.
  */
 
-#ifndef __BOARDS_ARDUINO_NANO_RP2040_CONNECT_SRC_I2C_DW_INSTANCE_H
-#define __BOARDS_ARDUINO_NANO_RP2040_CONNECT_SRC_I2C_DW_INSTANCE_H
+#ifndef __COMMON_DRIVERS_I2C_DW_PORT_NUTTX_I2C_DW_INSTANCE_H
+#define __COMMON_DRIVERS_I2C_DW_PORT_NUTTX_I2C_DW_INSTANCE_H
 
 #if I2C_DW_M_READ != I2C_M_READ || I2C_DW_M_TEN != I2C_M_TEN || \
     I2C_DW_M_NOSTOP != I2C_M_NOSTOP || I2C_DW_M_NOSTART != I2C_M_NOSTART
@@ -196,8 +196,8 @@ static inline_function struct i2c_master_s *i2c_dw_os_initialize(struct i2c_dw_d
 
 		/* The DMA device, which Zephyr initializes before i2c0
 		 * (POST_KERNEL 40): the two channels of the reads from NuttX's
-		 * rp2040_dmac.c (i2c_dw_dma_os.c).  Without them the reads take
-		 * the interrupts.
+		 * rp2040_dmac.c (i2c_dw_dma_os_rp2040.c).  Without them the
+		 * reads take the interrupts.
 		 */
 		int ret = i2c_dw_dma_os_initialize();
 
@@ -229,4 +229,4 @@ struct i2c_master_s *i2c_dw_i2c1_initialize(void)
 }
 #endif
 
-#endif /* __BOARDS_ARDUINO_NANO_RP2040_CONNECT_SRC_I2C_DW_INSTANCE_H */
+#endif /* __COMMON_DRIVERS_I2C_DW_PORT_NUTTX_I2C_DW_INSTANCE_H */

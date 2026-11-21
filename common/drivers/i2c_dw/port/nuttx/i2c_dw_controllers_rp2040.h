@@ -1,12 +1,12 @@
 /****************************************************************************
- * boards/arduino-nano-rp2040-connect/src/i2c_dw_controllers.h
+ * common/drivers/i2c_dw/port/nuttx/i2c_dw_controllers_rp2040.h
  *
  * SPDX-License-Identifier: Apache-2.0
  *
  ****************************************************************************/
 
-#ifndef __BOARDS_ARDUINO_NANO_RP2040_CONNECT_SRC_I2C_DW_CONTROLLERS_H
-#define __BOARDS_ARDUINO_NANO_RP2040_CONNECT_SRC_I2C_DW_CONTROLLERS_H
+#ifndef __COMMON_DRIVERS_I2C_DW_PORT_NUTTX_I2C_DW_CONTROLLERS_RP2040_H
+#define __COMMON_DRIVERS_I2C_DW_PORT_NUTTX_I2C_DW_CONTROLLERS_RP2040_H
 
 #include <nuttx/config.h>
 
@@ -43,4 +43,4 @@ struct i2c_master_s *i2c_dw_i2c0_initialize(void);
 struct i2c_master_s *i2c_dw_i2c1_initialize(void);
 #endif
 
-#endif /* __BOARDS_ARDUINO_NANO_RP2040_CONNECT_SRC_I2C_DW_CONTROLLERS_H */
+#endif /* __COMMON_DRIVERS_I2C_DW_PORT_NUTTX_I2C_DW_CONTROLLERS_RP2040_H */

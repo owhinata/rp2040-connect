@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 /* arch/arm/src/rp2040/hardware/rp2040_dma.h (NuttX 13.1.0) for the host test
- * of the board's i2c_dw_dma_os.c: the registers and bits it and the fake
+ * of i2c_dw_dma_os_rp2040.c: the registers and bits it and the fake
  * rp2040_dmac.c of the test use, with NuttX's names and values.
  */
 #ifndef TEST_I2C_DW_DMA_RP2040_DMA_H

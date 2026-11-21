@@ -1,13 +1,14 @@
 /* SPDX-License-Identifier: MIT */
-/* The host test of the FreeRTOS part of the I2C core on the FreeRTOS POSIX
- * port: freertos/drivers/i2c_dw (the boundary i2c_dw_os_impl.h, the devices
- * i2c0 and i2c1 and their Zephyr I2C API in i2c_dw_instance.h, the DMA
- * reads' channels in i2c_dw_dma_os.c) and freertos/drivers/compat/zephyr/drivers/i2c.h,
- * under the shared core (common/drivers/i2c_dw/i2c_dw.c, through
- * i2c_dw_core.c here, with the prelude, as
- * freertos/drivers/i2c_dw/i2c_dw.cmake builds it), on fakes of the Pico
- * SDK's GPIO, reset, IRQ, sync and DMA functions (pico_fake/, implemented
- * here: they record the calls), on arrays in place of I2C0's and I2C1's
+/* The host test of the I2C core's FreeRTOS binding on the FreeRTOS POSIX
+ * port: common/drivers/i2c_dw/port/freertos (the boundary i2c_dw_os_impl.h
+ * on FreeRTOS's task notifications and delays and the TIMER, the devices i2c0 and
+ * i2c1 and their Zephyr I2C API in i2c_dw_instance.h, the DMA reads'
+ * channels in i2c_dw_dma_os_rp2040.c) and
+ * freertos/drivers/compat/zephyr/drivers/i2c.h, under the shared core
+ * (common/drivers/i2c_dw/i2c_dw.c, through i2c_dw_core.c here, with the
+ * prelude, as freertos/drivers/i2c_dw/i2c_dw.cmake builds it), on fakes of
+ * the Pico SDK's GPIO, reset, IRQ, sync, TIMER and DMA functions
+ * (pico_fake/, implemented here: they record the calls), on arrays in place of I2C0's and I2C1's
  * registers and a structure in place of the DMA's, which a task of this test
  * plays the controllers, the DMA, the LSM6DSOX on i2c0 and a device at 0x50
  * on i2c1 on (it calls the controllers' handlers and the DMA line's shared
@@ -32,10 +33,10 @@
  * - Transfers refused before the core (-EINVAL; no message: 0), touching no
  *   register.
  * - A NACK: -EIO, the core's two log lines, and the next transfer works.
- * - No interrupt: -ETIMEDOUT after the core's 1000 ms (the layer's ticks),
+ * - No interrupt: -ETIMEDOUT after the core's 1000 ms (1001 ticks, then 2),
  *   the abort requested, the interrupts masked, and the next transfer
  *   works (the semaphore was reset).
- * - The DMA part (i2c_dw_dma_os.c) on its own: the lowest unclaimed channel
+ * - The DMA part (i2c_dw_dma_os_rp2040.c) on its own: the lowest unclaimed channel
  *   of the SDK's record, -EBUSY when none is left; the setup of each side
  *   (addresses, count, CTRL: data size, increments, DREQ 32 or 33, chained
  *   to itself, enabled, normal priority; no trigger), refused on a busy or
@@ -61,8 +62,13 @@
  *   (never unclaimed) and the controller quarantined (-EIO for the next
  *   transfer).  The counters (transfers, bytes, errors, fallbacks) after
  *   each.
- * - The boundary's semaphore and time functions: K_MSEC() rounding, the
- *   deadline's last try without waiting, a give from an interrupt handler.
+ * - The boundary's semaphore and time functions: K_MSEC() rounding plus
+ *   one tick, the deadline's last try without waiting, a give from an
+ *   interrupt handler and from a task, a give between a wait's look at the
+ *   count and its block (not lost), a notification left on the index (the
+ *   wait goes on for the rest of its time), the limit, the reset, the bus
+ *   lock (binary, its waiters by priority), the sleep's ticks, the clock in
+ *   ms of the TIMER.
  * - The command words of the DMA reads (i2c_dw_rp2040_read_commands() of
  *   the core's i2c_dw_rp2040_dma_priv.h, through i2c_dw_core.c): READ on
  *   each, RESTART on the first when asked, STOP on the last; no buffer, no
@@ -90,6 +96,7 @@
 #include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include <time.h>
 #include <unistd.h>
 
 #include "FreeRTOS.h"
@@ -104,7 +111,7 @@
 
 #include "i2c_dw_os_impl.h"
 #include "i2c_dw_dma_os.h"
-#include "i2c_dw_controllers.h"
+#include "i2c_dw_controllers_rp2040.h"
 #include "priorities.h"
 
 #define RUNNER_STACK 16384
@@ -199,6 +206,19 @@ volatile uint32_t fake_i2c1_regs[64];
 
 static irq_handler_t handlers[32];
 static int irq_masked;
+
+uint __get_current_exception(void)
+{
+	return z_host_isr_depth > 0 ? 16u + 23u : 0u;
+}
+
+uint64_t time_us_64(void)
+{
+	struct timespec t;
+
+	clock_gettime(CLOCK_MONOTONIC, &t);
+	return (uint64_t)t.tv_sec * 1000000u + (uint64_t)t.tv_nsec / 1000u;
+}
 
 void gpio_init(uint gpio)
 {
@@ -891,7 +911,7 @@ static void test_timeout(void)
 	expect_hw(WHO_AM_I_BUS);
 }
 
-/* The DMA part (i2c_dw_dma_os.c) ---------------------------------------------*/
+/* The DMA part (i2c_dw_dma_os_rp2040.c) --------------------------------------*/
 
 static char dma_cb_log[LOG_SIZE];
 
@@ -1216,8 +1236,8 @@ static void test_dma_reads(void)
 	ret = i2c_burst_read_dt(&imu, FIFO_DATA_OUT_TAG, buf, 40);
 	ticks = xTaskGetTickCount() - start;
 	assert(ret == -EIO);
-	/* 1000 ms in ticks, then 100 ms of k_uptime_get() (the host's clock,
-	 * which the POSIX port's ticks follow loosely).
+	/* 1000 ms in ticks, then 100 ms of i2c_dw_os_uptime_ms() (the TIMER,
+	 * here the host's clock, which the POSIX port's ticks follow loosely).
 	 */
 	assert(ticks >= 1080 && ticks <= 1160);
 	expect_calls("claim(0) claim(1) configure(0) configure(1) start(1) start(0) ");
@@ -1520,18 +1540,75 @@ static void giver_main(void *arg)
 	vTaskDelete(NULL);
 }
 
+/* The window between a wait's look at the count and its block: the wait
+ * reads the tick count there (the only FreeRTOS call between the two), so
+ * the wrapped xTaskGetTickCount() (-Wl,--wrap, host_tests.sh) gives the
+ * armed semaphore once, as an interrupt handler would at that moment, while
+ * the waiter is on its list.
+ */
+static i2c_dw_os_sem_t *race_sem;
+
+TickType_t __real_xTaskGetTickCount(void);
+TickType_t __wrap_xTaskGetTickCount(void);
+
+TickType_t __wrap_xTaskGetTickCount(void)
+{
+	i2c_dw_os_sem_t *sem = race_sem;
+
+	if (sem != NULL && sem->waiters != NULL &&
+	    sem->waiters->task == xTaskGetCurrentTaskHandle()) {
+		race_sem = NULL;
+		give_from_isr(sem);
+	}
+	return __real_xTaskGetTickCount();
+}
+
+/* The bus lock's waiters: each takes the lock, notes its name, gives it
+ * back.
+ */
+static i2c_dw_os_sem_t lock_sem;
+static char lock_order[32];
+
+static void locker_main(void *arg)
+{
+	assert(i2c_dw_os_bus_lock(&lock_sem) == 0);
+	strcat(lock_order, arg);
+	i2c_dw_os_bus_unlock(&lock_sem);
+	vTaskDelete(NULL);
+}
+
 static void test_boundary(void)
 {
-	static struct k_sem sem;
+	static i2c_dw_os_sem_t sem;
 	TickType_t start, end, ticks;
+	int64_t ms;
 
-	(void)k_sem_init(&sem, 0, K_SEM_MAX_LIMIT);
+	i2c_dw_os_sem_init(&sem, 0, I2C_DW_OS_SEM_MAX_LIMIT);
+
+	/* The ticks of the waits, as the layer's k_sem_take(K_MSEC(ms)) and
+	 * k_msleep() had them: ms rounded up to ticks, plus one; 0 does not
+	 * block.
+	 */
+	assert(i2c_dw_os_ms_to_ticks(0) == 0);
+	assert(i2c_dw_os_ms_to_ticks(1) == 1);
+	assert(i2c_dw_os_ms_to_ticks(1000) == 1000);
+	assert(i2c_dw_os_block_ticks(0) == 0);
+	assert(i2c_dw_os_block_ticks(1) == 2);
+	assert(i2c_dw_os_block_ticks(1000) == 1001);
+	assert(i2c_dw_os_block_ticks(UINT64_MAX) == portMAX_DELAY - 1);
+	start = xTaskGetTickCount();
+	assert(i2c_dw_os_sem_take_ms(&sem, 0) == -EBUSY);
+	assert(xTaskGetTickCount() - start <= 1);
+	start = xTaskGetTickCount();
+	i2c_dw_os_msleep(5);
+	ticks = xTaskGetTickCount() - start;
+	assert(ticks >= 6 && ticks <= 8);
 
 	/* K_MSEC(ms) in ticks (1 ms, as on the board), plus one. */
 	start = xTaskGetTickCount();
-	assert(i2c_dw_os_sem_take_ms(&sem, 10) != 0);
+	assert(i2c_dw_os_sem_take_ms(&sem, 10) == -EAGAIN);
 	ticks = xTaskGetTickCount() - start;
-	assert(ticks >= 10 && ticks <= 13);
+	assert(ticks >= 11 && ticks <= 13);
 
 	/* The deadline: now + the ticks (at least one); once passed, one try
 	 * without waiting.
@@ -1555,16 +1632,78 @@ static void test_boundary(void)
 	ticks = xTaskGetTickCount() - start;
 	assert(ticks >= 19 && ticks <= 30);
 
-	/* The reset and the lock. */
+	assert(sem.count == 0 && sem.waiters == NULL);
+
+	/* A give between the look at the count and the block is not lost: the
+	 * wait returns 0 at once.
+	 */
+	race_sem = &sem;
+	start = xTaskGetTickCount();
+	assert(i2c_dw_os_sem_take_ms(&sem, 1000) == 0);
+	assert(race_sem == NULL);
+	assert(xTaskGetTickCount() - start <= 1);
+	assert(sem.count == 0 && sem.waiters == NULL);
+
+	/* A notification left on the index (another wait's, or a stray one)
+	 * does not end a wait: it waits for the rest of its time, -EAGAIN, or
+	 * until a give.
+	 */
+	(void)xTaskNotifyGiveIndexed(xTaskGetCurrentTaskHandle(), I2C_DW_OS_NOTIFY_INDEX);
+	start = xTaskGetTickCount();
+	assert(i2c_dw_os_sem_take_ms(&sem, 10) == -EAGAIN);
+	ticks = xTaskGetTickCount() - start;
+	assert(ticks >= 11 && ticks <= 13);
+	assert(sem.waiters == NULL);
+	(void)xTaskNotifyGiveIndexed(xTaskGetCurrentTaskHandle(), I2C_DW_OS_NOTIFY_INDEX);
+	assert(xTaskCreate(giver_main, "giver", HW_STACK / sizeof(StackType_t), &sem,
+			   NANO_PRIO_SHELL + 1, NULL) == pdPASS);
+	start = xTaskGetTickCount();
+	assert(i2c_dw_os_sem_take_ms(&sem, 1000) == 0);
+	ticks = xTaskGetTickCount() - start;
+	assert(ticks >= 19 && ticks <= 30);
+	assert(sem.count == 0 && sem.waiters == NULL);
+
+	/* A give from a task; the limit; the reset of a count of two. */
+	i2c_dw_os_sem_give(&sem);
 	give_from_isr(&sem);
+	assert(sem.count == 2);
 	i2c_dw_os_sem_reset(&sem);
-	assert(i2c_dw_os_sem_take_until(&sem, xTaskGetTickCount()) != 0);
-	(void)k_sem_init(&sem, 1, 1);
-	assert(i2c_dw_os_bus_lock(&sem) == 0);
-	assert(k_sem_count_get(&sem) == 0);
-	i2c_dw_os_bus_unlock(&sem);
-	i2c_dw_os_bus_unlock(&sem);
-	assert(k_sem_count_get(&sem) == 1);
+	assert(sem.count == 0);
+	assert(i2c_dw_os_sem_take_until(&sem, xTaskGetTickCount()) == -EBUSY);
+	i2c_dw_os_sem_init(&sem, 0, 2);
+	for (int i = 0; i < 3; i++) {
+		give_from_isr(&sem);
+	}
+	assert(sem.count == 2);
+
+	/* The lock: binary, a second unlock leaves it at 1. */
+	i2c_dw_os_sem_init(&lock_sem, 1, 1);
+	assert(i2c_dw_os_bus_lock(&lock_sem) == 0);
+	assert(lock_sem.count == 0);
+	i2c_dw_os_bus_unlock(&lock_sem);
+	i2c_dw_os_bus_unlock(&lock_sem);
+	assert(lock_sem.count == 1);
+
+	/* Its waiters by priority, not by arrival: held here, a low task then a
+	 * high one wait; the unlock hands the lock to the high one, its unlock
+	 * to the low one, and the count is back at 1.
+	 */
+	lock_order[0] = '\0';
+	assert(i2c_dw_os_bus_lock(&lock_sem) == 0);
+	assert(xTaskCreate(locker_main, "low", HW_STACK / sizeof(StackType_t), "low ",
+			   NANO_PRIO_SHELL + 1, NULL) == pdPASS);
+	assert(xTaskCreate(locker_main, "high", HW_STACK / sizeof(StackType_t), "high ",
+			   NANO_PRIO_SHELL + 2, NULL) == pdPASS);
+	vTaskDelay(5);
+	assert(lock_order[0] == '\0');
+	i2c_dw_os_bus_unlock(&lock_sem);
+	vTaskDelay(5);
+	assert(strcmp(lock_order, "high low ") == 0);
+	assert(lock_sem.count == 1 && lock_sem.waiters == NULL);
+
+	/* The clock: the TIMER in ms. */
+	ms = i2c_dw_os_uptime_ms();
+	assert(ms == (int64_t)(time_us_64() / 1000u) || ms + 1 == (int64_t)(time_us_64() / 1000u));
 
 	/* The interrupt lock nests. */
 	uint32_t outer = i2c_dw_os_irq_lock();

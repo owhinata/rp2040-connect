@@ -58,9 +58,10 @@
 /* Index 0 for the Pico SDK (pico_async_context_freertos) and the port's
  * plain notifications, index 1 for the compatibility layer's waits (F02),
  * index 2 for the NINA's socket event waits
- * (common/drivers/nina/port/freertos/nina_os.c).
+ * (common/drivers/nina/port/freertos/nina_os.c), index 3 for the I2C
+ * driver's semaphores (common/drivers/i2c_dw/port/freertos/i2c_dw_os_impl.h).
  */
-#define configTASK_NOTIFICATION_ARRAY_ENTRIES   3
+#define configTASK_NOTIFICATION_ARRAY_ENTRIES   4
 #define configUSE_QUEUE_SETS                    0
 #define configQUEUE_REGISTRY_SIZE               0
 #define configUSE_EVENT_GROUPS                  1

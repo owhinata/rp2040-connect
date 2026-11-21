@@ -1,5 +1,5 @@
 /****************************************************************************
- * boards/arduino-nano-rp2040-connect/src/i2c_dw_os_impl.h
+ * common/drivers/i2c_dw/port/nuttx/i2c_dw_os_impl.h
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -10,7 +10,7 @@
  ****************************************************************************/
 
 /* The NuttX part of the I2C core's boundary
- * (common/drivers/i2c_dw/i2c_dw_os.h, which includes this file first in
+ * (common/drivers/i2c_dw/port/i2c_dw_os.h, which includes this file first in
  * i2c_dw.c): the NuttX headers, and the types and calls
  * behind the boundary's names:
  *
@@ -33,8 +33,8 @@
  *                                (the board's Kconfig)
  */
 
-#ifndef __BOARDS_ARDUINO_NANO_RP2040_CONNECT_SRC_I2C_DW_OS_IMPL_H
-#define __BOARDS_ARDUINO_NANO_RP2040_CONNECT_SRC_I2C_DW_OS_IMPL_H
+#ifndef __COMMON_DRIVERS_I2C_DW_PORT_NUTTX_I2C_DW_OS_IMPL_H
+#define __COMMON_DRIVERS_I2C_DW_PORT_NUTTX_I2C_DW_OS_IMPL_H
 
 #include <nuttx/config.h>
 
@@ -60,7 +60,7 @@
 #include "hardware/rp2040_resets.h"
 #include "rp2040_gpio.h"
 
-#include "i2c_dw_controllers.h"
+#include "i2c_dw_controllers_rp2040.h"
 
 /* <nuttx/i2c/i2c_master.h> names the bus frequencies I2C_SPEED_*; the core
  * uses these names for Zephyr's speed classes (i2c_dw.h), as the
@@ -165,4 +165,4 @@ static inline void i2c_dw_os_msleep(uint32_t ms)
 
 #define i2c_dw_os_uptime_ms() ((int64_t)TICK2MSEC(clock_systime_ticks()))
 
-#endif /* __BOARDS_ARDUINO_NANO_RP2040_CONNECT_SRC_I2C_DW_OS_IMPL_H */
+#endif /* __COMMON_DRIVERS_I2C_DW_PORT_NUTTX_I2C_DW_OS_IMPL_H */

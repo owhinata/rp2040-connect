@@ -860,7 +860,7 @@ host tests (`common/tests/run.sh`) run first in the `host_tests.sh` of each of t
 | `common/drivers/lsm6dso/`, `sensor_shell/` | The LSM6DSO driver with its FIFO stream, the sensor shell | All three |
 | `common/drivers/nina/` | The NINA core (SPI link, sockets, name resolution, the Wi-Fi operations `nina_wifi.[ch]`, the socket waits `nina_wait.[ch]`, the declarations `nina_proto.h`), the esptool passthrough `nina_passthrough.[ch]` with its boundaries `nina_passthrough_bus.h` and `nina_passthrough_os.h`, with no OS of its own | All three |
 | `common/drivers/nina/port/zephyr/`, `nuttx/`, `freertos/` | The core's bindings to Zephyr's APIs (Wi-Fi management and interface, kernel services, socket offload, the devicetree binding and options), to NuttX's (`wlan0` and wapi, the applications' Zephyr Wi-Fi management, kernel services, usrsock) and to FreeRTOS and the Pico SDK (kernel services `nina_os.c`: locks, requests, sleeps, the clock, the waits on READY's and the IRQ line's edge interrupts); in each, the passthrough's host side `nina_passthrough_os.c` (Zephyr's CDC ACM, cdcacm, TinyUSB) | `zephyr/`: Zephyr and FreeRTOS (its Wi-Fi and socket bindings, on the compatibility layer); `nuttx/`: NuttX; `freertos/`: FreeRTOS |
-| `common/drivers/i2c_dw/` | The I2C core (I2C0 and I2C1; file names as Zephyr's: `i2c_dw.c`, `i2c_dw.h`, `i2c_dw_registers.h`, `i2c_dw_rp2040.h`, `i2c_dw_rp2040_dma_priv.h` with the DMA reads and their command words), the declarations of the `i2c_dma` functions `i2c_dw_rp2040_dma.h`, the boundaries `i2c_dw_os.h` and `i2c_dw_dma_os.h` | NuttX and FreeRTOS (the Zephyr build: the same driver in patch 0003, below) |
+| `common/drivers/i2c_dw/` | The I2C core (I2C0 and I2C1; file names as Zephyr's: `i2c_dw.c` at the top and, in `internal/`, `i2c_dw.h`, `i2c_dw_registers.h`, `i2c_dw_rp2040.h`, `i2c_dw_rp2040_dma_priv.h` with the DMA reads and their command words), the declarations of the `i2c_dma` functions in `include/i2c_dw_rp2040_dma.h`, the boundaries `i2c_dw_os.h` and `i2c_dw_dma_os.h` in `port/`, and the bindings in `port/nuttx/` and `port/freertos/` | NuttX and FreeRTOS (the Zephyr build: the same driver in patch 0003, below) |
 | `common/drivers/stmemsc/` | The glue between ST's driver and Zephyr's I2C API | NuttX and FreeRTOS |
 | `common/compat/` | The OS-independent part of the compatibility layer and copies of Zephyr's libraries (the key-value store's NVS and settings, the Wi-Fi credentials, getopt and others) | NuttX and FreeRTOS |
 | `common/shell/`, `common/log/` | Zephyr's shell command handling, the `i2c_dma` and `nina` commands, the `LOG_*` macros and the RAM log's ring | NuttX and FreeRTOS (`i2c_dma` all three, `nina` Zephyr and FreeRTOS) |
@@ -871,7 +871,8 @@ The OS parts are implementations of narrow boundary headers in each build's dire
   top of `common/compat/zephyr/kernel.h`): `nuttx/drivers/compat/`, `freertos/drivers/compat/`.
 - The priority mapping `priorities_os.h` (read by `common/compat/priorities.h`), the NINA's `nina_os.h` and
   `nina_bus.h` (`nina_os.h`'s implementations are in the core's bindings,
-  `common/drivers/nina/port/zephyr/`, `nuttx/` and `freertos/`), the I2C core's `i2c_dw_os.h` and the DMA reads' `i2c_dw_dma_os.h`, the key-value flash's `nano_flash_kv.h`, the shell backend
+  `common/drivers/nina/port/zephyr/`, `nuttx/` and `freertos/`), the I2C core's `i2c_dw_os.h` and the DMA reads' `i2c_dw_dma_os.h` (implemented in the core's bindings,
+  `common/drivers/i2c_dw/port/nuttx/` and `freertos/`), the key-value flash's `nano_flash_kv.h`, the shell backend
   `zshell_os.h`, the log's `app_log_os.h` and `log_ram.h`.
 - A few lines that differ per build: `sensor_shell_os.h` (the wait of `sensor get`), `wifi_profile_os.h`,
   `lsm6dso_instance.h` (the device), `kv_store_os.h` (whether there is `kv wipe`).
@@ -888,14 +889,16 @@ parts are in the I2C sections of each build's driver notes).
   needed by the LSM6DSOX, so the NuttX build builds it with `CONFIG_I2C_DW_I2C0` (on by default) and the FreeRTOS
   build always. i2c1 only with the NuttX build's `CONFIG_I2C_DW_I2C1` or the FreeRTOS build's `-DI2C_DW_I2C1=ON` (both
   off by default). i2c1 has been built and host-tested, never used with a real device.
-- **The OS part**: each build implements the boundary `i2c_dw_os.h` (semaphores, clock, interrupt connection, reset
-  and pins, the link to the OS's driver model).
+- **The OS part**: each build implements the boundary `port/i2c_dw_os.h` (semaphores, clock, interrupt connection,
+  reset and pins, the link to the OS's driver model) in the core's binding for its OS, `port/nuttx/` or
+  `port/freertos/`, on that OS's own services (the FreeRTOS binding on FreeRTOS's semaphores and delays and the
+  Pico SDK; only the API the driver is used with, Zephyr's I2C API, is the compatibility layer's).
 - **DMA reads** (`CONFIG_I2C_DW_RP2040_DMA`): i2c0 only. The conditions, command words, thresholds, stop, quarantine and
   counters are the patch's. Where the patch calls Zephyr's DMA API (and the Pico SDK's register helpers in its stop),
-  the core calls the DMA boundary `i2c_dw_dma_os.h`, one call for each. The only differences are the setup of a
+  the core calls the DMA boundary `port/i2c_dw_dma_os.h`, one call for each. The only differences are the setup of a
   channel (two calls, for the TX and the RX side, in place of `dma_config()` and its structures) and the stop's wait
   (each channel's own abort, not every channel's). Each build implements the boundary on the OS's own DMA driver (the
-  Pico SDK's in the FreeRTOS build, `rp2040_dmac.c` in the NuttX build). The core touches no DMA register, and no
+  Pico SDK's in the FreeRTOS build, `rp2040_dmac.c` in the NuttX build; `i2c_dw_dma_os_rp2040.c` of each binding). The core touches no DMA register, and no
   function of the boundary waits for another user of the DMA.
 - **Other code that uses DMA**: other code of the same program may use the OS's DMA as usual. It must not touch the
   two channels a read holds, reset the DMA block, or write the registers that the channels share (interrupt enable
@@ -905,7 +908,7 @@ parts are in the I2C sections of each build's driver notes).
   driver and the core define the same three functions, and the command reads their declarations from
   `<zephyr/drivers/i2c/i2c_dw_rp2040_dma.h>`: in the Zephyr build the header that the patch adds to Zephyr's tree, in
   the NuttX and FreeRTOS builds the header of the same name in `common/compat`, which includes the core's
-  `common/drivers/i2c_dw/i2c_dw_rp2040_dma.h`.
+  `common/drivers/i2c_dw/include/i2c_dw_rp2040_dma.h`, the only header for the driver's users.
 
 The patched driver and the core are kept the same as follows.
 

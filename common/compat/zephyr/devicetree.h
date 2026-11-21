@@ -12,10 +12,12 @@
  *   gpio0     /soc/gpio@40014000/gpio-port@0       compat/zephyr_gpio.c
  *   i2c0      /soc/i2c@40044000 ("i2c@40044000")   board src/nano_lsm6dso.c
  *                                                  (FreeRTOS: drivers/i2c_dw/
+ *                                                  port/freertos/
  *                                                  i2c_dw_instance.h)
  *   i2c1      /soc/i2c@40048000 ("i2c@40048000")   FreeRTOS with
  *                                                  CONFIG_I2C_DW_I2C1 only:
  *                                                  drivers/i2c_dw/
+ *                                                  port/freertos/
  *                                                  i2c_dw_instance.h (not in
  *                                                  zephyr_device.c's list)
  *   lsm6dsox  /soc/i2c@40044000/lsm6dsox@6a        drivers/lsm6dso/

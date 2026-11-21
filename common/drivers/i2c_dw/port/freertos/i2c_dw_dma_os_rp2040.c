@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 /* The FreeRTOS part of the DMA reads of I2C0: the boundary of
- * common/drivers/i2c_dw/i2c_dw_dma_os.h on the Pico SDK's hardware_dma and
+ * common/drivers/i2c_dw/port/i2c_dw_dma_os.h on the Pico SDK's hardware_dma and
  * hardware_irq, which other code of this build may use as usual.
  *
  *   the boundary                  here

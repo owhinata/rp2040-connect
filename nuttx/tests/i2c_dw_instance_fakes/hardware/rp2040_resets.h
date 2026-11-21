@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MIT */
-/* arch/arm/src/rp2040/hardware/rp2040_resets.h for the host test of the
- * board's I2C part: the bits as NuttX's, the registers as the test's
+/* arch/arm/src/rp2040/hardware/rp2040_resets.h for the host test of the I2C
+ * core's NuttX binding: the bits as NuttX's, the registers as the test's
  * addresses (tests/i2c_dw_instance.c).
  */
 #ifndef TEST_I2C_DW_NUTTX_RP2040_RESETS_H

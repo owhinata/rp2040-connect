@@ -1,8 +1,8 @@
 /* SPDX-License-Identifier: MIT */
 /* arch/arm/src/rp2040/hardware/rp2040_memorymap.h for the host test of the
- * board's I2C part (tests/i2c_dw_instance.c): the controllers' bases are the
- * test's arrays of registers.  The real addresses: I2C0 0x40044000, I2C1
- * 0x40048000 (the test checks the names that the core logs).
+ * I2C core's NuttX binding (tests/i2c_dw_instance.c): the controllers' bases
+ * are the test's arrays of registers.  The real addresses: I2C0 0x40044000,
+ * I2C1 0x40048000 (the test checks the names that the core logs).
  */
 #ifndef TEST_I2C_DW_NUTTX_RP2040_MEMORYMAP_H
 #define TEST_I2C_DW_NUTTX_RP2040_MEMORYMAP_H

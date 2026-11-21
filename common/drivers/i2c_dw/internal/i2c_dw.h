@@ -17,7 +17,7 @@
  * - what the NuttX build adds: the NuttX message flags (I2C_M_*) turned
  *   into Zephyr's (I2C_MSG_*) for one message of a transfer, and the NuttX
  *   frequency turned into a Zephyr speed class (its part of the driver,
- *   i2c_dw_instance.h and i2c_dw_os_impl.h of the board, uses them).
+ *   i2c_dw_instance.h and i2c_dw_os_impl.h of port/nuttx, uses them).
  *
  * The Zephyr build's values: CONFIG_I2C_DW_CLOCK_SPEED=125 (MHz, clk_peri),
  * CONFIG_I2C_DW_IC_CLK_FREQ_OPTIMIZATION off, no lcnt-offset/hcnt-offset/

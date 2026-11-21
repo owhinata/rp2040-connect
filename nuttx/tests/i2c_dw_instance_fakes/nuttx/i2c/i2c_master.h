@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MIT */
-/* <nuttx/i2c/i2c_master.h> for the host test of the board's I2C part
- * (tests/i2c_dw_instance.c): the definitions of NuttX 13.1.0's header that the
- * board's part uses, with NuttX's values and members.
+/* <nuttx/i2c/i2c_master.h> for the host test of the I2C core's NuttX binding
+ * (tests/i2c_dw_instance.c): the definitions of NuttX 13.1.0's header that
+ * the binding uses, with NuttX's values and members.
  */
 #ifndef TEST_I2C_DW_NUTTX_I2C_MASTER_H
 #define TEST_I2C_DW_NUTTX_I2C_MASTER_H

@@ -2014,3 +2014,33 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
   `spi_context_release()` が `SPI_LOCK_ON` に関係なくロックを返す（`spi_context.h` で確認）。`CONFIG_SPI_ASYNC` は PL022 の割り込み・DMA と独立なので、前回の `BUILD_ASSERT` を通ってしまう。
 - 対応: `BUILD_ASSERT(!IS_ENABLED(CONFIG_SPI_ASYNC))` を足し、コメントに理由を書いた。この版は `CONFIG_SPI_ASYNC` なし。
 - 確認: Zephyr のイメージは基準（`snapshot-1121e`）とバイト一致、ホストテスト 45。Zephyr のつなぎだけの変更なので NuttX・FreeRTOS はビルドしていない。実機には書いていない。
+
+## I2C: `i2c_dw` を NINA と同じ形へ、FreeRTOS の部分を FreeRTOS で直接（2026-11-21、ユーザーの依頼）
+
+- 配置（subagent が実装、メインがレビュー・再ビルド・実機確認）:
+  - `common/drivers/i2c_dw/i2c_dw.c`（コア。1 つの翻訳単位で、OS の部分のヘッダーを取り込む作りはそのまま）。
+  - `include/`: `i2c_dw_rp2040_dma.h` だけ（`i2c_dma` コマンドと自己診断が、互換層の `<zephyr/drivers/i2c/i2c_dw_rp2040_dma.h>` を通して読む）。
+  - `internal/`: `i2c_dw.h`・`i2c_dw_registers.h`・`i2c_dw_rp2040.h`・`i2c_dw_rp2040_dma_priv.h`。
+  - `port/`: 境界 `i2c_dw_os.h`・`i2c_dw_dma_os.h` と、`port/freertos/`（`freertos/drivers/i2c_dw/` から）・`port/nuttx/`（ボードの `src/` から）: `i2c_dw_os_impl.h`・`i2c_dw_instance.h`・
+    `i2c_dw_controllers_rp2040.h`・`i2c_dw_dma_os_rp2040.c`。Zephyr 版は上流のドライバー + パッチなので `port/zephyr/` は無い。
+  - `freertos/drivers/i2c_dw/` に残るのは `i2c_dw.cmake` と自己診断（`i2c_dw_selftest.[ch]`）。NuttX はボードの `src/Make.defs` が VPATH で読む（リンクの順序を保つため）。
+  - コアの名前は変えていない（Zephyr のドライバーの写し。`i2c_dw_sync.py` の期待値は変わらず、読む場所だけ直した）。パッチ 0003 のコメントに古いパスが 2 か所残る（パッチには触れていない）。
+  - 外から `port/<OS>/` を読む所: 起動のコード（FreeRTOS の `main.c`、NuttX の `nano_bringup.c`）が `i2c_dw_i2c0_initialize()`・`_i2c1_` を呼ぶ。戻り値の型が OS ごとに違う
+    （FreeRTOS は `int`、NuttX は `struct i2c_master_s *`）ので `include/` に置けない。デバイスの登録なので、起動のコードから呼ぶ形は変えていない。
+  - `common/tests/run.sh` に `i2c_dw_public_headers`（`include/` だけでコンパイルできること）を足した。
+- FreeRTOS の部分（`port/freertos/i2c_dw_os_impl.h`）: 互換層の `k_sem`・`k_msleep`・`k_uptime_get` をやめ、FreeRTOS と Pico SDK で直接書いた。
+  - 1 回目はキューで作られた FreeRTOS のセマフォ（`xSemaphoreCreateCountingStatic`）。実機で `cpu_active` が 39.8〜40.3% → 41.3%（3 回とも）に上がった。互換層の `k_sem` は
+    タスク通知で作られていて、それより重い。
+  - 2 回目（採用）: 3 つとも FreeRTOS のタスク通知で直接。型は数・上限・待っているタスクの並び（待つ側のスタックの上）。give は待っているタスクに数を渡して
+    `xTaskNotifyGiveIndexed()`（割り込みの中では `FromISR` と `portYIELD_FROM_ISR()`）、take は数を取るか通知を待つ（結果は done の印で決める。別の通知で早く起きても残りの時間を待つ）。
+    通知の番号はドライバー専用の 3（`configTASK_NOTIFICATION_ARRAY_ENTRIES` を 3 → 4。TCB のパディングに収まり RAM は増えない）。バスのロックの待ちは優先度順。
+  - タイムアウトの tick の数は同じ（1000 ms → 1001 tick、1 ms → 2 tick、`msleep(1)` → 2 tick。ホストテストが確かめる）。オブジェクトはインスタンスの開始（`i2c_dw_os_initialize()`）で作る。
+- イメージ: Zephyr・NuttX は基準（`snapshot-1121e`）とバイト一致。FreeRTOS は移動だけではバイト一致、タスク通知版で 236528 → 236968 B。ホストテスト 46・58・56、`format.sh --check` も通る。
+- 実機（FreeRTOS 版）:
+  - 送信 約 70 秒 × 4 回（うち 1 回は書き込み直後）: 欠番 0、時刻の逆行 0、`cpu_active` 40.9〜41.0%、I2C のエラー 0、`i2c_dma stats` の `dma_errors`・`dma_fallbacks` 0。
+    直前のビルド（39.8〜40.3%）より 0.6〜1.2 ポイント高いが、これまでの別のイメージの幅（39.7〜41.0%）の中で、配置の違いと区別できていない。
+  - 送信中の `wifi disconnect` → `wifi cred auto_connect`: 2 秒で再接続、MQTT もつなぎ直し、Telnet は送信中と復帰後に応答（1 回）。`sensor get` も応答。
+  - スタックの空き: `imu_fifo_worker` 1368、`imu_stream_tid` 1208、割り込み 1592（前は 1416、1176、1592）。
+  - `-DNANO_SELFTEST=ON` のビルドで `selftest`: カーネル 22、I2C 6（標準・fast plus・拒否・NACK・DMA）、LSM6DSOX 3 項目、失敗 0。
+- 確かめていない: `-DI2C_DW_I2C1=ON` の実機（ビルドだけ）、NuttX 版の実機（イメージが同じなので書いていない）、長時間。
+- 実機: FreeRTOS 版（この変更の既定のビルド）。

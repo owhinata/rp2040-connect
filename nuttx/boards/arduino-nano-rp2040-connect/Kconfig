@@ -139,8 +139,9 @@ config I2C_DW_I2C0
 		0003-i2c-dw-rp2040-fifo-and-dma.patch): interrupt
 		driven, RX in batches of 4, 1 s transfer timeout with an abort,
 		the Zephyr SCL counts (100 kHz, 400 kHz, 1 MHz).  The core is
-		common/drivers/i2c_dw/i2c_dw.c, its NuttX part
-		src/i2c_dw_instance.h and src/i2c_dw_os_impl.h.  It replaces
+		common/drivers/i2c_dw/i2c_dw.c, its NuttX binding
+		i2c_dw_instance.h and i2c_dw_os_impl.h of
+		common/drivers/i2c_dw/port/nuttx.  It replaces
 		NuttX's arch/arm/src/rp2040/rp2040_i2c.c, which must stay off
 		(RP2040_I2C), and sets up the pins itself.  Registered as
 		/dev/i2c0 when I2C_DRIVER is set (the i2c tool uses it).
@@ -175,7 +176,8 @@ config I2C_DW_RP2040_DMA
 		it and shows its counters.
 		The channels come from NuttX's own DMA driver
 		(arch/arm/src/rp2040/rp2040_dmac.c, RP2040_DMAC), through
-		src/i2c_dw_dma_os.c: two channels taken at start-up with
+		i2c_dw_dma_os_rp2040.c of common/drivers/i2c_dw/port/nuttx:
+		two channels taken at start-up with
 		rp2040_dmachannel() and kept for the reads, so that a read never
 		waits for a channel; other code may use the driver's other
 		channels as usual.  RP2040_SPI_DMA, which RP2040_DMAC also

@@ -1,7 +1,8 @@
 /* SPDX-License-Identifier: MIT */
-/* Host test of the board's DMA part of the I2C0 reads
- * (boards/arduino-nano-rp2040-connect/src/i2c_dw_dma_os.c, the boundary of
- * common/drivers/i2c_dw/i2c_dw_dma_os.h) on a fake of NuttX's rp2040_dmac.c
+/* Host test of the DMA part of the I2C0 reads (i2c_dw_dma_os_rp2040.c of
+ * the I2C core's NuttX binding, common/drivers/i2c_dw/port/nuttx, the
+ * boundary of common/drivers/i2c_dw/port/i2c_dw_dma_os.h) on a fake of
+ * NuttX's rp2040_dmac.c
  * (tests/i2c_dw_dma_os_fakes: its header, and here its functions and its
  * interrupt handler, written as NuttX 13.1.0 has them, on an array in place
  * of the DMA's registers; the calls and the writes of INTE0, INTS0 and
@@ -39,7 +40,7 @@
 #include <string.h>
 #include <strings.h>
 
-#include "../boards/arduino-nano-rp2040-connect/src/i2c_dw_dma_os.c"
+#include "../../common/drivers/i2c_dw/port/nuttx/i2c_dw_dma_os_rp2040.c"
 
 int fake_irq_saved;
 uint32_t fake_dma_regs[0x460 / 4];

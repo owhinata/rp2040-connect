@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: MIT */
-/* <nuttx/irq.h> for the host test of the board's i2c_dw_dma_os.c
+/* <nuttx/irq.h> for the host test of i2c_dw_dma_os_rp2040.c
  * (tests/i2c_dw_dma_os.c): one thread; the test checks that the interrupts
  * are back on after each call.
  */

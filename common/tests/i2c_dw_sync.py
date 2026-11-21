@@ -6,7 +6,7 @@ The Zephyr build uses Zephyr's DesignWare driver with a local patch
 (zephyr/manifest/zephyr/patches/zephyr/0003-i2c-dw-rp2040-fifo-and-dma.patch);
 the core that the NuttX and FreeRTOS builds use is a port of it, with the
 differences listed at the top of i2c_dw.c.  Its DMA reads use the OS's own
-DMA driver through the boundary of common/drivers/i2c_dw/i2c_dw_dma_os.h in
+DMA driver through the boundary of common/drivers/i2c_dw/port/i2c_dw_dma_os.h in
 place of Zephyr's DMA API (RENAMES turns those calls into the boundary's).
 This check fails when one of them changes without the other:
 
@@ -21,7 +21,7 @@ This check fails when one of them changes without the other:
   the new differences and write them with --update;
 - declarations: the public header that the patch adds and the one of the
   core (COPIES: <zephyr/drivers/i2c/i2c_dw_rp2040_dma.h> and
-  common/drivers/i2c_dw/i2c_dw_rp2040_dma.h) must be the same once the
+  common/drivers/i2c_dw/include/i2c_dw_rp2040_dma.h) must be the same once the
   comments and the include guards are taken out;
 - the read commands: i2c_dw_rp2040_read_commands(), a static function of
   i2c_dw_rp2040_dma_priv.h in the patch and in the core, must be the same
@@ -52,17 +52,18 @@ COMMON = os.path.join(HERE, '..')
 # (file of the patched tree, the same file in common/)
 COPIES = [
     ('include/zephyr/drivers/i2c/i2c_dw_rp2040_dma.h',
-     'drivers/i2c_dw/i2c_dw_rp2040_dma.h'),
+     'drivers/i2c_dw/include/i2c_dw_rp2040_dma.h'),
 ]
 # The read commands' builder: a static function of i2c_dw_rp2040_dma_priv.h in the patch and in
 # the core, with its command bits.
-COMMANDS = 'i2c_dw_rp2040_dma_priv.h'
+COMMANDS = 'internal/i2c_dw_rp2040_dma_priv.h'
 COMMANDS_FN = 'i2c_dw_rp2040_read_commands'
 COMMANDS_BITS = ('RP2040_I2C_CMD_READ', 'RP2040_I2C_CMD_STOP', 'RP2040_I2C_CMD_RESTART')
 EXPECTED = os.path.join(HERE, 'i2c_dw_sync.expected')
-# The core's files that hold the patched driver's code and definitions (the same names).
-CORE_FILES = ('i2c_dw.c', 'i2c_dw.h', 'i2c_dw_registers.h', 'i2c_dw_rp2040.h',
-              'i2c_dw_rp2040_dma_priv.h')
+# The core's files that hold the patched driver's code and definitions (the same names; the
+# headers in its internal/).
+CORE_FILES = ('i2c_dw.c', 'internal/i2c_dw.h', 'internal/i2c_dw_registers.h',
+              'internal/i2c_dw_rp2040.h', 'internal/i2c_dw_rp2040_dma_priv.h')
 
 # The Kconfig symbols of the conditionals, as the Zephyr build sets them (others: off); checked
 # against the build's .config when there is one.
@@ -348,7 +349,7 @@ int main(void)
 }
 ''' % mhz
     res = []
-    for name, src, inc in (('z', zsrc, []), ('c', csrc, ['-I', core])):
+    for name, src, inc in (('z', zsrc, []), ('c', csrc, ['-I', os.path.join(core, 'internal')])):
         c = os.path.join(tmp, name + '.c')
         exe = os.path.join(tmp, name)
         with open(c, 'w') as fp:
@@ -407,7 +408,7 @@ def main():
               [defines(cmd).get(n, 'none in the core') for n in COMMANDS_BITS])
         # The core's files are named as the patched driver's; i2c_dw.c includes its
         # i2c_dw_rp2040*.h once, as Zephyr's does.
-        cfiles = {f: read(os.path.join(core, f)) for f in CORE_FILES}
+        cfiles = {os.path.basename(f): read(os.path.join(core, f)) for f in CORE_FILES}
         core_c = preprocess(inline_includes(cfiles['i2c_dw.c'], cfiles) + cfiles['i2c_dw.h'],
                             CORE_ON)
         ch = defines(preprocess(cfiles['i2c_dw.h'] + cfiles['i2c_dw_registers.h'] +

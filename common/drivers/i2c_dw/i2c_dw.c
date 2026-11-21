@@ -20,17 +20,19 @@
  * common/tests/i2c_dw_sync.py checks that the two stay the same, but for
  * the differences listed here.
  *
- * The files follow Zephyr's: this file (i2c_dw.c), i2c_dw.h (Zephyr's
- * definitions, and the pure functions that the host tests check),
- * i2c_dw_registers.h (Zephyr's register map), i2c_dw_rp2040.h (the RP2040's
- * FIFO depth and RX batch) and i2c_dw_rp2040_dma_priv.h (the DMA reads,
- * included once below, on the DMA boundary i2c_dw_dma_os.h).  Zephyr's address type mm_reg_t is uintptr_t here
+ * The files follow Zephyr's: this file (i2c_dw.c) and, in internal/,
+ * i2c_dw.h (Zephyr's definitions, and the pure functions that the host
+ * tests check), i2c_dw_registers.h (Zephyr's register map), i2c_dw_rp2040.h
+ * (the RP2040's FIFO depth and RX batch) and i2c_dw_rp2040_dma_priv.h (the
+ * DMA reads, included once below, on the DMA boundary port/i2c_dw_dma_os.h;
+ * the "i2c_dma" state they define is declared in
+ * include/i2c_dw_rp2040_dma.h).  Zephyr's address type mm_reg_t is uintptr_t here
  * (the same type on Arm).
  *
- * This is the OS-independent core.  The OS's part is in i2c_dw_os.h
+ * This is the OS-independent core.  The OS's part is in port/i2c_dw_os.h
  * (semaphores, clock, sleeps, critical section, the form of the messages:
- * i2c_dw_os_impl.h of the OS's build) and in i2c_dw_instance.h of the
- * OS's build, read at the end of this file, which defines
+ * i2c_dw_os_impl.h of the OS's binding, port/<OS>) and in
+ * i2c_dw_instance.h of the binding, read at the end of this file, which defines
  * i2c_dw_os_prepare() and i2c_dw_os_irq_enable() (below) and makes the
  * device of the OS's driver model for each instance: it initializes the
  * semaphores and dw->base of i2c_0_runtime or i2c_1_runtime, calls

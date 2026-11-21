@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: MIT */
-/* <nuttx/semaphore.h> for the host test of the board's I2C part
+/* <nuttx/semaphore.h> for the host test of the I2C core's NuttX binding
  * (tests/i2c_dw_instance.c): the nxsem_*() calls that i2c_dw_os_impl.h and
  * i2c_dw_instance.h use, on the host's POSIX semaphores (ticks of 1 ms,
  * nuttx/clock.h here).

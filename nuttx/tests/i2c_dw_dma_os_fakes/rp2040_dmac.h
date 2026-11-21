@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 /* arch/arm/src/rp2040/rp2040_dmac.h (NuttX 13.1.0) for the host test of the
- * board's i2c_dw_dma_os.c: the types, values and functions it uses, with
+ * I2C core's i2c_dw_dma_os_rp2040.c: the types, values and functions it uses, with
  * NuttX's names; the test implements the functions as rp2040_dmac.c does
  * them, on its array of registers, and records the calls.
  */

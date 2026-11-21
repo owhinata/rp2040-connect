@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MIT */
-/* arch/arm/src/common/arm_internal.h for the host test of the board's
- * i2c_dw_dma_os.c: getreg32() and putreg32() on the DMA's registers, which
+/* arch/arm/src/common/arm_internal.h for the host test of the I2C core's
+ * i2c_dw_dma_os_rp2040.c: getreg32() and putreg32() on the DMA's registers, which
  * the test keeps (tests/i2c_dw_dma_os.c: INTS0 and CHAN_ABORT as the
  * hardware treats a write).
  */

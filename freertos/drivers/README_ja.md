@@ -22,7 +22,7 @@ OS に依存しない部分は `common/compat/`、FreeRTOS の部分は `freerto
 | `drivers/log/` | RAM ログ（`log_ram.c`。リングは `common/log/log_ring.c`） |
 | `drivers/kv/` | KV のフラッシュの境界（`nano_flash_kv.c`）とリンカースクリプトの差し替え（`ld/`、`kv.cmake`） |
 | `drivers/nina/` | NINA のドライバーをビルドに入れる `nina.cmake` だけ。ドライバーは `common/drivers/nina/` にあり、この版の部分は FreeRTOS へのつなぎ `common/drivers/nina/port/freertos/`: 境界 `nina_os.h` の実装（`nina_os.c`）、中継のホスト側（`nina_passthrough_os.c`）、Pico SDK で書いた SPI1 と制御線（`nina_bus_rp2040.c`）、中継のモジュール側（`nina_passthrough_bus_rp2040.c`: UART1、モジュールの線、watchdog の scratch レジスター、LED）。ソケットとインターフェースは Zephyr へのつなぎのもの（`common/drivers/nina/port/zephyr/nina_socket.c`・`nina_net.c`） |
-| `drivers/i2c_dw/` | I2C のコア（`common/drivers/i2c_dw/`。I2C0 と、オプションで I2C1）の FreeRTOS の部分、Pico SDK の DMA での I2C0 の DMA 読み出し（`i2c_dw_dma_os.c`）、自己診断 |
+| `drivers/i2c_dw/` | I2C のドライバー（I2C0 と、オプションで I2C1）をビルドに入れる `i2c_dw.cmake` と、自己診断（`i2c_dw_selftest.[ch]`）。ドライバーは `common/drivers/i2c_dw/` にあり、この版の部分は FreeRTOS へのつなぎ `common/drivers/i2c_dw/port/freertos/`: FreeRTOS と TIMER の上の境界 `i2c_dw_os.h` の実装（`i2c_dw_os_impl.h`）、Zephyr の I2C の API を持つデバイスとその割り込み・リセット・ピン（`i2c_dw_instance.h`）、その起動（`i2c_dw_controllers_rp2040.h`）、Pico SDK の DMA での I2C0 の DMA 読み出し（`i2c_dw_dma_os_rp2040.c`） |
 | `drivers/lsm6dso/` | LSM6DSOX のデバイスの生成（`lsm6dso_instance.h`）と初期化（`nano_lsm6dso.c`）、自己診断 |
 | `drivers/imu/` | 取得サービス・MQTT・時刻同期（`common/imu/`）の組み込み（`imu.cmake`）、`time_sync.c` の前置き |
 | `drivers/wifi/` | Wi-Fi（NINA のコアの `common/drivers/nina/nina_wifi.c` と、その Zephyr へのつなぎ `common/drivers/nina/port/zephyr/nina_net.c`、資格情報、自動再接続）の組み込みと `ifconfig` |
@@ -212,13 +212,26 @@ Pico SDK の既定のままです。整数の割り算は `pico_divider` のハ�
 
 - **ドライバー**: I2C0 と I2C1 は、NuttX 版と共有する I2C のコア（`common/drivers/i2c_dw/`）です（コアそのものと
   Zephyr 版のドライバーとの関係は[設計書](../../design/imu-raw-mqtt-design-ja.md)の §12）。FreeRTOS 版はコアの境界
-  `i2c_dw_os.h` を `drivers/i2c_dw/i2c_dw_os_impl.h`（セマフォ、時計、割り込み禁止）と `i2c_dw_instance.h`
-  （互換層のデバイスと Zephyr の I2C の API、割り込みの登録、リセット、ピン）で実装します。境界の一覧は
-  [`nuttx/drivers/README_ja.md`](../../nuttx/drivers/README_ja.md) の「I2C0」の表です。
+  `port/i2c_dw_os.h` を、FreeRTOS へのつなぎ `common/drivers/i2c_dw/port/freertos/` の `i2c_dw_os_impl.h`（セマフォ、
+  時計、スリープ、割り込み禁止）と `i2c_dw_instance.h`（互換層のデバイスと Zephyr の I2C の API、割り込みの登録、
+  リセット、ピン）で実装します。境界の一覧は [`nuttx/drivers/README_ja.md`](../../nuttx/drivers/README_ja.md) の
+  「I2C0」の表です。
+- **つなぎのカーネルの機能**は互換層ではなく FreeRTOS 自身のものです。セマフォ（`device_sync_sem`、`bus_sem`、DMA
+  読み出しの `rp2040_dma_sem`）はどれも、ドライバー自身のメモリーに置く上限付きの数と待っているタスクの列で
+  （FreeRTOS のキューもヒープも使わない）、インスタンスの起動（`i2c_dw_i2c0_initialize()`）が用意します。`bus_sem` は
+  上限 1（Zephyr の `k_sem` と同じく優先度継承は無く、待つタスクは優先度順）です。give は Zephyr と同じく数を先頭の
+  待ち手に渡し、ドライバー専用の番号 3 のタスク通知で起こします（割り込みハンドラーからは
+  `vTaskNotifyGiveIndexedFromISR()` とハンドラーの終わりの切り替え、タスクからは `xTaskNotifyGiveIndexed()`。
+  `configTASK_NOTIFICATION_ARRAY_ENTRIES` は 4）。待ち手は起こされたことではなく自分の完了の印で結果を決めるので、
+  数を見てから待つまでの間の give は失われず、前から残っていた通知は残りの時間をもう一度待たせるだけです。時間付きの
+  待ちは Zephyr の `k_sem_take(K_MSEC())` と同じく、時間を tick に切り上げて 1 tick 足した長さだけ待ちます（転送の
+  1000 ms は 1 ms の tick で 1001、abort の 1 ms は 2）。スリープも同じ長さを `vTaskDelay()` で待ち、時計は tick ではなく
+  TIMER（`time_us_64()`）の ms です。Zephyr のものとして残るのは、使う側の API（互換層のデバイスと
+  `<zephyr/drivers/i2c.h>`）だけです。
 - **インスタンス**は NuttX 版の Kconfig と同じ形で選びます。`drivers/i2c_dw/i2c_dw.cmake` が `CONFIG_I2C_DW_I2C0` を常に
   定義し（LSM6DSOX がつながっているため。無いと `drivers/lsm6dso/lsm6dso.cmake` が構成を止めます）、CMake の
   オプション `I2C_DW_I2C1`（既定で無効）のとき `CONFIG_I2C_DW_I2C1` を定義します。インスタンスごとのデバイス、
-  割り込みハンドラー、速さの区分、起動（`i2c_dw_controllers.h` の `i2c_dw_i2c0_initialize()`・`i2c_dw_i2c1_initialize()`）は
+  割り込みハンドラー、速さの区分、起動（`i2c_dw_controllers_rp2040.h` の `i2c_dw_i2c0_initialize()`・`i2c_dw_i2c1_initialize()`）は
   それぞれのシンボルの下にあり、API、ピンの設定、リセット、割り込みの接続は共有です。
 - **I2C1**（ボード上では何もつながっていない）は互換層のデバイス `i2c1`（`DEVICE_DT_GET(DT_NODELABEL(i2c1))`、名前は
   `i2c@40048000`）で、`i2c0` と同じ Zephyr の I2C の API を持ち、GPIO18（SDA、Arduino の D6）と GPIO19（SCL、D7）を
@@ -226,8 +239,8 @@ Pico SDK の既定のままです。整数の割り算は `pico_divider` のハ�
   （DMA 読み出しと `i2c_dma` は I2C0 だけ）。`main()` で I2C0 のあとに起動し、失敗してもログに残して `i2c1` が
   準備できないだけです。互換層のデバイスの一覧（`device_get_binding()`）には入りません。`-DNANO_SELFTEST=ON` では
   `selftest` が確かめます（下）。I2C1 はビルドとホストテストで確かめただけで、実際のデバイスで使ったことはありません。
-- **I2C0 の DMA 読み出し**は、コアの 2 つ目の境界 `i2c_dw_dma_os.h` を通して Pico SDK 自身の DMA（`hardware_dma`、
-  `hardware_irq`）を使います。実装は `drivers/i2c_dw/i2c_dw_dma_os.c` です。読み出しごとに
+- **I2C0 の DMA 読み出し**は、コアの 2 つ目の境界 `port/i2c_dw_dma_os.h` を通して Pico SDK 自身の DMA（`hardware_dma`、
+  `hardware_irq`）を使います。実装は `port/freertos/i2c_dw_dma_os_rp2040.c` です。読み出しごとに
   `dma_claim_unused_channel(false)` でチャネルを 2 つ取り（空きが無ければ割り込みで読み、フォールバックを数えます）、
   SDK のチャネル設定で設定し（TX: 16 ビットのコマンド語を IC_DATA_CMD へ、DREQ 32。RX: そこからバイトを、DREQ 33）、
   `dma_channel_start()` で始め、`dma_channel_unclaim()` で返します。起動時に何もリセットしません。
@@ -291,7 +304,7 @@ spinlock、atomic、静的なスレッド、時分割、割り込みを 50 ms �
 | `shell` | 2 つのセッションのシェル、行編集、出力先 |
 | `kv` | フラッシュの境界と KV（Pico SDK のフラッシュ関数の偽物の上） |
 | `nina` | NINA の SPI と線の境界と、`nina_os.h` の FreeRTOS へのつなぎ（互換層なし。tick 1 ms と 4 ms で 2 回ビルド）: READY の割り込み待ち、IRQ の線のエッジの待ち（2 つのタスクを 1 つのエッジで起こす、時間切れ）、共有のバンクの割り込み、ロック、要求、sleep の tick 数、tick の一周をまたぐ時計 |
-| `i2c_dw` | I2C0 の境界とデバイス、Zephyr の I2C の API（2 回作る: i2c0 だけと、`CONFIG_I2C_DW_I2C1` 付き。後者は i2c1 の起動、ピン、転送、応答の無いアドレス、DMA を使わない長い読み出し、影響を受けない i2c0、2 つのタスクからの両バスの転送を加える）。Pico SDK の DMA の偽物の上の DMA の部分（`i2c_dw_dma_os.c`）: チャネルの取得、設定、開始、共有のハンドラー（終了、バスエラー、ほかの利用者のチャネル）、停止、返却。その上のコアの DMA 読み出し: 読み出し、32 バイトの下限、フォールバック、TX と RX のバスエラー、タイムアウト、DMA 読み出しの無効、終わらない停止（隔離）、カウンター。コアの DMA のコマンド語 |
+| `i2c_dw` | I2C0 の境界とデバイス、Zephyr の I2C の API（2 回作る: i2c0 だけと、`CONFIG_I2C_DW_I2C1` 付き。後者は i2c1 の起動、ピン、転送、応答の無いアドレス、DMA を使わない長い読み出し、影響を受けない i2c0、2 つのタスクからの両バスの転送を加える）。つなぎのセマフォ、待ちの tick、スリープ、時計。Pico SDK の DMA の偽物の上の DMA の部分（`i2c_dw_dma_os_rp2040.c`）: チャネルの取得、設定、開始、共有のハンドラー（終了、バスエラー、ほかの利用者のチャネル）、停止、返却。その上のコアの DMA 読み出し: 読み出し、32 バイトの下限、フォールバック、TX と RX のバスエラー、タイムアウト、DMA 読み出しの無効、終わらない停止（隔離）、カウンター。コアの DMA のコマンド語 |
 | `gpio` | GPIO バンク 0 の境界、`gpio0`、FIFO の割り込み |
 | `imu` | アドレスの変換、`hwinfo` |
 | `mqtt` | MQTT の送信（偽のブローカー）。続けて、ホストの `imu-host check` を相手にする回（`host/.venv` が無ければ skip） |

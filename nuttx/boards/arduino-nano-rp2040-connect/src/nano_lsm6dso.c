@@ -50,8 +50,9 @@ static struct i2c_compat_bus g_i2c0_bus;
  * Public Data
  ****************************************************************************/
 
-/* No init function: the board's i2c_dw_i2c0_initialize() has set up the
- * controller; i2c_compat_bind() makes the device ready.
+/* No init function: i2c_dw_i2c0_initialize() (the I2C core's NuttX
+ * binding, called by nano_bringup()) has set up the controller;
+ * i2c_compat_bind() makes the device ready.
  */
 
 DEVICE_DT_DEFINE(i2c0, "i2c@40044000", NULL, &g_i2c0_bus, NULL, NULL);

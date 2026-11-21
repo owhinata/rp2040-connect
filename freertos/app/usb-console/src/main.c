@@ -19,7 +19,7 @@
 #include "app_log.h"
 #include "cli.h"
 #include "fault.h"
-#include "i2c_dw_controllers.h"
+#include "i2c_dw_controllers_rp2040.h"
 #include "imu_cal.h"
 #include "kv_store.h"
 #include "log_ram.h"

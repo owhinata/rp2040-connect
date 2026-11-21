@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: MIT */
-/* <nuttx/compiler.h> for the host test of the board's I2C part
+/* <nuttx/compiler.h> for the host test of the I2C core's NuttX binding
  * (tests/i2c_dw_instance.c): inline_function as NuttX defines it with the
  * optimization on.
  */

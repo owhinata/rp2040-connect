@@ -11,27 +11,29 @@
 # - the shared core of the controller (common/drivers/i2c_dw: i2c_dw.c, the
 #   Zephyr build's i2c_dw.c with its RP2040 DMA reads) and the "i2c_dma"
 #   command (common/shell/i2c_dma_shell.c, the Zephyr build's lines);
-# - the core's boundaries on FreeRTOS and the Pico SDK (this directory:
+# - the core's FreeRTOS binding (common/drivers/i2c_dw/port/freertos:
 #   i2c_dw_os_impl.h, read first by the core; i2c_dw_instance.h, read at its
 #   end: the devices i2c0 and i2c1 with Zephyr's I2C API, the interrupts,
-#   resets and pins; i2c_dw_dma_os.c, the DMA reads' channels on the SDK's
-#   hardware_dma, i2c_dw_dma_os.h of the core), with the SDK's libraries for
-#   them;
+#   resets and pins; i2c_dw_dma_os_rp2040.c, the DMA reads' channels on the
+#   SDK's hardware_dma, i2c_dw_dma_os.h of the core's port/), with the SDK's
+#   libraries for them;
 # - the controllers, as the NuttX build's Kconfig options of the same names
 #   (I2C_DW_I2C0, I2C_DW_I2C1): CONFIG_I2C_DW_I2C0=1 always, and
 #   CONFIG_I2C_DW_I2C1=1 with I2C1, for every source of the target;
-# - the include directories: this directory (i2c_dw_controllers.h, the
-#   boundary's parts) and common/drivers/i2c_dw (i2c_dw_dma_os.h, i2c_dw_rp2040_dma.h:
-#   the "i2c_dma" state, which <zephyr/drivers/i2c/i2c_dw_rp2040_dma.h> of
-#   common/compat includes);
+# - the include directories of the core: include/ (i2c_dw_rp2040_dma.h: the
+#   "i2c_dma" state, which <zephyr/drivers/i2c/i2c_dw_rp2040_dma.h> of
+#   common/compat includes), internal/ (the core's own headers), port/ (the
+#   two boundaries) and port/freertos (the binding's headers, among them
+#   i2c_dw_controllers_rp2040.h, the start of the controllers); and this
+#   directory (i2c_dw_selftest.h);
 # - with SELFTEST, the board's check of I2C0, and of I2C1 with I2C1
-#   (i2c_dw_selftest.c, part of the "selftest" command).
+#   (i2c_dw_selftest.c of this directory, part of the "selftest" command).
 #
 # The application calls i2c_dw_i2c0_initialize() and, with I2C1,
 # i2c_dw_i2c1_initialize() once at the start, before the scheduler
-# (i2c_dw_controllers.h).  Each shared source is compiled with the
+# (i2c_dw_controllers_rp2040.h).  Each shared source is compiled with the
 # prelude of the shared sources (common_prelude.h), as in compat.cmake;
-# i2c_dw_dma_os.c, a source of this directory, without it.
+# i2c_dw_dma_os_rp2040.c, a source of the binding, without it.
 
 get_filename_component(FREERTOS_I2C_DW_DIR ${CMAKE_CURRENT_LIST_DIR} ABSOLUTE)
 
@@ -51,7 +53,7 @@ function(freertos_i2c_dw target)
   )
 
   target_sources(${target} PRIVATE
-    ${FREERTOS_I2C_DW_DIR}/i2c_dw_dma_os.c
+    ${FREERTOS_COMMON_DIR}/drivers/i2c_dw/port/freertos/i2c_dw_dma_os_rp2040.c
     ${i2c_dw_common_sources}
   )
 
@@ -61,7 +63,10 @@ function(freertos_i2c_dw target)
 
   target_include_directories(${target} PRIVATE
     ${FREERTOS_I2C_DW_DIR}
-    ${FREERTOS_COMMON_DIR}/drivers/i2c_dw
+    ${FREERTOS_COMMON_DIR}/drivers/i2c_dw/include
+    ${FREERTOS_COMMON_DIR}/drivers/i2c_dw/internal
+    ${FREERTOS_COMMON_DIR}/drivers/i2c_dw/port
+    ${FREERTOS_COMMON_DIR}/drivers/i2c_dw/port/freertos
   )
 
   target_link_libraries(${target}

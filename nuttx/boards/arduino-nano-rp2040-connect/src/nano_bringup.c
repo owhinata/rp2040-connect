@@ -54,7 +54,7 @@
 
 #if defined(CONFIG_I2C_DW_I2C0) || defined(CONFIG_I2C_DW_I2C1)
 #  include <nuttx/i2c/i2c_master.h>
-#  include "i2c_dw_controllers.h"
+#  include "i2c_dw_controllers_rp2040.h"
 #endif
 
 #ifdef CONFIG_NANO_LSM6DSO

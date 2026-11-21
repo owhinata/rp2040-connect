@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 /* The NuttX part of the DMA reads of I2C0: the boundary of
- * common/drivers/i2c_dw/i2c_dw_dma_os.h on NuttX's own DMA driver
+ * common/drivers/i2c_dw/port/i2c_dw_dma_os.h on NuttX's own DMA driver
  * (arch/arm/src/rp2040/rp2040_dmac.c, CONFIG_RP2040_DMAC), which other code
  * of this build may use as usual.
  *

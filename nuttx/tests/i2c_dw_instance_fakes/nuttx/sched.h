@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: MIT */
-/* <nuttx/sched.h> for the host test of the board's I2C part
+/* <nuttx/sched.h> for the host test of the I2C core's NuttX binding
  * (tests/i2c_dw_instance.c).
  */
 #ifndef TEST_I2C_DW_NUTTX_SCHED_H

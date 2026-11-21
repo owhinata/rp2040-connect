@@ -2,10 +2,9 @@
 /* What the DMA reads of I2C0 (CONFIG_I2C_DW_RP2040_DMA,
  * i2c_dw_rp2040_dma_priv.h) need from the OS's DMA: two channels for one
  * read, set up for I2C0's IC_DATA_CMD, started, stopped and given back.
- * Each OS's part implements these functions on the OS's own DMA driver (the
- * FreeRTOS build's freertos/drivers/i2c_dw/i2c_dw_dma_os.c on the Pico SDK's
- * hardware_dma and hardware_irq, the NuttX build's
- * nuttx/boards/arduino-nano-rp2040-connect/src/i2c_dw_dma_os.c on NuttX's
+ * Each OS's binding implements these functions on the OS's own DMA driver
+ * (port/freertos/i2c_dw_dma_os_rp2040.c on the Pico SDK's hardware_dma and
+ * hardware_irq, port/nuttx/i2c_dw_dma_os_rp2040.c on NuttX's
  * rp2040_dmac.c), so that other code of the same program may use that DMA
  * the usual way.  The core touches no DMA register.
  *

@@ -24,7 +24,7 @@ OS-independent part of the layer is `common/compat/`, the FreeRTOS part `freerto
 | `drivers/log/` | The RAM log (`log_ram.c`; the ring is `common/log/log_ring.c`) |
 | `drivers/kv/` | The flash boundary of the key-value store (`nano_flash_kv.c`) and the linker script override (`ld/`, `kv.cmake`) |
 | `drivers/nina/` | Only `nina.cmake`, which adds the NINA driver to the build. The driver is in `common/drivers/nina/`, and this build's parts are its FreeRTOS binding `common/drivers/nina/port/freertos/`: the `nina_os.h` boundary (`nina_os.c`), the passthrough's host side (`nina_passthrough_os.c`), SPI1 and the module's lines on the Pico SDK (`nina_bus_rp2040.c`), the passthrough's module side (`nina_passthrough_bus_rp2040.c`: UART1, the module's lines, the watchdog's scratch registers, the LED); the sockets and the interface are the Zephyr binding's (`common/drivers/nina/port/zephyr/nina_socket.c`, `nina_net.c`) |
-| `drivers/i2c_dw/` | The FreeRTOS part of the I2C core (`common/drivers/i2c_dw/`; I2C0, and I2C1 as an option), I2C0's DMA reads on the Pico SDK's DMA (`i2c_dw_dma_os.c`), self-test |
+| `drivers/i2c_dw/` | `i2c_dw.cmake`, which adds the I2C driver to the build (I2C0, and I2C1 as an option), and the self-test (`i2c_dw_selftest.[ch]`). The driver is in `common/drivers/i2c_dw/`, and this build's parts are its FreeRTOS binding `common/drivers/i2c_dw/port/freertos/`: the `i2c_dw_os.h` boundary on FreeRTOS and the TIMER (`i2c_dw_os_impl.h`), the devices with Zephyr's I2C API, their interrupts, resets and pins (`i2c_dw_instance.h`), their start (`i2c_dw_controllers_rp2040.h`), I2C0's DMA reads on the Pico SDK's DMA (`i2c_dw_dma_os_rp2040.c`) |
 | `drivers/lsm6dso/` | The LSM6DSOX device (`lsm6dso_instance.h`) and its initialization (`nano_lsm6dso.c`), self-test |
 | `drivers/imu/` | Builds in the acquisition service, MQTT and time synchronization (`common/imu/`; `imu.cmake`), the prelude of `time_sync.c` |
 | `drivers/wifi/` | Builds in Wi-Fi (the NINA core's `common/drivers/nina/nina_wifi.c` with its Zephyr binding `common/drivers/nina/port/zephyr/nina_net.c`, credentials, reconnection) and `ifconfig` |
@@ -249,16 +249,29 @@ zero gives the Pico SDK routines' results, the same in the three builds. `memcpy
 
 - **The driver**: I2C0 and I2C1 are the I2C core shared with the NuttX build (`common/drivers/i2c_dw/`;
   the core itself and its relation to the Zephyr build's driver are in section 12 of the
-  [design](../../design/imu-raw-mqtt-design.md)). The FreeRTOS build implements the core's `i2c_dw_os.h`
-  boundary in `drivers/i2c_dw/i2c_dw_os_impl.h` (semaphores, clock, interrupt masking) and
-  `i2c_dw_instance.h` (the layer's devices with Zephyr's I2C API, the interrupt registration, reset,
-  pins). The boundary is listed in the "I2C0" table of
-  [`nuttx/drivers/README.md`](../../nuttx/drivers/README.md).
+  [design](../../design/imu-raw-mqtt-design.md)). The FreeRTOS build implements the core's
+  `port/i2c_dw_os.h` boundary in its FreeRTOS binding, `common/drivers/i2c_dw/port/freertos/`:
+  `i2c_dw_os_impl.h` (semaphores, clock, sleeps, interrupt masking) and `i2c_dw_instance.h` (the layer's
+  devices with Zephyr's I2C API, the interrupt registration, reset, pins). The boundary is listed in the
+  "I2C0" table of [`nuttx/drivers/README.md`](../../nuttx/drivers/README.md).
+- **The binding's kernel services** are FreeRTOS's own, not the compatibility layer's. Each semaphore
+  (`device_sync_sem`, `bus_sem`, the DMA reads' `rp2040_dma_sem`) is a count with its limit and a list of
+  waiting tasks in the driver's own memory (no FreeRTOS queue, no heap), set up by the instance's start
+  (`i2c_dw_i2c0_initialize()`); `bus_sem` has the limit 1 (no priority inheritance, as Zephyr's `k_sem`;
+  its waiters by priority). A give hands the count to the first waiter, as Zephyr's, and wakes it with its
+  task notification of the driver's own index 3 (`vTaskNotifyGiveIndexedFromISR()` and the switch at the end
+  of an interrupt handler, `xTaskNotifyGiveIndexed()` from a task; `configTASK_NOTIFICATION_ARRAY_ENTRIES` is
+  4). A waiter decides by its done flag, not by the wake-up, so a give between its look at the count and its
+  block is not lost and a notification left from before only makes it wait again for the rest of its time.
+  A timed wait blocks for the time rounded up to ticks plus one tick, as Zephyr's `k_sem_take(K_MSEC())`
+  (the transfer's 1000 ms are 1001 ticks of 1 ms, the abort's 1 ms 2), the sleeps the same with
+  `vTaskDelay()`, and the clock is the TIMER (`time_us_64()`) in ms, not the tick. The only things of
+  Zephyr's left are the API it is used with: the layer's devices and `<zephyr/drivers/i2c.h>`.
 - **The instances** are chosen as in the NuttX build's Kconfig: `drivers/i2c_dw/i2c_dw.cmake` defines
   `CONFIG_I2C_DW_I2C0` always (the LSM6DSOX is on it; `drivers/lsm6dso/lsm6dso.cmake` stops the
   configuration without it) and `CONFIG_I2C_DW_I2C1` with the CMake option `I2C_DW_I2C1` (off by
   default). Each instance has its own device, interrupt handler, speed class and start-up
-  (`i2c_dw_i2c0_initialize()`, `i2c_dw_i2c1_initialize()` in `i2c_dw_controllers.h`) under its symbol;
+  (`i2c_dw_i2c0_initialize()`, `i2c_dw_i2c1_initialize()` in `i2c_dw_controllers_rp2040.h`) under its symbol;
   the API, the pins' setup, the reset and the interrupt's connection are shared.
 - **I2C1** (nothing is connected to it on the board) is the device `i2c1`
   (`DEVICE_DT_GET(DT_NODELABEL(i2c1))`, name `i2c@40048000`), with the same Zephyr I2C API as `i2c0`, on
@@ -268,7 +281,7 @@ zero gives the Pico SDK routines' results, the same in the three builds. `memcpy
   in the layer's device list (`device_get_binding()`). With `-DNANO_SELFTEST=ON` the `selftest`
   command checks it (below). I2C1 has been built and host-tested but never used with a real device.
 - **The DMA reads of I2C0** use the Pico SDK's own DMA (`hardware_dma`, `hardware_irq`) through the core's
-  second boundary, `i2c_dw_dma_os.h`, implemented in `drivers/i2c_dw/i2c_dw_dma_os.c`. Per read, two
+  second boundary, `port/i2c_dw_dma_os.h`, implemented in `port/freertos/i2c_dw_dma_os_rp2040.c`. Per read, two
   channels come from `dma_claim_unused_channel(false)` (none free: the read takes the interrupts and counts a
   fallback); they are set up with the SDK's channel configuration (TX: 16-bit command words to IC_DATA_CMD,
   DREQ 32; RX: bytes from it, DREQ 33), started with `dma_channel_start()` and given back with
@@ -340,7 +353,7 @@ IC_CON has no DMA bit, a 40-byte read leaves the DMA counters alone, and i2c0 st
 | `shell` | Two shell sessions, line editing, output routing |
 | `kv` | The flash boundary and the key-value store (on fakes of the Pico SDK's flash functions) |
 | `nina` | The NINA's SPI and line boundaries and the FreeRTOS binding of `nina_os.h` (no compatibility layer; built twice, with a 1 ms and a 4 ms tick): the wait for READY on its interrupt, the waits for the IRQ line's edges (two tasks woken by one edge, the timeout), the shared bank interrupt, locks, requests, sleeps' ticks, the clock across the tick's wrap |
-| `i2c_dw` | I2C0's boundary and device, Zephyr's I2C API (built twice: i2c0 only, and with `CONFIG_I2C_DW_I2C1`, which adds i2c1's start, pins, transfers, an unanswered address, long reads that never take the DMA, i2c0 unaffected, and transfers on both buses from two tasks); the DMA part (`i2c_dw_dma_os.c`) on fakes of the Pico SDK's DMA: claims, setup, start, the shared handler (end, bus error, other users' channels), stop, release; the core's DMA reads on it: the read, the 32-byte limit, fallbacks, bus errors on TX and RX, timeout, the reads off, a stop that does not end (quarantine), the counters; the core's DMA command words |
+| `i2c_dw` | I2C0's boundary and device, Zephyr's I2C API (built twice: i2c0 only, and with `CONFIG_I2C_DW_I2C1`, which adds i2c1's start, pins, transfers, an unanswered address, long reads that never take the DMA, i2c0 unaffected, and transfers on both buses from two tasks); the binding's semaphores, waits' ticks, sleeps and clock; the DMA part (`i2c_dw_dma_os_rp2040.c`) on fakes of the Pico SDK's DMA: claims, setup, start, the shared handler (end, bus error, other users' channels), stop, release; the core's DMA reads on it: the read, the 32-byte limit, fallbacks, bus errors on TX and RX, timeout, the reads off, a stop that does not end (quarantine), the counters; the core's DMA command words |
 | `gpio` | GPIO bank 0's boundary, `gpio0`, the FIFO interrupt |
 | `imu` | Address conversions, `hwinfo` |
 | `mqtt` | The MQTT transport (fake broker); then a run against the host's `imu-host check` (skipped without `host/.venv`) |

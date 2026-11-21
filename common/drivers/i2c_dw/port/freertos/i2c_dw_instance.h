@@ -5,7 +5,7 @@
  * Zephyr's I2C API (<zephyr/drivers/i2c.h> of freertos/drivers/compat),
  * their interrupts, resets and pins on the Pico SDK, and
  * i2c_dw_i2c0_initialize() and i2c_dw_i2c1_initialize()
- * (i2c_dw_controllers.h).  Each instance's device, interrupt handler,
+ * (i2c_dw_controllers_rp2040.h).  Each instance's device, interrupt handler,
  * speed class and start-up are under its own symbol (CONFIG_I2C_DW_I2C0,
  * CONFIG_I2C_DW_I2C1, i2c_dw.cmake); the functions of the API, the pins'
  * setup, the reset and the interrupt's connection are shared and take the
@@ -37,8 +37,12 @@
  *   (POST_KERNEL 50, after the DMA's 40;   application's start: the same,
  *   i2c0, then i2c1)                       i2c0's after
  *                                          i2c_dw_dma_os_initialize()
- *                                          (i2c_dw_dma_os.c: the DMA
- *                                          interrupt's shared handler)
+ *                                          (i2c_dw_dma_os_rp2040.c: the
+ *                                          DMA interrupt's shared
+ *                                          handler); the semaphores are
+ *                                          made there, in their own
+ *                                          memory (i2c_dw_os_sem_init()
+ *                                          of i2c_dw_os_impl.h)
  *
  * The transfer refuses what the core does not do and Zephyr's driver
  * would do wrong or not at all: a device that is not ready (-ENODEV; in
@@ -63,11 +67,11 @@
  *
  * The interrupt handler runs at the Pico SDK's default priority for the
  * peripherals (0x80, the same as the DMA's and the USB's; see
- * i2c_dw_dma_os.c), calls the core's body and, through
- * i2c_dw_os_sem_give(), the layer's k_sem_give(), which wakes the waiting
- * task with a FromISR task notification and asks for the switch at the end
- * of the handler (PendSV): the task runs right after the handler, not
- * through the timer task.  irq_set_exclusive_handler() panics if a handler
+ * i2c_dw_dma_os_rp2040.c), calls the core's body and, through
+ * i2c_dw_os_sem_give(), the waiting task's notification
+ * (vTaskNotifyGiveIndexedFromISR()), and asks for the switch to the woken
+ * task at the end of the handler (PendSV): the task runs right
+ * after the handler, not through the timer task.  irq_set_exclusive_handler() panics if a handler
  * is already installed on the line (hard_assert(), on in this Release
  * build); nothing else in this build uses I2C0, I2C1 or their pins (the
  * Pico SDK's board header names GPIO12/13 as PICO_DEFAULT_I2C_SDA_PIN/
@@ -77,8 +81,8 @@
  * I2C1 out of reset, which the reset here repeats).
  */
 
-#ifndef FREERTOS_DRIVERS_I2C_DW_I2C_DW_INSTANCE_H
-#define FREERTOS_DRIVERS_I2C_DW_I2C_DW_INSTANCE_H
+#ifndef I2C_DW_INSTANCE_H_
+#define I2C_DW_INSTANCE_H_
 
 #include "hardware/gpio.h"
 #include "hardware/irq.h"
@@ -87,7 +91,7 @@
 
 #include <zephyr/device.h>
 
-#include "i2c_dw_controllers.h"
+#include "i2c_dw_controllers_rp2040.h"
 
 /* The pins of each controller.  i2c0: the board's i2c0 node
  * (arduino_nano_connect.dts, -pinctrl.dtsi), no pulls (the board has its
@@ -256,11 +260,11 @@ static inline int i2c_dw_os_initialize(const struct device *dev, struct i2c_dw_d
 
 	/* i2c_dw_initialize() */
 	dw->base = I2C_DW_INST(dw, I2C0_BASE, I2C1_BASE);
-	(void)k_sem_init(&dw->device_sync_sem, 0, K_SEM_MAX_LIMIT);
-	(void)k_sem_init(&dw->bus_sem, 1, 1);
+	i2c_dw_os_sem_init(&dw->device_sync_sem, 0, I2C_DW_OS_SEM_MAX_LIMIT);
+	i2c_dw_os_sem_init(&dw->bus_sem, 1, 1);
 #ifdef CONFIG_I2C_DW_RP2040_DMA
 	if (i2c_dw_is_i2c0(dw)) {
-		(void)k_sem_init(&rp2040_dma_sem, 0, K_SEM_MAX_LIMIT);
+		i2c_dw_os_sem_init(&rp2040_dma_sem, 0, I2C_DW_OS_SEM_MAX_LIMIT);
 
 		/* The DMA device, which Zephyr initializes before i2c0
 		 * (POST_KERNEL 40).  Without it the reads take the interrupts.
@@ -301,4 +305,4 @@ int i2c_dw_i2c1_initialize(void)
 }
 #endif
 
-#endif /* FREERTOS_DRIVERS_I2C_DW_I2C_DW_INSTANCE_H */
+#endif /* I2C_DW_INSTANCE_H_ */

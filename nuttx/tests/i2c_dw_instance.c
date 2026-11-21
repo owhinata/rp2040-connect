@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MIT */
-/* Host test of the board's NuttX part of the I2C core
- * (boards/arduino-nano-rp2040-connect/src: i2c_dw_os_impl.h,
- * i2c_dw_instance.h, i2c_dw_controllers.h) under the shared core
+/* Host test of the I2C core's NuttX binding
+ * (common/drivers/i2c_dw/port/nuttx: i2c_dw_os_impl.h, i2c_dw_instance.h,
+ * i2c_dw_controllers_rp2040.h) under the shared core
  * (common/drivers/i2c_dw/i2c_dw.c, included here as the board's Make.defs
  * builds it), on fakes of the NuttX headers it uses
  * (tests/i2c_dw_instance_fakes: semaphores on the host's, ticks of 1 ms, the

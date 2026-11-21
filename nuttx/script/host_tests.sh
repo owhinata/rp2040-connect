@@ -194,16 +194,17 @@ cc "${flags[@]}" -D_DEFAULT_SOURCE -D__NuttX__ -Itests/zephyr_mutex_fakes -Idriv
     -o "$out/zephyr_mutex"
 "$out/zephyr_mutex" >/dev/null
 printf 'ok  zephyr_mutex\n'
-# The DMA part of the I2C0 reads (boards/arduino-nano-rp2040-connect/src/i2c_dw_dma_os.c, the
-# boundary of common/drivers/i2c_dw/i2c_dw_dma_os.h) on a fake of NuttX's rp2040_dmac.c and of
-# the DMA's registers (tests/i2c_dw_dma_os_fakes, and the test itself): the channels, their
-# setup, start, interrupt, stop and release.
+# The DMA part of the I2C0 reads (i2c_dw_dma_os_rp2040.c of the I2C core's NuttX binding,
+# common/drivers/i2c_dw/port/nuttx, the boundary of common/drivers/i2c_dw/port/i2c_dw_dma_os.h)
+# on a fake of NuttX's rp2040_dmac.c and of the DMA's registers (tests/i2c_dw_dma_os_fakes, and
+# the test itself): the channels, their setup, start, interrupt, stop and release.
+i2cdir=../common/drivers/i2c_dw
 cc "${flags[@]}" -D_DEFAULT_SOURCE -Itests/i2c_dw_dma_os_fakes -Itests/fakes \
-    -I../common/drivers/i2c_dw tests/i2c_dw_dma_os.c "$link" -o "$out/i2c_dw_dma_os"
+    -I"$i2cdir/port" tests/i2c_dw_dma_os.c "$link" -o "$out/i2c_dw_dma_os"
 "$out/i2c_dw_dma_os" >/dev/null
 printf 'ok  i2c_dw_dma_os\n'
-# The board's NuttX part of the I2C core (boards/arduino-nano-rp2040-connect/src:
-# i2c_dw_os_impl.h, i2c_dw_instance.h) under the shared core (common/drivers/i2c_dw/i2c_dw.c),
+# The I2C core's NuttX binding (common/drivers/i2c_dw/port/nuttx: i2c_dw_os_impl.h,
+# i2c_dw_instance.h) under the shared core (common/drivers/i2c_dw/i2c_dw.c),
 # on fakes of the NuttX headers (tests/i2c_dw_instance_fakes), the board's include/board.h, the
 # controllers' registers and the DMA boundary, with a thread that plays the controllers and
 # their devices: twice, I2C0 only (the default configuration) and with I2C1
@@ -213,9 +214,9 @@ for variant in i2c0 i2c1; do
     i2cdefs=(-DCONFIG_I2C_DW_I2C0=1 -DCONFIG_I2C_DW_RP2040_DMA=1 -DCONFIG_I2C_RESET=1)
     [[ $variant == i2c1 ]] && i2cdefs+=(-DCONFIG_I2C_DW_I2C1=1)
     cc "${flags[@]}" -Wno-sign-compare -D_DEFAULT_SOURCE -pthread "${i2cdefs[@]}" \
-        -Itests/i2c_dw_instance_fakes -Itests/fakes -Iboards/arduino-nano-rp2040-connect/src \
-        -I../common/drivers/i2c_dw -Idrivers/include -I"$clog" tests/i2c_dw_instance.c "$link" \
-        -o "$out/i2c_dw_instance_$variant"
+        -Itests/i2c_dw_instance_fakes -Itests/fakes -I"$i2cdir" -I"$i2cdir/include" \
+        -I"$i2cdir/internal" -I"$i2cdir/port" -I"$i2cdir/port/nuttx" -Idrivers/include -I"$clog" \
+        tests/i2c_dw_instance.c "$link" -o "$out/i2c_dw_instance_$variant"
     timeout 60 "$out/i2c_dw_instance_$variant" >/dev/null
 done
 printf 'ok  i2c_dw_instance (I2C0, and I2C1 with CONFIG_I2C_DW_I2C1)\n'

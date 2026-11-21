@@ -1,17 +1,18 @@
 /* SPDX-License-Identifier: MIT */
-/* The part of the Pico SDK that the FreeRTOS part of the I2C core uses
- * (freertos/drivers/i2c_dw: i2c_dw_os_impl.h, i2c_dw_instance.h,
- * i2c_dw_dma_os.c), for its host test (freertos/tests/i2c_dw/main.c, which
- * implements the functions: they record the calls).  pico.h and the
+/* The part of the Pico SDK that the I2C core's FreeRTOS binding uses
+ * (common/drivers/i2c_dw/port/freertos: i2c_dw_os_impl.h, i2c_dw_instance.h,
+ * i2c_dw_dma_os_rp2040.c), for its host test (freertos/tests/i2c_dw/main.c,
+ * which implements the functions: they record the calls).  pico.h and the
  * hardware/ headers next to this one include it.  Names and values as in
- * the SDK (SYS_CLK_HZ of hardware/platform_defs.h, hardware_gpio,
+ * the SDK (SYS_CLK_HZ of hardware/platform_defs.h,
+ * __get_current_exception() of pico/platform.h, hardware_gpio,
  * hardware_resets, hardware_irq, hardware/regs/intctrl.h, hardware_sync,
- * hardware_dma, hardware/regs/dma.h, hardware/regs/dreq.h), except the
- * registers: the I2C0 and I2C1 blocks' are the arrays fake_i2c0_regs and
- * fake_i2c1_regs, the DMA's the
- * structure fake_dma_hw (with the channels' addresses as uintptr_t, a
- * host's pointers being wider than the RP2040's registers, and only the
- * registers that i2c_dw_dma_os.c uses).
+ * hardware_timer, hardware_dma, hardware/regs/dma.h, hardware/regs/dreq.h),
+ * except the registers: the I2C0 and I2C1 blocks' are the arrays
+ * fake_i2c0_regs and fake_i2c1_regs, the DMA's the structure fake_dma_hw
+ * (with the channels' addresses as uintptr_t, a host's pointers being wider
+ * than the RP2040's registers, and only the registers that
+ * i2c_dw_dma_os_rp2040.c uses).
  */
 
 #ifndef FREERTOS_TESTS_I2C_DW_PICO_FAKE_PICO_I2C_FAKE_H
@@ -25,6 +26,16 @@ typedef unsigned int uint;
 
 /* hardware/platform_defs.h */
 #define SYS_CLK_HZ 125000000u
+
+/* pico/platform.h: the exception being handled (IPSR), 0 in a task; the
+ * test's interrupt handlers, run by its tasks, count as one (main.c).
+ */
+uint __get_current_exception(void);
+
+/* hardware_timer: the TIMER's microseconds, the host's monotonic clock
+ * (main.c).
+ */
+uint64_t time_us_64(void);
 
 /* hardware/regs/addressmap.h: the registers of I2C0 and I2C1 (0x100 bytes
  * each).

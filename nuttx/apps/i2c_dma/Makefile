@@ -11,8 +11,9 @@
 # prelude of the shared sources (common_prelude.h of the compatibility
 # layer, -include).  The state it reads and sets is in the I2C0 core
 # (common/drivers/i2c_dw/i2c_dw.c, which the flat build links in through
-# the board); its header is i2c_dw_rp2040_dma.h there, which the command
-# includes as <zephyr/drivers/i2c/i2c_dw_rp2040_dma.h> (common/compat).
+# the board); its header is include/i2c_dw_rp2040_dma.h there, which the
+# command includes as <zephyr/drivers/i2c/i2c_dw_rp2040_dma.h>
+# (common/compat).
 #
 # Include paths: the Zephyr compatibility layer ($(TOPDIR)/external/compat
 # and common/compat: <zephyr/shell/shell.h>,

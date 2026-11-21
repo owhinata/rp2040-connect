@@ -19,9 +19,9 @@
  * as if the core called the OS directly (the interrupt and transfer paths run
  * for every FIFO read at 6667 Hz).
  *
- * Each OS's build puts these files on the include path of i2c_dw.c (the
- * NuttX build's are in nuttx/boards/arduino-nano-rp2040-connect/src;
- * nuttx/drivers/README.md, "I2C0"):
+ * Each OS's binding has these files in port/<OS> (port/freertos,
+ * port/nuttx), which its build puts on the include path of i2c_dw.c with
+ * the core's include/, internal/ and port/:
  *
  *   i2c_dw_os_impl.h     the types, macros and inline functions below,
  *                        CONFIG_I2C_DW_I2C0 and CONFIG_I2C_DW_I2C1 defined

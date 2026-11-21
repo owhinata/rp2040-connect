@@ -12,9 +12,9 @@
  *
  * The bus is the device of its driver, as in Zephyr: i2c0 is the I2C0
  * controller of the shared core (common/drivers/i2c_dw/i2c_dw.c), whose
- * FreeRTOS part (freertos/drivers/i2c_dw/i2c_dw_instance.h) defines the
- * device and its API table.  The calls go to the driver directly, without
- * the conversion of the NuttX build:
+ * FreeRTOS binding (common/drivers/i2c_dw/port/freertos/i2c_dw_instance.h)
+ * defines the device and its API table.  The calls go to the driver
+ * directly, without the conversion of the NuttX build:
  *
  *   i2c_write():            1 message WRITE|STOP
  *   i2c_read():             1 message READ|STOP
@@ -64,7 +64,7 @@
 #define I2C_BITRATE_FAST_PLUS 1000000U
 
 /* The message flags (the same definitions as the shared core's
- * common/drivers/i2c_dw/i2c_dw.h, which reads them).
+ * common/drivers/i2c_dw/internal/i2c_dw.h, which reads them).
  */
 
 #define I2C_MSG_WRITE        (0U << 0U)

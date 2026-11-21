@@ -30,7 +30,7 @@
  *              8 bits, write increment, DREQ 33, chained to itself,
  *              enabled), IC_DMA_TDLR 8, IC_DMA_RDLR 0, IC_DMA_CR 0 after,
  *              neither channel's interrupt left enabled and both unclaimed
- *              again (i2c_dw_dma_os.c); then the same read
+ *              again (i2c_dw_dma_os_rp2040.c); then the same read
  *              with the DMA reads off: 0, the counters unchanged, IC_CON
  *              without RX_FIFO_FULL_HLD_CTRL (0x165)
  *   i2c1       with CONFIG_I2C_DW_I2C1 only (-DI2C_DW_I2C1=ON), nothing

@@ -49,10 +49,18 @@ run lsm6dso_zero "${flags[@]}" "${inc[@]}" tests/lsm6dso_zero.c "$lsm/lsm6dso_ze
 run stream_stop "${flags[@]}" "${inc[@]}" tests/stream_stop.c \
     "$lsm/lsm6dso_fifo.c" "$lsm/lsm6dso_cal.c"
 
-# The I2C core's definitions (drivers/i2c_dw/i2c_dw.h): SCL counts, speeds and the
+# The I2C core's definitions (drivers/i2c_dw/internal/i2c_dw.h): SCL counts, speeds and the
 # IC_DATA_CMD words of whole transfers against the Zephyr build's, and the NuttX build's
 # message flags.
-run i2c_dw "${flags[@]}" -Idrivers/i2c_dw tests/i2c_dw.c
+run i2c_dw "${flags[@]}" -Idrivers/i2c_dw/internal tests/i2c_dw.c
+# The headers for the I2C driver's users (drivers/i2c_dw/include) compile with that directory
+# alone: none of them reads internal/ or port/.
+i2c_dw_public=(drivers/i2c_dw/include/*.h)
+for f in "${i2c_dw_public[@]}"; do
+    printf '#include "%s"\n' "${f##*/}" | cc "${flags[@]}" -Idrivers/i2c_dw/include \
+        -fsyntax-only -x c -
+done
+printf 'ok  i2c_dw_public_headers (%d files)\n' "${#i2c_dw_public[@]}"
 
 # The compatibility layer on the fake kernel (tests/zephyr_fakes: the OS part, zephyr_os*.h,
 # and its functions): RTIO (pool, completions, multishot, cancellation, work queue), work items

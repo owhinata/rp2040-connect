@@ -108,16 +108,22 @@ endif
 # I2C0 (the LSM6DSOX and the ATECC608A) and I2C1, in place of the in-tree
 # rp2040_i2c.c (RP2040_I2C off).  Their OS-independent core is in
 # common/drivers/i2c_dw (i2c_dw.c, one source for both instances); its
-# NuttX part is here (i2c_dw_os_impl.h, i2c_dw_instance.h), found through
-# the board's -I below.  VPATH and DEPPATH are relative to the directory
-# where the board's objects are made, through the board symlink, as mkdeps
-# needs.
+# NuttX binding is in common/drivers/i2c_dw/port/nuttx (i2c_dw_os_impl.h,
+# i2c_dw_instance.h, read by the core, and i2c_dw_controllers_rp2040.h,
+# their start, which nano_bringup.c reads).  The -I below: the core's
+# include/, internal/ and port/ (the boundaries), and port/nuttx.  VPATH
+# and DEPPATH are relative to the directory where the board's objects are
+# made, through the board symlink, as mkdeps needs.
 
 ifneq ($(CONFIG_I2C_DW_I2C0)$(CONFIG_I2C_DW_I2C1),)
+I2C_DW_DIR = $(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)drivers$(DELIM)i2c_dw
 CSRCS += i2c_dw.c
 DEPPATH += --dep-path board/../../../../common/drivers/i2c_dw
 VPATH += :board/../../../../common/drivers/i2c_dw
-CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)drivers$(DELIM)i2c_dw
+CFLAGS += ${INCDIR_PREFIX}$(I2C_DW_DIR)$(DELIM)include
+CFLAGS += ${INCDIR_PREFIX}$(I2C_DW_DIR)$(DELIM)internal
+CFLAGS += ${INCDIR_PREFIX}$(I2C_DW_DIR)$(DELIM)port
+CFLAGS += ${INCDIR_PREFIX}$(I2C_DW_DIR)$(DELIM)port$(DELIM)nuttx
 endif
 
 # The i2c0 and lsm6dsox devices of the Zephyr compatibility layer
@@ -135,12 +141,15 @@ endif
 
 # Its DMA reads: the two DMA channels on NuttX's own DMA driver
 # (arch/arm/src/rp2040/rp2040_dmac.c, RP2040_DMAC), the boundary
-# common/drivers/i2c_dw/i2c_dw_dma_os.h (found through the -I above).  The
-# reads themselves and their command words are part of i2c_dw.c
-# (i2c_dw_rp2040_dma_priv.h).
+# common/drivers/i2c_dw/port/i2c_dw_dma_os.h: i2c_dw_dma_os_rp2040.c of the
+# core's NuttX binding (VPATH and DEPPATH as for i2c_dw.c above).  The reads
+# themselves and their command words are part of i2c_dw.c
+# (internal/i2c_dw_rp2040_dma_priv.h).
 
 ifeq ($(CONFIG_I2C_DW_RP2040_DMA),y)
-CSRCS += i2c_dw_dma_os.c
+CSRCS += i2c_dw_dma_os_rp2040.c
+DEPPATH += --dep-path board/../../../../common/drivers/i2c_dw/port/nuttx
+VPATH += :board/../../../../common/drivers/i2c_dw/port/nuttx
 endif
 
 # The NINA passthrough mode's module side (nina_passthrough_bus.h of

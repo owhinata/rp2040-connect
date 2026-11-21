@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MIT */
-/* arch/arm/src/rp2040/rp2040_gpio.h for the host test of the board's I2C
- * part (tests/i2c_dw_instance.c implements the functions: they record the
+/* arch/arm/src/rp2040/rp2040_gpio.h for the host test of the I2C core's NuttX
+ * binding (tests/i2c_dw_instance.c implements the functions: they record the
  * calls).  NuttX's names and signatures.
  */
 #ifndef TEST_I2C_DW_NUTTX_RP2040_GPIO_H

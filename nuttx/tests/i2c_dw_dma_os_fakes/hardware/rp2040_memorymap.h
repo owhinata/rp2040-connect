@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 /* arch/arm/src/rp2040/hardware/rp2040_memorymap.h for the host test of the
- * board's i2c_dw_dma_os.c: the DMA's base is the test's array of registers,
+ * I2C core's i2c_dw_dma_os_rp2040.c: the DMA's base is the test's array of registers,
  * and setbits_reg32() and clrbits_reg32() (writes to the atomic set and clear
  * aliases) are the test's functions.
  */

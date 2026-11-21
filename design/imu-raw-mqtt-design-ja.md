@@ -737,7 +737,7 @@ Zephyr の名前のまま提供する互換層の上でビルドする。ホス�
 | `common/drivers/lsm6dso/`、`sensor_shell/` | LSM6DSO のドライバー本体と FIFO のストリーム、sensor シェル | 3 版 |
 | `common/drivers/nina/` | NINA のコア（SPI の転送層、ソケット、名前解決、Wi-Fi の操作 `nina_wifi.[ch]`、ソケットの待ち `nina_wait.[ch]`、宣言 `nina_proto.h`）と esptool の中継 `nina_passthrough.[ch]`（境界 `nina_passthrough_bus.h`・`nina_passthrough_os.h`）。OS の定義を持たない | 3 版 |
 | `common/drivers/nina/port/zephyr/`、`nuttx/`、`freertos/` | コアの Zephyr の API へのつなぎ（Wi-Fi 管理とインターフェース、カーネルの機能、ソケットのオフロード、devicetree binding とオプション）、NuttX の API へのつなぎ（`wlan0` と wapi、アプリが使う Zephyr の Wi-Fi 管理、カーネルの機能、usrsock）、FreeRTOS と Pico SDK へのつなぎ（カーネルの機能 `nina_os.c`: ロック、要求、sleep、時計、READY と IRQ の線のエッジ割り込みでの待ち）。どれにも中継のホスト側 `nina_passthrough_os.c`（Zephyr の CDC ACM、cdcacm、TinyUSB） | `zephyr/` は Zephyr 版と FreeRTOS 版（Wi-Fi とソケットのつなぎを互換層の上で）、`nuttx/` は NuttX 版、`freertos/` は FreeRTOS 版 |
-| `common/drivers/i2c_dw/` | I2C のコア（I2C0 と I2C1。ファイル名は Zephyr のものに合わせる: `i2c_dw.c`・`i2c_dw.h`・`i2c_dw_registers.h`・`i2c_dw_rp2040.h`・`i2c_dw_rp2040_dma_priv.h`（DMA 読み出しとそのコマンド語））、`i2c_dma` の関数の宣言 `i2c_dw_rp2040_dma.h`、境界 `i2c_dw_os.h`・`i2c_dw_dma_os.h` | NuttX 版と FreeRTOS 版（Zephyr 版はパッチ 0003 の同じドライバー。下） |
+| `common/drivers/i2c_dw/` | I2C のコア（I2C0 と I2C1。ファイル名は Zephyr のものに合わせる: 直下に `i2c_dw.c`、`internal/` に `i2c_dw.h`・`i2c_dw_registers.h`・`i2c_dw_rp2040.h`・`i2c_dw_rp2040_dma_priv.h`（DMA 読み出しとそのコマンド語））、`i2c_dma` の関数の宣言 `include/i2c_dw_rp2040_dma.h`、`port/` に境界 `i2c_dw_os.h`・`i2c_dw_dma_os.h`、`port/nuttx/`・`port/freertos/` にコアのつなぎ | NuttX 版と FreeRTOS 版（Zephyr 版はパッチ 0003 の同じドライバー。下） |
 | `common/drivers/stmemsc/` | ST のドライバーと Zephyr の I2C の API のつなぎ | NuttX 版と FreeRTOS 版 |
 | `common/compat/` | 互換層の OS に依存しない部分と、Zephyr のライブラリーの写し（KV の NVS と settings、Wi-Fi の資格情報、getopt など） | NuttX 版と FreeRTOS 版 |
 | `common/shell/`、`common/log/` | Zephyr のシェルのコマンド処理の再現、`i2c_dma`・`nina` コマンド、`LOG_*` と RAM ログのリング | NuttX 版と FreeRTOS 版（`i2c_dma` は 3 版、`nina` は Zephyr 版と FreeRTOS 版） |
@@ -748,7 +748,7 @@ OS ごとの部分は、狭い境界のヘッダーの実装として各版の�
   `nuttx/drivers/compat/`、`freertos/drivers/compat/`。
 - 優先度の対応 `priorities_os.h`（`common/compat/priorities.h` が読む）、NINA の `nina_os.h`・`nina_bus.h`（`nina_os.h` の各版の
   実装はコアのつなぎ `common/drivers/nina/port/zephyr/`・`nuttx/`・`freertos/` にある）、I2C の
-  `i2c_dw_os.h` と DMA 読み出しの `i2c_dw_dma_os.h`、KV の flash の `nano_flash_kv.h`、シェルのバックエンド `zshell_os.h`、ログの `app_log_os.h`・`log_ram.h`。
+  `i2c_dw_os.h` と DMA 読み出しの `i2c_dw_dma_os.h`（実装はコアのつなぎ `common/drivers/i2c_dw/port/nuttx/`・`freertos/` にある）、KV の flash の `nano_flash_kv.h`、シェルのバックエンド `zshell_os.h`、ログの `app_log_os.h`・`log_ram.h`。
 - 版ごとに違う数行: `sensor_shell_os.h`（`sensor get` の待ち）、`wifi_profile_os.h`、`lsm6dso_instance.h`（デバイスの
   生成）、`kv_store_os.h`（`kv wipe` の有無）。
 
@@ -763,13 +763,15 @@ OS ごとの部分は、狭い境界のヘッダーの実装として各版の�
   LSM6DSOX に要るので、NuttX 版では `CONFIG_I2C_DW_I2C0`（既定で有効）、FreeRTOS 版では常にビルドする。i2c1 は NuttX 版の
   `CONFIG_I2C_DW_I2C1`、FreeRTOS 版の `-DI2C_DW_I2C1=ON`（どちらも既定で無効）のときだけ。i2c1 はビルドとホストテストで
   確かめただけで、実際のデバイスで使ったことはない。
-- **OS の部分**: 境界 `i2c_dw_os.h`（セマフォ、時計、割り込みの登録、リセットとピン、OS のドライバーモデルへの接続）を
-  各版が実装する。
+- **OS の部分**: 境界 `port/i2c_dw_os.h`（セマフォ、時計、割り込みの登録、リセットとピン、OS のドライバーモデルへの接続）を
+  各版が、その OS へのコアのつなぎ（`port/nuttx/`、`port/freertos/`）で、その OS 自身の機能の上に実装する（FreeRTOS への
+  つなぎは FreeRTOS のセマフォと遅延、Pico SDK の上。互換層のものは、使う側の API である Zephyr の I2C の API だけ）。
 - **DMA 読み出し**（`CONFIG_I2C_DW_RP2040_DMA`）: i2c0 だけ。条件、コマンド語、しきい値、停止、隔離、カウンターはパッチと
   同じ。パッチが Zephyr の DMA API（と、停止の中の Pico SDK のレジスターの関数）を呼ぶところで、コアは DMA の境界
-  `i2c_dw_dma_os.h` を 1 つずつ呼ぶ。違うのは、チャネルの設定（`dma_config()` とその構造体の代わりに TX 側と RX 側の
+  `port/i2c_dw_dma_os.h` を 1 つずつ呼ぶ。違うのは、チャネルの設定（`dma_config()` とその構造体の代わりに TX 側と RX 側の
   2 つの呼び出し）と、停止の待ち（すべてのチャネルの abort ではなく、各チャネル自身の abort を待つ）だけ。境界は各版が
-  OS 自身の DMA ドライバー（FreeRTOS 版は Pico SDK のもの、NuttX 版は `rp2040_dmac.c`）の上に実装する。コアは DMA の
+  OS 自身の DMA ドライバー（FreeRTOS 版は Pico SDK のもの、NuttX 版は `rp2040_dmac.c`）の上に実装する（各つなぎの
+  `i2c_dw_dma_os_rp2040.c`）。コアは DMA の
   レジスターに触れず、境界の関数はどれも DMA のほかの利用者を待たない。
 - **DMA を使うほかのコード**: 同じプログラムのほかのコードも、OS の DMA を通常どおり使える。読み出しが持つ 2 つの
   チャネルに触れない、DMA のブロックをリセットしない、チャネルが共有するレジスター（割り込みの有効・状態、CHAN_ABORT）を
@@ -777,7 +779,7 @@ OS ごとの部分は、狭い境界のヘッダーの実装として各版の�
 - **`i2c_dma` コマンド**: 3 版とも `common/shell/i2c_dma_shell.c`（NuttX 版は `zshell.c` の上）。パッチ後のドライバーと
   コアが同じ 3 つの関数を定義し、コマンドはその宣言を `<zephyr/drivers/i2c/i2c_dw_rp2040_dma.h>` で読む。Zephyr 版では
   パッチが Zephyr のツリーに足すヘッダー、NuttX 版と FreeRTOS 版では `common/compat` の同名のヘッダーで、後者はコアの
-  `common/drivers/i2c_dw/i2c_dw_rp2040_dma.h` を読む。
+  `common/drivers/i2c_dw/include/i2c_dw_rp2040_dma.h`（ドライバーを使う側のための唯一のヘッダー）を読む。
 
 パッチ後のドライバーとコアは次のようにしてそろえて保つ。
 
