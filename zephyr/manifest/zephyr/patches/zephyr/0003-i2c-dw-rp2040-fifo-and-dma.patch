@@ -22,6 +22,14 @@ the bytes read, its semaphore, events and channels are static, for i2c0
 alone; struct i2c_dw_dev_config only gains rp2040_dma_active and
 rp2040_dma_quarantined, which every instance's interrupt and transfer read.
 
+On every controller, i2c_dw_transfer() refuses a transfer with a
+message of no bytes (-ENOTSUP) before it sends any of its messages: the
+controller cannot transfer no bytes, and the one byte that upstream's
+workaround sends instead is one the caller did not ask for.
+i2c_dw_recovery_bus(), the driver's recover_bus, returns -ENOTSUP when no
+wrapper registered a recovery callback; the transfer's own recovery of a
+stuck bus goes on as upstream's.
+
 The driver defines i2c_dw_rp2040_dma_get_stats(),
 i2c_dw_rp2040_dma_enabled() and i2c_dw_rp2040_dma_set_enabled()
 (<zephyr/drivers/i2c/i2c_dw_rp2040_dma.h>), the counters and switch of
@@ -55,7 +63,7 @@ index 4e1c923..0623e5e 100644
  	bool "Extended DW features"
  	help
 diff --git a/drivers/i2c/i2c_dw.c b/drivers/i2c/i2c_dw.c
-index 1dff501..5079366 100644
+index 1dff501..059e976 100644
 --- a/drivers/i2c/i2c_dw.c
 +++ b/drivers/i2c/i2c_dw.c
 @@ -51,6 +51,11 @@ LOG_MODULE_REGISTER(i2c_dw);
@@ -70,7 +78,19 @@ index 1dff501..5079366 100644
  /*
   * @param dev: DW I2C device instance
   * @param wrapper_dev: Callers device instance
-@@ -359,15 +364,20 @@ static inline void i2c_dw_data_ask(const struct device *dev)
+@@ -120,6 +125,11 @@ int i2c_dw_recovery_bus(const struct device *dev)
+ 	int ret = 0;
+ 	struct i2c_dw_dev_config *const dw = dev->data;
+ 
++	/* Without a wrapper's callback there is no recovery. */
++	if (!dw->recover_bus_cb) {
++		return -ENOTSUP;
++	}
++
+ 	ret = pm_device_runtime_get(dev);
+ 	if (ret < 0) {
+ 		return ret;
+@@ -359,15 +369,20 @@ static inline void i2c_dw_data_ask(const struct device *dev)
  	ic_comp_param_1.raw = read_comp_param_1(reg_base);
  	rx_buffer_depth = ic_comp_param_1.bits.rx_buffer_depth + 1;
  	tx_buffer_depth = ic_comp_param_1.bits.tx_buffer_depth + 1;
@@ -95,7 +115,7 @@ index 1dff501..5079366 100644
  	}
  
  	/* How many empty slots in TX FIFO (as command queue) */
-@@ -377,6 +387,20 @@ static inline void i2c_dw_data_ask(const struct device *dev)
+@@ -377,6 +392,20 @@ static inline void i2c_dw_data_ask(const struct device *dev)
  	cnt = MIN(rx_buffer_depth, dw->request_bytes);
  	cnt = min3(tx_empty, rx_empty, cnt);
  
@@ -116,7 +136,7 @@ index 1dff501..5079366 100644
  	while (cnt > 0) {
  		/* Tell controller to get another byte */
  		data = IC_DATA_CMD_CMD;
-@@ -436,6 +460,13 @@ static void i2c_dw_data_read(const struct device *dev)
+@@ -436,6 +465,13 @@ static void i2c_dw_data_read(const struct device *dev)
  		}
  	}
  #endif
@@ -130,7 +150,7 @@ index 1dff501..5079366 100644
  	/* Nothing to receive anymore */
  	if (dw->xfr_len == 0U) {
  		dw->state &= ~I2C_DW_CMD_RECV;
-@@ -532,6 +563,28 @@ static void i2c_dw_isr(const struct device *port)
+@@ -532,6 +568,28 @@ static void i2c_dw_isr(const struct device *port)
  	 * so there is no need to read the register multiple times.
  	 */
  	intr_stat.raw = read_intr_stat(reg_base);
@@ -159,7 +179,7 @@ index 1dff501..5079366 100644
  
  	/*
  	 * Causes of an interrupt:
-@@ -576,6 +629,13 @@ static void i2c_dw_isr(const struct device *port)
+@@ -576,6 +634,13 @@ static void i2c_dw_isr(const struct device *port)
  		/* Check if the RX FIFO reached threshold */
  		if (intr_stat.bits.rx_full) {
  			i2c_dw_data_read(port);
@@ -173,7 +193,7 @@ index 1dff501..5079366 100644
  		}
  
  #ifdef CONFIG_I2C_TARGET
-@@ -606,6 +666,12 @@ static void i2c_dw_isr(const struct device *port)
+@@ -606,6 +671,12 @@ static void i2c_dw_isr(const struct device *port)
  
  		/* STOP detected: finish processing this message */
  		if (intr_stat.bits.stop_det) {
@@ -186,7 +206,7 @@ index 1dff501..5079366 100644
  			value = read_clr_stop_det(reg_base);
  #if CONFIG_I2C_ALLOW_NO_STOP_TRANSACTIONS
  			dw->need_setup = true;
-@@ -726,6 +792,11 @@ static int i2c_dw_setup(const struct device *dev, uint16_t target_address)
+@@ -726,6 +797,11 @@ static int i2c_dw_setup(const struct device *dev, uint16_t target_address)
  	}
  
  	ic_con.bits.restart_en = 1U;
@@ -198,7 +218,23 @@ index 1dff501..5079366 100644
  
  	/* Set addressing mode - (initialization = 7 bit) */
  	if (I2C_MSG_ADDR_10_BITS & dw->app_config) {
-@@ -867,6 +938,13 @@ static int i2c_dw_transfer(const struct device *dev, struct i2c_msg *msgs, uint8
+@@ -855,6 +931,15 @@ static int i2c_dw_transfer(const struct device *dev, struct i2c_msg *msgs, uint8
+ 
+ 	__ASSERT_NO_MSG(msgs);
+ 
++	/* DW HW does not support 0 byte transfers: a transfer with an empty
++	 * message is refused before any of its messages is sent.
++	 */
++	for (uint8_t i = 0; i < num_msgs; i++) {
++		if (msgs[i].len == 0U) {
++			return -ENOTSUP;
++		}
++	}
++
+ 	ret = pm_device_runtime_get(dev);
+ 	if (ret < 0) {
+ 		return ret;
+@@ -867,6 +952,13 @@ static int i2c_dw_transfer(const struct device *dev, struct i2c_msg *msgs, uint8
  		return ret;
  	}
  
@@ -212,7 +248,19 @@ index 1dff501..5079366 100644
  	/* check if the state is sda/scl stuck at low state */
  	if (dw->state & I2C_DW_STUCK_ERR_MASK) {
  		/* try to recovery */
-@@ -953,6 +1031,26 @@ static int i2c_dw_transfer(const struct device *dev, struct i2c_msg *msgs, uint8
+@@ -926,11 +1018,6 @@ static int i2c_dw_transfer(const struct device *dev, struct i2c_msg *msgs, uint8
+ 
+ 	/* Process all the messages */
+ 	while (msg_left > 0) {
+-		/* Workaround for I2C scanner as DW HW does not support 0 byte transfers.*/
+-		if ((cur_msg->len == 0) && (cur_msg->buf != NULL)) {
+-			cur_msg->len = 1;
+-		}
+-
+ 		pflags = dw->xfr_flags;
+ 
+ 		dw->xfr_buf = cur_msg->buf;
+@@ -953,6 +1040,26 @@ static int i2c_dw_transfer(const struct device *dev, struct i2c_msg *msgs, uint8
  			dw->request_bytes = dw->xfr_len;
  		}
  
@@ -239,7 +287,7 @@ index 1dff501..5079366 100644
  		/* Enable interrupts to trigger ISR */
  		if (test_bit_con_master_mode(reg_base)) {
  			/* Enable necessary interrupts */
-@@ -1115,11 +1213,18 @@ static int i2c_dw_runtime_configure(const struct device *dev, uint32_t config)
+@@ -1115,11 +1222,18 @@ static int i2c_dw_runtime_configure(const struct device *dev, uint32_t config)
  		return ret;
  	}
  

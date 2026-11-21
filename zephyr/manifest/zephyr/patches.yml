@@ -39,7 +39,7 @@ patches:
       CONFIG_RP2040_ROM_MEM_OPS: memcpy() and memset() through the bootrom's
       routines (--wrap), enabled in the app's prj.conf.
   - path: zephyr/0003-i2c-dw-rp2040-fifo-and-dma.patch
-    sha256sum: 5f7915171f8b4c6c980184953246afce7f436528460914bdd2d7db2b1e858773
+    sha256sum: 5041f3b42e2e7360dd87f98b09df8eaecdf819e3590f4c254b9b781e6023ca68
     module: zephyr
     author: rp2040-connect
     email: noreply@example.invalid
@@ -51,3 +51,14 @@ patches:
       DMA controller, and the functions of the app's "i2c_dma" command in
       <zephyr/drivers/i2c/i2c_dw_rp2040_dma.h>), enabled in the app's
       prj.conf.
+  - path: zephyr/0004-i2c-shell-scan-not-supported.patch
+    sha256sum: a4158eaad8dc586a8124cf246ab408ba891971a4f147fedd405decd74026cc83
+    module: zephyr
+    author: rp2040-connect
+    email: noreply@example.invalid
+    date: 2026-11-21
+    upstreamable: false
+    comments: |
+      The shell's "i2c scan" stops and returns -ENOTSUP, with a message,
+      when the controller refuses its zero-length probes (the DesignWare
+      driver of patch 0003), instead of reporting "0 devices found".

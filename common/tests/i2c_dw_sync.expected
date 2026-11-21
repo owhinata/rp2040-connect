@@ -252,6 +252,14 @@
 @@
 -uint32_t value = 0;
 -__ASSERT_NO_MSG(msgs);
+-for (uint8_t i = 0;
+-i < num_msgs;
++for (i = 0;
++i < count;
+@@
+-if (msgs[i].len == 0U) {
++if (I2C_DW_OS_MSG_LEN(&msgs[i]) == 0U) {
+@@
 -ret = pm_device_runtime_get(dw);
 -if (ret < 0) {
 -return ret;
@@ -277,24 +285,17 @@
 @@
 -if (IS_ENABLED(CONFIG_I2C_DW_PM_POLICY_STATE_LOCK)) {
 -pm_policy_state_lock_get(PM_STATE_SUSPEND_TO_IDLE, PM_ALL_SUBSTATES);
-+while (msg_left > 0) {
+-}
+-pm_device_busy_set(dw);
+@@
 +i = count - msg_left;
 +mflags = I2C_DW_OS_MSG_FLAGS(msgs, cur_msg, i, msg_left);
-+pflags = dw->xfr_flags;
-+dw->xfr_buf = I2C_DW_OS_MSG_BUF(cur_msg);
-+dw->xfr_len = I2C_DW_OS_MSG_LEN(cur_msg);
-+if ((dw->xfr_len == 0) && (I2C_DW_OS_MSG_BUF(cur_msg) != NULL)) {
-+dw->xfr_len = 1;
 @@
--pm_device_busy_set(dw);
--while (msg_left > 0) {
--if ((cur_msg->len == 0) && (cur_msg->buf != NULL)) {
--cur_msg->len = 1;
--}
--pflags = dw->xfr_flags;
 -dw->xfr_buf = cur_msg->buf;
 -dw->xfr_len = cur_msg->len;
 -dw->xfr_flags = cur_msg->flags;
++dw->xfr_buf = I2C_DW_OS_MSG_BUF(cur_msg);
++dw->xfr_len = I2C_DW_OS_MSG_LEN(cur_msg);
 +dw->xfr_flags = mflags;
 @@
 -if ((pflags & I2C_MSG_RW_MASK) != (dw->xfr_flags & I2C_MSG_RW_MASK)) {

@@ -719,14 +719,14 @@ is decimal.
 
 | Zephyr build | NuttX build | Differences |
 |---|---|---|
-| `i2c scan i2c@40044000` | `i2c dev 03 77` | Probes differently (the Zephyr build writes 1 byte, the NuttX build reads 1 byte). Both see 0x60 and 0x6a. Do not add `-z` (a 0-byte write cannot be sent; each address times out after 1 s) |
+| `i2c scan i2c@40044000` | `i2c dev 03 77` | Probes differently. The Zephyr build probes with 0-byte writes, which the driver refuses (`-ENOTSUP`), so the scan stops at the first address with `I2C: i2c@40044000 does not support this scan (zero-length writes)` and returns `-ENOTSUP` (probe one address with `i2c direct_read i2c@40044000 6a 1`). The NuttX build reads 1 byte and sees 0x60 and 0x6a. With `-z` (0-byte writes) it stops at the first address too, with `i2ctool: dev: bus 0 does not support zero-byte writes; no -z scan`, and fails |
 | `i2c read_byte i2c@40044000 6a 0f` | `i2c get -a 6a -r 0f` | |
 | `i2c read i2c@40044000 6a 10 10` | `i2c dump -a 6a -r 10 16` | Up to 256 bytes (the Zephyr build: 64). The Zephyr build's byte count is hexadecimal |
 | `i2c direct_read i2c@40044000 6a 1` | `i2c get -a 6a` | Without `-r` no register is sent |
 | `i2c write_byte i2c@40044000 6a 07 5a` | `i2c set -a 6a -r 07 5a` | |
 | `i2c write i2c@40044000 6a 07 5a 00` | none | The NuttX tool writes one value at a time (two bytes with `-w 16`) |
 | `i2c speed i2c@40044000 3` | `-f 1000000` (kept for later commands) | The Zephyr build changes the bus setting, and `imu start` sets 1 MHz there; the NuttX tool only changes its own setting |
-| `i2c recover i2c@40044000` | `i2c reset` | Both only take and release the bus (the board has no recovery routine) |
+| `i2c recover i2c@40044000` | `i2c reset` | Both fail with `-ENOTSUP` (the board has no recovery routine) |
 
 `i2c verf` writes and reads back, so it changes the sensor's settings. The `i2c` tool runs at
 priority 100 (the Zephyr build's shell commands are at the place of 104).

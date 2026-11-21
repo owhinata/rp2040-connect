@@ -228,6 +228,9 @@ Pico SDK の既定のままです。整数の割り算は `pico_divider` のハ�
   1000 ms は 1 ms の tick で 1001、abort の 1 ms は 2）。スリープも同じ長さを `vTaskDelay()` で待ち、時計は tick ではなく
   TIMER（`time_us_64()`）の ms です。Zephyr のものとして残るのは、使う側の API（互換層のデバイスと
   `<zephyr/drivers/i2c.h>`）だけです。
+- **断る要求**: 0 バイトのメッセージを含む転送は、何も送る前に `-ENOTSUP` を返します（コアが断る。Zephyr 版のドライバーと
+  同じで、コントローラーは 0 バイトの転送ができない）。互換層の I2C の API に `i2c_recover_bus()` はありません（このボードには
+  バスの復旧が無い）。
 - **インスタンス**は NuttX 版の Kconfig と同じ形で選びます。`drivers/i2c_dw/i2c_dw.cmake` が `CONFIG_I2C_DW_I2C0` を常に
   定義し（LSM6DSOX がつながっているため。無いと `drivers/lsm6dso/lsm6dso.cmake` が構成を止めます）、CMake の
   オプション `I2C_DW_I2C1`（既定で無効）のとき `CONFIG_I2C_DW_I2C1` を定義します。インスタンスごとのデバイス、

@@ -15,7 +15,8 @@
  *              WHO_AM_I; IC_FS_SCL_HCNT 31, IC_FS_SCL_LCNT 31, IC_CON 0x365
  *   refused    i2c_configure() of high speed and of 10-bit addresses,
  *              a transfer to 0x80 and one with a length and no buffer:
- *              -EINVAL, and the next WHO_AM_I still reads 0x6c
+ *              -EINVAL; a write of no bytes to 0x6a (as Zephyr's "i2c
+ *              scan" sends): -ENOTSUP; the next WHO_AM_I still reads 0x6c
  *   nack       a read from 0x10 (nothing there): -EIO ("NACK on
  *              i2c@40044000" and "IO Fail on i2c@40044000" in dmesg, rate
  *              limited), then WHO_AM_I reads 0x6c
@@ -161,6 +162,9 @@ static void test_refused(void)
 		 -EINVAL);
 	CHECK_EQ(i2c_read(imu.bus, &byte, 1, 0x80), -EINVAL);
 	CHECK_EQ(i2c_transfer(imu.bus, &msg, 1, LSM6DSOX_ADDR), -EINVAL);
+	msg.buf = &byte;
+	msg.len = 0;
+	CHECK_EQ(i2c_transfer(imu.bus, &msg, 1, LSM6DSOX_ADDR), -ENOTSUP);
 	CHECK_EQ(who_am_i(), LSM6DSOX_ID);
 	CHECK_EQ(i2c0_hw->fs_scl_hcnt, 31);
 }

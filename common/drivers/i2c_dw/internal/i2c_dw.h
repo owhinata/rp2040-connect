@@ -10,10 +10,10 @@
  *   path uses: state bits, interrupt sets, the SCL count formulas and the
  *   DesignWare speed codes, with Zephyr's message flags and speed classes
  *   (zephyr/include/zephyr/drivers/i2c.h);
- * - the SCL counts of i2c_dw_configure() (i2c_dw.c:1135-1205);
+ * - the SCL counts of i2c_dw_configure() (i2c_dw.c:1144-1214);
  * - the command words that i2c_dw_data_send() and i2c_dw_data_ask() write
- *   to IC_DATA_CMD (i2c_dw.c:492-522, 404-432), and the RESTART that
- *   i2c_dw_transfer() adds when the direction changes (i2c_dw.c:1012-1022);
+ *   to IC_DATA_CMD (i2c_dw.c:497-527, 409-437), and the RESTART that
+ *   i2c_dw_transfer() adds when the direction changes (i2c_dw.c:1021-1031);
  * - what the NuttX build adds: the NuttX message flags (I2C_M_*) turned
  *   into Zephyr's (I2C_MSG_*) for one message of a transfer, and the NuttX
  *   frequency turned into a Zephyr speed class (its part of the driver,
@@ -144,7 +144,7 @@
 
 /* The constant part of the Zephyr build's i2c_dw_rom_config for i2c0, the
  * same for i2c1, whose node has none of these properties either
- * (i2c_dw.c:1748-1762 with the devicetree of the build): no SDA hold
+ * (i2c_dw.c:1757-1771 with the devicetree of the build): no SDA hold
  * property (SDA_HOLD_INVALID: IC_SDA_HOLD keeps its reset value), offsets
  * 0, spike lengths MAX(0, DW_IC_SPKLEN_MIN) = 1, transfer timeout
  * CONFIG_I2C_TRANSFER_TIMEOUT_MS = 1000 ms.
@@ -156,7 +156,7 @@
 #define I2C_DW_HS_SPK_LEN        DW_IC_SPKLEN_MIN
 #define I2C_DW_TRANSFER_TIMEOUT_MS 1000
 
-/* The SCL counts of i2c_dw_configure() (i2c_dw.c:1147-1185) for a speed
+/* The SCL counts of i2c_dw_configure() (i2c_dw.c:1156-1194) for a speed
  * class.  Returns 0, or -EINVAL for a class the controller does not run
  * (as i2c_dw_configure() does; it still stores the minimum counts then,
  * see i2c_dw.c).
@@ -258,7 +258,7 @@ static inline uint8_t i2c_dw_msg_flags(uint16_t prev, uint16_t cur, uint16_t nex
 	return flags;
 }
 
-/* i2c_dw_transfer() (i2c_dw.c:1012-1022): the flags of the next message,
+/* i2c_dw_transfer() (i2c_dw.c:1021-1031): the flags of the next message,
  * with a RESTART when the direction differs from the message before it
  * (pflags: dw->xfr_flags, which keeps the last message of the previous
  * transfer at the start of a transfer).
@@ -272,7 +272,7 @@ static inline uint8_t i2c_dw_next_flags(uint8_t pflags, uint8_t flags)
 	return flags;
 }
 
-/* One write command of i2c_dw_data_send() (i2c_dw.c:494-505): the byte,
+/* One write command of i2c_dw_data_send() (i2c_dw.c:499-510): the byte,
  * RESTART on the first command of the message if asked (and cleared from
  * *flags), STOP on the last byte (len: bytes left, this one included).
  */
@@ -291,7 +291,7 @@ static inline uint32_t i2c_dw_write_cmd(uint8_t *flags, uint8_t byte, uint32_t l
 	return data;
 }
 
-/* One read request of i2c_dw_data_ask() (i2c_dw.c:406-417); request_bytes:
+/* One read request of i2c_dw_data_ask() (i2c_dw.c:411-422); request_bytes:
  * requests left, this one included.
  */
 

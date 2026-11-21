@@ -350,7 +350,7 @@ DMA の割り込みから呼ばれます。どれも DMA のほかの利用者�
 
 | 境界 | 意味（Zephyr） | NuttX 版 |
 |---|---|---|
-| `i2c_dw_dma_os_initialize()` | DMA のデバイスの起動（I2C0 より前）。何もリセットしない | `rp2040_dmachannel()` を 2 回（空いている最も小さい番号）、その割り込みを切る。2 つのチャネルは読み出し用に持ち続ける |
+| `i2c_dw_dma_os_initialize()` | DMA のデバイスの起動（I2C0 より前）。何もリセットしない | `rp2040_dmachannel_trywait()` を 2 回（空いている最も小さい番号、待たない）、その割り込みを切る。2 つのチャネルは読み出し用に持ち続ける。2 つとも取れなければ、取れた方を返して `-EBUSY` を返す |
 | `i2c_dw_dma_os_is_ready()` | `device_is_ready(dma)` | 2 つのチャネルが取れた |
 | `i2c_dw_dma_os_request_channel()`・`_release_channel()` | `dma_request_channel(dma, NULL)`・`dma_release_channel()`。取得は待たない（`-EBUSY`・`-ENODEV`） | 2 つのうち、実行中の読み出しが取っていないもの。返すと次の読み出しが使える |
 | `i2c_dw_dma_os_config_tx()`・`_config_rx()` | 各側の `dma_config()`: 16 ビットのコマンド語を DREQ 32 の歩調で `IC_DATA_CMD` へ、そこからバイトを DREQ 33 の歩調で。優先度は通常 | `rp2040_txdmasetup()`（`RP2040_DMA_DREQ_I2C0_TX`、`RP2040_DMA_SIZE_HALFWORD`、読み出しアドレスを進める）、`rp2040_rxdmasetup()`（`RP2040_DMA_DREQ_I2C0_RX`、`RP2040_DMA_SIZE_BYTE`、書き込みアドレスを進める） |
@@ -372,7 +372,8 @@ OS の I2C0 のデバイス（`i2c_dw_instance.h`）は、`i2c_0_runtime` の `b
 転送は並んで進みます。転送の入口（両方で 1 つ）は、Zephyr の API で表せない要求（メッセージの配列がない、
 256 個以上、メッセージごとに違うアドレスや速さ、10 ビットアドレス、バッファーがない、準備ができていない）を断り、
 メッセージが 0 個なら 0 を返し、ほかは `i2c_dw_transfer_msgs(dw, msgs, count, address, speed)` の結果を返します
-（`speed` は Zephyr の速さの区分）。I2C0 と DMA の割り込みは同じ優先度で（`CONFIG_ARCH_IRQPRIO` は無効で、
+（`speed` は Zephyr の速さの区分）。この関数は、0 バイトのメッセージを含む転送を、何も送る前に `-ENOTSUP` で
+断ります（コントローラーは 0 バイトの転送ができない。i2c ツールの `dev -z` は、ローカルのパッチ `apps/0007-i2ctool-zero-byte-scan-not-supported` により、最初のアドレスで `i2ctool: dev: bus 0 does not support zero-byte writes; no -z scan` を表示して止まり、失敗する）。I2C0 と DMA の割り込みは同じ優先度で（`CONFIG_ARCH_IRQPRIO` は無効で、
 すべての割り込みが既定の優先度）、ハンドラーと転送は 1 つのコアで動きます。
 
 - 転送は呼び出したスレッドが進め、バイトの出し入れは割り込みで行います。呼び出し元はセマフォで完了を
@@ -387,7 +388,7 @@ OS の I2C0 のデバイス（`i2c_dw_instance.h`）は、`i2c_0_runtime` の `b
   残してしまう）。
 - 移していないもの: ターゲット（スレーブ）モード、Intel LPSS の DMA、`CONFIG_I2C_ALLOW_NO_STOP_TRANSACTIONS`、
   SDA/SCL の期限（`CONFIG_I2C_DW_EXTENDED_SUPPORT`）、電源管理、PCIe、ほかの SoC 向けの処理、バスのリカバリーと
-  確認のコールバック（このボードでは登録されず、何もしない）。
+  確認のコールバック（このボードでは登録されない。転送の前のリカバリーは何もせず、`I2C_RESET()` は `-ENOTSUP` を返す）。
 
 **I2C1**（`CONFIG_I2C_DW_I2C1`、既定で無効。ボード上では何もつながっていない）
 
@@ -430,10 +431,13 @@ DMA の部分を同じ分岐・順序・値で写したものです。
 
 - DMA は NuttX 自身のドライバー `rp2040_dmac.c`（`CONFIG_RP2040_DMAC`、有効。`arm_dma_initialize()` は
   `up_initialize()` の中、ボードの起動処理より前に動く）です。割り込みの線は DMA_IRQ_0 の 1 本ですべてのチャネルを
-  扱います。`rp2040_dmac.c` へのローカルのパッチは要りません。
-- `rp2040_dmachannel()` は 12 チャネルがすべて使われていると待つので、`i2c_dw_dma_os_rp2040.c` は起動時に 2 つのチャネルを
-  1 度だけ取り、読み出し用に持ち続けます。読み出しがチャネルを待つことはなく、1 度に 1 つの読み出しには必ず
-  チャネルがあるので、`dma_fallbacks` は設定を断られたとき（チャネルがまだ動いている）しか増えません。
+  扱います。ローカルのパッチ `nuttx/0011-rp2040-dmachannel-trywait` が、どこでも待たない `rp2040_dmachannel_trywait()` を
+  足します。空きが無いとき、またはほかのタスクが割り当てのロックを持っているときは、取った数を返してすぐ NULL を返すので、
+  チャネルは失われません（`rp2040_dmachannel()` は 12 チャネルがすべて使われていると待つ）。
+- `i2c_dw_dma_os_rp2040.c` は起動時に `rp2040_dmachannel_trywait()` で 2 つのチャネルを 1 度だけ取り、読み出し用に
+  持ち続けます。読み出しがチャネルを待つことはなく、1 度に 1 つの読み出しには必ずチャネルがあるので、`dma_fallbacks` は
+  設定を断られたとき（チャネルがまだ動いている）しか増えません。起動時に空きが 2 つ無ければ、取れた方を返し、I2C0 は
+  DMA なしで起動して、読み出しは割り込みで行います（`dmesg` に `No DMA for the reads: -16`）。
 - `rp2040_dmastop()` は CHAN_ABORT を期限なしに待つので、停止は `i2c_dw_dma_os_rp2040.c` が自分で CHAN_ABORT を書き、
   コアが上限付き（100 ms）で待ちます。Zephyr 版は CHAN_ABORT の全体が落ちるまで待ちます。
 - NuttX のハンドラーは失敗したチャネルのエラーのフラグをトリガーのレジスターである CTRL_TRIG に書き戻すので、

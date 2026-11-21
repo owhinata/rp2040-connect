@@ -78,12 +78,14 @@ with its purpose and the Zephyr code it matches.
 | `nuttx/0008-sched-critmon-irqcount-only-for-csection-busywait` | Makes `SCHED_CRITMONITOR` select `IRQCOUNT` only when it is used |
 | `nuttx/0009-armv6m-rp2040-save-hw-divider-on-context-switch` | Saves and restores the RP2040's divider on task switches (`RP2040_HW_DIVIDER`) |
 | `nuttx/0010-rp2040-rom-memcpy-memset` | `memcpy` and `memset` through the boot ROM's routines (`RP2040_ROM_MEM_OPS`) |
+| `nuttx/0011-rp2040-dmachannel-trywait` | A DMA channel allocation that never waits (`rp2040_dmachannel_trywait()`), for the I2C0 reads |
 | `apps/0001-readline-echo-in-readline` | readline echoes the line being typed |
 | `apps/0002-readline-cr-lf-line-end` | CR, LF, CR LF and LF CR each make one Enter |
 | `apps/0003-readline-ctrl-c` | Ctrl-C drops the line being typed and shows a new prompt |
 | `apps/0004-readline-full-line` | Drops further characters when the line is full |
 | `apps/0005-iperf-free-argtable` | Fixes `iperf` leaking heap on every run |
 | `apps/0006-iperf-len-option-udp-eagain` | Adds `-l` to `iperf` and retries a UDP send that fails with `EAGAIN` |
+| `apps/0007-i2ctool-zero-byte-scan-not-supported` | `i2c dev -z` stops with a message and fails when the bus refuses zero-byte writes (`ENOTSUP`), instead of showing `--` everywhere; `i2c` returns a failing exit status when its command fails (also `reset`, `dev` and `verf`, which said so and returned success) |
 
 ## Build
 

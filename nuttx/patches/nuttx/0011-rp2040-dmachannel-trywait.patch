@@ -1,0 +1,134 @@
+rp2040: a DMA channel allocation that does not wait
+
+Purpose: rp2040_dmachannel() waits on the channel counting semaphore until
+a channel is free, for ever when other users keep all twelve.  The I2C0
+DMA reads of the board (common/drivers/i2c_dw/port/nuttx/
+i2c_dw_dma_os_rp2040.c) take two channels at the start of I2C0; with one
+channel free or none, that start would wait and I2C0 would never come up,
+where it should go on without the DMA and read on the interrupts.
+
+- arch/arm/src/rp2040/rp2040_dmac.c, rp2040_dmac.h:
+  rp2040_dmachannel_trywait(), which never waits.  It takes the count with
+  nxsem_trywait() and returns NULL at once when no channel is free; it
+  takes the allocator's lock with nxmutex_trylock() and, when another task
+  holds it (a channel is being allocated or freed), gives the count back
+  and returns NULL, so no channel is lost.  A caller may try again.
+  Otherwise it does what rp2040_dmachannel() does (the lowest free
+  channel, its flag cleared and its interrupt enabled).
+  rp2040_dmachannel() is unchanged.
+
+Zephyr: Zephyr's dma_request_channel() (include/zephyr/drivers/dma.h)
+does not wait either; it returns an error when no channel is free.
+
+diff --git a/arch/arm/src/rp2040/rp2040_dmac.c b/arch/arm/src/rp2040/rp2040_dmac.c
+index d4914dcb..235e287e 100644
+--- a/arch/arm/src/rp2040/rp2040_dmac.c
++++ b/arch/arm/src/rp2040/rp2040_dmac.c
+@@ -262,6 +262,78 @@ DMA_HANDLE rp2040_dmachannel(void)
+   return (DMA_HANDLE)dmach;
+ }
+ 
++/****************************************************************************
++ * Name: rp2040_dmachannel_trywait
++ *
++ * Description:
++ *   Allocate a DMA channel without waiting at any point.  As
++ *   rp2040_dmachannel(), but it returns NULL at once when no DMA channel is
++ *   free or when another task holds the allocator's lock (a channel is
++ *   being allocated or freed); the semaphore count it took is then given
++ *   back, so no channel is lost.  A caller may try again.
++ *
++ * Input parameters:
++ *   None
++ *
++ * Returned Value:
++ *   A DMA channel handle, or NULL if no channel is free or the allocator
++ *   is busy.
++ *
++ ****************************************************************************/
++
++DMA_HANDLE rp2040_dmachannel_trywait(void)
++{
++  struct dma_channel_s *dmach;
++  unsigned int ch;
++  uint32_t bit = 0;
++  int ret;
++
++  /* Take a count from the channel counting semaphore if there is one,
++   * without waiting.  When we get the count, then we can be assured that a
++   * channel is available in the channel list and is reserved for us.
++   */
++
++  ret = nxsem_trywait(&g_dmac.chansem);
++  if (ret < 0)
++    {
++      return NULL;
++    }
++
++  /* Get exclusive access to the DMA channel list without waiting.  If
++   * another task holds it, give the count back and return NULL.
++   */
++
++  ret = nxmutex_trylock(&g_dmac.lock);
++  if (ret < 0)
++    {
++      nxsem_post(&g_dmac.chansem);
++      return NULL;
++    }
++
++  /* Search for an available DMA channel */
++
++  for (ch = 0, dmach = NULL; ch < RP2040_DMA_NCHANNELS; ch++)
++    {
++      struct dma_channel_s *candidate = &g_dmach[ch];
++      if (!candidate->inuse)
++        {
++          dmach        = candidate;
++          dmach->inuse = true;
++
++          bit = 1 << ch;
++          break;
++        }
++    }
++
++  nxmutex_unlock(&g_dmac.lock);
++
++  setbits_reg32(bit, RP2040_DMA_INTS0);
++  setbits_reg32(bit, RP2040_DMA_INTE0);
++
++  DEBUGASSERT(dmach);
++  return (DMA_HANDLE)dmach;
++}
++
+ /****************************************************************************
+  * Name: rp2040_dmafree
+  *
+diff --git a/arch/arm/src/rp2040/rp2040_dmac.h b/arch/arm/src/rp2040/rp2040_dmac.h
+index 5ffdbb8b..a7cc8a0b 100644
+--- a/arch/arm/src/rp2040/rp2040_dmac.h
++++ b/arch/arm/src/rp2040/rp2040_dmac.h
+@@ -186,6 +186,24 @@ typedef struct
+ 
+ DMA_HANDLE rp2040_dmachannel(void);
+ 
++/****************************************************************************
++ * Name: rp2040_dmachannel_trywait
++ *
++ * Description:
++ *   Allocate a DMA channel without waiting at any point: as
++ *   rp2040_dmachannel(), but it returns NULL at once when no DMA channel is
++ *   free or when another task holds the allocator's lock; the semaphore
++ *   count it took is then given back, so no channel is lost.  A caller may
++ *   try again.
++ *
++ * Returned Value:
++ *   A DMA channel handle, or NULL if no channel is free or the allocator
++ *   is busy.
++ *
++ ****************************************************************************/
++
++DMA_HANDLE rp2040_dmachannel_trywait(void);
++
+ /****************************************************************************
+  * Name: rp2040_dmafree
+  *

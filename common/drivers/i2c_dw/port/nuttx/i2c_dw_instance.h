@@ -25,7 +25,8 @@
  *                                         i2c_dw_os_impl.h)
  *   i2c_configure() (speed class)         the message frequency
  *                                         (i2c_dw_speed())
- *   i2c_recover_bus()                     I2C_RESET()
+ *   i2c_recover_bus() (-ENOTSUP: no       I2C_RESET() (-ENOTSUP)
+ *   recover-bus callback registered)
  *   IRQ_CONNECT(), irq_enable()           irq_attach(), up_enable_irq()
  *                                         (RP2040_I2C0_IRQ, RP2040_I2C1_IRQ)
  *   the DMA device (POST_KERNEL 40)       i2c_dw_dma_os_initialize()
@@ -87,26 +88,22 @@ static int i2c_dw_transfer(struct i2c_master_s *dev, struct i2c_msg_s *msgs, int
 		return -ENOTSUP;
 	}
 
+	/* A message of no bytes (the i2c tool's "dev -z"): the core refuses
+	 * the transfer with -ENOTSUP before anything is sent.
+	 */
 	return i2c_dw_transfer_msgs(dw, msgs, count, target_address, &speed);
 }
 
 #ifdef CONFIG_I2C_RESET
+/* i2c_dw_recovery_bus() of Zephyr's driver: without a wrapper's recover-bus
+ * callback there is no recovery (the board has no bit-banged one), so the
+ * request fails and the caller does not take the bus for recovered.
+ */
 static int i2c_dw_recovery_bus(struct i2c_master_s *dev)
 {
-	int ret = 0;
-	struct i2c_dw_dev_config *const dw = (struct i2c_dw_dev_config *)dev;
+	(void)dev;
 
-	/* lock bus */
-	ret = nxsem_wait_uninterruptible(&dw->bus_sem);
-	if (ret != 0) {
-		return ret;
-	}
-	/* do bus recovery */
-	ret = i2c_recovery_bus(dw);
-	/* unlock bus */
-	nxsem_post(&dw->bus_sem);
-
-	return ret;
+	return -ENOTSUP;
 }
 #endif
 

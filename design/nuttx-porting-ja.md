@@ -633,14 +633,14 @@ Zephyr 版の `i2c` コマンド（Zephyr のシェル）は移さず、NuttX �
 
 | Zephyr 版 | NuttX 版 | 違い |
 |---|---|---|
-| `i2c scan i2c@40044000` | `i2c dev 03 77` | 確かめ方が違う（Zephyr 版は 1 バイト書き込み、NuttX 版は 1 バイト読み出し）。どちらも 0x60 と 0x6a が見える。`-z` は付けない（0 バイトの書き込みはできず、アドレスごとに 1 秒で時間切れになる） |
+| `i2c scan i2c@40044000` | `i2c dev 03 77` | 確かめ方が違う。Zephyr 版は 0 バイトの書き込みで確かめ、ドライバーがそれを断る（`-ENOTSUP`）ので、最初のアドレスで `I2C: i2c@40044000 does not support this scan (zero-length writes)` を表示して止まり、`-ENOTSUP` を返す（1 つのアドレスは `i2c direct_read i2c@40044000 6a 1` で確かめる）。NuttX 版は 1 バイト読み出しで、0x60 と 0x6a が見える。`-z`（0 バイトの書き込み）でも最初のアドレスで `i2ctool: dev: bus 0 does not support zero-byte writes; no -z scan` を表示して止まり、失敗する |
 | `i2c read_byte i2c@40044000 6a 0f` | `i2c get -a 6a -r 0f` | |
 | `i2c read i2c@40044000 6a 10 10` | `i2c dump -a 6a -r 10 16` | 最大 256 バイト（Zephyr 版は 64）。Zephyr 版のバイト数は 16 進 |
 | `i2c direct_read i2c@40044000 6a 1` | `i2c get -a 6a` | `-r` を付けなければレジスターを送らない |
 | `i2c write_byte i2c@40044000 6a 07 5a` | `i2c set -a 6a -r 07 5a` | |
 | `i2c write i2c@40044000 6a 07 5a 00` | なし | NuttX 版は 1 回に 1 つの値（`-w 16` で 2 バイト） |
 | `i2c speed i2c@40044000 3` | `-f 1000000`（以後のコマンドに残る） | Zephyr 版はバスの設定を変え、`imu start` も 1 MHz に変える。NuttX 版はツールの設定だけ |
-| `i2c recover i2c@40044000` | `i2c reset` | どちらもバスを取って放すだけ（このボードにはリカバリーの処理がない） |
+| `i2c recover i2c@40044000` | `i2c reset` | どちらも `-ENOTSUP` で失敗する（このボードにはリカバリーの処理がない） |
 
 `i2c verf` は書き込んで読み返すコマンドなので、センサーの設定を書き換えます。`i2c` ツールは優先度 100 で
 動きます（Zephyr 版のシェルのコマンドは 104 に当たる位置）。

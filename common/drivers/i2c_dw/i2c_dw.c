@@ -66,14 +66,16 @@
  * (need_setup), CONFIG_I2C_DW_EXTENDED_SUPPORT (SDA/SCL timeouts), power
  * management, PCIe, the RTS5912 quirk, the recover/check-bus callbacks
  * (only wrappers of other SoCs register them; without one the recovery
- * does nothing and returns 0), and the never-set i2c_stat_not_ready
- * counter.  The calls of i2c_dw_rp2040_controller() (i2c_dw_rp2040.h) are
- * left out too: both instances are RP2040 controllers, so the check is
- * always true here.
+ * before a transfer does nothing and returns 0, and the driver's
+ * recover_bus, i2c_dw_recovery_bus(), returns -ENOTSUP: the OS's part
+ * answers an explicit request for a recovery the same), and the never-set
+ * i2c_stat_not_ready counter.  The calls of i2c_dw_rp2040_controller()
+ * (i2c_dw_rp2040.h) are left out too: both instances are RP2040
+ * controllers, so the check is always true here.
  *
  * The DMA reads of i2c0 (CONFIG_I2C_DW_RP2040_DMA of the Zephyr build,
- * i2c_dw_rp2040_dma_priv.h, i2c_dw.c:55-57, 566-587, 795-799, 941-946,
- * 1040-1052, 1219-1223) are CONFIG_I2C_DW_RP2040_DMA here too, with the same
+ * i2c_dw_rp2040_dma_priv.h, i2c_dw.c:55-57, 571-592, 800-804, 955-960,
+ * 1049-1061, 1228-1232) are CONFIG_I2C_DW_RP2040_DMA here too, with the same
  * conditions, command words, thresholds, interrupt mask, start order,
  * completion and timeout, clean-up and stop sequence, quarantine, counters
  * and log lines, on the OS's own DMA driver through the boundary of
@@ -158,7 +160,7 @@ struct i2c_dw_dev_config {
 };
 
 /* The instances, in .bss as Zephyr's i2c_##n##_runtime of
- * I2C_DEVICE_INIT_DW(n) (i2c_dw.c:1772); the OS's part (i2c_dw_instance.h)
+ * I2C_DEVICE_INIT_DW(n) (i2c_dw.c:1781); the OS's part (i2c_dw_instance.h)
  * sets them up.
  */
 
@@ -189,7 +191,9 @@ static struct i2c_dw_dev_config i2c_1_runtime;
 #define i2c_dw_name(dw)    I2C_DW_INST(dw, I2C_DW_I2C0_NAME, I2C_DW_I2C1_NAME)
 #define i2c_dw_is_i2c0(dw) I2C_DW_INST(dw, true, false)
 
-/* No recover-bus callback is registered (i2c_dw.c:84-98). */
+/* No recover-bus callback is registered (i2c_dw.c:84-98): the recovery
+ * before a transfer does nothing and returns 0.
+ */
 
 static int i2c_recovery_bus(struct i2c_dw_dev_config *dw)
 {
@@ -263,7 +267,7 @@ static inline void i2c_dw_data_ask(struct i2c_dw_dev_config *dw)
 		return;
 	}
 
-	/* RP2040 does not implement IC_COMP_PARAM_1 (i2c_dw_rp2040.h:20-23, i2c_dw.c:363-370). */
+	/* RP2040 does not implement IC_COMP_PARAM_1 (i2c_dw_rp2040.h:20-23, i2c_dw.c:368-375). */
 	rx_buffer_depth = RP2040_I2C_FIFO_DEPTH;
 	tx_buffer_depth = RP2040_I2C_FIFO_DEPTH;
 
@@ -613,7 +617,7 @@ static bool i2c_dw_is_busy(struct i2c_dw_dev_config *dw)
 	return false;
 }
 
-/* i2c_dw_configure() (i2c_dw.c:1135-1205) for a speed class.  Zephyr
+/* i2c_dw_configure() (i2c_dw.c:1144-1214) for a speed class.  Zephyr
  * stores the (minimum) counts even when the class is refused and keeps the
  * old class, so the next transfer runs the old class with them; here a
  * refused class changes nothing.
@@ -646,7 +650,8 @@ static int i2c_dw_configure(struct i2c_dw_dev_config *dw, uint32_t speed)
  * a buffer for every message that is not empty, and speed, the Zephyr
  * speed class of the transfer (one that differs from the last runs
  * i2c_configure() first).  The OS's transfer entry (i2c_dw_instance.h)
- * calls it; it returns 0 or a negative errno.
+ * calls it; it returns 0 or a negative errno: -ENOTSUP, before the bus
+ * lock and with nothing sent, when a message has no bytes.
  */
 
 static inline int i2c_dw_transfer_msgs(struct i2c_dw_dev_config *const dw,
@@ -663,6 +668,15 @@ static inline int i2c_dw_transfer_msgs(struct i2c_dw_dev_config *const dw,
 	int i;
 	uintptr_t reg_base = dw->base;
 
+	/* DW HW does not support 0 byte transfers: a transfer with an empty
+	 * message is refused before any of its messages is sent.
+	 */
+	for (i = 0; i < count; i++) {
+		if (I2C_DW_OS_MSG_LEN(&msgs[i]) == 0U) {
+			return -ENOTSUP;
+		}
+	}
+
 	/* semaphore to support I2C_CALLBACK */
 	ret = i2c_dw_os_bus_lock(&dw->bus_sem);
 	if (ret != 0) {
@@ -670,7 +684,7 @@ static inline int i2c_dw_transfer_msgs(struct i2c_dw_dev_config *const dw,
 	}
 
 #ifdef CONFIG_I2C_DW_RP2040_DMA
-	/* Also what i2c_dw_runtime_configure() returns (i2c_dw.c:1219-1223). */
+	/* Also what i2c_dw_runtime_configure() returns (i2c_dw.c:1228-1232). */
 	if (dw->rp2040_dma_quarantined) {
 		ret = -EIO;
 		goto error;
@@ -726,10 +740,6 @@ static inline int i2c_dw_transfer_msgs(struct i2c_dw_dev_config *const dw,
 
 		dw->xfr_buf = I2C_DW_OS_MSG_BUF(cur_msg);
 		dw->xfr_len = I2C_DW_OS_MSG_LEN(cur_msg);
-		/* Workaround for I2C scanner as DW HW does not support 0 byte transfers.*/
-		if ((dw->xfr_len == 0) && (I2C_DW_OS_MSG_BUF(cur_msg) != NULL)) {
-			dw->xfr_len = 1;
-		}
 		dw->xfr_flags = mflags;
 		dw->rx_pending = 0U;
 

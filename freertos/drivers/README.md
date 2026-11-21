@@ -267,6 +267,9 @@ zero gives the Pico SDK routines' results, the same in the three builds. `memcpy
   (the transfer's 1000 ms are 1001 ticks of 1 ms, the abort's 1 ms 2), the sleeps the same with
   `vTaskDelay()`, and the clock is the TIMER (`time_us_64()`) in ms, not the tick. The only things of
   Zephyr's left are the API it is used with: the layer's devices and `<zephyr/drivers/i2c.h>`.
+- **Refused requests**: a transfer with a message of no bytes returns `-ENOTSUP` before anything is sent
+  (the core, as the Zephyr build's driver: the controller cannot transfer no bytes). The layer's I2C API
+  has no `i2c_recover_bus()` (the board has no bus recovery).
 - **The instances** are chosen as in the NuttX build's Kconfig: `drivers/i2c_dw/i2c_dw.cmake` defines
   `CONFIG_I2C_DW_I2C0` always (the LSM6DSOX is on it; `drivers/lsm6dso/lsm6dso.cmake` stops the
   configuration without it) and `CONFIG_I2C_DW_I2C1` with the CMake option `I2C_DW_I2C1` (off by

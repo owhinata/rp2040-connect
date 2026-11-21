@@ -49,12 +49,14 @@
  * Zephyr a device that failed its init is not to be called), no message
  * array, an address above 0x7f or a message with I2C_MSG_ADDR_10_BITS
  * (7-bit addressing only, as the Zephyr build uses it), a message with a
- * length and no buffer (-EINVAL).  i2c_configure() refuses
- * I2C_ADDR_10_BITS in the word (-EINVAL) and, through i2c_dw_configure(),
- * any class but standard, fast and fast plus (the RP2040's I2C has no high
- * speed); a refused class changes nothing (Zephyr's stores the minimum
- * counts, see i2c_dw.c).  The mode bits are ignored (Zephyr forces
- * controller mode).
+ * length and no buffer (-EINVAL); the core refuses a message of no bytes
+ * (-ENOTSUP, as the Zephyr build's driver, before anything is sent).
+ * i2c_configure() refuses I2C_ADDR_10_BITS in the word (-EINVAL) and,
+ * through i2c_dw_configure(), any class but standard, fast and fast plus
+ * (the RP2040's I2C has no high speed); a refused class changes nothing
+ * (Zephyr's stores the minimum counts, see i2c_dw.c).  The mode bits are
+ * ignored (Zephyr forces controller mode).  The API table has no
+ * recover_bus, as the compatibility layer has no i2c_recover_bus().
  *
  * The speed class (one for each device) of a transfer is read by the core
  * under bus_sem, as Zephyr's driver reads its class: a transfer that waits

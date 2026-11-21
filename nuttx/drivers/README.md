@@ -402,7 +402,7 @@ another user of the DMA.
 
 | Boundary | Meaning (Zephyr) | NuttX build |
 |---|---|---|
-| `i2c_dw_dma_os_initialize()` | The DMA device's start-up, before I2C0's; nothing is reset | `rp2040_dmachannel()` twice (the lowest free channels), their interrupts off; the two channels stay the reads' |
+| `i2c_dw_dma_os_initialize()` | The DMA device's start-up, before I2C0's; nothing is reset | `rp2040_dmachannel_trywait()` twice (the lowest free channels, without waiting), their interrupts off; the two channels stay the reads'. Without both, the one taken is freed again and it returns `-EBUSY` |
 | `i2c_dw_dma_os_is_ready()` | `device_is_ready(dma)` | The two channels were had |
 | `i2c_dw_dma_os_request_channel()`, `_release_channel()` | `dma_request_channel(dma, NULL)`, `dma_release_channel()`; the request never waits (`-EBUSY`, `-ENODEV`) | One of the two that the read in progress has not taken; the release frees it for the next read |
 | `i2c_dw_dma_os_config_tx()`, `_config_rx()` | `dma_config()` of each side: 16-bit command words to `IC_DATA_CMD` paced by DREQ 32, bytes from it paced by DREQ 33, normal priority | `rp2040_txdmasetup()` (`RP2040_DMA_DREQ_I2C0_TX`, `RP2040_DMA_SIZE_HALFWORD`, read address incrementing), `rp2040_rxdmasetup()` (`RP2040_DMA_DREQ_I2C0_RX`, `RP2040_DMA_SIZE_BYTE`, write address incrementing) |
@@ -425,9 +425,12 @@ semaphore. Each device has its own semaphores, so transfers on the two buses run
 transfer entry (one for both) refuses what the Zephyr API cannot express (no message array, more than 255 messages, addresses or
 speeds that differ between messages, a 10-bit address, a missing buffer, a device that is not ready),
 returns 0 for no message, and otherwise returns `i2c_dw_transfer_msgs(dw, msgs, count, address,
-speed)` (`speed` is Zephyr's speed class). The I2C0 and DMA interrupts run at the same priority
-(`CONFIG_ARCH_IRQPRIO` off: every interrupt at the default), and the handlers and the transfers run on
-one core.
+speed)` (`speed` is Zephyr's speed class), which refuses a transfer with a message of no bytes
+with `-ENOTSUP` before anything is sent (the controller cannot transfer no bytes; the i2c tool's
+`dev -z` stops at the first address with `i2ctool: dev: bus 0 does not support zero-byte writes; no -z scan`
+and fails, through the local patch `apps/0007-i2ctool-zero-byte-scan-not-supported`). The I2C0
+and DMA interrupts run at the same priority (`CONFIG_ARCH_IRQPRIO` off: every interrupt at the
+default), and the handlers and the transfers run on one core.
 
 - The calling thread drives a transfer and the interrupt handler moves the bytes. The caller waits
   for the end on a semaphore (1 s; after that the transfer is aborted and returns `-ETIMEDOUT`). A
@@ -441,7 +444,8 @@ one core.
   and gives `-EINVAL` (the Zephyr version keeps the minimum counts then).
 - Not ported: target (slave) mode, Intel LPSS DMA, `CONFIG_I2C_ALLOW_NO_STOP_TRANSACTIONS`, the SDA/SCL
   timeouts (`CONFIG_I2C_DW_EXTENDED_SUPPORT`), power management, PCIe, code for other SoCs, the bus
-  recovery and check callbacks (not registered on this board; recovery does nothing).
+  recovery and check callbacks (not registered on this board: the recovery before a transfer does nothing, and
+  `I2C_RESET()` returns `-ENOTSUP`).
 
 **I2C1** (`CONFIG_I2C_DW_I2C1`, off by default; nothing is connected to it on the board)
 
@@ -487,10 +491,15 @@ patched driver with the same branches, order and values.
 
 - The DMA is NuttX's own driver, `rp2040_dmac.c` (`CONFIG_RP2040_DMAC`, on; `arm_dma_initialize()`
   runs in `up_initialize()`, before the board's bring-up). It has one interrupt line, DMA_IRQ_0,
-  for every channel. No local patch of `rp2040_dmac.c` is needed.
-- `rp2040_dmachannel()` waits while all twelve channels are taken, so `i2c_dw_dma_os_rp2040.c` takes its two
-  channels once at boot and keeps them for the reads. A read never waits for a channel, and the one read at a
-  time always has its channels, so `dma_fallbacks` stays 0 unless a setup is refused (a channel still busy).
+  for every channel. The local patch `nuttx/0011-rp2040-dmachannel-trywait` adds
+  `rp2040_dmachannel_trywait()` to it, which never waits: it returns NULL at once when no channel is
+  free or another task holds the allocator's lock, giving back the count it took, so no channel is lost
+  (`rp2040_dmachannel()` waits while all twelve channels are taken).
+- `i2c_dw_dma_os_rp2040.c` takes its two channels with `rp2040_dmachannel_trywait()` once at boot and keeps
+  them for the reads. A read never waits for a channel, and the one read at a time always has its channels, so
+  `dma_fallbacks` stays 0 unless a setup is refused (a channel still busy). With fewer than two free channels at
+  boot, it frees the one it took and I2C0 starts without the DMA: its reads take the interrupts (`dmesg`:
+  `No DMA for the reads: -16`).
 - `rp2040_dmastop()` waits for CHAN_ABORT without a limit, so `i2c_dw_dma_os_rp2040.c` stops a channel by writing
   CHAN_ABORT itself and the core waits with its limit (100 ms). The Zephyr version waits for all of CHAN_ABORT.
 - NuttX's handler writes a failed channel's error flags back through CTRL_TRIG, a trigger register, which can

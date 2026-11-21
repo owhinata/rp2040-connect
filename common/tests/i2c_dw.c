@@ -24,7 +24,7 @@
 
 /* ---- Reference: Zephyr's i2c_dw.h:78-129 with CONFIG_I2C_DW_CLOCK_SPEED
  * as a variable and IC_CLK_FREQ_OPTIMIZATION off; i2c_dw_configure()
- * (i2c_dw.c:1147-1185) with offsets 0 and spike lengths 1.
+ * (i2c_dw.c:1156-1194) with offsets 0 and spike lengths 1.
  */
 
 static int ref_configure(uint32_t speed, uint32_t mhz, bool hs, uint32_t *h, uint32_t *l)
@@ -112,7 +112,8 @@ struct msg {
 
 /* The port: i2c_dw.c's i2c_dw_transfer() loop with the helpers that
  * i2c_dw_data_send() and i2c_dw_data_ask() call.  *xfr_flags carries over
- * between transfers as dw->xfr_flags does.
+ * between transfers as dw->xfr_flags does.  A transfer with a message of no
+ * bytes is -ENOTSUP, with no words and *xfr_flags unchanged.
  */
 
 static int port_words(uint8_t *xfr_flags, const struct msg *m, int count, uint32_t *w)
@@ -120,15 +121,17 @@ static int port_words(uint8_t *xfr_flags, const struct msg *m, int count, uint32
 	int n = 0;
 
 	for (int i = 0; i < count; i++) {
+		if (m[i].len == 0) {
+			return -ENOTSUP;
+		}
+	}
+	for (int i = 0; i < count; i++) {
 		uint8_t f = i2c_dw_msg_flags(i > 0 ? m[i - 1].flags : 0, m[i].flags,
 						  i + 1 < count ? m[i + 1].flags : 0, i == 0,
 						  i == count - 1);
 		uint32_t len = m[i].len;
 		uint8_t pflags = *xfr_flags;
 
-		if (len == 0 && m[i].buf != NULL) {
-			len = 1;
-		}
 		*xfr_flags = i2c_dw_next_flags(pflags, f);
 		if ((*xfr_flags & I2C_MSG_RW_MASK) == I2C_MSG_WRITE) {
 			for (uint32_t k = 0; k < len; k++) {
@@ -144,9 +147,10 @@ static int port_words(uint8_t *xfr_flags, const struct msg *m, int count, uint32
 }
 
 /* Reference: Zephyr.  z_impl_i2c_transfer() (i2c.h:1012-1018) sets STOP on
- * the last message; i2c_dw_transfer() (i2c_dw.c:1012-1022) adds RESTART on
- * a change of direction; i2c_dw_data_send() (:518-529) and
- * i2c_dw_data_ask() (:430-441) write the words.  Written out here, not
+ * the last message; i2c_dw_transfer() refuses a message of no bytes
+ * (-ENOTSUP, i2c_dw.c:937-941) and (i2c_dw.c:1021-1031) adds RESTART on
+ * a change of direction; i2c_dw_data_send() (:523-534) and
+ * i2c_dw_data_ask() (:435-446) write the words.  Written out here, not
  * through i2c_dw.h.
  */
 
@@ -159,12 +163,14 @@ static int zephyr_words(uint8_t *xfr_flags, struct msg *m, int num, uint32_t *w)
 	}
 	m[num - 1].flags |= BIT(1);
 	for (int i = 0; i < num; i++) {
+		if (m[i].len == 0) {
+			return -ENOTSUP;
+		}
+	}
+	for (int i = 0; i < num; i++) {
 		uint8_t pflags = *xfr_flags;
 		uint32_t len = m[i].len;
 
-		if (len == 0 && m[i].buf != NULL) {
-			len = 1;
-		}
 		*xfr_flags = (uint8_t)m[i].flags;
 		if ((pflags & BIT(0)) != (*xfr_flags & BIT(0))) {
 			*xfr_flags |= BIT(2);
@@ -274,9 +280,7 @@ static void test_words(void)
 
 		same(n, 1, z, 1, want, 2);
 	}
-	/* The i2c tool's "dev" probe: a 1-byte read; then Zephyr's scan, a
-	 * zero-length write with a buffer (sent as one byte).
-	 */
+	/* The i2c tool's "dev" probe: a 1-byte read. */
 	{
 		struct msg n[] = {{NR, rx, 1}};
 		struct msg z[] = {{ZR | ZS, rx, 1}};
@@ -284,20 +288,34 @@ static void test_words(void)
 
 		same(n, 1, z, 1, want, 1);
 	}
+	/* A message of no bytes (the i2c tool's "dev -z" without a buffer,
+	 * Zephyr's "i2c scan" with one), alone or after a message of one
+	 * byte: -ENOTSUP, nothing sent, the carried flags unchanged (the
+	 * next transfer starts after the read before).
+	 */
 	{
-		struct msg n[] = {{0, rx, 0}};
+		struct msg n[] = {{0, NULL, 0}};
 		struct msg z[] = {{ZW | ZS, rx, 0}};
-		const uint32_t want[] = {rx[0] | RS | ST};
+		struct msg n2[] = {{NNS, &reg0f, 1}, {0, rx, 0}};
+		struct msg z2[] = {{ZW, &reg0f, 1}, {ZW, rx, 0}};
+		uint32_t w[MAXW];
+		uint8_t flags = g_port_flags;
 
-		same(n, 1, z, 1, want, 1);
+		assert((flags & I2C_MSG_RW_MASK) == I2C_MSG_READ && g_zephyr_flags == flags);
+		assert(port_words(&g_port_flags, n, 1, w) == -ENOTSUP);
+		assert(zephyr_words(&g_zephyr_flags, z, 1, w) == -ENOTSUP);
+		assert(port_words(&g_port_flags, n2, 2, w) == -ENOTSUP);
+		assert(zephyr_words(&g_zephyr_flags, z2, 2, w) == -ENOTSUP);
+		assert(g_port_flags == flags && g_zephyr_flags == flags);
 	}
 	/* The i2c tool's "set -s": register (NOSTOP), data (no NOSTART) is a
-	 * repeated start into a second write = Zephyr WRITE, RESTART|WRITE|STOP.
+	 * repeated start into a second write = Zephyr WRITE, RESTART|WRITE|STOP
+	 * (the first word with RESTART too: after a read).
 	 */
 	{
 		struct msg n[] = {{NNS, &reg07, 1}, {0, data2, 1}};
 		struct msg z[] = {{ZW, &reg07, 1}, {ZRS | ZW | ZS, data2, 1}};
-		const uint32_t want[] = {0x07, 0x5a | RS | ST};
+		const uint32_t want[] = {0x07 | RS, 0x5a | RS | ST};
 
 		same(n, 2, z, 2, want, 2);
 	}

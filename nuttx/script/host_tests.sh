@@ -207,19 +207,21 @@ printf 'ok  i2c_dw_dma_os\n'
 # i2c_dw_instance.h) under the shared core (common/drivers/i2c_dw/i2c_dw.c),
 # on fakes of the NuttX headers (tests/i2c_dw_instance_fakes), the board's include/board.h, the
 # controllers' registers and the DMA boundary, with a thread that plays the controllers and
-# their devices: twice, I2C0 only (the default configuration) and with I2C1
-# (CONFIG_I2C_DW_I2C1), whose run adds the tests of I2C1 (tests/i2c_dw_instance.c).  The host's cc
-# reports -Wsign-compare for two MIN()s of i2c_dw.c, as in the FreeRTOS build's test.
-for variant in i2c0 i2c1; do
+# their devices: three times, I2C0 only (the default configuration), with I2C1
+# (CONFIG_I2C_DW_I2C1), whose run adds the tests of I2C1, and with a DMA boundary that fails to
+# start (TEST_DMA_INIT_FAILS: I2C0 starts all the same, on the interrupts; tests/i2c_dw_instance.c).
+# The host's cc reports -Wsign-compare for two MIN()s of i2c_dw.c, as in the FreeRTOS build's test.
+for variant in i2c0 i2c1 nodma; do
     i2cdefs=(-DCONFIG_I2C_DW_I2C0=1 -DCONFIG_I2C_DW_RP2040_DMA=1 -DCONFIG_I2C_RESET=1)
     [[ $variant == i2c1 ]] && i2cdefs+=(-DCONFIG_I2C_DW_I2C1=1)
+    [[ $variant == nodma ]] && i2cdefs+=(-DTEST_DMA_INIT_FAILS=1)
     cc "${flags[@]}" -Wno-sign-compare -D_DEFAULT_SOURCE -pthread "${i2cdefs[@]}" \
         -Itests/i2c_dw_instance_fakes -Itests/fakes -I"$i2cdir" -I"$i2cdir/include" \
         -I"$i2cdir/internal" -I"$i2cdir/port" -I"$i2cdir/port/nuttx" -Idrivers/include -I"$clog" \
         tests/i2c_dw_instance.c "$link" -o "$out/i2c_dw_instance_$variant"
     timeout 60 "$out/i2c_dw_instance_$variant" >/dev/null
 done
-printf 'ok  i2c_dw_instance (I2C0, and I2C1 with CONFIG_I2C_DW_I2C1)\n'
+printf 'ok  i2c_dw_instance (I2C0, I2C1 with CONFIG_I2C_DW_I2C1, I2C0 without the DMA)\n'
 # The test of the minimal MQTT client (common/tests/mqtt_min.c; the client, common/imu/mqtt_min.c,
 # is tested in common/tests/run.sh) on Zephyr's own library when the Zephyr tree is there
 # (tests/mqtt_ref: its log, mutex and socket names on the host, with this build's

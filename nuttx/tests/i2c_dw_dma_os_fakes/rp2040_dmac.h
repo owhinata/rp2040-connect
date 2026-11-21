@@ -23,6 +23,7 @@ typedef struct {
 	uint8_t noincr;
 } dma_config_t;
 DMA_HANDLE rp2040_dmachannel(void);
+DMA_HANDLE rp2040_dmachannel_trywait(void); /* the local patch nuttx/patches/nuttx/0011 */
 void rp2040_dmafree(DMA_HANDLE handle);
 void rp2040_rxdmasetup(DMA_HANDLE handle, uintptr_t paddr, uintptr_t maddr, size_t nbytes,
 		       dma_config_t config);

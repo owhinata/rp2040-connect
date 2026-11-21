@@ -157,7 +157,17 @@ FIFO is started.
 
 Zephyr's DesignWare I2C driver (`drivers/i2c/i2c_dw.c`) with the local patch `zephyr/0003-i2c-dw-rp2040-fifo-and-dma.patch`
 ("Local patches of Zephyr" below). The patch holds everything the driver needs, in Zephyr's tree: the application adds no
-source or include path to the driver's library. Other controllers behave as in Zephyr.
+source or include path to the driver's library. Other controllers behave as in Zephyr, but for the two changes below
+that apply to every controller.
+
+**Every controller**: a transfer with a message of no bytes is refused with `-ENOTSUP` before any of its messages is
+sent (the controller cannot transfer no bytes; upstream sends one byte instead). The shell's `i2c scan` probes with such
+writes, so it stops at the first address, prints `I2C: i2c@40044000 does not support this scan (zero-length writes)`
+and returns `-ENOTSUP` (the local patch `zephyr/0004-i2c-shell-scan-not-supported.patch`, for any controller that
+refuses those writes; another error, a NACK, still shows `--`). Probe one address with
+`i2c direct_read i2c@40044000 6a 1`.
+`i2c_recover_bus()` (the shell's `i2c recover`) returns `-ENOTSUP`: the board has no bus recovery. Before a transfer,
+the driver still clears a stuck-bus state and goes on to the transfer, as upstream.
 
 **Changes for the RP2040's controllers**: RX and TX FIFO depth 16 and an RX threshold of 4 bytes, lowered for short reads
 and at the end of a read. The TX_EMPTY interrupt is masked while no more requests can be queued.
@@ -460,7 +470,8 @@ Some changes to Zephyr and its modules are local patches for Zephyr's `west patc
 | `hal_rpi_pico/0001-boot2-at25sf128a-clkdiv-2.patch` | hal_rpi_pico | The board's boot2 (`boot2_at25sf128a.S`) runs the flash at clk_sys / 2 (62.5 MHz) instead of clk_sys / 4 (31.25 MHz). hal_rpi_pico has no way to pass the value, so the default changes |
 | `zephyr/0001-arm-cortex-m-rp2040-divider-save.patch` | zephyr | `CONFIG_ARM_RP2040_DIVIDER_SAVE`: the thread switches (PendSV, `swap_helper.S`) save and restore the SIO divider |
 | `zephyr/0002-soc-rp2040-rom-mem-ops.patch` | zephyr | `CONFIG_RP2040_ROM_MEM_OPS`: `memcpy` and `memset` through the boot ROM's routines |
-| `zephyr/0003-i2c-dw-rp2040-fifo-and-dma.patch` | zephyr | The DesignWare I2C driver (`drivers/i2c/i2c_dw.c`): the RP2040's FIFO depth and RX threshold, and I2C0's DMA reads with `CONFIG_I2C_DW_RP2040_DMA` (I2C). The constants are in a new file `drivers/i2c/i2c_dw_rp2040.h`, the DMA code with the read commands in `i2c_dw_rp2040_dma_priv.h`, and the declarations of the `i2c_dma` command's functions in `include/zephyr/drivers/i2c/i2c_dw_rp2040_dma.h`; 13 places go into the upstream files (`i2c_dw.c` 11, `i2c_dw.h` 1, `Kconfig.dw` 1) |
+| `zephyr/0003-i2c-dw-rp2040-fifo-and-dma.patch` | zephyr | The DesignWare I2C driver (`drivers/i2c/i2c_dw.c`): the RP2040's FIFO depth and RX threshold, and I2C0's DMA reads with `CONFIG_I2C_DW_RP2040_DMA` (I2C). The constants are in a new file `drivers/i2c/i2c_dw_rp2040.h`, the DMA code with the read commands in `i2c_dw_rp2040_dma_priv.h`, and the declarations of the `i2c_dma` command's functions in `include/zephyr/drivers/i2c/i2c_dw_rp2040_dma.h`; 16 places go into the upstream files (`i2c_dw.c` 14, `i2c_dw.h` 1, `Kconfig.dw` 1); on every controller, a message of no bytes is refused (`-ENOTSUP`) and `i2c_recover_bus()` returns `-ENOTSUP` |
+| `zephyr/0004-i2c-shell-scan-not-supported.patch` | zephyr | The shell's `i2c scan` (`drivers/i2c/i2c_shell.c`): when a probe (a write of no bytes) returns `-ENOTSUP`, the command stops, prints that the controller does not support this scan, and returns `-ENOTSUP`, instead of showing `--` everywhere and "0 devices found". Other errors still show `--` |
 
 - **Applying**: `source script/setup.sh` applies them to the modules' working trees with `west patch apply`
   (no commits; `git -C zephyr/zephyr status` shows them as changes). Patches already applied are skipped,

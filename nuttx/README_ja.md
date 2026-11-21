@@ -70,12 +70,14 @@ source nuttx/script/setup.sh
 | `nuttx/0008-sched-critmon-irqcount-only-for-csection-busywait` | `SCHED_CRITMONITOR` が `IRQCOUNT` を選ぶのを、使うときだけにする |
 | `nuttx/0009-armv6m-rp2040-save-hw-divider-on-context-switch` | タスクの切り替えで RP2040 の除算器を退避・復元する（`RP2040_HW_DIVIDER`） |
 | `nuttx/0010-rp2040-rom-memcpy-memset` | `memcpy`・`memset` をブート ROM のルーチンにする（`RP2040_ROM_MEM_OPS`） |
+| `nuttx/0011-rp2040-dmachannel-trywait` | 待たずに DMA のチャネルを取る関数（`rp2040_dmachannel_trywait()`）。I2C0 の読み出し用 |
 | `apps/0001-readline-echo-in-readline` | 行の入力中のエコーを readline が行う |
 | `apps/0002-readline-cr-lf-line-end` | CR、LF、CR LF、LF CR のどれでも 1 回の Enter にする |
 | `apps/0003-readline-ctrl-c` | Ctrl-C で入力中の行を捨てて新しいプロンプトを出す |
 | `apps/0004-readline-full-line` | 行が満杯になったら後の文字を捨てる |
 | `apps/0005-iperf-free-argtable` | `iperf` が実行のたびにヒープを失うのを直す |
 | `apps/0006-iperf-len-option-udp-eagain` | `iperf` に `-l` を足し、UDP の送信の `EAGAIN` で待って送り直す |
+| `apps/0007-i2ctool-zero-byte-scan-not-supported` | バスが 0 バイトの書き込みを断る（`ENOTSUP`）と、`i2c dev -z` は全部を `--` にせず、理由を表示して失敗する。`i2c` はコマンドが失敗すると失敗の終了状態を返す（失敗を表示しながら成功を返していた `reset`・`dev`・`verf` も） |
 
 ## ビルド
 

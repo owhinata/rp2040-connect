@@ -14,16 +14,19 @@
  * read the DMA path would take is a fallback, counted and recorded, on the
  * interrupts.
  *
- * Built twice by script/host_tests.sh: with CONFIG_I2C_DW_I2C0 only (the
- * default configuration) and with CONFIG_I2C_DW_I2C1 too, which adds the
- * tests of I2C1.
+ * Built three times by script/host_tests.sh: with CONFIG_I2C_DW_I2C0 only
+ * (the default configuration), with CONFIG_I2C_DW_I2C1 too, which adds the
+ * tests of I2C1, and with TEST_DMA_INIT_FAILS, whose DMA boundary fails to
+ * start: I2C0 starts all the same and reads on the interrupts.
  *
  * - I2C0's start: the DMA part first, its reset (RESETS bit 3), GPIO12 and
  *   GPIO13 without pulls, RP2040_I2C0_IRQ; the same master on a second
  *   call; a write and a read at 100 kHz (IC_TAR, the SCL counts, IC_CON with
- *   RX_FIFO_FULL_HLD_CTRL); a NACK (-EIO, the log with i2c@40044000); a read
- *   of 40 bytes as the last message asks the DMA part for a channel (one
- *   fallback).
+ *   RX_FIFO_FULL_HLD_CTRL); a last message with I2C_M_NOSTOP and a message
+ *   of no bytes (alone, or after one of a byte; with or without a buffer):
+ *   -ENOTSUP, nothing sent; I2C_RESET(): -ENOTSUP; a NACK (-EIO, the log
+ *   with i2c@40044000); a read of 40 bytes as the last message asks the DMA
+ *   part for a channel (one fallback).
  * - With CONFIG_I2C_DW_I2C1: before its start, nothing of I2C1 touched; a
  *   block that is not a DesignWare I2C: NULL, I2C0 unaffected; the start:
  *   no DMA part, its reset (bit 4), GPIO18 and GPIO19 with the pull-ups,
@@ -33,8 +36,8 @@
  *   RX_FIFO_FULL_HLD_CTRL; 400 kHz on I2C1 leaves I2C0 at 100 kHz; an
  *   unanswered address: -EIO at once with i2c@40048000 in the log, and the
  *   next transfer works; reads of 40 bytes as the last message never ask
- *   for a DMA channel; I2C_RESET(); 200 transfers on each bus from two
- *   threads at once, each bus seeing only its own.
+ *   for a DMA channel; I2C_RESET(): -ENOTSUP; 200 transfers on each bus
+ *   from two threads at once, each bus seeing only its own.
  */
 
 #include <assert.h>
@@ -224,17 +227,26 @@ void rp2040_gpio_set_input_hysteresis_enabled(uint32_t gpio, bool enabled)
 	record("schmitt(%u,%d)", (unsigned int)gpio, enabled);
 }
 
-/* The DMA boundary (i2c_dw_dma_os.h): ready, never a channel. */
+/* The DMA boundary (i2c_dw_dma_os.h): ready, never a channel.  With
+ * TEST_DMA_INIT_FAILS, its start fails as without two free channels
+ * (-EBUSY) and it is never ready.
+ */
+
+#ifdef TEST_DMA_INIT_FAILS
+#  define DMA_INIT_RESULT -EBUSY
+#else
+#  define DMA_INIT_RESULT 0
+#endif
 
 int i2c_dw_dma_os_initialize(void)
 {
 	record("dma-init");
-	return 0;
+	return DMA_INIT_RESULT;
 }
 
 bool i2c_dw_dma_os_is_ready(void)
 {
-	return true;
+	return DMA_INIT_RESULT == 0;
 }
 
 int i2c_dw_dma_os_request_channel(void)
@@ -501,6 +513,11 @@ static void test_i2c0(void)
 	assert(g_i2c0 != NULL);
 	expect_calls("dma-init reset(0x8) unreset(0x8) " PINS(12, 0) PINS(13, 0)
 		     "attach(23) enable(23) ");
+#ifdef TEST_DMA_INIT_FAILS
+	/* Without the DMA, I2C0 still starts (its reads on the interrupts). */
+	expect_log("<1> i2c_dw: No DMA for the reads: -16\n"
+		   "<1> i2c_dw: No DMA for the reads: -16\n");
+#endif
 	assert(g_isr_arg[RP2040_I2C0_IRQ] == (void *)g_i2c0);
 	assert(i2c_dw_i2c0_initialize() == g_i2c0);
 	expect_calls("");
@@ -521,6 +538,28 @@ static void test_i2c0(void)
 		assert(I2C_TRANSFER(g_i2c0, &hold, 1) == -ENOTSUP);
 		expect_calls("");
 	}
+	/* A message of no bytes (the i2c tool's "dev -z": no buffer), alone or
+	 * after a message of one byte: refused before anything is sent.
+	 */
+	{
+		uint8_t byte = 0x0f;
+		struct i2c_msg_s empty[2] = {
+			{.frequency = 100000, .addr = DEV0_ADDR, .flags = 0, .buffer = &byte,
+			 .length = 1},
+			{.frequency = 100000, .addr = DEV0_ADDR, .flags = 0, .buffer = NULL,
+			 .length = 0},
+		};
+
+		assert(I2C_TRANSFER(g_i2c0, &empty[1], 1) == -ENOTSUP);
+		assert(I2C_TRANSFER(g_i2c0, empty, 2) == -ENOTSUP);
+		empty[1].buffer = &byte;
+		assert(I2C_TRANSFER(g_i2c0, empty, 2) == -ENOTSUP);
+		expect_calls("");
+	}
+#ifdef CONFIG_I2C_RESET
+	/* No bus recovery on the board: an explicit request fails. */
+	assert(I2C_RESET(g_i2c0) == -ENOTSUP);
+#endif
 	expect_bus(0, "0xf 0x700 ");
 	assert((fake_i2c0_regs[IC_TAR / 4] & 0x3ff) == DEV0_ADDR);
 	assert(fake_i2c0_regs[IC_SS_SCL_HCNT / 4] == 500);
@@ -532,11 +571,18 @@ static void test_i2c0(void)
 	expect_bus(0, "nack ");
 	expect_log("<1> i2c_dw: NACK on i2c@40044000\n<1> i2c_dw: IO Fail on i2c@40044000\n");
 
-	/* A read the DMA path takes: a channel asked for, none, a fallback. */
+	/* A read the DMA path takes: a channel asked for, none, a fallback.
+	 * Without the DMA: the interrupts, no channel asked for, no fallback.
+	 */
 	assert(dev_rx(g_i2c0, 0x10, buf, sizeof(buf)) == -EIO);
 	expect_bus(0, "nack ");
+#ifdef TEST_DMA_INIT_FAILS
+	expect_calls("");
+	expect_fallbacks(0);
+#else
 	expect_calls("dma-request ");
 	expect_fallbacks(1);
+#endif
 	expect_log("<1> i2c_dw: NACK on i2c@40044000\n<1> i2c_dw: IO Fail on i2c@40044000\n");
 	g_bus[0].mode = BUS_DEVICE;
 	assert(dev_read(g_i2c0, DEV0_ADDR, 100000, 0x0f) == 0x1f);
@@ -632,7 +678,7 @@ static void test_i2c1_transfers(void)
 	expect_bus(1, "0x407 0x700 ");
 	assert(fake_i2c1_regs[IC_CON / 4] == CON_STD);
 #  ifdef CONFIG_I2C_RESET
-	assert(I2C_RESET(g_i2c1) == 0);
+	assert(I2C_RESET(g_i2c1) == -ENOTSUP);
 #  endif
 	expect_log("");
 	expect_calls("");

@@ -9,10 +9,15 @@
  * CHAN_ABORT are recorded).  The file is included, so that each case starts
  * from its initial state.
  *
- * - The start: two channels from rp2040_dmachannel() (the lowest free, after
- *   another user's), their interrupts off until a read starts them; once.
- *   A failed rp2040_dmachannel(): the first channel freed again, not ready,
- *   no channel (-ENODEV), and the same result on a second call.
+ * - The start: two channels from rp2040_dmachannel_trywait() (the local
+ *   patch nuttx/patches/nuttx/0011; the lowest free, after another user's),
+ *   their interrupts off until a read starts them; once.  Exactly two free:
+ *   both taken.  Exactly one free: it is taken and freed again, so another
+ *   user gets it.  None free: nothing taken.  Without both: -EBUSY at
+ *   once, not ready, no channel (-ENODEV), and the same result on a second
+ *   call.  The allocator busy at the second try (the fake's
+ *   rp2040_dmachannel_trywait() returns NULL; the patched function itself
+ *   is not under test): the same, the first channel given back.
  * - The channels per read: the two, then -EBUSY without waiting; back after
  *   the release; others refused (-EINVAL).
  * - The setup: rp2040_txdmasetup() with DREQ 32, halfwords, 2 bytes per word
@@ -176,26 +181,53 @@ struct fake_channel {
 };
 
 static struct fake_channel fake_ch[RP2040_DMA_NCHANNELS];
-static int fake_handles_left = RP2040_DMA_NCHANNELS; /* then NULL (the wait failed) */
 
-DMA_HANDLE rp2040_dmachannel(void)
+/* The lowest free channel, its flag cleared and its interrupt enabled, or
+ * NULL when none is free.
+ */
+static struct fake_channel *take_channel(const char *name)
 {
-	if (fake_handles_left == 0) {
-		record("dmachannel()=NULL");
-		return NULL;
-	}
-	fake_handles_left--;
 	for (int ch = 0; ch < RP2040_DMA_NCHANNELS; ch++) {
 		if (!fake_ch[ch].inuse) {
 			fake_ch[ch].inuse = true;
 			setbits_reg32(1u << ch, RP2040_DMA_INTS0);
 			REG(RP2040_DMA_INTE0) |= 1u << ch;
-			record("dmachannel()=%d", ch);
+			record("%s()=%d", name, ch);
 			return &fake_ch[ch];
 		}
 	}
-	assert(0); /* NuttX waits here: the test never gets this far */
+	record("%s()=NULL", name);
 	return NULL;
+}
+
+/* Other users' channels (the binding never calls it). */
+DMA_HANDLE rp2040_dmachannel(void)
+{
+	DMA_HANDLE handle = take_channel("dmachannel");
+
+	assert(handle != NULL); /* NuttX waits here: the test never gets this far */
+	return handle;
+}
+
+/* The number of calls of rp2040_dmachannel_trywait() after which it finds
+ * the allocator's lock held by another task (-1: never).
+ */
+static int fake_busy_after = -1;
+
+/* The local patch nuttx/patches/nuttx/0011: NULL at once when no channel is
+ * free, or when the allocator's lock is held (the count it took given back,
+ * so no channel is taken). The function's inside is not under test here.
+ */
+DMA_HANDLE rp2040_dmachannel_trywait(void)
+{
+	if (fake_busy_after == 0) {
+		record("trywait()=busy");
+		return NULL;
+	}
+	if (fake_busy_after > 0) {
+		fake_busy_after--;
+	}
+	return take_channel("trywait");
 }
 
 void rp2040_dmafree(DMA_HANDLE handle)
@@ -364,9 +396,9 @@ static void reset(void)
 	for (int ch = 0; ch < RP2040_DMA_NCHANNELS; ch++) {
 		fake_ch[ch].chan = (uint8_t)ch;
 	}
-	fake_handles_left = RP2040_DMA_NCHANNELS;
 	memset(g_slots, 0, sizeof(g_slots));
 	g_init_result = 1;
+	fake_busy_after = -1;
 	calls[0] = '\0';
 	cbs[0] = '\0';
 }
@@ -387,7 +419,7 @@ static void test_start(void)
 	assert(!i2c_dw_dma_os_is_ready());
 	assert(i2c_dw_dma_os_request_channel() == -ENODEV);
 	assert(i2c_dw_dma_os_initialize() == 0);
-	expect_calls("dmachannel()=1 clr(inte0,0x2) dmachannel()=2 clr(inte0,0x4) ");
+	expect_calls("trywait()=1 clr(inte0,0x2) trywait()=2 clr(inte0,0x4) ");
 	assert(REG(RP2040_DMA_INTE0) == 0x1);
 	assert(i2c_dw_dma_os_is_ready());
 	assert(i2c_dw_dma_os_initialize() == 0);
@@ -396,15 +428,66 @@ static void test_start(void)
 	assert(i2c_dw_dma_os_request_channel() == 2);
 	(void)other;
 
-	/* No second channel: the first goes back, nothing is ready. */
+	/* Exactly two free (the last two): both taken, ready. */
 	reset();
-	fake_handles_left = 1;
-	assert(i2c_dw_dma_os_initialize() == -ENODEV);
-	expect_calls("dmachannel()=0 clr(inte0,0x1) dmachannel()=NULL dmafree(0) ");
+	for (int ch = 0; ch < RP2040_DMA_NCHANNELS - 2; ch++) {
+		(void)rp2040_dmachannel();
+	}
+	calls[0] = '\0';
+	assert(i2c_dw_dma_os_initialize() == 0);
+	expect_calls("trywait()=10 clr(inte0,0x400) trywait()=11 clr(inte0,0x800) ");
+	assert(i2c_dw_dma_os_is_ready());
+	assert(i2c_dw_dma_os_request_channel() == 10);
+	assert(i2c_dw_dma_os_request_channel() == 11);
+
+	/* Exactly one free: taken without waiting, given back, nothing ready;
+	 * the channel is free again for other users.
+	 */
+	reset();
+	for (int ch = 0; ch < RP2040_DMA_NCHANNELS - 1; ch++) {
+		(void)rp2040_dmachannel();
+	}
+	calls[0] = '\0';
+	assert(i2c_dw_dma_os_initialize() == -EBUSY);
+	expect_calls("trywait()=11 clr(inte0,0x800) trywait()=NULL dmafree(11) ");
+	assert(!fake_ch[11].inuse);
 	assert(!i2c_dw_dma_os_is_ready());
 	assert(i2c_dw_dma_os_request_channel() == -ENODEV);
-	assert(i2c_dw_dma_os_initialize() == -ENODEV);
-	assert(i2c_dw_dma_os_config_tx(0, words, DATA_CMD, 40, core_cb, "tx") == -EINVAL);
+	assert(i2c_dw_dma_os_initialize() == -EBUSY);
+	assert(i2c_dw_dma_os_config_tx(11, words, DATA_CMD, 40, core_cb, "tx") == -EINVAL);
+	assert(!i2c_dw_dma_os_is_busy(11));
+	expect_calls("");
+	other = rp2040_dmachannel();
+	expect_calls("dmachannel()=11 ");
+	assert(other == &fake_ch[11]);
+
+	/* The allocator busy at the second try: the first is given back, nothing
+	 * ready, no wait, and no channel is lost for other users.
+	 */
+	reset();
+	fake_busy_after = 1;
+	assert(i2c_dw_dma_os_initialize() == -EBUSY);
+	expect_calls("trywait()=0 clr(inte0,0x1) trywait()=busy dmafree(0) ");
+	assert(!fake_ch[0].inuse);
+	assert(!i2c_dw_dma_os_is_ready());
+	assert(i2c_dw_dma_os_request_channel() == -ENODEV);
+	assert(i2c_dw_dma_os_initialize() == -EBUSY);
+	expect_calls("");
+	fake_busy_after = -1;
+	other = rp2040_dmachannel();
+	expect_calls("dmachannel()=0 ");
+
+	/* None free: no channel taken, nothing ready, no wait. */
+	reset();
+	for (int ch = 0; ch < RP2040_DMA_NCHANNELS; ch++) {
+		(void)rp2040_dmachannel();
+	}
+	calls[0] = '\0';
+	assert(i2c_dw_dma_os_initialize() == -EBUSY);
+	expect_calls("trywait()=NULL ");
+	assert(!i2c_dw_dma_os_is_ready());
+	assert(i2c_dw_dma_os_request_channel() == -ENODEV);
+	assert(i2c_dw_dma_os_initialize() == -EBUSY);
 	expect_calls("");
 }
 
@@ -412,7 +495,7 @@ static void test_channels(void)
 {
 	reset();
 	assert(i2c_dw_dma_os_initialize() == 0);
-	expect_calls("dmachannel()=0 clr(inte0,0x1) dmachannel()=1 clr(inte0,0x2) ");
+	expect_calls("trywait()=0 clr(inte0,0x1) trywait()=1 clr(inte0,0x2) ");
 	assert(i2c_dw_dma_os_request_channel() == 0);
 	assert(i2c_dw_dma_os_request_channel() == 1);
 	assert(i2c_dw_dma_os_request_channel() == -EBUSY);

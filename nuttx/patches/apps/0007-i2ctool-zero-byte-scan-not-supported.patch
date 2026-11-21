@@ -1,0 +1,168 @@
+i2ctool: a zero-byte scan the controller cannot do fails
+
+Purpose: "i2c dev -z" probes each address with a write of no bytes and
+prints "--" for every failure.  A controller that cannot send such a write
+(this board's DesignWare driver refuses a message of length 0 with
+-ENOTSUP) made it print "--" for every address, as if the bus were empty,
+although devices answer a one-byte read.  Now, when a zero-byte probe
+fails with ENOTSUP, the scan stops at once, prints that the bus does not
+support zero-byte writes, and the command fails.  Any other failure (a
+NACK: no device at that address) still prints "--", and plain "i2c dev"
+(one-byte reads) is unchanged.  For the failing exit status, main() now
+returns EXIT_FAILURE when the command returned a negative value (it
+returned OK always); the other subcommands already return ERROR on their
+failures, so their exit status now shows those too.  Three of them said
+"failure" and returned success: "reset" returned the result of close()
+after a failed reset, "dev" returned OK for bad arguments and a bus that
+could not be opened, and "verf" returned OK when a value did not read
+back.  They return ERROR there now.
+Zephyr: the same change to the shell's "i2c scan" is the local patch
+zephyr/manifest/zephyr/patches/zephyr/0004-i2c-shell-scan-not-supported.patch.
+
+diff --git a/system/i2c/i2c_dev.c b/system/i2c/i2c_dev.c
+index cd83ec9..d86d012 100644
+--- a/system/i2c/i2c_dev.c
++++ b/system/i2c/i2c_dev.c
+@@ -26,6 +26,7 @@
+ 
+ #include <nuttx/config.h>
+ 
++#include <errno.h>
+ #include <stdlib.h>
+ #include <unistd.h>
+ 
+@@ -52,6 +53,7 @@ int i2ccmd_dev(FAR struct i2ctool_s *i2ctool, int argc, FAR char **argv)
+   int addr;
+   int nargs;
+   int argndx;
++  int result = ERROR;
+   int ret;
+   int fd;
+   int i;
+@@ -192,6 +194,20 @@ int i2ccmd_dev(FAR struct i2ctool_s *i2ctool, int argc, FAR char **argv)
+             {
+               i2ctool_printf(i2ctool, "%02x ", addr);
+             }
++          else if (i2ctool->zerowrite && errno == ENOTSUP)
++            {
++              /* The controller cannot send a write of no bytes, so no
++               * address can be probed this way.
++               */
++
++              i2ctool_printf(i2ctool, "\n");
++              i2ctool_printf(i2ctool,
++                             "i2ctool: %s: bus %d does not support "
++                             "zero-byte writes; no -z scan\n",
++                             argv[0], i2ctool->bus);
++              close(fd);
++              goto errout;
++            }
+           else
+             {
+               i2ctool_printf(i2ctool, "-- ");
+@@ -205,6 +221,7 @@ int i2ccmd_dev(FAR struct i2ctool_s *i2ctool, int argc, FAR char **argv)
+     }
+ 
+   close(fd);
++  result = OK;
+ 
+ errout:
+   /* Restore the previous "sticky" register address unless a new register
+@@ -217,5 +234,5 @@ errout:
+       i2ctool->regaddr = saveaddr;
+     }
+ 
+-  return OK;
++  return result;
+ }
+diff --git a/system/i2c/i2c_main.c b/system/i2c/i2c_main.c
+index 80e7974..93c7ef6 100644
+--- a/system/i2c/i2c_main.c
++++ b/system/i2c/i2c_main.c
+@@ -374,6 +374,8 @@ static void i2c_teardown(FAR struct i2ctool_s *i2ctool)
+ 
+ int main(int argc, FAR char *argv[])
+ {
++  int ret;
++
+   /* Verify settings */
+ 
+   if (g_i2ctool.bus < CONFIG_I2CTOOL_MINBUS ||
+@@ -409,11 +411,11 @@ int main(int argc, FAR char *argv[])
+   /* Parse and process the command line */
+ 
+   i2c_setup(&g_i2ctool);
+-  i2c_parse(&g_i2ctool, argc, argv);
++  ret = i2c_parse(&g_i2ctool, argc, argv);
+ 
+   i2ctool_flush(&g_i2ctool);
+   i2c_teardown(&g_i2ctool);
+-  return OK;
++  return ret < 0 ? EXIT_FAILURE : EXIT_SUCCESS;
+ }
+ 
+ /****************************************************************************
+diff --git a/system/i2c/i2c_reset.c b/system/i2c/i2c_reset.c
+index 98177b7..a6c61c2 100644
+--- a/system/i2c/i2c_reset.c
++++ b/system/i2c/i2c_reset.c
+@@ -42,6 +42,7 @@
+ 
+ int i2ccmd_reset(FAR struct i2ctool_s *i2ctool, int argc, FAR char **argv)
+ {
++  int result = OK;
+   int ret;
+   int fd;
+ 
+@@ -62,14 +63,16 @@ int i2ccmd_reset(FAR struct i2ctool_s *i2ctool, int argc, FAR char **argv)
+   else
+     {
+       i2ctool_printf(i2ctool, "Failed to send the reset command\n");
++      result = ERROR;
+     }
+ 
+   ret = close(fd);
+   if (ret < 0)
+     {
+       i2ctool_printf(i2ctool, "Failed to close i2c device\n");
++      result = ERROR;
+     }
+ 
+-  return ret;
++  return result;
+ }
+ 
+diff --git a/system/i2c/i2c_verf.c b/system/i2c/i2c_verf.c
+index e0e4c92..7a357df 100644
+--- a/system/i2c/i2c_verf.c
++++ b/system/i2c/i2c_verf.c
+@@ -47,6 +47,7 @@ int i2ccmd_verf(FAR struct i2ctool_s *i2ctool, int argc, FAR char **argv)
+   uint16_t rdvalue;
+   uint8_t regaddr;
+   bool addrinaddr;
++  bool mismatch = false;
+   long wrvalue;
+   long repetitions;
+   int nargs;
+@@ -189,6 +190,7 @@ int i2ccmd_verf(FAR struct i2ctool_s *i2ctool, int argc, FAR char **argv)
+           if (wrvalue != rdvalue)
+             {
+               i2ctool_printf(i2ctool, "  <<< FAILURE\n");
++              mismatch = true;
+             }
+           else
+             {
+@@ -210,5 +212,13 @@ int i2ccmd_verf(FAR struct i2ctool_s *i2ctool, int argc, FAR char **argv)
+     }
+ 
+   close(fd);
++
++  /* A value that did not read back is a failure of the command, too */
++
++  if (ret == OK && mismatch)
++    {
++      ret = ERROR;
++    }
++
+   return ret;
+ }

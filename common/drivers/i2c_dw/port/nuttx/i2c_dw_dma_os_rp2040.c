@@ -5,11 +5,17 @@
  * of this build may use as usual.
  *
  *   the boundary                  here
- *   i2c_dw_dma_os_initialize()    rp2040_dmachannel() twice, once at
- *                                 start-up (it waits while all twelve
- *                                 channels are taken, so it is not called
- *                                 per read under the bus lock); the two
- *                                 channels stay this file's
+ *   i2c_dw_dma_os_initialize()    rp2040_dmachannel_trywait() twice,
+ *                                 once at start-up (the local patch
+ *                                 nuttx/patches/nuttx/0011: never waits,
+ *                                 NULL at once when no channel is free or
+ *                                 another task holds the allocator's
+ *                                 lock, where rp2040_dmachannel() waits);
+ *                                 the two channels stay this file's.
+ *                                 Without both, the one it got is freed
+ *                                 again and it returns -EBUSY, and does
+ *                                 not try again: I2C0 starts without the
+ *                                 DMA and reads on the interrupts
  *   _request_channel()            one of the two that is not taken by the
  *                                 read in progress, or -EBUSY; never waits
  *   _release_channel()            it is free for the next read (the channel
@@ -35,8 +41,8 @@
  * The register writes of the channel's own bit (INTE0 through the atomic
  * set and clear aliases, INTS0 and CHAN_ABORT, which are write-1) leave the
  * other channels alone; rp2040_dmac.c itself writes INTE0 and INTS0 the
- * same way.  rp2040_dmachannel() enables the channel's interrupt; this file
- * keeps it disabled between reads, as Zephyr's driver does.
+ * same way.  rp2040_dmachannel_trywait() enables the channel's interrupt;
+ * this file keeps it disabled between reads, as Zephyr's driver does.
  *
  * The interrupt: rp2040_dmac.c owns DMA_IRQ_0 (arm_dma_initialize(), from
  * up_initialize(), before the board's bringup).  Its handler clears every
@@ -133,7 +139,7 @@ int i2c_dw_dma_os_initialize(void)
 
   for (int i = 0; i < I2C_DW_DMA_CHANNELS; i++)
     {
-      DMA_HANDLE handle = rp2040_dmachannel();
+      DMA_HANDLE handle = rp2040_dmachannel_trywait();
 
       if (handle == NULL)
         {
@@ -142,7 +148,7 @@ int i2c_dw_dma_os_initialize(void)
               rp2040_dmafree(g_slots[j].handle);
             }
 
-          g_init_result = -ENODEV;
+          g_init_result = -EBUSY;
           return g_init_result;
         }
 

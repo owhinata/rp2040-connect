@@ -1,0 +1,43 @@
+Subject: [PATCH] drivers: i2c: shell: a scan the controller cannot do fails
+
+Local patch of this workspace (zephyr/manifest/zephyr/patches.yml), not
+meant for upstream.
+
+"i2c scan" probes each address with a write of no bytes and prints "--"
+for every error. A controller that cannot send such a write (the
+DesignWare driver returns -ENOTSUP for a message of length 0) then made
+the command print "0 devices found" and return 0, although devices
+answer. When a probe returns -ENOTSUP, the command now stops, prints that
+the controller does not support this scan, and returns -ENOTSUP. Any
+other error (a NACK: no device at that address) still prints "--".
+
+diff --git a/drivers/i2c/i2c_shell.c b/drivers/i2c/i2c_shell.c
+index fa6f6c8..1d83459 100644
+--- a/drivers/i2c/i2c_shell.c
++++ b/drivers/i2c/i2c_shell.c
+@@ -70,14 +70,24 @@ static int cmd_i2c_scan(const struct shell *sh, size_t argc, char **argv)
+ 
+ 			struct i2c_msg msgs[1];
+ 			uint8_t dst;
++			int ret;
+ 
+ 			/* Send the address to read from */
+ 			msgs[0].buf = &dst;
+ 			msgs[0].len = 0U;
+ 			msgs[0].flags = I2C_MSG_WRITE | I2C_MSG_STOP;
+-			if (i2c_transfer(dev, &msgs[0], 1, i + j) == 0) {
++			ret = i2c_transfer(dev, &msgs[0], 1, i + j);
++			if (ret == 0) {
+ 				shell_fprintf_normal(sh, "%02x ", i + j);
+ 				++cnt;
++			} else if (ret == -ENOTSUP) {
++				/* The controller cannot send a write of no bytes:
++				 * no address can be probed this way.
++				 */
++				shell_print(sh, "");
++				shell_error(sh, "I2C: %s does not support this scan "
++					    "(zero-length writes)", argv[ARGV_DEV]);
++				return -ENOTSUP;
+ 			} else {
+ 				shell_fprintf_normal(sh, "-- ");
+ 			}

@@ -871,6 +871,27 @@ static void test_refused(void)
 	vTaskDelay(5);
 	expect_hw("");
 	assert(REG(IC_TAR) == 0);
+
+	/* A message of no bytes, with or without a buffer, alone or after a
+	 * message of one byte: -ENOTSUP before anything is sent.
+	 */
+	{
+		struct i2c_msg empty[2] = {
+			{.buf = &byte, .len = 1, .flags = I2C_MSG_WRITE},
+			{.buf = &byte, .len = 0, .flags = I2C_MSG_WRITE},
+		};
+
+		assert(i2c_transfer(i2c0, &empty[1], 1, LSM6DSOX_ADDR) == -ENOTSUP);
+		assert(i2c_write(i2c0, NULL, 0, LSM6DSOX_ADDR) == -ENOTSUP);
+		assert(i2c_transfer(i2c0, empty, 2, LSM6DSOX_ADDR) == -ENOTSUP);
+		assert(api->transfer(i2c0, empty, 2, LSM6DSOX_ADDR) == -ENOTSUP);
+		vTaskDelay(5);
+		expect_hw("");
+		assert(REG(IC_TAR) == 0);
+		assert(empty[1].len == 0);
+	}
+	assert(who_am_i() == LSM6DSOX_ID);
+	expect_hw(WHO_AM_I_BUS_AFTER_READ);
 }
 
 static void test_nack(void)

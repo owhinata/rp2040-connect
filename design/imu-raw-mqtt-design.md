@@ -52,6 +52,17 @@ I2C at 1 MHz, timestamp decimation 8, a 2.4 GHz connection to a UGREEN USB adapt
 an access point on the PC, and `imu-host check` as the receiver (at the time, the script it was moved from). **Each test was
 run once**; none of this is a long-term guarantee.
 
+"I2C at 1 MHz" is the speed class asked for (Fast-mode Plus); the real SCL is faster than 1 MHz. With the
+DesignWare driver's counts and the 125 MHz clock, SCL is high for 39 clocks (312 ns) and low for 32
+(256 ns), and a recorded read of 3584 bytes in 22.9 ms puts it at about 1.4 MHz (the waveform was not
+measured). That is outside the LSM6DSOX's specification (1 MHz at most, SCL low for 0.50 µs and high for
+0.26 µs at least): the low time is too short and the frequency too high. The FIFO data at 6667 Hz needs
+about 890,000 clocks a second, about 89% of the bus even at the specification's 1 MHz, which leaves
+about 11% for the register addresses and the gaps between transfers. With counts inside the
+specification (504 ns low, 360 ns high; a read of the full FIFO, 3584 bytes, then takes 32.1 ms, about
+1.0 MHz) the FreeRTOS build's FIFO overran 136 to 137 times in a stream of about 70 seconds (three
+runs).
+
 - 30 minutes continuously: 63128 batches with none missing, PC time on every batch, no time
   going backwards, no FIFO overrun.
 - Receiver stopped (6 s), queue full because the receiver stopped reading, access point down

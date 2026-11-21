@@ -141,7 +141,16 @@ out = M · (raw − bias)
 
 Zephyr の DesignWare I²C ドライバー（`drivers/i2c/i2c_dw.c`）に、ローカルのパッチ `zephyr/0003-i2c-dw-rp2040-fifo-and-dma.patch`
 を当てて使います（下の「Zephyr へのローカルのパッチ」）。ドライバーに要るものはすべてパッチが Zephyr のツリーの中に置き、
-アプリはドライバーのライブラリーにソースもインクルードのパスも足しません。他のコントローラーの処理は Zephyr のままです。
+アプリはドライバーのライブラリーにソースもインクルードのパスも足しません。他のコントローラーの処理は、どのコントローラーにも
+当たる下の 2 点のほかは Zephyr のままです。
+
+**どのコントローラーでも**: 0 バイトのメッセージを含む転送は、どのメッセージも送る前に `-ENOTSUP` で断ります（コントローラーは
+0 バイトの転送ができず、上流は代わりに 1 バイトを送ります）。シェルの `i2c scan` はその書き込みで確かめるので、最初のアドレスで
+止まり、`I2C: i2c@40044000 does not support this scan (zero-length writes)` を表示して `-ENOTSUP` を返します（ローカルの
+パッチ `zephyr/0004-i2c-shell-scan-not-supported.patch`。その書き込みを断るどのコントローラーでも同じ。ほかのエラー、つまり
+NACK は従来どおり `--`）。1 つのアドレスは `i2c direct_read i2c@40044000 6a 1` で確かめます。`i2c_recover_bus()`（シェルの
+`i2c recover`）は `-ENOTSUP` を返します（このボードにはバスの復旧が無い）。転送の前には、上流と同じく、バスが固まった状態を
+消して転送に進みます。
 
 **RP2040 のコントローラーへの変更**: RX・TX FIFO の深さを 16、RX しきい値を 4 バイトとし、短い読み出しと末尾ではしきい値を
 下げます。受信待ちで要求を追加できない間は TX_EMPTY 割り込みを抑えます。
@@ -410,7 +419,8 @@ Zephyr 本体とモジュールの一部の変更は、Zephyr の `west patch` �
 | `hal_rpi_pico/0001-boot2-at25sf128a-clkdiv-2.patch` | hal_rpi_pico | ボードの boot2（`boot2_at25sf128a.S`）のフラッシュのクロックを clk_sys の 1/4（31.25 MHz）から 1/2（62.5 MHz）に。hal_rpi_pico には値を渡す口が無いので既定値を変える |
 | `zephyr/0001-arm-cortex-m-rp2040-divider-save.patch` | zephyr | `CONFIG_ARM_RP2040_DIVIDER_SAVE`: スレッドの切り替え（PendSV、`swap_helper.S`）で SIO の除算器を退避・復元する |
 | `zephyr/0002-soc-rp2040-rom-mem-ops.patch` | zephyr | `CONFIG_RP2040_ROM_MEM_OPS`: `memcpy`・`memset` をブート ROM のルーチンにする |
-| `zephyr/0003-i2c-dw-rp2040-fifo-and-dma.patch` | zephyr | DesignWare I²C ドライバー（`drivers/i2c/i2c_dw.c`）: RP2040 の FIFO の深さと RX のしきい値、`CONFIG_I2C_DW_RP2040_DMA` の I²C0 の DMA 読み出し（「I²C」）。定数は新しいファイル `drivers/i2c/i2c_dw_rp2040.h` に、DMA の塊と読み出しのコマンド語は `i2c_dw_rp2040_dma_priv.h` に、`i2c_dma` コマンドの関数の宣言は `include/zephyr/drivers/i2c/i2c_dw_rp2040_dma.h` に置き、上流のファイルに入るのは 13 か所（`i2c_dw.c` 11、`i2c_dw.h` 1、`Kconfig.dw` 1） |
+| `zephyr/0003-i2c-dw-rp2040-fifo-and-dma.patch` | zephyr | DesignWare I²C ドライバー（`drivers/i2c/i2c_dw.c`）: RP2040 の FIFO の深さと RX のしきい値、`CONFIG_I2C_DW_RP2040_DMA` の I²C0 の DMA 読み出し（「I²C」）。定数は新しいファイル `drivers/i2c/i2c_dw_rp2040.h` に、DMA の塊と読み出しのコマンド語は `i2c_dw_rp2040_dma_priv.h` に、`i2c_dma` コマンドの関数の宣言は `include/zephyr/drivers/i2c/i2c_dw_rp2040_dma.h` に置き、上流のファイルに入るのは 16 か所（`i2c_dw.c` 14、`i2c_dw.h` 1、`Kconfig.dw` 1）。どのコントローラーでも、0 バイトのメッセージを断り（`-ENOTSUP`）、`i2c_recover_bus()` は `-ENOTSUP` を返す |
+| `zephyr/0004-i2c-shell-scan-not-supported.patch` | zephyr | シェルの `i2c scan`（`drivers/i2c/i2c_shell.c`）: 確かめの書き込み（0 バイト）が `-ENOTSUP` を返したら、どこも `--` で「0 devices found」とする代わりに、止まって、コントローラーがこのスキャンに対応していないことを表示し、`-ENOTSUP` を返す。ほかのエラーは従来どおり `--` |
 
 - **当て方**: `source script/setup.sh` が `west patch apply` で各モジュールの作業ツリーに当てます（commit は作りません。
   `git -C zephyr/zephyr status` には変更として出ます）。当てたものは飛ばすので、何度読み込んでも同じです。当てた集合の写しを
