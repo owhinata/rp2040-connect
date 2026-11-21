@@ -26,8 +26,9 @@
  * Here: NuttX's SPI1 driver (arch/arm/src/rp2040/rp2040_spi.c, polled with
  * RP2040_SPI_DMA off).  boards/arm/rp2040/common sets the pin functions and
  * makes CONFIG_RP2040_SPI1_CS_GPIO an output at 1 before this runs
- * (rp2040_common_initialize()); nina_bus_initialize() then sets the pads
- * as Zephyr's pinctrl and GPIO drivers do.  Each nina_bus_transceive()
+ * (rp2040_common_initialize()); nina_bus_initialize(), at the core's
+ * first request, then sets the pads as Zephyr's pinctrl and GPIO drivers
+ * do.  Each nina_bus_transceive()
  * takes the bus lock (SPI_LOCK) like each Zephyr spi_transceive() takes its
  * context lock, and sets mode, word size and frequency the first time,
  * like Zephyr's spi_pl022_configure() does when the configuration changes
@@ -51,6 +52,9 @@
 #include "rp2040_spi.h"
 
 #include "nina_bus.h"
+#ifdef CONFIG_NINA_PASSTHROUGH
+#  include "nina_passthrough.h"
+#endif
 
 #if CONFIG_RP2040_SPI1_SCK_GPIO != BOARD_NINA_SPI1_SCK_GPIO || \
     CONFIG_RP2040_SPI1_TX_GPIO != BOARD_NINA_SPI1_TX_GPIO || \
@@ -69,10 +73,10 @@ struct nina_line
 
 static const struct nina_line g_lines[] =
 {
-  [NINA_PIN_CS]    = { BOARD_NINA_CS_GPIO,    true,  false, false },
-  [NINA_PIN_READY] = { BOARD_NINA_READY_GPIO, true,  true,  false },
-  [NINA_PIN_RESET] = { BOARD_NINA_RESET_GPIO, true,  false, false },
-  [NINA_PIN_IRQ]   = { BOARD_NINA_IRQ_GPIO,   false, false, true  },
+  [NINA_BUS_PIN_CS]    = { BOARD_NINA_CS_GPIO,    true,  false, false },
+  [NINA_BUS_PIN_READY] = { BOARD_NINA_READY_GPIO, true,  true,  false },
+  [NINA_BUS_PIN_RESET] = { BOARD_NINA_RESET_GPIO, true,  false, false },
+  [NINA_BUS_PIN_IRQ]   = { BOARD_NINA_IRQ_GPIO,   false, false, true  },
 };
 
 static struct spi_dev_s *g_spi;
@@ -102,6 +106,18 @@ static void spi_pin(uint32_t gpio, bool input_enable)
 
 int nina_bus_initialize(void)
 {
+#ifdef CONFIG_NINA_PASSTHROUGH
+  if (nina_passthrough_active())
+    {
+      return -ENODEV;
+    }
+#endif
+
+  if (g_spi != NULL)
+    {
+      return 0;
+    }
+
   spi_pin(BOARD_NINA_SPI1_RX_GPIO, true);
   spi_pin(BOARD_NINA_SPI1_TX_GPIO, false);
   spi_pin(BOARD_NINA_SPI1_SCK_GPIO, false);
@@ -112,12 +128,8 @@ int nina_bus_initialize(void)
       return -ENODEV;
     }
 
-  return nina_pin_configure(NINA_PIN_CS, NINA_PIN_OUTPUT_INACTIVE);
-}
-
-bool nina_bus_ready(void)
-{
-  return g_spi != NULL;
+  return nina_bus_pin_configure(NINA_BUS_PIN_CS,
+                                NINA_BUS_PIN_OUTPUT_INACTIVE);
 }
 
 /* gpio_rpi_configure() (Zephyr drivers/gpio/gpio_rpi_pico.c) for a
@@ -127,10 +139,10 @@ bool nina_bus_ready(void)
  * the direction.
  */
 
-int nina_pin_configure(enum nina_pin pin, enum nina_pin_mode mode)
+int nina_bus_pin_configure(enum nina_bus_pin pin, enum nina_bus_pin_mode mode)
 {
   const struct nina_line *line;
-  bool input = mode == NINA_PIN_INPUT;
+  bool input = mode == NINA_BUS_PIN_INPUT;
   int level;
 
   if ((unsigned int)pin >= sizeof(g_lines) / sizeof(g_lines[0]))
@@ -150,13 +162,13 @@ int nina_pin_configure(enum nina_pin pin, enum nina_pin_mode mode)
   set_input_enabled(line->gpio, false);
   switch (mode)
     {
-      case NINA_PIN_OUTPUT_INACTIVE:
+      case NINA_BUS_PIN_OUTPUT_INACTIVE:
         level = line->active_low;
         break;
-      case NINA_PIN_OUTPUT_ACTIVE:
+      case NINA_BUS_PIN_OUTPUT_ACTIVE:
         level = !line->active_low;
         break;
-      case NINA_PIN_OUTPUT_HIGH:
+      case NINA_BUS_PIN_OUTPUT_HIGH:
         level = 1;
         break;
       default:
@@ -168,7 +180,7 @@ int nina_pin_configure(enum nina_pin pin, enum nina_pin_mode mode)
   return 0;
 }
 
-int nina_pin_set(enum nina_pin pin, int value)
+int nina_bus_pin_set(enum nina_bus_pin pin, int value)
 {
   const struct nina_line *line = &g_lines[pin];
 
@@ -176,7 +188,7 @@ int nina_pin_set(enum nina_pin pin, int value)
   return 0;
 }
 
-int nina_pin_get(enum nina_pin pin)
+int nina_bus_pin_get(enum nina_bus_pin pin)
 {
   const struct nina_line *line = &g_lines[pin];
 

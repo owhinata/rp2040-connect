@@ -48,7 +48,7 @@ void nina_passthrough_os_uart_irq(bool received);
  * each the OS's LOG_INF() with the format and arguments below, so that
  * they read the same in every build.
  */
-struct nina_passthrough_counts {
+struct nina_passthrough_os_counts {
 	uint64_t to_nina;   /* bytes from the host into the UART */
 	uint64_t from_nina; /* bytes from the UART to the host */
 	uint64_t discarded; /* bytes from the UART while USB was not configured */
@@ -61,17 +61,17 @@ struct nina_passthrough_counts {
 	uint32_t baud; /* the UART's rate */
 };
 
-#define NINA_PASSTHROUGH_LOG_START                                                                          \
+#define NINA_PASSTHROUGH_OS_LOG_START                                                                          \
 	"NINA passthrough: USB <-> UART1 (GPIO8 TX, GPIO9 RX) at %lu bps, "                        \
 	"DTR -> GPIO0 (GPIO2), RTS -> RESETN (GPIO3); close the port at %u bps or "                \
 	"press RESET to leave"
-#define NINA_PASSTHROUGH_LOG_START_ARGS(baud) (unsigned long)(baud), NINA_PASSTHROUGH_EXIT_BAUD
+#define NINA_PASSTHROUGH_OS_LOG_START_ARGS(baud) (unsigned long)(baud), NINA_PASSTHROUGH_EXIT_BAUD
 
-#define NINA_PASSTHROUGH_LOG_COUNTS                                                                         \
+#define NINA_PASSTHROUGH_OS_LOG_COUNTS                                                                         \
 	"%s: %llu bytes to the NINA, %llu from it, %llu discarded without USB, "                   \
 	"%lu lost (buffer full, peak %lu of %lu), UART: %lu overruns, %lu breaks, "                \
 	"%lu framing errors, %lu bps"
-#define NINA_PASSTHROUGH_LOG_COUNTS_ARGS(why, c)                                                            \
+#define NINA_PASSTHROUGH_OS_LOG_COUNTS_ARGS(why, c)                                                            \
 	(why), (unsigned long long)(c)->to_nina, (unsigned long long)(c)->from_nina,               \
 		(unsigned long long)(c)->discarded, (unsigned long)(c)->lost,                      \
 		(unsigned long)(c)->peak, (unsigned long)(c)->size, (unsigned long)(c)->overruns,  \
@@ -81,7 +81,7 @@ struct nina_passthrough_counts {
 void nina_passthrough_os_log_start(uint32_t baud);
 
 /* A line with the counts C after WHY. */
-void nina_passthrough_os_log_counts(const char *why, const struct nina_passthrough_counts *c);
+void nina_passthrough_os_log_counts(const char *why, const struct nina_passthrough_os_counts *c);
 
 #ifdef __cplusplus
 }

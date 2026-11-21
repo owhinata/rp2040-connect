@@ -9,7 +9,7 @@
 # whose layer and shell it needs).  It adds to the target:
 #
 # - the shared core of the link (common/drivers/nina/internal/nina_proto.c:
-#   nina_request() and nina_ip_config(), the WiFiNINA SPI protocol with the
+#   nina_proto_request() and nina_proto_ip_config(), the WiFiNINA SPI protocol with the
 #   Zephyr build's framing, timeouts and lazy reset of the module) and the
 #   "nina version" command (common/shell/nina_shell.c, the Zephyr
 #   build's text), and the waits of the socket loops
@@ -26,8 +26,7 @@
 #   common/drivers/nina/port/freertos/nina_os.c (nina_os.h: the locks,
 #   requests, sleeps, clock and the waits on the lines' edge interrupts, on
 #   FreeRTOS and the Pico SDK's hardware_gpio, hardware_irq and
-#   hardware_timer; the application calls its nina_os_initialize() of
-#   nina_freertos.h first) and its nina_bus_rp2040.c (nina_bus.h: SPI1 and the
+#   hardware_timer) and its nina_bus_rp2040.c (nina_bus.h: SPI1 and the
 #   module's lines on the Pico SDK's hardware_spi and hardware_gpio), with
 #   those libraries;
 # - the NINA passthrough mode (USB CDC <-> the module's UART for esptool, a
@@ -41,9 +40,8 @@
 #   bus's interrupt handler (NINA_PASSTHROUGH_ISR_SECTION);
 # - the include directories common/drivers/nina (nina_sock.h, nina_dns.h,
 #   nina_passthrough.h), its internal/ (nina_proto.h, nina_wait.h), its port/
-#   (nina_os.h, nina_bus.h and the passthrough mode's two boundaries) and
-#   port/freertos (nina_freertos.h); common/shell is on the include path
-#   through compat.cmake.
+#   (nina_os.h, nina_bus.h and the passthrough mode's two boundaries);
+#   common/shell is on the include path through compat.cmake.
 #
 # CONFIG_NINA_TCP_MAX_IO (3584), CONFIG_NINA_SEND_RETRY_MS (1) and
 # CONFIG_NET_SOCKETS_OFFLOAD_PRIORITY (40) are the Zephyr build's values, in
@@ -62,9 +60,8 @@
 # socket events (nina_proto.h, NINA_CAP_SOCKET_EVENTS); with an older
 # firmware they sleep their poll intervals.
 #
-# The application calls nina_bus_initialize() once at the start, before
-# the tasks (the Zephyr build initializes spi1 at boot); the module itself
-# is reset by the first request.  Each shared source is compiled with the
+# The core sets up SPI1 and resets the module at its first request; the
+# application calls nothing of the driver at its start.  Each shared source is compiled with the
 # prelude of the shared sources (common_prelude.h), as in compat.cmake.
 
 function(freertos_nina target)
@@ -87,10 +84,9 @@ function(freertos_nina target)
   )
 
   target_include_directories(${target} PRIVATE
-    ${FREERTOS_COMMON_DIR}/drivers/nina
+    ${FREERTOS_COMMON_DIR}/drivers/nina/include
     ${FREERTOS_COMMON_DIR}/drivers/nina/internal
     ${FREERTOS_COMMON_DIR}/drivers/nina/port
-    ${FREERTOS_COMMON_DIR}/drivers/nina/port/freertos
   )
 
   target_link_libraries(${target}

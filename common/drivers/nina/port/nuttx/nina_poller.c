@@ -45,7 +45,7 @@
  * for each send.  The poll's timer is not later than the deadline of a
  * connection in progress.
  *
- * Locking: the usrsock lock, then the NINA lock (inside nina_request()),
+ * Locking: the usrsock lock, then the NINA lock (inside nina_proto_request()),
  * as every request (nina_sock.h).  The lock is taken for one socket at a
  * time, so a request waits for at most one NINA command of this thread, as
  * a Zephyr socket call waits for at most one command of another thread's

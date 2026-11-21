@@ -39,7 +39,7 @@
 
 /* The NINA's sockets: the largest TCP send of one command and the wait
  * before a send that found no room is tried again (the core,
- * common/drivers/nina/nina_sock.h, and its Zephyr binding
+ * common/drivers/nina/include/nina_sock.h, and its Zephyr binding
  * common/drivers/nina/port/zephyr/nina_socket.c), and the priority with which
  * the binding registers its sockets (NET_SOCKET_OFFLOAD_REGISTER() of the
  * layer's <zephyr/net/socket.h>): the Zephyr build's CONFIG_NINA_TCP_MAX_IO,

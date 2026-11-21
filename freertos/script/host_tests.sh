@@ -206,8 +206,8 @@ printf 'ok  kv (flash boundary and store, FreeRTOS POSIX port)\n'
 # compatibility layer (none of its include directories either).  Twice: with the board's 1 ms
 # tick, and with a 4 ms one (configTICK_RATE_HZ 250); both times the tick count starts 5 s before
 # it wraps (configINITIAL_TICK_COUNT) and the fake TIMER 4.5 s before its low word wraps.
-ninainc=(-Itests/nina/pico_fake -I../common/drivers/nina -I../common/drivers/nina/internal
-         -I../common/drivers/nina/port -I../common/drivers/nina/port/freertos
+ninainc=(-Itests/nina/pico_fake -I../common/drivers/nina/include -I../common/drivers/nina/internal
+         -I../common/drivers/nina/port
          -Itests/compat -Iapp/usb-console/src -I"$kernel/include" -I"$posix" -I"$posix/utils")
 for hz in 1000 250; do
     ninadefs=(-DconfigTICK_RATE_HZ=$hz "-DconfigINITIAL_TICK_COUNT=((TickType_t)0 - 5 * $hz)"
@@ -471,10 +471,10 @@ printf 'ok  sockets (descriptor table, implementations, dispatch, fcntl, poll, r
 # k_heap) on the layer's socket part as above and on the shared core
 # (common/drivers/nina/nina_sock.c, nina_dns.c, internal/nina_wait.c), with the prelude and
 # NINA_OS_DNS_OFFLOAD, as drivers/nina/nina.cmake builds them, and the address conversions
-# (drivers/libc/inet.c), on a fake module and a fake clock (the test's nina_request(), nina_os.h,
+# (drivers/libc/inet.c), on a fake module and a fake clock (the test's nina_proto_request(), nina_os.h,
 # and the binding's k_uptime_get() and k_sleep() through -Wl,--wrap), on the same kernel and
 # layer objects.  drivers/libc/include (newlib's missing network headers) comes before the host's.
-sockinc=(-Idrivers/libc/include -I../common/drivers/nina -I../common/drivers/nina/internal
+sockinc=(-Idrivers/libc/include -I../common/drivers/nina/include -I../common/drivers/nina/internal
          -I../common/drivers/nina/port)
 sockobjs=()
 for src in ../common/drivers/nina/port/zephyr/nina_socket.c drivers/libc/inet.c tests/socket/main.c \
@@ -510,14 +510,14 @@ printf 'ok  socket (descriptors, wait loops, options, poll, resolver, FreeRTOS P
 # "ifconfig" command (drivers/wifi/nano_ifconfig.c), with the
 # prelude, CONFIG_NANO_WIFI_CREDENTIALS and the same per-file options), on the store and the
 # copies of Zephyr's settings and NVS over the shared fake flash (common/tests/kv_flash_fake.c),
-# the build's shell on a console that captures, and a fake module (the test's nina_request());
+# the build's shell on a console that captures, and a fake module (the test's nina_proto_request());
 # on the same kernel and layer objects.  It waits for the driver's and the profile's real
 # delays (the link monitor's 2 s, the reconnection's 4 s): about 45 s.  The scans with the
-# firmware's capability bits (a fake nina_probe_capabilities()): the link kept, the asynchronous
+# firmware's capability bits (a fake nina_proto_probe_capabilities()): the link kept, the asynchronous
 # scan and its failures, a loss of the link during the scan.
 wifiinc=(-D_GNU_SOURCE -DZ_SHELL_CMD_ROOT_GLOBAL -DCONFIG_GETOPT_LONG=1 -DCONFIG_NANO_WIFI_CREDENTIALS=1
          -U_FORTIFY_SOURCE -Itests/shell -Idrivers/shell -Idrivers/wifi
-         -I../common/shell -I../common/compat/lib/utils/getopt -I../common/drivers/nina
+         -I../common/shell -I../common/compat/lib/utils/getopt -I../common/drivers/nina/include
          -I../common/drivers/nina/internal -I../common/drivers/nina/port
          -I../common/imu -I../common/tests -I../common/compat/subsys/settings/include
          -I../common/compat/subsys/settings/src -ffunction-sections -fdata-sections)

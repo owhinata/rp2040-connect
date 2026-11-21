@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /* Host test of common/drivers/nina/nina_sock.c (the socket table and the
  * socket commands of the Zephyr build's socket offload) with a
- * fake nina_request() that checks each command and its parameters and
+ * fake nina_proto_request() that checks each command and its parameters and
  * gives scripted answers, and a fake clock.
  *
  * Covers: which sockets are supported, the table of 10, the lazy firmware
@@ -99,7 +99,7 @@ static void done(void)
 	assert(next_step == nsteps);
 }
 
-int nina_request(uint8_t cmd, const struct nina_param *p, size_t nparams, bool wide_params,
+int nina_proto_request(uint8_t cmd, const struct nina_proto_param *p, size_t nparams, bool wide_params,
 		 bool wide_response, uint8_t *out, size_t cap, size_t *out_len)
 {
 	struct step *s;

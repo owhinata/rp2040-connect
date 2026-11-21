@@ -96,15 +96,14 @@
 
 /* The requests (nina_proto.c) ----------------------------------------------- */
 
-struct nina_param {
+struct nina_proto_param {
 	const uint8_t *data;
 	size_t len;
 };
-int nina_request(uint8_t cmd, const struct nina_param *params, size_t nparams,
+int nina_proto_request(uint8_t cmd, const struct nina_proto_param *params, size_t nparams,
 		 bool wide_params, bool wide_response, uint8_t *out, size_t cap,
 		 size_t *out_len);
-int nina_ip_config(uint8_t data[12]);
-void nina_dns_init(void);
+int nina_proto_ip_config(uint8_t data[12]);
 
 /* The module's capabilities (command 0x6A of firmware/nina-fw's patches
  * 0003 to 0006; firmware/nina-fw/README.md): bits of what it adds to the
@@ -115,19 +114,19 @@ void nina_dns_init(void);
 #define NINA_CAP_SOCKET_EVENTS   (1u << 2) /* socket events on the IRQ line */
 #define NINA_CAP_KNOWN           0x7u
 
-/* nina_probe_capabilities() asks the module once (nina_wifi_init() of
+/* nina_proto_probe_capabilities() asks the module once (nina_wifi_init() of
  * nina_wifi.c, after the module's reset), starts the OS's waits for the socket events
  * when the module has them (nina_wait.c), and returns the bits in use.  A
  * firmware without the command (it answers 0xEF: -ENOTSUP of
- * nina_request()) or a failed request gives 0: the driver then works as
+ * nina_proto_request()) or a failed request gives 0: the driver then works as
  * with 3.0.2.  Later calls return the first answer.
- * nina_capabilities() returns the bits in use: the module's known bits,
+ * nina_proto_capabilities() returns the bits in use: the module's known bits,
  * without NINA_CAP_SOCKET_EVENTS when the OS does not wait for the events
  * (nina_os_event_start() failed); 0 before the probe.
- * nina_module_capabilities() returns the module's own bits (0 before).
+ * nina_proto_module_capabilities() returns the module's own bits (0 before).
  */
-uint32_t nina_probe_capabilities(void);
-uint32_t nina_capabilities(void);
-uint32_t nina_module_capabilities(void);
+uint32_t nina_proto_probe_capabilities(void);
+uint32_t nina_proto_capabilities(void);
+uint32_t nina_proto_module_capabilities(void);
 
 #endif /* NINA_PROTO_H_ */

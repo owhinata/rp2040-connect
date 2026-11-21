@@ -311,7 +311,7 @@ main のソースでないファイル（`time_sync.c`。`ntp` は `imu` と別�
 
 Wi-Fi モジュール NINA-W102 とは SPI1 でやり取りします。NINA のファームウェアは Zephyr 版と同じもの
 （Arduino の NINA ファームウェア 3.0.2 に修正を当てたもの、`firmware/nina-fw/README.md`）で、書き換えません。
-ドライバーは、コマンドを 1 つ送って応答を受け取る転送層（`nina_request()`、`nina_ip_config()`）、
+ドライバーは、コマンドを 1 つ送って応答を受け取る転送層（`nina_proto_request()`、`nina_proto_ip_config()`）、
 `nina version`、ソケット（NuttX の usrsock。socket・close・bind・listen・accept・connect・setsockopt と
 送受信）、NINA の名前解決（`nina_dns_getaddrinfo()`）、Wi-Fi のネットワークデバイス `wlan0`
 （スキャン、接続、切断、状態、接続の監視）からなります（`nuttx/drivers/README_ja.md` の「ソケット（usrsock）」
@@ -1123,7 +1123,7 @@ OS ごとのヘッダー（`sensor_shell_os.h`、`wifi_profile_os.h`、`lsm6dso_
 |---|---|
 | `common/imu/` | `imu_stream.c`、`imu_raw_{batch,packet,queue,status,time}`、`imu_tick_clock`、`time_sync.[ch]`、`time_offset`、`imu_cal_codec.c`、`imu_cal.[ch]`、`imu_raw_mqtt.[ch]`、`wifi_profile.[ch]`、`kv_store.[ch]`、`mqtt_min.[ch]`・`mqtt_min_sock.c`（互換層の上の版の MQTT クライアントとそのソケットの層。Zephyr 版は使わない） |
 | `common/drivers/lsm6dso/` | `lsm6dso.[ch]`（ドライバー本体。末尾のデバイスは版ごとの `lsm6dso_instance.h`）、`lsm6dso_{fifo,cal,zero,fifo_decoder,fifo_hw,fifo_irq}`、`lsm6dso_stream.c`、`lsm6dso_compat.c`、`lsm6dso_fifo_packet.h`、`lsm6dso_fifo_stats.h`、`lsm6dso_attributes.h` |
-| `common/drivers/nina/` | NINA のコア: 直下に `nina_wifi.[ch]`・`nina_sock.[ch]`・`nina_dns.[ch]`・esptool の中継 `nina_passthrough.[ch]`、`internal/` に `nina_proto.[ch]`・`nina_wait.[ch]`、`port/` にコアの境界のヘッダー `nina_os.h`・`nina_bus.h`（中継のものは `nina_passthrough_bus.h`・`nina_passthrough_os.h`）（3 つの版が使う。Zephyr の API を使わず、NuttX 版では前置きヘッダーなしでコンパイルする。境界は `nuttx/drivers/README_ja.md` の「NINA-W102」）。コアのつなぎは `port/zephyr/`（Zephyr 版と FreeRTOS 版）と `port/nuttx/`（この版: `wlan0`、アプリの Wi-Fi 管理、`nina_os.c`、usrsock、中継のホスト側 `nina_passthrough_os.c`、RP2040 の SPI と線 `nina_bus_rp2040.c`、中継のモジュール側 `nina_passthrough_bus_rp2040.c`） |
+| `common/drivers/nina/` | NINA のコア: 直下（ヘッダーは `include/`）に `nina_wifi.[ch]`・`nina_sock.[ch]`・`nina_dns.[ch]`・esptool の中継 `nina_passthrough.[ch]`、`internal/` に `nina_proto.[ch]`・`nina_wait.[ch]`、`port/` にコアの境界のヘッダー `nina_os.h`・`nina_bus.h`（中継のものは `nina_passthrough_bus.h`・`nina_passthrough_os.h`）（3 つの版が使う。Zephyr の API を使わず、NuttX 版では前置きヘッダーなしでコンパイルする。境界は `nuttx/drivers/README_ja.md` の「NINA-W102」）。コアのつなぎは `port/zephyr/`（Zephyr 版と FreeRTOS 版）と `port/nuttx/`（この版: `wlan0`、アプリの Wi-Fi 管理、`nina_os.c`、usrsock、中継のホスト側 `nina_passthrough_os.c`、RP2040 の SPI と線 `nina_bus_rp2040.c`、中継のモジュール側 `nina_passthrough_bus_rp2040.c`） |
 | `common/drivers/sensor_shell/` | `sensor_shell.c` |
 | `common/drivers/stmemsc/` | `stmemsc.h`、`stmemsc_i2c.c`、`stmemsc_mdelay.c`（Zephyr の stmemsc の I2C の部分の写し。NuttX 版と FreeRTOS 版が使い、前置きヘッダーなしでコンパイルする。Zephyr 版は Zephyr のものを使う） |
 | `common/drivers/i2c_dw/` | I2C のコア `i2c_dw.c`（I2C0 と、`CONFIG_I2C_DW_I2C1`（既定で無効）のとき I2C1） と、その定義 `i2c_dw.h`・`i2c_dw_registers.h`・`i2c_dw_rp2040.h`、DMA での読み出し `i2c_dw_rp2040_dma_priv.h`（DMA のコマンド語を含む。Zephyr 版はパッチ 0003 に同じ関数を持つ）（ファイル名はパッチ後の Zephyr のドライバーに合わせる）、`i2c_dma` の関数の宣言 `i2c_dw_rp2040_dma.h`、境界のヘッダー `i2c_dw_os.h` と、DMA 読み出しの `i2c_dw_dma_os.h`（NuttX 版と FreeRTOS 版が使う。前置きヘッダーなしでコンパイルし、OS の部分はボードの `src/` の `i2c_dw_os_impl.h`・`i2c_dw_instance.h`・`i2c_dw_dma_os.c`。境界は `nuttx/drivers/README_ja.md` の「I2C0」） |
@@ -1215,7 +1215,7 @@ NuttX の NVS の索引をそれぞれ受け付け、相手の形式の索引の
 保存の失敗、`auto_connect`、`wifi`・`wifi cred` のヘルプ。期待する出力は Zephyr のソースが出す文です。`common/tests/nina_proto.c` は `common/drivers/nina/internal/nina_proto.c` を、
 偽の SPI・GPIO・時計・ロックで確かめます。広いパラメーターと詰め、
 まとめての転送、0x75・0x7a の 3 つの応答パラメーター、長さの検査、転送の失敗、狭いパラメーター、
-版の要求、応答の先頭探し（1000 バイト）、各 `-EPROTO`・`-EMSGSIZE`・`-EINVAL`、0x27、`nina_ip_config()`
+版の要求、応答の先頭探し（1000 バイト）、各 `-EPROTO`・`-EMSGSIZE`・`-EINVAL`、0x27、`nina_proto_ip_config()`
 （0x21）、READY の期限（2000・20・10000 ms を 100 µs ごとに見る回数）、最初の要求のリセット手順、CS と
 転送の順序、ロックを確かめます。
 
@@ -1287,7 +1287,7 @@ Zephyr のフラグへの変換、`IC_DATA_CMD` に書く語の列（`i2c` ツ�
 他のスレッドが持っているときの `-EBUSY`・`-EAGAIN`。
 
 `common/tests/nina_sock.c` は `common/drivers/nina/nina_sock.c` を、命令とパラメーターを検査して決まった応答を返す偽の
-`nina_request()` と偽の時計で確かめます: 対応するソケットの種類、10 個の表と `EMFILE`、NINA 側のソケットを
+`nina_proto_request()` と偽の時計で確かめます: 対応するソケットの種類、10 個の表と `EMFILE`、NINA 側のソケットを
 最初に使うときに作ること（種類とプロトコル、FIONBIO）、bind、listen（backlog を 1〜255 に丸める）、accept
 （相手のアドレスとポートのバイト順、`EAGAIN`、`EMFILE`）、connect（UDP、TCP の処理中、SO_ERROR の各値の
 errno、エラーフラグ、10000 ms の期限、poll の失敗、失敗後に NINA 側のソケットを閉じること）、close、
@@ -1299,7 +1299,7 @@ setsockopt、`nina_event` が何を問い合わせ、何をイベントにする
 （先に poll すること、サイズのパラメーター、送信元のポートのバイト順、接続した相手以外を捨てること、空の
 データグラム）、データを見つけた poll を次の受信の最初の poll に使うこと。
 
-`common/tests/nina_dns.c` は `common/drivers/nina/nina_dns.c` を、偽の `nina_request()` とロックで確かめます: ヒントの
+`common/tests/nina_dns.c` は `common/drivers/nina/nina_dns.c` を、偽の `nina_proto_request()` とロックで確かめます: ヒントの
 既定値と受け付けないフラグ・ファミリー・ソケットの種類、サービス（ポート番号）、数値のアドレス（NINA に問い合わせ
 ない）、名前（ロックを持ったまま命令 0x34 と 0x35）、失敗ごとの `EAI_*`。
 

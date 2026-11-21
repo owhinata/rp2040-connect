@@ -32,7 +32,7 @@
 #define NANO_PRIO_WIFI_RECONNECT     NANO_PRIO_FROM_ZEPHYR(8)
 #define NANO_STACK_WIFI_RECONNECT    2048
 
-/* The NINA core's threads (common/drivers/nina/nina_wifi.h): K_THREAD_DEFINE()
+/* The NINA core's threads (common/drivers/nina/include/nina_wifi.h): K_THREAD_DEFINE()
  * of common/drivers/nina/port/zephyr/nina_net.c, nina_scan_tid (1536, 8),
  * nina_connect_tid (1024, 8), nina_monitor_tid (1536, 9); the NuttX
  * binding (common/drivers/nina/port/nuttx/nina_netdev.c) starts them with these.

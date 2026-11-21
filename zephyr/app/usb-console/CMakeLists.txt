@@ -15,7 +15,7 @@ target_sources(app PRIVATE src/main.c src/log_ram.c ${COMMON_DIR}/imu/kv_store.c
   ${COMMON_DIR}/imu/imu_raw_time.c ${COMMON_DIR}/imu/imu_tick_clock.c ${COMMON_DIR}/imu/imu_raw_queue.c
   ${COMMON_DIR}/imu/imu_raw_mqtt.c ${COMMON_DIR}/imu/imu_raw_status.c)
 target_include_directories(app PRIVATE src drivers/lsm6dso ${COMMON_DIR}/imu ${COMMON_DIR}/drivers/lsm6dso
-  ${COMMON_DIR}/drivers/nina ${COMMON_DIR}/drivers/nina/internal ${COMMON_DIR}/drivers/nina/port)
+  ${COMMON_DIR}/drivers/nina/include ${COMMON_DIR}/drivers/nina/internal ${COMMON_DIR}/drivers/nina/port)
 # "kernel ps" (main.c): the interval arithmetic shared with the FreeRTOS build's "ps", and the
 # kernel's internal headers for the interrupt stack (z_stack_space_get(), as Thread Analyzer).
 set_property(SOURCE src/main.c APPEND PROPERTY INCLUDE_DIRECTORIES ${COMMON_DIR}/shell
@@ -50,8 +50,8 @@ if(CONFIG_NINA_PASSTHROUGH)
 endif()
 set(nina_socket_sources ${nina_dir}/nina_sock.c ${nina_zephyr_dir}/nina_socket.c
   ${nina_dir}/nina_dns.c)
-set_property(SOURCE ${nina_socket_sources} APPEND PROPERTY INCLUDE_DIRECTORIES
-  ${nina_zephyr_dir}/posix)
+set_property(SOURCE ${nina_socket_sources} ${nina_zephyr_dir}/nina_net.c APPEND PROPERTY
+  INCLUDE_DIRECTORIES ${nina_zephyr_dir}/posix)
 # The resolver registered as the offload's, its results on nina_socket.c's heap (nina_os.h).
 set_property(SOURCE ${nina_socket_sources} APPEND PROPERTY COMPILE_DEFINITIONS NINA_OS_DNS_OFFLOAD)
 # Integer division through the SIO divider: the Pico SDK's pico_divider (hal_rpi_pico), as the

@@ -153,8 +153,7 @@ FreeRTOS 版が実装するのは flash の境界（`common/compat/nano_flash_kv
   CS・READY・RESET・IRQ の 4 本。Zephyr のドライバーと同じ順と値で設定）と `nina_os.h`（コアの FreeRTOS へのつなぎ
   `common/drivers/nina/port/freertos/nina_os.c`。互換層を使わず FreeRTOS と Pico SDK で直接書いたもの: NINA のロック・名前解決のロック・
   Wi-Fi の操作のロックは優先度継承のある FreeRTOS の再帰ミューテックス、Wi-Fi のスレッドへの要求は 2 値セマフォ、「切り上げ + 1 tick」の
-  sleep、時計は TIMER の ms）を実装します。つなぎのオブジェクトは静的で、`main()` がタスクより前に `nina_os_initialize()`
-  （`nina_freertos.h`）で作ります。境界の意味は
+  sleep、時計は TIMER の ms）を実装します。つなぎのオブジェクトは静的で、どれかを最初に使うときに作ります。境界の意味は
   [`nuttx/drivers/README_ja.md`](../../nuttx/drivers/README_ja.md) の「NINA-W102」の表のとおりです。
 - コアの READY の待ちは、READY のエッジ割り込み（GPIO10）が与える 2 値セマフォで眠り、最長 10 ms ごとに READY を読み直します。
   つなぎは GPIO10 と GPIO2 のための `IO_IRQ_BANK0` の raw ハンドラーを自分で持ちます（`gpio_add_raw_irq_handler_masked()`。

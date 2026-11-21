@@ -45,24 +45,24 @@
 #define PT_PIN_GPIO0  2
 #define PT_PIN_RESETN 3
 
-_Static_assert(UART_UARTDR_FE_BITS == NINA_PASSTHROUGH_UART_FRAMING &&
-		       UART_UARTDR_BE_BITS == NINA_PASSTHROUGH_UART_BREAK &&
-		       UART_UARTDR_OE_BITS == NINA_PASSTHROUGH_UART_OVERRUN,
+_Static_assert(UART_UARTDR_FE_BITS == NINA_PASSTHROUGH_BUS_UART_FRAMING &&
+		       UART_UARTDR_BE_BITS == NINA_PASSTHROUGH_BUS_UART_BREAK &&
+		       UART_UARTDR_OE_BITS == NINA_PASSTHROUGH_BUS_UART_OVERRUN,
 	       "a received word is UARTDR as read");
 
 /* The request: the watchdog's scratch registers 0..3, which survive its
  * restart; fault_boot() clears them later at a normal start.
  */
-void nina_passthrough_bus_mark_get(uint32_t s[NINA_PASSTHROUGH_MARK_WORDS])
+void nina_passthrough_bus_mark_get(uint32_t s[NINA_PASSTHROUGH_BUS_MARK_WORDS])
 {
-	for (int i = 0; i < NINA_PASSTHROUGH_MARK_WORDS; i++) {
+	for (int i = 0; i < NINA_PASSTHROUGH_BUS_MARK_WORDS; i++) {
 		s[i] = watchdog_hw->scratch[i];
 	}
 }
 
-void nina_passthrough_bus_mark_set(const uint32_t s[NINA_PASSTHROUGH_MARK_WORDS])
+void nina_passthrough_bus_mark_set(const uint32_t s[NINA_PASSTHROUGH_BUS_MARK_WORDS])
 {
-	for (int i = 0; i < NINA_PASSTHROUGH_MARK_WORDS; i++) {
+	for (int i = 0; i < NINA_PASSTHROUGH_BUS_MARK_WORDS; i++) {
 		watchdog_hw->scratch[i] = s[i];
 	}
 }
@@ -92,18 +92,18 @@ void nina_passthrough_bus_resetn(bool released)
 	gpio_put(PT_PIN_RESETN, released);
 }
 
-void nina_passthrough_bus_gpio0(enum nina_passthrough_gpio0 state)
+void nina_passthrough_bus_gpio0(enum nina_passthrough_bus_gpio0 state)
 {
 	switch (state) {
-	case NINA_PASSTHROUGH_GPIO0_LOW:
+	case NINA_PASSTHROUGH_BUS_GPIO0_LOW:
 		gpio_put(PT_PIN_GPIO0, 0);
 		gpio_set_dir(PT_PIN_GPIO0, GPIO_OUT);
 		break;
-	case NINA_PASSTHROUGH_GPIO0_HIGH:
+	case NINA_PASSTHROUGH_BUS_GPIO0_HIGH:
 		gpio_put(PT_PIN_GPIO0, 1);
 		gpio_set_dir(PT_PIN_GPIO0, GPIO_OUT);
 		break;
-	case NINA_PASSTHROUGH_GPIO0_RELEASED:
+	case NINA_PASSTHROUGH_BUS_GPIO0_RELEASED:
 		gpio_put(PT_PIN_GPIO0, 0);
 		gpio_set_dir(PT_PIN_GPIO0, GPIO_IN);
 		break;

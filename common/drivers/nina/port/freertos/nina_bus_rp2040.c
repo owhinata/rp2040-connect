@@ -58,12 +58,12 @@
  *   bus's context lock, but SPI1 has no other user and nina_proto.c calls this
  *   only with nina_lock held (nina_os.h).  CS is not touched (nina_proto.c
  *   drives it: the Zephyr build's spi_config has no CS).
- * - nina_pin_configure(): gpio_rpi_configure() of Zephyr's RP2040 GPIO
+ * - nina_bus_pin_configure(): gpio_rpi_configure() of Zephyr's RP2040 GPIO
  *   driver (drivers/gpio/gpio_rpi_pico.c) for a push-pull line after
  *   gpio_pin_configure_dt() has folded in the devicetree flags: the pulls,
  *   the SIO function (which sets input enable and clears output disable),
  *   input enable off unless an input, then the level and the direction.
- * - nina_pin_set() / _get(): gpio_put() / gpio_get() with the line's
+ * - nina_bus_pin_set() / _get(): gpio_put() / gpio_get() with the line's
  *   polarity (gpio_pin_set_dt() / gpio_pin_get_dt()).  The pins are on SIO,
  *   so no other task's GPIO calls interfere: SIO's set and clear registers
  *   change only the bits written.
@@ -114,10 +114,10 @@ struct nina_line {
 };
 
 static const struct nina_line lines[] = {
-	[NINA_PIN_CS] = {NINA_CS_GPIO, true, false, false},
-	[NINA_PIN_READY] = {NINA_READY_GPIO, true, true, false},
-	[NINA_PIN_RESET] = {NINA_RESET_GPIO, true, false, false},
-	[NINA_PIN_IRQ] = {NINA_IRQ_GPIO, false, false, true},
+	[NINA_BUS_PIN_CS] = {NINA_CS_GPIO, true, false, false},
+	[NINA_BUS_PIN_READY] = {NINA_READY_GPIO, true, true, false},
+	[NINA_BUS_PIN_RESET] = {NINA_RESET_GPIO, true, false, false},
+	[NINA_BUS_PIN_IRQ] = {NINA_IRQ_GPIO, false, false, true},
 };
 
 static bool bus_ready;
@@ -142,6 +142,9 @@ static void spi_pin(unsigned int gpio, bool input_enable)
 
 int nina_bus_initialize(void)
 {
+	if (bus_ready) {
+		return 0;
+	}
 	reset_block_num(NINA_SPI_RESET);
 	unreset_block_num_wait_blocking(NINA_SPI_RESET);
 
@@ -154,15 +157,10 @@ int nina_bus_initialize(void)
 	hw_set_bits(&spi_get_hw(NINA_SPI)->cr1, SPI_SSPCR1_SSE_BITS);
 	bus_ready = true;
 
-	return nina_pin_configure(NINA_PIN_CS, NINA_PIN_OUTPUT_INACTIVE);
+	return nina_bus_pin_configure(NINA_BUS_PIN_CS, NINA_BUS_PIN_OUTPUT_INACTIVE);
 }
 
-bool nina_bus_ready(void)
-{
-	return bus_ready;
-}
-
-int nina_pin_configure(enum nina_pin pin, enum nina_pin_mode mode)
+int nina_bus_pin_configure(enum nina_bus_pin pin, enum nina_bus_pin_mode mode)
 {
 	const struct nina_line *line;
 	bool level;
@@ -171,16 +169,16 @@ int nina_pin_configure(enum nina_pin pin, enum nina_pin_mode mode)
 		return -EINVAL;
 	}
 	switch (mode) {
-	case NINA_PIN_OUTPUT_INACTIVE:
+	case NINA_BUS_PIN_OUTPUT_INACTIVE:
 		level = lines[pin].active_low;
 		break;
-	case NINA_PIN_OUTPUT_ACTIVE:
+	case NINA_BUS_PIN_OUTPUT_ACTIVE:
 		level = !lines[pin].active_low;
 		break;
-	case NINA_PIN_OUTPUT_HIGH:
+	case NINA_BUS_PIN_OUTPUT_HIGH:
 		level = true;
 		break;
-	case NINA_PIN_INPUT:
+	case NINA_BUS_PIN_INPUT:
 		level = false;
 		break;
 	default:
@@ -190,7 +188,7 @@ int nina_pin_configure(enum nina_pin pin, enum nina_pin_mode mode)
 	line = &lines[pin];
 	gpio_set_pulls(line->gpio, line->pull_up, line->pull_down);
 	gpio_set_function(line->gpio, GPIO_FUNC_SIO);
-	if (mode == NINA_PIN_INPUT) {
+	if (mode == NINA_BUS_PIN_INPUT) {
 		gpio_set_dir(line->gpio, GPIO_IN);
 		return 0;
 	}
@@ -200,7 +198,7 @@ int nina_pin_configure(enum nina_pin pin, enum nina_pin_mode mode)
 	return 0;
 }
 
-int nina_pin_set(enum nina_pin pin, int value)
+int nina_bus_pin_set(enum nina_bus_pin pin, int value)
 {
 	const struct nina_line *line = &lines[pin];
 
@@ -208,7 +206,7 @@ int nina_pin_set(enum nina_pin pin, int value)
 	return 0;
 }
 
-int nina_pin_get(enum nina_pin pin)
+int nina_bus_pin_get(enum nina_bus_pin pin)
 {
 	const struct nina_line *line = &lines[pin];
 

@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /* Host test of common/drivers/nina/nina_wifi.c (included) on fakes of its
- * boundary: the module's commands (nina_request(), nina_ip_config(), the
+ * boundary: the module's commands (nina_proto_request(), nina_proto_ip_config(), the
  * capabilities), the kernel services of nina_os.h (the Wi-Fi lock and
  * requests, the sleeps and the clock) and a binding's struct
  * nina_wifi_ops, which record what they are asked.  The threads' passes
@@ -61,7 +61,7 @@ static unsigned int probes;
 static uint8_t ip_replies[4][12];
 static unsigned int nips, ip_at;
 static int ip_ret;
-/* Called once at the command HOOK_ON (0x21: nina_ip_config()), before its
+/* Called once at the command HOOK_ON (0x21: nina_proto_ip_config()), before its
  * answer. */
 static void (*hook)(void);
 static uint8_t hook_on;
@@ -144,7 +144,7 @@ static void steps_done(void)
 	step_at = nsteps = 0;
 }
 
-int nina_request(uint8_t cmd, const struct nina_param *params, size_t nparams, bool wide_params,
+int nina_proto_request(uint8_t cmd, const struct nina_proto_param *params, size_t nparams, bool wide_params,
 		 bool wide_response, uint8_t *out, size_t cap, size_t *out_len)
 {
 	char line[200];
@@ -177,7 +177,7 @@ int nina_request(uint8_t cmd, const struct nina_param *params, size_t nparams, b
 	return 0;
 }
 
-int nina_ip_config(uint8_t data[12])
+int nina_proto_ip_config(uint8_t data[12])
 {
 	note("21");
 	run_hook(NINA_CMD_GET_IPADDR);
@@ -190,13 +190,13 @@ int nina_ip_config(uint8_t data[12])
 	return 0;
 }
 
-uint32_t nina_probe_capabilities(void)
+uint32_t nina_proto_probe_capabilities(void)
 {
 	probes++;
 	return caps;
 }
 
-uint32_t nina_capabilities(void)
+uint32_t nina_proto_capabilities(void)
 {
 	return caps;
 }

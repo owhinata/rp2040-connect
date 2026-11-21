@@ -11,7 +11,7 @@
  * (common/imu/kv_store.c, the copies of Zephyr's settings and NVS) over the
  * shared fake of the key-value area's flash (common/tests/kv_flash_fake.c),
  * the build's shell (freertos/drivers/shell) on a console that captures,
- * and a fake NINA-W102 (nina_request() and nina_ip_config() here).  The
+ * and a fake NINA-W102 (nina_proto_request() and nina_proto_ip_config() here).  The
  * credentials are made up for the test.
  *
  * - The start with a module that does not answer: the interface comes up
@@ -328,18 +328,18 @@ int64_t nina_os_uptime_ms(void)
 static uint32_t fake_caps;
 static unsigned int probes;
 
-uint32_t nina_probe_capabilities(void)
+uint32_t nina_proto_probe_capabilities(void)
 {
 	probes++;
 	return fake_caps;
 }
 
-uint32_t nina_capabilities(void)
+uint32_t nina_proto_capabilities(void)
 {
 	return fake_caps;
 }
 
-uint32_t nina_module_capabilities(void)
+uint32_t nina_proto_module_capabilities(void)
 {
 	return fake_caps;
 }
@@ -347,8 +347,9 @@ uint32_t nina_module_capabilities(void)
 /* Two networks: index 0 WPA2 on channel 6, 1 open on channel 11. */
 static const char *const scan_ssids[] = {"TestAP-1", "TestAP-2"};
 
-int nina_request(uint8_t cmd, const struct nina_param *p, size_t nparams, bool wide_params,
-		 bool wide_response, uint8_t *out, size_t cap, size_t *out_len)
+int nina_proto_request(uint8_t cmd, const struct nina_proto_param *p, size_t nparams,
+		       bool wide_params, bool wide_response, uint8_t *out, size_t cap,
+		       size_t *out_len)
 {
 	uint8_t b[64];
 	int ret = 0;
@@ -469,7 +470,7 @@ out:
 }
 
 /* 10.42.0.97/24 via 10.42.0.1 (common/drivers/nina/internal/nina_proto.c's layout). */
-int nina_ip_config(uint8_t data[12])
+int nina_proto_ip_config(uint8_t data[12])
 {
 	static const uint8_t config[12] = {10, 42, 0, 97, 255, 255, 255, 0, 10, 42, 0, 1};
 

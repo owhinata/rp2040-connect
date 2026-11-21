@@ -94,7 +94,7 @@
  * nuttx/patches/nuttx/0005 makes usrsock_sendmsg() return -EAGAIN for it.
  * usrsock repeats a request answered -EAGAIN while the call waits, and
  * the Zephyr build's send returns EAGAIN after NINA_SEND_WAIT_MS (and at
- * once for a datagram).  nina_request() never returns -ETIME.
+ * once for a datagram).  nina_proto_request() never returns -ETIME.
  */
 
 #define NINA_USRSOCK_EAGAIN_FINAL (-ETIME)

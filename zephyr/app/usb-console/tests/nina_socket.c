@@ -4,7 +4,7 @@
  * the shared core (common/drivers/nina/nina_sock.c, nina_dns.c), as
  * CMakeLists.txt builds them (NINA_OS_DNS_OFFLOAD), on fakes of the Zephyr
  * calls (tests/socket_fakes: the descriptor table, mutexes, the clock and
- * sleeps) and of the module (nina_request() here: the firmware's sockets as
+ * sleeps) and of the module (nina_proto_request() here: the firmware's sockets as
  * a small model that counts each command).  The test calls the offload's
  * vtable as Zephyr's socket layer does.  The core's own commands and
  * replies are common/tests/nina_sock.c's; this covers what the offload
@@ -294,7 +294,7 @@ static int next_fw(void)
 	return 0xff;
 }
 
-int nina_request(uint8_t cmd, const struct nina_param *p, size_t nparams, bool wide_params,
+int nina_proto_request(uint8_t cmd, const struct nina_proto_param *p, size_t nparams, bool wide_params,
 		 bool wide_response, uint8_t *out, size_t cap, size_t *out_len)
 {
 	struct fw *f = nparams && cmd >= 0x71 ? &fw[p[0].data[0]] : NULL;

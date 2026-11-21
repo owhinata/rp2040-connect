@@ -48,10 +48,6 @@
 
 #include "nano_connect.h"
 
-#ifdef CONFIG_NINA
-#  include "nina_bus.h"
-#endif
-
 #ifdef CONFIG_NINA_NET
 #  include "nina_net.h"
 #endif
@@ -149,20 +145,6 @@ int nano_bringup(void)
     {
       ret = nano_usb_initialize();
       return ret < 0 ? ret : result;
-    }
-#endif
-
-#ifdef CONFIG_NINA
-  /* SPI1 to the NINA-W102 and its chip select.  The Zephyr build sets up
-   * spi1 (and drives cs-gpios inactive) at boot; the module itself is
-   * reset on the first request (common/drivers/nina/internal/nina_proto.c).
-   */
-
-  ret = nina_bus_initialize();
-  if (ret < 0)
-    {
-      syslog(LOG_ERR, "ERROR: nina_bus_initialize() failed: %d\n", ret);
-      result = ret;
     }
 #endif
 

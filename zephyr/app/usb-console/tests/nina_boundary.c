@@ -6,7 +6,7 @@
  * built on fakes of the Zephyr calls (tests/nina_fakes), whose
  * registration of the callbacks fails or succeeds as the test says.
  *
- * - Framing and bulk transfers of nina_request(), through spi_transceive() and spi_write().
+ * - Framing and bulk transfers of nina_proto_request(), through spi_transceive() and spi_write().
  * - The lines of the devicetree and the flags: the reset sequence, CS on
  *   GPIO9 around each half, a bus that is not ready.
  * - The waits for READY: sampled every 100 us when nina_os_ready_start()
@@ -29,7 +29,7 @@
  *   (two posts leave one, the scan's and the connection's apart), taken
  *   for ever.
  * - With CONFIG_NINA_PASSTHROUGH (as the build has it), the NINA
- *   passthrough mode (common/drivers/nina/nina_passthrough.h): while it is
+ *   passthrough mode (common/drivers/nina/include/nina_passthrough.h): while it is
  *   active the bus is never ready, so a request is -ENODEV before any line
  *   or SPI call, the module is not reset, and the link works again once
  *   the mode is gone.
@@ -378,7 +378,7 @@ static void reset_fake(const uint8_t *reply, size_t len)
 static void test_framing(void)
 {
 	uint8_t payload[512], output[512], id = 7;
-	struct nina_param params[] = {{&id, 1}, {payload, sizeof(payload)}};
+	struct nina_proto_param params[] = {{&id, 1}, {payload, sizeof(payload)}};
 	size_t n;
 	const uint8_t send_reply[] = {0xe0, 0xc4, 1, 2, 0x00, 0x02, 0xee};
 
@@ -386,7 +386,7 @@ static void test_framing(void)
 		payload[i] = (uint8_t)i;
 	}
 	reset_fake(send_reply, sizeof(send_reply));
-	assert(nina_request(0x44, params, 2, true, false, output, sizeof(output), &n) == 0);
+	assert(nina_proto_request(0x44, params, 2, true, false, output, sizeof(output), &n) == 0);
 	assert(n == 2 && output[0] == 0 && output[1] == 2);
 	assert(request_len == 524 && (request_len % 4) == 0);
 	assert(memcmp(request, "\xe0\x44\x02\x00\x01\x07\x02\x00", 8) == 0);
@@ -402,7 +402,7 @@ static void test_framing(void)
 	params[1].data = large;
 	params[1].len = sizeof(large);
 	reset_fake(send_reply, sizeof(send_reply));
-	assert(nina_request(0x44, params, 2, true, false, output, sizeof(output), &n) == 0);
+	assert(nina_proto_request(0x44, params, 2, true, false, output, sizeof(output), &n) == 0);
 	assert(request_len == 1472 && request[6] == 0x05 && request[7] == 0xb4);
 	assert(memcmp(request + 8, large, sizeof(large)) == 0);
 	assert(request[1468] == 0xee && request[1471] == 0xff && !cs_active);
@@ -413,23 +413,23 @@ static void test_framing(void)
 	memcpy(read_reply + 5, payload, sizeof(payload));
 	read_reply[517] = 0xee;
 	reset_fake(read_reply, 518);
-	assert(nina_request(0x45, params, 1, true, true, output, sizeof(output), &n) == 0);
+	assert(nina_proto_request(0x45, params, 1, true, true, output, sizeof(output), &n) == 0);
 	assert(n == sizeof(payload) && memcmp(output, payload, n) == 0);
 	assert(bulk_calls >= 4 && calls < 30 && !cs_active);
 
 	const uint8_t accept_reply[] = {0xe0, 0xf5, 3, 1, 3,    4,    192,
 					168,  1,    2, 2, 0x34, 0x12, 0xee};
 	reset_fake(accept_reply, sizeof(accept_reply));
-	assert(nina_request(0x75, params, 1, false, false, output, sizeof(output), &n) == 0);
+	assert(nina_proto_request(0x75, params, 1, false, false, output, sizeof(output), &n) == 0);
 	assert(n == 7 && output[0] == 3 && output[1] == 192 && output[6] == 0x12);
 
 	reset_fake(read_reply, 518);
-	assert(nina_request(0x45, params, 1, true, true, output, 511, &n) == -EMSGSIZE);
+	assert(nina_proto_request(0x45, params, 1, true, true, output, 511, &n) == -EMSGSIZE);
 	assert(!cs_active);
 
 	const uint8_t malformed_accept[] = {0xe0, 0xf5, 3, 2, 3, 4, 0xee};
 	reset_fake(malformed_accept, sizeof(malformed_accept));
-	assert(nina_request(0x75, params, 1, false, false, output, sizeof(output), &n) ==
+	assert(nina_proto_request(0x75, params, 1, false, false, output, sizeof(output), &n) ==
 	       -EMSGSIZE);
 	assert(!cs_active);
 
@@ -437,9 +437,9 @@ static void test_framing(void)
 	const uint8_t recvfrom_reply[] = {0xe0, 0xfa, 3,    0, 4, 10,  42,  0,   1,   0,
 					  2,    0x12, 0x34, 0, 3, 'a', 'b', 'c', 0xee};
 	uint8_t size[2] = {16, 0};
-	struct nina_param recvfrom_params[] = {{&id, 1}, {size, 2}};
+	struct nina_proto_param recvfrom_params[] = {{&id, 1}, {size, 2}};
 	reset_fake(recvfrom_reply, sizeof(recvfrom_reply));
-	assert(nina_request(0x7a, recvfrom_params, 2, false, true, output, 6 + 16, &n) == 0);
+	assert(nina_proto_request(0x7a, recvfrom_params, 2, false, true, output, 6 + 16, &n) == 0);
 	assert(n == 9 && output[0] == 10 && output[3] == 1 && output[4] == 0x12 &&
 	       output[5] == 0x34 && !memcmp(output + 6, "abc", 3));
 	assert(memcmp(request, "\xe0\x7a\x02\x01\x07\x02\x10\x00\xee", 9) == 0);
@@ -447,22 +447,22 @@ static void test_framing(void)
 	const uint8_t empty_reply[] = {0xe0, 0xfa, 3, 0,    4,    10, 42, 0,
 				       1,    0,    2, 0x12, 0x34, 0,  0,  0xee};
 	reset_fake(empty_reply, sizeof(empty_reply));
-	assert(nina_request(0x7a, recvfrom_params, 2, false, true, output, 6 + 16, &n) == 0);
+	assert(nina_proto_request(0x7a, recvfrom_params, 2, false, true, output, 6 + 16, &n) == 0);
 	assert(n == 6);
 	/* A datagram larger than the caller's buffer and a malformed address
 	 * are rejected without leaving chip select asserted. */
 	reset_fake(recvfrom_reply, sizeof(recvfrom_reply));
-	assert(nina_request(0x7a, recvfrom_params, 2, false, true, output, 6 + 2, &n) == -EMSGSIZE);
+	assert(nina_proto_request(0x7a, recvfrom_params, 2, false, true, output, 6 + 2, &n) == -EMSGSIZE);
 	assert(!cs_active);
 	const uint8_t bad_address[] = {0xe0, 0xfa, 3, 0, 3, 10, 42, 0, 0xee};
 	reset_fake(bad_address, sizeof(bad_address));
-	assert(nina_request(0x7a, recvfrom_params, 2, false, true, output, 6 + 16, &n) ==
+	assert(nina_proto_request(0x7a, recvfrom_params, 2, false, true, output, 6 + 16, &n) ==
 	       -EMSGSIZE);
 	assert(!cs_active);
 
 	reset_fake(send_reply, sizeof(send_reply));
 	fail_bulk = 1;
-	assert(nina_request(0x44, params, 2, true, false, output, sizeof(output), &n) == -EIO);
+	assert(nina_proto_request(0x44, params, 2, true, false, output, sizeof(output), &n) == -EIO);
 	assert(!cs_active);
 }
 
@@ -489,11 +489,11 @@ static void test_reset(int ready_result)
 	bus_ready = false;
 	trace_len = 0;
 	tracing = true;
-	assert(nina_request(0x37, NULL, 0, false, false, version, sizeof(version), &n) == -ENODEV);
+	assert(nina_proto_request(0x37, NULL, 0, false, false, version, sizeof(version), &n) == -ENODEV);
 	assert(trace_len == 0 && !initialized && adds == 0);
 
 	bus_ready = true;
-	assert(nina_request(0x37, NULL, 0, false, false, version, sizeof(version), &n) == 0);
+	assert(nina_proto_request(0x37, NULL, 0, false, false, version, sizeof(version), &n) == 0);
 	tracing = false;
 	assert(n == 5 && !memcmp(version, "3.0.2", 5) && initialized);
 	assert(adds == 1 && ready_irq == (ready_result == 0));
@@ -518,14 +518,14 @@ static void test_passthrough(void)
 	sleeps_before = sleeps;
 	trace_len = 0;
 	tracing = true;
-	assert(!nina_bus_ready());
-	assert(nina_request(0x37, NULL, 0, false, false, version, sizeof(version), &n) == -ENODEV);
-	assert(nina_request(0x37, NULL, 0, false, false, version, sizeof(version), &n) == -ENODEV);
+	assert(nina_bus_initialize() == -ENODEV);
+	assert(nina_proto_request(0x37, NULL, 0, false, false, version, sizeof(version), &n) == -ENODEV);
+	assert(nina_proto_request(0x37, NULL, 0, false, false, version, sizeof(version), &n) == -ENODEV);
 	assert(trace_len == 0 && !initialized && calls == 0 && sleeps == sleeps_before);
 
 	passthrough = false;
-	assert(nina_bus_ready());
-	assert(nina_request(0x37, NULL, 0, false, false, version, sizeof(version), &n) == 0);
+	assert(nina_bus_initialize() == 0);
+	assert(nina_proto_request(0x37, NULL, 0, false, false, version, sizeof(version), &n) == 0);
 	tracing = false;
 	assert(n == 5 && !memcmp(version, "3.0.2", 5) && initialized);
 }
@@ -544,7 +544,7 @@ static void test_ready_waits(void)
 	busy = 5;
 	sleeps = takes = 0;
 	start = now_us;
-	assert(nina_request(0x37, NULL, 0, false, false, out, sizeof(out), &n) == 0);
+	assert(nina_proto_request(0x37, NULL, 0, false, false, out, sizeof(out), &n) == 0);
 	assert(n == 1 && out[0] == 'x' && busy == 0);
 	if (ready_irq) {
 		/* Five waits of the first wait_ready(), the fifth ends on the edge. */
@@ -560,7 +560,7 @@ static void test_ready_waits(void)
 	busy = -1;
 	sleeps = takes = calls = 0;
 	start = now_us;
-	assert(nina_request(0x37, NULL, 0, false, false, out, sizeof(out), &n) == -ETIMEDOUT);
+	assert(nina_proto_request(0x37, NULL, 0, false, false, out, sizeof(out), &n) == -ETIMEDOUT);
 	assert(phase == 0 && calls == 0);
 	if (ready_irq) {
 		assert(takes == 200 && sleeps == 0);
@@ -582,7 +582,7 @@ static void test_ready_waits(void)
 	reset_fake(reply, sizeof(reply));
 	busy = 2;
 	takes = 0;
-	assert(nina_request(0x37, NULL, 0, false, false, out, sizeof(out), &n) == 0);
+	assert(nina_proto_request(0x37, NULL, 0, false, false, out, sizeof(out), &n) == 0);
 	assert(takes == 2 && adds == 1 && resets == irq_enables && resets > 0);
 	assert(irq_mode == GPIO_INT_DISABLE);
 }

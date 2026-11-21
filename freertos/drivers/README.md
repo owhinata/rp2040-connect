@@ -174,7 +174,7 @@ boundary (the four functions of `common/compat/nano_flash_kv.h`, `drivers/kv/nan
   Pico SDK without the compatibility layer: FreeRTOS recursive mutexes with priority inheritance for the
   NINA lock, the name resolution lock and the Wi-Fi operations' lock, binary semaphores for the Wi-Fi
   threads' requests, the "rounded up, plus one tick" sleep, the TIMER in ms as the clock). Its objects are
-  static and made by `nina_os_initialize()` (`nina_freertos.h`), which `main()` calls before the tasks.
+  static and made at the first use of any of them.
   The boundaries mean what the "NINA-W102" tables of
   [`nuttx/drivers/README.md`](../../nuttx/drivers/README.md) say.
 - The core's waits for READY sleep on a binary semaphore that READY's edge interrupt (GPIO10) gives, in

@@ -65,9 +65,9 @@ BUILD_ASSERT(DT_GPIO_PIN(NINA_NODE, irq_gpios) == PIN_GPIO0, "the NINA's IRQ lin
 BUILD_ASSERT(DT_GPIO_PIN(NINA_NODE, reset_gpios) == PIN_RESETN, "the NINA's reset line");
 BUILD_ASSERT(DT_GPIO_PIN(DT_ALIAS(led0), gpios) == PIN_LED, "the LED");
 BUILD_ASSERT(DT_REG_ADDR(DT_NODELABEL(uart1)) == UART1_BASE, "UART1");
-BUILD_ASSERT(UART_UARTDR_FE_BITS == NINA_PASSTHROUGH_UART_FRAMING &&
-		     UART_UARTDR_BE_BITS == NINA_PASSTHROUGH_UART_BREAK &&
-		     UART_UARTDR_OE_BITS == NINA_PASSTHROUGH_UART_OVERRUN,
+BUILD_ASSERT(UART_UARTDR_FE_BITS == NINA_PASSTHROUGH_BUS_UART_FRAMING &&
+		     UART_UARTDR_BE_BITS == NINA_PASSTHROUGH_BUS_UART_BREAK &&
+		     UART_UARTDR_OE_BITS == NINA_PASSTHROUGH_BUS_UART_OVERRUN,
 	     "a received word is UARTDR as read");
 
 #define UART_IRQN DT_IRQN(DT_NODELABEL(uart1))
@@ -75,16 +75,16 @@ BUILD_ASSERT(UART_UARTDR_FE_BITS == NINA_PASSTHROUGH_UART_FRAMING &&
 /* The request: the watchdog's scratch registers 0..3, which survive its
  * restart (not the RESET button: that is the chip's RUN pin).
  */
-void nina_passthrough_bus_mark_get(uint32_t s[NINA_PASSTHROUGH_MARK_WORDS])
+void nina_passthrough_bus_mark_get(uint32_t s[NINA_PASSTHROUGH_BUS_MARK_WORDS])
 {
-	for (int i = 0; i < NINA_PASSTHROUGH_MARK_WORDS; i++) {
+	for (int i = 0; i < NINA_PASSTHROUGH_BUS_MARK_WORDS; i++) {
 		s[i] = watchdog_hw->scratch[i];
 	}
 }
 
-void nina_passthrough_bus_mark_set(const uint32_t s[NINA_PASSTHROUGH_MARK_WORDS])
+void nina_passthrough_bus_mark_set(const uint32_t s[NINA_PASSTHROUGH_BUS_MARK_WORDS])
 {
-	for (int i = 0; i < NINA_PASSTHROUGH_MARK_WORDS; i++) {
+	for (int i = 0; i < NINA_PASSTHROUGH_BUS_MARK_WORDS; i++) {
 		watchdog_hw->scratch[i] = s[i];
 	}
 }
@@ -118,7 +118,7 @@ void nina_passthrough_bus_lines_init(void)
 	gpio_set_dir(PIN_RESETN, GPIO_OUT);
 	gpio_init(PIN_GPIO0);
 	gpio_pull_down(PIN_GPIO0);
-	nina_passthrough_bus_gpio0(NINA_PASSTHROUGH_GPIO0_HIGH);
+	nina_passthrough_bus_gpio0(NINA_PASSTHROUGH_BUS_GPIO0_HIGH);
 }
 
 void nina_passthrough_bus_resetn(bool released)
@@ -126,18 +126,18 @@ void nina_passthrough_bus_resetn(bool released)
 	gpio_put(PIN_RESETN, released);
 }
 
-void nina_passthrough_bus_gpio0(enum nina_passthrough_gpio0 state)
+void nina_passthrough_bus_gpio0(enum nina_passthrough_bus_gpio0 state)
 {
 	switch (state) {
-	case NINA_PASSTHROUGH_GPIO0_LOW:
+	case NINA_PASSTHROUGH_BUS_GPIO0_LOW:
 		gpio_put(PIN_GPIO0, 0);
 		gpio_set_dir(PIN_GPIO0, GPIO_OUT);
 		break;
-	case NINA_PASSTHROUGH_GPIO0_HIGH:
+	case NINA_PASSTHROUGH_BUS_GPIO0_HIGH:
 		gpio_put(PIN_GPIO0, 1);
 		gpio_set_dir(PIN_GPIO0, GPIO_OUT);
 		break;
-	case NINA_PASSTHROUGH_GPIO0_RELEASED:
+	case NINA_PASSTHROUGH_BUS_GPIO0_RELEASED:
 		gpio_put(PIN_GPIO0, 0);
 		gpio_set_dir(PIN_GPIO0, GPIO_IN);
 		break;

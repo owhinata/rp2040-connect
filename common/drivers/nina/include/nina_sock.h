@@ -7,7 +7,7 @@
  * (common/drivers/nina/port/nuttx/nina_usrsock.c turns usrsock requests into these
  * calls, nina_poller.c turns the module's socket state into usrsock
  * events).  The host test (common/tests/nina_sock.c) runs them on a fake
- * nina_request().
+ * nina_proto_request().
  *
  * The code was the Zephyr build's drivers/nina/nina_socket.c; the line
  * numbers below ("nina_socket.c:17-26", ":175-210", ...) are that file's
@@ -20,7 +20,7 @@
  *
  * The caller holds the table lock: on Zephyr and FreeRTOS the socket_lock
  * of their nina_socket.c, on NuttX the usrsock lock (usrsock_lock()), which
- * every usrsock request holds and nina_poller.c takes.  nina_request()
+ * every usrsock request holds and nina_poller.c takes.  nina_proto_request()
  * takes the NINA lock inside it, so the order is always: table lock, then
  * NINA lock.
  */

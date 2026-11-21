@@ -108,7 +108,7 @@
 
 /* The request ------------------------------------------------------------*/
 
-static void mark(uint32_t s[NINA_PASSTHROUGH_MARK_WORDS])
+static void mark(uint32_t s[NINA_PASSTHROUGH_BUS_MARK_WORDS])
 {
 	s[0] = MARK_0;
 	s[1] = MARK_1;
@@ -116,7 +116,7 @@ static void mark(uint32_t s[NINA_PASSTHROUGH_MARK_WORDS])
 	s[3] = ~MARK_1;
 }
 
-static bool mark_valid(const uint32_t s[NINA_PASSTHROUGH_MARK_WORDS])
+static bool mark_valid(const uint32_t s[NINA_PASSTHROUGH_BUS_MARK_WORDS])
 {
 	return s[0] == MARK_0 && s[1] == MARK_1 && s[2] == ~MARK_0 && s[3] == ~MARK_1;
 }
@@ -125,7 +125,7 @@ static bool mark_valid(const uint32_t s[NINA_PASSTHROUGH_MARK_WORDS])
 
 struct pins {
 	bool reset_released; /* RESETN high; low holds the module in reset */
-	enum nina_passthrough_gpio0 gpio0;
+	enum nina_passthrough_bus_gpio0 gpio0;
 	bool uart_tx; /* GPIO8 is the UART's TX; else an input */
 };
 
@@ -172,12 +172,12 @@ static struct pins lines_pins(const struct lines *l, uint32_t now_ms)
 
 	p.reset_released = l->rts;
 	p.uart_tx = true;
-	p.gpio0 = l->dtr ? NINA_PASSTHROUGH_GPIO0_LOW : NINA_PASSTHROUGH_GPIO0_HIGH;
+	p.gpio0 = l->dtr ? NINA_PASSTHROUGH_BUS_GPIO0_LOW : NINA_PASSTHROUGH_BUS_GPIO0_HIGH;
 	if (l->rts && l->own_firmware) {
 		p.uart_tx = false;
 		p.gpio0 = (uint32_t)(now_ms - l->run_since) < GPIO0_HOLD_MS
-				  ? NINA_PASSTHROUGH_GPIO0_HIGH
-				  : NINA_PASSTHROUGH_GPIO0_RELEASED;
+				  ? NINA_PASSTHROUGH_BUS_GPIO0_HIGH
+				  : NINA_PASSTHROUGH_BUS_GPIO0_RELEASED;
 	}
 	return p;
 }
@@ -313,7 +313,7 @@ static void apply_pins(struct pins p)
 
 bool nina_passthrough_check(void)
 {
-	uint32_t s[NINA_PASSTHROUGH_MARK_WORDS];
+	uint32_t s[NINA_PASSTHROUGH_BUS_MARK_WORDS];
 
 	nina_passthrough_bus_mark_get(s);
 	if (!mark_valid(s)) {
@@ -332,7 +332,7 @@ bool nina_passthrough_active(void)
 
 void nina_passthrough_request(void)
 {
-	uint32_t s[NINA_PASSTHROUGH_MARK_WORDS];
+	uint32_t s[NINA_PASSTHROUGH_BUS_MARK_WORDS];
 
 	mark(s);
 	nina_passthrough_bus_mark_set(s);
@@ -369,14 +369,14 @@ ISR_FUNC void nina_passthrough_uart_isr(void)
 	uint32_t word;
 
 	while (nina_passthrough_bus_uart_rx(&word)) {
-		if (word & NINA_PASSTHROUGH_UART_OVERRUN) {
+		if (word & NINA_PASSTHROUGH_BUS_UART_OVERRUN) {
 			uart_overruns++;
 		}
-		if (word & NINA_PASSTHROUGH_UART_BREAK) {
+		if (word & NINA_PASSTHROUGH_BUS_UART_BREAK) {
 			uart_breaks++;
 			continue;
 		}
-		if (word & NINA_PASSTHROUGH_UART_FRAMING) {
+		if (word & NINA_PASSTHROUGH_BUS_UART_FRAMING) {
 			uart_framing++;
 		}
 		ring_put(&ring, (uint8_t)word);
@@ -488,7 +488,7 @@ uint32_t nina_passthrough_tick(void)
 
 	/* Until the LED's next change, or until GPIO0 is to be released. */
 	ms = (int32_t)(led_at - now) > 0 ? led_at - now : 1;
-	if (lines.rts && lines.own_firmware && applied.gpio0 != NINA_PASSTHROUGH_GPIO0_RELEASED) {
+	if (lines.rts && lines.own_firmware && applied.gpio0 != NINA_PASSTHROUGH_BUS_GPIO0_RELEASED) {
 		uint32_t held = now - lines.run_since;
 		uint32_t left = held < GPIO0_HOLD_MS ? GPIO0_HOLD_MS - held : 1;
 
@@ -503,7 +503,7 @@ uint32_t nina_passthrough_tick(void)
 
 void nina_passthrough_log_counts(const char *why)
 {
-	struct nina_passthrough_counts c = {
+	struct nina_passthrough_os_counts c = {
 		.to_nina = to_nina,
 		.from_nina = from_nina,
 		.discarded = discarded,
@@ -528,12 +528,12 @@ void nina_passthrough_leave(void)
 {
 	nina_passthrough_log_counts("Leaving the NINA passthrough");
 	nina_passthrough_bus_uart_tx_connect(false);
-	nina_passthrough_bus_gpio0(NINA_PASSTHROUGH_GPIO0_HIGH);
+	nina_passthrough_bus_gpio0(NINA_PASSTHROUGH_BUS_GPIO0_HIGH);
 	nina_passthrough_bus_resetn(false);
 	nina_passthrough_os_sleep_ms(RESET_MS);
 	nina_passthrough_bus_resetn(true);
 	nina_passthrough_os_sleep_ms(GPIO0_HOLD_MS);
-	nina_passthrough_bus_gpio0(NINA_PASSTHROUGH_GPIO0_RELEASED);
+	nina_passthrough_bus_gpio0(NINA_PASSTHROUGH_BUS_GPIO0_RELEASED);
 	nina_passthrough_bus_led(false);
 	nina_passthrough_os_sleep_ms(RESTART_DELAY_MS);
 	nina_passthrough_bus_restart();

@@ -21,6 +21,7 @@
 #include <zephyr/kernel.h>
 #include <zephyr/net/net_if.h>
 #include <zephyr/net/wifi_mgmt.h>
+#include "nina_dns.h"
 #include "nina_proto.h"
 #include "nina_wifi.h"
 #include "wifi_profile.h"

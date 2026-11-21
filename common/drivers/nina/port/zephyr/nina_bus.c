@@ -5,20 +5,20 @@
  * their flags: polarity and pulls; the board's devicetree), and the
  * Zephyr GPIO and SPI calls that nina_proto.c's table names:
  *
- *   nina_bus_ready()       device_is_ready(spi1) and gpio_is_ready_dt()
+ *   nina_bus_initialize()  device_is_ready(spi1) and gpio_is_ready_dt()
  *                               of the four lines, in that order
- *   nina_pin_configure()   gpio_pin_configure_dt() with GPIO_OUTPUT_
+ *   nina_bus_pin_configure()   gpio_pin_configure_dt() with GPIO_OUTPUT_
  *                               INACTIVE, _ACTIVE, _HIGH or GPIO_INPUT
- *   nina_pin_set(), _get() gpio_pin_set_dt(), gpio_pin_get_dt()
+ *   nina_bus_pin_set(), _get() gpio_pin_set_dt(), gpio_pin_get_dt()
  *                               (logical values)
  *   nina_bus_transceive()      spi_transceive() with one TX and one RX
  *                               buffer, or spi_write() without RX: mode 0,
  *                               8-bit words, MSB first, at
  *                               CONFIG_NINA_SPI_FREQUENCY
  *
- * Zephyr initializes spi1 and its cs-gpios at boot, so this build has no
- * nina_bus_initialize(); nina_proto.c configures the other lines on the
- * first request.
+ * Zephyr initializes spi1 and its cs-gpios at boot, so nina_bus_initialize()
+ * only looks whether they are ready; nina_proto.c configures the other
+ * lines on the first request.
  *
  * With CONFIG_NINA_PASSTHROUGH, while nina_passthrough_active() is true
  * (the NINA passthrough mode, nina_passthrough.h, where the module's lines
@@ -52,49 +52,51 @@ static const struct gpio_dt_spec cs = GPIO_DT_SPEC_GET_BY_IDX(DT_NODELABEL(spi1)
 static const struct spi_config config = {.frequency = CONFIG_NINA_SPI_FREQUENCY,
 					 .operation = SPI_WORD_SET(8) | SPI_TRANSFER_MSB};
 
-static const struct gpio_dt_spec *line(enum nina_pin pin)
+static const struct gpio_dt_spec *line(enum nina_bus_pin pin)
 {
 	switch (pin) {
-	case NINA_PIN_CS:
+	case NINA_BUS_PIN_CS:
 		return &cs;
-	case NINA_PIN_READY:
+	case NINA_BUS_PIN_READY:
 		return &ready;
-	case NINA_PIN_RESET:
+	case NINA_BUS_PIN_RESET:
 		return &reset;
-	case NINA_PIN_IRQ:
+	case NINA_BUS_PIN_IRQ:
 		return &irq;
 	default:
 		return NULL;
 	}
 }
 
-bool nina_bus_ready(void)
+int nina_bus_initialize(void)
 {
 #ifdef CONFIG_NINA_PASSTHROUGH
 	if (nina_passthrough_active()) {
-		return false;
+		return -ENODEV;
 	}
 #endif
 	return device_is_ready(spi) && gpio_is_ready_dt(&ready) && gpio_is_ready_dt(&reset) &&
-	       gpio_is_ready_dt(&irq) && gpio_is_ready_dt(&cs);
+			       gpio_is_ready_dt(&irq) && gpio_is_ready_dt(&cs)
+		       ? 0
+		       : -ENODEV;
 }
 
-int nina_pin_configure(enum nina_pin pin, enum nina_pin_mode mode)
+int nina_bus_pin_configure(enum nina_bus_pin pin, enum nina_bus_pin_mode mode)
 {
 	const struct gpio_dt_spec *spec = line(pin);
 	gpio_flags_t flags;
 
 	switch (mode) {
-	case NINA_PIN_OUTPUT_INACTIVE:
+	case NINA_BUS_PIN_OUTPUT_INACTIVE:
 		flags = GPIO_OUTPUT_INACTIVE;
 		break;
-	case NINA_PIN_OUTPUT_ACTIVE:
+	case NINA_BUS_PIN_OUTPUT_ACTIVE:
 		flags = GPIO_OUTPUT_ACTIVE;
 		break;
-	case NINA_PIN_OUTPUT_HIGH:
+	case NINA_BUS_PIN_OUTPUT_HIGH:
 		flags = GPIO_OUTPUT_HIGH;
 		break;
-	case NINA_PIN_INPUT:
+	case NINA_BUS_PIN_INPUT:
 		flags = GPIO_INPUT;
 		break;
 	default:
@@ -103,14 +105,14 @@ int nina_pin_configure(enum nina_pin pin, enum nina_pin_mode mode)
 	return spec ? gpio_pin_configure_dt(spec, flags) : -EINVAL;
 }
 
-int nina_pin_set(enum nina_pin pin, int value)
+int nina_bus_pin_set(enum nina_bus_pin pin, int value)
 {
 	const struct gpio_dt_spec *spec = line(pin);
 
 	return spec ? gpio_pin_set_dt(spec, value) : -EINVAL;
 }
 
-int nina_pin_get(enum nina_pin pin)
+int nina_bus_pin_get(enum nina_bus_pin pin)
 {
 	const struct gpio_dt_spec *spec = line(pin);
 

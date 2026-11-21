@@ -45,7 +45,7 @@
  * included, as before: the core copies the vectors into its one buffer at
  * every pass. The order is: the descriptor's lock (Zephyr's socket layer
  * holds it around each call), sendmsg_lock, socket_lock, then the NINA lock
- * inside nina_request().
+ * inside nina_proto_request().
  *
  * The resolver (common/drivers/nina/nina_dns.c, compiled with
  * NINA_OS_DNS_OFFLOAD) is registered here as the offload's getaddrinfo(),

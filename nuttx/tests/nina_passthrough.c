@@ -3,7 +3,7 @@
  * nina_main.c with CONFIG_NINA_PASSTHROUGH, its main() renamed) on the
  * subcommand dispatch (common/shell/subcmd.c), with fakes of the NINA
  * requests and of the driver's nina_passthrough_request()
- * (common/drivers/nina/nina_passthrough.h): the help with "passthrough"
+ * (common/drivers/nina/include/nina_passthrough.h): the help with "passthrough"
  * before "version", the confirmation word, the argument counts, the
  * messages, and the request made only with "confirm".  The mode itself is
  * common/tests/nina_passthrough.c's.
@@ -43,30 +43,16 @@ static uint32_t fake_capabilities;
 static int requests;
 static jmp_buf request_jmp;
 
-int nina_request(uint8_t cmd, const struct nina_param *params, size_t nparams, bool param16,
-		 bool resp16, uint8_t *resp, size_t resp_cap, size_t *resp_len)
+int nina_wifi_fw_version(char version[NINA_WIFI_FW_VERSION_SIZE])
 {
-	static const char version[] = "3.0.2";
-
-	(void)params;
-	(void)nparams;
-	(void)param16;
-	(void)resp16;
-	assert(cmd == 0x37);
-	assert(resp_cap >= sizeof(version) - 1);
-	memcpy(resp, version, sizeof(version) - 1);
-	*resp_len = sizeof(version) - 1;
+	strcpy(version, "3.0.2");
 	return 0;
 }
 
-uint32_t nina_capabilities(void)
+void nina_wifi_capabilities(uint32_t *module, uint32_t *in_use)
 {
-	return fake_capabilities;
-}
-
-uint32_t nina_module_capabilities(void)
-{
-	return fake_capabilities;
+	*module = fake_capabilities;
+	*in_use = fake_capabilities;
 }
 
 void nina_passthrough_request(void)

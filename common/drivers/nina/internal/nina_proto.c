@@ -6,14 +6,14 @@
  * that the code had before it was shared:
  *
  *   Zephyr                              here
- *   device_is_ready(), gpio_is_ready_dt nina_bus_ready()
- *   gpio_pin_configure_dt()             nina_pin_configure()
- *   gpio_pin_set_dt(), gpio_pin_get_dt  nina_pin_set(), _get()
+ *   device_is_ready(), gpio_is_ready_dt nina_bus_initialize()
+ *   gpio_pin_configure_dt()             nina_bus_pin_configure()
+ *   gpio_pin_set_dt(), gpio_pin_get_dt  nina_bus_pin_set(), _get()
  *   spi_transceive(), spi_write()       nina_bus_transceive()
  *   K_MUTEX_DEFINE(nina_lock)           nina_os_lock(), nina_os_unlock()
  *   k_sleep(), k_uptime_get()           nina_os_sleep_us/_ms(), _uptime_ms()
  *
- * nina_bus_*() and nina_pin_*() are the board's (<nina_bus.h>),
+ * nina_bus_*() and nina_bus_pin_*() are the board's (<nina_bus.h>),
  * nina_os_*() the kernel's (<nina_os.h>); each build implements both
  * (nina_bus.c of common/drivers/nina/port/zephyr, nina_bus_rp2040.c of
  * port/nuttx and port/freertos; the nina_os.c of the bindings in
@@ -22,7 +22,7 @@
  *
  * One difference: nina_os_lock() can fail where k_mutex_lock(K_FOREVER)
  * cannot (on NuttX, only with pthread cancellation, which that build does
- * not use); nina_request() and nina_ip_config() then return its error
+ * not use); nina_proto_request() and nina_proto_ip_config() then return its error
  * untouched.
  *
  * The waits for READY sleep until the OS reports a change of the line
@@ -34,7 +34,7 @@
  * command it does not have with 0xEF 0x00 0xEE instead of the reply;
  * find_start() returns -ENOTSUP for it at once, where the START search
  * read 1000 bytes and returned -EPROTO before (the driver sent no such
- * command then).  The capability probe (nina_probe_capabilities(), 0x6A)
+ * command then).  The capability probe (nina_proto_probe_capabilities(), 0x6A)
  * relies on it to tell an older firmware.
  */
 
@@ -73,7 +73,7 @@ static int wait_ready_irq(int desired, int timeout_ms)
 
 	nina_os_ready_arm(desired);
 	for (;;) {
-		value = nina_pin_get(NINA_PIN_READY);
+		value = nina_bus_pin_get(NINA_BUS_PIN_READY);
 		if (value < 0 || value == desired) {
 			break;
 		}
@@ -98,7 +98,7 @@ static int wait_ready(int desired, int timeout_ms)
 	}
 	deadline = nina_os_uptime_ms() + timeout_ms;
 	do {
-		value = nina_pin_get(NINA_PIN_READY);
+		value = nina_bus_pin_get(NINA_BUS_PIN_READY);
 		if (value < 0) {
 			return value;
 		}
@@ -117,22 +117,23 @@ static int init_nina(void)
 	if (initialized) {
 		return 0;
 	}
-	if (!nina_bus_ready()) {
-		return -ENODEV;
+	ret = nina_bus_initialize();
+	if (ret) {
+		return ret;
 	}
-	if ((ret = nina_pin_configure(NINA_PIN_CS, NINA_PIN_OUTPUT_INACTIVE)) ||
-	    (ret = nina_pin_configure(NINA_PIN_READY, NINA_PIN_INPUT)) ||
-	    (ret = nina_pin_configure(NINA_PIN_IRQ, NINA_PIN_OUTPUT_HIGH)) ||
-	    (ret = nina_pin_configure(NINA_PIN_RESET, NINA_PIN_OUTPUT_ACTIVE))) {
+	if ((ret = nina_bus_pin_configure(NINA_BUS_PIN_CS, NINA_BUS_PIN_OUTPUT_INACTIVE)) ||
+	    (ret = nina_bus_pin_configure(NINA_BUS_PIN_READY, NINA_BUS_PIN_INPUT)) ||
+	    (ret = nina_bus_pin_configure(NINA_BUS_PIN_IRQ, NINA_BUS_PIN_OUTPUT_HIGH)) ||
+	    (ret = nina_bus_pin_configure(NINA_BUS_PIN_RESET, NINA_BUS_PIN_OUTPUT_ACTIVE))) {
 		return ret;
 	}
 	nina_os_sleep_ms(10);
-	if ((ret = nina_pin_set(NINA_PIN_RESET, 0))) {
+	if ((ret = nina_bus_pin_set(NINA_BUS_PIN_RESET, 0))) {
 		return ret;
 	}
 	nina_os_sleep_ms(750);
-	if ((ret = nina_pin_set(NINA_PIN_IRQ, 0)) ||
-	    (ret = nina_pin_configure(NINA_PIN_IRQ, NINA_PIN_INPUT))) {
+	if ((ret = nina_bus_pin_set(NINA_BUS_PIN_IRQ, 0)) ||
+	    (ret = nina_bus_pin_configure(NINA_BUS_PIN_IRQ, NINA_BUS_PIN_INPUT))) {
 		return ret;
 	}
 	/* Once: initialized stays true from here on. */
@@ -234,7 +235,7 @@ static int command(uint8_t cmd, const uint8_t *a, size_t alen, const uint8_t *b,
 	while (n % 4) {
 		tx[n++] = NINA_DUMMY;
 	}
-	if ((ret = nina_pin_set(NINA_PIN_CS, 1))) {
+	if ((ret = nina_bus_pin_set(NINA_BUS_PIN_CS, 1))) {
 		return ret;
 	}
 
@@ -242,7 +243,7 @@ static int command(uint8_t cmd, const uint8_t *a, size_t alen, const uint8_t *b,
 	if (!ret) {
 		ret = transfer_write(tx, n);
 	}
-	(void)nina_pin_set(NINA_PIN_CS, 0);
+	(void)nina_bus_pin_set(NINA_BUS_PIN_CS, 0);
 	memset(tx, 0, sizeof(tx));
 
 	if (ret) {
@@ -251,7 +252,7 @@ static int command(uint8_t cmd, const uint8_t *a, size_t alen, const uint8_t *b,
 	if ((ret = wait_ready(1, 2000))) {
 		return ret;
 	}
-	if ((ret = nina_pin_set(NINA_PIN_CS, 1))) {
+	if ((ret = nina_bus_pin_set(NINA_BUS_PIN_CS, 1))) {
 		return ret;
 	}
 
@@ -288,7 +289,7 @@ static int command(uint8_t cmd, const uint8_t *a, size_t alen, const uint8_t *b,
 			ret = -EPROTO;
 		}
 	}
-	(void)nina_pin_set(NINA_PIN_CS, 0);
+	(void)nina_bus_pin_set(NINA_BUS_PIN_CS, 0);
 	if (!ret) {
 		*outlen = len;
 	}
@@ -296,7 +297,7 @@ static int command(uint8_t cmd, const uint8_t *a, size_t alen, const uint8_t *b,
 }
 
 /* Socket commands use 16-bit parameter lengths; regular commands use 8-bit. */
-int nina_request(uint8_t cmd, const struct nina_param *params, size_t nparams,
+int nina_proto_request(uint8_t cmd, const struct nina_proto_param *params, size_t nparams,
 		 bool wide_params, bool wide_response, uint8_t *out, size_t cap,
 		 size_t *out_len)
 {
@@ -330,7 +331,7 @@ int nina_request(uint8_t cmd, const struct nina_param *params, size_t nparams,
 		ret = wait_ready(1, 2000);
 	}
 	if (!ret) {
-		ret = nina_pin_set(NINA_PIN_CS, 1);
+		ret = nina_bus_pin_set(NINA_BUS_PIN_CS, 1);
 	}
 	if (!ret) {
 		ret = wait_ready(0, 20);
@@ -351,13 +352,13 @@ int nina_request(uint8_t cmd, const struct nina_param *params, size_t nparams,
 		while (!ret && sent % 4) {
 			SEND_BYTE(NINA_DUMMY);
 		}
-		(void)nina_pin_set(NINA_PIN_CS, 0);
+		(void)nina_bus_pin_set(NINA_BUS_PIN_CS, 0);
 	}
 	if (!ret) {
 		ret = wait_ready(1, 10000);
 	}
 	if (!ret) {
-		ret = nina_pin_set(NINA_PIN_CS, 1);
+		ret = nina_bus_pin_set(NINA_BUS_PIN_CS, 1);
 	}
 	if (!ret) {
 		ret = wait_ready(0, 20);
@@ -412,7 +413,7 @@ int nina_request(uint8_t cmd, const struct nina_param *params, size_t nparams,
 				ret = -EPROTO;
 			}
 		}
-		(void)nina_pin_set(NINA_PIN_CS, 0);
+		(void)nina_bus_pin_set(NINA_BUS_PIN_CS, 0);
 	}
 	if (!ret) {
 		*out_len = total;
@@ -422,7 +423,7 @@ int nina_request(uint8_t cmd, const struct nina_param *params, size_t nparams,
 #undef SEND_BYTE
 }
 
-int nina_ip_config(uint8_t data[12])
+int nina_proto_ip_config(uint8_t data[12])
 {
 	const uint8_t dummy = NINA_DUMMY;
 	size_t len = 0;
@@ -442,7 +443,7 @@ int nina_ip_config(uint8_t data[12])
 static bool caps_probed;
 static volatile uint32_t caps_module, caps_used;
 
-uint32_t nina_probe_capabilities(void)
+uint32_t nina_proto_probe_capabilities(void)
 {
 	uint8_t value[4];
 	size_t n = 0;
@@ -456,7 +457,7 @@ uint32_t nina_probe_capabilities(void)
 	/* One parameter of 4 bytes, little endian.  An older firmware answers
 	 * 0xEF (-ENOTSUP): no capabilities.
 	 */
-	ret = nina_request(NINA_CMD_GET_CAPABILITIES, NULL, 0, false, false, value, sizeof(value),
+	ret = nina_proto_request(NINA_CMD_GET_CAPABILITIES, NULL, 0, false, false, value, sizeof(value),
 			   &n);
 	if (!ret && n == sizeof(value)) {
 		caps = (uint32_t)value[0] | ((uint32_t)value[1] << 8) | ((uint32_t)value[2] << 16) |
@@ -471,12 +472,12 @@ uint32_t nina_probe_capabilities(void)
 	return caps;
 }
 
-uint32_t nina_capabilities(void)
+uint32_t nina_proto_capabilities(void)
 {
 	return caps_used;
 }
 
-uint32_t nina_module_capabilities(void)
+uint32_t nina_proto_module_capabilities(void)
 {
 	return caps_module;
 }

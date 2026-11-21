@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /* The NINA-W102 network device wlan0 (nina_netdev.c): the NuttX binding of
- * the core's Wi-Fi operations (common/drivers/nina/nina_wifi.h).  wapi's
+ * the core's Wi-Fi operations (common/drivers/nina/include/nina_wifi.h).  wapi's
  * wireless ioctls reach the core directly; the applications' Zephyr Wi-Fi
  * management (net_mgmt() requests and events of the compatibility layer)
  * is served by nina_wifi_mgmt.c.

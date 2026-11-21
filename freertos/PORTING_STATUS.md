@@ -1928,3 +1928,36 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
 - 実機（Zephyr 版、FreeRTOS 版、書き込み直後の各 1 回 約 70 秒）: 欠番 0、時刻の逆行 0、`cpu_active` 45.7%・40.5%。この 2 版で変わるのはコアの削除分とログの行だけ。
 - 確かめていない: 事象の無いファームウェア（3.0.2）での NuttX 版（NTP の返事に気づくのが最大 20 ms 遅れうる）、長時間、AP を落とす切断、`zperf`、スタックの使用量（MQTT のスレッドにログの呼び出しが増えた）。
 - 実機: FreeRTOS 版（この変更のビルド）。
+
+## NINA: 公開のヘッダーを `include/` へ、`nina_proto_` の接頭辞（2026-11-21、ユーザーの案）
+
+- `common/drivers/nina/include/` に、外から使うヘッダー 4 つ（`nina_wifi.h`・`nina_sock.h`・`nina_dns.h`・`nina_passthrough.h`）を移した。直下は `.c` だけ。3 版のビルドとホストテストの
+  include パスは `include`・`internal`・`port`（ドライバーの中）で、NuttX のアプリ（`apps/imu`・`apps/nina`・`apps/init`）は `include` だけ（`apps/init` は `port/nuttx` の `nina_net.h` も）。
+- ドライバーの外から `internal/` を読む所を無くした: `nina version`（`common/shell/nina_shell.c`、NuttX の `apps/nina`）は、新しい `nina_wifi_fw_version()`・`nina_wifi_capabilities()`
+  （`nina_wifi.h`）を呼ぶ。表示は同じ。
+- `internal/nina_proto.h` の関数に接頭辞: `nina_request()` → `nina_proto_request()`、`nina_ip_config()`・`nina_capabilities()`・`nina_module_capabilities()`・`nina_probe_capabilities()` も同じ。
+  `nina_dns_init()` の宣言は `nina_dns.h` へ（Zephyr 版の `nina_net.c` が `<netdb.h>` を読めるよう、CMake で POSIX の名前の include パスを足した）。
+- 残っている例外: ボードの起動のコード（FreeRTOS の `main.c`、NuttX の `nano_bringup.c`）が `port/nina_bus.h` を読む（`nina_bus_initialize()` を呼ぶため）。
+- イメージ: Zephyr 372120 → 372152 B、NuttX 283724 → 283748 B、FreeRTOS 236520 → 236552 B（公開の関数 2 つの分）。**基準を更新: Zephyr・NuttX とも `snapshot-1121b`**。
+  ホストテスト 44・56・54、`format.sh --check` も通る。
+- 実機（3 版、書き込み直後の各 1 回 約 70 秒）: `nina version` は `3.0.2`、`0x00000007 (in use 0x00000007)`（3 版とも、以前と同じ表示）。送信は欠番 0、時刻の逆行 0、
+  `cpu_active` Zephyr 46.1%、NuttX 48.6%、FreeRTOS 40.3%。中継・切断復帰・Telnet はこのイメージでは確かめていない。
+- 実機: Zephyr 版（この変更のビルド）。
+
+## NINA: バスの初期化とつなぎのオブジェクトをドライバーの中へ、型とマクロの接頭辞（2026-11-21、ユーザーの指摘）
+
+- ユーザーの指摘: 起動のコード（FreeRTOS の `main.c`、NuttX の `nano_bringup.c`）が `nina_bus_initialize()` を呼ぶために `port/nina_bus.h` を読んでいた。「ninaドライバの初期化から呼び出しちゃだめなんだっけ？」
+  Zephyr 版にはこの関数が無かった（SPI1 と CS は Zephyr 本体がデバイスツリーから起動時に設定する）。FreeRTOS 版・NuttX 版は、その時点を写して起動時に呼んでいただけ。SPI1 は RP2040 がマスター。
+- 変更: コアの `init_nina()`（`nina_proto.c`。最初の要求のとき）が `nina_bus_initialize()` を呼ぶ。0 で使える（2 回目からは何もしない）、使えないときは `-ENODEV`。
+  `nina_bus_ready()` は境界から削除（Zephyr のつなぎはその中身を `nina_bus_initialize()` として持つ）。NuttX のものは中継モードのあいだ `-ENODEV`。起動のコードの呼び出しと include は削除。
+- FreeRTOS のつなぎのオブジェクト（ミューテックス 3 つ、セマフォ 3 つ。静的）は、どれかを最初に使うときに作る（`nina_os.c` の `objects()`。クリティカルセクションの中で 1 回だけ）。
+  `nina_os_initialize()` と `nina_freertos.h` は削除、`main.c` の呼び出しも削除。アプリは起動時にドライバーの関数を何も呼ばない。
+- 接頭辞をヘッダーの名前に合わせた（関数に続いて、型とマクロも）: `nina_pin_*`・`enum nina_pin`・`NINA_PIN_*` → `nina_bus_pin_*`・`NINA_BUS_PIN_*`、`struct nina_param` → `nina_proto_param`、
+  `struct nina_passthrough_counts` → `nina_passthrough_os_counts`、`NINA_PASSTHROUGH_LOG_*` → `NINA_PASSTHROUGH_OS_LOG_*`、`enum nina_passthrough_gpio0`・`NINA_PASSTHROUGH_GPIO0_*`・
+  `NINA_PASSTHROUGH_UART_*`・`NINA_PASSTHROUGH_MARK_WORDS` → `nina_passthrough_bus_*`・`NINA_PASSTHROUGH_BUS_*`。`nina_proto.h` のプロトコルの定数（`NINA_CMD_*` など）はファームウェアの名前のまま。
+- イメージ: Zephyr 372152 → 372144 B、NuttX 283748 → 283676 B、FreeRTOS 236552 → 236496 B（改名の前後では同じ大きさ）。**基準を更新: Zephyr・NuttX とも `snapshot-1121c`**。
+  ホストテスト 44・56・54、`format.sh --check` も通る。
+- 実機（3 版、書き込み直後の各 1 回 約 70 秒）: 起動後に Wi-Fi に接続、`nina version` は以前と同じ表示、送信は欠番 0、時刻の逆行 0、`cpu_active` Zephyr 46.2%、NuttX 49.2%、FreeRTOS 40.2%。
+  FreeRTOS は `dmesg` に `<err>`・`<wrn>` なし、`fault` なし。NuttX 版で中継モードの出入り（1 回）: 2 MB の読み出しが 115200・921600 bps で一致、書き込み後の退避とも一致、抜けたあと `nina version` が応答。
+- 確かめていない: Zephyr 版・FreeRTOS 版の中継、切断復帰・Telnet（このイメージでは）、モジュールが応答しないときの起動。
+- 実機: Zephyr 版（この変更のビルド）。

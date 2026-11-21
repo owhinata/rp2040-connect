@@ -29,7 +29,7 @@ ST の HAL は Zephyr のものを使います。Zephyr 側の構成が変わっ
 `lsm6dso.c` が末尾で読む Zephyr 版の部分で、ドライバーのデバイスツリーのインスタンス化のマクロをそのまま置いています
 （NuttX 版は同名のヘッダーでボードの値を使うデバイスを 1 つ定義します）。`lsm6dso/lsm6dso_shub.c`・`lsm6dso_trigger.c`
 （Zephyr の写し。無効にしてある `CONFIG_LSM6DSO_SENSORHUB`・`CONFIG_LSM6DSO_TRIGGER` のときだけビルドされる）は
-このディレクトリーに残り、`lsm6dso.h` を `common/drivers/lsm6dso/` から読みます。NINA のコアは `common/drivers/nina/`（直下にドライバーが提供する機能 `nina_wifi.[ch]`・`nina_sock.[ch]`・
+このディレクトリーに残り、`lsm6dso.h` を `common/drivers/lsm6dso/` から読みます。NINA のコアは `common/drivers/nina/`（直下に、ヘッダーは `include/` に、ドライバーが提供する機能 `nina_wifi.[ch]`・`nina_sock.[ch]`・
 `nina_dns.[ch]`・`nina_passthrough.[ch]`、`internal/` にプロトコルの `nina_proto.[ch]` と待ちの `nina_wait.[ch]`、`port/` に境界のヘッダー `nina_bus.h`・`nina_os.h` と中継の 2 つ）に、`nina` コマンドの `nina_shell.c` は `common/shell/` にあり、3 版で共有します。コアの Zephyr の API へのつなぎは
 `common/drivers/nina/port/zephyr/` にあり（FreeRTOS 版はその Wi-Fi とソケットの部分 `nina_net.c`・`nina_socket.c` もビルドし、`nina_os.c` は自分のもの `common/drivers/nina/port/freertos/` を使う）、このディレクトリーには NINA のドライバーのものはありません（下の NINA の節）。下の表のファイル名はそのすべての場所のものを含みます。
 
@@ -203,12 +203,12 @@ FreeRTOS と Pico SDK で書いた自分のつなぎ `common/drivers/nina/port/f
 | ファイル | 場所 | 役割 |
 |---|---|---|
 | `nina_proto.c` | `common/drivers/nina/internal/` | SPI のコマンド・応答のフレーミング、モジュールのリセット、READY の待ち |
-| `nina_wifi.[ch]` | `common/drivers/nina/` | Wi-Fi の操作：接続（接続と DHCP の結果の待ちを含む）・切断・スキャン・状態・接続の監視。スレッド `nina_scan_tid`・`nina_connect_tid`・`nina_monitor_tid` の本体。起きたことはつなぎのコールバックに渡す |
-| `nina_sock.[ch]` | `common/drivers/nina/` | ソケットの表と命令（待ちのループの 1 回分ずつ） |
-| `nina_dns.[ch]` | `common/drivers/nina/` | 名前解決（モジュールのリゾルバー） |
+| `nina_wifi.[ch]` | `common/drivers/nina/`（ヘッダーは `include/`） | Wi-Fi の操作：接続（接続と DHCP の結果の待ちを含む）・切断・スキャン・状態・接続の監視。スレッド `nina_scan_tid`・`nina_connect_tid`・`nina_monitor_tid` の本体。起きたことはつなぎのコールバックに渡す |
+| `nina_sock.[ch]` | `common/drivers/nina/`（ヘッダーは `include/`） | ソケットの表と命令（待ちのループの 1 回分ずつ） |
+| `nina_dns.[ch]` | `common/drivers/nina/`（ヘッダーは `include/`） | 名前解決（モジュールのリゾルバー） |
 | `nina_proto.h` | `common/drivers/nina/internal/` | プロトコルのバイトの名前（フレーミング、ドライバーが送るコマンド、その応答の値）と、`nina_proto.c` の要求の関数・モジュールの機能ビットの宣言 |
 | `nina_shell.c` | `common/shell/` | `nina version` コマンド（この版では `nina passthrough` も。下の「esptool の中継」） |
-| `nina_passthrough.[ch]` | `common/drivers/nina/` | esptool の中継（NuttX 版・FreeRTOS 版と共有）：再起動の印、DTR・RTS とモジュールの線の対応、レート、16 KiB のバッファーを通した両方向のデータ、出口、数、LED。2 つの境界 `nina_passthrough_bus.h`（モジュール側）と `nina_passthrough_os.h`（ホスト側）の上 |
+| `nina_passthrough.[ch]` | `common/drivers/nina/`（ヘッダーは `include/`） | esptool の中継（NuttX 版・FreeRTOS 版と共有）：再起動の印、DTR・RTS とモジュールの線の対応、レート、16 KiB のバッファーを通した両方向のデータ、出口、数、LED。2 つの境界 `nina_passthrough_bus.h`（モジュール側）と `nina_passthrough_os.h`（ホスト側）の上 |
 | `nina_wait.[ch]` | `common/drivers/nina/internal/` | ソケットの待ちのループの、パスの間の待ち（間隔、または IRQ の線のエッジ） |
 | `nina_net.c` | `common/drivers/nina/port/zephyr/` | コアの上の Zephyr の Wi-Fi 管理とネットワークインターフェース：デバイス（`NET_DEVICE_DT_OFFLOAD_DEFINE()`）、Zephyr のパラメーターの確認と受け渡し、結果を Zephyr の構造体とイベントに、アドレス・ネットマスク・ゲートウェイと dormant をインターフェースに、Wi-Fi のプロファイルの再接続をコアのフック、3 つのスレッド（`K_THREAD_DEFINE()`） |
 | `nina_os.c` | `common/drivers/nina/port/zephyr/` | コアの境界 `nina_os.h` の Zephyr 版：mutex、Wi-Fi のスレッドへの要求、sleep、時計、READY の割り込み待ち、IRQ の線（GPIO2）のエッジの待ち |
@@ -228,7 +228,7 @@ Zephyr の標準機能のうち、Telnet シェル、MQTT クライアント、z
 - NINA の READY（GPIO10）の変化は、GPIO のエッジ割り込みで待ちます（`common/drivers/nina/port/zephyr/nina_os.c`）。待つ前に
   割り込みを有効にしてから READY を読むので、読んだあとの変化を取りこぼしません。転送中は割り込みを
   止めます。1 回の待ちは最長 10 ms で、そのたびに READY を読み直します。期限（コマンドの前 2 秒、
-  応答まで 10 秒（`nina_ip_config()` は 2 秒）、CS を有効にしたあと 20 ms）を過ぎると `-ETIMEDOUT` です。
+  応答まで 10 秒（`nina_proto_ip_config()` は 2 秒）、CS を有効にしたあと 20 ms）を過ぎると `-ETIMEDOUT` です。
   割り込みを使うかどうかは実行時に決まります。最初のリセットのあと `nina_os_ready_start()` が READY の
   コールバックを登録し、登録に失敗したときは 100 µs ごとに READY を読みます（期限と結果は同じ）。
 - 1 回の TCP 送信は最大 3584 バイトです（`CONFIG_NINA_TCP_MAX_IO`）。NINA 側のコマンド
@@ -322,7 +322,7 @@ SerialNINAPassthrough スケッチの代わりです（RP2040 のファームウ
 - 入り方：コマンドが watchdog の scratch 0〜3 に印を書いて watchdog で再起動します。起動時（`POST_KERNEL` の 0）に印を
   読んですぐ消すので、RESET やそのあとの再起動は通常の起動です。フラッシュ（KV）には何も書きません。
 - 中継の起動でも Zephyr は通常どおり起動しますが、NINA のコアには SPI のバスが無いように見せます
-  （`nina_bus_ready()` が偽）。Wi-Fi のインターフェースの初期化、Telnet の待ち受けのソケット、`nina version` などは
+  （`nina_bus_initialize()` が失敗する）。Wi-Fi のインターフェースの初期化、Telnet の待ち受けのソケット、`nina version` などは
   `-ENODEV` で失敗し、SPI1 と NINA の線に触りません（RAM のログに Telnet のエラーが残ります）。`main()` は設定・校正・
   時刻同期・Wi-Fi の接続を行わずに中継を動かします。CDC ACM の割り込みのコールバックを中継のものに差し替えるので
   （`POST_KERNEL` の 99）、シェルは入力を受けず、出力もポートに出ません。ログは RAM だけに出ます。
@@ -471,7 +471,7 @@ picolibc の中からの呼び出しと、GCC が構造体のコピーやルー�
 | `stream_stop` | ストリームの停止、キャンセル、エラー時の終了 |
 | `i2c_dw_sync` | 共有の I²C のコア（`common/drivers/i2c_dw/`）と、パッチ後のドライバー（Zephyr のツリーの HEAD のファイルにパッチ 0003 を当てて作る）の一致。両方のヘッダーの定義（状態、割り込み、レジスター、IC_DATA_CMD のビット、FIFO の深さ 16・バッチ 4、DMA の上限 3584）、125 MHz での SCL のカウント、DMA の下限 32・しきい値 8/0・割り込みのマスク・IC_CON の bit 9・停止の待ち 100 ms・タイムアウト 1000 ms、スパイク長、対になる関数（Zephyr の DMA API の呼び出しを含めて名前をコアのもの（DMA は境界 `i2c_dw_dma_os.h`）にそろえて文ごとに比べ、差分が `common/tests/i2c_dw_sync.expected` と同じこと）、読み出しのコマンド語を作る関数 `i2c_dw_rp2040_read_commands()`（パッチとコアのそれぞれの `i2c_dw_rp2040_dma_priv.h` の静的関数）が文ごとに同じでコマンドのビットも同じこと、パッチが足す `zephyr/drivers/i2c/i2c_dw_rp2040_dma.h` とコアの `common/drivers/i2c_dw/i2c_dw_rp2040_dma.h` がコメントとインクルードガードを除いて同じこと、パッチ後のドライバーが読むヘッダーがすべてツリーの中にあること。ビルドがあれば `.config` と `zephyr.dts` の値も見る。Zephyr のツリーがあるときだけ |
 | `nina_proto` | NINA の SPI フレーミング、応答の解析（ファームウェアのエラーの応答 0xEF を含む）、READY の期限、追加機能の問い合わせ（0x6A）（共有のコア `nina_proto.c`。偽の境界）。どれも READY の割り込み待ちを始められたときと始められなかったとき（100 µs ごとに読む）の両方で |
-| `nina_core_independent` | NINA のコアの各ファイル（`common/drivers/nina/` の直下と `internal/`、`port/` の境界のヘッダー）が C ライブラリー・POSIX のソケットの型・自分のヘッダーだけでコンパイルできること |
+| `nina_core_independent` | NINA のコアの各ファイル（`common/drivers/nina/` の直下と `include/`・`internal/`、`port/` の境界のヘッダー）が C ライブラリー・POSIX のソケットの型・自分のヘッダーだけでコンパイルできること |
 | `nina_wifi` | Wi-Fi の操作（`nina_wifi.c`）を偽の境界とつなぎで：接続とその確認、そのスレッド（500 ms ごとの確認、省電力の設定、アドレス、60 回、試行中の切断）、切断、監視（2 回で切れたとみなす）、3.0.2 とパッチを当てたファームウェアのスキャンとその終わり方、状態 |
 | `nina_wait` | ソケットの待ち（`nina_wait.c`）：間隔（事象を始める前と、始められなかったあと）、IRQ の線のエッジ、100 ms の時間切れ、期限、休み（偽の時計と線） |
 | `nina_sock`、`nina_dns`、`nina_dns_offload` | NINA のソケットの命令、名前解決（`nina_dns_offload` はこの版と同じ `NINA_OS_DNS_OFFLOAD` の形） |

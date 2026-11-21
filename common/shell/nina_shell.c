@@ -1,10 +1,10 @@
 /* SPDX-License-Identifier: MIT */
 /* The "nina" shell command: "nina version" asks the module for its firmware
- * version (nina_request(), nina_proto.c) and prints the capability bits of
- * the firmware's patches 0003 to 0006 (the module's and those in use,
- * nina_proto.h); with CONFIG_NINA_PASSTHROUGH, "nina passthrough confirm"
+ * version and prints the capability bits of the firmware's patches 0003 to
+ * 0006, the module's and those in use (nina_wifi_fw_version() and
+ * nina_wifi_capabilities(), common/drivers/nina/include/nina_wifi.h); with CONFIG_NINA_PASSTHROUGH, "nina passthrough confirm"
  * restarts the board into the NINA passthrough mode
- * (common/drivers/nina/nina_passthrough.h).  It was the Zephyr build's
+ * (common/drivers/nina/include/nina_passthrough.h).  It was the Zephyr build's
  * src/main.c (cmd_nina_version() and the registration); the Zephyr and
  * FreeRTOS builds use it (zephyr/app/usb-console/CMakeLists.txt,
  * freertos/drivers/nina/nina.cmake).  The NuttX build has the same command
@@ -20,7 +20,7 @@
 #include <string.h>
 #include <zephyr/kernel.h>
 #include <zephyr/shell/shell.h>
-#include "internal/nina_proto.h"
+#include "nina_wifi.h"
 
 #ifdef CONFIG_NINA_PASSTHROUGH
 #include "nina_passthrough.h"
@@ -33,22 +33,21 @@
 
 static int cmd_nina_version(const struct shell *sh, size_t argc, char **argv)
 {
-	uint8_t version[16];
-	size_t len;
+	char version[NINA_WIFI_FW_VERSION_SIZE];
+	uint32_t module, in_use;
 	int ret;
 
 	ARG_UNUSED(argc);
 	ARG_UNUSED(argv);
-	ret = nina_request(NINA_CMD_GET_FW_VERSION, NULL, 0, false, false, version,
-			   sizeof(version) - 1, &len);
+	ret = nina_wifi_fw_version(version);
 	if (ret) {
 		shell_error(sh, "NINA version request failed: %d", ret);
 		return ret;
 	}
-	version[len] = '\0';
+	nina_wifi_capabilities(&module, &in_use);
 	shell_print(sh, "NINA firmware: %s", version);
-	shell_print(sh, "NINA capabilities: 0x%08x (in use 0x%08x)",
-		    (unsigned int)nina_module_capabilities(), (unsigned int)nina_capabilities());
+	shell_print(sh, "NINA capabilities: 0x%08x (in use 0x%08x)", (unsigned int)module,
+		    (unsigned int)in_use);
 	return 0;
 }
 

@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /* The NINA-W102's Wi-Fi operations (nina_wifi.c): scan, connect,
  * disconnect, the link monitor and the status, on the module's commands
- * (nina_request(), nina_proto.h) and the kernel services of nina_os.h.
+ * (nina_proto_request(), nina_proto.h) and the kernel services of nina_os.h.
  * Each OS's binding makes them its own interface:
  *
  *   common/drivers/nina/port/zephyr/nina_net.c    Zephyr's Wi-Fi management and
@@ -129,7 +129,7 @@ struct nina_wifi_ops {
 };
 
 /* Keeps OPS, reads the module's MAC address into MAC and asks the module
- * for its capabilities (nina_probe_capabilities(), nina_proto.h): the
+ * for its capabilities (nina_proto_probe_capabilities(), nina_proto.h): the
  * module's first commands, after its reset, so this waits for it (10 ms +
  * 750 ms in nina_proto.c).  0, or the MAC request's negative errno (-EPROTO
  * for a short answer); the capabilities are asked either way.
@@ -166,6 +166,19 @@ int nina_wifi_disconnect(void);
  * BSSID and RSSI).  0, -EPROTO for a bad answer, or a command's error.
  */
 int nina_wifi_status(struct nina_wifi_status *status);
+
+/* The firmware's version, a string ("3.0.2"), into VERSION.  0, or the
+ * request's negative errno.
+ */
+#define NINA_WIFI_FW_VERSION_SIZE 16
+
+int nina_wifi_fw_version(char version[NINA_WIFI_FW_VERSION_SIZE]);
+
+/* The module's capability bits into *MODULE and those the driver uses into
+ * *IN_USE (internal/nina_proto.h: NINA_CAP_*); both 0 before
+ * nina_wifi_init().
+ */
+void nina_wifi_capabilities(uint32_t *module, uint32_t *in_use);
 
 /* The threads' bodies (see above). */
 void nina_wifi_scan_thread(void);

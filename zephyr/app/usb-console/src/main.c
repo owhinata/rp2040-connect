@@ -160,7 +160,7 @@ int main(void)
 	int ret;
 
 	/* "nina passthrough confirm" asked for the NINA passthrough mode
-	 * (common/drivers/nina/nina_passthrough.h): it runs instead of all that
+	 * (common/drivers/nina/include/nina_passthrough.h): it runs instead of all that
 	 * follows (no settings, no Wi-Fi, no time synchronization), until it
 	 * restarts the board into the normal firmware.
 	 */

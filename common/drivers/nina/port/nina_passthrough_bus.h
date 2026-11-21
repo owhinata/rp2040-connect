@@ -37,10 +37,10 @@ extern "C" {
  * 0..3, which the RESET button, the chip's RUN pin, clears).  The fatal
  * error record (common/log/fault_record.h) uses the same registers.
  */
-#define NINA_PASSTHROUGH_MARK_WORDS 4
+#define NINA_PASSTHROUGH_BUS_MARK_WORDS 4
 
-void nina_passthrough_bus_mark_get(uint32_t s[NINA_PASSTHROUGH_MARK_WORDS]);
-void nina_passthrough_bus_mark_set(const uint32_t s[NINA_PASSTHROUGH_MARK_WORDS]);
+void nina_passthrough_bus_mark_get(uint32_t s[NINA_PASSTHROUGH_BUS_MARK_WORDS]);
+void nina_passthrough_bus_mark_set(const uint32_t s[NINA_PASSTHROUGH_BUS_MARK_WORDS]);
 
 /* A restart of the whole chip at once, keeping the words (the Pico SDK's
  * watchdog_reboot(0, 0, 0)).
@@ -49,10 +49,10 @@ __attribute__((noreturn)) void nina_passthrough_bus_restart(void);
 
 /* The module's lines -------------------------------------------------------*/
 
-enum nina_passthrough_gpio0 {
-	NINA_PASSTHROUGH_GPIO0_LOW,      /* driven low: the ROM's download mode at reset */
-	NINA_PASSTHROUGH_GPIO0_HIGH,     /* driven high: a normal start at reset */
-	NINA_PASSTHROUGH_GPIO0_RELEASED, /* an input with the pull-down (the module drives it) */
+enum nina_passthrough_bus_gpio0 {
+	NINA_PASSTHROUGH_BUS_GPIO0_LOW,      /* driven low: the ROM's download mode at reset */
+	NINA_PASSTHROUGH_BUS_GPIO0_HIGH,     /* driven high: a normal start at reset */
+	NINA_PASSTHROUGH_BUS_GPIO0_RELEASED, /* an input with the pull-down (the module drives it) */
 };
 
 /* RESETN driven low, without pulls (the module in reset); GPIO0 an input
@@ -65,7 +65,7 @@ void nina_passthrough_bus_lines_init(void);
 /* RESETN high (RELEASED: the module runs) or low. */
 void nina_passthrough_bus_resetn(bool released);
 
-void nina_passthrough_bus_gpio0(enum nina_passthrough_gpio0 state);
+void nina_passthrough_bus_gpio0(enum nina_passthrough_bus_gpio0 state);
 
 /* GPIO8 driven by the UART's TX, or an input (the module's firmware
  * drives that net as its SPI's MISO).
@@ -94,9 +94,9 @@ void nina_passthrough_bus_uart_irq_off(void);
 /* A received word: the byte in bits 0..7 and its flags (the layout of the
  * PL011's data register).
  */
-#define NINA_PASSTHROUGH_UART_FRAMING (1u << 8)
-#define NINA_PASSTHROUGH_UART_BREAK   (1u << 10) /* the line held low: no data */
-#define NINA_PASSTHROUGH_UART_OVERRUN (1u << 11) /* bytes lost before this one */
+#define NINA_PASSTHROUGH_BUS_UART_FRAMING (1u << 8)
+#define NINA_PASSTHROUGH_BUS_UART_BREAK   (1u << 10) /* the line held low: no data */
+#define NINA_PASSTHROUGH_BUS_UART_OVERRUN (1u << 11) /* bytes lost before this one */
 
 /* The next word of the receive FIFO into *WORD; false when it is empty. */
 bool nina_passthrough_bus_uart_rx(uint32_t *word);

@@ -79,9 +79,9 @@
 #  error "UART1 of the passthrough is on GPIO8 (TX) and GPIO9 (RX)"
 #endif
 
-#if RP2040_UART_UARTDR_FE != NINA_PASSTHROUGH_UART_FRAMING || \
-    RP2040_UART_UARTDR_BE != NINA_PASSTHROUGH_UART_BREAK || \
-    RP2040_UART_UARTDR_OE != NINA_PASSTHROUGH_UART_OVERRUN
+#if RP2040_UART_UARTDR_FE != NINA_PASSTHROUGH_BUS_UART_FRAMING || \
+    RP2040_UART_UARTDR_BE != NINA_PASSTHROUGH_BUS_UART_BREAK || \
+    RP2040_UART_UARTDR_OE != NINA_PASSTHROUGH_BUS_UART_OVERRUN
 #  error "a received word is UARTDR as read"
 #endif
 
@@ -129,23 +129,24 @@ static int pt_uart_interrupt(int irq, FAR void *context, FAR void *arg)
  * Public Functions
  ****************************************************************************/
 
-void nina_passthrough_bus_mark_get(uint32_t s[NINA_PASSTHROUGH_MARK_WORDS])
+void nina_passthrough_bus_mark_get(
+  uint32_t s[NINA_PASSTHROUGH_BUS_MARK_WORDS])
 {
   int i;
 
-  for (i = 0; i < NINA_PASSTHROUGH_MARK_WORDS; i++)
+  for (i = 0; i < NINA_PASSTHROUGH_BUS_MARK_WORDS; i++)
     {
       s[i] = getreg32(RP2040_WATCHDOG_SCRATCH(i));
     }
 }
 
 void nina_passthrough_bus_mark_set(
-  const uint32_t s[NINA_PASSTHROUGH_MARK_WORDS])
+  const uint32_t s[NINA_PASSTHROUGH_BUS_MARK_WORDS])
 {
   irqstate_t flags = enter_critical_section();
   int i;
 
-  for (i = 0; i < NINA_PASSTHROUGH_MARK_WORDS; i++)
+  for (i = 0; i < NINA_PASSTHROUGH_BUS_MARK_WORDS; i++)
     {
       putreg32(s[i], RP2040_WATCHDOG_SCRATCH(i));
     }
@@ -177,21 +178,21 @@ void nina_passthrough_bus_resetn(bool released)
   rp2040_gpio_put(PT_PIN_RESETN, released);
 }
 
-void nina_passthrough_bus_gpio0(enum nina_passthrough_gpio0 state)
+void nina_passthrough_bus_gpio0(enum nina_passthrough_bus_gpio0 state)
 {
   switch (state)
     {
-      case NINA_PASSTHROUGH_GPIO0_LOW:
+      case NINA_PASSTHROUGH_BUS_GPIO0_LOW:
         rp2040_gpio_put(PT_PIN_GPIO0, 0);
         rp2040_gpio_setdir(PT_PIN_GPIO0, true);
         break;
 
-      case NINA_PASSTHROUGH_GPIO0_HIGH:
+      case NINA_PASSTHROUGH_BUS_GPIO0_HIGH:
         rp2040_gpio_put(PT_PIN_GPIO0, 1);
         rp2040_gpio_setdir(PT_PIN_GPIO0, true);
         break;
 
-      case NINA_PASSTHROUGH_GPIO0_RELEASED:
+      case NINA_PASSTHROUGH_BUS_GPIO0_RELEASED:
         rp2040_gpio_put(PT_PIN_GPIO0, 0);
         rp2040_gpio_setdir(PT_PIN_GPIO0, false);
         break;

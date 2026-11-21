@@ -2,7 +2,7 @@
 /* The "nina" command: cmd_nina_version() and the command's registration
  * from zephyr/app/usb-console/src/main.c, with the same syntax and output
  * (common/shell/nina_shell.c today, with the line of the module's
- * capability bits and those in use, nina_proto.h).  With the board's NINA
+ * capability bits and those in use, nina_wifi.h).  With the board's NINA
  * passthrough mode (CONFIG_NINA_PASSTHROUGH), also "passthrough confirm"
  * of the Zephyr and FreeRTOS builds (common/shell/nina_shell.c
  * cmd_nina_passthrough()), with its messages: it restarts the board into
@@ -22,7 +22,7 @@
 #include <stdint.h>
 #include <stdio.h>
 
-#include "internal/nina_proto.h"
+#include "nina_wifi.h"
 #include "subcmd.h"
 
 #ifdef CONFIG_NINA_PASSTHROUGH
@@ -41,22 +41,21 @@
 
 static int cmd_nina_version(int argc, char **argv)
 {
-	uint8_t version[16];
-	size_t len;
+	char version[NINA_WIFI_FW_VERSION_SIZE];
+	uint32_t module, in_use;
 	int ret;
 
 	(void)argc;
 	(void)argv;
-	ret = nina_request(NINA_CMD_GET_FW_VERSION, NULL, 0, false, false, version,
-			   sizeof(version) - 1, &len);
+	ret = nina_wifi_fw_version(version);
 	if (ret) {
 		fprintf(stderr, "NINA version request failed: %d\n", ret);
 		return ret;
 	}
-	version[len] = '\0';
+	nina_wifi_capabilities(&module, &in_use);
 	printf("NINA firmware: %s\n", version);
-	printf("NINA capabilities: 0x%08x (in use 0x%08x)\n",
-	       (unsigned int)nina_module_capabilities(), (unsigned int)nina_capabilities());
+	printf("NINA capabilities: 0x%08x (in use 0x%08x)\n", (unsigned int)module,
+	       (unsigned int)in_use);
 	return 0;
 }
 

@@ -57,9 +57,9 @@ static unsigned int disconnected_checks;
 static int request_one(uint8_t cmd, const uint8_t *data, size_t length, uint8_t *result,
 		       size_t cap, size_t *n)
 {
-	const struct nina_param p = {data, length};
+	const struct nina_proto_param p = {data, length};
 
-	return nina_request(cmd, data ? &p : NULL, data ? 1 : 0, false, false, result, cap, n);
+	return nina_proto_request(cmd, data ? &p : NULL, data ? 1 : 0, false, false, result, cap, n);
 }
 
 static int32_t get_le32(const uint8_t *p)
@@ -131,9 +131,9 @@ static void scan_once(uint8_t *records, size_t cap)
 	cb = scan_cb;
 	arg = scan_arg;
 	reconnect = scan_reconnect;
-	ret = (nina_capabilities() & NINA_CAP_ASYNC_SCAN) ? scan_async() : 0;
+	ret = (nina_proto_capabilities() & NINA_CAP_ASYNC_SCAN) ? scan_async() : 0;
 	if (!ret) {
-		ret = nina_request(NINA_CMD_SCAN_NETWORKS, NULL, 0, false, false, records, cap,
+		ret = nina_proto_request(NINA_CMD_SCAN_NETWORKS, NULL, 0, false, false, records, cap,
 				   &len);
 	}
 	while (!ret && offset < len) {
@@ -213,7 +213,7 @@ int nina_wifi_scan(nina_wifi_scan_cb_t cb, void *arg)
 	 * (NINA_CAP_SCAN_KEEPS_LINK) stays connected: the IP configuration
 	 * stays, and the monitor sees a loss during the scan as any other.
 	 */
-	was_connected = connected && !(nina_capabilities() & NINA_CAP_SCAN_KEEPS_LINK);
+	was_connected = connected && !(nina_proto_capabilities() & NINA_CAP_SCAN_KEEPS_LINK);
 	if (was_connected) {
 		next_generation();
 		connected = false;
@@ -259,7 +259,7 @@ static void connect_once(void)
 				ret = ret ? ret : -EIO;
 				break;
 			}
-			ret = nina_ip_config(ip);
+			ret = nina_proto_ip_config(ip);
 			if (ret) {
 				break;
 			}
@@ -310,7 +310,7 @@ int nina_wifi_connect(const struct nina_wifi_connect_params *params)
 	bool open;
 	uint8_t answer;
 	size_t n;
-	struct nina_param args[2];
+	struct nina_proto_param args[2];
 	int ret;
 
 	if (!params || !params->ssid || !params->ssid_len ||
@@ -341,11 +341,11 @@ int nina_wifi_connect(const struct nina_wifi_connect_params *params)
 	}
 	connecting = true;
 
-	args[0] = (struct nina_param){params->ssid, params->ssid_len};
-	args[1] = (struct nina_param){params->psk, params->psk_len};
+	args[0] = (struct nina_proto_param){params->ssid, params->ssid_len};
+	args[1] = (struct nina_proto_param){params->psk, params->psk_len};
 	next_generation();
 	atomic_store(&request_generation, atomic_load(&generation));
-	ret = nina_request(open ? NINA_CMD_SET_NET : NINA_CMD_SET_PASSPHRASE, args, open ? 1 : 2,
+	ret = nina_proto_request(open ? NINA_CMD_SET_NET : NINA_CMD_SET_PASSPHRASE, args, open ? 1 : 2,
 			   false, false, &answer, 1, &n);
 	if (ret || n != 1 || answer != 1) {
 		connecting = false;
@@ -471,6 +471,26 @@ int nina_wifi_status(struct nina_wifi_status *status)
 	return 0;
 }
 
+int nina_wifi_fw_version(char version[NINA_WIFI_FW_VERSION_SIZE])
+{
+	size_t len;
+	int ret;
+
+	ret = nina_proto_request(NINA_CMD_GET_FW_VERSION, NULL, 0, false, false, (uint8_t *)version,
+				 NINA_WIFI_FW_VERSION_SIZE - 1, &len);
+	if (ret) {
+		return ret;
+	}
+	version[len] = '\0';
+	return 0;
+}
+
+void nina_wifi_capabilities(uint32_t *module, uint32_t *in_use)
+{
+	*module = nina_proto_module_capabilities();
+	*in_use = nina_proto_capabilities();
+}
+
 int nina_wifi_init(const struct nina_wifi_ops *wifi_ops, uint8_t mac[NINA_WIFI_MAC_LEN])
 {
 	uint8_t dummy = NINA_DUMMY;
@@ -484,6 +504,6 @@ int nina_wifi_init(const struct nina_wifi_ops *wifi_ops, uint8_t mac[NINA_WIFI_M
 	}
 	/* Once, after the module's reset (the first request): what the
 	 * firmware adds to 3.0.2 (nina_proto.h). */
-	(void)nina_probe_capabilities();
+	(void)nina_proto_probe_capabilities();
 	return ret;
 }

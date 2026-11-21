@@ -39,10 +39,8 @@
  * Every timed wait below (READY, the socket events) blocks for the time
  * rounded up to ticks, plus one tick, as the sleeps; 0 does not block.
  *
- * The objects are static (no heap) and made by nina_os_initialize()
- * (nina_freertos.h), which main() calls before it starts the tasks.  A call
- * before it hands FreeRTOS a NULL handle, which its configASSERT() stops
- * (the application's fatal error); the two starts below assert it too.
+ * The objects are static (no heap) and made at the first use of any of
+ * them (objects() below), from a task or before the scheduler starts.
  *
  * The core's waits for READY (nina_proto.c wait_ready()) sleep on an edge
  * interrupt of the line instead of sampling it (nina_os_ready_*() of
@@ -132,7 +130,6 @@
 #include "task.h"
 #include "semphr.h"
 
-#include "nina_freertos.h"
 #include "nina_os.h"
 
 /* The task notification of the socket events' waits; index 0 is the Pico
@@ -173,15 +170,30 @@ static SemaphoreHandle_t scan_request;
 static SemaphoreHandle_t connect_request;
 static SemaphoreHandle_t ready_sem;
 
-void nina_os_initialize(void)
+/* Makes the objects once: the first lock or request of any task finds
+ * ready_sem, the last one made, still NULL.  The critical section keeps a
+ * second task from making them again.
+ */
+static void make_objects(void)
 {
-	configASSERT(nina_lock == NULL);
-	nina_lock = xSemaphoreCreateRecursiveMutexStatic(&nina_lock_buffer);
-	nina_dns_lock = xSemaphoreCreateRecursiveMutexStatic(&nina_dns_lock_buffer);
-	connect_state_lock = xSemaphoreCreateRecursiveMutexStatic(&connect_state_lock_buffer);
-	scan_request = xSemaphoreCreateBinaryStatic(&scan_request_buffer);
-	connect_request = xSemaphoreCreateBinaryStatic(&connect_request_buffer);
-	ready_sem = xSemaphoreCreateBinaryStatic(&ready_sem_buffer);
+	taskENTER_CRITICAL();
+	if (ready_sem == NULL) {
+		nina_lock = xSemaphoreCreateRecursiveMutexStatic(&nina_lock_buffer);
+		nina_dns_lock = xSemaphoreCreateRecursiveMutexStatic(&nina_dns_lock_buffer);
+		connect_state_lock =
+			xSemaphoreCreateRecursiveMutexStatic(&connect_state_lock_buffer);
+		scan_request = xSemaphoreCreateBinaryStatic(&scan_request_buffer);
+		connect_request = xSemaphoreCreateBinaryStatic(&connect_request_buffer);
+		ready_sem = xSemaphoreCreateBinaryStatic(&ready_sem_buffer);
+	}
+	taskEXIT_CRITICAL();
+}
+
+static inline void objects(void)
+{
+	if (ready_sem == NULL) {
+		make_objects();
+	}
 }
 
 /* Time ----------------------------------------------------------------------*/
@@ -244,6 +256,7 @@ int64_t nina_os_uptime_ms(void)
 
 int nina_os_lock(void)
 {
+	objects();
 	return xSemaphoreTakeRecursive(nina_lock, portMAX_DELAY) == pdPASS ? 0 : -EAGAIN;
 }
 
@@ -254,6 +267,7 @@ void nina_os_unlock(void)
 
 void nina_os_dns_lock(void)
 {
+	objects();
 	(void)xSemaphoreTakeRecursive(nina_dns_lock, portMAX_DELAY);
 }
 
@@ -264,6 +278,7 @@ void nina_os_dns_unlock(void)
 
 void nina_os_wifi_lock(void)
 {
+	objects();
 	(void)xSemaphoreTakeRecursive(connect_state_lock, portMAX_DELAY);
 }
 
@@ -279,11 +294,13 @@ static SemaphoreHandle_t wifi_request(unsigned int which)
 
 void nina_os_wifi_post(unsigned int which)
 {
+	objects();
 	(void)xSemaphoreGive(wifi_request(which));
 }
 
 void nina_os_wifi_wait(unsigned int which)
 {
+	objects();
 	(void)xSemaphoreTake(wifi_request(which), portMAX_DELAY);
 }
 

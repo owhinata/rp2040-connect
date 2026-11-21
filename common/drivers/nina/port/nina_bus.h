@@ -30,40 +30,40 @@
 extern "C" {
 #endif
 
-enum nina_pin {
-	NINA_PIN_CS,
-	NINA_PIN_READY,
-	NINA_PIN_RESET,
-	NINA_PIN_IRQ,
+enum nina_bus_pin {
+	NINA_BUS_PIN_CS,
+	NINA_BUS_PIN_READY,
+	NINA_BUS_PIN_RESET,
+	NINA_BUS_PIN_IRQ,
 };
 
 /* Zephyr's gpio_pin_configure_dt() flags used by nina_proto.c. */
-enum nina_pin_mode {
-	NINA_PIN_OUTPUT_INACTIVE, /* GPIO_OUTPUT_INACTIVE */
-	NINA_PIN_OUTPUT_ACTIVE,   /* GPIO_OUTPUT_ACTIVE */
-	NINA_PIN_OUTPUT_HIGH,     /* GPIO_OUTPUT_HIGH (physical level) */
-	NINA_PIN_INPUT,           /* GPIO_INPUT */
+enum nina_bus_pin_mode {
+	NINA_BUS_PIN_OUTPUT_INACTIVE, /* GPIO_OUTPUT_INACTIVE */
+	NINA_BUS_PIN_OUTPUT_ACTIVE,   /* GPIO_OUTPUT_ACTIVE */
+	NINA_BUS_PIN_OUTPUT_HIGH,     /* GPIO_OUTPUT_HIGH (physical level) */
+	NINA_BUS_PIN_INPUT,           /* GPIO_INPUT */
 };
 
-/* Called once at boot by the NuttX and FreeRTOS builds (Zephyr initializes
- * spi1 and configures its cs-gpios at boot, before main(); the Zephyr build
- * has no such function).  Sets up SPI1 and its pins and drives CS
- * inactive.  Leaves READY, RESET and IRQ alone: nina_proto.c configures them
- * on the first request.
+/* The bus for nina_proto.c, which calls it before it configures the lines
+ * and resets the module, at the first request: SPI1 (the RP2040 is the
+ * master) with its pins, and CS driven inactive.  READY, RESET and IRQ are
+ * left alone.  0 when the bus can be used (a later call does nothing more),
+ * -ENODEV when it cannot: the request fails and the next one asks again.
+ * On Zephyr, whose spi1 device and cs-gpios are set up at boot, it is
+ * device_is_ready(spi) && gpio_is_ready_dt() of the four lines.  While the
+ * passthrough mode has the lines (nina_passthrough_active()) it is -ENODEV.
  */
 int nina_bus_initialize(void);
-
-/* device_is_ready(spi) && gpio_is_ready_dt() of the four lines. */
-bool nina_bus_ready(void);
 
 /* gpio_pin_configure_dt(): the line's devicetree flags (polarity, pulls)
  * combined with MODE, applied as Zephyr's RP2040 GPIO driver does.
  */
-int nina_pin_configure(enum nina_pin pin, enum nina_pin_mode mode);
+int nina_bus_pin_configure(enum nina_bus_pin pin, enum nina_bus_pin_mode mode);
 
 /* gpio_pin_set_dt() and gpio_pin_get_dt(): logical values. */
-int nina_pin_set(enum nina_pin pin, int value);
-int nina_pin_get(enum nina_pin pin);
+int nina_bus_pin_set(enum nina_bus_pin pin, int value);
+int nina_bus_pin_get(enum nina_bus_pin pin);
 
 /* spi_transceive() with one TX and one RX buffer of LEN bytes, or
  * spi_write() when RX is NULL: SPI mode 0, 8-bit words, MSB first, at

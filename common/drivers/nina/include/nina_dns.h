@@ -26,6 +26,12 @@ int nina_dns_getaddrinfo(const char *host, const char *service,
                      const struct addrinfo *hints, struct addrinfo **res);
 void nina_dns_freeaddrinfo(struct addrinfo *res);
 
+/* Registers the resolver with the OS where it has a place for one
+ * (NINA_OS_DNS_OFFLOAD, nina_os.h); nothing elsewhere.  Once, from the
+ * binding's start.
+ */
+void nina_dns_init(void);
+
 #ifdef __cplusplus
 }
 #endif

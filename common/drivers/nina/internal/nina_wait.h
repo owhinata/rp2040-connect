@@ -59,7 +59,7 @@ struct nina_wait {
 
 #define NINA_WAIT_INIT {0, 0}
 
-/* Called once by nina_probe_capabilities() (nina_proto.c) when the module
+/* Called once by nina_proto_probe_capabilities() (nina_proto.c) when the module
  * reports socket events: nina_os_event_start(), and the waits use the
  * events from then on.  0, or nina_os_event_start()'s negative errno: the
  * waits keep the poll intervals.

@@ -583,7 +583,7 @@ NuttX 版の確認の範囲は §11.7 に分けて書く。
   各ファイルに前置きヘッダー（NuttX の設定と、互換層より先に読む NuttX のヘッダー、ファイルが使う Zephyr の Kconfig の
   値と名前）を付けてコンパイルし、版ごとに違う数行は OS ごとの小さなヘッダー（`sensor_shell_os.h`、
   `wifi_profile_os.h`、`lsm6dso.c` が末尾で読む LSM6DSO のデバイスの `lsm6dso_instance.h`。Zephyr 版はデバイスツリーの
-  インスタンス化のマクロ、NuttX 版はボードの値を使うデバイス 1 つ）に出している。NINA の OS に依存しないコアも `common/drivers/nina/` にあり、3 つの版が使う。直下はドライバーが提供する機能
+  インスタンス化のマクロ、NuttX 版はボードの値を使うデバイス 1 つ）に出している。NINA の OS に依存しないコアも `common/drivers/nina/` にあり、3 つの版が使う。直下（外から読むヘッダーは `include/`）はドライバーが提供する機能
   （Wi-Fi の操作 `nina_wifi.[ch]`、ソケットの表と命令 `nina_sock.[ch]`、名前解決 `nina_dns.[ch]`、esptool の中継 `nina_passthrough.[ch]`）、
   `internal/` はコアの内側の部品（プロトコルのバイトと SPI の転送層 `nina_proto.[ch]`、ソケットのループの
   待ち `nina_wait.[ch]`）、`port/` は各版が実装する狭い境界のヘッダー（`nina_os.h`・`nina_bus.h`、中継の `nina_passthrough_os.h`・

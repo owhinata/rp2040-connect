@@ -26,8 +26,6 @@
 #include "nano_console.h"
 #include "nano_flash_kv_os.h"
 #include "nano_lsm6dso.h"
-#include "nina_bus.h"
-#include "nina_freertos.h"
 #include "nina_passthrough.h"
 #include "nano_shell.h"
 #include "nano_stdio.h"
@@ -339,7 +337,7 @@ int main(void)
 	fault_boot();
 
 	/* "nina passthrough confirm" asked for the NINA passthrough mode
-	 * (common/drivers/nina/nina_passthrough.h): it runs instead of all
+	 * (common/drivers/nina/include/nina_passthrough.h): it runs instead of all
 	 * that follows (no task, no SPI1, no Wi-Fi), until it restarts the
 	 * board into the normal firmware.
 	 */
@@ -366,22 +364,6 @@ int main(void)
 	 */
 	if (zephyr_compat_initialize() != 0) {
 		panic("zephyr_compat_initialize");
-	}
-
-	/* The NINA core's mutexes and semaphores, before any task can make a
-	 * request (common/drivers/nina/port/freertos/nina_freertos.h; Zephyr and
-	 * NuttX define theirs statically).  Then SPI1 to the NINA-W102 and its
-	 * chip select, which the Zephyr build sets up at boot (its spi1 device,
-	 * before main()) and the NuttX build in its bringup
-	 * (common/drivers/nina/port/freertos/nina_bus_rp2040.c).  Nothing is sent to the
-	 * module here: the first request resets it (about 760 ms) and a module
-	 * that does not answer only makes that request fail
-	 * (common/drivers/nina/internal/nina_proto.c), so the start never waits for it.
-	 */
-	nina_os_initialize();
-	ret = nina_bus_initialize();
-	if (ret != 0) {
-		LOG_ERR("Could not set up the NINA's SPI bus: %d", ret);
 	}
 
 	/* I2C0 (the DMA interrupt's handler for its DMA reads, then reset, pins,

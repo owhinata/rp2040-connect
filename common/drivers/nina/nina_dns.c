@@ -16,7 +16,7 @@
  *
  * OS-independent apart from nina_os.h and the POSIX names of the sockets
  * (on Zephyr: common/drivers/nina/port/zephyr/posix); the host test
- * (common/tests/nina_dns.c) runs it on a fake nina_request().
+ * (common/tests/nina_dns.c) runs it on a fake nina_proto_request().
  */
 
 #include <errno.h>
@@ -103,7 +103,7 @@ int nina_dns_getaddrinfo(const char *host, const char *service,
 	}
 
 	if (inet_pton(AF_INET, host, ip) != 1) {
-		struct nina_param param;
+		struct nina_proto_param param;
 
 		if (flags & AI_NUMERICHOST) {
 			return EAI_NONAME;
@@ -112,12 +112,12 @@ int nina_dns_getaddrinfo(const char *host, const char *service,
 		if (host_len > 253) {
 			return EAI_NONAME;
 		}
-		param = (struct nina_param){(const uint8_t *)host, host_len};
+		param = (struct nina_proto_param){(const uint8_t *)host, host_len};
 		nina_os_dns_lock();
-		ret = nina_request(NINA_CMD_REQ_HOST_BY_NAME, &param, 1, false, false, &answer, 1,
+		ret = nina_proto_request(NINA_CMD_REQ_HOST_BY_NAME, &param, 1, false, false, &answer, 1,
 				   &n);
 		if (!ret && n == 1 && answer == 1) {
-			ret = nina_request(NINA_CMD_GET_HOST_BY_NAME, NULL, 0, false, false, ip,
+			ret = nina_proto_request(NINA_CMD_GET_HOST_BY_NAME, NULL, 0, false, false, ip,
 					   sizeof(ip), &n);
 		} else if (!ret) {
 			ret = -ENOENT;

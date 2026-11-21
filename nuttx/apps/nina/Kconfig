@@ -10,7 +10,7 @@ config NANO_APP_NINA
 	---help---
 		"nina version": the Zephyr build's nina command
 		(src/main.c, cmd_nina_version()) with the same output, on
-		nina_request() of nuttx/drivers/nina (NINA).  With the
+		nina_wifi_fw_version() of the NINA driver (NINA).  With the
 		board's NINA_PASSTHROUGH, also "nina passthrough confirm"
 		(the Zephyr and FreeRTOS builds'): a restart into the NINA
 		passthrough mode for esptool.
@@ -23,7 +23,7 @@ config NANO_APP_NINA_PRIORITY
 	---help---
 		The shell's priority (NANO_PRIO_SHELL in
 		common/compat/priorities.h): the Zephyr build runs shell
-		commands in its shell thread, and nina_request() runs the SPI
+		commands in its shell thread, and nina_proto_request() runs the SPI
 		transfer at the caller's priority.
 
 config NANO_APP_NINA_STACKSIZE

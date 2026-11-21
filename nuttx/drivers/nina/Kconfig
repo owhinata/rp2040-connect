@@ -4,12 +4,12 @@
 #
 
 config NINA
-	bool "NINA-W102 SPI link (nina_request())"
+	bool "NINA-W102 SPI link (nina_proto_request())"
 	default y
 	depends on RP2040_SPI1 && !RP2040_SPI_DMA
 	depends on NANO_LSM6DSO_STREAM
 	---help---
-		common/drivers/nina/internal/nina_proto.c: nina_request() and nina_ip_config(),
+		common/drivers/nina/internal/nina_proto.c: nina_proto_request() and nina_proto_ip_config(),
 		shared with the Zephyr build (the WiFiNINA SPI protocol of the
 		module's Arduino firmware), with the same framing, timeouts,
 		error values and lazy initialization (the module is reset on

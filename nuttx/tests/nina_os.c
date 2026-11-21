@@ -288,30 +288,25 @@ int nina_bus_initialize(void)
 	return 0;
 }
 
-bool nina_bus_ready(void)
-{
-	return true;
-}
-
-int nina_pin_configure(enum nina_pin pin, enum nina_pin_mode mode)
+int nina_bus_pin_configure(enum nina_bus_pin pin, enum nina_bus_pin_mode mode)
 {
 	(void)pin;
 	(void)mode;
 	return 0;
 }
 
-int nina_pin_set(enum nina_pin pin, int value)
+int nina_bus_pin_set(enum nina_bus_pin pin, int value)
 {
 	(void)pin;
 	(void)value;
 	return 0;
 }
 
-int nina_pin_get(enum nina_pin pin)
+int nina_bus_pin_get(enum nina_bus_pin pin)
 {
 	int value;
 
-	assert(pin == NINA_PIN_READY);
+	assert(pin == NINA_BUS_PIN_READY);
 	ready_reads++;
 	value = !ready_high;
 	if (change_after_read) {

@@ -1,7 +1,7 @@
 ############################################################################
 # nuttx/apps/nina/Makefile
 #
-# The "nina" builtin command (see Kconfig).  nina_request() is in the
+# The "nina" builtin command (see Kconfig).  nina_proto_request() is in the
 # kernel side (common/drivers/nina, built by nuttx/drivers/nina; the flat
 # build links it in); its header nina_proto.h is in
 # common/drivers/nina/internal.
@@ -19,7 +19,7 @@ MODULE    = $(CONFIG_NANO_APP_NINA)
 
 MAINSRC   = nina_main.c
 
-CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)drivers$(DELIM)nina
+CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)drivers$(DELIM)nina$(DELIM)include
 CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)shell
 
 include $(APPDIR)/Application.mk

@@ -8,13 +8,13 @@
  * three-parameter answers of 0x75 and 0x7a, the length checks, a failing
  * bulk transfer).  The rest covers what the Zephyr test does not: narrow
  * parameters, the version request, the START search, each -EPROTO,
- * -EMSGSIZE and -EINVAL, 0x27, nina_ip_config() (0x21), the READY
+ * -EMSGSIZE and -EINVAL, 0x27, nina_proto_ip_config() (0x21), the READY
  * timeouts (2000, 20 and 10000 ms of the fake clock, polled every
  * 100 us), the reset sequence of the first request, the order of the CS
  * edges and transfers, and the lock.
  *
  * The firmware's error reply to a command it does not have (0xEF 0x00
- * 0xEE): -ENOTSUP after three bytes, in nina_request() and command(); and
+ * 0xEE): -ENOTSUP after three bytes, in nina_proto_request() and command(); and
  * the capability probe (0x6A): the bits, an older firmware, a link error,
  * unknown bits, the OS's events started only for bit 2 (and the bit
  * dropped when they cannot start), one request only.
@@ -60,12 +60,12 @@ static void event(const char *e)
 	strcat(events, " ");
 }
 
-bool nina_bus_ready(void)
+int nina_bus_initialize(void)
 {
-	return bus_ready;
+	return bus_ready ? 0 : -ENODEV;
 }
 
-int nina_pin_configure(enum nina_pin pin, enum nina_pin_mode mode)
+int nina_bus_pin_configure(enum nina_bus_pin pin, enum nina_bus_pin_mode mode)
 {
 	static const char *const pins[] = {"CS", "READY", "RESET", "IRQ"};
 	static const char *const modes[] = {"inactive", "active", "high", "input"};
@@ -74,16 +74,16 @@ int nina_pin_configure(enum nina_pin pin, enum nina_pin_mode mode)
 	assert(lock_depth > 0);
 	snprintf(e, sizeof(e), "%s=%s", pins[pin], modes[mode]);
 	event(e);
-	if (pin == NINA_PIN_CS) {
-		cs_active = mode == NINA_PIN_OUTPUT_ACTIVE;
+	if (pin == NINA_BUS_PIN_CS) {
+		cs_active = mode == NINA_BUS_PIN_OUTPUT_ACTIVE;
 	}
 	return 0;
 }
 
-int nina_pin_set(enum nina_pin pin, int value)
+int nina_bus_pin_set(enum nina_bus_pin pin, int value)
 {
 	assert(lock_depth > 0);
-	if (pin == NINA_PIN_CS) {
+	if (pin == NINA_BUS_PIN_CS) {
 		/* The test's requests never assert CS twice in a row. */
 		assert(cs_active != value);
 		cs_active = value;
@@ -94,15 +94,15 @@ int nina_pin_set(enum nina_pin pin, int value)
 	} else {
 		char e[16];
 
-		snprintf(e, sizeof(e), "%s=%d", pin == NINA_PIN_RESET ? "RESET" : "IRQ", value);
+		snprintf(e, sizeof(e), "%s=%d", pin == NINA_BUS_PIN_RESET ? "RESET" : "IRQ", value);
 		event(e);
 	}
 	return 0;
 }
 
-int nina_pin_get(enum nina_pin pin)
+int nina_bus_pin_get(enum nina_bus_pin pin)
 {
-	assert(pin == NINA_PIN_READY && lock_depth > 0);
+	assert(pin == NINA_BUS_PIN_READY && lock_depth > 0);
 	/* With the OS's waits, read only while armed: a change after the read
 	 * wakes the wait.
 	 */
@@ -258,16 +258,16 @@ static void reset_fake(const uint8_t *reply, size_t len)
  */
 #define TIMEOUT_POLLS(ms) (ready_irq ? 2u : (ms) * 10u)
 
-/* nina_request() with no parameters and an 8-bit answer. */
+/* nina_proto_request() with no parameters and an 8-bit answer. */
 static int simple(uint8_t cmd, uint8_t *out, size_t cap, size_t *n)
 {
-	return nina_request(cmd, NULL, 0, false, false, out, cap, n);
+	return nina_proto_request(cmd, NULL, 0, false, false, out, cap, n);
 }
 
 static void zephyr_cases(void)
 {
 	uint8_t payload[512], output[512], id = 7;
-	struct nina_param params[] = {{&id, 1}, {payload, sizeof(payload)}};
+	struct nina_proto_param params[] = {{&id, 1}, {payload, sizeof(payload)}};
 	size_t n;
 	const uint8_t send_reply[] = {0xe0, 0xc4, 1, 2, 0x00, 0x02, 0xee};
 
@@ -275,7 +275,7 @@ static void zephyr_cases(void)
 		payload[i] = (uint8_t)i;
 	}
 	reset_fake(send_reply, sizeof(send_reply));
-	assert(nina_request(0x44, params, 2, true, false, output, sizeof(output), &n) == 0);
+	assert(nina_proto_request(0x44, params, 2, true, false, output, sizeof(output), &n) == 0);
 	assert(n == 2 && output[0] == 0 && output[1] == 2);
 	assert(request_len == 524 && (request_len % 4) == 0);
 	assert(memcmp(request, "\xe0\x44\x02\x00\x01\x07\x02\x00", 8) == 0);
@@ -291,7 +291,7 @@ static void zephyr_cases(void)
 	params[1].data = large;
 	params[1].len = sizeof(large);
 	reset_fake(send_reply, sizeof(send_reply));
-	assert(nina_request(0x44, params, 2, true, false, output, sizeof(output), &n) == 0);
+	assert(nina_proto_request(0x44, params, 2, true, false, output, sizeof(output), &n) == 0);
 	assert(request_len == 1472 && request[6] == 0x05 && request[7] == 0xb4);
 	assert(memcmp(request + 8, large, sizeof(large)) == 0);
 	assert(request[1468] == 0xee && request[1471] == 0xff && !cs_active);
@@ -302,23 +302,23 @@ static void zephyr_cases(void)
 	memcpy(read_reply + 5, payload, sizeof(payload));
 	read_reply[517] = 0xee;
 	reset_fake(read_reply, 518);
-	assert(nina_request(0x45, params, 1, true, true, output, sizeof(output), &n) == 0);
+	assert(nina_proto_request(0x45, params, 1, true, true, output, sizeof(output), &n) == 0);
 	assert(n == sizeof(payload) && memcmp(output, payload, n) == 0);
 	assert(bulk_calls >= 4 && calls < 30 && !cs_active);
 
 	const uint8_t accept_reply[] = {0xe0, 0xf5, 3, 1, 3, 4, 192, 168, 1, 2,
 				       2, 0x34, 0x12, 0xee};
 	reset_fake(accept_reply, sizeof(accept_reply));
-	assert(nina_request(0x75, params, 1, false, false, output, sizeof(output), &n) == 0);
+	assert(nina_proto_request(0x75, params, 1, false, false, output, sizeof(output), &n) == 0);
 	assert(n == 7 && output[0] == 3 && output[1] == 192 && output[6] == 0x12);
 
 	reset_fake(read_reply, 518);
-	assert(nina_request(0x45, params, 1, true, true, output, 511, &n) == -EMSGSIZE);
+	assert(nina_proto_request(0x45, params, 1, true, true, output, 511, &n) == -EMSGSIZE);
 	assert(!cs_active);
 
 	const uint8_t malformed_accept[] = {0xe0, 0xf5, 3, 2, 3, 4, 0xee};
 	reset_fake(malformed_accept, sizeof(malformed_accept));
-	assert(nina_request(0x75, params, 1, false, false, output, sizeof(output), &n) ==
+	assert(nina_proto_request(0x75, params, 1, false, false, output, sizeof(output), &n) ==
 	       -EMSGSIZE);
 	assert(!cs_active);
 
@@ -326,9 +326,9 @@ static void zephyr_cases(void)
 	const uint8_t recvfrom_reply[] = {0xe0, 0xfa, 3, 0, 4, 10, 42, 0, 1, 0, 2, 0x12, 0x34,
 					  0, 3, 'a', 'b', 'c', 0xee};
 	uint8_t size[2] = {16, 0};
-	struct nina_param recvfrom_params[] = {{&id, 1}, {size, 2}};
+	struct nina_proto_param recvfrom_params[] = {{&id, 1}, {size, 2}};
 	reset_fake(recvfrom_reply, sizeof(recvfrom_reply));
-	assert(nina_request(0x7a, recvfrom_params, 2, false, true, output, 6 + 16, &n) == 0);
+	assert(nina_proto_request(0x7a, recvfrom_params, 2, false, true, output, 6 + 16, &n) == 0);
 	assert(n == 9 && output[0] == 10 && output[3] == 1 && output[4] == 0x12 &&
 	       output[5] == 0x34 && !memcmp(output + 6, "abc", 3));
 	assert(memcmp(request, "\xe0\x7a\x02\x01\x07\x02\x10\x00\xee", 9) == 0);
@@ -336,23 +336,23 @@ static void zephyr_cases(void)
 	const uint8_t empty_reply[] = {0xe0, 0xfa, 3, 0, 4, 10, 42, 0, 1, 0, 2, 0x12, 0x34,
 				       0, 0, 0xee};
 	reset_fake(empty_reply, sizeof(empty_reply));
-	assert(nina_request(0x7a, recvfrom_params, 2, false, true, output, 6 + 16, &n) == 0);
+	assert(nina_proto_request(0x7a, recvfrom_params, 2, false, true, output, 6 + 16, &n) == 0);
 	assert(n == 6);
 	/* A datagram larger than the caller's buffer and a malformed address
 	 * are rejected without leaving chip select asserted. */
 	reset_fake(recvfrom_reply, sizeof(recvfrom_reply));
-	assert(nina_request(0x7a, recvfrom_params, 2, false, true, output, 6 + 2, &n) ==
+	assert(nina_proto_request(0x7a, recvfrom_params, 2, false, true, output, 6 + 2, &n) ==
 	       -EMSGSIZE);
 	assert(!cs_active);
 	const uint8_t bad_address[] = {0xe0, 0xfa, 3, 0, 3, 10, 42, 0, 0xee};
 	reset_fake(bad_address, sizeof(bad_address));
-	assert(nina_request(0x7a, recvfrom_params, 2, false, true, output, 6 + 16, &n) ==
+	assert(nina_proto_request(0x7a, recvfrom_params, 2, false, true, output, 6 + 16, &n) ==
 	       -EMSGSIZE);
 	assert(!cs_active);
 
 	reset_fake(send_reply, sizeof(send_reply));
 	fail_bulk = 1;
-	assert(nina_request(0x44, params, 2, true, false, output, sizeof(output), &n) == -EIO);
+	assert(nina_proto_request(0x44, params, 2, true, false, output, sizeof(output), &n) == -EIO);
 	assert(!cs_active);
 }
 
@@ -376,33 +376,33 @@ static void framing_cases(void)
 
 	/* Narrow parameters: 8-bit lengths, padded with 0xff to 4 bytes. */
 	const uint8_t one_reply[] = {0xe0, 0x90, 1, 1, 1, 0xee};
-	struct nina_param p1[] = {{&b, 1}};
+	struct nina_proto_param p1[] = {{&b, 1}};
 	reset_fake(one_reply, sizeof(one_reply));
-	assert(nina_request(0x10, p1, 1, false, false, out, sizeof(out), &n) == 0);
+	assert(nina_proto_request(0x10, p1, 1, false, false, out, sizeof(out), &n) == 0);
 	assert(n == 1 && out[0] == 1);
 	assert(request_len == 8 &&
 	       memcmp(request, "\xe0\x10\x01\x01\x5a\xee\xff\xff", 8) == 0);
-	struct nina_param p2[] = {{&b, 1}, {two, 2}};
+	struct nina_proto_param p2[] = {{&b, 1}, {two, 2}};
 	reset_fake(one_reply, sizeof(one_reply));
-	assert(nina_request(0x10, p2, 2, false, false, out, sizeof(out), &n) == 0);
+	assert(nina_proto_request(0x10, p2, 2, false, false, out, sizeof(out), &n) == 0);
 	assert(request_len == 12 &&
 	       memcmp(request, "\xe0\x10\x02\x01\x5a\x02\x01\x02\xee\xff\xff\xff", 12) == 0);
 	/* An empty parameter is just its length. */
-	struct nina_param p0[] = {{NULL, 0}};
+	struct nina_proto_param p0[] = {{NULL, 0}};
 	reset_fake(one_reply, sizeof(one_reply));
-	assert(nina_request(0x10, p0, 1, false, false, out, sizeof(out), &n) == 0);
+	assert(nina_proto_request(0x10, p0, 1, false, false, out, sizeof(out), &n) == 0);
 	assert(request_len == 8 && memcmp(request, "\xe0\x10\x01\x00\xee\xff\xff\xff", 8) == 0);
 	/* Wide parameters: 16-bit lengths, high byte first; 255+1 is allowed. */
 	static uint8_t big[256];
-	struct nina_param pw[] = {{big, sizeof(big)}};
+	struct nina_proto_param pw[] = {{big, sizeof(big)}};
 	reset_fake(one_reply, sizeof(one_reply));
-	assert(nina_request(0x10, pw, 1, true, false, out, sizeof(out), &n) == 0);
+	assert(nina_proto_request(0x10, pw, 1, true, false, out, sizeof(out), &n) == 0);
 	assert(request_len == 264 && request[3] == 1 && request[4] == 0 && request[261] == 0xee);
 	/* A request that is already a multiple of 4 gets no padding. */
 	uint8_t three[3] = {7, 8, 9};
-	struct nina_param p3[] = {{three, 3}};
+	struct nina_proto_param p3[] = {{three, 3}};
 	reset_fake(one_reply, sizeof(one_reply));
-	assert(nina_request(0x10, p3, 1, false, false, out, sizeof(out), &n) == 0);
+	assert(nina_proto_request(0x10, p3, 1, false, false, out, sizeof(out), &n) == 0);
 	assert(request_len == 8 && memcmp(request, "\xe0\x10\x01\x03\x07\x08\x09\xee", 8) == 0);
 }
 
@@ -454,7 +454,7 @@ static void response_cases(void)
 	}
 	long_reply[305] = 0xee;
 	reset_fake(long_reply, 306);
-	assert(nina_request(0x45, NULL, 0, false, true, big_out, sizeof(big_out), &n) == 0);
+	assert(nina_proto_request(0x45, NULL, 0, false, true, big_out, sizeof(big_out), &n) == 0);
 	assert(n == 300 && big_out[299] == (uint8_t)(299 * 3) && bulk_calls == 3);
 	/* An empty response parameter. */
 	const uint8_t empty[] = {0xe0, 0xb7, 1, 0, 0xee};
@@ -491,42 +491,42 @@ static void response_cases(void)
 	/* 0x75 answer lengths must be 1, 4, 2; 0x7a's first two 4 and 2. */
 	const uint8_t accept_bad_port[] = {0xe0, 0xf5, 3, 1, 3, 4, 1, 2, 3, 4, 1, 9, 0xee};
 	reset_fake(accept_bad_port, sizeof(accept_bad_port));
-	assert(nina_request(0x75, NULL, 0, false, false, out, sizeof(out), &n) == -EMSGSIZE);
+	assert(nina_proto_request(0x75, NULL, 0, false, false, out, sizeof(out), &n) == -EMSGSIZE);
 	const uint8_t accept_two[] = {0xe0, 0xf5, 2, 1, 3, 4, 1, 2, 3, 4, 0xee};
 	reset_fake(accept_two, sizeof(accept_two));
-	assert(nina_request(0x75, NULL, 0, false, false, out, sizeof(out), &n) == -EPROTO);
+	assert(nina_proto_request(0x75, NULL, 0, false, false, out, sizeof(out), &n) == -EPROTO);
 	const uint8_t recv_bad_port[] = {0xe0, 0xfa, 3, 0, 4, 1, 2, 3, 4, 0, 3, 1, 2, 3, 0, 0, 0xee};
 	reset_fake(recv_bad_port, sizeof(recv_bad_port));
-	assert(nina_request(0x7a, NULL, 0, false, true, out, sizeof(out), &n) == -EMSGSIZE);
+	assert(nina_proto_request(0x7a, NULL, 0, false, true, out, sizeof(out), &n) == -EMSGSIZE);
 	/* Any other command answering with 3 parameters is a protocol error. */
 	const uint8_t three_params[] = {0xe0, 0xc5, 3, 0, 1, 1, 0, 1, 2, 0, 1, 3, 0xee};
 	reset_fake(three_params, sizeof(three_params));
-	assert(nina_request(0x45, NULL, 0, false, true, out, sizeof(out), &n) == -EPROTO);
+	assert(nina_proto_request(0x45, NULL, 0, false, true, out, sizeof(out), &n) == -EPROTO);
 }
 
 static void argument_cases(void)
 {
 	uint8_t out[16], b = 1;
 	size_t n;
-	struct nina_param p[7] = {{&b, 1}, {&b, 1}, {&b, 1}, {&b, 1}, {&b, 1}, {&b, 1}, {&b, 1}};
-	struct nina_param null_data[] = {{NULL, 1}};
+	struct nina_proto_param p[7] = {{&b, 1}, {&b, 1}, {&b, 1}, {&b, 1}, {&b, 1}, {&b, 1}, {&b, 1}};
+	struct nina_proto_param null_data[] = {{NULL, 1}};
 	static uint8_t big[65536];
-	struct nina_param narrow256[] = {{big, 256}};
-	struct nina_param wide65536[] = {{big, 65536}};
+	struct nina_proto_param narrow256[] = {{big, 256}};
+	struct nina_proto_param wide65536[] = {{big, 65536}};
 
 	reset_fake(NULL, 0);
-	assert(nina_request(0x10, p, 7, false, false, out, sizeof(out), &n) == -EINVAL);
-	assert(nina_request(0x10, NULL, 0, false, false, NULL, sizeof(out), &n) == -EINVAL);
-	assert(nina_request(0x10, NULL, 0, false, false, out, sizeof(out), NULL) == -EINVAL);
-	assert(nina_request(0x10, null_data, 1, false, false, out, sizeof(out), &n) == -EINVAL);
-	assert(nina_request(0x10, narrow256, 1, false, false, out, sizeof(out), &n) == -EINVAL);
-	assert(nina_request(0x10, wide65536, 1, true, false, out, sizeof(out), &n) == -EINVAL);
+	assert(nina_proto_request(0x10, p, 7, false, false, out, sizeof(out), &n) == -EINVAL);
+	assert(nina_proto_request(0x10, NULL, 0, false, false, NULL, sizeof(out), &n) == -EINVAL);
+	assert(nina_proto_request(0x10, NULL, 0, false, false, out, sizeof(out), NULL) == -EINVAL);
+	assert(nina_proto_request(0x10, null_data, 1, false, false, out, sizeof(out), &n) == -EINVAL);
+	assert(nina_proto_request(0x10, narrow256, 1, false, false, out, sizeof(out), &n) == -EINVAL);
+	assert(nina_proto_request(0x10, wide65536, 1, true, false, out, sizeof(out), &n) == -EINVAL);
 	/* Checked before the lock, the reset and any line. */
 	assert(lock_calls == 0 && phase == 0 && polls == 0 && events[0] == '\0');
 	/* Six parameters are allowed. */
 	const uint8_t reply[] = {0xe0, 0x90, 1, 0, 0xee};
 	reset_fake(reply, sizeof(reply));
-	assert(nina_request(0x10, p, 6, false, false, out, sizeof(out), &n) == 0);
+	assert(nina_proto_request(0x10, p, 6, false, false, out, sizeof(out), &n) == 0);
 	assert(request_len == 3 + 12 + 1 && request[2] == 6);
 }
 
@@ -619,7 +619,7 @@ static void ip_config_cases(void)
 				 4, 10, 42, 0, 1, 0xee};
 
 	reset_fake(reply, sizeof(reply));
-	assert(nina_ip_config(data) == 0);
+	assert(nina_proto_ip_config(data) == 0);
 	assert(memcmp(data, "\x0a\x2a\x00\x07\xff\xff\xff\x00\x0a\x2a\x00\x01", 12) == 0);
 	assert(request_len == 8 && memcmp(request, "\xe0\x21\x01\x01\xff\xee\xff\xff", 8) == 0);
 	assert(lock_calls == 1 && lock_depth == 0 && !cs_active);
@@ -628,32 +628,32 @@ static void ip_config_cases(void)
 	/* Wrong count, wrong length, wrong code, missing END. */
 	const uint8_t one[] = {0xe0, 0xa1, 1, 4, 1, 2, 3, 4, 0xee};
 	reset_fake(one, sizeof(one));
-	assert(nina_ip_config(data) == -EPROTO && !cs_active);
+	assert(nina_proto_ip_config(data) == -EPROTO && !cs_active);
 	const uint8_t len3[] = {0xe0, 0xa1, 3, 3, 1, 2, 3, 0xee};
 	reset_fake(len3, sizeof(len3));
-	assert(nina_ip_config(data) == -EMSGSIZE && !cs_active);
+	assert(nina_proto_ip_config(data) == -EMSGSIZE && !cs_active);
 	const uint8_t code[] = {0xe0, 0xa2, 3, 0xee};
 	reset_fake(code, sizeof(code));
-	assert(nina_ip_config(data) == -EPROTO && !cs_active);
+	assert(nina_proto_ip_config(data) == -EPROTO && !cs_active);
 	uint8_t no_end[sizeof(reply)];
 	memcpy(no_end, reply, sizeof(reply));
 	no_end[sizeof(reply) - 1] = 0;
 	reset_fake(no_end, sizeof(no_end));
-	assert(nina_ip_config(data) == -EPROTO && !cs_active);
+	assert(nina_proto_ip_config(data) == -EPROTO && !cs_active);
 	/* command()'s START search gives up after 1000 bytes too. */
 	reset_fake(NULL, 0);
 	fill_byte = 0;
-	assert(nina_ip_config(data) == -EPROTO && single_calls == 1000);
-	/* READY timeouts as in nina_request(), 2000 ms for the answer. */
+	assert(nina_proto_ip_config(data) == -EPROTO && single_calls == 1000);
+	/* READY timeouts as in nina_proto_request(), 2000 ms for the answer. */
 	reset_fake(reply, sizeof(reply));
 	ready_never_from = 0;
-	assert(nina_ip_config(data) == -ETIMEDOUT && now_us == 2000000 && phase == 0);
+	assert(nina_proto_ip_config(data) == -ETIMEDOUT && now_us == 2000000 && phase == 0);
 	reset_fake(reply, sizeof(reply));
 	ready_never_from = 1;
-	assert(nina_ip_config(data) == -ETIMEDOUT && now_us == 2000000 && !cs_active);
+	assert(nina_proto_ip_config(data) == -ETIMEDOUT && now_us == 2000000 && !cs_active);
 	reset_fake(reply, sizeof(reply));
 	ready_stuck_phase = 1;
-	assert(nina_ip_config(data) == -ETIMEDOUT && now_us == 20000 && calls == 0 && !cs_active);
+	assert(nina_proto_ip_config(data) == -ETIMEDOUT && now_us == 20000 && calls == 0 && !cs_active);
 }
 
 static void error_reply_cases(void)
@@ -685,17 +685,17 @@ static void error_reply_cases(void)
 	assert(simple(0x6a, out, sizeof(out), &n) == -EIO && !cs_active);
 	/* command() (0x21) reads the answer the same way. */
 	reset_fake(error_reply, sizeof(error_reply));
-	assert(nina_ip_config(data) == -ENOTSUP && single_calls == 3 && !cs_active);
+	assert(nina_proto_ip_config(data) == -ENOTSUP && single_calls == 3 && !cs_active);
 }
 
-/* nina_probe_capabilities() with REPLY: the bits in use. */
+/* nina_proto_probe_capabilities() with REPLY: the bits in use. */
 static uint32_t probe(const uint8_t *reply, size_t len)
 {
 	reset_fake(reply, len);
 	caps_probed = false;
 	caps_module = caps_used = 0;
 	event_starts = 0;
-	return nina_probe_capabilities();
+	return nina_proto_probe_capabilities();
 }
 
 static void capability_cases(void)
@@ -709,36 +709,36 @@ static void capability_cases(void)
 	/* Before the probe: none. */
 	caps_probed = false;
 	caps_module = caps_used = 0;
-	assert(nina_capabilities() == 0 && nina_module_capabilities() == 0);
+	assert(nina_proto_capabilities() == 0 && nina_proto_module_capabilities() == 0);
 
 	/* All three: the request is 0x6A without parameters; the events
 	 * started once. */
 	event_start_result = 0;
 	assert(probe(all, sizeof(all)) == 7);
 	assert(request_len == 4 && memcmp(request, "\xe0\x6a\x00\xee", 4) == 0);
-	assert(nina_capabilities() == 7 && nina_module_capabilities() == 7 && event_starts == 1);
+	assert(nina_proto_capabilities() == 7 && nina_proto_module_capabilities() == 7 && event_starts == 1);
 	/* Asked once: later calls return the first answer, no request. */
 	reset_fake(old, sizeof(old));
-	assert(nina_probe_capabilities() == 7 && phase == 0 && event_starts == 1);
+	assert(nina_proto_probe_capabilities() == 7 && phase == 0 && event_starts == 1);
 	/* The events cannot start: bit 2 dropped from those in use. */
 	event_start_result = -ENOTSUP;
 	assert(probe(all, sizeof(all)) == 3 && event_starts == 1);
-	assert(nina_module_capabilities() == 7 && nina_capabilities() == 3);
+	assert(nina_proto_module_capabilities() == 7 && nina_proto_capabilities() == 3);
 	event_start_result = 0;
 	/* Without bit 2 the events are not started. */
 	assert(probe(scan_only, sizeof(scan_only)) == 3 && event_starts == 0);
 	/* Unknown bits are the module's, not used. */
-	assert(probe(unknown, sizeof(unknown)) == 7 && nina_module_capabilities() == 0x8000000f);
+	assert(probe(unknown, sizeof(unknown)) == 7 && nina_proto_module_capabilities() == 0x8000000f);
 	/* An older firmware: 0 at once (three bytes read), as with 3.0.2. */
 	assert(probe(old, sizeof(old)) == 0 && event_starts == 0 && single_calls == 4 + 3);
-	assert(nina_capabilities() == 0 && nina_module_capabilities() == 0);
+	assert(nina_proto_capabilities() == 0 && nina_proto_module_capabilities() == 0);
 	/* A wrong answer or a link error: 0. */
 	assert(probe(short_reply, sizeof(short_reply)) == 0);
 	reset_fake(all, sizeof(all));
 	caps_probed = false;
 	ready_never_from = 0;
-	assert(nina_probe_capabilities() == 0 && event_starts == 0);
-	assert(nina_probe_capabilities() == 0 && phase == 0);
+	assert(nina_proto_probe_capabilities() == 0 && event_starts == 0);
+	assert(nina_proto_probe_capabilities() == 0 && phase == 0);
 }
 
 static void all_cases(void)

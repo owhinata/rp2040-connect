@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /* The Zephyr Wi-Fi management that the applications use on NuttX, on the
- * core's Wi-Fi operations (common/drivers/nina/nina_wifi.h).  The
+ * core's Wi-Fi operations (common/drivers/nina/include/nina_wifi.h).  The
  * applications are the sources shared with the Zephyr build, on the
  * Zephyr compatibility layer:
  *

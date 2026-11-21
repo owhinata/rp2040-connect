@@ -145,7 +145,7 @@ cnina=../common/drivers/nina
 # nina/Make.defs builds nina_os.c), with the socket loops' waits (nina_wait.c), and the Wi-Fi
 # operations' lock and requests (CONFIG_NINA_NET).
 ninaos=(-DCONFIG_NINA_USRSOCK=1 -DCONFIG_NINA_NET=1 -Itests/nina_os_fakes -Itests/fakes -I"$ccompat"
-        -I"$cnina" -I"$cnina/internal" -I"$cnina/port" -I"$cnina/port/nuttx")
+        -I"$cnina/include" -I"$cnina/internal" -I"$cnina/port" -I"$cnina/port/nuttx")
 cc "${flags[@]}" "${ninaos[@]}" -I"$zfakes" -c "$cnina/port/nuttx/nina_os.c" -o "$out/nina_os_os.o"
 cc "${flags[@]}" -include "$prelude" -I"$zfakes" -I"$ccompat" -c "$ccompat/zephyr_gpio.c" \
     -o "$out/nina_os_gpio.o"
@@ -160,7 +160,7 @@ printf 'ok  nina_os\n'
 # its results as wireless events, the settings and the connection with Zephyr's checks of the
 # key, disconnect, status, modes), the threads.  The operations themselves are
 # common/tests/nina_wifi.c's.
-ndinc=(-D_DEFAULT_SOURCE -DFAR= -Itests/nina_netdev_fakes -Itests/fakes -I"$cnina"
+ndinc=(-D_DEFAULT_SOURCE -DFAR= -Itests/nina_netdev_fakes -Itests/fakes -I"$cnina/include"
        -I"$cnina/internal" -I"$cnina/port" -I"$cnina/port/nuttx" -I"$ccompat" -Idrivers/include)
 if [[ -f nuttx/include/nuttx/wireless/wireless.h ]]; then
     cc "${flags[@]}" "${ndinc[@]}" tests/nina_netdev.c "$link" -o "$out/nina_netdev"
@@ -183,7 +183,7 @@ for variant in profile no_profile; do
     "$out/nina_wifi_mgmt_$variant" >/dev/null
 done
 printf 'ok  nina_wifi_mgmt (with and without CONFIG_NANO_WIFI_PROFILE)\n'
-zinc=(-D_DEFAULT_SOURCE -I"$zfakes" -Idrivers/compat -I"$ccompat" -Idrivers/include -I"$clog" -I"$cnina")
+zinc=(-D_DEFAULT_SOURCE -I"$zfakes" -Idrivers/compat -I"$ccompat" -Idrivers/include -I"$clog" -I"$cnina/include")
 # The layer's pieces for the IMU service: K_MUTEX_DEFINE, K_THREAD_DEFINE and its start,
 # k_uptime_get's tick rounding, k_sleep, byteorder, snprintk, hwinfo (fake chip ID), the
 # shell output macros, the address conversions.
@@ -274,8 +274,8 @@ run i2c_dma_app -D_DEFAULT_SOURCE -DZ_SHELL_CMD_NAMED_MAIN -include "$prelude" \
     "$cshell/zshell.c" "$cshell/subcmd.c"
 # "nina passthrough" of apps/nina (CONFIG_NINA_PASSTHROUGH) on the subcommand dispatch, with
 # fakes of the NINA requests and of the driver's nina_passthrough_request()
-# (common/drivers/nina/nina_passthrough.h).  The mode itself is common/tests/nina_passthrough.c's.
-run nina_passthrough -DCONFIG_NINA_PASSTHROUGH=1 -I../common/drivers/nina -Iapps/nina -I"$cshell" \
+# (common/drivers/nina/include/nina_passthrough.h).  The mode itself is common/tests/nina_passthrough.c's.
+run nina_passthrough -DCONFIG_NINA_PASSTHROUGH=1 -I../common/drivers/nina/include -Iapps/nina -I"$cshell" \
     "$cshell/subcmd.c"
 # The time synchronization (common/imu/time_sync.c, shared with the Zephyr build) on the
 # compatibility layer with a fake NINA socket (NuttX's socket calls on usrsock), clock (the
@@ -288,7 +288,7 @@ run nina_passthrough -DCONFIG_NINA_PASSTHROUGH=1 -I../common/drivers/nina -Iapps
 # (common/shell/zshell.c).  The prelude follows the fake <nuttx/config.h>, as on NuttX.
 cc "${flags[@]}" -D_DEFAULT_SOURCE -DZ_SHELL_CMD_NAMED_MAIN -include tests/time_sync_fakes/nuttx/config.h \
     -include "$prelude" -Itests/time_sync_fakes -I"$zfakes" -Idrivers/compat -I"$ccompat" \
-    -Idrivers/include -I"$clog" -I"$cnina" -I"$imu" -I"$cimu" -I"$cshell" -Iapps/subcmd tests/time_sync.c \
+    -Idrivers/include -I"$clog" -I"$cnina/include" -I"$imu" -I"$cimu" -I"$cshell" -Iapps/subcmd tests/time_sync.c \
     "$cimu/time_offset.c" "$cshell/zshell.c" "$cshell/subcmd.c" "${compat[@]}" "$link" -o "$out/time_sync"
 "$out/time_sync" >/dev/null
 printf 'ok  time_sync\n'

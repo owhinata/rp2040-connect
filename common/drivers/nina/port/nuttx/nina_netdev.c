@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /* The NINA-W102 as the NuttX network device wlan0, for ifconfig and wapi:
  * the NuttX binding of the core's Wi-Fi operations
- * (common/drivers/nina/nina_wifi.h).
+ * (common/drivers/nina/include/nina_wifi.h).
  *
  * nina_net_initialize() (the board's bring-up) starts the applications'
  * Zephyr Wi-Fi management (nina_wifi_mgmt.c: net_mgmt's event thread and

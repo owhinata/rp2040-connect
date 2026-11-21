@@ -7,7 +7,7 @@
  * NINA core (common/drivers/nina/nina_sock.c, nina_dns.c) and the address
  * conversions (freertos/drivers/libc/inet.c), as the board builds them
  * (freertos/drivers/compat/compat.cmake, freertos/drivers/nina/nina.cmake),
- * on a fake module (nina_request(), here: the firmware's sockets as a small
+ * on a fake module (nina_proto_request(), here: the firmware's sockets as a small
  * model that logs each command) and a fake clock (nina_os.h, and the
  * binding's k_uptime_get() and k_sleep(), wrapped here with -Wl,--wrap: the
  * time moves only with the sleeps and when a test moves it; each sleep also
@@ -288,8 +288,9 @@ static void reply(uint8_t *out, size_t cap, size_t *out_len, const void *data, s
 	*out_len = len;
 }
 
-int nina_request(uint8_t cmd, const struct nina_param *p, size_t nparams, bool wide_params,
-		 bool wide_response, uint8_t *out, size_t cap, size_t *out_len)
+int nina_proto_request(uint8_t cmd, const struct nina_proto_param *p, size_t nparams,
+		       bool wide_params, bool wide_response, uint8_t *out, size_t cap,
+		       size_t *out_len)
 {
 	struct fw_sock *s = NULL;
 	uint8_t b[8];

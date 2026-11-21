@@ -665,7 +665,7 @@ version's; what has been verified on the NuttX port is listed separately in 11.7
   `lsm6dso_instance.h`, which `lsm6dso.c` includes at its end: the Zephyr build's devicetree
   instance macros, one device with the board's values on NuttX). The NINA's
   OS-independent core is in `common/drivers/nina/` too and is used by the three builds. Its top
-  holds what the driver offers (the Wi-Fi operations `nina_wifi.[ch]`, the socket table and commands
+  holds what the driver offers, with the headers for its users in `include/` (the Wi-Fi operations `nina_wifi.[ch]`, the socket table and commands
   `nina_sock.[ch]`, name resolution `nina_dns.[ch]`, the esptool passthrough
   `nina_passthrough.[ch]`), `internal/` the parts inside the core (the protocol's bytes
   and the SPI link `nina_proto.[ch]`, the waits of the socket loops `nina_wait.[ch]`), and `port/`

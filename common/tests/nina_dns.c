@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-/* Host test of common/drivers/nina/nina_dns.c with a fake nina_request()
+/* Host test of common/drivers/nina/nina_dns.c with a fake nina_proto_request()
  * and a fake lock: the hints (defaults, refused flags, families, socket
  * types), the service, numeric addresses without the module, a name with
  * the commands 0x34 and 0x35 under the lock, and each failure's EAI_*
@@ -110,7 +110,7 @@ static void done(void)
 	assert(next_step == nsteps && !locked);
 }
 
-int nina_request(uint8_t cmd, const struct nina_param *p, size_t nparams, bool wide_params,
+int nina_proto_request(uint8_t cmd, const struct nina_proto_param *p, size_t nparams, bool wide_params,
 		 bool wide_response, uint8_t *out, size_t cap, size_t *out_len)
 {
 	struct step *s;

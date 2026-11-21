@@ -12,13 +12,12 @@
  * tick count starts 5 s before it wraps, and the fake TIMER 4.5 s before
  * its low 32 bits wrap.
  *
- * - Before nina_bus_initialize(): a request fails with -ENODEV and touches
- *   no line (the board's start makes no request).
- * - nina_bus_initialize(): the reset of SPI1, the three SPI pins as
+ * - nina_bus_initialize(), which the core calls at its first request (a
+ *   second call does nothing): the reset of SPI1, the three SPI pins as
  *   Zephyr's pinctrl sets them (in its order), 8 MHz, mode 0, 8 bits, MSB
  *   first, SSE, then CS as an output at its inactive (high) level.
- * - nina_pin_configure() for each mode, as Zephyr's
- *   gpio_rpi_configure(); nina_pin_set()/_get() with each line's
+ * - nina_bus_pin_configure() for each mode, as Zephyr's
+ *   gpio_rpi_configure(); nina_bus_pin_set()/_get() with each line's
  *   polarity.
  * - "nina version" (0x37) through the core: the reset of the first request
  *   (RESET active, 10 ms, inactive, 750 ms, IRQ low and an input) with the
@@ -90,7 +89,6 @@
 #include "hardware/timer.h"
 
 #include "nina_bus.h"
-#include "nina_freertos.h"
 #include "nina_os.h"
 #include "nina_proto.h"
 
@@ -640,7 +638,7 @@ static int64_t now_ms(void)
 static int version(char *out, size_t cap)
 {
 	size_t len;
-	int ret = nina_request(0x37, NULL, 0, false, false, (uint8_t *)out, cap - 1, &len);
+	int ret = nina_proto_request(0x37, NULL, 0, false, false, (uint8_t *)out, cap - 1, &len);
 
 	if (ret == 0) {
 		out[len] = '\0';
@@ -648,19 +646,9 @@ static int version(char *out, size_t cap)
 	return ret;
 }
 
-static void test_before_initialize(void)
-{
-	char v[16];
-
-	assert(!nina_bus_ready());
-	assert(version(v, sizeof(v)) == -ENODEV);
-	expect_calls("");
-}
-
 static void test_initialize(void)
 {
 	assert(nina_bus_initialize() == 0);
-	assert(nina_bus_ready());
 	expect_calls(
 		"reset(17) unreset(17) "
 		"init(14) func(14,spi) pulls(14,0,0) drive(14,4mA) slew(14,slow) schmitt(14,0) "
@@ -673,33 +661,36 @@ static void test_initialize(void)
 		"pulls(9,0,0) func(9,sio) ie(9,0) put(9,1) dir(9,out) ");
 	assert(spi1_inst.hw.dmacr == 0);
 	assert(pins[GPIO_CS].out && pins[GPIO_CS].level);
+	/* Again, as from the core's first request: nothing more. */
+	assert(nina_bus_initialize() == 0);
+	expect_calls("");
 }
 
 static void test_lines(void)
 {
 	/* gpio_rpi_configure() with the devicetree flags of each line. */
-	assert(nina_pin_configure(NINA_PIN_READY, NINA_PIN_INPUT) == 0);
+	assert(nina_bus_pin_configure(NINA_BUS_PIN_READY, NINA_BUS_PIN_INPUT) == 0);
 	expect_calls("pulls(10,1,0) func(10,sio) dir(10,in) ");
-	assert(nina_pin_configure(NINA_PIN_IRQ, NINA_PIN_OUTPUT_HIGH) == 0);
+	assert(nina_bus_pin_configure(NINA_BUS_PIN_IRQ, NINA_BUS_PIN_OUTPUT_HIGH) == 0);
 	expect_calls("pulls(2,0,1) func(2,sio) ie(2,0) put(2,1) dir(2,out) ");
-	assert(nina_pin_configure(NINA_PIN_IRQ, NINA_PIN_OUTPUT_INACTIVE) == 0);
+	assert(nina_bus_pin_configure(NINA_BUS_PIN_IRQ, NINA_BUS_PIN_OUTPUT_INACTIVE) == 0);
 	expect_calls("pulls(2,0,1) func(2,sio) ie(2,0) put(2,0) dir(2,out) ");
-	assert(nina_pin_configure(NINA_PIN_CS, NINA_PIN_OUTPUT_ACTIVE) == 0);
+	assert(nina_bus_pin_configure(NINA_BUS_PIN_CS, NINA_BUS_PIN_OUTPUT_ACTIVE) == 0);
 	expect_calls("pulls(9,0,0) func(9,sio) ie(9,0) put(9,0) dir(9,out) ");
-	assert(nina_pin_configure(NINA_PIN_CS, NINA_PIN_OUTPUT_HIGH) == 0);
+	assert(nina_bus_pin_configure(NINA_BUS_PIN_CS, NINA_BUS_PIN_OUTPUT_HIGH) == 0);
 	expect_calls("pulls(9,0,0) func(9,sio) ie(9,0) put(9,1) dir(9,out) ");
-	assert(nina_pin_configure(4, NINA_PIN_INPUT) == -EINVAL);
-	assert(nina_pin_configure(NINA_PIN_CS, 4) == -EINVAL);
+	assert(nina_bus_pin_configure(4, NINA_BUS_PIN_INPUT) == -EINVAL);
+	assert(nina_bus_pin_configure(NINA_BUS_PIN_CS, 4) == -EINVAL);
 	expect_calls("");
 
 	/* Logical values: CS, READY and RESET are active low, IRQ high. */
-	assert(nina_pin_set(NINA_PIN_CS, 1) == 0);
-	assert(nina_pin_set(NINA_PIN_CS, 0) == 0);
-	assert(nina_pin_set(NINA_PIN_IRQ, 1) == 0);
-	assert(nina_pin_set(NINA_PIN_IRQ, 0) == 0);
+	assert(nina_bus_pin_set(NINA_BUS_PIN_CS, 1) == 0);
+	assert(nina_bus_pin_set(NINA_BUS_PIN_CS, 0) == 0);
+	assert(nina_bus_pin_set(NINA_BUS_PIN_IRQ, 1) == 0);
+	assert(nina_bus_pin_set(NINA_BUS_PIN_IRQ, 0) == 0);
 	expect_calls("put(9,0) put(9,1) put(2,1) put(2,0) ");
 	/* The module is held in reset (GPIO3 not driven yet): READY high. */
-	assert(nina_pin_get(NINA_PIN_READY) == 0);
+	assert(nina_bus_pin_get(NINA_BUS_PIN_READY) == 0);
 	/* The lines as nina_proto.c finds them before its first request. */
 	pins[2].out = false;
 	pins[GPIO_READY].out = false;
@@ -1245,7 +1236,6 @@ static void test_wifi_requests(void)
 static void runner(void *arg)
 {
 	(void)arg;
-	test_before_initialize();
 	test_initialize();
 	test_lines();
 	test_version();
@@ -1275,11 +1265,9 @@ int main(void)
 
 	setvbuf(stdout, out, _IOLBF, sizeof(out));
 	host_start_us = host_us();
-	/* As main() on the board: the binding's objects before the tasks.  The
-	 * backend's handler for GPIO24, as nano_gpio.c adds it when the
+	/* The backend's handler for GPIO24, as nano_gpio.c adds it when the
 	 * LSM6DSOX's interrupt is first enabled.
 	 */
-	nina_os_initialize();
 	gpio_add_raw_irq_handler_masked(1u << GPIO_INT1, backend_isr);
 	bank_enabled = true;
 	calls[0] = '\0';

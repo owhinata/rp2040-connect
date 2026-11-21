@@ -349,8 +349,8 @@ source (`time_sync.c`: `ntp` is an application of its own, apart from `imu`) is 
 
 The Wi-Fi module NINA-W102 is reached over SPI1. Its firmware is the Zephyr build's (Arduino's NINA
 firmware 3.0.2 with fixes, `firmware/nina-fw/README.md`) and is not changed. The driver consists of the
-transfer layer that sends one command and receives its answer (`nina_request()`,
-`nina_ip_config()`), `nina version`, the sockets (NuttX's usrsock: socket, close, bind, listen,
+transfer layer that sends one command and receives its answer (`nina_proto_request()`,
+`nina_proto_ip_config()`), `nina version`, the sockets (NuttX's usrsock: socket, close, bind, listen,
 accept, connect, setsockopt, sending and receiving), the NINA's name resolution
 (`nina_dns_getaddrinfo()`), and the Wi-Fi network device `wlan0` (scan, connect, disconnect, status,
 link monitor) ("Sockets (usrsock)", "Name resolution" and "Wi-Fi" in `nuttx/drivers/README.md`).
@@ -1299,7 +1299,7 @@ with the layer's NuttX implementation (`nuttx/drivers/compat/`; the Zephyr build
 |---|---|
 | `common/imu/` | `imu_stream.c`, `imu_raw_{batch,packet,queue,status,time}`, `imu_tick_clock`, `time_sync.[ch]`, `time_offset`, `imu_cal_codec.c`, `imu_cal.[ch]`, `imu_raw_mqtt.[ch]`, `wifi_profile.[ch]`, `kv_store.[ch]`, `mqtt_min.[ch]` and `mqtt_min_sock.c` (the MQTT client of the builds on the compatibility layer and its socket layer; the Zephyr build does not use them) |
 | `common/drivers/lsm6dso/` | `lsm6dso.[ch]` (the driver; the device at its end is `lsm6dso_instance.h` of each build), `lsm6dso_{fifo,cal,zero,fifo_decoder,fifo_hw,fifo_irq}`, `lsm6dso_stream.c`, `lsm6dso_compat.c`, `lsm6dso_fifo_packet.h`, `lsm6dso_fifo_stats.h`, `lsm6dso_attributes.h` |
-| `common/drivers/nina/` | The NINA core: at the top `nina_wifi.[ch]`, `nina_sock.[ch]`, `nina_dns.[ch]`, the esptool passthrough `nina_passthrough.[ch]`; in `internal/` `nina_proto.[ch]` and `nina_wait.[ch]`; in `port/` the headers of its boundaries, `nina_os.h` and `nina_bus.h` (the passthrough's `nina_passthrough_bus.h` and `nina_passthrough_os.h`) (the three builds use them; they do not use Zephyr's API and the NuttX build compiles them without the prelude; the boundary is described under "NINA-W102" in `nuttx/drivers/README.md`); the core's bindings in `port/zephyr/` (the Zephyr and FreeRTOS builds) and `port/nuttx/` (this build: `wlan0`, the applications' Wi-Fi management, `nina_os.c`, usrsock, the passthrough's host side `nina_passthrough_os.c`, the RP2040's SPI and lines `nina_bus_rp2040.c`, the passthrough's module side `nina_passthrough_bus_rp2040.c`) |
+| `common/drivers/nina/` | The NINA core: at the top (headers in `include/`) `nina_wifi.[ch]`, `nina_sock.[ch]`, `nina_dns.[ch]`, the esptool passthrough `nina_passthrough.[ch]`; in `internal/` `nina_proto.[ch]` and `nina_wait.[ch]`; in `port/` the headers of its boundaries, `nina_os.h` and `nina_bus.h` (the passthrough's `nina_passthrough_bus.h` and `nina_passthrough_os.h`) (the three builds use them; they do not use Zephyr's API and the NuttX build compiles them without the prelude; the boundary is described under "NINA-W102" in `nuttx/drivers/README.md`); the core's bindings in `port/zephyr/` (the Zephyr and FreeRTOS builds) and `port/nuttx/` (this build: `wlan0`, the applications' Wi-Fi management, `nina_os.c`, usrsock, the passthrough's host side `nina_passthrough_os.c`, the RP2040's SPI and lines `nina_bus_rp2040.c`, the passthrough's module side `nina_passthrough_bus_rp2040.c`) |
 | `common/drivers/sensor_shell/` | `sensor_shell.c` |
 | `common/drivers/stmemsc/` | `stmemsc.h`, `stmemsc_i2c.c`, `stmemsc_mdelay.c` (a copy of the I2C part of Zephyr's stmemsc, used by the NuttX and FreeRTOS builds and compiled without the prelude; the Zephyr build uses Zephyr's) |
 | `common/drivers/i2c_dw/` | The I2C core `i2c_dw.c` (I2C0, and I2C1 with `CONFIG_I2C_DW_I2C1`, off by default) with its definitions `i2c_dw.h`, `i2c_dw_registers.h`, `i2c_dw_rp2040.h` and its DMA reads `i2c_dw_rp2040_dma_priv.h`, with the DMA command words (the Zephyr build has the same function in patch 0003) (the file names of Zephyr's patched driver), the declarations of the `i2c_dma` functions `i2c_dw_rp2040_dma.h`, the headers of its boundaries, `i2c_dw_os.h` and, for the DMA reads, `i2c_dw_dma_os.h` (the NuttX and FreeRTOS builds use them; they are compiled without the prelude, and the OS's part is the board's `src/i2c_dw_os_impl.h`, `i2c_dw_instance.h` and `i2c_dw_dma_os.c`; the boundaries are described under "I2C0" in `nuttx/drivers/README.md`) |
@@ -1414,7 +1414,7 @@ stored value of the wrong length, a store failure, `auto_connect`, and the help 
 parameters and padding, bulk transfers, the
 three answer parameters of 0x75 and 0x7a, the length checks, a failing transfer, narrow
 parameters, the version request, the search for the start of the answer (1000 bytes), each
-`-EPROTO`, `-EMSGSIZE` and `-EINVAL`, 0x27, `nina_ip_config()` (0x21), the READY time limits (2000,
+`-EPROTO`, `-EMSGSIZE` and `-EINVAL`, 0x27, `nina_proto_ip_config()` (0x21), the READY time limits (2000,
 20 and 10000 ms, counted as samples every 100 µs), the reset on the first request, the order of
 the CS edges and transfers, and the lock.
 
@@ -1504,7 +1504,7 @@ is held by thread 0): `K_MUTEX_DEFINE()`, `k_mutex_init()`, a `k_mutex` left all
 initialized (the MQTT client's before `mqtt_client_init()`) that the first lock takes at once, as
 in Zephyr, recursion, and `-EBUSY`/`-EAGAIN` while another thread holds it.
 
-`common/tests/nina_sock.c` checks `common/drivers/nina/nina_sock.c` with a fake `nina_request()` that checks
+`common/tests/nina_sock.c` checks `common/drivers/nina/nina_sock.c` with a fake `nina_proto_request()` that checks
 each command and its parameters and gives scripted answers, and a fake clock: the supported socket
 types, the table of 10 and `EMFILE`, creating the NINA's socket on first use (type and protocol,
 FIONBIO), bind, listen (backlog clamped to 1..255), accept (the peer's address and the byte order of
@@ -1520,7 +1520,7 @@ poll first, the size parameter, the byte order of the sender's port, dropping da
 than the connected peer, an empty datagram), and a poll that found data standing for the next
 receive's first poll.
 
-`common/tests/nina_dns.c` checks `common/drivers/nina/nina_dns.c` with a fake `nina_request()` and lock:
+`common/tests/nina_dns.c` checks `common/drivers/nina/nina_dns.c` with a fake `nina_proto_request()` and lock:
 the hints' defaults and the refused flags, families and socket types, the service (a port number),
 numeric addresses (the NINA is not asked), a name (commands 0x34 and 0x35 with the lock held), and
 the `EAI_*` of each failure.

@@ -154,12 +154,12 @@ void nina_passthrough_os_uart_irq(bool received)
 
 void nina_passthrough_os_log_start(uint32_t baud)
 {
-	LOG_INF(NINA_PASSTHROUGH_LOG_START, NINA_PASSTHROUGH_LOG_START_ARGS(baud));
+	LOG_INF(NINA_PASSTHROUGH_OS_LOG_START, NINA_PASSTHROUGH_OS_LOG_START_ARGS(baud));
 }
 
-void nina_passthrough_os_log_counts(const char *why, const struct nina_passthrough_counts *c)
+void nina_passthrough_os_log_counts(const char *why, const struct nina_passthrough_os_counts *c)
 {
-	LOG_INF(NINA_PASSTHROUGH_LOG_COUNTS, NINA_PASSTHROUGH_LOG_COUNTS_ARGS(why, c));
+	LOG_INF(NINA_PASSTHROUGH_OS_LOG_COUNTS, NINA_PASSTHROUGH_OS_LOG_COUNTS_ARGS(why, c));
 }
 
 /* The lines and the rate ---------------------------------------------------*/

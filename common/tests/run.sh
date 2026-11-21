@@ -71,11 +71,12 @@ run mqtt_min "${flags[@]}" -Wno-sign-compare "${zinc[@]}" -I"$imu" tests/mqtt_mi
 # The NINA-W102 core (drivers/nina) on fakes of its boundary (nina_bus.h: the SPI bus and the
 # module's lines; nina_os.h: locks, requests, sleeps, clock), defined by the tests.
 nina=drivers/nina
-nina_inc=(-I"$nina" -I"$nina/internal" -I"$nina/port")
-# The core has no OS of its own: each of its files (the top of drivers/nina, internal/ and the
-# boundary headers of port/; the OS bindings are in port/'s subdirectories) compiles with the C library and POSIX socket types of the host and its
-# own headers only.
-nina_core=("$nina"/*.c "$nina"/*.h "$nina"/internal/*.c "$nina"/internal/*.h "$nina"/port/*.h)
+nina_inc=(-I"$nina/include" -I"$nina/internal" -I"$nina/port")
+# The core has no OS of its own: each of its files (the top of drivers/nina, include/,
+# internal/ and the boundary headers of port/; the OS bindings are in port/'s subdirectories)
+# compiles with the C library and POSIX socket types of the host and its own headers only.
+nina_core=("$nina"/*.c "$nina"/include/*.h "$nina"/internal/*.c "$nina"/internal/*.h
+           "$nina"/port/*.h)
 for f in "${nina_core[@]}"; do
     printf '#include "%s"\n' "$f" | cc "${flags[@]}" -D_DEFAULT_SOURCE -I. "${nina_inc[@]}" \
         -fsyntax-only -x c -
@@ -90,7 +91,7 @@ run nina_proto "${flags[@]}" "${nina_inc[@]}" tests/nina_proto.c
 # back-off (fake clock and line).
 run nina_wait "${flags[@]}" "${nina_inc[@]}" tests/nina_wait.c "$nina/internal/nina_wait.c"
 # Sockets: the table, the socket commands and the data calls of the Zephyr build's
-# nina_socket.c (fake nina_request() and clock).
+# nina_socket.c (fake nina_proto_request() and clock).
 run nina_sock "${flags[@]}" -D_DEFAULT_SOURCE "${nina_inc[@]}" tests/nina_sock.c "$nina/nina_sock.c"
 # The Wi-Fi operations (nina_wifi.c, which the test includes): connect, its thread and its ends,
 # disconnect, the monitor, the scans of 3.0.2 and of the patched firmware, status (fake module,

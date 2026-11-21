@@ -242,7 +242,7 @@ int nano_init_main(int argc, FAR char *argv[])
 
 #ifdef CONFIG_NINA_PASSTHROUGH
   /* "nina passthrough confirm" asked for the NINA passthrough mode
-   * (common/drivers/nina/nina_passthrough.h): it runs here instead of all
+   * (common/drivers/nina/include/nina_passthrough.h): it runs here instead of all
    * that follows (no nsh, Telnet, Wi-Fi, key-value store or threads),
    * until it restarts the board into the normal firmware.
    */
