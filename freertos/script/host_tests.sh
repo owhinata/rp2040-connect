@@ -143,15 +143,15 @@ shinc=(-Itests/shell -Idrivers/shell -I$seng -I../common/shell -I../common/compa
        -DZ_SHELL_CMD_ROOT_GLOBAL -DCONFIG_GETOPT_LONG=1 -U_FORTIFY_SOURCE -ffunction-sections
        -fdata-sections)
 shobjs=()
-for src in $seng/cli.c drivers/shell/getopt_state.c drivers/shell/nano_console.c \
-           $seng/nano_shell.c $seng/shell_argv.c drivers/libc/stdio_wrap.c \
+for src in $seng/cli.c drivers/shell/getopt_state.c drivers/shell/shell_console.c \
+           $seng/shell_engine.c $seng/shell_argv.c drivers/libc/stdio_wrap.c \
            tests/shell/main.c ../common/shell/zshell.c ../common/shell/subcmd.c \
            ../common/compat/subsys/portability/posix/c_lib_ext/fnmatch.c \
            ../common/compat/lib/utils/getopt/getopt.c ../common/compat/lib/utils/getopt/getopt_long.c; do
     obj="$out/shell_$(basename "$src" .c).o"
     alloc=()
     case $src in
-        *zshell.c|*nano_console.c) alloc=(-Dcalloc=test_calloc -Dmalloc=test_malloc -Dfree=test_free) ;;
+        *zshell.c|*shell_console.c) alloc=(-Dcalloc=test_calloc -Dmalloc=test_malloc -Dfree=test_free) ;;
     esac
     cc "${flags[@]}" "${strict[@]}" "${shinc[@]}" "${inc[@]}" "${alloc[@]}" -c "$src" -o "$obj"
     shobjs+=("$obj")
@@ -443,8 +443,8 @@ tsinc=(-DZ_SHELL_CMD_ROOT_GLOBAL -DCONFIG_GETOPT_LONG=1 -U_FORTIFY_SOURCE
        -I../common/compat/lib/utils/getopt -I../common/imu -ffunction-sections -fdata-sections)
 tsobjs=()
 for src in tests/time_sync/main.c drivers/compat/zephyr_sys_clock.c $noff/zephyr_net_if.c \
-           $lnet/inet.c drivers/shell/getopt_state.c drivers/shell/nano_console.c \
-           $seng/nano_shell.c $seng/shell_argv.c drivers/libc/stdio_wrap.c \
+           $lnet/inet.c drivers/shell/getopt_state.c drivers/shell/shell_console.c \
+           $seng/shell_engine.c $seng/shell_argv.c drivers/libc/stdio_wrap.c \
            ../common/shell/zshell.c ../common/shell/subcmd.c \
            ../common/compat/subsys/portability/posix/c_lib_ext/fnmatch.c \
            ../common/compat/lib/utils/getopt/getopt.c ../common/compat/lib/utils/getopt/getopt_long.c \
@@ -456,7 +456,7 @@ for src in tests/time_sync/main.c drivers/compat/zephyr_sys_clock.c $noff/zephyr
         ../common/*) extra=(-include drivers/compat/common_prelude.h) ;;
     esac
     case $src in
-        *zshell.c|*nano_console.c) extra+=(-Dcalloc=test_calloc -Dmalloc=test_malloc -Dfree=test_free) ;;
+        *zshell.c|*shell_console.c) extra+=(-Dcalloc=test_calloc -Dmalloc=test_malloc -Dfree=test_free) ;;
     esac
     cc "${flags[@]}" "${strict[@]}" "${tsinc[@]}" "${inc[@]}" "${extra[@]}" -c "$src" -o "$obj"
     tsobjs+=("$obj")
@@ -541,7 +541,7 @@ printf 'ok  socket (descriptors, wait loops, options, poll, resolver, FreeRTOS P
 # nina_wifi.c and its Zephyr binding common/drivers/nina/port/zephyr/nina_net.c, the
 # layer's net_mgmt and Wi-Fi requests, the stored credentials and their settings backend, the
 # Wi-Fi profile, the "wifi" command and the copy of Zephyr's wifi_credentials_shell.c, with the
-# "ifconfig" command (drivers/wifi/nano_ifconfig.c), with the
+# "ifconfig" command (drivers/wifi/ifconfig_shell.c), with the
 # prelude, CONFIG_WIFI_CREDENTIALS and the same per-file options), on the store and the
 # copies of Zephyr's settings and NVS over the shared fake flash (common/tests/kv_flash_fake.c),
 # the build's shell on a console that captures, and a fake module (the test's nina_proto_request());
@@ -556,10 +556,10 @@ wifiinc=(-D_GNU_SOURCE -DZ_SHELL_CMD_ROOT_GLOBAL -DCONFIG_GETOPT_LONG=1 -DCONFIG
          -I../common/imu -I../common/tests -I../common/compat/subsys/settings/include
          -I../common/compat/subsys/settings/src -ffunction-sections -fdata-sections)
 wifiobjs=()
-for src in $noff/zephyr_net_if.c $noff/zephyr_net_init.c drivers/wifi/nano_ifconfig.c \
+for src in $noff/zephyr_net_if.c $noff/zephyr_net_init.c drivers/wifi/ifconfig_shell.c \
            tests/wifi/main.c \
-           $seng/cli.c drivers/shell/getopt_state.c drivers/shell/nano_console.c \
-           $seng/nano_shell.c $seng/shell_argv.c drivers/libc/stdio_wrap.c \
+           $seng/cli.c drivers/shell/getopt_state.c drivers/shell/shell_console.c \
+           $seng/shell_engine.c $seng/shell_argv.c drivers/libc/stdio_wrap.c \
            ../common/shell/zshell.c ../common/shell/subcmd.c \
            ../common/compat/subsys/portability/posix/c_lib_ext/fnmatch.c \
            ../common/compat/lib/utils/getopt/getopt.c ../common/compat/lib/utils/getopt/getopt_long.c \
@@ -591,7 +591,7 @@ for src in $noff/zephyr_net_if.c $noff/zephyr_net_init.c drivers/wifi/nano_ifcon
         */wifi_credentials_shell.c) extra+=(-Wno-format -Wno-unused-parameter) ;;
         */wifi_credentials.c) extra+=(-Wno-type-limits) ;;
         */wifi_credentials_backend_settings.c) extra+=(-Wno-sign-compare) ;;
-        *zshell.c|*nano_console.c) extra+=(-Dcalloc=test_calloc -Dmalloc=test_malloc -Dfree=test_free) ;;
+        *zshell.c|*shell_console.c) extra+=(-Dcalloc=test_calloc -Dmalloc=test_malloc -Dfree=test_free) ;;
         # A scan that never ends gives up after 1 s here (10 s on the board).
         */nina_wifi.c) extra+=(-DNINA_SCAN_WAIT_MS=1000) ;;
     esac
@@ -607,7 +607,7 @@ fi
 printf 'ok  wifi (interface, events, credentials, reconnection, wifi and ifconfig commands, FreeRTOS POSIX port)\n'
 
 # The Telnet shell and "zperf" (freertos/tests/telnet): the build's Telnet backend
-# (drivers/telnet/nano_telnet.c, its port a variable here) and shell, the port's iperf3 and the
+# (drivers/telnet/shell_telnet.c, its port a variable here) and shell, the port's iperf3 and the
 # "zperf" command (common/compat/zperf_iperf3.c, zephyr_zperf_shell.c, with the prelude, as
 # drivers/zperf/zperf.cmake builds them), on the zsock_*() calls over the host's sockets with
 # the NINA's behaviour (tests/telnet/host_sock.c), on the same kernel and layer objects.  The
@@ -621,8 +621,8 @@ if command -v python3 >/dev/null; then
            -Itests/telnet -Itests/shell -Idrivers/shell -I$seng -Idrivers/telnet -I../common/shell
            -I../common/compat/lib/utils/getopt -ffunction-sections -fdata-sections)
     tnobjs=()
-    for src in drivers/telnet/nano_telnet.c tests/telnet/main.c tests/telnet/host_sock.c \
-               drivers/shell/getopt_state.c drivers/shell/nano_console.c $seng/nano_shell.c \
+    for src in drivers/telnet/shell_telnet.c tests/telnet/main.c tests/telnet/host_sock.c \
+               drivers/shell/getopt_state.c drivers/shell/shell_console.c $seng/shell_engine.c \
                $seng/shell_argv.c drivers/libc/stdio_wrap.c ../common/shell/zshell.c \
                ../common/shell/subcmd.c ../common/compat/subsys/portability/posix/c_lib_ext/fnmatch.c \
                ../common/compat/lib/utils/getopt/getopt.c ../common/compat/lib/utils/getopt/getopt_long.c \
@@ -631,9 +631,9 @@ if command -v python3 >/dev/null; then
         extra=()
         case $src in
             */zperf_iperf3.c|*/zephyr_zperf_shell.c) extra=(-include drivers/compat/common_prelude.h) ;;
-            */nano_telnet.c) extra=(-DCONFIG_SHELL_TELNET_PORT=test_telnet_port
+            */shell_telnet.c) extra=(-DCONFIG_SHELL_TELNET_PORT=test_telnet_port
                                     "-include" tests/telnet/port.h) ;;
-            *zshell.c|*nano_console.c) extra=(-Dcalloc=test_calloc -Dmalloc=test_malloc -Dfree=test_free) ;;
+            *zshell.c|*shell_console.c) extra=(-Dcalloc=test_calloc -Dmalloc=test_malloc -Dfree=test_free) ;;
         esac
         cc "${flags[@]}" "${strict[@]}" "${tninc[@]}" "${inc[@]}" "${extra[@]}" -c "$src" -o "$obj"
         tnobjs+=("$obj")
@@ -674,8 +674,8 @@ if [[ -f stmemsc/lsm6dso_reg.c ]]; then
     ssobjs=("$out/sensor_lsm6dso_reg.o")
     for src in tests/sensor_shell/main.c ../common/compat/zephyr_init.c \
                drivers/sensor_shell/sensor_shell_os.c \
-               $seng/cli.c drivers/shell/getopt_state.c drivers/shell/nano_console.c \
-               $seng/nano_shell.c $seng/shell_argv.c drivers/libc/stdio_wrap.c \
+               $seng/cli.c drivers/shell/getopt_state.c drivers/shell/shell_console.c \
+               $seng/shell_engine.c $seng/shell_argv.c drivers/libc/stdio_wrap.c \
                ../common/shell/zshell.c ../common/shell/subcmd.c \
                ../common/compat/subsys/portability/posix/c_lib_ext/fnmatch.c \
                ../common/compat/lib/utils/getopt/getopt.c ../common/compat/lib/utils/getopt/getopt_long.c \
@@ -702,7 +702,7 @@ if [[ -f stmemsc/lsm6dso_reg.c ]]; then
             */lsm6dso_sensor.c) extra+=(-Wno-unused-parameter -Wno-sign-compare -Wno-cast-function-type) ;;
             */lsm6dso_rtio.c|*/sensor_default_rtio.c) extra+=(-Wno-unused-parameter -Wno-sign-compare) ;;
             */sensor_shell.c) extra+=(-Wno-sign-compare -Wno-unused-parameter) ;;
-            *zshell.c|*nano_console.c) extra+=(-Dcalloc=test_calloc -Dmalloc=test_malloc -Dfree=test_free) ;;
+            *zshell.c|*shell_console.c) extra+=(-Dcalloc=test_calloc -Dmalloc=test_malloc -Dfree=test_free) ;;
         esac
         cc "${flags[@]}" "${strict[@]}" "${ssinc[@]}" "${inc[@]}" "${extra[@]}" -c "$src" -o "$obj"
         ssobjs+=("$obj")

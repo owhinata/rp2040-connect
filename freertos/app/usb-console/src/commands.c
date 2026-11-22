@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MIT */
 /* The commands of the USB console of this build, written as Zephyr shell
- * commands (common/compat/shell_engine/nano_shell.h), and the table of all the
- * commands of the shell (nano_shell_cmds[]).
+ * commands (common/compat/shell_engine/shell_engine.h), and the table of all the
+ * commands of the shell (shell_engine_cmds[]).
  */
 #include <errno.h>
 #include <malloc.h>
@@ -21,7 +21,7 @@
 #include <zephyr/sys/clock.h>
 #include "app.h"
 #include "fault.h"
-#include "nano_shell.h"
+#include "shell_engine.h"
 #include "os_clock.h"
 #include "ps_interval.h"
 #ifdef SELFTEST
@@ -42,7 +42,7 @@ static int cmd_help(const struct shell *sh, size_t argc, char **argv)
 	(void)argc;
 	(void)argv;
 
-	nano_shell_help();
+	shell_engine_help();
 	return 0;
 }
 
@@ -360,51 +360,51 @@ SHELL_CMD_REGISTER(selftest, NULL, "Test the Zephyr compatibility layer (build o
  * common/shell/nina_shell.c ("nina"),
  * common/compat/zephyr_wifi_shell.c
  * ("wifi", with "wifi cred" of the copy of Zephyr's
- * wifi_credentials_shell.c), freertos/drivers/wifi/nano_ifconfig.c,
+ * wifi_credentials_shell.c), freertos/drivers/wifi/ifconfig_shell.c,
  * common/imu/time_sync.c ("ntp"), common/compat/zephyr_zperf_shell.c and
  * common/drivers/sensor_shell/sensor_shell.c ("sensor").
  */
-NANO_SHELL_CMD_DECLARE(dmesg);
-NANO_SHELL_CMD_DECLARE(i2c_dma);
-NANO_SHELL_CMD_DECLARE(ifconfig);
-NANO_SHELL_CMD_DECLARE(imu);
-NANO_SHELL_CMD_DECLARE(kv);
-NANO_SHELL_CMD_DECLARE(nina);
-NANO_SHELL_CMD_DECLARE(ntp);
-NANO_SHELL_CMD_DECLARE(sensor);
-NANO_SHELL_CMD_DECLARE(wifi);
-NANO_SHELL_CMD_DECLARE(zperf);
+SHELL_ENGINE_CMD_DECLARE(dmesg);
+SHELL_ENGINE_CMD_DECLARE(i2c_dma);
+SHELL_ENGINE_CMD_DECLARE(ifconfig);
+SHELL_ENGINE_CMD_DECLARE(imu);
+SHELL_ENGINE_CMD_DECLARE(kv);
+SHELL_ENGINE_CMD_DECLARE(nina);
+SHELL_ENGINE_CMD_DECLARE(ntp);
+SHELL_ENGINE_CMD_DECLARE(sensor);
+SHELL_ENGINE_CMD_DECLARE(wifi);
+SHELL_ENGINE_CMD_DECLARE(zperf);
 
 /* All the commands, sorted by name (Zephyr's "help" lists them so). */
 /* One command per line. */
 /* clang-format off */
-const struct nano_shell_cmd nano_shell_cmds[] = {
-	NANO_SHELL_CMD(bootsel),
-	NANO_SHELL_CMD(date),
-	NANO_SHELL_CMD(devmem),
-	NANO_SHELL_CMD(dmesg),
-	NANO_SHELL_CMD(fault),
-	NANO_SHELL_CMD(free),
-	NANO_SHELL_CMD(help),
-	NANO_SHELL_CMD(i2c_dma),
-	NANO_SHELL_CMD(id),
-	NANO_SHELL_CMD(ifconfig),
-	NANO_SHELL_CMD(imu),
-	NANO_SHELL_CMD(kv),
-	NANO_SHELL_CMD(nina),
-	NANO_SHELL_CMD(ntp),
-	NANO_SHELL_CMD(ps),
-	NANO_SHELL_CMD(reboot),
+const struct shell_engine_cmd shell_engine_cmds[] = {
+	SHELL_ENGINE_CMD(bootsel),
+	SHELL_ENGINE_CMD(date),
+	SHELL_ENGINE_CMD(devmem),
+	SHELL_ENGINE_CMD(dmesg),
+	SHELL_ENGINE_CMD(fault),
+	SHELL_ENGINE_CMD(free),
+	SHELL_ENGINE_CMD(help),
+	SHELL_ENGINE_CMD(i2c_dma),
+	SHELL_ENGINE_CMD(id),
+	SHELL_ENGINE_CMD(ifconfig),
+	SHELL_ENGINE_CMD(imu),
+	SHELL_ENGINE_CMD(kv),
+	SHELL_ENGINE_CMD(nina),
+	SHELL_ENGINE_CMD(ntp),
+	SHELL_ENGINE_CMD(ps),
+	SHELL_ENGINE_CMD(reboot),
 #ifdef SELFTEST
-	NANO_SHELL_CMD(selftest),
+	SHELL_ENGINE_CMD(selftest),
 #endif
-	NANO_SHELL_CMD(sensor),
-	NANO_SHELL_CMD(sleep),
-	NANO_SHELL_CMD(uptime),
-	NANO_SHELL_CMD(version),
-	NANO_SHELL_CMD(wifi),
-	NANO_SHELL_CMD(zperf),
+	SHELL_ENGINE_CMD(sensor),
+	SHELL_ENGINE_CMD(sleep),
+	SHELL_ENGINE_CMD(uptime),
+	SHELL_ENGINE_CMD(version),
+	SHELL_ENGINE_CMD(wifi),
+	SHELL_ENGINE_CMD(zperf),
 };
 /* clang-format on */
 
-const size_t nano_shell_cmd_count = sizeof(nano_shell_cmds) / sizeof(nano_shell_cmds[0]);
+const size_t shell_engine_cmd_count = sizeof(shell_engine_cmds) / sizeof(shell_engine_cmds[0]);

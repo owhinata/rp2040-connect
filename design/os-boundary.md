@@ -22,7 +22,7 @@ Paths below `nuttx/boards/arduino-nano-rp2040-connect/` are shortened to `N-boar
 | POSIX network headers for a C library without them | `common/compat/libc_net` | `include/` (`arpa/inet.h`, `netdb.h`, `netinet/in.h`, `netinet/tcp.h`, `poll.h`, `sys/socket.h`, `sys/uio.h`), `inet_pton()`/`inet_ntop()` (`inet.c`); used by F only |
 | Kernel part of the compatibility layer for an OS that offers only basic primitives | `common/compat/kernel_generic` | `k_sem`, `k_poll()`, the timeout list, the sleeps and the start of a thread (`zephyr_kernel.c`), `k_mutex` (`zephyr_mutex.c`), the OS part of `<zephyr/kernel.h>` and `<zephyr/spinlock.h>` (`zephyr_os.h`, `zephyr_os_spinlock.h`), the tick's entry (`zephyr_compat_tick()`, `zephyr_compat_os.h`), the self-test's items on the primitives (`zephyr_selftest_os.h`), all on the primitives declared in `zephyr_kernel_os.h` (section 2); used by F only |
 | Self-test of the compatibility layer (acceptance test of an OS part) | `common/compat/selftest` | `zephyr_selftest.c` (22 tests), its boundary `zephyr_selftest.h` (section 3); used only by F's `-DSELFTEST=ON` build and F's host test |
-| Shell engine for an OS without a shell of its own | `common/compat/shell_engine` | line editor (`cli.c`), command table and dispatch of the `Z_SHELL_CMD_ROOT_GLOBAL` roots (`nano_shell.c`; the application supplies `nano_shell_cmds[]`), Zephyr's word split (`shell_argv.c`); used by F only |
+| Shell engine for an OS without a shell of its own | `common/compat/shell_engine` | line editor (`cli.c`), command table and dispatch of the `Z_SHELL_CMD_ROOT_GLOBAL` roots (`shell_engine.c`; the application supplies `shell_engine_cmds[]`), Zephyr's word split (`shell_argv.c`); used by F only |
 | RP2040 code that no OS owns | `common/chip/rp2040` | `include/rp2040_timer_us.h` (the TIMER's registers and its 64-bit read `rp2040_timer_us()`, always inline; all three builds), `include/rp2040_watchdog_reboot.h` (`rp2040_watchdog_reboot()`, the watchdog's restart on the raw registers; the Zephyr and NuttX builds). Header only; each build puts `include/` on its include path (Zephyr: the app's `CMakeLists.txt`; N: `N-board/scripts/Make.defs`, for every source; F: the app's `CMakeLists.txt`) |
 | Host tests | `common/tests` | Tests and fakes; `common/tests/zephyr_fakes` is a host implementation of the kernel's OS part |
 | Zephyr build | `zephyr/app/usb-console` | `main()`, `log_ram.c`, `kv_store_os.h`, `wifi_profile_os.h`; upstream Zephyr with patches in `zephyr/manifest/zephyr/patches` |
@@ -266,10 +266,10 @@ The devices listed for the shell are in `common/compat/zephyr_device.c` (hand-wr
 
 | Point | N | F |
 |---|---|---|
-| Registration | each command a builtin application; `SHELL_CMD_REGISTER()` makes `main()` (or `z_shell_main_<name>()` with `Z_SHELL_CMD_NAMED_MAIN`) | `Z_SHELL_CMD_ROOT_GLOBAL`: global root entries listed in `nano_shell_cmds[]`, `freertos/app/usb-console/src/commands.c`; run by `common/compat/shell_engine/nano_shell.c` |
+| Registration | each command a builtin application; `SHELL_CMD_REGISTER()` makes `main()` (or `z_shell_main_<name>()` with `Z_SHELL_CMD_NAMED_MAIN`) | `Z_SHELL_CMD_ROOT_GLOBAL`: global root entries listed in `shell_engine_cmds[]`, `freertos/app/usb-console/src/commands.c`; run by `common/compat/shell_engine/shell_engine.c` |
 | `SHELL_SUBCMD_ADD()` | global entry; the parent's source lists them by hand | same |
 | getopt | Zephyr's getopt not built; `nuttx/apps/wifi/wifi_credentials_shell.c` maps `sys_getopt_*` to `getopt_long()` | copies in `common/compat/lib/utils/getopt`; state per session `freertos/drivers/shell/getopt_state.c` (`sys_getopt_state_get()`, `z_getopt_global_state_update()`), reset by `sys_getopt_init()` before each command |
-| stdio of `zshell.c`: `printf()`, `fprintf(stderr)`, `fflush(stdout)` must reach the command's terminal; `calloc()` of about 1.2 KB per line | each command a task with its own stdio | `freertos/drivers/shell/nano_stdio.c` (the calling task's console), `freertos/drivers/libc/stdio_wrap.c` (`--wrap` of the stdout/stderr calls) |
+| stdio of `zshell.c`: `printf()`, `fprintf(stderr)`, `fflush(stdout)` must reach the command's terminal; `calloc()` of about 1.2 KB per line | each command a task with its own stdio | `freertos/drivers/shell/shell_stdio.c` (the calling task's console), `freertos/drivers/libc/stdio_wrap.c` (`--wrap` of the stdout/stderr calls) |
 
 ### 4.5 `CONFIG_*` values
 
@@ -311,7 +311,7 @@ Start-up files: Zephyr `zephyr/app/usb-console/src/main.c`; N `N-board/src/rp204
 | KV flash bounds | `nano_flash_kv_initialize()` in `rp2040_bringup()` | `nano_flash_kv_initialize()` in `main()` |
 | Wi-Fi credentials | `wifi_credentials_init()` in the init task | `wifi_credentials_init()`, `wifi_shell_init()` in `main_main()` |
 | Threads | table above | table above |
-| Telnet | `rp2040_telnet_start()` after the threads | `nano_telnet_init()` before the threads |
+| Telnet | `rp2040_telnet_start()` after the threads | `shell_telnet_init()` before the threads |
 | Application (same order in all three builds) | `kv_store_init()`, `imu_cal_init()`, `time_sync_init()`, `wifi_profile_init()` | same |
 
 ### 4.7 POSIX socket headers
@@ -340,9 +340,9 @@ Start-up files: Zephyr `zephyr/app/usb-console/src/main.c`; N `N-board/src/rp204
 | Idle loop (the window arithmetic is shared, `common/compat/cpu_load.h`) | `N-board/src/rp2040_idle_cpuload.c` | `freertos/app/usb-console/src/idle.c` |
 | Entry to BOOTSEL (the ROM's `reset_usb_boot()`) | `N-board/src/rp2040_restart.c` on NuttX's `ROM_LOOKUP()` | the Pico SDK's `reset_usb_boot()` (Zephyr: hal_rpi_pico's) |
 | Chip ID (the flash's unique ID, read once with XIP off) | `N-board/src/rp2040_chipid.c` on NuttX's `rp2040_flash_cmd()` | the Pico SDK's `pico_unique_id` (Zephyr: its hwinfo driver) |
-| USB device stack, console transport | `cdcacm`, `N-board/src/rp2040_usbserial.c`; Telnet `nuttx/apps/init/rp2040_telnet.c` | Pico SDK `stdio_usb` (TinyUSB); `freertos/drivers/shell/nano_console.c`, `nano_stdio.c`; Telnet `freertos/drivers/telnet/nano_telnet.c` |
+| USB device stack, console transport | `cdcacm`, `N-board/src/rp2040_usbserial.c`; Telnet `nuttx/apps/init/rp2040_telnet.c` | Pico SDK `stdio_usb` (TinyUSB); `freertos/drivers/shell/shell_console.c`, `shell_stdio.c`; Telnet `freertos/drivers/telnet/shell_telnet.c` |
 | Heap | NuttX's | FreeRTOS `heap_4`, 32 KiB (`configTOTAL_HEAP_SIZE`) |
-| The OS's own shell | nsh (sessions in `rp2040_init.c`) | none: the shared engine `common/compat/shell_engine` (`cli.c`, `nano_shell.c`) on the consoles of `freertos/drivers/shell` |
+| The OS's own shell | nsh (sessions in `rp2040_init.c`) | none: the shared engine `common/compat/shell_engine` (`cli.c`, `shell_engine.c`) on the consoles of `freertos/drivers/shell` |
 | The OS's own log in the RAM log | `syslog()`: the syslog channel, `nuttx/drivers/log/log_ram_syslog.c` | none (the FreeRTOS kernel and the Pico SDK have no log) |
 | Fatal errors | `CONFIG_BOARD_RESET_ON_ASSERT`, report in the RAM log | `freertos/app/usb-console/src/fault.c` with `common/compat/log/fault_record.c` |
 | Build system and configuration | Make, Kconfig, `defconfig`, `nuttx/patches` | CMake, `FreeRTOSConfig.h`, `freertos/drivers/*/*.cmake` |

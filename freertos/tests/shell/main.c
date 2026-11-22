@@ -9,7 +9,7 @@
  *   Up and Down, other escape sequences ignored;
  * - two sessions at once: two consoles that capture their output, each with
  *   a task bound to it that types its lines into its own line editor and
- *   runs them (nano_shell_execute()).  The commands are registered with
+ *   runs them (shell_engine_execute()).  The commands are registered with
  *   SHELL_CMD_ARG_REGISTER() as the shared sources do and print with
  *   printf(), fprintf(stderr), fputs() and shell_print(); the shell prints
  *   help, the argument count error and "command not found"; one command
@@ -22,7 +22,7 @@
  * The Pico SDK's stdio is played by this file as pico_stdio does it:
  * printf(), vprintf(), puts() and putchar() are wrapped (-Wl,--wrap) and,
  * like the SDK's newlib write(), end in stdio_put_string(), which writes to
- * the calling task's console (freertos/drivers/shell/nano_stdio.c on the
+ * the calling task's console (freertos/drivers/shell/shell_stdio.c on the
  * board).  The shell's calloc(), malloc() and free() run with the
  * scheduler suspended (the POSIX port may switch threads inside the C
  * library's locks).
@@ -47,8 +47,8 @@
 
 #include "app_log.h"
 #include "cli.h"
-#include "nano_console.h"
-#include "nano_shell.h"
+#include "shell_console.h"
+#include "shell_engine.h"
 #include "pico/stdio.h"
 #include "priorities.h"
 
@@ -69,7 +69,7 @@ void vApplicationTickHook(void)
 	z_host_isr_depth--;
 }
 
-/* The allocations of zshell.c and nano_console.c (built with
+/* The allocations of zshell.c and shell_console.c (built with
  * -Dcalloc=test_calloc and so on), with the scheduler suspended: the POSIX
  * port may switch threads inside the C library's locks.  The port's own
  * malloc() at the start of each thread is left alone.
@@ -110,15 +110,15 @@ void test_free(void *p)
 
 int stdio_put_string(const char *s, int len, bool newline, bool cr_translation)
 {
-	struct nano_console *con = nano_console_current();
+	struct shell_console *con = shell_console_current();
 
 	(void)cr_translation;
 	if (len < 0) {
 		len = (int)strlen(s);
 	}
-	nano_console_write(con, s, (size_t)len);
+	shell_console_write(con, s, (size_t)len);
 	if (newline) {
-		nano_console_write(con, "\n", 1);
+		shell_console_write(con, "\n", 1);
 	}
 	return len;
 }
@@ -199,7 +199,7 @@ struct capture {
 	size_t len;
 };
 
-static void capture_out(struct nano_console *con, const char *buf, size_t len)
+static void capture_out(struct shell_console *con, const char *buf, size_t len)
 {
 	struct capture *c = con->ctx;
 
@@ -277,14 +277,14 @@ static int cmd_later(const struct shell *sh, size_t argc, char **argv)
 
 SHELL_CMD_REGISTER(later, NULL, "Keep the backend", cmd_later);
 
-const struct nano_shell_cmd nano_shell_cmds[] = {
-	NANO_SHELL_CMD(echo),
-	NANO_SHELL_CMD(grp),
-	NANO_SHELL_CMD(later),
-	NANO_SHELL_CMD(opt),
+const struct shell_engine_cmd shell_engine_cmds[] = {
+	SHELL_ENGINE_CMD(echo),
+	SHELL_ENGINE_CMD(grp),
+	SHELL_ENGINE_CMD(later),
+	SHELL_ENGINE_CMD(opt),
 };
 
-const size_t nano_shell_cmd_count = sizeof(nano_shell_cmds) / sizeof(nano_shell_cmds[0]);
+const size_t shell_engine_cmd_count = sizeof(shell_engine_cmds) / sizeof(shell_engine_cmds[0]);
 
 /* The line editor alone ---------------------------------------------------*/
 
@@ -339,7 +339,7 @@ static void test_editor(void)
 struct session {
 	const char *prompt;
 	const char *const *lines;
-	struct nano_console console;
+	struct shell_console console;
 	struct capture out;
 	struct cli cli;
 };
@@ -359,20 +359,20 @@ static SemaphoreHandle_t done;
 
 static void cli_write(void *ctx, const char *text, size_t len)
 {
-	nano_console_write(ctx, text, len);
+	shell_console_write(ctx, text, len);
 }
 
 static void cli_execute(void *ctx, char *line)
 {
 	(void)ctx;
-	(void)nano_shell_execute(line);
+	(void)shell_engine_execute(line);
 }
 
 static void session_main(void *arg)
 {
 	struct session *s = arg;
 
-	nano_console_bind(NULL, &s->console);
+	shell_console_bind(NULL, &s->console);
 	cli_init(&s->cli, s->prompt, cli_write, cli_execute, &s->console);
 	cli_prompt(&s->cli);
 	for (const char *const *line = s->lines; *line != NULL; line++) {
@@ -427,7 +427,7 @@ static void checker(void *arg)
 	       "two ran\r\n"
 	       "b$ default\r\n");
 	/* No default console: dropped. */
-	nano_console_set_default(NULL);
+	shell_console_set_default(NULL);
 	fprintf(stdout, "dropped\n");
 	assert(strstr(sessions[1].out.text, "dropped") == NULL);
 	_exit(0);
@@ -436,20 +436,20 @@ static void checker(void *arg)
 int main(void)
 {
 	/* Before the scheduler starts, output goes to the default console. */
-	static struct nano_console host;
+	static struct shell_console host;
 	static struct capture host_out;
 
-	nano_console_init(&host, "host", capture_out, &host_out);
-	nano_console_set_default(&host);
+	shell_console_init(&host, "host", capture_out, &host_out);
+	shell_console_set_default(&host);
 	printf("before\n");
 	expect("before the start", &host_out, "before\r\n");
 	test_editor();
 
 	for (int i = 0; i < 2; i++) {
-		nano_console_init(&sessions[i].console, sessions[i].prompt, capture_out,
-				  &sessions[i].out);
+		shell_console_init(&sessions[i].console, sessions[i].prompt, capture_out,
+				   &sessions[i].out);
 	}
-	nano_console_set_default(&sessions[1].console);
+	shell_console_set_default(&sessions[1].console);
 	done = xSemaphoreCreateCounting(2, 0);
 	for (int i = 0; i < 2; i++) {
 		if (xTaskCreate(session_main, "session", SESSION_STACK / sizeof(StackType_t),

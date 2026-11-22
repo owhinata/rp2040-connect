@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: MIT */
-/* The Telnet shell of the FreeRTOS build (nano_telnet.h): the shell of the
+/* The Telnet shell of the FreeRTOS build (shell_telnet.h): the shell of the
  * USB console on TCP port CONFIG_SHELL_TELNET_PORT for one client at a
  * time, with the behaviour of the Zephyr build's Telnet shell backend
  * (Zephyr's subsys/shell/backends/shell_telnet.c with the Zephyr build's
@@ -16,7 +16,7 @@
  * "shell_telnet" (Zephyr's shell thread of the backend, APP_PRIO_SHELL,
  * APP_STACK_SHELL) is the session: it is bound to the Telnet console (its
  * printf(), shell_print() and the getopt state are the session's,
- * nano_console.h) and runs the commands of the lines it is given.
+ * shell_console.h) and runs the commands of the lines it is given.
  *
  * As in Zephyr:
  * - the listening socket is opened once at boot (any address, backlog 1, no
@@ -110,9 +110,9 @@
 #include <zephyr/sys/util.h>
 
 #include "app_log.h"
-#include "nano_console.h"
-#include "nano_shell.h"
-#include "nano_telnet.h"
+#include "shell_console.h"
+#include "shell_engine.h"
+#include "shell_telnet.h"
 #include "priorities.h"
 
 LOG_MODULE_REGISTER(shell_telnet, LOG_LEVEL_INF);
@@ -210,7 +210,7 @@ static struct {
 	.client_fd = -1,
 };
 
-static struct nano_console telnet_console;
+static struct shell_console telnet_console;
 
 static StackType_t session_stack[SESSION_STACK_SIZE];
 static StaticTask_t session_tcb;
@@ -292,10 +292,10 @@ static int line_send(bool block)
 	return 0;
 }
 
-/* The console's terminal (nano_console_out_t), under its mutex: the line
+/* The console's terminal (shell_console_out_t), under its mutex: the line
  * buffer of Zephyr's telnet_write().
  */
-static void telnet_out(struct nano_console *con, const char *buf, size_t len)
+static void telnet_out(struct shell_console *con, const char *buf, size_t len)
 {
 	bool block = xTaskGetCurrentTaskHandle() == tn.session_task;
 
@@ -345,14 +345,14 @@ static void telnet_out(struct nano_console *con, const char *buf, size_t len)
  */
 static void line_flush(bool block)
 {
-	if (!nano_console_lock(&telnet_console, block ? 1000 : 0)) {
+	if (!shell_console_lock(&telnet_console, block ? 1000 : 0)) {
 		return;
 	}
 	if (tn.line_len > 0 && out_connected() &&
 	    (block || k_uptime_get() - tn.line_since >= TELNET_TIMEOUT)) {
 		(void)line_send(block);
 	}
-	nano_console_unlock(&telnet_console);
+	shell_console_unlock(&telnet_console);
 }
 
 /* The service ----------------------------------------------------------------*/
@@ -668,7 +668,7 @@ static bool process_nl(char c)
 
 static void session_write(const char *text)
 {
-	nano_console_write(&telnet_console, text, strlen(text));
+	shell_console_write(&telnet_console, text, strlen(text));
 }
 
 /* Zephyr's state_collect() with echo off, for one received character. */
@@ -683,7 +683,7 @@ static void session_input(char c)
 			session_write("\n");
 			if (tn.cmd_buff_len > 0) {
 				tn.cmd_buff[tn.cmd_buff_len] = '\0';
-				(void)nano_shell_execute(tn.cmd_buff);
+				(void)shell_engine_execute(tn.cmd_buff);
 			}
 			tn.cmd_buff_len = 0;
 			session_write(tn.prompt);
@@ -714,7 +714,7 @@ static void session_main(void *arg)
 
 	ARG_UNUSED(arg);
 
-	nano_console_bind(NULL, &telnet_console);
+	shell_console_bind(NULL, &telnet_console);
 
 	for (;;) {
 		(void)ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
@@ -747,15 +747,15 @@ static void session_main(void *arg)
 	}
 }
 
-int nano_telnet_init(const char *prompt)
+int shell_telnet_init(const char *prompt)
 {
 	int ret;
 
 	tn.prompt = prompt;
 	tn.conn_lock = xSemaphoreCreateMutexStatic(&tn.conn_lock_mem);
 	tn.rx_lock = xSemaphoreCreateMutexStatic(&tn.rx_lock_mem);
-	nano_console_init(&telnet_console, "telnet", telnet_out, NULL);
-	nano_console_set_other_lock_timeout(&telnet_console, OTHER_LOCK_MS);
+	shell_console_init(&telnet_console, "telnet", telnet_out, NULL);
+	shell_console_set_other_lock_timeout(&telnet_console, OTHER_LOCK_MS);
 
 	ret = telnet_setup_server(false);
 	if (ret < 0) {

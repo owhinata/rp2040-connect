@@ -23,13 +23,13 @@
 #include "imu_cal.h"
 #include "kv_store.h"
 #include "log_ram.h"
-#include "nano_console.h"
+#include "shell_console.h"
 #include "nano_flash_kv_os.h"
-#include "nano_lsm6dso.h"
+#include "lsm6dso_board.h"
 #include "nina_passthrough.h"
-#include "nano_shell.h"
-#include "nano_stdio.h"
-#include "nano_telnet.h"
+#include "shell_engine.h"
+#include "shell_stdio.h"
+#include "shell_telnet.h"
 #include "priorities.h"
 #include "time_sync.h"
 #include "wifi_profile.h"
@@ -65,9 +65,9 @@ int wifi_shell_init(void);
 #define CONSOLE_READ_SIZE   64
 
 /* The USB console: the terminal of the USB session and the default console
- * of the tasks that have none (freertos/drivers/shell/nano_console.h).
+ * of the tasks that have none (freertos/drivers/shell/shell_console.h).
  */
-static struct nano_console usb_console;
+static struct shell_console usb_console;
 static struct cli usb_cli;
 
 static StackType_t console_stack[CONSOLE_STACK_SIZE];
@@ -94,7 +94,7 @@ uint64_t app_run_time_us(void)
  * buffer and then drops the rest until room comes again
  * (PICO_STDIO_USB_STDOUT_TIMEOUT_US).
  */
-static void usb_out(struct nano_console *con, const char *buf, size_t len)
+static void usb_out(struct shell_console *con, const char *buf, size_t len)
 {
 	(void)con;
 	stdio_usb.out_chars(buf, (int)len);
@@ -102,13 +102,13 @@ static void usb_out(struct nano_console *con, const char *buf, size_t len)
 
 static void cli_write(void *ctx, const char *text, size_t len)
 {
-	nano_console_write(ctx, text, len);
+	shell_console_write(ctx, text, len);
 }
 
 static void cli_execute(void *ctx, char *line)
 {
 	(void)ctx;
-	(void)nano_shell_execute(line);
+	(void)shell_engine_execute(line);
 }
 
 /* Called by the Pico SDK's USB code when characters have arrived: from its
@@ -152,7 +152,7 @@ static void console_main(void *arg)
 
 	(void)arg;
 
-	nano_console_bind(NULL, &usb_console);
+	shell_console_bind(NULL, &usb_console);
 	cli_init(&usb_cli, CONSOLE_PROMPT, cli_write, cli_execute, &usb_console);
 	stdio_usb.set_chars_available_callback(console_chars_available, NULL);
 
@@ -195,7 +195,7 @@ static void start_thread(int ret, const char *name)
  * the scheduler.  Its lines ("Initialize device lsm6dsox@6a", "chip id
  * 0x6c") come first in "dmesg", as in the Zephyr and NuttX builds.  A failure
  * leaves the device not ready (the driver logs why; without i2c0 nothing is
- * tried) and the start goes on (freertos/drivers/lsm6dso/nano_lsm6dso.h).
+ * tried) and the start goes on (freertos/drivers/lsm6dso/lsm6dso_board.h).
  * While the driver waits, the console's task may run; a command that uses
  * the sensor before it is ready gets the error of a device that is not.
  * The settings are first initialized by wifi_credentials_init(), as the
@@ -214,7 +214,7 @@ static void main_main(void *arg)
 
 	(void)arg;
 
-	(void)nano_lsm6dso_initialize();
+	(void)lsm6dso_board_initialize();
 
 	/* The NINA-W102's network interface, which Zephyr initializes at boot
 	 * (POST_KERNEL, after the sensor) and the NuttX build in its bringup
@@ -242,10 +242,10 @@ static void main_main(void *arg)
 	 * "wifi" command's: the listening socket on port 23 (whether or not
 	 * Wi-Fi is connected; the NINA keeps it across disconnections) and the
 	 * tasks "telnet_service" and "shell_telnet"
-	 * (freertos/drivers/telnet/nano_telnet.h).  A failure is logged and
+	 * (freertos/drivers/telnet/shell_telnet.h).  A failure is logged and
 	 * leaves no Telnet.
 	 */
-	(void)nano_telnet_init(CONSOLE_PROMPT);
+	(void)shell_telnet_init(CONSOLE_PROMPT);
 
 	/* The threads of K_THREAD_DEFINE(), which Zephyr starts before main()
 	 * (z_init_static_threads(), after the devices) and the NuttX build in
@@ -346,12 +346,12 @@ int main(void)
 	}
 
 	/* The USB CDC ACM port, and the stdio of the tasks on the consoles
-	 * (freertos/drivers/shell/nano_stdio.h).
+	 * (freertos/drivers/shell/shell_stdio.h).
 	 */
 	stdio_init_all();
-	nano_console_init(&usb_console, "usb", usb_out, NULL);
-	nano_console_set_default(&usb_console);
-	nano_stdio_init(&stdio_usb);
+	shell_console_init(&usb_console, "usb", usb_out, NULL);
+	shell_console_set_default(&usb_console);
+	shell_stdio_init(&stdio_usb);
 
 	/* heap_4 sets up its heap at the first allocation and reports no free
 	 * space until then ("free"). Nothing else here allocates from it.

@@ -11,7 +11,7 @@
  * command waits on.  The command waits at most SENSOR_SHELL_GET_WAIT_MS: the
  * processing thread can be held up by a terminal that does not take its
  * output (a console's writer waits for its mutex at most 1 s,
- * freertos/drivers/shell/nano_console.h); the result is then printed later,
+ * freertos/drivers/shell/shell_console.h); the result is then printed later,
  * after the prompt, as in Zephyr.
  */
 

@@ -21,7 +21,7 @@ Zephyr そのものに対してビルドし、`common/compat` を使いません
 | POSIX のネットワークのヘッダー（それを持たない C ライブラリーのため） | `common/compat/libc_net` | `include/`（`arpa/inet.h`、`netdb.h`、`netinet/in.h`、`netinet/tcp.h`、`poll.h`、`sys/socket.h`、`sys/uio.h`）、`inet_pton()`・`inet_ntop()`（`inet.c`）。使うのは F だけ |
 | 基本の操作だけを持つ OS のための互換層のカーネルの部分 | `common/compat/kernel_generic` | `k_sem`、`k_poll()`、タイムアウトの一覧、スリープ、スレッドの起動（`zephyr_kernel.c`）、`k_mutex`（`zephyr_mutex.c`）、`<zephyr/kernel.h>`・`<zephyr/spinlock.h>` の OS の部分（`zephyr_os.h`・`zephyr_os_spinlock.h`）、tick の入口（`zephyr_compat_tick()`、`zephyr_compat_os.h`）、基本の操作の上の自己診断の項目（`zephyr_selftest_os.h`）。すべて `zephyr_kernel_os.h` で宣言した基本の操作（2 節）の上。使うのは F だけ |
 | 互換層の自己診断（OS の部分の受け入れ試験） | `common/compat/selftest` | `zephyr_selftest.c`（22 項目）、境界の宣言 `zephyr_selftest.h`（3 節）。使うのは F の `-DSELFTEST=ON` のビルドと F のホストテストだけ |
-| 自分のシェルを持たない OS のためのシェル | `common/compat/shell_engine` | 行編集（`cli.c`）、`Z_SHELL_CMD_ROOT_GLOBAL` のルートのコマンドの表と実行（`nano_shell.c`。`nano_shell_cmds[]` はアプリが用意する）、Zephyr の単語の分割（`shell_argv.c`）。使うのは F だけ |
+| 自分のシェルを持たない OS のためのシェル | `common/compat/shell_engine` | 行編集（`cli.c`）、`Z_SHELL_CMD_ROOT_GLOBAL` のルートのコマンドの表と実行（`shell_engine.c`。`shell_engine_cmds[]` はアプリが用意する）、Zephyr の単語の分割（`shell_argv.c`）。使うのは F だけ |
 | どの OS も持たない RP2040 のコード | `common/chip/rp2040` | `include/rp2040_timer_us.h`（TIMER のレジスターと 64 ビットの読み出し `rp2040_timer_us()`。必ずインライン。3 版とも）、`include/rp2040_watchdog_reboot.h`（`rp2040_watchdog_reboot()`、レジスターを直接書く watchdog の再起動。Zephyr 版と N）。ヘッダーだけで、各版が `include/` を include パスに入れる（Zephyr はアプリの `CMakeLists.txt`、N は `N-board/scripts/Make.defs` で全部のソースに、F はアプリの `CMakeLists.txt`） |
 | ホストテスト | `common/tests` | テストと偽物。`common/tests/zephyr_fakes` はカーネルの OS 部分のホスト用の実装 |
 | Zephyr 版 | `zephyr/app/usb-console` | `main()`、`log_ram.c`、`kv_store_os.h`、`wifi_profile_os.h`。上流の Zephyr と、`zephyr/manifest/zephyr/patches` のパッチ |
@@ -258,10 +258,10 @@ Zephyr 版は自分の `zephyr/app/usb-console/src/kv_store_os.h` と `wifi_prof
 
 | 点 | N | F |
 |---|---|---|
-| 登録 | コマンドごとの builtin アプリ。`SHELL_CMD_REGISTER()` が `main()`（`Z_SHELL_CMD_NAMED_MAIN` なら `z_shell_main_<名前>()`）を作る | `Z_SHELL_CMD_ROOT_GLOBAL`: 大域のルートの要素を `nano_shell_cmds[]`（`freertos/app/usb-console/src/commands.c`）に並べ、`common/compat/shell_engine/nano_shell.c` が動かす |
+| 登録 | コマンドごとの builtin アプリ。`SHELL_CMD_REGISTER()` が `main()`（`Z_SHELL_CMD_NAMED_MAIN` なら `z_shell_main_<名前>()`）を作る | `Z_SHELL_CMD_ROOT_GLOBAL`: 大域のルートの要素を `shell_engine_cmds[]`（`freertos/app/usb-console/src/commands.c`）に並べ、`common/compat/shell_engine/shell_engine.c` が動かす |
 | `SHELL_SUBCMD_ADD()` | 大域の要素。親のソースが手で並べる | 同じ |
 | getopt | Zephyr の getopt はビルドしない。`nuttx/apps/wifi/wifi_credentials_shell.c` が `sys_getopt_*` を `getopt_long()` に読み替える | `common/compat/lib/utils/getopt` の写し。状態はセッションごと（`freertos/drivers/shell/getopt_state.c` の `sys_getopt_state_get()`、`z_getopt_global_state_update()`）。コマンドの前に `sys_getopt_init()` で戻す |
-| `zshell.c` の stdio: `printf()`、`fprintf(stderr)`、`fflush(stdout)` がコマンドの端末に届くこと。1 行あたり約 1.2 KB の `calloc()` | コマンドごとのタスクが自分の stdio を持つ | `freertos/drivers/shell/nano_stdio.c`（呼んだタスクのコンソール）、`freertos/drivers/libc/stdio_wrap.c`（stdout・stderr の呼び出しの `--wrap`） |
+| `zshell.c` の stdio: `printf()`、`fprintf(stderr)`、`fflush(stdout)` がコマンドの端末に届くこと。1 行あたり約 1.2 KB の `calloc()` | コマンドごとのタスクが自分の stdio を持つ | `freertos/drivers/shell/shell_stdio.c`（呼んだタスクのコンソール）、`freertos/drivers/libc/stdio_wrap.c`（stdout・stderr の呼び出しの `--wrap`） |
 
 ### 4.5 `CONFIG_*` の値
 
@@ -303,7 +303,7 @@ Zephyr 版は自分の `zephyr/app/usb-console/src/kv_store_os.h` と `wifi_prof
 | KV のフラッシュの範囲 | `rp2040_bringup()` の `nano_flash_kv_initialize()` | `main()` の `nano_flash_kv_initialize()` |
 | Wi-Fi の資格情報 | init タスクの `wifi_credentials_init()` | `main_main()` の `wifi_credentials_init()`、`wifi_shell_init()` |
 | スレッド | 上の表 | 上の表 |
-| Telnet | スレッドのあとに `rp2040_telnet_start()` | スレッドの前に `nano_telnet_init()` |
+| Telnet | スレッドのあとに `rp2040_telnet_start()` | スレッドの前に `shell_telnet_init()` |
 | アプリ（3 版とも同じ順） | `kv_store_init()`、`imu_cal_init()`、`time_sync_init()`、`wifi_profile_init()` | 同じ |
 
 ### 4.7 POSIX のソケットのヘッダー
@@ -332,9 +332,9 @@ Zephyr 版は自分の `zephyr/app/usb-console/src/kv_store_os.h` と `wifi_prof
 | アイドルループ（区間の計算は共有の `common/compat/cpu_load.h`） | `N-board/src/rp2040_idle_cpuload.c` | `freertos/app/usb-console/src/idle.c` |
 | BOOTSEL に入る（ROM の `reset_usb_boot()`） | `N-board/src/rp2040_restart.c`。NuttX の `ROM_LOOKUP()` の上 | Pico SDK の `reset_usb_boot()`（Zephyr 版は hal_rpi_pico のもの） |
 | チップの ID（フラッシュの固有の ID。XIP を止めて 1 回読む） | `N-board/src/rp2040_chipid.c`。NuttX の `rp2040_flash_cmd()` の上 | Pico SDK の `pico_unique_id`（Zephyr 版は hwinfo のドライバー） |
-| USB デバイスのスタック、コンソールの経路 | `cdcacm`、`N-board/src/rp2040_usbserial.c`。Telnet は `nuttx/apps/init/rp2040_telnet.c` | Pico SDK の `stdio_usb`（TinyUSB）。`freertos/drivers/shell/nano_console.c`、`nano_stdio.c`。Telnet は `freertos/drivers/telnet/nano_telnet.c` |
+| USB デバイスのスタック、コンソールの経路 | `cdcacm`、`N-board/src/rp2040_usbserial.c`。Telnet は `nuttx/apps/init/rp2040_telnet.c` | Pico SDK の `stdio_usb`（TinyUSB）。`freertos/drivers/shell/shell_console.c`、`shell_stdio.c`。Telnet は `freertos/drivers/telnet/shell_telnet.c` |
 | ヒープ | NuttX のもの | FreeRTOS の `heap_4`、32 KiB（`configTOTAL_HEAP_SIZE`） |
-| OS 自身のシェル | nsh（セッションは `rp2040_init.c`） | 無い。共有のエンジン `common/compat/shell_engine`（`cli.c`・`nano_shell.c`）を `freertos/drivers/shell` のコンソールの上で使う |
+| OS 自身のシェル | nsh（セッションは `rp2040_init.c`） | 無い。共有のエンジン `common/compat/shell_engine`（`cli.c`・`shell_engine.c`）を `freertos/drivers/shell` のコンソールの上で使う |
 | RAM ログに入る OS 自身のログ | `syslog()`: syslog のチャネル、`nuttx/drivers/log/log_ram_syslog.c` | なし（FreeRTOS のカーネルと Pico SDK はログを持たない） |
 | 致命的なエラー | `CONFIG_BOARD_RESET_ON_ASSERT`、報告は RAM ログ | `freertos/app/usb-console/src/fault.c` と `common/compat/log/fault_record.c` |
 | ビルドの仕組みと構成 | Make、Kconfig、`defconfig`、`nuttx/patches` | CMake、`FreeRTOSConfig.h`、`freertos/drivers/*/*.cmake` |

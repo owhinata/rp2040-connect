@@ -33,7 +33,7 @@
 #   zephyr_sensor_clock.c, the sensor clock on the TIMER) and their FreeRTOS
 #   part (freertos/drivers/compat/rp2040/gpio_os_rp2040.c, GPIO bank 0 and its
 #   interrupt on the Pico SDK);
-# - the start of the sensor (this directory: nano_lsm6dso.c, nano_lsm6dso.h);
+# - the start of the sensor (this directory: lsm6dso_board.c, lsm6dso_board.h);
 # - CONFIG_LSM6DSO_STREAM=1 for every source of the target (the NuttX
 #   build's Kconfig option of that name: zephyr_device.c lists gpio0,
 #   zephyr_compat_initialize() starts it, and the prelude turns on
@@ -95,7 +95,7 @@ function(freertos_lsm6dso target)
     ${lsm6dso_compat_sources}
     ${FREERTOS_STMEMSC_DIR}/lsm6dso_reg.c
     ${FREERTOS_COMPAT_DIR}/rp2040/gpio_os_rp2040.c
-    ${FREERTOS_LSM6DSO_DIR}/nano_lsm6dso.c
+    ${FREERTOS_LSM6DSO_DIR}/lsm6dso_board.c
   )
 
   set(lsm6dso_prelude_sources ${lsm6dso_driver_sources} ${lsm6dso_compat_sources})

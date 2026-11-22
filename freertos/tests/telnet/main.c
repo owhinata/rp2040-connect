@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: MIT */
-/* The host test of the Telnet shell (freertos/drivers/telnet/nano_telnet.c)
+/* The host test of the Telnet shell (freertos/drivers/telnet/shell_telnet.c)
  * and of "zperf" (common/compat/zperf_iperf3.c, zephyr_zperf_shell.c) on the
  * FreeRTOS POSIX port, with the build's shell (freertos/drivers/shell, the
  * shared zshell.c) and the zsock_*() calls on the host's sockets with the
@@ -53,9 +53,9 @@
 
 #include "app_log.h"
 #include "host_sock.h"
-#include "nano_console.h"
-#include "nano_shell.h"
-#include "nano_telnet.h"
+#include "shell_console.h"
+#include "shell_engine.h"
+#include "shell_telnet.h"
 #include "pico/stdio.h"
 #include "priorities.h"
 #include "zephyr_compat.h"
@@ -133,15 +133,15 @@ static void report(const char *fmt, ...)
 
 int stdio_put_string(const char *s, int len, bool newline, bool cr_translation)
 {
-	struct nano_console *con = nano_console_current();
+	struct shell_console *con = shell_console_current();
 
 	(void)cr_translation;
 	if (len < 0) {
 		len = (int)strlen(s);
 	}
-	nano_console_write(con, s, (size_t)len);
+	shell_console_write(con, s, (size_t)len);
 	if (newline) {
-		nano_console_write(con, "\n", 1);
+		shell_console_write(con, "\n", 1);
 	}
 	return len;
 }
@@ -221,7 +221,7 @@ bool app_log_ratelimit_pass(uint32_t *last_ms, uint32_t *skipped, uint32_t rate_
 
 #define USB_LINES 40
 
-static struct nano_console usb;
+static struct shell_console usb;
 static char usb_text[2048];
 static size_t usb_len;
 static bool usb_overflow;
@@ -229,7 +229,7 @@ static char usb_want[2048];
 static uint32_t usb_runs;
 static uint32_t usb_bad;
 
-static void usb_out(struct nano_console *con, const char *buf, size_t len)
+static void usb_out(struct shell_console *con, const char *buf, size_t len)
 {
 	(void)con;
 	if (usb_len + len >= sizeof(usb_text)) {
@@ -249,14 +249,14 @@ static void usb_main(void *arg)
 	for (int i = 1; i <= USB_LINES; i++) {
 		n += (size_t)snprintf(usb_want + n, sizeof(usb_want) - n, "line %d\r\n", i);
 	}
-	nano_console_bind(NULL, &usb);
+	shell_console_bind(NULL, &usb);
 	for (;;) {
 		char line[16] = "lines 40";
 
 		usb_len = 0;
 		usb_text[0] = '\0';
 		usb_overflow = false;
-		(void)nano_shell_execute(line);
+		(void)shell_engine_execute(line);
 		usb_runs++;
 		if (usb_overflow || strcmp(usb_text, usb_want) != 0) {
 			usb_bad++;
@@ -403,37 +403,37 @@ static int cmd_help(const struct shell *sh, size_t argc, char **argv)
 	(void)sh;
 	(void)argc;
 	(void)argv;
-	nano_shell_help();
+	shell_engine_help();
 	return 0;
 }
 
 SHELL_CMD_REGISTER(help, NULL, "Prints the help message.", cmd_help);
 
-NANO_SHELL_CMD_DECLARE(zperf);
+SHELL_ENGINE_CMD_DECLARE(zperf);
 
 /* clang-format off */
-const struct nano_shell_cmd nano_shell_cmds[] = {
-	NANO_SHELL_CMD(async),
-	NANO_SHELL_CMD(help),
-	NANO_SHELL_CMD(lines),
-	NANO_SHELL_CMD(listendown),
-	NANO_SHELL_CMD(netdown),
-	NANO_SHELL_CMD(quit),
-	NANO_SHELL_CMD(socks),
-	NANO_SHELL_CMD(stats),
-	NANO_SHELL_CMD(zperf),
+const struct shell_engine_cmd shell_engine_cmds[] = {
+	SHELL_ENGINE_CMD(async),
+	SHELL_ENGINE_CMD(help),
+	SHELL_ENGINE_CMD(lines),
+	SHELL_ENGINE_CMD(listendown),
+	SHELL_ENGINE_CMD(netdown),
+	SHELL_ENGINE_CMD(quit),
+	SHELL_ENGINE_CMD(socks),
+	SHELL_ENGINE_CMD(stats),
+	SHELL_ENGINE_CMD(zperf),
 };
 /* clang-format on */
 
-const size_t nano_shell_cmd_count = sizeof(nano_shell_cmds) / sizeof(nano_shell_cmds[0]);
+const size_t shell_engine_cmd_count = sizeof(shell_engine_cmds) / sizeof(shell_engine_cmds[0]);
 
 /* The start -------------------------------------------------------------------*/
 
 static void init_main(void *arg)
 {
 	(void)arg;
-	if (nano_telnet_init("t$ ") != 0) {
-		report("RESULT nano_telnet_init failed");
+	if (shell_telnet_init("t$ ") != 0) {
+		report("RESULT shell_telnet_init failed");
 		_exit(1);
 	}
 	if (K_THREAD_DEFINE_START(zperf_server_tid) != 0) {
@@ -456,8 +456,8 @@ int main(int argc, char **argv)
 	test_telnet_port = (uint16_t)atoi(argv[1]);
 	setvbuf(stdout, NULL, _IONBF, 0);
 
-	nano_console_init(&usb, "usb", usb_out, NULL);
-	nano_console_set_default(&usb);
+	shell_console_init(&usb, "usb", usb_out, NULL);
+	shell_console_set_default(&usb);
 	if (xTaskCreate(init_main, "main", TASK_STACK / sizeof(StackType_t), NULL, APP_PRIO_MAIN,
 			NULL) != pdPASS) {
 		return 2;

@@ -13,7 +13,7 @@
 # zperf_shell.c), each with the prelude of the shared sources
 # (common_prelude.h), as in compat.cmake.  The application starts the
 # server's thread with K_THREAD_DEFINE_START(zperf_server_tid) and lists
-# the command in its table (NANO_SHELL_CMD(zperf)).
+# the command in its table (SHELL_ENGINE_CMD(zperf)).
 
 function(freertos_zperf target)
   set(zperf_common_sources

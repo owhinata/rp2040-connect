@@ -2,7 +2,7 @@
 /* The FreeRTOS part of <zephyr/shell/shell.h> of the Zephyr compatibility
  * layer (common/compat/zephyr/shell/shell.h, which includes this file):
  * struct shell, a shell backend.  On FreeRTOS a backend is a console, the
- * terminal of one shell session (nano_console.h, which holds the struct):
+ * terminal of one shell session (shell_console.h, which holds the struct):
  * it lives as long as the system, as Zephyr's shell instances do, and the
  * output to it from any task goes to that terminal (zshell_os_impl.h).
  * NuttX's is nuttx/drivers/compat/zephyr_os_shell.h.
@@ -19,11 +19,11 @@
  */
 #include <zephyr/sys/sys_getopt.h>
 
-struct nano_console;
+struct shell_console;
 struct shell_static_entry;
 
 struct shell {
-	struct nano_console *console;
+	struct shell_console *console;
 	/* The command that runs on this session (its handler), for
 	 * shell_help() (Zephyr: the shell context's active_cmd).
 	 */

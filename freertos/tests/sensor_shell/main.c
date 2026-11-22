@@ -69,9 +69,9 @@
 #include "imu_cal.h"
 #include "kv_store.h"
 #include "lsm6dso_sensor.h"
-#include "nano_console.h"
+#include "shell_console.h"
 #include "gpio_os.h"
-#include "nano_shell.h"
+#include "shell_engine.h"
 #include "pico/stdio.h"
 #include "priorities.h"
 #include "zephyr_compat.h"
@@ -127,7 +127,7 @@ void vApplicationTickHook(void)
 	z_host_isr_depth--;
 }
 
-/* The allocations of zshell.c and nano_console.c, with the scheduler
+/* The allocations of zshell.c and shell_console.c, with the scheduler
  * suspended (as in freertos/tests/shell).
  */
 void *test_calloc(size_t n, size_t size);
@@ -165,15 +165,15 @@ void test_free(void *p)
 
 int stdio_put_string(const char *s, int len, bool newline, bool cr_translation)
 {
-	struct nano_console *con = nano_console_current();
+	struct shell_console *con = shell_console_current();
 
 	(void)cr_translation;
 	if (len < 0) {
 		len = (int)strlen(s);
 	}
-	nano_console_write(con, s, (size_t)len);
+	shell_console_write(con, s, (size_t)len);
 	if (newline) {
-		nano_console_write(con, "\n", 1);
+		shell_console_write(con, "\n", 1);
 	}
 	return len;
 }
@@ -566,20 +566,20 @@ SHELL_STATIC_SUBCMD_SET_CREATE(imu_commands,
 			       SHELL_SUBCMD_SET_END);
 SHELL_CMD_REGISTER(imu, &imu_commands, "IMU RAW streaming", NULL);
 
-NANO_SHELL_CMD_DECLARE(sensor);
+SHELL_ENGINE_CMD_DECLARE(sensor);
 
-const struct nano_shell_cmd nano_shell_cmds[] = {
-	NANO_SHELL_CMD(imu),
-	NANO_SHELL_CMD(sensor),
+const struct shell_engine_cmd shell_engine_cmds[] = {
+	SHELL_ENGINE_CMD(imu),
+	SHELL_ENGINE_CMD(sensor),
 };
 
-const size_t nano_shell_cmd_count = sizeof(nano_shell_cmds) / sizeof(nano_shell_cmds[0]);
+const size_t shell_engine_cmd_count = sizeof(shell_engine_cmds) / sizeof(shell_engine_cmds[0]);
 
 /* Two sessions on consoles that capture -----------------------------------*/
 
 struct session {
 	const char *prompt;
-	struct nano_console console;
+	struct shell_console console;
 	struct cli cli;
 	QueueHandle_t lines;
 	SemaphoreHandle_t done;
@@ -609,7 +609,7 @@ static void fail_sessions(void)
 	}
 }
 
-static void capture_out(struct nano_console *con, const char *buf, size_t len)
+static void capture_out(struct shell_console *con, const char *buf, size_t len)
 {
 	struct session *s = con->ctx;
 
@@ -627,13 +627,13 @@ static void capture_out(struct nano_console *con, const char *buf, size_t len)
 
 static void cli_write(void *ctx, const char *text, size_t len)
 {
-	nano_console_write(ctx, text, len);
+	shell_console_write(ctx, text, len);
 }
 
 static void cli_execute(void *ctx, char *line)
 {
 	(void)ctx;
-	(void)nano_shell_execute(line);
+	(void)shell_engine_execute(line);
 }
 
 static void session_main(void *arg)
@@ -641,7 +641,7 @@ static void session_main(void *arg)
 	struct session *s = arg;
 	const char *line;
 
-	nano_console_bind(NULL, &s->console);
+	shell_console_bind(NULL, &s->console);
 	cli_init(&s->cli, s->prompt, cli_write, cli_execute, &s->console);
 	for (;;) {
 		xQueueReceive(s->lines, &line, portMAX_DELAY);
@@ -1048,14 +1048,14 @@ int main(void)
 		s->connected = true;
 		s->lines = xQueueCreate(1, sizeof(const char *));
 		s->done = xSemaphoreCreateBinary();
-		nano_console_init(&s->console, s->prompt, capture_out, s);
+		shell_console_init(&s->console, s->prompt, capture_out, s);
 		if (xTaskCreate(session_main, "session", SESSION_STACK / sizeof(StackType_t), s,
 				APP_PRIO_SHELL, NULL) != pdPASS) {
 			return 2;
 		}
 	}
 	/* The tasks bound to no console print nowhere (none should). */
-	nano_console_set_default(NULL);
+	shell_console_set_default(NULL);
 	if (xTaskCreate(test_main, "main", SESSION_STACK / sizeof(StackType_t), NULL,
 			APP_PRIO_SHELL - 1, NULL) != pdPASS) {
 		return 2;

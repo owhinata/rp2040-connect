@@ -5,7 +5,7 @@
  * -Wl,--wrap=<name> (freertos/drivers/compat/compat.cmake).  On stdout and
  * stderr they go the way of the Pico SDK's printf() (pico_stdio's
  * vprintf() and stdio_put_string(), which write to the calling task's
- * console, freertos/drivers/shell/nano_stdio.c) instead of newlib's FILE:
+ * console, freertos/drivers/shell/shell_stdio.c) instead of newlib's FILE:
  *
  * - order: newlib would buffer stdout while printf() and putchar() of the
  *   SDK go out at once; the help layout of subcmd.c mixes fwrite() and

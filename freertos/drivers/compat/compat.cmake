@@ -64,9 +64,9 @@
 #   common/compat (the Zephyr headers), common/compat/log and common/shell;
 # - the definitions every source sees: Z_SHELL_CMD_ROOT_GLOBAL (a
 #   SHELL_CMD_REGISTER() makes the root z_shell_root_<syntax> for the
-#   application's table, nano_shell.h), CONFIG_GETOPT_LONG=1 (Zephyr's
+#   application's table, shell_engine.h), CONFIG_GETOPT_LONG=1 (Zephyr's
 #   option, which changes struct sys_getopt_state), PICO_STDOUT_MUTEX=0
-#   (each console has its own, nano_stdio.h);
+#   (each console has its own, shell_stdio.h);
 # - the prelude of the shared sources (common_prelude.h, -include on each
 #   source under common/ only, as the NuttX build does; not on the network
 #   part, common/compat/net_offload and common/compat/libc_net, nor on the
@@ -78,7 +78,7 @@
 # os_clock.h on its include path, a tick hook that calls
 # zephyr_compat_tick() (common/compat/kernel_generic/zephyr_compat_os.h),
 # the table of commands
-# (nano_shell_cmds[]), and calls zephyr_compat_initialize()
+# (shell_engine_cmds[]), and calls zephyr_compat_initialize()
 # (zephyr_compat.h) before the scheduler starts.
 
 get_filename_component(FREERTOS_COMPAT_DIR ${CMAKE_CURRENT_LIST_DIR} ABSOLUTE)
@@ -142,9 +142,9 @@ function(freertos_zephyr_compat target)
     ${common_log_sources}
     ${FREERTOS_SHELL_ENGINE_DIR}/cli.c
     ${FREERTOS_DRIVERS_DIR}/shell/getopt_state.c
-    ${FREERTOS_DRIVERS_DIR}/shell/nano_console.c
-    ${FREERTOS_SHELL_ENGINE_DIR}/nano_shell.c
-    ${FREERTOS_DRIVERS_DIR}/shell/nano_stdio.c
+    ${FREERTOS_DRIVERS_DIR}/shell/shell_console.c
+    ${FREERTOS_SHELL_ENGINE_DIR}/shell_engine.c
+    ${FREERTOS_DRIVERS_DIR}/shell/shell_stdio.c
     ${FREERTOS_SHELL_ENGINE_DIR}/shell_argv.c
     ${FREERTOS_DRIVERS_DIR}/libc/stdio_wrap.c
     ${FREERTOS_LIBC_NET_DIR}/inet.c

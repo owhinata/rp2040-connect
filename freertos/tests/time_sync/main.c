@@ -67,8 +67,8 @@
 #include <zephyr/shell/shell.h>
 #include <zephyr/sys/clock.h>
 
-#include "nano_console.h"
-#include "nano_shell.h"
+#include "shell_console.h"
+#include "shell_engine.h"
 #include "priorities.h"
 #include "time_sync.h"
 #include "zephyr_compat.h"
@@ -97,7 +97,7 @@ void vApplicationTickHook(void)
 
 extern k_tid_t time_sync_tid;
 
-/* The allocations of zshell.c and nano_console.c, with the scheduler
+/* The allocations of zshell.c and shell_console.c, with the scheduler
  * suspended (as in freertos/tests/shell).
  */
 void *test_calloc(size_t n, size_t size);
@@ -137,15 +137,15 @@ int stdio_put_string(const char *s, int len, bool newline, bool cr_translation);
 
 int stdio_put_string(const char *s, int len, bool newline, bool cr_translation)
 {
-	struct nano_console *con = nano_console_current();
+	struct shell_console *con = shell_console_current();
 
 	(void)cr_translation;
 	if (len < 0) {
 		len = (int)strlen(s);
 	}
-	nano_console_write(con, s, (size_t)len);
+	shell_console_write(con, s, (size_t)len);
 	if (newline) {
-		nano_console_write(con, "\n", 1);
+		shell_console_write(con, "\n", 1);
 	}
 	return len;
 }
@@ -411,9 +411,9 @@ static struct {
 	size_t len;
 } cap;
 
-static struct nano_console con;
+static struct shell_console con;
 
-static void capture_out(struct nano_console *c, const char *buf, size_t len)
+static void capture_out(struct shell_console *c, const char *buf, size_t len)
 {
 	(void)c;
 	vTaskSuspendAll();
@@ -437,7 +437,7 @@ static int run(const char *line)
 	char buf[128];
 
 	strcpy(buf, line);
-	return nano_shell_execute(buf);
+	return shell_engine_execute(buf);
 }
 
 static void fail(const char *what)
@@ -469,13 +469,13 @@ static void expect_item(const char *name, const char *value)
 	expect_text(line);
 }
 
-NANO_SHELL_CMD_DECLARE(ntp);
+SHELL_ENGINE_CMD_DECLARE(ntp);
 
-const struct nano_shell_cmd nano_shell_cmds[] = {
-	NANO_SHELL_CMD(ntp),
+const struct shell_engine_cmd shell_engine_cmds[] = {
+	SHELL_ENGINE_CMD(ntp),
 };
 
-const size_t nano_shell_cmd_count = sizeof(nano_shell_cmds) / sizeof(nano_shell_cmds[0]);
+const size_t shell_engine_cmd_count = sizeof(shell_engine_cmds) / sizeof(shell_engine_cmds[0]);
 
 /* Helpers ----------------------------------------------------------------------*/
 
@@ -820,7 +820,7 @@ static void test_disconnect(void)
 static void runner(void *arg)
 {
 	(void)arg;
-	nano_console_bind(NULL, &con);
+	shell_console_bind(NULL, &con);
 	test_realtime_clock();
 	test_mono();
 	test_start();
@@ -835,8 +835,8 @@ static void runner(void *arg)
 
 int main(void)
 {
-	nano_console_init(&con, "usb", capture_out, NULL);
-	nano_console_set_default(&con);
+	shell_console_init(&con, "usb", capture_out, NULL);
+	shell_console_set_default(&con);
 	if (zephyr_compat_initialize() != 0) {
 		return 2;
 	}

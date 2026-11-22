@@ -13,8 +13,8 @@
  * lsm6dso_driver_api stay static): in place of the Zephyr build's devicetree
  * instance macros (port/zephyr/lsm6dso_instance.h), the one device with the
  * devicetree's values, as the NuttX build's port/nuttx/lsm6dso_instance.h
- * defines it from its board header.  The application initializes it (nano_lsm6dso_initialize(),
- * nano_lsm6dso.h) where Zephyr does before main() (POST_KERNEL,
+ * defines it from its board header.  The application initializes it (lsm6dso_board_initialize(),
+ * lsm6dso_board.h) where Zephyr does before main() (POST_KERNEL,
  * CONFIG_SENSOR_INIT_PRIORITY 90).
  */
 

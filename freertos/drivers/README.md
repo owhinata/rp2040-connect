@@ -28,16 +28,16 @@ semaphores, `k_poll()`, timeouts, sleeps and threads on about twenty primitives 
 | `common/compat/selftest/` | The layer's self-test, OS-independent (`zephyr_selftest.c`; `zephyr_selftest.h` lists what an OS's part and a board's part provide) |
 | `common/compat/net_offload/` | The layer's network part, OS-independent: Zephyr's socket layer (reduced copies of Zephyr's files in `subsys/net/lib/sockets/` and `lib/os/zvfs/`), the network interface (`zephyr_net_if.c`) and the start of the network part (`zephyr_net_init.c`, `zephyr_net_initialize()`), `k_heap` (`zephyr_heap.c`), their headers under `include/` (`zephyr/net/`, `zephyr/sys/fdtable.h`, `zephyr_net_init.h`, `zephyr_heap.h`, which `zephyr_os.h` includes) |
 | `common/compat/libc_net/` | The socket headers newlib lacks (`include/`, types and constants only), `inet_pton` and `inet_ntop` (`inet.c`) |
-| `drivers/shell/` | The consoles and each task's output (`nano_console.c`), the replacement of the Pico SDK's stdio driver (`nano_stdio.c`), getopt per session (`getopt_state.c`), the shell's OS part (`zshell_os_impl.h`, `zephyr_os_shell.h`) |
-| `common/compat/shell_engine/` | The shell for an OS without one of its own, OS-independent: line editing (`cli.c`), the command table and execution (`nano_shell.c`), a copy of Zephyr's argument split (`shell_argv.c`) |
+| `drivers/shell/` | The consoles and each task's output (`shell_console.c`), the replacement of the Pico SDK's stdio driver (`shell_stdio.c`), getopt per session (`getopt_state.c`), the shell's OS part (`zshell_os_impl.h`, `zephyr_os_shell.h`) |
+| `common/compat/shell_engine/` | The shell for an OS without one of its own, OS-independent: line editing (`cli.c`), the command table and execution (`shell_engine.c`), a copy of Zephyr's argument split (`shell_argv.c`) |
 | `drivers/libc/` | Wrappers of newlib's FILE functions (`stdio_wrap.c`) |
 | `drivers/kv/` | The flash boundary of the key-value store (`nano_flash_kv.c`) and the linker script override (`ld/`, `kv.cmake`) |
 | `drivers/nina/` | Only `nina.cmake`, which adds the NINA driver to the build. The driver is in `common/drivers/nina/`, and this build's parts are its FreeRTOS binding `common/drivers/nina/port/freertos/`: the `nina_os.h` boundary (`nina_os.c`), the passthrough's host side (`nina_passthrough_os.c`), SPI1 and the module's lines on the Pico SDK (`nina_bus_rp2040.c`), the passthrough's module side (`nina_passthrough_bus_rp2040.c`: UART1, the module's lines, the watchdog's scratch registers, the LED); the sockets and the interface are the Zephyr binding's (`common/drivers/nina/port/zephyr/nina_socket.c`, `nina_net.c`) |
 | `drivers/i2c_dw/` | `i2c_dw.cmake`, which adds the I2C driver to the build (I2C0, and I2C1 as an option), and the self-test (`i2c_dw_selftest.[ch]`). The driver is in `common/drivers/i2c_dw/`, and this build's parts are its FreeRTOS binding `common/drivers/i2c_dw/port/freertos/`: the `i2c_dw_os.h` boundary on FreeRTOS and the TIMER (`i2c_dw_os_impl.h`), the devices with Zephyr's I2C API, their interrupts, resets and pins (`i2c_dw_instance.h`), their start (`i2c_dw_controllers_rp2040.h`), I2C0's DMA reads on the Pico SDK's DMA (`i2c_dw_dma_os_rp2040.c`) |
-| `drivers/lsm6dso/` | The LSM6DSOX's build rules (`lsm6dso.cmake`), its initialization (`nano_lsm6dso.c`), self-test |
+| `drivers/lsm6dso/` | The LSM6DSOX's build rules (`lsm6dso.cmake`), its initialization (`lsm6dso_board.c`), self-test |
 | `drivers/imu/` | Builds in the acquisition service, MQTT and time synchronization (`common/imu/`; `imu.cmake`), the prelude of `time_sync.c` |
 | `drivers/wifi/` | Builds in Wi-Fi (the NINA core's `common/drivers/nina/nina_wifi.c` with its Zephyr binding `common/drivers/nina/port/zephyr/nina_net.c`, credentials, reconnection) and `ifconfig` |
-| `drivers/telnet/` | The Telnet shell (`nano_telnet.c`) |
+| `drivers/telnet/` | The Telnet shell (`shell_telnet.c`) |
 | `drivers/zperf/` | Builds in `zperf` (the code is `common/compat/zperf_iperf3.c` and `zephyr_zperf_shell.c`) |
 | `drivers/sensor_shell/` | The FreeRTOS part of the `sensor` command (`sensor_shell_os.[ch]`) |
 | `drivers/include/` | The FreeRTOS part of `app_log.h` (`app_log_os.h`) and of the RAM log (`log_ram_os_impl.h`: the ring's section, the interrupt mask, the TIMER) |
@@ -135,14 +135,14 @@ the interval of interest); timed by the TIMER.
 
 - Commands are written with Zephyr's shell API (`SHELL_CMD_REGISTER()` and so on); matching, help,
   wildcards and the argument count check are done by the shared `common/shell/zshell.c`. The command table
-  and the line editor are `common/compat/shell_engine/` (`nano_shell.c`, `cli.c`), the commands of this build only are in `app/usb-console/src/commands.c`.
-- A console (`nano_console.c`) is a session's terminal (USB or Telnet); each task is bound to one console
+  and the line editor are `common/compat/shell_engine/` (`shell_engine.c`, `cli.c`), the commands of this build only are in `app/usb-console/src/commands.c`.
+- A console (`shell_console.c`) is a session's terminal (USB or Telnet); each task is bound to one console
   (a thread local storage pointer), and its `printf()` and `fprintf(stderr)` go there. Tasks bound to no
-  console write to USB. The replacement of the Pico SDK's stdio driver (`nano_stdio.c`) and `--wrap` of
+  console write to USB. The replacement of the Pico SDK's stdio driver (`shell_stdio.c`) and `--wrap` of
   newlib's FILE functions (`drivers/libc/stdio_wrap.c`) route every output path through it.
 - USB (`main.c`): the prompt appears when the terminal opens the port. When the terminal stops reading,
   the Pico SDK's driver waits up to 500 ms for room in its 64-byte buffer and drops the rest.
-- Telnet (`drivers/telnet/nano_telnet.c`): port 23, one client at a time. As Zephyr's `shell_telnet.c`,
+- Telnet (`drivers/telnet/shell_telnet.c`): port 23, one client at a time. As Zephyr's `shell_telnet.c`,
   it sends nothing on connection, takes Telnet commands out without answering, and does not echo. Where it
   differs from Zephyr is listed at the top of the file (it looks once more whether the first client has
   closed before refusing a second, a new client starts with an empty line, and so on).
@@ -239,7 +239,7 @@ boundary (the four functions of `common/compat/nano_flash_kv.h`, `drivers/kv/nan
   `net_offload/zephyr_net_init.c` registers the interface at the start, as Zephyr's `net_init()`); this build has no
   network layer of its own, so it uses the Zephyr binding. The `wifi` command
   is `common/compat/zephyr_wifi_shell.c`, keeping only the options this board can use; `wifi cred` is an
-  unchanged copy of Zephyr's `wifi_credentials_shell.c`. `ifconfig` (`drivers/wifi/nano_ifconfig.c`)
+  unchanged copy of Zephyr's `wifi_credentials_shell.c`. `ifconfig` (`drivers/wifi/ifconfig_shell.c`)
   prints in the NuttX build's format.
 
 - The esptool passthrough (`nina passthrough confirm`): the NINA driver's core shared with the Zephyr and

@@ -7,8 +7,8 @@
  * includes none of the layer's Zephyr headers.
  */
 
-#ifndef FREERTOS_DRIVERS_LSM6DSO_NANO_LSM6DSO_H
-#define FREERTOS_DRIVERS_LSM6DSO_NANO_LSM6DSO_H
+#ifndef FREERTOS_DRIVERS_LSM6DSO_LSM6DSO_BOARD_H
+#define FREERTOS_DRIVERS_LSM6DSO_LSM6DSO_BOARD_H
 
 /* Initializes the LSM6DSOX (lsm6dsox@6a) with the shared driver, as Zephyr
  * does before main() (POST_KERNEL, CONFIG_SENSOR_INIT_PRIORITY 90, after
@@ -23,6 +23,6 @@
  * device_is_ready() is false, as in Zephyr) and the driver has logged why.
  * The start goes on in every case.
  */
-int nano_lsm6dso_initialize(void);
+int lsm6dso_board_initialize(void);
 
-#endif /* FREERTOS_DRIVERS_LSM6DSO_NANO_LSM6DSO_H */
+#endif /* FREERTOS_DRIVERS_LSM6DSO_LSM6DSO_BOARD_H */

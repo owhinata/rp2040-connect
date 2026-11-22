@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: MIT */
-/* The start of the LSM6DSOX on FreeRTOS (nano_lsm6dso.h): the device that
+/* The start of the LSM6DSOX on FreeRTOS (lsm6dso_board.h): the device that
  * the build's lsm6dso_instance.h (common/drivers/lsm6dso/port/freertos)
  * defines at the end of the shared driver's binding
  * (common/drivers/lsm6dso/port/zephyr/lsm6dso_sensor.c), on the device i2c0 of the I2C core
@@ -12,9 +12,9 @@
 
 #include <zephyr/device.h>
 
-#include "nano_lsm6dso.h"
+#include "lsm6dso_board.h"
 
-int nano_lsm6dso_initialize(void)
+int lsm6dso_board_initialize(void)
 {
 	if (!device_is_ready(DEVICE_DT_GET(DT_NODELABEL(i2c0)))) {
 		return -ENODEV;

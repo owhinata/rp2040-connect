@@ -1,11 +1,11 @@
 /* SPDX-License-Identifier: MIT */
-/* The consoles and the output of each task (nano_console.h). */
+/* The consoles and the output of each task (shell_console.h). */
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
-#include "nano_console.h"
+#include "shell_console.h"
 #include "zephyr_os_port.h"
 
 /* The longest a writer waits for another one on the same console
@@ -13,13 +13,13 @@
  */
 #define LOCK_TIMEOUT_MS 1000
 
-/* The text of nano_console_vprintf() that is formatted on the stack. */
+/* The text of shell_console_vprintf() that is formatted on the stack. */
 #define FORMAT_BUF_SIZE 128
 
-static struct nano_console *default_console;
+static struct shell_console *default_console;
 
-void nano_console_init(struct nano_console *con, const char *name, nano_console_out_t out,
-		       void *ctx)
+void shell_console_init(struct shell_console *con, const char *name, shell_console_out_t out,
+			void *ctx)
 {
 	memset(con, 0, sizeof(*con));
 	con->name = name;
@@ -37,37 +37,37 @@ void nano_console_init(struct nano_console *con, const char *name, nano_console_
 #endif
 }
 
-void nano_console_set_default(struct nano_console *con)
+void shell_console_set_default(struct shell_console *con)
 {
 	default_console = con;
 }
 
-void nano_console_bind(TaskHandle_t task, struct nano_console *con)
+void shell_console_bind(TaskHandle_t task, struct shell_console *con)
 {
-	vTaskSetThreadLocalStoragePointer(task, NANO_CONSOLE_TLS_INDEX, con);
+	vTaskSetThreadLocalStoragePointer(task, SHELL_CONSOLE_TLS_INDEX, con);
 }
 
-struct nano_console *nano_console_bound(void)
+struct shell_console *shell_console_bound(void)
 {
 	if (xTaskGetSchedulerState() == taskSCHEDULER_NOT_STARTED) {
 		return NULL;
 	}
-	return pvTaskGetThreadLocalStoragePointer(NULL, NANO_CONSOLE_TLS_INDEX);
+	return pvTaskGetThreadLocalStoragePointer(NULL, SHELL_CONSOLE_TLS_INDEX);
 }
 
-struct nano_console *nano_console_current(void)
+struct shell_console *shell_console_current(void)
 {
-	struct nano_console *con;
+	struct shell_console *con;
 
 	if (z_os_in_isr()) {
 		return NULL;
 	}
-	con = nano_console_bound();
+	con = shell_console_bound();
 	return con != NULL ? con : default_console;
 }
 
 /* "\n" -> "\r\n", in as few calls of out as the line ends allow. */
-static void write_crlf(struct nano_console *con, const char *buf, size_t len)
+static void write_crlf(struct shell_console *con, const char *buf, size_t len)
 {
 	static const char crlf[] = "\r\n";
 	size_t start = 0;
@@ -91,7 +91,7 @@ static void write_crlf(struct nano_console *con, const char *buf, size_t len)
 	}
 }
 
-void nano_console_write(struct nano_console *con, const char *buf, size_t len)
+void shell_console_write(struct shell_console *con, const char *buf, size_t len)
 {
 	bool locked;
 
@@ -101,7 +101,7 @@ void nano_console_write(struct nano_console *con, const char *buf, size_t len)
 	locked = xTaskGetSchedulerState() != taskSCHEDULER_NOT_STARTED;
 	if (locked) {
 		uint32_t ms =
-			nano_console_bound() == con ? LOCK_TIMEOUT_MS : con->other_lock_timeout_ms;
+			shell_console_bound() == con ? LOCK_TIMEOUT_MS : con->other_lock_timeout_ms;
 
 		if (xSemaphoreTake(con->lock, pdMS_TO_TICKS(ms)) != pdTRUE) {
 			return;
@@ -113,22 +113,22 @@ void nano_console_write(struct nano_console *con, const char *buf, size_t len)
 	}
 }
 
-void nano_console_set_other_lock_timeout(struct nano_console *con, uint32_t ms)
+void shell_console_set_other_lock_timeout(struct shell_console *con, uint32_t ms)
 {
 	con->other_lock_timeout_ms = ms;
 }
 
-bool nano_console_lock(struct nano_console *con, uint32_t timeout_ms)
+bool shell_console_lock(struct shell_console *con, uint32_t timeout_ms)
 {
 	return xSemaphoreTake(con->lock, pdMS_TO_TICKS(timeout_ms)) == pdTRUE;
 }
 
-void nano_console_unlock(struct nano_console *con)
+void shell_console_unlock(struct shell_console *con)
 {
 	xSemaphoreGive(con->lock);
 }
 
-void nano_console_vprintf(struct nano_console *con, const char *fmt, va_list args)
+void shell_console_vprintf(struct shell_console *con, const char *fmt, va_list args)
 {
 	char buf[FORMAT_BUF_SIZE];
 	char *text = buf;
@@ -153,7 +153,7 @@ void nano_console_vprintf(struct nano_console *con, const char *fmt, va_list arg
 			n = sizeof(buf) - 1;
 		}
 	}
-	nano_console_write(con, text, (size_t)n);
+	shell_console_write(con, text, (size_t)n);
 	if (text != buf) {
 		free(text);
 	}

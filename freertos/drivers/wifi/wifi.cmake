@@ -40,7 +40,7 @@
 #   driver serves; wifi_shell_init() at boot) and "wifi cred" (the unchanged
 #   copy of Zephyr's wifi_credentials_shell.c in
 #   common/compat/subsys/net/lib/wifi_credentials);
-# - the "ifconfig" command (nano_ifconfig.c here: the NuttX build's lines
+# - the "ifconfig" command (ifconfig_shell.c here: the NuttX build's lines
 #   for wlan0, on the interface's state);
 # - the include directories: this directory, common/imu (wifi_profile.h,
 #   kv_store.h).
@@ -81,7 +81,7 @@ function(freertos_wifi target)
   target_sources(${target} PRIVATE
     ${FREERTOS_NET_OFFLOAD_DIR}/zephyr_net_if.c
     ${FREERTOS_NET_OFFLOAD_DIR}/zephyr_net_init.c
-    ${FREERTOS_WIFI_DIR}/nano_ifconfig.c
+    ${FREERTOS_WIFI_DIR}/ifconfig_shell.c
     ${wifi_common_sources}
     ${wifi_zephyr_copies}
   )

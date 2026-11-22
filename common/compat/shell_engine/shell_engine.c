@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 /* The commands of the FreeRTOS build's shell and their execution
- * (nano_shell.h).
+ * (shell_engine.h).
  */
 
 #include <stdio.h>
@@ -10,19 +10,19 @@
 #include <zephyr/shell/shell.h>
 #include <zephyr/sys/sys_getopt.h>
 
-#include "nano_shell.h"
+#include "shell_engine.h"
 #include "shell_argv.h"
 #include "subcmd.h"
 
 /* Zephyr's SHELL_MSG_CMD_NOT_FOUND. */
 #define MSG_CMD_NOT_FOUND ": command not found"
 
-static const char *cmd_name(const struct nano_shell_cmd *cmd)
+static const char *cmd_name(const struct shell_engine_cmd *cmd)
 {
 	return cmd->root != NULL ? cmd->root->syntax : cmd->name;
 }
 
-static const char *cmd_help(const struct nano_shell_cmd *cmd)
+static const char *cmd_help(const struct shell_engine_cmd *cmd)
 {
 	const char *help = cmd->root != NULL ? cmd->root->help : cmd->help;
 
@@ -32,11 +32,11 @@ static const char *cmd_help(const struct nano_shell_cmd *cmd)
 	return help;
 }
 
-static const struct nano_shell_cmd *find(const char *name)
+static const struct shell_engine_cmd *find(const char *name)
 {
-	for (size_t i = 0; i < nano_shell_cmd_count; i++) {
-		if (strcmp(cmd_name(&nano_shell_cmds[i]), name) == 0) {
-			return &nano_shell_cmds[i];
+	for (size_t i = 0; i < shell_engine_cmd_count; i++) {
+		if (strcmp(cmd_name(&shell_engine_cmds[i]), name) == 0) {
+			return &shell_engine_cmds[i];
 		}
 	}
 	return NULL;
@@ -45,20 +45,20 @@ static const struct nano_shell_cmd *find(const char *name)
 /* z_shell_help_subcmd_print() for the root commands, with
  * help_item_print()'s layout (common/shell/zshell.c).
  */
-void nano_shell_help(void)
+void shell_engine_help(void)
 {
 	size_t longest = 0;
 
-	for (size_t i = 0; i < nano_shell_cmd_count; i++) {
-		size_t n = strlen(cmd_name(&nano_shell_cmds[i]));
+	for (size_t i = 0; i < shell_engine_cmd_count; i++) {
+		size_t n = strlen(cmd_name(&shell_engine_cmds[i]));
 
 		longest = n > longest ? n : longest;
 	}
 	printf("Available commands:\n");
-	for (size_t i = 0; i < nano_shell_cmd_count; i++) {
-		const char *help = cmd_help(&nano_shell_cmds[i]);
+	for (size_t i = 0; i < shell_engine_cmd_count; i++) {
+		const char *help = cmd_help(&shell_engine_cmds[i]);
 
-		printf("  %-*s", (int)longest, cmd_name(&nano_shell_cmds[i]));
+		printf("  %-*s", (int)longest, cmd_name(&shell_engine_cmds[i]));
 		if (help == NULL) {
 			putchar('\n');
 			continue;
@@ -69,14 +69,14 @@ void nano_shell_help(void)
 	fflush(stdout);
 }
 
-int nano_shell_execute(char *line)
+int shell_engine_execute(char *line)
 {
-	const char *argv[NANO_SHELL_ARGC_MAX + 2];
-	const struct nano_shell_cmd *cmd;
+	const char *argv[SHELL_ENGINE_ARGC_MAX + 2];
+	const struct shell_engine_cmd *cmd;
 	size_t argc;
 	char quote;
 
-	quote = z_shell_make_argv(&argc, argv, line, NANO_SHELL_ARGC_MAX + 1);
+	quote = z_shell_make_argv(&argc, argv, line, SHELL_ENGINE_ARGC_MAX + 1);
 	if (argc == 0) {
 		return 0;
 	}
