@@ -30,7 +30,7 @@ newlib に無い POSIX のネットワークのヘッダーは `common/compat/li
 | `common/compat/shell_engine/` | 自分のシェルを持たない OS のためのシェル（互換層の API の上）: 行編集（`cli.c`）、コマンドの表と実行と `help`（`shell_engine.c`）、Zephyr の引数の分割の写し（`shell_argv.c`）、コンソールとスレッドごとの出力先（`shell_console.c`）、セッションごとの getopt（`getopt_state.c`）、`zshell.c` に対するシェルのバックエンド（`zshell_os_impl.h`・`zephyr_os_shell.h`）、シリアルのセッション（`shell_serial.c`。OS が用意するコンソールの経路は `shell_serial_os.h` が宣言する）、Telnet のシェル（`shell_telnet.c`） |
 | `drivers/libc/` | newlib の FILE 関数の差し替え（`stdio_wrap.c`） |
 | `drivers/kv/` | KV のフラッシュの操作を Pico SDK で（`rp2040_flash_kv_os.c`。上は RP2040 の共有の部分 `common/chip/rp2040/rp2040_flash_kv.c`）とリンカースクリプトの差し替え（`ld/`、`kv.cmake`） |
-| `drivers/nina/` | NINA のドライバーをビルドに入れる `nina.cmake` だけ。ドライバーは `common/drivers/nina/` にあり、FreeRTOS 版の部分は FreeRTOS へのつなぎ `common/drivers/nina/port/freertos/`: 境界 `nina_os.h` の実装（`nina_os.c`）、中継のホスト側（`nina_passthrough_os.c`）、Pico SDK で書いた SPI1 と制御線（`nina_bus_rp2040.c`）、中継のモジュール側（`nina_passthrough_bus_rp2040.c`: UART1、モジュールの線、watchdog の scratch レジスター、LED）。ソケットとインターフェースは Zephyr へのつなぎのもの（`common/drivers/nina/port/zephyr/nina_socket.c`・`nina_net.c`） |
+| `drivers/nina/` | NINA のドライバーをビルドに入れる `nina.cmake` だけ。ドライバーは `common/drivers/nina/` にあり、FreeRTOS 版の部分は FreeRTOS へのつなぎ `common/drivers/nina/port/freertos/`: 境界 `nina_os.h` の実装（`nina_os.c`）、中継のホスト側（`nina_passthrough_os.c`）、Pico SDK で書いた SPI1 と制御線（`nina_bus_rp2040.c`。長い転送の DMA は `nina_bus_dma_rp2040.c`）、中継のモジュール側（`nina_passthrough_bus_rp2040.c`: UART1、モジュールの線、watchdog の scratch レジスター、LED）。ソケットとインターフェースは Zephyr へのつなぎのもの（`common/drivers/nina/port/zephyr/nina_socket.c`・`nina_net.c`） |
 | `drivers/i2c_dw/` | I2C のドライバー（I2C0 と、オプションで I2C1）をビルドに入れる `i2c_dw.cmake` と、自己診断（`i2c_dw_selftest.[ch]`）。ドライバーは `common/drivers/i2c_dw/` にあり、FreeRTOS 版の部分は FreeRTOS へのつなぎ `common/drivers/i2c_dw/port/freertos/`: FreeRTOS と TIMER の上の境界 `i2c_dw_os.h` の実装（`i2c_dw_os_impl.h`）、Zephyr の I2C の API を持つデバイスとその割り込み・リセット・ピン（`i2c_dw_instance.h`）、その起動（`i2c_dw_controllers_rp2040.h`）、Pico SDK の DMA での I2C0 の DMA 読み出し（`i2c_dw_dma_os_rp2040.c`） |
 | `drivers/lsm6dso/` | LSM6DSOX のビルドの規則（`lsm6dso.cmake`）と初期化（`lsm6dso_board.c`）、自己診断 |
 | `drivers/imu/` | 取得サービス・MQTT・時刻同期（`common/imu/`）の組み込み（`imu.cmake`）、`time_sync.c` の前置き |
@@ -176,7 +176,7 @@ FreeRTOS 版の flash の操作（`common/chip/rp2040/include/rp2040_flash_kv_os
 ## NINA-W102、ソケット、Wi-Fi
 
 - SPI の転送層・ソケットの表と命令・名前解決・Wi-Fi の操作は共有のコア（`common/drivers/nina/` の `internal/nina_proto.c`・`nina_sock.c`・
-  `nina_dns.c`・`nina_wifi.c`）です。FreeRTOS 版は境界 `nina_bus.h`（`common/drivers/nina/port/freertos/nina_bus_rp2040.c`: SPI1 をポーリングで 7.8125 MHz、
+  `nina_dns.c`・`nina_wifi.c`）です。FreeRTOS 版は境界 `nina_bus.h`（`common/drivers/nina/port/freertos/nina_bus_rp2040.c`: SPI1 を 7.8125 MHz で、64 バイト未満の転送は Zephyr と同じくポーリング、それ以上は呼んだタスクを眠らせて DMA（`nina_bus_dma_rp2040.c`。下記）、
   CS・READY・RESET・IRQ の 4 本。Zephyr のドライバーと同じ順と値で設定）と `nina_os.h`（コアの FreeRTOS へのつなぎ
   `common/drivers/nina/port/freertos/nina_os.c`。互換層を使わず FreeRTOS と Pico SDK で直接書いたもの: NINA のロック・名前解決のロック・
   Wi-Fi の操作のロックは優先度継承のある FreeRTOS の再帰ミューテックス、Wi-Fi のスレッドへの要求は 2 値セマフォ、「切り上げ + 1 tick」の
@@ -283,6 +283,21 @@ Pico SDK の既定のままです。整数の割り算は `pico_divider` のハ�
   `irq_set_exclusive_handler()` が panic します）、共有の線のハンドラーでほかのチャネルのフラグを消す。DMA の
   ブロックをリセットする、INTE0/INTE1・INTS0/INTS1・CHAN_ABORT を丸ごと書く（自分のチャネルのビットだけにする）。
   読み出しに DMA を使わせたいときに 12 チャネルすべてを持ち続ける（そのあいだ読み出しは割り込みに戻ります）。
+- **NINA の SPI の DMA**（`common/drivers/nina/port/freertos/nina_bus_dma_rp2040.c`）: 64 バイト以上の転送（SOCKET_SEND の本体、
+  長い読み出し）は、バスを最初に使うとき（通常のモードだけ。空きが 2 つ無ければすべてポーリングのまま）に
+  `dma_claim_unused_channel(false)` で取って持ち続ける 2 つのチャネルで行います。RX を先に（SSPDR からバッファーへ、またはバイト 1 つの
+  捨て先へ。DREQ 19）、次に SSPDMACR の TXDMAE・RXDMAE、次に TX（バッファーから SSPDR へ。DREQ 18）、どちらも 8 ビット。呼んだタスクは
+  NINA のタスク通知（番号 2）で、RX のチャネルの DMA_IRQ_1 の割り込み（`irq_add_shared_handler()` で加えた 2 つ目のハンドラーで、自分の
+  チャネルだけを見る）まで眠ります。そのあと SSPDMACR を戻し、SPI1 をポーリングの転送のあとと同じ状態（RX の FIFO が空、オーバーランの
+  印なし）にします。2 ms + 長さ / 256 ms で終わらなければ両方のチャネルを中断して `-EIO`、バイトが失われたとき（オーバーランの印）と
+  チャネルのバスのエラーも `-EIO`。コアはこれを要求のエラーとして返します（ソケットの呼び出しが `EIO` で失敗する）。3 つとも
+  `dmesg` に記録します（`<err> nina_bus: SPI1 DMA did not end in ...`・`SPI1 RX overrun by DMA ...`・`SPI1 DMA bus error ...`。
+  それぞれ 5 秒に 1 行まで、抑えた数を添える）。中断しても止まらないチャネルと、起動時に空きが 2 つ無いときは 1 回だけ記録し、
+  以後の転送はすべてポーリングです。短い転送とスケジューラーが動く前の転送はポーリングです。
+- **共有の割り込みハンドラー**: Pico SDK はすべての線のぶんを決まった数の枠に持ち（`PICO_MAX_SHARED_IRQ_HANDLERS`。USB の stdio が
+  あると既定は 6）、それを超えて加えると `hard_assert()` で止まります。使っているのは 6 つです: USBCTRL_IRQ の 2 つ（TinyUSB、
+  stdio_usb）、IO_IRQ_BANK0 の 2 つの生のハンドラー（`gpio_os_rp2040.c`、NINA の `nina_os.c`）、DMA_IRQ_1 の 2 つ（I2C0 の読み出し、
+  NINA の SPI）。アプリが 8 にしています（`app/usb-console/CMakeLists.txt`。枠 1 つで RAM 12 バイト）。
 - 割り込みの優先度は Pico SDK の既定の 0x80 のままで、デバイスの割り込みはすべて同じ高さです（NuttX 版と同じ。
   Zephyr 版は 0xC0）。
 - LSM6DSOX は共有のドライバー（`common/drivers/lsm6dso/`。Zephyr 版のドライバーで、コアの `lsm6dso.c`・`lsm6dso_stream.c`（FIFO の
@@ -337,7 +352,7 @@ spinlock、atomic、静的なスレッド、時分割、割り込みを 50 ms �
 | `tick` | tick の追いつき（`tick_catchup.h`）: 判定の 1 歩と、SysTick と CPU の模型（割り込みの遅れ、0〜60 tick の割り込みの停止）の上で、tick が TIMER より先に進まず、追いついたあとの遅れが 1 tick 以内であること |
 | `shell` | 2 つのセッションのシェル、行編集、出力先、`help` と汎用のコマンドとその出力 |
 | `kv` | フラッシュの境界と KV（Pico SDK のフラッシュ関数の偽物の上） |
-| `nina` | NINA の SPI と線の境界と、`nina_os.h` の FreeRTOS へのつなぎ（互換層なし。tick 1 ms と 4 ms で 2 回ビルド）: READY の割り込み待ち、IRQ の線のエッジの待ち（2 つのタスクを 1 つのエッジで起こす、時間切れ）、共有のバンクの割り込み、ロック、要求、sleep の tick 数、tick の一周をまたぐ時計 |
+| `nina` | NINA の SPI と線の境界（偽の DMA の上で長い転送の DMA も: しきい値、SPI1 の終わりの状態、共有の DMA_IRQ_1、時間切れと中断、失われたバイト、バスのエラー、それぞれのあとの転送、止まらないチャネル、空きの無いチャネル、記録するメッセージ）と、`nina_os.h` の FreeRTOS へのつなぎ（互換層なし。tick 1 ms と 4 ms で 2 回ビルド）: READY の割り込み待ち、IRQ の線のエッジの待ち（2 つのタスクを 1 つのエッジで起こす、時間切れ）、共有のバンクの割り込み、ロック、要求、sleep の tick 数、tick の一周をまたぐ時計 |
 | `i2c_dw` | I2C0 の境界とデバイス、Zephyr の I2C の API（2 回作る: i2c0 だけと、`CONFIG_I2C_DW_I2C1` 付き。後者は i2c1 の起動、ピン、転送、応答の無いアドレス、DMA を使わない長い読み出し、影響を受けない i2c0、2 つのタスクからの両バスの転送を加える）。つなぎのセマフォ、待ちの tick、スリープ、時計。Pico SDK の DMA の偽物の上の DMA の部分（`i2c_dw_dma_os_rp2040.c`）: チャネルの取得、設定、開始、共有のハンドラー（終了、バスエラー、ほかの利用者のチャネル）、停止、返却。その上のコアの DMA 読み出し: 読み出し、32 バイトの下限、フォールバック、TX と RX のバスエラー、タイムアウト、DMA 読み出しの無効、終わらない停止（隔離）、カウンター。コアの DMA のコマンド語 |
 | `gpio` | GPIO バンク 0 の境界、`gpio0`、FIFO の割り込み |
 | `imu` | アドレスの変換、`hwinfo` |

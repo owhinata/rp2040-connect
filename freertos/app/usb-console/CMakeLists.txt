@@ -135,6 +135,17 @@ target_compile_definitions(usb-console PRIVATE
   PICO_PANIC_FUNCTION=
 )
 
+# The SDK's chain slots of shared interrupt handlers (12 bytes of RAM each),
+# for every core and line together: its default with stdio_usb, 6, is
+# taken by USBCTRL_IRQ's two (TinyUSB's and stdio_usb's), IO_IRQ_BANK0's two
+# raw handlers (drivers/compat/rp2040/gpio_os_rp2040.c and the NINA's
+# nina_os.c) and DMA_IRQ_1's two (I2C0's reads and the NINA's SPI DMA); one
+# more would end in the SDK's hard_assert() when it is added.  8 leaves room
+# for two.
+target_compile_definitions(usb-console PRIVATE
+  PICO_MAX_SHARED_IRQ_HANDLERS=8
+)
+
 target_link_libraries(usb-console
   pico_stdlib
   pico_bootrom

@@ -33,8 +33,9 @@
 #   requests, sleeps, clock and the waits on the lines' edge interrupts, on
 #   FreeRTOS and the Pico SDK's hardware_gpio, hardware_irq and
 #   hardware_timer) and its nina_bus_rp2040.c (nina_bus.h: SPI1 and the
-#   module's lines on the Pico SDK's hardware_spi and hardware_gpio), with
-#   those libraries;
+#   module's lines on the Pico SDK's hardware_spi and hardware_gpio; the
+#   long transfers by DMA in nina_bus_dma_rp2040.c, on hardware_dma and
+#   hardware_irq), with those libraries;
 # - the NINA passthrough mode (USB CDC <-> the module's UART for esptool, a
 #   start of its own that main() runs on request; "nina passthrough" of
 #   nina_shell.c, CONFIG_NINA_PASSTHROUGH of the prelude): the shared core
@@ -87,6 +88,7 @@ function(freertos_nina target)
     ${FREERTOS_COMMON_DIR}/drivers/nina/port/freertos/nina_os.c
     ${FREERTOS_COMMON_DIR}/drivers/nina/port/freertos/nina_passthrough_os.c
     ${FREERTOS_COMMON_DIR}/drivers/nina/port/freertos/nina_bus_rp2040.c
+    ${FREERTOS_COMMON_DIR}/drivers/nina/port/freertos/nina_bus_dma_rp2040.c
     ${FREERTOS_COMMON_DIR}/drivers/nina/port/freertos/nina_passthrough_bus_rp2040.c
     ${nina_common_sources}
   )
@@ -104,6 +106,7 @@ function(freertos_nina target)
   )
 
   target_link_libraries(${target}
+    hardware_dma
     hardware_gpio
     hardware_irq
     hardware_resets

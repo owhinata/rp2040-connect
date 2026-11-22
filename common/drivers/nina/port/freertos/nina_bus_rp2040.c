@@ -40,24 +40,31 @@
  *   post-divider at or below the rate): CPSDVSR 2, SCR 7 from the SDK's
  *   clk_peri of 125 MHz (SYS_CLK_HZ; "devmem 40040000" reads CR0 0x707,
  *   "devmem 40040010" CPSR 0x2).  Unlike spi_init(), the DMA requests
- *   (SSPDMACR) stay off, as in Zephyr.  The Pico SDK's start-up code leaves
- *   these pins at their reset state (the board header,
+ *   (SSPDMACR) stay off, as in Zephyr: only a transfer by DMA sets them,
+ *   for its length.  Then the two DMA channels of the long transfers
+ *   (nina_bus_dma_initialize(), nina_bus_dma_rp2040.c).  The Pico SDK's
+ *   start-up code leaves these pins at their reset state (the board header,
  *   pico-sdk/src/boards/include/boards/arduino_nano_rp2040_connect.h, names
  *   none of them; stdio is USB only); so do the Zephyr and NuttX builds
  *   until this point.
- * - nina_bus_transceive(): the SDK's spi_write_read_blocking() (both
- *   buffers) or spi_write_blocking() (no RX buffer: received bytes are
- *   dropped and it waits until the shifter is idle), which poll the FIFOs
- *   in the calling task with at most 8 bytes in flight, as
- *   spi_pl022_xfer() does: the CPU spins for the length of the transfer
- *   (about 1 us a byte at 7.8125 MHz), at the caller's priority, and
- *   interrupts are served meanwhile (the PL022 holds the clock when its TX
- *   FIFO runs empty).  No DMA and no interrupt, as in both builds: the core
- *   sends mostly single bytes, for which both would cost more than they
- *   save.  It takes no lock of its own: Zephyr's spi_transceive() takes the
- *   bus's context lock, but SPI1 has no other user and nina_proto.c calls this
- *   only with nina_lock held (nina_os.h).  CS is not touched (nina_proto.c
- *   drives it: the Zephyr build's spi_config has no CS).
+ * - nina_bus_transceive(): a transfer of at least NINA_BUS_DMA_MIN (64)
+ *   bytes by DMA while the calling task sleeps (nina_bus_dma_rp2040.c: the
+ *   same bytes on the wire, without the gaps of the polling, and the call
+ *   returns once every byte has come back, or -EIO).  A shorter one, or
+ *   any before the scheduler runs or without the two channels, by the SDK's
+ *   spi_write_read_blocking() (both buffers) or spi_write_blocking() (no
+ *   RX buffer: received bytes are dropped and it waits until the shifter is
+ *   idle), which poll the FIFOs in the calling task with at most 8 bytes in
+ *   flight, as spi_pl022_xfer() does: the CPU spins for the length of the
+ *   transfer (about 1 us a byte at 7.8125 MHz), at the caller's priority,
+ *   and interrupts are served meanwhile (the PL022 holds the clock when its
+ *   TX FIFO runs empty).  The core sends mostly single bytes, for which the
+ *   DMA would cost more than it saves; the Zephyr and NuttX builds poll
+ *   every transfer.  It takes no lock of its
+ *   own: Zephyr's spi_transceive() takes the bus's context lock, but SPI1
+ *   has no other user and nina_proto.c calls this only with nina_lock held
+ *   (nina_os.h).  CS is not touched (nina_proto.c drives it: the Zephyr
+ *   build's spi_config has no CS).
  * - nina_bus_pin_configure(): gpio_rpi_configure() of Zephyr's RP2040 GPIO
  *   driver (drivers/gpio/gpio_rpi_pico.c) for a push-pull line after
  *   gpio_pin_configure_dt() has folded in the devicetree flags: the pulls,
@@ -88,6 +95,7 @@
 
 #include "nina_board_rp2040.h"
 #include "nina_bus.h"
+#include "nina_bus_dma_rp2040.h"
 
 /* CONFIG_NINA_SPI_FREQUENCY of the Zephyr and NuttX builds (their Kconfig
  * default).
@@ -145,6 +153,7 @@ int nina_bus_initialize(void)
 	(void)spi_set_baudrate(NINA_SPI, CONFIG_NINA_SPI_FREQUENCY);
 	spi_set_format(NINA_SPI, 8, SPI_CPOL_0, SPI_CPHA_0, SPI_MSB_FIRST);
 	hw_set_bits(&spi_get_hw(NINA_SPI)->cr1, SPI_SSPCR1_SSE_BITS);
+	nina_bus_dma_initialize();
 	bus_ready = true;
 
 	return nina_bus_pin_configure(NINA_BUS_PIN_CS, NINA_BUS_PIN_OUTPUT_INACTIVE);
@@ -220,6 +229,9 @@ int nina_bus_transceive(const uint8_t *tx, uint8_t *rx, size_t len)
 {
 	if (len == 0) {
 		return 0;
+	}
+	if (nina_bus_dma_wanted(len)) {
+		return nina_bus_dma_transceive(tx, rx, len);
 	}
 	if (rx != NULL) {
 		(void)spi_write_read_blocking(NINA_SPI, tx, rx, len);

@@ -32,7 +32,7 @@ semaphores, `k_poll()`, timeouts, sleeps and threads on about twenty primitives 
 | `common/compat/shell_engine/` | The shell for an OS without one of its own, on the layer's API: line editing (`cli.c`), the command table and execution with `help` (`shell_engine.c`), a copy of Zephyr's argument split (`shell_argv.c`), the consoles and each thread's output (`shell_console.c`), getopt per session (`getopt_state.c`), the shell's backend for `zshell.c` (`zshell_os_impl.h`, `zephyr_os_shell.h`), the serial session (`shell_serial.c`; the console transport an OS provides is declared in `shell_serial_os.h`), the Telnet shell (`shell_telnet.c`) |
 | `drivers/libc/` | Wrappers of newlib's FILE functions (`stdio_wrap.c`) |
 | `drivers/kv/` | The flash operations of the key-value store on the Pico SDK (`rp2040_flash_kv_os.c`, under the RP2040's shared part `common/chip/rp2040/rp2040_flash_kv.c`) and the linker script override (`ld/`, `kv.cmake`) |
-| `drivers/nina/` | Only `nina.cmake`, which adds the NINA driver to the build. The driver is in `common/drivers/nina/`, and this build's parts are its FreeRTOS binding `common/drivers/nina/port/freertos/`: the `nina_os.h` boundary (`nina_os.c`), the passthrough's host side (`nina_passthrough_os.c`), SPI1 and the module's lines on the Pico SDK (`nina_bus_rp2040.c`), the passthrough's module side (`nina_passthrough_bus_rp2040.c`: UART1, the module's lines, the watchdog's scratch registers, the LED); the sockets and the interface are the Zephyr binding's (`common/drivers/nina/port/zephyr/nina_socket.c`, `nina_net.c`) |
+| `drivers/nina/` | Only `nina.cmake`, which adds the NINA driver to the build. The driver is in `common/drivers/nina/`, and this build's parts are its FreeRTOS binding `common/drivers/nina/port/freertos/`: the `nina_os.h` boundary (`nina_os.c`), the passthrough's host side (`nina_passthrough_os.c`), SPI1 and the module's lines on the Pico SDK (`nina_bus_rp2040.c`, its long transfers by DMA in `nina_bus_dma_rp2040.c`), the passthrough's module side (`nina_passthrough_bus_rp2040.c`: UART1, the module's lines, the watchdog's scratch registers, the LED); the sockets and the interface are the Zephyr binding's (`common/drivers/nina/port/zephyr/nina_socket.c`, `nina_net.c`) |
 | `drivers/i2c_dw/` | `i2c_dw.cmake`, which adds the I2C driver to the build (I2C0, and I2C1 as an option), and the self-test (`i2c_dw_selftest.[ch]`). The driver is in `common/drivers/i2c_dw/`, and this build's parts are its FreeRTOS binding `common/drivers/i2c_dw/port/freertos/`: the `i2c_dw_os.h` boundary on FreeRTOS and the TIMER (`i2c_dw_os_impl.h`), the devices with Zephyr's I2C API, their interrupts, resets and pins (`i2c_dw_instance.h`), their start (`i2c_dw_controllers_rp2040.h`), I2C0's DMA reads on the Pico SDK's DMA (`i2c_dw_dma_os_rp2040.c`) |
 | `drivers/lsm6dso/` | The LSM6DSOX's build rules (`lsm6dso.cmake`), its initialization (`lsm6dso_board.c`), self-test |
 | `drivers/imu/` | Builds in the acquisition service, MQTT and time synchronization (`common/imu/`; `imu.cmake`), the prelude of `time_sync.c` |
@@ -205,8 +205,9 @@ boundary (the five functions of `common/compat/flash_kv_os.h`) with the RP2040's
 
 - The SPI transport, the socket table and commands, name resolution and the Wi-Fi operations are the
   shared core (`internal/nina_proto.c`, `nina_sock.c`, `nina_dns.c` and `nina_wifi.c` of `common/drivers/nina/`). The FreeRTOS build implements the
-  boundaries `nina_bus.h` (`common/drivers/nina/port/freertos/nina_bus_rp2040.c`: SPI1 polled at 7.8125 MHz and the CS, READY, RESET
-  and IRQ lines, set up in the order and with the values of Zephyr's drivers) and `nina_os.h`
+  boundaries `nina_bus.h` (`common/drivers/nina/port/freertos/nina_bus_rp2040.c`: SPI1 at 7.8125 MHz and the CS, READY, RESET
+  and IRQ lines, set up in the order and with the values of Zephyr's drivers; transfers shorter than 64 bytes polled as in Zephyr,
+  longer ones by DMA while the calling task sleeps, `nina_bus_dma_rp2040.c`: see below) and `nina_os.h`
   (the core's FreeRTOS binding `common/drivers/nina/port/freertos/nina_os.c`, written on FreeRTOS and the
   Pico SDK without the compatibility layer: FreeRTOS recursive mutexes with priority inheritance for the
   NINA lock, the name resolution lock and the Wi-Fi operations' lock, binary semaphores for the Wi-Fi
@@ -337,6 +338,25 @@ zero gives the Pico SDK routines' results, the same in the three builds. `memcpy
   flags in its handler of a shared line; reset the DMA block or write the whole of INTE0/INTE1, INTS0/INTS1 or
   CHAN_ABORT (only its own channels' bits); claim all twelve channels for good if the reads are to keep the
   DMA (they then fall back to the interrupts).
+- **The NINA's SPI by DMA** (`common/drivers/nina/port/freertos/nina_bus_dma_rp2040.c`): a transfer of at least
+  64 bytes (the SOCKET_SEND bodies, the long reads) goes through two channels claimed with
+  `dma_claim_unused_channel(false)` at the bus's first use (the normal mode only; without two free channels every
+  transfer stays polled) and kept: RX first (SSPDR to the buffer, or to one sink byte, DREQ 19), then SSPDMACR's
+  TXDMAE and RXDMAE, then TX (the buffer to SSPDR, DREQ 18), 8-bit transfers. The calling task sleeps on the
+  NINA's task notification (index 2) until the RX channel's interrupt on DMA_IRQ_1 (a second handler added with
+  `irq_add_shared_handler()`, which looks only at its own channel), then SSPDMACR is cleared and SPI1 is left as
+  the polled calls leave it (RX FIFO empty, overrun flag cleared). A transfer that does not end within 2 ms +
+  LEN / 256 ms has both channels aborted and gives `-EIO`; a lost byte (the overrun flag) and a bus error of a
+  channel also give `-EIO`. The core passes the error on as the request's (a socket call fails with `EIO`).
+  Each of the three is logged (`dmesg`: `<err> nina_bus: SPI1 DMA did not end in ...`, `SPI1 RX overrun by DMA
+  ...`, `SPI1 DMA bus error ...`), at most once per 5 s each with the number held back. Channels that do not
+  stop after an abort, and a start without two free channels, are logged once and leave every transfer
+  polled. Shorter transfers and those before the scheduler runs are polled.
+- **Shared interrupt handlers**: the Pico SDK keeps them in a fixed number of slots for all lines
+  (`PICO_MAX_SHARED_IRQ_HANDLERS`, 6 by default with stdio over USB), and adding one more than that ends in
+  `hard_assert()`. Six are in use: USBCTRL_IRQ's two (TinyUSB, stdio_usb), IO_IRQ_BANK0's two raw handlers
+  (`gpio_os_rp2040.c`, the NINA's `nina_os.c`) and DMA_IRQ_1's two (I2C0's reads, the NINA's SPI). The
+  application sets 8 (`app/usb-console/CMakeLists.txt`; 12 bytes of RAM per slot).
 - Interrupt priorities stay at the Pico SDK's default 0x80, so all device interrupts are at one level (as
   on NuttX; the Zephyr build uses 0xC0).
 - The LSM6DSOX runs on the shared driver (`common/drivers/lsm6dso/`, the Zephyr build's driver: its core
@@ -397,7 +417,7 @@ IC_CON has no DMA bit, a 40-byte read leaves the DMA counters alone, and i2c0 st
 | `tick` | The tick's catch-up (`tick_catchup.h`): the step itself, and on a model of SysTick and the CPU (interrupt latencies, interrupts disabled for 0 to 60 ticks) that the tick never gets ahead of the TIMER and is at most one tick behind once caught up |
 | `shell` | Two shell sessions, line editing, output routing, `help` and the generic commands with their output |
 | `kv` | The flash boundary and the key-value store (on fakes of the Pico SDK's flash functions) |
-| `nina` | The NINA's SPI and line boundaries and the FreeRTOS binding of `nina_os.h` (no compatibility layer; built twice, with a 1 ms and a 4 ms tick): the wait for READY on its interrupt, the waits for the IRQ line's edges (two tasks woken by one edge, the timeout), the shared bank interrupt, locks, requests, sleeps' ticks, the clock across the tick's wrap |
+| `nina` | The NINA's SPI and line boundaries (with the long transfers by DMA on a fake DMA: the threshold, the end state of SPI1, the shared DMA_IRQ_1, the timeout and its abort, a lost byte, a bus error, a transfer after each, channels that do not stop, no free channels, the messages logged) and the FreeRTOS binding of `nina_os.h` (no compatibility layer; built twice, with a 1 ms and a 4 ms tick): the wait for READY on its interrupt, the waits for the IRQ line's edges (two tasks woken by one edge, the timeout), the shared bank interrupt, locks, requests, sleeps' ticks, the clock across the tick's wrap |
 | `i2c_dw` | I2C0's boundary and device, Zephyr's I2C API (built twice: i2c0 only, and with `CONFIG_I2C_DW_I2C1`, which adds i2c1's start, pins, transfers, an unanswered address, long reads that never take the DMA, i2c0 unaffected, and transfers on both buses from two tasks); the binding's semaphores, waits' ticks, sleeps and clock; the DMA part (`i2c_dw_dma_os_rp2040.c`) on fakes of the Pico SDK's DMA: claims, setup, start, the shared handler (end, bus error, other users' channels), stop, release; the core's DMA reads on it: the read, the 32-byte limit, fallbacks, bus errors on TX and RX, timeout, the reads off, a stop that does not end (quarantine), the counters; the core's DMA command words |
 | `gpio` | GPIO bank 0's boundary, `gpio0`, the FIFO interrupt |
 | `imu` | Address conversions, `hwinfo` |

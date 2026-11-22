@@ -3,7 +3,7 @@
  * FreeRTOS POSIX port: common/drivers/nina/port/freertos/nina_bus_rp2040.c and the core's
  * FreeRTOS binding (common/drivers/nina/port/freertos/nina_os.c, on FreeRTOS and
  * the Pico SDK alone: no compatibility layer is linked) on fakes of the
- * Pico SDK's GPIO, GPIO interrupt, reset, SPI and TIMER functions
+ * Pico SDK's DMA, GPIO, GPIO interrupt, IRQ, reset, SPI and TIMER functions
  * (pico_fake/, implemented here: they record the calls and play the
  * module), and the shared core over both (common/drivers/nina/internal/nina_proto.c),
  * as the board builds them (freertos/drivers/nina/nina.cmake).
@@ -38,6 +38,34 @@
  *   INT32_MAX) stays asleep; nina_os_uptime_ms() is the TIMER in ms,
  *   rounded down, and goes on across the wrap of the tick count and of the
  *   TIMER's low word.
+ *
+ * The long transfers by DMA (nina_bus_dma_rp2040.c, its messages through
+ * log_fake/app_log.h), on a fake of the SDK's DMA functions and registers
+ * whose engine (a task above the runner) moves the bytes a tick after the
+ * TX channel's start and then raises DMA_IRQ_1's shared handlers, one of
+ * them a stand-in for the I2C0 reads' with a channel of its own:
+ * - nina_bus_initialize() claims two channels, adds the handler to
+ *   DMA_IRQ_1 and enables the RX channel's interrupt there;
+ * - the threshold: 63 bytes polled, 64 by DMA; the same bytes on the wire
+ *   and back as by polling, with and without an RX buffer (the sink, no
+ *   increment); 8-bit transfers, DREQ_SPI1_RX and _TX, SSPDR without
+ *   increment, the RX channel started before the TX channel, SSPDMACR set
+ *   only while the DMA moves the bytes (the polled fakes check it is 0),
+ *   the calling task blocked meanwhile, the overrun flag cleared after;
+ * - a notification left on the NINA's index does not end the wait early;
+ * - each handler looks at and acknowledges its own channels only, also
+ *   when both flags are raised at once;
+ * - a transfer that never ends: -EIO after the wait (2 ms + LEN / 256 ms in
+ *   ticks, plus one), the RX channel's interrupt off, both channels
+ *   aborted, the flag the abort raises acknowledged, the interrupt on
+ *   again, one rate-limited error logged; the next transfer works;
+ * - a lost byte (the overrun flag, the RX channel short): -EIO, logged as
+ *   an overrun; a bus error of the TX channel: -EIO, logged, its error
+ *   flags cleared; the next transfers work, and log nothing;
+ * - channels that do not stop when aborted: logged once, and the DMA is not
+ *   used again;
+ * - no second free channel at the start: the first given back, logged, and
+ *   every transfer polled.
  *
  * As on the board, nina_os_ready_start() succeeds (the core's first
  * request calls it), and the core waits with the binding's waits on
@@ -82,6 +110,7 @@
 #include "FreeRTOS.h"
 #include "task.h"
 
+#include "hardware/dma.h"
 #include "hardware/gpio.h"
 #include "hardware/irq.h"
 #include "hardware/resets.h"
@@ -89,6 +118,7 @@
 #include "hardware/timer.h"
 
 #include "nina_bus.h"
+#include "nina_bus_dma_rp2040.h"
 #include "nina_os.h"
 #include "nina_proto.h"
 
@@ -169,6 +199,35 @@ static void expect_calls(const char *expected)
 	calls[0] = '\0';
 }
 
+/* The messages of nina_bus_dma_rp2040.c (log_fake/app_log.h). */
+static char logged[512];
+
+void test_log(int level, const char *module, int ratelimited, const char *fmt, ...)
+{
+	size_t used = strlen(logged);
+	va_list ap;
+
+	assert(level == 1 && strcmp(module, "nina_bus") == 0);
+	snprintf(logged + used, sizeof(logged) - used, "<err> %s%s: ", ratelimited ? "rl " : "",
+		 module);
+	used = strlen(logged);
+	va_start(ap, fmt);
+	vsnprintf(logged + used, sizeof(logged) - used, fmt, ap);
+	va_end(ap);
+	assert(strlen(logged) + 2 < sizeof(logged));
+	strcat(logged, "\n");
+}
+
+static void expect_log(const char *expected)
+{
+	if (strcmp(logged, expected) != 0) {
+		printf("expected log: %s\n     got log: %s\n", expected, logged);
+		fflush(stdout);
+		assert(0);
+	}
+	logged[0] = '\0';
+}
+
 /* The lines and the module -------------------------------------------------*/
 
 struct pin {
@@ -189,6 +248,13 @@ static uint8_t command[64], answer[64];
 static size_t command_len, answer_len, answer_pos;
 static bool answering;
 static unsigned int spi_calls, spi_bytes;
+
+/* The DMA tests' module: answers each byte with the byte XOR 0x5a and keeps
+ * what it received.
+ */
+static bool loopback;
+static uint8_t wire[4096];
+static size_t wire_len;
 
 static bool module_running(void)
 {
@@ -231,6 +297,11 @@ static uint8_t exchange(uint8_t tx)
 {
 	assert(cs_asserted() && module_running());
 	spi_bytes++;
+	if (loopback) {
+		assert(wire_len < sizeof(wire));
+		wire[wire_len++] = tx;
+		return tx ^ 0x5a;
+	}
 	if (answering) {
 		return answer_pos < answer_len ? answer[answer_pos++] : 0xff;
 	}
@@ -534,10 +605,37 @@ void gpio_add_raw_irq_handler_masked(uint32_t gpio_mask, irq_handler_t handler)
 	handlers[num_handlers++] = handler;
 }
 
+static bool dma_line_enabled;
+
 void irq_set_enabled(uint num, bool enabled)
 {
+	if (num == DMA_IRQ_1) {
+		record("dmairq(%u,%d)", num, enabled);
+		dma_line_enabled = enabled;
+		return;
+	}
 	assert(num == IO_IRQ_BANK0);
 	bank_enabled = enabled;
+}
+
+/* DMA_IRQ_1's shared handlers, in the order added (the same order
+ * priority).
+ */
+#define DMA_HANDLERS 4
+
+static irq_handler_t dma_handlers[DMA_HANDLERS];
+static unsigned int num_dma_handlers;
+
+void irq_add_shared_handler(uint num, irq_handler_t handler, uint8_t order_priority)
+{
+	assert(num == DMA_IRQ_1 &&
+	       order_priority == PICO_SHARED_IRQ_HANDLER_DEFAULT_ORDER_PRIORITY);
+	assert(num_dma_handlers < DMA_HANDLERS);
+	for (unsigned int i = 0; i < num_dma_handlers; i++) {
+		assert(dma_handlers[i] != handler);
+	}
+	record("shared(%u)", num);
+	dma_handlers[num_dma_handlers++] = handler;
 }
 
 void reset_block_num(reset_num_t block_num)
@@ -562,11 +660,273 @@ spi_hw_t *spi_get_hw(spi_inst_t *spi)
 	return &spi->hw;
 }
 
-void hw_set_bits(volatile uint32_t *addr, uint32_t mask)
+/* The DMA ---------------------------------------------------------------*/
+
+#define DMA_ERROR_FLAGS (DMA_CH0_CTRL_TRIG_READ_ERROR_BITS | DMA_CH0_CTRL_TRIG_WRITE_ERROR_BITS)
+
+/* The stand-in for the I2C0 reads: its channel and handler (main()). */
+#define OTHER_CHANNEL 0
+
+/* The NINA's channels: the next two free ones, TX first (test_initialize()). */
+#define NINA_TX_CHANNEL 1
+#define NINA_RX_CHANNEL 2
+
+dma_hw_t fake_dma_hw;
+static uint32_t dma_claimed;
+static uint32_t dma_intr;    /* INTR, the channels' raw flags */
+static uint32_t dma_inte[2]; /* INTE0, INTE1 */
+static struct {
+	volatile void *write;
+	const volatile void *read;
+	uint32_t count;
+} dma_ch[NUM_DMA_CHANNELS];
+
+/* What the engine does with the next transfer. */
+enum dma_mode {
+	DMA_RUN,   /* moves the bytes, both channels end */
+	DMA_STALL, /* nothing: the channels stay busy until aborted */
+	DMA_LOSE,  /* one byte lost: the overrun flag, the RX channel short */
+	DMA_FAIL,  /* a read error of the TX channel */
+	DMA_STUCK, /* as DMA_STALL, and an abort never ends */
+};
+
+static enum dma_mode dma_mode;
+static bool dma_other_too; /* the engine raises the stand-in's flag too */
+static int dma_rx_ch = -1, dma_tx_ch = -1;
+static TaskHandle_t dma_engine_task, runner_task;
+static unsigned int dma_irqs, other_handled;
+static uint32_t last_abort;
+
+/* The channels of the handler that runs (0: none), which the fakes check. */
+static uint32_t dma_handler_mask;
+
+static void check_own_channel(uint channel)
 {
-	assert(addr == &spi1_inst.hw.cr1);
-	record("cr1|=%#x", (unsigned int)mask);
-	*addr |= mask;
+	assert(dma_handler_mask == 0 || (dma_handler_mask & (1u << channel)) != 0);
+}
+
+static uint32_t nina_channels(void)
+{
+	return (1u << NINA_TX_CHANNEL) | (1u << NINA_RX_CHANNEL);
+}
+
+static void other_isr(void)
+{
+	if (dma_irqn_get_channel_status(1, OTHER_CHANNEL)) {
+		dma_irqn_acknowledge_channel(1, OTHER_CHANNEL);
+		other_handled++;
+	}
+}
+
+/* DMA_IRQ_1, a level interrupt: its handlers run while an enabled flag is
+ * raised; each takes its own, so none is left.
+ */
+static void dma_interrupt(void)
+{
+	if (!dma_line_enabled || (dma_intr & dma_inte[1]) == 0) {
+		return;
+	}
+	dma_irqs++;
+	for (unsigned int i = 0; i < num_dma_handlers; i++) {
+		dma_handler_mask =
+			dma_handlers[i] == other_isr ? 1u << OTHER_CHANNEL : nina_channels();
+		dma_handlers[i]();
+		dma_handler_mask = 0;
+	}
+	assert((dma_intr & dma_inte[1]) == 0);
+}
+
+int dma_claim_unused_channel(bool required)
+{
+	assert(!required);
+	for (int ch = 0; ch < (int)NUM_DMA_CHANNELS; ch++) {
+		if (!(dma_claimed & (1u << ch))) {
+			dma_claimed |= 1u << ch;
+			record("claim(%d)", ch);
+			return ch;
+		}
+	}
+	record("claim(-1)");
+	return -1;
+}
+
+void dma_channel_unclaim(uint channel)
+{
+	assert(dma_claimed & (1u << channel));
+	dma_claimed &= ~(1u << channel);
+	record("unclaim(%u)", channel);
+}
+
+void dma_irqn_set_channel_enabled(uint irq_index, uint channel, bool enabled)
+{
+	assert(irq_index == 1 && dma_handler_mask == 0);
+	record("inte(%u,%d)", channel, enabled);
+	dma_inte[1] = enabled ? dma_inte[1] | (1u << channel) : dma_inte[1] & ~(1u << channel);
+}
+
+bool dma_irqn_get_channel_status(uint irq_index, uint channel)
+{
+	assert(irq_index == 1);
+	check_own_channel(channel);
+	return (dma_intr & dma_inte[1] & (1u << channel)) != 0;
+}
+
+/* A write of the channel's bit to INTS1: its raw flag cleared. */
+void dma_irqn_acknowledge_channel(uint irq_index, uint channel)
+{
+	assert(irq_index == 1);
+	check_own_channel(channel);
+	dma_intr &= ~(1u << channel);
+}
+
+/* Also ends the aborts written to CHAN_ABORT (unless DMA_STUCK): the
+ * channels idle, each with its flag raised (RP2040-E13).
+ */
+bool dma_channel_is_busy(uint channel)
+{
+	uint32_t abort = fake_dma_hw.abort;
+
+	if (abort != 0 && abort != last_abort) {
+		record("abort(%#x)", (unsigned int)abort);
+		last_abort = abort;
+	}
+	if (abort != 0 && dma_mode != DMA_STUCK) {
+		for (uint32_t ch = 0; ch < NUM_DMA_CHANNELS; ch++) {
+			if (abort & (1u << ch)) {
+				fake_dma_hw.ch[ch].al1_ctrl &= ~DMA_CH0_CTRL_TRIG_BUSY_BITS;
+				dma_intr |= 1u << ch;
+			}
+		}
+		fake_dma_hw.abort = 0;
+		last_abort = 0;
+	}
+	return (fake_dma_hw.ch[channel].al1_ctrl & DMA_CH0_CTRL_TRIG_BUSY_BITS) != 0;
+}
+
+void dma_channel_configure(uint channel, const dma_channel_config_t *config,
+			   volatile void *write_addr, const volatile void *read_addr,
+			   uint32_t encoded_transfer_count, bool trigger)
+{
+	uint32_t ctrl = config->ctrl;
+	uint32_t dreq = (ctrl & DMA_CH0_CTRL_TRIG_TREQ_SEL_BITS) >> DMA_CH0_CTRL_TRIG_TREQ_SEL_LSB;
+	volatile uint32_t *al1 = &fake_dma_hw.ch[channel].al1_ctrl;
+
+	assert(trigger && (dma_claimed & (1u << channel)) && !dma_channel_is_busy(channel));
+	assert(((ctrl & DMA_CH0_CTRL_TRIG_DATA_SIZE_BITS) >> DMA_CH0_CTRL_TRIG_DATA_SIZE_LSB) ==
+	       DMA_SIZE_8);
+	assert((ctrl & DMA_CH0_CTRL_TRIG_EN_BITS) && ((ctrl & DMA_CH0_CTRL_TRIG_CHAIN_TO_BITS) >>
+						      DMA_CH0_CTRL_TRIG_CHAIN_TO_LSB) == channel);
+	assert(encoded_transfer_count > 0);
+	dma_ch[channel].write = write_addr;
+	dma_ch[channel].read = read_addr;
+	dma_ch[channel].count = encoded_transfer_count;
+	/* The error flags stay until written with 1. */
+	*al1 = ctrl | DMA_CH0_CTRL_TRIG_BUSY_BITS |
+	       (*al1 & (DMA_ERROR_FLAGS | DMA_CH0_CTRL_TRIG_AHB_ERROR_BITS));
+	if (dreq == DREQ_SPI1_RX) {
+		assert(read_addr == &spi1_inst.hw.dr && !(ctrl & DMA_CH0_CTRL_TRIG_INCR_READ_BITS));
+		dma_rx_ch = (int)channel;
+		dma_tx_ch = -1;
+		record("rx(%u,%u,%d)", channel, (unsigned int)encoded_transfer_count,
+		       (ctrl & DMA_CH0_CTRL_TRIG_INCR_WRITE_BITS) != 0);
+		return;
+	}
+	/* TX: after RX, with SSPDMACR's requests on; the engine moves the bytes. */
+	assert(dreq == DREQ_SPI1_TX && write_addr == &spi1_inst.hw.dr);
+	assert((ctrl & DMA_CH0_CTRL_TRIG_INCR_READ_BITS) &&
+	       !(ctrl & DMA_CH0_CTRL_TRIG_INCR_WRITE_BITS));
+	assert(dma_rx_ch >= 0 && dma_channel_is_busy((uint)dma_rx_ch));
+	assert(dma_ch[dma_rx_ch].count == encoded_transfer_count);
+	assert(spi1_inst.hw.dmacr == (SPI_SSPDMACR_TXDMAE_BITS | SPI_SSPDMACR_RXDMAE_BITS));
+	dma_tx_ch = (int)channel;
+	record("tx(%u,%u)", channel, (unsigned int)encoded_transfer_count);
+	xTaskNotifyGive(dma_engine_task);
+}
+
+static void dma_end(int ch)
+{
+	fake_dma_hw.ch[ch].al1_ctrl &= ~DMA_CH0_CTRL_TRIG_BUSY_BITS;
+	dma_intr |= 1u << ch;
+}
+
+/* The bytes of the started transfer through the module, as the two
+ * channels and SPI1 move them, while the caller sleeps.
+ */
+static void dma_move(void)
+{
+	int tx = dma_tx_ch, rx = dma_rx_ch;
+	uint32_t n = dma_ch[tx].count;
+	bool rx_incr = (fake_dma_hw.ch[rx].al1_ctrl & DMA_CH0_CTRL_TRIG_INCR_WRITE_BITS) != 0;
+	const volatile uint8_t *src = dma_ch[tx].read;
+	volatile uint8_t *dst = dma_ch[rx].write;
+
+	assert(eTaskGetState(runner_task) == eBlocked);
+	assert(spi1_inst.hw.dmacr == (SPI_SSPDMACR_TXDMAE_BITS | SPI_SSPDMACR_RXDMAE_BITS));
+	assert(spi1_inst.hw.cr1 & SPI_SSPCR1_SSE_BITS);
+	if (dma_mode == DMA_STALL || dma_mode == DMA_STUCK) {
+		return;
+	}
+	if (dma_mode == DMA_FAIL) {
+		fake_dma_hw.ch[tx].al1_ctrl =
+			(fake_dma_hw.ch[tx].al1_ctrl & ~DMA_CH0_CTRL_TRIG_BUSY_BITS) |
+			DMA_CH0_CTRL_TRIG_READ_ERROR_BITS | DMA_CH0_CTRL_TRIG_AHB_ERROR_BITS;
+		dma_intr |= 1u << tx;
+		dma_interrupt();
+		return;
+	}
+	for (uint32_t i = 0; i < n; i++) {
+		uint8_t r = exchange(src[i]);
+
+		if (dma_mode == DMA_LOSE && i == n / 2) {
+			spi1_inst.hw.ris |= SPI_SSPRIS_RORRIS_BITS;
+			continue;
+		}
+		*dst = r;
+		if (rx_incr) {
+			dst++;
+		}
+	}
+	dma_end(tx);
+	if (dma_mode != DMA_LOSE) {
+		dma_end(rx);
+	}
+	if (dma_other_too) {
+		dma_intr |= 1u << OTHER_CHANNEL;
+	}
+	dma_interrupt();
+}
+
+static void dma_engine(void *arg)
+{
+	(void)arg;
+	for (;;) {
+		(void)ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+		vTaskDelay(1);
+		dma_move();
+	}
+}
+
+void hw_set_bits(io_rw_32 *addr, uint32_t mask)
+{
+	if (addr == &spi1_inst.hw.cr1) {
+		record("cr1|=%#x", (unsigned int)mask);
+		*addr |= mask;
+		return;
+	}
+	for (uint32_t i = 0; i < NUM_DMA_CHANNELS; i++) {
+		if (addr == &fake_dma_hw.ch[i].al1_ctrl) {
+			/* The error flags: write 1 to clear; AHB_ERROR is their OR. */
+			uint32_t v = *addr & ~(mask & DMA_ERROR_FLAGS);
+
+			assert(mask == DMA_ERROR_FLAGS);
+			if (!(v & DMA_ERROR_FLAGS)) {
+				v &= ~DMA_CH0_CTRL_TRIG_AHB_ERROR_BITS;
+			}
+			*addr = v;
+			return;
+		}
+	}
+	assert(0);
 }
 
 /* The SDK's result for 8 MHz from clk_peri 125 MHz: CPSDVSR 2, SCR 7. */
@@ -588,6 +948,7 @@ void spi_set_format(spi_inst_t *spi, uint data_bits, spi_cpol_t cpol, spi_cpha_t
 int spi_write_read_blocking(spi_inst_t *spi, const uint8_t *src, uint8_t *dst, size_t len)
 {
 	assert(spi == spi1 && (spi1_inst.hw.cr1 & SPI_SSPCR1_SSE_BITS) && len > 0);
+	assert(spi1_inst.hw.dmacr == 0);
 	spi_calls++;
 	for (size_t i = 0; i < len; i++) {
 		dst[i] = exchange(src[i]);
@@ -598,6 +959,7 @@ int spi_write_read_blocking(spi_inst_t *spi, const uint8_t *src, uint8_t *dst, s
 int spi_write_blocking(spi_inst_t *spi, const uint8_t *src, size_t len)
 {
 	assert(spi == spi1 && (spi1_inst.hw.cr1 & SPI_SSPCR1_SSE_BITS) && len > 0);
+	assert(spi1_inst.hw.dmacr == 0);
 	spi_calls++;
 	for (size_t i = 0; i < len; i++) {
 		(void)exchange(src[i]);
@@ -658,8 +1020,11 @@ static void test_initialize(void)
 		"init(8) func(8,spi) pulls(8,0,0) drive(8,4mA) slew(8,slow) schmitt(8,0) "
 		"ie(8,1) oeover(8,0) outover(8,0) inover(8,0) irqover(8,0) "
 		"baud(8000000) format(8,0,0,msb) cr1|=0x2 "
+		"claim(1) claim(2) shared(12) dmairq(12,1) inte(2,1) "
 		"pulls(9,0,0) func(9,sio) ie(9,0) put(9,1) dir(9,out) ");
 	assert(spi1_inst.hw.dmacr == 0);
+	assert(num_dma_handlers == 2 && dma_handlers[0] == other_isr && dma_line_enabled);
+	assert(dma_inte[1] == ((1u << OTHER_CHANNEL) | (1u << 2)));
 	assert(pins[GPIO_CS].out && pins[GPIO_CS].level);
 	/* Again, as from the core's first request: nothing more. */
 	assert(nina_bus_initialize() == 0);
@@ -1036,6 +1401,195 @@ static void test_shared_bank(void)
 	printf("nina: IO_IRQ_BANK0 shared with the backend's handler\n");
 }
 
+/* The DMA tests' data and checks. */
+static uint8_t dma_tx[3000], dma_rx[3000];
+
+/* LEN bytes of dma_tx through nina_bus_transceive() (into dma_rx unless
+ * NO_RX): RET, and on success the bytes on the wire and back.  SPI1's end
+ * state either way: no DMA requests, the overrun flag cleared (written 1).
+ */
+static void dma_xfer(size_t len, bool no_rx, int ret)
+{
+	wire_len = 0;
+	memset(dma_rx, 0, sizeof(dma_rx));
+	spi1_inst.hw.icr = 0;
+	assert(nina_bus_transceive(dma_tx, no_rx ? NULL : dma_rx, len) == ret);
+	assert(spi1_inst.hw.dmacr == 0);
+	if (ret != 0) {
+		return;
+	}
+	assert(wire_len == len && memcmp(wire, dma_tx, len) == 0);
+	for (size_t i = 0; i < len && !no_rx; i++) {
+		assert(dma_rx[i] == (dma_tx[i] ^ 0x5a));
+	}
+}
+
+/* The calls of one transfer by DMA of LEN bytes (RX with increment unless
+ * NO_RX), then AFTER.
+ */
+static void expect_dma_calls(size_t len, bool no_rx, const char *after)
+{
+	char expected[256];
+
+	snprintf(expected, sizeof(expected), "rx(%u,%u,%d) tx(%u,%u) %s", NINA_RX_CHANNEL,
+		 (unsigned int)len, !no_rx, NINA_TX_CHANNEL, (unsigned int)len, after);
+	expect_calls(expected);
+	assert(spi1_inst.hw.icr == SPI_SSPICR_RORIC_BITS);
+}
+
+/* A transfer of LEN bytes by polling: one SDK call, no DMA. */
+static void expect_polled(size_t len)
+{
+	unsigned int calls_before = spi_calls;
+
+	dma_xfer(len, false, 0);
+	assert(spi_calls == calls_before + 1);
+	expect_calls("");
+}
+
+/* The wait's ticks for LEN bytes: 2 ms + LEN / 256 ms in ticks, plus one. */
+static TickType_t dma_wait_ticks(size_t len)
+{
+	return (TickType_t)(((2 + len / 256) * configTICK_RATE_HZ + 999) / 1000 + 1);
+}
+
+static void test_dma(void)
+{
+	uint32_t rx_bit = 1u << NINA_RX_CHANNEL;
+	unsigned int calls_before, handled;
+	char expected[128];
+	TickType_t t, took;
+
+	for (size_t i = 0; i < sizeof(dma_tx); i++) {
+		dma_tx[i] = (uint8_t)(i * 7 + 3);
+	}
+	loopback = true;
+	assert(nina_bus_select() == 0);
+	calls[0] = '\0';
+	logged[0] = '\0';
+
+	/* The threshold: 63 bytes polled, 64 by DMA. */
+	expect_polled(63);
+	calls_before = spi_calls;
+	dma_xfer(64, false, 0);
+	assert(spi_calls == calls_before);
+	expect_dma_calls(64, false, "");
+	assert((dma_intr & nina_channels()) == 0 && (dma_inte[1] & rx_bit));
+
+	/* No RX buffer: the received bytes into the sink, without increment. */
+	dma_xfer(2400, true, 0);
+	expect_dma_calls(2400, true, "");
+
+	/* A notification left on the NINA's index: the wait still ends with the
+	 * transfer.
+	 */
+	(void)xTaskNotifyGiveIndexed(xTaskGetCurrentTaskHandle(), 2);
+	dma_xfer(200, false, 0);
+	expect_dma_calls(200, false, "");
+
+	/* The stand-in's flag alone: its handler takes it, the NINA's leaves
+	 * it (check_own_channel()); both at once: each takes its own.
+	 */
+	handled = other_handled;
+	dma_intr |= 1u << OTHER_CHANNEL;
+	dma_interrupt();
+	assert(other_handled == handled + 1 && dma_intr == 0);
+	dma_other_too = true;
+	dma_xfer(500, false, 0);
+	dma_other_too = false;
+	expect_dma_calls(500, false, "");
+	assert(other_handled == handled + 2 && dma_intr == 0);
+	expect_log("");
+
+	/* A transfer that never ends: -EIO after the wait, both channels
+	 * aborted, the flag of the abort taken, the interrupt on again, one
+	 * error logged; the next transfer works.
+	 */
+	dma_mode = DMA_STALL;
+	t = xTaskGetTickCount();
+	dma_xfer(2400, false, -EIO);
+	took = xTaskGetTickCount() - t;
+	snprintf(expected, sizeof(expected), "inte(%u,0) abort(%#x) inte(%u,1) ", NINA_RX_CHANNEL,
+		 (unsigned int)nina_channels(), NINA_RX_CHANNEL);
+	expect_dma_calls(2400, false, expected);
+	assert(took >= dma_wait_ticks(2400) && took <= dma_wait_ticks(2400) + 5);
+	assert(!dma_channel_is_busy(NINA_TX_CHANNEL) && !dma_channel_is_busy(NINA_RX_CHANNEL));
+	assert((dma_intr & nina_channels()) == 0 && (dma_inte[1] & rx_bit));
+	{
+		char line[96];
+
+		snprintf(line, sizeof(line),
+			 "<err> rl nina_bus: SPI1 DMA did not end in %u ticks (2400 bytes)\n",
+			 (unsigned int)dma_wait_ticks(2400));
+		expect_log(line);
+	}
+	dma_mode = DMA_RUN;
+	dma_xfer(2400, false, 0);
+	expect_dma_calls(2400, false, "");
+	expect_log("");
+
+	/* A lost byte: the RX channel short, the overrun flag; -EIO. */
+	dma_mode = DMA_LOSE;
+	dma_xfer(300, false, -EIO);
+	expect_dma_calls(300, false, expected);
+	expect_log("<err> rl nina_bus: SPI1 RX overrun by DMA (300 bytes)\n");
+	spi1_inst.hw.ris = 0;
+	dma_mode = DMA_RUN;
+	dma_xfer(300, false, 0);
+	expect_dma_calls(300, false, "");
+
+	/* A bus error of the TX channel: -EIO, its error flags cleared. */
+	dma_mode = DMA_FAIL;
+	dma_xfer(300, false, -EIO);
+	expect_dma_calls(300, false, expected);
+	assert(!(fake_dma_hw.ch[NINA_TX_CHANNEL].al1_ctrl &
+		 (DMA_ERROR_FLAGS | DMA_CH0_CTRL_TRIG_AHB_ERROR_BITS)));
+	expect_log("<err> rl nina_bus: SPI1 DMA bus error (300 bytes)\n");
+	dma_mode = DMA_RUN;
+	dma_xfer(300, false, 0);
+	expect_dma_calls(300, false, "");
+	expect_log("");
+
+	/* Channels that do not stop: the abort is given up after its bound,
+	 * the interrupt stays off, and the DMA is not used again.
+	 */
+	dma_mode = DMA_STUCK;
+	dma_xfer(300, false, -EIO);
+	snprintf(expected, sizeof(expected), "inte(%u,0) abort(%#x) ", NINA_RX_CHANNEL,
+		 (unsigned int)nina_channels());
+	expect_dma_calls(300, false, expected);
+	assert(!(dma_inte[1] & rx_bit));
+	{
+		char lines[192];
+
+		snprintf(lines, sizeof(lines),
+			 "<err> nina_bus: SPI1 DMA channels 1 and 2 do not stop: every transfer "
+			 "polled\n"
+			 "<err> rl nina_bus: SPI1 DMA did not end in %u ticks (300 bytes)\n",
+			 (unsigned int)dma_wait_ticks(300));
+		expect_log(lines);
+	}
+	expect_polled(3000);
+
+	/* A start without a second free channel: the first given back, an
+	 * error, every transfer polled.
+	 */
+	dma_claimed = ((1u << NUM_DMA_CHANNELS) - 1) & ~(1u << 5);
+	nina_bus_dma_initialize();
+	expect_calls("claim(5) claim(-1) unclaim(5) ");
+	expect_log("<err> nina_bus: No DMA channels for SPI1: every transfer polled\n");
+	assert(dma_claimed == (((1u << NUM_DMA_CHANNELS) - 1) & ~(1u << 5)));
+	expect_polled(3000);
+	expect_log("");
+
+	nina_bus_deselect();
+	loopback = false;
+	calls[0] = '\0';
+	printf("nina: SPI DMA: threshold, sink, end state, shared DMA_IRQ_1, timeout, lost byte, "
+	       "bus error, stuck abort, no channels, errors logged (%u interrupts)\n",
+	       dma_irqs);
+}
+
 static void test_sleeps(void)
 {
 	TickType_t t;
@@ -1246,6 +1800,7 @@ static void runner(void *arg)
 	test_ready_waits();
 	test_events();
 	test_shared_bank();
+	test_dma();
 	test_sleeps();
 	test_long_sleep();
 	test_locks();
@@ -1270,9 +1825,19 @@ int main(void)
 	 */
 	gpio_add_raw_irq_handler_masked(1u << GPIO_INT1, backend_isr);
 	bank_enabled = true;
+	/* The stand-in for the I2C0 reads on DMA_IRQ_1, with its channel, as
+	 * i2c_dw_dma_os_rp2040.c at the start.
+	 */
+	dma_claimed = 1u << OTHER_CHANNEL;
+	irq_add_shared_handler(DMA_IRQ_1, other_isr,
+			       PICO_SHARED_IRQ_HANDLER_DEFAULT_ORDER_PRIORITY);
+	dma_line_enabled = true;
+	dma_inte[1] = 1u << OTHER_CHANNEL;
 	calls[0] = '\0';
 	if (xTaskCreate(runner, "runner", RUNNER_STACK / sizeof(StackType_t), NULL, RUNNER_PRIORITY,
-			NULL) != pdPASS) {
+			&runner_task) != pdPASS ||
+	    xTaskCreate(dma_engine, "dma", HELPER_STACK / sizeof(StackType_t), NULL,
+			configMAX_PRIORITIES - 1, &dma_engine_task) != pdPASS) {
 		return 2;
 	}
 	vTaskStartScheduler();

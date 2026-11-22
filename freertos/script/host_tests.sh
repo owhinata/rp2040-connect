@@ -14,9 +14,10 @@
 # - On the same port: the shell (freertos/tests/shell) and the key-value
 #   store with the board's flash boundary on fakes of the Pico SDK's flash
 #   functions (freertos/tests/kv), and the NINA link's boundaries
-#   (nina_bus_rp2040.c and nina_os.c of the core's FreeRTOS binding,
-#   common/drivers/nina/port/freertos) with the shared core on fakes of
-#   the Pico SDK's GPIO, SPI, GPIO interrupt and TIMER functions, at two
+#   (nina_bus_rp2040.c with nina_bus_dma_rp2040.c, and nina_os.c of the
+#   core's FreeRTOS binding, common/drivers/nina/port/freertos) with the
+#   shared core on fakes of the Pico SDK's GPIO, SPI, DMA, GPIO interrupt
+#   and TIMER functions, at two
 #   ticks (freertos/tests/nina), and I2C0's and I2C1's boundaries (the
 #   core's FreeRTOS binding, common/drivers/i2c_dw/port/freertos, and the
 #   layer's <zephyr/drivers/i2c.h>) with the shared core on fakes of the
@@ -219,17 +220,19 @@ fi
 printf 'ok  kv (flash boundary and store, FreeRTOS POSIX port)\n'
 
 # The NINA link (freertos/tests/nina): the board's boundaries of the shared core (the core's
-# FreeRTOS binding in common/drivers/nina/port/freertos: nina_bus_rp2040.c, and nina_os.c
-# with its waits on READY's and the IRQ line's edge interrupts and its own raw handler of
-# IO_IRQ_BANK0) on fakes of the Pico SDK's GPIO, GPIO interrupt, reset, SPI and TIMER functions
-# (tests/nina/pico_fake), under the shared core (nina_proto.c and nina_wait.c of
+# FreeRTOS binding in common/drivers/nina/port/freertos: nina_bus_rp2040.c with its long
+# transfers by DMA, nina_bus_dma_rp2040.c, whose messages go to the test (tests/nina/log_fake),
+# and nina_os.c with its waits on READY's and the IRQ line's edge interrupts and its own raw
+# handler of IO_IRQ_BANK0) on fakes of the Pico SDK's DMA, GPIO, GPIO interrupt, IRQ, reset,
+# SPI and TIMER functions (tests/nina/pico_fake), under the shared core (nina_proto.c and nina_wait.c of
 # common/drivers/nina/internal, with the prelude, as drivers/nina/nina.cmake builds them), on a
 # kernel of its own and no
 # compatibility layer (none of its include directories either).  Twice: with the board's 1 ms
 # tick, and with a 4 ms one (configTICK_RATE_HZ 250); both times the tick count starts 5 s before
 # it wraps (configINITIAL_TICK_COUNT) and the fake TIMER 4.5 s before its low word wraps.
-ninainc=(-Itests/nina/pico_fake -I../common/drivers/nina/include -I../common/drivers/nina/internal
-         -I../common/drivers/nina/port
+ninainc=(-Itests/nina/pico_fake -Itests/nina/log_fake -I../common/drivers/nina/include
+         -I../common/drivers/nina/internal -I../common/drivers/nina/port
+         -I../common/drivers/nina/port/freertos
          -Itests/compat -Iapp/usb-console/src -I"$kernel/include" -I"$posix" -I"$posix/utils")
 for hz in 1000 250; do
     ninadefs=(-DconfigTICK_RATE_HZ=$hz "-DconfigINITIAL_TICK_COUNT=((TickType_t)0 - 5 * $hz)"
@@ -242,6 +245,7 @@ for hz in 1000 250; do
         ninaobjs+=("$obj")
     done
     for src in ../common/drivers/nina/port/freertos/nina_bus_rp2040.c \
+               ../common/drivers/nina/port/freertos/nina_bus_dma_rp2040.c \
                ../common/drivers/nina/port/freertos/nina_os.c tests/nina/main.c \
                ../common/drivers/nina/internal/nina_proto.c ../common/drivers/nina/internal/nina_wait.c; do
         obj="$out/nina${hz}_$(basename "$src" .c).o"
@@ -259,7 +263,7 @@ for hz in 1000 250; do
     else
         timeout 60 "$out/nina$hz" >"$out/log" || { cat "$out/log"; exit 1; }
     fi
-    printf 'ok  nina (SPI and line boundary, FreeRTOS binding: READY and event interrupts, locks, sleeps, clock; %s Hz tick, FreeRTOS POSIX port)\n' "$hz"
+    printf 'ok  nina (SPI and line boundary with its DMA, FreeRTOS binding: READY and event interrupts, locks, sleeps, clock; %s Hz tick, FreeRTOS POSIX port)\n' "$hz"
 done
 
 # I2C0 and I2C1 (freertos/tests/i2c_dw): the shared core's FreeRTOS binding
