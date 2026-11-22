@@ -16,7 +16,7 @@ OS に依存しない部分は `common/compat/`、FreeRTOS の部分は `freerto
 | 場所 | 内容 |
 |---|---|
 | `app/usb-console/` | 起動（`main.c`）、FreeRTOS 版だけのコマンド（`commands.c`）、カーネルの設定（`FreeRTOSConfig.h`）、優先度の対応（`priorities_os.h`）、時計（`os_clock.h`）、tick フック（`tick.c`。tick の追いつきの判定は `tick_catchup.h`）、CPU 負荷（`idle.c`）、異常停止（`fault.[ch]`）、割り込み用スタックの空き（`irq_stack.c`） |
-| `drivers/compat/` | 互換層の FreeRTOS の部分: カーネル（`zephyr_kernel.c`・`zephyr_mutex.c`・`zephyr_os*.h`、`k_heap` は `zephyr_heap.c`）、ネットワークのインターフェースとその開始（`zephyr_net_if.c`・`zephyr_net_init.c`）、Zephyr のソケット層（`subsys/net/lib/sockets/`・`lib/os/zvfs/` の Zephyr のファイルを縮めた写し、ヘッダーは `zephyr/` の下、リンカースクリプトの部分 `ld/`）、壁時計（`zephyr_sys_clock.c`）、センサーの時計、前置きヘッダー（`common_prelude.h`）、自己診断（`zephyr_selftest.[ch]`）、RP2040 の部分（`rp2040/`: GPIO バンク 0、チップ ID） |
+| `drivers/compat/` | 互換層の FreeRTOS の部分: カーネル（`zephyr_kernel.c`・`zephyr_mutex.c`・`zephyr_os*.h`、`k_heap` は `zephyr_heap.c`）、ネットワークのインターフェースとその開始（`zephyr_net_if.c`・`zephyr_net_init.c`）、Zephyr のソケット層（`subsys/net/lib/sockets/`・`lib/os/zvfs/` の Zephyr のファイルを縮めた写し、ヘッダーは `zephyr/` の下、リンカースクリプトの部分 `ld/`）、壁時計（`zephyr_sys_clock.c`）、前置きヘッダー（`common_prelude.h`）、自己診断（`zephyr_selftest.[ch]`）、RP2040 の部分（`rp2040/`: GPIO バンク 0、チップ ID） |
 | `drivers/shell/` | 行編集（`cli.c`）、コンソールとタスクごとの出力先（`nano_console.c`）、Pico SDK の stdio の差し替え（`nano_stdio.c`）、コマンドの表と実行（`nano_shell.c`）、Zephyr の引数の分割の写し（`shell_argv.c`）、セッションごとの getopt（`getopt_state.c`） |
 | `drivers/libc/` | newlib の FILE 関数の差し替え（`stdio_wrap.c`）、newlib に無いソケット系のヘッダー（`include/`。型と定数だけ）、`inet_pton`・`inet_ntop`（`inet.c`） |
 | `drivers/log/` | RAM ログ（`log_ram.c`。リングは `common/log/log_ring.c`） |

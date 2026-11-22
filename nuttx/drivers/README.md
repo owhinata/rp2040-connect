@@ -669,11 +669,10 @@ is in two places:
   it (it has Zephyr itself).
 - **The NuttX implementation** (`nuttx/drivers/compat/`): the kernel part (`zephyr_kernel.c`,
   `zephyr_mutex.c`), the OS headers (`zephyr_os.h`, `zephyr_os_spinlock.h`, `zephyr_os_atomic.h`,
-  `zephyr_os_shell.h`), the OS parts that shared `.c` files include at their end
-  (`zephyr_rtio_workq_os.h`, `zephyr_net_mgmt_os.h`), the headers that depend on NuttX as a whole
-  (`zephyr/net/socket.h`, `net_if.h`, `zephyr/sys/clock.h`, `__assert.h`, `zephyr/drivers/i2c.h`),
-  the `.c` files of I2C, the interface, the chip ID and the sensor clock, and the prelude
-  (`common_prelude.h`).
+  `zephyr_os_shell.h`), the OS part that a shared `.c` file includes at its end
+  (`zephyr_net_mgmt_os.h`), the headers that depend on NuttX as a whole (`zephyr/net/socket.h`,
+  `net_if.h`, `zephyr/sys/clock.h`, `__assert.h`, `zephyr/drivers/i2c.h`), the `.c` files of
+  I2C, the interface and the chip ID, and the prelude (`common_prelude.h`).
 
 The include path is the NuttX implementation (`$(TOPDIR)/external/compat`), then the shared part
 (`common/compat`). The kernel side (`compat/Make.defs`) and the applications (`apps/sensor`,
@@ -720,7 +719,7 @@ of the NuttX implementation on the include path.
 | `zephyr_compat.h` | `zephyr_compat_initialize()` (called by the board's bring-up, below), `K_THREAD_DEFINE_START()` (called by init) |
 | `sensor_shell.h` | A copy of Zephyr's `drivers/sensor/sensor_shell.h` (the sensor shell's shared types; the Zephyr build reads Zephyr's) |
 | `zephyr_os.h`, `zephyr_os_spinlock.h`, `zephyr_os_atomic.h`, `zephyr_os_shell.h` (NuttX) | The OS headers (below): NuttX's types (`rmutex_t`, `sem_t`, a wdog, `pid_t`), the tick, the priorities, the TIMER, `sched_lock()` and `up_irq_save()`, the takeover of `<nuttx/atomic.h>`'s names, `struct shell` (the terminal's path and the command's task) |
-| `zephyr_rtio_workq_os.h`, `zephyr_net_mgmt_os.h` (NuttX) | The OS parts that `zephyr_rtio_workq.c` and `zephyr_net_mgmt.c` include at their end: the entries of the threads `RTIO WQ 0` and `net_mgmt` and their start as kernel threads (`kthread_create_with_stack()`) |
+| `zephyr_net_mgmt_os.h` (NuttX) | The OS part that `zephyr_net_mgmt.c` includes at its end: the entry of the thread `net_mgmt` and its start as a kernel thread (`kthread_create_with_stack()`) |
 | `common_prelude.h` (NuttX) | The prelude (below) |
 
 | Source (in `common/compat/` unless marked) | Contents |
@@ -728,9 +727,9 @@ of the NuttX implementation on the include path.
 | `zephyr_mutex.c` (NuttX) | `k_mutex` on NuttX (`rmutex_t`). Zephyr's `k_mutex` is unlocked when all zero (`lock_count` 0), and Zephyr's MQTT library locks the client's mutex in `mqtt_abort()` before `mqtt_client_init()`; NuttX's all-zero mutex counts as held by thread 0, and the lock never returns. So `K_MUTEX_DEFINE()` and `k_mutex_init()` set a mark (`ready`), and one without it (all zero) is initialized by its first lock or unlock (once, under the layer's spin lock) |
 | `zephyr_kernel.c` (NuttX) | The OS part on NuttX: `k_sem` (`sem_t`, the limit checked in `k_sem_give()`), `k_poll()`, the work queue threads (kernel threads on static stacks), the timer of delayable work (a wdog), thread names, the start of `K_THREAD_DEFINE()` threads, `k_uptime_get()`, `k_sleep()`, `k_msleep()`, `k_usleep()`, `k_busy_wait()`, `zephyr_compat_initialize()` |
 | `zephyr_work.c` | Work items and queues: the used part of Zephyr's `kernel/work.c` (OS-independent) |
-| `zephyr_rtio.c`, `zephyr_rtio_workq.c`, `zephyr_mem_blocks.c` | The RTIO executor (`subsys/rtio/rtio_executor.c`), the RTIO work queue (`rtio_workq.c`; its thread is the OS part `zephyr_rtio_workq_os.h`), the block pool (`lib/mem_blocks`) |
+| `zephyr_rtio.c`, `zephyr_rtio_workq.c`, `zephyr_mem_blocks.c` | The RTIO executor (`subsys/rtio/rtio_executor.c`), the RTIO work queue (`rtio_workq.c`; its thread `RTIO WQ 0` is started by `zephyr_compat_initialize()` as a `K_THREAD_DEFINE()` thread, with `z_thread_static_start()`), the block pool (`lib/mem_blocks`) |
 | `zephyr_gpio.c` | The `gpio0` device (Zephyr's `gpio.h` logic and `gpio_rpi_pico.c`) on the board's `<nano_gpio.h>` |
-| `zephyr_sensor_clock.c` (NuttX) | The sensor clock on the board's TIMER (`nano_mono_us()`) |
+| `zephyr_sensor_clock.c` | The sensor clock on the layer's cycle counter `k_cycle_get_64()` (the board's TIMER, `nano_mono_us()`, 1 MHz) |
 | `sensor_default_rtio.c` | A copy of Zephyr's `drivers/sensor/default_rtio_sensor.c` (only the log replaced): the sensors' iodev API, the fallback for single reads, the default decoder |
 | `zephyr_device.c` | Device initialization and the list of devices (`gpio0`, `i2c0`, `lsm6dsox` in the Zephyr build's order of initialization, with their node labels and whether the API is a sensor API; `gpio0` with the OS's configuration `CONFIG_NANO_LSM6DSO_STREAM`) |
 | `zephyr_i2c.c` (NuttX) | I2C (on a NuttX I2C master) |
@@ -771,12 +770,12 @@ of the NuttX implementation on the include path.
     headers that have names the layer takes over, and the `#undef` of their macros (below). Empty in
     the host tests.
   - `zephyr_os_shell.h` (included by `<zephyr/shell/shell.h>`): `struct shell` ("Shell" below).
-  - `zephyr_rtio_workq_os.h`, `zephyr_net_mgmt_os.h` (included by the shared `.c` files at their
-    end): the threads' entries and their start (`rtio_workq_initialize()`,
-    `net_mgmt_event_init()`), on the files' `static` variables (semaphores, stacks).
+  - `zephyr_net_mgmt_os.h` (included by `zephyr_net_mgmt.c` at its end): the thread's entry and
+    its start (`net_mgmt_event_init()`), on the file's `static` variables (semaphore, stack).
   - Headers that are the OS's as a whole: `zephyr/net/socket.h`, `zephyr/net/net_if.h`,
     `zephyr/sys/clock.h`, `zephyr/sys/__assert.h`, `zephyr/drivers/i2c.h`.
-  - Boundary headers that the shared files read: `priorities.h` (`NANO_STACK_NET_MGMT`; in
+  - Boundary headers that the shared files read: `priorities.h` (`NANO_STACK_NET_MGMT`,
+    `NANO_PRIO_RTIO_WQ`, `NANO_STACK_RTIO_WQ`; in
     `common/compat/`, on `NANO_PRIO_FROM_ZEPHYR()` of the OS part `priorities_os.h`, in the NuttX
     build in `nuttx/drivers/include/`), `nano_gpio.h` (`zephyr_gpio.c`; in `common/compat/`, the
     board implements it), `app_log.h` (`<zephyr/logging/log.h>`, `sensor_default_rtio.c`, the

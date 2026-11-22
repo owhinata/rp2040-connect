@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 /* What the files of the FreeRTOS part of the Zephyr compatibility layer share
- * (zephyr_kernel.c, zephyr_mutex.c, zephyr_rtio_workq_os.h); not for the
+ * (zephyr_kernel.c, zephyr_mutex.c, zephyr_net_mgmt_os.h); not for the
  * layer's users.  Include after <zephyr/kernel.h>.  Part of the FreeRTOS
  * implementation of the layer (freertos/drivers/compat).
  */

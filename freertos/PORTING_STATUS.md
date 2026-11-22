@@ -2336,3 +2336,23 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
   - FreeRTOS: `selftest` 22・6・3 項目とも失敗 0。既定のビルド 2 回: 欠番 0、42.8%・42.9%。`sensor get`・`imu cal`・`attr_get` 正常。スタックの空きは前と同じ（`imu_fifo_worker` 1352）。
 - 確かめていない: 校正のやり直し、切断復帰・Telnet（このイメージでは）、長時間、SPI のインスタンス（バスの長い読み出しは `-ENOTSUP`）。
 - 実機: FreeRTOS 版（この変更の既定のビルド）。
+
+## 互換層の RTIO と sensor を全部 `common/compat` に（2026-11-22）
+
+- ユーザーの質問から: 各版の `drivers/compat` にある RTIO と sensor のファイルを `common/compat` に移せるか → 移した（subagent が実装、メインがホストテストと実機確認）。
+- `zephyr_sensor_clock.c`: 2 版の同じ中身を `common/compat/zephyr_sensor_clock.c` の 1 つに。時計は互換層の `k_cycle_get_64()`（2 版とも `nano_mono_us()` の static inline。同じ 1 MHz の TIMER）。
+- `zephyr_rtio_workq_os.h`（2 版と、ホストテストの偽物）: 削除。スレッド `RTIO WQ 0` は `common/compat/zephyr_rtio_workq.c` の中で、`K_THREAD_DEFINE()` のスレッドと同じ
+  `z_thread_static_start()` で起動する。`K_THREAD_DEFINE()` そのものは使わない（スレッドの名前が C の識別子になる、起動がアプリの初期化に移る）。起動の位置は `zephyr_compat_initialize()` のまま。
+  `rtio_workq_initialize()` は `int` を返す。
+- イメージ: NuttX 284040 B（+8）、FreeRTOS 237088 B（−80）。Zephyr は変わらない（互換層をビルドしない）。**基準: `snapshot-1122d`**（Zephyr は 1122c と同じ中身）。ホストテスト 48・61・58。
+- 実機（書き込み直後の各 1 回 約 70 秒）: NuttX 欠番 0・48.8%、時刻の逆行 0、`sensor get` 応答（このスレッドを通る）、`ps` に `RTIO_WQ_0`（優先度 118、スタック 640/976）。
+  FreeRTOS 欠番 0・42.9%、時刻の逆行 0、`sensor get` 応答、`RTIO WQ 0`（優先度 20、空き 536）、`dmesg` に警告なし。
+- 実機: FreeRTOS 版（この変更の既定のビルド）。
+
+## 方針: いちばんの目的は、対応 OS を簡単に増やすこと（2026-11-22、ユーザー）
+
+- センサーの段階 3 を変更（ユーザーの了解）: OS の境界の既定の実装は互換層の上に 1 つ置き、新しい OS はセンサーのために何も書かない。直接の実装は、計測で差が出た OS だけ。
+  I2C と NINA の FreeRTOS の直接の実装はそのまま。
+- コアの名前（ユーザーの了解、段階 2 で行う）: コアを `lsm6dso.c`（関数は `lsm6dso_*`）、Zephyr へのつなぎを `port/zephyr/lsm6dso_sensor.[ch]` に。`lsm6dso.h` の名前の重なりを無くす。
+- ユーザー: 移植の一覧の文書と、実際に OS を足す試しは、まだ先。先に「互換層の OS の部分」と「ボードの起動、USB のコンソール、シェルの入口、フラッシュ、ビルドの規則」を
+  何とかしないといけない。

@@ -42,9 +42,9 @@ void rtio_work_req_submit(struct rtio_work_req *req,
 
 uint32_t rtio_work_req_used_count_get(void);
 
-/* Starts the thread (zephyr_compat_initialize()). */
+/* Starts the thread (zephyr_compat_initialize()); 0 or a negative errno. */
 
-void rtio_workq_initialize(void);
+int rtio_workq_initialize(void);
 
 /* Runs the oldest queued request in the caller; false if none (host tests
  * and the thread).

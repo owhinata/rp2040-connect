@@ -586,9 +586,9 @@ Zephyr の API を、Zephyr の名前のまま最小限だけ用意したもの�
   使いません（Zephyr 本体を使う）。
 - **NuttX の実装**（`nuttx/drivers/compat/`）: カーネルの部分（`zephyr_kernel.c`・`zephyr_mutex.c`）、OS ごとの
   ヘッダー（`zephyr_os.h`・`zephyr_os_spinlock.h`・`zephyr_os_atomic.h`・`zephyr_os_shell.h`）、共通の `.c` が最後に読む OS の部分
-  （`zephyr_rtio_workq_os.h`・`zephyr_net_mgmt_os.h`）、全体が NuttX に依存するヘッダー（`zephyr/net/socket.h`・
+  （`zephyr_net_mgmt_os.h`）、全体が NuttX に依存するヘッダー（`zephyr/net/socket.h`・
   `net_if.h`、`zephyr/sys/clock.h`・`__assert.h`、`zephyr/drivers/i2c.h`）と、I2C・
-  インターフェース・チップ ID・センサーの時計の `.c`、前置きヘッダー（`common_prelude.h`）。
+  インターフェース・チップ ID の `.c`、前置きヘッダー（`common_prelude.h`）。
 
 インクルードパスは NuttX の実装（`$(TOPDIR)/external/compat`）、共通の部分（`common/compat`）の順です。共通の
 `.c` はカーネル側（`compat/Make.defs`）とアプリ（`apps/sensor`・`apps/wifi`）が `VPATH` で参照し、前置き
@@ -634,7 +634,7 @@ Zephyr の API を、Zephyr の名前のまま最小限だけ用意したもの�
 | `zephyr_compat.h` | `zephyr_compat_initialize()`（ボードの起動処理が呼ぶ。下）、`K_THREAD_DEFINE_START()`（init が呼ぶ） |
 | `sensor_shell.h` | Zephyr の `drivers/sensor/sensor_shell.h` の写し（sensor シェルの共通の型。Zephyr 版は Zephyr のものを読む） |
 | `zephyr_os.h`、`zephyr_os_spinlock.h`、`zephyr_os_atomic.h`、`zephyr_os_shell.h`（NuttX） | OS ごとのヘッダー（下）。NuttX の型（`rmutex_t`・`sem_t`・wdog・`pid_t`）、tick、優先度、TIMER、`sched_lock()`・`up_irq_save()`、`<nuttx/atomic.h>` の名前の引き取り、`struct shell`（端末のパスとコマンドのタスク） |
-| `zephyr_rtio_workq_os.h`、`zephyr_net_mgmt_os.h`（NuttX） | `zephyr_rtio_workq.c`・`zephyr_net_mgmt.c` が最後に読む OS の部分: スレッド `RTIO WQ 0`・`net_mgmt` の入口と、カーネルスレッドとしての起動（`kthread_create_with_stack()`） |
+| `zephyr_net_mgmt_os.h`（NuttX） | `zephyr_net_mgmt.c` が最後に読む OS の部分: スレッド `net_mgmt` の入口と、カーネルスレッドとしての起動（`kthread_create_with_stack()`） |
 | `common_prelude.h`（NuttX） | 前置きヘッダー（下） |
 
 | ソース（場所の無いものは `common/compat/`） | 中身 |
@@ -642,9 +642,9 @@ Zephyr の API を、Zephyr の名前のまま最小限だけ用意したもの�
 | `zephyr_mutex.c`（NuttX） | NuttX の上の `k_mutex`（`rmutex_t`）。Zephyr の `k_mutex` は全部 0 のとき未ロック（`lock_count` 0）で、Zephyr の MQTT ライブラリは `mqtt_client_init()` の前のクライアントのミューテックスを `mqtt_abort()` で lock する。NuttX の全部 0 のミューテックスはスレッド 0 が持っている扱いで、lock が戻らない。そこで `K_MUTEX_DEFINE()` と `k_mutex_init()` が印（`ready`）を立て、印のないもの（全部 0）は最初の lock・unlock で初期化する（互換層のスピンロックの中で 1 回だけ） |
 | `zephyr_kernel.c`（NuttX） | NuttX の上の OS 部分: `k_sem`（`sem_t`、上限は `k_sem_give()` で見る）、`k_poll()`、ワークキューのスレッド（静的なスタックのカーネルスレッド）、遅延ワークのタイマー（wdog）、スレッド名、`K_THREAD_DEFINE()` のスレッドの起動、`k_uptime_get()`・`k_sleep()`・`k_msleep()`・`k_usleep()`・`k_busy_wait()`、`zephyr_compat_initialize()` |
 | `zephyr_work.c` | ワークとワークキュー。Zephyr の `kernel/work.c` の使っている部分の写し（OS に依存しない） |
-| `zephyr_rtio.c`、`zephyr_rtio_workq.c`、`zephyr_mem_blocks.c` | RTIO の executor（`subsys/rtio/rtio_executor.c`）、RTIO のワークキュー（`rtio_workq.c`。スレッドは OS の部分 `zephyr_rtio_workq_os.h`）、ブロックのプール（`lib/mem_blocks`） |
+| `zephyr_rtio.c`、`zephyr_rtio_workq.c`、`zephyr_mem_blocks.c` | RTIO の executor（`subsys/rtio/rtio_executor.c`）、RTIO のワークキュー（`rtio_workq.c`。スレッド `RTIO WQ 0` は `zephyr_compat_initialize()` が `K_THREAD_DEFINE()` のスレッドとして `z_thread_static_start()` で起動する）、ブロックのプール（`lib/mem_blocks`） |
 | `zephyr_gpio.c` | `gpio0` のデバイス（Zephyr の `gpio.h` の処理と `gpio_rpi_pico.c`）。ボードの `<nano_gpio.h>` の上 |
-| `zephyr_sensor_clock.c`（NuttX） | センサーの時計。ボードの TIMER（`nano_mono_us()`） |
+| `zephyr_sensor_clock.c` | センサーの時計。互換層のサイクルカウンター `k_cycle_get_64()`（ボードの TIMER、`nano_mono_us()`、1 MHz） |
 | `sensor_default_rtio.c` | Zephyr の `drivers/sensor/default_rtio_sensor.c` の写し（ログだけ置き換え）。センサーの iodev の API、単発取得のフォールバック、既定のデコーダー |
 | `zephyr_device.c` | デバイスの初期化と一覧（`gpio0`、`i2c0`、`lsm6dsox` を Zephyr 版の初期化の順に、ノードのラベルと sensor の API かどうかと共に。`gpio0` は OS の構成の `CONFIG_NANO_LSM6DSO_STREAM` のとき） |
 | `zephyr_i2c.c`（NuttX） | I2C（NuttX の I2C マスターの上） |
@@ -680,11 +680,11 @@ Zephyr の API を、Zephyr の名前のまま最小限だけ用意したもの�
   - `zephyr_os_atomic.h`（`<zephyr/sys/atomic.h>` が名前を定義する前に読む）: 互換層が引き取る名前を持つ OS の
     ヘッダーと、そのマクロの `#undef`（下）。ホストテストでは空。
   - `zephyr_os_shell.h`（`<zephyr/shell/shell.h>` が読む）: `struct shell`（下の「シェル」）。
-  - `zephyr_rtio_workq_os.h`・`zephyr_net_mgmt_os.h`（共通の `.c` が最後に読む）: スレッドの入口と起動
-    （`rtio_workq_initialize()`、`net_mgmt_event_init()`）。ファイルの `static` な変数（セマフォ、スタック）を使う。
+  - `zephyr_net_mgmt_os.h`（`zephyr_net_mgmt.c` が最後に読む）: スレッドの入口と起動
+    （`net_mgmt_event_init()`）。ファイルの `static` な変数（セマフォ、スタック）を使う。
   - 全体が OS ごとのヘッダー: `zephyr/net/socket.h`、`zephyr/net/net_if.h`、`zephyr/sys/clock.h`、
     `zephyr/sys/__assert.h`、`zephyr/drivers/i2c.h`。
-  - 共通の `.c` とヘッダーが読む境界のヘッダー: `priorities.h`（`NANO_STACK_NET_MGMT`。`common/compat/` にあり、
+  - 共通の `.c` とヘッダーが読む境界のヘッダー: `priorities.h`（`NANO_STACK_NET_MGMT`・`NANO_PRIO_RTIO_WQ`・`NANO_STACK_RTIO_WQ`。`common/compat/` にあり、
     OS の部分 `priorities_os.h` の `NANO_PRIO_FROM_ZEPHYR()` を読む。NuttX 版は `nuttx/drivers/include/`）、
     `nano_gpio.h`（`zephyr_gpio.c`。`common/compat/` にあり、ボードが実装する）、`app_log.h`（`<zephyr/logging/log.h>`、
     `sensor_default_rtio.c`、資格情報。`common/log/` にあり、OS の部分 `app_log_os.h` を読む）、`<cpu_load.h>`

@@ -1,11 +1,10 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /* The RTIO work queue of <zephyr/rtio/work.h>: Zephyr's
  * subsys/rtio/rtio_workq.c with its k_mem_slab of requests as a fixed
- * array and its k_queue as a first-in first-out list and a semaphore.  The
- * list and the pool are OS-independent; the thread ("RTIO WQ 0") is the
- * OS's, in "zephyr_rtio_workq_os.h", which this file includes at its end.
- * Part of the small Zephyr compatibility layer of the port, its
- * OS-independent part (common/compat).
+ * array, its k_queue as a first-in first-out list and a semaphore, and its
+ * thread "RTIO WQ 0" on the OS's thread of K_THREAD_DEFINE()
+ * (z_thread_static_start()).  Part of the small Zephyr compatibility layer
+ * of the port, its OS-independent part (common/compat).
  */
 
 #include <stdbool.h>
@@ -14,6 +13,8 @@
 
 #include <zephyr/kernel.h>
 #include <zephyr/rtio/work.h>
+
+#include "priorities.h"
 
 static struct rtio_work_req rtio_work_items[CONFIG_RTIO_WORKQ_POOL_ITEMS];
 static bool rtio_work_used[CONFIG_RTIO_WORKQ_POOL_ITEMS];
@@ -128,9 +129,42 @@ bool rtio_workq_process(void)
   return true;
 }
 
-/* The OS part: the thread "RTIO WQ 0" that takes rtio_workq_sem and runs
- * rtio_workq_process(), started by rtio_workq_initialize() (on NuttX a
- * kernel thread on a static stack, nuttx/drivers/compat).
+/* rtio_workq.c rtio_workq_thread_fn(): k_queue_get(.., K_FOREVER). */
+
+static void rtio_workq_thread_fn(void *arg1, void *arg2, void *arg3)
+{
+  (void)arg1;
+  (void)arg2;
+  (void)arg3;
+
+  for (; ; )
+    {
+      (void)k_sem_take(&rtio_workq_sem, K_FOREVER);
+      (void)rtio_workq_process();
+    }
+}
+
+/* rtio_workq.c static_init() (SYS_INIT POST_KERNEL), which names the
+ * thread "RTIO WQ 0": the thread of a K_THREAD_DEFINE() (static stack, the
+ * OS's priority), started here rather than by the init task, because the
+ * macro names the thread by a token and the init task comes after the
+ * layer.
  */
 
-#include "zephyr_rtio_workq_os.h"
+static K_THREAD_STACK_DEFINE(rtio_workq_threads_stack, NANO_STACK_RTIO_WQ);
+static k_tid_t rtio_work_thread;
+
+int rtio_workq_initialize(void)
+{
+  static const struct z_thread_static thread =
+    {
+      .name = "RTIO WQ 0",
+      .stack = rtio_workq_threads_stack,
+      .stack_size = K_THREAD_STACK_SIZEOF(rtio_workq_threads_stack),
+      .entry = rtio_workq_thread_fn,
+      .prio = NANO_PRIO_RTIO_WQ,
+      .tid = &rtio_work_thread,
+    };
+
+  return z_thread_static_start(&thread);
+}

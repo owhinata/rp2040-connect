@@ -61,7 +61,6 @@
 #include <zephyr/drivers/i2c.h>
 #include <zephyr/drivers/sensor.h>
 #include <zephyr/drivers/sensor/lsm6dso.h>
-#include <zephyr/drivers/sensor_clock.h>
 #include <zephyr/kernel.h>
 #include <zephyr/rtio/rtio.h>
 #include <zephyr/shell/shell.h>
@@ -255,20 +254,6 @@ bool app_log_ratelimit_pass(uint32_t *last_ms, uint32_t *skipped, uint32_t rate_
 	(void)rate_ms;
 	*skipped_out = 0;
 	return true;
-}
-
-/* The sensor clock (freertos/drivers/compat/zephyr_sensor_clock.c on the
- * board): the test port's clock.
- */
-int sensor_clock_get_cycles(uint64_t *cycles)
-{
-	*cycles = nano_mono_us();
-	return 0;
-}
-
-uint64_t sensor_clock_cycles_to_ns(uint64_t cycles)
-{
-	return cycles * 1000U;
 }
 
 /* A fake key-value store: the calibration values (common/imu/kv_store.h) */

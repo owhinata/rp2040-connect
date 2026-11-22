@@ -450,6 +450,8 @@ int zephyr_compat_initialize(void)
       .no_yield = false,
     };
 
+  int ret;
+
   /* kernel/system_work_q.c k_sys_work_q_init() (POST_KERNEL). */
 
   k_work_queue_start(&k_sys_work_q, sys_work_q_stack,
@@ -458,7 +460,11 @@ int zephyr_compat_initialize(void)
 
   /* subsys/rtio/rtio_workq.c static_init() (POST_KERNEL). */
 
-  rtio_workq_initialize();
+  ret = rtio_workq_initialize();
+  if (ret < 0)
+    {
+      return ret;
+    }
 
   /* drivers/gpio/gpio_rpi_pico.c (POST_KERNEL, CONFIG_GPIO_INIT_PRIORITY
    * 40).

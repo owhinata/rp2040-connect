@@ -673,7 +673,7 @@ if [[ -f stmemsc/lsm6dso_reg.c ]]; then
                ../common/drivers/stmemsc/stmemsc_i2c.c ../common/drivers/stmemsc/stmemsc_mdelay.c \
                ../common/compat/zephyr_device.c ../common/compat/zephyr_gpio.c \
                ../common/compat/sensor_default_rtio.c ../common/compat/zephyr_rtio.c \
-               ../common/compat/zephyr_mem_blocks.c; do
+               ../common/compat/zephyr_mem_blocks.c ../common/compat/zephyr_sensor_clock.c; do
         obj="$out/sensor_$(basename "$src" .c).o"
         extra=()
         case $src in
