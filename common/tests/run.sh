@@ -210,7 +210,9 @@ run rp2040_timer_us "${flags[@]}" -Ichip/rp2040/include tests/rp2040_timer_us.c
 # previous list (shell/ps_interval.h).
 run ps_interval "${flags[@]}" -Ishell tests/ps_interval.c
 # The record of a fatal error that the FreeRTOS build keeps across its restart
-# (compat/log/fault_record.c): the check, the watchdog scratch copy and the lines.
+# (compat/log/fault_record.c): the check, the watchdog scratch copy and the lines, the range
+# check and the HardFault's exception frame (synthetic frames at both ends of a "RAM" followed by an
+# unmapped page), the choice of the record at the next start.
 run fault_record "${flags[@]}" -Icompat/log tests/fault_record.c compat/log/fault_record.c
 
 # The hexadecimal conversions of the "kv" command (compat/lib/utils/hex.c, the copy of Zephyr's

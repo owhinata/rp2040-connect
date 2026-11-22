@@ -173,8 +173,11 @@ the interval of interest); timed by the TIMER.
   stack overflow (`configCHECK_FOR_STACK_OVERFLOW` 2), heap exhaustion and `_exit()` end in one exit,
   which keeps a record (reason, PC, LR, SP, exception frame, task, time) in RAM and in the watchdog's
   scratch registers 0..3 and restarts the board with the watchdog. The next start writes the record to
-  `dmesg`, and `fault` and the console's banner show it. The record's format is
-  `common/compat/log/fault_record.[ch]`.
+  `dmesg`, and `fault` and the console's banner show it. The record's format, the reading of the
+  HardFault's exception frame (only where the frame lies in the RAM) and the choice at the next start
+  between the record in RAM and the scratch registers' copy are `common/compat/log/fault_record.[ch]`;
+  `fault.c` keeps the entries, the handler's entry (`isr_hardfault`), the task's name, the watchdog's
+  registers and the restart.
 
 ## The key-value store's flash
 

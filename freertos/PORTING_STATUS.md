@@ -2609,3 +2609,25 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
   - NuttX: 欠番 0、47.4%、`ps` の順序（nina_scan・nina_connect・nina_monitor、5 つのスレッド、telnetd）、synchronized、送信中の Telnet、Wi-Fi を落として 2 秒で再接続、復帰後の Telnet。
   - FreeRTOS: `selftest` 22・6・3 項目とも失敗 0。既定のビルド 2 回: 欠番 0、43.9〜44.0%。起動のログの順序は従来どおり、synchronized、切断復帰と Telnet も同じ結果。
 - 実機: FreeRTOS 版（この変更の既定のビルド）。
+
+## 整理 11: フラッシュの KV と異常停止の記録、最後の `nano_` の改名（2026-11-22）
+
+- subagent が実装（3 つに分けて）、メインがホストテストと実機確認（KV は先に退避: `host/recordings/kv-backup-20261122-step11.json`、Git 管理外）。commit も 3 つ。
+- A（名前だけ。3 版と自己診断のイメージがバイト単位で一致）: `nano_flash_kv.h` → `flash_kv.h`（共有の部分: レイアウトの判定、ページの補助、消去）と `flash_kv_os.h`（各版が実装する境界:
+  `flash_kv_os_ready/read/program/erase/initialize`）。`nano_kv_*`・`NANO_KV_*` → `flash_kv_*`・`FLASH_KV_*`。NuttX `rp2040_flash_kv_os.c`、FreeRTOS `flash_kv_os_rp2040.c`。
+  `script/flash_uf2.sh` のテスト用のフック `NANO_FLASH_*` → `FLASH_UF2_*`。**これで `nano_` の名前は無くなった。**
+- B: 2 版が別々に書いていた RP2040 の部分（領域がイメージのあとでフラッシュの中にあることの確認、読み・書き・消去の範囲の検査、キャッシュなしの写像での読み出し、ページの RAM への写し）を
+  `common/chip/rp2040/rp2040_flash_kv.c` に 1 つに。各版が書くのは `rp2040_flash_kv_os_*` の 4 関数（開始、イメージの終わり、書き込み、消去。割り込みを止めた状態でもう一度範囲を確かめる）。
+  生のフラッシュの操作は各版のまま（NuttX は RAM に置いたブート ROM の呼び出し、FreeRTOS は Pico SDK の `flash_range_*`。命令と RAM 上の配置は変更前と同じ）。NuttX 本体のフラッシュのドライバーは
+  使えない（イメージのあとを SmartFS 用に消す）。変わった点: イメージの終わりがフラッシュの先頭以下なら拒否する検査が両版に（以前は FreeRTOS だけ）。
+- C: 異常停止の記録のうち、例外フレームの読み取り（RAM の範囲と整列の検査つき）と、起動時にどの記録を使うかの選択を `common/compat/log/fault_record.[ch]` へ。割り込みの入口、タスクの名前、
+  スクラッチレジスター、再起動は FreeRTOS の `fault.c` のまま（共有にできるものは少なかった）。
+- テスト: 新しい `rp2040_flash_kv`（偽のフラッシュを実際のアドレス 0x13ffe000 に置き、領域の前後 8 KiB の全部のオフセット、境界を ±1 と ±4 KiB ずらした 16 通り、読み出しの両端）、
+  `flash_kv` の拡張、`fault_record` の拡張（RAM の端のフレーム、不正なフレーム 7 通り、記録の選択）。ホストテスト 52・65・62。
+- イメージ: NuttX 284368 B（+132）、FreeRTOS 237912 B（+200）、Zephyr は変わらない。**基準: `snapshot-1122j`**。
+- 実機:
+  - FreeRTOS: 既存の KV を認識（`fs_nvs` の行、`flash_kv` のエラーなし）、`imu.port` 読める、試験用のキーを書く → 読める → `reboot` 後も読める → 削除 → `reboot` 後は無い（-2）、校正済みのまま、
+    Wi-Fi は起動後すぐ接続。送信 2 回: 欠番 0、44.0%。`devmem 0x30000000` のあと `fault` に記録（HardFault、タスク console、pc・lr・sp とレジスター）。`selftest` 22・6・3 項目とも失敗 0。
+  - NuttX: KV の確認は同じ結果。送信: 欠番 0、46.5%、時刻の逆行 0。
+- 確かめていない: スタックあふれの経路（安全に起こす手段が無い。ホストテストと、変えていないフックだけ）。
+- **整理 1〜11 はこれで全部終わり。** 実機: FreeRTOS 版（この変更の既定のビルド。異常停止の記録が 1 件＝こちらの試験）。

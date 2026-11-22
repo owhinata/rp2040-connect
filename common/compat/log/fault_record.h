@@ -11,6 +11,13 @@
  * written one at a time (fault_record_line()) so the RAM log can take them
  * as well (common/compat/log/log_ring.c).
  *
+ * Besides the record, this part has what a HardFault handler on the
+ * Cortex-M0+ needs that does not depend on the OS (the exception frame,
+ * read only where it is safe to, fault_record_set_frame()) and the choice
+ * at the next start between the record in RAM and its copy in the scratch
+ * registers (fault_record_take()).  Neither allocates, locks or logs: the
+ * HardFault handler calls the first with the interrupts off.
+ *
  * The Zephyr build (CONFIG_RESET_ON_FATAL_ERROR) and the NuttX build
  * (CONFIG_BOARD_RESET_ON_ASSERT) write their report into the RAM log
  * instead and have no such record.
@@ -40,6 +47,19 @@ extern "C" {
 
 #define FAULT_RECORD_TASK_LEN 32 /* FreeRTOS configMAX_TASK_NAME_LEN */
 #define FAULT_RECORD_TEXT_LEN 96
+
+/* The Cortex-M0+ (ARMv6-M) on an exception: the frame it pushes (r0..r3,
+ * r12, lr, pc, xpsr, 8 words; 4 bytes of padding first, marked by bit 9 of
+ * the frame's xpsr, if the stack pointer was not 8-byte aligned), the
+ * exception number in IPSR and in the low bits of xpsr, and bit 2 of
+ * EXC_RETURN (in lr in the handler): the frame is on the process stack
+ * (PSP) rather than the main stack (MSP).
+ */
+#define FAULT_RECORD_FRAME_WORDS    8
+#define FAULT_RECORD_FRAME_SIZE     (FAULT_RECORD_FRAME_WORDS * 4u)
+#define FAULT_RECORD_EXCEPTION_MASK 0x3fu
+#define FAULT_RECORD_XPSR_ALIGNED   (1u << 9)
+#define FAULT_RECORD_EXC_RETURN_PSP (1u << 2)
 
 /* Why the firmware stopped. */
 enum fault_reason {
@@ -109,6 +129,34 @@ void fault_record_to_scratch(const struct fault_record *r, uint32_t s[FAULT_SCRA
  * otherwise returns false and leaves r alone.
  */
 bool fault_record_from_scratch(const uint32_t s[FAULT_SCRATCH_WORDS], struct fault_record *r);
+
+/* True if [address, address + size) lies inside [start, end) (no sum can
+ * wrap around).  For the checks of a fault handler: whether a pointer that
+ * a corrupted program left may be read.
+ */
+bool fault_record_in_range(uintptr_t address, size_t size, uintptr_t start, uintptr_t end);
+
+/* The HardFault's part of the record r, from FRAME, the stack pointer the
+ * processor pushed the exception frame at (MSP or PSP by EXC_RETURN): if the
+ * frame is word-aligned and lies inside [RAM_START, RAM_END), r0..r3, r12,
+ * lr, pc and xpsr from it, flags FAULT_RECORD_FRAME, exception the number
+ * the interrupted code was running in (xpsr: 0 in thread mode) and sp its
+ * stack pointer (after the frame and its padding); otherwise sp FRAME and
+ * the text "stack pointer outside the RAM (PSP)" or "(MSP)", and nothing is
+ * read through FRAME.  A bad stack pointer may be the fault itself.
+ */
+void fault_record_set_frame(struct fault_record *r, uintptr_t frame, uint32_t exc_return,
+			    uintptr_t ram_start, uintptr_t ram_end);
+
+/* At the start, the record the last run left: a copy of RETAINED (the
+ * record in RAM that the start-up code leaves alone) if it is valid, else
+ * the one rebuilt from the scratch registers' words S
+ * (fault_record_from_scratch()), into LAST.  True if there was one; else
+ * LAST is left alone.  The caller clears both afterwards so that the next
+ * start does not see them again.
+ */
+bool fault_record_take(const struct fault_record *retained, const uint32_t s[FAULT_SCRATCH_WORDS],
+		       struct fault_record *last);
 
 /* Line index of the record's text, without a line end, into buf
  * (truncated to len - 1 characters and terminated).  Returns the length of

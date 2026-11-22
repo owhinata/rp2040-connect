@@ -23,17 +23,6 @@ LOG_MODULE_REGISTER(fault);
 #define RAM_START 0x20000000u
 #define RAM_END   0x20042000u
 
-/* The exception numbers (IPSR). */
-#define EXCEPTION_MASK     0x3fu
-#define EXCEPTION_PENDSV   14u
-#define EXCEPTION_FRAME_SZ 32u /* r0..r3, r12, lr, pc, xpsr */
-
-/* xPSR bit 9 in the frame: the processor added 4 bytes to align the stack. */
-#define XPSR_ALIGNED_BIT (1u << 9)
-
-/* EXC_RETURN bit 2: the frame is on the process stack (PSP, a task). */
-#define EXC_RETURN_PSP (1u << 2)
-
 /* Left alone by the start-up code (crt0 only copies .data and zeroes .bss),
  * so it survives the watchdog's restart.  Power-on leaves random contents,
  * which fail the record's check.
@@ -47,17 +36,12 @@ static bool last_valid;
 /* Set by the first entry; a fatal error inside the exit only restarts. */
 static volatile bool exiting;
 
-static bool in_ram(uintptr_t address, size_t size)
-{
-	return address >= RAM_START && address <= RAM_END - size;
-}
-
 static uint32_t current_exception(void)
 {
 	uint32_t ipsr;
 
 	__asm volatile("mrs %0, ipsr" : "=r"(ipsr));
-	return ipsr & EXCEPTION_MASK;
+	return ipsr & FAULT_RECORD_EXCEPTION_MASK;
 }
 
 static uint32_t current_sp(void)
@@ -126,7 +110,8 @@ static void __attribute__((noreturn)) finish(struct fault_record *r)
 		/* The handle is the task's control block; a fault may come from
 		 * a corrupted kernel, so only read it inside the RAM.
 		 */
-		if (task != NULL && in_ram((uintptr_t)task, sizeof(StaticTask_t))) {
+		if (task != NULL && fault_record_in_range((uintptr_t)task, sizeof(StaticTask_t),
+							  RAM_START, RAM_END)) {
 			strncpy(r->task, pcTaskGetName(task), sizeof(r->task) - 1);
 		}
 	}
@@ -229,32 +214,9 @@ static void __attribute__((used, noreturn)) hardfault(const uint32_t *frame, uin
 {
 	struct fault_record *r = begin(FAULT_REASON_HARDFAULT, 0);
 
-	if (r == NULL) {
-		finish(r);
-	}
-	/* A bad stack pointer may be the fault itself: read the frame only
-	 * inside the RAM.
-	 */
-	if (in_ram((uintptr_t)frame, EXCEPTION_FRAME_SZ) && ((uintptr_t)frame & 3u) == 0) {
-		r->flags = FAULT_RECORD_FRAME;
-		r->r0 = frame[0];
-		r->r1 = frame[1];
-		r->r2 = frame[2];
-		r->r3 = frame[3];
-		r->r12 = frame[4];
-		r->lr = frame[5];
-		r->pc = frame[6];
-		r->xpsr = frame[7];
-		/* Where the interrupted code was: thread mode (0) or the
-		 * exception it was handling.
-		 */
-		r->exception = r->xpsr & EXCEPTION_MASK;
-		r->sp = (uint32_t)frame + EXCEPTION_FRAME_SZ +
-			((r->xpsr & XPSR_ALIGNED_BIT) ? 4u : 0u);
-	} else {
-		r->sp = (uint32_t)frame;
-		snprintf(r->text, sizeof(r->text), "stack pointer outside the RAM (%s)",
-			 (exc_return & EXC_RETURN_PSP) ? "PSP" : "MSP");
+	/* The frame is read only inside the RAM (fault_record.h). */
+	if (r != NULL) {
+		fault_record_set_frame(r, (uintptr_t)frame, exc_return, RAM_START, RAM_END);
 	}
 	finish(r);
 }
@@ -306,12 +268,7 @@ void fault_boot(void)
 	for (int i = 0; i < FAULT_SCRATCH_WORDS; i++) {
 		s[i] = watchdog_hw->scratch[i];
 	}
-	if (fault_record_valid(&fault_ram)) {
-		last = fault_ram;
-		last_valid = true;
-	} else {
-		last_valid = fault_record_from_scratch(s, &last);
-	}
+	last_valid = fault_record_take(&fault_ram, s, &last);
 	memset(&fault_ram, 0, sizeof(fault_ram));
 	for (int i = 0; i < FAULT_SCRATCH_WORDS; i++) {
 		watchdog_hw->scratch[i] = 0;

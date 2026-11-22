@@ -84,6 +84,51 @@ bool fault_record_from_scratch(const uint32_t s[FAULT_SCRATCH_WORDS], struct fau
 	return true;
 }
 
+bool fault_record_in_range(uintptr_t address, size_t size, uintptr_t start, uintptr_t end)
+{
+	return start <= end && size <= end - start && address >= start &&
+	       address - start <= (end - start) - size;
+}
+
+void fault_record_set_frame(struct fault_record *r, uintptr_t frame, uint32_t exc_return,
+			    uintptr_t ram_start, uintptr_t ram_end)
+{
+	const uint32_t *f = (const uint32_t *)frame;
+
+	if (!fault_record_in_range(frame, FAULT_RECORD_FRAME_SIZE, ram_start, ram_end) ||
+	    (frame & 3u) != 0) {
+		r->sp = (uint32_t)frame;
+		snprintf(r->text, sizeof(r->text), "stack pointer outside the RAM (%s)",
+			 (exc_return & FAULT_RECORD_EXC_RETURN_PSP) ? "PSP" : "MSP");
+		return;
+	}
+	r->flags = FAULT_RECORD_FRAME;
+	r->r0 = f[0];
+	r->r1 = f[1];
+	r->r2 = f[2];
+	r->r3 = f[3];
+	r->r12 = f[4];
+	r->lr = f[5];
+	r->pc = f[6];
+	r->xpsr = f[7];
+	/* Where the interrupted code was: thread mode (0) or the exception it
+	 * was handling.
+	 */
+	r->exception = r->xpsr & FAULT_RECORD_EXCEPTION_MASK;
+	r->sp = (uint32_t)frame + FAULT_RECORD_FRAME_SIZE +
+		((r->xpsr & FAULT_RECORD_XPSR_ALIGNED) ? 4u : 0u);
+}
+
+bool fault_record_take(const struct fault_record *retained, const uint32_t s[FAULT_SCRATCH_WORDS],
+		       struct fault_record *last)
+{
+	if (fault_record_valid(retained)) {
+		*last = *retained;
+		return true;
+	}
+	return fault_record_from_scratch(s, last);
+}
+
 /* The kinds of line, in their order. */
 enum line_kind {
 	LINE_REASON,

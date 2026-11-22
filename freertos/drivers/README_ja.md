@@ -150,7 +150,9 @@ KV、校正値、時刻同期、自動接続の順に始めます。
 - 異常停止（`app/usb-console/src/fault.[ch]`）: `panic()`、HardFault、`configASSERT()` と `assert()`、スタックの
   あふれ（`configCHECK_FOR_STACK_OVERFLOW` 2）、ヒープ不足、`_exit()` が 1 つの出口に入り、記録（理由、PC、LR、SP、
   例外のフレーム、タスク、時刻）を RAM と watchdog の scratch レジスター 0〜3 に残して watchdog で再起動します。
-  次の起動で記録を `dmesg` に書き、`fault` とコンソールのバナーで表示します。記録の形式は `common/compat/log/fault_record.[ch]`。
+  次の起動で記録を `dmesg` に書き、`fault` とコンソールのバナーで表示します。記録の形式、HardFault の例外のフレームの読み取り
+  （フレームが RAM の中にあるときだけ）、次の起動での RAM の記録と scratch レジスターの写しの選び方は `common/compat/log/fault_record.[ch]`。
+  `fault.c` に残るのは入口、ハンドラーの入口（`isr_hardfault`）、タスクの名前、watchdog のレジスターと再起動です。
 
 ## KV のフラッシュ
 

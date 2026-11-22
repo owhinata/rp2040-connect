@@ -1,10 +1,17 @@
 /* SPDX-License-Identifier: MIT */
 /* common/compat/log/fault_record.c: the check of the record, the copy in the
- * watchdog's scratch registers and the lines of its text.
+ * watchdog's scratch registers and the lines of its text; the range check
+ * and the HardFault's exception frame (synthetic frames, at both ends of a
+ * "RAM" that ends at an unmapped page, so that a read past it faults), and
+ * the choice of the record at the next start.
  */
+#define _GNU_SOURCE
 #include <assert.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <string.h>
+#include <sys/mman.h>
+#include <unistd.h>
 #include "fault_record.h"
 
 static struct fault_record sample(void)
@@ -43,6 +50,127 @@ static void expect_lines(const struct fault_record *r, const char *const *lines)
 		}
 	}
 	assert(fault_record_line(r, i, buf, sizeof(buf)) == 0);
+}
+
+static void test_in_range(void)
+{
+	const uintptr_t lo = 0x20000000u, hi = 0x20042000u;
+
+	assert(fault_record_in_range(lo, 32, lo, hi));
+	assert(fault_record_in_range(hi - 32, 32, lo, hi));
+	assert(fault_record_in_range(hi - 1, 1, lo, hi));
+	assert(fault_record_in_range(lo, hi - lo, lo, hi));
+	assert(fault_record_in_range(hi, 0, lo, hi));
+	assert(!fault_record_in_range(hi - 31, 32, lo, hi));
+	assert(!fault_record_in_range(hi, 1, lo, hi));
+	assert(!fault_record_in_range(lo - 1, 32, lo, hi));
+	assert(!fault_record_in_range(lo - 1, 1, lo, hi));
+	assert(!fault_record_in_range(lo, hi - lo + 1, lo, hi));
+	assert(!fault_record_in_range(0, 32, lo, hi));
+	assert(!fault_record_in_range(UINTPTR_MAX - 15, 32, lo, hi));
+	assert(!fault_record_in_range(lo, SIZE_MAX, lo, hi));
+	assert(!fault_record_in_range(lo, 32, hi, lo));
+	assert(!fault_record_in_range(hi, 32, hi, lo));
+}
+
+/* A "RAM" of one page followed by an unmapped one: a frame that the
+ * function reads past ram_end faults the test.
+ */
+static void test_frame(void)
+{
+	long pagesz = sysconf(_SC_PAGESIZE);
+	uint8_t *map = mmap(NULL, 2 * (size_t)pagesz, PROT_READ | PROT_WRITE,
+			    MAP_PRIVATE | MAP_ANONYMOUS, -1, 0);
+	uintptr_t ram_start, ram_end, at;
+	struct fault_record r;
+	uint32_t *f;
+
+	assert(map != MAP_FAILED);
+	assert(mprotect(map + pagesz, (size_t)pagesz, PROT_NONE) == 0);
+	ram_start = (uintptr_t)map;
+	ram_end = (uintptr_t)map + (uintptr_t)pagesz;
+
+	/* At the very end of the RAM, in thread mode. */
+	at = ram_end - FAULT_RECORD_FRAME_SIZE;
+	f = (uint32_t *)at;
+	for (int i = 0; i < FAULT_RECORD_FRAME_WORDS; i++) {
+		f[i] = 0x11111111u * (uint32_t)(i + 1);
+	}
+	f[7] = 0x61000000u; /* xpsr: thread mode, no padding */
+	memset(&r, 0, sizeof(r));
+	fault_record_set_frame(&r, at, 0xfffffffdu, ram_start, ram_end);
+	assert(r.flags == FAULT_RECORD_FRAME && r.text[0] == '\0');
+	assert(r.r0 == 0x11111111u && r.r1 == 0x22222222u && r.r2 == 0x33333333u &&
+	       r.r3 == 0x44444444u && r.r12 == 0x55555555u && r.lr == 0x66666666u &&
+	       r.pc == 0x77777777u && r.xpsr == 0x61000000u);
+	assert(r.exception == 0 && r.sp == (uint32_t)(at + 32));
+
+	/* At the start, in an interrupt handler (exception 16 + 5), with the
+	 * 4 bytes of padding.
+	 */
+	at = ram_start;
+	f = (uint32_t *)at;
+	f[7] = 0x01000000u | FAULT_RECORD_XPSR_ALIGNED | 21u;
+	memset(&r, 0, sizeof(r));
+	fault_record_set_frame(&r, at, 0xfffffff1u, ram_start, ram_end);
+	assert(r.flags == FAULT_RECORD_FRAME && r.exception == 21);
+	assert(r.sp == (uint32_t)(at + 36));
+
+	/* Past either end, or not word-aligned: nothing read (a read past
+	 * ram_end would fault), the stack named by EXC_RETURN.
+	 */
+	const struct {
+		uintptr_t frame;
+		uint32_t exc_return;
+		const char *text;
+	} bad[] = {
+		{ram_end - FAULT_RECORD_FRAME_SIZE + 4, 0xfffffffdu, "(PSP)"},
+		{ram_end - FAULT_RECORD_FRAME_SIZE + 1, 0xfffffff9u, "(MSP)"},
+		{ram_end, 0xfffffffdu, "(PSP)"},
+		{ram_start - 4, 0xfffffff9u, "(MSP)"},
+		{ram_start + 2, 0xfffffff9u, "(MSP)"},
+		{0, 0xfffffffdu, "(PSP)"},
+		{UINTPTR_MAX - 3, 0xfffffff1u, "(MSP)"},
+	};
+	for (size_t i = 0; i < sizeof(bad) / sizeof(bad[0]); i++) {
+		memset(&r, 0, sizeof(r));
+		fault_record_set_frame(&r, bad[i].frame, bad[i].exc_return, ram_start, ram_end);
+		assert(r.flags == 0 && r.sp == (uint32_t)bad[i].frame);
+		assert(r.r0 == 0 && r.pc == 0 && r.lr == 0 && r.xpsr == 0 && r.exception == 0);
+		assert(strncmp(r.text, "stack pointer outside the RAM ", 30) == 0);
+		assert(strcmp(r.text + 30, bad[i].text) == 0);
+	}
+	assert(munmap(map, 2 * (size_t)pagesz) == 0);
+}
+
+static void test_take(void)
+{
+	struct fault_record retained = sample(), last, before;
+	uint32_t s[FAULT_SCRATCH_WORDS];
+	struct fault_record other = sample();
+
+	other.reason = FAULT_REASON_PANIC;
+	other.pc = 0x10000100u;
+	fault_record_seal(&other);
+	fault_record_to_scratch(&other, s);
+	fault_record_seal(&retained);
+
+	/* The record in RAM first, as it is. */
+	memset(&last, 0, sizeof(last));
+	assert(fault_record_take(&retained, s, &last));
+	assert(memcmp(&last, &retained, sizeof(last)) == 0);
+
+	/* A broken record in RAM: the scratch registers' copy. */
+	retained.check ^= 1;
+	assert(fault_record_take(&retained, s, &last));
+	assert(last.reason == FAULT_REASON_PANIC && last.pc == 0x10000100u &&
+	       last.flags == FAULT_RECORD_SCRATCH && fault_record_valid(&last));
+
+	/* Neither: false, the record left alone. */
+	memset(s, 0, sizeof(s));
+	before = last;
+	assert(!fault_record_take(&retained, s, &last));
+	assert(memcmp(&last, &before, sizeof(last)) == 0);
 }
 
 int main(void)
@@ -165,6 +293,9 @@ int main(void)
 	memset(s, 0, sizeof(s));
 	assert(!fault_record_from_scratch(s, &copy));
 
+	test_in_range();
+	test_frame();
+	test_take();
 	printf("fault_record: ok\n");
 	return 0;
 }
