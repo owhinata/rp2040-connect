@@ -1,0 +1,70 @@
+rp2040: the SPI driver takes its DMA channels without waiting
+
+Purpose: with CONFIG_RP2040_SPI_DMA, rp2040_spibus_initialize() takes the
+port's two DMA channels with rp2040_dmachannel(), which waits for a free
+channel for ever, and then uses the DMA for every exchange longer than
+CONFIG_RP2040_SPI_DMATHRESHOLD words.  The board initializes SPI1 at the
+NINA-W102's first request (common/drivers/nina/port/nuttx/
+nina_bus_rp2040.c), in the requesting thread, after other users (the I2C0
+DMA reads) have taken theirs; with fewer than two channels free that
+request would wait for ever, where the port should go on polled.
+
+- arch/arm/src/rp2040/rp2040_spi.c: rp2040_spibus_initialize() takes the
+  two channels with rp2040_dmachannel_trywait() (patch 0011: NULL at once
+  when no channel is free).  Without both, the one it got is freed again,
+  dmaenable stays false (every exchange polled, as without
+  CONFIG_RP2040_SPI_DMA) and spierr() reports it.  The exchanges are
+  unchanged.
+
+Zephyr: the PL022 driver (drivers/spi/spi_pl022.c) requests its devicetree
+channels with dma_request_channel() at boot, which does not wait either.
+
+diff --git a/arch/arm/src/rp2040/rp2040_spi.c b/arch/arm/src/rp2040/rp2040_spi.c
+index 5c10b99a..01a6d5cb 100644
+--- a/arch/arm/src/rp2040/rp2040_spi.c
++++ b/arch/arm/src/rp2040/rp2040_spi.c
+@@ -827,17 +827,41 @@
+   /* DMA settings */
+ 
+ #ifdef CONFIG_RP2040_SPI_DMA
+-  priv->txdmach = rp2040_dmachannel();
++  /* Take the two channels without waiting: without both, the port is
++   * polled.
++   */
++
++  priv->txdmach = rp2040_dmachannel_trywait();
+   txconf.size = RP2040_DMA_SIZE_BYTE;
+   txconf.noincr = false;
+   priv->txconfig = txconf;
+ 
+-  priv->rxdmach = rp2040_dmachannel();
++  priv->rxdmach = rp2040_dmachannel_trywait();
+   rxconf.size = RP2040_DMA_SIZE_BYTE;
+   rxconf.noincr = false;
+   priv->rxconfig = rxconf;
+ 
+-  priv->dmaenable = true;
++  if (priv->txdmach != NULL && priv->rxdmach != NULL)
++    {
++      priv->dmaenable = true;
++    }
++  else
++    {
++      if (priv->txdmach != NULL)
++        {
++          rp2040_dmafree(priv->txdmach);
++          priv->txdmach = NULL;
++        }
++
++      if (priv->rxdmach != NULL)
++        {
++          rp2040_dmafree(priv->rxdmach);
++          priv->rxdmach = NULL;
++        }
++
++      priv->dmaenable = false;
++      spierr("SPI%d: no DMA channels, polled\n", port);
++    }
+ #endif
+ 
+   /* Configure 8-bit SPI mode */

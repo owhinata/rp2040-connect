@@ -62,6 +62,5 @@ config I2C_DW_RP2040_DMA
 		not wait) and kept for the reads, so that a read never waits
 		for a channel; without two free channels, I2C0 reads on the
 		interrupts.  Other code may use the driver's other channels as
-		usual.  RP2040_SPI_DMA, which RP2040_DMAC also
-		offers, stays off in the imu configuration (the NINA's SPI runs
-		without DMA, as in the Zephyr build).
+		usual: with RP2040_SPI_DMA, the SPI driver takes two more for
+		SPI1 at the NINA's first request (nuttx/patches/nuttx/0013).

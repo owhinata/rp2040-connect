@@ -343,9 +343,10 @@ NINA firmware: 3.0.2
 
 - SPI: モード 0（CPOL 0、CPHA 0）、8 ビット、MSB が先、`CONFIG_NINA_SPI_FREQUENCY`（既定 8000000。
   Zephyr 版と同じ選択肢）。PL022 は clk_peri（125 MHz）を偶数で割るので、実際は
-  7.8125 MHz です（Zephyr 版も同じ値）。NuttX の SPI1 ドライバー（`rp2040_spi.c`）をポーリングで使います
-  （Zephyr 版も割り込み・DMA なし）。`CONFIG_RP2040_SPI_DMA` は切ってあります（有効だと 4 バイトを超える
-  転送が DMA になり、その完了待ちに期限がありません）。CS は SPI ドライバーではなく転送層が GPIO で動かし、
+  7.8125 MHz です（Zephyr 版も同じ値）。NuttX の SPI1 ドライバー（`rp2040_spi.c`）を `CONFIG_RP2040_SPI_DMA` 付きで
+  使います: `CONFIG_RP2040_SPI_DMATHRESHOLD` バイト（63）を超える交換は DMA で、スレッドはその完了を期限なしに待ち、
+  短い交換はポーリングです（Zephyr 版・FreeRTOS 版と同じ境目）。ドライバーは 2 つのチャネルを待たずに取ります
+  （ローカルのパッチ `nuttx/0013`）。CS は SPI ドライバーではなく転送層が GPIO で動かし、
   応答を待つ間も保持します。SPI1 の `/dev/spi1` は作りません（`CONFIG_RP2040_SPI_DRIVER` なし）。
 - NINA の初期化は Zephyr 版と同じく最初の要求のときに行います: CS を非アクティブ、READY を入力、IRQ を
   high、RESET をアクティブにし、10 ms 後にリセットを解き、750 ms 待ってから IRQ を low にして入力に戻します。
@@ -613,7 +614,7 @@ Zephyr 版の `CONFIG_I2C_DW_RP2040_DMA` と同じく（ここでも同じ名前
   そこからチャネルを 2 つ取って読み出し用に持ち続けるので、NuttX 版では `dma_fallbacks` はチャネルの設定を断られたとき
   （まだ動いている）のほかは 0 のままです。ほかのコードも `rp2040_dmac.c` を通して残りのチャネルを通常どおり使えます
   （してはいけないことと、NuttX の DMA の上の実装の細部は `nuttx/drivers/README_ja.md` の「I2C0」）。
-  `CONFIG_RP2040_SPI_DMA` は無効のままで、NINA の SPI は Zephyr 版と同じくポーリングです。
+  SPI のドライバー（`CONFIG_RP2040_SPI_DMA`）が NINA の SPI1 のためにさらに 2 つを取ります。
 
 ```text
 i2c_dma mode          現在の方式を表示（i2c_dma=on または i2c_dma=off）

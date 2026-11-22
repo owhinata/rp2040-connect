@@ -72,6 +72,7 @@ source nuttx/script/setup.sh
 | `nuttx/0010-rp2040-rom-memcpy-memset` | `memcpy`・`memset` をブート ROM のルーチンにする（`RP2040_ROM_MEM_OPS`） |
 | `nuttx/0011-rp2040-dmachannel-trywait` | 待たずに DMA のチャネルを取る関数（`rp2040_dmachannel_trywait()`）。I2C0 の読み出し用 |
 | `nuttx/0012-rp2040-dmac-ints0-own-bit` | DMA のチャネルの確保と解放で、自分のチャネルの割り込みの印だけを消す（ほかのチャネルの保留中の印も消していた） |
+| `nuttx/0013-rp2040-spi-dma-channels-trywait` | SPI のドライバーが DMA のチャネルを待たずに取る。2 本取れなければ、その SPI はポーリングで動く（NINA の SPI1 用） |
 | `apps/0001-readline-echo-in-readline` | 行の入力中のエコーを readline が行う |
 | `apps/0002-readline-cr-lf-line-end` | CR、LF、CR LF、LF CR のどれでも 1 回の Enter にする |
 | `apps/0003-readline-ctrl-c` | Ctrl-C で入力中の行を捨てて新しいプロンプトを出す |

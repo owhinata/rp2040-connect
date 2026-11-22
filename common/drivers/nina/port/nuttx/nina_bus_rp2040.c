@@ -23,8 +23,17 @@
  *   divides clk_peri (125 MHz): Zephyr picks CPSDVSR 2, SCR 7, NuttX's
  *   rp2040_spi.c CPSDVSR 16, SCR 0; both give 125 MHz / 16 = 7.8125 MHz.
  *
- * Here: NuttX's SPI1 driver (arch/arm/src/rp2040/rp2040_spi.c, polled with
- * RP2040_SPI_DMA off).  boards/arm/rp2040/common sets the pin functions and
+ * Here: NuttX's SPI1 driver (arch/arm/src/rp2040/rp2040_spi.c).  With
+ * CONFIG_RP2040_SPI_DMA (the imu configuration), SPI_EXCHANGE() of more
+ * than CONFIG_RP2040_SPI_DMATHRESHOLD bytes (63) goes through two channels
+ * of NuttX's DMA driver (rp2040_dmac.c, DMA_IRQ_0) while the thread waits
+ * on the driver's semaphore, without a time limit; shorter ones (the
+ * core's single bytes, commands and short parameters) are polled, as in
+ * the Zephyr build.  The driver takes the two channels at its
+ * initialization, the first request here, without waiting
+ * (nuttx/patches/nuttx/0013): without two free channels every exchange is
+ * polled.  The exchange has no result: a DMA error is only reported by the
+ * driver's spierr().  boards/arm/rp2040/common sets the pin functions and
  * makes CONFIG_RP2040_SPI1_CS_GPIO an output at 1 before this runs
  * (rp2040_common_initialize()); nina_bus_initialize(), at the core's
  * first request, then sets the pads as Zephyr's pinctrl and GPIO drivers

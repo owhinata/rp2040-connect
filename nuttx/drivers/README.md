@@ -45,8 +45,16 @@ What the core needs from the OS and the board (its boundary):
   stays asserted from the start of a phase until its last byte, including the wait for READY.
 - The NINA is reset once, on the first request (10 ms, 750 ms). At boot the board only sets up
   SPI1 and its pins and drives CS inactive.
-- The SPI is NuttX's `rp2040_spi.c`, polled (no DMA). Each transfer takes `SPI_LOCK`; the first
+- The SPI is NuttX's `rp2040_spi.c`. Each transfer takes `SPI_LOCK`; the first
   one sets mode 0, 8 bits and `CONFIG_NINA_SPI_FREQUENCY`. `SPI_SELECT` is not used.
+- With `CONFIG_RP2040_SPI_DMA` (on in the `imu` configuration) the driver moves an exchange of more than
+  `CONFIG_RP2040_SPI_DMATHRESHOLD` bytes (63, so from 64 bytes as in the Zephyr and FreeRTOS builds: the long
+  reads and the socket writes' parameters) through two channels of NuttX's DMA driver while the thread waits on
+  the driver's semaphore (two completions, TX and RX, on DMA_IRQ_0; no time limit); shorter ones, the core's
+  single bytes among them, are polled. The driver takes the two channels at its initialization, the NINA's first
+  request, with `rp2040_dmachannel_trywait()` (the local patch `nuttx/0013-rp2040-spi-dma-channels-trywait`:
+  without two free channels every exchange is polled). `SPI_EXCHANGE()` has no result, so the core cannot see a
+  DMA error; the driver reports one only with `spierr()` (`CONFIG_DEBUG_SPI_ERROR`, off).
 - Waiting for READY: instead of sampling READY (GPIO10, active low) every 100 µs, the core's
   `wait_ready()` sleeps until the line's interrupt reports a change (as in the Zephyr and FreeRTOS
   builds). `nina_os_ready_arm()` sets the semaphore to 0, then enables
@@ -516,9 +524,8 @@ patched driver with the same branches, order and values.
   allocation never hands them out); reset the DMA block; write whole registers shared by the channels (INTE0,
   INTS0, CHAN_ABORT: only its own bits, as `rp2040_dmac.c` does); take DMA_IRQ_0 from `rp2040_dmac.c` with
   `irq_attach()`; or route its channels' interrupts to DMA_IRQ_1 without its own handler there.
-- `CONFIG_RP2040_SPI_DMA`, which `RP2040_DMAC` makes available and turns on by default, is off in the `imu`
-  configuration: the NINA's SPI stays polled, as in the Zephyr version (with it on, the SPI driver would take two
-  more channels at boot).
+- The SPI driver (`CONFIG_RP2040_SPI_DMA`, on in the `imu` configuration) is such a user: it takes two more
+  channels for SPI1 at the NINA's first request and keeps them (NINA section).
 
 ## LSM6DSOX (`lsm6dso`)
 

@@ -80,6 +80,7 @@ with its purpose and the Zephyr code it matches.
 | `nuttx/0010-rp2040-rom-memcpy-memset` | `memcpy` and `memset` through the boot ROM's routines (`RP2040_ROM_MEM_OPS`) |
 | `nuttx/0011-rp2040-dmachannel-trywait` | A DMA channel allocation that never waits (`rp2040_dmachannel_trywait()`), for the I2C0 reads |
 | `nuttx/0012-rp2040-dmac-ints0-own-bit` | The DMA allocator clears only its own channel's interrupt flag (it cleared the other channels' pending flags too) |
+| `nuttx/0013-rp2040-spi-dma-channels-trywait` | The SPI driver takes its DMA channels without waiting; without both, that SPI stays polled (for the NINA's SPI1) |
 | `apps/0001-readline-echo-in-readline` | readline echoes the line being typed |
 | `apps/0002-readline-cr-lf-line-end` | CR, LF, CR LF and LF CR each make one Enter |
 | `apps/0003-readline-ctrl-c` | Ctrl-C drops the line being typed and shows a new prompt |

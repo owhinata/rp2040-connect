@@ -385,9 +385,10 @@ NINA firmware: 3.0.2
 - SPI: mode 0 (CPOL 0, CPHA 0), 8 bits, MSB first, `CONFIG_NINA_SPI_FREQUENCY` (default
   8000000; the same option as the Zephyr build's). The PL022 divides clk_peri (125 MHz)
   by an even number, so the clock is 7.8125 MHz (the same in the Zephyr build). NuttX's SPI1
-  driver (`rp2040_spi.c`) is used by polling (the Zephyr build uses neither interrupts nor DMA).
-  `CONFIG_RP2040_SPI_DMA` is off (with it, transfers over 4 bytes use DMA, whose completion is
-  waited for without a time limit). The transfer layer, not the SPI driver, drives CS as a GPIO,
+  driver (`rp2040_spi.c`) is used with `CONFIG_RP2040_SPI_DMA`: an exchange of more than
+  `CONFIG_RP2040_SPI_DMATHRESHOLD` bytes (63) goes by DMA, whose completion the thread waits for
+  without a time limit, and shorter ones are polled (the same line as the Zephyr and FreeRTOS
+  builds). The driver takes its two channels without waiting (local patch `nuttx/0013`). The transfer layer, not the SPI driver, drives CS as a GPIO,
   and keeps it asserted while waiting for the answer. There is no `/dev/spi1`
   (`CONFIG_RP2040_SPI_DRIVER` is off).
 - As in the Zephyr build, the NINA is set up on the first request: CS inactive, READY an input,
@@ -698,7 +699,7 @@ read that meets all of the following runs on DMA; other reads and all writes are
   channels from it at boot and keeps them for the reads, so `dma_fallbacks` stays 0 in this build unless a channel's
   setup is refused (still busy). Other code may use the other channels through `rp2040_dmac.c` as usual (what it must
   not do, and the details of the implementation on NuttX's DMA, are in the "I2C0" section of
-  `nuttx/drivers/README.md`). `CONFIG_RP2040_SPI_DMA` stays off: the NINA's SPI is polled, as in the Zephyr version.
+  `nuttx/drivers/README.md`). The SPI driver (`CONFIG_RP2040_SPI_DMA`) takes two more for the NINA's SPI1.
 
 ```text
 i2c_dma mode          show the mode (i2c_dma=on or i2c_dma=off)

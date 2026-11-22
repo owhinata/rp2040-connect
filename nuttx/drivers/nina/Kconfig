@@ -6,7 +6,7 @@
 config NINA
 	bool "NINA-W102 SPI link (nina_proto_request())"
 	default y
-	depends on RP2040_SPI1 && !RP2040_SPI_DMA
+	depends on RP2040_SPI1
 	depends on LSM6DSO_STREAM
 	---help---
 		common/drivers/nina/internal/nina_proto.c: nina_proto_request() and nina_proto_ip_config(),
@@ -14,9 +14,13 @@ config NINA
 		module's Arduino firmware), with the same framing, timeouts,
 		error values and lazy initialization (the module is reset on
 		the first request).  The board provides SPI1
-		and the module's lines (nina_bus_rp2040.c).  SPI1 is polled, as in
-		the Zephyr build (CONFIG_SPI_PL022_INTERRUPT and _DMA off), so
-		RP2040_SPI_DMA must be off.  The waits for the module's READY
+		and the module's lines (nina_bus_rp2040.c), on NuttX's SPI
+		driver: with RP2040_SPI_DMA (on in the imu configuration) an
+		exchange longer than RP2040_SPI_DMATHRESHOLD bytes (63: from 64
+		bytes, as in the Zephyr and FreeRTOS builds) goes by DMA while
+		the thread waits, a shorter one, as the core's single bytes, is
+		polled; without RP2040_SPI_DMA every exchange is polled.  The
+		waits for the module's READY
 		line (GPIO10) sleep on its edge interrupt
 		(common/drivers/nina/port/nuttx/nina_os.c),
 		through the compatibility layer's gpio0 and the board's

@@ -44,9 +44,16 @@ API へのつなぎ（`common/drivers/nina/port/nuttx/`。RP2040 の SPI と線�
   応答を読み終えるまで（READY を待つ間も）CS を保持します。
 - NINA のリセットは最初の要求のときに 1 回だけ行います（10 ms、750 ms）。起動時にはボードが SPI1 と
   そのピンを設定し、CS を非アクティブにするだけです。
-- SPI は NuttX の `rp2040_spi.c` をポーリングで使います（DMA なし）。転送ごとに `SPI_LOCK` を取り、
+- SPI は NuttX の `rp2040_spi.c` を使います。転送ごとに `SPI_LOCK` を取り、
   最初の転送でモード 0・8 ビット・`CONFIG_NINA_SPI_FREQUENCY` を設定します。`SPI_SELECT` は
   使いません。
+- `CONFIG_RP2040_SPI_DMA`（`imu` の構成で有効）のもとで、ドライバーは `CONFIG_RP2040_SPI_DMATHRESHOLD` バイト（63）を超える交換
+  （つまり Zephyr 版・FreeRTOS 版と同じく 64 バイトから: 長い読み出しと、ソケットの書き込みのパラメーター）を NuttX の DMA の
+  ドライバーの 2 つのチャネルで行い、そのあいだスレッドはドライバーのセマフォで待ちます（TX と RX の 2 つの完了、DMA_IRQ_0。
+  時間の上限なし）。それより短い交換（コアの 1 バイトの転送など）はポーリングです。ドライバーは 2 つのチャネルを初期化のとき
+  （NINA の最初の要求）に `rp2040_dmachannel_trywait()` で取ります（ローカルのパッチ `nuttx/0013-rp2040-spi-dma-channels-trywait`。
+  空きが 2 つ無ければすべての交換がポーリング）。`SPI_EXCHANGE()` は結果を返さないので、コアは DMA のエラーを知れません。
+  ドライバーは `spierr()`（`CONFIG_DEBUG_SPI_ERROR`。無効）でだけ知らせます。
 - READY の待ち: コアの `wait_ready()` は READY（GPIO10、アクティブ low）を 100 µs ごとに見る代わりに、
   その変化の割り込みで眠ります（Zephyr 版・FreeRTOS 版と同じ）。`nina_os_ready_arm()` が
   セマフォを 0 にしてから、望む向きのエッジ（準備できた＝立ち下がり、準備でなくなった＝立ち上がり）を
@@ -455,8 +462,8 @@ DMA の部分を同じ分岐・順序・値で写したものです。
   ことはない）。DMA ブロックをリセットする。チャネルが共有するレジスター（INTE0、INTS0、CHAN_ABORT）を丸ごと書く
   （`rp2040_dmac.c` と同じく自分のビットだけにする）。`irq_attach()` で DMA_IRQ_0 を `rp2040_dmac.c` から取り上げる。
   自分のハンドラーなしに自分のチャネルの割り込みを DMA_IRQ_1 に回す。
-- `RP2040_DMAC` で選べるようになり既定で有効になる `CONFIG_RP2040_SPI_DMA` は、`imu` の構成では無効です。NINA の SPI は
-  Zephyr 版と同じくポーリングのままです（有効にすると SPI のドライバーが起動時にさらに 2 つのチャネルを取ります）。
+- SPI のドライバー（`CONFIG_RP2040_SPI_DMA`。`imu` の構成で有効）もその 1 つで、NINA の最初の要求のときに SPI1 のために
+  さらに 2 つのチャネルを取り、持ち続けます（NINA の節）。
 
 ## LSM6DSOX（`lsm6dso`）
 

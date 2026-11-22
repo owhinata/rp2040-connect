@@ -59,8 +59,9 @@
  *   transfer (about 1 us a byte at 7.8125 MHz), at the caller's priority,
  *   and interrupts are served meanwhile (the PL022 holds the clock when its
  *   TX FIFO runs empty).  The core sends mostly single bytes, for which the
- *   DMA would cost more than it saves; the Zephyr and NuttX builds poll
- *   every transfer.  It takes no lock of its
+ *   DMA would cost more than it saves; the NuttX build draws the same line
+ *   in its SPI driver's DMA mode, the Zephyr build polls every transfer.
+ *   It takes no lock of its
  *   own: Zephyr's spi_transceive() takes the bus's context lock, but SPI1
  *   has no other user and nina_proto.c calls this only with nina_lock held
  *   (nina_os.h).  CS is not touched (nina_proto.c drives it: the Zephyr
