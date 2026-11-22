@@ -15,7 +15,7 @@ config APP_SENSOR
 		with the same syntax and output, on the Zephyr compatibility
 		layer and the Zephyr shell's command handling of
 		common/shell/zshell.c.  Also the thread
-		sensor_shell_processing_tid (Zephyr priority 0, NuttX 118,
+		sensor_shell_tid (Zephyr priority 0, NuttX 118,
 		CONFIG_SENSOR_SHELL_THREAD_STACK_SIZE 3072), which the init task
 		starts at boot and which prints the results of "sensor get" and
 		"sensor stream" on the terminal of the session that asked for

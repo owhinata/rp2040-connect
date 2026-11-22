@@ -83,7 +83,7 @@ void app_threads_start(void)
 	 * of "sensor get" and "sensor stream".
 	 */
 #ifdef CONFIG_APP_SENSOR
-	APP_THREAD_START(sensor_shell_processing_tid);
+	APP_THREAD_START(sensor_shell_tid);
 #endif
 	/* The iperf3 server of "zperf tcp download"
 	 * (common/compat/zperf_iperf3.h), Zephyr's net_socket_service

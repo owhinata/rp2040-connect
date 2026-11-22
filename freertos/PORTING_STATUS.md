@@ -2744,3 +2744,25 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
 - 文書: ルートの README（日英）の性能の表（FreeRTOS 19.7%、イメージの大きさを今の値に）、`freertos/drivers/README`（「RAM に置くコード」の節）、設計書 §13。
 - ユーザーの依頼（次）: RAM を空けるためにタスクを減らせないかの検討（Wi-Fi 関連は役割ごとのタスクを状態でまとめられないか、IMU も）。`sensor_shell_processing_tid` は名前が長く `ps` の枠に入らないので短くする。
 - 実機: FreeRTOS 版（この変更の既定のビルド。異常停止の記録が 1 件＝こちらの試験）。
+
+## スレッド `sensor_shell_processing_tid` → `sensor_shell_tid`（2026-11-23、ユーザーの依頼）
+
+- 理由: 27 文字で、FreeRTOS 版の `ps`（名前の欄は 20 文字）の表が崩れる（Zephyr 版の `kernel ps` も同じ幅）。3 つの OS のファームウェアで `sensor_shell_tid`（16 文字）に。
+- 定義は Zephyr 本体の `drivers/sensor/sensor_shell_stream.c`（`sensor_shell.c` ではない）。パッチ 0006 を作り直して、その 1 行も変える（`patches.yml` の sha を更新）。検査 `zephyr_sensor_shell_patched` は
+  このファイルも HEAD から取り出す。NuttX・FreeRTOS は `common/compat/sensor_shell_stream.c` の定義と `common/imu/app_init.c` の表。
+- イメージ: Zephyr 374560 B（−12）、NuttX 284780 B（−8）、FreeRTOS 242168 B（−8）。命令は 3 つともアドレスを除いて同じ（subagent の比較）。**基準: `snapshot-1123b`**。ホストテスト 56・67・64。
+- ほかのスレッドの名前: 20 文字を超えるものは無い（最長は Zephyr の `net_socket_service` と `wifi_reconnect_tid` の 18 文字）。
+- 実機（FreeRTOS）: `ps` の表がそろう、`sensor get`、`sensor stream` on・off、送信 1 回 約 70 秒 欠番 0・19.7%。Zephyr・NuttX は実機に書いていない（命令が同じ）。
+
+## 検討: タスクを減らして RAM を空ける（2026-11-23、ユーザーの依頼。読むだけの調査）
+
+- FreeRTOS 版のスレッドは 19 個、スタック 34.8 kB + 管理用 約 2.9 kB、起動用の `main` のスタック 2 kB（起動後は使われない）。分かっている最大の使用量は合わせて約 13.7 kB。
+  スレッド 1 つの費用はスタック + 約 144 B。
+- まとめて空く量は小さい: NINA の scan・connect・monitor を 1 つにして約 2.9 kB、まとめられるものを全部で約 7 kB。
+  - NINA の 3 つ: scan と connect は互いに `-EBUSY` で断る、monitor は接続済みのときだけ働く。同時に動くのは「接続を保ったままのスキャン中の監視」だけ。状態（待機・接続中・スキャン中・結果の取得）を
+    持つ 1 つのスレッドにできる。境界 `nina_os.h` に期限つきの待ちが要る。共有のコードで 300〜400 行（テストを含む）。
+  - IMU の 4 つ（`imu_fifo_worker`・`imu_stream_tid`・`imu_raw_mqtt_tid`・`RTIO WQ 0`）はまとめない（読み出し・組み立て・送信を分けて優先度に差を付けている。FIFO はしきい値からあふれるまで約 28 ms）。
+  - `net_mgmt` を `sysworkq` に載せない（コールバックが表示で待つ。`sysworkq` は INT1 の中継）。`Tmr Svc` は無くせない（Pico SDK のロックが待ち手を起こすのに使う）。
+- 大きいのは別の所（見積もり）: heap_4 が 32 kB で使用 2.3 kB（中継モードの 16 kB のリングを取るため）→ 4 kB で 28 kB、`main` のスタック 2 kB、`heartbeat` をアイドルの処理へ 1.2 kB、
+  FreeRTOS 版だけのスタックを使用量に合わせて 3.8 kB、共有のコードのスタックを OS ごとにして 2.1 kB、`zperf` のバッファを測定のときだけ 4.6 kB、再起動で残るログ 8 → 4 kB、送信待ちのバッチ 12 → 8 で 9.8 kB。
+- ユーザーの判断待ち: どれを行うか。

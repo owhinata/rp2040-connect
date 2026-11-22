@@ -884,7 +884,7 @@ channel type=3(accel_xyz) index=0 shift=4 num_samples=1 value=<time>ns, (<x>, <y
   channel and attribute names.
 
 **Where the output goes**: in the Zephyr build, the results of `sensor get` and `sensor stream`
-are written by the processing thread (`sensor_shell_processing_tid`, priority 0, 3072-byte stack)
+are written by the processing thread (`sensor_shell_tid`, priority 0, 3072-byte stack)
 to the shell that ran the command (USB or Telnet). Here the same thread (priority 118, 3072-byte
 stack, started by init at boot) writes them.
 
@@ -1186,7 +1186,7 @@ NuttX-only threads are in `nuttx/drivers/include/priorities_os.h`). The Zephyr b
 | `sysworkq` (system work queue; compatibility layer; INT1's work) | −1 (cooperative) | 119 | 1024 |
 | `net_mgmt` (network events; compatibility layer; the Wi-Fi event callbacks) | −1 (cooperative) | 119 | 2048 |
 | `RTIO WQ 0` (RTIO work queue; compatibility layer; single reads; `RTIO_WQ_0` in `ps`) | 0 | 118 | 1024 |
-| `sensor_shell_processing_tid` (prints the results of `sensor get` and `sensor stream`) | 0 | 118 | 3072 |
+| `sensor_shell_tid` (prints the results of `sensor get` and `sensor stream`) | 0 | 118 | 3072 |
 | `main` (NuttX: init, which drops to the shell's priority after the start-up work) | 0 | 118 | 2048 |
 | init, `nina_pt_rx`, `nina_pt_tx` (in the NINA passthrough mode only; NuttX's init and two kernel threads) | – | 120 | 2048 |
 | Shell (nsh session, commands; `nsh` on USB, `nsh_telnet` on Telnet) | 14 | 104 | 3072 |
@@ -1200,10 +1200,10 @@ NuttX-only threads are in `nuttx/drivers/include/priorities_os.h`). The Zephyr b
   threads only switch when one yields).
 - The `K_THREAD_DEFINE()` threads (`nina_scan_tid`, `nina_connect_tid`, `nina_monitor_tid`,
   `imu_stream_tid`, `imu_raw_mqtt_tid`, `time_sync_tid`, `wifi_reconnect_tid`,
-  `sensor_shell_processing_tid`) are started by init at the start of its start-up work, as the Zephyr build
+  `sensor_shell_tid`) are started by init at the start of its start-up work, as the Zephyr build
   starts them before `main()`.
 - The stacks of `imu_stream_tid`, `imu_raw_mqtt_tid`, `time_sync_tid`, `imu_fifo_worker`, `sysworkq`, `RTIO WQ 0`, `net_mgmt`, the
-  `nina_*_tid` threads, `wifi_reconnect_tid` and `sensor_shell_processing_tid` are static arrays
+  `nina_*_tid` threads, `wifi_reconnect_tid` and `sensor_shell_tid` are static arrays
   as in Zephyr (`K_THREAD_DEFINE()`, `K_THREAD_STACK_DEFINE()`, NuttX's
   `kthread_create_with_stack()`). `ps` shows them smaller by the area NuttX puts at their start
   (2048 → 2008, 2000 for `imu_stream_tid`; 1024 → 976).

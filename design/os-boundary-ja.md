@@ -359,7 +359,7 @@ N と F はデバイスのあとにスレッドから 1・3・4 を呼びます�
 | `imu_raw_mqtt_tid`（`common/imu/imu_raw_mqtt.c`） | `CONFIG_IMU_RAW_MQTT` | 同じ | 同じ |
 | `time_sync_tid`（`common/imu/time_sync.c`） | `CONFIG_TIME_SYNC` | 同じ | 同じ |
 | `wifi_reconnect_tid`（`common/imu/wifi_profile.c`） | `CONFIG_WIFI_PROFILE` | 同じ | 同じ |
-| `sensor_shell_processing_tid`（`common/compat/sensor_shell_stream.c`） | `CONFIG_APP_SENSOR` | 同じ | 同じ |
+| `sensor_shell_tid`（`common/compat/sensor_shell_stream.c`） | `CONFIG_APP_SENSOR` | 同じ | 同じ |
 | `zperf_server_tid`（`common/compat/zperf_iperf3.c`） | `CONFIG_NET_ZPERF` | ビルドしない | 同じ |
 
 起動のファイル: Zephyr `zephyr/app/usb-console/src/main.c`（中継モード（NINA のファームウェアを PC から書き換えるための経路）の分岐、`app_main()`）。N

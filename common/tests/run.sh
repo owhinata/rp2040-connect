@@ -333,11 +333,13 @@ if [[ -f $ztree/VERSION ]]; then
     # The sensor shell is the file of the Zephyr build's patched tree: Zephyr's
     # drivers/sensor/sensor_shell.c with the local patch 0006, applied here to the tree's HEAD in a
     # scratch directory, as script/setup.sh applies it to the tree, is byte for byte
-    # drivers/sensor_shell/sensor_shell.c (its sensor_shell_os.h is per build).
+    # drivers/sensor_shell/sensor_shell.c (its sensor_shell_os.h is per build).  The patch also
+    # names the processing thread of sensor_shell_stream.c, so that file is taken out of HEAD too.
     zpatches=../zephyr/manifest/zephyr/patches/zephyr
     ztmp=$out/zephyr_sensor_shell
     mkdir -p "$ztmp"
-    git -C "$ztree" archive HEAD drivers/sensor/sensor_shell.c | tar -x -C "$ztmp"
+    git -C "$ztree" archive HEAD drivers/sensor/sensor_shell.c drivers/sensor/sensor_shell_stream.c |
+        tar -x -C "$ztmp"
     (cd "$ztmp" && git apply --include='drivers/sensor/*' \
         "$OLDPWD/$zpatches"/0006-sensor-shell-*.patch)
     cmp drivers/sensor_shell/sensor_shell.c "$ztmp/drivers/sensor/sensor_shell.c"

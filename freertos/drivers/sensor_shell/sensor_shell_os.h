@@ -13,7 +13,7 @@
  * the command's shell backend (ctx.sh): on FreeRTOS the console of the
  * session that ran the command, the USB port or the Telnet client
  * (common/compat/shell_engine/zephyr_os_shell.h).  The processing thread
- * (sensor_shell_processing_tid) prints with shell_print(ctx.sh, ...), which
+ * (sensor_shell_tid) prints with shell_print(ctx.sh, ...), which
  * writes straight to that console (common/compat/shell_engine/zshell_os_impl.h),
  * as Zephyr's processing thread prints on the shell instance that started
  * the read or the stream.  A console lives as long as the system: while

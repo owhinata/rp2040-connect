@@ -20,7 +20,7 @@
 #   context sensor_read_rtio with the Zephyr build's pool,
 #   RTIO_DEFINE_WITH_MEMPOOL(sensor_read_rtio, 8, 8, 32, 64, 4));
 # - the copy of Zephyr's sensor_shell_stream.c (common/compat: "sensor
-#   stream" and the processing thread sensor_shell_processing_tid, Zephyr
+#   stream" and the processing thread sensor_shell_tid, Zephyr
 #   priority 0 -> 20, 3072 bytes, which the application starts with
 #   K_THREAD_DEFINE_START());
 # - the FreeRTOS part (this directory: sensor_shell_os.h, which the two

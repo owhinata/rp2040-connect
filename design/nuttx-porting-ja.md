@@ -770,7 +770,7 @@ channel type=3(accel_xyz) index=0 shift=4 num_samples=1 value=<時刻>ns, (<x>, 
   `Error while setting trigger 1 on device lsm6dsox (-38)`（`-ENOSYS`）になります。
 - Tab 補完はコマンド名だけです（nsh）。Zephyr 版はサブコマンド、デバイス名、チャネル名、属性名まで補完します。
 
-**出力先**: Zephyr 版では、`sensor get` と `sensor stream` の結果を処理スレッド（`sensor_shell_processing_tid`、
+**出力先**: Zephyr 版では、`sensor get` と `sensor stream` の結果を処理スレッド（`sensor_shell_tid`、
 優先度 0、スタック 3072）が、コマンドを実行したシェル（USB か Telnet）に書きます。NuttX 版も同じスレッド
 （優先度 118、スタック 3072。init が起動時に始めます）が書きます。
 
@@ -1026,7 +1026,7 @@ NuttX 標準のクリティカルセクションの監視（`CONFIG_SCHED_CRITMO
 | `sysworkq`（システムワークキュー。互換層。INT1 の処理） | −1（協調） | 119 | 1024 |
 | `net_mgmt`（ネットワークのイベント。互換層。Wi-Fi のイベントのコールバック） | −1（協調） | 119 | 2048 |
 | `RTIO WQ 0`（RTIO のワークキュー。互換層。単発取得。`ps` では `RTIO_WQ_0`） | 0 | 118 | 1024 |
-| `sensor_shell_processing_tid`（`sensor get`・`sensor stream` の結果の表示） | 0 | 118 | 3072 |
+| `sensor_shell_tid`（`sensor get`・`sensor stream` の結果の表示） | 0 | 118 | 3072 |
 | `main`（NuttX は init。起動処理の後シェルの優先度に下げる） | 0 | 118 | 2048 |
 | init、`nina_pt_rx`、`nina_pt_tx`（NINA の中継モードのときだけ。NuttX の init と、カーネルスレッド 2 つ） | – | 120 | 2048 |
 | シェル（nsh のセッション、コマンド。USB の `nsh`、Telnet の `nsh_telnet`） | 14 | 104 | 3072 |
@@ -1038,9 +1038,9 @@ NuttX 標準のクリティカルセクションの監視（`CONFIG_SCHED_CRITMO
   協調スレッドに当たるのは `sysworkq` と `net_mgmt`（どちらも 119）で、それより高い優先度のスレッドは
   ありません。同じ 119 の 2 つは時分割で交代します（Zephyr の協調スレッドどうしは自分で譲るまで交代しない）。
 - `K_THREAD_DEFINE()` のスレッド（`nina_scan_tid`、`nina_connect_tid`、`nina_monitor_tid`、`imu_stream_tid`、
-  `imu_raw_mqtt_tid`、`time_sync_tid`、`wifi_reconnect_tid`、`sensor_shell_processing_tid`）は、
+  `imu_raw_mqtt_tid`、`time_sync_tid`、`wifi_reconnect_tid`、`sensor_shell_tid`）は、
   Zephyr 版が `main()` の前に始めるのに合わせて、init が起動処理の最初に始めます。
-- `imu_stream_tid`、`imu_raw_mqtt_tid`、`time_sync_tid`、`imu_fifo_worker`、`sysworkq`、`RTIO WQ 0`、`net_mgmt`、`nina_*_tid`、`wifi_reconnect_tid`、`sensor_shell_processing_tid` のスタックは Zephyr と同じく静的な配列です
+- `imu_stream_tid`、`imu_raw_mqtt_tid`、`time_sync_tid`、`imu_fifo_worker`、`sysworkq`、`RTIO WQ 0`、`net_mgmt`、`nina_*_tid`、`wifi_reconnect_tid`、`sensor_shell_tid` のスタックは Zephyr と同じく静的な配列です
   （`K_THREAD_DEFINE()`・`K_THREAD_STACK_DEFINE()`、NuttX の `kthread_create_with_stack()`）。`ps` の STACK は
   NuttX が先頭に置く領域の分だけ小さく出ます（2048 → 2008。`imu_stream_tid` は 2000、1024 → 976）。
 - `CONFIG_PRIORITY_INHERITANCE=y` です。ミューテックスは優先度継承あり、セマフォは既定で継承なし

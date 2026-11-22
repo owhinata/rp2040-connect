@@ -376,7 +376,7 @@ once and that each build sets the option exactly when it compiles the defining s
 | `imu_raw_mqtt_tid` (`common/imu/imu_raw_mqtt.c`) | `CONFIG_IMU_RAW_MQTT` | same | same |
 | `time_sync_tid` (`common/imu/time_sync.c`) | `CONFIG_TIME_SYNC` | same | same |
 | `wifi_reconnect_tid` (`common/imu/wifi_profile.c`) | `CONFIG_WIFI_PROFILE` | same | same |
-| `sensor_shell_processing_tid` (`common/compat/sensor_shell_stream.c`) | `CONFIG_APP_SENSOR` | same | same |
+| `sensor_shell_tid` (`common/compat/sensor_shell_stream.c`) | `CONFIG_APP_SENSOR` | same | same |
 | `zperf_server_tid` (`common/compat/zperf_iperf3.c`) | `CONFIG_NET_ZPERF` | not built | same |
 
 Start-up files: Zephyr `zephyr/app/usb-console/src/main.c` (the passthrough branch, `app_main()`); N

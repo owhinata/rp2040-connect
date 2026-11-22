@@ -483,7 +483,7 @@ Priorities map as `NuttX = 118 − Zephyr` (`APP_PRIO_*` and `APP_STACK_*` in
 | `sysworkq` | −1 (cooperative) | 119 | 1024 |
 | `net_mgmt` | −1 (cooperative) | 119 | 2048 |
 | `RTIO WQ 0` (`RTIO_WQ_0` in `ps`) | 0 | 118 | 1024 |
-| `sensor_shell_processing_tid` | 0 | 118 | 3072 |
+| `sensor_shell_tid` | 0 | 118 | 3072 |
 | `main` (`init` in NuttX; lowered to 104 after start-up) | 0 | 118 | 2048 |
 | The shell (`nsh` on USB, `nsh_telnet` on Telnet) and its commands | 14 | 104 | 3072 |
 | `telnetd` (`net_socket_service` in the Zephyr build) | 15 → 14 | 104 | 2048 |

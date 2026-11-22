@@ -13,6 +13,11 @@ next channel, and the statistics print with PRIu32 and PRId32.
 sensor_shell_os.h, included first, holds the build's hooks around
 "sensor get"; here they do nothing.
 
+The processing thread of sensor_shell_stream.c is named sensor_shell_tid,
+which fits the 20-character name column of this workspace's thread lists
+("kernel ps" here, "ps" of the NuttX and FreeRTOS builds, whose copy of
+the file gives the thread the same name).
+
 diff --git a/drivers/sensor/sensor_shell.c b/drivers/sensor/sensor_shell.c
 index f279604..830ad03 100644
 --- a/drivers/sensor/sensor_shell.c
@@ -192,3 +197,16 @@ index 0000000..82c68b7
 +#define sensor_shell_os_get_wait(ctx, err) ((void)0)
 +
 +#endif /* SENSOR_SHELL_OS_H_ */
+diff --git a/drivers/sensor/sensor_shell_stream.c b/drivers/sensor/sensor_shell_stream.c
+index b445a29..70e8077 100644
+--- a/drivers/sensor/sensor_shell_stream.c
++++ b/drivers/sensor/sensor_shell_stream.c
+@@ -35,7 +35,7 @@ static void sensor_shell_processing_entry_point(void *a, void *b, void *c)
+ 						sensor_shell_processing_callback);
+ 	}
+ }
+-K_THREAD_DEFINE(sensor_shell_processing_tid, CONFIG_SENSOR_SHELL_THREAD_STACK_SIZE,
++K_THREAD_DEFINE(sensor_shell_tid, CONFIG_SENSOR_SHELL_THREAD_STACK_SIZE,
+ 		sensor_shell_processing_entry_point, NULL, NULL, NULL, 0, 0, 0);
+ 
+ int cmd_sensor_stream(const struct shell *sh, size_t argc, char *argv[])

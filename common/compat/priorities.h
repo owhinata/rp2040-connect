@@ -85,7 +85,8 @@
 #define APP_PRIO_SHELL              APP_PRIO_FROM_ZEPHYR(14)
 #define APP_STACK_SHELL             3072
 
-/* sensor_shell_processing_tid (drivers/sensor/sensor_shell_stream.c:38):
+/* sensor_shell_tid (drivers/sensor/sensor_shell_stream.c:38, named by the
+ * Zephyr build's local patch 0006):
  * priority 0, CONFIG_SENSOR_SHELL_THREAD_STACK_SIZE=3072.
  */
 

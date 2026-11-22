@@ -446,7 +446,7 @@ Zephyr 版の `i2c write`、`gpio`、`log`、`device`、`history`、`clear`、`r
 | `sysworkq` | −1（協調） | 119 | 1024 |
 | `net_mgmt` | −1（協調） | 119 | 2048 |
 | `RTIO WQ 0`（`ps` では `RTIO_WQ_0`） | 0 | 118 | 1024 |
-| `sensor_shell_processing_tid` | 0 | 118 | 3072 |
+| `sensor_shell_tid` | 0 | 118 | 3072 |
 | `main`（NuttX は `init`。起動処理の後 104 に下げる） | 0 | 118 | 2048 |
 | シェル（USB の `nsh`、Telnet の `nsh_telnet`）とコマンド | 14 | 104 | 3072 |
 | `telnetd`（Zephyr 版は `net_socket_service`） | 15 → 14 | 104 | 2048 |

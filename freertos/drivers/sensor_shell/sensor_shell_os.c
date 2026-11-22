@@ -5,7 +5,7 @@
  * nuttx/apps/sensor/sensor_shell_nuttx.c.
  *
  * The read's completion reaches the processing thread
- * (sensor_shell_processing_tid, common/compat/sensor_shell_stream.c), which
+ * (sensor_shell_tid, common/compat/sensor_shell_stream.c), which
  * prints the result on the command's console with
  * sensor_shell_processing_callback() and then gives the semaphore that the
  * command waits on.  The command waits at most SENSOR_SHELL_GET_WAIT_MS: the

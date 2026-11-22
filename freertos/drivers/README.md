@@ -108,7 +108,7 @@ use a stack of their own (MSP, 2048 bytes; the `(interrupts)` row of `ps`).
 | `Tmr Svc` | 31 (–) | 1024 | The kernel's timer task; wakes the waiters of Pico SDK locks released in interrupt handlers |
 | `net_mgmt`, `sysworkq` | 21 (-1) | 2048, 1024 | Network events; the system work queue (the work of the LSM6DSOX FIFO interrupt) |
 | `main` | 20 (0) | 2048 | The second half of the start-up ("Start-up" below); ends when done |
-| `sensor_shell_processing_tid`, `RTIO WQ 0` | 20 (0) | 3072, 1024 | Printing `sensor` results; RTIO work |
+| `sensor_shell_tid`, `RTIO WQ 0` | 20 (0) | 3072, 1024 | Printing `sensor` results; RTIO work |
 | `nina_scan_tid`, `nina_connect_tid`, `wifi_reconnect_tid` | 12 (8) | 1536, 1024, 2048 | Wi-Fi scan, connection, automatic reconnection |
 | `nina_monitor_tid`, `time_sync_tid`, `imu_stream_tid` | 11 (9) | 1536, 2048, 2048 | Link monitor, time synchronization, acquisition |
 | `imu_fifo_worker` | 10 (10) | 2048 | FIFO reads |

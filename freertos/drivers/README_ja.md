@@ -98,7 +98,7 @@ FreeRTOS 版だけがビルドする共有ファイル: `common/compat/zephyr_wi
 | `Tmr Svc` | 31（–） | 1024 | カーネルのタイマータスク。割り込みで解放された Pico SDK のロックの待ち手を起こす |
 | `net_mgmt`、`sysworkq` | 21（-1） | 2048、1024 | ネットワークのイベント、システムワークキュー（LSM6DSOX の FIFO の割り込みのワーク） |
 | `main` | 20（0） | 2048 | 起動の後半（下の「起動」）。終わると消える |
-| `sensor_shell_processing_tid`、`RTIO WQ 0` | 20（0） | 3072、1024 | `sensor` の結果の表示、RTIO のワーク |
+| `sensor_shell_tid`、`RTIO WQ 0` | 20（0） | 3072、1024 | `sensor` の結果の表示、RTIO のワーク |
 | `nina_scan_tid`、`nina_connect_tid`、`wifi_reconnect_tid` | 12（8） | 1536、1024、2048 | Wi-Fi のスキャン・接続・自動再接続 |
 | `nina_monitor_tid`、`time_sync_tid`、`imu_stream_tid` | 11（9） | 1536、2048、2048 | 接続の監視、時刻同期、取得 |
 | `imu_fifo_worker` | 10（10） | 2048 | FIFO の読み出し |

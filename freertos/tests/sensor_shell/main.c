@@ -1026,7 +1026,7 @@ static void test_main(void *arg)
 	CHECK(device_init(DEVICE_DT_GET(DT_NODELABEL(i2c0))) == 0);
 	CHECK(device_init(imu()) == 0);
 	CHECK(strstr(log_text, "Initialize device lsm6dsox@6a") != NULL);
-	CHECK(K_THREAD_DEFINE_START(sensor_shell_processing_tid) == 0);
+	CHECK(K_THREAD_DEFINE_START(sensor_shell_tid) == 0);
 	CHECK(imu_cal_init() == 0);
 
 	test_help();
