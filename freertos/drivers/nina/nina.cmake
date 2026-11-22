@@ -14,6 +14,12 @@
 #   "nina version" command (common/shell/nina_shell.c, the Zephyr
 #   build's text), and the waits of the socket loops
 #   (common/drivers/nina/internal/nina_wait.c);
+# - the Wi-Fi operations (common/drivers/nina/nina_wifi.c: scan, connect,
+#   disconnect, status, the link monitor) and their Zephyr binding on the
+#   layer (common/drivers/nina/port/zephyr/nina_net.c: Zephyr's Wi-Fi
+#   management and interface, the threads nina_scan_tid, nina_connect_tid
+#   and nina_monitor_tid); freertos_wifi() (freertos/drivers/wifi/wifi.cmake)
+#   adds the layer's network part that they run on;
 # - the sockets: the shared socket table and commands
 #   (common/drivers/nina/nina_sock.c) and resolver (nina_dns.c), and the
 #   core's Zephyr binding of them, compiled as the Zephyr build compiles it
@@ -68,6 +74,8 @@ function(freertos_nina target)
   set(nina_common_sources
     ${FREERTOS_COMMON_DIR}/drivers/nina/internal/nina_proto.c
     ${FREERTOS_COMMON_DIR}/shell/nina_shell.c
+    ${FREERTOS_COMMON_DIR}/drivers/nina/nina_wifi.c
+    ${FREERTOS_COMMON_DIR}/drivers/nina/port/zephyr/nina_net.c
     ${FREERTOS_COMMON_DIR}/drivers/nina/nina_sock.c
     ${FREERTOS_COMMON_DIR}/drivers/nina/nina_dns.c
     ${FREERTOS_COMMON_DIR}/drivers/nina/internal/nina_wait.c
