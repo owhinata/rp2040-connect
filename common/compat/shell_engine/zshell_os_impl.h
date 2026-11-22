@@ -1,26 +1,26 @@
 /* SPDX-License-Identifier: MIT */
-/* The FreeRTOS part of the Zephyr shell's command handling
+/* The shell engine's part of the Zephyr shell's command handling
  * (common/shell/zshell.c, which includes this file first through
  * common/shell/zshell_os.h): the shell backends.  NuttX's is
  * nuttx/apps/subcmd/zshell_os_impl.h.
  *
- * The backend of a command is the console its task is bound to
- * (shell_console.h): the USB console's task, later the Telnet task, runs
- * the commands of its session itself, as Zephyr's shell thread does.
- * Output to a backend goes to that console's terminal from any task:
- * from the command itself it is what the command's stdout and stderr are
- * as well (its task is bound to the console, and the stdio of the Pico SDK
- * and newlib keep nothing buffered, shell_stdio.c and
- * freertos/drivers/libc/stdio_wrap.c), so it comes in order with what the
- * command prints with printf(); from another task (the sensor shell's
- * processing thread) it goes straight to the terminal, and is dropped while
- * the session has none (the USB port closed, the Telnet client gone).
+ * The backend of a command is the console its thread is bound to
+ * (shell_console.h): the serial session's thread, later the Telnet
+ * session's, runs the commands of its session itself, as Zephyr's shell
+ * thread does.  Output to a backend goes to that console's terminal from
+ * any thread: from the command itself it is what the command's stdout and
+ * stderr are as well (its thread is bound to the console, and the OS's
+ * stdio keeps nothing buffered: the console transport, shell_serial_os.h),
+ * so it comes in order with what the command prints with printf(); from
+ * another thread (the sensor shell's processing thread) it goes straight to
+ * the terminal, and is dropped while the session has none (the serial port
+ * closed, the Telnet client gone).
  * Zephyr prints SHELL_WARNING and SHELL_ERROR in colors; the port does not
  * (the NuttX build neither).
  */
 
-#ifndef FREERTOS_DRIVERS_SHELL_ZSHELL_OS_IMPL_H
-#define FREERTOS_DRIVERS_SHELL_ZSHELL_OS_IMPL_H
+#ifndef COMMON_COMPAT_SHELL_ENGINE_ZSHELL_OS_IMPL_H
+#define COMMON_COMPAT_SHELL_ENGINE_ZSHELL_OS_IMPL_H
 
 #include <stdarg.h>
 #include <stddef.h>
@@ -72,4 +72,4 @@ static inline const struct shell_static_entry *zshell_os_active_cmd_get(const st
 	return sh->active_cmd;
 }
 
-#endif /* FREERTOS_DRIVERS_SHELL_ZSHELL_OS_IMPL_H */
+#endif /* COMMON_COMPAT_SHELL_ENGINE_ZSHELL_OS_IMPL_H */

@@ -1,14 +1,17 @@
 /* SPDX-License-Identifier: MIT */
-/* The Telnet shell of the FreeRTOS build (shell_telnet.h): the shell of the
- * USB console on TCP port CONFIG_SHELL_TELNET_PORT for one client at a
+/* The Telnet shell of the shell engine (shell_telnet.h): the shell of the
+ * serial session on TCP port CONFIG_SHELL_TELNET_PORT for one client at a
  * time, with the behaviour of the Zephyr build's Telnet shell backend
  * (Zephyr's subsys/shell/backends/shell_telnet.c with the Zephyr build's
  * configuration: port 23, CONFIG_SHELL_TELNET_LINE_BUF_SIZE 80,
  * CONFIG_SHELL_TELNET_SEND_TIMEOUT 100 ms, no
  * CONFIG_SHELL_TELNET_SUPPORT_COMMAND, IPv4 only) and of Zephyr's shell on
- * it, written for the FreeRTOS build's consoles (freertos/drivers/shell).
+ * it, written for the engine's consoles (shell_console.h) on the
+ * compatibility layer's kernel API and Zephyr's sockets (zsock_*(); the
+ * FreeRTOS build's are the layer's network part, common/compat/net_offload,
+ * on the NINA).
  *
- * Two tasks, as Zephyr's two threads: "telnet_service" (Zephyr's
+ * Two threads, as Zephyr's two: "telnet_service" (Zephyr's
  * net_socket_service thread, APP_PRIO_TELNET_SERVICE, 2048 bytes) polls the
  * listening socket and the client (zsock_poll(), which asks the NINA every
  * 20 ms, as Zephyr's offloaded poll: the NINA's accept never waits),
@@ -54,9 +57,9 @@
  *   down"); then the next client is accepted.  An error on the listening
  *   socket restarts the server (closes both, sets it up again; "Telnet fatal
  *   error, failed to restart server" if that fails);
- * - output from another task to the session's backend (the "wifi" events of
+ * - output from another thread to the session's backend (the "wifi" events of
  *   a command run here, the "zperf tcp download" reports) goes to the
- *   client; LOG_*() goes to the RAM log only, and printf() of a task that is
+ *   client; LOG_*() goes to the RAM log only, and printf() of a thread that is
  *   not a session's to the USB console (the default console), as in the
  *   Zephyr build (no shell log backend, printk() to the log);
  * - a command that still runs when its client goes keeps running, and its
@@ -67,8 +70,8 @@
  *   output waits up to 10 s per line (the NINA's blocking send,
  *   NINA_SEND_WAIT_MS, which Zephyr's blocking send ends up in), retrying
  *   every 10 ms (the NINA's blocking send retries every 1 ms), then the
- *   connection is ended; another task's output is tried once and dropped
- *   when the client does not take it, and that task waits at most 100 ms for
+ *   connection is ended; another thread's output is tried once and dropped
+ *   when the client does not take it, and that thread waits at most 100 ms for
  *   the console (Zephyr's would wait for the shell's mutex and its blocking
  *   send): a client that stops reading holds up the session only, never
  *   "net_mgmt" or the other threads;
@@ -100,10 +103,6 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <string.h>
-
-#include "FreeRTOS.h"
-#include "semphr.h"
-#include "task.h"
 
 #include <zephyr/kernel.h>
 #include <zephyr/net/socket.h>
@@ -138,14 +137,11 @@ LOG_MODULE_REGISTER(shell_telnet, LOG_LEVEL_INF);
  * restart.
  */
 #define RESTART_RETRY_MS 1000
-/* How long another task waits for the console's mutex. */
+/* How long another thread waits for the console's mutex. */
 #define OTHER_LOCK_MS    TELNET_TIMEOUT
 /* Bytes read from the socket, and taken by the session, at a time. */
 #define READ_CHUNK       128
 #define SESSION_CHUNK    64
-
-#define SESSION_STACK_SIZE (APP_STACK_SHELL / sizeof(StackType_t))
-#define SERVICE_STACK_SIZE (APP_STACK_TELNET_SERVICE / sizeof(StackType_t))
 
 /* RFC 854 */
 #define NVT_CMD_SB   250
@@ -172,8 +168,7 @@ static struct {
 	int client_fd;
 	bool broken;
 	uint32_t generation;
-	SemaphoreHandle_t conn_lock;
-	StaticSemaphore_t conn_lock_mem;
+	struct k_mutex conn_lock;
 
 	/* What the client sent, without the Telnet commands, until the
 	 * session takes it (under rx_lock), and the client it came from.
@@ -181,8 +176,9 @@ static struct {
 	uint8_t rx_buf[RX_BUF_SIZE];
 	size_t rx_len;
 	uint32_t rx_generation;
-	SemaphoreHandle_t rx_lock;
-	StaticSemaphore_t rx_lock_mem;
+	struct k_mutex rx_lock;
+	/* Given by the service when it has added to rx_buf. */
+	struct k_sem rx_sem;
 	/* The service's place in a Telnet command (cmd_len bytes of it read,
 	 * the operation the second one).
 	 */
@@ -195,7 +191,7 @@ static struct {
 	int64_t line_since;
 	uint32_t line_generation;
 
-	/* The session's line (its task only). */
+	/* The session's line (its thread only). */
 	char cmd_buff[CMD_BUFF_SIZE];
 	size_t cmd_buff_len;
 	uint8_t last_nl;
@@ -203,8 +199,8 @@ static struct {
 	uint32_t session_generation;
 	const char *prompt;
 
-	TaskHandle_t session_task;
-	TaskHandle_t service_task;
+	k_tid_t session_tid;
+	k_tid_t service_tid;
 } tn = {
 	.listen_fd = -1,
 	.client_fd = -1,
@@ -212,10 +208,8 @@ static struct {
 
 static struct shell_console telnet_console;
 
-static StackType_t session_stack[SESSION_STACK_SIZE];
-static StaticTask_t session_tcb;
-static StackType_t service_stack[SERVICE_STACK_SIZE];
-static StaticTask_t service_tcb;
+static K_THREAD_STACK_DEFINE(session_stack, APP_STACK_SHELL);
+static K_THREAD_STACK_DEFINE(service_stack, APP_STACK_TELNET_SERVICE);
 
 /* Output ------------------------------------------------------------------*/
 
@@ -227,10 +221,10 @@ static bool out_connected(void)
 	uint32_t generation;
 	bool connected;
 
-	xSemaphoreTake(tn.conn_lock, portMAX_DELAY);
+	(void)k_mutex_lock(&tn.conn_lock, K_FOREVER);
 	connected = tn.client_fd >= 0 && !tn.broken;
 	generation = tn.generation;
-	xSemaphoreGive(tn.conn_lock);
+	(void)k_mutex_unlock(&tn.conn_lock);
 	if (tn.line_generation != generation) {
 		tn.line_len = 0;
 		tn.line_generation = generation;
@@ -256,7 +250,7 @@ static int line_send(bool block)
 		int err = -ENOTCONN;
 		bool failed = false;
 
-		xSemaphoreTake(tn.conn_lock, portMAX_DELAY);
+		(void)k_mutex_lock(&tn.conn_lock, K_FOREVER);
 		if (tn.client_fd >= 0 && !tn.broken && tn.line_generation == tn.generation) {
 			ret = zsock_send(tn.client_fd, tn.line + off, tn.line_len - off,
 					 ZSOCK_MSG_DONTWAIT);
@@ -268,7 +262,7 @@ static int line_send(bool block)
 				tn.broken = true;
 			}
 		}
-		xSemaphoreGive(tn.conn_lock);
+		(void)k_mutex_unlock(&tn.conn_lock);
 
 		if (ret > 0) {
 			off += (size_t)ret;
@@ -297,7 +291,7 @@ static int line_send(bool block)
  */
 static void telnet_out(struct shell_console *con, const char *buf, size_t len)
 {
-	bool block = xTaskGetCurrentTaskHandle() == tn.session_task;
+	bool block = k_current_get() == tn.session_tid;
 
 	ARG_UNUSED(con);
 
@@ -323,7 +317,7 @@ static void telnet_out(struct shell_console *con, const char *buf, size_t len)
 		err = line_send(block);
 		if (err > 0) {
 			if (tn.line_len == TELNET_LINE_SIZE) {
-				/* No room for the rest of another task's text. */
+				/* No room for the rest of another thread's text. */
 				tn.line_len = 0;
 			}
 		} else if (err < 0) {
@@ -405,13 +399,13 @@ error:
 
 static void telnet_end_client_connection(void)
 {
-	xSemaphoreTake(tn.conn_lock, portMAX_DELAY);
+	(void)k_mutex_lock(&tn.conn_lock, K_FOREVER);
 	if (tn.client_fd >= 0) {
 		(void)zsock_close(tn.client_fd);
 	}
 	tn.client_fd = -1;
 	tn.broken = false;
-	xSemaphoreGive(tn.conn_lock);
+	(void)k_mutex_unlock(&tn.conn_lock);
 }
 
 /* An error on the listening socket: close everything and start again.  When
@@ -468,16 +462,16 @@ static void telnet_accept(void)
 	}
 
 	generation = tn.generation + 1;
-	xSemaphoreTake(tn.rx_lock, portMAX_DELAY);
+	(void)k_mutex_lock(&tn.rx_lock, K_FOREVER);
 	tn.rx_len = 0;
 	tn.rx_generation = generation;
-	xSemaphoreGive(tn.rx_lock);
+	(void)k_mutex_unlock(&tn.rx_lock);
 	tn.cmd_len = 0;
-	xSemaphoreTake(tn.conn_lock, portMAX_DELAY);
+	(void)k_mutex_lock(&tn.conn_lock, K_FOREVER);
 	tn.client_fd = sock;
 	tn.broken = false;
 	tn.generation = generation;
-	xSemaphoreGive(tn.conn_lock);
+	(void)k_mutex_unlock(&tn.conn_lock);
 }
 
 static size_t telnet_command_length(uint8_t op)
@@ -530,9 +524,9 @@ static void telnet_recv(void)
 	ssize_t ret;
 	int n;
 
-	xSemaphoreTake(tn.rx_lock, portMAX_DELAY);
+	(void)k_mutex_lock(&tn.rx_lock, K_FOREVER);
 	room = sizeof(tn.rx_buf) - tn.rx_len;
-	xSemaphoreGive(tn.rx_lock);
+	(void)k_mutex_unlock(&tn.rx_lock);
 	if (room == 0) {
 		return;
 	}
@@ -553,11 +547,11 @@ static void telnet_recv(void)
 	if (n == 0) {
 		return;
 	}
-	xSemaphoreTake(tn.rx_lock, portMAX_DELAY);
+	(void)k_mutex_lock(&tn.rx_lock, K_FOREVER);
 	memcpy(tn.rx_buf + tn.rx_len, buf, (size_t)n);
 	tn.rx_len += (size_t)n;
-	xSemaphoreGive(tn.rx_lock);
-	xTaskNotifyGive(tn.session_task);
+	(void)k_mutex_unlock(&tn.rx_lock);
+	k_sem_give(&tn.rx_sem);
 }
 
 /* Zephyr's telnet_server_cb() for one descriptor. */
@@ -593,11 +587,13 @@ static void telnet_event(const struct zsock_pollfd *pfd)
 	}
 }
 
-static void service_main(void *arg)
+static void service_main(void *p1, void *p2, void *p3)
 {
 	bool poll_failed = false;
 
-	ARG_UNUSED(arg);
+	ARG_UNUSED(p1);
+	ARG_UNUSED(p2);
+	ARG_UNUSED(p3);
 
 	for (;;) {
 		struct zsock_pollfd fds[2];
@@ -617,9 +613,9 @@ static void service_main(void *arg)
 		}
 		line_flush(false);
 
-		xSemaphoreTake(tn.rx_lock, portMAX_DELAY);
+		(void)k_mutex_lock(&tn.rx_lock, K_FOREVER);
 		room = tn.rx_len < sizeof(tn.rx_buf);
-		xSemaphoreGive(tn.rx_lock);
+		(void)k_mutex_unlock(&tn.rx_lock);
 		fds[0] = (struct zsock_pollfd){.fd = tn.listen_fd, .events = ZSOCK_POLLIN};
 		/* A full input buffer waits for the session; errors still come. */
 		fds[1] = (struct zsock_pollfd){.fd = tn.client_fd,
@@ -708,27 +704,29 @@ static void session_input(char c)
 	}
 }
 
-static void session_main(void *arg)
+static void session_main(void *p1, void *p2, void *p3)
 {
 	char buf[SESSION_CHUNK];
 
-	ARG_UNUSED(arg);
+	ARG_UNUSED(p1);
+	ARG_UNUSED(p2);
+	ARG_UNUSED(p3);
 
-	shell_console_bind(NULL, &telnet_console);
+	shell_console_bind(&telnet_console);
 
 	for (;;) {
-		(void)ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
+		(void)k_sem_take(&tn.rx_sem, K_FOREVER);
 		for (;;) {
 			uint32_t generation;
 			size_t n;
 
-			xSemaphoreTake(tn.rx_lock, portMAX_DELAY);
+			(void)k_mutex_lock(&tn.rx_lock, K_FOREVER);
 			n = MIN(tn.rx_len, sizeof(buf));
 			memcpy(buf, tn.rx_buf, n);
 			memmove(tn.rx_buf, tn.rx_buf + n, tn.rx_len - n);
 			tn.rx_len -= n;
 			generation = tn.rx_generation;
-			xSemaphoreGive(tn.rx_lock);
+			(void)k_mutex_unlock(&tn.rx_lock);
 			if (n == 0) {
 				break;
 			}
@@ -749,11 +747,29 @@ static void session_main(void *arg)
 
 int shell_telnet_init(const char *prompt)
 {
+	/* The threads' start data, which they may read while they run. */
+	static const struct z_thread_static session = {
+		.name = "shell_telnet",
+		.stack = session_stack,
+		.stack_size = K_THREAD_STACK_SIZEOF(session_stack),
+		.entry = session_main,
+		.prio = APP_PRIO_SHELL,
+		.tid = &tn.session_tid,
+	};
+	static const struct z_thread_static service = {
+		.name = "telnet_service",
+		.stack = service_stack,
+		.stack_size = K_THREAD_STACK_SIZEOF(service_stack),
+		.entry = service_main,
+		.prio = APP_PRIO_TELNET_SERVICE,
+		.tid = &tn.service_tid,
+	};
 	int ret;
 
 	tn.prompt = prompt;
-	tn.conn_lock = xSemaphoreCreateMutexStatic(&tn.conn_lock_mem);
-	tn.rx_lock = xSemaphoreCreateMutexStatic(&tn.rx_lock_mem);
+	(void)k_mutex_init(&tn.conn_lock);
+	(void)k_mutex_init(&tn.rx_lock);
+	(void)k_sem_init(&tn.rx_sem, 0, 1);
 	shell_console_init(&telnet_console, "telnet", telnet_out, NULL);
 	shell_console_set_other_lock_timeout(&telnet_console, OTHER_LOCK_MS);
 
@@ -763,10 +779,12 @@ int shell_telnet_init(const char *prompt)
 	}
 	LOG_INF("Telnet shell backend initialized");
 
-	tn.session_task = xTaskCreateStatic(session_main, "shell_telnet", SESSION_STACK_SIZE, NULL,
-					    APP_PRIO_SHELL, session_stack, &session_tcb);
-	tn.service_task =
-		xTaskCreateStatic(service_main, "telnet_service", SERVICE_STACK_SIZE, NULL,
-				  APP_PRIO_TELNET_SERVICE, service_stack, &service_tcb);
-	return 0;
+	ret = z_thread_static_start(&session);
+	if (ret == 0) {
+		ret = z_thread_static_start(&service);
+	}
+	if (ret < 0) {
+		LOG_ERR("Could not start the Telnet threads (%d)", ret);
+	}
+	return ret;
 }

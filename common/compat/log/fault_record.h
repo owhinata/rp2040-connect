@@ -125,6 +125,11 @@ bool fault_record_from_scratch(const uint32_t s[FAULT_SCRATCH_WORDS], struct fau
  */
 size_t fault_record_line(const struct fault_record *r, unsigned int index, char *buf, size_t len);
 
+/* Writes the record's lines to stdout, each followed by "\n" ("fault" and
+ * the FreeRTOS build's banner after the restart).
+ */
+void fault_record_print(const struct fault_record *r);
+
 #ifdef __cplusplus
 }
 #endif

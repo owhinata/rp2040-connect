@@ -17,6 +17,8 @@
  *                        it once it runs
  *   z_os_sleep()         vTaskDelay(): FreeRTOS's block time ends at the
  *                        current tick + n
+ *   z_os_thread_local_*()  the task's thread local storage pointer
+ *                        Z_TLS_INDEX
  *   z_os_suspend()       vTaskSuspend(NULL)
  *   k_mutex              a FreeRTOS recursive mutex with its priority
  *                        inheritance, created by its first use when its
@@ -25,7 +27,8 @@
  *                        fault and restarts the board)
  *
  * What the application provides: FreeRTOSConfig.h (the tick, two task
- * notifications per task, mutexes and recursive mutexes, static and dynamic
+ * notifications per task, one thread local storage pointer, mutexes and
+ * recursive mutexes, static and dynamic
  * allocation, configUSE_TICK_HOOK with a hook that calls
  * zephyr_compat_tick() of "zephyr_compat_os.h"), priorities_os.h
  * (common/compat/priorities.h) and os_clock.h (rp2040_timer_us(), read by the
@@ -117,6 +120,11 @@ Z_OS_INLINE void z_os_yield(void)
 	taskYIELD();
 }
 
+Z_OS_INLINE bool z_os_pre_kernel(void)
+{
+	return xTaskGetSchedulerState() == taskSCHEDULER_NOT_STARTED;
+}
+
 /* Waits and wakes (z_os_yield_from_isr(): the port header) ------------------*/
 
 Z_OS_INLINE void z_os_wait_prepare(void)
@@ -202,6 +210,29 @@ Z_OS_INLINE void z_os_thread_exit(void)
 Z_OS_INLINE char *z_os_thread_name(z_os_thread_t tid)
 {
 	return pcTaskGetName(tid);
+}
+
+/* The thread local storage pointer that holds a task's custom data
+ * (k_thread_custom_data_get(); the shell engine keeps a task's console in
+ * it).  Before the scheduler starts FreeRTOS has no current task to ask.
+ */
+#define Z_TLS_INDEX 0
+
+#if configNUM_THREAD_LOCAL_STORAGE_POINTERS <= Z_TLS_INDEX
+#error "the compatibility layer needs configNUM_THREAD_LOCAL_STORAGE_POINTERS >= 1"
+#endif
+
+Z_OS_INLINE void *z_os_thread_local_get(void)
+{
+	if (z_os_pre_kernel()) {
+		return NULL;
+	}
+	return pvTaskGetThreadLocalStoragePointer(NULL, Z_TLS_INDEX);
+}
+
+Z_OS_INLINE void z_os_thread_local_set(void *value)
+{
+	vTaskSetThreadLocalStoragePointer(NULL, Z_TLS_INDEX, value);
 }
 
 /* Time (z_os_busy_wait_us(): the port header) ------------------------------*/

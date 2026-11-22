@@ -820,7 +820,7 @@ static void test_disconnect(void)
 static void runner(void *arg)
 {
 	(void)arg;
-	shell_console_bind(NULL, &con);
+	shell_console_bind(&con);
 	test_realtime_clock();
 	test_mono();
 	test_start();

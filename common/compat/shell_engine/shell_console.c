@@ -1,12 +1,13 @@
 /* SPDX-License-Identifier: MIT */
-/* The consoles and the output of each task (shell_console.h). */
+/* The consoles and the output of each thread (shell_console.h). */
 
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
+#include <zephyr/kernel.h>
+
 #include "shell_console.h"
-#include "zephyr_os_port.h"
 
 /* The longest a writer waits for another one on the same console
  * (PICO_STDIO_DEADLOCK_TIMEOUT_MS of the Pico SDK's stdio).
@@ -25,7 +26,7 @@ void shell_console_init(struct shell_console *con, const char *name, shell_conso
 	con->name = name;
 	con->out = out;
 	con->ctx = ctx;
-	con->lock = xSemaphoreCreateMutexStatic(&con->lock_mem);
+	(void)k_mutex_init(&con->lock);
 	con->other_lock_timeout_ms = LOCK_TIMEOUT_MS;
 	con->sh.console = con;
 	con->getopt.opterr = 1;
@@ -42,24 +43,21 @@ void shell_console_set_default(struct shell_console *con)
 	default_console = con;
 }
 
-void shell_console_bind(TaskHandle_t task, struct shell_console *con)
+void shell_console_bind(struct shell_console *con)
 {
-	vTaskSetThreadLocalStoragePointer(task, SHELL_CONSOLE_TLS_INDEX, con);
+	k_thread_custom_data_set(con);
 }
 
 struct shell_console *shell_console_bound(void)
 {
-	if (xTaskGetSchedulerState() == taskSCHEDULER_NOT_STARTED) {
-		return NULL;
-	}
-	return pvTaskGetThreadLocalStoragePointer(NULL, SHELL_CONSOLE_TLS_INDEX);
+	return k_thread_custom_data_get();
 }
 
 struct shell_console *shell_console_current(void)
 {
 	struct shell_console *con;
 
-	if (z_os_in_isr()) {
+	if (k_is_in_isr()) {
 		return NULL;
 	}
 	con = shell_console_bound();
@@ -95,21 +93,21 @@ void shell_console_write(struct shell_console *con, const char *buf, size_t len)
 {
 	bool locked;
 
-	if (con == NULL || len == 0 || z_os_in_isr()) {
+	if (con == NULL || len == 0 || k_is_in_isr()) {
 		return;
 	}
-	locked = xTaskGetSchedulerState() != taskSCHEDULER_NOT_STARTED;
+	locked = !k_is_pre_kernel();
 	if (locked) {
 		uint32_t ms =
 			shell_console_bound() == con ? LOCK_TIMEOUT_MS : con->other_lock_timeout_ms;
 
-		if (xSemaphoreTake(con->lock, pdMS_TO_TICKS(ms)) != pdTRUE) {
+		if (k_mutex_lock(&con->lock, K_MSEC(ms)) != 0) {
 			return;
 		}
 	}
 	write_crlf(con, buf, len);
 	if (locked) {
-		xSemaphoreGive(con->lock);
+		(void)k_mutex_unlock(&con->lock);
 	}
 }
 
@@ -120,12 +118,12 @@ void shell_console_set_other_lock_timeout(struct shell_console *con, uint32_t ms
 
 bool shell_console_lock(struct shell_console *con, uint32_t timeout_ms)
 {
-	return xSemaphoreTake(con->lock, pdMS_TO_TICKS(timeout_ms)) == pdTRUE;
+	return k_mutex_lock(&con->lock, K_MSEC(timeout_ms)) == 0;
 }
 
 void shell_console_unlock(struct shell_console *con)
 {
-	xSemaphoreGive(con->lock);
+	(void)k_mutex_unlock(&con->lock);
 }
 
 void shell_console_vprintf(struct shell_console *con, const char *fmt, va_list args)

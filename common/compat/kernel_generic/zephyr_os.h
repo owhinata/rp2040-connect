@@ -105,6 +105,33 @@ static inline void k_yield(void)
 	z_os_yield();
 }
 
+/* Zephyr's k_is_in_isr() and k_is_pre_kernel(): in an interrupt handler;
+ * before the kernel runs threads (Zephyr: before the main thread starts).
+ */
+static inline bool k_is_in_isr(void)
+{
+	return z_os_in_isr();
+}
+
+static inline bool k_is_pre_kernel(void)
+{
+	return z_os_pre_kernel();
+}
+
+/* Zephyr's custom data of a thread (CONFIG_THREAD_CUSTOM_DATA): one
+ * pointer per thread, set and read by the thread itself; NULL until set,
+ * and before the kernel runs threads.  Not from an interrupt handler.
+ */
+static inline void k_thread_custom_data_set(void *value)
+{
+	z_os_thread_local_set(value);
+}
+
+static inline void *k_thread_custom_data_get(void)
+{
+	return z_os_thread_local_get();
+}
+
 /* k_heap (Zephyr's K_HEAP_DEFINE(), k_heap_alloc(), k_heap_free()): the
  * OS-independent one of the layer's network part for an OS without a network
  * stack of its own (common/compat/net_offload/include/zephyr_heap.h,

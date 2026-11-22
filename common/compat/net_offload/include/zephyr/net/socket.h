@@ -47,7 +47,7 @@
  * object core statistics, the offloaded port tracking.  Only the zsock_*()
  * names: there is no socket(), poll(), close() or fcntl() on these
  * descriptors, which are not newlib's (its 0, 1 and 2 are the console's,
- * freertos/drivers/shell).
+ * common/compat/shell_engine/shell_console.h).
  *
  * Part of the network part of the Zephyr compatibility layer for an OS
  * without a network stack of its own (common/compat/net_offload), which the

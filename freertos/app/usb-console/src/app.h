@@ -6,10 +6,6 @@
 
 #include <stddef.h>
 #include <stdint.h>
-#include "fault_record.h"
-
-/* Writes the lines of a fatal error's record to the console (commands.c). */
-void fault_print(const struct fault_record *r);
 
 /* The CPU load since the previous call (since the start for the first), in
  * tenths of a percent, as cpu_load_get(): for "ps", which does not reset

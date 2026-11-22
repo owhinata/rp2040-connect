@@ -2553,3 +2553,27 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
   subagent の逆アセンブルの比較: 関数の命令は全部同じで、違うのはベニア 37 個の並び順とそこを指す所だけ（`z_yield()` はもとのイメージでもインライン化されて残っていなかった）。
   実機（書き込み直後から 3 回 約 70 秒）: 欠番 0、42.8・42.8・42.9%（直前のイメージは 42.8〜42.9%）、時刻の逆行 0。
 - 実機: FreeRTOS 版（この変更の既定のビルド）。
+
+## 整理 9: コンソール・Telnet・汎用のコマンドを共有に、残りの `nano_` の改名（2026-11-22）
+
+- subagent が実装（4 つに分けて）、メインがホストテストと実機確認。commit も 4 つ。
+- A（名前だけ。既定と自己診断のイメージがバイト単位で一致）: `nano_shell.[ch]` → `shell_engine.[ch]`（`shell_engine_*`・`SHELL_ENGINE_*`）、`nano_console` → `shell_console`、`nano_stdio` → `shell_stdio`、
+  `nano_telnet` → `shell_telnet`、`nano_ifconfig.c` → `ifconfig_shell.c`、`nano_lsm6dso.[ch]` → `lsm6dso_board.[ch]`。
+- A2: 互換層のデバイスの記号 `nano_device_*`・`nano_device_state_*` → `__device_*`・`__devstate_*`（Zephyr のマクロが付ける接頭辞）。FreeRTOS のリンカーは `.bss` を名前順に並べるので
+  アドレスが動く（116 語、大きさは同じ）。NuttX は一致。
+- B: `id`・`uptime`・`date`・`sleep`・`devmem`・`fault`・`reboot`・`bootsel` を `common/shell/kernel_shell.c` へ。境界 `kernel_shell_os.h` は 4 項目（tick の数、再起動、USB ローダーへの再起動、
+  直前の異常停止の記録）。`help` はエンジンへ、`fault_print()` は `fault_record_print()` として `fault_record.c` へ、`ifconfig_shell.c` は `common/shell/` へ。FreeRTOS のアプリに残るのは
+  `version`・`free`・`ps`・`selftest` とコマンドの表。NuttX の `apps/bootsel`・`apps/dmesg` は共有のものに替えていない（境界の実装が要り、単純にならない）。
+- C: コンソール（`shell_console.[ch]`）、`getopt_state.c`、Telnet（`shell_telnet.[ch]`、790 行）、新しい `shell_serial.[ch]`（`main.c` にあったスレッド `console`）を `common/compat/shell_engine/` へ。
+  FreeRTOS の呼び出しは互換層の API に（`k_mutex`、`k_sem`、`z_thread_static_start()`、`k_current_get()`）。基本の操作に 3 つ追加（23 → 26）: `z_os_pre_kernel()`、スレッドごとのポインターの取得・設定
+  （Zephyr の `k_thread_custom_data_get/set()` として見せる）。OS が書くコンソールの入出力は `shell_serial_os.h` の 5 項目（FreeRTOS は `freertos/drivers/shell/shell_serial_os_impl.h`、`stdio_usb` の上）。
+  スレッドは `console`・`shell_telnet`・`telnet_service` とも優先度 6、スタック 3072・3072・2048 で従来どおり。制御ブロックは FreeRTOS のヒープから取るようになった（`.bss` が 400 B 減り、ヒープの空きが約 430 B 減る）。
+- `freertos/drivers` の行数: `shell` 506 → 120、`telnet` 820 → 20、`wifi` 235 → 131。
+- イメージ: FreeRTOS 237656 B（+272）。NuttX は `snapshot-1122h` と一致、Zephyr は読むファイルが変わらない。ホストテスト 50・63・60（シェルのテストが `help` と汎用のコマンドの出力、
+  偽の入出力の上のシリアルのセッションも確かめる）。
+- 実機（FreeRTOS）: 書き込み直後から 2 回 約 70 秒: 欠番 0、**43.8%**（直前は 42.8〜42.9%）。XIP キャッシュの外れは約 36 万回/秒（以前の「悪い配置」は約 32 万回/秒、良い配置は約 28 万回/秒）で、
+  配置の影響と見られる（配置だけを変えた対照は取っていない）。コマンドを 1 つずつ: `help`・`version`・`id`・`uptime`・`date`・`sleep 1`・`sleep x`（-22）・`devmem 0 7`（幅の誤り）・`devmem`・`free`・`fault`・
+  `ntp status`・`kv list`・`ifconfig`・`nina version`・`i2c_dma stats`・`zperf` とも従来の形。`ps`: `console`・`telnet_service`・`shell_telnet` とも優先度 6。送信中の Telnet、Wi-Fi を落として 2 秒で再接続、
+  復帰後の Telnet、2 つ目の Telnet の接続のあとも 1 つ目が使える。`selftest` 22・6・3 項目とも失敗 0。`reboot` のあとログが残る、`devmem 0x30000000` のあと `fault` に記録。
+- 残る `nano_`: フラッシュの KV だけ（整理 11）。
+- 実機: FreeRTOS 版（この変更の既定のビルド。異常停止の記録が 1 件＝こちらの試験）。

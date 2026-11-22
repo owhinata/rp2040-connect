@@ -39,7 +39,7 @@
 #   shared NINA core, a fake module and a fake clock (freertos/tests/socket), and Wi-Fi: the
 #   interface, the net_mgmt events, the stored credentials (settings "wifi_cred/<n>"), the
 #   reconnection, the "wifi" and "ifconfig" commands on a fake module (freertos/tests/wifi), and the
-#   Telnet shell (freertos/drivers/telnet) and "zperf" (common/compat/zperf_iperf3.c) on the
+#   Telnet shell (common/compat/shell_engine/shell_telnet.c) and "zperf" (common/compat/zperf_iperf3.c) on the
 #   host's sockets with the NINA's behaviour, driven over TCP on 127.0.0.1 by
 #   freertos/tests/telnet/client.py (python3; with the host's iperf3, which is skipped when
 #   missing) (freertos/tests/telnet, about 60 s), and the "sensor" command
@@ -79,7 +79,7 @@ trap 'rm -rf "$out"' EXIT
 # RP2040's TIMER read is common/chip's under tests/compat/rp2040_timer_us.h.
 # common/compat/libc_net/include (the POSIX network headers newlib lacks) is added by the tests
 # that need it, before the host's.  The shell's tests add the shell engine,
-# common/compat/shell_engine, after drivers/shell as on the board.
+# common/compat/shell_engine, after their own directory (a test's OS parts first).
 noff=../common/compat/net_offload
 lnet=../common/compat/libc_net
 seng=../common/compat/shell_engine
@@ -136,16 +136,20 @@ else
 fi
 printf 'ok  tick (catch-up of lost ticks, model of SysTick)\n'
 
-# The shell (freertos/tests/shell): the line editor, and two sessions at once on two consoles
+# The shell (freertos/tests/shell): the line editor, two sessions at once on two consoles
 # (each task's stdout, the shared zshell.c and subcmd.c, the copies of Zephyr's fnmatch() and
-# getopt), on the same kernel and layer objects.
-shinc=(-Itests/shell -Idrivers/shell -I$seng -I../common/shell -I../common/compat/lib/utils/getopt
+# getopt), the engine's "help" and the generic commands (common/shell/kernel_shell.c, with the
+# test's kernel_shell_os_impl.h) and the serial session (shell_serial.c, on the test's console
+# transport), on the same kernel and layer objects.
+shinc=(-Itests/shell -I$seng -I../common/shell -I../common/compat/lib/utils/getopt
        -DZ_SHELL_CMD_ROOT_GLOBAL -DCONFIG_GETOPT_LONG=1 -U_FORTIFY_SOURCE -ffunction-sections
        -fdata-sections)
 shobjs=()
-for src in $seng/cli.c drivers/shell/getopt_state.c drivers/shell/shell_console.c \
+for src in $seng/cli.c $seng/getopt_state.c $seng/shell_console.c \
            $seng/shell_engine.c $seng/shell_argv.c drivers/libc/stdio_wrap.c \
            tests/shell/main.c ../common/shell/zshell.c ../common/shell/subcmd.c \
+           ../common/shell/kernel_shell.c ../common/compat/log/fault_record.c \
+           drivers/compat/zephyr_sys_clock.c $seng/shell_serial.c \
            ../common/compat/subsys/portability/posix/c_lib_ext/fnmatch.c \
            ../common/compat/lib/utils/getopt/getopt.c ../common/compat/lib/utils/getopt/getopt_long.c; do
     obj="$out/shell_$(basename "$src" .c).o"
@@ -170,7 +174,7 @@ if (( verbose )); then
 else
     timeout 60 "$out/shell" >"$out/log" 2>&1 || { cat "$out/log"; exit 1; }
 fi
-printf 'ok  shell (two sessions, FreeRTOS POSIX port)\n'
+printf 'ok  shell (two sessions, generic commands, serial session, FreeRTOS POSIX port)\n'
 
 # The key-value store (freertos/tests/kv): the board's flash boundary (drivers/kv/nano_flash_kv.c)
 # on fakes of the Pico SDK's flash functions (tests/kv/pico_fake), under the shared store as the
@@ -178,7 +182,7 @@ printf 'ok  shell (two sessions, FreeRTOS POSIX port)\n'
 # Zephyr's settings, NVS and hex.c with their options, drivers/kv/kv.cmake), on the same kernel
 # and layer objects.  Unused parts (the "kv" command's table) are left out by --gc-sections.
 kvinc=(-D_GNU_SOURCE -DPICO_FLASH_ASSUME_CORE1_SAFE=1 -DZ_SHELL_CMD_ROOT_GLOBAL -Itests/kv/pico_fake
-       -Idrivers/kv -Idrivers/shell -I../common/imu -I../common/compat/subsys/settings/include
+       -Idrivers/kv -I$seng -I../common/imu -I../common/compat/subsys/settings/include
        -I../common/compat/subsys/settings/src -ffunction-sections -fdata-sections)
 kvconfig=(-include ../common/compat/zephyr_kv_config.h -Wno-undef)
 kvobjs=()
@@ -439,11 +443,11 @@ fi
 # registers on the test port's clock (tests/compat/rp2040_timer_us.h, under common/chip's
 # read), on the same kernel and layer objects.  It waits for the real intervals (2 s): about 12 s.
 tsinc=(-DZ_SHELL_CMD_ROOT_GLOBAL -DCONFIG_GETOPT_LONG=1 -U_FORTIFY_SOURCE
-       -Itests/shell -Idrivers/shell -I$seng -I$lnet/include -I../common/shell
+       -Itests/shell -I$seng -I$lnet/include -I../common/shell
        -I../common/compat/lib/utils/getopt -I../common/imu -ffunction-sections -fdata-sections)
 tsobjs=()
 for src in tests/time_sync/main.c drivers/compat/zephyr_sys_clock.c $noff/zephyr_net_if.c \
-           $lnet/inet.c drivers/shell/getopt_state.c drivers/shell/shell_console.c \
+           $lnet/inet.c $seng/getopt_state.c $seng/shell_console.c \
            $seng/shell_engine.c $seng/shell_argv.c drivers/libc/stdio_wrap.c \
            ../common/shell/zshell.c ../common/shell/subcmd.c \
            ../common/compat/subsys/portability/posix/c_lib_ext/fnmatch.c \
@@ -541,7 +545,7 @@ printf 'ok  socket (descriptors, wait loops, options, poll, resolver, FreeRTOS P
 # nina_wifi.c and its Zephyr binding common/drivers/nina/port/zephyr/nina_net.c, the
 # layer's net_mgmt and Wi-Fi requests, the stored credentials and their settings backend, the
 # Wi-Fi profile, the "wifi" command and the copy of Zephyr's wifi_credentials_shell.c, with the
-# "ifconfig" command (drivers/wifi/ifconfig_shell.c), with the
+# "ifconfig" command (common/shell/ifconfig_shell.c), with the
 # prelude, CONFIG_WIFI_CREDENTIALS and the same per-file options), on the store and the
 # copies of Zephyr's settings and NVS over the shared fake flash (common/tests/kv_flash_fake.c),
 # the build's shell on a console that captures, and a fake module (the test's nina_proto_request());
@@ -550,15 +554,15 @@ printf 'ok  socket (descriptors, wait loops, options, poll, resolver, FreeRTOS P
 # firmware's capability bits (a fake nina_proto_probe_capabilities()): the link kept, the asynchronous
 # scan and its failures, a loss of the link during the scan.
 wifiinc=(-D_GNU_SOURCE -DZ_SHELL_CMD_ROOT_GLOBAL -DCONFIG_GETOPT_LONG=1 -DCONFIG_WIFI_CREDENTIALS=1
-         -U_FORTIFY_SOURCE -Itests/shell -Idrivers/shell -I$seng -Idrivers/wifi
+         -U_FORTIFY_SOURCE -Itests/shell -I$seng -Idrivers/wifi
          -I../common/shell -I../common/compat/lib/utils/getopt -I../common/drivers/nina/include
          -I../common/drivers/nina/internal -I../common/drivers/nina/port
          -I../common/imu -I../common/tests -I../common/compat/subsys/settings/include
          -I../common/compat/subsys/settings/src -ffunction-sections -fdata-sections)
 wifiobjs=()
-for src in $noff/zephyr_net_if.c $noff/zephyr_net_init.c drivers/wifi/ifconfig_shell.c \
+for src in $noff/zephyr_net_if.c $noff/zephyr_net_init.c ../common/shell/ifconfig_shell.c \
            tests/wifi/main.c \
-           $seng/cli.c drivers/shell/getopt_state.c drivers/shell/shell_console.c \
+           $seng/cli.c $seng/getopt_state.c $seng/shell_console.c \
            $seng/shell_engine.c $seng/shell_argv.c drivers/libc/stdio_wrap.c \
            ../common/shell/zshell.c ../common/shell/subcmd.c \
            ../common/compat/subsys/portability/posix/c_lib_ext/fnmatch.c \
@@ -606,8 +610,9 @@ else
 fi
 printf 'ok  wifi (interface, events, credentials, reconnection, wifi and ifconfig commands, FreeRTOS POSIX port)\n'
 
-# The Telnet shell and "zperf" (freertos/tests/telnet): the build's Telnet backend
-# (drivers/telnet/shell_telnet.c, its port a variable here) and shell, the port's iperf3 and the
+# The Telnet shell and "zperf" (freertos/tests/telnet): the shell engine's Telnet backend
+# (common/compat/shell_engine/shell_telnet.c, its port a variable here) and shell, the port's
+# iperf3 and the
 # "zperf" command (common/compat/zperf_iperf3.c, zephyr_zperf_shell.c, with the prelude, as
 # drivers/zperf/zperf.cmake builds them), on the zsock_*() calls over the host's sockets with
 # the NINA's behaviour (tests/telnet/host_sock.c), on the same kernel and layer objects.  The
@@ -618,11 +623,11 @@ printf 'ok  wifi (interface, events, credentials, reconnection, wifi and ifconfi
 # "iperf3 -c" to "zperf tcp download".
 if command -v python3 >/dev/null; then
     tninc=(-D_GNU_SOURCE -DZ_SHELL_CMD_ROOT_GLOBAL -DCONFIG_GETOPT_LONG=1 -U_FORTIFY_SOURCE
-           -Itests/telnet -Itests/shell -Idrivers/shell -I$seng -Idrivers/telnet -I../common/shell
+           -Itests/telnet -Itests/shell -I$seng -I../common/shell
            -I../common/compat/lib/utils/getopt -ffunction-sections -fdata-sections)
     tnobjs=()
-    for src in drivers/telnet/shell_telnet.c tests/telnet/main.c tests/telnet/host_sock.c \
-               drivers/shell/getopt_state.c drivers/shell/shell_console.c $seng/shell_engine.c \
+    for src in $seng/shell_telnet.c tests/telnet/main.c tests/telnet/host_sock.c \
+               $seng/getopt_state.c $seng/shell_console.c $seng/shell_engine.c \
                $seng/shell_argv.c drivers/libc/stdio_wrap.c ../common/shell/zshell.c \
                ../common/shell/subcmd.c ../common/compat/subsys/portability/posix/c_lib_ext/fnmatch.c \
                ../common/compat/lib/utils/getopt/getopt.c ../common/compat/lib/utils/getopt/getopt_long.c \
@@ -664,7 +669,7 @@ fi
 # from the other, a session whose terminal is gone, the FIFO taken by another stream.  About 2 s.
 if [[ -f stmemsc/lsm6dso_reg.c ]]; then
     ssinc=(-D_GNU_SOURCE -DZ_SHELL_CMD_ROOT_GLOBAL -DCONFIG_GETOPT_LONG=1 -DCONFIG_LSM6DSO_STREAM=1
-           -U_FORTIFY_SOURCE -Itests/shell -Idrivers/shell -I$seng -Idrivers/sensor_shell -Idrivers/lsm6dso
+           -U_FORTIFY_SOURCE -Itests/shell -I$seng -Idrivers/sensor_shell -Idrivers/lsm6dso
            -I../common/shell -I../common/compat/lib/utils/getopt
            -I../common/drivers/lsm6dso/port/freertos
            -I../common/drivers/lsm6dso/port/zephyr -I../common/drivers/lsm6dso/include
@@ -674,7 +679,7 @@ if [[ -f stmemsc/lsm6dso_reg.c ]]; then
     ssobjs=("$out/sensor_lsm6dso_reg.o")
     for src in tests/sensor_shell/main.c ../common/compat/zephyr_init.c \
                drivers/sensor_shell/sensor_shell_os.c \
-               $seng/cli.c drivers/shell/getopt_state.c drivers/shell/shell_console.c \
+               $seng/cli.c $seng/getopt_state.c $seng/shell_console.c \
                $seng/shell_engine.c $seng/shell_argv.c drivers/libc/stdio_wrap.c \
                ../common/shell/zshell.c ../common/shell/subcmd.c \
                ../common/compat/subsys/portability/posix/c_lib_ext/fnmatch.c \

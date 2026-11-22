@@ -66,7 +66,8 @@
 #define configQUEUE_REGISTRY_SIZE               0
 #define configUSE_EVENT_GROUPS                  1
 #define configUSE_STREAM_BUFFERS                1
-/* Pointer 0: the console of a task (freertos/drivers/shell/shell_console.h). */
+/* Pointer 0: the task's custom data of the layer, its console
+ * (common/compat/shell_engine/shell_console.h). */
 #define configNUM_THREAD_LOCAL_STORAGE_POINTERS 1
 
 /* The timer task also wakes the tasks that wait on the Pico SDK's locks and

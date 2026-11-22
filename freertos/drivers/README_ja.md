@@ -19,22 +19,22 @@ newlib に無い POSIX のネットワークのヘッダーは `common/compat/li
 
 | 場所 | 内容 |
 |---|---|
-| `app/usb-console/` | 起動（`main.c`）、FreeRTOS 版だけのコマンド（`commands.c`）、カーネルの設定（`FreeRTOSConfig.h`）、優先度の対応（`priorities_os.h`）、時計（`os_clock.h`）、tick フック（`tick.c`。tick の追いつきの判定は `tick_catchup.h`）、CPU 負荷（`idle.c`）、異常停止（`fault.[ch]`）、割り込み用スタックの空き（`irq_stack.c`） |
+| `app/usb-console/` | 起動（`main.c`）、FreeRTOS 版だけのコマンド（`commands.c`: `version`・`free`・`ps`・`selftest`）と全コマンドの表、汎用のコマンドの OS の部分（`kernel_shell_os_impl.h`）、カーネルの設定（`FreeRTOSConfig.h`）、優先度の対応（`priorities_os.h`）、時計（`os_clock.h`）、tick フック（`tick.c`。tick の追いつきの判定は `tick_catchup.h`）、CPU 負荷（`idle.c`）、異常停止（`fault.[ch]`）、割り込み用スタックの空き（`irq_stack.c`） |
 | `drivers/compat/` | 互換層の FreeRTOS の部分: 汎用のカーネルの部分の基本の操作（`zephyr_kernel_os_impl.h`。ポートによるものは `rp2040/zephyr_os_port.h`）と `zephyr_os_atomic.h`、ソケットの実装の登録のためのリンカースクリプトの部分（`ld/`）、壁時計（`zephyr_sys_clock.c`）、前置きヘッダー（`common_prelude.h`）、自己診断の FreeRTOS の部分（`zephyr_selftest_os_impl.h`）、RP2040 の部分（`rp2040/`: ポートのヘッダー、GPIO バンク 0、チップ ID、自己診断のボードの部分 `zephyr_selftest_port.c`） |
 | `common/compat/kernel_generic/` | 基本の操作だけを持つ OS のための互換層のカーネルの部分。OS に依存しない: `k_sem`・`k_poll()`・タイムアウト・スリープ・スレッドの起動（`zephyr_kernel.c`）、`k_mutex`（`zephyr_mutex.c`）、`<zephyr/kernel.h>`・`<zephyr/spinlock.h>` の OS の部分（`zephyr_os.h`・`zephyr_os_spinlock.h`）、tick のフックの入口（`zephyr_compat_os.h`）、基本の操作の上の自己診断の項目（`zephyr_selftest_os.h`）、基本の操作の宣言（`zephyr_kernel_os.h`）。ワークキューのスレッド、システムワークキュー、`zephyr_compat_initialize()` は共有の `common/compat/zephyr_init.c` |
 | `common/compat/selftest/` | 互換層の自己診断（OS に依存しない。`zephyr_selftest.c`。OS の部分とボードの部分が用意するものは `zephyr_selftest.h` にある） |
 | `common/compat/net_offload/` | 互換層のネットワークの部分（OS に依存しない）: Zephyr のソケット層（`subsys/net/lib/sockets/`・`lib/os/zvfs/` の Zephyr のファイルを縮めた写し）、ネットワークのインターフェース（`zephyr_net_if.c`）とネットワークの部分の開始（`zephyr_net_init.c`、`zephyr_net_initialize()`）、`k_heap`（`zephyr_heap.c`）、それらのヘッダーは `include/` の下（`zephyr/net/`、`zephyr/sys/fdtable.h`、`zephyr_net_init.h`、`zephyr_os.h` が読む `zephyr_heap.h`） |
 | `common/compat/libc_net/` | newlib に無いソケット系のヘッダー（`include/`。型と定数だけ）、`inet_pton`・`inet_ntop`（`inet.c`） |
-| `drivers/shell/` | コンソールとタスクごとの出力先（`shell_console.c`）、Pico SDK の stdio の差し替え（`shell_stdio.c`）、セッションごとの getopt（`getopt_state.c`）、シェルの OS の部分（`zshell_os_impl.h`・`zephyr_os_shell.h`） |
-| `common/compat/shell_engine/` | 自分のシェルを持たない OS のためのシェル（OS に依存しない）: 行編集（`cli.c`）、コマンドの表と実行（`shell_engine.c`）、Zephyr の引数の分割の写し（`shell_argv.c`） |
+| `drivers/shell/` | シェルのエンジンに対するこの版のコンソールの経路（`shell_serial_os_impl.h`: Pico SDK の USB CDC ACM のドライバー）と Pico SDK の stdio の差し替え（`shell_stdio.c`） |
+| `common/compat/shell_engine/` | 自分のシェルを持たない OS のためのシェル（互換層の API の上）: 行編集（`cli.c`）、コマンドの表と実行と `help`（`shell_engine.c`）、Zephyr の引数の分割の写し（`shell_argv.c`）、コンソールとスレッドごとの出力先（`shell_console.c`）、セッションごとの getopt（`getopt_state.c`）、`zshell.c` に対するシェルのバックエンド（`zshell_os_impl.h`・`zephyr_os_shell.h`）、シリアルのセッション（`shell_serial.c`。OS が用意するコンソールの経路は `shell_serial_os.h` が宣言する）、Telnet のシェル（`shell_telnet.c`） |
 | `drivers/libc/` | newlib の FILE 関数の差し替え（`stdio_wrap.c`） |
 | `drivers/kv/` | KV のフラッシュの境界（`nano_flash_kv.c`）とリンカースクリプトの差し替え（`ld/`、`kv.cmake`） |
 | `drivers/nina/` | NINA のドライバーをビルドに入れる `nina.cmake` だけ。ドライバーは `common/drivers/nina/` にあり、この版の部分は FreeRTOS へのつなぎ `common/drivers/nina/port/freertos/`: 境界 `nina_os.h` の実装（`nina_os.c`）、中継のホスト側（`nina_passthrough_os.c`）、Pico SDK で書いた SPI1 と制御線（`nina_bus_rp2040.c`）、中継のモジュール側（`nina_passthrough_bus_rp2040.c`: UART1、モジュールの線、watchdog の scratch レジスター、LED）。ソケットとインターフェースは Zephyr へのつなぎのもの（`common/drivers/nina/port/zephyr/nina_socket.c`・`nina_net.c`） |
 | `drivers/i2c_dw/` | I2C のドライバー（I2C0 と、オプションで I2C1）をビルドに入れる `i2c_dw.cmake` と、自己診断（`i2c_dw_selftest.[ch]`）。ドライバーは `common/drivers/i2c_dw/` にあり、この版の部分は FreeRTOS へのつなぎ `common/drivers/i2c_dw/port/freertos/`: FreeRTOS と TIMER の上の境界 `i2c_dw_os.h` の実装（`i2c_dw_os_impl.h`）、Zephyr の I2C の API を持つデバイスとその割り込み・リセット・ピン（`i2c_dw_instance.h`）、その起動（`i2c_dw_controllers_rp2040.h`）、Pico SDK の DMA での I2C0 の DMA 読み出し（`i2c_dw_dma_os_rp2040.c`） |
 | `drivers/lsm6dso/` | LSM6DSOX のビルドの規則（`lsm6dso.cmake`）と初期化（`lsm6dso_board.c`）、自己診断 |
 | `drivers/imu/` | 取得サービス・MQTT・時刻同期（`common/imu/`）の組み込み（`imu.cmake`）、`time_sync.c` の前置き |
-| `drivers/wifi/` | Wi-Fi（NINA のコアの `common/drivers/nina/nina_wifi.c` と、その Zephyr へのつなぎ `common/drivers/nina/port/zephyr/nina_net.c`、資格情報、自動再接続）の組み込みと `ifconfig` |
-| `drivers/telnet/` | Telnet のシェル（`shell_telnet.c`） |
+| `drivers/wifi/` | Wi-Fi（NINA のコアの `common/drivers/nina/nina_wifi.c` と、その Zephyr へのつなぎ `common/drivers/nina/port/zephyr/nina_net.c`、資格情報、自動再接続）の組み込みと `ifconfig`（`common/shell/ifconfig_shell.c`） |
+| `drivers/telnet/` | Telnet のシェルの組み込み（`telnet.cmake`。本体は `common/compat/shell_engine/shell_telnet.c`） |
 | `drivers/zperf/` | `zperf` の組み込み（本体は `common/compat/zperf_iperf3.c`・`zephyr_zperf_shell.c`） |
 | `drivers/sensor_shell/` | `sensor` コマンドの FreeRTOS の部分（`sensor_shell_os.[ch]`） |
 | `drivers/include/` | `app_log.h` の FreeRTOS の部分（`app_log_os.h`）と RAM ログの FreeRTOS の部分（`log_ram_os_impl.h`: リングのセクション、割り込みの禁止、TIMER） |
@@ -42,7 +42,9 @@ newlib に無い POSIX のネットワークのヘッダーは `common/compat/li
 
 FreeRTOS 版だけがビルドする共有ファイル: `common/compat/zephyr_wifi_shell.c`（Zephyr の `wifi_shell.c` から
 `connect`・`disconnect`・`scan`・`status` を取り出したもの）、`zephyr_zperf_shell.c`・`zperf_iperf3.[ch]`（`zperf`）、
-`common/compat/log/fault_record.[ch]`（異常停止の記録の形式）、`common/shell/dmesg_shell.c`（`dmesg`）。RAM ログ `common/compat/log/log_ram.c`（リングは
+`common/compat/log/fault_record.[ch]`（異常停止の記録の形式）、`common/shell/dmesg_shell.c`（`dmesg`）、
+`common/shell/kernel_shell.c`（`id`・`uptime`・`date`・`sleep`・`devmem`・`fault`・`reboot`・`bootsel`。境界は
+`common/shell/kernel_shell_os.h`）、`common/shell/ifconfig_shell.c`（`ifconfig`）。RAM ログ `common/compat/log/log_ram.c`（リングは
 `log_ring.c`）は NuttX 版と共有する。`i2c_dma` の `common/shell/i2c_dma_shell.c` と `nina` の
 `common/shell/nina_shell.c`（`nina version`・`nina passthrough`）は Zephyr 版もビルドする。
 
@@ -119,15 +121,21 @@ NuttX 版の起動処理の順と同じ）。
 ## シェルとコンソール
 
 - コマンドは Zephyr のシェルの API（`SHELL_CMD_REGISTER()` など）で書き、照合・ヘルプ・ワイルドカード・引数の
-  数の検査は共有の `common/shell/zshell.c` が行います。コマンドの表と行編集は `common/compat/shell_engine/`（`shell_engine.c`・`cli.c`）、FreeRTOS 版だけのコマンドは
-  `app/usb-console/src/commands.c` です。
-- コンソール（`shell_console.c`）はセッションの端末（USB と Telnet）で、各タスクを 1 つのコンソールに結び付けます
-  （スレッドローカルのポインター）。タスクの `printf()`・`fprintf(stderr)` はそのコンソールに出ます。結び付いて
-  いないタスクの出力は USB に出ます。Pico SDK の stdio のドライバーの差し替え（`shell_stdio.c`）と newlib の FILE
-  関数の `--wrap`（`drivers/libc/stdio_wrap.c`）で、出力の経路をすべてここに通します。
-- USB（`main.c`）: 端末がポートを開くとプロンプトを出します。端末が読まないときは Pico SDK のドライバーが 64 バイトの
-  バッファーの空きを最長 500 ms 待ち、残りを捨てます。
-- Telnet（`drivers/telnet/shell_telnet.c`）: ポート 23、同時 1 接続。Zephyr の `shell_telnet.c` と同じく、接続しても
+  数の検査は共有の `common/shell/zshell.c` が行います。コマンドの表と行編集は `common/compat/shell_engine/`（`shell_engine.c`・`cli.c`。`help` も `shell_engine.c`）です。
+  汎用のコマンドは `common/shell/kernel_shell.c` で、OS に求めるもの（tick の数、2 つの再起動、前回の異常停止の記録）は
+  `common/shell/kernel_shell_os.h` が宣言し、この版の実装は `app/usb-console/src/kernel_shell_os_impl.h` です。FreeRTOS 版だけの
+  コマンドと全コマンドの表は `app/usb-console/src/commands.c` です。
+- コンソール、セッション、Telnet はシェルのエンジン（`common/compat/shell_engine/`）のもので、互換層の `k_mutex`・`k_sem`・
+  `z_thread_static_start()` とスレッドのカスタムデータ（`k_thread_custom_data_get()`。FreeRTOS ではスレッドローカルのポインター）の
+  上で書いています。コンソール（`shell_console.c`）はセッションの端末（USB と Telnet）で、各タスクを 1 つのコンソールに
+  結び付けます。タスクの `printf()`・`fprintf(stderr)` はそのコンソールに出ます。結び付いていないタスクの出力は USB に
+  出ます。Pico SDK の stdio のドライバーの差し替え（`shell_stdio.c`）と newlib の FILE 関数の `--wrap`
+  （`drivers/libc/stdio_wrap.c`）で、出力の経路をすべてここに通します。
+- USB: エンジンのシリアルのセッション（`shell_serial.c`、タスク `console`）を、この版のコンソールの経路
+  （`drivers/shell/shell_serial_os_impl.h`。宣言は `shell_serial_os.h`: stdio の行き先、入力の到着、回線が開いているか、読み、書き）の
+  上で動かします。端末がポートを開くと `main.c` のバナーのあとにプロンプトを出します。端末が読まないときは Pico SDK の
+  ドライバーが 64 バイトのバッファーの空きを最長 500 ms 待ち、残りを捨てます。
+- Telnet（`common/compat/shell_engine/shell_telnet.c`。`drivers/telnet/telnet.cmake` が組み込む）: ポート 23、同時 1 接続。Zephyr の `shell_telnet.c` と同じく、接続しても
   何も送らず、Telnet のコマンドは取り除いて応答せず、エコーしません。Zephyr 版と違えた点はファイルの先頭の
   コメントにあります（2 本目を断る前に 1 本目が閉じていないか確かめ直す、新しいクライアントは空の行から、など）。
 - getopt の状態はセッションごとに持ちます（`getopt_state.c`）。USB と Telnet で同時にコマンドを実行できます。
@@ -202,7 +210,7 @@ FreeRTOS 版が実装するのは flash の境界（`common/compat/nano_flash_kv
   互換層の `net_if`・`net_mgmt`・`wifi_mgmt`（`net_offload/zephyr_net_if.c`。インターフェースは起動時に `net_offload/zephyr_net_init.c` が Zephyr の
   `net_init()` と同じく登録）の上で動かします。この版は
   ネットワーク層を持たないので Zephyr へのつなぎを使います。`wifi` コマンドは `common/compat/zephyr_wifi_shell.c` で、このボードで使えるオプションだけを残しています。
-  `wifi cred` は Zephyr の `wifi_credentials_shell.c` の無改変の写しです。`ifconfig`（`drivers/wifi/ifconfig_shell.c`）は
+  `wifi cred` は Zephyr の `wifi_credentials_shell.c` の無改変の写しです。`ifconfig`（`common/shell/ifconfig_shell.c`）は
   NuttX 版と同じ形式で表示します。
 
 - esptool の中継（`nina passthrough confirm`）: Zephyr 版・NuttX 版と共有する NINA のドライバーのコア
@@ -321,7 +329,7 @@ spinlock、atomic、静的なスレッド、時分割、割り込みを 50 ms �
 |---|---|
 | `compat` | 互換層の自己診断（`selftest` と同じ `zephyr_selftest.c`） |
 | `tick` | tick の追いつき（`tick_catchup.h`）: 判定の 1 歩と、SysTick と CPU の模型（割り込みの遅れ、0〜60 tick の割り込みの停止）の上で、tick が TIMER より先に進まず、追いついたあとの遅れが 1 tick 以内であること |
-| `shell` | 2 つのセッションのシェル、行編集、出力先 |
+| `shell` | 2 つのセッションのシェル、行編集、出力先、`help` と汎用のコマンドとその出力 |
 | `kv` | フラッシュの境界と KV（Pico SDK のフラッシュ関数の偽物の上） |
 | `nina` | NINA の SPI と線の境界と、`nina_os.h` の FreeRTOS へのつなぎ（互換層なし。tick 1 ms と 4 ms で 2 回ビルド）: READY の割り込み待ち、IRQ の線のエッジの待ち（2 つのタスクを 1 つのエッジで起こす、時間切れ）、共有のバンクの割り込み、ロック、要求、sleep の tick 数、tick の一周をまたぐ時計 |
 | `i2c_dw` | I2C0 の境界とデバイス、Zephyr の I2C の API（2 回作る: i2c0 だけと、`CONFIG_I2C_DW_I2C1` 付き。後者は i2c1 の起動、ピン、転送、応答の無いアドレス、DMA を使わない長い読み出し、影響を受けない i2c0、2 つのタスクからの両バスの転送を加える）。つなぎのセマフォ、待ちの tick、スリープ、時計。Pico SDK の DMA の偽物の上の DMA の部分（`i2c_dw_dma_os_rp2040.c`）: チャネルの取得、設定、開始、共有のハンドラー（終了、バスエラー、ほかの利用者のチャネル）、停止、返却。その上のコアの DMA 読み出し: 読み出し、32 バイトの下限、フォールバック、TX と RX のバスエラー、タイムアウト、DMA 読み出しの無効、終わらない停止（隔離）、カウンター。コアの DMA のコマンド語 |

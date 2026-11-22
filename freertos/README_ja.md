@@ -162,11 +162,11 @@ USB の CDC ACM ポートがコンソールです（UART0 は使いません）�
 |---|---|
 | `app/usb-console/` | アプリ: 起動、コマンド、カーネルの設定（`FreeRTOSConfig.h`） |
 | `drivers/compat/` | Zephyr 互換層の FreeRTOS の部分（共有ソース `common/` を動かす） |
-| `drivers/shell/`、`drivers/libc/` | FreeRTOS の上のコンソールとシェル、標準出力の接続（シェルのエンジン、RAM ログ、ネットワークの層は `../common/`） |
+| `drivers/shell/`、`drivers/libc/` | コンソールの USB シリアルの入出力と、標準出力の接続（コンソール、シェル、Telnet、RAM ログ、ネットワークの層は `../common/`） |
 | `drivers/kv/` | KV のフラッシュの読み書き |
 | `drivers/nina/` | NINA-W102 のドライバーをビルドに入れる設定（ドライバーは `../common/drivers/nina/`） |
 | `drivers/wifi/` | Wi-Fi の組み込み（本体は `common/`） |
-| `drivers/telnet/`、`drivers/zperf/` | Telnet のシェルと、速度測定の組み込み |
+| `drivers/telnet/`、`drivers/zperf/` | Telnet のシェルと速度測定の組み込み（本体は `../common/`） |
 | `drivers/i2c_dw/` | I2C0 と DMA（センサーのバス） |
 | `drivers/lsm6dso/` | LSM6DSOX のビルドの規則と起動時の確認（ドライバーとデバイスの定義は `common/drivers/lsm6dso/`） |
 | `drivers/imu/` | 取得・送信・時刻同期の組み込み（本体は `common/imu/`） |

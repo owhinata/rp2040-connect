@@ -15,14 +15,14 @@ Paths below `nuttx/boards/arduino-nano-rp2040-connect/` are shortened to `N-boar
 |---|---|---|
 | Application | `common/imu` | IMU service, MQTT transport, time synchronization, Wi-Fi profile, KV store, calibration |
 | Drivers | `common/drivers/<driver>/` | OS-independent core; `port/` boundary headers; `port/<os>/` bindings (section 5) |
-| Shell commands | `common/shell` | `zshell.c` (Zephyr shell command handling), `subcmd.c`, `nina_shell.c`, `i2c_dma_shell.c`, `dmesg_shell.c` (F only; N has `nuttx/apps/dmesg`) |
-| Log | `common/compat/log` | RAM log and the functions of the `LOG_*` macros (`log_ram.c`, on its OS part `log_ram_os.h`, section 3), its ring (`log_ring.c`), `LOG_*` macros (`app_log.h`), fault record text (`fault_record.c`) |
+| Shell commands | `common/shell` | `zshell.c` (Zephyr shell command handling), `subcmd.c`, `nina_shell.c`, `i2c_dma_shell.c`; F only: `dmesg_shell.c` (N has `nuttx/apps/dmesg`), `kernel_shell.c` (`id`, `uptime`, `date`, `sleep`, `devmem`, `fault`, `reboot`, `bootsel`; on `kernel_shell_os.h`, section 3), `ifconfig_shell.c` (on the network part's interface) |
+| Log | `common/compat/log` | RAM log and the functions of the `LOG_*` macros (`log_ram.c`, on its OS part `log_ram_os.h`, section 3), its ring (`log_ring.c`), `LOG_*` macros (`app_log.h`), fault record text and its printing (`fault_record.c`) |
 | Compatibility layer, shared part | `common/compat` | Zephyr headers (`common/compat/zephyr/`), work items, the work queues' threads and the layer's start (`zephyr_init.c`), RTIO, gpio0 device, net_mgmt, Wi-Fi requests, KV flash device, copies of Zephyr's NVS, settings, getopt, Wi-Fi credentials, zperf |
 | Compatibility layer, network part for an OS without a network stack | `common/compat/net_offload` | Zephyr's socket layer (reduced copies of `subsys/net/lib/sockets`, `lib/os/zvfs`), the one network interface (`zephyr_net_if.c`) and its start (`zephyr_net_init.c`), `k_heap` (`zephyr_heap.c`), their headers in its own include root `include/` (`zephyr/net/net_if.h`, `net_ip.h`, `socket.h`, `socket_offload.h`, `zephyr/sys/fdtable.h`, `zephyr_net_init.h`, `zephyr_heap.h`); used by F only |
 | POSIX network headers for a C library without them | `common/compat/libc_net` | `include/` (`arpa/inet.h`, `netdb.h`, `netinet/in.h`, `netinet/tcp.h`, `poll.h`, `sys/socket.h`, `sys/uio.h`), `inet_pton()`/`inet_ntop()` (`inet.c`); used by F only |
 | Kernel part of the compatibility layer for an OS that offers only basic primitives | `common/compat/kernel_generic` | `k_sem`, `k_poll()`, the timeout list, the sleeps and the start of a thread (`zephyr_kernel.c`), `k_mutex` (`zephyr_mutex.c`), the OS part of `<zephyr/kernel.h>` and `<zephyr/spinlock.h>` (`zephyr_os.h`, `zephyr_os_spinlock.h`), the tick's entry (`zephyr_compat_tick()`, `zephyr_compat_os.h`), the self-test's items on the primitives (`zephyr_selftest_os.h`), all on the primitives declared in `zephyr_kernel_os.h` (section 2); used by F only |
 | Self-test of the compatibility layer (acceptance test of an OS part) | `common/compat/selftest` | `zephyr_selftest.c` (22 tests), its boundary `zephyr_selftest.h` (section 3); used only by F's `-DSELFTEST=ON` build and F's host test |
-| Shell engine for an OS without a shell of its own | `common/compat/shell_engine` | line editor (`cli.c`), command table and dispatch of the `Z_SHELL_CMD_ROOT_GLOBAL` roots (`shell_engine.c`; the application supplies `shell_engine_cmds[]`), Zephyr's word split (`shell_argv.c`); used by F only |
+| Shell engine for an OS without a shell of its own | `common/compat/shell_engine` | on the layer's API: line editor (`cli.c`), command table and dispatch of the `Z_SHELL_CMD_ROOT_GLOBAL` roots and `help` (`shell_engine.c`; the application supplies `shell_engine_cmds[]`), Zephyr's word split (`shell_argv.c`), the consoles and each thread's stdout (`shell_console.c`), getopt state per session (`getopt_state.c`), the backend of `zshell.c` (`zshell_os_impl.h`, `zephyr_os_shell.h`), the serial session (`shell_serial.c`, the thread "console", on the console transport `shell_serial_os.h`, section 3), the Telnet shell (`shell_telnet.c`, the threads "shell_telnet" and "telnet_service", on `zsock_*()`); used by F only |
 | RP2040 code that no OS owns | `common/chip/rp2040` | `include/rp2040_timer_us.h` (the TIMER's registers and its 64-bit read `rp2040_timer_us()`, always inline; all three builds), `include/rp2040_watchdog_reboot.h` (`rp2040_watchdog_reboot()`, the watchdog's restart on the raw registers; the Zephyr and NuttX builds). Header only; each build puts `include/` on its include path (Zephyr: the app's `CMakeLists.txt`; N: `N-board/scripts/Make.defs`, for every source; F: the app's `CMakeLists.txt`) |
 | Host tests | `common/tests` | Tests and fakes; `common/tests/zephyr_fakes` is a host implementation of the kernel's OS part |
 | Zephyr build | `zephyr/app/usb-console` | `main()`, `log_ram.c`, `kv_store_os.h`, `wifi_profile_os.h`; upstream Zephyr with patches in `zephyr/manifest/zephyr/patches` |
@@ -33,11 +33,11 @@ Paths below `nuttx/boards/arduino-nano-rp2040-connect/` are shortened to `N-boar
 | N: drivers | `nuttx/drivers/<driver>/` | `Make.defs`, `Kconfig` of each driver |
 | N: applications | `nuttx/apps/*` | Init task (`init`), one builtin application per command, shell OS part (`subcmd`), Wi-Fi and sensor parts |
 | N: NuttX changes | `nuttx/patches` | Local patches to NuttX and nuttx-apps |
-| F: application | `freertos/app/usb-console` | `main()`, `FreeRTOSConfig.h`, tick hook, idle and CPU load, `os_clock.h`, `priorities_os.h`, command table, fault handling |
+| F: application | `freertos/app/usb-console` | `main()`, `FreeRTOSConfig.h`, tick hook, idle and CPU load, `os_clock.h`, `priorities_os.h`, the commands only it can answer (`version`, `free`, `ps`) and the command table, the generic commands' OS part (`kernel_shell_os_impl.h`), fault handling |
 | F: compatibility layer, OS part | `freertos/drivers/compat` | the primitives of the generic kernel part (`zephyr_kernel_os_impl.h`), `zephyr_os_atomic.h`, realtime clock, linker script part of the socket registrations, `rp2040/` (port header, GPIO bank 0, hwinfo, the self-test's board part), the self-test's FreeRTOS part (`zephyr_selftest_os_impl.h`), prelude |
-| F: shell | `freertos/drivers/shell` | Consoles, stdio per console, getopt state, shell OS part |
+| F: console transport | `freertos/drivers/shell` | `shell_serial_os_impl.h` (the Pico SDK's `stdio_usb`), the SDK's stdio on the consoles (`shell_stdio.c`) |
 | F: C library additions | `freertos/drivers/libc` | stdout/stderr wrappers |
-| F: other OS parts | `freertos/drivers/{include,kv,telnet,wifi,sensor_shell,imu,zperf}` | `app_log_os.h`, `log_ram_os_impl.h`; KV flash; Telnet; Wi-Fi OS header; sensor shell OS part; per-source preludes; build files |
+| F: other OS parts | `freertos/drivers/{include,kv,telnet,wifi,sensor_shell,imu,zperf}` | `app_log_os.h`, `log_ram_os_impl.h`; KV flash; Wi-Fi OS header; sensor shell OS part; per-source preludes; build files (Telnet: `telnet.cmake` only) |
 | F: drivers | `freertos/drivers/<driver>/*.cmake` | The sources and options of each driver |
 
 ## 2. Kernel part of the compatibility layer
@@ -56,7 +56,7 @@ one of two ways:
   that calls `zephyr_compat_tick()` once per tick from the tick interrupt, and for the self-test
   `zephyr_selftest_os_impl.h`.
 
-### 2.1 Provided by `zephyr_os.h` (15 items, 1 optional)
+### 2.1 Provided by `zephyr_os.h` (15 items, 2 optional)
 
 "Generic" is the generic implementation's `zephyr_os.h`, which F uses; its items come from the primitives.
 
@@ -74,6 +74,7 @@ one of two ways:
 | `K_PRIO_PREEMPT(x)` | OS priority of Zephyr priority x, order kept | `APP_PRIO_FROM_ZEPHYR` (118 − x) | `APP_PRIO_FROM_ZEPHYR` (F: 20 − x) |
 | `k_cycle_get_32()`, `k_cycle_get_64()` | 1 MHz counter | `rp2040_timer_us()` | `z_os_clock_us()` (F: `rp2040_timer_us()`) |
 | `Z_OS_ASSERT(test)` | the OS's assertion, for a work queue's thread that did not start | `DEBUGASSERT()` (nothing in the imu configuration) | the OS's (F: `configASSERT()`: fault record, restart) |
+| `k_is_in_isr()`, `k_is_pre_kernel()`, `k_thread_custom_data_get()`, `k_thread_custom_data_set()` (optional: for the shell engine) | in an ISR; before the kernel runs threads; the calling thread's one pointer (NULL until set and before the kernel runs threads) | — (not built) | `z_os_in_isr()`, `z_os_pre_kernel()`, `z_os_thread_local_get()`, `_set()` (F: TLS pointer 0) |
 | `Z_SEM_TAKE_FOREVER(sem)` (optional) | `k_sem_take(sem, K_FOREVER)` the OS's shorter way: the work queue's wait | `nxsem_wait_uninterruptible()` (what `k_sem_take()` does, without the call) | not defined: `k_sem_take()` (`kernel.h`'s default) |
 
 The generic `zephyr_os.h` also includes `common/compat/net_offload/include/zephyr_heap.h`: `struct k_heap`, `K_HEAP_DEFINE()`, `k_heap_alloc()`, `k_heap_free()` (section 4).
@@ -165,11 +166,12 @@ timeout; `portMAX_DELAY`), `Z_OS_TICK_HZ` (`configTICK_RATE_HZ`), `z_os_woken_t`
 `BaseType_t`), `Z_OS_THREAD_NAME_SIZE` (`configMAX_TASK_NAME_LEN`), `struct k_mutex` with
 `Z_MUTEX_INITIALIZER()`, `Z_OS_ASSERT()`.
 
-Functions (23). "Locked" is inside `k_spin_lock()`; "ISR" includes the tick hook.
+Functions (26). "Locked" is inside `k_spin_lock()`; "ISR" includes the tick hook.
 
 | Primitive | Meaning | F |
 |---|---|---|
 | `z_os_in_isr()` | true in an ISR; any context | IPSR ≠ 0 (host: the tick hook's depth) |
+| `z_os_pre_kernel()` | true before the OS runs threads; any context | `xTaskGetSchedulerState() == taskSCHEDULER_NOT_STARTED` |
 | `z_os_task_lock()`, `z_os_task_unlock()` | a thread's lock: no ISR and no other thread until unlock; nests; the wakes made inside keep it, their switch happens at the outermost unlock | `taskENTER_CRITICAL()`, `taskEXIT_CRITICAL()` (host: also suspends the scheduler) |
 | `z_os_isr_lock()`, `z_os_isr_unlock(state)` | an ISR's lock: saves and restores the mask; the state is never `UINT32_MAX` | `taskENTER_CRITICAL_FROM_ISR()`, `taskEXIT_CRITICAL_FROM_ISR()` |
 | `z_os_thread_self()` | the calling thread; threads only | `xTaskGetCurrentTaskHandle()` |
@@ -178,6 +180,7 @@ Functions (23). "Locked" is inside `k_spin_lock()`; "ISR" includes the tick hook
 | `z_os_thread_exit()` | ends the calling thread | `vTaskDelete(NULL)` |
 | `z_os_thread_name(tid)` | the thread's writable name array (`Z_OS_THREAD_NAME_SIZE` bytes), as the OS shows it | `pcTaskGetName()` |
 | `z_os_yield()` | next ready thread of the priority, or go on; threads, unlocked | `taskYIELD()` |
+| `z_os_thread_local_get()`, `z_os_thread_local_set(p)` | the calling thread's one pointer (Zephyr's custom data); NULL until set; get is NULL before the OS runs threads | `pvTaskGetThreadLocalStoragePointer()`, `vTaskSetThreadLocalStoragePointer()` (index 0) |
 | `z_os_wait_prepare()` | clears the caller's wake flag; threads, locked | `xTaskNotifyStateClearIndexed()`, `ulTaskNotifyValueClearIndexed()` (index 1) |
 | `z_os_wait(ticks)` | waits for the flag or until the current tick + ticks (`Z_OS_TICKS_FOREVER`: no end), clears it; a finite wait returns only for one of the two; threads, unlocked | `ulTaskNotifyTakeIndexed(1, pdTRUE, ticks)` |
 | `z_os_wake(tid)` | sets tid's flag, whether it waits yet or not (latched); threads, locked; the switch waits for the unlock | `xTaskNotifyGiveIndexed()` |
@@ -196,8 +199,10 @@ lost ticks, `freertos/app/usb-console/src/tick.c`), which are not primitives of 
 
 | Boundary | Declared in | Items | Called by | N | F |
 |---|---|---|---|---|---|
-| Shell backend | `common/shell/zshell_os.h` | `zshell_os_backend_get()`, `zshell_os_cmd_enter()`, `zshell_os_cmd_exit()`, `z_shell_backend_vfprintf()`; optional `zshell_os_active_cmd_set()`/`_get()` with `ZSHELL_OS_ACTIVE_CMD` | `common/shell/zshell.c` | `nuttx/apps/subcmd/zshell_os_impl.h` (no `ZSHELL_OS_ACTIVE_CMD`) | `freertos/drivers/shell/zshell_os_impl.h` (defines it) |
-| `struct shell` | read by `common/compat/zephyr/shell/shell.h` | one backend, outlives the command | shell commands | `nuttx/drivers/compat/zephyr_os_shell.h` (terminal path, command pid) | `freertos/drivers/shell/zephyr_os_shell.h` (console, active command) |
+| Generic shell commands | `common/shell/kernel_shell_os.h` (reads `"kernel_shell_os_impl.h"`; static inline) | `kernel_shell_os_tick_count()` (the OS's tick count, for `uptime`), `kernel_shell_os_reboot(delay_ms)`, `kernel_shell_os_bootsel(delay_ms)` (restart, into the USB loader for the second, `delay_ms` later; do not return), `kernel_shell_os_fault_last()` (the last run's `struct fault_record` or NULL); the rest is the layer's (`k_cycle_get_64()`, `k_sleep()`, `Z_USEC_PER_TICK`, `sys_clock_gettime()`, `hwinfo_get_device_id()`) | `common/shell/kernel_shell.c` | — (not built; nsh's commands, `nuttx/apps/bootsel`) | `freertos/app/usb-console/src/kernel_shell_os_impl.h`: `os_tick_count()`, the Pico SDK's `watchdog_reboot()` and `reset_usb_boot()`, `fault_last()` (`fault.c`); host `freertos/tests/shell/kernel_shell_os_impl.h` |
+| Shell backend | `common/shell/zshell_os.h` | `zshell_os_backend_get()`, `zshell_os_cmd_enter()`, `zshell_os_cmd_exit()`, `z_shell_backend_vfprintf()`; optional `zshell_os_active_cmd_set()`/`_get()` with `ZSHELL_OS_ACTIVE_CMD` | `common/shell/zshell.c` | `nuttx/apps/subcmd/zshell_os_impl.h` (no `ZSHELL_OS_ACTIVE_CMD`) | the shell engine's `common/compat/shell_engine/zshell_os_impl.h` (defines it; on the consoles) |
+| Console transport | `common/compat/shell_engine/shell_serial_os.h` (reads `"shell_serial_os_impl.h"`; static inline) | `shell_serial_os_stdio_init()` (every thread's stdout and stderr to `shell_console_write(shell_console_current(), ...)`, unbuffered), `shell_serial_os_rx_init()` (call `shell_serial_rx_ready()`, any context, when input arrives), `shell_serial_os_connected()`, `shell_serial_os_read()` (no wait), `shell_serial_os_write()` (drops what the terminal cannot take) | `common/compat/shell_engine/shell_serial.c` | — (not built) | `freertos/drivers/shell/shell_serial_os_impl.h`: `stdio_usb`, `shell_stdio_init()` (`shell_stdio.c`) with `freertos/drivers/libc/stdio_wrap.c`; host `freertos/tests/shell/shell_serial_os_impl.h` |
+| `struct shell` | read by `common/compat/zephyr/shell/shell.h` | one backend, outlives the command | shell commands | `nuttx/drivers/compat/zephyr_os_shell.h` (terminal path, command pid) | the shell engine's `common/compat/shell_engine/zephyr_os_shell.h` (console, active command) |
 | Log, OS part | `common/compat/log/app_log.h` | `app_log_os.h` (OS headers first, optional `CONFIG_LOG_DEFAULT_LEVEL`, `CONFIG_LOG_MAX_LEVEL`); `app_log_printf()`, `app_log_vprintf()`, `app_log_ratelimit_pass()` | `LOG_*()` macros | `nuttx/drivers/include/app_log_os.h`; the functions shared: `common/compat/log/log_ram.c` | `freertos/drivers/include/app_log_os.h`; shared: same |
 | RAM log | `common/compat/log/log_ram.h` | `log_ram_initialize()`, `log_ram_store()` (the OS's own log, raw bytes), `log_ram_piece()` | start-up; the OS's log; `dmesg` | shared `common/compat/log/log_ram.c`; called by `N-board/src/rp2040_boardinitialize.c`, `nuttx/drivers/log/log_ram_syslog.c`, `nuttx/apps/dmesg/dmesg_main.c` | shared: same; called by `main()`, `common/shell/dmesg_shell.c` (`log_ram_store()` unused) |
 | RAM log, OS part | `common/compat/log/log_ram_os.h` (`log_ram.c` reads `"log_ram_os_impl.h"` first) | `LOG_RAM_OS_RETAINED(name)` (the ring in RAM the start-up code leaves alone), type `log_ram_os_irqstate_t`; inline `log_ram_os_irq_save()`, `_irq_restore()` (the lock: interrupts masked, any context), `_uptime_us()` (time stamp and rate limit), `_attach()` (make it the OS's own log) | `common/compat/log/log_ram.c` | `nuttx/drivers/include/log_ram_os_impl.h`: `.noinit`, `up_irq_save()`, `rp2040_timer_us()`, registers the syslog channel (`nuttx/drivers/log/log_ram_syslog.c`) | `freertos/drivers/include/log_ram_os_impl.h`: `__uninitialized_ram`, `save_and_disable_interrupts()`, `rp2040_timer_us()` of `os_clock.h`, nothing to attach; host `common/tests/log_ram_os_host/` |
@@ -268,8 +273,8 @@ The devices listed for the shell are in `common/compat/zephyr_device.c` (hand-wr
 |---|---|---|
 | Registration | each command a builtin application; `SHELL_CMD_REGISTER()` makes `main()` (or `z_shell_main_<name>()` with `Z_SHELL_CMD_NAMED_MAIN`) | `Z_SHELL_CMD_ROOT_GLOBAL`: global root entries listed in `shell_engine_cmds[]`, `freertos/app/usb-console/src/commands.c`; run by `common/compat/shell_engine/shell_engine.c` |
 | `SHELL_SUBCMD_ADD()` | global entry; the parent's source lists them by hand | same |
-| getopt | Zephyr's getopt not built; `nuttx/apps/wifi/wifi_credentials_shell.c` maps `sys_getopt_*` to `getopt_long()` | copies in `common/compat/lib/utils/getopt`; state per session `freertos/drivers/shell/getopt_state.c` (`sys_getopt_state_get()`, `z_getopt_global_state_update()`), reset by `sys_getopt_init()` before each command |
-| stdio of `zshell.c`: `printf()`, `fprintf(stderr)`, `fflush(stdout)` must reach the command's terminal; `calloc()` of about 1.2 KB per line | each command a task with its own stdio | `freertos/drivers/shell/shell_stdio.c` (the calling task's console), `freertos/drivers/libc/stdio_wrap.c` (`--wrap` of the stdout/stderr calls) |
+| getopt | Zephyr's getopt not built; `nuttx/apps/wifi/wifi_credentials_shell.c` maps `sys_getopt_*` to `getopt_long()` | copies in `common/compat/lib/utils/getopt`; state per session `common/compat/shell_engine/getopt_state.c` (`sys_getopt_state_get()`, `z_getopt_global_state_update()`), reset by `sys_getopt_init()` before each command |
+| stdio of `zshell.c`: `printf()`, `fprintf(stderr)`, `fflush(stdout)` must reach the command's terminal; `calloc()` of about 1.2 KB per line | each command a task with its own stdio | the console transport's stdio redirection (section 3): `freertos/drivers/shell/shell_stdio.c` (the calling task's console), `freertos/drivers/libc/stdio_wrap.c` (`--wrap` of the stdout/stderr calls) |
 
 ### 4.5 `CONFIG_*` values
 
@@ -340,9 +345,9 @@ Start-up files: Zephyr `zephyr/app/usb-console/src/main.c`; N `N-board/src/rp204
 | Idle loop (the window arithmetic is shared, `common/compat/cpu_load.h`) | `N-board/src/rp2040_idle_cpuload.c` | `freertos/app/usb-console/src/idle.c` |
 | Entry to BOOTSEL (the ROM's `reset_usb_boot()`) | `N-board/src/rp2040_restart.c` on NuttX's `ROM_LOOKUP()` | the Pico SDK's `reset_usb_boot()` (Zephyr: hal_rpi_pico's) |
 | Chip ID (the flash's unique ID, read once with XIP off) | `N-board/src/rp2040_chipid.c` on NuttX's `rp2040_flash_cmd()` | the Pico SDK's `pico_unique_id` (Zephyr: its hwinfo driver) |
-| USB device stack, console transport | `cdcacm`, `N-board/src/rp2040_usbserial.c`; Telnet `nuttx/apps/init/rp2040_telnet.c` | Pico SDK `stdio_usb` (TinyUSB); `freertos/drivers/shell/shell_console.c`, `shell_stdio.c`; Telnet `freertos/drivers/telnet/shell_telnet.c` |
+| USB device stack, console transport | `cdcacm`, `N-board/src/rp2040_usbserial.c`; Telnet `nuttx/apps/init/rp2040_telnet.c` | Pico SDK `stdio_usb` (TinyUSB); the console transport `freertos/drivers/shell/shell_serial_os_impl.h`, `shell_stdio.c`, `freertos/drivers/libc/stdio_wrap.c`; Telnet is the shell engine's |
 | Heap | NuttX's | FreeRTOS `heap_4`, 32 KiB (`configTOTAL_HEAP_SIZE`) |
-| The OS's own shell | nsh (sessions in `rp2040_init.c`) | none: the shared engine `common/compat/shell_engine` (`cli.c`, `shell_engine.c`) on the consoles of `freertos/drivers/shell` |
+| The OS's own shell | nsh (sessions in `rp2040_init.c`) | none: the shared engine `common/compat/shell_engine` (consoles, serial session, Telnet) on the console transport of `freertos/drivers/shell` |
 | The OS's own log in the RAM log | `syslog()`: the syslog channel, `nuttx/drivers/log/log_ram_syslog.c` | none (the FreeRTOS kernel and the Pico SDK have no log) |
 | Fatal errors | `CONFIG_BOARD_RESET_ON_ASSERT`, report in the RAM log | `freertos/app/usb-console/src/fault.c` with `common/compat/log/fault_record.c` |
 | Build system and configuration | Make, Kconfig, `defconfig`, `nuttx/patches` | CMake, `FreeRTOSConfig.h`, `freertos/drivers/*/*.cmake` |

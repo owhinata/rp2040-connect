@@ -8,8 +8,9 @@
  * it (forward only) and reads it, and the shell's "date" shows it; in the
  * NuttX build the same, with nsh's "date" on NuttX's CLOCK_REALTIME.  No
  * code of the port uses it for anything else (every time on the batches is
- * time_sync_unix_us(), from the TIMER).  The FreeRTOS build has no "date",
- * so time_sync.c is its only user; newlib's gettimeofday() and time() are
+ * time_sync_unix_us(), from the TIMER).  In the FreeRTOS build time_sync.c
+ * sets and reads it and "date" shows it (common/shell/kernel_shell.c), as
+ * in the Zephyr build; newlib's gettimeofday() and time() are
  * put on the same clock (below), so that the build has one realtime clock,
  * as Zephyr's and NuttX's C libraries read their kernel's.  Without this they
  * would be the Pico SDK's own (pico_clib_interface/newlib_interface.c: the

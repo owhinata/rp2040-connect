@@ -22,22 +22,22 @@ semaphores, `k_poll()`, timeouts, sleeps and threads on about twenty primitives 
 
 | Place | Contents |
 |---|---|
-| `app/usb-console/` | Start-up (`main.c`), the commands of this build only (`commands.c`), the kernel configuration (`FreeRTOSConfig.h`), the priority mapping (`priorities_os.h`), time (`os_clock.h`), the tick hook (`tick.c`; the catch-up's decision in `tick_catchup.h`), the CPU load (`idle.c`), fatal errors (`fault.[ch]`), the free interrupt stack (`irq_stack.c`) |
+| `app/usb-console/` | Start-up (`main.c`), the commands of this build only (`commands.c`: `version`, `free`, `ps`, `selftest`) and the table of all commands, the OS part of the generic commands (`kernel_shell_os_impl.h`), the kernel configuration (`FreeRTOSConfig.h`), the priority mapping (`priorities_os.h`), time (`os_clock.h`), the tick hook (`tick.c`; the catch-up's decision in `tick_catchup.h`), the CPU load (`idle.c`), fatal errors (`fault.[ch]`), the free interrupt stack (`irq_stack.c`) |
 | `drivers/compat/` | The FreeRTOS part of the layer: the primitives of the generic kernel part (`zephyr_kernel_os_impl.h`; the port's in `rp2040/zephyr_os_port.h`) and `zephyr_os_atomic.h`, the linker script's part for the socket implementations (`ld/`), the wall clock (`zephyr_sys_clock.c`), the prelude header (`common_prelude.h`), the self-test's FreeRTOS part (`zephyr_selftest_os_impl.h`), the RP2040 part (`rp2040/`: the port header, GPIO bank 0, chip ID, the self-test's board part `zephyr_selftest_port.c`) |
 | `common/compat/kernel_generic/` | The layer's kernel part for an OS that offers only basic primitives, OS-independent: `k_sem`, `k_poll()`, the timeouts, the sleeps and the start of a thread (`zephyr_kernel.c`), `k_mutex` (`zephyr_mutex.c`), the OS part of `<zephyr/kernel.h>` and `<zephyr/spinlock.h>` (`zephyr_os.h`, `zephyr_os_spinlock.h`), the tick hook's entry (`zephyr_compat_os.h`), the self-test's items on the primitives (`zephyr_selftest_os.h`), and the declaration of the primitives (`zephyr_kernel_os.h`). The work queues' threads, the system work queue and `zephyr_compat_initialize()` are the shared `common/compat/zephyr_init.c` |
 | `common/compat/selftest/` | The layer's self-test, OS-independent (`zephyr_selftest.c`; `zephyr_selftest.h` lists what an OS's part and a board's part provide) |
 | `common/compat/net_offload/` | The layer's network part, OS-independent: Zephyr's socket layer (reduced copies of Zephyr's files in `subsys/net/lib/sockets/` and `lib/os/zvfs/`), the network interface (`zephyr_net_if.c`) and the start of the network part (`zephyr_net_init.c`, `zephyr_net_initialize()`), `k_heap` (`zephyr_heap.c`), their headers under `include/` (`zephyr/net/`, `zephyr/sys/fdtable.h`, `zephyr_net_init.h`, `zephyr_heap.h`, which `zephyr_os.h` includes) |
 | `common/compat/libc_net/` | The socket headers newlib lacks (`include/`, types and constants only), `inet_pton` and `inet_ntop` (`inet.c`) |
-| `drivers/shell/` | The consoles and each task's output (`shell_console.c`), the replacement of the Pico SDK's stdio driver (`shell_stdio.c`), getopt per session (`getopt_state.c`), the shell's OS part (`zshell_os_impl.h`, `zephyr_os_shell.h`) |
-| `common/compat/shell_engine/` | The shell for an OS without one of its own, OS-independent: line editing (`cli.c`), the command table and execution (`shell_engine.c`), a copy of Zephyr's argument split (`shell_argv.c`) |
+| `drivers/shell/` | This build's console transport for the shell engine (`shell_serial_os_impl.h`: the Pico SDK's USB CDC ACM driver) and the replacement of the Pico SDK's stdio driver (`shell_stdio.c`) |
+| `common/compat/shell_engine/` | The shell for an OS without one of its own, on the layer's API: line editing (`cli.c`), the command table and execution with `help` (`shell_engine.c`), a copy of Zephyr's argument split (`shell_argv.c`), the consoles and each thread's output (`shell_console.c`), getopt per session (`getopt_state.c`), the shell's backend for `zshell.c` (`zshell_os_impl.h`, `zephyr_os_shell.h`), the serial session (`shell_serial.c`; the console transport an OS provides is declared in `shell_serial_os.h`), the Telnet shell (`shell_telnet.c`) |
 | `drivers/libc/` | Wrappers of newlib's FILE functions (`stdio_wrap.c`) |
 | `drivers/kv/` | The flash boundary of the key-value store (`nano_flash_kv.c`) and the linker script override (`ld/`, `kv.cmake`) |
 | `drivers/nina/` | Only `nina.cmake`, which adds the NINA driver to the build. The driver is in `common/drivers/nina/`, and this build's parts are its FreeRTOS binding `common/drivers/nina/port/freertos/`: the `nina_os.h` boundary (`nina_os.c`), the passthrough's host side (`nina_passthrough_os.c`), SPI1 and the module's lines on the Pico SDK (`nina_bus_rp2040.c`), the passthrough's module side (`nina_passthrough_bus_rp2040.c`: UART1, the module's lines, the watchdog's scratch registers, the LED); the sockets and the interface are the Zephyr binding's (`common/drivers/nina/port/zephyr/nina_socket.c`, `nina_net.c`) |
 | `drivers/i2c_dw/` | `i2c_dw.cmake`, which adds the I2C driver to the build (I2C0, and I2C1 as an option), and the self-test (`i2c_dw_selftest.[ch]`). The driver is in `common/drivers/i2c_dw/`, and this build's parts are its FreeRTOS binding `common/drivers/i2c_dw/port/freertos/`: the `i2c_dw_os.h` boundary on FreeRTOS and the TIMER (`i2c_dw_os_impl.h`), the devices with Zephyr's I2C API, their interrupts, resets and pins (`i2c_dw_instance.h`), their start (`i2c_dw_controllers_rp2040.h`), I2C0's DMA reads on the Pico SDK's DMA (`i2c_dw_dma_os_rp2040.c`) |
 | `drivers/lsm6dso/` | The LSM6DSOX's build rules (`lsm6dso.cmake`), its initialization (`lsm6dso_board.c`), self-test |
 | `drivers/imu/` | Builds in the acquisition service, MQTT and time synchronization (`common/imu/`; `imu.cmake`), the prelude of `time_sync.c` |
-| `drivers/wifi/` | Builds in Wi-Fi (the NINA core's `common/drivers/nina/nina_wifi.c` with its Zephyr binding `common/drivers/nina/port/zephyr/nina_net.c`, credentials, reconnection) and `ifconfig` |
-| `drivers/telnet/` | The Telnet shell (`shell_telnet.c`) |
+| `drivers/wifi/` | Builds in Wi-Fi (the NINA core's `common/drivers/nina/nina_wifi.c` with its Zephyr binding `common/drivers/nina/port/zephyr/nina_net.c`, credentials, reconnection) and `ifconfig` (`common/shell/ifconfig_shell.c`) |
+| `drivers/telnet/` | Builds in the Telnet shell (`telnet.cmake`; the code is `common/compat/shell_engine/shell_telnet.c`) |
 | `drivers/zperf/` | Builds in `zperf` (the code is `common/compat/zperf_iperf3.c` and `zephyr_zperf_shell.c`) |
 | `drivers/sensor_shell/` | The FreeRTOS part of the `sensor` command (`sensor_shell_os.[ch]`) |
 | `drivers/include/` | The FreeRTOS part of `app_log.h` (`app_log_os.h`) and of the RAM log (`log_ram_os_impl.h`: the ring's section, the interrupt mask, the TIMER) |
@@ -46,7 +46,9 @@ semaphores, `k_poll()`, timeouts, sleeps and threads on about twenty primitives 
 Shared files only the FreeRTOS build compiles: `common/compat/zephyr_wifi_shell.c` (`connect`,
 `disconnect`, `scan` and `status` taken from Zephyr's `wifi_shell.c`), `zephyr_zperf_shell.c` and
 `zperf_iperf3.[ch]` (`zperf`), `common/compat/log/fault_record.[ch]` (the format of the fatal error record),
-`common/shell/dmesg_shell.c` (`dmesg`). The RAM log `common/compat/log/log_ram.c` (on its ring `log_ring.c`) is shared with
+`common/shell/dmesg_shell.c` (`dmesg`), `common/shell/kernel_shell.c` (`id`, `uptime`, `date`, `sleep`, `devmem`,
+`fault`, `reboot`, `bootsel`, on the boundary `common/shell/kernel_shell_os.h`), `common/shell/ifconfig_shell.c`
+(`ifconfig`). The RAM log `common/compat/log/log_ram.c` (on its ring `log_ring.c`) is shared with
 the NuttX build.
 `i2c_dma`'s `common/shell/i2c_dma_shell.c` and `nina`'s `common/shell/nina_shell.c` (`nina version`,
 `nina passthrough`) are built by the Zephyr build too.
@@ -135,14 +137,25 @@ the interval of interest); timed by the TIMER.
 
 - Commands are written with Zephyr's shell API (`SHELL_CMD_REGISTER()` and so on); matching, help,
   wildcards and the argument count check are done by the shared `common/shell/zshell.c`. The command table
-  and the line editor are `common/compat/shell_engine/` (`shell_engine.c`, `cli.c`), the commands of this build only are in `app/usb-console/src/commands.c`.
-- A console (`shell_console.c`) is a session's terminal (USB or Telnet); each task is bound to one console
-  (a thread local storage pointer), and its `printf()` and `fprintf(stderr)` go there. Tasks bound to no
-  console write to USB. The replacement of the Pico SDK's stdio driver (`shell_stdio.c`) and `--wrap` of
-  newlib's FILE functions (`drivers/libc/stdio_wrap.c`) route every output path through it.
-- USB (`main.c`): the prompt appears when the terminal opens the port. When the terminal stops reading,
-  the Pico SDK's driver waits up to 500 ms for room in its 64-byte buffer and drops the rest.
-- Telnet (`drivers/telnet/shell_telnet.c`): port 23, one client at a time. As Zephyr's `shell_telnet.c`,
+  and the line editor are `common/compat/shell_engine/` (`shell_engine.c`, `cli.c`; `shell_engine.c` also has `help`). The
+  generic commands are `common/shell/kernel_shell.c`; what they need from the OS (the tick count, the two
+  restarts, the last fatal error's record) is declared in `common/shell/kernel_shell_os.h` and is
+  `app/usb-console/src/kernel_shell_os_impl.h` here. The commands of this build only are in
+  `app/usb-console/src/commands.c`, with the table of all commands.
+- The consoles, the sessions and Telnet are the shell engine's (`common/compat/shell_engine/`), written on
+  the layer's `k_mutex`, `k_sem`, `z_thread_static_start()` and thread custom data
+  (`k_thread_custom_data_get()`, on a FreeRTOS thread local storage pointer). A console (`shell_console.c`)
+  is a session's terminal (USB or Telnet); each task is bound to one console, and its `printf()` and
+  `fprintf(stderr)` go there. Tasks bound to no console write to USB. The replacement of the Pico SDK's
+  stdio driver (`shell_stdio.c`) and `--wrap` of newlib's FILE functions (`drivers/libc/stdio_wrap.c`)
+  route every output path through it.
+- USB: the engine's serial session (`shell_serial.c`, the task `console`) on this build's console transport
+  (`drivers/shell/shell_serial_os_impl.h`, declared in `shell_serial_os.h`: the stdio redirection, input
+  arrived, the line open, read, write). The prompt appears when the terminal opens the port, after the
+  banner of `main.c`. When the terminal stops reading, the Pico SDK's driver waits up to 500 ms for room in
+  its 64-byte buffer and drops the rest.
+- Telnet (`common/compat/shell_engine/shell_telnet.c`, built in by `drivers/telnet/telnet.cmake`): port 23,
+  one client at a time. As Zephyr's `shell_telnet.c`,
   it sends nothing on connection, takes Telnet commands out without answering, and does not echo. Where it
   differs from Zephyr is listed at the top of the file (it looks once more whether the first client has
   closed before refusing a second, a new client starts with an empty line, and so on).
@@ -239,7 +252,7 @@ boundary (the four functions of `common/compat/nano_flash_kv.h`, `drivers/kv/nan
   `net_offload/zephyr_net_init.c` registers the interface at the start, as Zephyr's `net_init()`); this build has no
   network layer of its own, so it uses the Zephyr binding. The `wifi` command
   is `common/compat/zephyr_wifi_shell.c`, keeping only the options this board can use; `wifi cred` is an
-  unchanged copy of Zephyr's `wifi_credentials_shell.c`. `ifconfig` (`drivers/wifi/ifconfig_shell.c`)
+  unchanged copy of Zephyr's `wifi_credentials_shell.c`. `ifconfig` (`common/shell/ifconfig_shell.c`)
   prints in the NuttX build's format.
 
 - The esptool passthrough (`nina passthrough confirm`): the NINA driver's core shared with the Zephyr and
@@ -375,7 +388,7 @@ IC_CON has no DMA bit, a 40-byte read leaves the DMA counters alone, and i2c0 st
 |---|---|
 | `compat` | The layer's self-test (the same `zephyr_selftest.c` as `selftest`) |
 | `tick` | The tick's catch-up (`tick_catchup.h`): the step itself, and on a model of SysTick and the CPU (interrupt latencies, interrupts disabled for 0 to 60 ticks) that the tick never gets ahead of the TIMER and is at most one tick behind once caught up |
-| `shell` | Two shell sessions, line editing, output routing |
+| `shell` | Two shell sessions, line editing, output routing, `help` and the generic commands with their output |
 | `kv` | The flash boundary and the key-value store (on fakes of the Pico SDK's flash functions) |
 | `nina` | The NINA's SPI and line boundaries and the FreeRTOS binding of `nina_os.h` (no compatibility layer; built twice, with a 1 ms and a 4 ms tick): the wait for READY on its interrupt, the waits for the IRQ line's edges (two tasks woken by one edge, the timeout), the shared bank interrupt, locks, requests, sleeps' ticks, the clock across the tick's wrap |
 | `i2c_dw` | I2C0's boundary and device, Zephyr's I2C API (built twice: i2c0 only, and with `CONFIG_I2C_DW_I2C1`, which adds i2c1's start, pins, transfers, an unanswered address, long reads that never take the DMA, i2c0 unaffected, and transfers on both buses from two tasks); the binding's semaphores, waits' ticks, sleeps and clock; the DMA part (`i2c_dw_dma_os_rp2040.c`) on fakes of the Pico SDK's DMA: claims, setup, start, the shared handler (end, bus error, other users' channels), stop, release; the core's DMA reads on it: the read, the 32-byte limit, fallbacks, bus errors on TX and RX, timeout, the reads off, a stop that does not end (quarantine), the counters; the core's DMA command words |

@@ -20,14 +20,17 @@
 # - the RAM log (common/compat/log/log_ram.c, on common/compat/log/log_ring.c and the
 #   FreeRTOS part of its boundary, freertos/drivers/include/log_ram_os_impl.h)
 #   and "dmesg" (common/shell/dmesg_shell.c);
-# - the shell (freertos/drivers/shell: consoles, the stdio of each task, the
-#   getopt state of each session and the backend of common/shell/zshell.c;
-#   the shell engine for an OS without a shell of its own,
-#   common/compat/shell_engine: the line editor, the command table and its
-#   execution, the copy of Zephyr's word split; common/shell/subcmd.c; the
-#   copies of Zephyr's fnmatch() and getopt in
-#   common/compat) and newlib's glue (freertos/drivers/libc: the console
-#   streams, -Wl,--wrap=...); the types and constants of the network
+# - the shell: the shell engine for an OS without a shell of its own
+#   (common/compat/shell_engine, on the layer: the line editor, the command
+#   table and its execution with "help", the copy of Zephyr's word split,
+#   the consoles, the getopt state of each session, the backend of
+#   common/shell/zshell.c and the serial session; the Telnet shell is
+#   freertos/drivers/telnet/telnet.cmake's), common/shell/subcmd.c, the
+#   copies of Zephyr's fnmatch() and getopt in common/compat, and the
+#   console transport of this build (freertos/drivers/shell:
+#   shell_serial_os_impl.h on the Pico SDK's stdio_usb, the SDK's stdio on
+#   the consoles, shell_stdio.c; newlib's glue, freertos/drivers/libc: the
+#   console streams, -Wl,--wrap=...); the types and constants of the network
 #   headers newlib lacks, <sys/socket.h>, <netinet/in.h>, <netinet/tcp.h>,
 #   <arpa/inet.h>, <poll.h>, <netdb.h>, <sys/uio.h>, and inet_pton() and
 #   inet_ntop() (common/compat/libc_net, include/ and inet.c: the layer's
@@ -57,8 +60,8 @@
 #   zephyr_compat_os.h, ...),
 #   common/compat/net_offload/include (the network part's Zephyr headers,
 #   before common/compat: its <zephyr/net/net_ip.h> takes the place of
-#   common/compat's, and zephyr_heap.h), freertos/drivers/shell,
-#   common/compat/shell_engine, freertos/drivers/include (app_log_os.h,
+#   common/compat's, and zephyr_heap.h), freertos/drivers/shell (the console
+#   transport), common/compat/shell_engine, freertos/drivers/include (app_log_os.h,
 #   log_ram_os_impl.h), common/compat/libc_net/include
 #   (headers newlib does not have, so none hides one of newlib's),
 #   common/compat (the Zephyr headers), common/compat/log and common/shell;
@@ -141,11 +144,12 @@ function(freertos_zephyr_compat target)
     ${zephyr_socket_copies}
     ${common_log_sources}
     ${FREERTOS_SHELL_ENGINE_DIR}/cli.c
-    ${FREERTOS_DRIVERS_DIR}/shell/getopt_state.c
-    ${FREERTOS_DRIVERS_DIR}/shell/shell_console.c
+    ${FREERTOS_SHELL_ENGINE_DIR}/getopt_state.c
+    ${FREERTOS_SHELL_ENGINE_DIR}/shell_console.c
     ${FREERTOS_SHELL_ENGINE_DIR}/shell_engine.c
     ${FREERTOS_DRIVERS_DIR}/shell/shell_stdio.c
     ${FREERTOS_SHELL_ENGINE_DIR}/shell_argv.c
+    ${FREERTOS_SHELL_ENGINE_DIR}/shell_serial.c
     ${FREERTOS_DRIVERS_DIR}/libc/stdio_wrap.c
     ${FREERTOS_LIBC_NET_DIR}/inet.c
     ${common_sources}

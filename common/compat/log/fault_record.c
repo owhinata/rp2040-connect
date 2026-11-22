@@ -170,3 +170,12 @@ size_t fault_record_line(const struct fault_record *r, unsigned int index, char 
 	}
 	return (size_t)ret < len ? (size_t)ret : len - 1;
 }
+
+void fault_record_print(const struct fault_record *r)
+{
+	char line[128];
+
+	for (unsigned int i = 0; fault_record_line(r, i, line, sizeof(line)) > 0; i++) {
+		printf("%s\n", line);
+	}
+}

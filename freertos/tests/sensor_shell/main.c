@@ -4,7 +4,7 @@
  * sensor_shell.c, the copy of Zephyr's sensor_shell_stream.c with its
  * processing thread, and the FreeRTOS part sensor_shell_os.c) and of the
  * calibration it shows ("imu cal": the shared common/imu/imu_cal.c), on the
- * FreeRTOS POSIX port with the build's shell (freertos/drivers/shell, two
+ * FreeRTOS POSIX port with the build's shell (common/compat/shell_engine, two
  * sessions on two consoles that capture), the Zephyr compatibility layer
  * (its kernel part, work queues, RTIO with its work queue, devices, gpio0,
  * the default sensor iodev and decoder) and the shared LSM6DSO driver with
@@ -641,7 +641,7 @@ static void session_main(void *arg)
 	struct session *s = arg;
 	const char *line;
 
-	shell_console_bind(NULL, &s->console);
+	shell_console_bind(&s->console);
 	cli_init(&s->cli, s->prompt, cli_write, cli_execute, &s->console);
 	for (;;) {
 		xQueueReceive(s->lines, &line, portMAX_DELAY);

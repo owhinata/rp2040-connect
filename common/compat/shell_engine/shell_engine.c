@@ -1,7 +1,5 @@
 /* SPDX-License-Identifier: MIT */
-/* The commands of the FreeRTOS build's shell and their execution
- * (shell_engine.h).
- */
+/* The commands of the shell engine and their execution (shell_engine.h). */
 
 #include <stdio.h>
 #include <stdlib.h>
@@ -22,7 +20,7 @@ static const char *cmd_name(const struct shell_engine_cmd *cmd)
 	return cmd->root != NULL ? cmd->root->syntax : cmd->name;
 }
 
-static const char *cmd_help(const struct shell_engine_cmd *cmd)
+static const char *cmd_help_text(const struct shell_engine_cmd *cmd)
 {
 	const char *help = cmd->root != NULL ? cmd->root->help : cmd->help;
 
@@ -56,7 +54,7 @@ void shell_engine_help(void)
 	}
 	printf("Available commands:\n");
 	for (size_t i = 0; i < shell_engine_cmd_count; i++) {
-		const char *help = cmd_help(&shell_engine_cmds[i]);
+		const char *help = cmd_help_text(&shell_engine_cmds[i]);
 
 		printf("  %-*s", (int)longest, cmd_name(&shell_engine_cmds[i]));
 		if (help == NULL) {
@@ -68,6 +66,19 @@ void shell_engine_help(void)
 	}
 	fflush(stdout);
 }
+
+/* Zephyr's "help" without arguments (subsys/shell/shell_cmds.c). */
+static int cmd_help(const struct shell *sh, size_t argc, char **argv)
+{
+	(void)sh;
+	(void)argc;
+	(void)argv;
+
+	shell_engine_help();
+	return 0;
+}
+
+SHELL_CMD_ARG_REGISTER(help, NULL, "Prints the help message.", cmd_help, 1, 0);
 
 int shell_engine_execute(char *line)
 {

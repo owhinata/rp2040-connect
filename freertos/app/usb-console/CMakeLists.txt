@@ -64,9 +64,12 @@ if(I2C_DW_I2C1)
   list(APPEND i2c_dw_options I2C1)
 endif()
 
+# The generic commands (common/shell/kernel_shell.c, on src/kernel_shell_os_impl.h)
+# are linked where this build's own were, after src/commands.c.
 add_executable(usb-console
   src/main.c
   src/commands.c
+  ${COMMON_DIR}/shell/kernel_shell.c
   src/fault.c
   src/idle.c
   src/irq_stack.c

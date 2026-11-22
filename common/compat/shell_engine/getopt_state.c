@@ -1,14 +1,14 @@
 /* SPDX-License-Identifier: MIT */
-/* The FreeRTOS part of Zephyr's getopt (<zephyr/sys/sys_getopt.h>; the
- * copies of Zephyr's lib/utils/getopt/getopt.c and getopt_long.c in
+/* The shell engine's part of Zephyr's getopt (<zephyr/sys/sys_getopt.h>;
+ * the copies of Zephyr's lib/utils/getopt/getopt.c and getopt_long.c in
  * common/compat/lib/utils/getopt): what Zephyr's getopt_common.c does with
- * CONFIG_SHELL_GETOPT=y, on the consoles of shell_console.h.  A task bound to
- * a console (a shell session's task, which runs its commands) uses the
- * session's state, so the USB and the Telnet sessions can parse options at
- * the same time; any other task uses one common state.  The shell resets
- * the session's state before each command (sys_getopt_init() in
- * common/compat/shell_engine/shell_engine.c, as Zephyr's shell does).  Zephyr's global copies
- * (sys_getopt_optind, ...) are kept as there, valid only while one task
+ * CONFIG_SHELL_GETOPT=y, on the consoles of shell_console.h.  A thread
+ * bound to a console (a shell session's thread, which runs its commands)
+ * uses the session's state, so the serial and the Telnet sessions can parse
+ * options at the same time; any other thread uses one common state.  The
+ * shell resets the session's state before each command (sys_getopt_init()
+ * in shell_engine.c, as Zephyr's shell does).  Zephyr's global copies
+ * (sys_getopt_optind, ...) are kept as there, valid only while one thread
  * uses getopt.
  */
 

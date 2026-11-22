@@ -10,7 +10,7 @@
  * of Zephyr's wifi_credentials_shell.c), on the store as the board builds it
  * (common/imu/kv_store.c, the copies of Zephyr's settings and NVS) over the
  * shared fake of the key-value area's flash (common/tests/kv_flash_fake.c),
- * the build's shell (freertos/drivers/shell) on a console that captures,
+ * the build's shell (common/compat/shell_engine) on a console that captures,
  * and a fake NINA-W102 (nina_proto_request() and nina_proto_ip_config() here).  The
  * credentials are made up for the test.
  *
@@ -32,7 +32,7 @@
  *   (the module's status, seen twice by nina_monitor_tid) raises the
  *   disconnection, and wifi_reconnect_tid connects again 4 s later.
  * - Garbage collection of the store (many writes): the entry is still read.
- * - "ifconfig" (freertos/drivers/wifi/ifconfig_shell.c), with and without
+ * - "ifconfig" (common/shell/ifconfig_shell.c), with and without
  *   "wlan0": nothing before the interface exists, then the NuttX build's
  *   lines (the state UP while dormant, RUNNING while connected, the
  *   addresses of the connection, 0.0.0.0 without them, an empty line at
@@ -1063,7 +1063,7 @@ static void test_gc(void)
 static void runner(void *arg)
 {
 	(void)arg;
-	shell_console_bind(NULL, &con);
+	shell_console_bind(&con);
 	test_start();
 	test_cred();
 	test_connect();

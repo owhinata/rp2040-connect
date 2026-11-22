@@ -14,14 +14,14 @@ Zephyr そのものに対してビルドし、`common/compat` を使いません
 |---|---|---|
 | アプリ | `common/imu` | IMU サービス、MQTT の送信、時刻同期、Wi-Fi のプロファイル、KV ストア、校正 |
 | ドライバー | `common/drivers/<ドライバー>/` | OS に依存しないコア、`port/` の境界のヘッダー、`port/<OS>/` のつなぎ（5 節） |
-| シェルのコマンド | `common/shell` | `zshell.c`（Zephyr のシェルのコマンド処理）、`subcmd.c`、`nina_shell.c`、`i2c_dma_shell.c`、`dmesg_shell.c`（F だけ。N は `nuttx/apps/dmesg`） |
-| ログ | `common/compat/log` | RAM ログと `LOG_*` マクロの関数（`log_ram.c`。OS の部分 `log_ram_os.h` の上。3 節）、そのリング（`log_ring.c`）、`LOG_*` マクロ（`app_log.h`）、異常停止の記録の文面（`fault_record.c`） |
+| シェルのコマンド | `common/shell` | `zshell.c`（Zephyr のシェルのコマンド処理）、`subcmd.c`、`nina_shell.c`、`i2c_dma_shell.c`。F だけ: `dmesg_shell.c`（N は `nuttx/apps/dmesg`）、`kernel_shell.c`（`id`・`uptime`・`date`・`sleep`・`devmem`・`fault`・`reboot`・`bootsel`。`kernel_shell_os.h` の上。3 節）、`ifconfig_shell.c`（ネットワークの部分のインターフェースの上） |
+| ログ | `common/compat/log` | RAM ログと `LOG_*` マクロの関数（`log_ram.c`。OS の部分 `log_ram_os.h` の上。3 節）、そのリング（`log_ring.c`）、`LOG_*` マクロ（`app_log.h`）、異常停止の記録の文面とその表示（`fault_record.c`） |
 | 互換層の共有部分 | `common/compat` | Zephyr のヘッダー（`common/compat/zephyr/`）、ワークアイテム、ワークキューのスレッドと互換層の開始（`zephyr_init.c`）、RTIO、gpio0 のデバイス、net_mgmt、Wi-Fi の要求、KV のフラッシュのデバイス、Zephyr の NVS・settings・getopt・Wi-Fi の資格情報・zperf の写し |
 | 互換層のネットワークの部分（ネットワーク層を持たない OS のため） | `common/compat/net_offload` | Zephyr のソケット層（`subsys/net/lib/sockets`・`lib/os/zvfs` を縮めた写し）、ネットワークのインターフェース 1 つ（`zephyr_net_if.c`）とその開始（`zephyr_net_init.c`）、`k_heap`（`zephyr_heap.c`）、それらのヘッダーは専用のインクルードのルート `include/`（`zephyr/net/net_if.h`・`net_ip.h`・`socket.h`・`socket_offload.h`、`zephyr/sys/fdtable.h`、`zephyr_net_init.h`、`zephyr_heap.h`）。使うのは F だけ |
 | POSIX のネットワークのヘッダー（それを持たない C ライブラリーのため） | `common/compat/libc_net` | `include/`（`arpa/inet.h`、`netdb.h`、`netinet/in.h`、`netinet/tcp.h`、`poll.h`、`sys/socket.h`、`sys/uio.h`）、`inet_pton()`・`inet_ntop()`（`inet.c`）。使うのは F だけ |
 | 基本の操作だけを持つ OS のための互換層のカーネルの部分 | `common/compat/kernel_generic` | `k_sem`、`k_poll()`、タイムアウトの一覧、スリープ、スレッドの起動（`zephyr_kernel.c`）、`k_mutex`（`zephyr_mutex.c`）、`<zephyr/kernel.h>`・`<zephyr/spinlock.h>` の OS の部分（`zephyr_os.h`・`zephyr_os_spinlock.h`）、tick の入口（`zephyr_compat_tick()`、`zephyr_compat_os.h`）、基本の操作の上の自己診断の項目（`zephyr_selftest_os.h`）。すべて `zephyr_kernel_os.h` で宣言した基本の操作（2 節）の上。使うのは F だけ |
 | 互換層の自己診断（OS の部分の受け入れ試験） | `common/compat/selftest` | `zephyr_selftest.c`（22 項目）、境界の宣言 `zephyr_selftest.h`（3 節）。使うのは F の `-DSELFTEST=ON` のビルドと F のホストテストだけ |
-| 自分のシェルを持たない OS のためのシェル | `common/compat/shell_engine` | 行編集（`cli.c`）、`Z_SHELL_CMD_ROOT_GLOBAL` のルートのコマンドの表と実行（`shell_engine.c`。`shell_engine_cmds[]` はアプリが用意する）、Zephyr の単語の分割（`shell_argv.c`）。使うのは F だけ |
+| 自分のシェルを持たない OS のためのシェル | `common/compat/shell_engine` | 互換層の API の上: 行編集（`cli.c`）、`Z_SHELL_CMD_ROOT_GLOBAL` のルートのコマンドの表と実行と `help`（`shell_engine.c`。`shell_engine_cmds[]` はアプリが用意する）、Zephyr の単語の分割（`shell_argv.c`）、コンソールとスレッドごとの stdout（`shell_console.c`）、セッションごとの getopt の状態（`getopt_state.c`）、`zshell.c` のバックエンド（`zshell_os_impl.h`・`zephyr_os_shell.h`）、シリアルのセッション（`shell_serial.c`。スレッド "console"。コンソールの経路 `shell_serial_os.h` の上。3 節）、Telnet のシェル（`shell_telnet.c`。スレッド "shell_telnet"・"telnet_service"。`zsock_*()` の上）。使うのは F だけ |
 | どの OS も持たない RP2040 のコード | `common/chip/rp2040` | `include/rp2040_timer_us.h`（TIMER のレジスターと 64 ビットの読み出し `rp2040_timer_us()`。必ずインライン。3 版とも）、`include/rp2040_watchdog_reboot.h`（`rp2040_watchdog_reboot()`、レジスターを直接書く watchdog の再起動。Zephyr 版と N）。ヘッダーだけで、各版が `include/` を include パスに入れる（Zephyr はアプリの `CMakeLists.txt`、N は `N-board/scripts/Make.defs` で全部のソースに、F はアプリの `CMakeLists.txt`） |
 | ホストテスト | `common/tests` | テストと偽物。`common/tests/zephyr_fakes` はカーネルの OS 部分のホスト用の実装 |
 | Zephyr 版 | `zephyr/app/usb-console` | `main()`、`log_ram.c`、`kv_store_os.h`、`wifi_profile_os.h`。上流の Zephyr と、`zephyr/manifest/zephyr/patches` のパッチ |
@@ -32,11 +32,11 @@ Zephyr そのものに対してビルドし、`common/compat` を使いません
 | N: ドライバー | `nuttx/drivers/<ドライバー>/` | 各ドライバーの `Make.defs`、`Kconfig` |
 | N: アプリ | `nuttx/apps/*` | init タスク（`init`）、コマンドごとの builtin アプリ、シェルの OS 部分（`subcmd`）、Wi-Fi とセンサーの部分 |
 | N: NuttX の変更 | `nuttx/patches` | NuttX と nuttx-apps へのローカルのパッチ |
-| F: アプリ | `freertos/app/usb-console` | `main()`、`FreeRTOSConfig.h`、tick のフック、アイドルと CPU 負荷、`os_clock.h`、`priorities_os.h`、コマンドの表、異常停止の処理 |
+| F: アプリ | `freertos/app/usb-console` | `main()`、`FreeRTOSConfig.h`、tick のフック、アイドルと CPU 負荷、`os_clock.h`、`priorities_os.h`、この版だけが答えられるコマンド（`version`・`free`・`ps`）とコマンドの表、汎用のコマンドの OS の部分（`kernel_shell_os_impl.h`）、異常停止の処理 |
 | F: 互換層の OS 部分 | `freertos/drivers/compat` | 汎用のカーネルの部分の基本の操作（`zephyr_kernel_os_impl.h`）、`zephyr_os_atomic.h`、実時間の時計、ソケットの登録のためのリンカースクリプトの部分、`rp2040/`（ポートのヘッダー、GPIO バンク 0、hwinfo、自己診断のボードの部分）、自己診断の FreeRTOS の部分（`zephyr_selftest_os_impl.h`）、プレリュード |
-| F: シェル | `freertos/drivers/shell` | コンソール、コンソールごとの stdio、getopt の状態、シェルの OS 部分 |
+| F: コンソールの経路 | `freertos/drivers/shell` | `shell_serial_os_impl.h`（Pico SDK の `stdio_usb`）、SDK の stdio をコンソールへ（`shell_stdio.c`） |
 | F: C ライブラリーの追加 | `freertos/drivers/libc` | stdout・stderr の置き換え |
-| F: そのほかの OS 部分 | `freertos/drivers/{include,kv,telnet,wifi,sensor_shell,imu,zperf}` | `app_log_os.h`・`log_ram_os_impl.h`、KV のフラッシュ、Telnet、Wi-Fi の OS ヘッダー、センサーのシェルの OS 部分、ソースごとのプレリュード、ビルドのファイル |
+| F: そのほかの OS 部分 | `freertos/drivers/{include,kv,telnet,wifi,sensor_shell,imu,zperf}` | `app_log_os.h`・`log_ram_os_impl.h`、KV のフラッシュ、Wi-Fi の OS ヘッダー、センサーのシェルの OS 部分、ソースごとのプレリュード、ビルドのファイル（Telnet は `telnet.cmake` だけ） |
 | F: ドライバー | `freertos/drivers/<ドライバー>/*.cmake` | 各ドライバーのソースとオプション |
 
 ## 2. 互換層のカーネルの部分
@@ -52,7 +52,7 @@ Zephyr そのものに対してビルドし、`common/compat` を使いません
   その基本の操作（`zephyr_kernel_os_impl.h`。static inline）、`zephyr_os_atomic.h`、tick の割り込みから 1 tick に 1 回
   `zephyr_compat_tick()` を呼ぶ tick のフック、自己診断のための `zephyr_selftest_os_impl.h` です。
 
-### 2.1 `zephyr_os.h` が用意するもの（15 項目、任意 1 項目）
+### 2.1 `zephyr_os.h` が用意するもの（15 項目、任意 2 項目）
 
 「汎用」は汎用の実装の `zephyr_os.h`（F が使う）で、その項目は基本の操作から作ります。
 
@@ -70,6 +70,7 @@ Zephyr そのものに対してビルドし、`common/compat` を使いません
 | `K_PRIO_PREEMPT(x)` | Zephyr の優先度 x の OS の優先度。順序を保つ | `APP_PRIO_FROM_ZEPHYR`（118 − x） | `APP_PRIO_FROM_ZEPHYR`（F は 20 − x） |
 | `k_cycle_get_32()`、`k_cycle_get_64()` | 1 MHz のカウンター | `rp2040_timer_us()` | `z_os_clock_us()`（F は `rp2040_timer_us()`） |
 | `Z_OS_ASSERT(test)` | OS のアサーション。ワークキューのスレッドが起きなかったとき用 | `DEBUGASSERT()`（imu の構成では何もしない） | OS のもの（F は `configASSERT()`: 異常停止の記録と再起動） |
+| `k_is_in_isr()`、`k_is_pre_kernel()`、`k_thread_custom_data_get()`、`k_thread_custom_data_set()`（任意。シェルのエンジン用） | ISR の中か。カーネルがスレッドを動かす前か。呼んだスレッドの 1 つのポインター（設定するまでとカーネルがスレッドを動かす前は NULL） | —（ビルドしない） | `z_os_in_isr()`、`z_os_pre_kernel()`、`z_os_thread_local_get()`・`_set()`（F はスレッドローカルのポインター 0） |
 | `Z_SEM_TAKE_FOREVER(sem)`（任意） | `k_sem_take(sem, K_FOREVER)` を OS の短い経路で。ワークキューの待ち | `nxsem_wait_uninterruptible()`（`k_sem_take()` と同じ処理を、呼び出しなしで） | 定義しない: `k_sem_take()`（`kernel.h` の既定） |
 
 汎用の `zephyr_os.h` は `common/compat/net_offload/include/zephyr_heap.h` も読みます: `struct k_heap`、`K_HEAP_DEFINE()`、`k_heap_alloc()`、`k_heap_free()`（4 節）。
@@ -157,11 +158,12 @@ atomic の操作そのものは共有です（`k_spin_lock()` の上）。
 `z_os_woken_t`（最初は 0。`BaseType_t`）、`Z_OS_THREAD_NAME_SIZE`（`configMAX_TASK_NAME_LEN`）、`struct k_mutex` と
 `Z_MUTEX_INITIALIZER()`、`Z_OS_ASSERT()`。
 
-関数（23 個）。「ロック中」は `k_spin_lock()` の中、「ISR」は tick のフックを含みます。
+関数（26 個）。「ロック中」は `k_spin_lock()` の中、「ISR」は tick のフックを含みます。
 
 | 基本の操作 | 意味 | F |
 |---|---|---|
 | `z_os_in_isr()` | ISR の中なら真。どの文脈からでも | IPSR ≠ 0（ホストは tick のフックの深さ） |
+| `z_os_pre_kernel()` | OS がスレッドを動かす前なら真。どの文脈からでも | `xTaskGetSchedulerState() == taskSCHEDULER_NOT_STARTED` |
 | `z_os_task_lock()`、`z_os_task_unlock()` | スレッドのロック: 解除まで ISR もほかのスレッドも走らない。入れ子にできる。中で行う起こしはロックを保ち、その切り替えはいちばん外の解除で起きる | `taskENTER_CRITICAL()`、`taskEXIT_CRITICAL()`（ホストはスケジューラーも止める） |
 | `z_os_isr_lock()`、`z_os_isr_unlock(state)` | ISR のロック: マスクを保存して戻す。状態は `UINT32_MAX` にならない | `taskENTER_CRITICAL_FROM_ISR()`、`taskEXIT_CRITICAL_FROM_ISR()` |
 | `z_os_thread_self()` | 呼んだスレッド。スレッドだけ | `xTaskGetCurrentTaskHandle()` |
@@ -170,6 +172,7 @@ atomic の操作そのものは共有です（`k_spin_lock()` の上）。
 | `z_os_thread_exit()` | 呼んだスレッドを終える | `vTaskDelete(NULL)` |
 | `z_os_thread_name(tid)` | スレッドの書き込める名前の配列（`Z_OS_THREAD_NAME_SIZE` バイト）。OS が表示するもの | `pcTaskGetName()` |
 | `z_os_yield()` | 同じ優先度の次のスレッドに譲る。無ければ続ける。スレッド、ロックの外 | `taskYIELD()` |
+| `z_os_thread_local_get()`、`z_os_thread_local_set(p)` | 呼んだスレッドの 1 つのポインター（Zephyr のカスタムデータ）。設定するまで NULL。get は OS がスレッドを動かす前は NULL | `pvTaskGetThreadLocalStoragePointer()`、`vTaskSetThreadLocalStoragePointer()`（番号 0） |
 | `z_os_wait_prepare()` | 呼んだスレッドの起こしの印を消す。スレッド、ロック中 | `xTaskNotifyStateClearIndexed()`、`ulTaskNotifyValueClearIndexed()`（番号 1） |
 | `z_os_wait(ticks)` | 印が立つか、今の tick + ticks まで待ち（`Z_OS_TICKS_FOREVER` は終わりなし）、印を消す。有限の待ちはこのどちらかでだけ戻る。スレッド、ロックの外 | `ulTaskNotifyTakeIndexed(1, pdTRUE, ticks)` |
 | `z_os_wake(tid)` | tid の印を立てる。相手がまだ待っていなくてもよい（印は残る）。スレッド、ロック中。切り替えは解除まで待つ | `xTaskNotifyGiveIndexed()` |
@@ -188,8 +191,10 @@ F のポートのヘッダーには、tick のフックの `z_os_tick_now_us32()
 
 | 境界 | 宣言 | 項目 | 呼ぶ側 | N | F |
 |---|---|---|---|---|---|
-| シェルのバックエンド | `common/shell/zshell_os.h` | `zshell_os_backend_get()`、`zshell_os_cmd_enter()`、`zshell_os_cmd_exit()`、`z_shell_backend_vfprintf()`。任意で `ZSHELL_OS_ACTIVE_CMD` と `zshell_os_active_cmd_set()`・`_get()` | `common/shell/zshell.c` | `nuttx/apps/subcmd/zshell_os_impl.h`（`ZSHELL_OS_ACTIVE_CMD` なし） | `freertos/drivers/shell/zshell_os_impl.h`（定義あり） |
-| `struct shell` | `common/compat/zephyr/shell/shell.h` が読む | バックエンド 1 つ。コマンドより長く生きる | シェルのコマンド | `nuttx/drivers/compat/zephyr_os_shell.h`（端末のパス、コマンドの pid） | `freertos/drivers/shell/zephyr_os_shell.h`（コンソール、実行中のコマンド） |
+| 汎用のシェルのコマンド | `common/shell/kernel_shell_os.h`（`"kernel_shell_os_impl.h"` を読む。static inline） | `kernel_shell_os_tick_count()`（OS の tick の数。`uptime`）、`kernel_shell_os_reboot(delay_ms)`・`kernel_shell_os_bootsel(delay_ms)`（`delay_ms` 後に再起動。後者は USB のローダーへ。戻らない）、`kernel_shell_os_fault_last()`（前回の `struct fault_record` か NULL）。ほかは互換層のもの（`k_cycle_get_64()`、`k_sleep()`、`Z_USEC_PER_TICK`、`sys_clock_gettime()`、`hwinfo_get_device_id()`） | `common/shell/kernel_shell.c` | —（ビルドしない。nsh のコマンドと `nuttx/apps/bootsel`） | `freertos/app/usb-console/src/kernel_shell_os_impl.h`: `os_tick_count()`、Pico SDK の `watchdog_reboot()`・`reset_usb_boot()`、`fault_last()`（`fault.c`）。ホストは `freertos/tests/shell/kernel_shell_os_impl.h` |
+| シェルのバックエンド | `common/shell/zshell_os.h` | `zshell_os_backend_get()`、`zshell_os_cmd_enter()`、`zshell_os_cmd_exit()`、`z_shell_backend_vfprintf()`。任意で `ZSHELL_OS_ACTIVE_CMD` と `zshell_os_active_cmd_set()`・`_get()` | `common/shell/zshell.c` | `nuttx/apps/subcmd/zshell_os_impl.h`（`ZSHELL_OS_ACTIVE_CMD` なし） | シェルのエンジンの `common/compat/shell_engine/zshell_os_impl.h`（定義あり。コンソールの上） |
+| コンソールの経路 | `common/compat/shell_engine/shell_serial_os.h`（`"shell_serial_os_impl.h"` を読む。static inline） | `shell_serial_os_stdio_init()`（全スレッドの stdout・stderr を `shell_console_write(shell_console_current(), ...)` へ。バッファーなし）、`shell_serial_os_rx_init()`（入力が届いたら `shell_serial_rx_ready()` を呼ぶ。どの文脈からでも）、`shell_serial_os_connected()`、`shell_serial_os_read()`（待たない）、`shell_serial_os_write()`（端末が受け取れない分は捨てる） | `common/compat/shell_engine/shell_serial.c` | —（ビルドしない） | `freertos/drivers/shell/shell_serial_os_impl.h`: `stdio_usb`、`shell_stdio_init()`（`shell_stdio.c`）と `freertos/drivers/libc/stdio_wrap.c`。ホストは `freertos/tests/shell/shell_serial_os_impl.h` |
+| `struct shell` | `common/compat/zephyr/shell/shell.h` が読む | バックエンド 1 つ。コマンドより長く生きる | シェルのコマンド | `nuttx/drivers/compat/zephyr_os_shell.h`（端末のパス、コマンドの pid） | シェルのエンジンの `common/compat/shell_engine/zephyr_os_shell.h`（コンソール、実行中のコマンド） |
 | ログの OS 部分 | `common/compat/log/app_log.h` | `app_log_os.h`（OS のヘッダーを先に、任意の `CONFIG_LOG_DEFAULT_LEVEL`・`CONFIG_LOG_MAX_LEVEL`）、`app_log_printf()`、`app_log_vprintf()`、`app_log_ratelimit_pass()` | `LOG_*()` マクロ | `nuttx/drivers/include/app_log_os.h`。関数は共有の `common/compat/log/log_ram.c` | `freertos/drivers/include/app_log_os.h`。関数は共有（同じ） |
 | RAM ログ | `common/compat/log/log_ram.h` | `log_ram_initialize()`、`log_ram_store()`（OS 自身のログ。そのままのバイト）、`log_ram_piece()` | 起動、OS のログ、`dmesg` | 共有の `common/compat/log/log_ram.c`。呼ぶのは `N-board/src/rp2040_boardinitialize.c`、`nuttx/drivers/log/log_ram_syslog.c`、`nuttx/apps/dmesg/dmesg_main.c` | 共有（同じ）。呼ぶのは `main()`、`common/shell/dmesg_shell.c`（`log_ram_store()` は使わない） |
 | RAM ログの OS 部分 | `common/compat/log/log_ram_os.h`（`log_ram.c` が最初に `"log_ram_os_impl.h"` を読む） | `LOG_RAM_OS_RETAINED(name)`（起動のコードが触らない RAM にリングを置く）、型 `log_ram_os_irqstate_t`。inline の `log_ram_os_irq_save()`・`_irq_restore()`（ロック。割り込みを止める。どの文脈からでも）、`_uptime_us()`（時刻の印と頻度制限）、`_attach()`（OS 自身のログにする） | `common/compat/log/log_ram.c` | `nuttx/drivers/include/log_ram_os_impl.h`: `.noinit`、`up_irq_save()`、`rp2040_timer_us()`、syslog のチャネルを登録（`nuttx/drivers/log/log_ram_syslog.c`） | `freertos/drivers/include/log_ram_os_impl.h`: `__uninitialized_ram`、`save_and_disable_interrupts()`、`os_clock.h` の `rp2040_timer_us()`、登録するものなし。ホストは `common/tests/log_ram_os_host/` |
@@ -260,8 +265,8 @@ Zephyr 版は自分の `zephyr/app/usb-console/src/kv_store_os.h` と `wifi_prof
 |---|---|---|
 | 登録 | コマンドごとの builtin アプリ。`SHELL_CMD_REGISTER()` が `main()`（`Z_SHELL_CMD_NAMED_MAIN` なら `z_shell_main_<名前>()`）を作る | `Z_SHELL_CMD_ROOT_GLOBAL`: 大域のルートの要素を `shell_engine_cmds[]`（`freertos/app/usb-console/src/commands.c`）に並べ、`common/compat/shell_engine/shell_engine.c` が動かす |
 | `SHELL_SUBCMD_ADD()` | 大域の要素。親のソースが手で並べる | 同じ |
-| getopt | Zephyr の getopt はビルドしない。`nuttx/apps/wifi/wifi_credentials_shell.c` が `sys_getopt_*` を `getopt_long()` に読み替える | `common/compat/lib/utils/getopt` の写し。状態はセッションごと（`freertos/drivers/shell/getopt_state.c` の `sys_getopt_state_get()`、`z_getopt_global_state_update()`）。コマンドの前に `sys_getopt_init()` で戻す |
-| `zshell.c` の stdio: `printf()`、`fprintf(stderr)`、`fflush(stdout)` がコマンドの端末に届くこと。1 行あたり約 1.2 KB の `calloc()` | コマンドごとのタスクが自分の stdio を持つ | `freertos/drivers/shell/shell_stdio.c`（呼んだタスクのコンソール）、`freertos/drivers/libc/stdio_wrap.c`（stdout・stderr の呼び出しの `--wrap`） |
+| getopt | Zephyr の getopt はビルドしない。`nuttx/apps/wifi/wifi_credentials_shell.c` が `sys_getopt_*` を `getopt_long()` に読み替える | `common/compat/lib/utils/getopt` の写し。状態はセッションごと（`common/compat/shell_engine/getopt_state.c` の `sys_getopt_state_get()`、`z_getopt_global_state_update()`）。コマンドの前に `sys_getopt_init()` で戻す |
+| `zshell.c` の stdio: `printf()`、`fprintf(stderr)`、`fflush(stdout)` がコマンドの端末に届くこと。1 行あたり約 1.2 KB の `calloc()` | コマンドごとのタスクが自分の stdio を持つ | コンソールの経路の stdio の行き先（3 節）: `freertos/drivers/shell/shell_stdio.c`（呼んだタスクのコンソール）、`freertos/drivers/libc/stdio_wrap.c`（stdout・stderr の呼び出しの `--wrap`） |
 
 ### 4.5 `CONFIG_*` の値
 
@@ -332,9 +337,9 @@ Zephyr 版は自分の `zephyr/app/usb-console/src/kv_store_os.h` と `wifi_prof
 | アイドルループ（区間の計算は共有の `common/compat/cpu_load.h`） | `N-board/src/rp2040_idle_cpuload.c` | `freertos/app/usb-console/src/idle.c` |
 | BOOTSEL に入る（ROM の `reset_usb_boot()`） | `N-board/src/rp2040_restart.c`。NuttX の `ROM_LOOKUP()` の上 | Pico SDK の `reset_usb_boot()`（Zephyr 版は hal_rpi_pico のもの） |
 | チップの ID（フラッシュの固有の ID。XIP を止めて 1 回読む） | `N-board/src/rp2040_chipid.c`。NuttX の `rp2040_flash_cmd()` の上 | Pico SDK の `pico_unique_id`（Zephyr 版は hwinfo のドライバー） |
-| USB デバイスのスタック、コンソールの経路 | `cdcacm`、`N-board/src/rp2040_usbserial.c`。Telnet は `nuttx/apps/init/rp2040_telnet.c` | Pico SDK の `stdio_usb`（TinyUSB）。`freertos/drivers/shell/shell_console.c`、`shell_stdio.c`。Telnet は `freertos/drivers/telnet/shell_telnet.c` |
+| USB デバイスのスタック、コンソールの経路 | `cdcacm`、`N-board/src/rp2040_usbserial.c`。Telnet は `nuttx/apps/init/rp2040_telnet.c` | Pico SDK の `stdio_usb`（TinyUSB）。コンソールの経路 `freertos/drivers/shell/shell_serial_os_impl.h`、`shell_stdio.c`、`freertos/drivers/libc/stdio_wrap.c`。Telnet はシェルのエンジンのもの |
 | ヒープ | NuttX のもの | FreeRTOS の `heap_4`、32 KiB（`configTOTAL_HEAP_SIZE`） |
-| OS 自身のシェル | nsh（セッションは `rp2040_init.c`） | 無い。共有のエンジン `common/compat/shell_engine`（`cli.c`・`shell_engine.c`）を `freertos/drivers/shell` のコンソールの上で使う |
+| OS 自身のシェル | nsh（セッションは `rp2040_init.c`） | 無い。共有のエンジン `common/compat/shell_engine`（コンソール、シリアルのセッション、Telnet）を `freertos/drivers/shell` のコンソールの経路の上で使う |
 | RAM ログに入る OS 自身のログ | `syslog()`: syslog のチャネル、`nuttx/drivers/log/log_ram_syslog.c` | なし（FreeRTOS のカーネルと Pico SDK はログを持たない） |
 | 致命的なエラー | `CONFIG_BOARD_RESET_ON_ASSERT`、報告は RAM ログ | `freertos/app/usb-console/src/fault.c` と `common/compat/log/fault_record.c` |
 | ビルドの仕組みと構成 | Make、Kconfig、`defconfig`、`nuttx/patches` | CMake、`FreeRTOSConfig.h`、`freertos/drivers/*/*.cmake` |

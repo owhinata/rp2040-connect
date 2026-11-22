@@ -1,9 +1,9 @@
 /* SPDX-License-Identifier: MIT */
-/* The host test of the FreeRTOS build's shell (freertos/drivers/shell and
- * the shell engine common/compat/shell_engine, with
- * freertos/drivers/libc/stdio_wrap.c and the shared common/shell/zshell.c,
- * subcmd.c, the copies of Zephyr's fnmatch() and getopt) on the FreeRTOS
- * POSIX port:
+/* The host test of the FreeRTOS build's shell (the shell engine
+ * common/compat/shell_engine, with freertos/drivers/libc/stdio_wrap.c and
+ * the shared common/shell/zshell.c, subcmd.c, kernel_shell.c, the copies of
+ * Zephyr's fnmatch() and getopt, common/compat/log/fault_record.c) on the
+ * FreeRTOS POSIX port:
  *
  * - the line editor alone (cli.c): echo, Backspace, Ctrl-C, history with
  *   Up and Down, other escape sequences ignored;
@@ -17,7 +17,16 @@
  *   sessions parse at the same time.  Each console must hold exactly its own
  *   session's transcript (with "\r\n" line ends);
  * - output to a session's backend from another task (a struct shell kept by
- *   a command), and the default console of a task bound to none.
+ *   a command), and the default console of a task bound to none;
+ * - the engine's "help" and the generic commands of
+ *   common/shell/kernel_shell.c ("id", "uptime", "date", "sleep", "devmem",
+ *   "fault", "reboot", "bootsel"), with their output, on this directory's
+ *   kernel_shell_os_impl.h, a fake hwinfo_get_device_id() and the layer's
+ *   realtime clock (freertos/drivers/compat/zephyr_sys_clock.c);
+ * - the serial session (common/compat/shell_engine/shell_serial.c) on this
+ *   directory's console transport (shell_serial_os_impl.h): nothing while
+ *   the line is closed, the banner and the prompt when it opens, a command
+ *   typed and its output, the default console.
  *
  * The Pico SDK's stdio is played by this file as pico_stdio does it:
  * printf(), vprintf(), puts() and putchar() are wrapped (-Wl,--wrap) and,
@@ -42,13 +51,19 @@
 #include "semphr.h"
 #include "task.h"
 
+#include <zephyr/drivers/hwinfo.h>
+#include <zephyr/kernel.h>
 #include <zephyr/shell/shell.h>
+#include <zephyr/sys/clock.h>
 #include <zephyr/sys/sys_getopt.h>
 
 #include "app_log.h"
 #include "cli.h"
+#include "fault_record.h"
 #include "shell_console.h"
 #include "shell_engine.h"
+#include "shell_serial.h"
+#include "shell_serial_os.h"
 #include "pico/stdio.h"
 #include "priorities.h"
 
@@ -277,14 +292,57 @@ static int cmd_later(const struct shell *sh, size_t argc, char **argv)
 
 SHELL_CMD_REGISTER(later, NULL, "Keep the backend", cmd_later);
 
+/* The engine's "help" and the generic commands (common/shell/kernel_shell.c,
+ * on this test's kernel_shell_os_impl.h).
+ */
+SHELL_ENGINE_CMD_DECLARE(bootsel);
+SHELL_ENGINE_CMD_DECLARE(date);
+SHELL_ENGINE_CMD_DECLARE(devmem);
+SHELL_ENGINE_CMD_DECLARE(fault);
+SHELL_ENGINE_CMD_DECLARE(help);
+SHELL_ENGINE_CMD_DECLARE(id);
+SHELL_ENGINE_CMD_DECLARE(reboot);
+SHELL_ENGINE_CMD_DECLARE(sleep);
+SHELL_ENGINE_CMD_DECLARE(uptime);
+
+/* clang-format off */
 const struct shell_engine_cmd shell_engine_cmds[] = {
+	SHELL_ENGINE_CMD(bootsel),
+	SHELL_ENGINE_CMD(date),
+	SHELL_ENGINE_CMD(devmem),
 	SHELL_ENGINE_CMD(echo),
+	SHELL_ENGINE_CMD(fault),
 	SHELL_ENGINE_CMD(grp),
+	SHELL_ENGINE_CMD(help),
+	SHELL_ENGINE_CMD(id),
 	SHELL_ENGINE_CMD(later),
 	SHELL_ENGINE_CMD(opt),
+	SHELL_ENGINE_CMD(reboot),
+	SHELL_ENGINE_CMD(sleep),
+	SHELL_ENGINE_CMD(uptime),
 };
+/* clang-format on */
 
 const size_t shell_engine_cmd_count = sizeof(shell_engine_cmds) / sizeof(shell_engine_cmds[0]);
+
+/* The generic commands' OS part (kernel_shell_os_impl.h) and the layer's
+ * hwinfo -----------------------------------------------------------------*/
+
+unsigned int test_reboots;
+unsigned int test_bootsels;
+uint32_t test_restart_delay_ms;
+const struct fault_record *test_fault;
+
+static const uint8_t test_id[8] = {0xe6, 0x61, 0x41, 0x04, 0x03, 0x5a, 0x9b, 0x2c};
+
+ssize_t hwinfo_get_device_id(uint8_t *buffer, size_t length)
+{
+	if (length > sizeof(test_id)) {
+		length = sizeof(test_id);
+	}
+	memcpy(buffer, test_id, length);
+	return (ssize_t)length;
+}
 
 /* The line editor alone ---------------------------------------------------*/
 
@@ -372,7 +430,7 @@ static void session_main(void *arg)
 {
 	struct session *s = arg;
 
-	shell_console_bind(NULL, &s->console);
+	shell_console_bind(&s->console);
 	cli_init(&s->cli, s->prompt, cli_write, cli_execute, &s->console);
 	cli_prompt(&s->cli);
 	for (const char *const *line = s->lines; *line != NULL; line++) {
@@ -382,6 +440,162 @@ static void session_main(void *arg)
 	}
 	xSemaphoreGive(done);
 	vTaskSuspend(NULL);
+}
+
+/* The generic commands, run by the checker on a console of its own. */
+static struct shell_console generic_console;
+static struct capture generic_out;
+
+static void run(const char *line)
+{
+	char buf[128];
+
+	generic_out.len = 0;
+	generic_out.text[0] = '\0';
+	strcpy(buf, line);
+	(void)shell_engine_execute(buf);
+}
+
+static void test_generic(void)
+{
+	static volatile uint32_t word = 0x12345678u;
+	static struct fault_record record;
+	struct timespec ts = {.tv_sec = 1795350896};
+	uint64_t before;
+	char line[96];
+
+	shell_console_init(&generic_console, "generic", capture_out, &generic_out);
+	shell_console_bind(&generic_console);
+
+	run("help");
+	assert(strncmp(generic_out.text, "Available commands:\r\n", 21) == 0);
+	assert(strstr(generic_out.text,
+		      "  bootsel  : Restart into the USB bootloader (BOOTSEL)\r\n") != NULL);
+	assert(strstr(generic_out.text, "  help     : Prints the help message.\r\n") != NULL);
+
+	run("id");
+	expect("id", &generic_out, "E6614104035A9B2C\r\n");
+
+	run("uptime");
+	assert(strstr(generic_out.text, " s (TIMER), 1234 ticks of 1/1000 s\r\n") != NULL);
+
+	assert(sys_clock_settime(SYS_CLOCK_REALTIME, &ts) == 0);
+	run("date");
+	expect("date", &generic_out, "Sun, Nov 22 12:34:56 2026\r\n");
+
+	before = k_cycle_get_64();
+	run("sleep 30");
+	assert(generic_out.len == 0 && k_cycle_get_64() - before >= 30000u);
+	run("sleep 3x");
+	expect("sleep", &generic_out, "Unable to parse input (err -22)\r\n");
+
+	snprintf(line, sizeof(line), "devmem %lx", (unsigned long)(uintptr_t)&word);
+	run(line);
+	expect("devmem read", &generic_out, "Using data width 32\r\nRead value 0x12345678\r\n");
+	snprintf(line, sizeof(line), "devmem %lx 8 ab", (unsigned long)(uintptr_t)&word);
+	run(line);
+	expect("devmem write", &generic_out, "Using data width 8\r\nWriting value 0xab\r\n");
+	assert(word == 0x123456abu);
+	run("devmem 0 7");
+	expect("devmem width", &generic_out, "Using data width 7\r\nIncorrect data width\r\n");
+
+	run("fault");
+	expect("fault none", &generic_out, "No fatal error before this start\r\n");
+	record.reason = FAULT_REASON_PANIC;
+	record.pc = 0x10001234u;
+	record.uptime_us = 12640000u;
+	strcpy(record.task, "console");
+	strcpy(record.text, "test");
+	fault_record_seal(&record);
+	test_fault = &record;
+	run("fault");
+	expect("fault", &generic_out,
+	       "Fatal error: panic: test\r\n"
+	       "In task console, 12.640000 s after the start\r\n"
+	       "pc 0x10001234 lr 0x00000000 sp 0x00000000\r\n");
+
+	run("reboot now");
+	expect("reboot", &generic_out, "Rebooting\r\n");
+	assert(test_reboots == 1 && test_restart_delay_ms == 100);
+	run("bootsel");
+	expect("bootsel", &generic_out, "Entering BOOTSEL (the RPI-RP2 drive)\r\n");
+	assert(test_bootsels == 1 && test_restart_delay_ms == 100);
+}
+
+/* The serial session (common/compat/shell_engine/shell_serial.c) on this
+ * directory's shell_serial_os_impl.h ---------------------------------------*/
+
+volatile bool test_serial_open;
+unsigned int test_serial_rx_inits;
+
+static struct k_spinlock serial_lock;
+static char serial_in[64];
+static size_t serial_in_len;
+static struct capture serial_out;
+
+int test_serial_take(char *buf, size_t len)
+{
+	k_spinlock_key_t key = k_spin_lock(&serial_lock);
+	size_t n = serial_in_len < len ? serial_in_len : len;
+
+	memcpy(buf, serial_in, n);
+	memmove(serial_in, serial_in + n, serial_in_len - n);
+	serial_in_len -= n;
+	k_spin_unlock(&serial_lock, key);
+	return (int)n;
+}
+
+void test_serial_put_out(const char *buf, size_t len)
+{
+	assert(serial_out.len + len < sizeof(serial_out.text));
+	memcpy(serial_out.text + serial_out.len, buf, len);
+	serial_out.len += len;
+	serial_out.text[serial_out.len] = '\0';
+}
+
+static void serial_type(const char *text)
+{
+	k_spinlock_key_t key = k_spin_lock(&serial_lock);
+
+	assert(serial_in_len + strlen(text) <= sizeof(serial_in));
+	memcpy(serial_in + serial_in_len, text, strlen(text));
+	serial_in_len += strlen(text);
+	k_spin_unlock(&serial_lock, key);
+	shell_serial_rx_ready();
+}
+
+static void serial_wait_for(const char *text)
+{
+	for (int i = 0; i < 200 && strstr(serial_out.text, text) == NULL; i++) {
+		vTaskDelay(5);
+	}
+}
+
+static void serial_banner(void)
+{
+	printf("banner\n");
+}
+
+static void test_serial(void)
+{
+	shell_serial_init("serial");
+	assert(shell_serial_start("s$ ", serial_banner) == 0);
+	/* No terminal yet: nothing is written. */
+	vTaskDelay(100);
+	assert(test_serial_rx_inits == 1 && serial_out.len == 0);
+
+	test_serial_open = true;
+	serial_wait_for("s$ ");
+	expect("serial open", &serial_out, "\r\nbanner\r\ns$ ");
+	serial_out.len = 0;
+	serial_out.text[0] = '\0';
+	serial_type("id\r");
+	serial_wait_for("C\r\ns$ ");
+	expect("serial id", &serial_out, "id\r\nE6614104035A9B2C\r\ns$ ");
+	/* Threads bound to no console now write to the serial session. */
+	shell_console_bind(NULL);
+	printf("to serial\n");
+	assert(strstr(serial_out.text, "to serial\r\n") != NULL);
 }
 
 static void checker(void *arg)
@@ -430,6 +644,8 @@ static void checker(void *arg)
 	shell_console_set_default(NULL);
 	fprintf(stdout, "dropped\n");
 	assert(strstr(sessions[1].out.text, "dropped") == NULL);
+	test_generic();
+	test_serial();
 	_exit(0);
 }
 

@@ -12,23 +12,19 @@
 #include <stdio.h>
 #include "hardware/clocks.h"
 #include "pico/stdlib.h"
-#include "pico/stdio_usb.h"
 #include "FreeRTOS.h"
 #include "task.h"
 #include "app.h"
 #include "app_log.h"
-#include "cli.h"
 #include "fault.h"
 #include "i2c_dw_controllers_rp2040.h"
 #include "imu_cal.h"
 #include "kv_store.h"
 #include "log_ram.h"
-#include "shell_console.h"
 #include "nano_flash_kv_os.h"
 #include "lsm6dso_board.h"
 #include "nina_passthrough.h"
-#include "shell_engine.h"
-#include "shell_stdio.h"
+#include "shell_serial.h"
 #include "shell_telnet.h"
 #include "priorities.h"
 #include "time_sync.h"
@@ -45,34 +41,17 @@ LOG_MODULE_REGISTER(usb_console, LOG_LEVEL_INF);
 int wifi_shell_init(void);
 
 /* Priorities and stacks (bytes): src/priorities_os.h and
- * common/compat/priorities.h.  The console is the Zephyr build's shell
- * thread (APP_PRIO_SHELL, 14 -> 6, 3072 bytes): the commands run in it.
+ * common/compat/priorities.h.  The console (the shell engine's serial
+ * session, shell_serial.h) is the Zephyr build's shell thread
+ * (APP_PRIO_SHELL, 14 -> 6, 3072 bytes): the commands run in it.
  */
-#define CONSOLE_PRIORITY     APP_PRIO_SHELL
-#define CONSOLE_STACK_SIZE   (APP_STACK_SHELL / sizeof(StackType_t))
 #define MAIN_PRIORITY        APP_PRIO_MAIN
 #define MAIN_STACK_SIZE      (APP_STACK_MAIN / sizeof(StackType_t))
 #define HEARTBEAT_PRIORITY   APP_PRIO_HEARTBEAT
 #define HEARTBEAT_STACK_SIZE (APP_STACK_HEARTBEAT / sizeof(StackType_t))
 
 #define HEARTBEAT_PERIOD_MS 500
-/* The console task wakes at least this often, to notice the terminal opening
- * the port.
- */
-#define CONSOLE_POLL_MS     50
 #define CONSOLE_PROMPT      "freertos:~$ "
-/* Characters taken from the USB code at a time (its receive buffer has 64). */
-#define CONSOLE_READ_SIZE   64
-
-/* The USB console: the terminal of the USB session and the default console
- * of the tasks that have none (freertos/drivers/shell/shell_console.h).
- */
-static struct shell_console usb_console;
-static struct cli usb_cli;
-
-static StackType_t console_stack[CONSOLE_STACK_SIZE];
-static StaticTask_t console_tcb;
-static TaskHandle_t console_task;
 
 static StackType_t main_stack[MAIN_STACK_SIZE];
 static StaticTask_t main_tcb;
@@ -88,46 +67,6 @@ uint64_t app_run_time_us(void)
 	return time_us_64();
 }
 
-/* The USB console's terminal: the Pico SDK's USB CDC ACM driver, which
- * drops the text while no terminal has the port open (DTR) and, when the
- * terminal stops reading, waits up to 500 ms for room in its 64-byte
- * buffer and then drops the rest until room comes again
- * (PICO_STDIO_USB_STDOUT_TIMEOUT_US).
- */
-static void usb_out(struct shell_console *con, const char *buf, size_t len)
-{
-	(void)con;
-	stdio_usb.out_chars(buf, (int)len);
-}
-
-static void cli_write(void *ctx, const char *text, size_t len)
-{
-	shell_console_write(ctx, text, len);
-}
-
-static void cli_execute(void *ctx, char *line)
-{
-	(void)ctx;
-	(void)shell_engine_execute(line);
-}
-
-/* Called by the Pico SDK's USB code when characters have arrived: from its
- * interrupt, or from a task that is writing to the console.
- */
-static void console_chars_available(void *param)
-{
-	(void)param;
-
-	if (xPortIsInsideInterrupt()) {
-		BaseType_t woken = pdFALSE;
-
-		vTaskNotifyGiveFromISR(console_task, &woken);
-		portYIELD_FROM_ISR(woken);
-	} else {
-		xTaskNotifyGive(console_task);
-	}
-}
-
 /* The record of the fatal error that ended the last run, once, at the first
  * connection of the terminal after the start ("fault" shows it again, and
  * the RAM log has it, "dmesg").
@@ -141,39 +80,7 @@ static void console_banner(void)
 	}
 	shown = true;
 	printf("*** The last run ended with a fatal error (\"fault\" shows it again):\n");
-	fault_print(fault_last());
-}
-
-static void console_main(void *arg)
-{
-	char buf[CONSOLE_READ_SIZE];
-	bool connected = false;
-	int n;
-
-	(void)arg;
-
-	shell_console_bind(NULL, &usb_console);
-	cli_init(&usb_cli, CONSOLE_PROMPT, cli_write, cli_execute, &usb_console);
-	stdio_usb.set_chars_available_callback(console_chars_available, NULL);
-
-	for (;;) {
-		/* The terminal has opened the port (DTR): show the prompt. */
-		if (stdio_usb_connected() != connected) {
-			connected = !connected;
-			if (connected) {
-				cli_write(&usb_console, "\r\n", 2);
-				console_banner();
-				cli_prompt(&usb_cli);
-			}
-		}
-		while ((n = stdio_usb.in_chars(buf, sizeof(buf))) > 0) {
-			for (int i = 0; i < n; i++) {
-				cli_input(&usb_cli, buf[i]);
-			}
-		}
-		/* Until characters arrive; the timeout is for noticing the terminal. */
-		ulTaskNotifyTake(pdTRUE, pdMS_TO_TICKS(CONSOLE_POLL_MS));
-	}
+	fault_record_print(fault_last());
 }
 
 static void start_thread(int ret, const char *name)
@@ -241,8 +148,8 @@ static void main_main(void *arg)
 	/* The Telnet shell backend's SYS_INIT(APPLICATION, 95), after the
 	 * "wifi" command's: the listening socket on port 23 (whether or not
 	 * Wi-Fi is connected; the NINA keeps it across disconnections) and the
-	 * tasks "telnet_service" and "shell_telnet"
-	 * (freertos/drivers/telnet/shell_telnet.h).  A failure is logged and
+	 * tasks "shell_telnet" and "telnet_service"
+	 * (common/compat/shell_engine/shell_telnet.h).  A failure is logged and
 	 * leaves no Telnet.
 	 */
 	(void)shell_telnet_init(CONSOLE_PROMPT);
@@ -345,13 +252,13 @@ int main(void)
 		nina_passthrough_run();
 	}
 
-	/* The USB CDC ACM port, and the stdio of the tasks on the consoles
-	 * (freertos/drivers/shell/shell_stdio.h).
+	/* The USB CDC ACM port, its console "usb" (the default console of the
+	 * tasks that have none) and the stdio of the tasks on the consoles
+	 * (common/compat/shell_engine/shell_serial.h on the console transport
+	 * freertos/drivers/shell/shell_serial_os_impl.h).
 	 */
 	stdio_init_all();
-	shell_console_init(&usb_console, "usb", usb_out, NULL);
-	shell_console_set_default(&usb_console);
-	shell_stdio_init(&stdio_usb);
+	shell_serial_init("usb");
 
 	/* heap_4 sets up its heap at the first allocation and reports no free
 	 * space until then ("free"). Nothing else here allocates from it.
@@ -399,8 +306,10 @@ int main(void)
 
 	xTaskCreateStatic(main_main, "main", MAIN_STACK_SIZE, NULL, MAIN_PRIORITY, main_stack,
 			  &main_tcb);
-	console_task = xTaskCreateStatic(console_main, "console", CONSOLE_STACK_SIZE, NULL,
-					 CONSOLE_PRIORITY, console_stack, &console_tcb);
+	/* The USB session, the task "console" (shell_serial.h). */
+	if (shell_serial_start(CONSOLE_PROMPT, console_banner) != 0) {
+		panic("shell_serial_start");
+	}
 	xTaskCreateStatic(heartbeat_main, "heartbeat", HEARTBEAT_STACK_SIZE, NULL,
 			  HEARTBEAT_PRIORITY, heartbeat_stack, &heartbeat_tcb);
 

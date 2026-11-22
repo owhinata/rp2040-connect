@@ -173,11 +173,11 @@ The console is the USB CDC ACM port (UART0 is not used). Opening a terminal show
 |---|---|
 | `app/usb-console/` | The application: start-up, commands, kernel configuration (`FreeRTOSConfig.h`) |
 | `drivers/compat/` | The FreeRTOS part of the Zephyr compatibility layer (runs the shared sources in `common/`) |
-| `drivers/shell/`, `drivers/libc/` | The console and shell on FreeRTOS, the connection of standard output (the shell engine, the RAM log and the network layer are in `../common/`) |
+| `drivers/shell/`, `drivers/libc/` | The USB serial transport of the console and the connection of standard output (the console, shell, Telnet, RAM log and network layer are in `../common/`) |
 | `drivers/kv/` | Reading and writing the flash of the key-value store |
 | `drivers/nina/` | Adds the NINA-W102 driver to the build (the driver is `../common/drivers/nina/`) |
 | `drivers/wifi/` | Brings in Wi-Fi (the code is in `common/`) |
-| `drivers/telnet/`, `drivers/zperf/` | The Telnet shell, and the throughput test |
+| `drivers/telnet/`, `drivers/zperf/` | Bring in the Telnet shell and the throughput test (the code is in `../common/`) |
 | `drivers/i2c_dw/` | I2C0 and DMA (the sensor's bus) |
 | `drivers/lsm6dso/` | Build rules and the start-up check of the LSM6DSOX (the driver and its device are in `common/drivers/lsm6dso/`) |
 | `drivers/imu/` | Brings in the acquisition, the transport and the time synchronization (in `common/imu/`) |

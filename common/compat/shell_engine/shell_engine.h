@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: MIT */
-/* The commands of the FreeRTOS build's shell and their execution.
+/* The commands of the shell engine and their execution.
  *
  * Commands are written as in Zephyr: a handler
  *
@@ -7,7 +7,7 @@
  *
  * registered with SHELL_CMD_REGISTER() or SHELL_CMD_ARG_REGISTER() of
  * <zephyr/shell/shell.h>, with its subcommand sets, in the shared sources
- * (common/) and in the FreeRTOS build's.  The build defines
+ * (common/) and in the build's.  The build defines
  * Z_SHELL_CMD_ROOT_GLOBAL for every source, so a registration makes the
  * global root entry z_shell_root_<syntax>; the application lists the roots
  * in its table, shell_engine_cmds[] (sorted by name, as Zephyr sorts its
@@ -21,7 +21,7 @@
  * them (shell_argv.h), the first one names the command, and the root's
  * words are matched, checked and run by common/shell/zshell.c with Zephyr's
  * help, wildcards and argument count check.  Its output goes to the
- * session (freertos/drivers/shell/shell_console.h).
+ * session (shell_console.h).
  */
 
 #ifndef COMMON_COMPAT_SHELL_ENGINE_SHELL_ENGINE_H
@@ -69,8 +69,9 @@ extern const size_t shell_engine_cmd_count;
  */
 int shell_engine_execute(char *line);
 
-/* The help of the table, as "help" prints it (Zephyr's "Available
- * commands:" list).
+/* The help of the table (Zephyr's "Available commands:" list).  The
+ * engine registers the command "help", which prints it; the application
+ * lists it in its table as SHELL_ENGINE_CMD(help).
  */
 void shell_engine_help(void);
 

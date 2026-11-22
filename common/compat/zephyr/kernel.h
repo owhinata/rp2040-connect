@@ -72,7 +72,12 @@
  *     k_work_queue_start() cannot fail); it may compile to nothing,
  *   - optionally Z_SEM_TAKE_FOREVER(sem): k_sem_take(sem, K_FOREVER) the
  *     OS's shorter way (the work queues' threads sleep with it between
- *     submissions); the default below is k_sem_take() itself.
+ *     submissions); the default below is k_sem_take() itself,
+ *   - for the shell engine (common/compat/shell_engine) only:
+ *     k_is_in_isr(), k_is_pre_kernel() and k_thread_custom_data_get(),
+ *     k_thread_custom_data_set() (declared or inline; the custom data is
+ *     NULL until set and before the kernel runs threads).  The NuttX build
+ *     does not build the engine and has none of them.
  *
  * The OS implements the functions declared here that zephyr_work.c and
  * zephyr_init.c do not: k_mutex_*(), k_sem_*(), k_poll_event_init(),

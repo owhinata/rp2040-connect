@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MIT */
-/* The host test of the Telnet shell (freertos/drivers/telnet/shell_telnet.c)
+/* The host test of the Telnet shell (common/compat/shell_engine/shell_telnet.c)
  * and of "zperf" (common/compat/zperf_iperf3.c, zephyr_zperf_shell.c) on the
- * FreeRTOS POSIX port, with the build's shell (freertos/drivers/shell, the
+ * FreeRTOS POSIX port, with the build's shell (common/compat/shell_engine, the
  * shared zshell.c) and the zsock_*() calls on the host's sockets with the
  * NINA's behaviour (host_sock.c).  This program is the board; the client
  * side is tests/telnet/client.py, which starts it, talks to it over TCP on
@@ -249,7 +249,7 @@ static void usb_main(void *arg)
 	for (int i = 1; i <= USB_LINES; i++) {
 		n += (size_t)snprintf(usb_want + n, sizeof(usb_want) - n, "line %d\r\n", i);
 	}
-	shell_console_bind(NULL, &usb);
+	shell_console_bind(&usb);
 	for (;;) {
 		char line[16] = "lines 40";
 
@@ -398,17 +398,7 @@ static int cmd_quit(const struct shell *sh, size_t argc, char **argv)
 
 SHELL_CMD_REGISTER(quit, NULL, "End the test", cmd_quit);
 
-static int cmd_help(const struct shell *sh, size_t argc, char **argv)
-{
-	(void)sh;
-	(void)argc;
-	(void)argv;
-	shell_engine_help();
-	return 0;
-}
-
-SHELL_CMD_REGISTER(help, NULL, "Prints the help message.", cmd_help);
-
+SHELL_ENGINE_CMD_DECLARE(help);
 SHELL_ENGINE_CMD_DECLARE(zperf);
 
 /* clang-format off */

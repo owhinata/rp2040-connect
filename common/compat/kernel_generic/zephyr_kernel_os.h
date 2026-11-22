@@ -87,6 +87,11 @@
 /* True in an ISR.  Any context. */
 static bool z_os_in_isr(void);
 
+/* True before the OS runs threads (before its scheduler starts), when
+ * nothing may wait and there is no calling thread.  Any context.
+ */
+static bool z_os_pre_kernel(void);
+
 /* k_spin_lock() in a thread: no interrupt handler and no other thread runs
  * until the matching z_os_task_unlock().  It nests (a counter), and the OS
  * calls of this header made inside (z_os_wake()) keep it: they must not
@@ -136,6 +141,13 @@ static char *z_os_thread_name(z_os_thread_t tid);
  * if there is none (Zephyr's k_yield()).  Threads only, not locked.
  */
 static void z_os_yield(void);
+
+/* The calling thread's one pointer of its own (Zephyr's custom data of a
+ * thread), NULL until it sets one; get returns NULL before the OS runs
+ * threads.  Threads only (get also before the scheduler starts).
+ */
+static void *z_os_thread_local_get(void);
+static void z_os_thread_local_set(void *value);
 
 /* Waits and wakes --------------------------------------------------------*/
 

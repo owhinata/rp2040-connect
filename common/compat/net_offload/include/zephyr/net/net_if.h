@@ -111,7 +111,7 @@ bool net_if_ipv4_set_netmask_by_addr(struct net_if *iface, const struct net_in_a
 				     const struct net_in_addr *netmask);
 
 /* The netmask of ADDR, when it is the interface's address, else 0.0.0.0
- * (the "ifconfig" command, freertos/drivers/wifi/ifconfig_shell.c).
+ * (the "ifconfig" command, common/shell/ifconfig_shell.c).
  */
 struct net_in_addr net_if_ipv4_get_netmask_by_addr(struct net_if *iface,
 						   const struct net_in_addr *addr);
