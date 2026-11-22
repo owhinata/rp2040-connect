@@ -2543,3 +2543,13 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
     `fault` に記録（開始から 12.64 秒＝タイマーの読み出し）。
 - 残る `nano_`: フラッシュの KV（整理 11）、FreeRTOS 版のコンソール・シェル・Telnet（整理 9）、`nano_lsm6dso*`（FreeRTOS）、`nano_device_*`。
 - 実機: FreeRTOS 版（この変更の既定のビルド。異常停止の記録が 1 件＝こちらの試験）。
+
+## ログを `common/compat/log/` へ、`z_yield()` の削除（2026-11-22、ユーザーの決定）
+
+- `common/log/`（`app_log.h`、`log_ring.[ch]`、`log_ram.[ch]`、`log_ram_os.h`、`fault_record.[ch]`）→ `common/compat/log/`。パスの変更だけ。NuttX は `nuttx/drivers/log/Make.defs` の VPATH と
+  各所の `-I`、FreeRTOS は `compat.cmake` とアプリの CMake。3 版と自己診断のイメージはバイト単位で一致（Zephyr・NuttX とも `snapshot-1122h`）。ホストテスト 50・63・60。
+  ユーザーとの整理: `app_log.h` は Zephyr の `LOG_*()` の API を Zephyr 以外の版に提供する互換層のもの、リングと RAM のログと異常停止の記録は自前の機能だが、まとめて `common/compat/log/` に置く。
+- 整理 8 でリンカーのベニアの順序を保つために残した大域の `z_yield()` を削除（「残さない」）。`k_sleep()` は `z_os_yield()` を直接呼ぶ。FreeRTOS のイメージは大きさ同じ（237384 B）で 208 バイトが違う。
+  subagent の逆アセンブルの比較: 関数の命令は全部同じで、違うのはベニア 37 個の並び順とそこを指す所だけ（`z_yield()` はもとのイメージでもインライン化されて残っていなかった）。
+  実機（書き込み直後から 3 回 約 70 秒）: 欠番 0、42.8・42.8・42.9%（直前のイメージは 42.8〜42.9%）、時刻の逆行 0。
+- 実機: FreeRTOS 版（この変更の既定のビルド）。

@@ -18,11 +18,4 @@
  */
 z_os_ticks_t z_wait_ticks(k_timeout_t timeout);
 
-/* k_yield() for the sleeps of zephyr_kernel.c (K_NO_WAIT).  A function of
- * its own, not static: the ARM linker names its veneers by the number of
- * the input section, so one section less in this object would reorder the
- * veneers of the whole image.
- */
-void z_yield(void);
-
 #endif /* COMMON_COMPAT_KERNEL_GENERIC_ZEPHYR_OS_INTERNAL_H */

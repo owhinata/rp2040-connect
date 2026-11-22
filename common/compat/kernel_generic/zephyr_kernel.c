@@ -43,7 +43,7 @@
  *   k_thread_name_set()       the thread's name array (z_os_thread_name())
  *   k_sleep(), k_msleep(),    z_os_sleep(ticks + 1): Zephyr's wake-up at the
  *   k_usleep()                current tick + ticks + 1; K_NO_WAIT (0 or less)
- *                             yields (z_yield(): behind the other threads of
+ *                             yields (z_os_yield(): behind the other threads of
  *                             the priority); K_FOREVER suspends the
  *                             thread (z_os_suspend())
  *   k_busy_wait()             z_os_busy_wait_us()
@@ -62,13 +62,6 @@
 #include "zephyr_compat_os.h"
 #include "zephyr_kernel_os.h"
 #include "zephyr_os_internal.h"
-
-/* Scheduling ------------------------------------------------------------------*/
-
-void z_yield(void)
-{
-	z_os_yield();
-}
 
 /* Waits ---------------------------------------------------------------------*/
 
@@ -449,7 +442,7 @@ int32_t k_sleep(k_timeout_t timeout)
 		}
 	}
 	if (timeout.ticks <= 0) {
-		z_yield();
+		z_os_yield();
 		return 0;
 	}
 
