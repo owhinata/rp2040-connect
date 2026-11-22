@@ -16,40 +16,52 @@
 # - the RAM log and "dmesg" (freertos/drivers/log/log_ram.c, on
 #   common/log/log_ring.c);
 # - the shell (freertos/drivers/shell: consoles, the stdio of each task, the
-#   line editor, the command table and the backend of common/shell/zshell.c;
-#   common/shell/subcmd.c; the copies of Zephyr's fnmatch() and getopt in
+#   getopt state of each session and the backend of common/shell/zshell.c;
+#   the shell engine for an OS without a shell of its own,
+#   common/compat/shell_engine: the line editor, the command table and its
+#   execution, the copy of Zephyr's word split; common/shell/subcmd.c; the
+#   copies of Zephyr's fnmatch() and getopt in
 #   common/compat) and newlib's glue (freertos/drivers/libc: the console
-#   streams, -Wl,--wrap=...; the types and constants of the network
+#   streams, -Wl,--wrap=...); the types and constants of the network
 #   headers newlib lacks, <sys/socket.h>, <netinet/in.h>, <netinet/tcp.h>,
 #   <arpa/inet.h>, <poll.h>, <netdb.h>, <sys/uio.h>, and inet_pton() and
-#   inet_ntop(), inet.c: the layer's <zephyr/net/socket.h> is on them);
+#   inet_ntop() (common/compat/libc_net, include/ and inet.c: the layer's
+#   <zephyr/net/socket.h> is on them);
 #   malloc() is the Pico SDK's, with its mutex
 #   (pico_malloc, PICO_USE_MALLOC_MUTEX with pico_multicore, which the
 #   kernel's port links);
 # - the layer's socket part, Zephyr's socket layer down to its list of
 #   socket implementations (<zephyr/net/socket.h>, <zephyr/net/socket_offload.h>,
-#   <zephyr/sys/fdtable.h>): reduced copies of Zephyr's
+#   <zephyr/sys/fdtable.h>), OS-independent, for an OS without a network
+#   stack of its own (common/compat/net_offload): reduced copies of Zephyr's
 #   subsys/net/lib/sockets/sockets.c, getaddrinfo.c and socket_offload.c and
 #   of lib/os/zvfs/zvfs_fdtable.c and zvfs_poll.c (v4.5.0, see their
-#   headers), the linker script's section of the registered implementations
-#   (ld/section_extra_post_text.incl, pico_add_linker_script_override_path()),
-#   and k_heap (zephyr_heap.c); the NINA's sockets register themselves
-#   (freertos/drivers/nina/nina.cmake);
-# - with SELFTEST, the layer's self-test (zephyr_selftest.c and the board's
-#   part, rp2040/zephyr_selftest_port.c) and NANO_SELFTEST=1;
+#   headers), and k_heap (zephyr_heap.c, zephyr_heap.h); here, the linker
+#   script's section of the registered implementations
+#   (ld/section_extra_post_text.incl, pico_add_linker_script_override_path());
+#   the NINA's sockets register themselves (freertos/drivers/nina/nina.cmake);
+# - with SELFTEST, the layer's self-test (common/compat/selftest:
+#   zephyr_selftest.c, on this directory's zephyr_selftest_os.h, and the
+#   board's part, rp2040/zephyr_selftest_port.c), its include directory, and
+#   NANO_SELFTEST=1;
 # - the include directories, the board's port header first
 #   (rp2040/zephyr_os_port.h), then the FreeRTOS part (zephyr_os.h, ...),
-#   freertos/drivers/shell, freertos/drivers/include (app_log_os.h),
-#   freertos/drivers/libc/include (headers newlib does not have, so none
-#   hides one of newlib's), common/compat (the Zephyr headers),
-#   common/log and common/shell;
+#   common/compat/net_offload/include (the network part's Zephyr headers,
+#   before common/compat: its <zephyr/net/net_ip.h> takes the place of
+#   common/compat's, and zephyr_heap.h), freertos/drivers/shell,
+#   common/compat/shell_engine, freertos/drivers/include (app_log_os.h), common/compat/libc_net/include
+#   (headers newlib does not have, so none hides one of newlib's),
+#   common/compat (the Zephyr headers), common/log and common/shell;
 # - the definitions every source sees: Z_SHELL_CMD_ROOT_GLOBAL (a
 #   SHELL_CMD_REGISTER() makes the root z_shell_root_<syntax> for the
 #   application's table, nano_shell.h), CONFIG_GETOPT_LONG=1 (Zephyr's
 #   option, which changes struct sys_getopt_state), PICO_STDOUT_MUTEX=0
 #   (each console has its own, nano_stdio.h);
 # - the prelude of the shared sources (common_prelude.h, -include on each
-#   source under common/ only, as the NuttX build does).
+#   source under common/ only, as the NuttX build does; not on the network
+#   part, common/compat/net_offload and common/compat/libc_net, nor on the
+#   self-test, common/compat/selftest, and the shell engine,
+#   common/compat/shell_engine, which are written without it).
 #
 # The application provides FreeRTOSConfig.h (with
 # configNUM_THREAD_LOCAL_STORAGE_POINTERS >= 1), priorities_os.h and
@@ -61,6 +73,9 @@
 get_filename_component(FREERTOS_COMPAT_DIR ${CMAKE_CURRENT_LIST_DIR} ABSOLUTE)
 get_filename_component(FREERTOS_DRIVERS_DIR ${CMAKE_CURRENT_LIST_DIR}/.. ABSOLUTE)
 get_filename_component(FREERTOS_COMMON_DIR ${CMAKE_CURRENT_LIST_DIR}/../../../common ABSOLUTE)
+set(FREERTOS_NET_OFFLOAD_DIR ${FREERTOS_COMMON_DIR}/compat/net_offload)
+set(FREERTOS_LIBC_NET_DIR ${FREERTOS_COMMON_DIR}/compat/libc_net)
+set(FREERTOS_SHELL_ENGINE_DIR ${FREERTOS_COMMON_DIR}/compat/shell_engine)
 
 function(freertos_zephyr_compat target)
   cmake_parse_arguments(ARG "SELFTEST" "" "" ${ARGN})
@@ -86,46 +101,49 @@ function(freertos_zephyr_compat target)
   # Reduced copies of Zephyr's files (v4.5.0; what was left out is in each
   # header).  Their loops compare an int with ARRAY_SIZE() as Zephyr's do.
   set(zephyr_socket_copies
-    ${FREERTOS_COMPAT_DIR}/lib/os/zvfs/zvfs_fdtable.c
-    ${FREERTOS_COMPAT_DIR}/lib/os/zvfs/zvfs_poll.c
-    ${FREERTOS_COMPAT_DIR}/subsys/net/lib/sockets/sockets.c
-    ${FREERTOS_COMPAT_DIR}/subsys/net/lib/sockets/getaddrinfo.c
-    ${FREERTOS_COMPAT_DIR}/subsys/net/lib/sockets/socket_offload.c
+    ${FREERTOS_NET_OFFLOAD_DIR}/lib/os/zvfs/zvfs_fdtable.c
+    ${FREERTOS_NET_OFFLOAD_DIR}/lib/os/zvfs/zvfs_poll.c
+    ${FREERTOS_NET_OFFLOAD_DIR}/subsys/net/lib/sockets/sockets.c
+    ${FREERTOS_NET_OFFLOAD_DIR}/subsys/net/lib/sockets/getaddrinfo.c
+    ${FREERTOS_NET_OFFLOAD_DIR}/subsys/net/lib/sockets/socket_offload.c
   )
 
   target_sources(${target} PRIVATE
     ${FREERTOS_COMPAT_DIR}/zephyr_kernel.c
     ${FREERTOS_COMPAT_DIR}/zephyr_mutex.c
-    ${FREERTOS_COMPAT_DIR}/zephyr_heap.c
+    ${FREERTOS_NET_OFFLOAD_DIR}/zephyr_heap.c
     ${FREERTOS_COMPAT_DIR}/zephyr_sys_clock.c
     ${zephyr_socket_copies}
     ${FREERTOS_DRIVERS_DIR}/log/log_ram.c
-    ${FREERTOS_DRIVERS_DIR}/shell/cli.c
+    ${FREERTOS_SHELL_ENGINE_DIR}/cli.c
     ${FREERTOS_DRIVERS_DIR}/shell/getopt_state.c
     ${FREERTOS_DRIVERS_DIR}/shell/nano_console.c
-    ${FREERTOS_DRIVERS_DIR}/shell/nano_shell.c
+    ${FREERTOS_SHELL_ENGINE_DIR}/nano_shell.c
     ${FREERTOS_DRIVERS_DIR}/shell/nano_stdio.c
-    ${FREERTOS_DRIVERS_DIR}/shell/shell_argv.c
+    ${FREERTOS_SHELL_ENGINE_DIR}/shell_argv.c
     ${FREERTOS_DRIVERS_DIR}/libc/stdio_wrap.c
-    ${FREERTOS_DRIVERS_DIR}/libc/inet.c
+    ${FREERTOS_LIBC_NET_DIR}/inet.c
     ${common_sources}
     ${zephyr_copies}
   )
 
   if(ARG_SELFTEST)
     target_sources(${target} PRIVATE
-      ${FREERTOS_COMPAT_DIR}/zephyr_selftest.c
+      ${FREERTOS_COMMON_DIR}/compat/selftest/zephyr_selftest.c
       ${FREERTOS_COMPAT_DIR}/rp2040/zephyr_selftest_port.c
     )
+    target_include_directories(${target} PRIVATE ${FREERTOS_COMMON_DIR}/compat/selftest)
     target_compile_definitions(${target} PRIVATE NANO_SELFTEST=1)
   endif()
 
   target_include_directories(${target} PRIVATE
     ${FREERTOS_COMPAT_DIR}/rp2040
     ${FREERTOS_COMPAT_DIR}
+    ${FREERTOS_NET_OFFLOAD_DIR}/include
     ${FREERTOS_DRIVERS_DIR}/shell
+    ${FREERTOS_SHELL_ENGINE_DIR}
     ${FREERTOS_DRIVERS_DIR}/include
-    ${FREERTOS_DRIVERS_DIR}/libc/include
+    ${FREERTOS_LIBC_NET_DIR}/include
     ${FREERTOS_COMMON_DIR}/compat
     ${FREERTOS_COMMON_DIR}/log
     ${FREERTOS_COMMON_DIR}/shell

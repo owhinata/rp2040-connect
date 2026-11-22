@@ -11,16 +11,23 @@ Most of the FreeRTOS build's sources are in `common/`, which the three builds sh
 transport, time synchronization, calibration, key-value store, the LSM6DSO, NINA and I2C drivers, the
 shell's command handling). The shared sources are written on Zephyr's API, so the FreeRTOS build, like the
 NuttX build, runs them on a compatibility layer that provides Zephyr's API under Zephyr's names. The
-OS-independent part of the layer is `common/compat/`, the FreeRTOS part `freertos/drivers/compat/`.
+OS-independent part of the layer is `common/compat/`, the FreeRTOS part `freertos/drivers/compat/`. The
+layer's network part for an OS without a network stack of its own (Zephyr's socket layer, the network
+interface, `k_heap`) is `common/compat/net_offload/`, and the POSIX network headers newlib lacks are
+`common/compat/libc_net/`; only the FreeRTOS build uses them.
 
 ## Directories
 
 | Place | Contents |
 |---|---|
 | `app/usb-console/` | Start-up (`main.c`), the commands of this build only (`commands.c`), the kernel configuration (`FreeRTOSConfig.h`), the priority mapping (`priorities_os.h`), time (`os_clock.h`), the tick hook (`tick.c`; the catch-up's decision in `tick_catchup.h`), the CPU load (`idle.c`), fatal errors (`fault.[ch]`), the free interrupt stack (`irq_stack.c`) |
-| `drivers/compat/` | The FreeRTOS part of the layer: the kernel (`zephyr_kernel.c`, `zephyr_mutex.c`, `zephyr_os*.h`, `k_heap` in `zephyr_heap.c`), the network interface and its start (`zephyr_net_if.c`, `zephyr_net_init.c`), Zephyr's socket layer (reduced copies of Zephyr's files in `subsys/net/lib/sockets/` and `lib/os/zvfs/`, their headers under `zephyr/`, the linker script's part `ld/`), the wall clock (`zephyr_sys_clock.c`), the prelude header (`common_prelude.h`), the self-test (`zephyr_selftest.[ch]`), the RP2040 part (`rp2040/`: GPIO bank 0, chip ID) |
-| `drivers/shell/` | Line editing (`cli.c`), the consoles and each task's output (`nano_console.c`), the replacement of the Pico SDK's stdio driver (`nano_stdio.c`), the command table and execution (`nano_shell.c`), a copy of Zephyr's argument split (`shell_argv.c`), getopt per session (`getopt_state.c`) |
-| `drivers/libc/` | Wrappers of newlib's FILE functions (`stdio_wrap.c`), the socket headers newlib lacks (`include/`, types and constants only), `inet_pton` and `inet_ntop` (`inet.c`) |
+| `drivers/compat/` | The FreeRTOS part of the layer: the kernel (`zephyr_kernel.c`, `zephyr_mutex.c`, `zephyr_os*.h`), the start of the network part (`zephyr_net_init.c`) and its event thread (`zephyr_net_mgmt_os.h`), the linker script's part for the socket implementations (`ld/`), the wall clock (`zephyr_sys_clock.c`), the prelude header (`common_prelude.h`), the self-test's OS part (`zephyr_selftest_os.h`), the RP2040 part (`rp2040/`: GPIO bank 0, chip ID, the self-test's board part `zephyr_selftest_port.c`) |
+| `common/compat/selftest/` | The layer's self-test, OS-independent (`zephyr_selftest.c`; `zephyr_selftest.h` lists what an OS's part and a board's part provide) |
+| `common/compat/net_offload/` | The layer's network part, OS-independent: Zephyr's socket layer (reduced copies of Zephyr's files in `subsys/net/lib/sockets/` and `lib/os/zvfs/`), the network interface (`zephyr_net_if.c`), `k_heap` (`zephyr_heap.c`), their headers under `include/` (`zephyr/net/`, `zephyr/sys/fdtable.h`, `zephyr_heap.h`, which `zephyr_os.h` includes) |
+| `common/compat/libc_net/` | The socket headers newlib lacks (`include/`, types and constants only), `inet_pton` and `inet_ntop` (`inet.c`) |
+| `drivers/shell/` | The consoles and each task's output (`nano_console.c`), the replacement of the Pico SDK's stdio driver (`nano_stdio.c`), getopt per session (`getopt_state.c`), the shell's OS part (`zshell_os_impl.h`, `zephyr_os_shell.h`) |
+| `common/compat/shell_engine/` | The shell for an OS without one of its own, OS-independent: line editing (`cli.c`), the command table and execution (`nano_shell.c`), a copy of Zephyr's argument split (`shell_argv.c`) |
+| `drivers/libc/` | Wrappers of newlib's FILE functions (`stdio_wrap.c`) |
 | `drivers/log/` | The RAM log (`log_ram.c`; the ring is `common/log/log_ring.c`) |
 | `drivers/kv/` | The flash boundary of the key-value store (`nano_flash_kv.c`) and the linker script override (`ld/`, `kv.cmake`) |
 | `drivers/nina/` | Only `nina.cmake`, which adds the NINA driver to the build. The driver is in `common/drivers/nina/`, and this build's parts are its FreeRTOS binding `common/drivers/nina/port/freertos/`: the `nina_os.h` boundary (`nina_os.c`), the passthrough's host side (`nina_passthrough_os.c`), SPI1 and the module's lines on the Pico SDK (`nina_bus_rp2040.c`), the passthrough's module side (`nina_passthrough_bus_rp2040.c`: UART1, the module's lines, the watchdog's scratch registers, the LED); the sockets and the interface are the Zephyr binding's (`common/drivers/nina/port/zephyr/nina_socket.c`, `nina_net.c`) |
@@ -119,7 +126,7 @@ the interval of interest); timed by the TIMER.
 
 - Commands are written with Zephyr's shell API (`SHELL_CMD_REGISTER()` and so on); matching, help,
   wildcards and the argument count check are done by the shared `common/shell/zshell.c`. The command table
-  is `nano_shell.c`, the commands of this build only are in `app/usb-console/src/commands.c`.
+  and the line editor are `common/compat/shell_engine/` (`nano_shell.c`, `cli.c`), the commands of this build only are in `app/usb-console/src/commands.c`.
 - A console (`nano_console.c`) is a session's terminal (USB or Telnet); each task is bound to one console
   (a thread local storage pointer), and its `printf()` and `fprintf(stderr)` go there. Tasks bound to no
   console write to USB. The replacement of the Pico SDK's stdio driver (`nano_stdio.c`) and `--wrap` of
@@ -186,7 +193,7 @@ boundary (the four functions of `common/compat/nano_flash_kv.h`, `drivers/kv/nan
   builds; the FreeRTOS binding's does not fail).
 - Sockets: the layer has Zephyr's socket layer down to its list of socket implementations (reduced
   copies of Zephyr's `sockets.c`, `getaddrinfo.c`, `socket_offload.c`, `zvfs_fdtable.c` and
-  `zvfs_poll.c`; what each leaves out is in its header). An implementation registers itself with
+  `zvfs_poll.c` in `common/compat/net_offload/`; what each leaves out is in its header). An implementation registers itself with
   `NET_SOCKET_OFFLOAD_REGISTER()` or `NET_SOCKET_REGISTER()`; the linker script collects the
   registrations sorted by priority (`drivers/compat/ld/section_extra_post_text.incl`), and
   `zsock_socket()` takes the first whose family matches and whose `is_supported()` accepts. The other
@@ -198,7 +205,7 @@ boundary (the four functions of `common/compat/nano_flash_kv.h`, `drivers/kv/nan
   `nina_event`). The table has 16 descriptors, 0 to 15 from the lowest free one (none kept for stdin,
   stdout and stderr, as in the Zephyr build); the NINA has ten sockets, so an eleventh gets `EMFILE`.
   The descriptors are not newlib's; only the `zsock_*()` calls take them. The types and constants newlib
-  lacks are in `drivers/libc/include/`, with Linux's values (`EAI_*` are Zephyr's negative values); the
+  lacks are in `common/compat/libc_net/include/`, with Linux's values (`EAI_*` are Zephyr's negative values); the
   layer's `<zephyr/net/net_ip.h>` gives them Zephyr's `net_*` names.
 - What the sockets do is the Zephyr build's: a poll of the module that fails is `POLLERR` on that
   socket (the call does not fail); a `poll` takes each descriptor's mutex, so it waits for a call in
@@ -218,7 +225,7 @@ boundary (the four functions of `common/compat/nano_flash_kv.h`, `drivers/kv/nan
 - Wi-Fi: the core's Wi-Fi operations with the Zephyr build's binding of them
   (`common/drivers/nina/port/zephyr/nina_net.c`: Zephyr's Wi-Fi management and interface, the three threads),
   the credentials (a copy of Zephyr's `wifi_credentials`) and the automatic reconnection
-  (`common/imu/wifi_profile.c`) run on the layer's `net_if`, `net_mgmt` and `wifi_mgmt` (`zephyr_net_if.c`;
+  (`common/imu/wifi_profile.c`) run on the layer's `net_if`, `net_mgmt` and `wifi_mgmt` (`net_offload/zephyr_net_if.c`;
   `zephyr_net_init.c` registers the interface at the start, as Zephyr's `net_init()`); this build has no
   network layer of its own, so it uses the Zephyr binding. The `wifi` command
   is `common/compat/zephyr_wifi_shell.c`, keeping only the options this board can use; `wifi cred` is an
@@ -343,7 +350,7 @@ Given as `freertos/script/build.sh -DNAME=VALUE` (kept until `--clean`).
 
 A test command only in builds with `-DNANO_SELFTEST=ON`. Run it with the measurement stopped and the
 board at rest. It prints, as `N of M tests failed`, the results for the layer
-(`drivers/compat/zephyr_selftest.c`: mutexes, semaphores, sleep, clock, wake-ups from interrupts,
+(`common/compat/selftest/zephyr_selftest.c`: mutexes, semaphores, sleep, clock, wake-ups from interrupts,
 `k_poll`, work, spinlock, atomic, static threads, time slices, the tick's catch-up after interrupts are disabled for 50 ms; 22 items), I2C0
 (`drivers/i2c_dw/i2c_dw_selftest.c`: 6 items; with I2C1 built, a 7th, `i2c1`: with nothing connected,
 i2c1 is ready, its pins are I2C with the pull-ups, a read from 0x10 ends with `-EIO` in under 100 ms,

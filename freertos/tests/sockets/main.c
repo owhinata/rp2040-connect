@@ -1,9 +1,9 @@
 /* SPDX-License-Identifier: MIT */
 /* The host test of the layer's socket part on the FreeRTOS POSIX port: the
- * reduced copies of Zephyr's socket layer (freertos/drivers/compat/subsys/
+ * reduced copies of Zephyr's socket layer (common/compat/net_offload/subsys/
  * net/lib/sockets: sockets.c, getaddrinfo.c, socket_offload.c) and
- * descriptor table (freertos/drivers/compat/lib/os/zvfs: zvfs_fdtable.c,
- * zvfs_poll.c), and k_heap (freertos/drivers/compat/zephyr_heap.c), as
+ * descriptor table (common/compat/net_offload/lib/os/zvfs: zvfs_fdtable.c,
+ * zvfs_poll.c), and k_heap (common/compat/net_offload/zephyr_heap.c), as
  * freertos/drivers/compat/compat.cmake builds them, on fake socket
  * implementations registered here and the host linker's section of them
  * (net_socket_register.ld here):

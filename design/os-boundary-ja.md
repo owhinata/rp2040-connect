@@ -17,6 +17,10 @@ Zephyr そのものに対してビルドし、`common/compat` を使いません
 | シェルのコマンド | `common/shell` | `zshell.c`（Zephyr のシェルのコマンド処理）、`subcmd.c`、`nina_shell.c`、`i2c_dma_shell.c` |
 | ログ | `common/log` | RAM ログのリング（`log_ring.c`）、`LOG_*` マクロ（`app_log.h`）、異常停止の記録の文面（`fault_record.c`） |
 | 互換層の共有部分 | `common/compat` | Zephyr のヘッダー（`common/compat/zephyr/`）、ワークアイテム、RTIO、gpio0 のデバイス、net_mgmt、Wi-Fi の要求、KV のフラッシュのデバイス、Zephyr の NVS・settings・getopt・Wi-Fi の資格情報・zperf の写し |
+| 互換層のネットワークの部分（ネットワーク層を持たない OS のため） | `common/compat/net_offload` | Zephyr のソケット層（`subsys/net/lib/sockets`・`lib/os/zvfs` を縮めた写し）、ネットワークのインターフェース 1 つ（`zephyr_net_if.c`）、`k_heap`（`zephyr_heap.c`）、それらのヘッダーは専用のインクルードのルート `include/`（`zephyr/net/net_if.h`・`net_ip.h`・`socket.h`・`socket_offload.h`、`zephyr/sys/fdtable.h`、`zephyr_heap.h`）。使うのは F だけ |
+| POSIX のネットワークのヘッダー（それを持たない C ライブラリーのため） | `common/compat/libc_net` | `include/`（`arpa/inet.h`、`netdb.h`、`netinet/in.h`、`netinet/tcp.h`、`poll.h`、`sys/socket.h`、`sys/uio.h`）、`inet_pton()`・`inet_ntop()`（`inet.c`）。使うのは F だけ |
+| 互換層の自己診断（OS の部分の受け入れ試験） | `common/compat/selftest` | `zephyr_selftest.c`（22 項目）、境界の宣言 `zephyr_selftest.h`（3 節）。使うのは F の `-DNANO_SELFTEST=ON` のビルドと F のホストテストだけ |
+| 自分のシェルを持たない OS のためのシェル | `common/compat/shell_engine` | 行編集（`cli.c`）、`Z_SHELL_CMD_ROOT_GLOBAL` のルートのコマンドの表と実行（`nano_shell.c`。`nano_shell_cmds[]` はアプリが用意する）、Zephyr の単語の分割（`shell_argv.c`）。使うのは F だけ |
 | ホストテスト | `common/tests` | テストと偽物。`common/tests/zephyr_fakes` はカーネルの OS 部分のホスト用の実装 |
 | Zephyr 版 | `zephyr/app/usb-console` | `main()`、`log_ram.c`、`kv_store_os.h`、`wifi_profile_os.h`。上流の Zephyr と、`zephyr/manifest/zephyr/patches` のパッチ |
 | N: ボード | `N-board/` | 起動、tickless のタイマー、アイドルループと CPU 負荷、GPIO バンク 0、KV のフラッシュ、USB シリアル、`nano_mono_us()`（`include/nano_timer.h`） |
@@ -27,9 +31,9 @@ Zephyr そのものに対してビルドし、`common/compat` を使いません
 | N: アプリ | `nuttx/apps/*` | init タスク（`init`）、コマンドごとの builtin アプリ、シェルの OS 部分（`subcmd`）、Wi-Fi とセンサーの部分 |
 | N: NuttX の変更 | `nuttx/patches` | NuttX と nuttx-apps へのローカルのパッチ |
 | F: アプリ | `freertos/app/usb-console` | `main()`、`FreeRTOSConfig.h`、tick のフック、アイドルと CPU 負荷、`os_clock.h`、`priorities_os.h`、コマンドの表、異常停止の処理 |
-| F: 互換層の OS 部分 | `freertos/drivers/compat` | `zephyr_os*.h`、カーネル、ミューテックス、ヒープ、net_if、実時間の時計、ソケット層の写し、`rp2040/`（ポートのヘッダー、GPIO バンク 0、hwinfo）、プレリュード |
-| F: シェル | `freertos/drivers/shell` | コンソール、行編集、コンソールごとの stdio、getopt の状態、シェルの OS 部分 |
-| F: C ライブラリーの追加 | `freertos/drivers/libc` | newlib に無い POSIX のソケットのヘッダー、`inet_pton()`・`inet_ntop()`、stdout・stderr の置き換え |
+| F: 互換層の OS 部分 | `freertos/drivers/compat` | `zephyr_os*.h`、カーネル、ミューテックス、実時間の時計、ネットワークの部分の開始とその事象のスレッド、ソケットの登録のためのリンカースクリプトの部分、`rp2040/`（ポートのヘッダー、GPIO バンク 0、hwinfo、自己診断のボードの部分）、自己診断の OS の部分（`zephyr_selftest_os.h`）、プレリュード |
+| F: シェル | `freertos/drivers/shell` | コンソール、コンソールごとの stdio、getopt の状態、シェルの OS 部分 |
+| F: C ライブラリーの追加 | `freertos/drivers/libc` | stdout・stderr の置き換え |
 | F: そのほかの OS 部分 | `freertos/drivers/{include,log,kv,telnet,wifi,sensor_shell,imu,zperf}` | `app_log_os.h`、`log_ram.c`、KV のフラッシュ、Telnet、Wi-Fi の OS ヘッダー、センサーのシェルの OS 部分、ソースごとのプレリュード、ビルドのファイル |
 | F: ドライバー | `freertos/drivers/<ドライバー>/*.cmake` | 各ドライバーのソースとオプション |
 
@@ -53,7 +57,7 @@ Zephyr そのものに対してビルドし、`common/compat` を使いません
 | `K_PRIO_PREEMPT(x)` | Zephyr の優先度 x の OS の優先度。順序を保つ | `NANO_PRIO_FROM_ZEPHYR`（118 − x） | `NANO_PRIO_FROM_ZEPHYR`（20 − x） |
 | `k_cycle_get_32()`、`k_cycle_get_64()` | 1 MHz のカウンター | `nano_mono_us()` | `nano_mono_us()` |
 
-F の `zephyr_os.h` には `struct k_heap`、`K_HEAP_DEFINE()`、`k_heap_alloc()`、`k_heap_free()` もあります（4 節）。
+F の `zephyr_os.h` は `common/compat/net_offload/include/zephyr_heap.h` も読みます: `struct k_heap`、`K_HEAP_DEFINE()`、`k_heap_alloc()`、`k_heap_free()`（4 節）。
 
 ### 2.2 OS が実装する関数（21 関数、1 オブジェクト）
 
@@ -145,6 +149,8 @@ atomic の操作そのものは共有です（`k_spin_lock()` の上）。
 | Wi-Fi のプロファイル | `common/imu/wifi_profile.c` が読む | `extern k_tid_t wifi_reconnect_tid;` | `common/imu/wifi_profile.c` | `nuttx/apps/wifi/wifi_profile_os.h` | `freertos/drivers/wifi/wifi_profile_os.h` |
 | センサーのシェル | `common/drivers/sensor_shell/sensor_shell.c` と `common/compat/sensor_shell_stream.c` が最初に読む | `CONFIG_SENSOR_SHELL_STREAM`、`_THREAD_STACK_SIZE`、`_TRIG_PRINT_TIMEOUT_MS`、`_MAX_TRIGGER_DEVICES`。`sensor_shell_os_get_arm()`、`sensor_shell_os_get_wait()`、`sensor_shell_os_processing_callback` | その 2 つのファイル | `nuttx/apps/sensor/sensor_shell_os.h`、`sensor_shell_nuttx.h`、`sensor_shell_nuttx.c` | `freertos/drivers/sensor_shell/sensor_shell_os.h`、`sensor_shell_os.c` |
 | 互換層の開始 | `common/compat/zephyr_compat.h` | `zephyr_compat_initialize()`、`K_THREAD_DEFINE_START(name)` | 起動 | 2 節 | 2 節 |
+| 互換層の自己診断、OS の部分 | `common/compat/selftest/zephyr_selftest.h`（`zephyr_selftest.c` が `<zephyr/kernel.h>` のあとに `"zephyr_selftest_os.h"` を読む） | 型 `zephyr_selftest_os_prio_t`、`ZEPHYR_SELFTEST_OS_NAME_MAX`、`zephyr_selftest_os_tick()`、`_tick_sync()`、`_thread_create()`、`_thread_exit()`、`_prio_get()`、`_prio_self()`、`_name_get()`、`_current()`、`_in_isr()`、`_sched_lock()`、`_sched_unlock()` | `common/compat/selftest/zephyr_selftest.c` | — （ビルドしない） | `freertos/drivers/compat/zephyr_selftest_os.h`（FreeRTOS のタスク、ボードとホストで同じ） |
+| 互換層の自己診断、ボードの部分 | 同じ | `zephyr_selftest_port_alarm()`、`_quiet()`、`_realtime()`、`_mask_irqs()` | 同じ | — | ボード `freertos/drivers/compat/rp2040/zephyr_selftest_port.c`、ホスト `freertos/tests/compat/main.c` |
 | F: tick とネットワークの開始 | `freertos/drivers/compat/zephyr_compat_os.h` | `zephyr_compat_tick()`、`zephyr_net_initialize()` | F の tick のフック、`main_main()` | — | `freertos/drivers/compat/zephyr_kernel.c`、`zephyr_net_init.c` |
 
 Zephyr 版は自分の `zephyr/app/usb-console/src/kv_store_os.h` と `wifi_profile_os.h` を持ちます。
@@ -153,16 +159,18 @@ Zephyr 版は自分の `zephyr/app/usb-console/src/kv_store_os.h` と `wifi_prof
 
 ### 4.1 OS ごとに用意する `<zephyr/...>` ヘッダー
 
-インクルードパスでは OS のディレクトリーが先で、ほかは `common/compat/zephyr/` にあります。
+インクルードパスでは OS のディレクトリーが先で、ほかは `common/compat/zephyr/` にあります。F のネットワークのヘッダーは
+`common/compat/net_offload/include` にあり、F はそれを OS のディレクトリーのあと、`common/compat` の前に置きます。N のインクルードパスには
+ありません。
 
 | ヘッダー | N | F |
 |---|---|---|
 | `zephyr/drivers/i2c.h` | `nuttx/drivers/compat/zephyr/drivers/i2c.h`。`struct i2c_master_s` の上（`zephyr_i2c.c`） | `freertos/drivers/compat/zephyr/drivers/i2c.h`（Zephyr の API の表） |
-| `zephyr/net/net_if.h` | `struct net_driver_s` の上（`zephyr_net_if.c`） | NINA のインターフェース 1 つ（`zephyr_net_if.c`） |
-| `zephyr/net/net_ip.h` | —（`common/compat` のものを使う） | `common/compat` のものに代わる。POSIX の型に `net_*` の名前を付ける |
-| `zephyr/net/socket.h` | `zsock_*()` は NuttX の `socket()`・`poll()` など（usrsock） | Zephyr のソケット層: `subsys/net/lib/sockets/sockets.c`、`socket_offload.c`、`getaddrinfo.c` |
-| `zephyr/net/socket_offload.h` | — | オフロードした名前解決 |
-| `zephyr/sys/fdtable.h` | — | 記述子の表: `lib/os/zvfs/zvfs_fdtable.c`、`zvfs_poll.c` |
+| `zephyr/net/net_if.h` | `struct net_driver_s` の上（`zephyr_net_if.c`） | `common/compat/net_offload`: NINA のインターフェース 1 つ（`zephyr_net_if.c`） |
+| `zephyr/net/net_ip.h` | —（`common/compat` のものを使う） | `common/compat/net_offload`。`common/compat` のものに代わる。POSIX の型に `net_*` の名前を付ける |
+| `zephyr/net/socket.h` | `zsock_*()` は NuttX の `socket()`・`poll()` など（usrsock） | `common/compat/net_offload`: Zephyr のソケット層、`subsys/net/lib/sockets/sockets.c`、`socket_offload.c`、`getaddrinfo.c` |
+| `zephyr/net/socket_offload.h` | — | `common/compat/net_offload`: オフロードした名前解決 |
+| `zephyr/sys/fdtable.h` | — | `common/compat/net_offload`: 記述子の表、`lib/os/zvfs/zvfs_fdtable.c`、`zvfs_poll.c` |
 | `zephyr/sys/__assert.h` | `DEBUGASSERT()` | 何もしない（`CONFIG_ASSERT` が無いのと同じ） |
 | `zephyr/sys/clock.h` | `clock_gettime()`・`clock_settime()` の上のインライン | `zephyr_sys_clock.c`（TIMER と基準） |
 
@@ -172,7 +180,7 @@ Zephyr 版は自分の `zephyr/app/usb-console/src/kv_store_os.h` と `wifi_prof
 |---|---|---|---|
 | `nano_mono_us()`: 起動からの µs、TIMER、どの文脈からでも | 各版だけ | `N-board/include/nano_timer.h` | `freertos/app/usb-console/src/os_clock.h` |
 | `common/imu/time_sync.c` が読む TIMER | ファイル自身（`DT_REG_ADDR(DT_NODELABEL(timer))` = 0x40054000、`sys_read32()`） | — | `freertos/drivers/imu/time_sync_prelude.h` が SDK の `TIMER_BASE` を消す |
-| `k_heap` | F の `zephyr_os.h` | ビルドしない | `freertos/drivers/compat/zephyr_heap.c`。使うのは `common/drivers/nina/port/zephyr/nina_socket.c` |
+| `k_heap` | `common/compat/net_offload/include/zephyr_heap.h`（F の `zephyr_os.h` が読む） | ビルドしない | `common/compat/net_offload/zephyr_heap.c`。使うのは `common/drivers/nina/port/zephyr/nina_socket.c` |
 | `zephyr_compat_tick()` | F の `zephyr_compat_os.h` | —（wdog） | `vApplicationTickHook()`（`freertos/app/usb-console/src/tick.c`）が呼ぶ |
 | `zephyr_net_initialize()` | F の `zephyr_compat_os.h` | —（`nano_bringup.c` の `nina_net_initialize()`、`common/drivers/nina/port/nuttx/nina_net.h`） | `freertos/drivers/compat/zephyr_net_init.c` |
 | `hwinfo_get_device_id()` | `common/compat/zephyr/drivers/hwinfo.h` | `nuttx/drivers/compat/zephyr_hwinfo.c` | `freertos/drivers/compat/rp2040/zephyr_hwinfo.c` |
@@ -195,7 +203,7 @@ Zephyr 版は自分の `zephyr/app/usb-console/src/kv_store_os.h` と `wifi_prof
 
 | 点 | N | F |
 |---|---|---|
-| 登録 | コマンドごとの builtin アプリ。`SHELL_CMD_REGISTER()` が `main()`（`Z_SHELL_CMD_NAMED_MAIN` なら `z_shell_main_<名前>()`）を作る | `Z_SHELL_CMD_ROOT_GLOBAL`: 大域のルートの要素を `nano_shell_cmds[]`（`freertos/app/usb-console/src/commands.c`）に並べ、`freertos/drivers/shell/nano_shell.c` が動かす |
+| 登録 | コマンドごとの builtin アプリ。`SHELL_CMD_REGISTER()` が `main()`（`Z_SHELL_CMD_NAMED_MAIN` なら `z_shell_main_<名前>()`）を作る | `Z_SHELL_CMD_ROOT_GLOBAL`: 大域のルートの要素を `nano_shell_cmds[]`（`freertos/app/usb-console/src/commands.c`）に並べ、`common/compat/shell_engine/nano_shell.c` が動かす |
 | `SHELL_SUBCMD_ADD()` | 大域の要素。親のソースが手で並べる | 同じ |
 | getopt | Zephyr の getopt はビルドしない。`nuttx/apps/wifi/wifi_credentials_shell.c` が `sys_getopt_*` を `getopt_long()` に読み替える | `common/compat/lib/utils/getopt` の写し。状態はセッションごと（`freertos/drivers/shell/getopt_state.c` の `sys_getopt_state_get()`、`z_getopt_global_state_update()`）。コマンドの前に `sys_getopt_init()` で戻す |
 | `zshell.c` の stdio: `printf()`、`fprintf(stderr)`、`fflush(stdout)` がコマンドの端末に届くこと。1 行あたり約 1.2 KB の `calloc()` | コマンドごとのタスクが自分の stdio を持つ | `freertos/drivers/shell/nano_stdio.c`（呼んだタスクのコンソール）、`freertos/drivers/libc/stdio_wrap.c`（stdout・stderr の呼び出しの `--wrap`） |
@@ -247,7 +255,7 @@ Zephyr 版は自分の `zephyr/app/usb-console/src/kv_store_os.h` と `wifi_prof
 
 | N | F |
 |---|---|
-| NuttX の libc（`<sys/socket.h>`、`<netinet/in.h>`、`<arpa/inet.h>`、`<netdb.h>`、`<poll.h>`） | `freertos/drivers/libc/include`: `arpa/inet.h`、`netdb.h`、`netinet/in.h`、`netinet/tcp.h`、`poll.h`、`sys/socket.h`、`sys/uio.h`。`freertos/drivers/libc/inet.c` |
+| NuttX の libc（`<sys/socket.h>`、`<netinet/in.h>`、`<arpa/inet.h>`、`<netdb.h>`、`<poll.h>`） | `common/compat/libc_net/include`: `arpa/inet.h`、`netdb.h`、`netinet/in.h`、`netinet/tcp.h`、`poll.h`、`sys/socket.h`、`sys/uio.h`。`common/compat/libc_net/inet.c` |
 
 ## 5. ドライバー
 
@@ -269,6 +277,6 @@ Zephyr 版は自分の `zephyr/app/usb-console/src/kv_store_os.h` と `wifi_prof
 | アイドルループ | `N-board/src/nano_idle.c` | `freertos/app/usb-console/src/idle.c` |
 | USB デバイスのスタック、コンソールの経路 | `cdcacm`、`N-board/src/nano_usbserial.c`。Telnet は `nuttx/apps/init/nano_telnet.c` | Pico SDK の `stdio_usb`（TinyUSB）。`freertos/drivers/shell/nano_console.c`、`nano_stdio.c`。Telnet は `freertos/drivers/telnet/nano_telnet.c` |
 | ヒープ | NuttX のもの | FreeRTOS の `heap_4`、32 KiB（`configTOTAL_HEAP_SIZE`） |
-| OS 自身のシェル | nsh（セッションは `nano_init.c`） | `freertos/drivers/shell/cli.c`、`nano_shell.c` |
+| OS 自身のシェル | nsh（セッションは `nano_init.c`） | 無い。共有のエンジン `common/compat/shell_engine`（`cli.c`・`nano_shell.c`）を `freertos/drivers/shell` のコンソールの上で使う |
 | 致命的なエラー | `CONFIG_BOARD_RESET_ON_ASSERT`、報告は RAM ログ | `freertos/app/usb-console/src/fault.c` と `common/log/fault_record.c` |
 | ビルドの仕組みと構成 | Make、Kconfig、`defconfig`、`nuttx/patches` | CMake、`FreeRTOSConfig.h`、`freertos/drivers/*/*.cmake` |

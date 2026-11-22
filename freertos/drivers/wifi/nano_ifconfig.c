@@ -2,7 +2,7 @@
 /* The "ifconfig" command of the FreeRTOS build: the NuttX build's
  * "ifconfig" (nsh) without arguments or with the interface's name, with the
  * same lines, on the state of the layer's one interface
- * (<zephyr/net/net_if.h>, freertos/drivers/compat/zephyr_net_if.c), which
+ * (<zephyr/net/net_if.h>, common/compat/net_offload/zephyr_net_if.c), which
  * the NINA driver's Zephyr binding (common/drivers/nina/port/zephyr/nina_net.c)
  * keeps as in the Zephyr build (the NuttX build's binding keeps it in
  * wlan0).  It sets nothing (NuttX's "ifconfig <name> <address>

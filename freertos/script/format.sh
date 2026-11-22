@@ -1,7 +1,11 @@
 #!/usr/bin/env bash
 # Format the C sources under freertos/app/, freertos/drivers/,
-# freertos/tests/ and common/drivers/*/port/freertos/ (the shared drivers'
-# FreeRTOS bindings) with clang-format and
+# freertos/tests/, common/drivers/*/port/freertos/ (the shared drivers'
+# FreeRTOS bindings), common/compat/net_offload/ and common/compat/libc_net/
+# (the layer's network part and the POSIX network headers, which only the
+# FreeRTOS build uses), common/compat/selftest/ (the layer's self-test) and
+# common/compat/shell_engine/ (the shell for an OS without one), which only
+# the FreeRTOS build compiles, with clang-format and
 # freertos/.clang-format (the Zephyr project's style).  Run it from anywhere;
 # it sources freertos/script/setup.sh itself, which installs clang-format.
 #
@@ -10,8 +14,8 @@
 #
 # FreeRTOSConfig.h (of the application and of the host test) is left out: it
 # keeps the layout of a table of settings.  So are the reduced copies of
-# Zephyr's files in the compatibility layer (drivers/compat/lib,
-# drivers/compat/subsys, zephyr/sys/fdtable.h, zephyr/net/socket_offload.h):
+# Zephyr's files in the layer's network part (common/compat/net_offload: lib,
+# subsys, include/zephyr/sys/fdtable.h, include/zephyr/net/socket_offload.h):
 # they keep Zephyr's text.
 
 set -euo pipefail
@@ -22,7 +26,7 @@ check=0
 case "${1:-}" in
   "") ;;
   --check) check=1 ;;
-  -h|--help) sed -n '2,15p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+  -h|--help) sed -n '2,19p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
   *) printf 'Unknown option: %s\n' "$1" >&2; exit 2 ;;
 esac
 
@@ -34,12 +38,15 @@ setup_status=$?
 set -eu
 (( setup_status == 0 )) || { printf 'format.sh: freertos/script/setup.sh failed\n' >&2; exit 1; }
 
+net_offload="${root}/../common/compat/net_offload"
 mapfile -t files < <(find "${root}/app" "${root}/drivers" "${root}/tests" \
-  "${root}"/../common/drivers/*/port/freertos -type f \
+  "${root}"/../common/drivers/*/port/freertos "${net_offload}" \
+  "${root}/../common/compat/libc_net" "${root}/../common/compat/selftest" \
+  "${root}/../common/compat/shell_engine" -type f \
   \( -name '*.c' -o -name '*.h' \) ! -name FreeRTOSConfig.h \
-  ! -path "${root}/drivers/compat/lib/*" ! -path "${root}/drivers/compat/subsys/*" \
-  ! -path "${root}/drivers/compat/zephyr/sys/fdtable.h" \
-  ! -path "${root}/drivers/compat/zephyr/net/socket_offload.h" | sort)
+  ! -path "${net_offload}/lib/*" ! -path "${net_offload}/subsys/*" \
+  ! -path "${net_offload}/include/zephyr/sys/fdtable.h" \
+  ! -path "${net_offload}/include/zephyr/net/socket_offload.h" | sort)
 (( ${#files[@]} )) || { printf 'format.sh: no sources under %s\n' "${root}" >&2; exit 1; }
 
 if (( check )); then

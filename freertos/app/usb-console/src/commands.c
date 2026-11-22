@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 /* The commands of the USB console of this build, written as Zephyr shell
- * commands (freertos/drivers/shell/nano_shell.h), and the table of all the
+ * commands (common/compat/shell_engine/nano_shell.h), and the table of all the
  * commands of the shell (nano_shell_cmds[]).
  */
 #include <errno.h>
@@ -329,7 +329,7 @@ SHELL_CMD_REGISTER(bootsel, NULL, "Restart into the USB bootloader (BOOTSEL)", c
 
 #ifdef NANO_SELFTEST
 /* The Zephyr compatibility layer's self-test (a build option, NANO_SELFTEST;
- * freertos/drivers/compat/zephyr_selftest.h), then the check of I2C0 on the
+ * common/compat/selftest/zephyr_selftest.h), then the check of I2C0 on the
  * board's LSM6DSOX (freertos/drivers/i2c_dw/i2c_dw_selftest.h) and that of
  * the LSM6DSOX itself with its FIFO stream
  * (freertos/drivers/lsm6dso/lsm6dso_selftest.h), which leaves the sensor at

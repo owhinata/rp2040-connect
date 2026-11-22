@@ -45,7 +45,7 @@ void z_shell_backend_vfprintf(const struct shell *sh, enum shell_vt100_color col
 
 /* Nothing to mark: the command's own output and that of other tasks go the
  * same way.  The getopt state is reset before every command
- * (nano_shell.c).
+ * (common/compat/shell_engine/nano_shell.c).
  */
 static inline void zshell_os_cmd_enter(struct shell *sh)
 {

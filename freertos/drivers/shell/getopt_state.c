@@ -7,7 +7,7 @@
  * session's state, so the USB and the Telnet sessions can parse options at
  * the same time; any other task uses one common state.  The shell resets
  * the session's state before each command (sys_getopt_init() in
- * nano_shell.c, as Zephyr's shell does).  Zephyr's global copies
+ * common/compat/shell_engine/nano_shell.c, as Zephyr's shell does).  Zephyr's global copies
  * (sys_getopt_optind, ...) are kept as there, valid only while one task
  * uses getopt.
  */

@@ -2,7 +2,7 @@
 /* The host test of the FreeRTOS build's parts of the IMU service on the
  * FreeRTOS POSIX port, as freertos/drivers/imu/imu.cmake builds them:
  *
- * - inet_pton() and inet_ntop() (freertos/drivers/libc/inet.c), Zephyr's
+ * - inet_pton() and inet_ntop() (common/compat/libc_net/inet.c), Zephyr's
  *   zsock_inet_pton() and zsock_inet_ntop() of the layer's
  *   <zephyr/net/socket.h>: dotted decimal IPv4 addresses only, POSIX's
  *   return values and errno.

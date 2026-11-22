@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 /* The host test of the FreeRTOS build's Wi-Fi on the FreeRTOS POSIX port:
- * the build's network parts (freertos/drivers/compat/zephyr_net_if.c, the
+ * the build's network parts (common/compat/net_offload/zephyr_net_if.c, the
  * thread "net_mgmt" of zephyr_net_mgmt_os.h, the start of the network part
  * freertos/drivers/compat/zephyr_net_init.c) under the shared ones as
  * freertos/drivers/wifi/wifi.cmake builds them (common/drivers/nina/nina_wifi.c and its Zephyr

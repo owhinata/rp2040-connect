@@ -52,7 +52,7 @@
 # CONFIG_NINA_TCP_MAX_IO (3584), CONFIG_NINA_SEND_RETRY_MS (1) and
 # CONFIG_NET_SOCKETS_OFFLOAD_PRIORITY (40) are the Zephyr build's values, in
 # the prelude of the shared sources (common_prelude.h).  The core's POSIX
-# names are the build's freertos/drivers/libc/include, the binding's net_*
+# names are the build's common/compat/libc_net/include, the binding's net_*
 # names the layer's <zephyr/net/net_ip.h> on them (the Zephyr build's
 # common/drivers/nina/port/zephyr/posix maps the other way).
 #

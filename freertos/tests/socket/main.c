@@ -1,11 +1,11 @@
 /* SPDX-License-Identifier: MIT */
 /* The host test of the FreeRTOS build's sockets on the FreeRTOS POSIX port:
- * the zsock_*() calls of the layer's socket part (freertos/drivers/compat:
+ * the zsock_*() calls of the layer's socket part (common/compat/net_offload:
  * subsys/net/lib/sockets, lib/os/zvfs) on the NINA's Zephyr binding
  * (common/drivers/nina/port/zephyr/nina_socket.c, registered with
  * NET_SOCKET_OFFLOAD_REGISTER(), with NINA_OS_DNS_OFFLOAD) on the shared
  * NINA core (common/drivers/nina/nina_sock.c, nina_dns.c) and the address
- * conversions (freertos/drivers/libc/inet.c), as the board builds them
+ * conversions (common/compat/libc_net/inet.c), as the board builds them
  * (freertos/drivers/compat/compat.cmake, freertos/drivers/nina/nina.cmake),
  * on a fake module (nina_proto_request(), here: the firmware's sockets as a small
  * model that logs each command) and a fake clock (nina_os.h, and the

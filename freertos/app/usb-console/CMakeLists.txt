@@ -51,7 +51,7 @@ include(${CMAKE_CURRENT_LIST_DIR}/../../drivers/zperf/zperf.cmake)
 include(${CMAKE_CURRENT_LIST_DIR}/../../drivers/sensor_shell/sensor_shell.cmake)
 
 # The compatibility layer's self-test, the "selftest" command
-# (freertos/drivers/compat/zephyr_selftest.h): a test feature, off by default
+# (common/compat/selftest/zephyr_selftest.h): a test feature, off by default
 # (freertos/script/build.sh -DNANO_SELFTEST=ON).
 option(NANO_SELFTEST "Build the selftest command" OFF)
 

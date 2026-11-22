@@ -4,7 +4,7 @@
  * sources as freertos/tests/mqtt/main.c (common/imu/imu_raw_mqtt.c,
  * imu_raw_status.c, mqtt_min.c, mqtt_min_sock.c, imu_raw_queue.c,
  * imu_raw_packet.c with the prelude; the build's interface,
- * freertos/drivers/compat/zephyr_net_if.c) on the zsock_*() calls of
+ * common/compat/net_offload/zephyr_net_if.c) on the zsock_*() calls of
  * freertos/tests/telnet/host_sock.c (the host's sockets with the NINA's
  * limits and waits; a small send buffer, so that a receiver that stops
  * reading blocks the sends soon).  freertos/script/host_tests.sh starts the

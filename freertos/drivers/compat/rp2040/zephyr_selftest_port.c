@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 /* The board's part of the compatibility layer's self-test
- * (zephyr_selftest.h): a hardware interrupt from an alarm of the Pico SDK's
+ * (common/compat/selftest/zephyr_selftest.h): a hardware interrupt from an alarm of the Pico SDK's
  * default alarm pool (a TIMER alarm interrupt), the wait until the USB
  * console has sent what the test wrote, real-time checks on, and interrupts
  * masked for a while.

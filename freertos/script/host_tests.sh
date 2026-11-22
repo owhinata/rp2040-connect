@@ -4,7 +4,8 @@
 # - The tests of the sources shared with the Zephyr and NuttX builds
 #   (common/tests/run.sh).
 # - The self-test of the FreeRTOS part of the Zephyr compatibility layer
-#   (freertos/drivers/compat/zephyr_selftest.c, the board's "selftest"
+#   (common/compat/selftest/zephyr_selftest.c on
+#   freertos/drivers/compat/zephyr_selftest_os.h, the board's "selftest"
 #   command) on the FreeRTOS POSIX port, which is in the kernel's tree
 #   (freertos/tests/compat).  Needs freertos/FreeRTOS-Kernel
 #   (freertos/script/setup.sh) and the host's cc with POSIX threads.
@@ -70,8 +71,15 @@ out=$(mktemp -d)
 trap 'rm -rf "$out"' EXIT
 
 # The test's FreeRTOSConfig.h and port header first, then the board's
-# priorities_os.h (app/usb-console/src), the layer and the kernel.
-inc=(-Itests/compat -Iapp/usb-console/src -Idrivers/compat -Idrivers/include
+# priorities_os.h (app/usb-console/src), the layer (its network part for an OS without a network
+# stack, common/compat/net_offload, before common/compat as on the board) and the kernel.
+# common/compat/libc_net/include (the POSIX network headers newlib lacks) is added by the tests
+# that need it, before the host's.  The shell's tests add the shell engine,
+# common/compat/shell_engine, after drivers/shell as on the board.
+noff=../common/compat/net_offload
+lnet=../common/compat/libc_net
+seng=../common/compat/shell_engine
+inc=(-Itests/compat -Iapp/usb-console/src -Idrivers/compat -I"$noff/include" -Idrivers/include
      -I../common/compat -I../common/log -I"$kernel/include" -I"$posix" -I"$posix/utils")
 flags=(-std=gnu11 -O2 -g -pthread)
 strict=(-Wall -Wextra -Werror)
@@ -94,9 +102,9 @@ for src in ../common/compat/zephyr_work.c ../common/compat/zephyr_rtio_workq.c; 
 done
 
 for src in drivers/compat/zephyr_kernel.c drivers/compat/zephyr_mutex.c \
-           drivers/compat/zephyr_selftest.c tests/compat/main.c; do
+           ../common/compat/selftest/zephyr_selftest.c tests/compat/main.c; do
     obj="$out/$(basename "$src" .c).o"
-    cc "${flags[@]}" "${strict[@]}" "${inc[@]}" -c "$src" -o "$obj"
+    cc "${flags[@]}" "${strict[@]}" "${inc[@]}" -I../common/compat/selftest -c "$src" -o "$obj"
     objs+=("$obj")
 done
 cc "${flags[@]}" "${strict[@]}" "${inc[@]}" -DvApplicationTickHook=app_tick_hook \
@@ -125,12 +133,12 @@ printf 'ok  tick (catch-up of lost ticks, model of SysTick)\n'
 # The shell (freertos/tests/shell): the line editor, and two sessions at once on two consoles
 # (each task's stdout, the shared zshell.c and subcmd.c, the copies of Zephyr's fnmatch() and
 # getopt), on the same kernel and layer objects.
-shinc=(-Itests/shell -Idrivers/shell -I../common/shell -I../common/compat/lib/utils/getopt
+shinc=(-Itests/shell -Idrivers/shell -I$seng -I../common/shell -I../common/compat/lib/utils/getopt
        -DZ_SHELL_CMD_ROOT_GLOBAL -DCONFIG_GETOPT_LONG=1 -U_FORTIFY_SOURCE -ffunction-sections
        -fdata-sections)
 shobjs=()
-for src in drivers/shell/cli.c drivers/shell/getopt_state.c drivers/shell/nano_console.c \
-           drivers/shell/nano_shell.c drivers/shell/shell_argv.c drivers/libc/stdio_wrap.c \
+for src in $seng/cli.c drivers/shell/getopt_state.c drivers/shell/nano_console.c \
+           $seng/nano_shell.c $seng/shell_argv.c drivers/libc/stdio_wrap.c \
            tests/shell/main.c ../common/shell/zshell.c ../common/shell/subcmd.c \
            ../common/compat/subsys/portability/posix/c_lib_ext/fnmatch.c \
            ../common/compat/lib/utils/getopt/getopt.c ../common/compat/lib/utils/getopt/getopt_long.c; do
@@ -327,13 +335,14 @@ else
 fi
 
 # The IMU service's FreeRTOS parts (freertos/tests/imu): the address conversions
-# (drivers/libc/inet.c, the layer's <zephyr/net/socket.h> on drivers/libc/include) and
+# (common/compat/libc_net/inet.c, the layer's <zephyr/net/socket.h> on
+# common/compat/libc_net/include) and
 # hwinfo_get_device_id() (drivers/compat/rp2040/zephyr_hwinfo.c) on a fake of
 # pico_get_unique_board_id(), on the same kernel and layer objects.  tests/imu/fake
 # (pico/unique_id.h) comes first.
-imuinc=(-Itests/imu/fake -Idrivers/libc/include)
+imuinc=(-Itests/imu/fake -I$lnet/include)
 imuobjs=()
-for src in drivers/libc/inet.c drivers/compat/rp2040/zephyr_hwinfo.c tests/imu/main.c; do
+for src in $lnet/inet.c drivers/compat/rp2040/zephyr_hwinfo.c tests/imu/main.c; do
     obj="$out/imu_$(basename "$src" .c).o"
     cc "${flags[@]}" "${strict[@]}" "${imuinc[@]}" "${inc[@]}" -c "$src" -o "$obj"
     imuobjs+=("$obj")
@@ -350,19 +359,20 @@ printf 'ok  imu (address conversions, hwinfo, FreeRTOS POSIX port)\n'
 # messages (imu_raw_status.c), the port's MQTT client (mqtt_min.c, with -Wno-sign-compare) and
 # its socket layer (mqtt_min_sock.c), the queue and the packets (imu_raw_queue.c,
 # imu_raw_packet.c), with the prelude, as drivers/imu/imu.cmake builds them, on the build's
-# interface (drivers/compat/zephyr_net_if.c), fake zsock_*() calls with the NINA's waits and a
-# fake broker (tests/mqtt/main.c), on the same kernel and layer objects: the thread, the
+# interface (common/compat/net_offload/zephyr_net_if.c), fake zsock_*() calls with the NINA's
+# waits and a fake broker (tests/mqtt/main.c), on the same kernel and layer objects: the thread, the
 # connection, the messages, the intervals, congestion, failures, CONNACK, the stop.  It waits
 # for the real intervals: about 20 s.
-mqttsrcs=(drivers/compat/zephyr_net_if.c ../common/imu/imu_raw_mqtt.c ../common/imu/imu_raw_status.c
+mqttsrcs=($noff/zephyr_net_if.c ../common/imu/imu_raw_mqtt.c ../common/imu/imu_raw_status.c
           ../common/imu/mqtt_min.c ../common/imu/mqtt_min_sock.c ../common/imu/imu_raw_queue.c
           ../common/imu/imu_raw_packet.c)
-mqttinc=(-Idrivers/libc/include -I../common/imu)
+mqttinc=(-I$lnet/include -I../common/imu)
 mqttobjs=()
-for src in tests/mqtt/main.c drivers/libc/inet.c "${mqttsrcs[@]}"; do
+for src in tests/mqtt/main.c $lnet/inet.c "${mqttsrcs[@]}"; do
     obj="$out/mqtt_$(basename "$src" .c).o"
     extra=()
     case $src in
+        $noff/*|$lnet/*) ;;
         ../common/*) extra=(-include drivers/compat/common_prelude.h) ;;
     esac
     case $src in
@@ -394,6 +404,7 @@ if [[ -x $imuhost ]] && command -v python3 >/dev/null; then
         obj="$out/live_$(basename "$src" .c).o"
         extra=()
         case $src in
+            $noff/*) ;;
             ../common/*) extra=(-include drivers/compat/common_prelude.h) ;;
         esac
         case $src in
@@ -418,18 +429,18 @@ fi
 # time_offset.c with the prelude, as drivers/imu/imu.cmake builds them (without
 # drivers/imu/time_sync_prelude.h, which only takes away a name of the Pico SDK's headers), on
 # the build's realtime clock (drivers/compat/zephyr_sys_clock.c), interface
-# (drivers/compat/zephyr_net_if.c) and net_mgmt events (common/compat/zephyr_net_mgmt.c with the
-# "net_mgmt" thread), the build's shell on a console that captures, fake zsock_*() calls with a
+# (common/compat/net_offload/zephyr_net_if.c) and net_mgmt events (common/compat/zephyr_net_mgmt.c
+# with the "net_mgmt" thread), the build's shell on a console that captures, fake zsock_*() calls with a
 # fake NTP server, and the TIMER's registers on the test port's clock
 # (tests/time_sync/fake/zephyr/sys/sys_io.h, before common/compat), on the same kernel and layer
 # objects.  It waits for the real intervals (2 s): about 12 s.
 tsinc=(-DZ_SHELL_CMD_ROOT_GLOBAL -DCONFIG_GETOPT_LONG=1 -U_FORTIFY_SOURCE
-       -Itests/time_sync/fake -Itests/shell -Idrivers/shell -Idrivers/libc/include -I../common/shell
+       -Itests/time_sync/fake -Itests/shell -Idrivers/shell -I$seng -I$lnet/include -I../common/shell
        -I../common/compat/lib/utils/getopt -I../common/imu -ffunction-sections -fdata-sections)
 tsobjs=()
-for src in tests/time_sync/main.c drivers/compat/zephyr_sys_clock.c drivers/compat/zephyr_net_if.c \
-           drivers/libc/inet.c drivers/shell/getopt_state.c drivers/shell/nano_console.c \
-           drivers/shell/nano_shell.c drivers/shell/shell_argv.c drivers/libc/stdio_wrap.c \
+for src in tests/time_sync/main.c drivers/compat/zephyr_sys_clock.c $noff/zephyr_net_if.c \
+           $lnet/inet.c drivers/shell/getopt_state.c drivers/shell/nano_console.c \
+           $seng/nano_shell.c $seng/shell_argv.c drivers/libc/stdio_wrap.c \
            ../common/shell/zshell.c ../common/shell/subcmd.c \
            ../common/compat/subsys/portability/posix/c_lib_ext/fnmatch.c \
            ../common/compat/lib/utils/getopt/getopt.c ../common/compat/lib/utils/getopt/getopt_long.c \
@@ -437,7 +448,7 @@ for src in tests/time_sync/main.c drivers/compat/zephyr_sys_clock.c drivers/comp
     obj="$out/time_sync_$(basename "$src" .c).o"
     extra=()
     case $src in
-        ../common/shell/*|*/fnmatch.c|*/getopt*.c) ;;
+        ../common/shell/*|*/fnmatch.c|*/getopt*.c|$noff/*|$lnet/*) ;;
         ../common/*) extra=(-include drivers/compat/common_prelude.h) ;;
     esac
     case $src in
@@ -455,15 +466,15 @@ fi
 printf 'ok  time_sync (realtime clock, TIMER read, thread, NTP exchanges, ntp status, FreeRTOS POSIX port)\n'
 
 # The layer's socket part (freertos/tests/sockets): the reduced copies of Zephyr's socket layer
-# and descriptor table (drivers/compat/subsys/net/lib/sockets, drivers/compat/lib/os/zvfs, with
+# and descriptor table (common/compat/net_offload: subsys/net/lib/sockets, lib/os/zvfs, with
 # -Wno-sign-compare as drivers/compat/compat.cmake builds them) and k_heap
-# (drivers/compat/zephyr_heap.c), on fake socket implementations registered with
+# (common/compat/net_offload/zephyr_heap.c), on fake socket implementations registered with
 # NET_SOCKET_REGISTER() and NET_SOCKET_OFFLOAD_REGISTER() and the host linker's section of them
 # (tests/sockets/net_socket_register.ld), on the same kernel and layer objects: the descriptor
 # table, the list of implementations, the dispatch of every call, fcntl, poll, the resolver.
-socksrcs=(drivers/compat/subsys/net/lib/sockets/sockets.c drivers/compat/subsys/net/lib/sockets/getaddrinfo.c
-          drivers/compat/subsys/net/lib/sockets/socket_offload.c drivers/compat/lib/os/zvfs/zvfs_fdtable.c
-          drivers/compat/lib/os/zvfs/zvfs_poll.c drivers/compat/zephyr_heap.c)
+socksrcs=($noff/subsys/net/lib/sockets/sockets.c $noff/subsys/net/lib/sockets/getaddrinfo.c
+          $noff/subsys/net/lib/sockets/socket_offload.c $noff/lib/os/zvfs/zvfs_fdtable.c
+          $noff/lib/os/zvfs/zvfs_poll.c $noff/zephyr_heap.c)
 sockld=(-Wl,-T,tests/sockets/net_socket_register.ld)
 layerobjs=()
 for src in tests/sockets/main.c "${socksrcs[@]}"; do
@@ -472,7 +483,7 @@ for src in tests/sockets/main.c "${socksrcs[@]}"; do
     case $src in
         */subsys/*|*/lib/os/*) extra=(-Wno-sign-compare) ;;
     esac
-    cc "${flags[@]}" "${strict[@]}" -Idrivers/libc/include "${inc[@]}" "${extra[@]}" -c "$src" -o "$obj"
+    cc "${flags[@]}" "${strict[@]}" -I$lnet/include "${inc[@]}" "${extra[@]}" -c "$src" -o "$obj"
     layerobjs+=("$obj")
 done
 cc "${flags[@]}" "${sockld[@]}" "${kernobjs[@]}" "${layerobjs[@]}" -o "$out/sockets"
@@ -488,20 +499,22 @@ printf 'ok  sockets (descriptor table, implementations, dispatch, fcntl, poll, r
 # k_heap) on the layer's socket part as above and on the shared core
 # (common/drivers/nina/nina_sock.c, nina_dns.c, internal/nina_wait.c), with the prelude and
 # NINA_OS_DNS_OFFLOAD, as drivers/nina/nina.cmake builds them, and the address conversions
-# (drivers/libc/inet.c), on a fake module and a fake clock (the test's nina_proto_request(), nina_os.h,
-# and the binding's k_uptime_get() and k_sleep() through -Wl,--wrap), on the same kernel and
-# layer objects.  drivers/libc/include (newlib's missing network headers) comes before the host's.
-sockinc=(-Idrivers/libc/include -I../common/drivers/nina/include -I../common/drivers/nina/internal
+# (common/compat/libc_net/inet.c), on a fake module and a fake clock (the test's
+# nina_proto_request(), nina_os.h, and the binding's k_uptime_get() and k_sleep() through
+# -Wl,--wrap), on the same kernel and layer objects.  common/compat/libc_net/include (newlib's
+# missing network headers) comes before the host's.
+sockinc=(-I$lnet/include -I../common/drivers/nina/include -I../common/drivers/nina/internal
          -I../common/drivers/nina/port)
 sockobjs=()
-for src in ../common/drivers/nina/port/zephyr/nina_socket.c drivers/libc/inet.c tests/socket/main.c \
+for src in ../common/drivers/nina/port/zephyr/nina_socket.c $lnet/inet.c tests/socket/main.c \
            ../common/drivers/nina/nina_sock.c ../common/drivers/nina/nina_dns.c \
            ../common/drivers/nina/internal/nina_wait.c "${socksrcs[@]}"; do
     obj="$out/socket_$(basename "$src" .c).o"
     extra=()
     case $src in
+        $noff/subsys/*|$noff/lib/os/*) extra=(-Wno-sign-compare) ;;
+        $noff/*|$lnet/*) ;;
         ../common/*) extra=(-include drivers/compat/common_prelude.h) ;;
-        */subsys/*|*/lib/os/*) extra=(-Wno-sign-compare) ;;
     esac
     case $src in
         */nina_socket.c|*/nina_sock.c|*/nina_dns.c) extra+=(-DNINA_OS_DNS_OFFLOAD) ;;
@@ -518,8 +531,9 @@ else
 fi
 printf 'ok  socket (descriptors, wait loops, options, poll, resolver, FreeRTOS POSIX port)\n'
 
-# Wi-Fi (freertos/tests/wifi): the build's network parts (drivers/compat/zephyr_net_if.c, the
-# "net_mgmt" thread of zephyr_net_mgmt_os.h, drivers/compat/zephyr_net_init.c) under the shared ones as
+# Wi-Fi (freertos/tests/wifi): the build's network parts (common/compat/net_offload/
+# zephyr_net_if.c, the "net_mgmt" thread of zephyr_net_mgmt_os.h,
+# drivers/compat/zephyr_net_init.c) under the shared ones as
 # drivers/wifi/wifi.cmake builds them (the NINA core's Wi-Fi operations common/drivers/nina/
 # nina_wifi.c and its Zephyr binding common/drivers/nina/port/zephyr/nina_net.c, the
 # layer's net_mgmt and Wi-Fi requests, the stored credentials and their settings backend, the
@@ -533,16 +547,16 @@ printf 'ok  socket (descriptors, wait loops, options, poll, resolver, FreeRTOS P
 # firmware's capability bits (a fake nina_proto_probe_capabilities()): the link kept, the asynchronous
 # scan and its failures, a loss of the link during the scan.
 wifiinc=(-D_GNU_SOURCE -DZ_SHELL_CMD_ROOT_GLOBAL -DCONFIG_GETOPT_LONG=1 -DCONFIG_NANO_WIFI_CREDENTIALS=1
-         -U_FORTIFY_SOURCE -Itests/shell -Idrivers/shell -Idrivers/wifi
+         -U_FORTIFY_SOURCE -Itests/shell -Idrivers/shell -I$seng -Idrivers/wifi
          -I../common/shell -I../common/compat/lib/utils/getopt -I../common/drivers/nina/include
          -I../common/drivers/nina/internal -I../common/drivers/nina/port
          -I../common/imu -I../common/tests -I../common/compat/subsys/settings/include
          -I../common/compat/subsys/settings/src -ffunction-sections -fdata-sections)
 wifiobjs=()
-for src in drivers/compat/zephyr_net_if.c drivers/compat/zephyr_net_init.c drivers/wifi/nano_ifconfig.c \
+for src in $noff/zephyr_net_if.c drivers/compat/zephyr_net_init.c drivers/wifi/nano_ifconfig.c \
            tests/wifi/main.c \
-           drivers/shell/cli.c drivers/shell/getopt_state.c drivers/shell/nano_console.c \
-           drivers/shell/nano_shell.c drivers/shell/shell_argv.c drivers/libc/stdio_wrap.c \
+           $seng/cli.c drivers/shell/getopt_state.c drivers/shell/nano_console.c \
+           $seng/nano_shell.c $seng/shell_argv.c drivers/libc/stdio_wrap.c \
            ../common/shell/zshell.c ../common/shell/subcmd.c \
            ../common/compat/subsys/portability/posix/c_lib_ext/fnmatch.c \
            ../common/compat/lib/utils/getopt/getopt.c ../common/compat/lib/utils/getopt/getopt_long.c \
@@ -563,7 +577,7 @@ for src in drivers/compat/zephyr_net_if.c drivers/compat/zephyr_net_init.c drive
     extra=()
     case $src in
         ../common/tests/*) ;;
-        ../common/shell/*|*/fnmatch.c|*/getopt*.c) ;;
+        ../common/shell/*|*/fnmatch.c|*/getopt*.c|$noff/*|$lnet/*) ;;
         ../common/*) extra=(-include drivers/compat/common_prelude.h) ;;
     esac
     case $src in
@@ -601,12 +615,12 @@ printf 'ok  wifi (interface, events, credentials, reconnection, wifi and ifconfi
 # "iperf3 -c" to "zperf tcp download".
 if command -v python3 >/dev/null; then
     tninc=(-D_GNU_SOURCE -DZ_SHELL_CMD_ROOT_GLOBAL -DCONFIG_GETOPT_LONG=1 -U_FORTIFY_SOURCE
-           -Itests/telnet -Itests/shell -Idrivers/shell -Idrivers/telnet -I../common/shell
+           -Itests/telnet -Itests/shell -Idrivers/shell -I$seng -Idrivers/telnet -I../common/shell
            -I../common/compat/lib/utils/getopt -ffunction-sections -fdata-sections)
     tnobjs=()
     for src in drivers/telnet/nano_telnet.c tests/telnet/main.c tests/telnet/host_sock.c \
-               drivers/shell/getopt_state.c drivers/shell/nano_console.c drivers/shell/nano_shell.c \
-               drivers/shell/shell_argv.c drivers/libc/stdio_wrap.c ../common/shell/zshell.c \
+               drivers/shell/getopt_state.c drivers/shell/nano_console.c $seng/nano_shell.c \
+               $seng/shell_argv.c drivers/libc/stdio_wrap.c ../common/shell/zshell.c \
                ../common/shell/subcmd.c ../common/compat/subsys/portability/posix/c_lib_ext/fnmatch.c \
                ../common/compat/lib/utils/getopt/getopt.c ../common/compat/lib/utils/getopt/getopt_long.c \
                ../common/compat/zperf_iperf3.c ../common/compat/zephyr_zperf_shell.c; do
@@ -647,7 +661,7 @@ fi
 # from the other, a session whose terminal is gone, the FIFO taken by another stream.  About 2 s.
 if [[ -f stmemsc/lsm6dso_reg.c ]]; then
     ssinc=(-D_GNU_SOURCE -DZ_SHELL_CMD_ROOT_GLOBAL -DCONFIG_GETOPT_LONG=1 -DCONFIG_NANO_LSM6DSO_STREAM=1
-           -U_FORTIFY_SOURCE -Itests/shell -Idrivers/shell -Idrivers/sensor_shell -Idrivers/lsm6dso
+           -U_FORTIFY_SOURCE -Itests/shell -Idrivers/shell -I$seng -Idrivers/sensor_shell -Idrivers/lsm6dso
            -I../common/shell -I../common/compat/lib/utils/getopt
            -I../common/drivers/lsm6dso/port/freertos
            -I../common/drivers/lsm6dso/port/zephyr -I../common/drivers/lsm6dso/include
@@ -657,8 +671,8 @@ if [[ -f stmemsc/lsm6dso_reg.c ]]; then
     ssobjs=("$out/sensor_lsm6dso_reg.o")
     for src in tests/sensor_shell/main.c drivers/compat/zephyr_kernel.c \
                drivers/sensor_shell/sensor_shell_os.c \
-               drivers/shell/cli.c drivers/shell/getopt_state.c drivers/shell/nano_console.c \
-               drivers/shell/nano_shell.c drivers/shell/shell_argv.c drivers/libc/stdio_wrap.c \
+               $seng/cli.c drivers/shell/getopt_state.c drivers/shell/nano_console.c \
+               $seng/nano_shell.c $seng/shell_argv.c drivers/libc/stdio_wrap.c \
                ../common/shell/zshell.c ../common/shell/subcmd.c \
                ../common/compat/subsys/portability/posix/c_lib_ext/fnmatch.c \
                ../common/compat/lib/utils/getopt/getopt.c ../common/compat/lib/utils/getopt/getopt_long.c \

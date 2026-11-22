@@ -17,7 +17,7 @@
  *
  * NuttX's headers come first through the prelude of the shared sources
  * (common_prelude.h, -include), on FreeRTOS newlib's with the layer's
- * network headers (freertos/drivers/libc/include).  The mqtt_min host test
+ * network headers (common/compat/libc_net/include).  The mqtt_min host test
  * links a fake of these functions instead; the NuttX build's imu_raw_mqtt
  * host test builds this file on fake sockets, the FreeRTOS build's
  * (freertos/tests/mqtt) on its own zsock_*().

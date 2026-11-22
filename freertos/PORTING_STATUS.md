@@ -2399,3 +2399,34 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
     原因は未確定（センサーの経路ではなく NINA への送信の側の詰まり）。
 - 確かめていない: 切断復帰・Telnet（このイメージでは）、校正のやり直し、長時間。
 - 実機: FreeRTOS 版（この変更の既定のビルド）。
+
+## 整理 2: OS に依存しないネットワークの層を `common/compat` へ（2026-11-22）
+
+- subagent が実装、メインが照合。移動だけ（include のパス、コメント、ビルドの規則、文書）。
+- `common/compat/net_offload/`（自前のネットワーク層を持たない OS 向け）: `subsys/net/lib/sockets/{sockets,getaddrinfo,socket_offload}.c`、`lib/os/zvfs/{zvfs_fdtable,zvfs_poll}.c`、`zephyr_net_if.c`、
+  `zephyr_heap.c`、専用の include のルート `include/`（`zephyr/net/{net_if,net_ip,socket,socket_offload}.h`、`zephyr/sys/fdtable.h`、`zephyr_heap.h`）。`k_heap` の宣言は FreeRTOS の `zephyr_os.h` から
+  `zephyr_heap.h` へ移し、`zephyr_os.h` が同じ位置で読む。
+- `common/compat/libc_net/`（POSIX のネットワークのヘッダーを持たない C ライブラリー向け）: `include/{arpa/inet.h,netdb.h,netinet/in.h,netinet/tcp.h,poll.h,sys/socket.h,sys/uio.h}`、`inet.c`。
+- 20 ファイル、約 2500 行。NuttX 版はどちらのディレクトリーも include パスに入れず、コンパイルもしない（自前の `<zephyr/net/...>` を使い続ける）。
+- `freertos/drivers/compat` に残ったもの: `zephyr_net_init.c`（中身は OS に依存しないが FreeRTOS だけのヘッダーを読む）、`zephyr_net_mgmt_os.h`（スレッドの起動）、リンカーの断片、`__assert.h`、
+  `sys/clock.h`・`zephyr_sys_clock.c`、`drivers/i2c.h`、`libc/stdio_wrap.c`。前の 2 つは整理 5 の対象。
+- 照合: FreeRTOS 237056 B は変更前とバイト単位で一致。NuttX・Zephyr も `snapshot-1122e` と一致（`common/imu/mqtt_min_sock.c` のコメントを直したので再ビルドした）。ホストテスト 48・61・58、
+  `format.sh --check`（新しい 2 つのディレクトリーも対象に）。実機には書いていない（イメージが同じ）。
+- 気づき（今は直さない）: `libc_net/include/arpa/inet.h` はリトルエンディアンの CPU を前提にしている。
+
+## 整理 3・4: 互換層の自己診断とシェルのエンジンを `common/compat` へ（2026-11-22）
+
+- subagent が実装（2 つを分けて。パッチ 2 つで分離）、メインが照合と実機の自己診断。commit も 2 つ。
+- 3: `zephyr_selftest.[ch]` → `common/compat/selftest/`。FreeRTOS を呼んでいた約 20 か所（tick、補助のスレッド、優先度、名前、スケジューラーのロック、割り込みの中か）は境界にして、
+  `zephyr_selftest.h` に一覧、FreeRTOS の実装は `freertos/drivers/compat/zephyr_selftest_os.h`（static inline。実機とホストで同じ）。22 個のテストは全部共有のファイルにある。
+  ボードの部分（アラーム、コンソールの掃き出し、割り込みのマスク）は従来どおり `rp2040/zephyr_selftest_port.c` とホストの `freertos/tests/compat/main.c`。
+  - 既定のイメージはバイト単位で一致。自己診断のイメージは +88 B（確認の式を文字列にした失敗時のメッセージが、境界の関数の名前になった分。命令はアドレスを除いて同じ）。実機の `selftest`: 22・6・3 項目とも失敗 0。
+  - NuttX 版に入れるなら（今回は入れていない）: `zephyr_selftest_os.h`（`kthread_create`、`nxsched_get_param`、`sched_lock` など）、ボードの部分、走らせる入口。**失敗が見込まれる確認**:
+    `sem_reset`（待ち手が待ち続ける。補助のスレッドが終わらないので、飛ばすか作り直しが要る）、`poll_order`（1 回の give で全部の待ち手が起きる）、おそらく `mutex_zero`・`mutex_recursive`
+    （`unlock` のエラーの値）、場合により `thread_name`・`timeslice`・tick の数を見る確認。
+- 4: `cli.[ch]`・`shell_argv.[ch]`・`nano_shell.[ch]`（約 600 行）→ `common/compat/shell_engine/`（自前のシェルを持たない OS 向け。コマンドと境界 `zshell_os.h` のある `common/shell` とは別）。
+  名前は変えていない。`getopt_state.c` は残った（調査の見立てと違い、`nano_console.h` 経由で FreeRTOS を読む）。`nano_console.[ch]`（タスクごとのコンソールと FreeRTOS の mutex）、`nano_stdio.[ch]`、
+  `zshell_os_impl.h`・`zephyr_os_shell.h` も残る。既定と自己診断のイメージは 3 のあとの状態とバイト単位で一致。
+- NuttX・Zephyr のビルドが読むファイルには触れていない。ホストテスト（FreeRTOS）58、`format.sh --check`（新しい 2 つのディレクトリーも対象）。
+- 次の候補: `getopt_state.c`・`nano_console.*`（スレッドごとのコンソールのポインターとロックを境界にすれば共有にできる）、自己診断の境界のうち `thread_create`・`prio_get`・`name_get` は互換層の API にできる。
+- 実機: FreeRTOS 版（既定のビルド。センサーの段階 2 のイメージと同じ中身）。

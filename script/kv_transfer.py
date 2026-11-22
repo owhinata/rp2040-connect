@@ -283,7 +283,7 @@ def quote_arg(value, firmware, what):
     \\" と \\xHH を解釈し、それ以外の文字はそのまま渡す。\\、"、$ を \\xHH で送ると、
     エコーに引用符や $ がそのまま出ないので、board._exchange のプロンプト判定
     （行末の $）を誤らせない。FreeRTOS 版のシェルの引数の分割は make_argv の写し
-    （freertos/drivers/shell/shell_argv.c）なので、同じ引用で送る。
+    （common/compat/shell_engine/shell_argv.c）なので、同じ引用で送る。
     """
     if firmware in ('zephyr', 'freertos'):
         return '"%s"' % ''.join('\\x%02x' % ord(c) if c in '\\"$' else c for c in value)

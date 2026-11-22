@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 /* The Telnet shell of the FreeRTOS build: the shell of the USB console
- * (freertos/drivers/shell: the same commands, prompt and output) on TCP
+ * (common/compat/shell_engine: the same commands, prompt and output) on TCP
  * port CONFIG_SHELL_TELNET_PORT (23) for one client at a time, as the
  * Zephyr build's Telnet shell backend (Zephyr's
  * subsys/shell/backends/shell_telnet.c, CONFIG_SHELL_BACKEND_TELNET).  See

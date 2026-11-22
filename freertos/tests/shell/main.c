@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: MIT */
-/* The host test of the FreeRTOS build's shell (freertos/drivers/shell, with
+/* The host test of the FreeRTOS build's shell (freertos/drivers/shell and
+ * the shell engine common/compat/shell_engine, with
  * freertos/drivers/libc/stdio_wrap.c and the shared common/shell/zshell.c,
  * subcmd.c, the copies of Zephyr's fnmatch() and getopt) on the FreeRTOS
  * POSIX port:

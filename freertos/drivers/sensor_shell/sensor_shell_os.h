@@ -24,7 +24,7 @@
  * The wait (sensor_shell_os.c): Zephyr's "sensor get" returns at once and
  * the processing thread's lines come after the prompt, which Zephyr's shell
  * then draws again below them.  The FreeRTOS build's line editor
- * (freertos/drivers/shell/cli.h) does not draw the prompt again for the
+ * (common/compat/shell_engine/cli.h) does not draw the prompt again for the
  * output of another task, so the command waits until the processing thread
  * has printed the result (at most SENSOR_SHELL_GET_WAIT_MS) and returns to
  * the prompt then: the terminal shows what Zephyr's shows, the result and a
