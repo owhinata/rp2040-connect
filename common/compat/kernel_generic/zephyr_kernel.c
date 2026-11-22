@@ -1,12 +1,15 @@
 /* SPDX-License-Identifier: MIT */
-/* The OS part of <zephyr/kernel.h> on FreeRTOS: semaphores, k_poll() on
+/* The generic kernel part of the Zephyr compatibility layer, for an OS that
+ * offers only the primitives of zephyr_kernel_os.h: semaphores, k_poll() on
  * semaphores, the start of a thread, the timers of delayable work items and
- * the sleeps.  The work queue logic, the work queues' threads and the start
- * of what Zephyr starts at boot are OS-independent (common/compat/
- * zephyr_work.c, zephyr_init.c); the mutexes are zephyr_mutex.c; the types
- * are in zephyr_os.h.  Part of the FreeRTOS implementation of the small
- * Zephyr compatibility layer of the port (freertos/drivers/compat, the
- * counterpart of nuttx/drivers/compat/zephyr_kernel.c).
+ * the sleeps, with Zephyr's rules.  The work queue logic, the work queues'
+ * threads and the start of what Zephyr starts at boot are
+ * common/compat/zephyr_work.c and zephyr_init.c; the mutexes are
+ * zephyr_mutex.c; the types are in zephyr_os.h.  No OS call but the
+ * primitives (the FreeRTOS build's are
+ * freertos/drivers/compat/zephyr_kernel_os_impl.h; NuttX
+ * implements the Zephyr-level functions directly instead,
+ * nuttx/drivers/compat/zephyr_kernel.c).
  *
  *   Zephyr                    here
  *   k_sem                     Zephyr's own rules (kernel/sem.c) on a count
@@ -14,81 +17,73 @@
  *                             first waiter (highest priority, then first
  *                             come) or adds one up to the limit and signals
  *                             the first k_poll() event; k_sem_reset() ends
- *                             the waits with -EAGAIN.  A waiting task sleeps
- *                             on its task notification Z_NOTIFY_INDEX
+ *                             the waits with -EAGAIN.  A waiting thread
+ *                             sleeps on its wake flag (z_os_wait())
  *   k_poll (semaphores)       Zephyr's kernel/poll.c for semaphores in
  *                             K_POLL_MODE_NOTIFY_ONLY: the events are
  *                             registered on their semaphores by the priority
  *                             of their thread; a give signals one event and
- *                             wakes its thread (task notification)
- *   from an interrupt         k_sem_give() (and so k_work_submit()) uses the
- *                             FromISR notification and asks for a switch at
- *                             the end of the handler (PendSV): the woken
- *                             task runs right after the handler, without
- *                             going through the timer task ("Tmr Svc")
- *   K_THREAD_DEFINE() thread  a task on its static stack, started by
- *                             z_thread_static_start() (the start of the
- *                             application; the layer's own threads, the
- *                             work queues' among them, the same way); it is
- *                             deleted when entry returns
- *   _timeout of an item      an entry in the layer's list of timeouts,
+ *                             wakes its thread (z_os_wake())
+ *   from an interrupt         k_sem_give() (and so k_work_submit()) wakes
+ *                             with z_os_wake_from_isr() and asks for a
+ *                             switch at the end of the handler
+ *                             (z_os_yield_from_isr()): the woken thread runs
+ *                             right after the handler
+ *   K_THREAD_DEFINE() thread  z_os_thread_start() on its static stack,
+ *                             started by z_thread_static_start() (the start
+ *                             of the application; the layer's own threads,
+ *                             the work queues' among them, the same way);
+ *                             it ends (z_os_thread_exit()) when entry returns
+ *   _timeout of an item       an entry in the layer's list of timeouts,
  *                             sorted by deadline, run by the tick hook
  *                             (zephyr_compat_tick()) in the tick interrupt,
  *                             as Zephyr runs its timeouts in the system clock
- *                             interrupt; not FreeRTOS's software timers,
- *                             whose start and stop are messages to the timer
- *                             task (zephyr_work.c relies on a timer that
+ *                             interrupt (zephyr_work.c relies on a timer that
  *                             cannot run while interrupts are masked)
- *   k_thread_name_set()       the name in the task's control block
- *   k_sleep(), k_msleep(),   vTaskDelay(ticks + 1): Zephyr's wake-up at the
+ *   k_thread_name_set()       the thread's name array (z_os_thread_name())
+ *   k_sleep(), k_msleep(),    z_os_sleep(ticks + 1): Zephyr's wake-up at the
  *   k_usleep()                current tick + ticks + 1; K_NO_WAIT (0 or less)
- *                             yields (z_os_yield(): behind the other tasks of
- *                             the priority); K_FOREVER suspends the task
- *   choice among one priority FreeRTOS's: at every switch the next ready
- *                             task of the priority in turn, so a task that
- *                             a higher one preempted waits for its peers
- *                             (Zephyr: it goes on); 20 ms slices by the
- *                             application's tick hook
- *   k_busy_wait()             spins on the TIMER
+ *                             yields (z_yield(): behind the other threads of
+ *                             the priority); K_FOREVER suspends the
+ *                             thread (z_os_suspend())
+ *   k_busy_wait()             z_os_busy_wait_us()
  *
  * Every relative wait (k_sem_take(), k_mutex_lock(), k_poll(), the sleeps)
- * is FreeRTOS's block time ticks + 1 (z_os_wait_ticks()), so it ends between
- * ticks and ticks + 1 ticks after the call, as in Zephyr.
+ * is the OS's wait of ticks + 1 (z_wait_ticks()), so it ends between ticks
+ * and ticks + 1 ticks after the call, as in Zephyr.
  */
 
 #include <errno.h>
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "FreeRTOS.h"
-#include "task.h"
-
 #include <zephyr/kernel.h>
 
 #include "zephyr_compat_os.h"
+#include "zephyr_kernel_os.h"
 #include "zephyr_os_internal.h"
 
 /* Scheduling ------------------------------------------------------------------*/
 
-void z_os_yield(void)
+void z_yield(void)
 {
-	taskYIELD();
+	z_os_yield();
 }
 
 /* Waits ---------------------------------------------------------------------*/
 
-TickType_t z_os_wait_ticks(k_timeout_t timeout)
+z_os_ticks_t z_wait_ticks(k_timeout_t timeout)
 {
 	if (K_TIMEOUT_EQ(timeout, K_FOREVER)) {
-		return portMAX_DELAY;
+		return Z_OS_TICKS_FOREVER;
 	}
 	if (timeout.ticks <= 0) {
 		return 0;
 	}
-	if ((uint64_t)timeout.ticks >= (uint64_t)(portMAX_DELAY - 2)) {
-		return portMAX_DELAY - 1;
+	if ((uint64_t)timeout.ticks >= (uint64_t)(Z_OS_TICKS_FOREVER - 2)) {
+		return Z_OS_TICKS_FOREVER - 1;
 	}
-	return (TickType_t)timeout.ticks + 1;
+	return (z_os_ticks_t)timeout.ticks + 1;
 }
 
 /* The lock of the semaphores, their waiters and their poll events (Zephyr:
@@ -96,50 +91,49 @@ TickType_t z_os_wait_ticks(k_timeout_t timeout)
  */
 static struct k_spinlock sem_lock;
 
-/* A task waiting in k_sem_take(), on its stack. */
+/* A thread waiting in k_sem_take(), on its stack. */
 struct z_sem_waiter {
 	struct z_sem_waiter *next;
-	TaskHandle_t task;
-	UBaseType_t prio;
+	k_tid_t task;
+	z_os_prio_t prio;
 	int result;
 	volatile bool done; /* set with result by k_sem_give(), k_sem_reset() */
 };
 
-/* A task waiting in k_poll(), on its stack; the events point to it. */
+/* A thread waiting in k_poll(), on its stack; the events point to it. */
 struct z_poller {
-	TaskHandle_t task;
-	UBaseType_t prio;
+	k_tid_t task;
+	z_os_prio_t prio;
 };
 
-/* Before a task waits (with sem_lock held): drops a notification left by an
- * earlier wait that was woken as it ended (the waker sends one; the task
+/* Before a thread waits (with sem_lock held): drops a wake left by an
+ * earlier wait that was woken as it ended (the waker sends one; the thread
  * may have found the result and returned without taking it).
  */
 static void wait_prepare(void)
 {
-	(void)xTaskNotifyStateClearIndexed(NULL, Z_NOTIFY_INDEX);
-	(void)ulTaskNotifyValueClearIndexed(NULL, Z_NOTIFY_INDEX, UINT32_MAX);
+	z_os_wait_prepare();
 }
 
-static void wait_notified(TickType_t ticks)
+static void wait_notified(z_os_ticks_t ticks)
 {
-	(void)ulTaskNotifyTakeIndexed(Z_NOTIFY_INDEX, pdTRUE, ticks);
+	z_os_wait(ticks);
 }
 
-/* Wakes a waiting task (with sem_lock held).  In an interrupt handler, sets
- * *woken when the task should run at the end of it; in a task the switch, if
- * any, waits for the unlock.
+/* Wakes a waiting thread (with sem_lock held).  In an interrupt handler,
+ * sets *woken when the thread should run at the end of it; in a thread the
+ * switch, if any, waits for the unlock.
  */
-static void wake(TaskHandle_t task, BaseType_t *woken)
+static void wake(k_tid_t task, z_os_woken_t *woken)
 {
 	if (z_os_in_isr()) {
-		vTaskNotifyGiveIndexedFromISR(task, Z_NOTIFY_INDEX, woken);
+		z_os_wake_from_isr(task, woken);
 	} else {
-		(void)xTaskNotifyGiveIndexed(task, Z_NOTIFY_INDEX);
+		z_os_wake(task);
 	}
 }
 
-static void unlock_and_switch(k_spinlock_key_t key, BaseType_t woken)
+static void unlock_and_switch(k_spinlock_key_t key, z_os_woken_t woken)
 {
 	k_spin_unlock(&sem_lock, key);
 	if (z_os_in_isr()) {
@@ -158,8 +152,8 @@ int k_sem_init(struct k_sem *sem, unsigned int initial_count, unsigned int limit
 	return 0;
 }
 
-/* Higher FreeRTOS priority first, first come first within one (Zephyr's wait
- * queue).
+/* Higher priority (z_os_prio_t) first, first come first within one
+ * (Zephyr's wait queue).
  */
 static void waiter_insert(struct z_sem_waiter **link, struct z_sem_waiter *waiter)
 {
@@ -188,12 +182,12 @@ int k_sem_take(struct k_sem *sem, k_timeout_t timeout)
 		.result = -EAGAIN,
 		.done = false,
 	};
-	TickType_t ticks = z_os_wait_ticks(timeout);
+	z_os_ticks_t ticks = z_wait_ticks(timeout);
 	k_spinlock_key_t key;
 
 	if (!z_os_in_isr()) {
-		waiter.task = xTaskGetCurrentTaskHandle();
-		waiter.prio = uxTaskPriorityGet(NULL);
+		waiter.task = z_os_thread_self();
+		waiter.prio = z_os_thread_prio_self();
 	}
 
 	key = k_spin_lock(&sem_lock);
@@ -213,7 +207,7 @@ int k_sem_take(struct k_sem *sem, k_timeout_t timeout)
 
 	do {
 		wait_notified(ticks);
-	} while (ticks == portMAX_DELAY && !waiter.done);
+	} while (ticks == Z_OS_TICKS_FOREVER && !waiter.done);
 
 	key = k_spin_lock(&sem_lock);
 	if (!waiter.done) {
@@ -226,7 +220,7 @@ int k_sem_take(struct k_sem *sem, k_timeout_t timeout)
 /* kernel/poll.c z_handle_obj_poll_events(): the first registered event (of
  * the highest-priority poller) only.
  */
-static void poll_signal(struct k_sem *sem, BaseType_t *woken)
+static void poll_signal(struct k_sem *sem, z_os_woken_t *woken)
 {
 	struct k_poll_event *event = sem->poll_events;
 	struct z_poller *poller;
@@ -250,7 +244,7 @@ static void poll_signal(struct k_sem *sem, BaseType_t *woken)
  */
 void k_sem_give(struct k_sem *sem)
 {
-	BaseType_t woken = pdFALSE;
+	z_os_woken_t woken = 0;
 	k_spinlock_key_t key = k_spin_lock(&sem_lock);
 	struct z_sem_waiter *waiter = sem->waiters;
 
@@ -272,7 +266,7 @@ void k_sem_give(struct k_sem *sem)
 /* kernel/sem.c z_impl_k_sem_reset(): the waiters return -EAGAIN. */
 void k_sem_reset(struct k_sem *sem)
 {
-	BaseType_t woken = pdFALSE;
+	z_os_woken_t woken = 0;
 	k_spinlock_key_t key = k_spin_lock(&sem_lock);
 	struct z_sem_waiter *waiter;
 
@@ -363,13 +357,13 @@ static void poll_unregister(struct k_poll_event *event)
 int k_poll(struct k_poll_event *events, int num_events, k_timeout_t timeout)
 {
 	struct z_poller poller = {0};
-	TickType_t ticks = z_os_wait_ticks(timeout);
+	z_os_ticks_t ticks = z_wait_ticks(timeout);
 	k_spinlock_key_t key;
 	int ready;
 
 	if (!z_os_in_isr()) {
-		poller.task = xTaskGetCurrentTaskHandle();
-		poller.prio = uxTaskPriorityGet(NULL);
+		poller.task = z_os_thread_self();
+		poller.prio = z_os_thread_prio_self();
 	}
 
 	key = k_spin_lock(&sem_lock);
@@ -389,7 +383,7 @@ int k_poll(struct k_poll_event *events, int num_events, k_timeout_t timeout)
 			wait_notified(ticks);
 			key = k_spin_lock(&sem_lock);
 			ready = poll_signaled(events, num_events);
-		} while (ticks == portMAX_DELAY && ready == 0);
+		} while (ticks == Z_OS_TICKS_FOREVER && ready == 0);
 
 		for (int i = 0; i < num_events; i++) {
 			if (events[i].type == K_POLL_TYPE_SEM_AVAILABLE &&
@@ -404,53 +398,9 @@ int k_poll(struct k_poll_event *events, int num_events, k_timeout_t timeout)
 
 /* Threads -------------------------------------------------------------------*/
 
-/* Bytes; the port's smallest stack is 1024 (priorities.h). */
-#define TASK_STACK_MIN 256
-
-/* Starts fn(arg) in a new task on the static stack (stack_size bytes) at the
- * FreeRTOS priority prio (1..configMAX_PRIORITIES - 1), named name.  The
- * task's control block comes from the FreeRTOS heap (FreeRTOS keeps no list
- * of them; it stays allocated if the task ends).  *handle is set before the
- * task can run (the scheduler is suspended around the creation), as Zephyr
- * starts its static threads with the scheduler locked.  0, -EINVAL (bad
- * priority or stack) or -ENOMEM.
- */
-static int z_os_task_start(TaskFunction_t fn, const char *name, k_thread_stack_t *stack,
-			   size_t stack_size, int prio, void *arg, TaskHandle_t *handle)
-{
-	bool running = xTaskGetSchedulerState() != taskSCHEDULER_NOT_STARTED;
-	StaticTask_t *tcb;
-	TaskHandle_t task;
-
-	if (prio <= (int)tskIDLE_PRIORITY || prio >= configMAX_PRIORITIES || stack == NULL ||
-	    stack_size < TASK_STACK_MIN) {
-		return -EINVAL;
-	}
-	tcb = pvPortMalloc(sizeof(*tcb));
-	if (tcb == NULL) {
-		return -ENOMEM;
-	}
-
-	if (running) {
-		vTaskSuspendAll();
-	}
-	task = xTaskCreateStatic(fn, name, stack_size / sizeof(StackType_t), arg, (UBaseType_t)prio,
-				 (StackType_t *)stack, tcb);
-	*handle = task;
-	if (running) {
-		(void)xTaskResumeAll();
-	}
-
-	if (task == NULL) {
-		vPortFree(tcb);
-		return -EINVAL;
-	}
-	return 0;
-}
-
 int k_thread_name_set(k_tid_t thread, const char *name)
 {
-	TaskHandle_t task = thread != NULL ? thread : xTaskGetCurrentTaskHandle();
+	k_tid_t task = thread != NULL ? thread : z_os_thread_self();
 	k_spinlock_key_t key;
 	char *dst;
 	size_t i;
@@ -458,12 +408,13 @@ int k_thread_name_set(k_tid_t thread, const char *name)
 	if (task == NULL || name == NULL) {
 		return -EINVAL;
 	}
-	/* The task's own array (configMAX_TASK_NAME_LEN, 32 as Zephyr's
-	 * CONFIG_THREAD_MAX_NAME_LEN); a longer name is cut, as in Zephyr.
+	/* The thread's own array (Z_OS_THREAD_NAME_SIZE, 32 as Zephyr's
+	 * CONFIG_THREAD_MAX_NAME_LEN in the FreeRTOS build); a longer name is
+	 * cut, as in Zephyr.
 	 */
-	dst = pcTaskGetName(task);
+	dst = z_os_thread_name(task);
 	key = k_spin_lock(&sem_lock);
-	for (i = 0; i < configMAX_TASK_NAME_LEN - 1 && name[i] != '\0'; i++) {
+	for (i = 0; i < Z_OS_THREAD_NAME_SIZE - 1 && name[i] != '\0'; i++) {
 		dst[i] = name[i];
 	}
 	dst[i] = '\0';
@@ -476,13 +427,13 @@ static void static_thread_main(void *arg)
 	const struct z_thread_static *thread = arg;
 
 	thread->entry(thread->p1, thread->p2, thread->p3);
-	vTaskDelete(NULL);
+	z_os_thread_exit();
 }
 
 int z_thread_static_start(const struct z_thread_static *thread)
 {
-	return z_os_task_start(static_thread_main, thread->name, thread->stack, thread->stack_size,
-			       thread->prio, (void *)thread, thread->tid);
+	return z_os_thread_start(static_thread_main, thread->name, thread->stack,
+				 thread->stack_size, thread->prio, (void *)thread, thread->tid);
 }
 
 /* Time ----------------------------------------------------------------------*/
@@ -494,20 +445,21 @@ int32_t k_sleep(k_timeout_t timeout)
 	if (K_TIMEOUT_EQ(timeout, K_FOREVER)) {
 		/* Zephyr: k_thread_suspend(_current). */
 		for (;;) {
-			vTaskSuspend(NULL);
+			z_os_suspend();
 		}
 	}
 	if (timeout.ticks <= 0) {
-		z_os_yield();
+		z_yield();
 		return 0;
 	}
 
-	/* The current tick + ticks + 1, in steps that a block time can hold. */
+	/* The current tick + ticks + 1, in steps that a finite wait can hold. */
 	for (ticks = (uint64_t)timeout.ticks + 1; ticks > 0;) {
-		TickType_t step = ticks < (uint64_t)(portMAX_DELAY - 1) ? (TickType_t)ticks
-									: portMAX_DELAY - 1;
+		z_os_ticks_t step = ticks < (uint64_t)(Z_OS_TICKS_FOREVER - 1)
+					    ? (z_os_ticks_t)ticks
+					    : Z_OS_TICKS_FOREVER - 1;
 
-		vTaskDelay(step);
+		z_os_sleep(step);
 		ticks -= step;
 	}
 	return 0;

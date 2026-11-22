@@ -29,7 +29,9 @@
  * zephyr_compat_initialize()).  The OS parts (semaphores, the wait in
  * k_poll(), the start of a thread, the timer of a delayable item) are each
  * OS's: on NuttX zephyr_kernel.c and zephyr_mutex.c (sem_t, kthreads,
- * wdog), in host tests a fake (common/tests/zephyr_fakes).
+ * wdog), in host tests a fake (common/tests/zephyr_fakes), and for an OS
+ * that offers only basic primitives (FreeRTOS) the generic ones of
+ * common/compat/kernel_generic on the primitives of its zephyr_kernel_os.h.
  *
  * Timeouts are kernel ticks, as in Zephyr (100 us in the Zephyr build,
  * CONFIG_SYS_CLOCK_TICKS_PER_SEC=10000).  K_MSEC() rounds up to ticks
@@ -41,7 +43,8 @@
  *
  * The OS part: "zephyr_os.h", which this header includes first, from the
  * OS's directory of the layer (nuttx/drivers/compat on NuttX,
- * common/tests/zephyr_fakes in host tests), provides:
+ * common/tests/zephyr_fakes in host tests, common/compat/kernel_generic for
+ * an OS on basic primitives), provides:
  *
  *   - the OS's headers that must come before the layer's (the layer's
  *     <zephyr/sys/atomic.h> takes over atomic names, see

@@ -1,9 +1,12 @@
 /* SPDX-License-Identifier: MIT */
 /* The port header of the Zephyr compatibility layer (see
  * freertos/drivers/compat/rp2040/zephyr_os_port.h, the board's) for the host
- * test on the FreeRTOS POSIX port.  There the tasks are threads of which one
- * runs at a time, the interrupts are signals, and the only "interrupt
- * handler" is the tick hook (main.c counts it in z_host_isr_depth).
+ * tests on the FreeRTOS POSIX port: with the FreeRTOS calls of
+ * freertos/drivers/compat/zephyr_kernel_os_impl.h, the host implementation
+ * of the generic kernel part's primitives (zephyr_kernel_os.h).  There the
+ * tasks are threads of which one runs at a time, the interrupts are signals,
+ * and the only "interrupt handler" is the tick hook (main.c counts it in
+ * z_host_isr_depth).
  *
  * - The tick hook needs no switch request: xTaskIncrementTick() switches
  *   after the hook when a FromISR call made a higher task ready.  The POSIX

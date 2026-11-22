@@ -22,7 +22,8 @@
  * What a build provides:
  *
  * - "zephyr_selftest_os.h" on the include path, read after <zephyr/kernel.h>
- *   (the OS's part; FreeRTOS: freertos/drivers/compat/zephyr_selftest_os.h):
+ *   (the OS's part; FreeRTOS: common/compat/kernel_generic/zephyr_selftest_os.h
+ *   on the primitives, with freertos/drivers/compat/zephyr_selftest_os_impl.h):
  *
  *     zephyr_selftest_os_prio_t        the type of an OS priority
  *     ZEPHYR_SELFTEST_OS_NAME_MAX      the longest thread name, in characters

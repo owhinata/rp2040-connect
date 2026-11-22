@@ -2,7 +2,7 @@
 /* The self-test of the Zephyr compatibility layer: see zephyr_selftest.h.
  * The checks use the layer's Zephyr API; the helper threads, the tick count,
  * the priorities and the names they read are the OS's, through the OS's
- * zephyr_selftest_os.h (FreeRTOS: freertos/drivers/compat).
+ * zephyr_selftest_os.h (FreeRTOS: common/compat/kernel_generic).
  *
  * Times: "ticks" are the OS's tick counts (zephyr_selftest_os_tick()) from
  * just after a tick (st_tick_sync()), so a relative wait of n ticks, which

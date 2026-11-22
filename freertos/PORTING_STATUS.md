@@ -2499,3 +2499,23 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
   - NuttX（書き込み直後 約 70 秒）: 欠番 0、47.0%。`dmesg` に起動の行、受信器なしの `imu start` の警告、`reboot` のあとも前の行が残る。
   - FreeRTOS: 2 回とも欠番 0、43.2〜43.3%。`dmesg` 同上、`reboot` のあとも残る。`devmem 0x30000000` のあと `fault` に記録（HardFault、タスク console）、`dmesg` に `fault` の行、そのあと通常どおり起動して Wi-Fi 接続。
 - 実機: FreeRTOS 版（この変更の既定のビルド。異常停止の記録が 1 件残っている＝こちらの試験）。
+
+## 整理 8: FreeRTOS 版のカーネルの部分を「汎用の実装 + OS の基本の操作」に（2026-11-22）
+
+- subagent が実装（2 段階。それぞれイメージの一致で確認）、メインが照合。commit も 2 つ。
+- 段階 1（場所を変えずに）: `zephyr_kernel.c`・`zephyr_mutex.c`・`zephyr_os.h`・`zephyr_os_spinlock.h` から FreeRTOS と Pico SDK の名前を無くし、境界 `zephyr_kernel_os.h`
+  （基本の操作 23 個の static inline の関数と型・定数 9 個。それぞれの意味をヘッダーに書いてある）を通す。FreeRTOS の実装は `freertos/drivers/compat/zephyr_kernel_os_impl.h`。
+  基本の操作: 割り込みの中か、入れ子にできるスレッドのロック、割り込みのロック、自スレッドと優先度、スレッドの起動・終了・名前、譲る、待ちの準備・待ち（tick の期限つき）・起こす
+  （**起こす印は保持されること**。相手がまだ待っていなくてもよい）・割り込みからの起こしと切り替え、スリープ、停止、ビジーウェイト、時計、OS の再帰ミューテックス（優先度の継承は OS のもの）。
+  自己診断の OS の項目 12 個のうち 7 個もこの上に載せた。
+- イメージの一致を妨げた 3 点と対処（コメントに理由を記載）: 1 回の呼び出しを包む関数を必ずインラインにする（`Z_OS_INLINE`）、ミューテックスの持ち主の比較を整数で行う、
+  使われなくなった大域の関数の代わりに同等の `z_yield()` を残す（リンカーのベニアの順序が入力セクションの数で決まるため）。
+- 段階 2（移動）: OS に依存しない 8 ファイルを `common/compat/kernel_generic/` へ（`zephyr_kernel.c`・`zephyr_mutex.c`・`zephyr_os.h`・`zephyr_os_spinlock.h`・`zephyr_os_internal.h`・
+  `zephyr_kernel_os.h`・`zephyr_compat_os.h`・`zephyr_selftest_os.h`）。NuttX 版はコンパイルしない（自前の実装のまま、ユーザーの決定）。
+- FreeRTOS に残るもの: 基本の操作の実装、`zephyr_os_atomic.h`、tick のフック（`tick.c`）、自己診断の FreeRTOS の部分。
+- 行数: これまで新しい OS が書く必要があったのは約 1180 行。いま FreeRTOS が書いているのは 437 行（コードは約 230 行）。汎用の部分は 1143 行。
+- 候補の OS が満たせないかもしれない要求（subagent の見立て、推測）: 期限つきで保持される起こし（ChibiOS の suspend/resume は保持されない）、入れ子にできて中の起こしで切り替わらないロック、
+  スレッドごとの書き換えられる名前、優先度の向き（RIOT は逆）、期限つきのミューテックスと全部 0 が未ロックであること、割り込みの文脈の tick のフック（RIOT は tickless）。
+- 照合: 既定 237064 B と自己診断 262264 B は、段階 1 のあとも段階 2 のあともバイト単位で一致。NuttX は `snapshot-1122g` と一致（コメントを直したので再ビルド）。Zephyr は読むファイルが変わらない。
+  ホストテスト 49・62・59、`format.sh --check`。実機には書いていない（イメージが同じ）。
+- 気になる点: 汎用の `zephyr_os.h` が `net_offload` の `zephyr_heap.h` を読む（汎用のカーネルを使う OS はその include パスも要る）。

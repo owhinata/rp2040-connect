@@ -3,11 +3,13 @@
 # freertos/tests/, common/drivers/*/port/freertos/ (the shared drivers'
 # FreeRTOS bindings), common/compat/net_offload/ and common/compat/libc_net/
 # (the layer's network part and the POSIX network headers, which only the
-# FreeRTOS build uses), common/compat/selftest/ (the layer's self-test) and
-# common/compat/shell_engine/ (the shell for an OS without one), which only
-# the FreeRTOS build compiles, with clang-format and
-# freertos/.clang-format (the Zephyr project's style).  Run it from anywhere;
-# it sources freertos/script/setup.sh itself, which installs clang-format.
+# FreeRTOS build uses), common/compat/selftest/ (the layer's self-test),
+# common/compat/shell_engine/ (the shell for an OS without one) and
+# common/compat/kernel_generic/ (the kernel part for an OS that offers only
+# basic primitives), which only the FreeRTOS build compiles, with
+# clang-format and freertos/.clang-format (the Zephyr project's style).  Run
+# it from anywhere; it sources freertos/script/setup.sh itself, which
+# installs clang-format.
 #
 #   freertos/script/format.sh            rewrite the files that differ
 #   freertos/script/format.sh --check    only report them (exit status 1)
@@ -26,7 +28,7 @@ check=0
 case "${1:-}" in
   "") ;;
   --check) check=1 ;;
-  -h|--help) sed -n '2,19p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+  -h|--help) sed -n '2,21p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
   *) printf 'Unknown option: %s\n' "$1" >&2; exit 2 ;;
 esac
 
@@ -42,7 +44,7 @@ net_offload="${root}/../common/compat/net_offload"
 mapfile -t files < <(find "${root}/app" "${root}/drivers" "${root}/tests" \
   "${root}"/../common/drivers/*/port/freertos "${net_offload}" \
   "${root}/../common/compat/libc_net" "${root}/../common/compat/selftest" \
-  "${root}/../common/compat/shell_engine" -type f \
+  "${root}/../common/compat/shell_engine" "${root}/../common/compat/kernel_generic" -type f \
   \( -name '*.c' -o -name '*.h' \) ! -name FreeRTOSConfig.h \
   ! -path "${net_offload}/lib/*" ! -path "${net_offload}/subsys/*" \
   ! -path "${net_offload}/include/zephyr/sys/fdtable.h" \

@@ -9,7 +9,8 @@
  * nuttx/drivers/README.md).
  *
  * The OS part: "zephyr_os_spinlock.h" (nuttx/drivers/compat on NuttX,
- * common/tests/zephyr_fakes in host tests) provides struct k_spinlock,
+ * common/tests/zephyr_fakes in host tests, common/compat/kernel_generic for
+ * an OS on basic primitives) provides struct k_spinlock,
  * k_spinlock_key_t, k_spin_lock() and k_spin_unlock() with that meaning,
  * in threads and in interrupt handlers, nested in the same thread.
  */

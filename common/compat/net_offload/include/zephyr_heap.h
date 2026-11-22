@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MIT */
 /* k_heap of <zephyr/kernel.h> for an OS whose part of the layer does not
  * have one: the OS's zephyr_os.h includes this header (the FreeRTOS build's,
- * freertos/drivers/compat/zephyr_os.h).  k_heap: a heap of a fixed size in
+ * common/compat/kernel_generic/zephyr_os.h).  k_heap: a heap of a fixed size in
  * its own static buffer (Zephyr's K_HEAP_DEFINE(), k_heap_alloc(),
  * k_heap_free(); zephyr_heap.c): first fit, an 8-byte header before each
  * block, blocks rounded up to 8 bytes and joined again when freed, so an

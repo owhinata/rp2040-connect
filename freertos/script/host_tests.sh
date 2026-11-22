@@ -3,10 +3,12 @@
 #
 # - The tests of the sources shared with the Zephyr and NuttX builds
 #   (common/tests/run.sh).
-# - The self-test of the FreeRTOS part of the Zephyr compatibility layer
-#   (common/compat/selftest/zephyr_selftest.c on
-#   freertos/drivers/compat/zephyr_selftest_os.h, the board's "selftest"
-#   command) on the FreeRTOS POSIX port, which is in the kernel's tree
+# - The self-test of the Zephyr compatibility layer's kernel part (the
+#   generic one, common/compat/kernel_generic, on the FreeRTOS primitives;
+#   common/compat/selftest/zephyr_selftest.c on
+#   common/compat/kernel_generic/zephyr_selftest_os.h and
+#   freertos/drivers/compat/zephyr_selftest_os_impl.h, the board's
+#   "selftest" command) on the FreeRTOS POSIX port, which is in the kernel's tree
 #   (freertos/tests/compat).  Needs freertos/FreeRTOS-Kernel
 #   (freertos/script/setup.sh) and the host's cc with POSIX threads.
 # - On the same port: the shell (freertos/tests/shell) and the key-value
@@ -57,7 +59,7 @@ verbose=0
 case "${1:-}" in
   "") ;;
   -v) verbose=1 ;;
-  -h|--help) sed -n '2,55p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+  -h|--help) sed -n '2,54p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
   *) printf 'Unknown option: %s\n' "$1" >&2; exit 2 ;;
 esac
 
@@ -71,15 +73,17 @@ out=$(mktemp -d)
 trap 'rm -rf "$out"' EXIT
 
 # The test's FreeRTOSConfig.h and port header first, then the board's
-# priorities_os.h (app/usb-console/src), the layer (its network part for an OS without a network
-# stack, common/compat/net_offload, before common/compat as on the board) and the kernel.
+# priorities_os.h (app/usb-console/src), the layer (FreeRTOS's part, the generic kernel part
+# common/compat/kernel_generic, its network part for an OS without a network stack,
+# common/compat/net_offload, before common/compat as on the board) and the kernel.
 # common/compat/libc_net/include (the POSIX network headers newlib lacks) is added by the tests
 # that need it, before the host's.  The shell's tests add the shell engine,
 # common/compat/shell_engine, after drivers/shell as on the board.
 noff=../common/compat/net_offload
 lnet=../common/compat/libc_net
 seng=../common/compat/shell_engine
-inc=(-Itests/compat -Iapp/usb-console/src -Idrivers/compat -I"$noff/include" -Idrivers/include
+kgen=../common/compat/kernel_generic
+inc=(-Itests/compat -Iapp/usb-console/src -Idrivers/compat -I"$kgen" -I"$noff/include" -Idrivers/include
      -I../common/compat -I../common/log -I"$kernel/include" -I"$posix" -I"$posix/utils")
 flags=(-std=gnu11 -O2 -g -pthread)
 strict=(-Wall -Wextra -Werror)
@@ -102,7 +106,7 @@ for src in ../common/compat/zephyr_init.c ../common/compat/zephyr_work.c \
     objs+=("$obj")
 done
 
-for src in drivers/compat/zephyr_kernel.c drivers/compat/zephyr_mutex.c \
+for src in $kgen/zephyr_kernel.c $kgen/zephyr_mutex.c \
            ../common/compat/selftest/zephyr_selftest.c tests/compat/main.c; do
     obj="$out/$(basename "$src" .c).o"
     cc "${flags[@]}" "${strict[@]}" "${inc[@]}" -I../common/compat/selftest -c "$src" -o "$obj"

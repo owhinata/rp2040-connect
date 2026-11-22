@@ -14,14 +14,17 @@ NuttX build, runs them on a compatibility layer that provides Zephyr's API under
 OS-independent part of the layer is `common/compat/`, the FreeRTOS part `freertos/drivers/compat/`. The
 layer's network part for an OS without a network stack of its own (Zephyr's socket layer, the network
 interface, `k_heap`) is `common/compat/net_offload/`, and the POSIX network headers newlib lacks are
-`common/compat/libc_net/`; only the FreeRTOS build uses them.
+`common/compat/libc_net/`; the layer's kernel part for an OS that offers only basic primitives (Zephyr's
+semaphores, `k_poll()`, timeouts, sleeps and threads on about twenty primitives of the OS) is
+`common/compat/kernel_generic/`, on FreeRTOS's primitives; only the FreeRTOS build uses them.
 
 ## Directories
 
 | Place | Contents |
 |---|---|
 | `app/usb-console/` | Start-up (`main.c`), the commands of this build only (`commands.c`), the kernel configuration (`FreeRTOSConfig.h`), the priority mapping (`priorities_os.h`), time (`os_clock.h`), the tick hook (`tick.c`; the catch-up's decision in `tick_catchup.h`), the CPU load (`idle.c`), fatal errors (`fault.[ch]`), the free interrupt stack (`irq_stack.c`) |
-| `drivers/compat/` | The FreeRTOS part of the layer: the kernel (`zephyr_kernel.c`, `zephyr_mutex.c`, `zephyr_os*.h`; the work queues' threads, the system work queue and `zephyr_compat_initialize()` are the shared `common/compat/zephyr_init.c`), the linker script's part for the socket implementations (`ld/`), the wall clock (`zephyr_sys_clock.c`), the prelude header (`common_prelude.h`), the self-test's OS part (`zephyr_selftest_os.h`), the RP2040 part (`rp2040/`: GPIO bank 0, chip ID, the self-test's board part `zephyr_selftest_port.c`) |
+| `drivers/compat/` | The FreeRTOS part of the layer: the primitives of the generic kernel part (`zephyr_kernel_os_impl.h`; the port's in `rp2040/zephyr_os_port.h`) and `zephyr_os_atomic.h`, the linker script's part for the socket implementations (`ld/`), the wall clock (`zephyr_sys_clock.c`), the prelude header (`common_prelude.h`), the self-test's FreeRTOS part (`zephyr_selftest_os_impl.h`), the RP2040 part (`rp2040/`: the port header, GPIO bank 0, chip ID, the self-test's board part `zephyr_selftest_port.c`) |
+| `common/compat/kernel_generic/` | The layer's kernel part for an OS that offers only basic primitives, OS-independent: `k_sem`, `k_poll()`, the timeouts, the sleeps and the start of a thread (`zephyr_kernel.c`), `k_mutex` (`zephyr_mutex.c`), the OS part of `<zephyr/kernel.h>` and `<zephyr/spinlock.h>` (`zephyr_os.h`, `zephyr_os_spinlock.h`), the tick hook's entry (`zephyr_compat_os.h`), the self-test's items on the primitives (`zephyr_selftest_os.h`), and the declaration of the primitives (`zephyr_kernel_os.h`). The work queues' threads, the system work queue and `zephyr_compat_initialize()` are the shared `common/compat/zephyr_init.c` |
 | `common/compat/selftest/` | The layer's self-test, OS-independent (`zephyr_selftest.c`; `zephyr_selftest.h` lists what an OS's part and a board's part provide) |
 | `common/compat/net_offload/` | The layer's network part, OS-independent: Zephyr's socket layer (reduced copies of Zephyr's files in `subsys/net/lib/sockets/` and `lib/os/zvfs/`), the network interface (`zephyr_net_if.c`) and the start of the network part (`zephyr_net_init.c`, `zephyr_net_initialize()`), `k_heap` (`zephyr_heap.c`), their headers under `include/` (`zephyr/net/`, `zephyr/sys/fdtable.h`, `zephyr_net_init.h`, `zephyr_heap.h`, which `zephyr_os.h` includes) |
 | `common/compat/libc_net/` | The socket headers newlib lacks (`include/`, types and constants only), `inet_pton` and `inet_ntop` (`inet.c`) |
@@ -50,11 +53,15 @@ the NuttX build.
 
 ## The FreeRTOS part of the Zephyr compatibility layer
 
-What the layer provides is listed at the top of `common/compat/zephyr/kernel.h`; how it is built on
-FreeRTOS is in the comments at the top of `drivers/compat/zephyr_os.h` and `zephyr_kernel.c`. These
+What the layer provides is listed at the top of `common/compat/zephyr/kernel.h`. Its kernel part is the
+generic implementation (`common/compat/kernel_generic/zephyr_kernel.c` and `zephyr_mutex.c`; how it works
+is in their comments) on primitives that FreeRTOS provides (`drivers/compat/zephyr_kernel_os_impl.h`; the
+list and what each must do are `common/compat/kernel_generic/zephyr_kernel_os.h` and section 2.5 of
+`design/os-boundary.md`). These
 assumptions of Zephyr are reproduced:
 
-- **Mutexes** (`zephyr_mutex.c`): recursive, with priority inheritance. An all-zero `k_mutex` is
+- **Mutexes** (`zephyr_mutex.c` on FreeRTOS's recursive mutex): recursive, with FreeRTOS's priority
+  inheritance. An all-zero `k_mutex` is
   unlocked and is created by its first lock (Zephyr's MQTT library and settings rely on it). The return
   values are Zephyr's.
 - **Semaphores and `k_poll`**: Zephyr's rules (a give hands the count to the highest-priority waiter,

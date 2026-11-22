@@ -1,12 +1,14 @@
 /* SPDX-License-Identifier: MIT */
-/* The few things of the FreeRTOS part of the Zephyr compatibility layer
- * (freertos/drivers/compat) that depend on the FreeRTOS port and the board:
- * here the RP2040 port of FreeRTOS on the Pico SDK.  The host tests have
- * their own (freertos/tests/compat/zephyr_os_port.h, the FreeRTOS POSIX
- * port).
+/* What the FreeRTOS part of the Zephyr compatibility layer
+ * (freertos/drivers/compat) has that depends on the FreeRTOS port and the
+ * board: here the RP2040 port of FreeRTOS on the Pico SDK.  The host tests
+ * have their own (freertos/tests/compat/zephyr_os_port.h, the FreeRTOS POSIX
+ * port).  The first five are primitives of the generic kernel part
+ * (zephyr_kernel_os.h states what each must do; zephyr_kernel_os_impl.h
+ * includes this header); the last two are the tick hook's
+ * (freertos/app/usb-console/src/tick.c), and the shell's consoles use
+ * z_os_in_isr() too.
  *
- *   nano_mono_us()             microseconds since the start, the RP2040
- *                              TIMER (os_clock.h of the application)
  *   z_os_in_isr()              true in an interrupt handler (IPSR != 0)
  *   z_os_yield_from_isr(w)     at the end of an interrupt handler that made
  *                              a task ready: portYIELD_FROM_ISR() (PendSV)
@@ -27,6 +29,9 @@
  *                              current interrupt, and counts one more tick
  *                              (a pend that meets a pending SysTick merges
  *                              with it)
+ *
+ * It also makes nano_mono_us() (microseconds since the start, the RP2040
+ * TIMER, os_clock.h of the application) available: z_os_clock_us() is it.
  */
 
 #ifndef FREERTOS_DRIVERS_COMPAT_ZEPHYR_OS_PORT_H

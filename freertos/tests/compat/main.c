@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MIT */
 /* The host test of the FreeRTOS part of the Zephyr compatibility layer: the
  * layer's self-test (common/compat/selftest/zephyr_selftest.c, on
- * freertos/drivers/compat/zephyr_selftest_os.h) on the FreeRTOS POSIX port,
+ * common/compat/kernel_generic/zephyr_selftest_os.h) on the FreeRTOS POSIX port,
  * with the board's tick hook (freertos/app/usb-console/src/tick.c, built here
  * as app_tick_hook()).  The self-test runs twice (the second run reuses the
  * objects of the first) in a task at the shell's priority; the exit status is

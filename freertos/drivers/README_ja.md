@@ -11,14 +11,17 @@ LSM6DSO・NINA・I2C のドライバー、シェルのコマンド処理）。�
 FreeRTOS 版は NuttX 版と同じく、Zephyr の API を Zephyr の名前のまま提供する互換層の上で動かします。互換層の
 OS に依存しない部分は `common/compat/`、FreeRTOS の部分は `freertos/drivers/compat/` です。ネットワーク層を持たない OS の
 ための互換層のネットワークの部分（Zephyr のソケット層、ネットワークのインターフェース、`k_heap`）は `common/compat/net_offload/`、
-newlib に無い POSIX のネットワークのヘッダーは `common/compat/libc_net/` にあり、使うのは FreeRTOS 版だけです。
+newlib に無い POSIX のネットワークのヘッダーは `common/compat/libc_net/`、基本の操作だけを持つ OS のための互換層のカーネルの部分
+（Zephyr のセマフォ・`k_poll()`・タイムアウト・スリープ・スレッドを、OS の 20 個あまりの基本の操作の上に作る）は
+`common/compat/kernel_generic/`（FreeRTOS の基本の操作の上）にあり、使うのは FreeRTOS 版だけです。
 
 ## ディレクトリー
 
 | 場所 | 内容 |
 |---|---|
 | `app/usb-console/` | 起動（`main.c`）、FreeRTOS 版だけのコマンド（`commands.c`）、カーネルの設定（`FreeRTOSConfig.h`）、優先度の対応（`priorities_os.h`）、時計（`os_clock.h`）、tick フック（`tick.c`。tick の追いつきの判定は `tick_catchup.h`）、CPU 負荷（`idle.c`）、異常停止（`fault.[ch]`）、割り込み用スタックの空き（`irq_stack.c`） |
-| `drivers/compat/` | 互換層の FreeRTOS の部分: カーネル（`zephyr_kernel.c`・`zephyr_mutex.c`・`zephyr_os*.h`。ワークキューのスレッド、システムワークキュー、`zephyr_compat_initialize()` は共有の `common/compat/zephyr_init.c`）、ソケットの実装の登録のためのリンカースクリプトの部分（`ld/`）、壁時計（`zephyr_sys_clock.c`）、前置きヘッダー（`common_prelude.h`）、自己診断の OS の部分（`zephyr_selftest_os.h`）、RP2040 の部分（`rp2040/`: GPIO バンク 0、チップ ID、自己診断のボードの部分 `zephyr_selftest_port.c`） |
+| `drivers/compat/` | 互換層の FreeRTOS の部分: 汎用のカーネルの部分の基本の操作（`zephyr_kernel_os_impl.h`。ポートによるものは `rp2040/zephyr_os_port.h`）と `zephyr_os_atomic.h`、ソケットの実装の登録のためのリンカースクリプトの部分（`ld/`）、壁時計（`zephyr_sys_clock.c`）、前置きヘッダー（`common_prelude.h`）、自己診断の FreeRTOS の部分（`zephyr_selftest_os_impl.h`）、RP2040 の部分（`rp2040/`: ポートのヘッダー、GPIO バンク 0、チップ ID、自己診断のボードの部分 `zephyr_selftest_port.c`） |
+| `common/compat/kernel_generic/` | 基本の操作だけを持つ OS のための互換層のカーネルの部分。OS に依存しない: `k_sem`・`k_poll()`・タイムアウト・スリープ・スレッドの起動（`zephyr_kernel.c`）、`k_mutex`（`zephyr_mutex.c`）、`<zephyr/kernel.h>`・`<zephyr/spinlock.h>` の OS の部分（`zephyr_os.h`・`zephyr_os_spinlock.h`）、tick のフックの入口（`zephyr_compat_os.h`）、基本の操作の上の自己診断の項目（`zephyr_selftest_os.h`）、基本の操作の宣言（`zephyr_kernel_os.h`）。ワークキューのスレッド、システムワークキュー、`zephyr_compat_initialize()` は共有の `common/compat/zephyr_init.c` |
 | `common/compat/selftest/` | 互換層の自己診断（OS に依存しない。`zephyr_selftest.c`。OS の部分とボードの部分が用意するものは `zephyr_selftest.h` にある） |
 | `common/compat/net_offload/` | 互換層のネットワークの部分（OS に依存しない）: Zephyr のソケット層（`subsys/net/lib/sockets/`・`lib/os/zvfs/` の Zephyr のファイルを縮めた写し）、ネットワークのインターフェース（`zephyr_net_if.c`）とネットワークの部分の開始（`zephyr_net_init.c`、`zephyr_net_initialize()`）、`k_heap`（`zephyr_heap.c`）、それらのヘッダーは `include/` の下（`zephyr/net/`、`zephyr/sys/fdtable.h`、`zephyr_net_init.h`、`zephyr_os.h` が読む `zephyr_heap.h`） |
 | `common/compat/libc_net/` | newlib に無いソケット系のヘッダー（`include/`。型と定数だけ）、`inet_pton`・`inet_ntop`（`inet.c`） |
@@ -45,10 +48,12 @@ FreeRTOS 版だけがビルドする共有ファイル: `common/compat/zephyr_wi
 
 ## Zephyr 互換層の FreeRTOS の部分
 
-何を提供するかは `common/compat/zephyr/kernel.h` の先頭の一覧、FreeRTOS での作りは `drivers/compat/zephyr_os.h`・
-`zephyr_kernel.c` の先頭のコメントにあります。Zephyr の前提のうち、次のものを再現しています。
+何を提供するかは `common/compat/zephyr/kernel.h` の先頭の一覧にあります。カーネルの部分は、FreeRTOS が用意する基本の操作
+（`drivers/compat/zephyr_kernel_os_impl.h`。一覧とそれぞれに求めることは `common/compat/kernel_generic/zephyr_kernel_os.h` と `design/os-boundary-ja.md` の
+2.5）の上の汎用の実装（`common/compat/kernel_generic/zephyr_kernel.c`・`zephyr_mutex.c`。作りはそのコメント）です。Zephyr の前提のうち、
+次のものを再現しています。
 
-- **ミューテックス**（`zephyr_mutex.c`）: 再帰可能、優先度継承あり。全部 0 の `k_mutex` は未ロックとして扱い、
+- **ミューテックス**（FreeRTOS の再帰ミューテックスの上の `zephyr_mutex.c`）: 再帰可能、FreeRTOS の優先度継承あり。全部 0 の `k_mutex` は未ロックとして扱い、
   最初の lock で作ります（Zephyr の MQTT ライブラリーと settings がこれに頼る）。戻り値は Zephyr と同じ。
 - **セマフォと `k_poll`**: Zephyr の規則（give は最も優先度の高い待ち手に渡す、`k_sem_reset()` は待ちを
   `-EAGAIN` で終える）を互換層の数で作り、待ちはタスク通知（番号 1。0 は Pico SDK とアプリ用）で行います。

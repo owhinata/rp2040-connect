@@ -8,11 +8,14 @@
 #
 # after add_executable().  It adds to the target:
 #
-# - the FreeRTOS part of the layer (zephyr_kernel.c, zephyr_mutex.c, and
-#   zephyr_sys_clock.c: the realtime clock of <zephyr/sys/clock.h>, which
-#   newlib's gettimeofday() and time() read too) and the
+# - the kernel part of the layer, the generic one for an OS that offers
+#   only basic primitives (common/compat/kernel_generic: zephyr_kernel.c,
+#   zephyr_mutex.c) on FreeRTOS's primitives (zephyr_kernel_os_impl.h),
+#   the FreeRTOS part of the layer (zephyr_sys_clock.c: the realtime clock
+#   of <zephyr/sys/clock.h>, which newlib's gettimeofday() and time() read
+#   too) and the
 #   OS-independent part that links at this stage (common/compat:
-#   zephyr_init.c, on zephyr_kernel.c's start of a thread, right after it;
+#   zephyr_init.c, on the kernel part's start of a thread, right after it;
 #   zephyr_work.c, zephyr_rtio.c, zephyr_rtio_workq.c, zephyr_mem_blocks.c);
 # - the RAM log (common/log/log_ram.c, on common/log/log_ring.c and the
 #   FreeRTOS part of its boundary, freertos/drivers/include/log_ram_os_impl.h)
@@ -43,11 +46,15 @@
 #   (ld/section_extra_post_text.incl, pico_add_linker_script_override_path());
 #   the NINA's sockets register themselves (freertos/drivers/nina/nina.cmake);
 # - with SELFTEST, the layer's self-test (common/compat/selftest:
-#   zephyr_selftest.c, on this directory's zephyr_selftest_os.h, and the
+#   zephyr_selftest.c, on common/compat/kernel_generic/zephyr_selftest_os.h
+#   with this directory's zephyr_selftest_os_impl.h, and the
 #   board's part, rp2040/zephyr_selftest_port.c), its include directory, and
 #   NANO_SELFTEST=1;
 # - the include directories, the board's port header first
-#   (rp2040/zephyr_os_port.h), then the FreeRTOS part (zephyr_os.h, ...),
+#   (rp2040/zephyr_os_port.h), then the FreeRTOS part
+#   (zephyr_kernel_os_impl.h, zephyr_os_atomic.h, ...), the generic kernel
+#   part (common/compat/kernel_generic: zephyr_os.h, zephyr_kernel_os.h,
+#   zephyr_compat_os.h, ...),
 #   common/compat/net_offload/include (the network part's Zephyr headers,
 #   before common/compat: its <zephyr/net/net_ip.h> takes the place of
 #   common/compat's, and zephyr_heap.h), freertos/drivers/shell,
@@ -69,7 +76,8 @@
 # The application provides FreeRTOSConfig.h (with
 # configNUM_THREAD_LOCAL_STORAGE_POINTERS >= 1), priorities_os.h and
 # os_clock.h on its include path, a tick hook that calls
-# zephyr_compat_tick() (zephyr_compat_os.h), the table of commands
+# zephyr_compat_tick() (common/compat/kernel_generic/zephyr_compat_os.h),
+# the table of commands
 # (nano_shell_cmds[]), and calls zephyr_compat_initialize()
 # (zephyr_compat.h) before the scheduler starts.
 
@@ -79,6 +87,7 @@ get_filename_component(FREERTOS_COMMON_DIR ${CMAKE_CURRENT_LIST_DIR}/../../../co
 set(FREERTOS_NET_OFFLOAD_DIR ${FREERTOS_COMMON_DIR}/compat/net_offload)
 set(FREERTOS_LIBC_NET_DIR ${FREERTOS_COMMON_DIR}/compat/libc_net)
 set(FREERTOS_SHELL_ENGINE_DIR ${FREERTOS_COMMON_DIR}/compat/shell_engine)
+set(FREERTOS_KERNEL_GENERIC_DIR ${FREERTOS_COMMON_DIR}/compat/kernel_generic)
 
 function(freertos_zephyr_compat target)
   cmake_parse_arguments(ARG "SELFTEST" "" "" ${ARGN})
@@ -124,9 +133,9 @@ function(freertos_zephyr_compat target)
   )
 
   target_sources(${target} PRIVATE
-    ${FREERTOS_COMPAT_DIR}/zephyr_kernel.c
+    ${FREERTOS_KERNEL_GENERIC_DIR}/zephyr_kernel.c
     ${common_kernel_sources}
-    ${FREERTOS_COMPAT_DIR}/zephyr_mutex.c
+    ${FREERTOS_KERNEL_GENERIC_DIR}/zephyr_mutex.c
     ${FREERTOS_NET_OFFLOAD_DIR}/zephyr_heap.c
     ${FREERTOS_COMPAT_DIR}/zephyr_sys_clock.c
     ${zephyr_socket_copies}
@@ -155,6 +164,7 @@ function(freertos_zephyr_compat target)
   target_include_directories(${target} PRIVATE
     ${FREERTOS_COMPAT_DIR}/rp2040
     ${FREERTOS_COMPAT_DIR}
+    ${FREERTOS_KERNEL_GENERIC_DIR}
     ${FREERTOS_NET_OFFLOAD_DIR}/include
     ${FREERTOS_DRIVERS_DIR}/shell
     ${FREERTOS_SHELL_ENGINE_DIR}
