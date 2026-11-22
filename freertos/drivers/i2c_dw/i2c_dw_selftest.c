@@ -182,7 +182,22 @@ static void test_dma(void)
 	bool was_enabled = i2c_dw_rp2040_dma_enabled();
 	struct i2c_dw_rp2040_dma_stats before, after;
 	uint8_t buf[DMA_READ_LEN];
+	/* The read takes the two lowest free channels, TX first, and gives them
+	 * back (others, the NINA's SPI, keep theirs).
+	 */
+	unsigned int tx = 0, rx;
 
+	while (tx < NUM_DMA_CHANNELS && dma_channel_is_claimed(tx)) {
+		tx++;
+	}
+	rx = tx + 1;
+	while (rx < NUM_DMA_CHANNELS && dma_channel_is_claimed(rx)) {
+		rx++;
+	}
+	CHECK(rx < NUM_DMA_CHANNELS);
+	if (rx >= NUM_DMA_CHANNELS) {
+		return;
+	}
 	i2c_dw_rp2040_dma_set_enabled(true);
 	i2c_dw_rp2040_dma_get_stats(&before);
 	CHECK_EQ(i2c_burst_read_dt(&imu, LSM6DSOX_FIFO_DATA, buf, sizeof(buf)), 0);
@@ -191,14 +206,15 @@ static void test_dma(void)
 	CHECK_EQ(after.bytes - before.bytes, DMA_READ_LEN);
 	CHECK_EQ(after.errors - before.errors, 0);
 	CHECK_EQ(after.fallbacks - before.fallbacks, 0);
-	CHECK_EQ(dma_hw->ch[0].al1_ctrl, DMA_CTRL_TX);
-	CHECK_EQ(dma_hw->ch[1].al1_ctrl, DMA_CTRL_RX);
-	CHECK_EQ(dma_hw->ch[0].transfer_count, 0);
-	CHECK_EQ(dma_hw->ch[1].transfer_count, 0);
-	CHECK_EQ(dma_hw->inte0 & 0x3u, 0);
-	CHECK_EQ(dma_hw->inte1 & 0x3u, 0);
-	CHECK_EQ(dma_channel_is_claimed(0), false);
-	CHECK_EQ(dma_channel_is_claimed(1), false);
+	/* CHAIN_TO (bits 11..14) holds the channel's own number: no chain. */
+	CHECK_EQ(dma_hw->ch[tx].al1_ctrl, (DMA_CTRL_TX & ~0x7800u) | (tx << 11));
+	CHECK_EQ(dma_hw->ch[rx].al1_ctrl, (DMA_CTRL_RX & ~0x7800u) | (rx << 11));
+	CHECK_EQ(dma_hw->ch[tx].transfer_count, 0);
+	CHECK_EQ(dma_hw->ch[rx].transfer_count, 0);
+	CHECK_EQ(dma_hw->inte0 & (BIT(tx) | BIT(rx)), 0);
+	CHECK_EQ(dma_hw->inte1 & (BIT(tx) | BIT(rx)), 0);
+	CHECK_EQ(dma_channel_is_claimed(tx), false);
+	CHECK_EQ(dma_channel_is_claimed(rx), false);
 	CHECK_EQ(i2c0_hw->dma_tdlr, 8);
 	CHECK_EQ(i2c0_hw->dma_rdlr, 0);
 	CHECK_EQ(i2c0_hw->dma_cr, 0);
