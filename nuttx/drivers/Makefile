@@ -23,10 +23,22 @@ CSRCS :=
 
 include log/Make.defs
 include nina/Make.defs
+include i2c_dw/Make.defs
 include compat/Make.defs
 include lsm6dso/Make.defs
 
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)include
+
+# The chip's private headers (arm_internal.h, rp2040_gpio.h, hardware/...),
+# for the parts of the drivers that are the RP2040's (the NINA's bus and
+# passthrough, the I2C driver): the directories the board's sources get
+# (boards/Board.mk).
+
+ARCHSRCDIR = $(TOPDIR)$(DELIM)arch$(DELIM)$(CONFIG_ARCH)$(DELIM)src
+CFLAGS += ${INCDIR_PREFIX}$(ARCHSRCDIR)$(DELIM)chip
+CFLAGS += ${INCDIR_PREFIX}$(ARCHSRCDIR)$(DELIM)common
+CFLAGS += ${INCDIR_PREFIX}$(ARCHSRCDIR)$(DELIM)$(patsubst "%",%,$(strip $(CONFIG_ARCH_FAMILY)))
+CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)sched
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)log
 
 AOBJS = $(ASRCS:.S=$(OBJEXT))

@@ -17,8 +17,8 @@
 # Kconfig stay here: nuttx/drivers is the directory that NuttX builds as
 # external/ (a symlink made by script/setup.sh), whose Makefile includes
 # this file and whose Kconfig sources ./nina/Kconfig.  The pins and the SPI
-# bus (nina_bus_rp2040.c of port/nuttx, <nina_bus.h>) are built by the
-# board's src/Make.defs.  VPATH and DEPPATH of common/drivers/nina, of its
+# bus (nina_bus_rp2040.c of port/nuttx, <nina_bus.h>) are built here too,
+# with the chip's private headers (the Makefile's -I).  VPATH and DEPPATH of common/drivers/nina, of its
 # internal/ and of its port/nuttx are relative to nuttx/drivers (mkdeps
 # needs relative ones); the objects are made there.  The core is compiled
 # as it is (it reads NuttX's configuration through NuttX's headers).
@@ -34,13 +34,12 @@
 # firmware they keep their poll intervals.  The board's NINA passthrough
 # mode (CONFIG_NINA_PASSTHROUGH) is the core's nina_passthrough.c with its
 # host's side on cdcacm (nina_passthrough_os.c of
-# common/drivers/nina/port/nuttx); the module's side
-# (nina_passthrough_bus_rp2040.c of port/nuttx) is built by the board's
-# src/Make.defs.
+# common/drivers/nina/port/nuttx) and the module's side
+# (nina_passthrough_bus_rp2040.c of port/nuttx).
 ############################################################################
 
 ifeq ($(CONFIG_NINA),y)
-CSRCS += nina_proto.c nina_os.c nina_wait.c
+CSRCS += nina_proto.c nina_os.c nina_wait.c nina_bus_rp2040.c
 ifeq ($(CONFIG_NINA_USRSOCK),y)
 CSRCS += nina_sock.c nina_usrsock.c nina_poller.c
 endif
@@ -54,6 +53,7 @@ endif
 
 ifeq ($(CONFIG_NINA_PASSTHROUGH),y)
 CSRCS += nina_passthrough.c nina_passthrough_os.c
+CSRCS += nina_passthrough_bus_rp2040.c
 endif
 
 ifneq ($(CONFIG_NINA)$(CONFIG_NINA_PASSTHROUGH),)

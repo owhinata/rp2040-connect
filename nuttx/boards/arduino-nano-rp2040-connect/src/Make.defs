@@ -96,34 +96,12 @@ ifeq ($(CONFIG_NANO_FLASH_KV),y)
 CSRCS += nano_flash_kv.c
 endif
 
-# SPI1 and the lines of the NINA-W102 (nuttx/drivers/nina uses them):
-# nina_bus_rp2040.c of the NINA driver's NuttX binding
-# (common/drivers/nina/port/nuttx, VPATH and DEPPATH below), built here
-# with the board's and the chip's headers.
-
-ifeq ($(CONFIG_NINA),y)
-CSRCS += nina_bus_rp2040.c
-endif
-
-# I2C0 (the LSM6DSOX and the ATECC608A) and I2C1, in place of the in-tree
-# rp2040_i2c.c (RP2040_I2C off).  Their OS-independent core is in
-# common/drivers/i2c_dw (i2c_dw.c, one source for both instances); its
-# NuttX binding is in common/drivers/i2c_dw/port/nuttx (i2c_dw_os_impl.h,
-# i2c_dw_instance.h, read by the core, and i2c_dw_controllers_rp2040.h,
-# their start, which nano_bringup.c reads).  The -I below: the core's
-# include/, internal/ and port/ (the boundaries), and port/nuttx.  VPATH
-# and DEPPATH are relative to the directory where the board's objects are
-# made, through the board symlink, as mkdeps needs.
+# The I2C driver (I2C0, I2C1) is built with the other drivers
+# (nuttx/drivers/i2c_dw/Make.defs); nano_bringup.c reads the start of its
+# controllers, i2c_dw_controllers_rp2040.h of the driver's NuttX binding.
 
 ifneq ($(CONFIG_I2C_DW_I2C0)$(CONFIG_I2C_DW_I2C1),)
-I2C_DW_DIR = $(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)drivers$(DELIM)i2c_dw
-CSRCS += i2c_dw.c
-DEPPATH += --dep-path board/../../../../common/drivers/i2c_dw
-VPATH += :board/../../../../common/drivers/i2c_dw
-CFLAGS += ${INCDIR_PREFIX}$(I2C_DW_DIR)$(DELIM)include
-CFLAGS += ${INCDIR_PREFIX}$(I2C_DW_DIR)$(DELIM)internal
-CFLAGS += ${INCDIR_PREFIX}$(I2C_DW_DIR)$(DELIM)port
-CFLAGS += ${INCDIR_PREFIX}$(I2C_DW_DIR)$(DELIM)port$(DELIM)nuttx
+CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)drivers$(DELIM)i2c_dw$(DELIM)port$(DELIM)nuttx
 endif
 
 # The i2c0 and lsm6dsox devices of the Zephyr compatibility layer
@@ -139,38 +117,6 @@ ifeq ($(CONFIG_NANO_LSM6DSO_STREAM),y)
 CSRCS += nano_gpio.c
 endif
 
-# Its DMA reads: the two DMA channels on NuttX's own DMA driver
-# (arch/arm/src/rp2040/rp2040_dmac.c, RP2040_DMAC), the boundary
-# common/drivers/i2c_dw/port/i2c_dw_dma_os.h: i2c_dw_dma_os_rp2040.c of the
-# core's NuttX binding (VPATH and DEPPATH as for i2c_dw.c above).  The reads
-# themselves and their command words are part of i2c_dw.c
-# (internal/i2c_dw_rp2040_dma_priv.h).
-
-ifeq ($(CONFIG_I2C_DW_RP2040_DMA),y)
-CSRCS += i2c_dw_dma_os_rp2040.c
-DEPPATH += --dep-path board/../../../../common/drivers/i2c_dw/port/nuttx
-VPATH += :board/../../../../common/drivers/i2c_dw/port/nuttx
-endif
-
-# The NINA passthrough mode's module side (nina_passthrough_bus.h of
-# common/drivers/nina/port, the -I below: UART1, the module's lines, the
-# watchdog's scratch registers, the LED): nina_passthrough_bus_rp2040.c of
-# common/drivers/nina/port/nuttx.  The mode itself and its host's side are
-# built with the NINA driver (nuttx/drivers/nina/Make.defs).
-
-ifeq ($(CONFIG_NINA_PASSTHROUGH),y)
-CSRCS += nina_passthrough_bus_rp2040.c
-endif
-
-# The two NINA sources above are in the NINA driver's NuttX binding;
-# VPATH and DEPPATH are relative to the directory where the board's objects
-# are made, as for i2c_dw above.
-
-ifneq ($(CONFIG_NINA)$(CONFIG_NINA_PASSTHROUGH),)
-DEPPATH += --dep-path board/../../../../common/drivers/nina/port/nuttx
-VPATH += :board/../../../../common/drivers/nina/port/nuttx
-endif
-
 # The stack sentinel in the scheduler's switch hook.
 
 ifeq ($(CONFIG_NANO_STACK_SENTINEL),y)
@@ -184,15 +130,14 @@ CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)arch$(DELIM)$(CONFIG_ARCH)$(DELIM)src
 # Headers shared with nuttx/drivers and the applications: nuttx/drivers/include
 # (the NuttX parts app_log_os.h and priorities_os.h), common/log (app_log.h,
 # log_ram.h; common/compat has priorities.h, cpu_load.h, nano_cpuload.h and
-# nano_gpio.h).  The NINA core's headers: common/drivers/nina
-# (nina_passthrough.h), its boundaries (nina_bus.h, nina_passthrough_bus.h):
-# common/drivers/nina/port; its NuttX binding's wlan0 (nina_net.h):
-# common/drivers/nina/port/nuttx.
+# nano_gpio.h).  The NINA driver's headers for its users:
+# common/drivers/nina/include (nina_passthrough.h); its NuttX binding's
+# wlan0 (nina_net.h): common/drivers/nina/port/nuttx.  The driver itself is
+# built with the other drivers (nuttx/drivers/nina/Make.defs).
 
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)include
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)log
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)drivers$(DELIM)nina$(DELIM)include
-CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)drivers$(DELIM)nina$(DELIM)port
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)drivers$(DELIM)nina$(DELIM)port$(DELIM)nuttx
 
 # The small Zephyr compatibility layer (<zephyr/device.h>, ...): its NuttX

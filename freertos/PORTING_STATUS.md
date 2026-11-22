@@ -2179,3 +2179,22 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
   - 既存の偽の割り当ても、自分のチャネルの印だけを消すように直した（確保と解放）。
 - `nuttx/README`（日英）のホストテストの本数を直した（51・35 と古いままだった → 59・39）。
 - NuttX のホストテスト 59（1 つ増えた）。イメージは変わらない（テストと文書だけ）。実機には触れていない。
+
+## NuttX: ドライバーのファイルを 1 つのライブラリーでビルドする（2026-11-21、ユーザーの指摘）
+
+- ユーザーの指摘: NuttX のビルドの結果、ドライバーのオブジェクトが `libboard.a`（`i2c_dw.o`・`i2c_dw_dma_os_rp2040.o`・`nina_bus_rp2040.o`・`nina_passthrough_bus_rp2040.o`）と
+  `libexternal.a`（NINA のコアとつなぎ）に分かれている。`libdrivers.a` の `i2c_driver.o` などは NuttX 本体の I2C の共通部分で、別物。
+- 分かれていた理由: この 4 つは RP2040 の内部のヘッダー（`arm_internal.h`、`rp2040_gpio.h` など）を使い、そのパスがボードのビルドにだけ通っていたので、もとはボードの `src/` にあった。
+  ファイルを `common/drivers/…/port/nuttx/` へ移したとき、イメージのバイト一致で確かめるためにリンクの順序を保ち、ビルドする場所を変えなかった。
+- 変更: 4 つとも `libexternal.a` でビルドする。NINA の 2 つは `nuttx/drivers/nina/Make.defs`、I2C は新しい `nuttx/drivers/i2c_dw/Make.defs`。チップの内部のヘッダーへのパス
+  （`arch/arm/src/chip`・`common`・`armv6-m`、`sched`）は `nuttx/drivers/Makefile` が足す（`boards/Board.mk` がボードのソースに足すのと同じ）。ボードの `src/Make.defs` からは 4 つの記述を削り、
+  起動のコードが読むヘッダーへの `-I` だけ残した（NINA は `include` と `port/nuttx`、I2C は `port/nuttx`）。I2C のオプション（`CONFIG_I2C_DW_*`）はボードの Kconfig のまま。
+- イメージ: NuttX 283908 → 283920 B（**基準を `snapshot-1121k` に更新**）。NuttX のホストテスト 59。
+- 実機（NuttX 版）: 書き込み直後の送信 約 70 秒: 欠番 0、48.4%、`dma_errors`・`dma_fallbacks` 0。`nina version`・`i2c dev 03 77` 正常。中継（1 回）: 2 MB の読み出しが 115200・921600 bps で一致、
+  書き込み後の退避とも一致、300 bps で抜ける。送信中の切断 → 2 秒で再接続、MQTT もつなぎ直し、Telnet は送信中と復帰後に応答（1 回）。
+- **FreeRTOS は変えなかった**: FreeRTOS は全部のソースが 1 つの実行ファイルに直接入るので、ライブラリーの分かれ方は無い。ただ cmake の記述で、NINA の `nina_wifi.c`・`port/zephyr/nina_net.c` が
+  `wifi.cmake` にある。これを `nina.cmake` に移す変更を試したところ、リンクの順序が変わるだけで `cpu_active` が 40.9% → 42.7%（3 回とも。`imu_fifo_worker` が 18.3 → 20.3）になった。
+  戻して 40.9%（2 回）。配置の影響と判断して、変更を取りやめた。配置による変動が、これまでの目安（0.6〜0.7 ポイント）より大きいことがあると分かった（CLAUDE.md に追記）。
+- Zephyr: NINA は `app` のライブラリーに 1 か所でまとまり、I2C は Zephyr 本体のドライバー（+ パッチ）なので、分かれ方の問題は無い。
+- `freertos/drivers/i2c_dw/i2c_dw_selftest.[ch]`（ユーザー: 使わないなら削除してよい）: `-DNANO_SELFTEST=ON` のビルドの `selftest` の I2C の 6 項目で使っている（今日も確認に使った）ので残した。
+- 実機: FreeRTOS 版（変更なしの既定のビルド。40.9%）。
