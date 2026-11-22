@@ -98,15 +98,15 @@ bool z_device_api_is_sensor(const struct device *dev);
 
 /* Devicetree nodes as devices.  A node is named by its label
  * (DT_NODELABEL(lsm6dsox) is the token lsm6dsox); the device of a node is
- * the object nano_device_<label>.  The expansion goes through a second
+ * the object __device_<label>.  The expansion goes through a second
  * macro so that DEVICE_DT_GET(DT_BUS(...)) expands its argument first.
  */
 
 #define DEVICE_DT_GET(node_id)      Z_DEVICE_DT_GET(node_id)
-#define Z_DEVICE_DT_GET(node_id)    (&nano_device_##node_id)
+#define Z_DEVICE_DT_GET(node_id)    (&__device_##node_id)
 #define DEVICE_DT_DECLARE(node_id)  Z_DEVICE_DT_DECLARE(node_id)
 #define Z_DEVICE_DT_DECLARE(node_id) \
-  extern const struct device nano_device_##node_id
+  extern const struct device __device_##node_id
 
 /* DEVICE_DT_DEFINE(node_id, name, init, data, config, api): one device per
  * node, as Zephyr's DEVICE_DT_DEFINE() (without the init level and
@@ -116,13 +116,13 @@ bool z_device_api_is_sensor(const struct device *dev);
 #define DEVICE_DT_DEFINE(node_id, _name, _init, _data, _config, _api) \
   Z_DEVICE_DT_DEFINE(node_id, _name, _init, _data, _config, _api)
 #define Z_DEVICE_DT_DEFINE(node_id, _name, _init, _data, _config, _api) \
-  static struct device_state nano_device_state_##node_id; \
-  const struct device nano_device_##node_id = \
+  static struct device_state __devstate_##node_id; \
+  const struct device __device_##node_id = \
     { \
       .name = (_name), \
       .config = (_config), \
       .api = (_api), \
-      .state = &nano_device_state_##node_id, \
+      .state = &__devstate_##node_id, \
       .data = (_data), \
       .init = (_init), \
     }

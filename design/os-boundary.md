@@ -251,7 +251,7 @@ headers are in `common/compat/net_offload/include`, which F puts after its OS di
 
 ### 4.3 Devices behind `DEVICE_DT_GET()`
 
-`DEVICE_DT_GET(DT_NODELABEL(x))` is `&nano_device_x` (`common/compat/zephyr/device.h`); `DEVICE_DT_DEFINE()` makes it.
+`DEVICE_DT_GET(DT_NODELABEL(x))` is `&__device_x` (`common/compat/zephyr/device.h`); `DEVICE_DT_DEFINE()` makes it.
 The devices listed for the shell are in `common/compat/zephyr_device.c` (hand-written).
 
 | Node | N | F |

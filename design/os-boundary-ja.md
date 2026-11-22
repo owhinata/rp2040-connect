@@ -243,7 +243,7 @@ Zephyr 版は自分の `zephyr/app/usb-console/src/kv_store_os.h` と `wifi_prof
 
 ### 4.3 `DEVICE_DT_GET()` の向こうのデバイス
 
-`DEVICE_DT_GET(DT_NODELABEL(x))` は `&nano_device_x` です（`common/compat/zephyr/device.h`）。作るのは `DEVICE_DT_DEFINE()` です。
+`DEVICE_DT_GET(DT_NODELABEL(x))` は `&__device_x` です（`common/compat/zephyr/device.h`）。作るのは `DEVICE_DT_DEFINE()` です。
 シェルに見せるデバイスの一覧は `common/compat/zephyr_device.c` に手で書いてあります。
 
 | ノード | N | F |
