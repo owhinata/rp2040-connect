@@ -1,9 +1,9 @@
 /* SPDX-License-Identifier: MIT */
 /* The OS part of <zephyr/kernel.h> on FreeRTOS: semaphores, k_poll() on
- * semaphores, threads, the threads of the work queues, the timers of
- * delayable work items, time, and the start of what Zephyr starts at boot
- * (zephyr_compat_initialize()).  The work queue logic itself is
- * zephyr_work.c (common/compat); the mutexes are zephyr_mutex.c; the types
+ * semaphores, the start of a thread, the timers of delayable work items and
+ * the sleeps.  The work queue logic, the work queues' threads and the start
+ * of what Zephyr starts at boot are OS-independent (common/compat/
+ * zephyr_work.c, zephyr_init.c); the mutexes are zephyr_mutex.c; the types
  * are in zephyr_os.h.  Part of the FreeRTOS implementation of the small
  * Zephyr compatibility layer of the port (freertos/drivers/compat, the
  * counterpart of nuttx/drivers/compat/zephyr_kernel.c).
@@ -28,10 +28,10 @@
  *                             going through the timer task ("Tmr Svc")
  *   K_THREAD_DEFINE() thread  a task on its static stack, started by
  *                             z_thread_static_start() (the start of the
- *                             application); it is deleted when entry returns
- *   work queue thread         a task on the queue's static stack running
- *                             zephyr_work.c's z_work_queue_process()
- *   _timeout of an item       an entry in the layer's list of timeouts,
+ *                             application; the layer's own threads, the
+ *                             work queues' among them, the same way); it is
+ *                             deleted when entry returns
+ *   _timeout of an item      an entry in the layer's list of timeouts,
  *                             sorted by deadline, run by the tick hook
  *                             (zephyr_compat_tick()) in the tick interrupt,
  *                             as Zephyr runs its timeouts in the system clock
@@ -40,11 +40,7 @@
  *                             task (zephyr_work.c relies on a timer that
  *                             cannot run while interrupts are masked)
  *   k_thread_name_set()       the name in the task's control block
- *   k_uptime_get()            the TIMER in ms, rounded down (not the tick:
- *                             it is 32 bits wide and stands still while
- *                             interrupts are masked for longer than a tick,
- *                             until the application's tick hook catches up)
- *   k_sleep(), k_msleep(),    vTaskDelay(ticks + 1): Zephyr's wake-up at the
+ *   k_sleep(), k_msleep(),   vTaskDelay(ticks + 1): Zephyr's wake-up at the
  *   k_usleep()                current tick + ticks + 1; K_NO_WAIT (0 or less)
  *                             yields (z_os_yield(): behind the other tasks of
  *                             the priority); K_FOREVER suspends the task
@@ -67,11 +63,8 @@
 #include "FreeRTOS.h"
 #include "task.h"
 
-#include <zephyr/device.h>
 #include <zephyr/kernel.h>
-#include <zephyr/rtio/work.h>
 
-#include "priorities.h"
 #include "zephyr_compat_os.h"
 #include "zephyr_os_internal.h"
 
@@ -414,8 +407,16 @@ int k_poll(struct k_poll_event *events, int num_events, k_timeout_t timeout)
 /* Bytes; the port's smallest stack is 1024 (priorities.h). */
 #define TASK_STACK_MIN 256
 
-int z_os_task_start(TaskFunction_t fn, const char *name, k_thread_stack_t *stack, size_t stack_size,
-		    int prio, void *arg, TaskHandle_t *handle)
+/* Starts fn(arg) in a new task on the static stack (stack_size bytes) at the
+ * FreeRTOS priority prio (1..configMAX_PRIORITIES - 1), named name.  The
+ * task's control block comes from the FreeRTOS heap (FreeRTOS keeps no list
+ * of them; it stays allocated if the task ends).  *handle is set before the
+ * task can run (the scheduler is suspended around the creation), as Zephyr
+ * starts its static threads with the scheduler locked.  0, -EINVAL (bad
+ * priority or stack) or -ENOMEM.
+ */
+static int z_os_task_start(TaskFunction_t fn, const char *name, k_thread_stack_t *stack,
+			   size_t stack_size, int prio, void *arg, TaskHandle_t *handle)
 {
 	bool running = xTaskGetSchedulerState() != taskSCHEDULER_NOT_STARTED;
 	StaticTask_t *tcb;
@@ -484,48 +485,7 @@ int z_thread_static_start(const struct z_thread_static *thread)
 			       thread->prio, (void *)thread, thread->tid);
 }
 
-/* The thread of a work queue: kernel/work.c work_queue_main(). */
-static void work_queue_main(void *arg)
-{
-	struct k_work_q *queue = arg;
-	bool yield;
-
-	for (;;) {
-		if (z_work_queue_process(queue, &yield)) {
-			if (yield) {
-				z_os_yield();
-			}
-			continue;
-		}
-		/* Nothing pending: sleep until the next submission. */
-		(void)k_sem_take(&queue->notify, K_FOREVER);
-	}
-}
-
-void k_work_queue_start(struct k_work_q *queue, k_thread_stack_t *stack, size_t stack_size,
-			int prio, const struct k_work_queue_config *cfg)
-{
-	int ret;
-
-	z_work_queue_init(queue);
-	queue->flags = BIT(K_WORK_QUEUE_STARTED_BIT);
-	if (cfg != NULL && cfg->no_yield) {
-		queue->flags |= BIT(K_WORK_QUEUE_NO_YIELD_BIT);
-	}
-
-	ret = z_os_task_start(work_queue_main,
-			      cfg != NULL && cfg->name != NULL ? cfg->name : "workq", stack,
-			      stack_size, prio, queue, &queue->thread);
-	configASSERT(ret == 0);
-	(void)ret;
-}
-
 /* Time ----------------------------------------------------------------------*/
-
-int64_t k_uptime_get(void)
-{
-	return Z_UPTIME_MS(nano_mono_us());
-}
 
 int32_t k_sleep(k_timeout_t timeout)
 {
@@ -663,45 +623,4 @@ void zephyr_compat_tick(void)
 		to->fn(to);
 	}
 	k_spin_unlock(&timeout_lock, key);
-}
-
-/* What Zephyr starts at boot ------------------------------------------------*/
-
-struct k_work_q k_sys_work_q;
-
-static K_THREAD_STACK_DEFINE(sys_work_q_stack, NANO_STACK_SYSWORKQ);
-
-int zephyr_compat_initialize(void)
-{
-	static const struct k_work_queue_config cfg = {
-		.name = "sysworkq",
-		.no_yield = false,
-	};
-	int ret;
-
-	/* kernel/system_work_q.c k_sys_work_q_init() (POST_KERNEL). */
-	k_work_queue_start(&k_sys_work_q, sys_work_q_stack, K_THREAD_STACK_SIZEOF(sys_work_q_stack),
-			   NANO_PRIO_SYSWORKQ, &cfg);
-	if (k_sys_work_q.thread == NULL) {
-		return -ENOMEM;
-	}
-
-	/* subsys/rtio/rtio_workq.c static_init() (POST_KERNEL). */
-	ret = rtio_workq_initialize();
-	if (ret != 0) {
-		return ret;
-	}
-
-#ifdef CONFIG_NANO_LSM6DSO_STREAM
-	/* drivers/gpio/gpio_rpi_pico.c (POST_KERNEL, CONFIG_GPIO_INIT_PRIORITY
-	 * 40): the gpio0 device of common/compat/zephyr_gpio.c, which the
-	 * LSM6DSO's FIFO stream uses for INT1 (built with the driver,
-	 * freertos/drivers/lsm6dso/lsm6dso.cmake), as the NuttX build starts it
-	 * here.  Its bank interrupt is added with the first pin's
-	 * (rp2040/nano_gpio.c).
-	 */
-	return device_init(DEVICE_DT_GET(DT_NODELABEL(gpio0)));
-#else
-	return 0;
-#endif
 }

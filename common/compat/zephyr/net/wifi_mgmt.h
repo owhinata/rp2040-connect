@@ -292,7 +292,7 @@ struct net_wifi_mgmt_offload
  * api, mtu): Zephyr defines the device and its interface with the MTU and
  * calls init_fn and then api's iface_api.init at boot.  Here it names the
  * three for the FreeRTOS build's interface
- * (freertos/drivers/compat/zephyr_net_init.c), which sets the MTU and calls
+ * (common/compat/net_offload/zephyr_net_init.c), which sets the MTU and calls
  * the two in the same order when it registers the interface.  The other
  * arguments are not used.
  */

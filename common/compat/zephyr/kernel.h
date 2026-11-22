@@ -24,10 +24,12 @@
  *
  * The work items follow kernel/work.c (flags RUNNING, CANCELING, QUEUED,
  * DELAYED; the return values of submit and schedule): zephyr_work.c, which
- * is OS-independent.  The OS parts (semaphores, the wait in k_poll(), the
- * queue threads, the timer of a delayable item) are each OS's: on NuttX
- * zephyr_kernel.c and zephyr_mutex.c (sem_t, kthreads, wdog), in host
- * tests a fake (common/tests/zephyr_fakes).
+ * is OS-independent, as is zephyr_init.c (the work queues' threads on
+ * z_thread_static_start(), the system work queue, k_uptime_get() and
+ * zephyr_compat_initialize()).  The OS parts (semaphores, the wait in
+ * k_poll(), the start of a thread, the timer of a delayable item) are each
+ * OS's: on NuttX zephyr_kernel.c and zephyr_mutex.c (sem_t, kthreads,
+ * wdog), in host tests a fake (common/tests/zephyr_fakes).
  *
  * Timeouts are kernel ticks, as in Zephyr (100 us in the Zephyr build,
  * CONFIG_SYS_CLOCK_TICKS_PER_SEC=10000).  K_MSEC() rounds up to ticks
@@ -54,19 +56,26 @@
  *   - struct _timeout and _timeout_func_t (the timer of a delayable work
  *     item),
  *   - k_tid_t, and k_current_get() (declared or inline),
+ *   - k_yield() (declared or inline): gives the turn to the next ready
+ *     thread of the same priority, or goes on if there is none (threads
+ *     only),
  *   - K_PRIO_PREEMPT(x): the OS's priority of Zephyr's preemptible
  *     priority x, keeping their order,
  *   - k_cycle_get_32() and k_cycle_get_64() (declared or inline): a
  *     counter of 1 MHz (sys_clock_hw_cycles_per_sec() and the conversions
- *     below assume it).
+ *     below assume it),
+ *   - Z_OS_ASSERT(test): the OS's own assertion, for what the layer cannot
+ *     return (a work queue's thread that did not start: Zephyr's
+ *     k_work_queue_start() cannot fail); it may compile to nothing,
+ *   - optionally Z_SEM_TAKE_FOREVER(sem): k_sem_take(sem, K_FOREVER) the
+ *     OS's shorter way (the work queues' threads sleep with it between
+ *     submissions); the default below is k_sem_take() itself.
  *
- * The OS implements the functions declared here that zephyr_work.c does
- * not: k_mutex_*(), k_sem_*(), k_poll_event_init(), k_poll(),
- * k_thread_name_set(), z_thread_static_start(), k_uptime_get(),
- * k_sleep(), k_msleep(), k_usleep(), k_busy_wait(), k_work_queue_start()
- * (with z_work_queue_init() and z_work_queue_process() in the queue's
- * thread), z_add_timeout(), z_abort_timeout(), the object k_sys_work_q,
- * and zephyr_compat_initialize() of "zephyr_compat.h".
+ * The OS implements the functions declared here that zephyr_work.c and
+ * zephyr_init.c do not: k_mutex_*(), k_sem_*(), k_poll_event_init(),
+ * k_poll(), k_thread_name_set(), z_thread_static_start() (every thread of
+ * the layer starts with it), k_sleep(), k_msleep(), k_usleep(),
+ * k_busy_wait(), z_add_timeout() and z_abort_timeout().
  *
  * Part of the small Zephyr compatibility layer of the port, its
  * OS-independent part (common/compat, see nuttx/drivers/README.md).
@@ -150,6 +159,14 @@ int k_sem_take(struct k_sem *sem, k_timeout_t timeout);
 
 void k_sem_give(struct k_sem *sem);
 
+/* The wait of a work queue's thread for its next submission (zephyr_init.c):
+ * k_sem_take(sem, K_FOREVER) unless "zephyr_os.h" has a shorter way to it.
+ */
+
+#ifndef Z_SEM_TAKE_FOREVER
+#  define Z_SEM_TAKE_FOREVER(sem) k_sem_take((sem), K_FOREVER)
+#endif
+
 /* Sets the count to 0. */
 
 void k_sem_reset(struct k_sem *sem);
@@ -223,9 +240,10 @@ int k_thread_name_set(k_tid_t thread, const char *name);
  * K_THREAD_DEFINE_START(name) (<zephyr_compat.h>), which calls the
  * function z_thread_start_<name>() that this macro defines.  The OS runs
  * the thread on the static stack (z_thread_static_start(); on NuttX a
- * kernel thread, kthread_create_with_stack(), as the work queue threads);
- * it ends when entry returns.  Only options 0 and delay 0 (start at once)
- * are supported.
+ * kernel thread, kthread_create_with_stack()); it ends when entry returns.
+ * Only options 0 and delay 0 (start at once) are supported.  The layer
+ * starts its own threads (the work queues', "RTIO WQ 0", "net_mgmt") with
+ * z_thread_static_start() too.
  */
 
 struct z_thread_static
@@ -241,7 +259,14 @@ struct z_thread_static
   k_tid_t *tid;
 };
 
-/* Starts the thread; 0 or a negative errno. */
+/* The OS part: starts a thread named thread->name on thread->stack
+ * (stack_size bytes) at the OS's priority thread->prio, which runs
+ * thread->entry(p1, p2, p3) and ends when entry returns; sets
+ * *thread->tid before the new thread can use it.  *thread must stay valid
+ * while the thread runs (the OS may read it in the new thread).  The new
+ * thread may run before this returns.  0 or a negative errno (*thread->tid
+ * then unchanged or 0).
+ */
 
 int z_thread_static_start(const struct z_thread_static *thread);
 
@@ -273,10 +298,13 @@ int z_thread_static_start(const struct z_thread_static *thread);
 
 /* k_uptime_get(): the time since boot in milliseconds, from the kernel's
  * tick count, rounded down (k_ticks_to_ms_floor64(k_uptime_ticks())),
- * Z_UPTIME_MS() of the microseconds since boot.  On NuttX the tick is the
- * TIMER count over CONFIG_USEC_PER_TICK (the board's tickless timer,
- * rp2040_oneshot.c), so this is the TIMER read once; it is 64 bits wide
- * where clock_systime_ticks() is 32.
+ * Z_UPTIME_MS() of the microseconds since boot: here of the cycle counter,
+ * the TIMER read once (zephyr_init.c).  On NuttX the tick is the TIMER
+ * count over CONFIG_USEC_PER_TICK (the board's tickless timer,
+ * rp2040_oneshot.c), so this is the tick count in ms; it is 64 bits wide
+ * where clock_systime_ticks() is 32.  FreeRTOS's tick is not used: it is 32
+ * bits wide and stands still while interrupts are masked for longer than a
+ * tick, until the application's tick hook catches up.
  */
 
 int64_t k_uptime_get(void);
@@ -408,6 +436,7 @@ struct k_work_q
   struct k_sem notify;          /* wakes the thread */
   k_tid_t thread;
   uint32_t flags;
+  struct z_thread_static thread_start; /* the thread's, zephyr_init.c */
 };
 
 struct k_work_queue_config
@@ -419,7 +448,7 @@ struct k_work_queue_config
 /* The system work queue ("sysworkq"): Zephyr's runs at the cooperative
  * priority -1 with a 1024-byte stack (CONFIG_SYSTEM_WORKQUEUE_PRIORITY,
  * _STACK_SIZE); on NuttX NANO_PRIO_SYSWORKQ (119) and NANO_STACK_SYSWORKQ.
- * Started by zephyr_compat_initialize().
+ * Started by zephyr_compat_initialize() (zephyr_init.c).
  */
 
 extern struct k_work_q k_sys_work_q;
@@ -471,7 +500,9 @@ k_work_delayable_from_work(struct k_work *work)
 }
 
 /* Starts the queue's thread (stack size and priority as given, named by
- * cfg->name if any).
+ * cfg->name if any, else "workq") with z_thread_static_start(); it runs
+ * z_work_queue_process() and sleeps on the queue's semaphore when nothing
+ * is pending (zephyr_init.c).
  */
 
 void k_work_queue_start(struct k_work_q *queue, k_thread_stack_t *stack,

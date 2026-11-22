@@ -1,8 +1,8 @@
 /* SPDX-License-Identifier: MIT */
 /* What the files of the FreeRTOS part of the Zephyr compatibility layer share
- * (zephyr_kernel.c, zephyr_mutex.c, zephyr_net_mgmt_os.h); not for the
- * layer's users.  Include after <zephyr/kernel.h>.  Part of the FreeRTOS
- * implementation of the layer (freertos/drivers/compat).
+ * (zephyr_kernel.c, zephyr_mutex.c); not for the layer's users.  Include
+ * after <zephyr/kernel.h>.  Part of the FreeRTOS implementation of the layer
+ * (freertos/drivers/compat).
  */
 
 #ifndef FREERTOS_DRIVERS_COMPAT_ZEPHYR_OS_INTERNAL_H
@@ -22,21 +22,7 @@
  */
 TickType_t z_os_wait_ticks(k_timeout_t timeout);
 
-/* Starts fn(arg) in a new task on the static stack (stack_size bytes) at the
- * FreeRTOS priority prio (1..configMAX_PRIORITIES - 1), named name.  The
- * task's control block comes from the FreeRTOS heap (FreeRTOS keeps no list
- * of them; it stays allocated if the task ends).  *handle is set before the
- * task can run (the scheduler is suspended around the creation), as Zephyr
- * starts its static threads with the scheduler locked.  0, -EINVAL (bad
- * priority or stack) or -ENOMEM.
- */
-int z_os_task_start(TaskFunction_t fn, const char *name, k_thread_stack_t *stack, size_t stack_size,
-		    int prio, void *arg, TaskHandle_t *handle);
-
-/* Zephyr's k_yield(): gives the turn to the next ready task of the same
- * priority (FreeRTOS's taskYIELD()), or goes on if there is none.  Not from
- * an interrupt handler.
- */
+/* k_yield() for the file's own sleeps (zephyr_kernel.c). */
 void z_os_yield(void);
 
 #endif /* FREERTOS_DRIVERS_COMPAT_ZEPHYR_OS_INTERNAL_H */

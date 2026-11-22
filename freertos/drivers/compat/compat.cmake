@@ -12,6 +12,7 @@
 #   zephyr_sys_clock.c: the realtime clock of <zephyr/sys/clock.h>, which
 #   newlib's gettimeofday() and time() read too) and the
 #   OS-independent part that links at this stage (common/compat:
+#   zephyr_init.c, on zephyr_kernel.c's start of a thread, right after it;
 #   zephyr_work.c, zephyr_rtio.c, zephyr_rtio_workq.c, zephyr_mem_blocks.c);
 # - the RAM log and "dmesg" (freertos/drivers/log/log_ram.c, on
 #   common/log/log_ring.c);
@@ -80,6 +81,12 @@ set(FREERTOS_SHELL_ENGINE_DIR ${FREERTOS_COMMON_DIR}/compat/shell_engine)
 function(freertos_zephyr_compat target)
   cmake_parse_arguments(ARG "SELFTEST" "" "" ${ARGN})
 
+  # The work queues' threads, the system work queue, zephyr_compat_initialize()
+  # and k_uptime_get(), linked right after zephyr_kernel.c, where they were.
+  set(common_kernel_sources
+    ${FREERTOS_COMMON_DIR}/compat/zephyr_init.c
+  )
+
   set(common_sources
     ${FREERTOS_COMMON_DIR}/compat/zephyr_work.c
     ${FREERTOS_COMMON_DIR}/compat/zephyr_rtio.c
@@ -110,6 +117,7 @@ function(freertos_zephyr_compat target)
 
   target_sources(${target} PRIVATE
     ${FREERTOS_COMPAT_DIR}/zephyr_kernel.c
+    ${common_kernel_sources}
     ${FREERTOS_COMPAT_DIR}/zephyr_mutex.c
     ${FREERTOS_NET_OFFLOAD_DIR}/zephyr_heap.c
     ${FREERTOS_COMPAT_DIR}/zephyr_sys_clock.c
@@ -172,7 +180,7 @@ function(freertos_zephyr_compat target)
 
   # Source file properties are scoped to the directory that calls this
   # function, the application's, which is the target's.
-  set_source_files_properties(${common_sources} ${zephyr_copies} PROPERTIES
+  set_source_files_properties(${common_kernel_sources} ${common_sources} ${zephyr_copies} PROPERTIES
     COMPILE_OPTIONS "-include;${FREERTOS_COMPAT_DIR}/common_prelude.h"
   )
 endfunction()

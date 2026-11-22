@@ -6,10 +6,11 @@
  * lock (so that the caller's stack does not hold it) and put in the queue,
  * waiting up to 10 ms for room; the "net_mgmt" thread takes the events in
  * order and runs the callbacks under the callback lock.  See the header.
- * The thread is the OS's, in "zephyr_net_mgmt_os.h", which this file
- * includes at its end; its stack size is NANO_STACK_NET_MGMT of the OS's
- * "priorities.h".  Part of the small Zephyr compatibility layer of the
- * port, its OS-independent part (common/compat).
+ * The thread starts on the OS's start of a thread (z_thread_static_start()
+ * of <zephyr/kernel.h>); its priority and stack size are
+ * NANO_PRIO_NET_MGMT and NANO_STACK_NET_MGMT of "priorities.h".  Part of
+ * the small Zephyr compatibility layer of the port, its OS-independent part
+ * (common/compat).
  */
 
 #include <stdbool.h>
@@ -164,10 +165,63 @@ void net_mgmt_event_notify_with_info(uint64_t mgmt_event,
   mgmt_push_event(mgmt_event, iface, info, length);
 }
 
-/* The OS part: the thread "net_mgmt" that takes the events from g_queue in
- * order (g_queue_used, g_queue_lock, g_queue_free) and runs
- * mgmt_run_callbacks() on each, on mgmt_stack, started once (g_started) by
- * net_mgmt_event_init() (on NuttX a kernel thread, nuttx/drivers/compat).
+/* subsys/net/ip/net_mgmt.c mgmt_event_thread(): the events in order, each
+ * copied out of the queue before its callbacks run.
  */
 
-#include "zephyr_net_mgmt_os.h"
+static void mgmt_event_thread(void *p1, void *p2, void *p3)
+{
+  static struct mgmt_event_entry mgmt_event;
+  k_spinlock_key_t key;
+
+  (void)p1;
+  (void)p2;
+  (void)p3;
+
+  for (; ; )
+    {
+      (void)k_sem_take(&g_queue_used, K_FOREVER);
+      key = k_spin_lock(&g_queue_lock);
+      mgmt_event = g_queue[g_queue_head];
+      g_queue_head = (g_queue_head + 1) % NET_MGMT_EVENT_QUEUE_SIZE;
+      k_spin_unlock(&g_queue_lock, key);
+      k_sem_give(&g_queue_free);
+
+      mgmt_run_callbacks(&mgmt_event);
+    }
+}
+
+/* The thread "net_mgmt" (NANO_PRIO_NET_MGMT, NANO_STACK_NET_MGMT), started
+ * once on the OS's start of a thread.
+ */
+
+static k_tid_t mgmt_thread;
+
+int net_mgmt_event_init(void)
+{
+  static const struct z_thread_static thread =
+    {
+      .name = "net_mgmt",
+      .stack = mgmt_stack,
+      .stack_size = K_THREAD_STACK_SIZEOF(mgmt_stack),
+      .entry = mgmt_event_thread,
+      .prio = NANO_PRIO_NET_MGMT,
+      .tid = &mgmt_thread,
+    };
+
+  int ret;
+
+  if (g_started)
+    {
+      return 0;
+    }
+
+  ret = z_thread_static_start(&thread);
+  if (ret < 0)
+    {
+      return ret;
+    }
+
+  g_started = true;
+  return 0;
+}

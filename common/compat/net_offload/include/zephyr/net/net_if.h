@@ -82,7 +82,7 @@ struct net_linkaddr {
 /* Makes IFACE the interface that net_if_get_default() and
  * net_if_get_wifi_sta() return, administratively up (Zephyr brings an
  * interface up when it is initialized), dormant, with no address
- * (freertos/drivers/compat/zephyr_net_init.c).
+ * (common/compat/net_offload/zephyr_net_init.c).
  */
 void z_net_if_register(struct net_if *iface);
 
@@ -140,7 +140,7 @@ struct net_linkaddr *net_if_get_link_addr(struct net_if *iface);
 
 /* The MTU, which Zephyr takes from the device definition
  * (NET_DEVICE_DT_OFFLOAD_DEFINE(..., mtu): 1500 for the NINA) and the
- * FreeRTOS build's interface sets at its start (freertos/drivers/compat/
+ * FreeRTOS build's interface sets at its start (common/compat/net_offload/
  * zephyr_net_init.c).  0 until set.
  */
 void net_if_set_mtu(struct net_if *iface, uint16_t mtu);

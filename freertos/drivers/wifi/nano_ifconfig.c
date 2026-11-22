@@ -31,7 +31,7 @@
  * with the address (Mask:0.0.0.0 while disconnected).
  *
  * Without arguments the command shows every interface: before the NINA's
- * interface is registered (freertos/drivers/compat/zephyr_net_init.c, at the start)
+ * interface is registered (common/compat/net_offload/zephyr_net_init.c, at the start)
  * there is none and nothing is printed, as NuttX prints nothing without a
  * network device.  Another name gets an error (-ENODEV).
  */

@@ -11,7 +11,7 @@
  * NET_EVENT_WIFI_SCAN_RESULT and _SCAN_DONE).  The core's threads are K_THREAD_DEFINE() threads here.
  *
  * The FreeRTOS build compiles this file on its Zephyr compatibility layer
- * (freertos/drivers/wifi/wifi.cmake, freertos/drivers/compat/zephyr_net_init.c).
+ * (freertos/drivers/wifi/wifi.cmake, common/compat/net_offload/zephyr_net_init.c).
  */
 
 #include <errno.h>

@@ -3,10 +3,11 @@
  * (common/compat/zephyr/kernel.h, which includes this header first and
  * lists what it must provide): NuttX's headers that come before the
  * layer's, the tick, the OS objects (k_mutex, k_sem, the timer of a
- * delayable work item, k_tid_t), the priorities, the calling thread and
- * the cycle counter.  The functions on them are zephyr_kernel.c and
- * zephyr_mutex.c.  Part of the NuttX implementation of the layer
- * (nuttx/drivers/compat, see nuttx/drivers/README.md).
+ * delayable work item, k_tid_t), the priorities, the calling thread,
+ * k_yield(), the cycle counter, the OS's assertion and the work queues'
+ * wait.  The functions on them are zephyr_kernel.c and zephyr_mutex.c.
+ * Part of the NuttX implementation of the layer (nuttx/drivers/compat, see
+ * nuttx/drivers/README.md).
  */
 
 #ifndef __NUTTX_DRIVERS_COMPAT_ZEPHYR_OS_H
@@ -18,6 +19,7 @@
 
 #include <nuttx/config.h>
 #include <sys/types.h>
+#include <assert.h>
 #include <nuttx/irq.h>
 #include <nuttx/mutex.h>
 #include <nuttx/semaphore.h>
@@ -74,6 +76,12 @@ struct k_sem
   { .sem = SEM_INITIALIZER(initial), .limit = (lim), .poll_events = NULL }
 #define K_SEM_MAX_LIMIT SEM_VALUE_MAX
 
+/* k_sem_take(sem, K_FOREVER) (zephyr_kernel.c) without the call: the work
+ * queues' threads sleep with it between submissions (<zephyr/kernel.h>).
+ */
+
+#define Z_SEM_TAKE_FOREVER(s) nxsem_wait_uninterruptible(&(s)->sem)
+
 /* The timer of a delayable work item (Zephyr's struct _timeout): a wdog,
  * whose callback runs in the timer interrupt.
  */
@@ -111,6 +119,21 @@ static inline k_tid_t k_current_get(void)
 {
   return gettid();
 }
+
+/* k_yield(): sched_yield() (<sched.h>'s, declared here as gettid()). */
+
+int sched_yield(void);
+
+static inline void k_yield(void)
+{
+  sched_yield();
+}
+
+/* The OS's assertion: DEBUGASSERT() (nothing without
+ * CONFIG_DEBUG_ASSERTIONS, as in the imu configuration).
+ */
+
+#define Z_OS_ASSERT(test) DEBUGASSERT(test)
 
 /* The cycle counter: the board's monotonic clock, the RP2040 TIMER
  * (nano_mono_us(), 1 MHz from the crystal; see <zephyr/kernel.h>).

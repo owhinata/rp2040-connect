@@ -2447,3 +2447,24 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
 - パッチ 0004・0007・0009・0010 は説明文だけ新しい名前に（本体はバイト単位で同じ）。
 - 照合: 3 版ともイメージは変更前とバイト単位で一致（NuttX 283992 B、FreeRTOS 237056 B、Zephyr 372328 B。改名した名前はイメージに入らない）。ホストテスト 48・61・58。実機には書いていない。
 - subagent が迷った点: アプリ（`apps/init`）のファイルにも `rp2040_` を付けたこと、`rp2040_pico.h` という名前（Pico ではないボード）、`RP2040_FLASH_KV` が共有の `nano_flash_kv.c` を有効にする点。
+
+## 整理 5: 2 版で同じだった起動のつなぎを 1 つに（2026-11-22）
+
+- subagent が実装、メインがホストテストと実機確認。
+- 共有にしたもの（使う OS の操作は `z_thread_static_start()` だけ）: 新しい `common/compat/zephyr_init.c`（ワークキューのスレッドの本体、`k_work_queue_start()`、`k_sys_work_q`、
+  `zephyr_compat_initialize()`、`k_uptime_get()`）、`common/compat/zephyr_net_mgmt.c` の中の net_mgmt のスレッドと起動、`zephyr_net_init.c`（FreeRTOS から `common/compat/net_offload/` へ。
+  宣言は `include/zephyr_net_init.h`）。削除: 2 版の `zephyr_net_mgmt_os.h`、FreeRTOS の `zephyr_net_init.c`。
+- OS の項目に足したもの: `k_yield()`、`Z_OS_ASSERT()`（スレッドが起きなかったときの各版の反応をそのまま残す）、任意の `Z_SEM_TAKE_FOREVER()`（NuttX 版だけが定義。ワークキューのループが
+  `nxsem_wait_uninterruptible()` を直接呼ぶ形を保つため）。OS が実装する関数は 21 + 1 オブジェクトから 18 に。
+- 比べて見つかった違いと扱い: 起動のデータの渡し方とスレッドの終わり方（各版の `z_thread_static_start()` に残す）、`zephyr_compat_initialize()` は sysworkq が起きなければ `-ENOMEM`
+  （NuttX 版は以前は黙って進んでいた）、NuttX 版の net_mgmt の起動は新しいスレッドが受け取るまで待つ形に（優先度が高くすぐ走るので順序は同じ）、NuttX 版の起動のロックは 1 つに。
+- 逆アセンブルの比較（subagent）: `z_work_queue_process`・`k_work_submit`・`k_sem_give`・`k_sem_take` などバッチごとの経路は、両版ともアドレスとリテラルを除いて同じ命令。
+  ワークキューと net_mgmt のスレッドは `static_thread_main` を 1 段通るようになった（起動のときだけ）。キュー 1 つあたり RAM が 36 B 増える。
+- 行数: `nuttx/drivers/compat` 1559 → 1412、`freertos/drivers/compat`（`rp2040/`・`zephyr/` を含む）2116 → 1910。
+- イメージ: NuttX 283956 B（−36）、FreeRTOS 237064 B（+8）、Zephyr は基準と一致。**基準: `snapshot-1122f`**（Zephyr は 1122e と同じ中身）。ホストテスト 48・61・58。
+- 実機:
+  - NuttX（書き込み直後 約 70 秒）: 欠番 0、46.9%、時刻の逆行 0。`ps`: `sysworkq` 119（312/976）、`RTIO_WQ_0` 118（640/976）、`imu_fifo_worker` 108（840/2008）、`net_mgmt` 119（240/2000）。
+    `sensor get` 応答。送信中の Telnet、Wi-Fi を落として 2 秒で再接続、MQTT の再接続（connects 2）、復帰後の Telnet、時刻は synchronized。`dmesg` は意図した切断の警告だけ。
+  - FreeRTOS: `selftest` 22・6・3 項目とも失敗 0。既定のビルド 2 回: 欠番 0、43.1%。`ps`: `net_mgmt` 21（空き 1832）、`sysworkq` 21（800）、`imu_fifo_worker` 10（1352）、`RTIO WQ 0` 20（528）。
+    `sensor get` 応答。切断復帰と Telnet も NuttX と同じ結果（connects 2、時刻の逆行 0）。
+- 実機: FreeRTOS 版（この変更の既定のビルド）。

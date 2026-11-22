@@ -60,6 +60,13 @@ typedef int k_tid_t;
  */
 #define K_PRIO_PREEMPT(x) (118 - (x))
 
+/* One thread: nothing to yield to. */
+static inline void k_yield(void)
+{
+}
+
+#define Z_OS_ASSERT(test) assert(test)
+
 /* The test's thread and clock. */
 k_tid_t k_current_get(void);
 uint64_t k_cycle_get_64(void);

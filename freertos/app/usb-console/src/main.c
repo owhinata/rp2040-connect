@@ -35,7 +35,7 @@
 #include "wifi_profile.h"
 #include <zephyr/net/wifi_credentials.h>
 #include "zephyr_compat.h"
-#include "zephyr_compat_os.h"
+#include "zephyr_net_init.h"
 
 LOG_MODULE_REGISTER(usb_console, LOG_LEVEL_INF);
 
@@ -222,7 +222,7 @@ static void main_main(void *arg)
 	 * dormant, with the MAC address read from the module (its first
 	 * command, which resets it: about 760 ms; a module that does not
 	 * answer only fails that request), as Zephyr's net_init() does it
-	 * (the layer's zephyr_net_initialize(), zephyr_compat_os.h).
+	 * (the layer's zephyr_net_initialize(), zephyr_net_init.h).
 	 */
 	ret = zephyr_net_initialize();
 	if (ret) {

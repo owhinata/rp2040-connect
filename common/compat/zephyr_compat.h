@@ -2,16 +2,17 @@
 /* The start of the Zephyr compatibility layer (common/compat), for
  * the board's bring-up and the init task, which do not include the layer's
  * Zephyr headers (they take over some of the OS's names, see
- * <zephyr/sys/atomic.h>).  zephyr_compat_initialize() is the OS's (NuttX:
- * nuttx/drivers/compat/zephyr_kernel.c).
+ * <zephyr/sys/atomic.h>).  zephyr_compat_initialize() is OS-independent
+ * (zephyr_init.c), on the OS's start of a thread.
  */
 
 #ifndef __NUTTX_DRIVERS_COMPAT_ZEPHYR_COMPAT_H
 #define __NUTTX_DRIVERS_COMPAT_ZEPHYR_COMPAT_H
 
 /* Starts the system work queue ("sysworkq"), the RTIO work queue
- * ("RTIO WQ 0", zephyr_rtio_workq.c) and the gpio0 device: what Zephyr
- * starts at boot (POST_KERNEL) before the sensors.  The board calls it in
+ * ("RTIO WQ 0", zephyr_rtio_workq.c) and, with the LSM6DSO's FIFO stream
+ * (CONFIG_NANO_LSM6DSO_STREAM), the gpio0 device: what Zephyr starts at
+ * boot (POST_KERNEL) before the sensors.  The board calls it in
  * its bring-up, before the LSM6DSOX.  0 or a negative errno.
  */
 

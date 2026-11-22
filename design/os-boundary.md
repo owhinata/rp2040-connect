@@ -17,8 +17,8 @@ Paths below `nuttx/boards/arduino-nano-rp2040-connect/` are shortened to `N-boar
 | Drivers | `common/drivers/<driver>/` | OS-independent core; `port/` boundary headers; `port/<os>/` bindings (section 5) |
 | Shell commands | `common/shell` | `zshell.c` (Zephyr shell command handling), `subcmd.c`, `nina_shell.c`, `i2c_dma_shell.c` |
 | Log | `common/log` | RAM log ring (`log_ring.c`), `LOG_*` macros (`app_log.h`), fault record text (`fault_record.c`) |
-| Compatibility layer, shared part | `common/compat` | Zephyr headers (`common/compat/zephyr/`), work items, RTIO, gpio0 device, net_mgmt, Wi-Fi requests, KV flash device, copies of Zephyr's NVS, settings, getopt, Wi-Fi credentials, zperf |
-| Compatibility layer, network part for an OS without a network stack | `common/compat/net_offload` | Zephyr's socket layer (reduced copies of `subsys/net/lib/sockets`, `lib/os/zvfs`), the one network interface (`zephyr_net_if.c`), `k_heap` (`zephyr_heap.c`), their headers in its own include root `include/` (`zephyr/net/net_if.h`, `net_ip.h`, `socket.h`, `socket_offload.h`, `zephyr/sys/fdtable.h`, `zephyr_heap.h`); used by F only |
+| Compatibility layer, shared part | `common/compat` | Zephyr headers (`common/compat/zephyr/`), work items, the work queues' threads and the layer's start (`zephyr_init.c`), RTIO, gpio0 device, net_mgmt, Wi-Fi requests, KV flash device, copies of Zephyr's NVS, settings, getopt, Wi-Fi credentials, zperf |
+| Compatibility layer, network part for an OS without a network stack | `common/compat/net_offload` | Zephyr's socket layer (reduced copies of `subsys/net/lib/sockets`, `lib/os/zvfs`), the one network interface (`zephyr_net_if.c`) and its start (`zephyr_net_init.c`), `k_heap` (`zephyr_heap.c`), their headers in its own include root `include/` (`zephyr/net/net_if.h`, `net_ip.h`, `socket.h`, `socket_offload.h`, `zephyr/sys/fdtable.h`, `zephyr_net_init.h`, `zephyr_heap.h`); used by F only |
 | POSIX network headers for a C library without them | `common/compat/libc_net` | `include/` (`arpa/inet.h`, `netdb.h`, `netinet/in.h`, `netinet/tcp.h`, `poll.h`, `sys/socket.h`, `sys/uio.h`), `inet_pton()`/`inet_ntop()` (`inet.c`); used by F only |
 | Self-test of the compatibility layer (acceptance test of an OS part) | `common/compat/selftest` | `zephyr_selftest.c` (22 tests), its boundary `zephyr_selftest.h` (section 3); used only by F's `-DNANO_SELFTEST=ON` build and F's host test |
 | Shell engine for an OS without a shell of its own | `common/compat/shell_engine` | line editor (`cli.c`), command table and dispatch of the `Z_SHELL_CMD_ROOT_GLOBAL` roots (`nano_shell.c`; the application supplies `nano_shell_cmds[]`), Zephyr's word split (`shell_argv.c`); used by F only |
@@ -32,7 +32,7 @@ Paths below `nuttx/boards/arduino-nano-rp2040-connect/` are shortened to `N-boar
 | N: applications | `nuttx/apps/*` | Init task (`init`), one builtin application per command, shell OS part (`subcmd`), Wi-Fi and sensor parts |
 | N: NuttX changes | `nuttx/patches` | Local patches to NuttX and nuttx-apps |
 | F: application | `freertos/app/usb-console` | `main()`, `FreeRTOSConfig.h`, tick hook, idle and CPU load, `os_clock.h`, `priorities_os.h`, command table, fault handling |
-| F: compatibility layer, OS part | `freertos/drivers/compat` | `zephyr_os*.h`, kernel, mutexes, realtime clock, start of the network part and its event thread, linker script part of the socket registrations, `rp2040/` (port header, GPIO bank 0, hwinfo, the self-test's board part), the self-test's OS part (`zephyr_selftest_os.h`), prelude |
+| F: compatibility layer, OS part | `freertos/drivers/compat` | `zephyr_os*.h`, kernel, mutexes, realtime clock, linker script part of the socket registrations, `rp2040/` (port header, GPIO bank 0, hwinfo, the self-test's board part), the self-test's OS part (`zephyr_selftest_os.h`), prelude |
 | F: shell | `freertos/drivers/shell` | Consoles, stdio per console, getopt state, shell OS part |
 | F: C library additions | `freertos/drivers/libc` | stdout/stderr wrappers |
 | F: other OS parts | `freertos/drivers/{include,log,kv,telnet,wifi,sensor_shell,imu,zperf}` | `app_log_os.h`; `log_ram.c`; KV flash; Telnet; Wi-Fi OS header; sensor shell OS part; per-source preludes; build files |
@@ -43,7 +43,7 @@ Paths below `nuttx/boards/arduino-nano-rp2040-connect/` are shortened to `N-boar
 Declared in `common/compat/zephyr/kernel.h`, which includes `"zephyr_os.h"` first.
 Implementations: N `nuttx/drivers/compat/`, F `freertos/drivers/compat/`.
 
-### 2.1 Provided by `zephyr_os.h` (13 items)
+### 2.1 Provided by `zephyr_os.h` (15 items, 1 optional)
 
 | Item | Meaning | N | F |
 |---|---|---|---|
@@ -55,12 +55,15 @@ Implementations: N `nuttx/drivers/compat/`, F `freertos/drivers/compat/`.
 | `struct _timeout`, `_timeout_func_t` | timer of a delayable work item | `struct wdog_s` | entry in the layer's timeout list |
 | `k_tid_t` | thread handle | `pid_t` | `TaskHandle_t` |
 | `k_current_get()` | the calling thread | `gettid()` | `xTaskGetCurrentTaskHandle()` |
+| `k_yield()` | the next ready thread of the priority, or go on | `sched_yield()` | `taskYIELD()` |
 | `K_PRIO_PREEMPT(x)` | OS priority of Zephyr priority x, order kept | `NANO_PRIO_FROM_ZEPHYR` (118 − x) | `NANO_PRIO_FROM_ZEPHYR` (20 − x) |
 | `k_cycle_get_32()`, `k_cycle_get_64()` | 1 MHz counter | `nano_mono_us()` | `nano_mono_us()` |
+| `Z_OS_ASSERT(test)` | the OS's assertion, for a work queue's thread that did not start | `DEBUGASSERT()` (nothing in the imu configuration) | `configASSERT()` (fault record, restart) |
+| `Z_SEM_TAKE_FOREVER(sem)` (optional) | `k_sem_take(sem, K_FOREVER)` the OS's shorter way: the work queue's wait | `nxsem_wait_uninterruptible()` (what `k_sem_take()` does, without the call) | not defined: `k_sem_take()` (`kernel.h`'s default) |
 
 F's `zephyr_os.h` also includes `common/compat/net_offload/include/zephyr_heap.h`: `struct k_heap`, `K_HEAP_DEFINE()`, `k_heap_alloc()`, `k_heap_free()` (section 4).
 
-### 2.2 Functions the OS implements (21 functions, 1 object)
+### 2.2 Functions the OS implements (18 functions)
 
 Files: N `zephyr_kernel.c`, `zephyr_mutex.c`; F `zephyr_kernel.c`, `zephyr_mutex.c`.
 
@@ -77,24 +80,26 @@ Files: N `zephyr_kernel.c`, `zephyr_mutex.c`; F `zephyr_kernel.c`, `zephyr_mutex
 | `k_poll_event_init(e, type, mode, obj)` | semaphores only, `K_POLL_MODE_NOTIFY_ONLY` |
 | `k_poll(events, n, t)` | 0 when one is ready (does not take), −EAGAIN on timeout |
 | `k_thread_name_set(tid, name)` | name shown by `ps`; 0 or −EINVAL |
-| `z_thread_static_start(thread)` | run a `K_THREAD_DEFINE()` thread on its static stack, set `*tid`; 0 or −errno |
-| `k_uptime_get()` | ms since boot, rounded down (`Z_UPTIME_MS()`) |
+| `z_thread_static_start(thread)` | run `entry(p1, p2, p3)` in a new thread with the name, static stack and priority of `*thread` (which stays valid while it runs), end it when `entry` returns, set `*tid`; 0 or −errno. Every thread of the layer starts with it |
 | `k_sleep(t)` | K_NO_WAIT yields; else wakes at tick + ticks + 1; K_FOREVER for ever; returns 0 |
 | `k_msleep(ms)`, `k_usleep(us)` | rounded up to ticks, then as `k_sleep()`; ≤ 0 yields; returns 0 |
 | `k_busy_wait(us)` | spin at least `us` µs |
-| `k_work_queue_start(q, stack, size, prio, cfg)` | start the queue's thread; it calls `z_work_queue_init()` and loops on `z_work_queue_process()` |
 | `z_add_timeout(to, fn, t)` | run `fn` after the timeout, in interrupt context (not while `k_spin_lock()` is held) |
 | `z_abort_timeout(to)` | stop it |
-| `zephyr_compat_initialize()` | start `k_sys_work_q`, the RTIO work queue, gpio0 (declared in `common/compat/zephyr_compat.h`) |
-| object `k_sys_work_q` | the system work queue ("sysworkq", `NANO_PRIO_SYSWORKQ`) |
 
-The work item logic itself is shared: `common/compat/zephyr_work.c`.
+Shared, on these: the work item logic (`common/compat/zephyr_work.c`); `common/compat/zephyr_init.c`:
+`k_work_queue_start()` (the queue keeps its thread's `struct z_thread_static`; the thread loops on
+`z_work_queue_process()`, `k_yield()` and `Z_SEM_TAKE_FOREVER()`), the object `k_sys_work_q`
+("sysworkq", `NANO_PRIO_SYSWORKQ`), `zephyr_compat_initialize()` (declared in
+`common/compat/zephyr_compat.h`: `k_sys_work_q`, −ENOMEM if its thread did not start, the RTIO work
+queue, gpio0 with `CONFIG_NANO_LSM6DSO_STREAM`), `k_uptime_get()` (`Z_UPTIME_MS()` of
+`k_cycle_get_64()`); the "net_mgmt" thread (`common/compat/zephyr_net_mgmt.c`).
 
 | Function | N | F |
 |---|---|---|
 | mutex | `nxrmutex_*()` | `xSemaphore*Recursive()` |
 | `k_sem_*` | `nxsem_*()` | the layer's count; waiters sleep on task notification index 1 |
-| threads, queue threads | `kthread_create_with_stack()` | `xTaskCreateStatic()` (`z_os_task_start()`), scheduler suspended around it |
+| `z_thread_static_start()` | `kthread_create_with_stack()`; the start data handed over through a variable, the caller waits until the new thread has taken it | `xTaskCreateStatic()` with the data as the task's argument, scheduler suspended around it |
 | sleeps | `nxsched_ticksleep()`, `nxsched_msleep()`, `nxsched_usleep()` | `vTaskDelay(ticks + 1)` |
 | `k_busy_wait()` | `up_udelay()` | `busy_wait_us_32()` |
 | `z_add_timeout()` | `wd_start()` | sorted list run by `zephyr_compat_tick()` from the tick hook |
@@ -111,9 +116,11 @@ The work item logic itself is shared: `common/compat/zephyr_work.c`.
 | `k_sem_take()` in an interrupt with a timeout | not checked | −EBUSY |
 | `k_mutex_unlock()` errors | `nxrmutex_unlock()`'s result | −EINVAL (not held), −EPERM (other holder) |
 | `k_thread_name_set()` | −ENOSYS without `CONFIG_TASK_NAME_SIZE` | NULL means the caller |
-| End of a `K_THREAD_DEFINE()` thread | kernel thread returns | `vTaskDelete(NULL)` |
+| End of a thread of `z_thread_static_start()` | kernel thread returns | `vTaskDelete(NULL)` |
+| Start of a thread | the caller waits until the new thread has taken its start data | the caller goes on; the task runs when the scheduler picks it (at once if its priority is higher) |
+| A work queue's thread that did not start (`Z_OS_ASSERT()`) | `DEBUGASSERT()`: nothing in the imu configuration, the queue's thread stays 0 | `configASSERT()`: fault record and restart |
 | Tick | 100 µs | 1 ms |
-| `zephyr_compat_initialize()` gpio0 | always (the whole kernel part is built only with `CONFIG_NANO_LSM6DSO_STREAM`) | only with `CONFIG_NANO_LSM6DSO_STREAM`; −ENOMEM if sysworkq did not start |
+| Builds `zephyr_init.c` (and so gpio0's start) | only with `CONFIG_NANO_LSM6DSO_STREAM` (the whole kernel part) | always; gpio0 only with `CONFIG_NANO_LSM6DSO_STREAM` |
 | Caller of `zephyr_compat_initialize()` | `N-board/src/rp2040_bringup.c` | `main()` before the scheduler, `freertos/app/usb-console/src/main.c` |
 | Same-priority choice | NuttX's | FreeRTOS's round robin at every switch |
 
@@ -146,14 +153,15 @@ The atomic operations themselves are shared (on `k_spin_lock()`).
 | GPIO bank 0 | `common/compat/nano_gpio.h` | OS: `nano_gpio_configure_input()`, `nano_gpio_get_all()`, `nano_gpio_irq_configure()`; layer: `nano_gpio_irq_handler()` (called from the bank interrupt) | `common/compat/zephyr_gpio.c`; N also `common/drivers/nina/port/nuttx/nina_os.c` | `N-board/src/nano_gpio.c` | `freertos/drivers/compat/rp2040/nano_gpio.c` |
 | CPU load | `common/compat/cpu_load.h`, arithmetic `common/compat/nano_cpuload.h` | `cpu_load_get(reset)` in tenths of a percent, from idle windows of the TIMER | `common/imu/imu_stream.c` | `N-board/src/rp2040_idle_cpuload.c` | `freertos/app/usb-console/src/idle.c` |
 | Priorities and stacks | `common/compat/priorities.h` | OS: `NANO_PRIO_FROM_ZEPHYR(p)` and its own threads; shared: 15 `NANO_PRIO_*`/`NANO_STACK_*` pairs | the layer, bindings, start-up | `nuttx/drivers/include/priorities_os.h` (118 − p; `NINA_EVENT`, `NINA_PT`) | `freertos/app/usb-console/src/priorities_os.h` (20 − p; `TIMER_SVC`, `IDLE`, `HEARTBEAT`) |
-| net_mgmt thread | included at the end of `common/compat/zephyr_net_mgmt.c` | `mgmt_event_thread()` and `net_mgmt_event_init()` (declared in `common/compat/zephyr/net/net_mgmt.h`) on the file's queue and `mgmt_stack` | N `common/drivers/nina/port/nuttx/nina_wifi_mgmt.c`; F `freertos/drivers/compat/zephyr_net_init.c` | `nuttx/drivers/compat/zephyr_net_mgmt_os.h` | `freertos/drivers/compat/zephyr_net_mgmt_os.h` |
-| RTIO work queue | `common/compat/zephyr/rtio/work.h` | `rtio_workq_initialize()` starts "RTIO WQ 0" with `z_thread_static_start()`; no OS file | each `zephyr_compat_initialize()` | shared `common/compat/zephyr_rtio_workq.c` | same |
+| net_mgmt thread | `common/compat/zephyr/net/net_mgmt.h` | `net_mgmt_event_init()` starts "net_mgmt" with `z_thread_static_start()`; no OS file | N `common/drivers/nina/port/nuttx/nina_wifi_mgmt.c`; F `common/compat/net_offload/zephyr_net_init.c` | shared `common/compat/zephyr_net_mgmt.c` | same |
+| RTIO work queue | `common/compat/zephyr/rtio/work.h` | `rtio_workq_initialize()` starts "RTIO WQ 0" with `z_thread_static_start()`; no OS file | `zephyr_compat_initialize()` | shared `common/compat/zephyr_rtio_workq.c` | same |
 | Wi-Fi profile | included by `common/imu/wifi_profile.c` | `extern k_tid_t wifi_reconnect_tid;` | `common/imu/wifi_profile.c` | `nuttx/apps/wifi/wifi_profile_os.h` | `freertos/drivers/wifi/wifi_profile_os.h` |
 | Sensor shell | included first by `common/drivers/sensor_shell/sensor_shell.c`, `common/compat/sensor_shell_stream.c` | `CONFIG_SENSOR_SHELL_STREAM`, `_THREAD_STACK_SIZE`, `_TRIG_PRINT_TIMEOUT_MS`, `_MAX_TRIGGER_DEVICES`; `sensor_shell_os_get_arm()`, `sensor_shell_os_get_wait()`, `sensor_shell_os_processing_callback` | those two files | `nuttx/apps/sensor/sensor_shell_os.h`, `sensor_shell_nuttx.h`, `sensor_shell_nuttx.c` | `freertos/drivers/sensor_shell/sensor_shell_os.h`, `sensor_shell_os.c` |
-| Start of the layer | `common/compat/zephyr_compat.h` | `zephyr_compat_initialize()`, `K_THREAD_DEFINE_START(name)` | start-up | section 2 | section 2 |
+| Start of the layer | `common/compat/zephyr_compat.h` | `zephyr_compat_initialize()`, `K_THREAD_DEFINE_START(name)` | start-up | shared `common/compat/zephyr_init.c` (section 2) | same |
 | Self-test of the layer, OS part | `common/compat/selftest/zephyr_selftest.h` (`zephyr_selftest.c` reads `"zephyr_selftest_os.h"` after `<zephyr/kernel.h>`) | type `zephyr_selftest_os_prio_t`, `ZEPHYR_SELFTEST_OS_NAME_MAX`, `zephyr_selftest_os_tick()`, `_tick_sync()`, `_thread_create()`, `_thread_exit()`, `_prio_get()`, `_prio_self()`, `_name_get()`, `_current()`, `_in_isr()`, `_sched_lock()`, `_sched_unlock()` | `common/compat/selftest/zephyr_selftest.c` | — (not built) | `freertos/drivers/compat/zephyr_selftest_os.h` (FreeRTOS tasks; the same on the board and the host) |
 | Self-test of the layer, board part | same | `zephyr_selftest_port_alarm()`, `_quiet()`, `_realtime()`, `_mask_irqs()` | same | — | board `freertos/drivers/compat/rp2040/zephyr_selftest_port.c`, host `freertos/tests/compat/main.c` |
-| F: tick and network start | `freertos/drivers/compat/zephyr_compat_os.h` | `zephyr_compat_tick()`, `zephyr_net_initialize()` | F tick hook, `main_main()` | — | `freertos/drivers/compat/zephyr_kernel.c`, `zephyr_net_init.c` |
+| F: tick | `freertos/drivers/compat/zephyr_compat_os.h` | `zephyr_compat_tick()` | F tick hook | — | `freertos/drivers/compat/zephyr_kernel.c` |
+| Start of the network part for an OS without a network stack | `common/compat/net_offload/include/zephyr_net_init.h` | `zephyr_net_initialize()` | F `main_main()` | — (`nina_net_initialize()`) | shared `common/compat/net_offload/zephyr_net_init.c` |
 
 The Zephyr build has its own `zephyr/app/usb-console/src/kv_store_os.h` and `wifi_profile_os.h`.
 
@@ -184,7 +192,7 @@ headers are in `common/compat/net_offload/include`, which F puts after its OS di
 | TIMER read by `common/imu/time_sync.c` | the file itself (`DT_REG_ADDR(DT_NODELABEL(timer))` = 0x40054000, `sys_read32()`) | — | `freertos/drivers/imu/time_sync_prelude.h` undefines the SDK's `TIMER_BASE` |
 | `k_heap` | `common/compat/net_offload/include/zephyr_heap.h`, included by F `zephyr_os.h` | not built | `common/compat/net_offload/zephyr_heap.c`; used by `common/drivers/nina/port/zephyr/nina_socket.c` |
 | `zephyr_compat_tick()` | F `zephyr_compat_os.h` | — (wdog) | called by `vApplicationTickHook()`, `freertos/app/usb-console/src/tick.c` |
-| `zephyr_net_initialize()` | F `zephyr_compat_os.h` | — (`nina_net_initialize()` in `rp2040_bringup.c`, `common/drivers/nina/port/nuttx/nina_net.h`) | `freertos/drivers/compat/zephyr_net_init.c` |
+| `zephyr_net_initialize()` | `common/compat/net_offload/include/zephyr_net_init.h` | — (`nina_net_initialize()` in `rp2040_bringup.c`, `common/drivers/nina/port/nuttx/nina_net.h`) | `common/compat/net_offload/zephyr_net_init.c` |
 | `hwinfo_get_device_id()` | `common/compat/zephyr/drivers/hwinfo.h` | `nuttx/drivers/compat/zephyr_hwinfo.c` | `freertos/drivers/compat/rp2040/zephyr_hwinfo.c` |
 | `nano_flash_kv_initialize()` | per OS | `N-board/src/rp2040_pico.h`, `nano_flash_kv.c`; called by `rp2040_bringup.c` | `freertos/drivers/kv/nano_flash_kv_os.h`, `nano_flash_kv.c`; called by `main()` |
 

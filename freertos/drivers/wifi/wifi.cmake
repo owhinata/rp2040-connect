@@ -16,14 +16,14 @@
 #
 # - the start of the layer's network part, which registers the NINA
 #   driver's interface as Zephyr's net_init() does
-#   (freertos/drivers/compat/zephyr_net_init.c: zephyr_net_initialize();
+#   (common/compat/net_offload/zephyr_net_init.c: zephyr_net_initialize();
 #   the driver, with its Wi-Fi operations and their Zephyr binding
 #   nina_net.c, is freertos_nina()'s);
 # - the layer's network part: the interface (common/compat/net_offload/
 #   zephyr_net_if.c, <zephyr/net/net_if.h>), the net_mgmt events
-#   (common/compat/zephyr_net_mgmt.c with the thread "net_mgmt" of
-#   freertos/drivers/compat/zephyr_net_mgmt_os.h), the Wi-Fi requests
-#   (common/compat/zephyr_wifi_mgmt.c) and helpers (zephyr_wifi_utils.c);
+#   (common/compat/zephyr_net_mgmt.c with its thread "net_mgmt"), the Wi-Fi
+#   requests (common/compat/zephyr_wifi_mgmt.c) and helpers
+#   (zephyr_wifi_utils.c);
 # - the stored credentials: the copies of Zephyr's wifi_credentials.c and
 #   its settings backend (common/compat; the entries are the settings
 #   "wifi_cred/<n>" on the key-value area, as in the Zephyr and NuttX
@@ -80,7 +80,7 @@ function(freertos_wifi target)
 
   target_sources(${target} PRIVATE
     ${FREERTOS_NET_OFFLOAD_DIR}/zephyr_net_if.c
-    ${FREERTOS_COMPAT_DIR}/zephyr_net_init.c
+    ${FREERTOS_NET_OFFLOAD_DIR}/zephyr_net_init.c
     ${FREERTOS_WIFI_DIR}/nano_ifconfig.c
     ${wifi_common_sources}
     ${wifi_zephyr_copies}

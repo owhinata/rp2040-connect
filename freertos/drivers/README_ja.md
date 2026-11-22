@@ -18,9 +18,9 @@ newlib に無い POSIX のネットワークのヘッダーは `common/compat/li
 | 場所 | 内容 |
 |---|---|
 | `app/usb-console/` | 起動（`main.c`）、FreeRTOS 版だけのコマンド（`commands.c`）、カーネルの設定（`FreeRTOSConfig.h`）、優先度の対応（`priorities_os.h`）、時計（`os_clock.h`）、tick フック（`tick.c`。tick の追いつきの判定は `tick_catchup.h`）、CPU 負荷（`idle.c`）、異常停止（`fault.[ch]`）、割り込み用スタックの空き（`irq_stack.c`） |
-| `drivers/compat/` | 互換層の FreeRTOS の部分: カーネル（`zephyr_kernel.c`・`zephyr_mutex.c`・`zephyr_os*.h`）、ネットワークの部分の開始（`zephyr_net_init.c`）とその事象のスレッド（`zephyr_net_mgmt_os.h`）、ソケットの実装の登録のためのリンカースクリプトの部分（`ld/`）、壁時計（`zephyr_sys_clock.c`）、前置きヘッダー（`common_prelude.h`）、自己診断の OS の部分（`zephyr_selftest_os.h`）、RP2040 の部分（`rp2040/`: GPIO バンク 0、チップ ID、自己診断のボードの部分 `zephyr_selftest_port.c`） |
+| `drivers/compat/` | 互換層の FreeRTOS の部分: カーネル（`zephyr_kernel.c`・`zephyr_mutex.c`・`zephyr_os*.h`。ワークキューのスレッド、システムワークキュー、`zephyr_compat_initialize()` は共有の `common/compat/zephyr_init.c`）、ソケットの実装の登録のためのリンカースクリプトの部分（`ld/`）、壁時計（`zephyr_sys_clock.c`）、前置きヘッダー（`common_prelude.h`）、自己診断の OS の部分（`zephyr_selftest_os.h`）、RP2040 の部分（`rp2040/`: GPIO バンク 0、チップ ID、自己診断のボードの部分 `zephyr_selftest_port.c`） |
 | `common/compat/selftest/` | 互換層の自己診断（OS に依存しない。`zephyr_selftest.c`。OS の部分とボードの部分が用意するものは `zephyr_selftest.h` にある） |
-| `common/compat/net_offload/` | 互換層のネットワークの部分（OS に依存しない）: Zephyr のソケット層（`subsys/net/lib/sockets/`・`lib/os/zvfs/` の Zephyr のファイルを縮めた写し）、ネットワークのインターフェース（`zephyr_net_if.c`）、`k_heap`（`zephyr_heap.c`）、それらのヘッダーは `include/` の下（`zephyr/net/`、`zephyr/sys/fdtable.h`、`zephyr_os.h` が読む `zephyr_heap.h`） |
+| `common/compat/net_offload/` | 互換層のネットワークの部分（OS に依存しない）: Zephyr のソケット層（`subsys/net/lib/sockets/`・`lib/os/zvfs/` の Zephyr のファイルを縮めた写し）、ネットワークのインターフェース（`zephyr_net_if.c`）とネットワークの部分の開始（`zephyr_net_init.c`、`zephyr_net_initialize()`）、`k_heap`（`zephyr_heap.c`）、それらのヘッダーは `include/` の下（`zephyr/net/`、`zephyr/sys/fdtable.h`、`zephyr_net_init.h`、`zephyr_os.h` が読む `zephyr_heap.h`） |
 | `common/compat/libc_net/` | newlib に無いソケット系のヘッダー（`include/`。型と定数だけ）、`inet_pton`・`inet_ntop`（`inet.c`） |
 | `drivers/shell/` | コンソールとタスクごとの出力先（`nano_console.c`）、Pico SDK の stdio の差し替え（`nano_stdio.c`）、セッションごとの getopt（`getopt_state.c`）、シェルの OS の部分（`zshell_os_impl.h`・`zephyr_os_shell.h`） |
 | `common/compat/shell_engine/` | 自分のシェルを持たない OS のためのシェル（OS に依存しない）: 行編集（`cli.c`）、コマンドの表と実行（`nano_shell.c`）、Zephyr の引数の分割の写し（`shell_argv.c`） |
@@ -54,6 +54,8 @@ FreeRTOS 版だけがビルドする共有ファイル: `common/compat/zephyr_wi
   `-EAGAIN` で終える）を互換層の数で作り、待ちはタスク通知（番号 1。0 は Pico SDK とアプリ用）で行います。
   割り込みからの give は、ハンドラーの終わりで切り替えを要求し、起こしたタスクがすぐ走ります。
 - **静的なスレッド**: `K_THREAD_DEFINE()` のタスクは、起動のタスク（`main`）が Zephyr と同じ順に始めます。
+  互換層のスレッド（ワークキューのもの、`RTIO WQ 0`、`net_mgmt`）も同じ方法で始めます（`z_thread_static_start()`:
+  静的なスタックのタスク。関数が戻ると削除）。
 - **時計**: `k_uptime_*()`・`k_cycle_*()`・`time_sync_mono_us()` は RP2040 の TIMER（1 MHz）から作り、tick から
   作りません（`os_clock.h`）。
 
@@ -192,7 +194,7 @@ FreeRTOS 版が実装するのは flash の境界（`common/compat/nano_flash_kv
   確かめるのは、ファームウェアに依りません。
 - Wi-Fi: コアの Wi-Fi の操作と、Zephyr 版と同じそのつなぎ（`common/drivers/nina/port/zephyr/nina_net.c`: Zephyr の Wi-Fi 管理と
   インターフェース、3 つのスレッド）、資格情報（Zephyr の `wifi_credentials` の写し）、自動再接続（`common/imu/wifi_profile.c`）を、
-  互換層の `net_if`・`net_mgmt`・`wifi_mgmt`（`net_offload/zephyr_net_if.c`。インターフェースは起動時に `zephyr_net_init.c` が Zephyr の
+  互換層の `net_if`・`net_mgmt`・`wifi_mgmt`（`net_offload/zephyr_net_if.c`。インターフェースは起動時に `net_offload/zephyr_net_init.c` が Zephyr の
   `net_init()` と同じく登録）の上で動かします。この版は
   ネットワーク層を持たないので Zephyr へのつなぎを使います。`wifi` コマンドは `common/compat/zephyr_wifi_shell.c` で、このボードで使えるオプションだけを残しています。
   `wifi cred` は Zephyr の `wifi_credentials_shell.c` の無改変の写しです。`ifconfig`（`drivers/wifi/nano_ifconfig.c`）は

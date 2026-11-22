@@ -3,7 +3,11 @@
  * for host tests: one thread, nothing blocks.  Waiting for something that
  * is not there fails the test (a real thread would sleep).  Work queues
  * are run by the test (test_work_run()), timers fired by it
- * (test_timeout_fire()).
+ * (test_timeout_fire()).  It also stands in for the layer's
+ * common/compat/zephyr_init.c (k_work_queue_start(), k_sys_work_q,
+ * zephyr_compat_initialize(), k_uptime_get()), which the tests do not
+ * link: the queues are recorded instead of given a thread, and the time is
+ * the test's.
  */
 #include <assert.h>
 #include <errno.h>

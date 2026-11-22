@@ -21,9 +21,9 @@ interface, `k_heap`) is `common/compat/net_offload/`, and the POSIX network head
 | Place | Contents |
 |---|---|
 | `app/usb-console/` | Start-up (`main.c`), the commands of this build only (`commands.c`), the kernel configuration (`FreeRTOSConfig.h`), the priority mapping (`priorities_os.h`), time (`os_clock.h`), the tick hook (`tick.c`; the catch-up's decision in `tick_catchup.h`), the CPU load (`idle.c`), fatal errors (`fault.[ch]`), the free interrupt stack (`irq_stack.c`) |
-| `drivers/compat/` | The FreeRTOS part of the layer: the kernel (`zephyr_kernel.c`, `zephyr_mutex.c`, `zephyr_os*.h`), the start of the network part (`zephyr_net_init.c`) and its event thread (`zephyr_net_mgmt_os.h`), the linker script's part for the socket implementations (`ld/`), the wall clock (`zephyr_sys_clock.c`), the prelude header (`common_prelude.h`), the self-test's OS part (`zephyr_selftest_os.h`), the RP2040 part (`rp2040/`: GPIO bank 0, chip ID, the self-test's board part `zephyr_selftest_port.c`) |
+| `drivers/compat/` | The FreeRTOS part of the layer: the kernel (`zephyr_kernel.c`, `zephyr_mutex.c`, `zephyr_os*.h`; the work queues' threads, the system work queue and `zephyr_compat_initialize()` are the shared `common/compat/zephyr_init.c`), the linker script's part for the socket implementations (`ld/`), the wall clock (`zephyr_sys_clock.c`), the prelude header (`common_prelude.h`), the self-test's OS part (`zephyr_selftest_os.h`), the RP2040 part (`rp2040/`: GPIO bank 0, chip ID, the self-test's board part `zephyr_selftest_port.c`) |
 | `common/compat/selftest/` | The layer's self-test, OS-independent (`zephyr_selftest.c`; `zephyr_selftest.h` lists what an OS's part and a board's part provide) |
-| `common/compat/net_offload/` | The layer's network part, OS-independent: Zephyr's socket layer (reduced copies of Zephyr's files in `subsys/net/lib/sockets/` and `lib/os/zvfs/`), the network interface (`zephyr_net_if.c`), `k_heap` (`zephyr_heap.c`), their headers under `include/` (`zephyr/net/`, `zephyr/sys/fdtable.h`, `zephyr_heap.h`, which `zephyr_os.h` includes) |
+| `common/compat/net_offload/` | The layer's network part, OS-independent: Zephyr's socket layer (reduced copies of Zephyr's files in `subsys/net/lib/sockets/` and `lib/os/zvfs/`), the network interface (`zephyr_net_if.c`) and the start of the network part (`zephyr_net_init.c`, `zephyr_net_initialize()`), `k_heap` (`zephyr_heap.c`), their headers under `include/` (`zephyr/net/`, `zephyr/sys/fdtable.h`, `zephyr_net_init.h`, `zephyr_heap.h`, which `zephyr_os.h` includes) |
 | `common/compat/libc_net/` | The socket headers newlib lacks (`include/`, types and constants only), `inet_pton` and `inet_ntop` (`inet.c`) |
 | `drivers/shell/` | The consoles and each task's output (`nano_console.c`), the replacement of the Pico SDK's stdio driver (`nano_stdio.c`), getopt per session (`getopt_state.c`), the shell's OS part (`zshell_os_impl.h`, `zephyr_os_shell.h`) |
 | `common/compat/shell_engine/` | The shell for an OS without one of its own, OS-independent: line editing (`cli.c`), the command table and execution (`nano_shell.c`), a copy of Zephyr's argument split (`shell_argv.c`) |
@@ -61,7 +61,8 @@ assumptions of Zephyr are reproduced:
   notification (index 1; 0 is left to the Pico SDK and the application). A give from an interrupt
   handler asks for a switch at the end of the handler, so the woken task runs right after it.
 - **Static threads**: the tasks of `K_THREAD_DEFINE()` are started by the start-up task (`main`) in
-  Zephyr's order.
+  Zephyr's order. Every thread of the layer (the work queues', `RTIO WQ 0`, `net_mgmt`) starts the
+  same way (`z_thread_static_start()`: a task on its static stack, deleted when its function returns).
 - **Time**: `k_uptime_*()`, `k_cycle_*()` and `time_sync_mono_us()` come from the RP2040's TIMER (1 MHz),
   not from the tick (`os_clock.h`).
 
@@ -226,7 +227,7 @@ boundary (the four functions of `common/compat/nano_flash_kv.h`, `drivers/kv/nan
   (`common/drivers/nina/port/zephyr/nina_net.c`: Zephyr's Wi-Fi management and interface, the three threads),
   the credentials (a copy of Zephyr's `wifi_credentials`) and the automatic reconnection
   (`common/imu/wifi_profile.c`) run on the layer's `net_if`, `net_mgmt` and `wifi_mgmt` (`net_offload/zephyr_net_if.c`;
-  `zephyr_net_init.c` registers the interface at the start, as Zephyr's `net_init()`); this build has no
+  `net_offload/zephyr_net_init.c` registers the interface at the start, as Zephyr's `net_init()`); this build has no
   network layer of its own, so it uses the Zephyr binding. The `wifi` command
   is `common/compat/zephyr_wifi_shell.c`, keeping only the options this board can use; `wifi cred` is an
   unchanged copy of Zephyr's `wifi_credentials_shell.c`. `ifconfig` (`drivers/wifi/nano_ifconfig.c`)

@@ -590,8 +590,7 @@ Zephyr の API を、Zephyr の名前のまま最小限だけ用意したもの�
   シェルの `zephyr/shell/shell.h` のコマンドの処理は `common/shell/zshell.c`（下の「シェル」）。Zephyr 版は
   使いません（Zephyr 本体を使う）。
 - **NuttX の実装**（`nuttx/drivers/compat/`）: カーネルの部分（`zephyr_kernel.c`・`zephyr_mutex.c`）、OS ごとの
-  ヘッダー（`zephyr_os.h`・`zephyr_os_spinlock.h`・`zephyr_os_atomic.h`・`zephyr_os_shell.h`）、共通の `.c` が最後に読む OS の部分
-  （`zephyr_net_mgmt_os.h`）、全体が NuttX に依存するヘッダー（`zephyr/net/socket.h`・
+  ヘッダー（`zephyr_os.h`・`zephyr_os_spinlock.h`・`zephyr_os_atomic.h`・`zephyr_os_shell.h`）、全体が NuttX に依存するヘッダー（`zephyr/net/socket.h`・
   `net_if.h`、`zephyr/sys/clock.h`・`__assert.h`、`zephyr/drivers/i2c.h`）と、I2C・
   インターフェース・チップ ID の `.c`、前置きヘッダー（`common_prelude.h`）。
 
@@ -638,23 +637,23 @@ Zephyr の API を、Zephyr の名前のまま最小限だけ用意したもの�
 | `zephyr/net/net_ip.h` | IPv4 のアドレスの型 `struct in_addr`（`imu_raw_mqtt.h`）。NuttX の `<netinet/in.h>` を読むだけ（同じメンバー `s_addr`、ネットワークバイト順） |
 | `zephyr_compat.h` | `zephyr_compat_initialize()`（ボードの起動処理が呼ぶ。下）、`K_THREAD_DEFINE_START()`（init が呼ぶ） |
 | `sensor_shell.h` | Zephyr の `drivers/sensor/sensor_shell.h` の写し（sensor シェルの共通の型。Zephyr 版は Zephyr のものを読む） |
-| `zephyr_os.h`、`zephyr_os_spinlock.h`、`zephyr_os_atomic.h`、`zephyr_os_shell.h`（NuttX） | OS ごとのヘッダー（下）。NuttX の型（`rmutex_t`・`sem_t`・wdog・`pid_t`）、tick、優先度、TIMER、`sched_lock()`・`up_irq_save()`、`<nuttx/atomic.h>` の名前の引き取り、`struct shell`（端末のパスとコマンドのタスク） |
-| `zephyr_net_mgmt_os.h`（NuttX） | `zephyr_net_mgmt.c` が最後に読む OS の部分: スレッド `net_mgmt` の入口と、カーネルスレッドとしての起動（`kthread_create_with_stack()`） |
+| `zephyr_os.h`、`zephyr_os_spinlock.h`、`zephyr_os_atomic.h`、`zephyr_os_shell.h`（NuttX） | OS ごとのヘッダー（下）。NuttX の型（`rmutex_t`・`sem_t`・wdog・`pid_t`）、tick、優先度、TIMER、`k_yield()`（`sched_yield()`）、アサーション（`DEBUGASSERT()`）、ワークキューの待ち（`nxsem_wait_uninterruptible()`）、`sched_lock()`・`up_irq_save()`、`<nuttx/atomic.h>` の名前の引き取り、`struct shell`（端末のパスとコマンドのタスク） |
 | `common_prelude.h`（NuttX） | 前置きヘッダー（下） |
 
 | ソース（場所の無いものは `common/compat/`） | 中身 |
 |---|---|
 | `zephyr_mutex.c`（NuttX） | NuttX の上の `k_mutex`（`rmutex_t`）。Zephyr の `k_mutex` は全部 0 のとき未ロック（`lock_count` 0）で、Zephyr の MQTT ライブラリは `mqtt_client_init()` の前のクライアントのミューテックスを `mqtt_abort()` で lock する。NuttX の全部 0 のミューテックスはスレッド 0 が持っている扱いで、lock が戻らない。そこで `K_MUTEX_DEFINE()` と `k_mutex_init()` が印（`ready`）を立て、印のないもの（全部 0）は最初の lock・unlock で初期化する（互換層のスピンロックの中で 1 回だけ） |
-| `zephyr_kernel.c`（NuttX） | NuttX の上の OS 部分: `k_sem`（`sem_t`、上限は `k_sem_give()` で見る）、`k_poll()`、ワークキューのスレッド（静的なスタックのカーネルスレッド）、遅延ワークのタイマー（wdog）、スレッド名、`K_THREAD_DEFINE()` のスレッドの起動、`k_uptime_get()`・`k_sleep()`・`k_msleep()`・`k_usleep()`・`k_busy_wait()`、`zephyr_compat_initialize()` |
+| `zephyr_kernel.c`（NuttX） | NuttX の上の OS 部分: `k_sem`（`sem_t`、上限は `k_sem_give()` で見る）、`k_poll()`、遅延ワークのタイマー（wdog）、スレッド名、スレッドの起動（`z_thread_static_start()`。静的なスタックのカーネルスレッド。起動のデータを新しいスレッドに渡し、受け取るまで呼んだ側が待つ）、`k_sleep()`・`k_msleep()`・`k_usleep()`・`k_busy_wait()` |
 | `zephyr_work.c` | ワークとワークキュー。Zephyr の `kernel/work.c` の使っている部分の写し（OS に依存しない） |
-| `zephyr_rtio.c`、`zephyr_rtio_workq.c`、`zephyr_mem_blocks.c` | RTIO の executor（`subsys/rtio/rtio_executor.c`）、RTIO のワークキュー（`rtio_workq.c`。スレッド `RTIO WQ 0` は `zephyr_compat_initialize()` が `K_THREAD_DEFINE()` のスレッドとして `z_thread_static_start()` で起動する）、ブロックのプール（`lib/mem_blocks`） |
+| `zephyr_init.c` | ワークキューのスレッド（`k_work_queue_start()`、`kernel/work.c` の `work_queue_main()` のループ）、システムワークキュー `k_sys_work_q`、`zephyr_compat_initialize()`、`k_uptime_get()`（TIMER の ms）。`z_thread_static_start()` の上（OS に依存しない） |
+| `zephyr_rtio.c`、`zephyr_rtio_workq.c`、`zephyr_mem_blocks.c` | RTIO の executor（`subsys/rtio/rtio_executor.c`）、RTIO のワークキュー（`rtio_workq.c`。スレッド `RTIO WQ 0` は `zephyr_compat_initialize()` が `z_thread_static_start()` で起動する）、ブロックのプール（`lib/mem_blocks`） |
 | `zephyr_gpio.c` | `gpio0` のデバイス（Zephyr の `gpio.h` の処理と `gpio_rpi_pico.c`）。ボードの `<nano_gpio.h>` の上 |
 | `zephyr_sensor_clock.c` | センサーの時計。互換層のサイクルカウンター `k_cycle_get_64()`（ボードの TIMER、`nano_mono_us()`、1 MHz） |
 | `sensor_default_rtio.c` | Zephyr の `drivers/sensor/default_rtio_sensor.c` の写し（ログだけ置き換え）。センサーの iodev の API、単発取得のフォールバック、既定のデコーダー |
 | `zephyr_device.c` | デバイスの初期化と一覧（`gpio0`、`i2c0`、`lsm6dsox` を Zephyr 版の初期化の順に、ノードのラベルと sensor の API かどうかと共に。`gpio0` は OS の構成の `CONFIG_NANO_LSM6DSO_STREAM` のとき） |
 | `zephyr_i2c.c`（NuttX） | I2C（NuttX の I2C マスターの上） |
 | `zephyr_hwinfo.c`（NuttX） | `hwinfo_get_device_id()`。ボードのチップ ID（`rp2040_chip_id()`） |
-| `zephyr_net_if.c`（NuttX）、`zephyr_net_mgmt.c`、`zephyr_wifi_mgmt.c` | インターフェース（NuttX のネットワークデバイスの値）、`net_mgmt` のイベントの待ち行列とスレッド（スレッドは OS の部分 `zephyr_net_mgmt_os.h`。スタックの大きさは `priorities.h` の `NANO_STACK_NET_MGMT`）、Wi-Fi の要求の処理（Zephyr の `subsys/net/l2/wifi/wifi_mgmt.c` の検査の写し）とイベント、`NET_REQUEST_WIFI_CONNECT_STORED`（同じファイルの `connect_stored_command()` の写し。`CONFIG_NANO_WIFI_CREDENTIALS` のとき）。`CONFIG_NINA_NET` のときだけ。NINA のつなぎ（`common/drivers/nina/port/nuttx/nina_wifi_mgmt.c`）がコアの上でアプリに提供する |
+| `zephyr_net_if.c`（NuttX）、`zephyr_net_mgmt.c`、`zephyr_wifi_mgmt.c` | インターフェース（NuttX のネットワークデバイスの値）、`net_mgmt` のイベントの待ち行列とスレッド（スレッドは `z_thread_static_start()` で起動。優先度とスタックの大きさは `priorities.h` の `NANO_PRIO_NET_MGMT`・`NANO_STACK_NET_MGMT`）、Wi-Fi の要求の処理（Zephyr の `subsys/net/l2/wifi/wifi_mgmt.c` の検査の写し）とイベント、`NET_REQUEST_WIFI_CONNECT_STORED`（同じファイルの `connect_stored_command()` の写し。`CONFIG_NANO_WIFI_CREDENTIALS` のとき）。`CONFIG_NINA_NET` のときだけ。NINA のつなぎ（`common/drivers/nina/port/nuttx/nina_wifi_mgmt.c`）がコアの上でアプリに提供する |
 | `zephyr_wifi_utils.c` | `wifi_security_txt()`・`wifi_band_txt()`（Zephyr の `wifi_mgmt.c`）、チャネルの検査（`wifi_utils.c`）、`net_bytes_from_str()`（`subsys/net/ip/utils.c`）の写し。`wifi cred` が使う。OS に依存しない。`CONFIG_NINA_NET` のときだけ |
 | `sensor_shell_stream.c` | Zephyr の `drivers/sensor/sensor_shell_stream.c` の写し（sensor シェルの処理スレッド）。OS の `sensor_shell_os.h` を最初に読み、処理スレッドのコールバックを `sensor_shell_os_processing_callback()` にした（NuttX 版は `nuttx/apps/sensor/sensor_shell_nuttx.c`）。`apps/sensor` がビルドする |
 | `wifi_credentials.c`、`wifi_credentials_backend_settings.c` | Zephyr の `subsys/net/lib/wifi_credentials/` の写し（保存した Wi-Fi の資格情報）。`apps/wifi` がビルドする。バックエンドの変更は 2 つ: 読み込みのバッファーを 8 バイトに揃えた（構造体として読むため。Cortex-M0+ は揃っていない読み出しで止まる）、番号の書式を `%zu` にした |
@@ -676,17 +675,17 @@ Zephyr の API を、Zephyr の名前のまま最小限だけ用意したもの�
   - `zephyr_os.h`（`<zephyr/kernel.h>` が最初に読む）: 互換層より先に要る OS のヘッダー、`Z_USEC_PER_TICK`、
     `struct k_mutex` と `Z_MUTEX_INITIALIZER()`（全部 0 のものが未ロックとして働くこと）、`struct k_sem`・
     `Z_SEM_INITIALIZER()`・`K_SEM_MAX_LIMIT`、`struct _timeout`・`_timeout_func_t`、`k_tid_t`・`k_current_get()`、
-    `K_PRIO_PREEMPT()`（Zephyr の優先度を順を保って OS の優先度に）、`k_cycle_get_32()`・`k_cycle_get_64()`
-    （1 MHz）。関数（`k_sem_*()`、`k_mutex_*()`、`k_poll()`、`k_sleep()` など、`k_work_queue_start()`、
-    `z_add_timeout()`・`z_abort_timeout()`、`z_thread_static_start()`、`zephyr_compat_initialize()`）は OS の `.c`
-    （NuttX 版は `zephyr_kernel.c`・`zephyr_mutex.c`）。
+    `k_yield()`、`K_PRIO_PREEMPT()`（Zephyr の優先度を順を保って OS の優先度に）、`k_cycle_get_32()`・
+    `k_cycle_get_64()`（1 MHz）、`Z_OS_ASSERT()`、任意で `Z_SEM_TAKE_FOREVER()`（ワークキューの待ち）。関数
+    （`k_sem_*()`、`k_mutex_*()`、`k_poll()`、`k_sleep()` など、`z_add_timeout()`・`z_abort_timeout()`、
+    互換層のすべてのスレッドを起こす `z_thread_static_start()`）は OS の `.c`（NuttX 版は `zephyr_kernel.c`・
+    `zephyr_mutex.c`）。ワークキューのスレッド、`k_sys_work_q`、`k_uptime_get()`、`zephyr_compat_initialize()`
+    は共有（`zephyr_init.c`）。
   - `zephyr_os_spinlock.h`（`<zephyr/spinlock.h>` が読む）: `struct k_spinlock`、`k_spinlock_key_t`、
     `k_spin_lock()`・`k_spin_unlock()`（下）。
   - `zephyr_os_atomic.h`（`<zephyr/sys/atomic.h>` が名前を定義する前に読む）: 互換層が引き取る名前を持つ OS の
     ヘッダーと、そのマクロの `#undef`（下）。ホストテストでは空。
   - `zephyr_os_shell.h`（`<zephyr/shell/shell.h>` が読む）: `struct shell`（下の「シェル」）。
-  - `zephyr_net_mgmt_os.h`（`zephyr_net_mgmt.c` が最後に読む）: スレッドの入口と起動
-    （`net_mgmt_event_init()`）。ファイルの `static` な変数（セマフォ、スタック）を使う。
   - 全体が OS ごとのヘッダー: `zephyr/net/socket.h`、`zephyr/net/net_if.h`、`zephyr/sys/clock.h`、
     `zephyr/sys/__assert.h`、`zephyr/drivers/i2c.h`。
   - 共通の `.c` とヘッダーが読む境界のヘッダー: `priorities.h`（`NANO_STACK_NET_MGMT`・`NANO_PRIO_RTIO_WQ`・`NANO_STACK_RTIO_WQ`。`common/compat/` にあり、

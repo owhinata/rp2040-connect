@@ -94,7 +94,8 @@ for src in "$kernel/tasks.c" "$kernel/list.c" "$kernel/queue.c" "$kernel/portabl
 done
 
 # The shared sources with their prelude, as the board's build compiles them.
-for src in ../common/compat/zephyr_work.c ../common/compat/zephyr_rtio_workq.c; do
+for src in ../common/compat/zephyr_init.c ../common/compat/zephyr_work.c \
+           ../common/compat/zephyr_rtio_workq.c; do
     obj="$out/common_$(basename "$src" .c).o"
     cc "${flags[@]}" "${strict[@]}" "${inc[@]}" -include drivers/compat/common_prelude.h \
         -c "$src" -o "$obj"
@@ -300,15 +301,15 @@ printf 'ok  i2c_dw (I2C0 and I2C1 boundaries and devices, DMA reads on the Pico 
 # which the test includes; with ST's lsm6dso_reg.h, freertos/stmemsc, for the driver's headers;
 # the stream's work queue, which the test does not start, is left out by --gc-sections), with
 # the prelude and CONFIG_NANO_LSM6DSO_STREAM as drivers/lsm6dso/lsm6dso.cmake builds them; the
-# layer's kernel part
-# again with that option (zephyr_compat_initialize() starts gpio0), on the same kernel objects.
+# layer's start (common/compat/zephyr_init.c) again with that option (zephyr_compat_initialize()
+# starts gpio0), on the same kernel objects.
 if [[ -f stmemsc/lsm6dso_reg.h ]]; then
     lsm=../common/drivers/lsm6dso
     gpioinc=(-Itests/gpio/pico_fake -I$lsm/include -I$lsm/internal -I$lsm/port -I$lsm/port/freertos
              -I$lsm/port/zephyr -I../common/drivers/stmemsc -Istmemsc
              -DCONFIG_NANO_LSM6DSO_STREAM=1 -ffunction-sections -fdata-sections)
     gpioobjs=()
-    for src in drivers/compat/rp2040/nano_gpio.c drivers/compat/zephyr_kernel.c tests/gpio/main.c \
+    for src in drivers/compat/rp2040/nano_gpio.c ../common/compat/zephyr_init.c tests/gpio/main.c \
                ../common/compat/zephyr_gpio.c ../common/compat/zephyr_device.c; do
         obj="$out/gpio_$(basename "$src" .c).o"
         extra=()
@@ -321,7 +322,7 @@ if [[ -f stmemsc/lsm6dso_reg.h ]]; then
     done
     gpiokern=()
     for o in "${kernobjs[@]}"; do
-        [[ $(basename "$o") == zephyr_kernel.o ]] || gpiokern+=("$o")
+        [[ $(basename "$o") == common_zephyr_init.o ]] || gpiokern+=("$o")
     done
     cc "${flags[@]}" -Wl,--gc-sections "${gpiokern[@]}" "${gpioobjs[@]}" -o "$out/gpio"
     if (( verbose )); then
@@ -532,8 +533,7 @@ fi
 printf 'ok  socket (descriptors, wait loops, options, poll, resolver, FreeRTOS POSIX port)\n'
 
 # Wi-Fi (freertos/tests/wifi): the build's network parts (common/compat/net_offload/
-# zephyr_net_if.c, the "net_mgmt" thread of zephyr_net_mgmt_os.h,
-# drivers/compat/zephyr_net_init.c) under the shared ones as
+# zephyr_net_if.c, zephyr_net_init.c) under the shared ones as
 # drivers/wifi/wifi.cmake builds them (the NINA core's Wi-Fi operations common/drivers/nina/
 # nina_wifi.c and its Zephyr binding common/drivers/nina/port/zephyr/nina_net.c, the
 # layer's net_mgmt and Wi-Fi requests, the stored credentials and their settings backend, the
@@ -553,7 +553,7 @@ wifiinc=(-D_GNU_SOURCE -DZ_SHELL_CMD_ROOT_GLOBAL -DCONFIG_GETOPT_LONG=1 -DCONFIG
          -I../common/imu -I../common/tests -I../common/compat/subsys/settings/include
          -I../common/compat/subsys/settings/src -ffunction-sections -fdata-sections)
 wifiobjs=()
-for src in $noff/zephyr_net_if.c drivers/compat/zephyr_net_init.c drivers/wifi/nano_ifconfig.c \
+for src in $noff/zephyr_net_if.c $noff/zephyr_net_init.c drivers/wifi/nano_ifconfig.c \
            tests/wifi/main.c \
            $seng/cli.c drivers/shell/getopt_state.c drivers/shell/nano_console.c \
            $seng/nano_shell.c $seng/shell_argv.c drivers/libc/stdio_wrap.c \
@@ -654,8 +654,8 @@ fi
 # and ST's lsm6dso_reg.c (freertos/stmemsc), the layer's devices, gpio0, RTIO and its work queue
 # and the default sensor iodev and decoder, with the prelude, CONFIG_NANO_LSM6DSO_STREAM and the
 # per-file options of drivers/lsm6dso/lsm6dso.cmake and drivers/sensor_shell/sensor_shell.cmake;
-# the layer's kernel part again with that option (gpio0); the build's shell with two sessions on
-# consoles that capture; a fake LSM6DSOX behind a fake i2c0 and a fake INT1 on the layer's GPIO
+# the layer's start (common/compat/zephyr_init.c) again with that option (gpio0); the build's
+# shell with two sessions on consoles that capture; a fake LSM6DSOX behind a fake i2c0 and a fake INT1 on the layer's GPIO
 # boundary.  On the same kernel objects.  The results on the session that asked, the wait of
 # "sensor get", the calibration in the printed values, "sensor stream" from one session and "off"
 # from the other, a session whose terminal is gone, the FIFO taken by another stream.  About 2 s.
@@ -669,7 +669,7 @@ if [[ -f stmemsc/lsm6dso_reg.c ]]; then
            -I../common/drivers/stmemsc -Istmemsc -I../common/imu -ffunction-sections -fdata-sections)
     cc "${flags[@]}" -w -Istmemsc -c stmemsc/lsm6dso_reg.c -o "$out/sensor_lsm6dso_reg.o"
     ssobjs=("$out/sensor_lsm6dso_reg.o")
-    for src in tests/sensor_shell/main.c drivers/compat/zephyr_kernel.c \
+    for src in tests/sensor_shell/main.c ../common/compat/zephyr_init.c \
                drivers/sensor_shell/sensor_shell_os.c \
                $seng/cli.c drivers/shell/getopt_state.c drivers/shell/nano_console.c \
                $seng/nano_shell.c $seng/shell_argv.c drivers/libc/stdio_wrap.c \
@@ -706,7 +706,7 @@ if [[ -f stmemsc/lsm6dso_reg.c ]]; then
     done
     sskern=()
     for o in "${kernobjs[@]}"; do
-        [[ $(basename "$o") == zephyr_kernel.o ]] || sskern+=("$o")
+        [[ $(basename "$o") == common_zephyr_init.o ]] || sskern+=("$o")
     done
     cc "${flags[@]}" -Wl,--gc-sections "${wraps[@]}" "${sskern[@]}" "${ssobjs[@]}" -lm -o "$out/sensor_shell"
     if (( verbose )); then

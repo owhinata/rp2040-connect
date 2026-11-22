@@ -3,10 +3,10 @@
  * (common/compat/zephyr/kernel.h, which includes this header first and lists
  * what it must provide): the FreeRTOS headers, the tick, the OS objects
  * (k_mutex, k_sem, the timer of a delayable work item, k_tid_t), the
- * priorities, the calling thread and the cycle counter.  The functions on
- * them are zephyr_kernel.c and zephyr_mutex.c.  Part of the FreeRTOS
- * implementation of the layer (freertos/drivers/compat, the counterpart of
- * nuttx/drivers/compat; see freertos/drivers/README.md).
+ * priorities, the calling thread, k_yield(), the cycle counter and the OS's
+ * assertion.  The functions on them are zephyr_kernel.c and zephyr_mutex.c.
+ * Part of the FreeRTOS implementation of the layer (freertos/drivers/compat,
+ * the counterpart of nuttx/drivers/compat; see freertos/drivers/README.md).
  *
  * What the application provides: FreeRTOSConfig.h (the tick, two task
  * notifications per task, mutexes and recursive mutexes, static and dynamic
@@ -133,6 +133,20 @@ static inline k_tid_t k_current_get(void)
 {
 	return xTaskGetCurrentTaskHandle();
 }
+
+/* Zephyr's k_yield(): gives the turn to the next ready task of the same
+ * priority (FreeRTOS's taskYIELD()), or goes on if there is none.  Not from an
+ * interrupt handler.
+ */
+static inline void k_yield(void)
+{
+	taskYIELD();
+}
+
+/* The OS's assertion: configASSERT() (FreeRTOSConfig.h: records the fault and
+ * restarts the board).
+ */
+#define Z_OS_ASSERT(test) configASSERT(test)
 
 /* k_heap (Zephyr's K_HEAP_DEFINE(), k_heap_alloc(), k_heap_free()): the
  * OS-independent one of the layer's network part for an OS without a network

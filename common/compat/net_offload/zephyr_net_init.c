@@ -1,7 +1,8 @@
 /* SPDX-License-Identifier: MIT */
-/* The start of the layer's network part on FreeRTOS (zephyr_compat_os.h):
- * what Zephyr's net_init() (subsys/net/ip/net_core.c, a SYS_INIT() at boot)
- * does for the one offloaded interface of the build.  The driver defines its
+/* The start of the layer's network part for an OS without a network stack of
+ * its own (zephyr_net_init.h): what Zephyr's net_init()
+ * (subsys/net/ip/net_core.c, a SYS_INIT() at boot) does for the one
+ * offloaded interface of the build.  The driver defines its
  * device with NET_DEVICE_DT_OFFLOAD_DEFINE() (<zephyr/net/wifi_mgmt.h>: the
  * NINA-W102's Zephyr binding common/drivers/nina/port/zephyr/nina_net.c);
  * zephyr_net_initialize() starts the event thread (net_mgmt_event_init()),
@@ -10,9 +11,9 @@
  * Zephyr's order.  The interface's requests go through net_mgmt()
  * (common/compat/zephyr_wifi_mgmt.c) to the driver's operations.  The NuttX
  * build does the same on its network device (common/drivers/nina/port/nuttx/
- * nina_netdev.c, nina_net_initialize()).  Part of the FreeRTOS
- * implementation of the small Zephyr compatibility layer of the port
- * (freertos/drivers/compat).
+ * nina_netdev.c, nina_net_initialize()).  Part of the small Zephyr
+ * compatibility layer of the port, its network part for an OS without a
+ * network stack of its own (common/compat/net_offload; the FreeRTOS build's).
  */
 
 #include <zephyr/kernel.h>
@@ -20,7 +21,7 @@
 #include <zephyr/net/net_mgmt.h>
 #include <zephyr/net/wifi_mgmt.h>
 
-#include "zephyr_compat_os.h"
+#include "zephyr_net_init.h"
 
 static struct net_if offload_iface;
 

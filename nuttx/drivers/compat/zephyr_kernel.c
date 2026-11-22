@@ -1,11 +1,12 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /* The OS part of <zephyr/kernel.h> on NuttX: semaphores, k_poll()
- * on semaphores, the threads of the work queues, the timer of a delayable
- * work item, thread names, and the start of what Zephyr starts at boot
- * (zephyr_compat_initialize()).  The work queue logic itself is
- * zephyr_work.c (common/compat).  The types are in zephyr_os.h.  Part of
- * the NuttX implementation of the small Zephyr compatibility layer of the
- * port (nuttx/drivers/compat).  The mutexes are zephyr_mutex.c.
+ * on semaphores, the start of a thread, the timer of a delayable work
+ * item, thread names, sleeps.  The work queue logic, the work queues'
+ * threads and the start of what Zephyr starts at boot are OS-independent
+ * (common/compat/zephyr_work.c, zephyr_init.c).  The types are in
+ * zephyr_os.h.  Part of the NuttX implementation of the small Zephyr
+ * compatibility layer of the port (nuttx/drivers/compat).  The mutexes are
+ * zephyr_mutex.c.
  *
  *   Zephyr                    here
  *   k_sem                     sem_t without priority inheritance (NuttX's
@@ -13,17 +14,15 @@
  *                             checked in k_sem_give()
  *   k_poll (semaphores)       a semaphore of the call, given by k_sem_give()
  *                             of any semaphore it waits for
- *   work queue thread         a kernel thread on the queue's static stack
- *                             (kthread_create_with_stack()) running
- *                             zephyr_work.c's z_work_queue_process()
  *   _timeout of an item       a wdog (the callback runs in the timer
  *                             interrupt, as Zephyr's timeout does in the
  *                             system clock interrupt)
  *   k_thread_name_set()       the TCB's name
- *   K_THREAD_DEFINE() thread  a kernel thread on its static stack, started
- *                             by z_thread_static_start() (the init task)
- *   k_uptime_get()            the TIMER (the source of the NuttX tick) in
- *                             ms, rounded down
+ *   K_THREAD_DEFINE() thread  a kernel thread on its static stack
+ *                             (kthread_create_with_stack()), started by
+ *                             z_thread_static_start() (the init task; the
+ *                             layer's own threads, the work queues' among
+ *                             them, the same way)
  *   k_sleep()                 nxsched_ticksleep()
  *   k_msleep(), k_usleep()    nxsched_msleep(), nxsched_usleep() (rounded
  *                             up to ticks; the same wake-up as k_sleep())
@@ -44,13 +43,8 @@
 #include <nuttx/sched.h>
 #include <nuttx/semaphore.h>
 #include <nuttx/wdog.h>
-#include <arch/board/nano_timer.h>
 
-#include <zephyr/device.h>
 #include <zephyr/kernel.h>
-#include <zephyr/rtio/work.h>
-
-#include "priorities.h"
 
 /* Semaphores -------------------------------------------------------------*/
 
@@ -258,75 +252,10 @@ int k_thread_name_set(k_tid_t thread, const char *name)
 #endif
 }
 
-/* The queue a new thread serves, handed over by k_work_queue_start(),
- * which waits until the thread has taken it.
- */
-
-static mutex_t g_queue_start_lock = NXMUTEX_INITIALIZER;
-static sem_t g_queue_taken = SEM_INITIALIZER(0);
-static struct k_work_q *g_queue_starting;
-
-/* The thread of a work queue: kernel/work.c work_queue_main(). */
-
-static int work_queue_main(int argc, FAR char *argv[])
-{
-  struct k_work_q *queue = g_queue_starting;
-  bool yield;
-
-  (void)argc;
-  (void)argv;
-  nxsem_post(&g_queue_taken);
-
-  for (; ; )
-    {
-      if (z_work_queue_process(queue, &yield))
-        {
-          if (yield)
-            {
-              sched_yield();
-            }
-
-          continue;
-        }
-
-      /* Nothing pending: sleep until the next submission. */
-
-      (void)k_sem_take(&queue->notify, K_FOREVER);
-    }
-
-  return 0;
-}
-
-void k_work_queue_start(struct k_work_q *queue, k_thread_stack_t *stack,
-                        size_t stack_size, int prio,
-                        const struct k_work_queue_config *cfg)
-{
-  int pid;
-
-  z_work_queue_init(queue);
-  queue->flags = BIT(K_WORK_QUEUE_STARTED_BIT);
-  if (cfg != NULL && cfg->no_yield)
-    {
-      queue->flags |= BIT(K_WORK_QUEUE_NO_YIELD_BIT);
-    }
-
-  nxmutex_lock(&g_queue_start_lock);
-  g_queue_starting = queue;
-  pid = kthread_create_with_stack(cfg != NULL && cfg->name != NULL ?
-                                  cfg->name : "workq", prio, stack,
-                                  (int)stack_size, work_queue_main, NULL);
-  DEBUGASSERT(pid > 0);
-  queue->thread = pid > 0 ? pid : 0;
-  if (pid > 0)
-    {
-      nxsem_wait_uninterruptible(&g_queue_taken);
-    }
-
-  nxmutex_unlock(&g_queue_start_lock);
-}
-
-/* The threads of K_THREAD_DEFINE(), handed over to the new thread the same
- * way as a work queue.
+/* The threads of K_THREAD_DEFINE() and of the layer (the work queues',
+ * common/compat/zephyr_init.c, and the others): the start data is handed
+ * over to the new thread, and z_thread_static_start() waits until the
+ * thread has taken it (a kernel thread's arguments are strings).
  */
 
 static mutex_t g_thread_start_lock = NXMUTEX_INITIALIZER;
@@ -364,11 +293,6 @@ int z_thread_static_start(const struct z_thread_static *thread)
 }
 
 /* Time -------------------------------------------------------------------*/
-
-int64_t k_uptime_get(void)
-{
-  return Z_UPTIME_MS(nano_mono_us());
-}
 
 int32_t k_sleep(k_timeout_t timeout)
 {
@@ -434,41 +358,4 @@ void z_add_timeout(struct _timeout *to, _timeout_func_t fn,
 void z_abort_timeout(struct _timeout *to)
 {
   (void)wd_cancel(&to->wdog);
-}
-
-/* What Zephyr starts at boot -------------------------------------------*/
-
-struct k_work_q k_sys_work_q;
-
-static K_THREAD_STACK_DEFINE(sys_work_q_stack, NANO_STACK_SYSWORKQ);
-
-int zephyr_compat_initialize(void)
-{
-  static const struct k_work_queue_config cfg =
-    {
-      .name = "sysworkq",
-      .no_yield = false,
-    };
-
-  int ret;
-
-  /* kernel/system_work_q.c k_sys_work_q_init() (POST_KERNEL). */
-
-  k_work_queue_start(&k_sys_work_q, sys_work_q_stack,
-                     K_THREAD_STACK_SIZEOF(sys_work_q_stack),
-                     NANO_PRIO_SYSWORKQ, &cfg);
-
-  /* subsys/rtio/rtio_workq.c static_init() (POST_KERNEL). */
-
-  ret = rtio_workq_initialize();
-  if (ret < 0)
-    {
-      return ret;
-    }
-
-  /* drivers/gpio/gpio_rpi_pico.c (POST_KERNEL, CONFIG_GPIO_INIT_PRIORITY
-   * 40).
-   */
-
-  return device_init(DEVICE_DT_GET(DT_NODELABEL(gpio0)));
 }

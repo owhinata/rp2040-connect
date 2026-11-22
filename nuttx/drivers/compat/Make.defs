@@ -26,10 +26,14 @@ VPATH += :../../common/compat
 endif
 
 # The kernel objects, work queues, RTIO, gpio0 and the sensors' async API
-# (default iodev and decoder) that the FIFO stream uses.
+# (default iodev and decoder) that the FIFO stream uses; zephyr_init.c
+# (common/compat: the work queues' threads, the system work queue,
+# zephyr_compat_initialize(), k_uptime_get()) is on zephyr_kernel.c's start
+# of a thread.
 
 ifeq ($(CONFIG_NANO_LSM6DSO_STREAM),y)
-CSRCS += zephyr_kernel.c zephyr_mutex.c zephyr_work.c zephyr_mem_blocks.c
+CSRCS += zephyr_kernel.c zephyr_init.c zephyr_mutex.c zephyr_work.c
+CSRCS += zephyr_mem_blocks.c
 CSRCS += zephyr_rtio.c
 CSRCS += zephyr_rtio_workq.c zephyr_gpio.c zephyr_sensor_clock.c
 CSRCS += sensor_default_rtio.c
