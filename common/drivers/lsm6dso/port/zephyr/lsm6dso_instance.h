@@ -8,10 +8,12 @@
  * https://www.st.com/resource/en/datasheet/lsm6dso.pdf
  */
 
-/* The end of the driver (common/drivers/lsm6dso/lsm6dso.c, which includes
- * this file last, so lsm6dso_init and lsm6dso_driver_api stay static): the
- * devices of the devicetree's st,lsm6dso and st,lsm6dso32 nodes, as in
- * Zephyr's driver.  The NuttX build has its own lsm6dso_instance.h.
+/* The end of the driver on Zephyr (lsm6dso.c, which includes this file last,
+ * so lsm6dso_init and lsm6dso_driver_api stay static): the devices of the
+ * devicetree's st,lsm6dso and st,lsm6dso32 nodes (Zephyr's binding of
+ * upstream's driver), upstream's macros with the FIFO's INT1 line
+ * (fifo_gpio, the node's irq-gpios).  The NuttX and FreeRTOS builds have
+ * their own lsm6dso_instance.h in port/nuttx and port/freertos.
  */
 
 /*
@@ -33,26 +35,6 @@
  * Instantiation macros used when a device is on a SPI bus.
  */
 
-#ifdef CONFIG_LSM6DSO_TAP
-#define LSM6DSO_CONFIG_TAP(inst)					\
-	.tap_mode = DT_INST_PROP(inst, tap_mode),			\
-	.tap_threshold = DT_INST_PROP(inst, tap_threshold),		\
-	.tap_shock = DT_INST_PROP(inst, tap_shock),			\
-	.tap_latency = DT_INST_PROP(inst, tap_latency),			\
-	.tap_quiet = DT_INST_PROP(inst, tap_quiet),
-#else
-#define LSM6DSO_CONFIG_TAP(inst)
-#endif /* CONFIG_LSM6DSO_TAP */
-
-#ifdef CONFIG_LSM6DSO_TRIGGER
-#define LSM6DSO_CFG_IRQ(inst)						\
-	.trig_enabled = true,						\
-	.gpio_drdy = GPIO_DT_SPEC_INST_GET(inst, irq_gpios),		\
-	.int_pin = DT_INST_PROP(inst, int_pin)
-#else
-#define LSM6DSO_CFG_IRQ(inst)
-#endif /* CONFIG_LSM6DSO_TRIGGER */
-
 #define LSM6DSO_SPI_OP  (SPI_WORD_SET(8) |				\
 			 SPI_OP_MODE_CONTROLLER |			\
 			 SPI_MODE_CPOL |				\
@@ -68,11 +50,8 @@
 	.gyro_pm = DT_INST_PROP(inst, gyro_pm),				\
 	.gyro_odr = DT_INST_PROP(inst, gyro_odr),			\
 	.gyro_range = DT_INST_PROP(inst, gyro_range),			\
-	.drdy_pulsed = DT_INST_PROP(inst, drdy_pulsed),			\
-	IF_ENABLED(CONFIG_SENSOR_ASYNC_API, (.fifo_gpio = GPIO_DT_SPEC_INST_GET_OR(inst, irq_gpios, {0}),)) \
-	LSM6DSO_CONFIG_TAP(inst)					\
-	COND_CODE_1(DT_INST_NODE_HAS_PROP(inst, irq_gpios),		\
-		(LSM6DSO_CFG_IRQ(inst)), ())
+	IF_ENABLED(CONFIG_SENSOR_ASYNC_API,				\
+		   (.fifo_gpio = GPIO_DT_SPEC_INST_GET_OR(inst, irq_gpios, {0}),))
 
 #define LSM6DSO_CONFIG_SPI(inst, model)					\
 	{								\

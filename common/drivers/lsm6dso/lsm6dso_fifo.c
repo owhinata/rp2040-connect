@@ -1,11 +1,10 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-
-#include "lsm6dso_fifo.h"
-#include "lsm6dso_fifo_packet.h"
+/* The parser of the LSM6DSO's FIFO words (lsm6dso_fifo.h). */
 
 #include <errno.h>
 #include <stddef.h>
 #include <string.h>
+#include "lsm6dso_fifo.h"
 
 int lsm6dso_fifo_decode_word(const uint8_t word[LSM6DSO_FIFO_WORD_SIZE],
 			     struct lsm6dso_fifo_sample *sample)
@@ -87,21 +86,4 @@ int lsm6dso_fifo_next_entry(const uint8_t *bytes, size_t length, size_t *cursor,
 	}
 	*cursor += LSM6DSO_FIFO_WORD_SIZE;
 	return 1;
-}
-
-int lsm6dso_fifo_buffer_words(const uint8_t *buffer, size_t length, const uint8_t **words,
-			      size_t *size)
-{
-	const struct lsm6dso_fifo_packet *packet = (const void *)buffer;
-	const size_t header = offsetof(struct lsm6dso_fifo_packet, data);
-
-	if (!buffer || !words || !size || length < header ||
-	    packet->marker != LSM6DSO_FIFO_PACKET_MARKER ||
-	    packet->words > LSM6DSO_FIFO_MAX_WORDS ||
-	    length - header < (size_t)packet->words * LSM6DSO_FIFO_WORD_SIZE) {
-		return -EBADMSG;
-	}
-	*words = packet->data;
-	*size = (size_t)packet->words * LSM6DSO_FIFO_WORD_SIZE;
-	return 0;
 }

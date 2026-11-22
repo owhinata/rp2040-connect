@@ -4,8 +4,8 @@
  * common/compat, which include this header first): the Zephyr build's
  * CONFIG_SENSOR_SHELL_* values, the log, the wait of "sensor get" for its
  * result (sensor_shell_os_get_arm()/_wait()) and the processing thread's
- * callback.  The Zephyr build's header (zephyr/app/usb-console/drivers/
- * sensor_shell/sensor_shell_os.h) does nothing for the wait; the NuttX
+ * callback.  The Zephyr build's header (drivers/sensor/sensor_shell_os.h of
+ * its patched tree) does nothing for the wait; the NuttX
  * build's (nuttx/apps/sensor/sensor_shell_os.h) waits as this one does.
  *
  * Where the results go: the read's completion carries the command's

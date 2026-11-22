@@ -35,7 +35,7 @@
 #endif
 
 /* The Zephyr build's CONFIG_SENSOR_LOG_LEVEL (3, info): the log level of
- * lsm6dso.c, lsm6dso_compat.c and sensor_shell.c.
+ * lsm6dso.c, lsm6dso_rtio.c and sensor_shell.c.
  */
 
 #define CONFIG_SENSOR_LOG_LEVEL 3

@@ -1,0 +1,6 @@
+# The LSM6DSO driver's Zephyr binding as a Zephyr module (common/drivers/lsm6dso/port/zephyr),
+# which the application lists in ZEPHYR_EXTRA_MODULES: its build rules and its options.
+name: lsm6dso_local
+build:
+  cmake: .
+  kconfig: Kconfig

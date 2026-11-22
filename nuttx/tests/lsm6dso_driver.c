@@ -1,7 +1,8 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-/* Host test of the LSM6DSO driver (common/drivers/lsm6dso/lsm6dso.c, shared
- * with the Zephyr build, with the NuttX build's device:
- * drivers/lsm6dso/lsm6dso_instance.h) on ST's real lsm6dso_reg.c, the
+/* Host test of the LSM6DSO driver (common/drivers/lsm6dso: the core
+ * lsm6dso_chip.c and the Zephyr binding port/zephyr/lsm6dso.c, shared with
+ * the Zephyr build, with the NuttX build's device:
+ * port/nuttx/lsm6dso_instance.h) on ST's real lsm6dso_reg.c, the
  * stmemsc glue and the Zephyr compatibility layer (compat/zephyr_i2c.c,
  * zephyr_device.c), against a fake LSM6DSOX behind a fake NuttX I2C master
  * (register banks, auto-increment, software reset, FIFO, timestamp) and
@@ -21,12 +22,19 @@
  * - attr_set(): ODR and full scale, the rounding of m/s^2 to g and of
  *   rad/s to dps, the refused values and channels, -EBUSY while the FIFO
  *   is owned.
- * - the FIFO functions: start (registers, stats), read (status, burst,
- *   counters), pause, stop (bypass), and lsm6dso_timestamp_read().
+ * - the FIFO's register primitives (static in lsm6dso_chip.c): the
+ *   refused arguments, the setup with each
+ *   timestamp decimation, the bypass after any failed transfer of the
+ *   setup, the pause that keeps stream mode, INT1's routing of the
+ *   threshold, the status bits (words, watermark, full, overrun, latched)
+ *   and the burst read's bounds and errors.
+ * - the core's FIFO functions (lsm6dso_chip_fifo_*()): start (registers,
+ *   stats), read (status, burst, counters), pause, stop (bypass), and
+ *   lsm6dso_timestamp_read().
  * - lsm6dso_cal_zero(): the 104 Hz run, the 200 ms settling, switching
  *   the sensors off again.
- * - the FIFO stream (lsm6dso_stream.c, lsm6dso_fifo_irq.c, lsm6dso_compat.c
- *   and the decoder, on the compatibility layer's RTIO, work queues and
+ * - the FIFO stream (lsm6dso_rtio_stream.c with INT1, lsm6dso_rtio.c and
+ *   the decoder, on the compatibility layer's RTIO, work queues and
  *   gpio0, with the fake kernel of common/tests/zephyr_fakes and a fake INT1 that
  *   follows the fake sensor's watermark flag): the stream's start
  *   (registers, INT1 edge interrupt), batches on the INT1 edge and on the
@@ -52,19 +60,24 @@
 #include <zephyr/device.h>
 #include <zephyr/drivers/i2c.h>
 #include <zephyr/drivers/sensor.h>
+#include <zephyr/drivers/sensor/lsm6dso.h>
 #include <zephyr/drivers/sensor_clock.h>
 #include <zephyr/kernel.h>
 #include <zephyr/rtio/rtio.h>
 
 #include "lsm6dso.h"
 #include "nano_lsm6dso.h"
-#include "lsm6dso_attributes.h"
-#include "lsm6dso_fifo.h"
-#include "lsm6dso_fifo_hw.h"
-#include "lsm6dso_fifo_stats.h"
-#include "lsm6dso_fifo_decoder.h"
+#include "lsm6dso_decoder.h"
 #include "nano_gpio.h"
 #include "zephyr_kernel_host.h"
+
+/* The core and the stream, so that the test reaches their static functions
+ * (the core's FIFO primitives: the register setup, the status and burst
+ * reads, INT1's routing; the stream's INT1 interrupt).  The binding's
+ * lsm6dso.c, with the device, is built on its own.
+ */
+#include "lsm6dso_chip.c"
+#include "lsm6dso_rtio_stream.c"
 
 /* Fake log ---------------------------------------------------------------*/
 
@@ -142,7 +155,7 @@ enum { USER, SHUB, EMB };
 static uint8_t regs[3][256];
 static uint8_t fifo_data[LSM6DSO_FIFO_MAX_WORDS * LSM6DSO_FIFO_WORD_SIZE];
 static size_t fifo_words;
-static bool fifo_overrun;
+static bool fifo_overrun, fifo_full;
 static uint32_t timestamp, timestamp_step = 3;
 static int nack_at = -1, transfers, bad_who_am_i;
 static uint32_t expect_frequency = 100000;
@@ -183,7 +196,7 @@ static uint8_t read_byte(int b, uint8_t reg)
 			       (uint16_t)(regs[USER][LSM6DSO_FIFO_CTRL2] & 1) << 8;
 
 		return (uint8_t)((fifo_words >> 8) & 3) | (fifo_words >= wtm ? 0x80 : 0) |
-		       (fifo_overrun ? 0x48 : 0);
+		       (fifo_overrun ? 0x48 : 0) | (fifo_full ? 0x20 : 0);
 	}
 	return regs[b][reg];
 }
@@ -373,6 +386,11 @@ static int64_t expected_micro(enum lsm6dso_cal_kind kind, uint32_t gain, const i
 	lsm6dso_cal_nominal(&cal, kind, gain);
 	lsm6dso_cal_apply(&cal, raw, out);
 	return lsm6dso_cal_to_micro(out[axis]);
+}
+
+static struct lsm6dso_chip *chip(void)
+{
+	return &((struct lsm6dso_data *)imu()->data)->chip;
 }
 
 static void check_init_ok(void)
@@ -688,6 +706,109 @@ static int64_t fake_clock(void)
 	return now += 1000;
 }
 
+static void test_fifo_hw(void)
+{
+	const struct lsm6dso_config *cfg = imu()->config;
+	const stmdev_ctx_t *ctx = &cfg->ctx;
+	struct lsm6dso_fifo_status status;
+	static uint8_t buf[LSM6DSO_FIFO_MAX_WORDS * LSM6DSO_FIFO_WORD_SIZE];
+	uint8_t int1 = regs[USER][LSM6DSO_INT1_CTRL];
+	int start, used;
+
+	/* Refused arguments touch no register. */
+	start = transfers;
+	assert(lsm6dso_fifo_configure(ctx, 0, 1, 1, 0) == -EINVAL);
+	assert(lsm6dso_fifo_configure(ctx, 512, 1, 1, 0) == -EINVAL);
+	assert(lsm6dso_fifo_configure(ctx, 10, 0, 0, 0) == -EINVAL);
+	assert(lsm6dso_fifo_configure(ctx, 10, 11, 0, 0) == -EINVAL);
+	assert(lsm6dso_fifo_configure(ctx, 10, 1, 1, 4) == -EINVAL);
+	assert(lsm6dso_fifo_configure(NULL, 32, 4, 4, 0) == -EINVAL);
+	assert(lsm6dso_fifo_stop(NULL) == -EINVAL);
+	assert(lsm6dso_fifo_pause_batch(NULL) == -EINVAL);
+	assert(lsm6dso_fifo_route_int1(NULL, true) == -EINVAL);
+	assert(lsm6dso_fifo_status_read(NULL, &status) == -EINVAL);
+	assert(lsm6dso_fifo_status_read(ctx, NULL) == -EINVAL);
+	assert(lsm6dso_fifo_burst_read(ctx, buf, 0) == -EINVAL);
+	assert(lsm6dso_fifo_burst_read(ctx, buf, 513) == -EINVAL);
+	assert(transfers == start);
+	/* The setup: both sensors batched, the watermark, stream mode. */
+	assert(lsm6dso_fifo_configure(ctx, 32, 4, 4, 0) == 0);
+	used = transfers - start;
+	assert(regs[USER][LSM6DSO_FIFO_CTRL1] == 32 && regs[USER][LSM6DSO_FIFO_CTRL3] == 0x44);
+	assert(regs[USER][LSM6DSO_FIFO_CTRL4] == LSM6DSO_STREAM_MODE);
+	assert(regs[USER][LSM6DSO_CTRL10_C] == 0x20);
+	for (int decimation = 1; decimation <= 3; decimation++) {
+		assert(lsm6dso_fifo_configure(ctx, 32, 4, 4, decimation) == 0);
+		assert(regs[USER][LSM6DSO_FIFO_CTRL4] == (decimation << 6 | LSM6DSO_STREAM_MODE));
+	}
+	/* Any failed transfer of the setup ends in bypass (the rollback). */
+	for (int failed = 0; failed < used; failed++) {
+		regs[USER][LSM6DSO_FIFO_CTRL4] = LSM6DSO_STREAM_MODE;
+		nack_at = transfers + failed;
+		assert(lsm6dso_fifo_configure(ctx, 32, 4, 4, 0) == -EIO);
+		nack_at = -1;
+		assert((regs[USER][LSM6DSO_FIFO_CTRL4] & 0x07) == LSM6DSO_BYPASS_MODE);
+	}
+	/* The pause stops both batches and keeps stream mode, also when it fails. */
+	assert(lsm6dso_fifo_configure(ctx, 32, 4, 4, 0) == 0);
+	start = transfers;
+	assert(lsm6dso_fifo_pause_batch(ctx) == 0);
+	used = transfers - start;
+	assert(regs[USER][LSM6DSO_FIFO_CTRL3] == 0x00);
+	assert(regs[USER][LSM6DSO_FIFO_CTRL4] == LSM6DSO_STREAM_MODE);
+	for (int failed = 0; failed < used; failed++) {
+		regs[USER][LSM6DSO_FIFO_CTRL3] = 0x44;
+		nack_at = transfers + failed;
+		assert(lsm6dso_fifo_pause_batch(ctx) == -EIO);
+		nack_at = -1;
+		assert(regs[USER][LSM6DSO_FIFO_CTRL4] == LSM6DSO_STREAM_MODE);
+	}
+	/* INT1: the threshold's routing, the other sources left as they were. */
+	regs[USER][LSM6DSO_INT1_CTRL] = 0x01;
+	start = transfers;
+	assert(lsm6dso_fifo_route_int1(ctx, true) == 0);
+	used = transfers - start;
+	assert(regs[USER][LSM6DSO_INT1_CTRL] == 0x09);
+	assert(lsm6dso_fifo_route_int1(ctx, false) == 0);
+	assert(regs[USER][LSM6DSO_INT1_CTRL] == 0x01);
+	nack_at = transfers;
+	assert(lsm6dso_fifo_route_int1(ctx, true) == -EIO);
+	assert(regs[USER][LSM6DSO_INT1_CTRL] == 0x01);
+	for (int failed = 1; failed < used; failed++) {
+		nack_at = transfers + failed;
+		assert(lsm6dso_fifo_route_int1(ctx, true) == -EIO);
+		(void)lsm6dso_fifo_route_int1(ctx, false);
+	}
+	nack_at = -1;
+	regs[USER][LSM6DSO_INT1_CTRL] = int1;
+	/* The status bits and one burst of all the words. */
+	for (int i = 0; i < 512; i++) {
+		push_word(0x02, (int16_t)i, 0, 0);
+	}
+	fifo_overrun = true;
+	fifo_full = true;
+	assert(lsm6dso_fifo_status_read(ctx, &status) == 0);
+	assert(status.words == 512 && status.watermark && status.full && status.overrun &&
+	       status.overrun_latched);
+	assert(lsm6dso_fifo_burst_read(ctx, buf, 512) == 0);
+	assert(fifo_words == 0 && buf[7 * 511 + 1] == (uint8_t)511);
+	fifo_overrun = false;
+	fifo_full = false;
+	assert(lsm6dso_fifo_status_read(ctx, &status) == 0);
+	assert(status.words == 0 && !status.watermark && !status.full && !status.overrun &&
+	       !status.overrun_latched);
+	push_word(0x02, 1, 2, 3);
+	nack_at = transfers;
+	assert(lsm6dso_fifo_status_read(ctx, &status) == -EIO);
+	nack_at = transfers;
+	assert(lsm6dso_fifo_burst_read(ctx, buf, 1) == -EIO);
+	nack_at = -1;
+	assert(lsm6dso_fifo_burst_read(ctx, buf, 1) == 0 && fifo_words == 0);
+	/* Back to bypass, as the driver leaves it. */
+	assert(lsm6dso_fifo_stop(ctx) == 0);
+	assert(regs[USER][LSM6DSO_FIFO_CTRL4] == LSM6DSO_BYPASS_MODE);
+}
+
 static void test_fifo(void)
 {
 	const struct device *bus = DEVICE_DT_GET(DT_BUS(DT_NODELABEL(lsm6dsox)));
@@ -704,14 +825,14 @@ static void test_fifo(void)
 	assert(sensor_attr_set(imu(), SENSOR_CHAN_ACCEL_XYZ, SENSOR_ATTR_SAMPLING_FREQUENCY, &v) == 0);
 	assert(sensor_attr_set(imu(), SENSOR_CHAN_GYRO_XYZ, SENSOR_ATTR_SAMPLING_FREQUENCY, &v) == 0);
 	/* Not started: everything but start is -EIO. */
-	assert(lsm6dso_fifo_read_locked_driver(imu(), buf, 512, &status) == -EIO);
-	assert(lsm6dso_fifo_status_locked_driver(imu(), &status) == -EIO);
-	assert(lsm6dso_fifo_pause_batch_locked_driver(imu()) == -EIO);
-	assert(lsm6dso_fifo_stop_locked_driver(imu()) == 0);
-	assert(lsm6dso_fifo_start_locked_driver(imu(), 0, true, true) == -EINVAL);
-	assert(lsm6dso_fifo_start_locked_driver(imu(), 512, true, true) == -EINVAL);
-	assert(lsm6dso_fifo_start_locked_driver(imu(), 32, false, false) == -EINVAL);
-	assert(lsm6dso_fifo_start_locked_driver(imu(), 32, true, true) == 0);
+	assert(lsm6dso_chip_fifo_read(chip(), buf, 512, &status) == -EIO);
+	assert(lsm6dso_chip_fifo_status(chip(), &status) == -EIO);
+	assert(lsm6dso_chip_fifo_pause_batch(chip()) == -EIO);
+	assert(lsm6dso_chip_fifo_stop(chip()) == 0);
+	assert(lsm6dso_chip_fifo_start(chip(), 0, true, true) == -EINVAL);
+	assert(lsm6dso_chip_fifo_start(chip(), 512, true, true) == -EINVAL);
+	assert(lsm6dso_chip_fifo_start(chip(), 32, false, false) == -EINVAL);
+	assert(lsm6dso_chip_fifo_start(chip(), 32, true, true) == 0);
 	assert(regs[USER][LSM6DSO_FIFO_CTRL1] == 32 && (regs[USER][LSM6DSO_FIFO_CTRL2] & 0x81) == 0);
 	assert(regs[USER][LSM6DSO_FIFO_CTRL3] == 0xaa);      /* both batched at 6667 Hz */
 	assert(regs[USER][LSM6DSO_FIFO_CTRL4] == 0x86);      /* timestamps every 8, stream */
@@ -720,7 +841,7 @@ static void test_fifo(void)
 	assert(stats.active && !stats.fault && stats.generation == 1);
 	assert(stats.accel_hz == 6667 && stats.gyro_hz == 6667 && stats.freq_fine == -3);
 	assert(stats.accel_ug_per_lsb == 244 && stats.gyro_udps_per_lsb == 70000);
-	assert(lsm6dso_fifo_start_locked_driver(imu(), 32, true, true) == -EBUSY);
+	assert(lsm6dso_chip_fifo_start(chip(), 32, true, true) == -EBUSY);
 	/* Owned: the single reads and attributes are refused. */
 	assert(sensor_sample_fetch(imu()) == -EBUSY);
 	assert(sensor_channel_get(imu(), SENSOR_CHAN_ACCEL_XYZ, &v) == -EBUSY);
@@ -731,14 +852,14 @@ static void test_fifo(void)
 	for (int i = 0; i < 40; i++) {
 		push_word(i & 1 ? 0x01 : 0x02, (int16_t)i, 0, 4100);
 	}
-	assert(lsm6dso_fifo_read_locked_driver(imu(), buf, 39, &status) == -ENOBUFS);
-	assert(lsm6dso_fifo_read_locked_driver(imu(), buf, 512, &status) == 0);
+	assert(lsm6dso_chip_fifo_read(chip(), buf, 39, &status) == -ENOBUFS);
+	assert(lsm6dso_chip_fifo_read(chip(), buf, 512, &status) == 0);
 	assert(status.words == 40 && status.watermark && !status.overrun);
 	assert(fifo_words == 0 && buf[7] == 0x01 << 3);
 	lsm6dso_fifo_get_stats(imu(), &stats);
 	assert(stats.transfers == 1 && stats.words_read == 40 && stats.buffer_too_small == 1);
 	assert(stats.transfer_time_ns == 250000 && stats.max_transfer_time_ns == 250000);
-	assert(lsm6dso_fifo_read_locked_driver(imu(), buf, 512, &status) == 0 && status.words == 0);
+	assert(lsm6dso_chip_fifo_read(chip(), buf, 512, &status) == 0 && status.words == 0);
 	/* The timestamp register between two clock readings. */
 	timestamp = 0x12345678;
 	timestamp_step = 3;
@@ -749,23 +870,23 @@ static void test_fifo(void)
 	assert(lsm6dso_timestamp_read(imu(), fake_clock, &tick, &before, &after) == -EAGAIN);
 	timestamp_step = 3;
 	/* Pause, drain, stop. */
-	assert(lsm6dso_fifo_pause_batch_locked_driver(imu()) == 0);
+	assert(lsm6dso_chip_fifo_pause_batch(chip()) == 0);
 	assert(regs[USER][LSM6DSO_FIFO_CTRL3] == 0x00 && regs[USER][LSM6DSO_FIFO_CTRL4] == 0x86);
-	assert(lsm6dso_fifo_stop_locked_driver(imu()) == 0);
+	assert(lsm6dso_chip_fifo_stop(chip()) == 0);
 	assert(regs[USER][LSM6DSO_FIFO_CTRL4] == 0x80);
-	lsm6dso_fifo_record_stop_error(imu(), -5);
+	lsm6dso_chip_fifo_record_stop_error(chip(), -5);
 	lsm6dso_fifo_get_stats(imu(), &stats);
 	assert(!stats.active && stats.stop_error == -5);
 	/* A failing status read faults the FIFO until it is stopped. */
-	assert(lsm6dso_fifo_start_locked_driver(imu(), 16, true, false) == 0);
+	assert(lsm6dso_chip_fifo_start(chip(), 16, true, false) == 0);
 	assert(regs[USER][LSM6DSO_FIFO_CTRL3] == 0x0a);
 	nack_at = transfers;
-	assert(lsm6dso_fifo_status_locked_driver(imu(), &status) == -EIO);
+	assert(lsm6dso_chip_fifo_status(chip(), &status) == -EIO);
 	nack_at = -1;
-	assert(lsm6dso_fifo_status_locked_driver(imu(), &status) == -EIO);
+	assert(lsm6dso_chip_fifo_status(chip(), &status) == -EIO);
 	lsm6dso_fifo_get_stats(imu(), &stats);
 	assert(stats.fault && stats.i2c_errors == 1 && stats.generation == 2);
-	assert(lsm6dso_fifo_stop_locked_driver(imu()) == 0);
+	assert(lsm6dso_chip_fifo_stop(chip()) == 0);
 	lsm6dso_fifo_get_stats(imu(), &stats);
 	assert(!stats.active && !stats.fault);
 	/* Back to 100 kHz, ODRs off. */
@@ -1028,6 +1149,7 @@ int main(void)
 	test_init();
 	test_fetch();
 	test_attr();
+	test_fifo_hw();
 	test_fifo();
 	test_cal_zero();
 	test_stream();

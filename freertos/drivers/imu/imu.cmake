@@ -53,8 +53,9 @@
 #   (freertos/drivers/compat/rp2040/zephyr_hwinfo.c, on pico_unique_id);
 #   the address conversions of <zephyr/net/socket.h> and newlib's missing
 #   network headers are the layer's (compat.cmake);
-# - the include directories: common/imu and common/drivers/lsm6dso (already
-#   the driver's).
+# - the include directory common/imu (the LSM6DSO driver's
+#   <zephyr/drivers/sensor/lsm6dso.h>, which the service reads, is
+#   common/compat's).
 #
 # Besides mqtt_min.c's -Wno-sign-compare, the shared sources build without
 # warnings under the application's -Wall -Wextra.
@@ -86,7 +87,6 @@ function(freertos_imu target)
 
   target_include_directories(${target} PRIVATE
     ${FREERTOS_COMMON_DIR}/imu
-    ${FREERTOS_COMMON_DIR}/drivers/lsm6dso
   )
 
   target_link_libraries(${target}

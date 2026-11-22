@@ -1,49 +1,58 @@
 ############################################################################
 # nuttx/drivers/lsm6dso/Make.defs
 #
-# The LSM6DSOX driver: lsm6dso.c (the Zephyr build's driver, on the
-# compatibility layer's kernel, device, sensor and I2C calls), the ST
-# glue (stmemsc_i2c.c, stmemsc_mdelay.c and stmemsc.h, in
+# The LSM6DSOX driver, in common/drivers/lsm6dso, shared with the other
+# builds: its core (lsm6dso_chip.c: how the chip is operated;
+# lsm6dso_cal.c: the conversion and the gyro bias at rest; lsm6dso_fifo.c:
+# the FIFO words' parser; their headers in include/ and internal/, the
+# boundary lsm6dso_os.h in port/), and the Zephyr build's binding in
+# port/zephyr (lsm6dso.c: the device and the sensor API; the FIFO stream
+# lsm6dso_rtio_stream.c, lsm6dso_rtio.c, lsm6dso_decoder.c; the core's OS
+# part lsm6dso_os_impl.h), compiled on the compatibility layer's kernel,
+# device, sensor and I2C calls with the prelude of the shared sources
+# (compat/common_prelude.h), as the files of the Zephyr build's patched
+# drivers/sensor/st/lsm6dso.  Its extended API
+# <zephyr/drivers/sensor/lsm6dso.h> is include/lsm6dso.h, which common/compat
+# finds.  This build's own file is port/nuttx/lsm6dso_instance.h (the
+# device that lsm6dso.c defines at its end, from the board's values).  With
+# them: ST's glue (stmemsc_i2c.c, stmemsc_mdelay.c and stmemsc.h, in
 # common/drivers/stmemsc, shared with the FreeRTOS build and compiled
-# without the prelude), the OS-independent parts
-# (lsm6dso_fifo_hw.c, lsm6dso_fifo.c, lsm6dso_cal.c, lsm6dso_zero.c), the
-# FIFO stream (lsm6dso_stream.c, lsm6dso_fifo_irq.c, lsm6dso_fifo_decoder.c,
-# lsm6dso_compat.c), and ST's register driver
-# lsm6dso_reg.c, which script/setup.sh puts in nuttx/stmemsc (not in Git;
-# built through st_lsm6dso_reg.c, which includes it).  The files shared
-# with the Zephyr build (lsm6dso.[ch], lsm6dso_fifo_hw, lsm6dso_fifo,
-# lsm6dso_cal, lsm6dso_zero, lsm6dso_fifo_decoder, lsm6dso_stream.c,
-# lsm6dso_fifo_irq, lsm6dso_compat.c and the headers lsm6dso_fifo_packet.h,
-# lsm6dso_fifo_stats.h, lsm6dso_attributes.h) are in common/drivers/lsm6dso
-# and are compiled with the prelude of the shared sources
-# (compat/common_prelude.h); the headers of this directory
-# (lsm6dso_instance.h, the device that lsm6dso.c defines at its end) stay
-# here, and $(TOPDIR)/external/lsm6dso (this directory) is
-# on the include path for the shared files that read them.
-# Included by nuttx/drivers/Makefile.  VPATH and DEPPATH of
-# common/drivers/lsm6dso and common/drivers/stmemsc are relative to
-# nuttx/drivers (mkdeps needs relative ones); the objects are made there.
+# without the prelude), and ST's register driver lsm6dso_reg.c, which
+# script/setup.sh puts in nuttx/stmemsc (not in Git; built through
+# st_lsm6dso_reg.c, which includes it).  Include paths: include/,
+# internal/, port/, port/nuttx (before port/zephyr, so that this build's
+# lsm6dso_instance.h is found) and port/zephyr.
+# Included by nuttx/drivers/Makefile.  VPATH and DEPPATH of the driver's
+# directories and of common/drivers/stmemsc are relative to nuttx/drivers
+# (mkdeps needs relative ones); the objects are made there.
 ############################################################################
 
 ifeq ($(CONFIG_NANO_LSM6DSO),y)
-CSRCS += lsm6dso.c stmemsc_i2c.c stmemsc_mdelay.c
-CSRCS += lsm6dso_fifo_hw.c lsm6dso_fifo.c lsm6dso_cal.c lsm6dso_zero.c
+CSRCS += lsm6dso.c lsm6dso_chip.c lsm6dso_cal.c lsm6dso_fifo.c
+CSRCS += stmemsc_i2c.c stmemsc_mdelay.c
 CSRCS += st_lsm6dso_reg.c
 ifeq ($(CONFIG_NANO_LSM6DSO_STREAM),y)
-CSRCS += lsm6dso_stream.c lsm6dso_fifo_irq.c lsm6dso_compat.c
-CSRCS += lsm6dso_fifo_decoder.c
+CSRCS += lsm6dso_rtio_stream.c lsm6dso_rtio.c
+CSRCS += lsm6dso_decoder.c
 endif
 DEPPATH += --dep-path lsm6dso
 VPATH += :lsm6dso
 DEPPATH += --dep-path ../../common/drivers/lsm6dso
 VPATH += :../../common/drivers/lsm6dso
+DEPPATH += --dep-path ../../common/drivers/lsm6dso/port/zephyr
+VPATH += :../../common/drivers/lsm6dso/port/zephyr
 DEPPATH += --dep-path ../../common/drivers/stmemsc
 VPATH += :../../common/drivers/stmemsc
+LSM6DSO_DIR = $(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)drivers$(DELIM)lsm6dso
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)stmemsc
-CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)drivers$(DELIM)lsm6dso
+CFLAGS += ${INCDIR_PREFIX}$(LSM6DSO_DIR)$(DELIM)include
+CFLAGS += ${INCDIR_PREFIX}$(LSM6DSO_DIR)$(DELIM)internal
+CFLAGS += ${INCDIR_PREFIX}$(LSM6DSO_DIR)$(DELIM)port
+CFLAGS += ${INCDIR_PREFIX}$(LSM6DSO_DIR)$(DELIM)port$(DELIM)nuttx
+CFLAGS += ${INCDIR_PREFIX}$(LSM6DSO_DIR)$(DELIM)port$(DELIM)zephyr
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)drivers$(DELIM)stmemsc
-CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)lsm6dso
-LSM6DSO_COMMON_CSRCS = $(notdir $(wildcard ../../common/drivers/lsm6dso/*.c))
+LSM6DSO_COMMON_CSRCS = $(notdir $(wildcard ../../common/drivers/lsm6dso/*.c \
+                                           ../../common/drivers/lsm6dso/port/zephyr/*.c))
 $(patsubst %.c,%$(OBJEXT),$(filter $(LSM6DSO_COMMON_CSRCS),$(CSRCS))): \
   CFLAGS += -include $(TOPDIR)$(DELIM)external$(DELIM)compat$(DELIM)common_prelude.h
 endif

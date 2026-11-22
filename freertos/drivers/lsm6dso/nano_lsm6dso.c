@@ -1,7 +1,8 @@
 /* SPDX-License-Identifier: MIT */
 /* The start of the LSM6DSOX on FreeRTOS (nano_lsm6dso.h): the device that
- * lsm6dso_instance.h defines at the end of the shared driver
- * (common/drivers/lsm6dso/lsm6dso.c), on the device i2c0 of the I2C core
+ * the build's lsm6dso_instance.h (common/drivers/lsm6dso/port/freertos)
+ * defines at the end of the shared driver's binding
+ * (common/drivers/lsm6dso/port/zephyr/lsm6dso.c), on the device i2c0 of the I2C core
  * (freertos/drivers/i2c_dw).  The counterpart of the NuttX build's board
  * src/nano_lsm6dso.c (there i2c0 is bound to a NuttX I2C master first; here
  * it is the core's own device, ready after i2c_dw_i2c0_initialize()).

@@ -23,7 +23,7 @@ OS に依存しない部分は `common/compat/`、FreeRTOS の部分は `freerto
 | `drivers/kv/` | KV のフラッシュの境界（`nano_flash_kv.c`）とリンカースクリプトの差し替え（`ld/`、`kv.cmake`） |
 | `drivers/nina/` | NINA のドライバーをビルドに入れる `nina.cmake` だけ。ドライバーは `common/drivers/nina/` にあり、この版の部分は FreeRTOS へのつなぎ `common/drivers/nina/port/freertos/`: 境界 `nina_os.h` の実装（`nina_os.c`）、中継のホスト側（`nina_passthrough_os.c`）、Pico SDK で書いた SPI1 と制御線（`nina_bus_rp2040.c`）、中継のモジュール側（`nina_passthrough_bus_rp2040.c`: UART1、モジュールの線、watchdog の scratch レジスター、LED）。ソケットとインターフェースは Zephyr へのつなぎのもの（`common/drivers/nina/port/zephyr/nina_socket.c`・`nina_net.c`） |
 | `drivers/i2c_dw/` | I2C のドライバー（I2C0 と、オプションで I2C1）をビルドに入れる `i2c_dw.cmake` と、自己診断（`i2c_dw_selftest.[ch]`）。ドライバーは `common/drivers/i2c_dw/` にあり、この版の部分は FreeRTOS へのつなぎ `common/drivers/i2c_dw/port/freertos/`: FreeRTOS と TIMER の上の境界 `i2c_dw_os.h` の実装（`i2c_dw_os_impl.h`）、Zephyr の I2C の API を持つデバイスとその割り込み・リセット・ピン（`i2c_dw_instance.h`）、その起動（`i2c_dw_controllers_rp2040.h`）、Pico SDK の DMA での I2C0 の DMA 読み出し（`i2c_dw_dma_os_rp2040.c`） |
-| `drivers/lsm6dso/` | LSM6DSOX のデバイスの生成（`lsm6dso_instance.h`）と初期化（`nano_lsm6dso.c`）、自己診断 |
+| `drivers/lsm6dso/` | LSM6DSOX のビルドの規則（`lsm6dso.cmake`）と初期化（`nano_lsm6dso.c`）、自己診断 |
 | `drivers/imu/` | 取得サービス・MQTT・時刻同期（`common/imu/`）の組み込み（`imu.cmake`）、`time_sync.c` の前置き |
 | `drivers/wifi/` | Wi-Fi（NINA のコアの `common/drivers/nina/nina_wifi.c` と、その Zephyr へのつなぎ `common/drivers/nina/port/zephyr/nina_net.c`、資格情報、自動再接続）の組み込みと `ifconfig` |
 | `drivers/telnet/` | Telnet のシェル（`nano_telnet.c`） |
@@ -258,9 +258,11 @@ Pico SDK の既定のままです。整数の割り算は `pico_divider` のハ�
   読み出しに DMA を使わせたいときに 12 チャネルすべてを持ち続ける（そのあいだ読み出しは割り込みに戻ります）。
 - 割り込みの優先度は Pico SDK の既定の 0x80 のままで、デバイスの割り込みはすべて同じ高さです（NuttX 版と同じ。
   Zephyr 版は 0xC0）。
-- LSM6DSOX は共有のドライバー（`common/drivers/lsm6dso/`）と ST の `lsm6dso_reg.c`（`setup.sh` が `freertos/stmemsc/` に
-  取得）、stmemsc の層（`common/drivers/stmemsc/`）で動かし、デバイスはボードの値で 1 つだけ作ります
-  （`drivers/lsm6dso/lsm6dso_instance.h`）。
+- LSM6DSOX は共有のドライバー（`common/drivers/lsm6dso/`。Zephyr 版のドライバーで、コアの `lsm6dso_chip.c`・`lsm6dso_cal.c`・
+  `lsm6dso_fifo.c` と Zephyr へのつなぎ `port/zephyr/`（コアの境界の OS 側 `port/zephyr/lsm6dso_os_impl.h` を含む）を互換層の上で使う。
+  拡張 API の `<zephyr/drivers/sensor/lsm6dso.h>` は `common/compat` を通して `include/lsm6dso.h`）と ST の `lsm6dso_reg.c`（`setup.sh` が
+  `freertos/stmemsc/` に取得）、stmemsc の層（`common/drivers/stmemsc/`）で動かし、デバイスはボードの値で 1 つだけ作ります
+  （`common/drivers/lsm6dso/port/freertos/lsm6dso_instance.h`。インクルードパスで `port/zephyr/` より前）。
 - GPIO（`drivers/compat/rp2040/nano_gpio.c`）: 互換層の `gpio0` の下の GPIO バンク 0 を、Zephyr の `gpio_rpi_pico.c` と
   同じ Pico SDK の呼び出しで操作します。割り込みは `gpio_add_raw_irq_handler_masked()` で登録し、使えるのは
   LSM6DSOX の INT1（GPIO24）だけです（ほかのピンは `-ENOTSUP`。NINA の READY と IRQ の線は NINA のつなぎのハンドラー）。

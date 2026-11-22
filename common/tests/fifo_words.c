@@ -7,9 +7,10 @@
 
 #include <string.h>
 
-#include "lsm6dso_fifo.h"
-/* The layout is the driver's; a test of the driver may build a buffer by hand. */
-#include "lsm6dso_fifo_packet.h"
+/* The parser is <zephyr/drivers/sensor/lsm6dso.h>'s; the buffer's layout (struct
+ * lsm6dso_fifo_packet) is the driver's, and a test of the driver may build a buffer by hand.
+ */
+#include "lsm6dso_decoder.h"
 
 int main(void)
 {

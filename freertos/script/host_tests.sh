@@ -288,33 +288,44 @@ printf 'ok  i2c_dw (I2C0 and I2C1 boundaries and devices, DMA reads on the Pico 
 # GPIO bank 0 (freertos/tests/gpio): the board's boundary of the layer's gpio0
 # (drivers/compat/rp2040/nano_gpio.c) on fakes of the Pico SDK's GPIO and IRQ functions
 # (tests/gpio/pico_fake), under common/compat/zephyr_gpio.c and zephyr_device.c and the LSM6DSO's
-# FIFO interrupt (common/drivers/lsm6dso/lsm6dso_fifo_irq.c), with the prelude and
+# FIFO interrupt (the static functions of the driver's Zephyr binding,
+# common/drivers/lsm6dso/port/zephyr/lsm6dso_rtio_stream.c, which the test includes, with its
+# cast of stmemsc's bus function; with ST's lsm6dso_reg.h, freertos/stmemsc, for the driver's
+# headers; the parts of the stream that the test does not call are left out by --gc-sections),
+# with the prelude and
 # CONFIG_NANO_LSM6DSO_STREAM as drivers/lsm6dso/lsm6dso.cmake builds them; the layer's kernel part
 # again with that option (zephyr_compat_initialize() starts gpio0), on the same kernel objects.
-gpioinc=(-Itests/gpio/pico_fake -I../common/drivers/lsm6dso -DCONFIG_NANO_LSM6DSO_STREAM=1)
-gpioobjs=()
-for src in drivers/compat/rp2040/nano_gpio.c drivers/compat/zephyr_kernel.c tests/gpio/main.c \
-           ../common/compat/zephyr_gpio.c ../common/compat/zephyr_device.c \
-           ../common/drivers/lsm6dso/lsm6dso_fifo_irq.c; do
-    obj="$out/gpio_$(basename "$src" .c).o"
-    extra=()
-    case $src in
-        ../common/*) extra=(-include drivers/compat/common_prelude.h) ;;
-    esac
-    cc "${flags[@]}" "${strict[@]}" "${gpioinc[@]}" "${inc[@]}" "${extra[@]}" -c "$src" -o "$obj"
-    gpioobjs+=("$obj")
-done
-gpiokern=()
-for o in "${kernobjs[@]}"; do
-    [[ $(basename "$o") == zephyr_kernel.o ]] || gpiokern+=("$o")
-done
-cc "${flags[@]}" "${gpiokern[@]}" "${gpioobjs[@]}" -o "$out/gpio"
-if (( verbose )); then
-    timeout 60 "$out/gpio"
+if [[ -f stmemsc/lsm6dso_reg.h ]]; then
+    lsm=../common/drivers/lsm6dso
+    gpioinc=(-Itests/gpio/pico_fake -I$lsm/include -I$lsm/internal -I$lsm/port -I$lsm/port/freertos
+             -I$lsm/port/zephyr -I../common/drivers/stmemsc -Istmemsc
+             -DCONFIG_NANO_LSM6DSO_STREAM=1 -ffunction-sections -fdata-sections)
+    gpioobjs=()
+    for src in drivers/compat/rp2040/nano_gpio.c drivers/compat/zephyr_kernel.c tests/gpio/main.c \
+               ../common/compat/zephyr_gpio.c ../common/compat/zephyr_device.c; do
+        obj="$out/gpio_$(basename "$src" .c).o"
+        extra=()
+        case $src in
+            ../common/*) extra=(-include drivers/compat/common_prelude.h) ;;
+            tests/gpio/*) extra=(-include drivers/compat/common_prelude.h -Wno-cast-function-type) ;;
+        esac
+        cc "${flags[@]}" "${strict[@]}" "${gpioinc[@]}" "${inc[@]}" "${extra[@]}" -c "$src" -o "$obj"
+        gpioobjs+=("$obj")
+    done
+    gpiokern=()
+    for o in "${kernobjs[@]}"; do
+        [[ $(basename "$o") == zephyr_kernel.o ]] || gpiokern+=("$o")
+    done
+    cc "${flags[@]}" -Wl,--gc-sections "${gpiokern[@]}" "${gpioobjs[@]}" -o "$out/gpio"
+    if (( verbose )); then
+        timeout 60 "$out/gpio"
+    else
+        timeout 60 "$out/gpio" >"$out/log" 2>&1 || { cat "$out/log"; exit 1; }
+    fi
+    printf 'ok  gpio (GPIO bank 0 boundary, gpio0, FIFO interrupt, FreeRTOS POSIX port)\n'
 else
-    timeout 60 "$out/gpio" >"$out/log" 2>&1 || { cat "$out/log"; exit 1; }
+    printf 'skip gpio (no stmemsc/lsm6dso_reg.c: run script/setup.sh)\n'
 fi
-printf 'ok  gpio (GPIO bank 0 boundary, gpio0, FIFO interrupt, FreeRTOS POSIX port)\n'
 
 # The IMU service's FreeRTOS parts (freertos/tests/imu): the address conversions
 # (drivers/libc/inet.c, the layer's <zephyr/net/socket.h> on drivers/libc/include) and
@@ -347,7 +358,7 @@ printf 'ok  imu (address conversions, hwinfo, FreeRTOS POSIX port)\n'
 mqttsrcs=(drivers/compat/zephyr_net_if.c ../common/imu/imu_raw_mqtt.c ../common/imu/imu_raw_status.c
           ../common/imu/mqtt_min.c ../common/imu/mqtt_min_sock.c ../common/imu/imu_raw_queue.c
           ../common/imu/imu_raw_packet.c)
-mqttinc=(-Idrivers/libc/include -I../common/imu -I../common/drivers/lsm6dso)
+mqttinc=(-Idrivers/libc/include -I../common/imu)
 mqttobjs=()
 for src in tests/mqtt/main.c drivers/libc/inet.c "${mqttsrcs[@]}"; do
     obj="$out/mqtt_$(basename "$src" .c).o"
@@ -378,7 +389,7 @@ printf 'ok  mqtt (thread, connection, messages, congestion, failures, stop, Free
 # About 30 s.  Skipped without host/.venv or python3.
 imuhost=../host/.venv/bin/imu-host
 if [[ -x $imuhost ]] && command -v python3 >/dev/null; then
-    liveinc=(-D_GNU_SOURCE -Itests/telnet -I../common/imu -I../common/drivers/lsm6dso)
+    liveinc=(-D_GNU_SOURCE -Itests/telnet -I../common/imu)
     liveobjs=()
     for src in tests/mqtt/live.c tests/telnet/host_sock.c "${mqttsrcs[@]}"; do
         obj="$out/live_$(basename "$src" .c).o"
@@ -638,7 +649,10 @@ fi
 if [[ -f stmemsc/lsm6dso_reg.c ]]; then
     ssinc=(-D_GNU_SOURCE -DZ_SHELL_CMD_ROOT_GLOBAL -DCONFIG_GETOPT_LONG=1 -DCONFIG_NANO_LSM6DSO_STREAM=1
            -U_FORTIFY_SOURCE -Itests/shell -Idrivers/shell -Idrivers/sensor_shell -Idrivers/lsm6dso
-           -I../common/shell -I../common/compat/lib/utils/getopt -I../common/drivers/lsm6dso
+           -I../common/shell -I../common/compat/lib/utils/getopt
+           -I../common/drivers/lsm6dso/port/freertos
+           -I../common/drivers/lsm6dso/port/zephyr -I../common/drivers/lsm6dso/include
+           -I../common/drivers/lsm6dso/internal -I../common/drivers/lsm6dso/port
            -I../common/drivers/stmemsc -Istmemsc -I../common/imu -ffunction-sections -fdata-sections)
     cc "${flags[@]}" -w -Istmemsc -c stmemsc/lsm6dso_reg.c -o "$out/sensor_lsm6dso_reg.o"
     ssobjs=("$out/sensor_lsm6dso_reg.o")
@@ -651,11 +665,11 @@ if [[ -f stmemsc/lsm6dso_reg.c ]]; then
                ../common/compat/lib/utils/getopt/getopt.c ../common/compat/lib/utils/getopt/getopt_long.c \
                ../common/drivers/sensor_shell/sensor_shell.c ../common/compat/sensor_shell_stream.c \
                ../common/imu/imu_cal.c ../common/imu/imu_cal_codec.c \
-               ../common/drivers/lsm6dso/lsm6dso.c ../common/drivers/lsm6dso/lsm6dso_fifo_hw.c \
-               ../common/drivers/lsm6dso/lsm6dso_fifo.c ../common/drivers/lsm6dso/lsm6dso_cal.c \
-               ../common/drivers/lsm6dso/lsm6dso_zero.c ../common/drivers/lsm6dso/lsm6dso_stream.c \
-               ../common/drivers/lsm6dso/lsm6dso_fifo_irq.c ../common/drivers/lsm6dso/lsm6dso_compat.c \
-               ../common/drivers/lsm6dso/lsm6dso_fifo_decoder.c \
+               ../common/drivers/lsm6dso/lsm6dso_chip.c ../common/drivers/lsm6dso/lsm6dso_cal.c \
+               ../common/drivers/lsm6dso/lsm6dso_fifo.c ../common/drivers/lsm6dso/port/zephyr/lsm6dso.c \
+               ../common/drivers/lsm6dso/port/zephyr/lsm6dso_rtio_stream.c \
+               ../common/drivers/lsm6dso/port/zephyr/lsm6dso_rtio.c \
+               ../common/drivers/lsm6dso/port/zephyr/lsm6dso_decoder.c \
                ../common/drivers/stmemsc/stmemsc_i2c.c ../common/drivers/stmemsc/stmemsc_mdelay.c \
                ../common/compat/zephyr_device.c ../common/compat/zephyr_gpio.c \
                ../common/compat/sensor_default_rtio.c ../common/compat/zephyr_rtio.c \
@@ -668,7 +682,8 @@ if [[ -f stmemsc/lsm6dso_reg.c ]]; then
         esac
         case $src in
             */lsm6dso.c) extra+=(-Wno-unused-parameter -Wno-sign-compare -Wno-cast-function-type) ;;
-            */lsm6dso_compat.c|*/sensor_default_rtio.c) extra+=(-Wno-unused-parameter -Wno-sign-compare) ;;
+            */lsm6dso_rtio_stream.c) extra+=(-Wno-cast-function-type) ;;
+            */lsm6dso_rtio.c|*/sensor_default_rtio.c) extra+=(-Wno-unused-parameter -Wno-sign-compare) ;;
             */sensor_shell.c) extra+=(-Wno-sign-compare -Wno-unused-parameter) ;;
             *zshell.c|*nano_console.c) extra+=(-Dcalloc=test_calloc -Dmalloc=test_malloc -Dfree=test_free) ;;
         esac

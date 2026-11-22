@@ -4,8 +4,9 @@
 # compatibility layer (common/compat), the shell's subcommand dispatch (common/shell) and the
 # RAM log's ring (common/log).  They use the fake headers of tests/fakes, the fake kernel of
 # tests/zephyr_fakes or (the NINA core) fakes of its boundary defined by the tests, and need no
-# board and no Zephyr tree (the checks that the copies of Zephyr's files are unchanged and that
-# the I2C core matches the Zephyr build's patched driver run when the tree is there).
+# board and no Zephyr tree (the checks that the copies of Zephyr's files are unchanged, that
+# the I2C core matches the Zephyr build's patched driver and that the sensor shell is the file
+# of the patched tree run when the tree is there).
 # zephyr/script/host_tests.sh and nuttx/script/host_tests.sh run this
 # before their own tests.
 set -euo pipefail
@@ -16,7 +17,9 @@ imu=imu
 lsm=drivers/lsm6dso
 flags=(-std=c17 -Wall -Wextra -Werror -ffunction-sections -fdata-sections)
 link="-Wl,--gc-sections"
-inc=(-Itests/fakes -I"$imu" -I"$lsm")
+# The LSM6DSO driver's headers: its public ones (include/), its core's (internal/, the boundary
+# in port/) and its Zephyr binding's (port/zephyr), which the NuttX and FreeRTOS builds compile too.
+inc=(-Itests/fakes -I"$imu" -I"$lsm/include" -I"$lsm/internal" -I"$lsm/port" -I"$lsm/port/zephyr")
 
 run() {
     local name=$1
@@ -26,28 +29,67 @@ run() {
     printf 'ok  %s\n' "$name"
 }
 
-# Application modules and the FIFO word parser.
+# Application modules, the FIFO word parser (lsm6dso_fifo.c) and the stream's buffers
+# (port/zephyr/lsm6dso_decoder.c).
 lib=("$imu/imu_raw_queue.c" "$imu/imu_raw_packet.c" "$imu/imu_raw_batch.c"
      "$imu/imu_raw_status.c" "$imu/imu_raw_time.c" "$imu/imu_tick_clock.c"
-     "$imu/time_offset.c" "$lsm/lsm6dso_fifo.c")
+     "$imu/time_offset.c" "$lsm/lsm6dso_fifo.c" "$lsm/port/zephyr/lsm6dso_decoder.c")
 for test in fifo_words imu_raw_packet imu_raw_batch imu_raw_queue imu_raw_status imu_raw_time \
             imu_tick_clock time_offset; do
     run "$test" "${flags[@]}" "${inc[@]}" "tests/$test.c" "${lib[@]}"
 done
 
-# LSM6DSO FIFO driver pieces.
-run fifo_hw "${flags[@]}" "${inc[@]}" tests/fifo_hw.c "$lsm/lsm6dso_fifo_hw.c"
+# The LSM6DSO driver's decoder of the stream's buffers (port/zephyr/lsm6dso_decoder.c).  The
+# chip's registers (lsm6dso_chip.c) are tested with the driver in nuttx/tests/lsm6dso_driver.c.
 run fifo_decoder "${flags[@]}" "${inc[@]}" tests/fifo_decoder.c \
-    "$lsm/lsm6dso_fifo_decoder.c" "$lsm/lsm6dso_fifo.c" "$lsm/lsm6dso_cal.c"
-# Conversion to physical units and the stored calibration format.
+    "$lsm/port/zephyr/lsm6dso_decoder.c" "$lsm/lsm6dso_fifo.c" "$lsm/lsm6dso_cal.c"
+# Conversion to physical units and the stored calibration format (lsm6dso_cal.c).
 run lsm6dso_cal "${flags[@]}" "${inc[@]}" tests/lsm6dso_cal.c \
     "$lsm/lsm6dso_cal.c" "$imu/imu_cal_codec.c" -lm
-# Gyro bias tracking at rest.
-run lsm6dso_zero "${flags[@]}" "${inc[@]}" tests/lsm6dso_zero.c "$lsm/lsm6dso_zero.c"
-# The stream's state machine (lsm6dso_stream.c, which the test includes) with a fake FIFO and
-# RTIO executor.
-run stream_stop "${flags[@]}" "${inc[@]}" tests/stream_stop.c \
-    "$lsm/lsm6dso_fifo.c" "$lsm/lsm6dso_cal.c"
+# Gyro bias tracking at rest (the lsm6dso_zero_*() functions of lsm6dso_cal.c).
+run lsm6dso_zero "${flags[@]}" "${inc[@]}" tests/lsm6dso_zero.c "$lsm/lsm6dso_cal.c"
+# The stream's state machine (port/zephyr/lsm6dso_rtio_stream.c, which the test includes) with a
+# fake core (the FIFO calls of lsm6dso_chip.h), INT1 and RTIO executor.  The stream casts
+# stmemsc's bus function, as the builds compile it (-Wno-cast-function-type).
+run stream_stop "${flags[@]}" -Wno-cast-function-type "${inc[@]}" tests/stream_stop.c \
+    "$lsm/port/zephyr/lsm6dso_decoder.c" "$lsm/lsm6dso_fifo.c" "$lsm/lsm6dso_cal.c"
+
+# The LSM6DSO's core has no OS of its own: each of its files (the .c files at the top of
+# drivers/lsm6dso, include/ but the Zephyr binding's lsm6dso.h, internal/ and the boundary of
+# port/; the OS bindings are in port/'s subdirectories) compiles with the host's C library, its own
+# headers, ST's register driver lsm6dso_reg.h (OS-independent; the copy that a build fetched, alone
+# in a directory) and the host's part of the boundary (tests/lsm6dso_os_host).
+st=
+for d in ../zephyr/modules/hal/st/sensor/stmemsc/lsm6dso_STdC/driver ../nuttx/stmemsc \
+         ../freertos/stmemsc; do
+    if [[ -f $d/lsm6dso_reg.h ]]; then
+        st=$d
+        break
+    fi
+done
+if [[ -n $st ]]; then
+    mkdir -p "$out/st"
+    cp "$st/lsm6dso_reg.h" "$out/st/"
+    lsm_core=("$lsm"/*.c "$lsm"/include/lsm6dso_*.h "$lsm"/internal/*.h "$lsm"/port/*.h)
+    for f in "${lsm_core[@]}"; do
+        printf '#include "%s"\n' "$f" | cc "${flags[@]}" -I. -I"$lsm/include" -I"$lsm/internal" \
+            -I"$lsm/port" -Itests/lsm6dso_os_host -I"$out/st" -fsyntax-only -x c -
+    done
+    printf 'ok  lsm6dso_core_independent (%d files)\n' "${#lsm_core[@]}"
+else
+    printf 'skip lsm6dso_core_independent (no lsm6dso_reg.h: run a setup.sh)\n'
+fi
+# The headers for the driver's users (include/) compile with that directory alone; the Zephyr
+# binding's lsm6dso.h (<zephyr/drivers/sensor/lsm6dso.h>) with the fakes of the sensor API and
+# RTIO it reads (tests/fakes).
+lsm_public=("$lsm"/include/*.h)
+for f in "${lsm_public[@]}"; do
+    fakes=()
+    [[ ${f##*/} == lsm6dso.h ]] && fakes=(-Itests/fakes)
+    printf '#include "%s"\n' "${f##*/}" | cc "${flags[@]}" -I"$lsm/include" "${fakes[@]}" \
+        -fsyntax-only -x c -
+done
+printf 'ok  lsm6dso_public_headers (%d files)\n' "${#lsm_public[@]}"
 
 # The I2C core's definitions (drivers/i2c_dw/internal/i2c_dw.h): SCL counts, speeds and the
 # IC_DATA_CMD words of whole transfers against the Zephyr build's, and the NuttX build's
@@ -233,7 +275,21 @@ if [[ -f $ztree/VERSION ]]; then
     python3 "${sync[@]}" > "$out/i2c_dw_sync.log"
     printf 'ok  i2c_dw_sync (%d checks; %s)\n' "$(grep -c '^ok' "$out/i2c_dw_sync.log")" \
         "$(grep -q '^skip' "$out/i2c_dw_sync.log" && printf 'no Zephyr build' || printf 'with the Zephyr build')"
+
+    # The sensor shell is the file of the Zephyr build's patched tree: Zephyr's
+    # drivers/sensor/sensor_shell.c with the local patch 0006, applied here to the tree's HEAD in a
+    # scratch directory, as script/setup.sh applies it to the tree, is byte for byte
+    # drivers/sensor_shell/sensor_shell.c (its sensor_shell_os.h is per build).
+    zpatches=../zephyr/manifest/zephyr/patches/zephyr
+    ztmp=$out/zephyr_sensor_shell
+    mkdir -p "$ztmp"
+    git -C "$ztree" archive HEAD drivers/sensor/sensor_shell.c | tar -x -C "$ztmp"
+    (cd "$ztmp" && git apply --include='drivers/sensor/*' \
+        "$OLDPWD/$zpatches"/0006-sensor-shell-*.patch)
+    cmp drivers/sensor_shell/sensor_shell.c "$ztmp/drivers/sensor/sensor_shell.c"
+    printf 'ok  zephyr_sensor_shell_patched (patch 0006)\n'
 else
     printf 'skip zephyr_copies (no zephyr/zephyr: run west update)\n'
     printf 'skip i2c_dw_sync (no zephyr/zephyr: run west update)\n'
+    printf 'skip zephyr_sensor_shell_patched (no zephyr/zephyr: run west update)\n'
 fi

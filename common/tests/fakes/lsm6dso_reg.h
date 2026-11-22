@@ -2,7 +2,8 @@
 #ifndef TEST_FAKE_LSM6DSO_REG_H_
 #define TEST_FAKE_LSM6DSO_REG_H_
 #include <stdint.h>
-typedef struct { int unused; } stmdev_ctx_t;
+typedef int32_t (*stmdev_read_ptr)(void *handle, uint8_t reg, uint8_t *data, uint16_t len);
+typedef struct { stmdev_read_ptr read_reg; void *handle; } stmdev_ctx_t;
 typedef int lsm6dso_bdr_xl_t;
 typedef int lsm6dso_bdr_gy_t;
 typedef struct { uint8_t fifo_th, drdy_xl; } lsm6dso_pin_int1_route_t;

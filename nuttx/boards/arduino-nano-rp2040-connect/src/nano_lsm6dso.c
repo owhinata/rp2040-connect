@@ -12,8 +12,9 @@
  *             device of the compatibility layer, at the devicetree's
  *             clock-frequency (100 kHz) until i2c_configure() changes it
  *   lsm6dsox  /soc/i2c@40044000/lsm6dsox@6a: defined by
- *             nuttx/drivers/lsm6dso/lsm6dso_instance.h (the end of
- *             common/drivers/lsm6dso/lsm6dso.c), initialized here
+ *             common/drivers/lsm6dso/port/nuttx/lsm6dso_instance.h (the
+ *             end of the binding common/drivers/lsm6dso/port/zephyr/
+ *             lsm6dso.c), initialized here
  *
  * Zephyr initializes i2c0 (POST_KERNEL, CONFIG_I2C_INIT_PRIORITY 50) and
  * then the sensor (POST_KERNEL, CONFIG_SENSOR_INIT_PRIORITY 90) before

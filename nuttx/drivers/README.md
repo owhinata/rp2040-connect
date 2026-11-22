@@ -523,20 +523,23 @@ patched driver with the same branches, order and values.
 
 | File | Role |
 |---|---|
-| `common/drivers/lsm6dso/lsm6dso.[ch]` | The driver. The same files as the Zephyr version's (the repository's `common/`, compiled with the prelude; Zephyr's kernel, device, sensor, GPIO, I2C and log calls come from the compatibility layer, below). At its end `lsm6dso.c` includes `lsm6dso_instance.h` of the build's own driver directory, so `lsm6dso_init` and `lsm6dso_driver_api` stay `static` |
-| `lsm6dso/lsm6dso_instance.h` | The device, in place of the Zephyr version's devicetree instance macros: one `DEVICE_DT_DEFINE()` with the board's values (INT1's `.fifo_gpio` is `<&gpio0 24 0>`) |
+| `common/drivers/lsm6dso/lsm6dso_chip.c`, `internal/lsm6dso_chip.h` | The driver's core, with no OS: the start and reset, rates and ranges, the single reads and their conversion, the FIFO's register work, owner, lock and counters, the timestamp read, the calibration in effect and the bias tracking, on a `struct lsm6dso_chip`. The same files as the Zephyr version's (the repository's `common/`, compiled with the prelude; `lsm6dso/Make.defs` finds the driver's sources through `VPATH`, and the objects are made in `nuttx/drivers`) |
+| `common/drivers/lsm6dso/lsm6dso_cal.c`, `include/lsm6dso_cal.h` | The core's conversion to physical units with the calibration, and the tracking of the gyro bias at rest (below) |
+| `common/drivers/lsm6dso/lsm6dso_fifo.c`, `include/lsm6dso_fifo.h` | The core's parser of the FIFO words, and the FIFO's counters |
+| `common/drivers/lsm6dso/port/lsm6dso_os.h` | The core's boundary to the OS: static inline functions for its two locks, waits, cycle counter and the FIFO's long reads, and the log. This version uses the Zephyr version's implementation, `port/zephyr/lsm6dso_os_impl.h`, on the compatibility layer (the next table) |
+| `common/drivers/lsm6dso/port/zephyr/lsm6dso.[ch]` | The Zephyr binding: the device and the sensor API on the core. The same files as the Zephyr version's (Zephyr's kernel, device, sensor, GPIO, I2C and log calls come from the compatibility layer, below). At its end `lsm6dso.c` includes `<lsm6dso_instance.h>`: `port/nuttx/` comes before `port/zephyr/` on the include path, so it is this version's, and `lsm6dso_init` and `lsm6dso_driver_api` stay `static` |
+| `common/drivers/lsm6dso/port/nuttx/lsm6dso_instance.h` | The device, in place of the Zephyr version's devicetree instance macros (`port/zephyr/lsm6dso_instance.h`): one `DEVICE_DT_DEFINE()` with the board's values (INT1's `.fifo_gpio` is `<&gpio0 24 0>`) |
 | `common/drivers/stmemsc/stmemsc.h`, `stmemsc_i2c.c`, `stmemsc_mdelay.c` | A copy of the I2C part of Zephyr's `drivers/sensor/st/stmemsc/` (the glue between ST's `stmdev_ctx_t` and Zephyr's I2C API; `stmemsc_mdelay()` is the layer's `k_msleep()`), shared with the FreeRTOS version (compiled without the prelude). `lsm6dso.h` includes `<stmemsc.h>`, which is this one through the include path |
 | `lsm6dso/st_lsm6dso_reg.c` | A one-line wrapper that builds ST's `lsm6dso_reg.c` (`nuttx/stmemsc/`, not in Git) as it is |
-| `common/drivers/lsm6dso/lsm6dso_compat.c` | Single reads through RTIO (the fallback for a submission that is not a stream). The same file as the Zephyr version's (the log is the layer's `<zephyr/logging/log.h>`, the level `CONFIG_SENSOR_LOG_LEVEL` is in the prelude) |
-| `common/drivers/lsm6dso/lsm6dso_fifo.[ch]`, `lsm6dso_fifo_packet.h` | Parsing of the FIFO words and the format of the buffer's header. The same files as the Zephyr version's (the repository's `common/`; `lsm6dso/Make.defs` finds them through `VPATH`, and the objects are made in `nuttx/drivers`; the same for the next 4 rows) |
-| `common/drivers/lsm6dso/lsm6dso_fifo_hw.[ch]`, `lsm6dso_fifo_stats.h`, `lsm6dso_attributes.h` | FIFO setup, status and burst reads, the FIFO statistics, the private attributes. The same files as the Zephyr version's (they use Zephyr's API through the compatibility layer) |
-| `common/drivers/lsm6dso/lsm6dso_stream.c`, `lsm6dso_fifo_irq.[ch]` | The FIFO stream (below). The same files as the Zephyr version's |
-| `common/drivers/lsm6dso/lsm6dso_fifo_decoder.[ch]` | The decoders of the stream's and the single reads' buffers (`get_decoder`). The same files as the Zephyr version's |
-| `common/drivers/lsm6dso/lsm6dso_cal.[ch]`, `lsm6dso_zero.[ch]` | The conversion to physical units with the calibration, and the tracking of the gyro bias at rest (below). The same files as the Zephyr version's |
+| `common/drivers/lsm6dso/port/zephyr/lsm6dso_rtio.c` | The driver's RTIO submit: a stream to `lsm6dso_rtio_stream.c`, a single read through a copy of the sensor API's fallback. The same file as the Zephyr version's (the log is the layer's `<zephyr/logging/log.h>`, the level `CONFIG_SENSOR_LOG_LEVEL` is in the prelude) |
+| `common/drivers/lsm6dso/include/lsm6dso.h` | The extended API: the FIFO words and their parser (`lsm6dso_fifo.h`), the calibration's types (`lsm6dso_cal.h`) and calls, the FIFO statistics, the private attributes, the stop of a stream, the timestamp read; `<zephyr/drivers/sensor/lsm6dso.h>` through `common/compat/zephyr/drivers/sensor/lsm6dso.h` |
+| `common/drivers/lsm6dso/port/zephyr/lsm6dso_rtio_stream.c` | The FIFO stream with INT1 (below). The same file as the Zephyr version's |
+| `common/drivers/lsm6dso/port/zephyr/lsm6dso_decoder.[ch]` | The format of the stream's buffers, and the decoders of the stream's and the single reads' buffers (`get_decoder`). The same files as the Zephyr version's |
 | the board's `src/nano_lsm6dso.[ch]` | Makes I2C0 the compatibility layer's bus device (`i2c0`, 100 kHz) and initializes `lsm6dsox` (from `nano_bringup()`) |
 | the board's `src/nano_gpio.c` | GPIO bank 0 for the compatibility layer's `gpio0` (input set-up, levels, edge and level interrupts); `<nano_gpio.h>` (`common/compat`) |
 
-What the driver's calls into the system are on NuttX:
+What the driver's calls into the system are on NuttX (those of the core through
+`port/zephyr/lsm6dso_os_impl.h`, those of the binding directly):
 
 | Zephyr | NuttX port |
 |---|---|
@@ -546,7 +549,7 @@ What the driver's calls into the system are on NuttX:
 | `k_busy_wait()` | the layer's, `up_udelay()` |
 | `k_msleep()`, `k_usleep()` | the layer's, `nxsched_msleep()`, `nxsched_usleep()` (rounded up to ticks plus one tick: Zephyr's rule, the same 100 µs tick) |
 | `k_cycle_get_32()`, `k_cyc_to_ns_floor64()` | the layer's: the TIMER's low 32 bits (1 MHz) and ×1000 |
-| `sys_get_le32()` | the layer's `<zephyr/sys/byteorder.h>` |
+| `i2c_burst_read_dt()` (the core's FIFO reads) | the layer's I2C calls on I2C0 |
 | `CONFIG_SENSOR_ASYNC_API` | defined by the prelude when `CONFIG_NANO_LSM6DSO_STREAM` is set (always on with `NANO_LSM6DSO`; as in Zephyr, `lsm6dso.c` does not build without it) |
 | `DT_HAS_COMPAT_ON_BUS_STATUS_OKAY()` | the layer's `<zephyr/devicetree.h>`: 1 for `st_lsm6dso` on `i2c` only (the board has one LSM6DSOX, on I2C0) |
 | the devicetree instance, `POST_KERNEL`, priority 90 | `DEVICE_DT_DEFINE(lsm6dsox, ...)` (`lsm6dso_instance.h`), `device_init()` in the board's bring-up |
@@ -554,10 +557,9 @@ What the driver's calls into the system are on NuttX:
 - The board's `nano_bringup()` initializes the sensor right after I2C0 and before mounting the
   key-value store (NVS), the Zephyr version's order. A failure only leaves the device not ready
   (`device_is_ready()` is false, as with Zephyr's `do_device_init()`); the boot goes on.
-- Not ported: SPI, the sensor hub (`lsm6dso_shub.c`), triggers (`lsm6dso_trigger.c`) and the die
-  temperature. All are off in the Zephyr version's configuration (`CONFIG_LSM6DSO_SENSORHUB`,
-  `_TRIGGER`, `_ENABLE_TEMP`) and not built there. Their `#ifdef` parts are in the shared
-  `lsm6dso.c` and `lsm6dso.h`; the two files are only in the Zephyr version.
+- Not ported: SPI (the Zephyr version's devicetree instances could have it; the FIFO refuses it).
+  The driver has no sensor hub, triggers or die temperature (upstream's options
+  `CONFIG_LSM6DSO_SENSORHUB`, `_TRIGGER`, `_ENABLE_TEMP`).
 - The FIFO read time (`transfer_time_ns` in the statistics) is measured with the TIMER (1 µs
   steps); the Zephyr version uses the CPU clock (SysTick, 8 ns steps).
 
@@ -565,7 +567,8 @@ What the driver's calls into the system are on NuttX:
 
 The conversion (`lsm6dso_cal.c`), the calibration lookup (`lsm6dso_cal_set_lookup()`,
 `lsm6dso_cal_reload()`, `lsm6dso_cal_status()`), taking the bias again on the spot
-(`lsm6dso_cal_zero()`) and the tracking during a stream (`lsm6dso_zero.c`) are the Zephyr
+(`lsm6dso_cal_zero()`) and the tracking during a stream (`lsm6dso_zero_*()` of `lsm6dso_cal.c`, driven by
+`lsm6dso_chip.c`) are the Zephyr
 version's code and behave the same (the Zephyr version's driver notes, "Conversion to physical
 units and calibration"). The driver does not read the KV store. The lookup function is registered
 by `common/imu/imu_cal.c` (the same file as the Zephyr version's, built by `nuttx/apps/imu/`) in init's
@@ -575,9 +578,9 @@ the FIFO decoder, not to the RAW the acquisition service sends over MQTT.
 
 ### FIFO stream
 
-`lsm6dso_stream.c` and `lsm6dso_fifo_irq.[ch]` are the same files as the Zephyr version's
-(`common/drivers/lsm6dso/`); they use the kernel, RTIO, GPIO and sensor API under Zephyr's names from the
-compatibility layer (next section). They behave as in the Zephyr version:
+`lsm6dso_rtio_stream.c` (with INT1) is the same file as the Zephyr version's
+(`common/drivers/lsm6dso/port/zephyr/`, on the core's FIFO calls); it uses the kernel, RTIO, GPIO and sensor API under Zephyr's names from the
+compatibility layer (next section). It behaves as in the Zephyr version:
 
 - `sensor_stream()` (`SENSOR_DT_STREAM_IODEV`; one trigger, `SENSOR_TRIG_FIFO_WATERMARK` with
   `SENSOR_STREAM_DATA_INCLUDE`, anything else is `-ENOTSUP`, a second stream `-EBUSY`) submits one
@@ -696,7 +699,7 @@ of the NuttX implementation on the include path.
 | `zephyr/init.h` | An empty header (`lsm6dso.c` includes it; `SYS_INIT()` and the init levels are used only by the Zephyr version's instance macros) |
 | `zephyr/sys/iterable_sections.h` | `STRUCT_SECTION_FOREACH()` only, over an always empty section (the port has no Zephyr linker sections). The sensor shell includes it (and uses it only with `CONFIG_SENSOR_INFO`, which the Zephyr build does not set); the settings walk the section of static handlers (none in the port) |
 | `zephyr/sys/sys_io.h` | `sys_read32()` (one volatile 32-bit read without a barrier, as Zephyr's on Arm), `mem_addr_t` |
-| `zephyr/sys/printk.h`, `zephyr/sys/byteorder.h`, `zephyr/sys/cpu_load.h` | `snprintk()` (`snprintf()`, as in the Zephyr version's configuration with `CONFIG_PICOLIBC=y`), `sys_put_be16/32()`/`sys_get_be16/32()`/`sys_get_le32()`, `cpu_load_get()` (`cpu_load.h`; the board implements it) |
+| `zephyr/sys/printk.h`, `zephyr/sys/byteorder.h`, `zephyr/sys/cpu_load.h` | `snprintk()` (`snprintf()`, as in the Zephyr version's configuration with `CONFIG_PICOLIBC=y`), `sys_put_be16/32()`/`sys_get_be16/32()`, `cpu_load_get()` (`cpu_load.h`; the board implements it) |
 | `zephyr/drivers/hwinfo.h` | `hwinfo_get_device_id()` (below) |
 | `zephyr/shell/shell.h` | `shell_print()`, `shell_info()`, `shell_warn()`, `shell_error()`, `shell_fprintf()`, `struct shell` (a shell backend; its members are the OS part `zephyr_os_shell.h`), the command table macros (`SHELL_CMD_REGISTER()`, `SHELL_STATIC_SUBCMD_SET_CREATE()`, `SHELL_DYNAMIC_CMD_CREATE()`, `SHELL_CMD_ARG()`, `SHELL_CMD()`, `SHELL_COND_CMD()`, `SHELL_EXPR_CMD_ARG()`, `SHELL_HELP()`, `SHELL_SUBCMD_SET_END`), `shell_device_get_binding()`, `shell_device_filter()` (below) |
 | `zephyr/net/socket.h` (NuttX) | `zsock_inet_pton()`, `zsock_inet_ntop()` (the C library's `inet_pton()`, `inet_ntop()`), `zsock_getaddrinfo()`, `zsock_freeaddrinfo()` (the NINA's resolver, `nina_dns_getaddrinfo()`; errors are NuttX's `EAI_*`), `zsock_socket()`, `zsock_sendto()`, `zsock_close()`, `zsock_recv()`, `zsock_connect()`, `zsock_send()`, `zsock_sendmsg()`, `zsock_poll()` (NuttX's `socket()`, `sendto()`, `close()`, `recv()`, `connect()`, `send()`, `sendmsg()`, `poll()`), `ZSOCK_MSG_DONTWAIT`, `struct zsock_pollfd`, `ZSOCK_POLLIN` and the others (`MSG_DONTWAIT`, `struct pollfd`, `POLLIN`; how they behave on the NINA's sockets, below) |
@@ -818,7 +821,7 @@ of the NuttX implementation on the include path.
   `sensor_shell_stream.c`; the NuttX one, `nuttx/apps/sensor/`, reads the Zephyr build's
   configuration values and the log and makes the two lines with which `sensor get` waits for its
   result to be printed, and the processing thread's callback, call functions; the Zephyr one,
-  `zephyr/app/usb-console/drivers/sensor_shell/`, does nothing) and `wifi_profile_os.h` (the
+  `drivers/sensor/sensor_shell_os.h` of its patched tree, does nothing) and `wifi_profile_os.h` (the
   declaration of the reconnection thread's `wifi_reconnect_tid`: `const k_tid_t` in the Zephyr one,
   `zephyr/app/usb-console/src/`, as `K_THREAD_DEFINE()` makes it; without `const` in the NuttX one,
   `nuttx/apps/wifi/`, because the layer's `K_THREAD_DEFINE()` writes the value when the thread is
@@ -846,7 +849,7 @@ of the NuttX implementation on the include path.
   `rtio_pool`, completion callbacks, user mode.
 - **RTIO work queue**: as Zephyr's `rtio_workq.c`, a pool of 4 requests and one thread
   (`RTIO WQ 0`, priority 0 → 118, stack 1024), run in order. The single reads' fallback
-  (`lsm6dso_compat.c`) uses it. NuttX turns spaces in task names into `_`, so `ps` shows
+  (`lsm6dso_rtio.c`) uses it. NuttX turns spaces in task names into `_`, so `ps` shows
   `RTIO_WQ_0`.
 - **GPIO**: one port, `gpio0` (GPIO0..29), inputs only (outputs are `-ENOTSUP`). Pin set-up,
   interrupts (edges and levels, logical or physical), levels and callbacks are copies of Zephyr's

@@ -1,6 +1,8 @@
 cmake_minimum_required(VERSION 3.28.0)
 # The NINA-W102's devicetree binding (arduino,nina-spi) is its Zephyr binding's.
 list(APPEND DTS_ROOT ${CMAKE_CURRENT_SOURCE_DIR}/../../../common/drivers/nina/port/zephyr)
+# The LSM6DSO driver's Zephyr binding is a Zephyr module of its own (zephyr/module.yml there).
+list(APPEND ZEPHYR_EXTRA_MODULES ${CMAKE_CURRENT_SOURCE_DIR}/../../../common/drivers/lsm6dso/port/zephyr)
 find_package(Zephyr REQUIRED HINTS $ENV{ZEPHYR_BASE})
 project(usb_console)
 
@@ -14,8 +16,13 @@ target_sources(app PRIVATE src/main.c src/log_ram.c ${COMMON_DIR}/imu/kv_store.c
   ${COMMON_DIR}/imu/imu_stream.c ${COMMON_DIR}/imu/imu_raw_batch.c ${COMMON_DIR}/imu/imu_raw_packet.c
   ${COMMON_DIR}/imu/imu_raw_time.c ${COMMON_DIR}/imu/imu_tick_clock.c ${COMMON_DIR}/imu/imu_raw_queue.c
   ${COMMON_DIR}/imu/imu_raw_mqtt.c ${COMMON_DIR}/imu/imu_raw_status.c)
-target_include_directories(app PRIVATE src drivers/lsm6dso ${COMMON_DIR}/imu ${COMMON_DIR}/drivers/lsm6dso
+target_include_directories(app PRIVATE src ${COMMON_DIR}/imu
   ${COMMON_DIR}/drivers/nina/include ${COMMON_DIR}/drivers/nina/internal ${COMMON_DIR}/drivers/nina/port)
+# The LSM6DSO driver is the shared one of common/drivers/lsm6dso: its core and its Zephyr
+# binding, a Zephyr module (port/zephyr, ZEPHYR_EXTRA_MODULES above) whose option
+# CONFIG_LSM6DSO_LOCAL replaces Zephyr's CONFIG_LSM6DSO and whose build rules make a library of
+# its own and export the driver's extended API <zephyr/drivers/sensor/lsm6dso.h>.  The sensor
+# shell is Zephyr's with the local patch 0006 (manifest/zephyr/patches/zephyr).
 # "kernel ps" (main.c): the interval arithmetic shared with the FreeRTOS build's "ps", and the
 # kernel's internal headers for the interrupt stack (z_stack_space_get(), as Thread Analyzer).
 set_property(SOURCE src/main.c APPEND PROPERTY INCLUDE_DIRECTORIES ${COMMON_DIR}/shell
@@ -78,27 +85,6 @@ if(CONFIG_NANO_HW_DIVIDER)
   endforeach()
 endif()
 
-# Keep Zephyr's Kconfig and devicetree bindings while using local driver copies.
-function(use_local_driver_sources target pattern replacement_dir)
-  get_filename_component(dir "${replacement_dir}" ABSOLUTE BASE_DIR "${CMAKE_CURRENT_SOURCE_DIR}")
-  get_target_property(sources ${target} SOURCES)
-  set(updated_sources)
-  set(replaced 0)
-  foreach(source IN LISTS sources)
-    if(source MATCHES "${pattern}")
-      get_filename_component(filename "${source}" NAME)
-      list(APPEND updated_sources "${dir}/${filename}")
-      math(EXPR replaced "${replaced} + 1")
-    else()
-      list(APPEND updated_sources "${source}")
-    endif()
-  endforeach()
-  if(replaced EQUAL 0)
-    message(FATAL_ERROR "No sources replaced in ${target}; check the Zephyr version and configuration")
-  endif()
-  set_property(TARGET ${target} PROPERTY SOURCES "${updated_sources}")
-endfunction()
-
 # The DesignWare I2C driver is Zephyr's with a local patch (manifest/zephyr/patches/zephyr/
 # 0003-i2c-dw-rp2040-fifo-and-dma.patch: the RP2040's FIFO depth and CONFIG_I2C_DW_RP2040_DMA,
 # whole in Zephyr's tree). The "i2c_dma" command is the shared one
@@ -106,32 +92,4 @@ endfunction()
 # <zephyr/drivers/i2c/i2c_dw_rp2040_dma.h> that the patched driver defines).
 if(CONFIG_I2C_DW_RP2040_DMA AND CONFIG_SHELL)
   target_sources(app PRIVATE ${COMMON_DIR}/shell/i2c_dma_shell.c)
-endif()
-
-# lsm6dso.c is in common/drivers/lsm6dso; lsm6dso_shub.c and lsm6dso_trigger.c, which Zephyr
-# builds only with CONFIG_LSM6DSO_SENSORHUB and CONFIG_LSM6DSO_TRIGGER (off here), stay in
-# drivers/lsm6dso.
-use_local_driver_sources(drivers__sensor__st__lsm6dso "(^|/)lsm6dso\\.c$" ${COMMON_DIR}/drivers/lsm6dso)
-if(CONFIG_LSM6DSO_SENSORHUB OR CONFIG_LSM6DSO_TRIGGER)
-  use_local_driver_sources(drivers__sensor__st__lsm6dso "(^|/)lsm6dso_(shub|trigger)\\.c$" drivers/lsm6dso)
-endif()
-use_local_driver_sources(drivers__sensor "(^|/)sensor_shell\\.c$" ${COMMON_DIR}/drivers/sensor_shell)
-# sensor_shell.c reads lsm6dso_attributes.h of common/drivers/lsm6dso and the Zephyr part,
-# sensor_shell_os.h of drivers/sensor_shell.
-target_include_directories(drivers__sensor PRIVATE ${ZEPHYR_BASE}/drivers/sensor ${COMMON_DIR}/drivers/lsm6dso
-  ${CMAKE_CURRENT_SOURCE_DIR}/drivers/sensor_shell)
-# The driver's files are in drivers/lsm6dso (lsm6dso_instance.h, the devices, which lsm6dso.c
-# includes) and common/drivers/lsm6dso.
-target_include_directories(drivers__sensor__st__lsm6dso PRIVATE
-  ${CMAKE_CURRENT_SOURCE_DIR}/drivers/lsm6dso ${COMMON_DIR}/drivers/lsm6dso)
-target_sources(drivers__sensor__st__lsm6dso PRIVATE ${COMMON_DIR}/drivers/lsm6dso/lsm6dso_fifo.c)
-target_sources(drivers__sensor__st__lsm6dso PRIVATE ${COMMON_DIR}/drivers/lsm6dso/lsm6dso_cal.c)
-target_sources(drivers__sensor__st__lsm6dso PRIVATE ${COMMON_DIR}/drivers/lsm6dso/lsm6dso_zero.c)
-target_sources(drivers__sensor__st__lsm6dso PRIVATE ${COMMON_DIR}/drivers/lsm6dso/lsm6dso_fifo_hw.c)
-target_sources(drivers__sensor__st__lsm6dso PRIVATE ${COMMON_DIR}/drivers/lsm6dso/lsm6dso_fifo_irq.c)
-if(CONFIG_SENSOR_ASYNC_API)
-  target_sources(drivers__sensor__st__lsm6dso PRIVATE
-    ${COMMON_DIR}/drivers/lsm6dso/lsm6dso_fifo_decoder.c
-    ${COMMON_DIR}/drivers/lsm6dso/lsm6dso_compat.c
-    ${COMMON_DIR}/drivers/lsm6dso/lsm6dso_stream.c)
 endif()

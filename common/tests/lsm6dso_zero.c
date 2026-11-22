@@ -2,7 +2,7 @@
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
-#include "lsm6dso_zero.h"
+#include "lsm6dso_cal.h"
 
 #define ONE     (1 << LSM6DSO_ZERO_BIAS_FRAC)
 /* A rate near the one in use, so that the noise below averages as on the sensor. */

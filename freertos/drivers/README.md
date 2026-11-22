@@ -25,7 +25,7 @@ OS-independent part of the layer is `common/compat/`, the FreeRTOS part `freerto
 | `drivers/kv/` | The flash boundary of the key-value store (`nano_flash_kv.c`) and the linker script override (`ld/`, `kv.cmake`) |
 | `drivers/nina/` | Only `nina.cmake`, which adds the NINA driver to the build. The driver is in `common/drivers/nina/`, and this build's parts are its FreeRTOS binding `common/drivers/nina/port/freertos/`: the `nina_os.h` boundary (`nina_os.c`), the passthrough's host side (`nina_passthrough_os.c`), SPI1 and the module's lines on the Pico SDK (`nina_bus_rp2040.c`), the passthrough's module side (`nina_passthrough_bus_rp2040.c`: UART1, the module's lines, the watchdog's scratch registers, the LED); the sockets and the interface are the Zephyr binding's (`common/drivers/nina/port/zephyr/nina_socket.c`, `nina_net.c`) |
 | `drivers/i2c_dw/` | `i2c_dw.cmake`, which adds the I2C driver to the build (I2C0, and I2C1 as an option), and the self-test (`i2c_dw_selftest.[ch]`). The driver is in `common/drivers/i2c_dw/`, and this build's parts are its FreeRTOS binding `common/drivers/i2c_dw/port/freertos/`: the `i2c_dw_os.h` boundary on FreeRTOS and the TIMER (`i2c_dw_os_impl.h`), the devices with Zephyr's I2C API, their interrupts, resets and pins (`i2c_dw_instance.h`), their start (`i2c_dw_controllers_rp2040.h`), I2C0's DMA reads on the Pico SDK's DMA (`i2c_dw_dma_os_rp2040.c`) |
-| `drivers/lsm6dso/` | The LSM6DSOX device (`lsm6dso_instance.h`) and its initialization (`nano_lsm6dso.c`), self-test |
+| `drivers/lsm6dso/` | The LSM6DSOX's build rules (`lsm6dso.cmake`), its initialization (`nano_lsm6dso.c`), self-test |
 | `drivers/imu/` | Builds in the acquisition service, MQTT and time synchronization (`common/imu/`; `imu.cmake`), the prelude of `time_sync.c` |
 | `drivers/wifi/` | Builds in Wi-Fi (the NINA core's `common/drivers/nina/nina_wifi.c` with its Zephyr binding `common/drivers/nina/port/zephyr/nina_net.c`, credentials, reconnection) and `ifconfig` |
 | `drivers/telnet/` | The Telnet shell (`nano_telnet.c`) |
@@ -302,9 +302,13 @@ zero gives the Pico SDK routines' results, the same in the three builds. `memcpy
   DMA (they then fall back to the interrupts).
 - Interrupt priorities stay at the Pico SDK's default 0x80, so all device interrupts are at one level (as
   on NuttX; the Zephyr build uses 0xC0).
-- The LSM6DSOX runs on the shared driver (`common/drivers/lsm6dso/`), ST's `lsm6dso_reg.c` (fetched to
-  `freertos/stmemsc/` by `setup.sh`) and the stmemsc glue (`common/drivers/stmemsc/`); one device is made
-  with the board's values (`drivers/lsm6dso/lsm6dso_instance.h`).
+- The LSM6DSOX runs on the shared driver (`common/drivers/lsm6dso/`, the Zephyr build's driver: its core
+  `lsm6dso_chip.c`, `lsm6dso_cal.c` and `lsm6dso_fifo.c`, and its Zephyr binding `port/zephyr/`, with the
+  core's OS part `port/zephyr/lsm6dso_os_impl.h`, on the compatibility layer; its extended API
+  `<zephyr/drivers/sensor/lsm6dso.h>` is `include/lsm6dso.h`, through `common/compat`), ST's
+  `lsm6dso_reg.c` (fetched to `freertos/stmemsc/` by `setup.sh`) and the stmemsc glue
+  (`common/drivers/stmemsc/`); one device is made with the board's values
+  (`common/drivers/lsm6dso/port/freertos/lsm6dso_instance.h`, before `port/zephyr/` on the include path).
 - GPIO (`drivers/compat/rp2040/nano_gpio.c`): GPIO bank 0 under the layer's `gpio0`, driven with the same
   Pico SDK calls as Zephyr's `gpio_rpi_pico.c`. The interrupt handler is added with
   `gpio_add_raw_irq_handler_masked()`; only the LSM6DSOX's INT1 (GPIO24) can interrupt through `gpio0`

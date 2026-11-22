@@ -6,8 +6,8 @@
  * to be printed before it returns to the prompt
  * (sensor_shell_nuttx_get_arm()/_wait(), see sensor_shell_nuttx.h), and the
  * processing thread's callback (sensor_shell_stream.c).  The Zephyr
- * build's header (zephyr/app/usb-console/drivers/sensor_shell/
- * sensor_shell_os.h) does nothing here; the Zephyr build uses Zephyr's own
+ * build's header (drivers/sensor/sensor_shell_os.h of its patched tree)
+ * does nothing here; the Zephyr build uses Zephyr's own
  * sensor_shell_stream.c.
  */
 

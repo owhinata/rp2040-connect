@@ -8,11 +8,11 @@
  * https://www.st.com/resource/en/datasheet/lsm6dso.pdf
  */
 
-/* The end of the driver on NuttX (common/drivers/lsm6dso/lsm6dso.c, which
- * includes this file last, so lsm6dso_init and lsm6dso_driver_api stay
+/* The end of the driver on NuttX (port/zephyr/lsm6dso.c, the Zephyr binding,
+ * which includes this file last, so lsm6dso_init and lsm6dso_driver_api stay
  * static): in place of the Zephyr build's devicetree instance macros
- * (zephyr/app/usb-console/drivers/lsm6dso/lsm6dso_instance.h), the one
- * device with the board's values.  The board initializes it in its
+ * (port/zephyr/lsm6dso_instance.h), the one device with the board's
+ * values.  The board initializes it in its
  * bring-up (boards/.../src/nano_lsm6dso.c, device_init()), where Zephyr
  * does it before main() (POST_KERNEL, CONFIG_SENSOR_INIT_PRIORITY 90).
  */
@@ -45,7 +45,6 @@ static const struct lsm6dso_config lsm6dso_config_0 = {
 	.gyro_pm = BOARD_LSM6DSOX_GYRO_PM,
 	.gyro_odr = BOARD_LSM6DSOX_GYRO_ODR,
 	.gyro_range = BOARD_LSM6DSOX_GYRO_RANGE,
-	.drdy_pulsed = BOARD_LSM6DSOX_DRDY_PULSED,
 #ifdef CONFIG_SENSOR_ASYNC_API
 	/* GPIO_DT_SPEC_INST_GET_OR(inst, irq_gpios, {0}): <&gpio0 24 0> */
 	.fifo_gpio = {

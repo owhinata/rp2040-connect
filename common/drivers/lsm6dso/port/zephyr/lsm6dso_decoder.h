@@ -1,9 +1,10 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-#ifndef LSM6DSO_FIFO_PACKET_H_
-#define LSM6DSO_FIFO_PACKET_H_
+#ifndef LSM6DSO_DECODER_H_
+#define LSM6DSO_DECODER_H_
 
 #include <stdint.h>
-#include "lsm6dso_cal.h"
+#include <zephyr/drivers/sensor.h>
+#include <zephyr/drivers/sensor/lsm6dso.h>
 
 /* Layout of a FIFO stream buffer. Private to the driver: only the code that
  * fills a buffer, the decoder and lsm6dso_fifo_buffer_words() may depend on
@@ -33,5 +34,9 @@ struct __attribute__((packed, aligned(4))) lsm6dso_fifo_packet {
 	uint8_t watermark;
 	uint8_t data[];
 };
+
+/* Decoders for the buffers the driver produces. */
+extern const struct sensor_decoder_api lsm6dso_fifo_decoder;
+extern const struct sensor_decoder_api lsm6dso_combined_decoder;
 
 #endif

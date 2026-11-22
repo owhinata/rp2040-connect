@@ -5,6 +5,8 @@
 #include <stddef.h>
 #include <stdint.h>
 typedef int32_t q31_t;
+struct device;
+enum sensor_attribute { SENSOR_ATTR_PRIV_START = 0x8000 };
 enum sensor_channel { SENSOR_CHAN_ACCEL_XYZ = 3, SENSOR_CHAN_GYRO_XYZ = 7 };
 enum sensor_trigger_type { SENSOR_TRIG_FIFO_WATERMARK = 1 };
 struct sensor_chan_spec { uint16_t chan_type, chan_idx; };

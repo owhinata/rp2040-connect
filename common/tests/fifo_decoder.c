@@ -2,7 +2,8 @@
 #include <assert.h>
 #include <errno.h>
 #include <string.h>
-#include "lsm6dso_fifo_decoder.h"
+#include "lsm6dso_cal.h"
+#include "lsm6dso_decoder.h"
 
 static int default_count(const uint8_t *buf, struct sensor_chan_spec channel, uint16_t *count)
 {

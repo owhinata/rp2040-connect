@@ -2,9 +2,33 @@
 
 #include <errno.h>
 #include <limits.h>
+#include <stddef.h>
 #include <string.h>
-#include "lsm6dso_fifo.h"
-#include "lsm6dso_fifo_decoder.h"
+#include "lsm6dso_cal.h"
+#include "lsm6dso_decoder.h"
+
+/* The buffers of the FIFO stream (lsm6dso_decoder.h); the words in them are
+ * parsed by lsm6dso_fifo.c.
+ */
+
+int lsm6dso_fifo_buffer_words(const uint8_t *buffer, size_t length, const uint8_t **words,
+			      size_t *size)
+{
+	const struct lsm6dso_fifo_packet *packet = (const void *)buffer;
+	const size_t header = offsetof(struct lsm6dso_fifo_packet, data);
+
+	if (!buffer || !words || !size || length < header ||
+	    packet->marker != LSM6DSO_FIFO_PACKET_MARKER ||
+	    packet->words > LSM6DSO_FIFO_MAX_WORDS ||
+	    length - header < (size_t)packet->words * LSM6DSO_FIFO_WORD_SIZE) {
+		return -EBADMSG;
+	}
+	*words = packet->data;
+	*size = (size_t)packet->words * LSM6DSO_FIFO_WORD_SIZE;
+	return 0;
+}
+
+/* The decoders of the sensor API. */
 
 /* Q31 with shift 9 covers the maximum LSM6DSO32 acceleration range. */
 #define FIFO_Q31_SHIFT LSM6DSO_CAL_Q31_SHIFT

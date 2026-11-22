@@ -5,7 +5,7 @@
  * priority CONFIG_RTIO_WORKQ_THREADS_POOL_PRIO (0, here 118) with a
  * CONFIG_RTIO_WORKQ_THREADS_POOL_STACK_SIZE (1024) stack.  A sensor driver
  * uses it to run a blocking read for an RTIO submission (the LSM6DSO's
- * single reads, lsm6dso_compat.c).  Implemented in zephyr_rtio_workq.c.
+ * single reads, lsm6dso_rtio.c).  Implemented in zephyr_rtio_workq.c.
  * Part of the small Zephyr compatibility layer of the port
  * (common/compat).
  */

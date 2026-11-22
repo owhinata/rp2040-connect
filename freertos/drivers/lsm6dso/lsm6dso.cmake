@@ -14,10 +14,14 @@
 # Make.defs, nuttx/drivers/compat/Make.defs):
 #
 # - the driver, shared with the Zephyr and NuttX builds
-#   (common/drivers/lsm6dso: lsm6dso.c, which ends with this directory's
-#   lsm6dso_instance.h, the device lsm6dsox; lsm6dso_fifo_hw.c, _fifo.c,
-#   _cal.c, _zero.c; the FIFO stream lsm6dso_stream.c, _fifo_irq.c,
-#   _compat.c, _fifo_decoder.c);
+#   (common/drivers/lsm6dso, the files of the Zephyr build's patched
+#   drivers/sensor/st/lsm6dso): its core (lsm6dso_chip.c, lsm6dso_cal.c,
+#   lsm6dso_fifo.c) and the Zephyr build's binding (port/zephyr: lsm6dso.c,
+#   which ends with this build's port/freertos/lsm6dso_instance.h, the
+#   device lsm6dsox; the FIFO stream lsm6dso_rtio_stream.c, _rtio.c,
+#   _decoder.c; the core's OS part lsm6dso_os_impl.h); its extended API
+#   <zephyr/drivers/sensor/lsm6dso.h> is
+#   common/drivers/lsm6dso/include/lsm6dso.h, through common/compat;
 # - ST's glue to the Zephyr I2C API (common/drivers/stmemsc, shared with the
 #   NuttX build) and ST's register driver lsm6dso_reg.c (freertos/stmemsc,
 #   fetched by freertos/script/setup.sh, compiled as it is);
@@ -39,10 +43,10 @@
 # (common_prelude.h), as in compat.cmake; so is the self-test, which includes
 # lsm6dso.h (whose structures depend on CONFIG_SENSOR_ASYNC_API).  The
 # Zephyr build's code keeps its casts of the bus functions (lsm6dso.c, with
-# stmemsc.h), unused parameters and comparisons of signed with unsigned
-# (lsm6dso.c, lsm6dso_compat.c, sensor_default_rtio.c), which -Wextra
-# reports: those warnings are off for these three files only (the NuttX host
-# tests do the same).  ST's file is compiled without warnings, as it is.
+# stmemsc.h, and lsm6dso_rtio_stream.c), unused parameters and comparisons
+# of signed with unsigned (lsm6dso.c, lsm6dso_rtio.c,
+# sensor_default_rtio.c), which -Wextra reports: those warnings are off for
+# these four files only (the NuttX host tests do the same).  ST's file is compiled without warnings, as it is.
 
 get_filename_component(FREERTOS_LSM6DSO_DIR ${CMAKE_CURRENT_LIST_DIR} ABSOLUTE)
 get_filename_component(FREERTOS_STMEMSC_DIR ${CMAKE_CURRENT_LIST_DIR}/../../stmemsc ABSOLUTE)
@@ -62,16 +66,15 @@ function(freertos_lsm6dso target)
       "run freertos/script/setup.sh")
   endif()
 
+  set(lsm6dso_dir ${FREERTOS_COMMON_DIR}/drivers/lsm6dso)
   set(lsm6dso_driver_sources
-    ${FREERTOS_COMMON_DIR}/drivers/lsm6dso/lsm6dso.c
-    ${FREERTOS_COMMON_DIR}/drivers/lsm6dso/lsm6dso_fifo_hw.c
-    ${FREERTOS_COMMON_DIR}/drivers/lsm6dso/lsm6dso_fifo.c
-    ${FREERTOS_COMMON_DIR}/drivers/lsm6dso/lsm6dso_cal.c
-    ${FREERTOS_COMMON_DIR}/drivers/lsm6dso/lsm6dso_zero.c
-    ${FREERTOS_COMMON_DIR}/drivers/lsm6dso/lsm6dso_stream.c
-    ${FREERTOS_COMMON_DIR}/drivers/lsm6dso/lsm6dso_fifo_irq.c
-    ${FREERTOS_COMMON_DIR}/drivers/lsm6dso/lsm6dso_compat.c
-    ${FREERTOS_COMMON_DIR}/drivers/lsm6dso/lsm6dso_fifo_decoder.c
+    ${lsm6dso_dir}/port/zephyr/lsm6dso.c
+    ${lsm6dso_dir}/lsm6dso_chip.c
+    ${lsm6dso_dir}/lsm6dso_cal.c
+    ${lsm6dso_dir}/lsm6dso_fifo.c
+    ${lsm6dso_dir}/port/zephyr/lsm6dso_rtio_stream.c
+    ${lsm6dso_dir}/port/zephyr/lsm6dso_rtio.c
+    ${lsm6dso_dir}/port/zephyr/lsm6dso_decoder.c
     ${FREERTOS_COMMON_DIR}/drivers/stmemsc/stmemsc_i2c.c
     ${FREERTOS_COMMON_DIR}/drivers/stmemsc/stmemsc_mdelay.c
   )
@@ -97,9 +100,15 @@ function(freertos_lsm6dso target)
     list(APPEND lsm6dso_prelude_sources ${FREERTOS_LSM6DSO_DIR}/lsm6dso_selftest.c)
   endif()
 
+  # The driver's directories; port/freertos before port/zephyr, so that this
+  # build's lsm6dso_instance.h is found.
   target_include_directories(${target} PRIVATE
     ${FREERTOS_LSM6DSO_DIR}
-    ${FREERTOS_COMMON_DIR}/drivers/lsm6dso
+    ${lsm6dso_dir}/include
+    ${lsm6dso_dir}/internal
+    ${lsm6dso_dir}/port
+    ${lsm6dso_dir}/port/freertos
+    ${lsm6dso_dir}/port/zephyr
     ${FREERTOS_COMMON_DIR}/drivers/stmemsc
     ${FREERTOS_STMEMSC_DIR}
   )
@@ -115,10 +124,13 @@ function(freertos_lsm6dso target)
     COMPILE_OPTIONS "-include;${FREERTOS_COMPAT_DIR}/common_prelude.h"
   )
   # The warnings of -Wextra that the shared sources give (see above).
-  set_property(SOURCE ${FREERTOS_COMMON_DIR}/drivers/lsm6dso/lsm6dso.c APPEND PROPERTY
+  set_property(SOURCE ${lsm6dso_dir}/port/zephyr/lsm6dso.c APPEND PROPERTY
     COMPILE_OPTIONS -Wno-unused-parameter -Wno-sign-compare -Wno-cast-function-type
   )
-  set_property(SOURCE ${FREERTOS_COMMON_DIR}/drivers/lsm6dso/lsm6dso_compat.c
+  set_property(SOURCE ${lsm6dso_dir}/port/zephyr/lsm6dso_rtio_stream.c APPEND PROPERTY
+    COMPILE_OPTIONS -Wno-cast-function-type
+  )
+  set_property(SOURCE ${lsm6dso_dir}/port/zephyr/lsm6dso_rtio.c
     ${FREERTOS_COMMON_DIR}/compat/sensor_default_rtio.c APPEND PROPERTY
     COMPILE_OPTIONS -Wno-unused-parameter -Wno-sign-compare
   )

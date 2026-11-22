@@ -60,6 +60,7 @@
 #include <zephyr/device.h>
 #include <zephyr/drivers/i2c.h>
 #include <zephyr/drivers/sensor.h>
+#include <zephyr/drivers/sensor/lsm6dso.h>
 #include <zephyr/drivers/sensor_clock.h>
 #include <zephyr/kernel.h>
 #include <zephyr/rtio/rtio.h>
@@ -69,10 +70,6 @@
 #include "imu_cal.h"
 #include "kv_store.h"
 #include "lsm6dso.h"
-#include "lsm6dso_cal.h"
-#include "lsm6dso_fifo.h"
-#include "lsm6dso_fifo_hw.h"
-#include "lsm6dso_fifo_stats.h"
 #include "nano_console.h"
 #include "nano_gpio.h"
 #include "nano_shell.h"

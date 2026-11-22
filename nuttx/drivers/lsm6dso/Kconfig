@@ -4,20 +4,21 @@
 #
 
 config NANO_LSM6DSO
-	bool "LSM6DSOX IMU driver (Zephyr build's LSM6DSO driver)"
+	bool "LSM6DSOX IMU driver (the shared LSM6DSO driver)"
 	default y
 	depends on I2C_DW_I2C0
 	---help---
-		common/drivers/lsm6dso/lsm6dso.c: the Zephyr build's driver
-		(Zephyr's LSM6DSO driver with the FIFO, calibration and
-		zero-rate changes), with the device of lsm6dso/lsm6dso_instance.h,
-		on ST's lsm6dso_reg.c (nuttx/stmemsc, fetched by
-		script/setup.sh) and the port's small Zephyr compatibility
-		layer (compat/: struct device, the sensor API, the I2C calls).
-		The board initializes the device in its bring-up, after I2C0
-		and before the key-value store, as the Zephyr build does before
-		main() (src/nano_lsm6dso.c).  The FIFO stream (INT1, RTIO) is
-		NANO_LSM6DSO_STREAM.
+		common/drivers/lsm6dso: the driver's core (lsm6dso_chip.c,
+		lsm6dso_cal.c, lsm6dso_fifo.c) and the Zephyr build's binding
+		(port/zephyr/lsm6dso.c: the device and the sensor API), with
+		the device of port/nuttx/lsm6dso_instance.h, on ST's
+		lsm6dso_reg.c (nuttx/stmemsc, fetched by script/setup.sh) and
+		the port's small Zephyr compatibility layer (compat/: struct
+		device, the sensor API, the I2C calls, the kernel calls of the
+		core's boundary).  The board initializes the device in its
+		bring-up, after I2C0 and before the key-value store, as the
+		Zephyr build does before main() (src/nano_lsm6dso.c).  The FIFO
+		stream (INT1, RTIO) is NANO_LSM6DSO_STREAM.
 
 config NANO_LSM6DSO_STREAM
 	bool
@@ -25,8 +26,9 @@ config NANO_LSM6DSO_STREAM
 	depends on NANO_LSM6DSO
 	---help---
 		The FIFO stream of the LSM6DSO driver: the Zephyr build's
-		CONFIG_SENSOR_ASYNC_API part of drivers/lsm6dso (lsm6dso_stream.c,
-		lsm6dso_fifo_irq.c, lsm6dso_compat.c, lsm6dso_fifo_decoder.c),
+		CONFIG_SENSOR_ASYNC_API part of its binding
+		(port/zephyr/lsm6dso_rtio_stream.c, lsm6dso_rtio.c,
+		lsm6dso_decoder.c),
 		on the compatibility layer's RTIO, work queues and gpio0
 		(compat/).  Always on with NANO_LSM6DSO: as in Zephyr, lsm6dso.c
 		does not build without it.  The board starts the layer's

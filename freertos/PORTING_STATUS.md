@@ -2236,3 +2236,103 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
 - 同じ種類だった `CONFIG_NINA_PASSTHROUGH` も、ボードの Kconfig から `nuttx/drivers/nina/Kconfig`（`endif # NINA` のあと。NINA の本体とは独立に選べるまま）へ。
   ボードの Kconfig に残るのはボードの `NANO_*` の 6 つ。
 - 確認: `.config` の中身は並びを除いて変更前と同じ（整列して比較）、NuttX のイメージは基準（`snapshot-1121k`）とバイト一致。実機には書いていない。
+
+## sensor（LSM6DSOX）: Zephyr 版を上流のドライバー + ローカルのパッチに（2026-11-22、ユーザーの決定）
+
+- これまで: アプリの CMake（`use_local_driver_sources()`）が、Zephyr のセンサーのライブラリーから `lsm6dso.c`・`sensor_shell.c` を抜いて `common/` のものに差し替え、ソース 8 本と include パスを
+  Zephyr のライブラリーへ外から足していた。指針 4（上流 + パッチ、パッチはツリーの中で完結）に反していた。
+- ユーザーの決定: 全部をパッチに入れる（案 A）。パッチを作るとき、足すファイルをまとめられないか、上流の `drivers/sensor/st/lsm6dso` を使えないかを考える。
+- 変更（subagent が実装、メインがレビュー・ホストテスト・実機確認）:
+  - 新しいパッチ `0005-sensor-lsm6dso-fifo-stream.patch`（2930 行、17 ファイル: 上流の `lsm6dso.c`・`lsm6dso.h`・`CMakeLists.txt` の変更と、足すファイル。`Kconfig` は上流のまま）と
+    `0006-sensor-shell-fifo-attributes.patch`（193 行: `sensor_shell.c` の変更と `sensor_shell_os.h`）。一時的な index で作った。`setup.sh` が 7 つのパッチを当てる。
+  - アプリの CMake はセンサーのライブラリーに何も足さない。`use_local_driver_sources()` は削除。残るのは、アプリ自身の include パスにツリーのドライバーのディレクトリーを足すこと
+    （`lsm6dso_cal.h`・`lsm6dso_fifo.h` を読むため）と、パッチが当たっていないツリーで止めること。`zephyr/app/usb-console/drivers/lsm6dso/`・`sensor_shell/` は削除（上流と同じだった
+    `lsm6dso_shub.c`・`lsm6dso_trigger.c` の写しも）。
+- ファイルのまとめ（足すファイル 17 → 13）:
+  - `lsm6dso_zero.[ch]` → `lsm6dso_cal.[ch]`（同じバイアスの形式の上の純粋な計算）。`lsm6dso_fifo_packet.h` → `lsm6dso_fifo.h`。
+  - `lsm6dso_fifo_decoder.[ch]` → `lsm6dso_decoder.[ch]`、`lsm6dso_compat.c` → `lsm6dso_rtio.c`（`lsm6dso_submit()` もここ）、`lsm6dso_stream.c` → `lsm6dso_rtio_stream.c`
+    （兄弟のドライバー `lsm6dsv16x` の名前）。
+  - `lsm6dso_attributes.h`・`lsm6dso_fifo_stats.h` → 公開のヘッダー `include/zephyr/drivers/sensor/lsm6dso.h`（上流の `lsm6dsvxxx.h` と同じ形。`sensor_shell.c` が include パスを足さずに読める）。
+  - 分けたままにしたもの: `lsm6dso_fifo.[ch]`（アプリと多くのホストテストがセンサーの API なしで使う）、`lsm6dso_fifo_hw.[ch]`・`lsm6dso_fifo_irq.[ch]`・`lsm6dso_decoder.h`（それぞれ単独でコンパイルするホストテストがある）。
+- 上流のもの: `lsm6dso.c`・`lsm6dso.h`・`CMakeLists.txt`・`Kconfig` は上流のファイルにパッチ、`lsm6dso_shub.c`・`lsm6dso_trigger.c` は上流のまま。**上流のトリガー（`CONFIG_LSM6DSO_TRIGGER*`）は INT1 に使わなかった**:
+  初期化で線を有効にして drdy を書き、ISR で GPIO の割り込みを止め、システムのワークキュー（協調）か専用のスレッドで I2C を読む作りで、こちらの「ストリーム中だけエッジを有効にする、開始時に
+  すでに立っているレベルを見る、I2C は協調のワークキューで行わず `imu_fifo_worker`（優先度 10）に回す」と合わない。`fifo_lock` も取らない。上流の `default_rtio_sensor.c` のフォールバックは static なので
+  写しのまま（ログのモジュール名 `lsm6dso_compat` も保つ）。
+- `common/`: `common/drivers/lsm6dso/`（14 ファイル + `include/lsm6dso.h`）と `common/drivers/sensor_shell/sensor_shell.c` は、パッチを当てたツリーと同じファイル。NuttX・FreeRTOS は公開のヘッダーを
+  互換層の `common/compat/zephyr/drivers/sensor/lsm6dso.h` 経由で読む。新しい検査 `zephyr_lsm6dso_patched`（`common/tests/run.sh`）: ツリーの HEAD の写しに 0005・0006 を当て、16 ファイルをバイト単位で
+  比べ、ドライバーのディレクトリーに「共有でも版ごとでもない」ファイルがあれば失敗する。版ごとのもの: `CMakeLists.txt`・`Kconfig`、`lsm6dso_instance.h`、`sensor_shell_os.h`、上流のままの 2 ファイル。
+- イメージ: 段階 1（ファイルを今のままパッチに）で Zephyr は基準とバイト一致。段階 2（まとめ）で 3 版とも大きさは同じ（372376・283920・236968 B）で中身が変わる（`lsm6dso_submit()` の分け方で 4 バイト、
+  ほかはアドレスのずれ）。**基準を更新: Zephyr・NuttX とも `snapshot-1122a`**。ホストテスト 47・60・57（新しい検査が 1 つずつ）、`format.sh --check` も通る。
+- 実機（書き込み直後の各 1 回 約 70 秒 + 下記）:
+  - Zephyr: 欠番 0、46.7%、オーバーラン 0、I2C のエラー 0。`sensor get` 応答、`imu cal` は校正済みとジャイロのバイアスを表示、`sensor stream` on（6667 Hz では既知のとおり `Read failed` で止まる）・off、
+    `dmesg` に `<err>`・`<wrn>` なし。スタックの使用: `sensor_shell_processing_tid` 1184/3072、`imu_stream_tid` 984/2048、`imu_fifo_worker` 904/2048、`sysworkq` 304/1024。
+  - NuttX: 欠番 0、48.4%、`sensor get`・`imu cal` 正常、`dma_errors`・`dma_fallbacks` 0。
+  - FreeRTOS: `-DNANO_SELFTEST=ON` の `selftest` が 22・6・3 項目とも失敗 0（LSM6DSO のストリーム 501 ms: 55 バッチ、7149 語）。既定のビルドは 4 回測って 3 回が欠番 0・42.8〜42.9%、
+    **1 回目に欠番 35**: 約 60 秒のところで 1 回の publish が 1.36 秒かかり（`publish_max_us` 1359284、到着の空き 1308 ms）、キューが 12 まで積まれてあふれた。MQTT の接続はそのまま（connects 1、failures 0）、
+    FIFO のオーバーラン 0、I2C のエラー 0。センサーの経路ではなく NINA への送信の側の詰まり。
+  - **この詰まりは、NuttX 版でソケットを標準の経路に変えた直後に出た欠番（387 ms の空き、約 1 秒の空き）と同じ種類**。FreeRTOS 版はその変更を受けていない（Zephyr のソケットのつなぎのまま）ので、
+    あの欠番も NuttX の変更が原因ではなく、電波か NINA の側の一時的な詰まりだった可能性が高くなった（原因そのものは未確定のまま）。
+- 確かめていない: `sensor attr_set`・`attr_get` の FIFO の属性、`imu cal` の校正のやり直し、切断復帰・Telnet（このイメージでは）、長時間。
+- 実機: FreeRTOS 版（この変更の既定のビルド）。
+
+## sensor: ドライバーのファイルをさらにまとめる（2026-11-22、ユーザーの指摘）
+
+- ユーザー: 分けたままにした理由（単独でコンパイルするホストテスト、アプリがセンサーの API なしで使う）に対して、「アプリの都合で制約しなくてもよい」。ドライバーの筋だけでまとめ直した
+  （同じ subagent が実装、メインがホストテストと実機確認）。
+- 足すファイルは、兄弟のドライバー `lsm6dsv16x` と同じ組と、あと 3 つ:
+  - `lsm6dso_decoder.[ch]`: FIFO のバッファを読み解くもの全部（語の解析 = もとの `lsm6dso_fifo.c`、ストリームのバッファの形、2 つのデコーダー）。
+  - `lsm6dso_rtio.c`: RTIO の submit と、センサーの API の 1 回読みのフォールバックの写し。`lsm6dso_rtio.h` は作らない（宣言は `lsm6dso.h` にある）。
+  - `lsm6dso_rtio_stream.c`: ストリーム。INT1（しきい値の経路、GPIO の割り込みとワーク = もとの `lsm6dso_fifo_irq.c`）は static で中に。
+  - `lsm6dso.c`: FIFO のレジスターの操作（設定・停止・一時停止・状態・まとめ読み = もとの `lsm6dso_fifo_hw.c`）は static でここに（呼ぶのは `fifo_lock` の下のこのファイルの関数だけ）。
+  - `lsm6dso_cal.[ch]`: 残した。校正はこのドライバーが足した主題で、換算は 1 回読み（`lsm6dso.c`）とデコーダーの両方が使う。どちらかへ入れると、もう一方がそのファイルに依存する。
+    中身はドライバーの内側の分だけ（換算とバイアスの追跡）。
+  - `lsm6dso_instance.h`、公開のヘッダー `include/zephyr/drivers/sensor/lsm6dso.h`。
+  - 削除: `lsm6dso_fifo.[ch]`・`lsm6dso_fifo_hw.[ch]`・`lsm6dso_fifo_irq.[ch]`、共通のテスト `common/tests/fifo_hw.c`。
+- 公開のヘッダーがアプリ向けに宣言するもの: FIFO の語の形式と解析（`lsm6dso_fifo_next()` など）、校正の型と呼び出し（`struct lsm6dso_cal`、`set_lookup`・`reload`・`status`・`zero`）、
+  これまでの FIFO の属性・統計・`lsm6dso_timestamp_read()`・`lsm6dso_fifo_request_stop()`。アプリ（`imu_raw_packet.h`・`imu_cal.h`・`imu_stream.c`）はこのヘッダーだけを読む。
+  Zephyr のアプリの CMake からツリーのドライバーのディレクトリーへの include パスを削除（残るのは、パッチが当たっていないツリーで止める確認だけ）。NuttX の `apps/imu`・`apps/init`、
+  FreeRTOS の `lsm6dso.cmake`・`imu.cmake` からも、`common/drivers/lsm6dso` への `-I` を削除。
+- テスト: 偽のヘッダーに `struct device`・`SENSOR_ATTR_PRIV_START`・`struct rtio` などを足し、`fifo_words`・`fifo_decoder`・IMU のテストは `lsm6dso_decoder.c` をコンパイルする。`stream_stop` は INT1 の実物の
+  コードも動かす。`fifo_hw` の確認は NuttX の `tests/lsm6dso_driver.c` へ（`lsm6dso.c` と `lsm6dso_rtio_stream.c` を取り込み、ST の実物のコードと偽のレジスターの上で確かめる）。
+  **失ったもの**: ST の関数の呼び出し回数の厳密な確認（「n 回目で失敗し、そのあと何も呼ばない」）。終わりの状態だけ確かめる。レジスターの確認は NuttX のホストテストだけで走る（以前は 3 版）。
+- パッチ 0005 を作り直した（2860 行）。0006 は変わらない。検査 `zephyr_lsm6dso_patched` は 10 ファイルを照合。
+- イメージ: Zephyr 372376 → 372184 B、NuttX 283920 → 283792 B、FreeRTOS 236968 → 236776 B（static になった関数が呼び出し元にインライン化された分。Zephyr のオブジェクトで確認）。
+  **基準を更新: Zephyr・NuttX とも `snapshot-1122b`**。ホストテスト 46・59・56（共通の `fifo_hw` が 1 つ減った）、`format.sh --check` も通る。
+- 実機（書き込み直後の各 1 回 約 70 秒 + 下記）:
+  - Zephyr: 欠番 0、47.1%、オーバーラン 0、I2C のエラー 0。`sensor get`、`imu cal`、`sensor stream` on・off を 2 回、`dmesg` に `<err>`・`<wrn>` なし。
+    スタックの使用: `imu_fifo_worker` 944/2048（前は 904）、`imu_stream_tid` 984、`sysworkq` 304、`sensor_shell_processing_tid` 1184。
+  - NuttX: 欠番 0、48.1%、`sensor get`・`imu cal` 正常、`dma_errors`・`dma_fallbacks` 0。
+  - FreeRTOS: `selftest` 22・6・3 項目とも失敗 0（ストリーム 501 ms: 55 バッチ、7136 語、INT1 128 回）。既定のビルド 2 回: 欠番 0、43.1%。`sensor get`・`imu cal` 正常。
+    スタックの空き: `imu_fifo_worker` 1352（前は 1368）。
+- 確かめていない: `sensor attr_set`・`attr_get` の FIFO の属性、校正のやり直し、切断復帰・Telnet（このイメージでは）、長時間。
+- 実機: FreeRTOS 版（この変更の既定のビルド）。
+
+## sensor: コアの切り出し（段階 1）と、Zephyr 版が `common/drivers` を直接使う形（2026-11-22）
+
+- ユーザーの決定: `common/drivers/lsm6dso/` を `include/`・`internal/`・`port/` の形にする。案はすべて A（コアとつなぎを同じ分け方で 3 版が使う、NuttX・FreeRTOS は Zephyr へのつなぎを互換層の上で
+  ビルドする、FIFO を読み続ける処理はコアへ）。作業の途中でユーザーの提案: 「コアとつなぎをパッチでツリーに並べるなら、Zephyr のセンサーのドライバーを使わず `common/drivers` を使うほうがよい」
+  → そのとおりにした（分けたあとは上流のファイルとの差が意味を持たず、同じファイルを 2 か所に持つだけになる）。NuttX・FreeRTOS が RTIO と sensor を使わない形にする考えは無い（ユーザー）。
+- 段階: 1 = コアの切り出し（この節）、2 = FIFO を読み続ける処理と状態をコアへ、3 = OS の境界を各 OS で直接実装。ほかに、互換層の `zephyr_sensor_clock.c`・`zephyr_rtio_workq_os.h`（各版）を
+  `common/compat` にまとめる（承認済み、次に行う）。
+- できた形（subagent が実装、メインがホストテストと実機確認）:
+  - コア（直下、OS の定義なし）: `lsm6dso_chip.c`（初期化の手順、レートとレンジ、1 回読みと換算、校正の状態、FIFO のレジスターの操作と開始・一時停止・停止・読み出し・状態・統計、時刻。
+    コアのオブジェクトは `struct lsm6dso_chip`）、`lsm6dso_cal.c`、`lsm6dso_fifo.c`（語の解析。デコーダーから分けた）。`internal/lsm6dso_chip.h`。
+  - `include/`: `lsm6dso.h`（デバイスを取る呼び出し、属性）、`lsm6dso_cal.h`、`lsm6dso_fifo.h`。
+  - 境界 `port/lsm6dso_os.h`: `i2c_dw` と同じ static inline の形（ロックの型がオブジェクトの中にあり、FIFO の読み出しが直接の呼び出しにコンパイルされるように）。mutex、spinlock、待ち 3 種、
+    サイクルの時計、長いバスの読み出し（ST の ctx の `read_reg` は長さが 8 ビットで、3584 バイトの読み出しに足りない）、`LOG_*`。実装はいまは 3 版とも `port/zephyr/lsm6dso_os_impl.h`。
+  - つなぎ `port/zephyr/`: `lsm6dso.[ch]`（デバイス、センサーの API）、`lsm6dso_decoder.[ch]`、`lsm6dso_rtio.c`、`lsm6dso_rtio_stream.c`（ストリームの全部。段階 2 でコアへ）、`lsm6dso_instance.h`。
+    `port/nuttx/`・`port/freertos/` は `lsm6dso_instance.h`（各版の `drivers/lsm6dso/` から移動）。
+- Zephyr 版の取り込み: つなぎは Zephyr のモジュール（`port/zephyr/zephyr/module.yml`、アプリの CMake が `ZEPHYR_EXTRA_MODULES` に足す）。NINA のようにアプリの CMake からライブラリーを作る形は、
+  生成されるヘッダーへの依存が付かず、リンクもされなかった。スイッチは `CONFIG_LSM6DSO_LOCAL`（`prj.conf` で上流の `CONFIG_LSM6DSO=n`）。公開のヘッダーは `zephyr_include_directories` で出す。
+  デバイスツリーの binding は上流の `st,lsm6dso`。**パッチ 0005 は削除**、0006（センサーのシェル）は残る。検査は `zephyr_sensor_shell_patched` に。
+- 削ったもの（どの版でも無効だった）: センサーハブ・トリガー・タップの経路と項目、温度の経路（`CONFIG_LSM6DSO_ENABLE_TEMP`。`DIE_TEMP` は従来どおり `-ENOTSUP`）、`drdy_pulsed`、互換層の `sys_get_le32()`。
+- 新しい検査: `lsm6dso_core_independent`（コアをホストの C ライブラリーと ST のヘッダーだけでコンパイル）、`lsm6dso_public_headers`。ホストテスト 48・61・58。
+- イメージ: Zephyr 372424 B（+240）、NuttX 284032 B（+240）、FreeRTOS 237168 B（+392）。デバイスを取る呼び出しの包みと、インライン化されなくなった 1 回読みの関数の分。
+  **基準を更新: `snapshot-1122c`**。
+- 実機（書き込み直後の各 1 回 約 70 秒 + 下記）:
+  - Zephyr: 欠番 0、45.7%、オーバーラン 0、I2C のエラー 0。`sensor get`、`imu cal`、`sensor stream` on・off 2 回、`sensor attr_get`・`attr_set`（`all fifo_watermark` 128 → 64 → 128、
+    `fifo_timestamp_decimation` 8）、`dmesg` に `<err>`・`<wrn>` なし。スタック: `imu_fifo_worker` 936/2048、`imu_stream_tid` 992、`sysworkq` 304、シェル 1184。
+  - NuttX: 欠番 0、48.6%、`sensor get`・`imu cal`・`attr_get` 正常、`dma_errors`・`dma_fallbacks` 0。
+  - FreeRTOS: `selftest` 22・6・3 項目とも失敗 0。既定のビルド 2 回: 欠番 0、42.8%・42.9%。`sensor get`・`imu cal`・`attr_get` 正常。スタックの空きは前と同じ（`imu_fifo_worker` 1352）。
+- 確かめていない: 校正のやり直し、切断復帰・Telnet（このイメージでは）、長時間、SPI のインスタンス（バスの長い読み出しは `-ENOTSUP`）。
+- 実機: FreeRTOS 版（この変更の既定のビルド）。

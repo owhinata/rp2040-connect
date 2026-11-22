@@ -1,8 +1,12 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-
+/* The LSM6DSO's FIFO: the format of its words and their parser
+ * (lsm6dso_fifo.c), and the counters the driver keeps of reading it.  No OS:
+ * the driver's core and its users on any OS read the words with these.
+ */
 #ifndef LSM6DSO_FIFO_H_
 #define LSM6DSO_FIFO_H_
 
+#include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
 
@@ -34,15 +38,6 @@ struct lsm6dso_fifo_entry {
 	uint32_t timestamp; /* Sensor timestamp counter. Valid only for TIMESTAMP. */
 };
 
-/* Finds the FIFO words in a buffer delivered by the driver's stream. The
- * buffer starts with a header whose layout belongs to the driver; use this
- * instead of reading it. Returns 0 and sets words and size (in bytes, a
- * multiple of LSM6DSO_FIFO_WORD_SIZE), or -EBADMSG if the buffer is not a
- * complete FIFO buffer of this driver.
- */
-int lsm6dso_fifo_buffer_words(const uint8_t *buffer, size_t length, const uint8_t **words,
-			      size_t *size);
-
 /* Returns every FIFO word in order, including timestamp and unknown tags.
  * Returns 1 for a word, 0 at end, or -EINVAL for invalid input.
  * A timestamp word yields the counter value it carries; this does not assign
@@ -61,4 +56,26 @@ int lsm6dso_fifo_decode_word(const uint8_t word[LSM6DSO_FIFO_WORD_SIZE],
 int lsm6dso_fifo_next(const uint8_t *bytes, size_t length, size_t *cursor,
 		      struct lsm6dso_fifo_sample *sample);
 
-#endif
+struct lsm6dso_fifo_stats {
+	uint32_t generation;
+	uint64_t words_read;
+	uint64_t transfer_time_ns;
+	uint64_t max_transfer_time_ns;
+	uint32_t transfers;
+	uint32_t i2c_errors;
+	uint32_t buffer_too_small;
+	/* Observations, not a count of lost samples or distinct overruns. */
+	uint32_t overrun_observations;
+	int stop_error;
+	uint16_t accel_hz;
+	uint16_t gyro_hz;
+	/* Sensitivity in effect when the FIFO was started. */
+	uint32_t accel_ug_per_lsb;
+	uint32_t gyro_udps_per_lsb;
+	/* INTERNAL_FREQ_FINE read when the FIFO was started; 0 if unreadable. */
+	int8_t freq_fine;
+	bool active;
+	bool fault;
+};
+
+#endif /* LSM6DSO_FIFO_H_ */

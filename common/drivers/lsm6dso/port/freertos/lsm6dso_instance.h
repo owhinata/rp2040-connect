@@ -8,13 +8,12 @@
  * https://www.st.com/resource/en/datasheet/lsm6dso.pdf
  */
 
-/* The end of the driver on FreeRTOS (common/drivers/lsm6dso/lsm6dso.c, which
- * includes this file last, so lsm6dso_init and lsm6dso_driver_api stay
- * static): in place of the Zephyr build's devicetree instance macros
- * (zephyr/app/usb-console/drivers/lsm6dso/lsm6dso_instance.h), the one
- * device with the devicetree's values, as the NuttX build's
- * nuttx/drivers/lsm6dso/lsm6dso_instance.h defines it from its board
- * header.  The application initializes it (nano_lsm6dso_initialize(),
+/* The end of the driver on FreeRTOS (port/zephyr/lsm6dso.c, the Zephyr
+ * binding, which includes this file last, so lsm6dso_init and
+ * lsm6dso_driver_api stay static): in place of the Zephyr build's devicetree
+ * instance macros (port/zephyr/lsm6dso_instance.h), the one device with the
+ * devicetree's values, as the NuttX build's port/nuttx/lsm6dso_instance.h
+ * defines it from its board header.  The application initializes it (nano_lsm6dso_initialize(),
  * nano_lsm6dso.h) where Zephyr does before main() (POST_KERNEL,
  * CONFIG_SENSOR_INIT_PRIORITY 90).
  */
@@ -40,7 +39,6 @@
 #define LSM6DSOX_GYRO_PM         0    /* default: high performance */
 #define LSM6DSOX_GYRO_ODR        0    /* default: off */
 #define LSM6DSOX_GYRO_RANGE      6    /* app.overlay: LSM6DSO_DT_FS_2000DPS */
-#define LSM6DSOX_DRDY_PULSED     0    /* default: latched */
 /* irq-gpios = <&gpio0 24 0>: GPIO24, active high, no pull. */
 #define LSM6DSOX_INT1_GPIO       24
 #define LSM6DSOX_INT1_FLAGS      0
@@ -59,7 +57,6 @@ static const struct lsm6dso_config lsm6dso_config_0 = {
 	.gyro_pm = LSM6DSOX_GYRO_PM,
 	.gyro_odr = LSM6DSOX_GYRO_ODR,
 	.gyro_range = LSM6DSOX_GYRO_RANGE,
-	.drdy_pulsed = LSM6DSOX_DRDY_PULSED,
 #ifdef CONFIG_SENSOR_ASYNC_API
 	/* GPIO_DT_SPEC_INST_GET_OR(inst, irq_gpios, {0}) */
 	.fifo_gpio.port = DEVICE_DT_GET(DT_NODELABEL(gpio0)),

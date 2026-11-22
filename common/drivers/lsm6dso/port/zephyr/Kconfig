@@ -1,0 +1,27 @@
+# The LSM6DSO driver's Zephyr binding (common/drivers/lsm6dso/port/zephyr), the options of
+# its Zephyr module (zephyr/module.yml), in place of Zephyr's own driver (LSM6DSO, which the
+# application turns off): the devices of the devicetree's st,lsm6dso and st,lsm6dso32
+# nodes (Zephyr's bindings), on the core of common/drivers/lsm6dso, ST's register driver
+# of hal_st and Zephyr's stmemsc glue.  Built by CMakeLists.txt of this directory.
+
+config LSM6DSO_LOCAL
+	bool "LSM6DSO accelerometer and gyroscope with FIFO stream and calibration"
+	default y
+	depends on DT_HAS_ST_LSM6DSO_ENABLED || DT_HAS_ST_LSM6DSO32_ENABLED
+	depends on ZEPHYR_HAL_ST_MODULE
+	depends on !LSM6DSO
+	select I2C if $(dt_compat_on_bus,$(DT_COMPAT_ST_LSM6DSO),i2c) || \
+		      $(dt_compat_on_bus,$(DT_COMPAT_ST_LSM6DSO32),i2c)
+	select SPI if $(dt_compat_on_bus,$(DT_COMPAT_ST_LSM6DSO),spi) || \
+		      $(dt_compat_on_bus,$(DT_COMPAT_ST_LSM6DSO32),spi)
+	select GPIO if $(dt_compat_any_has_prop,$(DT_COMPAT_ST_LSM6DSO),irq-gpios) || \
+		       $(dt_compat_any_has_prop,$(DT_COMPAT_ST_LSM6DSO32),irq-gpios)
+	select HAS_STMEMSC
+	select USE_STDC_LSM6DSO
+	help
+	  The LSM6DSO driver of common/drivers/lsm6dso: single reads through
+	  the sensor API, the FIFO stream through RTIO on the INT1 line
+	  (irq-gpios) with CONFIG_SENSOR_ASYNC_API, the conversion with a
+	  stored calibration and the gyro bias at rest, and the extended API
+	  <zephyr/drivers/sensor/lsm6dso.h>.  Zephyr's driver of the same
+	  devices (LSM6DSO) must be off.

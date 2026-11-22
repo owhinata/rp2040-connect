@@ -1,0 +1,194 @@
+Subject: [PATCH] drivers: sensor: shell: LSM6DSO FIFO attributes
+
+Local patch of this workspace (zephyr/manifest/zephyr/patches.yml), not
+meant for upstream. It needs the LSM6DSO driver of common/drivers/lsm6dso,
+whose Zephyr build rules export <zephyr/drivers/sensor/lsm6dso.h>.
+
+"sensor attr_set" and "sensor attr_get" accept the attributes
+fifo_watermark and fifo_timestamp_decimation of the devicetree node
+lsm6dsox, and print the channel and attribute as given. A read that
+fails prints its error, and a canceled read or a buffer of no bytes is
+not decoded. A FIFO batch with no frames of a channel goes on to the
+next channel, and the statistics print with PRIu32 and PRId32.
+sensor_shell_os.h, included first, holds the build's hooks around
+"sensor get"; here they do nothing.
+
+diff --git a/drivers/sensor/sensor_shell.c b/drivers/sensor/sensor_shell.c
+index f279604..830ad03 100644
+--- a/drivers/sensor/sensor_shell.c
++++ b/drivers/sensor/sensor_shell.c
+@@ -4,6 +4,8 @@
+  * SPDX-License-Identifier: Apache-2.0
+  */
+ 
++#include "sensor_shell_os.h"
++
+ #include <ctype.h>
+ #include <stdlib.h>
+ #include <string.h>
+@@ -17,6 +19,7 @@
+ #include <zephyr/sys/util.h>
+ 
+ #include "sensor_shell.h"
++#include <zephyr/drivers/sensor/lsm6dso.h>
+ 
+ LOG_MODULE_REGISTER(sensor_shell, CONFIG_SENSOR_LOG_LEVEL);
+ 
+@@ -372,10 +375,14 @@ void sensor_shell_processing_callback(int result, uint8_t *buf, uint32_t buf_len
+ 	} accumulator_buffer;
+ 	int rc;
+ 
+-	ARG_UNUSED(buf_len);
+-
++	/* A canceled multishot can complete without a buffer, including when
++	 * cancellation races with an otherwise successful completion.
++	 */
++	if (result == -ECANCELED || (result == 0 && (buf == NULL || buf_len == 0))) {
++		return;
++	}
+ 	if (result < 0) {
+-		shell_error(ctx->sh, "Read failed");
++		shell_error(ctx->sh, "Read failed: %d", result);
+ 		return;
+ 	}
+ 
+@@ -422,6 +429,11 @@ void sensor_shell_processing_callback(int result, uint8_t *buf, uint32_t buf_len
+ 		}
+ 
+ 		while (decoder->get_frame_count(buf, ch, &frame_count) == 0) {
++			/* A FIFO batch can contain no samples for this channel. */
++			if (frame_count == 0) {
++				++ch.chan_idx;
++				continue;
++			}
+ 			LOG_DBG("decoding %d frames from channel %s:%d",
+ 				frame_count, sensor_channel_name[ch.chan_type], ch.chan_idx);
+ 			fit = 0;
+@@ -622,6 +634,7 @@ static int cmd_get_sensor(const struct shell *sh, size_t argc, char *argv[])
+ 
+ 	ctx.dev = dev;
+ 	ctx.sh = sh;
++	sensor_shell_os_get_arm(&ctx);
+ 	err = sensor_read_async_mempool(&iodev_sensor_shell_read, &sensor_read_rtio, &ctx);
+ 	if (err < 0) {
+ 		shell_error(sh, "Failed to read sensor: %d", err);
+@@ -638,9 +651,27 @@ static int cmd_get_sensor(const struct shell *sh, size_t argc, char *argv[])
+ 
+ unlock:
+ 	k_mutex_unlock(&cmd_get_mutex);
++	sensor_shell_os_get_wait(&ctx, err);
+ 	return err;
+ }
+ 
++static int parse_sensor_attribute(const struct device *dev, const char *name)
++{
++	if (!strcmp(name, "fifo_watermark")) {
++		if (dev != DEVICE_DT_GET(DT_NODELABEL(lsm6dsox))) {
++			return -ENOTSUP;
++		}
++		return SENSOR_ATTR_LSM6DSO_FIFO_WATERMARK;
++	}
++	if (!strcmp(name, "fifo_timestamp_decimation")) {
++		if (dev != DEVICE_DT_GET(DT_NODELABEL(lsm6dsox))) {
++			return -ENOTSUP;
++		}
++		return SENSOR_ATTR_LSM6DSO_FIFO_TIMESTAMP_DECIMATION;
++	}
++	return parse_named_int(name, sensor_attribute_name, ARRAY_SIZE(sensor_attribute_name));
++}
++
+ static int cmd_sensor_attr_set(const struct shell *sh, size_t argc, char *argv[])
+ {
+ 	const struct device *dev;
+@@ -660,8 +691,7 @@ static int cmd_sensor_attr_set(const struct shell *sh, size_t argc, char *argv[]
+ 	for (size_t i = 2; i < argc; i += 3) {
+ 		int channel = parse_named_int(argv[i], sensor_channel_name,
+ 					      ARRAY_SIZE(sensor_channel_name));
+-		int attr = parse_named_int(argv[i + 1], sensor_attribute_name,
+-					   ARRAY_SIZE(sensor_attribute_name));
++		int attr = parse_sensor_attribute(dev, argv[i + 1]);
+ 		struct sensor_value value = {0};
+ 
+ 		if (channel < 0) {
+@@ -680,11 +710,11 @@ static int cmd_sensor_attr_set(const struct shell *sh, size_t argc, char *argv[]
+ 		rc = sensor_attr_set(dev, channel, attr, &value);
+ 		if (rc) {
+ 			shell_error(sh, "Failed to set channel(%s) attribute(%s): %d",
+-				    sensor_channel_name[channel], sensor_attribute_name[attr], rc);
++				    argv[i], argv[i + 1], rc);
+ 			continue;
+ 		}
+ 		shell_print(sh, "%s channel=%s, attr=%s set to value=%s", dev->name,
+-			    sensor_channel_name[channel], sensor_attribute_name[attr], argv[i + 2]);
++			    argv[i], argv[i + 1], argv[i + 2]);
+ 	}
+ 	return 0;
+ }
+@@ -695,8 +725,7 @@ static void cmd_sensor_attr_get_handler(const struct shell *sh, const struct dev
+ {
+ 	int channel =
+ 		parse_named_int(channel_name, sensor_channel_name, ARRAY_SIZE(sensor_channel_name));
+-	int attr = parse_named_int(attr_name, sensor_attribute_name,
+-				   ARRAY_SIZE(sensor_attribute_name));
++	int attr = parse_sensor_attribute(dev, attr_name);
+ 	struct sensor_value value[3] = {{0}, {0}, {0}};
+ 	int rc;
+ 
+@@ -716,12 +745,12 @@ static void cmd_sensor_attr_get_handler(const struct shell *sh, const struct dev
+ 			return;
+ 		}
+ 		shell_error(sh, "Failed to get channel(%s) attribute(%s): %d",
+-			    sensor_channel_name[channel], sensor_attribute_name[attr], rc);
++			    channel_name, attr_name, rc);
+ 		return;
+ 	}
+ 
+ 	shell_print(sh, "%s(channel=%s, attr=%s) value=%.6f value=%.6f value=%.6f", dev->name,
+-		    sensor_channel_name[channel], sensor_attribute_name[attr],
++		    channel_name, attr_name,
+ 		    sensor_value_to_double(&value[0]),
+ 		    sensor_value_to_double(&value[1]),
+ 		    sensor_value_to_double(&value[2]));
+@@ -812,6 +841,11 @@ static void attribute_name_get(size_t idx, struct shell_static_entry *entry)
+ 			cnt++;
+ 		}
+ 	}
++	if (entry->syntax == NULL && cnt == idx) {
++		entry->syntax = "fifo_watermark";
++	} else if (entry->syntax == NULL && cnt + 1 == idx) {
++		entry->syntax = "fifo_timestamp_decimation";
++	}
+ }
+ 
+ static void trigger_opt_get_for_stream(size_t idx, struct shell_static_entry *entry);
+@@ -1055,7 +1089,8 @@ static void data_ready_trigger_handler(const struct device *sensor,
+ 
+ 			value.val1 = micro_value / 1000000;
+ 			value.val2 = (int32_t)llabs(micro_value - (value.val1 * 1000000));
+-			LOG_INF("sensor=%.*s, chan=%s, num_samples=%u, data=%d.%06d",
++			LOG_INF("sensor=%.*s, chan=%s, num_samples=%" PRIu32 ", data=%" PRId32
++				".%06" PRId32,
+ 				sensor_name_len_before_at, sensor_name,
+ 				sensor_channel_name[i],
+ 				stats[i].count,
+diff --git a/drivers/sensor/sensor_shell_os.h b/drivers/sensor/sensor_shell_os.h
+new file mode 100644
+index 0000000..82c68b7
+--- /dev/null
++++ b/drivers/sensor/sensor_shell_os.h
+@@ -0,0 +1,15 @@
++/* SPDX-License-Identifier: MIT */
++/* The Zephyr part of the sensor shell (sensor_shell.c, which includes this
++ * header first).  "sensor get" returns at once: the processing thread prints
++ * its result after the command has returned, and the shell draws the prompt
++ * again below it.  The NuttX and FreeRTOS builds of this workspace, which
++ * share sensor_shell.c, wait for the result in their own sensor_shell_os.h.
++ */
++
++#ifndef SENSOR_SHELL_OS_H_
++#define SENSOR_SHELL_OS_H_
++
++#define sensor_shell_os_get_arm(ctx)       ((void)0)
++#define sensor_shell_os_get_wait(ctx, err) ((void)0)
++
++#endif /* SENSOR_SHELL_OS_H_ */

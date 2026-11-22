@@ -6,8 +6,11 @@
  * play GPIO bank 0's levels, latched edges and interrupt enables), under
  * the layer's gpio0 device (common/compat/zephyr_gpio.c, with
  * zephyr_device.c and the gpio0 start of zephyr_compat_initialize()) and the
- * LSM6DSO's FIFO interrupt (common/drivers/lsm6dso/lsm6dso_fifo_irq.c), with
- * the prelude and CONFIG_NANO_LSM6DSO_STREAM, as
+ * LSM6DSO's FIFO interrupt (the static lsm6dso_fifo_irq_*() of the
+ * driver's Zephyr binding, common/drivers/lsm6dso/port/zephyr/
+ * lsm6dso_rtio_stream.c, which this test includes; the rest of the stream
+ * is not linked), with the prelude and
+ * CONFIG_NANO_LSM6DSO_STREAM, as
  * freertos/drivers/lsm6dso/lsm6dso.cmake builds them.
  *
  * - The start: gpio0 is not ready before zephyr_compat_initialize() and is
@@ -56,7 +59,7 @@
 
 #include "pico_gpio_fake.h"
 
-#include "lsm6dso_fifo_irq.h"
+#include "lsm6dso_rtio_stream.c"
 #include "priorities.h"
 #include "zephyr_compat.h"
 

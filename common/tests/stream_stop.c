@@ -1,5 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-/* Exercise the production stream worker with a fake FIFO and RTIO executor. */
+/* Exercise the production stream worker (port/zephyr/lsm6dso_rtio_stream.c) with a fake core
+ * (the FIFO calls of lsm6dso_chip.h), INT1 and RTIO executor.
+ */
 #include <assert.h>
 #include <errno.h>
 #include <stdbool.h>
@@ -8,12 +10,13 @@
 #include <string.h>
 
 #include <zephyr/drivers/sensor.h>
-#include "lsm6dso_fifo.h"
-#include "lsm6dso_fifo_decoder.h"
+#include "lsm6dso_cal.h"
+#include "lsm6dso_decoder.h"
+#include "lsm6dso_reg.h"
 
-/* Replace the Zephyr device and RTIO dependencies, not the worker itself. */
+/* Replace the Zephyr device, GPIO and RTIO dependencies and the core, not the worker itself. */
 #define ZEPHYR_DRIVERS_SENSOR_LSM6DSO_LSM6DSO_H_
-#define LSM6DSO_FIFO_HW_H_
+#define BIT(n) (1UL << (n))
 #define CONTAINER_OF(ptr, type, field) ((type *)((char *)(ptr) - offsetof(type, field)))
 #define ARG_UNUSED(x) (void)(x)
 #define K_NO_WAIT 0
@@ -23,33 +26,46 @@
 #define K_THREAD_STACK_DEFINE(name, size) char name[size]
 #define K_THREAD_STACK_SIZEOF(name) sizeof(name)
 #define SENSOR_STREAM_DATA_INCLUDE 0
-#define LSM6DSO_FIFO_DEFAULT_WATERMARK 32U
-#define LSM6DSO_FIFO_MAX_WATERMARK 256U
-#define LSM6DSO_NO_DECIMATION 0
+#define GPIO_INPUT 1
+#define GPIO_INT_DISABLE 0
+#define GPIO_INT_EDGE_TO_ACTIVE 2
 #define LSM6DSO_DEC_1 1
 #define LSM6DSO_DEC_8 2
 #define LSM6DSO_DEC_32 3
 
 typedef int atomic_t;
 typedef int k_spinlock_key_t;
-typedef uint32_t rtio_sqe_handle_t;
+typedef uint32_t gpio_port_pins_t;
 struct k_work { int unused; };
+struct k_work_sync { int unused; };
 struct k_work_delayable { struct k_work work; };
 struct k_work_q { int unused; };
 struct k_spinlock { int unused; };
-struct k_mutex { int unused; };
-static inline void k_mutex_lock(struct k_mutex *lock, int timeout) { (void)lock; (void)timeout; }
-static inline void k_mutex_unlock(struct k_mutex *lock) { (void)lock; }
-struct gpio_dt_spec { int unused; };
-struct lsm6dso_fifo_irq { int unused; };
 struct device { void *data; const void *config; };
+struct gpio_dt_spec { const struct device *port; uint8_t pin; };
+struct gpio_callback { int unused; };
+struct lsm6dso_fifo_irq {
+	struct gpio_dt_spec gpio;
+	struct gpio_callback callback;
+	struct k_work work;
+	atomic_t enabled;
+	int (*handle)(void *context);
+	void *context;
+};
 struct rtio { int unused; };
 struct rtio_iodev { void *data; };
 struct rtio_iodev_sqe { struct { struct rtio_iodev *iodev; } sqe; struct rtio *r; };
 struct sensor_stream_trigger { int trigger, opt; };
 struct sensor_read_config { bool is_streaming; size_t count; struct sensor_stream_trigger *triggers; };
 struct lsm6dso_fifo_status { uint16_t words; bool watermark, full, overrun, overrun_latched; };
-struct lsm6dso_config { int ctx; struct gpio_dt_spec fifo_gpio; };
+struct lsm6dso_config { stmdev_ctx_t ctx; struct gpio_dt_spec fifo_gpio; };
+struct lsm6dso_chip {
+	uint16_t accel_freq, gyro_freq;
+	uint32_t acc_gain, gyro_gain;
+};
+/* The bus of the stream's check that the FIFO is on I2C. */
+static int stmemsc_i2c_read(const void *bus, uint8_t reg, uint8_t *value, uint8_t len)
+{ (void)bus; (void)reg; (void)value; (void)len; return 0; }
 struct lsm6dso_data {
 	const struct device *dev;
 	struct k_work_delayable stream_work;
@@ -60,11 +76,7 @@ struct lsm6dso_data {
 	rtio_sqe_handle_t stream_handle;
 	struct lsm6dso_fifo_irq fifo_irq;
 	bool stream_active, stream_irq_active, stream_stop_requested, stream_batch_paused;
-	uint16_t accel_freq, gyro_freq;
-	uint32_t acc_gain, gyro_gain;
-	struct k_mutex fifo_lock;
-	bool fifo_owned;
-	uint8_t timestamp_decimation;
+	struct lsm6dso_chip chip;
 };
 
 static struct rtio test_rtio;
@@ -90,43 +102,62 @@ static struct k_work_delayable *k_work_delayable_from_work(struct k_work *w)
 static k_spinlock_key_t k_spin_lock(struct k_spinlock *l) { (void)l; return 0; }
 static void k_spin_unlock(struct k_spinlock *l, k_spinlock_key_t k) { (void)l; (void)k; }
 static bool gpio_is_ready_dt(const struct gpio_dt_spec *g) { (void)g; return true; }
-static int lsm6dso_fifo_route_int1(const int *ctx, bool enabled)
-{ (void)ctx; (void)enabled; return 0; }
-static int lsm6dso_fifo_irq_start(struct lsm6dso_fifo_irq *i, const struct gpio_dt_spec *g,
-				 int (*f)(void *), void *arg)
-{ (void)i; (void)g; (void)f; (void)arg; return 0; }
-static int lsm6dso_fifo_irq_stop(struct lsm6dso_fifo_irq *i) { (void)i; return 0; }
-static int lsm6dso_fifo_start_locked_driver(const struct device *d, uint16_t w, bool a, bool g)
-{ (void)d; (void)w; (void)a; (void)g; return 0; }
-static int lsm6dso_fifo_stop_locked_driver(const struct device *d)
+/* INT1: the routing and the GPIO interrupt do nothing. */
+static int lsm6dso_chip_fifo_route_int1(struct lsm6dso_chip *c, bool enabled)
+{ (void)c; (void)enabled; return 0; }
+static int gpio_pin_configure_dt(const struct gpio_dt_spec *g, int flags)
+{ (void)g; (void)flags; return 0; }
+static int gpio_pin_interrupt_configure_dt(const struct gpio_dt_spec *g, int flags)
+{ (void)g; (void)flags; return 0; }
+static int gpio_pin_get_dt(const struct gpio_dt_spec *g) { (void)g; return 0; }
+static void gpio_init_callback(struct gpio_callback *c,
+			       void (*f)(const struct device *, struct gpio_callback *,
+					 gpio_port_pins_t), gpio_port_pins_t pins)
+{ (void)c; (void)f; (void)pins; }
+static int gpio_add_callback(const struct device *p, struct gpio_callback *c)
+{ (void)p; (void)c; return 0; }
+static int gpio_remove_callback(const struct device *p, struct gpio_callback *c)
+{ (void)p; (void)c; return 0; }
+static void k_work_init(struct k_work *w, void (*f)(struct k_work *)) { (void)w; (void)f; }
+static int k_work_submit(struct k_work *w) { (void)w; return 0; }
+static bool k_work_cancel_sync(struct k_work *w, struct k_work_sync *s)
+{ (void)w; (void)s; return false; }
+static int atomic_get(const atomic_t *a) { return *a; }
+static void atomic_set(atomic_t *a, int v) { *a = v; }
+static void atomic_clear(atomic_t *a) { *a = 0; }
+static int lsm6dso_chip_fifo_start(struct lsm6dso_chip *c, uint16_t w, bool a, bool g)
+{ (void)c; (void)w; (void)a; (void)g; return 0; }
+static int lsm6dso_chip_fifo_stop(struct lsm6dso_chip *c)
 {
-	(void)d;
+	(void)c;
 	stop_calls++;
 	return 0;
 }
-static void lsm6dso_fifo_record_stop_error(const struct device *d, int error)
-{ (void)d; (void)error; }
-static int lsm6dso_fifo_pause_batch_locked_driver(const struct device *d)
+static void lsm6dso_chip_fifo_record_stop_error(struct lsm6dso_chip *c, int error)
+{ (void)c; (void)error; }
+/* The decimation's calls are not used by the test (and not linked). */
+int lsm6dso_chip_fifo_set_timestamp_decimation(struct lsm6dso_chip *c, unsigned int decimation);
+unsigned int lsm6dso_chip_fifo_get_timestamp_decimation(struct lsm6dso_chip *c);
+static int lsm6dso_chip_fifo_pause_batch(struct lsm6dso_chip *c)
 {
-	(void)d;
+	(void)c;
 	pause_calls++;
 	if (fail_pause) return -EIO;
 	batching_paused = true;
 	return 0;
 }
-static int lsm6dso_fifo_status_locked_driver(const struct device *d,
-					       struct lsm6dso_fifo_status *status)
+static int lsm6dso_chip_fifo_status(struct lsm6dso_chip *c, struct lsm6dso_fifo_status *status)
 {
-	(void)d;
+	(void)c;
 	*status = (struct lsm6dso_fifo_status){.words = fifo_words, .watermark = fifo_words >= 32,
 						.overrun = overrun};
 	return 0;
 }
 int lsm6dso_fifo_request_stop(const struct device *, struct rtio *, rtio_sqe_handle_t);
-static int lsm6dso_fifo_read_locked_driver(const struct device *d, uint8_t *out, size_t capacity,
-					     struct lsm6dso_fifo_status *status)
+static int lsm6dso_chip_fifo_read(struct lsm6dso_chip *c, uint8_t *out, size_t capacity,
+				  struct lsm6dso_fifo_status *status)
 {
-	(void)d;
+	(void)c;
 	assert(capacity >= fifo_words);
 	status->words = fifo_words;
 	status->watermark = fifo_words >= 32;
@@ -159,22 +190,22 @@ static int rtio_sqe_rx_buf(struct rtio_iodev_sqe *s, uint32_t min, uint32_t max,
 	*len = sizeof(receive_buffer.bytes);
 	return 0;
 }
-static void lsm6dso_cal_track(const struct device *d, const uint8_t *words, size_t len)
+static void lsm6dso_chip_cal_track(struct lsm6dso_chip *c, const uint8_t *words, size_t len)
 {
-	(void)d;
+	(void)c;
 	(void)words;
 	(void)len;
 }
 
-static void lsm6dso_cal_snapshot(const struct device *d, struct lsm6dso_cal *accel,
-				 struct lsm6dso_cal *gyro)
+static void lsm6dso_chip_cal_snapshot(struct lsm6dso_chip *c, struct lsm6dso_cal *accel,
+				      struct lsm6dso_cal *gyro)
 {
-	(void)d;
+	(void)c;
 	lsm6dso_cal_nominal(accel, LSM6DSO_CAL_ACCEL, 244);
 	lsm6dso_cal_nominal(gyro, LSM6DSO_CAL_GYRO, 70000);
 }
 
-void lsm6dso_submit(const struct device *d, struct rtio_iodev_sqe *s);
+void lsm6dso_submit_stream(const struct device *d, struct rtio_iodev_sqe *s);
 static void rtio_iodev_sqe_ok(struct rtio_iodev_sqe *s, int result)
 {
 	struct lsm6dso_fifo_packet *p = (void *)receive_buffer.bytes;
@@ -183,20 +214,18 @@ static void rtio_iodev_sqe_ok(struct rtio_iodev_sqe *s, int result)
 	completions++;
 	delivered_words += p->words;
 	/* RTIO resubmits a multishot SQE before reporting the completion. */
-	lsm6dso_submit(test_device, s);
+	lsm6dso_submit_stream(test_device, s);
 }
 static void rtio_iodev_sqe_err(struct rtio_iodev_sqe *s, int result)
 { assert(s == live_sqe); terminal_error = result; live_sqe = NULL; }
 static int sensor_clock_get_cycles(uint64_t *v) { *v = 1000000000; return 0; }
 static uint64_t sensor_clock_cycles_to_ns(uint64_t v) { return v; }
-void lsm6dso_submit_fallback(const struct device *d, struct rtio_iodev_sqe *s)
-{ (void)d; (void)s; assert(false); }
 
-#include "../drivers/lsm6dso/lsm6dso_stream.c"
+#include "../drivers/lsm6dso/port/zephyr/lsm6dso_rtio_stream.c"
 
 int main(void)
 {
-	struct lsm6dso_data data = { .accel_freq = 208, .gyro_freq = 208 };
+	struct lsm6dso_data data = { .chip = { .accel_freq = 208, .gyro_freq = 208 } };
 	struct lsm6dso_config cfg = {0};
 	struct device dev = { .data = &data, .config = &cfg };
 	struct sensor_stream_trigger trigger = { SENSOR_TRIG_FIFO_WATERMARK,
@@ -209,7 +238,7 @@ int main(void)
 	data.dev = &dev;
 	data.stream_active = true;
 	live_sqe = &sqe;
-	lsm6dso_submit(&dev, &sqe);
+	lsm6dso_submit_stream(&dev, &sqe);
 	assert(lsm6dso_fifo_request_stop(&dev, &test_rtio, 8) == -ENOENT);
 	/* The stop request arrives during a full FIFO read. That batch must be
 	 * delivered, followed by the final partial batch, before bypass mode.
@@ -232,7 +261,7 @@ int main(void)
 	live_sqe = &sqe;
 	fail_pause = true;
 	terminal_error = 0;
-	lsm6dso_submit(&dev, &sqe);
+	lsm6dso_submit_stream(&dev, &sqe);
 	assert(lsm6dso_fifo_request_stop(&dev, &test_rtio, 7) == 0);
 	stream_work(&data.stream_work.work);
 	assert(terminal_error == -EIO && live_sqe == NULL);
@@ -246,7 +275,7 @@ int main(void)
 	data.stream_active = true;
 	live_sqe = &sqe;
 	terminal_error = 0;
-	lsm6dso_submit(&dev, &sqe);
+	lsm6dso_submit_stream(&dev, &sqe);
 	assert(lsm6dso_fifo_request_stop(&dev, &test_rtio, 7) == 0);
 	stream_work(&data.stream_work.work);
 	assert(terminal_error == -ENOMEM && live_sqe == NULL && completions == 2);
@@ -258,7 +287,7 @@ int main(void)
 	data.stream_active = true;
 	live_sqe = &sqe;
 	terminal_error = 0;
-	lsm6dso_submit(&dev, &sqe);
+	lsm6dso_submit_stream(&dev, &sqe);
 	assert(lsm6dso_fifo_request_stop(&dev, &test_rtio, 7) == 0);
 	stream_work(&data.stream_work.work);
 	assert(terminal_error == -EOVERFLOW && live_sqe == NULL && completions == 2);
@@ -271,7 +300,7 @@ int main(void)
 	data.stream_active = true;
 	live_sqe = &sqe;
 	terminal_error = 0;
-	lsm6dso_submit(&dev, &sqe);
+	lsm6dso_submit_stream(&dev, &sqe);
 	assert(lsm6dso_fifo_request_stop(&dev, &test_rtio, 7) == 0);
 	stream_work(&data.stream_work.work);
 	assert(terminal_error == -ECANCELED && live_sqe == NULL && completions == 2);
@@ -281,7 +310,7 @@ int main(void)
 	data.dev = &dev;
 	live_sqe = &sqe;
 	terminal_error = 0;
-	lsm6dso_submit(&dev, &sqe);
+	lsm6dso_submit_stream(&dev, &sqe);
 	assert(lsm6dso_fifo_request_stop(&dev, &test_rtio, 7) == 0);
 	stream_work(&data.stream_work.work);
 	assert(terminal_error == -ECANCELED && live_sqe == NULL && completions == 2);

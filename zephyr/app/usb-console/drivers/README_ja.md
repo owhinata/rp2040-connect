@@ -2,34 +2,45 @@
 
 [English](README.md) | 日本語
 
-`zephyr/app/usb-console` は、Zephyr のドライバーの一部をこのディレクトリのコピーに置き換えて
-ビルドします。IMU の FIFO を高いレートで読み出すための変更と、NINA-W102 用の Wi-Fi
-ドライバーを含みます。
+`zephyr/app/usb-console` は、Zephyr のドライバーの一部を Zephyr のツリーへのローカルのパッチで変えて使います。
+IMU の FIFO を高いレートで読み出すための変更と、NuttX 版・FreeRTOS 版と共有する LSM6DSOX と NINA-W102 のドライバーがあります。
 
-| ディレクトリ | 内容 | 元 |
+| ドライバー | 内容 | 元 |
 |---|---|---|
-| `lsm6dso/` | LSM6DSO センサードライバーに FIFO ストリームを追加 | Zephyr v4.5.0 のコピー |
-| `sensor_shell/` | sensor シェルの修正と独自属性の追加 | Zephyr v4.5.0 のコピー |
+| LSM6DSO（`lsm6dso`） | FIFO ストリーム、校正値を使う変換、静止時の角速度のバイアス | `common/drivers/lsm6dso/`（Zephyr の `drivers/sensor/st/lsm6dso` の代わり） |
+| sensor シェル（`drivers/sensor/sensor_shell.c`） | 修正と LSM6DSO の FIFO の属性 | Zephyr v4.5.0 に `zephyr/0006-sensor-shell-fifo-attributes.patch` |
+| DesignWare I²C（`drivers/i2c/i2c_dw.c`） | RP2040 の FIFO の段数、I2C0 の DMA 読み出し | Zephyr v4.5.0 に `zephyr/0003-i2c-dw-rp2040-fifo-and-dma.patch`（`i2c scan` は `0004`） |
+| NINA-W102（`nina`） | SPI 経由の Wi-Fi とソケット | `common/drivers/nina/` |
 
-コピー元は Zephyr v4.5.0（コミット `41d10b59730406bbab4ca9f1fbbe9e96aafb4966`）で、各ソースの
-著作権と Apache-2.0 の表示を維持しています。アプリの `CMakeLists.txt` が、Zephyr の
-ドライバーライブラリー内の対象ソースをコピーに差し替えます。Kconfig、devicetree binding、
-ST の HAL は Zephyr のものを使います。Zephyr 側の構成が変わって差し替え対象が見つからない
-場合は、ビルドをエラーにします。DesignWare I²C ドライバーはコピーを置かず、Zephyr のものにローカルのパッチを当てて
-使います（下の「I²C」と「Zephyr へのローカルのパッチ」）。
+Zephyr v4.5.0 はコミット `41d10b59730406bbab4ca9f1fbbe9e96aafb4966` です。各パッチは、そのドライバーに要るものを
+すべて Zephyr のツリーの中に持ちます（下の「Zephyr へのローカルのパッチ」）。アプリの `CMakeLists.txt` はドライバーの
+ライブラリーにソースもインクルードパスも足しません。このディレクトリーにはこの文書だけがあります。
 
-このうち NuttX 版・FreeRTOS 版と同じファイルを使う部分（LSM6DSO のドライバー本体 `lsm6dso.[ch]` と `lsm6dso_fifo.[ch]`、`lsm6dso_fifo_packet.h`、`lsm6dso_cal.[ch]`、
-`lsm6dso_zero.[ch]`、`lsm6dso_fifo_decoder.[ch]`、`lsm6dso_fifo_hw.[ch]`、`lsm6dso_fifo_irq.[ch]`、`lsm6dso_stream.c`、
-`lsm6dso_compat.c`、`lsm6dso_fifo_stats.h`、`lsm6dso_attributes.h`、sensor シェルの `sensor_shell.c`、NINA のドライバーのコアと、
-`i2c_dma` コマンドの `i2c_dma_shell.c`）は、リポジトリの `common/drivers/lsm6dso/`・`common/drivers/sensor_shell/`・
-`common/drivers/nina/`・`common/shell/` に置いています。`CMakeLists.txt` がそこをドライバーのライブラリー
-（NINA と `i2c_dma_shell.c` はアプリ）に加え、sensor シェルの `lsm6dso_attributes.h` もそこから読みます。このディレクトリーに残る
-`sensor_shell/sensor_shell_os.h` は、共有の `sensor_shell.c` が最初に読む Zephyr 版の部分です（何もしない
-マクロ 2 つ。NuttX 版は同名のヘッダーで `sensor get` が結果の表示を待ちます）。`lsm6dso/lsm6dso_instance.h` は、共有の
-`lsm6dso.c` が末尾で読む Zephyr 版の部分で、ドライバーのデバイスツリーのインスタンス化のマクロをそのまま置いています
-（NuttX 版は同名のヘッダーでボードの値を使うデバイスを 1 つ定義します）。`lsm6dso/lsm6dso_shub.c`・`lsm6dso_trigger.c`
-（Zephyr の写し。無効にしてある `CONFIG_LSM6DSO_SENSORHUB`・`CONFIG_LSM6DSO_TRIGGER` のときだけビルドされる）は
-このディレクトリーに残り、`lsm6dso.h` を `common/drivers/lsm6dso/` から読みます。NINA のコアは `common/drivers/nina/`（直下に、ヘッダーは `include/` に、ドライバーが提供する機能 `nina_wifi.[ch]`・`nina_sock.[ch]`・
+LSM6DSO のドライバーは `common/drivers/lsm6dso/` にあり、3 版で共有します。OS を持たないコアは直下にあります:
+`lsm6dso_chip.c`（チップの操作: 起動とリセット、レートとレンジ、単発の読み出しとその変換、FIFO のレジスターの操作・統計・所有、
+タイムスタンプの読み取り、使用中の校正とバイアスの追従）、`lsm6dso_cal.c`（変換の計算と追従の計算）、`lsm6dso_fifo.c`
+（FIFO のワードの解析）。ヘッダーは `include/lsm6dso_cal.h`・`include/lsm6dso_fifo.h`（ドライバーを使う側のもの）と
+`internal/lsm6dso_chip.h` です。コアは OS へ `port/lsm6dso_os.h`（2 種類のロック、待ち、サイクルカウンター、FIFO の長い読み出し、
+ログ）を通して、チップへ ST の `lsm6dso_reg.c`（hal_st）を通してつながります。Zephyr へのつなぎは
+`common/drivers/lsm6dso/port/zephyr/` で、デバイスと sensor API（`lsm6dso.c`・`lsm6dso.h`）、デバイスツリーのデバイス
+（`lsm6dso_instance.h`）、FIFO ストリーム（下）、コアの境界の OS 側（`lsm6dso_os_impl.h`: `k_mutex`・`k_spinlock`・
+`k_busy_wait()`・`k_msleep()`・`k_usleep()`・`k_cycle_get_32()`・`i2c_burst_read_dt()`・Zephyr のログ）があります。NuttX 版・
+FreeRTOS 版は同じつなぎを Zephyr 互換層の上でビルドし、`lsm6dso_instance.h` だけは自分のもの（`port/nuttx/`・
+`port/freertos/`）を使います。つなぎは独立した Zephyr のモジュールです（`port/zephyr/zephyr/module.yml`。アプリの
+`CMakeLists.txt` が `ZEPHYR_EXTRA_MODULES` に足す）: その `Kconfig` にドライバーのオプション `CONFIG_LSM6DSO_LOCAL`
+（`st,lsm6dso` か `st,lsm6dso32` のノードがあれば既定で有効。ST のレジスターのドライバーと Zephyr の stmemsc のために
+`HAS_STMEMSC`・`USE_STDC_LSM6DSO` を選ぶ）があり、`prj.conf` は同じデバイスの Zephyr のドライバーを止め（`CONFIG_LSM6DSO=n`）、
+その `CMakeLists.txt` がライブラリー `lsm6dso_local` を作って拡張 API `<zephyr/drivers/sensor/lsm6dso.h>`
+（`port/zephyr/include/zephyr/drivers/sensor/lsm6dso.h`。`include/lsm6dso.h` を読む）を公開します。devicetree binding は
+Zephyr の `st,lsm6dso` です。アプリが読むのは拡張 API だけです。FIFO のワードとその解析（`lsm6dso_fifo_next()`・
+`lsm6dso_fifo_next_entry()`・`lsm6dso_fifo_buffer_words()`）、校正の型と呼び出し（`lsm6dso_cal_set_lookup()`・`_reload()`・
+`_status()`・`_zero()`）、FIFO の属性・設定・統計・停止、タイムスタンプの読み取りがあります。
+
+パッチ 0006 を当てた `sensor_shell.c` は、ほかの版と同じファイルです（`common/drivers/sensor_shell/`。ホストテスト
+`zephyr_sensor_shell_patched` が確かめる）。それが最初に読む `drivers/sensor/sensor_shell_os.h` はこの版のもの（何もしない
+マクロ 2 つ。ほかの版は `sensor get` が結果の表示を待つ）です。
+
+NINA のコアは `common/drivers/nina/`（直下に、ヘッダーは `include/` に、ドライバーが提供する機能 `nina_wifi.[ch]`・`nina_sock.[ch]`・
 `nina_dns.[ch]`・`nina_passthrough.[ch]`、`internal/` にプロトコルの `nina_proto.[ch]` と待ちの `nina_wait.[ch]`、`port/` に境界のヘッダー `nina_bus.h`・`nina_os.h` と中継の 2 つ）に、`nina` コマンドの `nina_shell.c` は `common/shell/` にあり、3 版で共有します。コアの Zephyr の API へのつなぎは
 `common/drivers/nina/port/zephyr/` にあり（FreeRTOS 版はその Wi-Fi とソケットの部分 `nina_net.c`・`nina_socket.c` もビルドし、`nina_os.c` は自分のもの `common/drivers/nina/port/freertos/` を使う）、このディレクトリーには NINA のドライバーのものはありません（下の NINA の節）。下の表のファイル名はそのすべての場所のものを含みます。
 
@@ -40,12 +51,30 @@ Zephyr の Sensor Streaming API（`sensor_stream()`、RTIO）で FIFO を読み�
 
 | ファイル | 役割 |
 |---|---|
-| `lsm6dso_fifo.c` | FIFO ワードの解析（加速度・角速度・タイムスタンプ・その他、タグカウンター） |
-| `lsm6dso_fifo_hw.c` | FIFO の設定、状態の読み取り、I²C のバースト読み出し |
-| `lsm6dso_fifo_irq.c` | INT1（FIFO しきい値）の割り込み |
-| `lsm6dso_stream.c` | ストリームの開始・読み出し・停止（専用のワークキュー、優先度 10） |
-| `lsm6dso_fifo_decoder.c` | FIFO バッファ用の Zephyr decoder（`sensor stream` の表示に使用） |
-| `lsm6dso_compat.c` | 通常の単発取得の decoder との切り替え |
+| `lsm6dso_chip.c`（コア） | FIFO の所有とロック: レジスターの設定・一時停止・停止、状態の読み取りとバースト読み出し（static）、しきい値の INT1 への割り当て、統計、タイムスタンプの間引き、タイムスタンプの読み取り。単発の読み出しとその変換、`lsm6dso_cal_zero()` |
+| `lsm6dso_fifo.c`（コア） | FIFO のワードの解析（加速度・角速度・タイムスタンプ・その他、タグカウンター） |
+| `lsm6dso_cal.c`（コア） | 物理量への変換と静止時の角速度のバイアス（下）。`lsm6dso_chip.c` とデコーダーが使う |
+| `lsm6dso.c`（つなぎ） | コアの上の上流のドライバー: デバイス、属性、`sample_fetch` と校正値を使う `channel_get`、拡張 API のうちデバイスを取る呼び出し |
+| `lsm6dso_rtio_stream.c`（つなぎ） | ストリームの開始・読み出し・停止（専用のワークキュー `imu_fifo_worker`、優先度 10）。INT1 の GPIO の割り込み（static）。watermark |
+| `lsm6dso_rtio.c`（つなぎ） | ドライバーの RTIO の submit。ストリームは `lsm6dso_rtio_stream.c` へ、単発取得（`sensor get`）は sensor API のフォールバックの写しで RTIO のワークキューへ |
+| `lsm6dso_decoder.c`（つなぎ） | ストリームのバッファの形式（`lsm6dso_decoder.h`）と `lsm6dso_fifo_buffer_words()`、FIFO バッファ用のデコーダー（`sensor stream` の表示に使用）と、単発取得のバッファを Zephyr の既定のデコーダーに渡すデコーダー |
+
+つなぎのファイル名は、上流と、FIFO ストリームを持つ同系のドライバー `lsm6dsv16x` に合わせています。INT1 の割り込みはドライバー
+自身のもの（`lsm6dso_rtio_stream.c` の中）で、線はストリームの間だけ有効、システムのワークキューはストリームのワークキューを
+起こすだけで、I²C の読み出しはすべてストリームのワークキューが行います。上流のトリガー（`CONFIG_LSM6DSO_TRIGGER`、
+`lsm6dso_trigger.c`）、センサーハブ（`CONFIG_LSM6DSO_SENSORHUB`、`lsm6dso_shub.c`）、温度の読み取り（`CONFIG_LSM6DSO_ENABLE_TEMP`）は
+このドライバーにはありません。
+
+### コアの境界とその負担
+
+コアは自分のオブジェクト `struct lsm6dso_chip`（つなぎの `struct lsm6dso_data` の中）を受け取ります。つなぎは単発の読み出しと設定の
+前後でコアの FIFO のロックを取ります（`lsm6dso_chip_acquire()`・`_release()`、static inline）。境界 `port/lsm6dso_os.h` は、各 OS の
+`lsm6dso_os_impl.h` が定義する static inline の関数でできていて、ロック・サイクルカウンター・バスの読み出しは Zephyr の関数を直接
+呼ぶのと同じ呼び出しになります。バスは ST の `stmdev_ctx_t` です。その `read_reg` は 255 バイトまでしか読めない（stmemsc の長さが
+`uint8_t`）ので、FIFO のデータ（最大 3584 バイト）・状態・タイムスタンプは `lsm6dso_os_bus_read()`（コンテキストの先の I²C の
+デバイスへの `i2c_burst_read_dt()`）で読みます。FIFO の読み出し（watermark ごと。6667 Hz・128 ワードで毎秒約 104 回）1 回は、
+ストリームからコアの `lsm6dso_chip_fifo_status()`・`lsm6dso_chip_fifo_read()` を 1 回ずつ、`lsm6dso_chip_cal_track()`・
+`lsm6dso_chip_cal_snapshot()` を 1 回ずつ呼びます。
 
 ### 動作
 
@@ -54,7 +83,7 @@ Zephyr の Sensor Streaming API（`sensor_stream()`、RTIO）で FIFO を読み�
 - INT1 でしきい値到達を受けると、FIFO の状態を読み、たまっているワードを 1 回のバーストで
   読み出して、1 つの RTIO バッファとして渡します。バッファの先頭には
   ヘッダー（ワード数、周期、感度、物理量への変換係数など）が付きます。
-- ヘッダーの形式（`lsm6dso_fifo_packet.h`）はドライバー内だけのものです。バッファを読む側は、
+- ヘッダーの形式（`lsm6dso_decoder.h` の `struct lsm6dso_fifo_packet`）はドライバー内だけのものです。バッファを読む側は、
   物理量が欲しければデコーダーを、生のワードが欲しければ `lsm6dso_fifo_buffer_words()` を
   使います。ワードは `lsm6dso_fifo_next_entry()` で 1 つずつ解釈でき、種類、xyz、タグ
   カウンター、タイムスタンプのワードが持つカウンター値が得られます。
@@ -81,7 +110,7 @@ decoder が返すサンプル時刻は、ホストの読み出し完了時刻と
 
 ### 属性
 
-`SENSOR_CHAN_ALL` に対する独自属性です（`lsm6dso_attributes.h`）。どちらも次のストリーム開始時に
+`SENSOR_CHAN_ALL` に対する独自属性です（`<zephyr/drivers/sensor/lsm6dso.h>`）。どちらも次のストリーム開始時に
 適用され、ストリーム中は変更できません。
 
 | 属性 | シェルでの名前 | 値 | 初期値 |
@@ -112,7 +141,7 @@ out = M · (raw − bias)
 - `lsm6dso_cal_status()` で、加速度・角速度それぞれが校正値を使っているかと、使用中の角速度の
   バイアスを取得できます。
 
-角速度のバイアスは、静止している間のデータから取り直します（`lsm6dso_zero.c`）。
+角速度のバイアスは、静止している間のデータから取り直します（`lsm6dso_cal.c` の `lsm6dso_zero_*()`）。
 
 - FIFO から読んだサンプルを 1/8 秒ごとに区切り、8 区切り連続で角速度の平均（0.3 dps 以内）と
   加速度の平均（2 mg 以内）が揃っていれば静止とみなして、その窓の角速度の平均を取り込みます。
@@ -135,7 +164,6 @@ out = M · (raw − bias)
 
 - 対応しているのは I²C 接続だけです。
 - 内部温度の取得には対応していません（FIFO にも入れていません）。
-- トリガーとセンサーハブ（`CONFIG_LSM6DSO_TRIGGER`、`CONFIG_LSM6DSO_SENSORHUB`）とは併用できません。
 
 ## I²C（`i2c_dw`）
 
@@ -184,6 +212,8 @@ FIFO の取得だけを行った過去の測定（6667 Hz、1 MHz、各 1 回）
 `cpu_active` が DMA なしで 45.7%、DMA ありで 22.5% でした。
 
 ## sensor シェル（`sensor_shell`）
+
+Zephyr の `drivers/sensor/sensor_shell.c` にローカルのパッチ `zephyr/0006-sensor-shell-fifo-attributes.patch` を当てたものです。
 
 - フレーム数が 0 のチャンネルと、キャンセル時などのバッファのない完了通知を表示から除きます。
 - `fifo_watermark` と `fifo_timestamp_decimation` を `sensor attr_set` / `attr_get` で扱えます。
@@ -421,6 +451,7 @@ Zephyr 本体とモジュールの一部の変更は、Zephyr の `west patch` �
 | `zephyr/0002-soc-rp2040-rom-mem-ops.patch` | zephyr | `CONFIG_RP2040_ROM_MEM_OPS`: `memcpy`・`memset` をブート ROM のルーチンにする |
 | `zephyr/0003-i2c-dw-rp2040-fifo-and-dma.patch` | zephyr | DesignWare I²C ドライバー（`drivers/i2c/i2c_dw.c`）: RP2040 の FIFO の深さと RX のしきい値、`CONFIG_I2C_DW_RP2040_DMA` の I²C0 の DMA 読み出し（「I²C」）。定数は新しいファイル `drivers/i2c/i2c_dw_rp2040.h` に、DMA の塊と読み出しのコマンド語は `i2c_dw_rp2040_dma_priv.h` に、`i2c_dma` コマンドの関数の宣言は `include/zephyr/drivers/i2c/i2c_dw_rp2040_dma.h` に置き、上流のファイルに入るのは 16 か所（`i2c_dw.c` 14、`i2c_dw.h` 1、`Kconfig.dw` 1）。どのコントローラーでも、0 バイトのメッセージを断り（`-ENOTSUP`）、`i2c_recover_bus()` は `-ENOTSUP` を返す |
 | `zephyr/0004-i2c-shell-scan-not-supported.patch` | zephyr | シェルの `i2c scan`（`drivers/i2c/i2c_shell.c`）: 確かめの書き込み（0 バイト）が `-ENOTSUP` を返したら、どこも `--` で「0 devices found」とする代わりに、止まって、コントローラーがこのスキャンに対応していないことを表示し、`-ENOTSUP` を返す。ほかのエラーは従来どおり `--` |
+| `zephyr/0006-sensor-shell-fifo-attributes.patch` | zephyr | sensor シェル（`drivers/sensor/sensor_shell.c`）: LSM6DSO の FIFO の属性と修正（「sensor シェル」）、`drivers/sensor/sensor_shell_os.h`。`common/drivers/lsm6dso/` の LSM6DSO のドライバー（その `<zephyr/drivers/sensor/lsm6dso.h>`）が要る |
 
 - **当て方**: `source script/setup.sh` が `west patch apply` で各モジュールの作業ツリーに当てます（commit は作りません。
   `git -C zephyr/zephyr status` には変更として出ます）。当てたものは飛ばすので、何度読み込んでも同じです。当てた集合の写しを
@@ -436,7 +467,8 @@ Zephyr 本体とモジュールの一部の変更は、Zephyr の `west patch` �
   各パッチを作り直して `patches/` に置き、`sha256sum` を直し、`source script/setup.sh` で当ててからビルドします。
   0003 を作り直したら `script/host_tests.sh` を実行し、`i2c_dw_sync` が示す上流の変更を共有のコア（`common/drivers/i2c_dw/`）に
   入れるか、入れない理由を `i2c_dw.c` の冒頭の一覧に書いてから、`common/tests/i2c_dw_sync.py ... --update` で期待する差分を
-  書き直します（「テスト」）。
+  書き直します（「テスト」）。0006 は `common/drivers/sensor_shell/sensor_shell.c` から作ります
+  （先に新しいツリーの上流のファイルの変更をそこへ入れる）。そうすると `zephyr_sensor_shell_patched` が通ります。
 
 ### boot2 の分周 2
 
@@ -476,13 +508,15 @@ picolibc の中からの呼び出しと、GCC が構造体のコピーやルー�
 | テスト | 対象 |
 |---|---|
 | `fifo_words` | FIFO ワードの解析 |
-| `fifo_hw` | FIFO の設定手順と失敗時の巻き戻し、状態の読み取り |
 | `fifo_decoder` | FIFO バッファの decoder |
-| `stream_stop` | ストリームの停止、キャンセル、エラー時の終了 |
+| `stream_stop` | ストリームの停止、キャンセル、エラー時の終了（つなぎのストリームのファイルを、コアの FIFO の呼び出し・INT1・RTIO の偽物の上で） |
+| `zephyr_sensor_shell_patched` | `common/drivers/sensor_shell/sensor_shell.c` が、Zephyr の HEAD の `drivers/sensor/sensor_shell.c` にパッチ 0006 を当てたものとバイト単位で同じこと。Zephyr のツリーがあるときだけ |
 | `i2c_dw_sync` | 共有の I²C のコア（`common/drivers/i2c_dw/`）と、パッチ後のドライバー（Zephyr のツリーの HEAD のファイルにパッチ 0003 を当てて作る）の一致。両方のヘッダーの定義（状態、割り込み、レジスター、IC_DATA_CMD のビット、FIFO の深さ 16・バッチ 4、DMA の上限 3584）、125 MHz での SCL のカウント、DMA の下限 32・しきい値 8/0・割り込みのマスク・IC_CON の bit 9・停止の待ち 100 ms・タイムアウト 1000 ms、スパイク長、対になる関数（Zephyr の DMA API の呼び出しを含めて名前をコアのもの（DMA は境界 `i2c_dw_dma_os.h`）にそろえて文ごとに比べ、差分が `common/tests/i2c_dw_sync.expected` と同じこと）、読み出しのコマンド語を作る関数 `i2c_dw_rp2040_read_commands()`（パッチとコアのそれぞれの `i2c_dw_rp2040_dma_priv.h` の静的関数）が文ごとに同じでコマンドのビットも同じこと、パッチが足す `zephyr/drivers/i2c/i2c_dw_rp2040_dma.h` とコアの `common/drivers/i2c_dw/include/i2c_dw_rp2040_dma.h` がコメントとインクルードガードを除いて同じこと、パッチ後のドライバーが読むヘッダーがすべてツリーの中にあること。ビルドがあれば `.config` と `zephyr.dts` の値も見る。Zephyr のツリーがあるときだけ |
 | `i2c_dw_public_headers` | I2C のコアを使う側のヘッダー（`common/drivers/i2c_dw/include/`）が、そのディレクトリーだけでコンパイルできること（コアの `internal/`・`port/` を読まない） |
 | `nina_proto` | NINA の SPI フレーミング、応答の解析（ファームウェアのエラーの応答 0xEF を含む）、READY の期限、追加機能の問い合わせ（0x6A）（共有のコア `nina_proto.c`。偽の境界）。どれも READY の割り込み待ちを始められたときと始められなかったとき（100 µs ごとに読む）の両方で |
 | `nina_core_independent` | NINA のコアの各ファイル（`common/drivers/nina/` の直下と `include/`・`internal/`、`port/` の境界のヘッダー）が C ライブラリー・POSIX のソケットの型・自分のヘッダーだけでコンパイルできること |
+| `lsm6dso_core_independent` | LSM6DSO のコアの各ファイル（`common/drivers/lsm6dso/` の直下の `.c`、`include/lsm6dso_cal.h`・`lsm6dso_fifo.h`、`internal/`、`port/` の境界）が、C ライブラリー・ST の `lsm6dso_reg.h`・自分のヘッダー・ホストでの境界の実装（`common/tests/lsm6dso_os_host/`）だけでコンパイルできること |
+| `lsm6dso_public_headers` | `common/drivers/lsm6dso/include/` のヘッダーがそのディレクトリーだけでコンパイルできること（`lsm6dso.h` は sensor API と RTIO の偽物と一緒に） |
 | `nina_wifi` | Wi-Fi の操作（`nina_wifi.c`）を偽の境界とつなぎで：接続とその確認、そのスレッド（500 ms ごとの確認、省電力の設定、アドレス、60 回、試行中の切断）、切断、監視（2 回で切れたとみなす）、3.0.2 とパッチを当てたファームウェアのスキャンとその終わり方、状態 |
 | `nina_wait` | ソケットの待ち（`nina_wait.c`）：間隔（事象を始める前と、始められなかったあと）、IRQ の線のエッジ、100 ms の時間切れ、期限、休み（偽の時計と線） |
 | `nina_sock`、`nina_dns`、`nina_dns_offload` | NINA のソケットの命令、名前解決（`nina_dns_offload` はこの版と同じ `NINA_OS_DNS_OFFLOAD` の形） |

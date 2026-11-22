@@ -19,7 +19,7 @@
 #include <zephyr/sys/util.h>
 
 #include "sensor_shell.h"
-#include "lsm6dso_attributes.h"
+#include <zephyr/drivers/sensor/lsm6dso.h>
 
 LOG_MODULE_REGISTER(sensor_shell, CONFIG_SENSOR_LOG_LEVEL);
 

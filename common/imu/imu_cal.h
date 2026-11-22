@@ -4,7 +4,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
-#include "lsm6dso_cal.h"
+#include <zephyr/drivers/sensor/lsm6dso.h>
 
 /* Calibration values are kept in the KV store, one entry per sensor and
  * sensitivity:

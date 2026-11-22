@@ -3,8 +3,8 @@
  * The sensor is then the device lsm6dsox of the Zephyr compatibility layer,
  * DEVICE_DT_GET(DT_NODELABEL(lsm6dsox)), used with Zephyr's sensor API
  * (<zephyr/drivers/sensor.h>) and the driver's own calls (lsm6dso.h,
- * lsm6dso_fifo_stats.h).  Like zephyr_compat.h, this header includes none of
- * the layer's Zephyr headers.
+ * <zephyr/drivers/sensor/lsm6dso.h>).  Like zephyr_compat.h, this header
+ * includes none of the layer's Zephyr headers.
  */
 
 #ifndef FREERTOS_DRIVERS_LSM6DSO_NANO_LSM6DSO_H

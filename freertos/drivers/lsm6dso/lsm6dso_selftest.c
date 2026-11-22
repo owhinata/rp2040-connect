@@ -2,8 +2,8 @@
 /* The board's check of the LSM6DSOX for the "selftest" command (a test
  * feature: built with -DNANO_SELFTEST=ON only,
  * freertos/drivers/lsm6dso/lsm6dso.cmake), through Zephyr's sensor API, the
- * driver's FIFO calls (lsm6dso_fifo_stats.h) and RTIO on the device
- * lsm6dsox, with the sensor's registers read back on I2C0:
+ * driver's FIFO calls (<zephyr/drivers/sensor/lsm6dso.h>) and RTIO on the
+ * device lsm6dsox, with the sensor's registers read back on I2C0:
  *
  *   ready   lsm6dsox, i2c0 and gpio0 are ready after the start; the FIFO is
  *           idle (no stream)
@@ -48,11 +48,10 @@
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/drivers/i2c.h>
 #include <zephyr/drivers/sensor.h>
+#include <zephyr/drivers/sensor/lsm6dso.h>
 #include <zephyr/kernel.h>
 #include <zephyr/rtio/rtio.h>
 
-#include "lsm6dso_fifo.h"
-#include "lsm6dso_fifo_stats.h"
 #include "lsm6dso_selftest.h"
 
 #define INT1_GPIO 24

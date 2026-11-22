@@ -1,8 +1,8 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /* Host test of the compatibility layer's work items (common/compat/
  * zephyr_work.c) on the fake kernel (tests/zephyr_fakes): the return values
- * and flags of Zephyr's kernel/work.c that lsm6dso_stream.c and
- * lsm6dso_fifo_irq.c depend on.
+ * and flags of Zephyr's kernel/work.c that lsm6dso_rtio_stream.c (with its
+ * INT1) depends on.
  *
  * - k_work_submit_to_queue(): 1 queued, 0 already queued, 2 queued again
  *   while running (it runs once more), -ENODEV on a queue not started.

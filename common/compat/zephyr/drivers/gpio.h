@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /* The part of Zephyr's GPIO API (<zephyr/drivers/gpio.h>, gpio_utils.h)
- * that the ported LSM6DSO FIFO interrupt (lsm6dso_fifo_irq.c) uses, with
+ * that the ported LSM6DSO FIFO interrupt (lsm6dso_rtio_stream.c) uses, with
  * Zephyr's names, flags and meanings: struct gpio_dt_spec,
  * gpio_is_ready_dt(), gpio_pin_configure_dt() (inputs), callbacks
  * (gpio_init_callback(), gpio_add_callback(), gpio_remove_callback(),

@@ -91,7 +91,7 @@ flowchart LR
 
 | 役割 | 実装 |
 |---|---|
-| FIFO ワードの解析 | `common/drivers/lsm6dso/lsm6dso_fifo.*` |
+| FIFO ワードの解析 | `common/drivers/lsm6dso/lsm6dso_fifo.c`（宣言は `include/lsm6dso_fifo.h`。`<zephyr/drivers/sensor/lsm6dso.h>` を通して読む） |
 | バッチ化・番号付け・epoch | `common/imu/imu_raw_batch.*` |
 | ペイロードの組み立て | `common/imu/imu_raw_packet.*` |
 | FIFO タイムスタンプ → サンプルの tick | `common/imu/imu_raw_time.*` |
@@ -527,7 +527,7 @@ KV のイメージを作って BOOTSEL で書く方法は採らなかった。KV
 | 重力の向きとの相関 | 1 g あたり 0.1 LSB 以下 |
 
 そこで、校正値のバイアスを固定で使わず、静止している間のデータから取り直す
-（`common/drivers/lsm6dso/lsm6dso_zero.c`）。変換 `M · (raw − bias)` の `bias` だけを差し替え、`M` は
+（`common/drivers/lsm6dso/lsm6dso_cal.c` の `lsm6dso_zero_*()`）。変換 `M · (raw − bias)` の `bias` だけを差し替え、`M` は
 校正値のままとする。
 
 - サンプルを 1/8 秒ごとに区切り、8 区切り連続で角速度の平均（0.3 dps 以内）と加速度の平均
@@ -582,15 +582,15 @@ NuttX 版の確認の範囲は §11.7 に分けて書く。
 - OS に依存しないソース（バッチ、ペイロード、キュー、status、時刻の対応付け、NTP の推定、FIFO の解析、
   校正の形式）は Zephyr 版と同じファイルを使う。どちらの版のビルドもリポジトリの `common/` の 1 本を参照し、
   同じホストテスト（`common/tests/`）を両方の版の `host_tests.sh` から動かす。Zephyr の API を使うが両方の版で
-  同一のドライバーのファイル（LSM6DSO の FIFO の設定とストリーム、`lsm6dso_fifo_stats.h`、`lsm6dso_attributes.h`）も
+  同一のドライバーのファイル（LSM6DSO の FIFO の設定とストリーム、拡張 API の `include/lsm6dso.h`）も
   `common/` に置き、NuttX 版では下の互換層の上で動かす。OS を呼ぶソースのうち `imu_stream.c`、`time_sync.c`、
-  `imu_raw_mqtt.c`、`imu_cal.c`、`wifi_profile.c`、LSM6DSO のドライバー（`lsm6dso.[ch]`）、`lsm6dso_compat.c`、
+  `imu_raw_mqtt.c`、`imu_cal.c`、`wifi_profile.c`、LSM6DSO のドライバーの Zephyr へのつなぎ（`port/zephyr/` の `lsm6dso.[ch]`、`lsm6dso_rtio.c`、ストリーム）、
   sensor シェルの `sensor_shell.c` と、
   ヘッダーの `kv_store.h` も `common/` の 1 本を両方の版が使う（コマンドの登録も Zephyr 版の文のまま）。NuttX 版では
   各ファイルに前置きヘッダー（NuttX の設定と、互換層より先に読む NuttX のヘッダー、ファイルが使う Zephyr の Kconfig の
   値と名前）を付けてコンパイルし、版ごとに違う数行は OS ごとの小さなヘッダー（`sensor_shell_os.h`、
   `wifi_profile_os.h`、`lsm6dso.c` が末尾で読む LSM6DSO のデバイスの `lsm6dso_instance.h`。Zephyr 版はデバイスツリーの
-  インスタンス化のマクロ、NuttX 版はボードの値を使うデバイス 1 つ）に出している。NINA の OS に依存しないコアも `common/drivers/nina/` にあり、3 つの版が使う。直下（外から読むヘッダーは `include/`）はドライバーが提供する機能
+  インスタンス化のマクロ、NuttX 版はボードの値を使うデバイス 1 つ）に出している。LSM6DSO のドライバーのコア（`lsm6dso_chip.c`・`lsm6dso_cal.c`・`lsm6dso_fifo.c`）は OS を持たず、境界 `port/lsm6dso_os.h` を通して OS につながる。その実装は 3 版とも Zephyr へのつなぎの `port/zephyr/lsm6dso_os_impl.h`（NuttX 版・FreeRTOS 版では互換層の上）。NINA の OS に依存しないコアも `common/drivers/nina/` にあり、3 つの版が使う。直下（外から読むヘッダーは `include/`）はドライバーが提供する機能
   （Wi-Fi の操作 `nina_wifi.[ch]`、ソケットの表と命令 `nina_sock.[ch]`、名前解決 `nina_dns.[ch]`、esptool の中継 `nina_passthrough.[ch]`）、
   `internal/` はコアの内側の部品（プロトコルのバイトと SPI の転送層 `nina_proto.[ch]`、ソケットのループの
   待ち `nina_wait.[ch]`）、`port/` は各版が実装する狭い境界のヘッダー（`nina_os.h`・`nina_bus.h`、中継の `nina_passthrough_os.h`・
@@ -741,7 +741,8 @@ Zephyr の名前のまま提供する互換層の上でビルドする。ホス�
 | 場所 | 中身 | 使う版 |
 |---|---|---|
 | `common/imu/` | 取得サービスと `imu`、バッチ・ペイロード・キュー・status、時刻の対応付けと時刻同期・`ntp`、校正と `imu cal`、MQTT の送信、Wi-Fi のプロファイルと自動再接続、KV の API と `kv` | 3 版（MQTT のクライアント `mqtt_min*` は NuttX 版と FreeRTOS 版。Zephyr 版は Zephyr の MQTT ライブラリー） |
-| `common/drivers/lsm6dso/`、`sensor_shell/` | LSM6DSO のドライバー本体と FIFO のストリーム、sensor シェル | 3 版 |
+| `common/drivers/lsm6dso/` | LSM6DSO のドライバー。直下に OS を持たないコア（`lsm6dso_chip.c`・`lsm6dso_cal.c`・`lsm6dso_fifo.c`。ヘッダーは `include/`・`internal/`、境界 `lsm6dso_os.h` は `port/`）、`port/zephyr/` に FIFO のストリームを含む Zephyr へのつなぎ（Zephyr 版では Zephyr のモジュール。拡張 API の `<zephyr/drivers/sensor/lsm6dso.h>` は `include/lsm6dso.h`）、`port/nuttx/`・`port/freertos/` に NuttX 版・FreeRTOS 版のデバイス | 3 版 |
+| `common/drivers/sensor_shell/` | sensor シェル。各版の `sensor_shell_os.h` を除き、Zephyr 版のパッチを当てたツリーのファイル（パッチ 0006、下） | 3 版 |
 | `common/drivers/nina/` | NINA のコア（SPI の転送層、ソケット、名前解決、Wi-Fi の操作 `nina_wifi.[ch]`、ソケットの待ち `nina_wait.[ch]`、宣言 `nina_proto.h`）と esptool の中継 `nina_passthrough.[ch]`（境界 `nina_passthrough_bus.h`・`nina_passthrough_os.h`）。OS の定義を持たない | 3 版 |
 | `common/drivers/nina/port/zephyr/`、`nuttx/`、`freertos/` | コアの Zephyr の API へのつなぎ（Wi-Fi 管理とインターフェース、カーネルの機能、ソケットのオフロード、devicetree binding とオプション）、NuttX の API へのつなぎ（`wlan0` と wapi、アプリが使う Zephyr の Wi-Fi 管理、カーネルの機能、usrsock）、FreeRTOS と Pico SDK へのつなぎ（カーネルの機能 `nina_os.c`: ロック、要求、sleep、時計、READY と IRQ の線のエッジ割り込みでの待ち）。どれにも中継のホスト側 `nina_passthrough_os.c`（Zephyr の CDC ACM、cdcacm、TinyUSB） | `zephyr/` は Zephyr 版と FreeRTOS 版（Wi-Fi とソケットのつなぎを互換層の上で）、`nuttx/` は NuttX 版、`freertos/` は FreeRTOS 版 |
 | `common/drivers/i2c_dw/` | I2C のコア（I2C0 と I2C1。ファイル名は Zephyr のものに合わせる: 直下に `i2c_dw.c`、`internal/` に `i2c_dw.h`・`i2c_dw_registers.h`・`i2c_dw_rp2040.h`・`i2c_dw_rp2040_dma_priv.h`（DMA 読み出しとそのコマンド語））、`i2c_dma` の関数の宣言 `include/i2c_dw_rp2040_dma.h`、`port/` に境界 `i2c_dw_os.h`・`i2c_dw_dma_os.h`、`port/nuttx/`・`port/freertos/` にコアのつなぎ | NuttX 版と FreeRTOS 版（Zephyr 版はパッチ 0003 の同じドライバー。下） |
@@ -758,6 +759,16 @@ OS ごとの部分は、狭い境界のヘッダーの実装として各版の�
   `i2c_dw_os.h` と DMA 読み出しの `i2c_dw_dma_os.h`（実装はコアのつなぎ `common/drivers/i2c_dw/port/nuttx/`・`freertos/` にある）、KV の flash の `nano_flash_kv.h`、シェルのバックエンド `zshell_os.h`、ログの `app_log_os.h`・`log_ram.h`。
 - 版ごとに違う数行: `sensor_shell_os.h`（`sensor get` の待ち）、`wifi_profile_os.h`、`lsm6dso_instance.h`（デバイスの
   生成）、`kv_store_os.h`（`kv wipe` の有無）。
+
+**LSM6DSO のドライバー（`common/drivers/lsm6dso/`）** は、Zephyr 版でも NINA と同じく `common/` から使う。Zephyr へのつなぎ
+`port/zephyr/` は Zephyr のモジュール（`zephyr/module.yml`。アプリの `ZEPHYR_EXTRA_MODULES` に入れる）で、そのオプション
+`CONFIG_LSM6DSO_LOCAL` が同じデバイスツリーのノードの Zephyr のドライバーに代わり（`prj.conf` で `CONFIG_LSM6DSO=n`）、
+そのライブラリーがコアとつなぎを持ち、`<zephyr/drivers/sensor/lsm6dso.h>` を公開する。NuttX 版と FreeRTOS 版は同じコアと
+つなぎを互換層の上でビルドし、互換層が `<zephyr/drivers/sensor/lsm6dso.h>` も提供する（`common/compat/zephyr/drivers/sensor/`）。
+`lsm6dso_instance.h` は版ごとに持つ（`port/nuttx/`・`port/freertos/`）。**sensor シェル（`common/drivers/sensor_shell/`）** は、
+Zephyr 版では Zephyr の `drivers/sensor/sensor_shell.c` にローカルのパッチ 0006（`zephyr/manifest/zephyr/patches/zephyr/`）を
+当てたもので、ほかの版も同じファイルを使い、`sensor_shell_os.h` は版ごとに持つ。パッチを当てたツリーのファイルとバイト単位で
+同じことを、ホストテスト `zephyr_sensor_shell_patched` が確かめる（ツリーがあるとき。ツリーの HEAD とパッチから作る）。
 
 **I2C のコア（`common/drivers/i2c_dw/`）** は、NuttX 版と FreeRTOS 版の I2C のドライバーである（OS の部分の細部は、
 各版のドライバーの説明の I2C の節）。

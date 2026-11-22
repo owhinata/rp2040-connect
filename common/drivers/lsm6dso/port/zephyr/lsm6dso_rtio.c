@@ -3,6 +3,13 @@
  * Copyright (c) 2024 Croxel Inc.
  * SPDX-License-Identifier: Apache-2.0
  */
+/* The driver's RTIO submit: a stream goes to lsm6dso_rtio_stream.c, a single
+ * read to the copy of the sensor API's fallback below (static in
+ * default_rtio_sensor.c, which calls it only for drivers without a submit):
+ * sample_fetch and channel_get on the RTIO work queue, in the generic format
+ * that the combined decoder hands to the default decoder.  The copy keeps the
+ * log module of its own (lsm6dso_compat).
+ */
 #include <errno.h>
 #include <inttypes.h>
 #include <stdlib.h>
@@ -11,6 +18,9 @@
 #include <zephyr/dsp/types.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/rtio/work.h>
+
+#include "lsm6dso.h"
+
 LOG_MODULE_REGISTER(lsm6dso_compat, CONFIG_SENSOR_LOG_LEVEL);
 /**
  * @brief Compute the number of samples needed for the given channels
@@ -242,7 +252,7 @@ static void sensor_submit_fallback_sync(struct rtio_iodev_sqe *iodev_sqe)
  * @param[in] dev The sensor device to read
  * @param[in] iodev_sqe The read submission queue event
  */
-void lsm6dso_submit_fallback(const struct device *dev, struct rtio_iodev_sqe *iodev_sqe)
+static void lsm6dso_submit_fallback(const struct device *dev, struct rtio_iodev_sqe *iodev_sqe)
 {
 	struct rtio_work_req *req = rtio_work_req_alloc();
 
@@ -254,4 +264,15 @@ void lsm6dso_submit_fallback(const struct device *dev, struct rtio_iodev_sqe *io
 	}
 
 	rtio_work_req_submit(req, iodev_sqe, sensor_submit_fallback_sync);
+}
+
+void lsm6dso_submit(const struct device *dev, struct rtio_iodev_sqe *sqe)
+{
+	const struct sensor_read_config *cfg = sqe->sqe.iodev->data;
+
+	if (!cfg->is_streaming) {
+		lsm6dso_submit_fallback(dev, sqe);
+		return;
+	}
+	lsm6dso_submit_stream(dev, sqe);
 }

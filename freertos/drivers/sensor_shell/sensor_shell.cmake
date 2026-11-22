@@ -14,7 +14,8 @@
 #
 # - the command (common/drivers/sensor_shell/sensor_shell.c, shared with the
 #   Zephyr and NuttX builds: Zephyr v4.5.0's drivers/sensor/sensor_shell.c
-#   with the LSM6DSO's FIFO attributes; its SHELL_CMD_REGISTER() makes the
+#   with the LSM6DSO's FIFO attributes, the file of the Zephyr build's
+#   patched tree; its SHELL_CMD_REGISTER() makes the
 #   root z_shell_root_sensor for the application's table, and its RTIO
 #   context sensor_read_rtio with the Zephyr build's pool,
 #   RTIO_DEFINE_WITH_MEMPOOL(sensor_read_rtio, 8, 8, 32, 64, 4));
@@ -29,9 +30,8 @@
 # (common_prelude.h), as in compat.cmake; so is sensor_shell_os.c, which
 # includes Zephyr's sensor_shell.h (<zephyr/drivers/sensor.h>, whose
 # structures depend on the prelude's CONFIG_SENSOR_ASYNC_API).  Include directories: this
-# directory (sensor_shell_os.h), common/compat (Zephyr's sensor_shell.h)
-# and common/drivers/lsm6dso (sensor_shell.c's "lsm6dso_attributes.h",
-# already the driver's).  sensor_shell.c is Zephyr's text, which under
+# directory (sensor_shell_os.h) and common/compat (Zephyr's sensor_shell.h,
+# and the LSM6DSO's <zephyr/drivers/sensor/lsm6dso.h>).  sensor_shell.c is Zephyr's text, which under
 # -Wextra compares signed with unsigned (15 places: an int index against
 # ARRAY_SIZE() or a count, the sample window's int64_t against uint64_t)
 # and leaves 3 parameters unused (device_is_sensor() without
@@ -56,7 +56,6 @@ function(freertos_sensor_shell target)
   target_include_directories(${target} PRIVATE
     ${FREERTOS_SENSOR_SHELL_DIR}
     ${FREERTOS_COMMON_DIR}/compat
-    ${FREERTOS_COMMON_DIR}/drivers/lsm6dso
   )
 
   set_source_files_properties(${sensor_shell_common_sources}

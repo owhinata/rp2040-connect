@@ -298,14 +298,14 @@ static void test_stored(void)
 	assert(out_text[0] == '\0' && strcmp(err_text, "Could not read the sensor: -5\n") == 0);
 	/* While a stream owns the sensor. */
 	set_odr(6667);
-	assert(lsm6dso_fifo_start_locked_driver(imu(), 32, true, true) == 0);
+	assert(lsm6dso_chip_fifo_start(chip(), 32, true, true) == 0);
 	assert(cal1("zero") == -EBUSY);
 	assert(out_text[0] == '\0');
 	assert(strcmp(err_text,
 		      "The sensor is streaming; the bias is tracked from the stream\n") == 0);
 	/* Showing and reloading still work while it streams. */
 	assert(cal0() == 0 && strstr(out_text, "tracked at rest"));
-	assert(lsm6dso_fifo_stop_locked_driver(imu()) == 0);
+	assert(lsm6dso_chip_fifo_stop(chip()) == 0);
 	set_odr(0);
 	/* reload drops the tracked bias. */
 	assert(cal1("reload") == 0);

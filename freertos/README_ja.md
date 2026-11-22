@@ -168,7 +168,7 @@ USB の CDC ACM ポートがコンソールです（UART0 は使いません）�
 | `drivers/wifi/` | Wi-Fi の組み込み（本体は `common/`） |
 | `drivers/telnet/`、`drivers/zperf/` | Telnet のシェルと、速度測定の組み込み |
 | `drivers/i2c_dw/` | I2C0 と DMA（センサーのバス） |
-| `drivers/lsm6dso/` | LSM6DSOX のデバイスの生成と初期化（ドライバー本体は `common/drivers/lsm6dso/`） |
+| `drivers/lsm6dso/` | LSM6DSOX のビルドの規則と起動時の確認（ドライバーとデバイスの定義は `common/drivers/lsm6dso/`） |
 | `drivers/imu/` | 取得・送信・時刻同期の組み込み（本体は `common/imu/`） |
 | `drivers/sensor_shell/` | `sensor` コマンドの組み込み（本体は `common/drivers/sensor_shell/`） |
 | `tests/` | ホストテスト |

@@ -141,8 +141,8 @@
  * (zephyr/build/usb-console/zephyr/zephyr.dts, lsm6dsox@6a: the board's
  * arduino_nano_connect.dts and app/usb-console/app.overlay; the others are
  * the defaults of st,lsm6dso-common.yaml), for the device that
- * nuttx/drivers/lsm6dso/lsm6dso_instance.h defines.  The values are the
- * binding's (zephyr/dt-bindings/sensor/lsm6dso.h).
+ * common/drivers/lsm6dso/port/nuttx/lsm6dso_instance.h defines.  The
+ * values are the binding's (zephyr/dt-bindings/sensor/lsm6dso.h).
  */
 
 #define BOARD_LSM6DSOX_NODE_NAME     "lsm6dsox@6a"
@@ -153,7 +153,6 @@
 #define BOARD_LSM6DSOX_GYRO_PM       0   /* default: high performance */
 #define BOARD_LSM6DSOX_GYRO_ODR      0   /* default: off */
 #define BOARD_LSM6DSOX_GYRO_RANGE    6   /* app.overlay: LSM6DSO_DT_FS_2000DPS */
-#define BOARD_LSM6DSOX_DRDY_PULSED   0   /* default: latched */
 
 /* SPI1 to the NINA-W102 Wi-Fi module. */
 

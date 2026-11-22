@@ -27,8 +27,7 @@
 #include "imu_tick_clock.h"
 #include "kv_store.h"
 #include "time_sync.h"
-#include "lsm6dso_fifo.h"
-#include "lsm6dso_fifo_stats.h"
+#include <zephyr/drivers/sensor/lsm6dso.h>
 
 /* Settings read from the key-value store by "imu start"; all are optional. */
 #define KEY_HOST      "imu.host"      /* IPv4 text; default: the default gateway,

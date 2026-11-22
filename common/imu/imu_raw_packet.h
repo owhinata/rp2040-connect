@@ -4,7 +4,7 @@
 
 #include <stddef.h>
 #include <stdint.h>
-#include "../drivers/lsm6dso/lsm6dso_fifo.h"
+#include <zephyr/drivers/sensor/lsm6dso.h>
 
 /* Experimental payload based on design/imu-raw-mqtt-design-ja.md §6.
  * Version 2 appends the server (Unix) time of the first sample of each kind

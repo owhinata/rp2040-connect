@@ -9,7 +9,7 @@ public enum SensorKind { Accel = 0, Gyro = 1 }
 /// <summary>
 /// Conversion of one sensor from raw LSB to m/s² or rad/s:
 /// <c>out = M · (raw − bias)</c>. The coefficients are the integers the
-/// board keeps (common/drivers/lsm6dso/lsm6dso_cal.h), so a value stored on the
+/// board keeps (common/drivers/lsm6dso/include/lsm6dso_cal.h), so a value stored on the
 /// board converts here as it does there.
 /// </summary>
 public sealed class SensorCalibration

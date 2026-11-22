@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MIT */
-/* Zephyr's <zephyr/init.h>, which the ported LSM6DSO driver
- * (common/drivers/lsm6dso/lsm6dso.c) includes.  It defines nothing here:
+/* Zephyr's <zephyr/init.h>, which the LSM6DSO driver's Zephyr binding
+ * (common/drivers/lsm6dso/port/zephyr/lsm6dso.c) includes.  It defines nothing here:
  * Zephyr's SYS_INIT() and init levels (POST_KERNEL) are not used outside
  * the Zephyr build's own devicetree instance macros; on NuttX the board
  * initializes the devices in its bring-up (device_init(), see

@@ -62,3 +62,17 @@ patches:
       The shell's "i2c scan" stops and returns -ENOTSUP, with a message,
       when the controller refuses its zero-length probes (the DesignWare
       driver of patch 0003), instead of reporting "0 devices found".
+  - path: zephyr/0006-sensor-shell-fifo-attributes.patch
+    sha256sum: 2eac826ac57585cd2acb44eb9f7da921c6f3e1b48ec6f9b2558b67ebdf932da6
+    module: zephyr
+    author: rp2040-connect
+    email: noreply@example.invalid
+    date: 2026-11-22
+    upstreamable: false
+    comments: |
+      The sensor shell (drivers/sensor/sensor_shell.c) with the LSM6DSO's
+      FIFO attributes and the handling of FIFO batches and canceled reads,
+      for the LSM6DSO driver of common/drivers/lsm6dso, whose Zephyr build
+      rules export <zephyr/drivers/sensor/lsm6dso.h>.  sensor_shell.c is the
+      other builds' too (common/drivers/sensor_shell), sensor_shell_os.h is
+      this build's.

@@ -37,12 +37,11 @@
 # their own in the others), the copied settings' own headers
 # (common/compat/subsys/settings/include: <settings/settings_nvs.h>;
 # common/compat/subsys/settings/src: settings_priv.h for
-# kv_store_wipe.c), the LSM6DSO driver's headers
-# ($(TOPDIR)/external/lsm6dso), the port's shared headers (common/compat:
+# kv_store_wipe.c), the port's shared headers (common/compat:
 # priorities.h, cpu_load.h, nano_flash_kv.h, kv_store_os.h; common/log:
 # app_log.h; their NuttX parts in $(TOPDIR)/external/include), common/imu
-# and common/drivers/lsm6dso (imu_stream.c's "lsm6dso_fifo.h" and
-# "lsm6dso_fifo_stats.h", imu_cal.h's "lsm6dso_cal.h"), and
+# (the LSM6DSO driver's <zephyr/drivers/sensor/lsm6dso.h>, which the
+# service reads, is common/compat's), and
 # common/drivers/nina (<nina_dns.h> of the NINA core, which the layer's
 # <zephyr/net/socket.h> reads).
 ############################################################################
@@ -109,8 +108,6 @@ else
 CSRCS    += time_sync_null.c
 endif
 
-CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)lsm6dso
-CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)drivers$(DELIM)lsm6dso
 CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)drivers$(DELIM)nina$(DELIM)include
 endif
 

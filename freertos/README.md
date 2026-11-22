@@ -179,7 +179,7 @@ The console is the USB CDC ACM port (UART0 is not used). Opening a terminal show
 | `drivers/wifi/` | Brings in Wi-Fi (the code is in `common/`) |
 | `drivers/telnet/`, `drivers/zperf/` | The Telnet shell, and the throughput test |
 | `drivers/i2c_dw/` | I2C0 and DMA (the sensor's bus) |
-| `drivers/lsm6dso/` | The device and start-up of the LSM6DSOX (the driver itself is in `common/drivers/lsm6dso/`) |
+| `drivers/lsm6dso/` | Build rules and the start-up check of the LSM6DSOX (the driver and its device are in `common/drivers/lsm6dso/`) |
 | `drivers/imu/` | Brings in the acquisition, the transport and the time synchronization (in `common/imu/`) |
 | `drivers/sensor_shell/` | Brings in the `sensor` command (in `common/drivers/sensor_shell/`) |
 | `tests/` | Host tests |
