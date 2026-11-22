@@ -680,7 +680,8 @@ Zephyr 版は前回の `kernel ps` からの区間の割合（最初は起動か
   API も Zephyr 版の `kv_store.c`（`common/imu/kv_store.c`）をそのまま使う。名前は `app_kv/<キー>`、Wi-Fi の
   資格情報は `wifi_cred/<番号>`。どちらの版が書いた KV も、もう一方がそのまま読み書きする。
 - flash の操作（読み出し、256 バイトのページの書き込み、4 KiB のセクターの消去）は OS ごとの小さな境界
-  （`common/compat/flash_kv_os.h`）にあり、範囲は末尾 8 KiB だけに限る。割り込みを止めるのはページの書き込み
+  （`common/compat/flash_kv_os.h`）にあり、範囲は末尾 8 KiB だけに限る。RP2040 では NuttX 版と FreeRTOS 版がその検査と読み出しを
+  共有し（`common/chip/rp2040/rp2040_flash_kv.c`）、各版はページの書き込みとセクターの消去だけを書く。割り込みを止めるのはページの書き込み
   1 回と消去 1 回のそれぞれの間（消去は 34〜40 ms）。
 - KV の領域に Zephyr の NVS でも消去済みでもないデータ（NuttX 版の以前の形式、別のファームウェアの残り）が
   あると、NuttX 版は消さずにエラーを `dmesg` に出し、KV の操作はエラー（`-EILSEQ`）を返す。`kv wipe confirm`
@@ -891,8 +892,8 @@ NINA のファームウェアの追加機能（`firmware/nina-fw/` のパッチ 
 
 ### 13.4 KV
 
-§11.5 と同じ場所・同じ形式で、Zephyr の NVS と settings の写しを使う。flash の境界は Pico SDK の
-`flash_range_program()`・`flash_range_erase()` を、このコアの割り込みを止めて呼ぶ。リンカースクリプトでイメージを領域の
+§11.5 と同じ場所・同じ形式で、Zephyr の NVS と settings の写しを使う。flash の境界は NuttX 版と共有の RP2040 の部分で、
+その下のこの版の flash の操作が Pico SDK の `flash_range_program()`・`flash_range_erase()` を、このコアの割り込みを止めて呼ぶ。リンカースクリプトでイメージを領域の
 外に置き、書き込みと消去の要求を 3 か所で範囲の検査をする。NuttX 版が書いた KV をそのまま読めることを確かめた。
 
 ### 13.5 異常停止とログ

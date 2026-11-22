@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: MIT */
-/* The Pico SDK's <hardware/flash.h> as flash_kv_os_rp2040.c uses it, for its host
+/* The Pico SDK's <hardware/flash.h> as rp2040_flash_kv_os.c uses it, for its host
  * test (freertos/tests/kv/main.c implements the functions on a RAM copy of
  * the key-value area).
  */

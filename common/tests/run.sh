@@ -219,6 +219,12 @@ run hex "${flags[@]}" -Icompat tests/hex.c compat/lib/utils/hex.c
 # The key-value area's helpers (compat/flash_kv.h): range checks, page writes, the check of
 # what the area holds (Zephyr's NVS, the NuttX build's earlier format, erased, other).
 run flash_kv "${flags[@]}" -Icompat tests/flash_kv.c
+# The RP2040's part of the area's flash that the NuttX and FreeRTOS builds share
+# (chip/rp2040/rp2040_flash_kv.c) on a fake of the build's flash operations (rp2040_flash_kv_os.h)
+# and 8 KiB mapped at the area's uncached XIP address: the start and the linker script's bounds,
+# every program and erase offset around the area, the reads, the messages.
+run rp2040_flash_kv "${flags[@]}" -D_GNU_SOURCE -Itests/kv_fakes -Icompat -Icompat/log \
+    -Ichip/rp2040/include tests/rp2040_flash_kv.c chip/rp2040/rp2040_flash_kv.c
 # The key-value store (imu/kv_store.c, the Zephyr build's) on the copies of Zephyr's settings and
 # NVS (compat/subsys, built as they are, without warnings, with the Zephyr build's Kconfig values
 # of compat/zephyr_kv_config.h), the flash device and map of the area (compat/zephyr_flash_kv.c)

@@ -796,8 +796,10 @@ difference of the total run time in `/proc/<tid>/critmon` ("CPU load" in `design
   names are `app_kv/<key>` and, for the Wi-Fi credentials, `wifi_cred/<number>`. Each build reads
   and writes what the other stored.
 - The flash operations (reads, 256-byte page programs, 4 KiB sector erases) are behind a small
-  boundary for each OS (`common/compat/flash_kv_os.h`), limited to the last 8 KiB. Interrupts are
-  off for one page program or one erase at a time (34-40 ms for an erase).
+  boundary for each OS (`common/compat/flash_kv_os.h`), limited to the last 8 KiB; on the RP2040 the
+  NuttX and FreeRTOS builds share its checks and reads (`common/chip/rp2040/rp2040_flash_kv.c`) and
+  each writes only the page program and the sector erase. Interrupts are off for one page program
+  or one erase at a time (34-40 ms for an erase).
 - If the area holds data that is neither Zephyr's NVS nor erased (the NuttX port's earlier format,
   what another firmware left), the NuttX port does not erase it, reports it in `dmesg`, and the
   KV operations return an error (`-EILSEQ`). `kv wipe confirm` (NuttX and FreeRTOS builds) erases it. The
@@ -1054,8 +1056,8 @@ offload, the calling thread asks the NINA and waits). There is no event thread l
 ### 13.4 KV
 
 The same place and format as in section 11.5, with the copies of Zephyr's NVS and settings. The flash
-boundary calls the Pico SDK's `flash_range_program()` and `flash_range_erase()` with this core's interrupts
-disabled. The linker script keeps the image out of the area, and program and erase requests are checked
+boundary is the RP2040's part shared with the NuttX build, on this build's flash operations, which call the
+Pico SDK's `flash_range_program()` and `flash_range_erase()` with this core's interrupts disabled. The linker script keeps the image out of the area, and program and erase requests are checked
 against the area in three places. The build was checked to read the key-value store the NuttX build wrote.
 
 ### 13.5 Fatal errors and the log

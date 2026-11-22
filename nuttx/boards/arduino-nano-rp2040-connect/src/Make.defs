@@ -89,11 +89,19 @@ CSRCS += rp2040_idle_cpuload.c
 endif
 
 # The key-value area's flash (the last 8 KiB): the OS boundary of
-# common/compat/flash_kv_os.h (flash_kv_os.h is found through the -I of
-# common/compat below).
+# common/compat/flash_kv_os.h, the RP2040's part shared with the FreeRTOS
+# build (common/chip/rp2040/rp2040_flash_kv.c: the range checks, the reads,
+# the page copy) on this board's flash operations with the boot ROM
+# (rp2040_flash_kv_os.c, rp2040_flash_kv_os.h of
+# common/chip/rp2040/include).  flash_kv_os.h is found through the -I of
+# common/compat below.
 
 ifeq ($(CONFIG_RP2040_FLASH_KV),y)
+CHIP_RP2040_SRC = $(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)chip$(DELIM)rp2040
+CSRCS += rp2040_flash_kv.c
 CSRCS += rp2040_flash_kv_os.c
+DEPPATH += --dep-path $(CHIP_RP2040_SRC)
+VPATH += :$(CHIP_RP2040_SRC)
 endif
 
 # The I2C driver (I2C0, I2C1) is built with the other drivers

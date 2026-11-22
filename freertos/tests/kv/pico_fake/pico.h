@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: MIT */
-/* The part of the Pico SDK that freertos/drivers/kv/flash_kv_os_rp2040.c uses,
+/* The part of the Pico SDK that freertos/drivers/kv/rp2040_flash_kv_os.c uses,
  * for its host test (freertos/tests/kv/main.c, which implements the
  * functions): the board's flash size and the SDK's result codes.  The
  * hardware/ and pico/ headers next to this one are the test's as well.
@@ -18,9 +18,5 @@
 /* pico/error.h */
 #define PICO_OK                  0
 #define PICO_ERROR_NOT_PERMITTED (-4)
-
-#ifndef __aligned
-#define __aligned(x) __attribute__((__aligned__(x)))
-#endif
 
 #endif /* FREERTOS_TESTS_KV_PICO_FAKE_PICO_H */

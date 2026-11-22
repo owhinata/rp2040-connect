@@ -1039,9 +1039,8 @@ originals.
   zero) and NVS's lock are the layer's `k_mutex` (recursive: `kv wipe` initializes the settings
   again while it holds the settings' lock). Initialization is, as in Zephyr, the first
   `settings_subsys_init()` (tried again by the next call after a failure).
-- **The flash boundary** (`flash_kv_os.h`; each OS implements it: the NuttX build in the board's
-  `src/rp2040_flash_kv_os.c`, the FreeRTOS build with the Pico SDK's `flash_range_program()` and
-  `flash_range_erase()` with interrupts off):
+- **The flash boundary** (`flash_kv_os.h`; each OS implements it; on the RP2040 the NuttX and
+  FreeRTOS builds share `common/chip/rp2040/rp2040_flash_kv.c`, below):
 
   ```c
   int flash_kv_os_initialize(void);
@@ -1061,6 +1060,28 @@ originals.
   the OS checks the range again and returns `-EINVAL` without touching the flash otherwise.
   Interrupts are off, and no code runs from the flash, while a page is programmed or a sector
   erased (the NuttX build: for one page or one sector at a time).
+- **The RP2040's part** (`common/chip/rp2040/rp2040_flash_kv.c`, shared by the NuttX and FreeRTOS
+  builds): `initialize` compares the linker script's `__kv_start`, `__kv_end` and the image's end
+  with the constants, then readies the build's flash operations; `read` copies from the uncached
+  XIP alias (0x13000000); `program` copies the page into RAM; `program` and `erase` check the
+  request against the constants and the bounds and hand it to the build's flash operations
+  (`common/chip/rp2040/include/rp2040_flash_kv_os.h`) with the bounds:
+
+  ```c
+  int rp2040_flash_kv_os_init(void);
+  uintptr_t rp2040_flash_kv_os_image_end(void);
+  int rp2040_flash_kv_os_program(uint32_t page_offset, const uint8_t *page, uint32_t lo, uint32_t hi);
+  int rp2040_flash_kv_os_erase(uint32_t sector_offset, uint32_t lo, uint32_t hi);
+  ```
+
+  The build checks the request against `[lo, hi)` once more with interrupts off, right before the
+  flash is touched. The NuttX build's (the board's `src/rp2040_flash_kv_os.c`): `init` finds the
+  boot ROM's flash functions and copies boot2 into RAM; `program` and `erase` run a RAM function
+  (`.ram_code.kv_flash_op`) with interrupts disabled that calls the boot ROM and the copy of boot2
+  only. NuttX's own flash driver for the chip (`rp2040_flash_mtd.c`) is not used: it is an MTD device
+  for the SmartFS region after the image, which it erases to the end of the flash at its first
+  start. The FreeRTOS build's: the Pico SDK's `flash_range_program()` and `flash_range_erase()`
+  through `flash_safe_execute()`.
 - `zephyr_flash_kv.c`: the flash device (`z_flash_kv_device`) and the flash map. It accepts
   requests inside the area only (the Zephyr build's driver accepts the whole flash), splits writes
   into 256-byte pages and erases into sectors for the boundary. `flash_area_open()` checks once

@@ -2,8 +2,8 @@
 /* compat/flash_kv.h: the range checks done before every flash erase
  * and program, the split of writes into pages, and the check of the
  * area's contents before Zephyr's NVS mounts it: Zephyr's ATEs, the NuttX
- * build's earlier format (NuttX's NVS) and that neither is taken for the
- * other.  The check on whole areas written by the copied NVS is in
+ * build's earlier format (NuttX's NVS; each rule of the check, at its
+ * limits) and that neither is taken for the other.  The check on whole areas written by the copied NVS is in
  * kv_settings.c.
  */
 #include <assert.h>
@@ -83,7 +83,7 @@ static void nuttx_ate(uint8_t s[16], uint32_t id, uint16_t offset,
 static int plausible(const uint8_t s[16], int close)
 {
 	return flash_kv_nuttx_ate_plausible(s, crc8part(s, FLASH_KV_NUTTX_ATE_CRC_LEN, 0xff),
-				     FLASH_KV_SECTOR_SIZE, close);
+					    FLASH_KV_SECTOR_SIZE, close);
 }
 
 /* A fake flash for flash_kv_write_pages(): programming clears bits. */
@@ -189,7 +189,7 @@ static void test_pages(void)
 			memcpy(expect + off, data, len);
 			programs = 0;
 			assert(flash_kv_write_pages(KV_LO + off, data, len, page,
-						   program, NULL) == 0);
+						    program, NULL) == 0);
 			assert(memcmp(flash, expect, sizeof(flash)) == 0);
 			assert(programs == (int)((off + len - 1) / 256 -
 						 off / 256 + 1));
@@ -201,9 +201,9 @@ static void test_pages(void)
 	 */
 	memset(flash, 0xff, sizeof(flash));
 	assert(flash_kv_write_pages(KV_LO + 32, data, 16, page, program,
-				   NULL) == 0);
+				    NULL) == 0);
 	assert(flash_kv_write_pages(KV_LO + 44, (const uint8_t *)"\0", 1, page,
-				   program, NULL) == 0);
+				    program, NULL) == 0);
 	assert(memcmp(flash + 32, data, 12) == 0 && flash[44] == 0 &&
 	       memcmp(flash + 45, data + 13, 3) == 0);
 
@@ -213,7 +213,7 @@ static void test_pages(void)
 	memset(flash, 0xff, sizeof(flash));
 	programs = 0;
 	assert(flash_kv_write_pages(KV_HI - 10, data, 20, page, program,
-				   NULL) == -22);
+				    NULL) == -22);
 	assert(programs == 1);
 }
 
@@ -255,6 +255,34 @@ static void test_layout(void)
 	/* All erased. */
 	memset(s, 0xff, sizeof(s));
 	assert(!plausible(s, 0) && !plausible(s, 1));
+	/* The offset: the last 16-byte slot of the block is the close ATE's. */
+	nuttx_ate(s, 0x12345678, 4096 - 16 - 1, 5, 16, 0x5a);
+	assert(plausible(s, 0));
+	nuttx_ate(s, 0x12345678, 4096 - 16, 5, 16, 0x5a);
+	assert(!plausible(s, 0));
+	/* No data: data_crc8 0 or erased, nothing else. */
+	nuttx_ate(s, 0x12345678, 0x0100, 0, 16, 0x00);
+	assert(plausible(s, 0));
+	nuttx_ate(s, 0x12345678, 0x0100, 0, 16, 0xff);
+	assert(plausible(s, 0));
+	nuttx_ate(s, 0x12345678, 0x0100, 0, 16, 0x5a);
+	assert(!plausible(s, 0));
+	/* A close ATE: special id, no data, no key, never expired. */
+	nuttx_ate(s, 0x12345678, 4096 - 16 * 10, 0, 16, 0xff);
+	assert(!plausible(s, 1) && plausible(s, 0));
+	nuttx_ate(s, 0xffffffff, 4096 - 16 * 10, 1, 0, 0xff);
+	assert(!plausible(s, 1));
+	nuttx_ate(s, 0xffffffff, 4096 - 16 * 10, 0, 1, 0xff);
+	assert(!plausible(s, 1));
+	nuttx_ate(s, 0xffffffff, 4096 - 16 * 10, 0, 0, 0xff);
+	s[12] = 0x00;
+	assert(!plausible(s, 1) && plausible(s, 0));
+	/* Each padding byte. */
+	for (int i = 13; i < 16; i++) {
+		nuttx_ate(s, 0x12345678, 0x0100, 5, 16, 0x5a);
+		s[i] = 0xfe;
+		assert(!plausible(s, 0));
+	}
 
 	/* The Zephyr build's NVS: 8-byte ATEs (id u16, offset u16, len u16,
 	 * part 0xff, crc8), two to a 16-byte slot.  Even when the bytes
@@ -344,6 +372,13 @@ static void test_zephyr_ate(void)
 	assert(!zvalid(s, 4088, 1));
 	zephyr_ate(s, 0x8001, 4096 - 8 * 20, 0);
 	assert(!zvalid(s, 4088, 1));
+	zephyr_ate(s, 0xffff, 4096 - 8 * 20, 1);
+	assert(!zvalid(s, 4088, 1));
+	/* Data up to the ATE itself, not past it, at the first slot. */
+	zephyr_ate(s, 0xc001, 4000, 80);
+	assert(zvalid(s, 4080, 0));
+	zephyr_ate(s, 0xc001, 4000, 81);
+	assert(!zvalid(s, 4080, 0));
 	/* Damaged: CRC, part, data past the ATE; all erased. */
 	zephyr_ate(s, 0xc001, 2, 5);
 	s[7] ^= 1;

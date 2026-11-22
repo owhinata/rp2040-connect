@@ -16,17 +16,20 @@
 #   and the copies of Zephyr's settings and NVS (common/compat/subsys:
 #   settings.c, settings_store.c, settings_init.c, settings_nvs.c, nvs.c,
 #   crc8_sw.c), as the NuttX build has them (nuttx/apps/imu/Makefile);
-# - the boundary of the area on the Pico SDK (flash_kv_os_rp2040.c, with
-#   hardware_flash and pico_flash), and PICO_FLASH_ASSUME_CORE1_SAFE=1 for
-#   every source of the target, so that flash_safe_execute() only disables
-#   the interrupts (core 1 is not used; without it the call always fails on
-#   this build);
+# - the boundary of the area: the RP2040's part shared with the NuttX build
+#   (common/chip/rp2040/rp2040_flash_kv.c: the range checks, the reads, the
+#   page copy) on this build's flash operations on the Pico SDK
+#   (rp2040_flash_kv_os.c, with hardware_flash and pico_flash), and
+#   PICO_FLASH_ASSUME_CORE1_SAFE=1 for every source of the target, so that
+#   flash_safe_execute() only disables the interrupts (core 1 is not used;
+#   without it the call always fails on this build);
 # - the linker script's parts (ld/, pico_add_linker_script_override_path()):
 #   the FLASH region ends where the area starts, the area's symbols
 #   __kv_start and __kv_end, and the check that the image ends before it;
-# - the include directories: this directory (flash_kv_os_rp2040.h),
-#   common/imu (kv_store.h), the settings' own headers
-#   (<settings/settings_nvs.h>; settings_priv.h for kv_store_wipe.c).
+# - the include directories: common/imu (kv_store.h), the settings' own
+#   headers (<settings/settings_nvs.h>; settings_priv.h for
+#   kv_store_wipe.c).  The RP2040's headers (rp2040_flash_kv_os.h,
+#   common/chip/rp2040/include) are on the application's include path.
 #
 # Each shared source is compiled with the prelude of the shared sources
 # (common_prelude.h), as in compat.cmake.  The copies of Zephyr's settings
@@ -64,14 +67,14 @@ function(freertos_kv target)
   set(kv_nvs ${FREERTOS_COMMON_DIR}/compat/subsys/kvss/nvs/nvs.c)
 
   target_sources(${target} PRIVATE
-    ${FREERTOS_KV_DIR}/flash_kv_os_rp2040.c
+    ${FREERTOS_COMMON_DIR}/chip/rp2040/rp2040_flash_kv.c
+    ${FREERTOS_KV_DIR}/rp2040_flash_kv_os.c
     ${kv_common_sources}
     ${kv_zephyr_copies}
     ${kv_nvs}
   )
 
   target_include_directories(${target} PRIVATE
-    ${FREERTOS_KV_DIR}
     ${FREERTOS_COMMON_DIR}/imu
     ${FREERTOS_COMMON_DIR}/compat/subsys/settings/include
     ${FREERTOS_COMMON_DIR}/compat/subsys/settings/src

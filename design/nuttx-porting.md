@@ -194,7 +194,8 @@ Zephyr build stored, and the other way round. The API and the command are the Ze
 - Layers: `kv_store.c` → Zephyr's settings (`settings_save_one()`, `settings_load_one()`,
   `settings_delete()`) → Zephyr's NVS → the compatibility layer's flash device and flash map
   (`common/compat/zephyr_flash_kv.c`) → the OS boundary (the five functions of
-  `common/compat/flash_kv_os.h`; on NuttX the board's `src/rp2040_flash_kv_os.c`). The settings and NVS
+  `common/compat/flash_kv_os.h`; on the RP2040 `common/chip/rp2040/rp2040_flash_kv.c`, shared with the
+  FreeRTOS build, on the board's flash operations with the boot ROM, `src/rp2040_flash_kv_os.c`). The settings and NVS
   are unchanged copies of Zephyr v4.5.0's sources (`common/compat/subsys/` and others; the list is
   in the compatibility layer's section of the driver notes), built with the Zephyr build's Kconfig
   values (`common/compat/zephyr_kv_config.h`).
@@ -213,8 +214,9 @@ Zephyr build stored, and the other way round. The API and the command are the Ze
   `flash_kv.h` and the linker script (`__kv_start`, `__kv_end` in `scripts/arduino-nano-rp2040-connect-flash.ld`;
   the area is left out of the image's flash region, and `build.sh` checks where the image ends).
   Every read, program and erase is checked to lie inside the area in three places before the flash
-  is touched: the compatibility layer (the constants), the board (the `board.h` constants and the
-  linker script's values, found equal at boot) and the RAM function (right before the boot ROM is
+  is touched: the compatibility layer (the constants), the RP2040's shared part (the constants and
+  the linker script's values, found equal at boot; `board.h`'s are checked against the constants
+  when the board's file is compiled) and the board's RAM function (right before the boot ROM is
   called). Anything outside is refused without touching the flash (`<err> flash_kv: Refused flash
   ...` in `dmesg`). The Zephyr build's flash driver accepts the whole flash; its NVS only touches
   this area.

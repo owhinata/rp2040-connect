@@ -906,8 +906,8 @@ settings のうち Zephyr 版が使う部分を改変せずに写し、Zephyr �
 - 前提: settings のロック（`K_MUTEX_DEFINE(settings_lock)`、全部 0 から始まるミューテックス）と NVS のロックは
   互換層の `k_mutex`（再帰。`kv wipe` は settings のロックを持ったまま settings を初期化し直す）。初期化は
   Zephyr と同じく最初の `settings_subsys_init()`（失敗したら次の呼び出しでやり直す）。
-- **flash の境界**（`flash_kv_os.h`。OS ごとに実装する。NuttX 版はボードの `src/rp2040_flash_kv_os.c`、FreeRTOS 版は
-  Pico SDK の `flash_range_program()`・`flash_range_erase()` を割り込みを止めて呼ぶ）:
+- **flash の境界**（`flash_kv_os.h`。OS ごとに実装する。RP2040 では NuttX 版と FreeRTOS 版が
+  `common/chip/rp2040/rp2040_flash_kv.c` を共有する。下）:
 
   ```c
   int flash_kv_os_initialize(void);
@@ -924,6 +924,24 @@ settings のうち Zephyr 版が使う部分を改変せずに写し、Zephyr �
   呼ぶ側（`zephyr_flash_kv.c`）は領域の中の揃った要求しか渡しませんが、OS の実装も範囲を確かめ直し、外なら
   flash に触れずに `-EINVAL` を返します。書き込みと消去の間は割り込みを止め、そのあいだ flash 上のコードを
   動かしません（NuttX 版はページ 1 回・セクター 1 回ごと）。
+- **RP2040 の部分**（`common/chip/rp2040/rp2040_flash_kv.c`。NuttX 版と FreeRTOS 版が共有）: `initialize` はリンカー
+  スクリプトの `__kv_start`・`__kv_end` とイメージの終わりを定数と比べ、そのあと版の flash の操作を準備する。`read` は
+  キャッシュを通らない XIP の別名（0x13000000）から写す。`program` はページを RAM に写す。`program` と `erase` は要求を
+  定数と範囲で確かめ、版の flash の操作（`common/chip/rp2040/include/rp2040_flash_kv_os.h`）に範囲と一緒に渡す:
+
+  ```c
+  int rp2040_flash_kv_os_init(void);
+  uintptr_t rp2040_flash_kv_os_image_end(void);
+  int rp2040_flash_kv_os_program(uint32_t page_offset, const uint8_t *page, uint32_t lo, uint32_t hi);
+  int rp2040_flash_kv_os_erase(uint32_t sector_offset, uint32_t lo, uint32_t hi);
+  ```
+
+  版は、flash に触れる直前に割り込みを止めた中で、要求が `[lo, hi)` に収まることをもう一度確かめる。NuttX 版（ボードの
+  `src/rp2040_flash_kv_os.c`）: `init` はブート ROM の flash の関数を探し、boot2 を RAM に写す。`program` と `erase` は、
+  割り込みを止めて RAM 上の関数（`.ram_code.kv_flash_op`。ブート ROM と boot2 の写しだけを呼ぶ）を動かす。NuttX 自身の
+  このチップの flash ドライバー（`rp2040_flash_mtd.c`）は使わない: イメージの後ろの SmartFS の領域の MTD デバイスで、最初の
+  起動のときにそこから flash の終わりまでを消す。FreeRTOS 版: Pico SDK の `flash_range_program()`・`flash_range_erase()` を
+  `flash_safe_execute()` で。
 - `zephyr_flash_kv.c`: flash のデバイス（`z_flash_kv_device`）と flash map。要求は領域の中だけを受け付け
   （Zephyr 版のドライバーは flash 全体）、書き込みを 256 バイトのページに分け、消去をセクターごとに境界へ渡し
   ます。`flash_area_open()` は起動後に 1 回、領域の中身を判定し、Zephyr の NVS でも消去済みでもなければログに

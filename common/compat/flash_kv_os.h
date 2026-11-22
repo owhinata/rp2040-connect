@@ -1,14 +1,14 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /* The OS's part of the key-value area (flash_kv.h): five functions that
- * each build implements on its flash (NuttX:
- * nuttx/boards/arduino-nano-rp2040-connect/src/rp2040_flash_kv_os.c, with
- * the boot ROM; FreeRTOS: freertos/drivers/kv/flash_kv_os_rp2040.c, with
- * the Pico SDK's flash_range_program(), flash_range_erase() and the
- * interrupts off).  zephyr_flash_kv.c calls them only with requests
- * inside the area, aligned as stated, from threads, one at a time (it
- * holds its lock); the OS checks the range again itself and refuses
- * anything else without touching the flash: an erase or a program outside
- * the area destroys the firmware.
+ * each build implements on its flash.  On the RP2040 the NuttX and
+ * FreeRTOS builds share them (common/chip/rp2040/rp2040_flash_kv.c), on
+ * each build's page program and sector erase (rp2040_flash_kv_os.h: NuttX
+ * with the boot ROM, FreeRTOS with the Pico SDK's flash_range_program(),
+ * flash_range_erase() and the interrupts off).  zephyr_flash_kv.c calls
+ * them only with requests inside the area, aligned as stated, from
+ * threads, one at a time (it holds its lock); the OS checks the range again
+ * itself and refuses anything else without touching the flash: an erase or
+ * a program outside the area destroys the firmware.
  */
 
 #ifndef __COMMON_COMPAT_FLASH_KV_OS_H

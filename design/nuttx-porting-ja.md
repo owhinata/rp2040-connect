@@ -178,7 +178,7 @@ syslog のチャネル `nuttx/drivers/log/log_ram_syslog.c`。`LOG_*` マクロ�
 
 - 構成: `kv_store.c` → Zephyr の settings（`settings_save_one()`・`settings_load_one()`・`settings_delete()`）→
   Zephyr の NVS → 互換層の flash デバイスと flash map（`common/compat/zephyr_flash_kv.c`）→ OS の境界
-  （`common/compat/flash_kv_os.h` の 5 関数。NuttX ではボードの `src/rp2040_flash_kv_os.c`）。settings と NVS は
+  （`common/compat/flash_kv_os.h` の 5 関数。RP2040 では FreeRTOS 版と共有の `common/chip/rp2040/rp2040_flash_kv.c` が、ボードのブート ROM での flash の操作 `src/rp2040_flash_kv_os.c` の上で実装）。settings と NVS は
   Zephyr v4.5.0 のソースを改変せずに写したもの（`common/compat/subsys/` ほか。一覧はドライバー説明の互換層の
   節）で、Zephyr 版の Kconfig の値（`common/compat/zephyr_kv_config.h`）でビルドします。
 - 形式（Zephyr 版の `.config` とデバイスツリーと同じ値）: NVS のセクターは 4096 バイト × 2
@@ -193,8 +193,8 @@ syslog のチャネル `nuttx/drivers/log/log_ram_syslog.c`。`LOG_*` マクロ�
 - 領域: ボードの `include/board.h`（`BOARD_KV_OFFSET`、`BOARD_KV_SIZE`）、`flash_kv.h` の定数とリンカー
   スクリプト（`scripts/arduino-nano-rp2040-connect-flash.ld` の `__kv_start`、`__kv_end`。この領域はイメージの flash 領域から外して
   あり、`build.sh` もイメージの終端を確かめます）で決まります。読み出し・書き込み・消去のたびに、対象が
-  この範囲に収まることを、互換層（定数）、ボード（`board.h` の定数と、起動時に一致を確かめたリンカー
-  スクリプトの値）、RAM 上の関数（ブート ROM を呼ぶ直前）の 3 か所で確かめてから flash に触れます。範囲の外なら
+  この範囲に収まることを、互換層（定数）、RP2040 の共有の部分（定数と、起動時に一致を確かめたリンカー
+  スクリプトの値。`board.h` の値はボードのファイルのコンパイル時に定数と比べる）、ボードの RAM 上の関数（ブート ROM を呼ぶ直前）の 3 か所で確かめてから flash に触れます。範囲の外なら
   何もせずエラーにします（`dmesg` に `<err> flash_kv: Refused flash ...`）。Zephyr 版の flash ドライバーは
   flash 全体を受け付けますが、NVS が触れるのはこの範囲だけです。
 - 起動: ボードの起動処理（`rp2040_bringup()`、LSM6DSOX と NINA の後）は flash の操作の準備（リンカー

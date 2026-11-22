@@ -1,8 +1,10 @@
 /* SPDX-License-Identifier: MIT */
 /* The host test of the FreeRTOS build's key-value store on the FreeRTOS
- * POSIX port: the flash boundary of the board (freertos/drivers/kv/
- * flash_kv_os_rp2040.c) on fakes of the Pico SDK's flash functions
- * (pico_fake/, implemented here on a RAM copy of the 8 KiB area), under the
+ * POSIX port: the flash boundary of the board (the RP2040's shared part,
+ * common/chip/rp2040/rp2040_flash_kv.c, on this build's flash operations,
+ * freertos/drivers/kv/rp2040_flash_kv_os.c) on fakes of the Pico SDK's
+ * flash functions (pico_fake/, implemented here on 8 KiB of memory mapped
+ * at the area's uncached XIP address, where the shared part reads), under the
  * shared store as the board builds it (common/imu/kv_store.c,
  * common/compat/kv_store_wipe.c, zephyr_flash_kv.c, the copies of Zephyr's
  * settings and NVS) and the FreeRTOS part of the compatibility layer
@@ -35,6 +37,7 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <sys/mman.h>
 #include <unistd.h>
 
 #include "FreeRTOS.h"
@@ -52,7 +55,7 @@
 #include "kv_store_os.h"
 #include "flash_kv.h"
 #include "flash_kv_os.h"
-#include "flash_kv_os_rp2040.h"
+#include "rp2040_flash_kv.h"
 #include "priorities.h"
 #include "settings_priv.h"
 #include "zephyr_compat.h"
@@ -78,18 +81,21 @@ void vApplicationTickHook(void)
 extern bool settings_subsys_initialized;
 
 /* The linker's symbols, which flash_kv_os_initialize() would read; the
- * test calls flash_kv_os_rp2040_set_bounds() with its own values instead.
+ * test calls rp2040_flash_kv_set_bounds() with its own values instead.
  */
 const uint8_t __kv_start[1];
 const uint8_t __kv_end[1];
 char __flash_binary_end;
 
-#define KV_XIP_START (0x10000000u + FLASH_KV_OFFSET)
-#define KV_XIP_END   (0x10000000u + FLASH_KV_END)
+#define KV_XIP_START (RP2040_FLASH_KV_XIP_BASE + FLASH_KV_OFFSET)
+#define KV_XIP_END   (RP2040_FLASH_KV_XIP_BASE + FLASH_KV_END)
 
 /* The fakes of the Pico SDK (pico_fake/) ---------------------------------*/
 
-uint8_t kv_test_flash[FLASH_KV_SIZE];
+/* The area, mapped at RP2040_FLASH_KV_XIP_NOCACHE_BASE + FLASH_KV_OFFSET
+ * by main().
+ */
+static uint8_t *kv_test_flash;
 
 static uint32_t primask;
 static unsigned long programs, erases;
@@ -219,7 +225,7 @@ void z_shell_backend_vfprintf(const struct shell *sh, enum shell_vt100_color col
 
 static bool all_erased(void)
 {
-	for (size_t i = 0; i < sizeof(kv_test_flash); i++) {
+	for (size_t i = 0; i < FLASH_KV_SIZE; i++) {
 		if (kv_test_flash[i] != 0xff) {
 			return false;
 		}
@@ -229,7 +235,7 @@ static bool all_erased(void)
 
 static bool flash_has(const char *text)
 {
-	return memmem(kv_test_flash, sizeof(kv_test_flash), text, strlen(text)) != NULL;
+	return memmem(kv_test_flash, FLASH_KV_SIZE, text, strlen(text)) != NULL;
 }
 
 static void expect_value(const char *key, const char *want)
@@ -261,19 +267,19 @@ static void test_boundary(void)
 	assert(strstr(log_buf, "with the interrupts off") == NULL);
 	assert(kv_store_init() == -ENODEV);
 
-	/* Wrong linker bounds. */
-	assert(flash_kv_os_rp2040_set_bounds(KV_XIP_START - 0x1000, KV_XIP_END, 0x10020000) ==
+	/* Wrong linker bounds (the test's own symbols are not the area). */
+	assert(flash_kv_os_initialize() == -EFAULT);
+	assert(rp2040_flash_kv_set_bounds(KV_XIP_START - 0x1000, KV_XIP_END, 0x10020000) ==
 	       -EFAULT);
-	assert(flash_kv_os_rp2040_set_bounds(KV_XIP_START, KV_XIP_END - 1, 0x10020000) == -EFAULT);
-	assert(flash_kv_os_rp2040_set_bounds(KV_XIP_START, KV_XIP_END, KV_XIP_START + 1) ==
-	       -EFAULT);
-	assert(flash_kv_os_rp2040_set_bounds(KV_XIP_START, KV_XIP_END, 0x10000000) == -EFAULT);
+	assert(rp2040_flash_kv_set_bounds(KV_XIP_START, KV_XIP_END - 1, 0x10020000) == -EFAULT);
+	assert(rp2040_flash_kv_set_bounds(KV_XIP_START, KV_XIP_END, KV_XIP_START + 1) == -EFAULT);
+	assert(rp2040_flash_kv_set_bounds(KV_XIP_START, KV_XIP_END, 0x10000000) == -EFAULT);
 	assert(!flash_kv_os_ready());
 	assert(flash_kv_os_erase(FLASH_KV_OFFSET) == -EINVAL);
 	assert(strstr(log_buf, "linker script disagrees") != NULL);
 
 	/* Right ones: the image may end right at the area. */
-	assert(flash_kv_os_rp2040_set_bounds(KV_XIP_START, KV_XIP_END, KV_XIP_START) == 0);
+	assert(rp2040_flash_kv_set_bounds(KV_XIP_START, KV_XIP_END, KV_XIP_START) == 0);
 	assert(flash_kv_os_ready());
 
 	/* Outside, across and unaligned. */
@@ -453,9 +459,16 @@ int main(void)
 	 * while the C library holds its locks).
 	 */
 	static char out[1 << 12];
+	void *area = (void *)(uintptr_t)(RP2040_FLASH_KV_XIP_NOCACHE_BASE + FLASH_KV_OFFSET);
 
 	setvbuf(stdout, out, _IOLBF, sizeof(out));
-	memset(kv_test_flash, 0xff, sizeof(kv_test_flash));
+	if (mmap(area, FLASH_KV_SIZE, PROT_READ | PROT_WRITE,
+		 MAP_PRIVATE | MAP_ANONYMOUS | MAP_FIXED_NOREPLACE, -1, 0) != area) {
+		fprintf(stderr, "kv: cannot map the area at %p\n", area);
+		return 2;
+	}
+	kv_test_flash = area;
+	memset(kv_test_flash, 0xff, FLASH_KV_SIZE);
 	if (zephyr_compat_initialize() != 0) {
 		return 2;
 	}

@@ -102,12 +102,15 @@ config RP2040_FLASH_KV
 	default y
 	depends on ARCH_CHIP_RP2040 && !SMP
 	---help---
-		src/rp2040_flash_kv_os.c: reads, 256-byte page programs and 4 KiB
-		sector erases of flash offsets 0xffe000-0xffffff
-		(BOARD_KV_OFFSET, BOARD_KV_SIZE in include/board.h; __kv_start,
-		__kv_end in scripts/arduino-nano-rp2040-connect-flash.ld), the
-		place of the Zephyr build's storage_partition: the OS boundary of
-		common/compat/flash_kv_os.h, under the flash device of
+		Reads, 256-byte page programs and 4 KiB sector erases of flash
+		offsets 0xffe000-0xffffff (BOARD_KV_OFFSET, BOARD_KV_SIZE in
+		include/board.h; __kv_start, __kv_end in
+		scripts/arduino-nano-rp2040-connect-flash.ld), the place of the
+		Zephyr build's storage_partition: the OS boundary of
+		common/compat/flash_kv_os.h (the RP2040's part shared with the
+		FreeRTOS build, common/chip/rp2040/rp2040_flash_kv.c, on the
+		board's flash operations with the boot ROM,
+		src/rp2040_flash_kv_os.c), under the flash device of
 		common/compat/zephyr_flash_kv.c, on which the copies of Zephyr's
 		NVS and settings keep the key-value store in the Zephyr build's
 		format (KV_STORE).  Every erase and program is checked to

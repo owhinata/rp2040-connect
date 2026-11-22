@@ -176,17 +176,19 @@ else
 fi
 printf 'ok  shell (two sessions, generic commands, serial session, FreeRTOS POSIX port)\n'
 
-# The key-value store (freertos/tests/kv): the board's flash boundary (drivers/kv/flash_kv_os_rp2040.c)
-# on fakes of the Pico SDK's flash functions (tests/kv/pico_fake), under the shared store as the
+# The key-value store (freertos/tests/kv): the board's flash boundary (the RP2040's shared part,
+# common/chip/rp2040/rp2040_flash_kv.c, on drivers/kv/rp2040_flash_kv_os.c) on fakes of the Pico
+# SDK's flash functions (tests/kv/pico_fake), under the shared store as the
 # board builds it (common/imu/kv_store.c, kv_store_wipe.c, zephyr_flash_kv.c, the copies of
-# Zephyr's settings, NVS and hex.c with their options, drivers/kv/kv.cmake), on the same kernel
-# and layer objects.  Unused parts (the "kv" command's table) are left out by --gc-sections.
+# Zephyr's settings, NVS and hex.c with their options, drivers/kv/kv.cmake; the RP2040's part
+# without the prelude, as the board builds it), on the same kernel and layer objects.  Unused parts (the "kv" command's table) are left out by --gc-sections.
 kvinc=(-D_GNU_SOURCE -DPICO_FLASH_ASSUME_CORE1_SAFE=1 -DZ_SHELL_CMD_ROOT_GLOBAL -Itests/kv/pico_fake
-       -Idrivers/kv -I$seng -I../common/imu -I../common/compat/subsys/settings/include
+       -I../common/chip/rp2040/include -I$seng -I../common/imu -I../common/compat/subsys/settings/include
        -I../common/compat/subsys/settings/src -ffunction-sections -fdata-sections)
 kvconfig=(-include ../common/compat/zephyr_kv_config.h -Wno-undef)
 kvobjs=()
-for src in drivers/kv/flash_kv_os_rp2040.c tests/kv/main.c ../common/imu/kv_store.c \
+for src in drivers/kv/rp2040_flash_kv_os.c ../common/chip/rp2040/rp2040_flash_kv.c tests/kv/main.c \
+           ../common/imu/kv_store.c \
            ../common/compat/kv_store_wipe.c ../common/compat/zephyr_flash_kv.c \
            ../common/compat/lib/utils/hex.c ../common/compat/subsys/settings/src/settings.c \
            ../common/compat/subsys/settings/src/settings_store.c \
@@ -196,6 +198,7 @@ for src in drivers/kv/flash_kv_os_rp2040.c tests/kv/main.c ../common/imu/kv_stor
     obj="$out/kv_$(basename "$src" .c).o"
     extra=()
     case $src in
+        ../common/chip/*) ;;
         ../common/*) extra=(-include drivers/compat/common_prelude.h) ;;
     esac
     case $src in

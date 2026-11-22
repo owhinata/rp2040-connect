@@ -15,7 +15,8 @@
 # crc8_sw.c; each read with the Zephyr build's Kconfig values,
 # common/compat/zephyr_kv_config.h, and without -Wundef, since they test
 # unset options with #if as Zephyr does), the flash device and flash map of
-# the key-value area (common/compat/zephyr_flash_kv.c, on the board's
+# the key-value area (common/compat/zephyr_flash_kv.c, on
+# common/chip/rp2040/rp2040_flash_kv.c and the board's
 # rp2040_flash_kv_os.c) and the hex conversions of the "kv" command (the
 # copy of Zephyr's lib/utils/hex.c, common/compat/lib/utils).  The Wi-Fi
 # credentials (../wifi) use the same settings.

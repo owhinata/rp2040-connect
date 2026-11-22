@@ -20,27 +20,24 @@
  *
  ****************************************************************************/
 
-/* The OS boundary of the key-value area (common/compat/flash_kv_os.h):
- * reads, 256-byte page programs and 4 KiB sector erases of the last 8 KiB
- * of the 16 MiB flash (0x10ffe000-0x10ffffff, two sectors), the place of
- * the Zephyr build's storage_partition.  The copies of Zephyr's NVS and
- * settings (common/compat/subsys) keep the store there in the Zephyr
- * build's format through the flash device of
- * common/compat/zephyr_flash_kv.c, which calls these functions.  The image
- * never reaches the area (scripts/arduino-nano-rp2040-connect-flash.ld
- * leaves it out of the flash region; nuttx/script/build.sh checks the image
- * end).
+/* The flash operations of the key-value area on NuttX
+ * (common/chip/rp2040/include/rp2040_flash_kv_os.h): one 256-byte page
+ * program or one 4 KiB sector erase with XIP off and interrupts disabled,
+ * with the boot ROM, for the shared part
+ * (common/chip/rp2040/rp2040_flash_kv.c), which implements the OS boundary
+ * of the area (common/compat/flash_kv_os.h) with them and checks every
+ * request against the area and the linker script's bounds first.  NuttX's
+ * own flash driver for this chip (arch/arm/src/rp2040/rp2040_flash_mtd.c,
+ * RP2040_FLASH_FILE_SYSTEM) is not used: its area is the SmartFS region
+ * after the image, which it erases to the end of the flash at the first
+ * start, and it is an MTD device, not the area's page and sector
+ * operations.  The image never reaches the area
+ * (scripts/arduino-nano-rp2040-connect-flash.ld leaves it out of the flash
+ * region; nuttx/script/build.sh checks the image end).
  *
- * Safety: an erase or a program outside the area would destroy the
- * firmware.  Every request is checked three times before the flash is
- * touched: in zephyr_flash_kv.c (against the constants of flash_kv.h),
- * here (flash_kv_range_ok() against the board.h constants and against the
- * bounds taken from the linker script), and again in the RAM function
- * itself right before the boot ROM is called.
- * The bounds are set only after the linker symbols __kv_start/__kv_end
- * have been found equal to the constants and the image found to end
- * before the area; until then every request is refused and
- * flash_kv_os_ready() is false.
+ * The last check of a request, against the bounds the shared part passes,
+ * is in the RAM function itself (kv_flash_op()) right before the boot ROM
+ * is called; it refuses without touching the flash.
  *
  * Erasing and programming stop XIP, so they run from RAM with interrupts
  * disabled: the boot ROM's connect_internal_flash, flash_exit_xip,
@@ -51,7 +48,6 @@
  * Zephyr driver (drivers/flash/flash_rpi_pico.c) disables them (irq_lock)
  * for one erase or write call: NVS erases one sector per call and writes
  * one entry's data (up to two pages) or one table entry per call.
- * Reads go through the uncached XIP alias (0x13000000).
  */
 
 /****************************************************************************
@@ -61,7 +57,6 @@
 #include <nuttx/config.h>
 
 #include <sys/types.h>
-#include <stdbool.h>
 #include <stdint.h>
 #include <string.h>
 #include <errno.h>
@@ -73,9 +68,8 @@
 #include "rp2040_rom.h"
 
 #include "app_log.h"
-#include "rp2040_pico.h"
 #include "flash_kv.h"
-#include "flash_kv_os.h"
+#include "rp2040_flash_kv_os.h"
 
 /****************************************************************************
  * Pre-processor Definitions
@@ -86,13 +80,7 @@
 #endif
 
 #define KV_XIP_BASE          0x10000000u
-#define KV_XIP_NOCACHE_BASE  0x13000000u  /* XIP_NOCACHE_NOALLOC_BASE */
 #define KV_BOOT2_SIZE        256u
-
-/* The area as flash offsets, [KV_LO, KV_HI). */
-
-#define KV_LO                ((uint32_t)BOARD_KV_OFFSET)
-#define KV_HI                ((uint32_t)(BOARD_KV_OFFSET + BOARD_KV_SIZE))
 
 #if BOARD_KV_OFFSET != FLASH_KV_OFFSET || BOARD_KV_SIZE != FLASH_KV_SIZE || \
     BOARD_KV_OFFSET + BOARD_KV_SIZE != BOARD_FLASH_SIZE
@@ -130,10 +118,8 @@ struct kv_rom_s
  * Public Data
  ****************************************************************************/
 
-/* scripts/arduino-nano-rp2040-connect-flash.ld and the startup code. */
+/* The startup code's symbols (the end of the image in the flash). */
 
-extern const uint8_t __kv_start[];
-extern const uint8_t __kv_end[];
 extern const uint8_t _eronly[];
 extern uint8_t _sdata[];
 extern uint8_t _edata[];
@@ -144,18 +130,12 @@ extern uint8_t _edata[];
 
 LOG_MODULE_REGISTER(flash_kv, LOG_LEVEL_INF);
 
-/* Everything the RAM function touches is in RAM. */
+/* Everything the RAM function touches is in RAM (the page as well: the
+ * shared part's copy).
+ */
 
 static struct kv_rom_s g_kv_rom;
 static uint32_t g_kv_boot2[KV_BOOT2_SIZE / 4];
-static uint8_t g_kv_page[FLASH_KV_PAGE_SIZE] aligned_data(4);
-
-/* The area's bounds as flash offsets once the linker script has been
- * checked; 0 and 0 refuse everything.
- */
-
-static uint32_t g_kv_lo;
-static uint32_t g_kv_hi;
 
 /****************************************************************************
  * Private Functions
@@ -168,16 +148,14 @@ static uint32_t g_kv_hi;
  *   Program one page (page != NULL) or erase one sector (page == NULL) at
  *   flash offset addr.  Runs from RAM with interrupts disabled and calls
  *   nothing but the boot ROM and the RAM copy of boot2.  Refuses (returns
- *   -EINVAL without touching the flash) anything outside the area.
+ *   -EINVAL without touching the flash) anything outside [lo, hi).
  *
  ****************************************************************************/
 
 static int locate_code(".ram_code.kv_flash_op") noinline_function
-kv_flash_op(uint32_t addr, FAR const uint8_t *page, uint32_t count)
+kv_flash_op(uint32_t addr, FAR const uint8_t *page, uint32_t count,
+            uint32_t lo, uint32_t hi)
 {
-  uint32_t lo = g_kv_lo;
-  uint32_t hi = g_kv_hi;
-
   if (lo == 0 || lo >= hi || addr < lo || addr >= hi || count == 0 ||
       count > hi - addr)
     {
@@ -215,30 +193,19 @@ kv_flash_op(uint32_t addr, FAR const uint8_t *page, uint32_t count)
  * Name: kv_flash
  *
  * Description:
- *   Check a program (page != NULL, count 256) or erase (page == NULL,
- *   count 4096) request at flash offset addr against both copies of the
- *   area's bounds and run it with interrupts disabled.
+ *   Run a program (page != NULL, count 256) or erase (page == NULL, count
+ *   4096) request at flash offset addr with interrupts disabled.
  *
  ****************************************************************************/
 
-static int kv_flash(uint32_t addr, FAR const uint8_t *page, uint32_t count)
+static int kv_flash(uint32_t addr, FAR const uint8_t *page, uint32_t count,
+                    uint32_t lo, uint32_t hi)
 {
-  uint32_t align = page != NULL ? FLASH_KV_PAGE_SIZE : FLASH_KV_SECTOR_SIZE;
   irqstate_t flags;
   int ret;
 
-  if (count != align ||
-      !flash_kv_range_ok(addr, count, KV_LO, KV_HI, align) ||
-      !flash_kv_range_ok(addr, count, g_kv_lo, g_kv_hi, align))
-    {
-      LOG_ERR("Refused flash %s at 0x%08lx, %lu bytes",
-              page != NULL ? "write" : "erase", (unsigned long)addr,
-              (unsigned long)count);
-      return -EINVAL;
-    }
-
   flags = up_irq_save();
-  ret = kv_flash_op(addr, page, count);
+  ret = kv_flash_op(addr, page, count, lo, hi);
   up_irq_restore(flags);
 
   return ret;
@@ -249,78 +216,23 @@ static int kv_flash(uint32_t addr, FAR const uint8_t *page, uint32_t count)
  ****************************************************************************/
 
 /****************************************************************************
- * Name: flash_kv_os_ready, flash_kv_os_read,
- *       flash_kv_os_program, flash_kv_os_erase
+ * Name: rp2040_flash_kv_os_init
  *
  * Description:
- *   The boundary of common/compat/flash_kv_os.h.  The program copies
- *   the page into RAM first: the caller's page may be anywhere, and the
- *   ROM reads it while XIP is off.
- *
- ****************************************************************************/
-
-bool flash_kv_os_ready(void)
-{
-  return g_kv_lo != 0;
-}
-
-int flash_kv_os_read(uint32_t offset, FAR void *buf, uint32_t len)
-{
-  if (!flash_kv_range_ok(offset, len, KV_LO, KV_HI, 1))
-    {
-      LOG_ERR("Refused flash read at 0x%08lx, %lu bytes",
-              (unsigned long)offset, (unsigned long)len);
-      return -EINVAL;
-    }
-
-  memcpy(buf, (FAR const void *)(uintptr_t)(KV_XIP_NOCACHE_BASE + offset),
-         len);
-  return OK;
-}
-
-int flash_kv_os_program(uint32_t page_offset,
-                        FAR const uint8_t page[FLASH_KV_PAGE_SIZE])
-{
-  memcpy(g_kv_page, page, FLASH_KV_PAGE_SIZE);
-  return kv_flash(page_offset, g_kv_page, FLASH_KV_PAGE_SIZE);
-}
-
-int flash_kv_os_erase(uint32_t sector_offset)
-{
-  return kv_flash(sector_offset, NULL, FLASH_KV_SECTOR_SIZE);
-}
-
-/****************************************************************************
- * Name: flash_kv_os_initialize
- *
- * Description:
- *   Check the linker script, find the boot ROM's flash functions and copy
- *   boot2, then accept requests.  Called once from rp2040_bringup().  What
- *   the area holds is checked when the settings open it
- *   (common/compat/zephyr_flash_kv.c); nothing is erased here.
+ *   Find the boot ROM's flash functions and copy boot2
+ *   (rp2040_flash_kv_os.h).  Called once by the shared part's
+ *   flash_kv_os_initialize() (from rp2040_bringup()) after the linker
+ *   script has been checked.  What the area holds is checked when the
+ *   settings open it (common/compat/zephyr_flash_kv.c); nothing is erased
+ *   here.
  *
  * Returned Value:
- *   OK, or a negated errno value (then every request is refused).
+ *   OK, or -ENOSYS (then every request is refused).
  *
  ****************************************************************************/
 
-int flash_kv_os_initialize(void)
+int rp2040_flash_kv_os_init(void)
 {
-  uintptr_t image_end = (uintptr_t)_eronly +
-                        (uintptr_t)(_edata - _sdata);
-
-  if ((uintptr_t)__kv_start != KV_XIP_BASE + KV_LO ||
-      (uintptr_t)__kv_end != KV_XIP_BASE + KV_HI ||
-      image_end > (uintptr_t)__kv_start)
-    {
-      LOG_ERR("Key-value area: linker script disagrees "
-              "(0x%08lx-0x%08lx, image end 0x%08lx)",
-              (unsigned long)(uintptr_t)__kv_start,
-              (unsigned long)(uintptr_t)__kv_end,
-              (unsigned long)image_end);
-      return -EFAULT;
-    }
-
 #pragma GCC diagnostic push
 #pragma GCC diagnostic ignored "-Warray-bounds"
   g_kv_rom.connect_internal_flash =
@@ -350,8 +262,41 @@ int flash_kv_os_initialize(void)
    */
 
   memcpy(g_kv_boot2, (FAR const void *)KV_XIP_BASE, KV_BOOT2_SIZE);
-
-  g_kv_lo = KV_LO;
-  g_kv_hi = KV_HI;
   return OK;
+}
+
+/****************************************************************************
+ * Name: rp2040_flash_kv_os_image_end
+ *
+ * Description:
+ *   The XIP address where the image ends: the code and read-only data
+ *   (_eronly) and the initial values of .data stored after them.
+ *
+ ****************************************************************************/
+
+uintptr_t rp2040_flash_kv_os_image_end(void)
+{
+  return (uintptr_t)_eronly + (uintptr_t)(_edata - _sdata);
+}
+
+/****************************************************************************
+ * Name: rp2040_flash_kv_os_program, rp2040_flash_kv_os_erase
+ *
+ * Description:
+ *   One page program, one sector erase (rp2040_flash_kv_os.h).  The page
+ *   is the shared part's copy in RAM; the ROM reads it while XIP is off.
+ *
+ ****************************************************************************/
+
+int rp2040_flash_kv_os_program(uint32_t page_offset,
+                               FAR const uint8_t *page, uint32_t lo,
+                               uint32_t hi)
+{
+  return kv_flash(page_offset, page, FLASH_KV_PAGE_SIZE, lo, hi);
+}
+
+int rp2040_flash_kv_os_erase(uint32_t sector_offset, uint32_t lo,
+                             uint32_t hi)
+{
+  return kv_flash(sector_offset, NULL, FLASH_KV_SECTOR_SIZE, lo, hi);
 }
