@@ -60,7 +60,8 @@ FreeRTOS 版だけがビルドする共有ファイル: `common/compat/zephyr_wi
 - **セマフォと `k_poll`**: Zephyr の規則（give は最も優先度の高い待ち手に渡す、`k_sem_reset()` は待ちを
   `-EAGAIN` で終える）を互換層の数で作り、待ちはタスク通知（番号 1。0 は Pico SDK とアプリ用）で行います。
   割り込みからの give は、ハンドラーの終わりで切り替えを要求し、起こしたタスクがすぐ走ります。
-- **静的なスレッド**: `K_THREAD_DEFINE()` のタスクは、起動のタスク（`main`）が Zephyr と同じ順に始めます。
+- **静的なスレッド**: `K_THREAD_DEFINE()` のタスクは、起動のタスク（`main`）が NuttX 版と共有のアプリの表
+  （`common/imu/app_init.c` の `app_threads_start()`）から始めます。
   互換層のスレッド（ワークキューのもの、`RTIO WQ 0`、`net_mgmt`）も同じ方法で始めます（`z_thread_static_start()`:
   静的なスタックのタスク。関数が戻ると削除）。
 - **時計**: `k_uptime_*()`・`k_cycle_*()`・`time_sync_mono_us()` は RP2040 の TIMER（1 MHz）から作り、tick から
@@ -108,9 +109,10 @@ FreeRTOS 版だけがビルドする共有ファイル: `common/compat/zephyr_wi
 ヒープは FreeRTOS の heap_4 で 32 KiB です（`free`）。タスクのスタックは静的に確保します。
 
 **起動**（`main.c`）: `main()` で RAM ログ、異常停止の記録の読み出し、コンソール、互換層、NINA の SPI、
-I2C0（先にその読み出しのための DMA の割り込みハンドラー）、KV のフラッシュの準備を行い、タスク `main` で LSM6DSOX、NINA のインターフェース、Wi-Fi の資格情報、
-Telnet、`K_THREAD_DEFINE()` のスレッド、KV、校正値、時刻同期、自動接続の順に始めます（Zephyr 版の初期化の順、
-NuttX 版の起動処理の順と同じ）。
+I2C0（先にその読み出しのための DMA の割り込みハンドラー）、KV のフラッシュの準備を行い、タスク `main` で LSM6DSOX、
+NINA のインターフェースを始め、そのあと 3 版で共有のアプリの起動（`common/imu/app_main.h`。Zephyr 版の初期化の順）に
+この版の `wifi` コマンドと Telnet を挟んで、Wi-Fi の資格情報、`wifi` コマンド、Telnet、`K_THREAD_DEFINE()` のスレッド、
+KV、校正値、時刻同期、自動接続の順に始めます。
 
 **CPU 負荷**（`idle.c`）: アイドルフックで、割り込みを禁止し、窓を開き、`WFI` で待ち、窓を閉じ、割り込みを許可
 します（Zephyr 版の `CONFIG_CPU_LOAD`、NuttX 版の `up_idle()` と同じ測り方）。1 ms ごとの tick の割り込みは負荷に

@@ -10,7 +10,7 @@ project(usb_console)
 set(COMMON_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../../common)
 cmake_path(NORMAL_PATH COMMON_DIR)
 
-target_sources(app PRIVATE src/main.c src/log_ram.c ${COMMON_DIR}/imu/kv_store.c ${COMMON_DIR}/imu/imu_cal.c
+target_sources(app PRIVATE src/main.c ${COMMON_DIR}/imu/app_main.c src/log_ram.c ${COMMON_DIR}/imu/kv_store.c ${COMMON_DIR}/imu/imu_cal.c
   ${COMMON_DIR}/imu/imu_cal_codec.c ${COMMON_DIR}/imu/wifi_profile.c
   ${COMMON_DIR}/imu/time_sync.c ${COMMON_DIR}/imu/time_offset.c
   ${COMMON_DIR}/imu/imu_stream.c ${COMMON_DIR}/imu/imu_raw_batch.c ${COMMON_DIR}/imu/imu_raw_packet.c

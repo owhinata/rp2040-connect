@@ -16,10 +16,9 @@
 #include "task.h"
 #include "app.h"
 #include "app_log.h"
+#include "app_main.h"
 #include "fault.h"
 #include "i2c_dw_controllers_rp2040.h"
-#include "imu_cal.h"
-#include "kv_store.h"
 #include "log_ram.h"
 #include "nano_flash_kv_os.h"
 #include "lsm6dso_board.h"
@@ -27,13 +26,10 @@
 #include "shell_serial.h"
 #include "shell_telnet.h"
 #include "priorities.h"
-#include "time_sync.h"
-#include "wifi_profile.h"
-#include <zephyr/net/wifi_credentials.h>
 #include "zephyr_compat.h"
 #include "zephyr_net_init.h"
 
-LOG_MODULE_REGISTER(usb_console, LOG_LEVEL_INF);
+LOG_MODULE_DECLARE(usb_console, LOG_LEVEL_INF);
 
 /* The "wifi" command's SYS_INIT(APPLICATION) in the Zephyr build
  * (common/compat/zephyr_wifi_shell.c).
@@ -83,18 +79,13 @@ static void console_banner(void)
 	fault_record_print(fault_last());
 }
 
-static void start_thread(int ret, const char *name)
-{
-	if (ret) {
-		LOG_ERR("Could not start %s: %d", name, ret);
-	}
-}
-
-/* The Zephyr build's main() (zephyr/app/usb-console/src/main.c), as the task
- * "main" with its priority (APP_PRIO_MAIN: Zephyr's 0, above the console) and
- * stack, ending when done as Zephyr's main thread does.  It runs before the
- * console's task, which has a lower priority, as the Zephyr build's main()
- * runs before its shell thread.
+/* What the Zephyr build's main thread runs after the kernel's start, as the
+ * task "main" with its priority (APP_PRIO_MAIN: Zephyr's 0, above the
+ * console) and stack, ending when done as Zephyr's main thread does.  It
+ * runs before the console's task, which has a lower priority, as the Zephyr
+ * build's main() runs before its shell thread.  The devices that need a
+ * task come first, then the application's start in its shared order
+ * (common/imu/app_main.h) with this build's SYS_INIT(APPLICATION) parts.
  * First the LSM6DSOX (lsm6dsox@6a), which Zephyr initializes in its main
  * thread before main() (POST_KERNEL, CONFIG_SENSOR_INIT_PRIORITY 90) and the
  * NuttX build in its bringup, after I2C0: it needs a task (the driver sleeps
@@ -105,15 +96,10 @@ static void start_thread(int ret, const char *name)
  * tried) and the start goes on (freertos/drivers/lsm6dso/lsm6dso_board.h).
  * While the driver waits, the console's task may run; a command that uses
  * the sensor before it is ready gets the error of a device that is not.
- * The settings are first initialized by wifi_credentials_init(), as the
- * Wi-Fi credentials' SYS_INIT() does it in the Zephyr build before main():
- * settings_subsys_init() checks what the key-value area holds, mounts NVS
- * on it (the "fs_nvs" lines of "dmesg") and reads the settings' handlers;
- * kv_store_init() at main()'s point calls it again, which does nothing more.
- * Data that is neither Zephyr's NVS nor erased is not touched: the check
- * logs it and every call of the store fails with -EILSEQ until "kv wipe
- * confirm" (common/compat/zephyr_flash_kv.c), and the Wi-Fi part starts
- * without stored networks.
+ * Data in the key-value area that is neither Zephyr's NVS nor erased is not
+ * touched: the settings' check logs it and every call of the store fails
+ * with -EILSEQ until "kv wipe confirm" (common/compat/zephyr_flash_kv.c),
+ * and the Wi-Fi part starts without stored networks.
  */
 static void main_main(void *arg)
 {
@@ -136,13 +122,11 @@ static void main_main(void *arg)
 		LOG_ERR("Could not set up the NINA's network interface: %d", ret);
 	}
 
-	/* The Wi-Fi credentials library's SYS_INIT(POST_KERNEL), which Zephyr
-	 * runs before the threads below start: initializes the settings (mounts
-	 * NVS on the key-value area; data that is not Zephyr's NVS is left
-	 * alone, and the call fails with -EILSEQ) and reads the stored SSIDs.
-	 * Then the "wifi" command's SYS_INIT(APPLICATION): its event callback.
+	/* The Wi-Fi credentials (the settings and NVS, the "fs_nvs" lines of
+	 * "dmesg"), then the "wifi" command's SYS_INIT(APPLICATION): its
+	 * event callback.
 	 */
-	(void)wifi_credentials_init();
+	app_init_post_kernel();
 	(void)wifi_shell_init();
 
 	/* The Telnet shell backend's SYS_INIT(APPLICATION, 95), after the
@@ -154,61 +138,8 @@ static void main_main(void *arg)
 	 */
 	(void)shell_telnet_init(CONSOLE_PROMPT);
 
-	/* The threads of K_THREAD_DEFINE(), which Zephyr starts before main()
-	 * (z_init_static_threads(), after the devices) and the NuttX build in
-	 * its init task at this point, in the NuttX build's order: the NINA
-	 * driver's (common/drivers/nina/port/zephyr/nina_net.c, the core's
-	 * nina_wifi.c: scan, connect, link monitor), the IMU service's
-	 * (common/imu/imu_stream.c), its MQTT transport's
-	 * (common/imu/imu_raw_mqtt.c), the time synchronization's
-	 * (common/imu/time_sync.c), the Wi-Fi profile's reconnection
-	 * (common/imu/wifi_profile.c) and the sensor shell's processing thread
-	 * (common/compat/sensor_shell_stream.c).  Each waits for its work at
-	 * once (the monitor polls every 2 s while connected; the transport
-	 * waits for "imu start"; the time synchronization waits for the Wi-Fi
-	 * events of time_sync_init(); the processing thread waits for the
-	 * completions of "sensor get" and "sensor stream").  They have lower
-	 * priorities than this task, or its own (the processing thread, Zephyr's
-	 * 0), so they first run when this task waits.
-	 */
-	start_thread(K_THREAD_DEFINE_START(nina_scan_tid), "nina_scan_tid");
-	start_thread(K_THREAD_DEFINE_START(nina_connect_tid), "nina_connect_tid");
-	start_thread(K_THREAD_DEFINE_START(nina_monitor_tid), "nina_monitor_tid");
-	start_thread(K_THREAD_DEFINE_START(imu_stream_tid), "imu_stream_tid");
-	start_thread(K_THREAD_DEFINE_START(imu_raw_mqtt_tid), "imu_raw_mqtt_tid");
-	start_thread(K_THREAD_DEFINE_START(time_sync_tid), "time_sync_tid");
-	start_thread(K_THREAD_DEFINE_START(wifi_reconnect_tid), "wifi_reconnect_tid");
-	start_thread(K_THREAD_DEFINE_START(sensor_shell_processing_tid),
-		     "sensor_shell_processing_tid");
-	/* The iperf3 server of "zperf tcp download" (common/compat/
-	 * zperf_iperf3.h), Zephyr's net_socket_service thread: waits until
-	 * the server is started.
-	 */
-	start_thread(K_THREAD_DEFINE_START(zperf_server_tid), "zperf_server_tid");
-
-	LOG_INF("USB console started");
-	ret = kv_store_init();
-	if (ret) {
-		LOG_ERR("Could not initialize settings: %d", ret);
-	}
-	ret = imu_cal_init();
-	if (ret) {
-		LOG_ERR("Could not set up the IMU calibration: %d", ret);
-	}
-	/* The time synchronization's Wi-Fi events (common/imu/time_sync.c):
-	 * from a connection on, time_sync_tid asks the NTP server (the default
-	 * gateway, port 123) every 2 s; a disconnection stops it.  Before
-	 * wifi_profile_init(), so that the automatic connection's event is
-	 * seen, as in the Zephyr and NuttX builds.
-	 */
-	time_sync_init();
-	/* The automatic connection: the event callback, the migration of an
-	 * old profile to the stored credentials, and a request to the
-	 * reconnection thread, which connects to a stored network 4 s later
-	 * and retries every 32 s while there is no address (nothing when no
-	 * network is stored).
-	 */
-	(void)wifi_profile_init();
+	app_threads_start();
+	app_main();
 	vTaskDelete(NULL);
 }
 

@@ -1,15 +1,9 @@
 #include <string.h>
 #include <zephyr/kernel.h>
-#include <zephyr/logging/log.h>
 #include <zephyr/shell/shell.h>
 #include <pico/bootrom.h>
+#include "app_main.h"
 #include "nina_passthrough.h"
-#include "wifi_profile.h"
-#include "time_sync.h"
-#include "imu_cal.h"
-#include "kv_store.h"
-
-LOG_MODULE_REGISTER(usb_console, LOG_LEVEL_INF);
 
 /* "kernel ps": each thread's share of the CPU time since the previous
  * "kernel ps" (since the start for the first), from any shell, and the use
@@ -155,10 +149,11 @@ static int cmd_bootsel(const struct shell *sh, size_t argc, char **argv)
 
 SHELL_CMD_REGISTER(bootsel, NULL, "Restart into the USB bootloader (BOOTSEL)", cmd_bootsel);
 
+/* The kernel has run the application's SYS_INIT() parts and started its
+ * K_THREAD_DEFINE() threads before this (common/imu/app_main.h).
+ */
 int main(void)
 {
-	int ret;
-
 	/* "nina passthrough confirm" asked for the NINA passthrough mode
 	 * (common/drivers/nina/include/nina_passthrough.h): it runs instead of all that
 	 * follows (no settings, no Wi-Fi, no time synchronization), until it
@@ -170,16 +165,6 @@ int main(void)
 	}
 #endif
 
-	LOG_INF("USB console started");
-	ret = kv_store_init();
-	if (ret) {
-		LOG_ERR("Could not initialize settings: %d", ret);
-	}
-	ret = imu_cal_init();
-	if (ret) {
-		LOG_ERR("Could not set up the IMU calibration: %d", ret);
-	}
-	time_sync_init();
-	(void)wifi_profile_init();
+	app_main();
 	return 0;
 }

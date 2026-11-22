@@ -65,47 +65,13 @@
 #include "nsh.h"
 #include "nsh_console.h"
 
-#include "app_log.h"
+#include "app_main.h"
 #include "priorities.h"
 #include "rp2040_init.h"
-
-#ifdef CONFIG_KV_STORE
-#  include "kv_store.h"
-#endif
-
-#if defined(CONFIG_APP_IMU) || defined(CONFIG_WIFI_PROFILE) || \
-    defined(CONFIG_APP_SENSOR)
-#  include "zephyr_compat.h"
-#endif
-
-#ifdef CONFIG_NINA_NET
-#  include "nina_net.h"
-#endif
-
-#ifdef CONFIG_APP_IMU
-#  include "imu_cal.h"
-#  include "time_sync.h"
-#endif
 
 #ifdef CONFIG_NINA_PASSTHROUGH
 #  include "nina_passthrough.h"
 #endif
-
-/* nuttx/apps/wifi: <zephyr/net/wifi_credentials.h> and <wifi_profile.h>
- * declare these, but this file does not include the Zephyr compatibility
- * layer's headers (see zephyr_compat.h).
- */
-
-#ifdef CONFIG_WIFI_CREDENTIALS
-int wifi_credentials_init(void);
-#endif
-#ifdef CONFIG_WIFI_PROFILE
-int wifi_profile_init(void);
-#endif
-
-/* The module name and level of the Zephyr build's main.c. */
-
-LOG_MODULE_REGISTER(usb_console, LOG_LEVEL_INF);
 
 /****************************************************************************
  * Public Functions
@@ -227,18 +193,16 @@ static void console_setup(int fd)
  *   CONFIG_INIT_ENTRYPOINT.  Never returns.
  *
  *   Starts at CONFIG_INIT_PRIORITY, the priority of the Zephyr build's
- *   main() (APP_PRIO_MAIN, 118), does what that main() does, then drops to
- *   the shell's priority (APP_PRIO_SHELL, 104) for the console loop, which
- *   the Zephyr build runs in its shell thread.
+ *   main() (APP_PRIO_MAIN, 118), does what the Zephyr build's kernel and
+ *   main() do for the application (the shared start, app_main.h of
+ *   common/imu), then drops to the shell's priority (APP_PRIO_SHELL, 104)
+ *   for the console loop, which the Zephyr build runs in its shell thread.
  *
  ****************************************************************************/
 
 int rp2040_init_main(int argc, FAR char *argv[])
 {
   struct sched_param param;
-#if defined(CONFIG_KV_STORE) || defined(CONFIG_APP_IMU)
-  int ret;
-#endif
 
 #ifdef CONFIG_NINA_PASSTHROUGH
   /* "nina passthrough confirm" asked for the NINA passthrough mode
@@ -255,75 +219,28 @@ int rp2040_init_main(int argc, FAR char *argv[])
 
   nsh_initialize();
 
-#ifdef CONFIG_WIFI_CREDENTIALS
-  /* The Wi-Fi credentials library's SYS_INIT(POST_KERNEL), which Zephyr
-   * runs before the threads below start: initializes the settings (mounts
-   * NVS on the key-value area) and reads the stored SSIDs.
+  /* The application's start (common/imu/app_main.h): the Wi-Fi
+   * credentials, which initialize the settings (mount NVS on the key-value
+   * area) and read the stored SSIDs, then the threads that Zephyr starts
+   * before main() (z_init_static_threads()), the NINA binding's first
+   * (nina_net_start()).
    */
 
-  wifi_credentials_init();
-#endif
-
-  /* Zephyr starts the threads of K_THREAD_DEFINE() before main()
-   * (z_init_static_threads()).  Each waits for its work at once.
-   */
-
-#ifdef CONFIG_NINA_NET
-  nina_net_start();  /* nina_scan_tid, _connect_tid, _monitor_tid */
-#endif
-#ifdef CONFIG_APP_IMU
-  K_THREAD_DEFINE_START(imu_stream_tid);  /* common/imu/imu_stream.c */
-#endif
-#ifdef CONFIG_IMU_RAW_MQTT
-  K_THREAD_DEFINE_START(imu_raw_mqtt_tid);  /* common/imu/imu_raw_mqtt.c */
-#endif
-#ifdef CONFIG_TIME_SYNC
-  K_THREAD_DEFINE_START(time_sync_tid);   /* common/imu/time_sync.c */
-#endif
-#ifdef CONFIG_WIFI_PROFILE
-  K_THREAD_DEFINE_START(wifi_reconnect_tid);  /* common/imu/wifi_profile.c */
-#endif
-#ifdef CONFIG_APP_SENSOR
-  K_THREAD_DEFINE_START(sensor_shell_processing_tid);  /* ../sensor/sensor_shell_stream.c */
-#endif
+  app_init_post_kernel();
+  app_threads_start();
 
 #ifdef CONFIG_INIT_TELNET
   /* The Telnet shell backend's SYS_INIT(APPLICATION), before main(): the
-   * listening socket (shell_telnet.c telnet_init()).
+   * listening socket (shell_telnet.c telnet_init()).  After the threads,
+   * where Zephyr's runs before them.
    */
 
   rp2040_telnet_start();
 #endif
 
-  /* zephyr/app/usb-console/src/main.c */
+  /* The Zephyr build's main(). */
 
-  LOG_INF("USB console started");
-#ifdef CONFIG_KV_STORE
-  /* settings_subsys_init() (Zephyr's, common/compat/subsys), at the same
-   * point as main(): NVS is mounted already when the Wi-Fi credentials'
-   * initialization above has done it.
-   */
-
-  ret = kv_store_init();
-  if (ret)
-    {
-      LOG_ERR("Could not initialize settings: %d", ret);
-    }
-#endif
-
-#ifdef CONFIG_APP_IMU
-  ret = imu_cal_init();
-  if (ret)
-    {
-      LOG_ERR("Could not set up the IMU calibration: %d", ret);
-    }
-
-  time_sync_init();
-#endif
-
-#ifdef CONFIG_WIFI_PROFILE
-  (void)wifi_profile_init();
-#endif
+  app_main();
 
   param.sched_priority = APP_PRIO_SHELL;
   sched_setparam(0, &param);

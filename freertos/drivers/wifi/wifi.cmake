@@ -93,6 +93,7 @@ function(freertos_wifi target)
 
   target_compile_definitions(${target} PRIVATE
     CONFIG_WIFI_CREDENTIALS=1
+    CONFIG_WIFI_PROFILE=1
   )
 
   set(prelude "-include;${FREERTOS_COMPAT_DIR}/common_prelude.h")

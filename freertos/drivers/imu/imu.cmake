@@ -82,6 +82,14 @@ function(freertos_imu target)
     ${FREERTOS_COMMON_DIR}/imu
   )
 
+  # The NuttX build's options of these modules, which the application's
+  # start (common/imu/app_main.c, app_init.c) reads.
+  target_compile_definitions(${target} PRIVATE
+    CONFIG_APP_IMU=1
+    CONFIG_IMU_RAW_MQTT=1
+    CONFIG_TIME_SYNC=1
+  )
+
   target_link_libraries(${target}
     pico_unique_id
   )

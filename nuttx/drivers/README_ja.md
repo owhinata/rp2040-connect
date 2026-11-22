@@ -173,7 +173,7 @@ Zephyr 版はソケットのオフロード（`common/drivers/nina/port/zephyr/n
 | `common/drivers/nina/nina_wifi.c`・`include/nina_wifi.h` | コアの Wi-Fi の操作（ほかの版と同じファイル）。スキャン・接続・切断・状態・接続の監視と、3 つのスレッド `nina_scan_tid`・`nina_connect_tid`・`nina_monitor_tid` の本体。起きたことはつなぎのコールバック（`struct nina_wifi_ops`）に返す |
 | `common/drivers/nina/port/nuttx/nina_netdev.c` | NINA を NuttX のネットワークデバイス `wlan0` として登録し、wapi の無線の ioctl をコアの呼び出しにし、コアの結果を `wlan0`（アドレス、キャリア）に反映し、3 つのスレッドを始める。NuttX 版だけ |
 | `common/drivers/nina/port/nuttx/nina_wifi_mgmt.[ch]` | アプリが使う Zephyr の Wi-Fi 管理（互換層の `net_mgmt()`）をコアの上で：`net_if_get_default()` のインターフェース、`NET_REQUEST_WIFI_CONNECT`（`NET_REQUEST_WIFI_CONNECT_STORED` が保存したネットワークごとに出す）、接続のイベント、Wi-Fi のプロファイルの再接続をコアのフックに（`CONFIG_WIFI_PROFILE` のとき `common/imu/wifi_profile.c`。無ければ接続はすべて許し、再接続しない） |
-| `common/drivers/nina/port/nuttx/nina_net.h` | `nina_net_initialize()`（ボードの起動処理）と `nina_net_start()`（init） |
+| `common/drivers/nina/port/nuttx/nina_net.h` | `nina_net_initialize()`（ボードの起動処理）と `nina_net_start()`（init が実行するアプリのスレッドの表、`common/imu/app_init.c`） |
 
 - 操作は Zephyr 版と同じです: 監視は 2 秒ごとに、接続中なら NINA の状態（0x20）を見て、2 回続けて未接続なら切断として
   IP の設定を消し、切断のイベントを出して再接続を頼みます。接続は NINA に SSID（とパスフレーズ）を渡した後、
@@ -188,7 +188,7 @@ Zephyr 版はソケットのオフロード（`common/drivers/nina/port/zephyr/n
   インターフェースを登録し、`wlan0` を `NET_LL_IEEE80211` で登録して `IFF_UP`・キャリアなしにし、NINA から MAC アドレス
   （0x22）と追加機能を読みます（`nina_wifi_init()`。Zephyr と同じ順）。これが NINA への最初の命令なので、ここで NINA の
   リセット（10 ms、750 ms）が入ります。3 つのスレッドは、Zephyr が静的なスレッドを始めるところで init が
-  `nina_net_start()` で始めます。静的なスタックのカーネルスレッド（`kthread_create_with_stack()`）で、優先度とスタックは
+  `nina_net_start()` で始めます（アプリのスレッドの表、`common/imu/app_init.c` の `app_threads_start()` の最初の項目）。静的なスタックのカーネルスレッド（`kthread_create_with_stack()`）で、優先度とスタックは
   `priorities.h` の値（110、110、109。1536、1024、1536 バイト）、1 つが動き出してから次を始めます。
 - インターフェースの値: IPv4 のアドレス・ネットマスク・ゲートウェイは `wlan0` の `d_ipaddr`・`d_netmask`・
   `d_draddr`、MAC アドレスは `d_mac` に書きます。NuttX の `ifconfig`（`/proc/net/wlan0`）と `SIOCGIFADDR` などは
@@ -634,7 +634,7 @@ Zephyr の API を、Zephyr の名前のまま最小限だけ用意したもの�
 | `kv_store_os.h` | `common/imu/kv_store.c` の OS の部分: `kv wipe` のサブコマンド（Zephyr 版の `zephyr/app/usb-console/src/kv_store_os.h` は空） |
 | `zephyr/logging/log.h` | `LOG_MODULE_REGISTER()`、`LOG_ERR()` などのログのマクロ。ポートの `app_log.h`（`common/compat/log/`。`dmesg` の RAM ログ）を読むだけ |
 | `zephyr/net/net_ip.h` | IPv4 のアドレスの型 `struct in_addr`（`imu_raw_mqtt.h`）。NuttX の `<netinet/in.h>` を読むだけ（同じメンバー `s_addr`、ネットワークバイト順） |
-| `zephyr_compat.h` | `zephyr_compat_initialize()`（ボードの起動処理が呼ぶ。下）、`K_THREAD_DEFINE_START()`（init が呼ぶ） |
+| `zephyr_compat.h` | `zephyr_compat_initialize()`（ボードの起動処理が呼ぶ。下）、`K_THREAD_DEFINE_START()`（アプリのスレッドの表、`common/imu/app_init.c` が呼ぶ） |
 | `sensor_shell.h` | Zephyr の `drivers/sensor/sensor_shell.h` の写し（sensor シェルの共通の型。Zephyr 版は Zephyr のものを読む） |
 | `zephyr_os.h`、`zephyr_os_spinlock.h`、`zephyr_os_atomic.h`、`zephyr_os_shell.h`（NuttX） | OS ごとのヘッダー（下）。NuttX の型（`rmutex_t`・`sem_t`・wdog・`pid_t`）、tick、優先度、TIMER、`k_yield()`（`sched_yield()`）、アサーション（`DEBUGASSERT()`）、ワークキューの待ち（`nxsem_wait_uninterruptible()`）、`sched_lock()`・`up_irq_save()`、`<nuttx/atomic.h>` の名前の引き取り、`struct shell`（端末のパスとコマンドのタスク） |
 | `common_prelude.h`（NuttX） | 前置きヘッダー（下） |
@@ -761,8 +761,9 @@ Zephyr の API を、Zephyr の名前のまま最小限だけ用意したもの�
   初期化（`lsm6dso_stream_init()`）が作ります。
 - **静的なスレッド**（`K_THREAD_DEFINE()`）: Zephyr と同じ引数で、静的なスタック、`K_PRIO_PREEMPT(prio)` の
   優先度、名前はトークンそのもの（`imu_stream_tid`）のスレッドを定義します。Zephyr はこれらを `main()` の前に
-  自動で始めますが、NuttX にはその一覧が無いので、init が `main()` 相当の処理の最初に
-  `K_THREAD_DEFINE_START(name)`（`zephyr_compat.h`）で 1 本ずつ始めます。スレッドは NuttX のカーネル
+  自動で始めますが、NuttX にはその一覧が無いので、init が FreeRTOS 版と共有のアプリの表
+  （`common/imu/app_init.c` の `app_threads_start()`、`common/imu/app_main.h`）から `K_THREAD_DEFINE_START(name)`
+  （`zephyr_compat.h`）で 1 本ずつ、`main()` 相当の処理（`app_main()`）の前に始めます。スレッドは NuttX のカーネル
   スレッド（`kthread_create_with_stack()`）で、入口の関数が戻ると終わります。`options` と `delay` は 0 だけ
   受け付けます（ほかはビルドエラー）。
 - **時間**: `k_uptime_get()` は Zephyr の `k_ticks_to_ms_floor64(k_uptime_ticks())`（tick 数を ms に切り捨て）

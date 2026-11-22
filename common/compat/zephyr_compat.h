@@ -20,9 +20,9 @@ int zephyr_compat_initialize(void);
 
 /* Starts the thread that a source defined with K_THREAD_DEFINE(name, ...)
  * of <zephyr/kernel.h>; 0 or a negative errno.  Zephyr starts every such
- * thread before main(); the port's init task starts each one with this, at
- * the start of its part that does what main() does (NuttX:
- * nuttx/apps/init).
+ * thread before main(); the application's table of threads starts each one
+ * with this, before the part that does what main() does
+ * (app_threads_start(), common/imu/app_init.c).
  */
 
 #define K_THREAD_DEFINE_START(name) \

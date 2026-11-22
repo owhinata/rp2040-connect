@@ -70,8 +70,8 @@ assumptions of Zephyr are reproduced:
   `k_sem_reset()` ends the waits with `-EAGAIN`) on a count of the layer's own; waits use a task
   notification (index 1; 0 is left to the Pico SDK and the application). A give from an interrupt
   handler asks for a switch at the end of the handler, so the woken task runs right after it.
-- **Static threads**: the tasks of `K_THREAD_DEFINE()` are started by the start-up task (`main`) in
-  Zephyr's order. Every thread of the layer (the work queues', `RTIO WQ 0`, `net_mgmt`) starts the
+- **Static threads**: the tasks of `K_THREAD_DEFINE()` are started by the start-up task (`main`) from
+  the application's table shared with the NuttX build (`app_threads_start()`, `common/imu/app_init.c`). Every thread of the layer (the work queues', `RTIO WQ 0`, `net_mgmt`) starts the
   same way (`z_thread_static_start()`: a task on its static stack, deleted when its function returns).
 - **Time**: `k_uptime_*()`, `k_cycle_*()` and `time_sync_mono_us()` come from the RP2040's TIMER (1 MHz),
   not from the tick (`os_clock.h`).
@@ -121,9 +121,10 @@ The heap is FreeRTOS's heap_4 with 32 KiB (`free`). Task stacks are allocated st
 
 **Start-up** (`main.c`): `main()` sets up the RAM log, reads the fatal error record, sets up the console,
 the layer, the NINA's SPI, I2C0 (first the DMA interrupt's handler for its reads) and the flash of the key-value store; then the task `main` starts the
-LSM6DSOX, the NINA's network interface, the Wi-Fi credentials, Telnet, the `K_THREAD_DEFINE()` threads,
-the key-value store, the calibration, the time synchronization and the automatic connection, in this
-order (the Zephyr build's initialization order and the NuttX build's start-up order).
+LSM6DSOX and the NINA's network interface, then the application's start shared by the three builds
+(`common/imu/app_main.h`, the Zephyr build's initialization order) with this build's `wifi` command and
+Telnet in it: the Wi-Fi credentials, the `wifi` command, Telnet, the `K_THREAD_DEFINE()` threads, the
+key-value store, the calibration, the time synchronization and the automatic connection, in this order.
 
 **CPU load** (`idle.c`): the idle hook disables interrupts, opens the window, waits with `WFI`, closes the
 window and enables interrupts (the measurement of the Zephyr build's `CONFIG_CPU_LOAD` and the NuttX

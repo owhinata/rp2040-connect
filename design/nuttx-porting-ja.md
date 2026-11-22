@@ -807,13 +807,14 @@ Subcommands:
   `imu status` は Zephyr 版で記録した出力と文字単位で同じ。`imu status` の項目の並びと桁も同じ）。設定は
   Zephyr 版と同じ KV のキー（`imu.host`、`imu.port`、`imu.device`、`imu.odr`、`imu.watermark`）から読みます。
 - 取得はスレッド `imu_stream_tid`（Zephyr の優先度 9 → 109、スタック 2048 の静的な配列）で動きます。Zephyr が
-  `K_THREAD_DEFINE()` のスレッドを `main()` の前に始めるのと同じく、init が `main()` 相当の処理の最初に
-  始めます（`K_THREAD_DEFINE_START()`）。コマンド `imu` 自体はシェルの優先度（104）の組み込みコマンドです。
+  `K_THREAD_DEFINE()` のスレッドを `main()` の前に始めるのと同じく、init が FreeRTOS 版と共有のアプリのスレッドの表
+  （`common/imu/app_init.c` の `app_threads_start()`、`K_THREAD_DEFINE_START()`）から、`main()` 相当の処理の前に始めます。コマンド `imu` 自体はシェルの優先度（104）の組み込みコマンドです。
 - セッション ID は、前半 8 バイトがチップ ID（USB のシリアル番号と同じ。Zephyr の `hwinfo_get_device_id()` と
   同じバイト列）、続く 4 バイトが KV の `imu.session`（4 バイトのビッグエンディアン。`imu start` のたびに +1 して
   保存）、残りが 0 です。Zephyr 版の通し番号は引き継がず、NuttX 版では 1 から始まります。
-- init は Zephyr 版の `main()` と同じ順に `kv_store_init()` → `imu_cal_init()`（失敗すると
-  `Could not set up the IMU calibration: <値>`）→ `time_sync_init()` → `wifi_profile_init()` を呼びます。
+- init は 3 版で共有の Zephyr 版の `main()` の本体（`common/imu/app_main.c` の `app_main()`）を呼び、
+  `kv_store_init()` → `imu_cal_init()`（失敗すると `Could not set up the IMU calibration: <値>`）→
+  `time_sync_init()` → `wifi_profile_init()` の順になります。
 
 ### 校正（`imu cal`）
 

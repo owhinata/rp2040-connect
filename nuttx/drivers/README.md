@@ -198,7 +198,7 @@ given by name (the default is the gateway).
 | `common/drivers/nina/nina_wifi.c` and `include/nina_wifi.h` | The core's Wi-Fi operations, the same files as the other builds': scan, connect, disconnect, status, the link monitor, and the bodies of the three threads `nina_scan_tid`, `nina_connect_tid` and `nina_monitor_tid`; what happens comes back through the binding's callbacks (`struct nina_wifi_ops`) |
 | `common/drivers/nina/port/nuttx/nina_netdev.c` | Registers the NINA as the NuttX network device `wlan0`, turns wapi's wireless ioctls into the core's calls, puts the core's results on `wlan0` (addresses, carrier) and starts the three threads. NuttX port only |
 | `common/drivers/nina/port/nuttx/nina_wifi_mgmt.[ch]` | The Zephyr Wi-Fi management that the applications use (the compatibility layer's `net_mgmt()`), on the core: the interface of `net_if_get_default()`, `NET_REQUEST_WIFI_CONNECT` (which `NET_REQUEST_WIFI_CONNECT_STORED` makes for each stored network), the connection's events, and the Wi-Fi profile's reconnection as the core's hooks (`common/imu/wifi_profile.c` with `CONFIG_WIFI_PROFILE`; without it every connection is allowed and nothing reconnects) |
-| `common/drivers/nina/port/nuttx/nina_net.h` | `nina_net_initialize()` (the board's bring-up) and `nina_net_start()` (the init task) |
+| `common/drivers/nina/port/nuttx/nina_net.h` | `nina_net_initialize()` (the board's bring-up) and `nina_net_start()` (the application's table of threads, `common/imu/app_init.c`, which the init task runs) |
 
 - The operations are the Zephyr version's: every 2 seconds, while connected, the monitor reads the
   NINA's state (0x20); after two disconnected readings in a row it treats the link as lost, clears
@@ -216,7 +216,8 @@ given by name (the default is the gateway).
   interface, registers `wlan0` as `NET_LL_IEEE80211` with `IFF_UP` and no carrier, and reads the MAC
   address from the NINA (0x22) and its capabilities (`nina_wifi_init()`), in Zephyr's order. That is
   the first command to the NINA, so the NINA reset (10 ms, 750 ms) happens here. The init task
-  starts the three threads with `nina_net_start()` where Zephyr starts its static threads: kernel
+  starts the three threads with `nina_net_start()` where Zephyr starts its static threads (the first
+  entry of the application's table of threads, `app_threads_start()` of `common/imu/app_init.c`): kernel
   threads on static stacks (`kthread_create_with_stack()`) at the priorities and with the stacks of
   `priorities.h` (110, 110, 109; 1536, 1024, 1536 bytes), each running before the next starts.
 - Interface values: the IPv4 address, netmask and gateway are `wlan0`'s `d_ipaddr`, `d_netmask` and
@@ -719,7 +720,7 @@ of the NuttX implementation on the include path.
 | `kv_store_os.h` | The OS part of `common/imu/kv_store.c`: the `kv wipe` subcommand (the Zephyr build's `zephyr/app/usb-console/src/kv_store_os.h` is empty) |
 | `zephyr/logging/log.h` | `LOG_MODULE_REGISTER()`, `LOG_ERR()` and the other logging macros. It only includes the port's `app_log.h` (`common/compat/log/`; the RAM log of `dmesg`) |
 | `zephyr/net/net_ip.h` | The IPv4 address type `struct in_addr` (`imu_raw_mqtt.h`). It only includes NuttX's `<netinet/in.h>` (the same member `s_addr`, network byte order) |
-| `zephyr_compat.h` | `zephyr_compat_initialize()` (called by the board's bring-up, below), `K_THREAD_DEFINE_START()` (called by init) |
+| `zephyr_compat.h` | `zephyr_compat_initialize()` (called by the board's bring-up, below), `K_THREAD_DEFINE_START()` (called by the application's table of threads, `common/imu/app_init.c`) |
 | `sensor_shell.h` | A copy of Zephyr's `drivers/sensor/sensor_shell.h` (the sensor shell's shared types; the Zephyr build reads Zephyr's) |
 | `zephyr_os.h`, `zephyr_os_spinlock.h`, `zephyr_os_atomic.h`, `zephyr_os_shell.h` (NuttX) | The OS headers (below): NuttX's types (`rmutex_t`, `sem_t`, a wdog, `pid_t`), the tick, the priorities, the TIMER, `k_yield()` (`sched_yield()`), the assertion (`DEBUGASSERT()`), the work queue's wait (`nxsem_wait_uninterruptible()`), `sched_lock()` and `up_irq_save()`, the takeover of `<nuttx/atomic.h>`'s names, `struct shell` (the terminal's path and the command's task) |
 | `common_prelude.h` (NuttX) | The prelude (below) |
@@ -870,8 +871,9 @@ of the NuttX implementation on the include path.
 - **Static threads** (`K_THREAD_DEFINE()`): Zephyr's arguments define a thread with a static stack,
   the priority `K_PRIO_PREEMPT(prio)` and the token itself as its name (`imu_stream_tid`). Zephyr
   starts such threads by itself before `main()`; NuttX has no list of them, so init starts each
-  one with `K_THREAD_DEFINE_START(name)` (`zephyr_compat.h`) at the beginning of the part that does
-  what `main()` does. The thread is a NuttX kernel thread (`kthread_create_with_stack()`) and ends
+  one with `K_THREAD_DEFINE_START(name)` (`zephyr_compat.h`) from the application's table shared with
+  the FreeRTOS build (`app_threads_start()`, `common/imu/app_init.c`, `common/imu/app_main.h`), before
+  the part that does what `main()` does (`app_main()`). The thread is a NuttX kernel thread (`kthread_create_with_stack()`) and ends
   when its entry function returns. Only `options` 0 and `delay` 0 are accepted (anything else
   fails to build).
 - **Time**: `k_uptime_get()` has the value of Zephyr's `k_ticks_to_ms_floor64(k_uptime_ticks())`

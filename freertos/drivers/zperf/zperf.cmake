@@ -25,6 +25,12 @@ function(freertos_zperf target)
     ${zperf_common_sources}
   )
 
+  # Zephyr's option of zperf, which the application's start
+  # (common/imu/app_init.c) reads.
+  target_compile_definitions(${target} PRIVATE
+    CONFIG_NET_ZPERF=1
+  )
+
   set_source_files_properties(${zperf_common_sources} PROPERTIES
     COMPILE_OPTIONS "-include;${FREERTOS_COMPAT_DIR}/common_prelude.h"
   )

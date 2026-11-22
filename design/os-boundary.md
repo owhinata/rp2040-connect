@@ -13,7 +13,7 @@ Paths below `nuttx/boards/arduino-nano-rp2040-connect/` are shortened to `N-boar
 
 | Part | Where | Holds |
 |---|---|---|
-| Application | `common/imu` | IMU service, MQTT transport, time synchronization, Wi-Fi profile, KV store, calibration |
+| Application | `common/imu` | IMU service, MQTT transport, time synchronization, Wi-Fi profile, KV store, calibration; the application's start (`app_main.h`: `app_main.c`, all three builds; `app_init.c`, N and F; section 4.6) |
 | Drivers | `common/drivers/<driver>/` | OS-independent core; `port/` boundary headers; `port/<os>/` bindings (section 5) |
 | Shell commands | `common/shell` | `zshell.c` (Zephyr shell command handling), `subcmd.c`, `nina_shell.c`, `i2c_dma_shell.c`; F only: `dmesg_shell.c` (N has `nuttx/apps/dmesg`), `kernel_shell.c` (`id`, `uptime`, `date`, `sleep`, `devmem`, `fault`, `reboot`, `bootsel`; on `kernel_shell_os.h`, section 3), `ifconfig_shell.c` (on the network part's interface) |
 | Log | `common/compat/log` | RAM log and the functions of the `LOG_*` macros (`log_ram.c`, on its OS part `log_ram_os.h`, section 3), its ring (`log_ring.c`), `LOG_*` macros (`app_log.h`), fault record text and its printing (`fault_record.c`) |
@@ -215,11 +215,12 @@ lost ticks, `freertos/app/usb-console/src/tick.c`), which are not primitives of 
 | RTIO work queue | `common/compat/zephyr/rtio/work.h` | `rtio_workq_initialize()` starts "RTIO WQ 0" with `z_thread_static_start()`; no OS file | `zephyr_compat_initialize()` | shared `common/compat/zephyr_rtio_workq.c` | same |
 | Wi-Fi profile | included by `common/imu/wifi_profile.c` | `extern k_tid_t wifi_reconnect_tid;` | `common/imu/wifi_profile.c` | `nuttx/apps/wifi/wifi_profile_os.h` | `freertos/drivers/wifi/wifi_profile_os.h` |
 | Sensor shell | included first by `common/drivers/sensor_shell/sensor_shell.c`, `common/compat/sensor_shell_stream.c` | `CONFIG_SENSOR_SHELL_STREAM`, `_THREAD_STACK_SIZE`, `_TRIG_PRINT_TIMEOUT_MS`, `_MAX_TRIGGER_DEVICES`; `sensor_shell_os_get_arm()`, `sensor_shell_os_get_wait()`, `sensor_shell_os_processing_callback` | those two files | `nuttx/apps/sensor/sensor_shell_os.h`, `sensor_shell_nuttx.h`, `sensor_shell_nuttx.c` | `freertos/drivers/sensor_shell/sensor_shell_os.h`, `sensor_shell_os.c` |
-| Start of the layer | `common/compat/zephyr_compat.h` | `zephyr_compat_initialize()`, `K_THREAD_DEFINE_START(name)` | start-up | shared `common/compat/zephyr_init.c` (section 2) | same |
+| Start of the layer | `common/compat/zephyr_compat.h` | `zephyr_compat_initialize()`, `K_THREAD_DEFINE_START(name)` | start-up; `K_THREAD_DEFINE_START()`: `common/imu/app_init.c` | shared `common/compat/zephyr_init.c` (section 2) | same |
 | Self-test of the layer, OS part | `common/compat/selftest/zephyr_selftest.h` (`zephyr_selftest.c` reads `"zephyr_selftest_os.h"` after `<zephyr/kernel.h>`) | type `zephyr_selftest_os_prio_t`, `ZEPHYR_SELFTEST_OS_NAME_MAX`, `zephyr_selftest_os_tick()`, `_tick_sync()`, `_thread_create()`, `_thread_exit()`, `_prio_get()`, `_prio_self()`, `_name_get()`, `_current()`, `_in_isr()`, `_sched_lock()`, `_sched_unlock()` | `common/compat/selftest/zephyr_selftest.c` | — (not built) | on the primitives `common/compat/kernel_generic/zephyr_selftest_os.h` (`_tick_sync()`, `_thread_exit()`, `_prio_self()`, `_name_get()`, `_in_isr()`, the type and the name length); the rest `freertos/drivers/compat/zephyr_selftest_os_impl.h` (FreeRTOS tasks; the same on the board and the host) |
 | Self-test of the layer, board part | same | `zephyr_selftest_port_alarm()`, `_quiet()`, `_realtime()`, `_mask_irqs()` | same | — | board `freertos/drivers/compat/rp2040/zephyr_selftest_port.c`, host `freertos/tests/compat/main.c` |
 | Tick of the generic kernel part | `common/compat/kernel_generic/zephyr_compat_os.h` | `zephyr_compat_tick()`: once per tick, from the tick interrupt | F tick hook | — | `common/compat/kernel_generic/zephyr_kernel.c` |
 | Start of the network part for an OS without a network stack | `common/compat/net_offload/include/zephyr_net_init.h` | `zephyr_net_initialize()` | F `main_main()` | — (`nina_net_initialize()`) | shared `common/compat/net_offload/zephyr_net_init.c` |
+| Start of the application | `common/imu/app_main.h` | `app_init_post_kernel()`, `app_threads_start()`, `app_main()`, called in this order (section 4.6); the modules' options (`CONFIG_KV_STORE`, `CONFIG_APP_IMU`, `CONFIG_IMU_RAW_MQTT`, `CONFIG_TIME_SYNC`, `CONFIG_WIFI_CREDENTIALS`, `CONFIG_WIFI_PROFILE`, `CONFIG_APP_SENSOR`, `CONFIG_WIFI_NINA_LOCAL`, `CONFIG_NET_ZPERF`), each defined by a build that builds the module | the start-up file of each build (Zephyr: `app_main()` only) | shared `common/imu/app_main.c`, `app_init.c`; the options from Kconfig; called by `nuttx/apps/init/rp2040_init.c` | shared: same; the options from the modules' `.cmake` files; called by `main_main()` |
 
 The Zephyr build has its own `zephyr/app/usb-console/src/kv_store_os.h` and `wifi_profile_os.h`.
 
@@ -283,27 +284,44 @@ The devices listed for the shell are in `common/compat/zephyr_device.c` (hand-wr
 | Prelude, `-include` on shared sources | `nuttx/drivers/compat/common_prelude.h`: NuttX headers first; `CONFIG_SENSOR_LOG_LEVEL` 3; `CONFIG_SENSOR_ASYNC_API` with `CONFIG_LSM6DSO_STREAM` | `freertos/drivers/compat/common_prelude.h`: `CONFIG_SENSOR_LOG_LEVEL` 3; `CONFIG_NINA_NTP_SERVER` "", `_PORT` 123, `_INTERVAL_MS` 2000; `CONFIG_NINA_TCP_MAX_IO` 3584; `CONFIG_NINA_SEND_RETRY_MS` 1; `CONFIG_NET_SOCKETS_OFFLOAD_PRIORITY` 40; `CONFIG_NINA_PASSTHROUGH` 1; `CONFIG_SENSOR_ASYNC_API` with the stream |
 | NINA and NTP options | Kconfig: `nuttx/drivers/nina/Kconfig`, `nuttx/apps/imu/Kconfig` | the prelude (above) |
 | NVS and settings copies | `common/compat/zephyr_kv_config.h`, `-include` from `nuttx/apps/imu/Makefile` | same, from `freertos/drivers/kv/kv.cmake` |
-| Build definitions | Kconfig (`nuttx/drivers/*/Kconfig`, `nuttx/apps/*/Kconfig`, `N-board/Kconfig`), `N-board/configs/imu/defconfig` | `compat.cmake`: `Z_SHELL_CMD_ROOT_GLOBAL`, `CONFIG_GETOPT_LONG=1`, `PICO_STDOUT_MUTEX=0`; `i2c_dw.cmake`: `CONFIG_I2C_DW_I2C0`, `_I2C1`; `lsm6dso.cmake`: `CONFIG_LSM6DSO_STREAM`; `wifi.cmake`: `CONFIG_WIFI_CREDENTIALS`; `nina.cmake`: `NINA_OS_DNS_OFFLOAD` for the resolver |
+| Build definitions | Kconfig (`nuttx/drivers/*/Kconfig`, `nuttx/apps/*/Kconfig`, `N-board/Kconfig`), `N-board/configs/imu/defconfig` | `compat.cmake`: `Z_SHELL_CMD_ROOT_GLOBAL`, `CONFIG_GETOPT_LONG=1`, `PICO_STDOUT_MUTEX=0`; `i2c_dw.cmake`: `CONFIG_I2C_DW_I2C0`, `_I2C1`; `lsm6dso.cmake`: `CONFIG_LSM6DSO_STREAM`; `wifi.cmake`: `CONFIG_WIFI_CREDENTIALS`, `CONFIG_WIFI_PROFILE`; `nina.cmake`: `NINA_OS_DNS_OFFLOAD` for the resolver, `CONFIG_WIFI_NINA_LOCAL`; the modules' options of the application's start (section 4.6): `kv.cmake` `CONFIG_KV_STORE`, `imu.cmake` `CONFIG_APP_IMU`, `CONFIG_IMU_RAW_MQTT`, `CONFIG_TIME_SYNC`, `sensor_shell.cmake` `CONFIG_APP_SENSOR`, `zperf.cmake` `CONFIG_NET_ZPERF` |
 | In shared headers | `kernel.h`: `CONFIG_THREAD_NAME` 1; `zephyr/rtio/work.h`: `CONFIG_RTIO_WORKQ_POOL_ITEMS` 4 | same |
 | Sensor shell | `sensor_shell_nuttx.h` | `sensor_shell_os.h` (same four values) |
 
 ### 4.6 Threads and start-up order
 
-`K_THREAD_DEFINE()` threads are not started automatically; the start-up code lists them.
+The application's start is one shared sequence, `common/imu/app_main.h`, in the order of the Zephyr
+build's kernel and `main()`:
 
-| Thread (defined in) | N | F |
-|---|---|---|
-| `nina_scan_tid`, `nina_connect_tid`, `nina_monitor_tid` (`common/drivers/nina/port/zephyr/nina_net.c`) | not built; `nina_net_start()` starts the core's threads | `K_THREAD_DEFINE_START()` |
-| `imu_stream_tid` (`common/imu/imu_stream.c`) | `K_THREAD_DEFINE_START()` | same |
-| `imu_raw_mqtt_tid` (`common/imu/imu_raw_mqtt.c`) | same | same |
-| `time_sync_tid` (`common/imu/time_sync.c`) | same | same |
-| `wifi_reconnect_tid` (`common/imu/wifi_profile.c`) | same | same |
-| `sensor_shell_processing_tid` (`common/compat/sensor_shell_stream.c`) | same | same |
-| `zperf_server_tid` (`common/compat/zperf_iperf3.c`) | not built | same |
+1. `app_init_post_kernel()` (`app_init.c`): the application's part of `SYS_INIT(POST_KERNEL)`,
+   `wifi_credentials_init()` (`CONFIG_WIFI_CREDENTIALS`; mounts NVS, reads the stored SSIDs);
+2. the OS's `SYS_INIT(APPLICATION)` parts of the shell (F: `wifi_shell_init()`, `shell_telnet_init()`);
+3. `app_threads_start()` (`app_init.c`): `z_init_static_threads()`, the one table of the threads below,
+   each started with `K_THREAD_DEFINE_START()` after the one before it, a failure logged
+   (`Could not start <name>: <errno>`);
+4. `app_main()` (`app_main.c`): `main()`: `USB console started`, `kv_store_init()`,
+   `imu_cal_init()`, `time_sync_init()`, `wifi_profile_init()`.
 
-Start-up files: Zephyr `zephyr/app/usb-console/src/main.c`; N `N-board/src/rp2040_boardinitialize.c`,
-`N-board/src/rp2040_bringup.c`, `nuttx/apps/init/rp2040_init.c`; F `freertos/app/usb-console/src/main.c`
-(`main()`, then the task `main_main()`).
+The Zephyr build calls only `app_main()` from its `main()`; its kernel does 1 to 3 (`SYS_INIT()`,
+`K_THREAD_DEFINE()`). N and F call 1, 3 and 4 from a thread, after their devices; the Zephyr build does
+not compile `app_init.c`. Each entry is under the option of its module; `common/tests/app_threads.py`
+(run by `common/tests/run.sh`) checks that the table names every `K_THREAD_DEFINE()` of the sources
+once and that each build sets the option exactly when it compiles the defining source.
+
+| Thread (defined in), in the table's order | Option | N | F |
+|---|---|---|---|
+| `nina_scan_tid`, `nina_connect_tid`, `nina_monitor_tid` (`common/drivers/nina/port/zephyr/nina_net.c`) | `CONFIG_WIFI_NINA_LOCAL` | not built; in their place `nina_net_start()` (`CONFIG_NINA_NET`) starts the core's threads | started |
+| `imu_stream_tid` (`common/imu/imu_stream.c`) | `CONFIG_APP_IMU` | started | same |
+| `imu_raw_mqtt_tid` (`common/imu/imu_raw_mqtt.c`) | `CONFIG_IMU_RAW_MQTT` | same | same |
+| `time_sync_tid` (`common/imu/time_sync.c`) | `CONFIG_TIME_SYNC` | same | same |
+| `wifi_reconnect_tid` (`common/imu/wifi_profile.c`) | `CONFIG_WIFI_PROFILE` | same | same |
+| `sensor_shell_processing_tid` (`common/compat/sensor_shell_stream.c`) | `CONFIG_APP_SENSOR` | same | same |
+| `zperf_server_tid` (`common/compat/zperf_iperf3.c`) | `CONFIG_NET_ZPERF` | not built | same |
+
+Start-up files: Zephyr `zephyr/app/usb-console/src/main.c` (the passthrough branch, `app_main()`); N
+`N-board/src/rp2040_boardinitialize.c`, `N-board/src/rp2040_bringup.c`, `nuttx/apps/init/rp2040_init.c`;
+F `freertos/app/usb-console/src/main.c` (`main()`, then the task `main_main()`). What an OS still writes
+is the steps before the application's start (the table below) and the calls of 1 to 4 at its point.
 
 | Step | N | F |
 |---|---|---|
@@ -314,10 +332,8 @@ Start-up files: Zephyr `zephyr/app/usb-console/src/main.c`; N `N-board/src/rp204
 | LSM6DSOX | after I2C0 in `rp2040_bringup()` | first in `main_main()` |
 | Network | `nina_net_initialize()` in `rp2040_bringup()` | `zephyr_net_initialize()` in `main_main()` |
 | KV flash bounds | `nano_flash_kv_initialize()` in `rp2040_bringup()` | `nano_flash_kv_initialize()` in `main()` |
-| Wi-Fi credentials | `wifi_credentials_init()` in the init task | `wifi_credentials_init()`, `wifi_shell_init()` in `main_main()` |
-| Threads | table above | table above |
-| Telnet | `rp2040_telnet_start()` after the threads | `shell_telnet_init()` before the threads |
-| Application (same order in all three builds) | `kv_store_init()`, `imu_cal_init()`, `time_sync_init()`, `wifi_profile_init()` | same |
+| Shell | `nsh_initialize()` in the init task, before 1 | the console's task (`shell_serial_start()`) in `main()` |
+| Application's start | 1, 3, Telnet (`rp2040_telnet_start()`, after the threads), 4 in the init task | 1, 2 (`wifi_shell_init()`, `shell_telnet_init()`), 3, 4 in `main_main()` |
 
 ### 4.7 POSIX socket headers
 

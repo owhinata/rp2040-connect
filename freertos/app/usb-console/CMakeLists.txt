@@ -65,9 +65,13 @@ if(I2C_DW_I2C1)
 endif()
 
 # The generic commands (common/shell/kernel_shell.c, on src/kernel_shell_os_impl.h)
-# are linked where this build's own were, after src/commands.c.
+# are linked where this build's own were, after src/commands.c.  The
+# application's start shared by the three builds (common/imu/app_main.h:
+# app_main.c, app_init.c) follows src/main.c, which calls it.
 add_executable(usb-console
   src/main.c
+  ${COMMON_DIR}/imu/app_main.c
+  ${COMMON_DIR}/imu/app_init.c
   src/commands.c
   ${COMMON_DIR}/shell/kernel_shell.c
   src/fault.c
@@ -110,6 +114,9 @@ target_include_directories(usb-console PRIVATE
 )
 
 target_compile_options(usb-console PRIVATE -Wall -Wextra)
+set_source_files_properties(${COMMON_DIR}/imu/app_main.c ${COMMON_DIR}/imu/app_init.c PROPERTIES
+  COMPILE_OPTIONS "-include;${FREERTOS_COMPAT_DIR}/common_prelude.h"
+)
 
 # The name under /dev/serial/by-id (freertos/script/flash.sh looks for it).
 # The Pico SDK cuts USB strings to USBD_DESC_STR_MAX - 1 characters (19 by

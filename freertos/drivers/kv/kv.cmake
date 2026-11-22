@@ -81,6 +81,12 @@ function(freertos_kv target)
     PICO_FLASH_ASSUME_CORE1_SAFE=1
   )
 
+  # The NuttX build's option of the store, which the application's start
+  # (common/imu/app_main.c) reads.
+  target_compile_definitions(${target} PRIVATE
+    CONFIG_KV_STORE=1
+  )
+
   # The plain signature, as the SDK's examples and the application use it.
   target_link_libraries(${target}
     hardware_flash

@@ -97,6 +97,12 @@ function(freertos_nina target)
     ${FREERTOS_COMMON_DIR}/drivers/nina/port
   )
 
+  # The Zephyr binding's option (port/zephyr/Kconfig), whose threads the
+  # application's start (common/imu/app_init.c) starts.
+  target_compile_definitions(${target} PRIVATE
+    CONFIG_WIFI_NINA_LOCAL=1
+  )
+
   target_link_libraries(${target}
     hardware_gpio
     hardware_irq

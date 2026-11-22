@@ -244,7 +244,8 @@ int k_thread_name_set(k_tid_t thread, const char *name);
  * K_PRIO_PREEMPT(prio), named by the token name (Zephyr's "kernel ps" shows
  * e.g. "imu_stream_tid"), and the k_tid_t variable name.  Zephyr starts
  * every such thread before main() (z_init_static_threads()); the port has
- * no list of them, so its init task starts each one at the same point with
+ * no list of them, so the application's table (app_threads_start(),
+ * common/imu/app_init.c) starts each one at the same point with
  * K_THREAD_DEFINE_START(name) (<zephyr_compat.h>), which calls the
  * function z_thread_start_<name>() that this macro defines.  The OS runs
  * the thread on the static stack (z_thread_static_start(); on NuttX a

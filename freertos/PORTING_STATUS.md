@@ -2590,3 +2590,22 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
   小さな転送と待ち 約 0.72 秒（1.2%）、NINA の処理待ち 2.9 秒（4.8%。眠って待つ）。バスを使っている時間は合わせて約 17.5%。
 - 分かったこと: 送信 1 回の時間の約 4 分の 3 は SPI の転送で、NINA の処理待ちは約 5 分の 1（事前の見立てと逆だった）。平均では送信の経路に約 5 倍の余裕がある。
   送信の回数（2184）は publish の回数（約 2095）より約 4% 多い（1 回で受け取られなかった分の送り直しと見られる。未確認）。この 60 秒には長い詰まり（1.2〜1.4 秒）は無く、その原因はこの計測では分からない。
+
+## 整理 10: アプリの起動の手順とスレッドの一覧を 1 つに（2026-11-22）
+
+- subagent が実装、メインがホストテストと実機確認。
+- `common/imu/app_main.[ch]`（3 版）: `app_main()` =「USB console started」のログ、`kv_store_init`（`CONFIG_KV_STORE`）、`imu_cal_init`・`time_sync_init`（`CONFIG_APP_IMU`）、`wifi_profile_init`（`CONFIG_WIFI_PROFILE`）。
+  `common/imu/app_init.c`（NuttX・FreeRTOS）: `app_init_post_kernel()`（`wifi_credentials_init`）と `app_threads_start()`（スレッドの一覧。1 行 1 スレッドで、この順:
+  nina_scan・nina_connect・nina_monitor（`CONFIG_WIFI_NINA_LOCAL`）、`nina_net_start()`（`CONFIG_NINA_NET`）、imu_stream、imu_raw_mqtt、time_sync、wifi_reconnect、sensor_shell_processing、zperf_server（`CONFIG_NET_ZPERF`））。
+  順序は (1) `app_init_post_kernel()` (2) OS のシェルの部分 (3) `app_threads_start()` (4) `app_main()`。Zephyr 版は (1)〜(3) を Zephyr 自身が行う（SYS_INIT と静的なスレッド）。
+- オプションの記号: FreeRTOS は各モジュールの cmake が定義（`KV_STORE`・`APP_IMU`・`IMU_RAW_MQTT`・`TIME_SYNC`・`WIFI_PROFILE`・`APP_SENSOR`・`NET_ZPERF`・`WIFI_NINA_LOCAL`）、
+  Zephyr はアプリの Kconfig に隠しの記号 3 つ（`KV_STORE`・`APP_IMU`・`WIFI_PROFILE`）。
+- 各版の起動のファイル: Zephyr `main.c` 185 → 170 行、NuttX `rp2040_init.c` 383 → 300 行、FreeRTOS `main.c` 329 → 260 行。新しい OS は、デバイスとコンソールを用意して (1)(3)(4) を呼び、ビルドするモジュールの記号を定義する。
+- 残した違い: NuttX 版だけ Telnet をスレッドのあとに起動する（Zephyr・FreeRTOS は前。理由は見つからなかったが、そろえていない）。変えた動き: NuttX 版はスレッドの起動に失敗すると 1 行ログを出す（FreeRTOS と同じ。以前は無言）。
+- 新しいホストテスト `app_threads`（`common/tests/app_threads.py`）: ソースにある `K_THREAD_DEFINE` と一覧が 1 対 1 であること、各項目のオプションがそのソースをビルドする規則と対応すること。ホストテスト 51・64・61。
+- イメージ: Zephyr 372336 B（+8）、NuttX 284236 B（+160）、FreeRTOS 237712 B（+56）。**基準: `snapshot-1122i`**。逆アセンブルで、起動の呼び出しの順序とスレッドを作る順序が前と同じことを確認（subagent）。
+- 実機（書き込み直後の各 1 回 約 70 秒 + 下記）:
+  - Zephyr: 欠番 0、46.1%、時刻の逆行 0、起動のログの順序は従来どおり（LSM6DSO、fs_nvs、Telnet、USB console started）、警告なし、synchronized、校正済み、Telnet でコマンドに応答、NINA の中継モードの出入り。
+  - NuttX: 欠番 0、47.4%、`ps` の順序（nina_scan・nina_connect・nina_monitor、5 つのスレッド、telnetd）、synchronized、送信中の Telnet、Wi-Fi を落として 2 秒で再接続、復帰後の Telnet。
+  - FreeRTOS: `selftest` 22・6・3 項目とも失敗 0。既定のビルド 2 回: 欠番 0、43.9〜44.0%。起動のログの順序は従来どおり、synchronized、切断復帰と Telnet も同じ結果。
+- 実機: FreeRTOS 版（この変更の既定のビルド）。

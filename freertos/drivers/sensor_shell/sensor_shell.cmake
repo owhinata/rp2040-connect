@@ -58,6 +58,12 @@ function(freertos_sensor_shell target)
     ${FREERTOS_COMMON_DIR}/compat
   )
 
+  # The NuttX build's option of the "sensor" command, which the
+  # application's start (common/imu/app_init.c) reads.
+  target_compile_definitions(${target} PRIVATE
+    CONFIG_APP_SENSOR=1
+  )
+
   set_source_files_properties(${sensor_shell_common_sources}
     ${FREERTOS_SENSOR_SHELL_DIR}/sensor_shell_os.c PROPERTIES
     COMPILE_OPTIONS "-include;${FREERTOS_COMPAT_DIR}/common_prelude.h"

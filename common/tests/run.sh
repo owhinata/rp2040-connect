@@ -6,7 +6,8 @@
 # tests/zephyr_fakes or (the NINA core) fakes of its boundary defined by the tests, and need no
 # board and no Zephyr tree (the checks that the copies of Zephyr's files are unchanged, that
 # the I2C core matches the Zephyr build's patched driver and that the sensor shell is the file
-# of the patched tree run when the tree is there).
+# of the patched tree run when the tree is there).  tests/app_threads.py checks the
+# application's table of threads against the sources and the build files.
 # zephyr/script/host_tests.sh and nuttx/script/host_tests.sh run this
 # before their own tests.
 set -euo pipefail
@@ -38,6 +39,12 @@ for test in fifo_words imu_raw_packet imu_raw_batch imu_raw_queue imu_raw_status
             imu_tick_clock time_offset; do
     run "$test" "${flags[@]}" "${inc[@]}" "tests/$test.c" "${lib[@]}"
 done
+# The table of the threads that the builds other than Zephyr's start (imu/app_init.c) names each
+# K_THREAD_DEFINE() of the sources once, under the option of its module that each build sets
+# exactly when it compiles the source (tests/app_threads.py).
+python3 tests/app_threads.py > "$out/app_threads.log" || { cat "$out/app_threads.log"; exit 1; }
+printf 'ok  app_threads (%s)\n' "$(sed -n 's/^ok  FreeRTOS starts \([0-9]*\), NuttX \([0-9]*\),.*/FreeRTOS \1, NuttX \2/p' \
+    "$out/app_threads.log")"
 
 # The LSM6DSO driver's decoder of the stream's buffers (port/zephyr/lsm6dso_decoder.c).  The
 # chip's registers (lsm6dso.c) are tested with the driver in nuttx/tests/lsm6dso_driver.c.

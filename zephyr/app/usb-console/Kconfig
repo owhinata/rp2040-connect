@@ -54,3 +54,26 @@ config NINA_NTP_INTERVAL_MS
 	help
 	  Queries go to a server on the local network. Do not point short
 	  intervals at public servers.
+
+# The application's modules (common/imu), which this build always has.
+# The NuttX build has the same symbols as options; the application's start
+# (common/imu/app_main.c, common/imu/app_main.h) starts only the modules
+# whose symbol is set.
+
+config KV_STORE
+	def_bool y
+	help
+	  The key-value store (common/imu/kv_store.c).
+
+config APP_IMU
+	def_bool y
+	help
+	  The IMU acquisition service with its calibration and the time
+	  synchronization (common/imu/imu_stream.c, imu_cal.c, time_sync.c).
+
+config WIFI_PROFILE
+	def_bool y
+	depends on WIFI_CREDENTIALS
+	help
+	  The Wi-Fi profile and its automatic connection
+	  (common/imu/wifi_profile.c).

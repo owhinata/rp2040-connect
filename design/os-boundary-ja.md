@@ -12,7 +12,7 @@ Zephyr そのものに対してビルドし、`common/compat` を使いません
 
 | 部分 | 場所 | 中身 |
 |---|---|---|
-| アプリ | `common/imu` | IMU サービス、MQTT の送信、時刻同期、Wi-Fi のプロファイル、KV ストア、校正 |
+| アプリ | `common/imu` | IMU サービス、MQTT の送信、時刻同期、Wi-Fi のプロファイル、KV ストア、校正。アプリの起動（`app_main.h`: `app_main.c` は 3 版、`app_init.c` は N と F。4.6 節） |
 | ドライバー | `common/drivers/<ドライバー>/` | OS に依存しないコア、`port/` の境界のヘッダー、`port/<OS>/` のつなぎ（5 節） |
 | シェルのコマンド | `common/shell` | `zshell.c`（Zephyr のシェルのコマンド処理）、`subcmd.c`、`nina_shell.c`、`i2c_dma_shell.c`。F だけ: `dmesg_shell.c`（N は `nuttx/apps/dmesg`）、`kernel_shell.c`（`id`・`uptime`・`date`・`sleep`・`devmem`・`fault`・`reboot`・`bootsel`。`kernel_shell_os.h` の上。3 節）、`ifconfig_shell.c`（ネットワークの部分のインターフェースの上） |
 | ログ | `common/compat/log` | RAM ログと `LOG_*` マクロの関数（`log_ram.c`。OS の部分 `log_ram_os.h` の上。3 節）、そのリング（`log_ring.c`）、`LOG_*` マクロ（`app_log.h`）、異常停止の記録の文面とその表示（`fault_record.c`） |
@@ -207,11 +207,12 @@ F のポートのヘッダーには、tick のフックの `z_os_tick_now_us32()
 | RTIO のワークキュー | `common/compat/zephyr/rtio/work.h` | `rtio_workq_initialize()` が "RTIO WQ 0" を `z_thread_static_start()` で起こす。OS のファイルは無い | `zephyr_compat_initialize()` | 共有の `common/compat/zephyr_rtio_workq.c` | 同じ |
 | Wi-Fi のプロファイル | `common/imu/wifi_profile.c` が読む | `extern k_tid_t wifi_reconnect_tid;` | `common/imu/wifi_profile.c` | `nuttx/apps/wifi/wifi_profile_os.h` | `freertos/drivers/wifi/wifi_profile_os.h` |
 | センサーのシェル | `common/drivers/sensor_shell/sensor_shell.c` と `common/compat/sensor_shell_stream.c` が最初に読む | `CONFIG_SENSOR_SHELL_STREAM`、`_THREAD_STACK_SIZE`、`_TRIG_PRINT_TIMEOUT_MS`、`_MAX_TRIGGER_DEVICES`。`sensor_shell_os_get_arm()`、`sensor_shell_os_get_wait()`、`sensor_shell_os_processing_callback` | その 2 つのファイル | `nuttx/apps/sensor/sensor_shell_os.h`、`sensor_shell_nuttx.h`、`sensor_shell_nuttx.c` | `freertos/drivers/sensor_shell/sensor_shell_os.h`、`sensor_shell_os.c` |
-| 互換層の開始 | `common/compat/zephyr_compat.h` | `zephyr_compat_initialize()`、`K_THREAD_DEFINE_START(name)` | 起動 | 共有の `common/compat/zephyr_init.c`（2 節） | 同じ |
+| 互換層の開始 | `common/compat/zephyr_compat.h` | `zephyr_compat_initialize()`、`K_THREAD_DEFINE_START(name)` | 起動。`K_THREAD_DEFINE_START()` は `common/imu/app_init.c` | 共有の `common/compat/zephyr_init.c`（2 節） | 同じ |
 | 互換層の自己診断、OS の部分 | `common/compat/selftest/zephyr_selftest.h`（`zephyr_selftest.c` が `<zephyr/kernel.h>` のあとに `"zephyr_selftest_os.h"` を読む） | 型 `zephyr_selftest_os_prio_t`、`ZEPHYR_SELFTEST_OS_NAME_MAX`、`zephyr_selftest_os_tick()`、`_tick_sync()`、`_thread_create()`、`_thread_exit()`、`_prio_get()`、`_prio_self()`、`_name_get()`、`_current()`、`_in_isr()`、`_sched_lock()`、`_sched_unlock()` | `common/compat/selftest/zephyr_selftest.c` | — （ビルドしない） | 基本の操作の上の `common/compat/kernel_generic/zephyr_selftest_os.h`（`_tick_sync()`・`_thread_exit()`・`_prio_self()`・`_name_get()`・`_in_isr()`、型と名前の長さ）。残りは `freertos/drivers/compat/zephyr_selftest_os_impl.h`（FreeRTOS のタスク、ボードとホストで同じ） |
 | 互換層の自己診断、ボードの部分 | 同じ | `zephyr_selftest_port_alarm()`、`_quiet()`、`_realtime()`、`_mask_irqs()` | 同じ | — | ボード `freertos/drivers/compat/rp2040/zephyr_selftest_port.c`、ホスト `freertos/tests/compat/main.c` |
 | 汎用のカーネルの部分の tick | `common/compat/kernel_generic/zephyr_compat_os.h` | `zephyr_compat_tick()`: 1 tick に 1 回、tick の割り込みから | F の tick のフック | — | `common/compat/kernel_generic/zephyr_kernel.c` |
 | ネットワーク層を持たない OS のネットワークの部分の開始 | `common/compat/net_offload/include/zephyr_net_init.h` | `zephyr_net_initialize()` | F の `main_main()` | —（`nina_net_initialize()`） | 共有の `common/compat/net_offload/zephyr_net_init.c` |
+| アプリの起動 | `common/imu/app_main.h` | `app_init_post_kernel()`、`app_threads_start()`、`app_main()` をこの順に呼ぶ（4.6 節）。モジュールのオプション（`CONFIG_KV_STORE`、`CONFIG_APP_IMU`、`CONFIG_IMU_RAW_MQTT`、`CONFIG_TIME_SYNC`、`CONFIG_WIFI_CREDENTIALS`、`CONFIG_WIFI_PROFILE`、`CONFIG_APP_SENSOR`、`CONFIG_WIFI_NINA_LOCAL`、`CONFIG_NET_ZPERF`）は、そのモジュールをビルドする版が定義する | 各版の起動のファイル（Zephyr は `app_main()` だけ） | 共有の `common/imu/app_main.c`、`app_init.c`。オプションは Kconfig。呼ぶのは `nuttx/apps/init/rp2040_init.c` | 共有: 同じ。オプションは各モジュールの `.cmake`。呼ぶのは `main_main()` |
 
 Zephyr 版は自分の `zephyr/app/usb-console/src/kv_store_os.h` と `wifi_profile_os.h` を持ちます。
 
@@ -275,27 +276,42 @@ Zephyr 版は自分の `zephyr/app/usb-console/src/kv_store_os.h` と `wifi_prof
 | プレリュード（共有のソースに `-include`） | `nuttx/drivers/compat/common_prelude.h`: NuttX のヘッダーを先に、`CONFIG_SENSOR_LOG_LEVEL` 3、`CONFIG_LSM6DSO_STREAM` のとき `CONFIG_SENSOR_ASYNC_API` | `freertos/drivers/compat/common_prelude.h`: `CONFIG_SENSOR_LOG_LEVEL` 3、`CONFIG_NINA_NTP_SERVER` ""・`_PORT` 123・`_INTERVAL_MS` 2000、`CONFIG_NINA_TCP_MAX_IO` 3584、`CONFIG_NINA_SEND_RETRY_MS` 1、`CONFIG_NET_SOCKETS_OFFLOAD_PRIORITY` 40、`CONFIG_NINA_PASSTHROUGH` 1、ストリームのとき `CONFIG_SENSOR_ASYNC_API` |
 | NINA と NTP のオプション | Kconfig: `nuttx/drivers/nina/Kconfig`、`nuttx/apps/imu/Kconfig` | プレリュード（上） |
 | NVS と settings の写し | `common/compat/zephyr_kv_config.h`。`nuttx/apps/imu/Makefile` から `-include` | 同じ。`freertos/drivers/kv/kv.cmake` から |
-| ビルドの定義 | Kconfig（`nuttx/drivers/*/Kconfig`、`nuttx/apps/*/Kconfig`、`N-board/Kconfig`）、`N-board/configs/imu/defconfig` | `compat.cmake`: `Z_SHELL_CMD_ROOT_GLOBAL`、`CONFIG_GETOPT_LONG=1`、`PICO_STDOUT_MUTEX=0`。`i2c_dw.cmake`: `CONFIG_I2C_DW_I2C0`、`_I2C1`。`lsm6dso.cmake`: `CONFIG_LSM6DSO_STREAM`。`wifi.cmake`: `CONFIG_WIFI_CREDENTIALS`。`nina.cmake`: 名前解決の `NINA_OS_DNS_OFFLOAD` |
+| ビルドの定義 | Kconfig（`nuttx/drivers/*/Kconfig`、`nuttx/apps/*/Kconfig`、`N-board/Kconfig`）、`N-board/configs/imu/defconfig` | `compat.cmake`: `Z_SHELL_CMD_ROOT_GLOBAL`、`CONFIG_GETOPT_LONG=1`、`PICO_STDOUT_MUTEX=0`。`i2c_dw.cmake`: `CONFIG_I2C_DW_I2C0`、`_I2C1`。`lsm6dso.cmake`: `CONFIG_LSM6DSO_STREAM`。`wifi.cmake`: `CONFIG_WIFI_CREDENTIALS`、`CONFIG_WIFI_PROFILE`。`nina.cmake`: 名前解決の `NINA_OS_DNS_OFFLOAD`、`CONFIG_WIFI_NINA_LOCAL`。アプリの起動が読むモジュールのオプション（4.6 節）: `kv.cmake` の `CONFIG_KV_STORE`、`imu.cmake` の `CONFIG_APP_IMU`・`CONFIG_IMU_RAW_MQTT`・`CONFIG_TIME_SYNC`、`sensor_shell.cmake` の `CONFIG_APP_SENSOR`、`zperf.cmake` の `CONFIG_NET_ZPERF` |
 | 共有のヘッダーの中 | `kernel.h`: `CONFIG_THREAD_NAME` 1。`zephyr/rtio/work.h`: `CONFIG_RTIO_WORKQ_POOL_ITEMS` 4 | 同じ |
 | センサーのシェル | `sensor_shell_nuttx.h` | `sensor_shell_os.h`（同じ 4 つの値） |
 
 ### 4.6 スレッドと起動の順序
 
-`K_THREAD_DEFINE()` のスレッドは自動では起きません。起動のコードが並べて起こします。
+アプリの起動は共有の 1 つの手順 `common/imu/app_main.h` で、Zephyr 版のカーネルと `main()` の順です。
 
-| スレッド（定義のファイル） | N | F |
-|---|---|---|
-| `nina_scan_tid`、`nina_connect_tid`、`nina_monitor_tid`（`common/drivers/nina/port/zephyr/nina_net.c`） | ビルドしない。`nina_net_start()` がコアのスレッドを起こす | `K_THREAD_DEFINE_START()` |
-| `imu_stream_tid`（`common/imu/imu_stream.c`） | `K_THREAD_DEFINE_START()` | 同じ |
-| `imu_raw_mqtt_tid`（`common/imu/imu_raw_mqtt.c`） | 同じ | 同じ |
-| `time_sync_tid`（`common/imu/time_sync.c`） | 同じ | 同じ |
-| `wifi_reconnect_tid`（`common/imu/wifi_profile.c`） | 同じ | 同じ |
-| `sensor_shell_processing_tid`（`common/compat/sensor_shell_stream.c`） | 同じ | 同じ |
-| `zperf_server_tid`（`common/compat/zperf_iperf3.c`） | ビルドしない | 同じ |
+1. `app_init_post_kernel()`（`app_init.c`）: アプリの `SYS_INIT(POST_KERNEL)` の部分。`wifi_credentials_init()`
+   （`CONFIG_WIFI_CREDENTIALS`。NVS をマウントし、保存した SSID を読む）
+2. OS のシェルの `SYS_INIT(APPLICATION)` の部分（F: `wifi_shell_init()`、`shell_telnet_init()`）
+3. `app_threads_start()`（`app_init.c`）: `z_init_static_threads()`。下のスレッドの 1 つの表で、1 本ずつ
+   `K_THREAD_DEFINE_START()` で起こし、失敗はログに書く（`Could not start <名前>: <errno>`）
+4. `app_main()`（`app_main.c`）: `main()`。`USB console started`、`kv_store_init()`、`imu_cal_init()`、
+   `time_sync_init()`、`wifi_profile_init()`
 
-起動のファイル: Zephyr `zephyr/app/usb-console/src/main.c`。N `N-board/src/rp2040_boardinitialize.c`、
-`N-board/src/rp2040_bringup.c`、`nuttx/apps/init/rp2040_init.c`。F `freertos/app/usb-console/src/main.c`
-（`main()`、そのあとタスク `main_main()`）。
+Zephyr 版は `main()` から `app_main()` だけを呼びます。1〜3 はカーネルが行います（`SYS_INIT()`、`K_THREAD_DEFINE()`）。
+N と F はデバイスのあとにスレッドから 1・3・4 を呼びます。Zephyr 版は `app_init.c` をビルドしません。表の各項目は
+そのモジュールのオプションの下にあります。`common/tests/app_threads.py`（`common/tests/run.sh` が実行）が、表が
+ソースの `K_THREAD_DEFINE()` を 1 回ずつ挙げていることと、各版が定義のファイルをビルドするときにだけオプションを
+定義していることを確かめます。
+
+| スレッド（定義のファイル）、表の順 | オプション | N | F |
+|---|---|---|---|
+| `nina_scan_tid`、`nina_connect_tid`、`nina_monitor_tid`（`common/drivers/nina/port/zephyr/nina_net.c`） | `CONFIG_WIFI_NINA_LOCAL` | ビルドしない。代わりに同じ位置で `nina_net_start()`（`CONFIG_NINA_NET`）がコアのスレッドを起こす | 起こす |
+| `imu_stream_tid`（`common/imu/imu_stream.c`） | `CONFIG_APP_IMU` | 起こす | 同じ |
+| `imu_raw_mqtt_tid`（`common/imu/imu_raw_mqtt.c`） | `CONFIG_IMU_RAW_MQTT` | 同じ | 同じ |
+| `time_sync_tid`（`common/imu/time_sync.c`） | `CONFIG_TIME_SYNC` | 同じ | 同じ |
+| `wifi_reconnect_tid`（`common/imu/wifi_profile.c`） | `CONFIG_WIFI_PROFILE` | 同じ | 同じ |
+| `sensor_shell_processing_tid`（`common/compat/sensor_shell_stream.c`） | `CONFIG_APP_SENSOR` | 同じ | 同じ |
+| `zperf_server_tid`（`common/compat/zperf_iperf3.c`） | `CONFIG_NET_ZPERF` | ビルドしない | 同じ |
+
+起動のファイル: Zephyr `zephyr/app/usb-console/src/main.c`（中継モードの分岐、`app_main()`）。N
+`N-board/src/rp2040_boardinitialize.c`、`N-board/src/rp2040_bringup.c`、`nuttx/apps/init/rp2040_init.c`。
+F `freertos/app/usb-console/src/main.c`（`main()`、そのあとタスク `main_main()`）。OS が書くのは、アプリの起動より前の
+段階（下の表）と、その位置での 1〜4 の呼び出しです。
 
 | 段階 | N | F |
 |---|---|---|
@@ -306,10 +322,8 @@ Zephyr 版は自分の `zephyr/app/usb-console/src/kv_store_os.h` と `wifi_prof
 | LSM6DSOX | `rp2040_bringup()` の I2C0 のあと | `main_main()` の最初 |
 | ネットワーク | `rp2040_bringup()` の `nina_net_initialize()` | `main_main()` の `zephyr_net_initialize()` |
 | KV のフラッシュの範囲 | `rp2040_bringup()` の `nano_flash_kv_initialize()` | `main()` の `nano_flash_kv_initialize()` |
-| Wi-Fi の資格情報 | init タスクの `wifi_credentials_init()` | `main_main()` の `wifi_credentials_init()`、`wifi_shell_init()` |
-| スレッド | 上の表 | 上の表 |
-| Telnet | スレッドのあとに `rp2040_telnet_start()` | スレッドの前に `shell_telnet_init()` |
-| アプリ（3 版とも同じ順） | `kv_store_init()`、`imu_cal_init()`、`time_sync_init()`、`wifi_profile_init()` | 同じ |
+| シェル | init タスクの `nsh_initialize()`（1 の前） | `main()` のコンソールのタスク（`shell_serial_start()`） |
+| アプリの起動 | init タスクで 1、3、Telnet（`rp2040_telnet_start()`、スレッドのあと）、4 | `main_main()` で 1、2（`wifi_shell_init()`、`shell_telnet_init()`）、3、4 |
 
 ### 4.7 POSIX のソケットのヘッダー
 

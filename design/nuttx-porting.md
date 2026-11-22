@@ -927,16 +927,17 @@ Subcommands:
   version; the items of `imu status` have the same order and columns). The settings come from the
   same KV keys (`imu.host`, `imu.port`, `imu.device`, `imu.odr`, `imu.watermark`).
 - Acquisition runs in the thread `imu_stream_tid` (Zephyr priority 9 → 109, a static 2048-byte
-  stack). Zephyr starts `K_THREAD_DEFINE()` threads before `main()`; here init starts it at the
-  beginning of the part that does what `main()` does (`K_THREAD_DEFINE_START()`). The `imu`
+  stack). Zephyr starts `K_THREAD_DEFINE()` threads before `main()`; here init starts it from the
+  application's table of threads shared with the FreeRTOS build (`app_threads_start()` of
+  `common/imu/app_init.c`, `K_THREAD_DEFINE_START()`), before the part that does what `main()` does. The `imu`
   command itself is a builtin at the shell's priority (104).
 - The session ID is the chip ID in its first 8 bytes (the USB serial number; the bytes of Zephyr's
   `hwinfo_get_device_id()`), then the KV value `imu.session` (4 bytes, big-endian, incremented and
   stored by every `imu start`), then zeros. The Zephyr build's counter is not carried over; the
   NuttX build starts at 1.
-- init calls, in the order of the Zephyr build's `main()`, `kv_store_init()` →
-  `imu_cal_init()` (on failure `Could not set up the IMU calibration: <value>`) →
-  `time_sync_init()` → `wifi_profile_init()`.
+- init calls the Zephyr build's `main()` itself, shared by the three builds (`app_main()`,
+  `common/imu/app_main.c`): `kv_store_init()` → `imu_cal_init()` (on failure
+  `Could not set up the IMU calibration: <value>`) → `time_sync_init()` → `wifi_profile_init()`.
 
 ### Calibration (`imu cal`)
 
