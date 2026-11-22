@@ -412,7 +412,7 @@ The NINA ran the firmware with patches 0001 to 0006.
 
 | Item | Zephyr build | NuttX build | FreeRTOS build |
 |---|---|---|---|
-| `cpu_active` while sending | 49.4% and 49.5% (2 runs) | 50.8% and 50.8% (2 runs) | 40.3% and 40.4% (2 runs) |
+| `cpu_active` while sending (2026-11-23) | 34.6% (3 runs) | 36.4% (1 run) | 33.1% (2 runs) |
 | `cpu_active` at rest | not measured | not measured | 0.7% (30 seconds, 3 runs) |
 | TCP send (board to PC) | 3.36 and 3.47 Mbit/s (`zperf`) | 3.34 Mbit/s (`iperf`, 1 run) | 3.47 to 3.84 Mbit/s (`zperf`, 3 runs) |
 | TCP receive (PC to board) | 1.89 and 1.99 Mbit/s (`zperf`) | 1.22 Mbit/s (`iperf`, 1 run) | 2.41 to 2.52 Mbit/s (`zperf`, 3 runs) |
@@ -420,7 +420,10 @@ The NINA ran the firmware with patches 0001 to 0006.
 
 - The TCP rates come from different commands (`zperf` in the Zephyr and FreeRTOS builds speaks the iperf 3
   protocol, `iperf` in the NuttX build the iperf 2 protocol), so they are a rough comparison.
-- `cpu_active` moves by about one point when only the layout of the image changes, with the same functions.
+- Only `cpu_active` while sending is from the images of 2026-11-23 (after the NINA's SPI transfers of 64 bytes or more
+  went to DMA). With the DMA switched off in the same image it was 44.1% (Zephyr), 47.4% (NuttX) and 42.4% (FreeRTOS).
+  With the images of 2026-11-18 (everything polled) it was 49.4%, 50.8% and 40.3%.
+- `cpu_active` moves by one or two points when only the layout of the image changes, with the same functions.
 - The FreeRTOS build's `cpu_active` includes the time of the tick interrupt every 1 ms (the Zephyr and NuttX
   builds have no such interrupt).
 - With the images of 2026-11-14 (boot2 at clock divider 4, the C library's `memcpy`, `memset` and division,
