@@ -453,12 +453,12 @@ int main(void)
 	done = xSemaphoreCreateCounting(2, 0);
 	for (int i = 0; i < 2; i++) {
 		if (xTaskCreate(session_main, "session", SESSION_STACK / sizeof(StackType_t),
-				&sessions[i], NANO_PRIO_SHELL, NULL) != pdPASS) {
+				&sessions[i], APP_PRIO_SHELL, NULL) != pdPASS) {
 			return 2;
 		}
 	}
 	if (xTaskCreate(checker, "checker", SESSION_STACK / sizeof(StackType_t), NULL,
-			NANO_PRIO_SHELL + 1, NULL) != pdPASS) {
+			APP_PRIO_SHELL + 1, NULL) != pdPASS) {
 		return 2;
 	}
 	vTaskStartScheduler();

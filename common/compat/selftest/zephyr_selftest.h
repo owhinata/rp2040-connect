@@ -8,10 +8,10 @@
  * K_THREAD_DEFINE() threads, thread names, time slices of 20 ms, and the
  * tick's catch-up after interrupts were masked for 50 ms (where the port
  * can mask them).  The FreeRTOS build runs it as the "selftest" command of
- * the board's console (built with -DNANO_SELFTEST=ON) and as a host test on
+ * the board's console (built with -DSELFTEST=ON) and as a host test on
  * the FreeRTOS POSIX port (freertos/tests/compat).
  *
- * Call it from a thread at Zephyr priority 14 (NANO_PRIO_SHELL, the shell's
+ * Call it from a thread at Zephyr priority 14 (APP_PRIO_SHELL, the shell's
  * thread) after zephyr_compat_initialize(): the checks of the order in which
  * threads run assume it.  It prints one line per test and the measured times,
  * after each test (zephyr_selftest_port_quiet() then waits until printing no

@@ -74,15 +74,15 @@
  * are in src/priorities_os.h.
  */
 #define configUSE_TIMERS                        1
-#define configTIMER_TASK_PRIORITY               NANO_PRIO_TIMER_SVC
+#define configTIMER_TASK_PRIORITY               APP_PRIO_TIMER_SVC
 #define configTIMER_QUEUE_LENGTH                10
-#define configTIMER_TASK_STACK_DEPTH            (NANO_STACK_TIMER_SVC / 4)
+#define configTIMER_TASK_STACK_DEPTH            (APP_STACK_TIMER_SVC / 4)
 
 /* Memory ----------------------------------------------------------------------*/
 
 /* Stack sizes are in words (4 bytes). */
 
-#define configMINIMAL_STACK_SIZE                (NANO_STACK_IDLE / 4) /* the idle task */
+#define configMINIMAL_STACK_SIZE                (APP_STACK_IDLE / 4) /* the idle task */
 #define configSUPPORT_STATIC_ALLOCATION         1
 #define configKERNEL_PROVIDED_STATIC_MEMORY     1   /* idle and timer tasks */
 #define configSUPPORT_DYNAMIC_ALLOCATION        1

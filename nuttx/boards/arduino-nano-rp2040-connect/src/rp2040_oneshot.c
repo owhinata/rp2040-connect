@@ -33,8 +33,8 @@
  *
  * Differences from the RP2350 original: the RP2040 has one TIMER block (no
  * TIMER0/TIMER1 choice) whose interrupt registers sit at other offsets
- * (nano_timer.h), its 1 MHz tick comes from the watchdog tick rather than
- * the TICKS block, and the interrupt handler returns without calling back
+ * (rp2040_timer_us.h), its 1 MHz tick comes from the watchdog tick rather
+ * than the TICKS block, and the interrupt handler returns without calling back
  * when the alarm is not actually pending (see rp2040_oneshot_interrupt()).
  *
  * As on the RP2350, the ALARM registers match only the low 32 bits of the
@@ -72,7 +72,7 @@
 #include <nuttx/arch.h>
 #include <nuttx/irq.h>
 #include <nuttx/timers/oneshot.h>
-#include <arch/board/nano_timer.h>
+#include <arch/board/rp2040_timer_us.h>
 
 #include "chip.h"
 #include "arm_internal.h"
@@ -88,15 +88,15 @@
  * and INTS registers.
  */
 
-#define ONESHOT_ALARM0_BIT  NANO_TIMER_ALARM(0)
+#define ONESHOT_ALARM0_BIT  RP2040_TIMER_ALARM(0)
 #define ONESHOT_IRQ         RP2040_TIMER_IRQ_0
 
-#define ONESHOT_ARMED       (NANO_TIMER_BASE + NANO_TIMER_ARMED_OFFSET)
-#define ONESHOT_ALARM0      (NANO_TIMER_BASE + NANO_TIMER_ALARM0_OFFSET)
-#define ONESHOT_INTR        (NANO_TIMER_BASE + NANO_TIMER_INTR_OFFSET)
-#define ONESHOT_INTE        (NANO_TIMER_BASE + NANO_TIMER_INTE_OFFSET)
-#define ONESHOT_INTF        (NANO_TIMER_BASE + NANO_TIMER_INTF_OFFSET)
-#define ONESHOT_INTS        (NANO_TIMER_BASE + NANO_TIMER_INTS_OFFSET)
+#define ONESHOT_ARMED       (RP2040_TIMER_BASE + RP2040_TIMER_ARMED_OFFSET)
+#define ONESHOT_ALARM0      (RP2040_TIMER_BASE + RP2040_TIMER_ALARM0_OFFSET)
+#define ONESHOT_INTR        (RP2040_TIMER_BASE + RP2040_TIMER_INTR_OFFSET)
+#define ONESHOT_INTE        (RP2040_TIMER_BASE + RP2040_TIMER_INTE_OFFSET)
+#define ONESHOT_INTF        (RP2040_TIMER_BASE + RP2040_TIMER_INTF_OFFSET)
+#define ONESHOT_INTS        (RP2040_TIMER_BASE + RP2040_TIMER_INTS_OFFSET)
 
 /* The counter is clocked at 1 MHz (1 us per count). */
 
@@ -159,8 +159,8 @@ static bool g_rp2040_oneshot_ready;
  * Name: rp2040_oneshot_count
  *
  * Description:
- *   Read the free-running 64-bit microsecond counter: nano_mono_us()
- *   (include/nano_timer.h), the board's monotonic clock, which reads the
+ *   Read the free-running 64-bit microsecond counter: rp2040_timer_us()
+ *   (include/rp2040_timer_us.h), the board's monotonic clock, which reads the
  *   raw (non-latching) registers and guards against a carry from the low
  *   word into the high word between the two reads.  Safe from any context.
  *
@@ -168,7 +168,7 @@ static bool g_rp2040_oneshot_ready;
 
 static inline uint64_t rp2040_oneshot_count(void)
 {
-  return nano_mono_us();
+  return rp2040_timer_us();
 }
 
 /****************************************************************************

@@ -31,7 +31,7 @@
 #   devices gpio0, i2c0 and lsm6dsox; zephyr_gpio.c, the device gpio0;
 #   sensor_default_rtio.c, the default iodev and decoder of the sensor API;
 #   zephyr_sensor_clock.c, the sensor clock on the TIMER) and their FreeRTOS
-#   part (freertos/drivers/compat/rp2040/nano_gpio.c, GPIO bank 0 and its
+#   part (freertos/drivers/compat/rp2040/gpio_os_rp2040.c, GPIO bank 0 and its
 #   interrupt on the Pico SDK);
 # - the start of the sensor (this directory: nano_lsm6dso.c, nano_lsm6dso.h);
 # - CONFIG_LSM6DSO_STREAM=1 for every source of the target (the NuttX
@@ -94,7 +94,7 @@ function(freertos_lsm6dso target)
     ${lsm6dso_driver_sources}
     ${lsm6dso_compat_sources}
     ${FREERTOS_STMEMSC_DIR}/lsm6dso_reg.c
-    ${FREERTOS_COMPAT_DIR}/rp2040/nano_gpio.c
+    ${FREERTOS_COMPAT_DIR}/rp2040/gpio_os_rp2040.c
     ${FREERTOS_LSM6DSO_DIR}/nano_lsm6dso.c
   )
 

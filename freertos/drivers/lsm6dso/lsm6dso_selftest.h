@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 /* The board's check of the LSM6DSOX (lsm6dso_selftest.c), part of the
- * "selftest" command (a test feature, built with -DNANO_SELFTEST=ON only).
+ * "selftest" command (a test feature, built with -DSELFTEST=ON only).
  */
 
 #ifndef FREERTOS_DRIVERS_LSM6DSO_LSM6DSO_SELFTEST_H

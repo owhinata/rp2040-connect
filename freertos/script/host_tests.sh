@@ -22,7 +22,7 @@
 #   layer's <zephyr/drivers/i2c.h>) with the shared core on fakes of the
 #   Pico SDK's GPIO, reset, IRQ, sync, DMA and TIMER functions and of the
 #   controllers' registers (freertos/tests/i2c_dw), and GPIO bank
-#   0's boundary (freertos/drivers/compat/rp2040/nano_gpio.c) under the
+#   0's boundary (freertos/drivers/compat/rp2040/gpio_os_rp2040.c) under the
 #   layer's gpio0 and the LSM6DSO's FIFO interrupt on fakes of the Pico SDK's
 #   GPIO and IRQ functions (freertos/tests/gpio), and the IMU service's
 #   parts of the build (address conversions, hwinfo: freertos/tests/imu),
@@ -299,7 +299,7 @@ done
 printf 'ok  i2c_dw (I2C0 and I2C1 boundaries and devices, DMA reads on the Pico SDK DMA, Zephyr I2C API, FreeRTOS POSIX port)\n'
 
 # GPIO bank 0 (freertos/tests/gpio): the board's boundary of the layer's gpio0
-# (drivers/compat/rp2040/nano_gpio.c) on fakes of the Pico SDK's GPIO and IRQ functions
+# (drivers/compat/rp2040/gpio_os_rp2040.c) on fakes of the Pico SDK's GPIO and IRQ functions
 # (tests/gpio/pico_fake), under common/compat/zephyr_gpio.c and zephyr_device.c and the LSM6DSO's
 # INT1 line (the driver's OS part on Zephyr, common/drivers/lsm6dso/port/zephyr/lsm6dso_os.c,
 # which the test includes; with ST's lsm6dso_reg.h, freertos/stmemsc, for the driver's headers;
@@ -313,7 +313,7 @@ if [[ -f stmemsc/lsm6dso_reg.h ]]; then
              -I$lsm/port/zephyr -I../common/drivers/stmemsc -Istmemsc
              -DCONFIG_LSM6DSO_STREAM=1 -ffunction-sections -fdata-sections)
     gpioobjs=()
-    for src in drivers/compat/rp2040/nano_gpio.c ../common/compat/zephyr_init.c tests/gpio/main.c \
+    for src in drivers/compat/rp2040/gpio_os_rp2040.c ../common/compat/zephyr_init.c tests/gpio/main.c \
                ../common/compat/zephyr_gpio.c ../common/compat/zephyr_device.c; do
         obj="$out/gpio_$(basename "$src" .c).o"
         extra=()

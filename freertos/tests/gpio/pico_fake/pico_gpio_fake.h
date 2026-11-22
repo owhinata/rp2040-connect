@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: MIT */
-/* The part of the Pico SDK that freertos/drivers/compat/rp2040/nano_gpio.c
+/* The part of the Pico SDK that freertos/drivers/compat/rp2040/gpio_os_rp2040.c
  * uses, for its host test (freertos/tests/gpio/main.c, which implements the
  * functions: they record the calls and play GPIO bank 0's interrupt
  * registers).  hardware/gpio.h and hardware/irq.h next to this one include

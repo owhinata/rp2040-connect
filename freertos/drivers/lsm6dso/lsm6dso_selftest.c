@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 /* The board's check of the LSM6DSOX for the "selftest" command (a test
- * feature: built with -DNANO_SELFTEST=ON only,
+ * feature: built with -DSELFTEST=ON only,
  * freertos/drivers/lsm6dso/lsm6dso.cmake), through Zephyr's sensor API, the
  * driver's FIFO calls (<zephyr/drivers/sensor/lsm6dso.h>) and RTIO on the
  * device lsm6dsox, with the sensor's registers read back on I2C0:

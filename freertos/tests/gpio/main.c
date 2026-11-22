@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MIT */
 /* The host test of the FreeRTOS build's GPIO boundary on the FreeRTOS POSIX
- * port: freertos/drivers/compat/rp2040/nano_gpio.c (common/compat/
- * nano_gpio.h on the Pico SDK's hardware_gpio) on fakes of the SDK's GPIO
+ * port: freertos/drivers/compat/rp2040/gpio_os_rp2040.c (common/compat/
+ * gpio_os.h on the Pico SDK's hardware_gpio) on fakes of the SDK's GPIO
  * and IRQ functions (pico_fake/, implemented here: they record the calls and
  * play GPIO bank 0's levels, latched edges and interrupt enables), under
  * the layer's gpio0 device (common/compat/zephyr_gpio.c, with
@@ -456,7 +456,7 @@ int main(void)
 	static char out[1 << 12];
 
 	setvbuf(stdout, out, _IOLBF, sizeof(out));
-	if (xTaskCreate(runner, "runner", RUNNER_STACK / sizeof(StackType_t), NULL, NANO_PRIO_SHELL,
+	if (xTaskCreate(runner, "runner", RUNNER_STACK / sizeof(StackType_t), NULL, APP_PRIO_SHELL,
 			NULL) != pdPASS) {
 		return 1;
 	}

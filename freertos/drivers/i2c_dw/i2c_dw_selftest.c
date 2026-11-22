@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MIT */
 /* The board's check of I2C0, and of I2C1 when it is built, for the
  * "selftest" command (a test feature:
- * built with -DNANO_SELFTEST=ON only, freertos/drivers/i2c_dw/i2c_dw.cmake),
+ * built with -DSELFTEST=ON only, freertos/drivers/i2c_dw/i2c_dw.cmake),
  * through Zephyr's I2C API on the device i2c0 and the board's LSM6DSOX at
  * 0x6a, with the controller's and the DMA's registers read back:
  *

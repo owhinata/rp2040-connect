@@ -91,7 +91,7 @@ int main(void)
 	if (zephyr_compat_initialize() != 0) {
 		return 2;
 	}
-	if (xTaskCreate(runner, "runner", RUNNER_STACK / sizeof(StackType_t), NULL, NANO_PRIO_SHELL,
+	if (xTaskCreate(runner, "runner", RUNNER_STACK / sizeof(StackType_t), NULL, APP_PRIO_SHELL,
 			NULL) != pdPASS) {
 		return 2;
 	}

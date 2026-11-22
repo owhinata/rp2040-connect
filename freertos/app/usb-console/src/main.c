@@ -46,14 +46,14 @@ int wifi_shell_init(void);
 
 /* Priorities and stacks (bytes): src/priorities_os.h and
  * common/compat/priorities.h.  The console is the Zephyr build's shell
- * thread (NANO_PRIO_SHELL, 14 -> 6, 3072 bytes): the commands run in it.
+ * thread (APP_PRIO_SHELL, 14 -> 6, 3072 bytes): the commands run in it.
  */
-#define CONSOLE_PRIORITY     NANO_PRIO_SHELL
-#define CONSOLE_STACK_SIZE   (NANO_STACK_SHELL / sizeof(StackType_t))
-#define MAIN_PRIORITY        NANO_PRIO_MAIN
-#define MAIN_STACK_SIZE      (NANO_STACK_MAIN / sizeof(StackType_t))
-#define HEARTBEAT_PRIORITY   NANO_PRIO_HEARTBEAT
-#define HEARTBEAT_STACK_SIZE (NANO_STACK_HEARTBEAT / sizeof(StackType_t))
+#define CONSOLE_PRIORITY     APP_PRIO_SHELL
+#define CONSOLE_STACK_SIZE   (APP_STACK_SHELL / sizeof(StackType_t))
+#define MAIN_PRIORITY        APP_PRIO_MAIN
+#define MAIN_STACK_SIZE      (APP_STACK_MAIN / sizeof(StackType_t))
+#define HEARTBEAT_PRIORITY   APP_PRIO_HEARTBEAT
+#define HEARTBEAT_STACK_SIZE (APP_STACK_HEARTBEAT / sizeof(StackType_t))
 
 #define HEARTBEAT_PERIOD_MS 500
 /* The console task wakes at least this often, to notice the terminal opening
@@ -184,7 +184,7 @@ static void start_thread(int ret, const char *name)
 }
 
 /* The Zephyr build's main() (zephyr/app/usb-console/src/main.c), as the task
- * "main" with its priority (NANO_PRIO_MAIN: Zephyr's 0, above the console) and
+ * "main" with its priority (APP_PRIO_MAIN: Zephyr's 0, above the console) and
  * stack, ending when done as Zephyr's main thread does.  It runs before the
  * console's task, which has a lower priority, as the Zephyr build's main()
  * runs before its shell thread.

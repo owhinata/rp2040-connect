@@ -278,23 +278,23 @@ static void monitor_main(void *arg)
 {
 	(void)arg;
 	for (;;) {
-		uint64_t before = nano_mono_us();
+		uint64_t before = rp2040_timer_us();
 		uint64_t slept;
 		const struct shell *sh;
 
 		/* 10 ms, so 10 to 11 ticks of 1 ms: late is what is more. */
 		vTaskDelay(pdMS_TO_TICKS(10));
-		slept = nano_mono_us() - before;
+		slept = rp2040_timer_us() - before;
 		if (slept > 11000 && slept - 11000 > late_max_us) {
 			late_max_us = (uint32_t)(slept - 11000);
 		}
 		sh = async_sh;
 		if (sh != NULL) {
-			uint64_t t0 = nano_mono_us();
+			uint64_t t0 = rp2040_timer_us();
 			uint32_t dt;
 
 			shell_print(sh, "async %lu", (unsigned long)++async_count);
-			dt = (uint32_t)(nano_mono_us() - t0);
+			dt = (uint32_t)(rp2040_timer_us() - t0);
 			if (dt > async_max_us) {
 				async_max_us = dt;
 			}
@@ -440,9 +440,9 @@ static void init_main(void *arg)
 		report("RESULT zperf_server_tid not started");
 		_exit(1);
 	}
-	xTaskCreate(usb_main, "usb", TASK_STACK / sizeof(StackType_t), NULL, NANO_PRIO_SHELL, NULL);
+	xTaskCreate(usb_main, "usb", TASK_STACK / sizeof(StackType_t), NULL, APP_PRIO_SHELL, NULL);
 	xTaskCreate(monitor_main, "monitor", TASK_STACK / sizeof(StackType_t), NULL,
-		    NANO_PRIO_NET_MGMT, NULL);
+		    APP_PRIO_NET_MGMT, NULL);
 	report("READY");
 	vTaskDelete(NULL);
 }
@@ -458,7 +458,7 @@ int main(int argc, char **argv)
 
 	nano_console_init(&usb, "usb", usb_out, NULL);
 	nano_console_set_default(&usb);
-	if (xTaskCreate(init_main, "main", TASK_STACK / sizeof(StackType_t), NULL, NANO_PRIO_MAIN,
+	if (xTaskCreate(init_main, "main", TASK_STACK / sizeof(StackType_t), NULL, APP_PRIO_MAIN,
 			NULL) != pdPASS) {
 		return 2;
 	}

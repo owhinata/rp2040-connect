@@ -30,7 +30,7 @@
  *                              (a pend that meets a pending SysTick merges
  *                              with it)
  *
- * It also makes nano_mono_us() (microseconds since the start, the RP2040
+ * It also makes rp2040_timer_us() (microseconds since the start, the RP2040
  * TIMER, os_clock.h of the application) available: z_os_clock_us() is it.
  */
 

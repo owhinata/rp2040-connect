@@ -20,7 +20,7 @@ config NINA
 		line (GPIO10) sleep on its edge interrupt
 		(common/drivers/nina/port/nuttx/nina_os.c),
 		through the compatibility layer's gpio0 and the board's
-		src/nano_gpio.c, which are built with LSM6DSO_STREAM.
+		src/rp2040_gpio_os.c, which are built with LSM6DSO_STREAM.
 
 if NINA
 

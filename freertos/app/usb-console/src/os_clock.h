@@ -10,8 +10,8 @@
  * tick_catchup.h).  So the time since the start is not counted in ticks but
  * read from the TIMER (64 bits, 1 us, from the 12 MHz crystal), the time
  * base of the Zephyr build's time_sync_mono_us() and the NuttX build's
- * nano_mono_us().  The compatibility layer's k_uptime_*() and k_cycle_*()
- * (F02) are built on nano_mono_us().
+ * rp2040_timer_us().  The compatibility layer's k_uptime_*() and k_cycle_*()
+ * (F02) are built on rp2040_timer_us().
  *
  * Do not use the Pico SDK's sleep_ms()/sleep_us(): they wait for a TIMER
  * alarm and spin the last PICO_TIME_SLEEP_OVERHEAD_ADJUST_US (150 us) in
@@ -29,11 +29,11 @@
 /* Microseconds since the TIMER left reset at the start (every start,
  * including a restart by the watchdog).  time_us_64() reads TIMERAWH,
  * TIMERAWL and TIMERAWH again until the two high words agree, the read of
- * time_sync_mono_us() and nano_mono_us(): no side effect and no lock, so it
+ * time_sync_mono_us() and rp2040_timer_us(): no side effect and no lock, so it
  * may be called from tasks, interrupt handlers and with interrupts
  * disabled.
  */
-static inline uint64_t nano_mono_us(void)
+static inline uint64_t rp2040_timer_us(void)
 {
 	return time_us_64();
 }

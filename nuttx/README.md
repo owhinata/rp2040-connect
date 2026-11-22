@@ -469,7 +469,7 @@ credential).
 
 ## Threads and priorities
 
-Priorities map as `NuttX = 118 − Zephyr` (`NANO_PRIO_*` and `NANO_STACK_*` in
+Priorities map as `NuttX = 118 − Zephyr` (`APP_PRIO_*` and `APP_STACK_*` in
 `common/compat/priorities.h`; the mapping is in `nuttx/drivers/include/priorities_os.h`).
 
 | Thread | Zephyr | NuttX | Stack |

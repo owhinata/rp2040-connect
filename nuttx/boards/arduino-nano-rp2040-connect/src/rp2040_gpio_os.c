@@ -1,12 +1,12 @@
 /****************************************************************************
- * boards/arduino-nano-rp2040-connect/src/nano_gpio.c
+ * boards/arduino-nano-rp2040-connect/src/rp2040_gpio_os.c
  *
  * SPDX-License-Identifier: Apache-2.0
  *
  ****************************************************************************/
 
 /* GPIO bank 0 for the Zephyr compatibility layer's gpio0 device
- * (<nano_gpio.h>), as Zephyr's drivers/gpio/gpio_rpi_pico.c drives it on
+ * (<gpio_os.h>), as Zephyr's drivers/gpio/gpio_rpi_pico.c drives it on
  * the pico-sdk's hardware_gpio (its interrupts: the LSM6DSOX's INT1,
  * GPIO24, through gpio0's API, NINA's READY, GPIO10, whose edges
  * common/drivers/nina/port/nuttx/nina_os.c enables only while the NINA core waits for it,
@@ -26,7 +26,7 @@
  *   the pin's events, then fires the callbacks of the pin.  Here NuttX's
  *   rp2040_gpio_interrupt() clears the pending (enabled) events of the
  *   bank, then calls the pin's handler, which calls
- *   nano_gpio_irq_handler().  All interrupts have the same priority on
+ *   gpio_os_irq_handler().  All interrupts have the same priority on
  *   NuttX (Zephyr gives the GPIO bank priority 3, the lowest, as every
  *   peripheral of the build).
  *
@@ -54,7 +54,7 @@
 #include "hardware/rp2040_io_bank0.h"
 #include "rp2040_gpio.h"
 
-#include "nano_gpio.h"
+#include "gpio_os.h"
 
 /****************************************************************************
  * Private Data
@@ -66,14 +66,14 @@ static uint32_t g_attached;   /* pins whose handler is attached */
  * Private Functions
  ****************************************************************************/
 
-static int nano_gpio_isr(int irq, void *context, void *arg)
+static int gpio_os_isr(int irq, void *context, void *arg)
 {
   (void)context;
   (void)arg;
 
   /* rp2040_gpio_interrupt() passes the pin number as irq. */
 
-  nano_gpio_irq_handler((unsigned int)irq);
+  gpio_os_irq_handler((unsigned int)irq);
   return 0;
 }
 
@@ -81,10 +81,10 @@ static int nano_gpio_isr(int irq, void *context, void *arg)
  * Public Functions
  ****************************************************************************/
 
-int nano_gpio_configure_input(unsigned int pin, bool pull_up,
+int gpio_os_configure_input(unsigned int pin, bool pull_up,
                               bool pull_down)
 {
-  if (pin >= NANO_GPIO_NUM)
+  if (pin >= GPIO_OS_NUM)
     {
       return -EINVAL;
     }
@@ -95,17 +95,17 @@ int nano_gpio_configure_input(unsigned int pin, bool pull_up,
   return 0;
 }
 
-uint32_t nano_gpio_get_all(void)
+uint32_t gpio_os_get_all(void)
 {
   return getreg32(RP2040_SIO_GPIO_IN);
 }
 
-int nano_gpio_irq_configure(unsigned int pin, uint32_t events)
+int gpio_os_irq_configure(unsigned int pin, uint32_t events)
 {
   unsigned int shift = (pin % 8) * 4;
   irqstate_t flags;
 
-  if (pin >= NANO_GPIO_NUM || (events & ~NANO_GPIO_IRQ_ALL) != 0)
+  if (pin >= GPIO_OS_NUM || (events & ~GPIO_OS_IRQ_ALL) != 0)
     {
       return -EINVAL;
     }
@@ -119,7 +119,7 @@ int nano_gpio_irq_configure(unsigned int pin, uint32_t events)
        * RESET) has interrupts.
        */
 
-      rp2040_gpio_irq_attach(pin, events, nano_gpio_isr, NULL);
+      rp2040_gpio_irq_attach(pin, events, gpio_os_isr, NULL);
       g_attached |= 1U << pin;
     }
 
@@ -127,8 +127,8 @@ int nano_gpio_irq_configure(unsigned int pin, uint32_t events)
 
   /* gpio_set_irq_enabled(pin, ALL_EVENTS, false) */
 
-  putreg32(NANO_GPIO_IRQ_ALL << shift, RP2040_IO_BANK0_INTR(pin));
-  modifyreg32(RP2040_IO_BANK0_PROC_INTE(pin, 0), NANO_GPIO_IRQ_ALL << shift,
+  putreg32(GPIO_OS_IRQ_ALL << shift, RP2040_IO_BANK0_INTR(pin));
+  modifyreg32(RP2040_IO_BANK0_PROC_INTE(pin, 0), GPIO_OS_IRQ_ALL << shift,
               0);
 
   /* gpio_set_irq_enabled(pin, events, true) */

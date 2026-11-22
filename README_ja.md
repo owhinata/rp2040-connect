@@ -56,7 +56,7 @@ west build -b arduino_nano_connect app/usb-console -d build/usb-console
 ```
 
 構成は `zephyr/app/usb-console/prj.conf` の 1 つだけです。`memcpy`・`memset` はブート ROM のルーチン
-（`CONFIG_RP2040_ROM_MEM_OPS`）、整数の割り算はハードウェアの除算器（`CONFIG_NANO_HW_DIVIDER`）を使い、
+（`CONFIG_RP2040_ROM_MEM_OPS`）、整数の割り算はハードウェアの除算器（`CONFIG_RP2040_PICO_DIVIDER`）を使い、
 `nina passthrough confirm` は `CONFIG_NINA_PASSTHROUGH` で入ります（どれも既定で有効）。
 
 UF2 はブートローダーモード（BOOTSEL。`RPI-RP2` という USB ストレージが現れる状態）から書きます。

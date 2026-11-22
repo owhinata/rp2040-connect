@@ -47,14 +47,14 @@ API へのつなぎ（`common/drivers/nina/port/nuttx/`。RP2040 の SPI と線�
 - READY の待ち: コアの `wait_ready()` は READY（GPIO10、アクティブ low）を 100 µs ごとに見る代わりに、
   その変化の割り込みで眠ります（Zephyr 版・FreeRTOS 版と同じ）。`nina_os_ready_arm()` が
   セマフォを 0 にしてから、望む向きのエッジ（準備できた＝立ち下がり、準備でなくなった＝立ち上がり）を
-  ボードの `src/nano_gpio.c`（`nano_gpio_irq_configure()`。止めていた間にラッチされたエッジを消してから有効にする）で
+  ボードの `src/rp2040_gpio_os.c`（`gpio_os_irq_configure()`。止めていた間にラッチされたエッジを消してから有効にする）で
   有効にし、コアはそのあとで READY を読みます。読んだあとの変化はセマフォに残るので、待ちはすぐ返ります。
   割り込みは LSM6DSOX の INT1（GPIO24）と同じ GPIO バンク 0 の 1 本の IRQ で、互換層の `gpio0` のコールバックが
   セマフォを post するだけです（数は 1 まで）。`nina_os_ready_wait()` はタイムアウト付きの待ち（ms を tick に
   切り上げて 1 tick 足す）を 1 回で行います。期限（`nina_os_uptime_ms()`）と待ちのタイムアウトはどちらも
   TIMER から読む tickless の tick なので、割り込みを止めている間（フラッシュの消去）にずれません（FreeRTOS 版は
   その間 tick が止まり、あとで TIMER に追いつくので、10 ms ごとに区切ります）。`nina_os_ready_disarm()` でエッジを止め、転送中の CS による
-  READY の変化では割り込みを起こしません。`gpio0` と `src/nano_gpio.c` は `CONFIG_LSM6DSO_STREAM` で
+  READY の変化では割り込みを起こしません。`gpio0` と `src/rp2040_gpio_os.c` は `CONFIG_LSM6DSO_STREAM` で
   ビルドされるので、`CONFIG_NINA` はそれに依存します。
   コールバックは最初のリセットのあとに `nina_os_ready_start()` が `gpio0` に登録します。登録に失敗したときは、
   コアは 100 µs ごとに READY を読みます（期限と結果は同じ）。
@@ -236,7 +236,7 @@ wapi の ioctl（`d_ioctl`。呼び出したスレッドで処理）は次のと
 
 NuttX 版のビット 2 の待ち:
 
-- `common/drivers/nina/port/nuttx/nina_os.c` の GPIO2 の割り込み（ボードの `src/nano_gpio.c`、互換層の `gpio0` のコールバック）がエッジを数え、
+- `common/drivers/nina/port/nuttx/nina_os.c` の GPIO2 の割り込み（ボードの `src/rp2040_gpio_os.c`、互換層の `gpio0` のコールバック）がエッジを数え、
   待っている全スレッドの `sem_t` を post し（ブロードキャスト）、`nina_event` も起こします（`nina_poller_edge()`）。
 - `nina_event` は、前の周の前に控えたエッジの数（または受信の要求が命令の前に控えた数）から数が変わったら、
   20 ms を待たずに次の周を始めます。変わらなければ 100 ms（接続中のソケットがあればその期限まで）で周を始めます。
@@ -473,7 +473,7 @@ DMA の部分を同じ分岐・順序・値で写したものです。
 | `common/drivers/lsm6dso/port/zephyr/lsm6dso_rtio_stream.c` | FIFO のストリームの RTIO 側（下）。デバイスの INT1 の線、RTIO の要求をコアのストリームへ渡すこと、拡張 API の停止と設定。Zephyr 版と同じファイル |
 | `common/drivers/lsm6dso/port/zephyr/lsm6dso_decoder.[ch]` | ストリームと単発取得のバッファーのデコーダー（`get_decoder`）。Zephyr 版と同じファイル |
 | ボードの `src/rp2040_lsm6dso.[ch]` | I2C0 を互換層のバスのデバイス（`i2c0`、100 kHz）にし、`lsm6dsox` を初期化する（`rp2040_bringup()` から） |
-| ボードの `src/nano_gpio.c` | 互換層の `gpio0` のための GPIO バンク 0（入力の設定、レベルの読み出し、エッジ・レベルの割り込み）。`<nano_gpio.h>`（`common/compat`） |
+| ボードの `src/rp2040_gpio_os.c` | 互換層の `gpio0` のための GPIO バンク 0（入力の設定、レベルの読み出し、エッジ・レベルの割り込み）。`<gpio_os.h>`（`common/compat`） |
 
 ドライバーが使う OS の機能の、NuttX 版での中身（コアのものは `port/zephyr/lsm6dso_os_impl.h`・`lsm6dso_stream_req_impl.h` を通し、つなぎのものは直接）:
 
@@ -586,7 +586,7 @@ Zephyr の API を、Zephyr の名前のまま最小限だけ用意したもの�
   Wi-Fi の資格情報の `wifi_credentials.c`・`wifi_credentials_backend_settings.c`・`wifi_credentials_internal.h`、
   KV の NVS と settings（下の「KV: Zephyr の NVS と settings の写し」）。MQTT のクライアントは
   `common/imu/mqtt_min.c`）、境界のヘッダー（スレッドの優先度とスタックの表 `priorities.h`、`cpu_load_get()` の
-  `cpu_load.h` とその計算 `nano_cpuload.h`、`gpio0` の下の `nano_gpio.h`、KV の領域の flash の `nano_flash_kv.h`）。
+  `cpu_load.h`（とその計算）、`gpio0` の下の `gpio_os.h`、KV の領域の flash の `nano_flash_kv.h`）。
   シェルの `zephyr/shell/shell.h` のコマンドの処理は `common/shell/zshell.c`（下の「シェル」）。Zephyr 版は
   使いません（Zephyr 本体を使う）。
 - **NuttX の実装**（`nuttx/drivers/compat/`）: カーネルの部分（`zephyr_kernel.c`・`zephyr_mutex.c`）、OS ごとの
@@ -647,13 +647,13 @@ Zephyr の API を、Zephyr の名前のまま最小限だけ用意したもの�
 | `zephyr_work.c` | ワークとワークキュー。Zephyr の `kernel/work.c` の使っている部分の写し（OS に依存しない） |
 | `zephyr_init.c` | ワークキューのスレッド（`k_work_queue_start()`、`kernel/work.c` の `work_queue_main()` のループ）、システムワークキュー `k_sys_work_q`、`zephyr_compat_initialize()`、`k_uptime_get()`（TIMER の ms）。`z_thread_static_start()` の上（OS に依存しない） |
 | `zephyr_rtio.c`、`zephyr_rtio_workq.c`、`zephyr_mem_blocks.c` | RTIO の executor（`subsys/rtio/rtio_executor.c`）、RTIO のワークキュー（`rtio_workq.c`。スレッド `RTIO WQ 0` は `zephyr_compat_initialize()` が `z_thread_static_start()` で起動する）、ブロックのプール（`lib/mem_blocks`） |
-| `zephyr_gpio.c` | `gpio0` のデバイス（Zephyr の `gpio.h` の処理と `gpio_rpi_pico.c`）。ボードの `<nano_gpio.h>` の上 |
-| `zephyr_sensor_clock.c` | センサーの時計。互換層のサイクルカウンター `k_cycle_get_64()`（ボードの TIMER、`nano_mono_us()`、1 MHz） |
+| `zephyr_gpio.c` | `gpio0` のデバイス（Zephyr の `gpio.h` の処理と `gpio_rpi_pico.c`）。ボードの `<gpio_os.h>` の上 |
+| `zephyr_sensor_clock.c` | センサーの時計。互換層のサイクルカウンター `k_cycle_get_64()`（ボードの TIMER、`rp2040_timer_us()`、1 MHz） |
 | `sensor_default_rtio.c` | Zephyr の `drivers/sensor/default_rtio_sensor.c` の写し（ログだけ置き換え）。センサーの iodev の API、単発取得のフォールバック、既定のデコーダー |
 | `zephyr_device.c` | デバイスの初期化と一覧（`gpio0`、`i2c0`、`lsm6dsox` を Zephyr 版の初期化の順に、ノードのラベルと sensor の API かどうかと共に。`gpio0` は OS の構成の `CONFIG_LSM6DSO_STREAM` のとき） |
 | `zephyr_i2c.c`（NuttX） | I2C（NuttX の I2C マスターの上） |
 | `zephyr_hwinfo.c`（NuttX） | `hwinfo_get_device_id()`。ボードのチップ ID（`rp2040_chip_id()`） |
-| `zephyr_net_if.c`（NuttX）、`zephyr_net_mgmt.c`、`zephyr_wifi_mgmt.c` | インターフェース（NuttX のネットワークデバイスの値）、`net_mgmt` のイベントの待ち行列とスレッド（スレッドは `z_thread_static_start()` で起動。優先度とスタックの大きさは `priorities.h` の `NANO_PRIO_NET_MGMT`・`NANO_STACK_NET_MGMT`）、Wi-Fi の要求の処理（Zephyr の `subsys/net/l2/wifi/wifi_mgmt.c` の検査の写し）とイベント、`NET_REQUEST_WIFI_CONNECT_STORED`（同じファイルの `connect_stored_command()` の写し。`CONFIG_WIFI_CREDENTIALS` のとき）。`CONFIG_NINA_NET` のときだけ。NINA のつなぎ（`common/drivers/nina/port/nuttx/nina_wifi_mgmt.c`）がコアの上でアプリに提供する |
+| `zephyr_net_if.c`（NuttX）、`zephyr_net_mgmt.c`、`zephyr_wifi_mgmt.c` | インターフェース（NuttX のネットワークデバイスの値）、`net_mgmt` のイベントの待ち行列とスレッド（スレッドは `z_thread_static_start()` で起動。優先度とスタックの大きさは `priorities.h` の `APP_PRIO_NET_MGMT`・`APP_STACK_NET_MGMT`）、Wi-Fi の要求の処理（Zephyr の `subsys/net/l2/wifi/wifi_mgmt.c` の検査の写し）とイベント、`NET_REQUEST_WIFI_CONNECT_STORED`（同じファイルの `connect_stored_command()` の写し。`CONFIG_WIFI_CREDENTIALS` のとき）。`CONFIG_NINA_NET` のときだけ。NINA のつなぎ（`common/drivers/nina/port/nuttx/nina_wifi_mgmt.c`）がコアの上でアプリに提供する |
 | `zephyr_wifi_utils.c` | `wifi_security_txt()`・`wifi_band_txt()`（Zephyr の `wifi_mgmt.c`）、チャネルの検査（`wifi_utils.c`）、`net_bytes_from_str()`（`subsys/net/ip/utils.c`）の写し。`wifi cred` が使う。OS に依存しない。`CONFIG_NINA_NET` のときだけ |
 | `sensor_shell_stream.c` | Zephyr の `drivers/sensor/sensor_shell_stream.c` の写し（sensor シェルの処理スレッド）。OS の `sensor_shell_os.h` を最初に読み、処理スレッドのコールバックを `sensor_shell_os_processing_callback()` にした（NuttX 版は `nuttx/apps/sensor/sensor_shell_nuttx.c`）。`apps/sensor` がビルドする |
 | `wifi_credentials.c`、`wifi_credentials_backend_settings.c` | Zephyr の `subsys/net/lib/wifi_credentials/` の写し（保存した Wi-Fi の資格情報）。`apps/wifi` がビルドする。バックエンドの変更は 2 つ: 読み込みのバッファーを 8 バイトに揃えた（構造体として読むため。Cortex-M0+ は揃っていない読み出しで止まる）、番号の書式を `%zu` にした |
@@ -688,9 +688,9 @@ Zephyr の API を、Zephyr の名前のまま最小限だけ用意したもの�
   - `zephyr_os_shell.h`（`<zephyr/shell/shell.h>` が読む）: `struct shell`（下の「シェル」）。
   - 全体が OS ごとのヘッダー: `zephyr/net/socket.h`、`zephyr/net/net_if.h`、`zephyr/sys/clock.h`、
     `zephyr/sys/__assert.h`、`zephyr/drivers/i2c.h`。
-  - 共通の `.c` とヘッダーが読む境界のヘッダー: `priorities.h`（`NANO_STACK_NET_MGMT`・`NANO_PRIO_RTIO_WQ`・`NANO_STACK_RTIO_WQ`。`common/compat/` にあり、
-    OS の部分 `priorities_os.h` の `NANO_PRIO_FROM_ZEPHYR()` を読む。NuttX 版は `nuttx/drivers/include/`）、
-    `nano_gpio.h`（`zephyr_gpio.c`。`common/compat/` にあり、ボードが実装する）、`app_log.h`（`<zephyr/logging/log.h>`、
+  - 共通の `.c` とヘッダーが読む境界のヘッダー: `priorities.h`（`APP_STACK_NET_MGMT`・`APP_PRIO_RTIO_WQ`・`APP_STACK_RTIO_WQ`。`common/compat/` にあり、
+    OS の部分 `priorities_os.h` の `APP_PRIO_FROM_ZEPHYR()` を読む。NuttX 版は `nuttx/drivers/include/`）、
+    `gpio_os.h`（`zephyr_gpio.c`。`common/compat/` にあり、ボードが実装する）、`app_log.h`（`<zephyr/logging/log.h>`、
     `sensor_default_rtio.c`、資格情報。`common/log/` にあり、OS の部分 `app_log_os.h` を読む）、`<cpu_load.h>`
     （`<zephyr/sys/cpu_load.h>`。`common/compat/`）、`sensor_shell_os.h`
     （`sensor_shell_stream.c`）。構成の値 `CONFIG_LSM6DSO_STREAM`（`zephyr_device.c`）と
@@ -750,7 +750,7 @@ Zephyr の API を、Zephyr の名前のまま最小限だけ用意したもの�
   使います。NuttX はタスク名の空白を `_` にするので、`ps` では `RTIO_WQ_0` と出ます。
 - **GPIO**: ポートは `gpio0`（GPIO0〜29）だけで、入力だけです（出力は `-ENOTSUP`）。ピンの設定、割り込み
   （エッジ・レベル、論理・物理）、レベルの読み出し、コールバックは Zephyr の `gpio.h` と `gpio_rpi_pico.c`
-  の写しで、ボードの `src/nano_gpio.c` が pico-sdk の `gpio_set_pulls()`・`gpio_set_function()`・
+  の写しで、ボードの `src/rp2040_gpio_os.c` が pico-sdk の `gpio_set_pulls()`・`gpio_set_function()`・
   `gpio_set_dir()`・`gpio_set_irq_enabled()` と同じレジスター操作をします（イベントを有効・無効にする前に
   `INTR` のそのピンのイベントを消す）。割り込みは NuttX の `rp2040_gpio` のバンクの割り込みから来ます
   （有効なイベントを消してからピンのハンドラーを呼ぶ）。
@@ -825,7 +825,7 @@ Zephyr の API を、Zephyr の名前のまま最小限だけ用意したもの�
   `REMOTE_CLOSED`。Zephyr 版は `ZSOCK_POLLERR`）です。`zsock_poll()` を受信の確認（100 ms ごと、待ち時間 0）と
   CONNACK の待ち（5000 ms）に使う `imu_raw_mqtt.c` は、どちらでも接続を終えます。
 - **サイクルカウンター**: Zephyr 版の `k_cycle_get_*()` は 125 MHz の SysTick の数（負荷で遅れる）で、
-  NuttX 版はボードの TIMER（`nano_mono_us()`、水晶の 1 MHz。センサーの時計と同じ）です。1 サイクルが 1 µs
+  NuttX 版はボードの TIMER（`rp2040_timer_us()`、水晶の 1 MHz。センサーの時計と同じ）です。1 サイクルが 1 µs
   なので、µs への換算（`k_cyc_to_us_floor64()`・`_ceil64()`）はそのままの値です。`k_cycle_get_32()` は下位
   32 ビットで約 71.6 分で一周します（Zephyr 版は約 34 秒）。`k_cyc_to_ns_floor64()` は 1000 倍です。
   `imu_raw_mqtt.c` がキューのロックの待ちと送信の時間を、LSM6DSO のドライバーが FIFO の読み出しの時間を計るのに

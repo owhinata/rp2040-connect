@@ -43,7 +43,7 @@
  * request calls it), and the core waits with the binding's waits on
  * READY's edge interrupt, on fakes of the SDK's GPIO interrupt functions
  * that latch the edges and run the raw handlers of IO_IRQ_BANK0.  A handler
- * for GPIO24 stands for the board's GPIO bank 0 backend (nano_gpio.c, the
+ * for GPIO24 stands for the board's GPIO bank 0 backend (gpio_os_rp2040.c, the
  * LSM6DSOX's INT1).  So the test also checks:
  * - the binding adds one raw handler, for GPIO10 and GPIO2 only, beside the
  *   backend's for GPIO24 (no pin in two masks), and each handler looks at
@@ -103,7 +103,7 @@
 #define GPIO_READY 10
 #define GPIO_INT1  24
 
-/* The shell's priority (NANO_PRIO_SHELL): "nina version" runs in the
+/* The shell's priority (APP_PRIO_SHELL): "nina version" runs in the
  * console's task.
  */
 #define RUNNER_PRIORITY 6
@@ -298,7 +298,7 @@ static void check_own_pin(uint gpio)
 	assert(running_mask == 0 || (running_mask & (1u << gpio)) != 0);
 }
 
-/* The board's backend for GPIO24 (nano_gpio.c's handler). */
+/* The board's backend for GPIO24 (gpio_os_rp2040.c's handler). */
 static unsigned int int1_handled;
 
 static void backend_isr(void)
@@ -1265,7 +1265,7 @@ int main(void)
 
 	setvbuf(stdout, out, _IOLBF, sizeof(out));
 	host_start_us = host_us();
-	/* The backend's handler for GPIO24, as nano_gpio.c adds it when the
+	/* The backend's handler for GPIO24, as gpio_os_rp2040.c adds it when the
 	 * LSM6DSOX's interrupt is first enabled.
 	 */
 	gpio_add_raw_irq_handler_masked(1u << GPIO_INT1, backend_isr);

@@ -298,7 +298,7 @@ zero gives the Pico SDK routines' results, the same in the three builds. `memcpy
   GPIO18 (SDA, Arduino D6) and GPIO19 (SCL, D7) with the internal pull-ups (`I2C1_SDA_GPIO`,
   `I2C1_SCL_GPIO` in `i2c_dw_instance.h`), always on the interrupts (the DMA reads and `i2c_dma` are
   I2C0's). It starts after I2C0 in `main()`; a failure is logged and leaves `i2c1` not ready. It is not
-  in the layer's device list (`device_get_binding()`). With `-DNANO_SELFTEST=ON` the `selftest`
+  in the layer's device list (`device_get_binding()`). With `-DSELFTEST=ON` the `selftest`
   command checks it (below). I2C1 has been built and host-tested but never used with a real device.
 - **The DMA reads of I2C0** use the Pico SDK's own DMA (`hardware_dma`, `hardware_irq`) through the core's
   second boundary, `port/i2c_dw_dma_os.h`, implemented in `port/freertos/i2c_dw_dma_os_rp2040.c`. Per read, two
@@ -328,7 +328,7 @@ zero gives the Pico SDK routines' results, the same in the three builds. `memcpy
   `lsm6dso_reg.c` (fetched to `freertos/stmemsc/` by `setup.sh`) and the stmemsc glue
   (`common/drivers/stmemsc/`); one device is made with the board's values
   (`common/drivers/lsm6dso/port/freertos/lsm6dso_instance.h`, before `port/zephyr/` on the include path).
-- GPIO (`drivers/compat/rp2040/nano_gpio.c`): GPIO bank 0 under the layer's `gpio0`, driven with the same
+- GPIO (`drivers/compat/rp2040/gpio_os_rp2040.c`): GPIO bank 0 under the layer's `gpio0`, driven with the same
   Pico SDK calls as Zephyr's `gpio_rpi_pico.c`. The interrupt handler is added with
   `gpio_add_raw_irq_handler_masked()`; only the LSM6DSOX's INT1 (GPIO24) can interrupt through `gpio0`
   (other pins get `-ENOTSUP`; the NINA's READY and IRQ line are on the NINA binding's handler).
@@ -353,12 +353,12 @@ Given as `freertos/script/build.sh -DNAME=VALUE` (kept until `--clean`).
 
 | Option | Default | Meaning |
 |---|---|---|
-| `NANO_SELFTEST` | OFF | Builds in the `selftest` command (below) |
+| `SELFTEST` | OFF | Builds in the `selftest` command (below) |
 | `I2C_DW_I2C1` | OFF | Builds in I2C1, the device `i2c1` (above) |
 
 ## Self-test (`selftest`)
 
-A test command only in builds with `-DNANO_SELFTEST=ON`. Run it with the measurement stopped and the
+A test command only in builds with `-DSELFTEST=ON`. Run it with the measurement stopped and the
 board at rest. It prints, as `N of M tests failed`, the results for the layer
 (`common/compat/selftest/zephyr_selftest.c`: mutexes, semaphores, sleep, clock, wake-ups from interrupts,
 `k_poll`, work, spinlock, atomic, static threads, time slices, the tick's catch-up after interrupts are disabled for 50 ms; 22 items), I2C0

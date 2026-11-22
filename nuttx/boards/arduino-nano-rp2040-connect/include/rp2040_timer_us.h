@@ -1,5 +1,5 @@
 /****************************************************************************
- * boards/arduino-nano-rp2040-connect/include/nano_timer.h
+ * boards/arduino-nano-rp2040-connect/include/rp2040_timer_us.h
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -38,39 +38,45 @@
  * be used where two readers can interleave.
  */
 
-#ifndef __BOARDS_ARDUINO_NANO_RP2040_CONNECT_INCLUDE_NANO_TIMER_H
-#define __BOARDS_ARDUINO_NANO_RP2040_CONNECT_INCLUDE_NANO_TIMER_H
+#ifndef __BOARDS_ARDUINO_NANO_RP2040_CONNECT_INCLUDE_RP2040_TIMER_US_H
+#define __BOARDS_ARDUINO_NANO_RP2040_CONNECT_INCLUDE_RP2040_TIMER_US_H
 
 /****************************************************************************
  * Pre-processor Definitions
  ****************************************************************************/
 
-#define NANO_TIMER_BASE             0x40054000  /* = RP2040_TIMER_BASE */
+/* The same definition as NuttX's hardware/rp2040_memorymap.h (the same
+ * tokens, so either may come first).
+ */
 
-#define NANO_TIMER_TIMEHW_OFFSET    0x00  /* Write high word (after TIMELW) */
-#define NANO_TIMER_TIMELW_OFFSET    0x04  /* Write low word */
-#define NANO_TIMER_TIMEHR_OFFSET    0x08  /* High word latched by TIMELR */
-#define NANO_TIMER_TIMELR_OFFSET    0x0c  /* Low word (latches TIMEHR) */
-#define NANO_TIMER_ALARM0_OFFSET    0x10  /* Writing arms the alarm */
-#define NANO_TIMER_ALARM1_OFFSET    0x14
-#define NANO_TIMER_ALARM2_OFFSET    0x18
-#define NANO_TIMER_ALARM3_OFFSET    0x1c
-#define NANO_TIMER_ARMED_OFFSET     0x20  /* Armed alarms; write 1 to disarm */
-#define NANO_TIMER_TIMERAWH_OFFSET  0x24  /* High word, no side effect */
-#define NANO_TIMER_TIMERAWL_OFFSET  0x28  /* Low word, no side effect */
-#define NANO_TIMER_DBGPAUSE_OFFSET  0x2c
-#define NANO_TIMER_PAUSE_OFFSET     0x30
-#define NANO_TIMER_INTR_OFFSET      0x34  /* Raw interrupts; write 1 to clear */
-#define NANO_TIMER_INTE_OFFSET      0x38  /* Interrupt enable */
-#define NANO_TIMER_INTF_OFFSET      0x3c  /* Interrupt force */
-#define NANO_TIMER_INTS_OFFSET      0x40  /* (INTR | INTF) & INTE */
+#define RP2040_TIMER_BASE           0x40054000
+
+#define RP2040_TIMER_TIMEHW_OFFSET    0x00 /* High word, after TIMELW */
+#define RP2040_TIMER_TIMELW_OFFSET    0x04 /* Write low word */
+#define RP2040_TIMER_TIMEHR_OFFSET    0x08 /* High word latched by TIMELR */
+#define RP2040_TIMER_TIMELR_OFFSET    0x0c /* Low word (latches TIMEHR) */
+#define RP2040_TIMER_ALARM0_OFFSET    0x10 /* Writing arms the alarm */
+#define RP2040_TIMER_ALARM1_OFFSET    0x14
+#define RP2040_TIMER_ALARM2_OFFSET    0x18
+#define RP2040_TIMER_ALARM3_OFFSET    0x1c
+#define RP2040_TIMER_ARMED_OFFSET     0x20 /* Armed alarms; 1 disarms */
+#define RP2040_TIMER_TIMERAWH_OFFSET  0x24 /* High word, no side effect */
+#define RP2040_TIMER_TIMERAWL_OFFSET  0x28 /* Low word, no side effect */
+#define RP2040_TIMER_DBGPAUSE_OFFSET  0x2c
+#define RP2040_TIMER_PAUSE_OFFSET     0x30
+#define RP2040_TIMER_INTR_OFFSET      0x34 /* Raw interrupts; 1 clears */
+#define RP2040_TIMER_INTE_OFFSET      0x38 /* Interrupt enable */
+#define RP2040_TIMER_INTF_OFFSET      0x3c /* Interrupt force */
+#define RP2040_TIMER_INTS_OFFSET      0x40 /* (INTR | INTF) & INTE */
 
 /* Alarm n is bit n in ARMED, INTR, INTE, INTF and INTS. */
 
-#define NANO_TIMER_ALARM(n)         (1u << (n))
+#define RP2040_TIMER_ALARM(n)       (1u << (n))
 
-#define NANO_TIMER_TIMERAWH  (NANO_TIMER_BASE + NANO_TIMER_TIMERAWH_OFFSET)
-#define NANO_TIMER_TIMERAWL  (NANO_TIMER_BASE + NANO_TIMER_TIMERAWL_OFFSET)
+#define RP2040_TIMER_TIMERAWH \
+  (RP2040_TIMER_BASE + RP2040_TIMER_TIMERAWH_OFFSET)
+#define RP2040_TIMER_TIMERAWL \
+  (RP2040_TIMER_BASE + RP2040_TIMER_TIMERAWL_OFFSET)
 
 #ifndef __ASSEMBLY__
 
@@ -85,7 +91,7 @@
  ****************************************************************************/
 
 /****************************************************************************
- * Name: nano_mono_us
+ * Name: rp2040_timer_us
  *
  * Description:
  *   The board's monotonic clock: microseconds since the TIMER left reset
@@ -103,10 +109,10 @@
  *
  ****************************************************************************/
 
-static inline uint64_t nano_mono_us(void)
+static inline uint64_t rp2040_timer_us(void)
 {
-  volatile uint32_t *const rawh = (volatile uint32_t *)NANO_TIMER_TIMERAWH;
-  volatile uint32_t *const rawl = (volatile uint32_t *)NANO_TIMER_TIMERAWL;
+  volatile uint32_t *const rawh = (volatile uint32_t *)RP2040_TIMER_TIMERAWH;
+  volatile uint32_t *const rawl = (volatile uint32_t *)RP2040_TIMER_TIMERAWL;
   uint32_t high;
   uint32_t low;
   uint32_t again = *rawh;
@@ -124,4 +130,4 @@ static inline uint64_t nano_mono_us(void)
 
 #endif /* __ASSEMBLY__ */
 
-#endif /* __BOARDS_ARDUINO_NANO_RP2040_CONNECT_INCLUDE_NANO_TIMER_H */
+#endif /* __BOARDS_ARDUINO_NANO_RP2040_CONNECT_INCLUDE_RP2040_TIMER_US_H */

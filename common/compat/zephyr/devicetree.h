@@ -55,7 +55,7 @@
 
 /* The first register address of a node: DT_REG_ADDR(node) ->
  * DT_REG_ADDR_<node>.  timer: the RP2040's TIMER (reg = <0x40054000
- * 0x1000>; NANO_TIMER_BASE of the board's <arch/board/nano_timer.h>).
+ * 0x1000>; RP2040_TIMER_BASE of the board's <arch/board/rp2040_timer_us.h>).
  */
 
 #define DT_REG_ADDR(node_id)  Z_DT_REG_ADDR(node_id)

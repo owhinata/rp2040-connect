@@ -20,8 +20,8 @@
  *   refused, a time before 1970 reads back normalized.
  * - time_sync_mono_us(): TIMERAWH, TIMERAWL, TIMERAWH at 0x40054024 and
  *   0x40054028 (DT_REG_ADDR(DT_NODELABEL(timer)) of the layer), the same
- *   clock as nano_mono_us().
- * - The thread: "time_sync_tid" at Zephyr's 9 (NANO_PRIO_TIME_SYNC) on its
+ *   clock as rp2040_timer_us().
+ * - The thread: "time_sync_tid" at Zephyr's 9 (APP_PRIO_TIME_SYNC) on its
  *   2048-byte stack, started by K_THREAD_DEFINE_START(); nothing is sent
  *   before Wi-Fi connects.
  * - A connection event (NET_EVENT_WIFI_CONNECT_RESULT through "net_mgmt"):
@@ -276,7 +276,7 @@ static struct {
 	int sends, polls;
 	struct sockaddr_in to;
 	uint8_t request[48];
-	int64_t sent_us;      /* nano_mono_us() at the last sendto() */
+	int64_t sent_us;      /* rp2040_timer_us() at the last sendto() */
 	bool pending;         /* a reply to the last request is on its way */
 	int64_t last_poll_us; /* for the intervals between polls */
 	int64_t min_poll_gap_us;
@@ -340,7 +340,7 @@ ssize_t zsock_sendto(int sock, const void *buf, size_t len, int flags, const str
 	lock();
 	memcpy(net.request, buf, len);
 	memcpy(&net.to, to, sizeof(net.to));
-	net.sent_us = (int64_t)nano_mono_us();
+	net.sent_us = (int64_t)rp2040_timer_us();
 	net.pending = net.mode == SERVER_REPLIES;
 	net.sends++;
 	net.first_poll_us = 0;
@@ -351,7 +351,7 @@ ssize_t zsock_sendto(int sock, const void *buf, size_t len, int flags, const str
 ssize_t zsock_recvfrom(int sock, void *buf, size_t max_len, int flags, struct sockaddr *src_addr,
 		       socklen_t *addrlen)
 {
-	int64_t now = (int64_t)nano_mono_us();
+	int64_t now = (int64_t)rp2040_timer_us();
 	uint8_t *reply = buf;
 	int64_t t2;
 
@@ -554,10 +554,10 @@ static void test_realtime_clock(void)
 	int64_t before, after, rt;
 
 	/* At the start: the realtime clock is the TIMER (base 0). */
-	before = (int64_t)nano_mono_us();
+	before = (int64_t)rp2040_timer_us();
 	rt = realtime_us();
 	assert(sys_clock_gettime(SYS_CLOCK_MONOTONIC, &mono) == 0);
-	after = (int64_t)nano_mono_us();
+	after = (int64_t)rp2040_timer_us();
 	assert(rt >= before && rt <= after);
 	assert((int64_t)mono.tv_sec * 1000000 + mono.tv_nsec / 1000 >= rt &&
 	       (int64_t)mono.tv_sec * 1000000 + mono.tv_nsec / 1000 <= after);
@@ -590,7 +590,7 @@ static void test_realtime_clock(void)
 	assert(ts.tv_sec == -2 && ts.tv_nsec >= 500000000 && ts.tv_nsec < 1000000000);
 
 	/* Back to the TIMER for the rest. */
-	set_realtime_us((int64_t)nano_mono_us());
+	set_realtime_us((int64_t)rp2040_timer_us());
 	report("ok  realtime clock\n");
 }
 
@@ -600,9 +600,9 @@ static void test_mono(void)
 
 	timer_read_count = 0;
 	timer_recording = true;
-	before = (int64_t)nano_mono_us();
+	before = (int64_t)rp2040_timer_us();
 	m = time_sync_mono_us();
-	after = (int64_t)nano_mono_us();
+	after = (int64_t)rp2040_timer_us();
 	timer_recording = false;
 	assert(m >= before && m <= after);
 	if (strcmp(timer_reads, "HLH") != 0) {
@@ -631,12 +631,12 @@ static void test_start(void)
 	assert(K_THREAD_DEFINE_START(time_sync_tid) == 0);
 	assert(time_sync_tid != NULL);
 	assert(strcmp(pcTaskGetName(time_sync_tid), "time_sync_tid") == 0);
-	assert(uxTaskPriorityGet(time_sync_tid) == NANO_PRIO_TIME_SYNC &&
-	       NANO_PRIO_TIME_SYNC == NANO_PRIO_FROM_ZEPHYR(9));
+	assert(uxTaskPriorityGet(time_sync_tid) == APP_PRIO_TIME_SYNC &&
+	       APP_PRIO_TIME_SYNC == APP_PRIO_FROM_ZEPHYR(9));
 	time_sync_init();
 
 	/* The commands run at the shell's priority. */
-	vTaskPrioritySet(NULL, NANO_PRIO_SHELL);
+	vTaskPrioritySet(NULL, APP_PRIO_SHELL);
 
 	/* Not connected: nothing is sent. */
 	vTaskDelay(pdMS_TO_TICKS(300));
@@ -696,7 +696,7 @@ static void test_sync(void)
 
 	/* The realtime clock was 1970 + uptime: stepped once to the server's. */
 	rt = realtime_us();
-	assert(abs64(rt - ((int64_t)nano_mono_us() + SERVER_OFFSET_US)) <= 25000);
+	assert(abs64(rt - ((int64_t)rp2040_timer_us() + SERVER_OFFSET_US)) <= 25000);
 
 	/* The polls for the reply: MSG_DONTWAIT, k_sleep(K_MSEC(1)) between. */
 	assert(net.polls >= 2 && net.min_poll_gap_us >= 1000);
@@ -735,9 +735,9 @@ static void test_sync(void)
 	expect_item("realtime_clock_steps", "1");
 
 	/* The next request after CONFIG_NINA_NTP_INTERVAL_MS. */
-	now = (int64_t)nano_mono_us();
+	now = (int64_t)rp2040_timer_us();
 	wait_for(get(sends) == 2, 2500);
-	assert((int64_t)nano_mono_us() - now >= 1500);
+	assert((int64_t)rp2040_timer_us() - now >= 1500);
 	assert(get(sockets_open) == 1 && net.sockets_made == 1);
 	report("ok  sync (request, reply polls, estimate, realtime clock step, ntp status)\n");
 }
@@ -789,14 +789,14 @@ static void test_disconnect(void)
 	assert(run("ntp status") == 0);
 	steps_before = strstr(cap.text, "realtime_clock_steps:       1\r\n") != NULL ? 1 : -1;
 	assert(steps_before == 1);
-	set_realtime_us((int64_t)nano_mono_us() + SERVER_OFFSET_US - 1000000);
+	set_realtime_us((int64_t)rp2040_timer_us() + SERVER_OFFSET_US - 1000000);
 
 	notify(NET_EVENT_WIFI_CONNECT_RESULT);
 	wait_for(get(sends) == sent + 1 && !net.pending, 1000);
 	wait_for(time_sync_is_ready(), 1000);
 	vTaskDelay(pdMS_TO_TICKS(20));
 	rt = realtime_us();
-	assert(abs64(rt - ((int64_t)nano_mono_us() + SERVER_OFFSET_US)) <= 25000);
+	assert(abs64(rt - ((int64_t)rp2040_timer_us() + SERVER_OFFSET_US)) <= 25000);
 	cap_clear();
 	assert(run("ntp status") == 0);
 	expect_text("state: synchronized\r\n");
@@ -805,11 +805,11 @@ static void test_disconnect(void)
 	expect_item("realtime_clock_steps", "2");
 
 	/* Ahead by 1 s: left alone. */
-	set_realtime_us((int64_t)nano_mono_us() + SERVER_OFFSET_US + 1000000);
+	set_realtime_us((int64_t)rp2040_timer_us() + SERVER_OFFSET_US + 1000000);
 	wait_for(get(sends) == sent + 2 && !net.pending, 2500);
 	vTaskDelay(pdMS_TO_TICKS(50));
 	rt = realtime_us();
-	assert(rt - ((int64_t)nano_mono_us() + SERVER_OFFSET_US) > 900000);
+	assert(rt - ((int64_t)rp2040_timer_us() + SERVER_OFFSET_US) > 900000);
 	cap_clear();
 	assert(run("ntp status") == 0);
 	expect_item("replies", "2");
@@ -840,7 +840,7 @@ int main(void)
 	if (zephyr_compat_initialize() != 0) {
 		return 2;
 	}
-	if (xTaskCreate(runner, "runner", RUNNER_STACK / sizeof(StackType_t), NULL, NANO_PRIO_MAIN,
+	if (xTaskCreate(runner, "runner", RUNNER_STACK / sizeof(StackType_t), NULL, APP_PRIO_MAIN,
 			NULL) != pdPASS) {
 		return 2;
 	}

@@ -88,9 +88,9 @@ struct _timeout {
 typedef z_os_thread_t k_tid_t;
 
 /* Priorities: K_PRIO_PREEMPT(p) is the OS's priority of Zephyr's p
- * (NANO_PRIO_FROM_ZEPHYR, priorities_os.h; 20 - p in the FreeRTOS build).
+ * (APP_PRIO_FROM_ZEPHYR, priorities_os.h; 20 - p in the FreeRTOS build).
  */
-#define K_PRIO_PREEMPT(x) NANO_PRIO_FROM_ZEPHYR(x)
+#define K_PRIO_PREEMPT(x) APP_PRIO_FROM_ZEPHYR(x)
 
 static inline k_tid_t k_current_get(void)
 {

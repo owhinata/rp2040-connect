@@ -331,8 +331,8 @@ void rp2040_telnet_start(void)
 {
   pid_t pid;
 
-  pid = task_create("telnetd", NANO_PRIO_TELNET_SERVICE,
-                    NANO_STACK_TELNET_SERVICE, telnet_main, NULL);
+  pid = task_create("telnetd", APP_PRIO_TELNET_SERVICE,
+                    APP_STACK_TELNET_SERVICE, telnet_main, NULL);
   if (pid < 0)
     {
       LOG_ERR("Unable to start telnet on NET_AF_INET (%d)", -errno);

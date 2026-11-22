@@ -41,7 +41,8 @@ config RP2040_PERF
 	select ARCH_HAVE_PERF_EVENTS
 	---help---
 		src/rp2040_perf.c: up_perf_gettime() returns the TIMER count
-		(nano_mono_us(), 1 MHz, 64 bits) and up_perf_getfreq() 1000000.
+		(rp2040_timer_us(), 1 MHz, 64 bits) and up_perf_getfreq()
+		1000000.
 		The Cortex-M0+ has no cycle counter.  Used by the critical
 		section monitor (SCHED_CRITMONITOR, SCHED_CPULOAD_CRITMONITOR) to
 		account each task's CPU time at every context switch: the CPU

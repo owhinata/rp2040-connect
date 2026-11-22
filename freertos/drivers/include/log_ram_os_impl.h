@@ -7,7 +7,7 @@
  *   error, "reboot" and the RESET button, not a power cycle;
  * - the lock: save_and_disable_interrupts() and restore_interrupts()
  *   (PRIMASK, no FreeRTOS call inside), usable from interrupt handlers;
- * - the clock: nano_mono_us() (the TIMER, os_clock.h of the application);
+ * - the clock: rp2040_timer_us() (the TIMER, os_clock.h of the application);
  * - no OS log of its own (the FreeRTOS kernel and the Pico SDK have none).
  */
 
@@ -37,7 +37,7 @@ static inline void log_ram_os_irq_restore(log_ram_os_irqstate_t state)
 
 static inline uint64_t log_ram_os_uptime_us(void)
 {
-	return nano_mono_us();
+	return rp2040_timer_us();
 }
 
 static inline void log_ram_os_attach(void)

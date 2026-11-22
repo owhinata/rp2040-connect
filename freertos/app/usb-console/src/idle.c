@@ -10,7 +10,7 @@
  * masks it (ARMv6-M), so an interrupt that arrives between disabling
  * interrupts and WFI is not missed (WFI returns at once), and the handler of
  * the interrupt that woke the CPU runs after the window closes, so it counts
- * as load.  The arithmetic is common/compat/nano_cpuload.h, the steps of
+ * as load.  The arithmetic is common/compat/cpu_load.h's, the steps of
  * Zephyr's cpu_load_get_cpu().
  *
  * FreeRTOS's idle task calls vApplicationIdleHook() in its loop
@@ -22,7 +22,7 @@
  * the interrupt makes a task ready, the PendSV it requests is taken right
  * after interrupts are enabled again, and the idle task is left.
  *
- * Time base: the TIMER, 1 us (nano_mono_us()).
+ * Time base: the TIMER, 1 us (rp2040_timer_us()).
  */
 
 #include <stdbool.h>
@@ -32,38 +32,37 @@
 #include "task.h"
 #include "app.h"
 #include "cpu_load.h"
-#include "nano_cpuload.h"
 #include "os_clock.h"
 
 /* Changed only with interrupts disabled.  cpuload is cpu_load_get()'s (the
  * IMU service resets it at "imu start"); ps_window is the "ps" command's,
  * reset by each "ps".
  */
-static struct nano_cpuload_s cpuload;
-static struct nano_cpuload_s ps_window;
+static struct cpu_load_window cpuload;
+static struct cpu_load_window ps_window;
 
 void vApplicationIdleHook(void)
 {
 	uint32_t flags = save_and_disable_interrupts();
-	uint64_t now = nano_mono_us();
+	uint64_t now = rp2040_timer_us();
 
-	nano_cpuload_enter(&cpuload, now);
-	nano_cpuload_enter(&ps_window, now);
+	cpu_load_enter(&cpuload, now);
+	cpu_load_enter(&ps_window, now);
 
 	/* Zephyr: __DSB() then __WFI() (SLEEP_IF_ALLOWED). */
 	__asm volatile("dsb\n\twfi" ::: "memory");
 
-	now = nano_mono_us();
-	nano_cpuload_exit(&cpuload, now);
-	nano_cpuload_exit(&ps_window, now);
+	now = rp2040_timer_us();
+	cpu_load_exit(&cpuload, now);
+	cpu_load_exit(&ps_window, now);
 
 	/* The pending interrupt is taken here, outside the window. */
 	restore_interrupts(flags);
 }
 
-static int sample(struct nano_cpuload_s *s, bool reset, uint64_t *total_us)
+static int sample(struct cpu_load_window *s, bool reset, uint64_t *total_us)
 {
-	uint64_t now = nano_mono_us();
+	uint64_t now = rp2040_timer_us();
 	uint64_t total;
 	uint64_t idle;
 	uint32_t flags = save_and_disable_interrupts();
@@ -71,7 +70,7 @@ static int sample(struct nano_cpuload_s *s, bool reset, uint64_t *total_us)
 	/* On one CPU the window is never open here (the caller is not idle);
 	 * the second reading is kept for the same steps as Zephyr's.
 	 */
-	nano_cpuload_sample(s, now, s->open ? nano_mono_us() : now, reset, &total, &idle);
+	cpu_load_sample(s, now, s->open ? rp2040_timer_us() : now, reset, &total, &idle);
 	restore_interrupts(flags);
 
 	if (total_us != NULL) {
@@ -80,7 +79,7 @@ static int sample(struct nano_cpuload_s *s, bool reset, uint64_t *total_us)
 	/* The division (64-bit, libgcc on the M0+) runs with interrupts
 	 * enabled, as in Zephyr.
 	 */
-	return nano_cpuload_ratio(total, idle);
+	return cpu_load_ratio(total, idle);
 }
 
 /* See cpu_load.h.  Zephyr's cpu_load_get(): reads the time before taking

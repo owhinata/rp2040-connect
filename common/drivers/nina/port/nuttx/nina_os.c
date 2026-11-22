@@ -39,8 +39,8 @@
  *                               of READY (GPIO10, active low: nina_bus_rp2040.c)
  *                               towards DESIRED, falling for 1 (ready),
  *                               rising for 0, through the board's GPIO
- *                               bank 0 (nano_gpio_irq_configure(), the
- *                               board's src/nano_gpio.c: clears an edge
+ *                               bank 0 (gpio_os_irq_configure(), the
+ *                               board's src/rp2040_gpio_os.c: clears an edge
  *                               latched while the event was off, then
  *                               enables it)
  *   the interrupt               IO_IRQ_BANK0: NuttX's rp2040_gpio_interrupt()
@@ -115,7 +115,7 @@
 #include <zephyr/device.h>
 #include <zephyr/drivers/gpio.h>
 
-#include "nano_gpio.h"
+#include "gpio_os.h"
 #include "nina_os.h"
 #ifdef CONFIG_NINA_USRSOCK
 #  include "nina_usrsock.h"
@@ -168,10 +168,10 @@ void nina_os_ready_arm(int desired)
 {
   /* Active low: ready (1) is the falling edge. */
 
-  uint32_t edge = desired ? NANO_GPIO_IRQ_EDGE_FALL : NANO_GPIO_IRQ_EDGE_RISE;
+  uint32_t edge = desired ? GPIO_OS_IRQ_EDGE_FALL : GPIO_OS_IRQ_EDGE_RISE;
 
   nxsem_reset(&g_ready_sem, 0);
-  nano_gpio_irq_configure(READY_GPIO, edge);
+  gpio_os_irq_configure(READY_GPIO, edge);
 }
 
 void nina_os_ready_wait(uint32_t ms)
@@ -181,7 +181,7 @@ void nina_os_ready_wait(uint32_t ms)
 
 void nina_os_ready_disarm(void)
 {
-  nano_gpio_irq_configure(READY_GPIO, 0);
+  gpio_os_irq_configure(READY_GPIO, 0);
 }
 
 /* In the GPIO bank's interrupt handler. */
@@ -220,7 +220,7 @@ int nina_os_event_start(void)
   ret = gpio_add_callback(port, &g_event_cb);
   if (ret == 0)
     {
-      ret = nano_gpio_irq_configure(IRQ_GPIO, NANO_GPIO_IRQ_EDGE_RISE);
+      ret = gpio_os_irq_configure(IRQ_GPIO, GPIO_OS_IRQ_EDGE_RISE);
       if (ret != 0)
         {
           gpio_remove_callback(port, &g_event_cb);

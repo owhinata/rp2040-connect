@@ -16,7 +16,7 @@
  * (mqtt_min) and nuttx/tests/imu_raw_mqtt.c; this test is about the
  * FreeRTOS build's thread and boundary and the behaviour of the whole:
  *
- * - The thread: "imu_raw_mqtt_tid" at Zephyr's 11 (NANO_PRIO_IMU_RAW_MQTT,
+ * - The thread: "imu_raw_mqtt_tid" at Zephyr's 11 (APP_PRIO_IMU_RAW_MQTT,
  *   FreeRTOS 9: below the acquisition's 11 and 10, above the shell's 6),
  *   started by K_THREAD_DEFINE_START(); it waits for imu_raw_mqtt_start().
  * - The start's checks (-EINVAL; -EBUSY while running).
@@ -126,7 +126,7 @@ static void fail(const char *what)
 
 static int64_t now_ms(void)
 {
-	return (int64_t)(nano_mono_us() / 1000u);
+	return (int64_t)(rp2040_timer_us() / 1000u);
 }
 
 static void sleep_ms(uint32_t ms)
@@ -641,13 +641,12 @@ static void test_thread(void)
 	check(K_THREAD_DEFINE_START(imu_raw_mqtt_tid) == 0);
 	check(imu_raw_mqtt_tid != NULL);
 	check(strcmp(pcTaskGetName(imu_raw_mqtt_tid), "imu_raw_mqtt_tid") == 0);
-	check(uxTaskPriorityGet(imu_raw_mqtt_tid) == NANO_PRIO_IMU_RAW_MQTT &&
-	      NANO_PRIO_IMU_RAW_MQTT == NANO_PRIO_FROM_ZEPHYR(11) && NANO_PRIO_IMU_RAW_MQTT == 9);
-	check(NANO_PRIO_IMU_RAW_MQTT < NANO_PRIO_IMU_FIFO_WORKER &&
-	      NANO_PRIO_IMU_RAW_MQTT < NANO_PRIO_IMU_STREAM &&
-	      NANO_PRIO_IMU_RAW_MQTT < NANO_PRIO_TIME_SYNC &&
-	      NANO_PRIO_IMU_RAW_MQTT > NANO_PRIO_SHELL);
-	check(NANO_STACK_IMU_RAW_MQTT == 2048);
+	check(uxTaskPriorityGet(imu_raw_mqtt_tid) == APP_PRIO_IMU_RAW_MQTT &&
+	      APP_PRIO_IMU_RAW_MQTT == APP_PRIO_FROM_ZEPHYR(11) && APP_PRIO_IMU_RAW_MQTT == 9);
+	check(APP_PRIO_IMU_RAW_MQTT < APP_PRIO_IMU_FIFO_WORKER &&
+	      APP_PRIO_IMU_RAW_MQTT < APP_PRIO_IMU_STREAM &&
+	      APP_PRIO_IMU_RAW_MQTT < APP_PRIO_TIME_SYNC && APP_PRIO_IMU_RAW_MQTT > APP_PRIO_SHELL);
+	check(APP_STACK_IMU_RAW_MQTT == 2048);
 	sleep_ms(50);
 	check(br.sockets_made == 0); /* waits for the start */
 
@@ -995,10 +994,10 @@ int main(void)
 	if (zephyr_compat_initialize() != 0) {
 		return 2;
 	}
-	if (xTaskCreate(runner, "runner", RUNNER_STACK / sizeof(StackType_t), NULL, NANO_PRIO_SHELL,
+	if (xTaskCreate(runner, "runner", RUNNER_STACK / sizeof(StackType_t), NULL, APP_PRIO_SHELL,
 			NULL) != pdPASS ||
 	    xTaskCreate(producer, "producer", PRODUCER_STACK / sizeof(StackType_t), NULL,
-			NANO_PRIO_IMU_STREAM, NULL) != pdPASS) {
+			APP_PRIO_IMU_STREAM, NULL) != pdPASS) {
 		return 2;
 	}
 	vTaskStartScheduler();

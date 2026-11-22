@@ -115,7 +115,7 @@ endif
 # GPIO bank 0 for the compatibility layer's gpio0 (the LSM6DSOX's INT1).
 
 ifeq ($(CONFIG_LSM6DSO_STREAM),y)
-CSRCS += nano_gpio.c
+CSRCS += rp2040_gpio_os.c
 endif
 
 # The stack sentinel in the scheduler's switch hook.
@@ -130,8 +130,8 @@ CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)arch$(DELIM)$(CONFIG_ARCH)$(DELIM)src
 
 # Headers shared with nuttx/drivers and the applications: nuttx/drivers/include
 # (the NuttX parts app_log_os.h and priorities_os.h), common/log (app_log.h,
-# log_ram.h; common/compat has priorities.h, cpu_load.h, nano_cpuload.h and
-# nano_gpio.h).  The NINA driver's headers for its users:
+# log_ram.h; common/compat has priorities.h, cpu_load.h and
+# gpio_os.h).  The NINA driver's headers for its users:
 # common/drivers/nina/include (nina_passthrough.h); its NuttX binding's
 # wlan0 (nina_net.h): common/drivers/nina/port/nuttx.  The driver itself is
 # built with the other drivers (nuttx/drivers/nina/Make.defs).

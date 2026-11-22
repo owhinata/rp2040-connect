@@ -95,7 +95,7 @@ int64_t k_uptime_get(void)
 
 struct k_work_q k_sys_work_q;
 
-static K_THREAD_STACK_DEFINE(sys_work_q_stack, NANO_STACK_SYSWORKQ);
+static K_THREAD_STACK_DEFINE(sys_work_q_stack, APP_STACK_SYSWORKQ);
 
 int zephyr_compat_initialize(void)
 {
@@ -111,7 +111,7 @@ int zephyr_compat_initialize(void)
 
   k_work_queue_start(&k_sys_work_q, sys_work_q_stack,
                      K_THREAD_STACK_SIZEOF(sys_work_q_stack),
-                     NANO_PRIO_SYSWORKQ, &cfg);
+                     APP_PRIO_SYSWORKQ, &cfg);
   if (k_work_queue_thread_get(&k_sys_work_q) == (k_tid_t)0)
     {
       return -ENOMEM;
@@ -130,7 +130,8 @@ int zephyr_compat_initialize(void)
    * 40): the gpio0 device of zephyr_gpio.c, which the LSM6DSO's FIFO stream
    * uses for INT1 (a build without the stream has no use for it; the NuttX
    * build compiles the layer's kernel part only with the stream).  Its bank
-   * interrupt is added with the first pin's (the OS's nano_gpio.c).
+   * interrupt is added with the first pin's (the OS's implementation of
+   * gpio_os.h).
    */
 
   return device_init(DEVICE_DT_GET(DT_NODELABEL(gpio0)));

@@ -130,7 +130,7 @@ static void __attribute__((noreturn)) finish(struct fault_record *r)
 			strncpy(r->task, pcTaskGetName(task), sizeof(r->task) - 1);
 		}
 	}
-	r->uptime_us = nano_mono_us();
+	r->uptime_us = rp2040_timer_us();
 	fault_record_seal(r);
 
 	fault_record_to_scratch(r, s);

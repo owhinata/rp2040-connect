@@ -39,7 +39,7 @@
 
 extern _Thread_local int z_host_isr_depth;
 
-static inline uint64_t nano_mono_us(void)
+static inline uint64_t rp2040_timer_us(void)
 {
 	struct timespec t;
 
@@ -71,15 +71,15 @@ static inline void z_os_task_unlock(void)
 
 static inline void z_os_busy_wait_us(uint32_t us)
 {
-	uint64_t end = nano_mono_us() + us;
+	uint64_t end = rp2040_timer_us() + us;
 
-	while (nano_mono_us() < end) {
+	while (rp2040_timer_us() < end) {
 	}
 }
 
 static inline uint32_t z_os_tick_now_us32(void)
 {
-	return (uint32_t)nano_mono_us();
+	return (uint32_t)rp2040_timer_us();
 }
 
 static inline void z_os_tick_pend(void)

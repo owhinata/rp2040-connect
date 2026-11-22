@@ -353,7 +353,7 @@ void k_busy_wait(uint32_t usec_to_wait);
 /* The cycle counter: the Zephyr build's is the 125 MHz SysTick count
  * (CONFIG_SYS_CLOCK_HW_CYCLES_PER_SEC), which falls behind under load (see
  * nuttx/README.md); here it is the board's monotonic clock, the RP2040
- * TIMER (1 MHz from the crystal; NuttX's nano_mono_us(); k_cycle_get_32()
+ * TIMER (1 MHz from the crystal; NuttX's rp2040_timer_us(); k_cycle_get_32()
  * and k_cycle_get_64() are in "zephyr_os.h"), as for the sensor clock
  * (<zephyr/drivers/sensor_clock.h>).  A cycle is a microsecond, so the
  * conversions to microseconds are exact (Zephyr's round down or up a
@@ -450,7 +450,7 @@ struct k_work_queue_config
 
 /* The system work queue ("sysworkq"): Zephyr's runs at the cooperative
  * priority -1 with a 1024-byte stack (CONFIG_SYSTEM_WORKQUEUE_PRIORITY,
- * _STACK_SIZE); on NuttX NANO_PRIO_SYSWORKQ (119) and NANO_STACK_SYSWORKQ.
+ * _STACK_SIZE); on NuttX APP_PRIO_SYSWORKQ (119) and APP_STACK_SYSWORKQ.
  * Started by zephyr_compat_initialize() (zephyr_init.c).
  */
 

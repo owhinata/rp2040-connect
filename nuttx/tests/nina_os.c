@@ -7,12 +7,12 @@
  * failed start is common/tests/nina_proto.c's), with the compatibility layer's gpio0
  * (common/compat/zephyr_gpio.c), on fakes of NuttX's semaphores, mutexes,
  * sleeps and clock (tests/nina_os_fakes) and of the board's GPIO bank 0
- * (<nano_gpio.h>, the board's src/nano_gpio.c on the target).
+ * (<gpio_os.h>, the board's src/rp2040_gpio_os.c on the target).
  *
  * The fake clock counts ticks of 100 us; only the semaphore's timed wait
  * and the sleeps run it.  READY (GPIO10, active low) changes at a planned
  * tick or right after a read; a change latches the pin's edge, and an
- * enabled edge runs the bank's handler (nano_gpio_irq_handler(), as the
+ * enabled edge runs the bank's handler (gpio_os_irq_handler(), as the
  * interrupt does) at once.  Checked:
  * - READY already at the level: no wait;
  * - READY changes during the wait (towards ready: the falling edge; towards
@@ -51,7 +51,7 @@
 #include <nuttx/sched.h>
 #include <nuttx/semaphore.h>
 
-#include "nano_gpio.h"
+#include "gpio_os.h"
 
 /* The core, with its static wait_ready(). */
 #include "nina_proto.c"
@@ -209,7 +209,7 @@ int nxsem_tickwait_uninterruptible(sem_t *sem, uint32_t delay)
 	}
 }
 
-/* Fake GPIO bank 0 (the board's <nano_gpio.h>) ---------------------------*/
+/* Fake GPIO bank 0 (the board's <gpio_os.h>) ---------------------------*/
 
 static bool ready_high = true;  /* physical level: high is busy */
 static uint32_t ready_intr;     /* latched edges (INTR) */
@@ -217,7 +217,7 @@ static uint32_t ready_inte;     /* enabled events (PROC0_INTE) */
 static unsigned int ready_irqs;
 static unsigned int ready_reads;
 
-int nano_gpio_configure_input(unsigned int pin, bool pull_up, bool pull_down)
+int gpio_os_configure_input(unsigned int pin, bool pull_up, bool pull_down)
 {
 	(void)pin;
 	(void)pull_up;
@@ -226,7 +226,7 @@ int nano_gpio_configure_input(unsigned int pin, bool pull_up, bool pull_down)
 	return -EINVAL;
 }
 
-uint32_t nano_gpio_get_all(void)
+uint32_t gpio_os_get_all(void)
 {
 	return ready_high ? 1U << READY_GPIO : 0;
 }
@@ -237,23 +237,23 @@ static unsigned int irq_irqs;
 /* A rising edge of the IRQ line: the bank's interrupt if it is enabled. */
 static void irq_edge(void)
 {
-	if (irq_inte & NANO_GPIO_IRQ_EDGE_RISE) {
+	if (irq_inte & GPIO_OS_IRQ_EDGE_RISE) {
 		irq_irqs++;
-		nano_gpio_irq_handler(IRQ_GPIO);
+		gpio_os_irq_handler(IRQ_GPIO);
 	}
 }
 
 /* As the board's: clears the pin's latched edges, then enables EVENTS. */
-int nano_gpio_irq_configure(unsigned int pin, uint32_t events)
+int gpio_os_irq_configure(unsigned int pin, uint32_t events)
 {
 	if (pin == IRQ_GPIO) {
-		assert(events == NANO_GPIO_IRQ_EDGE_RISE);
+		assert(events == GPIO_OS_IRQ_EDGE_RISE);
 		irq_inte = events;
 		return 0;
 	}
 	assert(pin == READY_GPIO);
-	assert(events == 0 || events == NANO_GPIO_IRQ_EDGE_FALL ||
-	       events == NANO_GPIO_IRQ_EDGE_RISE);
+	assert(events == 0 || events == GPIO_OS_IRQ_EDGE_FALL ||
+	       events == GPIO_OS_IRQ_EDGE_RISE);
 	ready_intr = 0;
 	ready_inte = events;
 	return 0;
@@ -267,7 +267,7 @@ static void bank_interrupt(void)
 	if (pending != 0) {
 		ready_intr &= ~pending;
 		ready_irqs++;
-		nano_gpio_irq_handler(READY_GPIO);
+		gpio_os_irq_handler(READY_GPIO);
 	}
 }
 
@@ -277,7 +277,7 @@ static void set_ready_high(bool high)
 		return;
 	}
 	ready_high = high;
-	ready_intr |= high ? NANO_GPIO_IRQ_EDGE_RISE : NANO_GPIO_IRQ_EDGE_FALL;
+	ready_intr |= high ? GPIO_OS_IRQ_EDGE_RISE : GPIO_OS_IRQ_EDGE_FALL;
 	bank_interrupt();
 }
 
@@ -432,8 +432,8 @@ static void test_change_after_read(void)
 static void test_stale_wakeup(void)
 {
 	reset(true);
-	nano_gpio_irq_handler(READY_GPIO);      /* the semaphore counts one */
-	ready_intr = NANO_GPIO_IRQ_EDGE_FALL | NANO_GPIO_IRQ_EDGE_RISE;
+	gpio_os_irq_handler(READY_GPIO);      /* the semaphore counts one */
+	ready_intr = GPIO_OS_IRQ_EDGE_FALL | GPIO_OS_IRQ_EDGE_RISE;
 	assert(wait_ready(1, 20) == -ETIMEDOUT);
 	assert(now - start == MSEC2TICK(20) + 1);
 	assert(waits == 1 && ready_irqs == 0 && ready_inte == 0);
@@ -454,8 +454,8 @@ static void test_edges(void)
 	assert(ready_irqs == 1);
 
 	max_count = 0;
-	nano_gpio_irq_handler(READY_GPIO);
-	nano_gpio_irq_handler(READY_GPIO);
+	gpio_os_irq_handler(READY_GPIO);
+	gpio_os_irq_handler(READY_GPIO);
 	assert(max_count == 1);
 }
 
@@ -466,7 +466,7 @@ static void test_events(void)
 	/* Nothing before the start. */
 	irq_edge();
 	assert(irq_irqs == 0 && nina_os_event_seq() == 0);
-	assert(nina_os_event_start() == 0 && irq_inte == NANO_GPIO_IRQ_EDGE_RISE);
+	assert(nina_os_event_start() == 0 && irq_inte == GPIO_OS_IRQ_EDGE_RISE);
 	/* An edge: the count, the event thread woken, one count left on the
 	 * semaphore (none waits). */
 	max_count = 0;

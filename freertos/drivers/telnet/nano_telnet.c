@@ -9,12 +9,12 @@
  * it, written for the FreeRTOS build's consoles (freertos/drivers/shell).
  *
  * Two tasks, as Zephyr's two threads: "telnet_service" (Zephyr's
- * net_socket_service thread, NANO_PRIO_TELNET_SERVICE, 2048 bytes) polls the
+ * net_socket_service thread, APP_PRIO_TELNET_SERVICE, 2048 bytes) polls the
  * listening socket and the client (zsock_poll(), which asks the NINA every
  * 20 ms, as Zephyr's offloaded poll: the NINA's accept never waits),
  * accepts and refuses clients, reads the client and ends the connection;
- * "shell_telnet" (Zephyr's shell thread of the backend, NANO_PRIO_SHELL,
- * NANO_STACK_SHELL) is the session: it is bound to the Telnet console (its
+ * "shell_telnet" (Zephyr's shell thread of the backend, APP_PRIO_SHELL,
+ * APP_STACK_SHELL) is the session: it is bound to the Telnet console (its
  * printf(), shell_print() and the getopt state are the session's,
  * nano_console.h) and runs the commands of the lines it is given.
  *
@@ -144,8 +144,8 @@ LOG_MODULE_REGISTER(shell_telnet, LOG_LEVEL_INF);
 #define READ_CHUNK       128
 #define SESSION_CHUNK    64
 
-#define SESSION_STACK_SIZE (NANO_STACK_SHELL / sizeof(StackType_t))
-#define SERVICE_STACK_SIZE (NANO_STACK_TELNET_SERVICE / sizeof(StackType_t))
+#define SESSION_STACK_SIZE (APP_STACK_SHELL / sizeof(StackType_t))
+#define SERVICE_STACK_SIZE (APP_STACK_TELNET_SERVICE / sizeof(StackType_t))
 
 /* RFC 854 */
 #define NVT_CMD_SB   250
@@ -764,9 +764,9 @@ int nano_telnet_init(const char *prompt)
 	LOG_INF("Telnet shell backend initialized");
 
 	tn.session_task = xTaskCreateStatic(session_main, "shell_telnet", SESSION_STACK_SIZE, NULL,
-					    NANO_PRIO_SHELL, session_stack, &session_tcb);
+					    APP_PRIO_SHELL, session_stack, &session_tcb);
 	tn.service_task =
 		xTaskCreateStatic(service_main, "telnet_service", SERVICE_STACK_SIZE, NULL,
-				  NANO_PRIO_TELNET_SERVICE, service_stack, &service_tcb);
+				  APP_PRIO_TELNET_SERVICE, service_stack, &service_tcb);
 	return 0;
 }

@@ -12,7 +12,7 @@
  * lsm6dso.cmake builds them.  The sensor is a fake LSM6DSOX behind a fake
  * i2c0 (register banks, auto-increment, software reset, FIFO, timestamp, the
  * same model as the NuttX build's test, nuttx/tests/lsm6dso_driver.c) with a
- * fake INT1 on the layer's GPIO boundary (nano_gpio.h).
+ * fake INT1 on the layer's GPIO boundary (gpio_os.h).
  *
  * - "sensor get" from either session: the processing thread prints the
  *   result on the console of the session that ran it and on no other, and
@@ -70,7 +70,7 @@
 #include "kv_store.h"
 #include "lsm6dso_sensor.h"
 #include "nano_console.h"
-#include "nano_gpio.h"
+#include "gpio_os.h"
 #include "nano_shell.h"
 #include "pico/stdio.h"
 #include "priorities.h"
@@ -468,26 +468,26 @@ static DEVICE_API(i2c, fake_i2c_api) = {
 
 DEVICE_DT_DEFINE(i2c0, "i2c@40044000", NULL, NULL, NULL, &fake_i2c_api);
 
-/* Fake INT1 (GPIO24) on the layer's GPIO boundary (nano_gpio.h; on the
- * board freertos/drivers/compat/rp2040/nano_gpio.c): high while the FIFO
+/* Fake INT1 (GPIO24) on the layer's GPIO boundary (gpio_os.h; on the
+ * board freertos/drivers/compat/rp2040/gpio_os_rp2040.c): high while the FIFO
  * threshold is routed to it and the FIFO holds the watermark; a rising edge
  * calls the layer's handler (common/compat/zephyr_gpio.c) if enabled.
  */
 static bool int1_level;
 static volatile uint32_t int1_events;
 
-int nano_gpio_configure_input(unsigned int pin, bool pull_up, bool pull_down)
+int gpio_os_configure_input(unsigned int pin, bool pull_up, bool pull_down)
 {
 	CHECK(pin == 24 && !pull_up && !pull_down);
 	return 0;
 }
 
-uint32_t nano_gpio_get_all(void)
+uint32_t gpio_os_get_all(void)
 {
 	return int1_level ? 1U << 24 : 0;
 }
 
-int nano_gpio_irq_configure(unsigned int pin, uint32_t events)
+int gpio_os_irq_configure(unsigned int pin, uint32_t events)
 {
 	CHECK(pin == 24);
 	int1_events = events;
@@ -506,8 +506,8 @@ static void update_int1(void)
 	rise = level && !int1_level;
 	int1_level = level;
 	xSemaphoreGive(fake_lock);
-	if (rise && (int1_events & NANO_GPIO_IRQ_EDGE_RISE)) {
-		nano_gpio_irq_handler(24);
+	if (rise && (int1_events & GPIO_OS_IRQ_EDGE_RISE)) {
+		gpio_os_irq_handler(24);
 	}
 }
 
@@ -1050,14 +1050,14 @@ int main(void)
 		s->done = xSemaphoreCreateBinary();
 		nano_console_init(&s->console, s->prompt, capture_out, s);
 		if (xTaskCreate(session_main, "session", SESSION_STACK / sizeof(StackType_t), s,
-				NANO_PRIO_SHELL, NULL) != pdPASS) {
+				APP_PRIO_SHELL, NULL) != pdPASS) {
 			return 2;
 		}
 	}
 	/* The tasks bound to no console print nowhere (none should). */
 	nano_console_set_default(NULL);
 	if (xTaskCreate(test_main, "main", SESSION_STACK / sizeof(StackType_t), NULL,
-			NANO_PRIO_SHELL - 1, NULL) != pdPASS) {
+			APP_PRIO_SHELL - 1, NULL) != pdPASS) {
 		return 2;
 	}
 	vTaskStartScheduler();

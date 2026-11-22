@@ -14,7 +14,7 @@
  *   dropping the event after that (the Zephyr build's NET_WARN() there is
  *   compiled out, CONFIG_NET_MGMT_EVENT_LOG_LEVEL=0).  The "net_mgmt"
  *   thread (CONFIG_NET_MGMT_EVENT_THREAD: priority -1, 2048 bytes; here
- *   NANO_PRIO_NET_MGMT 119) takes them in order and calls each callback
+ *   APP_PRIO_NET_MGMT 119) takes them in order and calls each callback
  *   whose mask has the event, with cb->info and cb->info_length set, under
  *   the callback list's lock.  Started by net_mgmt_event_init() before the
  *   interface is initialized (Zephyr's net_init()).

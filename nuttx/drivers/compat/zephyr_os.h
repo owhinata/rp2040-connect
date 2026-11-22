@@ -25,7 +25,7 @@
 #include <nuttx/semaphore.h>
 #include <nuttx/wdog.h>
 #include <stdio.h>            /* for <zephyr/sys/printk.h> */
-#include <arch/board/nano_timer.h> /* nano_mono_us(): the cycle counter */
+#include <arch/board/rp2040_timer_us.h> /* the cycle counter */
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -102,10 +102,10 @@ struct _timeout
 typedef pid_t k_tid_t;
 
 /* Priorities: K_PRIO_PREEMPT(p) is the NuttX priority 118 - p
- * (NANO_PRIO_FROM_ZEPHYR, priorities.h).
+ * (APP_PRIO_FROM_ZEPHYR, priorities.h).
  */
 
-#define K_PRIO_PREEMPT(x) NANO_PRIO_FROM_ZEPHYR(x)
+#define K_PRIO_PREEMPT(x) APP_PRIO_FROM_ZEPHYR(x)
 
 /* The calling thread. */
 
@@ -136,17 +136,17 @@ static inline void k_yield(void)
 #define Z_OS_ASSERT(test) DEBUGASSERT(test)
 
 /* The cycle counter: the board's monotonic clock, the RP2040 TIMER
- * (nano_mono_us(), 1 MHz from the crystal; see <zephyr/kernel.h>).
+ * (rp2040_timer_us(), 1 MHz from the crystal; see <zephyr/kernel.h>).
  */
 
 static inline uint64_t k_cycle_get_64(void)
 {
-  return nano_mono_us();
+  return rp2040_timer_us();
 }
 
 static inline uint32_t k_cycle_get_32(void)
 {
-  return (uint32_t)nano_mono_us();
+  return (uint32_t)rp2040_timer_us();
 }
 
 #endif /* __NUTTX_DRIVERS_COMPAT_ZEPHYR_OS_H */

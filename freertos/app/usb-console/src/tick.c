@@ -47,7 +47,7 @@
 #define TIMESLICE_TICKS (TIMESLICE_MS * configTICK_RATE_HZ / 1000)
 
 /* CONFIG_TIMESLICE_PRIORITY=0: Zephyr slices priorities 0 and below it. */
-#define TIMESLICE_PRIO_MAX NANO_PRIO_FROM_ZEPHYR(0)
+#define TIMESLICE_PRIO_MAX APP_PRIO_FROM_ZEPHYR(0)
 
 #if TIMESLICE_TICKS * 1000 != TIMESLICE_MS * configTICK_RATE_HZ
 #error "the time slice is not a whole number of ticks"
@@ -79,7 +79,7 @@ void vApplicationTickHook(void)
 	}
 	slice_ticks = 0;
 	prio = uxTaskPriorityGetFromISR(xTaskGetCurrentTaskHandle());
-	if (prio > NANO_PRIO_IDLE && prio <= TIMESLICE_PRIO_MAX) {
+	if (prio > APP_PRIO_IDLE && prio <= TIMESLICE_PRIO_MAX) {
 		/* The tick interrupt; PendSV runs after it. */
 		portYIELD_FROM_ISR(pdTRUE);
 	}

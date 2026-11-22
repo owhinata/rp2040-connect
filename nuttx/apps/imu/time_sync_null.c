@@ -8,10 +8,10 @@
  * time_sync_estimate_us() return false (the IMU service then counts
  * unix_unavailable for each batch). time_sync_mono_us() is already the real
  * one: the RP2040's 1 MHz TIMER read through its raw registers, the same read
- * as the Zephyr build's (nano_mono_us(), <arch/board/nano_timer.h>).
+ * as the Zephyr build's (rp2040_timer_us(), <arch/board/rp2040_timer_us.h>).
  */
 #include <nuttx/config.h>
-#include <arch/board/nano_timer.h>
+#include <arch/board/rp2040_timer_us.h>
 
 #include "time_sync.h"
 
@@ -26,7 +26,7 @@ bool time_sync_is_ready(void)
 
 int64_t time_sync_mono_us(void)
 {
-	return (int64_t)nano_mono_us();
+	return (int64_t)rp2040_timer_us();
 }
 
 bool time_sync_unix_us(int64_t mono_us, int64_t *unix_us, uint32_t *delay_us)

@@ -36,8 +36,8 @@
  * (CONFIG_SCHED_THREAD_USAGE, kernel/usage.c) is the same kind of
  * accounting, at the PendSV switch, in k_cycle_get_32() cycles.
  *
- * nano_mono_us() (include/nano_timer.h) reads the raw registers without a
- * lock, so this is safe in any context: from boot (the TIMER runs from
+ * rp2040_timer_us() (include/rp2040_timer_us.h) reads the raw registers
+ * without a lock, so this is safe in any context: from boot (the TIMER runs from
  * reset; before rp2040_clockconfig() starts its tick it reads a constant),
  * at a switch inside arm_doirq() and in interrupt handlers.  The 64-bit
  * count does not wrap (PERF_OVERFLOW_CORRECTION is not needed).
@@ -54,7 +54,7 @@
 
 #include <nuttx/arch.h>
 #include <nuttx/clock.h>
-#include <arch/board/nano_timer.h>
+#include <arch/board/rp2040_timer_us.h>
 
 #ifndef CONFIG_ARCH_HAVE_PERF_EVENTS
 #  error "rp2040_perf.c replaces the up_perf_*() of drivers/timers"
@@ -71,7 +71,7 @@ void up_perf_init(FAR void *arg)
 
 clock_t up_perf_gettime(void)
 {
-  return (clock_t)nano_mono_us();
+  return (clock_t)rp2040_timer_us();
 }
 
 unsigned long up_perf_getfreq(void)

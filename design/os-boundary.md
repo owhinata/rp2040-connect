@@ -21,11 +21,11 @@ Paths below `nuttx/boards/arduino-nano-rp2040-connect/` are shortened to `N-boar
 | Compatibility layer, network part for an OS without a network stack | `common/compat/net_offload` | Zephyr's socket layer (reduced copies of `subsys/net/lib/sockets`, `lib/os/zvfs`), the one network interface (`zephyr_net_if.c`) and its start (`zephyr_net_init.c`), `k_heap` (`zephyr_heap.c`), their headers in its own include root `include/` (`zephyr/net/net_if.h`, `net_ip.h`, `socket.h`, `socket_offload.h`, `zephyr/sys/fdtable.h`, `zephyr_net_init.h`, `zephyr_heap.h`); used by F only |
 | POSIX network headers for a C library without them | `common/compat/libc_net` | `include/` (`arpa/inet.h`, `netdb.h`, `netinet/in.h`, `netinet/tcp.h`, `poll.h`, `sys/socket.h`, `sys/uio.h`), `inet_pton()`/`inet_ntop()` (`inet.c`); used by F only |
 | Kernel part of the compatibility layer for an OS that offers only basic primitives | `common/compat/kernel_generic` | `k_sem`, `k_poll()`, the timeout list, the sleeps and the start of a thread (`zephyr_kernel.c`), `k_mutex` (`zephyr_mutex.c`), the OS part of `<zephyr/kernel.h>` and `<zephyr/spinlock.h>` (`zephyr_os.h`, `zephyr_os_spinlock.h`), the tick's entry (`zephyr_compat_tick()`, `zephyr_compat_os.h`), the self-test's items on the primitives (`zephyr_selftest_os.h`), all on the primitives declared in `zephyr_kernel_os.h` (section 2); used by F only |
-| Self-test of the compatibility layer (acceptance test of an OS part) | `common/compat/selftest` | `zephyr_selftest.c` (22 tests), its boundary `zephyr_selftest.h` (section 3); used only by F's `-DNANO_SELFTEST=ON` build and F's host test |
+| Self-test of the compatibility layer (acceptance test of an OS part) | `common/compat/selftest` | `zephyr_selftest.c` (22 tests), its boundary `zephyr_selftest.h` (section 3); used only by F's `-DSELFTEST=ON` build and F's host test |
 | Shell engine for an OS without a shell of its own | `common/compat/shell_engine` | line editor (`cli.c`), command table and dispatch of the `Z_SHELL_CMD_ROOT_GLOBAL` roots (`nano_shell.c`; the application supplies `nano_shell_cmds[]`), Zephyr's word split (`shell_argv.c`); used by F only |
 | Host tests | `common/tests` | Tests and fakes; `common/tests/zephyr_fakes` is a host implementation of the kernel's OS part |
 | Zephyr build | `zephyr/app/usb-console` | `main()`, `log_ram.c`, `kv_store_os.h`, `wifi_profile_os.h`; upstream Zephyr with patches in `zephyr/manifest/zephyr/patches` |
-| N: board | `N-board/` | Bring-up, tickless timer, idle loop and CPU load, GPIO bank 0, KV flash, USB serial, `nano_mono_us()` (`include/nano_timer.h`) |
+| N: board | `N-board/` | Bring-up, tickless timer, idle loop and CPU load, GPIO bank 0, KV flash, USB serial, `rp2040_timer_us()` (`include/rp2040_timer_us.h`) |
 | N: compatibility layer, OS part | `nuttx/drivers/compat` | `zephyr_os*.h`, kernel, mutexes, I2C on `struct i2c_master_s`, net_if, hwinfo, prelude, per-OS `<zephyr/...>` headers |
 | N: shared OS headers | `nuttx/drivers/include` | `app_log_os.h`, `log_ram_os_impl.h`, `priorities_os.h` |
 | N: log | `nuttx/drivers/log` | `log_ram_syslog.c` (the RAM log as the syslog channel), `Make.defs` |
@@ -61,7 +61,7 @@ one of two ways:
 
 | Item | Meaning | N | Generic (F) |
 |---|---|---|---|
-| OS headers before the layer's | the layer's `<zephyr/sys/atomic.h>` takes over atomic names | NuttX headers, `<arch/board/nano_timer.h>` | `zephyr_kernel_os.h` (the OS's headers: F's FreeRTOS headers and `zephyr_os_port.h`), `priorities.h`, `<zephyr/sys/clock.h>` |
+| OS headers before the layer's | the layer's `<zephyr/sys/atomic.h>` takes over atomic names | NuttX headers, `<arch/board/rp2040_timer_us.h>` | `zephyr_kernel_os.h` (the OS's headers: F's FreeRTOS headers and `zephyr_os_port.h`), `priorities.h`, `<zephyr/sys/clock.h>` |
 | `Z_USEC_PER_TICK` | tick length in µs; 1000 must be a multiple | `CONFIG_USEC_PER_TICK` (100) | `1000000 / Z_OS_TICK_HZ` (F: `configTICK_RATE_HZ`, 1000) |
 | `struct k_mutex`, `Z_MUTEX_INITIALIZER(obj)` | all-zero must work as an unlocked mutex | `rmutex_t` + `ready` flag | the OS's (F: static recursive mutex, created on first use) |
 | `struct k_sem`, `Z_SEM_INITIALIZER(obj, initial, limit)` | count with a limit; poll event list | `sem_t` + limit + events | the layer's own count, waiters, events |
@@ -70,8 +70,8 @@ one of two ways:
 | `k_tid_t` | thread handle | `pid_t` | `z_os_thread_t` (F: `TaskHandle_t`) |
 | `k_current_get()` | the calling thread | `gettid()` | `z_os_thread_self()` |
 | `k_yield()` | the next ready thread of the priority, or go on | `sched_yield()` | `z_os_yield()` |
-| `K_PRIO_PREEMPT(x)` | OS priority of Zephyr priority x, order kept | `NANO_PRIO_FROM_ZEPHYR` (118 − x) | `NANO_PRIO_FROM_ZEPHYR` (F: 20 − x) |
-| `k_cycle_get_32()`, `k_cycle_get_64()` | 1 MHz counter | `nano_mono_us()` | `z_os_clock_us()` (F: `nano_mono_us()`) |
+| `K_PRIO_PREEMPT(x)` | OS priority of Zephyr priority x, order kept | `APP_PRIO_FROM_ZEPHYR` (118 − x) | `APP_PRIO_FROM_ZEPHYR` (F: 20 − x) |
+| `k_cycle_get_32()`, `k_cycle_get_64()` | 1 MHz counter | `rp2040_timer_us()` | `z_os_clock_us()` (F: `rp2040_timer_us()`) |
 | `Z_OS_ASSERT(test)` | the OS's assertion, for a work queue's thread that did not start | `DEBUGASSERT()` (nothing in the imu configuration) | the OS's (F: `configASSERT()`: fault record, restart) |
 | `Z_SEM_TAKE_FOREVER(sem)` (optional) | `k_sem_take(sem, K_FOREVER)` the OS's shorter way: the work queue's wait | `nxsem_wait_uninterruptible()` (what `k_sem_take()` does, without the call) | not defined: `k_sem_take()` (`kernel.h`'s default) |
 
@@ -104,7 +104,7 @@ Files: N `zephyr_kernel.c`, `zephyr_mutex.c`; generic `common/compat/kernel_gene
 Shared, on these: the work item logic (`common/compat/zephyr_work.c`); `common/compat/zephyr_init.c`:
 `k_work_queue_start()` (the queue keeps its thread's `struct z_thread_static`; the thread loops on
 `z_work_queue_process()`, `k_yield()` and `Z_SEM_TAKE_FOREVER()`), the object `k_sys_work_q`
-("sysworkq", `NANO_PRIO_SYSWORKQ`), `zephyr_compat_initialize()` (declared in
+("sysworkq", `APP_PRIO_SYSWORKQ`), `zephyr_compat_initialize()` (declared in
 `common/compat/zephyr_compat.h`: `k_sys_work_q`, −ENOMEM if its thread did not start, the RTIO work
 queue, gpio0 with `CONFIG_LSM6DSO_STREAM`), `k_uptime_get()` (`Z_UPTIME_MS()` of
 `k_cycle_get_64()`); the "net_mgmt" thread (`common/compat/zephyr_net_mgmt.c`).
@@ -185,7 +185,7 @@ Functions (23). "Locked" is inside `k_spin_lock()`; "ISR" includes the tick hook
 | `z_os_sleep(ticks)` | until the current tick + ticks; threads, unlocked | `vTaskDelay()` |
 | `z_os_suspend()` | stops the caller with no end (may return; called again) | `vTaskSuspend(NULL)` |
 | `z_os_busy_wait_us(us)` | spins at least `us` µs; any context | `busy_wait_us_32()` (host: the clock) |
-| `z_os_clock_us()` | µs since the start, 64 bits, monotonic; any context | `nano_mono_us()` (TIMER; host: `CLOCK_MONOTONIC`) |
+| `z_os_clock_us()` | µs since the start, 64 bits, monotonic; any context | `rp2040_timer_us()` (TIMER; host: `CLOCK_MONOTONIC`) |
 | `z_os_mutex_init(m)`, `z_os_mutex_lock(m, ticks)`, `z_os_mutex_unlock(m)` | the OS's recursive mutex with its own priority inheritance; all-zero is unlocked; lock true when taken; unlock 0, −EINVAL (not held), −EPERM (other holder) | `xSemaphoreCreateRecursiveMutexStatic()` (also at the first use), `xSemaphoreTakeRecursive()`, `xSemaphoreGetMutexHolder()` + `xSemaphoreGiveRecursive()` |
 
 F's port header also has the tick hook's `z_os_tick_now_us32()` and `z_os_tick_pend()` (the catch-up of
@@ -199,12 +199,12 @@ lost ticks, `freertos/app/usb-console/src/tick.c`), which are not primitives of 
 | `struct shell` | read by `common/compat/zephyr/shell/shell.h` | one backend, outlives the command | shell commands | `nuttx/drivers/compat/zephyr_os_shell.h` (terminal path, command pid) | `freertos/drivers/shell/zephyr_os_shell.h` (console, active command) |
 | Log, OS part | `common/log/app_log.h` | `app_log_os.h` (OS headers first, optional `CONFIG_LOG_DEFAULT_LEVEL`, `CONFIG_LOG_MAX_LEVEL`); `app_log_printf()`, `app_log_vprintf()`, `app_log_ratelimit_pass()` | `LOG_*()` macros | `nuttx/drivers/include/app_log_os.h`; the functions shared: `common/log/log_ram.c` | `freertos/drivers/include/app_log_os.h`; shared: same |
 | RAM log | `common/log/log_ram.h` | `log_ram_initialize()`, `log_ram_store()` (the OS's own log, raw bytes), `log_ram_piece()` | start-up; the OS's log; `dmesg` | shared `common/log/log_ram.c`; called by `N-board/src/rp2040_boardinitialize.c`, `nuttx/drivers/log/log_ram_syslog.c`, `nuttx/apps/dmesg/dmesg_main.c` | shared: same; called by `main()`, `common/shell/dmesg_shell.c` (`log_ram_store()` unused) |
-| RAM log, OS part | `common/log/log_ram_os.h` (`log_ram.c` reads `"log_ram_os_impl.h"` first) | `LOG_RAM_OS_RETAINED(name)` (the ring in RAM the start-up code leaves alone), type `log_ram_os_irqstate_t`; inline `log_ram_os_irq_save()`, `_irq_restore()` (the lock: interrupts masked, any context), `_uptime_us()` (time stamp and rate limit), `_attach()` (make it the OS's own log) | `common/log/log_ram.c` | `nuttx/drivers/include/log_ram_os_impl.h`: `.noinit`, `up_irq_save()`, `nano_mono_us()`, registers the syslog channel (`nuttx/drivers/log/log_ram_syslog.c`) | `freertos/drivers/include/log_ram_os_impl.h`: `__uninitialized_ram`, `save_and_disable_interrupts()`, `nano_mono_us()` of `os_clock.h`, nothing to attach; host `common/tests/log_ram_os_host/` |
+| RAM log, OS part | `common/log/log_ram_os.h` (`log_ram.c` reads `"log_ram_os_impl.h"` first) | `LOG_RAM_OS_RETAINED(name)` (the ring in RAM the start-up code leaves alone), type `log_ram_os_irqstate_t`; inline `log_ram_os_irq_save()`, `_irq_restore()` (the lock: interrupts masked, any context), `_uptime_us()` (time stamp and rate limit), `_attach()` (make it the OS's own log) | `common/log/log_ram.c` | `nuttx/drivers/include/log_ram_os_impl.h`: `.noinit`, `up_irq_save()`, `rp2040_timer_us()`, registers the syslog channel (`nuttx/drivers/log/log_ram_syslog.c`) | `freertos/drivers/include/log_ram_os_impl.h`: `__uninitialized_ram`, `save_and_disable_interrupts()`, `rp2040_timer_us()` of `os_clock.h`, nothing to attach; host `common/tests/log_ram_os_host/` |
 | KV flash | `common/compat/nano_flash_kv.h` | `nano_flash_kv_os_ready()`, `_read()`, `_program()` (256-byte page), `_erase()` (4 KiB sector); range checked again by the OS | `common/compat/zephyr_flash_kv.c` | `N-board/src/nano_flash_kv.c` | `freertos/drivers/kv/nano_flash_kv.c` |
 | KV wipe command | `common/compat/kv_store_os.h` | `kv_store_wipe()`, `kv_store_cmd_wipe()`, `KV_STORE_OS_COMMANDS` | `common/imu/kv_store.c` | shared: `common/compat/kv_store_wipe.c` | shared: same |
-| GPIO bank 0 | `common/compat/nano_gpio.h` | OS: `nano_gpio_configure_input()`, `nano_gpio_get_all()`, `nano_gpio_irq_configure()`; layer: `nano_gpio_irq_handler()` (called from the bank interrupt) | `common/compat/zephyr_gpio.c`; N also `common/drivers/nina/port/nuttx/nina_os.c` | `N-board/src/nano_gpio.c` | `freertos/drivers/compat/rp2040/nano_gpio.c` |
-| CPU load | `common/compat/cpu_load.h`, arithmetic `common/compat/nano_cpuload.h` | `cpu_load_get(reset)` in tenths of a percent, from idle windows of the TIMER | `common/imu/imu_stream.c` | `N-board/src/rp2040_idle_cpuload.c` | `freertos/app/usb-console/src/idle.c` |
-| Priorities and stacks | `common/compat/priorities.h` | OS: `NANO_PRIO_FROM_ZEPHYR(p)` and its own threads; shared: 15 `NANO_PRIO_*`/`NANO_STACK_*` pairs | the layer, bindings, start-up | `nuttx/drivers/include/priorities_os.h` (118 − p; `NINA_EVENT`, `NINA_PT`) | `freertos/app/usb-console/src/priorities_os.h` (20 − p; `TIMER_SVC`, `IDLE`, `HEARTBEAT`) |
+| GPIO bank 0 | `common/compat/gpio_os.h` | OS: `gpio_os_configure_input()`, `gpio_os_get_all()`, `gpio_os_irq_configure()`; layer: `gpio_os_irq_handler()` (called from the bank interrupt) | `common/compat/zephyr_gpio.c`; N also `common/drivers/nina/port/nuttx/nina_os.c` | `N-board/src/rp2040_gpio_os.c` | `freertos/drivers/compat/rp2040/gpio_os_rp2040.c` |
+| CPU load | `common/compat/cpu_load.h` (with the arithmetic) | `cpu_load_get(reset)` in tenths of a percent, from idle windows of the TIMER | `common/imu/imu_stream.c` | `N-board/src/rp2040_idle_cpuload.c` | `freertos/app/usb-console/src/idle.c` |
+| Priorities and stacks | `common/compat/priorities.h` | OS: `APP_PRIO_FROM_ZEPHYR(p)` and its own threads; shared: 15 `APP_PRIO_*`/`APP_STACK_*` pairs | the layer, bindings, start-up | `nuttx/drivers/include/priorities_os.h` (118 − p; `NINA_EVENT`, `NINA_PT`) | `freertos/app/usb-console/src/priorities_os.h` (20 − p; `TIMER_SVC`, `IDLE`, `HEARTBEAT`) |
 | net_mgmt thread | `common/compat/zephyr/net/net_mgmt.h` | `net_mgmt_event_init()` starts "net_mgmt" with `z_thread_static_start()`; no OS file | N `common/drivers/nina/port/nuttx/nina_wifi_mgmt.c`; F `common/compat/net_offload/zephyr_net_init.c` | shared `common/compat/zephyr_net_mgmt.c` | same |
 | RTIO work queue | `common/compat/zephyr/rtio/work.h` | `rtio_workq_initialize()` starts "RTIO WQ 0" with `z_thread_static_start()`; no OS file | `zephyr_compat_initialize()` | shared `common/compat/zephyr_rtio_workq.c` | same |
 | Wi-Fi profile | included by `common/imu/wifi_profile.c` | `extern k_tid_t wifi_reconnect_tid;` | `common/imu/wifi_profile.c` | `nuttx/apps/wifi/wifi_profile_os.h` | `freertos/drivers/wifi/wifi_profile_os.h` |
@@ -240,7 +240,7 @@ headers are in `common/compat/net_offload/include`, which F puts after its OS di
 
 | Item | Where declared | N | F |
 |---|---|---|---|
-| `nano_mono_us()`: µs since boot, TIMER, any context | per OS only | `N-board/include/nano_timer.h` | `freertos/app/usb-console/src/os_clock.h` |
+| `rp2040_timer_us()`: µs since boot, TIMER, any context | per OS only | `N-board/include/rp2040_timer_us.h` | `freertos/app/usb-console/src/os_clock.h` |
 | TIMER read by `common/imu/time_sync.c` | the file itself (`DT_REG_ADDR(DT_NODELABEL(timer))` = 0x40054000, `sys_read32()`) | — | `freertos/drivers/imu/time_sync_prelude.h` undefines the SDK's `TIMER_BASE` |
 | `k_heap` | `common/compat/net_offload/include/zephyr_heap.h`, included by F `zephyr_os.h` | not built | `common/compat/net_offload/zephyr_heap.c`; used by `common/drivers/nina/port/zephyr/nina_socket.c` |
 | `zephyr_compat_tick()` | `common/compat/kernel_generic/zephyr_compat_os.h` (generic kernel part) | — (wdog) | called by `vApplicationTickHook()`, `freertos/app/usb-console/src/tick.c` |

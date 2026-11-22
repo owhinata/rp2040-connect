@@ -58,7 +58,7 @@ On the first build the Pico SDK fetches the source of `picotool` from GitHub and
 
 | Option | Default | Content |
 |---|---|---|
-| `-DNANO_SELFTEST=ON` | OFF | Adds the test command `selftest` (the self-test of the Zephyr compatibility layer, I2C0 and the LSM6DSOX; use it with the measurement stopped and the board at rest) |
+| `-DSELFTEST=ON` | OFF | Adds the test command `selftest` (the self-test of the Zephyr compatibility layer, I2C0 and the LSM6DSOX; use it with the measurement stopped and the board at rest) |
 | `-DI2C_DW_I2C1=ON` | OFF | Makes I2C1 available (SDA on GPIO18 = D6, SCL on GPIO19 = D7, internal pull-ups) with the same driver as I2C0. Not tried with a real device. |
 
 ## Host tests

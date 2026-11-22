@@ -49,7 +49,7 @@
 #   zephyr_selftest.c, on common/compat/kernel_generic/zephyr_selftest_os.h
 #   with this directory's zephyr_selftest_os_impl.h, and the
 #   board's part, rp2040/zephyr_selftest_port.c), its include directory, and
-#   NANO_SELFTEST=1;
+#   SELFTEST=1;
 # - the include directories, the board's port header first
 #   (rp2040/zephyr_os_port.h), then the FreeRTOS part
 #   (zephyr_kernel_os_impl.h, zephyr_os_atomic.h, ...), the generic kernel
@@ -158,7 +158,7 @@ function(freertos_zephyr_compat target)
       ${FREERTOS_COMPAT_DIR}/rp2040/zephyr_selftest_port.c
     )
     target_include_directories(${target} PRIVATE ${FREERTOS_COMMON_DIR}/compat/selftest)
-    target_compile_definitions(${target} PRIVATE NANO_SELFTEST=1)
+    target_compile_definitions(${target} PRIVATE SELFTEST=1)
   endif()
 
   target_include_directories(${target} PRIVATE

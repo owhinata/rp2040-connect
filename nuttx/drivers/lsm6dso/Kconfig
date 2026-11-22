@@ -37,4 +37,4 @@ config LSM6DSO_STREAM
 		with LSM6DSO_LOCAL: as in Zephyr, lsm6dso_sensor.c does not
 		build without it.  The board starts the layer's threads
 		(zephyr_compat_initialize()) before the LSM6DSOX and builds
-		src/nano_gpio.c for the INT1 interrupt.
+		src/rp2040_gpio_os.c for the INT1 interrupt.

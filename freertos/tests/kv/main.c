@@ -405,9 +405,9 @@ static void test_writers(void)
 
 	writers_done = xSemaphoreCreateCounting(2, 0);
 	assert(xTaskCreate(writer, "writer a", WRITER_STACK / sizeof(StackType_t), "w.a",
-			   NANO_PRIO_SHELL, NULL) == pdPASS);
+			   APP_PRIO_SHELL, NULL) == pdPASS);
 	assert(xTaskCreate(writer, "writer b", WRITER_STACK / sizeof(StackType_t), "w.b",
-			   NANO_PRIO_SHELL, NULL) == pdPASS);
+			   APP_PRIO_SHELL, NULL) == pdPASS);
 	for (int i = 0; i < 2; i++) {
 		assert(xSemaphoreTake(writers_done, portMAX_DELAY) == pdTRUE);
 	}
@@ -456,7 +456,7 @@ int main(void)
 	if (zephyr_compat_initialize() != 0) {
 		return 2;
 	}
-	if (xTaskCreate(runner, "runner", RUNNER_STACK / sizeof(StackType_t), NULL, NANO_PRIO_MAIN,
+	if (xTaskCreate(runner, "runner", RUNNER_STACK / sizeof(StackType_t), NULL, APP_PRIO_MAIN,
 			NULL) != pdPASS) {
 		return 2;
 	}

@@ -20,11 +20,11 @@ Zephyr そのものに対してビルドし、`common/compat` を使いません
 | 互換層のネットワークの部分（ネットワーク層を持たない OS のため） | `common/compat/net_offload` | Zephyr のソケット層（`subsys/net/lib/sockets`・`lib/os/zvfs` を縮めた写し）、ネットワークのインターフェース 1 つ（`zephyr_net_if.c`）とその開始（`zephyr_net_init.c`）、`k_heap`（`zephyr_heap.c`）、それらのヘッダーは専用のインクルードのルート `include/`（`zephyr/net/net_if.h`・`net_ip.h`・`socket.h`・`socket_offload.h`、`zephyr/sys/fdtable.h`、`zephyr_net_init.h`、`zephyr_heap.h`）。使うのは F だけ |
 | POSIX のネットワークのヘッダー（それを持たない C ライブラリーのため） | `common/compat/libc_net` | `include/`（`arpa/inet.h`、`netdb.h`、`netinet/in.h`、`netinet/tcp.h`、`poll.h`、`sys/socket.h`、`sys/uio.h`）、`inet_pton()`・`inet_ntop()`（`inet.c`）。使うのは F だけ |
 | 基本の操作だけを持つ OS のための互換層のカーネルの部分 | `common/compat/kernel_generic` | `k_sem`、`k_poll()`、タイムアウトの一覧、スリープ、スレッドの起動（`zephyr_kernel.c`）、`k_mutex`（`zephyr_mutex.c`）、`<zephyr/kernel.h>`・`<zephyr/spinlock.h>` の OS の部分（`zephyr_os.h`・`zephyr_os_spinlock.h`）、tick の入口（`zephyr_compat_tick()`、`zephyr_compat_os.h`）、基本の操作の上の自己診断の項目（`zephyr_selftest_os.h`）。すべて `zephyr_kernel_os.h` で宣言した基本の操作（2 節）の上。使うのは F だけ |
-| 互換層の自己診断（OS の部分の受け入れ試験） | `common/compat/selftest` | `zephyr_selftest.c`（22 項目）、境界の宣言 `zephyr_selftest.h`（3 節）。使うのは F の `-DNANO_SELFTEST=ON` のビルドと F のホストテストだけ |
+| 互換層の自己診断（OS の部分の受け入れ試験） | `common/compat/selftest` | `zephyr_selftest.c`（22 項目）、境界の宣言 `zephyr_selftest.h`（3 節）。使うのは F の `-DSELFTEST=ON` のビルドと F のホストテストだけ |
 | 自分のシェルを持たない OS のためのシェル | `common/compat/shell_engine` | 行編集（`cli.c`）、`Z_SHELL_CMD_ROOT_GLOBAL` のルートのコマンドの表と実行（`nano_shell.c`。`nano_shell_cmds[]` はアプリが用意する）、Zephyr の単語の分割（`shell_argv.c`）。使うのは F だけ |
 | ホストテスト | `common/tests` | テストと偽物。`common/tests/zephyr_fakes` はカーネルの OS 部分のホスト用の実装 |
 | Zephyr 版 | `zephyr/app/usb-console` | `main()`、`log_ram.c`、`kv_store_os.h`、`wifi_profile_os.h`。上流の Zephyr と、`zephyr/manifest/zephyr/patches` のパッチ |
-| N: ボード | `N-board/` | 起動、tickless のタイマー、アイドルループと CPU 負荷、GPIO バンク 0、KV のフラッシュ、USB シリアル、`nano_mono_us()`（`include/nano_timer.h`） |
+| N: ボード | `N-board/` | 起動、tickless のタイマー、アイドルループと CPU 負荷、GPIO バンク 0、KV のフラッシュ、USB シリアル、`rp2040_timer_us()`（`include/rp2040_timer_us.h`） |
 | N: 互換層の OS 部分 | `nuttx/drivers/compat` | `zephyr_os*.h`、カーネル、ミューテックス、`struct i2c_master_s` の上の I2C、net_if、hwinfo、プレリュード、OS ごとの `<zephyr/...>` ヘッダー |
 | N: 共有の OS ヘッダー | `nuttx/drivers/include` | `app_log_os.h`、`log_ram_os_impl.h`、`priorities_os.h` |
 | N: ログ | `nuttx/drivers/log` | `log_ram_syslog.c`（RAM ログを syslog のチャネルにする）、`Make.defs` |
@@ -57,7 +57,7 @@ Zephyr そのものに対してビルドし、`common/compat` を使いません
 
 | 項目 | 意味 | N | 汎用（F） |
 |---|---|---|---|
-| 互換層より先に読む OS のヘッダー | 互換層の `<zephyr/sys/atomic.h>` が atomic の名前を引き取るため | NuttX のヘッダー、`<arch/board/nano_timer.h>` | `zephyr_kernel_os.h`（OS のヘッダー。F は FreeRTOS のヘッダーと `zephyr_os_port.h`）、`priorities.h`、`<zephyr/sys/clock.h>` |
+| 互換層より先に読む OS のヘッダー | 互換層の `<zephyr/sys/atomic.h>` が atomic の名前を引き取るため | NuttX のヘッダー、`<arch/board/rp2040_timer_us.h>` | `zephyr_kernel_os.h`（OS のヘッダー。F は FreeRTOS のヘッダーと `zephyr_os_port.h`）、`priorities.h`、`<zephyr/sys/clock.h>` |
 | `Z_USEC_PER_TICK` | tick の長さ（µs）。1000 がその倍数であること | `CONFIG_USEC_PER_TICK`（100） | `1000000 / Z_OS_TICK_HZ`（F は `configTICK_RATE_HZ`、1000） |
 | `struct k_mutex`、`Z_MUTEX_INITIALIZER(obj)` | 全部 0 のものがロックされていないミューテックスとして動くこと | `rmutex_t` と `ready` の印 | OS のもの（F は静的な再帰ミューテックス。最初の使用で作る） |
 | `struct k_sem`、`Z_SEM_INITIALIZER(obj, initial, limit)` | 上限つきの数、poll の事象の一覧 | `sem_t`、上限、事象 | 互換層自身の数、待ち手、事象 |
@@ -66,8 +66,8 @@ Zephyr そのものに対してビルドし、`common/compat` を使いません
 | `k_tid_t` | スレッドの識別 | `pid_t` | `z_os_thread_t`（F は `TaskHandle_t`） |
 | `k_current_get()` | 呼んだスレッド | `gettid()` | `z_os_thread_self()` |
 | `k_yield()` | 同じ優先度の次の実行可能なスレッドに譲る。無ければ続ける | `sched_yield()` | `z_os_yield()` |
-| `K_PRIO_PREEMPT(x)` | Zephyr の優先度 x の OS の優先度。順序を保つ | `NANO_PRIO_FROM_ZEPHYR`（118 − x） | `NANO_PRIO_FROM_ZEPHYR`（F は 20 − x） |
-| `k_cycle_get_32()`、`k_cycle_get_64()` | 1 MHz のカウンター | `nano_mono_us()` | `z_os_clock_us()`（F は `nano_mono_us()`） |
+| `K_PRIO_PREEMPT(x)` | Zephyr の優先度 x の OS の優先度。順序を保つ | `APP_PRIO_FROM_ZEPHYR`（118 − x） | `APP_PRIO_FROM_ZEPHYR`（F は 20 − x） |
+| `k_cycle_get_32()`、`k_cycle_get_64()` | 1 MHz のカウンター | `rp2040_timer_us()` | `z_os_clock_us()`（F は `rp2040_timer_us()`） |
 | `Z_OS_ASSERT(test)` | OS のアサーション。ワークキューのスレッドが起きなかったとき用 | `DEBUGASSERT()`（imu の構成では何もしない） | OS のもの（F は `configASSERT()`: 異常停止の記録と再起動） |
 | `Z_SEM_TAKE_FOREVER(sem)`（任意） | `k_sem_take(sem, K_FOREVER)` を OS の短い経路で。ワークキューの待ち | `nxsem_wait_uninterruptible()`（`k_sem_take()` と同じ処理を、呼び出しなしで） | 定義しない: `k_sem_take()`（`kernel.h` の既定） |
 
@@ -99,7 +99,7 @@ Zephyr そのものに対してビルドし、`common/compat` を使いません
 
 これらの上で共有するもの: ワークアイテムの処理（`common/compat/zephyr_work.c`）。`common/compat/zephyr_init.c` の
 `k_work_queue_start()`（キューが自分のスレッドの `struct z_thread_static` を持つ。スレッドは `z_work_queue_process()`、
-`k_yield()`、`Z_SEM_TAKE_FOREVER()` を繰り返す）、オブジェクト `k_sys_work_q`（"sysworkq"、`NANO_PRIO_SYSWORKQ`）、
+`k_yield()`、`Z_SEM_TAKE_FOREVER()` を繰り返す）、オブジェクト `k_sys_work_q`（"sysworkq"、`APP_PRIO_SYSWORKQ`）、
 `zephyr_compat_initialize()`（宣言は `common/compat/zephyr_compat.h`。`k_sys_work_q`、そのスレッドが起きなければ −ENOMEM、
 RTIO のワークキュー、`CONFIG_LSM6DSO_STREAM` のとき gpio0）、`k_uptime_get()`（`k_cycle_get_64()` の `Z_UPTIME_MS()`）。
 "net_mgmt" のスレッド（`common/compat/zephyr_net_mgmt.c`）。
@@ -177,7 +177,7 @@ atomic の操作そのものは共有です（`k_spin_lock()` の上）。
 | `z_os_sleep(ticks)` | 今の tick + ticks まで眠る。スレッド、ロックの外 | `vTaskDelay()` |
 | `z_os_suspend()` | 呼んだスレッドを終わりなく止める（戻ってもよい。呼び直す） | `vTaskSuspend(NULL)` |
 | `z_os_busy_wait_us(us)` | 少なくとも `us` µs 回る。どの文脈からでも | `busy_wait_us_32()`（ホストは時計） |
-| `z_os_clock_us()` | 起動からの µs、64 ビット、単調。どの文脈からでも | `nano_mono_us()`（TIMER。ホストは `CLOCK_MONOTONIC`） |
+| `z_os_clock_us()` | 起動からの µs、64 ビット、単調。どの文脈からでも | `rp2040_timer_us()`（TIMER。ホストは `CLOCK_MONOTONIC`） |
 | `z_os_mutex_init(m)`、`z_os_mutex_lock(m, ticks)`、`z_os_mutex_unlock(m)` | OS 自身の再帰ミューテックスと、その優先度継承。全部 0 は未ロック。lock は取れたら真。unlock は 0、−EINVAL（誰も持たない）、−EPERM（ほかの持ち主） | `xSemaphoreCreateRecursiveMutexStatic()`（最初の使用でも）、`xSemaphoreTakeRecursive()`、`xSemaphoreGetMutexHolder()` + `xSemaphoreGiveRecursive()` |
 
 F のポートのヘッダーには、tick のフックの `z_os_tick_now_us32()`・`z_os_tick_pend()`（失われた tick の追いつき、
@@ -191,12 +191,12 @@ F のポートのヘッダーには、tick のフックの `z_os_tick_now_us32()
 | `struct shell` | `common/compat/zephyr/shell/shell.h` が読む | バックエンド 1 つ。コマンドより長く生きる | シェルのコマンド | `nuttx/drivers/compat/zephyr_os_shell.h`（端末のパス、コマンドの pid） | `freertos/drivers/shell/zephyr_os_shell.h`（コンソール、実行中のコマンド） |
 | ログの OS 部分 | `common/log/app_log.h` | `app_log_os.h`（OS のヘッダーを先に、任意の `CONFIG_LOG_DEFAULT_LEVEL`・`CONFIG_LOG_MAX_LEVEL`）、`app_log_printf()`、`app_log_vprintf()`、`app_log_ratelimit_pass()` | `LOG_*()` マクロ | `nuttx/drivers/include/app_log_os.h`。関数は共有の `common/log/log_ram.c` | `freertos/drivers/include/app_log_os.h`。関数は共有（同じ） |
 | RAM ログ | `common/log/log_ram.h` | `log_ram_initialize()`、`log_ram_store()`（OS 自身のログ。そのままのバイト）、`log_ram_piece()` | 起動、OS のログ、`dmesg` | 共有の `common/log/log_ram.c`。呼ぶのは `N-board/src/rp2040_boardinitialize.c`、`nuttx/drivers/log/log_ram_syslog.c`、`nuttx/apps/dmesg/dmesg_main.c` | 共有（同じ）。呼ぶのは `main()`、`common/shell/dmesg_shell.c`（`log_ram_store()` は使わない） |
-| RAM ログの OS 部分 | `common/log/log_ram_os.h`（`log_ram.c` が最初に `"log_ram_os_impl.h"` を読む） | `LOG_RAM_OS_RETAINED(name)`（起動のコードが触らない RAM にリングを置く）、型 `log_ram_os_irqstate_t`。inline の `log_ram_os_irq_save()`・`_irq_restore()`（ロック。割り込みを止める。どの文脈からでも）、`_uptime_us()`（時刻の印と頻度制限）、`_attach()`（OS 自身のログにする） | `common/log/log_ram.c` | `nuttx/drivers/include/log_ram_os_impl.h`: `.noinit`、`up_irq_save()`、`nano_mono_us()`、syslog のチャネルを登録（`nuttx/drivers/log/log_ram_syslog.c`） | `freertos/drivers/include/log_ram_os_impl.h`: `__uninitialized_ram`、`save_and_disable_interrupts()`、`os_clock.h` の `nano_mono_us()`、登録するものなし。ホストは `common/tests/log_ram_os_host/` |
+| RAM ログの OS 部分 | `common/log/log_ram_os.h`（`log_ram.c` が最初に `"log_ram_os_impl.h"` を読む） | `LOG_RAM_OS_RETAINED(name)`（起動のコードが触らない RAM にリングを置く）、型 `log_ram_os_irqstate_t`。inline の `log_ram_os_irq_save()`・`_irq_restore()`（ロック。割り込みを止める。どの文脈からでも）、`_uptime_us()`（時刻の印と頻度制限）、`_attach()`（OS 自身のログにする） | `common/log/log_ram.c` | `nuttx/drivers/include/log_ram_os_impl.h`: `.noinit`、`up_irq_save()`、`rp2040_timer_us()`、syslog のチャネルを登録（`nuttx/drivers/log/log_ram_syslog.c`） | `freertos/drivers/include/log_ram_os_impl.h`: `__uninitialized_ram`、`save_and_disable_interrupts()`、`os_clock.h` の `rp2040_timer_us()`、登録するものなし。ホストは `common/tests/log_ram_os_host/` |
 | KV のフラッシュ | `common/compat/nano_flash_kv.h` | `nano_flash_kv_os_ready()`、`_read()`、`_program()`（256 バイトのページ）、`_erase()`（4 KiB のセクター）。範囲は OS がもう一度確かめる | `common/compat/zephyr_flash_kv.c` | `N-board/src/nano_flash_kv.c` | `freertos/drivers/kv/nano_flash_kv.c` |
 | KV の消去のコマンド | `common/compat/kv_store_os.h` | `kv_store_wipe()`、`kv_store_cmd_wipe()`、`KV_STORE_OS_COMMANDS` | `common/imu/kv_store.c` | 共有: `common/compat/kv_store_wipe.c` | 共有: 同じ |
-| GPIO バンク 0 | `common/compat/nano_gpio.h` | OS: `nano_gpio_configure_input()`、`nano_gpio_get_all()`、`nano_gpio_irq_configure()`。互換層: `nano_gpio_irq_handler()`（バンクの割り込みから呼ぶ） | `common/compat/zephyr_gpio.c`。N では `common/drivers/nina/port/nuttx/nina_os.c` も | `N-board/src/nano_gpio.c` | `freertos/drivers/compat/rp2040/nano_gpio.c` |
-| CPU 負荷 | `common/compat/cpu_load.h`、計算は `common/compat/nano_cpuload.h` | `cpu_load_get(reset)`。0.1% 単位、TIMER で測ったアイドルの区間から | `common/imu/imu_stream.c` | `N-board/src/rp2040_idle_cpuload.c` | `freertos/app/usb-console/src/idle.c` |
-| 優先度とスタック | `common/compat/priorities.h` | OS: `NANO_PRIO_FROM_ZEPHYR(p)` と OS 自身のスレッド。共有: `NANO_PRIO_*`・`NANO_STACK_*` の 15 組 | 互換層、つなぎ、起動 | `nuttx/drivers/include/priorities_os.h`（118 − p。`NINA_EVENT`、`NINA_PT`） | `freertos/app/usb-console/src/priorities_os.h`（20 − p。`TIMER_SVC`、`IDLE`、`HEARTBEAT`） |
+| GPIO バンク 0 | `common/compat/gpio_os.h` | OS: `gpio_os_configure_input()`、`gpio_os_get_all()`、`gpio_os_irq_configure()`。互換層: `gpio_os_irq_handler()`（バンクの割り込みから呼ぶ） | `common/compat/zephyr_gpio.c`。N では `common/drivers/nina/port/nuttx/nina_os.c` も | `N-board/src/rp2040_gpio_os.c` | `freertos/drivers/compat/rp2040/gpio_os_rp2040.c` |
+| CPU 負荷 | `common/compat/cpu_load.h`（計算も） | `cpu_load_get(reset)`。0.1% 単位、TIMER で測ったアイドルの区間から | `common/imu/imu_stream.c` | `N-board/src/rp2040_idle_cpuload.c` | `freertos/app/usb-console/src/idle.c` |
+| 優先度とスタック | `common/compat/priorities.h` | OS: `APP_PRIO_FROM_ZEPHYR(p)` と OS 自身のスレッド。共有: `APP_PRIO_*`・`APP_STACK_*` の 15 組 | 互換層、つなぎ、起動 | `nuttx/drivers/include/priorities_os.h`（118 − p。`NINA_EVENT`、`NINA_PT`） | `freertos/app/usb-console/src/priorities_os.h`（20 − p。`TIMER_SVC`、`IDLE`、`HEARTBEAT`） |
 | net_mgmt のスレッド | `common/compat/zephyr/net/net_mgmt.h` | `net_mgmt_event_init()` が "net_mgmt" を `z_thread_static_start()` で起こす。OS のファイルは無い | N `common/drivers/nina/port/nuttx/nina_wifi_mgmt.c`、F `common/compat/net_offload/zephyr_net_init.c` | 共有の `common/compat/zephyr_net_mgmt.c` | 同じ |
 | RTIO のワークキュー | `common/compat/zephyr/rtio/work.h` | `rtio_workq_initialize()` が "RTIO WQ 0" を `z_thread_static_start()` で起こす。OS のファイルは無い | `zephyr_compat_initialize()` | 共有の `common/compat/zephyr_rtio_workq.c` | 同じ |
 | Wi-Fi のプロファイル | `common/imu/wifi_profile.c` が読む | `extern k_tid_t wifi_reconnect_tid;` | `common/imu/wifi_profile.c` | `nuttx/apps/wifi/wifi_profile_os.h` | `freertos/drivers/wifi/wifi_profile_os.h` |
@@ -232,7 +232,7 @@ Zephyr 版は自分の `zephyr/app/usb-console/src/kv_store_os.h` と `wifi_prof
 
 | 項目 | 宣言 | N | F |
 |---|---|---|---|
-| `nano_mono_us()`: 起動からの µs、TIMER、どの文脈からでも | 各版だけ | `N-board/include/nano_timer.h` | `freertos/app/usb-console/src/os_clock.h` |
+| `rp2040_timer_us()`: 起動からの µs、TIMER、どの文脈からでも | 各版だけ | `N-board/include/rp2040_timer_us.h` | `freertos/app/usb-console/src/os_clock.h` |
 | `common/imu/time_sync.c` が読む TIMER | ファイル自身（`DT_REG_ADDR(DT_NODELABEL(timer))` = 0x40054000、`sys_read32()`） | — | `freertos/drivers/imu/time_sync_prelude.h` が SDK の `TIMER_BASE` を消す |
 | `k_heap` | `common/compat/net_offload/include/zephyr_heap.h`（F の `zephyr_os.h` が読む） | ビルドしない | `common/compat/net_offload/zephyr_heap.c`。使うのは `common/drivers/nina/port/zephyr/nina_socket.c` |
 | `zephyr_compat_tick()` | `common/compat/kernel_generic/zephyr_compat_os.h`（汎用のカーネルの部分） | —（wdog） | `vApplicationTickHook()`（`freertos/app/usb-console/src/tick.c`）が呼ぶ |

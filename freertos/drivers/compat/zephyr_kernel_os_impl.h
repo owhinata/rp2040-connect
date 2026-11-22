@@ -28,7 +28,7 @@
  * notifications per task, mutexes and recursive mutexes, static and dynamic
  * allocation, configUSE_TICK_HOOK with a hook that calls
  * zephyr_compat_tick() of "zephyr_compat_os.h"), priorities_os.h
- * (common/compat/priorities.h) and os_clock.h (nano_mono_us(), read by the
+ * (common/compat/priorities.h) and os_clock.h (rp2040_timer_us(), read by the
  * board's port header).  Part of the FreeRTOS implementation of the layer
  * (freertos/drivers/compat; see freertos/drivers/README.md).
  */
@@ -216,10 +216,10 @@ Z_OS_INLINE void z_os_suspend(void)
 	vTaskSuspend(NULL);
 }
 
-/* nano_mono_us(): the board's TIMER (os_clock.h), or the host's clock. */
+/* rp2040_timer_us(): the board's TIMER (os_clock.h), or the host's clock. */
 Z_OS_INLINE uint64_t z_os_clock_us(void)
 {
-	return nano_mono_us();
+	return rp2040_timer_us();
 }
 
 /* Mutexes --------------------------------------------------------------------*/

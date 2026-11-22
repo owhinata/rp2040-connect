@@ -139,9 +139,9 @@ static size_t g_key_len;
 
 /* The core's threads (nina_net_start()). */
 
-static uint8_t g_scan_stack[NANO_STACK_NINA_SCAN] aligned_data(8);
-static uint8_t g_connect_stack[NANO_STACK_NINA_CONNECT] aligned_data(8);
-static uint8_t g_monitor_stack[NANO_STACK_NINA_MONITOR] aligned_data(8);
+static uint8_t g_scan_stack[APP_STACK_NINA_SCAN] aligned_data(8);
+static uint8_t g_connect_stack[APP_STACK_NINA_CONNECT] aligned_data(8);
+static uint8_t g_monitor_stack[APP_STACK_NINA_MONITOR] aligned_data(8);
 static sem_t g_thread_started = SEM_INITIALIZER(0);
 
 static void lock(FAR mutex_t *mutex)
@@ -847,18 +847,18 @@ int nina_net_start(void)
 {
   int ret;
 
-  ret = start_thread("nina_scan_tid", NANO_PRIO_NINA_SCAN, g_scan_stack,
+  ret = start_thread("nina_scan_tid", APP_PRIO_NINA_SCAN, g_scan_stack,
                      sizeof(g_scan_stack), scan_main);
   if (ret == 0)
     {
-      ret = start_thread("nina_connect_tid", NANO_PRIO_NINA_CONNECT,
+      ret = start_thread("nina_connect_tid", APP_PRIO_NINA_CONNECT,
                          g_connect_stack, sizeof(g_connect_stack),
                          connect_main);
     }
 
   if (ret == 0)
     {
-      ret = start_thread("nina_monitor_tid", NANO_PRIO_NINA_MONITOR,
+      ret = start_thread("nina_monitor_tid", APP_PRIO_NINA_MONITOR,
                          g_monitor_stack, sizeof(g_monitor_stack),
                          monitor_main);
     }

@@ -151,7 +151,7 @@ static void rtio_workq_thread_fn(void *arg1, void *arg2, void *arg3)
  * layer.
  */
 
-static K_THREAD_STACK_DEFINE(rtio_workq_threads_stack, NANO_STACK_RTIO_WQ);
+static K_THREAD_STACK_DEFINE(rtio_workq_threads_stack, APP_STACK_RTIO_WQ);
 static k_tid_t rtio_work_thread;
 
 int rtio_workq_initialize(void)
@@ -162,7 +162,7 @@ int rtio_workq_initialize(void)
       .stack = rtio_workq_threads_stack,
       .stack_size = K_THREAD_STACK_SIZEOF(rtio_workq_threads_stack),
       .entry = rtio_workq_thread_fn,
-      .prio = NANO_PRIO_RTIO_WQ,
+      .prio = APP_PRIO_RTIO_WQ,
       .tid = &rtio_work_thread,
     };
 

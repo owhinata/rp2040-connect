@@ -3,8 +3,8 @@
  * the sensor API's timestamps.  The Zephyr build uses the system clock
  * (CONFIG_SENSOR_CLOCK_SYSTEM, drivers/sensor/sensor_clock_sys.c):
  * k_cycle_get_64(), the 125 MHz SysTick count, and k_cyc_to_ns_near64().
- * Here it is the board's monotonic clock, the RP2040 TIMER (nano_mono_us(),
- * 1 MHz from the crystal), so a cycle is a microsecond and a timestamp a
+ * Here it is the board's monotonic clock, the RP2040 TIMER
+ * (rp2040_timer_us(), 1 MHz from the crystal), so a cycle is a microsecond and a timestamp a
  * whole number of microseconds (zephyr_sensor_clock.c).  Part of the small
  * Zephyr compatibility layer of the port (common/compat).
  */

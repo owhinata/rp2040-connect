@@ -1,7 +1,7 @@
 mainmenu "USB console"
 source "Kconfig.zephyr"
 
-config NANO_HW_DIVIDER
+config RP2040_PICO_DIVIDER
 	bool "Integer division through the RP2040 hardware divider"
 	default y
 	depends on SOC_RP2040 && !SMP

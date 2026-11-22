@@ -167,7 +167,7 @@ int main(void)
 		return 2;
 	}
 	/* The shell's priority: the commands run in the console's task. */
-	if (xTaskCreate(runner, "runner", RUNNER_STACK / sizeof(StackType_t), NULL, NANO_PRIO_SHELL,
+	if (xTaskCreate(runner, "runner", RUNNER_STACK / sizeof(StackType_t), NULL, APP_PRIO_SHELL,
 			NULL) != pdPASS) {
 		return 2;
 	}

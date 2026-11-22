@@ -170,7 +170,7 @@ FreeRTOS 版が実装するのは flash の境界（`common/compat/nano_flash_kv
   [`nuttx/drivers/README_ja.md`](../../nuttx/drivers/README_ja.md) の「NINA-W102」の表のとおりです。
 - コアの READY の待ちは、READY のエッジ割り込み（GPIO10）が与える 2 値セマフォで眠り、最長 10 ms ごとに READY を読み直します。
   つなぎは GPIO10 と GPIO2 のための `IO_IRQ_BANK0` の raw ハンドラーを自分で持ちます（`gpio_add_raw_irq_handler_masked()`。
-  GPIO24 のための GPIO バンク 0（`nano_gpio.c`）のハンドラーと並び、それぞれ自分のピンだけを確認・クリアする）。Zephyr 版も同じで、
+  GPIO24 のための GPIO バンク 0（`gpio_os_rp2040.c`）のハンドラーと並び、それぞれ自分のピンだけを確認・クリアする）。Zephyr 版も同じで、
   NuttX 版は 10 ms に区切らずに待ちます。割り込みを使うかどうかは実行時に決まり、最初のリセットのあと
   `nina_os_ready_start()` が失敗したときは 100 µs ごとに READY を読みます（3 版とも同じ。FreeRTOS のつなぎのものは失敗しません）。
 - ソケット: 互換層は、Zephyr のソケット層をソケットの実装の一覧のところまで持ちます（Zephyr の `sockets.c`・`getaddrinfo.c`・
@@ -253,7 +253,7 @@ Pico SDK の既定のままです。整数の割り算は `pico_divider` のハ�
   `i2c@40048000`）で、`i2c0` と同じ Zephyr の I2C の API を持ち、GPIO18（SDA、Arduino の D6）と GPIO19（SCL、D7）を
   内部プルアップ付きで使い（`i2c_dw_instance.h` の `I2C1_SDA_GPIO`・`I2C1_SCL_GPIO`）、常に割り込みで転送します
   （DMA 読み出しと `i2c_dma` は I2C0 だけ）。`main()` で I2C0 のあとに起動し、失敗してもログに残して `i2c1` が
-  準備できないだけです。互換層のデバイスの一覧（`device_get_binding()`）には入りません。`-DNANO_SELFTEST=ON` では
+  準備できないだけです。互換層のデバイスの一覧（`device_get_binding()`）には入りません。`-DSELFTEST=ON` では
   `selftest` が確かめます（下）。I2C1 はビルドとホストテストで確かめただけで、実際のデバイスで使ったことはありません。
 - **I2C0 の DMA 読み出し**は、コアの 2 つ目の境界 `port/i2c_dw_dma_os.h` を通して Pico SDK 自身の DMA（`hardware_dma`、
   `hardware_irq`）を使います。実装は `port/freertos/i2c_dw_dma_os_rp2040.c` です。読み出しごとに
@@ -278,7 +278,7 @@ Pico SDK の既定のままです。整数の割り算は `pico_divider` のハ�
   拡張 API の `<zephyr/drivers/sensor/lsm6dso.h>` は `common/compat` を通して `include/lsm6dso.h`）と ST の `lsm6dso_reg.c`（`setup.sh` が
   `freertos/stmemsc/` に取得）、stmemsc の層（`common/drivers/stmemsc/`）で動かし、デバイスはボードの値で 1 つだけ作ります
   （`common/drivers/lsm6dso/port/freertos/lsm6dso_instance.h`。インクルードパスで `port/zephyr/` より前）。
-- GPIO（`drivers/compat/rp2040/nano_gpio.c`）: 互換層の `gpio0` の下の GPIO バンク 0 を、Zephyr の `gpio_rpi_pico.c` と
+- GPIO（`drivers/compat/rp2040/gpio_os_rp2040.c`）: 互換層の `gpio0` の下の GPIO バンク 0 を、Zephyr の `gpio_rpi_pico.c` と
   同じ Pico SDK の呼び出しで操作します。割り込みは `gpio_add_raw_irq_handler_masked()` で登録し、使えるのは
   LSM6DSOX の INT1（GPIO24）だけです（ほかのピンは `-ENOTSUP`。NINA の READY と IRQ の線は NINA のつなぎのハンドラー）。
 
@@ -300,12 +300,12 @@ MQTT のクライアントは NuttX 版と共有する `common/imu/mqtt_min.c`�
 
 | オプション | 既定 | 内容 |
 |---|---|---|
-| `NANO_SELFTEST` | OFF | `selftest` コマンドを入れる（下） |
+| `SELFTEST` | OFF | `selftest` コマンドを入れる（下） |
 | `I2C_DW_I2C1` | OFF | I2C1（デバイス `i2c1`）を入れる（上） |
 
 ## 自己診断（`selftest`）
 
-`-DNANO_SELFTEST=ON` のビルドにだけ入る試験用のコマンドです。計測を止め、ボードを静止させて実行します。
+`-DSELFTEST=ON` のビルドにだけ入る試験用のコマンドです。計測を止め、ボードを静止させて実行します。
 互換層（`common/compat/selftest/zephyr_selftest.c`: ミューテックス、セマフォ、sleep、時計、割り込みからの起床、`k_poll`、ワーク、
 spinlock、atomic、静的なスレッド、時分割、割り込みを 50 ms 止めたあとの tick の追いつきの 22 項目）、I2C0（`drivers/i2c_dw/i2c_dw_selftest.c`: 6 項目。I2C1 を入れたビルドでは 7 項目目の `i2c1`: 何もつながっていない
 状態で、i2c1 の準備ができている、ピンがプルアップ付きの I2C、0x10 からの読み出しが 100 ms 未満で `-EIO`、IC_CON に DMA の

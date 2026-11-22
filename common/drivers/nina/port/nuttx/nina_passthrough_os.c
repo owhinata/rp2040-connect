@@ -77,7 +77,7 @@
 #include <nuttx/usb/cdcacm.h>
 #include <nuttx/usb/usb.h>
 
-#include <arch/board/nano_timer.h>
+#include <arch/board/rp2040_timer_us.h>
 
 #include "app_log.h"
 #include "priorities.h"
@@ -302,7 +302,7 @@ static void usb_initialize(void)
 
 uint32_t nina_passthrough_os_now_ms(void)
 {
-  return (uint32_t)(nano_mono_us() / 1000u);
+  return (uint32_t)(rp2040_timer_us() / 1000u);
 }
 
 void nina_passthrough_os_sleep_ms(uint32_t ms)
@@ -360,7 +360,7 @@ void nina_passthrough_run(void)
   FAR uint8_t *buf;
   uint32_t closes = 0;
 
-  param.sched_priority = NANO_PRIO_NINA_PT;
+  param.sched_priority = APP_PRIO_NINA_PT;
   nxsched_set_param(0, &param);
 
   buf = kmm_malloc(NINA_PASSTHROUGH_RING_SIZE);
@@ -379,9 +379,9 @@ void nina_passthrough_run(void)
 
   usb_initialize();
 
-  if (kthread_create("nina_pt_rx", NANO_PRIO_NINA_PT, NANO_STACK_NINA_PT,
+  if (kthread_create("nina_pt_rx", APP_PRIO_NINA_PT, APP_STACK_NINA_PT,
                      pt_rx_main, NULL) < 0 ||
-      kthread_create("nina_pt_tx", NANO_PRIO_NINA_PT, NANO_STACK_NINA_PT,
+      kthread_create("nina_pt_tx", APP_PRIO_NINA_PT, APP_STACK_NINA_PT,
                      pt_tx_main, NULL) < 0)
     {
       LOG_ERR("NINA passthrough: no thread");

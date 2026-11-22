@@ -665,7 +665,7 @@ static void test_start(void)
 	net_mgmt_add_event_callback(&events_cb);
 
 	/* The commands run at the shell's priority. */
-	vTaskPrioritySet(NULL, NANO_PRIO_SHELL);
+	vTaskPrioritySet(NULL, APP_PRIO_SHELL);
 
 	assert(run("wifi status") == 1);
 	expect_text("Status request failed");
@@ -1086,7 +1086,7 @@ int main(void)
 	if (zephyr_compat_initialize() != 0) {
 		return 2;
 	}
-	if (xTaskCreate(runner, "runner", RUNNER_STACK / sizeof(StackType_t), NULL, NANO_PRIO_MAIN,
+	if (xTaskCreate(runner, "runner", RUNNER_STACK / sizeof(StackType_t), NULL, APP_PRIO_MAIN,
 			NULL) != pdPASS) {
 		return 2;
 	}

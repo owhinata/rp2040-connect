@@ -26,7 +26,7 @@
 # and port/ (the core's internal headers and its boundary),
 # common/drivers/nina/port/nuttx (the binding's) and common/imu
 # (wifi_profile.h).  The core's waits for READY sleep on the line's edge
-# interrupt (nina_os.c, through the board's src/nano_gpio.c and the
+# interrupt (nina_os.c, through the board's src/rp2040_gpio_os.c and the
 # compatibility layer's gpio0, common/compat/zephyr_gpio.c).  The socket
 # loops' waits (nina_wait.c of common/drivers/nina/internal, nina_poller.c)
 # end at the rising edges of the module's IRQ line

@@ -8,7 +8,7 @@
  * order and runs the callbacks under the callback lock.  See the header.
  * The thread starts on the OS's start of a thread (z_thread_static_start()
  * of <zephyr/kernel.h>); its priority and stack size are
- * NANO_PRIO_NET_MGMT and NANO_STACK_NET_MGMT of "priorities.h".  Part of
+ * APP_PRIO_NET_MGMT and APP_STACK_NET_MGMT of "priorities.h".  Part of
  * the small Zephyr compatibility layer of the port, its OS-independent part
  * (common/compat).
  */
@@ -60,7 +60,7 @@ static struct mgmt_event_entry new_event;
 static K_MUTEX_DEFINE(net_mgmt_callback_lock);
 static struct net_mgmt_event_callback *g_callbacks;
 
-static K_THREAD_STACK_DEFINE(mgmt_stack, NANO_STACK_NET_MGMT);
+static K_THREAD_STACK_DEFINE(mgmt_stack, APP_STACK_NET_MGMT);
 static bool g_started;
 
 static void mgmt_push_event(uint64_t mgmt_event, struct net_if *iface,
@@ -191,7 +191,7 @@ static void mgmt_event_thread(void *p1, void *p2, void *p3)
     }
 }
 
-/* The thread "net_mgmt" (NANO_PRIO_NET_MGMT, NANO_STACK_NET_MGMT), started
+/* The thread "net_mgmt" (APP_PRIO_NET_MGMT, APP_STACK_NET_MGMT), started
  * once on the OS's start of a thread.
  */
 
@@ -205,7 +205,7 @@ int net_mgmt_event_init(void)
       .stack = mgmt_stack,
       .stack_size = K_THREAD_STACK_SIZEOF(mgmt_stack),
       .entry = mgmt_event_thread,
-      .prio = NANO_PRIO_NET_MGMT,
+      .prio = APP_PRIO_NET_MGMT,
       .tid = &mgmt_thread,
     };
 

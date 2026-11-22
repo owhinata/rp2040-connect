@@ -4,10 +4,10 @@
  * gpio_pin_get(), gpio_manage_callback(), gpio_fire_callbacks()) and the
  * RP2040 driver's (drivers/gpio/gpio_rpi_pico.c gpio_rpi_configure() for
  * inputs, gpio_rpi_pin_interrupt_configure(), gpio_rpi_isr()) on the
- * board's <nano_gpio.h>.  OS-independent apart from k_spin_lock().  Part
+ * board's <gpio_os.h>.  OS-independent apart from k_spin_lock().  Part
  * of the small Zephyr compatibility layer of the port, its OS-independent
- * part (common/compat); the board implements <nano_gpio.h> (here; on
- * NuttX the board's src/nano_gpio.c).
+ * part (common/compat); the board implements <gpio_os.h> (here; on
+ * NuttX the board's src/rp2040_gpio_os.c).
  */
 
 #include <errno.h>
@@ -18,14 +18,14 @@
 #include <zephyr/drivers/gpio.h>
 #include <zephyr/spinlock.h>
 
-#include "nano_gpio.h"
+#include "gpio_os.h"
 
 static struct gpio_compat_data gpio0_data;
 static struct k_spinlock gpio0_lock;
 
 /* drivers/gpio/gpio_rpi_pico.c gpio_rpi_bank_init(): connects and enables
  * the bank interrupt; the board attaches it with the first pin
- * (nano_gpio_irq_configure()).
+ * (gpio_os_irq_configure()).
  */
 
 static int gpio0_init(const struct device *dev)
@@ -42,7 +42,7 @@ int gpio_pin_configure(const struct device *port, gpio_pin_t pin,
   struct gpio_compat_data *data = port->data;
   k_spinlock_key_t key;
 
-  if (pin >= NANO_GPIO_NUM)
+  if (pin >= GPIO_OS_NUM)
     {
       return -EINVAL;
     }
@@ -64,7 +64,7 @@ int gpio_pin_configure(const struct device *port, gpio_pin_t pin,
 
   k_spin_unlock(&gpio0_lock, key);
 
-  return nano_gpio_configure_input(pin, (flags & GPIO_PULL_UP) != 0U,
+  return gpio_os_configure_input(pin, (flags & GPIO_PULL_UP) != 0U,
                                    (flags & GPIO_PULL_DOWN) != 0U);
 }
 
@@ -74,7 +74,7 @@ int gpio_pin_interrupt_configure(const struct device *port, gpio_pin_t pin,
   const struct gpio_compat_data *data = port->data;
   uint32_t events = 0;
 
-  if (pin >= NANO_GPIO_NUM)
+  if (pin >= GPIO_OS_NUM)
     {
       return -EINVAL;
     }
@@ -95,29 +95,29 @@ int gpio_pin_interrupt_configure(const struct device *port, gpio_pin_t pin,
         {
           if (flags & GPIO_INT_LOW_0)
             {
-              events |= NANO_GPIO_IRQ_EDGE_FALL;
+              events |= GPIO_OS_IRQ_EDGE_FALL;
             }
 
           if (flags & GPIO_INT_HIGH_1)
             {
-              events |= NANO_GPIO_IRQ_EDGE_RISE;
+              events |= GPIO_OS_IRQ_EDGE_RISE;
             }
         }
       else
         {
           if (flags & GPIO_INT_LOW_0)
             {
-              events |= NANO_GPIO_IRQ_LEVEL_LOW;
+              events |= GPIO_OS_IRQ_LEVEL_LOW;
             }
 
           if (flags & GPIO_INT_HIGH_1)
             {
-              events |= NANO_GPIO_IRQ_LEVEL_HIGH;
+              events |= GPIO_OS_IRQ_LEVEL_HIGH;
             }
         }
     }
 
-  return nano_gpio_irq_configure(pin, events);
+  return gpio_os_irq_configure(pin, events);
 }
 
 int gpio_pin_get(const struct device *port, gpio_pin_t pin)
@@ -125,12 +125,12 @@ int gpio_pin_get(const struct device *port, gpio_pin_t pin)
   const struct gpio_compat_data *data = port->data;
   uint32_t value;
 
-  if (pin >= NANO_GPIO_NUM)
+  if (pin >= GPIO_OS_NUM)
     {
       return -EINVAL;
     }
 
-  value = nano_gpio_get_all() ^ data->invert;
+  value = gpio_os_get_all() ^ data->invert;
   return (value & BIT(pin)) != 0;
 }
 
@@ -191,7 +191,7 @@ int gpio_remove_callback(const struct device *port,
  * gpio_fire_callbacks() for the pin.  In the interrupt handler.
  */
 
-void nano_gpio_irq_handler(unsigned int pin)
+void gpio_os_irq_handler(unsigned int pin)
 {
   const struct device *port = DEVICE_DT_GET(DT_NODELABEL(gpio0));
   struct gpio_compat_data *data = port->data;

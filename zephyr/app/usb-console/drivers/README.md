@@ -546,7 +546,7 @@ Some changes to Zephyr and its modules are local patches for Zephyr's `west patc
 - **Taking them back**: run `west patch reverse` in `zephyr/` and remove `zephyr/.west/local-patches/`. If
   that fails, restore each tree with `git -C <tree> checkout -- .` as `setup.sh` says, remove the copy and
   source it again. The application does not build on trees without the patches (`prj.conf` sets the
-  patches' `CONFIG_RP2040_ROM_MEM_OPS` and `CONFIG_I2C_DW_RP2040_DMA`, and `CONFIG_NANO_HW_DIVIDER` stops in CMake without
+  patches' `CONFIG_RP2040_ROM_MEM_OPS` and `CONFIG_I2C_DW_RP2040_DMA`, and `CONFIG_RP2040_PICO_DIVIDER` stops in CMake without
   `CONFIG_ARM_RP2040_DIVIDER_SAVE`).
 - **Moving to a newer Zephyr**: take the patches back first as above, change the versions in
   `manifest/west.yml` and run `west update`. Remake each patch on the new trees, put it in `patches/`,
@@ -563,9 +563,9 @@ The read boot2 uses (EBh) is rated for 108 MHz or more by the AT25SF128A's data 
 125 MHz the divider is even, so 62.5 MHz is the most (the same divider as the FreeRTOS build's Pico SDK
 boot2). On the board, `devmem 0x18000014` (the SSI's BAUDR) reads 2.
 
-### The divider (`CONFIG_NANO_HW_DIVIDER`)
+### The divider (`CONFIG_RP2040_PICO_DIVIDER`)
 
-The application's `CONFIG_NANO_HW_DIVIDER` (on by default) builds the Pico SDK's `divider_hardware.S` from
+The application's `CONFIG_RP2040_PICO_DIVIDER` (on by default) builds the Pico SDK's `divider_hardware.S` from
 hal_rpi_pico and wraps `__aeabi_idiv`, `__aeabi_idivmod`, `__aeabi_uidiv`, `__aeabi_uidivmod`,
 `__aeabi_ldivmod` and `__aeabi_uldivmod` to it (the linker's `--wrap`, `CMakeLists.txt`). Without it they
 are libgcc's shift-and-subtract loops.
@@ -573,7 +573,7 @@ are libgcc's shift-and-subtract loops.
 - The routines do not lock interrupts (`PICO_DIVIDER_DISABLE_INTERRUPTS=0`). When an interrupt handler
   divides in the middle of a division, the routine sees DIRTY and saves the divider itself. When a thread
   is switched out in the middle of one, the patch's `CONFIG_ARM_RP2040_DIVIDER_SAVE` (selected by
-  `CONFIG_NANO_HW_DIVIDER`) saves it in PendSV: only when DIRTY is set, the four registers go to 20 bytes
+  `CONFIG_RP2040_PICO_DIVIDER`) saves it in PendSV: only when DIRTY is set, the four registers go to 20 bytes
   of `struct _thread_arch`, and a thread that was not dividing comes back with DIRTY clear (the Pico SDK's
   FreeRTOS port of the FreeRTOS build saves the four words at every switch).
 - A division by zero gives the Pico SDK routines' results (the same in the three builds): for 32 bits a

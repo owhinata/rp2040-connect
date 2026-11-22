@@ -362,8 +362,8 @@ int nina_poller_start(void)
       return 0;
     }
 
-  ret = kthread_create("nina_event", NANO_PRIO_NINA_EVENT,
-                       NANO_STACK_NINA_EVENT, nina_poller, NULL);
+  ret = kthread_create("nina_event", APP_PRIO_NINA_EVENT,
+                       APP_STACK_NINA_EVENT, nina_poller, NULL);
   if (ret < 0)
     {
       return ret;

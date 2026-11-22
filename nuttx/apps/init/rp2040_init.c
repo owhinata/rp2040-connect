@@ -227,8 +227,8 @@ static void console_setup(int fd)
  *   CONFIG_INIT_ENTRYPOINT.  Never returns.
  *
  *   Starts at CONFIG_INIT_PRIORITY, the priority of the Zephyr build's
- *   main() (NANO_PRIO_MAIN, 118), does what that main() does, then drops to
- *   the shell's priority (NANO_PRIO_SHELL, 104) for the console loop, which
+ *   main() (APP_PRIO_MAIN, 118), does what that main() does, then drops to
+ *   the shell's priority (APP_PRIO_SHELL, 104) for the console loop, which
  *   the Zephyr build runs in its shell thread.
  *
  ****************************************************************************/
@@ -325,7 +325,7 @@ int rp2040_init_main(int argc, FAR char *argv[])
   (void)wifi_profile_init();
 #endif
 
-  param.sched_priority = NANO_PRIO_SHELL;
+  param.sched_priority = APP_PRIO_SHELL;
   sched_setparam(0, &param);
 
   for (; ; )

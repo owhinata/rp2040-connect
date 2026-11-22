@@ -52,8 +52,8 @@ include(${CMAKE_CURRENT_LIST_DIR}/../../drivers/sensor_shell/sensor_shell.cmake)
 
 # The compatibility layer's self-test, the "selftest" command
 # (common/compat/selftest/zephyr_selftest.h): a test feature, off by default
-# (freertos/script/build.sh -DNANO_SELFTEST=ON).
-option(NANO_SELFTEST "Build the selftest command" OFF)
+# (freertos/script/build.sh -DSELFTEST=ON).
+option(SELFTEST "Build the selftest command" OFF)
 
 # I2C1 (the device i2c1 on GPIO18/D6 and GPIO19/D7, freertos/drivers/i2c_dw):
 # off by default (freertos/script/build.sh -DI2C_DW_I2C1=ON).  I2C0 has no
@@ -74,14 +74,14 @@ add_executable(usb-console
   ${COMMON_DIR}/log/fault_record.c
 )
 
-if(NANO_SELFTEST)
+if(SELFTEST)
   freertos_zephyr_compat(usb-console SELFTEST)
 else()
   freertos_zephyr_compat(usb-console)
 endif()
 freertos_kv(usb-console)
 freertos_nina(usb-console)
-if(NANO_SELFTEST)
+if(SELFTEST)
   freertos_i2c_dw(usb-console SELFTEST ${i2c_dw_options})
   freertos_lsm6dso(usb-console SELFTEST)
 else()
@@ -95,7 +95,7 @@ freertos_zperf(usb-console)
 freertos_sensor_shell(usb-console)
 
 # FreeRTOSConfig.h; priorities_os.h (src/, which FreeRTOSConfig.h includes);
-# priorities.h, cpu_load.h and nano_cpuload.h (common/compat);
+# priorities.h and cpu_load.h (common/compat);
 # fault_record.h (common/log).
 target_include_directories(usb-console PRIVATE
   ${CMAKE_CURRENT_LIST_DIR}

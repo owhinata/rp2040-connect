@@ -12,7 +12,7 @@
  *   (the layer's <zephyr/kernel.h> includes this header, as Zephyr's
  *   includes its <zephyr/sys_clock.h>)
  *
- * The monotonic clock is the RP2040 TIMER (nano_mono_us(), microseconds
+ * The monotonic clock is the RP2040 TIMER (rp2040_timer_us(), microseconds
  * since the start), and the realtime clock is that plus a base that
  * sys_clock_settime() sets, as Zephyr's realtime clock is its uptime plus an
  * offset (lib/os/clock.c) and NuttX's CLOCK_REALTIME a base added to its

@@ -481,7 +481,7 @@ Zephyr 本体とモジュールの一部の変更は、Zephyr の `west patch` �
 - **戻し方**: `zephyr/` で `west patch reverse` を実行し、`zephyr/.west/local-patches/` を消します。戻せないときは、
   `setup.sh` の表示のとおり各ツリーを `git -C <ツリー> checkout -- .` で戻してから写しを消し、読み込み直します。
   戻したツリーでは、このアプリはビルドできません（`prj.conf` がパッチの `CONFIG_RP2040_ROM_MEM_OPS`・`CONFIG_I2C_DW_RP2040_DMA` を使い、
-  `CONFIG_NANO_HW_DIVIDER` は `CONFIG_ARM_RP2040_DIVIDER_SAVE` が無いと CMake で止まります）。
+  `CONFIG_RP2040_PICO_DIVIDER` は `CONFIG_ARM_RP2040_DIVIDER_SAVE` が無いと CMake で止まります）。
 - **Zephyr を上げるとき**: 先に上の手順でパッチを戻し、`manifest/west.yml` の版を変えて `west update` します。新しいツリーで
   各パッチを作り直して `patches/` に置き、`sha256sum` を直し、`source script/setup.sh` で当ててからビルドします。
   0003 を作り直したら `script/host_tests.sh` を実行し、`i2c_dw_sync` が示す上流の変更を共有のコア（`common/drivers/i2c_dw/`）に
@@ -494,15 +494,15 @@ Zephyr 本体とモジュールの一部の変更は、Zephyr の `west patch` �
 boot2 が使う読み出し（EBh）の最高周波数は、AT25SF128A のデータシートで 108 MHz 以上です。clk_sys 125 MHz では分周は偶数なので、
 62.5 MHz が上限です（FreeRTOS 版の Pico SDK の boot2 と同じ分周）。実機では `devmem 0x18000014`（SSI の BAUDR）が 2 になります。
 
-### 除算器（`CONFIG_NANO_HW_DIVIDER`）
+### 除算器（`CONFIG_RP2040_PICO_DIVIDER`）
 
-アプリの `CONFIG_NANO_HW_DIVIDER`（既定で有効）が、hal_rpi_pico の Pico SDK の `divider_hardware.S` をビルドし、
+アプリの `CONFIG_RP2040_PICO_DIVIDER`（既定で有効）が、hal_rpi_pico の Pico SDK の `divider_hardware.S` をビルドし、
 `__aeabi_idiv`・`__aeabi_idivmod`・`__aeabi_uidiv`・`__aeabi_uidivmod`・`__aeabi_ldivmod`・`__aeabi_uldivmod` をリンカーの `--wrap` で
 そこへ回します（`CMakeLists.txt`）。無効にすると libgcc のシフトと減算のループです。
 
 - ルーチンは割り込みを止めません（`PICO_DIVIDER_DISABLE_INTERRUPTS=0`）。割り込みハンドラーが割り算の途中に入った場合は、
   ルーチン自身が DIRTY を見て退避します。スレッドが割り算の途中で切り替わる場合は、パッチの `CONFIG_ARM_RP2040_DIVIDER_SAVE`
-  （`CONFIG_NANO_HW_DIVIDER` が select する）が PendSV で退避します。退避は DIRTY のときだけ 4 つのレジスターを
+  （`CONFIG_RP2040_PICO_DIVIDER` が select する）が PendSV で退避します。退避は DIRTY のときだけ 4 つのレジスターを
   `struct _thread_arch` の 20 バイトに置き、割り算の途中でなかったスレッドは DIRTY が落ちた状態で戻ります（FreeRTOS 版の
   Pico SDK のポートは、切り替えのたびに 4 語を退避します）。
 - 0 での割り算は Pico SDK のルーチンの結果です（3 版で同じ）。32 ビットは飽和した商（0 / 0 は 0）と余り 0、64 ビットは

@@ -114,7 +114,7 @@ static z_os_thread_t z_os_thread_self(void);
 static z_os_prio_t z_os_thread_prio_self(void);
 
 /* Starts fn(arg) in a new thread named name, on the static stack of
- * stack_size bytes, at the OS priority prio (NANO_PRIO_FROM_ZEPHYR() of
+ * stack_size bytes, at the OS priority prio (APP_PRIO_FROM_ZEPHYR() of
  * priorities.h and the OS's own threads' priorities, priorities_os.h).
  * *tid is set before the new thread can run, as Zephyr starts its static
  * threads with the scheduler locked.  From a thread or before the

@@ -1019,7 +1019,7 @@ events that advance them are the same as in the Zephyr build.
 layer provides the calls into the system (sockets, `net_mgmt` events, the realtime clock) under
 Zephyr's names. `time_sync_mono_us()` reads the TIMER's TIMERAWH and TIMERAWL with `sys_read32()`,
 as written for the Zephyr build (the layer's `<zephyr/sys/sys_io.h>` and the `timer` node of its
-`<zephyr/devicetree.h>`; the same read as the board's `nano_mono_us()`). The Kconfig options
+`<zephyr/devicetree.h>`; the same read as the board's `rp2040_timer_us()`). The Kconfig options
 that the file uses (`CONFIG_NINA_NTP_*`) are the NuttX build's options of the same names. The
 layer makes the command registration at the end
 `z_shell_main_ntp()`, which the `main()` of the builtin command `ntp` (`nuttx/apps/ntp/`) calls
@@ -1090,7 +1090,7 @@ default), `CONFIG_SCHED_TICKLESS=y` and `CONFIG_USEC_PER_TICK=100`.
   µs (`clock_getres()` gives the tick, 100 µs). The Zephyr build's kernel clock is SysTick on the
   CPU clock, a different source. In both versions the application reads the TIMER directly as its
   time base.
-- The board's monotonic clock is `nano_mono_us()` (`<arch/board/nano_timer.h>`). It reads the
+- The board's monotonic clock is `rp2040_timer_us()` (`<arch/board/rp2040_timer_us.h>`). It reads the
   TIMER's TIMERAWH, TIMERAWL and TIMERAWH again until the two high words agree (the read of the
   Zephyr build's `time_sync_mono_us()`). It has no side effect and takes no lock, so the kernel,
   the applications and interrupt handlers may all call it. The value
@@ -1169,7 +1169,7 @@ mechanism; turning this on does not change how it measures.
 ## Thread priorities and stacks
 
 Priorities map as `NuttX = 118 − Zephyr`; `common/compat/priorities.h` holds the constants
-(`NANO_PRIO_*`) and the stack sizes (`NANO_STACK_*`) (the mapping `NANO_PRIO_FROM_ZEPHYR()` and the
+(`APP_PRIO_*`) and the stack sizes (`APP_STACK_*`) (the mapping `APP_PRIO_FROM_ZEPHYR()` and the
 NuttX-only threads are in `nuttx/drivers/include/priorities_os.h`). The Zephyr build's application threads
 (priorities 8 to 11) become 110 to 107, its shell thread (14) 104.
 
@@ -1311,7 +1311,7 @@ with the layer's NuttX implementation (`nuttx/drivers/compat/`; the Zephyr build
 | `common/drivers/sensor_shell/` | `sensor_shell.c` (the file of the Zephyr build's tree with its patch 0006) |
 | `common/drivers/stmemsc/` | `stmemsc.h`, `stmemsc_i2c.c`, `stmemsc_mdelay.c` (a copy of the I2C part of Zephyr's stmemsc, used by the NuttX and FreeRTOS builds and compiled without the prelude; the Zephyr build uses Zephyr's) |
 | `common/drivers/i2c_dw/` | The I2C core: at the top `i2c_dw.c` (I2C0, and I2C1 with `CONFIG_I2C_DW_I2C1`, off by default); in `internal/` its definitions `i2c_dw.h`, `i2c_dw_registers.h`, `i2c_dw_rp2040.h` and its DMA reads `i2c_dw_rp2040_dma_priv.h`, with the DMA command words (the Zephyr build has the same function in patch 0003) (the file names of Zephyr's patched driver); in `include/` the declarations of the `i2c_dma` functions `i2c_dw_rp2040_dma.h`; in `port/` the headers of its boundaries, `i2c_dw_os.h` and, for the DMA reads, `i2c_dw_dma_os.h` (the NuttX and FreeRTOS builds use them; they are compiled without the prelude; the boundaries are described under "I2C0" in `nuttx/drivers/README.md`); the core's bindings in `port/nuttx/` (this build: `i2c_dw_os_impl.h`, `i2c_dw_instance.h`, the start `i2c_dw_controllers_rp2040.h` and the DMA part `i2c_dw_dma_os_rp2040.c`, built by `nuttx/drivers/i2c_dw/Make.defs`) and `port/freertos/` (the FreeRTOS build) |
-| `common/compat/` | the OS-independent part of the compatibility layer (the headers of Zephyr's API `zephyr/...`, among them the `i2c_dma` state `zephyr/drivers/i2c/i2c_dw_rp2040_dma.h`, which includes the I2C core's `common/drivers/i2c_dw/include/i2c_dw_rp2040_dma.h`, `zephyr_compat.h`, work items, RTIO, the block pool, the device list, `gpio0`, `net_mgmt`, the Wi-Fi requests, the sensors' default iodev) and the copies of Zephyr's libraries that the builds on the layer use (`sensor_shell_stream.c`, `sensor_shell.h`, `wifi_credentials.c`, `wifi_credentials_backend_settings.c`, `wifi_credentials_internal.h`), and boundary headers (`priorities.h`, `cpu_load.h`, `nano_cpuload.h`, `nano_gpio.h`); the Zephyr build does not use it |
+| `common/compat/` | the OS-independent part of the compatibility layer (the headers of Zephyr's API `zephyr/...`, among them the `i2c_dma` state `zephyr/drivers/i2c/i2c_dw_rp2040_dma.h`, which includes the I2C core's `common/drivers/i2c_dw/include/i2c_dw_rp2040_dma.h`, `zephyr_compat.h`, work items, RTIO, the block pool, the device list, `gpio0`, `net_mgmt`, the Wi-Fi requests, the sensors' default iodev) and the copies of Zephyr's libraries that the builds on the layer use (`sensor_shell_stream.c`, `sensor_shell.h`, `wifi_credentials.c`, `wifi_credentials_backend_settings.c`, `wifi_credentials_internal.h`), and boundary headers (`priorities.h`, `cpu_load.h`, `gpio_os.h`); the Zephyr build does not use it |
 | `common/shell/` | `subcmd.[ch]` (the subcommand tables), `zshell.c` (the handling of commands written with `<zephyr/shell/shell.h>`: word matching, wildcards, argument count checks, help) and its boundary to the OS, `zshell_os.h` (the NuttX build's part is `nuttx/apps/subcmd/zshell_os_impl.h`); compiled without the prelude; the Zephyr build does not use them. Also `i2c_dma_shell.c` (the `i2c_dma` command of the three builds, written on Zephyr's shell API; the NuttX build's `nuttx/apps/i2c_dma` builds it with the prelude), and `nina_shell.c` (the `nina` command of the Zephyr and FreeRTOS builds; the NuttX build has its own, `nuttx/apps/nina`) |
 | `common/log/` | `log_ring.[ch]` (the RAM log's ring, line prefix and rate limit), `app_log.h` (the `LOG_*` macros; the NuttX part is `nuttx/drivers/include/app_log_os.h`), `log_ram.c`, `log_ram.h` (the RAM log and the functions of the `LOG_*` macros, shared with the FreeRTOS build; the NuttX part is `nuttx/drivers/include/log_ram_os_impl.h`, the syslog channel `nuttx/drivers/log/log_ram_syslog.c`), `fault_record.[ch]` (the record of a fatal error: its format, CRC-32, the copy in the watchdog's scratch registers and its lines; only the FreeRTOS build uses it); the Zephyr build does not use it |
 | `common/tests/` | the 37 tests of the files above and the checks against the Zephyr tree, `zephyr_copies` and `zephyr_sensor_shell_patched` (run by `common/tests/run.sh`, which the `host_tests.sh` of the three builds call first; the layer's `zephyr_rtio`, `zephyr_work` and `mqtt_min` on the fake kernel, the NINA core's `nina_proto`, `nina_sock`, `nina_wifi`, `nina_dns` and `nina_passthrough` on fakes of its boundaries defined by the tests, `nina_core_independent`, each core file compiled with the C library and its own headers only, `i2c_dw_public_headers`, the I2C core's `include/` compiled with that directory alone, and the LSM6DSO's `lsm6dso_core_independent` and `lsm6dso_public_headers`, the same for its core and its `include/`); `lsm6dso_stream` runs the core's stream `lsm6dso_stream.c` on the host's parts of its boundaries (`common/tests/lsm6dso_os_host/`) with fakes of the core's FIFO calls |
@@ -1355,8 +1355,8 @@ rate, UART1's words, the ring) is tested by `common/tests/nina_passthrough.c`; i
 (`common/drivers/nina/port/nuttx/nina_passthrough_os.c`, `nina_passthrough_bus_rp2040.c`) has no
 host test.
 
-`common/tests/nano_cpuload.c` and `common/tests/log_ring.c` test shared parts that the Zephyr
-build does not use. The first compares the arithmetic of `common/compat/nano_cpuload.h` with the
+`common/tests/cpu_load.c` and `common/tests/log_ring.c` test shared parts that the Zephyr
+build does not use. The first compares the arithmetic of `common/compat/cpu_load.h` with the
 steps of Zephyr's `cpu_load_get_cpu()` (reset, an open window, zero time, rounding down). The second compares
 `common/log/log_ring.c` with the byte-by-byte store of the Zephyr build's `log_ram.c`
 over 20,000 random writes, compares the line prefix with the time arithmetic of Zephyr's

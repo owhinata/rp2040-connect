@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 /* <zephyr/sys/clock.h> of the Zephyr compatibility layer on FreeRTOS: the
- * monotonic clock is the RP2040 TIMER (nano_mono_us()) and the realtime
+ * monotonic clock is the RP2040 TIMER (rp2040_timer_us()) and the realtime
  * clock is the TIMER plus a base, under a spinlock (the 64-bit base is two
  * words).  See the header.
  *
@@ -35,7 +35,7 @@ static int64_t realtime_base_us;
 static int64_t realtime_us(void)
 {
 	k_spinlock_key_t key = k_spin_lock(&lock);
-	int64_t us = (int64_t)nano_mono_us() + realtime_base_us;
+	int64_t us = (int64_t)rp2040_timer_us() + realtime_base_us;
 
 	k_spin_unlock(&lock, key);
 	return us;
@@ -45,7 +45,7 @@ static void set_realtime_us(int64_t us)
 {
 	k_spinlock_key_t key = k_spin_lock(&lock);
 
-	realtime_base_us = us - (int64_t)nano_mono_us();
+	realtime_base_us = us - (int64_t)rp2040_timer_us();
 	k_spin_unlock(&lock, key);
 }
 
@@ -71,7 +71,7 @@ int sys_clock_gettime(int clock_id, struct timespec *ts)
 		timespec_from_us(realtime_us(), ts);
 		return 0;
 	case SYS_CLOCK_MONOTONIC:
-		timespec_from_us((int64_t)nano_mono_us(), ts);
+		timespec_from_us((int64_t)rp2040_timer_us(), ts);
 		return 0;
 	default:
 		return -EINVAL;

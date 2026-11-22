@@ -163,7 +163,7 @@ static void report(enum imu_raw_state state, uint64_t samples_done, uint64_t nex
 
 	memcpy(s.session_id, session, sizeof(session));
 	s.tick = samples_done * TICKS_PER_SAMPLE;
-	s.tick_mono_us = (int64_t)nano_mono_us();
+	s.tick_mono_us = (int64_t)rp2040_timer_us();
 	s.unix_us = unix_base_us + (int64_t)(samples_done * US_PER_SAMPLE);
 	s.unix_estimate_us = s.unix_us;
 	imu_raw_mqtt_report(&s);
@@ -205,12 +205,12 @@ static void acquisition(void *arg)
 	}
 	imu_raw_mqtt_set_info(&info);
 	report(IMU_RAW_STATE_MEASURING, 0, 0);
-	start_ms = (int64_t)(nano_mono_us() / 1000u);
+	start_ms = (int64_t)(rp2040_timer_us() / 1000u);
 	end_ms = start_ms + seconds * 1000;
 	next_batch_ms = start_ms + BATCH_PERIOD_MS;
 	next_status_ms = start_ms + STATUS_PERIOD_MS;
 	for (;;) {
-		int64_t now = (int64_t)(nano_mono_us() / 1000u);
+		int64_t now = (int64_t)(rp2040_timer_us() / 1000u);
 
 		if (now >= end_ms) {
 			break;
@@ -270,7 +270,7 @@ int main(int argc, char **argv)
 	net_if_dormant_off(&iface);
 	if (K_THREAD_DEFINE_START(imu_raw_mqtt_tid) != 0 ||
 	    xTaskCreate(acquisition, "acquisition", TASK_STACK / sizeof(StackType_t), NULL,
-			NANO_PRIO_IMU_STREAM, NULL) != pdPASS) {
+			APP_PRIO_IMU_STREAM, NULL) != pdPASS) {
 		return 2;
 	}
 	vTaskStartScheduler();

@@ -36,7 +36,7 @@
 #ifndef PRIORITIES_OS_H
 #define PRIORITIES_OS_H
 
-#define NANO_PRIO_FROM_ZEPHYR(p) (20 - (p))
+#define APP_PRIO_FROM_ZEPHYR(p) (20 - (p))
 
 /* The kernel's timer task ("Tmr Svc", configTIMER_TASK_PRIORITY).  No Zephyr
  * thread: besides the kernel's software timers (the port uses none), it runs
@@ -52,8 +52,8 @@
  * Its stack (configTIMER_TASK_STACK_DEPTH, words) holds the event group
  * calls.
  */
-#define NANO_PRIO_TIMER_SVC  31
-#define NANO_STACK_TIMER_SVC 1024
+#define APP_PRIO_TIMER_SVC  31
+#define APP_STACK_TIMER_SVC 1024
 
 /* The kernel's idle task ("IDLE"): priority 0 (tskIDLE_PRIORITY), below
  * every task of the port; it measures the CPU load (idle.c).  Zephyr's idle
@@ -61,15 +61,15 @@
  * configMINIMAL_STACK_SIZE words, which the Pico SDK also uses as its
  * default.
  */
-#define NANO_PRIO_IDLE  0
-#define NANO_STACK_IDLE 1024
+#define APP_PRIO_IDLE  0
+#define APP_STACK_IDLE 1024
 
 /* "heartbeat": blinks the LED (GPIO6, main.c).  No Zephyr thread (the Zephyr
  * build leaves the LED alone): 1, below every thread of the port and above
  * idle.
  */
-#define NANO_PRIO_HEARTBEAT  1
-#define NANO_STACK_HEARTBEAT 1024
+#define APP_PRIO_HEARTBEAT  1
+#define APP_STACK_HEARTBEAT 1024
 
 /* Not used by the port; for reference (Zephyr build, as in
  * nuttx/drivers/include/priorities_os.h):

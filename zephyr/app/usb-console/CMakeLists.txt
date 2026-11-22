@@ -68,9 +68,9 @@ set_property(SOURCE ${nina_socket_sources} APPEND PROPERTY COMPILE_DEFINITIONS N
 # (CONFIG_ARM_RP2040_DIVIDER_SAVE, manifest/zephyr/patches).  Division by zero still calls
 # libgcc's __aeabi_idiv0 and __aeabi_ldiv0, which return; the 64-bit results are libgcc's, but a
 # 32-bit quotient is then saturated (libgcc: 0) and the remainder 0 (libgcc: the dividend).
-if(CONFIG_NANO_HW_DIVIDER)
+if(CONFIG_RP2040_PICO_DIVIDER)
   if(NOT CONFIG_ARM_RP2040_DIVIDER_SAVE)
-    message(FATAL_ERROR "CONFIG_NANO_HW_DIVIDER needs CONFIG_ARM_RP2040_DIVIDER_SAVE: "
+    message(FATAL_ERROR "CONFIG_RP2040_PICO_DIVIDER needs CONFIG_ARM_RP2040_DIVIDER_SAVE: "
       "apply the local patches (source script/setup.sh)")
   endif()
   set(pico_src_dir ${ZEPHYR_HAL_RPI_PICO_MODULE_DIR}/src)

@@ -39,7 +39,7 @@
 #define HELPER_STACK 1024
 #define JOIN_TIMEOUT K_MSEC(2000)
 
-/* Zephyr priorities of the helpers; the caller runs at 14 (NANO_PRIO_SHELL),
+/* Zephyr priorities of the helpers; the caller runs at 14 (APP_PRIO_SHELL),
  * below all of them.
  */
 #define PRIO_LOW  12

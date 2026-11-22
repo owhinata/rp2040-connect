@@ -16,7 +16,7 @@ Usage: freertos/script/build.sh [options] [APP]
   APP           Directory name under freertos/app/ (default: usb-console).
                 The result is freertos/build/APP/APP.uf2.
   --clean       Remove freertos/build/APP first.
-  -DNAME=VALUE  Pass a CMake option on (e.g. -DNANO_SELFTEST=ON, the
+  -DNAME=VALUE  Pass a CMake option on (e.g. -DSELFTEST=ON, the
                 selftest command).  CMake keeps it in the build directory
                 until --clean.
   -j N          Parallel jobs (default: number of CPUs).

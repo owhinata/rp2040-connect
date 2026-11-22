@@ -51,7 +51,7 @@ What the core needs from the OS and the board (its boundary):
   `wait_ready()` sleeps until the line's interrupt reports a change (as in the Zephyr and FreeRTOS
   builds). `nina_os_ready_arm()` sets the semaphore to 0, then enables
   the edge towards the desired level (ready: falling, busy: rising) through the board's
-  `src/nano_gpio.c` (`nano_gpio_irq_configure()`, which clears an edge latched while the event
+  `src/rp2040_gpio_os.c` (`gpio_os_irq_configure()`, which clears an edge latched while the event
   was off before enabling it); the core reads READY after that. A change after the read stays in
   the semaphore, so the wait returns at once. The interrupt is GPIO bank 0's single IRQ, shared
   with the LSM6DSOX's INT1 (GPIO24); a callback on the compatibility layer's `gpio0` only posts
@@ -60,7 +60,7 @@ What the core needs from the OS and the board (its boundary):
   timeout are both on the tickless tick read from the TIMER, so they do not drift apart while
   interrupts are masked (a flash erase); the FreeRTOS build waits in slices of 10 ms because its
   tick stands still meanwhile and catches up with the TIMER afterwards. `nina_os_ready_disarm()` disables the edge, so CS toggling READY during
-  the transfers raises no interrupts. `gpio0` and `src/nano_gpio.c` are built with
+  the transfers raises no interrupts. `gpio0` and `src/rp2040_gpio_os.c` are built with
   `CONFIG_LSM6DSO_STREAM`, so `CONFIG_NINA` depends on it. The callback is added to
   `gpio0` by `nina_os_ready_start()` after the first reset; if that fails, the core reads READY
   every 100 µs instead (same deadlines and results).
@@ -271,7 +271,7 @@ again is a change that does not depend on the firmware.
 
 Bit 2 on NuttX:
 
-- The GPIO2 interrupt of `common/drivers/nina/port/nuttx/nina_os.c` (the board's `src/nano_gpio.c`, a callback of the layer's
+- The GPIO2 interrupt of `common/drivers/nina/port/nuttx/nina_os.c` (the board's `src/rp2040_gpio_os.c`, a callback of the layer's
   `gpio0`) counts the edges, posts the `sem_t` of every waiting thread (a broadcast) and wakes
   `nina_event` (`nina_poller_edge()`).
 - `nina_event` starts its next pass as soon as the count has changed since the count noted before
@@ -537,7 +537,7 @@ patched driver with the same branches, order and values.
 | `common/drivers/lsm6dso/port/zephyr/lsm6dso_rtio_stream.c` | The FIFO stream's RTIO side (below): the device's INT1 line, RTIO's request handed to the core's stream, the stop and the settings of the extended API. The same file as the Zephyr version's |
 | `common/drivers/lsm6dso/port/zephyr/lsm6dso_decoder.[ch]` | The decoders of the stream's and the single reads' buffers (`get_decoder`). The same files as the Zephyr version's |
 | the board's `src/rp2040_lsm6dso.[ch]` | Makes I2C0 the compatibility layer's bus device (`i2c0`, 100 kHz) and initializes `lsm6dsox` (from `rp2040_bringup()`) |
-| the board's `src/nano_gpio.c` | GPIO bank 0 for the compatibility layer's `gpio0` (input set-up, levels, edge and level interrupts); `<nano_gpio.h>` (`common/compat`) |
+| the board's `src/rp2040_gpio_os.c` | GPIO bank 0 for the compatibility layer's `gpio0` (input set-up, levels, edge and level interrupts); `<gpio_os.h>` (`common/compat`) |
 
 What the driver's calls into the system are on NuttX (those of the core through
 `port/zephyr/lsm6dso_os_impl.h` and `lsm6dso_stream_req_impl.h`, those of the binding directly):
@@ -668,7 +668,7 @@ is in two places:
   `wifi_credentials_internal.h`; the key-value store's NVS and settings, see "Key-value store:
   copies of Zephyr's NVS and settings" below; the MQTT client is `common/imu/mqtt_min.c`), and
   boundary headers (the table of thread priorities and stacks `priorities.h`, `cpu_load.h` of
-  `cpu_load_get()` with its arithmetic `nano_cpuload.h`, `nano_gpio.h` under `gpio0`, the
+  `cpu_load_get()` and its arithmetic, `gpio_os.h` under `gpio0`, the
   key-value area's flash `nano_flash_kv.h`). The command handling of the shell's
   `zephyr/shell/shell.h` is `common/shell/zshell.c` ("Shell" below). The Zephyr build does not use
   it (it has Zephyr itself).
@@ -732,13 +732,13 @@ of the NuttX implementation on the include path.
 | `zephyr_work.c` | Work items and queues: the used part of Zephyr's `kernel/work.c` (OS-independent) |
 | `zephyr_init.c` | The work queues' threads (`k_work_queue_start()`, the loop of `kernel/work.c` `work_queue_main()`), the system work queue `k_sys_work_q`, `zephyr_compat_initialize()`, `k_uptime_get()` (the TIMER in ms), on `z_thread_static_start()` (OS-independent) |
 | `zephyr_rtio.c`, `zephyr_rtio_workq.c`, `zephyr_mem_blocks.c` | The RTIO executor (`subsys/rtio/rtio_executor.c`), the RTIO work queue (`rtio_workq.c`; its thread `RTIO WQ 0` is started by `zephyr_compat_initialize()` with `z_thread_static_start()`), the block pool (`lib/mem_blocks`) |
-| `zephyr_gpio.c` | The `gpio0` device (Zephyr's `gpio.h` logic and `gpio_rpi_pico.c`) on the board's `<nano_gpio.h>` |
-| `zephyr_sensor_clock.c` | The sensor clock on the layer's cycle counter `k_cycle_get_64()` (the board's TIMER, `nano_mono_us()`, 1 MHz) |
+| `zephyr_gpio.c` | The `gpio0` device (Zephyr's `gpio.h` logic and `gpio_rpi_pico.c`) on the board's `<gpio_os.h>` |
+| `zephyr_sensor_clock.c` | The sensor clock on the layer's cycle counter `k_cycle_get_64()` (the board's TIMER, `rp2040_timer_us()`, 1 MHz) |
 | `sensor_default_rtio.c` | A copy of Zephyr's `drivers/sensor/default_rtio_sensor.c` (only the log replaced): the sensors' iodev API, the fallback for single reads, the default decoder |
 | `zephyr_device.c` | Device initialization and the list of devices (`gpio0`, `i2c0`, `lsm6dsox` in the Zephyr build's order of initialization, with their node labels and whether the API is a sensor API; `gpio0` with the OS's configuration `CONFIG_LSM6DSO_STREAM`) |
 | `zephyr_i2c.c` (NuttX) | I2C (on a NuttX I2C master) |
 | `zephyr_hwinfo.c` (NuttX) | `hwinfo_get_device_id()` on the board's chip ID (`rp2040_chip_id()`) |
-| `zephyr_net_if.c` (NuttX), `zephyr_net_mgmt.c`, `zephyr_wifi_mgmt.c` | The interface (values of the NuttX network device), the `net_mgmt` event queue and thread (started with `z_thread_static_start()`; its priority and stack size are `NANO_PRIO_NET_MGMT`, `NANO_STACK_NET_MGMT` of `priorities.h`), the Wi-Fi requests (a copy of the checks of Zephyr's `subsys/net/l2/wifi/wifi_mgmt.c`) and events, `NET_REQUEST_WIFI_CONNECT_STORED` (a copy of `connect_stored_command()` of the same file; with `CONFIG_WIFI_CREDENTIALS`). Only with `CONFIG_NINA_NET`. The NINA's binding (`common/drivers/nina/port/nuttx/nina_wifi_mgmt.c`) serves them on the core for the applications |
+| `zephyr_net_if.c` (NuttX), `zephyr_net_mgmt.c`, `zephyr_wifi_mgmt.c` | The interface (values of the NuttX network device), the `net_mgmt` event queue and thread (started with `z_thread_static_start()`; its priority and stack size are `APP_PRIO_NET_MGMT`, `APP_STACK_NET_MGMT` of `priorities.h`), the Wi-Fi requests (a copy of the checks of Zephyr's `subsys/net/l2/wifi/wifi_mgmt.c`) and events, `NET_REQUEST_WIFI_CONNECT_STORED` (a copy of `connect_stored_command()` of the same file; with `CONFIG_WIFI_CREDENTIALS`). Only with `CONFIG_NINA_NET`. The NINA's binding (`common/drivers/nina/port/nuttx/nina_wifi_mgmt.c`) serves them on the core for the applications |
 | `zephyr_wifi_utils.c` | Copies of `wifi_security_txt()` and `wifi_band_txt()` (Zephyr's `wifi_mgmt.c`), the channel checks (`wifi_utils.c`) and `net_bytes_from_str()` (`subsys/net/ip/utils.c`), for `wifi cred`. OS-independent. Only with `CONFIG_NINA_NET` |
 | `sensor_shell_stream.c` | A copy of Zephyr's `drivers/sensor/sensor_shell_stream.c` (the sensor shell's processing thread). It includes the OS's `sensor_shell_os.h` first, and the processing thread's callback is `sensor_shell_os_processing_callback()` (in the NuttX build, `nuttx/apps/sensor/sensor_shell_nuttx.c`). Built by `apps/sensor` |
 | `wifi_credentials.c`, `wifi_credentials_backend_settings.c` | Copies of Zephyr's `subsys/net/lib/wifi_credentials/` (the stored Wi-Fi credentials). Built by `apps/wifi`. Two changes in the backend: the read buffer is aligned to 8 bytes (it is read as a struct; the Cortex-M0+ faults on an unaligned access) and the index formats are `%zu` |
@@ -778,10 +778,10 @@ of the NuttX implementation on the include path.
   - `zephyr_os_shell.h` (included by `<zephyr/shell/shell.h>`): `struct shell` ("Shell" below).
   - Headers that are the OS's as a whole: `zephyr/net/socket.h`, `zephyr/net/net_if.h`,
     `zephyr/sys/clock.h`, `zephyr/sys/__assert.h`, `zephyr/drivers/i2c.h`.
-  - Boundary headers that the shared files read: `priorities.h` (`NANO_STACK_NET_MGMT`,
-    `NANO_PRIO_RTIO_WQ`, `NANO_STACK_RTIO_WQ`; in
-    `common/compat/`, on `NANO_PRIO_FROM_ZEPHYR()` of the OS part `priorities_os.h`, in the NuttX
-    build in `nuttx/drivers/include/`), `nano_gpio.h` (`zephyr_gpio.c`; in `common/compat/`, the
+  - Boundary headers that the shared files read: `priorities.h` (`APP_STACK_NET_MGMT`,
+    `APP_PRIO_RTIO_WQ`, `APP_STACK_RTIO_WQ`; in
+    `common/compat/`, on `APP_PRIO_FROM_ZEPHYR()` of the OS part `priorities_os.h`, in the NuttX
+    build in `nuttx/drivers/include/`), `gpio_os.h` (`zephyr_gpio.c`; in `common/compat/`, the
     board implements it), `app_log.h` (`<zephyr/logging/log.h>`, `sensor_default_rtio.c`, the
     credentials; in `common/log/`, on the OS part `app_log_os.h`), `<cpu_load.h>`
     (`<zephyr/sys/cpu_load.h>`; `common/compat/`), `sensor_shell_os.h` (`sensor_shell_stream.c`). The configuration
@@ -856,7 +856,7 @@ of the NuttX implementation on the include path.
   `RTIO_WQ_0`.
 - **GPIO**: one port, `gpio0` (GPIO0..29), inputs only (outputs are `-ENOTSUP`). Pin set-up,
   interrupts (edges and levels, logical or physical), levels and callbacks are copies of Zephyr's
-  `gpio.h` and `gpio_rpi_pico.c`; the board's `src/nano_gpio.c` writes the registers as the
+  `gpio.h` and `gpio_rpi_pico.c`; the board's `src/rp2040_gpio_os.c` writes the registers as the
   pico-sdk's `gpio_set_pulls()`, `gpio_set_function()`, `gpio_set_dir()` and
   `gpio_set_irq_enabled()` do (the pin's events in `INTR` are cleared before they are enabled or
   disabled). The interrupt comes from NuttX's `rp2040_gpio` bank interrupt (which clears the
@@ -946,7 +946,7 @@ of the NuttX implementation on the include path.
   the Zephyr version: `ZSOCK_POLLERR`). `imu_raw_mqtt.c`, which uses `zsock_poll()` for its input
   check (every 100 ms, timeout 0) and the CONNACK wait (5000 ms), ends the connection on either.
 - **Cycle counter**: the Zephyr version's `k_cycle_get_*()` counts the 125 MHz SysTick (which falls
-  behind under load); the NuttX version's is the board's TIMER (`nano_mono_us()`, 1 MHz from the
+  behind under load); the NuttX version's is the board's TIMER (`rp2040_timer_us()`, 1 MHz from the
   crystal, as for the sensor clock). A cycle is a microsecond, so the conversions to microseconds
   (`k_cyc_to_us_floor64()`, `_ceil64()`) return the value as it is. `k_cycle_get_32()` is the low
   32 bits and wraps after about 71.6 minutes (the Zephyr version's after about 34 s), and

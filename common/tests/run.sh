@@ -194,8 +194,8 @@ run log_ring "${flags[@]}" -Ilog tests/log_ring.c log/log_ring.c
 # the check at the start, the rate limit and the lock around the ring.
 run log_ram "${flags[@]}" -Itests/log_ram_os_host -Ilog tests/log_ram.c log/log_ram.c \
     log/log_ring.c
-# The CPU load arithmetic of the idle loop (compat/nano_cpuload.h).
-run nano_cpuload "${flags[@]}" -Icompat tests/nano_cpuload.c
+# The CPU load arithmetic of the idle loop (compat/cpu_load.h).
+run cpu_load "${flags[@]}" -Icompat tests/cpu_load.c
 # The CPU column of "ps" (FreeRTOS) and "kernel ps" (Zephyr): each task's share since the
 # previous list (shell/ps_interval.h).
 run ps_interval "${flags[@]}" -Ishell tests/ps_interval.c

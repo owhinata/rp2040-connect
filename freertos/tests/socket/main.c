@@ -1252,7 +1252,7 @@ int main(void)
 		return 2;
 	}
 	if (xTaskCreate(runner, "runner", RUNNER_STACK / sizeof(StackType_t), NULL,
-			NANO_PRIO_FROM_ZEPHYR(9), NULL) != pdPASS) {
+			APP_PRIO_FROM_ZEPHYR(9), NULL) != pdPASS) {
 		return 2;
 	}
 	vTaskStartScheduler();

@@ -1522,7 +1522,7 @@ static void test_i2c1_interleaved(void)
 	hw1_mode = HW_DEVICE;
 	bus1_done = 0;
 	bus1_failures = 0;
-	assert(xTaskCreate(bus1_main, "bus1", HW_STACK / sizeof(StackType_t), NULL, NANO_PRIO_SHELL,
+	assert(xTaskCreate(bus1_main, "bus1", HW_STACK / sizeof(StackType_t), NULL, APP_PRIO_SHELL,
 			   NULL) == pdPASS);
 	for (int i = 0; i < INTERLEAVED; i++) {
 		if (who_am_i() != LSM6DSOX_ID) {
@@ -1647,7 +1647,7 @@ static void test_boundary(void)
 
 	/* A give from an interrupt handler wakes the waiting task. */
 	assert(xTaskCreate(giver_main, "giver", HW_STACK / sizeof(StackType_t), &sem,
-			   NANO_PRIO_SHELL + 1, NULL) == pdPASS);
+			   APP_PRIO_SHELL + 1, NULL) == pdPASS);
 	start = xTaskGetTickCount();
 	assert(i2c_dw_os_sem_take_until(&sem, i2c_dw_os_timepoint_calc(1000)) == 0);
 	ticks = xTaskGetTickCount() - start;
@@ -1677,7 +1677,7 @@ static void test_boundary(void)
 	assert(sem.waiters == NULL);
 	(void)xTaskNotifyGiveIndexed(xTaskGetCurrentTaskHandle(), I2C_DW_OS_NOTIFY_INDEX);
 	assert(xTaskCreate(giver_main, "giver", HW_STACK / sizeof(StackType_t), &sem,
-			   NANO_PRIO_SHELL + 1, NULL) == pdPASS);
+			   APP_PRIO_SHELL + 1, NULL) == pdPASS);
 	start = xTaskGetTickCount();
 	assert(i2c_dw_os_sem_take_ms(&sem, 1000) == 0);
 	ticks = xTaskGetTickCount() - start;
@@ -1712,9 +1712,9 @@ static void test_boundary(void)
 	lock_order[0] = '\0';
 	assert(i2c_dw_os_bus_lock(&lock_sem) == 0);
 	assert(xTaskCreate(locker_main, "low", HW_STACK / sizeof(StackType_t), "low ",
-			   NANO_PRIO_SHELL + 1, NULL) == pdPASS);
+			   APP_PRIO_SHELL + 1, NULL) == pdPASS);
 	assert(xTaskCreate(locker_main, "high", HW_STACK / sizeof(StackType_t), "high ",
-			   NANO_PRIO_SHELL + 2, NULL) == pdPASS);
+			   APP_PRIO_SHELL + 2, NULL) == pdPASS);
 	vTaskDelay(5);
 	assert(lock_order[0] == '\0');
 	i2c_dw_os_bus_unlock(&lock_sem);
@@ -1798,9 +1798,9 @@ int main(void)
 	static char out[1 << 12];
 
 	setvbuf(stdout, out, _IOLBF, sizeof(out));
-	if (xTaskCreate(runner, "runner", RUNNER_STACK / sizeof(StackType_t), NULL, NANO_PRIO_SHELL,
+	if (xTaskCreate(runner, "runner", RUNNER_STACK / sizeof(StackType_t), NULL, APP_PRIO_SHELL,
 			NULL) != pdPASS ||
-	    xTaskCreate(hw_main, "hw", HW_STACK / sizeof(StackType_t), NULL, NANO_PRIO_SHELL + 4,
+	    xTaskCreate(hw_main, "hw", HW_STACK / sizeof(StackType_t), NULL, APP_PRIO_SHELL + 4,
 			NULL) != pdPASS) {
 		return 1;
 	}

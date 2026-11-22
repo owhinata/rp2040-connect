@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MIT */
 /* The board's check of I2C0, and of I2C1 when it is built
  * (i2c_dw_selftest.c), part of the "selftest" command (a test feature,
- * built with -DNANO_SELFTEST=ON only).
+ * built with -DSELFTEST=ON only).
  */
 
 #ifndef FREERTOS_DRIVERS_I2C_DW_I2C_DW_SELFTEST_H

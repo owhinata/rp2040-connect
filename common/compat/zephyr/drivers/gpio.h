@@ -7,7 +7,7 @@
  * fired in the interrupt handler), gpio_pin_interrupt_configure_dt()
  * (edges and levels, logical or physical) and gpio_pin_get_dt() (the
  * logical level).  One port, gpio0 (GPIO0..29 of the RP2040), on the
- * board's <nano_gpio.h>; zephyr_gpio.c is Zephyr's gpio.h logic and
+ * board's <gpio_os.h>; zephyr_gpio.c is Zephyr's gpio.h logic and
  * drivers/gpio/gpio_rpi_pico.c.  Outputs are not supported (-ENOTSUP).
  * Part of the small Zephyr compatibility layer of the port
  * (common/compat).

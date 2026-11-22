@@ -58,10 +58,9 @@
 
 #include <nuttx/arch.h>
 #include <nuttx/irq.h>
-#include <arch/board/nano_timer.h>
+#include <arch/board/rp2040_timer_us.h>
 
 #include "cpu_load.h"
-#include "nano_cpuload.h"
 
 #if defined(CONFIG_SUPPRESS_INTERRUPTS) || defined(CONFIG_SUPPRESS_TIMER_INTS)
 #  error "rp2040_idle_cpuload.c needs the timer interrupt"
@@ -77,7 +76,7 @@
 
 /* Changed only with interrupts disabled. */
 
-static struct nano_cpuload_s g_cpuload;
+static struct cpu_load_window g_cpuload;
 
 /****************************************************************************
  * Public Functions
@@ -96,13 +95,13 @@ void up_idle(void)
 {
   irqstate_t flags = up_irq_save();
 
-  nano_cpuload_enter(&g_cpuload, nano_mono_us());
+  cpu_load_enter(&g_cpuload, rp2040_timer_us());
 
   /* Zephyr: __DSB() then __WFI() (SLEEP_IF_ALLOWED). */
 
   __asm__ __volatile__("dsb\n\twfi" ::: "memory");
 
-  nano_cpuload_exit(&g_cpuload, nano_mono_us());
+  cpu_load_exit(&g_cpuload, rp2040_timer_us());
 
   /* The pending interrupt is taken here, outside the window. */
 
@@ -120,7 +119,7 @@ void up_idle(void)
 
 int cpu_load_get(bool reset)
 {
-  uint64_t now = nano_mono_us();
+  uint64_t now = rp2040_timer_us();
   uint64_t total;
   uint64_t idle;
   irqstate_t flags = up_irq_save();
@@ -129,8 +128,8 @@ int cpu_load_get(bool reset)
    * the second reading is kept for the same steps as Zephyr's.
    */
 
-  nano_cpuload_sample(&g_cpuload, now,
-                      g_cpuload.open ? nano_mono_us() : now, reset,
+  cpu_load_sample(&g_cpuload, now,
+                      g_cpuload.open ? rp2040_timer_us() : now, reset,
                       &total, &idle);
   up_irq_restore(flags);
 
@@ -138,5 +137,5 @@ int cpu_load_get(bool reset)
    * enabled, as in Zephyr.
    */
 
-  return nano_cpuload_ratio(total, idle);
+  return cpu_load_ratio(total, idle);
 }

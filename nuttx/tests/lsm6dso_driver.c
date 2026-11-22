@@ -69,7 +69,7 @@
 #include "lsm6dso_sensor.h"
 #include "rp2040_lsm6dso.h"
 #include "lsm6dso_decoder.h"
-#include "nano_gpio.h"
+#include "gpio_os.h"
 #include "zephyr_kernel_host.h"
 
 /* The core, so that the test reaches its static functions (the FIFO
@@ -299,19 +299,19 @@ static bool int1_level, int1_hide_edges;
 static uint32_t int1_events;
 static int int1_configured, int1_edges;
 
-int nano_gpio_configure_input(unsigned int pin, bool pull_up, bool pull_down)
+int gpio_os_configure_input(unsigned int pin, bool pull_up, bool pull_down)
 {
 	assert(pin == 24 && !pull_up && !pull_down);
 	int1_configured++;
 	return 0;
 }
 
-uint32_t nano_gpio_get_all(void)
+uint32_t gpio_os_get_all(void)
 {
 	return int1_level ? 1U << 24 : 0;
 }
 
-int nano_gpio_irq_configure(unsigned int pin, uint32_t events)
+int gpio_os_irq_configure(unsigned int pin, uint32_t events)
 {
 	assert(pin == 24);
 	int1_events = events;
@@ -326,9 +326,9 @@ static void update_int1(void)
 	bool rise = level && !int1_level;
 
 	int1_level = level;
-	if (rise && (int1_events & NANO_GPIO_IRQ_EDGE_RISE) && !int1_hide_edges) {
+	if (rise && (int1_events & GPIO_OS_IRQ_EDGE_RISE) && !int1_hide_edges) {
 		int1_edges++;
-		nano_gpio_irq_handler(24);
+		gpio_os_irq_handler(24);
 	}
 }
 
@@ -1013,7 +1013,7 @@ static void test_stream(void)
 	assert(d->stream.requested && !d->stream.active);
 	assert(test_work_run_all() == 1);
 	assert(d->stream.active && d->stream.irq_active && int1_configured == 1);
-	assert(int1_events == NANO_GPIO_IRQ_EDGE_RISE);
+	assert(int1_events == GPIO_OS_IRQ_EDGE_RISE);
 	assert(regs[USER][LSM6DSO_FIFO_CTRL1] == 32 && regs[USER][LSM6DSO_FIFO_CTRL3] == 0xaa);
 	assert(regs[USER][LSM6DSO_FIFO_CTRL4] == 0x86 && regs[USER][LSM6DSO_INT1_CTRL] == 0x08);
 	assert(d->stream.work.timeout.armed && d->stream.work.timeout.ticks == 200);

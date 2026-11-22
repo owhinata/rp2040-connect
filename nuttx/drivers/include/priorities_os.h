@@ -22,7 +22,7 @@
  *   imu_fifo_worker                                         10 -> 108
  *   imu_raw_mqtt_tid                                        11 -> 107
  *   main (the init task, nuttx/apps/init: it does what main() does at
- *   this priority, then drops to NANO_PRIO_SHELL to look after the USB
+ *   this priority, then drops to APP_PRIO_SHELL to look after the USB
  *   console), sensor shell processing, RTIO WQ 0             0 -> 118
  *   the shell (nsh sessions and the builtin commands), Telnet
  *   service ("telnetd", nuttx/apps/init/rp2040_telnet.c)      14 -> 104
@@ -36,7 +36,7 @@
 #ifndef __NUTTX_DRIVERS_INCLUDE_PRIORITIES_OS_H
 #define __NUTTX_DRIVERS_INCLUDE_PRIORITIES_OS_H
 
-#define NANO_PRIO_FROM_ZEPHYR(p)     (118 - (p))
+#define APP_PRIO_FROM_ZEPHYR(p)     (118 - (p))
 
 /* "nina_event", the kernel thread that turns NINA socket polling into
  * usrsock events (common/drivers/nina/port/nuttx/nina_poller.c).  No Zephyr thread:
@@ -46,8 +46,8 @@
  * and usrsock's event delivery (poll and wait callbacks).
  */
 
-#define NANO_PRIO_NINA_EVENT         106
-#define NANO_STACK_NINA_EVENT        1536
+#define APP_PRIO_NINA_EVENT         106
+#define APP_STACK_NINA_EVENT        1536
 
 /* The NINA passthrough mode (common/drivers/nina/port/nuttx/nina_passthrough_os.c): the
  * init task while it runs the mode, "nina_pt_rx" and "nina_pt_tx".  No
@@ -57,8 +57,8 @@
  * through the serial driver and cdcacm.
  */
 
-#define NANO_PRIO_NINA_PT            120
-#define NANO_STACK_NINA_PT           2048
+#define APP_PRIO_NINA_PT            120
+#define APP_STACK_NINA_PT           2048
 
 /* Not used by the port; for reference (see nuttx/README.md):
  *   rx_q[0]        -1 (cooperative)  -> 119, 1504 (Zephyr's IP stack, idle)
