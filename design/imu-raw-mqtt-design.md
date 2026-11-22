@@ -881,7 +881,7 @@ host tests (`common/tests/run.sh`) run first in the `host_tests.sh` of each of t
 | `common/drivers/i2c_dw/` | The I2C core (I2C0 and I2C1; file names as Zephyr's: `i2c_dw.c` at the top and, in `internal/`, `i2c_dw.h`, `i2c_dw_registers.h`, `i2c_dw_rp2040.h`, `i2c_dw_rp2040_dma_priv.h` with the DMA reads and their command words), the declarations of the `i2c_dma` functions in `include/i2c_dw_rp2040_dma.h`, the boundaries `i2c_dw_os.h` and `i2c_dw_dma_os.h` in `port/`, and the bindings in `port/nuttx/` and `port/freertos/` | NuttX and FreeRTOS (the Zephyr build: the same driver in patch 0003, below) |
 | `common/drivers/stmemsc/` | The glue between ST's driver and Zephyr's I2C API | NuttX and FreeRTOS |
 | `common/compat/` | The OS-independent part of the compatibility layer and copies of Zephyr's libraries (the key-value store's NVS and settings, the Wi-Fi credentials, getopt and others) | NuttX and FreeRTOS |
-| `common/shell/`, `common/log/` | Zephyr's shell command handling, the `i2c_dma` and `nina` commands, the `LOG_*` macros and the RAM log's ring | NuttX and FreeRTOS (`i2c_dma` all three, `nina` Zephyr and FreeRTOS) |
+| `common/shell/`, `common/compat/log/` | Zephyr's shell command handling, the `i2c_dma` and `nina` commands, the `LOG_*` macros and the RAM log's ring | NuttX and FreeRTOS (`i2c_dma` all three, `nina` Zephyr and FreeRTOS) |
 
 The OS parts are implementations of narrow boundary headers in each build's directory.
 

@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: MIT */
-/* common/log/fault_record.c: the check of the record, the copy in the
+/* common/compat/log/fault_record.c: the check of the record, the copy in the
  * watchdog's scratch registers and the lines of its text.
  */
 #include <assert.h>

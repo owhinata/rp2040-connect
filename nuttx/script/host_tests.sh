@@ -27,10 +27,10 @@ cstm=../common/drivers/stmemsc
 ccompat=../common/compat
 zfakes=../common/tests/zephyr_fakes
 # The Zephyr shell's command handling and the subcommand dispatch (common/shell; the NuttX
-# backends of the former are apps/subcmd/zshell_os_impl.h) and the logging macros (common/log;
+# backends of the former are apps/subcmd/zshell_os_impl.h) and the logging macros (common/compat/log;
 # their NuttX part app_log_os.h is in drivers/include).
 cshell=../common/shell
-clog=../common/log
+clog=../common/compat/log
 # The RP2040's code that no OS owns (common/chip/rp2040: the TIMER's read).
 cchip=../common/chip/rp2040/include
 flags=(-std=c17 -Wall -Wextra -Werror -ffunction-sections -fdata-sections)

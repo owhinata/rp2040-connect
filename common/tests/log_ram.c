@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: MIT */
-/* common/log/log_ram.c on the host's part of its boundary
+/* common/compat/log/log_ram.c on the host's part of its boundary
  * (tests/log_ram_os_host): the lines of the LOG_* macros (prefix, levels,
  * function name, the cut at APP_LOG_LINE_MAX), the OS's raw bytes, the
  * check at the start (a restart keeps the ring, a spoiled header empties

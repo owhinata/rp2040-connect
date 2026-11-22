@@ -2,7 +2,7 @@
 # Build and run the host tests of the sources shared by the Zephyr and NuttX builds (common/)
 # and of the OS-independent parts that the builds other than Zephyr's share: the Zephyr
 # compatibility layer (common/compat), the shell's subcommand dispatch (common/shell) and the
-# RAM log (common/log).  They use the fake headers of tests/fakes, the fake kernel of
+# RAM log (common/compat/log).  They use the fake headers of tests/fakes, the fake kernel of
 # tests/zephyr_fakes or (the NINA core) fakes of its boundary defined by the tests, and need no
 # board and no Zephyr tree (the checks that the copies of Zephyr's files are unchanged, that
 # the I2C core matches the Zephyr build's patched driver and that the sensor shell is the file
@@ -168,10 +168,11 @@ run nina_dns_offload "${flags[@]}" -D_DEFAULT_SOURCE -DNINA_OS_DNS_OFFLOAD "${ni
 # The NINA passthrough mode (nina_passthrough.c, which the test includes) on fakes of its two
 # boundaries (nina_passthrough_bus.h: the scratch registers, the module's lines, the UART, the LED;
 # nina_passthrough_os.h: the clock, the host's writes, the log): the request against the fatal
-# error record of the same registers (log/fault_record.c), DTR and RTS on the module's lines, the
-# rate and the way out, the buffer from the UART's interrupt (also on two threads), the start, the
-# data both ways with their counts, the tick and the way out's sequence.
-run nina_passthrough "${flags[@]}" "${nina_inc[@]}" -Ilog tests/nina_passthrough.c log/fault_record.c
+# error record of the same registers (compat/log/fault_record.c), DTR and RTS on the module's
+# lines, the rate and the way out, the buffer from the UART's interrupt (also on two threads), the
+# start, the data both ways with their counts, the tick and the way out's sequence.
+run nina_passthrough "${flags[@]}" "${nina_inc[@]}" -Icompat/log tests/nina_passthrough.c \
+    compat/log/fault_record.c
 
 # The shell's subcommand dispatch with the Zephyr shell's output (shell/subcmd.c: the kv, nina,
 # ... tables of the NuttX build).
@@ -184,16 +185,16 @@ run subcmd_fnmatch "${flags[@]}" -Ishell -Icompat tests/subcmd.c shell/subcmd.c 
 # options, permutation, errors, and two states parsing two command lines interleaved, as two
 # shell sessions do.
 run sys_getopt "${flags[@]}" -D_DEFAULT_SOURCE -DCONFIG_GETOPT_LONG=1 -Itests/kv_fakes \
-    -Itests/zephyr_fakes -Icompat -Ilog -Icompat/lib/utils/getopt tests/sys_getopt.c \
+    -Itests/zephyr_fakes -Icompat -Icompat/log -Icompat/lib/utils/getopt tests/sys_getopt.c \
     compat/lib/utils/getopt/getopt.c compat/lib/utils/getopt/getopt_long.c
-# The RAM log's ring (log/log_ring.c): the retained ring, dmesg pieces, line prefix and rate
-# limit.
-run log_ring "${flags[@]}" -Ilog tests/log_ring.c log/log_ring.c
-# The RAM log on the ring (log/log_ram.c, shared by the NuttX and FreeRTOS builds) on the host's
-# part of its boundary (tests/log_ram_os_host): the lines of the LOG_* macros, the OS's raw bytes,
-# the check at the start, the rate limit and the lock around the ring.
-run log_ram "${flags[@]}" -Itests/log_ram_os_host -Ilog tests/log_ram.c log/log_ram.c \
-    log/log_ring.c
+# The RAM log's ring (compat/log/log_ring.c): the retained ring, dmesg pieces, line prefix and
+# rate limit.
+run log_ring "${flags[@]}" -Icompat/log tests/log_ring.c compat/log/log_ring.c
+# The RAM log on the ring (compat/log/log_ram.c, shared by the NuttX and FreeRTOS builds) on the
+# host's part of its boundary (tests/log_ram_os_host): the lines of the LOG_* macros, the OS's raw
+# bytes, the check at the start, the rate limit and the lock around the ring.
+run log_ram "${flags[@]}" -Itests/log_ram_os_host -Icompat/log tests/log_ram.c \
+    compat/log/log_ram.c compat/log/log_ring.c
 # The CPU load arithmetic of the idle loop (compat/cpu_load.h).
 run cpu_load "${flags[@]}" -Icompat tests/cpu_load.c
 # The read of the RP2040's TIMER (chip/rp2040: rp2040_timer_us()) on scripted registers.
@@ -202,8 +203,8 @@ run rp2040_timer_us "${flags[@]}" -Ichip/rp2040/include tests/rp2040_timer_us.c
 # previous list (shell/ps_interval.h).
 run ps_interval "${flags[@]}" -Ishell tests/ps_interval.c
 # The record of a fatal error that the FreeRTOS build keeps across its restart
-# (log/fault_record.c): the check, the watchdog scratch copy and the lines.
-run fault_record "${flags[@]}" -Ilog tests/fault_record.c log/fault_record.c
+# (compat/log/fault_record.c): the check, the watchdog scratch copy and the lines.
+run fault_record "${flags[@]}" -Icompat/log tests/fault_record.c compat/log/fault_record.c
 
 # The hexadecimal conversions of the "kv" command (compat/lib/utils/hex.c, the copy of Zephyr's
 # lib/utils/hex.c).
@@ -218,7 +219,7 @@ run nano_flash_kv "${flags[@]}" -Icompat tests/nano_flash_kv.c
 # kernel: the bytes on the flash, reads, writes, limits, garbage collection, foreign data, the
 # device's refusals, a power loss at every flash operation of a sequence.  Its log, shell
 # backend and app_log_os.h are tests/kv_fakes and the test's own.
-kvinc=(-D_GNU_SOURCE -DZ_SHELL_CMD_NAMED_MAIN -Itests/kv_fakes -Itests/zephyr_fakes -Icompat -Ilog
+kvinc=(-D_GNU_SOURCE -DZ_SHELL_CMD_NAMED_MAIN -Itests/kv_fakes -Itests/zephyr_fakes -Icompat -Icompat/log
        -Iimu -Icompat/subsys/settings/include -Icompat/subsys/settings/src
        -Icompat/subsys/kvss/nvs -Itests)
 kvobjs=()

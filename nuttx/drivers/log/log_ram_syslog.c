@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-/* The RAM log (common/log/log_ram.c) as the syslog channel (Zephyr: printk
+/* The RAM log (common/compat/log/log_ram.c) as the syslog channel (Zephyr: printk
  * goes into the log as raw strings, CONFIG_LOG_PRINTK).  syslog() output
  * is stored as is, with no prefix; with CONFIG_SYSLOG_CRLF each '\n'
  * becomes "\r\n", as Zephyr's log_output does for printk strings

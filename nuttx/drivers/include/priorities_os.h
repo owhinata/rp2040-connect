@@ -65,7 +65,7 @@
  *   tcp_work      -14 (cooperative)  -> 132, 1024 (Zephyr's IP stack, idle)
  *   usbd, usbd@50110000 -8 (coop.)   -> 126, 1024 / 512 (NuttX: interrupt)
  *   logging        14                -> 104, 768 (NuttX: none, see
- *                                       common/log/app_log.h)
+ *                                       common/compat/log/app_log.h)
  *   zperf_work_q   15 -> 14          -> 104, 2048 (NuttX: iperf, whose
  *                                       threads have fixed priorities
  *                                       100 and 101)

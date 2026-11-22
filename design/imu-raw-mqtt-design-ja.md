@@ -748,7 +748,7 @@ Zephyr の名前のまま提供する互換層の上でビルドする。ホス�
 | `common/drivers/i2c_dw/` | I2C のコア（I2C0 と I2C1。ファイル名は Zephyr のものに合わせる: 直下に `i2c_dw.c`、`internal/` に `i2c_dw.h`・`i2c_dw_registers.h`・`i2c_dw_rp2040.h`・`i2c_dw_rp2040_dma_priv.h`（DMA 読み出しとそのコマンド語））、`i2c_dma` の関数の宣言 `include/i2c_dw_rp2040_dma.h`、`port/` に境界 `i2c_dw_os.h`・`i2c_dw_dma_os.h`、`port/nuttx/`・`port/freertos/` にコアのつなぎ | NuttX 版と FreeRTOS 版（Zephyr 版はパッチ 0003 の同じドライバー。下） |
 | `common/drivers/stmemsc/` | ST のドライバーと Zephyr の I2C の API のつなぎ | NuttX 版と FreeRTOS 版 |
 | `common/compat/` | 互換層の OS に依存しない部分と、Zephyr のライブラリーの写し（KV の NVS と settings、Wi-Fi の資格情報、getopt など） | NuttX 版と FreeRTOS 版 |
-| `common/shell/`、`common/log/` | Zephyr のシェルのコマンド処理の再現、`i2c_dma`・`nina` コマンド、`LOG_*` と RAM ログのリング | NuttX 版と FreeRTOS 版（`i2c_dma` は 3 版、`nina` は Zephyr 版と FreeRTOS 版） |
+| `common/shell/`、`common/compat/log/` | Zephyr のシェルのコマンド処理の再現、`i2c_dma`・`nina` コマンド、`LOG_*` と RAM ログのリング | NuttX 版と FreeRTOS 版（`i2c_dma` は 3 版、`nina` は Zephyr 版と FreeRTOS 版） |
 
 OS ごとの部分は、狭い境界のヘッダーの実装として各版のディレクトリーに置く。
 

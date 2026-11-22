@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MIT */
-/* The FreeRTOS part of the RAM log (common/log/log_ram_os.h, read only by
- * common/log/log_ram.c):
+/* The FreeRTOS part of the RAM log (common/compat/log/log_ram_os.h, read only by
+ * common/compat/log/log_ram.c):
  *
  * - the ring in RAM that the start-up code leaves alone (the Pico SDK's
  *   __uninitialized_ram): it survives the watchdog's restart after a fatal

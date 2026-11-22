@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: MIT */
-/* The host's part of the RAM log's boundary (common/log/log_ram_os.h) for
+/* The host's part of the RAM log's boundary (common/compat/log/log_ram_os.h) for
  * tests/log_ram.c: the ring in ordinary memory, with a pointer to it so
  * that the test can play a restart (keep the ring, call
  * log_ram_initialize() again) or a power-on (spoil its header); the

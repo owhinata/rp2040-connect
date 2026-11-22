@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-/* The NuttX part of the RAM log (common/log/log_ram_os.h, read only by
- * common/log/log_ram.c):
+/* The NuttX part of the RAM log (common/compat/log/log_ram_os.h, read only by
+ * common/compat/log/log_ram.c):
  *
  * - the ring in .noinit (arduino-nano-rp2040-connect-flash.ld places it
  *   between .data and .bss, so the startup code neither clears nor copies

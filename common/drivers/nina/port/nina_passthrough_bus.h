@@ -35,7 +35,7 @@ extern "C" {
 /* Four words that a restart through nina_passthrough_bus_restart() keeps and any
  * other start does not have to (the RP2040's watchdog scratch registers
  * 0..3, which the RESET button, the chip's RUN pin, clears).  The fatal
- * error record (common/log/fault_record.h) uses the same registers.
+ * error record (common/compat/log/fault_record.h) uses the same registers.
  */
 #define NINA_PASSTHROUGH_BUS_MARK_WORDS 4
 

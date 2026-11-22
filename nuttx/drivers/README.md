@@ -391,7 +391,7 @@ marked "interrupt" are called from the interrupt handlers.
 | `I2C_DW_CLOCK_SPEED` | `CONFIG_I2C_DW_CLOCK_SPEED` (MHz, 125) | `BOARD_PERI_FREQ / 1000000` |
 | `i2c_dw_os_prepare(dw)` (`i2c_dw_instance.h`) | `reset_line_toggle_dt()` and `pinctrl_apply_state()`: reset I2C0 or I2C1, its pins as I2C (4 mA, slow slew, Schmitt trigger and input enabled; I2C0's GPIO12 and 13 without pulls, I2C1's with the internal pull-ups) | RESETS and `rp2040_gpio_*()` (`i2c_dw_pinctrl()`, the steps of Zephyr's `pinctrl_rpi_pico.c`) |
 | `i2c_dw_os_irq_enable(dw)` (same) | `IRQ_CONNECT()`, `irq_enable()`: a handler of I2C0_IRQ or I2C1_IRQ that calls `i2c_dw_isr_handler(dw)` | `irq_attach()`, `up_enable_irq()` |
-| `app_log.h` | `LOG_MODULE_REGISTER()`, `LOG_ERR()`, `LOG_ERR_RATELIMIT()` (at the level 3 that the core sets) | `common/log/app_log.h` with its NuttX part `nuttx/drivers/include/app_log_os.h` (the RAM log) |
+| `app_log.h` | `LOG_MODULE_REGISTER()`, `LOG_ERR()`, `LOG_ERR_RATELIMIT()` (at the level 3 that the core sets) | `common/compat/log/app_log.h` with its NuttX part `nuttx/drivers/include/app_log_os.h` (the RAM log) |
 | `CONFIG_I2C_DW_I2C0`, `CONFIG_I2C_DW_I2C1` | The instances to build (Zephyr: the devicetree's enabled nodes) | `nuttx/drivers/i2c_dw/Kconfig` (`I2C_DW_I2C0` on, `I2C_DW_I2C1` off by default) |
 | `CONFIG_I2C_DW_RP2040_DMA` | Build the DMA reads of I2C0 (the same symbol as the Zephyr version's) | Kconfig |
 
@@ -717,7 +717,7 @@ of the NuttX implementation on the include path.
 | `nano_flash_kv.h` | The key-value area's constants (8 KiB from `0xffe000`, 256-byte pages, 4 KiB sectors), the OS boundary ("Key-value store" below), the range checks, the split into pages and the check of what the area holds (Zephyr's NVS, the earlier NuttX build's format, erased, other) |
 | `zephyr_kv_config.h` | The Zephyr build's Kconfig values read before the copied NVS and settings (`CONFIG_SETTINGS_NVS_SECTOR_COUNT` and others; "Key-value store" below) |
 | `kv_store_os.h` | The OS part of `common/imu/kv_store.c`: the `kv wipe` subcommand (the Zephyr build's `zephyr/app/usb-console/src/kv_store_os.h` is empty) |
-| `zephyr/logging/log.h` | `LOG_MODULE_REGISTER()`, `LOG_ERR()` and the other logging macros. It only includes the port's `app_log.h` (`common/log/`; the RAM log of `dmesg`) |
+| `zephyr/logging/log.h` | `LOG_MODULE_REGISTER()`, `LOG_ERR()` and the other logging macros. It only includes the port's `app_log.h` (`common/compat/log/`; the RAM log of `dmesg`) |
 | `zephyr/net/net_ip.h` | The IPv4 address type `struct in_addr` (`imu_raw_mqtt.h`). It only includes NuttX's `<netinet/in.h>` (the same member `s_addr`, network byte order) |
 | `zephyr_compat.h` | `zephyr_compat_initialize()` (called by the board's bring-up, below), `K_THREAD_DEFINE_START()` (called by init) |
 | `sensor_shell.h` | A copy of Zephyr's `drivers/sensor/sensor_shell.h` (the sensor shell's shared types; the Zephyr build reads Zephyr's) |
@@ -782,7 +782,7 @@ of the NuttX implementation on the include path.
     `common/compat/`, on `APP_PRIO_FROM_ZEPHYR()` of the OS part `priorities_os.h`, in the NuttX
     build in `nuttx/drivers/include/`), `gpio_os.h` (`zephyr_gpio.c`; in `common/compat/`, the
     board implements it), `app_log.h` (`<zephyr/logging/log.h>`, `sensor_default_rtio.c`, the
-    credentials; in `common/log/`, on the OS part `app_log_os.h`), `<cpu_load.h>`
+    credentials; in `common/compat/log/`, on the OS part `app_log_os.h`), `<cpu_load.h>`
     (`<zephyr/sys/cpu_load.h>`; `common/compat/`), `sensor_shell_os.h` (`sensor_shell_stream.c`). The configuration
     values `CONFIG_LSM6DSO_STREAM` (`zephyr_device.c`) and `CONFIG_WIFI_CREDENTIALS`,
     `_MAX_ENTRIES`, `_SAE_PASSWORD_LENGTH`, `_CONNECT_STORED_CONNECTION_TIMEOUT` (the Wi-Fi headers and

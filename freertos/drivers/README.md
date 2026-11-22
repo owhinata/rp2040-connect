@@ -45,8 +45,8 @@ semaphores, `k_poll()`, timeouts, sleeps and threads on about twenty primitives 
 
 Shared files only the FreeRTOS build compiles: `common/compat/zephyr_wifi_shell.c` (`connect`,
 `disconnect`, `scan` and `status` taken from Zephyr's `wifi_shell.c`), `zephyr_zperf_shell.c` and
-`zperf_iperf3.[ch]` (`zperf`), `common/log/fault_record.[ch]` (the format of the fatal error record),
-`common/shell/dmesg_shell.c` (`dmesg`). The RAM log `common/log/log_ram.c` (on its ring `log_ring.c`) is shared with
+`zperf_iperf3.[ch]` (`zperf`), `common/compat/log/fault_record.[ch]` (the format of the fatal error record),
+`common/shell/dmesg_shell.c` (`dmesg`). The RAM log `common/compat/log/log_ram.c` (on its ring `log_ring.c`) is shared with
 the NuttX build.
 `i2c_dma`'s `common/shell/i2c_dma_shell.c` and `nina`'s `common/shell/nina_shell.c` (`nina version`,
 `nina passthrough`) are built by the Zephyr build too.
@@ -150,7 +150,7 @@ the interval of interest); timed by the TIMER.
 
 ## RAM log and fatal errors
 
-- The RAM log (`common/log/log_ram.c`, shared with the NuttX build; this build's part is
+- The RAM log (`common/compat/log/log_ram.c`, shared with the NuttX build; this build's part is
   `drivers/include/log_ram_os_impl.h`) is 8 KiB in RAM that the start-up code does not initialize
   (`__uninitialized_ram`). It survives the watchdog's restart, `reboot` and the RESET button, not a power
   cycle. `LOG_*` lines are formatted in the caller's context (interrupt handlers included), timed by the
@@ -160,7 +160,7 @@ the interval of interest); timed by the TIMER.
   which keeps a record (reason, PC, LR, SP, exception frame, task, time) in RAM and in the watchdog's
   scratch registers 0..3 and restarts the board with the watchdog. The next start writes the record to
   `dmesg`, and `fault` and the console's banner show it. The record's format is
-  `common/log/fault_record.[ch]`.
+  `common/compat/log/fault_record.[ch]`.
 
 ## The key-value store's flash
 

@@ -17,7 +17,7 @@
  *
  * Usable in threads and in interrupt handlers (on NuttX from the kernel
  * side, nuttx/drivers and the board code, and from the applications: flat
- * build).  The include path is common/log and the OS's directory of
+ * build).  The include path is common/compat/log and the OS's directory of
  * "app_log_os.h" (on NuttX $(TOPDIR)/external/include).
  *
  * Levels are checked at compile time only: a message above the level of

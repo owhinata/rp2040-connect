@@ -42,7 +42,7 @@ newlib に無い POSIX のネットワークのヘッダーは `common/compat/li
 
 FreeRTOS 版だけがビルドする共有ファイル: `common/compat/zephyr_wifi_shell.c`（Zephyr の `wifi_shell.c` から
 `connect`・`disconnect`・`scan`・`status` を取り出したもの）、`zephyr_zperf_shell.c`・`zperf_iperf3.[ch]`（`zperf`）、
-`common/log/fault_record.[ch]`（異常停止の記録の形式）、`common/shell/dmesg_shell.c`（`dmesg`）。RAM ログ `common/log/log_ram.c`（リングは
+`common/compat/log/fault_record.[ch]`（異常停止の記録の形式）、`common/shell/dmesg_shell.c`（`dmesg`）。RAM ログ `common/compat/log/log_ram.c`（リングは
 `log_ring.c`）は NuttX 版と共有する。`i2c_dma` の `common/shell/i2c_dma_shell.c` と `nina` の
 `common/shell/nina_shell.c`（`nina version`・`nina passthrough`）は Zephyr 版もビルドする。
 
@@ -134,13 +134,13 @@ NuttX 版の起動処理の順と同じ）。
 
 ## RAM ログと異常停止
 
-- RAM ログ（NuttX 版と共有の `common/log/log_ram.c`。この版の部分は `drivers/include/log_ram_os_impl.h`）は 8 KiB で、起動時に初期化しない RAM（`__uninitialized_ram`）に置きます。
+- RAM ログ（NuttX 版と共有の `common/compat/log/log_ram.c`。この版の部分は `drivers/include/log_ram_os_impl.h`）は 8 KiB で、起動時に初期化しない RAM（`__uninitialized_ram`）に置きます。
   watchdog の再起動、`reboot`、RESET ボタンでは残り、電源断で消えます。`LOG_*` の行は呼び出した文脈（割り込み
   ハンドラーを含む）で整形し、時刻は TIMER から取ります。`dmesg`（`common/shell/dmesg_shell.c`）で表示します。
 - 異常停止（`app/usb-console/src/fault.[ch]`）: `panic()`、HardFault、`configASSERT()` と `assert()`、スタックの
   あふれ（`configCHECK_FOR_STACK_OVERFLOW` 2）、ヒープ不足、`_exit()` が 1 つの出口に入り、記録（理由、PC、LR、SP、
   例外のフレーム、タスク、時刻）を RAM と watchdog の scratch レジスター 0〜3 に残して watchdog で再起動します。
-  次の起動で記録を `dmesg` に書き、`fault` とコンソールのバナーで表示します。記録の形式は `common/log/fault_record.[ch]`。
+  次の起動で記録を `dmesg` に書き、`fault` とコンソールのバナーで表示します。記録の形式は `common/compat/log/fault_record.[ch]`。
 
 ## KV のフラッシュ
 

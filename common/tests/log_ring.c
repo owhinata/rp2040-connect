@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-/* common/log/log_ring.c: the retained ring, the dmesg pieces, the line
+/* common/compat/log/log_ring.c: the retained ring, the dmesg pieces, the line
  * prefix (against Zephyr's timestamp arithmetic in log_output.c) and the
  * rate limit.
  */

@@ -11,7 +11,7 @@
 # with "CSRCS += ...", "VPATH += :nina" and "DEPPATH += --dep-path nina".
 # include/ holds the headers shared with the board code and the
 # applications ($(TOPDIR)/external/include; the OS-independent ones are in
-# common/log and common/compat); compat/ the NuttX
+# common/compat/log and common/compat); compat/ the NuttX
 # implementation of the small Zephyr compatibility layer
 # ($(TOPDIR)/external/compat; its OS-independent part is common/compat).
 ############################################################################
@@ -39,7 +39,7 @@ CFLAGS += ${INCDIR_PREFIX}$(ARCHSRCDIR)$(DELIM)chip
 CFLAGS += ${INCDIR_PREFIX}$(ARCHSRCDIR)$(DELIM)common
 CFLAGS += ${INCDIR_PREFIX}$(ARCHSRCDIR)$(DELIM)$(patsubst "%",%,$(strip $(CONFIG_ARCH_FAMILY)))
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)sched
-CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)log
+CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)compat$(DELIM)log
 
 AOBJS = $(ASRCS:.S=$(OBJEXT))
 COBJS = $(CSRCS:.c=$(OBJEXT))

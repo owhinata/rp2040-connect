@@ -4,7 +4,7 @@
  * panic() (the Pico SDK's callers and the port's), the HardFault handler,
  * configASSERT() and assert(), the kernel's stack overflow check and heap
  * exhaustion, and _exit() all end in one exit, which disables interrupts,
- * fills a record (common/log/fault_record.h: reason, PC, LR, SP, the
+ * fills a record (common/compat/log/fault_record.h: reason, PC, LR, SP, the
  * exception frame of a HardFault, the running task, the time and a
  * message), keeps it in RAM that the start-up code leaves alone
  * (__uninitialized_ram) and the reason, PC and LR in the watchdog's scratch

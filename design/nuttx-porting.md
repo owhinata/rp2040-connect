@@ -134,10 +134,10 @@ UART, as in the Zephyr build, but nothing is written to it.
 ## Log (`dmesg`)
 
 The RAM log of the Zephyr build's `src/log_ram.c`, shared with the FreeRTOS build:
-`common/log/log_ram.c` on the ring, line prefix and rate limit of `common/log/log_ring.c`, with its
+`common/compat/log/log_ram.c` on the ring, line prefix and rate limit of `common/compat/log/log_ring.c`, with its
 NuttX part `nuttx/drivers/include/log_ram_os_impl.h` (the ring's section, the interrupt mask, the
 TIMER) and the syslog channel `nuttx/drivers/log/log_ram_syslog.c`; the `LOG_*` macros are
-`common/log/app_log.h` with its NuttX part `nuttx/drivers/include/app_log_os.h`.
+`common/compat/log/app_log.h` with its NuttX part `nuttx/drivers/include/app_log_os.h`.
 
 - An 8192-byte ring buffer in `.noinit` (the Zephyr build's has 4096 bytes; it was made larger
   so that a fatal error report fits from its first line). The startup code does not clear it, so
@@ -170,7 +170,7 @@ TIMER) and the syslog channel `nuttx/drivers/log/log_ram_syslog.c`; the `LOG_*` 
   ring. NuttX's `CONFIG_ARCH_STACKDUMP_MAX_LENGTH` only limits the dump of a stack that
   SP is not in, so it does not help here. The Zephyr build also restarts after a fatal error
   (`CONFIG_RESET_ON_FATAL_ERROR=y`; its RAM log is 4 KiB).
-- Sources use it the Zephyr way: `#include "app_log.h"` (`common/log/`; usable from
+- Sources use it the Zephyr way: `#include "app_log.h"` (`common/compat/log/`; usable from
   the kernel side, the board code and the applications, also in interrupt handlers), then per file
   `LOG_MODULE_REGISTER(name, LOG_LEVEL_INF)` (without a level: `CONFIG_LOG_DEFAULT_LEVEL`,
   default 3, or `LOG_LEVEL` if defined before the include), and `LOG_ERR()`, `LOG_WRN()`,
@@ -1312,7 +1312,7 @@ with the layer's NuttX implementation (`nuttx/drivers/compat/`; the Zephyr build
 | `common/drivers/i2c_dw/` | The I2C core: at the top `i2c_dw.c` (I2C0, and I2C1 with `CONFIG_I2C_DW_I2C1`, off by default); in `internal/` its definitions `i2c_dw.h`, `i2c_dw_registers.h`, `i2c_dw_rp2040.h` and its DMA reads `i2c_dw_rp2040_dma_priv.h`, with the DMA command words (the Zephyr build has the same function in patch 0003) (the file names of Zephyr's patched driver); in `include/` the declarations of the `i2c_dma` functions `i2c_dw_rp2040_dma.h`; in `port/` the headers of its boundaries, `i2c_dw_os.h` and, for the DMA reads, `i2c_dw_dma_os.h` (the NuttX and FreeRTOS builds use them; they are compiled without the prelude; the boundaries are described under "I2C0" in `nuttx/drivers/README.md`); the core's bindings in `port/nuttx/` (this build: `i2c_dw_os_impl.h`, `i2c_dw_instance.h`, the start `i2c_dw_controllers_rp2040.h` and the DMA part `i2c_dw_dma_os_rp2040.c`, built by `nuttx/drivers/i2c_dw/Make.defs`) and `port/freertos/` (the FreeRTOS build) |
 | `common/compat/` | the OS-independent part of the compatibility layer (the headers of Zephyr's API `zephyr/...`, among them the `i2c_dma` state `zephyr/drivers/i2c/i2c_dw_rp2040_dma.h`, which includes the I2C core's `common/drivers/i2c_dw/include/i2c_dw_rp2040_dma.h`, `zephyr_compat.h`, work items, RTIO, the block pool, the device list, `gpio0`, `net_mgmt`, the Wi-Fi requests, the sensors' default iodev) and the copies of Zephyr's libraries that the builds on the layer use (`sensor_shell_stream.c`, `sensor_shell.h`, `wifi_credentials.c`, `wifi_credentials_backend_settings.c`, `wifi_credentials_internal.h`), and boundary headers (`priorities.h`, `cpu_load.h`, `gpio_os.h`); the Zephyr build does not use it |
 | `common/shell/` | `subcmd.[ch]` (the subcommand tables), `zshell.c` (the handling of commands written with `<zephyr/shell/shell.h>`: word matching, wildcards, argument count checks, help) and its boundary to the OS, `zshell_os.h` (the NuttX build's part is `nuttx/apps/subcmd/zshell_os_impl.h`); compiled without the prelude; the Zephyr build does not use them. Also `i2c_dma_shell.c` (the `i2c_dma` command of the three builds, written on Zephyr's shell API; the NuttX build's `nuttx/apps/i2c_dma` builds it with the prelude), and `nina_shell.c` (the `nina` command of the Zephyr and FreeRTOS builds; the NuttX build has its own, `nuttx/apps/nina`) |
-| `common/log/` | `log_ring.[ch]` (the RAM log's ring, line prefix and rate limit), `app_log.h` (the `LOG_*` macros; the NuttX part is `nuttx/drivers/include/app_log_os.h`), `log_ram.c`, `log_ram.h` (the RAM log and the functions of the `LOG_*` macros, shared with the FreeRTOS build; the NuttX part is `nuttx/drivers/include/log_ram_os_impl.h`, the syslog channel `nuttx/drivers/log/log_ram_syslog.c`), `fault_record.[ch]` (the record of a fatal error: its format, CRC-32, the copy in the watchdog's scratch registers and its lines; only the FreeRTOS build uses it); the Zephyr build does not use it |
+| `common/compat/log/` | `log_ring.[ch]` (the RAM log's ring, line prefix and rate limit), `app_log.h` (the `LOG_*` macros; the NuttX part is `nuttx/drivers/include/app_log_os.h`), `log_ram.c`, `log_ram.h` (the RAM log and the functions of the `LOG_*` macros, shared with the FreeRTOS build; the NuttX part is `nuttx/drivers/include/log_ram_os_impl.h`, the syslog channel `nuttx/drivers/log/log_ram_syslog.c`), `fault_record.[ch]` (the record of a fatal error: its format, CRC-32, the copy in the watchdog's scratch registers and its lines; only the FreeRTOS build uses it); the Zephyr build does not use it |
 | `common/tests/` | the 37 tests of the files above and the checks against the Zephyr tree, `zephyr_copies` and `zephyr_sensor_shell_patched` (run by `common/tests/run.sh`, which the `host_tests.sh` of the three builds call first; the layer's `zephyr_rtio`, `zephyr_work` and `mqtt_min` on the fake kernel, the NINA core's `nina_proto`, `nina_sock`, `nina_wifi`, `nina_dns` and `nina_passthrough` on fakes of its boundaries defined by the tests, `nina_core_independent`, each core file compiled with the C library and its own headers only, `i2c_dw_public_headers`, the I2C core's `include/` compiled with that directory alone, and the LSM6DSO's `lsm6dso_core_independent` and `lsm6dso_public_headers`, the same for its core and its `include/`); `lsm6dso_stream` runs the core's stream `lsm6dso_stream.c` on the host's parts of its boundaries (`common/tests/lsm6dso_os_host/`) with fakes of the core's FIFO calls |
 | `common/tests/fakes/` | stand-ins for the Zephyr and ST headers the tests need (`zephyr/drivers/sensor.h`, `zephyr/drivers/sensor_clock.h`, `zephyr/drivers/i2c.h`, `zephyr/rtio/rtio.h`, `lsm6dso_reg.h`) |
 | `common/tests/zephyr_fakes/` | the compatibility layer's fake kernel: the OS headers (`zephyr_os.h`, `zephyr_os_spinlock.h`, `zephyr_os_atomic.h`, `priorities_os.h`, `zephyr/sys/__assert.h`) and their functions (`zephyr_kernel_host.[ch]`: one thread; the test runs the work queues and fires the timers); the NuttX build's tests use it too |
@@ -1357,11 +1357,11 @@ host test.
 `common/tests/cpu_load.c` and `common/tests/log_ring.c` test shared parts that the Zephyr
 build does not use. The first compares the arithmetic of `common/compat/cpu_load.h` with the
 steps of Zephyr's `cpu_load_get_cpu()` (reset, an open window, zero time, rounding down). The second compares
-`common/log/log_ring.c` with the byte-by-byte store of the Zephyr build's `log_ram.c`
+`common/compat/log/log_ring.c` with the byte-by-byte store of the Zephyr build's `log_ram.c`
 over 20,000 random writes, compares the line prefix with the time arithmetic of Zephyr's
 `log_output.c` for 200,000 random values, and checks the `dmesg` pieces (skipping what is
 overwritten, stopping at 8192 bytes) and the rate limit. `common/tests/log_ram.c` runs
-`common/log/log_ram.c` on a host part of its boundary (`common/tests/log_ram_os_host/`): the lines
+`common/compat/log/log_ram.c` on a host part of its boundary (`common/tests/log_ram_os_host/`): the lines
 of the `LOG_*` macros (prefix, levels, function name, the cut at 192 bytes), raw bytes, the check at
 the start, the rate limit on the clock and the interrupt mask around every access.
 

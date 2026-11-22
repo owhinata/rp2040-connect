@@ -6,7 +6,7 @@
 # but not registered as a builtin: the shell cannot start a second init.
 # It uses nshlib's internal headers (nsh.h, nsh_console.h) to run an nsh
 # session without the login greeting (see rp2040_init.c).  app_log.h comes
-# from common/log and priorities.h from common/compat, their NuttX parts
+# from common/compat/log and priorities.h from common/compat, their NuttX parts
 # (app_log_os.h, priorities_os.h) from nuttx/drivers/include
 # ($(TOPDIR)/external/include).
 # It starts the NINA's Wi-Fi threads (nina_net.h of common/drivers/nina/port/nuttx)
@@ -27,7 +27,7 @@ CSRCS = rp2040_init.c rp2040_telnet.c
 
 CFLAGS += ${INCDIR_PREFIX}$(APPDIR)$(DELIM)nshlib
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)include
-CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)log
+CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)compat$(DELIM)log
 CFLAGS += ${INCDIR_PREFIX}$(APPDIR)$(DELIM)external$(DELIM)imu
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)compat
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)compat

@@ -38,7 +38,7 @@
 # (common/compat/subsys/settings/include: <settings/settings_nvs.h>;
 # common/compat/subsys/settings/src: settings_priv.h for
 # kv_store_wipe.c), the port's shared headers (common/compat:
-# priorities.h, cpu_load.h, nano_flash_kv.h, kv_store_os.h; common/log:
+# priorities.h, cpu_load.h, nano_flash_kv.h, kv_store_os.h; common/compat/log:
 # app_log.h; their NuttX parts in $(TOPDIR)/external/include), common/imu
 # (the LSM6DSO driver's <zephyr/drivers/sensor/lsm6dso.h>, which the
 # service reads, is common/compat's), and
@@ -53,7 +53,7 @@ KV_ZEPHYR_CSRCS = settings.c settings_store.c settings_init.c settings_nvs.c nvs
 CSRCS += $(KV_ZEPHYR_CSRCS)
 
 CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)include
-CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)log
+CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)compat$(DELIM)log
 CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)compat
 CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)compat
 CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)compat$(DELIM)subsys$(DELIM)settings$(DELIM)include

@@ -17,7 +17,7 @@
 #   OS-independent part that links at this stage (common/compat:
 #   zephyr_init.c, on the kernel part's start of a thread, right after it;
 #   zephyr_work.c, zephyr_rtio.c, zephyr_rtio_workq.c, zephyr_mem_blocks.c);
-# - the RAM log (common/log/log_ram.c, on common/log/log_ring.c and the
+# - the RAM log (common/compat/log/log_ram.c, on common/compat/log/log_ring.c and the
 #   FreeRTOS part of its boundary, freertos/drivers/include/log_ram_os_impl.h)
 #   and "dmesg" (common/shell/dmesg_shell.c);
 # - the shell (freertos/drivers/shell: consoles, the stdio of each task, the
@@ -61,7 +61,7 @@
 #   common/compat/shell_engine, freertos/drivers/include (app_log_os.h,
 #   log_ram_os_impl.h), common/compat/libc_net/include
 #   (headers newlib does not have, so none hides one of newlib's),
-#   common/compat (the Zephyr headers), common/log and common/shell;
+#   common/compat (the Zephyr headers), common/compat/log and common/shell;
 # - the definitions every source sees: Z_SHELL_CMD_ROOT_GLOBAL (a
 #   SHELL_CMD_REGISTER() makes the root z_shell_root_<syntax> for the
 #   application's table, nano_shell.h), CONFIG_GETOPT_LONG=1 (Zephyr's
@@ -100,7 +100,7 @@ function(freertos_zephyr_compat target)
 
   # The RAM log and "dmesg", linked where the FreeRTOS build's own file was.
   set(common_log_sources
-    ${FREERTOS_COMMON_DIR}/log/log_ram.c
+    ${FREERTOS_COMMON_DIR}/compat/log/log_ram.c
     ${FREERTOS_COMMON_DIR}/shell/dmesg_shell.c
   )
 
@@ -109,7 +109,7 @@ function(freertos_zephyr_compat target)
     ${FREERTOS_COMMON_DIR}/compat/zephyr_rtio.c
     ${FREERTOS_COMMON_DIR}/compat/zephyr_rtio_workq.c
     ${FREERTOS_COMMON_DIR}/compat/zephyr_mem_blocks.c
-    ${FREERTOS_COMMON_DIR}/log/log_ring.c
+    ${FREERTOS_COMMON_DIR}/compat/log/log_ring.c
     ${FREERTOS_COMMON_DIR}/shell/zshell.c
     ${FREERTOS_COMMON_DIR}/shell/subcmd.c
   )
@@ -171,7 +171,7 @@ function(freertos_zephyr_compat target)
     ${FREERTOS_DRIVERS_DIR}/include
     ${FREERTOS_LIBC_NET_DIR}/include
     ${FREERTOS_COMMON_DIR}/compat
-    ${FREERTOS_COMMON_DIR}/log
+    ${FREERTOS_COMMON_DIR}/compat/log
     ${FREERTOS_COMMON_DIR}/shell
     ${FREERTOS_COMMON_DIR}/compat/lib/utils/getopt
   )

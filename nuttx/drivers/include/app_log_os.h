@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-/* The NuttX part of the logging macros (common/log/app_log.h, which
+/* The NuttX part of the logging macros (common/compat/log/app_log.h, which
  * includes this header first): the configuration (CONFIG_LOG_*_LEVEL) and
  * <syslog.h>.
  *
@@ -8,7 +8,7 @@
  * macro, so a file that includes app_log.h cannot use syslog(LOG_ERR, ...);
  * it can use APP_LOG_SYSLOG_ERR instead.
  *
- * The functions of app_log.h are in common/log/log_ram.c (its NuttX part:
+ * The functions of app_log.h are in common/compat/log/log_ram.c (its NuttX part:
  * log_ram_os_impl.h here).
  * Shared by the kernel side (nuttx/drivers, the board code) and the
  * applications: $(TOPDIR)/external/include.

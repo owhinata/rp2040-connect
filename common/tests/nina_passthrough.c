@@ -10,7 +10,7 @@
  * nuttx/tests/nina_passthrough.c).
  *
  * - The request: the words, every bit of them, and the fatal error record
- *   of the same registers (common/log/fault_record.c): neither is taken
+ *   of the same registers (common/compat/log/fault_record.c): neither is taken
  *   for the other; nina_passthrough_check() without and with the request
  *   (cleared at once), nina_passthrough_request() (the words, then the
  *   restart).

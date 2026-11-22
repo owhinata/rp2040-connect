@@ -9,7 +9,7 @@
  * PC and LR in the watchdog's scratch registers 0..3, restarts, and shows it
  * after the restart ("fault" and the banner).  The record's lines are
  * written one at a time (fault_record_line()) so the RAM log can take them
- * as well (common/log/log_ring.c).
+ * as well (common/compat/log/log_ring.c).
  *
  * The Zephyr build (CONFIG_RESET_ON_FATAL_ERROR) and the NuttX build
  * (CONFIG_BOARD_RESET_ON_ASSERT) write their report into the RAM log

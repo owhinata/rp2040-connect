@@ -71,7 +71,7 @@ add_executable(usb-console
   src/idle.c
   src/irq_stack.c
   src/tick.c
-  ${COMMON_DIR}/log/fault_record.c
+  ${COMMON_DIR}/compat/log/fault_record.c
 )
 
 if(SELFTEST)
@@ -96,13 +96,13 @@ freertos_sensor_shell(usb-console)
 
 # FreeRTOSConfig.h; priorities_os.h (src/, which FreeRTOSConfig.h includes);
 # priorities.h and cpu_load.h (common/compat);
-# fault_record.h (common/log); the RP2040's code that no OS owns
+# fault_record.h (common/compat/log); the RP2040's code that no OS owns
 # (common/chip/rp2040/include: rp2040_timer_us.h, which src/os_clock.h reads).
 target_include_directories(usb-console PRIVATE
   ${CMAKE_CURRENT_LIST_DIR}
   ${CMAKE_CURRENT_LIST_DIR}/src
   ${COMMON_DIR}/compat
-  ${COMMON_DIR}/log
+  ${COMMON_DIR}/compat/log
   ${COMMON_DIR}/chip/rp2040/include
 )
 

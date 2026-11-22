@@ -85,7 +85,7 @@ lnet=../common/compat/libc_net
 seng=../common/compat/shell_engine
 kgen=../common/compat/kernel_generic
 inc=(-Itests/compat -Iapp/usb-console/src -Idrivers/compat -I"$kgen" -I"$noff/include" -Idrivers/include
-     -I../common/compat -I../common/log -I"$kernel/include" -I"$posix" -I"$posix/utils")
+     -I../common/compat -I../common/compat/log -I"$kernel/include" -I"$posix" -I"$posix/utils")
 flags=(-std=gnu11 -O2 -g -pthread)
 strict=(-Wall -Wextra -Werror)
 
