@@ -3,8 +3,8 @@
  * section_end.incl for symbols and checks of the application), replaced
  * for the FreeRTOS build (freertos/drivers/kv/kv.cmake): the bounds of the
  * key-value area, the last 8 KiB of the 16 MiB flash
- * (common/compat/nano_flash_kv.h), and the checks that the image ends
- * before it.  nano_flash_kv_initialize() (freertos/drivers/kv) compares
+ * (common/compat/flash_kv.h), and the checks that the image ends
+ * before it.  flash_kv_os_initialize() (freertos/drivers/kv) compares
  * __kv_start and __kv_end with its constants at the start and refuses
  * every erase and program unless they agree.
  *

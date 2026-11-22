@@ -65,6 +65,10 @@
 #  include "zephyr_compat.h"
 #endif
 
+#ifdef CONFIG_RP2040_FLASH_KV
+#  include "flash_kv_os.h"
+#endif
+
 #ifdef CONFIG_ARCH_BOARD_COMMON
 #include "rp2040_common_bringup.h"
 #endif /* CONFIG_ARCH_BOARD_COMMON */
@@ -259,7 +263,7 @@ int rp2040_bringup(void)
    * SYS_INIT; main()'s kv_store_init()).
    */
 
-  ret = nano_flash_kv_initialize();
+  ret = flash_kv_os_initialize();
   if (ret < 0)
     {
       result = ret;

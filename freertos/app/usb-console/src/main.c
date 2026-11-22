@@ -20,7 +20,7 @@
 #include "fault.h"
 #include "i2c_dw_controllers_rp2040.h"
 #include "log_ram.h"
-#include "nano_flash_kv_os.h"
+#include "flash_kv_os.h"
 #include "lsm6dso_board.h"
 #include "nina_passthrough.h"
 #include "shell_serial.h"
@@ -233,7 +233,7 @@ int main(void)
 	 * (freertos/drivers/kv).  After I2C0, where the NuttX build's bringup
 	 * checks its flash; the store itself is mounted by the task "main".
 	 */
-	(void)nano_flash_kv_initialize();
+	(void)flash_kv_os_initialize();
 
 	xTaskCreateStatic(main_main, "main", MAIN_STACK_SIZE, NULL, MAIN_PRIORITY, main_stack,
 			  &main_tcb);

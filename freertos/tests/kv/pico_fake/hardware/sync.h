@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: MIT */
-/* The Pico SDK's <hardware/sync.h> as nano_flash_kv.c uses it, for its host
+/* The Pico SDK's <hardware/sync.h> as flash_kv_os_rp2040.c uses it, for its host
  * test: the interrupt mask is a variable of the test (main.c), 1 while the
  * "interrupts" are off, as PRIMASK.
  */

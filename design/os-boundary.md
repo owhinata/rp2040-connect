@@ -206,7 +206,7 @@ lost ticks, `freertos/app/usb-console/src/tick.c`), which are not primitives of 
 | Log, OS part | `common/compat/log/app_log.h` | `app_log_os.h` (OS headers first, optional `CONFIG_LOG_DEFAULT_LEVEL`, `CONFIG_LOG_MAX_LEVEL`); `app_log_printf()`, `app_log_vprintf()`, `app_log_ratelimit_pass()` | `LOG_*()` macros | `nuttx/drivers/include/app_log_os.h`; the functions shared: `common/compat/log/log_ram.c` | `freertos/drivers/include/app_log_os.h`; shared: same |
 | RAM log | `common/compat/log/log_ram.h` | `log_ram_initialize()`, `log_ram_store()` (the OS's own log, raw bytes), `log_ram_piece()` | start-up; the OS's log; `dmesg` | shared `common/compat/log/log_ram.c`; called by `N-board/src/rp2040_boardinitialize.c`, `nuttx/drivers/log/log_ram_syslog.c`, `nuttx/apps/dmesg/dmesg_main.c` | shared: same; called by `main()`, `common/shell/dmesg_shell.c` (`log_ram_store()` unused) |
 | RAM log, OS part | `common/compat/log/log_ram_os.h` (`log_ram.c` reads `"log_ram_os_impl.h"` first) | `LOG_RAM_OS_RETAINED(name)` (the ring in RAM the start-up code leaves alone), type `log_ram_os_irqstate_t`; inline `log_ram_os_irq_save()`, `_irq_restore()` (the lock: interrupts masked, any context), `_uptime_us()` (time stamp and rate limit), `_attach()` (make it the OS's own log) | `common/compat/log/log_ram.c` | `nuttx/drivers/include/log_ram_os_impl.h`: `.noinit`, `up_irq_save()`, `rp2040_timer_us()`, registers the syslog channel (`nuttx/drivers/log/log_ram_syslog.c`) | `freertos/drivers/include/log_ram_os_impl.h`: `__uninitialized_ram`, `save_and_disable_interrupts()`, `rp2040_timer_us()` of `os_clock.h`, nothing to attach; host `common/tests/log_ram_os_host/` |
-| KV flash | `common/compat/nano_flash_kv.h` | `nano_flash_kv_os_ready()`, `_read()`, `_program()` (256-byte page), `_erase()` (4 KiB sector); range checked again by the OS | `common/compat/zephyr_flash_kv.c` | `N-board/src/nano_flash_kv.c` | `freertos/drivers/kv/nano_flash_kv.c` |
+| KV flash | `common/compat/flash_kv_os.h` (the area's constants and the checks in `flash_kv.h`) | `flash_kv_os_initialize()` (once, by the start-up), `flash_kv_os_ready()`, `_read()`, `_program()` (256-byte page), `_erase()` (4 KiB sector); range checked again by the OS | `common/compat/zephyr_flash_kv.c`; the start-up | `N-board/src/rp2040_flash_kv_os.c`; called by `rp2040_bringup.c` | `freertos/drivers/kv/flash_kv_os_rp2040.c`; called by `main()` |
 | KV wipe command | `common/compat/kv_store_os.h` | `kv_store_wipe()`, `kv_store_cmd_wipe()`, `KV_STORE_OS_COMMANDS` | `common/imu/kv_store.c` | shared: `common/compat/kv_store_wipe.c` | shared: same |
 | GPIO bank 0 | `common/compat/gpio_os.h` | OS: `gpio_os_configure_input()`, `gpio_os_get_all()`, `gpio_os_irq_configure()`; layer: `gpio_os_irq_handler()` (called from the bank interrupt) | `common/compat/zephyr_gpio.c`; N also `common/drivers/nina/port/nuttx/nina_os.c` | `N-board/src/rp2040_gpio_os.c` | `freertos/drivers/compat/rp2040/gpio_os_rp2040.c` |
 | CPU load | `common/compat/cpu_load.h` (with the arithmetic) | `cpu_load_get(reset)` in tenths of a percent, from idle windows of the TIMER | `common/imu/imu_stream.c` | `N-board/src/rp2040_idle_cpuload.c` | `freertos/app/usb-console/src/idle.c` |
@@ -253,7 +253,6 @@ headers are in `common/compat/net_offload/include`, which F puts after its OS di
 | `zephyr_compat_tick()` | `common/compat/kernel_generic/zephyr_compat_os.h` (generic kernel part) | — (wdog) | called by `vApplicationTickHook()`, `freertos/app/usb-console/src/tick.c` |
 | `zephyr_net_initialize()` | `common/compat/net_offload/include/zephyr_net_init.h` | — (`nina_net_initialize()` in `rp2040_bringup.c`, `common/drivers/nina/port/nuttx/nina_net.h`) | `common/compat/net_offload/zephyr_net_init.c` |
 | `hwinfo_get_device_id()` | `common/compat/zephyr/drivers/hwinfo.h` | `nuttx/drivers/compat/zephyr_hwinfo.c` | `freertos/drivers/compat/rp2040/zephyr_hwinfo.c` |
-| `nano_flash_kv_initialize()` | per OS | `N-board/src/rp2040_pico.h`, `nano_flash_kv.c`; called by `rp2040_bringup.c` | `freertos/drivers/kv/nano_flash_kv_os.h`, `nano_flash_kv.c`; called by `main()` |
 
 ### 4.3 Devices behind `DEVICE_DT_GET()`
 
@@ -331,7 +330,7 @@ is the steps before the application's start (the table below) and the calls of 1
 | I2C0, I2C1 | `i2c_dw_i2c0_initialize()`, `i2c_register()` in `rp2040_bringup()` | `i2c_dw_i2c0_initialize()`, `_i2c1_` in `main()` |
 | LSM6DSOX | after I2C0 in `rp2040_bringup()` | first in `main_main()` |
 | Network | `nina_net_initialize()` in `rp2040_bringup()` | `zephyr_net_initialize()` in `main_main()` |
-| KV flash bounds | `nano_flash_kv_initialize()` in `rp2040_bringup()` | `nano_flash_kv_initialize()` in `main()` |
+| KV flash bounds | `flash_kv_os_initialize()` in `rp2040_bringup()` | `flash_kv_os_initialize()` in `main()` |
 | Shell | `nsh_initialize()` in the init task, before 1 | the console's task (`shell_serial_start()`) in `main()` |
 | Application's start | 1, 3, Telnet (`rp2040_telnet_start()`, after the threads), 4 in the init task | 1, 2 (`wifi_shell_init()`, `shell_telnet_init()`), 3, 4 in `main_main()` |
 

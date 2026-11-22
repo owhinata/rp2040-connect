@@ -16,8 +16,8 @@
 # common/compat/zephyr_kv_config.h, and without -Wundef, since they test
 # unset options with #if as Zephyr does), the flash device and flash map of
 # the key-value area (common/compat/zephyr_flash_kv.c, on the board's
-# nano_flash_kv.c) and the hex conversions of the "kv" command (the copy
-# of Zephyr's lib/utils/hex.c, common/compat/lib/utils).  The Wi-Fi
+# rp2040_flash_kv_os.c) and the hex conversions of the "kv" command (the
+# copy of Zephyr's lib/utils/hex.c, common/compat/lib/utils).  The Wi-Fi
 # credentials (../wifi) use the same settings.
 #
 # The sources shared with the Zephyr build (imu_stream.c, imu_raw_*,
@@ -38,7 +38,7 @@
 # (common/compat/subsys/settings/include: <settings/settings_nvs.h>;
 # common/compat/subsys/settings/src: settings_priv.h for
 # kv_store_wipe.c), the port's shared headers (common/compat:
-# priorities.h, cpu_load.h, nano_flash_kv.h, kv_store_os.h; common/compat/log:
+# priorities.h, cpu_load.h, flash_kv.h, kv_store_os.h; common/compat/log:
 # app_log.h; their NuttX parts in $(TOPDIR)/external/include), common/imu
 # (the LSM6DSO driver's <zephyr/drivers/sensor/lsm6dso.h>, which the
 # service reads, is common/compat's), and

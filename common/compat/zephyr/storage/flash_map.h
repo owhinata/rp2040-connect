@@ -9,12 +9,12 @@
  *   flash controller of <zephyr/drivers/flash.h> (4096-byte sectors).
  *
  * flash_area_open() is where the port checks what the area holds before
- * NVS mounts it (zephyr_flash_kv.c, nano_flash_kv_layout()): data that is
+ * NVS mounts it (zephyr_flash_kv.c, flash_kv_layout()): data that is
  * neither Zephyr's NVS nor erased is logged once and the area is not
  * opened (-EILSEQ), so that the settings, and every key-value and Wi-Fi
  * credential call after them, fail without writing anything; the "kv
  * wipe" command erases it (kv_store_wipe.c).  Not in Zephyr, whose NVS
- * mounts whatever is there (see nano_flash_kv.h).  -ENODEV while the OS's
+ * mounts whatever is there (see flash_kv.h).  -ENODEV while the OS's
  * boundary is not ready (Zephyr: the flash device is not ready).  Part of
  * the small Zephyr compatibility layer of the port (common/compat).
  */

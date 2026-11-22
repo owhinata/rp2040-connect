@@ -53,15 +53,6 @@ void rp2040_chip_id_initialize(void);
 void rp2040_usbserial_initialize(void);
 #endif
 
-/* nano_flash_kv.c: the OS boundary of the key-value area
- * (common/compat/nano_flash_kv.h); from rp2040_bringup().
- */
-
-#ifdef CONFIG_RP2040_FLASH_KV
-int nano_flash_kv_initialize(void);
-#endif
-
-
 /* rp2040_oneshot.c: ALARM0 of the TIMER as a oneshot lower-half; from
  * up_timer_initialize() (rp2040_timerisr_alarm.c).
  */

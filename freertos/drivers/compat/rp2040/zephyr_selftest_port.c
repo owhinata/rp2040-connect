@@ -66,7 +66,7 @@ bool zephyr_selftest_port_realtime(void)
 }
 
 /* PRIMASK, as flash_safe_execute() masks them for a flash erase
- * (freertos/drivers/kv/nano_flash_kv.c).
+ * (freertos/drivers/kv/flash_kv_os_rp2040.c).
  */
 int zephyr_selftest_port_mask_irqs(uint32_t us)
 {

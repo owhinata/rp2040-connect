@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT
 # The key-value store of the FreeRTOS build and its "kv" command, on the
 # flash of the key-value area (the last 8 KiB of the 16 MiB flash,
-# common/compat/nano_flash_kv.h), in the Zephyr build's format.  include()
+# common/compat/flash_kv.h), in the Zephyr build's format.  include()
 # this file from the application's CMakeLists.txt, then call
 #
 #   freertos_kv(<target>)
@@ -16,7 +16,7 @@
 #   and the copies of Zephyr's settings and NVS (common/compat/subsys:
 #   settings.c, settings_store.c, settings_init.c, settings_nvs.c, nvs.c,
 #   crc8_sw.c), as the NuttX build has them (nuttx/apps/imu/Makefile);
-# - the boundary of the area on the Pico SDK (nano_flash_kv.c, with
+# - the boundary of the area on the Pico SDK (flash_kv_os_rp2040.c, with
 #   hardware_flash and pico_flash), and PICO_FLASH_ASSUME_CORE1_SAFE=1 for
 #   every source of the target, so that flash_safe_execute() only disables
 #   the interrupts (core 1 is not used; without it the call always fails on
@@ -24,7 +24,7 @@
 # - the linker script's parts (ld/, pico_add_linker_script_override_path()):
 #   the FLASH region ends where the area starts, the area's symbols
 #   __kv_start and __kv_end, and the check that the image ends before it;
-# - the include directories: this directory (nano_flash_kv_os.h),
+# - the include directories: this directory (flash_kv_os_rp2040.h),
 #   common/imu (kv_store.h), the settings' own headers
 #   (<settings/settings_nvs.h>; settings_priv.h for kv_store_wipe.c).
 #
@@ -64,7 +64,7 @@ function(freertos_kv target)
   set(kv_nvs ${FREERTOS_COMMON_DIR}/compat/subsys/kvss/nvs/nvs.c)
 
   target_sources(${target} PRIVATE
-    ${FREERTOS_KV_DIR}/nano_flash_kv.c
+    ${FREERTOS_KV_DIR}/flash_kv_os_rp2040.c
     ${kv_common_sources}
     ${kv_zephyr_copies}
     ${kv_nvs}

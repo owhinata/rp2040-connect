@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: MIT */
-/* The Pico SDK's <hardware/regs/addressmap.h> as nano_flash_kv.c uses it,
+/* The Pico SDK's <hardware/regs/addressmap.h> as flash_kv_os_rp2040.c uses it,
  * for its host test: XIP_BASE as on the RP2040 (the linker symbols are
  * compared with it), and the uncached XIP alias placed so that the area's
  * flash offsets 0xffe000-0xffffff read the test's RAM copy of the area

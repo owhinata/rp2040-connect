@@ -216,9 +216,9 @@ run fault_record "${flags[@]}" -Icompat/log tests/fault_record.c compat/log/faul
 # The hexadecimal conversions of the "kv" command (compat/lib/utils/hex.c, the copy of Zephyr's
 # lib/utils/hex.c).
 run hex "${flags[@]}" -Icompat tests/hex.c compat/lib/utils/hex.c
-# The key-value area's helpers (compat/nano_flash_kv.h): range checks, page writes, the check of
+# The key-value area's helpers (compat/flash_kv.h): range checks, page writes, the check of
 # what the area holds (Zephyr's NVS, the NuttX build's earlier format, erased, other).
-run nano_flash_kv "${flags[@]}" -Icompat tests/nano_flash_kv.c
+run flash_kv "${flags[@]}" -Icompat tests/flash_kv.c
 # The key-value store (imu/kv_store.c, the Zephyr build's) on the copies of Zephyr's settings and
 # NVS (compat/subsys, built as they are, without warnings, with the Zephyr build's Kconfig values
 # of compat/zephyr_kv_config.h), the flash device and map of the area (compat/zephyr_flash_kv.c)

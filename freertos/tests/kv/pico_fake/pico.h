@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: MIT */
-/* The part of the Pico SDK that freertos/drivers/kv/nano_flash_kv.c uses,
+/* The part of the Pico SDK that freertos/drivers/kv/flash_kv_os_rp2040.c uses,
  * for its host test (freertos/tests/kv/main.c, which implements the
  * functions): the board's flash size and the SDK's result codes.  The
  * hardware/ and pico/ headers next to this one are the test's as well.

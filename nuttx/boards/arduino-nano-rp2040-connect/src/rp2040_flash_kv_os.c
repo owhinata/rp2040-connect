@@ -1,5 +1,5 @@
 /****************************************************************************
- * boards/arduino-nano-rp2040-connect/src/nano_flash_kv.c
+ * boards/arduino-nano-rp2040-connect/src/rp2040_flash_kv_os.c
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -20,7 +20,7 @@
  *
  ****************************************************************************/
 
-/* The OS boundary of the key-value area (common/compat/nano_flash_kv.h):
+/* The OS boundary of the key-value area (common/compat/flash_kv_os.h):
  * reads, 256-byte page programs and 4 KiB sector erases of the last 8 KiB
  * of the 16 MiB flash (0x10ffe000-0x10ffffff, two sectors), the place of
  * the Zephyr build's storage_partition.  The copies of Zephyr's NVS and
@@ -33,14 +33,14 @@
  *
  * Safety: an erase or a program outside the area would destroy the
  * firmware.  Every request is checked three times before the flash is
- * touched: in zephyr_flash_kv.c (against the constants of
- * nano_flash_kv.h), here (nano_kv_range_ok() against the board.h
- * constants and against the bounds taken from the linker script), and
- * again in the RAM function itself right before the boot ROM is called.
+ * touched: in zephyr_flash_kv.c (against the constants of flash_kv.h),
+ * here (flash_kv_range_ok() against the board.h constants and against the
+ * bounds taken from the linker script), and again in the RAM function
+ * itself right before the boot ROM is called.
  * The bounds are set only after the linker symbols __kv_start/__kv_end
  * have been found equal to the constants and the image found to end
  * before the area; until then every request is refused and
- * nano_flash_kv_os_ready() is false.
+ * flash_kv_os_ready() is false.
  *
  * Erasing and programming stop XIP, so they run from RAM with interrupts
  * disabled: the boot ROM's connect_internal_flash, flash_exit_xip,
@@ -74,14 +74,15 @@
 
 #include "app_log.h"
 #include "rp2040_pico.h"
-#include "nano_flash_kv.h"
+#include "flash_kv.h"
+#include "flash_kv_os.h"
 
 /****************************************************************************
  * Pre-processor Definitions
  ****************************************************************************/
 
 #ifdef CONFIG_SMP
-#  error "nano_flash_kv.c does not stop the other core while XIP is off"
+#  error "rp2040_flash_kv_os.c does not stop the other core while XIP is off"
 #endif
 
 #define KV_XIP_BASE          0x10000000u
@@ -93,7 +94,7 @@
 #define KV_LO                ((uint32_t)BOARD_KV_OFFSET)
 #define KV_HI                ((uint32_t)(BOARD_KV_OFFSET + BOARD_KV_SIZE))
 
-#if BOARD_KV_OFFSET != NANO_KV_OFFSET || BOARD_KV_SIZE != NANO_KV_SIZE || \
+#if BOARD_KV_OFFSET != FLASH_KV_OFFSET || BOARD_KV_SIZE != FLASH_KV_SIZE || \
     BOARD_KV_OFFSET + BOARD_KV_SIZE != BOARD_FLASH_SIZE
 #  error "the key-value area must be the last two 4 KiB sectors"
 #endif
@@ -147,7 +148,7 @@ LOG_MODULE_REGISTER(flash_kv, LOG_LEVEL_INF);
 
 static struct kv_rom_s g_kv_rom;
 static uint32_t g_kv_boot2[KV_BOOT2_SIZE / 4];
-static uint8_t g_kv_page[NANO_KV_PAGE_SIZE] aligned_data(4);
+static uint8_t g_kv_page[FLASH_KV_PAGE_SIZE] aligned_data(4);
 
 /* The area's bounds as flash offsets once the linker script has been
  * checked; 0 and 0 refuse everything.
@@ -222,13 +223,13 @@ kv_flash_op(uint32_t addr, FAR const uint8_t *page, uint32_t count)
 
 static int kv_flash(uint32_t addr, FAR const uint8_t *page, uint32_t count)
 {
-  uint32_t align = page != NULL ? NANO_KV_PAGE_SIZE : NANO_KV_SECTOR_SIZE;
+  uint32_t align = page != NULL ? FLASH_KV_PAGE_SIZE : FLASH_KV_SECTOR_SIZE;
   irqstate_t flags;
   int ret;
 
   if (count != align ||
-      !nano_kv_range_ok(addr, count, KV_LO, KV_HI, align) ||
-      !nano_kv_range_ok(addr, count, g_kv_lo, g_kv_hi, align))
+      !flash_kv_range_ok(addr, count, KV_LO, KV_HI, align) ||
+      !flash_kv_range_ok(addr, count, g_kv_lo, g_kv_hi, align))
     {
       LOG_ERR("Refused flash %s at 0x%08lx, %lu bytes",
               page != NULL ? "write" : "erase", (unsigned long)addr,
@@ -248,24 +249,24 @@ static int kv_flash(uint32_t addr, FAR const uint8_t *page, uint32_t count)
  ****************************************************************************/
 
 /****************************************************************************
- * Name: nano_flash_kv_os_ready, nano_flash_kv_os_read,
- *       nano_flash_kv_os_program, nano_flash_kv_os_erase
+ * Name: flash_kv_os_ready, flash_kv_os_read,
+ *       flash_kv_os_program, flash_kv_os_erase
  *
  * Description:
- *   The boundary of common/compat/nano_flash_kv.h.  The program copies
+ *   The boundary of common/compat/flash_kv_os.h.  The program copies
  *   the page into RAM first: the caller's page may be anywhere, and the
  *   ROM reads it while XIP is off.
  *
  ****************************************************************************/
 
-bool nano_flash_kv_os_ready(void)
+bool flash_kv_os_ready(void)
 {
   return g_kv_lo != 0;
 }
 
-int nano_flash_kv_os_read(uint32_t offset, FAR void *buf, uint32_t len)
+int flash_kv_os_read(uint32_t offset, FAR void *buf, uint32_t len)
 {
-  if (!nano_kv_range_ok(offset, len, KV_LO, KV_HI, 1))
+  if (!flash_kv_range_ok(offset, len, KV_LO, KV_HI, 1))
     {
       LOG_ERR("Refused flash read at 0x%08lx, %lu bytes",
               (unsigned long)offset, (unsigned long)len);
@@ -277,20 +278,20 @@ int nano_flash_kv_os_read(uint32_t offset, FAR void *buf, uint32_t len)
   return OK;
 }
 
-int nano_flash_kv_os_program(uint32_t page_offset,
-                             FAR const uint8_t page[NANO_KV_PAGE_SIZE])
+int flash_kv_os_program(uint32_t page_offset,
+                        FAR const uint8_t page[FLASH_KV_PAGE_SIZE])
 {
-  memcpy(g_kv_page, page, NANO_KV_PAGE_SIZE);
-  return kv_flash(page_offset, g_kv_page, NANO_KV_PAGE_SIZE);
+  memcpy(g_kv_page, page, FLASH_KV_PAGE_SIZE);
+  return kv_flash(page_offset, g_kv_page, FLASH_KV_PAGE_SIZE);
 }
 
-int nano_flash_kv_os_erase(uint32_t sector_offset)
+int flash_kv_os_erase(uint32_t sector_offset)
 {
-  return kv_flash(sector_offset, NULL, NANO_KV_SECTOR_SIZE);
+  return kv_flash(sector_offset, NULL, FLASH_KV_SECTOR_SIZE);
 }
 
 /****************************************************************************
- * Name: nano_flash_kv_initialize
+ * Name: flash_kv_os_initialize
  *
  * Description:
  *   Check the linker script, find the boot ROM's flash functions and copy
@@ -303,7 +304,7 @@ int nano_flash_kv_os_erase(uint32_t sector_offset)
  *
  ****************************************************************************/
 
-int nano_flash_kv_initialize(void)
+int flash_kv_os_initialize(void)
 {
   uintptr_t image_end = (uintptr_t)_eronly +
                         (uintptr_t)(_edata - _sdata);

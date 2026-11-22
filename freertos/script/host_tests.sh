@@ -176,7 +176,7 @@ else
 fi
 printf 'ok  shell (two sessions, generic commands, serial session, FreeRTOS POSIX port)\n'
 
-# The key-value store (freertos/tests/kv): the board's flash boundary (drivers/kv/nano_flash_kv.c)
+# The key-value store (freertos/tests/kv): the board's flash boundary (drivers/kv/flash_kv_os_rp2040.c)
 # on fakes of the Pico SDK's flash functions (tests/kv/pico_fake), under the shared store as the
 # board builds it (common/imu/kv_store.c, kv_store_wipe.c, zephyr_flash_kv.c, the copies of
 # Zephyr's settings, NVS and hex.c with their options, drivers/kv/kv.cmake), on the same kernel
@@ -186,7 +186,7 @@ kvinc=(-D_GNU_SOURCE -DPICO_FLASH_ASSUME_CORE1_SAFE=1 -DZ_SHELL_CMD_ROOT_GLOBAL 
        -I../common/compat/subsys/settings/src -ffunction-sections -fdata-sections)
 kvconfig=(-include ../common/compat/zephyr_kv_config.h -Wno-undef)
 kvobjs=()
-for src in drivers/kv/nano_flash_kv.c tests/kv/main.c ../common/imu/kv_store.c \
+for src in drivers/kv/flash_kv_os_rp2040.c tests/kv/main.c ../common/imu/kv_store.c \
            ../common/compat/kv_store_wipe.c ../common/compat/zephyr_flash_kv.c \
            ../common/compat/lib/utils/hex.c ../common/compat/subsys/settings/src/settings.c \
            ../common/compat/subsys/settings/src/settings_store.c \

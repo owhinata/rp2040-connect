@@ -198,7 +198,7 @@ F のポートのヘッダーには、tick のフックの `z_os_tick_now_us32()
 | ログの OS 部分 | `common/compat/log/app_log.h` | `app_log_os.h`（OS のヘッダーを先に、任意の `CONFIG_LOG_DEFAULT_LEVEL`・`CONFIG_LOG_MAX_LEVEL`）、`app_log_printf()`、`app_log_vprintf()`、`app_log_ratelimit_pass()` | `LOG_*()` マクロ | `nuttx/drivers/include/app_log_os.h`。関数は共有の `common/compat/log/log_ram.c` | `freertos/drivers/include/app_log_os.h`。関数は共有（同じ） |
 | RAM ログ | `common/compat/log/log_ram.h` | `log_ram_initialize()`、`log_ram_store()`（OS 自身のログ。そのままのバイト）、`log_ram_piece()` | 起動、OS のログ、`dmesg` | 共有の `common/compat/log/log_ram.c`。呼ぶのは `N-board/src/rp2040_boardinitialize.c`、`nuttx/drivers/log/log_ram_syslog.c`、`nuttx/apps/dmesg/dmesg_main.c` | 共有（同じ）。呼ぶのは `main()`、`common/shell/dmesg_shell.c`（`log_ram_store()` は使わない） |
 | RAM ログの OS 部分 | `common/compat/log/log_ram_os.h`（`log_ram.c` が最初に `"log_ram_os_impl.h"` を読む） | `LOG_RAM_OS_RETAINED(name)`（起動のコードが触らない RAM にリングを置く）、型 `log_ram_os_irqstate_t`。inline の `log_ram_os_irq_save()`・`_irq_restore()`（ロック。割り込みを止める。どの文脈からでも）、`_uptime_us()`（時刻の印と頻度制限）、`_attach()`（OS 自身のログにする） | `common/compat/log/log_ram.c` | `nuttx/drivers/include/log_ram_os_impl.h`: `.noinit`、`up_irq_save()`、`rp2040_timer_us()`、syslog のチャネルを登録（`nuttx/drivers/log/log_ram_syslog.c`） | `freertos/drivers/include/log_ram_os_impl.h`: `__uninitialized_ram`、`save_and_disable_interrupts()`、`os_clock.h` の `rp2040_timer_us()`、登録するものなし。ホストは `common/tests/log_ram_os_host/` |
-| KV のフラッシュ | `common/compat/nano_flash_kv.h` | `nano_flash_kv_os_ready()`、`_read()`、`_program()`（256 バイトのページ）、`_erase()`（4 KiB のセクター）。範囲は OS がもう一度確かめる | `common/compat/zephyr_flash_kv.c` | `N-board/src/nano_flash_kv.c` | `freertos/drivers/kv/nano_flash_kv.c` |
+| KV のフラッシュ | `common/compat/flash_kv_os.h`（領域の定数と検査は `flash_kv.h`） | `flash_kv_os_initialize()`（起動の処理が 1 回）、`flash_kv_os_ready()`、`_read()`、`_program()`（256 バイトのページ）、`_erase()`（4 KiB のセクター）。範囲は OS がもう一度確かめる | `common/compat/zephyr_flash_kv.c`。起動の処理 | `N-board/src/rp2040_flash_kv_os.c`。`rp2040_bringup.c` が呼ぶ | `freertos/drivers/kv/flash_kv_os_rp2040.c`。`main()` が呼ぶ |
 | KV の消去のコマンド | `common/compat/kv_store_os.h` | `kv_store_wipe()`、`kv_store_cmd_wipe()`、`KV_STORE_OS_COMMANDS` | `common/imu/kv_store.c` | 共有: `common/compat/kv_store_wipe.c` | 共有: 同じ |
 | GPIO バンク 0 | `common/compat/gpio_os.h` | OS: `gpio_os_configure_input()`、`gpio_os_get_all()`、`gpio_os_irq_configure()`。互換層: `gpio_os_irq_handler()`（バンクの割り込みから呼ぶ） | `common/compat/zephyr_gpio.c`。N では `common/drivers/nina/port/nuttx/nina_os.c` も | `N-board/src/rp2040_gpio_os.c` | `freertos/drivers/compat/rp2040/gpio_os_rp2040.c` |
 | CPU 負荷 | `common/compat/cpu_load.h`（計算も） | `cpu_load_get(reset)`。0.1% 単位、TIMER で測ったアイドルの区間から | `common/imu/imu_stream.c` | `N-board/src/rp2040_idle_cpuload.c` | `freertos/app/usb-console/src/idle.c` |
@@ -245,7 +245,6 @@ Zephyr 版は自分の `zephyr/app/usb-console/src/kv_store_os.h` と `wifi_prof
 | `zephyr_compat_tick()` | `common/compat/kernel_generic/zephyr_compat_os.h`（汎用のカーネルの部分） | —（wdog） | `vApplicationTickHook()`（`freertos/app/usb-console/src/tick.c`）が呼ぶ |
 | `zephyr_net_initialize()` | `common/compat/net_offload/include/zephyr_net_init.h` | —（`rp2040_bringup.c` の `nina_net_initialize()`、`common/drivers/nina/port/nuttx/nina_net.h`） | `common/compat/net_offload/zephyr_net_init.c` |
 | `hwinfo_get_device_id()` | `common/compat/zephyr/drivers/hwinfo.h` | `nuttx/drivers/compat/zephyr_hwinfo.c` | `freertos/drivers/compat/rp2040/zephyr_hwinfo.c` |
-| `nano_flash_kv_initialize()` | 各版 | `N-board/src/rp2040_pico.h`、`nano_flash_kv.c`。`rp2040_bringup.c` が呼ぶ | `freertos/drivers/kv/nano_flash_kv_os.h`、`nano_flash_kv.c`。`main()` が呼ぶ |
 
 ### 4.3 `DEVICE_DT_GET()` の向こうのデバイス
 
@@ -321,7 +320,7 @@ F `freertos/app/usb-console/src/main.c`（`main()`、そのあとタスク `main
 | I2C0、I2C1 | `rp2040_bringup()` の `i2c_dw_i2c0_initialize()`、`i2c_register()` | `main()` の `i2c_dw_i2c0_initialize()`、`_i2c1_` |
 | LSM6DSOX | `rp2040_bringup()` の I2C0 のあと | `main_main()` の最初 |
 | ネットワーク | `rp2040_bringup()` の `nina_net_initialize()` | `main_main()` の `zephyr_net_initialize()` |
-| KV のフラッシュの範囲 | `rp2040_bringup()` の `nano_flash_kv_initialize()` | `main()` の `nano_flash_kv_initialize()` |
+| KV のフラッシュの範囲 | `rp2040_bringup()` の `flash_kv_os_initialize()` | `main()` の `flash_kv_os_initialize()` |
 | シェル | init タスクの `nsh_initialize()`（1 の前） | `main()` のコンソールのタスク（`shell_serial_start()`） |
 | アプリの起動 | init タスクで 1、3、Telnet（`rp2040_telnet_start()`、スレッドのあと）、4 | `main_main()` で 1、2（`wifi_shell_init()`、`shell_telnet_init()`）、3、4 |
 

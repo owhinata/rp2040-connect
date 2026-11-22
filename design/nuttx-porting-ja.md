@@ -178,7 +178,7 @@ syslog のチャネル `nuttx/drivers/log/log_ram_syslog.c`。`LOG_*` マクロ�
 
 - 構成: `kv_store.c` → Zephyr の settings（`settings_save_one()`・`settings_load_one()`・`settings_delete()`）→
   Zephyr の NVS → 互換層の flash デバイスと flash map（`common/compat/zephyr_flash_kv.c`）→ OS の境界
-  （`common/compat/nano_flash_kv.h` の 4 関数。NuttX ではボードの `src/nano_flash_kv.c`）。settings と NVS は
+  （`common/compat/flash_kv_os.h` の 5 関数。NuttX ではボードの `src/rp2040_flash_kv_os.c`）。settings と NVS は
   Zephyr v4.5.0 のソースを改変せずに写したもの（`common/compat/subsys/` ほか。一覧はドライバー説明の互換層の
   節）で、Zephyr 版の Kconfig の値（`common/compat/zephyr_kv_config.h`）でビルドします。
 - 形式（Zephyr 版の `.config` とデバイスツリーと同じ値）: NVS のセクターは 4096 バイト × 2
@@ -190,7 +190,7 @@ syslog のチャネル `nuttx/drivers/log/log_ram_syslog.c`。`LOG_*` マクロ�
   文字列、`imu.session` は 4 バイトのビッグエンディアン、資格情報は `struct wifi_credentials_personal` の
   224 バイト。この構造体の並びが Zephyr 版の ELF と同じことを、互換層の `<zephyr/net/wifi_credentials.h>` の
   `BUILD_ASSERT` で確かめます）。
-- 領域: ボードの `include/board.h`（`BOARD_KV_OFFSET`、`BOARD_KV_SIZE`）、`nano_flash_kv.h` の定数とリンカー
+- 領域: ボードの `include/board.h`（`BOARD_KV_OFFSET`、`BOARD_KV_SIZE`）、`flash_kv.h` の定数とリンカー
   スクリプト（`scripts/arduino-nano-rp2040-connect-flash.ld` の `__kv_start`、`__kv_end`。この領域はイメージの flash 領域から外して
   あり、`build.sh` もイメージの終端を確かめます）で決まります。読み出し・書き込み・消去のたびに、対象が
   この範囲に収まることを、互換層（定数）、ボード（`board.h` の定数と、起動時に一致を確かめたリンカー
@@ -1188,7 +1188,7 @@ Zephyr の NVS が書く最初の索引、`app_kv/imu.port` と `app_kv/imu.sess
 上限、再起動の後、整理（消去 10 回以上）、満杯（`-ENOSPC`、削除はできる）、別のデータ（乱数、1 バイトだけ
 書かれた領域、以前の NuttX 版の形式: 使わず、触れず、ログが 1 回、`kv wipe` の後に使える）、flash デバイスが
 領域の外を断ること、Zephyr の NVS そのものが両方のセクターの末尾が書かれた領域で `-EDEADLK` になること、
-電源断（上の「キーと値の保存」）。`nano_flash_kv` は `common/compat/nano_flash_kv.h` の範囲の検査を境界の前後と、
+電源断（上の「キーと値の保存」）。`flash_kv` は `common/compat/flash_kv.h` の範囲の検査を境界の前後と、
 flash の先頭と末尾 1 MiB のすべてのページ・消去単位で確かめ、ページ単位の書き込みを、ページ境界の前後の
 さまざまな位置と長さで、書いたバイトだけが変わることで確かめます。起動時の判定は、Zephyr の NVS の索引と
 NuttX の NVS の索引をそれぞれ受け付け、相手の形式の索引の並び（CRC がたまたま合うものを含む、それぞれ

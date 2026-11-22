@@ -21,7 +21,7 @@
 #include <zephyr/sys/util.h>
 
 #include "kv_store_os.h"
-#include "nano_flash_kv.h"
+#include "flash_kv.h"
 #include "settings_priv.h"
 
 /* settings_init.c */
@@ -32,7 +32,7 @@ int kv_store_wipe(void)
 	int ret, init;
 
 	settings_lock_take();
-	ret = nano_flash_kv_wipe();
+	ret = flash_kv_wipe();
 	/* Also after a failed erase: NVS must not keep its addresses into a
 	 * sector that may have been erased.
 	 */

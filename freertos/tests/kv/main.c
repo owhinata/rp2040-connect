@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MIT */
 /* The host test of the FreeRTOS build's key-value store on the FreeRTOS
  * POSIX port: the flash boundary of the board (freertos/drivers/kv/
- * nano_flash_kv.c) on fakes of the Pico SDK's flash functions
+ * flash_kv_os_rp2040.c) on fakes of the Pico SDK's flash functions
  * (pico_fake/, implemented here on a RAM copy of the 8 KiB area), under the
  * shared store as the board builds it (common/imu/kv_store.c,
  * common/compat/kv_store_wipe.c, zephyr_flash_kv.c, the copies of Zephyr's
@@ -50,8 +50,9 @@
 
 #include "kv_store.h"
 #include "kv_store_os.h"
-#include "nano_flash_kv.h"
-#include "nano_flash_kv_os.h"
+#include "flash_kv.h"
+#include "flash_kv_os.h"
+#include "flash_kv_os_rp2040.h"
 #include "priorities.h"
 #include "settings_priv.h"
 #include "zephyr_compat.h"
@@ -76,19 +77,19 @@ void vApplicationTickHook(void)
 /* settings_init.c */
 extern bool settings_subsys_initialized;
 
-/* The linker's symbols, which nano_flash_kv_initialize() would read; the
- * test calls nano_flash_kv_set_bounds() with its own values instead.
+/* The linker's symbols, which flash_kv_os_initialize() would read; the
+ * test calls flash_kv_os_rp2040_set_bounds() with its own values instead.
  */
 const uint8_t __kv_start[1];
 const uint8_t __kv_end[1];
 char __flash_binary_end;
 
-#define KV_XIP_START (0x10000000u + NANO_KV_OFFSET)
-#define KV_XIP_END   (0x10000000u + NANO_KV_END)
+#define KV_XIP_START (0x10000000u + FLASH_KV_OFFSET)
+#define KV_XIP_END   (0x10000000u + FLASH_KV_END)
 
 /* The fakes of the Pico SDK (pico_fake/) ---------------------------------*/
 
-uint8_t kv_test_flash[NANO_KV_SIZE];
+uint8_t kv_test_flash[FLASH_KV_SIZE];
 
 static uint32_t primask;
 static unsigned long programs, erases;
@@ -134,15 +135,15 @@ int flash_safe_execute(void (*func)(void *), void *param, uint32_t enter_exit_ti
 static void check_op(uint32_t offs, size_t count, uint32_t align)
 {
 	assert(primask == 1);
-	assert(offs >= NANO_KV_OFFSET && offs < NANO_KV_END);
+	assert(offs >= FLASH_KV_OFFSET && offs < FLASH_KV_END);
 	assert(count == align && offs % align == 0);
-	assert(count <= NANO_KV_END - offs);
+	assert(count <= FLASH_KV_END - offs);
 }
 
 void flash_range_erase(uint32_t flash_offs, size_t count)
 {
 	check_op(flash_offs, count, FLASH_SECTOR_SIZE);
-	memset(&kv_test_flash[flash_offs - NANO_KV_OFFSET], 0xff, count);
+	memset(&kv_test_flash[flash_offs - FLASH_KV_OFFSET], 0xff, count);
 	erases++;
 }
 
@@ -151,7 +152,7 @@ void flash_range_program(uint32_t flash_offs, const uint8_t *data, size_t count)
 	check_op(flash_offs, count, FLASH_PAGE_SIZE);
 	assert(data != last_caller_page);
 	for (size_t i = 0; i < count; i++) {
-		kv_test_flash[flash_offs - NANO_KV_OFFSET + i] &= data[i];
+		kv_test_flash[flash_offs - FLASH_KV_OFFSET + i] &= data[i];
 	}
 	programs++;
 }
@@ -243,7 +244,7 @@ static void expect_value(const char *key, const char *want)
 /* The boundary alone: refusals before the bounds and outside the area. */
 static void test_boundary(void)
 {
-	uint8_t page[NANO_KV_PAGE_SIZE], buf[16];
+	uint8_t page[FLASH_KV_PAGE_SIZE], buf[16];
 
 	memset(page, 0x00, sizeof(page));
 	last_caller_page = page;
@@ -252,47 +253,49 @@ static void test_boundary(void)
 	 * interrupts go off, which the log tells apart from the last one), the
 	 * store sees no device.
 	 */
-	assert(!nano_flash_kv_os_ready());
-	assert(nano_flash_kv_os_program(NANO_KV_OFFSET, page) == -EINVAL);
-	assert(nano_flash_kv_os_erase(NANO_KV_OFFSET) == -EINVAL);
+	assert(!flash_kv_os_ready());
+	assert(flash_kv_os_program(FLASH_KV_OFFSET, page) == -EINVAL);
+	assert(flash_kv_os_erase(FLASH_KV_OFFSET) == -EINVAL);
 	assert(strstr(log_buf, "Refused flash write at 0x00ffe000, 256 bytes") != NULL);
 	assert(strstr(log_buf, "Refused flash erase at 0x00ffe000, 4096 bytes") != NULL);
 	assert(strstr(log_buf, "with the interrupts off") == NULL);
 	assert(kv_store_init() == -ENODEV);
 
 	/* Wrong linker bounds. */
-	assert(nano_flash_kv_set_bounds(KV_XIP_START - 0x1000, KV_XIP_END, 0x10020000) == -EFAULT);
-	assert(nano_flash_kv_set_bounds(KV_XIP_START, KV_XIP_END - 1, 0x10020000) == -EFAULT);
-	assert(nano_flash_kv_set_bounds(KV_XIP_START, KV_XIP_END, KV_XIP_START + 1) == -EFAULT);
-	assert(nano_flash_kv_set_bounds(KV_XIP_START, KV_XIP_END, 0x10000000) == -EFAULT);
-	assert(!nano_flash_kv_os_ready());
-	assert(nano_flash_kv_os_erase(NANO_KV_OFFSET) == -EINVAL);
+	assert(flash_kv_os_rp2040_set_bounds(KV_XIP_START - 0x1000, KV_XIP_END, 0x10020000) ==
+	       -EFAULT);
+	assert(flash_kv_os_rp2040_set_bounds(KV_XIP_START, KV_XIP_END - 1, 0x10020000) == -EFAULT);
+	assert(flash_kv_os_rp2040_set_bounds(KV_XIP_START, KV_XIP_END, KV_XIP_START + 1) ==
+	       -EFAULT);
+	assert(flash_kv_os_rp2040_set_bounds(KV_XIP_START, KV_XIP_END, 0x10000000) == -EFAULT);
+	assert(!flash_kv_os_ready());
+	assert(flash_kv_os_erase(FLASH_KV_OFFSET) == -EINVAL);
 	assert(strstr(log_buf, "linker script disagrees") != NULL);
 
 	/* Right ones: the image may end right at the area. */
-	assert(nano_flash_kv_set_bounds(KV_XIP_START, KV_XIP_END, KV_XIP_START) == 0);
-	assert(nano_flash_kv_os_ready());
+	assert(flash_kv_os_rp2040_set_bounds(KV_XIP_START, KV_XIP_END, KV_XIP_START) == 0);
+	assert(flash_kv_os_ready());
 
 	/* Outside, across and unaligned. */
-	assert(nano_flash_kv_os_program(NANO_KV_OFFSET - NANO_KV_PAGE_SIZE, page) == -EINVAL);
-	assert(nano_flash_kv_os_program(NANO_KV_END, page) == -EINVAL);
-	assert(nano_flash_kv_os_program(NANO_KV_OFFSET + 1, page) == -EINVAL);
-	assert(nano_flash_kv_os_program(0, page) == -EINVAL);
-	assert(nano_flash_kv_os_program(UINT32_MAX - 0xff, page) == -EINVAL);
-	assert(nano_flash_kv_os_erase(NANO_KV_OFFSET - NANO_KV_SECTOR_SIZE) == -EINVAL);
-	assert(nano_flash_kv_os_erase(NANO_KV_END) == -EINVAL);
-	assert(nano_flash_kv_os_erase(NANO_KV_OFFSET + NANO_KV_PAGE_SIZE) == -EINVAL);
-	assert(nano_flash_kv_os_erase(0) == -EINVAL);
-	assert(nano_flash_kv_os_read(NANO_KV_OFFSET - 1, buf, 2) == -EINVAL);
-	assert(nano_flash_kv_os_read(NANO_KV_END - 1, buf, 2) == -EINVAL);
-	assert(nano_flash_kv_os_read(NANO_KV_OFFSET, buf, 0) == -EINVAL);
+	assert(flash_kv_os_program(FLASH_KV_OFFSET - FLASH_KV_PAGE_SIZE, page) == -EINVAL);
+	assert(flash_kv_os_program(FLASH_KV_END, page) == -EINVAL);
+	assert(flash_kv_os_program(FLASH_KV_OFFSET + 1, page) == -EINVAL);
+	assert(flash_kv_os_program(0, page) == -EINVAL);
+	assert(flash_kv_os_program(UINT32_MAX - 0xff, page) == -EINVAL);
+	assert(flash_kv_os_erase(FLASH_KV_OFFSET - FLASH_KV_SECTOR_SIZE) == -EINVAL);
+	assert(flash_kv_os_erase(FLASH_KV_END) == -EINVAL);
+	assert(flash_kv_os_erase(FLASH_KV_OFFSET + FLASH_KV_PAGE_SIZE) == -EINVAL);
+	assert(flash_kv_os_erase(0) == -EINVAL);
+	assert(flash_kv_os_read(FLASH_KV_OFFSET - 1, buf, 2) == -EINVAL);
+	assert(flash_kv_os_read(FLASH_KV_END - 1, buf, 2) == -EINVAL);
+	assert(flash_kv_os_read(FLASH_KV_OFFSET, buf, 0) == -EINVAL);
 
 	/* flash_safe_execute() fails, or leaves the interrupts on. */
 	safe_mode = 1;
-	assert(nano_flash_kv_os_erase(NANO_KV_OFFSET) == -EIO);
+	assert(flash_kv_os_erase(FLASH_KV_OFFSET) == -EIO);
 	safe_mode = 2;
-	assert(nano_flash_kv_os_erase(NANO_KV_OFFSET) == -EINVAL);
-	assert(nano_flash_kv_os_program(NANO_KV_OFFSET, page) == -EINVAL);
+	assert(flash_kv_os_erase(FLASH_KV_OFFSET) == -EINVAL);
+	assert(flash_kv_os_program(FLASH_KV_OFFSET, page) == -EINVAL);
 	assert(strstr(log_buf, "with the interrupts off") != NULL);
 	safe_mode = 0;
 	assert(programs == 0 && erases == 0 && all_erased());
@@ -301,16 +304,16 @@ static void test_boundary(void)
 	memset(page, 0xff, sizeof(page));
 	page[0] = 0x5a;
 	page[255] = 0x0f;
-	assert(nano_flash_kv_os_program(NANO_KV_END - NANO_KV_PAGE_SIZE, page) == 0);
+	assert(flash_kv_os_program(FLASH_KV_END - FLASH_KV_PAGE_SIZE, page) == 0);
 	page[0] = 0xa5;
 	page[255] = 0xf0;
-	assert(nano_flash_kv_os_program(NANO_KV_END - NANO_KV_PAGE_SIZE, page) == 0);
-	assert(nano_flash_kv_os_read(NANO_KV_END - NANO_KV_PAGE_SIZE, buf, 1) == 0);
+	assert(flash_kv_os_program(FLASH_KV_END - FLASH_KV_PAGE_SIZE, page) == 0);
+	assert(flash_kv_os_read(FLASH_KV_END - FLASH_KV_PAGE_SIZE, buf, 1) == 0);
 	assert(buf[0] == 0x00);
-	assert(nano_flash_kv_os_read(NANO_KV_END - 1, buf, 1) == 0);
+	assert(flash_kv_os_read(FLASH_KV_END - 1, buf, 1) == 0);
 	assert(buf[0] == 0x00);
 	assert(programs == 2);
-	assert(nano_flash_kv_os_erase(NANO_KV_END - NANO_KV_SECTOR_SIZE) == 0);
+	assert(flash_kv_os_erase(FLASH_KV_END - FLASH_KV_SECTOR_SIZE) == 0);
 	assert(erases == 1 && all_erased());
 	assert(primask == 0);
 	last_caller_page = NULL;
@@ -345,7 +348,7 @@ static void test_foreign(void)
 	out_buf[0] = '\0';
 	assert(kv_store_cmd_wipe(&sh, 2, confirm) == 0);
 	assert(strcmp(out_buf, "Erased\n") == 0);
-	assert(erases >= erased + NANO_KV_SECTORS);
+	assert(erases >= erased + FLASH_KV_SECTORS);
 	assert(kv_store_init() == 0);
 	assert(strstr(log_buf, "<inf> fs_nvs: 2 Sectors of 4096 bytes") != NULL);
 }

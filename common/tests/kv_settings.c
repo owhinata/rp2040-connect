@@ -366,11 +366,11 @@ static void boot_gc_after(void)
 	assert(buf[0] == (uint8_t)399);
 }
 
-static enum nano_kv_layout_e layout(void)
+static enum flash_kv_layout_e layout(void)
 {
-	enum nano_kv_layout_e l;
+	enum flash_kv_layout_e l;
 
-	assert(nano_flash_kv_layout(&l) == 0);
+	assert(flash_kv_layout(&l) == 0);
 	return l;
 }
 
@@ -378,7 +378,7 @@ static void test_gc(void)
 {
 	BOOT(boot_gc);
 	BOOT(boot_gc_after);
-	assert(layout() == NANO_KV_LAYOUT_NVS);
+	assert(layout() == FLASH_KV_LAYOUT_NVS);
 }
 
 /* A full store: -ENOSPC, and what was stored before stays. */
@@ -430,7 +430,7 @@ static void test_full(void)
 
 /* Data that is neither Zephyr's NVS nor erased. */
 
-static uint8_t before[NANO_KV_SIZE];
+static uint8_t before[FLASH_KV_SIZE];
 
 static void boot_foreign(void)
 {
@@ -523,7 +523,7 @@ static void nuttx_ate(uint8_t *s, uint32_t id, uint16_t offset, uint16_t len, ui
 	s[8] = key_len;
 	s[9] = key_len >> 8;
 	s[10] = data_crc8;
-	s[11] = nano_kv_nuttx_crc8(s, 11);
+	s[11] = flash_kv_nuttx_crc8(s, 11);
 }
 
 static void test_foreign(void)
@@ -531,19 +531,19 @@ static void test_foreign(void)
 	/* Random bytes everywhere (an OpenMV file system, say). */
 	kv_fake_init();
 	srand(7);
-	for (size_t i = 0; i < NANO_KV_SIZE; i++) {
+	for (size_t i = 0; i < FLASH_KV_SIZE; i++) {
 		kv_fake->flash[i] = (uint8_t)rand();
 	}
-	assert(layout() == NANO_KV_LAYOUT_FOREIGN);
+	assert(layout() == FLASH_KV_LAYOUT_FOREIGN);
 	memcpy(before, kv_fake->flash, sizeof(before));
 	BOOT(boot_foreign);
 	assert(memcmp(before, kv_fake->flash, sizeof(before)) == 0);
 	/* One stray byte in an erased area. */
 	kv_fake_init();
 	kv_fake->flash[1234] = 0x7f;
-	assert(layout() == NANO_KV_LAYOUT_FOREIGN);
+	assert(layout() == FLASH_KV_LAYOUT_FOREIGN);
 	BOOT(boot_foreign);
-	assert(kv_fake->flash[1234] == 0x7f && erased(0, 1234) && erased(1235, NANO_KV_SIZE));
+	assert(kv_fake->flash[1234] == 0x7f && erased(0, 1234) && erased(1235, FLASH_KV_SIZE));
 
 	/* NuttX's NVS: block 0 with a gc-done ATE and one entry, block 1
 	 * closed.
@@ -553,18 +553,18 @@ static void test_foreign(void)
 	nuttx_ate(area(4096 - 32), 0xffffffff, 0, 0, 0, 0xff);
 	nuttx_ate(area(4096 - 48), 0x1234, 0, 5, 16, 0x5a);
 	nuttx_ate(area(8192 - 16), 0xffffffff, 4096 - 16 * 4, 0, 0, 0xff);
-	assert(layout() == NANO_KV_LAYOUT_NUTTX);
+	assert(layout() == FLASH_KV_LAYOUT_NUTTX);
 	memcpy(before, kv_fake->flash, sizeof(before));
 	BOOT(boot_old_nuttx);
 	assert(memcmp(before, kv_fake->flash, sizeof(before)) == 0);
 	BOOT(boot_wipe);
 	BOOT(boot_after_wipe);
 	BOOT(boot_after_wipe2);
-	assert(layout() == NANO_KV_LAYOUT_NVS);
+	assert(layout() == FLASH_KV_LAYOUT_NVS);
 
 	/* Erased: Zephyr's NVS is started on it. */
 	kv_fake_init();
-	assert(layout() == NANO_KV_LAYOUT_EMPTY);
+	assert(layout() == FLASH_KV_LAYOUT_EMPTY);
 }
 
 /* The flash device refuses everything outside the area. */
@@ -601,9 +601,9 @@ static void boot_flash_api(void)
 	/* Inside: a write over a page boundary is two page programs. */
 	assert(flash_write(dev, 0xffe0fc, "abcdefgh", 8) == 0);
 	assert(kv_fake->programs == 2 && !memcmp(area(0xfc), "abcdefgh", 8));
-	assert(erased(0, 0xfc) && erased(0x104, NANO_KV_SIZE));
+	assert(erased(0, 0xfc) && erased(0x104, FLASH_KV_SIZE));
 	assert(flash_erase(dev, 0xffe000, 8192) == 0 && kv_fake->erases == 2);
-	assert(erased(0, NANO_KV_SIZE));
+	assert(erased(0, FLASH_KV_SIZE));
 	/* Parameters and pages: the Zephyr build's. */
 	assert(flash_get_write_block_size(dev) == 1);
 	assert(flash_get_page_info_by_offs(dev, 0xfff123, &info) == 0);
@@ -659,7 +659,7 @@ static void test_raw_nvs(void)
 {
 	kv_fake_init();
 	srand(11);
-	for (size_t i = 0; i < NANO_KV_SIZE; i++) {
+	for (size_t i = 0; i < FLASH_KV_SIZE; i++) {
 		kv_fake->flash[i] = (uint8_t)rand();
 	}
 	memcpy(before, kv_fake->flash, sizeof(before));
@@ -759,10 +759,10 @@ static void boot_verifier(void)
 	uint8_t buf[KV_STORE_VALUE_MAX];
 	int done = progress->done;
 	bool in_flight = progress->started == done && done < nsteps;
-	enum nano_kv_layout_e l;
+	enum flash_kv_layout_e l;
 
-	assert(nano_flash_kv_layout(&l) == 0);
-	assert(l == NANO_KV_LAYOUT_NVS || (l == NANO_KV_LAYOUT_EMPTY && done == 0));
+	assert(flash_kv_layout(&l) == 0);
+	assert(l == FLASH_KV_LAYOUT_NVS || (l == FLASH_KV_LAYOUT_EMPTY && done == 0));
 	assert(kv_store_init() == 0);
 	for (int k = 0; k < KEYS; k++) {
 		ssize_t len = kv_store_get(pl_keys[k], buf, sizeof(buf));

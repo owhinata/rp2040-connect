@@ -89,11 +89,11 @@ CSRCS += rp2040_idle_cpuload.c
 endif
 
 # The key-value area's flash (the last 8 KiB): the OS boundary of
-# common/compat/nano_flash_kv.h (nano_flash_kv.h is found through the -I
-# of common/compat below).
+# common/compat/flash_kv_os.h (flash_kv_os.h is found through the -I of
+# common/compat below).
 
 ifeq ($(CONFIG_RP2040_FLASH_KV),y)
-CSRCS += nano_flash_kv.c
+CSRCS += rp2040_flash_kv_os.c
 endif
 
 # The I2C driver (I2C0, I2C1) is built with the other drivers

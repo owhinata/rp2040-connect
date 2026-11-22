@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 /* A fake of the OS boundary of the key-value area (common/compat/
- * nano_flash_kv.h) for host tests: 8 KiB of RAM standing for flash offsets
+ * flash_kv_os.h) for host tests: 8 KiB of RAM standing for flash offsets
  * 0xffe000-0xffffff, with the flash's rules: a page program clears bits
  * only (AND), an erase sets a whole 4 KiB sector to 0xff, and a request
  * that is not inside the area or not aligned aborts the test (the layer
@@ -14,11 +14,11 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "nano_flash_kv.h"
+#include "flash_kv_os.h"
 
 struct kv_fake {
-	uint8_t flash[NANO_KV_SIZE];
-	bool ready;           /* nano_flash_kv_os_ready() */
+	uint8_t flash[FLASH_KV_SIZE];
+	bool ready;           /* flash_kv_os_ready() */
 	unsigned long reads, programs, erases;
 	unsigned long ops;    /* programs + erases */
 	int fail_next;        /* the next N programs and erases fail ... */

@@ -19,7 +19,7 @@
  * Zephyr initializes i2c0 (POST_KERNEL, CONFIG_I2C_INIT_PRIORITY 50) and
  * then the sensor (POST_KERNEL, CONFIG_SENSOR_INIT_PRIORITY 90) before
  * main(), which mounts the key-value store; rp2040_bringup() calls this after
- * i2c_dw_i2c0_initialize() and before nano_flash_kv_initialize() for the
+ * i2c_dw_i2c0_initialize() and before flash_kv_os_initialize() for the
  * same order.  A failed sensor initialization leaves the device not ready
  * (device_is_ready() false), as in Zephyr, and boot goes on.
  */

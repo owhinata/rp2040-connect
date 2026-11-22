@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: MIT */
-/* The OS boundary of the key-value area (common/compat/nano_flash_kv.h) on
+/* The OS boundary of the key-value area (common/compat/flash_kv_os.h) on
  * the Pico SDK: reads, 256-byte page programs and 4 KiB sector erases of
  * the last 8 KiB of the 16 MiB flash (flash offsets 0xffe000-0xffffff, XIP
  * 0x10ffe000-0x10ffffff, two sectors), the Zephyr build's
@@ -12,14 +12,14 @@
  *
  * Safety: an erase or a program outside the area would destroy the
  * firmware.  Every request is checked three times before the flash is
- * touched: in zephyr_flash_kv.c (against the constants of nano_flash_kv.h),
+ * touched: in zephyr_flash_kv.c (against the constants of flash_kv.h),
  * here (kv_flash(): against the constants and against the bounds that
- * nano_flash_kv_set_bounds() took from the linker script), and again with
- * the interrupts off right before flash_range_program() or
+ * flash_kv_os_rp2040_set_bounds() took from the linker script), and again
+ * with the interrupts off right before flash_range_program() or
  * flash_range_erase() is called (kv_flash_op()).  The bounds are set only
  * after the linker symbols __kv_start and __kv_end have been found equal to
  * the constants and the image found to end before the area; until then
- * every erase and program is refused and nano_flash_kv_os_ready() is false.
+ * every erase and program is refused and flash_kv_os_ready() is false.
  * The board's flash (PICO_FLASH_SIZE_BYTES of the board header) and the
  * SDK's page and sector sizes are checked against the constants when this
  * file is compiled.
@@ -69,7 +69,7 @@
  * 0x13000000), as on NuttX; the Zephyr build's driver reads the cached
  * alias, which flash_flush_cache() also keeps up to date.  Part of the
  * FreeRTOS build (freertos/drivers/kv; the NuttX build's is
- * nuttx/boards/arduino-nano-rp2040-connect/src/nano_flash_kv.c).
+ * nuttx/boards/arduino-nano-rp2040-connect/src/rp2040_flash_kv_os.c).
  */
 
 #include <errno.h>
@@ -86,17 +86,18 @@
 
 #include <zephyr/logging/log.h>
 
-#include "nano_flash_kv.h"
-#include "nano_flash_kv_os.h"
+#include "flash_kv.h"
+#include "flash_kv_os.h"
+#include "flash_kv_os_rp2040.h"
 
 LOG_MODULE_REGISTER(flash_kv, LOG_LEVEL_INF);
 
-#if !defined(PICO_FLASH_SIZE_BYTES) || PICO_FLASH_SIZE_BYTES != NANO_KV_FLASH_SIZE
+#if !defined(PICO_FLASH_SIZE_BYTES) || PICO_FLASH_SIZE_BYTES != FLASH_KV_FLASH_SIZE
 #error "the board's flash is not the 16 MiB of the key-value area's constants"
 #endif
 
-#if FLASH_PAGE_SIZE != NANO_KV_PAGE_SIZE || FLASH_SECTOR_SIZE != NANO_KV_SECTOR_SIZE
-#error "the SDK's flash page or sector size differs from nano_flash_kv.h"
+#if FLASH_PAGE_SIZE != FLASH_KV_PAGE_SIZE || FLASH_SECTOR_SIZE != FLASH_KV_SECTOR_SIZE
+#error "the SDK's flash page or sector size differs from flash_kv.h"
 #endif
 
 #if !PICO_FLASH_ASSUME_CORE1_SAFE
@@ -104,12 +105,12 @@ LOG_MODULE_REGISTER(flash_kv, LOG_LEVEL_INF);
 #endif
 
 #if configNUMBER_OF_CORES != 1
-#error "nano_flash_kv.c does not stop the other core while XIP is off"
+#error "flash_kv_os_rp2040.c does not stop the other core while XIP is off"
 #endif
 
 /* The area as flash offsets, [KV_LO, KV_HI). */
-#define KV_LO NANO_KV_OFFSET
-#define KV_HI NANO_KV_END
+#define KV_LO FLASH_KV_OFFSET
+#define KV_HI FLASH_KV_END
 
 /* flash_safe_execute()'s timeout for stopping the other core: not used when
  * only the interrupts are disabled (PICO_FLASH_ASSUME_CORE1_SAFE).
@@ -125,9 +126,9 @@ extern const uint8_t __kv_end[];
 
 /* The page being programmed: the ROM reads it while XIP is off, so it must
  * not be in the flash; the caller's page is copied here first.  The calls
- * come one at a time (nano_flash_kv.h).
+ * come one at a time (flash_kv_os.h).
  */
-static uint8_t kv_page[NANO_KV_PAGE_SIZE] __aligned(4);
+static uint8_t kv_page[FLASH_KV_PAGE_SIZE] __aligned(4);
 
 /* The area's bounds as flash offsets once the linker script has been
  * checked; 0 and 0 refuse everything.
@@ -178,7 +179,7 @@ static void kv_flash_op(void *arg)
  */
 static int kv_flash(uint32_t offset, const uint8_t *page, uint32_t count)
 {
-	uint32_t align = page != NULL ? NANO_KV_PAGE_SIZE : NANO_KV_SECTOR_SIZE;
+	uint32_t align = page != NULL ? FLASH_KV_PAGE_SIZE : FLASH_KV_SECTOR_SIZE;
 	struct kv_flash_req req = {
 		.offset = offset,
 		.page = page,
@@ -187,8 +188,8 @@ static int kv_flash(uint32_t offset, const uint8_t *page, uint32_t count)
 	};
 	int rc;
 
-	if (count != align || !nano_kv_range_ok(offset, count, KV_LO, KV_HI, align) ||
-	    !nano_kv_range_ok(offset, count, kv_lo, kv_hi, align)) {
+	if (count != align || !flash_kv_range_ok(offset, count, KV_LO, KV_HI, align) ||
+	    !flash_kv_range_ok(offset, count, kv_lo, kv_hi, align)) {
 		LOG_ERR("Refused flash %s at 0x%08lx, %lu bytes", page != NULL ? "write" : "erase",
 			(unsigned long)offset, (unsigned long)count);
 		return -EINVAL;
@@ -205,16 +206,16 @@ static int kv_flash(uint32_t offset, const uint8_t *page, uint32_t count)
 	return req.ret;
 }
 
-/* The boundary of common/compat/nano_flash_kv.h. */
+/* The boundary of common/compat/flash_kv_os.h. */
 
-bool nano_flash_kv_os_ready(void)
+bool flash_kv_os_ready(void)
 {
 	return kv_lo != 0;
 }
 
-int nano_flash_kv_os_read(uint32_t offset, void *buf, uint32_t len)
+int flash_kv_os_read(uint32_t offset, void *buf, uint32_t len)
 {
-	if (!nano_kv_range_ok(offset, len, KV_LO, KV_HI, 1)) {
+	if (!flash_kv_range_ok(offset, len, KV_LO, KV_HI, 1)) {
 		LOG_ERR("Refused flash read at 0x%08lx, %lu bytes", (unsigned long)offset,
 			(unsigned long)len);
 		return -EINVAL;
@@ -223,20 +224,20 @@ int nano_flash_kv_os_read(uint32_t offset, void *buf, uint32_t len)
 	return 0;
 }
 
-int nano_flash_kv_os_program(uint32_t page_offset, const uint8_t page[NANO_KV_PAGE_SIZE])
+int flash_kv_os_program(uint32_t page_offset, const uint8_t page[FLASH_KV_PAGE_SIZE])
 {
-	memcpy(kv_page, page, NANO_KV_PAGE_SIZE);
-	return kv_flash(page_offset, kv_page, NANO_KV_PAGE_SIZE);
+	memcpy(kv_page, page, FLASH_KV_PAGE_SIZE);
+	return kv_flash(page_offset, kv_page, FLASH_KV_PAGE_SIZE);
 }
 
-int nano_flash_kv_os_erase(uint32_t sector_offset)
+int flash_kv_os_erase(uint32_t sector_offset)
 {
-	return kv_flash(sector_offset, NULL, NANO_KV_SECTOR_SIZE);
+	return kv_flash(sector_offset, NULL, FLASH_KV_SECTOR_SIZE);
 }
 
-/* The start (nano_flash_kv_os.h). */
+/* The start (flash_kv_os_rp2040.h, flash_kv_os.h). */
 
-int nano_flash_kv_set_bounds(uintptr_t kv_start, uintptr_t kv_end, uintptr_t image_end)
+int flash_kv_os_rp2040_set_bounds(uintptr_t kv_start, uintptr_t kv_end, uintptr_t image_end)
 {
 	if (kv_start != XIP_BASE + KV_LO || kv_end != XIP_BASE + KV_HI || image_end <= XIP_BASE ||
 	    image_end > kv_start) {
@@ -252,8 +253,8 @@ int nano_flash_kv_set_bounds(uintptr_t kv_start, uintptr_t kv_end, uintptr_t ima
 	return 0;
 }
 
-int nano_flash_kv_initialize(void)
+int flash_kv_os_initialize(void)
 {
-	return nano_flash_kv_set_bounds((uintptr_t)__kv_start, (uintptr_t)__kv_end,
-					(uintptr_t)&__flash_binary_end);
+	return flash_kv_os_rp2040_set_bounds((uintptr_t)__kv_start, (uintptr_t)__kv_end,
+					     (uintptr_t)&__flash_binary_end);
 }

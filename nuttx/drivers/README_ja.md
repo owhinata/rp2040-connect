@@ -586,7 +586,7 @@ Zephyr の API を、Zephyr の名前のまま最小限だけ用意したもの�
   Wi-Fi の資格情報の `wifi_credentials.c`・`wifi_credentials_backend_settings.c`・`wifi_credentials_internal.h`、
   KV の NVS と settings（下の「KV: Zephyr の NVS と settings の写し」）。MQTT のクライアントは
   `common/imu/mqtt_min.c`）、境界のヘッダー（スレッドの優先度とスタックの表 `priorities.h`、`cpu_load_get()` の
-  `cpu_load.h`（とその計算）、`gpio0` の下の `gpio_os.h`、KV の領域の flash の `nano_flash_kv.h`）。
+  `cpu_load.h`（とその計算）、`gpio0` の下の `gpio_os.h`、KV の領域の flash の `flash_kv_os.h`）。
   シェルの `zephyr/shell/shell.h` のコマンドの処理は `common/shell/zshell.c`（下の「シェル」）。Zephyr 版は
   使いません（Zephyr 本体を使う）。
 - **NuttX の実装**（`nuttx/drivers/compat/`）: カーネルの部分（`zephyr_kernel.c`・`zephyr_mutex.c`）、OS ごとの
@@ -629,7 +629,7 @@ Zephyr の API を、Zephyr の名前のまま最小限だけ用意したもの�
 | `zephyr/settings/settings.h`、`zephyr/kvss/nvs.h`、`zephyr/sys/slist.h`、`zephyr/sys/list_gen.h` | Zephyr の同名のヘッダーの写し（無改変。下の「KV」）。settings の API（`settings_subsys_init()`、`settings_save_one()`、`settings_load_one()`、`settings_delete()`、`settings_load_subtree_direct()` など）、NVS の API と `struct nvs_fs`、単方向リスト |
 | `zephyr/drivers/flash.h`、`zephyr/storage/flash_map.h` | NVS と settings が使う flash の API（`flash_read()`・`flash_write()`・`flash_erase()`・`flash_flatten()`・`flash_get_parameters()`・`flash_get_write_block_size()`・`flash_get_page_info_by_offs()`、`struct flash_parameters`）と flash map（`flash_area_open()`・`flash_area_close()`・`flash_area_get_sectors()`、`PARTITION_ID(storage_partition)`）。デバイスは KV の領域の flash だけ（`zephyr_flash_kv.c`。下） |
 | `zephyr/sys/crc.h`、`zephyr/toolchain.h` | `crc8_ccitt()` などの宣言（実装は `subsys/crc/crc8_sw.c` の写し）、`__packed`・`__weak` |
-| `nano_flash_kv.h` | KV の領域の定数（`0xffe000` から 8 KiB、256 バイトのページ、4 KiB のセクター）、OS の境界（下の「KV」）、範囲の検査・ページへの分割・領域の中身の判定（Zephyr の NVS、以前の NuttX 版の形式、消去済み、それ以外） |
+| `flash_kv.h`、`flash_kv_os.h` | KV の領域の定数（`0xffe000` から 8 KiB、256 バイトのページ、4 KiB のセクター）、OS の境界（`flash_kv_os.h`。下の「KV」）、範囲の検査・ページへの分割・領域の中身の判定（Zephyr の NVS、以前の NuttX 版の形式、消去済み、それ以外） |
 | `zephyr_kv_config.h` | 写した NVS と settings の前に読む Zephyr 版の Kconfig の値（`CONFIG_SETTINGS_NVS_SECTOR_COUNT` など。下の「KV」） |
 | `kv_store_os.h` | `common/imu/kv_store.c` の OS の部分: `kv wipe` のサブコマンド（Zephyr 版の `zephyr/app/usb-console/src/kv_store_os.h` は空） |
 | `zephyr/logging/log.h` | `LOG_MODULE_REGISTER()`、`LOG_ERR()` などのログのマクロ。ポートの `app_log.h`（`common/compat/log/`。`dmesg` の RAM ログ）を読むだけ |
@@ -896,7 +896,7 @@ settings のうち Zephyr 版が使う部分を改変せずに写し、Zephyr �
 
   | 値 | ここ | Zephyr 版 |
   |---|---|---|
-  | 領域 | `0xffe000` から `0x2000`（`nano_flash_kv.h`、`<zephyr/storage/flash_map.h>`） | `app.overlay` の `storage_partition` |
+  | 領域 | `0xffe000` から `0x2000`（`flash_kv.h`、`<zephyr/storage/flash_map.h>`） | `app.overlay` の `storage_partition` |
   | セクター | 4096 バイト × 2 | `rp2040.dtsi` の `erase-block-size` × `SECTOR_SIZE_MULT` 1、8 KiB に入る数（`settings_nvs.c`） |
   | 書き込み単位・消去値 | 1、0xFF | `flash_rpi_pico.c` の `flash_rpi_parameters`、DT の `write-block-size` |
   | 索引（ATE） | 8 バイト、`crc8_ccitt(0xff, ...)` | `nvs_priv.h`（無改変） |
@@ -906,17 +906,18 @@ settings のうち Zephyr 版が使う部分を改変せずに写し、Zephyr �
 - 前提: settings のロック（`K_MUTEX_DEFINE(settings_lock)`、全部 0 から始まるミューテックス）と NVS のロックは
   互換層の `k_mutex`（再帰。`kv wipe` は settings のロックを持ったまま settings を初期化し直す）。初期化は
   Zephyr と同じく最初の `settings_subsys_init()`（失敗したら次の呼び出しでやり直す）。
-- **flash の境界**（`nano_flash_kv.h`。OS ごとに実装する。NuttX 版はボードの `src/nano_flash_kv.c`、FreeRTOS 版は
+- **flash の境界**（`flash_kv_os.h`。OS ごとに実装する。NuttX 版はボードの `src/rp2040_flash_kv_os.c`、FreeRTOS 版は
   Pico SDK の `flash_range_program()`・`flash_range_erase()` を割り込みを止めて呼ぶ）:
 
   ```c
-  bool nano_flash_kv_os_ready(void);
-  int nano_flash_kv_os_read(uint32_t offset, void *buf, uint32_t len);
-  int nano_flash_kv_os_program(uint32_t page_offset, const uint8_t page[256]);
-  int nano_flash_kv_os_erase(uint32_t sector_offset);
+  int flash_kv_os_initialize(void);
+  bool flash_kv_os_ready(void);
+  int flash_kv_os_read(uint32_t offset, void *buf, uint32_t len);
+  int flash_kv_os_program(uint32_t page_offset, const uint8_t page[256]);
+  int flash_kv_os_erase(uint32_t sector_offset);
   ```
 
-  `offset` は flash の先頭（XIP の 0x10000000）からの位置。`ready` が偽のあいだ flash map はデバイスが無い扱い
+  `initialize` は起動の処理が 1 回呼ぶ（リンカースクリプトの範囲を確かめる。何も消さない）。`offset` は flash の先頭（XIP の 0x10000000）からの位置。`ready` が偽のあいだ flash map はデバイスが無い扱い
   （`-ENODEV`）。`read` は今の flash の中身を返す（書き込み・消去の直後も）。`program` は 256 の倍数の位置の
   1 ページを書く（書かない所は 0xFF。書き込みはビットを落とすだけ）。`erase` は 4096 の倍数の位置の 1 セクターを
   消す。どれも 0 か負の errno を返し、スレッドからだけ、同時に 1 つだけ呼ばれます（互換層がロックを持つ）。

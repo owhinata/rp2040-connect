@@ -13,9 +13,9 @@
  * <zephyr/storage/flash_map.h>).  Unlike the Zephyr build's driver, which
  * reads, writes and erases anywhere in the flash, it refuses (-EINVAL,
  * with a log line) every request that does not lie entirely inside the
- * key-value area, the last 8 KiB (NANO_KV_OFFSET, NANO_KV_SIZE of
- * nano_flash_kv.h): the firmware is never touched.  Reads, page programs
- * and sector erases go to the OS's boundary (nano_flash_kv.h).  Threads
+ * key-value area, the last 8 KiB (FLASH_KV_OFFSET, FLASH_KV_SIZE of
+ * flash_kv.h): the firmware is never touched.  Reads, page programs
+ * and sector erases go to the OS's boundary (flash_kv_os.h).  Threads
  * only.  Part of the small Zephyr compatibility layer of the port
  * (common/compat).
  */

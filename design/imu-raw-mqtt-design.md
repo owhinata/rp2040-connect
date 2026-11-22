@@ -796,7 +796,7 @@ difference of the total run time in `/proc/<tid>/critmon` ("CPU load" in `design
   names are `app_kv/<key>` and, for the Wi-Fi credentials, `wifi_cred/<number>`. Each build reads
   and writes what the other stored.
 - The flash operations (reads, 256-byte page programs, 4 KiB sector erases) are behind a small
-  boundary for each OS (`common/compat/nano_flash_kv.h`), limited to the last 8 KiB. Interrupts are
+  boundary for each OS (`common/compat/flash_kv_os.h`), limited to the last 8 KiB. Interrupts are
   off for one page program or one erase at a time (34-40 ms for an erase).
 - If the area holds data that is neither Zephyr's NVS nor erased (the NuttX port's earlier format,
   what another firmware left), the NuttX port does not erase it, reports it in `dmesg`, and the
@@ -890,7 +890,7 @@ The OS parts are implementations of narrow boundary headers in each build's dire
 - The priority mapping `priorities_os.h` (read by `common/compat/priorities.h`), the NINA's `nina_os.h` and
   `nina_bus.h` (`nina_os.h`'s implementations are in the core's bindings,
   `common/drivers/nina/port/zephyr/`, `nuttx/` and `freertos/`), the I2C core's `i2c_dw_os.h` and the DMA reads' `i2c_dw_dma_os.h` (implemented in the core's bindings,
-  `common/drivers/i2c_dw/port/nuttx/` and `freertos/`), the key-value flash's `nano_flash_kv.h`, the shell backend
+  `common/drivers/i2c_dw/port/nuttx/` and `freertos/`), the key-value flash's `flash_kv_os.h`, the shell backend
   `zshell_os.h`, the log's `app_log_os.h`, `log_ram.h` and `log_ram_os.h`.
 - A few lines that differ per build: `sensor_shell_os.h` (the wait of `sensor get`), `wifi_profile_os.h`,
   `lsm6dso_instance.h` (the device), `kv_store_os.h` (whether there is `kv wipe`).

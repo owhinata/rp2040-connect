@@ -193,8 +193,8 @@ Zephyr build stored, and the other way round. The API and the command are the Ze
 
 - Layers: `kv_store.c` → Zephyr's settings (`settings_save_one()`, `settings_load_one()`,
   `settings_delete()`) → Zephyr's NVS → the compatibility layer's flash device and flash map
-  (`common/compat/zephyr_flash_kv.c`) → the OS boundary (the four functions of
-  `common/compat/nano_flash_kv.h`; on NuttX the board's `src/nano_flash_kv.c`). The settings and NVS
+  (`common/compat/zephyr_flash_kv.c`) → the OS boundary (the five functions of
+  `common/compat/flash_kv_os.h`; on NuttX the board's `src/rp2040_flash_kv_os.c`). The settings and NVS
   are unchanged copies of Zephyr v4.5.0's sources (`common/compat/subsys/` and others; the list is
   in the compatibility layer's section of the driver notes), built with the Zephyr build's Kconfig
   values (`common/compat/zephyr_kv_config.h`).
@@ -210,7 +210,7 @@ Zephyr build stored, and the other way round. The API and the command are the Ze
   `BUILD_ASSERT`s in the layer's `<zephyr/net/wifi_credentials.h>` check against the Zephyr build's
   ELF).
 - Area: the board's `include/board.h` (`BOARD_KV_OFFSET`, `BOARD_KV_SIZE`), the constants of
-  `nano_flash_kv.h` and the linker script (`__kv_start`, `__kv_end` in `scripts/arduino-nano-rp2040-connect-flash.ld`;
+  `flash_kv.h` and the linker script (`__kv_start`, `__kv_end` in `scripts/arduino-nano-rp2040-connect-flash.ld`;
   the area is left out of the image's flash region, and `build.sh` checks where the image ends).
   Every read, program and erase is checked to lie inside the area in three places before the flash
   is touched: the compatibility layer (the constants), the board (the `board.h` constants and the
@@ -1379,8 +1379,8 @@ garbage collection (10 erases or more), a full store (`-ENOSPC`, deleting still 
 (random bytes, an area with one stray byte, the earlier NuttX format: not used, not touched, logged
 once, usable after `kv wipe`); that the flash device refuses requests outside the area; that
 Zephyr's NVS itself gives `-EDEADLK` on an area whose two sector ends are written; and the power
-loss (see "Key-value store"). `nano_flash_kv` checks the range checks of
-`common/compat/nano_flash_kv.h` around the edges and for every page and erase sector of the first
+loss (see "Key-value store"). `flash_kv` checks the range checks of
+`common/compat/flash_kv.h` around the edges and for every page and erase sector of the first
 and last MiB of the flash, and the page writes, at many offsets and lengths around page boundaries,
 by seeing that exactly the written bytes change. For the boot-time check it confirms that Zephyr's
 and NuttX's NVS entries are each accepted and that the other format's entries (200,000 layouts each,

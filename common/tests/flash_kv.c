@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-/* compat/nano_flash_kv.h: the range checks done before every flash erase
+/* compat/flash_kv.h: the range checks done before every flash erase
  * and program, the split of writes into pages, and the check of the
  * area's contents before Zephyr's NVS mounts it: Zephyr's ATEs, the NuttX
  * build's earlier format (NuttX's NVS) and that neither is taken for the
@@ -9,13 +9,13 @@
 #include <assert.h>
 #include <stdio.h>
 #include <string.h>
-#include "nano_flash_kv.h"
+#include "flash_kv.h"
 
 /* include/board.h of the NuttX board */
 #define KV_LO 0x00ffe000u
 #define KV_HI 0x01000000u
-_Static_assert(NANO_KV_OFFSET == KV_LO && NANO_KV_END == KV_HI, "the area");
-_Static_assert(NANO_KV_SECTORS == 2 && NANO_KV_PAGE_SIZE == 256, "the area");
+_Static_assert(FLASH_KV_OFFSET == KV_LO && FLASH_KV_END == KV_HI, "the area");
+_Static_assert(FLASH_KV_SECTORS == 2 && FLASH_KV_PAGE_SIZE == 256, "the area");
 
 /* NuttX's crc8part() (libs/libc/misc/lib_crc8.c, lib_crc8table.c): the
  * table of the reflected polynomial 0xB2, input and output inverted.
@@ -39,7 +39,7 @@ static void crc_init(void)
 
 static uint8_t crc8part(const uint8_t *src, size_t len, uint8_t crc);
 
-/* nano_kv_nuttx_crc8() of the header is crc8part(..., 0xff). */
+/* flash_kv_nuttx_crc8() of the header is crc8part(..., 0xff). */
 static void test_nuttx_crc(void)
 {
 	uint8_t buf[16];
@@ -48,7 +48,7 @@ static void test_nuttx_crc(void)
 		for (size_t i = 0; i < sizeof(buf); i++) {
 			buf[i] = (uint8_t)(n * 31 + i * 7);
 		}
-		assert(nano_kv_nuttx_crc8(buf, n % 17) == crc8part(buf, n % 17, 0xff));
+		assert(flash_kv_nuttx_crc8(buf, n % 17) == crc8part(buf, n % 17, 0xff));
 	}
 }
 
@@ -82,22 +82,22 @@ static void nuttx_ate(uint8_t s[16], uint32_t id, uint16_t offset,
 
 static int plausible(const uint8_t s[16], int close)
 {
-	return nano_kv_ate_plausible(s, crc8part(s, NANO_KV_ATE_CRC_LEN, 0xff),
-				     NANO_KV_SECTOR_SIZE, close);
+	return flash_kv_nuttx_ate_plausible(s, crc8part(s, FLASH_KV_NUTTX_ATE_CRC_LEN, 0xff),
+				     FLASH_KV_SECTOR_SIZE, close);
 }
 
-/* A fake flash for nano_kv_write_pages(): programming clears bits. */
+/* A fake flash for flash_kv_write_pages(): programming clears bits. */
 static uint8_t flash[KV_HI - KV_LO];
 static int programs;
 
 static int program(void *arg, uint32_t page_offset, const uint8_t *page)
 {
 	(void)arg;
-	if (!nano_kv_range_ok(page_offset, NANO_KV_PAGE_SIZE, KV_LO, KV_HI,
-			      NANO_KV_PAGE_SIZE)) {
+	if (!flash_kv_range_ok(page_offset, FLASH_KV_PAGE_SIZE, KV_LO, KV_HI,
+			      FLASH_KV_PAGE_SIZE)) {
 		return -22;
 	}
-	for (uint32_t i = 0; i < NANO_KV_PAGE_SIZE; i++) {
+	for (uint32_t i = 0; i < FLASH_KV_PAGE_SIZE; i++) {
 		flash[page_offset - KV_LO + i] &= page[i];
 	}
 	programs++;
@@ -107,35 +107,35 @@ static int program(void *arg, uint32_t page_offset, const uint8_t *page)
 static void test_ranges(void)
 {
 	/* Erase: one or both sectors, nothing else. */
-	assert(nano_kv_range_ok(KV_LO, 4096, KV_LO, KV_HI, 4096));
-	assert(nano_kv_range_ok(KV_LO + 4096, 4096, KV_LO, KV_HI, 4096));
-	assert(nano_kv_range_ok(KV_LO, 8192, KV_LO, KV_HI, 4096));
-	assert(!nano_kv_range_ok(KV_LO - 4096, 4096, KV_LO, KV_HI, 4096));
-	assert(!nano_kv_range_ok(KV_LO - 4096, 8192, KV_LO, KV_HI, 4096));
-	assert(!nano_kv_range_ok(KV_HI, 4096, KV_LO, KV_HI, 4096));
-	assert(!nano_kv_range_ok(KV_LO + 4096, 8192, KV_LO, KV_HI, 4096));
-	assert(!nano_kv_range_ok(KV_LO, 12288, KV_LO, KV_HI, 4096));
-	assert(!nano_kv_range_ok(KV_LO + 256, 4096, KV_LO, KV_HI, 4096));
-	assert(!nano_kv_range_ok(KV_LO, 0, KV_LO, KV_HI, 4096));
-	assert(!nano_kv_range_ok(0, 4096, KV_LO, KV_HI, 4096));
+	assert(flash_kv_range_ok(KV_LO, 4096, KV_LO, KV_HI, 4096));
+	assert(flash_kv_range_ok(KV_LO + 4096, 4096, KV_LO, KV_HI, 4096));
+	assert(flash_kv_range_ok(KV_LO, 8192, KV_LO, KV_HI, 4096));
+	assert(!flash_kv_range_ok(KV_LO - 4096, 4096, KV_LO, KV_HI, 4096));
+	assert(!flash_kv_range_ok(KV_LO - 4096, 8192, KV_LO, KV_HI, 4096));
+	assert(!flash_kv_range_ok(KV_HI, 4096, KV_LO, KV_HI, 4096));
+	assert(!flash_kv_range_ok(KV_LO + 4096, 8192, KV_LO, KV_HI, 4096));
+	assert(!flash_kv_range_ok(KV_LO, 12288, KV_LO, KV_HI, 4096));
+	assert(!flash_kv_range_ok(KV_LO + 256, 4096, KV_LO, KV_HI, 4096));
+	assert(!flash_kv_range_ok(KV_LO, 0, KV_LO, KV_HI, 4096));
+	assert(!flash_kv_range_ok(0, 4096, KV_LO, KV_HI, 4096));
 	/* No wrap-around: a huge length or an offset near 2^32. */
-	assert(!nano_kv_range_ok(KV_LO, 0xfffff000u, KV_LO, KV_HI, 4096));
-	assert(!nano_kv_range_ok(0xfffff000u, 0x2000, KV_LO, KV_HI, 4096));
+	assert(!flash_kv_range_ok(KV_LO, 0xfffff000u, KV_LO, KV_HI, 4096));
+	assert(!flash_kv_range_ok(0xfffff000u, 0x2000, KV_LO, KV_HI, 4096));
 	/* Pages. */
-	assert(nano_kv_range_ok(KV_LO, 256, KV_LO, KV_HI, 256));
-	assert(nano_kv_range_ok(KV_HI - 256, 256, KV_LO, KV_HI, 256));
-	assert(!nano_kv_range_ok(KV_HI - 128, 256, KV_LO, KV_HI, 256));
-	assert(!nano_kv_range_ok(KV_LO - 256, 256, KV_LO, KV_HI, 256));
-	assert(!nano_kv_range_ok(KV_LO + 1, 256, KV_LO, KV_HI, 256));
+	assert(flash_kv_range_ok(KV_LO, 256, KV_LO, KV_HI, 256));
+	assert(flash_kv_range_ok(KV_HI - 256, 256, KV_LO, KV_HI, 256));
+	assert(!flash_kv_range_ok(KV_HI - 128, 256, KV_LO, KV_HI, 256));
+	assert(!flash_kv_range_ok(KV_LO - 256, 256, KV_LO, KV_HI, 256));
+	assert(!flash_kv_range_ok(KV_LO + 1, 256, KV_LO, KV_HI, 256));
 	/* Bytes. */
-	assert(nano_kv_range_ok(KV_HI - 1, 1, KV_LO, KV_HI, 1));
-	assert(!nano_kv_range_ok(KV_HI - 1, 2, KV_LO, KV_HI, 1));
-	assert(!nano_kv_range_ok(KV_LO - 1, 1, KV_LO, KV_HI, 1));
-	assert(!nano_kv_range_ok(KV_LO - 1, 2, KV_LO, KV_HI, 1));
+	assert(flash_kv_range_ok(KV_HI - 1, 1, KV_LO, KV_HI, 1));
+	assert(!flash_kv_range_ok(KV_HI - 1, 2, KV_LO, KV_HI, 1));
+	assert(!flash_kv_range_ok(KV_LO - 1, 1, KV_LO, KV_HI, 1));
+	assert(!flash_kv_range_ok(KV_LO - 1, 2, KV_LO, KV_HI, 1));
 	/* Bad parameters: no area, alignment 0. */
-	assert(!nano_kv_range_ok(KV_LO, 256, 0, 0, 256));
-	assert(!nano_kv_range_ok(KV_LO, 256, KV_HI, KV_LO, 256));
-	assert(!nano_kv_range_ok(KV_LO, 256, KV_LO, KV_HI, 0));
+	assert(!flash_kv_range_ok(KV_LO, 256, 0, 0, 256));
+	assert(!flash_kv_range_ok(KV_LO, 256, KV_HI, KV_LO, 256));
+	assert(!flash_kv_range_ok(KV_LO, 256, KV_LO, KV_HI, 0));
 
 	/* Every page and sector of the first and last MiB of the flash:
 	 * accepted exactly when inside the area.
@@ -147,9 +147,9 @@ static void test_ranges(void)
 			a = 0x00f00000u;
 		}
 		inside = a >= KV_LO && a < KV_HI;
-		assert(nano_kv_range_ok(a, 256, KV_LO, KV_HI, 256) == inside);
+		assert(flash_kv_range_ok(a, 256, KV_LO, KV_HI, 256) == inside);
 		if (a % 4096 == 0) {
-			assert(nano_kv_range_ok(a, 4096, KV_LO, KV_HI, 4096) ==
+			assert(flash_kv_range_ok(a, 4096, KV_LO, KV_HI, 4096) ==
 			       inside);
 		}
 	}
@@ -157,15 +157,15 @@ static void test_ranges(void)
 
 static void test_pages(void)
 {
-	uint8_t page[NANO_KV_PAGE_SIZE];
+	uint8_t page[FLASH_KV_PAGE_SIZE];
 	uint8_t data[300];
 	uint8_t expect[sizeof(flash)];
 
-	assert(nano_kv_page_chunk(0, 10) == 10);
-	assert(nano_kv_page_chunk(250, 10) == 6);
-	assert(nano_kv_page_chunk(256, 300) == 256);
-	assert(nano_kv_page_chunk(255, 1) == 1);
-	assert(nano_kv_page_chunk(511, 300) == 1);
+	assert(flash_kv_page_chunk(0, 10) == 10);
+	assert(flash_kv_page_chunk(250, 10) == 6);
+	assert(flash_kv_page_chunk(256, 300) == 256);
+	assert(flash_kv_page_chunk(255, 1) == 1);
+	assert(flash_kv_page_chunk(511, 300) == 1);
 
 	for (size_t i = 0; i < sizeof(data); i++) {
 		data[i] = (uint8_t)(i * 7 + 1);
@@ -188,7 +188,7 @@ static void test_pages(void)
 			memset(expect, 0xff, sizeof(expect));
 			memcpy(expect + off, data, len);
 			programs = 0;
-			assert(nano_kv_write_pages(KV_LO + off, data, len, page,
+			assert(flash_kv_write_pages(KV_LO + off, data, len, page,
 						   program, NULL) == 0);
 			assert(memcmp(flash, expect, sizeof(flash)) == 0);
 			assert(programs == (int)((off + len - 1) / 256 -
@@ -200,9 +200,9 @@ static void test_pages(void)
 	 * (0xff in the page) as they are: the NVS "expired" byte.
 	 */
 	memset(flash, 0xff, sizeof(flash));
-	assert(nano_kv_write_pages(KV_LO + 32, data, 16, page, program,
+	assert(flash_kv_write_pages(KV_LO + 32, data, 16, page, program,
 				   NULL) == 0);
-	assert(nano_kv_write_pages(KV_LO + 44, (const uint8_t *)"\0", 1, page,
+	assert(flash_kv_write_pages(KV_LO + 44, (const uint8_t *)"\0", 1, page,
 				   program, NULL) == 0);
 	assert(memcmp(flash + 32, data, 12) == 0 && flash[44] == 0 &&
 	       memcmp(flash + 45, data + 13, 3) == 0);
@@ -212,7 +212,7 @@ static void test_pages(void)
 	 */
 	memset(flash, 0xff, sizeof(flash));
 	programs = 0;
-	assert(nano_kv_write_pages(KV_HI - 10, data, 20, page, program,
+	assert(flash_kv_write_pages(KV_HI - 10, data, 20, page, program,
 				   NULL) == -22);
 	assert(programs == 1);
 }
@@ -288,14 +288,14 @@ static void test_layout(void)
 	z[12] = 0; z[13] = 0; z[14] = 0xff; z[15] = 0x34;
 	assert(!plausible(z, 0) && !plausible(z, 1));
 
-	assert(nano_kv_layout(0, 1, false) == NANO_KV_LAYOUT_NUTTX);
-	assert(nano_kv_layout(0, 2, false) == NANO_KV_LAYOUT_NUTTX);
-	assert(nano_kv_layout(0, 1, true) == NANO_KV_LAYOUT_NUTTX);
-	assert(nano_kv_layout(0, 0, true) == NANO_KV_LAYOUT_EMPTY);
-	assert(nano_kv_layout(0, 0, false) == NANO_KV_LAYOUT_FOREIGN);
-	assert(nano_kv_layout(1, 0, false) == NANO_KV_LAYOUT_NVS);
-	assert(nano_kv_layout(2, 0, false) == NANO_KV_LAYOUT_NVS);
-	assert(nano_kv_layout(1, 1, false) == NANO_KV_LAYOUT_NVS);
+	assert(flash_kv_layout_classify(0, 1, false) == FLASH_KV_LAYOUT_NUTTX);
+	assert(flash_kv_layout_classify(0, 2, false) == FLASH_KV_LAYOUT_NUTTX);
+	assert(flash_kv_layout_classify(0, 1, true) == FLASH_KV_LAYOUT_NUTTX);
+	assert(flash_kv_layout_classify(0, 0, true) == FLASH_KV_LAYOUT_EMPTY);
+	assert(flash_kv_layout_classify(0, 0, false) == FLASH_KV_LAYOUT_FOREIGN);
+	assert(flash_kv_layout_classify(1, 0, false) == FLASH_KV_LAYOUT_NVS);
+	assert(flash_kv_layout_classify(2, 0, false) == FLASH_KV_LAYOUT_NVS);
+	assert(flash_kv_layout_classify(1, 1, false) == FLASH_KV_LAYOUT_NVS);
 }
 
 /* Zephyr's NVS: crc8_ccitt(0xff, ...), polynomial 0x07, MSB first. */
@@ -326,7 +326,7 @@ static void zephyr_ate(uint8_t s[8], uint16_t id, uint16_t offset, uint16_t len)
 
 static int zvalid(const uint8_t s[8], uint32_t pos, int close)
 {
-	return nano_kv_nvs_ate_valid(s, zcrc(s, NANO_KV_NVS_ATE_CRC_LEN), pos, close);
+	return flash_kv_nvs_ate_valid(s, zcrc(s, FLASH_KV_NVS_ATE_CRC_LEN), pos, close);
 }
 
 static void test_zephyr_ate(void)
@@ -427,6 +427,6 @@ int main(void)
 	test_layout();
 	test_zephyr_ate();
 	test_formats_apart();
-	puts("nano_flash_kv ok");
+	puts("flash_kv ok");
 	return 0;
 }

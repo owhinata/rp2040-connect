@@ -19,10 +19,10 @@ repo="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")/.." && pwd)"
 
 # Test hooks (for running against a fake system): the lsblk, udisksctl and
 # fuser commands, and the directory that holds the by-id links.
-lsblk_cmd="${NANO_FLASH_LSBLK:-lsblk}"
-udisksctl_cmd="${NANO_FLASH_UDISKSCTL:-udisksctl}"
-fuser_cmd="${NANO_FLASH_FUSER:-fuser}"
-byid_dir="${NANO_FLASH_BYID_DIR:-/dev/serial/by-id}"
+lsblk_cmd="${FLASH_UF2_LSBLK:-lsblk}"
+udisksctl_cmd="${FLASH_UF2_UDISKSCTL:-udisksctl}"
+fuser_cmd="${FLASH_UF2_FUSER:-fuser}"
+byid_dir="${FLASH_UF2_BYID_DIR:-/dev/serial/by-id}"
 
 # The builds: USB console (/dev/serial/by-id name), its name in messages.
 zephyr_glob='usb-Zephyr_Project_Zephyr_USB_Console_*'

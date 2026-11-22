@@ -670,7 +670,7 @@ is in two places:
   copies of Zephyr's NVS and settings" below; the MQTT client is `common/imu/mqtt_min.c`), and
   boundary headers (the table of thread priorities and stacks `priorities.h`, `cpu_load.h` of
   `cpu_load_get()` and its arithmetic, `gpio_os.h` under `gpio0`, the
-  key-value area's flash `nano_flash_kv.h`). The command handling of the shell's
+  key-value area's flash `flash_kv_os.h`). The command handling of the shell's
   `zephyr/shell/shell.h` is `common/shell/zshell.c` ("Shell" below). The Zephyr build does not use
   it (it has Zephyr itself).
 - **The NuttX implementation** (`nuttx/drivers/compat/`): the kernel part (`zephyr_kernel.c`,
@@ -715,7 +715,7 @@ of the NuttX implementation on the include path.
 | `zephyr/settings/settings.h`, `zephyr/kvss/nvs.h`, `zephyr/sys/slist.h`, `zephyr/sys/list_gen.h` | Unchanged copies of Zephyr's headers of the same names ("Key-value store" below): the settings API (`settings_subsys_init()`, `settings_save_one()`, `settings_load_one()`, `settings_delete()`, `settings_load_subtree_direct()` and others), NVS's API and `struct nvs_fs`, singly linked lists |
 | `zephyr/drivers/flash.h`, `zephyr/storage/flash_map.h` | The flash API that NVS and the settings use (`flash_read()`, `flash_write()`, `flash_erase()`, `flash_flatten()`, `flash_get_parameters()`, `flash_get_write_block_size()`, `flash_get_page_info_by_offs()`, `struct flash_parameters`) and the flash map (`flash_area_open()`, `flash_area_close()`, `flash_area_get_sectors()`, `PARTITION_ID(storage_partition)`). The only device is the key-value area's flash (`zephyr_flash_kv.c`, below) |
 | `zephyr/sys/crc.h`, `zephyr/toolchain.h` | Declarations of `crc8_ccitt()` and others (implemented by the copy of `subsys/crc/crc8_sw.c`), `__packed`, `__weak` |
-| `nano_flash_kv.h` | The key-value area's constants (8 KiB from `0xffe000`, 256-byte pages, 4 KiB sectors), the OS boundary ("Key-value store" below), the range checks, the split into pages and the check of what the area holds (Zephyr's NVS, the earlier NuttX build's format, erased, other) |
+| `flash_kv.h`, `flash_kv_os.h` | The key-value area's constants (8 KiB from `0xffe000`, 256-byte pages, 4 KiB sectors), the OS boundary (`flash_kv_os.h`, "Key-value store" below), the range checks, the split into pages and the check of what the area holds (Zephyr's NVS, the earlier NuttX build's format, erased, other) |
 | `zephyr_kv_config.h` | The Zephyr build's Kconfig values read before the copied NVS and settings (`CONFIG_SETTINGS_NVS_SECTOR_COUNT` and others; "Key-value store" below) |
 | `kv_store_os.h` | The OS part of `common/imu/kv_store.c`: the `kv wipe` subcommand (the Zephyr build's `zephyr/app/usb-console/src/kv_store_os.h` is empty) |
 | `zephyr/logging/log.h` | `LOG_MODULE_REGISTER()`, `LOG_ERR()` and the other logging macros. It only includes the port's `app_log.h` (`common/compat/log/`; the RAM log of `dmesg`) |
@@ -1028,7 +1028,7 @@ originals.
 
   | Value | Here | Zephyr build |
   |---|---|---|
-  | Area | `0x2000` from `0xffe000` (`nano_flash_kv.h`, `<zephyr/storage/flash_map.h>`) | `storage_partition` of `app.overlay` |
+  | Area | `0x2000` from `0xffe000` (`flash_kv.h`, `<zephyr/storage/flash_map.h>`) | `storage_partition` of `app.overlay` |
   | Sectors | 4096 bytes × 2 | `erase-block-size` of `rp2040.dtsi` × `SECTOR_SIZE_MULT` 1, as many as fit in 8 KiB (`settings_nvs.c`) |
   | Write block, erase value | 1, 0xFF | `flash_rpi_parameters` of `flash_rpi_pico.c`, `write-block-size` of the DT |
   | Allocation table entry | 8 bytes, `crc8_ccitt(0xff, ...)` | `nvs_priv.h` (unchanged) |
@@ -1039,18 +1039,20 @@ originals.
   zero) and NVS's lock are the layer's `k_mutex` (recursive: `kv wipe` initializes the settings
   again while it holds the settings' lock). Initialization is, as in Zephyr, the first
   `settings_subsys_init()` (tried again by the next call after a failure).
-- **The flash boundary** (`nano_flash_kv.h`; each OS implements it: the NuttX build in the board's
-  `src/nano_flash_kv.c`, the FreeRTOS build with the Pico SDK's `flash_range_program()` and
+- **The flash boundary** (`flash_kv_os.h`; each OS implements it: the NuttX build in the board's
+  `src/rp2040_flash_kv_os.c`, the FreeRTOS build with the Pico SDK's `flash_range_program()` and
   `flash_range_erase()` with interrupts off):
 
   ```c
-  bool nano_flash_kv_os_ready(void);
-  int nano_flash_kv_os_read(uint32_t offset, void *buf, uint32_t len);
-  int nano_flash_kv_os_program(uint32_t page_offset, const uint8_t page[256]);
-  int nano_flash_kv_os_erase(uint32_t sector_offset);
+  int flash_kv_os_initialize(void);
+  bool flash_kv_os_ready(void);
+  int flash_kv_os_read(uint32_t offset, void *buf, uint32_t len);
+  int flash_kv_os_program(uint32_t page_offset, const uint8_t page[256]);
+  int flash_kv_os_erase(uint32_t sector_offset);
   ```
 
-  `offset` is from the start of the flash (XIP 0x10000000). While `ready` is false, the flash map
+  The build's start-up calls `initialize` once (it checks the linker script's bounds; nothing is
+  erased). `offset` is from the start of the flash (XIP 0x10000000). While `ready` is false, the flash map
   treats the device as missing (`-ENODEV`). `read` returns what the flash holds now (also right
   after a program or an erase). `program` writes the page at a multiple of 256 (0xFF where nothing
   is written; programming only clears bits), `erase` the sector at a multiple of 4096. Each
