@@ -2,8 +2,8 @@
 # nuttx/apps/imu/Makefile
 #
 # The application's modules, linked into libapps: the key-value store
-# (NANO_KV_STORE) and the IMU acquisition service with its "imu" builtin
-# command (NANO_APP_IMU).  imu_stream.c is the program's main source (its
+# (KV_STORE) and the IMU acquisition service with its "imu" builtin
+# command (APP_IMU).  imu_stream.c is the program's main source (its
 # main() is the "imu" command; the thread it defines is started by the init
 # task).
 #
@@ -73,11 +73,11 @@ DEPPATH  += --dep-path ../../../common/compat/subsys/kvss/nvs
 VPATH    += :../../../common/compat/subsys/crc
 DEPPATH  += --dep-path ../../../common/compat/subsys/crc
 
-ifneq ($(CONFIG_NANO_APP_IMU),)
+ifneq ($(CONFIG_APP_IMU),)
 PROGNAME  = imu
-PRIORITY  = $(CONFIG_NANO_APP_IMU_PRIORITY)
-STACKSIZE = $(CONFIG_NANO_APP_IMU_STACKSIZE)
-MODULE    = $(CONFIG_NANO_APP_IMU)
+PRIORITY  = $(CONFIG_APP_IMU_PRIORITY)
+STACKSIZE = $(CONFIG_APP_IMU_STACKSIZE)
+MODULE    = $(CONFIG_APP_IMU)
 
 MAINSRC   = imu_stream.c
 CSRCS    += imu_raw_batch.c imu_raw_packet.c imu_raw_time.c imu_tick_clock.c
@@ -88,21 +88,21 @@ CSRCS    += imu_raw_queue.c
 
 CSRCS    += imu_cal.c imu_cal_codec.c
 
-# The MQTT transport (NANO_IMU_RAW_MQTT: imu_raw_mqtt.c with its JSON
+# The MQTT transport (IMU_RAW_MQTT: imu_raw_mqtt.c with its JSON
 # messages in imu_raw_status.c, on the minimal MQTT client mqtt_min.c and
 # its socket layer mqtt_min_sock.c), or the stub without it.
 
-ifeq ($(CONFIG_NANO_IMU_RAW_MQTT),y)
+ifeq ($(CONFIG_IMU_RAW_MQTT),y)
 CSRCS    += imu_raw_mqtt.c imu_raw_status.c mqtt_min.c mqtt_min_sock.c
 else
 CSRCS    += imu_raw_mqtt_null.c
 endif
 
-# The time synchronization (NANO_TIME_SYNC: time_sync.c, its estimate in
+# The time synchronization (TIME_SYNC: time_sync.c, its estimate in
 # time_offset.c, and the command set of the "ntp" command, nuttx/apps/ntp),
 # or the stub without it.
 
-ifeq ($(CONFIG_NANO_TIME_SYNC),y)
+ifeq ($(CONFIG_TIME_SYNC),y)
 CSRCS    += time_sync.c time_offset.c
 else
 CSRCS    += time_sync_null.c
@@ -134,7 +134,7 @@ nvs.c$(SUFFIX)$(OBJEXT): CFLAGS += -Wno-format
 
 kv_store.c$(SUFFIX)$(OBJEXT): CFLAGS += -DZ_SHELL_CMD_NAMED_MAIN
 
-ifneq ($(CONFIG_NANO_APP_IMU),)
+ifneq ($(CONFIG_APP_IMU),)
 
 # The "imu" command's SHELL_CMD_REGISTER() in imu_stream.c makes this
 # program's main(); time_sync.c is not a main source, so its

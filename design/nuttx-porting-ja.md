@@ -26,7 +26,7 @@ NuttX 版の各機能の動作の詳しい説明です。使い方は `nuttx/REA
   張ります。NuttX はここから、このリポジトリのドライバーとアプリをビルドします。
 - `nuttx/patches/nuttx/*.patch` と `nuttx/patches/apps/*.patch` を、それぞれ `nuttx/nuttx` と
   `nuttx/nuttx-apps` に名前の順に適用します（`nuttx/README_ja.md` の「NuttX へのパッチ」）。適用したものはクローンの
-  `.git/nano-patches/` に記録し、同じものは当て直しません。パッチを足す・消す・書き換えると、次に
+  `.git/local-patches/` に記録し、同じものは当て直しません。パッチを足す・消す・書き換えると、次に
   読み込んだときに、記録にあるパッチを逆順に外してから今のパッチを当て直します。記録がないのに
   クローンに変更があるときは何もせずに止まるので、`git -C nuttx/nuttx checkout -- .`（`nuttx-apps` も
   同様）で戻してから読み込み直します。
@@ -157,7 +157,7 @@ Zephyr 版の `src/log_ram.c` と同じ RAM ログです（`nuttx/drivers/log/`�
   （`CONFIG_RESET_ON_FATAL_ERROR=y`。Zephyr 版の RAM ログは 4 KiB）。
 - ソースからは Zephyr と同じ書き方で使います。`#include "app_log.h"`（`common/log/`。
   カーネル側・ボード・アプリのどれからも使え、割り込みハンドラーからも呼べます）のあと、ファイルごとに
-  `LOG_MODULE_REGISTER(名前, LOG_LEVEL_INF)`（レベルを省くと `CONFIG_NANO_LOG_DEFAULT_LEVEL`、既定 3。
+  `LOG_MODULE_REGISTER(名前, LOG_LEVEL_INF)`（レベルを省くと `CONFIG_LOG_DEFAULT_LEVEL`、既定 3。
   include の前に `LOG_LEVEL` を定義していればその値）、本文で `LOG_ERR()`、`LOG_WRN()`、`LOG_INF()`、
   `LOG_DBG()`、`LOG_ERR_RATELIMIT()` などを書きます。ファイルのレベルより上のメッセージはコンパイル時に
   捨てます。実行時のレベル変更（Zephyr の `log` コマンド）はありません。`<syslog.h>` の `LOG_ERR`
@@ -436,8 +436,8 @@ nsh$ wifi cred list
   network ssid: "example-ap", ssid_len: 10, type: WPA2-PSK, password: "example-pass", password_len: 12, MFP_OPTIONAL
 ```
 
-- 件数と長さ: 2 件まで（`CONFIG_NANO_WIFI_CREDENTIALS_MAX_ENTRIES`、Zephyr 版の
-  `CONFIG_WIFI_CREDENTIALS_MAX_ENTRIES=2`）。3 件目は `Failed to add network credentials, err: -105`（`ENOBUFS`）で、
+- 件数と長さ: 2 件まで（`CONFIG_WIFI_CREDENTIALS_MAX_ENTRIES=2`、
+  Zephyr 版と同じ名前と値）。3 件目は `Failed to add network credentials, err: -105`（`ENOBUFS`）で、
   `dmesg` に `<err> wifi_credentials: Cannot store WiFi credentials, no space left` が出ます（Zephyr 版と同じ）。
   SSID は 1〜32 文字（`SSID too long (max 32 characters)`、`SSID not provided`）、パスフレーズは 8〜64 文字
   （`Passphrase should be minimum 8 characters`、`Passphrase too long (max 64 characters)`）。ただし NINA が受け付ける
@@ -477,8 +477,8 @@ nsh$ wifi cred list
 ## Wi-Fi 経由のシェル（Telnet）
 
 Zephyr 版の Telnet のシェル（`CONFIG_SHELL_BACKEND_TELNET`）と同じく、Wi-Fi に繋がっている間は TCP の
-ポート 23 で USB と同じシェルを使えます（`nuttx/apps/init/rp2040_telnet.c`、`CONFIG_NANO_INIT_TELNET`。
-ポートは `CONFIG_NANO_INIT_TELNET_PORT`、Zephyr 版の `CONFIG_SHELL_TELNET_PORT`）。認証と暗号化がなく、
+ポート 23 で USB と同じシェルを使えます（`nuttx/apps/init/rp2040_telnet.c`、`CONFIG_INIT_TELNET`。
+ポートは `CONFIG_INIT_TELNET_PORT`、Zephyr 版の `CONFIG_SHELL_TELNET_PORT`）。認証と暗号化がなく、
 到達できる相手はシェルのすべての操作ができるので、信頼できるネットワークでだけ使ってください。
 
 ```bash
@@ -495,7 +495,7 @@ telnet <ボードの IPv4 アドレス>
   `<err> shell_telnet: Telnet client already connected.` をログに出します。1 本目はそのまま使えます（Zephyr 版と
   同じ）。受け付けは `telnetd` のタスクが行います（Zephyr 版でこれを行う `net_socket_service` スレッドと同じ
   優先度 104、スタック 2048）。受け付けが失敗したときは `Telnet accept error (<値>)` を出し、
-  `CONFIG_NANO_INIT_RETRY_MS`（100 ms）待ってから次を受け付けます（失敗が続くときに空回りしないため。Zephyr 版は
+  `CONFIG_INIT_RETRY_MS`（100 ms）待ってから次を受け付けます（失敗が続くときに空回りしないため。Zephyr 版は
   待ちません）。
 - セッションは USB と同じ nsh です（同じコマンドと出力、プロンプト `nsh$ `、挨拶文なし）。USB のシェルとは
   別のタスクで、同時に独立して動きます（Zephyr 版の 2 つのバックエンドと同じ）。優先度 104、スタック 3072
@@ -842,7 +842,7 @@ conversion:
 ### MQTT の送信
 
 `common/imu/imu_raw_mqtt.c`・`imu_raw_mqtt.h` は Zephyr 版と同じファイルです（`imu_raw_mqtt.h` が読む
-`<zephyr/net/net_ip.h>` は、互換層のものが `<netinet/in.h>` を読みます）。`CONFIG_NANO_IMU_RAW_MQTT`（既定で
+`<zephyr/net/net_ip.h>` は、互換層のものが `<netinet/in.h>` を読みます）。`CONFIG_IMU_RAW_MQTT`（既定で
 有効）で入り、無ければスタブ `imu_raw_mqtt_null.c`（Zephyr 版がネットワークに繋がっていないときと同じく、
 バッチをすべて捨てて数える）になります。トピック（`imu/<device>/raw`・`status`・`info`）と QoS（raw と
 status は 0、info は 1 で retain）、クライアント ID（`imu-<device>`）、keepalive（60 秒）、クリーン
@@ -888,7 +888,7 @@ Zephyr 版の文のまま、TIMER の TIMERAWH・TIMERAWL を `sys_read32()` で
 パケットと応答の検査、t1（送信の直前）と t4（応答を受け取った直後）を読む位置、推定（`time_offset.c`。
 無変更の写し。直近 8 回のうち往復が最短の応答を使う）、60 秒応答が無ければ無効、±500 ppm で寄せる逆行しない
 時計、実時間時計を前にだけ進めること、問い合わせの周期・待ち・再試行、カウンター、`ntp status` の出力は
-Zephyr 版と同じです。`CONFIG_NANO_TIME_SYNC`（既定で有効）で入り、無ければスタブ `time_sync_null.c`
+Zephyr 版と同じです。`CONFIG_TIME_SYNC`（既定で有効）で入り、無ければスタブ `time_sync_null.c`
 （`time_sync_mono_us()` だけ本物で、同期は取れない）になります。
 
 ```text

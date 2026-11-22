@@ -22,7 +22,7 @@
  * "app_log_os.h" (on NuttX $(TOPDIR)/external/include).
  *
  * Levels are checked at compile time only: a message above the level of
- * its file (or above CONFIG_NANO_LOG_MAX_LEVEL) is not compiled in.
+ * its file (or above CONFIG_LOG_MAX_LEVEL) is not compiled in.
  * Zephyr's run-time filtering (the "log" shell command) is not provided.
  *
  * Unlike Zephyr's deferred mode, the line is formatted at once, in the
@@ -31,8 +31,8 @@
  * The OS part: "app_log_os.h", which this header includes first, from the
  * OS's directory (nuttx/drivers/include on NuttX), provides:
  *
- *   - the OS's configuration (CONFIG_NANO_LOG_DEFAULT_LEVEL and
- *     CONFIG_NANO_LOG_MAX_LEVEL, both optional),
+ *   - the OS's configuration (CONFIG_LOG_DEFAULT_LEVEL and
+ *     CONFIG_LOG_MAX_LEVEL, both optional),
  *   - the OS's headers that must come before this one, with any macro of
  *     theirs that this header defines (LOG_ERR of <syslog.h>) undefined.
  *
@@ -62,14 +62,14 @@
  * CONFIG_LOG_RATELIMIT_INTERVAL_MS=5000 (zephyr/build/usb-console).
  */
 
-#ifdef CONFIG_NANO_LOG_DEFAULT_LEVEL
-#  define APP_LOG_DEFAULT_LEVEL CONFIG_NANO_LOG_DEFAULT_LEVEL
+#ifdef CONFIG_LOG_DEFAULT_LEVEL
+#  define APP_LOG_DEFAULT_LEVEL CONFIG_LOG_DEFAULT_LEVEL
 #else
 #  define APP_LOG_DEFAULT_LEVEL LOG_LEVEL_INF
 #endif
 
-#ifdef CONFIG_NANO_LOG_MAX_LEVEL
-#  define APP_LOG_MAX_LEVEL CONFIG_NANO_LOG_MAX_LEVEL
+#ifdef CONFIG_LOG_MAX_LEVEL
+#  define APP_LOG_MAX_LEVEL CONFIG_LOG_MAX_LEVEL
 #else
 #  define APP_LOG_MAX_LEVEL LOG_LEVEL_DBG
 #endif

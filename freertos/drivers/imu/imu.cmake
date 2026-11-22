@@ -12,7 +12,7 @@
 # freertos_wifi() in the same target (the sockets of the MQTT transport and
 # of the time synchronization, the default gateway of the interface, the
 # Wi-Fi events).  It adds to the target the NuttX build's sources of
-# CONFIG_NANO_APP_IMU with CONFIG_NANO_IMU_RAW_MQTT and CONFIG_NANO_TIME_SYNC
+# CONFIG_APP_IMU with CONFIG_IMU_RAW_MQTT and CONFIG_TIME_SYNC
 # (nuttx/apps/imu/Makefile), in its order:
 #
 # - the service (common/imu: imu_stream.c, the "imu" command and the thread
@@ -35,7 +35,7 @@
 #   compiled with -Wno-sign-compare, as in the host tests of the NuttX
 #   build and of common/tests;
 # - the time synchronization (common/imu/time_sync.c with its estimate,
-#   time_offset.c; CONFIG_NANO_TIME_SYNC of the NuttX build): the thread
+#   time_offset.c; CONFIG_TIME_SYNC of the NuttX build): the thread
 #   time_sync_tid, which the application starts with
 #   K_THREAD_DEFINE_START() and whose Wi-Fi events time_sync_init() asks
 #   for, and the "ntp" command (its SHELL_CMD_REGISTER() makes the root

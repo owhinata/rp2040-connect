@@ -7,7 +7,7 @@
 # nuttx/drivers (mkdeps needs relative ones); the objects are made there.
 ############################################################################
 
-ifeq ($(CONFIG_NANO_LOG_RAM),y)
+ifeq ($(CONFIG_LOG_RAM),y)
 CSRCS += log_ram.c log_ring.c
 DEPPATH += --dep-path log
 VPATH += :log

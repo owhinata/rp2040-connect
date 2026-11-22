@@ -11,7 +11,7 @@
 
 /* Starts the system work queue ("sysworkq"), the RTIO work queue
  * ("RTIO WQ 0", zephyr_rtio_workq.c) and, with the LSM6DSO's FIFO stream
- * (CONFIG_NANO_LSM6DSO_STREAM), the gpio0 device: what Zephyr starts at
+ * (CONFIG_LSM6DSO_STREAM), the gpio0 device: what Zephyr starts at
  * boot (POST_KERNEL) before the sensors.  The board calls it in
  * its bring-up, before the LSM6DSOX.  0 or a negative errno.
  */

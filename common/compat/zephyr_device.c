@@ -4,7 +4,7 @@
  * labels and classes (device_get_binding(), device_get_by_dt_nodelabel(),
  * DEVICE_API_IS()).  Part of the small Zephyr compatibility layer of the
  * port, its OS-independent part (common/compat).  The configuration
- * CONFIG_NANO_LSM6DSO_STREAM (gpio0) is the OS's (NuttX: Kconfig).
+ * CONFIG_LSM6DSO_STREAM (gpio0) is the OS's (NuttX: Kconfig).
  */
 
 #include <stdbool.h>
@@ -59,7 +59,7 @@ static const struct
   bool sensor;
 } g_devices[] =
 {
-#ifdef CONFIG_NANO_LSM6DSO_STREAM
+#ifdef CONFIG_LSM6DSO_STREAM
   { DEVICE_DT_GET(DT_NODELABEL(gpio0)), "gpio0", false },
 #endif
   { DEVICE_DT_GET(DT_NODELABEL(i2c0)), "i2c0", false },

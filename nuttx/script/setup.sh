@@ -161,16 +161,29 @@ _nuttx_setup() {
   }
 
   # Apply patches/<name>/*.patch to a clone, in name order.  What has been
-  # applied is recorded in the clone's .git/nano-patches/ (a copy of each
+  # applied is recorded in the clone's .git/local-patches/ (a copy of each
   # applied patch and the list in "applied"), outside the work tree.  When
   # the set of patches differs from the record (a patch added, removed or
   # changed), the recorded patches are taken back in reverse order and the
   # current ones applied.  A clone with local changes but no record is left
-  # alone (restore it with "git checkout -- ." first).
+  # alone (restore it with "git checkout -- ." first).  A record under the
+  # earlier name, .git/nano-patches/, is moved to the new one first.
   _nuttx_patch() {  # clone patchdir
-    local dir=$1 pdir=$2 rec p name want="" have="" i
+    local dir=$1 pdir=$2 rec oldrec p name want="" have="" i
     local -a old=()
-    rec="${dir}/.git/nano-patches"
+    rec="${dir}/.git/local-patches"
+    oldrec="${dir}/.git/nano-patches"
+    if [[ -e "$oldrec" ]]; then
+      if [[ -e "$rec" ]]; then
+        printf 'Both %s and %s exist: keep the one that records the patches\n' \
+          "$oldrec" "$rec" >&2
+        printf 'applied to %s as %s, remove the other and source setup.sh again.\n' \
+          "$dir" "$rec" >&2
+        return 1
+      fi
+      mv -- "$oldrec" "$rec" || return 1
+      printf 'Moved the record of applied patches %s to %s\n' "$oldrec" "$rec"
+    fi
     if [[ -d "$pdir" ]]; then
       for p in "$pdir"/*.patch; do
         [[ -f "$p" ]] || continue

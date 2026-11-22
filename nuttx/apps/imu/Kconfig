@@ -3,10 +3,10 @@
 # see the file kconfig-language.txt in the NuttX tools repository.
 #
 
-config NANO_KV_STORE
+config KV_STORE
 	bool "Key-value store (kv_store.c on Zephyr's settings and NVS)"
 	default y
-	depends on RP2040_FLASH_KV && NANO_SUBCMD
+	depends on RP2040_FLASH_KV && SUBCMD
 	---help---
 		kv_store_init/set/get/delete() and the "kv" command's
 		subcommands of the Zephyr build (common/imu/kv_store.c, shared
@@ -16,13 +16,13 @@ config NANO_KV_STORE
 		stores, the other reads.  The same keys (1-32 characters:
 		letters, digits, '_', '-', '.'), values (1-128 bytes) and error
 		values.  Built into the application library; the "kv" command
-		(NANO_APP_KV), the init task, the IMU service (NANO_APP_IMU) and
-		the Wi-Fi credentials (NANO_WIFI_CREDENTIALS) use it.
+		(APP_KV), the init task, the IMU service (APP_IMU) and
+		the Wi-Fi credentials (WIFI_CREDENTIALS) use it.
 
-config NANO_APP_IMU
+config APP_IMU
 	tristate "IMU acquisition service and the imu command"
 	default y
-	depends on NANO_KV_STORE && NANO_SUBCMD && NANO_LSM6DSO_STREAM
+	depends on KV_STORE && SUBCMD && LSM6DSO_STREAM
 	select LIBC_IPv4_ADDRCONV if !NET_IPv4
 	---help---
 		imu_stream.c (common/imu, shared with the Zephyr build) on the
@@ -33,15 +33,15 @@ config NANO_APP_IMU
 		with the Zephyr build's syntax and output, and the calibration
 		(common/imu/imu_cal.c, shared with the Zephyr build: the stored values
 		of the key-value store for the LSM6DSO driver, "imu cal"); the
-		MQTT transport is NANO_IMU_RAW_MQTT (imu_raw_mqtt_null.c
+		MQTT transport is IMU_RAW_MQTT (imu_raw_mqtt_null.c
 		without it: no network) and the time synchronization
-		NANO_TIME_SYNC (time_sync_null.c without it: no server time).
+		TIME_SYNC (time_sync_null.c without it: no server time).
 		inet_pton() and inet_ntop() for imu.host need
 		LIBC_IPv4_ADDRCONV while the network is off.
 
-if NANO_APP_IMU
+if APP_IMU
 
-config NANO_APP_IMU_PRIORITY
+config APP_IMU_PRIORITY
 	int "imu task priority"
 	default 104
 	---help---
@@ -50,7 +50,7 @@ config NANO_APP_IMU_PRIORITY
 		commands in its shell thread.  The acquisition itself runs in
 		imu_stream_tid (109).
 
-config NANO_APP_IMU_STACKSIZE
+config APP_IMU_STACKSIZE
 	int "imu task stack size"
 	default 3072
 	---help---
@@ -61,10 +61,10 @@ config NANO_APP_IMU_STACKSIZE
 
 endif
 
-config NANO_IMU_RAW_MQTT
+config IMU_RAW_MQTT
 	bool "MQTT transport of the IMU service (imu_raw_mqtt.c)"
 	default y
-	depends on NANO_APP_IMU && NINA_NET && NET_USRSOCK_TCP
+	depends on APP_IMU && NINA_NET && NET_USRSOCK_TCP
 	---help---
 		imu_raw_mqtt.c (common/imu, shared with the Zephyr build) on the
 		Zephyr compatibility layer: the thread imu_raw_mqtt_tid (Zephyr
@@ -79,10 +79,10 @@ config NANO_IMU_RAW_MQTT
 		imu_raw_mqtt_null.c stands in: every batch is dropped as while
 		disconnected.
 
-config NANO_TIME_SYNC
+config TIME_SYNC
 	bool "Time synchronization with an NTP server (time_sync.c)"
 	default y
-	depends on NANO_APP_IMU && NINA_NET && NINA_DNS && NET_USRSOCK_UDP
+	depends on APP_IMU && NINA_NET && NINA_DNS && NET_USRSOCK_UDP
 	---help---
 		time_sync.c (common/imu, shared with the Zephyr build) on the
 		Zephyr compatibility layer: the thread time_sync_tid (Zephyr
@@ -92,10 +92,10 @@ config NANO_TIME_SYNC
 		Wi-Fi is connected and keeps the estimate of its time
 		(time_offset.c) that the IMU service puts on its batches
 		(time_sync_unix_us()), and moves the realtime clock forward to
-		it.  The "ntp status" command is NANO_APP_NTP.  Without this
+		it.  The "ntp status" command is APP_NTP.  Without this
 		option time_sync_null.c stands in: no server time.
 
-if NANO_TIME_SYNC
+if TIME_SYNC
 
 config NINA_NTP_SERVER
 	string "NTP server hostname or IPv4 address"

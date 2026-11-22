@@ -9,8 +9,8 @@
 # (freertos/drivers/compat/compat.cmake, freertos/drivers/i2c_dw/
 # i2c_dw.cmake: the layer's kernel, work queues and RTIO, and the device
 # i2c0; the configuration stops if CONFIG_I2C_DW_I2C0 is not on, as the
-# NuttX build's NANO_LSM6DSO depends on I2C_DW_I2C0).  It adds to the target the same sources as the NuttX build's
-# CONFIG_NANO_LSM6DSO and CONFIG_NANO_LSM6DSO_STREAM (nuttx/drivers/lsm6dso/
+# NuttX build's LSM6DSO_LOCAL depends on I2C_DW_I2C0).  It adds to the target the same sources as the NuttX build's
+# CONFIG_LSM6DSO_LOCAL and CONFIG_LSM6DSO_STREAM (nuttx/drivers/lsm6dso/
 # Make.defs, nuttx/drivers/compat/Make.defs):
 #
 # - the driver, shared with the Zephyr and NuttX builds
@@ -34,7 +34,7 @@
 #   part (freertos/drivers/compat/rp2040/nano_gpio.c, GPIO bank 0 and its
 #   interrupt on the Pico SDK);
 # - the start of the sensor (this directory: nano_lsm6dso.c, nano_lsm6dso.h);
-# - CONFIG_NANO_LSM6DSO_STREAM=1 for every source of the target (the NuttX
+# - CONFIG_LSM6DSO_STREAM=1 for every source of the target (the NuttX
 #   build's Kconfig option of that name: zephyr_device.c lists gpio0,
 #   zephyr_compat_initialize() starts it, and the prelude turns on
 #   CONFIG_SENSOR_ASYNC_API, the Zephyr build's option);
@@ -117,7 +117,7 @@ function(freertos_lsm6dso target)
     ${FREERTOS_STMEMSC_DIR}
   )
 
-  target_compile_definitions(${target} PRIVATE CONFIG_NANO_LSM6DSO_STREAM=1)
+  target_compile_definitions(${target} PRIVATE CONFIG_LSM6DSO_STREAM=1)
 
   target_link_libraries(${target}
     hardware_gpio

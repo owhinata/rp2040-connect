@@ -90,7 +90,7 @@ F の `zephyr_os.h` は `common/compat/net_offload/include/zephyr_heap.h` も読
 `k_work_queue_start()`（キューが自分のスレッドの `struct z_thread_static` を持つ。スレッドは `z_work_queue_process()`、
 `k_yield()`、`Z_SEM_TAKE_FOREVER()` を繰り返す）、オブジェクト `k_sys_work_q`（"sysworkq"、`NANO_PRIO_SYSWORKQ`）、
 `zephyr_compat_initialize()`（宣言は `common/compat/zephyr_compat.h`。`k_sys_work_q`、そのスレッドが起きなければ −ENOMEM、
-RTIO のワークキュー、`CONFIG_NANO_LSM6DSO_STREAM` のとき gpio0）、`k_uptime_get()`（`k_cycle_get_64()` の `Z_UPTIME_MS()`）。
+RTIO のワークキュー、`CONFIG_LSM6DSO_STREAM` のとき gpio0）、`k_uptime_get()`（`k_cycle_get_64()` の `Z_UPTIME_MS()`）。
 "net_mgmt" のスレッド（`common/compat/zephyr_net_mgmt.c`）。
 
 | 関数 | N | F |
@@ -118,7 +118,7 @@ RTIO のワークキュー、`CONFIG_NANO_LSM6DSO_STREAM` のとき gpio0）、`
 | スレッドの起動 | 新しいスレッドが起動のデータを受け取るまで呼んだ側が待つ | 呼んだ側は続ける。タスクはスケジューラーが選んだときに走る（優先度が高ければすぐ） |
 | ワークキューのスレッドが起きなかったとき（`Z_OS_ASSERT()`） | `DEBUGASSERT()`: imu の構成では何もせず、キューのスレッドは 0 のまま | `configASSERT()`: 異常停止の記録と再起動 |
 | tick | 100 µs | 1 ms |
-| `zephyr_init.c`（したがって gpio0 の開始）をビルドするか | `CONFIG_NANO_LSM6DSO_STREAM` のときだけ（カーネルの部分全体） | 常に。gpio0 は `CONFIG_NANO_LSM6DSO_STREAM` のときだけ |
+| `zephyr_init.c`（したがって gpio0 の開始）をビルドするか | `CONFIG_LSM6DSO_STREAM` のときだけ（カーネルの部分全体） | 常に。gpio0 は `CONFIG_LSM6DSO_STREAM` のときだけ |
 | `zephyr_compat_initialize()` を呼ぶところ | `N-board/src/rp2040_bringup.c` | スケジューラーの前の `main()`（`freertos/app/usb-console/src/main.c`） |
 | 同じ優先度の選び方 | NuttX のもの | FreeRTOS の、切り替えのたびの順番回し |
 
@@ -143,7 +143,7 @@ atomic の操作そのものは共有です（`k_spin_lock()` の上）。
 |---|---|---|---|---|---|
 | シェルのバックエンド | `common/shell/zshell_os.h` | `zshell_os_backend_get()`、`zshell_os_cmd_enter()`、`zshell_os_cmd_exit()`、`z_shell_backend_vfprintf()`。任意で `ZSHELL_OS_ACTIVE_CMD` と `zshell_os_active_cmd_set()`・`_get()` | `common/shell/zshell.c` | `nuttx/apps/subcmd/zshell_os_impl.h`（`ZSHELL_OS_ACTIVE_CMD` なし） | `freertos/drivers/shell/zshell_os_impl.h`（定義あり） |
 | `struct shell` | `common/compat/zephyr/shell/shell.h` が読む | バックエンド 1 つ。コマンドより長く生きる | シェルのコマンド | `nuttx/drivers/compat/zephyr_os_shell.h`（端末のパス、コマンドの pid） | `freertos/drivers/shell/zephyr_os_shell.h`（コンソール、実行中のコマンド） |
-| ログの OS 部分 | `common/log/app_log.h` | `app_log_os.h`（OS のヘッダーを先に、任意の `CONFIG_NANO_LOG_DEFAULT_LEVEL`・`CONFIG_NANO_LOG_MAX_LEVEL`）、`app_log_printf()`、`app_log_vprintf()`、`app_log_ratelimit_pass()` | `LOG_*()` マクロ | `nuttx/drivers/include/app_log_os.h`、`nuttx/drivers/log/log_ram.c` | `freertos/drivers/include/app_log_os.h`、`freertos/drivers/log/log_ram.c` |
+| ログの OS 部分 | `common/log/app_log.h` | `app_log_os.h`（OS のヘッダーを先に、任意の `CONFIG_LOG_DEFAULT_LEVEL`・`CONFIG_LOG_MAX_LEVEL`）、`app_log_printf()`、`app_log_vprintf()`、`app_log_ratelimit_pass()` | `LOG_*()` マクロ | `nuttx/drivers/include/app_log_os.h`、`nuttx/drivers/log/log_ram.c` | `freertos/drivers/include/app_log_os.h`、`freertos/drivers/log/log_ram.c` |
 | RAM ログ | `common/log/log_ram.h` | `log_ram_initialize()`、`log_ram_piece()` | 起動、`dmesg` | `nuttx/drivers/log/log_ram.c`。呼ぶのは `N-board/src/rp2040_boardinitialize.c`、`nuttx/apps/dmesg/dmesg_main.c` | `freertos/drivers/log/log_ram.c`（`dmesg` も持つ）。呼ぶのは `main()` |
 | KV のフラッシュ | `common/compat/nano_flash_kv.h` | `nano_flash_kv_os_ready()`、`_read()`、`_program()`（256 バイトのページ）、`_erase()`（4 KiB のセクター）。範囲は OS がもう一度確かめる | `common/compat/zephyr_flash_kv.c` | `N-board/src/nano_flash_kv.c` | `freertos/drivers/kv/nano_flash_kv.c` |
 | KV の消去のコマンド | `common/compat/kv_store_os.h` | `kv_store_wipe()`、`kv_store_cmd_wipe()`、`KV_STORE_OS_COMMANDS` | `common/imu/kv_store.c` | 共有: `common/compat/kv_store_wipe.c` | 共有: 同じ |
@@ -219,10 +219,10 @@ Zephyr 版は自分の `zephyr/app/usb-console/src/kv_store_os.h` と `wifi_prof
 
 | 出どころ | N | F |
 |---|---|---|
-| プレリュード（共有のソースに `-include`） | `nuttx/drivers/compat/common_prelude.h`: NuttX のヘッダーを先に、`CONFIG_SENSOR_LOG_LEVEL` 3、`CONFIG_NANO_LSM6DSO_STREAM` のとき `CONFIG_SENSOR_ASYNC_API` | `freertos/drivers/compat/common_prelude.h`: `CONFIG_SENSOR_LOG_LEVEL` 3、`CONFIG_NINA_NTP_SERVER` ""・`_PORT` 123・`_INTERVAL_MS` 2000、`CONFIG_NINA_TCP_MAX_IO` 3584、`CONFIG_NINA_SEND_RETRY_MS` 1、`CONFIG_NET_SOCKETS_OFFLOAD_PRIORITY` 40、`CONFIG_NINA_PASSTHROUGH` 1、ストリームのとき `CONFIG_SENSOR_ASYNC_API` |
+| プレリュード（共有のソースに `-include`） | `nuttx/drivers/compat/common_prelude.h`: NuttX のヘッダーを先に、`CONFIG_SENSOR_LOG_LEVEL` 3、`CONFIG_LSM6DSO_STREAM` のとき `CONFIG_SENSOR_ASYNC_API` | `freertos/drivers/compat/common_prelude.h`: `CONFIG_SENSOR_LOG_LEVEL` 3、`CONFIG_NINA_NTP_SERVER` ""・`_PORT` 123・`_INTERVAL_MS` 2000、`CONFIG_NINA_TCP_MAX_IO` 3584、`CONFIG_NINA_SEND_RETRY_MS` 1、`CONFIG_NET_SOCKETS_OFFLOAD_PRIORITY` 40、`CONFIG_NINA_PASSTHROUGH` 1、ストリームのとき `CONFIG_SENSOR_ASYNC_API` |
 | NINA と NTP のオプション | Kconfig: `nuttx/drivers/nina/Kconfig`、`nuttx/apps/imu/Kconfig` | プレリュード（上） |
 | NVS と settings の写し | `common/compat/zephyr_kv_config.h`。`nuttx/apps/imu/Makefile` から `-include` | 同じ。`freertos/drivers/kv/kv.cmake` から |
-| ビルドの定義 | Kconfig（`nuttx/drivers/*/Kconfig`、`nuttx/apps/*/Kconfig`、`N-board/Kconfig`）、`N-board/configs/imu/defconfig` | `compat.cmake`: `Z_SHELL_CMD_ROOT_GLOBAL`、`CONFIG_GETOPT_LONG=1`、`PICO_STDOUT_MUTEX=0`。`i2c_dw.cmake`: `CONFIG_I2C_DW_I2C0`、`_I2C1`。`lsm6dso.cmake`: `CONFIG_NANO_LSM6DSO_STREAM`。`wifi.cmake`: `CONFIG_NANO_WIFI_CREDENTIALS`。`nina.cmake`: 名前解決の `NINA_OS_DNS_OFFLOAD` |
+| ビルドの定義 | Kconfig（`nuttx/drivers/*/Kconfig`、`nuttx/apps/*/Kconfig`、`N-board/Kconfig`）、`N-board/configs/imu/defconfig` | `compat.cmake`: `Z_SHELL_CMD_ROOT_GLOBAL`、`CONFIG_GETOPT_LONG=1`、`PICO_STDOUT_MUTEX=0`。`i2c_dw.cmake`: `CONFIG_I2C_DW_I2C0`、`_I2C1`。`lsm6dso.cmake`: `CONFIG_LSM6DSO_STREAM`。`wifi.cmake`: `CONFIG_WIFI_CREDENTIALS`。`nina.cmake`: 名前解決の `NINA_OS_DNS_OFFLOAD` |
 | 共有のヘッダーの中 | `kernel.h`: `CONFIG_THREAD_NAME` 1。`zephyr/rtio/work.h`: `CONFIG_RTIO_WORKQ_POOL_ITEMS` 4 | 同じ |
 | センサーのシェル | `sensor_shell_nuttx.h` | `sensor_shell_os.h`（同じ 4 つの値） |
 

@@ -108,13 +108,13 @@ endif
 # The i2c0 and lsm6dsox devices of the Zephyr compatibility layer
 # (nuttx/drivers/compat, nuttx/drivers/lsm6dso).
 
-ifeq ($(CONFIG_NANO_LSM6DSO),y)
+ifeq ($(CONFIG_LSM6DSO_LOCAL),y)
 CSRCS += rp2040_lsm6dso.c
 endif
 
 # GPIO bank 0 for the compatibility layer's gpio0 (the LSM6DSOX's INT1).
 
-ifeq ($(CONFIG_NANO_LSM6DSO_STREAM),y)
+ifeq ($(CONFIG_LSM6DSO_STREAM),y)
 CSRCS += nano_gpio.c
 endif
 

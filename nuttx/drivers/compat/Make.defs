@@ -17,7 +17,7 @@
 # before each one (-include).
 ############################################################################
 
-ifeq ($(CONFIG_NANO_LSM6DSO),y)
+ifeq ($(CONFIG_LSM6DSO_LOCAL),y)
 CSRCS += zephyr_device.c zephyr_i2c.c
 DEPPATH += --dep-path compat
 VPATH += :compat
@@ -31,7 +31,7 @@ endif
 # zephyr_compat_initialize(), k_uptime_get()) is on zephyr_kernel.c's start
 # of a thread.
 
-ifeq ($(CONFIG_NANO_LSM6DSO_STREAM),y)
+ifeq ($(CONFIG_LSM6DSO_STREAM),y)
 CSRCS += zephyr_kernel.c zephyr_init.c zephyr_mutex.c zephyr_work.c
 CSRCS += zephyr_mem_blocks.c
 CSRCS += zephyr_rtio.c

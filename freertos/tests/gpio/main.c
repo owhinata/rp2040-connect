@@ -9,7 +9,7 @@
  * LSM6DSO's INT1 line (lsm6dso_os_int1_*() of the driver's OS part on
  * Zephyr, common/drivers/lsm6dso/port/zephyr/lsm6dso_os.c, which this test
  * includes, with the core's lsm6dso_stream_int1() defined here), with the
- * prelude and CONFIG_NANO_LSM6DSO_STREAM, as
+ * prelude and CONFIG_LSM6DSO_STREAM, as
  * freertos/drivers/lsm6dso/lsm6dso.cmake builds them.
  *
  * - The start: gpio0 is not ready before zephyr_compat_initialize() and is

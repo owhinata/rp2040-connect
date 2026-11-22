@@ -67,7 +67,7 @@ lib=("$cimu/imu_raw_queue.c" "$cimu/imu_raw_packet.c" "$cimu/imu_raw_batch.c"
 # built without warnings, as it is; the Zephyr driver's code casts its bus functions, leaves
 # parameters unused and compares signed with unsigned, as in the Zephyr build.  The prelude
 # follows the fake <nuttx/config.h>, as on NuttX (CONFIG_SENSOR_ASYNC_API from
-# CONFIG_NANO_LSM6DSO_STREAM).
+# CONFIG_LSM6DSO_STREAM).
 compat=("$ccompat/zephyr_work.c" "$ccompat/zephyr_rtio.c" "$ccompat/zephyr_mem_blocks.c"
         "$ccompat/zephyr_rtio_workq.c" "$zfakes/zephyr_kernel_host.c")
 if [[ -f stmemsc/lsm6dso_reg.c ]]; then
@@ -363,7 +363,7 @@ printf 'ok  kv_cmd\n'
 # on subcmd), on the store above: the stored entries and names, the cache, the lengths and
 # options, the messages and the log.  The copied text leaves parameters unused and compares
 # signed with unsigned, as in the Zephyr build; the command's main() is wifi_main().
-winc=(-D_GNU_SOURCE -DCONFIG_NANO_WIFI_CREDENTIALS=1 -Itests/lsm6dso_fakes "${zinc[@]}"
+winc=(-D_GNU_SOURCE -DCONFIG_WIFI_CREDENTIALS=1 -Itests/lsm6dso_fakes "${zinc[@]}"
       -I"$cshell" -Iapps/wifi -I"$ccompat" -I"$ctests")
 wflags=("${flags[@]}" -Wno-unused-parameter -Wno-sign-compare)
 cc "${wflags[@]}" "${winc[@]}" -Dmain=wifi_main -c apps/wifi/wifi_credentials_shell.c \

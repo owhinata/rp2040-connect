@@ -2,9 +2,9 @@
 # nuttx/apps/irqstack/Make.defs
 #
 # Read through nuttx/apps/Make.defs.  Adds this directory to the build when
-# CONFIG_NANO_APP_IRQSTACK is set.
+# CONFIG_APP_IRQSTACK is set.
 ############################################################################
 
-ifneq ($(CONFIG_NANO_APP_IRQSTACK),)
+ifneq ($(CONFIG_APP_IRQSTACK),)
 CONFIGURED_APPS += $(APPDIR)/external/irqstack
 endif

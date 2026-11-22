@@ -3,7 +3,7 @@
 # see the file kconfig-language.txt in the NuttX tools repository.
 #
 
-config NANO_APP_IRQSTACK
+config APP_IRQSTACK
 	tristate "irqstack command (interrupt stack use)"
 	default y
 	depends on STACK_COLORATION && ARCH_INTERRUPTSTACK > 3
@@ -16,9 +16,9 @@ config NANO_APP_IRQSTACK
 		coloration with up_check_intstack() (a flat build lets an
 		application call it).  Arguments are ignored.
 
-if NANO_APP_IRQSTACK
+if APP_IRQSTACK
 
-config NANO_APP_IRQSTACK_PRIORITY
+config APP_IRQSTACK_PRIORITY
 	int "irqstack task priority"
 	default 104
 	---help---
@@ -26,7 +26,7 @@ config NANO_APP_IRQSTACK_PRIORITY
 		common/compat/priorities.h): the Zephyr build runs shell
 		commands in its shell thread.
 
-config NANO_APP_IRQSTACK_STACKSIZE
+config APP_IRQSTACK_STACKSIZE
 	int "irqstack stack size"
 	default 3072
 	---help---

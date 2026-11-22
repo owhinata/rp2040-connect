@@ -15,7 +15,7 @@
 # imu_cal_init() and time_sync_init() (../imu, and imu_cal.h of common/imu,
 # which includes the LSM6DSO driver's <zephyr/drivers/sensor/lsm6dso.h> of
 # common/compat).  rp2040_telnet.c
-# runs the Telnet shell (CONFIG_NANO_INIT_TELNET).  When the board's NINA
+# runs the Telnet shell (CONFIG_INIT_TELNET).  When the board's NINA
 # passthrough mode was asked for (CONFIG_NINA_PASSTHROUGH), it runs
 # that mode instead of all this (nina_passthrough.h of
 # common/drivers/nina).

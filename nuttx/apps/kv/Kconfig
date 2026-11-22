@@ -3,21 +3,21 @@
 # see the file kconfig-language.txt in the NuttX tools repository.
 #
 
-config NANO_APP_KV
+config APP_KV
 	tristate "kv command (key-value store)"
 	default y
-	depends on NANO_KV_STORE && NANO_SUBCMD
+	depends on KV_STORE && SUBCMD
 	---help---
 		"kv set|sethex|get|delete|wipe": the Zephyr build's kv command
 		(common/imu/kv_store.c, shared with the Zephyr build; its
 		SHELL_CMD_REGISTER() makes z_shell_main_kv()) with the same
 		syntax and messages, on the key-value store of nuttx/apps/imu
-		(NANO_KV_STORE).  "kv wipe confirm" (not in the Zephyr build,
+		(KV_STORE).  "kv wipe confirm" (not in the Zephyr build,
 		common/compat/kv_store_os.h) erases the whole key-value area.
 
-if NANO_APP_KV
+if APP_KV
 
-config NANO_APP_KV_PRIORITY
+config APP_KV_PRIORITY
 	int "kv task priority"
 	default 104
 	---help---
@@ -25,7 +25,7 @@ config NANO_APP_KV_PRIORITY
 		common/compat/priorities.h): the Zephyr build runs shell
 		commands in its shell thread.
 
-config NANO_APP_KV_STACKSIZE
+config APP_KV_STACKSIZE
 	int "kv stack size"
 	default 3072
 	---help---

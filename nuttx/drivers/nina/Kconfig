@@ -7,7 +7,7 @@ config NINA
 	bool "NINA-W102 SPI link (nina_proto_request())"
 	default y
 	depends on RP2040_SPI1 && !RP2040_SPI_DMA
-	depends on NANO_LSM6DSO_STREAM
+	depends on LSM6DSO_STREAM
 	---help---
 		common/drivers/nina/internal/nina_proto.c: nina_proto_request() and nina_proto_ip_config(),
 		shared with the Zephyr build (the WiFiNINA SPI protocol of the
@@ -20,7 +20,7 @@ config NINA
 		line (GPIO10) sleep on its edge interrupt
 		(common/drivers/nina/port/nuttx/nina_os.c),
 		through the compatibility layer's gpio0 and the board's
-		src/nano_gpio.c, which are built with NANO_LSM6DSO_STREAM.
+		src/nano_gpio.c, which are built with LSM6DSO_STREAM.
 
 if NINA
 
@@ -74,7 +74,7 @@ config NINA_SEND_RETRY_MS
 config NINA_NET
 	bool "NINA Wi-Fi network device wlan0 (ifconfig, wapi)"
 	default y
-	depends on NINA_USRSOCK && NANO_LSM6DSO_STREAM
+	depends on NINA_USRSOCK && LSM6DSO_STREAM
 	depends on DRIVERS_IEEE80211 && NETDEV_WIRELESS_IOCTL && NET_IPv4
 	---help---
 		nina_wifi.c (common/drivers/nina, shared with the Zephyr build:
@@ -88,8 +88,8 @@ config NINA_NET
 		networks, the connection events) on the core.  The IP address,
 		netmask, gateway and MAC address are those of wlan0 (ifconfig).
 		Uses the Zephyr compatibility layer's kernel objects, which are
-		built with NANO_LSM6DSO_STREAM, and its net_if, net_mgmt and wifi_mgmt parts
-		(the "net_mgmt" event thread).
+		built with LSM6DSO_STREAM, and its net_if, net_mgmt and wifi_mgmt
+		parts (the "net_mgmt" event thread).
 
 config NINA_DNS
 	bool "Name resolution with the NINA resolver (nina_dns_getaddrinfo())"

@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-/* STUB for a build without the MQTT transport (CONFIG_NANO_IMU_RAW_MQTT
+/* STUB for a build without the MQTT transport (CONFIG_IMU_RAW_MQTT
  * off; with it, common/imu/imu_raw_mqtt.c, shared with the Zephyr build,
  * is built instead).
  *

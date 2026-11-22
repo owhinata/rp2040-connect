@@ -325,11 +325,11 @@ NET_MGMT_DEFINE_REQUEST_HANDLER(NET_REQUEST_WIFI_IFACE_STATUS);
  * a connection request (NET_REQUEST_WIFI_CONNECT) with each stored network
  * (<zephyr/net/wifi_credentials.h>) in turn until one is accepted; the
  * handler is Zephyr's connect_stored_command(), in zephyr_wifi_mgmt.c, with
- * the stored credentials of wifi_credentials.c (CONFIG_NANO_WIFI_CREDENTIALS,
+ * the stored credentials of wifi_credentials.c (CONFIG_WIFI_CREDENTIALS,
  * the OS's configuration, defined before this header).
  */
 
-#ifdef CONFIG_NANO_WIFI_CREDENTIALS
+#ifdef CONFIG_WIFI_CREDENTIALS
 #  define NET_REQUEST_WIFI_CONNECT_STORED 5
 NET_MGMT_DEFINE_REQUEST_HANDLER(NET_REQUEST_WIFI_CONNECT_STORED);
 #endif

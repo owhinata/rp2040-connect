@@ -3,7 +3,7 @@
 # see the file kconfig-language.txt in the NuttX tools repository.
 #
 
-config NANO_APP_INIT
+config APP_INIT
 	bool "Init task: nsh on the USB CDC ACM console"
 	default n
 	depends on NSH_LIBRARY && NSH_CONSOLE && CDCACM && !CDCACM_CONSOLE && !NSH_USBCONSOLE
@@ -12,23 +12,23 @@ config NANO_APP_INIT
 		The first task (CONFIG_INIT_ENTRYPOINT="rp2040_init_main").  It is
 		linked into libapps as a plain function, not as a builtin, so it
 		cannot be started from the shell.  It calls nsh_initialize() once,
-		then repeatedly opens the USB console (NANO_INIT_CONSOLE), sets the
+		then repeatedly opens the USB console (INIT_CONSOLE), sets the
 		terminal modes, makes it fd 0/1/2 and runs an nsh session on it in
 		its own task until the session ends (USB disconnected), then opens
 		the console again.  NuttX's own USB console front end
 		(NSH_USBCONSOLE, CDCACM_CONSOLE) waits for three Enter keys before
 		the first prompt and is not used.
 
-if NANO_APP_INIT
+if APP_INIT
 
-config NANO_INIT_CONSOLE
+config INIT_CONSOLE
 	string "Console device"
 	default "/dev/ttyACM0"
 	---help---
 		The CDC ACM device registered by the board (cdcacm_initialize(0)
 		in rp2040_bringup.c).
 
-config NANO_INIT_RETRY_MS
+config INIT_RETRY_MS
 	int "Retry interval (ms)"
 	default 100
 	---help---
@@ -37,7 +37,7 @@ config NANO_INIT_RETRY_MS
 		after a session has ended.  Keeps a USB cable that is unplugged or
 		a host that suspends the device from turning into a busy loop.
 
-config NANO_INIT_NSH_PRIORITY
+config INIT_NSH_PRIORITY
 	int "nsh task priority"
 	default 104
 	---help---
@@ -47,7 +47,7 @@ config NANO_INIT_NSH_PRIORITY
 		(NANO_PRIO_SHELL in common/compat/priorities.h): below
 		every other thread of the port.
 
-config NANO_INIT_NSH_STACKSIZE
+config INIT_NSH_STACKSIZE
 	int "nsh task stack size"
 	default 3072
 	---help---
@@ -55,12 +55,12 @@ config NANO_INIT_NSH_STACKSIZE
 		run on it.  Builtin applications run as separate tasks with their
 		own stacks.  3072 is CONFIG_SHELL_STACK_SIZE of the Zephyr build.
 
-config NANO_INIT_TELNET
+config INIT_TELNET
 	bool "Telnet shell"
 	default y
 	depends on NETDEV_TELNET && NET_IPv4
 	---help---
-		nsh on TCP port NANO_INIT_TELNET_PORT for one client at a time,
+		nsh on TCP port INIT_TELNET_PORT for one client at a time,
 		the Zephyr build's Telnet shell backend
 		(CONFIG_SHELL_BACKEND_TELNET).  init opens the listening socket
 		before the "USB console started" log line, as Zephyr does in a
@@ -70,10 +70,10 @@ config NANO_INIT_TELNET
 		Telnet driver (NETDEV_TELNET, TELNET_MAXLCLIENTS=1) with the same
 		priority and stack as the USB session.  See rp2040_telnet.c.
 
-config NANO_INIT_TELNET_PORT
+config INIT_TELNET_PORT
 	int "Telnet port"
 	default 23
-	depends on NANO_INIT_TELNET
+	depends on INIT_TELNET
 	---help---
 		CONFIG_SHELL_TELNET_PORT of the Zephyr build.
 

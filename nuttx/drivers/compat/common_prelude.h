@@ -41,11 +41,11 @@
 #define CONFIG_SENSOR_LOG_LEVEL 3
 
 /* The FIFO stream of the LSM6DSO driver, CONFIG_SENSOR_ASYNC_API in the
- * Zephyr build (lsm6dso.c, lsm6dso.h): CONFIG_NANO_LSM6DSO_STREAM of
+ * Zephyr build (lsm6dso.c, lsm6dso.h): CONFIG_LSM6DSO_STREAM of
  * nuttx/drivers/lsm6dso/Kconfig.
  */
 
-#ifdef CONFIG_NANO_LSM6DSO_STREAM
+#ifdef CONFIG_LSM6DSO_STREAM
 #  define CONFIG_SENSOR_ASYNC_API 1
 #endif
 

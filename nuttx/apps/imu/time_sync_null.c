@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-/* STUB for the builds without NANO_TIME_SYNC (with it, common/imu/time_sync.c,
+/* STUB for the builds without TIME_SYNC (with it, common/imu/time_sync.c,
  * shared with the Zephyr build, is built instead).
  *
  * The API of time_sync.h as the Zephyr build's time_sync.c behaves before

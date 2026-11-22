@@ -61,7 +61,7 @@ What the core needs from the OS and the board (its boundary):
   interrupts are masked (a flash erase); the FreeRTOS build waits in slices of 10 ms because its
   tick stands still meanwhile and catches up with the TIMER afterwards. `nina_os_ready_disarm()` disables the edge, so CS toggling READY during
   the transfers raises no interrupts. `gpio0` and `src/nano_gpio.c` are built with
-  `CONFIG_NANO_LSM6DSO_STREAM`, so `CONFIG_NINA` depends on it. The callback is added to
+  `CONFIG_LSM6DSO_STREAM`, so `CONFIG_NINA` depends on it. The callback is added to
   `gpio0` by `nina_os_ready_start()` after the first reset; if that fails, the core reads READY
   every 100 µs instead (same deadlines and results).
 - The time limits and the wiring are in the "NINA-W102 (`nina`)" section of
@@ -197,7 +197,7 @@ given by name (the default is the gateway).
 |---|---|
 | `common/drivers/nina/nina_wifi.c` and `include/nina_wifi.h` | The core's Wi-Fi operations, the same files as the other builds': scan, connect, disconnect, status, the link monitor, and the bodies of the three threads `nina_scan_tid`, `nina_connect_tid` and `nina_monitor_tid`; what happens comes back through the binding's callbacks (`struct nina_wifi_ops`) |
 | `common/drivers/nina/port/nuttx/nina_netdev.c` | Registers the NINA as the NuttX network device `wlan0`, turns wapi's wireless ioctls into the core's calls, puts the core's results on `wlan0` (addresses, carrier) and starts the three threads. NuttX port only |
-| `common/drivers/nina/port/nuttx/nina_wifi_mgmt.[ch]` | The Zephyr Wi-Fi management that the applications use (the compatibility layer's `net_mgmt()`), on the core: the interface of `net_if_get_default()`, `NET_REQUEST_WIFI_CONNECT` (which `NET_REQUEST_WIFI_CONNECT_STORED` makes for each stored network), the connection's events, and the Wi-Fi profile's reconnection as the core's hooks (`common/imu/wifi_profile.c` with `CONFIG_NANO_WIFI_PROFILE`; without it every connection is allowed and nothing reconnects) |
+| `common/drivers/nina/port/nuttx/nina_wifi_mgmt.[ch]` | The Zephyr Wi-Fi management that the applications use (the compatibility layer's `net_mgmt()`), on the core: the interface of `net_if_get_default()`, `NET_REQUEST_WIFI_CONNECT` (which `NET_REQUEST_WIFI_CONNECT_STORED` makes for each stored network), the connection's events, and the Wi-Fi profile's reconnection as the core's hooks (`common/imu/wifi_profile.c` with `CONFIG_WIFI_PROFILE`; without it every connection is allowed and nothing reconnects) |
 | `common/drivers/nina/port/nuttx/nina_net.h` | `nina_net_initialize()` (the board's bring-up) and `nina_net_start()` (the init task) |
 
 - The operations are the Zephyr version's: every 2 seconds, while connected, the monitor reads the
@@ -553,7 +553,7 @@ What the driver's calls into the system are on NuttX (those of the core through
 | `i2c_burst_read_dt()` (the core's FIFO reads) | the layer's I2C calls on I2C0 |
 | `k_work_delayable` on `k_work_queue_start()`'s queue, `k_work` on `k_sys_work_q` (the stream's work and INT1's) | the layer's work queues (`imu_fifo_worker` priority 108, `sysworkq`) |
 | `gpio_*_dt()`, `sensor_clock_get_cycles()`, RTIO (the stream) | the layer's, on the board's `gpio0` and the TIMER (below) |
-| `CONFIG_SENSOR_ASYNC_API` | defined by the prelude when `CONFIG_NANO_LSM6DSO_STREAM` is set (always on with `NANO_LSM6DSO`; as in Zephyr, `lsm6dso_sensor.c` does not build without it) |
+| `CONFIG_SENSOR_ASYNC_API` | defined by the prelude when `CONFIG_LSM6DSO_STREAM` is set (always on with `LSM6DSO_LOCAL`; as in Zephyr, `lsm6dso_sensor.c` does not build without it) |
 | `DT_HAS_COMPAT_ON_BUS_STATUS_OKAY()` | the layer's `<zephyr/devicetree.h>`: 1 for `st_lsm6dso` on `i2c` only (the board has one LSM6DSOX, on I2C0) |
 | the devicetree instance, `POST_KERNEL`, priority 90 | `DEVICE_DT_DEFINE(lsm6dsox, ...)` (`lsm6dso_instance.h`), `device_init()` in the board's bring-up |
 
@@ -709,8 +709,8 @@ of the NuttX implementation on the include path.
 | `zephyr/sys/clock.h` (NuttX) | `sys_clock_gettime()`, `sys_clock_settime()` (`SYS_CLOCK_REALTIME`: NuttX's `clock_gettime()`, `clock_settime()` with `CLOCK_REALTIME`; 0 or `-EINVAL`), `NSEC_PER_USEC`, `USEC_PER_SEC` |
 | `zephyr/net/net_if.h` (NuttX) | `struct net_if` (one NuttX network device), `net_if_get_default()`, `net_if_get_wifi_sta()`, the IPv4 address and gateway as the applications read them (`net_if_ipv4_get_global_addr()`, `net_if_ipv4_get_gw()`), `net_if_is_admin_up()` (below); the NINA's binding sets the device's values itself |
 | `zephyr/net/net_mgmt.h` | `net_mgmt()` (requests), `struct net_mgmt_event_callback`, `net_mgmt_init_event_callback()`, `net_mgmt_add_event_callback()`, `_del_event_callback()`, `net_mgmt_event_notify_with_info()` (below) |
-| `zephyr/net/wifi_mgmt.h` | The Wi-Fi types (security, band, MFP, state, mode; Zephyr's values), `struct wifi_scan_params`, `wifi_scan_result`, `wifi_connect_req_params`, `wifi_iface_status`, `wifi_status`, `struct wifi_mgmt_ops`, the offloaded interface API and `NET_DEVICE_DT_OFFLOAD_DEFINE()`, the requests `NET_REQUEST_WIFI_SCAN`, `_CONNECT`, `_DISCONNECT`, `_IFACE_STATUS`, `_CONNECT_STORED` (with `CONFIG_NANO_WIFI_CREDENTIALS`), the events `NET_EVENT_WIFI_SCAN_RESULT`, `_SCAN_DONE`, `_CONNECT_RESULT`, `_DISCONNECT_RESULT`, `wifi_mgmt_raise_connect_result_event()`, `_disconnect_result_event()` (below), `wifi_security_txt()`, `wifi_band_txt()` |
-| `zephyr/net/wifi_credentials.h` | A copy of Zephyr's header of that name: `struct wifi_credentials_header`, `_personal`, `WIFI_CREDENTIALS_FLAG_*`, `wifi_credentials_set_personal_struct()`, `_get_by_ssid_personal_struct()`, `_delete_by_ssid()`, `_for_each_ssid()`, `_is_empty()` and the rest. The configuration values (`CONFIG_WIFI_CREDENTIALS_MAX_ENTRIES` and so on) come from the OS's `CONFIG_NANO_WIFI_CREDENTIALS_*` (in the NuttX build, `nuttx/apps/wifi/Kconfig`). The port's own `wifi_credentials_init()` (called by init; Zephyr's `SYS_INIT()`). The functions are in `common/compat/wifi_credentials.c` (the copy of Zephyr's library) and `wifi_credentials_backend_settings.c`, which stores them in the settings |
+| `zephyr/net/wifi_mgmt.h` | The Wi-Fi types (security, band, MFP, state, mode; Zephyr's values), `struct wifi_scan_params`, `wifi_scan_result`, `wifi_connect_req_params`, `wifi_iface_status`, `wifi_status`, `struct wifi_mgmt_ops`, the offloaded interface API and `NET_DEVICE_DT_OFFLOAD_DEFINE()`, the requests `NET_REQUEST_WIFI_SCAN`, `_CONNECT`, `_DISCONNECT`, `_IFACE_STATUS`, `_CONNECT_STORED` (with `CONFIG_WIFI_CREDENTIALS`), the events `NET_EVENT_WIFI_SCAN_RESULT`, `_SCAN_DONE`, `_CONNECT_RESULT`, `_DISCONNECT_RESULT`, `wifi_mgmt_raise_connect_result_event()`, `_disconnect_result_event()` (below), `wifi_security_txt()`, `wifi_band_txt()` |
+| `zephyr/net/wifi_credentials.h` | A copy of Zephyr's header of that name: `struct wifi_credentials_header`, `_personal`, `WIFI_CREDENTIALS_FLAG_*`, `wifi_credentials_set_personal_struct()`, `_get_by_ssid_personal_struct()`, `_delete_by_ssid()`, `_for_each_ssid()`, `_is_empty()` and the rest. The configuration values (`CONFIG_WIFI_CREDENTIALS_MAX_ENTRIES` and so on, Zephyr's names) are the OS's where it sets them (in the NuttX build, `nuttx/apps/wifi/Kconfig`), else the Zephyr build's. The port's own `wifi_credentials_init()` (called by init; Zephyr's `SYS_INIT()`). The functions are in `common/compat/wifi_credentials.c` (the copy of Zephyr's library) and `wifi_credentials_backend_settings.c`, which stores them in the settings |
 | `zephyr/net/wifi_utils.h` | `wifi_utils_validate_chan()` (`_2g`, `_5g`, `_6g`), `net_bytes_from_str()` (in Zephyr's `<zephyr/net/net_ip.h>`) |
 | `zephyr/settings/settings.h`, `zephyr/kvss/nvs.h`, `zephyr/sys/slist.h`, `zephyr/sys/list_gen.h` | Unchanged copies of Zephyr's headers of the same names ("Key-value store" below): the settings API (`settings_subsys_init()`, `settings_save_one()`, `settings_load_one()`, `settings_delete()`, `settings_load_subtree_direct()` and others), NVS's API and `struct nvs_fs`, singly linked lists |
 | `zephyr/drivers/flash.h`, `zephyr/storage/flash_map.h` | The flash API that NVS and the settings use (`flash_read()`, `flash_write()`, `flash_erase()`, `flash_flatten()`, `flash_get_parameters()`, `flash_get_write_block_size()`, `flash_get_page_info_by_offs()`, `struct flash_parameters`) and the flash map (`flash_area_open()`, `flash_area_close()`, `flash_area_get_sectors()`, `PARTITION_ID(storage_partition)`). The only device is the key-value area's flash (`zephyr_flash_kv.c`, below) |
@@ -735,10 +735,10 @@ of the NuttX implementation on the include path.
 | `zephyr_gpio.c` | The `gpio0` device (Zephyr's `gpio.h` logic and `gpio_rpi_pico.c`) on the board's `<nano_gpio.h>` |
 | `zephyr_sensor_clock.c` | The sensor clock on the layer's cycle counter `k_cycle_get_64()` (the board's TIMER, `nano_mono_us()`, 1 MHz) |
 | `sensor_default_rtio.c` | A copy of Zephyr's `drivers/sensor/default_rtio_sensor.c` (only the log replaced): the sensors' iodev API, the fallback for single reads, the default decoder |
-| `zephyr_device.c` | Device initialization and the list of devices (`gpio0`, `i2c0`, `lsm6dsox` in the Zephyr build's order of initialization, with their node labels and whether the API is a sensor API; `gpio0` with the OS's configuration `CONFIG_NANO_LSM6DSO_STREAM`) |
+| `zephyr_device.c` | Device initialization and the list of devices (`gpio0`, `i2c0`, `lsm6dsox` in the Zephyr build's order of initialization, with their node labels and whether the API is a sensor API; `gpio0` with the OS's configuration `CONFIG_LSM6DSO_STREAM`) |
 | `zephyr_i2c.c` (NuttX) | I2C (on a NuttX I2C master) |
 | `zephyr_hwinfo.c` (NuttX) | `hwinfo_get_device_id()` on the board's chip ID (`rp2040_chip_id()`) |
-| `zephyr_net_if.c` (NuttX), `zephyr_net_mgmt.c`, `zephyr_wifi_mgmt.c` | The interface (values of the NuttX network device), the `net_mgmt` event queue and thread (started with `z_thread_static_start()`; its priority and stack size are `NANO_PRIO_NET_MGMT`, `NANO_STACK_NET_MGMT` of `priorities.h`), the Wi-Fi requests (a copy of the checks of Zephyr's `subsys/net/l2/wifi/wifi_mgmt.c`) and events, `NET_REQUEST_WIFI_CONNECT_STORED` (a copy of `connect_stored_command()` of the same file; with `CONFIG_NANO_WIFI_CREDENTIALS`). Only with `CONFIG_NINA_NET`. The NINA's binding (`common/drivers/nina/port/nuttx/nina_wifi_mgmt.c`) serves them on the core for the applications |
+| `zephyr_net_if.c` (NuttX), `zephyr_net_mgmt.c`, `zephyr_wifi_mgmt.c` | The interface (values of the NuttX network device), the `net_mgmt` event queue and thread (started with `z_thread_static_start()`; its priority and stack size are `NANO_PRIO_NET_MGMT`, `NANO_STACK_NET_MGMT` of `priorities.h`), the Wi-Fi requests (a copy of the checks of Zephyr's `subsys/net/l2/wifi/wifi_mgmt.c`) and events, `NET_REQUEST_WIFI_CONNECT_STORED` (a copy of `connect_stored_command()` of the same file; with `CONFIG_WIFI_CREDENTIALS`). Only with `CONFIG_NINA_NET`. The NINA's binding (`common/drivers/nina/port/nuttx/nina_wifi_mgmt.c`) serves them on the core for the applications |
 | `zephyr_wifi_utils.c` | Copies of `wifi_security_txt()` and `wifi_band_txt()` (Zephyr's `wifi_mgmt.c`), the channel checks (`wifi_utils.c`) and `net_bytes_from_str()` (`subsys/net/ip/utils.c`), for `wifi cred`. OS-independent. Only with `CONFIG_NINA_NET` |
 | `sensor_shell_stream.c` | A copy of Zephyr's `drivers/sensor/sensor_shell_stream.c` (the sensor shell's processing thread). It includes the OS's `sensor_shell_os.h` first, and the processing thread's callback is `sensor_shell_os_processing_callback()` (in the NuttX build, `nuttx/apps/sensor/sensor_shell_nuttx.c`). Built by `apps/sensor` |
 | `wifi_credentials.c`, `wifi_credentials_backend_settings.c` | Copies of Zephyr's `subsys/net/lib/wifi_credentials/` (the stored Wi-Fi credentials). Built by `apps/wifi`. Two changes in the backend: the read buffer is aligned to 8 bytes (it is read as a struct; the Cortex-M0+ faults on an unaligned access) and the index formats are `%zu` |
@@ -785,8 +785,8 @@ of the NuttX implementation on the include path.
     board implements it), `app_log.h` (`<zephyr/logging/log.h>`, `sensor_default_rtio.c`, the
     credentials; in `common/log/`, on the OS part `app_log_os.h`), `<cpu_load.h>`
     (`<zephyr/sys/cpu_load.h>`; `common/compat/`), `sensor_shell_os.h` (`sensor_shell_stream.c`). The configuration
-    values `CONFIG_NANO_LSM6DSO_STREAM` (`zephyr_device.c`) and `CONFIG_NANO_WIFI_CREDENTIALS`,
-    `_MAX_ENTRIES`, `_SAE_PASSWORD_LENGTH`, `_CONNECTION_TIMEOUT` (the Wi-Fi headers and
+    values `CONFIG_LSM6DSO_STREAM` (`zephyr_device.c`) and `CONFIG_WIFI_CREDENTIALS`,
+    `_MAX_ENTRIES`, `_SAE_PASSWORD_LENGTH`, `_CONNECT_STORED_CONNECTION_TIMEOUT` (the Wi-Fi headers and
     `zephyr_wifi_mgmt.c`) must be defined before the layer's headers (in the NuttX build by
     `<nuttx/config.h>`, which the prelude reads for the shared `.c` files).
 - **Spin locks**: Zephyr's single-CPU `k_spin_lock()` masks interrupts, and no other thread runs
@@ -811,7 +811,7 @@ of the NuttX implementation on the include path.
   `<nuttx/irq.h>`, `<nuttx/mutex.h>`, `<nuttx/semaphore.h>`, `<nuttx/wdog.h>`, `<stdio.h>`) and the
   values of the Zephyr Kconfig options that the shared sources use (`CONFIG_SENSOR_LOG_LEVEL` 3, the
   Zephyr build's value; `CONFIG_SENSOR_ASYNC_API` of `lsm6dso_sensor.c` and `lsm6dso_sensor.h`, set when
-  `CONFIG_NANO_LSM6DSO_STREAM` is). So the shared sources
+  `CONFIG_LSM6DSO_STREAM` is). So the shared sources
   have no lines that include NuttX headers. The socket headers are not in it (names such as
   `accept()` would collide with the sources' own functions; the layer's `<zephyr/net/socket.h>`
   reads them for the files that need them). The host tests use the same prelude (without

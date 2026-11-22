@@ -10,8 +10,8 @@
 # (freertos/drivers/compat/compat.cmake, freertos/drivers/kv/kv.cmake,
 # freertos/drivers/nina/nina.cmake: the layer and its shell, the settings
 # on the key-value area, the NINA link).  It adds to the target what the
-# NuttX build has with CONFIG_NINA_NET, CONFIG_NANO_WIFI_CREDENTIALS
-# and CONFIG_NANO_WIFI_PROFILE (nuttx/drivers/nina/Make.defs,
+# NuttX build has with CONFIG_NINA_NET, CONFIG_WIFI_CREDENTIALS
+# and CONFIG_WIFI_PROFILE (nuttx/drivers/nina/Make.defs,
 # nuttx/drivers/compat/Make.defs, nuttx/apps/wifi/Makefile):
 #
 # - the start of the layer's network part, which registers the NINA
@@ -27,7 +27,7 @@
 # - the stored credentials: the copies of Zephyr's wifi_credentials.c and
 #   its settings backend (common/compat; the entries are the settings
 #   "wifi_cred/<n>" on the key-value area, as in the Zephyr and NuttX
-#   builds), with CONFIG_NANO_WIFI_CREDENTIALS for every source of the target
+#   builds), with CONFIG_WIFI_CREDENTIALS for every source of the target
 #   (it adds NET_REQUEST_WIFI_CONNECT_STORED to <zephyr/net/wifi_mgmt.h>);
 #   the configuration is the Zephyr build's (2 entries, 128-byte password
 #   room, 30 s connection timeout: the defaults of
@@ -92,7 +92,7 @@ function(freertos_wifi target)
   )
 
   target_compile_definitions(${target} PRIVATE
-    CONFIG_NANO_WIFI_CREDENTIALS=1
+    CONFIG_WIFI_CREDENTIALS=1
   )
 
   set(prelude "-include;${FREERTOS_COMPAT_DIR}/common_prelude.h")

@@ -3,7 +3,7 @@
  * Wi-Fi credentials, with Zephyr's names, types, flags and functions.  The
  * library is the copy of Zephyr's subsys/net/lib/wifi_credentials/ in
  * common/compat (wifi_credentials.c, wifi_credentials_backend_settings.c;
- * CONFIG_NANO_WIFI_CREDENTIALS), which keeps the entries in the copy of
+ * CONFIG_WIFI_CREDENTIALS), which keeps the entries in the copy of
  * Zephyr's settings (common/compat/subsys/settings, on NVS in the key-value
  * area) under the names "wifi_cred/<index>", as the Zephyr build keeps them
  * in its settings.  The entry is this header's struct
@@ -11,9 +11,10 @@
  * settings backend stores it, in the same bytes as the Zephyr build (see
  * the layout check below).
  *
- * The configuration of the Zephyr build (CONFIG_WIFI_CREDENTIALS_*) comes
- * from the OS's CONFIG_NANO_WIFI_CREDENTIALS_* (NuttX: the options of
- * nuttx/apps/wifi/Kconfig), defined before this header.
+ * The configuration (CONFIG_WIFI_CREDENTIALS_*, the Zephyr build's names)
+ * is the OS's where it sets one (NuttX: the options of
+ * nuttx/apps/wifi/Kconfig), defined before this header, else the Zephyr
+ * build's value below.
  *
  * Not in Zephyr: wifi_credentials_init(), which the port's init task calls
  * where Zephyr runs the library's SYS_INIT() (before the threads and
@@ -39,26 +40,19 @@
 #include <zephyr/kernel.h>
 #include <zephyr/net/wifi_mgmt.h>
 
-/* The Zephyr build's configuration (zephyr/build/usb-console/zephyr/.config). */
+/* The Zephyr build's configuration (zephyr/build/usb-console/zephyr/.config)
+ * where the OS does not set it.
+ */
 
-#ifdef CONFIG_NANO_WIFI_CREDENTIALS_MAX_ENTRIES
-#  define CONFIG_WIFI_CREDENTIALS_MAX_ENTRIES \
-     CONFIG_NANO_WIFI_CREDENTIALS_MAX_ENTRIES
-#else
+#ifndef CONFIG_WIFI_CREDENTIALS_MAX_ENTRIES
 #  define CONFIG_WIFI_CREDENTIALS_MAX_ENTRIES 2
 #endif
 
-#ifdef CONFIG_NANO_WIFI_CREDENTIALS_SAE_PASSWORD_LENGTH
-#  define CONFIG_WIFI_CREDENTIALS_SAE_PASSWORD_LENGTH \
-     CONFIG_NANO_WIFI_CREDENTIALS_SAE_PASSWORD_LENGTH
-#else
+#ifndef CONFIG_WIFI_CREDENTIALS_SAE_PASSWORD_LENGTH
 #  define CONFIG_WIFI_CREDENTIALS_SAE_PASSWORD_LENGTH 128
 #endif
 
-#ifdef CONFIG_NANO_WIFI_CREDENTIALS_CONNECTION_TIMEOUT
-#  define CONFIG_WIFI_CREDENTIALS_CONNECT_STORED_CONNECTION_TIMEOUT \
-     CONFIG_NANO_WIFI_CREDENTIALS_CONNECTION_TIMEOUT
-#else
+#ifndef CONFIG_WIFI_CREDENTIALS_CONNECT_STORED_CONNECTION_TIMEOUT
 #  define CONFIG_WIFI_CREDENTIALS_CONNECT_STORED_CONNECTION_TIMEOUT 30
 #endif
 

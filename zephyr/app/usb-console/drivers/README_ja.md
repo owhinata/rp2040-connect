@@ -474,11 +474,11 @@ Zephyr 本体とモジュールの一部の変更は、Zephyr の `west patch` �
 
 - **当て方**: `source script/setup.sh` が `west patch apply` で各モジュールの作業ツリーに当てます（commit は作りません。
   `git -C zephyr/zephyr status` には変更として出ます）。当てたものは飛ばすので、何度読み込んでも同じです。当てた集合の写しを
-  `zephyr/.west/nano-patches/` に持ち、`patches.yml` かパッチが変わっていれば、写しの集合を先に戻してから今の集合を当てます
+  `zephyr/.west/local-patches/` に持ち、`patches.yml` かパッチが変わっていれば、写しの集合を先に戻してから今の集合を当てます
   （一覧から消したパッチがツリーに残りません）。当てるのに失敗したときは、当てた分を戻して止まります。
 - **パッチを直したとき**: `patches.yml` の `sha256sum` を `sha256sum <ファイル>` の値に直してから、`source script/setup.sh` を
   読み込み直します。
-- **戻し方**: `zephyr/` で `west patch reverse` を実行し、`zephyr/.west/nano-patches/` を消します。戻せないときは、
+- **戻し方**: `zephyr/` で `west patch reverse` を実行し、`zephyr/.west/local-patches/` を消します。戻せないときは、
   `setup.sh` の表示のとおり各ツリーを `git -C <ツリー> checkout -- .` で戻してから写しを消し、読み込み直します。
   戻したツリーでは、このアプリはビルドできません（`prj.conf` がパッチの `CONFIG_RP2040_ROM_MEM_OPS`・`CONFIG_I2C_DW_RP2040_DMA` を使い、
   `CONFIG_NANO_HW_DIVIDER` は `CONFIG_ARM_RP2040_DIVIDER_SAVE` が無いと CMake で止まります）。

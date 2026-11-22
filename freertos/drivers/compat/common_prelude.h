@@ -60,12 +60,12 @@
 
 /* The FIFO stream of the LSM6DSO driver, CONFIG_SENSOR_ASYNC_API in the
  * Zephyr build (lsm6dso.c, lsm6dso.h): on with the driver
- * (CONFIG_NANO_LSM6DSO_STREAM, which freertos/drivers/lsm6dso/lsm6dso.cmake
+ * (CONFIG_LSM6DSO_STREAM, which freertos/drivers/lsm6dso/lsm6dso.cmake
  * defines for every source of the build, as the NuttX build's Kconfig
  * option of that name).  It changes the driver's structures, so a FreeRTOS
  * source that includes lsm6dso.h is compiled with this prelude too.
  */
-#ifdef CONFIG_NANO_LSM6DSO_STREAM
+#ifdef CONFIG_LSM6DSO_STREAM
 #define CONFIG_SENSOR_ASYNC_API 1
 #endif
 

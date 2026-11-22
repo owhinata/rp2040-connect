@@ -15,7 +15,7 @@
  * prompt, so it is not used.  Instead this task:
  *
  *   1. calls nsh_initialize() once;
- *   2. opens CONFIG_NANO_INIT_CONSOLE, retrying while it fails (cdcacm
+ *   2. opens CONFIG_INIT_CONSOLE, retrying while it fails (cdcacm
  *      refuses the first open with -ENOTCONN until the host has configured
  *      the device) or while the device reports a disconnection (POLLHUP);
  *   3. sets the terminal modes (see console_setup());
@@ -69,12 +69,12 @@
 #include "priorities.h"
 #include "rp2040_init.h"
 
-#ifdef CONFIG_NANO_KV_STORE
+#ifdef CONFIG_KV_STORE
 #  include "kv_store.h"
 #endif
 
-#if defined(CONFIG_NANO_APP_IMU) || defined(CONFIG_NANO_WIFI_PROFILE) || \
-    defined(CONFIG_NANO_APP_SENSOR)
+#if defined(CONFIG_APP_IMU) || defined(CONFIG_WIFI_PROFILE) || \
+    defined(CONFIG_APP_SENSOR)
 #  include "zephyr_compat.h"
 #endif
 
@@ -82,7 +82,7 @@
 #  include "nina_net.h"
 #endif
 
-#ifdef CONFIG_NANO_APP_IMU
+#ifdef CONFIG_APP_IMU
 #  include "imu_cal.h"
 #  include "time_sync.h"
 #endif
@@ -96,10 +96,10 @@
  * layer's headers (see zephyr_compat.h).
  */
 
-#ifdef CONFIG_NANO_WIFI_CREDENTIALS
+#ifdef CONFIG_WIFI_CREDENTIALS
 int wifi_credentials_init(void);
 #endif
-#ifdef CONFIG_NANO_WIFI_PROFILE
+#ifdef CONFIG_WIFI_PROFILE
 int wifi_profile_init(void);
 #endif
 
@@ -236,7 +236,7 @@ static void console_setup(int fd)
 int rp2040_init_main(int argc, FAR char *argv[])
 {
   struct sched_param param;
-#if defined(CONFIG_NANO_KV_STORE) || defined(CONFIG_NANO_APP_IMU)
+#if defined(CONFIG_KV_STORE) || defined(CONFIG_APP_IMU)
   int ret;
 #endif
 
@@ -255,7 +255,7 @@ int rp2040_init_main(int argc, FAR char *argv[])
 
   nsh_initialize();
 
-#ifdef CONFIG_NANO_WIFI_CREDENTIALS
+#ifdef CONFIG_WIFI_CREDENTIALS
   /* The Wi-Fi credentials library's SYS_INIT(POST_KERNEL), which Zephyr
    * runs before the threads below start: initializes the settings (mounts
    * NVS on the key-value area) and reads the stored SSIDs.
@@ -271,23 +271,23 @@ int rp2040_init_main(int argc, FAR char *argv[])
 #ifdef CONFIG_NINA_NET
   nina_net_start();  /* nina_scan_tid, _connect_tid, _monitor_tid */
 #endif
-#ifdef CONFIG_NANO_APP_IMU
+#ifdef CONFIG_APP_IMU
   K_THREAD_DEFINE_START(imu_stream_tid);  /* common/imu/imu_stream.c */
 #endif
-#ifdef CONFIG_NANO_IMU_RAW_MQTT
+#ifdef CONFIG_IMU_RAW_MQTT
   K_THREAD_DEFINE_START(imu_raw_mqtt_tid);  /* common/imu/imu_raw_mqtt.c */
 #endif
-#ifdef CONFIG_NANO_TIME_SYNC
+#ifdef CONFIG_TIME_SYNC
   K_THREAD_DEFINE_START(time_sync_tid);   /* common/imu/time_sync.c */
 #endif
-#ifdef CONFIG_NANO_WIFI_PROFILE
+#ifdef CONFIG_WIFI_PROFILE
   K_THREAD_DEFINE_START(wifi_reconnect_tid);  /* common/imu/wifi_profile.c */
 #endif
-#ifdef CONFIG_NANO_APP_SENSOR
+#ifdef CONFIG_APP_SENSOR
   K_THREAD_DEFINE_START(sensor_shell_processing_tid);  /* ../sensor/sensor_shell_stream.c */
 #endif
 
-#ifdef CONFIG_NANO_INIT_TELNET
+#ifdef CONFIG_INIT_TELNET
   /* The Telnet shell backend's SYS_INIT(APPLICATION), before main(): the
    * listening socket (shell_telnet.c telnet_init()).
    */
@@ -298,7 +298,7 @@ int rp2040_init_main(int argc, FAR char *argv[])
   /* zephyr/app/usb-console/src/main.c */
 
   LOG_INF("USB console started");
-#ifdef CONFIG_NANO_KV_STORE
+#ifdef CONFIG_KV_STORE
   /* settings_subsys_init() (Zephyr's, common/compat/subsys), at the same
    * point as main(): NVS is mounted already when the Wi-Fi credentials'
    * initialization above has done it.
@@ -311,7 +311,7 @@ int rp2040_init_main(int argc, FAR char *argv[])
     }
 #endif
 
-#ifdef CONFIG_NANO_APP_IMU
+#ifdef CONFIG_APP_IMU
   ret = imu_cal_init();
   if (ret)
     {
@@ -321,7 +321,7 @@ int rp2040_init_main(int argc, FAR char *argv[])
   time_sync_init();
 #endif
 
-#ifdef CONFIG_NANO_WIFI_PROFILE
+#ifdef CONFIG_WIFI_PROFILE
   (void)wifi_profile_init();
 #endif
 
@@ -336,17 +336,17 @@ int rp2040_init_main(int argc, FAR char *argv[])
 
       /* No console is open, so this is normally fd 0. */
 
-      fd = open(CONFIG_NANO_INIT_CONSOLE, O_RDWR);
+      fd = open(CONFIG_INIT_CONSOLE, O_RDWR);
       if (fd < 0)
         {
-          usleep(CONFIG_NANO_INIT_RETRY_MS * 1000);
+          usleep(CONFIG_INIT_RETRY_MS * 1000);
           continue;
         }
 
       if (!console_connected(fd))
         {
           close(fd);
-          usleep(CONFIG_NANO_INIT_RETRY_MS * 1000);
+          usleep(CONFIG_INIT_RETRY_MS * 1000);
           continue;
         }
 
@@ -362,8 +362,8 @@ int rp2040_init_main(int argc, FAR char *argv[])
 
       /* The new task inherits fd 0/1/2. */
 
-      pid = task_create("nsh", CONFIG_NANO_INIT_NSH_PRIORITY,
-                        CONFIG_NANO_INIT_NSH_STACKSIZE,
+      pid = task_create("nsh", CONFIG_INIT_NSH_PRIORITY,
+                        CONFIG_INIT_NSH_STACKSIZE,
                         rp2040_nsh_session, NULL);
       if (pid >= 0)
         {
@@ -376,7 +376,7 @@ int rp2040_init_main(int argc, FAR char *argv[])
       close(1);
       close(2);
 
-      usleep(CONFIG_NANO_INIT_RETRY_MS * 1000);
+      usleep(CONFIG_INIT_RETRY_MS * 1000);
     }
 
   return EXIT_FAILURE;

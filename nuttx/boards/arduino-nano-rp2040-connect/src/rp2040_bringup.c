@@ -57,11 +57,11 @@
 #  include "i2c_dw_controllers_rp2040.h"
 #endif
 
-#ifdef CONFIG_NANO_LSM6DSO
+#ifdef CONFIG_LSM6DSO_LOCAL
 #  include "rp2040_lsm6dso.h"
 #endif
 
-#ifdef CONFIG_NANO_LSM6DSO_STREAM
+#ifdef CONFIG_LSM6DSO_STREAM
 #  include "zephyr_compat.h"
 #endif
 
@@ -148,7 +148,7 @@ int rp2040_bringup(void)
     }
 #endif
 
-#ifdef CONFIG_NANO_LSM6DSO_STREAM
+#ifdef CONFIG_LSM6DSO_STREAM
   /* The Zephyr compatibility layer's system work queue ("sysworkq"), RTIO
    * work queue ("RTIO WQ 0") and gpio0, which Zephyr starts at boot
    * (POST_KERNEL, before its GPIO, DMA and I2C devices and the sensor) and
@@ -192,7 +192,7 @@ int rp2040_bringup(void)
       }
 #  endif
 
-#  ifdef CONFIG_NANO_LSM6DSO
+#  ifdef CONFIG_LSM6DSO_LOCAL
     /* The LSM6DSOX (lsm6dsox@6a) on i2c0, which Zephyr initializes before
      * main() (POST_KERNEL, CONFIG_SENSOR_INIT_PRIORITY 90).  Its log lines
      * ("Initialize device lsm6dsox@6a", "chip id 0x6c") come first in

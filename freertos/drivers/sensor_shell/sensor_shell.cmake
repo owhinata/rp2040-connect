@@ -10,7 +10,7 @@
 # lsm6dso.cmake: the layer with its shell, RTIO and RTIO work queue, the
 # device lsm6dsox with its FIFO stream and the default iodev and decoder of
 # the sensor API).  It adds to the target the NuttX build's sources of
-# CONFIG_NANO_APP_SENSOR (nuttx/apps/sensor/Makefile), in its order:
+# CONFIG_APP_SENSOR (nuttx/apps/sensor/Makefile), in its order:
 #
 # - the command (common/drivers/sensor_shell/sensor_shell.c, shared with the
 #   Zephyr and NuttX builds: Zephyr v4.5.0's drivers/sensor/sensor_shell.c

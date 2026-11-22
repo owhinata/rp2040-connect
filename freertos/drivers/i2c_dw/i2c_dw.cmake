@@ -41,7 +41,7 @@ function(freertos_i2c_dw target)
   cmake_parse_arguments(ARG "SELFTEST;I2C1" "" "" ${ARGN})
 
   # i2c0 is always built: the LSM6DSOX is on it (freertos/drivers/lsm6dso
-  # checks this), as the NuttX build's NANO_LSM6DSO depends on I2C_DW_I2C0.
+  # checks this), as the NuttX build's LSM6DSO_LOCAL depends on I2C_DW_I2C0.
   target_compile_definitions(${target} PRIVATE CONFIG_I2C_DW_I2C0=1)
   if(ARG_I2C1)
     target_compile_definitions(${target} PRIVATE CONFIG_I2C_DW_I2C1=1)

@@ -9,7 +9,7 @@
  * disconnect results.  The operations are those of the interface's
  * offloaded API (NET_DEVICE_DT_OFFLOAD_DEFINE() of the driver).
  *
- * With the stored credentials (CONFIG_NANO_WIFI_CREDENTIALS, the Zephyr
+ * With the stored credentials (CONFIG_WIFI_CREDENTIALS, the Zephyr
  * build's CONFIG_WIFI_CREDENTIALS_CONNECT_STORED), also the handler of
  * NET_REQUEST_WIFI_CONNECT_STORED, connect_stored_command() of the same
  * file with its helpers: each stored network in turn becomes a
@@ -28,7 +28,7 @@
 #include <zephyr/net/net_if.h>
 #include <zephyr/net/net_mgmt.h>
 #include <zephyr/net/wifi_mgmt.h>
-#ifdef CONFIG_NANO_WIFI_CREDENTIALS
+#ifdef CONFIG_WIFI_CREDENTIALS
 #  include <zephyr/net/wifi_credentials.h>
 #endif
 
@@ -267,7 +267,7 @@ void wifi_mgmt_raise_disconnect_result_event(struct net_if *iface,
                                   &cnx_status, sizeof(struct wifi_status));
 }
 
-#ifdef CONFIG_NANO_WIFI_CREDENTIALS
+#ifdef CONFIG_WIFI_CREDENTIALS
 
 /* Zephyr's subsys/net/l2/wifi/wifi_mgmt.c, CONFIG_WIFI_CREDENTIALS_CONNECT_STORED. */
 
@@ -408,4 +408,4 @@ int net_mgmt_NET_REQUEST_WIFI_CONNECT_STORED(uint64_t mgmt_request,
 	return ret;
 }
 
-#endif /* CONFIG_NANO_WIFI_CREDENTIALS */
+#endif /* CONFIG_WIFI_CREDENTIALS */

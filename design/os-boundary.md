@@ -92,7 +92,7 @@ Shared, on these: the work item logic (`common/compat/zephyr_work.c`); `common/c
 `z_work_queue_process()`, `k_yield()` and `Z_SEM_TAKE_FOREVER()`), the object `k_sys_work_q`
 ("sysworkq", `NANO_PRIO_SYSWORKQ`), `zephyr_compat_initialize()` (declared in
 `common/compat/zephyr_compat.h`: `k_sys_work_q`, −ENOMEM if its thread did not start, the RTIO work
-queue, gpio0 with `CONFIG_NANO_LSM6DSO_STREAM`), `k_uptime_get()` (`Z_UPTIME_MS()` of
+queue, gpio0 with `CONFIG_LSM6DSO_STREAM`), `k_uptime_get()` (`Z_UPTIME_MS()` of
 `k_cycle_get_64()`); the "net_mgmt" thread (`common/compat/zephyr_net_mgmt.c`).
 
 | Function | N | F |
@@ -120,7 +120,7 @@ queue, gpio0 with `CONFIG_NANO_LSM6DSO_STREAM`), `k_uptime_get()` (`Z_UPTIME_MS(
 | Start of a thread | the caller waits until the new thread has taken its start data | the caller goes on; the task runs when the scheduler picks it (at once if its priority is higher) |
 | A work queue's thread that did not start (`Z_OS_ASSERT()`) | `DEBUGASSERT()`: nothing in the imu configuration, the queue's thread stays 0 | `configASSERT()`: fault record and restart |
 | Tick | 100 µs | 1 ms |
-| Builds `zephyr_init.c` (and so gpio0's start) | only with `CONFIG_NANO_LSM6DSO_STREAM` (the whole kernel part) | always; gpio0 only with `CONFIG_NANO_LSM6DSO_STREAM` |
+| Builds `zephyr_init.c` (and so gpio0's start) | only with `CONFIG_LSM6DSO_STREAM` (the whole kernel part) | always; gpio0 only with `CONFIG_LSM6DSO_STREAM` |
 | Caller of `zephyr_compat_initialize()` | `N-board/src/rp2040_bringup.c` | `main()` before the scheduler, `freertos/app/usb-console/src/main.c` |
 | Same-priority choice | NuttX's | FreeRTOS's round robin at every switch |
 
@@ -146,7 +146,7 @@ The atomic operations themselves are shared (on `k_spin_lock()`).
 |---|---|---|---|---|---|
 | Shell backend | `common/shell/zshell_os.h` | `zshell_os_backend_get()`, `zshell_os_cmd_enter()`, `zshell_os_cmd_exit()`, `z_shell_backend_vfprintf()`; optional `zshell_os_active_cmd_set()`/`_get()` with `ZSHELL_OS_ACTIVE_CMD` | `common/shell/zshell.c` | `nuttx/apps/subcmd/zshell_os_impl.h` (no `ZSHELL_OS_ACTIVE_CMD`) | `freertos/drivers/shell/zshell_os_impl.h` (defines it) |
 | `struct shell` | read by `common/compat/zephyr/shell/shell.h` | one backend, outlives the command | shell commands | `nuttx/drivers/compat/zephyr_os_shell.h` (terminal path, command pid) | `freertos/drivers/shell/zephyr_os_shell.h` (console, active command) |
-| Log, OS part | `common/log/app_log.h` | `app_log_os.h` (OS headers first, optional `CONFIG_NANO_LOG_DEFAULT_LEVEL`, `CONFIG_NANO_LOG_MAX_LEVEL`); `app_log_printf()`, `app_log_vprintf()`, `app_log_ratelimit_pass()` | `LOG_*()` macros | `nuttx/drivers/include/app_log_os.h`, `nuttx/drivers/log/log_ram.c` | `freertos/drivers/include/app_log_os.h`, `freertos/drivers/log/log_ram.c` |
+| Log, OS part | `common/log/app_log.h` | `app_log_os.h` (OS headers first, optional `CONFIG_LOG_DEFAULT_LEVEL`, `CONFIG_LOG_MAX_LEVEL`); `app_log_printf()`, `app_log_vprintf()`, `app_log_ratelimit_pass()` | `LOG_*()` macros | `nuttx/drivers/include/app_log_os.h`, `nuttx/drivers/log/log_ram.c` | `freertos/drivers/include/app_log_os.h`, `freertos/drivers/log/log_ram.c` |
 | RAM log | `common/log/log_ram.h` | `log_ram_initialize()`, `log_ram_piece()` | start-up; `dmesg` | `nuttx/drivers/log/log_ram.c`; called by `N-board/src/rp2040_boardinitialize.c`, `nuttx/apps/dmesg/dmesg_main.c` | `freertos/drivers/log/log_ram.c` (also holds `dmesg`); called by `main()` |
 | KV flash | `common/compat/nano_flash_kv.h` | `nano_flash_kv_os_ready()`, `_read()`, `_program()` (256-byte page), `_erase()` (4 KiB sector); range checked again by the OS | `common/compat/zephyr_flash_kv.c` | `N-board/src/nano_flash_kv.c` | `freertos/drivers/kv/nano_flash_kv.c` |
 | KV wipe command | `common/compat/kv_store_os.h` | `kv_store_wipe()`, `kv_store_cmd_wipe()`, `KV_STORE_OS_COMMANDS` | `common/imu/kv_store.c` | shared: `common/compat/kv_store_wipe.c` | shared: same |
@@ -222,10 +222,10 @@ The devices listed for the shell are in `common/compat/zephyr_device.c` (hand-wr
 
 | Source | N | F |
 |---|---|---|
-| Prelude, `-include` on shared sources | `nuttx/drivers/compat/common_prelude.h`: NuttX headers first; `CONFIG_SENSOR_LOG_LEVEL` 3; `CONFIG_SENSOR_ASYNC_API` with `CONFIG_NANO_LSM6DSO_STREAM` | `freertos/drivers/compat/common_prelude.h`: `CONFIG_SENSOR_LOG_LEVEL` 3; `CONFIG_NINA_NTP_SERVER` "", `_PORT` 123, `_INTERVAL_MS` 2000; `CONFIG_NINA_TCP_MAX_IO` 3584; `CONFIG_NINA_SEND_RETRY_MS` 1; `CONFIG_NET_SOCKETS_OFFLOAD_PRIORITY` 40; `CONFIG_NINA_PASSTHROUGH` 1; `CONFIG_SENSOR_ASYNC_API` with the stream |
+| Prelude, `-include` on shared sources | `nuttx/drivers/compat/common_prelude.h`: NuttX headers first; `CONFIG_SENSOR_LOG_LEVEL` 3; `CONFIG_SENSOR_ASYNC_API` with `CONFIG_LSM6DSO_STREAM` | `freertos/drivers/compat/common_prelude.h`: `CONFIG_SENSOR_LOG_LEVEL` 3; `CONFIG_NINA_NTP_SERVER` "", `_PORT` 123, `_INTERVAL_MS` 2000; `CONFIG_NINA_TCP_MAX_IO` 3584; `CONFIG_NINA_SEND_RETRY_MS` 1; `CONFIG_NET_SOCKETS_OFFLOAD_PRIORITY` 40; `CONFIG_NINA_PASSTHROUGH` 1; `CONFIG_SENSOR_ASYNC_API` with the stream |
 | NINA and NTP options | Kconfig: `nuttx/drivers/nina/Kconfig`, `nuttx/apps/imu/Kconfig` | the prelude (above) |
 | NVS and settings copies | `common/compat/zephyr_kv_config.h`, `-include` from `nuttx/apps/imu/Makefile` | same, from `freertos/drivers/kv/kv.cmake` |
-| Build definitions | Kconfig (`nuttx/drivers/*/Kconfig`, `nuttx/apps/*/Kconfig`, `N-board/Kconfig`), `N-board/configs/imu/defconfig` | `compat.cmake`: `Z_SHELL_CMD_ROOT_GLOBAL`, `CONFIG_GETOPT_LONG=1`, `PICO_STDOUT_MUTEX=0`; `i2c_dw.cmake`: `CONFIG_I2C_DW_I2C0`, `_I2C1`; `lsm6dso.cmake`: `CONFIG_NANO_LSM6DSO_STREAM`; `wifi.cmake`: `CONFIG_NANO_WIFI_CREDENTIALS`; `nina.cmake`: `NINA_OS_DNS_OFFLOAD` for the resolver |
+| Build definitions | Kconfig (`nuttx/drivers/*/Kconfig`, `nuttx/apps/*/Kconfig`, `N-board/Kconfig`), `N-board/configs/imu/defconfig` | `compat.cmake`: `Z_SHELL_CMD_ROOT_GLOBAL`, `CONFIG_GETOPT_LONG=1`, `PICO_STDOUT_MUTEX=0`; `i2c_dw.cmake`: `CONFIG_I2C_DW_I2C0`, `_I2C1`; `lsm6dso.cmake`: `CONFIG_LSM6DSO_STREAM`; `wifi.cmake`: `CONFIG_WIFI_CREDENTIALS`; `nina.cmake`: `NINA_OS_DNS_OFFLOAD` for the resolver |
 | In shared headers | `kernel.h`: `CONFIG_THREAD_NAME` 1; `zephyr/rtio/work.h`: `CONFIG_RTIO_WORKQ_POOL_ITEMS` 4 | same |
 | Sensor shell | `sensor_shell_nuttx.h` | `sensor_shell_os.h` (same four values) |
 

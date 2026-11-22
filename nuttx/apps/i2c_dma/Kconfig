@@ -6,7 +6,7 @@
 config I2C_DW_RP2040_DMA_SHELL
 	tristate "i2c_dma command (I2C0 DMA reads)"
 	default y
-	depends on I2C_DW_RP2040_DMA && NANO_SUBCMD
+	depends on I2C_DW_RP2040_DMA && SUBCMD
 	---help---
 		"i2c_dma mode [on|off]" and "i2c_dma stats": the command of the
 		Zephyr and FreeRTOS builds

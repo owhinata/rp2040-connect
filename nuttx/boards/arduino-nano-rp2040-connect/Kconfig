@@ -109,7 +109,7 @@ config RP2040_FLASH_KV
 		common/compat/nano_flash_kv.h, under the flash device of
 		common/compat/zephyr_flash_kv.c, on which the copies of Zephyr's
 		NVS and settings keep the key-value store in the Zephyr build's
-		format (NANO_KV_STORE).  Every erase and program is checked to
+		format (KV_STORE).  Every erase and program is checked to
 		lie inside that area.  Nothing is erased at boot: an area that
 		holds neither Zephyr's NVS nor only erased bytes is reported and
 		left alone until "kv wipe confirm".

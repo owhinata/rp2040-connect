@@ -3,10 +3,10 @@
 # see the file kconfig-language.txt in the NuttX tools repository.
 #
 
-config NANO_APP_NTP
+config APP_NTP
 	tristate "ntp command (ntp status)"
 	default y
-	depends on NANO_TIME_SYNC && NANO_SUBCMD
+	depends on TIME_SYNC && SUBCMD
 	---help---
 		"ntp status": the Zephyr build's ntp command (cmd_ntp_status()
 		of common/imu/time_sync.c, shared with the Zephyr build) with the
@@ -15,9 +15,9 @@ config NANO_APP_NTP
 		makes z_shell_main_ntp()); this is the builtin command that runs
 		them.
 
-if NANO_APP_NTP
+if APP_NTP
 
-config NANO_APP_NTP_PRIORITY
+config APP_NTP_PRIORITY
 	int "ntp task priority"
 	default 104
 	---help---
@@ -25,7 +25,7 @@ config NANO_APP_NTP_PRIORITY
 		common/compat/priorities.h): the Zephyr build runs shell
 		commands in its shell thread.
 
-config NANO_APP_NTP_STACKSIZE
+config APP_NTP_STACKSIZE
 	int "ntp stack size"
 	default 3072
 	---help---

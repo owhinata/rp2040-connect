@@ -300,14 +300,14 @@ printf 'ok  i2c_dw (I2C0 and I2C1 boundaries and devices, DMA reads on the Pico 
 # INT1 line (the driver's OS part on Zephyr, common/drivers/lsm6dso/port/zephyr/lsm6dso_os.c,
 # which the test includes; with ST's lsm6dso_reg.h, freertos/stmemsc, for the driver's headers;
 # the stream's work queue, which the test does not start, is left out by --gc-sections), with
-# the prelude and CONFIG_NANO_LSM6DSO_STREAM as drivers/lsm6dso/lsm6dso.cmake builds them; the
+# the prelude and CONFIG_LSM6DSO_STREAM as drivers/lsm6dso/lsm6dso.cmake builds them; the
 # layer's start (common/compat/zephyr_init.c) again with that option (zephyr_compat_initialize()
 # starts gpio0), on the same kernel objects.
 if [[ -f stmemsc/lsm6dso_reg.h ]]; then
     lsm=../common/drivers/lsm6dso
     gpioinc=(-Itests/gpio/pico_fake -I$lsm/include -I$lsm/internal -I$lsm/port -I$lsm/port/freertos
              -I$lsm/port/zephyr -I../common/drivers/stmemsc -Istmemsc
-             -DCONFIG_NANO_LSM6DSO_STREAM=1 -ffunction-sections -fdata-sections)
+             -DCONFIG_LSM6DSO_STREAM=1 -ffunction-sections -fdata-sections)
     gpioobjs=()
     for src in drivers/compat/rp2040/nano_gpio.c ../common/compat/zephyr_init.c tests/gpio/main.c \
                ../common/compat/zephyr_gpio.c ../common/compat/zephyr_device.c; do
@@ -539,14 +539,14 @@ printf 'ok  socket (descriptors, wait loops, options, poll, resolver, FreeRTOS P
 # layer's net_mgmt and Wi-Fi requests, the stored credentials and their settings backend, the
 # Wi-Fi profile, the "wifi" command and the copy of Zephyr's wifi_credentials_shell.c, with the
 # "ifconfig" command (drivers/wifi/nano_ifconfig.c), with the
-# prelude, CONFIG_NANO_WIFI_CREDENTIALS and the same per-file options), on the store and the
+# prelude, CONFIG_WIFI_CREDENTIALS and the same per-file options), on the store and the
 # copies of Zephyr's settings and NVS over the shared fake flash (common/tests/kv_flash_fake.c),
 # the build's shell on a console that captures, and a fake module (the test's nina_proto_request());
 # on the same kernel and layer objects.  It waits for the driver's and the profile's real
 # delays (the link monitor's 2 s, the reconnection's 4 s): about 45 s.  The scans with the
 # firmware's capability bits (a fake nina_proto_probe_capabilities()): the link kept, the asynchronous
 # scan and its failures, a loss of the link during the scan.
-wifiinc=(-D_GNU_SOURCE -DZ_SHELL_CMD_ROOT_GLOBAL -DCONFIG_GETOPT_LONG=1 -DCONFIG_NANO_WIFI_CREDENTIALS=1
+wifiinc=(-D_GNU_SOURCE -DZ_SHELL_CMD_ROOT_GLOBAL -DCONFIG_GETOPT_LONG=1 -DCONFIG_WIFI_CREDENTIALS=1
          -U_FORTIFY_SOURCE -Itests/shell -Idrivers/shell -I$seng -Idrivers/wifi
          -I../common/shell -I../common/compat/lib/utils/getopt -I../common/drivers/nina/include
          -I../common/drivers/nina/internal -I../common/drivers/nina/port
@@ -652,7 +652,7 @@ fi
 # build's part (drivers/sensor_shell/sensor_shell_os.c), with "imu cal" (common/imu/imu_cal.c,
 # imu_cal_codec.c, on a fake key-value store), on the shared LSM6DSO driver with its FIFO stream
 # and ST's lsm6dso_reg.c (freertos/stmemsc), the layer's devices, gpio0, RTIO and its work queue
-# and the default sensor iodev and decoder, with the prelude, CONFIG_NANO_LSM6DSO_STREAM and the
+# and the default sensor iodev and decoder, with the prelude, CONFIG_LSM6DSO_STREAM and the
 # per-file options of drivers/lsm6dso/lsm6dso.cmake and drivers/sensor_shell/sensor_shell.cmake;
 # the layer's start (common/compat/zephyr_init.c) again with that option (gpio0); the build's
 # shell with two sessions on consoles that capture; a fake LSM6DSOX behind a fake i2c0 and a fake INT1 on the layer's GPIO
@@ -660,7 +660,7 @@ fi
 # "sensor get", the calibration in the printed values, "sensor stream" from one session and "off"
 # from the other, a session whose terminal is gone, the FIFO taken by another stream.  About 2 s.
 if [[ -f stmemsc/lsm6dso_reg.c ]]; then
-    ssinc=(-D_GNU_SOURCE -DZ_SHELL_CMD_ROOT_GLOBAL -DCONFIG_GETOPT_LONG=1 -DCONFIG_NANO_LSM6DSO_STREAM=1
+    ssinc=(-D_GNU_SOURCE -DZ_SHELL_CMD_ROOT_GLOBAL -DCONFIG_GETOPT_LONG=1 -DCONFIG_LSM6DSO_STREAM=1
            -U_FORTIFY_SOURCE -Itests/shell -Idrivers/shell -I$seng -Idrivers/sensor_shell -Idrivers/lsm6dso
            -I../common/shell -I../common/compat/lib/utils/getopt
            -I../common/drivers/lsm6dso/port/freertos

@@ -2,9 +2,9 @@
 # nuttx/apps/dmesg/Make.defs
 #
 # Read through nuttx/apps/Make.defs.  Adds this directory to the build when
-# CONFIG_NANO_APP_DMESG is set.
+# CONFIG_APP_DMESG is set.
 ############################################################################
 
-ifneq ($(CONFIG_NANO_APP_DMESG),)
+ifneq ($(CONFIG_APP_DMESG),)
 CONFIGURED_APPS += $(APPDIR)/external/dmesg
 endif

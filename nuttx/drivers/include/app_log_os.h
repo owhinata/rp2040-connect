@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /* The NuttX part of the logging macros (common/log/app_log.h, which
- * includes this header first): the configuration (CONFIG_NANO_LOG_*) and
+ * includes this header first): the configuration (CONFIG_LOG_*_LEVEL) and
  * <syslog.h>.
  *
  * <syslog.h> defines LOG_ERR as a syslog priority.  This header includes

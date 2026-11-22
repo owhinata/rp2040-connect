@@ -3,9 +3,9 @@
 #
 # Read through nuttx/apps/Make.defs.  Adds this directory (the stored Wi-Fi
 # credentials, the Wi-Fi profile with its reconnection thread, and the
-# "wifi" command) to the build when CONFIG_NANO_WIFI_CREDENTIALS is set.
+# "wifi" command) to the build when CONFIG_WIFI_CREDENTIALS is set.
 ############################################################################
 
-ifneq ($(CONFIG_NANO_WIFI_CREDENTIALS),)
+ifneq ($(CONFIG_WIFI_CREDENTIALS),)
 CONFIGURED_APPS += $(APPDIR)/external/wifi
 endif

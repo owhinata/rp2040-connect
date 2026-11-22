@@ -736,15 +736,15 @@ SHELL_SUBCMD_ADD((wifi), status, NULL, SHELL_HELP("Status of the Wi-Fi interface
 /* SHELL_SUBCMD_SET_CREATE(wifi_commands, (wifi)): the subcommands, sorted
  * by name as Zephyr's linker section sorts them.  "cred" is the copy of
  * wifi_credentials_shell.c's (with the stored credentials,
- * CONFIG_NANO_WIFI_CREDENTIALS).
+ * CONFIG_WIFI_CREDENTIALS).
  */
-#ifdef CONFIG_NANO_WIFI_CREDENTIALS
+#ifdef CONFIG_WIFI_CREDENTIALS
 extern const struct shell_static_entry z_shell_subcmd_wifi_cred;
 #endif
 
 static const struct shell_static_entry *const wifi_subcmds[] = {
 	&z_shell_subcmd_wifi_connect,
-#ifdef CONFIG_NANO_WIFI_CREDENTIALS
+#ifdef CONFIG_WIFI_CREDENTIALS
 	&z_shell_subcmd_wifi_cred,
 #endif
 	&z_shell_subcmd_wifi_disconnect,

@@ -7,14 +7,27 @@ fi
 
 # The local patches of manifest/zephyr/patches.yml (Zephyr's "west patch"): applied to the
 # working trees of zephyr/ and the modules, never committed there.  "west patch apply" skips
-# the patches already applied, so sourcing this again changes nothing.  .west/nano-patches
+# the patches already applied, so sourcing this again changes nothing.  .west/local-patches
 # keeps a copy of the set last applied: when patches.yml or a patch changes, that set is
-# taken back first, so a patch removed from the list does not stay in a tree.
+# taken back first, so a patch removed from the list does not stay in a tree.  A copy under
+# the earlier name, .west/nano-patches, is moved to the new one first.
 _zephyr_patch() {  # root west
-  local root=$1 west=$2 yml base rec
+  local root=$1 west=$2 yml base rec oldrec
   yml="${root}/manifest/zephyr/patches.yml"
   base="${root}/manifest/zephyr/patches"
-  rec="${root}/.west/nano-patches"
+  rec="${root}/.west/local-patches"
+  oldrec="${root}/.west/nano-patches"
+
+  if [[ -e "$oldrec" ]]; then
+    if [[ -e "$rec" ]]; then
+      printf 'Both %s and %s exist: keep the one that records the patches applied\n' \
+        "$oldrec" "$rec" >&2
+      printf 'to the trees as %s, remove the other and source setup.sh again.\n' "$rec" >&2
+      return 1
+    fi
+    mv -- "$oldrec" "$rec" || return 1
+    printf 'Moved the record of applied patches %s to %s\n' "$oldrec" "$rec"
+  fi
 
   if [[ -f "${rec}/patches.yml" ]] && \
      ! { [[ -f "$yml" ]] && cmp -s "$yml" "${rec}/patches.yml" && \

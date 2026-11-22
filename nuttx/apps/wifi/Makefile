@@ -1,15 +1,15 @@
 ############################################################################
 # nuttx/apps/wifi/Makefile
 #
-# The stored Wi-Fi credentials (NANO_WIFI_CREDENTIALS: the copy of Zephyr's
+# The stored Wi-Fi credentials (WIFI_CREDENTIALS: the copy of Zephyr's
 # subsys/net/lib/wifi_credentials/ in common/compat, compiled with the
 # prelude of the shared sources, with its settings backend on the copy of
 # Zephyr's settings built by ../imu), the Wi-Fi profile with its reconnection thread
-# (NANO_WIFI_PROFILE: wifi_profile.c, shared with the Zephyr build in
+# (WIFI_PROFILE: wifi_profile.c, shared with the Zephyr build in
 # common/imu, found through VPATH and DEPPATH relative to this directory and
 # compiled with the prelude of the shared sources, common_prelude.h of the
 # compatibility layer; its NuttX part is wifi_profile_os.h here; the init
-# task starts the thread) and the "wifi" builtin command (NANO_APP_WIFI:
+# task starts the thread) and the "wifi" builtin command (APP_WIFI:
 # wifi_credentials_shell.c is its main source), linked into libapps.
 #
 # Include paths: the Zephyr compatibility layer
@@ -26,15 +26,15 @@ include $(APPDIR)/Make.defs
 
 CSRCS = wifi_credentials.c wifi_credentials_backend_settings.c
 
-ifeq ($(CONFIG_NANO_WIFI_PROFILE),y)
+ifeq ($(CONFIG_WIFI_PROFILE),y)
 CSRCS += wifi_profile.c
 endif
 
-ifneq ($(CONFIG_NANO_APP_WIFI),)
+ifneq ($(CONFIG_APP_WIFI),)
 PROGNAME  = wifi
-PRIORITY  = $(CONFIG_NANO_APP_WIFI_PRIORITY)
-STACKSIZE = $(CONFIG_NANO_APP_WIFI_STACKSIZE)
-MODULE    = $(CONFIG_NANO_APP_WIFI)
+PRIORITY  = $(CONFIG_APP_WIFI_PRIORITY)
+STACKSIZE = $(CONFIG_APP_WIFI_STACKSIZE)
+MODULE    = $(CONFIG_APP_WIFI)
 
 MAINSRC   = wifi_credentials_shell.c
 endif
@@ -58,6 +58,6 @@ include $(APPDIR)/Application.mk
 wifi_credentials.c$(SUFFIX)$(OBJEXT) \
 wifi_credentials_backend_settings.c$(SUFFIX)$(OBJEXT): \
   CFLAGS += -include $(TOPDIR)$(DELIM)external$(DELIM)compat$(DELIM)common_prelude.h
-ifeq ($(CONFIG_NANO_WIFI_PROFILE),y)
+ifeq ($(CONFIG_WIFI_PROFILE),y)
 wifi_profile.c$(SUFFIX)$(OBJEXT): CFLAGS += -include $(TOPDIR)$(DELIM)external$(DELIM)compat$(DELIM)common_prelude.h
 endif

@@ -28,7 +28,7 @@ It also does the following:
   `nuttx/apps`. NuttX builds this repository's drivers and applications through them.
 - Applies `nuttx/patches/nuttx/*.patch` and `nuttx/patches/apps/*.patch` to `nuttx/nuttx` and
   `nuttx/nuttx-apps`, in name order (see "Patches to NuttX" in `nuttx/README.md`). What it applied is recorded in
-  the clone's `.git/nano-patches/`, and the same patches are not applied again. When a patch is
+  the clone's `.git/local-patches/`, and the same patches are not applied again. When a patch is
   added, removed or changed, the next run takes the recorded patches back in reverse order and
   applies the current ones. If a clone has local changes but no record, it stops without touching
   it; restore the clone with `git -C nuttx/nuttx checkout -- .` (likewise `nuttx-apps`) and source
@@ -170,7 +170,7 @@ with its NuttX part `nuttx/drivers/include/app_log_os.h`).
   (`CONFIG_RESET_ON_FATAL_ERROR=y`; its RAM log is 4 KiB).
 - Sources use it the Zephyr way: `#include "app_log.h"` (`common/log/`; usable from
   the kernel side, the board code and the applications, also in interrupt handlers), then per file
-  `LOG_MODULE_REGISTER(name, LOG_LEVEL_INF)` (without a level: `CONFIG_NANO_LOG_DEFAULT_LEVEL`,
+  `LOG_MODULE_REGISTER(name, LOG_LEVEL_INF)` (without a level: `CONFIG_LOG_DEFAULT_LEVEL`,
   default 3, or `LOG_LEVEL` if defined before the include), and `LOG_ERR()`, `LOG_WRN()`,
   `LOG_INF()`, `LOG_DBG()`, `LOG_ERR_RATELIMIT()` and so on in the code. Messages above the file's
   level are dropped at compile time; there is no run-time level control (Zephyr's `log` command).
@@ -492,8 +492,8 @@ nsh$ wifi cred list
   network ssid: "example-ap", ssid_len: 10, type: WPA2-PSK, password: "example-pass", password_len: 12, MFP_OPTIONAL
 ```
 
-- Number and lengths: up to 2 networks (`CONFIG_NANO_WIFI_CREDENTIALS_MAX_ENTRIES`, the Zephyr
-  version's `CONFIG_WIFI_CREDENTIALS_MAX_ENTRIES=2`). A third gives
+- Number and lengths: up to 2 networks (`CONFIG_WIFI_CREDENTIALS_MAX_ENTRIES=2`, the
+  Zephyr version's name and value). A third gives
   `Failed to add network credentials, err: -105` (`ENOBUFS`), and `dmesg` shows
   `<err> wifi_credentials: Cannot store WiFi credentials, no space left` (as in the Zephyr
   version). SSIDs are 1 to 32 characters (`SSID too long (max 32 characters)`,
@@ -544,7 +544,7 @@ nsh$ wifi cred list
 
 As with the Zephyr build's Telnet shell (`CONFIG_SHELL_BACKEND_TELNET`), the shell of the USB
 console is also on TCP port 23 while Wi-Fi is connected (`nuttx/apps/init/rp2040_telnet.c`,
-`CONFIG_NANO_INIT_TELNET`; the port is `CONFIG_NANO_INIT_TELNET_PORT`, the Zephyr build's
+`CONFIG_INIT_TELNET`; the port is `CONFIG_INIT_TELNET_PORT`, the Zephyr build's
 `CONFIG_SHELL_TELNET_PORT`). There is no authentication or encryption, and anyone who can reach
 the port can do everything the shell can, so use it on trusted networks only.
 
@@ -565,7 +565,7 @@ telnet <the board's IPv4 address>
   one keeps working (as in the Zephyr build). The `telnetd` task accepts the clients, at
   priority 104 with a 2048-byte stack (those of the Zephyr build's `net_socket_service` thread,
   which does this there). When an accept fails, it logs `Telnet accept error (<value>)` and waits
-  `CONFIG_NANO_INIT_RETRY_MS` (100 ms) before accepting again, so that a lasting failure does not
+  `CONFIG_INIT_RETRY_MS` (100 ms) before accepting again, so that a lasting failure does not
   become a busy loop (the Zephyr build does not wait).
 - A session is the same nsh as on USB (the same commands and output, the prompt `nsh$ `, no
   greeting). It is a task of its own and runs at the same time as, and independently of, the USB
@@ -970,7 +970,7 @@ conversion:
 
 `common/imu/imu_raw_mqtt.c` and `imu_raw_mqtt.h` are the Zephyr build's own files (the
 `<zephyr/net/net_ip.h>` that `imu_raw_mqtt.h` includes is the compatibility layer's, which includes
-`<netinet/in.h>`). It is built with `CONFIG_NANO_IMU_RAW_MQTT` (on by
+`<netinet/in.h>`). It is built with `CONFIG_IMU_RAW_MQTT` (on by
 default); without it the stub `imu_raw_mqtt_null.c` stands in (it drops and counts every batch, as
 the Zephyr build does without a network). The topics (`imu/<device>/raw`, `status`, `info`)
 and QoS (0 for raw and status, 1 with retain for info), the client ID (`imu-<device>`), the
@@ -1027,7 +1027,7 @@ reply is received) are read, the estimate (`time_offset.c`, an unchanged copy: t
 shortest round trip of the last 8 is used), the estimate's expiry after 60 s without a reply, the
 clock that follows it at up to ±500 ppm without going back, moving the realtime clock only
 forward, the query interval, wait and retry, the counters and the output of `ntp status` are the
-Zephyr build's. It is built with `CONFIG_NANO_TIME_SYNC` (on by default); without it the stub
+Zephyr build's. It is built with `CONFIG_TIME_SYNC` (on by default); without it the stub
 `time_sync_null.c` stands in (only `time_sync_mono_us()` is real; no synchronization).
 
 ```text

@@ -30,11 +30,11 @@
 # (mkdeps needs relative ones); the objects are made there.
 ############################################################################
 
-ifeq ($(CONFIG_NANO_LSM6DSO),y)
+ifeq ($(CONFIG_LSM6DSO_LOCAL),y)
 CSRCS += lsm6dso_sensor.c lsm6dso.c lsm6dso_cal.c lsm6dso_fifo.c
 CSRCS += stmemsc_i2c.c stmemsc_mdelay.c
 CSRCS += st_lsm6dso_reg.c
-ifeq ($(CONFIG_NANO_LSM6DSO_STREAM),y)
+ifeq ($(CONFIG_LSM6DSO_STREAM),y)
 CSRCS += lsm6dso_stream.c
 CSRCS += lsm6dso_rtio_stream.c lsm6dso_rtio.c lsm6dso_os.c
 CSRCS += lsm6dso_decoder.c

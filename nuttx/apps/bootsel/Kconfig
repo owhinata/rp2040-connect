@@ -3,7 +3,7 @@
 # see the file kconfig-language.txt in the NuttX tools repository.
 #
 
-config NANO_APP_BOOTSEL
+config APP_BOOTSEL
 	tristate "bootsel command (restart into the USB bootloader)"
 	default y
 	depends on ARCH_CHIP_RP2040
@@ -15,16 +15,16 @@ config NANO_APP_BOOTSEL
 		flat build lets an application call it.  No confirmation word;
 		arguments are ignored.
 
-if NANO_APP_BOOTSEL
+if APP_BOOTSEL
 
-config NANO_APP_BOOTSEL_PRIORITY
+config APP_BOOTSEL_PRIORITY
 	int "bootsel task priority"
 	default 104
 	---help---
 		The shell's priority (NANO_PRIO_SHELL in
 		common/compat/priorities.h).
 
-config NANO_APP_BOOTSEL_STACKSIZE
+config APP_BOOTSEL_STACKSIZE
 	int "bootsel stack size"
 	default 1024
 	---help---

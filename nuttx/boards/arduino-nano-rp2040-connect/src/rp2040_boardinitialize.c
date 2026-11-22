@@ -46,7 +46,7 @@
 
 #include "rp2040_pico.h"
 
-#ifdef CONFIG_NANO_LOG_RAM
+#ifdef CONFIG_LOG_RAM
 #  include "log_ram.h"
 #endif
 
@@ -97,7 +97,7 @@ void rp2040_boardinitialize(void)
 
   /* --- Place any board specific initialization here --- */
 
-#ifdef CONFIG_NANO_LOG_RAM
+#ifdef CONFIG_LOG_RAM
   /* The RAM log (and syslog channel) first, so the rest of the boot can
    * log.  The TIMER (its time stamps) runs since rp2040_clockconfig().
    */

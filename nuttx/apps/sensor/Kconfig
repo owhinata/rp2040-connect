@@ -3,10 +3,10 @@
 # see the file kconfig-language.txt in the NuttX tools repository.
 #
 
-config NANO_APP_SENSOR
+config APP_SENSOR
 	tristate "sensor command (the Zephyr build's sensor shell)"
 	default y
-	depends on NANO_SUBCMD && NANO_LSM6DSO_STREAM
+	depends on SUBCMD && LSM6DSO_STREAM
 	---help---
 		"sensor get|attr_set|attr_get|stream|trig": the Zephyr build's
 		sensor shell (common/drivers/sensor_shell/sensor_shell.c,
@@ -22,9 +22,9 @@ config NANO_APP_SENSOR
 		them.  CONFIG_SENSOR_INFO is not set in the Zephyr build, so
 		there is no "sensor info".
 
-if NANO_APP_SENSOR
+if APP_SENSOR
 
-config NANO_APP_SENSOR_PRIORITY
+config APP_SENSOR_PRIORITY
 	int "sensor task priority"
 	default 104
 	---help---
@@ -32,7 +32,7 @@ config NANO_APP_SENSOR_PRIORITY
 		common/compat/priorities.h): the Zephyr build runs shell
 		commands in its shell thread.
 
-config NANO_APP_SENSOR_STACKSIZE
+config APP_SENSOR_STACKSIZE
 	int "sensor stack size"
 	default 3072
 	---help---

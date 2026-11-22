@@ -18,7 +18,7 @@
 
 int rp2040_nsh_session(int argc, FAR char *argv[]);
 
-#ifdef CONFIG_NANO_INIT_TELNET
+#ifdef CONFIG_INIT_TELNET
 /* Opens the Telnet listening socket and starts the task that accepts
  * clients.  Returns once the socket is set up or has failed (the Zephyr
  * Telnet backend does this in a SYS_INIT, before main()).

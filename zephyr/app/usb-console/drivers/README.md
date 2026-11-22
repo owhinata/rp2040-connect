@@ -538,12 +538,12 @@ Some changes to Zephyr and its modules are local patches for Zephyr's `west patc
 
 - **Applying**: `source script/setup.sh` applies them to the modules' working trees with `west patch apply`
   (no commits; `git -C zephyr/zephyr status` shows them as changes). Patches already applied are skipped,
-  so sourcing it again changes nothing. A copy of the set applied is kept in `zephyr/.west/nano-patches/`;
+  so sourcing it again changes nothing. A copy of the set applied is kept in `zephyr/.west/local-patches/`;
   when `patches.yml` or a patch changes, that set is taken back first and the current one applied (a patch
   removed from the list does not stay in a tree). When applying fails, the patches applied are taken back.
 - **After changing a patch**: set its `sha256sum` in `patches.yml` to the value of `sha256sum <file>`, then
   source `script/setup.sh` again.
-- **Taking them back**: run `west patch reverse` in `zephyr/` and remove `zephyr/.west/nano-patches/`. If
+- **Taking them back**: run `west patch reverse` in `zephyr/` and remove `zephyr/.west/local-patches/`. If
   that fails, restore each tree with `git -C <tree> checkout -- .` as `setup.sh` says, remove the copy and
   source it again. The application does not build on trees without the patches (`prj.conf` sets the
   patches' `CONFIG_RP2040_ROM_MEM_OPS` and `CONFIG_I2C_DW_RP2040_DMA`, and `CONFIG_NANO_HW_DIVIDER` stops in CMake without

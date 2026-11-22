@@ -3,7 +3,7 @@
 # see the file kconfig-language.txt in the NuttX tools repository.
 #
 
-config NANO_SUBCMD
+config SUBCMD
 	bool "Subcommand dispatch with the Zephyr shell's output"
 	default y
 	---help---

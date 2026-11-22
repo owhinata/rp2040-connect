@@ -13,7 +13,7 @@
 # wapi's ioctls on the core (nina_netdev.c, nina_net.h) and the Zephyr Wi-Fi
 # management of the compatibility layer that the applications use, on the
 # core (nina_wifi_mgmt.c, with the Wi-Fi profile's reconnection of
-# common/imu/wifi_profile.c under CONFIG_NANO_WIFI_PROFILE).  This file and
+# common/imu/wifi_profile.c under CONFIG_WIFI_PROFILE).  This file and
 # Kconfig stay here: nuttx/drivers is the directory that NuttX builds as
 # external/ (a symlink made by script/setup.sh), whose Makefile includes
 # this file and whose Kconfig sources ./nina/Kconfig.  The pins and the SPI

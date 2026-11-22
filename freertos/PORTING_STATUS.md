@@ -2468,3 +2468,17 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
   - FreeRTOS: `selftest` 22・6・3 項目とも失敗 0。既定のビルド 2 回: 欠番 0、43.1%。`ps`: `net_mgmt` 21（空き 1832）、`sysworkq` 21（800）、`imu_fifo_worker` 10（1352）、`RTIO WQ 0` 20（528）。
     `sensor get` 応答。切断復帰と Telnet も NuttX と同じ結果（connects 2、時刻の逆行 0）。
 - 実機: FreeRTOS 版（この変更の既定のビルド）。
+
+## NuttX 版の Kconfig の記号から `NANO_` を外す、パッチの記録は `local-patches`（2026-11-22、ユーザーの決定）
+
+- subagent が実装、メインが照合。名前だけの変更。
+- Kconfig の記号 48 個（`nuttx/apps/*/Kconfig`、`nuttx/drivers/Kconfig`、`nuttx/drivers/lsm6dso/Kconfig`）: `NANO_` を外す（`APP_IMU`・`APP_IMU_PRIORITY`、`INIT_TELNET`、`KV_STORE`、`TIME_SYNC`、
+  `IMU_RAW_MQTT`、`WIFI_PROFILE`、`SUBCMD`、`LSM6DSO_STREAM`、`LOG_RAM` など）。Zephyr に同じ意味の記号があるものは Zephyr の名前にした:
+  `NANO_LSM6DSO` → `LSM6DSO_LOCAL`（Zephyr の `CONFIG_LSM6DSO` は上流のドライバーで `n`）、`NANO_WIFI_CREDENTIALS_CONNECTION_TIMEOUT` → `WIFI_CREDENTIALS_CONNECT_STORED_CONNECTION_TIMEOUT`、
+  `WIFI_CREDENTIALS`・`_MAX_ENTRIES`・`_SAE_PASSWORD_LENGTH`、`LOG_DEFAULT_LEVEL`・`LOG_MAX_LEVEL`（値も 3 版で同じ）。`common/compat/zephyr/net/wifi_credentials.h` の読み替えの 3 か所は既定値の定義だけに。
+  NuttX 本体・apps・パッチに同じ名前は無い（`INIT_*` は NuttX 自身の `INIT_PRIORITY` などと同じ接頭辞だが、同名は無い）。`CONFIG_LSM6DSO_STREAM` は Zephyr 版では前も後も未定義。
+- `.config` は 48 行が同じ値で名前だけ変わった。3 版ともイメージは変更前とバイト単位で一致（NuttX 283956 B、FreeRTOS 237064 B、Zephyr 372328 B）。ホストテスト 48・61・58。実機には書いていない。
+- パッチの適用の記録: `nuttx/nuttx/.git/`・`nuttx/nuttx-apps/.git/`・`zephyr/.west/` の `nano-patches` → `local-patches`。`setup.sh` は古いほうだけがあれば移して 1 行表示し、両方あれば止まる。
+  この作業ツリーで移行を実施（3 つとも移動、パッチの再適用なし、取得したツリーの状態は同じ、2 回目は何もしない）。
+- 残る `nano_`・`NANO_`（subagent の集計）: フラッシュの KV（`nano_flash_kv*`・`NANO_KV_*`）、FreeRTOS 版のコンソール・シェル・Telnet（`nano_console*`・`nano_shell*`・`nano_telnet*` など）、
+  `NANO_PRIO_*`・`NANO_STACK_*`、`nano_gpio*`、タイマー（`nano_mono*`・`NANO_TIMER*`）、`nano_cpuload*`、`NANO_SELFTEST`、Zephyr のアプリの `CONFIG_NANO_HW_DIVIDER`。ファイル名に `nano_` が付くものは 23 個。

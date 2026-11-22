@@ -125,7 +125,7 @@ int zephyr_compat_initialize(void)
       return ret;
     }
 
-#ifdef CONFIG_NANO_LSM6DSO_STREAM
+#ifdef CONFIG_LSM6DSO_STREAM
   /* drivers/gpio/gpio_rpi_pico.c (POST_KERNEL, CONFIG_GPIO_INIT_PRIORITY
    * 40): the gpio0 device of zephyr_gpio.c, which the LSM6DSO's FIFO stream
    * uses for INT1 (a build without the stream has no use for it; the NuttX

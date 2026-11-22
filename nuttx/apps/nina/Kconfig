@@ -3,10 +3,10 @@
 # see the file kconfig-language.txt in the NuttX tools repository.
 #
 
-config NANO_APP_NINA
+config APP_NINA
 	tristate "nina command (NINA-W102 module)"
 	default y
-	depends on NINA && NANO_SUBCMD
+	depends on NINA && SUBCMD
 	---help---
 		"nina version": the Zephyr build's nina command
 		(src/main.c, cmd_nina_version()) with the same output, on
@@ -15,9 +15,9 @@ config NANO_APP_NINA
 		(the Zephyr and FreeRTOS builds'): a restart into the NINA
 		passthrough mode for esptool.
 
-if NANO_APP_NINA
+if APP_NINA
 
-config NANO_APP_NINA_PRIORITY
+config APP_NINA_PRIORITY
 	int "nina task priority"
 	default 104
 	---help---
@@ -26,7 +26,7 @@ config NANO_APP_NINA_PRIORITY
 		commands in its shell thread, and nina_proto_request() runs the SPI
 		transfer at the caller's priority.
 
-config NANO_APP_NINA_STACKSIZE
+config APP_NINA_STACKSIZE
 	int "nina stack size"
 	default 3072
 	---help---

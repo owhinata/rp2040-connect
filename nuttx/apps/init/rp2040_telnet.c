@@ -3,7 +3,7 @@
  *
  * SPDX-License-Identifier: Apache-2.0
  *
- * The Telnet shell: nsh on TCP port CONFIG_NANO_INIT_TELNET_PORT for one
+ * The Telnet shell: nsh on TCP port CONFIG_INIT_TELNET_PORT for one
  * client at a time, the counterpart of the Zephyr build's Telnet shell
  * backend (zephyr/subsys/shell/backends/shell_telnet.c,
  * CONFIG_SHELL_BACKEND_TELNET, CONFIG_SHELL_TELNET_PORT=23).
@@ -61,7 +61,7 @@
 #include "priorities.h"
 #include "rp2040_init.h"
 
-#ifdef CONFIG_NANO_INIT_TELNET
+#ifdef CONFIG_INIT_TELNET
 
 /* The module name and level of the Zephyr backend
  * (CONFIG_SHELL_TELNET_LOG_LEVEL=3, INF).
@@ -110,7 +110,7 @@ static int telnet_setup_server(void)
 
   memset(&addr, 0, sizeof(addr));
   addr.sin_family      = AF_INET;
-  addr.sin_port        = HTONS(CONFIG_NANO_INIT_TELNET_PORT);
+  addr.sin_port        = HTONS(CONFIG_INIT_TELNET_PORT);
   addr.sin_addr.s_addr = INADDR_ANY;
 
   if (bind(fd, (FAR struct sockaddr *)&addr, sizeof(addr)) < 0)
@@ -231,8 +231,8 @@ static int telnet_start_session(int sd)
 
   /* The session inherits fd 0/1/2 (the listening socket is CLOEXEC). */
 
-  pid = task_create("nsh_telnet", CONFIG_NANO_INIT_NSH_PRIORITY,
-                    CONFIG_NANO_INIT_NSH_STACKSIZE, rp2040_nsh_session, NULL);
+  pid = task_create("nsh_telnet", CONFIG_INIT_NSH_PRIORITY,
+                    CONFIG_INIT_NSH_STACKSIZE, rp2040_nsh_session, NULL);
   if (pid < 0)
     {
       LOG_ERR("Cannot start the Telnet session (%d)", -errno);
@@ -290,7 +290,7 @@ static int telnet_main(int argc, FAR char *argv[])
                * turn a lasting error into a busy loop.
                */
 
-              usleep(CONFIG_NANO_INIT_RETRY_MS * 1000);
+              usleep(CONFIG_INIT_RETRY_MS * 1000);
             }
 
           continue;
@@ -344,4 +344,4 @@ void rp2040_telnet_start(void)
     }
 }
 
-#endif /* CONFIG_NANO_INIT_TELNET */
+#endif /* CONFIG_INIT_TELNET */

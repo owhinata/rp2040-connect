@@ -3,15 +3,15 @@
 # see the file kconfig-language.txt in the NuttX tools repository.
 #
 
-config NANO_WIFI_CREDENTIALS
+config WIFI_CREDENTIALS
 	bool "Stored Wi-Fi credentials (wifi_credentials.c)"
 	default y
-	depends on NINA_NET && NANO_KV_STORE
+	depends on NINA_NET && KV_STORE
 	---help---
 		The Zephyr build's Wi-Fi credentials library
 		(subsys/net/lib/wifi_credentials/ with its settings backend,
 		CONFIG_WIFI_CREDENTIALS_BACKEND_SETTINGS) on the copy of
-		Zephyr's settings of the key-value store (NANO_KV_STORE), under
+		Zephyr's settings of the key-value store (KV_STORE), under
 		the same names ("wifi_cred/0" and so on) in the same format as
 		the Zephyr build, which the kv command cannot reach (its keys are
 		stored as "app_kv/<key>").  Also the request
@@ -20,23 +20,23 @@ config NANO_WIFI_CREDENTIALS
 		application library; the init task reads the stored SSIDs at
 		boot.
 
-if NANO_WIFI_CREDENTIALS
+if WIFI_CREDENTIALS
 
-config NANO_WIFI_CREDENTIALS_MAX_ENTRIES
+config WIFI_CREDENTIALS_MAX_ENTRIES
 	int "Maximum number of stored networks"
 	default 2
 	range 1 99
 	---help---
 		The Zephyr build's CONFIG_WIFI_CREDENTIALS_MAX_ENTRIES.
 
-config NANO_WIFI_CREDENTIALS_SAE_PASSWORD_LENGTH
+config WIFI_CREDENTIALS_SAE_PASSWORD_LENGTH
 	int "Room for a password in an entry"
 	default 128
 	---help---
 		The Zephyr build's CONFIG_WIFI_CREDENTIALS_SAE_PASSWORD_LENGTH.
 		An entry keeps MAX(64, this) bytes of password.
 
-config NANO_WIFI_CREDENTIALS_CONNECTION_TIMEOUT
+config WIFI_CREDENTIALS_CONNECT_STORED_CONNECTION_TIMEOUT
 	int "Connection timeout of a stored network (s)"
 	default 30
 	---help---
@@ -48,10 +48,10 @@ config NANO_WIFI_CREDENTIALS_CONNECTION_TIMEOUT
 
 endif
 
-config NANO_WIFI_PROFILE
+config WIFI_PROFILE
 	bool "Wi-Fi profile and automatic reconnection (wifi_profile.c)"
 	default y
-	depends on NANO_WIFI_CREDENTIALS && NANO_KV_STORE
+	depends on WIFI_CREDENTIALS && KV_STORE
 	---help---
 		wifi_profile.c (common/imu, shared with the Zephyr build) on the
 		Zephyr compatibility layer: the thread wifi_reconnect_tid (Zephyr
@@ -64,10 +64,10 @@ config NANO_WIFI_PROFILE
 		are all allowed and nothing reconnects
 		(common/drivers/nina/port/nuttx/nina_wifi_mgmt.c).
 
-config NANO_APP_WIFI
+config APP_WIFI
 	tristate "wifi command (wifi cred)"
 	default y
-	depends on NANO_WIFI_CREDENTIALS && NANO_SUBCMD
+	depends on WIFI_CREDENTIALS && SUBCMD
 	---help---
 		"wifi cred add|delete|list|auto_connect": the Zephyr build's
 		wifi credentials shell (subsys/net/lib/wifi_credentials/
@@ -75,9 +75,9 @@ config NANO_APP_WIFI
 		other subcommands of the Zephyr build's wifi command are NuttX's
 		wapi and ifconfig.
 
-if NANO_APP_WIFI
+if APP_WIFI
 
-config NANO_APP_WIFI_PRIORITY
+config APP_WIFI_PRIORITY
 	int "wifi task priority"
 	default 104
 	---help---
@@ -85,7 +85,7 @@ config NANO_APP_WIFI_PRIORITY
 		common/compat/priorities.h): the Zephyr build runs shell
 		commands in its shell thread.
 
-config NANO_APP_WIFI_STACKSIZE
+config APP_WIFI_STACKSIZE
 	int "wifi stack size"
 	default 3072
 	---help---

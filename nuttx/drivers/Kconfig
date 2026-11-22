@@ -9,7 +9,7 @@
 # at the end of this file.
 #
 
-config NANO_LOG_RAM
+config LOG_RAM
 	bool "RAM log (dmesg) and the LOG_* macros"
 	default y
 	depends on SYSLOG
@@ -22,9 +22,9 @@ config NANO_LOG_RAM
 		command (nuttx/apps/dmesg) prints it.  The board calls
 		log_ram_initialize() from rp2040_boardinitialize().
 
-if NANO_LOG_RAM
+if LOG_RAM
 
-config NANO_LOG_DEFAULT_LEVEL
+config LOG_DEFAULT_LEVEL
 	int "Default log level"
 	default 3
 	range 0 4
@@ -33,7 +33,7 @@ config NANO_LOG_DEFAULT_LEVEL
 		no level (0 none, 1 err, 2 wrn, 3 inf, 4 dbg).  Zephyr build:
 		CONFIG_LOG_DEFAULT_LEVEL=3.
 
-config NANO_LOG_MAX_LEVEL
+config LOG_MAX_LEVEL
 	int "Maximum log level compiled in"
 	default 4
 	range 0 4
@@ -41,7 +41,7 @@ config NANO_LOG_MAX_LEVEL
 		Messages above this level are left out of every module.  Zephyr
 		build: CONFIG_LOG_MAX_LEVEL=4.
 
-endif # NANO_LOG_RAM
+endif # LOG_RAM
 
 rsource "nina/Kconfig"
 rsource "i2c_dw/Kconfig"

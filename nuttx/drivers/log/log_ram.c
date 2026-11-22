@@ -43,7 +43,7 @@
 #endif
 
 #ifndef CONFIG_SYSLOG_REGISTER
-#  error "CONFIG_NANO_LOG_RAM needs CONFIG_SYSLOG_REGISTER"
+#  error "CONFIG_LOG_RAM needs CONFIG_SYSLOG_REGISTER"
 #endif
 
 /* The linker leaves this region untouched during normal startup. */

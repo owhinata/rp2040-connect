@@ -3,7 +3,7 @@
 # see the file kconfig-language.txt in the NuttX tools repository.
 #
 
-config NANO_LSM6DSO
+config LSM6DSO_LOCAL
 	bool "LSM6DSOX IMU driver (the shared LSM6DSO driver)"
 	default y
 	depends on I2C_DW_I2C0
@@ -19,12 +19,14 @@ config NANO_LSM6DSO
 		initializes the device in its bring-up, after I2C0 and before
 		the key-value store, as the Zephyr build does before main()
 		(src/rp2040_lsm6dso.c).  The FIFO stream (INT1, RTIO) is
-		NANO_LSM6DSO_STREAM.
+		LSM6DSO_STREAM.  The Zephyr build's option of the same name
+		(common/drivers/lsm6dso/port/zephyr/Kconfig), which replaces
+		Zephyr's own driver (LSM6DSO there).
 
-config NANO_LSM6DSO_STREAM
+config LSM6DSO_STREAM
 	bool
 	default y
-	depends on NANO_LSM6DSO
+	depends on LSM6DSO_LOCAL
 	---help---
 		The FIFO stream of the LSM6DSO driver: the core's stream
 		(lsm6dso_stream.c) and the Zephyr build's
@@ -32,7 +34,7 @@ config NANO_LSM6DSO_STREAM
 		(port/zephyr/lsm6dso_rtio_stream.c, lsm6dso_rtio.c,
 		lsm6dso_decoder.c, lsm6dso_os.c), on the compatibility
 		layer's RTIO, work queues and gpio0 (compat/).  Always on
-		with NANO_LSM6DSO: as in Zephyr, lsm6dso_sensor.c does not
+		with LSM6DSO_LOCAL: as in Zephyr, lsm6dso_sensor.c does not
 		build without it.  The board starts the layer's threads
 		(zephyr_compat_initialize()) before the LSM6DSOX and builds
 		src/nano_gpio.c for the INT1 interrupt.
