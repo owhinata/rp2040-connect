@@ -6,13 +6,13 @@
 config NANO_KV_STORE
 	bool "Key-value store (kv_store.c on Zephyr's settings and NVS)"
 	default y
-	depends on NANO_FLASH_KV && NANO_SUBCMD
+	depends on RP2040_FLASH_KV && NANO_SUBCMD
 	---help---
 		kv_store_init/set/get/delete() and the "kv" command's
 		subcommands of the Zephyr build (common/imu/kv_store.c, shared
 		with the Zephyr build) on the copies of Zephyr's settings and NVS
 		(common/compat/subsys) in the board's key-value area
-		(NANO_FLASH_KV), in the Zephyr build's format: what one build
+		(RP2040_FLASH_KV), in the Zephyr build's format: what one build
 		stores, the other reads.  The same keys (1-32 characters:
 		letters, digits, '_', '-', '.'), values (1-128 bytes) and error
 		values.  Built into the application library; the "kv" command

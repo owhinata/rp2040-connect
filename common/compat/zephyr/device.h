@@ -8,7 +8,7 @@
  *
  * Zephyr initializes its devices by itself before main(); here the board
  * calls device_init() at the place of the same order in its bring-up
- * (boards/arduino-nano-rp2040-connect/src/nano_lsm6dso.c).  The devices
+ * (boards/arduino-nano-rp2040-connect/src/rp2040_lsm6dso.c).  The devices
  * that exist are listed in <zephyr/devicetree.h>.
  */
 

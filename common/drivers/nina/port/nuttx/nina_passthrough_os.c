@@ -13,7 +13,7 @@
  * by the board's src/Make.defs.
  *
  * rp2040_boardinitialize() calls nina_passthrough_check() first thing.
- * With the request, nano_bringup() sets up the USB device (CDC ACM,
+ * With the request, rp2040_bringup() sets up the USB device (CDC ACM,
  * /dev/ttyACM0, the same descriptors and serial number) and nothing of the
  * NINA, I2C0, the sensor, the network device or the key-value flash; the
  * init task (nuttx/apps/init) calls nina_passthrough_run() instead of

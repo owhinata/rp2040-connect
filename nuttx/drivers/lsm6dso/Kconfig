@@ -18,7 +18,7 @@ config NANO_LSM6DSO
 		the kernel calls of the core's boundary).  The board
 		initializes the device in its bring-up, after I2C0 and before
 		the key-value store, as the Zephyr build does before main()
-		(src/nano_lsm6dso.c).  The FIFO stream (INT1, RTIO) is
+		(src/rp2040_lsm6dso.c).  The FIFO stream (INT1, RTIO) is
 		NANO_LSM6DSO_STREAM.
 
 config NANO_LSM6DSO_STREAM

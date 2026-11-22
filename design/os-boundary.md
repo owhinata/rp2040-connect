@@ -114,7 +114,7 @@ The work item logic itself is shared: `common/compat/zephyr_work.c`.
 | End of a `K_THREAD_DEFINE()` thread | kernel thread returns | `vTaskDelete(NULL)` |
 | Tick | 100 µs | 1 ms |
 | `zephyr_compat_initialize()` gpio0 | always (the whole kernel part is built only with `CONFIG_NANO_LSM6DSO_STREAM`) | only with `CONFIG_NANO_LSM6DSO_STREAM`; −ENOMEM if sysworkq did not start |
-| Caller of `zephyr_compat_initialize()` | `N-board/src/nano_bringup.c` | `main()` before the scheduler, `freertos/app/usb-console/src/main.c` |
+| Caller of `zephyr_compat_initialize()` | `N-board/src/rp2040_bringup.c` | `main()` before the scheduler, `freertos/app/usb-console/src/main.c` |
 | Same-priority choice | NuttX's | FreeRTOS's round robin at every switch |
 
 ### 2.4 Spinlock and atomics
@@ -140,11 +140,11 @@ The atomic operations themselves are shared (on `k_spin_lock()`).
 | Shell backend | `common/shell/zshell_os.h` | `zshell_os_backend_get()`, `zshell_os_cmd_enter()`, `zshell_os_cmd_exit()`, `z_shell_backend_vfprintf()`; optional `zshell_os_active_cmd_set()`/`_get()` with `ZSHELL_OS_ACTIVE_CMD` | `common/shell/zshell.c` | `nuttx/apps/subcmd/zshell_os_impl.h` (no `ZSHELL_OS_ACTIVE_CMD`) | `freertos/drivers/shell/zshell_os_impl.h` (defines it) |
 | `struct shell` | read by `common/compat/zephyr/shell/shell.h` | one backend, outlives the command | shell commands | `nuttx/drivers/compat/zephyr_os_shell.h` (terminal path, command pid) | `freertos/drivers/shell/zephyr_os_shell.h` (console, active command) |
 | Log, OS part | `common/log/app_log.h` | `app_log_os.h` (OS headers first, optional `CONFIG_NANO_LOG_DEFAULT_LEVEL`, `CONFIG_NANO_LOG_MAX_LEVEL`); `app_log_printf()`, `app_log_vprintf()`, `app_log_ratelimit_pass()` | `LOG_*()` macros | `nuttx/drivers/include/app_log_os.h`, `nuttx/drivers/log/log_ram.c` | `freertos/drivers/include/app_log_os.h`, `freertos/drivers/log/log_ram.c` |
-| RAM log | `common/log/log_ram.h` | `log_ram_initialize()`, `log_ram_piece()` | start-up; `dmesg` | `nuttx/drivers/log/log_ram.c`; called by `N-board/src/nano_boardinitialize.c`, `nuttx/apps/dmesg/dmesg_main.c` | `freertos/drivers/log/log_ram.c` (also holds `dmesg`); called by `main()` |
+| RAM log | `common/log/log_ram.h` | `log_ram_initialize()`, `log_ram_piece()` | start-up; `dmesg` | `nuttx/drivers/log/log_ram.c`; called by `N-board/src/rp2040_boardinitialize.c`, `nuttx/apps/dmesg/dmesg_main.c` | `freertos/drivers/log/log_ram.c` (also holds `dmesg`); called by `main()` |
 | KV flash | `common/compat/nano_flash_kv.h` | `nano_flash_kv_os_ready()`, `_read()`, `_program()` (256-byte page), `_erase()` (4 KiB sector); range checked again by the OS | `common/compat/zephyr_flash_kv.c` | `N-board/src/nano_flash_kv.c` | `freertos/drivers/kv/nano_flash_kv.c` |
 | KV wipe command | `common/compat/kv_store_os.h` | `kv_store_wipe()`, `kv_store_cmd_wipe()`, `KV_STORE_OS_COMMANDS` | `common/imu/kv_store.c` | shared: `common/compat/kv_store_wipe.c` | shared: same |
 | GPIO bank 0 | `common/compat/nano_gpio.h` | OS: `nano_gpio_configure_input()`, `nano_gpio_get_all()`, `nano_gpio_irq_configure()`; layer: `nano_gpio_irq_handler()` (called from the bank interrupt) | `common/compat/zephyr_gpio.c`; N also `common/drivers/nina/port/nuttx/nina_os.c` | `N-board/src/nano_gpio.c` | `freertos/drivers/compat/rp2040/nano_gpio.c` |
-| CPU load | `common/compat/cpu_load.h`, arithmetic `common/compat/nano_cpuload.h` | `cpu_load_get(reset)` in tenths of a percent, from idle windows of the TIMER | `common/imu/imu_stream.c` | `N-board/src/nano_idle.c` | `freertos/app/usb-console/src/idle.c` |
+| CPU load | `common/compat/cpu_load.h`, arithmetic `common/compat/nano_cpuload.h` | `cpu_load_get(reset)` in tenths of a percent, from idle windows of the TIMER | `common/imu/imu_stream.c` | `N-board/src/rp2040_idle_cpuload.c` | `freertos/app/usb-console/src/idle.c` |
 | Priorities and stacks | `common/compat/priorities.h` | OS: `NANO_PRIO_FROM_ZEPHYR(p)` and its own threads; shared: 15 `NANO_PRIO_*`/`NANO_STACK_*` pairs | the layer, bindings, start-up | `nuttx/drivers/include/priorities_os.h` (118 − p; `NINA_EVENT`, `NINA_PT`) | `freertos/app/usb-console/src/priorities_os.h` (20 − p; `TIMER_SVC`, `IDLE`, `HEARTBEAT`) |
 | net_mgmt thread | included at the end of `common/compat/zephyr_net_mgmt.c` | `mgmt_event_thread()` and `net_mgmt_event_init()` (declared in `common/compat/zephyr/net/net_mgmt.h`) on the file's queue and `mgmt_stack` | N `common/drivers/nina/port/nuttx/nina_wifi_mgmt.c`; F `freertos/drivers/compat/zephyr_net_init.c` | `nuttx/drivers/compat/zephyr_net_mgmt_os.h` | `freertos/drivers/compat/zephyr_net_mgmt_os.h` |
 | RTIO work queue | `common/compat/zephyr/rtio/work.h` | `rtio_workq_initialize()` starts "RTIO WQ 0" with `z_thread_static_start()`; no OS file | each `zephyr_compat_initialize()` | shared `common/compat/zephyr_rtio_workq.c` | same |
@@ -184,9 +184,9 @@ headers are in `common/compat/net_offload/include`, which F puts after its OS di
 | TIMER read by `common/imu/time_sync.c` | the file itself (`DT_REG_ADDR(DT_NODELABEL(timer))` = 0x40054000, `sys_read32()`) | — | `freertos/drivers/imu/time_sync_prelude.h` undefines the SDK's `TIMER_BASE` |
 | `k_heap` | `common/compat/net_offload/include/zephyr_heap.h`, included by F `zephyr_os.h` | not built | `common/compat/net_offload/zephyr_heap.c`; used by `common/drivers/nina/port/zephyr/nina_socket.c` |
 | `zephyr_compat_tick()` | F `zephyr_compat_os.h` | — (wdog) | called by `vApplicationTickHook()`, `freertos/app/usb-console/src/tick.c` |
-| `zephyr_net_initialize()` | F `zephyr_compat_os.h` | — (`nina_net_initialize()` in `nano_bringup.c`, `common/drivers/nina/port/nuttx/nina_net.h`) | `freertos/drivers/compat/zephyr_net_init.c` |
+| `zephyr_net_initialize()` | F `zephyr_compat_os.h` | — (`nina_net_initialize()` in `rp2040_bringup.c`, `common/drivers/nina/port/nuttx/nina_net.h`) | `freertos/drivers/compat/zephyr_net_init.c` |
 | `hwinfo_get_device_id()` | `common/compat/zephyr/drivers/hwinfo.h` | `nuttx/drivers/compat/zephyr_hwinfo.c` | `freertos/drivers/compat/rp2040/zephyr_hwinfo.c` |
-| `nano_flash_kv_initialize()` | per OS | `N-board/src/nano_connect.h`, `nano_flash_kv.c`; called by `nano_bringup.c` | `freertos/drivers/kv/nano_flash_kv_os.h`, `nano_flash_kv.c`; called by `main()` |
+| `nano_flash_kv_initialize()` | per OS | `N-board/src/rp2040_pico.h`, `nano_flash_kv.c`; called by `rp2040_bringup.c` | `freertos/drivers/kv/nano_flash_kv_os.h`, `nano_flash_kv.c`; called by `main()` |
 
 ### 4.3 Devices behind `DEVICE_DT_GET()`
 
@@ -196,7 +196,7 @@ The devices listed for the shell are in `common/compat/zephyr_device.c` (hand-wr
 | Node | N | F |
 |---|---|---|
 | `gpio0` | `common/compat/zephyr_gpio.c` | same |
-| `i2c0` | `N-board/src/nano_lsm6dso.c`, bound to the NuttX I2C master (`zephyr_i2c.c`) | `common/drivers/i2c_dw/port/freertos/i2c_dw_instance.h` |
+| `i2c0` | `N-board/src/rp2040_lsm6dso.c`, bound to the NuttX I2C master (`zephyr_i2c.c`) | `common/drivers/i2c_dw/port/freertos/i2c_dw_instance.h` |
 | `i2c1` | no Zephyr device (`struct i2c_master_s` only) | `common/drivers/i2c_dw/port/freertos/i2c_dw_instance.h` |
 | `lsm6dsox` | the driver's port, `common/drivers/lsm6dso/port/` | same |
 | flash device | `common/compat/zephyr_flash_kv.c` (`z_flash_kv_device`) | same |
@@ -235,22 +235,22 @@ The devices listed for the shell are in `common/compat/zephyr_device.c` (hand-wr
 | `sensor_shell_processing_tid` (`common/compat/sensor_shell_stream.c`) | same | same |
 | `zperf_server_tid` (`common/compat/zperf_iperf3.c`) | not built | same |
 
-Start-up files: Zephyr `zephyr/app/usb-console/src/main.c`; N `N-board/src/nano_boardinitialize.c`,
-`N-board/src/nano_bringup.c`, `nuttx/apps/init/nano_init.c`; F `freertos/app/usb-console/src/main.c`
+Start-up files: Zephyr `zephyr/app/usb-console/src/main.c`; N `N-board/src/rp2040_boardinitialize.c`,
+`N-board/src/rp2040_bringup.c`, `nuttx/apps/init/rp2040_init.c`; F `freertos/app/usb-console/src/main.c`
 (`main()`, then the task `main_main()`).
 
 | Step | N | F |
 |---|---|---|
 | RAM log | `log_ram_initialize()` in `rp2040_boardinitialize()` | first in `main()` |
 | NINA passthrough check | `nina_passthrough_active()` in the init task | `nina_passthrough_check()` in `main()` |
-| Layer | `zephyr_compat_initialize()` in `nano_bringup()` | `zephyr_compat_initialize()` in `main()` |
-| I2C0, I2C1 | `i2c_dw_i2c0_initialize()`, `i2c_register()` in `nano_bringup()` | `i2c_dw_i2c0_initialize()`, `_i2c1_` in `main()` |
-| LSM6DSOX | after I2C0 in `nano_bringup()` | first in `main_main()` |
-| Network | `nina_net_initialize()` in `nano_bringup()` | `zephyr_net_initialize()` in `main_main()` |
-| KV flash bounds | `nano_flash_kv_initialize()` in `nano_bringup()` | `nano_flash_kv_initialize()` in `main()` |
+| Layer | `zephyr_compat_initialize()` in `rp2040_bringup()` | `zephyr_compat_initialize()` in `main()` |
+| I2C0, I2C1 | `i2c_dw_i2c0_initialize()`, `i2c_register()` in `rp2040_bringup()` | `i2c_dw_i2c0_initialize()`, `_i2c1_` in `main()` |
+| LSM6DSOX | after I2C0 in `rp2040_bringup()` | first in `main_main()` |
+| Network | `nina_net_initialize()` in `rp2040_bringup()` | `zephyr_net_initialize()` in `main_main()` |
+| KV flash bounds | `nano_flash_kv_initialize()` in `rp2040_bringup()` | `nano_flash_kv_initialize()` in `main()` |
 | Wi-Fi credentials | `wifi_credentials_init()` in the init task | `wifi_credentials_init()`, `wifi_shell_init()` in `main_main()` |
 | Threads | table above | table above |
-| Telnet | `nano_telnet_start()` after the threads | `nano_telnet_init()` before the threads |
+| Telnet | `rp2040_telnet_start()` after the threads | `nano_telnet_init()` before the threads |
 | Application (same order in all three builds) | `kv_store_init()`, `imu_cal_init()`, `time_sync_init()`, `wifi_profile_init()` | same |
 
 ### 4.7 POSIX socket headers
@@ -273,12 +273,12 @@ Start-up files: Zephyr `zephyr/app/usb-console/src/main.c`; N `N-board/src/nano_
 
 | Item | N | F |
 |---|---|---|
-| Start-up to the scheduler | NuttX boot, `N-board/src/nano_boardinitialize.c`, `nano_bringup.c`, init task `nuttx/apps/init/nano_init.c` | `freertos/app/usb-console/src/main.c`, `vTaskStartScheduler()` |
-| Kernel tick and timer | tickless timer `N-board/src/nano_oneshot.c`, `nano_timerisr.c` (100 µs tick) | SysTick 1 ms, tick hook and catch-up `tick.c`, `tick_catchup.h`; `FreeRTOSConfig.h` |
+| Start-up to the scheduler | NuttX boot, `N-board/src/rp2040_boardinitialize.c`, `rp2040_bringup.c`, init task `nuttx/apps/init/rp2040_init.c` | `freertos/app/usb-console/src/main.c`, `vTaskStartScheduler()` |
+| Kernel tick and timer | tickless timer `N-board/src/rp2040_oneshot.c`, `rp2040_timerisr_alarm.c` (100 µs tick) | SysTick 1 ms, tick hook and catch-up `tick.c`, `tick_catchup.h`; `FreeRTOSConfig.h` |
 | Interrupt attach | `irq_attach()`, `rp2040_gpio_irq_attach()` | Pico SDK `irq_set_exclusive_handler()`, `irq_add_shared_handler()`, `gpio_add_raw_irq_handler_masked()` |
-| Idle loop | `N-board/src/nano_idle.c` | `freertos/app/usb-console/src/idle.c` |
-| USB device stack, console transport | `cdcacm`, `N-board/src/nano_usbserial.c`; Telnet `nuttx/apps/init/nano_telnet.c` | Pico SDK `stdio_usb` (TinyUSB); `freertos/drivers/shell/nano_console.c`, `nano_stdio.c`; Telnet `freertos/drivers/telnet/nano_telnet.c` |
+| Idle loop | `N-board/src/rp2040_idle_cpuload.c` | `freertos/app/usb-console/src/idle.c` |
+| USB device stack, console transport | `cdcacm`, `N-board/src/rp2040_usbserial.c`; Telnet `nuttx/apps/init/rp2040_telnet.c` | Pico SDK `stdio_usb` (TinyUSB); `freertos/drivers/shell/nano_console.c`, `nano_stdio.c`; Telnet `freertos/drivers/telnet/nano_telnet.c` |
 | Heap | NuttX's | FreeRTOS `heap_4`, 32 KiB (`configTOTAL_HEAP_SIZE`) |
-| The OS's own shell | nsh (sessions in `nano_init.c`) | none: the shared engine `common/compat/shell_engine` (`cli.c`, `nano_shell.c`) on the consoles of `freertos/drivers/shell` |
+| The OS's own shell | nsh (sessions in `rp2040_init.c`) | none: the shared engine `common/compat/shell_engine` (`cli.c`, `nano_shell.c`) on the consoles of `freertos/drivers/shell` |
 | Fatal errors | `CONFIG_BOARD_RESET_ON_ASSERT`, report in the RAM log | `freertos/app/usb-console/src/fault.c` with `common/log/fault_record.c` |
 | Build system and configuration | Make, Kconfig, `defconfig`, `nuttx/patches` | CMake, `FreeRTOSConfig.h`, `freertos/drivers/*/*.cmake` |

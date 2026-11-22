@@ -20,7 +20,7 @@ struct i2c_master_s;
  *   the way the Zephyr build's driver does at boot, and return it as a
  *   NuttX I2C master (I2C_TRANSFER(), and I2C_RESET() with CONFIG_I2C_RESET).
  *   Later calls return the same instance.  Returns NULL if the controller
- *   does not answer as a DesignWare I2C block.  From nano_bringup().
+ *   does not answer as a DesignWare I2C block.  From rp2040_bringup().
  *
  ****************************************************************************/
 
@@ -34,7 +34,7 @@ struct i2c_master_s *i2c_dw_i2c0_initialize(void);
  * Description:
  *   The same for I2C1 (BOARD_I2C1_SDA_GPIO, BOARD_I2C1_SCL_GPIO: GPIO18,
  *   D6, and GPIO19, D7, with the internal pull-ups), a second instance of
- *   the same driver, without the DMA reads.  From nano_bringup(), after
+ *   the same driver, without the DMA reads.  From rp2040_bringup(), after
  *   I2C0.
  *
  ****************************************************************************/

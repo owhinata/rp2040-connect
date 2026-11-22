@@ -123,7 +123,7 @@
  * lowest application priority 14, CONFIG_NET_SOCKETS_SERVICE_STACK_SIZE
  * 2048): it accepts the Telnet clients (shell_telnet.c telnet_accept()).
  * The OS's Telnet server (on NuttX the "telnetd" task,
- * nuttx/apps/init/nano_telnet.c).
+ * nuttx/apps/init/rp2040_telnet.c).
  */
 
 #define NANO_PRIO_TELNET_SERVICE     NANO_PRIO_FROM_ZEPHYR(14)

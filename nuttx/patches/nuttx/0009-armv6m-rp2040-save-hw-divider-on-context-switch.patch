@@ -2,13 +2,13 @@ armv6-m, rp2040: save the SIO hardware divider on context switches
 
 Purpose: let tasks divide on the RP2040's SIO divider (the board links the
 Pico SDK's pico_divider routines in place of libgcc's division,
-boards/arduino-nano-rp2040-connect, CONFIG_NANO_HW_DIVIDER).  Those routines
-(PICO_DIVIDER_DISABLE_INTERRUPTS 0) save and restore the divider around a
-division that finds it DIRTY, which makes divisions in interrupt handlers
-safe, but a task switched out between writing the operands and reading the
-results would read the results of the next task's division.  As the Pico
-SDK's FreeRTOS port does (portUSE_DIVIDER_SAVE_RESTORE in its PendSV
-handler), the divider goes with the task:
+boards/arduino-nano-rp2040-connect, CONFIG_RP2040_PICO_DIVIDER).  Those
+routines (PICO_DIVIDER_DISABLE_INTERRUPTS 0) save and restore the divider
+around a division that finds it DIRTY, which makes divisions in interrupt
+handlers safe, but a task switched out between writing the operands and
+reading the results would read the results of the next task's division.
+As the Pico SDK's FreeRTOS port does (portUSE_DIVIDER_SAVE_RESTORE in its
+PendSV handler), the divider goes with the task:
 
 - arch/arm/src/rp2040/Kconfig: RP2040_HW_DIVIDER (default n).
 - arch/arm/include/armv6-m/irq.h: struct xcptcontext gets the four divider

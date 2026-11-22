@@ -1,5 +1,5 @@
 /****************************************************************************
- * boards/arduino-nano-rp2040-connect/src/nano_stackcheck.c
+ * boards/arduino-nano-rp2040-connect/src/rp2040_stackcheck.c
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -20,7 +20,7 @@
  *
  ****************************************************************************/
 
-/* The stack sentinel (CONFIG_NANO_STACK_SENTINEL): the counterpart of the
+/* The stack sentinel (CONFIG_RP2040_STACK_SENTINEL): the counterpart of the
  * Zephyr build's CONFIG_STACK_SENTINEL.  Zephyr writes a magic word at the
  * lowest address of each thread stack and checks it in z_swap() for the
  * outgoing thread and at the end of every non-nested interrupt for the
@@ -88,18 +88,18 @@
 #if !defined(CONFIG_STACK_COLORATION) || \
     !defined(CONFIG_SCHED_INSTRUMENTATION_SWITCH) || \
     !defined(CONFIG_SCHED_INSTRUMENTATION_IRQHANDLER)
-#  error "nano_stackcheck.c needs STACK_COLORATION and both hooks"
+#  error "rp2040_stackcheck.c needs STACK_COLORATION and both hooks"
 #endif
 
 #ifdef CONFIG_SMP
-#  error "nano_stackcheck.c checks one CPU"
+#  error "rp2040_stackcheck.c checks one CPU"
 #endif
 
 /****************************************************************************
  * Private Functions
  ****************************************************************************/
 
-static void nano_check_sentinel(FAR struct tcb_s *tcb)
+static void rp2040_check_sentinel(FAR struct tcb_s *tcb)
 {
   FAR uint32_t *sentinel;
 
@@ -151,7 +151,7 @@ void sched_note_resume(FAR struct tcb_s *tcb)
 
 void sched_note_suspend(FAR struct tcb_s *tcb)
 {
-  nano_check_sentinel(tcb);
+  rp2040_check_sentinel(tcb);
 }
 
 /* At the end of each interrupt handler: the interrupted task. */
@@ -163,6 +163,6 @@ void sched_note_irqhandler(int irq, FAR void *handler, bool enter)
 
   if (!enter)
     {
-      nano_check_sentinel(g_running_tasks[0]);
+      rp2040_check_sentinel(g_running_tasks[0]);
     }
 }

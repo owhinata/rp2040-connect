@@ -14,7 +14,7 @@ and `nuttx/PORTING_PLAN.md` (in Japanese). A section named in quotes is a sectio
 The table of what is fetched is in "Setup" in `nuttx/README.md`. What the table does not say:
 
 - `nuttx/pico-sdk` is a sparse checkout of what the boot2 build reads and of the divider routines the
-  board builds (`divider_hardware.S` and the `divider_helper.S` it includes; `CONFIG_NANO_HW_DIVIDER`).
+  board builds (`divider_hardware.S` and the `divider_helper.S` it includes; `CONFIG_RP2040_PICO_DIVIDER`).
   Paths an earlier partial clone lacks are added to its sparse checkout, and their files are fetched then
   (the clone fetches blobs later, so this needs the network). A full checkout already in `nuttx/pico-sdk`
   is used as it is. To get the small partial one, delete it and source `setup.sh` again.
@@ -61,7 +61,7 @@ The script does the following:
    and the image ends before 0x10ffe000. The last 8 KB of the flash (0x10ffe000–0x10ffffff) is
    kept out of the image for the key-value store, as in the Zephyr build. With
    `CONFIG_RP2040_ROM_MEM_OPS` it also checks that `__start()` calls neither `memcpy` nor `memset`
-   (section "The C library's `memcpy` and `memset`"). With `CONFIG_NANO_HW_DIVIDER` it checks that the six
+   (section "The C library's `memcpy` and `memset`"). With `CONFIG_RP2040_PICO_DIVIDER` it checks that the six
    `__wrap___aeabi_*` are there and that no libgcc division (`__aeabi_idiv`, `__divsi3`, `__udivmoddi4` and
    so on) is left in the image (section "Integer division").
 4. Converts `nuttx/nuttx/nuttx.bin` (raw image from 0x10000000, boot2 included) to
@@ -208,7 +208,7 @@ Zephyr build stored, and the other way round. The API and the command are the Ze
   `BUILD_ASSERT`s in the layer's `<zephyr/net/wifi_credentials.h>` check against the Zephyr build's
   ELF).
 - Area: the board's `include/board.h` (`BOARD_KV_OFFSET`, `BOARD_KV_SIZE`), the constants of
-  `nano_flash_kv.h` and the linker script (`__kv_start`, `__kv_end` in `scripts/nano-flash.ld`;
+  `nano_flash_kv.h` and the linker script (`__kv_start`, `__kv_end` in `scripts/arduino-nano-rp2040-connect-flash.ld`;
   the area is left out of the image's flash region, and `build.sh` checks where the image ends).
   Every read, program and erase is checked to lie inside the area in three places before the flash
   is touched: the compatibility layer (the constants), the board (the `board.h` constants and the
@@ -216,7 +216,7 @@ Zephyr build stored, and the other way round. The API and the command are the Ze
   called). Anything outside is refused without touching the flash (`<err> flash_kv: Refused flash
   ...` in `dmesg`). The Zephyr build's flash driver accepts the whole flash; its NVS only touches
   this area.
-- Boot: the board's start-up (`nano_bringup()`, after the LSM6DSOX and the NINA) only prepares the
+- Boot: the board's start-up (`rp2040_bringup()`, after the LSM6DSOX and the NINA) only prepares the
   flash operations (the linker script checked, the boot ROM's functions found, boot2 copied). NVS
   is mounted, as in the Zephyr build, by the first call of the settings: the credentials'
   initialization, which init runs where Zephyr runs its `SYS_INIT()`. `dmesg` then shows the
@@ -543,7 +543,7 @@ nsh$ wifi cred list
 ## Shell over Wi-Fi (Telnet)
 
 As with the Zephyr build's Telnet shell (`CONFIG_SHELL_BACKEND_TELNET`), the shell of the USB
-console is also on TCP port 23 while Wi-Fi is connected (`nuttx/apps/init/nano_telnet.c`,
+console is also on TCP port 23 while Wi-Fi is connected (`nuttx/apps/init/rp2040_telnet.c`,
 `CONFIG_NANO_INIT_TELNET`; the port is `CONFIG_NANO_INIT_TELNET_PORT`, the Zephyr build's
 `CONFIG_SHELL_TELNET_PORT`). There is no authentication or encryption, and anyone who can reach
 the port can do everything the shell can, so use it on trusted networks only.
@@ -748,7 +748,7 @@ line ends identical to the one in Zephyr's hal_st). The FIFO stream (the INT1 in
 runs on the Zephyr build's own files (`common/drivers/lsm6dso/port/zephyr/`) (below). The acquisition service that uses it
 (`imu start` and so on) is the next section.
 
-- **Initialization at boot**: the board's bring-up (`nano_bringup()`) initializes the sensor right
+- **Initialization at boot**: the board's bring-up (`rp2040_bringup()`) initializes the sensor right
   after I2C0 and before the key-value store (NVS) is mounted (in init). That is the Zephyr build's
   order: it initializes its devices before `main()` (`POST_KERNEL`, priority 90) and mounts NVS
   afterwards.
@@ -1077,9 +1077,9 @@ Subcommands:
 The kernel clock is tickless with a 100 µs tick (the same tick as the Zephyr build's
 `CONFIG_SYS_CLOCK_TICKS_PER_SEC=10000`, `CONFIG_TICKLESS_KERNEL=y`). There is no periodic
 interrupt: ALARM0 of the RP2040 TIMER (64-bit, 1 MHz, from the crystal) is set to the time of the
-next wait that ends (`nano_oneshot.c` and `nano_timerisr.c` in
+next wait that ends (`rp2040_oneshot.c` and `rp2040_timerisr_alarm.c` in
 `nuttx/boards/arduino-nano-rp2040-connect/src/`, and NuttX's `drivers/timers/arch_alarm.c`).
-ALARM1 to ALARM3 are not used. The settings are `CONFIG_NANO_TICKLESS` (the board `Kconfig`, on by
+ALARM1 to ALARM3 are not used. The settings are `CONFIG_RP2040_TICKLESS` (the board `Kconfig`, on by
 default), `CONFIG_SCHED_TICKLESS=y` and `CONFIG_USEC_PER_TICK=100`.
 
 - A wait is rounded up to whole ticks and one tick is added (`usleep(1000)` takes 1000 to 1100 µs
@@ -1104,15 +1104,15 @@ default), `CONFIG_SCHED_TICKLESS=y` and `CONFIG_USEC_PER_TICK=100`.
 - The conversions between the counter and ticks or time are done by the board, which replaces the
   weak functions of `arch_alarm.c` (`up_timer_gettick()`, `up_timer_gettime()`,
   `up_alarm_tick_start()`, `up_alarm_cancel()`, `up_udelay()`, `up_ndelay()`) with arithmetic for
-  1 MHz and 100 µs (`src/nano_timeconv.h`: division by 100 one byte at a time, with a 32-bit
+  1 MHz and 100 µs (`src/rp2040_timeconv.h`: division by 100 one byte at a time, with a 32-bit
   multiply and a shift). The Cortex-M0+ has no divide instruction, and NuttX's generic conversions
   (`ONESHOT_COUNT`) do 64-bit divisions, which are slow. The results equal
-  the generic ones over the whole 64-bit range (host test `nano_timeconv`). The conversions assume a
+  the generic ones over the whole 64-bit range (host test `rp2040_timeconv`). The conversions assume a
   100 µs tick, so the build stops if `CONFIG_USEC_PER_TICK` is not 100.
 
 ## CPU load
 
-`cpu_load_get(bool reset)` (`#include "cpu_load.h"`; the board's `src/nano_idle.c`) returns what
+`cpu_load_get(bool reset)` (`#include "cpu_load.h"`; the board's `src/rp2040_idle_cpuload.c`) returns what
 the Zephyr build's `CONFIG_CPU_LOAD` (`CONFIG_CPU_LOAD_BACKEND_IDLE_HOOK`) returns.
 
 - The idle loop (`up_idle()`, the board's own with `CONFIG_ARCH_IDLE_CUSTOM=y`) disables interrupts,
@@ -1138,7 +1138,7 @@ default of −1 and are not used. `cpu_load_get()` above (`cpu_active` in `imu s
 mechanism; turning this on does not change how it measures.
 
 - At every thread switch, the time since the previous switch is added to the thread being switched
-  out. The time base is the board's perf counter (`src/nano_perf.c`, `CONFIG_NANO_PERF`: the TIMER,
+  out. The time base is the board's perf counter (`src/rp2040_perf.c`, `CONFIG_RP2040_PERF`: the TIMER,
   1 µs; the Cortex-M0+ has no cycle counter). The Zephyr build's `CONFIG_SCHED_THREAD_USAGE` also
   adds CPU cycles only at a switch (PendSV).
 - In both versions the time spent in interrupt handlers goes to the thread that was interrupted
@@ -1218,7 +1218,7 @@ NuttX-only threads are in `nuttx/drivers/include/priorities_os.h`). The Zephyr b
   nsh$ irqstack
   <address> IRQ 00                           (real size 2048):	unused <unused>	usage <used> / 2048 (<percent> %)
   ```
-- Stack sentinel (`CONFIG_NANO_STACK_SENTINEL`, board `Kconfig`, on by default): like the Zephyr
+- Stack sentinel (`CONFIG_RP2040_STACK_SENTINEL`, board `Kconfig`, on by default): like the Zephyr
   version's `CONFIG_STACK_SENTINEL`, the lowest word of each stack (the value written by
   `CONFIG_STACK_COLORATION`) is checked at every thread switch (for the thread switched out) and at
   the end of every interrupt handler (for the interrupted thread, whose stack holds what the
@@ -1227,7 +1227,7 @@ NuttX-only threads are in `nuttx/drivers/include/priorities_os.h`). The Zephyr b
   Zephyr build. The checks run
   in two scheduler instrumentation hooks (`sched_note_suspend()` at a switch, and
   `sched_note_irqhandler()`, which `irq_dispatch()` calls around each handler;
-  `src/nano_stackcheck.c`). On the Cortex-M0+ peripheral interrupts do not go through
+  `src/rp2040_stackcheck.c`). On the Cortex-M0+ peripheral interrupts do not go through
   `arm_doirq()` (they use `exception_direct()`), so the switch hook alone does not see the end of
   an interrupt. All interrupts run at one priority and never nest, so every handler exit is the
   end of a non-nested interrupt in Zephyr's terms. NuttX's `CONFIG_STACKCHECK_MARGIN` is not used:
@@ -1236,10 +1236,10 @@ NuttX-only threads are in `nuttx/drivers/include/priorities_os.h`). The Zephyr b
 
 ## The C library's `memcpy` and `memset`
 
-`CONFIG_NANO_ROM_MEM_OPS` (board `Kconfig`, on by default) selects `CONFIG_RP2040_ROM_MEM_OPS` of the NuttX
-patch `nuttx/0010`, which makes `memcpy`, `memset`, `__aeabi_memcpy*` and `__aeabi_memset*` the RP2040 boot
-ROM's routines, split as the Pico SDK's `pico_mem_ops` does (the Zephyr build does the same with a local patch
-of Zephyr's SoC). It selects `LIBC_ARCH_MEMCPY` and `LIBC_ARCH_MEMSET`, which leave out the byte loops of
+`CONFIG_RP2040_ROM_MEM_OPS` of the NuttX patch `nuttx/0010` (set in the board's `defconfig`) makes
+`memcpy`, `memset`, `__aeabi_memcpy*` and `__aeabi_memset*` the RP2040 boot ROM's routines, split as the Pico
+SDK's `pico_mem_ops` does (the Zephyr build does the same with a local patch of Zephyr's SoC).
+It selects `LIBC_ARCH_MEMCPY` and `LIBC_ARCH_MEMSET`, which leave out the byte loops of
 `libs/libc/string`. The code is `rp2040_rom_mem_ops.S` and `rp2040_rom_mem_lookup.c` in the chip's directory.
 Each routine is looked up in the ROM's function table on its first call and kept in `.bss` (a value left in
 RAM from before a reset is not used), so neither can be called before `.bss` is cleared. GCC turns the loops
@@ -1249,7 +1249,7 @@ the result.
 
 ## Integer division
 
-With `CONFIG_NANO_HW_DIVIDER` (board `Kconfig`, on by default), the integer divisions the compiler emits
+With `CONFIG_RP2040_PICO_DIVIDER` (board `Kconfig`, on by default), the integer divisions the compiler emits
 (`__aeabi_idiv`, `__aeabi_idivmod`, `__aeabi_uidiv`, `__aeabi_uidivmod`, `__aeabi_ldivmod`, `__aeabi_uldivmod`)
 run on the SIO hardware divider instead of libgcc's shift-and-subtract loops. The Pico SDK's `pico_divider`
 (`divider_hardware.S`, from `nuttx/pico-sdk`, built with the minimal headers of the board's `src/pico_sdk`) is
@@ -1258,7 +1258,7 @@ linked in with `ld --wrap` in the board's `scripts/Make.defs`.
 - The routines do not mask interrupts (`PICO_DIVIDER_DISABLE_INTERRUPTS` 0). When an interrupt handler
   divides in the middle of a division, the routine sees DIRTY and saves and restores the divider.
 - When a task is switched out in the middle of a division, `CONFIG_RP2040_HW_DIVIDER` of the NuttX patch
-  `nuttx/0009` (selected by `CONFIG_NANO_HW_DIVIDER`) saves it. Every switch on the ARMv6-M goes through
+  `nuttx/0009` (selected by `CONFIG_RP2040_PICO_DIVIDER`) saves it. Every switch on the ARMv6-M goes through
   `arm_doirq()`, which, when the task changes, keeps the old task's divider, only when DIRTY is set, in 20
   bytes of `struct xcptcontext` and restores the new one's (a task that was not dividing comes back with DIRTY
   clear). It is also saved before the last switch of `arm_sigdeliver()`. The FreeRTOS build (the Pico SDK's
@@ -1331,8 +1331,8 @@ the differences listed in "Sensor command (`sensor`)".
 `nuttx/tests/fakes/nuttx/config.h` (empty) is the NuttX build's own: it lets a host test build a
 source of `nuttx/apps` that includes `<nuttx/config.h>` (`nina_passthrough`: `apps/nina/nina_main.c`).
 
-`nuttx/tests/nano_timeconv.c` is a test of the NuttX build only. It compares the conversions of
-`src/nano_timeconv.h` with C's `/` and `%` and with the generic conversions of NuttX 13.1.0 (the
+`nuttx/tests/rp2040_timeconv.c` is a test of the NuttX build only. It compares the conversions of
+`src/rp2040_timeconv.h` with C's `/` and `%` and with the generic conversions of NuttX 13.1.0 (the
 arithmetic of `oneshot.h` and `clkcnt.h` written out for 1 MHz and 100 µs): every number in the
 range where the one-byte division step must be exact, 300 values on each side of edge values (0,
 99, 100, around 2^32, around 2^32 × 100, 2^63, 2^64 − 1 and others), every count of the first
@@ -1437,7 +1437,7 @@ register layout.
 the LSM6DSO driver (`common/drivers/lsm6dso/`: the core and the binding's `port/zephyr/lsm6dso_sensor.c`,
 with the NuttX build's `lsm6dso_instance.h`) with ST's real
 `lsm6dso_reg.c`, the stmemsc glue, the compatibility layer (`drivers/compat`) and the board's
-`src/nano_lsm6dso.c`, and runs it against a fake LSM6DSOX
+`src/rp2040_lsm6dso.c`, and runs it against a fake LSM6DSOX
 (register banks, address auto-increment, software reset, FIFO, timestamp) behind a fake I2C
 master. Its stand-in headers are in `nuttx/tests/lsm6dso_fakes/` (the board's `board.h` is the
 real one). It checks the initialization's log lines and their order, the register writes and

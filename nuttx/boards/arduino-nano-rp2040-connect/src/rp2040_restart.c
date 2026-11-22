@@ -1,13 +1,13 @@
 /****************************************************************************
- * boards/arduino-nano-rp2040-connect/src/nano_reset.c
+ * boards/arduino-nano-rp2040-connect/src/rp2040_restart.c
  *
  * SPDX-License-Identifier: MIT
  *
  ****************************************************************************/
 
-/* The board's restarts of <arch/board/nano_reset.h>.
+/* The board's restarts of <arch/board/rp2040_restart.h>.
  *
- * - nano_reset_usb_boot(): the boot ROM's reset_usb_boot(), looked up in
+ * - rp2040_reset_usb_boot(): the boot ROM's reset_usb_boot(), looked up in
  *   the ROM's function table ('U','B': ROM_RESET_USB_BOOT of
  *   arch/arm/src/rp2040/rp2040_rom.h, as rp2040_flash_mtd.c looks up the
  *   flash functions).  Its arguments are those of the Pico SDK's
@@ -19,7 +19,7 @@
  *   watchdog's scratch registers 4..7 and restarts the chip through the
  *   watchdog itself; it does not return.  Interrupts are masked first, so
  *   that nothing runs between the lookup and the restart.
- * - nano_watchdog_reboot(): the Pico SDK's watchdog_reboot(0, 0, 0)
+ * - rp2040_watchdog_reboot(): the Pico SDK's watchdog_reboot(0, 0, 0)
  *   (hardware_watchdog/watchdog.c, _watchdog_enable()): the watchdog
  *   stopped, scratch 4 cleared (no boot vector for the ROM), every block
  *   of the power-on state machine but the oscillators selected for the
@@ -39,7 +39,7 @@
 #include <stdint.h>
 
 #include <nuttx/irq.h>
-#include <arch/board/nano_reset.h>
+#include <arch/board/rp2040_restart.h>
 
 #include "arm_internal.h"
 #include "hardware/rp2040_psm.h"
@@ -54,7 +54,7 @@
  * SDK, ROSC in bit 0 up to PROC1 in bit 16).
  */
 
-#define NANO_PSM_ALL  ((RP2040_PSM_PROC1 << 1) - 1)
+#define RP2040_PSM_ALL  ((RP2040_PSM_PROC1 << 1) - 1)
 
 /****************************************************************************
  * Private Types
@@ -67,7 +67,7 @@ typedef void (*rom_reset_usb_boot_fn)(uint32_t usb_activity_gpio_pin_mask,
  * Public Functions
  ****************************************************************************/
 
-void nano_reset_usb_boot(void)
+void rp2040_reset_usb_boot(void)
 {
   rom_reset_usb_boot_fn reset_usb_boot;
 
@@ -80,15 +80,15 @@ void nano_reset_usb_boot(void)
 
   /* No such function in the ROM (not an RP2040): a plain restart. */
 
-  nano_watchdog_reboot();
+  rp2040_watchdog_reboot();
 }
 
-void nano_watchdog_reboot(void)
+void rp2040_watchdog_reboot(void)
 {
   up_irq_save();
   clrbits_reg32(RP2040_WATCHDOG_CTRL_ENABLE, RP2040_WATCHDOG_CTRL);
   putreg32(0, RP2040_WATCHDOG_SCRATCH4);
-  setbits_reg32(NANO_PSM_ALL & ~(RP2040_PSM_ROSC | RP2040_PSM_XOSC),
+  setbits_reg32(RP2040_PSM_ALL & ~(RP2040_PSM_ROSC | RP2040_PSM_XOSC),
                 RP2040_PSM_WDSEL);
   setbits_reg32(RP2040_WATCHDOG_CTRL_TRIGGER, RP2040_WATCHDOG_CTRL);
 

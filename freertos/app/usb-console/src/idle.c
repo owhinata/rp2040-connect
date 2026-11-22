@@ -4,7 +4,7 @@
  *
  * The same measurement as the Zephyr build (CONFIG_CPU_LOAD with
  * CONFIG_CPU_LOAD_BACKEND_IDLE_HOOK) and the NuttX build's up_idle()
- * (nuttx/boards/arduino-nano-rp2040-connect/src/nano_idle.c): disable
+ * (nuttx/boards/arduino-nano-rp2040-connect/src/rp2040_idle_cpuload.c): disable
  * interrupts (PRIMASK), open the window, wait with WFI, close the window,
  * enable interrupts.  WFI wakes on a pending interrupt even while PRIMASK
  * masks it (ARMv6-M), so an interrupt that arrives between disabling

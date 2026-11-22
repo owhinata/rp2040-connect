@@ -9,7 +9,7 @@ config NANO_APP_INIT
 	depends on NSH_LIBRARY && NSH_CONSOLE && CDCACM && !CDCACM_CONSOLE && !NSH_USBCONSOLE
 	depends on SCHED_WAITPID
 	---help---
-		The first task (CONFIG_INIT_ENTRYPOINT="nano_init_main").  It is
+		The first task (CONFIG_INIT_ENTRYPOINT="rp2040_init_main").  It is
 		linked into libapps as a plain function, not as a builtin, so it
 		cannot be started from the shell.  It calls nsh_initialize() once,
 		then repeatedly opens the USB console (NANO_INIT_CONSOLE), sets the
@@ -26,7 +26,7 @@ config NANO_INIT_CONSOLE
 	default "/dev/ttyACM0"
 	---help---
 		The CDC ACM device registered by the board (cdcacm_initialize(0)
-		in nano_bringup.c).
+		in rp2040_bringup.c).
 
 config NANO_INIT_RETRY_MS
 	int "Retry interval (ms)"
@@ -68,7 +68,7 @@ config NANO_INIT_TELNET
 		clients; a second client is closed at once with "Telnet client
 		already connected." in the log.  The sessions run on NuttX's
 		Telnet driver (NETDEV_TELNET, TELNET_MAXLCLIENTS=1) with the same
-		priority and stack as the USB session.  See nano_telnet.c.
+		priority and stack as the USB session.  See rp2040_telnet.c.
 
 config NANO_INIT_TELNET_PORT
 	int "Telnet port"

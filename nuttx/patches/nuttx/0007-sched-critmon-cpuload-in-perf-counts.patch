@@ -29,7 +29,7 @@ the Cortex-M0+ does in software.
 Only ratios of the counts are read (clock_cpuload(): /proc/cpuload,
 /proc/<pid>/loadavg, the CPU column of ps, the task list of a PANIC
 report), so their meaning does not change.  The board's perf counter is the
-1 MHz TIMER (boards/arduino-nano-rp2040-connect/src/nano_perf.c); the
+1 MHz TIMER (boards/arduino-nano-rp2040-connect/src/rp2040_perf.c); the
 counts of a 2-second time constant fit easily in clock_t (64 bits).
 Zephyr: the Zephyr build's thread usage (CONFIG_SCHED_THREAD_USAGE) adds
 the cycles of each run without rounding.

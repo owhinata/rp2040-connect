@@ -263,10 +263,10 @@ RP2040 のレジスターのモジュール側（`port/nuttx/nina_passthrough_bu
 | GPIO3 | モジュールの RESETN（アクティブ low） | RESET |
 
 - 入り方: `nina passthrough confirm`（`nuttx/apps/nina`）が watchdog の scratch 0〜3 に印を書き、watchdog で
-  再起動します（ボードの `src/nano_reset.c` の `nano_watchdog_reboot()`。Pico SDK の `watchdog_reboot(0, 0, 0)` と
+  再起動します（ボードの `src/rp2040_restart.c` の `rp2040_watchdog_reboot()`。Pico SDK の `watchdog_reboot(0, 0, 0)` と
   同じ）。`rp2040_boardinitialize()` が最初に印を読んで消すので、RESET・以後の再起動・異常停止は通常の起動に
   なります。フラッシュ（KV）には何も書きません。
-- 中継モードの起動: `nano_bringup()` は USB（CDC ACM、同じ記述子とシリアル番号）だけを用意し、SPI1・NINA・I2C0・
+- 中継モードの起動: `rp2040_bringup()` は USB（CDC ACM、同じ記述子とシリアル番号）だけを用意し、SPI1・NINA・I2C0・
   センサー・`wlan0`・KV のフラッシュを起こしません。init タスクは nsh・Telnet・Wi-Fi・スレッドの代わりに
   `nina_passthrough_run()` を実行します（優先度 120）。
 - 線とレート: cdcacm のコールバック（`CAIOC_REGISTERCB`。USB の割り込みから呼ばれる）が、
@@ -294,7 +294,7 @@ RP2040 のレジスターのモジュール側（`port/nuttx/nina_passthrough_bu
 - 実機（2026-11-18）: esptool で `read-flash 0 0x200000` を 115200 bps（192 秒）と 921600 bps（26.1 秒）で行い、2 つの読み出しが
   一致し、取りこぼしとオーバーランは 0 でした。300 bps で閉じると通常の起動に戻りました。
 
-`bootsel` コマンド（`nuttx/apps/bootsel`）は、ボードの `nano_reset_usb_boot()`（`include/nano_reset.h`）で
+`bootsel` コマンド（`nuttx/apps/bootsel`）は、ボードの `rp2040_reset_usb_boot()`（`include/rp2040_restart.h`）で
 ブート ROM の `reset_usb_boot(0, 0)`（活動 LED なし、マスストレージと PICOBOOT の両方を有効）を呼び、BOOTSEL
 （`RPI-RP2`）に再起動します。
 
@@ -318,7 +318,7 @@ include パスに足す。オブジェクトはボードのディレクトリー
 | `common/drivers/i2c_dw/port/nuttx/i2c_dw_os_impl.h` | 境界の NuttX の実装: セマフォ（`sem_t`。`nxsem_post()`、`nxsem_tickwait_uninterruptible()`、`nxsem_wait_uninterruptible()`、`nxsem_reset()`）、時刻（システムの tick）、`nxsched_msleep()`、`up_irq_save()`、メッセージ（`struct i2c_msg_s` と、`i2c_dw_msg_flags()` での Zephyr のフラグへの変換）、`I2C_DW_CLOCK_SPEED`（`BOARD_PERI_FREQ`） |
 | `common/drivers/i2c_dw/port/nuttx/i2c_dw_instance.h` | I2C0 と I2C1 の NuttX の部分: `struct i2c_master_s` の操作表（`I2C_TRANSFER()` は要求を確かめて周波数から速さを決め、コアの転送を呼ぶ。`I2C_RESET()`）、`irq_attach()` で登録する割り込みハンドラー、リセットとピン（`i2c_dw_pinctrl()`）は両方で共有し、`i2c_dw_i2c0_initialize()` と `i2c_dw_i2c1_initialize()`。ホストテストは `nuttx/tests/i2c_dw_instance.c` |
 | `common/drivers/i2c_dw/port/nuttx/i2c_dw_dma_os_rp2040.c` | DMA の境界の NuttX の実装。NuttX 自身の DMA ドライバー `arch/arm/src/rp2040/rp2040_dmac.c`（`CONFIG_RP2040_DMAC`）の上に作る。ホストテストは `nuttx/tests/i2c_dw_dma_os.c` |
-| `common/drivers/i2c_dw/port/nuttx/i2c_dw_controllers_rp2040.h` | `i2c_dw_i2c0_initialize()` と、`CONFIG_I2C_DW_I2C1` のとき `i2c_dw_i2c1_initialize()`（起動時に `nano_bringup()` が I2C0、I2C1 の順に呼び、`/dev/i2c0`・`/dev/i2c1` に登録する）。ボードのコードは include パスの `port/nuttx` で見つける |
+| `common/drivers/i2c_dw/port/nuttx/i2c_dw_controllers_rp2040.h` | `i2c_dw_i2c0_initialize()` と、`CONFIG_I2C_DW_I2C1` のとき `i2c_dw_i2c1_initialize()`（起動時に `rp2040_bringup()` が I2C0、I2C1 の順に呼び、`/dev/i2c0`・`/dev/i2c1` に登録する）。ボードのコードは include パスの `port/nuttx` で見つける |
 
 境界（`port/i2c_dw_os.h`）で OS が用意するもの。どれも static inline の関数かマクロで、OS の割り込みハンドラーと転送の入口は
 コアの static inline の関数を呼ぶので、コンパイラーがそれぞれを 1 つの関数にします（転送と割り込みの経路に呼び出しが
@@ -472,7 +472,7 @@ DMA の部分を同じ分岐・順序・値で写したものです。
 | `common/drivers/lsm6dso/include/lsm6dso.h` | 拡張 API（FIFO のワードとその解析 `lsm6dso_fifo.h`、校正の型 `lsm6dso_cal.h` と呼び出し、FIFO の統計、独自属性、ストリームの停止、タイムスタンプの読み取り）。`common/compat/zephyr/drivers/sensor/lsm6dso.h` を通して `<zephyr/drivers/sensor/lsm6dso.h>` |
 | `common/drivers/lsm6dso/port/zephyr/lsm6dso_rtio_stream.c` | FIFO のストリームの RTIO 側（下）。デバイスの INT1 の線、RTIO の要求をコアのストリームへ渡すこと、拡張 API の停止と設定。Zephyr 版と同じファイル |
 | `common/drivers/lsm6dso/port/zephyr/lsm6dso_decoder.[ch]` | ストリームと単発取得のバッファーのデコーダー（`get_decoder`）。Zephyr 版と同じファイル |
-| ボードの `src/nano_lsm6dso.[ch]` | I2C0 を互換層のバスのデバイス（`i2c0`、100 kHz）にし、`lsm6dsox` を初期化する（`nano_bringup()` から） |
+| ボードの `src/rp2040_lsm6dso.[ch]` | I2C0 を互換層のバスのデバイス（`i2c0`、100 kHz）にし、`lsm6dsox` を初期化する（`rp2040_bringup()` から） |
 | ボードの `src/nano_gpio.c` | 互換層の `gpio0` のための GPIO バンク 0（入力の設定、レベルの読み出し、エッジ・レベルの割り込み）。`<nano_gpio.h>`（`common/compat`） |
 
 ドライバーが使う OS の機能の、NuttX 版での中身（コアのものは `port/zephyr/lsm6dso_os_impl.h`・`lsm6dso_stream_req_impl.h` を通し、つなぎのものは直接）:
@@ -492,7 +492,7 @@ DMA の部分を同じ分岐・順序・値で写したものです。
 | `DT_HAS_COMPAT_ON_BUS_STATUS_OKAY()` | 互換層の `<zephyr/devicetree.h>`。`st_lsm6dso` の `i2c` だけ 1（ボードの LSM6DSOX は I2C0 の 1 個） |
 | デバイスツリーのインスタンス化、`POST_KERNEL`・優先度 90 | `DEVICE_DT_DEFINE(lsm6dsox, …)`（`lsm6dso_instance.h`）、ボードの起動処理での `device_init()` |
 
-- 初期化はボードの `nano_bringup()` が、I2C0 の初期化の直後、KV（NVS）のマウントより前に行います
+- 初期化はボードの `rp2040_bringup()` が、I2C0 の初期化の直後、KV（NVS）のマウントより前に行います
   （Zephyr 版の初期化の順と同じ）。失敗してもデバイスが「準備できていない」だけで起動は続きます
   （`device_is_ready()` が false。Zephyr の `do_device_init()` と同じ）。
 - 移していないもの: SPI 接続（Zephyr 版のデバイスツリーのインスタンスには有り得るが、FIFO は受け付けない）。
@@ -545,7 +545,7 @@ FIFO のデコーダーの出力で、取得サービスが MQTT で送る RAW �
 どちらも NuttX 本体へのパッチ（`nuttx/patches/nuttx/`）の Kconfig を、ボードの Kconfig のオプションが select します。
 パッチの記号が無効のときは、パッチの入ったコードも上流のものと同じです。
 
-- **除算器**（ボードの `CONFIG_NANO_HW_DIVIDER`、既定 y）: コンパイラーが出す整数の割り算（`__aeabi_idiv`・`__aeabi_idivmod`・
+- **除算器**（ボードの `CONFIG_RP2040_PICO_DIVIDER`、既定 y）: コンパイラーが出す整数の割り算（`__aeabi_idiv`・`__aeabi_idivmod`・
   `__aeabi_uidiv`・`__aeabi_uidivmod`・`__aeabi_ldivmod`・`__aeabi_uldivmod`）を、Pico SDK の `divider_hardware.S`（`nuttx/pico-sdk` から、
   ボードの `src/pico_sdk` の最小のヘッダーでビルド）へ `ld --wrap`（`scripts/Make.defs`）で回します。ルーチンは割り込みを止めず
   （`PICO_DIVIDER_DISABLE_INTERRUPTS` 0）、割り込みハンドラーが割り算の途中に入った場合は DIRTY を見て自分で退避します。
@@ -556,7 +556,7 @@ FIFO のデコーダーの出力で、取得サービスが MQTT で送る RAW �
   （32 ビットは飽和した商と余り 0、64 ビットは libgcc と同じ。3 版で同じ）です。ルーチンは SIO とスタックだけを使うので、
   `__start()` の最初から、割り込みハンドラーと異常停止の処理でも使えます。`build.sh` は `__wrap_*` の 6 つがあり、libgcc の
   割り算（`__divsi3` など）がイメージに無いことを確かめます。
-- **`memcpy`・`memset`**（ボードの `CONFIG_NANO_ROM_MEM_OPS`、既定 y）: パッチ 0010 の `RP2040_ROM_MEM_OPS` が
+- **`memcpy`・`memset`**（`CONFIG_RP2040_ROM_MEM_OPS`、defconfig で有効）: パッチ 0010 の `RP2040_ROM_MEM_OPS` が
   `LIBC_ARCH_MEMCPY`・`LIBC_ARCH_MEMSET` を select し、チップのディレクトリーの `rp2040_rom_mem_*` が `memcpy`・`memset`・
   `__aeabi_memcpy*`・`__aeabi_memset*` をブート ROM のルーチンへ飛ばします（Pico SDK の `pico_mem_ops` と同じ使い分け）。
   ルーチンは初回の呼び出しで ROM の関数表から引いて `.bss` に置くので、`.bss` をゼロにする前には呼べません。GCC は
@@ -653,7 +653,7 @@ Zephyr の API を、Zephyr の名前のまま最小限だけ用意したもの�
 | `sensor_default_rtio.c` | Zephyr の `drivers/sensor/default_rtio_sensor.c` の写し（ログだけ置き換え）。センサーの iodev の API、単発取得のフォールバック、既定のデコーダー |
 | `zephyr_device.c` | デバイスの初期化と一覧（`gpio0`、`i2c0`、`lsm6dsox` を Zephyr 版の初期化の順に、ノードのラベルと sensor の API かどうかと共に。`gpio0` は OS の構成の `CONFIG_NANO_LSM6DSO_STREAM` のとき） |
 | `zephyr_i2c.c`（NuttX） | I2C（NuttX の I2C マスターの上） |
-| `zephyr_hwinfo.c`（NuttX） | `hwinfo_get_device_id()`。ボードのチップ ID（`nano_chip_id()`） |
+| `zephyr_hwinfo.c`（NuttX） | `hwinfo_get_device_id()`。ボードのチップ ID（`rp2040_chip_id()`） |
 | `zephyr_net_if.c`（NuttX）、`zephyr_net_mgmt.c`、`zephyr_wifi_mgmt.c` | インターフェース（NuttX のネットワークデバイスの値）、`net_mgmt` のイベントの待ち行列とスレッド（スレッドは OS の部分 `zephyr_net_mgmt_os.h`。スタックの大きさは `priorities.h` の `NANO_STACK_NET_MGMT`）、Wi-Fi の要求の処理（Zephyr の `subsys/net/l2/wifi/wifi_mgmt.c` の検査の写し）とイベント、`NET_REQUEST_WIFI_CONNECT_STORED`（同じファイルの `connect_stored_command()` の写し。`CONFIG_NANO_WIFI_CREDENTIALS` のとき）。`CONFIG_NINA_NET` のときだけ。NINA のつなぎ（`common/drivers/nina/port/nuttx/nina_wifi_mgmt.c`）がコアの上でアプリに提供する |
 | `zephyr_wifi_utils.c` | `wifi_security_txt()`・`wifi_band_txt()`（Zephyr の `wifi_mgmt.c`）、チャネルの検査（`wifi_utils.c`）、`net_bytes_from_str()`（`subsys/net/ip/utils.c`）の写し。`wifi cred` が使う。OS に依存しない。`CONFIG_NINA_NET` のときだけ |
 | `sensor_shell_stream.c` | Zephyr の `drivers/sensor/sensor_shell_stream.c` の写し（sensor シェルの処理スレッド）。OS の `sensor_shell_os.h` を最初に読み、処理スレッドのコールバックを `sensor_shell_os_processing_callback()` にした（NuttX 版は `nuttx/apps/sensor/sensor_shell_nuttx.c`）。`apps/sensor` がビルドする |
@@ -775,10 +775,10 @@ Zephyr の API を、Zephyr の名前のまま最小限だけ用意したもの�
   同じ切り上げ）。`k_wakeup()` が無いので戻り値は常に 0 です。`k_msleep()`・`k_usleep()` は NuttX の
   `nxsched_msleep()`・`nxsched_usleep()` で、時間を tick に切り上げ、`k_sleep()` と同じ時点に起きます（Zephyr と
   同じ規則）。0 以下は Zephyr と同じく `sched_yield()`、シグナルでは終わらず、戻り値は 0 です。`k_busy_wait()` は
-  TIMER を見て待つ `up_udelay()`（ボードの `nano_oneshot.c`）です。この 3 つは LSM6DSO のドライバーが使います。
+  TIMER を見て待つ `up_udelay()`（ボードの `rp2040_oneshot.c`）です。この 3 つは LSM6DSO のドライバーが使います。
 - **`hwinfo_get_device_id()`**: Zephyr 版の RP2040 のドライバー（`hwinfo_rpi_pico.c`、
   `CONFIG_HWINFO_RPI_PICO_CHIP_ID` なし）と同じく、外付け flash の 64 ビットの unique ID（コマンド 0x4B）を
-  flash が送る順のまま返します（最大 8 バイト）。読み出しはボードが起動時に 1 回行い（`nano_chipid.c`）、
+  flash が送る順のまま返します（最大 8 バイト）。読み出しはボードが起動時に 1 回行い（`rp2040_chipid.c`）、
   ここではその写しを返します。ボードがまだ読んでいなければ `-EAGAIN` です（Zephyr のドライバーは失敗しない）。
 - **シェル**: `shell_print()`・`shell_info()`・`shell_warn()`・`shell_error()` は改行を付けて書きます（Zephyr は
   情報を緑、警告を黄色、エラーを赤で出す。ここでは色を付けない）。書き先は `sh` で決まります。

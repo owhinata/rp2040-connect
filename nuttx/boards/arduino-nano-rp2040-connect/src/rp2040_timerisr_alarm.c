@@ -1,5 +1,5 @@
 /****************************************************************************
- * boards/arduino-nano-rp2040-connect/src/nano_connect.h
+ * boards/arduino-nano-rp2040-connect/src/rp2040_timerisr_alarm.c
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -20,8 +20,14 @@
  *
  ****************************************************************************/
 
-#ifndef __BOARDS_ARDUINO_NANO_RP2040_CONNECT_SRC_NANO_CONNECT_H
-#define __BOARDS_ARDUINO_NANO_RP2040_CONNECT_SRC_NANO_CONNECT_H
+/* The tickless system timer (CONFIG_RP2040_TICKLESS).  Takes the place of
+ * arch/arm/src/rp2040/rp2040_timerisr.c (periodic SysTick), which
+ * nuttx/patches/nuttx/0004-rp2040-make-defs-alarm-arch-idle-custom.patch
+ * leaves out of the build when CONFIG_ALARM_ARCH is set.  Derived from the
+ * CONFIG_RP23XX_SYSTIMER_TICKLESS branch of
+ * arch/arm/src/rp23xx/rp23xx_timerisr.c (NuttX 13.1.0).  SysTick is not
+ * used.
+ */
 
 /****************************************************************************
  * Included Files
@@ -29,44 +35,27 @@
 
 #include <nuttx/config.h>
 
-/* Derived from boards/arm/rp2040/raspberrypi-pico/src/rp2040_pico.h
- * (NuttX 13.1.0).  The pin numbers are in include/board.h.
- */
+#include <nuttx/arch.h>
+#include <nuttx/timers/arch_alarm.h>
+
+#include "rp2040_pico.h"
 
 /****************************************************************************
- * Public Function Prototypes
+ * Public Functions
  ****************************************************************************/
 
-int nano_bringup(void);
+/****************************************************************************
+ * Function:  up_timer_initialize
+ *
+ * Description:
+ *   Called from clock_initialize() during start-up.  Hands ALARM0 of the
+ *   RP2040 TIMER to drivers/timers/arch_alarm.c, which then drives the
+ *   tickless scheduler (nxsched_process_timer() on each alarm) and provides
+ *   up_timer_gettick(), up_alarm_tick_start(), up_udelay() and up_perf_*().
+ *
+ ****************************************************************************/
 
-/* nano_chipid.c: read the flash unique ID; from rp2040_boardinitialize(). */
-
-void nano_chip_id_initialize(void);
-
-/* nano_usbserial.c: build the USB serial number string from the chip ID;
- * from nano_bringup() before the USB device is registered.
- */
-
-#ifdef CONFIG_BOARD_USBDEV_SERIALSTR
-void nano_usbserial_initialize(void);
-#endif
-
-/* nano_flash_kv.c: the OS boundary of the key-value area
- * (common/compat/nano_flash_kv.h); from nano_bringup().
- */
-
-#ifdef CONFIG_NANO_FLASH_KV
-int nano_flash_kv_initialize(void);
-#endif
-
-
-/* nano_oneshot.c: ALARM0 of the TIMER as a oneshot lower-half; from
- * up_timer_initialize() (nano_timerisr.c).
- */
-
-#ifdef CONFIG_NANO_TICKLESS
-struct oneshot_lowerhalf_s;
-struct oneshot_lowerhalf_s *nano_oneshot_initialize(void);
-#endif
-
-#endif /* __BOARDS_ARDUINO_NANO_RP2040_CONNECT_SRC_NANO_CONNECT_H */
+void up_timer_initialize(void)
+{
+  up_alarm_set_lowerhalf(rp2040_oneshot_initialize());
+}

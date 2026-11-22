@@ -12,7 +12,7 @@ NuttX 版の各機能の動作の詳しい説明です。使い方は `nuttx/REA
 取得するものの表は `nuttx/README_ja.md` の「環境構築」にあります。表に書いていない扱い:
 
 - `nuttx/pico-sdk` は、boot2 のビルドが読むものと、ボードがビルドする除算器のルーチン（`divider_hardware.S` と、それが読む
-  `divider_helper.S`。`CONFIG_NANO_HW_DIVIDER`）だけを sparse checkout で取得します。以前の部分取得のクローンに足りない
+  `divider_helper.S`。`CONFIG_RP2040_PICO_DIVIDER`）だけを sparse checkout で取得します。以前の部分取得のクローンに足りない
   パスは sparse checkout に足し、そのときファイルを取得します（blob を後から取る部分取得なので、ネットワークが要ります）。
   全体を取得済みのものがあればそのまま使います。部分取得の小さいものにするには、一度削除してから `setup.sh` を
   読み込み直します。
@@ -57,7 +57,7 @@ NuttX が使う機能だけを実装しています。
    flash に載せる範囲とちょうど一致すること、イメージが 0x10ffe000 より前で終わることです。
    flash の末尾 8 KB（0x10ffe000〜0x10ffffff）は、Zephyr 版と同じく KV のためにイメージから
    外してあります。`CONFIG_RP2040_ROM_MEM_OPS` のときは、`__start()` が `memcpy`・`memset` を呼ばないことも
-   確かめます（「C ライブラリの `memcpy`・`memset`」の節）。`CONFIG_NANO_HW_DIVIDER` のときは、6 つの `__wrap___aeabi_*` が
+   確かめます（「C ライブラリの `memcpy`・`memset`」の節）。`CONFIG_RP2040_PICO_DIVIDER` のときは、6 つの `__wrap___aeabi_*` が
    あり、libgcc の割り算（`__aeabi_idiv`、`__divsi3`、`__udivmoddi4` など）がイメージに残っていないことを確かめます
    （「整数の割り算」の節）。
 4. `nuttx/nuttx/nuttx.bin`（0x10000000 からの生のイメージ。boot2 を含む）を
@@ -189,13 +189,13 @@ Zephyr 版の `src/log_ram.c` と同じ RAM ログです（`nuttx/drivers/log/`�
   224 バイト。この構造体の並びが Zephyr 版の ELF と同じことを、互換層の `<zephyr/net/wifi_credentials.h>` の
   `BUILD_ASSERT` で確かめます）。
 - 領域: ボードの `include/board.h`（`BOARD_KV_OFFSET`、`BOARD_KV_SIZE`）、`nano_flash_kv.h` の定数とリンカー
-  スクリプト（`scripts/nano-flash.ld` の `__kv_start`、`__kv_end`。この領域はイメージの flash 領域から外して
+  スクリプト（`scripts/arduino-nano-rp2040-connect-flash.ld` の `__kv_start`、`__kv_end`。この領域はイメージの flash 領域から外して
   あり、`build.sh` もイメージの終端を確かめます）で決まります。読み出し・書き込み・消去のたびに、対象が
   この範囲に収まることを、互換層（定数）、ボード（`board.h` の定数と、起動時に一致を確かめたリンカー
   スクリプトの値）、RAM 上の関数（ブート ROM を呼ぶ直前）の 3 か所で確かめてから flash に触れます。範囲の外なら
   何もせずエラーにします（`dmesg` に `<err> flash_kv: Refused flash ...`）。Zephyr 版の flash ドライバーは
   flash 全体を受け付けますが、NVS が触れるのはこの範囲だけです。
-- 起動: ボードの起動処理（`nano_bringup()`、LSM6DSOX と NINA の後）は flash の操作の準備（リンカー
+- 起動: ボードの起動処理（`rp2040_bringup()`、LSM6DSOX と NINA の後）は flash の操作の準備（リンカー
   スクリプトの確認、ブート ROM の関数、boot2 の写し）だけをします。NVS のマウントは、Zephyr 版と同じく
   settings の最初の呼び出し、つまり init が Zephyr の `SYS_INIT()` と同じ位置で呼ぶ資格情報の初期化の中です。
   そのとき `dmesg` に Zephyr 版と同じ 3 行が出ます（`<inf> fs_nvs: 2 Sectors of 4096 bytes`、
@@ -477,7 +477,7 @@ nsh$ wifi cred list
 ## Wi-Fi 経由のシェル（Telnet）
 
 Zephyr 版の Telnet のシェル（`CONFIG_SHELL_BACKEND_TELNET`）と同じく、Wi-Fi に繋がっている間は TCP の
-ポート 23 で USB と同じシェルを使えます（`nuttx/apps/init/nano_telnet.c`、`CONFIG_NANO_INIT_TELNET`。
+ポート 23 で USB と同じシェルを使えます（`nuttx/apps/init/rp2040_telnet.c`、`CONFIG_NANO_INIT_TELNET`。
 ポートは `CONFIG_NANO_INIT_TELNET_PORT`、Zephyr 版の `CONFIG_SHELL_TELNET_PORT`）。認証と暗号化がなく、
 到達できる相手はシェルのすべての操作ができるので、信頼できるネットワークでだけ使ってください。
 
@@ -659,7 +659,7 @@ OS を持たないコア `lsm6dso.c`・`lsm6dso_stream.c`（FIFO のストリー
 LF に直して同一）で行います。FIFO のストリーム（INT1 の割り込みと RTIO）は Zephyr 版と同じファイル
 （`common/drivers/lsm6dso/port/zephyr/`）で動かしています（下）。それを使う取得サービス（`imu start` など）は次の節です。
 
-- **起動時の初期化**: ボードの起動処理（`nano_bringup()`）が、I2C0 の初期化の直後、KV（NVS）のマウント（init の
+- **起動時の初期化**: ボードの起動処理（`rp2040_bringup()`）が、I2C0 の初期化の直後、KV（NVS）のマウント（init の
   中）より前に初期化します。Zephyr 版がデバイスを `main()` より前に初期化し（`POST_KERNEL`、優先度 90）、その後で
   NVS をマウントするのと同じ順です。`dmesg` の最初の 2 行は Zephyr 版と同じ文です:
 
@@ -933,8 +933,8 @@ Subcommands:
 カーネルの時計は tickless で、1 tick は 100 µs です（Zephyr 版の `CONFIG_SYS_CLOCK_TICKS_PER_SEC=10000`、
 `CONFIG_TICKLESS_KERNEL=y` と同じ刻み）。周期割り込みはなく、次に期限の来る待ちの時刻に RP2040 の TIMER
 （64 ビット、1 MHz、水晶から）の ALARM0 を合わせます（`nuttx/boards/arduino-nano-rp2040-connect/src/`
-の `nano_oneshot.c`・`nano_timerisr.c`、NuttX の `drivers/timers/arch_alarm.c`）。ALARM1〜3 は使って
-いません。設定は `CONFIG_NANO_TICKLESS`（ボードの `Kconfig`。既定で有効）、`CONFIG_SCHED_TICKLESS=y`、
+の `rp2040_oneshot.c`・`rp2040_timerisr_alarm.c`、NuttX の `drivers/timers/arch_alarm.c`）。ALARM1〜3 は使って
+いません。設定は `CONFIG_RP2040_TICKLESS`（ボードの `Kconfig`。既定で有効）、`CONFIG_SCHED_TICKLESS=y`、
 `CONFIG_USEC_PER_TICK=100` です。
 
 - 待ち時間は tick に切り上げ、さらに 1 tick 足します（`usleep(1000)` は 1000〜1100 µs と起床の遅れ）。
@@ -955,15 +955,15 @@ Subcommands:
   禁止中でも使えます）。
 - カウンターと tick・時刻の換算は、ボードが `arch_alarm.c` の weak 関数（`up_timer_gettick()`、
   `up_timer_gettime()`、`up_alarm_tick_start()`、`up_alarm_cancel()`、`up_udelay()`、`up_ndelay()`）を
-  置き換えて、1 MHz と 100 µs に特化した計算（`src/nano_timeconv.h`。100 での除算を 1 バイトずつ
+  置き換えて、1 MHz と 100 µs に特化した計算（`src/rp2040_timeconv.h`。100 での除算を 1 バイトずつ
   32 ビットの乗算とシフトで行う）でします。Cortex-M0+ には除算命令がなく、NuttX の汎用の換算
   （`ONESHOT_COUNT`）は 64 ビットの除算になり遅いためです。結果は
-  64 ビットの全域で汎用の換算と同じです（ホストテスト `nano_timeconv`）。換算が 100 µs の tick を
+  64 ビットの全域で汎用の換算と同じです（ホストテスト `rp2040_timeconv`）。換算が 100 µs の tick を
   前提にするので、`CONFIG_USEC_PER_TICK` が 100 でなければビルドが止まります。
 
 ## CPU 負荷
 
-`cpu_load_get(bool reset)`（`#include "cpu_load.h"`。ボードの `src/nano_idle.c`）は、Zephyr 版の
+`cpu_load_get(bool reset)`（`#include "cpu_load.h"`。ボードの `src/rp2040_idle_cpuload.c`）は、Zephyr 版の
 `CONFIG_CPU_LOAD`（`CONFIG_CPU_LOAD_BACKEND_IDLE_HOOK`）と同じ意味の値を返します。
 
 - アイドルループ（`up_idle()`。`CONFIG_ARCH_IDLE_CUSTOM=y` でボードのものに置き換えています）は、割り込みを
@@ -985,7 +985,7 @@ NuttX 標準のクリティカルセクションの監視（`CONFIG_SCHED_CRITMO
 `cpu_active`）は別の仕組みで、これを有効にしても値の測り方は変わりません。
 
 - スレッドの切り替えのたびに、外れるスレッドへ前の切り替えからの時間を足します。時間の源はボードの perf の
-  カウンター（`src/nano_perf.c`、`CONFIG_NANO_PERF`。TIMER の 1 µs。Cortex-M0+ にはサイクルカウンターが
+  カウンター（`src/rp2040_perf.c`、`CONFIG_RP2040_PERF`。TIMER の 1 µs。Cortex-M0+ にはサイクルカウンターが
   ありません）です。Zephyr 版の `CONFIG_SCHED_THREAD_USAGE` も、切り替え（PendSV）のときだけ CPU の
   サイクル数を足します。
 - 割り込みの処理の時間は、どちらの版でも割り込まれたスレッドの時間に入ります（アイドル中の割り込みは
@@ -1054,14 +1054,14 @@ NuttX 標準のクリティカルセクションの監視（`CONFIG_SCHED_CRITMO
   nsh$ irqstack
   <アドレス> IRQ 00                           (real size 2048):	unused <未使用>	usage <使用量> / 2048 (<割合> %)
   ```
-- スタックの番兵（`CONFIG_NANO_STACK_SENTINEL`。ボードの `Kconfig`、既定で有効）: Zephyr 版の
+- スタックの番兵（`CONFIG_RP2040_STACK_SENTINEL`。ボードの `Kconfig`、既定で有効）: Zephyr 版の
   `CONFIG_STACK_SENTINEL` と同じく、各スタックの最下位のワード（`CONFIG_STACK_COLORATION` が書いた値）を、
   スレッドの切り替えのとき（切り替えで外れるスレッド）と、割り込みハンドラーの出口ごと（割り込まれた
   スレッド。ハードウェアが退避した値がそのスタックに積まれている）に確かめ、書き換わっていれば PANIC に
   します（報告は割り込み用のスタックの上で作り、RAM ログに入ります。その後は自動で再起動します。
   「ログ（`dmesg`）」の節）。割り込み用のスタック自体は、
   Zephyr 版と同じく番兵で確かめません。スケジューラーの計測用のフック 2 つ（切り替えの `sched_note_suspend()` と、
-  `irq_dispatch()` が各ハンドラーの前後で呼ぶ `sched_note_irqhandler()`。`src/nano_stackcheck.c`）で
+  `irq_dispatch()` が各ハンドラーの前後で呼ぶ `sched_note_irqhandler()`。`src/rp2040_stackcheck.c`）で
   行います。Cortex-M0+ では周辺の割り込みは `arm_doirq()` を通らず（`exception_direct()`）、
   切り替えのフックだけでは割り込みの出口で確かめられないためです。割り込みはすべて同じ優先度で
   入れ子にならないので、どの出口も Zephyr の「入れ子でない割り込みの出口」に当たります。NuttX の
@@ -1071,9 +1071,9 @@ NuttX 標準のクリティカルセクションの監視（`CONFIG_SCHED_CRITMO
 
 ## C ライブラリの `memcpy`・`memset`
 
-`CONFIG_NANO_ROM_MEM_OPS`（ボードの `Kconfig`、既定で有効）が NuttX へのパッチ `nuttx/0010` の `CONFIG_RP2040_ROM_MEM_OPS` を
-select し、`memcpy`・`memset`・`__aeabi_memcpy*`・`__aeabi_memset*` を RP2040 のブート ROM のルーチンにします（Pico SDK の
-`pico_mem_ops` と同じ使い分け。Zephyr 版は Zephyr の SoC へのローカルのパッチで同じことをします）。`LIBC_ARCH_MEMCPY`・
+NuttX へのパッチ `nuttx/0010` の `CONFIG_RP2040_ROM_MEM_OPS`（ボードの `defconfig` で有効）が、`memcpy`・`memset`・
+`__aeabi_memcpy*`・`__aeabi_memset*` を RP2040 のブート ROM のルーチンにします（Pico SDK の `pico_mem_ops` と同じ使い分け。
+Zephyr 版は Zephyr の SoC へのローカルのパッチで同じことをします）。`LIBC_ARCH_MEMCPY`・
 `LIBC_ARCH_MEMSET` を選び、`libs/libc/string` のバイト単位のループを外します。コードはチップのディレクトリーの
 `rp2040_rom_mem_ops.S`・`rp2040_rom_mem_lookup.c` です。ROM のルーチンは初回の呼び出しで ROM の関数表から引いて `.bss` に
 置くので（リセットの前から RAM に残った値は使わない）、`.bss` をゼロにする前には呼べません。GCC は `rp2040_start.c` の
@@ -1082,14 +1082,14 @@ select し、`memcpy`・`memset`・`__aeabi_memcpy*`・`__aeabi_memset*` を RP2
 
 ## 整数の割り算
 
-`CONFIG_NANO_HW_DIVIDER`（ボードの `Kconfig`、既定で有効）で、コンパイラーが出す整数の割り算（`__aeabi_idiv`・`__aeabi_idivmod`・
+`CONFIG_RP2040_PICO_DIVIDER`（ボードの `Kconfig`、既定で有効）で、コンパイラーが出す整数の割り算（`__aeabi_idiv`・`__aeabi_idivmod`・
 `__aeabi_uidiv`・`__aeabi_uidivmod`・`__aeabi_ldivmod`・`__aeabi_uldivmod`）を、libgcc のシフトと減算のループの代わりに
 SIO のハードウェアの除算器で行います。Pico SDK の `pico_divider`（`divider_hardware.S`。`nuttx/pico-sdk` から、ボードの
 `src/pico_sdk` の最小のヘッダーでビルド）を、ボードの `scripts/Make.defs` の `ld --wrap` でつなぎます。
 
 - ルーチンは割り込みを止めません（`PICO_DIVIDER_DISABLE_INTERRUPTS` 0）。割り算の途中に割り込みハンドラーが割り算をすると、
   ルーチンが DIRTY を見て除算器を退避・復元します。
-- タスクが割り算の途中で切り替わる場合は、NuttX へのパッチ `nuttx/0009` の `CONFIG_RP2040_HW_DIVIDER`（`CONFIG_NANO_HW_DIVIDER` が
+- タスクが割り算の途中で切り替わる場合は、NuttX へのパッチ `nuttx/0009` の `CONFIG_RP2040_HW_DIVIDER`（`CONFIG_RP2040_PICO_DIVIDER` が
   select する）が退避します。ARMv6-M の切り替えはすべて `arm_doirq()` を通るので、タスクが変わるときに、古いタスクの除算器を
   DIRTY のときだけ `struct xcptcontext` の 20 バイトに置き、新しいタスクのものを戻します（割り算の途中でなかったタスクは
   DIRTY が落ちた状態で戻る）。`arm_sigdeliver()` の最後の切り替えの前にも退避します。FreeRTOS 版（Pico SDK のポート）は
@@ -1151,7 +1151,7 @@ OS ごとのヘッダー（`sensor_shell_os.h`、`wifi_profile_os.h`、`lsm6dso_
 `nuttx/tests/fakes/nuttx/config.h`（空）は NuttX 版だけのもので、`<nuttx/config.h>` を読む `nuttx/apps` の
 ソースをホストテストでビルドするために置いています（`nina_passthrough`: `apps/nina/nina_main.c`）。
 
-`nuttx/tests/nano_timeconv.c` は NuttX 版だけのテストです。`src/nano_timeconv.h` の換算を、C の
+`nuttx/tests/rp2040_timeconv.c` は NuttX 版だけのテストです。`src/rp2040_timeconv.h` の換算を、C の
 `/`・`%` と、NuttX 13.1.0 の汎用の換算（`oneshot.h`・`clkcnt.h` の計算を 1 MHz・100 µs で書き写した
 もの）と比べます。対象は 1 バイトずつの除算が正しい範囲の全数、境界値（0、99、100、2^32 前後、
 2^32×100 前後、2^63、2^64−1 など）の前後 300、最初の 10^7 µs の全数、2^32 の倍数 256 個の前後 2000、
@@ -1231,7 +1231,7 @@ Zephyr のフラグへの変換、`IC_DATA_CMD` に書く語の列（`i2c` ツ�
 含めて、転送を続けて流す）、`IC_CON` の値とレジスターの配置を確かめます。
 
 `nuttx/tests/lsm6dso_driver.c` も NuttX 版だけのテストです。LSM6DSO のドライバー（`common/drivers/lsm6dso/` のコアとつなぎの
-`port/zephyr/lsm6dso_sensor.c`。NuttX 版の `lsm6dso_instance.h` と）を、ST の本物の `lsm6dso_reg.c`、stmemsc の層、互換層（`drivers/compat`）、ボードの `src/nano_lsm6dso.c` と一緒にビルドし、
+`port/zephyr/lsm6dso_sensor.c`。NuttX 版の `lsm6dso_instance.h` と）を、ST の本物の `lsm6dso_reg.c`、stmemsc の層、互換層（`drivers/compat`）、ボードの `src/rp2040_lsm6dso.c` と一緒にビルドし、
 偽の I2C マスターの先の偽の LSM6DSOX（レジスターのバンク、アドレスの自動増加、ソフトウェアリセット、FIFO、
 タイムスタンプ）に対して動かします。偽物のヘッダーは `nuttx/tests/lsm6dso_fakes/`（ボードの `board.h` は本物を
 読みます）。確かめるのは、初期化のログの文と順序、書き込むレジスターと値の順序（リセット後の 100 µs を

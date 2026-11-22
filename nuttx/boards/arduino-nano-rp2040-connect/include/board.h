@@ -206,23 +206,23 @@ void rp2040_boardearlyinitialize(void);
 void rp2040_boardinitialize(void);
 
 /****************************************************************************
- * Name: nano_chip_id
+ * Name: rp2040_chip_id
  *
  * Description:
  *   Copy the chip ID to id: the 8-byte unique ID of the external flash
  *   (command 0x4B), raw, in the order the flash sends it.  The same bytes
  *   as hwinfo_get_device_id() in the Zephyr build; the USB serial number is
  *   these bytes as 16 upper-case hexadecimal digits.  Read once at boot
- *   (src/nano_chipid.c).
+ *   (src/rp2040_chipid.c).
  *
  * Returned Value:
  *   OK, or -EAGAIN if the ID has not been read yet.
  *
  ****************************************************************************/
 
-#define NANO_CHIP_ID_SIZE 8
+#define RP2040_CHIP_ID_SIZE 8
 
-int nano_chip_id(uint8_t id[NANO_CHIP_ID_SIZE]);
+int rp2040_chip_id(uint8_t id[RP2040_CHIP_ID_SIZE]);
 
 #undef EXTERN
 #if defined(__cplusplus)

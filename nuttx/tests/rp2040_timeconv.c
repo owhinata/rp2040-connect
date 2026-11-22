@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-/* boards/arduino-nano-rp2040-connect/src/nano_timeconv.h against plain
+/* boards/arduino-nano-rp2040-connect/src/rp2040_timeconv.h against plain
  * division and against the generic ONESHOT_COUNT conversions of NuttX
  * 13.1.0 (include/nuttx/timers/oneshot.h and clkcnt.h, written out below for
  * a 1 MHz counter and 100 us ticks).
@@ -7,7 +7,7 @@
 #include <assert.h>
 #include <stdint.h>
 #include <stdio.h>
-#include "nano_timeconv.h"
+#include "rp2040_timeconv.h"
 
 #define FREQ          1000000u   /* lower->frequency */
 #define TICK_PER_SEC  10000u
@@ -49,22 +49,22 @@ static void check(uint64_t x)
 	uint32_t rem, nsec, gnsec;
 	uint64_t q, sec, gsec;
 
-	q = nano_div100(x, &rem);
+	q = rp2040_div100(x, &rem);
 	assert(q == x / 100 && rem == x % 100);
-	assert(nano_count_to_tick(x) == x / 100);
-	assert(nano_count_to_tick(x) == generic_tick(x));
+	assert(rp2040_count_to_tick(x) == x / 100);
+	assert(rp2040_count_to_tick(x) == generic_tick(x));
 
-	nano_count_to_time(x, &sec, &nsec);
+	rp2040_count_to_time(x, &sec, &nsec);
 	assert(sec == x / FREQ && nsec == (uint32_t)(x % FREQ) * 1000u);
 	generic_time(x, &gsec, &gnsec);
 	assert(sec == gsec && nsec == gnsec && nsec < NSEC_PER_SEC);
 
-	assert(nano_tick_to_count(x) == x * 100u);
-	assert(nano_tick_to_count(x) == generic_tick2cnt(x));
+	assert(rp2040_tick_to_count(x) == x * 100u);
+	assert(rp2040_tick_to_count(x) == generic_tick2cnt(x));
 	/* A tick starts at its count and the count maps back to the tick. */
 	if (x <= (UINT64_MAX - 99) / 100) {
-		assert(nano_count_to_tick(nano_tick_to_count(x)) == x);
-		assert(nano_count_to_tick(nano_tick_to_count(x) + 99) == x);
+		assert(rp2040_count_to_tick(rp2040_tick_to_count(x)) == x);
+		assert(rp2040_count_to_tick(rp2040_tick_to_count(x) + 99) == x);
 	}
 }
 
@@ -98,10 +98,10 @@ int main(void)
 	/* The one-multiply division is exact over the whole range it is
 	 * claimed for, and the steps stay inside it. */
 	for (n = 0; n < 43699; n++) {
-		assert(((uint32_t)n * (uint64_t)NANO_DIV100_MUL >> NANO_DIV100_SHIFT) == n / 100);
+		assert(((uint32_t)n * (uint64_t)RP2040_DIV100_MUL >> RP2040_DIV100_SHIFT) == n / 100);
 	}
-	assert((43699u * (uint64_t)NANO_DIV100_MUL >> NANO_DIV100_SHIFT) != 43699 / 100);
-	assert(25599u * (uint64_t)NANO_DIV100_MUL <= UINT32_MAX);
+	assert((43699u * (uint64_t)RP2040_DIV100_MUL >> RP2040_DIV100_SHIFT) != 43699 / 100);
+	assert(25599u * (uint64_t)RP2040_DIV100_MUL <= UINT32_MAX);
 
 	for (i = 0; i < sizeof(edges) / sizeof(edges[0]); i++) {
 		for (n = 0; n < 300; n++) {
@@ -130,6 +130,6 @@ int main(void)
 		check(r >> (next() % 64));
 	}
 
-	printf("nano_timeconv: ok\n");
+	printf("rp2040_timeconv: ok\n");
 	return 0;
 }

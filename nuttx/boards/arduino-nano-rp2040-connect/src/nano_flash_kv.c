@@ -27,8 +27,9 @@
  * settings (common/compat/subsys) keep the store there in the Zephyr
  * build's format through the flash device of
  * common/compat/zephyr_flash_kv.c, which calls these functions.  The image
- * never reaches the area (scripts/nano-flash.ld leaves it out of the flash
- * region; nuttx/script/build.sh checks the image end).
+ * never reaches the area (scripts/arduino-nano-rp2040-connect-flash.ld
+ * leaves it out of the flash region; nuttx/script/build.sh checks the image
+ * end).
  *
  * Safety: an erase or a program outside the area would destroy the
  * firmware.  Every request is checked three times before the flash is
@@ -72,7 +73,7 @@
 #include "rp2040_rom.h"
 
 #include "app_log.h"
-#include "nano_connect.h"
+#include "rp2040_pico.h"
 #include "nano_flash_kv.h"
 
 /****************************************************************************
@@ -128,7 +129,7 @@ struct kv_rom_s
  * Public Data
  ****************************************************************************/
 
-/* scripts/nano-flash.ld and the startup code. */
+/* scripts/arduino-nano-rp2040-connect-flash.ld and the startup code. */
 
 extern const uint8_t __kv_start[];
 extern const uint8_t __kv_end[];
@@ -293,7 +294,7 @@ int nano_flash_kv_os_erase(uint32_t sector_offset)
  *
  * Description:
  *   Check the linker script, find the boot ROM's flash functions and copy
- *   boot2, then accept requests.  Called once from nano_bringup().  What
+ *   boot2, then accept requests.  Called once from rp2040_bringup().  What
  *   the area holds is checked when the settings open it
  *   (common/compat/zephyr_flash_kv.c); nothing is erased here.
  *

@@ -19,7 +19,7 @@
  * - sys_put_be32()/sys_get_be32(): big-endian bytes at any alignment.
  * - snprintk(): "%02x" as in the session ID print.
  * - hwinfo_get_device_id(): the board's chip ID bytes in order, at most 8,
- *   fewer when asked, the error of nano_chip_id() passed on.
+ *   fewer when asked, the error of rp2040_chip_id() passed on.
  * - shell_print()/shell_error(): stdout and stderr with "\n".
  * - zsock_inet_pton()/zsock_inet_ntop(): 1 and the dotted text.
  */
@@ -41,11 +41,11 @@
 #include "zephyr_compat.h"
 #include "zephyr_kernel_host.h"
 
-/* The board's chip ID (nano_chipid.c) for zephyr_hwinfo.c. */
+/* The board's chip ID (rp2040_chipid.c) for zephyr_hwinfo.c. */
 static const uint8_t chip_id[8] = {0x50, 0x35, 0x33, 0x74, 0x8a, 0x8c, 0x92, 0x18};
 static int chip_id_result;
 
-int nano_chip_id(uint8_t id[8])
+int rp2040_chip_id(uint8_t id[8])
 {
 	if (chip_id_result < 0) {
 		return chip_id_result;

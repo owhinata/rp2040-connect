@@ -55,7 +55,7 @@
  *                               core (nina_os_uptime_ms()) and the wait's
  *                               timeout are on the same clock, the tickless
  *                               tick read from the TIMER (the board's
- *                               nano_oneshot.c), which does not fall behind
+ *                               rp2040_oneshot.c), which does not fall behind
  *                               while interrupts are masked; the timeout's
  *                               alarm then fires as soon as they are
  *                               unmasked.  (The FreeRTOS build waits in

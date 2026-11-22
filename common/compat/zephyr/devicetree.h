@@ -10,7 +10,7 @@
  *
  *   label     node                                 defined in
  *   gpio0     /soc/gpio@40014000/gpio-port@0       compat/zephyr_gpio.c
- *   i2c0      /soc/i2c@40044000 ("i2c@40044000")   board src/nano_lsm6dso.c
+ *   i2c0      /soc/i2c@40044000 ("i2c@40044000")   board src/rp2040_lsm6dso.c
  *                                                  (FreeRTOS: drivers/i2c_dw/
  *                                                  port/freertos/
  *                                                  i2c_dw_instance.h)

@@ -1,5 +1,5 @@
 /****************************************************************************
- * boards/arduino-nano-rp2040-connect/src/nano_chipid.c
+ * boards/arduino-nano-rp2040-connect/src/rp2040_chipid.c
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -54,14 +54,14 @@
 #include <arch/board/board.h>
 
 #include "rp2040_uniqueid.h"
-#include "nano_connect.h"
+#include "rp2040_pico.h"
 
 #ifndef CONFIG_BOARDCTL_UNIQUEID
-#  error "nano_chipid.c needs rp2040_flash_cmd(): set CONFIG_BOARDCTL_UNIQUEID"
+#  error "rp2040_chipid.c needs rp2040_flash_cmd(): CONFIG_BOARDCTL_UNIQUEID"
 #endif
 
-#if RP2040_FLASH_ID_SIZE != NANO_CHIP_ID_SIZE
-#  error "RP2040_FLASH_ID_SIZE and NANO_CHIP_ID_SIZE differ"
+#if RP2040_FLASH_ID_SIZE != RP2040_CHIP_ID_SIZE
+#  error "RP2040_FLASH_ID_SIZE and RP2040_CHIP_ID_SIZE differ"
 #endif
 
 /****************************************************************************
@@ -78,7 +78,7 @@ void rp2040_flash_cmd(const uint8_t *txbuf, uint8_t *rxbuf, size_t count);
  * Private Data
  ****************************************************************************/
 
-static uint8_t g_chip_id[NANO_CHIP_ID_SIZE];
+static uint8_t g_chip_id[RP2040_CHIP_ID_SIZE];
 static bool g_chip_id_valid;
 
 /****************************************************************************
@@ -86,7 +86,7 @@ static bool g_chip_id_valid;
  ****************************************************************************/
 
 /****************************************************************************
- * Name: nano_chip_id_initialize
+ * Name: rp2040_chip_id_initialize
  *
  * Description:
  *   Read the flash unique ID once and keep it.  Called from
@@ -94,7 +94,7 @@ static bool g_chip_id_valid;
  *
  ****************************************************************************/
 
-void nano_chip_id_initialize(void)
+void rp2040_chip_id_initialize(void)
 {
   uint8_t txbuf[RP2040_FLASH_ID_BUFFER_SIZE];
   uint8_t rxbuf[RP2040_FLASH_ID_BUFFER_SIZE];
@@ -109,28 +109,28 @@ void nano_chip_id_initialize(void)
   up_irq_restore(flags);
 
   memcpy(g_chip_id, &rxbuf[RP2040_FLASH_ID_BUFFER_OFFSET],
-         NANO_CHIP_ID_SIZE);
+         RP2040_CHIP_ID_SIZE);
   g_chip_id_valid = true;
 }
 
 /****************************************************************************
- * Name: nano_chip_id
+ * Name: rp2040_chip_id
  *
  * Description:
  *   Copy the 8-byte chip ID (see the top of this file) to id.
  *
  * Returned Value:
- *   OK, or -EAGAIN before nano_chip_id_initialize() has run.
+ *   OK, or -EAGAIN before rp2040_chip_id_initialize() has run.
  *
  ****************************************************************************/
 
-int nano_chip_id(uint8_t id[NANO_CHIP_ID_SIZE])
+int rp2040_chip_id(uint8_t id[RP2040_CHIP_ID_SIZE])
 {
   if (!g_chip_id_valid)
     {
       return -EAGAIN;
     }
 
-  memcpy(id, g_chip_id, NANO_CHIP_ID_SIZE);
+  memcpy(id, g_chip_id, RP2040_CHIP_ID_SIZE);
   return OK;
 }

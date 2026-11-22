@@ -3,8 +3,8 @@ rp2040: memcpy() and memset() through the bootrom
 Purpose: libc's memcpy() and memset() (libs/libc/string) are byte loops on
 this build; the RP2040 bootrom has fast ones (word copies, unrolled), which
 the Pico SDK uses in place of the C library's (pico_mem_ops,
-mem_ops_aeabi.S).  The board enables this with CONFIG_NANO_ROM_MEM_OPS
-(boards/arduino-nano-rp2040-connect).
+mem_ops_aeabi.S).  The board's defconfig sets RP2040_ROM_MEM_OPS
+(boards/arduino-nano-rp2040-connect/configs/imu/defconfig).
 
 - arch/arm/src/rp2040/Kconfig: RP2040_ROM_MEM_OPS (default n), which
   selects LIBC_ARCH_MEMCPY and LIBC_ARCH_MEMSET to leave libc's out.

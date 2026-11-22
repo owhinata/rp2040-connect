@@ -967,8 +967,8 @@ SDK's defaults).
 | Item | Zephyr build | NuttX build | FreeRTOS build |
 |---|---|---|---|
 | boot2's flash clock (divider 2, 62.5 MHz) | Local patch of hal_rpi_pico | The board's `scripts/Make.defs` | The Pico SDK's boot2 |
-| Integer division on the hardware divider | `CONFIG_NANO_HW_DIVIDER` and a patch of Zephyr (saved in PendSV, only when DIRTY) | `CONFIG_NANO_HW_DIVIDER` and `nuttx/0009` (saved in `arm_doirq()`, only when DIRTY) | `pico_divider` (the port saves four words at every switch) |
-| `memcpy` and `memset` from the boot ROM | `CONFIG_RP2040_ROM_MEM_OPS` (a patch of Zephyr's SoC) | `CONFIG_NANO_ROM_MEM_OPS` and `nuttx/0010` | `pico_mem_ops` |
+| Integer division on the hardware divider | `CONFIG_NANO_HW_DIVIDER` and a patch of Zephyr (saved in PendSV, only when DIRTY) | `CONFIG_RP2040_PICO_DIVIDER` and `nuttx/0009` (saved in `arm_doirq()`, only when DIRTY) | `pico_divider` (the port saves four words at every switch) |
+| `memcpy` and `memset` from the boot ROM | `CONFIG_RP2040_ROM_MEM_OPS` (a patch of Zephyr's SoC) | `CONFIG_RP2040_ROM_MEM_OPS` of `nuttx/0010` | `pico_mem_ops` |
 
 A division by zero gives the Pico SDK routines' results in every build (for 32 bits a saturated quotient and a
 remainder of 0, for 64 bits the same as libgcc's). The Zephyr build's patches are listed in

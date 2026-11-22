@@ -67,7 +67,7 @@
 #include <zephyr/rtio/rtio.h>
 
 #include "lsm6dso_sensor.h"
-#include "nano_lsm6dso.h"
+#include "rp2040_lsm6dso.h"
 #include "lsm6dso_decoder.h"
 #include "nano_gpio.h"
 #include "zephyr_kernel_host.h"
@@ -429,7 +429,7 @@ static void test_init_errors(void)
 	reset_logs();
 	transfers = 0;
 	nack_at = 0;
-	assert(nano_lsm6dso_initialize(&fake_master) == -EIO);
+	assert(rp2040_lsm6dso_initialize(&fake_master) == -EIO);
 	assert(!device_is_ready(imu()) && imu()->state->init_res == EIO);
 	assert(strcmp(log_text, "<inf> LSM6DSO: Initialize device lsm6dsox@6a\n"
 				"<err> LSM6DSO: Failed to set user bank\n"
@@ -438,7 +438,7 @@ static void test_init_errors(void)
 	reset_logs();
 	transfers = 0;
 	nack_at = 1;
-	assert(nano_lsm6dso_initialize(&fake_master) == -EIO);
+	assert(rp2040_lsm6dso_initialize(&fake_master) == -EIO);
 	assert(strstr(log_text, "<err> LSM6DSO: Failed reading chip id\n"
 				"<err> LSM6DSO: failed to initialize chip\n"));
 	/* A wrong chip. */
@@ -446,7 +446,7 @@ static void test_init_errors(void)
 	bad_who_am_i = 1;
 	power_on_defaults();
 	reset_logs();
-	assert(nano_lsm6dso_initialize(&fake_master) == -EIO);
+	assert(rp2040_lsm6dso_initialize(&fake_master) == -EIO);
 	assert(strcmp(log_text, "<inf> LSM6DSO: Initialize device lsm6dsox@6a\n"
 				"<inf> LSM6DSO: chip id 0x6b\n"
 				"<err> LSM6DSO: Invalid chip id 0x6b\n"
@@ -459,7 +459,7 @@ static void test_init_errors(void)
 		reset_logs();
 		transfers = 0;
 		nack_at = at;
-		int ret = nano_lsm6dso_initialize(&fake_master);
+		int ret = rp2040_lsm6dso_initialize(&fake_master);
 
 		if (ret == 0) {
 			/* Past the last transfer of init. */
@@ -486,7 +486,7 @@ static void test_init(void)
 	regs[USER][LSM6DSO_FIFO_CTRL4] = 0x46;
 	reset_logs();
 	log_writes = true;
-	assert(nano_lsm6dso_initialize(&fake_master) == 0);
+	assert(rp2040_lsm6dso_initialize(&fake_master) == 0);
 	log_writes = false;
 	check_init_ok();
 	assert(device_is_ready(imu()));
@@ -1142,7 +1142,7 @@ static void test_stream(void)
 
 int main(void)
 {
-	/* What the board starts before the LSM6DSOX (nano_bringup.c). */
+	/* What the board starts before the LSM6DSOX (rp2040_bringup.c). */
 	assert(zephyr_compat_initialize() == 0);
 	assert(device_init(DEVICE_DT_GET(DT_NODELABEL(gpio0))) == 0);
 	test_bus();

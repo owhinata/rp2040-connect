@@ -4,7 +4,7 @@
  * Stands in for the pico/config_autogen.h that the Pico SDK's CMake build
  * generates (it includes the board header and the PICO_CONFIG_HEADER
  * files).  Only the division routines (divider_hardware.S,
- * CONFIG_NANO_HW_DIVIDER) are built from the SDK.  Their options are
+ * CONFIG_RP2040_PICO_DIVIDER) are built from the SDK.  Their options are
  * given here with the SDK's defaults, which divider_hardware.S tests with
  * #if without defining them (warnings under -Wundef):
  *

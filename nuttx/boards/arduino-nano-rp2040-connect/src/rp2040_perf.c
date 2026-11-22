@@ -1,5 +1,5 @@
 /****************************************************************************
- * boards/arduino-nano-rp2040-connect/src/nano_perf.c
+ * boards/arduino-nano-rp2040-connect/src/rp2040_perf.c
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -20,7 +20,7 @@
  *
  ****************************************************************************/
 
-/* The perf counter (CONFIG_NANO_PERF, which selects ARCH_HAVE_PERF_EVENTS):
+/* The perf counter (CONFIG_RP2040_PERF, which selects ARCH_HAVE_PERF_EVENTS):
  * up_perf_*() on the RP2040 TIMER, 1 MHz from the crystal, 64 bits.  The
  * Cortex-M0+ has no cycle counter (no DWT), and without ARCH_HAVE_PERF_EVENTS
  * drivers/timers/arch_alarm.c would supply versions that go through the
@@ -57,7 +57,7 @@
 #include <arch/board/nano_timer.h>
 
 #ifndef CONFIG_ARCH_HAVE_PERF_EVENTS
-#  error "nano_perf.c replaces the up_perf_*() of drivers/timers"
+#  error "rp2040_perf.c replaces the up_perf_*() of drivers/timers"
 #endif
 
 /****************************************************************************

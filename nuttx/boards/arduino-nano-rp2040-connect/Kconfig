@@ -8,7 +8,7 @@
 # nuttx/script/build.sh configures again when this file changes.
 #
 
-config NANO_TICKLESS
+config RP2040_TICKLESS
 	bool "System timer on the RP2040 TIMER (ALARM0)"
 	default y
 	depends on ARCH_CHIP_RP2040 && !SMP
@@ -18,7 +18,7 @@ config NANO_TICKLESS
 	---help---
 		Drive the OS clock from ALARM0 of the RP2040 TIMER (64-bit, 1 MHz,
 		from the crystal) through the oneshot/alarm interface
-		(src/nano_oneshot.c, src/nano_timerisr.c and
+		(src/rp2040_oneshot.c, src/rp2040_timerisr_alarm.c and
 		drivers/timers/arch_alarm.c) instead of the periodic SysTick of
 		arch/arm/src/rp2040/rp2040_timerisr.c.  ALARM_ARCH selects
 		ARCH_HAVE_TICKLESS, so SCHED_TICKLESS can be set (the imu
@@ -26,21 +26,21 @@ config NANO_TICKLESS
 		kernel of the Zephyr build).  rp2040_timerisr.c is left out of the
 		build by nuttx/patches/nuttx/0004 when ALARM_ARCH is set.
 		ONESHOT_COUNT has no prompt and can only be selected.
-		src/nano_oneshot.c also replaces the weak up_timer_gettick(),
+		src/rp2040_oneshot.c also replaces the weak up_timer_gettick(),
 		up_timer_gettime(), up_alarm_tick_start(), up_alarm_cancel(),
 		up_udelay() and up_ndelay() of arch_alarm.c with versions that
-		read the TIMER directly and convert with src/nano_timeconv.h
+		read the TIMER directly and convert with src/rp2040_timeconv.h
 		(1 MHz counts, 100 us ticks, no 64-bit division), so it needs
 		USEC_PER_TICK to be 100.  ONESHOT_FAST_DIVISION is not selected:
 		it only changes the generic conversions, which these replace.
 
-config NANO_PERF
+config RP2040_PERF
 	bool "Perf counter on the RP2040 TIMER (up_perf_*)"
 	default y
 	depends on ARCH_CHIP_RP2040
 	select ARCH_HAVE_PERF_EVENTS
 	---help---
-		src/nano_perf.c: up_perf_gettime() returns the TIMER count
+		src/rp2040_perf.c: up_perf_gettime() returns the TIMER count
 		(nano_mono_us(), 1 MHz, 64 bits) and up_perf_getfreq() 1000000.
 		The Cortex-M0+ has no cycle counter.  Used by the critical
 		section monitor (SCHED_CRITMONITOR, SCHED_CPULOAD_CRITMONITOR) to
@@ -50,20 +50,7 @@ config NANO_PERF
 		drivers/timers/arch_alarm.c supplies a slower counter in
 		nanoseconds through the oneshot.
 
-config NANO_ROM_MEM_OPS
-	bool "memcpy() and memset() through the RP2040 bootrom"
-	default y
-	depends on ARCH_CHIP_RP2040
-	select RP2040_ROM_MEM_OPS
-	---help---
-		memcpy(), memset(), __aeabi_memcpy*() and __aeabi_memset*() jump
-		to the bootrom's routines, as the Pico SDK's pico_mem_ops does:
-		RP2040_ROM_MEM_OPS of nuttx/patches/nuttx/0010 (the code is in
-		arch/arm/src/rp2040, rp2040_rom_mem_*), the counterpart of the
-		Zephyr build's CONFIG_RP2040_ROM_MEM_OPS.  nuttx/script/build.sh
-		checks that __start() calls neither before it has cleared .bss.
-
-config NANO_HW_DIVIDER
+config RP2040_PICO_DIVIDER
 	bool "Integer division on the RP2040 SIO divider"
 	default y
 	depends on ARCH_CHIP_RP2040
@@ -90,7 +77,7 @@ config NANO_HW_DIVIDER
 		handling.  nuttx/script/build.sh checks that no libgcc integer
 		division is left in the image.
 
-config NANO_STACK_SENTINEL
+config RP2040_STACK_SENTINEL
 	bool "Stack sentinel (check the lowest stack word)"
 	default y
 	depends on STACK_COLORATION && !SMP && ARCH_ARMV6M
@@ -103,13 +90,13 @@ config NANO_STACK_SENTINEL
 		every interrupt handler (for the interrupted task, whose stack
 		holds the frame the hardware saved, and with ARCH_INTERRUPTSTACK=0
 		the handler's own use too), and halt (PANIC) if not: the counterpart of
-		the Zephyr build's CONFIG_STACK_SENTINEL (src/nano_stackcheck.c).
+		the Zephyr build's CONFIG_STACK_SENTINEL (src/rp2040_stackcheck.c).
 		Implemented in the scheduler's instrumentation hooks
 		sched_note_suspend() and sched_note_irqhandler(), which need
 		SCHED_INSTRUMENTATION, SCHED_INSTRUMENTATION_SWITCH and
 		SCHED_INSTRUMENTATION_IRQHANDLER but no note driver.
 
-config NANO_FLASH_KV
+config RP2040_FLASH_KV
 	bool "Key-value area in the last 8 KiB of the flash"
 	default y
 	depends on ARCH_CHIP_RP2040 && !SMP
@@ -117,8 +104,8 @@ config NANO_FLASH_KV
 		src/nano_flash_kv.c: reads, 256-byte page programs and 4 KiB
 		sector erases of flash offsets 0xffe000-0xffffff
 		(BOARD_KV_OFFSET, BOARD_KV_SIZE in include/board.h; __kv_start,
-		__kv_end in scripts/nano-flash.ld), the place of the Zephyr
-		build's storage_partition: the OS boundary of
+		__kv_end in scripts/arduino-nano-rp2040-connect-flash.ld), the
+		place of the Zephyr build's storage_partition: the OS boundary of
 		common/compat/nano_flash_kv.h, under the flash device of
 		common/compat/zephyr_flash_kv.c, on which the copies of Zephyr's
 		NVS and settings keep the key-value store in the Zephyr build's

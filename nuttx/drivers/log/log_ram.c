@@ -2,11 +2,12 @@
 /* The RAM log: a port of the Zephyr build's
  * zephyr/app/usb-console/src/log_ram.c.
  *
- * - The ring (common/log/log_ring.[ch]) lives in .noinit (nano-flash.ld places it
- *   between .data and .bss, so the startup code neither clears nor copies
- *   it) and survives a reset; log_ram_initialize() empties it only when its
- *   header is not intact.  `dropped` (bytes pushed out since boot) is in
- *   .bss and starts at 0 on every boot, as in Zephyr.
+ * - The ring (common/log/log_ring.[ch]) lives in .noinit
+ *   (arduino-nano-rp2040-connect-flash.ld places it between .data and
+ *   .bss, so the startup code neither clears nor copies it) and survives a
+ *   reset; log_ram_initialize() empties it only when its header is not
+ *   intact.  `dropped` (bytes pushed out since boot) is in .bss and starts
+ *   at 0 on every boot, as in Zephyr.
  * - The lock is "interrupts disabled" (Zephyr: a spinlock, the same thing
  *   on one core), so it may be used from interrupt handlers.
  * - LOG_* lines (common/log/app_log.h) are formatted by app_log_vprintf() in the

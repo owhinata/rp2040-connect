@@ -27,31 +27,32 @@
 
 include $(TOPDIR)/Make.defs
 
-CSRCS = nano_boardinitialize.c
-CSRCS += nano_bringup.c
-CSRCS += nano_chipid.c
+CSRCS = rp2040_boardinitialize.c
+CSRCS += rp2040_bringup.c
+CSRCS += rp2040_chipid.c
 
-# The restarts into BOOTSEL and through the watchdog (include/nano_reset.h).
+# The restarts into BOOTSEL and through the watchdog
+# (include/rp2040_restart.h).
 
-CSRCS += nano_reset.c
+CSRCS += rp2040_restart.c
 
 ifeq ($(CONFIG_BOARD_USBDEV_SERIALSTR),y)
-CSRCS += nano_usbserial.c
+CSRCS += rp2040_usbserial.c
 endif
 
 # The tickless system timer (TIMER ALARM0) in place of the in-tree
 # rp2040_timerisr.c, which patches/nuttx/0004 leaves out with ALARM_ARCH.
 
-ifeq ($(CONFIG_NANO_TICKLESS),y)
-CSRCS += nano_oneshot.c
-CSRCS += nano_timerisr.c
+ifeq ($(CONFIG_RP2040_TICKLESS),y)
+CSRCS += rp2040_oneshot.c
+CSRCS += rp2040_timerisr_alarm.c
 endif
 
 # The perf counter on the TIMER (up_perf_*), for the per-task CPU time of
 # the critical section monitor (the CPU column of ps).
 
-ifeq ($(CONFIG_NANO_PERF),y)
-CSRCS += nano_perf.c
+ifeq ($(CONFIG_RP2040_PERF),y)
+CSRCS += rp2040_perf.c
 endif
 
 # Integer division on the SIO divider: the Pico SDK's pico_divider
@@ -61,23 +62,23 @@ endif
 # ones of src/pico_sdk.  scripts/Make.defs wraps libgcc's helpers to its
 # routines.
 
-ifeq ($(CONFIG_NANO_HW_DIVIDER),y)
-NANO_PICO_SDK_SRC = $(PICO_SDK_PATH)$(DELIM)src
-NANO_PICO_SDK_INC = ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)arch$(DELIM)$(CONFIG_ARCH)$(DELIM)src$(DELIM)board$(DELIM)board$(DELIM)pico_sdk
-NANO_PICO_SDK_INC += $(foreach d,rp2040$(DELIM)hardware_regs rp2040$(DELIM)pico_platform \
+ifeq ($(CONFIG_RP2040_PICO_DIVIDER),y)
+PICO_SDK_SRC = $(PICO_SDK_PATH)$(DELIM)src
+PICO_SDK_INC = ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)arch$(DELIM)$(CONFIG_ARCH)$(DELIM)src$(DELIM)board$(DELIM)board$(DELIM)pico_sdk
+PICO_SDK_INC += $(foreach d,rp2040$(DELIM)hardware_regs rp2040$(DELIM)pico_platform \
                        rp2_common$(DELIM)hardware_base rp2_common$(DELIM)hardware_divider \
                        rp2_common$(DELIM)pico_platform_common rp2_common$(DELIM)pico_platform_compiler \
                        rp2_common$(DELIM)pico_platform_sections rp2_common$(DELIM)pico_platform_panic \
                        common$(DELIM)pico_base_headers, \
-                       ${INCDIR_PREFIX}$(NANO_PICO_SDK_SRC)$(DELIM)$(d)$(DELIM)include)
+                       ${INCDIR_PREFIX}$(PICO_SDK_SRC)$(DELIM)$(d)$(DELIM)include)
 ASRCS += divider_hardware.S
-DEPPATH += --dep-path $(NANO_PICO_SDK_SRC)$(DELIM)rp2_common$(DELIM)pico_divider
-VPATH += :$(NANO_PICO_SDK_SRC)$(DELIM)rp2_common$(DELIM)pico_divider
-divider_hardware$(OBJEXT): AFLAGS += $(NANO_PICO_SDK_INC)
+DEPPATH += --dep-path $(PICO_SDK_SRC)$(DELIM)rp2_common$(DELIM)pico_divider
+VPATH += :$(PICO_SDK_SRC)$(DELIM)rp2_common$(DELIM)pico_divider
+divider_hardware$(OBJEXT): AFLAGS += $(PICO_SDK_INC)
 
 # The dependencies of all the board's sources are made with CFLAGS.
 
-.depend: CFLAGS += $(NANO_PICO_SDK_INC)
+.depend: CFLAGS += $(PICO_SDK_INC)
 endif
 
 # The idle loop with the CPU load measurement (cpu_load_get()) in place of
@@ -85,19 +86,19 @@ endif
 # ARCH_IDLE_CUSTOM.
 
 ifeq ($(CONFIG_ARCH_IDLE_CUSTOM),y)
-CSRCS += nano_idle.c
+CSRCS += rp2040_idle_cpuload.c
 endif
 
 # The key-value area's flash (the last 8 KiB): the OS boundary of
 # common/compat/nano_flash_kv.h (nano_flash_kv.h is found through the -I
 # of common/compat below).
 
-ifeq ($(CONFIG_NANO_FLASH_KV),y)
+ifeq ($(CONFIG_RP2040_FLASH_KV),y)
 CSRCS += nano_flash_kv.c
 endif
 
 # The I2C driver (I2C0, I2C1) is built with the other drivers
-# (nuttx/drivers/i2c_dw/Make.defs); nano_bringup.c reads the start of its
+# (nuttx/drivers/i2c_dw/Make.defs); rp2040_bringup.c reads the start of its
 # controllers, i2c_dw_controllers_rp2040.h of the driver's NuttX binding.
 
 ifneq ($(CONFIG_I2C_DW_I2C0)$(CONFIG_I2C_DW_I2C1),)
@@ -108,7 +109,7 @@ endif
 # (nuttx/drivers/compat, nuttx/drivers/lsm6dso).
 
 ifeq ($(CONFIG_NANO_LSM6DSO),y)
-CSRCS += nano_lsm6dso.c
+CSRCS += rp2040_lsm6dso.c
 endif
 
 # GPIO bank 0 for the compatibility layer's gpio0 (the LSM6DSOX's INT1).
@@ -119,8 +120,8 @@ endif
 
 # The stack sentinel in the scheduler's switch hook.
 
-ifeq ($(CONFIG_NANO_STACK_SENTINEL),y)
-CSRCS += nano_stackcheck.c
+ifeq ($(CONFIG_RP2040_STACK_SENTINEL),y)
+CSRCS += rp2040_stackcheck.c
 endif
 
 DEPPATH += --dep-path board

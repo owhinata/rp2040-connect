@@ -25,7 +25,7 @@
  *   this priority, then drops to NANO_PRIO_SHELL to look after the USB
  *   console), sensor shell processing, RTIO WQ 0             0 -> 118
  *   the shell (nsh sessions and the builtin commands), Telnet
- *   service ("telnetd", nuttx/apps/init/nano_telnet.c)      14 -> 104
+ *   service ("telnetd", nuttx/apps/init/rp2040_telnet.c)      14 -> 104
  *   sysworkq, net_mgmt (NuttX can preempt them from a higher
  *   priority: none of the port's threads)                   -1 -> 119
  *

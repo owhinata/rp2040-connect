@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /* hwinfo_get_device_id() of Zephyr's <zephyr/drivers/hwinfo.h>, on the
- * board's chip ID (nano_chip_id(), compat/zephyr_hwinfo.c).  Part of the
+ * board's chip ID (rp2040_chip_id(), compat/zephyr_hwinfo.c).  Part of the
  * small Zephyr compatibility layer of the port (common/compat, see
  * nuttx/drivers/README.md).
  */

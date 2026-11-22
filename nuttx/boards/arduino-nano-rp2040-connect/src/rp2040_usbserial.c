@@ -1,5 +1,5 @@
 /****************************************************************************
- * boards/arduino-nano-rp2040-connect/src/nano_usbserial.c
+ * boards/arduino-nano-rp2040-connect/src/rp2040_usbserial.c
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -20,7 +20,7 @@
  *
  ****************************************************************************/
 
-/* The USB serial number string: the chip ID (nano_chipid.c) as 16
+/* The USB serial number string: the chip ID (rp2040_chipid.c) as 16
  * upper-case hexadecimal digits, one byte after another in the order of
  * the ID.  This is how the Zephyr USB stack builds it from hwinfo
  * (subsys/usb/device_next/usbd_ch9.c, get_sn_from_hwid(): "0123456789ABCDEF",
@@ -29,7 +29,7 @@
  *
  * board_usbdev_serialstr() is called by the CDC ACM driver while it answers
  * GET_DESCRIPTOR on EP0, in interrupt context, so the string is built once
- * by nano_usbserial_initialize() before the USB device is registered.
+ * by rp2040_usbserial_initialize() before the USB device is registered.
  */
 
 /****************************************************************************
@@ -43,7 +43,7 @@
 #include <nuttx/board.h>
 #include <arch/board/board.h>
 
-#include "nano_connect.h"
+#include "rp2040_pico.h"
 
 #ifdef CONFIG_BOARD_USBDEV_SERIALSTR
 
@@ -53,39 +53,39 @@
 
 /* "0" (NuttX's fixed serial string) until the chip ID is known. */
 
-static char g_serialstr[2 * NANO_CHIP_ID_SIZE + 1] = "0";
+static char g_serialstr[2 * RP2040_CHIP_ID_SIZE + 1] = "0";
 
 /****************************************************************************
  * Public Functions
  ****************************************************************************/
 
 /****************************************************************************
- * Name: nano_usbserial_initialize
+ * Name: rp2040_usbserial_initialize
  *
  * Description:
  *   Build the serial number string from the chip ID.  Called from
- *   nano_bringup() before cdcacm_initialize().
+ *   rp2040_bringup() before cdcacm_initialize().
  *
  ****************************************************************************/
 
-void nano_usbserial_initialize(void)
+void rp2040_usbserial_initialize(void)
 {
   static const char hex[] = "0123456789ABCDEF";
-  uint8_t id[NANO_CHIP_ID_SIZE];
+  uint8_t id[RP2040_CHIP_ID_SIZE];
   int i;
 
-  if (nano_chip_id(id) < 0)
+  if (rp2040_chip_id(id) < 0)
     {
       return;
     }
 
-  for (i = 0; i < NANO_CHIP_ID_SIZE; i++)
+  for (i = 0; i < RP2040_CHIP_ID_SIZE; i++)
     {
       g_serialstr[i * 2]     = hex[id[i] >> 4];
       g_serialstr[i * 2 + 1] = hex[id[i] & 0xf];
     }
 
-  g_serialstr[2 * NANO_CHIP_ID_SIZE] = '\0';
+  g_serialstr[2 * RP2040_CHIP_ID_SIZE] = '\0';
 }
 
 /****************************************************************************

@@ -32,7 +32,7 @@ include $(TOPDIR)/arch/arm/src/armv6-m/Toolchain.defs
 # nuttx/script/build.sh); there is no SRAM-boot script.  The same script
 # also links boot2 (arch/arm/src/rp2040/boot2/Make.defs).
 
-LDSCRIPT = nano-flash.ld
+LDSCRIPT = arduino-nano-rp2040-connect-flash.ld
 
 ARCHSCRIPT += $(BOARD_DIR)$(DELIM)scripts$(DELIM)$(LDSCRIPT)
 
@@ -43,12 +43,12 @@ ARCHSCRIPT += $(BOARD_DIR)$(DELIM)scripts$(DELIM)$(LDSCRIPT)
 
 BOOT2CFLAGS += -DPICO_FLASH_SPI_CLKDIV=2
 
-# Integer division on the SIO divider (CONFIG_NANO_HW_DIVIDER): every call
+# Integer division on the SIO divider (CONFIG_RP2040_PICO_DIVIDER): every call
 # to libgcc's division helpers goes to the Pico SDK's routines
 # (divider_hardware.S, src/Make.defs), which define them as __wrap_<name>.
 # nuttx/script/build.sh checks that libgcc's are not linked.
 
-ifeq ($(CONFIG_NANO_HW_DIVIDER),y)
+ifeq ($(CONFIG_RP2040_PICO_DIVIDER),y)
 LDFLAGS += --wrap=__aeabi_idiv --wrap=__aeabi_idivmod
 LDFLAGS += --wrap=__aeabi_uidiv --wrap=__aeabi_uidivmod
 LDFLAGS += --wrap=__aeabi_ldivmod --wrap=__aeabi_uldivmod

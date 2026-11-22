@@ -1,5 +1,5 @@
 /****************************************************************************
- * boards/arduino-nano-rp2040-connect/src/nano_bringup.c
+ * boards/arduino-nano-rp2040-connect/src/rp2040_bringup.c
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -22,7 +22,7 @@
 
 /* Derived from boards/arm/rp2040/raspberrypi-pico/src/rp2040_bringup.c
  * (NuttX 13.1.0), without the LED and button drivers (see
- * nano_boardinitialize.c).  rp2040_common_bringup() mounts /proc when
+ * rp2040_boardinitialize.c).  rp2040_common_bringup() mounts /proc when
  * CONFIG_FS_PROCFS is set.  Runs from board_late_initialize(), just before
  * the init task starts (13.1.0 has no NSH_ARCHINIT/board_app_initialize).
  */
@@ -46,7 +46,7 @@
 
 #include <arch/board/board.h>
 
-#include "nano_connect.h"
+#include "rp2040_pico.h"
 
 #ifdef CONFIG_NINA_NET
 #  include "nina_net.h"
@@ -58,7 +58,7 @@
 #endif
 
 #ifdef CONFIG_NANO_LSM6DSO
-#  include "nano_lsm6dso.h"
+#  include "rp2040_lsm6dso.h"
 #endif
 
 #ifdef CONFIG_NANO_LSM6DSO_STREAM
@@ -78,10 +78,10 @@
  ****************************************************************************/
 
 /****************************************************************************
- * Name: nano_usb_initialize
+ * Name: rp2040_usb_initialize
  ****************************************************************************/
 
-static int nano_usb_initialize(void)
+static int rp2040_usb_initialize(void)
 {
   int ret = OK;
 
@@ -93,7 +93,7 @@ static int nano_usb_initialize(void)
    */
 
 #  ifdef CONFIG_BOARD_USBDEV_SERIALSTR
-  nano_usbserial_initialize();
+  rp2040_usbserial_initialize();
 #  endif
 
   ret = cdcacm_initialize(0, NULL);
@@ -111,10 +111,10 @@ static int nano_usb_initialize(void)
  ****************************************************************************/
 
 /****************************************************************************
- * Name: nano_bringup
+ * Name: rp2040_bringup
  ****************************************************************************/
 
-int nano_bringup(void)
+int rp2040_bringup(void)
 {
   int result = OK;
   int ret;
@@ -143,7 +143,7 @@ int nano_bringup(void)
 
   if (nina_passthrough_active())
     {
-      ret = nano_usb_initialize();
+      ret = rp2040_usb_initialize();
       return ret < 0 ? ret : result;
     }
 #endif
@@ -202,7 +202,7 @@ int nano_bringup(void)
 
     if (i2c != NULL)
       {
-        (void)nano_lsm6dso_initialize(i2c);
+        (void)rp2040_lsm6dso_initialize(i2c);
       }
 #  endif
   }
@@ -251,7 +251,7 @@ int nano_bringup(void)
     }
 #endif
 
-#ifdef CONFIG_NANO_FLASH_KV
+#ifdef CONFIG_RP2040_FLASH_KV
   /* The flash of the key-value store (the last 8 KiB): the linker script
    * checked and the boot ROM's functions found.  NVS is mounted later,
    * where the Zephyr build mounts it: by the first call of the settings
@@ -266,7 +266,7 @@ int nano_bringup(void)
     }
 #endif
 
-  ret = nano_usb_initialize();
+  ret = rp2040_usb_initialize();
   if (ret < 0)
     {
       result = ret;

@@ -22,7 +22,7 @@ _nuttx_setup() {
   # Only what NuttX's boot2 build reads (arch/arm/src/rp2040/boot2/Make.defs:
   # the second stage source with pad_checksum, and its include directories)
   # and what the board builds of pico_divider (divider_hardware.S and the
-  # divider_helper.S it includes, CONFIG_NANO_HW_DIVIDER) is checked out,
+  # divider_helper.S it includes, CONFIG_RP2040_PICO_DIVIDER) is checked out,
   # about 4 MB instead of the SDK's 31 MB.  Paths added here are checked out
   # in an existing sparse clone too (their files are downloaded then, as
   # the clone is a partial one).  A full clone that is already there is

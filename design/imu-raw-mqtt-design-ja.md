@@ -822,8 +822,8 @@ RP2040 の低い層の 3 つは `common/` に置かず、各 OS への変更と�
 | 項目 | Zephyr 版 | NuttX 版 | FreeRTOS 版 |
 |---|---|---|---|
 | boot2 のフラッシュのクロック（分周 2、62.5 MHz） | hal_rpi_pico へのローカルのパッチ | ボードの `scripts/Make.defs` | Pico SDK の boot2 |
-| 整数の割り算をハードウェアの除算器で | `CONFIG_NANO_HW_DIVIDER` + Zephyr へのパッチ（PendSV で DIRTY のときだけ退避） | `CONFIG_NANO_HW_DIVIDER` + `nuttx/0009`（`arm_doirq()` で DIRTY のときだけ退避） | `pico_divider`（ポートが切り替えのたびに 4 語を退避） |
-| `memcpy`・`memset` をブート ROM で | `CONFIG_RP2040_ROM_MEM_OPS`（Zephyr の SoC へのパッチ） | `CONFIG_NANO_ROM_MEM_OPS` + `nuttx/0010` | `pico_mem_ops` |
+| 整数の割り算をハードウェアの除算器で | `CONFIG_NANO_HW_DIVIDER` + Zephyr へのパッチ（PendSV で DIRTY のときだけ退避） | `CONFIG_RP2040_PICO_DIVIDER` + `nuttx/0009`（`arm_doirq()` で DIRTY のときだけ退避） | `pico_divider`（ポートが切り替えのたびに 4 語を退避） |
+| `memcpy`・`memset` をブート ROM で | `CONFIG_RP2040_ROM_MEM_OPS`（Zephyr の SoC へのパッチ） | `nuttx/0010` の `CONFIG_RP2040_ROM_MEM_OPS` | `pico_mem_ops` |
 
 0 での割り算は、どの版も Pico SDK のルーチンの結果（32 ビットは飽和した商と余り 0、64 ビットは libgcc と同じ）。Zephyr 版の
 パッチは `zephyr/manifest/zephyr/patches.yml` にあり、`source zephyr/script/setup.sh` が `west patch` で当てる（仕組みは

@@ -3,7 +3,7 @@
  * ID: the Zephyr build's drivers/hwinfo/hwinfo_rpi_pico.c
  * z_impl_hwinfo_get_device_id() (CONFIG_HWINFO_RPI_PICO_CHIP_ID off: the
  * flash's unique ID, read with flash_get_unique_id()), with the read
- * itself done once at boot by the board (src/nano_chipid.c, the same 0x4B
+ * itself done once at boot by the board (src/rp2040_chipid.c, the same 0x4B
  * command with interrupts disabled).  Part of the small Zephyr
  * compatibility layer of the port (nuttx/drivers/compat).
  */
@@ -20,8 +20,8 @@
 
 ssize_t hwinfo_get_device_id(uint8_t *buffer, size_t length)
 {
-  uint8_t id[NANO_CHIP_ID_SIZE];
-  int ret = nano_chip_id(id);
+  uint8_t id[RP2040_CHIP_ID_SIZE];
+  int ret = rp2040_chip_id(id);
 
   if (ret < 0)
     {

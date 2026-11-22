@@ -1,5 +1,5 @@
 /****************************************************************************
- * boards/arduino-nano-rp2040-connect/src/nano_boardinitialize.c
+ * boards/arduino-nano-rp2040-connect/src/rp2040_boardinitialize.c
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -44,7 +44,7 @@
 #include "rp2040_common_initialize.h"
 #endif /* CONFIG_ARCH_BOARD_COMMON */
 
-#include "nano_connect.h"
+#include "rp2040_pico.h"
 
 #ifdef CONFIG_NANO_LOG_RAM
 #  include "log_ram.h"
@@ -107,7 +107,7 @@ void rp2040_boardinitialize(void)
 
 #ifdef CONFIG_NINA_PASSTHROUGH
   /* The request of the NINA passthrough mode in the watchdog's scratch
-   * registers, read and cleared before anything else (nano_bringup() and
+   * registers, read and cleared before anything else (rp2040_bringup() and
    * the init task ask nina_passthrough_active()).
    */
 
@@ -119,7 +119,7 @@ void rp2040_boardinitialize(void)
    * runs yet.
    */
 
-  nano_chip_id_initialize();
+  rp2040_chip_id_initialize();
 }
 
 /****************************************************************************
@@ -144,6 +144,6 @@ void rp2040_boardinitialize(void)
 #ifdef CONFIG_BOARD_LATE_INITIALIZE
 void board_late_initialize(void)
 {
-  nano_bringup();
+  rp2040_bringup();
 }
 #endif

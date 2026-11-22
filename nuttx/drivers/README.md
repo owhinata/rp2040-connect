@@ -305,11 +305,11 @@ host side on cdcacm, `common/drivers/nina/port/nuttx/nina_passthrough_os.c` (bui
 | GPIO3 | the module's RESETN (active low) | RESET |
 
 - Way in: `nina passthrough confirm` (`nuttx/apps/nina`) writes a mark into the watchdog's scratch
-  registers 0..3 and restarts through the watchdog (`nano_watchdog_reboot()` of the board's
-  `src/nano_reset.c`, as the Pico SDK's `watchdog_reboot(0, 0, 0)`). `rp2040_boardinitialize()` reads
+  registers 0..3 and restarts through the watchdog (`rp2040_watchdog_reboot()` of the board's
+  `src/rp2040_restart.c`, as the Pico SDK's `watchdog_reboot(0, 0, 0)`). `rp2040_boardinitialize()` reads
   and clears the mark first, so RESET, any later restart and a fatal error start the normal firmware.
   Nothing is written to the flash (key-value store).
-- The start of the mode: `nano_bringup()` sets up the USB device only (CDC ACM, the same descriptors and
+- The start of the mode: `rp2040_bringup()` sets up the USB device only (CDC ACM, the same descriptors and
   serial number), none of SPI1, the NINA, I2C0, the sensor, `wlan0` or the key-value flash. The init
   task runs `nina_passthrough_run()` (priority 120) instead of nsh, Telnet, Wi-Fi and the threads.
 - Lines and rate: cdcacm's callback (`CAIOC_REGISTERCB`, called from the USB interrupt) reads the new
@@ -344,7 +344,7 @@ host side on cdcacm, `common/drivers/nina/port/nuttx/nina_passthrough_os.c` (bui
   back to the normal start.
 
 The `bootsel` command (`nuttx/apps/bootsel`) restarts into BOOTSEL (`RPI-RP2`) through the board's
-`nano_reset_usb_boot()` (`include/nano_reset.h`), the boot ROM's `reset_usb_boot(0, 0)` (no activity
+`rp2040_reset_usb_boot()` (`include/rp2040_restart.h`), the boot ROM's `reset_usb_boot(0, 0)` (no activity
 LED, both the mass storage and PICOBOOT interfaces on).
 
 ## I2C0
@@ -368,7 +368,7 @@ the include path; the objects are made in the board's directory).
 | `common/drivers/i2c_dw/port/nuttx/i2c_dw_os_impl.h` | The NuttX implementation of the boundary: semaphores (`sem_t`: `nxsem_post()`, `nxsem_tickwait_uninterruptible()`, `nxsem_wait_uninterruptible()`, `nxsem_reset()`), time (the system ticks), `nxsched_msleep()`, `up_irq_save()`, the messages (`struct i2c_msg_s`, with Zephyr's flags made by `i2c_dw_msg_flags()`), `I2C_DW_CLOCK_SPEED` (`BOARD_PERI_FREQ`) |
 | `common/drivers/i2c_dw/port/nuttx/i2c_dw_instance.h` | The NuttX part of I2C0 and I2C1: the operations of `struct i2c_master_s` (`I2C_TRANSFER()` checks the request, takes the speed from the frequency and calls the core's transfer; `I2C_RESET()`), the interrupt handler attached with `irq_attach()`, the reset and the pins (`i2c_dw_pinctrl()`), shared by both, `i2c_dw_i2c0_initialize()` and `i2c_dw_i2c1_initialize()`. Host test `nuttx/tests/i2c_dw_instance.c` |
 | `common/drivers/i2c_dw/port/nuttx/i2c_dw_dma_os_rp2040.c` | The NuttX implementation of the DMA boundary on NuttX's own DMA driver, `arch/arm/src/rp2040/rp2040_dmac.c` (`CONFIG_RP2040_DMAC`). Host test `nuttx/tests/i2c_dw_dma_os.c` |
-| `common/drivers/i2c_dw/port/nuttx/i2c_dw_controllers_rp2040.h` | `i2c_dw_i2c0_initialize()` and, with `CONFIG_I2C_DW_I2C1`, `i2c_dw_i2c1_initialize()` (called by `nano_bringup()` at boot, I2C1 after I2C0, which registers `/dev/i2c0` and `/dev/i2c1`); the board's code finds it through the `port/nuttx` directory on its include path |
+| `common/drivers/i2c_dw/port/nuttx/i2c_dw_controllers_rp2040.h` | `i2c_dw_i2c0_initialize()` and, with `CONFIG_I2C_DW_I2C1`, `i2c_dw_i2c1_initialize()` (called by `rp2040_bringup()` at boot, I2C1 after I2C0, which registers `/dev/i2c0` and `/dev/i2c1`); the board's code finds it through the `port/nuttx` directory on its include path |
 
 What the OS provides at the boundary (`port/i2c_dw_os.h`). All are static inline functions or macros, and
 the OS's interrupt handlers and transfer entry call static inline functions of the core, so the
@@ -536,7 +536,7 @@ patched driver with the same branches, order and values.
 | `common/drivers/lsm6dso/include/lsm6dso.h` | The extended API: the FIFO words and their parser (`lsm6dso_fifo.h`), the calibration's types (`lsm6dso_cal.h`) and calls, the FIFO statistics, the private attributes, the stop of a stream, the timestamp read; `<zephyr/drivers/sensor/lsm6dso.h>` through `common/compat/zephyr/drivers/sensor/lsm6dso.h` |
 | `common/drivers/lsm6dso/port/zephyr/lsm6dso_rtio_stream.c` | The FIFO stream's RTIO side (below): the device's INT1 line, RTIO's request handed to the core's stream, the stop and the settings of the extended API. The same file as the Zephyr version's |
 | `common/drivers/lsm6dso/port/zephyr/lsm6dso_decoder.[ch]` | The decoders of the stream's and the single reads' buffers (`get_decoder`). The same files as the Zephyr version's |
-| the board's `src/nano_lsm6dso.[ch]` | Makes I2C0 the compatibility layer's bus device (`i2c0`, 100 kHz) and initializes `lsm6dsox` (from `nano_bringup()`) |
+| the board's `src/rp2040_lsm6dso.[ch]` | Makes I2C0 the compatibility layer's bus device (`i2c0`, 100 kHz) and initializes `lsm6dsox` (from `rp2040_bringup()`) |
 | the board's `src/nano_gpio.c` | GPIO bank 0 for the compatibility layer's `gpio0` (input set-up, levels, edge and level interrupts); `<nano_gpio.h>` (`common/compat`) |
 
 What the driver's calls into the system are on NuttX (those of the core through
@@ -557,7 +557,7 @@ What the driver's calls into the system are on NuttX (those of the core through
 | `DT_HAS_COMPAT_ON_BUS_STATUS_OKAY()` | the layer's `<zephyr/devicetree.h>`: 1 for `st_lsm6dso` on `i2c` only (the board has one LSM6DSOX, on I2C0) |
 | the devicetree instance, `POST_KERNEL`, priority 90 | `DEVICE_DT_DEFINE(lsm6dsox, ...)` (`lsm6dso_instance.h`), `device_init()` in the board's bring-up |
 
-- The board's `nano_bringup()` initializes the sensor right after I2C0 and before mounting the
+- The board's `rp2040_bringup()` initializes the sensor right after I2C0 and before mounting the
   key-value store (NVS), the Zephyr version's order. A failure only leaves the device not ready
   (`device_is_ready()` is false, as with Zephyr's `do_device_init()`); the boot goes on.
 - Not ported: SPI (the Zephyr version's devicetree instances could have it; the FIFO refuses it).
@@ -617,7 +617,7 @@ calls); they use the kernel, RTIO, GPIO and sensor API under Zephyr's names from
 Both are Kconfig symbols of patches of NuttX (`nuttx/patches/nuttx/`), selected by options of the board's
 Kconfig. With the patches' symbols off, the patched code is upstream's.
 
-- **Divider** (the board's `CONFIG_NANO_HW_DIVIDER`, default y): the integer divisions the compiler emits
+- **Divider** (the board's `CONFIG_RP2040_PICO_DIVIDER`, default y): the integer divisions the compiler emits
   (`__aeabi_idiv`, `__aeabi_idivmod`, `__aeabi_uidiv`, `__aeabi_uidivmod`, `__aeabi_ldivmod`,
   `__aeabi_uldivmod`) go to the Pico SDK's `divider_hardware.S` (from `nuttx/pico-sdk`, built with the
   minimal headers of the board's `src/pico_sdk`) through `ld --wrap` (`scripts/Make.defs`). The routines
@@ -632,8 +632,8 @@ Kconfig. With the patches' symbols off, the patched code is upstream's.
   the three builds). The routines use only the SIO and the stack, so they work from the start of
   `__start()`, in interrupt handlers and in the fatal error handling. `build.sh` checks that the six
   `__wrap_*` are there and that no libgcc division (`__divsi3` and so on) is in the image.
-- **`memcpy` and `memset`** (the board's `CONFIG_NANO_ROM_MEM_OPS`, default y): `RP2040_ROM_MEM_OPS` of
-  patch 0010 selects `LIBC_ARCH_MEMCPY` and `LIBC_ARCH_MEMSET`, and `rp2040_rom_mem_*` in the chip's
+- **`memcpy` and `memset`** (`CONFIG_RP2040_ROM_MEM_OPS` of patch 0010, set in the defconfig):
+  it selects `LIBC_ARCH_MEMCPY` and `LIBC_ARCH_MEMSET`, and `rp2040_rom_mem_*` in the chip's
   directory jump from `memcpy`, `memset`, `__aeabi_memcpy*` and `__aeabi_memset*` to the boot ROM's
   routines (split as the Pico SDK's `pico_mem_ops` does). Each routine is looked up in the ROM's function
   table on its first call and kept in `.bss`, so neither can be called before `.bss` is cleared. GCC
@@ -738,7 +738,7 @@ of the NuttX implementation on the include path.
 | `sensor_default_rtio.c` | A copy of Zephyr's `drivers/sensor/default_rtio_sensor.c` (only the log replaced): the sensors' iodev API, the fallback for single reads, the default decoder |
 | `zephyr_device.c` | Device initialization and the list of devices (`gpio0`, `i2c0`, `lsm6dsox` in the Zephyr build's order of initialization, with their node labels and whether the API is a sensor API; `gpio0` with the OS's configuration `CONFIG_NANO_LSM6DSO_STREAM`) |
 | `zephyr_i2c.c` (NuttX) | I2C (on a NuttX I2C master) |
-| `zephyr_hwinfo.c` (NuttX) | `hwinfo_get_device_id()` on the board's chip ID (`nano_chip_id()`) |
+| `zephyr_hwinfo.c` (NuttX) | `hwinfo_get_device_id()` on the board's chip ID (`rp2040_chip_id()`) |
 | `zephyr_net_if.c` (NuttX), `zephyr_net_mgmt.c`, `zephyr_wifi_mgmt.c` | The interface (values of the NuttX network device), the `net_mgmt` event queue and thread (the thread is the OS part `zephyr_net_mgmt_os.h`; its stack size is `NANO_STACK_NET_MGMT` of `priorities.h`), the Wi-Fi requests (a copy of the checks of Zephyr's `subsys/net/l2/wifi/wifi_mgmt.c`) and events, `NET_REQUEST_WIFI_CONNECT_STORED` (a copy of `connect_stored_command()` of the same file; with `CONFIG_NANO_WIFI_CREDENTIALS`). Only with `CONFIG_NINA_NET`. The NINA's binding (`common/drivers/nina/port/nuttx/nina_wifi_mgmt.c`) serves them on the core for the applications |
 | `zephyr_wifi_utils.c` | Copies of `wifi_security_txt()` and `wifi_band_txt()` (Zephyr's `wifi_mgmt.c`), the channel checks (`wifi_utils.c`) and `net_bytes_from_str()` (`subsys/net/ip/utils.c`), for `wifi cred`. OS-independent. Only with `CONFIG_NINA_NET` |
 | `sensor_shell_stream.c` | A copy of Zephyr's `drivers/sensor/sensor_shell_stream.c` (the sensor shell's processing thread). It includes the OS's `sensor_shell_os.h` first, and the processing thread's callback is `sensor_shell_os_processing_callback()` (in the NuttX build, `nuttx/apps/sensor/sensor_shell_nuttx.c`). Built by `apps/sensor` |
@@ -886,10 +886,10 @@ of the NuttX implementation on the include path.
   and `k_usleep()` are NuttX's `nxsched_msleep()` and `nxsched_usleep()`: the time rounded up to
   ticks, then the same wake-up as `k_sleep()` (Zephyr's rule); 0 or less yields, as Zephyr's
   does; no signal ends the sleep; they return 0. `k_busy_wait()` is `up_udelay()`, which polls the
-  TIMER (the board's `nano_oneshot.c`). The LSM6DSO driver uses these three.
+  TIMER (the board's `rp2040_oneshot.c`). The LSM6DSO driver uses these three.
 - **`hwinfo_get_device_id()`**: as the Zephyr version's RP2040 driver (`hwinfo_rpi_pico.c` without
   `CONFIG_HWINFO_RPI_PICO_CHIP_ID`), the external flash's 64-bit unique ID (command 0x4B) in the
-  order the flash sends it (8 bytes at most). The board reads it once at boot (`nano_chipid.c`);
+  order the flash sends it (8 bytes at most). The board reads it once at boot (`rp2040_chipid.c`);
   this returns the copy, or `-EAGAIN` if the board has not read it yet (Zephyr's driver cannot
   fail).
 - **Shell**: `shell_print()`, `shell_info()`, `shell_warn()` and `shell_error()` add a newline

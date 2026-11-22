@@ -6,7 +6,7 @@
  ****************************************************************************/
 
 /* The arithmetic of cpu_load_get() (cpu_load.h; on NuttX the board's
- * nano_idle.c), kept free of OS calls so the host tests
+ * rp2040_idle_cpuload.c), kept free of OS calls so the host tests
  * (common/tests/nano_cpuload.c) can check it.  The steps are
  * those of Zephyr's cpu_load_get_cpu()
  * (zephyr/zephyr/lib/os/cpu_load/cpu_load_backend_idle.c) with the times

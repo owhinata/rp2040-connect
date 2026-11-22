@@ -275,7 +275,7 @@ int z_thread_static_start(const struct z_thread_static *thread);
  * tick count, rounded down (k_ticks_to_ms_floor64(k_uptime_ticks())),
  * Z_UPTIME_MS() of the microseconds since boot.  On NuttX the tick is the
  * TIMER count over CONFIG_USEC_PER_TICK (the board's tickless timer,
- * nano_oneshot.c), so this is the TIMER read once; it is 64 bits wide
+ * rp2040_oneshot.c), so this is the TIMER read once; it is 64 bits wide
  * where clock_systime_ticks() is 32.
  */
 
@@ -313,7 +313,7 @@ int32_t k_usleep(int32_t us);
 
 /* k_busy_wait(): spins for at least usec_to_wait microseconds without
  * leaving the CPU (on NuttX up_udelay(), which polls the TIMER: the board's
- * nano_oneshot.c).  zephyr_kernel.c on NuttX; a host test that calls it
+ * rp2040_oneshot.c).  zephyr_kernel.c on NuttX; a host test that calls it
  * defines it.
  */
 

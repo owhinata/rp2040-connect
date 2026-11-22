@@ -110,12 +110,12 @@ image (boot2, the flash range, no overlap with the key-value area) before making
 
 Changes made with `--menuconfig` are lost at the next configure unless saved with `--savedefconfig`.
 
-These options of the board's Kconfig are on by default.
+These options are on by default.
 
 | Option | Effect |
 |---|---|
-| `CONFIG_NANO_ROM_MEM_OPS` | `memcpy` and `memset` through the boot ROM's routines (patch 0010; off, the C library's loops). `build.sh` checks that `__start()` calls neither |
-| `CONFIG_NANO_HW_DIVIDER` | Integer division on the RP2040's hardware divider (the Pico SDK's routines, patch 0009; off, libgcc's). `build.sh` checks that no libgcc division is left in the image |
+| `CONFIG_RP2040_ROM_MEM_OPS` | `memcpy` and `memset` through the boot ROM's routines (patch 0010; off, the C library's loops). `build.sh` checks that `__start()` calls neither |
+| `CONFIG_RP2040_PICO_DIVIDER` | Integer division on the RP2040's hardware divider (the Pico SDK's routines, patch 0009; off, libgcc's). `build.sh` checks that no libgcc division is left in the image |
 | `CONFIG_NINA_PASSTHROUGH` | `nina passthrough confirm` ("Other commands" below) |
 
 ## Flashing

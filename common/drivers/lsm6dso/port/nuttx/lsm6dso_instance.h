@@ -13,7 +13,7 @@
  * static): in place of the Zephyr build's devicetree instance macros
  * (port/zephyr/lsm6dso_instance.h), the one device with the board's
  * values.  The board initializes it in its
- * bring-up (boards/.../src/nano_lsm6dso.c, device_init()), where Zephyr
+ * bring-up (boards/.../src/rp2040_lsm6dso.c, device_init()), where Zephyr
  * does it before main() (POST_KERNEL, CONFIG_SENSOR_INIT_PRIORITY 90).
  */
 

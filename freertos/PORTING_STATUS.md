@@ -2430,3 +2430,20 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
 - NuttX・Zephyr のビルドが読むファイルには触れていない。ホストテスト（FreeRTOS）58、`format.sh --check`（新しい 2 つのディレクトリーも対象）。
 - 次の候補: `getopt_state.c`・`nano_console.*`（スレッドごとのコンソールのポインターとロックを境界にすれば共有にできる）、自己診断の境界のうち `thread_create`・`prio_get`・`name_get` は互換層の API にできる。
 - 実機: FreeRTOS 版（既定のビルド。センサーの段階 2 のイメージと同じ中身）。
+
+## NuttX 版だけの `nano_` を `rp2040_` に改名（2026-11-22、ユーザーの決定）
+
+- subagent が実装、メインが照合。NuttX 本体のボードのファイルの流儀（`rp2040_bringup.c` など）に合わせた。
+- ファイル: ボードの `src/nano_*.c`・`.h` → `rp2040_*`（`nano_connect.h` → `rp2040_pico.h`＝写しのもとの名前）、`include/nano_reset.h` → `rp2040_restart.h`、`scripts/nano-flash.ld` →
+  `arduino-nano-rp2040-connect-flash.ld`、`apps/init/nano_init.[ch]`・`nano_telnet.c` → `rp2040_*`、`tests/nano_timeconv.c` → `rp2040_timeconv.c`。関数・型・マクロも同じ（`rp2040_bringup()`、
+  `rp2040_oneshot_*`、`rp2040_watchdog_reboot()`、`rp2040_init_main()` など）。
+- NuttX 本体とぶつかった名前: `rp2040_reset.c`（ボード共通にある）→ `rp2040_restart.[ch]`、`rp2040_timerisr.c`（パッチ 0004 が外す arch のファイル）→ `rp2040_timerisr_alarm.c`、
+  `rp2040_idle.c` → `rp2040_idle_cpuload.c`、`RP2040_HW_DIVIDER`（パッチ 0009）→ `RP2040_PICO_DIVIDER`。
+- ボードの Kconfig: `NANO_TICKLESS`・`NANO_PERF`・`NANO_STACK_SENTINEL`・`NANO_FLASH_KV` → `RP2040_*`、`NANO_HW_DIVIDER` → `RP2040_PICO_DIVIDER`、`NANO_ROM_MEM_OPS` は削除
+  （arch の `RP2040_ROM_MEM_OPS` を選ぶだけだったので、defconfig が直接設定する）。`.config` の差はこの 6 行と `INIT_ENTRYPOINT` だけ。
+- 残した `nano_`: 共有の境界（`include/nano_timer.h` と `nano_mono_us()`、`src/nano_flash_kv.c`、`src/nano_gpio.c`、`NANO_PRIO_*`・`NANO_STACK_*`、`nano_cpuload*`、`CONFIG_NANO_LSM6DSO_STREAM` など。
+  整理 7・11 で移すときに名前を決める）、アプリとドライバーの Kconfig の記号（`NANO_APP_*`・`NANO_INIT_*`・`NANO_KV_STORE` など。別の決まりが要る）、`setup.sh` の記録のディレクトリー
+  `nano-patches`（変えると既存のクローンが失敗する）。
+- パッチ 0004・0007・0009・0010 は説明文だけ新しい名前に（本体はバイト単位で同じ）。
+- 照合: 3 版ともイメージは変更前とバイト単位で一致（NuttX 283992 B、FreeRTOS 237056 B、Zephyr 372328 B。改名した名前はイメージに入らない）。ホストテスト 48・61・58。実機には書いていない。
+- subagent が迷った点: アプリ（`apps/init`）のファイルにも `rp2040_` を付けたこと、`rp2040_pico.h` という名前（Pico ではないボード）、`RP2040_FLASH_KV` が共有の `nano_flash_kv.c` を有効にする点。

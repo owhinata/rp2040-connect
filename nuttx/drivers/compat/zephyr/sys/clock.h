@@ -12,7 +12,7 @@
  *
  * and NSEC_PER_USEC, USEC_PER_SEC (NuttX's <nuttx/clock.h> defines both;
  * Zephyr's <zephyr/sys/time_units.h>).  NuttX's realtime clock is a base
- * time added to the monotonic clock (the TIMER, nano_oneshot.c of the
+ * time added to the monotonic clock (the TIMER, rp2040_oneshot.c of the
  * board); setting it moves only the base, as Zephyr's moves only its
  * offset from the uptime.  Part of the small Zephyr compatibility layer of
  * the port (nuttx/drivers/compat, see nuttx/drivers/README.md).

@@ -1,5 +1,5 @@
 /****************************************************************************
- * boards/arduino-nano-rp2040-connect/scripts/nano-flash.ld
+ * boards/arduino-nano-rp2040-connect/scripts/arduino-nano-rp2040-connect-flash.ld
  *
  * SPDX-License-Identifier: Apache-2.0
  *

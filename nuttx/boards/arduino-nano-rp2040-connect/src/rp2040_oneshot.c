@@ -1,5 +1,5 @@
 /****************************************************************************
- * boards/arduino-nano-rp2040-connect/src/nano_oneshot.c
+ * boards/arduino-nano-rp2040-connect/src/rp2040_oneshot.c
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -25,16 +25,17 @@
  * A oneshot lower-half (CONFIG_ONESHOT_COUNT interface) backed by ALARM0 of
  * the RP2040 TIMER, used to drive the tickless scheduler through
  * up_alarm_set_lowerhalf() (drivers/timers/arch_alarm.c, see
- * nano_timerisr.c).  The TIMER is a free-running 64-bit counter incremented
- * once per microsecond (the watchdog tick, 1 MHz, rp2040_clock.c), and
- * serves directly as the monotonic time base returned by current().
+ * rp2040_timerisr_alarm.c).  The TIMER is a free-running 64-bit counter
+ * incremented once per microsecond (the watchdog tick, 1 MHz,
+ * rp2040_clock.c), and serves directly as the monotonic time base returned
+ * by current().
  * ALARM1..3 are left free.
  *
  * Differences from the RP2350 original: the RP2040 has one TIMER block (no
  * TIMER0/TIMER1 choice) whose interrupt registers sit at other offsets
  * (nano_timer.h), its 1 MHz tick comes from the watchdog tick rather than
  * the TICKS block, and the interrupt handler returns without calling back
- * when the alarm is not actually pending (see nano_oneshot_interrupt()).
+ * when the alarm is not actually pending (see rp2040_oneshot_interrupt()).
  *
  * As on the RP2350, the ALARM registers match only the low 32 bits of the
  * counter.  max_delay() is therefore capped below 2^32 counts so the
@@ -52,7 +53,7 @@
  * divisions by the run-time frequency go to libgcc's __aeabi_uldivmod: on
  * the Cortex-M0+ (no divide instruction, no 32x32->64 multiply) about 6 us
  * per call.  The replacements read the TIMER directly and convert with
- * nano_timeconv.h, which is specialised for 1 MHz counts and 100 us ticks
+ * rp2040_timeconv.h, which is specialised for 1 MHz counts and 100 us ticks
  * and gives the same results for every 64-bit value.
  */
 
@@ -76,8 +77,8 @@
 #include "chip.h"
 #include "arm_internal.h"
 
-#include "nano_connect.h"
-#include "nano_timeconv.h"
+#include "rp2040_pico.h"
+#include "rp2040_timeconv.h"
 
 /****************************************************************************
  * Pre-processor Definitions
@@ -101,10 +102,10 @@
 
 #define ONESHOT_FREQ_HZ     1000000
 
-/* nano_timeconv.h converts counts to ticks of exactly 100 counts. */
+/* rp2040_timeconv.h converts counts to ticks of exactly 100 counts. */
 
 #if CONFIG_USEC_PER_TICK != 100
-#  error "nano_oneshot.c requires CONFIG_USEC_PER_TICK == 100"
+#  error "rp2040_oneshot.c requires CONFIG_USEC_PER_TICK == 100"
 #endif
 
 /* The ALARM compare is only 32 bits wide, so never schedule further ahead
@@ -117,45 +118,45 @@
  * Private Function Prototypes
  ****************************************************************************/
 
-static clkcnt_t nano_oneshot_max_delay(FAR struct oneshot_lowerhalf_s *l);
-static clkcnt_t nano_oneshot_current(FAR struct oneshot_lowerhalf_s *l);
-static void nano_oneshot_start_absolute(FAR struct oneshot_lowerhalf_s *l,
+static clkcnt_t rp2040_oneshot_max_delay(FAR struct oneshot_lowerhalf_s *l);
+static clkcnt_t rp2040_oneshot_current(FAR struct oneshot_lowerhalf_s *l);
+static void rp2040_oneshot_start_absolute(FAR struct oneshot_lowerhalf_s *l,
                                         clkcnt_t expected);
-static void nano_oneshot_start(FAR struct oneshot_lowerhalf_s *l,
+static void rp2040_oneshot_start(FAR struct oneshot_lowerhalf_s *l,
                                clkcnt_t delta);
-static void nano_oneshot_cancel(FAR struct oneshot_lowerhalf_s *l);
+static void rp2040_oneshot_cancel(FAR struct oneshot_lowerhalf_s *l);
 
 /****************************************************************************
  * Private Data
  ****************************************************************************/
 
-static const struct oneshot_operations_s g_nano_oneshot_ops =
+static const struct oneshot_operations_s g_rp2040_oneshot_ops =
 {
-  .current        = nano_oneshot_current,
-  .start          = nano_oneshot_start,
-  .start_absolute = nano_oneshot_start_absolute,
-  .cancel         = nano_oneshot_cancel,
-  .max_delay      = nano_oneshot_max_delay,
+  .current        = rp2040_oneshot_current,
+  .start          = rp2040_oneshot_start,
+  .start_absolute = rp2040_oneshot_start_absolute,
+  .cancel         = rp2040_oneshot_cancel,
+  .max_delay      = rp2040_oneshot_max_delay,
 };
 
-static struct oneshot_lowerhalf_s g_nano_oneshot =
+static struct oneshot_lowerhalf_s g_rp2040_oneshot =
 {
-  .ops = &g_nano_oneshot_ops,
+  .ops = &g_rp2040_oneshot_ops,
 };
 
-/* Set once nano_oneshot_initialize() has set up ALARM0, just before
+/* Set once rp2040_oneshot_initialize() has set up ALARM0, just before
  * up_alarm_set_lowerhalf().  Until then the time functions below return
  * -EAGAIN, as the generic ones do before a lower half is registered.
  */
 
-static bool g_nano_oneshot_ready;
+static bool g_rp2040_oneshot_ready;
 
 /****************************************************************************
  * Private Functions
  ****************************************************************************/
 
 /****************************************************************************
- * Name: nano_oneshot_count
+ * Name: rp2040_oneshot_count
  *
  * Description:
  *   Read the free-running 64-bit microsecond counter: nano_mono_us()
@@ -165,13 +166,13 @@ static bool g_nano_oneshot_ready;
  *
  ****************************************************************************/
 
-static inline uint64_t nano_oneshot_count(void)
+static inline uint64_t rp2040_oneshot_count(void)
 {
   return nano_mono_us();
 }
 
 /****************************************************************************
- * Name: nano_oneshot_setcompare
+ * Name: rp2040_oneshot_setcompare
  *
  * Description:
  *   Arm ALARM0 for the absolute counter value "target".  Must be called with
@@ -182,13 +183,13 @@ static inline uint64_t nano_oneshot_count(void)
  *
  ****************************************************************************/
 
-static void nano_oneshot_setcompare(uint64_t target)
+static void rp2040_oneshot_setcompare(uint64_t target)
 {
   /* Clear any stale force left from a previous expiry. */
 
   modifyreg32(ONESHOT_INTF, ONESHOT_ALARM0_BIT, 0);
 
-  if ((int64_t)(target - nano_oneshot_count()) <= 0)
+  if ((int64_t)(target - rp2040_oneshot_count()) <= 0)
     {
       /* Already due: raise the interrupt now. */
 
@@ -204,7 +205,7 @@ static void nano_oneshot_setcompare(uint64_t target)
        * arming, force so we do not wait a full wrap for the match.
        */
 
-      if ((int64_t)(nano_oneshot_count() - target) >= 0)
+      if ((int64_t)(rp2040_oneshot_count() - target) >= 0)
         {
           modifyreg32(ONESHOT_INTF, 0, ONESHOT_ALARM0_BIT);
         }
@@ -212,10 +213,10 @@ static void nano_oneshot_setcompare(uint64_t target)
 }
 
 /****************************************************************************
- * Name: nano_oneshot_interrupt
+ * Name: rp2040_oneshot_interrupt
  ****************************************************************************/
 
-static int nano_oneshot_interrupt(int irq, FAR void *context, FAR void *arg)
+static int rp2040_oneshot_interrupt(int irq, FAR void *context, FAR void *arg)
 {
   FAR struct oneshot_lowerhalf_s *lower = arg;
 
@@ -241,58 +242,58 @@ static int nano_oneshot_interrupt(int irq, FAR void *context, FAR void *arg)
 }
 
 /****************************************************************************
- * Name: nano_oneshot_max_delay
+ * Name: rp2040_oneshot_max_delay
  ****************************************************************************/
 
-static clkcnt_t nano_oneshot_max_delay(FAR struct oneshot_lowerhalf_s *l)
+static clkcnt_t rp2040_oneshot_max_delay(FAR struct oneshot_lowerhalf_s *l)
 {
   UNUSED(l);
   return ONESHOT_MAX_COUNTS;
 }
 
 /****************************************************************************
- * Name: nano_oneshot_current
+ * Name: rp2040_oneshot_current
  ****************************************************************************/
 
-static clkcnt_t nano_oneshot_current(FAR struct oneshot_lowerhalf_s *l)
+static clkcnt_t rp2040_oneshot_current(FAR struct oneshot_lowerhalf_s *l)
 {
   UNUSED(l);
-  return nano_oneshot_count();
+  return rp2040_oneshot_count();
 }
 
 /****************************************************************************
- * Name: nano_oneshot_start_absolute
+ * Name: rp2040_oneshot_start_absolute
  ****************************************************************************/
 
-static void nano_oneshot_start_absolute(FAR struct oneshot_lowerhalf_s *l,
+static void rp2040_oneshot_start_absolute(FAR struct oneshot_lowerhalf_s *l,
                                         clkcnt_t expected)
 {
   irqstate_t flags = up_irq_save();
 
   UNUSED(l);
-  nano_oneshot_setcompare(expected);
+  rp2040_oneshot_setcompare(expected);
   up_irq_restore(flags);
 }
 
 /****************************************************************************
- * Name: nano_oneshot_start
+ * Name: rp2040_oneshot_start
  ****************************************************************************/
 
-static void nano_oneshot_start(FAR struct oneshot_lowerhalf_s *l,
+static void rp2040_oneshot_start(FAR struct oneshot_lowerhalf_s *l,
                                clkcnt_t delta)
 {
   irqstate_t flags = up_irq_save();
 
   UNUSED(l);
-  nano_oneshot_setcompare(nano_oneshot_count() + delta);
+  rp2040_oneshot_setcompare(rp2040_oneshot_count() + delta);
   up_irq_restore(flags);
 }
 
 /****************************************************************************
- * Name: nano_oneshot_cancel
+ * Name: rp2040_oneshot_cancel
  ****************************************************************************/
 
-static void nano_oneshot_cancel(FAR struct oneshot_lowerhalf_s *l)
+static void rp2040_oneshot_cancel(FAR struct oneshot_lowerhalf_s *l)
 {
   irqstate_t flags = up_irq_save();
 
@@ -308,17 +309,17 @@ static void nano_oneshot_cancel(FAR struct oneshot_lowerhalf_s *l)
  ****************************************************************************/
 
 /****************************************************************************
- * Name: nano_oneshot_initialize
+ * Name: rp2040_oneshot_initialize
  *
  * Description:
  *   Initialise ALARM0 of the TIMER as a oneshot lower-half.  Called once
- *   from up_timer_initialize() (nano_timerisr.c).
+ *   from up_timer_initialize() (rp2040_timerisr_alarm.c).
  *
  ****************************************************************************/
 
-FAR struct oneshot_lowerhalf_s *nano_oneshot_initialize(void)
+FAR struct oneshot_lowerhalf_s *rp2040_oneshot_initialize(void)
 {
-  FAR struct oneshot_lowerhalf_s *lower = &g_nano_oneshot;
+  FAR struct oneshot_lowerhalf_s *lower = &g_rp2040_oneshot;
 
   oneshot_count_init(lower, ONESHOT_FREQ_HZ);
 
@@ -331,10 +332,10 @@ FAR struct oneshot_lowerhalf_s *nano_oneshot_initialize(void)
   putreg32(ONESHOT_ALARM0_BIT, ONESHOT_INTR);
   modifyreg32(ONESHOT_INTE, 0, ONESHOT_ALARM0_BIT);
 
-  irq_attach(ONESHOT_IRQ, nano_oneshot_interrupt, lower);
+  irq_attach(ONESHOT_IRQ, rp2040_oneshot_interrupt, lower);
   up_enable_irq(ONESHOT_IRQ);
 
-  g_nano_oneshot_ready = true;
+  g_rp2040_oneshot_ready = true;
   return lower;
 }
 
@@ -351,12 +352,12 @@ FAR struct oneshot_lowerhalf_s *nano_oneshot_initialize(void)
 
 int up_timer_gettick(FAR clock_t *ticks)
 {
-  if (!g_nano_oneshot_ready)
+  if (!g_rp2040_oneshot_ready)
     {
       return -EAGAIN;
     }
 
-  *ticks = (clock_t)nano_count_to_tick(nano_oneshot_count());
+  *ticks = (clock_t)rp2040_count_to_tick(rp2040_oneshot_count());
   return OK;
 }
 
@@ -374,12 +375,12 @@ int up_timer_gettime(FAR struct timespec *ts)
   uint64_t sec;
   uint32_t nsec;
 
-  if (!g_nano_oneshot_ready)
+  if (!g_rp2040_oneshot_ready)
     {
       return -EAGAIN;
     }
 
-  nano_count_to_time(nano_oneshot_count(), &sec, &nsec);
+  rp2040_count_to_time(rp2040_oneshot_count(), &sec, &nsec);
   ts->tv_sec  = (time_t)sec;
   ts->tv_nsec = (long)nsec;
   return OK;
@@ -398,13 +399,13 @@ int up_timer_gettime(FAR struct timespec *ts)
 
 int up_alarm_tick_start(clock_t ticks)
 {
-  if (!g_nano_oneshot_ready)
+  if (!g_rp2040_oneshot_ready)
     {
       return -EAGAIN;
     }
 
-  nano_oneshot_start_absolute(&g_nano_oneshot,
-                              nano_tick_to_count((uint64_t)ticks));
+  rp2040_oneshot_start_absolute(&g_rp2040_oneshot,
+                              rp2040_tick_to_count((uint64_t)ticks));
   return OK;
 }
 
@@ -420,12 +421,12 @@ int up_alarm_tick_start(clock_t ticks)
 
 int up_alarm_cancel(FAR struct timespec *ts)
 {
-  if (!g_nano_oneshot_ready)
+  if (!g_rp2040_oneshot_ready)
     {
       return -EAGAIN;
     }
 
-  nano_oneshot_cancel(&g_nano_oneshot);
+  rp2040_oneshot_cancel(&g_rp2040_oneshot);
   if (ts != NULL)
     {
       up_timer_gettime(ts);
@@ -447,18 +448,18 @@ int up_alarm_cancel(FAR struct timespec *ts)
  *
  ****************************************************************************/
 
-static void nano_delay_counts(uint32_t counts)
+static void rp2040_delay_counts(uint32_t counts)
 {
-  uint64_t start = nano_oneshot_count();
+  uint64_t start = rp2040_oneshot_count();
 
-  while (nano_oneshot_count() - start < counts)
+  while (rp2040_oneshot_count() - start < counts)
     {
     }
 }
 
 void up_udelay(useconds_t microseconds)
 {
-  nano_delay_counts(microseconds);
+  rp2040_delay_counts(microseconds);
 }
 
 void up_ndelay(unsigned long nanoseconds)
@@ -470,5 +471,5 @@ void up_ndelay(unsigned long nanoseconds)
       usec++;
     }
 
-  nano_delay_counts(usec);
+  rp2040_delay_counts(usec);
 }

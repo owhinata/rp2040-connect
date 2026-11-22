@@ -1,5 +1,5 @@
 /****************************************************************************
- * boards/arduino-nano-rp2040-connect/src/nano_timeconv.h
+ * boards/arduino-nano-rp2040-connect/src/rp2040_timeconv.h
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -22,7 +22,7 @@
 
 /* Conversions between the RP2040 TIMER count (1 MHz, 64 bits) and the OS
  * clock (100 us ticks, timespec), used by the board's replacements of the
- * weak functions of drivers/timers/arch_alarm.c (nano_oneshot.c).
+ * weak functions of drivers/timers/arch_alarm.c (rp2040_oneshot.c).
  *
  * The Cortex-M0+ has neither a divide instruction nor a 32x32->64 multiply,
  * so the generic ONESHOT_COUNT conversions (include/nuttx/timers/oneshot.h)
@@ -30,15 +30,15 @@
  * microseconds per call.  Here the division by 100 is done one byte at a
  * time: each step divides a number below 100 * 256 by 100 with one 32-bit
  * multiply and a shift, which is exact for every such number (see
- * nano_div100_digit()).  Division by 10^6 is three divisions by 100.
+ * rp2040_div100_digit()).  Division by 10^6 is three divisions by 100.
  *
  * The functions give the same results as the generic code for every 64-bit
- * count and tick (nuttx/tests/nano_timeconv.c checks this on the host).
+ * count and tick (nuttx/tests/rp2040_timeconv.c checks this on the host).
  * They depend on nothing but <stdint.h>.
  */
 
-#ifndef __BOARDS_ARDUINO_NANO_RP2040_CONNECT_SRC_NANO_TIMECONV_H
-#define __BOARDS_ARDUINO_NANO_RP2040_CONNECT_SRC_NANO_TIMECONV_H
+#ifndef __BOARDS_ARDUINO_NANO_RP2040_CONNECT_SRC_RP2040_TIMECONV_H
+#define __BOARDS_ARDUINO_NANO_RP2040_CONNECT_SRC_RP2040_TIMECONV_H
 
 /****************************************************************************
  * Included Files
@@ -51,24 +51,24 @@
  ****************************************************************************/
 
 /* One OS tick is 100 TIMER counts (CONFIG_USEC_PER_TICK, which
- * nano_oneshot.c requires to be 100).
+ * rp2040_oneshot.c requires to be 100).
  */
 
-/* floor(n / 100) == (n * NANO_DIV100_MUL) >> NANO_DIV100_SHIFT for every
+/* floor(n / 100) == (n * RP2040_DIV100_MUL) >> RP2040_DIV100_SHIFT for every
  * n < 43690 (2^22 / 96, 96 being 100 * 41944 - 2^22; the first n that
  * fails is 43699).  The steps below use n < 100 * 256 = 25600, and
  * 25599 * 41944 < 2^32.
  */
 
-#define NANO_DIV100_MUL      41944u
-#define NANO_DIV100_SHIFT    22
+#define RP2040_DIV100_MUL      41944u
+#define RP2040_DIV100_SHIFT    22
 
 /* GCC at -Os would otherwise call the per-byte step out of line. */
 
 #ifdef __GNUC__
-#  define NANO_TIMECONV_INLINE  static inline __attribute__((always_inline))
+#  define RP2040_TIMECONV_INLINE  static inline __attribute__((always_inline))
 #else
-#  define NANO_TIMECONV_INLINE  static inline
+#  define RP2040_TIMECONV_INLINE  static inline
 #endif
 
 /****************************************************************************
@@ -76,7 +76,7 @@
  ****************************************************************************/
 
 /****************************************************************************
- * Name: nano_div100_digit
+ * Name: rp2040_div100_digit
  *
  * Description:
  *   One step of long division by 100 in base 256: append the byte to the
@@ -86,18 +86,19 @@
  *
  ****************************************************************************/
 
-NANO_TIMECONV_INLINE uint32_t nano_div100_digit(uint32_t *n, uint32_t byte)
+RP2040_TIMECONV_INLINE uint32_t rp2040_div100_digit(uint32_t *n,
+                                                    uint32_t byte)
 {
   uint32_t d;
 
   *n  = (*n << 8) | byte;
-  d   = (*n * NANO_DIV100_MUL) >> NANO_DIV100_SHIFT;
+  d   = (*n * RP2040_DIV100_MUL) >> RP2040_DIV100_SHIFT;
   *n -= d * 100u;
   return d;
 }
 
 /****************************************************************************
- * Name: nano_div100_step
+ * Name: rp2040_div100_step
  *
  * Description:
  *   Divide (*rem * 2^32 + x) by 100, given *rem < 100.  Returns the
@@ -107,21 +108,21 @@ NANO_TIMECONV_INLINE uint32_t nano_div100_digit(uint32_t *n, uint32_t byte)
  *
  ****************************************************************************/
 
-NANO_TIMECONV_INLINE uint32_t nano_div100_step(uint32_t x, uint32_t *rem)
+RP2040_TIMECONV_INLINE uint32_t rp2040_div100_step(uint32_t x, uint32_t *rem)
 {
   uint32_t n = *rem;
   uint32_t q;
 
-  q  = nano_div100_digit(&n, x >> 24) << 24;
-  q |= nano_div100_digit(&n, (x >> 16) & 0xffu) << 16;
-  q |= nano_div100_digit(&n, (x >> 8) & 0xffu) << 8;
-  q |= nano_div100_digit(&n, x & 0xffu);
+  q  = rp2040_div100_digit(&n, x >> 24) << 24;
+  q |= rp2040_div100_digit(&n, (x >> 16) & 0xffu) << 16;
+  q |= rp2040_div100_digit(&n, (x >> 8) & 0xffu) << 8;
+  q |= rp2040_div100_digit(&n, x & 0xffu);
   *rem = n;
   return q;
 }
 
 /****************************************************************************
- * Name: nano_div100
+ * Name: rp2040_div100
  *
  * Description:
  *   floor(x / 100) for any 64-bit x; the remainder goes to *rem.  The high
@@ -130,7 +131,7 @@ NANO_TIMECONV_INLINE uint32_t nano_div100_step(uint32_t x, uint32_t *rem)
  *
  ****************************************************************************/
 
-static inline uint64_t nano_div100(uint64_t x, uint32_t *rem)
+static inline uint64_t rp2040_div100(uint64_t x, uint32_t *rem)
 {
   uint32_t hi = (uint32_t)(x >> 32);
   uint32_t r  = 0;
@@ -139,20 +140,20 @@ static inline uint64_t nano_div100(uint64_t x, uint32_t *rem)
 
   if (hi >= 256)
     {
-      qh = nano_div100_step(hi, &r);
+      qh = rp2040_div100_step(hi, &r);
     }
   else if (hi != 0)
     {
-      qh = nano_div100_digit(&r, hi);
+      qh = rp2040_div100_digit(&r, hi);
     }
 
-  ql   = nano_div100_step((uint32_t)x, &r);
+  ql   = rp2040_div100_step((uint32_t)x, &r);
   *rem = r;
   return ((uint64_t)qh << 32) | ql;
 }
 
 /****************************************************************************
- * Name: nano_count_to_tick
+ * Name: rp2040_count_to_tick
  *
  * Description:
  *   The OS tick that contains the TIMER count: floor(count / 100).  The
@@ -161,15 +162,15 @@ static inline uint64_t nano_div100(uint64_t x, uint32_t *rem)
  *
  ****************************************************************************/
 
-static inline uint64_t nano_count_to_tick(uint64_t count)
+static inline uint64_t rp2040_count_to_tick(uint64_t count)
 {
   uint32_t rem;
 
-  return nano_div100(count, &rem);
+  return rp2040_div100(count, &rem);
 }
 
 /****************************************************************************
- * Name: nano_tick_to_count
+ * Name: rp2040_tick_to_count
  *
  * Description:
  *   The TIMER count at which the tick starts: tick * 100, modulo 2^64 like
@@ -177,7 +178,7 @@ static inline uint64_t nano_count_to_tick(uint64_t count)
  *
  ****************************************************************************/
 
-static inline uint64_t nano_tick_to_count(uint64_t tick)
+static inline uint64_t rp2040_tick_to_count(uint64_t tick)
 {
   /* tick * 100 with shifts: libgcc's 64-bit multiply is a call. */
 
@@ -185,7 +186,7 @@ static inline uint64_t nano_tick_to_count(uint64_t tick)
 }
 
 /****************************************************************************
- * Name: nano_count_to_time
+ * Name: rp2040_count_to_time
  *
  * Description:
  *   Split the TIMER count into whole seconds and nanoseconds, as the
@@ -194,7 +195,7 @@ static inline uint64_t nano_tick_to_count(uint64_t tick)
  *
  ****************************************************************************/
 
-static inline void nano_count_to_time(uint64_t count, uint64_t *sec,
+static inline void rp2040_count_to_time(uint64_t count, uint64_t *sec,
                                       uint32_t *nsec)
 {
   uint32_t r0;
@@ -204,11 +205,11 @@ static inline void nano_count_to_time(uint64_t count, uint64_t *sec,
 
   /* count = ((q * 100 + r2) * 100 + r1) * 100 + r0 */
 
-  q    = nano_div100(count, &r0);
-  q    = nano_div100(q, &r1);
-  q    = nano_div100(q, &r2);
+  q    = rp2040_div100(count, &r0);
+  q    = rp2040_div100(q, &r1);
+  q    = rp2040_div100(q, &r2);
   *sec  = q;
   *nsec = ((r2 * 100u + r1) * 100u + r0) * 1000u;
 }
 
-#endif /* __BOARDS_ARDUINO_NANO_RP2040_CONNECT_SRC_NANO_TIMECONV_H */
+#endif /* __BOARDS_ARDUINO_NANO_RP2040_CONNECT_SRC_RP2040_TIMECONV_H */

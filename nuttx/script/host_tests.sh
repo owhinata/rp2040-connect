@@ -3,7 +3,7 @@
 # The tests of the sources shared with the Zephyr build and of the compatibility layer's
 # shared part run first (common/tests/run.sh).
 # Most of the other sources and tests are unchanged copies of the Zephyr version's
-# (nano_timeconv is the board's own); none needs the board.
+# (rp2040_timeconv is the board's own); none needs the board.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 ../common/tests/run.sh
@@ -85,7 +85,7 @@ if [[ -f stmemsc/lsm6dso_reg.c ]]; then
         "$clsm/port/zephyr/lsm6dso_decoder.c" \
         drivers/compat/zephyr_i2c.c "$ccompat/zephyr_device.c" \
         "$ccompat/zephyr_gpio.c" "$ccompat/sensor_default_rtio.c" "${compat[@]}" \
-        boards/arduino-nano-rp2040-connect/src/nano_lsm6dso.c "$out/lsm6dso_reg.o" -lm "$link" \
+        boards/arduino-nano-rp2040-connect/src/rp2040_lsm6dso.c "$out/lsm6dso_reg.o" -lm "$link" \
         -o "$out/lsm6dso_driver"
     "$out/lsm6dso_driver" >/dev/null
     printf 'ok  lsm6dso_driver\n'
@@ -107,7 +107,7 @@ if [[ -f stmemsc/lsm6dso_reg.c ]]; then
         "$clsm/port/zephyr/lsm6dso_decoder.c" \
         drivers/compat/zephyr_i2c.c "$ccompat/zephyr_device.c" \
         "$ccompat/zephyr_gpio.c" "$ccompat/sensor_default_rtio.c" "${compat[@]}" \
-        boards/arduino-nano-rp2040-connect/src/nano_lsm6dso.c "$out/lsm6dso_reg.o" -lm "$link" \
+        boards/arduino-nano-rp2040-connect/src/rp2040_lsm6dso.c "$out/lsm6dso_reg.o" -lm "$link" \
         -o "$out/imu_cal"
     "$out/imu_cal" >/dev/null
     printf 'ok  imu_cal\n'
@@ -133,7 +133,7 @@ if [[ -f stmemsc/lsm6dso_reg.c ]]; then
         "$clsm/port/zephyr/lsm6dso_decoder.c" \
         drivers/compat/zephyr_i2c.c "$ccompat/zephyr_device.c" \
         "$ccompat/zephyr_gpio.c" "$ccompat/sensor_default_rtio.c" "${compat[@]}" \
-        boards/arduino-nano-rp2040-connect/src/nano_lsm6dso.c "$out/lsm6dso_reg.o" -lm "$link" \
+        boards/arduino-nano-rp2040-connect/src/rp2040_lsm6dso.c "$out/lsm6dso_reg.o" -lm "$link" \
         -o "$out/sensor_shell"
     "$out/sensor_shell" >/dev/null
     printf 'ok  sensor_shell\n'
@@ -267,7 +267,7 @@ else
     printf 'skip mqtt_min on Zephyr'\''s MQTT library (no zephyr/zephyr: run west update)\n'
 fi
 # Board: TIMER count <-> OS tick conversions of the tickless system timer.
-run nano_timeconv -Iboards/arduino-nano-rp2040-connect/src
+run rp2040_timeconv -Iboards/arduino-nano-rp2040-connect/src
 # The registration of "imu", "ntp" and "kv" (the SHELL_*() text cut out of
 # common/imu/imu_stream.c, time_sync.c and kv_store.c, built with Z_SHELL_CMD_NAMED_MAIN on
 # common/shell/zshell.c): the same exit status, handler calls and output as the same sets on

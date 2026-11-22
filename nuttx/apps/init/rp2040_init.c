@@ -1,10 +1,10 @@
 /****************************************************************************
- * nuttx/apps/init/nano_init.c
+ * nuttx/apps/init/rp2040_init.c
  *
  * SPDX-License-Identifier: Apache-2.0
  *
  * The init task of the Nano RP2040 Connect port: nsh on the USB CDC ACM
- * console.  The Telnet shell is in nano_telnet.c; init starts it at the
+ * console.  The Telnet shell is in rp2040_telnet.c; init starts it at the
  * point where the Zephyr build's Telnet backend starts (before main()).
  *
  * The Zephyr build runs its shell on the CDC ACM UART from boot, prompts
@@ -67,7 +67,7 @@
 
 #include "app_log.h"
 #include "priorities.h"
-#include "nano_init.h"
+#include "rp2040_init.h"
 
 #ifdef CONFIG_NANO_KV_STORE
 #  include "kv_store.h"
@@ -112,16 +112,16 @@ LOG_MODULE_REGISTER(usb_console, LOG_LEVEL_INF);
  ****************************************************************************/
 
 /****************************************************************************
- * Name: nano_nsh_session
+ * Name: rp2040_nsh_session
  *
  * Description:
  *   The nsh session task.  Same as nsh_consolemain() but without the login
  *   greeting.  Runs on the fd 0/1/2 it inherits from init (USB) or from the
- *   Telnet task (nano_telnet.c).
+ *   Telnet task (rp2040_telnet.c).
  *
  ****************************************************************************/
 
-int nano_nsh_session(int argc, FAR char *argv[])
+int rp2040_nsh_session(int argc, FAR char *argv[])
 {
   FAR struct console_stdio_s *pstate = nsh_newconsole(true);
   int ret;
@@ -221,7 +221,7 @@ static void console_setup(int fd)
  ****************************************************************************/
 
 /****************************************************************************
- * Name: nano_init_main
+ * Name: rp2040_init_main
  *
  * Description:
  *   CONFIG_INIT_ENTRYPOINT.  Never returns.
@@ -233,7 +233,7 @@ static void console_setup(int fd)
  *
  ****************************************************************************/
 
-int nano_init_main(int argc, FAR char *argv[])
+int rp2040_init_main(int argc, FAR char *argv[])
 {
   struct sched_param param;
 #if defined(CONFIG_NANO_KV_STORE) || defined(CONFIG_NANO_APP_IMU)
@@ -292,7 +292,7 @@ int nano_init_main(int argc, FAR char *argv[])
    * listening socket (shell_telnet.c telnet_init()).
    */
 
-  nano_telnet_start();
+  rp2040_telnet_start();
 #endif
 
   /* zephyr/app/usb-console/src/main.c */
@@ -364,7 +364,7 @@ int nano_init_main(int argc, FAR char *argv[])
 
       pid = task_create("nsh", CONFIG_NANO_INIT_NSH_PRIORITY,
                         CONFIG_NANO_INIT_NSH_STACKSIZE,
-                        nano_nsh_session, NULL);
+                        rp2040_nsh_session, NULL);
       if (pid >= 0)
         {
           while (waitpid(pid, &status, 0) < 0 && errno == EINTR)

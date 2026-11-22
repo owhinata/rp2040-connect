@@ -1,5 +1,5 @@
 /****************************************************************************
- * nuttx/apps/init/nano_telnet.c
+ * nuttx/apps/init/rp2040_telnet.c
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -30,7 +30,7 @@
  * The sessions use NuttX's Telnet driver (drivers/net/telnet.c,
  * CONFIG_NETDEV_TELNET): the "/dev/telnet" factory wraps an accepted socket
  * into a character device /dev/telnetN, which an nsh session (the same one
- * as on USB, nano_nsh_session()) uses as fd 0/1/2.  With
+ * as on USB, rp2040_nsh_session()) uses as fd 0/1/2.  With
  * CONFIG_TELNET_MAXLCLIENTS=1 the driver has a single session slot, held
  * until the last descriptor of the device is closed (the session task and
  * whatever it started in the background have exited).  The factory refuses
@@ -59,7 +59,7 @@
 
 #include "app_log.h"
 #include "priorities.h"
-#include "nano_init.h"
+#include "rp2040_init.h"
 
 #ifdef CONFIG_NANO_INIT_TELNET
 
@@ -232,7 +232,7 @@ static int telnet_start_session(int sd)
   /* The session inherits fd 0/1/2 (the listening socket is CLOEXEC). */
 
   pid = task_create("nsh_telnet", CONFIG_NANO_INIT_NSH_PRIORITY,
-                    CONFIG_NANO_INIT_NSH_STACKSIZE, nano_nsh_session, NULL);
+                    CONFIG_NANO_INIT_NSH_STACKSIZE, rp2040_nsh_session, NULL);
   if (pid < 0)
     {
       LOG_ERR("Cannot start the Telnet session (%d)", -errno);
@@ -324,10 +324,10 @@ static int telnet_main(int argc, FAR char *argv[])
  ****************************************************************************/
 
 /****************************************************************************
- * Name: nano_telnet_start
+ * Name: rp2040_telnet_start
  ****************************************************************************/
 
-void nano_telnet_start(void)
+void rp2040_telnet_start(void)
 {
   pid_t pid;
 

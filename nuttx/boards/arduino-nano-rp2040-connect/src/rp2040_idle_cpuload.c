@@ -1,5 +1,5 @@
 /****************************************************************************
- * boards/arduino-nano-rp2040-connect/src/nano_idle.c
+ * boards/arduino-nano-rp2040-connect/src/rp2040_idle_cpuload.c
  *
  * SPDX-License-Identifier: Apache-2.0
  *
@@ -39,7 +39,7 @@
  * What rp2040_idle.c did: WFI, and the idle LED when CONFIG_ARCH_LEDS (not
  * used on this board).  Its CONFIG_SUPPRESS_INTERRUPTS /
  * SUPPRESS_TIMER_INTS branch (calling nxsched_process_timer()) is not
- * needed: the tickless timer interrupt (nano_oneshot.c) drives the
+ * needed: the tickless timer interrupt (rp2040_oneshot.c) drives the
  * scheduler, and NuttX 13.1.0's idle loop needs nothing else
  * (sched/init/nx_start.c only calls up_idle() in a loop).
  *
@@ -64,11 +64,11 @@
 #include "nano_cpuload.h"
 
 #if defined(CONFIG_SUPPRESS_INTERRUPTS) || defined(CONFIG_SUPPRESS_TIMER_INTS)
-#  error "nano_idle.c needs the timer interrupt"
+#  error "rp2040_idle_cpuload.c needs the timer interrupt"
 #endif
 
 #ifdef CONFIG_SMP
-#  error "nano_idle.c measures one CPU"
+#  error "rp2040_idle_cpuload.c measures one CPU"
 #endif
 
 /****************************************************************************

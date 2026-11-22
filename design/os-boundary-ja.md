@@ -113,7 +113,7 @@ F の `zephyr_os.h` は `common/compat/net_offload/include/zephyr_heap.h` も読
 | `K_THREAD_DEFINE()` のスレッドの終わり | カーネルスレッドが戻る | `vTaskDelete(NULL)` |
 | tick | 100 µs | 1 ms |
 | `zephyr_compat_initialize()` の gpio0 | 常に（カーネルの部分全体が `CONFIG_NANO_LSM6DSO_STREAM` のときだけビルドされる） | `CONFIG_NANO_LSM6DSO_STREAM` のときだけ。sysworkq が起きなければ −ENOMEM |
-| `zephyr_compat_initialize()` を呼ぶところ | `N-board/src/nano_bringup.c` | スケジューラーの前の `main()`（`freertos/app/usb-console/src/main.c`） |
+| `zephyr_compat_initialize()` を呼ぶところ | `N-board/src/rp2040_bringup.c` | スケジューラーの前の `main()`（`freertos/app/usb-console/src/main.c`） |
 | 同じ優先度の選び方 | NuttX のもの | FreeRTOS の、切り替えのたびの順番回し |
 
 ### 2.4 スピンロックと atomic
@@ -138,11 +138,11 @@ atomic の操作そのものは共有です（`k_spin_lock()` の上）。
 | シェルのバックエンド | `common/shell/zshell_os.h` | `zshell_os_backend_get()`、`zshell_os_cmd_enter()`、`zshell_os_cmd_exit()`、`z_shell_backend_vfprintf()`。任意で `ZSHELL_OS_ACTIVE_CMD` と `zshell_os_active_cmd_set()`・`_get()` | `common/shell/zshell.c` | `nuttx/apps/subcmd/zshell_os_impl.h`（`ZSHELL_OS_ACTIVE_CMD` なし） | `freertos/drivers/shell/zshell_os_impl.h`（定義あり） |
 | `struct shell` | `common/compat/zephyr/shell/shell.h` が読む | バックエンド 1 つ。コマンドより長く生きる | シェルのコマンド | `nuttx/drivers/compat/zephyr_os_shell.h`（端末のパス、コマンドの pid） | `freertos/drivers/shell/zephyr_os_shell.h`（コンソール、実行中のコマンド） |
 | ログの OS 部分 | `common/log/app_log.h` | `app_log_os.h`（OS のヘッダーを先に、任意の `CONFIG_NANO_LOG_DEFAULT_LEVEL`・`CONFIG_NANO_LOG_MAX_LEVEL`）、`app_log_printf()`、`app_log_vprintf()`、`app_log_ratelimit_pass()` | `LOG_*()` マクロ | `nuttx/drivers/include/app_log_os.h`、`nuttx/drivers/log/log_ram.c` | `freertos/drivers/include/app_log_os.h`、`freertos/drivers/log/log_ram.c` |
-| RAM ログ | `common/log/log_ram.h` | `log_ram_initialize()`、`log_ram_piece()` | 起動、`dmesg` | `nuttx/drivers/log/log_ram.c`。呼ぶのは `N-board/src/nano_boardinitialize.c`、`nuttx/apps/dmesg/dmesg_main.c` | `freertos/drivers/log/log_ram.c`（`dmesg` も持つ）。呼ぶのは `main()` |
+| RAM ログ | `common/log/log_ram.h` | `log_ram_initialize()`、`log_ram_piece()` | 起動、`dmesg` | `nuttx/drivers/log/log_ram.c`。呼ぶのは `N-board/src/rp2040_boardinitialize.c`、`nuttx/apps/dmesg/dmesg_main.c` | `freertos/drivers/log/log_ram.c`（`dmesg` も持つ）。呼ぶのは `main()` |
 | KV のフラッシュ | `common/compat/nano_flash_kv.h` | `nano_flash_kv_os_ready()`、`_read()`、`_program()`（256 バイトのページ）、`_erase()`（4 KiB のセクター）。範囲は OS がもう一度確かめる | `common/compat/zephyr_flash_kv.c` | `N-board/src/nano_flash_kv.c` | `freertos/drivers/kv/nano_flash_kv.c` |
 | KV の消去のコマンド | `common/compat/kv_store_os.h` | `kv_store_wipe()`、`kv_store_cmd_wipe()`、`KV_STORE_OS_COMMANDS` | `common/imu/kv_store.c` | 共有: `common/compat/kv_store_wipe.c` | 共有: 同じ |
 | GPIO バンク 0 | `common/compat/nano_gpio.h` | OS: `nano_gpio_configure_input()`、`nano_gpio_get_all()`、`nano_gpio_irq_configure()`。互換層: `nano_gpio_irq_handler()`（バンクの割り込みから呼ぶ） | `common/compat/zephyr_gpio.c`。N では `common/drivers/nina/port/nuttx/nina_os.c` も | `N-board/src/nano_gpio.c` | `freertos/drivers/compat/rp2040/nano_gpio.c` |
-| CPU 負荷 | `common/compat/cpu_load.h`、計算は `common/compat/nano_cpuload.h` | `cpu_load_get(reset)`。0.1% 単位、TIMER で測ったアイドルの区間から | `common/imu/imu_stream.c` | `N-board/src/nano_idle.c` | `freertos/app/usb-console/src/idle.c` |
+| CPU 負荷 | `common/compat/cpu_load.h`、計算は `common/compat/nano_cpuload.h` | `cpu_load_get(reset)`。0.1% 単位、TIMER で測ったアイドルの区間から | `common/imu/imu_stream.c` | `N-board/src/rp2040_idle_cpuload.c` | `freertos/app/usb-console/src/idle.c` |
 | 優先度とスタック | `common/compat/priorities.h` | OS: `NANO_PRIO_FROM_ZEPHYR(p)` と OS 自身のスレッド。共有: `NANO_PRIO_*`・`NANO_STACK_*` の 15 組 | 互換層、つなぎ、起動 | `nuttx/drivers/include/priorities_os.h`（118 − p。`NINA_EVENT`、`NINA_PT`） | `freertos/app/usb-console/src/priorities_os.h`（20 − p。`TIMER_SVC`、`IDLE`、`HEARTBEAT`） |
 | net_mgmt のスレッド | `common/compat/zephyr_net_mgmt.c` の最後で読む | `mgmt_event_thread()` と `net_mgmt_event_init()`（宣言は `common/compat/zephyr/net/net_mgmt.h`）。ファイルのキューと `mgmt_stack` を使う | N `common/drivers/nina/port/nuttx/nina_wifi_mgmt.c`、F `freertos/drivers/compat/zephyr_net_init.c` | `nuttx/drivers/compat/zephyr_net_mgmt_os.h` | `freertos/drivers/compat/zephyr_net_mgmt_os.h` |
 | RTIO のワークキュー | `common/compat/zephyr/rtio/work.h` | `rtio_workq_initialize()` が "RTIO WQ 0" を `z_thread_static_start()` で起こす。OS のファイルは無い | 各版の `zephyr_compat_initialize()` | 共有の `common/compat/zephyr_rtio_workq.c` | 同じ |
@@ -182,9 +182,9 @@ Zephyr 版は自分の `zephyr/app/usb-console/src/kv_store_os.h` と `wifi_prof
 | `common/imu/time_sync.c` が読む TIMER | ファイル自身（`DT_REG_ADDR(DT_NODELABEL(timer))` = 0x40054000、`sys_read32()`） | — | `freertos/drivers/imu/time_sync_prelude.h` が SDK の `TIMER_BASE` を消す |
 | `k_heap` | `common/compat/net_offload/include/zephyr_heap.h`（F の `zephyr_os.h` が読む） | ビルドしない | `common/compat/net_offload/zephyr_heap.c`。使うのは `common/drivers/nina/port/zephyr/nina_socket.c` |
 | `zephyr_compat_tick()` | F の `zephyr_compat_os.h` | —（wdog） | `vApplicationTickHook()`（`freertos/app/usb-console/src/tick.c`）が呼ぶ |
-| `zephyr_net_initialize()` | F の `zephyr_compat_os.h` | —（`nano_bringup.c` の `nina_net_initialize()`、`common/drivers/nina/port/nuttx/nina_net.h`） | `freertos/drivers/compat/zephyr_net_init.c` |
+| `zephyr_net_initialize()` | F の `zephyr_compat_os.h` | —（`rp2040_bringup.c` の `nina_net_initialize()`、`common/drivers/nina/port/nuttx/nina_net.h`） | `freertos/drivers/compat/zephyr_net_init.c` |
 | `hwinfo_get_device_id()` | `common/compat/zephyr/drivers/hwinfo.h` | `nuttx/drivers/compat/zephyr_hwinfo.c` | `freertos/drivers/compat/rp2040/zephyr_hwinfo.c` |
-| `nano_flash_kv_initialize()` | 各版 | `N-board/src/nano_connect.h`、`nano_flash_kv.c`。`nano_bringup.c` が呼ぶ | `freertos/drivers/kv/nano_flash_kv_os.h`、`nano_flash_kv.c`。`main()` が呼ぶ |
+| `nano_flash_kv_initialize()` | 各版 | `N-board/src/rp2040_pico.h`、`nano_flash_kv.c`。`rp2040_bringup.c` が呼ぶ | `freertos/drivers/kv/nano_flash_kv_os.h`、`nano_flash_kv.c`。`main()` が呼ぶ |
 
 ### 4.3 `DEVICE_DT_GET()` の向こうのデバイス
 
@@ -194,7 +194,7 @@ Zephyr 版は自分の `zephyr/app/usb-console/src/kv_store_os.h` と `wifi_prof
 | ノード | N | F |
 |---|---|---|
 | `gpio0` | `common/compat/zephyr_gpio.c` | 同じ |
-| `i2c0` | `N-board/src/nano_lsm6dso.c`。NuttX の I2C マスターに結び付ける（`zephyr_i2c.c`） | `common/drivers/i2c_dw/port/freertos/i2c_dw_instance.h` |
+| `i2c0` | `N-board/src/rp2040_lsm6dso.c`。NuttX の I2C マスターに結び付ける（`zephyr_i2c.c`） | `common/drivers/i2c_dw/port/freertos/i2c_dw_instance.h` |
 | `i2c1` | Zephyr のデバイスは無い（`struct i2c_master_s` だけ） | `common/drivers/i2c_dw/port/freertos/i2c_dw_instance.h` |
 | `lsm6dsox` | ドライバーのつなぎ、`common/drivers/lsm6dso/port/` | 同じ |
 | フラッシュのデバイス | `common/compat/zephyr_flash_kv.c`（`z_flash_kv_device`） | 同じ |
@@ -233,22 +233,22 @@ Zephyr 版は自分の `zephyr/app/usb-console/src/kv_store_os.h` と `wifi_prof
 | `sensor_shell_processing_tid`（`common/compat/sensor_shell_stream.c`） | 同じ | 同じ |
 | `zperf_server_tid`（`common/compat/zperf_iperf3.c`） | ビルドしない | 同じ |
 
-起動のファイル: Zephyr `zephyr/app/usb-console/src/main.c`。N `N-board/src/nano_boardinitialize.c`、
-`N-board/src/nano_bringup.c`、`nuttx/apps/init/nano_init.c`。F `freertos/app/usb-console/src/main.c`
+起動のファイル: Zephyr `zephyr/app/usb-console/src/main.c`。N `N-board/src/rp2040_boardinitialize.c`、
+`N-board/src/rp2040_bringup.c`、`nuttx/apps/init/rp2040_init.c`。F `freertos/app/usb-console/src/main.c`
 （`main()`、そのあとタスク `main_main()`）。
 
 | 段階 | N | F |
 |---|---|---|
 | RAM ログ | `rp2040_boardinitialize()` の `log_ram_initialize()` | `main()` の最初 |
 | NINA の中継モードの確認 | init タスクの `nina_passthrough_active()` | `main()` の `nina_passthrough_check()` |
-| 互換層 | `nano_bringup()` の `zephyr_compat_initialize()` | `main()` の `zephyr_compat_initialize()` |
-| I2C0、I2C1 | `nano_bringup()` の `i2c_dw_i2c0_initialize()`、`i2c_register()` | `main()` の `i2c_dw_i2c0_initialize()`、`_i2c1_` |
-| LSM6DSOX | `nano_bringup()` の I2C0 のあと | `main_main()` の最初 |
-| ネットワーク | `nano_bringup()` の `nina_net_initialize()` | `main_main()` の `zephyr_net_initialize()` |
-| KV のフラッシュの範囲 | `nano_bringup()` の `nano_flash_kv_initialize()` | `main()` の `nano_flash_kv_initialize()` |
+| 互換層 | `rp2040_bringup()` の `zephyr_compat_initialize()` | `main()` の `zephyr_compat_initialize()` |
+| I2C0、I2C1 | `rp2040_bringup()` の `i2c_dw_i2c0_initialize()`、`i2c_register()` | `main()` の `i2c_dw_i2c0_initialize()`、`_i2c1_` |
+| LSM6DSOX | `rp2040_bringup()` の I2C0 のあと | `main_main()` の最初 |
+| ネットワーク | `rp2040_bringup()` の `nina_net_initialize()` | `main_main()` の `zephyr_net_initialize()` |
+| KV のフラッシュの範囲 | `rp2040_bringup()` の `nano_flash_kv_initialize()` | `main()` の `nano_flash_kv_initialize()` |
 | Wi-Fi の資格情報 | init タスクの `wifi_credentials_init()` | `main_main()` の `wifi_credentials_init()`、`wifi_shell_init()` |
 | スレッド | 上の表 | 上の表 |
-| Telnet | スレッドのあとに `nano_telnet_start()` | スレッドの前に `nano_telnet_init()` |
+| Telnet | スレッドのあとに `rp2040_telnet_start()` | スレッドの前に `nano_telnet_init()` |
 | アプリ（3 版とも同じ順） | `kv_store_init()`、`imu_cal_init()`、`time_sync_init()`、`wifi_profile_init()` | 同じ |
 
 ### 4.7 POSIX のソケットのヘッダー
@@ -271,12 +271,12 @@ Zephyr 版は自分の `zephyr/app/usb-console/src/kv_store_os.h` と `wifi_prof
 
 | 項目 | N | F |
 |---|---|---|
-| スケジューラーまでの起動 | NuttX の起動、`N-board/src/nano_boardinitialize.c`、`nano_bringup.c`、init タスク `nuttx/apps/init/nano_init.c` | `freertos/app/usb-console/src/main.c`、`vTaskStartScheduler()` |
-| カーネルの tick とタイマー | tickless のタイマー `N-board/src/nano_oneshot.c`、`nano_timerisr.c`（tick 100 µs） | SysTick 1 ms、tick のフックと追い付き `tick.c`、`tick_catchup.h`。`FreeRTOSConfig.h` |
+| スケジューラーまでの起動 | NuttX の起動、`N-board/src/rp2040_boardinitialize.c`、`rp2040_bringup.c`、init タスク `nuttx/apps/init/rp2040_init.c` | `freertos/app/usb-console/src/main.c`、`vTaskStartScheduler()` |
+| カーネルの tick とタイマー | tickless のタイマー `N-board/src/rp2040_oneshot.c`、`rp2040_timerisr_alarm.c`（tick 100 µs） | SysTick 1 ms、tick のフックと追い付き `tick.c`、`tick_catchup.h`。`FreeRTOSConfig.h` |
 | 割り込みの登録 | `irq_attach()`、`rp2040_gpio_irq_attach()` | Pico SDK の `irq_set_exclusive_handler()`、`irq_add_shared_handler()`、`gpio_add_raw_irq_handler_masked()` |
-| アイドルループ | `N-board/src/nano_idle.c` | `freertos/app/usb-console/src/idle.c` |
-| USB デバイスのスタック、コンソールの経路 | `cdcacm`、`N-board/src/nano_usbserial.c`。Telnet は `nuttx/apps/init/nano_telnet.c` | Pico SDK の `stdio_usb`（TinyUSB）。`freertos/drivers/shell/nano_console.c`、`nano_stdio.c`。Telnet は `freertos/drivers/telnet/nano_telnet.c` |
+| アイドルループ | `N-board/src/rp2040_idle_cpuload.c` | `freertos/app/usb-console/src/idle.c` |
+| USB デバイスのスタック、コンソールの経路 | `cdcacm`、`N-board/src/rp2040_usbserial.c`。Telnet は `nuttx/apps/init/rp2040_telnet.c` | Pico SDK の `stdio_usb`（TinyUSB）。`freertos/drivers/shell/nano_console.c`、`nano_stdio.c`。Telnet は `freertos/drivers/telnet/nano_telnet.c` |
 | ヒープ | NuttX のもの | FreeRTOS の `heap_4`、32 KiB（`configTOTAL_HEAP_SIZE`） |
-| OS 自身のシェル | nsh（セッションは `nano_init.c`） | 無い。共有のエンジン `common/compat/shell_engine`（`cli.c`・`nano_shell.c`）を `freertos/drivers/shell` のコンソールの上で使う |
+| OS 自身のシェル | nsh（セッションは `rp2040_init.c`） | 無い。共有のエンジン `common/compat/shell_engine`（`cli.c`・`nano_shell.c`）を `freertos/drivers/shell` のコンソールの上で使う |
 | 致命的なエラー | `CONFIG_BOARD_RESET_ON_ASSERT`、報告は RAM ログ | `freertos/app/usb-console/src/fault.c` と `common/log/fault_record.c` |
 | ビルドの仕組みと構成 | Make、Kconfig、`defconfig`、`nuttx/patches` | CMake、`FreeRTOSConfig.h`、`freertos/drivers/*/*.cmake` |

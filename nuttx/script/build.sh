@@ -39,7 +39,7 @@ out_dir="${root}/build"
 stamp="${out_dir}/.configure-stamp"
 
 flash_base=0x10000000
-image_limit=0x10ffe000   # first byte of the key-value area (see scripts/nano-flash.ld)
+image_limit=0x10ffe000   # first byte of the key-value area (see scripts/arduino-nano-rp2040-connect-flash.ld)
 
 clean=0
 action=build
@@ -219,20 +219,20 @@ if [[ "$(config_value CONFIG_RP2040_ROM_MEM_OPS)" == y ]]; then
     die "__start calls memcpy() or memset(), which need .bss cleared (CONFIG_RP2040_ROM_MEM_OPS)"
   fi
 fi
-# With the SIO divider (CONFIG_NANO_HW_DIVIDER), every integer division goes
-# to the Pico SDK's routines (ld --wrap, scripts/Make.defs): none of libgcc's
-# may be linked (it would mean a call that the wrapping missed).
-if [[ "$(config_value CONFIG_NANO_HW_DIVIDER)" == y ]]; then
+# With the SIO divider (CONFIG_RP2040_PICO_DIVIDER), every integer division
+# goes to the Pico SDK's routines (ld --wrap, scripts/Make.defs): none of
+# libgcc's may be linked (it would mean a call that the wrapping missed).
+if [[ "$(config_value CONFIG_RP2040_PICO_DIVIDER)" == y ]]; then
   syms="$(arm-none-eabi-nm "$elf")"
   for s in __aeabi_idiv __aeabi_idivmod __aeabi_uidiv __aeabi_uidivmod \
            __aeabi_ldivmod __aeabi_uldivmod; do
-    grep -qE " T __wrap_${s}\$" <<< "$syms" || die "__wrap_${s} is missing (CONFIG_NANO_HW_DIVIDER)"
+    grep -qE " T __wrap_${s}\$" <<< "$syms" || die "__wrap_${s} is missing (CONFIG_RP2040_PICO_DIVIDER)"
   done
   for s in __aeabi_idiv __aeabi_idivmod __aeabi_uidiv __aeabi_uidivmod __aeabi_ldivmod \
            __aeabi_uldivmod __divsi3 __udivsi3 __modsi3 __umodsi3 __divdi3 __udivdi3 \
            __moddi3 __umoddi3 __udivmoddi4 __gnu_ldivmod_helper __gnu_uldivmod_helper; do
     if grep -qE " [TtWw] ${s}\$" <<< "$syms"; then
-      die "libgcc's ${s} is linked (CONFIG_NANO_HW_DIVIDER: divisions go to the SIO divider)"
+      die "libgcc's ${s} is linked (CONFIG_RP2040_PICO_DIVIDER: divisions go to the SIO divider)"
     fi
   done
 fi

@@ -99,7 +99,7 @@
  *   The same read as time_sync_mono_us() of common/imu/time_sync.c,
  *   shared with the Zephyr build.  The OS clock (CLOCK_MONOTONIC,
  *   clock_systime_ticks()) comes from the same counter
- *   (src/nano_oneshot.c).
+ *   (src/rp2040_oneshot.c).
  *
  ****************************************************************************/
 

@@ -10,8 +10,8 @@ config NANO_APP_BOOTSEL
 	---help---
 		"bootsel" restarts the board into the boot ROM's USB loader
 		(BOOTSEL: the RPI-RP2 drive), as the FreeRTOS build's command
-		of the same name: the board's nano_reset_usb_boot()
-		(<arch/board/nano_reset.h>, the ROM's reset_usb_boot(0, 0)), a
+		of the same name: the board's rp2040_reset_usb_boot()
+		(<arch/board/rp2040_restart.h>, the ROM's reset_usb_boot(0, 0)), a
 		flat build lets an application call it.  No confirmation word;
 		arguments are ignored.
 
