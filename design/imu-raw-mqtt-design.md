@@ -1051,6 +1051,11 @@ and NuttX builds in [`freertos/drivers/README.md`](../freertos/drivers/README.md
   interval since the previous `ps` (since the start for the first; idle included, adding up to about 100 %).
 - The NINA's READY is waited for on GPIO10's edge interrupt (as in the Zephyr and NuttX
   builds).
+- The code of the sensor's 6667 Hz path and of the send path runs from RAM
+  (`freertos/app/usb-console/ram_code.cmake`; its read-only data stays in the flash): it does not fit in
+  the 16 KiB XIP cache, and the cache's misses took about 14 points of `cpu_active` while sending (33.1%
+  without the placement, 19.7% with it, 2026-11-23). It takes about 49 KiB of RAM from newlib's
+  `malloc()`, which only the shell uses; about 33 KiB is left (the drivers' README).
 
 ### 13.3 Sockets
 
@@ -1117,6 +1122,8 @@ Not verified:
 - `record` and `write` of `imu-host` and `script/kv_transfer.py` (with the USB detection) against the
   FreeRTOS build.
 - Power loss, unplugging USB, the RESET button.
+- With the code in RAM (section 13.2): only `cpu_active` and the XIP cache's misses while sending
+  (no missing batches) have been measured.
 
 ## References
 

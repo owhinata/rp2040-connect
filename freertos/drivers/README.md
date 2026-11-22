@@ -283,6 +283,43 @@ zero gives the Pico SDK routines' results, the same in the three builds. `memcpy
 `pico_mem_ops`, the boot ROM's routines; boot2 is the Pico SDK board definition's, for the W25Q080
 (divider 2, 62.5 MHz).
 
+## Code in RAM
+
+The flash is executed through the RP2040's 16 KiB XIP cache, and the code on the 6667 Hz path of the
+sensor and on the send path does not fit in it. The code (`.text*`; their read-only data stays in the flash)
+of the objects listed in `app/usb-console/ram_code.cmake` runs from RAM:
+
+- the layer's kernel part, work queue, RTIO, memory blocks, sensor clock, wall clock and `gpio0`, with the
+  Pico SDK's `hardware_gpio`;
+- I2C0 (`i2c_dw.c`, also I2C1's when it is built) with its DMA part and the Pico SDK's `hardware_dma`;
+- the LSM6DSOX driver and the stmemsc glue (not ST's `lsm6dso_reg.c`, which only configures);
+- the IMU service's stream, batches, queue and time stamps (not the NTP exchange nor the calibration);
+- MQTT, the layer's sockets, the NINA's sockets, protocol, waits and FreeRTOS binding with its SPI and DMA,
+  and the Pico SDK's `hardware_spi`.
+
+`ram_code.cmake` replaces the Pico SDK's `default_text_excludes.incl` with a copy in the build directory that
+leaves these objects out of the flash's `.text`; the SDK's `.data` takes their code, and crt0 copies it to
+RAM before anything else runs. While sending, `cpu_active` was 19.7% with this placement and 33.1% without
+it, and the cache missed about 5,900 times a second instead of about 342,000 (2026-11-23). To check a
+placement, clear the cache's counters while sending (`devmem 0x1400000c 32 0`, `devmem 0x14000010 32 0`;
+they saturate) and read them about 15 s later (the hits and the accesses).
+
+The code costs about 49 KiB of RAM (`.data` is about 57 KiB instead of 8 KiB, with the long-branch stubs
+between RAM and the flash). It is taken from what newlib's `malloc()` can grow into, between the end of
+`.bss` and the stacks (the `malloc` line of `free`); the FreeRTOS heap and the task stacks are static and
+unchanged. About 33 KiB is left above the Pico SDK's 2 KiB minimum (about 18 KiB with `SELFTEST`, whose
+buffers are in `.bss`); only the shell takes from it (about 1.2 KiB per command line while it runs, and a
+line of output longer than 127 characters while it is printed). A check after the link (in
+`ram_code.cmake`, on the map) stops the build when a listed object's code is not in RAM (a source no longer
+built or renamed; a listed source that does not exist stops the configuration) or when less than 16 KiB is
+left.
+
+Also in RAM, as in the Pico SDK's defaults: its `__not_in_flash_func()` functions (the flash's write and
+erase, the mutexes, the blocking SPI calls, parts of the USB driver), the NINA passthrough's UART interrupt
+and libgcc. The fatal error path (`src/fault.c`, `common/compat/log/fault_record.c`) and the key-value
+store's flash part stay in the flash; while XIP is off, only the Pico SDK's own RAM functions run, with
+interrupts disabled.
+
 ## I2C0 and DMA, LSM6DSOX, GPIO interrupt
 
 - **The driver**: I2C0 and I2C1 are the I2C core shared with the NuttX build (`common/drivers/i2c_dw/`;

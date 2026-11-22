@@ -55,6 +55,10 @@ include(${CMAKE_CURRENT_LIST_DIR}/../../drivers/sensor_shell/sensor_shell.cmake)
 # (freertos/script/build.sh -DSELFTEST=ON).
 option(SELFTEST "Build the selftest command" OFF)
 
+# The code of the sensor's and the send's paths, which runs from RAM: the
+# flash's XIP cache is too small for it (ram_code.cmake).
+include(${CMAKE_CURRENT_LIST_DIR}/ram_code.cmake)
+
 # I2C1 (the device i2c1 on GPIO18/D6 and GPIO19/D7, freertos/drivers/i2c_dw):
 # off by default (freertos/script/build.sh -DI2C_DW_I2C1=ON).  I2C0 has no
 # option: the LSM6DSOX is on it.
@@ -100,6 +104,7 @@ freertos_wifi(usb-console)
 freertos_telnet(usb-console)
 freertos_zperf(usb-console)
 freertos_sensor_shell(usb-console)
+freertos_ram_code(usb-console)
 
 # FreeRTOSConfig.h; priorities_os.h (src/, which FreeRTOSConfig.h includes);
 # priorities.h and cpu_load.h (common/compat);

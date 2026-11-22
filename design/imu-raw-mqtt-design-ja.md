@@ -889,6 +889,10 @@ NINA のファームウェアの追加機能（`firmware/nina-fw/` のパッチ 
   NuttX 版にはこの割り込みが無い）。`ps` の CPU 列は前回の `ps` からの区間の
   割合（最初は起動から。アイドルを含み、合計は約 100 %）。
 - NINA の READY は GPIO10 のエッジ割り込みで待つ（Zephyr 版・NuttX 版も同じ）。
+- センサーの 6667 Hz の経路と送信の経路のコードは RAM で動かす（`freertos/app/usb-console/ram_code.cmake`。定数は
+  フラッシュに残す）。16 KiB の XIP キャッシュに収まらず、送信中はキャッシュの外れが `cpu_active` の約 14 ポイントを
+  占めていた（この配置なしで 33.1%、ありで 19.7%。2026-11-23）。RAM は newlib の `malloc()`（使うのはシェルだけ）の領域から
+  約 49 KiB を取り、約 33 KiB が残る（ドライバー説明）。
 
 ### 13.3 ソケット
 
@@ -937,6 +941,7 @@ NINA のファームウェアの追加機能（`firmware/nina-fw/` のパッチ 
 - フラッシュの消去中の異常停止、NINA が応答しないとき。
 - `imu-host` の `record`・`write`、`script/kv_transfer.py`（USB の自動検出を含む）を FreeRTOS 版に対して使うこと。
 - 電源断、USB の抜き差し、RESET ボタン。
+- コードを RAM に置いたイメージ（§13.2）で測ったのは、送信中の `cpu_active` と XIP キャッシュの外れ（欠番 0）だけ。
 
 ## 参考資料
 

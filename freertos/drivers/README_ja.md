@@ -235,6 +235,37 @@ Pico SDK の既定のままです。整数の割り算は `pico_divider` のハ�
 退避）。0 での割り算は Pico SDK のルーチンの結果で、3 つの OS のファームウェアで同じです。`memcpy`・`memset` は `pico_mem_ops` のブート ROM の
 ルーチン、boot2 は Pico SDK のボード定義の W25Q080 用（分周 2、62.5 MHz）です。
 
+## RAM に置くコード
+
+フラッシュは RP2040 の 16 KiB の XIP キャッシュを通して実行され、センサーの 6667 Hz の経路と送信の経路のコードはそこに
+収まりません。`app/usb-console/ram_code.cmake` に並べたオブジェクトのコード（`.text*`。定数はフラッシュに残す）は RAM で
+動きます。
+
+- 互換層のカーネルの部分、ワークキュー、RTIO、メモリーブロック、センサーの時計、壁時計、`gpio0` と Pico SDK の `hardware_gpio`
+- I2C0（`i2c_dw.c`。I2C1 をビルドしたときはそれも）と DMA の部分、Pico SDK の `hardware_dma`
+- LSM6DSOX のドライバーと stmemsc のつなぎ（設定にだけ使う ST の `lsm6dso_reg.c` は除く）
+- IMU のサービスのストリーム、バッチ、キュー、時刻付け（NTP のやり取りと校正は除く）
+- MQTT、互換層のソケット、NINA のソケット・プロトコル・待ちと FreeRTOS のつなぎ（SPI と DMA を含む）、Pico SDK の `hardware_spi`
+
+`ram_code.cmake` は Pico SDK の `default_text_excludes.incl` を、これらのオブジェクトをフラッシュの `.text` から外す写し
+（ビルドディレクトリーに作る）で置き換えます。外したコードは SDK の `.data` に入り、crt0 がほかの何よりも先に RAM へ写します。
+送信中の `cpu_active` は、この配置で 19.7%、この配置なしで 33.1%、キャッシュの外れは毎秒 約 342,000 回が約 5,900 回に
+なりました（2026-11-23）。配置を確かめるときは、送信中にキャッシュのカウンターをクリアし（`devmem 0x1400000c 32 0`、
+`devmem 0x14000010 32 0`。飽和するので必ずクリアする）、15 秒ほどあとに読みます（当たりとアクセスの数）。
+
+コードは RAM を約 49 KiB 使います（`.data` は 8 KiB から約 57 KiB に。RAM とフラッシュのあいだの長い分岐の中継を含む）。
+その分は、newlib の `malloc()` が使える `.bss` の終わりからスタックまでの領域（`free` の `malloc` の行）から取ります。
+FreeRTOS のヒープとタスクのスタックは静的で、変わりません。Pico SDK の最小の 2 KiB を除いて約 33 KiB が残ります
+（`SELFTEST` ではそのバッファーが `.bss` にあるので約 18 KiB）。使うのはシェルだけです（コマンドの行ごとに実行中の約 1.2 KiB と、
+127 文字を超える出力の行を表示する間）。リンクのあとの検査（`ram_code.cmake`。マップを読む）は、並べたオブジェクトのコードが
+RAM に無いとき（ビルドされなくなったソースや名前の変わったソース。存在しないソースは構成の段階で止まる）と、残りが 16 KiB より
+少ないときにビルドを止めます。
+
+Pico SDK の既定のとおり RAM にあるものもあります: `__not_in_flash_func()` の関数（フラッシュの書き込みと消去、ミューテックス、
+SPI の待つ呼び出し、USB のドライバーの一部）、NINA の中継の UART の割り込み、libgcc。異常停止の経路（`src/fault.c`、
+`common/compat/log/fault_record.c`）と KV のフラッシュの部分はフラッシュに残ります。XIP が止まっている間に動くのは、割り込みを
+止めた状態の Pico SDK 自身の RAM の関数だけです。
+
 ## I2C0 と DMA、LSM6DSOX、GPIO の割り込み
 
 - **ドライバー**: I2C0 と I2C1 は、NuttX 版と共有する I2C のコア（`common/drivers/i2c_dw/`）です（コアそのものと
