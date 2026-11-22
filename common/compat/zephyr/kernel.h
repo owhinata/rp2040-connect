@@ -21,6 +21,8 @@
  *   k_cycle_get_32(), k_cycle_get_64(), k_cyc_to_us_floor64(),
  *   k_cyc_to_us_ceil64(), k_cyc_to_ns_floor64(),
  *   sys_clock_hw_cycles_per_sec()
+ *   K_HEAP_DEFINE(), k_heap_alloc(), k_heap_free() (zephyr_heap.h, with
+ *   either OS part)
  *
  * The work items follow kernel/work.c (flags RUNNING, CANCELING, QUEUED,
  * DELAYED; the return values of submit and schedule): zephyr_work.c, which
@@ -543,6 +545,12 @@ bool z_work_queue_process(struct k_work_q *queue, bool *yield);
 void z_add_timeout(struct _timeout *to, _timeout_func_t fn,
                    k_timeout_t timeout);
 void z_abort_timeout(struct _timeout *to);
+
+/* k_heap: OS-independent, on k_spin_lock() (zephyr_heap.h, zephyr_heap.c
+ * of common/compat), the same whichever OS part this header has.
+ */
+
+#include "zephyr_heap.h"
 
 #include "zephyr_compat.h"
 

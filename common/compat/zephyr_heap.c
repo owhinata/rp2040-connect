@@ -9,10 +9,9 @@
  * Zephyr's k_heap is a sys_heap (lib/heap/heap.c) with a wait queue; what
  * the build relies on is the same: allocations come from that buffer only,
  * one that does not fit gives NULL at once (K_NO_WAIT), and freed memory is
- * used again.  OS-independent (k_spin_lock()).
- * Part of the network part of the Zephyr compatibility layer for an OS
- * without a network stack of its own (common/compat/net_offload), which the
- * FreeRTOS build uses.
+ * used again.  OS-independent (k_spin_lock()): the same with either kernel
+ * part of the layer.  The FreeRTOS build compiles it (its NINA sockets'
+ * name resolution); the NuttX build has no user and does not.
  */
 
 #include <stdbool.h>

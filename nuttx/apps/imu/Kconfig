@@ -33,9 +33,10 @@ config APP_IMU
 		with the Zephyr build's syntax and output, and the calibration
 		(common/imu/imu_cal.c, shared with the Zephyr build: the stored values
 		of the key-value store for the LSM6DSO driver, "imu cal"); the
-		MQTT transport is IMU_RAW_MQTT (imu_raw_mqtt_null.c
+		MQTT transport is IMU_RAW_MQTT (common/imu/imu_raw_mqtt_null.c
 		without it: no network) and the time synchronization
-		TIME_SYNC (time_sync_null.c without it: no server time).
+		TIME_SYNC (common/imu/time_sync_null.c without it: no server
+		time).
 		inet_pton() and inet_ntop() for imu.host need
 		LIBC_IPv4_ADDRCONV while the network is off.
 
@@ -76,8 +77,8 @@ config IMU_RAW_MQTT
 		and reconnects every second after a failure.  The MQTT client is
 		the port's copy of the part of Zephyr's MQTT library it uses
 		(mqtt_min.c, MQTT 3.1.1 over TCP).  Without this option
-		imu_raw_mqtt_null.c stands in: every batch is dropped as while
-		disconnected.
+		common/imu/imu_raw_mqtt_null.c stands in: every batch is
+		dropped as while disconnected.
 
 config TIME_SYNC
 	bool "Time synchronization with an NTP server (time_sync.c)"
@@ -93,7 +94,7 @@ config TIME_SYNC
 		(time_offset.c) that the IMU service puts on its batches
 		(time_sync_unix_us()), and moves the realtime clock forward to
 		it.  The "ntp status" command is APP_NTP.  Without this
-		option time_sync_null.c stands in: no server time.
+		option common/imu/time_sync_null.c stands in: no server time.
 
 if TIME_SYNC
 

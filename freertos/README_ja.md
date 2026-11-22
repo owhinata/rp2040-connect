@@ -6,7 +6,7 @@ Arduino Nano RP2040 Connect 向けに、Raspberry Pi Pico SDK と FreeRTOS カ�
 ビルドする環境です。`zephyr/`、`nuttx/`、`openmv/` と同じく、必要なものを `freertos/` の下に取得します。
 
 Zephyr 版・NuttX 版と同じく、LSM6DSOX の RAW データを 6667 Hz で取得し、Wi-Fi 経由の MQTT で PC へ送ります。
-ソースの大半は 3 つの版で共有する `common/` にあります。
+ソースの大半は 3 つの OS のファームウェアで共有する `common/` にあります。
 
 | 項目 | 内容 |
 |---|---|
@@ -30,7 +30,7 @@ Zephyr 版・NuttX 版と同じく、LSM6DSOX の RAW データを 6667 Hz で�
 source freertos/script/setup.sh
 ```
 
-| 置き場所 | 内容 | 版 |
+| 置き場所 | 内容 | バージョン |
 |---|---|---|
 | `freertos/pico-sdk` | Raspberry Pi Pico SDK と、そのサブモジュールのうち TinyUSB（USB コンソール用） | タグ `2.3.1`（shallow clone） |
 | `freertos/FreeRTOS-Kernel` | FreeRTOS カーネル | タグ `V11.3.3`（shallow clone） |
@@ -39,7 +39,7 @@ source freertos/script/setup.sh
 | `freertos/stmemsc/` | ST の LSM6DSO のレジスター定義（`lsm6dso_reg.[ch]`） | NuttX 版と同じコミット（SHA-256 を検証） |
 
 あわせて、現在のシェルに `PICO_SDK_PATH`、`FREERTOS_KERNEL_PATH`、`PICO_TOOLCHAIN_PATH` と `PATH`
-（ツールチェーン、`freertos/.venv/bin`、`freertos/script`）を設定します。版はスクリプトの冒頭で固定しています。取得したものは
+（ツールチェーン、`freertos/.venv/bin`、`freertos/script`）を設定します。バージョンはスクリプトの冒頭で固定しています。取得したものは
 Git の管理外です。
 
 ## ビルド
@@ -78,11 +78,11 @@ freertos/script/flash.sh [--build] [--wait 秒] [--dry-run] [UF2]
 ```
 
 1. `RPI-RP2` ドライブ（BOOTSEL モードの RP2040）があれば、そこへ UF2 をコピーします。
-2. 無くて、3 つの版（Zephyr、NuttX、FreeRTOS）のどれかの USB コンソールがあれば、`bootsel` コマンドを送ってドライブを
+2. 無くて、3 つの OS のファームウェア（Zephyr 版、NuttX 版、FreeRTOS 版）のどれかの USB コンソールがあれば、`bootsel` コマンドを送ってドライブを
    待ちます。操作は要りません（コンソールを別のプログラムで開いているときは送りません）。
 3. どちらも無いか、シェルが応答しなければ、BOOTSEL への入り方を表示してドライブを待ちます。
 
-`--dry-run` は、何をするかを表示するだけです。本体は 3 つの版で共通の `script/flash_uf2.sh` です。
+`--dry-run` は、何をするかを表示するだけです。本体は 3 つの OS のファームウェアで共通の `script/flash_uf2.sh` です。
 
 コピーのあと、USB コンソール（`/dev/serial/by-id/usb-*FreeRTOS_USB_Console*`）のパスを表示します。
 
@@ -104,7 +104,7 @@ USB の CDC ACM ポートがコンソールです（UART0 は使いません）�
 | コマンド | 内容 |
 |---|---|
 | `help` | コマンドの一覧 |
-| `version` | FreeRTOS カーネル、Pico SDK、コンパイラーの版 |
+| `version` | FreeRTOS カーネル、Pico SDK、コンパイラーのバージョン |
 | `id` | ボードの固有 ID（16 桁の 16 進数） |
 | `uptime` | 起動からの時間と tick の数 |
 | `sensor get <デバイス> [チャネル...]`、`sensor attr_set`、`sensor attr_get`、`sensor stream` | センサーの値・属性の読み書きと、ストリームの表示（Zephyr 版と同じ構文と出力）。デバイス名は `lsm6dsox@6a` |
@@ -121,7 +121,7 @@ USB の CDC ACM ポートがコンソールです（UART0 は使いません）�
 | `dmesg` | RAM ログ（8 KB。再起動をまたいで残る） |
 | `kv set <key> <value>`、`kv sethex <key> <hex>`、`kv get <key>`、`kv delete <key>` | KV（設定と校正値）の読み書き。`get` は 16 進で表示 |
 | `kv wipe confirm` | KV の領域全体（Wi-Fi の資格情報も）を消す |
-| `nina version` | NINA-W102 のファームウェアの版と、対応機能（2 行目。`in use` がこのファームウェアの使う機能） |
+| `nina version` | NINA-W102 のファームウェアのバージョンと、対応機能（2 行目。`in use` がこのファームウェアの使う機能） |
 | `nina passthrough confirm` | NINA の中継モードで再起動（USB のシリアル ⇄ NINA の UART。`esptool` で NINA のファームウェアを読み書きする）。抜けるにはポートを 300 bps にして閉じるか RESET |
 | `i2c_dma mode [on\|off]`、`i2c_dma stats` | I2C0 の DMA 読み出しの切り替えと表示、回数の表示 |
 | `fault` | 前回の実行を止めた異常停止の記録 |
@@ -133,7 +133,7 @@ USB の CDC ACM ポートがコンソールです（UART0 は使いません）�
   ありません。引用符と `\` の扱いは Zephyr 版のシェルと同じです。
 - 異常停止（HardFault、`panic()`、アサート、スタックのあふれ、ヒープ不足）が起こると、記録を残して自動で
   再起動します。記録は、次に端末をつないだときの表示、`fault`、`dmesg` で見られます。
-- KV はフラッシュの末尾 8 KB にあり、形式は Zephyr 版・NuttX 版と同じです。版を書き換えても残ります。領域に
+- KV はフラッシュの末尾 8 KB にあり、形式は Zephyr 版・NuttX 版と同じです。別の OS のファームウェアに書き換えても残ります。領域に
   別のデータがあると `kv` は `-138` で失敗し、`dmesg` に案内が出ます。消すのは `kv wipe confirm` です。
 - `imu start` は、KV の `imu.host`（無ければ既定のゲートウェイ）の `imu.port` へ MQTT で送ります。トピックとメッセージは
   Zephyr 版・NuttX 版と同じで、PC 側の `imu-host` がそのまま受けられます。受信側がいなければ、約 3 秒待ってから取得だけを

@@ -1,6 +1,10 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-/* STUB for the builds without TIME_SYNC (with it, common/imu/time_sync.c,
- * shared with the Zephyr build, is built instead).
+/* The time synchronization's null implementation, for a build without
+ * CONFIG_TIME_SYNC (with it, time_sync.c is built instead).  The IMU service
+ * (CONFIG_APP_IMU) needs time_sync.h in every build: its monotonic clock,
+ * time_sync_mono_us(), stamps the batches, and app_main() calls
+ * time_sync_init() (app_main.h).  OS-independent; the NuttX build selects it
+ * (nuttx/apps/imu/Makefile).
  *
  * The API of time_sync.h as the Zephyr build's time_sync.c behaves before
  * its first NTP reply: no server time estimate exists, so
@@ -10,8 +14,6 @@
  * one: the RP2040's 1 MHz TIMER read through its raw registers, the same read
  * as the Zephyr build's (rp2040_timer_us() of common/chip/rp2040).
  */
-#include <nuttx/config.h>
-
 #include "rp2040_timer_us.h"
 #include "time_sync.h"
 

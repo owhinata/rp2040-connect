@@ -16,7 +16,8 @@
 #   too) and the
 #   OS-independent part that links at this stage (common/compat:
 #   zephyr_init.c, on the kernel part's start of a thread, right after it;
-#   zephyr_work.c, zephyr_rtio.c, zephyr_rtio_workq.c, zephyr_mem_blocks.c);
+#   k_heap, zephyr_heap.c, after the mutexes; zephyr_work.c, zephyr_rtio.c,
+#   zephyr_rtio_workq.c, zephyr_mem_blocks.c);
 # - the RAM log (common/compat/log/log_ram.c, on common/compat/log/log_ring.c and the
 #   FreeRTOS part of its boundary, freertos/drivers/include/log_ram_os_impl.h)
 #   and "dmesg" (common/shell/dmesg_shell.c);
@@ -44,7 +45,7 @@
 #   stack of its own (common/compat/net_offload): reduced copies of Zephyr's
 #   subsys/net/lib/sockets/sockets.c, getaddrinfo.c and socket_offload.c and
 #   of lib/os/zvfs/zvfs_fdtable.c and zvfs_poll.c (v4.5.0, see their
-#   headers), and k_heap (zephyr_heap.c, zephyr_heap.h); here, the linker
+#   headers); here, the linker
 #   script's section of the registered implementations
 #   (ld/section_extra_post_text.incl, pico_add_linker_script_override_path());
 #   the NINA's sockets register themselves (freertos/drivers/nina/nina.cmake);
@@ -60,7 +61,7 @@
 #   zephyr_compat_os.h, ...),
 #   common/compat/net_offload/include (the network part's Zephyr headers,
 #   before common/compat: its <zephyr/net/net_ip.h> takes the place of
-#   common/compat's, and zephyr_heap.h), freertos/drivers/shell (the console
+#   common/compat's), freertos/drivers/shell (the console
 #   transport), common/compat/shell_engine, freertos/drivers/include (app_log_os.h,
 #   log_ram_os_impl.h), common/compat/libc_net/include
 #   (headers newlib does not have, so none hides one of newlib's),
@@ -101,6 +102,11 @@ function(freertos_zephyr_compat target)
     ${FREERTOS_COMMON_DIR}/compat/zephyr_init.c
   )
 
+  # k_heap, linked after the mutexes, where it was.
+  set(common_heap_sources
+    ${FREERTOS_COMMON_DIR}/compat/zephyr_heap.c
+  )
+
   # The RAM log and "dmesg", linked where the FreeRTOS build's own file was.
   set(common_log_sources
     ${FREERTOS_COMMON_DIR}/compat/log/log_ram.c
@@ -139,7 +145,7 @@ function(freertos_zephyr_compat target)
     ${FREERTOS_KERNEL_GENERIC_DIR}/zephyr_kernel.c
     ${common_kernel_sources}
     ${FREERTOS_KERNEL_GENERIC_DIR}/zephyr_mutex.c
-    ${FREERTOS_NET_OFFLOAD_DIR}/zephyr_heap.c
+    ${common_heap_sources}
     ${FREERTOS_COMPAT_DIR}/zephyr_sys_clock.c
     ${zephyr_socket_copies}
     ${common_log_sources}
@@ -202,8 +208,8 @@ function(freertos_zephyr_compat target)
 
   # Source file properties are scoped to the directory that calls this
   # function, the application's, which is the target's.
-  set_source_files_properties(${common_kernel_sources} ${common_log_sources} ${common_sources}
-    ${zephyr_copies} PROPERTIES
+  set_source_files_properties(${common_kernel_sources} ${common_heap_sources}
+    ${common_log_sources} ${common_sources} ${zephyr_copies} PROPERTIES
     COMPILE_OPTIONS "-include;${FREERTOS_COMPAT_DIR}/common_prelude.h"
   )
 endfunction()

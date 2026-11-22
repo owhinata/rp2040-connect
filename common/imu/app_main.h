@@ -22,6 +22,15 @@
  * CONFIG_NET_ZPERF): a build defines the symbol of each module it builds
  * (Zephyr: its Kconfig; FreeRTOS: the module's .cmake file).  A module
  * whose symbol is not defined is not started.
+ *
+ * CONFIG_APP_IMU needs the API of the MQTT transport (imu_raw_mqtt.h) and
+ * of the time synchronization (time_sync.h: its monotonic clock stamps the
+ * batches, and app_main() calls time_sync_init() under CONFIG_APP_IMU).  A
+ * build with the IMU service but without CONFIG_IMU_RAW_MQTT or
+ * CONFIG_TIME_SYNC compiles the module's null implementation in its place:
+ * common/imu/imu_raw_mqtt_null.c (every batch dropped, as while
+ * disconnected), common/imu/time_sync_null.c (the clock only, no server
+ * time).
  */
 
 #ifndef APP_MAIN_H_

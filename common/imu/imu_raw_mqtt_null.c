@@ -1,7 +1,10 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-/* STUB for a build without the MQTT transport (CONFIG_IMU_RAW_MQTT
- * off; with it, common/imu/imu_raw_mqtt.c, shared with the Zephyr build,
- * is built instead).
+/* The MQTT transport's null implementation, for a build without
+ * CONFIG_IMU_RAW_MQTT (with it, imu_raw_mqtt.c is built instead).  The IMU
+ * service (CONFIG_APP_IMU) hands every batch to imu_raw_mqtt_submit() and
+ * starts, stops and reads the transport through imu_raw_mqtt.h in every
+ * build.  OS-independent (the layer's kernel API and the POSIX
+ * <arpa/inet.h>); the NuttX build selects it (nuttx/apps/imu/Makefile).
  *
  * The API of imu_raw_mqtt.h behaving as the Zephyr build's transport does
  * while the board has no network: the connection never comes up, so every
@@ -27,7 +30,6 @@
  * - imu_raw_mqtt_get_stats(): the same fields. The address is 0.0.0.0 as
  *   after a failed lookup of the default gateway ("server: none:<port>").
  */
-#include <nuttx/config.h> /* NuttX's headers before the compatibility layer's */
 #include <arpa/inet.h>
 #include "imu_raw_mqtt.h"
 #include "imu_raw_queue.h"

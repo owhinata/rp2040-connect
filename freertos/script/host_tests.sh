@@ -33,8 +33,8 @@
 #   host/.venv: freertos/tests/mqtt), and the time synchronization
 #   (common/imu/time_sync.c on the build's realtime clock, TIMER read and
 #   thread, with fake sockets and a fake NTP server: freertos/tests/time_sync), and the
-#   layer's socket part (the reduced copies of Zephyr's socket layer and descriptor table,
-#   k_heap) on fake implementations (freertos/tests/sockets), and the sockets: the zsock_*()
+#   layer's socket part (the reduced copies of Zephyr's socket layer and descriptor table)
+#   and k_heap on fake implementations (freertos/tests/sockets), and the sockets: the zsock_*()
 #   calls on the NINA's Zephyr binding (common/drivers/nina/port/zephyr/nina_socket.c) and the
 #   shared NINA core, a fake module and a fake clock (freertos/tests/socket), and Wi-Fi: the
 #   interface, the net_mgmt events, the stored credentials (settings "wifi_cred/<n>"), the
@@ -479,13 +479,13 @@ printf 'ok  time_sync (realtime clock, TIMER read, thread, NTP exchanges, ntp st
 # The layer's socket part (freertos/tests/sockets): the reduced copies of Zephyr's socket layer
 # and descriptor table (common/compat/net_offload: subsys/net/lib/sockets, lib/os/zvfs, with
 # -Wno-sign-compare as drivers/compat/compat.cmake builds them) and k_heap
-# (common/compat/net_offload/zephyr_heap.c), on fake socket implementations registered with
+# (common/compat/zephyr_heap.c, with the prelude, as on the board), on fake socket implementations registered with
 # NET_SOCKET_REGISTER() and NET_SOCKET_OFFLOAD_REGISTER() and the host linker's section of them
 # (tests/sockets/net_socket_register.ld), on the same kernel and layer objects: the descriptor
 # table, the list of implementations, the dispatch of every call, fcntl, poll, the resolver.
 socksrcs=($noff/subsys/net/lib/sockets/sockets.c $noff/subsys/net/lib/sockets/getaddrinfo.c
           $noff/subsys/net/lib/sockets/socket_offload.c $noff/lib/os/zvfs/zvfs_fdtable.c
-          $noff/lib/os/zvfs/zvfs_poll.c $noff/zephyr_heap.c)
+          $noff/lib/os/zvfs/zvfs_poll.c ../common/compat/zephyr_heap.c)
 sockld=(-Wl,-T,tests/sockets/net_socket_register.ld)
 layerobjs=()
 for src in tests/sockets/main.c "${socksrcs[@]}"; do
@@ -493,6 +493,7 @@ for src in tests/sockets/main.c "${socksrcs[@]}"; do
     extra=()
     case $src in
         */subsys/*|*/lib/os/*) extra=(-Wno-sign-compare) ;;
+        ../common/compat/zephyr_heap.c) extra=(-include drivers/compat/common_prelude.h) ;;
     esac
     cc "${flags[@]}" "${strict[@]}" -I$lnet/include "${inc[@]}" "${extra[@]}" -c "$src" -o "$obj"
     layerobjs+=("$obj")

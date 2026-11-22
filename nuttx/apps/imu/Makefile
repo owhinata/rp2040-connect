@@ -23,7 +23,9 @@
 #
 # The sources shared with the Zephyr build (imu_stream.c, imu_raw_*,
 # imu_tick_clock.c, time_sync.c, time_offset.c, imu_cal.c, imu_cal_codec.c,
-# imu_raw_mqtt.c, kv_store.c and their headers), and the port's MQTT
+# imu_raw_mqtt.c, kv_store.c and their headers), the null implementations
+# of the transport and of the time synchronization (imu_raw_mqtt_null.c,
+# time_sync_null.c, for the builds without them), and the port's MQTT
 # client for the builds on the compatibility layer (mqtt_min.c,
 # mqtt_min.h, and its socket layer on the layer's zsock_*() calls,
 # mqtt_min_sock.c, shared with the FreeRTOS build), are in common/imu; the others named above in common/compat.  They
@@ -91,7 +93,9 @@ CSRCS    += imu_cal.c imu_cal_codec.c
 
 # The MQTT transport (IMU_RAW_MQTT: imu_raw_mqtt.c with its JSON
 # messages in imu_raw_status.c, on the minimal MQTT client mqtt_min.c and
-# its socket layer mqtt_min_sock.c), or the stub without it.
+# its socket layer mqtt_min_sock.c), or without it its null implementation
+# (common/imu/imu_raw_mqtt_null.c: every batch dropped, as while
+# disconnected).
 
 ifeq ($(CONFIG_IMU_RAW_MQTT),y)
 CSRCS    += imu_raw_mqtt.c imu_raw_status.c mqtt_min.c mqtt_min_sock.c
@@ -101,7 +105,8 @@ endif
 
 # The time synchronization (TIME_SYNC: time_sync.c, its estimate in
 # time_offset.c, and the command set of the "ntp" command, nuttx/apps/ntp),
-# or the stub without it.
+# or without it its null implementation (common/imu/time_sync_null.c: the
+# monotonic clock only, which the service needs in every build).
 
 ifeq ($(CONFIG_TIME_SYNC),y)
 CSRCS    += time_sync.c time_offset.c

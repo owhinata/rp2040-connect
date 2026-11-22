@@ -976,7 +976,7 @@ conversion:
 `common/imu/imu_raw_mqtt.c` and `imu_raw_mqtt.h` are the Zephyr build's own files (the
 `<zephyr/net/net_ip.h>` that `imu_raw_mqtt.h` includes is the compatibility layer's, which includes
 `<netinet/in.h>`). It is built with `CONFIG_IMU_RAW_MQTT` (on by
-default); without it the stub `imu_raw_mqtt_null.c` stands in (it drops and counts every batch, as
+default); without it the null implementation `common/imu/imu_raw_mqtt_null.c` stands in (it drops and counts every batch, as
 the Zephyr build does without a network). The topics (`imu/<device>/raw`, `status`, `info`)
 and QoS (0 for raw and status, 1 with retain for info), the client ID (`imu-<device>`), the
 keep-alive (60 s), no clean session, the order of sending (on every connection the info, the
@@ -1031,8 +1031,8 @@ reply is received) are read, the estimate (`time_offset.c`, an unchanged copy: t
 shortest round trip of the last 8 is used), the estimate's expiry after 60 s without a reply, the
 clock that follows it at up to ±500 ppm without going back, moving the realtime clock only
 forward, the query interval, wait and retry, the counters and the output of `ntp status` are the
-Zephyr build's. It is built with `CONFIG_TIME_SYNC` (on by default); without it the stub
-`time_sync_null.c` stands in (only `time_sync_mono_us()` is real; no synchronization).
+Zephyr build's. It is built with `CONFIG_TIME_SYNC` (on by default); without it the null implementation
+`common/imu/time_sync_null.c` stands in (only `time_sync_mono_us()` is real; no synchronization).
 
 ```text
 nsh$ ntp
@@ -1307,7 +1307,7 @@ with the layer's NuttX implementation (`nuttx/drivers/compat/`; the Zephyr build
 
 | Location | Contents |
 |---|---|
-| `common/imu/` | `imu_stream.c`, `imu_raw_{batch,packet,queue,status,time}`, `imu_tick_clock`, `time_sync.[ch]`, `time_offset`, `imu_cal_codec.c`, `imu_cal.[ch]`, `imu_raw_mqtt.[ch]`, `wifi_profile.[ch]`, `kv_store.[ch]`, `mqtt_min.[ch]` and `mqtt_min_sock.c` (the MQTT client of the builds on the compatibility layer and its socket layer; the Zephyr build does not use them) |
+| `common/imu/` | `imu_stream.c`, `imu_raw_{batch,packet,queue,status,time}`, `imu_tick_clock`, `time_sync.[ch]`, `time_offset`, `imu_cal_codec.c`, `imu_cal.[ch]`, `imu_raw_mqtt.[ch]`, `wifi_profile.[ch]`, `kv_store.[ch]`, `mqtt_min.[ch]` and `mqtt_min_sock.c` (the MQTT client of the builds on the compatibility layer and its socket layer; the Zephyr build does not use them), `imu_raw_mqtt_null.c` and `time_sync_null.c` (the null implementations for a build without `CONFIG_IMU_RAW_MQTT` or `CONFIG_TIME_SYNC`) |
 | `common/drivers/lsm6dso/` | The driver: at the top its core `lsm6dso.c`, `lsm6dso_stream.c`, `lsm6dso_cal.c`, `lsm6dso_fifo.c` (with no OS; in `internal/` `lsm6dso_core.h`, `lsm6dso_stream.h` and `lsm6dso_fifo_packet.h`, in `port/` the boundaries `lsm6dso_os.h` and `lsm6dso_stream_req.h`), in `include/` the headers for its users `lsm6dso_cal.h`, `lsm6dso_fifo.h` and the extended API `lsm6dso.h` (`<zephyr/drivers/sensor/lsm6dso.h>` through `common/compat`), in `port/zephyr/` the Zephyr binding (`lsm6dso_sensor.[ch]`, `lsm6dso_decoder.[ch]`, `lsm6dso_rtio.c`, `lsm6dso_rtio_stream.c`, `lsm6dso_os_impl.h`, `lsm6dso_os.c`, `lsm6dso_stream_req_impl.h`; the Zephyr build's module), in `port/nuttx/` and `port/freertos/` each build's `lsm6dso_instance.h` |
 | `common/drivers/nina/` | The NINA core: at the top (headers in `include/`) `nina_wifi.[ch]`, `nina_sock.[ch]`, `nina_dns.[ch]`, the esptool passthrough `nina_passthrough.[ch]`; in `internal/` `nina_proto.[ch]` and `nina_wait.[ch]`; in `port/` the headers of its boundaries, `nina_os.h` and `nina_bus.h` (the passthrough's `nina_passthrough_bus.h` and `nina_passthrough_os.h`) (the three builds use them; they do not use Zephyr's API and the NuttX build compiles them without the prelude; the boundary is described under "NINA-W102" in `nuttx/drivers/README.md`); the core's bindings in `port/zephyr/` (the Zephyr and FreeRTOS builds) and `port/nuttx/` (this build: `wlan0`, the applications' Wi-Fi management, `nina_os.c`, usrsock, the passthrough's host side `nina_passthrough_os.c`, the RP2040's SPI and lines `nina_bus_rp2040.c`, the passthrough's module side `nina_passthrough_bus_rp2040.c`) |
 | `common/drivers/sensor_shell/` | `sensor_shell.c` (the file of the Zephyr build's tree with its patch 0006) |

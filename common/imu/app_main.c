@@ -42,7 +42,7 @@ void app_main(void)
 	 * from a connection on, time_sync_tid asks the NTP server (the
 	 * default gateway, port 123) every 2 s; a disconnection stops it.
 	 * Before wifi_profile_init(), so that the automatic connection's
-	 * event is seen.  Without CONFIG_TIME_SYNC, the NuttX build's stub.
+	 * event is seen.  Without CONFIG_TIME_SYNC, time_sync_null.c.
 	 */
 	time_sync_init();
 #endif

@@ -2,12 +2,56 @@
 
 English | [日本語](os-boundary-ja.md)
 
-An index of what a build supplies to the shared sources (`common/`), as the code has it today. Each
-row names the header that declares an item and the file of each build that implements it. "N" is the
-NuttX build, "F" the Pico SDK + FreeRTOS build. The Zephyr build compiles `common/` against Zephyr
-itself and does not use `common/compat`; it appears only where it has a file of its own.
+The firmware of this repository is built, with the same functions, on three OSes: Zephyr (`zephyr/`),
+NuttX (`nuttx/`) and Pico SDK + FreeRTOS (`freertos/`); each is called a build below (the Zephyr,
+NuttX and FreeRTOS builds). Most of the sources are shared by the three and are in `common/`.
+
+This document is an index of what each build supplies so that the shared sources work (what a fourth
+OS writes), as the code has it today. Each row names the header that declares an item and the file of
+each build that implements it. "N" is the NuttX build, "F" the FreeRTOS build.
+
+Many of the shared sources are written on Zephyr's API (`<zephyr/kernel.h>` and so on). The NuttX and
+FreeRTOS builds compile them on a layer that provides that API under Zephyr's names (the
+"compatibility layer": its OS-independent part in `common/compat`, its OS parts in each build's
+directories). The Zephyr build compiles `common/` against Zephyr itself and does not use the layer;
+it appears only where it has a file of its own.
 
 Paths below `nuttx/boards/arduino-nano-rp2040-connect/` are shortened to `N-board/`.
+
+## What a new OS writes
+
+In the order a porter works. The model is N for an OS whose own objects the layer is written on, F
+for an OS that offers only basic primitives.
+
+1. **The layer's kernel part** (section 2), one of:
+   - directly: `zephyr_os.h`, `zephyr_os_spinlock.h`, `zephyr_os_atomic.h` and the 18 functions of 2.2
+     (model: `nuttx/drivers/compat/`);
+   - on primitives (with `common/compat/kernel_generic`): the 9 types and 26 functions of
+     `zephyr_kernel_os_impl.h` (2.5), `zephyr_os_atomic.h`, a tick hook that calls `zephyr_compat_tick()`
+     once per tick (model: `freertos/drivers/compat/zephyr_kernel_os_impl.h`; the smallest form that
+     compiles: `common/tests/kernel_generic_host/`).
+
+   Either way also `priorities_os.h` (section 3) and the per-OS `<zephyr/sys/clock.h>` and
+   `<zephyr/sys/__assert.h>` (4.1). The acceptance test is the layer's self-test
+   (`common/compat/selftest`, the two rows of section 3).
+2. **Console transport and shell** (section 3, 4.4): an OS without a shell of its own gives the shared
+   shell engine (`common/compat/shell_engine`) `shell_serial_os_impl.h` and the stdio redirection
+   (models: `freertos/drivers/shell/`, `freertos/drivers/libc/`); an OS with one writes
+   `zshell_os_impl.h` and `zephyr_os_shell.h` (models: `nuttx/apps/subcmd/`,
+   `nuttx/drivers/compat/zephyr_os_shell.h`).
+3. **Log** (section 3): `app_log_os.h`, `log_ram_os_impl.h` (model: `freertos/drivers/include/`).
+4. **KV flash** (section 3): on the RP2040 the 4 functions of `rp2040_flash_kv_os.h` and the linker
+   script's `__kv_start`, `__kv_end` (model: `freertos/drivers/kv/rp2040_flash_kv_os.c`).
+5. **Board parts** (sections 3, 6): GPIO bank 0 (`gpio_os.h`), CPU load (`cpu_load_get()`), hwinfo
+   (4.2), tick, interrupts, idle loop, fatal errors.
+6. **Start** (4.6): the steps before the application's start (RAM log, layer, I2C, LSM6DSOX, network,
+   KV flash bounds, shell) and the calls of the three functions of `app_main.h`; the modules'
+   options (4.5).
+7. **Per driver** (section 5): the N and F columns are the files a build writes itself. For the
+   network, either bind to the OS's network stack (N) or use the layer's network part
+   (`common/compat/net_offload`, F).
+
+A first target can be the sensor without Wi-Fi (section 7).
 
 ## 1. What a build consists of
 
@@ -17,8 +61,8 @@ Paths below `nuttx/boards/arduino-nano-rp2040-connect/` are shortened to `N-boar
 | Drivers | `common/drivers/<driver>/` | OS-independent core; `port/` boundary headers; `port/<os>/` bindings (section 5) |
 | Shell commands | `common/shell` | `zshell.c` (Zephyr shell command handling), `subcmd.c`, `nina_shell.c`, `i2c_dma_shell.c`; F only: `dmesg_shell.c` (N has `nuttx/apps/dmesg`), `kernel_shell.c` (`id`, `uptime`, `date`, `sleep`, `devmem`, `fault`, `reboot`, `bootsel`; on `kernel_shell_os.h`, section 3), `ifconfig_shell.c` (on the network part's interface) |
 | Log | `common/compat/log` | RAM log and the functions of the `LOG_*` macros (`log_ram.c`, on its OS part `log_ram_os.h`, section 3), its ring (`log_ring.c`), `LOG_*` macros (`app_log.h`), fault record text and its printing, the HardFault's exception frame (Cortex-M0+) and the choice of the record at the next start (`fault_record.c`) |
-| Compatibility layer, shared part | `common/compat` | Zephyr headers (`common/compat/zephyr/`), work items, the work queues' threads and the layer's start (`zephyr_init.c`), RTIO, gpio0 device, net_mgmt, Wi-Fi requests, KV flash device, copies of Zephyr's NVS, settings, getopt, Wi-Fi credentials, zperf |
-| Compatibility layer, network part for an OS without a network stack | `common/compat/net_offload` | Zephyr's socket layer (reduced copies of `subsys/net/lib/sockets`, `lib/os/zvfs`), the one network interface (`zephyr_net_if.c`) and its start (`zephyr_net_init.c`), `k_heap` (`zephyr_heap.c`), their headers in its own include root `include/` (`zephyr/net/net_if.h`, `net_ip.h`, `socket.h`, `socket_offload.h`, `zephyr/sys/fdtable.h`, `zephyr_net_init.h`, `zephyr_heap.h`); used by F only |
+| Compatibility layer, shared part | `common/compat` | Zephyr headers (`common/compat/zephyr/`), `k_heap` (`zephyr_heap.h`, `zephyr_heap.c`; read by `<zephyr/kernel.h>` with either kernel part, 4.2), work items, the work queues' threads and the layer's start (`zephyr_init.c`), RTIO, gpio0 device, net_mgmt, Wi-Fi requests, KV flash device, copies of Zephyr's NVS, settings, getopt, Wi-Fi credentials, zperf |
+| Compatibility layer, network part for an OS without a network stack | `common/compat/net_offload` | Zephyr's socket layer (reduced copies of `subsys/net/lib/sockets`, `lib/os/zvfs`), the one network interface (`zephyr_net_if.c`) and its start (`zephyr_net_init.c`), their headers in its own include root `include/` (`zephyr/net/net_if.h`, `net_ip.h`, `socket.h`, `socket_offload.h`, `zephyr/sys/fdtable.h`, `zephyr_net_init.h`); used by F only |
 | POSIX network headers for a C library without them | `common/compat/libc_net` | `include/` (`arpa/inet.h`, `netdb.h`, `netinet/in.h`, `netinet/tcp.h`, `poll.h`, `sys/socket.h`, `sys/uio.h`), `inet_pton()`/`inet_ntop()` (`inet.c`); used by F only |
 | Kernel part of the compatibility layer for an OS that offers only basic primitives | `common/compat/kernel_generic` | `k_sem`, `k_poll()`, the timeout list, the sleeps and the start of a thread (`zephyr_kernel.c`), `k_mutex` (`zephyr_mutex.c`), the OS part of `<zephyr/kernel.h>` and `<zephyr/spinlock.h>` (`zephyr_os.h`, `zephyr_os_spinlock.h`), the tick's entry (`zephyr_compat_tick()`, `zephyr_compat_os.h`), the self-test's items on the primitives (`zephyr_selftest_os.h`), all on the primitives declared in `zephyr_kernel_os.h` (section 2); used by F only |
 | Self-test of the compatibility layer (acceptance test of an OS part) | `common/compat/selftest` | `zephyr_selftest.c` (22 tests), its boundary `zephyr_selftest.h` (section 3); used only by F's `-DSELFTEST=ON` build and F's host test |
@@ -39,6 +83,23 @@ Paths below `nuttx/boards/arduino-nano-rp2040-connect/` are shortened to `N-boar
 | F: C library additions | `freertos/drivers/libc` | stdout/stderr wrappers |
 | F: other OS parts | `freertos/drivers/{include,kv,telnet,wifi,sensor_shell,imu,zperf}` | `app_log_os.h`, `log_ram_os_impl.h`; KV flash operations; Wi-Fi OS header; sensor shell OS part; per-source preludes; build files (Telnet: `telnet.cmake` only) |
 | F: drivers | `freertos/drivers/<driver>/*.cmake` | The sources and options of each driver |
+
+### 1.1 What the selectable parts need
+
+The kernel part (written directly, as N, or `kernel_generic`), the network part (the OS's network
+stack or `net_offload`), the POSIX network headers (the C library's or `libc_net`) and the shell (the
+OS's or `shell_engine`) are chosen independently. What each part reads (from its `#include` lines):
+
+| Part | Needs | Does not need |
+|---|---|---|
+| `common/compat/kernel_generic` | the headers of `common/compat`; the OS's primitives (`zephyr_kernel_os_impl.h`; `z_os_thread_t` is a pointer type, NULL for no thread); the OS's `zephyr_os_atomic.h`, `priorities_os.h`, `<zephyr/sys/clock.h>`; for `zephyr_selftest_os.h` only, the OS's `zephyr_selftest_os_impl.h` | `net_offload`, `libc_net` (`kernel_generic_independent` in `common/tests/run.sh`) |
+| `common/compat/net_offload` | a kernel part (either); POSIX socket headers (the C library's or `libc_net`); `net_mgmt.h`, `wifi_mgmt.h` of `common/compat`; the OS's `<zephyr/sys/__assert.h>` | `kernel_generic` (`net_offload_independent`, on a fake kernel of N's form) |
+| `common/compat/libc_net` | the C library's `<sys/types.h>` | everything else |
+| `common/compat/shell_engine` | the kernel part's 4 optional items (2.1); `common/shell/subcmd.h`; the getopt copies (`common/compat/lib/utils/getopt`); the log (`app_log.h`); the console transport (section 3); only the Telnet shell (`shell_telnet.c`) `zsock_*()` (the OS's network stack or `net_offload`) | `kernel_generic` (either kernel part) |
+| `common/compat/selftest` | a kernel part; `zephyr_selftest_os.h` (with the generic kernel part `kernel_generic`'s and the OS's `zephyr_selftest_os_impl.h`; an OS with a direct kernel part writes its own); the board part (section 3) | network, shell |
+| `common/compat/log` | the OS's `app_log_os.h`, `log_ram_os_impl.h` | the rest of the layer |
+| `common/chip/rp2040` | only `rp2040_flash_kv.c`: `flash_kv.h`, `flash_kv_os.h` of `common/compat`, the log (`app_log.h`); the headers of `include/` read nothing | — |
+| `common/shell` | `kernel_shell.c`: the log (`fault_record.h`), `<zephyr/sys/clock.h>`, hwinfo; `dmesg_shell.c`: the log; `ifconfig_shell.c`: `<zephyr/net/net_if.h>` (the network part); `nina_shell.c`: the NINA's `include/`; `zshell.c`: the shell backend (section 3) | — |
 
 ## 2. Kernel part of the compatibility layer
 
@@ -77,7 +138,7 @@ one of two ways:
 | `k_is_in_isr()`, `k_is_pre_kernel()`, `k_thread_custom_data_get()`, `k_thread_custom_data_set()` (optional: for the shell engine) | in an ISR; before the kernel runs threads; the calling thread's one pointer (NULL until set and before the kernel runs threads) | — (not built) | `z_os_in_isr()`, `z_os_pre_kernel()`, `z_os_thread_local_get()`, `_set()` (F: TLS pointer 0) |
 | `Z_SEM_TAKE_FOREVER(sem)` (optional) | `k_sem_take(sem, K_FOREVER)` the OS's shorter way: the work queue's wait | `nxsem_wait_uninterruptible()` (what `k_sem_take()` does, without the call) | not defined: `k_sem_take()` (`kernel.h`'s default) |
 
-The generic `zephyr_os.h` also includes `common/compat/net_offload/include/zephyr_heap.h`: `struct k_heap`, `K_HEAP_DEFINE()`, `k_heap_alloc()`, `k_heap_free()` (section 4).
+`<zephyr/kernel.h>` includes `common/compat/zephyr_heap.h` at its end: `struct k_heap`, `K_HEAP_DEFINE()`, `k_heap_alloc()`, `k_heap_free()`; OS-independent (on `k_spin_lock()`), the same with either kernel part (4.2).
 
 ### 2.2 Functions the OS implements (18 functions)
 
@@ -221,7 +282,7 @@ lost ticks, `freertos/app/usb-console/src/tick.c`), which are not primitives of 
 | Self-test of the layer, board part | same | `zephyr_selftest_port_alarm()`, `_quiet()`, `_realtime()`, `_mask_irqs()` | same | — | board `freertos/drivers/compat/rp2040/zephyr_selftest_port.c`, host `freertos/tests/compat/main.c` |
 | Tick of the generic kernel part | `common/compat/kernel_generic/zephyr_compat_os.h` | `zephyr_compat_tick()`: once per tick, from the tick interrupt | F tick hook | — | `common/compat/kernel_generic/zephyr_kernel.c` |
 | Start of the network part for an OS without a network stack | `common/compat/net_offload/include/zephyr_net_init.h` | `zephyr_net_initialize()` | F `main_main()` | — (`nina_net_initialize()`) | shared `common/compat/net_offload/zephyr_net_init.c` |
-| Start of the application | `common/imu/app_main.h` | `app_init_post_kernel()`, `app_threads_start()`, `app_main()`, called in this order (section 4.6); the modules' options (`CONFIG_KV_STORE`, `CONFIG_APP_IMU`, `CONFIG_IMU_RAW_MQTT`, `CONFIG_TIME_SYNC`, `CONFIG_WIFI_CREDENTIALS`, `CONFIG_WIFI_PROFILE`, `CONFIG_APP_SENSOR`, `CONFIG_WIFI_NINA_LOCAL`, `CONFIG_NET_ZPERF`), each defined by a build that builds the module | the start-up file of each build (Zephyr: `app_main()` only) | shared `common/imu/app_main.c`, `app_init.c`; the options from Kconfig; called by `nuttx/apps/init/rp2040_init.c` | shared: same; the options from the modules' `.cmake` files; called by `main_main()` |
+| Start of the application | `common/imu/app_main.h` | `app_init_post_kernel()`, `app_threads_start()`, `app_main()`, called in this order (section 4.6); the modules' options (`CONFIG_KV_STORE`, `CONFIG_APP_IMU`, `CONFIG_IMU_RAW_MQTT`, `CONFIG_TIME_SYNC`, `CONFIG_WIFI_CREDENTIALS`, `CONFIG_WIFI_PROFILE`, `CONFIG_APP_SENSOR`, `CONFIG_WIFI_NINA_LOCAL`, `CONFIG_NET_ZPERF`), each defined by a build that builds the module; `CONFIG_APP_IMU` always uses the API of the MQTT transport and of the time synchronization, so without `CONFIG_IMU_RAW_MQTT` or `CONFIG_TIME_SYNC` a build compiles `common/imu/imu_raw_mqtt_null.c` or `time_sync_null.c` in their place (section 7) | the start-up file of each build (Zephyr: `app_main()` only) | shared `common/imu/app_main.c`, `app_init.c`; the options from Kconfig; called by `nuttx/apps/init/rp2040_init.c` | shared: same; the options from the modules' `.cmake` files; called by `main_main()` |
 
 The Zephyr build has its own `zephyr/app/usb-console/src/kv_store_os.h` and `wifi_profile_os.h`.
 
@@ -250,7 +311,7 @@ headers are in `common/compat/net_offload/include`, which F puts after its OS di
 |---|---|---|---|
 | `rp2040_timer_us()`: µs since boot, TIMER, any context | `common/chip/rp2040/include/rp2040_timer_us.h` (shared; also the Zephyr build's `common/imu/time_sync.c`) | read by `nuttx/drivers/compat/zephyr_os.h`, `nuttx/drivers/include/log_ram_os_impl.h` and the board | read by `freertos/app/usb-console/src/os_clock.h` |
 | `rp2040_watchdog_reboot()`: restart through the watchdog, scratch 0..3 kept | `common/chip/rp2040/include/rp2040_watchdog_reboot.h` (shared; also the Zephyr build's `common/drivers/nina/port/zephyr/nina_passthrough_bus_rp2040.c`) | `N-board/src/rp2040_restart.c` (fallback of `rp2040_reset_usb_boot()`), `common/drivers/nina/port/nuttx/nina_passthrough_bus_rp2040.c` | not used: the Pico SDK's `watchdog_reboot()` |
-| `k_heap` | `common/compat/net_offload/include/zephyr_heap.h`, included by F `zephyr_os.h` | not built | `common/compat/net_offload/zephyr_heap.c`; used by `common/drivers/nina/port/zephyr/nina_socket.c` |
+| `k_heap` | `common/compat/zephyr_heap.h`, included by `<zephyr/kernel.h>` with either kernel part | not built (no user) | `common/compat/zephyr_heap.c`; used by `common/drivers/nina/port/zephyr/nina_socket.c` |
 | `zephyr_compat_tick()` | `common/compat/kernel_generic/zephyr_compat_os.h` (generic kernel part) | — (wdog) | called by `vApplicationTickHook()`, `freertos/app/usb-console/src/tick.c` |
 | `zephyr_net_initialize()` | `common/compat/net_offload/include/zephyr_net_init.h` | — (`nina_net_initialize()` in `rp2040_bringup.c`, `common/drivers/nina/port/nuttx/nina_net.h`) | `common/compat/net_offload/zephyr_net_init.c` |
 | `hwinfo_get_device_id()` | `common/compat/zephyr/drivers/hwinfo.h` | `nuttx/drivers/compat/zephyr_hwinfo.c` | `freertos/drivers/compat/rp2040/zephyr_hwinfo.c` |
@@ -265,7 +326,7 @@ The devices listed for the shell are in `common/compat/zephyr_device.c` (hand-wr
 | `gpio0` | `common/compat/zephyr_gpio.c` | same |
 | `i2c0` | `N-board/src/rp2040_lsm6dso.c`, bound to the NuttX I2C master (`zephyr_i2c.c`) | `common/drivers/i2c_dw/port/freertos/i2c_dw_instance.h` |
 | `i2c1` | no Zephyr device (`struct i2c_master_s` only) | `common/drivers/i2c_dw/port/freertos/i2c_dw_instance.h` |
-| `lsm6dsox` | the driver's port, `common/drivers/lsm6dso/port/` | same |
+| `lsm6dsox` | `common/drivers/lsm6dso/port/nuttx/lsm6dso_instance.h` (read last by `port/zephyr/lsm6dso_sensor.c`) | `common/drivers/lsm6dso/port/freertos/lsm6dso_instance.h` (same) |
 | flash device | `common/compat/zephyr_flash_kv.c` (`z_flash_kv_device`) | same |
 
 ### 4.4 Shell commands: registration, getopt, stdio
@@ -347,9 +408,16 @@ is the steps before the application's start (the table below) and the calls of 1
 |---|---|---|---|---|
 | `common/drivers/i2c_dw` | `i2c_dw_os.h`: 4 types, 5 macros, 10 inline functions, `i2c_dw_os_uptime_ms()`; read at the end: `i2c_dw_instance.h` (`i2c_dw_os_prepare()`, `i2c_dw_os_irq_enable()`, the devices). `i2c_dw_dma_os.h`: 10 functions, 1 callback type | `port/nuttx/i2c_dw_os_impl.h`, `i2c_dw_instance.h` (`struct i2c_master_s`), `i2c_dw_dma_os_rp2040.c`, `i2c_dw_controllers_rp2040.h` | `port/freertos/i2c_dw_os_impl.h`, `i2c_dw_instance.h` (Zephyr devices), `i2c_dw_dma_os_rp2040.c`, `i2c_dw_controllers_rp2040.h` | upstream driver + patch, no `port/zephyr` |
 | `common/drivers/nina` | `nina_bus.h` (7 functions), `nina_os.h` (17 functions, 3 more with `NINA_OS_DNS_OFFLOAD`), `nina_passthrough_bus.h` (17), `nina_passthrough_os.h` (5, a struct, log macros); the binding also implements `nina_passthrough_run()` | `port/nuttx/nina_bus_rp2040.c`, `nina_os.c`, `nina_passthrough_bus_rp2040.c`, `nina_passthrough_os.c`; network: `nina_netdev.c`, `nina_usrsock.c`, `nina_poller.c`, `nina_wifi_mgmt.c` | `port/freertos/nina_bus_rp2040.c`, `nina_os.c`, `nina_passthrough_bus_rp2040.c`, `nina_passthrough_os.c`, `nina_board_rp2040.h`; network: `port/zephyr/nina_net.c`, `nina_socket.c` on the layer | `port/zephyr/` |
-| `common/drivers/lsm6dso` | see `common/drivers/lsm6dso/port/` | | | |
+| `common/drivers/lsm6dso` | `lsm6dso_os.h`: 5 types, log macros, 20 functions (the INT1 line's enable and disable ordinary functions, the rest static inline); `lsm6dso_stream_req.h` (the FIFO stream's user): 2 types, 6 inline functions. Both implemented on Zephyr's API in `port/zephyr/` (`lsm6dso_os_impl.h`, `lsm6dso_os.c`; RTIO's `lsm6dso_stream_req_impl.h`), the same for all three builds | `port/nuttx/lsm6dso_instance.h` (one device, `board.h`'s values); the rest is `port/zephyr/` on the layer (`lsm6dso_sensor.c`, `lsm6dso_rtio.c`, `lsm6dso_rtio_stream.c`, `lsm6dso_decoder.c`, `lsm6dso_os.c`); the sensor's start `N-board/src/rp2040_lsm6dso.c`; build `nuttx/drivers/lsm6dso/Make.defs`, `Kconfig` | `port/freertos/lsm6dso_instance.h`; the same `port/zephyr/`; the sensor's start `freertos/drivers/lsm6dso/lsm6dso_board.c`; build `freertos/drivers/lsm6dso/lsm6dso.cmake` | a Zephyr module `port/zephyr` (`zephyr/module.yml`, the app's `ZEPHYR_EXTRA_MODULES`), `CONFIG_LSM6DSO_LOCAL` (`port/zephyr/Kconfig`, in place of Zephyr's `CONFIG_LSM6DSO`), `port/zephyr/lsm6dso_instance.h` (the devicetree instances) |
 
 `i2c_dw_i2c0_initialize()` returns `struct i2c_master_s *` on N and `int` on F (`i2c_dw_controllers_rp2040.h`).
+
+The LSM6DSO's core (the `.c` files at the top of `common/drivers/lsm6dso`, `include/`, `internal/`, the
+boundary headers of `port/`) reads no OS definition (`lsm6dso_core_independent` in
+`common/tests/run.sh`). What a build writes itself is the device's `port/<os>/lsm6dso_instance.h`
+(chosen by the include path, `port/<os>` before `port/zephyr`), the sensor's start on the board and
+the build rules. ST's register driver `lsm6dso_reg.c` is fetched by each build's `setup.sh` (N
+`nuttx/stmemsc`, F `freertos/stmemsc`); its glue is the shared `common/drivers/stmemsc`.
 
 ## 6. Always per OS
 
@@ -367,3 +435,19 @@ is the steps before the application's start (the table below) and the calls of 1
 | The OS's own log in the RAM log | `syslog()`: the syslog channel, `nuttx/drivers/log/log_ram_syslog.c` | none (the FreeRTOS kernel and the Pico SDK have no log) |
 | Fatal errors | `CONFIG_BOARD_RESET_ON_ASSERT`, report in the RAM log | `freertos/app/usb-console/src/fault.c` (the entries: `panic()`, `isr_hardfault`, the FreeRTOS hooks, `_exit()`; the task's name, the record in `__uninitialized_ram`, the watchdog's scratch registers and the SDK's `watchdog_reboot()`) with `common/compat/log/fault_record.c` (the record, `fault_record_set_frame()`, `fault_record_take()`) |
 | Build system and configuration | Make, Kconfig, `defconfig`, `nuttx/patches` | CMake, `FreeRTOSConfig.h`, `freertos/drivers/*/*.cmake` |
+
+## 7. Example: the IMU alone
+
+The smallest composition that streams the sensor's data to the shell (`imu`, `sensor`) without Wi-Fi,
+MQTT or time synchronization, listed from what the NuttX build compiles without `CONFIG_NINA` (and
+without NuttX's `CONFIG_NET_USRSOCK`).
+
+| Item | Holds |
+|---|---|
+| Options | `CONFIG_KV_STORE`, `CONFIG_APP_IMU`, `CONFIG_LSM6DSO_STREAM` (N also `CONFIG_LSM6DSO_LOCAL`); optionally `CONFIG_APP_SENSOR` (the `sensor` command). Not defined: `CONFIG_IMU_RAW_MQTT`, `CONFIG_TIME_SYNC`, `CONFIG_WIFI_CREDENTIALS`, `CONFIG_WIFI_PROFILE`, `CONFIG_WIFI_NINA_LOCAL`, `CONFIG_NET_ZPERF` |
+| `common/imu` | `app_main.c`, `app_init.c`, `imu_stream.c`, `imu_raw_batch.c`, `imu_raw_packet.c`, `imu_raw_queue.c`, `imu_raw_time.c`, `imu_tick_clock.c`, `imu_cal.c`, `imu_cal_codec.c`, `kv_store.c`; in place of the transport and the time synchronization `imu_raw_mqtt_null.c` (every batch dropped and counted, as while disconnected) and `time_sync_null.c` (the monotonic clock only, no server time) |
+| `common/compat` | `zephyr_init.c`, `zephyr_work.c`, `zephyr_rtio.c`, `zephyr_rtio_workq.c`, `zephyr_mem_blocks.c`, `zephyr_device.c`, `zephyr_gpio.c`, `zephyr_sensor_clock.c`, `sensor_default_rtio.c`, `sensor_shell_stream.c` (`CONFIG_APP_SENSOR`), `zephyr_flash_kv.c`, `kv_store_wipe.c`, `lib/utils/hex.c`, the settings and NVS copies (`subsys/settings/src/settings.c`, `settings_store.c`, `settings_init.c`, `settings_nvs.c`, `subsys/kvss/nvs/nvs.c`, `subsys/crc/crc8_sw.c`); the log `log/log_ram.c`, `log_ring.c` |
+| Drivers | `common/drivers/i2c_dw/i2c_dw.c` with the DMA of `port/<os>/`; the 4 core files of `common/drivers/lsm6dso` and the 5 of `port/zephyr/` (section 5); `common/drivers/stmemsc/stmemsc_i2c.c`, `stmemsc_mdelay.c`; ST's `lsm6dso_reg.c`; `common/drivers/sensor_shell/sensor_shell.c` (`CONFIG_APP_SENSOR`); `common/chip/rp2040/rp2040_flash_kv.c` |
+| Shell | `common/shell/zshell.c`, `subcmd.c` (optionally `i2c_dma_shell.c`); an OS without a shell of its own: `common/compat/shell_engine` but Telnet |
+| The OS's | the kernel part (section 2), log, KV flash, GPIO bank 0 (INT1), CPU load, priorities, hwinfo (session IDs), I2C's `port/<os>/`, `lsm6dso_instance.h` and the sensor's start, console, start (4.6 without the network step) |
+| Not needed | `common/compat/net_offload`; `common/compat/libc_net` (when the C library has the `<arpa/inet.h>` that `imu_raw_mqtt_null.c` reads; F's newlib does not); `common/compat/zephyr_heap.c`; the NINA driver (its passthrough mode, `CONFIG_NINA_PASSTHROUGH`, is chosen separately); `common/imu/mqtt_min*.c`, `imu_raw_status.c`, `time_sync.c`, `time_offset.c`, `wifi_profile.c` |

@@ -128,6 +128,34 @@ run zephyr_work "${flags[@]}" "${zinc[@]}" tests/zephyr_work.c "${compat[@]}"
 run mqtt_min "${flags[@]}" -Wno-sign-compare "${zinc[@]}" -I"$imu" tests/mqtt_min.c \
     "$imu/mqtt_min.c" "${compat[@]}"
 
+# The layer's kernel part and its network part are chosen independently.  The generic kernel
+# part (compat/kernel_generic) compiles with the layer's headers (compat), an OS's primitives
+# (tests/kernel_generic_host: zephyr_kernel_os_impl.h, with the per-OS zephyr_os_atomic.h,
+# priorities_os.h, <zephyr/sys/clock.h> and <zephyr/sys/__assert.h>) and nothing of the
+# network part (compat/net_offload/include) or of the POSIX network headers
+# (compat/libc_net/include) on the include path: <zephyr/kernel.h> (k_heap included), its
+# sources, and the OS-independent sources on it.
+kgen_inc=(-D_DEFAULT_SOURCE -Itests/kernel_generic_host -Icompat/kernel_generic -Icompat)
+kgen_files=("<zephyr/kernel.h>" "<zephyr/spinlock.h>" '"zephyr_compat_os.h"'
+            '"compat/kernel_generic/zephyr_kernel.c"' '"compat/kernel_generic/zephyr_mutex.c"'
+            '"compat/zephyr_heap.c"' '"compat/zephyr_work.c"' '"compat/zephyr_init.c"')
+for f in "${kgen_files[@]}"; do
+    printf '#include %s\n' "$f" | cc "${flags[@]}" -I. "${kgen_inc[@]}" -fsyntax-only -x c -
+done
+printf 'ok  kernel_generic_independent (%d files)\n' "${#kgen_files[@]}"
+# The network part (compat/net_offload) compiles on a kernel part written directly on an OS
+# (the fake kernel, tests/zephyr_fakes, as the NuttX build's nuttx/drivers/compat) without
+# compat/kernel_generic, with the C library's POSIX network headers (the host's) in place of
+# compat/libc_net: each of its headers and sources (its reduced copies of Zephyr's files compare
+# signed with unsigned, as Zephyr's, -Wno-sign-compare).
+noff_inc=(-D_DEFAULT_SOURCE -Itests/zephyr_fakes -Icompat/net_offload/include -Icompat)
+noff_files=($(git ls-files --cached --others --exclude-standard 'compat/net_offload/*.[ch]'))
+for f in "${noff_files[@]}"; do
+    printf '#include "%s"\n' "$f" | cc "${flags[@]}" -Wno-sign-compare -I. "${noff_inc[@]}" \
+        -fsyntax-only -x c -
+done
+printf 'ok  net_offload_independent (%d files)\n' "${#noff_files[@]}"
+
 # The NINA-W102 core (drivers/nina) on fakes of its boundary (nina_bus.h: the SPI bus and the
 # module's lines; nina_os.h: locks, requests, sleeps, clock), defined by the tests.
 nina=drivers/nina

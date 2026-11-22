@@ -2,7 +2,8 @@
 
 [English](nuttx-porting.md) | 日本語
 
-NuttX 版の各機能の動作の詳しい説明です。使い方は `nuttx/README_ja.md`、
+このリポジトリーのファームウェアは、Zephyr・NuttX・Pico SDK + FreeRTOS の 3 つの OS の上でそれぞれビルドでき、それぞれを
+Zephyr 版・NuttX 版・FreeRTOS 版と呼びます。この文書は、NuttX 版の各機能の動作の詳しい説明です。使い方は `nuttx/README_ja.md`、
 ドライバーと互換層は `nuttx/drivers/README_ja.md`、移植の経緯と判断は `nuttx/PORTING_STATUS.md`・
 `nuttx/PORTING_NOTES.md`・`nuttx/PORTING_PLAN.md` にあります。文中の「〜の節」は、この文書の節です
 （「Zephyr 版とのコマンドの対応」「エラー番号（errno）」は `nuttx/README_ja.md` の節）。
@@ -16,7 +17,7 @@ NuttX 版の各機能の動作の詳しい説明です。使い方は `nuttx/REA
   パスは sparse checkout に足し、そのときファイルを取得します（blob を後から取る部分取得なので、ネットワークが要ります）。
   全体を取得済みのものがあればそのまま使います。部分取得の小さいものにするには、一度削除してから `setup.sh` を
   読み込み直します。
-- argtable3 の版は nuttx-apps 13.1.0 の `CONFIG_SYSTEM_ARGTABLE3_VERSION` の既定です。nuttx-apps の Makefile は
+- argtable3 のバージョンは nuttx-apps 13.1.0 の `CONFIG_SYSTEM_ARGTABLE3_VERSION` の既定です。nuttx-apps の Makefile は
   `nuttx/nuttx-apps/system/argtable3/argtable3` にクローンがあれば使い、無ければビルドのたびに GitHub から取得し、
   `make distclean` で消します。
 
@@ -37,7 +38,7 @@ NuttX 版の各機能の動作の詳しい説明です。使い方は `nuttx/REA
 `.config` の書き換えに使う `kconfig-tweak` の代わりです。kconfiglib には含まれていないため、
 NuttX が使う機能だけを実装しています。
 
-取得したものは Git の管理外です。版を変えるときは、スクリプト冒頭の値を直してから、該当する
+取得したものは Git の管理外です。バージョンを変えるときは、スクリプト冒頭の値を直してから、該当する
 ディレクトリを消して読み込み直します。
 
 ## ビルド（`build.sh`）の動作
@@ -133,7 +134,7 @@ syslog のチャネル `nuttx/drivers/log/log_ram_syslog.c`。`LOG_*` マクロ�
   先頭から収まるように広げました）。起動処理はこの領域を消さないので、`reboot` などの
   リセットをまたいで内容が残ります。起動時に先頭の情報（マジックナンバーとその反転、開始位置、長さ）を
   確かめ、壊れていれば空にします。マジックナンバーは Zephyr 版の `0x4c4f4752` に大きさを XOR した値
-  （`0x4c4f6752`）で、大きさの違うリング（以前の版の 4096 バイトのもの）が RAM に残っていても、
+  （`0x4c4f6752`）で、大きさの違うリング（以前のファームウェアの 4096 バイトのもの）が RAM に残っていても、
   読み違えずに空にします。電源を切ると消えます。いっぱいになると古いバイトから上書きします。
 - `dmesg` は保存されている内容をそのまま表示し、空なら `No logs.` と出します。引数は見ません。
   Zephyr 版と同じく 96 バイトずつ取り出して表示し、表示中に新しいログで押し出された部分は飛ばし、
@@ -174,7 +175,7 @@ syslog のチャネル `nuttx/drivers/log/log_ram_syslog.c`。`LOG_*` マクロ�
 設定と校正値、Wi-Fi の資格情報を flash の末尾 8 KiB（`0x10ffe000`〜`0x10ffffff`、4 KiB の消去単位 2 つ）に
 保存します。Zephyr 版の `storage_partition` と同じ場所に、Zephyr 版と同じ形式（Zephyr の NVS と settings）で
 置くので、Zephyr 版が書いた値を NuttX 版がそのまま読み書きでき、その逆もできます。API とコマンドは Zephyr 版の
-`kv_store.c` そのもの（`common/imu/kv_store.c`。3 つの版が使う）です。
+`kv_store.c` そのもの（`common/imu/kv_store.c`。3 つの OS のファームウェアが使う）です。
 
 - 構成: `kv_store.c` → Zephyr の settings（`settings_save_one()`・`settings_load_one()`・`settings_delete()`）→
   Zephyr の NVS → 互換層の flash デバイスと flash map（`common/compat/zephyr_flash_kv.c`）→ OS の境界
@@ -350,7 +351,7 @@ NINA firmware: 3.0.2
   high、RESET をアクティブにし、10 ms 後にリセットを解き、750 ms 待ってから IRQ を low にして入力に戻します。
   最初の要求は、起動処理が `wlan0` を用意するときに MAC アドレスを読む命令です（Zephyr 版と同じく起動時）。
   そのため USB のコンソールが現れるのはこの待ちの後です。
-- 要求の手順と値は Zephyr 版と同じです（3 つの版が共有する `common/drivers/nina/internal/nina_proto.c`）。
+- 要求の手順と値は Zephyr 版と同じです（3 つの OS のファームウェアが共有する `common/drivers/nina/internal/nina_proto.c`）。
   READY は 100 µs ごとに見る代わりに、その変化の GPIO 割り込みで待ちます（Zephyr 版・FreeRTOS 版も同じ。
   仕組みは `nuttx/drivers/README_ja.md` の「READY の待ち」）。期限は同じで、送信前は
   2000 ms、CS を下げてから NINA が READY を戻すまで 20 ms、応答の準備は 10000 ms で `-ETIMEDOUT`。
@@ -360,7 +361,7 @@ NINA firmware: 3.0.2
 ### 中継モード（`nina passthrough confirm`）
 
 PC の esptool で NINA のファームウェアを読み書きするためのモードです（Arduino の SerialNINAPassthrough の
-スケッチの代わり。3 版で同じもので、NINA のドライバーの `common/drivers/nina/nina_passthrough.c`）。`nina passthrough confirm` でボードが再起動し、USB のシリアルが
+スケッチの代わり。3 つの OS のファームウェアで同じもので、NINA のドライバーの `common/drivers/nina/nina_passthrough.c`）。`nina passthrough confirm` でボードが再起動し、USB のシリアルが
 NINA の UART に繋がります（確認の語がなければ断ります）。UART は SPI の MISO・CS と同じピン（GPIO8、GPIO9）なので、
 このモードでは NINA の SPI・Wi-Fi・Telnet・MQTT・時刻同期・nsh・KV は動きません。
 
@@ -381,7 +382,7 @@ NINA の UART に繋がります（確認の語がなければ断ります）。
 
 NINA は NuttX のネットワークデバイス `wlan0` です。Zephyr 版の `wifi` のコマンドの代わりに、NuttX 標準の
 `wapi`（`CONFIG_WIRELESS_WAPI_CMDTOOL`、優先度 104、スタック 3072）と `ifconfig` を使います。ioctl は、コアの NuttX への
-つなぎ（`common/drivers/nina/port/nuttx/nina_netdev.c`）から NINA のコアの Wi-Fi の操作（ほかの版と共有する
+つなぎ（`common/drivers/nina/port/nuttx/nina_netdev.c`）から NINA のコアの Wi-Fi の操作（Zephyr 版・FreeRTOS 版と共有する
 `common/drivers/nina/nina_wifi.c`）を呼びます（`nuttx/drivers/README_ja.md` の「Wi-Fi」）。
 
 | Zephyr 版 | NuttX 版 |
@@ -394,7 +395,7 @@ NINA は NuttX のネットワークデバイス `wlan0` です。Zephyr 版の 
 | `net iface` | `ifconfig` |
 | `wifi cred add/delete/list/auto_connect` | 同じ（`wifi cred`。下の「Wi-Fi の資格情報と自動再接続（`wifi cred`）」） |
 
-- `wapi psk` の 3 は暗号の CCMP、版の既定は WPA2 で、Zephyr 版の `-k 1`（WPA2-PSK）に当たります。`wapi psk` の
+- `wapi psk` の 3 は暗号の CCMP、WPA のバージョンの既定は WPA2 で、Zephyr 版の `-k 1`（WPA2-PSK）に当たります。`wapi psk` の
   設定は次の `wapi essid` 1 回で使って忘れ、パスフレーズも消します。ドライバーが受け付けるのは Zephyr 版と同じく
   暗号化なしと WPA2-PSK（NINA のパスフレーズの命令）だけで、ほかは `ENOTSUP` です。パスフレーズは 8〜63 文字です。
 - `wapi essid` は Zephyr 版の `wifi connect` と同じく、要求を出したところで戻ります。接続の手順と期限
@@ -609,7 +610,7 @@ Zephyr 版の `CONFIG_I2C_DW_RP2040_DMA` と同じく（ここでも同じ名前
   （`<err> i2c_dw: DMA channels did not stop; I2C controller quarantined`）、以後の転送はすべて `-EIO`
   になります（再起動で戻ります）。
 - DMA は NuttX 自身のドライバー（`CONFIG_RP2040_DMAC`、`arch/arm/src/rp2040/rp2040_dmac.c`）です。ボードは起動時に
-  そこからチャネルを 2 つ取って読み出し用に持ち続けるので、この版では `dma_fallbacks` はチャネルの設定を断られたとき
+  そこからチャネルを 2 つ取って読み出し用に持ち続けるので、NuttX 版では `dma_fallbacks` はチャネルの設定を断られたとき
   （まだ動いている）のほかは 0 のままです。ほかのコードも `rp2040_dmac.c` を通して残りのチャネルを通常どおり使えます
   （してはいけないことと、NuttX の DMA の上の実装の細部は `nuttx/drivers/README_ja.md` の「I2C0」）。
   `CONFIG_RP2040_SPI_DMA` は無効のままで、NINA の SPI は Zephyr 版と同じくポーリングです。
@@ -812,7 +813,7 @@ Subcommands:
 - セッション ID は、前半 8 バイトがチップ ID（USB のシリアル番号と同じ。Zephyr の `hwinfo_get_device_id()` と
   同じバイト列）、続く 4 バイトが KV の `imu.session`（4 バイトのビッグエンディアン。`imu start` のたびに +1 して
   保存）、残りが 0 です。Zephyr 版の通し番号は引き継がず、NuttX 版では 1 から始まります。
-- init は 3 版で共有の Zephyr 版の `main()` の本体（`common/imu/app_main.c` の `app_main()`）を呼び、
+- init は 3 つの OS のファームウェアで共有の Zephyr 版の `main()` の本体（`common/imu/app_main.c` の `app_main()`）を呼び、
   `kv_store_init()` → `imu_cal_init()`（失敗すると `Could not set up the IMU calibration: <値>`）→
   `time_sync_init()` → `wifi_profile_init()` の順になります。
 
@@ -846,7 +847,7 @@ conversion:
 
 `common/imu/imu_raw_mqtt.c`・`imu_raw_mqtt.h` は Zephyr 版と同じファイルです（`imu_raw_mqtt.h` が読む
 `<zephyr/net/net_ip.h>` は、互換層のものが `<netinet/in.h>` を読みます）。`CONFIG_IMU_RAW_MQTT`（既定で
-有効）で入り、無ければスタブ `imu_raw_mqtt_null.c`（Zephyr 版がネットワークに繋がっていないときと同じく、
+有効）で入り、無ければ代わりの `common/imu/imu_raw_mqtt_null.c`（Zephyr 版がネットワークに繋がっていないときと同じく、
 バッチをすべて捨てて数える）になります。トピック（`imu/<device>/raw`・`status`・`info`）と QoS（raw と
 status は 0、info は 1 で retain）、クライアント ID（`imu-<device>`）、keepalive（60 秒）、クリーン
 セッションなし、送信の順（接続のたびに info、status、キューのバッチ。status は 1 秒ごとと状態の変化時、
@@ -883,14 +884,14 @@ status は 0、info は 1 で retain）、クライアント ID（`imu-<device>`
 
 `common/imu/time_sync.c` は Zephyr 版と同じファイルです（`nuttx/apps/imu/` がビルドする）。OS を呼ぶ部分
 （ソケット、`net_mgmt` のイベント、実時間時計）は互換層が Zephyr の名前のまま提供します。`time_sync_mono_us()` は
-3 版で共有する TIMER の読み出し（`common/chip/rp2040` の `rp2040_timer_us()`）です。ファイルが使う Kconfig の選択肢
+3 つの OS のファームウェアで共有する TIMER の読み出し（`common/chip/rp2040` の `rp2040_timer_us()`）です。ファイルが使う Kconfig の選択肢
 （`CONFIG_NINA_NTP_*`）は、NuttX 版にも同じ名前であります。末尾の
 コマンドの登録は、互換層が `z_shell_main_ntp()` にし、組み込みコマンド `ntp`（`nuttx/apps/ntp/`）の `main()` が
 それを呼びます（「コマンドのサブコマンド」）。NTP の
 パケットと応答の検査、t1（送信の直前）と t4（応答を受け取った直後）を読む位置、推定（`time_offset.c`。
 無変更の写し。直近 8 回のうち往復が最短の応答を使う）、60 秒応答が無ければ無効、±500 ppm で寄せる逆行しない
 時計、実時間時計を前にだけ進めること、問い合わせの周期・待ち・再試行、カウンター、`ntp status` の出力は
-Zephyr 版と同じです。`CONFIG_TIME_SYNC`（既定で有効）で入り、無ければスタブ `time_sync_null.c`
+Zephyr 版と同じです。`CONFIG_TIME_SYNC`（既定で有効）で入り、無ければ代わりの `common/imu/time_sync_null.c`
 （`time_sync_mono_us()` だけ本物で、同期は取れない）になります。
 
 ```text
@@ -944,7 +945,7 @@ Subcommands:
 - `clock_gettime()` の `CLOCK_MONOTONIC`・`CLOCK_REALTIME` は TIMER の値をそのまま µs 単位で返します
   （`clock_getres()` は tick の長さ 100 µs を返します）。Zephyr 版のカーネル時計は CPU クロックの
   SysTick で、TIMER とは源が違います。アプリはどちらでも、時刻の基準に TIMER を直接読みます。
-- ボードの単調時計は `rp2040_timer_us()`（`common/chip/rp2040/include/rp2040_timer_us.h`。3 版で共有し、必ず
+- ボードの単調時計は `rp2040_timer_us()`（`common/chip/rp2040/include/rp2040_timer_us.h`。3 つの OS のファームウェアで共有し、必ず
   インラインにする）で、TIMER の TIMERAWH・TIMERAWL を上位、下位、上位の順に読み、上位が一致するまで読み直します。副作用もロックも無いので、カーネル側・アプリ・割り込みハンドラーのどこからでも呼べます。
   値は起動からの µs で、TIMER は起動のたびに（`reboot` でも）0 から数え直します。
   `CLOCK_MONOTONIC` と同じカウンターなので、両者は読み出しの時間差（数 µs）の範囲で一致します。
@@ -989,7 +990,7 @@ NuttX 標準のクリティカルセクションの監視（`CONFIG_SCHED_CRITMO
   カウンター（`src/rp2040_perf.c`、`CONFIG_RP2040_PERF`。TIMER の 1 µs。Cortex-M0+ にはサイクルカウンターが
   ありません）です。Zephyr 版の `CONFIG_SCHED_THREAD_USAGE` も、切り替え（PendSV）のときだけ CPU の
   サイクル数を足します。
-- 割り込みの処理の時間は、どちらの版でも割り込まれたスレッドの時間に入ります（アイドル中の割り込みは
+- 割り込みの処理の時間は、Zephyr 版でも NuttX 版でも割り込まれたスレッドの時間に入ります（アイドル中の割り込みは
   アイドルスレッドに入ります）。そのため、アイドルスレッドの割合は、割り込みの処理を負荷に数える
   `cpu_active` の残り（100 % − `cpu_active`）とは一致しません。
 - 読める値:
@@ -1116,9 +1117,9 @@ NuttX 版のコードはシグナルハンドラーを登録しません（`siga
 NuttX 版と FreeRTOS 版が使います。下の表。`common/` の全体の構成は設計書の §12）。
 Zephyr 版の `CMakeLists.txt` と NuttX 版の Makefile（`apps/imu/Makefile`、`apps/nina/Makefile`、`apps/wifi/Makefile`、`apps/sensor/Makefile`、
 `drivers/compat/Make.defs`、`drivers/lsm6dso/Make.defs`、`drivers/nina/Make.defs`、ボードの `src/Make.defs`）がそこを参照します。Zephyr の API を
-使うもの（`common/drivers/` の FIFO の設定とストリーム、単発取得の RTIO 版、NINA の Wi-Fi、sensor シェルと、
+使うもの（`common/drivers/` の FIFO の設定とストリーム、単発取得の RTIO の経路、NINA の Wi-Fi、sensor シェルと、
 `common/imu/` の取得サービス・時刻同期・校正・MQTT・Wi-Fi のプロファイル）は、NuttX 版では互換層の上で動きます。NuttX 版は `common/` の
-各ファイル（NINA のコア、I2C のコア、`common/chip/` を除く）に前置きヘッダー（`nuttx/drivers/compat/common_prelude.h`）を付けてコンパイルし、版ごとに違う数行は
+各ファイル（NINA のコア、I2C のコア、`common/chip/` を除く）に前置きヘッダー（`nuttx/drivers/compat/common_prelude.h`）を付けてコンパイルし、OS のファームウェアごとに違う数行は
 OS ごとのヘッダー（`sensor_shell_os.h`、`wifi_profile_os.h`、`lsm6dso_instance.h`。Zephyr 版は `zephyr/app/usb-console/`
 と `common/drivers/lsm6dso/port/zephyr/` の下、NuttX 版は `nuttx/apps/` と `common/drivers/lsm6dso/port/nuttx/` の下）に出しています（`nuttx/drivers/README_ja.md` の
 「Zephyr の API の互換層」）。互換層のうち OS に依存しない部分も `common/compat/` に置き、NuttX 版はそれと NuttX の
@@ -1126,17 +1127,17 @@ OS ごとのヘッダー（`sensor_shell_os.h`、`wifi_profile_os.h`、`lsm6dso_
 
 | 置き場所 | 内容 |
 |---|---|
-| `common/imu/` | `imu_stream.c`、`imu_raw_{batch,packet,queue,status,time}`、`imu_tick_clock`、`time_sync.[ch]`、`time_offset`、`imu_cal_codec.c`、`imu_cal.[ch]`、`imu_raw_mqtt.[ch]`、`wifi_profile.[ch]`、`kv_store.[ch]`、`mqtt_min.[ch]`・`mqtt_min_sock.c`（互換層の上の版の MQTT クライアントとそのソケットの層。Zephyr 版は使わない） |
-| `common/drivers/lsm6dso/` | ドライバー。直下にコア `lsm6dso.c`・`lsm6dso_stream.c`・`lsm6dso_cal.c`・`lsm6dso_fifo.c`（OS を持たない。`internal/` に `lsm6dso_core.h`・`lsm6dso_stream.h`・`lsm6dso_fifo_packet.h`、`port/` に境界 `lsm6dso_os.h`・`lsm6dso_stream_req.h`）、`include/` に使う側のヘッダー `lsm6dso_cal.h`・`lsm6dso_fifo.h` と拡張 API `lsm6dso.h`（`common/compat` を通して `<zephyr/drivers/sensor/lsm6dso.h>`）、`port/zephyr/` に Zephyr へのつなぎ（`lsm6dso_sensor.[ch]`・`lsm6dso_decoder.[ch]`・`lsm6dso_rtio.c`・`lsm6dso_rtio_stream.c`・`lsm6dso_os_impl.h`・`lsm6dso_os.c`・`lsm6dso_stream_req_impl.h`。Zephyr 版のモジュール）、`port/nuttx/`・`port/freertos/` に版ごとの `lsm6dso_instance.h` |
-| `common/drivers/nina/` | NINA のコア: 直下（ヘッダーは `include/`）に `nina_wifi.[ch]`・`nina_sock.[ch]`・`nina_dns.[ch]`・esptool の中継 `nina_passthrough.[ch]`、`internal/` に `nina_proto.[ch]`・`nina_wait.[ch]`、`port/` にコアの境界のヘッダー `nina_os.h`・`nina_bus.h`（中継のものは `nina_passthrough_bus.h`・`nina_passthrough_os.h`）（3 つの版が使う。Zephyr の API を使わず、NuttX 版では前置きヘッダーなしでコンパイルする。境界は `nuttx/drivers/README_ja.md` の「NINA-W102」）。コアのつなぎは `port/zephyr/`（Zephyr 版と FreeRTOS 版）と `port/nuttx/`（この版: `wlan0`、アプリの Wi-Fi 管理、`nina_os.c`、usrsock、中継のホスト側 `nina_passthrough_os.c`、RP2040 の SPI と線 `nina_bus_rp2040.c`、中継のモジュール側 `nina_passthrough_bus_rp2040.c`） |
+| `common/imu/` | `imu_stream.c`、`imu_raw_{batch,packet,queue,status,time}`、`imu_tick_clock`、`time_sync.[ch]`、`time_offset`、`imu_cal_codec.c`、`imu_cal.[ch]`、`imu_raw_mqtt.[ch]`、`wifi_profile.[ch]`、`kv_store.[ch]`、`mqtt_min.[ch]`・`mqtt_min_sock.c`（互換層の上でビルドする NuttX 版・FreeRTOS 版の MQTT クライアントとそのソケットの層。Zephyr 版は使わない）、`imu_raw_mqtt_null.c`・`time_sync_null.c`（`CONFIG_IMU_RAW_MQTT`・`CONFIG_TIME_SYNC` が無いときの代わり） |
+| `common/drivers/lsm6dso/` | ドライバー。直下にコア `lsm6dso.c`・`lsm6dso_stream.c`・`lsm6dso_cal.c`・`lsm6dso_fifo.c`（OS を持たない。`internal/` に `lsm6dso_core.h`・`lsm6dso_stream.h`・`lsm6dso_fifo_packet.h`、`port/` に境界 `lsm6dso_os.h`・`lsm6dso_stream_req.h`）、`include/` に使う側のヘッダー `lsm6dso_cal.h`・`lsm6dso_fifo.h` と拡張 API `lsm6dso.h`（`common/compat` を通して `<zephyr/drivers/sensor/lsm6dso.h>`）、`port/zephyr/` に Zephyr へのつなぎ（`lsm6dso_sensor.[ch]`・`lsm6dso_decoder.[ch]`・`lsm6dso_rtio.c`・`lsm6dso_rtio_stream.c`・`lsm6dso_os_impl.h`・`lsm6dso_os.c`・`lsm6dso_stream_req_impl.h`。Zephyr 版のモジュール）、`port/nuttx/`・`port/freertos/` に OS ごとの `lsm6dso_instance.h` |
+| `common/drivers/nina/` | NINA のコア: 直下（ヘッダーは `include/`）に `nina_wifi.[ch]`・`nina_sock.[ch]`・`nina_dns.[ch]`・esptool の中継 `nina_passthrough.[ch]`、`internal/` に `nina_proto.[ch]`・`nina_wait.[ch]`、`port/` にコアの境界のヘッダー `nina_os.h`・`nina_bus.h`（中継のものは `nina_passthrough_bus.h`・`nina_passthrough_os.h`）（3 つの OS のファームウェアが使う。Zephyr の API を使わず、NuttX 版では前置きヘッダーなしでコンパイルする。境界は `nuttx/drivers/README_ja.md` の「NINA-W102」）。コアのつなぎは `port/zephyr/`（Zephyr 版と FreeRTOS 版）と `port/nuttx/`（NuttX 版: `wlan0`、アプリの Wi-Fi 管理、`nina_os.c`、usrsock、中継のホスト側 `nina_passthrough_os.c`、RP2040 の SPI と線 `nina_bus_rp2040.c`、中継のモジュール側 `nina_passthrough_bus_rp2040.c`） |
 | `common/drivers/sensor_shell/` | `sensor_shell.c`（Zephyr 版のツリーにパッチ 0006 を当てたファイル） |
 | `common/drivers/stmemsc/` | `stmemsc.h`、`stmemsc_i2c.c`、`stmemsc_mdelay.c`（Zephyr の stmemsc の I2C の部分の写し。NuttX 版と FreeRTOS 版が使い、前置きヘッダーなしでコンパイルする。Zephyr 版は Zephyr のものを使う） |
-| `common/drivers/i2c_dw/` | I2C のコア: 直下に `i2c_dw.c`（I2C0 と、`CONFIG_I2C_DW_I2C1`（既定で無効）のとき I2C1）、`internal/` にその定義 `i2c_dw.h`・`i2c_dw_registers.h`・`i2c_dw_rp2040.h` と DMA での読み出し `i2c_dw_rp2040_dma_priv.h`（DMA のコマンド語を含む。Zephyr 版はパッチ 0003 に同じ関数を持つ）（ファイル名はパッチ後の Zephyr のドライバーに合わせる）、`include/` に `i2c_dma` の関数の宣言 `i2c_dw_rp2040_dma.h`、`port/` に境界のヘッダー `i2c_dw_os.h` と DMA 読み出しの `i2c_dw_dma_os.h`（NuttX 版と FreeRTOS 版が使う。前置きヘッダーなしでコンパイルする。境界は `nuttx/drivers/README_ja.md` の「I2C0」）。コアのつなぎは `port/nuttx/`（この版: `i2c_dw_os_impl.h`・`i2c_dw_instance.h`、起動の `i2c_dw_controllers_rp2040.h`、DMA の部分 `i2c_dw_dma_os_rp2040.c`。`nuttx/drivers/i2c_dw/Make.defs` がビルドする）と `port/freertos/`（FreeRTOS 版） |
+| `common/drivers/i2c_dw/` | I2C のコア: 直下に `i2c_dw.c`（I2C0 と、`CONFIG_I2C_DW_I2C1`（既定で無効）のとき I2C1）、`internal/` にその定義 `i2c_dw.h`・`i2c_dw_registers.h`・`i2c_dw_rp2040.h` と DMA での読み出し `i2c_dw_rp2040_dma_priv.h`（DMA のコマンド語を含む。Zephyr 版はパッチ 0003 に同じ関数を持つ）（ファイル名はパッチ後の Zephyr のドライバーに合わせる）、`include/` に `i2c_dma` の関数の宣言 `i2c_dw_rp2040_dma.h`、`port/` に境界のヘッダー `i2c_dw_os.h` と DMA 読み出しの `i2c_dw_dma_os.h`（NuttX 版と FreeRTOS 版が使う。前置きヘッダーなしでコンパイルする。境界は `nuttx/drivers/README_ja.md` の「I2C0」）。コアのつなぎは `port/nuttx/`（NuttX 版: `i2c_dw_os_impl.h`・`i2c_dw_instance.h`、起動の `i2c_dw_controllers_rp2040.h`、DMA の部分 `i2c_dw_dma_os_rp2040.c`。`nuttx/drivers/i2c_dw/Make.defs` がビルドする）と `port/freertos/`（FreeRTOS 版） |
 | `common/chip/rp2040/` | どの OS も持たない RP2040 のコード: `include/rp2040_timer_us.h`（TIMER の読み出し）、`include/rp2040_watchdog_reboot.h`、KV の領域の flash の境界 `rp2040_flash_kv.c`（`include/rp2040_flash_kv.h`。ボードの flash の操作は `include/rp2040_flash_kv_os.h` で宣言）。FreeRTOS 版と共有し、ボードの `src/Make.defs` が前置きヘッダーなしでコンパイルする |
-| `common/compat/` | 互換層の OS に依存しない部分（Zephyr の API のヘッダー `zephyr/...`。`i2c_dma` の状態 `zephyr/drivers/i2c/i2c_dw_rp2040_dma.h` は I2C のコアの `common/drivers/i2c_dw/include/i2c_dw_rp2040_dma.h` を読む。`zephyr_compat.h`、ワーク、RTIO、ブロックのプール、デバイスの一覧、`gpio0`、`net_mgmt`、Wi-Fi の要求、sensor の既定の iodev）と、互換層の上の版が使う Zephyr のライブラリーの写し（`sensor_shell_stream.c`・`sensor_shell.h`、`wifi_credentials.c`・`wifi_credentials_backend_settings.c`・`wifi_credentials_internal.h`）、境界のヘッダー（`priorities.h`、`cpu_load.h`、`gpio_os.h`）。Zephyr 版は使わない |
-| `common/shell/` | `subcmd.[ch]`（サブコマンドの表の処理）、`zshell.c`（`<zephyr/shell/shell.h>` で書いたコマンドの処理: 語の照合、ワイルドカード、引数の数の検査、ヘルプ）とその OS との境界 `zshell_os.h`（NuttX 版の部分は `nuttx/apps/subcmd/zshell_os_impl.h`）。前置きヘッダーなしでコンパイルする。Zephyr 版は使わない。ほかに `i2c_dma_shell.c`（3 版の `i2c_dma` コマンド。Zephyr のシェルの API で書いてあり、NuttX 版では `nuttx/apps/i2c_dma` が前置きヘッダー付きでビルドする）と `nina_shell.c`（Zephyr 版と FreeRTOS 版の `nina` コマンド。NuttX 版は自前の `nuttx/apps/nina`） |
+| `common/compat/` | 互換層の OS に依存しない部分（Zephyr の API のヘッダー `zephyr/...`。`i2c_dma` の状態 `zephyr/drivers/i2c/i2c_dw_rp2040_dma.h` は I2C のコアの `common/drivers/i2c_dw/include/i2c_dw_rp2040_dma.h` を読む。`zephyr_compat.h`、ワーク、RTIO、ブロックのプール、デバイスの一覧、`gpio0`、`net_mgmt`、Wi-Fi の要求、sensor の既定の iodev）と、互換層の上でビルドする NuttX 版・FreeRTOS 版が使う Zephyr のライブラリーの写し（`sensor_shell_stream.c`・`sensor_shell.h`、`wifi_credentials.c`・`wifi_credentials_backend_settings.c`・`wifi_credentials_internal.h`）、境界のヘッダー（`priorities.h`、`cpu_load.h`、`gpio_os.h`）。Zephyr 版は使わない |
+| `common/shell/` | `subcmd.[ch]`（サブコマンドの表の処理）、`zshell.c`（`<zephyr/shell/shell.h>` で書いたコマンドの処理: 語の照合、ワイルドカード、引数の数の検査、ヘルプ）とその OS との境界 `zshell_os.h`（NuttX 版の部分は `nuttx/apps/subcmd/zshell_os_impl.h`）。前置きヘッダーなしでコンパイルする。Zephyr 版は使わない。ほかに `i2c_dma_shell.c`（3 つの OS のファームウェアの `i2c_dma` コマンド。Zephyr のシェルの API で書いてあり、NuttX 版では `nuttx/apps/i2c_dma` が前置きヘッダー付きでビルドする）と `nina_shell.c`（Zephyr 版と FreeRTOS 版の `nina` コマンド。NuttX 版は自前の `nuttx/apps/nina`） |
 | `common/compat/log/` | `log_ring.[ch]`（RAM ログのリング、行の前置き、頻度制限）、`app_log.h`（`LOG_*` マクロ。NuttX の部分は `nuttx/drivers/include/app_log_os.h`）、`log_ram.c`・`log_ram.h`（RAM ログと `LOG_*` マクロの関数。FreeRTOS 版と共有。NuttX の部分は `nuttx/drivers/include/log_ram_os_impl.h`、syslog のチャネルは `nuttx/drivers/log/log_ram_syslog.c`）、`fault_record.[ch]`（異常停止の記録の形式、CRC-32、watchdog の scratch への写し、表示の行。FreeRTOS 版だけが使う）。Zephyr 版は使わない |
-| `common/tests/` | 上のファイルを対象にするテスト 37 本と、Zephyr のツリーとの照合 `zephyr_copies`・`zephyr_sensor_shell_patched`（`common/tests/run.sh` が実行し、3 つの版の `host_tests.sh` が最初に呼ぶ。互換層の `zephyr_rtio`・`zephyr_work`・`mqtt_min` は偽のカーネルの上、NINA のコアの `nina_proto`・`nina_sock`・`nina_wifi`・`nina_dns`・`nina_passthrough` はテストが定義する境界の偽物の上。`nina_core_independent` はコアの各ファイルを C ライブラリーと自分のヘッダーだけでコンパイルし、`i2c_dw_public_headers` は I2C のコアの `include/` をそのディレクトリーだけでコンパイルし、LSM6DSO の `lsm6dso_core_independent`・`lsm6dso_public_headers` はそのコアと `include/` に同じことをする）。`lsm6dso_stream` はコアのストリーム `lsm6dso_stream.c` を、境界のホストでの実装（`common/tests/lsm6dso_os_host/`）とコアの FIFO の呼び出しの偽物の上で動かす |
+| `common/tests/` | 上のファイルを対象にするテスト 37 本と、Zephyr のツリーとの照合 `zephyr_copies`・`zephyr_sensor_shell_patched`（`common/tests/run.sh` が実行し、3 つの OS のファームウェアの `host_tests.sh` が最初に呼ぶ。互換層の `zephyr_rtio`・`zephyr_work`・`mqtt_min` は偽のカーネルの上、NINA のコアの `nina_proto`・`nina_sock`・`nina_wifi`・`nina_dns`・`nina_passthrough` はテストが定義する境界の偽物の上。`nina_core_independent` はコアの各ファイルを C ライブラリーと自分のヘッダーだけでコンパイルし、`i2c_dw_public_headers` は I2C のコアの `include/` をそのディレクトリーだけでコンパイルし、LSM6DSO の `lsm6dso_core_independent`・`lsm6dso_public_headers` はそのコアと `include/` に同じことをする）。`lsm6dso_stream` はコアのストリーム `lsm6dso_stream.c` を、境界のホストでの実装（`common/tests/lsm6dso_os_host/`）とコアの FIFO の呼び出しの偽物の上で動かす |
 | `common/tests/fakes/` | テスト用の Zephyr のヘッダーと ST のヘッダーの代わり（`zephyr/drivers/sensor.h`、`zephyr/drivers/sensor_clock.h`、`zephyr/drivers/i2c.h`、`zephyr/rtio/rtio.h`、`lsm6dso_reg.h`） |
 | `common/tests/zephyr_fakes/` | 互換層の偽のカーネル: OS ごとのヘッダー（`zephyr_os.h`・`zephyr_os_spinlock.h`・`zephyr_os_atomic.h`・`priorities_os.h`、`zephyr/sys/__assert.h`）とその関数（`zephyr_kernel_host.[ch]`。1 スレッドで、ワークキューとタイマーはテストが回す）。NuttX 版のテストも使う |
 
@@ -1224,7 +1225,7 @@ NuttX の NVS の索引をそれぞれ受け付け、相手の形式の索引の
 保存の失敗、`auto_connect`、`wifi`・`wifi cred` のヘルプ。期待する出力は Zephyr のソースが出す文です。`common/tests/nina_proto.c` は `common/drivers/nina/internal/nina_proto.c` を、
 偽の SPI・GPIO・時計・ロックで確かめます。広いパラメーターと詰め、
 まとめての転送、0x75・0x7a の 3 つの応答パラメーター、長さの検査、転送の失敗、狭いパラメーター、
-版の要求、応答の先頭探し（1000 バイト）、各 `-EPROTO`・`-EMSGSIZE`・`-EINVAL`、0x27、`nina_proto_ip_config()`
+ファームウェアのバージョンの要求、応答の先頭探し（1000 バイト）、各 `-EPROTO`・`-EMSGSIZE`・`-EINVAL`、0x27、`nina_proto_ip_config()`
 （0x21）、READY の期限（2000・20・10000 ms を 100 µs ごとに見る回数）、最初の要求のリセット手順、CS と
 転送の順序、ロックを確かめます。
 
@@ -1258,7 +1259,7 @@ Zephyr のフラグへの変換、`IC_DATA_CMD` に書く語の列（`i2c` ツ�
 
 `nuttx/tests/imu_cal.c` も NuttX 版だけのテストです。`lsm6dso_driver.c` を読み込んで同じ偽のセンサーを使い
 （`lsm6dso_driver` の確認を先に一通り動かします）、`common/imu/imu_cal.c` を偽の KV と一緒にビルドして確かめます:
-起動時の読み込み（キー 2 つ）、保存した値が単発取得の出力に掛かること（`M·(raw−bias)`）、長さ・版・種類・感度・
+起動時の読み込み（キー 2 つ）、保存した値が単発取得の出力に掛かること（`M·(raw−bias)`）、長さ・形式のバージョン・種類・感度・
 予約バイトが合わない値や長すぎる値は公称の変換になること、レンジの変更で別の感度のキーを読むことと戻ること、
 `reload`（消したキーは公称に戻る、追従したバイアスを捨てる）、`zero`（静止時、保存したバイアスから遠い、
 ストリーム中、I2C のエラー）、使い方の誤り、IMU が準備できていないとき、`imu cal` の各行（バイアスの小数 2 桁の

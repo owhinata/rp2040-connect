@@ -132,14 +132,6 @@ static inline void *k_thread_custom_data_get(void)
 	return z_os_thread_local_get();
 }
 
-/* k_heap (Zephyr's K_HEAP_DEFINE(), k_heap_alloc(), k_heap_free()): the
- * OS-independent one of the layer's network part for an OS without a network
- * stack of its own (common/compat/net_offload/include/zephyr_heap.h,
- * zephyr_heap.c), which the NINA's name resolution uses
- * (common/drivers/nina/port/zephyr/nina_socket.c).
- */
-#include "zephyr_heap.h"
-
 /* The cycle counter: the board's monotonic clock in microseconds (the RP2040
  * TIMER, 1 MHz from the crystal; see <zephyr/kernel.h>).
  */

@@ -14,7 +14,7 @@ PC の時刻を付けて Wi-Fi 経由の MQTT で送信します。
 設計の詳細は [IMU RAW・MQTT 配信の設計](design/imu-raw-mqtt-design-ja.md)、ドライバー
 （LSM6DSO、I²C、NINA）は [ローカルドライバーの説明](zephyr/app/usb-console/drivers/README_ja.md) を
 参照してください。同じファームウェアの NuttX 版（`nuttx/`）と Pico SDK + FreeRTOS 版（`freertos/`）もあります
-（下の「3 つの版と `common/`」）。
+（下の「3 つの OS のファームウェアと `common/`」）。
 
 現状は実験段階です。計測の開始・停止はシェルからの手動操作で、PC 側には検証用の受信
 スクリプトしかありません。確認できた範囲と未確認の範囲は設計書にまとめています。
@@ -61,7 +61,7 @@ west build -b arduino_nano_connect app/usb-console -d build/usb-console
 
 UF2 はブートローダーモード（BOOTSEL。`RPI-RP2` という USB ストレージが現れる状態）から書きます。
 `flash.sh`（NuttX 版・FreeRTOS 版と共通の `script/flash_uf2.sh`）は、このストレージに UF2 をコピーします。
-ストレージが無ければ、3 つの版のどれが動いていても、その USB のシェルに `bootsel` を送り（コンソールを別の
+ストレージが無ければ、3 つの OS のファームウェアのどれが動いていても、その USB のシェルに `bootsel` を送り（コンソールを別の
 プログラムで開いているときは送りません）、ストレージが現れてマウントされるのを待ち、コピーのあと新しい USB
 コンソールを表示します。シェルが応答しないときは、BOOTSEL への入り方を表示して待ちます。RESET ボタンを素早く
 2 回押すか、それでも入れない場合は、`REC` と `GND` をジャンパー線で接続したまま RESET ボタンを押し、
@@ -81,7 +81,7 @@ NINA-W102 側は、Arduino の NINA ファームウェア 3.0.2 にこのリポ�
 
 ### NINA のファームウェアの読み書き
 
-`nina passthrough confirm` でボードが再起動し、USB のシリアルが NINA の UART に繋がります（3 つの版とも。
+`nina passthrough confirm` でボードが再起動し、USB のシリアルが NINA の UART に繋がります（3 つの OS のファームウェアとも。
 RP2040 のファームウェアと KV はそのまま）。PC の esptool で読み書きします（下の例はリポジトリのルートで実行）。esptool 5.3.0 は `--before no-reset` では
 繋がらないので、RTS を有効にしたままにする設定ファイルを使います。
 
@@ -303,7 +303,7 @@ zperf tcp download stop
 ```
 
 UDP 送信は 500 kbit/s の指定で欠落 0 でした（2026-11-12、30 秒、1 回）。TCP の速度は最後の節
-「3 つの版の性能」にあります。どちらも IMU の送信を止めた状態での値で、無線環境によって変わります。
+「3 つの OS のファームウェアの性能」にあります。どちらも IMU の送信を止めた状態での値で、無線環境によって変わります。
 
 ### Wi-Fi 経由のシェル
 
@@ -354,39 +354,41 @@ OS に依存しない部分のテスト（`common/tests/run.sh`）を先に実�
 | 場所 | 内容 |
 |---|---|
 | `zephyr/app/usb-console/src/` | Zephyr 版だけのアプリのソース（KV、RAM ログ、起動処理） |
-| `zephyr/app/usb-console/drivers/` | Zephyr 版のドライバーの説明（LSM6DSO・I²C・sensor シェルは Zephyr のものにローカルのパッチ、NINA のドライバーは `common/drivers/nina/`） |
+| `zephyr/app/usb-console/drivers/` | Zephyr 版のドライバーの説明（I²C と sensor シェルは Zephyr のものにローカルのパッチ、LSM6DSO と NINA のドライバーは `common/drivers/`） |
 | `zephyr/app/usb-console/tests/` | Zephyr 版だけのホストテスト |
 | `zephyr/app/blink/` | LED 点滅のサンプル |
 | `zephyr/script/` | 環境構築、ホストテスト |
 | `zephyr/manifest/west.yml` | Zephyr とモジュールのバージョン |
 | `zephyr/manifest/zephyr/` | Zephyr とモジュールへのローカルのパッチ |
-| `common/` | 3 つの版が共有するソースとそのホストテスト（構成は[設計書](design/imu-raw-mqtt-design-ja.md)の §12） |
+| `common/` | 3 つの OS のファームウェアが共有するソースとそのホストテスト（構成は[設計書](design/imu-raw-mqtt-design-ja.md)の §12） |
 | `nuttx/` | NuttX 版 |
 | `freertos/` | Pico SDK + FreeRTOS 版 |
 | `openmv/` | OpenMV 版 MicroPython のビルド環境（[`openmv/README_ja.md`](openmv/README_ja.md)） |
 | `design/` | 設計と調査手順 |
 | `firmware/nina-fw/` | NINA ファームウェアの修正とビルド |
 | `host/` | PC 側のツールと表示用のアプリ `ImuStudio` |
-| `script/` | PC を一時的な AP にするスクリプト、KV の退避と書き戻し、3 つの版が共有する UF2 の書き込み |
+| `script/` | PC を一時的な AP にするスクリプト、KV の退避と書き戻し、3 つの OS のファームウェアが共有する UF2 の書き込み |
 
-## 3 つの版と `common/`
+## 3 つの OS のファームウェアと `common/`
 
 同じファームウェアに、Zephyr 版（`zephyr/`）、NuttX 版（`nuttx/`、NuttX 13.1.0）、Pico SDK + FreeRTOS 版（`freertos/`、
-Pico SDK 2.3.1 と FreeRTOS カーネル V11.3.3）の 3 つの版があります。ソースの大半は `common/` の同じファイルで、NuttX 版と
+Pico SDK 2.3.1 と FreeRTOS カーネル V11.3.3）の 3 つがあります。どれも、同じファームウェアをそれぞれの OS の上でビルドしたものです。ソースの大半は `common/` の同じファイルで、NuttX 版と
 FreeRTOS 版は Zephyr の API を Zephyr の名前のまま再現する互換層の上でそれをビルドします。計測、MQTT の送信、時刻同期、
-KV（同じ場所・同じ形式なので、版を書き換えても残ります）、校正、Wi-Fi、Telnet のシェルの動作と、独自のコマンド（`imu`、
-`kv`、`ntp`、`nina`、`dmesg`、`i2c_dma`、`sensor`、`wifi cred`）の構文と出力は 3 つの版で同じです。
+KV（同じ場所・同じ形式なので、別の OS のファームウェアに書き換えても残ります）、校正、Wi-Fi、Telnet のシェルの動作と、独自のコマンド（`imu`、
+`kv`、`ntp`、`nina`、`dmesg`、`i2c_dma`、`sensor`、`wifi cred`）の構文と出力は 3 つの OS のファームウェアで同じです。
 
-| 版 | 使い方 | 使う側から見た違い |
+| ファームウェア | 使い方 | 使う側から見た違い |
 |---|---|---|
 | Zephyr 版 | この README | それ以外のコマンドは Zephyr 標準（`wifi`、`net`、`kernel`、`zperf` など） |
 | NuttX 版 | [`nuttx/README_ja.md`](nuttx/README_ja.md) | それ以外のコマンドは NuttX 標準（`wapi`、`ifconfig`、`iperf`、`ps`、`reboot` など） |
 | FreeRTOS 版 | [`freertos/README_ja.md`](freertos/README_ja.md) | それ以外のコマンドは短い名前（`version`、`reboot`、`ps`、`ifconfig` など）、`zperf` は TCP だけ |
 
-PC 側のツールはどの版にも使えます（[`host/README_ja.md`](host/README_ja.md) の「ボードのファームウェア」）。`common/` の構成は
-[設計書](design/imu-raw-mqtt-design-ja.md)の §12、NuttX 版と FreeRTOS 版の設計上の違いは §11 と §13 にあります。
+PC 側のツールはどの OS のファームウェアにも使えます（[`host/README_ja.md`](host/README_ja.md) の「ボードのファームウェア」）。`common/` の構成は
+[設計書](design/imu-raw-mqtt-design-ja.md)の §12、NuttX 版と FreeRTOS 版の設計上の違いは §11 と §13 にあります。別の OS へ移植するときに
+その OS の側で書くもの（カーネルの部分、コンソール、ログ、KV、起動、各ドライバーのつなぎ）は、
+[共有のコードと OS の境界](design/os-boundary-ja.md)にまとめています。
 
-## 3 つの版の性能
+## 3 つの OS のファームウェアの性能
 
 同じボード、同じ PC、同じ AP、同じ受信器（`imu-host check`）で、ファームウェアを書き換えて同じ日（2026-11-18）に
 測った値です。送信中の値は、6667 Hz の計測を MQTT で送り、USB のシェルから `imu start`、約 60〜70 秒後に `imu stop` で

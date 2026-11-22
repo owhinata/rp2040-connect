@@ -52,6 +52,14 @@
 #   <zephyr/drivers/sensor/lsm6dso.h>, which the service reads, is
 #   common/compat's).
 #
+# The service needs the transport's and the time synchronization's API in
+# every build: without the MQTT transport, common/imu/imu_raw_mqtt_null.c
+# takes the place of imu_raw_mqtt.c, imu_raw_status.c, mqtt_min.c and
+# mqtt_min_sock.c (and CONFIG_IMU_RAW_MQTT is not defined); without the time
+# synchronization, common/imu/time_sync_null.c that of time_sync.c and
+# time_offset.c (no CONFIG_TIME_SYNC), as in the NuttX build.  This file
+# builds both modules.
+#
 # Besides mqtt_min.c's -Wno-sign-compare, the shared sources build without
 # warnings under the application's -Wall -Wextra.
 

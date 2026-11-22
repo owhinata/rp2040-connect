@@ -6,7 +6,9 @@
 # FreeRTOS build uses), common/compat/selftest/ (the layer's self-test),
 # common/compat/shell_engine/ (the shell for an OS without one) and
 # common/compat/kernel_generic/ (the kernel part for an OS that offers only
-# basic primitives), which only the FreeRTOS build compiles, and
+# basic primitives), which only the FreeRTOS build compiles, with k_heap
+# (common/compat/zephyr_heap.c, zephyr_heap.h) and the host check's OS part
+# of that kernel part (common/tests/kernel_generic_host/), and
 # common/chip/ (the RP2040's code that no OS owns, which all three builds
 # compile), with clang-format and freertos/.clang-format (the Zephyr project's style).  Run
 # it from anywhere; it sources freertos/script/setup.sh itself, which
@@ -29,7 +31,7 @@ check=0
 case "${1:-}" in
   "") ;;
   --check) check=1 ;;
-  -h|--help) sed -n '2,23p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+  -h|--help) sed -n '2,25p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
   *) printf 'Unknown option: %s\n' "$1" >&2; exit 2 ;;
 esac
 
@@ -46,7 +48,8 @@ mapfile -t files < <(find "${root}/app" "${root}/drivers" "${root}/tests" \
   "${root}"/../common/drivers/*/port/freertos "${net_offload}" \
   "${root}/../common/compat/libc_net" "${root}/../common/compat/selftest" \
   "${root}/../common/compat/shell_engine" "${root}/../common/compat/kernel_generic" \
-  "${root}/../common/chip" -type f \
+  "${root}/../common/compat/zephyr_heap.c" "${root}/../common/compat/zephyr_heap.h" \
+  "${root}/../common/tests/kernel_generic_host" "${root}/../common/chip" -type f \
   \( -name '*.c' -o -name '*.h' \) ! -name FreeRTOSConfig.h \
   ! -path "${net_offload}/lib/*" ! -path "${net_offload}/subsys/*" \
   ! -path "${net_offload}/include/zephyr/sys/fdtable.h" \

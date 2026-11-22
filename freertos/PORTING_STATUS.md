@@ -2637,3 +2637,18 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
 - NuttX 版だけ Telnet をスレッドのあとに起動する件: このままでよい。
 - FreeRTOS 版の `cpu_active` が整理の前の 42.8% から 44.0% になった件（配置の影響と見られる）: 仕方ない。
 - FreeRTOS 版で書き込み直後の最初の計測に出ることがある送信の詰まり（2026-11-22 に 2 回、1.2〜1.4 秒）: 再現していないので様子を見る。
+
+## レビュー（codex、4 つ目の OS を足す人の目線）への対応と、単独の「版」の書き換え（2026-11-22）
+
+- 指摘 1（汎用のカーネルを選ぶとネットワークの部品の include パスも要る）: `kernel_generic/zephyr_os.h` が `net_offload/include/zephyr_heap.h` を読んでいた。`k_heap` を互換層の共通のカーネルの API にした:
+  宣言は `common/compat/zephyr_heap.h`（`common/compat/zephyr/kernel.h` の最後で読む。どちらのカーネルの部分でも使える）、実装は `common/compat/zephyr_heap.c`（`k_spin_lock` だけに依存）。
+  NuttX 版はコンパイルしない（使う所が無い）。新しい検査 `kernel_generic_independent`（`net_offload`・`libc_net` の include パスなしで汎用のカーネルがコンパイルできる。最小の OS の部分は
+  `common/tests/kernel_generic_host/`）と `net_offload_independent`（逆向き。NuttX 式の偽のカーネルの上で）。部品どうしの依存は境界の文書の §1.1 に表にした。
+- 指摘 2（IMU だけの構成に要る代わりの実装が NuttX 版に隠れている）: `time_sync_null.c`・`imu_raw_mqtt_null.c` を `nuttx/apps/imu/` から `common/imu/` へ。決まり（`CONFIG_APP_IMU` は両方の API を必要とし、
+  モジュールを外すなら null のファイルをリンクする）を `app_main.h` に明記。NuttX の別の構成で確認（subagent）: MQTT と時刻合わせを外して 273508 B、NINA と usrsock も外して 238712 B でビルドできる。
+- 指摘 3（LSM6DSOX の構成が入口から分からない）: 境界の文書のドライバーの表のセンサーの行を埋めた。冒頭に「新しい OS で書くもの」（7 段階）、§7「例: IMU だけの構成」（NuttX の構成から確認）を追加。
+  ルートの README（日英）: 「LSM6DSO は Zephyr のものにローカルのパッチ」という古い案内を直し、「3 つの OS のファームウェアと `common/`」の節から境界の文書へリンク（メイン）。
+- 単独の「版」（ユーザーの指摘: 何を指すか分からない。件数にかかわらず全部直す）: 日本語の文書の全部で書き換えた（`design/imu-raw-mqtt-design-ja.md` 45、`nuttx-porting-ja.md` 26、`nuttx/drivers/README_ja.md` 18、
+  `freertos/drivers/README_ja.md` 14、`zephyr/.../drivers/README_ja.md` 12、`os-boundary-ja.md` 11、`host/README_ja.md` 6、ルート・`freertos/`・`nuttx/` の README）。各文書の冒頭で 3 つの OS のファームウェアを説明し、
+  「各 OS のファームウェア」「OS の側」、バージョンの意味なら「バージョン」と書く。「Zephyr 版」などの呼び名はそのまま。作業ログ（`PORTING_*.md`）は対象外。
+- 照合: 3 版と自己診断のイメージは変更前とバイト単位で一致（基準は `snapshot-1122j` のまま）。ホストテスト 54・67・64。

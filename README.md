@@ -366,7 +366,7 @@ summary (missing batches, valid and reversed times) and at the errors in `imu st
 | Path | Content |
 |---|---|
 | `zephyr/app/usb-console/src/` | Application sources of the Zephyr build only (key-value store, RAM log, start-up) |
-| `zephyr/app/usb-console/drivers/` | The description of the Zephyr build's drivers (LSM6DSO, I2C and the sensor shell are Zephyr's with local patches; the NINA driver is in `common/drivers/nina/`) |
+| `zephyr/app/usb-console/drivers/` | The description of the Zephyr build's drivers (I2C and the sensor shell are Zephyr's with local patches; the LSM6DSO and NINA drivers are in `common/drivers/`) |
 | `zephyr/app/usb-console/tests/` | Host tests of the Zephyr build only |
 | `zephyr/app/blink/` | LED blink sample |
 | `zephyr/script/` | Setup, host tests |
@@ -398,7 +398,9 @@ calibration, Wi-Fi and the Telnet shell behave the same, and the commands of thi
 
 The PC tools work with every build ("Board firmware" in [`host/README.md`](host/README.md)). Section 12 of the
 [design](design/imu-raw-mqtt-design.md) describes the layout of `common/`, sections 11 and 13 the design differences of the
-NuttX and FreeRTOS builds.
+NuttX and FreeRTOS builds. What a port to
+another OS writes on its own side (the kernel part, the console, the log, the key-value flash, the start, and each
+driver's binding) is listed in [The boundary between the shared code and an OS](design/os-boundary.md).
 
 ## Performance of the three builds
 
