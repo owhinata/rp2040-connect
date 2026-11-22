@@ -1,14 +1,16 @@
 ############################################################################
 # nuttx/drivers/log/Make.defs
 #
-# The RAM log (log_ram.c) and its OS-independent part (log_ring.c and
-# log_ring.h, in common/log), which the host tests also build.  Included by
-# nuttx/drivers/Makefile.  VPATH and DEPPATH of common/log are relative to
-# nuttx/drivers (mkdeps needs relative ones); the objects are made there.
+# The RAM log: its shared part (log_ram.c on log_ring.c, in common/log,
+# which the host tests also build; the NuttX part of its boundary is
+# include/log_ram_os_impl.h) and the syslog channel (log_ram_syslog.c).
+# Included by nuttx/drivers/Makefile.  VPATH and DEPPATH of common/log are
+# relative to nuttx/drivers (mkdeps needs relative ones); the objects are
+# made there.
 ############################################################################
 
 ifeq ($(CONFIG_LOG_RAM),y)
-CSRCS += log_ram.c log_ring.c
+CSRCS += log_ram.c log_ram_syslog.c log_ring.c
 DEPPATH += --dep-path log
 VPATH += :log
 DEPPATH += --dep-path ../../common/log

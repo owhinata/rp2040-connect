@@ -5,16 +5,15 @@
  * sources move over with only the include changed (the sources shared with
  * the Zephyr build, common/, keep Zephyr's include: <zephyr/logging/log.h>
  * of the compatibility layer includes this header).  Each message becomes
- * one line in the RAM log (log_ring.c here, filled by the OS's part: on
- * NuttX nuttx/drivers/log/log_ram.c; shown by "dmesg") in Zephyr's
- * format:
+ * one line in the RAM log (log_ram.c and log_ring.c here, on the OS's
+ * part declared in log_ram_os.h; shown by "dmesg") in Zephyr's format:
  *
  *   [HH:MM:SS.mmm,uuu] <inf> module: message\n
  *
  * with <err>, <wrn>, <inf> and <dbg>, and "module.function: " for <dbg>
  * (Zephyr's CONFIG_LOG_FUNC_NAME_PREFIX_DBG).  The time is the board's
- * monotonic clock, microseconds since boot (the RP2040's TIMER; on NuttX
- * nano_mono_us()).
+ * monotonic clock, microseconds since boot (the RP2040's TIMER:
+ * log_ram_os_uptime_us()).
  *
  * Usable in threads and in interrupt handlers (on NuttX from the kernel
  * side, nuttx/drivers and the board code, and from the applications: flat
@@ -36,9 +35,9 @@
  *   - the OS's headers that must come before this one, with any macro of
  *     theirs that this header defines (LOG_ERR of <syslog.h>) undefined.
  *
- * The OS implements app_log_printf(), app_log_vprintf() and
- * app_log_ratelimit_pass() (below), on log_ring.h; on NuttX
- * nuttx/drivers/log/log_ram.c.
+ * app_log_printf(), app_log_vprintf() and app_log_ratelimit_pass() (below)
+ * are in log_ram.c, on log_ring.h and on the OS's part of the RAM log
+ * (log_ram_os.h).
  */
 
 #ifndef __NUTTX_DRIVERS_INCLUDE_APP_LOG_H
@@ -171,8 +170,7 @@ extern "C"
 {
 #endif
 
-/* Format one line and store it in the RAM log (the OS's part; on NuttX
- * nuttx/drivers/log/log_ram.c).
+/* Format one line and store it in the RAM log (log_ram.c).
  * level is LOG_LEVEL_ERR..LOG_LEVEL_DBG; func is NULL, or the function
  * name to put after the module name.  The line is built in a buffer of
  * APP_LOG_LINE_MAX bytes on the caller's stack; a longer message is cut

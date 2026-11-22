@@ -891,7 +891,7 @@ The OS parts are implementations of narrow boundary headers in each build's dire
   `nina_bus.h` (`nina_os.h`'s implementations are in the core's bindings,
   `common/drivers/nina/port/zephyr/`, `nuttx/` and `freertos/`), the I2C core's `i2c_dw_os.h` and the DMA reads' `i2c_dw_dma_os.h` (implemented in the core's bindings,
   `common/drivers/i2c_dw/port/nuttx/` and `freertos/`), the key-value flash's `nano_flash_kv.h`, the shell backend
-  `zshell_os.h`, the log's `app_log_os.h` and `log_ram.h`.
+  `zshell_os.h`, the log's `app_log_os.h`, `log_ram.h` and `log_ram_os.h`.
 - A few lines that differ per build: `sensor_shell_os.h` (the wait of `sensor get`), `wifi_profile_os.h`,
   `lsm6dso_instance.h` (the device), `kv_store_os.h` (whether there is `kv wipe`).
 

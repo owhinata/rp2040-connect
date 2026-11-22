@@ -173,7 +173,7 @@ The console is the USB CDC ACM port (UART0 is not used). Opening a terminal show
 |---|---|
 | `app/usb-console/` | The application: start-up, commands, kernel configuration (`FreeRTOSConfig.h`) |
 | `drivers/compat/` | The FreeRTOS part of the Zephyr compatibility layer (runs the shared sources in `common/`) |
-| `drivers/shell/`, `drivers/log/`, `drivers/libc/` | The shell, the RAM log, the connection of standard output |
+| `drivers/shell/`, `drivers/libc/` | The console and shell on FreeRTOS, the connection of standard output (the shell engine, the RAM log and the network layer are in `../common/`) |
 | `drivers/kv/` | Reading and writing the flash of the key-value store |
 | `drivers/nina/` | Adds the NINA-W102 driver to the build (the driver is `../common/drivers/nina/`) |
 | `drivers/wifi/` | Brings in Wi-Fi (the code is in `common/`) |

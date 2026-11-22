@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-/* The OS-independent parts of the RAM log (log_ram.c): the retained ring
- * buffer, the line prefix and the rate-limit decision.  The caller holds
- * the lock.  Kept apart so the host tests (common/tests/log_ring.c) can run
+/* The parts of the RAM log (log_ram.c) that need no lock and no clock: the
+ * retained ring buffer, the line prefix and the rate-limit decision.  The
+ * caller holds the lock.  Kept apart so the host tests (common/tests/log_ring.c) can run
  * them.  The ring and its rules are those of the Zephyr build's
  * zephyr/app/usb-console/src/log_ram.c.
  */

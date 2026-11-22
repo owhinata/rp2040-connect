@@ -8,7 +8,8 @@
  * macro, so a file that includes app_log.h cannot use syslog(LOG_ERR, ...);
  * it can use APP_LOG_SYSLOG_ERR instead.
  *
- * The functions of app_log.h are in nuttx/drivers/log/log_ram.c.
+ * The functions of app_log.h are in common/log/log_ram.c (its NuttX part:
+ * log_ram_os_impl.h here).
  * Shared by the kernel side (nuttx/drivers, the board code) and the
  * applications: $(TOPDIR)/external/include.
  */

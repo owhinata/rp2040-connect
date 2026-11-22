@@ -354,7 +354,7 @@ SHELL_CMD_REGISTER(selftest, NULL, "Test the Zephyr compatibility layer (build o
 		   cmd_selftest);
 #endif
 
-/* The commands of other sources: freertos/drivers/log/log_ram.c,
+/* The commands of other sources: common/shell/dmesg_shell.c,
  * common/shell/i2c_dma_shell.c, common/imu/imu_stream.c,
  * common/imu/kv_store.c (with "kv wipe" of common/compat/kv_store_wipe.c),
  * common/shell/nina_shell.c ("nina"),

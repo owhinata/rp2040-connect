@@ -8,7 +8,7 @@ config APP_DMESG
 	default y
 	depends on LOG_RAM
 	---help---
-		"dmesg" prints the RAM log (nuttx/drivers/log/log_ram.c) the way
+		"dmesg" prints the RAM log (common/log/log_ram.c) the way
 		the Zephyr build's dmesg command does: the stored text as is, or
 		"No logs." when it is empty.  Arguments are ignored.  NuttX's own
 		nsh dmesg (NSH_DISABLE_DMESG) reads /dev/kmsg and is not used.

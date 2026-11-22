@@ -15,8 +15,8 @@ Paths below `nuttx/boards/arduino-nano-rp2040-connect/` are shortened to `N-boar
 |---|---|---|
 | Application | `common/imu` | IMU service, MQTT transport, time synchronization, Wi-Fi profile, KV store, calibration |
 | Drivers | `common/drivers/<driver>/` | OS-independent core; `port/` boundary headers; `port/<os>/` bindings (section 5) |
-| Shell commands | `common/shell` | `zshell.c` (Zephyr shell command handling), `subcmd.c`, `nina_shell.c`, `i2c_dma_shell.c` |
-| Log | `common/log` | RAM log ring (`log_ring.c`), `LOG_*` macros (`app_log.h`), fault record text (`fault_record.c`) |
+| Shell commands | `common/shell` | `zshell.c` (Zephyr shell command handling), `subcmd.c`, `nina_shell.c`, `i2c_dma_shell.c`, `dmesg_shell.c` (F only; N has `nuttx/apps/dmesg`) |
+| Log | `common/log` | RAM log and the functions of the `LOG_*` macros (`log_ram.c`, on its OS part `log_ram_os.h`, section 3), its ring (`log_ring.c`), `LOG_*` macros (`app_log.h`), fault record text (`fault_record.c`) |
 | Compatibility layer, shared part | `common/compat` | Zephyr headers (`common/compat/zephyr/`), work items, the work queues' threads and the layer's start (`zephyr_init.c`), RTIO, gpio0 device, net_mgmt, Wi-Fi requests, KV flash device, copies of Zephyr's NVS, settings, getopt, Wi-Fi credentials, zperf |
 | Compatibility layer, network part for an OS without a network stack | `common/compat/net_offload` | Zephyr's socket layer (reduced copies of `subsys/net/lib/sockets`, `lib/os/zvfs`), the one network interface (`zephyr_net_if.c`) and its start (`zephyr_net_init.c`), `k_heap` (`zephyr_heap.c`), their headers in its own include root `include/` (`zephyr/net/net_if.h`, `net_ip.h`, `socket.h`, `socket_offload.h`, `zephyr/sys/fdtable.h`, `zephyr_net_init.h`, `zephyr_heap.h`); used by F only |
 | POSIX network headers for a C library without them | `common/compat/libc_net` | `include/` (`arpa/inet.h`, `netdb.h`, `netinet/in.h`, `netinet/tcp.h`, `poll.h`, `sys/socket.h`, `sys/uio.h`), `inet_pton()`/`inet_ntop()` (`inet.c`); used by F only |
@@ -26,8 +26,8 @@ Paths below `nuttx/boards/arduino-nano-rp2040-connect/` are shortened to `N-boar
 | Zephyr build | `zephyr/app/usb-console` | `main()`, `log_ram.c`, `kv_store_os.h`, `wifi_profile_os.h`; upstream Zephyr with patches in `zephyr/manifest/zephyr/patches` |
 | N: board | `N-board/` | Bring-up, tickless timer, idle loop and CPU load, GPIO bank 0, KV flash, USB serial, `nano_mono_us()` (`include/nano_timer.h`) |
 | N: compatibility layer, OS part | `nuttx/drivers/compat` | `zephyr_os*.h`, kernel, mutexes, I2C on `struct i2c_master_s`, net_if, hwinfo, prelude, per-OS `<zephyr/...>` headers |
-| N: shared OS headers | `nuttx/drivers/include` | `app_log_os.h`, `priorities_os.h` |
-| N: log | `nuttx/drivers/log` | `log_ram.c` |
+| N: shared OS headers | `nuttx/drivers/include` | `app_log_os.h`, `log_ram_os_impl.h`, `priorities_os.h` |
+| N: log | `nuttx/drivers/log` | `log_ram_syslog.c` (the RAM log as the syslog channel), `Make.defs` |
 | N: drivers | `nuttx/drivers/<driver>/` | `Make.defs`, `Kconfig` of each driver |
 | N: applications | `nuttx/apps/*` | Init task (`init`), one builtin application per command, shell OS part (`subcmd`), Wi-Fi and sensor parts |
 | N: NuttX changes | `nuttx/patches` | Local patches to NuttX and nuttx-apps |
@@ -35,7 +35,7 @@ Paths below `nuttx/boards/arduino-nano-rp2040-connect/` are shortened to `N-boar
 | F: compatibility layer, OS part | `freertos/drivers/compat` | `zephyr_os*.h`, kernel, mutexes, realtime clock, linker script part of the socket registrations, `rp2040/` (port header, GPIO bank 0, hwinfo, the self-test's board part), the self-test's OS part (`zephyr_selftest_os.h`), prelude |
 | F: shell | `freertos/drivers/shell` | Consoles, stdio per console, getopt state, shell OS part |
 | F: C library additions | `freertos/drivers/libc` | stdout/stderr wrappers |
-| F: other OS parts | `freertos/drivers/{include,log,kv,telnet,wifi,sensor_shell,imu,zperf}` | `app_log_os.h`; `log_ram.c`; KV flash; Telnet; Wi-Fi OS header; sensor shell OS part; per-source preludes; build files |
+| F: other OS parts | `freertos/drivers/{include,kv,telnet,wifi,sensor_shell,imu,zperf}` | `app_log_os.h`, `log_ram_os_impl.h`; KV flash; Telnet; Wi-Fi OS header; sensor shell OS part; per-source preludes; build files |
 | F: drivers | `freertos/drivers/<driver>/*.cmake` | The sources and options of each driver |
 
 ## 2. Kernel part of the compatibility layer
@@ -146,8 +146,9 @@ The atomic operations themselves are shared (on `k_spin_lock()`).
 |---|---|---|---|---|---|
 | Shell backend | `common/shell/zshell_os.h` | `zshell_os_backend_get()`, `zshell_os_cmd_enter()`, `zshell_os_cmd_exit()`, `z_shell_backend_vfprintf()`; optional `zshell_os_active_cmd_set()`/`_get()` with `ZSHELL_OS_ACTIVE_CMD` | `common/shell/zshell.c` | `nuttx/apps/subcmd/zshell_os_impl.h` (no `ZSHELL_OS_ACTIVE_CMD`) | `freertos/drivers/shell/zshell_os_impl.h` (defines it) |
 | `struct shell` | read by `common/compat/zephyr/shell/shell.h` | one backend, outlives the command | shell commands | `nuttx/drivers/compat/zephyr_os_shell.h` (terminal path, command pid) | `freertos/drivers/shell/zephyr_os_shell.h` (console, active command) |
-| Log, OS part | `common/log/app_log.h` | `app_log_os.h` (OS headers first, optional `CONFIG_LOG_DEFAULT_LEVEL`, `CONFIG_LOG_MAX_LEVEL`); `app_log_printf()`, `app_log_vprintf()`, `app_log_ratelimit_pass()` | `LOG_*()` macros | `nuttx/drivers/include/app_log_os.h`, `nuttx/drivers/log/log_ram.c` | `freertos/drivers/include/app_log_os.h`, `freertos/drivers/log/log_ram.c` |
-| RAM log | `common/log/log_ram.h` | `log_ram_initialize()`, `log_ram_piece()` | start-up; `dmesg` | `nuttx/drivers/log/log_ram.c`; called by `N-board/src/rp2040_boardinitialize.c`, `nuttx/apps/dmesg/dmesg_main.c` | `freertos/drivers/log/log_ram.c` (also holds `dmesg`); called by `main()` |
+| Log, OS part | `common/log/app_log.h` | `app_log_os.h` (OS headers first, optional `CONFIG_LOG_DEFAULT_LEVEL`, `CONFIG_LOG_MAX_LEVEL`); `app_log_printf()`, `app_log_vprintf()`, `app_log_ratelimit_pass()` | `LOG_*()` macros | `nuttx/drivers/include/app_log_os.h`; the functions shared: `common/log/log_ram.c` | `freertos/drivers/include/app_log_os.h`; shared: same |
+| RAM log | `common/log/log_ram.h` | `log_ram_initialize()`, `log_ram_store()` (the OS's own log, raw bytes), `log_ram_piece()` | start-up; the OS's log; `dmesg` | shared `common/log/log_ram.c`; called by `N-board/src/rp2040_boardinitialize.c`, `nuttx/drivers/log/log_ram_syslog.c`, `nuttx/apps/dmesg/dmesg_main.c` | shared: same; called by `main()`, `common/shell/dmesg_shell.c` (`log_ram_store()` unused) |
+| RAM log, OS part | `common/log/log_ram_os.h` (`log_ram.c` reads `"log_ram_os_impl.h"` first) | `LOG_RAM_OS_RETAINED(name)` (the ring in RAM the start-up code leaves alone), type `log_ram_os_irqstate_t`; inline `log_ram_os_irq_save()`, `_irq_restore()` (the lock: interrupts masked, any context), `_uptime_us()` (time stamp and rate limit), `_attach()` (make it the OS's own log) | `common/log/log_ram.c` | `nuttx/drivers/include/log_ram_os_impl.h`: `.noinit`, `up_irq_save()`, `nano_mono_us()`, registers the syslog channel (`nuttx/drivers/log/log_ram_syslog.c`) | `freertos/drivers/include/log_ram_os_impl.h`: `__uninitialized_ram`, `save_and_disable_interrupts()`, `nano_mono_us()` of `os_clock.h`, nothing to attach; host `common/tests/log_ram_os_host/` |
 | KV flash | `common/compat/nano_flash_kv.h` | `nano_flash_kv_os_ready()`, `_read()`, `_program()` (256-byte page), `_erase()` (4 KiB sector); range checked again by the OS | `common/compat/zephyr_flash_kv.c` | `N-board/src/nano_flash_kv.c` | `freertos/drivers/kv/nano_flash_kv.c` |
 | KV wipe command | `common/compat/kv_store_os.h` | `kv_store_wipe()`, `kv_store_cmd_wipe()`, `KV_STORE_OS_COMMANDS` | `common/imu/kv_store.c` | shared: `common/compat/kv_store_wipe.c` | shared: same |
 | GPIO bank 0 | `common/compat/nano_gpio.h` | OS: `nano_gpio_configure_input()`, `nano_gpio_get_all()`, `nano_gpio_irq_configure()`; layer: `nano_gpio_irq_handler()` (called from the bank interrupt) | `common/compat/zephyr_gpio.c`; N also `common/drivers/nina/port/nuttx/nina_os.c` | `N-board/src/nano_gpio.c` | `freertos/drivers/compat/rp2040/nano_gpio.c` |
@@ -288,5 +289,6 @@ Start-up files: Zephyr `zephyr/app/usb-console/src/main.c`; N `N-board/src/rp204
 | USB device stack, console transport | `cdcacm`, `N-board/src/rp2040_usbserial.c`; Telnet `nuttx/apps/init/rp2040_telnet.c` | Pico SDK `stdio_usb` (TinyUSB); `freertos/drivers/shell/nano_console.c`, `nano_stdio.c`; Telnet `freertos/drivers/telnet/nano_telnet.c` |
 | Heap | NuttX's | FreeRTOS `heap_4`, 32 KiB (`configTOTAL_HEAP_SIZE`) |
 | The OS's own shell | nsh (sessions in `rp2040_init.c`) | none: the shared engine `common/compat/shell_engine` (`cli.c`, `nano_shell.c`) on the consoles of `freertos/drivers/shell` |
+| The OS's own log in the RAM log | `syslog()`: the syslog channel, `nuttx/drivers/log/log_ram_syslog.c` | none (the FreeRTOS kernel and the Pico SDK have no log) |
 | Fatal errors | `CONFIG_BOARD_RESET_ON_ASSERT`, report in the RAM log | `freertos/app/usb-console/src/fault.c` with `common/log/fault_record.c` |
 | Build system and configuration | Make, Kconfig, `defconfig`, `nuttx/patches` | CMake, `FreeRTOSConfig.h`, `freertos/drivers/*/*.cmake` |

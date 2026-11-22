@@ -2,7 +2,7 @@
 # Build and run the host tests of the sources shared by the Zephyr and NuttX builds (common/)
 # and of the OS-independent parts that the builds other than Zephyr's share: the Zephyr
 # compatibility layer (common/compat), the shell's subcommand dispatch (common/shell) and the
-# RAM log's ring (common/log).  They use the fake headers of tests/fakes, the fake kernel of
+# RAM log (common/log).  They use the fake headers of tests/fakes, the fake kernel of
 # tests/zephyr_fakes or (the NINA core) fakes of its boundary defined by the tests, and need no
 # board and no Zephyr tree (the checks that the copies of Zephyr's files are unchanged, that
 # the I2C core matches the Zephyr build's patched driver and that the sensor shell is the file
@@ -189,6 +189,11 @@ run sys_getopt "${flags[@]}" -D_DEFAULT_SOURCE -DCONFIG_GETOPT_LONG=1 -Itests/kv
 # The RAM log's ring (log/log_ring.c): the retained ring, dmesg pieces, line prefix and rate
 # limit.
 run log_ring "${flags[@]}" -Ilog tests/log_ring.c log/log_ring.c
+# The RAM log on the ring (log/log_ram.c, shared by the NuttX and FreeRTOS builds) on the host's
+# part of its boundary (tests/log_ram_os_host): the lines of the LOG_* macros, the OS's raw bytes,
+# the check at the start, the rate limit and the lock around the ring.
+run log_ram "${flags[@]}" -Itests/log_ram_os_host -Ilog tests/log_ram.c log/log_ram.c \
+    log/log_ring.c
 # The CPU load arithmetic of the idle loop (compat/nano_cpuload.h).
 run nano_cpuload "${flags[@]}" -Icompat tests/nano_cpuload.c
 # The CPU column of "ps" (FreeRTOS) and "kernel ps" (Zephyr): each task's share since the

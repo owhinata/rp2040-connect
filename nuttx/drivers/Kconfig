@@ -15,10 +15,10 @@ config LOG_RAM
 	depends on SYSLOG
 	select SYSLOG_REGISTER
 	---help---
-		log/log_ram.c: an 8192-byte ring buffer in .noinit that
+		common/log/log_ram.c: an 8192-byte ring buffer in .noinit that
 		survives a reset (Zephyr build: src/log_ram.c, 4096 bytes).  The LOG_* macros of
-		include/app_log.h write lines to it, and it is registered as the
-		syslog channel, so syslog() output goes there too.  The "dmesg"
+		common/log/app_log.h write lines to it, and it is registered as the
+		syslog channel (log/log_ram_syslog.c), so syslog() output goes there too.  The "dmesg"
 		command (nuttx/apps/dmesg) prints it.  The board calls
 		log_ram_initialize() from rp2040_boardinitialize().
 

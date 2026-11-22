@@ -756,7 +756,7 @@ OS ごとの部分は、狭い境界のヘッダーの実装として各版の�
   `nuttx/drivers/compat/`、`freertos/drivers/compat/`。
 - 優先度の対応 `priorities_os.h`（`common/compat/priorities.h` が読む）、NINA の `nina_os.h`・`nina_bus.h`（`nina_os.h` の各版の
   実装はコアのつなぎ `common/drivers/nina/port/zephyr/`・`nuttx/`・`freertos/` にある）、I2C の
-  `i2c_dw_os.h` と DMA 読み出しの `i2c_dw_dma_os.h`（実装はコアのつなぎ `common/drivers/i2c_dw/port/nuttx/`・`freertos/` にある）、KV の flash の `nano_flash_kv.h`、シェルのバックエンド `zshell_os.h`、ログの `app_log_os.h`・`log_ram.h`。
+  `i2c_dw_os.h` と DMA 読み出しの `i2c_dw_dma_os.h`（実装はコアのつなぎ `common/drivers/i2c_dw/port/nuttx/`・`freertos/` にある）、KV の flash の `nano_flash_kv.h`、シェルのバックエンド `zshell_os.h`、ログの `app_log_os.h`・`log_ram.h`・`log_ram_os.h`。
 - 版ごとに違う数行: `sensor_shell_os.h`（`sensor get` の待ち）、`wifi_profile_os.h`、`lsm6dso_instance.h`（デバイスの
   生成）、`kv_store_os.h`（`kv wipe` の有無）。
 

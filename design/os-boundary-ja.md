@@ -14,8 +14,8 @@ Zephyr そのものに対してビルドし、`common/compat` を使いません
 |---|---|---|
 | アプリ | `common/imu` | IMU サービス、MQTT の送信、時刻同期、Wi-Fi のプロファイル、KV ストア、校正 |
 | ドライバー | `common/drivers/<ドライバー>/` | OS に依存しないコア、`port/` の境界のヘッダー、`port/<OS>/` のつなぎ（5 節） |
-| シェルのコマンド | `common/shell` | `zshell.c`（Zephyr のシェルのコマンド処理）、`subcmd.c`、`nina_shell.c`、`i2c_dma_shell.c` |
-| ログ | `common/log` | RAM ログのリング（`log_ring.c`）、`LOG_*` マクロ（`app_log.h`）、異常停止の記録の文面（`fault_record.c`） |
+| シェルのコマンド | `common/shell` | `zshell.c`（Zephyr のシェルのコマンド処理）、`subcmd.c`、`nina_shell.c`、`i2c_dma_shell.c`、`dmesg_shell.c`（F だけ。N は `nuttx/apps/dmesg`） |
+| ログ | `common/log` | RAM ログと `LOG_*` マクロの関数（`log_ram.c`。OS の部分 `log_ram_os.h` の上。3 節）、そのリング（`log_ring.c`）、`LOG_*` マクロ（`app_log.h`）、異常停止の記録の文面（`fault_record.c`） |
 | 互換層の共有部分 | `common/compat` | Zephyr のヘッダー（`common/compat/zephyr/`）、ワークアイテム、ワークキューのスレッドと互換層の開始（`zephyr_init.c`）、RTIO、gpio0 のデバイス、net_mgmt、Wi-Fi の要求、KV のフラッシュのデバイス、Zephyr の NVS・settings・getopt・Wi-Fi の資格情報・zperf の写し |
 | 互換層のネットワークの部分（ネットワーク層を持たない OS のため） | `common/compat/net_offload` | Zephyr のソケット層（`subsys/net/lib/sockets`・`lib/os/zvfs` を縮めた写し）、ネットワークのインターフェース 1 つ（`zephyr_net_if.c`）とその開始（`zephyr_net_init.c`）、`k_heap`（`zephyr_heap.c`）、それらのヘッダーは専用のインクルードのルート `include/`（`zephyr/net/net_if.h`・`net_ip.h`・`socket.h`・`socket_offload.h`、`zephyr/sys/fdtable.h`、`zephyr_net_init.h`、`zephyr_heap.h`）。使うのは F だけ |
 | POSIX のネットワークのヘッダー（それを持たない C ライブラリーのため） | `common/compat/libc_net` | `include/`（`arpa/inet.h`、`netdb.h`、`netinet/in.h`、`netinet/tcp.h`、`poll.h`、`sys/socket.h`、`sys/uio.h`）、`inet_pton()`・`inet_ntop()`（`inet.c`）。使うのは F だけ |
@@ -25,8 +25,8 @@ Zephyr そのものに対してビルドし、`common/compat` を使いません
 | Zephyr 版 | `zephyr/app/usb-console` | `main()`、`log_ram.c`、`kv_store_os.h`、`wifi_profile_os.h`。上流の Zephyr と、`zephyr/manifest/zephyr/patches` のパッチ |
 | N: ボード | `N-board/` | 起動、tickless のタイマー、アイドルループと CPU 負荷、GPIO バンク 0、KV のフラッシュ、USB シリアル、`nano_mono_us()`（`include/nano_timer.h`） |
 | N: 互換層の OS 部分 | `nuttx/drivers/compat` | `zephyr_os*.h`、カーネル、ミューテックス、`struct i2c_master_s` の上の I2C、net_if、hwinfo、プレリュード、OS ごとの `<zephyr/...>` ヘッダー |
-| N: 共有の OS ヘッダー | `nuttx/drivers/include` | `app_log_os.h`、`priorities_os.h` |
-| N: ログ | `nuttx/drivers/log` | `log_ram.c` |
+| N: 共有の OS ヘッダー | `nuttx/drivers/include` | `app_log_os.h`、`log_ram_os_impl.h`、`priorities_os.h` |
+| N: ログ | `nuttx/drivers/log` | `log_ram_syslog.c`（RAM ログを syslog のチャネルにする）、`Make.defs` |
 | N: ドライバー | `nuttx/drivers/<ドライバー>/` | 各ドライバーの `Make.defs`、`Kconfig` |
 | N: アプリ | `nuttx/apps/*` | init タスク（`init`）、コマンドごとの builtin アプリ、シェルの OS 部分（`subcmd`）、Wi-Fi とセンサーの部分 |
 | N: NuttX の変更 | `nuttx/patches` | NuttX と nuttx-apps へのローカルのパッチ |
@@ -34,7 +34,7 @@ Zephyr そのものに対してビルドし、`common/compat` を使いません
 | F: 互換層の OS 部分 | `freertos/drivers/compat` | `zephyr_os*.h`、カーネル、ミューテックス、実時間の時計、ソケットの登録のためのリンカースクリプトの部分、`rp2040/`（ポートのヘッダー、GPIO バンク 0、hwinfo、自己診断のボードの部分）、自己診断の OS の部分（`zephyr_selftest_os.h`）、プレリュード |
 | F: シェル | `freertos/drivers/shell` | コンソール、コンソールごとの stdio、getopt の状態、シェルの OS 部分 |
 | F: C ライブラリーの追加 | `freertos/drivers/libc` | stdout・stderr の置き換え |
-| F: そのほかの OS 部分 | `freertos/drivers/{include,log,kv,telnet,wifi,sensor_shell,imu,zperf}` | `app_log_os.h`、`log_ram.c`、KV のフラッシュ、Telnet、Wi-Fi の OS ヘッダー、センサーのシェルの OS 部分、ソースごとのプレリュード、ビルドのファイル |
+| F: そのほかの OS 部分 | `freertos/drivers/{include,kv,telnet,wifi,sensor_shell,imu,zperf}` | `app_log_os.h`・`log_ram_os_impl.h`、KV のフラッシュ、Telnet、Wi-Fi の OS ヘッダー、センサーのシェルの OS 部分、ソースごとのプレリュード、ビルドのファイル |
 | F: ドライバー | `freertos/drivers/<ドライバー>/*.cmake` | 各ドライバーのソースとオプション |
 
 ## 2. 互換層のカーネルの部分
@@ -143,8 +143,9 @@ atomic の操作そのものは共有です（`k_spin_lock()` の上）。
 |---|---|---|---|---|---|
 | シェルのバックエンド | `common/shell/zshell_os.h` | `zshell_os_backend_get()`、`zshell_os_cmd_enter()`、`zshell_os_cmd_exit()`、`z_shell_backend_vfprintf()`。任意で `ZSHELL_OS_ACTIVE_CMD` と `zshell_os_active_cmd_set()`・`_get()` | `common/shell/zshell.c` | `nuttx/apps/subcmd/zshell_os_impl.h`（`ZSHELL_OS_ACTIVE_CMD` なし） | `freertos/drivers/shell/zshell_os_impl.h`（定義あり） |
 | `struct shell` | `common/compat/zephyr/shell/shell.h` が読む | バックエンド 1 つ。コマンドより長く生きる | シェルのコマンド | `nuttx/drivers/compat/zephyr_os_shell.h`（端末のパス、コマンドの pid） | `freertos/drivers/shell/zephyr_os_shell.h`（コンソール、実行中のコマンド） |
-| ログの OS 部分 | `common/log/app_log.h` | `app_log_os.h`（OS のヘッダーを先に、任意の `CONFIG_LOG_DEFAULT_LEVEL`・`CONFIG_LOG_MAX_LEVEL`）、`app_log_printf()`、`app_log_vprintf()`、`app_log_ratelimit_pass()` | `LOG_*()` マクロ | `nuttx/drivers/include/app_log_os.h`、`nuttx/drivers/log/log_ram.c` | `freertos/drivers/include/app_log_os.h`、`freertos/drivers/log/log_ram.c` |
-| RAM ログ | `common/log/log_ram.h` | `log_ram_initialize()`、`log_ram_piece()` | 起動、`dmesg` | `nuttx/drivers/log/log_ram.c`。呼ぶのは `N-board/src/rp2040_boardinitialize.c`、`nuttx/apps/dmesg/dmesg_main.c` | `freertos/drivers/log/log_ram.c`（`dmesg` も持つ）。呼ぶのは `main()` |
+| ログの OS 部分 | `common/log/app_log.h` | `app_log_os.h`（OS のヘッダーを先に、任意の `CONFIG_LOG_DEFAULT_LEVEL`・`CONFIG_LOG_MAX_LEVEL`）、`app_log_printf()`、`app_log_vprintf()`、`app_log_ratelimit_pass()` | `LOG_*()` マクロ | `nuttx/drivers/include/app_log_os.h`。関数は共有の `common/log/log_ram.c` | `freertos/drivers/include/app_log_os.h`。関数は共有（同じ） |
+| RAM ログ | `common/log/log_ram.h` | `log_ram_initialize()`、`log_ram_store()`（OS 自身のログ。そのままのバイト）、`log_ram_piece()` | 起動、OS のログ、`dmesg` | 共有の `common/log/log_ram.c`。呼ぶのは `N-board/src/rp2040_boardinitialize.c`、`nuttx/drivers/log/log_ram_syslog.c`、`nuttx/apps/dmesg/dmesg_main.c` | 共有（同じ）。呼ぶのは `main()`、`common/shell/dmesg_shell.c`（`log_ram_store()` は使わない） |
+| RAM ログの OS 部分 | `common/log/log_ram_os.h`（`log_ram.c` が最初に `"log_ram_os_impl.h"` を読む） | `LOG_RAM_OS_RETAINED(name)`（起動のコードが触らない RAM にリングを置く）、型 `log_ram_os_irqstate_t`。inline の `log_ram_os_irq_save()`・`_irq_restore()`（ロック。割り込みを止める。どの文脈からでも）、`_uptime_us()`（時刻の印と頻度制限）、`_attach()`（OS 自身のログにする） | `common/log/log_ram.c` | `nuttx/drivers/include/log_ram_os_impl.h`: `.noinit`、`up_irq_save()`、`nano_mono_us()`、syslog のチャネルを登録（`nuttx/drivers/log/log_ram_syslog.c`） | `freertos/drivers/include/log_ram_os_impl.h`: `__uninitialized_ram`、`save_and_disable_interrupts()`、`os_clock.h` の `nano_mono_us()`、登録するものなし。ホストは `common/tests/log_ram_os_host/` |
 | KV のフラッシュ | `common/compat/nano_flash_kv.h` | `nano_flash_kv_os_ready()`、`_read()`、`_program()`（256 バイトのページ）、`_erase()`（4 KiB のセクター）。範囲は OS がもう一度確かめる | `common/compat/zephyr_flash_kv.c` | `N-board/src/nano_flash_kv.c` | `freertos/drivers/kv/nano_flash_kv.c` |
 | KV の消去のコマンド | `common/compat/kv_store_os.h` | `kv_store_wipe()`、`kv_store_cmd_wipe()`、`KV_STORE_OS_COMMANDS` | `common/imu/kv_store.c` | 共有: `common/compat/kv_store_wipe.c` | 共有: 同じ |
 | GPIO バンク 0 | `common/compat/nano_gpio.h` | OS: `nano_gpio_configure_input()`、`nano_gpio_get_all()`、`nano_gpio_irq_configure()`。互換層: `nano_gpio_irq_handler()`（バンクの割り込みから呼ぶ） | `common/compat/zephyr_gpio.c`。N では `common/drivers/nina/port/nuttx/nina_os.c` も | `N-board/src/nano_gpio.c` | `freertos/drivers/compat/rp2040/nano_gpio.c` |
@@ -285,5 +286,6 @@ Zephyr 版は自分の `zephyr/app/usb-console/src/kv_store_os.h` と `wifi_prof
 | USB デバイスのスタック、コンソールの経路 | `cdcacm`、`N-board/src/rp2040_usbserial.c`。Telnet は `nuttx/apps/init/rp2040_telnet.c` | Pico SDK の `stdio_usb`（TinyUSB）。`freertos/drivers/shell/nano_console.c`、`nano_stdio.c`。Telnet は `freertos/drivers/telnet/nano_telnet.c` |
 | ヒープ | NuttX のもの | FreeRTOS の `heap_4`、32 KiB（`configTOTAL_HEAP_SIZE`） |
 | OS 自身のシェル | nsh（セッションは `rp2040_init.c`） | 無い。共有のエンジン `common/compat/shell_engine`（`cli.c`・`nano_shell.c`）を `freertos/drivers/shell` のコンソールの上で使う |
+| RAM ログに入る OS 自身のログ | `syslog()`: syslog のチャネル、`nuttx/drivers/log/log_ram_syslog.c` | なし（FreeRTOS のカーネルと Pico SDK はログを持たない） |
 | 致命的なエラー | `CONFIG_BOARD_RESET_ON_ASSERT`、報告は RAM ログ | `freertos/app/usb-console/src/fault.c` と `common/log/fault_record.c` |
 | ビルドの仕組みと構成 | Make、Kconfig、`defconfig`、`nuttx/patches` | CMake、`FreeRTOSConfig.h`、`freertos/drivers/*/*.cmake` |

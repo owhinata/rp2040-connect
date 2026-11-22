@@ -25,7 +25,6 @@ newlib に無い POSIX のネットワークのヘッダーは `common/compat/li
 | `drivers/shell/` | コンソールとタスクごとの出力先（`nano_console.c`）、Pico SDK の stdio の差し替え（`nano_stdio.c`）、セッションごとの getopt（`getopt_state.c`）、シェルの OS の部分（`zshell_os_impl.h`・`zephyr_os_shell.h`） |
 | `common/compat/shell_engine/` | 自分のシェルを持たない OS のためのシェル（OS に依存しない）: 行編集（`cli.c`）、コマンドの表と実行（`nano_shell.c`）、Zephyr の引数の分割の写し（`shell_argv.c`） |
 | `drivers/libc/` | newlib の FILE 関数の差し替え（`stdio_wrap.c`） |
-| `drivers/log/` | RAM ログ（`log_ram.c`。リングは `common/log/log_ring.c`） |
 | `drivers/kv/` | KV のフラッシュの境界（`nano_flash_kv.c`）とリンカースクリプトの差し替え（`ld/`、`kv.cmake`） |
 | `drivers/nina/` | NINA のドライバーをビルドに入れる `nina.cmake` だけ。ドライバーは `common/drivers/nina/` にあり、この版の部分は FreeRTOS へのつなぎ `common/drivers/nina/port/freertos/`: 境界 `nina_os.h` の実装（`nina_os.c`）、中継のホスト側（`nina_passthrough_os.c`）、Pico SDK で書いた SPI1 と制御線（`nina_bus_rp2040.c`）、中継のモジュール側（`nina_passthrough_bus_rp2040.c`: UART1、モジュールの線、watchdog の scratch レジスター、LED）。ソケットとインターフェースは Zephyr へのつなぎのもの（`common/drivers/nina/port/zephyr/nina_socket.c`・`nina_net.c`） |
 | `drivers/i2c_dw/` | I2C のドライバー（I2C0 と、オプションで I2C1）をビルドに入れる `i2c_dw.cmake` と、自己診断（`i2c_dw_selftest.[ch]`）。ドライバーは `common/drivers/i2c_dw/` にあり、この版の部分は FreeRTOS へのつなぎ `common/drivers/i2c_dw/port/freertos/`: FreeRTOS と TIMER の上の境界 `i2c_dw_os.h` の実装（`i2c_dw_os_impl.h`）、Zephyr の I2C の API を持つデバイスとその割り込み・リセット・ピン（`i2c_dw_instance.h`）、その起動（`i2c_dw_controllers_rp2040.h`）、Pico SDK の DMA での I2C0 の DMA 読み出し（`i2c_dw_dma_os_rp2040.c`） |
@@ -35,12 +34,13 @@ newlib に無い POSIX のネットワークのヘッダーは `common/compat/li
 | `drivers/telnet/` | Telnet のシェル（`nano_telnet.c`） |
 | `drivers/zperf/` | `zperf` の組み込み（本体は `common/compat/zperf_iperf3.c`・`zephyr_zperf_shell.c`） |
 | `drivers/sensor_shell/` | `sensor` コマンドの FreeRTOS の部分（`sensor_shell_os.[ch]`） |
-| `drivers/include/` | `app_log.h` の FreeRTOS の部分 |
+| `drivers/include/` | `app_log.h` の FreeRTOS の部分（`app_log_os.h`）と RAM ログの FreeRTOS の部分（`log_ram_os_impl.h`: リングのセクション、割り込みの禁止、TIMER） |
 | `tests/` | ホストテスト（下の「ホストテスト」） |
 
 FreeRTOS 版だけがビルドする共有ファイル: `common/compat/zephyr_wifi_shell.c`（Zephyr の `wifi_shell.c` から
 `connect`・`disconnect`・`scan`・`status` を取り出したもの）、`zephyr_zperf_shell.c`・`zperf_iperf3.[ch]`（`zperf`）、
-`common/log/fault_record.[ch]`（異常停止の記録の形式）。`i2c_dma` の `common/shell/i2c_dma_shell.c` と `nina` の
+`common/log/fault_record.[ch]`（異常停止の記録の形式）、`common/shell/dmesg_shell.c`（`dmesg`）。RAM ログ `common/log/log_ram.c`（リングは
+`log_ring.c`）は NuttX 版と共有する。`i2c_dma` の `common/shell/i2c_dma_shell.c` と `nina` の
 `common/shell/nina_shell.c`（`nina version`・`nina passthrough`）は Zephyr 版もビルドする。
 
 ## Zephyr 互換層の FreeRTOS の部分
@@ -129,9 +129,9 @@ NuttX 版の起動処理の順と同じ）。
 
 ## RAM ログと異常停止
 
-- RAM ログ（`drivers/log/log_ram.c`）は 8 KiB で、起動時に初期化しない RAM（`__uninitialized_ram`）に置きます。
+- RAM ログ（NuttX 版と共有の `common/log/log_ram.c`。この版の部分は `drivers/include/log_ram_os_impl.h`）は 8 KiB で、起動時に初期化しない RAM（`__uninitialized_ram`）に置きます。
   watchdog の再起動、`reboot`、RESET ボタンでは残り、電源断で消えます。`LOG_*` の行は呼び出した文脈（割り込み
-  ハンドラーを含む）で整形し、時刻は TIMER から取ります。`dmesg` で表示します。
+  ハンドラーを含む）で整形し、時刻は TIMER から取ります。`dmesg`（`common/shell/dmesg_shell.c`）で表示します。
 - 異常停止（`app/usb-console/src/fault.[ch]`）: `panic()`、HardFault、`configASSERT()` と `assert()`、スタックの
   あふれ（`configCHECK_FOR_STACK_OVERFLOW` 2）、ヒープ不足、`_exit()` が 1 つの出口に入り、記録（理由、PC、LR、SP、
   例外のフレーム、タスク、時刻）を RAM と watchdog の scratch レジスター 0〜3 に残して watchdog で再起動します。

@@ -28,7 +28,6 @@ interface, `k_heap`) is `common/compat/net_offload/`, and the POSIX network head
 | `drivers/shell/` | The consoles and each task's output (`nano_console.c`), the replacement of the Pico SDK's stdio driver (`nano_stdio.c`), getopt per session (`getopt_state.c`), the shell's OS part (`zshell_os_impl.h`, `zephyr_os_shell.h`) |
 | `common/compat/shell_engine/` | The shell for an OS without one of its own, OS-independent: line editing (`cli.c`), the command table and execution (`nano_shell.c`), a copy of Zephyr's argument split (`shell_argv.c`) |
 | `drivers/libc/` | Wrappers of newlib's FILE functions (`stdio_wrap.c`) |
-| `drivers/log/` | The RAM log (`log_ram.c`; the ring is `common/log/log_ring.c`) |
 | `drivers/kv/` | The flash boundary of the key-value store (`nano_flash_kv.c`) and the linker script override (`ld/`, `kv.cmake`) |
 | `drivers/nina/` | Only `nina.cmake`, which adds the NINA driver to the build. The driver is in `common/drivers/nina/`, and this build's parts are its FreeRTOS binding `common/drivers/nina/port/freertos/`: the `nina_os.h` boundary (`nina_os.c`), the passthrough's host side (`nina_passthrough_os.c`), SPI1 and the module's lines on the Pico SDK (`nina_bus_rp2040.c`), the passthrough's module side (`nina_passthrough_bus_rp2040.c`: UART1, the module's lines, the watchdog's scratch registers, the LED); the sockets and the interface are the Zephyr binding's (`common/drivers/nina/port/zephyr/nina_socket.c`, `nina_net.c`) |
 | `drivers/i2c_dw/` | `i2c_dw.cmake`, which adds the I2C driver to the build (I2C0, and I2C1 as an option), and the self-test (`i2c_dw_selftest.[ch]`). The driver is in `common/drivers/i2c_dw/`, and this build's parts are its FreeRTOS binding `common/drivers/i2c_dw/port/freertos/`: the `i2c_dw_os.h` boundary on FreeRTOS and the TIMER (`i2c_dw_os_impl.h`), the devices with Zephyr's I2C API, their interrupts, resets and pins (`i2c_dw_instance.h`), their start (`i2c_dw_controllers_rp2040.h`), I2C0's DMA reads on the Pico SDK's DMA (`i2c_dw_dma_os_rp2040.c`) |
@@ -38,12 +37,14 @@ interface, `k_heap`) is `common/compat/net_offload/`, and the POSIX network head
 | `drivers/telnet/` | The Telnet shell (`nano_telnet.c`) |
 | `drivers/zperf/` | Builds in `zperf` (the code is `common/compat/zperf_iperf3.c` and `zephyr_zperf_shell.c`) |
 | `drivers/sensor_shell/` | The FreeRTOS part of the `sensor` command (`sensor_shell_os.[ch]`) |
-| `drivers/include/` | The FreeRTOS part of `app_log.h` |
+| `drivers/include/` | The FreeRTOS part of `app_log.h` (`app_log_os.h`) and of the RAM log (`log_ram_os_impl.h`: the ring's section, the interrupt mask, the TIMER) |
 | `tests/` | Host tests ("Host tests" below) |
 
 Shared files only the FreeRTOS build compiles: `common/compat/zephyr_wifi_shell.c` (`connect`,
 `disconnect`, `scan` and `status` taken from Zephyr's `wifi_shell.c`), `zephyr_zperf_shell.c` and
-`zperf_iperf3.[ch]` (`zperf`), `common/log/fault_record.[ch]` (the format of the fatal error record).
+`zperf_iperf3.[ch]` (`zperf`), `common/log/fault_record.[ch]` (the format of the fatal error record),
+`common/shell/dmesg_shell.c` (`dmesg`). The RAM log `common/log/log_ram.c` (on its ring `log_ring.c`) is shared with
+the NuttX build.
 `i2c_dma`'s `common/shell/i2c_dma_shell.c` and `nina`'s `common/shell/nina_shell.c` (`nina version`,
 `nina passthrough`) are built by the Zephyr build too.
 
@@ -142,10 +143,11 @@ the interval of interest); timed by the TIMER.
 
 ## RAM log and fatal errors
 
-- The RAM log (`drivers/log/log_ram.c`) is 8 KiB in RAM that the start-up code does not initialize
+- The RAM log (`common/log/log_ram.c`, shared with the NuttX build; this build's part is
+  `drivers/include/log_ram_os_impl.h`) is 8 KiB in RAM that the start-up code does not initialize
   (`__uninitialized_ram`). It survives the watchdog's restart, `reboot` and the RESET button, not a power
   cycle. `LOG_*` lines are formatted in the caller's context (interrupt handlers included), timed by the
-  TIMER. `dmesg` prints it.
+  TIMER. `dmesg` (`common/shell/dmesg_shell.c`) prints it.
 - Fatal errors (`app/usb-console/src/fault.[ch]`): `panic()`, HardFault, `configASSERT()` and `assert()`,
   stack overflow (`configCHECK_FOR_STACK_OVERFLOW` 2), heap exhaustion and `_exit()` end in one exit,
   which keeps a record (reason, PC, LR, SP, exception frame, task, time) in RAM and in the watchdog's

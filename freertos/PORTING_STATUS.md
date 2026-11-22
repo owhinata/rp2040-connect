@@ -2482,3 +2482,20 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
   この作業ツリーで移行を実施（3 つとも移動、パッチの再適用なし、取得したツリーの状態は同じ、2 回目は何もしない）。
 - 残る `nano_`・`NANO_`（subagent の集計）: フラッシュの KV（`nano_flash_kv*`・`NANO_KV_*`）、FreeRTOS 版のコンソール・シェル・Telnet（`nano_console*`・`nano_shell*`・`nano_telnet*` など）、
   `NANO_PRIO_*`・`NANO_STACK_*`、`nano_gpio*`、タイマー（`nano_mono*`・`NANO_TIMER*`）、`nano_cpuload*`、`NANO_SELFTEST`、Zephyr のアプリの `CONFIG_NANO_HW_DIVIDER`。ファイル名に `nano_` が付くものは 23 個。
+
+## 整理 6: RAM のログを 1 つに（2026-11-22）
+
+- subagent が実装、メインがホストテストと実機確認。
+- NuttX 版と FreeRTOS 版の `log_ram.c` を `common/log/log_ram.c` の 1 つに。境界は `common/log/log_ram_os.h`（各版の `log_ram_os_impl.h` を読む。全部 static inline）:
+  `LOG_RAM_OS_RETAINED()`（再起動で残る RAM に置く）、割り込みのマスクの保存・復帰、`log_ram_os_uptime_us()`、`log_ram_os_attach()`（OS 自身のログにつなぐ。FreeRTOS は空）。
+  NuttX に残るのは syslog のチャネル（`nuttx/drivers/log/log_ram_syslog.c`、64 行）と境界のヘッダー、FreeRTOS は境界のヘッダーだけ（`freertos/drivers/log/` は無くなった）。
+  FreeRTOS の `dmesg` コマンドは `common/shell/dmesg_shell.c` へ（Zephyr のシェルの API だけで書かれている）。
+- 2 版の違い（境界の後ろに残る）: NuttX では `syslog()` の出力がそのままリングに入る。行の形式、192 バイトの切り詰め、レート制限、割り込みの中や起動前から呼べることは同じ。
+- リングの置き場所と形は両版とも変更前と同じ（NuttX 0x20000f14、FreeRTOS 0x20000188、8208 バイト）。
+- イメージ: FreeRTOS 237064 B（大きさ同じ。関数の命令はアドレスを除いて同じ、`cmd_dmesg` の位置が動いた）、NuttX 283996 B（+40。ログの 1 行ごとの呼び出しが 1 段減った）。Zephyr は対象外。
+  **基準: `snapshot-1122g`**（Zephyr は同じ中身）。
+- ホストテスト 49・62・59（新しい `log_ram`: 行の文字列、切り詰め、再起動で残る、壊れたヘッダーで空にする、レート制限、ロックの中でだけ触る）。
+- 実機:
+  - NuttX（書き込み直後 約 70 秒）: 欠番 0、47.0%。`dmesg` に起動の行、受信器なしの `imu start` の警告、`reboot` のあとも前の行が残る。
+  - FreeRTOS: 2 回とも欠番 0、43.2〜43.3%。`dmesg` 同上、`reboot` のあとも残る。`devmem 0x30000000` のあと `fault` に記録（HardFault、タスク console）、`dmesg` に `fault` の行、そのあと通常どおり起動して Wi-Fi 接続。
+- 実機: FreeRTOS 版（この変更の既定のビルド。異常停止の記録が 1 件残っている＝こちらの試験）。
