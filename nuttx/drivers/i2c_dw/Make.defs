@@ -9,8 +9,8 @@
 # (the start of each controller, which the board's bringup reads) and
 # i2c_dw_dma_os_rp2040.c, the DMA reads' two channels on NuttX's own DMA
 # driver (arch/arm/src/rp2040/rp2040_dmac.c, RP2040_DMAC; the boundary
-# common/drivers/i2c_dw/port/i2c_dw_dma_os.h).  The options are the
-# board's (CONFIG_I2C_DW_I2C0, _I2C1, _RP2040_DMA).
+# common/drivers/i2c_dw/port/i2c_dw_dma_os.h).  The options are ./Kconfig's
+# (CONFIG_I2C_DW_I2C0, _I2C1, _RP2040_DMA).
 #
 # The binding reads the chip's registers and NuttX's RP2040 functions
 # (rp2040_gpio.h, rp2040_dmac.h, arm_internal.h), so the chip's private

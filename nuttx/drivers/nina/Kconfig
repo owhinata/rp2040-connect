@@ -104,3 +104,25 @@ config NINA_DNS
 		getaddrinfo()).
 
 endif # NINA
+
+config NINA_PASSTHROUGH
+	bool "NINA passthrough mode (nina passthrough confirm)"
+	default y
+	depends on ARCH_CHIP_RP2040 && CDCACM && BOARD_LATE_INITIALIZE
+	depends on !RP2040_UART1 && !SMP
+	---help---
+		The NINA driver's passthrough mode
+		(common/drivers/nina/nina_passthrough.c, shared with the Zephyr
+		and FreeRTOS builds; its NuttX side
+		common/drivers/nina/port/nuttx/nina_passthrough_os.c, its module side
+		port/nuttx/nina_passthrough_bus_rp2040.c): after "nina passthrough confirm"
+		(nuttx/apps/nina) the board restarts into a mode that relays
+		the USB CDC ACM port to the NINA-W102's UART (UART1 on GPIO8
+		and GPIO9, the pins of SPI1's MISO and CS) with DTR and RTS on
+		the module's GPIO0 and RESETN, for esptool.  The request is kept in the watchdog's scratch
+		registers 0..3 over the restart; in the mode, nano_bringup()
+		starts the USB device only and the init task runs the mode
+		instead of nsh and the threads.  Closing the port at 300 bps,
+		or RESET, restarts the normal firmware.  UART1 is driven here
+		directly, so NuttX's own UART1 driver (RP2040_UART1) must be
+		off: it would take the pins at boot.

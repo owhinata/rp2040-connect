@@ -44,4 +44,5 @@ config NANO_LOG_MAX_LEVEL
 endif # NANO_LOG_RAM
 
 rsource "nina/Kconfig"
+rsource "i2c_dw/Kconfig"
 rsource "lsm6dso/Kconfig"

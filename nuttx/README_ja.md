@@ -473,7 +473,7 @@ OS に依存しない部分のホストテスト 59 本を PC 上でビルドし
 | 置き場所 | 内容 |
 |---|---|
 | `boards/arduino-nano-rp2040-connect/` | ボード定義（`configs/imu/defconfig`、`include/board.h`、リンカースクリプト、`src/` の起動処理・時計・I2C0 と DMA の NuttX の部分・KV の flash など） |
-| `drivers/` | カーネル側のコード（`libexternal.a` になる）: NINA（`nina/`: オプションとビルドの規則。ドライバーは `../common/drivers/nina/` と、その NuttX へのつなぎ `port/nuttx/`）、I2C（`i2c_dw/`: ビルドの規則。ドライバーは `../common/drivers/i2c_dw/` と `port/nuttx/`）、LSM6DSOX（`lsm6dso/`）、RAM ログ（`log/`。リングは `../common/log/`）、Zephyr の API の互換層の NuttX の実装（`compat/`）、共通のヘッダーの NuttX の部分（`include/`） |
+| `drivers/` | カーネル側のコード（`libexternal.a` になる）: NINA（`nina/`: オプションとビルドの規則。ドライバーは `../common/drivers/nina/` と、その NuttX へのつなぎ `port/nuttx/`）、I2C（`i2c_dw/`: オプションとビルドの規則。ドライバーは `../common/drivers/i2c_dw/` と `port/nuttx/`）、LSM6DSOX（`lsm6dso/`）、RAM ログ（`log/`。リングは `../common/log/`）、Zephyr の API の互換層の NuttX の実装（`compat/`）、共通のヘッダーの NuttX の部分（`include/`） |
 | `apps/` | アプリ: `init`（起動処理と Telnet）、`imu`（取得・MQTT・時刻同期・校正・KV）、`kv`、`nina`、`ntp`、`wifi`、`sensor`、`i2c_dma`、`dmesg`、`irqstack`、`bootsel`、`subcmd`（Zephyr のシェルのコマンド処理とサブコマンドの処理。ソースは `../common/shell/`、ここには NuttX のシェルのバックエンド） |
 | `patches/` | NuttX と nuttx-apps へのパッチ |
 | `script/` | `setup.sh`、`build.sh`、`flash.sh`、`host_tests.sh`、`bin2uf2.py`、`kconfig-tweak` |

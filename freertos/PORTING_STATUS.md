@@ -2229,3 +2229,10 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
   送信中の切断 → 2 秒で再接続、MQTT もつなぎ直し、Telnet は送信中と復帰後に応答（1 回）。`nina version` 正常、`dma_errors`・`dma_fallbacks` 0。
 - **FreeRTOS 版の `cpu_active` の目安は、これから約 42.7%**（これまでの 39.8〜41.0% と比べるときは、この変更の分を差し引く）。
 - 実機: FreeRTOS 版（この変更のビルド）。
+
+## NuttX: ドライバーのオプションをドライバーの Kconfig へ（2026-11-22、ユーザーの依頼）
+
+- `CONFIG_I2C_DW_I2C0`・`_I2C1`・`_RP2040_DMA` を、ボードの Kconfig から新しい `nuttx/drivers/i2c_dw/Kconfig` へ（`nuttx/drivers/Kconfig` が `rsource`）。
+- 同じ種類だった `CONFIG_NINA_PASSTHROUGH` も、ボードの Kconfig から `nuttx/drivers/nina/Kconfig`（`endif # NINA` のあと。NINA の本体とは独立に選べるまま）へ。
+  ボードの Kconfig に残るのはボードの `NANO_*` の 6 つ。
+- 確認: `.config` の中身は並びを除いて変更前と同じ（整列して比較）、NuttX のイメージは基準（`snapshot-1121k`）とバイト一致。実機には書いていない。

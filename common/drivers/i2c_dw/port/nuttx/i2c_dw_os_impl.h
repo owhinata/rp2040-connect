@@ -30,7 +30,7 @@
  *   the devices                  struct i2c_master_s first in the
  *                                controller's data (i2c_dw_instance.h)
  *   the nodes i2c0, i2c1         CONFIG_I2C_DW_I2C0, CONFIG_I2C_DW_I2C1
- *                                (the board's Kconfig)
+ *                                (nuttx/drivers/i2c_dw/Kconfig)
  */
 
 #ifndef __COMMON_DRIVERS_I2C_DW_PORT_NUTTX_I2C_DW_OS_IMPL_H

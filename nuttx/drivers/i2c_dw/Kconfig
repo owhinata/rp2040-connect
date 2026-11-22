@@ -1,0 +1,67 @@
+#
+# For a description of the syntax of this configuration file,
+# see the file kconfig-language.txt in the NuttX tools repository.
+#
+# The I2C driver of the RP2040's two controllers: the core
+# common/drivers/i2c_dw/i2c_dw.c with its NuttX binding
+# common/drivers/i2c_dw/port/nuttx, built by ./Make.defs.
+#
+
+config I2C_DW_I2C0
+	bool "I2C0 controller (LSM6DSOX, ATECC608A)"
+	default y
+	depends on ARCH_CHIP_RP2040 && I2C && !RP2040_I2C
+	---help---
+		I2C0 on GPIO12 (SDA) and GPIO13 (SCL), a port of the controller
+		path of the Zephyr build's DesignWare driver (Zephyr's
+		drivers/i2c/i2c_dw.c with the local patch
+		zephyr/manifest/zephyr/patches/zephyr/
+		0003-i2c-dw-rp2040-fifo-and-dma.patch): interrupt
+		driven, RX in batches of 4, 1 s transfer timeout with an abort,
+		the Zephyr SCL counts (100 kHz, 400 kHz, 1 MHz).  The core is
+		common/drivers/i2c_dw/i2c_dw.c, its NuttX binding
+		i2c_dw_instance.h and i2c_dw_os_impl.h of
+		common/drivers/i2c_dw/port/nuttx.  It replaces
+		NuttX's arch/arm/src/rp2040/rp2040_i2c.c, which must stay off
+		(RP2040_I2C), and sets up the pins itself.  Registered as
+		/dev/i2c0 when I2C_DRIVER is set (the i2c tool uses it).
+
+config I2C_DW_I2C1
+	bool "I2C1 controller (nothing connected on the board)"
+	default n
+	depends on ARCH_CHIP_RP2040 && I2C && !RP2040_I2C
+	---help---
+		I2C1 on GPIO18 (SDA, Arduino D6) and GPIO19 (SCL, D7)
+		(BOARD_I2C1_SDA_GPIO, BOARD_I2C1_SCL_GPIO in include/board.h),
+		with the internal pull-ups: the same core as I2C_DW_I2C0
+		(common/drivers/i2c_dw/i2c_dw.c, its second instance), always on
+		the interrupts (the DMA reads are I2C0's).  Brought up after
+		I2C0 by nano_bringup(); a failure does not stop the boot.
+		Registered as /dev/i2c1 when I2C_DRIVER is set (bus 1 of the i2c
+		tool needs I2CTOOL_MAXBUS 1 or more).  Built and host-tested;
+		not yet used with a device on the board.
+
+config I2C_DW_RP2040_DMA
+	bool "DMA reads on I2C0"
+	default y
+	depends on I2C_DW_I2C0 && RP2040_DMAC
+	---help---
+		The Zephyr build's CONFIG_I2C_DW_RP2040_DMA (the same symbol,
+		on there): a read
+		of 32 to 3584 bytes that is the last message of a transfer (so
+		it ends with STOP) runs on two DMA channels, one writing the
+		command words to IC_DATA_CMD and one reading the data; other
+		transfers, and reads when no DMA channel can be had, run on the
+		interrupts.  The "i2c_dma" command (nuttx/apps/i2c_dma) switches
+		it and shows its counters.
+		The channels come from NuttX's own DMA driver
+		(arch/arm/src/rp2040/rp2040_dmac.c, RP2040_DMAC), through
+		i2c_dw_dma_os_rp2040.c of common/drivers/i2c_dw/port/nuttx:
+		two channels taken at start-up with
+		rp2040_dmachannel_trywait() (nuttx/patches/nuttx/0011: it does
+		not wait) and kept for the reads, so that a read never waits
+		for a channel; without two free channels, I2C0 reads on the
+		interrupts.  Other code may use the driver's other channels as
+		usual.  RP2040_SPI_DMA, which RP2040_DMAC also
+		offers, stays off in the imu configuration (the NINA's SPI runs
+		without DMA, as in the Zephyr build).
