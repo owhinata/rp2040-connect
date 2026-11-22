@@ -22,7 +22,7 @@
  * In this mode rp2040_bringup() starts the USB device only; SPI1 keeps the
  * pin functions of rp2040_common_initialize() but is never started.  NuttX
  * itself does not use the scratch registers; the restart is
- * rp2040_watchdog_reboot() (src/rp2040_restart.c), which keeps them.  UART1's
+ * rp2040_watchdog_reboot() (common/chip/rp2040), which keeps them.  UART1's
  * interrupt comes at 4 bytes in the receive FIFO (RXIFLSEL 1/8) or after
  * 32 bit times without more; its handler runs the core's receive path,
  * with the critical sections of the kernel and the USB interrupt the only
@@ -47,7 +47,6 @@
 #include <nuttx/semaphore.h>
 
 #include <arch/board/board.h>
-#include <arch/board/rp2040_restart.h>
 
 #include "arm_internal.h"
 #include "hardware/rp2040_memorymap.h"
@@ -59,6 +58,7 @@
 
 #include "nina_passthrough.h"
 #include "nina_passthrough_bus.h"
+#include "rp2040_watchdog_reboot.h"
 
 /****************************************************************************
  * Pre-processor Definitions

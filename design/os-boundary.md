@@ -23,9 +23,10 @@ Paths below `nuttx/boards/arduino-nano-rp2040-connect/` are shortened to `N-boar
 | Kernel part of the compatibility layer for an OS that offers only basic primitives | `common/compat/kernel_generic` | `k_sem`, `k_poll()`, the timeout list, the sleeps and the start of a thread (`zephyr_kernel.c`), `k_mutex` (`zephyr_mutex.c`), the OS part of `<zephyr/kernel.h>` and `<zephyr/spinlock.h>` (`zephyr_os.h`, `zephyr_os_spinlock.h`), the tick's entry (`zephyr_compat_tick()`, `zephyr_compat_os.h`), the self-test's items on the primitives (`zephyr_selftest_os.h`), all on the primitives declared in `zephyr_kernel_os.h` (section 2); used by F only |
 | Self-test of the compatibility layer (acceptance test of an OS part) | `common/compat/selftest` | `zephyr_selftest.c` (22 tests), its boundary `zephyr_selftest.h` (section 3); used only by F's `-DSELFTEST=ON` build and F's host test |
 | Shell engine for an OS without a shell of its own | `common/compat/shell_engine` | line editor (`cli.c`), command table and dispatch of the `Z_SHELL_CMD_ROOT_GLOBAL` roots (`nano_shell.c`; the application supplies `nano_shell_cmds[]`), Zephyr's word split (`shell_argv.c`); used by F only |
+| RP2040 code that no OS owns | `common/chip/rp2040` | `include/rp2040_timer_us.h` (the TIMER's registers and its 64-bit read `rp2040_timer_us()`, always inline; all three builds), `include/rp2040_watchdog_reboot.h` (`rp2040_watchdog_reboot()`, the watchdog's restart on the raw registers; the Zephyr and NuttX builds). Header only; each build puts `include/` on its include path (Zephyr: the app's `CMakeLists.txt`; N: `N-board/scripts/Make.defs`, for every source; F: the app's `CMakeLists.txt`) |
 | Host tests | `common/tests` | Tests and fakes; `common/tests/zephyr_fakes` is a host implementation of the kernel's OS part |
 | Zephyr build | `zephyr/app/usb-console` | `main()`, `log_ram.c`, `kv_store_os.h`, `wifi_profile_os.h`; upstream Zephyr with patches in `zephyr/manifest/zephyr/patches` |
-| N: board | `N-board/` | Bring-up, tickless timer, idle loop and CPU load, GPIO bank 0, KV flash, USB serial, `rp2040_timer_us()` (`include/rp2040_timer_us.h`) |
+| N: board | `N-board/` | Bring-up, tickless timer, idle loop and CPU load, GPIO bank 0, KV flash, USB serial, BOOTSEL (`include/rp2040_restart.h`) |
 | N: compatibility layer, OS part | `nuttx/drivers/compat` | `zephyr_os*.h`, kernel, mutexes, I2C on `struct i2c_master_s`, net_if, hwinfo, prelude, per-OS `<zephyr/...>` headers |
 | N: shared OS headers | `nuttx/drivers/include` | `app_log_os.h`, `log_ram_os_impl.h`, `priorities_os.h` |
 | N: log | `nuttx/drivers/log` | `log_ram_syslog.c` (the RAM log as the syslog channel), `Make.defs` |
@@ -61,7 +62,7 @@ one of two ways:
 
 | Item | Meaning | N | Generic (F) |
 |---|---|---|---|
-| OS headers before the layer's | the layer's `<zephyr/sys/atomic.h>` takes over atomic names | NuttX headers, `<arch/board/rp2040_timer_us.h>` | `zephyr_kernel_os.h` (the OS's headers: F's FreeRTOS headers and `zephyr_os_port.h`), `priorities.h`, `<zephyr/sys/clock.h>` |
+| OS headers before the layer's | the layer's `<zephyr/sys/atomic.h>` takes over atomic names | NuttX headers, `"rp2040_timer_us.h"` (`common/chip/rp2040`) | `zephyr_kernel_os.h` (the OS's headers: F's FreeRTOS headers and `zephyr_os_port.h`), `priorities.h`, `<zephyr/sys/clock.h>` |
 | `Z_USEC_PER_TICK` | tick length in µs; 1000 must be a multiple | `CONFIG_USEC_PER_TICK` (100) | `1000000 / Z_OS_TICK_HZ` (F: `configTICK_RATE_HZ`, 1000) |
 | `struct k_mutex`, `Z_MUTEX_INITIALIZER(obj)` | all-zero must work as an unlocked mutex | `rmutex_t` + `ready` flag | the OS's (F: static recursive mutex, created on first use) |
 | `struct k_sem`, `Z_SEM_INITIALIZER(obj, initial, limit)` | count with a limit; poll event list | `sem_t` + limit + events | the layer's own count, waiters, events |
@@ -240,8 +241,8 @@ headers are in `common/compat/net_offload/include`, which F puts after its OS di
 
 | Item | Where declared | N | F |
 |---|---|---|---|
-| `rp2040_timer_us()`: µs since boot, TIMER, any context | per OS only | `N-board/include/rp2040_timer_us.h` | `freertos/app/usb-console/src/os_clock.h` |
-| TIMER read by `common/imu/time_sync.c` | the file itself (`DT_REG_ADDR(DT_NODELABEL(timer))` = 0x40054000, `sys_read32()`) | — | `freertos/drivers/imu/time_sync_prelude.h` undefines the SDK's `TIMER_BASE` |
+| `rp2040_timer_us()`: µs since boot, TIMER, any context | `common/chip/rp2040/include/rp2040_timer_us.h` (shared; also the Zephyr build's `common/imu/time_sync.c`) | read by `nuttx/drivers/compat/zephyr_os.h`, `nuttx/drivers/include/log_ram_os_impl.h` and the board | read by `freertos/app/usb-console/src/os_clock.h` |
+| `rp2040_watchdog_reboot()`: restart through the watchdog, scratch 0..3 kept | `common/chip/rp2040/include/rp2040_watchdog_reboot.h` (shared; also the Zephyr build's `common/drivers/nina/port/zephyr/nina_passthrough_bus_rp2040.c`) | `N-board/src/rp2040_restart.c` (fallback of `rp2040_reset_usb_boot()`), `common/drivers/nina/port/nuttx/nina_passthrough_bus_rp2040.c` | not used: the Pico SDK's `watchdog_reboot()` |
 | `k_heap` | `common/compat/net_offload/include/zephyr_heap.h`, included by F `zephyr_os.h` | not built | `common/compat/net_offload/zephyr_heap.c`; used by `common/drivers/nina/port/zephyr/nina_socket.c` |
 | `zephyr_compat_tick()` | `common/compat/kernel_generic/zephyr_compat_os.h` (generic kernel part) | — (wdog) | called by `vApplicationTickHook()`, `freertos/app/usb-console/src/tick.c` |
 | `zephyr_net_initialize()` | `common/compat/net_offload/include/zephyr_net_init.h` | — (`nina_net_initialize()` in `rp2040_bringup.c`, `common/drivers/nina/port/nuttx/nina_net.h`) | `common/compat/net_offload/zephyr_net_init.c` |
@@ -336,7 +337,9 @@ Start-up files: Zephyr `zephyr/app/usb-console/src/main.c`; N `N-board/src/rp204
 | Start-up to the scheduler | NuttX boot, `N-board/src/rp2040_boardinitialize.c`, `rp2040_bringup.c`, init task `nuttx/apps/init/rp2040_init.c` | `freertos/app/usb-console/src/main.c`, `vTaskStartScheduler()` |
 | Kernel tick and timer | tickless timer `N-board/src/rp2040_oneshot.c`, `rp2040_timerisr_alarm.c` (100 µs tick) | SysTick 1 ms, tick hook and catch-up `tick.c`, `tick_catchup.h`; `FreeRTOSConfig.h` |
 | Interrupt attach | `irq_attach()`, `rp2040_gpio_irq_attach()` | Pico SDK `irq_set_exclusive_handler()`, `irq_add_shared_handler()`, `gpio_add_raw_irq_handler_masked()` |
-| Idle loop | `N-board/src/rp2040_idle_cpuload.c` | `freertos/app/usb-console/src/idle.c` |
+| Idle loop (the window arithmetic is shared, `common/compat/cpu_load.h`) | `N-board/src/rp2040_idle_cpuload.c` | `freertos/app/usb-console/src/idle.c` |
+| Entry to BOOTSEL (the ROM's `reset_usb_boot()`) | `N-board/src/rp2040_restart.c` on NuttX's `ROM_LOOKUP()` | the Pico SDK's `reset_usb_boot()` (Zephyr: hal_rpi_pico's) |
+| Chip ID (the flash's unique ID, read once with XIP off) | `N-board/src/rp2040_chipid.c` on NuttX's `rp2040_flash_cmd()` | the Pico SDK's `pico_unique_id` (Zephyr: its hwinfo driver) |
 | USB device stack, console transport | `cdcacm`, `N-board/src/rp2040_usbserial.c`; Telnet `nuttx/apps/init/rp2040_telnet.c` | Pico SDK `stdio_usb` (TinyUSB); `freertos/drivers/shell/nano_console.c`, `nano_stdio.c`; Telnet `freertos/drivers/telnet/nano_telnet.c` |
 | Heap | NuttX's | FreeRTOS `heap_4`, 32 KiB (`configTOTAL_HEAP_SIZE`) |
 | The OS's own shell | nsh (sessions in `rp2040_init.c`) | none: the shared engine `common/compat/shell_engine` (`cli.c`, `nano_shell.c`) on the consoles of `freertos/drivers/shell` |

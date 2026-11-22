@@ -31,8 +31,7 @@ CSRCS = rp2040_boardinitialize.c
 CSRCS += rp2040_bringup.c
 CSRCS += rp2040_chipid.c
 
-# The restarts into BOOTSEL and through the watchdog
-# (include/rp2040_restart.h).
+# The restart into BOOTSEL (include/rp2040_restart.h).
 
 CSRCS += rp2040_restart.c
 

@@ -19,7 +19,8 @@
  *   critical section (it does not wait for the section to end), so the lock
  *   of a task also suspends the scheduler: the switch then waits for the
  *   unlock, as on the board and in Zephyr.
- * - The clock is CLOCK_MONOTONIC.
+ * - The clock is CLOCK_MONOTONIC, read through the shared rp2040_timer_us()
+ *   (tests/compat/rp2040_timer_us.h).
  * - The tick hook's catch-up (freertos/app/usb-console/src/tick.c) reads the
  *   same clock, and cannot add a tick: the port's tick is a thread's
  *   usleep() and a signal, with nothing to pend, so z_os_tick_pend() does
@@ -36,16 +37,9 @@
 
 #include "FreeRTOS.h"
 #include "task.h"
+#include "rp2040_timer_us.h"
 
 extern _Thread_local int z_host_isr_depth;
-
-static inline uint64_t rp2040_timer_us(void)
-{
-	struct timespec t;
-
-	clock_gettime(CLOCK_MONOTONIC, &t);
-	return (uint64_t)t.tv_sec * 1000000u + (uint64_t)t.tv_nsec / 1000u;
-}
 
 static inline bool z_os_in_isr(void)
 {

@@ -8,8 +8,8 @@
  *   fatal error, not a power cycle;
  * - the lock: up_irq_save() and up_irq_restore() (PRIMASK, always inline,
  *   no call into the OS), usable from interrupt handlers;
- * - the clock: rp2040_timer_us() (the TIMER, the board's
- *   include/rp2040_timer_us.h);
+ * - the clock: rp2040_timer_us() (the TIMER,
+ *   common/chip/rp2040/include/rp2040_timer_us.h);
  * - the OS's own log: the RAM log is the syslog channel
  *   (nuttx/drivers/log/log_ram_syslog.c).
  */
@@ -24,7 +24,7 @@
 #include <nuttx/compiler.h>
 #include <nuttx/irq.h>
 
-#include <arch/board/rp2040_timer_us.h>
+#include "rp2040_timer_us.h"
 
 #define LOG_RAM_OS_RETAINED(name) name locate_data(".noinit")
 

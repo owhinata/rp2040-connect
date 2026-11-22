@@ -342,8 +342,7 @@ files in `common/imu/`, built in by `drivers/imu/imu.cmake`. The MQTT client is 
 
 - The wall clock (`drivers/compat/zephyr_sys_clock.c`) is the TIMER plus a base (built as in the NuttX
   build); newlib's `gettimeofday()` reads the same clock. `date` shows it in UTC.
-- `time_sync.c` uses a name that the Pico SDK's `TIMER_BASE` also has; a prelude
-  (`drivers/imu/time_sync_prelude.h`) keeps them apart.
+- `time_sync.c` reads the TIMER with `rp2040_timer_us()` of `common/chip/rp2040`, as `os_clock.h` does.
 - The chip ID (the first 8 bytes of the session ID) is `pico_get_unique_board_id()`, the same flash ID as
   the Zephyr build's `hwinfo_get_device_id()` (`drivers/compat/rp2040/zephyr_hwinfo.c`).
 

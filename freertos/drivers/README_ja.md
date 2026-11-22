@@ -290,7 +290,7 @@ MQTT のクライアントは NuttX 版と共有する `common/imu/mqtt_min.c`�
 
 - 壁時計（`drivers/compat/zephyr_sys_clock.c`）: TIMER と基準値で作り（NuttX 版と同じ作り）、newlib の
   `gettimeofday()` も同じ時計を読みます。`date` はこれを UTC で表示します。
-- `time_sync.c` は Pico SDK の `TIMER_BASE` と名前が重なるので、前置き（`drivers/imu/time_sync_prelude.h`）で避けます。
+- `time_sync.c` は `os_clock.h` と同じく `common/chip/rp2040` の `rp2040_timer_us()` で TIMER を読みます。
 - チップ ID（セッション ID の先頭 8 バイト）は `pico_get_unique_board_id()` で、Zephyr 版の `hwinfo_get_device_id()` と
   同じフラッシュの ID です（`drivers/compat/rp2040/zephyr_hwinfo.c`）。
 

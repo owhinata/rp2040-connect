@@ -1017,9 +1017,8 @@ events that advance them are the same as in the Zephyr build.
 
 `common/imu/time_sync.c` is the Zephyr build's file (`nuttx/apps/imu/` builds it). The compatibility
 layer provides the calls into the system (sockets, `net_mgmt` events, the realtime clock) under
-Zephyr's names. `time_sync_mono_us()` reads the TIMER's TIMERAWH and TIMERAWL with `sys_read32()`,
-as written for the Zephyr build (the layer's `<zephyr/sys/sys_io.h>` and the `timer` node of its
-`<zephyr/devicetree.h>`; the same read as the board's `rp2040_timer_us()`). The Kconfig options
+Zephyr's names. `time_sync_mono_us()` is `rp2040_timer_us()` of `common/chip/rp2040`, the TIMER's
+read that all three builds share. The Kconfig options
 that the file uses (`CONFIG_NINA_NTP_*`) are the NuttX build's options of the same names. The
 layer makes the command registration at the end
 `z_shell_main_ntp()`, which the `main()` of the builtin command `ntp` (`nuttx/apps/ntp/`) calls
@@ -1090,9 +1089,9 @@ default), `CONFIG_SCHED_TICKLESS=y` and `CONFIG_USEC_PER_TICK=100`.
   µs (`clock_getres()` gives the tick, 100 µs). The Zephyr build's kernel clock is SysTick on the
   CPU clock, a different source. In both versions the application reads the TIMER directly as its
   time base.
-- The board's monotonic clock is `rp2040_timer_us()` (`<arch/board/rp2040_timer_us.h>`). It reads the
-  TIMER's TIMERAWH, TIMERAWL and TIMERAWH again until the two high words agree (the read of the
-  Zephyr build's `time_sync_mono_us()`). It has no side effect and takes no lock, so the kernel,
+- The board's monotonic clock is `rp2040_timer_us()` (`common/chip/rp2040/include/rp2040_timer_us.h`,
+  shared by the three builds, always inline). It reads the TIMER's TIMERAWH, TIMERAWL and TIMERAWH
+  again until the two high words agree. It has no side effect and takes no lock, so the kernel,
   the applications and interrupt handlers may all call it. The value
   is µs since boot; the TIMER starts again from 0 at every boot (`reboot` included). It is the
   counter behind `CLOCK_MONOTONIC`, and the two agree to within the time between the reads (a few

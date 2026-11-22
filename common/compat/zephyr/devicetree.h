@@ -2,8 +2,8 @@
 /* The devicetree nodes of the Zephyr build that the ported code names
  * (zephyr/build/usb-console/zephyr/zephyr.dts), as the devices of
  * <zephyr/device.h>: DT_NODELABEL(label) and DT_BUS(node) for use in
- * DEVICE_DT_GET(), DT_REG_ADDR(node) of the node without a device, and
- * DT_HAS_COMPAT_ON_BUS_STATUS_OKAY() for the LSM6DSO driver's buses.  The
+ * DEVICE_DT_GET(), and DT_HAS_COMPAT_ON_BUS_STATUS_OKAY() for the LSM6DSO
+ * driver's buses.  The
  * other properties of the nodes are in the board's <arch/board/board.h>
  * (BOARD_I2C0_*, BOARD_LSM6DSOX_*).  Part of the small Zephyr compatibility
  * layer of the port (common/compat).
@@ -22,8 +22,6 @@
  *                                                  zephyr_device.c's list)
  *   lsm6dsox  /soc/i2c@40044000/lsm6dsox@6a        drivers/lsm6dso/
  *                                                  lsm6dso_instance.h
- *   timer     /soc/timer@40054000                  (no device: its address,
- *                                                  common/imu/time_sync.c)
  *   storage_partition  partition@ffe000 of /soc/flash-controller@18000000
  *                                                  (<zephyr/storage/flash_map.h>,
  *                                                  compat/zephyr_flash_kv.c)
@@ -52,15 +50,6 @@
 #define DT_BUS(node_id)       Z_DT_BUS(node_id)
 #define Z_DT_BUS(node_id)     DT_BUS_##node_id
 #define DT_BUS_lsm6dsox       i2c0
-
-/* The first register address of a node: DT_REG_ADDR(node) ->
- * DT_REG_ADDR_<node>.  timer: the RP2040's TIMER (reg = <0x40054000
- * 0x1000>; RP2040_TIMER_BASE of the board's <arch/board/rp2040_timer_us.h>).
- */
-
-#define DT_REG_ADDR(node_id)  Z_DT_REG_ADDR(node_id)
-#define Z_DT_REG_ADDR(node_id) DT_REG_ADDR_##node_id
-#define DT_REG_ADDR_timer     0x40054000
 
 /* DT_HAS_COMPAT_ON_BUS_STATUS_OKAY(compat, bus): 1 if a node with the
  * compatible is on a bus of that type, else 0; usable in #if.  Zephyr's

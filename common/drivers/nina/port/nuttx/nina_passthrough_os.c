@@ -77,10 +77,9 @@
 #include <nuttx/usb/cdcacm.h>
 #include <nuttx/usb/usb.h>
 
-#include <arch/board/rp2040_timer_us.h>
-
 #include "app_log.h"
 #include "priorities.h"
+#include "rp2040_timer_us.h"
 #include "nina_passthrough.h"
 #include "nina_passthrough_bus.h"
 #include "nina_passthrough_os.h"

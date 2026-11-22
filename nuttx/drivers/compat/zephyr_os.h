@@ -25,7 +25,7 @@
 #include <nuttx/semaphore.h>
 #include <nuttx/wdog.h>
 #include <stdio.h>            /* for <zephyr/sys/printk.h> */
-#include <arch/board/rp2040_timer_us.h> /* the cycle counter */
+#include "rp2040_timer_us.h"     /* the cycle counter */
 
 #include <stdbool.h>
 #include <stdint.h>

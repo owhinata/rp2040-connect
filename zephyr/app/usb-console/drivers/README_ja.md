@@ -272,7 +272,7 @@ FreeRTOS と Pico SDK で書いた自分のつなぎ `common/drivers/nina/port/f
 | `nina_os.c` | `common/drivers/nina/port/zephyr/` | コアの境界 `nina_os.h` の Zephyr 版：mutex、Wi-Fi のスレッドへの要求、sleep、時計、READY の割り込み待ち、IRQ の線（GPIO2）のエッジの待ち |
 | `nina_socket.c` | `common/drivers/nina/port/zephyr/` | ソケットのオフロード（ファイル記述子、errno、`O_NONBLOCK`、`SO_RCVTIMEO`、待ちのループと sleep、poll）と、名前解決を `getaddrinfo` のオフロードとして登録（FreeRTOS 版のソケットも） |
 | `nina_passthrough_os.c` | `common/drivers/nina/port/zephyr/` | 中継の境界 `nina_passthrough_os.h` の Zephyr 版：CDC ACM のポートと USB スタックの通知、1 ms の tick、起動（`SYS_INIT`）と `main()` での出口 |
-| `nina_passthrough_bus_rp2040.c` | `common/drivers/nina/port/zephyr/` | 中継のモジュール側（`nina_passthrough_bus.h`）を RP2040 のレジスターで：watchdog の scratch レジスターと再起動、UART1 とその割り込み、GPIO2・GPIO3・GPIO8、LED |
+| `nina_passthrough_bus_rp2040.c` | `common/drivers/nina/port/zephyr/` | 中継のモジュール側（`nina_passthrough_bus.h`）を RP2040 のレジスターで：watchdog の scratch レジスターと再起動（`common/chip/rp2040` の `rp2040_watchdog_reboot()`）、UART1 とその割り込み、GPIO2・GPIO3・GPIO8、LED |
 | `posix/` | `common/drivers/nina/port/zephyr/` | コアが使う POSIX のソケットの名前（`struct sockaddr_in`、`AF_INET`、`POLLIN` など）を Zephyr の名前に対応させるヘッダー（コアと `nina_socket.c` だけが読む） |
 | `Kconfig`、`dts/bindings/wifi/arduino,nina-spi.yaml` | `common/drivers/nina/port/zephyr/` | ドライバーのオプション（`CONFIG_WIFI_NINA_LOCAL`、`CONFIG_NINA_SPI_FREQUENCY`、`CONFIG_NINA_TCP_MAX_IO`、`CONFIG_NINA_SEND_RETRY_MS`）と `nina_w102` のノードの devicetree binding |
 | `nina_bus.c` | `common/drivers/nina/port/zephyr/` | コアの境界 `nina_bus.h` の Zephyr 版：devicetree の `spi1` と 4 本の線（CS、READY、RESET、IRQ）、Zephyr の GPIO・SPI の呼び出し。`CONFIG_NINA_PASSTHROUGH` のとき、`nina_passthrough_active()` が真の間（esptool の中継）はバスなし |

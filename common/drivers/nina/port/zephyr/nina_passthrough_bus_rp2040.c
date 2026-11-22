@@ -1,10 +1,11 @@
 /* SPDX-License-Identifier: MIT */
 /* The module's side of the NINA passthrough mode on the Zephyr build
  * (common/drivers/nina/port/nina_passthrough_bus.h): the watchdog's scratch
- * registers and its restart, the module's lines, UART1 and the LED, on the
- * registers of the Pico SDK (hal_rpi_pico: the hardware_structs and
- * hardware_regs headers, and the hardware_gpio, hardware_resets and
- * hardware_clocks functions that Zephyr's SoC and GPIO code build).
+ * registers, the module's lines, UART1 and the LED, on the registers of the
+ * Pico SDK (hal_rpi_pico: the hardware_structs and hardware_regs headers,
+ * and the hardware_gpio, hardware_resets and hardware_clocks functions that
+ * Zephyr's SoC and GPIO code build); the restart is the shared one of
+ * common/chip/rp2040 (rp2040_watchdog_reboot()).
  *
  * The pins are the board's (arduino_nano_connect.dts and the mbed core's
  * variant; the build checks the devicetree's against them):
@@ -42,12 +43,12 @@
 #include <hardware/clocks.h>
 #include <hardware/gpio.h>
 #include <hardware/resets.h>
-#include <hardware/structs/psm.h>
 #include <hardware/structs/uart.h>
 #include <hardware/structs/watchdog.h>
 
 #include "nina_passthrough.h"
 #include "nina_passthrough_bus.h"
+#include "rp2040_watchdog_reboot.h"
 
 #define PIN_TX     8
 #define PIN_RX     9
@@ -91,18 +92,12 @@ void nina_passthrough_bus_mark_set(const uint32_t s[NINA_PASSTHROUGH_BUS_MARK_WO
 
 /* The watchdog's restart of the whole chip but its oscillators, as the
  * Pico SDK's watchdog_reboot(0, 0, 0) (scratch register 4 not the boot
- * ROM's magic: a normal start from the flash).  Registers 0..3 keep the
- * request.
+ * ROM's magic: a normal start from the flash; common/chip/rp2040).
+ * Registers 0..3 keep the request.
  */
 FUNC_NORETURN void nina_passthrough_bus_restart(void)
 {
-	(void)irq_lock();
-	hw_clear_bits(&watchdog_hw->ctrl, WATCHDOG_CTRL_ENABLE_BITS);
-	psm_hw->wdsel = PSM_WDSEL_BITS & ~(PSM_WDSEL_ROSC_BITS | PSM_WDSEL_XOSC_BITS);
-	watchdog_hw->scratch[4] = 0;
-	hw_set_bits(&watchdog_hw->ctrl, WATCHDOG_CTRL_TRIGGER_BITS);
-	for (;;) {
-	}
+	rp2040_watchdog_reboot();
 }
 
 /* RESETN driven, without pulls (Zephyr's reset-gpios), low: the module in

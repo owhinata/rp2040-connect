@@ -5,10 +5,12 @@
  *
  ****************************************************************************/
 
-/* The board's restarts other than NuttX's board_reset() (the "reboot"
- * command, boards/arm/rp2040/common/src/rp2040_reset.c, a SYSRESETREQ):
- * src/rp2040_restart.c.  The board code and the applications (a flat build)
- * call them through <arch/board/rp2040_restart.h>.
+/* The board's restart into BOOTSEL, other than NuttX's board_reset() (the
+ * "reboot" command, boards/arm/rp2040/common/src/rp2040_reset.c, a
+ * SYSRESETREQ): src/rp2040_restart.c.  The board code and the applications
+ * (a flat build) call it through <arch/board/rp2040_restart.h>.  The
+ * restart through the watchdog is rp2040_watchdog_reboot() of
+ * common/chip/rp2040 (rp2040_watchdog_reboot.h).
  */
 
 #ifndef __BOARDS_ARDUINO_NANO_RP2040_CONNECT_INCLUDE_RP2040_RESTART_H
@@ -32,13 +34,5 @@
  */
 
 void rp2040_reset_usb_boot(void) noreturn_function;
-
-/* Restarts the board at once through the watchdog, as the Pico SDK's
- * watchdog_reboot(0, 0, 0): everything but the oscillators is reset, the
- * watchdog's scratch registers 0..3 are kept, scratch 4 is cleared (the
- * boot ROM starts the flash's image, not a vector left there).
- */
-
-void rp2040_watchdog_reboot(void) noreturn_function;
 
 #endif /* __BOARDS_ARDUINO_NANO_RP2040_CONNECT_INCLUDE_RP2040_RESTART_H */

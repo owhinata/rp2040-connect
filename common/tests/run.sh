@@ -196,6 +196,8 @@ run log_ram "${flags[@]}" -Itests/log_ram_os_host -Ilog tests/log_ram.c log/log_
     log/log_ring.c
 # The CPU load arithmetic of the idle loop (compat/cpu_load.h).
 run cpu_load "${flags[@]}" -Icompat tests/cpu_load.c
+# The read of the RP2040's TIMER (chip/rp2040: rp2040_timer_us()) on scripted registers.
+run rp2040_timer_us "${flags[@]}" -Ichip/rp2040/include tests/rp2040_timer_us.c
 # The CPU column of "ps" (FreeRTOS) and "kernel ps" (Zephyr): each task's share since the
 # previous list (shell/ps_interval.h).
 run ps_interval "${flags[@]}" -Ishell tests/ps_interval.c

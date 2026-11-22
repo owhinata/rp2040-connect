@@ -263,7 +263,7 @@ RP2040 のレジスターのモジュール側（`port/nuttx/nina_passthrough_bu
 | GPIO3 | モジュールの RESETN（アクティブ low） | RESET |
 
 - 入り方: `nina passthrough confirm`（`nuttx/apps/nina`）が watchdog の scratch 0〜3 に印を書き、watchdog で
-  再起動します（ボードの `src/rp2040_restart.c` の `rp2040_watchdog_reboot()`。Pico SDK の `watchdog_reboot(0, 0, 0)` と
+  再起動します（`common/chip/rp2040` の `rp2040_watchdog_reboot()`。Pico SDK の `watchdog_reboot(0, 0, 0)` と
   同じ）。`rp2040_boardinitialize()` が最初に印を読んで消すので、RESET・以後の再起動・異常停止は通常の起動に
   なります。フラッシュ（KV）には何も書きません。
 - 中継モードの起動: `rp2040_bringup()` は USB（CDC ACM、同じ記述子とシリアル番号）だけを用意し、SPI1・NINA・I2C0・
@@ -602,7 +602,7 @@ Zephyr の API を、Zephyr の名前のまま最小限だけ用意したもの�
 | ヘッダー（場所の無いものは `common/compat/`） | 中身 |
 |---|---|
 | `zephyr/device.h` | `struct device`（名前、config、API、状態、data、初期化関数）、`device_is_ready()`、`device_init()`（Zephyr の `do_device_init()` と同じ意味）、`DEVICE_DT_GET()`、`DEVICE_DT_DEFINE()`、`DEVICE_API()`、`device_get_binding()`（ノード名）、`device_get_by_dt_nodelabel()`（ノードのラベル）、`DEVICE_API_IS(sensor, dev)`（下） |
-| `zephyr/devicetree.h` | `DT_NODELABEL()`、`DT_BUS()`、`DT_REG_ADDR()`。ノードは `gpio0`、`i2c0`、`lsm6dsox` と、デバイスの無い `timer`（TIMER のアドレス 0x40054000。`time_sync.c` の `time_sync_mono_us()`）だけ。`DT_HAS_COMPAT_ON_BUS_STATUS_OKAY()`（Zephyr と同じ定義）は `st_lsm6dso` の `i2c` で 1、ほかの互換文字列・バスでは 0（`lsm6dso.h`）。`DT_HAS_CHOSEN()` はいつも 0（Zephyr 版も `zephyr,settings-partition` を選んでいない） |
+| `zephyr/devicetree.h` | `DT_NODELABEL()`、`DT_BUS()`。ノードは `gpio0`、`i2c0`、`lsm6dsox` だけ。`DT_HAS_COMPAT_ON_BUS_STATUS_OKAY()`（Zephyr と同じ定義）は `st_lsm6dso` の `i2c` で 1、ほかの互換文字列・バスでは 0（`lsm6dso.h`）。`DT_HAS_CHOSEN()` はいつも 0（Zephyr 版も `zephyr,settings-partition` を選んでいない） |
 | `zephyr/kernel.h` | `k_timeout_t`（`K_NO_WAIT`、`K_FOREVER`、`K_MSEC()`、`K_SECONDS()`。単位は 100 µs の tick）、`k_mutex`、`k_sem`（`K_SEM_DEFINE`）、セマフォに対する `k_poll()`（`K_POLL_TYPE_SEM_AVAILABLE`・`K_POLL_MODE_NOTIFY_ONLY`）、ワーク（`k_work`、`k_work_delayable`、`k_work_q`、`k_work_submit()`、`k_work_cancel_sync()`、`k_work_schedule_for_queue()`、`k_work_reschedule_for_queue()`、`k_work_queue_start()`）、`K_THREAD_STACK_DEFINE()`、`K_PRIO_PREEMPT()`、`k_thread_name_set()`、システムワークキュー `k_sys_work_q`、`K_MUTEX_DEFINE()`、`K_THREAD_DEFINE()`（下）、`k_current_get()`（呼び出したスレッドの NuttX のスレッド ID。`K_THREAD_DEFINE()` の `k_tid_t` と比べられる）、`k_uptime_get()`、`k_sleep()`・`k_msleep()`・`k_usleep()`・`k_busy_wait()`（下）、`k_cycle_get_32()`・`k_cycle_get_64()`・`k_cyc_to_us_floor64()`・`k_cyc_to_us_ceil64()`・`k_cyc_to_ns_floor64()`・`sys_clock_hw_cycles_per_sec()`（下） |
 | `zephyr/spinlock.h`、`zephyr/sys/atomic.h` | `k_spin_lock()`（下）、`atomic_t` と `atomic_get/set/clear/cas/or/inc/add()` |
 | `zephyr/rtio/rtio.h`、`zephyr/rtio/work.h` | RTIO（下）と RTIO のワークキュー（`rtio_work_req_alloc()`・`_submit()`） |
@@ -616,7 +616,6 @@ Zephyr の API を、Zephyr の名前のまま最小限だけ用意したもの�
 | `zephyr/types.h` | `<stddef.h>` と `<stdint.h>`（`lsm6dso_sensor.h` が読む目的のもの） |
 | `zephyr/init.h` | 中身の無いヘッダー（`lsm6dso_sensor.c` が読む。`SYS_INIT()` と初期化レベルを使うのは Zephyr 版のインスタンス化のマクロだけ） |
 | `zephyr/sys/iterable_sections.h` | `STRUCT_SECTION_FOREACH()` だけ（いつも空の区間。Zephyr のリンカーの区間は無い）。sensor シェルが読み（使うのは Zephyr 版の構成に無い `CONFIG_SENSOR_INFO` のときだけ）、settings が静的なハンドラーの区間を回す（この移植には無い） |
-| `zephyr/sys/sys_io.h` | `sys_read32()`（Zephyr の Arm と同じく、バリアの無い 32 ビットの volatile の読み出し 1 回）、`mem_addr_t` |
 | `zephyr/sys/printk.h`、`zephyr/sys/byteorder.h`、`zephyr/sys/cpu_load.h` | `snprintk()`（Zephyr 版の構成 `CONFIG_PICOLIBC=y` と同じく `snprintf()`）、`sys_put_be16/32()`・`sys_get_be16/32()`、`cpu_load_get()`（`cpu_load.h`。実装はボード） |
 | `zephyr/drivers/hwinfo.h` | `hwinfo_get_device_id()`（下） |
 | `zephyr/shell/shell.h` | `shell_print()`・`shell_info()`・`shell_warn()`・`shell_error()`・`shell_fprintf()`、`struct shell`（シェルのバックエンド。中身は OS の部分 `zephyr_os_shell.h`）、コマンドの表のマクロ（`SHELL_CMD_REGISTER()`、`SHELL_STATIC_SUBCMD_SET_CREATE()`、`SHELL_DYNAMIC_CMD_CREATE()`、`SHELL_CMD_ARG()`、`SHELL_CMD()`、`SHELL_COND_CMD()`、`SHELL_EXPR_CMD_ARG()`、`SHELL_HELP()`、`SHELL_SUBCMD_SET_END`）、`shell_device_get_binding()`・`shell_device_filter()`（下） |

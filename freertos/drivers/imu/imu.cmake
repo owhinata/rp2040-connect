@@ -40,15 +40,10 @@
 #   K_THREAD_DEFINE_START() and whose Wi-Fi events time_sync_init() asks
 #   for, and the "ntp" command (its SHELL_CMD_REGISTER() makes the root
 #   z_shell_root_ntp for the application's table).  It reads the RP2040
-#   TIMER through the layer's sys_read32() at DT_REG_ADDR(DT_NODELABEL(timer))
-#   (common/compat/zephyr/devicetree.h: 0x40054000), the realtime clock of
-#   the layer's <zephyr/sys/clock.h> (freertos/drivers/compat/
-#   zephyr_sys_clock.c) and the CONFIG_NINA_NTP_* values of the prelude.
-#   time_sync.c defines TIMER_BASE, which the Pico SDK's
-#   hardware/regs/addressmap.h (read through the layer's headers) defines
-#   too, to the same address: the file is compiled with
-#   time_sync_prelude.h, which reads the SDK's headers first and takes the
-#   SDK's name away, so the file's own definition is the only one;
+#   TIMER with rp2040_timer_us() (common/chip/rp2040, on the application's
+#   include path), the realtime clock of the layer's <zephyr/sys/clock.h>
+#   (freertos/drivers/compat/zephyr_sys_clock.c) and the CONFIG_NINA_NTP_*
+#   values of the prelude;
 # - the part of the layer they need: hwinfo_get_device_id()
 #   (freertos/drivers/compat/rp2040/zephyr_hwinfo.c, on pico_unique_id);
 #   the address conversions of <zephyr/net/socket.h> and newlib's missing
@@ -59,8 +54,6 @@
 #
 # Besides mqtt_min.c's -Wno-sign-compare, the shared sources build without
 # warnings under the application's -Wall -Wextra.
-
-get_filename_component(FREERTOS_IMU_DIR ${CMAKE_CURRENT_LIST_DIR} ABSOLUTE)
 
 function(freertos_imu target)
   set(imu_common_sources
@@ -94,14 +87,10 @@ function(freertos_imu target)
   )
 
   set_source_files_properties(${imu_common_sources} ${FREERTOS_COMMON_DIR}/imu/time_offset.c
-    PROPERTIES
+    ${FREERTOS_COMMON_DIR}/imu/time_sync.c PROPERTIES
     COMPILE_OPTIONS "-include;${FREERTOS_COMPAT_DIR}/common_prelude.h"
   )
   set_source_files_properties(${FREERTOS_COMMON_DIR}/imu/mqtt_min.c PROPERTIES
     COMPILE_OPTIONS "-include;${FREERTOS_COMPAT_DIR}/common_prelude.h;-Wno-sign-compare"
-  )
-  set_source_files_properties(${FREERTOS_COMMON_DIR}/imu/time_sync.c PROPERTIES
-    COMPILE_OPTIONS
-      "-include;${FREERTOS_COMPAT_DIR}/common_prelude.h;-include;${FREERTOS_IMU_DIR}/time_sync_prelude.h"
   )
 endfunction()

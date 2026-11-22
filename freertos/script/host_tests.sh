@@ -75,7 +75,8 @@ trap 'rm -rf "$out"' EXIT
 # The test's FreeRTOSConfig.h and port header first, then the board's
 # priorities_os.h (app/usb-console/src), the layer (FreeRTOS's part, the generic kernel part
 # common/compat/kernel_generic, its network part for an OS without a network stack,
-# common/compat/net_offload, before common/compat as on the board) and the kernel.
+# common/compat/net_offload, before common/compat as on the board) and the kernel.  The
+# RP2040's TIMER read is common/chip's under tests/compat/rp2040_timer_us.h.
 # common/compat/libc_net/include (the POSIX network headers newlib lacks) is added by the tests
 # that need it, before the host's.  The shell's tests add the shell engine,
 # common/compat/shell_engine, after drivers/shell as on the board.
@@ -431,16 +432,14 @@ else
 fi
 
 # The time synchronization (freertos/tests/time_sync): the shared common/imu/time_sync.c and
-# time_offset.c with the prelude, as drivers/imu/imu.cmake builds them (without
-# drivers/imu/time_sync_prelude.h, which only takes away a name of the Pico SDK's headers), on
-# the build's realtime clock (drivers/compat/zephyr_sys_clock.c), interface
-# (common/compat/net_offload/zephyr_net_if.c) and net_mgmt events (common/compat/zephyr_net_mgmt.c
-# with the "net_mgmt" thread), the build's shell on a console that captures, fake zsock_*() calls with a
-# fake NTP server, and the TIMER's registers on the test port's clock
-# (tests/time_sync/fake/zephyr/sys/sys_io.h, before common/compat), on the same kernel and layer
-# objects.  It waits for the real intervals (2 s): about 12 s.
+# time_offset.c with the prelude, as drivers/imu/imu.cmake builds them, on the build's realtime
+# clock (drivers/compat/zephyr_sys_clock.c), interface (common/compat/net_offload/zephyr_net_if.c)
+# and net_mgmt events (common/compat/zephyr_net_mgmt.c with the "net_mgmt" thread), the build's
+# shell on a console that captures, fake zsock_*() calls with a fake NTP server, and the TIMER's
+# registers on the test port's clock (tests/compat/rp2040_timer_us.h, under common/chip's
+# read), on the same kernel and layer objects.  It waits for the real intervals (2 s): about 12 s.
 tsinc=(-DZ_SHELL_CMD_ROOT_GLOBAL -DCONFIG_GETOPT_LONG=1 -U_FORTIFY_SOURCE
-       -Itests/time_sync/fake -Itests/shell -Idrivers/shell -I$seng -I$lnet/include -I../common/shell
+       -Itests/shell -Idrivers/shell -I$seng -I$lnet/include -I../common/shell
        -I../common/compat/lib/utils/getopt -I../common/imu -ffunction-sections -fdata-sections)
 tsobjs=()
 for src in tests/time_sync/main.c drivers/compat/zephyr_sys_clock.c $noff/zephyr_net_if.c \

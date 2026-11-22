@@ -16,8 +16,11 @@ target_sources(app PRIVATE src/main.c src/log_ram.c ${COMMON_DIR}/imu/kv_store.c
   ${COMMON_DIR}/imu/imu_stream.c ${COMMON_DIR}/imu/imu_raw_batch.c ${COMMON_DIR}/imu/imu_raw_packet.c
   ${COMMON_DIR}/imu/imu_raw_time.c ${COMMON_DIR}/imu/imu_tick_clock.c ${COMMON_DIR}/imu/imu_raw_queue.c
   ${COMMON_DIR}/imu/imu_raw_mqtt.c ${COMMON_DIR}/imu/imu_raw_status.c)
+# Last below, common/chip/rp2040/include: the RP2040's code that no OS owns (the TIMER's read,
+# the watchdog's restart), shared with the NuttX and FreeRTOS builds.
 target_include_directories(app PRIVATE src ${COMMON_DIR}/imu
-  ${COMMON_DIR}/drivers/nina/include ${COMMON_DIR}/drivers/nina/internal ${COMMON_DIR}/drivers/nina/port)
+  ${COMMON_DIR}/drivers/nina/include ${COMMON_DIR}/drivers/nina/internal ${COMMON_DIR}/drivers/nina/port
+  ${COMMON_DIR}/chip/rp2040/include)
 # The LSM6DSO driver is the shared one of common/drivers/lsm6dso: its core and its Zephyr
 # binding, a Zephyr module (port/zephyr, ZEPHYR_EXTRA_MODULES above) whose option
 # CONFIG_LSM6DSO_LOCAL replaces Zephyr's CONFIG_LSM6DSO and whose build rules make a library of

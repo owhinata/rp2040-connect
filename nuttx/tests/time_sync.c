@@ -49,7 +49,7 @@
 #include <sys/socket.h>
 
 /* The test's clock: the TIMER's registers read by time_sync_mono_us()
- * (sys_read32() of tests/time_sync_fakes), k_uptime_get()
+ * (RP2040_TIMER_READ() of tests/time_sync_fakes), k_uptime_get()
  * and k_sleep() of the file under test.
  */
 int64_t test_now_us = 1000000;

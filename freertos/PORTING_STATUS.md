@@ -2519,3 +2519,27 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
 - 照合: 既定 237064 B と自己診断 262264 B は、段階 1 のあとも段階 2 のあともバイト単位で一致。NuttX は `snapshot-1122g` と一致（コメントを直したので再ビルド）。Zephyr は読むファイルが変わらない。
   ホストテスト 49・62・59、`format.sh --check`。実機には書いていない（イメージが同じ）。
 - 気になる点: 汎用の `zephyr_os.h` が `net_offload` の `zephyr_heap.h` を読む（汎用のカーネルを使う OS はその include パスも要る）。
+
+## 共有の名前の改名と、整理 7: RP2040 に固有の部分を `common/chip/rp2040/` へ（2026-11-22、名前はユーザーの了解）
+
+- subagent が実装（2 つに分けて）、メインがホストテストと実機確認。commit も 2 つ。
+- 名前だけ（3 版と自己診断のイメージがバイト単位で一致）: `NANO_PRIO_*`・`NANO_STACK_*` → `APP_PRIO_*`・`APP_STACK_*`、`nano_gpio*` → `gpio_os*`（`common/compat/gpio_os.h`、NuttX の
+  `rp2040_gpio_os.c`、FreeRTOS の `gpio_os_rp2040.c`）、`nano_cpuload*` → `cpu_load_*`（`cpu_load.h` に統合、`struct cpu_load_window`）、`-DNANO_SELFTEST` → `-DSELFTEST`、
+  Zephyr の `CONFIG_NANO_HW_DIVIDER` → `CONFIG_RP2040_PICO_DIVIDER`、`nano_mono_us()`・`NANO_TIMER_*` → `rp2040_timer_us()`・`RP2040_TIMER_*`。
+  `RP2040_TIMER_BASE` は NuttX 本体にも同じ値の定義がある（同じ字句なので再定義は無害。ヘッダーに記載）。ほかにぶつかる名前は無い。
+- 整理 7（イメージが変わる）: `common/chip/rp2040/include/` にヘッダー 2 つ。
+  - `rp2040_timer_us.h`: 1 MHz の TIMER の 64 ビットの読み出し（上位・下位・上位を読み、上位が変わっていたらやり直す。ラッチは使わない＝割り込みの中からも安全）。3 か所の実装
+    （NuttX のボードのヘッダー、`common/imu/time_sync.c` の中、FreeRTOS は SDK の `time_us_64()`）はどれも同じ方式だった。必ずインライン（`-Os` では複製が外に出て呼び出しになるため）。
+    `time_sync.c` のデバイスツリーの参照、互換層の `sys_io.h`、FreeRTOS の `time_sync_prelude.h` は削除。
+  - `rp2040_watchdog_reboot.h`: ウォッチドッグでの再起動（Pico SDK と同じ順序）。NuttX と Zephyr（NINA の中継モードの出入り）が共有。Zephyr 版はレジスターの書き込みの順序が少し変わった
+    （WDSEL を set のエイリアスで、スクラッチ 4 を先に。結果は同じ）。FreeRTOS は SDK の `watchdog_reboot()` のまま（SDK のドライバーが状態を持つ。指針 3）。
+  - 共有にしなかったもの: BOOTSEL への移行（NuttX は ROM の参照、ほかは SDK）、スクラッチレジスター、アイドルの計測（OS のフックとマスク、窓の数が違う）、チップの ID（フラッシュのコマンドは危険が大きい）。
+- イメージ: FreeRTOS 237384 B（+320）、NuttX 284076 B（+80）、Zephyr 372328 B（大きさ同じ、中身が違う）。**基準: `snapshot-1122h`**。ホストテスト 50・63・60（新しい `rp2040_timer_us`）。
+- 実機（書き込み直後の各 1 回 約 70 秒 + 下記）:
+  - Zephyr: 欠番 0、46.0%、時刻の逆行 0（`unix_valid` 4982）、`ntp status` synchronized、`dmesg` 警告なし。`nina passthrough confirm` で中継モードに入り、NINA のフラッシュを 2 回読んで一致
+    （書き込み後の退避とも一致）、300 bps で閉じて通常のファームウェアに戻る。
+  - NuttX: 欠番 0、47.2%、時刻の逆行 0、synchronized、`ps` の CPU 列（Idle 99.1%）。中継モードの出入りも同じ結果。`reboot` 後に起動。
+  - FreeRTOS: `-DSELFTEST=ON` の `selftest` 22・6・3 項目とも失敗 0。既定のビルド 3 回: 欠番 0、42.8〜42.9%、時刻の逆行 0、synchronized。`reboot` のあとログが残る、`devmem 0x30000000` のあと
+    `fault` に記録（開始から 12.64 秒＝タイマーの読み出し）。
+- 残る `nano_`: フラッシュの KV（整理 11）、FreeRTOS 版のコンソール・シェル・Telnet（整理 9）、`nano_lsm6dso*`（FreeRTOS）、`nano_device_*`。
+- 実機: FreeRTOS 版（この変更の既定のビルド。異常停止の記録が 1 件＝こちらの試験）。

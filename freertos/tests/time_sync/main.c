@@ -9,7 +9,7 @@
  * K_THREAD_DEFINE(); the layer's semaphore, mutex, sleeps and clock), the
  * build's shell on a console that captures, fake sockets (the zsock_*()
  * calls, here) with a fake NTP server, and the TIMER's registers read from
- * the test port's clock (tests/time_sync/fake/zephyr/sys/sys_io.h).  The
+ * the test port's clock (tests/compat/rp2040_timer_us.h).  The
  * checks of the NTP replies and the estimate are the shared code's, tested
  * by nuttx/tests/time_sync.c and common/tests/time_offset.c; this test is
  * about the FreeRTOS parts:
@@ -18,9 +18,8 @@
  *   the start), SYS_CLOCK_MONOTONIC the TIMER, other clocks -EINVAL; setting
  *   it moves the base only, SYS_CLOCK_MONOTONIC and a bad tv_nsec are
  *   refused, a time before 1970 reads back normalized.
- * - time_sync_mono_us(): TIMERAWH, TIMERAWL, TIMERAWH at 0x40054024 and
- *   0x40054028 (DT_REG_ADDR(DT_NODELABEL(timer)) of the layer), the same
- *   clock as rp2040_timer_us().
+ * - time_sync_mono_us(): TIMERAWH, TIMERAWL, TIMERAWH (offsets 0x24 and 0x28
+ *   of the shared rp2040_timer_us()), the same clock as the layer's.
  * - The thread: "time_sync_tid" at Zephyr's 9 (APP_PRIO_TIME_SYNC) on its
  *   2048-byte stack, started by K_THREAD_DEFINE_START(); nothing is sent
  *   before Wi-Fi connects.
@@ -247,11 +246,12 @@ static void say(int fd, const char *fmt, ...)
 	}
 }
 
-/* The TIMER's reads (tests/time_sync/fake/zephyr/sys/sys_io.h) --------------*/
+/* The TIMER's reads (tests/compat/rp2040_timer_us.h) -------------------------*/
 
+/* Only the reads of the recording thread: the tick hook reads the clock too. */
 static char timer_reads[16];
 static unsigned int timer_read_count;
-static bool timer_recording;
+static _Thread_local bool timer_recording;
 
 void test_timer_read(char reg)
 {
@@ -599,11 +599,11 @@ static void test_mono(void)
 	int64_t before, m, after;
 
 	timer_read_count = 0;
-	timer_recording = true;
 	before = (int64_t)rp2040_timer_us();
+	timer_recording = true;
 	m = time_sync_mono_us();
-	after = (int64_t)rp2040_timer_us();
 	timer_recording = false;
+	after = (int64_t)rp2040_timer_us();
 	assert(m >= before && m <= after);
 	if (strcmp(timer_reads, "HLH") != 0) {
 		say(2, "TIMER reads \"%s\"\n", timer_reads);

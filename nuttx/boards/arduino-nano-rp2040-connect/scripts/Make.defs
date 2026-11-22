@@ -54,6 +54,13 @@ LDFLAGS += --wrap=__aeabi_uidiv --wrap=__aeabi_uidivmod
 LDFLAGS += --wrap=__aeabi_ldivmod --wrap=__aeabi_uldivmod
 endif
 
+# The RP2040's code that no OS owns, shared with the Zephyr and FreeRTOS
+# builds (common/chip/rp2040/include: rp2040_timer_us.h, the TIMER's read;
+# rp2040_watchdog_reboot.h), for the board code, the drivers and the
+# applications.
+
+ARCHINCLUDES += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)chip$(DELIM)rp2040$(DELIM)include
+
 CFLAGS := $(ARCHCFLAGS) $(ARCHOPTIMIZATION) $(ARCHCPUFLAGS) $(ARCHINCLUDES) $(ARCHDEFINES) $(EXTRAFLAGS)
 CXXFLAGS := $(ARCHCXXFLAGS) $(ARCHOPTIMIZATION) $(ARCHCPUFLAGS) $(ARCHXXINCLUDES) $(ARCHDEFINES) $(EXTRAFLAGS)
 CPPFLAGS := $(ARCHINCLUDES) $(ARCHDEFINES) $(EXTRAFLAGS)

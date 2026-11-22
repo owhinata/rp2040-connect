@@ -31,6 +31,8 @@ zfakes=../common/tests/zephyr_fakes
 # their NuttX part app_log_os.h is in drivers/include).
 cshell=../common/shell
 clog=../common/log
+# The RP2040's code that no OS owns (common/chip/rp2040: the TIMER's read).
+cchip=../common/chip/rp2040/include
 flags=(-std=c17 -Wall -Wextra -Werror -ffunction-sections -fdata-sections)
 link="-Wl,--gc-sections"
 # The prelude that the NuttX build includes before each source of common/ (on the host: the
@@ -201,7 +203,7 @@ printf 'ok  zephyr_compat_misc\n'
 # and a mutex left all zero (the MQTT client's before mqtt_client_init()), which is unlocked
 # as in Zephyr.
 cc "${flags[@]}" -D_DEFAULT_SOURCE -D__NuttX__ -Itests/zephyr_mutex_fakes -Idrivers/compat \
-    -I"$ccompat" -Idrivers/include -I"$clog" tests/zephyr_mutex.c drivers/compat/zephyr_mutex.c "$link" \
+    -I"$ccompat" -I"$cchip" -Idrivers/include -I"$clog" tests/zephyr_mutex.c drivers/compat/zephyr_mutex.c "$link" \
     -o "$out/zephyr_mutex"
 "$out/zephyr_mutex" >/dev/null
 printf 'ok  zephyr_mutex\n'
@@ -301,8 +303,8 @@ run nina_passthrough -DCONFIG_NINA_PASSTHROUGH=1 -I../common/drivers/nina/includ
     "$cshell/subcmd.c"
 # The time synchronization (common/imu/time_sync.c, shared with the Zephyr build) on the
 # compatibility layer with a fake NINA socket (NuttX's socket calls on usrsock), clock (the
-# TIMER's registers), interface and realtime clock: the NTP request and the checks of the
-# reply, where t1 and t4 are read, the 1 ms polling of the reply through recv(MSG_DONTWAIT),
+# TIMER's registers under common/chip's rp2040_timer_us.h, tests/time_sync_fakes), interface
+# and realtime clock: the NTP request and the checks of the reply, where t1 and t4 are read, the 1 ms polling of the reply through recv(MSG_DONTWAIT),
 # answered from the RECVFROM_AVAIL of the event thread (its delay ends up in t4), a receive
 # that waits in NuttX's recv(), the 60 s age, the forward-only realtime clock,
 # the Wi-Fi events and the "ntp status" lines, through z_shell_main_ntp() (the file is built

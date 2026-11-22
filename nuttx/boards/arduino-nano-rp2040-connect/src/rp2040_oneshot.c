@@ -33,9 +33,10 @@
  *
  * Differences from the RP2350 original: the RP2040 has one TIMER block (no
  * TIMER0/TIMER1 choice) whose interrupt registers sit at other offsets
- * (rp2040_timer_us.h), its 1 MHz tick comes from the watchdog tick rather
- * than the TICKS block, and the interrupt handler returns without calling back
- * when the alarm is not actually pending (see rp2040_oneshot_interrupt()).
+ * (common/chip/rp2040/include/rp2040_timer_us.h), its 1 MHz tick comes
+ * from the watchdog tick rather than the TICKS block, and the interrupt
+ * handler returns without calling back when the alarm is not actually
+ * pending (see rp2040_oneshot_interrupt()).
  *
  * As on the RP2350, the ALARM registers match only the low 32 bits of the
  * counter.  max_delay() is therefore capped below 2^32 counts so the
@@ -72,13 +73,13 @@
 #include <nuttx/arch.h>
 #include <nuttx/irq.h>
 #include <nuttx/timers/oneshot.h>
-#include <arch/board/rp2040_timer_us.h>
 
 #include "chip.h"
 #include "arm_internal.h"
 
 #include "rp2040_pico.h"
 #include "rp2040_timeconv.h"
+#include "rp2040_timer_us.h"
 
 /****************************************************************************
  * Pre-processor Definitions
@@ -160,7 +161,7 @@ static bool g_rp2040_oneshot_ready;
  *
  * Description:
  *   Read the free-running 64-bit microsecond counter: rp2040_timer_us()
- *   (include/rp2040_timer_us.h), the board's monotonic clock, which reads the
+ *   (common/chip/rp2040), the board's monotonic clock, which reads the
  *   raw (non-latching) registers and guards against a carry from the low
  *   word into the high word between the two reads.  Safe from any context.
  *

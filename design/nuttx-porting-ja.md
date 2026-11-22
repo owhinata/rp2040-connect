@@ -882,8 +882,7 @@ status は 0、info は 1 で retain）、クライアント ID（`imu-<device>`
 
 `common/imu/time_sync.c` は Zephyr 版と同じファイルです（`nuttx/apps/imu/` がビルドする）。OS を呼ぶ部分
 （ソケット、`net_mgmt` のイベント、実時間時計）は互換層が Zephyr の名前のまま提供します。`time_sync_mono_us()` は
-Zephyr 版の文のまま、TIMER の TIMERAWH・TIMERAWL を `sys_read32()` で読みます（互換層の `<zephyr/sys/sys_io.h>` と、
-`<zephyr/devicetree.h>` の `timer` の節。ボードの `rp2040_timer_us()` と同じ読み方）。ファイルが使う Kconfig の選択肢
+3 版で共有する TIMER の読み出し（`common/chip/rp2040` の `rp2040_timer_us()`）です。ファイルが使う Kconfig の選択肢
 （`CONFIG_NINA_NTP_*`）は、NuttX 版にも同じ名前であります。末尾の
 コマンドの登録は、互換層が `z_shell_main_ntp()` にし、組み込みコマンド `ntp`（`nuttx/apps/ntp/`）の `main()` が
 それを呼びます（「コマンドのサブコマンド」）。NTP の
@@ -944,9 +943,8 @@ Subcommands:
 - `clock_gettime()` の `CLOCK_MONOTONIC`・`CLOCK_REALTIME` は TIMER の値をそのまま µs 単位で返します
   （`clock_getres()` は tick の長さ 100 µs を返します）。Zephyr 版のカーネル時計は CPU クロックの
   SysTick で、TIMER とは源が違います。アプリはどちらでも、時刻の基準に TIMER を直接読みます。
-- ボードの単調時計は `rp2040_timer_us()`（`<arch/board/rp2040_timer_us.h>`）で、TIMER の TIMERAWH・TIMERAWL を
-  上位、下位、上位の順に読み、上位が一致するまで読み直します（Zephyr 版の `time_sync_mono_us()` と
-  同じ読み方）。副作用もロックも無いので、カーネル側・アプリ・割り込みハンドラーのどこからでも呼べます。
+- ボードの単調時計は `rp2040_timer_us()`（`common/chip/rp2040/include/rp2040_timer_us.h`。3 版で共有し、必ず
+  インラインにする）で、TIMER の TIMERAWH・TIMERAWL を上位、下位、上位の順に読み、上位が一致するまで読み直します。副作用もロックも無いので、カーネル側・アプリ・割り込みハンドラーのどこからでも呼べます。
   値は起動からの µs で、TIMER は起動のたびに（`reboot` でも）0 から数え直します。
   `CLOCK_MONOTONIC` と同じカウンターなので、両者は読み出しの時間差（数 µs）の範囲で一致します。
 - 同じ優先度のスレッドは 20 ms ずつの時分割（`CONFIG_RR_INTERVAL=20`。Zephyr 版の

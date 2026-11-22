@@ -8,10 +8,10 @@
  * and stands still while interrupts stay disabled for longer than a tick (a
  * flash erase), catching up when they are enabled again (tick.c,
  * tick_catchup.h).  So the time since the start is not counted in ticks but
- * read from the TIMER (64 bits, 1 us, from the 12 MHz crystal), the time
- * base of the Zephyr build's time_sync_mono_us() and the NuttX build's
- * rp2040_timer_us().  The compatibility layer's k_uptime_*() and k_cycle_*()
- * (F02) are built on rp2040_timer_us().
+ * read from the TIMER (64 bits, 1 us, from the 12 MHz crystal) with
+ * rp2040_timer_us() of common/chip/rp2040, the same read as the Zephyr and
+ * NuttX builds'.  The compatibility layer's k_uptime_*() and k_cycle_*()
+ * (F02) are built on it.
  *
  * Do not use the Pico SDK's sleep_ms()/sleep_us(): they wait for a TIMER
  * alarm and spin the last PICO_TIME_SLEEP_OVERHEAD_ADJUST_US (150 us) in
@@ -22,21 +22,17 @@
 #define OS_CLOCK_H
 
 #include <stdint.h>
-#include "hardware/timer.h"
 #include "FreeRTOS.h"
 #include "task.h"
 
-/* Microseconds since the TIMER left reset at the start (every start,
- * including a restart by the watchdog).  time_us_64() reads TIMERAWH,
- * TIMERAWL and TIMERAWH again until the two high words agree, the read of
- * time_sync_mono_us() and rp2040_timer_us(): no side effect and no lock, so it
- * may be called from tasks, interrupt handlers and with interrupts
- * disabled.
+/* rp2040_timer_us(): microseconds since the TIMER left reset at the start
+ * (every start, including a restart by the watchdog), from the raw
+ * registers (TIMERAWH, TIMERAWL and TIMERAWH again until the two high words
+ * agree, as the Pico SDK's time_us_64() reads them): no side effect and no
+ * lock, so it may be called from tasks, interrupt handlers and with
+ * interrupts disabled.  Static inline, without a call.
  */
-static inline uint64_t rp2040_timer_us(void)
-{
-	return time_us_64();
-}
+#include "rp2040_timer_us.h"
 
 /* The kernel's tick count since the scheduler started (wraps, see above). */
 static inline uint32_t os_tick_count(void)

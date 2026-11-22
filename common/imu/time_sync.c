@@ -17,8 +17,7 @@
 #include <zephyr/net/wifi_mgmt.h>
 #include <zephyr/shell/shell.h>
 #include <zephyr/sys/clock.h>
-#include <zephyr/devicetree.h>
-#include <zephyr/sys/sys_io.h>
+#include "rp2040_timer_us.h"
 #include "time_offset.h"
 #include "time_sync.h"
 
@@ -43,23 +42,12 @@ static int64_t last_sample_uptime;
 static struct sockaddr_in server;
 
 /* The RP2040's 1 MHz hardware timer, read through its raw registers (no
- * latching, so any context may read it). The kernel clock is not used: it is
- * driven by SysTick and was measured to lose about 480 ppm while streaming
- * at 6667 Hz, although it kept time when idle. */
-#define TIMER_BASE   DT_REG_ADDR(DT_NODELABEL(timer))
-#define TIMER_RAWH   (TIMER_BASE + 0x24)
-#define TIMER_RAWL   (TIMER_BASE + 0x28)
-
+ * latching, so any context may read it; common/chip/rp2040). The kernel clock
+ * is not used: it is driven by SysTick and was measured to lose about
+ * 480 ppm while streaming at 6667 Hz, although it kept time when idle. */
 int64_t time_sync_mono_us(void)
 {
-	uint32_t high, low, again = sys_read32(TIMER_RAWH);
-
-	do {
-		high = again;
-		low = sys_read32(TIMER_RAWL);
-		again = sys_read32(TIMER_RAWH);
-	} while (again != high);
-	return (int64_t)(((uint64_t)high << 32) | low);
+	return (int64_t)rp2040_timer_us();
 }
 
 static bool estimate_recent(void)

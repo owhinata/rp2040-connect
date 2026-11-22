@@ -58,9 +58,9 @@
 
 #include <nuttx/arch.h>
 #include <nuttx/irq.h>
-#include <arch/board/rp2040_timer_us.h>
 
 #include "cpu_load.h"
+#include "rp2040_timer_us.h"
 
 #if defined(CONFIG_SUPPRESS_INTERRUPTS) || defined(CONFIG_SUPPRESS_TIMER_INTS)
 #  error "rp2040_idle_cpuload.c needs the timer interrupt"
