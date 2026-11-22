@@ -459,22 +459,23 @@ DMA の部分を同じ分岐・順序・値で写したものです。
 
 | ファイル | 役割 |
 |---|---|
-| `common/drivers/lsm6dso/lsm6dso_chip.c`、`internal/lsm6dso_chip.h` | ドライバーのコア（OS を持たない）。起動とリセット、レートとレンジ、単発の読み出しとその変換、FIFO のレジスターの操作・所有・ロック・統計、タイムスタンプの読み取り、使用中の校正とバイアスの追従を `struct lsm6dso_chip` の上で行う。Zephyr 版と同じファイル（リポジトリの `common/`。前置きヘッダーを付けてビルドする。`lsm6dso/Make.defs` がドライバーのソースを `VPATH` で参照し、オブジェクトは `nuttx/drivers` にできる） |
+| `common/drivers/lsm6dso/lsm6dso.c`、`internal/lsm6dso_core.h` | ドライバーのコア（OS を持たない）。起動とリセット、レートとレンジ、単発の読み出しとその変換、FIFO のレジスターの操作・所有・ロック・統計、タイムスタンプの読み取り、使用中の校正とバイアスの追従を `struct lsm6dso` の上で行う。Zephyr 版と同じファイル（リポジトリの `common/`。前置きヘッダーを付けてビルドする。`lsm6dso/Make.defs` がドライバーのソースを `VPATH` で参照し、オブジェクトは `nuttx/drivers` にできる） |
+| `common/drivers/lsm6dso/lsm6dso_stream.c`、`internal/lsm6dso_stream.h`、`internal/lsm6dso_fifo_packet.h` | コアの FIFO のストリーム（OS を持たない。下）を `struct lsm6dso_stream` の上で行う。そのバッファーの形式 |
 | `common/drivers/lsm6dso/lsm6dso_cal.c`、`include/lsm6dso_cal.h` | コアの物理量への変換と校正値の適用、静止時の角速度のバイアスの追従（下） |
 | `common/drivers/lsm6dso/lsm6dso_fifo.c`、`include/lsm6dso_fifo.h` | コアの FIFO のワードの解析と、FIFO の統計 |
-| `common/drivers/lsm6dso/port/lsm6dso_os.h` | コアの OS への境界。2 種類のロック・待ち・サイクルカウンター・FIFO の長い読み出しの static inline の関数と、ログ。この版は Zephyr 版の実装 `port/zephyr/lsm6dso_os_impl.h` を互換層の上で使う（次の表） |
-| `common/drivers/lsm6dso/port/zephyr/lsm6dso.[ch]` | Zephyr へのつなぎ。コアの上のデバイスと sensor API。Zephyr 版と同じファイル（Zephyr のカーネル・デバイス・センサー・GPIO・I2C・ログの呼び出しは互換層が提供する。下）。`lsm6dso.c` は末尾で `<lsm6dso_instance.h>` を読む。インクルードパスで `port/nuttx/` が `port/zephyr/` より前にあるのでこの版のものになり、`lsm6dso_init` と `lsm6dso_driver_api` は `static` のまま |
+| `common/drivers/lsm6dso/port/lsm6dso_os.h`、`port/lsm6dso_stream_req.h` | コアの境界。OS へ（2 種類のロック・待ち・サイクルカウンター・FIFO の長い読み出しの static inline の関数と、ログ。ストリームのために専用のスレッドの上のワーク、INT1、バッチの時計）と、ストリームを使う側へ（要求、バッチごとのバッファー、その完了）。この版は Zephyr 版の実装 `port/zephyr/lsm6dso_os_impl.h` と `lsm6dso_os.c`（ストリームのワークキュー `imu_fifo_worker` と INT1 の GPIO の割り込み）、`port/zephyr/lsm6dso_stream_req_impl.h`（RTIO）を互換層の上で使う（次の表） |
+| `common/drivers/lsm6dso/port/zephyr/lsm6dso_sensor.[ch]` | Zephyr へのつなぎ。コアの上のデバイスと sensor API。Zephyr 版と同じファイル（Zephyr のカーネル・デバイス・センサー・GPIO・I2C・ログの呼び出しは互換層が提供する。下）。`lsm6dso_sensor.c` は末尾で `<lsm6dso_instance.h>` を読む。インクルードパスで `port/nuttx/` が `port/zephyr/` より前にあるのでこの版のものになり、`lsm6dso_sensor_init` と `lsm6dso_driver_api` は `static` のまま |
 | `common/drivers/lsm6dso/port/nuttx/lsm6dso_instance.h` | デバイス。Zephyr 版のデバイスツリーのインスタンス化のマクロ（`port/zephyr/lsm6dso_instance.h`）の代わりに、ボードの値を使う `DEVICE_DT_DEFINE()` 1 つ（INT1 の `.fifo_gpio` は `<&gpio0 24 0>`） |
-| `common/drivers/stmemsc/stmemsc.h`、`stmemsc_i2c.c`、`stmemsc_mdelay.c` | Zephyr の `drivers/sensor/st/stmemsc/` の I2C の部分の写し（ST の `stmdev_ctx_t` と Zephyr の I2C の API のつなぎ。`stmemsc_mdelay()` は互換層の `k_msleep()`）。FreeRTOS 版と共有する（前置きヘッダーは付けない）。`lsm6dso.h` の `<stmemsc.h>` はインクルードパスでこのファイルになる |
+| `common/drivers/stmemsc/stmemsc.h`、`stmemsc_i2c.c`、`stmemsc_mdelay.c` | Zephyr の `drivers/sensor/st/stmemsc/` の I2C の部分の写し（ST の `stmdev_ctx_t` と Zephyr の I2C の API のつなぎ。`stmemsc_mdelay()` は互換層の `k_msleep()`）。FreeRTOS 版と共有する（前置きヘッダーは付けない）。`lsm6dso_sensor.h`・`lsm6dso_os_impl.h` の `<stmemsc.h>` はインクルードパスでこのファイルになる |
 | `lsm6dso/st_lsm6dso_reg.c` | ST の `lsm6dso_reg.c`（`nuttx/stmemsc/`、Git 管理外）をそのままビルドするための 1 行の包み |
 | `common/drivers/lsm6dso/port/zephyr/lsm6dso_rtio.c` | ドライバーの RTIO の submit。ストリームは `lsm6dso_rtio_stream.c` へ、単発取得は sensor API のフォールバックの写しへ。Zephyr 版と同じファイル（ログは互換層の `<zephyr/logging/log.h>`、レベル `CONFIG_SENSOR_LOG_LEVEL` は前置きヘッダー） |
 | `common/drivers/lsm6dso/include/lsm6dso.h` | 拡張 API（FIFO のワードとその解析 `lsm6dso_fifo.h`、校正の型 `lsm6dso_cal.h` と呼び出し、FIFO の統計、独自属性、ストリームの停止、タイムスタンプの読み取り）。`common/compat/zephyr/drivers/sensor/lsm6dso.h` を通して `<zephyr/drivers/sensor/lsm6dso.h>` |
-| `common/drivers/lsm6dso/port/zephyr/lsm6dso_rtio_stream.c` | FIFO のストリームと INT1（下）。Zephyr 版と同じファイル |
-| `common/drivers/lsm6dso/port/zephyr/lsm6dso_decoder.[ch]` | ストリームのバッファーの形式と、ストリームと単発取得のバッファーのデコーダー（`get_decoder`）。Zephyr 版と同じファイル |
+| `common/drivers/lsm6dso/port/zephyr/lsm6dso_rtio_stream.c` | FIFO のストリームの RTIO 側（下）。デバイスの INT1 の線、RTIO の要求をコアのストリームへ渡すこと、拡張 API の停止と設定。Zephyr 版と同じファイル |
+| `common/drivers/lsm6dso/port/zephyr/lsm6dso_decoder.[ch]` | ストリームと単発取得のバッファーのデコーダー（`get_decoder`）。Zephyr 版と同じファイル |
 | ボードの `src/nano_lsm6dso.[ch]` | I2C0 を互換層のバスのデバイス（`i2c0`、100 kHz）にし、`lsm6dsox` を初期化する（`nano_bringup()` から） |
 | ボードの `src/nano_gpio.c` | 互換層の `gpio0` のための GPIO バンク 0（入力の設定、レベルの読み出し、エッジ・レベルの割り込み）。`<nano_gpio.h>`（`common/compat`） |
 
-ドライバーが使う OS の機能の、NuttX 版での中身（コアのものは `port/zephyr/lsm6dso_os_impl.h` を通し、つなぎのものは直接）:
+ドライバーが使う OS の機能の、NuttX 版での中身（コアのものは `port/zephyr/lsm6dso_os_impl.h`・`lsm6dso_stream_req_impl.h` を通し、つなぎのものは直接）:
 
 | Zephyr | NuttX 版 |
 |---|---|
@@ -485,7 +486,9 @@ DMA の部分を同じ分岐・順序・値で写したものです。
 | `k_msleep()`、`k_usleep()` | 互換層のもの。`nxsched_msleep()`、`nxsched_usleep()`（tick に切り上げて 1 tick 足す。Zephyr と同じ規則、同じ 100 µs） |
 | `k_cycle_get_32()`、`k_cyc_to_ns_floor64()` | 互換層のもの。TIMER の下位 32 ビット（1 MHz）と ×1000 |
 | `i2c_burst_read_dt()`（コアの FIFO の読み出し） | 互換層の I2C0 の呼び出し |
-| `CONFIG_SENSOR_ASYNC_API` | `CONFIG_NANO_LSM6DSO_STREAM` があれば前置きヘッダーが定義する（`NANO_LSM6DSO` と一緒に常に有効。Zephyr 版と同じく、無いと `lsm6dso.c` はビルドできない） |
+| `k_work_queue_start()` のキューの上の `k_work_delayable`、`k_sys_work_q` の上の `k_work`（ストリームのワークと INT1 のワーク） | 互換層のワークキュー（`imu_fifo_worker` は優先度 108、`sysworkq`） |
+| `gpio_*_dt()`、`sensor_clock_get_cycles()`、RTIO（ストリーム） | 互換層のもの。ボードの `gpio0` と TIMER の上（下） |
+| `CONFIG_SENSOR_ASYNC_API` | `CONFIG_NANO_LSM6DSO_STREAM` があれば前置きヘッダーが定義する（`NANO_LSM6DSO` と一緒に常に有効。Zephyr 版と同じく、無いと `lsm6dso_sensor.c` はビルドできない） |
 | `DT_HAS_COMPAT_ON_BUS_STATUS_OKAY()` | 互換層の `<zephyr/devicetree.h>`。`st_lsm6dso` の `i2c` だけ 1（ボードの LSM6DSOX は I2C0 の 1 個） |
 | デバイスツリーのインスタンス化、`POST_KERNEL`・優先度 90 | `DEVICE_DT_DEFINE(lsm6dsox, …)`（`lsm6dso_instance.h`）、ボードの起動処理での `device_init()` |
 
@@ -502,7 +505,7 @@ DMA の部分を同じ分岐・順序・値で写したものです。
 
 変換（`lsm6dso_cal.c`）、校正値の参照（`lsm6dso_cal_set_lookup()`・`lsm6dso_cal_reload()`・
 `lsm6dso_cal_status()`）、その場でのバイアスの取り直し（`lsm6dso_cal_zero()`）、ストリーム中の追従
-（`lsm6dso_chip.c` が動かす `lsm6dso_cal.c` の `lsm6dso_zero_*()`）は Zephyr 版のコードのままで、動作も同じです（Zephyr 版のドライバー説明の
+（`lsm6dso.c` が動かす `lsm6dso_cal.c` の `lsm6dso_zero_*()`）は Zephyr 版のコードのままで、動作も同じです（Zephyr 版のドライバー説明の
 「物理量への変換と校正」）。ドライバーは KV を読みません。校正値を引く関数は `common/imu/imu_cal.c`
 （Zephyr 版と同じファイル。`nuttx/apps/imu/` がビルドする）が init の `imu_cal_init()` で登録し、ドライバーは登録時、
 `imu cal reload`、レンジの設定時にそれを呼びます。校正値が掛かるのは単発取得の `sensor_channel_get()` と
@@ -510,19 +513,21 @@ FIFO のデコーダーの出力で、取得サービスが MQTT で送る RAW �
 
 ### FIFO のストリーム
 
-`lsm6dso_rtio_stream.c`（INT1 を含む）は Zephyr 版と同じファイル（`common/drivers/lsm6dso/port/zephyr/`。コアの FIFO の呼び出しを使う）で、Zephyr の名前の
-カーネル・RTIO・GPIO・sensor の API を互換層（下の節）から使います。動作は Zephyr 版と同じです。
+コアのストリーム `lsm6dso_stream.c` と、つなぎの `lsm6dso_rtio_stream.c`・`lsm6dso_os.c`（INT1 を含む）は Zephyr 版と同じファイル
+（`common/drivers/lsm6dso/`。コアの FIFO の呼び出しを使う）で、Zephyr の名前のカーネル・RTIO・GPIO・sensor の API を互換層（下の節）から
+使います。動作は Zephyr 版と同じです。
 
 - `sensor_stream()`（`SENSOR_DT_STREAM_IODEV`、トリガーは `SENSOR_TRIG_FIFO_WATERMARK` と
   `SENSOR_STREAM_DATA_INCLUDE` の 1 つだけ。ほかは `-ENOTSUP`、2 本目は `-EBUSY`）が multishot の読み出しを
-  1 つ出し、`lsm6dso_submit()` が呼び出し元の文脈でワーカー（`imu_fifo_worker`）を起こします。
+  1 つ出し、`lsm6dso_sensor_submit()` がそれをコアのストリームに渡し、ストリームが呼び出し元の文脈でワーカー
+  （`imu_fifo_worker`）を起こします。
 - ワーカーは最初の実行で FIFO を開始し（ウォーターマーク、加速度・ジャイロの BDR、タイムスタンプ 8 回に 1 つ、
   ストリームモード）、INT1 の立ち上がりエッジの割り込みを有効にしてから FIFO のしきい値を INT1 に出します。
   有効にした時点で INT1 がすでに高ければ、その場で 1 回処理を予約します。
 - INT1 のエッジ → GPIO の割り込みが `k_work_submit()` でシステムワークキュー（`sysworkq`）に処理を入れる →
-  そこで `stream_wakeup()` がワーカーを `k_work_reschedule_for_queue(.., K_NO_WAIT)` で起こす → ワーカーが
+  そこでコアの `lsm6dso_stream_int1()` がワーカーを `k_work_reschedule_for_queue(.., K_NO_WAIT)` で起こす → ワーカーが
   FIFO の状態を読み、ウォーターマーク以上なら全ワードを 1 回の転送で読んで 1 バッチを完了にします。
-  完了した multishot はその場でワーカーに戻り（`lsm6dso_submit()`）、ワーカーはすぐもう一度状態を見ます。
+  完了した multishot はその場でワーカーに戻り（`lsm6dso_sensor_submit()`）、ワーカーはすぐもう一度状態を見ます。
   何も無ければ 20 ms 後に見直す予約（`k_work_schedule_for_queue(.., K_MSEC(20))`）をします。エッジを
   取りこぼしてもこの見直しで読みます。
 - バッファーはコンテキストのメモリープールから取ります（最小 = パケットの頭＋ウォーターマーク分、
@@ -609,8 +614,8 @@ Zephyr の API を、Zephyr の名前のまま最小限だけ用意したもの�
 | `zephyr/sys/util.h`、`sys/mpsc_lockfree.h`、`sys/mem_blocks.h`、`dsp/types.h` | `BIT()`、`ARRAY_SIZE()`、`MIN()`・`MAX()`、`IS_ENABLED()`、`CONTAINER_OF()`、`GENMASK()`・`GENMASK64()`・`FIELD_GET()`、`STRINGIFY()`、`KB()`、`ZTESTABLE_STATIC`、`hex2bin()`・`bin2hex()`（実装は `lib/utils/hex.c` の写し）など（Zephyr と同じく `<string.h>` も読む）、RTIO の待ち行列とブロックのプール、`q31_t` |
 | `zephyr/sys/__assert.h`（NuttX） | `__ASSERT()`・`__ASSERT_NO_MSG()`（NuttX の `DEBUGASSERT()`。ホストテストは `assert()`） |
 | `zephyr/dsp/print_format.h` | Zephyr の同名のヘッダーの写し（先頭の説明と `<zephyr/sys/util.h>` のインクルードだけを足した）。Q 値の表示の書式 `PRIq()`・`PRIq_arg()` |
-| `zephyr/types.h` | `<stddef.h>` と `<stdint.h>`（`lsm6dso.h` が読む目的のもの） |
-| `zephyr/init.h` | 中身の無いヘッダー（`lsm6dso.c` が読む。`SYS_INIT()` と初期化レベルを使うのは Zephyr 版のインスタンス化のマクロだけ） |
+| `zephyr/types.h` | `<stddef.h>` と `<stdint.h>`（`lsm6dso_sensor.h` が読む目的のもの） |
+| `zephyr/init.h` | 中身の無いヘッダー（`lsm6dso_sensor.c` が読む。`SYS_INIT()` と初期化レベルを使うのは Zephyr 版のインスタンス化のマクロだけ） |
 | `zephyr/sys/iterable_sections.h` | `STRUCT_SECTION_FOREACH()` だけ（いつも空の区間。Zephyr のリンカーの区間は無い）。sensor シェルが読み（使うのは Zephyr 版の構成に無い `CONFIG_SENSOR_INFO` のときだけ）、settings が静的なハンドラーの区間を回す（この移植には無い） |
 | `zephyr/sys/sys_io.h` | `sys_read32()`（Zephyr の Arm と同じく、バリアの無い 32 ビットの volatile の読み出し 1 回）、`mem_addr_t` |
 | `zephyr/sys/printk.h`、`zephyr/sys/byteorder.h`、`zephyr/sys/cpu_load.h` | `snprintk()`（Zephyr 版の構成 `CONFIG_PICOLIBC=y` と同じく `snprintf()`）、`sys_put_be16/32()`・`sys_get_be16/32()`、`cpu_load_get()`（`cpu_load.h`。実装はボード） |
@@ -711,7 +716,7 @@ Zephyr の API を、Zephyr の名前のまま最小限だけ用意したもの�
   ファイルに `-imacros autoconf.h` で構成を読ませるのと同じ形）。中身は `<nuttx/config.h>`、互換層より先に要る
   NuttX のヘッダー（`<zephyr/kernel.h>` が先に読むもの: `<sys/types.h>`、`<nuttx/irq.h>`、`<nuttx/mutex.h>`、
   `<nuttx/semaphore.h>`、`<nuttx/wdog.h>`、`<stdio.h>`）と、共有するソースが使う Zephyr の Kconfig の値
-  （`CONFIG_SENSOR_LOG_LEVEL` 3。Zephyr 版の構成と同じ値。`lsm6dso.c`・`lsm6dso.h` の
+  （`CONFIG_SENSOR_LOG_LEVEL` 3。Zephyr 版の構成と同じ値。`lsm6dso_sensor.c`・`lsm6dso_sensor.h` の
   `CONFIG_SENSOR_ASYNC_API` を、`CONFIG_NANO_LSM6DSO_STREAM` があれば定義する）です。そのため共有する
   ソースには NuttX のヘッダーの行がありません。ソケットのヘッダーは入れていません（`accept()` などの名前がソースの
   関数と重なる。必要なファイルは互換層の `<zephyr/net/socket.h>` が読む）。ホストテストも同じヘッダーを付けます

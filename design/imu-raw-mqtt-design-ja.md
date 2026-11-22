@@ -584,13 +584,13 @@ NuttX 版の確認の範囲は §11.7 に分けて書く。
   同じホストテスト（`common/tests/`）を両方の版の `host_tests.sh` から動かす。Zephyr の API を使うが両方の版で
   同一のドライバーのファイル（LSM6DSO の FIFO の設定とストリーム、拡張 API の `include/lsm6dso.h`）も
   `common/` に置き、NuttX 版では下の互換層の上で動かす。OS を呼ぶソースのうち `imu_stream.c`、`time_sync.c`、
-  `imu_raw_mqtt.c`、`imu_cal.c`、`wifi_profile.c`、LSM6DSO のドライバーの Zephyr へのつなぎ（`port/zephyr/` の `lsm6dso.[ch]`、`lsm6dso_rtio.c`、ストリーム）、
+  `imu_raw_mqtt.c`、`imu_cal.c`、`wifi_profile.c`、LSM6DSO のドライバーの Zephyr へのつなぎ（`port/zephyr/` の `lsm6dso_sensor.[ch]`、`lsm6dso_rtio.c`、ストリームの RTIO 側）、
   sensor シェルの `sensor_shell.c` と、
   ヘッダーの `kv_store.h` も `common/` の 1 本を両方の版が使う（コマンドの登録も Zephyr 版の文のまま）。NuttX 版では
   各ファイルに前置きヘッダー（NuttX の設定と、互換層より先に読む NuttX のヘッダー、ファイルが使う Zephyr の Kconfig の
   値と名前）を付けてコンパイルし、版ごとに違う数行は OS ごとの小さなヘッダー（`sensor_shell_os.h`、
-  `wifi_profile_os.h`、`lsm6dso.c` が末尾で読む LSM6DSO のデバイスの `lsm6dso_instance.h`。Zephyr 版はデバイスツリーの
-  インスタンス化のマクロ、NuttX 版はボードの値を使うデバイス 1 つ）に出している。LSM6DSO のドライバーのコア（`lsm6dso_chip.c`・`lsm6dso_cal.c`・`lsm6dso_fifo.c`）は OS を持たず、境界 `port/lsm6dso_os.h` を通して OS につながる。その実装は 3 版とも Zephyr へのつなぎの `port/zephyr/lsm6dso_os_impl.h`（NuttX 版・FreeRTOS 版では互換層の上）。NINA の OS に依存しないコアも `common/drivers/nina/` にあり、3 つの版が使う。直下（外から読むヘッダーは `include/`）はドライバーが提供する機能
+  `wifi_profile_os.h`、`lsm6dso_sensor.c` が末尾で読む LSM6DSO のデバイスの `lsm6dso_instance.h`。Zephyr 版はデバイスツリーの
+  インスタンス化のマクロ、NuttX 版はボードの値を使うデバイス 1 つ）に出している。LSM6DSO のドライバーのコア（`lsm6dso.c`、FIFO のストリームの状態機械の `lsm6dso_stream.c`、`lsm6dso_cal.c`、`lsm6dso_fifo.c`）は OS を持たず、境界 `port/lsm6dso_os.h` を通して OS に、`port/lsm6dso_stream_req.h` を通してストリームを使う側につながる。その実装は 3 版とも Zephyr へのつなぎの `port/zephyr/lsm6dso_os_impl.h` と `lsm6dso_os.c`、`lsm6dso_stream_req_impl.h`（RTIO。NuttX 版・FreeRTOS 版では互換層の上）で、互換層を持つほかの OS はこのドライバーのために何も書かない。NINA の OS に依存しないコアも `common/drivers/nina/` にあり、3 つの版が使う。直下（外から読むヘッダーは `include/`）はドライバーが提供する機能
   （Wi-Fi の操作 `nina_wifi.[ch]`、ソケットの表と命令 `nina_sock.[ch]`、名前解決 `nina_dns.[ch]`、esptool の中継 `nina_passthrough.[ch]`）、
   `internal/` はコアの内側の部品（プロトコルのバイトと SPI の転送層 `nina_proto.[ch]`、ソケットのループの
   待ち `nina_wait.[ch]`）、`port/` は各版が実装する狭い境界のヘッダー（`nina_os.h`・`nina_bus.h`、中継の `nina_passthrough_os.h`・
@@ -741,7 +741,7 @@ Zephyr の名前のまま提供する互換層の上でビルドする。ホス�
 | 場所 | 中身 | 使う版 |
 |---|---|---|
 | `common/imu/` | 取得サービスと `imu`、バッチ・ペイロード・キュー・status、時刻の対応付けと時刻同期・`ntp`、校正と `imu cal`、MQTT の送信、Wi-Fi のプロファイルと自動再接続、KV の API と `kv` | 3 版（MQTT のクライアント `mqtt_min*` は NuttX 版と FreeRTOS 版。Zephyr 版は Zephyr の MQTT ライブラリー） |
-| `common/drivers/lsm6dso/` | LSM6DSO のドライバー。直下に OS を持たないコア（`lsm6dso_chip.c`・`lsm6dso_cal.c`・`lsm6dso_fifo.c`。ヘッダーは `include/`・`internal/`、境界 `lsm6dso_os.h` は `port/`）、`port/zephyr/` に FIFO のストリームを含む Zephyr へのつなぎ（Zephyr 版では Zephyr のモジュール。拡張 API の `<zephyr/drivers/sensor/lsm6dso.h>` は `include/lsm6dso.h`）、`port/nuttx/`・`port/freertos/` に NuttX 版・FreeRTOS 版のデバイス | 3 版 |
+| `common/drivers/lsm6dso/` | LSM6DSO のドライバー。直下に OS を持たないコア（`lsm6dso.c`・`lsm6dso_stream.c`・`lsm6dso_cal.c`・`lsm6dso_fifo.c`。ヘッダーは `include/`・`internal/`、境界 `lsm6dso_os.h`・`lsm6dso_stream_req.h` は `port/`）、`port/zephyr/` に FIFO のストリームの RTIO 側を含む Zephyr へのつなぎ（Zephyr 版では Zephyr のモジュール。拡張 API の `<zephyr/drivers/sensor/lsm6dso.h>` は `include/lsm6dso.h`）、`port/nuttx/`・`port/freertos/` に NuttX 版・FreeRTOS 版のデバイス | 3 版 |
 | `common/drivers/sensor_shell/` | sensor シェル。各版の `sensor_shell_os.h` を除き、Zephyr 版のパッチを当てたツリーのファイル（パッチ 0006、下） | 3 版 |
 | `common/drivers/nina/` | NINA のコア（SPI の転送層、ソケット、名前解決、Wi-Fi の操作 `nina_wifi.[ch]`、ソケットの待ち `nina_wait.[ch]`、宣言 `nina_proto.h`）と esptool の中継 `nina_passthrough.[ch]`（境界 `nina_passthrough_bus.h`・`nina_passthrough_os.h`）。OS の定義を持たない | 3 版 |
 | `common/drivers/nina/port/zephyr/`、`nuttx/`、`freertos/` | コアの Zephyr の API へのつなぎ（Wi-Fi 管理とインターフェース、カーネルの機能、ソケットのオフロード、devicetree binding とオプション）、NuttX の API へのつなぎ（`wlan0` と wapi、アプリが使う Zephyr の Wi-Fi 管理、カーネルの機能、usrsock）、FreeRTOS と Pico SDK へのつなぎ（カーネルの機能 `nina_os.c`: ロック、要求、sleep、時計、READY と IRQ の線のエッジ割り込みでの待ち）。どれにも中継のホスト側 `nina_passthrough_os.c`（Zephyr の CDC ACM、cdcacm、TinyUSB） | `zephyr/` は Zephyr 版と FreeRTOS 版（Wi-Fi とソケットのつなぎを互換層の上で）、`nuttx/` は NuttX 版、`freertos/` は FreeRTOS 版 |

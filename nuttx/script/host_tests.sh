@@ -14,9 +14,8 @@ lsm=drivers/lsm6dso
 cimu=../common/imu
 clsm=../common/drivers/lsm6dso
 # The driver's directories (its top for the tests that include the core) for the sources that
-# include its Zephyr binding: port/nuttx before port/zephyr (lsm6dso.c reads this build's
-# <lsm6dso_instance.h>), port/zephyr before include/ (the tests' "lsm6dso.h" is the binding's
-# header; the public one of include/ is <zephyr/drivers/sensor/lsm6dso.h>).
+# include its Zephyr binding: port/nuttx before port/zephyr (lsm6dso_sensor.c reads this build's
+# <lsm6dso_instance.h>).
 lsmdirs=(-I"$clsm" -I"$clsm/port/nuttx" -I"$clsm/port/zephyr" -I"$clsm/include"
          -I"$clsm/internal" -I"$clsm/port")
 # ST's glue to the Zephyr I2C API (stmemsc.h, stmemsc_i2c.c, stmemsc_mdelay.c), shared with the
@@ -56,10 +55,11 @@ lib=("$cimu/imu_raw_queue.c" "$cimu/imu_raw_packet.c" "$cimu/imu_raw_batch.c"
      "$cimu/imu_raw_status.c" "$cimu/imu_raw_time.c" "$cimu/imu_tick_clock.c"
      "$cimu/time_offset.c" "$clsm/lsm6dso_fifo.c" "$clsm/port/zephyr/lsm6dso_decoder.c")
 
-# The LSM6DSO driver (common/drivers/lsm6dso: the core lsm6dso_chip.c and the Zephyr binding
-# port/zephyr/lsm6dso.c with port/nuttx/lsm6dso_instance.h) and its FIFO stream
-# (port/zephyr/lsm6dso_rtio_stream.c; the test includes it and the core, for their static
-# functions; lsm6dso_rtio.c, the decoder) on ST's real lsm6dso_reg.c, the Zephyr compatibility layer
+# The LSM6DSO driver (common/drivers/lsm6dso: the core lsm6dso.c, which the test includes for its
+# static functions, and the Zephyr binding port/zephyr/lsm6dso_sensor.c with
+# port/nuttx/lsm6dso_instance.h) and its FIFO stream (the core's lsm6dso_stream.c; the binding's
+# lsm6dso_rtio_stream.c, lsm6dso_os.c, lsm6dso_rtio.c, the decoder) on ST's real lsm6dso_reg.c, the
+# Zephyr compatibility layer
 # (I2C, devices, work queues, RTIO, gpio0, the default sensor iodev and decoder) with the fake
 # kernel of common/tests/zephyr_fakes, and the board's devices, against a fake sensor behind a fake
 # I2C master and a fake INT1.  Its own include path: the compatibility layer's headers and
@@ -79,8 +79,10 @@ if [[ -f stmemsc/lsm6dso_reg.c ]]; then
         -Idrivers/compat -I"$ccompat" -Idrivers/include -I"$clog" -Istmemsc -I"$lsm" "${lsmdirs[@]}" -I"$cstm" \
         -Iboards/arduino-nano-rp2040-connect/src \
         tests/lsm6dso_driver.c "$cstm/stmemsc_i2c.c" "$cstm/stmemsc_mdelay.c" \
-        "$clsm/lsm6dso_cal.c" "$clsm/lsm6dso_fifo.c" "$clsm/port/zephyr/lsm6dso.c" \
-        "$clsm/port/zephyr/lsm6dso_rtio.c" "$clsm/port/zephyr/lsm6dso_decoder.c" \
+        "$clsm/lsm6dso_cal.c" "$clsm/lsm6dso_fifo.c" "$clsm/lsm6dso_stream.c" \
+        "$clsm/port/zephyr/lsm6dso_sensor.c" "$clsm/port/zephyr/lsm6dso_rtio.c" \
+        "$clsm/port/zephyr/lsm6dso_rtio_stream.c" "$clsm/port/zephyr/lsm6dso_os.c" \
+        "$clsm/port/zephyr/lsm6dso_decoder.c" \
         drivers/compat/zephyr_i2c.c "$ccompat/zephyr_device.c" \
         "$ccompat/zephyr_gpio.c" "$ccompat/sensor_default_rtio.c" "${compat[@]}" \
         boards/arduino-nano-rp2040-connect/src/nano_lsm6dso.c "$out/lsm6dso_reg.o" -lm "$link" \
@@ -99,8 +101,10 @@ if [[ -f stmemsc/lsm6dso_reg.c ]]; then
         -Iboards/arduino-nano-rp2040-connect/src \
         tests/imu_cal.c "$cimu/imu_cal.c" "$cimu/imu_cal_codec.c" \
         "$cstm/stmemsc_i2c.c" "$cstm/stmemsc_mdelay.c" \
-        "$clsm/lsm6dso_cal.c" "$clsm/lsm6dso_fifo.c" "$clsm/port/zephyr/lsm6dso.c" \
-        "$clsm/port/zephyr/lsm6dso_rtio.c" "$clsm/port/zephyr/lsm6dso_decoder.c" \
+        "$clsm/lsm6dso_cal.c" "$clsm/lsm6dso_fifo.c" "$clsm/lsm6dso_stream.c" \
+        "$clsm/port/zephyr/lsm6dso_sensor.c" "$clsm/port/zephyr/lsm6dso_rtio.c" \
+        "$clsm/port/zephyr/lsm6dso_rtio_stream.c" "$clsm/port/zephyr/lsm6dso_os.c" \
+        "$clsm/port/zephyr/lsm6dso_decoder.c" \
         drivers/compat/zephyr_i2c.c "$ccompat/zephyr_device.c" \
         "$ccompat/zephyr_gpio.c" "$ccompat/sensor_default_rtio.c" "${compat[@]}" \
         boards/arduino-nano-rp2040-connect/src/nano_lsm6dso.c "$out/lsm6dso_reg.o" -lm "$link" \
@@ -123,8 +127,10 @@ if [[ -f stmemsc/lsm6dso_reg.c ]]; then
     cc "${sflags[@]}" "${sinc[@]}" tests/sensor_shell.c "$out/sensor_shell.o" \
         "$ccompat/sensor_shell_stream.c" apps/sensor/sensor_shell_nuttx.c "$cshell/zshell.c" \
         "$cshell/subcmd.c" "$cstm/stmemsc_i2c.c" "$cstm/stmemsc_mdelay.c" \
-        "$clsm/lsm6dso_cal.c" "$clsm/lsm6dso_fifo.c" "$clsm/port/zephyr/lsm6dso.c" \
-        "$clsm/port/zephyr/lsm6dso_rtio.c" "$clsm/port/zephyr/lsm6dso_decoder.c" \
+        "$clsm/lsm6dso_cal.c" "$clsm/lsm6dso_fifo.c" "$clsm/lsm6dso_stream.c" \
+        "$clsm/port/zephyr/lsm6dso_sensor.c" "$clsm/port/zephyr/lsm6dso_rtio.c" \
+        "$clsm/port/zephyr/lsm6dso_rtio_stream.c" "$clsm/port/zephyr/lsm6dso_os.c" \
+        "$clsm/port/zephyr/lsm6dso_decoder.c" \
         drivers/compat/zephyr_i2c.c "$ccompat/zephyr_device.c" \
         "$ccompat/zephyr_gpio.c" "$ccompat/sensor_default_rtio.c" "${compat[@]}" \
         boards/arduino-nano-rp2040-connect/src/nano_lsm6dso.c "$out/lsm6dso_reg.o" -lm "$link" \

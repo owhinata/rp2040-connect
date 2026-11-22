@@ -2369,3 +2369,33 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
 - NuttX 版だけの `nano_` のファイルと関数は `rp2040_` に改名する（ユーザーの決定。NuttX 本体のボードのファイルの流儀）。共有の境界の `nano_*` は 7・11 で移すときに名前を決める。
   時期はセンサーの段階 2 と 2〜4 のあと。
 - 1 を実施: `design/os-boundary.md`・`-ja.md`（今の境界の一覧。宣言された境界、暗黙の境界、ドライバーの境界、OS ごとに残るもの）。コードは変えていない。
+
+## sensor: FIFO を読み続ける処理をコアへ（段階 2）と改名（2026-11-22）
+
+- subagent が実装、メインがホストテストと実機確認。先に改名だけを行い、3 版のイメージが基準とバイト単位で一致することを確かめてから、処理を移した。
+- 改名（ユーザーの了解）: コアは `lsm6dso.c`（もとの `lsm6dso_chip.c`。関数は `lsm6dso_*`、オブジェクトは `struct lsm6dso`）、`internal/lsm6dso_core.h`。Zephyr へのつなぎは
+  `port/zephyr/lsm6dso_sensor.[ch]`（関数は `lsm6dso_sensor_*`）。公開の API は名前を保ち、同じ名前になるコアの関数は動詞を先に置く（`lsm6dso_reload_cal()`、`lsm6dso_get_fifo_stats()`、
+  `lsm6dso_read_timestamp()` など）。`lsm6dso.h` という名前は、公開のヘッダーと、それを `<zephyr/drivers/sensor/lsm6dso.h>` として見せる中継の 2 つ（include パスの順序には依存しない）。
+- 移したもの: `lsm6dso_stream.c`（コア）がストリームの状態と処理（開始・停止、INT1 と開始時のレベル、しきい値を下回るまでの読み出し、20 ms の見回り、停止の要求、エラーとオーバーラン、
+  しきい値の設定）を持つ。境界は 2 つ、どちらも static inline:
+  - `port/lsm6dso_os.h` に追加: 後回しの処理（`lsm6dso_os_work_*`。Zephyr では `imu_fifo_worker` のワークキュー、優先度 10、2048 バイト）、INT1 の線（`lsm6dso_os_int1_*`）、
+    バスの長い読み出しができるかの確認、時刻（`lsm6dso_os_clock_ns()`）。
+  - `port/lsm6dso_stream_req.h`: ストリームの使い手（2 つの型と 6 つの関数: 同じ要求か、取り出す、取り消されたか、バッファ、完了、エラー）。RTIO 用の実装が `port/zephyr/lsm6dso_stream_req_impl.h`。
+  - つなぎの `lsm6dso_rtio_stream.c` は 74 行（デバイスごとの初期化、読み出しの設定の検査、デバイスを取る公開の関数）。
+  - 互換層のある OS は何も書かない。互換層なしなら `lsm6dso_os_impl.h`（型と約 17 個の小さな関数）と INT1・スレッド。RTIO 以外の使い手なら `lsm6dso_stream_req_impl.h`。
+- バッチごとの経路: 増えたのは `imu_fifo_worker` から `lsm6dso_stream_run()` への直接の呼び出し 1 つ（約 104 回/秒）。コピーとコンテキストスイッチは増えない。I2C は従来どおり `imu_fifo_worker`。
+- 小さく変わった動き: INT1 を有効にした時点でレベルがすでに立っている場合、コアがストリームの処理を直接回す（以前はシステムのワークキューを 1 回経由）。
+- そのままにした気になる所（subagent の報告）: エッジは ISR → システムのワークキュー → ワーカーの順（ISR から直接でも足りる）、`lsm6dso_stream_int1()` は常に 0 を返す、
+  取り消しはバッチを止めずに停止するので FIFO に残った語は捨てられる、20 ms の見回りはエッジが来ていても回る。
+- テスト: `common/tests/stream_stop.c` を `lsm6dso_stream.c` に置き換え（RTIO なしでコアのストリームを試す。もとの確認は全部残し、開始・エッジ・しきい値未満・オーバーラン・取り消し・2 つ目の要求を追加）。
+  `lsm6dso_core_independent` は 11 ファイル。ホストテスト 48・61・58、`format.sh --check` も通る。
+- イメージ: Zephyr 372328 B（−96）、NuttX 283992 B（−48）、FreeRTOS 237056 B（−32）。**基準: `snapshot-1122e`**。
+- 実機:
+  - Zephyr（書き込み直後 約 70 秒）: 欠番 0、46.0%、オーバーラン 0、I2C のエラー 0。`sensor get`、`sensor stream` on・off 2 回、`imu start`・`stop` 3 回、アプリが送信中の `sensor stream`・`sensor get` は
+    `-16`（使用中）、`fifo_watermark` の設定、`dmesg` に `<err>` なし。スタック: `imu_fifo_worker` 928/2048、`imu_stream_tid` 992、`sysworkq` 304。
+  - NuttX（同）: 欠番 0、47.5%、`sensor get`、`imu start`・`stop` 2 回、`dma_errors`・`dma_fallbacks` 0、`imu_fifo_worker` のスタック 832/2008。
+  - FreeRTOS: `selftest` 22・6・3 項目とも失敗 0。既定のビルド 5 回: 4 回が欠番 0・42.9〜43.0%、**書き込み直後の 1 回目に欠番 29**（開始から約 12 秒で 1 回の publish が 1.19 秒、到着の空き 1205 ms、
+    キュー 12、接続は維持、オーバーラン 0、I2C のエラー 0）。今朝の欠番 35（約 60 秒のところ、1.36 秒）と同じ種類。今日の FreeRTOS の計測 約 13 回のうち 2 回で、どちらも書き込み直後の最初の計測。
+    原因は未確定（センサーの経路ではなく NINA への送信の側の詰まり）。
+- 確かめていない: 切断復帰・Telnet（このイメージでは）、校正のやり直し、長時間。
+- 実機: FreeRTOS 版（この変更の既定のビルド）。

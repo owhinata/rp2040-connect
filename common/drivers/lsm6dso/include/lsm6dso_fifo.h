@@ -1,7 +1,8 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /* The LSM6DSO's FIFO: the format of its words and their parser
- * (lsm6dso_fifo.c), and the counters the driver keeps of reading it.  No OS:
- * the driver's core and its users on any OS read the words with these.
+ * (lsm6dso_fifo.c), the bounds of the stream's threshold, and the counters
+ * the driver keeps of reading it.  No OS: the driver's core and its users on
+ * any OS read the words with these.
  */
 #ifndef LSM6DSO_FIFO_H_
 #define LSM6DSO_FIFO_H_
@@ -12,6 +13,12 @@
 
 #define LSM6DSO_FIFO_WORD_SIZE 7U
 #define LSM6DSO_FIFO_MAX_WORDS 512U
+
+/* The stream's FIFO threshold in words (SENSOR_ATTR_LSM6DSO_FIFO_WATERMARK of
+ * lsm6dso.h): limited to fit the sensor shell's 2048-byte RTIO pool.
+ */
+#define LSM6DSO_FIFO_DEFAULT_WATERMARK 32U
+#define LSM6DSO_FIFO_MAX_WATERMARK 256U
 
 enum lsm6dso_fifo_kind {
 	LSM6DSO_FIFO_GYRO = 1,

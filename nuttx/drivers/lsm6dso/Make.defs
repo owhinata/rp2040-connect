@@ -2,20 +2,23 @@
 # nuttx/drivers/lsm6dso/Make.defs
 #
 # The LSM6DSOX driver, in common/drivers/lsm6dso, shared with the other
-# builds: its core (lsm6dso_chip.c: how the chip is operated;
-# lsm6dso_cal.c: the conversion and the gyro bias at rest; lsm6dso_fifo.c:
-# the FIFO words' parser; their headers in include/ and internal/, the
-# boundary lsm6dso_os.h in port/), and the Zephyr build's binding in
-# port/zephyr (lsm6dso.c: the device and the sensor API; the FIFO stream
-# lsm6dso_rtio_stream.c, lsm6dso_rtio.c, lsm6dso_decoder.c; the core's OS
-# part lsm6dso_os_impl.h), compiled on the compatibility layer's kernel,
-# device, sensor and I2C calls with the prelude of the shared sources
-# (compat/common_prelude.h), as the files of the Zephyr build's patched
-# drivers/sensor/st/lsm6dso.  Its extended API
-# <zephyr/drivers/sensor/lsm6dso.h> is include/lsm6dso.h, which common/compat
-# finds.  This build's own file is port/nuttx/lsm6dso_instance.h (the
-# device that lsm6dso.c defines at its end, from the board's values).  With
-# them: ST's glue (stmemsc_i2c.c, stmemsc_mdelay.c and stmemsc.h, in
+# builds: its core (lsm6dso.c: how the chip is operated; lsm6dso_cal.c:
+# the conversion and the gyro bias at rest; lsm6dso_fifo.c: the FIFO
+# words' parser; lsm6dso_stream.c: the FIFO stream; their headers in
+# include/ and internal/, the boundaries lsm6dso_os.h and
+# lsm6dso_stream_req.h in port/), and the Zephyr build's binding in
+# port/zephyr (lsm6dso_sensor.c: the device and the sensor API; the
+# stream's RTIO side lsm6dso_rtio_stream.c, lsm6dso_rtio.c and
+# lsm6dso_decoder.c; the core's OS part lsm6dso_os_impl.h with
+# lsm6dso_os.c, and its user part lsm6dso_stream_req_impl.h), compiled on
+# the compatibility layer's kernel, device, GPIO, sensor, RTIO and I2C
+# calls with the prelude of the shared sources (compat/common_prelude.h),
+# as in the Zephyr build's module.  Its extended API
+# <zephyr/drivers/sensor/lsm6dso.h> is include/lsm6dso.h, which
+# common/compat finds.  This build's own file is
+# port/nuttx/lsm6dso_instance.h (the device that lsm6dso_sensor.c defines
+# at its end, from the board's values).  With them: ST's glue
+# (stmemsc_i2c.c, stmemsc_mdelay.c and stmemsc.h, in
 # common/drivers/stmemsc, shared with the FreeRTOS build and compiled
 # without the prelude), and ST's register driver lsm6dso_reg.c, which
 # script/setup.sh puts in nuttx/stmemsc (not in Git; built through
@@ -28,11 +31,12 @@
 ############################################################################
 
 ifeq ($(CONFIG_NANO_LSM6DSO),y)
-CSRCS += lsm6dso.c lsm6dso_chip.c lsm6dso_cal.c lsm6dso_fifo.c
+CSRCS += lsm6dso_sensor.c lsm6dso.c lsm6dso_cal.c lsm6dso_fifo.c
 CSRCS += stmemsc_i2c.c stmemsc_mdelay.c
 CSRCS += st_lsm6dso_reg.c
 ifeq ($(CONFIG_NANO_LSM6DSO_STREAM),y)
-CSRCS += lsm6dso_rtio_stream.c lsm6dso_rtio.c
+CSRCS += lsm6dso_stream.c
+CSRCS += lsm6dso_rtio_stream.c lsm6dso_rtio.c lsm6dso_os.c
 CSRCS += lsm6dso_decoder.c
 endif
 DEPPATH += --dep-path lsm6dso

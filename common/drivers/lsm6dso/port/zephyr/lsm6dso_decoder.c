@@ -7,8 +7,8 @@
 #include "lsm6dso_cal.h"
 #include "lsm6dso_decoder.h"
 
-/* The buffers of the FIFO stream (lsm6dso_decoder.h); the words in them are
- * parsed by lsm6dso_fifo.c.
+/* The buffers of the FIFO stream (lsm6dso_fifo_packet.h); the words in them
+ * are parsed by lsm6dso_fifo.c.
  */
 
 int lsm6dso_fifo_buffer_words(const uint8_t *buffer, size_t length, const uint8_t **words,

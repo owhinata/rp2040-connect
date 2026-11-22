@@ -8,9 +8,10 @@
  * https://www.st.com/resource/en/datasheet/lsm6dso.pdf
  */
 
-/* The driver's device and sensor API on the chip's core (lsm6dso_chip.c):
- * attributes, single reads and their channels, the decoder and RTIO
- * submissions (lsm6dso_rtio.c, lsm6dso_rtio_stream.c), and the devices.
+/* The driver's binding to Zephyr's sensor API, on the core (lsm6dso.c,
+ * lsm6dso_stream.c): the device, attributes, single reads and their
+ * channels, the decoder and RTIO submissions (lsm6dso_decoder.c,
+ * lsm6dso_rtio.c, lsm6dso_rtio_stream.c), and the devices.
  */
 
 #include <zephyr/drivers/sensor.h>
@@ -21,7 +22,7 @@
 #include <zephyr/sys/__assert.h>
 #include <zephyr/logging/log.h>
 
-#include "lsm6dso.h"
+#include "lsm6dso_sensor.h"
 #include "lsm6dso_decoder.h"
 
 LOG_MODULE_REGISTER(LSM6DSO, CONFIG_SENSOR_LOG_LEVEL);
@@ -35,9 +36,9 @@ static int lsm6dso_accel_config(const struct device *dev,
 
 	switch (attr) {
 	case SENSOR_ATTR_FULL_SCALE:
-		return lsm6dso_chip_accel_range_set(&data->chip, sensor_ms2_to_g(val));
+		return lsm6dso_accel_range_set(&data->core, sensor_ms2_to_g(val));
 	case SENSOR_ATTR_SAMPLING_FREQUENCY:
-		return lsm6dso_chip_accel_odr_set(&data->chip, val->val1);
+		return lsm6dso_accel_odr_set(&data->core, val->val1);
 	default:
 		LOG_DBG("Accel attribute not supported.");
 		return -ENOTSUP;
@@ -55,9 +56,9 @@ static int lsm6dso_gyro_config(const struct device *dev,
 
 	switch (attr) {
 	case SENSOR_ATTR_FULL_SCALE:
-		return lsm6dso_chip_gyro_range_set(&data->chip, sensor_rad_to_degrees(val));
+		return lsm6dso_gyro_range_set(&data->core, sensor_rad_to_degrees(val));
 	case SENSOR_ATTR_SAMPLING_FREQUENCY:
-		return lsm6dso_chip_gyro_odr_set(&data->chip, val->val1);
+		return lsm6dso_gyro_odr_set(&data->core, val->val1);
 	default:
 		LOG_DBG("Gyro attribute not supported.");
 		return -ENOTSUP;
@@ -92,17 +93,17 @@ static int lsm6dso_sample_fetch_unlocked(const struct device *dev,
 
 	switch (chan) {
 	case SENSOR_CHAN_ACCEL_XYZ:
-		ret = lsm6dso_chip_fetch_accel(&data->chip);
+		ret = lsm6dso_fetch_accel(&data->core);
 		break;
 	case SENSOR_CHAN_GYRO_XYZ:
-		ret = lsm6dso_chip_fetch_gyro(&data->chip);
+		ret = lsm6dso_fetch_gyro(&data->core);
 		break;
 	case SENSOR_CHAN_ALL:
-		ret = lsm6dso_chip_fetch_accel(&data->chip);
+		ret = lsm6dso_fetch_accel(&data->core);
 		if (ret != 0) {
 			break;
 		}
-		ret = lsm6dso_chip_fetch_gyro(&data->chip);
+		ret = lsm6dso_fetch_gyro(&data->core);
 		break;
 	default:
 		return -ENOTSUP;
@@ -115,25 +116,25 @@ void lsm6dso_cal_reload(const struct device *dev)
 {
 	struct lsm6dso_data *data = dev->data;
 
-	lsm6dso_chip_cal_reload(&data->chip);
+	lsm6dso_reload_cal(&data->core);
 }
 
 void lsm6dso_cal_set_lookup(const struct device *dev, lsm6dso_cal_lookup_t lookup)
 {
 	struct lsm6dso_data *data = dev->data;
 
-	lsm6dso_chip_cal_set_lookup(&data->chip, lookup);
+	lsm6dso_set_cal_lookup(&data->core, lookup);
 }
 
 void lsm6dso_cal_status(const struct device *dev, struct lsm6dso_cal_status *status)
 {
 	struct lsm6dso_data *data = dev->data;
 
-	lsm6dso_chip_cal_status(&data->chip, status);
+	lsm6dso_get_cal_status(&data->core, status);
 }
 
 /* The last fetched sample in the units of the sensor API, converted as the
- * FIFO decoder converts (lsm6dso_chip_convert()).
+ * FIFO decoder converts (lsm6dso_convert()).
  */
 static int lsm6dso_converted_channel_get(const struct device *dev, enum sensor_channel chan,
 					 struct sensor_value *val, bool accel)
@@ -163,7 +164,7 @@ static int lsm6dso_converted_channel_get(const struct device *dev, enum sensor_c
 	default:
 		return -ENOTSUP;
 	}
-	lsm6dso_chip_convert(&data->chip, accel ? LSM6DSO_CAL_ACCEL : LSM6DSO_CAL_GYRO, out);
+	lsm6dso_convert(&data->core, accel ? LSM6DSO_CAL_ACCEL : LSM6DSO_CAL_GYRO, out);
 	for (int axis = first; axis <= last; axis++) {
 		int64_t micro = lsm6dso_cal_to_micro(out[axis]);
 
@@ -217,10 +218,10 @@ static int lsm6dso_attr_set(const struct device *dev, enum sensor_channel chan,
 		return lsm6dso_fifo_set_watermark(dev, (uint16_t)val->val1);
 	}
 #endif
-	ret = lsm6dso_chip_acquire(&data->chip);
+	ret = lsm6dso_acquire(&data->core);
 	if (ret == 0) {
 		ret = lsm6dso_attr_set_unlocked(dev, chan, attr, val);
-		lsm6dso_chip_release(&data->chip);
+		lsm6dso_release(&data->core);
 	}
 	return ret;
 }
@@ -249,10 +250,10 @@ static int lsm6dso_sample_fetch(const struct device *dev, enum sensor_channel ch
 	struct lsm6dso_data *data = dev->data;
 	int ret;
 
-	ret = lsm6dso_chip_acquire(&data->chip);
+	ret = lsm6dso_acquire(&data->core);
 	if (ret == 0) {
 		ret = lsm6dso_sample_fetch_unlocked(dev, chan);
-		lsm6dso_chip_release(&data->chip);
+		lsm6dso_release(&data->core);
 	}
 	return ret;
 }
@@ -261,7 +262,7 @@ int lsm6dso_cal_zero(const struct device *dev)
 {
 	struct lsm6dso_data *data = dev->data;
 
-	return lsm6dso_chip_cal_zero(&data->chip);
+	return lsm6dso_measure_gyro_bias(&data->core);
 }
 
 static int lsm6dso_channel_get(const struct device *dev, enum sensor_channel chan,
@@ -270,10 +271,10 @@ static int lsm6dso_channel_get(const struct device *dev, enum sensor_channel cha
 	struct lsm6dso_data *data = dev->data;
 	int ret;
 
-	ret = lsm6dso_chip_acquire(&data->chip);
+	ret = lsm6dso_acquire(&data->core);
 	if (ret == 0) {
 		ret = lsm6dso_channel_get_unlocked(dev, chan, val);
-		lsm6dso_chip_release(&data->chip);
+		lsm6dso_release(&data->core);
 	}
 	return ret;
 }
@@ -283,14 +284,14 @@ int lsm6dso_timestamp_read(const struct device *dev, int64_t (*clock_us)(void), 
 {
 	struct lsm6dso_data *data = dev->data;
 
-	return lsm6dso_chip_timestamp_read(&data->chip, clock_us, tick, before_us, after_us);
+	return lsm6dso_read_timestamp(&data->core, clock_us, tick, before_us, after_us);
 }
 
 void lsm6dso_fifo_get_stats(const struct device *dev, struct lsm6dso_fifo_stats *stats)
 {
 	struct lsm6dso_data *data = dev->data;
 
-	lsm6dso_chip_fifo_get_stats(&data->chip, stats);
+	lsm6dso_get_fifo_stats(&data->core, stats);
 }
 
 #ifdef CONFIG_SENSOR_ASYNC_API
@@ -311,15 +312,15 @@ static DEVICE_API(sensor, lsm6dso_driver_api) = {
 	.channel_get = lsm6dso_channel_get,
 #ifdef CONFIG_SENSOR_ASYNC_API
 	.get_decoder = lsm6dso_get_decoder,
-	.submit = lsm6dso_submit,
+	.submit = lsm6dso_sensor_submit,
 #endif
 };
 
-static int lsm6dso_init(const struct device *dev)
+static int lsm6dso_sensor_init(const struct device *dev)
 {
 	const struct lsm6dso_config *cfg = dev->config;
 	struct lsm6dso_data *data = dev->data;
-	const struct lsm6dso_chip_config chip_cfg = {
+	const struct lsm6dso_init_config core_cfg = {
 		.ctx = &cfg->ctx,
 		.accel_pm = cfg->accel_pm,
 		.accel_odr = cfg->accel_odr,
@@ -332,12 +333,11 @@ static int lsm6dso_init(const struct device *dev)
 	};
 
 	LOG_INF("Initialize device %s", dev->name);
-	data->dev = dev;
 #ifdef CONFIG_SENSOR_ASYNC_API
-	lsm6dso_stream_init(dev);
+	lsm6dso_sensor_stream_init(dev);
 #endif
 
-	if (lsm6dso_chip_init(&data->chip, &chip_cfg) < 0) {
+	if (lsm6dso_init(&data->core, &core_cfg) < 0) {
 		LOG_ERR("failed to initialize chip");
 		return -EIO;
 	}

@@ -40,7 +40,7 @@ for test in fifo_words imu_raw_packet imu_raw_batch imu_raw_queue imu_raw_status
 done
 
 # The LSM6DSO driver's decoder of the stream's buffers (port/zephyr/lsm6dso_decoder.c).  The
-# chip's registers (lsm6dso_chip.c) are tested with the driver in nuttx/tests/lsm6dso_driver.c.
+# chip's registers (lsm6dso.c) are tested with the driver in nuttx/tests/lsm6dso_driver.c.
 run fifo_decoder "${flags[@]}" "${inc[@]}" tests/fifo_decoder.c \
     "$lsm/port/zephyr/lsm6dso_decoder.c" "$lsm/lsm6dso_fifo.c" "$lsm/lsm6dso_cal.c"
 # Conversion to physical units and the stored calibration format (lsm6dso_cal.c).
@@ -48,17 +48,20 @@ run lsm6dso_cal "${flags[@]}" "${inc[@]}" tests/lsm6dso_cal.c \
     "$lsm/lsm6dso_cal.c" "$imu/imu_cal_codec.c" -lm
 # Gyro bias tracking at rest (the lsm6dso_zero_*() functions of lsm6dso_cal.c).
 run lsm6dso_zero "${flags[@]}" "${inc[@]}" tests/lsm6dso_zero.c "$lsm/lsm6dso_cal.c"
-# The stream's state machine (port/zephyr/lsm6dso_rtio_stream.c, which the test includes) with a
-# fake core (the FIFO calls of lsm6dso_chip.h), INT1 and RTIO executor.  The stream casts
-# stmemsc's bus function, as the builds compile it (-Wno-cast-function-type).
-run stream_stop "${flags[@]}" -Wno-cast-function-type "${inc[@]}" tests/stream_stop.c \
-    "$lsm/port/zephyr/lsm6dso_decoder.c" "$lsm/lsm6dso_fifo.c" "$lsm/lsm6dso_cal.c"
+# The FIFO stream's state machine (lsm6dso_stream.c) on the host's part of its boundaries
+# (tests/lsm6dso_os_host: the OS's and the user's) with a fake core (the FIFO calls of
+# lsm6dso_core.h, defined by the test) and the fake ST header of tests/fakes.
+run lsm6dso_stream "${flags[@]}" -Itests/lsm6dso_os_host -I"$lsm/include" -I"$lsm/internal" \
+    -I"$lsm/port" -Itests/fakes tests/lsm6dso_stream.c "$lsm/lsm6dso_stream.c" \
+    "$lsm/lsm6dso_fifo.c" "$lsm/lsm6dso_cal.c"
 
 # The LSM6DSO's core has no OS of its own: each of its files (the .c files at the top of
-# drivers/lsm6dso, include/ but the Zephyr binding's lsm6dso.h, internal/ and the boundary of
-# port/; the OS bindings are in port/'s subdirectories) compiles with the host's C library, its own
-# headers, ST's register driver lsm6dso_reg.h (OS-independent; the copy that a build fetched, alone
-# in a directory) and the host's part of the boundary (tests/lsm6dso_os_host).
+# drivers/lsm6dso, include/ but lsm6dso.h, the extended API on Zephyr's sensor API, internal/ and
+# the boundaries of port/; the OS bindings are in port/'s subdirectories) compiles with the host's
+# C library, its own headers, ST's register driver lsm6dso_reg.h (OS-independent; the copy that a
+# build fetched, alone in a directory) and the host's parts of the boundaries
+# (tests/lsm6dso_os_host: the OS's, lsm6dso_os_impl.h, and the stream's user's,
+# lsm6dso_stream_req_impl.h).
 st=
 for d in ../zephyr/modules/hal/st/sensor/stmemsc/lsm6dso_STdC/driver ../nuttx/stmemsc \
          ../freertos/stmemsc; do
@@ -79,9 +82,9 @@ if [[ -n $st ]]; then
 else
     printf 'skip lsm6dso_core_independent (no lsm6dso_reg.h: run a setup.sh)\n'
 fi
-# The headers for the driver's users (include/) compile with that directory alone; the Zephyr
-# binding's lsm6dso.h (<zephyr/drivers/sensor/lsm6dso.h>) with the fakes of the sensor API and
-# RTIO it reads (tests/fakes).
+# The headers for the driver's users (include/) compile with that directory alone; lsm6dso.h
+# (<zephyr/drivers/sensor/lsm6dso.h>) with the fakes of the sensor API and RTIO it reads
+# (tests/fakes).
 lsm_public=("$lsm"/include/*.h)
 for f in "${lsm_public[@]}"; do
     fakes=()

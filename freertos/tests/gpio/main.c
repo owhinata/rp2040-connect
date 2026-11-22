@@ -6,11 +6,10 @@
  * play GPIO bank 0's levels, latched edges and interrupt enables), under
  * the layer's gpio0 device (common/compat/zephyr_gpio.c, with
  * zephyr_device.c and the gpio0 start of zephyr_compat_initialize()) and the
- * LSM6DSO's FIFO interrupt (the static lsm6dso_fifo_irq_*() of the
- * driver's Zephyr binding, common/drivers/lsm6dso/port/zephyr/
- * lsm6dso_rtio_stream.c, which this test includes; the rest of the stream
- * is not linked), with the prelude and
- * CONFIG_NANO_LSM6DSO_STREAM, as
+ * LSM6DSO's INT1 line (lsm6dso_os_int1_*() of the driver's OS part on
+ * Zephyr, common/drivers/lsm6dso/port/zephyr/lsm6dso_os.c, which this test
+ * includes, with the core's lsm6dso_stream_int1() defined here), with the
+ * prelude and CONFIG_NANO_LSM6DSO_STREAM, as
  * freertos/drivers/lsm6dso/lsm6dso.cmake builds them.
  *
  * - The start: gpio0 is not ready before zephyr_compat_initialize() and is
@@ -32,11 +31,11 @@
  *   acknowledged, then its callbacks run in the interrupt handler with the
  *   pin; a pin the handler does not own is left alone; callbacks added and
  *   removed (twice: -EINVAL).
- * - lsm6dso_fifo_irq: the start configures GPIO24 and its rising edge; an
- *   edge submits the work, which runs the handler in the system work
- *   queue's task; a level already high at the start is not lost; a handler
- *   that fails turns the interrupt off; the stop turns it off and removes
- *   the callback.
+ * - INT1: the enable configures GPIO24 and its rising edge; an edge submits
+ *   the work, which calls lsm6dso_stream_int1() in the system work queue's
+ *   task; the level already high at an enable is read (the stream then
+ *   runs its work); a call that fails turns the interrupt off; the disable
+ *   turns it off and removes the callback.
  *
  * Built and run by freertos/script/host_tests.sh.
  */
@@ -59,7 +58,7 @@
 
 #include "pico_gpio_fake.h"
 
-#include "lsm6dso_rtio_stream.c"
+#include "lsm6dso_os.c"
 #include "priorities.h"
 #include "zephyr_compat.h"
 
@@ -364,32 +363,37 @@ static void test_interrupts(void)
 	assert(raw_mask == (1u << INT1));
 }
 
-/* lsm6dso_fifo_irq ------------------------------------------------------------*/
+/* INT1 ---------------------------------------------------------------------------*/
 
+static lsm6dso_os_int1_t int1;
 static int handled;
 static int handle_result;
 static char handler_task[configMAX_TASK_NAME_LEN];
 
-static int fifo_handle(void *context)
+/* The core's call on an edge (lsm6dso_stream.c). */
+int lsm6dso_stream_int1(lsm6dso_os_int1_t *line)
 {
-	assert(context == &handled);
+	assert(line == &int1);
 	handled++;
 	strcpy(handler_task, pcTaskGetName(NULL));
 	return handle_result;
 }
 
-static void test_fifo_irq(void)
+static void test_int1(void)
 {
-	static struct lsm6dso_fifo_irq irq;
 	const struct gpio_dt_spec spec = {.port = gpio0, .pin = INT1, .dt_flags = 0};
 
-	/* The start: the pin as an input, then its rising edge. */
-	assert(lsm6dso_fifo_irq_start(&irq, &spec, fifo_handle, &handled) == 0);
+	lsm6dso_os_int1_init(&int1, &spec);
+	assert(lsm6dso_os_int1_ready(&int1));
+
+	/* The enable: the pin as an input, then its rising edge. */
+	assert(lsm6dso_os_int1_enable(&int1) == 0);
 	expect_calls("pulls(24,0,0) func(24,5) dir(24,0) irq(24,0xf,0) irq(24,0x8,1) ");
+	assert(lsm6dso_os_int1_get(&int1) == 0);
 	k_msleep(5);
 	assert(handled == 0);
 
-	/* An edge: the work runs the handler in the system work queue. */
+	/* An edge: the work calls the core in the system work queue. */
 	set_level(INT1, true);
 	expect_calls("ack(24,0xf) ");
 	k_msleep(5);
@@ -401,30 +405,31 @@ static void test_fifo_irq(void)
 	assert(handled == 2);
 	expect_calls("ack(24,0xf) ");
 
-	/* The stop: off, and the callback is gone. */
-	assert(lsm6dso_fifo_irq_stop(&irq) == 0);
+	/* The disable: off, and the callback is gone. */
+	assert(lsm6dso_os_int1_disable(&int1) == 0);
 	expect_calls("irq(24,0xf,0) ");
-	assert(gpio_remove_callback(gpio0, &irq.callback) == -EINVAL);
+	assert(gpio_remove_callback(gpio0, &int1.callback) == -EINVAL);
 
-	/* A level already high at the start is not lost. */
-	assert(lsm6dso_fifo_irq_start(&irq, &spec, fifo_handle, &handled) == 0);
+	/* A level already high at the enable: no edge, the level reads 1. */
+	assert(lsm6dso_os_int1_enable(&int1) == 0);
 	expect_calls("pulls(24,0,0) func(24,5) dir(24,0) irq(24,0xf,0) irq(24,0x8,1) ");
+	assert(lsm6dso_os_int1_get(&int1) == 1);
 	k_msleep(5);
-	assert(handled == 3);
+	assert(handled == 2);
 
-	/* A handler that fails turns the interrupt off. */
+	/* A call that fails turns the interrupt off. */
 	handle_result = -EIO;
 	set_level(INT1, false);
 	set_level(INT1, true);
 	k_msleep(5);
-	assert(handled == 4);
+	assert(handled == 3);
 	expect_calls("ack(24,0xf) irq(24,0xf,0) ");
 	set_level(INT1, false);
 	set_level(INT1, true);
 	k_msleep(5);
-	assert(handled == 4);
+	assert(handled == 3);
 	expect_calls("");
-	assert(lsm6dso_fifo_irq_stop(&irq) == 0);
+	assert(lsm6dso_os_int1_disable(&int1) == 0);
 	expect_calls("irq(24,0xf,0) ");
 	handle_result = 0;
 	set_level(INT1, false);
@@ -437,7 +442,7 @@ static void runner(void *arg)
 	test_start();
 	test_configure();
 	test_interrupts();
-	test_fifo_irq();
+	test_int1();
 	printf("gpio: all tests passed\n");
 	fflush(stdout);
 	_exit(0);

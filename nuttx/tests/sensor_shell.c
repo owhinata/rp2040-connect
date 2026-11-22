@@ -421,7 +421,7 @@ static void test_streaming(void)
 	fifo_words = 0;
 	assert(run("stream", "lsm6dsox@6a", "on", "fifo_wm", "incl") == EXIT_SUCCESS);
 	expect("Enabling stream...\n");
-	assert(d->stream_active && regs[USER][LSM6DSO_FIFO_CTRL1] == 48);
+	assert(d->stream.active && regs[USER][LSM6DSO_FIFO_CTRL1] == 48);
 	term_clear();
 	push_pairs(30);
 	drain();
@@ -438,10 +438,10 @@ static void test_streaming(void)
 	expect(want);
 	/* Off: the stream ends with a cancellation, which prints nothing. */
 	assert(run("stream", "lsm6dsox@6a", "off") == EXIT_SUCCESS);
-	test_timeout_fire(&d->stream_work.timeout);
+	test_timeout_fire(&d->stream.work.timeout);
 	drain();
 	expect("Disabling existing stream\n");
-	assert(!d->stream_active);
+	assert(!d->stream.active);
 	fifo_words = 0;
 	update_int1();
 }

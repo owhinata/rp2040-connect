@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /* The part of Zephyr's kernel API (<zephyr/kernel.h>, Zephyr v4.5.0) that
- * the ported FIFO stream (lsm6dso_rtio_stream.c, with its INT1), the RTIO
+ * the LSM6DSO's FIFO stream (lsm6dso_os_impl.h, lsm6dso_os.c), the RTIO
  * part of the compatibility layer and the IMU service use, with Zephyr's
  * names, types and meanings:
  *
@@ -89,8 +89,8 @@
 #include <zephyr/sys/printk.h>
 #include <zephyr/sys/util.h>
 
-/* The Zephyr build has CONFIG_THREAD_NAME=y (lsm6dso_rtio_stream.c names its
- * work queue thread under it).
+/* The Zephyr build has CONFIG_THREAD_NAME=y (the LSM6DSO's lsm6dso_os.c names
+ * its work queue thread under it).
  */
 
 #ifndef CONFIG_THREAD_NAME

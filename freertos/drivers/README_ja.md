@@ -258,8 +258,10 @@ Pico SDK の既定のままです。整数の割り算は `pico_divider` のハ�
   読み出しに DMA を使わせたいときに 12 チャネルすべてを持ち続ける（そのあいだ読み出しは割り込みに戻ります）。
 - 割り込みの優先度は Pico SDK の既定の 0x80 のままで、デバイスの割り込みはすべて同じ高さです（NuttX 版と同じ。
   Zephyr 版は 0xC0）。
-- LSM6DSOX は共有のドライバー（`common/drivers/lsm6dso/`。Zephyr 版のドライバーで、コアの `lsm6dso_chip.c`・`lsm6dso_cal.c`・
-  `lsm6dso_fifo.c` と Zephyr へのつなぎ `port/zephyr/`（コアの境界の OS 側 `port/zephyr/lsm6dso_os_impl.h` を含む）を互換層の上で使う。
+- LSM6DSOX は共有のドライバー（`common/drivers/lsm6dso/`。Zephyr 版のドライバーで、コアの `lsm6dso.c`・`lsm6dso_stream.c`（FIFO の
+  ストリーム）・`lsm6dso_cal.c`・`lsm6dso_fifo.c` と Zephyr へのつなぎ `port/zephyr/`（コアの境界の OS 側 `port/zephyr/lsm6dso_os_impl.h`
+  と `lsm6dso_os.c`（ストリームのワークキュー `imu_fifo_worker` と INT1 の割り込み）、ストリームを使う側の `lsm6dso_stream_req_impl.h`
+  （RTIO）を含む）を互換層の上で使う。
   拡張 API の `<zephyr/drivers/sensor/lsm6dso.h>` は `common/compat` を通して `include/lsm6dso.h`）と ST の `lsm6dso_reg.c`（`setup.sh` が
   `freertos/stmemsc/` に取得）、stmemsc の層（`common/drivers/stmemsc/`）で動かし、デバイスはボードの値で 1 つだけ作ります
   （`common/drivers/lsm6dso/port/freertos/lsm6dso_instance.h`。インクルードパスで `port/zephyr/` より前）。

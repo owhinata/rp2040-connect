@@ -17,14 +17,19 @@ Zephyr v4.5.0 はコミット `41d10b59730406bbab4ca9f1fbbe9e96aafb4966` です�
 ライブラリーにソースもインクルードパスも足しません。このディレクトリーにはこの文書だけがあります。
 
 LSM6DSO のドライバーは `common/drivers/lsm6dso/` にあり、3 版で共有します。OS を持たないコアは直下にあります:
-`lsm6dso_chip.c`（チップの操作: 起動とリセット、レートとレンジ、単発の読み出しとその変換、FIFO のレジスターの操作・統計・所有、
-タイムスタンプの読み取り、使用中の校正とバイアスの追従）、`lsm6dso_cal.c`（変換の計算と追従の計算）、`lsm6dso_fifo.c`
-（FIFO のワードの解析）。ヘッダーは `include/lsm6dso_cal.h`・`include/lsm6dso_fifo.h`（ドライバーを使う側のもの）と
-`internal/lsm6dso_chip.h` です。コアは OS へ `port/lsm6dso_os.h`（2 種類のロック、待ち、サイクルカウンター、FIFO の長い読み出し、
-ログ）を通して、チップへ ST の `lsm6dso_reg.c`（hal_st）を通してつながります。Zephyr へのつなぎは
-`common/drivers/lsm6dso/port/zephyr/` で、デバイスと sensor API（`lsm6dso.c`・`lsm6dso.h`）、デバイスツリーのデバイス
-（`lsm6dso_instance.h`）、FIFO ストリーム（下）、コアの境界の OS 側（`lsm6dso_os_impl.h`: `k_mutex`・`k_spinlock`・
-`k_busy_wait()`・`k_msleep()`・`k_usleep()`・`k_cycle_get_32()`・`i2c_burst_read_dt()`・Zephyr のログ）があります。NuttX 版・
+`lsm6dso.c`（チップの操作: 起動とリセット、レートとレンジ、単発の読み出しとその変換、FIFO のレジスターの操作・統計・所有、
+タイムスタンプの読み取り、使用中の校正とバイアスの追従）、`lsm6dso_stream.c`（FIFO ストリームの状態機械。下）、
+`lsm6dso_cal.c`（変換の計算と追従の計算）、`lsm6dso_fifo.c`（FIFO のワードの解析）。ヘッダーは `include/lsm6dso_cal.h`・
+`include/lsm6dso_fifo.h`（ドライバーを使う側のもの）と `internal/lsm6dso_core.h`・`internal/lsm6dso_stream.h`・
+`internal/lsm6dso_fifo_packet.h`（ストリームのバッファの形式）です。コアはチップへ ST の `lsm6dso_reg.c`（hal_st）を通して、
+それ以外へ `port/` の 2 つの境界を通してつながります: OS への `lsm6dso_os.h`（2 種類のロック、待ち、サイクルカウンター、FIFO の
+長い読み出し、ログ。ストリームのために、ドライバー専用のスレッドの上のワーク、INT1 の線、バッチの時刻の時計）と、ストリームを
+使う側への `lsm6dso_stream_req.h`（受け持つ要求、バッチごとのバッファ、バッチかエラーを返す先）です。Zephyr へのつなぎは
+`common/drivers/lsm6dso/port/zephyr/` で、デバイスと sensor API（`lsm6dso_sensor.c`・`lsm6dso_sensor.h`）、デバイスツリーの
+デバイス（`lsm6dso_instance.h`）、ストリームの RTIO 側（下）、コアの境界の OS 側（`lsm6dso_os_impl.h` と `lsm6dso_os.c`:
+`k_mutex`・`k_spinlock`・`k_busy_wait()`・`k_msleep()`・`k_usleep()`・`k_cycle_get_32()`・`i2c_burst_read_dt()`・ワークキュー
+`imu_fifo_worker` の上の遅延つきワーク・システムのワークキューを通す INT1 の GPIO の割り込み・センサーの時計・Zephyr のログ）、
+使う側の実装（`lsm6dso_stream_req_impl.h`: RTIO のマルチショットの要求）があります。NuttX 版・
 FreeRTOS 版は同じつなぎを Zephyr 互換層の上でビルドし、`lsm6dso_instance.h` だけは自分のもの（`port/nuttx/`・
 `port/freertos/`）を使います。つなぎは独立した Zephyr のモジュールです（`port/zephyr/zephyr/module.yml`。アプリの
 `CMakeLists.txt` が `ZEPHYR_EXTRA_MODULES` に足す）: その `Kconfig` にドライバーのオプション `CONFIG_LSM6DSO_LOCAL`
@@ -51,30 +56,44 @@ Zephyr の Sensor Streaming API（`sensor_stream()`、RTIO）で FIFO を読み�
 
 | ファイル | 役割 |
 |---|---|
-| `lsm6dso_chip.c`（コア） | FIFO の所有とロック: レジスターの設定・一時停止・停止、状態の読み取りとバースト読み出し（static）、しきい値の INT1 への割り当て、統計、タイムスタンプの間引き、タイムスタンプの読み取り。単発の読み出しとその変換、`lsm6dso_cal_zero()` |
+| `lsm6dso.c`（コア） | FIFO の所有とロック: レジスターの設定・一時停止・停止、状態の読み取りとバースト読み出し（static）、しきい値の INT1 への割り当て、統計、タイムスタンプの間引き、タイムスタンプの読み取り。単発の読み出しとその変換、`lsm6dso_cal_zero()` のバイアスの読み取り |
+| `lsm6dso_stream.c`（コア） | ストリームの状態機械: 最初の実行での開始（FIFO、INT1 の有効化と割り当て）、INT1 のエッジごとと 20 ms ごとの確認での watermark 分のバッチの読み出し、穏やかな停止、エラー・オーバーラン・使う側のキャンセルでの終了。watermark |
 | `lsm6dso_fifo.c`（コア） | FIFO のワードの解析（加速度・角速度・タイムスタンプ・その他、タグカウンター） |
-| `lsm6dso_cal.c`（コア） | 物理量への変換と静止時の角速度のバイアス（下）。`lsm6dso_chip.c` とデコーダーが使う |
-| `lsm6dso.c`（つなぎ） | コアの上の上流のドライバー: デバイス、属性、`sample_fetch` と校正値を使う `channel_get`、拡張 API のうちデバイスを取る呼び出し |
-| `lsm6dso_rtio_stream.c`（つなぎ） | ストリームの開始・読み出し・停止（専用のワークキュー `imu_fifo_worker`、優先度 10）。INT1 の GPIO の割り込み（static）。watermark |
+| `lsm6dso_cal.c`（コア） | 物理量への変換と静止時の角速度のバイアス（下）。`lsm6dso.c` とデコーダーが使う |
+| `lsm6dso_sensor.c`（つなぎ） | コアの上の上流のドライバー: デバイス、属性、`sample_fetch` と校正値を使う `channel_get`、拡張 API のうちデバイスを取る呼び出し |
+| `lsm6dso_rtio_stream.c`（つなぎ） | デバイスごとのストリーム: デバイスツリーの INT1 の線、RTIO の要求をコアのストリームへ渡す（ほかのトリガーは `-ENOTSUP`、2 つ目のストリームは `-EBUSY`）、拡張 API の停止・watermark・タイムスタンプの間引き |
+| `lsm6dso_os.c`（つなぎ） | ストリームのワークキュー（`imu_fifo_worker`、優先度 10、2048 バイト）、INT1 の GPIO の割り込み（システムのワークキューを通してストリームを起こす） |
 | `lsm6dso_rtio.c`（つなぎ） | ドライバーの RTIO の submit。ストリームは `lsm6dso_rtio_stream.c` へ、単発取得（`sensor get`）は sensor API のフォールバックの写しで RTIO のワークキューへ |
-| `lsm6dso_decoder.c`（つなぎ） | ストリームのバッファの形式（`lsm6dso_decoder.h`）と `lsm6dso_fifo_buffer_words()`、FIFO バッファ用のデコーダー（`sensor stream` の表示に使用）と、単発取得のバッファを Zephyr の既定のデコーダーに渡すデコーダー |
+| `lsm6dso_decoder.c`（つなぎ） | `lsm6dso_fifo_buffer_words()`、FIFO バッファ用のデコーダー（`sensor stream` の表示に使用）と、単発取得のバッファを Zephyr の既定のデコーダーに渡すデコーダー |
 
 つなぎのファイル名は、上流と、FIFO ストリームを持つ同系のドライバー `lsm6dsv16x` に合わせています。INT1 の割り込みはドライバー
-自身のもの（`lsm6dso_rtio_stream.c` の中）で、線はストリームの間だけ有効、システムのワークキューはストリームのワークキューを
+自身のもの（`lsm6dso_os.c` の中）で、線はストリームの間だけ有効、システムのワークキューはストリームのワークキューを
 起こすだけで、I²C の読み出しはすべてストリームのワークキューが行います。上流のトリガー（`CONFIG_LSM6DSO_TRIGGER`、
 `lsm6dso_trigger.c`）、センサーハブ（`CONFIG_LSM6DSO_SENSORHUB`、`lsm6dso_shub.c`）、温度の読み取り（`CONFIG_LSM6DSO_ENABLE_TEMP`）は
 このドライバーにはありません。
 
 ### コアの境界とその負担
 
-コアは自分のオブジェクト `struct lsm6dso_chip`（つなぎの `struct lsm6dso_data` の中）を受け取ります。つなぎは単発の読み出しと設定の
-前後でコアの FIFO のロックを取ります（`lsm6dso_chip_acquire()`・`_release()`、static inline）。境界 `port/lsm6dso_os.h` は、各 OS の
-`lsm6dso_os_impl.h` が定義する static inline の関数でできていて、ロック・サイクルカウンター・バスの読み出しは Zephyr の関数を直接
-呼ぶのと同じ呼び出しになります。バスは ST の `stmdev_ctx_t` です。その `read_reg` は 255 バイトまでしか読めない（stmemsc の長さが
-`uint8_t`）ので、FIFO のデータ（最大 3584 バイト）・状態・タイムスタンプは `lsm6dso_os_bus_read()`（コンテキストの先の I²C の
-デバイスへの `i2c_burst_read_dt()`）で読みます。FIFO の読み出し（watermark ごと。6667 Hz・128 ワードで毎秒約 104 回）1 回は、
-ストリームからコアの `lsm6dso_chip_fifo_status()`・`lsm6dso_chip_fifo_read()` を 1 回ずつ、`lsm6dso_chip_cal_track()`・
-`lsm6dso_chip_cal_snapshot()` を 1 回ずつ呼びます。
+コアは自分のオブジェクト `struct lsm6dso` と `struct lsm6dso_stream`（どちらもつなぎの `struct lsm6dso_data` の中）を受け取ります。
+つなぎは単発の読み出しと設定の前後でコアの FIFO のロックを取ります（`lsm6dso_acquire()`・`_release()`、static inline）。コアの関数は
+`lsm6dso_*()` と `lsm6dso_stream_*()` です。拡張 API の呼び出し（デバイスを取り、名前はそのまま）や `lsm6dso_cal.h` の関数と
+同じ名前になるものは、動詞を先にします: `lsm6dso_set_cal_lookup()`・`lsm6dso_reload_cal()`・`lsm6dso_get_cal_status()`・
+`lsm6dso_measure_gyro_bias()`（`lsm6dso_cal_zero()` の本体）・`lsm6dso_track_gyro_bias()`・`lsm6dso_copy_cal()`・
+`lsm6dso_get_fifo_stats()`・`lsm6dso_set_timestamp_decimation()`・`lsm6dso_get_timestamp_decimation()`・`lsm6dso_read_timestamp()`。
+
+境界 `port/lsm6dso_os.h`・`port/lsm6dso_stream_req.h` は、OS の `lsm6dso_os_impl.h` と使う側の `lsm6dso_stream_req_impl.h` が
+定義する static inline の関数でできていて、ロック・サイクルカウンター・バスの読み出し・ワーク・RTIO は Zephyr の関数を直接呼ぶのと
+同じ呼び出しになります。普通の関数は INT1 の有効化と無効化（ストリームごとに 1 回。`lsm6dso_os.c`）だけです。OS はコアを
+`lsm6dso_stream_run()`（ワーク）と `lsm6dso_stream_int1()`（エッジ）で呼び返します。バスは ST の `stmdev_ctx_t` です。その
+`read_reg` は 255 バイトまでしか読めない（stmemsc の長さが `uint8_t`）ので、FIFO のデータ（最大 3584 バイト）・状態・タイムスタンプは
+`lsm6dso_os_bus_read()`（コンテキストの先の I²C のデバイスへの `i2c_burst_read_dt()`）で読みます。ほかのバスではストリームを
+始めません（`lsm6dso_os_bus_read_supported()`）。バッチ 1 つ（watermark ごと。6667 Hz・128 ワードで毎秒約 104 回）の流れは次のとおり
+です: GPIO の割り込みが INT1 のワークをシステムのワークキューに入れ、それが `lsm6dso_stream_int1()` を呼び、ストリームのワークを
+すぐ実行するように入れ直します。ワークキュー `imu_fifo_worker` がハンドラー（呼び出し 1 段）から `lsm6dso_stream_run()` を呼び、
+ストリームはスピンロックの下で RTIO の要求を引き、コアの `lsm6dso_fifo_status()`・`lsm6dso_fifo_read()`・
+`lsm6dso_track_gyro_bias()`・`lsm6dso_copy_cal()` を呼びます。RTIO のバッファと完了、センサーの時計、次の確認の予約はインラインです。
+Zephyr 互換層を持つ新しい OS は、このドライバーのために何も書きません。互換層を持たない OS なら、2 つの `_impl.h` と INT1 の 2 つの
+関数を書きます。
 
 ### 動作
 
@@ -83,7 +102,7 @@ Zephyr の Sensor Streaming API（`sensor_stream()`、RTIO）で FIFO を読み�
 - INT1 でしきい値到達を受けると、FIFO の状態を読み、たまっているワードを 1 回のバーストで
   読み出して、1 つの RTIO バッファとして渡します。バッファの先頭には
   ヘッダー（ワード数、周期、感度、物理量への変換係数など）が付きます。
-- ヘッダーの形式（`lsm6dso_decoder.h` の `struct lsm6dso_fifo_packet`）はドライバー内だけのものです。バッファを読む側は、
+- ヘッダーの形式（`internal/lsm6dso_fifo_packet.h` の `struct lsm6dso_fifo_packet`）はドライバー内だけのものです。バッファを読む側は、
   物理量が欲しければデコーダーを、生のワードが欲しければ `lsm6dso_fifo_buffer_words()` を
   使います。ワードは `lsm6dso_fifo_next_entry()` で 1 つずつ解釈でき、種類、xyz、タグ
   カウンター、タイムスタンプのワードが持つカウンター値が得られます。
@@ -509,13 +528,13 @@ picolibc の中からの呼び出しと、GCC が構造体のコピーやルー�
 |---|---|
 | `fifo_words` | FIFO ワードの解析 |
 | `fifo_decoder` | FIFO バッファの decoder |
-| `stream_stop` | ストリームの停止、キャンセル、エラー時の終了（つなぎのストリームのファイルを、コアの FIFO の呼び出し・INT1・RTIO の偽物の上で） |
+| `lsm6dso_stream` | ストリームの状態機械（`lsm6dso_stream.c`）を、境界のホストでの実装とコアの FIFO の呼び出しの偽物の上で: 開始（INT1 の線が無い、FIFO と INT1、開始時にすでに有効なレベル、INT1 の有効化・レベルの読み取り・割り当ての失敗）、エッジでのバッチとそのヘッダー、watermark 未満では渡さないこと、オーバーラン・キャンセル・要求が消えたときの終了、最後の端数のバッチを渡す穏やかな停止とそのエラー、2 つ目の要求、watermark の範囲 |
 | `zephyr_sensor_shell_patched` | `common/drivers/sensor_shell/sensor_shell.c` が、Zephyr の HEAD の `drivers/sensor/sensor_shell.c` にパッチ 0006 を当てたものとバイト単位で同じこと。Zephyr のツリーがあるときだけ |
 | `i2c_dw_sync` | 共有の I²C のコア（`common/drivers/i2c_dw/`）と、パッチ後のドライバー（Zephyr のツリーの HEAD のファイルにパッチ 0003 を当てて作る）の一致。両方のヘッダーの定義（状態、割り込み、レジスター、IC_DATA_CMD のビット、FIFO の深さ 16・バッチ 4、DMA の上限 3584）、125 MHz での SCL のカウント、DMA の下限 32・しきい値 8/0・割り込みのマスク・IC_CON の bit 9・停止の待ち 100 ms・タイムアウト 1000 ms、スパイク長、対になる関数（Zephyr の DMA API の呼び出しを含めて名前をコアのもの（DMA は境界 `i2c_dw_dma_os.h`）にそろえて文ごとに比べ、差分が `common/tests/i2c_dw_sync.expected` と同じこと）、読み出しのコマンド語を作る関数 `i2c_dw_rp2040_read_commands()`（パッチとコアのそれぞれの `i2c_dw_rp2040_dma_priv.h` の静的関数）が文ごとに同じでコマンドのビットも同じこと、パッチが足す `zephyr/drivers/i2c/i2c_dw_rp2040_dma.h` とコアの `common/drivers/i2c_dw/include/i2c_dw_rp2040_dma.h` がコメントとインクルードガードを除いて同じこと、パッチ後のドライバーが読むヘッダーがすべてツリーの中にあること。ビルドがあれば `.config` と `zephyr.dts` の値も見る。Zephyr のツリーがあるときだけ |
 | `i2c_dw_public_headers` | I2C のコアを使う側のヘッダー（`common/drivers/i2c_dw/include/`）が、そのディレクトリーだけでコンパイルできること（コアの `internal/`・`port/` を読まない） |
 | `nina_proto` | NINA の SPI フレーミング、応答の解析（ファームウェアのエラーの応答 0xEF を含む）、READY の期限、追加機能の問い合わせ（0x6A）（共有のコア `nina_proto.c`。偽の境界）。どれも READY の割り込み待ちを始められたときと始められなかったとき（100 µs ごとに読む）の両方で |
 | `nina_core_independent` | NINA のコアの各ファイル（`common/drivers/nina/` の直下と `include/`・`internal/`、`port/` の境界のヘッダー）が C ライブラリー・POSIX のソケットの型・自分のヘッダーだけでコンパイルできること |
-| `lsm6dso_core_independent` | LSM6DSO のコアの各ファイル（`common/drivers/lsm6dso/` の直下の `.c`、`include/lsm6dso_cal.h`・`lsm6dso_fifo.h`、`internal/`、`port/` の境界）が、C ライブラリー・ST の `lsm6dso_reg.h`・自分のヘッダー・ホストでの境界の実装（`common/tests/lsm6dso_os_host/`）だけでコンパイルできること |
+| `lsm6dso_core_independent` | LSM6DSO のコアの各ファイル（`common/drivers/lsm6dso/` の直下の `.c`、`include/lsm6dso_cal.h`・`lsm6dso_fifo.h`、`internal/`、`port/` の境界）が、C ライブラリー・ST の `lsm6dso_reg.h`・自分のヘッダー・ホストでの境界の実装（`common/tests/lsm6dso_os_host/` の 2 つ）だけでコンパイルできること |
 | `lsm6dso_public_headers` | `common/drivers/lsm6dso/include/` のヘッダーがそのディレクトリーだけでコンパイルできること（`lsm6dso.h` は sensor API と RTIO の偽物と一緒に） |
 | `nina_wifi` | Wi-Fi の操作（`nina_wifi.c`）を偽の境界とつなぎで：接続とその確認、そのスレッド（500 ms ごとの確認、省電力の設定、アドレス、60 回、試行中の切断）、切断、監視（2 回で切れたとみなす）、3.0.2 とパッチを当てたファームウェアのスキャンとその終わり方、状態 |
 | `nina_wait` | ソケットの待ち（`nina_wait.c`）：間隔（事象を始める前と、始められなかったあと）、IRQ の線のエッジ、100 ms の時間切れ、期限、休み（偽の時計と線） |

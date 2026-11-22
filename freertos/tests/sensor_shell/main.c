@@ -68,7 +68,7 @@
 #include "cli.h"
 #include "imu_cal.h"
 #include "kv_store.h"
-#include "lsm6dso.h"
+#include "lsm6dso_sensor.h"
 #include "nano_console.h"
 #include "nano_gpio.h"
 #include "nano_shell.h"
@@ -880,7 +880,7 @@ static bool stream_active(void)
 static bool wait_stream_ended(void)
 {
 	for (int i = 0; i < 2000; i++) {
-		if (!stream_active() && ((struct lsm6dso_data *)imu()->data)->stream_sqe == NULL) {
+		if (!stream_active() && !((struct lsm6dso_data *)imu()->data)->stream.requested) {
 			return true;
 		}
 		vTaskDelay(pdMS_TO_TICKS(1));

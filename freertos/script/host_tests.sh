@@ -288,12 +288,11 @@ printf 'ok  i2c_dw (I2C0 and I2C1 boundaries and devices, DMA reads on the Pico 
 # GPIO bank 0 (freertos/tests/gpio): the board's boundary of the layer's gpio0
 # (drivers/compat/rp2040/nano_gpio.c) on fakes of the Pico SDK's GPIO and IRQ functions
 # (tests/gpio/pico_fake), under common/compat/zephyr_gpio.c and zephyr_device.c and the LSM6DSO's
-# FIFO interrupt (the static functions of the driver's Zephyr binding,
-# common/drivers/lsm6dso/port/zephyr/lsm6dso_rtio_stream.c, which the test includes, with its
-# cast of stmemsc's bus function; with ST's lsm6dso_reg.h, freertos/stmemsc, for the driver's
-# headers; the parts of the stream that the test does not call are left out by --gc-sections),
-# with the prelude and
-# CONFIG_NANO_LSM6DSO_STREAM as drivers/lsm6dso/lsm6dso.cmake builds them; the layer's kernel part
+# INT1 line (the driver's OS part on Zephyr, common/drivers/lsm6dso/port/zephyr/lsm6dso_os.c,
+# which the test includes; with ST's lsm6dso_reg.h, freertos/stmemsc, for the driver's headers;
+# the stream's work queue, which the test does not start, is left out by --gc-sections), with
+# the prelude and CONFIG_NANO_LSM6DSO_STREAM as drivers/lsm6dso/lsm6dso.cmake builds them; the
+# layer's kernel part
 # again with that option (zephyr_compat_initialize() starts gpio0), on the same kernel objects.
 if [[ -f stmemsc/lsm6dso_reg.h ]]; then
     lsm=../common/drivers/lsm6dso
@@ -307,7 +306,7 @@ if [[ -f stmemsc/lsm6dso_reg.h ]]; then
         extra=()
         case $src in
             ../common/*) extra=(-include drivers/compat/common_prelude.h) ;;
-            tests/gpio/*) extra=(-include drivers/compat/common_prelude.h -Wno-cast-function-type) ;;
+            tests/gpio/*) extra=(-include drivers/compat/common_prelude.h) ;;
         esac
         cc "${flags[@]}" "${strict[@]}" "${gpioinc[@]}" "${inc[@]}" "${extra[@]}" -c "$src" -o "$obj"
         gpioobjs+=("$obj")
@@ -665,11 +664,13 @@ if [[ -f stmemsc/lsm6dso_reg.c ]]; then
                ../common/compat/lib/utils/getopt/getopt.c ../common/compat/lib/utils/getopt/getopt_long.c \
                ../common/drivers/sensor_shell/sensor_shell.c ../common/compat/sensor_shell_stream.c \
                ../common/imu/imu_cal.c ../common/imu/imu_cal_codec.c \
-               ../common/drivers/lsm6dso/lsm6dso_chip.c ../common/drivers/lsm6dso/lsm6dso_cal.c \
-               ../common/drivers/lsm6dso/lsm6dso_fifo.c ../common/drivers/lsm6dso/port/zephyr/lsm6dso.c \
+               ../common/drivers/lsm6dso/lsm6dso.c ../common/drivers/lsm6dso/lsm6dso_cal.c \
+               ../common/drivers/lsm6dso/lsm6dso_fifo.c ../common/drivers/lsm6dso/lsm6dso_stream.c \
+               ../common/drivers/lsm6dso/port/zephyr/lsm6dso_sensor.c \
                ../common/drivers/lsm6dso/port/zephyr/lsm6dso_rtio_stream.c \
                ../common/drivers/lsm6dso/port/zephyr/lsm6dso_rtio.c \
                ../common/drivers/lsm6dso/port/zephyr/lsm6dso_decoder.c \
+               ../common/drivers/lsm6dso/port/zephyr/lsm6dso_os.c \
                ../common/drivers/stmemsc/stmemsc_i2c.c ../common/drivers/stmemsc/stmemsc_mdelay.c \
                ../common/compat/zephyr_device.c ../common/compat/zephyr_gpio.c \
                ../common/compat/sensor_default_rtio.c ../common/compat/zephyr_rtio.c \
@@ -681,8 +682,7 @@ if [[ -f stmemsc/lsm6dso_reg.c ]]; then
             ../common/*|*/sensor_shell_os.c|tests/sensor_shell/*) extra=(-include drivers/compat/common_prelude.h) ;;
         esac
         case $src in
-            */lsm6dso.c) extra+=(-Wno-unused-parameter -Wno-sign-compare -Wno-cast-function-type) ;;
-            */lsm6dso_rtio_stream.c) extra+=(-Wno-cast-function-type) ;;
+            */lsm6dso_sensor.c) extra+=(-Wno-unused-parameter -Wno-sign-compare -Wno-cast-function-type) ;;
             */lsm6dso_rtio.c|*/sensor_default_rtio.c) extra+=(-Wno-unused-parameter -Wno-sign-compare) ;;
             */sensor_shell.c) extra+=(-Wno-sign-compare -Wno-unused-parameter) ;;
             *zshell.c|*nano_console.c) extra+=(-Dcalloc=test_calloc -Dmalloc=test_malloc -Dfree=test_free) ;;

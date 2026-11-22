@@ -303,8 +303,10 @@ zero gives the Pico SDK routines' results, the same in the three builds. `memcpy
 - Interrupt priorities stay at the Pico SDK's default 0x80, so all device interrupts are at one level (as
   on NuttX; the Zephyr build uses 0xC0).
 - The LSM6DSOX runs on the shared driver (`common/drivers/lsm6dso/`, the Zephyr build's driver: its core
-  `lsm6dso_chip.c`, `lsm6dso_cal.c` and `lsm6dso_fifo.c`, and its Zephyr binding `port/zephyr/`, with the
-  core's OS part `port/zephyr/lsm6dso_os_impl.h`, on the compatibility layer; its extended API
+  `lsm6dso.c`, `lsm6dso_stream.c` (the FIFO stream), `lsm6dso_cal.c` and `lsm6dso_fifo.c`, and its Zephyr
+  binding `port/zephyr/`, with the core's OS part `port/zephyr/lsm6dso_os_impl.h` and `lsm6dso_os.c` (the
+  stream's work queue `imu_fifo_worker` and INT1's interrupt) and the stream's user part
+  `lsm6dso_stream_req_impl.h` (RTIO), on the compatibility layer; its extended API
   `<zephyr/drivers/sensor/lsm6dso.h>` is `include/lsm6dso.h`, through `common/compat`), ST's
   `lsm6dso_reg.c` (fetched to `freertos/stmemsc/` by `setup.sh`) and the stmemsc glue
   (`common/drivers/stmemsc/`); one device is made with the board's values

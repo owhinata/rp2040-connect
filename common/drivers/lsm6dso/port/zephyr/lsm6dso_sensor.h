@@ -8,8 +8,8 @@
  * https://www.st.com/resource/en/datasheet/lsm6dso.pdf
  */
 
-#ifndef ZEPHYR_DRIVERS_SENSOR_LSM6DSO_LSM6DSO_H_
-#define ZEPHYR_DRIVERS_SENSOR_LSM6DSO_LSM6DSO_H_
+#ifndef LSM6DSO_SENSOR_H_
+#define LSM6DSO_SENSOR_H_
 
 #include <zephyr/drivers/sensor.h>
 #include <zephyr/types.h>
@@ -17,11 +17,10 @@
 #include <zephyr/sys/util.h>
 #include <stmemsc.h>
 #include "lsm6dso_reg.h"
-#include "lsm6dso_chip.h"
+#include "lsm6dso_core.h"
 #include <zephyr/drivers/sensor/lsm6dso.h>
 #ifdef CONFIG_SENSOR_ASYNC_API
-#include <zephyr/kernel.h>
-#include <zephyr/sys/atomic.h>
+#include "lsm6dso_stream.h"
 #endif
 
 #if DT_HAS_COMPAT_ON_BUS_STATUS_OKAY(st_lsm6dso, spi) || \
@@ -32,21 +31,6 @@
 #if DT_HAS_COMPAT_ON_BUS_STATUS_OKAY(st_lsm6dso, i2c) || \
 	DT_HAS_COMPAT_ON_BUS_STATUS_OKAY(st_lsm6dso32, i2c)
 #include <zephyr/drivers/i2c.h>
-#endif
-
-#ifdef CONFIG_SENSOR_ASYNC_API
-/* The FIFO's INT1 line while a stream runs (lsm6dso_rtio_stream.c). The
- * worker callback must drain below the watermark, or return an error. It
- * runs on the system workqueue, never in the GPIO interrupt handler.
- */
-struct lsm6dso_fifo_irq {
-	struct gpio_dt_spec gpio;
-	struct gpio_callback callback;
-	struct k_work work;
-	atomic_t enabled;
-	int (*handle)(void *context);
-	void *context;
-};
 #endif
 
 struct lsm6dso_config {
@@ -76,28 +60,18 @@ struct lsm6dso_config {
 };
 
 struct lsm6dso_data {
-	const struct device *dev;
-	/* The chip's state: rates, ranges, samples, FIFO, calibration. */
-	struct lsm6dso_chip chip;
+	/* The core's state: rates, ranges, samples, FIFO, calibration. */
+	struct lsm6dso core;
 #ifdef CONFIG_SENSOR_ASYNC_API
-	struct lsm6dso_fifo_irq fifo_irq;
-	struct k_work_delayable stream_work;
-	struct k_spinlock stream_lock;
-	uint16_t stream_watermark;
-	struct rtio_iodev_sqe *stream_sqe;
-	struct rtio *stream_rtio;
-	rtio_sqe_handle_t stream_handle;
-	bool stream_active;
-	bool stream_irq_active;
-	bool stream_stop_requested;
-	bool stream_batch_paused;
+	/* The FIFO stream (lsm6dso_rtio_stream.c), on the line fifo_gpio. */
+	struct lsm6dso_stream stream;
 #endif
 };
 
 #ifdef CONFIG_SENSOR_ASYNC_API
-void lsm6dso_stream_init(const struct device *dev);
-void lsm6dso_submit(const struct device *dev, struct rtio_iodev_sqe *sqe);
-void lsm6dso_submit_stream(const struct device *dev, struct rtio_iodev_sqe *sqe);
+void lsm6dso_sensor_stream_init(const struct device *dev);
+void lsm6dso_sensor_submit(const struct device *dev, struct rtio_iodev_sqe *sqe);
+void lsm6dso_sensor_submit_stream(const struct device *dev, struct rtio_iodev_sqe *sqe);
 #endif
 
-#endif /* ZEPHYR_DRIVERS_SENSOR_LSM6DSO_LSM6DSO_H_ */
+#endif /* LSM6DSO_SENSOR_H_ */

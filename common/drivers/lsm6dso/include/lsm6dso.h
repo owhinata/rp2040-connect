@@ -47,10 +47,6 @@ enum lsm6dso_sensor_attribute {
 	SENSOR_ATTR_LSM6DSO_FIFO_TIMESTAMP_DECIMATION,
 };
 
-/* Limit the threshold to fit the sensor shell's 2048-byte RTIO pool. */
-#define LSM6DSO_FIFO_DEFAULT_WATERMARK 32U
-#define LSM6DSO_FIFO_MAX_WATERMARK 256U
-
 int lsm6dso_fifo_set_watermark(const struct device *dev, uint16_t watermark);
 uint16_t lsm6dso_fifo_get_watermark(const struct device *dev);
 int lsm6dso_fifo_set_timestamp_decimation(const struct device *dev, unsigned int decimation);

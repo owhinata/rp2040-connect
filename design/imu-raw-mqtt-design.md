@@ -667,17 +667,20 @@ version's; what has been verified on the NuttX port is listed separately in 11.7
   builds (the LSM6DSO's FIFO setup and stream, its extended API `include/lsm6dso.h`) are
   in `common/` too and run on the compatibility layer below in the NuttX build. Of the sources that
   call the OS, `imu_stream.c`, `time_sync.c`, `imu_raw_mqtt.c`, `imu_cal.c`, `wifi_profile.c`,
-  the LSM6DSO driver's Zephyr binding (`port/zephyr/`: `lsm6dso.[ch]`, `lsm6dso_rtio.c` and the stream) and the sensor shell's
+  the LSM6DSO driver's Zephyr binding (`port/zephyr/`: `lsm6dso_sensor.[ch]`, `lsm6dso_rtio.c` and the stream's RTIO side) and the sensor shell's
   `sensor_shell.c`, with the header `kv_store.h`, are also the single files in `common/` that both
   builds use (their command registration is the Zephyr build's text too). The NuttX build compiles each with a prelude
   (NuttX's configuration, the NuttX headers to read before the compatibility layer, and the values
   and names of the Zephyr Kconfig options the files use), and the few lines that differ between the builds
   are in small headers of each OS (`sensor_shell_os.h`, `wifi_profile_os.h`, and the LSM6DSO device
-  `lsm6dso_instance.h`, which `lsm6dso.c` includes at its end: the Zephyr build's devicetree
+  `lsm6dso_instance.h`, which `lsm6dso_sensor.c` includes at its end: the Zephyr build's devicetree
   instance macros, one device with the board's values on NuttX). The LSM6DSO driver's core
-  (`lsm6dso_chip.c`, `lsm6dso_cal.c`, `lsm6dso_fifo.c`) has no OS of its own and reaches the OS through
-  the boundary `port/lsm6dso_os.h`, which all three builds implement with the Zephyr binding's
-  `port/zephyr/lsm6dso_os_impl.h` (on the compatibility layer in the NuttX and FreeRTOS builds). The NINA's
+  (`lsm6dso.c`, `lsm6dso_stream.c` with the FIFO stream's state machine, `lsm6dso_cal.c`, `lsm6dso_fifo.c`) has no
+  OS of its own and reaches the OS through the boundary `port/lsm6dso_os.h` and the stream's user through
+  `port/lsm6dso_stream_req.h`, which all three builds implement with the Zephyr binding's
+  `port/zephyr/lsm6dso_os_impl.h` with `lsm6dso_os.c` and `lsm6dso_stream_req_impl.h` (RTIO; on the
+  compatibility layer in the NuttX and FreeRTOS builds), so another OS with that layer writes nothing for
+  the driver. The NINA's
   OS-independent core is in `common/drivers/nina/` too and is used by the three builds. Its top
   holds what the driver offers, with the headers for its users in `include/` (the Wi-Fi operations `nina_wifi.[ch]`, the socket table and commands
   `nina_sock.[ch]`, name resolution `nina_dns.[ch]`, the esptool passthrough
@@ -871,7 +874,7 @@ host tests (`common/tests/run.sh`) run first in the `host_tests.sh` of each of t
 | Place | Contents | Builds |
 |---|---|---|
 | `common/imu/` | The acquisition service and `imu`, batches, payload, queue, status, time assignment and time synchronization with `ntp`, calibration and `imu cal`, the MQTT transport, the Wi-Fi profile and automatic reconnection, the key-value API and `kv` | All three (the MQTT client `mqtt_min*` NuttX and FreeRTOS; the Zephyr build uses Zephyr's MQTT library) |
-| `common/drivers/lsm6dso/` | The LSM6DSO driver: its core with no OS at the top (`lsm6dso_chip.c`, `lsm6dso_cal.c`, `lsm6dso_fifo.c`; headers in `include/` and `internal/`, the boundary `lsm6dso_os.h` in `port/`), its Zephyr binding with the FIFO stream in `port/zephyr/` (a Zephyr module for the Zephyr build; its extended API `<zephyr/drivers/sensor/lsm6dso.h>` is `include/lsm6dso.h`), and the NuttX and FreeRTOS builds' devices in `port/nuttx/` and `port/freertos/` | All three |
+| `common/drivers/lsm6dso/` | The LSM6DSO driver: its core with no OS at the top (`lsm6dso.c`, `lsm6dso_stream.c`, `lsm6dso_cal.c`, `lsm6dso_fifo.c`; headers in `include/` and `internal/`, the boundaries `lsm6dso_os.h` and `lsm6dso_stream_req.h` in `port/`), its Zephyr binding with the FIFO stream's RTIO side in `port/zephyr/` (a Zephyr module for the Zephyr build; its extended API `<zephyr/drivers/sensor/lsm6dso.h>` is `include/lsm6dso.h`), and the NuttX and FreeRTOS builds' devices in `port/nuttx/` and `port/freertos/` | All three |
 | `common/drivers/sensor_shell/` | The sensor shell, the file of the Zephyr build's patched tree (patch 0006, below), but each build's `sensor_shell_os.h` | All three |
 | `common/drivers/nina/` | The NINA core (SPI link, sockets, name resolution, the Wi-Fi operations `nina_wifi.[ch]`, the socket waits `nina_wait.[ch]`, the declarations `nina_proto.h`), the esptool passthrough `nina_passthrough.[ch]` with its boundaries `nina_passthrough_bus.h` and `nina_passthrough_os.h`, with no OS of its own | All three |
 | `common/drivers/nina/port/zephyr/`, `nuttx/`, `freertos/` | The core's bindings to Zephyr's APIs (Wi-Fi management and interface, kernel services, socket offload, the devicetree binding and options), to NuttX's (`wlan0` and wapi, the applications' Zephyr Wi-Fi management, kernel services, usrsock) and to FreeRTOS and the Pico SDK (kernel services `nina_os.c`: locks, requests, sleeps, the clock, the waits on READY's and the IRQ line's edge interrupts); in each, the passthrough's host side `nina_passthrough_os.c` (Zephyr's CDC ACM, cdcacm, TinyUSB) | `zephyr/`: Zephyr and FreeRTOS (its Wi-Fi and socket bindings, on the compatibility layer); `nuttx/`: NuttX; `freertos/`: FreeRTOS |

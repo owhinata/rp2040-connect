@@ -8,8 +8,8 @@
  * https://www.st.com/resource/en/datasheet/lsm6dso.pdf
  */
 
-/* The end of the driver on FreeRTOS (port/zephyr/lsm6dso.c, the Zephyr
- * binding, which includes this file last, so lsm6dso_init and
+/* The end of the driver on FreeRTOS (port/zephyr/lsm6dso_sensor.c, the Zephyr
+ * binding, which includes this file last, so lsm6dso_sensor_init and
  * lsm6dso_driver_api stay static): in place of the Zephyr build's devicetree
  * instance macros (port/zephyr/lsm6dso_instance.h), the one device with the
  * devicetree's values, as the NuttX build's port/nuttx/lsm6dso_instance.h
@@ -69,5 +69,5 @@ static const struct lsm6dso_config lsm6dso_config_0 = {
  * POST_KERNEL and CONFIG_SENSOR_INIT_PRIORITY are the application's order of
  * calls.
  */
-DEVICE_DT_DEFINE(lsm6dsox, LSM6DSOX_NODE_NAME, lsm6dso_init, &lsm6dso_data_0, &lsm6dso_config_0,
-		 &lsm6dso_driver_api);
+DEVICE_DT_DEFINE(lsm6dsox, LSM6DSOX_NODE_NAME, lsm6dso_sensor_init, &lsm6dso_data_0,
+		 &lsm6dso_config_0, &lsm6dso_driver_api);

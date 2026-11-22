@@ -19,7 +19,7 @@
 #include <zephyr/logging/log.h>
 #include <zephyr/rtio/work.h>
 
-#include "lsm6dso.h"
+#include "lsm6dso_sensor.h"
 
 LOG_MODULE_REGISTER(lsm6dso_compat, CONFIG_SENSOR_LOG_LEVEL);
 /**
@@ -266,7 +266,7 @@ static void lsm6dso_submit_fallback(const struct device *dev, struct rtio_iodev_
 	rtio_work_req_submit(req, iodev_sqe, sensor_submit_fallback_sync);
 }
 
-void lsm6dso_submit(const struct device *dev, struct rtio_iodev_sqe *sqe)
+void lsm6dso_sensor_submit(const struct device *dev, struct rtio_iodev_sqe *sqe)
 {
 	const struct sensor_read_config *cfg = sqe->sqe.iodev->data;
 
@@ -274,5 +274,5 @@ void lsm6dso_submit(const struct device *dev, struct rtio_iodev_sqe *sqe)
 		lsm6dso_submit_fallback(dev, sqe);
 		return;
 	}
-	lsm6dso_submit_stream(dev, sqe);
+	lsm6dso_sensor_submit_stream(dev, sqe);
 }

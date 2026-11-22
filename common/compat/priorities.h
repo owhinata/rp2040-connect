@@ -55,8 +55,8 @@
 #define NANO_PRIO_IMU_STREAM         NANO_PRIO_FROM_ZEPHYR(9)
 #define NANO_STACK_IMU_STREAM        2048
 
-/* common/drivers/lsm6dso/port/zephyr/lsm6dso_rtio_stream.c:369 the "imu_fifo_worker" work queue,
- * K_PRIO_PREEMPT(10), STREAM_WORK_STACK_SIZE 2048.
+/* common/drivers/lsm6dso/port/zephyr/lsm6dso_os.c:28 the "imu_fifo_worker" work queue,
+ * K_PRIO_PREEMPT(10), WORK_Q_STACK_SIZE 2048.
  */
 
 #define NANO_PRIO_IMU_FIFO_WORKER    NANO_PRIO_FROM_ZEPHYR(10)
@@ -95,7 +95,7 @@
 /* sysworkq: the system work queue, CONFIG_SYSTEM_WORKQUEUE_PRIORITY -1
  * (cooperative), CONFIG_SYSTEM_WORKQUEUE_STACK_SIZE 1024.  The compatibility
  * layer's k_sys_work_q, which runs the LSM6DSO FIFO interrupt's work
- * (lsm6dso_rtio_stream.c).  Above every application thread, as in Zephyr.
+ * (lsm6dso_os.c).  Above every application thread, as in Zephyr.
  */
 
 #define NANO_PRIO_SYSWORKQ           NANO_PRIO_FROM_ZEPHYR(-1)

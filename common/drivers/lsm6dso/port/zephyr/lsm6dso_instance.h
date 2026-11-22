@@ -8,8 +8,8 @@
  * https://www.st.com/resource/en/datasheet/lsm6dso.pdf
  */
 
-/* The end of the driver on Zephyr (lsm6dso.c, which includes this file last,
- * so lsm6dso_init and lsm6dso_driver_api stay static): the devices of the
+/* The end of the driver on Zephyr (lsm6dso_sensor.c, which includes this file last,
+ * so lsm6dso_sensor_init and lsm6dso_driver_api stay static): the devices of the
  * devicetree's st,lsm6dso and st,lsm6dso32 nodes (Zephyr's binding of
  * upstream's driver), upstream's macros with the FIFO's INT1 line
  * (fifo_gpio, the node's irq-gpios).  The NuttX and FreeRTOS builds have
@@ -23,7 +23,7 @@
 
 #define LSM6DSO_DEVICE_INIT(inst, model)				\
 	SENSOR_DEVICE_DT_INST_DEFINE(inst,				\
-			    lsm6dso_init,				\
+			    lsm6dso_sensor_init,				\
 			    NULL,					\
 			    &model##_data_##inst,			\
 			    &model##_config_##inst,			\

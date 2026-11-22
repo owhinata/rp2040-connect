@@ -18,17 +18,24 @@ needs, in Zephyr's tree (see "Local patches of Zephyr" below): the application's
 source or include path to the drivers' libraries. This directory holds only these documents.
 
 The LSM6DSO driver is in `common/drivers/lsm6dso/`, shared by the three builds. Its core, with no OS, is
-at its top: `lsm6dso_chip.c` (how the chip is operated: the start and reset, rates and ranges, the single
+at its top: `lsm6dso.c` (how the chip is operated: the start and reset, rates and ranges, the single
 reads and their conversion, the FIFO's register work, its counters and owner, the timestamp read, the
-calibration in effect and the bias tracking), `lsm6dso_cal.c` (the conversion's arithmetic and the
-tracker) and `lsm6dso_fifo.c` (the FIFO words' parser); their headers are `include/lsm6dso_cal.h` and
-`include/lsm6dso_fifo.h` (for the driver's users) and `internal/lsm6dso_chip.h`, and the core reaches the
-OS through `port/lsm6dso_os.h` (two locks, waits, a cycle counter, the FIFO's long reads, the log) and the
-chip through ST's `lsm6dso_reg.c` (hal_st). Its Zephyr binding is `common/drivers/lsm6dso/port/zephyr/`:
-the device and the sensor API (`lsm6dso.c`, `lsm6dso.h`), the devicetree's devices
-(`lsm6dso_instance.h`), the FIFO stream (below), and the OS part of the core's boundary
-(`lsm6dso_os_impl.h`: `k_mutex`, `k_spinlock`, `k_busy_wait()`, `k_msleep()`, `k_usleep()`,
-`k_cycle_get_32()`, `i2c_burst_read_dt()`, Zephyr's logging). The NuttX and FreeRTOS builds compile the
+calibration in effect and the bias tracking), `lsm6dso_stream.c` (the FIFO stream's state machine,
+below), `lsm6dso_cal.c` (the conversion's arithmetic and the tracker) and `lsm6dso_fifo.c` (the FIFO
+words' parser); their headers are `include/lsm6dso_cal.h` and `include/lsm6dso_fifo.h` (for the
+driver's users) and `internal/lsm6dso_core.h`, `internal/lsm6dso_stream.h` and
+`internal/lsm6dso_fifo_packet.h` (the layout of the stream's buffers). The core reaches the chip through
+ST's `lsm6dso_reg.c` (hal_st) and the rest through two boundaries in `port/`: `lsm6dso_os.h`, the OS (two
+locks, waits, a cycle counter, the FIFO's long reads, the log; for the stream a work item on a thread of
+the driver's own, the INT1 line and the clock of the batches' time stamps), and `lsm6dso_stream_req.h`,
+the stream's user (the request it serves, a buffer for each batch, the batch or the error handed back).
+Its Zephyr binding is `common/drivers/lsm6dso/port/zephyr/`: the device and the sensor API
+(`lsm6dso_sensor.c`, `lsm6dso_sensor.h`), the devicetree's devices (`lsm6dso_instance.h`), the stream's
+RTIO side (below), the OS part of the core's boundary (`lsm6dso_os_impl.h` with `lsm6dso_os.c`:
+`k_mutex`, `k_spinlock`, `k_busy_wait()`, `k_msleep()`, `k_usleep()`, `k_cycle_get_32()`,
+`i2c_burst_read_dt()`, a delayable work item on the work queue `imu_fifo_worker`, INT1's GPIO interrupt
+through the system work queue, the sensor clock, Zephyr's logging) and the user part
+(`lsm6dso_stream_req_impl.h`: RTIO's multishot request). The NuttX and FreeRTOS builds compile the
 same binding on their Zephyr compatibility layers, with their own `lsm6dso_instance.h` (`port/nuttx/`,
 `port/freertos/`). The binding is a Zephyr module of its own (`port/zephyr/zephyr/module.yml`, which the
 application's `CMakeLists.txt` adds to `ZEPHYR_EXTRA_MODULES`): its `Kconfig` has the driver's option
@@ -64,33 +71,52 @@ trigger `SENSOR_TRIG_FIFO_WATERMARK` and the option `SENSOR_STREAM_DATA_INCLUDE`
 
 | File | Role |
 |---|---|
-| `lsm6dso_chip.c` (core) | The FIFO's owner and lock: its register setup, pause and stop, the status and burst reads (static), INT1's routing of the threshold, its counters, the timestamp decimation, the timestamp read; the single reads, their conversion, `lsm6dso_cal_zero()` |
+| `lsm6dso.c` (core) | The FIFO's owner and lock: its register setup, pause and stop, the status and burst reads (static), INT1's routing of the threshold, its counters, the timestamp decimation, the timestamp read; the single reads, their conversion, the bias reading of `lsm6dso_cal_zero()` |
+| `lsm6dso_stream.c` (core) | The stream's state machine: the start at its first run (the FIFO, INT1 enabled and routed), a batch read at the watermark on each INT1 edge and at the poll every 20 ms, the graceful stop, the end on an error, an overrun or the user's cancellation; the watermark |
 | `lsm6dso_fifo.c` (core) | The FIFO words' parser (accelerometer, gyroscope, timestamp, other; tag counter) |
-| `lsm6dso_cal.c` (core) | Conversion to physical units and the gyro bias at rest (below), used by `lsm6dso_chip.c` and the decoder |
-| `lsm6dso.c` (binding) | Upstream's driver on the core: the device, attributes, `sample_fetch` and the calibrated `channel_get`, the calls of the extended API that take a device |
-| `lsm6dso_rtio_stream.c` (binding) | Starting, reading and stopping the stream on its own work queue (`imu_fifo_worker`, priority 10); INT1's GPIO interrupt (static); the watermark |
+| `lsm6dso_cal.c` (core) | Conversion to physical units and the gyro bias at rest (below), used by `lsm6dso.c` and the decoder |
+| `lsm6dso_sensor.c` (binding) | Upstream's driver on the core: the device, attributes, `sample_fetch` and the calibrated `channel_get`, the calls of the extended API that take a device |
+| `lsm6dso_rtio_stream.c` (binding) | Each device's stream: its INT1 line from the devicetree, RTIO's request handed to the core's stream (another trigger `-ENOTSUP`, a second stream `-EBUSY`), the extended API's stop, watermark and timestamp decimation |
+| `lsm6dso_os.c` (binding) | The stream's work queue (`imu_fifo_worker`, priority 10, 2048 bytes), INT1's GPIO interrupt, which wakes the stream through the system work queue |
 | `lsm6dso_rtio.c` (binding) | The driver's RTIO submit: a stream goes to `lsm6dso_rtio_stream.c`, a single read (`sensor get`) to a copy of the sensor API's fallback on the RTIO work queue |
-| `lsm6dso_decoder.c` (binding) | The stream buffer's layout (`lsm6dso_decoder.h`) and `lsm6dso_fifo_buffer_words()`; the decoder for FIFO buffers, used by `sensor stream`, and the decoder that hands a single read's buffer to Zephyr's default decoder |
+| `lsm6dso_decoder.c` (binding) | `lsm6dso_fifo_buffer_words()`; the decoder for FIFO buffers, used by `sensor stream`, and the decoder that hands a single read's buffer to Zephyr's default decoder |
 
 The binding's file names are upstream's and those of the sibling driver with FIFO streaming,
-`lsm6dsv16x`. The INT1 interrupt is the driver's own (in `lsm6dso_rtio_stream.c`): the line is enabled
+`lsm6dsv16x`. The INT1 interrupt is the driver's own (in `lsm6dso_os.c`): the line is enabled
 only while a stream runs and the system work queue only wakes the stream's work queue, which does all the
 I2C reads. Upstream's trigger (`CONFIG_LSM6DSO_TRIGGER`, `lsm6dso_trigger.c`), sensor hub
 (`CONFIG_LSM6DSO_SENSORHUB`, `lsm6dso_shub.c`) and temperature read (`CONFIG_LSM6DSO_ENABLE_TEMP`) are not
 part of this driver.
 
-### The core's boundary and its cost
+### The core's boundaries and their cost
 
-The core is called with its object, `struct lsm6dso_chip` (in the binding's `struct lsm6dso_data`); the
-binding takes the core's FIFO lock around a single read or a setting (`lsm6dso_chip_acquire()`,
-`_release()`, static inline). The boundary `port/lsm6dso_os.h` is made of static inline functions that each
-OS's `lsm6dso_os_impl.h` defines, so the locks, the cycle counter and the bus reads compile to the same
-calls as Zephyr's own. The bus is ST's `stmdev_ctx_t`: its `read_reg` reads at most 255 bytes (stmemsc's
-length is a `uint8_t`), so the FIFO's data (up to 3584 bytes), status and timestamp are read with
-`lsm6dso_os_bus_read()` (`i2c_burst_read_dt()` on the I2C device behind the context). Each FIFO read
-(once a watermark, at 6667 Hz with 128 words about 104 times a second) is one call from the stream to
-the core's `lsm6dso_chip_fifo_status()` and `lsm6dso_chip_fifo_read()`, and one each to
-`lsm6dso_chip_cal_track()` and `lsm6dso_chip_cal_snapshot()`.
+The core is called with its objects, `struct lsm6dso` and `struct lsm6dso_stream` (both in the binding's
+`struct lsm6dso_data`); the binding takes the core's FIFO lock around a single read or a setting
+(`lsm6dso_acquire()`, `_release()`, static inline). The core's functions are `lsm6dso_*()` and
+`lsm6dso_stream_*()`. Where one would have the name of a call of the extended API, which takes a device
+and keeps its name, or fall among `lsm6dso_cal.h`'s, its name puts the verb first:
+`lsm6dso_set_cal_lookup()`, `lsm6dso_reload_cal()`, `lsm6dso_get_cal_status()`,
+`lsm6dso_measure_gyro_bias()` (for `lsm6dso_cal_zero()`), `lsm6dso_track_gyro_bias()`,
+`lsm6dso_copy_cal()`, `lsm6dso_get_fifo_stats()`, `lsm6dso_set_timestamp_decimation()`,
+`lsm6dso_get_timestamp_decimation()`, `lsm6dso_read_timestamp()`.
+
+The boundaries `port/lsm6dso_os.h` and `port/lsm6dso_stream_req.h` are made of static inline functions
+that the OS's `lsm6dso_os_impl.h` and the user's `lsm6dso_stream_req_impl.h` define, so the locks, the
+cycle counter, the bus reads, the work item and RTIO compile to the same calls as Zephyr's own; only
+INT1's enable and disable (once a stream) are ordinary functions (`lsm6dso_os.c`). The OS calls the core
+back with `lsm6dso_stream_run()` (the work item) and `lsm6dso_stream_int1()` (an edge). The bus is ST's
+`stmdev_ctx_t`: its `read_reg` reads at most 255 bytes (stmemsc's length is a `uint8_t`), so the FIFO's
+data (up to 3584 bytes), status and timestamp are read with `lsm6dso_os_bus_read()`
+(`i2c_burst_read_dt()` on the I2C device behind the context); the stream starts on no other bus
+(`lsm6dso_os_bus_read_supported()`). Each batch (once a watermark, at 6667 Hz with 128 words about 104
+times a second) goes like this: the GPIO interrupt submits INT1's work
+to the system work queue, which calls `lsm6dso_stream_int1()`, which reschedules the stream's work; the
+work queue `imu_fifo_worker` calls `lsm6dso_stream_run()` through its handler (one call); the stream
+looks the RTIO request up under its spin lock and calls the core's `lsm6dso_fifo_status()`,
+`lsm6dso_fifo_read()`, `lsm6dso_track_gyro_bias()` and `lsm6dso_copy_cal()`; RTIO's buffer and
+completion, the sensor clock and the next poll are inline. A new OS on the Zephyr compatibility layer
+writes nothing for this driver; one without it would define the two `_impl.h` headers and INT1's two
+functions.
 
 ### Behaviour
 
@@ -99,7 +125,7 @@ the core's `lsm6dso_chip_fifo_status()` and `lsm6dso_chip_fifo_read()`, and one 
 - On the threshold interrupt the FIFO status is read and all pending words are read in one
   burst and delivered as one RTIO buffer, headed by a header (word count, periods,
   sensitivities, conversion to physical units).
-- The layout of the header (`struct lsm6dso_fifo_packet` in `lsm6dso_decoder.h`) is private to the driver. Code that reads
+- The layout of the header (`struct lsm6dso_fifo_packet` in `internal/lsm6dso_fifo_packet.h`) is private to the driver. Code that reads
   a buffer uses the decoder for physical values, or `lsm6dso_fifo_buffer_words()` for the raw
   words. `lsm6dso_fifo_next_entry()` interprets the words one at a time and yields the kind,
   xyz, the tag counter, and the counter value a timestamp word carries.
@@ -575,14 +601,14 @@ All but `nina_boundary_*`, `passthrough`, `nina_socket*` and `nina_net` are test
 |---|---|
 | `fifo_words` | FIFO word parsing |
 | `fifo_decoder` | Decoder for FIFO buffers |
-| `stream_stop` | Stopping, canceling and error termination of the stream (the binding's stream file with fakes of the core's FIFO calls, INT1 and RTIO) |
+| `lsm6dso_stream` | The stream's state machine (`lsm6dso_stream.c`) on the host's part of its boundaries and fakes of the core's FIFO calls: the start (no INT1 line, the FIFO and INT1, a level already active, INT1 that cannot be enabled, read or routed), a batch on an edge and its header, nothing below the watermark, the end on an overrun, a cancellation or a request gone, the graceful stop with the last partial batch and its errors, a second request, the watermark's bounds |
 | `zephyr_sensor_shell_patched` | `common/drivers/sensor_shell/sensor_shell.c` is byte for byte Zephyr's `drivers/sensor/sensor_shell.c` at HEAD with patch 0006. Only when the Zephyr tree is there |
 | `i2c_dw_sync` | The shared I2C core (`common/drivers/i2c_dw/`) against the patched driver (made from the Zephyr tree's files at HEAD and patch 0003): the definitions of both headers (state, interrupts, registers, the IC_DATA_CMD bits, FIFO depth 16 and batch 4, the DMA limit 3584), the SCL counts at 125 MHz, the DMA path's lower limit 32, thresholds 8/0, interrupt mask, IC_CON bit 9, stop waits of 100 ms and timeout of 1000 ms, the spike lengths, and the pairs of functions (Zephyr's names, its DMA API's calls among them, turned into the core's, those of the DMA boundary `i2c_dw_dma_os.h`; compared statement by statement; the differences must be those of `common/tests/i2c_dw_sync.expected`); the read commands' function `i2c_dw_rp2040_read_commands()`, static in `i2c_dw_rp2040_dma_priv.h` of the patch and of the core, statement by statement, with its command bits; `zephyr/drivers/i2c/i2c_dw_rp2040_dma.h`, which the patch adds, against the core's `common/drivers/i2c_dw/include/i2c_dw_rp2040_dma.h`, the same once the comments and include guards are taken out; and that the patched driver's includes are all in the tree. With the build, the values of its `.config` and `zephyr.dts` too. Only when the Zephyr tree is there |
 | `i2c_dw_public_headers` | The header for the I2C core's users (`common/drivers/i2c_dw/include/`) compiles with that directory alone: it reads nothing of the core's `internal/` or `port/` |
 | `nina_proto` | NINA SPI framing, reply parsing (the firmware's error reply 0xEF included), READY deadlines, the capability probe (0x6A) (the shared core `nina_proto.c`, fake boundaries); each both with the waits on READY's interrupt and, when they cannot start, with READY read every 100 µs |
 | `nina_wait` | The socket waits (`nina_wait.c`): the intervals (before the events start, and after they could not), the IRQ line's edges, the 100 ms timeout, the deadline, the back-off (fake clock and line) |
 | `nina_core_independent` | Each file of the NINA core (the top of `common/drivers/nina/`, `include/`, `internal/` and the boundary headers of `port/`) compiles with the C library, the POSIX socket types and its own headers only |
-| `lsm6dso_core_independent` | Each file of the LSM6DSO core (the `.c` files at the top of `common/drivers/lsm6dso/`, `include/lsm6dso_cal.h` and `lsm6dso_fifo.h`, `internal/` and the boundary of `port/`) compiles with the C library, ST's `lsm6dso_reg.h`, its own headers and the host's part of the boundary (`common/tests/lsm6dso_os_host/`) only |
+| `lsm6dso_core_independent` | Each file of the LSM6DSO core (the `.c` files at the top of `common/drivers/lsm6dso/`, `include/lsm6dso_cal.h` and `lsm6dso_fifo.h`, `internal/` and the boundaries of `port/`) compiles with the C library, ST's `lsm6dso_reg.h`, its own headers and the host's parts of the boundaries (`common/tests/lsm6dso_os_host/`) only |
 | `lsm6dso_public_headers` | The headers of `common/drivers/lsm6dso/include/` compile with that directory alone (`lsm6dso.h` with the fakes of the sensor API and RTIO) |
 | `nina_wifi` | The Wi-Fi operations (`nina_wifi.c`) on fake boundaries and binding: connect with its checks, its thread (the checks every 500 ms, power mode, the address, 60 checks, a disconnection during the attempt), disconnect, the monitor (lost after two checks), the scans of 3.0.2 and of the patched firmware with their ends, status |
 | `nina_sock`, `nina_dns`, `nina_dns_offload` | The NINA socket commands, name resolution (`nina_dns_offload` in this build's form, `NINA_OS_DNS_OFFLOAD`) |

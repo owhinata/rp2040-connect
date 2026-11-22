@@ -8,10 +8,11 @@
  * https://www.st.com/resource/en/datasheet/lsm6dso.pdf
  */
 
-/* The driver's core (lsm6dso_chip.h): the part of Zephyr's lsm6dso.c, with
+/* The driver's core (lsm6dso_core.h): the part of Zephyr's lsm6dso.c, with
  * this driver's FIFO and calibration, that operates the chip, on a struct
- * lsm6dso_chip in place of the device.  The binding of each OS
- * (port/<OS>/lsm6dso.c) keeps the device and the sensor API.
+ * lsm6dso in place of the device.  The OS's binding
+ * (port/zephyr/lsm6dso_sensor.c) keeps the device and the sensor API; the
+ * FIFO stream is lsm6dso_stream.c.
  */
 
 #include "lsm6dso_os.h"
@@ -22,7 +23,7 @@
 #include <stdint.h>
 #include <string.h>
 
-#include "lsm6dso_chip.h"
+#include "lsm6dso_core.h"
 
 LOG_MODULE_DECLARE(LSM6DSO, LSM6DSO_OS_LOG_LEVEL);
 
@@ -110,51 +111,51 @@ static int lsm6dso_gyro_range_to_fs_val(int32_t range)
 	return -EINVAL;
 }
 
-static void lsm6dso_cal_refresh(struct lsm6dso_chip *chip, enum lsm6dso_cal_kind kind);
-static void lsm6dso_zero_restart(struct lsm6dso_chip *chip);
+static void lsm6dso_refresh_cal(struct lsm6dso *core, enum lsm6dso_cal_kind kind);
+static void lsm6dso_zero_restart(struct lsm6dso *core);
 
-static int lsm6dso_accel_set_fs_raw(struct lsm6dso_chip *chip, uint8_t fs)
+static int lsm6dso_accel_set_fs_raw(struct lsm6dso *core, uint8_t fs)
 {
-	if (lsm6dso_xl_full_scale_set(chip->ctx, fs) < 0) {
+	if (lsm6dso_xl_full_scale_set(core->ctx, fs) < 0) {
 		return -EIO;
 	}
 
-	chip->accel_fs = fs;
+	core->accel_fs = fs;
 
 	return 0;
 }
 
-static int lsm6dso_accel_set_odr_raw(struct lsm6dso_chip *chip, uint8_t odr)
+static int lsm6dso_accel_set_odr_raw(struct lsm6dso *core, uint8_t odr)
 {
-	if (lsm6dso_xl_data_rate_set(chip->ctx, odr) < 0) {
+	if (lsm6dso_xl_data_rate_set(core->ctx, odr) < 0) {
 		return -EIO;
 	}
 
-	chip->accel_freq = lsm6dso_odr_to_freq_val(odr);
+	core->accel_freq = lsm6dso_odr_to_freq_val(odr);
 
 	return 0;
 }
 
-static int lsm6dso_gyro_set_fs_raw(struct lsm6dso_chip *chip, uint8_t fs)
+static int lsm6dso_gyro_set_fs_raw(struct lsm6dso *core, uint8_t fs)
 {
-	if (lsm6dso_gy_full_scale_set(chip->ctx, fs) < 0) {
+	if (lsm6dso_gy_full_scale_set(core->ctx, fs) < 0) {
 		return -EIO;
 	}
 
 	return 0;
 }
 
-static int lsm6dso_gyro_set_odr_raw(struct lsm6dso_chip *chip, uint8_t odr)
+static int lsm6dso_gyro_set_odr_raw(struct lsm6dso *core, uint8_t odr)
 {
-	if (lsm6dso_gy_data_rate_set(chip->ctx, odr) < 0) {
+	if (lsm6dso_gy_data_rate_set(core->ctx, odr) < 0) {
 		return -EIO;
 	}
-	chip->gyro_freq = lsm6dso_odr_to_freq_val(odr);
+	core->gyro_freq = lsm6dso_odr_to_freq_val(odr);
 
 	return 0;
 }
 
-int lsm6dso_chip_accel_odr_set(struct lsm6dso_chip *chip, uint16_t freq)
+int lsm6dso_accel_odr_set(struct lsm6dso *core, uint16_t freq)
 {
 	int odr;
 
@@ -163,7 +164,7 @@ int lsm6dso_chip_accel_odr_set(struct lsm6dso_chip *chip, uint16_t freq)
 		return odr;
 	}
 
-	if (lsm6dso_accel_set_odr_raw(chip, odr) < 0) {
+	if (lsm6dso_accel_set_odr_raw(core, odr) < 0) {
 		LOG_DBG("failed to set accelerometer sampling rate");
 		return -EIO;
 	}
@@ -171,27 +172,27 @@ int lsm6dso_chip_accel_odr_set(struct lsm6dso_chip *chip, uint16_t freq)
 	return 0;
 }
 
-int lsm6dso_chip_accel_range_set(struct lsm6dso_chip *chip, int32_t range)
+int lsm6dso_accel_range_set(struct lsm6dso *core, int32_t range)
 {
 	int fs;
-	bool range_double = chip->accel_range_double;
+	bool range_double = core->accel_range_double;
 
 	fs = lsm6dso_accel_range_to_fs_val(range, range_double);
 	if (fs < 0) {
 		return fs;
 	}
 
-	if (lsm6dso_accel_set_fs_raw(chip, fs) < 0) {
+	if (lsm6dso_accel_set_fs_raw(core, fs) < 0) {
 		LOG_DBG("failed to set accelerometer full-scale");
 		return -EIO;
 	}
 
-	chip->acc_gain = lsm6dso_accel_fs_val_to_gain(fs, range_double);
-	lsm6dso_cal_refresh(chip, LSM6DSO_CAL_ACCEL);
+	core->acc_gain = lsm6dso_accel_fs_val_to_gain(fs, range_double);
+	lsm6dso_refresh_cal(core, LSM6DSO_CAL_ACCEL);
 	return 0;
 }
 
-int lsm6dso_chip_gyro_odr_set(struct lsm6dso_chip *chip, uint16_t freq)
+int lsm6dso_gyro_odr_set(struct lsm6dso *core, uint16_t freq)
 {
 	int odr;
 
@@ -200,7 +201,7 @@ int lsm6dso_chip_gyro_odr_set(struct lsm6dso_chip *chip, uint16_t freq)
 		return odr;
 	}
 
-	if (lsm6dso_gyro_set_odr_raw(chip, odr) < 0) {
+	if (lsm6dso_gyro_set_odr_raw(core, odr) < 0) {
 		LOG_DBG("failed to set gyroscope sampling rate");
 		return -EIO;
 	}
@@ -208,7 +209,7 @@ int lsm6dso_chip_gyro_odr_set(struct lsm6dso_chip *chip, uint16_t freq)
 	return 0;
 }
 
-int lsm6dso_chip_gyro_range_set(struct lsm6dso_chip *chip, int32_t range)
+int lsm6dso_gyro_range_set(struct lsm6dso *core, int32_t range)
 {
 	int fs;
 
@@ -217,19 +218,19 @@ int lsm6dso_chip_gyro_range_set(struct lsm6dso_chip *chip, int32_t range)
 		return fs;
 	}
 
-	if (lsm6dso_gyro_set_fs_raw(chip, fs) < 0) {
+	if (lsm6dso_gyro_set_fs_raw(core, fs) < 0) {
 		LOG_DBG("failed to set gyroscope full-scale");
 		return -EIO;
 	}
 
-	chip->gyro_gain = (lsm6dso_gyro_fs_sens[fs] * GAIN_UNIT_G);
-	lsm6dso_cal_refresh(chip, LSM6DSO_CAL_GYRO);
+	core->gyro_gain = (lsm6dso_gyro_fs_sens[fs] * GAIN_UNIT_G);
+	lsm6dso_refresh_cal(core, LSM6DSO_CAL_GYRO);
 	return 0;
 }
 
-int lsm6dso_chip_fetch_accel(struct lsm6dso_chip *chip)
+int lsm6dso_fetch_accel(struct lsm6dso *core)
 {
-	if (lsm6dso_acceleration_raw_get(chip->ctx, chip->acc) < 0) {
+	if (lsm6dso_acceleration_raw_get(core->ctx, core->acc) < 0) {
 		LOG_DBG("Failed to read sample");
 		return -EIO;
 	}
@@ -237,9 +238,9 @@ int lsm6dso_chip_fetch_accel(struct lsm6dso_chip *chip)
 	return 0;
 }
 
-int lsm6dso_chip_fetch_gyro(struct lsm6dso_chip *chip)
+int lsm6dso_fetch_gyro(struct lsm6dso *core)
 {
-	if (lsm6dso_angular_rate_raw_get(chip->ctx, chip->gyro) < 0) {
+	if (lsm6dso_angular_rate_raw_get(core->ctx, core->gyro) < 0) {
 		LOG_DBG("Failed to read sample");
 		return -EIO;
 	}
@@ -250,124 +251,122 @@ int lsm6dso_chip_fetch_gyro(struct lsm6dso_chip *chip)
 /* Selects the conversion for the current sensitivity: the stored calibration
  * if the lookup has one, the nominal sensitivity otherwise.
  */
-static void lsm6dso_cal_refresh(struct lsm6dso_chip *chip, enum lsm6dso_cal_kind kind)
+static void lsm6dso_refresh_cal(struct lsm6dso *core, enum lsm6dso_cal_kind kind)
 {
-	uint32_t gain = kind == LSM6DSO_CAL_ACCEL ? chip->acc_gain : chip->gyro_gain;
+	uint32_t gain = kind == LSM6DSO_CAL_ACCEL ? core->acc_gain : core->gyro_gain;
 	struct lsm6dso_cal cal;
-	bool calibrated = chip->cal_lookup != NULL && chip->cal_lookup(kind, gain, &cal);
+	bool calibrated = core->cal_lookup != NULL && core->cal_lookup(kind, gain, &cal);
 	lsm6dso_os_spinlock_key_t key;
 
 	if (!calibrated) {
 		lsm6dso_cal_nominal(&cal, kind, gain);
 	}
-	key = lsm6dso_os_spin_lock(&chip->cal_lock);
+	key = lsm6dso_os_spin_lock(&core->cal_lock);
 	if (kind == LSM6DSO_CAL_ACCEL) {
-		chip->accel_cal = cal;
-		chip->accel_calibrated = calibrated;
+		core->accel_cal = cal;
+		core->accel_calibrated = calibrated;
 	} else {
-		chip->gyro_cal = cal;
-		chip->gyro_calibrated = calibrated;
+		core->gyro_cal = cal;
+		core->gyro_calibrated = calibrated;
 	}
-	lsm6dso_os_spin_unlock(&chip->cal_lock, key);
-	lsm6dso_zero_restart(chip);
+	lsm6dso_os_spin_unlock(&core->cal_lock, key);
+	lsm6dso_zero_restart(core);
 }
 
 /* Forgets the tracked gyro bias. Its limits are in LSB and its reference is
  * the stored bias, so it starts over when either sensitivity or the stored
  * calibration changes.
  */
-static void lsm6dso_zero_restart(struct lsm6dso_chip *chip)
+static void lsm6dso_zero_restart(struct lsm6dso *core)
 {
 	struct lsm6dso_zero_limits limits;
 	struct lsm6dso_cal accel, gyro;
 
-	lsm6dso_chip_cal_snapshot(chip, &accel, &gyro);
-	lsm6dso_zero_limits(&limits, chip->gyro_gain, chip->acc_gain, chip->gyro_calibrated);
-	lsm6dso_os_mutex_lock(&chip->zero_lock);
-	lsm6dso_zero_reset(&chip->zero, &limits, chip->gyro_calibrated ? gyro.bias : NULL);
-	lsm6dso_os_mutex_unlock(&chip->zero_lock);
+	lsm6dso_copy_cal(core, &accel, &gyro);
+	lsm6dso_zero_limits(&limits, core->gyro_gain, core->acc_gain, core->gyro_calibrated);
+	lsm6dso_os_mutex_lock(&core->zero_lock);
+	lsm6dso_zero_reset(&core->zero, &limits, core->gyro_calibrated ? gyro.bias : NULL);
+	lsm6dso_os_mutex_unlock(&core->zero_lock);
 }
 
 /* Puts a newly tracked bias into the gyro conversion. Call with zero_lock held. */
-static void lsm6dso_zero_apply(struct lsm6dso_chip *chip)
+static void lsm6dso_zero_apply(struct lsm6dso *core)
 {
-	lsm6dso_os_spinlock_key_t key = lsm6dso_os_spin_lock(&chip->cal_lock);
+	lsm6dso_os_spinlock_key_t key = lsm6dso_os_spin_lock(&core->cal_lock);
 
-	memcpy(chip->gyro_cal.bias, chip->zero.bias, sizeof(chip->gyro_cal.bias));
-	lsm6dso_os_spin_unlock(&chip->cal_lock, key);
+	memcpy(core->gyro_cal.bias, core->zero.bias, sizeof(core->gyro_cal.bias));
+	lsm6dso_os_spin_unlock(&core->cal_lock, key);
 }
 
-void lsm6dso_chip_cal_track(struct lsm6dso_chip *chip, const uint8_t *words, size_t len)
+void lsm6dso_track_gyro_bias(struct lsm6dso *core, const uint8_t *words, size_t len)
 {
 	struct lsm6dso_fifo_sample sample;
 	size_t cursor = 0;
 	bool changed = false;
 
-	lsm6dso_os_mutex_lock(&chip->zero_lock);
-	lsm6dso_zero_set_rate(&chip->zero, chip->gyro_freq);
+	lsm6dso_os_mutex_lock(&core->zero_lock);
+	lsm6dso_zero_set_rate(&core->zero, core->gyro_freq);
 	while (lsm6dso_fifo_next(words, len, &cursor, &sample) > 0) {
 		if (sample.kind == LSM6DSO_FIFO_ACCEL) {
-			lsm6dso_zero_accel(&chip->zero, sample.xyz);
-		} else if (lsm6dso_zero_gyro(&chip->zero, sample.xyz)) {
+			lsm6dso_zero_accel(&core->zero, sample.xyz);
+		} else if (lsm6dso_zero_gyro(&core->zero, sample.xyz)) {
 			changed = true;
 		}
 	}
 	if (changed) {
-		lsm6dso_zero_apply(chip);
+		lsm6dso_zero_apply(core);
 	}
-	lsm6dso_os_mutex_unlock(&chip->zero_lock);
+	lsm6dso_os_mutex_unlock(&core->zero_lock);
 }
 
-void lsm6dso_chip_cal_snapshot(struct lsm6dso_chip *chip, struct lsm6dso_cal *accel,
-			       struct lsm6dso_cal *gyro)
+void lsm6dso_copy_cal(struct lsm6dso *core, struct lsm6dso_cal *accel, struct lsm6dso_cal *gyro)
 {
-	lsm6dso_os_spinlock_key_t key = lsm6dso_os_spin_lock(&chip->cal_lock);
+	lsm6dso_os_spinlock_key_t key = lsm6dso_os_spin_lock(&core->cal_lock);
 
-	*accel = chip->accel_cal;
-	*gyro = chip->gyro_cal;
-	lsm6dso_os_spin_unlock(&chip->cal_lock, key);
+	*accel = core->accel_cal;
+	*gyro = core->gyro_cal;
+	lsm6dso_os_spin_unlock(&core->cal_lock, key);
 }
 
-void lsm6dso_chip_cal_reload(struct lsm6dso_chip *chip)
+void lsm6dso_reload_cal(struct lsm6dso *core)
 {
-	lsm6dso_cal_refresh(chip, LSM6DSO_CAL_ACCEL);
-	lsm6dso_cal_refresh(chip, LSM6DSO_CAL_GYRO);
+	lsm6dso_refresh_cal(core, LSM6DSO_CAL_ACCEL);
+	lsm6dso_refresh_cal(core, LSM6DSO_CAL_GYRO);
 }
 
-void lsm6dso_chip_cal_set_lookup(struct lsm6dso_chip *chip, lsm6dso_cal_lookup_t lookup)
+void lsm6dso_set_cal_lookup(struct lsm6dso *core, lsm6dso_cal_lookup_t lookup)
 {
-	chip->cal_lookup = lookup;
-	lsm6dso_chip_cal_reload(chip);
+	core->cal_lookup = lookup;
+	lsm6dso_reload_cal(core);
 }
 
-void lsm6dso_chip_cal_status(struct lsm6dso_chip *chip, struct lsm6dso_cal_status *status)
+void lsm6dso_get_cal_status(struct lsm6dso *core, struct lsm6dso_cal_status *status)
 {
-	lsm6dso_os_spinlock_key_t key = lsm6dso_os_spin_lock(&chip->cal_lock);
+	lsm6dso_os_spinlock_key_t key = lsm6dso_os_spin_lock(&core->cal_lock);
 
-	status->accel_gain = chip->acc_gain;
-	status->gyro_gain = chip->gyro_gain;
-	status->accel_calibrated = chip->accel_calibrated;
-	status->gyro_calibrated = chip->gyro_calibrated;
-	memcpy(status->gyro_bias, chip->gyro_cal.bias, sizeof(status->gyro_bias));
-	lsm6dso_os_spin_unlock(&chip->cal_lock, key);
-	lsm6dso_os_mutex_lock(&chip->zero_lock);
-	status->gyro_bias_updates = chip->zero.updates;
-	status->gyro_bias_rejected = chip->zero.rejected;
-	lsm6dso_os_mutex_unlock(&chip->zero_lock);
+	status->accel_gain = core->acc_gain;
+	status->gyro_gain = core->gyro_gain;
+	status->accel_calibrated = core->accel_calibrated;
+	status->gyro_calibrated = core->gyro_calibrated;
+	memcpy(status->gyro_bias, core->gyro_cal.bias, sizeof(status->gyro_bias));
+	lsm6dso_os_spin_unlock(&core->cal_lock, key);
+	lsm6dso_os_mutex_lock(&core->zero_lock);
+	status->gyro_bias_updates = core->zero.updates;
+	status->gyro_bias_rejected = core->zero.rejected;
+	lsm6dso_os_mutex_unlock(&core->zero_lock);
 }
 
 /* Converts the last fetched sample with the same function the FIFO decoder
  * uses.  A single axis still needs all three raw values, because the
  * calibration mixes the axes.
  */
-void lsm6dso_chip_convert(struct lsm6dso_chip *chip, enum lsm6dso_cal_kind kind,
-			  int32_t out[3])
+void lsm6dso_convert(struct lsm6dso *core, enum lsm6dso_cal_kind kind, int32_t out[3])
 {
 	struct lsm6dso_cal accel_cal, gyro_cal;
 	bool accel = kind == LSM6DSO_CAL_ACCEL;
 
-	lsm6dso_chip_cal_snapshot(chip, &accel_cal, &gyro_cal);
-	lsm6dso_cal_apply(accel ? &accel_cal : &gyro_cal, accel ? chip->acc : chip->gyro, out);
+	lsm6dso_copy_cal(core, &accel_cal, &gyro_cal);
+	lsm6dso_cal_apply(accel ? &accel_cal : &gyro_cal, accel ? core->acc : core->gyro, out);
 }
 
 /* Rate and duration of the on-demand bias reading. */
@@ -376,64 +375,64 @@ void lsm6dso_chip_convert(struct lsm6dso_chip *chip, enum lsm6dso_cal_kind kind,
 #define ZERO_SECONDS      3
 #define ZERO_POLL_US      (1000000 / ZERO_POLL_HZ)
 
-int lsm6dso_chip_cal_zero(struct lsm6dso_chip *chip)
+int lsm6dso_measure_gyro_bias(struct lsm6dso *core)
 {
 	uint16_t accel_freq, gyro_freq;
 	uint32_t updates, rejected;
 	int ret = 0;
 
-	lsm6dso_os_mutex_lock(&chip->fifo_lock);
-	if (chip->fifo_owned) {
-		lsm6dso_os_mutex_unlock(&chip->fifo_lock);
+	lsm6dso_os_mutex_lock(&core->fifo_lock);
+	if (core->fifo_owned) {
+		lsm6dso_os_mutex_unlock(&core->fifo_lock);
 		return -EBUSY;
 	}
-	accel_freq = chip->accel_freq;
-	gyro_freq = chip->gyro_freq;
+	accel_freq = core->accel_freq;
+	gyro_freq = core->gyro_freq;
 	/* A sensor that is off is run for the reading and switched off again; one
 	 * that is on keeps its rate, and is read at the polling rate.
 	 */
 	if (accel_freq == 0) {
-		ret = lsm6dso_accel_set_odr_raw(chip, lsm6dso_freq_to_odr_val(ZERO_POLL_HZ));
+		ret = lsm6dso_accel_set_odr_raw(core, lsm6dso_freq_to_odr_val(ZERO_POLL_HZ));
 	}
 	if (ret == 0 && gyro_freq == 0) {
-		ret = lsm6dso_gyro_set_odr_raw(chip, lsm6dso_freq_to_odr_val(ZERO_POLL_HZ));
+		ret = lsm6dso_gyro_set_odr_raw(core, lsm6dso_freq_to_odr_val(ZERO_POLL_HZ));
 	}
 	if (ret == 0) {
 		lsm6dso_os_msleep(ZERO_SETTLE_MS);
-		lsm6dso_os_mutex_lock(&chip->zero_lock);
-		lsm6dso_zero_set_rate(&chip->zero, 0);
-		lsm6dso_zero_set_rate(&chip->zero, ZERO_POLL_HZ);
-		updates = chip->zero.updates;
-		rejected = chip->zero.rejected;
+		lsm6dso_os_mutex_lock(&core->zero_lock);
+		lsm6dso_zero_set_rate(&core->zero, 0);
+		lsm6dso_zero_set_rate(&core->zero, ZERO_POLL_HZ);
+		updates = core->zero.updates;
+		rejected = core->zero.rejected;
 		for (int i = 0; i < ZERO_SECONDS * ZERO_POLL_HZ; i++) {
-			ret = lsm6dso_chip_fetch_accel(chip);
+			ret = lsm6dso_fetch_accel(core);
 			if (ret == 0) {
-				ret = lsm6dso_chip_fetch_gyro(chip);
+				ret = lsm6dso_fetch_gyro(core);
 			}
 			if (ret != 0) {
 				break;
 			}
-			lsm6dso_zero_accel(&chip->zero, chip->acc);
-			if (lsm6dso_zero_gyro(&chip->zero, chip->gyro)) {
-				lsm6dso_zero_apply(chip);
+			lsm6dso_zero_accel(&core->zero, core->acc);
+			if (lsm6dso_zero_gyro(&core->zero, core->gyro)) {
+				lsm6dso_zero_apply(core);
 				break;
 			}
 			lsm6dso_os_usleep(ZERO_POLL_US);
 		}
-		if (ret == 0 && chip->zero.updates == updates) {
-			ret = chip->zero.rejected != rejected ? -ERANGE : -EAGAIN;
+		if (ret == 0 && core->zero.updates == updates) {
+			ret = core->zero.rejected != rejected ? -ERANGE : -EAGAIN;
 		}
 		/* The next stream sets its own rate and starts a fresh window. */
-		lsm6dso_zero_set_rate(&chip->zero, 0);
-		lsm6dso_os_mutex_unlock(&chip->zero_lock);
+		lsm6dso_zero_set_rate(&core->zero, 0);
+		lsm6dso_os_mutex_unlock(&core->zero_lock);
 	}
 	if (accel_freq == 0) {
-		(void)lsm6dso_accel_set_odr_raw(chip, 0);
+		(void)lsm6dso_accel_set_odr_raw(core, 0);
 	}
 	if (gyro_freq == 0) {
-		(void)lsm6dso_gyro_set_odr_raw(chip, 0);
+		(void)lsm6dso_gyro_set_odr_raw(core, 0);
 	}
-	lsm6dso_os_mutex_unlock(&chip->fifo_lock);
+	lsm6dso_os_mutex_unlock(&core->fifo_lock);
 	return ret;
 }
 
@@ -441,7 +440,7 @@ int lsm6dso_chip_cal_zero(struct lsm6dso_chip *chip)
  * the sensor ODRs first, and arrange interrupt routing and error recovery.
  * Batch values are the ST register encodings (0 disables that sensor).
  */
-static int lsm6dso_fifo_stop(const stmdev_ctx_t *ctx)
+static int lsm6dso_fifo_hw_stop(const stmdev_ctx_t *ctx)
 {
 	if (ctx == NULL) {
 		return -EINVAL;
@@ -449,7 +448,7 @@ static int lsm6dso_fifo_stop(const stmdev_ctx_t *ctx)
 	return lsm6dso_fifo_mode_set(ctx, LSM6DSO_BYPASS_MODE) == 0 ? 0 : -EIO;
 }
 
-static int lsm6dso_fifo_pause_batch(const stmdev_ctx_t *ctx)
+static int lsm6dso_fifo_hw_pause_batch(const stmdev_ctx_t *ctx)
 {
 	if (ctx == NULL) {
 		return -EINVAL;
@@ -461,8 +460,9 @@ static int lsm6dso_fifo_pause_batch(const stmdev_ctx_t *ctx)
 	return 0;
 }
 
-static int lsm6dso_fifo_configure(const stmdev_ctx_t *ctx, uint16_t watermark,
-				  uint8_t accel_batch, uint8_t gyro_batch, uint8_t timestamp_batch)
+static int lsm6dso_fifo_hw_configure(const stmdev_ctx_t *ctx, uint16_t watermark,
+				     uint8_t accel_batch, uint8_t gyro_batch,
+				     uint8_t timestamp_batch)
 {
 	if (ctx == NULL || watermark == 0 || watermark > 511 || accel_batch > 10 ||
 	    gyro_batch > 10 || timestamp_batch > 3 || (accel_batch == 0 && gyro_batch == 0)) {
@@ -472,7 +472,7 @@ static int lsm6dso_fifo_configure(const stmdev_ctx_t *ctx, uint16_t watermark,
 	/* Always enter bypass before changing FIFO configuration. The
 	 * timestamp counter is left running once enabled: it is the time base
 	 * of the FIFO timestamp words across stream restarts. */
-	if (lsm6dso_fifo_stop(ctx) != 0 ||
+	if (lsm6dso_fifo_hw_stop(ctx) != 0 ||
 	    lsm6dso_timestamp_set(ctx, 1) != 0 ||
 	    lsm6dso_fifo_xl_batch_set(ctx, (lsm6dso_bdr_xl_t)accel_batch) != 0 ||
 	    lsm6dso_fifo_gy_batch_set(ctx, (lsm6dso_bdr_gy_t)gyro_batch) != 0 ||
@@ -483,13 +483,13 @@ static int lsm6dso_fifo_configure(const stmdev_ctx_t *ctx, uint16_t watermark,
 	    lsm6dso_fifo_watermark_set(ctx, watermark) != 0 ||
 	    lsm6dso_fifo_mode_set(ctx, LSM6DSO_STREAM_MODE) != 0) {
 		/* Failure of this best-effort rollback must be handled by the caller. */
-		(void)lsm6dso_fifo_stop(ctx);
+		(void)lsm6dso_fifo_hw_stop(ctx);
 		return -EIO;
 	}
 	return 0;
 }
 
-static int lsm6dso_fifo_status_read(const stmdev_ctx_t *ctx, struct lsm6dso_fifo_status *status)
+static int lsm6dso_fifo_hw_status_read(const stmdev_ctx_t *ctx, struct lsm6dso_fifo_status *status)
 {
 	uint8_t raw[2];
 	int ret;
@@ -509,7 +509,7 @@ static int lsm6dso_fifo_status_read(const stmdev_ctx_t *ctx, struct lsm6dso_fifo
 	return 0;
 }
 
-static int lsm6dso_fifo_burst_read(const stmdev_ctx_t *ctx, uint8_t *buffer, size_t words)
+static int lsm6dso_fifo_hw_burst_read(const stmdev_ctx_t *ctx, uint8_t *buffer, size_t words)
 {
 	if (ctx == NULL || buffer == NULL || words == 0 || words > LSM6DSO_FIFO_MAX_WORDS) {
 		return -EINVAL;
@@ -519,7 +519,7 @@ static int lsm6dso_fifo_burst_read(const stmdev_ctx_t *ctx, uint8_t *buffer, siz
 }
 
 /* INT1: the FIFO threshold on the sensor's pin. */
-static int lsm6dso_fifo_route_int1(const stmdev_ctx_t *ctx, bool enabled)
+static int lsm6dso_fifo_hw_route_int1(const stmdev_ctx_t *ctx, bool enabled)
 {
 	lsm6dso_pin_int1_route_t route;
 
@@ -533,161 +533,160 @@ static int lsm6dso_fifo_route_int1(const stmdev_ctx_t *ctx, bool enabled)
 	return lsm6dso_pin_int1_route_set(ctx, route) == 0 ? 0 : -EIO;
 }
 
-int lsm6dso_chip_fifo_route_int1(struct lsm6dso_chip *chip, bool enabled)
+int lsm6dso_fifo_route_int1(struct lsm6dso *core, bool enabled)
 {
-	return lsm6dso_fifo_route_int1(chip->ctx, enabled);
+	return lsm6dso_fifo_hw_route_int1(core->ctx, enabled);
 }
 
-int lsm6dso_chip_fifo_start(struct lsm6dso_chip *chip, uint16_t watermark, bool accel,
-			    bool gyro)
+int lsm6dso_fifo_start(struct lsm6dso *core, uint16_t watermark, bool accel, bool gyro)
 {
 	int xl, gy, ret;
 
-	lsm6dso_os_mutex_lock(&chip->fifo_lock);
-	if (chip->fifo_owned) {
+	lsm6dso_os_mutex_lock(&core->fifo_lock);
+	if (core->fifo_owned) {
 		ret = -EBUSY;
 		goto out;
 	}
-	xl = accel ? lsm6dso_freq_to_odr_val(chip->accel_freq) : 0;
-	gy = gyro ? lsm6dso_freq_to_odr_val(chip->gyro_freq) : 0;
+	xl = accel ? lsm6dso_freq_to_odr_val(core->accel_freq) : 0;
+	gy = gyro ? lsm6dso_freq_to_odr_val(core->gyro_freq) : 0;
 	if ((!xl && accel) || (!gy && gyro) || xl < 0 || gy < 0 || (!xl && !gy) ||
 	    watermark == 0 || watermark > 511) {
 		ret = -EINVAL;
 		goto out;
 	}
-	chip->fifo_owned = true;
-	memset(&chip->fifo_stats, 0, sizeof(chip->fifo_stats));
-	chip->fifo_stats.generation = ++chip->fifo_generation;
-	chip->fifo_stats.accel_hz = accel ? chip->accel_freq : 0;
-	chip->fifo_stats.gyro_hz = gyro ? chip->gyro_freq : 0;
-	chip->fifo_stats.accel_ug_per_lsb = chip->acc_gain;
-	chip->fifo_stats.gyro_udps_per_lsb = chip->gyro_gain;
+	core->fifo_owned = true;
+	memset(&core->fifo_stats, 0, sizeof(core->fifo_stats));
+	core->fifo_stats.generation = ++core->fifo_generation;
+	core->fifo_stats.accel_hz = accel ? core->accel_freq : 0;
+	core->fifo_stats.gyro_hz = gyro ? core->gyro_freq : 0;
+	core->fifo_stats.accel_ug_per_lsb = core->acc_gain;
+	core->fifo_stats.gyro_udps_per_lsb = core->gyro_gain;
 	{
 		uint8_t freq_fine = 0;
 
-		if (lsm6dso_odr_cal_reg_get(chip->ctx, &freq_fine) == 0) {
-			chip->fifo_stats.freq_fine = (int8_t)freq_fine;
+		if (lsm6dso_odr_cal_reg_get(core->ctx, &freq_fine) == 0) {
+			core->fifo_stats.freq_fine = (int8_t)freq_fine;
 		}
 	}
-	ret = lsm6dso_fifo_configure(chip->ctx, watermark, xl, gy, chip->timestamp_decimation);
+	ret = lsm6dso_fifo_hw_configure(core->ctx, watermark, xl, gy, core->timestamp_decimation);
 	if (ret != 0) {
-		chip->fifo_stats.i2c_errors++;
+		core->fifo_stats.i2c_errors++;
 	}
-	chip->fifo_fault = ret != 0;
+	core->fifo_fault = ret != 0;
 out:
-	lsm6dso_os_mutex_unlock(&chip->fifo_lock);
+	lsm6dso_os_mutex_unlock(&core->fifo_lock);
 	return ret;
 }
 
-int lsm6dso_chip_fifo_pause_batch(struct lsm6dso_chip *chip)
+int lsm6dso_fifo_pause_batch(struct lsm6dso *core)
 {
 	int ret = 0;
 
-	lsm6dso_os_mutex_lock(&chip->fifo_lock);
-	if (!chip->fifo_owned || chip->fifo_fault) {
+	lsm6dso_os_mutex_lock(&core->fifo_lock);
+	if (!core->fifo_owned || core->fifo_fault) {
 		ret = -EIO;
-	} else if (lsm6dso_fifo_pause_batch(chip->ctx) != 0) {
-		chip->fifo_stats.i2c_errors++;
-		chip->fifo_fault = true;
+	} else if (lsm6dso_fifo_hw_pause_batch(core->ctx) != 0) {
+		core->fifo_stats.i2c_errors++;
+		core->fifo_fault = true;
 		ret = -EIO;
 	}
-	lsm6dso_os_mutex_unlock(&chip->fifo_lock);
+	lsm6dso_os_mutex_unlock(&core->fifo_lock);
 	return ret;
 }
 
-int lsm6dso_chip_fifo_stop(struct lsm6dso_chip *chip)
+int lsm6dso_fifo_stop(struct lsm6dso *core)
 {
 	int ret = 0;
 
-	lsm6dso_os_mutex_lock(&chip->fifo_lock);
-	if (chip->fifo_owned) {
-		ret = lsm6dso_fifo_stop(chip->ctx);
+	lsm6dso_os_mutex_lock(&core->fifo_lock);
+	if (core->fifo_owned) {
+		ret = lsm6dso_fifo_hw_stop(core->ctx);
 		if (ret != 0) {
-			chip->fifo_stats.i2c_errors++;
+			core->fifo_stats.i2c_errors++;
 		}
-		chip->fifo_owned = ret != 0;
-		chip->fifo_fault = ret != 0;
+		core->fifo_owned = ret != 0;
+		core->fifo_fault = ret != 0;
 	}
-	lsm6dso_os_mutex_unlock(&chip->fifo_lock);
+	lsm6dso_os_mutex_unlock(&core->fifo_lock);
 	return ret;
 }
 
-int lsm6dso_chip_fifo_read(struct lsm6dso_chip *chip, uint8_t *buffer, size_t capacity_words,
-			   struct lsm6dso_fifo_status *status)
+int lsm6dso_fifo_read(struct lsm6dso *core, uint8_t *buffer, size_t capacity_words,
+		      struct lsm6dso_fifo_status *status)
 {
 	int ret;
 
 	if (!status || (!buffer && capacity_words)) {
 		return -EINVAL;
 	}
-	lsm6dso_os_mutex_lock(&chip->fifo_lock);
-	if (!chip->fifo_owned || chip->fifo_fault) {
+	lsm6dso_os_mutex_lock(&core->fifo_lock);
+	if (!core->fifo_owned || core->fifo_fault) {
 		ret = -EIO;
 		goto out;
 	}
-	ret = lsm6dso_fifo_status_read(chip->ctx, status);
+	ret = lsm6dso_fifo_hw_status_read(core->ctx, status);
 	if (ret != 0) {
-		chip->fifo_stats.i2c_errors++;
-		chip->fifo_fault = true;
+		core->fifo_stats.i2c_errors++;
+		core->fifo_fault = true;
 		goto out;
 	}
 	if (status->overrun || status->overrun_latched) {
-		chip->fifo_stats.overrun_observations++;
+		core->fifo_stats.overrun_observations++;
 	}
 	if (status->words > LSM6DSO_FIFO_MAX_WORDS) {
-		chip->fifo_fault = true;
+		core->fifo_fault = true;
 		ret = -EIO;
 	} else if (status->words > capacity_words) {
-		chip->fifo_stats.buffer_too_small++;
+		core->fifo_stats.buffer_too_small++;
 		ret = -ENOBUFS;
 	} else if (status->words) {
 		uint32_t start = lsm6dso_os_cycle_get_32();
 		uint64_t duration;
 
-		ret = lsm6dso_fifo_burst_read(chip->ctx, buffer, status->words);
+		ret = lsm6dso_fifo_hw_burst_read(core->ctx, buffer, status->words);
 		duration = lsm6dso_os_cycles_to_ns((uint32_t)(lsm6dso_os_cycle_get_32() - start));
-		chip->fifo_stats.transfers++;
-		chip->fifo_stats.transfer_time_ns += duration;
-		if (duration > chip->fifo_stats.max_transfer_time_ns) {
-			chip->fifo_stats.max_transfer_time_ns = duration;
+		core->fifo_stats.transfers++;
+		core->fifo_stats.transfer_time_ns += duration;
+		if (duration > core->fifo_stats.max_transfer_time_ns) {
+			core->fifo_stats.max_transfer_time_ns = duration;
 		}
 		if (ret != 0) {
-			chip->fifo_stats.i2c_errors++;
-			chip->fifo_fault = true;
+			core->fifo_stats.i2c_errors++;
+			core->fifo_fault = true;
 		} else {
-			chip->fifo_stats.words_read += status->words;
+			core->fifo_stats.words_read += status->words;
 		}
 	}
 out:
-	lsm6dso_os_mutex_unlock(&chip->fifo_lock);
+	lsm6dso_os_mutex_unlock(&core->fifo_lock);
 	return ret;
 }
 
-int lsm6dso_chip_fifo_status(struct lsm6dso_chip *chip, struct lsm6dso_fifo_status *status)
+int lsm6dso_fifo_status(struct lsm6dso *core, struct lsm6dso_fifo_status *status)
 {
 	int ret;
 
 	if (!status) {
 		return -EINVAL;
 	}
-	lsm6dso_os_mutex_lock(&chip->fifo_lock);
-	if (!chip->fifo_owned || chip->fifo_fault) {
+	lsm6dso_os_mutex_lock(&core->fifo_lock);
+	if (!core->fifo_owned || core->fifo_fault) {
 		ret = -EIO;
 	} else {
-		ret = lsm6dso_fifo_status_read(chip->ctx, status);
+		ret = lsm6dso_fifo_hw_status_read(core->ctx, status);
 		if (ret != 0) {
-			chip->fifo_stats.i2c_errors++;
-			chip->fifo_fault = true;
+			core->fifo_stats.i2c_errors++;
+			core->fifo_fault = true;
 		} else if (status->overrun || status->overrun_latched) {
-			chip->fifo_stats.overrun_observations++;
+			core->fifo_stats.overrun_observations++;
 		}
 	}
-	lsm6dso_os_mutex_unlock(&chip->fifo_lock);
+	lsm6dso_os_mutex_unlock(&core->fifo_lock);
 	return ret;
 }
 
-int lsm6dso_chip_timestamp_read(struct lsm6dso_chip *chip, int64_t (*clock_us)(void),
-				uint32_t *tick, int64_t *before_us, int64_t *after_us)
+int lsm6dso_read_timestamp(struct lsm6dso *core, int64_t (*clock_us)(void), uint32_t *tick,
+			   int64_t *before_us, int64_t *after_us)
 {
 	uint8_t first[4], second[4];
 	uint32_t a, b;
@@ -696,14 +695,14 @@ int lsm6dso_chip_timestamp_read(struct lsm6dso_chip *chip, int64_t (*clock_us)(v
 	if (!clock_us || !tick || !before_us || !after_us) {
 		return -EINVAL;
 	}
-	lsm6dso_os_mutex_lock(&chip->fifo_lock);
-	ret = lsm6dso_os_bus_read(chip->ctx, LSM6DSO_TIMESTAMP0, first, sizeof(first));
+	lsm6dso_os_mutex_lock(&core->fifo_lock);
+	ret = lsm6dso_os_bus_read(core->ctx, LSM6DSO_TIMESTAMP0, first, sizeof(first));
 	if (ret == 0) {
 		*before_us = clock_us();
-		ret = lsm6dso_os_bus_read(chip->ctx, LSM6DSO_TIMESTAMP0, second, sizeof(second));
+		ret = lsm6dso_os_bus_read(core->ctx, LSM6DSO_TIMESTAMP0, second, sizeof(second));
 		*after_us = clock_us();
 	}
-	lsm6dso_os_mutex_unlock(&chip->fifo_lock);
+	lsm6dso_os_mutex_unlock(&core->fifo_lock);
 	if (ret != 0) {
 		return ret;
 	}
@@ -721,26 +720,25 @@ int lsm6dso_chip_timestamp_read(struct lsm6dso_chip *chip, int64_t (*clock_us)(v
 	return 0;
 }
 
-void lsm6dso_chip_fifo_get_stats(struct lsm6dso_chip *chip, struct lsm6dso_fifo_stats *stats)
+void lsm6dso_get_fifo_stats(struct lsm6dso *core, struct lsm6dso_fifo_stats *stats)
 {
-	lsm6dso_os_mutex_lock(&chip->fifo_lock);
-	*stats = chip->fifo_stats;
-	stats->active = chip->fifo_owned;
-	stats->fault = chip->fifo_fault;
-	lsm6dso_os_mutex_unlock(&chip->fifo_lock);
+	lsm6dso_os_mutex_lock(&core->fifo_lock);
+	*stats = core->fifo_stats;
+	stats->active = core->fifo_owned;
+	stats->fault = core->fifo_fault;
+	lsm6dso_os_mutex_unlock(&core->fifo_lock);
 }
 
-void lsm6dso_chip_fifo_record_stop_error(struct lsm6dso_chip *chip, int error)
+void lsm6dso_fifo_record_stop_error(struct lsm6dso *core, int error)
 {
-	lsm6dso_os_mutex_lock(&chip->fifo_lock);
-	if (error != 0 && chip->fifo_stats.stop_error == 0) {
-		chip->fifo_stats.stop_error = error;
+	lsm6dso_os_mutex_lock(&core->fifo_lock);
+	if (error != 0 && core->fifo_stats.stop_error == 0) {
+		core->fifo_stats.stop_error = error;
 	}
-	lsm6dso_os_mutex_unlock(&chip->fifo_lock);
+	lsm6dso_os_mutex_unlock(&core->fifo_lock);
 }
 
-int lsm6dso_chip_fifo_set_timestamp_decimation(struct lsm6dso_chip *chip,
-					       unsigned int decimation)
+int lsm6dso_set_timestamp_decimation(struct lsm6dso *core, unsigned int decimation)
 {
 	uint8_t encoded;
 	int ret = 0;
@@ -752,28 +750,28 @@ int lsm6dso_chip_fifo_set_timestamp_decimation(struct lsm6dso_chip *chip,
 	case 32: encoded = LSM6DSO_DEC_32; break;
 	default: return -EINVAL;
 	}
-	lsm6dso_os_mutex_lock(&chip->fifo_lock);
-	if (chip->fifo_owned) {
+	lsm6dso_os_mutex_lock(&core->fifo_lock);
+	if (core->fifo_owned) {
 		ret = -EBUSY;
 	} else {
-		chip->timestamp_decimation = encoded;
+		core->timestamp_decimation = encoded;
 	}
-	lsm6dso_os_mutex_unlock(&chip->fifo_lock);
+	lsm6dso_os_mutex_unlock(&core->fifo_lock);
 	return ret;
 }
 
-unsigned int lsm6dso_chip_fifo_get_timestamp_decimation(struct lsm6dso_chip *chip)
+unsigned int lsm6dso_get_timestamp_decimation(struct lsm6dso *core)
 {
 	static const unsigned int values[] = {0, 1, 8, 32};
 	unsigned int value;
 
-	lsm6dso_os_mutex_lock(&chip->fifo_lock);
-	value = values[chip->timestamp_decimation];
-	lsm6dso_os_mutex_unlock(&chip->fifo_lock);
+	lsm6dso_os_mutex_lock(&core->fifo_lock);
+	value = values[core->timestamp_decimation];
+	lsm6dso_os_mutex_unlock(&core->fifo_lock);
 	return value;
 }
 
-static int lsm6dso_init_chip(struct lsm6dso_chip *chip, const struct lsm6dso_chip_config *cfg)
+static int lsm6dso_init_chip(struct lsm6dso *core, const struct lsm6dso_init_config *cfg)
 {
 	const stmdev_ctx_t *ctx = cfg->ctx;
 	uint8_t chip_id, master_on;
@@ -845,17 +843,17 @@ static int lsm6dso_init_chip(struct lsm6dso_chip *chip, const struct lsm6dso_chi
 
 	fs = cfg->accel_range;
 	LOG_DBG("accel range is %d", fs);
-	if (lsm6dso_accel_set_fs_raw(chip, fs) < 0) {
+	if (lsm6dso_accel_set_fs_raw(core, fs) < 0) {
 		LOG_ERR("failed to set accelerometer range %d", fs);
 		return -EIO;
 	}
-	chip->acc_gain = lsm6dso_accel_fs_val_to_gain(fs, cfg->accel_range_double);
-	lsm6dso_cal_refresh(chip, LSM6DSO_CAL_ACCEL);
+	core->acc_gain = lsm6dso_accel_fs_val_to_gain(fs, cfg->accel_range_double);
+	lsm6dso_refresh_cal(core, LSM6DSO_CAL_ACCEL);
 
 	odr = cfg->accel_odr;
 	LOG_DBG("accel odr is %d", odr);
-	chip->accel_freq = lsm6dso_odr_to_freq_val(odr);
-	if (lsm6dso_accel_set_odr_raw(chip, odr) < 0) {
+	core->accel_freq = lsm6dso_odr_to_freq_val(odr);
+	if (lsm6dso_accel_set_odr_raw(core, odr) < 0) {
 		LOG_ERR("failed to set accelerometer odr %d", odr);
 		return -EIO;
 	}
@@ -874,17 +872,17 @@ static int lsm6dso_init_chip(struct lsm6dso_chip *chip, const struct lsm6dso_chi
 
 	fs = cfg->gyro_range;
 	LOG_DBG("gyro range is %d", fs);
-	if (lsm6dso_gyro_set_fs_raw(chip, fs) < 0) {
+	if (lsm6dso_gyro_set_fs_raw(core, fs) < 0) {
 		LOG_ERR("failed to set gyroscope range %d", fs);
 		return -EIO;
 	}
-	chip->gyro_gain = (lsm6dso_gyro_fs_sens[fs] * GAIN_UNIT_G);
-	lsm6dso_cal_refresh(chip, LSM6DSO_CAL_GYRO);
+	core->gyro_gain = (lsm6dso_gyro_fs_sens[fs] * GAIN_UNIT_G);
+	lsm6dso_refresh_cal(core, LSM6DSO_CAL_GYRO);
 
 	odr = cfg->gyro_odr;
 	LOG_DBG("gyro odr is %d", odr);
-	chip->gyro_freq = lsm6dso_odr_to_freq_val(odr);
-	if (lsm6dso_gyro_set_odr_raw(chip, odr) < 0) {
+	core->gyro_freq = lsm6dso_odr_to_freq_val(odr);
+	if (lsm6dso_gyro_set_odr_raw(core, odr) < 0) {
 		LOG_ERR("failed to set gyroscope odr %d", odr);
 		return -EIO;
 	}
@@ -916,13 +914,13 @@ static int lsm6dso_init_chip(struct lsm6dso_chip *chip, const struct lsm6dso_chi
 	return 0;
 }
 
-int lsm6dso_chip_init(struct lsm6dso_chip *chip, const struct lsm6dso_chip_config *config)
+int lsm6dso_init(struct lsm6dso *core, const struct lsm6dso_init_config *config)
 {
-	lsm6dso_os_mutex_init(&chip->fifo_lock);
-	lsm6dso_os_mutex_init(&chip->zero_lock);
-	chip->ctx = config->ctx;
-	chip->accel_range_double = config->accel_range_double;
-	chip->timestamp_decimation = LSM6DSO_DEC_8;
+	lsm6dso_os_mutex_init(&core->fifo_lock);
+	lsm6dso_os_mutex_init(&core->zero_lock);
+	core->ctx = config->ctx;
+	core->accel_range_double = config->accel_range_double;
+	core->timestamp_decimation = LSM6DSO_DEC_8;
 
-	return lsm6dso_init_chip(chip, config);
+	return lsm6dso_init_chip(core, config);
 }
