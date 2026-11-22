@@ -4,11 +4,12 @@
  *
  * Zephyr build (zephyr/boards/arduino/nano_connect/arduino_nano_connect.dts
  * and -pinctrl.dtsi, app/usb-console/app.overlay, prj.conf):
- * - spi1 (PL022), compatible raspberrypi,pico-spi/arm,pl022, polled
- *   (CONFIG_SPI_PL022_INTERRUPT and _DMA are off).  Initialized at boot:
- *   reset, pinctrl, a first configuration, then spi_context_cs_configure_all()
- *   drives cs-gpios to its inactive level (drivers/spi/spi_pl022.c,
- *   spi_pl022_init()).
+ * - spi1 (PL022), compatible raspberrypi,pico-spi/arm,pl022, in the
+ *   driver's DMA mode from 64 bytes (CONFIG_SPI_PL022_DMA_MIN_LEN of the
+ *   local patch zephyr/0007), polled below.  Initialized at boot: reset,
+ *   pinctrl, a first configuration, then
+ *   spi_context_cs_configure_all() drives cs-gpios to its inactive level
+ *   (drivers/spi/spi_pl022.c, spi_pl022_init()).
  * - pinctrl spi1_default: GPIO14 (SCK) and GPIO11 (TX) as SPI, GPIO8 (RX)
  *   as SPI with input-enable.  Zephyr's RP2040 pinctrl
  *   (drivers/pinctrl/pinctrl_rpi_pico.c) sets every pad property: no pulls,

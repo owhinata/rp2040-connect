@@ -76,3 +76,17 @@ patches:
       rules export <zephyr/drivers/sensor/lsm6dso.h>.  sensor_shell.c is the
       other builds' too (common/drivers/sensor_shell), sensor_shell_os.h is
       this build's.
+  - path: zephyr/0007-spi-pl022-dma-min-len.patch
+    sha256sum: 1a3a8da653f5b17146e69a7798f9f872c54df7375f2c52ff8ec34c526d4f9f8b
+    module: zephyr
+    author: rp2040-connect
+    email: noreply@example.invalid
+    date: 2026-11-22
+    upstreamable: false
+    comments: |
+      CONFIG_SPI_PL022_DMA_MIN_LEN: in the PL022 driver's DMA mode, a
+      transfer shorter than that many bytes is polled (a transfer of no
+      bytes takes the context lock and moves nothing, as in the polled
+      driver), and after a DMA transfer the request enables are cleared and
+      a failed transfer's channels stopped; enabled in the app's prj.conf
+      (64) for the NINA's SPI1, whose channels are in its app.overlay.

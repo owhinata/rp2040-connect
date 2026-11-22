@@ -206,8 +206,8 @@ boundary (the five functions of `common/compat/flash_kv_os.h`) with the RP2040's
 - The SPI transport, the socket table and commands, name resolution and the Wi-Fi operations are the
   shared core (`internal/nina_proto.c`, `nina_sock.c`, `nina_dns.c` and `nina_wifi.c` of `common/drivers/nina/`). The FreeRTOS build implements the
   boundaries `nina_bus.h` (`common/drivers/nina/port/freertos/nina_bus_rp2040.c`: SPI1 at 7.8125 MHz and the CS, READY, RESET
-  and IRQ lines, set up in the order and with the values of Zephyr's drivers; transfers shorter than 64 bytes polled as in Zephyr,
-  longer ones by DMA while the calling task sleeps, `nina_bus_dma_rp2040.c`: see below) and `nina_os.h`
+  and IRQ lines, set up in the order and with the values of Zephyr's drivers; transfers shorter than 64 bytes polled,
+  longer ones by DMA while the calling task sleeps, as in the Zephyr and NuttX builds, `nina_bus_dma_rp2040.c`: see below) and `nina_os.h`
   (the core's FreeRTOS binding `common/drivers/nina/port/freertos/nina_os.c`, written on FreeRTOS and the
   Pico SDK without the compatibility layer: FreeRTOS recursive mutexes with priority inheritance for the
   NINA lock, the name resolution lock and the Wi-Fi operations' lock, binary semaphores for the Wi-Fi

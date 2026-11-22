@@ -1,3 +1,4 @@
+#include <zephyr/dt-bindings/dma/rpi-pico-dma-rp2040.h>
 #include <zephyr/dt-bindings/sensor/lsm6dso.h>
 
 / {
@@ -18,8 +19,14 @@
 	status = "okay";
 };
 
+/* The NINA's long transfers through DMA channels 10 (TX) and 11 (RX), which
+ * the PL022 driver requests at boot; the I2C0 reads take free channels from
+ * channel 0 up.
+ */
 &spi1 {
 	status = "okay";
+	dmas = <&dma 10 RPI_PICO_DMA_SLOT_SPI1_TX 0>, <&dma 11 RPI_PICO_DMA_SLOT_SPI1_RX 0>;
+	dma-names = "tx", "rx";
 };
 
 /* Wide ranges: the noise at 6667 Hz is well above one LSB even here, and a

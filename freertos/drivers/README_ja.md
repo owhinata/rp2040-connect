@@ -176,7 +176,7 @@ FreeRTOS 版の flash の操作（`common/chip/rp2040/include/rp2040_flash_kv_os
 ## NINA-W102、ソケット、Wi-Fi
 
 - SPI の転送層・ソケットの表と命令・名前解決・Wi-Fi の操作は共有のコア（`common/drivers/nina/` の `internal/nina_proto.c`・`nina_sock.c`・
-  `nina_dns.c`・`nina_wifi.c`）です。FreeRTOS 版は境界 `nina_bus.h`（`common/drivers/nina/port/freertos/nina_bus_rp2040.c`: SPI1 を 7.8125 MHz で、64 バイト未満の転送は Zephyr と同じくポーリング、それ以上は呼んだタスクを眠らせて DMA（`nina_bus_dma_rp2040.c`。下記）、
+  `nina_dns.c`・`nina_wifi.c`）です。FreeRTOS 版は境界 `nina_bus.h`（`common/drivers/nina/port/freertos/nina_bus_rp2040.c`: SPI1 を 7.8125 MHz で、64 バイト未満の転送はポーリング、それ以上は呼んだタスクを眠らせて DMA（`nina_bus_dma_rp2040.c`。下記。Zephyr 版・NuttX 版と同じ境目）、
   CS・READY・RESET・IRQ の 4 本。Zephyr のドライバーと同じ順と値で設定）と `nina_os.h`（コアの FreeRTOS へのつなぎ
   `common/drivers/nina/port/freertos/nina_os.c`。互換層を使わず FreeRTOS と Pico SDK で直接書いたもの: NINA のロック・名前解決のロック・
   Wi-Fi の操作のロックは優先度継承のある FreeRTOS の再帰ミューテックス、Wi-Fi のスレッドへの要求は 2 値セマフォ、「切り上げ + 1 tick」の

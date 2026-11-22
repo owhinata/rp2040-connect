@@ -32,6 +32,20 @@ nina_boundary=(-std=gnu17 -Wall -Wextra -Werror -I"$app/tests/nina_fakes" -I../c
                ../common/drivers/nina/port/zephyr/nina_os.c ../common/drivers/nina/internal/nina_wait.c)
 run nina_boundary_passthrough -DCONFIG_NINA_PASSTHROUGH "${nina_boundary[@]}"
 run nina_boundary "${nina_boundary[@]}"
+# The same in the bus's configuration of prj.conf: the PL022 driver's DMA mode with its
+# threshold (CONFIG_SPI_PL022_DMA_MIN_LEN of the local patch 0007).  nina_bus.c does not build in
+# that mode without a threshold, where nina_bus_select()'s transfer of no bytes would start a DMA
+# instead of only taking the bus lock.
+run nina_boundary_spi_dma -DCONFIG_SPI_PL022_DMA -DCONFIG_SPI_PL022_DMA_MIN_LEN=64 \
+    "${nina_boundary[@]}"
+if cc -std=gnu17 -fsyntax-only -I"$app/tests/nina_fakes" -I../common/drivers/nina/include \
+      -I../common/drivers/nina/internal -I../common/drivers/nina/port \
+      -DCONFIG_SPI_PL022_DMA -DCONFIG_SPI_PL022_DMA_MIN_LEN=0 \
+      ../common/drivers/nina/port/zephyr/nina_bus.c 2>/dev/null; then
+    printf 'nina_bus.c builds in the PL022 DMA mode without a threshold\n' >&2
+    exit 1
+fi
+printf 'ok  %s\n' nina_bus_spi_dma_threshold
 # The NINA passthrough mode's Zephyr binding (common/drivers/nina/port/zephyr/nina_passthrough_os.c)
 # and "nina passthrough" (common/shell/nina_shell.c), which the test includes, with the shared
 # core (common/drivers/nina/nina_passthrough.c) on fakes of the Zephyr calls and of the module's

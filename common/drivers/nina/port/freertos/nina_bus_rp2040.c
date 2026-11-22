@@ -8,8 +8,9 @@
  * Zephyr build (zephyr/boards/arduino/nano_connect/arduino_nano_connect.dts
  * 144-159 and -pinctrl.dtsi 40-50, app/usb-console/app.overlay, Kconfig
  * NINA_SPI_FREQUENCY, build/usb-console/zephyr/.config):
- * - spi1, the PL022 driver (drivers/spi/spi_pl022.c), polled:
- *   CONFIG_SPI_PL022_INTERRUPT and _DMA are not set.  At boot
+ * - spi1, the PL022 driver (drivers/spi/spi_pl022.c) in its DMA mode
+ *   with a threshold (CONFIG_SPI_PL022_DMA, CONFIG_SPI_PL022_DMA_MIN_LEN 64
+ *   of the local patch zephyr/0007; the channels in app.overlay).  At boot
  *   (spi_pl022_init(), SPI init priority 50, before main()): the reset line
  *   toggled, the pinctrl state, a first configuration, then the cs-gpios
  *   driven inactive (spi_context_cs_configure_all()).
@@ -24,8 +25,9 @@
  * - Each transfer: SPI_WORD_SET(8) | SPI_TRANSFER_MSB, so mode 0 (CPOL 0,
  *   CPHA 0), MSB first, at CONFIG_NINA_SPI_FREQUENCY (8 MHz), which the
  *   PL022 makes from clk_peri (125 MHz, clk_sys) as CPSDVSR 2, SCR 7:
- *   7.8125 MHz.  spi_pl022_xfer() polls the FIFOs in the caller's thread, at
- *   most 8 bytes in flight, until every byte has come back.
+ *   7.8125 MHz.  Below 64 bytes spi_pl022_xfer() polls the FIFOs in the
+ *   caller's thread, at most 8 bytes in flight, until every byte has come
+ *   back; from 64 bytes two DMA channels move them while it waits.
  *
  * The NuttX build (common/drivers/nina/port/nuttx/nina_bus_rp2040.c)
  * does the same on its own SPI driver.  Here:
@@ -59,9 +61,8 @@
  *   transfer (about 1 us a byte at 7.8125 MHz), at the caller's priority,
  *   and interrupts are served meanwhile (the PL022 holds the clock when its
  *   TX FIFO runs empty).  The core sends mostly single bytes, for which the
- *   DMA would cost more than it saves; the NuttX build draws the same line
- *   in its SPI driver's DMA mode, the Zephyr build polls every transfer.
- *   It takes no lock of its
+ *   DMA would cost more than it saves; the Zephyr and NuttX builds draw the
+ *   same line in their SPI drivers' DMA modes.  It takes no lock of its
  *   own: Zephyr's spi_transceive() takes the bus's context lock, but SPI1
  *   has no other user and nina_proto.c calls this only with nina_lock held
  *   (nina_os.h).  CS is not touched (nina_proto.c drives it: the Zephyr

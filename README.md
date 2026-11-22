@@ -366,7 +366,7 @@ summary (missing batches, valid and reversed times) and at the errors in `imu st
 | Path | Content |
 |---|---|
 | `zephyr/app/usb-console/src/` | Application sources of the Zephyr build only (key-value store, RAM log, start-up) |
-| `zephyr/app/usb-console/drivers/` | The description of the Zephyr build's drivers (I2C and the sensor shell are Zephyr's with local patches; the LSM6DSO and NINA drivers are in `common/drivers/`) |
+| `zephyr/app/usb-console/drivers/` | The description of the Zephyr build's drivers (I2C, the PL022 SPI and the sensor shell are Zephyr's with local patches; the LSM6DSO and NINA drivers are in `common/drivers/`) |
 | `zephyr/app/usb-console/tests/` | Host tests of the Zephyr build only |
 | `zephyr/app/blink/` | LED blink sample |
 | `zephyr/script/` | Setup, host tests |

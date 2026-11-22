@@ -1,0 +1,86 @@
+Subject: [PATCH] drivers: spi: pl022: polled transfers below a DMA threshold
+
+Local patch of this workspace (zephyr/manifest/zephyr/patches.yml), not
+meant for upstream.
+
+With CONFIG_SPI_PL022_DMA, an instance with DMA channels in its
+devicetree sends every transfer through the DMA, a single byte as well
+as a transfer of no bytes. CONFIG_SPI_PL022_DMA_MIN_LEN (default 0: as
+before) makes a transfer shorter than that many bytes (the longer of its
+TX and RX sides) take the driver's polled path instead, the one it has
+without SPI_PL022_DMA; the option needs SPI_PL022_INTERRUPT off, whose
+mode shares that branch. A transfer of no bytes then takes and keeps the
+context lock with SPI_LOCK_ON and moves nothing, as in the polled driver.
+
+After a DMA transfer, SSPDMACR's request enables are cleared again, so a
+polled transfer that follows runs with them off, and after a transfer
+that failed or timed out both channels are stopped (dma_stop()), so that
+channels still running do not take bytes of the next transfer.
+
+diff --git a/drivers/spi/Kconfig.pl022 b/drivers/spi/Kconfig.pl022
+index 4a0b00a..443feb3 100644
+--- a/drivers/spi/Kconfig.pl022
++++ b/drivers/spi/Kconfig.pl022
+@@ -20,4 +20,15 @@ config SPI_PL022_DMA
+ 	help
+ 	  Enables DMA support for PL022 SPI driver.
+ 
++config SPI_PL022_DMA_MIN_LEN
++	int "Shortest transfer in DMA mode"
++	default 0
++	depends on SPI_PL022_DMA && !SPI_PL022_INTERRUPT
++	help
++	  On an instance with DMA channels, a transfer of fewer bytes than
++	  this (the longer of its TX and RX sides) is done by polling, as
++	  without SPI_PL022_DMA, and longer ones through the DMA. Setting up
++	  the two channels and waiting for their interrupt costs more than
++	  polling a few bytes. 0 sends every transfer through the DMA.
++
+ endif
+diff --git a/drivers/spi/spi_pl022.c b/drivers/spi/spi_pl022.c
+index 0772826..c1e2558 100644
+--- a/drivers/spi/spi_pl022.c
++++ b/drivers/spi/spi_pl022.c
+@@ -429,6 +429,18 @@ static inline bool spi_pl022_transfer_ongoing(struct spi_pl022_data *data)
+ 	return spi_context_tx_on(&data->ctx) || spi_context_rx_on(&data->ctx);
+ }
+ 
++static inline bool spi_pl022_use_dma(const struct device *dev)
++{
++	const struct spi_pl022_cfg *cfg = dev->config;
++#if defined(CONFIG_SPI_PL022_DMA_MIN_LEN)
++	struct spi_pl022_data *data = dev->data;
++
++	return cfg->dma_enabled && (data->ctx.max_count >= CONFIG_SPI_PL022_DMA_MIN_LEN);
++#else
++	return cfg->dma_enabled;
++#endif
++}
++
+ #if defined(CONFIG_SPI_PL022_DMA)
+ static void spi_pl022_dma_callback(const struct device *dma_dev, void *arg, uint32_t channel,
+ 				   int status);
+@@ -810,7 +822,7 @@ static int spi_pl022_transceive_impl(const struct device *dev,
+ 
+ 	spi_context_cs_control(ctx, true);
+ 
+-	if (cfg->dma_enabled) {
++	if (spi_pl022_use_dma(dev)) {
+ #if defined(CONFIG_SPI_PL022_DMA)
+ 		for (size_t i = 0; i < ARRAY_SIZE(data->dma); i++) {
+ 			struct dma_status stat = {.busy = true};
+@@ -831,6 +843,14 @@ static int spi_pl022_transceive_impl(const struct device *dev,
+ 			goto error;
+ 		}
+ 		ret = spi_context_wait_for_completion(ctx);
++		if (ret < 0) {
++			/* After a timeout the channels may still run. */
++			for (size_t i = 0; i < spi_pl022_dma_enabled_num(dev); i++) {
++				dma_stop(cfg->dma[i].dev, cfg->dma[i].channel);
++			}
++		}
++		/* Polled transfers run with the DMA requests off. */
++		SSP_CLEAR_REG(SSP_DMACR(cfg->reg), SSP_DMACR_MASK_RXDMAE | SSP_DMACR_MASK_TXDMAE);
+ #endif
+ 	} else
+ #if defined(CONFIG_SPI_PL022_INTERRUPT)

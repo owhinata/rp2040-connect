@@ -82,10 +82,11 @@ void nina_bus_deselect(void);
  * SPI mode 0, 8-bit words, MSB first, at the module's rate (Zephyr: the
  * node's spi-max-frequency; elsewhere CONFIG_NINA_SPI_FREQUENCY).  Returns
  * once every byte has been clocked out and in: 0, or a negative errno.  A
- * transfer of 64 bytes or more may go by DMA while the caller sleeps
- * (NuttX: the SPI driver's DMA mode; FreeRTOS: nina_bus_dma_rp2040.c), a
- * shorter one (the core's single bytes) is polled; where the DMA cannot be
- * had every transfer is polled.  Does not touch CS.
+ * transfer of 64 bytes or more goes by DMA while the caller sleeps
+ * (Zephyr and NuttX: their SPI drivers' DMA modes with a threshold;
+ * FreeRTOS: nina_bus_dma_rp2040.c), a shorter one (the core's single
+ * bytes) is polled; where the DMA cannot be had every transfer is polled.
+ * Does not touch CS.
  */
 int nina_bus_transceive(const uint8_t *tx, uint8_t *rx, size_t len);
 

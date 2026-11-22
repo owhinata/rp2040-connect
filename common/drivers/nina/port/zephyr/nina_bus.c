@@ -17,6 +17,14 @@
  *                               8-bit words, MSB first, at
  *                               the node's spi-max-frequency
  *
+ * The bus's driver does the transfers: with CONFIG_SPI_PL022_DMA and the
+ * bus's dmas (app.overlay), a transfer of CONFIG_SPI_PL022_DMA_MIN_LEN
+ * bytes (64) or more goes through two DMA channels while the thread waits,
+ * a shorter one (the core's single bytes) is polled; without them every
+ * transfer is polled.  A DMA error or a transfer that does not end in time
+ * is the driver's error, logged by the driver, which nina_bus_transceive()
+ * returns.
+ *
  * Zephyr initializes spi1 and its cs-gpios at boot, so nina_bus_initialize()
  * only looks whether they are ready; nina_proto.c configures the other
  * lines on the first request.
@@ -132,17 +140,27 @@ int nina_bus_pin_get(enum nina_bus_pin pin)
  * buffers does is the SPI driver's: the PL022 driver takes the lock first
  * and, polled, then finds nothing to move (spi_pl022.c
  * spi_pl022_transceive_impl()); others return before they take it
- * (spi_litex_litespi.c), and the PL022's interrupt and DMA modes would
- * start a transfer of nothing.  With CONFIG_SPI_ASYNC a synchronous
- * transfer gives the lock back when it ends, SPI_LOCK_ON or not
- * (spi_context.h spi_context_release()).  So this file builds only for the
- * polled PL022 without CONFIG_SPI_ASYNC; another controller or
- * configuration needs its own way to take the bus here.
+ * (spi_litex_litespi.c).  The PL022's interrupt mode would start a
+ * transfer of nothing, and so would its DMA mode, unless
+ * CONFIG_SPI_PL022_DMA_MIN_LEN (the local patch zephyr/0007) sends
+ * transfers shorter than that, this one too, down the polled path: then
+ * the DMA mode keeps the lock as the polled driver does, and the long
+ * transfers between select and deselect go through the DMA under the same
+ * lock (the driver's DMA path changes neither the lock nor CS, which this
+ * file drives).  With CONFIG_SPI_ASYNC a synchronous transfer gives the
+ * lock back when it ends, SPI_LOCK_ON or not (spi_context.h
+ * spi_context_release()).  So this file builds only for the PL022, polled
+ * or in its DMA mode with a threshold, without CONFIG_SPI_ASYNC; another
+ * controller or configuration needs its own way to take the bus here.
  */
 BUILD_ASSERT(DT_NODE_HAS_COMPAT(NINA_BUS, arm_pl022),
 	     "nina_bus_select() takes the bus lock as the PL022 SPI driver does");
-BUILD_ASSERT(!IS_ENABLED(CONFIG_SPI_PL022_INTERRUPT) && !IS_ENABLED(CONFIG_SPI_PL022_DMA),
-	     "nina_bus_select() needs the polled PL022 SPI driver");
+BUILD_ASSERT(!IS_ENABLED(CONFIG_SPI_PL022_INTERRUPT),
+	     "nina_bus_select() needs the polled PL022 SPI driver, or its DMA mode");
+#ifdef CONFIG_SPI_PL022_DMA
+BUILD_ASSERT(CONFIG_SPI_PL022_DMA_MIN_LEN > 0,
+	     "in the PL022's DMA mode nina_bus_select() needs CONFIG_SPI_PL022_DMA_MIN_LEN > 0");
+#endif
 BUILD_ASSERT(!IS_ENABLED(CONFIG_SPI_ASYNC),
 	     "with CONFIG_SPI_ASYNC a transfer does not keep the bus lock for nina_bus_select()");
 

@@ -471,7 +471,9 @@ the two sides agreed within 1.4 ms.
 As a guide to load, `cpu_active` while streaming at 6667 Hz with time stamping was 49.4% and 49.5% (the final
 image of 2026-11-18, about 71 seconds, 2 runs). With the image of 2026-11-14 (boot2 at clock divider 4, the C
 library's `memcpy`, `memset` and division, the NINA firmware with patches 0001 and 0002) it was 62 to 66% (about
-72% with the diagnostic USB probe running alongside).
+72% with the diagnostic USB probe running alongside). In those images the NINA's SPI polled every transfer; in the
+present ones each OS's firmware moves the transfers of 64 bytes or more by DMA while the calling thread waits, and
+polls the shorter ones (the driver notes of each build).
 
 Most of the hardware checks in the table above were made with images from before the NINA driver moved onto the
 shared core. With the image that uses it (2026-11-18), the first measurement after flashing, Telnet and

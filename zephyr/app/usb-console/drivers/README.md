@@ -12,6 +12,7 @@ FreeRTOS builds, for the LSM6DSOX and the NINA-W102.
 | Sensor shell (`drivers/sensor/sensor_shell.c`) | Fixes and the LSM6DSO's FIFO attributes | Zephyr v4.5.0 with `zephyr/0006-sensor-shell-fifo-attributes.patch` |
 | DesignWare I2C (`drivers/i2c/i2c_dw.c`) | The RP2040's FIFO depth, I2C0's DMA reads | Zephyr v4.5.0 with `zephyr/0003-i2c-dw-rp2040-fifo-and-dma.patch` (and `0004` for `i2c scan`) |
 | NINA-W102 (`nina`) | Wi-Fi and sockets over SPI | `common/drivers/nina/` |
+| PL022 SPI (`drivers/spi/spi_pl022.c`) | The DMA mode's threshold, for the NINA's SPI1 | Zephyr v4.5.0 with `zephyr/0007-spi-pl022-dma-min-len.patch` |
 
 Zephyr v4.5.0 is commit `41d10b59730406bbab4ca9f1fbbe9e96aafb4966`. Each patch holds everything its driver
 needs, in Zephyr's tree (see "Local patches of Zephyr" below): the application's `CMakeLists.txt` adds no
@@ -321,6 +322,18 @@ Zephyr's Telnet shell, MQTT client and zperf run on these sockets.
 - Commands are handled one at a time. The RP2040 serializes them with a mutex. SPI runs at 8 MHz
   (`spi-max-frequency` of the NINA's devicetree node; the SPI bus and the chip select come from that
   node's parent and `reg` too).
+- The PL022 driver runs in its DMA mode (`CONFIG_SPI_PL022_DMA`, with `spi1`'s `dmas` in `app.overlay`: channels
+  10 and 11, requested at boot; the I2C0 reads take free channels from 0 up). A transfer of
+  `CONFIG_SPI_PL022_DMA_MIN_LEN` bytes (64) or more (the long reads in 128-byte pieces, the socket writes'
+  parameters) goes through the two channels while the thread waits for their interrupt; a shorter one, the
+  core's single bytes among them, is polled as without the DMA (the local patch `zephyr/0007`; the NuttX and
+  FreeRTOS builds draw the same line). The bus stays the module's while CS is low in both paths:
+  `nina_bus_select()` takes the driver's lock with `SPI_LOCK_ON` through a transfer of no bytes, which the
+  threshold keeps on the polled path (in the DMA mode without one, that transfer would start a DMA; `nina_bus.c`
+  does not build that way). A DMA error (the driver logs `<err> spi_pl022: dma:... callback gets error`) or a
+  transfer that does not end within its length's time plus 200 ms (`CONFIG_SPI_COMPLETION_TIMEOUT_TOLERANCE`;
+  `Timeout waiting for transfer complete`; a byte lost to an RX overrun ends this way) fails the request with
+  that error; the patch then stops the channels.
 - Changes of the module's READY line (GPIO10) are waited for on a GPIO edge interrupt
   (`common/drivers/nina/port/zephyr/nina_os.c`). The interrupt is enabled before READY is read, so a change after the read is
   not missed; it is off during the transfers. Each wait lasts at most 10 ms, and READY is read
@@ -535,6 +548,7 @@ Some changes to Zephyr and its modules are local patches for Zephyr's `west patc
 | `zephyr/0003-i2c-dw-rp2040-fifo-and-dma.patch` | zephyr | The DesignWare I2C driver (`drivers/i2c/i2c_dw.c`): the RP2040's FIFO depth and RX threshold, and I2C0's DMA reads with `CONFIG_I2C_DW_RP2040_DMA` (I2C). The constants are in a new file `drivers/i2c/i2c_dw_rp2040.h`, the DMA code with the read commands in `i2c_dw_rp2040_dma_priv.h`, and the declarations of the `i2c_dma` command's functions in `include/zephyr/drivers/i2c/i2c_dw_rp2040_dma.h`; 16 places go into the upstream files (`i2c_dw.c` 14, `i2c_dw.h` 1, `Kconfig.dw` 1); on every controller, a message of no bytes is refused (`-ENOTSUP`) and `i2c_recover_bus()` returns `-ENOTSUP` |
 | `zephyr/0004-i2c-shell-scan-not-supported.patch` | zephyr | The shell's `i2c scan` (`drivers/i2c/i2c_shell.c`): when a probe (a write of no bytes) returns `-ENOTSUP`, the command stops, prints that the controller does not support this scan, and returns `-ENOTSUP`, instead of showing `--` everywhere and "0 devices found". Other errors still show `--` |
 | `zephyr/0006-sensor-shell-fifo-attributes.patch` | zephyr | The sensor shell (`drivers/sensor/sensor_shell.c`): the LSM6DSO's FIFO attributes and the fixes (Sensor shell), with `drivers/sensor/sensor_shell_os.h`. Needs the LSM6DSO driver of `common/drivers/lsm6dso/` (its `<zephyr/drivers/sensor/lsm6dso.h>`) |
+| `zephyr/0007-spi-pl022-dma-min-len.patch` | zephyr | The PL022 SPI driver (`drivers/spi/spi_pl022.c`, `Kconfig.pl022`): `CONFIG_SPI_PL022_DMA_MIN_LEN` (default 0, as upstream): in the DMA mode a transfer shorter than that many bytes takes the polled path (a transfer of no bytes takes the context lock and moves nothing); after a DMA transfer SSPDMACR's request enables are cleared, and after one that failed or timed out its channels are stopped (NINA-W102) |
 
 - **Applying**: `source script/setup.sh` applies them to the modules' working trees with `west patch apply`
   (no commits; `git -C zephyr/zephyr status` shows them as changes). Patches already applied are skipped,
@@ -546,7 +560,7 @@ Some changes to Zephyr and its modules are local patches for Zephyr's `west patc
 - **Taking them back**: run `west patch reverse` in `zephyr/` and remove `zephyr/.west/local-patches/`. If
   that fails, restore each tree with `git -C <tree> checkout -- .` as `setup.sh` says, remove the copy and
   source it again. The application does not build on trees without the patches (`prj.conf` sets the
-  patches' `CONFIG_RP2040_ROM_MEM_OPS` and `CONFIG_I2C_DW_RP2040_DMA`, and `CONFIG_RP2040_PICO_DIVIDER` stops in CMake without
+  patches' `CONFIG_RP2040_ROM_MEM_OPS`, `CONFIG_I2C_DW_RP2040_DMA` and `CONFIG_SPI_PL022_DMA_MIN_LEN`, and `CONFIG_RP2040_PICO_DIVIDER` stops in CMake without
   `CONFIG_ARM_RP2040_DIVIDER_SAVE`).
 - **Moving to a newer Zephyr**: take the patches back first as above, change the versions in
   `manifest/west.yml` and run `west update`. Remake each patch on the new trees, put it in `patches/`,
@@ -614,6 +628,7 @@ All but `nina_boundary_*`, `passthrough`, `nina_socket*` and `nina_net` are test
 | `nina_sock`, `nina_dns`, `nina_dns_offload` | The NINA socket commands, name resolution (`nina_dns_offload` in this build's form, `NINA_OS_DNS_OFFLOAD`) |
 | `nina_boundary` | The shared `nina_proto.c` on `nina_bus.c` and `nina_os.c` of `common/drivers/nina/port/zephyr/` (also the Wi-Fi threads' lock and requests): framing, lines and flags, the reset sequence, the READY interrupt (callback, semaphore reset, edge direction, off before transfers, 10 ms bound) and the sampling when the callback cannot be registered; the waits for the IRQ line's edges (a start that fails, GPIO2's callback and rising edge, the count, a wait ended by an edge, the timeout, an edge just before the wait) |
 | `nina_boundary_passthrough` | The same with `CONFIG_NINA_PASSTHROUGH`: no bus while the passthrough runs (`-ENODEV` without touching a line or SPI), as usual once it is gone |
+| `nina_boundary_spi_dma`, `nina_bus_spi_dma_threshold` | The same in the bus's configuration of `prj.conf` (the PL022's DMA mode with `CONFIG_SPI_PL022_DMA_MIN_LEN` 64); `nina_bus.c` does not build in the DMA mode without a threshold |
 | `nina_passthrough` | The passthrough's core (`nina_passthrough.c`) on fake boundaries: the request against the fatal error record, DTR and RTS on the module's lines, the rate and the way out, the buffer (also on two threads), the start, both data paths with their counts (breaks, overruns, a full buffer, no host), the tick (GPIO0's release, the LED), the way out's sequence |
 | `passthrough` | The passthrough's Zephyr side `common/drivers/nina/port/zephyr/nina_passthrough_os.c` and `nina passthrough` of `nina_shell.c` with the real core, on fake Zephyr calls and a fake module side: the request at the start, the lines and the rate from the USB messages and the tick, both data paths and the handovers between the interrupts, the bytes dropped without USB, the way out, the command |
 | `nina_socket` | The socket offload `common/drivers/nina/port/zephyr/nina_socket.c` on the shared core: descriptors, the wait loops and sleeps (after the events could not start), options, accept, sendmsg, datagrams, poll, the resolver's registration; the waits for the IRQ line's edges once the events are started (an edge during a pass, the timeout, the deadline, the send's waits, a `poll` with another kind of descriptor) |

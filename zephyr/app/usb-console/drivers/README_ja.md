@@ -14,6 +14,7 @@ IMU の FIFO を高いレートで読み出すための変更と、NuttX 版・F
 | sensor シェル（`drivers/sensor/sensor_shell.c`） | 修正と LSM6DSO の FIFO の属性 | Zephyr v4.5.0 に `zephyr/0006-sensor-shell-fifo-attributes.patch` |
 | DesignWare I²C（`drivers/i2c/i2c_dw.c`） | RP2040 の FIFO の段数、I2C0 の DMA 読み出し | Zephyr v4.5.0 に `zephyr/0003-i2c-dw-rp2040-fifo-and-dma.patch`（`i2c scan` は `0004`） |
 | NINA-W102（`nina`） | SPI 経由の Wi-Fi とソケット | `common/drivers/nina/` |
+| PL022 SPI（`drivers/spi/spi_pl022.c`） | DMA のモードのしきい値（NINA の SPI1 のため） | Zephyr v4.5.0 に `zephyr/0007-spi-pl022-dma-min-len.patch` |
 
 Zephyr v4.5.0 はコミット `41d10b59730406bbab4ca9f1fbbe9e96aafb4966` です。各パッチは、そのドライバーに要るものを
 すべて Zephyr のツリーの中に持ちます（下の「Zephyr へのローカルのパッチ」）。アプリの `CMakeLists.txt` はドライバーの
@@ -286,6 +287,16 @@ Zephyr の標準機能のうち、Telnet シェル、MQTT クライアント、z
 
 - コマンドは 1 つずつ処理されます。RP2040 側は mutex で直列化します。SPI は 8 MHz です
   （デバイスツリーの NINA のノードの `spi-max-frequency`。SPI のバスと CS もそのノードの親と `reg` から取ります）。
+- PL022 のドライバーは DMA のモードで動かします（`CONFIG_SPI_PL022_DMA`。`app.overlay` の `spi1` の `dmas` でチャネル 10 と 11、
+  起動時に確保。I2C0 の読み出しは 0 から空いているチャネルを取ります）。`CONFIG_SPI_PL022_DMA_MIN_LEN` バイト（64）以上の転送
+  （128 バイトずつの長い読み出し、ソケットの書き込みのパラメーター）は 2 つのチャネルで行い、そのあいだスレッドはその割り込みを
+  待ちます。それより短い転送（コアの 1 バイトの転送など）は DMA なしのときと同じくポーリングです（ローカルのパッチ `zephyr/0007`。
+  NuttX 版・FreeRTOS 版も同じ境目）。どちらの経路でも、CS が下がっているあいだバスはモジュールのものです: `nina_bus_select()` は
+  0 バイトの転送で `SPI_LOCK_ON` のドライバーのロックを取り、しきい値がその転送をポーリングの経路に回します（しきい値の無い
+  DMA のモードではこの転送が DMA を始めてしまうので、`nina_bus.c` はその構成ではビルドできません）。DMA のエラー（ドライバーが
+  `<err> spi_pl022: dma:... callback gets error` を記録）と、長さぶんの時間 + 200 ms（`CONFIG_SPI_COMPLETION_TIMEOUT_TOLERANCE`）で
+  終わらない転送（`Timeout waiting for transfer complete`。RX のオーバーランでバイトが失われたときもこれになります）は、
+  そのエラーで要求が失敗します。パッチがそのあとチャネルを止めます。
 - NINA の READY（GPIO10）の変化は、GPIO のエッジ割り込みで待ちます（`common/drivers/nina/port/zephyr/nina_os.c`）。待つ前に
   割り込みを有効にしてから READY を読むので、読んだあとの変化を取りこぼしません。転送中は割り込みを
   止めます。1 回の待ちは最長 10 ms で、そのたびに READY を読み直します。期限（コマンドの前 2 秒、
@@ -474,6 +485,7 @@ Zephyr 本体とモジュールの一部の変更は、Zephyr の `west patch` �
 | `zephyr/0003-i2c-dw-rp2040-fifo-and-dma.patch` | zephyr | DesignWare I²C ドライバー（`drivers/i2c/i2c_dw.c`）: RP2040 の FIFO の深さと RX のしきい値、`CONFIG_I2C_DW_RP2040_DMA` の I²C0 の DMA 読み出し（「I²C」）。定数は新しいファイル `drivers/i2c/i2c_dw_rp2040.h` に、DMA の塊と読み出しのコマンド語は `i2c_dw_rp2040_dma_priv.h` に、`i2c_dma` コマンドの関数の宣言は `include/zephyr/drivers/i2c/i2c_dw_rp2040_dma.h` に置き、上流のファイルに入るのは 16 か所（`i2c_dw.c` 14、`i2c_dw.h` 1、`Kconfig.dw` 1）。どのコントローラーでも、0 バイトのメッセージを断り（`-ENOTSUP`）、`i2c_recover_bus()` は `-ENOTSUP` を返す |
 | `zephyr/0004-i2c-shell-scan-not-supported.patch` | zephyr | シェルの `i2c scan`（`drivers/i2c/i2c_shell.c`）: 確かめの書き込み（0 バイト）が `-ENOTSUP` を返したら、どこも `--` で「0 devices found」とする代わりに、止まって、コントローラーがこのスキャンに対応していないことを表示し、`-ENOTSUP` を返す。ほかのエラーは従来どおり `--` |
 | `zephyr/0006-sensor-shell-fifo-attributes.patch` | zephyr | sensor シェル（`drivers/sensor/sensor_shell.c`）: LSM6DSO の FIFO の属性と修正（「sensor シェル」）、`drivers/sensor/sensor_shell_os.h`。`common/drivers/lsm6dso/` の LSM6DSO のドライバー（その `<zephyr/drivers/sensor/lsm6dso.h>`）が要る |
+| `zephyr/0007-spi-pl022-dma-min-len.patch` | zephyr | PL022 の SPI のドライバー（`drivers/spi/spi_pl022.c`・`Kconfig.pl022`）: `CONFIG_SPI_PL022_DMA_MIN_LEN`（既定 0 で上流と同じ）。DMA のモードで、そのバイト数より短い転送はポーリングの経路を通る（0 バイトの転送はコンテキストのロックを取って何も送らない）。DMA の転送のあとは SSPDMACR の要求を戻し、失敗か時間切れの転送のあとはそのチャネルを止める（「NINA-W102」） |
 
 - **当て方**: `source script/setup.sh` が `west patch apply` で各モジュールの作業ツリーに当てます（commit は作りません。
   `git -C zephyr/zephyr status` には変更として出ます）。当てたものは飛ばすので、何度読み込んでも同じです。当てた集合の写しを
@@ -483,7 +495,7 @@ Zephyr 本体とモジュールの一部の変更は、Zephyr の `west patch` �
   読み込み直します。
 - **戻し方**: `zephyr/` で `west patch reverse` を実行し、`zephyr/.west/local-patches/` を消します。戻せないときは、
   `setup.sh` の表示のとおり各ツリーを `git -C <ツリー> checkout -- .` で戻してから写しを消し、読み込み直します。
-  戻したツリーでは、このアプリはビルドできません（`prj.conf` がパッチの `CONFIG_RP2040_ROM_MEM_OPS`・`CONFIG_I2C_DW_RP2040_DMA` を使い、
+  戻したツリーでは、このアプリはビルドできません（`prj.conf` がパッチの `CONFIG_RP2040_ROM_MEM_OPS`・`CONFIG_I2C_DW_RP2040_DMA`・`CONFIG_SPI_PL022_DMA_MIN_LEN` を使い、
   `CONFIG_RP2040_PICO_DIVIDER` は `CONFIG_ARM_RP2040_DIVIDER_SAVE` が無いと CMake で止まります）。
 - **Zephyr を上げるとき**: 先に上の手順でパッチを戻し、`manifest/west.yml` の Zephyr のバージョンを変えて `west update` します。新しいツリーで
   各パッチを作り直して `patches/` に置き、`sha256sum` を直し、`source script/setup.sh` で当ててからビルドします。
@@ -544,6 +556,7 @@ picolibc の中からの呼び出しと、GCC が構造体のコピーやルー�
 | `nina_sock`、`nina_dns`、`nina_dns_offload` | NINA のソケットの命令、名前解決（`nina_dns_offload` は Zephyr 版と同じ `NINA_OS_DNS_OFFLOAD` の形） |
 | `nina_boundary` | 共有の `nina_proto.c` を `common/drivers/nina/port/zephyr/` の `nina_bus.c`・`nina_os.c`（Wi-Fi のスレッドのロックと要求も）に載せたもの：フレーミング、線と設定の対応、リセットの手順、READY の割り込み待ち（コールバックの登録、セマフォのリセット、エッジの向き、転送前の無効化、10 ms の上限）と、コールバックを登録できなかったときのポーリング。IRQ の線のエッジの待ち（始められないとき、GPIO2 のコールバックと立ち上がりのエッジ、エッジの数、エッジで終わる待ち、時間切れ、待つ直前のエッジ） |
 | `nina_boundary_passthrough` | 上と同じものを `CONFIG_NINA_PASSTHROUGH` で。中継の間はバスが無く、線にも SPI にも触れずに `-ENODEV`、中継でなくなれば通常どおり |
+| `nina_boundary_spi_dma`・`nina_bus_spi_dma_threshold` | 上と同じものを `prj.conf` のバスの構成（PL022 の DMA のモードと `CONFIG_SPI_PL022_DMA_MIN_LEN` 64）で。しきい値の無い DMA のモードでは `nina_bus.c` がビルドできないこと |
 | `nina_passthrough` | 中継のコア（`nina_passthrough.c`）を偽の境界で：再起動の印と異常停止の記録の区別、DTR・RTS とモジュールの線の対応、レートと出口、バッファー（2 つのスレッドでも）、起動、両方向のデータとその数（ブレーク、オーバーラン、バッファーの満杯、ホストが無いとき）、tick（GPIO0 を離す時刻、LED）、出口の手順 |
 | `passthrough` | 中継の Zephyr 側 `common/drivers/nina/port/zephyr/nina_passthrough_os.c` と `nina_shell.c` の `nina passthrough` を本物のコアと、偽の Zephyr と偽のモジュール側で：起動時の印の扱い、USB の通知と tick での線とレート、両方向のデータと割り込みの受け渡し、USB が無い間の破棄、出口の手順、コマンド |
 | `nina_socket` | ソケットのオフロード `common/drivers/nina/port/zephyr/nina_socket.c` を共有のコアに載せたもの：ファイル記述子、待ちのループと sleep（事象を始められなかったあと）、オプション、accept、sendmsg、データグラム、poll、リゾルバーの登録。事象を始めたあとの IRQ の線のエッジの待ち（パスの間のエッジ、時間切れ、期限、送信の待ち方、NINA 以外の記述子を含む `poll`） |
