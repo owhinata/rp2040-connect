@@ -20,6 +20,9 @@ subagent（`model: opus`）が実装し、メインがレビュー・ホスト�
 | カーネルの部分 | 基本の操作 26 個を書いて、汎用の実装（`common/compat/kernel_generic`）を使う | メインの案（FreeRTOS 版と同じ形） |
 | シェル | 共有のシェルのエンジン（`common/compat/shell_engine`） | 同上 |
 | 同じ優先度の選び方 | 並びの順は ThreadX の標準。Zephyr の優先度 0 以上のスレッドには ThreadX 自身の時分割 20 ms を付ける（Zephyr 版の設定と同じ。FreeRTOS 版も tick のフックで同じことをしている。T0 で、時分割なしでは受け入れ試験の 1 項目が通らないと分かった） | メインの案（T0 の結果から。ユーザーに報告済み） |
+| tick | まず 1 ms 固定（FreeRTOS 版と同じ。SysTick）。**全機能が動いたあと T5 で、tick を止めるかどうかを判断する**（Zephyr 版・NuttX 版は tickless で分解能 100 µs。止めれば分解能を細かくできる利点がある。ThreadX の標準の仕組みは `utility/low_power`。互換層の汎用のカーネルの部分の tick の入口を「まとめて n tick 進める」形に広げる必要がある） | ユーザー（2026-11-24） |
+| アイドルと `cpu_active` | ThreadX の仕組みを使う: 待ちは `TX_ENABLE_WFI`、区間の開け閉めと LED は `TX_LOW_POWER` のフック（`tx_low_power_enter`・`_exit` を自前で書く。計算は共有の `cpu_load.h`）。最低優先度のスレッドを自前で置く案は取り下げ（ユーザーの指摘） | ユーザーの指摘とメインの案（2026-11-24） |
+| `ps` の CPU 列 | `TX_EXECUTION_PROFILE_ENABLE`（付属の `utility/execution_profile_kit`。時計は RP2040 の TIMER）。`cpu_active` にはキットのアイドル時間を使わない（Pico SDK の割り込みハンドラーの時間をアイドルに数えるので、ほかの OS と比べられない） | メインの案 |
 | 取得するツリー | `threadx/` の下に ThreadX・Pico SDK・ツールチェーンを `setup.sh` が取得する（NuttX 版・FreeRTOS 版と同じく、OS のディレクトリーごとに持つ） | メインの案 |
 | スタイル | Zephyr。新しいファイルの SPDX は MIT。`threadx/script/format.sh` | 既存の決まり |
 
@@ -92,7 +95,8 @@ NINA（`port/threadx/nina_os.c` と DMA の待ち）、互換層のソケット�
 
 ### T5: 仕上げ
 
-よく通るコードの RAM への配置と検査、RAM の残りとスタックの調整、`cpu_active` の計測（ほかの 3 つと同じ条件）、
+よく通るコードの RAM への配置と検査、RAM の残りとスタックの調整、`cpu_active` の計測（ほかの 3 つと同じ条件。止めた状態の値も）、
+**tick を止めるかどうかの判断**（決定事項の tick の行。計測の結果と、分解能を細かくできる利点をユーザーに示して決める）、
 文書（`threadx/README`・`threadx/drivers/README` の日英、ルートの README、設計書、`design/os-boundary` に ThreadX の列）、`CLAUDE.md`。
 
 - `design/os-boundary` の「新しい OS で書くもの」を、実際に書いたものと照らして直す（この計画のいちばんの成果）。
