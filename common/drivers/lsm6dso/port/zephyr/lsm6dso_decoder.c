@@ -85,14 +85,24 @@ static int size_info(struct sensor_chan_spec channel, size_t *base, size_t *fram
 	return 0;
 }
 
+/* The frame iterator: the position in the words, in bytes, and above it
+ * the number of this channel's words before that position, which gives the
+ * next frame's timestamp without counting them again on every call (the
+ * sensor shell decodes one frame per call).  The caller starts with 0 and
+ * passes it back unchanged.
+ */
+#define FIT_CURSOR(fit)         ((fit) & 0xffffU)
+#define FIT_BEFORE(fit)         ((fit) >> 16)
+#define FIT(cursor, before)     ((uint32_t)(cursor) | ((uint32_t)(before) << 16))
+
 static int decode(const uint8_t *buffer, struct sensor_chan_spec channel, uint32_t *fit,
 		  uint16_t max_count, void *out)
 {
 	const struct lsm6dso_fifo_packet *packet = (const void *)buffer;
 	struct sensor_three_axis_data *decoded = out;
 	struct lsm6dso_fifo_sample sample;
-	size_t cursor, scan;
-	uint32_t before = 0;
+	size_t cursor;
+	uint32_t before;
 	uint32_t period;
 	uint64_t base;
 	int kind = channel_kind(channel), ret;
@@ -102,8 +112,9 @@ static int decode(const uint8_t *buffer, struct sensor_chan_spec channel, uint32
 	int32_t values[3];
 
 	if (!buffer || !fit || !out || kind < 0 || packet->words > LSM6DSO_FIFO_MAX_WORDS ||
-	    *fit > packet->words * LSM6DSO_FIFO_WORD_SIZE ||
-	    *fit % LSM6DSO_FIFO_WORD_SIZE != 0) {
+	    FIT_CURSOR(*fit) > packet->words * LSM6DSO_FIFO_WORD_SIZE ||
+	    FIT_CURSOR(*fit) % LSM6DSO_FIFO_WORD_SIZE != 0 ||
+	    FIT_BEFORE(*fit) > FIT_CURSOR(*fit) / LSM6DSO_FIFO_WORD_SIZE) {
 		return -EINVAL;
 	}
 	if (max_count == 0) {
@@ -115,19 +126,8 @@ static int decode(const uint8_t *buffer, struct sensor_chan_spec channel, uint32
 	period = kind == LSM6DSO_FIFO_ACCEL ? packet->accel_period_ns : packet->gyro_period_ns;
 	base = kind == LSM6DSO_FIFO_ACCEL ? packet->accel_first_timestamp_ns :
 						    packet->gyro_first_timestamp_ns;
-	/* Count matching words before the cursor to preserve timestamps across calls. */
-	scan = 0;
-	while (scan < *fit) {
-		ret = lsm6dso_fifo_next(packet->data, *fit, &scan, &sample);
-		if (ret < 0) {
-			return ret;
-		}
-		if (ret == 0) {
-			break;
-		}
-		before += (int)sample.kind == kind;
-	}
-	cursor = *fit;
+	cursor = FIT_CURSOR(*fit);
+	before = FIT_BEFORE(*fit);
 	decoded->header.base_timestamp_ns = base + (uint64_t)before * period;
 	decoded->shift = FIFO_Q31_SHIFT;
 	while (count < max_count && (ret = lsm6dso_fifo_next(packet->data,
@@ -147,7 +147,10 @@ static int decode(const uint8_t *buffer, struct sensor_chan_spec channel, uint32
 		}
 		count++;
 	}
-	*fit = cursor;
+	if (ret < 0) {
+		return ret;
+	}
+	*fit = FIT(cursor, before + count);
 	decoded->header.reading_count = count;
 	return count;
 }

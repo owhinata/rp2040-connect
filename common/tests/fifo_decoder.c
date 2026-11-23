@@ -63,13 +63,16 @@ int main(void)
 	assert(base == sizeof(*data) && frame == sizeof(struct sensor_three_axis_sample_data));
 	assert(lsm6dso_fifo_decoder.has_trigger(storage.bytes, SENSOR_TRIG_FIFO_WATERMARK));
 	assert(lsm6dso_fifo_decoder.decode(storage.bytes, accel, &fit, 1, data) == 1);
-	assert(fit == 7 && data->header.base_timestamp_ns == 1000 && data->shift == 9);
+	assert(fit == ((1U << 16) | 7) && data->header.base_timestamp_ns == 1000 && data->shift == 9);
 	assert(data->readings[0].values[0] == 41132071);
 	assert(lsm6dso_fifo_decoder.decode(storage.bytes, accel, &fit, 1, data) == 1);
-	assert(fit == 21 && data->header.base_timestamp_ns == 1100);
+	assert(fit == ((2U << 16) | 21) && data->header.base_timestamp_ns == 1100);
 	assert(data->readings[0].values[0] == -41132071);
 	assert(lsm6dso_fifo_decoder.decode(storage.bytes, accel, &fit, 1, data) == 0);
 	fit = 1;
+	assert(lsm6dso_fifo_decoder.decode(storage.bytes, accel, &fit, 1, data) == -EINVAL);
+	/* More frames before the position than words: not an iterator of this decoder. */
+	fit = (2U << 16) | 7;
 	assert(lsm6dso_fifo_decoder.decode(storage.bytes, accel, &fit, 1, data) == -EINVAL);
 	packet->marker = 6; /* generic fallback buffer */
 	assert(lsm6dso_combined_decoder.get_frame_count(storage.bytes, accel, &count) == 0 && count == 42);
