@@ -3,7 +3,7 @@
 #
 # The "sensor" builtin command: the Zephyr build's sensor shell
 # (sensor_shell.c, shared with the Zephyr build in
-# common/drivers/sensor_shell, found through VPATH and DEPPATH relative to
+# common/shell, found through VPATH and DEPPATH relative to
 # this directory and compiled with the prelude of the shared sources,
 # common_prelude.h of the compatibility layer; it is the main source, with
 # SHELL_CMD_REGISTER() of the compatibility layer making main()), the copy
@@ -38,8 +38,8 @@ CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)c
 CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)shell
 CFLAGS   += ${INCDIR_PREFIX}$(APPDIR)$(DELIM)external$(DELIM)sensor
 
-VPATH    += :../../../common/drivers/sensor_shell
-DEPPATH  += --dep-path ../../../common/drivers/sensor_shell
+VPATH    += :../../../common/shell
+DEPPATH  += --dep-path ../../../common/shell
 VPATH    += :../../../common/compat
 DEPPATH  += --dep-path ../../../common/compat
 

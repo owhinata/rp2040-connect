@@ -138,7 +138,7 @@ SHELL_CMD_REGISTER(ps, NULL, "List the tasks and show the CPU load", cmd_ps);
  * common/compat/zephyr_wifi_shell.c ("wifi", with "wifi cred" of the copy
  * of Zephyr's wifi_credentials_shell.c), common/imu/time_sync.c ("ntp"),
  * common/compat/zephyr_zperf_shell.c,
- * common/drivers/sensor_shell/sensor_shell.c ("sensor") and
+ * common/shell/sensor_shell.c ("sensor") and
  * common/shell/i2c_shell.c ("i2c").
  */
 SHELL_ENGINE_CMD_DECLARE(bootsel);

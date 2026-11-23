@@ -756,7 +756,7 @@ Zephyr の名前のまま提供する互換層の上でビルドする。ホス�
 |---|---|---|
 | `common/imu/` | 取得サービスと `imu`、バッチ・ペイロード・キュー・status、時刻の対応付けと時刻同期・`ntp`、校正と `imu cal`、MQTT の送信、Wi-Fi のプロファイルと自動再接続、KV の API と `kv`、送信と時刻同期の代わりの `imu_raw_mqtt_null.c`・`time_sync_null.c` | 3 つとも（MQTT のクライアント `mqtt_min*` は NuttX 版と FreeRTOS 版。Zephyr 版は Zephyr の MQTT ライブラリー。代わりのファイルはそのモジュールを持たないビルドだけ） |
 | `common/drivers/lsm6dso/` | LSM6DSO のドライバー。直下に OS を持たないコア（`lsm6dso.c`・`lsm6dso_stream.c`・`lsm6dso_cal.c`・`lsm6dso_fifo.c`。ヘッダーは `include/`・`internal/`、境界 `lsm6dso_os.h`・`lsm6dso_stream_req.h` は `port/`）、`port/zephyr/` に FIFO のストリームの RTIO 側を含む Zephyr へのつなぎ（Zephyr 版では Zephyr のモジュール。拡張 API の `<zephyr/drivers/sensor/lsm6dso.h>` は `include/lsm6dso.h`）、`port/nuttx/`・`port/freertos/` に NuttX 版・FreeRTOS 版のデバイス | 3 つとも |
-| `common/drivers/sensor_shell/` | sensor シェル。OS ごとの `sensor_shell_os.h` を除き、Zephyr 版のパッチを当てたツリーのファイル（パッチ 0006、下） | 3 つとも |
+| `common/shell/sensor_shell.c` | sensor シェル。OS ごとの `sensor_shell_os.h` を除き、Zephyr 版のパッチを当てたツリーのファイル（パッチ 0006、下） | 3 つとも |
 | `common/drivers/nina/` | NINA のコア（SPI の転送層、ソケット、名前解決、Wi-Fi の操作 `nina_wifi.[ch]`、ソケットの待ち `nina_wait.[ch]`、宣言 `nina_proto.h`）と esptool の中継 `nina_passthrough.[ch]`（境界 `nina_passthrough_bus.h`・`nina_passthrough_os.h`）。OS の定義を持たない | 3 つとも |
 | `common/drivers/nina/port/zephyr/`、`nuttx/`、`freertos/` | コアの Zephyr の API へのつなぎ（Wi-Fi 管理とインターフェース、カーネルの機能、ソケットのオフロード、devicetree binding とオプション）、NuttX の API へのつなぎ（`wlan0` と wapi、アプリが使う Zephyr の Wi-Fi 管理、カーネルの機能、usrsock）、FreeRTOS と Pico SDK へのつなぎ（カーネルの機能 `nina_os.c`: ロック、要求、sleep、時計、READY と IRQ の線のエッジ割り込みでの待ち）。どれにも中継のホスト側 `nina_passthrough_os.c`（Zephyr の CDC ACM、cdcacm、TinyUSB） | `zephyr/` は Zephyr 版と FreeRTOS 版（Wi-Fi とソケットのつなぎを互換層の上で）、`nuttx/` は NuttX 版、`freertos/` は FreeRTOS 版 |
 | `common/drivers/i2c_dw/` | I2C のコア（I2C0 と I2C1。ファイル名は Zephyr のものに合わせる: 直下に `i2c_dw.c`、`internal/` に `i2c_dw.h`・`i2c_dw_registers.h`・`i2c_dw_rp2040.h`・`i2c_dw_rp2040_dma_priv.h`（DMA 読み出しとそのコマンド語））、`i2c_dma` の関数の宣言 `include/i2c_dw_rp2040_dma.h`、`port/` に境界 `i2c_dw_os.h`・`i2c_dw_dma_os.h`、`port/nuttx/`・`port/freertos/` にコアのつなぎ | NuttX 版と FreeRTOS 版（Zephyr 版はパッチ 0003 の同じドライバー。下） |
@@ -779,7 +779,7 @@ OS ごとの部分は、狭い境界のヘッダーの実装として各 OS の�
 `CONFIG_LSM6DSO_LOCAL` が同じデバイスツリーのノードの Zephyr のドライバーに代わり（`prj.conf` で `CONFIG_LSM6DSO=n`）、
 そのライブラリーがコアとつなぎを持ち、`<zephyr/drivers/sensor/lsm6dso.h>` を公開する。NuttX 版と FreeRTOS 版は同じコアと
 つなぎを互換層の上でビルドし、互換層が `<zephyr/drivers/sensor/lsm6dso.h>` も提供する（`common/compat/zephyr/drivers/sensor/`）。
-`lsm6dso_instance.h` は OS ごとに持つ（`port/nuttx/`・`port/freertos/`）。**sensor シェル（`common/drivers/sensor_shell/`）** は、
+`lsm6dso_instance.h` は OS ごとに持つ（`port/nuttx/`・`port/freertos/`）。**sensor シェル（`common/shell/sensor_shell.c`）** は、
 Zephyr 版では Zephyr の `drivers/sensor/sensor_shell.c` にローカルのパッチ 0006（`zephyr/manifest/zephyr/patches/zephyr/`）を
 当てたもので、NuttX 版・FreeRTOS 版も同じファイルを使い、`sensor_shell_os.h` は OS ごとに持つ。パッチを当てたツリーのファイルとバイト単位で
 同じことを、ホストテスト `zephyr_sensor_shell_patched` が確かめる（ツリーがあるとき。ツリーの HEAD とパッチから作る）。

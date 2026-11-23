@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: MIT */
-/* The FreeRTOS part of the sensor shell (common/drivers/sensor_shell/
+/* The FreeRTOS part of the sensor shell (common/shell/
  * sensor_shell.c and the copy of Zephyr's sensor_shell_stream.c in
  * common/compat, which include this header first): the Zephyr build's
  * CONFIG_SENSOR_SHELL_* values, the log, the wait of "sensor get" for its

@@ -170,7 +170,7 @@ USB の CDC ACM ポートがコンソールです（UART0 は使いません）�
 | `drivers/i2c_dw/` | I2C0 と DMA（センサーのバス） |
 | `drivers/lsm6dso/` | LSM6DSOX のビルドの規則と起動時の確認（ドライバーとデバイスの定義は `common/drivers/lsm6dso/`） |
 | `drivers/imu/` | 取得・送信・時刻同期の組み込み（本体は `common/imu/`） |
-| `drivers/sensor_shell/` | `sensor` コマンドの組み込み（本体は `common/drivers/sensor_shell/`） |
+| `drivers/sensor_shell/` | `sensor` コマンドの組み込み（本体は `common/shell/`） |
 | `tests/` | ホストテスト |
 | `script/` | `setup.sh`、`build.sh`、`flash.sh`、`format.sh`、`host_tests.sh` |
 | `PORTING_PLAN.md`、`PORTING_STATUS.md` | 移植の計画と、進み具合・確かめたことの記録 |

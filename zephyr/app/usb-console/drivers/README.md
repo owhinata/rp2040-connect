@@ -50,7 +50,7 @@ parser (`lsm6dso_fifo_next()`, `lsm6dso_fifo_next_entry()`, `lsm6dso_fifo_buffer
 calibration's types and calls (`lsm6dso_cal_set_lookup()`, `_reload()`, `_status()`, `_zero()`), the
 FIFO's attributes, settings, counters and stop, and the timestamp read.
 
-`sensor_shell.c` with patch 0006 is the same file as the other builds' (`common/drivers/sensor_shell/`;
+`sensor_shell.c` with patch 0006 is the same file as the other builds' (`common/shell/`;
 the host test `zephyr_sensor_shell_patched` checks it); `drivers/sensor/sensor_shell_os.h`, which it
 includes first, is this build's (two macros that do nothing; in the other builds `sensor get` waits for
 its result to be printed).
@@ -628,7 +628,7 @@ Some changes to Zephyr and its modules are local patches for Zephyr's `west patc
   `script/host_tests.sh`: bring the upstream changes that `i2c_dw_sync` shows into the shared core
   (`common/drivers/i2c_dw/`), or add the reason not to to the list at the top of `i2c_dw.c`, then
   rewrite the expected differences with `common/tests/i2c_dw_sync.py ... --update` ([Tests](#tests)).
-  0006 is made from `common/drivers/sensor_shell/sensor_shell.c` (with the new tree's upstream file
+  0006 is made from `common/shell/sensor_shell.c` (with the new tree's upstream file
   merged into it first), so that `zephyr_sensor_shell_patched` passes.
 
 ### boot2 at clock divider 2
@@ -676,7 +676,7 @@ All but `nina_boundary_*`, `passthrough`, `nina_socket*` and `nina_net` are test
 | `fifo_words` | FIFO word parsing |
 | `fifo_decoder` | Decoder for FIFO buffers |
 | `lsm6dso_stream` | The stream's state machine (`lsm6dso_stream.c`) on the host's part of its boundaries and fakes of the core's FIFO calls: the start (no INT1 line, the FIFO and INT1, a level already active, INT1 that cannot be enabled, read or routed), a batch on an edge and its header, nothing below the watermark, the end on an overrun, a cancellation or a request gone, the graceful stop with the last partial batch and its errors, a second request, the watermark's bounds |
-| `zephyr_sensor_shell_patched` | `common/drivers/sensor_shell/sensor_shell.c` is byte for byte Zephyr's `drivers/sensor/sensor_shell.c` at HEAD with patch 0006. Only when the Zephyr tree is there |
+| `zephyr_sensor_shell_patched` | `common/shell/sensor_shell.c` is byte for byte Zephyr's `drivers/sensor/sensor_shell.c` at HEAD with patch 0006. Only when the Zephyr tree is there |
 | `i2c_dw_sync` | The shared I2C core (`common/drivers/i2c_dw/`) against the patched driver (made from the Zephyr tree's files at HEAD and patch 0003): the definitions of both headers (state, interrupts, registers, the IC_DATA_CMD bits, FIFO depth 16 and batch 4, the DMA limit 3584), the SCL counts at 125 MHz, the DMA path's lower limit 32, thresholds 8/0, interrupt mask, IC_CON bit 9, stop waits of 100 ms and timeout of 1000 ms, the spike lengths, and the pairs of functions (Zephyr's names, its DMA API's calls among them, turned into the core's, those of the DMA boundary `i2c_dw_dma_os.h`; compared statement by statement; the differences must be those of `common/tests/i2c_dw_sync.expected`); the read commands' function `i2c_dw_rp2040_read_commands()`, static in `i2c_dw_rp2040_dma_priv.h` of the patch and of the core, statement by statement, with its command bits; `zephyr/drivers/i2c/i2c_dw_rp2040_dma.h`, which the patch adds, against the core's `common/drivers/i2c_dw/include/i2c_dw_rp2040_dma.h`, the same once the comments and include guards are taken out; and that the patched driver's includes are all in the tree. With the build, the values of its `.config` and `zephyr.dts` too. Only when the Zephyr tree is there |
 | `i2c_dw_public_headers` | The header for the I2C core's users (`common/drivers/i2c_dw/include/`) compiles with that directory alone: it reads nothing of the core's `internal/` or `port/` |
 | `nina_proto` | NINA SPI framing, reply parsing (the firmware's error reply 0xEF included), READY deadlines, the capability probe (0x6A) (the shared core `nina_proto.c`, fake boundaries); each both with the waits on READY's interrupt and, when they cannot start, with READY read every 100 µs |

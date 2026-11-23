@@ -74,7 +74,7 @@ patches:
       FIFO attributes and the handling of FIFO batches and canceled reads,
       for the LSM6DSO driver of common/drivers/lsm6dso, whose Zephyr build
       rules export <zephyr/drivers/sensor/lsm6dso.h>.  sensor_shell.c is the
-      other builds' too (common/drivers/sensor_shell), sensor_shell_os.h is
+      other builds' too (common/shell), sensor_shell_os.h is
       this build's.  The processing thread of sensor_shell_stream.c is
       sensor_shell_tid, which fits the name column of "kernel ps".
   - path: zephyr/0007-spi-pl022-dma-min-len.patch

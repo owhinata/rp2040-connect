@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: MIT */
-/* The NuttX part of the sensor shell (common/drivers/sensor_shell/
+/* The NuttX part of the sensor shell (common/shell/
  * sensor_shell.c and common/compat/sensor_shell_stream.c, which include
  * this header first): the Zephyr build's CONFIG_SENSOR_SHELL_* values and
  * the log (sensor_shell_nuttx.h), the wait of "sensor get" for its result

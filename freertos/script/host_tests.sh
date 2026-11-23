@@ -684,7 +684,7 @@ else
     printf 'skip telnet (no python3)\n'
 fi
 
-# The "sensor" command (freertos/tests/sensor_shell): the shared common/drivers/sensor_shell/
+# The "sensor" command (freertos/tests/sensor_shell): the shared common/shell/
 # sensor_shell.c, the copy of Zephyr's sensor_shell_stream.c with its processing thread and the
 # build's part (drivers/sensor_shell/sensor_shell_os.c), with "imu cal" (common/imu/imu_cal.c,
 # imu_cal_codec.c, on a fake key-value store), on the shared LSM6DSO driver with its FIFO stream
@@ -713,7 +713,7 @@ if [[ -f stmemsc/lsm6dso_reg.c ]]; then
                ../common/shell/zshell.c ../common/shell/subcmd.c \
                ../common/compat/subsys/portability/posix/c_lib_ext/fnmatch.c \
                ../common/compat/lib/utils/getopt/getopt.c ../common/compat/lib/utils/getopt/getopt_long.c \
-               ../common/drivers/sensor_shell/sensor_shell.c ../common/compat/sensor_shell_stream.c \
+               ../common/shell/sensor_shell.c ../common/compat/sensor_shell_stream.c \
                ../common/imu/imu_cal.c ../common/imu/imu_cal_codec.c \
                ../common/drivers/lsm6dso/lsm6dso.c ../common/drivers/lsm6dso/lsm6dso_cal.c \
                ../common/drivers/lsm6dso/lsm6dso_fifo.c ../common/drivers/lsm6dso/lsm6dso_stream.c \
@@ -729,6 +729,7 @@ if [[ -f stmemsc/lsm6dso_reg.c ]]; then
         obj="$out/sensor_$(basename "$src" .c).o"
         extra=()
         case $src in
+            ../common/shell/sensor_shell.c) extra=(-include drivers/compat/common_prelude.h) ;;
             ../common/shell/*|*/fnmatch.c|*/getopt*.c) ;;
             ../common/*|*/sensor_shell_os.c|tests/sensor_shell/*) extra=(-include drivers/compat/common_prelude.h) ;;
         esac

@@ -9,7 +9,7 @@ config APP_SENSOR
 	depends on SUBCMD && LSM6DSO_STREAM
 	---help---
 		"sensor get|attr_set|attr_get|stream|trig": the Zephyr build's
-		sensor shell (common/drivers/sensor_shell/sensor_shell.c,
+		sensor shell (common/shell/sensor_shell.c,
 		Zephyr v4.5.0's drivers/sensor/sensor_shell.c with the
 		LSM6DSO's FIFO attributes, and sensor_shell_stream.c)
 		with the same syntax and output, on the Zephyr compatibility

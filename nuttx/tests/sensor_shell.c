@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-/* Host test of the "sensor" command (common/drivers/sensor_shell/
+/* Host test of the "sensor" command (common/shell/
  * sensor_shell.c, shared with the Zephyr build, and nuttx/apps/sensor: the
  * copy of Zephyr's sensor_shell_stream.c and the NuttX part) on the
  * Zephyr shell's command handling of common/shell/zshell.c, the ported

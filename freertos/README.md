@@ -181,7 +181,7 @@ The console is the USB CDC ACM port (UART0 is not used). Opening a terminal show
 | `drivers/i2c_dw/` | I2C0 and DMA (the sensor's bus) |
 | `drivers/lsm6dso/` | Build rules and the start-up check of the LSM6DSOX (the driver and its device are in `common/drivers/lsm6dso/`) |
 | `drivers/imu/` | Brings in the acquisition, the transport and the time synchronization (in `common/imu/`) |
-| `drivers/sensor_shell/` | Brings in the `sensor` command (in `common/drivers/sensor_shell/`) |
+| `drivers/sensor_shell/` | Brings in the `sensor` command (in `common/shell/`) |
 | `tests/` | Host tests |
 | `script/` | `setup.sh`, `build.sh`, `flash.sh`, `format.sh`, `host_tests.sh` |
 | `PORTING_PLAN.md`, `PORTING_STATUS.md` | The plan of the port, and the record of its progress and of what was checked (in Japanese) |

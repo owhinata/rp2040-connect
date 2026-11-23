@@ -45,7 +45,7 @@ Zephyr の `st,lsm6dso` です。アプリが読むのは拡張 API だけです
 `lsm6dso_fifo_next_entry()`・`lsm6dso_fifo_buffer_words()`）、校正の型と呼び出し（`lsm6dso_cal_set_lookup()`・`_reload()`・
 `_status()`・`_zero()`）、FIFO の属性・設定・統計・停止、タイムスタンプの読み取りがあります。
 
-パッチ 0006 を当てた `sensor_shell.c` は、NuttX 版・FreeRTOS 版と同じファイルです（`common/drivers/sensor_shell/`。ホストテスト
+パッチ 0006 を当てた `sensor_shell.c` は、NuttX 版・FreeRTOS 版と同じファイルです（`common/shell/`。ホストテスト
 `zephyr_sensor_shell_patched` が確かめる）。それが最初に読む `drivers/sensor/sensor_shell_os.h` は Zephyr 版のもの（何もしない
 マクロ 2 つ。NuttX 版・FreeRTOS 版では `sensor get` が結果の表示を待つ）です。
 
@@ -551,7 +551,7 @@ Zephyr 本体とモジュールの一部の変更は、Zephyr の `west patch` �
   各パッチを作り直して `patches/` に置き、`sha256sum` を直し、`source script/setup.sh` で当ててからビルドします。
   0003 を作り直したら `script/host_tests.sh` を実行し、`i2c_dw_sync` が示す上流の変更を共有のコア（`common/drivers/i2c_dw/`）に
   入れるか、入れない理由を `i2c_dw.c` の冒頭の一覧に書いてから、`common/tests/i2c_dw_sync.py ... --update` で期待する差分を
-  書き直します（「テスト」）。0006 は `common/drivers/sensor_shell/sensor_shell.c` から作ります
+  書き直します（「テスト」）。0006 は `common/shell/sensor_shell.c` から作ります
   （先に新しいツリーの上流のファイルの変更をそこへ入れる）。そうすると `zephyr_sensor_shell_patched` が通ります。
 
 ### boot2 の分周 2
@@ -594,7 +594,7 @@ picolibc の中からの呼び出しと、GCC が構造体のコピーやルー�
 | `fifo_words` | FIFO ワードの解析 |
 | `fifo_decoder` | FIFO バッファの decoder |
 | `lsm6dso_stream` | ストリームの状態機械（`lsm6dso_stream.c`）を、境界のホストでの実装とコアの FIFO の呼び出しの偽物の上で: 開始（INT1 の線が無い、FIFO と INT1、開始時にすでに有効なレベル、INT1 の有効化・レベルの読み取り・割り当ての失敗）、エッジでのバッチとそのヘッダー、watermark 未満では渡さないこと、オーバーラン・キャンセル・要求が消えたときの終了、最後の端数のバッチを渡す穏やかな停止とそのエラー、2 つ目の要求、watermark の範囲 |
-| `zephyr_sensor_shell_patched` | `common/drivers/sensor_shell/sensor_shell.c` が、Zephyr の HEAD の `drivers/sensor/sensor_shell.c` にパッチ 0006 を当てたものとバイト単位で同じこと。Zephyr のツリーがあるときだけ |
+| `zephyr_sensor_shell_patched` | `common/shell/sensor_shell.c` が、Zephyr の HEAD の `drivers/sensor/sensor_shell.c` にパッチ 0006 を当てたものとバイト単位で同じこと。Zephyr のツリーがあるときだけ |
 | `i2c_dw_sync` | 共有の I²C のコア（`common/drivers/i2c_dw/`）と、パッチ後のドライバー（Zephyr のツリーの HEAD のファイルにパッチ 0003 を当てて作る）の一致。両方のヘッダーの定義（状態、割り込み、レジスター、IC_DATA_CMD のビット、FIFO の深さ 16・バッチ 4、DMA の上限 3584）、125 MHz での SCL のカウント、DMA の下限 32・しきい値 8/0・割り込みのマスク・IC_CON の bit 9・停止の待ち 100 ms・タイムアウト 1000 ms、スパイク長、対になる関数（Zephyr の DMA API の呼び出しを含めて名前をコアのもの（DMA は境界 `i2c_dw_dma_os.h`）にそろえて文ごとに比べ、差分が `common/tests/i2c_dw_sync.expected` と同じこと）、読み出しのコマンド語を作る関数 `i2c_dw_rp2040_read_commands()`（パッチとコアのそれぞれの `i2c_dw_rp2040_dma_priv.h` の静的関数）が文ごとに同じでコマンドのビットも同じこと、パッチが足す `zephyr/drivers/i2c/i2c_dw_rp2040_dma.h` とコアの `common/drivers/i2c_dw/include/i2c_dw_rp2040_dma.h` がコメントとインクルードガードを除いて同じこと、パッチ後のドライバーが読むヘッダーがすべてツリーの中にあること。ビルドがあれば `.config` と `zephyr.dts` の値も見る。Zephyr のツリーがあるときだけ |
 | `i2c_dw_public_headers` | I2C のコアを使う側のヘッダー（`common/drivers/i2c_dw/include/`）が、そのディレクトリーだけでコンパイルできること（コアの `internal/`・`port/` を読まない） |
 | `nina_proto` | NINA の SPI フレーミング、応答の解析（ファームウェアのエラーの応答 0xEF を含む）、READY の期限、追加機能の問い合わせ（0x6A）（共有のコア `nina_proto.c`。偽の境界）。どれも READY の割り込み待ちを始められたときと始められなかったとき（100 µs ごとに読む）の両方で |

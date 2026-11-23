@@ -3016,3 +3016,12 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
   `speed … 4` と無いデバイス名は失敗。`i2c speed … 1`（100 kHz）のあと 833 Hz の `sensor stream` は約 3 秒でオーバーラン（FreeRTOS -139、NuttX -75）、`i2c speed … 3` で動く。
   アプリの送信: FreeRTOS 19.3%・欠番 0、NuttX 24.7%・欠番 0（NuttX は前の 23.5〜23.8% より高い。イメージの配置が変わった。1 回だけの計測）。Zephyr 版はイメージが同じなので測っていない。
 - 実機: NuttX 版（このビルド）。
+
+## `sensor_shell.c` を `common/shell/` へ（2026-11-24、ユーザーの決定）
+
+- `common/drivers/sensor_shell/sensor_shell.c` → `common/shell/sensor_shell.c`（`i2c_shell.c` と同じ理由。`common/drivers/sensor_shell/` は無くなった）。参照（cmake、NuttX の `apps/sensor` の VPATH、
+  ホストテスト、`run.sh` の照合、`patches.yml` の説明、文書）を直した。FreeRTOS のホストテストは `../common/shell/*` にプレリュードを付けない決まりなので、`sensor_shell.c` だけ付ける行を足した。
+- イメージ: FreeRTOS と Zephyr は移動の前とバイト単位で同じ。NuttX は同じ大きさ（283,808 B）で、ビルド時刻と、読み出し専用の文字列の並び順だけが違う（リンクの順）。
+  基準 `snapshot-1124a` の NuttX を取り直した。ホストテスト 59・71・68。
+- 実機（NuttX 版）: `i2c read_byte`、`i2c speed` 1 → 833 Hz の `sensor stream` が止まる・3 → 動く、アプリの送信 24.7%・欠番 0。
+- 実機: NuttX 版（このビルド）。

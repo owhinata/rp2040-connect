@@ -113,7 +113,7 @@ if [[ -f stmemsc/lsm6dso_reg.c ]]; then
         -o "$out/imu_cal"
     "$out/imu_cal" >/dev/null
     printf 'ok  imu_cal\n'
-    # The "sensor" command (common/drivers/sensor_shell/sensor_shell.c, shared with the Zephyr
+    # The "sensor" command (common/shell/sensor_shell.c, shared with the Zephyr
     # build, the copy of Zephyr's sensor_shell_stream.c in common/compat, and apps/sensor: the
     # NuttX part) on the Zephyr shell's command handling (common/shell/zshell.c) and
     # the driver with its fake sensor (lsm6dso_driver.c, included): the help, argument checks,
@@ -124,7 +124,7 @@ if [[ -f stmemsc/lsm6dso_reg.c ]]; then
           -Itests/lsm6dso_fakes -I"$zfakes" -Idrivers/compat -I"$ccompat" -Idrivers/include -I"$clog" -Istmemsc
           -I"$lsm" "${lsmdirs[@]}" -I"$cstm" -Iapps/sensor -I"$cshell" -Iapps/subcmd -Iboards/arduino-nano-rp2040-connect/src)
     sflags=("${flags[@]}" -Wno-unused-parameter -Wno-cast-function-type -Wno-sign-compare)
-    cc "${sflags[@]}" "${sinc[@]}" -Dmain=sensor_main -c ../common/drivers/sensor_shell/sensor_shell.c \
+    cc "${sflags[@]}" "${sinc[@]}" -Dmain=sensor_main -c ../common/shell/sensor_shell.c \
         -o "$out/sensor_shell.o"
     cc "${sflags[@]}" "${sinc[@]}" tests/sensor_shell.c "$out/sensor_shell.o" \
         "$ccompat/sensor_shell_stream.c" apps/sensor/sensor_shell_nuttx.c "$cshell/zshell.c" \

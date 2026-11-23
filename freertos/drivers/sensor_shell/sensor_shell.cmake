@@ -12,7 +12,7 @@
 # the sensor API).  It adds to the target the NuttX build's sources of
 # CONFIG_APP_SENSOR (nuttx/apps/sensor/Makefile), in its order:
 #
-# - the command (common/drivers/sensor_shell/sensor_shell.c, shared with the
+# - the command (common/shell/sensor_shell.c, shared with the
 #   Zephyr and NuttX builds: Zephyr v4.5.0's drivers/sensor/sensor_shell.c
 #   with the LSM6DSO's FIFO attributes, the file of the Zephyr build's
 #   patched tree; its SHELL_CMD_REGISTER() makes the
@@ -44,7 +44,7 @@ get_filename_component(FREERTOS_SENSOR_SHELL_DIR ${CMAKE_CURRENT_LIST_DIR} ABSOL
 
 function(freertos_sensor_shell target)
   set(sensor_shell_common_sources
-    ${FREERTOS_COMMON_DIR}/drivers/sensor_shell/sensor_shell.c
+    ${FREERTOS_COMMON_DIR}/shell/sensor_shell.c
     ${FREERTOS_COMMON_DIR}/compat/sensor_shell_stream.c
   )
 
@@ -68,7 +68,7 @@ function(freertos_sensor_shell target)
     ${FREERTOS_SENSOR_SHELL_DIR}/sensor_shell_os.c PROPERTIES
     COMPILE_OPTIONS "-include;${FREERTOS_COMPAT_DIR}/common_prelude.h"
   )
-  set_property(SOURCE ${FREERTOS_COMMON_DIR}/drivers/sensor_shell/sensor_shell.c APPEND PROPERTY
+  set_property(SOURCE ${FREERTOS_COMMON_DIR}/shell/sensor_shell.c APPEND PROPERTY
     COMPILE_OPTIONS -Wno-sign-compare -Wno-unused-parameter
   )
 endfunction()
