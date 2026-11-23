@@ -39,3 +39,24 @@
   （`common/pico_sdk/`、`common/drivers/<ドライバー>/port/pico_sdk/`、`common/compat/os_generic/`）をユーザーに提示し、返事待ち。
 - 注意: `configASSERT()` は `__FILE__`・`__LINE__` を含むので、`common/compat/zephyr_init.c:83` と `nina_os.c:373` より上の行数を変えるとイメージが変わる。
   `common/tests/i2c_dw_sync.py` は `port/freertos/i2c_dw_instance.h` をパスで読む。`os_clock.h` の `os_ticks_from_us_ceil()`・`os_sleep_us()` は呼び手が無い。
+
+## T2 の前半: 実機の CPU の上の ThreadX と、受け入れ試験の実機での実行（2026-11-24）
+
+- T1 と並行して進めた（ユーザーの提案: 分担できないか）。`threadx/` の新しいファイルだけ。
+- `threadx/script/setup.sh` が Pico SDK 2.3.1・Arm GNU 15.2・picotool も取得、`threadx/script/build.sh [--clean] [APP]`（`threadx/app/` か `threadx/tests/` の APP）。
+  `threadx/app/usb-console/`: `tx_user.h`、`src/tx_initialize_low_level.c`、`src/tick.c`（`isr_systick`）、`threadx_kernel.cmake`（ThreadX の `common/src` と `ports/cortex_m0/gnu/src` を無変更で）。
+  `threadx/drivers/compat/zephyr/sys/{clock.h,__assert.h}`（FreeRTOS のものと同じ内容。T1 のあと共有のものに置き換える）。
+- 起動: `main()` → `_tx_initialize_kernel_setup()` → `zephyr_compat_initialize()` と `z_os_thread_start()` → `tx_kernel_enter()`。FreeRTOS 版の `main()` と同じ形で、
+  スケジューラーの前にスレッドを作れる。
+- 割り込みベクター: Pico SDK の crt0 の弱い `isr_pendsv`・`isr_svcall` を、リンクの `--defsym` で ThreadX のハンドラーに向ける。`isr_systick` は自前の C。
+- **優先度: PendSV・SVCall は 0xC0（最低）、SysTick は 0x80（SDK の既定のデバイスの割り込みと同じ）。** ThreadX の Cortex-M0 のスケジューラーは、実行できるスレッドが無いあいだ
+  PendSV のハンドラーの中で待つので、SysTick を PendSV と同じ優先度にすると tick が入らず止まる。最低の優先度（0xC0）にした割り込みは、アイドルのあいだ動かない（いまは無い）。
+- 試験用のファームウェア `threadx/tests/board_kernel/`（製品には入らない。USB の製品名 "ThreadX kernel test"、LED の点滅で状態を表示）。
+- **実機の結果**: USB が列挙され、tick は TIMER の 1,000,008 µs で 1000 回。ロックの直接の試験 3 つ（ロック中の起こし、入れ子、ロック中のアラームの割り込み）が通る
+  （アラームは解除の 18 µs 後、起こされたスレッドはその 20 µs 後）。互換層のカーネルの試験は **22 項目すべて通り、飛ばした項目なし**（ホストで飛ばした割り込みからの起こし・
+  tick の追いつき・実時間も）。T0 でソースを読んだだけだった Cortex-M0 でのロックの動きを確認できた。
+- 大きさ（試験用）: text 59,712、bss 37,588。ThreadX のカーネルとポートは約 6.4 kB（エラー検査あり）。`malloc` はリンクされない。
+- 製品のファームウェアで決めること: アイドルと `cpu_active`（最低優先度のスレッドを自前で置く案）、Pico SDK のロックや `sleep_ms` が ThreadX と連携しないこと
+  （FreeRTOS には SDK の連携の設定がある。ThreadX では WFE で回る）、割り込みスタックの検査、ThreadX のスケジューラーの待ちに WFI が無いこと。
+- `script/flash_uf2.sh` は ThreadX を知らないので、書き込みのあと「3 つのどのコンソールも現れない」と表示する（書き込み自体はできる）。T2 の後半で `--target threadx` を足す。
+- 実機: ThreadX の試験用のファームウェア。

@@ -4,7 +4,10 @@
  * board: here ThreadX's Cortex-M0 port (ports/cortex_m0/gnu) on the
  * RP2040 with the Pico SDK.  The host tests have their own
  * (threadx/tests/compat/zephyr_os_port.h, ThreadX's Linux port).
- * zephyr_kernel_os_impl.h includes this header.
+ * zephyr_kernel_os_impl.h includes this header.  The first five are for
+ * the primitives of the generic kernel part (zephyr_kernel_os.h); the two
+ * after them are the tick's (threadx/app/usb-console/src/tick.c), as in the
+ * FreeRTOS build's port header.
  *
  *   z_os_in_isr()          true in an interrupt handler (IPSR != 0; the
  *                          Cortex-M ports count no interrupt nesting in
@@ -16,10 +19,15 @@
  *   z_os_busy_wait_us(us)  spins on the TIMER (busy_wait_us_32())
  *   z_os_clock_us()        the RP2040 TIMER (rp2040_timer_us(),
  *                          common/chip/rp2040)
+ *   z_os_tick_now_us32()   the TIMER's low 32 bits (time_us_32(): one read
+ *                          of TIMERAWL), for the tick's catch-up
+ *                          (tick_catchup.h)
+ *   z_os_tick_pend()       pends SysTick (ICSR.PENDSTSET): the tick handler
+ *                          runs once more, right after the current one
+ *                          (SysTick is above PendSV, tx_initialize_low_level.c),
+ *                          and counts one more tick (a pend that meets a
+ *                          pending SysTick merges with it)
  *   Z_TX_ASSERT(test)      app_assert_failed() of the application
- *
- * Not compiled yet: the board's build comes with its start-up (the plan's
- * T2).
  */
 
 #ifndef THREADX_DRIVERS_COMPAT_RP2040_ZEPHYR_OS_PORT_H
@@ -28,6 +36,8 @@
 #include <stdbool.h>
 #include <stdint.h>
 
+#include "hardware/regs/m0plus.h"
+#include "hardware/structs/scb.h"
 #include "hardware/timer.h"
 #include "tx_api.h"
 #include "rp2040_timer_us.h"
@@ -55,6 +65,16 @@ static inline void z_os_busy_wait_us(uint32_t us)
 static inline uint64_t z_os_clock_us(void)
 {
 	return rp2040_timer_us();
+}
+
+static inline uint32_t z_os_tick_now_us32(void)
+{
+	return time_us_32();
+}
+
+static inline void z_os_tick_pend(void)
+{
+	scb_hw->icsr = M0PLUS_ICSR_PENDSTSET_BITS;
 }
 
 void app_assert_failed(const char *file, int line);

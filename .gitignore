@@ -71,3 +71,11 @@
 # The Pico SDK + ThreadX workspace: fetched by threadx/script/setup.sh.
 /threadx/threadx/
 /threadx/threadx.tmp/
+/threadx/pico-sdk/
+/threadx/pico-sdk.tmp/
+/threadx/toolchain/
+/threadx/.venv/
+# picotool's source, fetched by the Pico SDK at the first build.
+/threadx/picotool/
+# Output of threadx/script/build.sh.
+/threadx/build/
