@@ -13,16 +13,23 @@
 #include <stddef.h>
 #include <stdint.h>
 
-/* 8192 bytes (the Zephyr build's ring has 4096): a fatal error report with
- * the task list of the whole port has to fit from its first line.
+/* LOG_RAM_SIZE, the ring's size in bytes, is the OS's (its app_log_os.h:
+ * 8192 in the NuttX build, whose fatal error report with the task list has
+ * to fit from its first line; 4096 in the FreeRTOS build, as the Zephyr
+ * build's ring).
  */
 
-#define LOG_RAM_SIZE  8192
+#include "app_log_os.h"
+
+#ifndef LOG_RAM_SIZE
+#  error "app_log_os.h must define LOG_RAM_SIZE"
+#endif
 
 /* The Zephyr build's magic number 0x4c4f4752 with the size mixed in
- * (0x4c4f6752 for 8192), so that a ring of another size left in RAM (the
- * 4096-byte one of earlier builds) fails the header check at boot and is
- * emptied instead of being read with the wrong wrap-around.
+ * (0x4c4f6752 for 8192, 0x4c4f5752 for 4096), so that a ring of another
+ * size left in RAM (another OS's firmware, the Zephyr build's plain
+ * 0x4c4f4752) fails the header check at boot and is emptied instead of
+ * being read with the wrong wrap-around.
  */
 
 #define LOG_RAM_MAGIC (0x4c4f4752U ^ LOG_RAM_SIZE)

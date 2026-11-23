@@ -117,7 +117,17 @@ static void test_validate(void)
 	ring.length = 4096;
 	log_ring_validate(&ring);
 	assert(ring.start == 0 && ring.length == 0 && ring.magic == LOG_RAM_MAGIC);
-	assert(LOG_RAM_MAGIC == 0x4c4f6752U);
+	/* The header of the other OS's ring (4096 and 8192 bytes, the FreeRTOS
+	 * and the NuttX build's), its start and length in range here: emptied.
+	 */
+	ring.magic = 0x4c4f4752U ^ (LOG_RAM_SIZE == 4096 ? 8192U : 4096U);
+	ring.magic_inverse = ~ring.magic;
+	ring.start = 100;
+	ring.length = 200;
+	log_ring_validate(&ring);
+	assert(ring.start == 0 && ring.length == 0 && ring.magic == LOG_RAM_MAGIC);
+	assert(LOG_RAM_MAGIC == (LOG_RAM_SIZE == 8192 ? 0x4c4f6752U : 0x4c4f5752U));
+	assert(LOG_RAM_MAGIC != 0x4c4f4752U);
 }
 
 static void test_store_and_dmesg(void)

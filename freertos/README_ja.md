@@ -117,7 +117,7 @@ USB の CDC ACM ポートがコンソールです（UART0 は使いません）�
 | `zperf tcp upload <IP> [port] [秒] [サイズ]`、`zperf tcp download [port]`、`zperf tcp download stop` | TCP の速度測定。PC 側は `iperf3 -s` / `iperf3 -c <ボード>`。UDP は無い |
 | `ntp status` | 時刻同期の状態（Zephyr 版と同じ出力） |
 | `ifconfig` | MAC アドレス、接続の状態、IP アドレス、ゲートウェイ、マスク（NuttX 版と同じ形式） |
-| `dmesg` | RAM ログ（8 KB。再起動をまたいで残る） |
+| `dmesg` | RAM ログ（4 KB。再起動をまたいで残る） |
 | `kv set <key> <value>`、`kv sethex <key> <hex>`、`kv get <key>`、`kv delete <key>` | KV（設定と校正値）の読み書き。`get` は 16 進で表示 |
 | `kv wipe confirm` | KV の領域全体（Wi-Fi の資格情報も）を消す |
 | `nina version` | NINA-W102 のファームウェアのバージョンと、対応機能（2 行目。`in use` がこのファームウェアの使う機能） |

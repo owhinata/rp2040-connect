@@ -146,7 +146,8 @@ KV、校正値、時刻同期、自動接続の順に始めます。
 
 ## RAM ログと異常停止
 
-- RAM ログ（NuttX 版と共有の `common/compat/log/log_ram.c`。FreeRTOS 版の部分は `drivers/include/log_ram_os_impl.h`）は 8 KiB で、起動時に初期化しない RAM（`__uninitialized_ram`）に置きます。
+- RAM ログ（NuttX 版と共有の `common/compat/log/log_ram.c`。FreeRTOS 版の部分は `drivers/include/log_ram_os_impl.h`。大きさは `drivers/include/app_log_os.h` の `LOG_RAM_SIZE`）は
+  Zephyr 版と同じ 4 KiB で（異常停止は数行の記録を残し、次の起動でそれをログに書く）、起動時に初期化しない RAM（`__uninitialized_ram`）に置きます。
   watchdog の再起動、`reboot`、RESET ボタンでは残り、電源断で消えます。`LOG_*` の行は呼び出した文脈（割り込み
   ハンドラーを含む）で整形し、時刻は TIMER から取ります。`dmesg`（`common/shell/dmesg_shell.c`）で表示します。
 - 異常停止（`app/usb-console/src/fault.[ch]`）: `panic()`、HardFault、`configASSERT()` と `assert()`、スタックの
@@ -256,7 +257,7 @@ Pico SDK の既定のままです。整数の割り算は `pico_divider` のハ�
 
 コードは RAM を約 49 KiB 使います（`.data` は 8 KiB から約 57 KiB に。RAM とフラッシュのあいだの長い分岐の中継を含む）。
 その分は、newlib の `malloc()` が使える `.bss` の終わりからスタックまでの領域（`free` の `malloc` の行）から取ります。
-Pico SDK の最小の 2 KiB を除いて約 79 KiB が残ります。使うのはシェル（コマンドの行ごとに実行中の約 1.2 KiB と、127 文字を超える出力の行を表示する間）、
+Pico SDK の最小の 2 KiB を除いて約 81 KiB が残ります。使うのはシェル（コマンドの行ごとに実行中の約 1.2 KiB と、127 文字を超える出力の行を表示する間）、
 `zperf` のバッファー（アップロードの間 約 2.1 KiB、`zperf tcp download` のサーバーが動いている間 約 2.5 KiB）、NINA の中継モードの
 16 KiB のバッファーです。空きが無いと `malloc()` は NULL を返し（`PICO_MALLOC_PANIC=0`。Pico SDK の既定は異常停止）、呼び出し側が
 失敗します（コマンドは `out of memory` と表示し、`zperf` は -12（`ENOMEM`）で失敗する）。リンクのあとの検査（`ram_code.cmake`。マップを読む）は、並べたオブジェクトのコードが
@@ -410,6 +411,6 @@ MQTT のクライアントは NuttX 版と共有する `common/imu/mqtt_min.c`�
 | 除算器の退避 | 切り替えで DIRTY のときだけ（ローカルのパッチ） | 切り替えで DIRTY のときだけ（パッチ 0009） | 切り替えのたびに 4 語（Pico SDK のポート） |
 | NINA の READY | エッジ割り込み（GPIO10、10 ms ごとに読み直す） | エッジ割り込み（GPIO10） | エッジ割り込み（GPIO10、10 ms ごとに読み直す） |
 | ソケット | オフロード（呼んだスレッドで待つ） | usrsock と `nina_event` | 互換層のソケット層の上の Zephyr 版のオフロード（呼んだタスクで待つ） |
-| RAM ログ | 4 KiB | 8 KiB | 8 KiB |
+| RAM ログ | 4 KiB | 8 KiB | 4 KiB |
 | 異常停止の後 | 再起動、`dmesg` に報告 | 再起動、`dmesg` に報告 | 再起動、`dmesg`・`fault`・バナーに記録 |
 | `ifconfig` の切断中のマスク | – | 残る | 0.0.0.0 |

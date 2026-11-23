@@ -119,7 +119,7 @@ The console is the USB CDC ACM port (UART0 is not used). Opening a terminal show
 | `zperf tcp upload <IP> [port] [seconds] [size]`, `zperf tcp download [port]`, `zperf tcp download stop` | TCP throughput test. On the PC: `iperf3 -s` / `iperf3 -c <board>`. No UDP |
 | `ntp status` | The state of the time synchronization (the output of the Zephyr build) |
 | `ifconfig` | MAC address, link state, IP address, gateway and mask (the format of the NuttX build) |
-| `dmesg` | The RAM log (8 KB; kept across restarts) |
+| `dmesg` | The RAM log (4 KB; kept across restarts) |
 | `kv set <key> <value>`, `kv sethex <key> <hex>`, `kv get <key>`, `kv delete <key>` | Read and write the key-value store (settings and calibration). `get` prints hexadecimal |
 | `kv wipe confirm` | Erase the whole key-value area (the Wi-Fi credentials too) |
 | `nina version` | The firmware version of the NINA-W102 and its capabilities (second line; `in use` are those this firmware uses) |

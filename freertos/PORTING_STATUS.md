@@ -2792,3 +2792,24 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
   `reboot` のあとログが残る、`devmem 0x30000000` の記録。`-DSELFTEST=ON`: `selftest` 2 回とも 22・6・3 項目 失敗 0、ヒープ 16384 のうち最少の空き 8928。LED の点滅は目視していない。
 - 実機（NuttX・Zephyr、送信待ち 8）: NuttX 欠番 0・36.2%。Zephyr 欠番 0・**36.0%（3 回）**（DMA 化の直後は 34.6%。スレッドの改名と今回でイメージが数十バイト変わった。配置の影響と見られる）。
 - 実機: FreeRTOS 版（この変更の既定のビルド）。
+
+## 自己診断の廃止、FreeRTOS 版のログを 4 kB に（2026-11-23、ユーザーの決定）
+
+- 経緯: 自己診断のビルドだけヒープが 16 kB 要る → ユーザー「それなら自己診断なしでも 16 kB に」→ 続けて「自己診断を廃止して 8 kB にするのはありかも」→ 3 案（16 kB にそろえる・廃止・補助のタスクの
+  解放を待つよう直して 8 kB）を示し、ユーザーの決定は **廃止**（不具合の検出にそれほど役に立っていない）。
+- 廃止: `-DSELFTEST=ON`、`selftest` コマンド、`freertos/drivers/i2c_dw/i2c_dw_selftest.[ch]`・`lsm6dso/lsm6dso_selftest.[ch]`・`compat/rp2040/zephyr_selftest_port.c`。ヒープは 8 kB の 1 つ。
+  既定のイメージは変更前とバイト単位で一致（242,024 B）。
+- 残したもの: 互換層の 22 項目はホストテスト（`zephyr_kernel_test`）として `common/tests/zephyr_kernel/`（`zephyr_kernel_test.[ch]`、OS の部分の境界 `kernel_generic/zephyr_kernel_test_os.h`。
+  FreeRTOS の実装は `freertos/tests/compat/zephyr_kernel_test_os_impl.h`）。
+- 実機でしか確かめられず、失ったもの: WHO_AM_I と実際のセンサーの値・レート・温度、本物の NACK、本物の DMA の転送のあとのレジスター、パッドの設定、I2C1 の 100 ms 未満のタイミング、
+  FreeRTOS の実体（インスタンスと RTIO の大きさ）を通した 6667 Hz の 500 ms のストリーム。
+- ログ（ユーザーの決定: Zephyr が 4 kB なら、8 kB は NuttX だけに）: `LOG_RAM_SIZE` を各 OS の `app_log_os.h` に（FreeRTOS 4096、NuttX 8192。定義が無ければ `#error`）。印は大きさを織り込んだまま
+  （4096 で 0x4c4f5752、8192 で 0x4c4f6752、Zephyr 版は 0x4c4f4752）なので、別の大きさや別の OS のリングは起動時に捨てられる。ホストテストは両方の大きさで走る（`log_ring_4096`・`_8192`、`log_ram_*`）。
+  NuttX のイメージは基準とバイト単位で一致。空きの RAM は 85,004 B。ホストテスト 58・69・67。
+- 実機（FreeRTOS）: `free` はヒープ 8192・空き 5872。書き込み直後の `dmesg` は起動の 7 行だけ（前のリングは捨てられる）。`reboot` を 12 回で 3,965 バイトまで埋まり、折り返しても壊れた文字は無い
+  （先頭の 1 行は途中から）。`devmem 0x30000000` のあと `fault` の記録と起動の行が残る。NuttX → FreeRTOS、Zephyr → FreeRTOS と書き換えた直後の `dmesg` は起動の 7 行だけ。`selftest` は「command not found」。
+  送信 1 回 約 70 秒: 欠番 0、19.5%。
+- 途中で: Claude Code のステータスラインに「6 background tasks」。4 つは、終了した subagent が残した `until ! pgrep -f host_tests.sh; do sleep 3; done` の待ちのループ（自分自身を見つけ続けて終わらない）。
+  止めた。途中で指示を足すと実行中のコマンドが裏に回るので、subagent の終了後に取り残しを確かめる。
+- ユーザーの決定（次の作業）: FreeRTOS のヒープを無くす（スレッドの管理用の領域も静的に。案 1）。空き 18 kB 以上の検査は、シェルの `malloc()` の分の保証として残す（中継モードのバッファは今のまま `malloc()` から）。
+- 実機: FreeRTOS 版（この変更の既定のビルド）。

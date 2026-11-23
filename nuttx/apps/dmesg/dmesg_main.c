@@ -29,7 +29,7 @@ int main(int argc, FAR char *argv[])
 
   /* Bounded in case logging keeps up with printing. */
 
-  for (printed = 0; printed < 2U * LOG_RAM_BUFFER_SIZE; )
+  for (printed = 0; printed < 2U * LOG_RAM_SIZE; )
     {
       size_t n = log_ram_piece(&position, &first, piece, sizeof(piece) - 1);
 

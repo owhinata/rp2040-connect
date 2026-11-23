@@ -139,12 +139,14 @@ NuttX part `nuttx/drivers/include/log_ram_os_impl.h` (the ring's section, the in
 TIMER) and the syslog channel `nuttx/drivers/log/log_ram_syslog.c`; the `LOG_*` macros are
 `common/compat/log/app_log.h` with its NuttX part `nuttx/drivers/include/app_log_os.h`.
 
-- An 8192-byte ring buffer in `.noinit` (the Zephyr build's has 4096 bytes; it was made larger
-  so that a fatal error report fits from its first line). The startup code does not clear it, so
+- An 8192-byte ring buffer in `.noinit` (`LOG_RAM_SIZE` in `nuttx/drivers/include/app_log_os.h`; the
+  Zephyr and FreeRTOS builds' have 4096 bytes; it was made larger so that a fatal error report fits from
+  its first line). The startup code does not clear it, so
   its contents survive a reset such as `reboot`. At boot its header (the magic number and its
   inverse, the start and the length) is checked, and the ring is emptied if it is not intact. The
   magic number is the Zephyr build's `0x4c4f4752` XORed with the size (`0x4c4f6752`), so a ring
-  of another size left in RAM (the 4096-byte one of earlier builds) is emptied rather than misread.
+  of another size left in RAM (the FreeRTOS build's 4096-byte one, `0x4c4f5752`, or the Zephyr
+  build's) is emptied rather than misread.
   Power-off clears it. When it is full, the oldest bytes are overwritten.
 - `dmesg` prints what is stored as is, or `No logs.` when it is empty; arguments are ignored. As in
   the Zephyr build it takes 96 bytes at a time, skips what new messages push out while it
@@ -1365,7 +1367,8 @@ steps of Zephyr's `cpu_load_get_cpu()` (reset, an open window, zero time, roundi
 `common/compat/log/log_ring.c` with the byte-by-byte store of the Zephyr build's `log_ram.c`
 over 20,000 random writes, compares the line prefix with the time arithmetic of Zephyr's
 `log_output.c` for 200,000 random values, and checks the `dmesg` pieces (skipping what is
-overwritten, stopping at 8192 bytes) and the rate limit. `common/tests/log_ram.c` runs
+overwritten, stopping at twice the ring's size) and the rate limit, with the ring's size of each
+build (4096 and 8192 bytes; so is `common/tests/log_ram.c`). `common/tests/log_ram.c` runs
 `common/compat/log/log_ram.c` on a host part of its boundary (`common/tests/log_ram_os_host/`): the lines
 of the `LOG_*` macros (prefix, levels, function name, the cut at 192 bytes), raw bytes, the check at
 the start, the rate limit on the clock and the interrupt mask around every access.

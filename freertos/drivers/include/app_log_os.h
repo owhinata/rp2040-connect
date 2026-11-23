@@ -1,7 +1,8 @@
 /* SPDX-License-Identifier: MIT */
 /* The FreeRTOS part of common/compat/log/app_log.h (the LOG_* macros): nothing to
- * read first and no options (Zephyr's default level 3 and maximum 4).  The
- * functions are in common/compat/log/log_ram.c (the RAM log; its FreeRTOS part is
+ * read first and no options (Zephyr's default level 3 and maximum 4), and the
+ * size of the RAM log's ring (common/compat/log/log_ring.h).  The functions are
+ * in common/compat/log/log_ram.c (the RAM log; its FreeRTOS part is
  * log_ram_os_impl.h here).  Part of the
  * FreeRTOS build (freertos/drivers; NuttX's is
  * nuttx/drivers/include/app_log_os.h).
@@ -11,5 +12,11 @@
 #define FREERTOS_DRIVERS_INCLUDE_APP_LOG_OS_H
 
 #include <stdarg.h>
+
+/* 4096 bytes, as the Zephyr build's ring: a fatal error leaves a record of a
+ * few lines, which fault_boot() writes into the log at the next start
+ * (freertos/app/usb-console/src/fault.c).
+ */
+#define LOG_RAM_SIZE 4096
 
 #endif /* FREERTOS_DRIVERS_INCLUDE_APP_LOG_OS_H */

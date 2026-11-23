@@ -33,10 +33,6 @@
 #include "log_ram.h"
 #include "log_ring.h"
 
-#if LOG_RAM_BUFFER_SIZE != LOG_RAM_SIZE
-#  error "log_ram.h and log_ring.h disagree on the size"
-#endif
-
 /* The start-up code leaves this region untouched. */
 
 static struct retained_log LOG_RAM_OS_RETAINED(retained);

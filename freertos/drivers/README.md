@@ -167,8 +167,9 @@ the interval of interest); timed by the TIMER.
 ## RAM log and fatal errors
 
 - The RAM log (`common/compat/log/log_ram.c`, shared with the NuttX build; this build's part is
-  `drivers/include/log_ram_os_impl.h`) is 8 KiB in RAM that the start-up code does not initialize
-  (`__uninitialized_ram`). It survives the watchdog's restart, `reboot` and the RESET button, not a power
+  `drivers/include/log_ram_os_impl.h`; its size, `LOG_RAM_SIZE` in `drivers/include/app_log_os.h`) is
+  4 KiB, as in the Zephyr build (a fatal error leaves a record of a few lines, written into the log at the
+  next start), in RAM that the start-up code does not initialize (`__uninitialized_ram`). It survives the watchdog's restart, `reboot` and the RESET button, not a power
   cycle. `LOG_*` lines are formatted in the caller's context (interrupt handlers included), timed by the
   TIMER. `dmesg` (`common/shell/dmesg_shell.c`) prints it.
 - Fatal errors (`app/usb-console/src/fault.[ch]`): `panic()`, HardFault, `configASSERT()` and `assert()`,
@@ -308,7 +309,7 @@ they saturate) and read them about 15 s later (the hits and the accesses).
 
 The code costs about 49 KiB of RAM (`.data` is about 57 KiB instead of 8 KiB, with the long-branch stubs
 between RAM and the flash). It is taken from what newlib's `malloc()` can grow into, between the end of
-`.bss` and the stacks (the `malloc` line of `free`). About 79 KiB is left above the Pico SDK's 2 KiB minimum. The
+`.bss` and the stacks (the `malloc` line of `free`). About 81 KiB is left above the Pico SDK's 2 KiB minimum. The
 shell takes from it (about 1.2 KiB per command line while it runs, and a line of output longer than 127
 characters while it is printed), `zperf` its buffers (about 2.1 KiB for an upload, 2.5 KiB while the server
 of `zperf tcp download` runs), and the NINA passthrough mode its 16 KiB buffer. When it has no room,
@@ -480,6 +481,6 @@ the Zephyr build's syntax and output.
 | Saving the divider | At switches, only when DIRTY (local patch) | At switches, only when DIRTY (patch 0009) | Four words at every switch (the Pico SDK port) |
 | The NINA's READY | Edge interrupt (GPIO10, read again every 10 ms) | Edge interrupt (GPIO10) | Edge interrupt (GPIO10, read again every 10 ms) |
 | Sockets | Offload (the calling thread waits) | usrsock and `nina_event` | The Zephyr build's offload on the layer's socket layer (the calling task waits) |
-| RAM log | 4 KiB | 8 KiB | 8 KiB |
+| RAM log | 4 KiB | 8 KiB | 4 KiB |
 | After a fatal error | Restart, report in `dmesg` | Restart, report in `dmesg` | Restart, record in `dmesg`, `fault` and the banner |
 | `ifconfig` netmask while disconnected | – | Kept | 0.0.0.0 |

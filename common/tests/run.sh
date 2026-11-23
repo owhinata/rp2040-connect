@@ -223,13 +223,16 @@ run sys_getopt "${flags[@]}" -D_DEFAULT_SOURCE -DCONFIG_GETOPT_LONG=1 -Itests/kv
     -Itests/zephyr_fakes -Icompat -Icompat/log -Icompat/lib/utils/getopt tests/sys_getopt.c \
     compat/lib/utils/getopt/getopt.c compat/lib/utils/getopt/getopt_long.c
 # The RAM log's ring (compat/log/log_ring.c): the retained ring, dmesg pieces, line prefix and
-# rate limit.
-run log_ring "${flags[@]}" -Icompat/log tests/log_ring.c compat/log/log_ring.c
-# The RAM log on the ring (compat/log/log_ram.c, shared by the NuttX and FreeRTOS builds) on the
-# host's part of its boundary (tests/log_ram_os_host): the lines of the LOG_* macros, the OS's raw
-# bytes, the check at the start, the rate limit and the lock around the ring.
-run log_ram "${flags[@]}" -Itests/log_ram_os_host -Icompat/log tests/log_ram.c \
-    compat/log/log_ram.c compat/log/log_ring.c
+# rate limit.  Then the RAM log on the ring (compat/log/log_ram.c, shared by the NuttX and
+# FreeRTOS builds) on the host's part of its boundary (tests/log_ram_os_host): the lines of the
+# LOG_* macros, the OS's raw bytes, the check at the start, the rate limit and the lock around the
+# ring.  Each with the ring's size of the FreeRTOS build (4096) and of the NuttX build (8192).
+for size in 4096 8192; do
+    run "log_ring_$size" "${flags[@]}" -DLOG_RAM_TEST_SIZE=$size -Itests/log_ram_os_host \
+        -Icompat/log tests/log_ring.c compat/log/log_ring.c
+    run "log_ram_$size" "${flags[@]}" -DLOG_RAM_TEST_SIZE=$size -Itests/log_ram_os_host \
+        -Icompat/log tests/log_ram.c compat/log/log_ram.c compat/log/log_ring.c
+done
 # The CPU load arithmetic of the idle loop (compat/cpu_load.h).
 run cpu_load "${flags[@]}" -Icompat tests/cpu_load.c
 # The read of the RP2040's TIMER (chip/rp2040: rp2040_timer_us()) on scripted registers.

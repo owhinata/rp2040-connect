@@ -1,5 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-/* The RAM log: 8192 bytes kept across a reset (the ring of log_ring.h, in
+/* The RAM log: LOG_RAM_SIZE bytes (the OS's, app_log_os.h) kept across a
+ * reset (the ring of log_ring.h, in
  * RAM that the startup code leaves alone), filled by the LOG_* macros
  * (app_log.h) and by the OS's own console log, shown by the "dmesg"
  * command.  log_ram.c implements these functions on log_ring.h and on the
@@ -15,7 +16,11 @@
 #include <stddef.h>
 #include <stdint.h>
 
-#define LOG_RAM_BUFFER_SIZE 8192
+#include "app_log_os.h"
+
+#ifndef LOG_RAM_SIZE
+#  error "app_log_os.h must define LOG_RAM_SIZE"
+#endif
 
 #ifdef __cplusplus
 extern "C"

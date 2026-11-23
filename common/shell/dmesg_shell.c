@@ -28,7 +28,7 @@ static int cmd_dmesg(const struct shell *sh, size_t argc, char **argv)
 
 	(void)argc;
 	(void)argv;
-	for (size_t printed = 0; printed < 2u * LOG_RAM_BUFFER_SIZE;) {
+	for (size_t printed = 0; printed < 2u * LOG_RAM_SIZE;) {
 		size_t n = log_ram_piece(&position, &first, piece, sizeof(piece) - 1);
 
 		if (n == 0) {
