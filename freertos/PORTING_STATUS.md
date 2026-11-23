@@ -2766,3 +2766,29 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
 - 大きいのは別の所（見積もり）: heap_4 が 32 kB で使用 2.3 kB（中継モードの 16 kB のリングを取るため）→ 4 kB で 28 kB、`main` のスタック 2 kB、`heartbeat` をアイドルの処理へ 1.2 kB、
   FreeRTOS 版だけのスタックを使用量に合わせて 3.8 kB、共有のコードのスタックを OS ごとにして 2.1 kB、`zperf` のバッファを測定のときだけ 4.6 kB、再起動で残るログ 8 → 4 kB、送信待ちのバッチ 12 → 8 で 9.8 kB。
 - ユーザーの判断待ち: どれを行うか。
+
+## RAM を空ける: ヒープ・スタック・バッファ・送信待ちのバッチ（2026-11-23、ユーザーの決定）
+
+- ユーザーの決定: ヒープは 8 kB、共有のコードで決めているスタックはそのまま、NINA の 3 つのタスクは 1 つにまとめる（次の作業）、送信待ちのバッチは 12 → 8、
+  再起動で残るログは OS ごとに変えず、4 kB にそろえられるならそろえ、できないなら 8 kB のまま。
+- 空きの RAM（`.heap` の終わりから `__HeapLimit`。既定のビルド）: 33,564 → ヒープ 58,140 → 起動用のスタック 60,188 → LED 61,340 → スタック（確定後）約 64.4 kB → `zperf` 約 69.0 kB →
+  送信待ちのバッチ 約 78.9 kB（subagent の報告の値からスタックの戻し 1,664 B を引いた見積もり）。
+- 1. heap_4 32 kB → 8 kB。中継モードの 16 kB のリングは newlib の `malloc()` から（その起動で最初の確保。リンクのあとの検査の下限 16384 B で足りる）。ヒープを使うのは互換層のスレッドの
+  TCB（1 つ約 145 B、16 個で 2,320 B）だけ。自己診断は補助のタスクが残るので `#ifdef SELFTEST` で 16 kB（実機の最大の使用 7,456 B）。
+- 2. 起動用のタスク `main` のスタック（2 kB）を、動かさない 2 つ目のコアのスタックの領域（SCRATCH_X）へ。SDK のリンカースクリプトの差し替え口 `section_extra_post_scratch.incl`。
+- 3. `heartbeat` のタスクをやめ、アイドルのフックが点滅させる（`idle_blink.h`。`cpu_load_enter()` 用に読んだ時刻を使い、アイドルとして数える窓の中で判定）。新しいホストテスト `idle`。
+- 4. スタック（FreeRTOS 版だけの値は `src/priorities_os.h`。`common/compat/priorities.h` の 4 つのマクロは `#ifndef` に）: IDLE 1024 → 256、Tmr Svc 1024 → 384、sysworkq 1024 → 384、
+  sensor_shell_tid 3072 → 2048。**`net_mgmt` と `telnet_service` は 2048 のまま**: subagent の案（960・1600）で実機の最悪の場合を動かしたところ、Telnet からの `wifi scan` で `net_mgmt` が
+  スタックあふれ（異常停止の記録: stack overflow、タスク net_mgmt）。測り直した最大の使用は `net_mgmt` 1024（以前の測定 632 は USB からの操作だけだった）、`telnet_service` 1164
+  （読み出しを止めたクライアント。1600 では空き 27%）。確定後の最悪の場合の空き: IDLE 56%（自己診断で 40%）、Tmr Svc 58%、sysworkq 47%、sensor_shell 46%、net_mgmt 50%、telnet_service 43%、
+  console 48%、shell_telnet 50%。
+- 5. `zperf` のバッファ（約 4.6 kB）を測定のときだけ `malloc()` で確保。`PICO_MALLOC_PANIC=0`（`malloc()` の失敗は NULL を返す。SDK の既定は異常停止）。
+- 6. 送信待ちのバッチ 12 → 8（`IMU_RAW_QUEUE_CAPACITY`。3 つとも約 9.8 kB 空く。8 バッチは約 0.23 秒分）。
+- 7. 再起動で残るログ: **8 kB のまま**（変更なし）。記録（`nuttx/PORTING_STATUS.md`）: 4096 B では `PANIC()` の報告の先頭（Assertion failed、最初のレジスター）が押し出された。タスク 20 個で
+  報告 1 回 3,831 B（1 タスク 148 B）。今は 20〜22 個で約 3.8〜4.1 kB なので、4 kB では報告だけで埋まる。
+- イメージ: FreeRTOS 242024 B、NuttX 284772 B、Zephyr 374544 B。**基準: `snapshot-1123c`**。ホストテスト 56・67・65。
+- 実機（FreeRTOS、確定後）: 送信 2 回 欠番 0・19.5〜19.6%、XIP の外れ 約 5,900 回/秒。`free`: ヒープ 8192 のうち空き 5872。受信器を 2 秒止める試験: `queue_high` 8、落とした 59 = 欠番 59、
+  接続は維持、時刻の逆行 0。`zperf` の upload・download（iperf3 で 2.5 Mbit/s）・途中で止めた upload のあと、`malloc` の使用は元に戻る（download の間だけ +2.5 kB）。中継モードの出入り、
+  `reboot` のあとログが残る、`devmem 0x30000000` の記録。`-DSELFTEST=ON`: `selftest` 2 回とも 22・6・3 項目 失敗 0、ヒープ 16384 のうち最少の空き 8928。LED の点滅は目視していない。
+- 実機（NuttX・Zephyr、送信待ち 8）: NuttX 欠番 0・36.2%。Zephyr 欠番 0・**36.0%（3 回）**（DMA 化の直後は 34.6%。スレッドの改名と今回でイメージが数十バイト変わった。配置の影響と見られる）。
+- 実機: FreeRTOS 版（この変更の既定のビルド）。

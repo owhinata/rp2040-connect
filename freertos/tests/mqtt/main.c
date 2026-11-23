@@ -30,7 +30,7 @@
  *   status bodies are imu_raw_info_encode()'s and imu_raw_status_encode()'s;
  *   status every 1000 ms, the input polled every 100 ms; the statistics.
  * - Congestion (the module takes nothing for 1.5 s while batches come every
- *   28 ms): the queue fills (queue_high 12), the rest is dropped with
+ *   28 ms): the queue fills (queue_high 8), the rest is dropped with
  *   -EAGAIN and counted in dropped_batches, dropped_accel and dropped_gyro;
  *   the connection stays and everything queued is sent afterwards.
  * - A failed connection (POLLERR): -EIO, the queued batches dropped, the
@@ -785,10 +785,10 @@ static void test_congestion(void)
 	wait_for(produce == 0, 3000);
 	stats(&s);
 	n = refused - refused_before;
-	check(s.connected && s.queued == 12 && s.queue_high == 12);
-	/* One batch is in the send that waits, twelve in the queue. */
-	/* (Twelve and a status in the send that waits, if one was due.) */
-	check(n == 54 - 13 || n == 54 - 12);
+	check(s.connected && s.queued == 8 && s.queue_high == 8);
+	/* One batch is in the send that waits, eight in the queue. */
+	/* (Eight and a status in the send that waits, if one was due.) */
+	check(n == 54 - 9 || n == 54 - 8);
 	check(s.dropped_batches - before.dropped_batches == (uint64_t)n &&
 	      s.dropped_accel - before.dropped_accel == (uint64_t)n * BATCH_ACCEL &&
 	      s.dropped_gyro - before.dropped_gyro == (uint64_t)n * BATCH_GYRO);
@@ -801,8 +801,8 @@ static void test_congestion(void)
 	/* The next status reports it. */
 	from = br.nmsgs;
 	wait_for(find("imu/rp2040/status", from) >= 0, 1500);
-	check(strstr(br.msgs[find("imu/rp2040/status", from)].json, "\"queue_high\":12"));
-	say("ok  congestion (queue full at 12, %d of 54 dropped and counted, recovered)\n", n);
+	check(strstr(br.msgs[find("imu/rp2040/status", from)].json, "\"queue_high\":8"));
+	say("ok  congestion (queue full at 8, %d of 54 dropped and counted, recovered)\n", n);
 }
 
 static void test_failure(void)

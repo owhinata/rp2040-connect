@@ -181,7 +181,7 @@ have not been produced on hardware.
 
 - MQTT 3.1.1; RAW data with QoS 0 and no retain.
 - One PUBLISH carries one self-contained batch.
-- The send queue has a fixed length of 12 batches (about 0.35 s of data) and never makes FIFO handling wait. When it
+- The send queue has a fixed length of 8 batches (about 0.23 s of data) and never makes FIFO handling wait. When it
   is full, the new batch is discarded and the number of discarded batches and accelerometer
   and gyroscope samples is counted.
 - While not connected, the queue content and new batches are discarded. A batch whose send
@@ -1055,7 +1055,8 @@ and NuttX builds in [`freertos/drivers/README.md`](../freertos/drivers/README.md
   (`freertos/app/usb-console/ram_code.cmake`; its read-only data stays in the flash): it does not fit in
   the 16 KiB XIP cache, and the cache's misses took about 14 points of `cpu_active` while sending (33.1%
   without the placement, 19.7% with it, 2026-11-23). It takes about 49 KiB of RAM from newlib's
-  `malloc()`, which only the shell uses; about 33 KiB is left (the drivers' README).
+  `malloc()` (used by the shell, `zperf` and the NINA passthrough mode); about 79 KiB is left (the drivers'
+  README).
 
 ### 13.3 Sockets
 

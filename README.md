@@ -412,11 +412,11 @@ The NINA ran the firmware with patches 0001 to 0006.
 
 | Item | Zephyr build | NuttX build | FreeRTOS build |
 |---|---|---|---|
-| `cpu_active` while sending (2026-11-23) | 34.6% (3 runs) | 36.4% (1 run) | 19.7% (2 runs) |
+| `cpu_active` while sending (2026-11-23) | 36.0% (3 runs) | 36.2% (1 run) | 19.6% (2 runs) |
 | `cpu_active` at rest | not measured | not measured | 0.7% (30 seconds, 3 runs) |
 | TCP send (board to PC) | 3.36 and 3.47 Mbit/s (`zperf`) | 3.34 Mbit/s (`iperf`, 1 run) | 3.47 to 3.84 Mbit/s (`zperf`, 3 runs) |
 | TCP receive (PC to board) | 1.89 and 1.99 Mbit/s (`zperf`) | 1.22 Mbit/s (`iperf`, 1 run) | 2.41 to 2.52 Mbit/s (`zperf`, 3 runs) |
-| Image size (`.bin`, 2026-11-23) | 374,572 bytes | 284,788 bytes | 242,176 bytes |
+| Image size (`.bin`, 2026-11-23) | 374,544 bytes | 284,772 bytes | 242,024 bytes |
 
 - The TCP rates come from different commands (`zperf` in the Zephyr and FreeRTOS builds speaks the iperf 3
   protocol, `iperf` in the NuttX build the iperf 2 protocol), so they are a rough comparison.

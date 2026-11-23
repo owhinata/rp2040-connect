@@ -11,7 +11,7 @@ board's 18830):
   connection; the info once (retained, QoS 1) and the status as the board
   counts it; the topic imu/rp2040/raw at QoS 0; the board's session ID.
 - --stall-at 1 --stall-for 2 --rcvbuf 4096 (6 s): the receiver stops
-  reading; the board's queue fills (queue_high 12) and the rest is dropped;
+  reading; the board's queue fills (queue_high 8) and the rest is dropped;
   the connection stays; the receiver's missing batches are the board's
   dropped ones, and everything else arrives.
 - --drop-at 1 --drop-for 2 (6 s): the receiver drops the connection and
@@ -120,7 +120,7 @@ def main():
     b, r = run(live, imu_host, 6, ['--stall-at', '1', '--stall-for', '2', '--rcvbuf', '4096'],
                verbose)
     common(b, r)
-    expect(b['dropped_batches'] > 0 and b['queue_high'] == 12, 'queue full', b, r)
+    expect(b['dropped_batches'] > 0 and b['queue_high'] == 8, 'queue full', b, r)
     expect(r['missing_batches'] == b['dropped_batches'] and r['packets'] == b['published'],
            'missing = dropped', b, r)
     expect(b['connects'] == r['connects'] == 1, 'the connection stays', b, r)
