@@ -50,11 +50,6 @@ include(${CMAKE_CURRENT_LIST_DIR}/../../drivers/zperf/zperf.cmake)
 # thread (freertos/drivers/sensor_shell).
 include(${CMAKE_CURRENT_LIST_DIR}/../../drivers/sensor_shell/sensor_shell.cmake)
 
-# The compatibility layer's self-test, the "selftest" command
-# (common/compat/selftest/zephyr_selftest.h): a test feature, off by default
-# (freertos/script/build.sh -DSELFTEST=ON).
-option(SELFTEST "Build the selftest command" OFF)
-
 # The code of the sensor's and the send's paths, which runs from RAM: the
 # flash's XIP cache is too small for it (ram_code.cmake).
 include(${CMAKE_CURRENT_LIST_DIR}/ram_code.cmake)
@@ -85,20 +80,11 @@ add_executable(usb-console
   ${COMMON_DIR}/compat/log/fault_record.c
 )
 
-if(SELFTEST)
-  freertos_zephyr_compat(usb-console SELFTEST)
-else()
-  freertos_zephyr_compat(usb-console)
-endif()
+freertos_zephyr_compat(usb-console)
 freertos_kv(usb-console)
 freertos_nina(usb-console)
-if(SELFTEST)
-  freertos_i2c_dw(usb-console SELFTEST ${i2c_dw_options})
-  freertos_lsm6dso(usb-console SELFTEST)
-else()
-  freertos_i2c_dw(usb-console ${i2c_dw_options})
-  freertos_lsm6dso(usb-console)
-endif()
+freertos_i2c_dw(usb-console ${i2c_dw_options})
+freertos_lsm6dso(usb-console)
 freertos_imu(usb-console)
 freertos_wifi(usb-console)
 freertos_telnet(usb-console)

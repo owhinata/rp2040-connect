@@ -1103,7 +1103,7 @@ Verified on the board (2026-11-17, once each):
 
 Checked with the final default image (`-Os`, 1 ms tick, waiting for READY on the interrupt; 2026-11-18, once
 each): the first measurement after flashing, at rest, `zperf` upload and download, `zperf` and Telnet together
-while sending, `selftest` (22 items, the tick's catch-up included), the comparison with the Zephyr and NuttX
+while sending, the layer's kernel test on the board (22 items, the tick's catch-up included; the `selftest` command of that image's `-DSELFTEST=ON` build), the comparison with the Zephyr and NuttX
 builds on the same day with the same steps of the CPU load while sending and the TCP rates (the values are in
 the README), support for the new firmware with 0001 to 0006 (the capability bits, `wifi scan` while connected
 keeping the connection, a manual disconnection and its recovery), reading and writing the NINA's flash through

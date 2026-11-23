@@ -20,10 +20,10 @@ newlib に無い POSIX のネットワークのヘッダーは `common/compat/li
 
 | 場所 | 内容 |
 |---|---|
-| `app/usb-console/` | 起動（`main.c`）、FreeRTOS 版だけのコマンド（`commands.c`: `version`・`free`・`ps`・`selftest`）と全コマンドの表、汎用のコマンドの OS の部分（`kernel_shell_os_impl.h`）、カーネルの設定（`FreeRTOSConfig.h`）、優先度の対応（`priorities_os.h`）、時計（`os_clock.h`）、tick フック（`tick.c`。tick の追いつきの判定は `tick_catchup.h`）、CPU 負荷（`idle.c`）、異常停止（`fault.[ch]`）、割り込み用スタックの空き（`irq_stack.c`） |
-| `drivers/compat/` | 互換層の FreeRTOS の部分: 汎用のカーネルの部分の基本の操作（`zephyr_kernel_os_impl.h`。ポートによるものは `rp2040/zephyr_os_port.h`）と `zephyr_os_atomic.h`、ソケットの実装の登録のためのリンカースクリプトの部分（`ld/`）、壁時計（`zephyr_sys_clock.c`）、前置きヘッダー（`common_prelude.h`）、自己診断の FreeRTOS の部分（`zephyr_selftest_os_impl.h`）、RP2040 の部分（`rp2040/`: ポートのヘッダー、GPIO バンク 0、チップ ID、自己診断のボードの部分 `zephyr_selftest_port.c`） |
-| `common/compat/kernel_generic/` | 基本の操作だけを持つ OS のための互換層のカーネルの部分。OS に依存しない: `k_sem`・`k_poll()`・タイムアウト・スリープ・スレッドの起動（`zephyr_kernel.c`）、`k_mutex`（`zephyr_mutex.c`）、`<zephyr/kernel.h>`・`<zephyr/spinlock.h>` の OS の部分（`zephyr_os.h`・`zephyr_os_spinlock.h`）、tick のフックの入口（`zephyr_compat_os.h`）、基本の操作の上の自己診断の項目（`zephyr_selftest_os.h`）、基本の操作の宣言（`zephyr_kernel_os.h`）。ワークキューのスレッド、システムワークキュー、`zephyr_compat_initialize()` は共有の `common/compat/zephyr_init.c` |
-| `common/compat/selftest/` | 互換層の自己診断（OS に依存しない。`zephyr_selftest.c`。OS の部分とボードの部分が用意するものは `zephyr_selftest.h` にある） |
+| `app/usb-console/` | 起動（`main.c`）、FreeRTOS 版だけのコマンド（`commands.c`: `version`・`free`・`ps`）と全コマンドの表、汎用のコマンドの OS の部分（`kernel_shell_os_impl.h`）、カーネルの設定（`FreeRTOSConfig.h`）、優先度の対応（`priorities_os.h`）、時計（`os_clock.h`）、tick フック（`tick.c`。tick の追いつきの判定は `tick_catchup.h`）、CPU 負荷（`idle.c`）、異常停止（`fault.[ch]`）、割り込み用スタックの空き（`irq_stack.c`） |
+| `drivers/compat/` | 互換層の FreeRTOS の部分: 汎用のカーネルの部分の基本の操作（`zephyr_kernel_os_impl.h`。ポートによるものは `rp2040/zephyr_os_port.h`）と `zephyr_os_atomic.h`、ソケットの実装の登録のためのリンカースクリプトの部分（`ld/`）、壁時計（`zephyr_sys_clock.c`）、前置きヘッダー（`common_prelude.h`）、RP2040 の部分（`rp2040/`: ポートのヘッダー、GPIO バンク 0、チップ ID） |
+| `common/compat/kernel_generic/` | 基本の操作だけを持つ OS のための互換層のカーネルの部分。OS に依存しない: `k_sem`・`k_poll()`・タイムアウト・スリープ・スレッドの起動（`zephyr_kernel.c`）、`k_mutex`（`zephyr_mutex.c`）、`<zephyr/kernel.h>`・`<zephyr/spinlock.h>` の OS の部分（`zephyr_os.h`・`zephyr_os_spinlock.h`）、tick のフックの入口（`zephyr_compat_os.h`）、基本の操作の宣言（`zephyr_kernel_os.h`）。ワークキューのスレッド、システムワークキュー、`zephyr_compat_initialize()` は共有の `common/compat/zephyr_init.c` |
+| `common/tests/zephyr_kernel/` | 互換層のカーネルのホストテスト（OS に依存しない。`zephyr_kernel_test.c`。OS の部分とプラットフォームの部分が用意するものは `zephyr_kernel_test.h` にあり、基本の操作の上の項目は `kernel_generic/zephyr_kernel_test_os.h`）。FreeRTOS 版の部分は `tests/compat/` |
 | `common/compat/net_offload/` | 互換層のネットワークの部分（OS に依存しない）: Zephyr のソケット層（`subsys/net/lib/sockets/`・`lib/os/zvfs/` の Zephyr のファイルを縮めた写し）、ネットワークのインターフェース（`zephyr_net_if.c`）とネットワークの部分の開始（`zephyr_net_init.c`、`zephyr_net_initialize()`）、それらのヘッダーは `include/` の下（`zephyr/net/`、`zephyr/sys/fdtable.h`、`zephyr_net_init.h`）。`k_heap`（`zephyr_heap.c`、`<zephyr/kernel.h>` が読む `zephyr_heap.h`）は、どちらのカーネルの部分でも使えるよう `common/compat/` にある |
 | `common/compat/libc_net/` | newlib に無いソケット系のヘッダー（`include/`。型と定数だけ）、`inet_pton`・`inet_ntop`（`inet.c`） |
 | `drivers/shell/` | シェルのエンジンに対する FreeRTOS 版のコンソールの経路（`shell_serial_os_impl.h`: Pico SDK の USB CDC ACM のドライバー）と Pico SDK の stdio の差し替え（`shell_stdio.c`） |
@@ -31,8 +31,8 @@ newlib に無い POSIX のネットワークのヘッダーは `common/compat/li
 | `drivers/libc/` | newlib の FILE 関数の差し替え（`stdio_wrap.c`） |
 | `drivers/kv/` | KV のフラッシュの操作を Pico SDK で（`rp2040_flash_kv_os.c`。上は RP2040 の共有の部分 `common/chip/rp2040/rp2040_flash_kv.c`）とリンカースクリプトの差し替え（`ld/`、`kv.cmake`） |
 | `drivers/nina/` | NINA のドライバーをビルドに入れる `nina.cmake` だけ。ドライバーは `common/drivers/nina/` にあり、FreeRTOS 版の部分は FreeRTOS へのつなぎ `common/drivers/nina/port/freertos/`: 境界 `nina_os.h` の実装（`nina_os.c`）、中継のホスト側（`nina_passthrough_os.c`）、Pico SDK で書いた SPI1 と制御線（`nina_bus_rp2040.c`。長い転送の DMA は `nina_bus_dma_rp2040.c`）、中継のモジュール側（`nina_passthrough_bus_rp2040.c`: UART1、モジュールの線、watchdog の scratch レジスター、LED）。ソケットとインターフェースは Zephyr へのつなぎのもの（`common/drivers/nina/port/zephyr/nina_socket.c`・`nina_net.c`） |
-| `drivers/i2c_dw/` | I2C のドライバー（I2C0 と、オプションで I2C1）をビルドに入れる `i2c_dw.cmake` と、自己診断（`i2c_dw_selftest.[ch]`）。ドライバーは `common/drivers/i2c_dw/` にあり、FreeRTOS 版の部分は FreeRTOS へのつなぎ `common/drivers/i2c_dw/port/freertos/`: FreeRTOS と TIMER の上の境界 `i2c_dw_os.h` の実装（`i2c_dw_os_impl.h`）、Zephyr の I2C の API を持つデバイスとその割り込み・リセット・ピン（`i2c_dw_instance.h`）、その起動（`i2c_dw_controllers_rp2040.h`）、Pico SDK の DMA での I2C0 の DMA 読み出し（`i2c_dw_dma_os_rp2040.c`） |
-| `drivers/lsm6dso/` | LSM6DSOX のビルドの規則（`lsm6dso.cmake`）と初期化（`lsm6dso_board.c`）、自己診断 |
+| `drivers/i2c_dw/` | I2C のドライバー（I2C0 と、オプションで I2C1）をビルドに入れる `i2c_dw.cmake`。ドライバーは `common/drivers/i2c_dw/` にあり、FreeRTOS 版の部分は FreeRTOS へのつなぎ `common/drivers/i2c_dw/port/freertos/`: FreeRTOS と TIMER の上の境界 `i2c_dw_os.h` の実装（`i2c_dw_os_impl.h`）、Zephyr の I2C の API を持つデバイスとその割り込み・リセット・ピン（`i2c_dw_instance.h`）、その起動（`i2c_dw_controllers_rp2040.h`）、Pico SDK の DMA での I2C0 の DMA 読み出し（`i2c_dw_dma_os_rp2040.c`） |
+| `drivers/lsm6dso/` | LSM6DSOX のビルドの規則（`lsm6dso.cmake`）と初期化（`lsm6dso_board.c`） |
 | `drivers/imu/` | 取得サービス・MQTT・時刻同期（`common/imu/`）の組み込み（`imu.cmake`）、`time_sync.c` の前置き |
 | `drivers/wifi/` | Wi-Fi（NINA のコアの `common/drivers/nina/nina_wifi.c` と、その Zephyr へのつなぎ `common/drivers/nina/port/zephyr/nina_net.c`、資格情報、自動再接続）の組み込みと `ifconfig`（`common/shell/ifconfig_shell.c`） |
 | `drivers/telnet/` | Telnet のシェルの組み込み（`telnet.cmake`。本体は `common/compat/shell_engine/shell_telnet.c`） |
@@ -107,8 +107,8 @@ FreeRTOS 版だけがビルドする共有ファイル: `common/compat/zephyr_wi
 | `console`、`shell_telnet`、`telnet_service`、`zperf_server_tid` | 6（14） | 3072、3072、2048、2048 | USB と Telnet のシェル（コマンドはこのタスクで走る）、Telnet の受け付け、`zperf tcp download` のサーバー |
 | `IDLE` | 0（–） | 256 | アイドル。CPU 負荷を測り、動いている間は LED（GPIO6）を 500 ms ごとに切り替える（`idle.c`） |
 
-ヒープは FreeRTOS の heap_4 で 8 KiB です（`free`。`SELFTEST` では 16 KiB）。入るのは互換層のスレッドの制御ブロック（約 2.3 KiB）と、
-`SELFTEST` では自己診断の補助のタスクです。タスクのスタックは静的に確保します。
+ヒープは FreeRTOS の heap_4 で 8 KiB です（`free`）。入るのは互換層のスレッドの制御ブロック（約 2.3 KiB）です。
+タスクのスタックは静的に確保します。
 
 **起動**（`main.c`）: `main()` で RAM ログ、異常停止の記録の読み出し、コンソール、互換層、NINA の SPI、
 I2C0（先にその読み出しのための DMA の割り込みハンドラー）、KV のフラッシュの準備を行い、タスク `main` で LSM6DSOX、
@@ -256,8 +256,7 @@ Pico SDK の既定のままです。整数の割り算は `pico_divider` のハ�
 
 コードは RAM を約 49 KiB 使います（`.data` は 8 KiB から約 57 KiB に。RAM とフラッシュのあいだの長い分岐の中継を含む）。
 その分は、newlib の `malloc()` が使える `.bss` の終わりからスタックまでの領域（`free` の `malloc` の行）から取ります。
-Pico SDK の最小の 2 KiB を除いて約 79 KiB が残ります（`SELFTEST` では、そのバッファーが `.bss` にあり、FreeRTOS のヒープが
-8 KiB 大きいので約 56 KiB）。使うのはシェル（コマンドの行ごとに実行中の約 1.2 KiB と、127 文字を超える出力の行を表示する間）、
+Pico SDK の最小の 2 KiB を除いて約 79 KiB が残ります。使うのはシェル（コマンドの行ごとに実行中の約 1.2 KiB と、127 文字を超える出力の行を表示する間）、
 `zperf` のバッファー（アップロードの間 約 2.1 KiB、`zperf tcp download` のサーバーが動いている間 約 2.5 KiB）、NINA の中継モードの
 16 KiB のバッファーです。空きが無いと `malloc()` は NULL を返し（`PICO_MALLOC_PANIC=0`。Pico SDK の既定は異常停止）、呼び出し側が
 失敗します（コマンドは `out of memory` と表示し、`zperf` は -12（`ENOMEM`）で失敗する）。リンクのあとの検査（`ram_code.cmake`。マップを読む）は、並べたオブジェクトのコードが
@@ -301,8 +300,8 @@ SPI の待つ呼び出し、USB のドライバーの一部）、NINA の中継�
   `i2c@40048000`）で、`i2c0` と同じ Zephyr の I2C の API を持ち、GPIO18（SDA、Arduino の D6）と GPIO19（SCL、D7）を
   内部プルアップ付きで使い（`i2c_dw_instance.h` の `I2C1_SDA_GPIO`・`I2C1_SCL_GPIO`）、常に割り込みで転送します
   （DMA 読み出しと `i2c_dma` は I2C0 だけ）。`main()` で I2C0 のあとに起動し、失敗してもログに残して `i2c1` が
-  準備できないだけです。互換層のデバイスの一覧（`device_get_binding()`）には入りません。`-DSELFTEST=ON` では
-  `selftest` が確かめます（下）。I2C1 はビルドとホストテストで確かめただけで、実際のデバイスで使ったことはありません。
+  準備できないだけです。互換層のデバイスの一覧（`device_get_binding()`）には入りません。
+  I2C1 はビルドとホストテストで確かめただけで、実際のデバイスで使ったことはありません。
 - **I2C0 の DMA 読み出し**は、コアの 2 つ目の境界 `port/i2c_dw_dma_os.h` を通して Pico SDK 自身の DMA（`hardware_dma`、
   `hardware_irq`）を使います。実装は `port/freertos/i2c_dw_dma_os_rp2040.c` です。読み出しごとに
   `dma_claim_unused_channel(false)` でチャネルを 2 つ取り（空きが無ければ割り込みで読み、フォールバックを数えます）、
@@ -363,17 +362,7 @@ MQTT のクライアントは NuttX 版と共有する `common/imu/mqtt_min.c`�
 
 | オプション | 既定 | 内容 |
 |---|---|---|
-| `SELFTEST` | OFF | `selftest` コマンドを入れる（下） |
 | `I2C_DW_I2C1` | OFF | I2C1（デバイス `i2c1`）を入れる（上） |
-
-## 自己診断（`selftest`）
-
-`-DSELFTEST=ON` のビルドにだけ入る試験用のコマンドです。計測を止め、ボードを静止させて実行します。
-互換層（`common/compat/selftest/zephyr_selftest.c`: ミューテックス、セマフォ、sleep、時計、割り込みからの起床、`k_poll`、ワーク、
-spinlock、atomic、静的なスレッド、時分割、割り込みを 50 ms 止めたあとの tick の追いつきの 22 項目）、I2C0（`drivers/i2c_dw/i2c_dw_selftest.c`: 6 項目。I2C1 を入れたビルドでは 7 項目目の `i2c1`: 何もつながっていない
-状態で、i2c1 の準備ができている、ピンがプルアップ付きの I2C、0x10 からの読み出しが 100 ms 未満で `-EIO`、IC_CON に DMA の
-ビットが無い、40 バイトの読み出しで DMA のカウンターが変わらない、i2c0 がまだ応答する）、LSM6DSOX（`drivers/lsm6dso/lsm6dso_selftest.c`:
-3 項目）の結果を `N of M tests failed` の形で表示します。
 
 ## ホストテスト
 
@@ -382,7 +371,7 @@ spinlock、atomic、静的なスレッド、時分割、割り込みを 50 ms �
 
 | テスト | 対象 |
 |---|---|
-| `compat` | 互換層の自己診断（`selftest` と同じ `zephyr_selftest.c`） |
+| `compat` | 互換層のカーネル（`common/tests/zephyr_kernel/zephyr_kernel_test.c`。22 項目: ミューテックス、セマフォ、sleep、時計、`k_poll`、ワーク、spinlock、atomic、静的なスレッド、時分割、tick の割り込みからの起床。このポートでは、実時間の確認、ハードウェアの割り込みからの起床、tick の追いつきは飛ばす） |
 | `tick` | tick の追いつき（`tick_catchup.h`）: 判定の 1 歩と、SysTick と CPU の模型（割り込みの遅れ、0〜60 tick の割り込みの停止）の上で、tick が TIMER より先に進まず、追いついたあとの遅れが 1 tick 以内であること |
 | `shell` | 2 つのセッションのシェル、行編集、出力先、`help` と汎用のコマンドとその出力 |
 | `kv` | フラッシュの境界と KV（Pico SDK のフラッシュ関数の偽物の上） |

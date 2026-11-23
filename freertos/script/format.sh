@@ -3,7 +3,7 @@
 # freertos/tests/, common/drivers/*/port/freertos/ (the shared drivers'
 # FreeRTOS bindings), common/compat/net_offload/ and common/compat/libc_net/
 # (the layer's network part and the POSIX network headers, which only the
-# FreeRTOS build uses), common/compat/selftest/ (the layer's self-test),
+# FreeRTOS build uses), common/tests/zephyr_kernel/ (the host test of the layer's kernel),
 # common/compat/shell_engine/ (the shell for an OS without one) and
 # common/compat/kernel_generic/ (the kernel part for an OS that offers only
 # basic primitives), which only the FreeRTOS build compiles, with k_heap
@@ -46,7 +46,7 @@ set -eu
 net_offload="${root}/../common/compat/net_offload"
 mapfile -t files < <(find "${root}/app" "${root}/drivers" "${root}/tests" \
   "${root}"/../common/drivers/*/port/freertos "${net_offload}" \
-  "${root}/../common/compat/libc_net" "${root}/../common/compat/selftest" \
+  "${root}/../common/compat/libc_net" "${root}/../common/tests/zephyr_kernel" \
   "${root}/../common/compat/shell_engine" "${root}/../common/compat/kernel_generic" \
   "${root}/../common/compat/zephyr_heap.c" "${root}/../common/compat/zephyr_heap.h" \
   "${root}/../common/tests/kernel_generic_host" "${root}/../common/chip" -type f \

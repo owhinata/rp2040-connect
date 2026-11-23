@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 /* The commands of this build that only FreeRTOS and the Pico SDK can
- * answer ("version", "free", "ps" and, as a build option, "selftest"),
+ * answer ("version", "free" and "ps"),
  * written as Zephyr shell commands (common/compat/shell_engine/
  * shell_engine.h), and the table of all the commands of the shell
  * (shell_engine_cmds[]).
@@ -16,11 +16,6 @@
 #include "app.h"
 #include "shell_engine.h"
 #include "ps_interval.h"
-#ifdef SELFTEST
-#include "i2c_dw_selftest.h"
-#include "lsm6dso_selftest.h"
-#include "zephyr_selftest.h"
-#endif
 
 #define PS_TASKS_MAX 24
 
@@ -128,33 +123,6 @@ static int cmd_ps(const struct shell *sh, size_t argc, char **argv)
 
 SHELL_CMD_REGISTER(ps, NULL, "List the tasks and show the CPU load", cmd_ps);
 
-#ifdef SELFTEST
-/* The Zephyr compatibility layer's self-test (a build option, SELFTEST;
- * common/compat/selftest/zephyr_selftest.h), then the check of I2C0 on the
- * board's LSM6DSOX (freertos/drivers/i2c_dw/i2c_dw_selftest.h) and that of
- * the LSM6DSOX itself with its FIFO stream
- * (freertos/drivers/lsm6dso/lsm6dso_selftest.h), which leaves the sensor at
- * rest for the I2C0 check of the next run.  Runs in this task, at the
- * shell's priority, as the test expects.
- */
-static int cmd_selftest(const struct shell *sh, size_t argc, char **argv)
-{
-	int failed;
-
-	(void)sh;
-	(void)argc;
-	(void)argv;
-
-	failed = zephyr_selftest_run();
-	failed += i2c_dw_selftest_run();
-	failed += lsm6dso_selftest_run();
-	return failed == 0 ? 0 : -EIO;
-}
-
-SHELL_CMD_REGISTER(selftest, NULL, "Test the Zephyr compatibility layer (build option)",
-		   cmd_selftest);
-#endif
-
 /* The commands of other sources: "help" of the shell engine
  * (common/compat/shell_engine/shell_engine.c), the generic commands of
  * common/shell/kernel_shell.c ("bootsel", "date", "devmem", "fault", "id",
@@ -207,9 +175,6 @@ const struct shell_engine_cmd shell_engine_cmds[] = {
 	SHELL_ENGINE_CMD(ntp),
 	SHELL_ENGINE_CMD(ps),
 	SHELL_ENGINE_CMD(reboot),
-#ifdef SELFTEST
-	SHELL_ENGINE_CMD(selftest),
-#endif
 	SHELL_ENGINE_CMD(sensor),
 	SHELL_ENGINE_CMD(sleep),
 	SHELL_ENGINE_CMD(uptime),

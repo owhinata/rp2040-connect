@@ -3,13 +3,12 @@
 #
 # - The tests of the sources shared with the Zephyr and NuttX builds
 #   (common/tests/run.sh).
-# - The self-test of the Zephyr compatibility layer's kernel part (the
-#   generic one, common/compat/kernel_generic, on the FreeRTOS primitives;
-#   common/compat/selftest/zephyr_selftest.c on
-#   common/compat/kernel_generic/zephyr_selftest_os.h and
-#   freertos/drivers/compat/zephyr_selftest_os_impl.h, the board's
-#   "selftest" command) on the FreeRTOS POSIX port, which is in the kernel's tree
-#   (freertos/tests/compat).  Needs freertos/FreeRTOS-Kernel
+# - The test of the Zephyr compatibility layer's kernel part (the generic
+#   one, common/compat/kernel_generic, on the FreeRTOS primitives;
+#   common/tests/zephyr_kernel/zephyr_kernel_test.c on its
+#   kernel_generic/zephyr_kernel_test_os.h and
+#   freertos/tests/compat/zephyr_kernel_test_os_impl.h) on the FreeRTOS
+#   POSIX port, which is in the kernel's tree (freertos/tests/compat).  Needs freertos/FreeRTOS-Kernel
 #   (freertos/script/setup.sh) and the host's cc with POSIX threads.
 # - On the same port: the shell (freertos/tests/shell) and the key-value
 #   store with the board's flash boundary on fakes of the Pico SDK's flash
@@ -110,22 +109,23 @@ for src in ../common/compat/zephyr_init.c ../common/compat/zephyr_work.c \
 done
 
 for src in $kgen/zephyr_kernel.c $kgen/zephyr_mutex.c \
-           ../common/compat/selftest/zephyr_selftest.c tests/compat/main.c; do
+           ../common/tests/zephyr_kernel/zephyr_kernel_test.c tests/compat/main.c; do
     obj="$out/$(basename "$src" .c).o"
-    cc "${flags[@]}" "${strict[@]}" "${inc[@]}" -I../common/compat/selftest -c "$src" -o "$obj"
+    cc "${flags[@]}" "${strict[@]}" "${inc[@]}" -I../common/tests/zephyr_kernel \
+        -I../common/tests/zephyr_kernel/kernel_generic -c "$src" -o "$obj"
     objs+=("$obj")
 done
 cc "${flags[@]}" "${strict[@]}" "${inc[@]}" -DvApplicationTickHook=app_tick_hook \
     -c app/usb-console/src/tick.c -o "$out/tick.o"
 objs+=("$out/tick.o")
 
-cc "${flags[@]}" "${objs[@]}" -o "$out/compat_selftest"
+cc "${flags[@]}" "${objs[@]}" -o "$out/zephyr_kernel_test"
 if (( verbose )); then
-    timeout 120 "$out/compat_selftest"
+    timeout 120 "$out/zephyr_kernel_test"
 else
-    timeout 120 "$out/compat_selftest" >"$out/log" || { cat "$out/log"; exit 1; }
+    timeout 120 "$out/zephyr_kernel_test" >"$out/log" || { cat "$out/log"; exit 1; }
 fi
-printf 'ok  compat_selftest (FreeRTOS POSIX port)\n'
+printf 'ok  zephyr_kernel_test (the layer kernel, FreeRTOS POSIX port)\n'
 
 # The kernel tick's catch-up (freertos/tests/tick): the step of the board's tick hook
 # (app/usb-console/src/tick_catchup.h) alone and on a model of SysTick, its pending bit and
@@ -174,7 +174,7 @@ for f in printf vprintf puts putchar fputs fwrite fputc putc fprintf vfprintf ff
 done
 kernobjs=()
 for o in "${objs[@]}"; do
-    [[ $(basename "$o") == zephyr_selftest.o || $(basename "$o") == main.o ]] || kernobjs+=("$o")
+    [[ $(basename "$o") == zephyr_kernel_test.o || $(basename "$o") == main.o ]] || kernobjs+=("$o")
 done
 cc "${flags[@]}" -Wl,--gc-sections "${wraps[@]}" "${kernobjs[@]}" "${shobjs[@]}" -o "$out/shell"
 if (( verbose )); then

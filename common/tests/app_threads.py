@@ -5,8 +5,8 @@ app_threads_start()) against the sources.
 
 Every K_THREAD_DEFINE(name, ...) of the sources of the builds that start
 their threads from the table (the files of common/, freertos/ and nuttx/
-that Git tracks or would add; not the tests, not the self-test of the
-compatibility layer, which starts its own) must be in the table once, as APP_THREAD_START(name), and every entry must
+that Git tracks or would add; not the tests, among them the test of the
+compatibility layer's kernel, which starts its own) must be in the table once, as APP_THREAD_START(name), and every entry must
 name such a thread.  Each entry is under one #ifdef CONFIG_<X>, the option
 of the module that defines the thread, and in each build the option must be
 set exactly when the build compiles the defining source:
@@ -35,7 +35,8 @@ def tracked():
     out = subprocess.run(["git", "-C", ROOT, "ls-files", "--cached", "--others",
                           "--exclude-standard", "common", "freertos", "nuttx"],
                          capture_output=True, text=True, check=True).stdout
-    return out.split()
+    # A tracked file deleted from the working tree is no longer a source.
+    return [path for path in out.split() if os.path.isfile(os.path.join(ROOT, path))]
 
 
 def read(path):
@@ -79,8 +80,6 @@ def main():
     defs = {}
     for path in files:
         if not path.endswith(".c") or "/tests/" in path or path.startswith("common/tests/"):
-            continue
-        if path.startswith("common/compat/selftest/"):
             continue
         for m in re.finditer(r"^\s*K_THREAD_DEFINE\((\w+)", read(path), re.M):
             if m.group(1) in defs:

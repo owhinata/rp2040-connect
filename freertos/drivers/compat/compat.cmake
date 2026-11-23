@@ -4,7 +4,7 @@
 # they build (common/), for an application of freertos/app.  include() this
 # file from the application's CMakeLists.txt, then call
 #
-#   freertos_zephyr_compat(<target> [SELFTEST])
+#   freertos_zephyr_compat(<target>)
 #
 # after add_executable().  It adds to the target:
 #
@@ -49,11 +49,6 @@
 #   script's section of the registered implementations
 #   (ld/section_extra_post_text.incl, pico_add_linker_script_override_path());
 #   the NINA's sockets register themselves (freertos/drivers/nina/nina.cmake);
-# - with SELFTEST, the layer's self-test (common/compat/selftest:
-#   zephyr_selftest.c, on common/compat/kernel_generic/zephyr_selftest_os.h
-#   with this directory's zephyr_selftest_os_impl.h, and the
-#   board's part, rp2040/zephyr_selftest_port.c), its include directory, and
-#   SELFTEST=1;
 # - the include directories, the board's port header first
 #   (rp2040/zephyr_os_port.h), then the FreeRTOS part
 #   (zephyr_kernel_os_impl.h, zephyr_os_atomic.h, ...), the generic kernel
@@ -74,8 +69,7 @@
 # - the prelude of the shared sources (common_prelude.h, -include on each
 #   source under common/ only, as the NuttX build does; not on the network
 #   part, common/compat/net_offload and common/compat/libc_net, nor on the
-#   self-test, common/compat/selftest, and the shell engine,
-#   common/compat/shell_engine, which are written without it).
+#   shell engine, common/compat/shell_engine, which are written without it).
 #
 # The application provides FreeRTOSConfig.h (with
 # configNUM_THREAD_LOCAL_STORAGE_POINTERS >= 1), priorities_os.h and
@@ -94,8 +88,6 @@ set(FREERTOS_SHELL_ENGINE_DIR ${FREERTOS_COMMON_DIR}/compat/shell_engine)
 set(FREERTOS_KERNEL_GENERIC_DIR ${FREERTOS_COMMON_DIR}/compat/kernel_generic)
 
 function(freertos_zephyr_compat target)
-  cmake_parse_arguments(ARG "SELFTEST" "" "" ${ARGN})
-
   # The work queues' threads, the system work queue, zephyr_compat_initialize()
   # and k_uptime_get(), linked right after zephyr_kernel.c, where they were.
   set(common_kernel_sources
@@ -161,15 +153,6 @@ function(freertos_zephyr_compat target)
     ${common_sources}
     ${zephyr_copies}
   )
-
-  if(ARG_SELFTEST)
-    target_sources(${target} PRIVATE
-      ${FREERTOS_COMMON_DIR}/compat/selftest/zephyr_selftest.c
-      ${FREERTOS_COMPAT_DIR}/rp2040/zephyr_selftest_port.c
-    )
-    target_include_directories(${target} PRIVATE ${FREERTOS_COMMON_DIR}/compat/selftest)
-    target_compile_definitions(${target} PRIVATE SELFTEST=1)
-  endif()
 
   target_include_directories(${target} PRIVATE
     ${FREERTOS_COMPAT_DIR}/rp2040

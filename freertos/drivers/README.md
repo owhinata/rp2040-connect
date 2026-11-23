@@ -22,10 +22,10 @@ semaphores, `k_poll()`, timeouts, sleeps and threads on about twenty primitives 
 
 | Place | Contents |
 |---|---|
-| `app/usb-console/` | Start-up (`main.c`), the commands of this build only (`commands.c`: `version`, `free`, `ps`, `selftest`) and the table of all commands, the OS part of the generic commands (`kernel_shell_os_impl.h`), the kernel configuration (`FreeRTOSConfig.h`), the priority mapping (`priorities_os.h`), time (`os_clock.h`), the tick hook (`tick.c`; the catch-up's decision in `tick_catchup.h`), the CPU load (`idle.c`), fatal errors (`fault.[ch]`), the free interrupt stack (`irq_stack.c`) |
-| `drivers/compat/` | The FreeRTOS part of the layer: the primitives of the generic kernel part (`zephyr_kernel_os_impl.h`; the port's in `rp2040/zephyr_os_port.h`) and `zephyr_os_atomic.h`, the linker script's part for the socket implementations (`ld/`), the wall clock (`zephyr_sys_clock.c`), the prelude header (`common_prelude.h`), the self-test's FreeRTOS part (`zephyr_selftest_os_impl.h`), the RP2040 part (`rp2040/`: the port header, GPIO bank 0, chip ID, the self-test's board part `zephyr_selftest_port.c`) |
-| `common/compat/kernel_generic/` | The layer's kernel part for an OS that offers only basic primitives, OS-independent: `k_sem`, `k_poll()`, the timeouts, the sleeps and the start of a thread (`zephyr_kernel.c`), `k_mutex` (`zephyr_mutex.c`), the OS part of `<zephyr/kernel.h>` and `<zephyr/spinlock.h>` (`zephyr_os.h`, `zephyr_os_spinlock.h`), the tick hook's entry (`zephyr_compat_os.h`), the self-test's items on the primitives (`zephyr_selftest_os.h`), and the declaration of the primitives (`zephyr_kernel_os.h`). The work queues' threads, the system work queue and `zephyr_compat_initialize()` are the shared `common/compat/zephyr_init.c` |
-| `common/compat/selftest/` | The layer's self-test, OS-independent (`zephyr_selftest.c`; `zephyr_selftest.h` lists what an OS's part and a board's part provide) |
+| `app/usb-console/` | Start-up (`main.c`), the commands of this build only (`commands.c`: `version`, `free`, `ps`) and the table of all commands, the OS part of the generic commands (`kernel_shell_os_impl.h`), the kernel configuration (`FreeRTOSConfig.h`), the priority mapping (`priorities_os.h`), time (`os_clock.h`), the tick hook (`tick.c`; the catch-up's decision in `tick_catchup.h`), the CPU load (`idle.c`), fatal errors (`fault.[ch]`), the free interrupt stack (`irq_stack.c`) |
+| `drivers/compat/` | The FreeRTOS part of the layer: the primitives of the generic kernel part (`zephyr_kernel_os_impl.h`; the port's in `rp2040/zephyr_os_port.h`) and `zephyr_os_atomic.h`, the linker script's part for the socket implementations (`ld/`), the wall clock (`zephyr_sys_clock.c`), the prelude header (`common_prelude.h`), the RP2040 part (`rp2040/`: the port header, GPIO bank 0, chip ID) |
+| `common/compat/kernel_generic/` | The layer's kernel part for an OS that offers only basic primitives, OS-independent: `k_sem`, `k_poll()`, the timeouts, the sleeps and the start of a thread (`zephyr_kernel.c`), `k_mutex` (`zephyr_mutex.c`), the OS part of `<zephyr/kernel.h>` and `<zephyr/spinlock.h>` (`zephyr_os.h`, `zephyr_os_spinlock.h`), the tick hook's entry (`zephyr_compat_os.h`), and the declaration of the primitives (`zephyr_kernel_os.h`). The work queues' threads, the system work queue and `zephyr_compat_initialize()` are the shared `common/compat/zephyr_init.c` |
+| `common/tests/zephyr_kernel/` | The host test of the layer's kernel, OS-independent (`zephyr_kernel_test.c`; `zephyr_kernel_test.h` lists what an OS's part and a platform's part provide; `kernel_generic/zephyr_kernel_test_os.h`, its items on the primitives). This build's parts are in `tests/compat/` |
 | `common/compat/net_offload/` | The layer's network part, OS-independent: Zephyr's socket layer (reduced copies of Zephyr's files in `subsys/net/lib/sockets/` and `lib/os/zvfs/`), the network interface (`zephyr_net_if.c`) and the start of the network part (`zephyr_net_init.c`, `zephyr_net_initialize()`), their headers under `include/` (`zephyr/net/`, `zephyr/sys/fdtable.h`, `zephyr_net_init.h`). `k_heap` (`zephyr_heap.c`, `zephyr_heap.h`, which `<zephyr/kernel.h>` includes) is in `common/compat/`, with either kernel part |
 | `common/compat/libc_net/` | The socket headers newlib lacks (`include/`, types and constants only), `inet_pton` and `inet_ntop` (`inet.c`) |
 | `drivers/shell/` | This build's console transport for the shell engine (`shell_serial_os_impl.h`: the Pico SDK's USB CDC ACM driver) and the replacement of the Pico SDK's stdio driver (`shell_stdio.c`) |
@@ -33,8 +33,8 @@ semaphores, `k_poll()`, timeouts, sleeps and threads on about twenty primitives 
 | `drivers/libc/` | Wrappers of newlib's FILE functions (`stdio_wrap.c`) |
 | `drivers/kv/` | The flash operations of the key-value store on the Pico SDK (`rp2040_flash_kv_os.c`, under the RP2040's shared part `common/chip/rp2040/rp2040_flash_kv.c`) and the linker script override (`ld/`, `kv.cmake`) |
 | `drivers/nina/` | Only `nina.cmake`, which adds the NINA driver to the build. The driver is in `common/drivers/nina/`, and this build's parts are its FreeRTOS binding `common/drivers/nina/port/freertos/`: the `nina_os.h` boundary (`nina_os.c`), the passthrough's host side (`nina_passthrough_os.c`), SPI1 and the module's lines on the Pico SDK (`nina_bus_rp2040.c`, its long transfers by DMA in `nina_bus_dma_rp2040.c`), the passthrough's module side (`nina_passthrough_bus_rp2040.c`: UART1, the module's lines, the watchdog's scratch registers, the LED); the sockets and the interface are the Zephyr binding's (`common/drivers/nina/port/zephyr/nina_socket.c`, `nina_net.c`) |
-| `drivers/i2c_dw/` | `i2c_dw.cmake`, which adds the I2C driver to the build (I2C0, and I2C1 as an option), and the self-test (`i2c_dw_selftest.[ch]`). The driver is in `common/drivers/i2c_dw/`, and this build's parts are its FreeRTOS binding `common/drivers/i2c_dw/port/freertos/`: the `i2c_dw_os.h` boundary on FreeRTOS and the TIMER (`i2c_dw_os_impl.h`), the devices with Zephyr's I2C API, their interrupts, resets and pins (`i2c_dw_instance.h`), their start (`i2c_dw_controllers_rp2040.h`), I2C0's DMA reads on the Pico SDK's DMA (`i2c_dw_dma_os_rp2040.c`) |
-| `drivers/lsm6dso/` | The LSM6DSOX's build rules (`lsm6dso.cmake`), its initialization (`lsm6dso_board.c`), self-test |
+| `drivers/i2c_dw/` | `i2c_dw.cmake`, which adds the I2C driver to the build (I2C0, and I2C1 as an option). The driver is in `common/drivers/i2c_dw/`, and this build's parts are its FreeRTOS binding `common/drivers/i2c_dw/port/freertos/`: the `i2c_dw_os.h` boundary on FreeRTOS and the TIMER (`i2c_dw_os_impl.h`), the devices with Zephyr's I2C API, their interrupts, resets and pins (`i2c_dw_instance.h`), their start (`i2c_dw_controllers_rp2040.h`), I2C0's DMA reads on the Pico SDK's DMA (`i2c_dw_dma_os_rp2040.c`) |
+| `drivers/lsm6dso/` | The LSM6DSOX's build rules (`lsm6dso.cmake`), its initialization (`lsm6dso_board.c`) |
 | `drivers/imu/` | Builds in the acquisition service, MQTT and time synchronization (`common/imu/`; `imu.cmake`), the prelude of `time_sync.c` |
 | `drivers/wifi/` | Builds in Wi-Fi (the NINA core's `common/drivers/nina/nina_wifi.c` with its Zephyr binding `common/drivers/nina/port/zephyr/nina_net.c`, credentials, reconnection) and `ifconfig` (`common/shell/ifconfig_shell.c`) |
 | `drivers/telnet/` | Builds in the Telnet shell (`telnet.cmake`; the code is `common/compat/shell_engine/shell_telnet.c`) |
@@ -118,9 +118,8 @@ use a stack of their own (MSP, 2048 bytes; the `(interrupts)` row of `ps`).
 | `console`, `shell_telnet`, `telnet_service`, `zperf_server_tid` | 6 (14) | 3072, 3072, 2048, 2048 | The USB and Telnet shells (commands run in these tasks), Telnet accepts, the server of `zperf tcp download` |
 | `IDLE` | 0 (–) | 256 | Idle; measures the CPU load and blinks the LED (GPIO6) every 500 ms while it runs (`idle.c`) |
 
-The heap is FreeRTOS's heap_4 with 8 KiB (`free`; 16 KiB with `SELFTEST`). It holds the control blocks of
-the layer's threads (about 2.3 KiB) and, with `SELFTEST`, the self-test's helper tasks. Task stacks are
-allocated statically.
+The heap is FreeRTOS's heap_4 with 8 KiB (`free`). It holds the control blocks of the layer's threads
+(about 2.3 KiB). Task stacks are allocated statically.
 
 **Start-up** (`main.c`): `main()` sets up the RAM log, reads the fatal error record, sets up the console,
 the layer, the NINA's SPI, I2C0 (first the DMA interrupt's handler for its reads) and the flash of the key-value store; then the task `main` starts the
@@ -309,8 +308,7 @@ they saturate) and read them about 15 s later (the hits and the accesses).
 
 The code costs about 49 KiB of RAM (`.data` is about 57 KiB instead of 8 KiB, with the long-branch stubs
 between RAM and the flash). It is taken from what newlib's `malloc()` can grow into, between the end of
-`.bss` and the stacks (the `malloc` line of `free`). About 79 KiB is left above the Pico SDK's 2 KiB minimum
-(about 56 KiB with `SELFTEST`, whose buffers are in `.bss` and whose FreeRTOS heap is 8 KiB larger). The
+`.bss` and the stacks (the `malloc` line of `free`). About 79 KiB is left above the Pico SDK's 2 KiB minimum. The
 shell takes from it (about 1.2 KiB per command line while it runs, and a line of output longer than 127
 characters while it is printed), `zperf` its buffers (about 2.1 KiB for an upload, 2.5 KiB while the server
 of `zperf tcp download` runs), and the NINA passthrough mode its 16 KiB buffer. When it has no room,
@@ -362,8 +360,7 @@ interrupts disabled.
   GPIO18 (SDA, Arduino D6) and GPIO19 (SCL, D7) with the internal pull-ups (`I2C1_SDA_GPIO`,
   `I2C1_SCL_GPIO` in `i2c_dw_instance.h`), always on the interrupts (the DMA reads and `i2c_dma` are
   I2C0's). It starts after I2C0 in `main()`; a failure is logged and leaves `i2c1` not ready. It is not
-  in the layer's device list (`device_get_binding()`). With `-DSELFTEST=ON` the `selftest`
-  command checks it (below). I2C1 has been built and host-tested but never used with a real device.
+  in the layer's device list (`device_get_binding()`). I2C1 has been built and host-tested but never used with a real device.
 - **The DMA reads of I2C0** use the Pico SDK's own DMA (`hardware_dma`, `hardware_irq`) through the core's
   second boundary, `port/i2c_dw_dma_os.h`, implemented in `port/freertos/i2c_dw_dma_os_rp2040.c`. Per read, two
   channels come from `dma_claim_unused_channel(false)` (none free: the read takes the interrupts and counts a
@@ -435,19 +432,7 @@ Given as `freertos/script/build.sh -DNAME=VALUE` (kept until `--clean`).
 
 | Option | Default | Meaning |
 |---|---|---|
-| `SELFTEST` | OFF | Builds in the `selftest` command (below) |
 | `I2C_DW_I2C1` | OFF | Builds in I2C1, the device `i2c1` (above) |
-
-## Self-test (`selftest`)
-
-A test command only in builds with `-DSELFTEST=ON`. Run it with the measurement stopped and the
-board at rest. It prints, as `N of M tests failed`, the results for the layer
-(`common/compat/selftest/zephyr_selftest.c`: mutexes, semaphores, sleep, clock, wake-ups from interrupts,
-`k_poll`, work, spinlock, atomic, static threads, time slices, the tick's catch-up after interrupts are disabled for 50 ms; 22 items), I2C0
-(`drivers/i2c_dw/i2c_dw_selftest.c`: 6 items; with I2C1 built, a 7th, `i2c1`: with nothing connected,
-i2c1 is ready, its pins are I2C with the pull-ups, a read from 0x10 ends with `-EIO` in under 100 ms,
-IC_CON has no DMA bit, a 40-byte read leaves the DMA counters alone, and i2c0 still answers) and the LSM6DSOX (`drivers/lsm6dso/lsm6dso_selftest.c`:
-3 items).
 
 ## Host tests
 
@@ -456,7 +441,7 @@ IC_CON has no DMA bit, a 40-byte read leaves the DMA counters alone, and i2c0 st
 
 | Test | Subject |
 |---|---|
-| `compat` | The layer's self-test (the same `zephyr_selftest.c` as `selftest`) |
+| `compat` | The layer's kernel (`common/tests/zephyr_kernel/zephyr_kernel_test.c`, 22 items: mutexes, semaphores, sleep, clock, `k_poll`, work, spinlock, atomic, static threads, time slices; wake-ups from the tick interrupt; on this port the checks of real time, of a hardware interrupt and of the tick's catch-up are skipped) |
 | `tick` | The tick's catch-up (`tick_catchup.h`): the step itself, and on a model of SysTick and the CPU (interrupt latencies, interrupts disabled for 0 to 60 ticks) that the tick never gets ahead of the TIMER and is at most one tick behind once caught up |
 | `shell` | Two shell sessions, line editing, output routing, `help` and the generic commands with their output |
 | `kv` | The flash boundary and the key-value store (on fakes of the Pico SDK's flash functions) |

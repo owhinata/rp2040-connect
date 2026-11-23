@@ -3,7 +3,7 @@
 # and the parts of the Zephyr compatibility layer that it needs.  include()
 # this file from the application's CMakeLists.txt, then call
 #
-#   freertos_lsm6dso(<target> [SELFTEST])
+#   freertos_lsm6dso(<target>)
 #
 # after freertos_zephyr_compat(<target>) and freertos_i2c_dw(<target>)
 # (freertos/drivers/compat/compat.cmake, freertos/drivers/i2c_dw/
@@ -37,13 +37,10 @@
 # - CONFIG_LSM6DSO_STREAM=1 for every source of the target (the NuttX
 #   build's Kconfig option of that name: zephyr_device.c lists gpio0,
 #   zephyr_compat_initialize() starts it, and the prelude turns on
-#   CONFIG_SENSOR_ASYNC_API, the Zephyr build's option);
-# - with SELFTEST, the board's check of the sensor (lsm6dso_selftest.c, part
-#   of the "selftest" command).
+#   CONFIG_SENSOR_ASYNC_API, the Zephyr build's option).
 #
 # Each shared source is compiled with the prelude of the shared sources
-# (common_prelude.h), as in compat.cmake; so is the self-test, which includes
-# <zephyr/drivers/sensor/lsm6dso.h>.
+# (common_prelude.h), as in compat.cmake.
 # The Zephyr build's code keeps its casts of the bus functions
 # (lsm6dso_sensor.c, with stmemsc.h), unused parameters and comparisons of
 # signed with unsigned (lsm6dso_sensor.c, lsm6dso_rtio.c,
@@ -54,8 +51,6 @@ get_filename_component(FREERTOS_LSM6DSO_DIR ${CMAKE_CURRENT_LIST_DIR} ABSOLUTE)
 get_filename_component(FREERTOS_STMEMSC_DIR ${CMAKE_CURRENT_LIST_DIR}/../../stmemsc ABSOLUTE)
 
 function(freertos_lsm6dso target)
-  cmake_parse_arguments(ARG "SELFTEST" "" "" ${ARGN})
-
   get_target_property(defs ${target} COMPILE_DEFINITIONS)
   if(NOT "CONFIG_I2C_DW_I2C0=1" IN_LIST defs)
     message(FATAL_ERROR "freertos_lsm6dso: the LSM6DSOX is on i2c0, but "
@@ -99,10 +94,6 @@ function(freertos_lsm6dso target)
   )
 
   set(lsm6dso_prelude_sources ${lsm6dso_driver_sources} ${lsm6dso_compat_sources})
-  if(ARG_SELFTEST)
-    target_sources(${target} PRIVATE ${FREERTOS_LSM6DSO_DIR}/lsm6dso_selftest.c)
-    list(APPEND lsm6dso_prelude_sources ${FREERTOS_LSM6DSO_DIR}/lsm6dso_selftest.c)
-  endif()
 
   # The driver's directories; port/freertos before port/zephyr, so that this
   # build's lsm6dso_instance.h is found.

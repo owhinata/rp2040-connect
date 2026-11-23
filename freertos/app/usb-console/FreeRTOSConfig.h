@@ -89,18 +89,10 @@
 #define configSUPPORT_DYNAMIC_ALLOCATION        1
 /* heap_4 holds the control blocks of the compatibility layer's threads
  * (freertos/drivers/compat/zephyr_kernel_os_impl.h): 16 of 144 bytes with
- * heap_4's header, 2320 bytes in use.  The self-test (SELFTEST) adds three
- * control blocks and its helper tasks (1024 bytes of stack and a control
- * block, 1176 bytes each), whose memory the idle task frees only when it
- * next runs: up to 6 were held at once in the host's runs, about 9.8 KiB in
- * all, so that build has 16 KiB.  Nothing else allocates from it (the NINA
- * passthrough mode's buffer comes from malloc()).
+ * heap_4's header, 2320 bytes in use.  Nothing else allocates from it (the
+ * NINA passthrough mode's buffer comes from malloc()).
  */
-#ifdef SELFTEST
-#define configTOTAL_HEAP_SIZE                   (16 * 1024)
-#else
 #define configTOTAL_HEAP_SIZE                   (8 * 1024)
-#endif
 #define configAPPLICATION_ALLOCATED_HEAP        0
 #define configSTACK_DEPTH_TYPE                  uint32_t
 

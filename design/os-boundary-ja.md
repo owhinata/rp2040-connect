@@ -28,7 +28,7 @@ Zephyr と同じ名前で提供する層（以下「互換層」。OS に依存�
      `freertos/drivers/compat/zephyr_kernel_os_impl.h`。コンパイルが通る最小の形は `common/tests/kernel_generic_host/`）。
 
    どちらでも、`priorities_os.h`（3 節）と OS ごとの `<zephyr/sys/clock.h>`・`<zephyr/sys/__assert.h>`（4.1）を書きます。
-   受け入れ試験は互換層の自己診断（`common/compat/selftest`。3 節の 2 行）です。
+   受け入れ試験は、OS の部分の上で動かす互換層のカーネルのホストテスト（`common/tests/zephyr_kernel`。3 節の 2 行）です。
 2. **コンソールの経路とシェル**（3 節、4.4）: 自分のシェルを持たない OS は、共有のシェルのエンジン
    （`common/compat/shell_engine`）に `shell_serial_os_impl.h` と stdio の行き先を渡します（手本は `freertos/drivers/shell/`、
    `freertos/drivers/libc/`）。自分のシェルを持つ OS は `zshell_os_impl.h` と `zephyr_os_shell.h` を書きます（手本は
@@ -56,8 +56,8 @@ Zephyr と同じ名前で提供する層（以下「互換層」。OS に依存�
 | 互換層の共有部分 | `common/compat` | Zephyr のヘッダー（`common/compat/zephyr/`）、`k_heap`（`zephyr_heap.h`・`zephyr_heap.c`。どちらのカーネルの部分でも `<zephyr/kernel.h>` が読む。4.2）、ワークアイテム、ワークキューのスレッドと互換層の開始（`zephyr_init.c`）、RTIO、gpio0 のデバイス、net_mgmt、Wi-Fi の要求、KV のフラッシュのデバイス、Zephyr の NVS・settings・getopt・Wi-Fi の資格情報・zperf の写し（Zephyr のソースをそのまま、または縮めて写したもの） |
 | 互換層のネットワークの部分（ネットワーク層を持たない OS のため） | `common/compat/net_offload` | Zephyr のソケット層（`subsys/net/lib/sockets`・`lib/os/zvfs` を縮めた写し）、ネットワークのインターフェース 1 つ（`zephyr_net_if.c`）とその開始（`zephyr_net_init.c`）、それらのヘッダーは専用のインクルードのルート `include/`（`zephyr/net/net_if.h`・`net_ip.h`・`socket.h`・`socket_offload.h`、`zephyr/sys/fdtable.h`、`zephyr_net_init.h`）。使うのは F だけ |
 | POSIX のネットワークのヘッダー（それを持たない C ライブラリーのため） | `common/compat/libc_net` | `include/`（`arpa/inet.h`、`netdb.h`、`netinet/in.h`、`netinet/tcp.h`、`poll.h`、`sys/socket.h`、`sys/uio.h`）、`inet_pton()`・`inet_ntop()`（`inet.c`）。使うのは F だけ |
-| 基本の操作だけを持つ OS のための互換層のカーネルの部分 | `common/compat/kernel_generic` | `k_sem`、`k_poll()`、タイムアウトの一覧、スリープ、スレッドの起動（`zephyr_kernel.c`）、`k_mutex`（`zephyr_mutex.c`）、`<zephyr/kernel.h>`・`<zephyr/spinlock.h>` の OS の部分（`zephyr_os.h`・`zephyr_os_spinlock.h`）、tick の入口（`zephyr_compat_tick()`、`zephyr_compat_os.h`）、基本の操作の上の自己診断の項目（`zephyr_selftest_os.h`）。すべて `zephyr_kernel_os.h` で宣言した基本の操作（2 節）の上。使うのは F だけ |
-| 互換層の自己診断（OS の部分の受け入れ試験） | `common/compat/selftest` | `zephyr_selftest.c`（22 項目）、境界の宣言 `zephyr_selftest.h`（3 節）。使うのは F の `-DSELFTEST=ON` のビルドと F のホストテストだけ |
+| 基本の操作だけを持つ OS のための互換層のカーネルの部分 | `common/compat/kernel_generic` | `k_sem`、`k_poll()`、タイムアウトの一覧、スリープ、スレッドの起動（`zephyr_kernel.c`）、`k_mutex`（`zephyr_mutex.c`）、`<zephyr/kernel.h>`・`<zephyr/spinlock.h>` の OS の部分（`zephyr_os.h`・`zephyr_os_spinlock.h`）、tick の入口（`zephyr_compat_tick()`、`zephyr_compat_os.h`）。すべて `zephyr_kernel_os.h` で宣言した基本の操作（2 節）の上。使うのは F だけ |
+| 互換層のカーネルのホストテスト（OS の部分の受け入れ試験） | `common/tests/zephyr_kernel` | `zephyr_kernel_test.c`（22 項目）、境界の宣言 `zephyr_kernel_test.h`（3 節）、汎用のカーネルの部分の基本の操作の上の境界の項目（`kernel_generic/zephyr_kernel_test_os.h`）。動かすのは F のホストテスト（`freertos/tests/compat`）で、ファームウェアには入らない |
 | 自分のシェルを持たない OS のためのシェル | `common/compat/shell_engine` | 互換層の API の上: 行編集（`cli.c`）、`Z_SHELL_CMD_ROOT_GLOBAL` のルートのコマンドの表と実行と `help`（`shell_engine.c`。`shell_engine_cmds[]` はアプリが用意する）、Zephyr の単語の分割（`shell_argv.c`）、コンソールとスレッドごとの stdout（`shell_console.c`）、セッションごとの getopt の状態（`getopt_state.c`）、`zshell.c` のバックエンド（`zshell_os_impl.h`・`zephyr_os_shell.h`）、シリアルのセッション（`shell_serial.c`。スレッド "console"。コンソールの経路 `shell_serial_os.h` の上。3 節）、Telnet のシェル（`shell_telnet.c`。スレッド "shell_telnet"・"telnet_service"。`zsock_*()` の上）。使うのは F だけ |
 | どの OS も持たない RP2040 のコード | `common/chip/rp2040` | `include/rp2040_timer_us.h`（TIMER のレジスターと 64 ビットの読み出し `rp2040_timer_us()`。必ずインライン。3 つの OS のファームウェアすべて）、`include/rp2040_watchdog_reboot.h`（`rp2040_watchdog_reboot()`、レジスターを直接書く watchdog の再起動。Zephyr 版と N）、KV の領域の flash のドライバーを持たない OS のための、RP2040 での KV のフラッシュの境界（`rp2040_flash_kv.c` が OS の側の flash の操作 `include/rp2040_flash_kv_os.h` の上で実装。3 節。`include/rp2040_flash_kv.h`。N と F。ビルドは `N-board/src/Make.defs` と `freertos/drivers/kv/kv.cmake`）。各 OS のファームウェアが `include/` を include パスに入れる（Zephyr はアプリの `CMakeLists.txt`、N は `N-board/scripts/Make.defs` で全部のソースに、F はアプリの `CMakeLists.txt`） |
 | ホストテスト | `common/tests` | テストと偽物。`common/tests/zephyr_fakes` はカーネルの OS 部分のホスト用の実装 |
@@ -70,7 +70,7 @@ Zephyr と同じ名前で提供する層（以下「互換層」。OS に依存�
 | N: アプリ | `nuttx/apps/*` | init タスク（`init`）、コマンドごとの builtin アプリ、シェルの OS 部分（`subcmd`）、Wi-Fi とセンサーの部分 |
 | N: NuttX の変更 | `nuttx/patches` | NuttX と nuttx-apps へのローカルのパッチ |
 | F: アプリ | `freertos/app/usb-console` | `main()`、`FreeRTOSConfig.h`、tick のフック、アイドルと CPU 負荷、`os_clock.h`、`priorities_os.h`、FreeRTOS 版だけが答えられるコマンド（`version`・`free`・`ps`）とコマンドの表、汎用のコマンドの OS の部分（`kernel_shell_os_impl.h`）、異常停止の処理 |
-| F: 互換層の OS 部分 | `freertos/drivers/compat` | 汎用のカーネルの部分の基本の操作（`zephyr_kernel_os_impl.h`）、`zephyr_os_atomic.h`、実時間の時計、ソケットの登録のためのリンカースクリプトの部分、`rp2040/`（ポートのヘッダー、GPIO バンク 0、hwinfo、自己診断のボードの部分）、自己診断の FreeRTOS の部分（`zephyr_selftest_os_impl.h`）、プレリュード |
+| F: 互換層の OS 部分 | `freertos/drivers/compat` | 汎用のカーネルの部分の基本の操作（`zephyr_kernel_os_impl.h`）、`zephyr_os_atomic.h`、実時間の時計、ソケットの登録のためのリンカースクリプトの部分、`rp2040/`（ポートのヘッダー、GPIO バンク 0、hwinfo）、プレリュード |
 | F: コンソールの経路 | `freertos/drivers/shell` | `shell_serial_os_impl.h`（Pico SDK の `stdio_usb`）、SDK の stdio をコンソールへ（`shell_stdio.c`） |
 | F: C ライブラリーの追加 | `freertos/drivers/libc` | stdout・stderr の置き換え |
 | F: そのほかの OS 部分 | `freertos/drivers/{include,kv,telnet,wifi,sensor_shell,imu,zperf}` | `app_log_os.h`・`log_ram_os_impl.h`、KV のフラッシュの操作、Wi-Fi の OS ヘッダー、センサーのシェルの OS 部分、ソースごとのプレリュード、ビルドのファイル（Telnet は `telnet.cmake` だけ） |
@@ -84,11 +84,11 @@ POSIX のネットワークのヘッダー（C ライブラリーのものか `l
 
 | 部分 | 要るもの | 要らないもの |
 |---|---|---|
-| `common/compat/kernel_generic` | `common/compat` のヘッダー、OS の基本の操作（`zephyr_kernel_os_impl.h`。`z_os_thread_t` はポインターの型で、NULL はスレッドが無いこと）、OS の `zephyr_os_atomic.h`・`priorities_os.h`・`<zephyr/sys/clock.h>`。`zephyr_selftest_os.h` だけ OS の `zephyr_selftest_os_impl.h` | `net_offload`、`libc_net`（`common/tests/run.sh` の `kernel_generic_independent`） |
+| `common/compat/kernel_generic` | `common/compat` のヘッダー、OS の基本の操作（`zephyr_kernel_os_impl.h`。`z_os_thread_t` はポインターの型で、NULL はスレッドが無いこと）、OS の `zephyr_os_atomic.h`・`priorities_os.h`・`<zephyr/sys/clock.h>` | `net_offload`、`libc_net`（`common/tests/run.sh` の `kernel_generic_independent`） |
 | `common/compat/net_offload` | カーネルの部分（どちらでも）、POSIX のソケットのヘッダー（C ライブラリーのものか `libc_net`）、`common/compat` の `net_mgmt.h`・`wifi_mgmt.h`、OS の `<zephyr/sys/__assert.h>` | `kernel_generic`（`net_offload_independent`。N の形の偽のカーネルの上で） |
 | `common/compat/libc_net` | C ライブラリーの `<sys/types.h>` | ほかのすべて |
 | `common/compat/shell_engine` | カーネルの部分の任意の 4 項目（2.1）、`common/shell/subcmd.h`、getopt の写し（`common/compat/lib/utils/getopt`）、ログ（`app_log.h`）、コンソールの経路（3 節）。Telnet のシェル（`shell_telnet.c`）だけ `zsock_*()`（OS のネットワーク層か `net_offload`） | `kernel_generic`（カーネルの部分はどちらでもよい） |
-| `common/compat/selftest` | カーネルの部分、`zephyr_selftest_os.h`（汎用のカーネルの部分では `kernel_generic` のものと OS の `zephyr_selftest_os_impl.h`。直接に実装する OS は自分で書く）、ボードの部分（3 節） | ネットワーク、シェル |
+| `common/tests/zephyr_kernel` | カーネルの部分、`zephyr_kernel_test_os.h`（汎用のカーネルの部分では、このディレクトリーの `kernel_generic/` のものと OS の `zephyr_kernel_test_os_impl.h`。直接に実装する OS は自分で書く）、プラットフォームの部分（3 節） | ネットワーク、シェル |
 | `common/compat/log` | OS の `app_log_os.h`・`log_ram_os_impl.h` | 互換層のほかの部分 |
 | `common/chip/rp2040` | `rp2040_flash_kv.c` だけ: `common/compat` の `flash_kv.h`・`flash_kv_os.h`、ログ（`app_log.h`）。`include/` のヘッダーは何も読まない | — |
 | `common/shell` | `kernel_shell.c`: ログ（`fault_record.h`）、`<zephyr/sys/clock.h>`、hwinfo。`dmesg_shell.c`: ログ。`ifconfig_shell.c`: `<zephyr/net/net_if.h>`（ネットワークの部分）。`nina_shell.c`: NINA の `include/`。`zshell.c`: シェルのバックエンド（3 節） | — |
@@ -101,10 +101,10 @@ POSIX のネットワークのヘッダー（C ライブラリーのものか `l
 - **直接に実装する**（N。`nuttx/drivers/compat/`）: 自分の `zephyr_os.h`・`zephyr_os_spinlock.h`・`zephyr_os_atomic.h` と、
   2.2 の関数を OS 自身のオブジェクト（セマフォ、watchdog、カーネルスレッド）の上に書きます。
 - **基本の操作の上に置く**（F）: 汎用の実装（`common/compat/kernel_generic/`: `zephyr_os.h`・`zephyr_os_spinlock.h`・`zephyr_kernel.c`・
-  `zephyr_mutex.c`・`zephyr_os_internal.h`・`zephyr_compat_os.h` と、自己診断の `zephyr_selftest_os.h`）が、2.1・2.2 と
+  `zephyr_mutex.c`・`zephyr_os_internal.h`・`zephyr_compat_os.h`）が、2.1・2.2 と
   スピンロックを、`common/compat/kernel_generic/zephyr_kernel_os.h` で宣言した基本の操作（2.5）の上に Zephyr の規則で実装します。OS が書くのは、
   その基本の操作（`zephyr_kernel_os_impl.h`。static inline）、`zephyr_os_atomic.h`、tick の割り込みから 1 tick に 1 回
-  `zephyr_compat_tick()` を呼ぶ tick のフック、自己診断のための `zephyr_selftest_os_impl.h` です。
+  `zephyr_compat_tick()` を呼ぶ tick のフック、互換層のカーネルのホストテストのための `zephyr_kernel_test_os_impl.h`（F は `freertos/tests/compat/`）です。
 
 ### 2.1 `zephyr_os.h` が用意するもの（15 項目、任意 2 項目）
 
@@ -263,8 +263,8 @@ F のポートのヘッダーには、tick のフックの `z_os_tick_now_us32()
 | Wi-Fi のプロファイル | `common/imu/wifi_profile.c` が読む | `extern k_tid_t wifi_reconnect_tid;` | `common/imu/wifi_profile.c` | `nuttx/apps/wifi/wifi_profile_os.h` | `freertos/drivers/wifi/wifi_profile_os.h` |
 | センサーのシェル | `common/drivers/sensor_shell/sensor_shell.c` と `common/compat/sensor_shell_stream.c` が最初に読む | `CONFIG_SENSOR_SHELL_STREAM`、`_THREAD_STACK_SIZE`、`_TRIG_PRINT_TIMEOUT_MS`、`_MAX_TRIGGER_DEVICES`。`sensor_shell_os_get_arm()`、`sensor_shell_os_get_wait()`、`sensor_shell_os_processing_callback` | その 2 つのファイル | `nuttx/apps/sensor/sensor_shell_os.h`、`sensor_shell_nuttx.h`、`sensor_shell_nuttx.c` | `freertos/drivers/sensor_shell/sensor_shell_os.h`、`sensor_shell_os.c` |
 | 互換層の開始 | `common/compat/zephyr_compat.h` | `zephyr_compat_initialize()`、`K_THREAD_DEFINE_START(name)` | 起動。`K_THREAD_DEFINE_START()` は `common/imu/app_init.c` | 共有の `common/compat/zephyr_init.c`（2 節） | 同じ |
-| 互換層の自己診断、OS の部分 | `common/compat/selftest/zephyr_selftest.h`（`zephyr_selftest.c` が `<zephyr/kernel.h>` のあとに `"zephyr_selftest_os.h"` を読む） | 型 `zephyr_selftest_os_prio_t`、`ZEPHYR_SELFTEST_OS_NAME_MAX`、`zephyr_selftest_os_tick()`、`_tick_sync()`、`_thread_create()`、`_thread_exit()`、`_prio_get()`、`_prio_self()`、`_name_get()`、`_current()`、`_in_isr()`、`_sched_lock()`、`_sched_unlock()` | `common/compat/selftest/zephyr_selftest.c` | — （ビルドしない） | 基本の操作の上の `common/compat/kernel_generic/zephyr_selftest_os.h`（`_tick_sync()`・`_thread_exit()`・`_prio_self()`・`_name_get()`・`_in_isr()`、型と名前の長さ）。残りは `freertos/drivers/compat/zephyr_selftest_os_impl.h`（FreeRTOS のタスク、ボードとホストで同じ） |
-| 互換層の自己診断、ボードの部分 | 同じ | `zephyr_selftest_port_alarm()`、`_quiet()`、`_realtime()`、`_mask_irqs()` | 同じ | — | ボード `freertos/drivers/compat/rp2040/zephyr_selftest_port.c`、ホスト `freertos/tests/compat/main.c` |
+| 互換層のカーネルのホストテスト、OS の部分 | `common/tests/zephyr_kernel/zephyr_kernel_test.h`（`zephyr_kernel_test.c` が `<zephyr/kernel.h>` のあとに `"zephyr_kernel_test_os.h"` を読む） | 型 `zephyr_kernel_test_os_prio_t`、`ZEPHYR_KERNEL_TEST_OS_NAME_MAX`、`zephyr_kernel_test_os_tick()`、`_tick_sync()`、`_thread_create()`、`_thread_exit()`、`_prio_get()`、`_prio_self()`、`_name_get()`、`_current()`、`_in_isr()`、`_sched_lock()`、`_sched_unlock()` | `common/tests/zephyr_kernel/zephyr_kernel_test.c` | — （動かさない） | 基本の操作の上の `common/tests/zephyr_kernel/kernel_generic/zephyr_kernel_test_os.h`（`_tick_sync()`・`_thread_exit()`・`_prio_self()`・`_name_get()`・`_in_isr()`、型と名前の長さ）。残りは `freertos/tests/compat/zephyr_kernel_test_os_impl.h`（FreeRTOS のタスク） |
+| 互換層のカーネルのホストテスト、プラットフォームの部分 | 同じ | `zephyr_kernel_test_port_alarm()`、`_quiet()`、`_realtime()`、`_mask_irqs()`（起こせる割り込み、実時間に従う tick、止められる割り込みが無いプラットフォームは -ENOTSUP か false を返し、その確認は飛ばす） | 同じ | — | `freertos/tests/compat/main.c`（FreeRTOS の POSIX ポート。4 つとも飛ばす） |
 | 汎用のカーネルの部分の tick | `common/compat/kernel_generic/zephyr_compat_os.h` | `zephyr_compat_tick()`: 1 tick に 1 回、tick の割り込みから | F の tick のフック | — | `common/compat/kernel_generic/zephyr_kernel.c` |
 | ネットワーク層を持たない OS のネットワークの部分の開始 | `common/compat/net_offload/include/zephyr_net_init.h` | `zephyr_net_initialize()` | F の `main_main()` | —（`nina_net_initialize()`） | 共有の `common/compat/net_offload/zephyr_net_init.c` |
 | アプリの起動 | `common/imu/app_main.h` | `app_init_post_kernel()`、`app_threads_start()`、`app_main()` をこの順に呼ぶ（4.6 節）。モジュールのオプション（`CONFIG_KV_STORE`、`CONFIG_APP_IMU`、`CONFIG_IMU_RAW_MQTT`、`CONFIG_TIME_SYNC`、`CONFIG_WIFI_CREDENTIALS`、`CONFIG_WIFI_PROFILE`、`CONFIG_APP_SENSOR`、`CONFIG_WIFI_NINA_LOCAL`、`CONFIG_NET_ZPERF`）は、そのモジュールをビルドするファームウェアが定義する。`CONFIG_APP_IMU` は MQTT の送信と時刻同期の API を常に使うので、`CONFIG_IMU_RAW_MQTT`・`CONFIG_TIME_SYNC` が無ければその代わりに `common/imu/imu_raw_mqtt_null.c`・`time_sync_null.c` をビルドする（7 節） | 各 OS の起動のファイル（Zephyr は `app_main()` だけ） | 共有の `common/imu/app_main.c`、`app_init.c`。オプションは Kconfig。呼ぶのは `nuttx/apps/init/rp2040_init.c` | 共有: 同じ。オプションは各モジュールの `.cmake`。呼ぶのは `main_main()` |
@@ -412,7 +412,7 @@ LSM6DSO のコア（`common/drivers/lsm6dso` の直下の `.c`、`include/`、`i
 | BOOTSEL に入る（ROM の `reset_usb_boot()`） | `N-board/src/rp2040_restart.c`。NuttX の `ROM_LOOKUP()` の上 | Pico SDK の `reset_usb_boot()`（Zephyr 版は hal_rpi_pico のもの） |
 | チップの ID（フラッシュの固有の ID。XIP を止めて 1 回読む） | `N-board/src/rp2040_chipid.c`。NuttX の `rp2040_flash_cmd()` の上 | Pico SDK の `pico_unique_id`（Zephyr 版は hwinfo のドライバー） |
 | USB デバイスのスタック、コンソールの経路 | `cdcacm`、`N-board/src/rp2040_usbserial.c`。Telnet は `nuttx/apps/init/rp2040_telnet.c` | Pico SDK の `stdio_usb`（TinyUSB）。コンソールの経路 `freertos/drivers/shell/shell_serial_os_impl.h`、`shell_stdio.c`、`freertos/drivers/libc/stdio_wrap.c`。Telnet はシェルのエンジンのもの |
-| ヒープ | NuttX のもの | FreeRTOS の `heap_4`、8 KiB（`configTOTAL_HEAP_SIZE`。`SELFTEST` では 16 KiB） |
+| ヒープ | NuttX のもの | FreeRTOS の `heap_4`、8 KiB（`configTOTAL_HEAP_SIZE`） |
 | OS 自身のシェル | nsh（セッションは `rp2040_init.c`） | 無い。共有のエンジン `common/compat/shell_engine`（コンソール、シリアルのセッション、Telnet）を `freertos/drivers/shell` のコンソールの経路の上で使う |
 | RAM ログに入る OS 自身のログ | `syslog()`: syslog のチャネル、`nuttx/drivers/log/log_ram_syslog.c` | なし（FreeRTOS のカーネルと Pico SDK はログを持たない） |
 | 致命的なエラー | `CONFIG_BOARD_RESET_ON_ASSERT`、報告は RAM ログ | `freertos/app/usb-console/src/fault.c`（入口: `panic()`、`isr_hardfault`、FreeRTOS のフック、`_exit()`。タスクの名前、`__uninitialized_ram` の記録、watchdog の scratch レジスター、SDK の `watchdog_reboot()`）と `common/compat/log/fault_record.c`（記録、`fault_record_set_frame()`、`fault_record_take()`） |

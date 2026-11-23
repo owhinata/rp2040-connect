@@ -1,14 +1,14 @@
 /* SPDX-License-Identifier: MIT */
-/* The self-test of the Zephyr compatibility layer: see zephyr_selftest.h.
+/* The test of the Zephyr compatibility layer's kernel: see zephyr_kernel_test.h.
  * The checks use the layer's Zephyr API; the helper threads, the tick count,
  * the priorities and the names they read are the OS's, through the OS's
- * zephyr_selftest_os.h (FreeRTOS: common/compat/kernel_generic).
+ * zephyr_kernel_test_os.h (FreeRTOS: kernel_generic/ of this directory).
  *
- * Times: "ticks" are the OS's tick counts (zephyr_selftest_os_tick()) from
+ * Times: "ticks" are the OS's tick counts (zephyr_kernel_test_os_tick()) from
  * just after a tick (st_tick_sync()), so a relative wait of n ticks, which
  * Zephyr ends at the current tick + n + 1, reads n + 1.  "us" are
  * microseconds of the 1 MHz counter (k_cycle_get_64()), checked only where
- * the tick follows real time (zephyr_selftest_port_realtime()): such a wait
+ * the tick follows real time (zephyr_kernel_test_port_realtime()): such a wait
  * lasts more than n and at most n + 1 ticks, plus a switch (WAKE_SLACK_US).
  */
 
@@ -21,8 +21,8 @@
 
 #include <zephyr/kernel.h>
 
-#include "zephyr_selftest.h"
-#include "zephyr_selftest_os.h"
+#include "zephyr_kernel_test.h"
+#include "zephyr_kernel_test_os.h"
 
 #define TICK_US       Z_USEC_PER_TICK
 /* Ticks of 1 ms, rounded up (K_MSEC(1)). */
@@ -55,7 +55,7 @@
 /* Output ----------------------------------------------------------------------*/
 
 /* A test's lines are kept here and written to the console after it, then the
- * console is let go quiet (zephyr_selftest_port_quiet()) before the next test:
+ * console is let go quiet (zephyr_kernel_test_port_quiet()) before the next test:
  * on the board, writing to the USB console makes USB interrupts and wakes the
  * timer task (the Pico SDK's stdio mutex, released in an interrupt) for a
  * while after the write returns, which would land in the measurements.
@@ -96,7 +96,7 @@ static void st_flush(void)
 	out_len = 0;
 	out[0] = '\0';
 	out_cut = false;
-	zephyr_selftest_port_quiet();
+	zephyr_kernel_test_port_quiet();
 }
 
 /* Checks --------------------------------------------------------------------*/
@@ -141,13 +141,13 @@ static void check_range(long long got, long long lo, long long hi, int line, con
 
 static uint32_t st_tick(void)
 {
-	return zephyr_selftest_os_tick();
+	return zephyr_kernel_test_os_tick();
 }
 
 /* Returns just after a tick. */
 static void st_tick_sync(void)
 {
-	zephyr_selftest_os_tick_sync();
+	zephyr_kernel_test_os_tick_sync();
 }
 
 static uint64_t st_us(void)
@@ -162,7 +162,7 @@ static void check_wait(const char *what, uint32_t ticks, uint64_t us, uint32_t n
 {
 	st_printf("  %s: %lu ticks, %llu us\n", what, (unsigned long)ticks, (unsigned long long)us);
 	check_eq(ticks, (long long)n + 1, line, what);
-	if (zephyr_selftest_port_realtime()) {
+	if (zephyr_kernel_test_port_realtime()) {
 		check_range((long long)us, (long long)n * TICK_US + 1,
 			    ((long long)n + 1) * TICK_US + WAKE_SLACK_US, line, what);
 	}
@@ -183,7 +183,7 @@ static void helper_main(void *param)
 
 	h->fn(h->arg);
 	k_sem_give(&h->done);
-	zephyr_selftest_os_thread_exit();
+	zephyr_kernel_test_os_thread_exit();
 }
 
 /* Starts fn(arg) at the Zephyr priority zprio; above the caller it runs at
@@ -194,8 +194,8 @@ static bool spawn(struct helper *h, const char *name, int zprio, void (*fn)(void
 	h->fn = fn;
 	h->arg = arg;
 	(void)k_sem_init(&h->done, 0, 1);
-	return zephyr_selftest_os_thread_create(helper_main, name, HELPER_STACK, h,
-						K_PRIO_PREEMPT(zprio), &h->task);
+	return zephyr_kernel_test_os_thread_create(helper_main, name, HELPER_STACK, h,
+						   K_PRIO_PREEMPT(zprio), &h->task);
 }
 
 static bool join(struct helper *h)
@@ -318,7 +318,7 @@ static void test_mutex_timeout(void)
 struct holder {
 	struct k_sem locked;
 	struct k_sem release;
-	zephyr_selftest_os_prio_t prio_after;
+	zephyr_kernel_test_os_prio_t prio_after;
 	int seq_after;
 };
 
@@ -333,7 +333,7 @@ static void holder_main(void *arg)
 	(void)k_sem_take(&r->release, K_FOREVER);
 	(void)k_mutex_unlock(&st_mutex);
 	r->seq_after = ++sequence;
-	r->prio_after = zephyr_selftest_os_prio_self();
+	r->prio_after = zephyr_kernel_test_os_prio_self();
 }
 
 static void test_mutex_inherit(void)
@@ -353,9 +353,9 @@ static void test_mutex_inherit(void)
 	sequence = 0;
 	CHECK(spawn(&hl, "st_holder", PRIO_LOW, holder_main, &hold));
 	CHECK_EQ(k_sem_take(&hold.locked, K_MSEC(100)), 0);
-	CHECK_EQ(zephyr_selftest_os_prio_get(hl.task), K_PRIO_PREEMPT(PRIO_LOW));
+	CHECK_EQ(zephyr_kernel_test_os_prio_get(hl.task), K_PRIO_PREEMPT(PRIO_LOW));
 	CHECK(spawn(&hh, "st_waiter", PRIO_HIGH, timed_lock_main, &wait));
-	CHECK_EQ(zephyr_selftest_os_prio_get(hl.task), K_PRIO_PREEMPT(PRIO_HIGH));
+	CHECK_EQ(zephyr_kernel_test_os_prio_get(hl.task), K_PRIO_PREEMPT(PRIO_HIGH));
 	k_sem_give(&hold.release);
 	seq_waiter = ++sequence;
 	CHECK(join(&hh));
@@ -375,10 +375,10 @@ static void test_mutex_inherit(void)
 	CHECK_EQ(k_sem_take(&hold.locked, K_MSEC(100)), 0);
 	CHECK(spawn(&hh, "st_waiter", PRIO_HIGH, timed_lock_main, &timed));
 	(void)k_msleep(1);
-	CHECK_EQ(zephyr_selftest_os_prio_get(hl.task), K_PRIO_PREEMPT(PRIO_HIGH));
+	CHECK_EQ(zephyr_kernel_test_os_prio_get(hl.task), K_PRIO_PREEMPT(PRIO_HIGH));
 	CHECK(join(&hh));
 	CHECK_EQ(timed.ret, -EAGAIN);
-	CHECK_EQ(zephyr_selftest_os_prio_get(hl.task), K_PRIO_PREEMPT(PRIO_LOW));
+	CHECK_EQ(zephyr_kernel_test_os_prio_get(hl.task), K_PRIO_PREEMPT(PRIO_LOW));
 	k_sem_give(&hold.release);
 	CHECK(join(&hl));
 }
@@ -548,7 +548,7 @@ static void timed_sleep(const char *what, enum sleep_kind kind, int64_t value, u
 		st_printf("  %s: %lu ticks, %llu us\n", what, (unsigned long)ticks,
 			  (unsigned long long)u0);
 		check_eq(ticks, 0, line, what);
-		if (zephyr_selftest_port_realtime()) {
+		if (zephyr_kernel_test_port_realtime()) {
 			check_range((long long)u0, 0, TICK_US - 1, line, what);
 		}
 		return;
@@ -582,7 +582,7 @@ static void test_clock(void)
 	u0 = st_us() - u0;
 	st_printf("  k_busy_wait(300): %llu us\n", (unsigned long long)u0);
 	CHECK(u0 >= 300);
-	if (zephyr_selftest_port_realtime()) {
+	if (zephyr_kernel_test_port_realtime()) {
 		CHECK_RANGE(u0, 300, 300 + SLACK_US);
 	}
 
@@ -616,7 +616,7 @@ struct isr_call {
 
 static void isr_call_run(struct isr_call *c)
 {
-	c->in_isr = zephyr_selftest_os_in_isr();
+	c->in_isr = zephyr_kernel_test_os_in_isr();
 	c->us = st_us();
 	if (c->order != NULL) {
 		c->order[(*c->count)++] = c->id;
@@ -704,7 +704,7 @@ static void test_isr_alarm(void)
 	int ret;
 
 	u0 = st_us();
-	ret = zephyr_selftest_port_alarm(1000, isr_call_alarm, &c);
+	ret = zephyr_kernel_test_port_alarm(1000, isr_call_alarm, &c);
 	if (ret == -ENOTSUP) {
 		st_printf("  skipped: no hardware interrupt here\n");
 		return;
@@ -888,7 +888,7 @@ static void st_work_q_start(void)
  */
 static void check_handler_tick(uint32_t ticks, long long want, int line)
 {
-	check_range(ticks, want, zephyr_selftest_port_realtime() ? want : want + 1, line,
+	check_range(ticks, want, zephyr_kernel_test_port_realtime() ? want : want + 1, line,
 		    "ticks until the handler ran");
 }
 
@@ -968,7 +968,7 @@ static void test_work_isr(void)
 
 	/* The same from a hardware interrupt. */
 	c.in_isr = false;
-	if (zephyr_selftest_port_alarm(500, isr_call_alarm, &c) == 0) {
+	if (zephyr_kernel_test_port_alarm(500, isr_call_alarm, &c) == 0) {
 		CHECK_EQ(k_sem_take(&w.done, K_MSEC(100)), 0);
 		CHECK(c.in_isr);
 		CHECK_EQ(w.runs, 2);
@@ -1073,9 +1073,9 @@ static void test_static_threads(void)
 	CHECK(st_eq_ran);
 	CHECK(st_eq_self == st_static_eq_tid);
 
-	CHECK_EQ(strcmp(zephyr_selftest_os_name_get(st_static_hi_tid), "st_static_hi_tid"), 0);
-	CHECK_EQ(zephyr_selftest_os_prio_get(st_static_hi_tid), K_PRIO_PREEMPT(13));
-	CHECK_EQ(zephyr_selftest_os_prio_get(st_static_eq_tid), K_PRIO_PREEMPT(14));
+	CHECK_EQ(strcmp(zephyr_kernel_test_os_name_get(st_static_hi_tid), "st_static_hi_tid"), 0);
+	CHECK_EQ(zephyr_kernel_test_os_prio_get(st_static_hi_tid), K_PRIO_PREEMPT(13));
+	CHECK_EQ(zephyr_kernel_test_os_prio_get(st_static_eq_tid), K_PRIO_PREEMPT(14));
 }
 
 static void test_thread_name(void)
@@ -1085,15 +1085,15 @@ static void test_thread_name(void)
 	st_work_q_start();
 	thread = k_work_queue_thread_get(&st_work_q);
 	CHECK(thread != NULL);
-	CHECK_EQ(strcmp(zephyr_selftest_os_name_get(thread), "st_workq"), 0);
+	CHECK_EQ(strcmp(zephyr_kernel_test_os_name_get(thread), "st_workq"), 0);
 	CHECK_EQ(k_thread_name_set(thread, "st_workq_renamed"), 0);
-	CHECK_EQ(strcmp(zephyr_selftest_os_name_get(thread), "st_workq_renamed"), 0);
+	CHECK_EQ(strcmp(zephyr_kernel_test_os_name_get(thread), "st_workq_renamed"), 0);
 	/* Cut to the OS's longest name (FreeRTOS: 31 characters). */
 	CHECK_EQ(k_thread_name_set(thread, "st_0123456789012345678901234567890123456789"), 0);
-	CHECK_EQ(strlen(zephyr_selftest_os_name_get(thread)), ZEPHYR_SELFTEST_OS_NAME_MAX);
+	CHECK_EQ(strlen(zephyr_kernel_test_os_name_get(thread)), ZEPHYR_KERNEL_TEST_OS_NAME_MAX);
 	CHECK_EQ(k_thread_name_set(thread, NULL), -EINVAL);
 	CHECK_EQ(k_thread_name_set(thread, "st_workq"), 0);
-	CHECK(k_current_get() == zephyr_selftest_os_current());
+	CHECK(k_current_get() == zephyr_kernel_test_os_current());
 }
 
 /* Time slices ---------------------------------------------------------------*/
@@ -1156,11 +1156,11 @@ static void test_timeslice(void)
 	 * take turns every 20 ms.  Both are started before either runs.
 	 */
 	memset(&s, 0, sizeof(s));
-	zephyr_selftest_os_sched_lock();
+	zephyr_kernel_test_os_sched_lock();
 	s.end = st_tick() + SLICE_COUNT * SLICE_TICKS;
 	ok = spawn(&ha, "st_spin_a", PRIO_SPIN, spinner_main, &a);
 	ok = spawn(&hb, "st_spin_b", PRIO_SPIN, spinner_main, &b) && ok;
-	zephyr_selftest_os_sched_unlock();
+	zephyr_kernel_test_os_sched_unlock();
 	CHECK(ok);
 	CHECK(join(&ha));
 	CHECK(join(&hb));
@@ -1175,7 +1175,7 @@ static void test_timeslice(void)
 	/* The first turn starts at the start; the others last a slice. */
 	for (int i = 2; i < n; i++) {
 		CHECK_RANGE(s.tick[i] - s.tick[i - 1], SLICE_TICKS - 1, SLICE_TICKS + 1);
-		if (zephyr_selftest_port_realtime()) {
+		if (zephyr_kernel_test_port_realtime()) {
 			CHECK_RANGE(s.us[i] - s.us[i - 1], SLICE_TICKS * TICK_US - 2 * TICK_US,
 				    SLICE_TICKS * TICK_US + 2 * TICK_US);
 		}
@@ -1223,7 +1223,7 @@ static void test_tick_catchup(void)
 	uint64_t u1;
 	bool ok;
 
-	if (zephyr_selftest_port_mask_irqs(0) == -ENOTSUP) {
+	if (zephyr_kernel_test_port_mask_irqs(0) == -ENOTSUP) {
 		st_printf("  skipped: the tick cannot catch up here\n");
 		return;
 	}
@@ -1237,7 +1237,7 @@ static void test_tick_catchup(void)
 	ok = spawn(&h, "st_sleeper", PRIO_HIGH, tick_sleeper_main, &s);
 	isr_call_after(&c, CATCHUP_WAIT_TICKS);
 	unmask = st_us() + CATCHUP_MASK_US;
-	CHECK_EQ(zephyr_selftest_port_mask_irqs(CATCHUP_MASK_US), 0);
+	CHECK_EQ(zephyr_kernel_test_port_mask_irqs(CATCHUP_MASK_US), 0);
 	/* The lost ticks and the sleeper have run before this task again. */
 	ticks = st_tick() - t0;
 	u1 = st_us();
@@ -1291,13 +1291,13 @@ static const struct test tests[] = {
 	{"tick_catchup", test_tick_catchup},
 };
 
-int zephyr_selftest_run(void)
+int zephyr_kernel_test_run(void)
 {
 	int failed = 0;
 	size_t count = sizeof(tests) / sizeof(tests[0]);
 
-	st_printf("selftest: tick %d us, priority %lu (Zephyr 14 is %d)\n", TICK_US,
-		  (unsigned long)zephyr_selftest_os_prio_self(), K_PRIO_PREEMPT(14));
+	st_printf("zephyr_kernel_test: tick %d us, priority %lu (Zephyr 14 is %d)\n", TICK_US,
+		  (unsigned long)zephyr_kernel_test_os_prio_self(), K_PRIO_PREEMPT(14));
 	st_flush();
 	for (size_t i = 0; i < count; i++) {
 		test_failures = 0;
@@ -1307,7 +1307,7 @@ int zephyr_selftest_run(void)
 		failed += test_failures != 0;
 		st_flush();
 	}
-	st_printf("selftest: %d of %u tests failed\n", failed, (unsigned int)count);
+	st_printf("zephyr_kernel_test: %d of %u tests failed\n", failed, (unsigned int)count);
 	st_flush();
 	return failed;
 }
