@@ -176,11 +176,6 @@ int main(void)
 	stdio_init_all();
 	shell_serial_init("usb");
 
-	/* heap_4 sets up its heap at the first allocation and reports no free
-	 * space until then ("free"). Nothing else here allocates from it.
-	 */
-	vPortFree(pvPortMalloc(1));
-
 	/* What Zephyr starts before main(): the system work queue ("sysworkq"),
 	 * the RTIO work queue ("RTIO WQ 0") and the gpio0 device of the
 	 * compatibility layer (freertos/drivers/compat).

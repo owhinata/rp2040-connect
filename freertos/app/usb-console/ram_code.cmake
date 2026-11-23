@@ -17,7 +17,8 @@
 # 2026-11-23).  Their read-only data stays in the flash: moving it made no
 # difference.  The cost is about 49 KiB of RAM (the code and the
 # long-branch stubs between it and the flash), taken from what newlib's
-# malloc() can use (the shell's commands): about 33 KiB is left.
+# malloc() can use (the shell's commands, the NINA passthrough mode's buffer):
+# about 89 KiB is left.
 #
 # To check a placement on the board, read the XIP cache's counters while
 # sending: clear them with "devmem 0x1400000c 32 0" and

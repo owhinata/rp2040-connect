@@ -2,8 +2,8 @@
 /* Fatal errors: the common exit and the record of the last one (fault.c).
  *
  * panic() (the Pico SDK's callers and the port's), the HardFault handler,
- * configASSERT() and assert(), the kernel's stack overflow check and heap
- * exhaustion, and _exit() all end in one exit, which disables interrupts,
+ * configASSERT() and assert(), the kernel's stack overflow check and
+ * _exit() all end in one exit, which disables interrupts,
  * fills a record (common/compat/log/fault_record.h: reason, PC, LR, SP, the
  * exception frame of a HardFault, the running task, the time and a
  * message), keeps it in RAM that the start-up code leaves alone

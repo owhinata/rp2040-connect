@@ -4,7 +4,7 @@
  * so the host tests (common/tests/fault_record.c) can run it.  Used by the
  * FreeRTOS build (freertos/app/usb-console/src/fault.c), which fills the
  * record at the common exit of panic(), the HardFault handler, failed
- * assertions, stack overflows and heap exhaustion, keeps it in RAM that the
+ * assertions, stack overflows and _exit(), keeps it in RAM that the
  * start-up code leaves alone (__uninitialized_ram) with a copy of the reason,
  * PC and LR in the watchdog's scratch registers 0..3, restarts, and shows it
  * after the restart ("fault" and the banner).  The record's lines are
@@ -68,8 +68,11 @@ enum fault_reason {
 	FAULT_REASON_PANIC = 2,          /* panic() (the Pico SDK's and ours) */
 	FAULT_REASON_ASSERT = 3,         /* configASSERT(), assert() */
 	FAULT_REASON_STACK_OVERFLOW = 4, /* a task's stack (the kernel's check) */
-	FAULT_REASON_HEAP = 5,           /* the kernel's heap is exhausted */
-	FAULT_REASON_EXIT = 6,           /* _exit() (exit(), abort()) */
+	/* 5 is reserved: an exhausted kernel heap, when the FreeRTOS build had
+	 * one.  Not reused, so that a record of an older firmware does not
+	 * read as another reason ("unknown").
+	 */
+	FAULT_REASON_EXIT = 6, /* _exit() (exit(), abort()) */
 };
 
 /* The record's flags. */

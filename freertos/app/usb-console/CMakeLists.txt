@@ -159,7 +159,6 @@ target_link_libraries(usb-console
   hardware_timer
   hardware_watchdog
   FreeRTOS-Kernel
-  FreeRTOS-Kernel-Heap4
 )
 
 # The console is the USB CDC ACM port; UART0 (GPIO0/1) is left alone.

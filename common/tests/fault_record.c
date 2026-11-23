@@ -254,7 +254,7 @@ int main(void)
 	/* The reasons. */
 	assert(strcmp(fault_reason_name(FAULT_REASON_PANIC), "panic") == 0);
 	assert(strcmp(fault_reason_name(FAULT_REASON_STACK_OVERFLOW), "stack overflow") == 0);
-	assert(strcmp(fault_reason_name(FAULT_REASON_HEAP), "heap exhausted") == 0);
+	assert(strcmp(fault_reason_name(5), "unknown") == 0); /* reserved */
 	assert(strcmp(fault_reason_name(FAULT_REASON_EXIT), "exit") == 0);
 	assert(strcmp(fault_reason_name(FAULT_REASON_NONE), "unknown") == 0);
 	assert(strcmp(fault_reason_name(77), "unknown") == 0);

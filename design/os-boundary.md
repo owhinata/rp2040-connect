@@ -26,7 +26,7 @@ for an OS that offers only basic primitives.
 1. **The layer's kernel part** (section 2), one of:
    - directly: `zephyr_os.h`, `zephyr_os_spinlock.h`, `zephyr_os_atomic.h` and the 18 functions of 2.2
      (model: `nuttx/drivers/compat/`);
-   - on primitives (with `common/compat/kernel_generic`): the 9 types and 26 functions of
+   - on primitives (with `common/compat/kernel_generic`): the 10 types and constants and 26 functions of
      `zephyr_kernel_os_impl.h` (2.5), `zephyr_os_atomic.h`, a tick hook that calls `zephyr_compat_tick()`
      once per tick (model: `freertos/drivers/compat/zephyr_kernel_os_impl.h`; the smallest form that
      compiles: `common/tests/kernel_generic_host/`).
@@ -117,7 +117,7 @@ one of two ways:
   that calls `zephyr_compat_tick()` once per tick from the tick interrupt, and for the host test of
   the layer's kernel `zephyr_kernel_test_os_impl.h` (F: `freertos/tests/compat/`).
 
-### 2.1 Provided by `zephyr_os.h` (15 items, 2 optional)
+### 2.1 Provided by `zephyr_os.h` (16 items, 3 optional)
 
 "Generic" is the generic implementation's `zephyr_os.h`, which F uses; its items come from the primitives.
 
@@ -130,6 +130,7 @@ one of two ways:
 | `K_SEM_MAX_LIMIT` | largest limit | `SEM_VALUE_MAX` | `UINT_MAX` |
 | `struct _timeout`, `_timeout_func_t` | timer of a delayable work item | `struct wdog_s` | entry in the layer's timeout list |
 | `k_tid_t` | thread handle | `pid_t` | `z_os_thread_t` (F: `TaskHandle_t`) |
+| `K_THREAD_STACK_RESERVED` (optional, 0 by default) | bytes `K_THREAD_STACK_DEFINE()` adds after each stack for the OS | — (0) | `Z_OS_THREAD_RESERVED` (F: the task's control block, 136) |
 | `k_current_get()` | the calling thread | `gettid()` | `z_os_thread_self()` |
 | `k_yield()` | the next ready thread of the priority, or go on | `sched_yield()` | `z_os_yield()` |
 | `K_PRIO_PREEMPT(x)` | OS priority of Zephyr priority x, order kept | `APP_PRIO_FROM_ZEPHYR` (118 − x) | `APP_PRIO_FROM_ZEPHYR` (F: 20 − x) |
@@ -157,7 +158,7 @@ Files: N `zephyr_kernel.c`, `zephyr_mutex.c`; generic `common/compat/kernel_gene
 | `k_poll_event_init(e, type, mode, obj)` | semaphores only, `K_POLL_MODE_NOTIFY_ONLY` |
 | `k_poll(events, n, t)` | 0 when one is ready (does not take), −EAGAIN on timeout |
 | `k_thread_name_set(tid, name)` | name shown by `ps`; 0 or −EINVAL |
-| `z_thread_static_start(thread)` | run `entry(p1, p2, p3)` in a new thread with the name, static stack and priority of `*thread` (which stays valid while it runs), end it when `entry` returns, set `*tid`; 0 or −errno. Every thread of the layer starts with it |
+| `z_thread_static_start(thread)` | run `entry(p1, p2, p3)` in a new thread with the name, static stack (`K_THREAD_STACK_DEFINE()`, with its `K_THREAD_STACK_RESERVED` bytes for the OS) and priority of `*thread` (which stays valid while it runs), end it when `entry` returns, set `*tid`; 0 or −errno. Every thread of the layer starts with it |
 | `k_sleep(t)` | K_NO_WAIT yields; else wakes at tick + ticks + 1; K_FOREVER for ever; returns 0 |
 | `k_msleep(ms)`, `k_usleep(us)` | rounded up to ticks, then as `k_sleep()`; ≤ 0 yields; returns 0 |
 | `k_busy_wait(us)` | spin at least `us` µs |
@@ -221,11 +222,13 @@ missing or different one does not compile. All are static inline: they are on th
 F's are `freertos/drivers/compat/zephyr_kernel_os_impl.h`, with the port-dependent ones in
 `zephyr_os_port.h` (board `freertos/drivers/compat/rp2040/`, host `freertos/tests/compat/`).
 
-Types and constants (9): `z_os_thread_t` (`TaskHandle_t`), `z_os_prio_t` (larger more urgent;
+Types and constants (10): `z_os_thread_t` (`TaskHandle_t`), `z_os_prio_t` (larger more urgent;
 `UBaseType_t`), `z_os_ticks_t` (unsigned; `TickType_t`), `Z_OS_TICKS_FOREVER` (its largest value, no
 timeout; `portMAX_DELAY`), `Z_OS_TICK_HZ` (`configTICK_RATE_HZ`), `z_os_woken_t` (0 at first;
-`BaseType_t`), `Z_OS_THREAD_NAME_SIZE` (`configMAX_TASK_NAME_LEN`), `struct k_mutex` with
-`Z_MUTEX_INITIALIZER()`, `Z_OS_ASSERT()`.
+`BaseType_t`), `Z_OS_THREAD_NAME_SIZE` (`configMAX_TASK_NAME_LEN`), `Z_OS_THREAD_RESERVED` (the bytes the OS
+keeps after each thread's stack for its control block, a multiple of 8, 0 if none: `K_THREAD_STACK_DEFINE()`
+adds them, as Zephyr's `K_THREAD_STACK_RESERVED`, and `K_THREAD_STACK_SIZEOF()` leaves them out; F:
+`sizeof(StaticTask_t)` rounded up to 8, 136), `struct k_mutex` with `Z_MUTEX_INITIALIZER()`, `Z_OS_ASSERT()`.
 
 Functions (26). "Locked" is inside `k_spin_lock()`; "ISR" includes the tick hook.
 
@@ -237,7 +240,7 @@ Functions (26). "Locked" is inside `k_spin_lock()`; "ISR" includes the tick hook
 | `z_os_isr_lock()`, `z_os_isr_unlock(state)` | an ISR's lock: saves and restores the mask; the state is never `UINT32_MAX` | `taskENTER_CRITICAL_FROM_ISR()`, `taskEXIT_CRITICAL_FROM_ISR()` |
 | `z_os_thread_self()` | the calling thread; threads only | `xTaskGetCurrentTaskHandle()` |
 | `z_os_thread_prio_self()` | its current priority (with inheritance); threads only | `uxTaskPriorityGet(NULL)` |
-| `z_os_thread_start(fn, name, stack, size, prio, arg, tid)` | new thread on a static stack; `*tid` set before it can run; from a thread or before the scheduler; 0, −EINVAL, −ENOMEM | `xTaskCreateStatic()`, control block from the FreeRTOS heap, `vTaskSuspendAll()` around it once the scheduler runs |
+| `z_os_thread_start(fn, name, stack, size, prio, arg, tid)` | new thread on a static stack: the storage of `K_THREAD_STACK_DEFINE()` and its `K_THREAD_STACK_SIZEOF()` (a multiple of 8), the `Z_OS_THREAD_RESERVED` bytes after it the OS's for the control block, so nothing is allocated; `*tid` set before it can run; from a thread or before the scheduler; 0, −EINVAL or another negative errno of the OS | `xTaskCreateStatic()` with the control block after the stack, `vTaskSuspendAll()` around it once the scheduler runs; 0 or −EINVAL |
 | `z_os_thread_exit()` | ends the calling thread | `vTaskDelete(NULL)` |
 | `z_os_thread_name(tid)` | the thread's writable name array (`Z_OS_THREAD_NAME_SIZE` bytes), as the OS shows it | `pcTaskGetName()` |
 | `z_os_yield()` | next ready thread of the priority, or go on; threads, unlocked | `taskYIELD()` |
@@ -430,7 +433,7 @@ the build rules. ST's register driver `lsm6dso_reg.c` is fetched by each build's
 | Entry to BOOTSEL (the ROM's `reset_usb_boot()`) | `N-board/src/rp2040_restart.c` on NuttX's `ROM_LOOKUP()` | the Pico SDK's `reset_usb_boot()` (Zephyr: hal_rpi_pico's) |
 | Chip ID (the flash's unique ID, read once with XIP off) | `N-board/src/rp2040_chipid.c` on NuttX's `rp2040_flash_cmd()` | the Pico SDK's `pico_unique_id` (Zephyr: its hwinfo driver) |
 | USB device stack, console transport | `cdcacm`, `N-board/src/rp2040_usbserial.c`; Telnet `nuttx/apps/init/rp2040_telnet.c` | Pico SDK `stdio_usb` (TinyUSB); the console transport `freertos/drivers/shell/shell_serial_os_impl.h`, `shell_stdio.c`, `freertos/drivers/libc/stdio_wrap.c`; Telnet is the shell engine's |
-| Heap | NuttX's | FreeRTOS `heap_4`, 8 KiB (`configTOTAL_HEAP_SIZE`) |
+| Heap | NuttX's | none in the kernel (`configSUPPORT_DYNAMIC_ALLOCATION` 0: every kernel object is static); newlib's `malloc()` from the end of `.bss` |
 | The OS's own shell | nsh (sessions in `rp2040_init.c`) | none: the shared engine `common/compat/shell_engine` (consoles, serial session, Telnet) on the console transport of `freertos/drivers/shell` |
 | The OS's own log in the RAM log | `syslog()`: the syslog channel, `nuttx/drivers/log/log_ram_syslog.c` | none (the FreeRTOS kernel and the Pico SDK have no log) |
 | Fatal errors | `CONFIG_BOARD_RESET_ON_ASSERT`, report in the RAM log | `freertos/app/usb-console/src/fault.c` (the entries: `panic()`, `isr_hardfault`, the FreeRTOS hooks, `_exit()`; the task's name, the record in `__uninitialized_ram`, the watchdog's scratch registers and the SDK's `watchdog_reboot()`) with `common/compat/log/fault_record.c` (the record, `fault_record_set_frame()`, `fault_record_take()`) |

@@ -61,6 +61,9 @@
  *   - struct _timeout and _timeout_func_t (the timer of a delayable work
  *     item),
  *   - k_tid_t, and k_current_get() (declared or inline),
+ *   - optionally K_THREAD_STACK_RESERVED: the bytes K_THREAD_STACK_DEFINE()
+ *     adds after each stack for the OS (the thread's control block); 0
+ *     by default,
  *   - k_yield() (declared or inline): gives the turn to the next ready
  *     thread of the same priority, or goes on if there is none (threads
  *     only),
@@ -224,14 +227,22 @@ int k_poll(struct k_poll_event *events, int num_events, k_timeout_t timeout);
 /* Threads ----------------------------------------------------------------*/
 
 /* A thread's stack, as in Zephyr a static array (the OS runs the thread
- * on it, e.g. NuttX's kthread_create_with_stack()).
+ * on it, e.g. NuttX's kthread_create_with_stack()).  As in Zephyr, the
+ * array has K_THREAD_STACK_RESERVED bytes more than size, which are the
+ * OS's ("zephyr_os.h" may define it: the generic kernel part keeps the
+ * thread's control block there; 0 otherwise), and K_THREAD_STACK_SIZEOF()
+ * is size, what the thread has for its stack.
  */
 
 typedef uint8_t k_thread_stack_t;
 
+#ifndef K_THREAD_STACK_RESERVED
+#  define K_THREAD_STACK_RESERVED 0
+#endif
+
 #define K_THREAD_STACK_DEFINE(sym, size) \
-  k_thread_stack_t __aligned(8) sym[size]
-#define K_THREAD_STACK_SIZEOF(sym) sizeof(sym)
+  k_thread_stack_t __aligned(8) sym[(size) + K_THREAD_STACK_RESERVED]
+#define K_THREAD_STACK_SIZEOF(sym) (sizeof(sym) - K_THREAD_STACK_RESERVED)
 
 /* K_PRIO_PREEMPT() and k_current_get(): "zephyr_os.h".  The calling
  * thread's k_tid_t is what K_THREAD_DEFINE() stores in its variable.
@@ -271,7 +282,9 @@ struct z_thread_static
 };
 
 /* The OS part: starts a thread named thread->name on thread->stack
- * (stack_size bytes) at the OS's priority thread->prio, which runs
+ * (stack_size bytes: the storage of K_THREAD_STACK_DEFINE() and its
+ * K_THREAD_STACK_SIZEOF(); the OS may use the K_THREAD_STACK_RESERVED
+ * bytes after them) at the OS's priority thread->prio, which runs
  * thread->entry(p1, p2, p3) and ends when entry returns; sets
  * *thread->tid before the new thread can use it.  *thread must stay valid
  * while the thread runs (the OS may read it in the new thread).  The new

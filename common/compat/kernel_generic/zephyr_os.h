@@ -87,6 +87,11 @@ struct _timeout {
  */
 typedef z_os_thread_t k_tid_t;
 
+/* The bytes K_THREAD_STACK_DEFINE() adds after each stack for the OS's
+ * control block of the thread (<zephyr/kernel.h>; z_os_thread_start()).
+ */
+#define K_THREAD_STACK_RESERVED Z_OS_THREAD_RESERVED
+
 /* Priorities: K_PRIO_PREEMPT(p) is the OS's priority of Zephyr's p
  * (APP_PRIO_FROM_ZEPHYR, priorities_os.h; 20 - p in the FreeRTOS build).
  */

@@ -126,13 +126,13 @@ The console is the USB CDC ACM port (UART0 is not used). Opening a terminal show
 | `nina passthrough confirm` | Restart into the NINA passthrough (USB serial <-> the NINA's UART, for reading and writing the NINA's firmware with `esptool`). Leave it by closing the port at 300 bps, or with RESET |
 | `i2c_dma mode [on\|off]`, `i2c_dma stats` | Switch or show the DMA reads of I2C0; show their counters |
 | `fault` | The record of the fatal error that ended the last run |
-| `free` | Use of the FreeRTOS heap and of `malloc()` |
+| `free` | Use of `malloc()`, and how much more it could take |
 | `reboot` | Restart |
 | `bootsel` | Restart into BOOTSEL (the `RPI-RP2` drive) |
 
 - Line editing: Backspace, Ctrl-C (drop the line) and the up and down arrows (history). There is no Tab
   completion and no editing inside the line. Quotes and `\` work as in the Zephyr build's shell.
-- A fatal error (HardFault, `panic()`, an assertion, a stack overflow, an exhausted heap) leaves a record
+- A fatal error (HardFault, `panic()`, an assertion, a stack overflow) leaves a record
   and restarts the board by itself. The record is shown when a terminal connects next, by `fault` and in
   `dmesg`.
 - The key-value store is in the last 8 KiB of the flash, in the format of the Zephyr and NuttX builds, so

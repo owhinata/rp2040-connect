@@ -23,7 +23,7 @@ Zephyr と同じ名前で提供する層（以下「互換層」。OS に依存�
 
 1. **互換層のカーネルの部分**（2 節）: 次のどちらか。
    - 直接に実装する: `zephyr_os.h`、`zephyr_os_spinlock.h`、`zephyr_os_atomic.h` と 2.2 の 18 関数（手本は `nuttx/drivers/compat/`）。
-   - 基本の操作の上に置く（`common/compat/kernel_generic` を使う）: `zephyr_kernel_os_impl.h` の型 9 と関数 26（2.5）、
+   - 基本の操作の上に置く（`common/compat/kernel_generic` を使う）: `zephyr_kernel_os_impl.h` の型と定数 10 と関数 26（2.5）、
      `zephyr_os_atomic.h`、1 tick に 1 回 `zephyr_compat_tick()` を呼ぶ tick のフック（手本は
      `freertos/drivers/compat/zephyr_kernel_os_impl.h`。コンパイルが通る最小の形は `common/tests/kernel_generic_host/`）。
 
@@ -106,7 +106,7 @@ POSIX のネットワークのヘッダー（C ライブラリーのものか `l
   その基本の操作（`zephyr_kernel_os_impl.h`。static inline）、`zephyr_os_atomic.h`、tick の割り込みから 1 tick に 1 回
   `zephyr_compat_tick()` を呼ぶ tick のフック、互換層のカーネルのホストテストのための `zephyr_kernel_test_os_impl.h`（F は `freertos/tests/compat/`）です。
 
-### 2.1 `zephyr_os.h` が用意するもの（15 項目、任意 2 項目）
+### 2.1 `zephyr_os.h` が用意するもの（16 項目、任意 3 項目）
 
 「汎用」は汎用の実装の `zephyr_os.h`（F が使う）で、その項目は基本の操作から作ります。
 
@@ -119,6 +119,7 @@ POSIX のネットワークのヘッダー（C ライブラリーのものか `l
 | `K_SEM_MAX_LIMIT` | 上限の最大値 | `SEM_VALUE_MAX` | `UINT_MAX` |
 | `struct _timeout`、`_timeout_func_t` | 遅延つきワークアイテムのタイマー | `struct wdog_s` | 互換層のタイムアウトの一覧の要素 |
 | `k_tid_t` | スレッドの識別 | `pid_t` | `z_os_thread_t`（F は `TaskHandle_t`） |
+| `K_THREAD_STACK_RESERVED`（任意。既定は 0） | `K_THREAD_STACK_DEFINE()` が各スタックのあとに OS のために足すバイト数 | ―（0） | `Z_OS_THREAD_RESERVED`（F はタスクの制御ブロック、136） |
 | `k_current_get()` | 呼んだスレッド | `gettid()` | `z_os_thread_self()` |
 | `k_yield()` | 同じ優先度の次の実行可能なスレッドに譲る。無ければ続ける | `sched_yield()` | `z_os_yield()` |
 | `K_PRIO_PREEMPT(x)` | Zephyr の優先度 x の OS の優先度。順序を保つ | `APP_PRIO_FROM_ZEPHYR`（118 − x） | `APP_PRIO_FROM_ZEPHYR`（F は 20 − x） |
@@ -146,7 +147,7 @@ POSIX のネットワークのヘッダー（C ライブラリーのものか `l
 | `k_poll_event_init(e, type, mode, obj)` | セマフォだけ、`K_POLL_MODE_NOTIFY_ONLY` |
 | `k_poll(events, n, t)` | どれかが揃えば 0（取りはしない）、タイムアウトで −EAGAIN |
 | `k_thread_name_set(tid, name)` | `ps` に出る名前。0 か −EINVAL |
-| `z_thread_static_start(thread)` | `*thread` の名前・静的なスタック・優先度の新しいスレッドで `entry(p1, p2, p3)` を動かし（`*thread` はスレッドが動くあいだ有効）、`entry` が戻ったら終える。`*tid` を入れる。0 か負の errno。互換層のスレッドはすべてこれで始める |
+| `z_thread_static_start(thread)` | `*thread` の名前・静的なスタック（`K_THREAD_STACK_DEFINE()`。OS のための `K_THREAD_STACK_RESERVED` バイトを含む）・優先度の新しいスレッドで `entry(p1, p2, p3)` を動かし（`*thread` はスレッドが動くあいだ有効）、`entry` が戻ったら終える。`*tid` を入れる。0 か負の errno。互換層のスレッドはすべてこれで始める |
 | `k_sleep(t)` | K_NO_WAIT は譲るだけ。ほかは今の tick + ticks + 1 で起きる。K_FOREVER は永久。0 を返す |
 | `k_msleep(ms)`、`k_usleep(us)` | tick に切り上げてから `k_sleep()` と同じ。0 以下は譲るだけ。0 を返す |
 | `k_busy_wait(us)` | 少なくとも `us` µs 回る |
@@ -207,10 +208,12 @@ atomic の操作そのものは共有です（`k_spin_lock()` の上）。
 経路にあるからです（関数ポインターを通さない）。F のものは `freertos/drivers/compat/zephyr_kernel_os_impl.h` で、ポートに
 よるものは `zephyr_os_port.h`（ボードは `freertos/drivers/compat/rp2040/`、ホストは `freertos/tests/compat/`）にあります。
 
-型と定数（9 個）: `z_os_thread_t`（`TaskHandle_t`）、`z_os_prio_t`（大きいほど急ぐ。`UBaseType_t`）、`z_os_ticks_t`（符号なし。
+型と定数（10 個）: `z_os_thread_t`（`TaskHandle_t`）、`z_os_prio_t`（大きいほど急ぐ。`UBaseType_t`）、`z_os_ticks_t`（符号なし。
 `TickType_t`）、`Z_OS_TICKS_FOREVER`（その最大の値で、終わりのない待ち。`portMAX_DELAY`）、`Z_OS_TICK_HZ`（`configTICK_RATE_HZ`）、
-`z_os_woken_t`（最初は 0。`BaseType_t`）、`Z_OS_THREAD_NAME_SIZE`（`configMAX_TASK_NAME_LEN`）、`struct k_mutex` と
-`Z_MUTEX_INITIALIZER()`、`Z_OS_ASSERT()`。
+`z_os_woken_t`（最初は 0。`BaseType_t`）、`Z_OS_THREAD_NAME_SIZE`（`configMAX_TASK_NAME_LEN`）、`Z_OS_THREAD_RESERVED`（OS が各スレッドの
+スタックのあとに制御ブロックのために取るバイト数。8 の倍数で、要らなければ 0。`K_THREAD_STACK_DEFINE()` がこれを足し（Zephyr の
+`K_THREAD_STACK_RESERVED` と同じ）、`K_THREAD_STACK_SIZEOF()` はこれを除く。F は `sizeof(StaticTask_t)` を 8 に切り上げた 136）、
+`struct k_mutex` と `Z_MUTEX_INITIALIZER()`、`Z_OS_ASSERT()`。
 
 関数（26 個）。「ロック中」は `k_spin_lock()` の中、「ISR」は tick のフックを含みます。
 
@@ -222,7 +225,7 @@ atomic の操作そのものは共有です（`k_spin_lock()` の上）。
 | `z_os_isr_lock()`、`z_os_isr_unlock(state)` | ISR のロック: マスクを保存して戻す。状態は `UINT32_MAX` にならない | `taskENTER_CRITICAL_FROM_ISR()`、`taskEXIT_CRITICAL_FROM_ISR()` |
 | `z_os_thread_self()` | 呼んだスレッド。スレッドだけ | `xTaskGetCurrentTaskHandle()` |
 | `z_os_thread_prio_self()` | その今の優先度（継承を含む）。スレッドだけ | `uxTaskPriorityGet(NULL)` |
-| `z_os_thread_start(fn, name, stack, size, prio, arg, tid)` | 静的なスタックの新しいスレッド。走れるようになる前に `*tid` を入れる。スレッドかスケジューラーの開始前から。0、−EINVAL、−ENOMEM | `xTaskCreateStatic()`。制御ブロックは FreeRTOS のヒープから。スケジューラーが動いていればまわりを `vTaskSuspendAll()` |
+| `z_os_thread_start(fn, name, stack, size, prio, arg, tid)` | 静的なスタックの新しいスレッド。スタックは `K_THREAD_STACK_DEFINE()` の領域とその `K_THREAD_STACK_SIZEOF()`（8 の倍数）で、そのあとの `Z_OS_THREAD_RESERVED` バイトは OS が制御ブロックに使う（何も確保しない）。走れるようになる前に `*tid` を入れる。スレッドかスケジューラーの開始前から。0、−EINVAL、または OS のほかの負の errno | `xTaskCreateStatic()`。制御ブロックはスタックのあと。スケジューラーが動いていればまわりを `vTaskSuspendAll()`。0 か −EINVAL |
 | `z_os_thread_exit()` | 呼んだスレッドを終える | `vTaskDelete(NULL)` |
 | `z_os_thread_name(tid)` | スレッドの書き込める名前の配列（`Z_OS_THREAD_NAME_SIZE` バイト）。OS が表示するもの | `pcTaskGetName()` |
 | `z_os_yield()` | 同じ優先度の次のスレッドに譲る。無ければ続ける。スレッド、ロックの外 | `taskYIELD()` |
@@ -412,7 +415,7 @@ LSM6DSO のコア（`common/drivers/lsm6dso` の直下の `.c`、`include/`、`i
 | BOOTSEL に入る（ROM の `reset_usb_boot()`） | `N-board/src/rp2040_restart.c`。NuttX の `ROM_LOOKUP()` の上 | Pico SDK の `reset_usb_boot()`（Zephyr 版は hal_rpi_pico のもの） |
 | チップの ID（フラッシュの固有の ID。XIP を止めて 1 回読む） | `N-board/src/rp2040_chipid.c`。NuttX の `rp2040_flash_cmd()` の上 | Pico SDK の `pico_unique_id`（Zephyr 版は hwinfo のドライバー） |
 | USB デバイスのスタック、コンソールの経路 | `cdcacm`、`N-board/src/rp2040_usbserial.c`。Telnet は `nuttx/apps/init/rp2040_telnet.c` | Pico SDK の `stdio_usb`（TinyUSB）。コンソールの経路 `freertos/drivers/shell/shell_serial_os_impl.h`、`shell_stdio.c`、`freertos/drivers/libc/stdio_wrap.c`。Telnet はシェルのエンジンのもの |
-| ヒープ | NuttX のもの | FreeRTOS の `heap_4`、8 KiB（`configTOTAL_HEAP_SIZE`） |
+| ヒープ | NuttX のもの | カーネルには無い（`configSUPPORT_DYNAMIC_ALLOCATION` 0。カーネルのオブジェクトはすべて静的）。newlib の `malloc()` は `.bss` の終わりから |
 | OS 自身のシェル | nsh（セッションは `rp2040_init.c`） | 無い。共有のエンジン `common/compat/shell_engine`（コンソール、シリアルのセッション、Telnet）を `freertos/drivers/shell` のコンソールの経路の上で使う |
 | RAM ログに入る OS 自身のログ | `syslog()`: syslog のチャネル、`nuttx/drivers/log/log_ram_syslog.c` | なし（FreeRTOS のカーネルと Pico SDK はログを持たない） |
 | 致命的なエラー | `CONFIG_BOARD_RESET_ON_ASSERT`、報告は RAM ログ | `freertos/app/usb-console/src/fault.c`（入口: `panic()`、`isr_hardfault`、FreeRTOS のフック、`_exit()`。タスクの名前、`__uninitialized_ram` の記録、watchdog の scratch レジスター、SDK の `watchdog_reboot()`）と `common/compat/log/fault_record.c`（記録、`fault_record_set_frame()`、`fault_record_take()`） |

@@ -202,12 +202,6 @@ void vApplicationStackOverflowHook(TaskHandle_t task, char *name)
 	finish(r);
 }
 
-/* configUSE_MALLOC_FAILED_HOOK: pvPortMalloc() of heap_4 found no room. */
-void vApplicationMallocFailedHook(void)
-{
-	finish(begin(FAULT_REASON_HEAP, (uint32_t)__builtin_return_address(0)));
-}
-
 /* Called by isr_hardfault() with the stack that holds the exception frame
  * and EXC_RETURN.
  */

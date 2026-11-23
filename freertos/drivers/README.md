@@ -118,8 +118,10 @@ use a stack of their own (MSP, 2048 bytes; the `(interrupts)` row of `ps`).
 | `console`, `shell_telnet`, `telnet_service`, `zperf_server_tid` | 6 (14) | 3072, 3072, 2048, 2048 | The USB and Telnet shells (commands run in these tasks), Telnet accepts, the server of `zperf tcp download` |
 | `IDLE` | 0 (–) | 256 | Idle; measures the CPU load and blinks the LED (GPIO6) every 500 ms while it runs (`idle.c`) |
 
-The heap is FreeRTOS's heap_4 with 8 KiB (`free`). It holds the control blocks of the layer's threads
-(about 2.3 KiB). Task stacks are allocated statically.
+The kernel has no heap (`configSUPPORT_DYNAMIC_ALLOCATION` 0): every task, queue and semaphore is
+static. Each thread of the layer keeps its control block (136 bytes) after its stack, in the array of
+`K_THREAD_STACK_DEFINE()` (`Z_OS_THREAD_RESERVED`, `compat/zephyr_kernel_os_impl.h`); the sizes above are
+the stacks without it.
 
 **Start-up** (`main.c`): `main()` sets up the RAM log, reads the fatal error record, sets up the console,
 the layer, the NINA's SPI, I2C0 (first the DMA interrupt's handler for its reads) and the flash of the key-value store; then the task `main` starts the
@@ -173,7 +175,7 @@ the interval of interest); timed by the TIMER.
   cycle. `LOG_*` lines are formatted in the caller's context (interrupt handlers included), timed by the
   TIMER. `dmesg` (`common/shell/dmesg_shell.c`) prints it.
 - Fatal errors (`app/usb-console/src/fault.[ch]`): `panic()`, HardFault, `configASSERT()` and `assert()`,
-  stack overflow (`configCHECK_FOR_STACK_OVERFLOW` 2), heap exhaustion and `_exit()` end in one exit,
+  stack overflow (`configCHECK_FOR_STACK_OVERFLOW` 2) and `_exit()` end in one exit,
   which keeps a record (reason, PC, LR, SP, exception frame, task, time) in RAM and in the watchdog's
   scratch registers 0..3 and restarts the board with the watchdog. The next start writes the record to
   `dmesg`, and `fault` and the console's banner show it. The record's format, the reading of the
@@ -309,7 +311,7 @@ they saturate) and read them about 15 s later (the hits and the accesses).
 
 The code costs about 49 KiB of RAM (`.data` is about 57 KiB instead of 8 KiB, with the long-branch stubs
 between RAM and the flash). It is taken from what newlib's `malloc()` can grow into, between the end of
-`.bss` and the stacks (the `malloc` line of `free`). About 81 KiB is left above the Pico SDK's 2 KiB minimum. The
+`.bss` and the stacks (`free`). About 87 KiB is left above the Pico SDK's 2 KiB minimum. The
 shell takes from it (about 1.2 KiB per command line while it runs, and a line of output longer than 127
 characters while it is printed), `zperf` its buffers (about 2.1 KiB for an upload, 2.5 KiB while the server
 of `zperf tcp download` runs), and the NINA passthrough mode its 16 KiB buffer. When it has no room,

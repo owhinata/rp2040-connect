@@ -107,8 +107,9 @@ FreeRTOS 版だけがビルドする共有ファイル: `common/compat/zephyr_wi
 | `console`、`shell_telnet`、`telnet_service`、`zperf_server_tid` | 6（14） | 3072、3072、2048、2048 | USB と Telnet のシェル（コマンドはこのタスクで走る）、Telnet の受け付け、`zperf tcp download` のサーバー |
 | `IDLE` | 0（–） | 256 | アイドル。CPU 負荷を測り、動いている間は LED（GPIO6）を 500 ms ごとに切り替える（`idle.c`） |
 
-ヒープは FreeRTOS の heap_4 で 8 KiB です（`free`）。入るのは互換層のスレッドの制御ブロック（約 2.3 KiB）です。
-タスクのスタックは静的に確保します。
+カーネルはヒープを持ちません（`configSUPPORT_DYNAMIC_ALLOCATION` 0）。タスク・キュー・セマフォはすべて静的です。互換層の
+スレッドは、制御ブロック（136 バイト）を `K_THREAD_STACK_DEFINE()` の配列のスタックのあとに置きます（`Z_OS_THREAD_RESERVED`、
+`compat/zephyr_kernel_os_impl.h`）。上の表の大きさは、それを除いたスタックです。
 
 **起動**（`main.c`）: `main()` で RAM ログ、異常停止の記録の読み出し、コンソール、互換層、NINA の SPI、
 I2C0（先にその読み出しのための DMA の割り込みハンドラー）、KV のフラッシュの準備を行い、タスク `main` で LSM6DSOX、
@@ -151,7 +152,7 @@ KV、校正値、時刻同期、自動接続の順に始めます。
   watchdog の再起動、`reboot`、RESET ボタンでは残り、電源断で消えます。`LOG_*` の行は呼び出した文脈（割り込み
   ハンドラーを含む）で整形し、時刻は TIMER から取ります。`dmesg`（`common/shell/dmesg_shell.c`）で表示します。
 - 異常停止（`app/usb-console/src/fault.[ch]`）: `panic()`、HardFault、`configASSERT()` と `assert()`、スタックの
-  あふれ（`configCHECK_FOR_STACK_OVERFLOW` 2）、ヒープ不足、`_exit()` が 1 つの出口に入り、記録（理由、PC、LR、SP、
+  あふれ（`configCHECK_FOR_STACK_OVERFLOW` 2）、`_exit()` が 1 つの出口に入り、記録（理由、PC、LR、SP、
   例外のフレーム、タスク、時刻）を RAM と watchdog の scratch レジスター 0〜3 に残して watchdog で再起動します。
   次の起動で記録を `dmesg` に書き、`fault` とコンソールのバナーで表示します。記録の形式、HardFault の例外のフレームの読み取り
   （フレームが RAM の中にあるときだけ）、次の起動での RAM の記録と scratch レジスターの写しの選び方は `common/compat/log/fault_record.[ch]`。
@@ -256,8 +257,8 @@ Pico SDK の既定のままです。整数の割り算は `pico_divider` のハ�
 `devmem 0x14000010 32 0`。飽和するので必ずクリアする）、15 秒ほどあとに読みます（当たりとアクセスの数）。
 
 コードは RAM を約 49 KiB 使います（`.data` は 8 KiB から約 57 KiB に。RAM とフラッシュのあいだの長い分岐の中継を含む）。
-その分は、newlib の `malloc()` が使える `.bss` の終わりからスタックまでの領域（`free` の `malloc` の行）から取ります。
-Pico SDK の最小の 2 KiB を除いて約 81 KiB が残ります。使うのはシェル（コマンドの行ごとに実行中の約 1.2 KiB と、127 文字を超える出力の行を表示する間）、
+その分は、newlib の `malloc()` が使える `.bss` の終わりからスタックまでの領域（`free`）から取ります。
+Pico SDK の最小の 2 KiB を除いて約 87 KiB が残ります。使うのはシェル（コマンドの行ごとに実行中の約 1.2 KiB と、127 文字を超える出力の行を表示する間）、
 `zperf` のバッファー（アップロードの間 約 2.1 KiB、`zperf tcp download` のサーバーが動いている間 約 2.5 KiB）、NINA の中継モードの
 16 KiB のバッファーです。空きが無いと `malloc()` は NULL を返し（`PICO_MALLOC_PANIC=0`。Pico SDK の既定は異常停止）、呼び出し側が
 失敗します（コマンドは `out of memory` と表示し、`zperf` は -12（`ENOMEM`）で失敗する）。リンクのあとの検査（`ram_code.cmake`。マップを読む）は、並べたオブジェクトのコードが

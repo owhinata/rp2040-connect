@@ -33,25 +33,30 @@ static int cmd_version(const struct shell *sh, size_t argc, char **argv)
 
 SHELL_CMD_REGISTER(version, NULL, "Show the versions of the kernel, SDK and compiler", cmd_version);
 
-/* The FreeRTOS heap (heap_4: the kernel objects that are not static) and
- * newlib's (malloc(): the shell's state of a command line, for example).
+/* newlib's malloc() (the shell's state of a command line, "zperf"'s
+ * buffers, the NINA passthrough mode's): what it has taken from the system
+ * (_sbrk(), the RAM from the end of .bss up), of that in use and free, and
+ * what it can still take (up to __StackLimit, the bound the Pico SDK's
+ * _sbrk() checks; the kernel has no heap of its own).
  */
+extern char __StackLimit;
+void *_sbrk(int incr);
+
 static int cmd_free(const struct shell *sh, size_t argc, char **argv)
 {
 	struct mallinfo m = mallinfo();
+	char *brk = _sbrk(0);
 
 	(void)argc;
 	(void)argv;
 
-	shell_print(sh, "heap: %u bytes, free %u, least free %u",
-		    (unsigned int)configTOTAL_HEAP_SIZE, (unsigned int)xPortGetFreeHeapSize(),
-		    (unsigned int)xPortGetMinimumEverFreeHeapSize());
-	shell_print(sh, "malloc: %u bytes from the system, in use %u, free %u",
-		    (unsigned int)m.arena, (unsigned int)m.uordblks, (unsigned int)m.fordblks);
+	shell_print(sh, "malloc: %u bytes from the system, in use %u, free %u, more to take %u",
+		    (unsigned int)m.arena, (unsigned int)m.uordblks, (unsigned int)m.fordblks,
+		    (unsigned int)(&__StackLimit - brk));
 	return 0;
 }
 
-SHELL_CMD_REGISTER(free, NULL, "Show the use of the FreeRTOS heap and of malloc()", cmd_free);
+SHELL_CMD_REGISTER(free, NULL, "Show the use of malloc()", cmd_free);
 
 /* The tasks: state, priority, the least free stack so far and the share of
  * the CPU time since the previous "ps" (since the start for the first), from

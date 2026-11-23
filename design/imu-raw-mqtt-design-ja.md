@@ -892,7 +892,7 @@ NINA のファームウェアの追加機能（`firmware/nina-fw/` のパッチ 
 - センサーの 6667 Hz の経路と送信の経路のコードは RAM で動かす（`freertos/app/usb-console/ram_code.cmake`。定数は
   フラッシュに残す）。16 KiB の XIP キャッシュに収まらず、送信中はキャッシュの外れが `cpu_active` の約 14 ポイントを
   占めていた（この配置なしで 33.1%、ありで 19.7%。2026-11-23）。RAM は newlib の `malloc()`（使うのはシェル、`zperf`、NINA の
-  中継モード）の領域から約 49 KiB を取り、約 81 KiB が残る（ドライバー説明）。
+  中継モード）の領域から約 49 KiB を取り、約 87 KiB が残る（ドライバー説明）。
 
 ### 13.3 ソケット
 
@@ -907,7 +907,7 @@ NINA のファームウェアの追加機能（`firmware/nina-fw/` のパッチ 
 
 ### 13.5 異常停止とログ
 
-`panic()`、HardFault、アサート、スタックのあふれ、ヒープ不足は 1 つの出口に入り、記録を RAM と watchdog の scratch
+`panic()`、HardFault、アサート、スタックのあふれ、`_exit()` は 1 つの出口に入り、記録を RAM と watchdog の scratch
 レジスターに残して watchdog で再起動する。記録は次の起動で `dmesg`・`fault`・コンソールのバナーに出る（`devmem` で
 存在しないアドレスを読んで確かめた）。RAM ログは Zephyr 版と同じ 4 KiB（NuttX 版は報告が収まるように 8 KiB）。
 

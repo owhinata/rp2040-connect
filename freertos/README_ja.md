@@ -124,13 +124,13 @@ USB の CDC ACM ポートがコンソールです（UART0 は使いません）�
 | `nina passthrough confirm` | NINA の中継モードで再起動（USB のシリアル ⇄ NINA の UART。`esptool` で NINA のファームウェアを読み書きする）。抜けるにはポートを 300 bps にして閉じるか RESET |
 | `i2c_dma mode [on\|off]`、`i2c_dma stats` | I2C0 の DMA 読み出しの切り替えと表示、回数の表示 |
 | `fault` | 前回の実行を止めた異常停止の記録 |
-| `free` | FreeRTOS のヒープと `malloc()` の使用量 |
+| `free` | `malloc()` の使用量と、まだ取れる量 |
 | `reboot` | 再起動 |
 | `bootsel` | BOOTSEL（`RPI-RP2` ドライブ）で再起動 |
 
 - 行の編集は Backspace、Ctrl-C（行を捨てる）、上下の矢印（履歴）です。Tab 補完と行の途中の編集は
   ありません。引用符と `\` の扱いは Zephyr 版のシェルと同じです。
-- 異常停止（HardFault、`panic()`、アサート、スタックのあふれ、ヒープ不足）が起こると、記録を残して自動で
+- 異常停止（HardFault、`panic()`、アサート、スタックのあふれ）が起こると、記録を残して自動で
   再起動します。記録は、次に端末をつないだときの表示、`fault`、`dmesg` で見られます。
 - KV はフラッシュの末尾 8 KB にあり、形式は Zephyr 版・NuttX 版と同じです。別の OS のファームウェアに書き換えても残ります。領域に
   別のデータがあると `kv` は `-138` で失敗し、`dmesg` に案内が出ます。消すのは `kv wipe confirm` です。

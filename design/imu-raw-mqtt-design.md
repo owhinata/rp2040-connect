@@ -1055,7 +1055,7 @@ and NuttX builds in [`freertos/drivers/README.md`](../freertos/drivers/README.md
   (`freertos/app/usb-console/ram_code.cmake`; its read-only data stays in the flash): it does not fit in
   the 16 KiB XIP cache, and the cache's misses took about 14 points of `cpu_active` while sending (33.1%
   without the placement, 19.7% with it, 2026-11-23). It takes about 49 KiB of RAM from newlib's
-  `malloc()` (used by the shell, `zperf` and the NINA passthrough mode); about 81 KiB is left (the drivers'
+  `malloc()` (used by the shell, `zperf` and the NINA passthrough mode); about 87 KiB is left (the drivers'
   README).
 
 ### 13.3 Sockets
@@ -1073,7 +1073,7 @@ against the area in three places. The build was checked to read the key-value st
 
 ### 13.5 Fatal errors and the log
 
-`panic()`, HardFault, failed assertions, stack overflow and heap exhaustion end in one exit, which keeps a
+`panic()`, HardFault, failed assertions, stack overflow and `_exit()` end in one exit, which keeps a
 record in RAM and in the watchdog's scratch registers and restarts the board with the watchdog. The next
 start shows the record in `dmesg`, `fault` and the console's banner (checked by reading an unmapped address
 with `devmem`). The RAM log is 4 KiB, as in the Zephyr build (the NuttX build's is 8 KiB for its report).

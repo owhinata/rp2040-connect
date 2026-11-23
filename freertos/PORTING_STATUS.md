@@ -2813,3 +2813,20 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
   止めた。途中で指示を足すと実行中のコマンドが裏に回るので、subagent の終了後に取り残しを確かめる。
 - ユーザーの決定（次の作業）: FreeRTOS のヒープを無くす（スレッドの管理用の領域も静的に。案 1）。空き 18 kB 以上の検査は、シェルの `malloc()` の分の保証として残す（中継モードのバッファは今のまま `malloc()` から）。
 - 実機: FreeRTOS 版（この変更の既定のビルド）。
+
+## FreeRTOS のヒープを無くす（2026-11-23、ユーザーの決定: 案 1）
+
+- ユーザーの問い: シェルも `malloc()` を使っているなら、FreeRTOS のヒープは要るのか → 使い手は互換層のスレッドの TCB（16 個、2,320 B、起動時に 1 回）だけ。静的にして、カーネルの動的な確保を切る。
+- スレッドの TCB は `K_THREAD_STACK_DEFINE()` が取る配列の後ろに置く: `common/compat/zephyr/kernel.h` の `K_THREAD_STACK_RESERVED`（既定 0。Zephyr にも同じ名前・同じ目的のマクロがある）、
+  汎用のカーネルでは基本の操作の定数 `Z_OS_THREAD_RESERVED`（FreeRTOS は `sizeof(StaticTask_t)` を 8 に切り上げた 136）。使えるスタックの大きさは変わらない。スレッドごとに自分の領域を持つので、
+  数がずれることが無い。NuttX は 0 で、イメージは基準とバイト単位で一致。
+- 取り除いたもの: `FreeRTOS-Kernel-Heap4`、`configTOTAL_HEAP_SIZE`・`configSUPPORT_DYNAMIC_ALLOCATION`（0 に）・`configUSE_MALLOC_FAILED_HOOK`、`vApplicationMallocFailedHook`、
+  異常停止の理由 `FAULT_REASON_HEAP`（値 5 は欠番として残す。`fault_reason_name(5)` は "unknown"）、`main()` の試しの確保。
+- `free` は 1 行: `malloc: N bytes from the system, in use N, free N, more to take N`（最後は `_sbrk()` の上限までの残り）。
+- 空き 16384 B の検査（`ram_code.cmake`）はそのまま（ユーザーの決定: シェルの `malloc()` の分の保証として残す）。中継モードのバッファは今のとおり `malloc()` から。
+- イメージ 240,960 B（−1,064）。空きの RAM 85,004 → 91,116 B。逆アセンブルの比較（subagent）: バッチごとの経路は同じ命令。違いは TCB の 1 バイトの項目が無くなった分の、項目のオフセット 1 か所。
+  ホストテスト 58・69・67。
+- 実機: 起動、`ps`（スレッドと優先度は同じ、スタックの空きも同程度）、`free` の 1 行（使用 1196、まだ取れる量 86016）。送信 2 回 欠番 0・19.5%。最悪の場合の一通り（センサー、開始・停止の繰り返し、
+  USB と Telnet からのスキャン、Telnet の出入り、Wi-Fi の切断と再接続）のあと、スタックの空きは 41% 以上。`zperf` の upload 3.77 Mbit/s・download 2.43 Mbit/s、前後で `malloc` の使用は同じ
+  （download の間だけ 3732）。中継モードの出入り。`devmem 0x30000000` の記録。`reboot` 5 回。
+- 実機: FreeRTOS 版（この変更の既定のビルド。異常停止の記録が 1 件＝こちらの試験）。

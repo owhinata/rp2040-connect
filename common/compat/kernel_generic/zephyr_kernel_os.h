@@ -41,6 +41,13 @@
  *                        its end
  *   Z_OS_THREAD_NAME_SIZE  the bytes of a thread's name array, with its
  *                        terminating NUL (z_os_thread_name())
+ *   Z_OS_THREAD_RESERVED the bytes the OS keeps of each thread after its
+ *                        stack, for its control block of the thread (a
+ *                        constant expression, 0 if it needs none; a
+ *                        multiple of 8): K_THREAD_STACK_DEFINE() reserves
+ *                        them (Zephyr's K_THREAD_STACK_RESERVED, zephyr_os.h),
+ *                        so every thread brings its own and none is
+ *                        allocated (z_os_thread_start())
  *   struct k_mutex, Z_MUTEX_INITIALIZER(obj)
  *                        the OS's own recursive mutex with priority
  *                        inheritance; a k_mutex left all zero (never
@@ -74,6 +81,9 @@
 #endif
 #ifndef Z_OS_THREAD_NAME_SIZE
 #error "zephyr_kernel_os_impl.h must define Z_OS_THREAD_NAME_SIZE"
+#endif
+#ifndef Z_OS_THREAD_RESERVED
+#error "zephyr_kernel_os_impl.h must define Z_OS_THREAD_RESERVED"
 #endif
 #ifndef Z_MUTEX_INITIALIZER
 #error "zephyr_kernel_os_impl.h must define struct k_mutex and Z_MUTEX_INITIALIZER(obj)"
@@ -121,10 +131,14 @@ static z_os_prio_t z_os_thread_prio_self(void);
 /* Starts fn(arg) in a new thread named name, on the static stack of
  * stack_size bytes, at the OS priority prio (APP_PRIO_FROM_ZEPHYR() of
  * priorities.h and the OS's own threads' priorities, priorities_os.h).
- * *tid is set before the new thread can run, as Zephyr starts its static
- * threads with the scheduler locked.  From a thread or before the
- * scheduler starts.  0, -EINVAL (bad priority or stack) or -ENOMEM.  When
- * fn returns, the thread calls z_os_thread_exit() (fn does it).
+ * stack is the storage of K_THREAD_STACK_DEFINE() (8-byte aligned, never
+ * freed) and stack_size its K_THREAD_STACK_SIZEOF() (a multiple of 8): the
+ * Z_OS_THREAD_RESERVED bytes at stack + stack_size are the OS's for the
+ * thread's control block, so the start allocates nothing.  *tid is set
+ * before the new thread can run, as Zephyr starts its static threads with
+ * the scheduler locked.  From a thread or before the scheduler starts.  0,
+ * -EINVAL (bad priority or stack) or another negative errno of the OS.
+ * When fn returns, the thread calls z_os_thread_exit() (fn does it).
  */
 static int z_os_thread_start(void (*fn)(void *arg), const char *name, void *stack,
 			     size_t stack_size, int prio, void *arg, z_os_thread_t *tid);

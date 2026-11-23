@@ -4,9 +4,12 @@
  * freertos/tests/shell, uses it as well): the board's
  * (freertos/app/usb-console/FreeRTOSConfig.h) where the layer depends on it
  * (time slices by the tick hook, four task notifications, mutexes, static
- * and dynamic allocation, the priorities, the length of task names, the 1 ms
- * tick; the POSIX port's tick is a thread that sleeps a tick between
- * signals), with the C library's heap.  The NINA binding's test
+ * allocation, the priorities, the length of task names, the 1 ms tick; the
+ * POSIX port's tick is a thread that sleeps a tick between signals).  Unlike
+ * the board, it also has dynamic allocation, on the C library's heap
+ * (heap_3), for the tests' own tasks (xTaskCreate()); the layer's threads
+ * start on their static stacks with the control block after them, as on
+ * the board.  The NINA binding's test
  * (freertos/tests/nina) builds its kernel once more with another tick
  * (-DconfigTICK_RATE_HZ).
  */

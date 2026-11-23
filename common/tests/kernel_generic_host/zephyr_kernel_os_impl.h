@@ -27,6 +27,7 @@ typedef int z_os_woken_t;
 #define Z_OS_TICKS_FOREVER    UINT32_MAX
 #define Z_OS_TICK_HZ          1000
 #define Z_OS_THREAD_NAME_SIZE 32
+#define Z_OS_THREAD_RESERVED  0 /* no thread starts here */
 
 struct k_mutex {
 	z_os_thread_t holder;

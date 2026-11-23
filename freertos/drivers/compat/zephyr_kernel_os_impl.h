@@ -12,9 +12,10 @@
  *                        once); index 0 is left to the Pico SDK and the
  *                        application
  *   z_os_isr_lock()      taskENTER_CRITICAL_FROM_ISR() (saves PRIMASK)
- *   z_os_thread_start()  xTaskCreateStatic() with the control block from
- *                        the FreeRTOS heap, the scheduler suspended around
- *                        it once it runs
+ *   z_os_thread_start()  xTaskCreateStatic() with the control block in
+ *                        the Z_OS_THREAD_RESERVED bytes after the stack
+ *                        (K_THREAD_STACK_DEFINE() reserves them), the
+ *                        scheduler suspended around it once it runs
  *   z_os_sleep()         vTaskDelay(): FreeRTOS's block time ends at the
  *                        current tick + n
  *   z_os_thread_local_*()  the task's thread local storage pointer
@@ -28,8 +29,8 @@
  *
  * What the application provides: FreeRTOSConfig.h (the tick, two task
  * notifications per task, one thread local storage pointer, mutexes and
- * recursive mutexes, static and dynamic
- * allocation, configUSE_TICK_HOOK with a hook that calls
+ * recursive mutexes, static allocation (nothing here allocates
+ * dynamically), configUSE_TICK_HOOK with a hook that calls
  * zephyr_compat_tick() of "zephyr_compat_os.h"), priorities_os.h
  * (common/compat/priorities.h) and os_clock.h (rp2040_timer_us(), read by the
  * board's port header).  Part of the FreeRTOS implementation of the layer
@@ -163,9 +164,20 @@ Z_OS_INLINE z_os_prio_t z_os_thread_prio_self(void)
 /* Bytes; the port's smallest stack is 384 (sysworkq, src/priorities_os.h). */
 #define Z_OS_TASK_STACK_MIN 256
 
-/* The priority must be 1..configMAX_PRIORITIES - 1.  The task's control
- * block comes from the FreeRTOS heap (FreeRTOS keeps no list of them; it
- * stays allocated if the task ends).  Once the scheduler runs, it is
+/* A task's control block, which xTaskCreateStatic() takes from its caller,
+ * is kept in the storage of the task's stack, after the stack_size bytes
+ * of the stack itself: K_THREAD_STACK_DEFINE() reserves these bytes and
+ * K_THREAD_STACK_SIZEOF() leaves them out (Zephyr's
+ * K_THREAD_STACK_RESERVED).  Above the stack's top, where the stack never
+ * grows: an overflow runs past the stack's bottom, as before.  A multiple
+ * of 8, so that the arrays keep their size's alignment.
+ */
+#define Z_OS_THREAD_RESERVED ((sizeof(StaticTask_t) + 7u) & ~(size_t)7u)
+
+/* The priority must be 1..configMAX_PRIORITIES - 1, and stack_size a
+ * multiple of the control block's alignment (every stack of the port is a
+ * multiple of 8 bytes).  The control block stays in place if the task ends
+ * (FreeRTOS keeps no list of them).  Once the scheduler runs, it is
  * suspended around the creation, so that *tid is set before the task can
  * run.
  */
@@ -173,33 +185,25 @@ static inline int z_os_thread_start(void (*fn)(void *arg), const char *name, voi
 				    size_t stack_size, int prio, void *arg, z_os_thread_t *tid)
 {
 	bool running = xTaskGetSchedulerState() != taskSCHEDULER_NOT_STARTED;
-	StaticTask_t *tcb;
 	TaskHandle_t task;
 
 	if (prio <= (int)tskIDLE_PRIORITY || prio >= configMAX_PRIORITIES || stack == NULL ||
-	    stack_size < Z_OS_TASK_STACK_MIN) {
+	    stack_size < Z_OS_TASK_STACK_MIN || stack_size % __alignof__(StaticTask_t) != 0) {
 		return -EINVAL;
-	}
-	tcb = pvPortMalloc(sizeof(*tcb));
-	if (tcb == NULL) {
-		return -ENOMEM;
 	}
 
 	if (running) {
 		vTaskSuspendAll();
 	}
 	task = xTaskCreateStatic(fn, name, stack_size / sizeof(StackType_t), arg, (UBaseType_t)prio,
-				 (StackType_t *)stack, tcb);
+				 (StackType_t *)stack,
+				 (StaticTask_t *)((uint8_t *)stack + stack_size));
 	*tid = task;
 	if (running) {
 		(void)xTaskResumeAll();
 	}
 
-	if (task == NULL) {
-		vPortFree(tcb);
-		return -EINVAL;
-	}
-	return 0;
+	return task != NULL ? 0 : -EINVAL;
 }
 
 Z_OS_INLINE void z_os_thread_exit(void)

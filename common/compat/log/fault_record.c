@@ -52,8 +52,6 @@ const char *fault_reason_name(uint32_t reason)
 		return "assertion failed";
 	case FAULT_REASON_STACK_OVERFLOW:
 		return "stack overflow";
-	case FAULT_REASON_HEAP:
-		return "heap exhausted";
 	case FAULT_REASON_EXIT:
 		return "exit";
 	default:

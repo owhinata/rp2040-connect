@@ -86,23 +86,21 @@
 #define configMINIMAL_STACK_SIZE                (APP_STACK_IDLE / 4) /* the idle task */
 #define configSUPPORT_STATIC_ALLOCATION         1
 #define configKERNEL_PROVIDED_STATIC_MEMORY     1   /* idle and timer tasks */
-#define configSUPPORT_DYNAMIC_ALLOCATION        1
-/* heap_4 holds the control blocks of the compatibility layer's threads
- * (freertos/drivers/compat/zephyr_kernel_os_impl.h): 16 of 144 bytes with
- * heap_4's header, 2320 bytes in use.  Nothing else allocates from it (the
- * NINA passthrough mode's buffer comes from malloc()).
+/* No kernel heap: every task, queue and semaphore is static (the
+ * compatibility layer's threads keep their control blocks after their
+ * stacks, freertos/drivers/compat/zephyr_kernel_os_impl.h), and a call that
+ * would allocate does not link.  malloc() is newlib's (the shell, "zperf",
+ * the NINA passthrough mode's buffer).
  */
-#define configTOTAL_HEAP_SIZE                   (8 * 1024)
-#define configAPPLICATION_ALLOCATED_HEAP        0
+#define configSUPPORT_DYNAMIC_ALLOCATION        0
 #define configSTACK_DEPTH_TYPE                  uint32_t
 
 /* Checks ----------------------------------------------------------------------*/
 
-/* Each ends in the common exit of fatal errors, which records the error and
+/* Both end in the common exit of fatal errors, which records the error and
  * restarts the board (src/fault.c).
  */
 #define configCHECK_FOR_STACK_OVERFLOW          2
-#define configUSE_MALLOC_FAILED_HOOK            1
 
 #ifndef __ASSEMBLER__
 void app_assert_failed(const char *file, int line);
