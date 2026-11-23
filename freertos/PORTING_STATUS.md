@@ -2830,3 +2830,12 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
   USB と Telnet からのスキャン、Telnet の出入り、Wi-Fi の切断と再接続）のあと、スタックの空きは 41% 以上。`zperf` の upload 3.77 Mbit/s・download 2.43 Mbit/s、前後で `malloc` の使用は同じ
   （download の間だけ 3732）。中継モードの出入り。`devmem 0x30000000` の記録。`reboot` 5 回。
 - 実機: FreeRTOS 版（この変更の既定のビルド。異常停止の記録が 1 件＝こちらの試験）。
+
+## 計測: `sensor stream` の負荷（FreeRTOS 版、2026-11-23、ユーザーの依頼）
+
+- イメージ: `fb2c038` の既定のビルド。USB のコンソールで `sensor stream lsm6dsox@6a on fifo_wm incl`、約 32 秒、`ps` の `cpu_active`（前回の `ps` からの区間）。計測を止めた状態は 0.7%。
+- 104 Hz: 3.1%（表示 約 1,700 バイト/秒、トリガー 6.5 回/秒、表示したサンプル 209 個/秒）。
+- 833 Hz: 数秒で `Read failed: -105` で止まる（区間の平均 1.1%）。6667 Hz: すぐ `Read failed: -139` で止まる（0.8%）。起動直後でレートを設定していない状態: `Read failed: -22`。
+  高いレートで続かないのは以前からの動き（README に記載）で、この経路では 6667 Hz の負荷は測れない。
+- 校正にかかわる計算: ジャイロのバイアスの追跡（`lsm6dso_track_gyro_bias()`）は FIFO を読むたびに必ず走る（アプリの `imu start` の 19.5% にも入っている）。校正の適用（`lsm6dso_cal_apply()`）は
+  デコーダーを通すときだけ（`sensor stream` の表示と `sensor get`）。アプリの経路は生の値と係数を送り、換算は PC 側。
