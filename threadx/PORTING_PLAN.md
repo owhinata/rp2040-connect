@@ -19,7 +19,7 @@ subagent（`model: opus`）が実装し、メインがレビュー・ホスト�
 | ネットワーク | 互換層のソケット層（`common/compat/net_offload`）。FreeRTOS 版と同じ。NetX Duo の下に NINA をつなぐ形は、この計画に入れない | ユーザー（2026-11-24） |
 | カーネルの部分 | 基本の操作 26 個を書いて、汎用の実装（`common/compat/kernel_generic`）を使う | メインの案（FreeRTOS 版と同じ形） |
 | シェル | 共有のシェルのエンジン（`common/compat/shell_engine`） | 同上 |
-| 同じ優先度の選び方 | ThreadX の標準（時分割なし） | 以前の決定「その OS の標準」に合わせる |
+| 同じ優先度の選び方 | 並びの順は ThreadX の標準。Zephyr の優先度 0 以上のスレッドには ThreadX 自身の時分割 20 ms を付ける（Zephyr 版の設定と同じ。FreeRTOS 版も tick のフックで同じことをしている。T0 で、時分割なしでは受け入れ試験の 1 項目が通らないと分かった） | メインの案（T0 の結果から。ユーザーに報告済み） |
 | 取得するツリー | `threadx/` の下に ThreadX・Pico SDK・ツールチェーンを `setup.sh` が取得する（NuttX 版・FreeRTOS 版と同じく、OS のディレクトリーごとに持つ） | メインの案 |
 | スタイル | Zephyr。新しいファイルの SPDX は MIT。`threadx/script/format.sh` | 既存の決まり |
 

@@ -67,3 +67,7 @@
 /freertos/picotool/
 # Output of freertos/script/build.sh.
 /freertos/build/
+
+# The Pico SDK + ThreadX workspace: fetched by threadx/script/setup.sh.
+/threadx/threadx/
+/threadx/threadx.tmp/
