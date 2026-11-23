@@ -58,6 +58,8 @@ struct k_work_sync {
 };
 #define K_WORK_DELAYABLE_DEFINE(name, fn) struct k_work_delayable name = {.work = {.handler = (fn)}}
 int k_work_schedule(struct k_work_delayable *dwork, k_timeout_t delay);
+/* pt_start() without its buffer: malloc() does not fail in the tests. */
+#define k_panic() abort()
 bool k_work_cancel_delayable_sync(struct k_work_delayable *dwork, struct k_work_sync *sync);
 
 uint32_t k_uptime_get_32(void);

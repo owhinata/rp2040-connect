@@ -96,3 +96,7 @@ endif()
 if(CONFIG_I2C_DW_RP2040_DMA AND CONFIG_SHELL)
   target_sources(app PRIVATE ${COMMON_DIR}/shell/i2c_dma_shell.c)
 endif()
+
+# The code of the sensor's and the send's paths runs from RAM: the list and the check after the
+# link are in ram_code.cmake.
+include(ram_code.cmake)

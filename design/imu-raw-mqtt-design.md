@@ -478,6 +478,14 @@ the DMA switched off in that same image and 34.6% with it (the Zephyr build, abo
 missing batch; the NuttX build 47.4% and 37.2%, the FreeRTOS build 42.4% and 32.5%). In a run with every payload
 byte set to a known value and checked on the PC, 18 to 20 million bytes per build arrived with none wrong.
 
+The code of the sensor's 6667 Hz path and of the send path does not fit in the RP2040's 16 KiB XIP cache, so each
+OS's firmware runs it from RAM; the read-only data stays in the flash. The Zephyr build lists the sources in
+`zephyr/app/usb-console/ram_code.cmake` (Zephyr's code relocation, about 56 KiB of RAM, 63,960 bytes left). The NuttX
+build lists the objects in the board's linker script, and `.data`'s copy takes them (about 44 KiB, the heap keeps
+about 112 KiB). The FreeRTOS build uses `freertos/app/usb-console/ram_code.cmake` (section 13.2). A check after the
+link stops each build when a listed object's code is not in RAM or too little RAM is left (the drivers' README of
+each build). This took `cpu_active` while sending from 35.8% to 21.4% on the Zephyr build, from 36.1% to 23.8% on the NuttX build and from 33.1% to 19.7% on the FreeRTOS build.
+
 Most of the hardware checks in the table above were made with images from before the NINA driver moved onto the
 shared core. With the image that uses it (2026-11-18), the first measurement after flashing, Telnet and
 `wifi scan` while sending, a manual disconnection and its recovery, Telnet after repeated `zperf` downloads, and

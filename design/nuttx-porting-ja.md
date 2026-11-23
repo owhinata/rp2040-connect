@@ -60,7 +60,8 @@ NuttX が使う機能だけを実装しています。
    外してあります。`CONFIG_RP2040_ROM_MEM_OPS` のときは、`__start()` が `memcpy`・`memset` を呼ばないことも
    確かめます（「C ライブラリの `memcpy`・`memset`」の節）。`CONFIG_RP2040_PICO_DIVIDER` のときは、6 つの `__wrap___aeabi_*` が
    あり、libgcc の割り算（`__aeabi_idiv`、`__divsi3`、`__udivmoddi4` など）がイメージに残っていないことを確かめます
-   （「整数の割り算」の節）。
+   （「整数の割り算」の節）。`script/check_ram_code.py` が、RAM のコードをリンカースクリプトの一覧と照らし、残るヒープを
+   確かめます（「RAM に置くコード」の節）。
 4. `nuttx/nuttx/nuttx.bin`（0x10000000 からの生のイメージ。boot2 を含む）を
    `nuttx/script/bin2uf2.py` で `nuttx/build/nuttx.uf2` に変換し、パスとサイズを表示します。
    変換の前に boot2 のチェックサムを確かめ、256 バイトのペイロードと RP2040 のファミリー ID
@@ -1101,6 +1102,17 @@ SIO のハードウェアの除算器で行います。Pico SDK の `pico_divide
   0x7fffffff、0x80000000。0 / 0 は 0）と余り 0（libgcc は商 0 と被除数）、64 ビットは libgcc と同じです。
 - ルーチンは SIO とスタックだけを使うので、`__start()` の最初から、割り込みハンドラーと異常停止の処理でも使えます。
 - 試験のイメージ（2026-11-18、実機）: 退避ありのイメージは 250 秒・約 1,128 万回の割り算で食い違い 0、退避なしのイメージは 40 秒で 10 回でした。
+
+## RAM に置くコード
+
+センサーの 6667 Hz の経路と送信の経路のコード（互換層のカーネルの部分・ワークキュー・RTIO・GPIO、I2C0 と DMA、
+LSM6DSOX のドライバー、IMU のサービスのストリーム・バッチ・時刻付け、MQTT、NINA の usrsock のつなぎ・ソケット・
+プロトコル・SPI と、NuttX の DMA・SPI のドライバー）は、FreeRTOS 版と同じく 16 KiB の XIP キャッシュを通さず RAM で
+動きます。オブジェクトはボードのリンカースクリプト（`scripts/arduino-nano-rp2040-connect-flash.ld`）に並べてあり、
+その `.text` がコードを `.data` に回し、`__start()` が `.data` のほかの部分と一緒に RAM へ写します。定数、NuttX 自身のコード、
+動かしてはいけないもの（`.data` を写す前に動くコード、`svc` を含むコード、異常停止の経路）はフラッシュに残ります。
+ヒープを約 46 KiB 使い、`build.sh` が配置と、ヒープが 80 KiB 以上残ることを確かめます。一覧・決まり・RAM の見積もりは
+`nuttx/drivers/README_ja.md` の「RAM に置くコード」にあります。
 
 ## シグナルハンドラー
 

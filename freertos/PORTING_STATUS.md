@@ -2876,3 +2876,46 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
 - 分かったこと: `sensor stream` が高いレートで続かないのは表示のせいではなく、シェルの側の処理（1 サンプルずつデコーダーを呼ぶ。チャネルの種類ごとにバッファを見直す）が追いつかないため。
   104 Hz での約 1.4 ポイントを単純に 64 倍すると約 90% で、6667 Hz はこの経路では処理しきれない計算になる（833 Hz で止まる理由は CPU だけでは説明できておらず、未調査）。
   6667 Hz のデータはアプリの `imu start`（生の値のまま送る）が受け持つ。実機は commit 済みのイメージに戻した。
+
+## Zephyr 版・NuttX 版: よく通るコードを RAM に置く、RAM の削減（2026-11-23、ユーザーの依頼）
+
+- subagent が実装（NuttX は subagent の fork）、別の subagent が RAM の調査（読むだけ）、メインが実機の計測と確認、RAM の削減の実装。FreeRTOS 版と `common/` のコアは変えていない
+  （変えた共有のファイルは Zephyr のつなぎ `common/drivers/nina/port/zephyr/nina_passthrough_os.c` だけ）。
+- **Zephyr**: `CONFIG_CODE_DATA_RELOCATION=y` と `zephyr_code_relocate(FILES … LOCATION RAM_TEXT NOKEEP)`。一覧は `zephyr/app/usb-console/ram_code.cmake`（51 ファイル、コード 55.5 kB:
+  カーネルのオブジェクト（sem・mutex・poll・work・timeout・queue・mem_slab、atomic、RTIO、GPIO）9.2 kB、I2C + DMA 5.9 kB、LSM6DSO 9.3 kB、IMU 10.5 kB、送信 20.6 kB）。
+  リンクのあとの検査 `ram_code_check.py`（並べたものが RAM に無い・並べていないものが RAM にある・残りが下限より少ない、で失敗）。
+  パッチ 0008（`gen_relocate_app.py`、7 行）: 生成器が「オブジェクトのディレクトリー名にソースの親ディレクトリー名が入っている」ことで探すので、モジュールのライブラリー
+  `lsm6dso_local` のオブジェクトを見つけられず、黙ってフラッシュに残した（検査が最初のビルドで検出）。同じ名前のオブジェクトがほかに無ければそれを使う、を足した。
+  異常停止の経路は RAM に移したコード（atomic、必要なら `k_sem`・timeout・`k_work`）を通る（FreeRTOS 版との違い。ドライバー説明に記載）。
+- **NuttX**: パッチなし。ボードのリンカースクリプトの `.text` を `EXCLUDE_FILE(一覧)` にし、`.data` に `*(.text .text.*)` を足す（既存の `.data` の写しが運ぶ）。一覧は 41 オブジェクト、
+  コード 44.6 kB（互換層 4.1、I2C 4.7、LSM6DSO 9.3、IMU 10.7、送信 15.9）。`nuttx/script/check_ram_code.py`（`build.sh` から）: 一覧と配置、`.data` の写しの前に通るコード・
+  異常停止の経路・`svc` を含むコードが RAM に無いこと、ヒープ 80 KiB 以上。`svc` の制約: ARMv6-M では割り込みを止めた状態の `svc` を `arm_hardfault` が中継するのは PC が
+  `_stext`〜`_etext` のときだけ。
+- 実機の計測（送信 70 秒、各 2 回、別々に書き込んだイメージ。欠番・時刻の逆行はすべて 0）:
+
+  | イメージ | Zephyr `cpu_active` | XIP の外れ | NuttX `cpu_active` |
+  |---|---|---|---|
+  | いままで（フラッシュから実行） | 35.8% | 約 390,000 回/秒（アクセス 923 万回/秒） | 36.1% |
+  | 基本の構成（採用） | 21.4% | 約 5,200 回/秒（アクセス 218 万回/秒） | 23.8% |
+  | + スケジューラーまわり | 21.2%（+4.3 kB） | 約 1,300 回/秒 | 23.1%（+5.6 kB） |
+  | + ネットワークの層（NuttX だけ） | — | — | 22.8%（さらに +6.7 kB） |
+
+  スケジューラーまわりは入れない: Zephyr は 0.2 ポイント、NuttX は 0.7 ポイントだが検査の決まり（異常停止の経路を RAM に置かない）に反する。
+  NuttX の XIP のカウンターは `xd` で読めるがクリアできない（`mw` が無い）ので測っていない。
+- **RAM の削減**（調査の結果のうち、ユーザーが選んだものと設定だけのもの）:
+  - Zephyr の中継モードのリング 16 KiB を静的な配列から `malloc()`（`pt_start()`、中継モードのときだけ。取れなければ `k_panic()`）へ（ユーザーの決定）。検査の下限を 18432（16 KiB + `malloc()` の分 2 KiB、
+    FreeRTOS 版と同じ）に。ホストテストの偽のヘッダーに `k_panic()`。
+  - Zephyr: `CONFIG_NET_TC_RX_COUNT=0`（`rx_q[0]` は何も運んでいない）、`CONFIG_NET_TCP_WORKQ_STACK_SIZE=512`（使用 304）、`CONFIG_THREAD_MAX_NAME_LEN=20`（最長 18 文字）。
+  - NuttX: `CONFIG_DISABLE_MQUEUE`・`_SYSV`、`CONFIG_PREALLOC_TIMERS=0`、`CONFIG_IDLETHREAD_STACKSIZE=512`（使用 316/488）。
+  - 見送り（ユーザー: 無理しなくてよい）: Zephyr の IP の層を外す、コンソールの受信バッファ、NuttX の履歴。スタックを実測に合わせて減らす案（各 1 kB 前後）も今回は入れていない。
+  - RAM の残り: Zephyr 104,912 B（RAM にコードなし）→ 47,592（コードを RAM に）→ 63,960（リング）→ **66,696 B**。NuttX のヒープ 158,668 → 112,012 → **114,300 B**
+    （実機の `free`: total 114,292、used 24,140、maxused 27,072＝中継モード以外を一通り動かしたあと）。
+- 最終のイメージ（RAM の削減まで入れたもの）: Zephyr 378,392 B、NuttX 287,224 B。**基準: `snapshot-1123e`**。ホストテスト 58・69（FreeRTOS は変更なし）。
+- 最終のイメージでの実機:
+  - Zephyr: 書き込み直後から 2 回 21.9%・欠番 0・時刻の逆行 0（基本の構成だけのイメージの 21.4% との差は配置）。送信中の Telnet 3 回、`kv set`・再起動・`kv get`・`kv delete`・再起動、
+    `devmem 0x30000000` のあと `dmesg` に HARD FAULT の記録、`wifi disconnect` と再接続（2 秒）、中継モード（115200 と 921600 で NINA のフラッシュ 2 MB を読み、2 回が一致、
+    あふれ 0）。スレッドに `rx_q[0]` なし、`tcp_work` 304/512、ほかのスタックは以前と同じ水準。
+  - NuttX: 2 回 23.5・23.6%・欠番 0。送信中の Telnet、切断（欠番 375 は切断中の分）と再接続（2 秒）、復帰後の Telnet、時刻 synchronized、KV の書き込み・再起動・削除、
+    `xd 0x30000000 4` のあと `dmesg` に異常停止の記録、中継モード（同じ読み出しで 2 回が一致。SPI の DMA 化のあと未確認だった項目）。
+- 確かめていない: `zperf`・`iperf`、長時間、AP を落とす場合。NuttX のヒープの最悪の使用（見積もり 約 55〜70 kB、下限 80 KiB）は実測していない。
+- 実機: NuttX 版（この最終のイメージ）。

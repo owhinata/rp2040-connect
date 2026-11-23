@@ -412,22 +412,25 @@ The NINA ran the firmware with patches 0001 to 0006.
 
 | Item | Zephyr build | NuttX build | FreeRTOS build |
 |---|---|---|---|
-| `cpu_active` while sending (2026-11-23) | 36.0% (3 runs) | 36.2% (1 run) | 19.6% (2 runs) |
+| `cpu_active` while sending (2026-11-23) | 21.9% (2 runs) | 23.5% (2 runs) | 19.6% (2 runs) |
 | `cpu_active` at rest | not measured | not measured | 0.7% (30 seconds, 3 runs) |
 | TCP send (board to PC) | 3.36 and 3.47 Mbit/s (`zperf`) | 3.34 Mbit/s (`iperf`, 1 run) | 3.47 to 3.84 Mbit/s (`zperf`, 3 runs) |
 | TCP receive (PC to board) | 1.89 and 1.99 Mbit/s (`zperf`) | 1.22 Mbit/s (`iperf`, 1 run) | 2.41 to 2.52 Mbit/s (`zperf`, 3 runs) |
-| Image size (`.bin`, 2026-11-23) | 374,544 bytes | 284,772 bytes | 242,024 bytes |
+| Image size (`.bin`, 2026-11-23) | 378,392 bytes | 287,224 bytes | 240,968 bytes |
 
 - The TCP rates come from different commands (`zperf` in the Zephyr and FreeRTOS builds speaks the iperf 3
   protocol, `iperf` in the NuttX build the iperf 2 protocol), so they are a rough comparison.
-- `cpu_active` while sending and the image sizes are from the images of 2026-11-23 (after the NINA's SPI transfers of 64 bytes or more
-  went to DMA). With the DMA switched off in the same image it was 44.1% (Zephyr), 47.4% (NuttX) and 42.4% (FreeRTOS).
-  With the images of 2026-11-18 (everything polled) it was 49.4%, 50.8% and 40.3%.
-- The FreeRTOS build keeps its hot code (the sensor reading and send paths, about 49 kB) in RAM. The cache for code
-  executed from flash (16 kB) then misses far less, and `cpu_active` went from 33.1% to 19.7% (misses from about
-  340,000 to about 6,000 a second). The Zephyr and NuttX builds execute their code from flash.
-- `cpu_active` moves by one or two points when only the layout of the image changes, with the same functions (for code
-  executed from flash).
+- `cpu_active` while sending and the image sizes are from the images of 2026-11-23 (after the NINA's SPI transfers
+  of 64 bytes or more went to DMA and the hot code went to RAM).
+- Each OS's firmware keeps its hot code (the sensor reading and send paths: about 56 kB in the Zephyr build, 46 kB
+  in the NuttX build, 49 kB in the FreeRTOS build) in RAM. The cache for code executed from flash (16 kB) then
+  misses far less, and `cpu_active` went from 35.8% to 21.4% (Zephyr), from 36.1% to 23.8% (NuttX) and from 33.1%
+  to 19.7% (FreeRTOS); the misses went from about 390,000 to about 5,000 a second in the Zephyr build and from
+  about 340,000 to about 6,000 in the FreeRTOS build.
+- With the DMA switched off, in the images before the code went to RAM, it was 44.1% (Zephyr), 47.4% (NuttX) and
+  42.4% (FreeRTOS). With the images of 2026-11-18 (everything polled) it was 49.4%, 50.8% and 40.3%.
+- `cpu_active` moves when only the layout of the image changes, with the same functions (by one or two points
+  while the code was executed from flash, by about half a point now).
 - The FreeRTOS build's `cpu_active` includes the time of the tick interrupt every 1 ms (the Zephyr and NuttX
   builds have no such interrupt).
 - With the images of 2026-11-14 (boot2 at clock divider 4, the C library's `memcpy`, `memset` and division,

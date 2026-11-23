@@ -451,7 +451,7 @@ stack (`common/drivers/nina/port/zephyr/nina_passthrough_os.c`) and its module s
   connection. The CDC ACM interrupt callback is replaced by the relay's (`POST_KERNEL` 99), so the
   shell gets no input and its output does not reach the port. The log goes to RAM only.
 - No byte lost: module to PC, UART1's receive interrupt (priority 0, at 4 bytes in the FIFO) moves the
-  bytes into a 16 KiB buffer, which holds 178 ms at 921600 bps while the PC does not read; what does
+  bytes into a 16 KiB buffer (from `malloc()` on entering the mode), which holds 178 ms at 921600 bps while the PC does not read; what does
   not fit is counted. PC to module, one packet (64 bytes) at a time; what the UART's FIFO cannot take
   is written by its transmit interrupt, and the CDC ACM receive side stops meanwhile (the host waits),
   so nothing is lost. DTR, RTS and the rate are taken from the USB stack's messages (the system work
@@ -535,6 +535,65 @@ generator when no proper source is available.
 [Tracing TCP ACKs with a Wi-Fi monitor](../../../../design/wifi-monitor-debug.md) describes how to
 examine sending delays and ACK behaviour at the level of radio frames.
 
+## Code in RAM
+
+The flash is executed through the RP2040's 16 KiB XIP cache, and the code on the 6667 Hz path of the
+sensor and on the send path does not fit in it. The code (`.text.*`; the read-only data stays in the
+flash) of the sources listed in `app/usb-console/ram_code.cmake` runs from RAM:
+
+- the kernel objects that the drivers and the application wait on and signal (`kernel/sem.c`, `mutex.c`,
+  `poll.c`, `work.c`, `timeout.c`, `queue.c`, `mem_slab.c`), the atomic operations (`lib/os/atomic_c.c`:
+  functions on the Cortex-M0+), the memory blocks of the FIFO's buffers with their bit array, RTIO's
+  executor and work queue, the sensor clock, and `gpio0`'s driver with hal_rpi_pico's `hardware_gpio`;
+- I2C0 (`drivers/i2c/i2c_dw.c` with patch 0003's DMA part) and the DMA driver (`dma_rpi_pico.c`);
+- the LSM6DSOX driver (the core's `lsm6dso.c`, `lsm6dso_stream.c`, `lsm6dso_fifo.c`, `lsm6dso_cal.c` and
+  the binding's `lsm6dso_sensor.c`, `lsm6dso_rtio.c`, `lsm6dso_rtio_stream.c`, `lsm6dso_os.c`) and the
+  stmemsc I2C glue; not ST's `lsm6dso_reg.c`, which only configures, nor the decoder;
+- the IMU service's stream, batches, queue and time stamps (not the NTP exchange nor the calibration);
+- the send: `imu_raw_mqtt.c`, `imu_raw_packet.c` and Zephyr's MQTT library, the sockets' dispatch
+  (`sockets.c`, `socket_offload.c`, the `zvfs` descriptor table and `poll()`), the NINA's sockets,
+  protocol, waits and Zephyr binding (`nina_socket.c`, `nina_os.c`, `nina_bus.c`), and the PL022 SPI
+  driver.
+
+The scheduler (`kernel/sched.c`), the thread switch (`swap_helper.S`), the interrupt entry and exit, the
+SysTick driver and the idle loop stay in the flash. The other builds' lists have the same roles
+(`freertos/app/usb-console/ram_code.cmake`, which moves the compatibility layer's kernel part where this
+list moves Zephyr's kernel objects). This placement took `cpu_active` while sending
+from 35.8% to 21.4% and the cache's misses from about 390,000 to 5,200 a second (33.1% to 19.7% on the
+FreeRTOS build). The scheduler, the thread switch and the interrupt entry in RAM too made 0.2 points
+(21.2%, for about 4.3 kB), so they stay in the flash. To check a placement,
+clear the cache's counters while sending (`devmem 0x1400000c 32 0`, `devmem 0x14000010 32 0`; they
+saturate) and read them about 15 s later (the hits and the accesses).
+
+- **How**: Zephyr's code relocation, `CONFIG_CODE_DATA_RELOCATION` (`prj.conf`) and
+  `zephyr_code_relocate(FILES ... LOCATION RAM_TEXT NOKEEP)`. Its generator
+  (`scripts/build/gen_relocate_app.py`) lists the objects' `.text.*` sections in an output section
+  `.ram_text_reloc` that the Cortex-M linker script places before the flash's `.text`: at the start of
+  RAM, loaded from the flash. `arch_data_copy()` copies it with `.data` in `z_prep_c()`, before the
+  interrupts are set up and the kernel starts; what runs before (`z_arm_reset`, `relocate_vector_table()`,
+  `arch_bss_zero()`, the copy with `arch_early_memcpy()`) is not in the list. With `NOKEEP` the functions
+  that nothing calls are still left out. Patch 0008 lets the generator find the objects of the LSM6DSO
+  module's library (`lsm6dso_local`, whose name is not its directory's).
+- **Cost**: 57,320 bytes of RAM (`.ram_text_reloc`): 55,546 bytes of code and 106 long-branch stubs from
+  RAM to the flash (16 bytes each). The flash's `.text` has 130 stubs to RAM (4 of them, for the flash's
+  write routines, as before). The RAM comes from what is left after
+  the image (`_image_ram_end`), which is picolibc's `malloc()` arena
+  (`CONFIG_COMMON_LIBC_MALLOC_ARENA_SIZE=-1`); its one user is the NINA passthrough mode's 16 KiB buffer,
+  taken in the mode only (the stacks and the other buffers are static). 63,960 bytes are left.
+- **Check**: `ram_code.cmake` stops the configuration when a listed source does not exist. After the link,
+  `ram_code_check.py` (the target `ram_code_check`, on `compile_commands.json`, the objects and the map)
+  stops the build when a listed object's code is not in RAM or part of it is in the flash (a source no
+  longer built, or one the generator did not find), when the code of an object not listed is in RAM, or
+  when less than 18,432 bytes of RAM are left (the passthrough mode's 16 KiB buffer and 2 KiB for
+  `malloc()` itself); it prints what is in RAM.
+- **What stays in the flash**: the vector table and the interrupt entry `_isr_wrapper`, which calls the
+  handlers in RAM (`i2c_dw_isr()`, `dma_rpi_pico_isr()`, `gpio_rpi_isr()`) through the software ISR table,
+  the start-up code, the key-value store's flash part (the flash's write and erase are hal_rpi_pico's
+  `.time_critical` functions, in `.data` as before; while XIP is off only they run, with interrupts
+  locked), the NINA passthrough's UART interrupt, and the fatal error path (`fault.c`, the kernel's
+  `fatal.c`, the logging core). That path calls moved code: the atomic operations always, and through the
+  logging core `k_sem_give()`, `k_sem_take()`, the timeouts and `k_work` when they are needed.
+
 ## Local patches of Zephyr
 
 Some changes to Zephyr and its modules are local patches for Zephyr's `west patch`. They are listed in
@@ -549,6 +608,7 @@ Some changes to Zephyr and its modules are local patches for Zephyr's `west patc
 | `zephyr/0004-i2c-shell-scan-not-supported.patch` | zephyr | The shell's `i2c scan` (`drivers/i2c/i2c_shell.c`): when a probe (a write of no bytes) returns `-ENOTSUP`, the command stops, prints that the controller does not support this scan, and returns `-ENOTSUP`, instead of showing `--` everywhere and "0 devices found". Other errors still show `--` |
 | `zephyr/0006-sensor-shell-fifo-attributes.patch` | zephyr | The sensor shell (`drivers/sensor/sensor_shell.c`): the LSM6DSO's FIFO attributes and the fixes (Sensor shell), with `drivers/sensor/sensor_shell_os.h`. Needs the LSM6DSO driver of `common/drivers/lsm6dso/` (its `<zephyr/drivers/sensor/lsm6dso.h>`) |
 | `zephyr/0007-spi-pl022-dma-min-len.patch` | zephyr | The PL022 SPI driver (`drivers/spi/spi_pl022.c`, `Kconfig.pl022`): `CONFIG_SPI_PL022_DMA_MIN_LEN` (default 0, as upstream): in the DMA mode a transfer shorter than that many bytes takes the polled path (a transfer of no bytes takes the context lock and moves nothing); after a DMA transfer SSPDMACR's request enables are cleared, and after one that failed or timed out its channels are stopped (NINA-W102) |
+| `zephyr/0008-code-relocation-module-objects.patch` | zephyr | The code relocation's generator (`scripts/build/gen_relocate_app.py`): when its two searches for a source's object find nothing, it takes the object of the source's name if no other object has that name. A library whose name is not its directory's (the LSM6DSO module's `lsm6dso_local`) names the object of a source in that directory `<library>.dir/<name>.obj`, which the searches did not find; the source then stayed in the flash without a message (Code in RAM) |
 
 - **Applying**: `source script/setup.sh` applies them to the modules' working trees with `west patch apply`
   (no commits; `git -C zephyr/zephyr status` shows them as changes). Patches already applied are skipped,
@@ -561,7 +621,7 @@ Some changes to Zephyr and its modules are local patches for Zephyr's `west patc
   that fails, restore each tree with `git -C <tree> checkout -- .` as `setup.sh` says, remove the copy and
   source it again. The application does not build on trees without the patches (`prj.conf` sets the
   patches' `CONFIG_RP2040_ROM_MEM_OPS`, `CONFIG_I2C_DW_RP2040_DMA` and `CONFIG_SPI_PL022_DMA_MIN_LEN`, and `CONFIG_RP2040_PICO_DIVIDER` stops in CMake without
-  `CONFIG_ARM_RP2040_DIVIDER_SAVE`).
+  `CONFIG_ARM_RP2040_DIVIDER_SAVE`; without 0008 the check of the code in RAM stops the build).
 - **Moving to a newer Zephyr**: take the patches back first as above, change the versions in
   `manifest/west.yml` and run `west update`. Remake each patch on the new trees, put it in `patches/`,
   update its `sha256sum`, apply them with `source script/setup.sh` and build. After remaking 0003, run

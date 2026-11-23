@@ -662,6 +662,73 @@ in the log (seen on the board, 2026-11-18, with and without the divider changes)
 found and no fix is applied. The present code registers no handler, so normal operation does not take
 this path. Write waits with semaphores, sleeps and blocking I/O.
 
+## Code in RAM
+
+The flash is executed through the RP2040's 16 KiB XIP cache, and the code on the 6667 Hz path of the
+sensor and on the send path does not fit in it together (the misses were measured on the FreeRTOS build, which places the
+same code in RAM: its `freertos/drivers/README.md`, "Code in RAM"). With the placement `cpu_active` while
+sending went from 36.1% to 23.8%. The code (`.text`, `.text.*`; their
+read-only data stays in the flash) of the objects listed in the board's linker script
+(`boards/arduino-nano-rp2040-connect/scripts/arduino-nano-rp2040-connect-flash.ld`, in `.text`'s
+`EXCLUDE_FILE` between "RAM code begin" and "RAM code end") runs from RAM:
+
+- the layer's kernel part (`zephyr_kernel.c`, `zephyr_mutex.c`), work queue, RTIO and its work queue,
+  memory blocks, sensor clock, `gpio0` with the board's GPIO glue (`src/rp2040_gpio_os.c`), and the I2C
+  API that the LSM6DSOX's reads go through (`zephyr_i2c.c`);
+- I2C0 (`i2c_dw.c`, also I2C1's when it is built) with its DMA part, and NuttX's DMA driver
+  (`rp2040_dmac.c`, also used by the NINA's SPI);
+- the LSM6DSOX driver and the stmemsc glue (not ST's `st_lsm6dso_reg.c`, which only configures);
+- the IMU service's stream, batches, queue and time stamps (not the NTP exchange nor the calibration);
+- MQTT and its socket calls, the NINA's usrsock binding (`nina_usrsock.c`) and event thread
+  (`nina_poller.c`), its sockets, protocol, waits, NuttX binding and SPI, NuttX's SPI driver
+  (`rp2040_spi.c`) and the board's chip select (`src/rp2040_spi.c`).
+
+NuttX's own code (the scheduler, semaphores, timers, the socket layer and usrsock, the file descriptors and
+`poll()`) stays in the flash. The objects leave their code to `.data` through the `EXCLUDE_FILE` of
+`.text`; `.data`'s `*(.text .text.*)` takes what `.text` left, and `__start()` copies it to RAM with
+the rest of `.data` (`_sdata`..`_edata` from `_eronly`). No patch and no option: the list in the linker
+script is the placement.
+
+Some code must stay in the flash, and the check below enforces it:
+
+- what runs before `__start()` copies `.data`: `rp2040_clockconfig()`, `rp2040_boardearlyinitialize()`,
+  `rp2040_lowsetup()` and what they call. That is why NuttX's GPIO driver (`rp2040_gpio.c`, with the GPIO
+  interrupt handler: `rp2040_common_earlyinitialize()` sets the pins with it) and the divider's routines
+  (`divider_hardware.S`, used by the clock set-up) stay in the flash;
+- code that executes `svc 0`: on the ARMv6-M an `svc` with interrupts masked becomes a hard fault, and
+  `arm_hardfault()` forwards it to the SVCall handler only when the PC is in `_stext`..`_etext`; NuttX
+  switches tasks this way from inside critical sections (`sched_unlock()`, `nxsem_wait_slow()`,
+  `nxsem_post_slow()` and others);
+- the fault path: the exception entry and dispatch (`exception_common`, `arm_doirq()`, `irq_dispatch()`),
+  `arm_hardfault()`, `_assert()` and what they call, so that a fault report does not depend on code in
+  RAM that the fault may have overwritten. libgcc's helpers (switch tables, 64-bit multiply) stay in the
+  flash for this reason: the report's formatting uses them.
+
+The key-value store's flash routine is in RAM on its own (`.ram_code.kv_flash_op`,
+`src/rp2040_flash_kv_os.c`): while XIP is off it runs with interrupts disabled and calls only the boot ROM
+and its RAM copy of boot2. The NINA passthrough mode's UART interrupt stays in the flash.
+
+The cost in RAM is the code (about 44 KiB) and the long-branch veneers that ld puts in RAM for its calls
+to the flash (123 of 16 bytes, about 1.9 KiB); the veneers of the calls from the flash to it (53) are in
+the flash. It is taken from the heap, which takes the RAM after `.bss` and the IDLE stack: about 112 KiB
+is left (157 KiB without the code in RAM). The heap holds every stack that is not a static array (the init task and the USB
+shell, the Telnet daemon and session, `nina_event`, each command while it runs, `iperf`'s two threads,
+the NINA passthrough mode's two threads and its 16 KiB ring) and the TCBs, task groups and file lists:
+together an estimated 55 KiB at most.
+
+`build.sh` runs `script/check_ram_code.py` after the link. It reads the list from the linker script and
+fails when a listed pattern matches no object with code, a listed object's code is not in RAM, code that
+is not listed is in RAM, a function of the early code, of the fault path or with an `svc` (direct calls
+from the disassembly; the assertion paths are not followed from the early code) is in RAM, or the heap is
+smaller than 80 KiB (the estimate above plus room for fragmentation and for the ring in one piece). It
+prints the RAM code's size, the veneers and the heap.
+
+The XIP cache's counters (hits at 0x1400000c, accesses at 0x14000010) can be read with nsh's `xd`
+(`xd 0x1400000c 8`: the two words, little-endian, read byte by byte; not yet tried on the board). This
+build has no command that writes memory (`mw` is disabled), so they cannot be cleared from the shell:
+they count from the chip's reset and saturate at 0xffffffff (at about 8 million accesses a second, after
+about 9 minutes). Take the difference of two readings a few seconds apart, before they saturate.
+
 ## Zephyr API compatibility layer (`compat`)
 
 The compatibility layer provides, under Zephyr's names and no more than needed, the part of

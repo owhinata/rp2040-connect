@@ -398,7 +398,7 @@ SerialNINAPassthrough スケッチの代わりです（RP2040 のファームウ
   `-ENODEV` で失敗し、SPI1 と NINA の線に触りません（RAM のログに Telnet のエラーが残ります）。`main()` は設定・校正・
   時刻同期・Wi-Fi の接続を行わずに中継を動かします。CDC ACM の割り込みのコールバックを中継のものに差し替えるので
   （`POST_KERNEL` の 99）、シェルは入力を受けず、出力もポートに出ません。ログは RAM だけに出ます。
-- 取りこぼし：モジュール → PC は、UART1 の受信割り込み（優先度 0、FIFO に 4 バイトで発生）が 16 KiB のリングへ移します。
+- 取りこぼし：モジュール → PC は、UART1 の受信割り込み（優先度 0、FIFO に 4 バイトで発生）が 16 KiB のリング（中継モードに入るときに `malloc()` で確保）へ移します。
   PC が読まない間を 921600 bps で 178 ms 分保持し、あふれた分は数えます。PC → モジュールは 1 パケット（64 バイト）ずつで、
   UART の FIFO に入りきらない分は送信割り込みが書き、その間は CDC ACM の受信を止める（ホストが待つ）ので失われません。
   DTR・RTS とレートは USB のスタックの通知（システムのワークキュー）と 1 ms ごとの確認で反映します。データは CDC ACM の
@@ -472,6 +472,55 @@ MQTT の接続と送信ができること、ホスト名の不一致・期限切
 送信の遅れや ACK の挙動を無線フレームの段階で調べる手順は、
 [Wi-Fi モニターによる TCP ACK 調査手順](../../../../design/wifi-monitor-debug-ja.md) にあります。
 
+## RAM に置くコード
+
+フラッシュは RP2040 の 16 KiB の XIP キャッシュを通して実行され、センサーの 6667 Hz の経路と送信の経路のコードはそこに
+収まりません。`app/usb-console/ram_code.cmake` に並べたソースのコード（`.text.*`。定数はフラッシュに残す）は RAM で動きます。
+
+- ドライバーとアプリが待ち・通知に使うカーネルのオブジェクト（`kernel/sem.c`・`mutex.c`・`poll.c`・`work.c`・`timeout.c`・
+  `queue.c`・`mem_slab.c`）、アトミック操作（`lib/os/atomic_c.c`。Cortex-M0+ では関数）、FIFO のバッファのメモリーブロックと
+  そのビット配列、RTIO の実行器とワークキュー、センサーの時計、`gpio0` のドライバーと hal_rpi_pico の `hardware_gpio`
+- I2C0（パッチ 0003 の DMA の部分を含む `drivers/i2c/i2c_dw.c`）と DMA のドライバー（`dma_rpi_pico.c`）
+- LSM6DSOX のドライバー（コアの `lsm6dso.c`・`lsm6dso_stream.c`・`lsm6dso_fifo.c`・`lsm6dso_cal.c` と、つなぎの
+  `lsm6dso_sensor.c`・`lsm6dso_rtio.c`・`lsm6dso_rtio_stream.c`・`lsm6dso_os.c`）と stmemsc の I²C のつなぎ。設定にだけ使う
+  ST の `lsm6dso_reg.c` とデコーダーは除く
+- IMU のサービスのストリーム、バッチ、キュー、時刻付け（NTP のやり取りと校正は除く）
+- 送信: `imu_raw_mqtt.c`・`imu_raw_packet.c` と Zephyr の MQTT のライブラリー、ソケットの振り分け（`sockets.c`・
+  `socket_offload.c`、`zvfs` のファイル記述子の表と `poll()`）、NINA のソケット・プロトコル・待ちと Zephyr へのつなぎ
+  （`nina_socket.c`・`nina_os.c`・`nina_bus.c`）、PL022 の SPI のドライバー
+
+スケジューラー（`kernel/sched.c`）、スレッドの切り替え（`swap_helper.S`）、割り込みの入口と出口、SysTick のドライバー、
+アイドルのループはフラッシュに残ります。ほかの OS のファームウェアの一覧も同じ役割を並べています
+（`freertos/app/usb-console/ram_code.cmake`。この一覧が Zephyr のカーネルのオブジェクトを移すところで、互換層のカーネルの
+部分を移す）。この配置で、送信中の `cpu_active` は 35.8% から 21.4% に、キャッシュの外れは毎秒 約 390,000 回
+から約 5,200 回になりました（FreeRTOS 版は 33.1% から 19.7%）。スケジューラー、スレッドの切り替え、割り込みの入口まで RAM に置いても
+0.2 ポイントしか変わらないので（21.2%、約 4.3 kB）、それらはフラッシュに残しています。配置を確かめるときは、送信中にキャッシュのカウンターをクリアし（`devmem 0x1400000c 32 0`、
+`devmem 0x14000010 32 0`。飽和するので必ずクリアする）、15 秒ほどあとに読みます（当たりとアクセスの数）。
+
+- **仕組み**: Zephyr のコードの再配置です。`CONFIG_CODE_DATA_RELOCATION`（`prj.conf`）と
+  `zephyr_code_relocate(FILES ... LOCATION RAM_TEXT NOKEEP)`。その生成器（`scripts/build/gen_relocate_app.py`）が、
+  オブジェクトの `.text.*` のセクションを出力セクション `.ram_text_reloc` に並べ、Cortex-M のリンカースクリプトはそれを
+  フラッシュの `.text` より前に置きます（RAM の先頭。中身はフラッシュから読む）。`z_prep_c()` の `arch_data_copy()` が、
+  割り込みの設定とカーネルの起動の前に `.data` と一緒に写します。その前に走るもの（`z_arm_reset`・`relocate_vector_table()`・
+  `arch_bss_zero()`、`arch_early_memcpy()` による写し）は一覧にありません。`NOKEEP` なので、どこからも呼ばれない関数は
+  これまでどおり捨てられます。パッチ 0008 は、生成器が LSM6DSO のモジュールのライブラリー（ディレクトリーの名前を含まない
+  `lsm6dso_local`）のオブジェクトを見つけられるようにします。
+- **費用**: RAM 57,320 バイト（`.ram_text_reloc`）。コード 55,546 バイトと、RAM からフラッシュへの長い分岐の中継 106 個
+  （1 個 16 バイト）です。フラッシュの `.text` には RAM への中継が 130 個（うち 4 個はフラッシュの書き込みのルーチンへの、
+  以前からのもの）あります。RAM はイメージの後ろ（`_image_ram_end` から）の残りから
+  取ります。そこは picolibc の `malloc()` の領域（`CONFIG_COMMON_LIBC_MALLOC_ARENA_SIZE=-1`）で、使うのは NINA の中継モードの
+  16 KiB のバッファだけです（中継モードのときだけ確保。スタックとほかのバッファは静的）。残りは 63,960 バイトです。
+- **検査**: 並べたソースが無ければ `ram_code.cmake` が構成の段階で止めます。リンクのあと、`ram_code_check.py`（ターゲット
+  `ram_code_check`。`compile_commands.json`、オブジェクト、マップを読む）が、並べたオブジェクトのコードが RAM に無いか一部が
+  フラッシュにあるとき（ビルドされなくなったソースや、生成器が見つけられなかったソース）、並べていないオブジェクトのコードが
+  RAM にあるとき、RAM の残りが 18,432 バイト（中継モードのバッファ 16 KiB + `malloc()` の分 2 KiB）より少ないときにビルドを止めます。通ったときは RAM にあるものの大きさを表示します。
+- **フラッシュに残るもの**: ベクターテーブルと割り込みの入口 `_isr_wrapper`（ソフトウェアの割り込みの表を通して RAM の
+  ハンドラー `i2c_dw_isr()`・`dma_rpi_pico_isr()`・`gpio_rpi_isr()` を呼ぶ）、起動のコード、KV のフラッシュの部分（フラッシュの
+  書き込みと消去は hal_rpi_pico の `.time_critical` の関数で、以前から `.data` にある。XIP が止まっている間は割り込みを止めて
+  それだけが動く）、NINA の中継の UART の割り込み、異常停止の経路（`fault.c`、カーネルの `fatal.c`、ログのコア）です。
+  異常停止の経路は移したコードを呼びます: アトミック操作はいつも、`k_sem_give()`・`k_sem_take()`・タイムアウト・`k_work` は
+  ログのコアが要るときに。
+
 ## Zephyr へのローカルのパッチ
 
 Zephyr 本体とモジュールの一部の変更は、Zephyr の `west patch` のローカルのパッチにしています。パッチの一覧は
@@ -486,6 +535,7 @@ Zephyr 本体とモジュールの一部の変更は、Zephyr の `west patch` �
 | `zephyr/0004-i2c-shell-scan-not-supported.patch` | zephyr | シェルの `i2c scan`（`drivers/i2c/i2c_shell.c`）: 確かめの書き込み（0 バイト）が `-ENOTSUP` を返したら、どこも `--` で「0 devices found」とする代わりに、止まって、コントローラーがこのスキャンに対応していないことを表示し、`-ENOTSUP` を返す。ほかのエラーは従来どおり `--` |
 | `zephyr/0006-sensor-shell-fifo-attributes.patch` | zephyr | sensor シェル（`drivers/sensor/sensor_shell.c`）: LSM6DSO の FIFO の属性と修正（「sensor シェル」）、`drivers/sensor/sensor_shell_os.h`。`common/drivers/lsm6dso/` の LSM6DSO のドライバー（その `<zephyr/drivers/sensor/lsm6dso.h>`）が要る |
 | `zephyr/0007-spi-pl022-dma-min-len.patch` | zephyr | PL022 の SPI のドライバー（`drivers/spi/spi_pl022.c`・`Kconfig.pl022`）: `CONFIG_SPI_PL022_DMA_MIN_LEN`（既定 0 で上流と同じ）。DMA のモードで、そのバイト数より短い転送はポーリングの経路を通る（0 バイトの転送はコンテキストのロックを取って何も送らない）。DMA の転送のあとは SSPDMACR の要求を戻し、失敗か時間切れの転送のあとはそのチャネルを止める（「NINA-W102」） |
+| `zephyr/0008-code-relocation-module-objects.patch` | zephyr | コードの再配置の生成器（`scripts/build/gen_relocate_app.py`）: ソースのオブジェクトを探す 2 つの方法で見つからないとき、その名前のオブジェクトがほかに無ければそれを使う。名前がディレクトリーの名前を含まないライブラリー（LSM6DSO のモジュールの `lsm6dso_local`）は、そのディレクトリーのソースのオブジェクトを `<ライブラリー>.dir/<名前>.obj` とするので見つからず、そのソースは何も表示されずにフラッシュに残っていた（「RAM に置くコード」） |
 
 - **当て方**: `source script/setup.sh` が `west patch apply` で各モジュールの作業ツリーに当てます（commit は作りません。
   `git -C zephyr/zephyr status` には変更として出ます）。当てたものは飛ばすので、何度読み込んでも同じです。当てた集合の写しを
@@ -496,7 +546,7 @@ Zephyr 本体とモジュールの一部の変更は、Zephyr の `west patch` �
 - **戻し方**: `zephyr/` で `west patch reverse` を実行し、`zephyr/.west/local-patches/` を消します。戻せないときは、
   `setup.sh` の表示のとおり各ツリーを `git -C <ツリー> checkout -- .` で戻してから写しを消し、読み込み直します。
   戻したツリーでは、このアプリはビルドできません（`prj.conf` がパッチの `CONFIG_RP2040_ROM_MEM_OPS`・`CONFIG_I2C_DW_RP2040_DMA`・`CONFIG_SPI_PL022_DMA_MIN_LEN` を使い、
-  `CONFIG_RP2040_PICO_DIVIDER` は `CONFIG_ARM_RP2040_DIVIDER_SAVE` が無いと CMake で止まります）。
+  `CONFIG_RP2040_PICO_DIVIDER` は `CONFIG_ARM_RP2040_DIVIDER_SAVE` が無いと CMake で止まり、0008 が無いと RAM に置くコードの検査がビルドを止めます）。
 - **Zephyr を上げるとき**: 先に上の手順でパッチを戻し、`manifest/west.yml` の Zephyr のバージョンを変えて `west update` します。新しいツリーで
   各パッチを作り直して `patches/` に置き、`sha256sum` を直し、`source script/setup.sh` で当ててからビルドします。
   0003 を作り直したら `script/host_tests.sh` を実行し、`i2c_dw_sync` が示す上流の変更を共有のコア（`common/drivers/i2c_dw/`）に

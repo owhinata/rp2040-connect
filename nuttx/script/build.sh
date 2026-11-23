@@ -236,6 +236,13 @@ if [[ "$(config_value CONFIG_RP2040_PICO_DIVIDER)" == y ]]; then
     fi
   done
 fi
+# The code in RAM (the list in the board's linker script): every listed
+# object's code in RAM and nothing else, none of it before the copy of
+# .data or with an svc, and the heap that is left.
+python3 "${root}/script/check_ram_code.py" \
+  --ld "${root}/${board_rel}/scripts/arduino-nano-rp2040-connect-flash.ld" \
+  --map "${nx}/nuttx.map" --elf "$elf" --config "${nx}/.config" || \
+  die "the code in RAM does not pass the check (check_ram_code.py)"
 printf '.boot2 0x%08x, 256 bytes; image 0x%08x-0x%08x (%d bytes, %d bytes left before 0x%08x)\n' \
   "$flash_base" "$flash_base" $((image_end - 1)) "$bin_size" $((image_limit - image_end)) "$image_limit"
 

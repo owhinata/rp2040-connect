@@ -63,7 +63,8 @@ The script does the following:
    `CONFIG_RP2040_ROM_MEM_OPS` it also checks that `__start()` calls neither `memcpy` nor `memset`
    (section "The C library's `memcpy` and `memset`"). With `CONFIG_RP2040_PICO_DIVIDER` it checks that the six
    `__wrap___aeabi_*` are there and that no libgcc division (`__aeabi_idiv`, `__divsi3`, `__udivmoddi4` and
-   so on) is left in the image (section "Integer division").
+   so on) is left in the image (section "Integer division"). `script/check_ram_code.py` checks the code
+   in RAM against the list in the linker script and the heap that is left (section "Code in RAM").
 4. Converts `nuttx/nuttx/nuttx.bin` (raw image from 0x10000000, boot2 included) to
    `nuttx/build/nuttx.uf2` with `nuttx/script/bin2uf2.py` and prints the path and size. The
    converter checks the boot2 checksum first and writes 256-byte payloads with the RP2040 family
@@ -1276,6 +1277,18 @@ linked in with `ld --wrap` in the board's `scripts/Make.defs`.
   handlers and in the fatal error handling.
 - Test images (2026-11-18, on the board): with the saving, no mismatch in 250 seconds and about 11.28 million
   divisions; without it, 10 in 40 seconds.
+
+## Code in RAM
+
+The code of the sensor's 6667 Hz path and of the send path (the layer's kernel part, work queue, RTIO and
+GPIO, I2C0 and its DMA, the LSM6DSOX driver, the IMU service's stream, batches and time stamps, MQTT, the
+NINA's usrsock binding, sockets, protocol and SPI, with NuttX's DMA and SPI drivers) runs from RAM instead
+of through the 16 KiB XIP cache, as in the FreeRTOS build. The objects are listed in the board's linker
+script (`scripts/arduino-nano-rp2040-connect-flash.ld`), whose `.text` leaves their code to `.data`;
+`__start()` copies it to RAM with the rest of `.data`. Their read-only data, NuttX's own code and what must
+not move (the code that runs before `.data` is copied, code with an `svc`, the fault path) stay in the
+flash. It costs about 46 KiB of the heap; `build.sh` checks the placement and that at least 80 KiB of heap
+is left. The list, the rules and the budget are in `nuttx/drivers/README.md`, "Code in RAM".
 
 ## Signal handlers
 

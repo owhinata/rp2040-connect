@@ -91,3 +91,15 @@ patches:
       driver), and after a DMA transfer the request enables are cleared and
       a failed transfer's channels stopped; enabled in the app's prj.conf
       (64) for the NINA's SPI1, whose channels are in its app.overlay.
+  - path: zephyr/0008-code-relocation-module-objects.patch
+    sha256sum: 2df1f03f559d913d3abe91a5286a41f1d1fb4506f7db87d610f43b1d5d0a398b
+    module: zephyr
+    author: rp2040-connect
+    email: noreply@example.invalid
+    date: 2026-11-23
+    upstreamable: false
+    comments: |
+      zephyr_code_relocate()'s generator (scripts/build/gen_relocate_app.py)
+      also finds the object of a source in the directory of a library not
+      named after it (the LSM6DSO driver's module, lsm6dso_local), when it
+      is the only object of its name; for the app's ram_code.cmake.

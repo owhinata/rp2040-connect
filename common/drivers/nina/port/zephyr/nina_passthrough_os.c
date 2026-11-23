@@ -18,7 +18,9 @@
  *   lines.  spi1 itself is initialized at boot as always (GPIO8 SPI1 RX,
  *   GPIO9 CS high) while the module is held in reset.
  * - POST_KERNEL 99 (pt_start(), after spi1 at 50 and the shell's backend
- *   at 90): nina_passthrough_begin() (UART1, its interrupt, the lines, the
+ *   at 90): the core's buffer (16 KiB from malloc(), taken in the mode
+ *   only; the build checks that the RAM after the image holds it),
+ *   nina_passthrough_begin() (UART1, its interrupt, the lines, the
  *   LED), and the CDC ACM port's interrupt callback, which replaces the
  *   shell's: from then on the shell gets no input and its output (the
  *   prompt) never reaches the port; its thread waits on its full transmit
@@ -69,6 +71,7 @@
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <stdlib.h>
 
 #include <zephyr/device.h>
 #include <zephyr/devicetree.h>
@@ -98,7 +101,6 @@ static bool leaving;
 static K_SEM_DEFINE(leave_sem, 0, 1);
 static bool configured;
 
-static uint8_t ring_buf[NINA_PASSTHROUGH_RING_SIZE];
 /* Set while the CDC ACM transmit interrupt is off with the buffer empty
  * (at the start too); whoever takes it back turns the interrupt on.
  */
@@ -349,10 +351,17 @@ SYS_INIT(pt_check, POST_KERNEL, 0);
 
 static int pt_start(void)
 {
+	uint8_t *buf;
+
 	if (!nina_passthrough_active()) {
 		return 0;
 	}
-	nina_passthrough_begin(ring_buf);
+	buf = malloc(NINA_PASSTHROUGH_RING_SIZE);
+	if (buf == NULL) {
+		LOG_ERR("NINA passthrough: no buffer");
+		k_panic();
+	}
+	nina_passthrough_begin(buf);
 
 	uart_irq_callback_user_data_set(cdc, cdc_irq, NULL);
 	uart_irq_rx_enable(cdc);
