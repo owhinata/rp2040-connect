@@ -1,0 +1,17 @@
+/* SPDX-License-Identifier: MIT */
+/* The Pico SDK's section_extra_post_scratch.incl (empty, included between
+ * the end of the scratch sections and the stacks, "to add extra sections
+ * in the scratch memory, before the stack"), replaced for the USB console
+ * (CMakeLists.txt, pico_add_linker_script_override_path()): the stack of
+ * the start-up task "main" (src/main.c), not loaded, at the start of
+ * SCRATCH_X.  The SDK keeps the rest of SCRATCH_X for core 1's stack
+ * (.stack1_dummy, 2 KiB at its top), which this build never starts
+ * (configNUMBER_OF_CORES 1); the linker fails if the two do not fit.
+ */
+SECTIONS
+{
+    .scratch_x_noload (NOLOAD) : ALIGN(8)
+    {
+        *(.scratch_x_noload.*)
+    } > SCRATCH_X
+}

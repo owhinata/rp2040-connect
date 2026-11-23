@@ -20,10 +20,11 @@
  * - Host to module: read from TinyUSB's receive FIFO 64 bytes at a time
  *   only when the last ones are in the UART's transmit FIFO; until then
  *   TinyUSB does not take the next packet (the host waits).
- * - Module to host: the core's buffer (16 KiB from the FreeRTOS heap,
- *   which nothing else uses in this mode) into TinyUSB's transmit FIFO as
- *   there is room, flushed once a turn; while USB is not mounted the bytes
- *   are discarded.
+ * - Module to host: the core's buffer (16 KiB from malloc(), the first
+ *   allocation of the mode: nothing before it or in it allocates, and the
+ *   build's check leaves the arena at least 18 KiB, ram_code.cmake) into
+ *   TinyUSB's transmit FIFO as there is room, flushed once a turn; while
+ *   USB is not mounted the bytes are discarded.
  * - Lines: tud_cdc_line_state_cb() (from tud_task()) to
  *   nina_passthrough_host_lines(), with the line coding's rate at the time.
  * - Rate: the host's line coding, polled each turn of the loop.
@@ -36,11 +37,10 @@
 #include <errno.h>
 #include <stdbool.h>
 #include <stdint.h>
+#include <stdlib.h>
 
 #include "pico/stdlib.h"
 #include "tusb.h"
-
-#include "FreeRTOS.h"
 
 #include "app_log.h"
 #include "nina_passthrough.h"
@@ -137,7 +137,7 @@ static void follow_rate(void)
 
 void nina_passthrough_run(void)
 {
-	uint8_t *buf = pvPortMalloc(NINA_PASSTHROUGH_RING_SIZE);
+	uint8_t *buf = malloc(NINA_PASSTHROUGH_RING_SIZE);
 
 	if (buf == NULL) {
 		panic("nina_passthrough: no buffer");

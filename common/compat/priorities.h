@@ -14,7 +14,9 @@
  * the OS's directory (nuttx/drivers/include on NuttX), defines
  * APP_PRIO_FROM_ZEPHYR(p), the OS's priority of Zephyr's priority p
  * (-16..14, keeping the order), and the priorities and stacks of the OS's
- * own threads.  The shared part of the Zephyr compatibility layer
+ * own threads.  It may also set the stacks of the layer's own threads
+ * (APP_STACK_SYSWORKQ, _NET_MGMT, _SENSOR_SHELL, _TELNET_SERVICE) to sizes
+ * measured on that OS; the values below are Zephyr's.  The shared part of the Zephyr compatibility layer
  * (common/compat) and the OS's threads use the values below.
  */
 
@@ -91,7 +93,9 @@
  */
 
 #define APP_PRIO_SENSOR_SHELL       APP_PRIO_FROM_ZEPHYR(0)
+#ifndef APP_STACK_SENSOR_SHELL
 #define APP_STACK_SENSOR_SHELL      3072
+#endif
 
 /* sysworkq: the system work queue, CONFIG_SYSTEM_WORKQUEUE_PRIORITY -1
  * (cooperative), CONFIG_SYSTEM_WORKQUEUE_STACK_SIZE 1024.  The compatibility
@@ -100,7 +104,9 @@
  */
 
 #define APP_PRIO_SYSWORKQ           APP_PRIO_FROM_ZEPHYR(-1)
+#ifndef APP_STACK_SYSWORKQ
 #define APP_STACK_SYSWORKQ          1024
+#endif
 
 /* "RTIO WQ 0": subsys/rtio/rtio_workq.c, CONFIG_RTIO_WORKQ_THREADS_POOL_PRIO
  * 0, _STACK_SIZE 1024.  Runs the LSM6DSO's single RTIO reads
@@ -117,7 +123,9 @@
  */
 
 #define APP_PRIO_NET_MGMT           APP_PRIO_FROM_ZEPHYR(-1)
+#ifndef APP_STACK_NET_MGMT
 #define APP_STACK_NET_MGMT          2048
+#endif
 
 /* "net_socket_service" (subsys/net/lib/sockets/sockets_service.c,
  * CONFIG_NET_SOCKETS_SERVICE_THREAD_PRIO 15, which Zephyr lowers to the
@@ -128,6 +136,8 @@
  */
 
 #define APP_PRIO_TELNET_SERVICE     APP_PRIO_FROM_ZEPHYR(14)
+#ifndef APP_STACK_TELNET_SERVICE
 #define APP_STACK_TELNET_SERVICE    2048
+#endif
 
 #endif /* __NUTTX_DRIVERS_INCLUDE_PRIORITIES_H */

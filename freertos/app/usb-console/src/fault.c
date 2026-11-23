@@ -131,8 +131,9 @@ static void __attribute__((noreturn)) finish(struct fault_record *r)
  * defined empty (CMakeLists.txt), which leaves the SDK's own panic() out
  * (pico_platform_panic/panic.c) and its weak stand-in
  * (custom_panic_function.S) for this one.  panic_unsupported(),
- * hard_assertion_failure(), the SDK's malloc() when out of memory and a task
- * function that returns (the port's prvTaskExitError()) call it.
+ * hard_assertion_failure() and a task function that returns (the port's
+ * prvTaskExitError()) call it; the SDK's malloc() does not when out of
+ * memory (PICO_MALLOC_PANIC=0, CMakeLists.txt).
  */
 void __attribute__((noreturn)) panic(const char *fmt, ...)
 {

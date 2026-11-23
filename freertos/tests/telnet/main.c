@@ -26,6 +26,8 @@
  *   listendown      200 ms later the listening socket fails and the next
  *                   three binds fail (the NINA not answering)
  *   socks           the descriptors in use
+ *   zalloc [fail]   the blocks zperf holds from malloc() ("zalloc <n>"), or
+ *                   makes its next allocation fail
  *   stats           the 10 ms task's worst lateness and print time, the
  *                   USB session's runs and failures (and resets the worst)
  *   quit            prints RESULT and ends the program
@@ -101,6 +103,39 @@ void *test_malloc(size_t size)
 void test_free(void *p)
 {
 	vTaskSuspendAll();
+	free(p);
+	(void)xTaskResumeAll();
+}
+
+/* zperf's malloc() and free() (zperf_iperf3.c is built with
+ * -Dmalloc=zperf_test_malloc -Dfree=zperf_test_free): the blocks it holds,
+ * and its next allocation fails after "zalloc fail".
+ */
+void *zperf_test_malloc(size_t size);
+void zperf_test_free(void *p);
+
+static int zperf_blocks;
+static bool zperf_fail_next;
+
+void *zperf_test_malloc(size_t size)
+{
+	void *p = NULL;
+
+	vTaskSuspendAll();
+	if (zperf_fail_next) {
+		zperf_fail_next = false;
+	} else {
+		p = malloc(size);
+		zperf_blocks += p != NULL;
+	}
+	(void)xTaskResumeAll();
+	return p;
+}
+
+void zperf_test_free(void *p)
+{
+	vTaskSuspendAll();
+	zperf_blocks -= p != NULL;
 	free(p);
 	(void)xTaskResumeAll();
 }
@@ -368,6 +403,19 @@ static int cmd_socks(const struct shell *sh, size_t argc, char **argv)
 
 SHELL_CMD_REGISTER(socks, NULL, "Descriptors in use", cmd_socks);
 
+static int cmd_zalloc(const struct shell *sh, size_t argc, char **argv)
+{
+	if (argc == 2 && strcmp(argv[1], "fail") == 0) {
+		zperf_fail_next = true;
+		return 0;
+	}
+	shell_print(sh, "zalloc %d", zperf_blocks);
+	return 0;
+}
+
+SHELL_CMD_ARG_REGISTER(zalloc, NULL, "zperf's blocks from malloc(); fail: fail the next",
+		       cmd_zalloc, 1, 1);
+
 static int cmd_stats(const struct shell *sh, size_t argc, char **argv)
 {
 	(void)argc;
@@ -411,6 +459,7 @@ const struct shell_engine_cmd shell_engine_cmds[] = {
 	SHELL_ENGINE_CMD(quit),
 	SHELL_ENGINE_CMD(socks),
 	SHELL_ENGINE_CMD(stats),
+	SHELL_ENGINE_CMD(zalloc),
 	SHELL_ENGINE_CMD(zperf),
 };
 /* clang-format on */

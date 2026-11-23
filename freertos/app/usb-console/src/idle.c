@@ -23,15 +23,21 @@
  * after interrupts are enabled again, and the idle task is left.
  *
  * Time base: the TIMER, 1 us (rp2040_timer_us()).
+ *
+ * The hook also blinks the LED (GPIO6, idle_blink.h), inside the window
+ * with the time read for it: one comparison per pass, counted as idle as
+ * the wait is, and a toggle every 500 ms.
  */
 
 #include <stdbool.h>
 #include <stdint.h>
+#include "hardware/gpio.h"
 #include "hardware/sync.h"
 #include "FreeRTOS.h"
 #include "task.h"
 #include "app.h"
 #include "cpu_load.h"
+#include "idle_blink.h"
 #include "os_clock.h"
 
 /* Changed only with interrupts disabled.  cpuload is cpu_load_get()'s (the
@@ -41,6 +47,16 @@
 static struct cpu_load_window cpuload;
 static struct cpu_load_window ps_window;
 
+/* The time of the LED's next change (idle_blink.h). */
+static uint64_t blink_next_us;
+
+/* See app.h. */
+void idle_led_init(void)
+{
+	gpio_init(PICO_DEFAULT_LED_PIN);
+	gpio_set_dir(PICO_DEFAULT_LED_PIN, GPIO_OUT);
+}
+
 void vApplicationIdleHook(void)
 {
 	uint32_t flags = save_and_disable_interrupts();
@@ -48,6 +64,10 @@ void vApplicationIdleHook(void)
 
 	cpu_load_enter(&cpuload, now);
 	cpu_load_enter(&ps_window, now);
+
+	if (idle_blink_due(&blink_next_us, now)) {
+		gpio_xor_mask(1u << PICO_DEFAULT_LED_PIN);
+	}
 
 	/* Zephyr: __DSB() then __WFI() (SLEEP_IF_ALLOWED). */
 	__asm volatile("dsb\n\twfi" ::: "memory");

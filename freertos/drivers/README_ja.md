@@ -90,24 +90,25 @@ FreeRTOS 版だけがビルドする共有ファイル: `common/compat/zephyr_wi
 ## タスク
 
 優先度は `common/compat/priorities.h`（Zephyr 版の値と `20 − Zephyr`）と `app/usb-console/src/priorities_os.h`
-（FreeRTOS 版だけのタスク）にあります。スタックはバイト。割り込みは別のスタック（MSP、2048 バイト。`ps` の
+（FreeRTOS 版だけのタスクと、FreeRTOS 版で測った使用量に合わせた互換層のスレッドのスタック。最大の使用量の 1.5 倍、
+256 バイト以上、64 の倍数。シェルのセッションは Zephyr 版と同じ 3072）にあります。スタックはバイト。割り込みは別のスタック（MSP、2048 バイト。`ps` の
 `(interrupts)` の行）を使います。
 
 | タスク | 優先度（Zephyr） | スタック | 内容 |
 |---|---|---|---|
-| `Tmr Svc` | 31（–） | 1024 | カーネルのタイマータスク。割り込みで解放された Pico SDK のロックの待ち手を起こす |
-| `net_mgmt`、`sysworkq` | 21（-1） | 2048、1024 | ネットワークのイベント、システムワークキュー（LSM6DSOX の FIFO の割り込みのワーク） |
-| `main` | 20（0） | 2048 | 起動の後半（下の「起動」）。終わると消える |
-| `sensor_shell_tid`、`RTIO WQ 0` | 20（0） | 3072、1024 | `sensor` の結果の表示、RTIO のワーク |
+| `Tmr Svc` | 31（–） | 384 | カーネルのタイマータスク。割り込みで解放された Pico SDK のロックの待ち手を起こす |
+| `net_mgmt`、`sysworkq` | 21（-1） | 2048、384 | ネットワークのイベント、システムワークキュー（LSM6DSOX の FIFO の割り込みのワーク） |
+| `main` | 20（0） | 2048 | 起動の後半（下の「起動」）。終わると消える。スタックは、コア 1（起動しない）だけが使う SCRATCH_X にある（`app/usb-console/ld/`） |
+| `sensor_shell_tid`、`RTIO WQ 0` | 20（0） | 2048、1024 | `sensor` の結果の表示、RTIO のワーク |
 | `nina_scan_tid`、`nina_connect_tid`、`wifi_reconnect_tid` | 12（8） | 1536、1024、2048 | Wi-Fi のスキャン・接続・自動再接続 |
 | `nina_monitor_tid`、`time_sync_tid`、`imu_stream_tid` | 11（9） | 1536、2048、2048 | 接続の監視、時刻同期、取得 |
 | `imu_fifo_worker` | 10（10） | 2048 | FIFO の読み出し |
 | `imu_raw_mqtt_tid` | 9（11） | 2048 | MQTT の送信 |
 | `console`、`shell_telnet`、`telnet_service`、`zperf_server_tid` | 6（14） | 3072、3072、2048、2048 | USB と Telnet のシェル（コマンドはこのタスクで走る）、Telnet の受け付け、`zperf tcp download` のサーバー |
-| `heartbeat` | 1（–） | 1024 | LED（GPIO6）の点滅 |
-| `IDLE` | 0（–） | 1024 | アイドル。CPU 負荷を測る（`idle.c`） |
+| `IDLE` | 0（–） | 256 | アイドル。CPU 負荷を測り、動いている間は LED（GPIO6）を 500 ms ごとに切り替える（`idle.c`） |
 
-ヒープは FreeRTOS の heap_4 で 32 KiB です（`free`）。タスクのスタックは静的に確保します。
+ヒープは FreeRTOS の heap_4 で 8 KiB です（`free`。`SELFTEST` では 16 KiB）。入るのは互換層のスレッドの制御ブロック（約 2.3 KiB）と、
+`SELFTEST` では自己診断の補助のタスクです。タスクのスタックは静的に確保します。
 
 **起動**（`main.c`）: `main()` で RAM ログ、異常停止の記録の読み出し、コンソール、互換層、NINA の SPI、
 I2C0（先にその読み出しのための DMA の割り込みハンドラー）、KV のフラッシュの準備を行い、タスク `main` で LSM6DSOX、
@@ -225,7 +226,7 @@ FreeRTOS 版の flash の操作（`common/chip/rp2040/include/rp2040_flash_kv_os
   [`zephyr/app/usb-console/drivers/README_ja.md`](../../zephyr/app/usb-console/drivers/README_ja.md) の「esptool の中継」）。
   コマンドが watchdog の scratch 0〜3 に印を書いて再起動し、`main()` は何より先に印を見て、タスクもスケジューラーも
   SPI1・NINA・I2C・KV も起こさずに、1 つのループで TinyUSB（`tud_task()`）と UART1 を中継します。モジュール → PC は UART1 の
-  受信割り込みが 16 KiB のバッファー（FreeRTOS のヒープから取る）へ移します。この割り込みとコアのその部分は RAM で動きます。
+  受信割り込みが 16 KiB のバッファー（`malloc()` で取る）へ移します。この割り込みとコアのその部分は RAM で動きます。
   LED は 5 Hz で点滅します。コアのホストテストは `common/tests/run.sh` の `nina_passthrough`。
 
 ## 除算器、`memcpy`・`memset`、boot2
@@ -255,9 +256,11 @@ Pico SDK の既定のままです。整数の割り算は `pico_divider` のハ�
 
 コードは RAM を約 49 KiB 使います（`.data` は 8 KiB から約 57 KiB に。RAM とフラッシュのあいだの長い分岐の中継を含む）。
 その分は、newlib の `malloc()` が使える `.bss` の終わりからスタックまでの領域（`free` の `malloc` の行）から取ります。
-FreeRTOS のヒープとタスクのスタックは静的で、変わりません。Pico SDK の最小の 2 KiB を除いて約 33 KiB が残ります
-（`SELFTEST` ではそのバッファーが `.bss` にあるので約 18 KiB）。使うのはシェルだけです（コマンドの行ごとに実行中の約 1.2 KiB と、
-127 文字を超える出力の行を表示する間）。リンクのあとの検査（`ram_code.cmake`。マップを読む）は、並べたオブジェクトのコードが
+Pico SDK の最小の 2 KiB を除いて約 79 KiB が残ります（`SELFTEST` では、そのバッファーが `.bss` にあり、FreeRTOS のヒープが
+8 KiB 大きいので約 56 KiB）。使うのはシェル（コマンドの行ごとに実行中の約 1.2 KiB と、127 文字を超える出力の行を表示する間）、
+`zperf` のバッファー（アップロードの間 約 2.1 KiB、`zperf tcp download` のサーバーが動いている間 約 2.5 KiB）、NINA の中継モードの
+16 KiB のバッファーです。空きが無いと `malloc()` は NULL を返し（`PICO_MALLOC_PANIC=0`。Pico SDK の既定は異常停止）、呼び出し側が
+失敗します（コマンドは `out of memory` と表示し、`zperf` は -12（`ENOMEM`）で失敗する）。リンクのあとの検査（`ram_code.cmake`。マップを読む）は、並べたオブジェクトのコードが
 RAM に無いとき（ビルドされなくなったソースや名前の変わったソース。存在しないソースは構成の段階で止まる）と、残りが 16 KiB より
 少ないときにビルドを止めます。
 

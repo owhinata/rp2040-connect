@@ -51,25 +51,39 @@
  * priority, 31 (configMAX_PRIORITIES - 1, above the cooperative -1 -> 21).
  * Its stack (configTIMER_TASK_STACK_DEPTH, words) holds the event group
  * calls.
+ *
+ * The stacks of this header are sized as measured on the board: the peak
+ * use ("ps", high-water mark) plus half, at least 256 bytes, a multiple of
+ * 64.  Timer task: 160 bytes used of 384 (USB output, Telnet, "sensor stream").
  */
 #define APP_PRIO_TIMER_SVC  31
-#define APP_STACK_TIMER_SVC 1024
+#define APP_STACK_TIMER_SVC 384
 
 /* The kernel's idle task ("IDLE"): priority 0 (tskIDLE_PRIORITY), below
  * every task of the port; it measures the CPU load (idle.c).  Zephyr's idle
  * thread has 256 bytes (CONFIG_IDLE_STACK_SIZE); FreeRTOS takes
- * configMINIMAL_STACK_SIZE words, which the Pico SDK also uses as its
- * default.
+ * configMINIMAL_STACK_SIZE words (only the idle task here: the Pico SDK's
+ * other use, flash_safe_execute()'s task, is for SMP).  104 bytes used of
+ * 1024 (before the LED's blink moved into the hook).
  */
 #define APP_PRIO_IDLE  0
-#define APP_STACK_IDLE 1024
+#define APP_STACK_IDLE 256
 
-/* "heartbeat": blinks the LED (GPIO6, main.c).  No Zephyr thread (the Zephyr
- * build leaves the LED alone): 1, below every thread of the port and above
- * idle.
+/* The layer's own threads, whose Zephyr sizes are in priorities.h, as
+ * measured here (bytes used of Zephyr's size, high-water mark): sysworkq
+ * (the LSM6DSO's INT1 work while streaming) 200 of 384, net_mgmt (the
+ * Wi-Fi event callbacks: "wifi scan" from Telnet prints its results on
+ * this thread) 1024 of 2048, telnet_service (Telnet sessions; a client that
+ * stops reading) 1164 of 2048, sensor_shell_tid ("sensor get" and "sensor
+ * stream") 1048 of 2048.  net_mgmt and telnet_service keep Zephyr's 2048:
+ * 960 overflowed net_mgmt's stack on a scan from Telnet, and 1600 left
+ * telnet_service 27% free.  The shell sessions ("console", "shell_telnet",
+ * APP_STACK_SHELL), where the commands run, keep Zephyr's 3072.
  */
-#define APP_PRIO_HEARTBEAT  1
-#define APP_STACK_HEARTBEAT 1024
+#define APP_STACK_SYSWORKQ       384
+#define APP_STACK_NET_MGMT       2048
+#define APP_STACK_TELNET_SERVICE 2048
+#define APP_STACK_SENSOR_SHELL   2048
 
 /* Not used by the port; for reference (Zephyr build, as in
  * nuttx/drivers/include/priorities_os.h):

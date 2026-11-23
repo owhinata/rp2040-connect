@@ -4,8 +4,8 @@
  * with its DMA reads (and I2C1 as a build option), the LSM6DSOX, the IMU
  * acquisition service with its MQTT transport, Wi-Fi with the stored
  * credentials, the time synchronization with the NTP server, the shell over
- * Telnet, the "zperf" speed test, the "sensor" command and a task that
- * blinks the LED.
+ * Telnet, the "zperf" speed test, the "sensor" command and the LED's blink
+ * from the idle task (idle.c).
  */
 #include <stdbool.h>
 #include <stdint.h>
@@ -41,19 +41,19 @@ int wifi_shell_init(void);
  * session, shell_serial.h) is the Zephyr build's shell thread
  * (APP_PRIO_SHELL, 14 -> 6, 3072 bytes): the commands run in it.
  */
-#define MAIN_PRIORITY        APP_PRIO_MAIN
-#define MAIN_STACK_SIZE      (APP_STACK_MAIN / sizeof(StackType_t))
-#define HEARTBEAT_PRIORITY   APP_PRIO_HEARTBEAT
-#define HEARTBEAT_STACK_SIZE (APP_STACK_HEARTBEAT / sizeof(StackType_t))
+#define MAIN_PRIORITY   APP_PRIO_MAIN
+#define MAIN_STACK_SIZE (APP_STACK_MAIN / sizeof(StackType_t))
 
-#define HEARTBEAT_PERIOD_MS 500
-#define CONSOLE_PROMPT      "freertos:~$ "
+#define CONSOLE_PROMPT "freertos:~$ "
 
-static StackType_t main_stack[MAIN_STACK_SIZE];
+/* The start-up task's stack, used only until the task ends, is not in
+ * .bss but in SCRATCH_X, which only core 1's stack would use
+ * (ld/section_extra_post_scratch.incl).  Not loaded: the kernel fills it
+ * when it creates the task.
+ */
+static StackType_t main_stack[MAIN_STACK_SIZE]
+	__attribute__((section(".scratch_x_noload.main_stack"), aligned(8)));
 static StaticTask_t main_tcb;
-
-static StackType_t heartbeat_stack[HEARTBEAT_STACK_SIZE];
-static StaticTask_t heartbeat_tcb;
 
 /* The run time of the tasks ("ps"), named in FreeRTOSConfig.h.  The other
  * hooks are in fault.c (fatal errors), idle.c and tick.c.
@@ -143,21 +143,6 @@ static void main_main(void *arg)
 	vTaskDelete(NULL);
 }
 
-static void heartbeat_main(void *arg)
-{
-	TickType_t next = xTaskGetTickCount();
-
-	(void)arg;
-
-	gpio_init(PICO_DEFAULT_LED_PIN);
-	gpio_set_dir(PICO_DEFAULT_LED_PIN, GPIO_OUT);
-
-	for (;;) {
-		gpio_xor_mask(1u << PICO_DEFAULT_LED_PIN);
-		xTaskDelayUntil(&next, pdMS_TO_TICKS(HEARTBEAT_PERIOD_MS));
-	}
-}
-
 int main(void)
 {
 	bool passthrough;
@@ -241,8 +226,8 @@ int main(void)
 	if (shell_serial_start(CONSOLE_PROMPT, console_banner) != 0) {
 		panic("shell_serial_start");
 	}
-	xTaskCreateStatic(heartbeat_main, "heartbeat", HEARTBEAT_STACK_SIZE, NULL,
-			  HEARTBEAT_PRIORITY, heartbeat_stack, &heartbeat_tcb);
+	/* The LED, which the idle task blinks once the scheduler runs. */
+	idle_led_init();
 
 	/* The tick hook's catch-up (tick.c, tick_catchup.h) takes SysTick's
 	 * period (clock_get_hz(clk_sys) / configTICK_RATE_HZ cycles, the RP2040

@@ -111,7 +111,10 @@ set(RAM_CODE_SOURCES
 
 # What the check after the link requires to be left for malloc() (above the
 # heap's 2 KiB minimum).  A shell command takes about 1.2 KiB while it runs,
-# plus a line longer than 127 characters while it is printed.
+# plus a line longer than 127 characters while it is printed.  The NINA
+# passthrough mode's buffer (16384 bytes) is the first allocation of that
+# mode: newlib takes 16408 bytes from sbrk for it, less than the 18432 of
+# the arena this leaves.
 set(RAM_CODE_MIN_FREE 16384)
 
 set(RAM_CODE_FILE ${CMAKE_CURRENT_LIST_FILE})

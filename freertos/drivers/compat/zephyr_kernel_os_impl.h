@@ -160,7 +160,7 @@ Z_OS_INLINE z_os_prio_t z_os_thread_prio_self(void)
 	return uxTaskPriorityGet(NULL);
 }
 
-/* Bytes; the port's smallest stack is 1024 (priorities.h). */
+/* Bytes; the port's smallest stack is 384 (sysworkq, src/priorities_os.h). */
 #define Z_OS_TASK_STACK_MIN 256
 
 /* The priority must be 1..configMAX_PRIORITIES - 1.  The task's control

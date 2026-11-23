@@ -42,7 +42,9 @@
 
 /* The Zephyr build's values (zephyr/build/usb-console/zephyr/.config):
  * CONFIG_SENSOR_SHELL_STREAM=y, CONFIG_SENSOR_SHELL_THREAD_STACK_SIZE=3072
- * (APP_STACK_SENSOR_SHELL), CONFIG_SENSOR_SHELL_TRIG_PRINT_TIMEOUT_MS=5000,
+ * (here APP_STACK_SENSOR_SHELL, 2048 as measured on this build:
+ * app/usb-console/src/priorities_os.h),
+ * CONFIG_SENSOR_SHELL_TRIG_PRINT_TIMEOUT_MS=5000,
  * CONFIG_SENSOR_SHELL_MAX_TRIGGER_DEVICES=1; CONFIG_SENSOR_INFO (so no
  * "sensor info") and CONFIG_SENSOR_SHELL_BATTERY are not set.  The thread's
  * priority is Zephyr's 0 (sensor_shell_stream.c: K_THREAD_DEFINE(..., 0, 0,

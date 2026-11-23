@@ -100,24 +100,27 @@ Left as approximations:
 ## Tasks
 
 The priorities are in `common/compat/priorities.h` (the Zephyr build's values and `20 − Zephyr`) and
-`app/usb-console/src/priorities_os.h` (the tasks of this build only). Stacks are in bytes. Interrupts
+`app/usb-console/src/priorities_os.h` (the tasks of this build only, and the stacks of the layer's own
+threads sized as measured on this build: peak use plus half, at least 256 bytes, a multiple of 64; the
+shell sessions keep Zephyr's 3072). Stacks are in bytes. Interrupts
 use a stack of their own (MSP, 2048 bytes; the `(interrupts)` row of `ps`).
 
 | Task | Priority (Zephyr) | Stack | Role |
 |---|---|---|---|
-| `Tmr Svc` | 31 (–) | 1024 | The kernel's timer task; wakes the waiters of Pico SDK locks released in interrupt handlers |
-| `net_mgmt`, `sysworkq` | 21 (-1) | 2048, 1024 | Network events; the system work queue (the work of the LSM6DSOX FIFO interrupt) |
-| `main` | 20 (0) | 2048 | The second half of the start-up ("Start-up" below); ends when done |
-| `sensor_shell_tid`, `RTIO WQ 0` | 20 (0) | 3072, 1024 | Printing `sensor` results; RTIO work |
+| `Tmr Svc` | 31 (–) | 384 | The kernel's timer task; wakes the waiters of Pico SDK locks released in interrupt handlers |
+| `net_mgmt`, `sysworkq` | 21 (-1) | 2048, 384 | Network events; the system work queue (the work of the LSM6DSOX FIFO interrupt) |
+| `main` | 20 (0) | 2048 | The second half of the start-up ("Start-up" below); ends when done. Its stack is in SCRATCH_X, which only core 1 (never started) would use (`app/usb-console/ld/`) |
+| `sensor_shell_tid`, `RTIO WQ 0` | 20 (0) | 2048, 1024 | Printing `sensor` results; RTIO work |
 | `nina_scan_tid`, `nina_connect_tid`, `wifi_reconnect_tid` | 12 (8) | 1536, 1024, 2048 | Wi-Fi scan, connection, automatic reconnection |
 | `nina_monitor_tid`, `time_sync_tid`, `imu_stream_tid` | 11 (9) | 1536, 2048, 2048 | Link monitor, time synchronization, acquisition |
 | `imu_fifo_worker` | 10 (10) | 2048 | FIFO reads |
 | `imu_raw_mqtt_tid` | 9 (11) | 2048 | MQTT transport |
 | `console`, `shell_telnet`, `telnet_service`, `zperf_server_tid` | 6 (14) | 3072, 3072, 2048, 2048 | The USB and Telnet shells (commands run in these tasks), Telnet accepts, the server of `zperf tcp download` |
-| `heartbeat` | 1 (–) | 1024 | Blinks the LED (GPIO6) |
-| `IDLE` | 0 (–) | 1024 | Idle; measures the CPU load (`idle.c`) |
+| `IDLE` | 0 (–) | 256 | Idle; measures the CPU load and blinks the LED (GPIO6) every 500 ms while it runs (`idle.c`) |
 
-The heap is FreeRTOS's heap_4 with 32 KiB (`free`). Task stacks are allocated statically.
+The heap is FreeRTOS's heap_4 with 8 KiB (`free`; 16 KiB with `SELFTEST`). It holds the control blocks of
+the layer's threads (about 2.3 KiB) and, with `SELFTEST`, the self-test's helper tasks. Task stacks are
+allocated statically.
 
 **Start-up** (`main.c`): `main()` sets up the RAM log, reads the fatal error record, sets up the console,
 the layer, the NINA's SPI, I2C0 (first the DMA interrupt's handler for its reads) and the flash of the key-value store; then the task `main` starts the
@@ -271,7 +274,7 @@ boundary (the five functions of `common/compat/flash_kv_os.h`) with the RP2040's
   leaves a mark in the watchdog's scratch registers 0 to 3 and restarts; `main()` sees it before anything
   else and, with no task, scheduler, SPI1, NINA, I2C or KV store, relays between TinyUSB (`tud_task()`) and
   UART1 in one loop. From the module to the PC, UART1's receive interrupt moves the bytes into a 16 KiB
-  buffer (from the FreeRTOS heap); that interrupt and the core's part of it run from RAM. The LED blinks at
+  buffer (from `malloc()`); that interrupt and the core's part of it run from RAM. The LED blinks at
   5 Hz. The core's host test is `nina_passthrough` of `common/tests/run.sh`.
 
 ## Divider, `memcpy` and `memset`, boot2
@@ -306,10 +309,13 @@ they saturate) and read them about 15 s later (the hits and the accesses).
 
 The code costs about 49 KiB of RAM (`.data` is about 57 KiB instead of 8 KiB, with the long-branch stubs
 between RAM and the flash). It is taken from what newlib's `malloc()` can grow into, between the end of
-`.bss` and the stacks (the `malloc` line of `free`); the FreeRTOS heap and the task stacks are static and
-unchanged. About 33 KiB is left above the Pico SDK's 2 KiB minimum (about 18 KiB with `SELFTEST`, whose
-buffers are in `.bss`); only the shell takes from it (about 1.2 KiB per command line while it runs, and a
-line of output longer than 127 characters while it is printed). A check after the link (in
+`.bss` and the stacks (the `malloc` line of `free`). About 79 KiB is left above the Pico SDK's 2 KiB minimum
+(about 56 KiB with `SELFTEST`, whose buffers are in `.bss` and whose FreeRTOS heap is 8 KiB larger). The
+shell takes from it (about 1.2 KiB per command line while it runs, and a line of output longer than 127
+characters while it is printed), `zperf` its buffers (about 2.1 KiB for an upload, 2.5 KiB while the server
+of `zperf tcp download` runs), and the NINA passthrough mode its 16 KiB buffer. When it has no room,
+`malloc()` returns NULL (`PICO_MALLOC_PANIC=0`; the Pico SDK's default is a fatal error) and the caller
+fails: a command prints `out of memory`, `zperf` fails with -12 (`ENOMEM`). A check after the link (in
 `ram_code.cmake`, on the map) stops the build when a listed object's code is not in RAM (a source no longer
 built or renamed; a listed source that does not exist stops the configuration) or when less than 16 KiB is
 left.

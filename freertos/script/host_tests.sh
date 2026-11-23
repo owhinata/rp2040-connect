@@ -49,7 +49,8 @@
 #   (freertos/tests/sensor_shell; skipped without freertos/stmemsc/lsm6dso_reg.c).
 # - The kernel tick's catch-up of ticks lost while interrupts are masked
 #   (freertos/app/usb-console/src/tick_catchup.h) on a model of SysTick
-#   (freertos/tests/tick, no kernel).
+#   (freertos/tests/tick, no kernel), and the LED's blink from the idle hook
+#   (freertos/app/usb-console/src/idle_blink.h, freertos/tests/idle).
 #
 #   freertos/script/host_tests.sh        run them
 #   freertos/script/host_tests.sh -v     also show the tests' output
@@ -60,7 +61,7 @@ verbose=0
 case "${1:-}" in
   "") ;;
   -v) verbose=1 ;;
-  -h|--help) sed -n '2,54p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+  -h|--help) sed -n '2,56p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
   *) printf 'Unknown option: %s\n' "$1" >&2; exit 2 ;;
 esac
 
@@ -136,6 +137,12 @@ else
     timeout 60 "$out/tick" >"$out/log" 2>&1 || { cat "$out/log"; exit 1; }
 fi
 printf 'ok  tick (catch-up of lost ticks, model of SysTick)\n'
+
+# The LED's blink from the idle hook (freertos/tests/idle): its schedule
+# (app/usb-console/src/idle_blink.h) alone.  No kernel.
+cc "${flags[@]}" "${strict[@]}" -Iapp/usb-console/src tests/idle/main.c -o "$out/idle"
+timeout 60 "$out/idle" >"$out/log" 2>&1 || { cat "$out/log"; exit 1; }
+printf 'ok  idle (the LED'"'"'s blink from the idle hook)\n'
 
 # The shell (freertos/tests/shell): the line editor, two sessions at once on two consoles
 # (each task's stdout, the shared zshell.c and subcmd.c, the copies of Zephyr's fnmatch() and
@@ -628,7 +635,8 @@ printf 'ok  wifi (interface, events, credentials, reconnection, wifi and ifconfi
 # protocol and line ends, a second client refused, 140 connections and disconnections, the
 # USB session's output kept apart, a failed connection, a client that stops reading, and with
 # the host's iperf3 (127.0.0.1 only; skipped without it) "zperf tcp upload" to "iperf3 -s" and
-# "iperf3 -c" to "zperf tcp download".
+# "iperf3 -c" to "zperf tcp download", with zperf's buffers from malloc() counted (none left
+# after a test) and their allocation failing.
 if command -v python3 >/dev/null; then
     tninc=(-D_GNU_SOURCE -DZ_SHELL_CMD_ROOT_GLOBAL -DCONFIG_GETOPT_LONG=1 -U_FORTIFY_SOURCE
            -Itests/telnet -Itests/shell -I$seng -I../common/shell
@@ -643,7 +651,9 @@ if command -v python3 >/dev/null; then
         obj="$out/telnet_$(basename "$src" .c).o"
         extra=()
         case $src in
-            */zperf_iperf3.c|*/zephyr_zperf_shell.c) extra=(-include drivers/compat/common_prelude.h) ;;
+            */zperf_iperf3.c) extra=(-include drivers/compat/common_prelude.h
+                                     -Dmalloc=zperf_test_malloc -Dfree=zperf_test_free) ;;
+            */zephyr_zperf_shell.c) extra=(-include drivers/compat/common_prelude.h) ;;
             */shell_telnet.c) extra=(-DCONFIG_SHELL_TELNET_PORT=test_telnet_port
                                     "-include" tests/telnet/port.h) ;;
             *zshell.c|*shell_console.c) extra=(-Dcalloc=test_calloc -Dmalloc=test_malloc -Dfree=test_free) ;;

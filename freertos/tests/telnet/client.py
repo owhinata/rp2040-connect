@@ -383,6 +383,7 @@ def test_zperf(board):
     check(0 < received <= packets * 1024 and packets * 1024 - received < 1024 * 1024,
           "iperf3 received %d bytes, the board sent %d blocks" % (received, packets))
     check(result["start"]["test_start"]["blksize"] == 1024, "block size")
+    check(c.command("zalloc") == b"zalloc 0\r\n", "upload buffers returned")
 
     # An upload to a port with no server.
     out = c.command("zperf tcp upload 127.0.0.1 %d 1 1024" % free_port())
@@ -392,13 +393,23 @@ def test_zperf(board):
           b"Please specify the IP address of the remote server.\r\n", repr(out))
     out = c.command("zperf tcp upload -a 127.0.0.1")
     check(out == b"Unrecognized argument: -a\r\n", repr(out))
+    # No room for the buffers: the upload fails before it connects.
+    check(c.command("zalloc fail") == b"", "zalloc fail")
+    out = c.command("zperf tcp upload 127.0.0.1 %d 1 1024" % free_port())
+    check(out.endswith(b"TCP upload failed (-12)\r\n"), "upload without memory: %r" % out)
+    check(c.command("zalloc") == b"zalloc 0\r\n", "upload buffers after the failures")
 
-    # PC -> board: "zperf tcp download".
+    # PC -> board: "zperf tcp download"; without room for its buffers first.
     port = free_port()
+    check(c.command("zalloc fail") == b"", "zalloc fail")
+    out = c.command("zperf tcp download %d" % port)
+    check(out == b"Failed to start TCP server!\r\n", "download without memory: %r" % out)
+    check(c.command("zalloc") == b"zalloc 0\r\n", "download buffers after the failure")
     out = c.command("zperf tcp download %d" % port)
     check(out == b"TCP server started on port %d\r\n" % port, repr(out))
     check(c.command("zperf tcp download %d" % port) == b"TCP server already started!\r\n",
           "second start")
+    check(c.command("zalloc") == b"zalloc 1\r\n", "download buffers while the server runs")
     for _ in range(2):
         rc, result, p = run_iperf3(["-c", "127.0.0.1", "-p", str(port), "-t", "2", "-J"])
         check(rc == 0, "iperf3 -c: %r %r" % (p.stdout[-300:], p.stderr))
@@ -425,9 +436,11 @@ def test_zperf(board):
     c.read_until(b"\r\n", 2.0)
     out = c.command("zperf tcp download stop")
     check(out == b"TCP server stopped\r\n", repr(out))
+    check(c.command("zalloc") == b"zalloc 0\r\n", "download buffers after the stop")
     check(c.command("zperf tcp download stop") == b"TCP server not running!\r\n", "stop again")
     out = c.command("zperf tcp download %d 192.168.0.1" % port)
     check(out == b"Failed to start TCP server!\r\n", "bind to an address: %r" % out)
+    check(c.command("zalloc") == b"zalloc 0\r\n", "download buffers after a failed bind")
     check(c.command("socks") == b"socks 2\r\n", "descriptors after zperf")
     c.close()
 

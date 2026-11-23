@@ -106,6 +106,12 @@ freertos_zperf(usb-console)
 freertos_sensor_shell(usb-console)
 freertos_ram_code(usb-console)
 
+# The stack of the start-up task "main" in SCRATCH_X, which only core 1's
+# stack would use (ld/section_extra_post_scratch.incl, src/main.c).
+pico_add_linker_script_override_path(usb-console ${CMAKE_CURRENT_LIST_DIR}/ld
+  FILES section_extra_post_scratch.incl
+)
+
 # FreeRTOSConfig.h; priorities_os.h (src/, which FreeRTOSConfig.h includes);
 # priorities.h and cpu_load.h (common/compat);
 # fault_record.h (common/compat/log); the RP2040's code that no OS owns
@@ -138,6 +144,14 @@ target_compile_definitions(usb-console PRIVATE
 # out, and the weak stand-in of custom_panic_function.S gives way to ours.
 target_compile_definitions(usb-console PRIVATE
   PICO_PANIC_FUNCTION=
+)
+
+# malloc() returns NULL when it finds no room, as in the Zephyr and NuttX
+# builds, instead of the Pico SDK's default panic (pico_malloc): its users
+# check (the shell's command state and long lines, zperf's buffers, the
+# NINA passthrough mode's buffer, newlib's own).
+target_compile_definitions(usb-console PRIVATE
+  PICO_MALLOC_PANIC=0
 )
 
 # The SDK's chain slots of shared interrupt handlers (12 bytes of RAM each),

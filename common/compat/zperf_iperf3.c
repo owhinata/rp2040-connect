@@ -4,6 +4,10 @@
  * the small Zephyr compatibility layer of the port, its OS-independent part
  * (common/compat); built by the FreeRTOS build only
  * (freertos/drivers/zperf/zperf.cmake).
+ *
+ * The buffers are taken from malloc() only while they are in use: the
+ * client's for one upload, the server's from zperf_tcp_download() until the
+ * server stops.  When there is no room, the call fails with -ENOMEM.
  */
 
 #include <ctype.h>
@@ -517,9 +521,13 @@ struct send_stats {
 	uint64_t duration_us;
 };
 
-static uint8_t sample_packet[ZPERF_PACKET_SIZE_MAX];
-static uint8_t client_json[JSON_BUF_SIZE];
-/* One upload at a time: the buffers above are shared. */
+/* The client's buffers, from malloc() for one upload. */
+struct upload_buf {
+	uint8_t sample_packet[ZPERF_PACKET_SIZE_MAX];
+	uint8_t json[JSON_BUF_SIZE];
+};
+
+/* One upload at a time. */
 static K_MUTEX_DEFINE(upload_lock);
 
 /* A receive timeout comes as EAGAIN. */
@@ -633,14 +641,14 @@ static int send_block(int sock, const uint8_t *buf, size_t len, size_t *sent)
 }
 
 static int send_tcp(int sock, const struct zperf_upload_params *param, uint32_t packet_size,
-		    struct send_stats *stats)
+		    struct send_stats *stats, uint8_t *sample_packet)
 {
 	int64_t end_ms = k_uptime_get() + param->duration_ms;
 	uint64_t start = now_us();
 	size_t sent;
 	int ret;
 
-	memset(sample_packet, 'z', sizeof(sample_packet));
+	memset(sample_packet, 'z', ZPERF_PACKET_SIZE_MAX);
 	do {
 		ret = send_block(sock, sample_packet, packet_size, &sent);
 		/* The server counts every byte, those of a failed block too. */
@@ -662,7 +670,7 @@ static int send_tcp(int sock, const struct zperf_upload_params *param, uint32_t 
 }
 
 static int exchange_results(int ctrl, const struct send_stats *sent,
-			    struct zperf_iperf3_stream_stats *server)
+			    struct zperf_iperf3_stream_stats *server, uint8_t *client_json)
 {
 	struct zperf_iperf3_stream_stats ours = {
 		.bytes = sent->bytes,
@@ -672,7 +680,7 @@ static int exchange_results(int ctrl, const struct send_stats *sent,
 	uint32_t len;
 	int ret;
 
-	ret = zperf_iperf3_results_encode(&ours, true, client_json, sizeof(client_json));
+	ret = zperf_iperf3_results_encode(&ours, true, client_json, JSON_BUF_SIZE);
 	if (ret < 0) {
 		return ret;
 	}
@@ -700,6 +708,7 @@ int zperf_tcp_upload(const struct zperf_upload_params *param, struct zperf_resul
 	struct zperf_iperf3_stream_stats server = {0};
 	struct send_stats sent = {0};
 	char cookie[ZPERF_IPERF3_COOKIE_SIZE];
+	struct upload_buf *buf;
 	uint32_t packet_size;
 	int stream = -1;
 	int ctrl;
@@ -711,10 +720,16 @@ int zperf_tcp_upload(const struct zperf_upload_params *param, struct zperf_resul
 	if (k_mutex_lock(&upload_lock, K_NO_WAIT) != 0) {
 		return -EBUSY;
 	}
+	buf = malloc(sizeof(*buf));
+	if (buf == NULL) {
+		k_mutex_unlock(&upload_lock);
+		return -ENOMEM;
+	}
 
 	/* Small messages that should not wait for more. */
 	ctrl = open_upload_sock(&param->peer_addr, 1);
 	if (ctrl < 0) {
+		free(buf);
 		k_mutex_unlock(&upload_lock);
 		return ctrl;
 	}
@@ -735,12 +750,12 @@ int zperf_tcp_upload(const struct zperf_upload_params *param, struct zperf_resul
 
 	packet_size = CLAMP(param->packet_size, 1U, (uint32_t)ZPERF_PACKET_SIZE_MAX);
 	ret = zperf_iperf3_params_encode((int32_t)DIV_ROUND_UP(param->duration_ms, 1000U),
-					 packet_size, param->options.tcp_nodelay != 0, client_json,
-					 sizeof(client_json));
+					 packet_size, param->options.tcp_nodelay != 0, buf->json,
+					 sizeof(buf->json));
 	if (ret < 0) {
 		goto out;
 	}
-	ret = send_all(ctrl, client_json, (size_t)ret, 0);
+	ret = send_all(ctrl, buf->json, (size_t)ret, 0);
 	if (ret < 0) {
 		goto out;
 	}
@@ -768,7 +783,7 @@ int zperf_tcp_upload(const struct zperf_upload_params *param, struct zperf_resul
 		goto out;
 	}
 
-	ret = send_tcp(stream, param, packet_size, &sent);
+	ret = send_tcp(stream, param, packet_size, &sent, buf->sample_packet);
 	if (ret < 0) {
 		(void)send_state(ctrl, ZPERF_IPERF3_CLIENT_TERMINATE, 0);
 		goto out;
@@ -781,7 +796,7 @@ int zperf_tcp_upload(const struct zperf_upload_params *param, struct zperf_resul
 	if (ret < 0) {
 		goto out;
 	}
-	ret = exchange_results(ctrl, &sent, &server);
+	ret = exchange_results(ctrl, &sent, &server, buf->json);
 	if (ret < 0) {
 		goto out;
 	}
@@ -804,6 +819,7 @@ out:
 		zsock_close(stream);
 	}
 	zsock_close(ctrl);
+	free(buf);
 	k_mutex_unlock(&upload_lock);
 	return ret;
 }
@@ -820,6 +836,12 @@ enum srv_state {
 	ST_RESULTS_LEN,    /* reading the client's results */
 	ST_RESULTS,
 	ST_DONE, /* results sent; waiting for the client to go */
+};
+
+/* The server's buffers, from malloc() while it runs. */
+struct srv_buf {
+	uint8_t json[JSON_BUF_SIZE];
+	uint8_t data[DATA_BUF_SIZE];
 };
 
 struct srv_test {
@@ -848,7 +870,9 @@ static struct {
 	/* Under srv_lock.  enabled: started by zperf_tcp_download() until the
 	 * thread has stopped it; stop: zperf_tcp_download_stop() asks the
 	 * thread to.  The sockets are opened by zperf_tcp_download() while the
-	 * thread waits and otherwise used and closed by the thread only.
+	 * thread waits and otherwise used and closed by the thread only.  buf:
+	 * taken by zperf_tcp_download(), returned by the thread when it stops
+	 * the server.
 	 */
 	bool enabled;
 	bool stop;
@@ -858,6 +882,7 @@ static struct {
 	int ctrl_fd;
 	int data_fd;
 	int64_t last_activity;
+	struct srv_buf *buf;
 	struct srv_test test;
 } srv = {
 	.listen_fd = -1,
@@ -865,9 +890,6 @@ static struct {
 	.data_fd = -1,
 	.test = {.held_data = -1},
 };
-
-static uint8_t srv_json[JSON_BUF_SIZE];
-static uint8_t data_buf[DATA_BUF_SIZE];
 
 static K_MUTEX_DEFINE(srv_lock);
 static K_SEM_DEFINE(srv_wake, 0, 1);
@@ -982,7 +1004,7 @@ static void on_params(size_t len)
 	struct zperf_iperf3_params params;
 	int32_t error;
 
-	if (zperf_iperf3_params_decode((const char *)srv_json, len, &params) < 0) {
+	if (zperf_iperf3_params_decode((const char *)srv.buf->json, len, &params) < 0) {
 		ctrl_server_error(ZPERF_IPERF3_IERECVPARAMS);
 		return;
 	}
@@ -1033,7 +1055,7 @@ static bool on_data(void)
 	}
 
 	for (int i = 0; i < DATA_READ_BUDGET; i++) {
-		ret = zsock_recv(sock, data_buf, sizeof(data_buf), ZSOCK_MSG_DONTWAIT);
+		ret = zsock_recv(sock, srv.buf->data, sizeof(srv.buf->data), ZSOCK_MSG_DONTWAIT);
 		if (ret < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
 			return false;
 		}
@@ -1078,7 +1100,7 @@ static void on_client_results(size_t len)
 	/* Only kept for the report: a client that sends something odd still
 	 * gets the server's results.
 	 */
-	(void)zperf_iperf3_results_decode((const char *)srv_json, len, &client);
+	(void)zperf_iperf3_results_decode((const char *)srv.buf->json, len, &client);
 
 	stats.duration_us = duration_us;
 	stats.bytes = srv.test.bytes;
@@ -1087,12 +1109,12 @@ static void on_client_results(size_t len)
 	results.nb_packets_sent = (uint32_t)client.packets;
 	results.total_len = srv.test.bytes;
 
-	ret = zperf_iperf3_results_encode(&stats, false, srv_json, sizeof(srv_json));
+	ret = zperf_iperf3_results_encode(&stats, false, srv.buf->json, sizeof(srv.buf->json));
 	if (ret < 0) {
 		test_abort();
 		return;
 	}
-	if (send_all(srv.ctrl_fd, srv_json, (size_t)ret, ZSOCK_MSG_DONTWAIT) < 0 ||
+	if (send_all(srv.ctrl_fd, srv.buf->json, (size_t)ret, ZSOCK_MSG_DONTWAIT) < 0 ||
 	    ctrl_send_state(ZPERF_IPERF3_DISPLAY_RESULTS) < 0) {
 		test_abort();
 		return;
@@ -1127,7 +1149,7 @@ static void on_ctrl_message(size_t len)
 			break;
 		}
 		srv.test.state = srv.test.state == ST_PARAMS_LEN ? ST_PARAMS : ST_RESULTS;
-		ctrl_expect(srv_json, json_len);
+		ctrl_expect(srv.buf->json, json_len);
 		break;
 	case ST_PARAMS:
 		on_params(len);
@@ -1276,6 +1298,8 @@ static void server_stop(void)
 	}
 	test_abort();
 	close_fd(&srv.listen_fd);
+	free(srv.buf);
+	srv.buf = NULL;
 	srv.cb = NULL;
 	srv.user_data = NULL;
 }
@@ -1379,8 +1403,15 @@ int zperf_tcp_download(const struct zperf_download_params *param, zperf_callback
 		ret = -EALREADY;
 		goto out;
 	}
+	srv.buf = malloc(sizeof(*srv.buf));
+	if (srv.buf == NULL) {
+		ret = -ENOMEM;
+		goto out;
+	}
 	ret = server_open(param);
 	if (ret < 0) {
+		free(srv.buf);
+		srv.buf = NULL;
 		goto out;
 	}
 	test_clear();
