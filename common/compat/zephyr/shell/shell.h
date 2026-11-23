@@ -38,6 +38,7 @@
  * select mode, aliases, remote commands, raw arguments or Tab completion
  * (on NuttX, nsh's).
  *
+ * shell_hexdump() and shell_hexdump_line() are Zephyr's, with its output.
  * shell_device_get_binding() and shell_device_filter() are Zephyr's, on
  * the devices of <zephyr/device.h>.
  *
@@ -360,6 +361,18 @@ int z_shell_cmd_main(const struct shell_static_entry *root, int argc,
  */
 
 void shell_help(const struct shell *sh);
+
+/* shell_hexdump(): DATA as lines of SHELL_HEXDUMP_BYTES_IN_LINE bytes, each
+ * the offset, the bytes in hex and as text, in Zephyr's format
+ * (subsys/shell/shell_utils.c); shell_hexdump_line() prints one line.
+ * common/shell/zshell.c.
+ */
+
+#define SHELL_HEXDUMP_BYTES_IN_LINE 16
+
+void shell_hexdump_line(const struct shell *sh, unsigned int offset,
+                        const uint8_t *data, size_t len);
+void shell_hexdump(const struct shell *sh, const uint8_t *data, size_t len);
 
 /* Devices (common/shell/zshell.c, on the devices of <zephyr/device.h>). */
 

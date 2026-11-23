@@ -63,6 +63,17 @@
  *   (never unclaimed) and the controller quarantined (-EIO for the next
  *   transfer).  The counters (transfers, bytes, errors, fallbacks) after
  *   each.
+ * - The "i2c" command (common/shell/i2c_shell.c, the copy of
+ *   the Zephyr build's I2C shell, on the shared zshell.c and this
+ *   directory's zshell_os_impl.h, whose backend captures): the devices of
+ *   its arguments are the ready I2C devices (i2c@40044000, not the
+ *   LSM6DSOX's); "i2c speed" without get_config (-ENOSYS) configures
+ *   I2C_MODE_CONTROLLER with the class, which the next transfer runs at
+ *   (the SCL counts), and fails for a class the controller does not have,
+ *   changing nothing; "i2c read_byte", "i2c write_byte" and "i2c read" in
+ *   Zephyr's hexdump (a DMA read of 32 bytes); no such device; "i2c scan"
+ *   stops at its first address (a write of no bytes, -ENOTSUP) with patch
+ *   0004's message; "i2c recover" fails with -ENOTSUP.
  * - The boundary's semaphore and time functions: K_MSEC() rounding plus
  *   one tick, the deadline's last try without waiting, a give from an
  *   interrupt handler and from a task, a give between a wait's look at the
@@ -96,6 +107,7 @@
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 #include <time.h>
 #include <unistd.h>
@@ -107,8 +119,10 @@
 #include <zephyr/device.h>
 #include <zephyr/drivers/i2c.h>
 #include <zephyr/drivers/i2c/i2c_dw_rp2040_dma.h>
+#include <zephyr/shell/shell.h>
 
 #include "pico_i2c_fake.h"
+#include "shell_engine.h"
 
 #include "i2c_dw_os_impl.h"
 #include "i2c_dw_dma_os.h"
@@ -1766,6 +1780,204 @@ static void test_read_commands(void)
 	}
 }
 
+/* The "i2c" command (common/shell/i2c_shell.c) -------------------*/
+
+/* The LSM6DSOX's device of the layer's list (common/compat/zephyr_device.c),
+ * which is not an I2C device.
+ */
+static struct device_state lsm6dsox_state;
+const struct device __device_lsm6dsox = {
+	.name = "lsm6dsox@6a",
+	.state = &lsm6dsox_state,
+};
+
+SHELL_ENGINE_CMD_DECLARE(i2c);
+
+static char shell_out[LOG_SIZE];
+
+void test_shell_capture(const char *fmt, va_list args)
+{
+	size_t used = strlen(shell_out);
+
+	vsnprintf(shell_out + used, sizeof(shell_out) - used, fmt, args);
+}
+
+/* zshell.c's calloc() and free(), with the scheduler suspended (the port
+ * may switch threads inside the C library's locks).
+ */
+void *test_calloc(size_t n, size_t size);
+void test_free(void *p);
+
+void *test_calloc(size_t n, size_t size)
+{
+	void *p;
+
+	vTaskSuspendAll();
+	p = calloc(n, size);
+	(void)xTaskResumeAll();
+	return p;
+}
+
+void test_free(void *p)
+{
+	vTaskSuspendAll();
+	free(p);
+	(void)xTaskResumeAll();
+}
+
+/* Runs the words of LINE as "i2c ..." of a session; returns the exit status. */
+static int shell_run(const char *line)
+{
+	static char buf[256];
+	char *argv[16];
+	int argc = 0;
+
+	snprintf(buf, sizeof(buf), "%s", line);
+	for (char *w = strtok(buf, " "); w != NULL; w = strtok(NULL, " ")) {
+		argv[argc++] = w;
+	}
+	argv[argc] = NULL;
+	return z_shell_cmd_main(&z_shell_root_i2c, argc, argv);
+}
+
+static void expect_shell(const char *expected)
+{
+	if (strcmp(shell_out, expected) != 0) {
+		printf("expected shell: %s\n     got shell: %s\n", expected, shell_out);
+		fflush(stdout);
+		assert(0);
+	}
+	shell_out[0] = '\0';
+}
+
+/* Runs LINE, which fails with the error and the help that zshell.c prints
+ * to the command's stderr and stdout (a session's console on the board):
+ * into OUT.
+ */
+static void help_run(const char *line, char *out, size_t size)
+{
+	char path[] = "/tmp/i2c_shell_XXXXXX";
+	int fd = mkstemp(path);
+	int saved_out = dup(STDOUT_FILENO);
+	int saved_err = dup(STDERR_FILENO);
+	ssize_t got;
+
+	assert(fd >= 0 && saved_out >= 0 && saved_err >= 0);
+	fflush(stdout);
+	dup2(fd, STDOUT_FILENO);
+	dup2(fd, STDERR_FILENO);
+	assert(shell_run(line) == 1);
+	fflush(stdout);
+	dup2(saved_out, STDOUT_FILENO);
+	dup2(saved_err, STDERR_FILENO);
+	close(saved_out);
+	close(saved_err);
+	got = pread(fd, out, size - 1, 0);
+	assert(got >= 0);
+	out[got] = '\0';
+	close(fd);
+	unlink(path);
+}
+
+static void test_shell(void)
+{
+	char expected[LOG_SIZE];
+	int n;
+
+	hw_mode = HW_DEVICE;
+
+	/* The devices of the arguments: the ready I2C devices only (the
+	 * LSM6DSOX's, made ready here, is not one), in the help that the wrong
+	 * argument count prints.
+	 */
+	lsm6dsox_state.initialized = true;
+	help_run("i2c read_byte i2c@40044000", expected, sizeof(expected));
+	assert(strstr(expected, "read_byte: wrong parameter count\n") == expected);
+	assert(strstr(expected, "Usage: read_byte <device> <addr> <reg>\n") != NULL);
+	assert(strstr(expected, "Subcommands:\n  i2c@40044000\n") != NULL);
+	assert(strstr(expected, "lsm6dsox") == NULL);
+	expect_shell("");
+	lsm6dsox_state.initialized = false;
+	expect_hw("");
+
+	/* "i2c speed": no get_config (-ENOSYS), so I2C_MODE_CONTROLLER and the
+	 * class, which the next transfer runs at: fast plus (1 MHz), then
+	 * standard (100 kHz).  "i2c read_byte" is WHO_AM_I's read.
+	 */
+	assert(i2c_get_config(i2c0, &(uint32_t){0}) == -ENOSYS);
+	assert(shell_run("i2c speed i2c@40044000 3") == 0);
+	expect_shell("");
+	REG(IC_FS_SCL_HCNT) = 0;
+	assert(shell_run("i2c read_byte i2c@40044000 6a 0f") == 0);
+	expect_shell("Output: 0x6c\n");
+	expect_hw(WHO_AM_I_BUS_AFTER_READ);
+	assert(REG(IC_FS_SCL_HCNT) == 31 && REG(IC_FS_SCL_LCNT) == 31);
+	assert(REG(IC_CON) == CON_FAST_DMA);
+	assert(shell_run("i2c speed i2c@40044000 1") == 0);
+	expect_shell("");
+	assert(shell_run("i2c read_byte i2c@40044000 6a 0f") == 0);
+	expect_shell("Output: 0x6c\n");
+	expect_hw(WHO_AM_I_BUS_AFTER_READ);
+	assert(REG(IC_SS_SCL_HCNT) == 500 && REG(IC_SS_SCL_LCNT) == 625);
+	assert(REG(IC_CON) == CON_STD_DMA);
+
+	/* Classes the controller does not have: refused, nothing changed. */
+	assert(shell_run("i2c speed i2c@40044000 4") == 1);
+	expect_shell("I2C: Failed to configure device: i2c@40044000\n");
+	assert(shell_run("i2c speed i2c@40044000 0") == 1);
+	expect_shell("I2C: Failed to configure device: i2c@40044000\n");
+	REG(IC_SS_SCL_HCNT) = 0;
+	assert(shell_run("i2c read_byte i2c@40044000 6a 0f") == 0);
+	expect_shell("Output: 0x6c\n");
+	expect_hw(WHO_AM_I_BUS_AFTER_READ);
+	assert(REG(IC_SS_SCL_HCNT) == 500);
+	assert(shell_run("i2c speed i2c@40044000 3") == 0);
+
+	/* "i2c write_byte": the register and the value in one write. */
+	assert(shell_run("i2c write_byte i2c@40044000 6a 12 44") == 0);
+	expect_shell("");
+	expect_hw("0x244 ");
+
+	/* "i2c read" of 0x20 bytes (the DMA read) in Zephyr's hexdump. */
+	hw_mode = HW_DMA;
+	assert(shell_run("i2c read i2c@40044000 6a 78 20") == 0);
+	expect_hw("0x78 dma(32,32) ");
+	expect_shell("00000000: a0 a1 a2 a3 a4 a5 a6 a7  a8 a9 aa ab ac ad ae af "
+		     "|........ ........|\n"
+		     "00000010: b0 b1 b2 b3 b4 b5 b6 b7  b8 b9 ba bb bc bd be bf "
+		     "|........ ........|\n");
+	calls[0] = '\0'; /* the channels' claims, which test_dma_reads() checks */
+	hw_mode = HW_DEVICE;
+
+	/* No such device. */
+	assert(shell_run("i2c read_byte i2c9 6a 0f") == 1);
+	expect_shell("I2C: Device driver i2c9 not found.\n");
+
+	/* "i2c scan": the core refuses a write of no bytes (-ENOTSUP), so the
+	 * scan stops at its first address with patch 0004's message.
+	 */
+	assert(shell_run("i2c scan i2c@40044000") == 1);
+	n = snprintf(expected, sizeof(expected),
+		     "     0  1  2  3  4  5  6  7  8  9  a  b  c  d  e  f\n00: ");
+	for (int i = 0; i < 4; i++) {
+		n += snprintf(expected + n, sizeof(expected) - n, "   ");
+	}
+	snprintf(expected + n, sizeof(expected) - n,
+		 "\nI2C: i2c@40044000 does not support this scan (zero-length writes)\n");
+	expect_shell(expected);
+	vTaskDelay(5);
+	expect_hw("");
+
+	/* "i2c recover": no recover-bus callback, as Zephyr's driver. */
+	assert(shell_run("i2c recover i2c@40044000") == 1);
+	snprintf(expected, sizeof(expected), "I2C: Bus recovery failed (err %d)\n", -ENOTSUP);
+	expect_shell(expected);
+
+	/* Back at the class of the tests before (and after) this one. */
+	assert(shell_run("i2c speed i2c@40044000 1") == 0);
+	expect_log("");
+}
+
 static void runner(void *arg)
 {
 	(void)arg;
@@ -1779,6 +1991,7 @@ static void runner(void *arg)
 	test_timeout();
 	test_dma_glue();
 	test_dma_reads();
+	test_shell();
 #ifdef CONFIG_I2C_DW_I2C1
 	test_i2c1_start();
 	test_i2c1_transfers();

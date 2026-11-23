@@ -1,0 +1,45 @@
+#
+# For a description of the syntax of this configuration file,
+# see the file kconfig-language.txt in the NuttX tools repository.
+#
+
+config APP_I2C
+	tristate "i2c command (the Zephyr build's I2C shell)"
+	default y
+	depends on SUBCMD && I2C_DW_I2C0
+	---help---
+		"i2c scan|recover|read|read_byte|direct_read|write|write_byte|
+		speed": the Zephyr build's I2C shell
+		(common/shell/i2c_shell.c, Zephyr v4.5.0's
+		drivers/i2c/i2c_shell.c with the local patch 0004) with the
+		same syntax and output, on the Zephyr compatibility layer's
+		I2C bus device i2c0 ("i2c@40044000", the one the LSM6DSO
+		driver uses: "i2c speed" changes the speed of its transfers)
+		and the Zephyr shell's command handling of
+		common/shell/zshell.c.  CONFIG_I2C_TARGET is not set in the
+		Zephyr build, so there is no "i2c target".
+
+if APP_I2C
+
+config I2C_SHELL_BUFFER_SIZE
+	int "Most bytes of one read or write"
+	default 64
+	---help---
+		The Zephyr build's CONFIG_I2C_SHELL_BUFFER_SIZE.
+
+config APP_I2C_PRIORITY
+	int "i2c task priority"
+	default 104
+	---help---
+		The shell's priority (APP_PRIO_SHELL in
+		common/compat/priorities.h): the Zephyr build runs shell
+		commands in its shell thread.
+
+config APP_I2C_STACKSIZE
+	int "i2c stack size"
+	default 3072
+	---help---
+		The Zephyr build runs the command on the shell thread's stack
+		(CONFIG_SHELL_STACK_SIZE 3072).
+
+endif

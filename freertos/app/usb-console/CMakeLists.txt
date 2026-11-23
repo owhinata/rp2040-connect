@@ -49,6 +49,8 @@ include(${CMAKE_CURRENT_LIST_DIR}/../../drivers/zperf/zperf.cmake)
 # The "sensor" command: the Zephyr build's sensor shell with its processing
 # thread (freertos/drivers/sensor_shell).
 include(${CMAKE_CURRENT_LIST_DIR}/../../drivers/sensor_shell/sensor_shell.cmake)
+# The "i2c" command: the Zephyr build's I2C shell (freertos/drivers/i2c_shell).
+include(${CMAKE_CURRENT_LIST_DIR}/../../drivers/i2c_shell/i2c_shell.cmake)
 
 # The code of the sensor's and the send's paths, which runs from RAM: the
 # flash's XIP cache is too small for it (ram_code.cmake).
@@ -90,6 +92,7 @@ freertos_wifi(usb-console)
 freertos_telnet(usb-console)
 freertos_zperf(usb-console)
 freertos_sensor_shell(usb-console)
+freertos_i2c_shell(usb-console)
 freertos_ram_code(usb-console)
 
 # The stack of the start-up task "main" in SCRATCH_X, which only core 1's

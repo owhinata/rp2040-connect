@@ -83,12 +83,14 @@ const struct device *device_get_by_dt_nodelabel(const char *name);
 
 /* DEVICE_API_IS(class, dev): whether the device's API is of the class.
  * Zephyr checks that the API table is in the class's linker section; here
- * zephyr_device.c knows the class of each device.  Only the sensor class.
+ * zephyr_device.c knows the class of each device.  The sensor and i2c
+ * classes.
  */
 
 #define DEVICE_API_IS(_class, _dev) z_device_api_is_##_class(_dev)
 
 bool z_device_api_is_sensor(const struct device *dev);
+bool z_device_api_is_i2c(const struct device *dev);
 
 /* DEVICE_API(sensor, name): the driver's API table. */
 

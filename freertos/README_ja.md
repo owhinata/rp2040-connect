@@ -123,6 +123,7 @@ USB の CDC ACM ポートがコンソールです（UART0 は使いません）�
 | `nina version` | NINA-W102 のファームウェアのバージョンと、対応機能（2 行目。`in use` がこのファームウェアの使う機能） |
 | `nina passthrough confirm` | NINA の中継モードで再起動（USB のシリアル ⇄ NINA の UART。`esptool` で NINA のファームウェアを読み書きする）。抜けるにはポートを 300 bps にして閉じるか RESET |
 | `i2c_dma mode [on\|off]`、`i2c_dma stats` | I2C0 の DMA 読み出しの切り替えと表示、回数の表示 |
+| `i2c read_byte i2c@40044000 6a 0f`、`i2c read`、`i2c write_byte`、`i2c speed i2c@40044000 <1〜3>` など | Zephyr の `i2c` コマンド。`speed` はセンサーのバスの速さを変える（1 = 100 kHz、2 = 400 kHz、3 = 1 MHz） |
 | `fault` | 前回の実行を止めた異常停止の記録 |
 | `free` | `malloc()` の使用量と、まだ取れる量 |
 | `reboot` | 再起動 |

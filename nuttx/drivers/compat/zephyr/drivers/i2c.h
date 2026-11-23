@@ -1,7 +1,8 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /* The part of Zephyr's I2C API (<zephyr/drivers/i2c.h>) that the ported
- * LSM6DSO driver and the IMU service use, on a NuttX I2C master
- * (struct i2c_master_s, I2C_TRANSFER()).  Part of the small Zephyr
+ * LSM6DSO driver, the IMU service and the I2C shell (the "i2c" command,
+ * common/shell/i2c_shell.c) use, on a NuttX I2C master
+ * (struct i2c_master_s, I2C_TRANSFER(), I2C_RESET()).  Part of the small Zephyr
  * compatibility layer of the port (nuttx/drivers/compat,
  * compat/zephyr_i2c.c; see nuttx/drivers/README.md).
  *
@@ -11,28 +12,41 @@
  * from any caller); a NuttX transfer carries its own frequency in each
  * message.  Here the bus device keeps the speed that i2c_configure() last
  * set (at first the devicetree's clock-frequency, BOARD_I2C0_FREQUENCY) and
- * every transfer made through this API uses it.  Other users of the NuttX
- * master (the "i2c" tool) pass their own frequency and are not affected.
+ * every transfer made through this API uses it; i2c_get_config() reports
+ * it.  Other users of the NuttX master pass their own frequency and are not
+ * affected.
  *
  * Transfers become NuttX messages as Zephyr's helpers build theirs:
  *   i2c_write_read()/i2c_burst_read(): write (no STOP), then read with
  *     RESTART and STOP: msgs {I2C_M_NOSTOP}, {I2C_M_READ}
  *   i2c_write(): one write with STOP: msg {0}
+ *   i2c_read(): one read with STOP: msg {I2C_M_READ}
+ *   i2c_transfer(): Zephyr's messages, STOP added to the last one, each
+ *     with the NuttX flags of the same bus sequence (see zephyr_i2c.c)
  * (the board's driver turns the NuttX flags back into Zephyr's,
  * i2c_dw.h i2c_dw_msg_flags()).  The result is the driver's: 0 or
- * a negative errno.
+ * a negative errno (-ENOTSUP for a message of no bytes, as in the Zephyr
+ * build).  i2c_recover_bus() is I2C_RESET() (-ENOTSUP from the board's
+ * driver, as Zephyr's i2c_dw_recovery_bus() without a recover-bus
+ * callback).  No target mode: i2c_target_driver_register() and
+ * _unregister() return -ENOSYS (CONFIG_I2C_TARGET is off in the Zephyr
+ * build; the I2C shell builds no "i2c target").
  *
  * NuttX's <nuttx/i2c/i2c_master.h> has functions named i2c_write() and
  * i2c_read() of its own and I2C_SPEED_* in Hz: the Zephyr calls on a bus
- * device (i2c_write(), i2c_write_read(), i2c_burst_read()) are here
- * i2c_compat_write() and i2c_compat_write_read(), and the _dt forms keep
- * Zephyr's names.  I2C_SPEED_* are Zephyr's speed classes in any file that
- * includes this header (after NuttX's, if both are needed).
+ * device are i2c_compat_write(), i2c_compat_read() and
+ * i2c_compat_write_read(), and a source that does not include NuttX's
+ * header (the I2C shell) gets them under Zephyr's names i2c_write() and
+ * i2c_read() too (a source that does includes it first).  i2c_write_read()
+ * and the _dt forms keep Zephyr's names.  I2C_SPEED_* are Zephyr's speed
+ * classes in any file that includes this header (after NuttX's, if both
+ * are needed).
  */
 
 #ifndef __NUTTX_DRIVERS_COMPAT_ZEPHYR_DRIVERS_I2C_H
 #define __NUTTX_DRIVERS_COMPAT_ZEPHYR_DRIVERS_I2C_H
 
+#include <errno.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -63,6 +77,26 @@
 #define I2C_BITRATE_STANDARD   100000U
 #define I2C_BITRATE_FAST       400000U
 #define I2C_BITRATE_FAST_PLUS  1000000U
+
+/* The message flags and struct i2c_msg (zephyr/drivers/i2c.h). */
+
+#define I2C_MSG_WRITE         (0U << 0U)
+#define I2C_MSG_READ          BIT(0)
+#define I2C_MSG_RW_MASK       BIT(0)
+#define I2C_MSG_STOP          BIT(1)
+#define I2C_MSG_RESTART       BIT(2)
+#define I2C_MSG_ADDR_10_BITS  BIT(3)
+
+struct i2c_msg
+{
+  uint8_t *buf;
+  uint32_t len;
+  uint8_t flags;
+};
+
+/* The most messages of one i2c_transfer() (-EINVAL above). */
+
+#define I2C_COMPAT_MAX_MSGS   4
 
 struct i2c_master_s;
 
@@ -100,19 +134,73 @@ int i2c_compat_bind(const struct device *dev, struct i2c_master_s *master,
 
 int i2c_configure(const struct device *dev, uint32_t dev_config);
 
+/* i2c_get_config(): the configuration word of the bus,
+ * I2C_MODE_CONTROLLER and the speed class of its frequency.  Returns 0 or
+ * -ENODEV.
+ */
+
+int i2c_get_config(const struct device *dev, uint32_t *dev_config);
+
 /* The speed of the bus in Hz (not a Zephyr call: i2c_get_config() gives
  * the configuration word).
  */
 
 uint32_t i2c_compat_frequency(const struct device *dev);
 
-/* Zephyr's i2c_write() and i2c_write_read(). */
+/* Zephyr's i2c_transfer(), i2c_write(), i2c_read() and i2c_write_read(). */
 
+int i2c_transfer(const struct device *dev, struct i2c_msg *msgs,
+                 uint8_t num_msgs, uint16_t addr);
 int i2c_compat_write(const struct device *dev, const uint8_t *buf,
                      uint32_t num_bytes, uint16_t addr);
+int i2c_compat_read(const struct device *dev, uint8_t *buf,
+                    uint32_t num_bytes, uint16_t addr);
 int i2c_compat_write_read(const struct device *dev, uint16_t addr,
                           const void *write_buf, size_t num_write,
                           void *read_buf, size_t num_read);
+
+static inline int i2c_write_read(const struct device *dev, uint16_t addr,
+                                 const void *write_buf, size_t num_write,
+                                 void *read_buf, size_t num_read)
+{
+  return i2c_compat_write_read(dev, addr, write_buf, num_write, read_buf,
+                               num_read);
+}
+
+#ifndef __INCLUDE_NUTTX_I2C_I2C_MASTER_H
+static inline int i2c_write(const struct device *dev, const uint8_t *buf,
+                            uint32_t num_bytes, uint16_t addr)
+{
+  return i2c_compat_write(dev, buf, num_bytes, addr);
+}
+
+static inline int i2c_read(const struct device *dev, uint8_t *buf,
+                           uint32_t num_bytes, uint16_t addr)
+{
+  return i2c_compat_read(dev, buf, num_bytes, addr);
+}
+#endif
+
+/* i2c_recover_bus(): I2C_RESET() of the bus's master (CONFIG_I2C_RESET;
+ * -ENOSYS without it, as Zephyr's for a driver without recover_bus).
+ * Returns the driver's result or -ENODEV.
+ */
+
+int i2c_recover_bus(const struct device *dev);
+
+/* Target mode: no target drivers. */
+
+static inline int i2c_target_driver_register(const struct device *dev)
+{
+  (void)dev;
+  return -ENOSYS;
+}
+
+static inline int i2c_target_driver_unregister(const struct device *dev)
+{
+  (void)dev;
+  return -ENOSYS;
+}
 
 static inline int i2c_write_dt(const struct i2c_dt_spec *spec,
                                const uint8_t *buf, uint32_t num_bytes)

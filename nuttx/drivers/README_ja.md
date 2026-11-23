@@ -329,7 +329,7 @@ include パスに足す。オブジェクトはボードのディレクトリー
 | `common/drivers/i2c_dw/port/nuttx/i2c_dw_os_impl.h` | 境界の NuttX の実装: セマフォ（`sem_t`。`nxsem_post()`、`nxsem_tickwait_uninterruptible()`、`nxsem_wait_uninterruptible()`、`nxsem_reset()`）、時刻（システムの tick）、`nxsched_msleep()`、`up_irq_save()`、メッセージ（`struct i2c_msg_s` と、`i2c_dw_msg_flags()` での Zephyr のフラグへの変換）、`I2C_DW_CLOCK_SPEED`（`BOARD_PERI_FREQ`） |
 | `common/drivers/i2c_dw/port/nuttx/i2c_dw_instance.h` | I2C0 と I2C1 の NuttX の部分: `struct i2c_master_s` の操作表（`I2C_TRANSFER()` は要求を確かめて周波数から速さを決め、コアの転送を呼ぶ。`I2C_RESET()`）、`irq_attach()` で登録する割り込みハンドラー、リセットとピン（`i2c_dw_pinctrl()`）は両方で共有し、`i2c_dw_i2c0_initialize()` と `i2c_dw_i2c1_initialize()`。ホストテストは `nuttx/tests/i2c_dw_instance.c` |
 | `common/drivers/i2c_dw/port/nuttx/i2c_dw_dma_os_rp2040.c` | DMA の境界の NuttX の実装。NuttX 自身の DMA ドライバー `arch/arm/src/rp2040/rp2040_dmac.c`（`CONFIG_RP2040_DMAC`）の上に作る。ホストテストは `nuttx/tests/i2c_dw_dma_os.c` |
-| `common/drivers/i2c_dw/port/nuttx/i2c_dw_controllers_rp2040.h` | `i2c_dw_i2c0_initialize()` と、`CONFIG_I2C_DW_I2C1` のとき `i2c_dw_i2c1_initialize()`（起動時に `rp2040_bringup()` が I2C0、I2C1 の順に呼び、`/dev/i2c0`・`/dev/i2c1` に登録する）。ボードのコードは include パスの `port/nuttx` で見つける |
+| `common/drivers/i2c_dw/port/nuttx/i2c_dw_controllers_rp2040.h` | `i2c_dw_i2c0_initialize()` と、`CONFIG_I2C_DW_I2C1` のとき `i2c_dw_i2c1_initialize()`（起動時に `rp2040_bringup()` が I2C0、I2C1 の順に呼ぶ。`/dev/i2c*` には登録しない）。ボードのコードは include パスの `port/nuttx` で見つける |
 
 境界（`port/i2c_dw_os.h`）で OS が用意するもの。どれも static inline の関数かマクロで、OS の割り込みハンドラーと転送の入口は
 コアの static inline の関数を呼ぶので、コンパイラーがそれぞれを 1 つの関数にします（転送と割り込みの経路に呼び出しが
@@ -384,7 +384,7 @@ OS の I2C0 のデバイス（`i2c_dw_instance.h`）は、`i2c_0_runtime` の `b
 256 個以上、メッセージごとに違うアドレスや速さ、10 ビットアドレス、バッファーがない、準備ができていない）を断り、
 メッセージが 0 個なら 0 を返し、ほかは `i2c_dw_transfer_msgs(dw, msgs, count, address, speed)` の結果を返します
 （`speed` は Zephyr の速さの区分）。この関数は、0 バイトのメッセージを含む転送を、何も送る前に `-ENOTSUP` で
-断ります（コントローラーは 0 バイトの転送ができない。i2c ツールの `dev -z` は、ローカルのパッチ `apps/0007-i2ctool-zero-byte-scan-not-supported` により、最初のアドレスで `i2ctool: dev: bus 0 does not support zero-byte writes; no -z scan` を表示して止まり、失敗する）。I2C0 と DMA の割り込みは同じ優先度で（`CONFIG_ARCH_IRQPRIO` は無効で、
+断ります（コントローラーは 0 バイトの転送ができない。`i2c scan` は Zephyr 版と同じく、最初のアドレスで `I2C: i2c@40044000 does not support this scan (zero-length writes)` を表示して止まり、失敗する）。I2C0 と DMA の割り込みは同じ優先度で（`CONFIG_ARCH_IRQPRIO` は無効で、
 すべての割り込みが既定の優先度）、ハンドラーと転送は 1 つのコアで動きます。
 
 - 転送は呼び出したスレッドが進め、バイトの出し入れは割り込みで行います。呼び出し元はセマフォで完了を
@@ -405,11 +405,10 @@ OS の I2C0 のデバイス（`i2c_dw_instance.h`）は、`i2c_0_runtime` の `b
 
 - 同じコアの 2 つ目のインスタンスで、GPIO18（SDA、Arduino の D6）と GPIO19（SCL、D7）を内部プルアップ付きで使います
   （ボードの `include/board.h` の `BOARD_I2C1_SDA_GPIO`・`BOARD_I2C1_SCL_GPIO`）。常に割り込みで転送します（DMA での
-  読み出しは I2C0 だけ）。`CONFIG_I2C_DRIVER` があれば `/dev/i2c1` に登録します。起動に失敗してもログに残すだけで、
-  ほかは変わりません。
-- defconfig を変えずに作るには、一度ビルドしたあと `printf 'CONFIG_I2C_DW_I2C1=y\nCONFIG_I2CTOOL_MAXBUS=1\n' >> nuttx/nuttx/.config`、
+  読み出しは I2C0 だけ）。起動に失敗してもログに残すだけで、ほかは変わりません。互換層のデバイスが無いので、
+  `i2c` コマンドからは使えません（今は使うものがない）。
+- defconfig を変えずに作るには、一度ビルドしたあと `printf 'CONFIG_I2C_DW_I2C1=y\n' >> nuttx/nuttx/.config`、
   `make -C nuttx/nuttx olddefconfig`、`nuttx/script/build.sh`（`--clean` を付けない。付けると defconfig に戻る）。
-  i2c ツールのバス 1（`i2c dev -b 1 0x08 0x77`）には `CONFIG_I2CTOOL_MAXBUS` 1 が要ります。
 - I2C1 はビルドとホストテスト（`nuttx/tests/i2c_dw_instance.c`）で確かめただけで、実際のデバイスにつないで使ったことは
   ありません。
 
@@ -677,7 +676,7 @@ Zephyr の API を、Zephyr の名前のまま最小限だけ用意したもの�
 | `zephyr/drivers/gpio.h` | `struct gpio_dt_spec`、`gpio_is_ready_dt()`、`gpio_pin_configure_dt()`（入力だけ）、`gpio_pin_interrupt_configure_dt()`、`gpio_pin_get_dt()`、コールバック（`gpio_init_callback()`・`gpio_add_callback()`・`gpio_remove_callback()`） |
 | `zephyr/drivers/sensor.h` | `struct sensor_value`、チャネル・属性・トリガーの列挙（Zephyr と同じ番号）、`struct sensor_driver_api`、`sensor_attr_set()`・`_get()`、`sensor_sample_fetch()`・`_chan()`、`sensor_channel_get()`、`sensor_trigger_set()`、単位の換算。非同期の API: `struct sensor_chan_spec`、デコーダー（`struct sensor_decoder_api`、`sensor_three_axis_data` など）、`SENSOR_DT_READ_IODEV()`、`SENSOR_DT_STREAM_IODEV()`、`sensor_get_decoder()`、`sensor_stream()`、`sensor_read()`、`sensor_read_async_mempool()`、`sensor_processing_with_callback()`。復号したデータの表示の書式 `PRIsensor_*_data`（Zephyr の `sensor_data_types.h`。Q 値の書式は `dsp/print_format.h`） |
 | `zephyr/drivers/sensor_clock.h` | `sensor_clock_get_cycles()`、`sensor_clock_cycles_to_ns()`（下） |
-| `zephyr/drivers/i2c.h`（NuttX） | `struct i2c_dt_spec`、`i2c_burst_read_dt()`、`i2c_write_dt()`、`i2c_write_read_dt()`、`i2c_configure()`、速さの区分（`I2C_SPEED_*`、`I2C_SPEED_SET()`） |
+| `zephyr/drivers/i2c.h`（NuttX） | `struct i2c_dt_spec`、`i2c_burst_read_dt()`、`i2c_write_dt()`、`i2c_write_read_dt()`、`i2c_configure()`、`i2c_get_config()`、速さの区分（`I2C_SPEED_*`、`I2C_SPEED_SET()`）。`i2c` コマンドのための `struct i2c_msg` とメッセージのフラグ（`I2C_MSG_*`）、`i2c_transfer()`、`i2c_write()`・`i2c_read()`・`i2c_write_read()`、`i2c_recover_bus()`、`i2c_target_driver_register()`・`_unregister()`（`-ENOSYS`） |
 | `zephyr/sys/util.h`、`sys/mpsc_lockfree.h`、`sys/mem_blocks.h`、`dsp/types.h` | `BIT()`、`ARRAY_SIZE()`、`MIN()`・`MAX()`、`IS_ENABLED()`、`CONTAINER_OF()`、`GENMASK()`・`GENMASK64()`・`FIELD_GET()`、`STRINGIFY()`、`KB()`、`ZTESTABLE_STATIC`、`hex2bin()`・`bin2hex()`（実装は `lib/utils/hex.c` の写し）など（Zephyr と同じく `<string.h>` も読む）、RTIO の待ち行列とブロックのプール、`q31_t` |
 | `zephyr/sys/__assert.h`（NuttX） | `__ASSERT()`・`__ASSERT_NO_MSG()`（NuttX の `DEBUGASSERT()`。ホストテストは `assert()`） |
 | `zephyr/dsp/print_format.h` | Zephyr の同名のヘッダーの写し（先頭の説明と `<zephyr/sys/util.h>` のインクルードだけを足した）。Q 値の表示の書式 `PRIq()`・`PRIq_arg()` |
@@ -927,14 +926,22 @@ Zephyr の API を、Zephyr の名前のまま最小限だけ用意したもの�
 - I2C のバスは、NuttX の I2C マスターと速さを持つデバイスです（`i2c_compat_bind()` でボードが結び付ける）。
   Zephyr ではバスのドライバーが速さを持ち、`i2c_configure()` が以後のすべての転送の速さを変えます。NuttX の
   転送はメッセージごとに周波数を持つので、互換層の転送（`i2c_burst_read_dt()` など）がデバイスの速さを
-  メッセージに入れます。`i2c` ツールなど、NuttX のマスターを直接使うものは自分の周波数で動きます。
+  メッセージに入れます。`i2c speed` もこの速さを変えるので、LSM6DSO のドライバーの転送の速さが変わります。
+  `i2c_get_config()` は `I2C_MODE_CONTROLLER` とこの速さの区分を返します（Zephyr 版と FreeRTOS 版のドライバーには
+  `get_config` が無く `-ENOSYS`。`i2c speed` の結果は同じ）。NuttX のマスターを直接使うものがあれば、自分の周波数で動きます。
+- `i2c_transfer()` は、Zephyr と同じく最後のメッセージに STOP を足し、各メッセージを NuttX のフラグにします（ボードの
+  ドライバーの `i2c_dw_msg_flags()` の逆: `I2C_MSG_READ` は `I2C_M_READ`、STOP の無いメッセージは `I2C_M_NOSTOP`、
+  STOP の無いメッセージの次で RESTART の無いものは続き `I2C_M_NOSTART`）。1 回で 4 個まで（それより多いと `-EINVAL`）。
+  `i2c_recover_bus()` はマスターの `I2C_RESET()` で、ボードのドライバーは `-ENOTSUP` を返します（Zephyr 版のドライバーと
+  同じ。`i2c recover` は失敗を表示する。エラー番号は NuttX の値）。
 - `i2c_configure()` は Zephyr の RP2040 向けドライバーが受け付ける区分（100 kHz、400 kHz、1 MHz）だけを受け付け、
   ほかは何も変えずに `-EINVAL` を返します。モードのビットは見ません（Zephyr のドライバーもコントローラーに
   固定）。DMA の不具合で I2C0 が隔離されているとき、Zephyr の `i2c_configure()` は `-EIO` を返しますが、
   互換層は速さを記録して 0 を返し、次の転送が `-EIO` になります。
 - NuttX の `<nuttx/i2c/i2c_master.h>` には同じ名前の `i2c_write()`・`i2c_read()` と、Hz の値の `I2C_SPEED_*` が
-  あります。互換層では、バスのデバイスに対する Zephyr の `i2c_write()`・`i2c_write_read()` を
-  `i2c_compat_write()`・`i2c_compat_write_read()` という名前にしました（`_dt` の付く形は Zephyr の名前のまま）。
+  あります。互換層では、バスのデバイスに対する Zephyr の `i2c_write()`・`i2c_read()`・`i2c_write_read()` を
+  `i2c_compat_write()`・`i2c_compat_read()`・`i2c_compat_write_read()` という名前にしました（`i2c_write_read()` と `_dt` の付く形は
+  Zephyr の名前のまま）。NuttX のヘッダーを読まないファイル（`i2c` コマンド）では、`i2c_write()`・`i2c_read()` も Zephyr の名前で使えます。
   `<zephyr/drivers/i2c.h>` を読むファイルでは `I2C_SPEED_*` は Zephyr の区分です（両方読むなら NuttX のものを先に）。
 
 ### KV: Zephyr の NVS と settings の写し

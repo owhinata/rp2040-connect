@@ -137,8 +137,9 @@ SHELL_CMD_REGISTER(ps, NULL, "List the tasks and show the CPU load", cmd_ps);
  * common/compat/kv_store_wipe.c), common/shell/nina_shell.c ("nina"),
  * common/compat/zephyr_wifi_shell.c ("wifi", with "wifi cred" of the copy
  * of Zephyr's wifi_credentials_shell.c), common/imu/time_sync.c ("ntp"),
- * common/compat/zephyr_zperf_shell.c and
- * common/drivers/sensor_shell/sensor_shell.c ("sensor").
+ * common/compat/zephyr_zperf_shell.c,
+ * common/drivers/sensor_shell/sensor_shell.c ("sensor") and
+ * common/shell/i2c_shell.c ("i2c").
  */
 SHELL_ENGINE_CMD_DECLARE(bootsel);
 SHELL_ENGINE_CMD_DECLARE(date);
@@ -146,6 +147,7 @@ SHELL_ENGINE_CMD_DECLARE(devmem);
 SHELL_ENGINE_CMD_DECLARE(dmesg);
 SHELL_ENGINE_CMD_DECLARE(fault);
 SHELL_ENGINE_CMD_DECLARE(help);
+SHELL_ENGINE_CMD_DECLARE(i2c);
 SHELL_ENGINE_CMD_DECLARE(i2c_dma);
 SHELL_ENGINE_CMD_DECLARE(id);
 SHELL_ENGINE_CMD_DECLARE(ifconfig);
@@ -171,6 +173,7 @@ const struct shell_engine_cmd shell_engine_cmds[] = {
 	SHELL_ENGINE_CMD(fault),
 	SHELL_ENGINE_CMD(free),
 	SHELL_ENGINE_CMD(help),
+	SHELL_ENGINE_CMD(i2c),
 	SHELL_ENGINE_CMD(i2c_dma),
 	SHELL_ENGINE_CMD(id),
 	SHELL_ENGINE_CMD(ifconfig),

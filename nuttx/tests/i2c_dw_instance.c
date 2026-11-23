@@ -540,7 +540,7 @@ static void test_i2c0(void)
 		assert(I2C_TRANSFER(g_i2c0, &hold, 1) == -ENOTSUP);
 		expect_calls("");
 	}
-	/* A message of no bytes (the i2c tool's "dev -z": no buffer), alone or
+	/* A message of no bytes (as "i2c scan" probes, here with no buffer), alone or
 	 * after a message of one byte: refused before anything is sent.
 	 */
 	{

@@ -1,0 +1,10 @@
+############################################################################
+# nuttx/apps/i2c/Make.defs
+#
+# Read through nuttx/apps/Make.defs.  Adds this directory (the "i2c"
+# command) to the build when CONFIG_APP_I2C is set.
+############################################################################
+
+ifneq ($(CONFIG_APP_I2C),)
+CONFIGURED_APPS += $(APPDIR)/external/i2c
+endif

@@ -38,6 +38,7 @@ newlib に無い POSIX のネットワークのヘッダーは `common/compat/li
 | `drivers/telnet/` | Telnet のシェルの組み込み（`telnet.cmake`。本体は `common/compat/shell_engine/shell_telnet.c`） |
 | `drivers/zperf/` | `zperf` の組み込み（本体は `common/compat/zperf_iperf3.c`・`zephyr_zperf_shell.c`） |
 | `drivers/sensor_shell/` | `sensor` コマンドの FreeRTOS の部分（`sensor_shell_os.[ch]`） |
+| `drivers/i2c_shell/` | `i2c` コマンドの組み込み（`i2c_shell.cmake`。本体は Zephyr 版のパッチを当てたツリーの `drivers/i2c/i2c_shell.c` と同じ `common/shell/i2c_shell.c`） |
 | `drivers/include/` | `app_log.h` の FreeRTOS の部分（`app_log_os.h`）と RAM ログの FreeRTOS の部分（`log_ram_os_impl.h`: リングのセクション、割り込みの禁止、TIMER） |
 | `tests/` | ホストテスト（下の「ホストテスト」） |
 
@@ -47,7 +48,9 @@ FreeRTOS 版だけがビルドする共有ファイル: `common/compat/zephyr_wi
 `common/shell/kernel_shell.c`（`id`・`uptime`・`date`・`sleep`・`devmem`・`fault`・`reboot`・`bootsel`。境界は
 `common/shell/kernel_shell_os.h`）、`common/shell/ifconfig_shell.c`（`ifconfig`）。RAM ログ `common/compat/log/log_ram.c`（リングは
 `log_ring.c`）は NuttX 版と共有する。`i2c_dma` の `common/shell/i2c_dma_shell.c` と `nina` の
-`common/shell/nina_shell.c`（`nina version`・`nina passthrough`）は Zephyr 版もビルドする。
+`common/shell/nina_shell.c`（`nina version`・`nina passthrough`）は Zephyr 版もビルドする。`i2c` の
+`common/shell/i2c_shell.c` は、Zephyr の `drivers/i2c/i2c_shell.c` にローカルのパッチ 0004 を当てたものとバイト単位で同じ写しで
+（`common/tests/run.sh` の `zephyr_i2c_shell_patched` が照合する）、NuttX 版もビルドする（Zephyr 版はツリーの中のもとのファイルをビルドする）。
 
 ## Zephyr 互換層の FreeRTOS の部分
 
@@ -291,8 +294,10 @@ SPI の待つ呼び出し、USB のドライバーの一部）、NINA の中継�
   TIMER（`time_us_64()`）の ms です。Zephyr のものとして残るのは、使う側の API（互換層のデバイスと
   `<zephyr/drivers/i2c.h>`）だけです。
 - **断る要求**: 0 バイトのメッセージを含む転送は、何も送る前に `-ENOTSUP` を返します（コアが断る。Zephyr 版のドライバーと
-  同じで、コントローラーは 0 バイトの転送ができない）。互換層の I2C の API に `i2c_recover_bus()` はありません（このボードには
-  バスの復旧が無い）。
+  同じで、コントローラーは 0 バイトの転送ができない。`i2c scan` は最初のアドレスで理由を表示して失敗する）。バスの復旧の要求
+  （`i2c_recover_bus()`、`i2c recover`）は、Zephyr 版のドライバーが復旧のコールバックを持たないときと同じく `-ENOTSUP` です
+  （このボードにはバスの復旧が無い）。Zephyr 版のドライバーと同じく `get_config` は無く、`i2c_get_config()` は `-ENOSYS` を返すので、
+  `i2c speed` は `I2C_MODE_CONTROLLER` と新しい速さの区分で `i2c_configure()` を呼びます（以後の転送はその速さ）。
 - **インスタンス**は NuttX 版の Kconfig と同じ形で選びます。`drivers/i2c_dw/i2c_dw.cmake` が `CONFIG_I2C_DW_I2C0` を常に
   定義し（LSM6DSOX がつながっているため。無いと `drivers/lsm6dso/lsm6dso.cmake` が構成を止めます）、CMake の
   オプション `I2C_DW_I2C1`（既定で無効）のとき `CONFIG_I2C_DW_I2C1` を定義します。インスタンスごとのデバイス、
@@ -302,7 +307,7 @@ SPI の待つ呼び出し、USB のドライバーの一部）、NINA の中継�
   `i2c@40048000`）で、`i2c0` と同じ Zephyr の I2C の API を持ち、GPIO18（SDA、Arduino の D6）と GPIO19（SCL、D7）を
   内部プルアップ付きで使い（`i2c_dw_instance.h` の `I2C1_SDA_GPIO`・`I2C1_SCL_GPIO`）、常に割り込みで転送します
   （DMA 読み出しと `i2c_dma` は I2C0 だけ）。`main()` で I2C0 のあとに起動し、失敗してもログに残して `i2c1` が
-  準備できないだけです。互換層のデバイスの一覧（`device_get_binding()`）には入りません。
+  準備できないだけです。互換層のデバイスの一覧（`device_get_binding()`）には入らないので、`i2c` コマンドからは使えません。
   I2C1 はビルドとホストテストで確かめただけで、実際のデバイスで使ったことはありません。
 - **I2C0 の DMA 読み出し**は、コアの 2 つ目の境界 `port/i2c_dw_dma_os.h` を通して Pico SDK 自身の DMA（`hardware_dma`、
   `hardware_irq`）を使います。実装は `port/freertos/i2c_dw_dma_os_rp2040.c` です。読み出しごとに
@@ -378,7 +383,7 @@ MQTT のクライアントは NuttX 版と共有する `common/imu/mqtt_min.c`�
 | `shell` | 2 つのセッションのシェル、行編集、出力先、`help` と汎用のコマンドとその出力 |
 | `kv` | フラッシュの境界と KV（Pico SDK のフラッシュ関数の偽物の上） |
 | `nina` | NINA の SPI と線の境界（偽の DMA の上で長い転送の DMA も: しきい値、SPI1 の終わりの状態、共有の DMA_IRQ_1、時間切れと中断、失われたバイト、バスのエラー、それぞれのあとの転送、止まらないチャネル、空きの無いチャネル、記録するメッセージ）と、`nina_os.h` の FreeRTOS へのつなぎ（互換層なし。tick 1 ms と 4 ms で 2 回ビルド）: READY の割り込み待ち、IRQ の線のエッジの待ち（2 つのタスクを 1 つのエッジで起こす、時間切れ）、共有のバンクの割り込み、ロック、Wi-Fi のスレッドを起こす待ち、sleep の tick 数、tick の一周をまたぐ時計 |
-| `i2c_dw` | I2C0 の境界とデバイス、Zephyr の I2C の API（2 回作る: i2c0 だけと、`CONFIG_I2C_DW_I2C1` 付き。後者は i2c1 の起動、ピン、転送、応答の無いアドレス、DMA を使わない長い読み出し、影響を受けない i2c0、2 つのタスクからの両バスの転送を加える）。つなぎのセマフォ、待ちの tick、スリープ、時計。Pico SDK の DMA の偽物の上の DMA の部分（`i2c_dw_dma_os_rp2040.c`）: チャネルの取得、設定、開始、共有のハンドラー（終了、バスエラー、ほかの利用者のチャネル）、停止、返却。その上のコアの DMA 読み出し: 読み出し、32 バイトの下限、フォールバック、TX と RX のバスエラー、タイムアウト、DMA 読み出しの無効、終わらない停止（隔離）、カウンター。コアの DMA のコマンド語 |
+| `i2c_dw` | I2C0 の境界とデバイス、Zephyr の I2C の API、その上の `i2c` コマンド（引数のデバイスの候補、`speed` とそのあとの転送の速さ、`read_byte`・`write_byte`・`read` の 16 進の表示、無いデバイス、`scan` が断ること、`recover`）（2 回作る: i2c0 だけと、`CONFIG_I2C_DW_I2C1` 付き。後者は i2c1 の起動、ピン、転送、応答の無いアドレス、DMA を使わない長い読み出し、影響を受けない i2c0、2 つのタスクからの両バスの転送を加える）。つなぎのセマフォ、待ちの tick、スリープ、時計。Pico SDK の DMA の偽物の上の DMA の部分（`i2c_dw_dma_os_rp2040.c`）: チャネルの取得、設定、開始、共有のハンドラー（終了、バスエラー、ほかの利用者のチャネル）、停止、返却。その上のコアの DMA 読み出し: 読み出し、32 バイトの下限、フォールバック、TX と RX のバスエラー、タイムアウト、DMA 読み出しの無効、終わらない停止（隔離）、カウンター。コアの DMA のコマンド語 |
 | `gpio` | GPIO バンク 0 の境界、`gpio0`、FIFO の割り込み |
 | `imu` | アドレスの変換、`hwinfo` |
 | `mqtt` | MQTT の送信（偽のブローカー）。続けて、ホストの `imu-host check` を相手にする回（`host/.venv` が無ければ skip） |
@@ -391,7 +396,7 @@ MQTT のクライアントは NuttX 版と共有する `common/imu/mqtt_min.c`�
 
 ## Zephyr 版・NuttX 版との違い
 
-独自のコマンド（`imu`、`kv`、`ntp`、`nina`、`dmesg`、`i2c_dma`、`sensor`、`wifi cred`）と `zperf` の構文・出力は Zephyr 版と
+独自のコマンド（`imu`、`kv`、`ntp`、`nina`、`dmesg`、`i2c_dma`、`sensor`、`wifi cred`）、`i2c` と `zperf` の構文・出力は Zephyr 版と
 同じです。
 
 | 項目 | Zephyr 版 | NuttX 版 | FreeRTOS 版 |

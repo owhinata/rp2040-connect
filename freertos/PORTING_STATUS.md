@@ -2999,3 +2999,20 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
   （6667 Hz は表示ありでもバッチが大きくなって表示が減るので、差が小さい）。アプリの `imu start`（生の値のまま MQTT で送る）は 6667 Hz で 19.5%。
 - ユーザーの判断: 6667 Hz は結果を取れればよく、表示したいわけではないので、Zephyr 版の 6667 Hz の表示は追わない。
 - 実機: FreeRTOS 版（`94eb166` のビルドに戻した）。
+
+## Zephyr の `i2c` コマンドを FreeRTOS 版と NuttX 版に（2026-11-24、ユーザーの依頼）
+
+- きっかけ: バスの速さを変えるコマンドが Zephyr 版にしか無かった（前の節の「FreeRTOS 版も `i2c speed`」は誤り。FreeRTOS 版に `i2c` は無く、NuttX の `-f` はツールの転送だけ）。
+- `common/shell/i2c_shell.c`: Zephyr の `drivers/i2c/i2c_shell.c` にパッチ 0004 を当てたものの写し（`common/tests/run.sh` の `zephyr_i2c_shell_patched` がバイト単位で照合）。
+  最初は `sensor_shell` に合わせて `common/drivers/i2c_shell/` に置いたが、ユーザーの指摘で `common/shell/` に移した（指針 2: Zephyr の API で書いたコマンドは `common/shell/`）。
+  `sensor_shell` を同じく移すかどうかは未決。
+- FreeRTOS: `freertos/drivers/i2c_shell/i2c_shell.cmake`、互換層の `i2c.h` に `i2c_get_config()`・`i2c_recover_bus()`・ターゲットの宣言、つなぎの API に `recover_bus`（-ENOTSUP、Zephyr のドライバーと同じ）。
+  `get_config` は Zephyr のドライバーにも無いので足していない（`i2c speed` は -ENOSYS を受けて `I2C_MODE_CONTROLLER | I2C_SPEED_SET(n)` を設定する）。コアと `i2c_dw_sync` は変更なし。
+- NuttX: `nuttx/apps/i2c`、互換層の `zephyr_i2c.c` に `i2c_transfer()`（Zephyr のフラグを NOSTOP・NOSTART に直す、4 メッセージまで）・`i2c_get_config()`（ここだけ値を返す）・`i2c_recover_bus()`（`I2C_RESET`）。
+  NuttX 標準の `i2c` ツール（`CONFIG_SYSTEM_I2CTOOL`）、apps のパッチ 0007、ツールだけが使っていた `/dev/i2c0`・`/dev/i2c1` の登録を削除。
+- 共有: `shell_hexdump()`（`common/shell/zshell.c`）、`DEVICE_API_IS()` の i2c のクラス。オプションの I2C1 は互換層のデバイスの一覧に無く、`i2c` コマンドから使えない（NuttX 版では使う手段が無くなった）。
+- イメージ: Zephyr は `snapshot-1123h` と同じ、NuttX 283,808 B（−3,280、ヒープ 112,052、RAM のコード 44,862 B）、FreeRTOS は text +2,848 B。**基準: `snapshot-1124a`**。ホストテスト 59・71・68。
+- 実機（FreeRTOS 版と NuttX 版、どちらも同じ結果）: `i2c read_byte … 6a 0f` = 0x6c、`read`（16 進の表示）、`direct_read`、`write_byte`、`scan`（パッチ 0004 の表示で失敗）、`recover`（-134、NuttX は -138）、
+  `speed … 4` と無いデバイス名は失敗。`i2c speed … 1`（100 kHz）のあと 833 Hz の `sensor stream` は約 3 秒でオーバーラン（FreeRTOS -139、NuttX -75）、`i2c speed … 3` で動く。
+  アプリの送信: FreeRTOS 19.3%・欠番 0、NuttX 24.7%・欠番 0（NuttX は前の 23.5〜23.8% より高い。イメージの配置が変わった。1 回だけの計測）。Zephyr 版はイメージが同じなので測っていない。
+- 実機: NuttX 版（このビルド）。

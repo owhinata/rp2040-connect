@@ -72,7 +72,7 @@ differ, and [`firmware_profiles.toml`](firmware_profiles.toml) holds that differ
 Until the firmware is known, a line that ends with any of the prompts ends a command (the Zephyr
 prompt is written as `$ `, which every line ending in `$` matches).
 Once the board is known to be the NuttX build, it waits for a line ending in `nsh$`, so a line of
-output that happens to end in `$` (the ASCII column of `i2c dump`, for example) does not end the
+output that happens to end in `$` (the ASCII column of `i2c read`, for example) does not end the
 command early (the same holds for `freertos:~$` on the FreeRTOS build). The echo and the Telnet
 commands are dropped, so the output is handled the same way for every build.
 

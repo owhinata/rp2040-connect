@@ -125,6 +125,7 @@ The console is the USB CDC ACM port (UART0 is not used). Opening a terminal show
 | `nina version` | The firmware version of the NINA-W102 and its capabilities (second line; `in use` are those this firmware uses) |
 | `nina passthrough confirm` | Restart into the NINA passthrough (USB serial <-> the NINA's UART, for reading and writing the NINA's firmware with `esptool`). Leave it by closing the port at 300 bps, or with RESET |
 | `i2c_dma mode [on\|off]`, `i2c_dma stats` | Switch or show the DMA reads of I2C0; show their counters |
+| `i2c read_byte i2c@40044000 6a 0f`, `i2c read`, `i2c write_byte`, `i2c speed i2c@40044000 <1-3>` and the rest | Zephyr's `i2c` command. `speed` changes the speed of the sensor's bus (1 = 100 kHz, 2 = 400 kHz, 3 = 1 MHz) |
 | `fault` | The record of the fatal error that ended the last run |
 | `free` | Use of `malloc()`, and how much more it could take |
 | `reboot` | Restart |

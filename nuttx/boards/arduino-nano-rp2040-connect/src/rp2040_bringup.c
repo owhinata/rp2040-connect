@@ -173,7 +173,7 @@ int rp2040_bringup(void)
    * before this), as the Zephyr build brings up its DMA device before i2c0
    * (CONFIG_DMA_INIT_PRIORITY 40, CONFIG_I2C_INIT_PRIORITY 50); then reset,
    * pins, controller registers and interrupt, as the Zephyr build's i2c0 is
-   * set up at boot (POST_KERNEL), then /dev/i2c0 for the i2c tool.
+   * set up at boot (POST_KERNEL).
    */
 
   {
@@ -184,17 +184,6 @@ int rp2040_bringup(void)
         syslog(LOG_ERR, "ERROR: i2c_dw_i2c0_initialize() failed\n");
         result = -ENODEV;
       }
-#  ifdef CONFIG_I2C_DRIVER
-    else
-      {
-        ret = i2c_register(i2c, 0);
-        if (ret < 0)
-          {
-            syslog(LOG_ERR, "ERROR: i2c_register(0) failed: %d\n", ret);
-            result = ret;
-          }
-      }
-#  endif
 
 #  ifdef CONFIG_LSM6DSO_LOCAL
     /* The LSM6DSOX (lsm6dsox@6a) on i2c0, which Zephyr initializes before
@@ -214,7 +203,7 @@ int rp2040_bringup(void)
 
 #ifdef CONFIG_I2C_DW_I2C1
   /* I2C1 (nothing connected on the board): reset, pins, controller
-   * registers and interrupt, as I2C0's (no DMA reads), then /dev/i2c1.
+   * registers and interrupt, as I2C0's (no DMA reads).
    * After I2C0 and the LSM6DSOX (Zephyr brings i2c1 up right after i2c0,
    * before the sensor; nothing here depends on the order).  A failure is
    * logged and changes nothing else.
@@ -227,16 +216,6 @@ int rp2040_bringup(void)
       {
         syslog(LOG_ERR, "ERROR: i2c_dw_i2c1_initialize() failed\n");
       }
-#  ifdef CONFIG_I2C_DRIVER
-    else
-      {
-        ret = i2c_register(i2c, 1);
-        if (ret < 0)
-          {
-            syslog(LOG_ERR, "ERROR: i2c_register(1) failed: %d\n", ret);
-          }
-      }
-#  endif
   }
 #endif
 

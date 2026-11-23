@@ -1,11 +1,13 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /* The part of Zephyr's I2C API (<zephyr/drivers/i2c.h>, Zephyr v4.5.0) that
  * the shared sources use (the LSM6DSO driver's register access and FIFO
- * reads, the IMU service's i2c_configure()), with Zephyr's names, types,
+ * reads, the IMU service's i2c_configure(), the copy of Zephyr's I2C shell
+ * common/shell/i2c_shell.c), with Zephyr's names, types,
  * values and helpers: the speed classes and the configuration word, the
  * message flags, struct i2c_msg, struct i2c_dt_spec, the driver's API table
- * (configure and transfer), i2c_configure(), i2c_transfer() and the
- * helpers built on it, as Zephyr's header has them.  Part of the FreeRTOS
+ * (configure, get_config, transfer, recover_bus), i2c_configure(),
+ * i2c_get_config(), i2c_transfer() and the helpers built on it,
+ * i2c_recover_bus(), as Zephyr's header has them.  Part of the FreeRTOS
  * implementation of the Zephyr compatibility layer (freertos/drivers/compat;
  * the NuttX build has its own, nuttx/drivers/compat/zephyr/drivers/i2c.h,
  * on a NuttX I2C master).
@@ -25,17 +27,25 @@
  *                           off), then the driver's transfer
  *   i2c_configure():        the driver's configure (the speed class for
  *                           the later transfers on the bus, from any caller)
+ *   i2c_get_config(),       the driver's get_config, recover_bus; -ENOSYS
+ *   i2c_recover_bus():      for a driver without it, as Zephyr's (the
+ *                           shared core has no get_config, as the Zephyr
+ *                           build's driver: "i2c speed" then configures
+ *                           I2C_MODE_CONTROLLER with the new class)
  *
- * Not here: target mode, callbacks and RTIO (CONFIG_I2C_CALLBACK,
- * CONFIG_I2C_RTIO: off in the Zephyr build; the LSM6DSO's FIFO stream reads
- * the FIFO with i2c_burst_read_dt() in a work item), statistics, the dump of
- * messages, i2c_get_config(), i2c_recover_bus() and the other helpers (the
- * shared sources call none of them).
+ * Not here: target mode (CONFIG_I2C_TARGET, off in the Zephyr build: only
+ * i2c_target_driver_register() and _unregister(), which the I2C shell's
+ * functions of its "i2c target" commands call, built without the
+ * commands), callbacks and RTIO (CONFIG_I2C_CALLBACK, CONFIG_I2C_RTIO: off
+ * in the Zephyr build; the LSM6DSO's FIFO stream reads the FIFO with
+ * i2c_burst_read_dt() in a work item), statistics, the dump of messages and
+ * the other helpers (the shared sources call none of them).
  */
 
 #ifndef FREERTOS_DRIVERS_COMPAT_ZEPHYR_DRIVERS_I2C_H
 #define FREERTOS_DRIVERS_COMPAT_ZEPHYR_DRIVERS_I2C_H
 
+#include <errno.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
@@ -84,8 +94,10 @@ struct i2c_msg {
 
 struct i2c_driver_api {
 	int (*configure)(const struct device *dev, uint32_t dev_config);
+	int (*get_config)(const struct device *dev, uint32_t *dev_config);
 	int (*transfer)(const struct device *dev, struct i2c_msg *msgs, uint8_t num_msgs,
 			uint16_t addr);
+	int (*recover_bus)(const struct device *dev);
 };
 
 /* I2C_DT_SPEC_GET(): a device on a bus. */
@@ -103,6 +115,17 @@ static inline bool i2c_is_ready_dt(const struct i2c_dt_spec *spec)
 static inline int i2c_configure(const struct device *dev, uint32_t dev_config)
 {
 	return DEVICE_API_GET(i2c, dev)->configure(dev, dev_config);
+}
+
+static inline int i2c_get_config(const struct device *dev, uint32_t *dev_config)
+{
+	const struct i2c_driver_api *api = DEVICE_API_GET(i2c, dev);
+
+	if (api->get_config == NULL) {
+		return -ENOSYS;
+	}
+
+	return api->get_config(dev, dev_config);
 }
 
 static inline int i2c_transfer(const struct device *dev, struct i2c_msg *msgs, uint8_t num_msgs,
@@ -190,6 +213,36 @@ static inline int i2c_burst_read_dt(const struct i2c_dt_spec *spec, uint8_t star
 				    uint8_t *buf, uint32_t num_bytes)
 {
 	return i2c_burst_read(spec->bus, spec->addr, start_addr, buf, num_bytes);
+}
+
+static inline int i2c_recover_bus(const struct device *dev)
+{
+	const struct i2c_driver_api *api = DEVICE_API_GET(i2c, dev);
+
+	if (api->recover_bus == NULL) {
+		return -ENOSYS;
+	}
+
+	return api->recover_bus(dev);
+}
+
+/* Target mode: no target drivers (Zephyr calls the target device's
+ * driver_register and driver_unregister of the i2c_target class, which no
+ * device here has).
+ */
+
+static inline int i2c_target_driver_register(const struct device *dev)
+{
+	(void)dev;
+
+	return -ENOSYS;
+}
+
+static inline int i2c_target_driver_unregister(const struct device *dev)
+{
+	(void)dev;
+
+	return -ENOSYS;
 }
 
 #endif /* FREERTOS_DRIVERS_COMPAT_ZEPHYR_DRIVERS_I2C_H */

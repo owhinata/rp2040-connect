@@ -89,7 +89,7 @@ static int i2c_dw_transfer(struct i2c_master_s *dev, struct i2c_msg_s *msgs, int
 		return -ENOTSUP;
 	}
 
-	/* A message of no bytes (the i2c tool's "dev -z"): the core refuses
+	/* A message of no bytes (the probe of "i2c scan"): the core refuses
 	 * the transfer with -ENOTSUP before anything is sent.
 	 */
 	return i2c_dw_transfer_msgs(dw, msgs, count, target_address, &speed);

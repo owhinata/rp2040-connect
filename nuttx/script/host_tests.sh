@@ -296,6 +296,23 @@ run shell_register -D_DEFAULT_SOURCE -DZ_SHELL_CMD_NAMED_MAIN -DIMU_SHELL_INC="\
 run i2c_dma_app -D_DEFAULT_SOURCE -DZ_SHELL_CMD_NAMED_MAIN -include "$prelude" \
     -Idrivers/compat -I"$ccompat" -I"$cshell" -Iapps/subcmd \
     "$cshell/zshell.c" "$cshell/subcmd.c"
+# The "i2c" command (common/shell/i2c_shell.c, the copy of the Zephyr build's I2C
+# shell, with the prelude and the options as apps/i2c builds it; Zephyr's text compares signed
+# with unsigned and leaves the handlers' argc unused) on common/shell/zshell.c and the
+# compatibility layer's I2C bus device (compat/zephyr_i2c.c, zephyr_device.c) with a fake NuttX
+# I2C master (I2C_RESET() with CONFIG_I2C_RESET, as in the imu configuration).  Its main() is
+# i2c_main().
+i2cinc=(-D_DEFAULT_SOURCE -DCONFIG_I2C_RESET=1 -DCONFIG_I2C_SHELL_BUFFER_SIZE=64
+        -DCONFIG_LOG_DEFAULT_LEVEL=3 -include tests/fakes/nuttx/config.h -include "$prelude"
+        -Itests/fakes -Idrivers/compat -I"$ccompat" -Idrivers/include -I"$clog" -I"$cshell"
+        -Iapps/subcmd -Itests/lsm6dso_fakes)
+cc "${flags[@]}" -Wno-sign-compare -Wno-unused-parameter "${i2cinc[@]}" -Dmain=i2c_main \
+    -c ../common/shell/i2c_shell.c -o "$out/i2c_shell.o"
+cc "${flags[@]}" "${i2cinc[@]}" tests/i2c_shell.c "$out/i2c_shell.o" "$cshell/zshell.c" \
+    "$cshell/subcmd.c" drivers/compat/zephyr_i2c.c "$ccompat/zephyr_device.c" "$link" \
+    -o "$out/i2c_shell"
+"$out/i2c_shell" >/dev/null
+printf 'ok  i2c_shell\n'
 # "nina passthrough" of apps/nina (CONFIG_NINA_PASSTHROUGH) on the subcommand dispatch, with
 # fakes of the NINA requests and of the driver's nina_passthrough_request()
 # (common/drivers/nina/include/nina_passthrough.h).  The mode itself is common/tests/nina_passthrough.c's.

@@ -105,7 +105,7 @@ picocom /dev/serial/by-id/usb-NuttX_NuttX_USB_Console_*-if00
   終わらないコマンド（`while`/`until` のループ、`watch`）は外してあります。
 - Wi-Fi に繋がっている間は、同じシェルを Telnet でも使えます（「Wi-Fi 経由のシェル（Telnet）」の節）。
 - `help` でコマンドの一覧が出ます。前半が nsh のコマンド（`uname`、`ps`、`free`、`echo`、`sleep`
-  など）、`Builtin Apps:` の後がこの移植のコマンドと NuttX のアプリ（`wapi`、`iperf`、`i2c` など）です。
+  など）、`Builtin Apps:` の後がこの移植のコマンドと NuttX のアプリ（`wapi`、`iperf` など）です。
   Zephyr 版のコマンドとの対応は「Zephyr 版とのコマンドの対応」の節です。存在しないコマンドを打つと
   `nsh: <名前>: command not found` と出ます（Zephyr 版は `<名前>: command not found`）。
 - `reboot` でボードを再起動します（Zephyr 版の `kernel reboot`）。引数を付けても（`reboot --help` でも）
@@ -297,7 +297,7 @@ syslog のチャネル `nuttx/drivers/log/log_ram_syslog.c`。`LOG_*` マクロ�
   端末の幅を変える `resize` はありません。
 - 終了状態は、成功で 0、失敗・ヘルプ・引数の誤りで 1 です。
 
-`sensor`・`imu`・`ntp`・`i2c_dma` は Zephyr 版と同じソース（`common/`）のコマンドの表なので、同じ部品の `zshell.c`
+`sensor`・`imu`・`ntp`・`i2c_dma`・`i2c` は Zephyr 版と同じソース（`common/`）のコマンドの表なので、同じ部品の `zshell.c`
 （`z_shell_cmd_main()`）で動きます。規則は上と同じで、加えて Zephyr のシェルと同じく、動的なサブコマンド
 （デバイス名、チャネル名など）、`SHELL_HELP()` の説明と `Usage:` の行、一致するサブコマンドがあるワイルドカードの
 展開（その後にハンドラーのあるサブコマンドが続くと `Error: requested multiple function executions`）、30 語
@@ -567,8 +567,8 @@ iperf 2 の方式）を使います。PC 側は `iperf3` ではなく `iperf`（
 
 ## I2C0（`i2c`）
 
-I2C0 には LSM6DSOX（0x6A）と ATECC608A（0x60）が載っています。`/dev/i2c0` として登録し、NuttX 標準の `i2c` ツールで
-使えます。条件に合う読み出しは DMA で行います（下の「DMA での読み出し（`i2c_dma`）」）。
+I2C0 には LSM6DSOX（0x6A）と ATECC608A（0x60）が載っています。互換層の I2C のバス `i2c@40044000` として、Zephyr 版と
+同じ `i2c` コマンドで使えます（下の「`i2c` コマンド」）。条件に合う読み出しは DMA で行います（下の「DMA での読み出し（`i2c_dma`）」）。
 
 ドライバーは、FreeRTOS 版と共有する I2C のコア（`common/drivers/i2c_dw/`）です。Zephyr 版が使う DesignWare I2C の
 ドライバー（Zephyr の `drivers/i2c/i2c_dw.c` にローカルのパッチ
@@ -578,8 +578,8 @@ NuttX の `rp2040_i2c.c`（`CONFIG_RP2040_I2C`）は使いません。コアの�
 「I2C0」にあります。
 
 ```
-nsh$ i2c get -a 6a -r 0f
-READ Bus: 0 Addr: 6a Subaddr: 0f Value: 6c
+nsh$ i2c read_byte i2c@40044000 6a 0f
+Output: 0x6c
 ```
 
 - 配線（ボードの `include/board.h` の `BOARD_I2C0_*`）: SDA が GPIO12、SCL が GPIO13。Zephyr 版の
@@ -629,26 +629,27 @@ i2c_dma stats         DMA 転送数、バイト数、エラー、割り込み方
 切り替えは Zephyr 版と同じく値を変えるだけで、進行中の転送を待ったり止めたりしません。「止まっているときだけ」は
 使い方の約束で、コマンドは確かめません。優先度 104、スタック 3072 です。
 
-### `i2c` ツールと Zephyr 版の `i2c` コマンド
+### `i2c` コマンド
 
-Zephyr 版の `i2c` コマンド（Zephyr のシェル）は移さず、NuttX 標準の `i2c` ツール（`CONFIG_SYSTEM_I2CTOOL`）
-に任せます。オプション（`-a` アドレス、`-r` レジスター、`-f` 周波数など）は次に変えるまで残ります。
-周波数の既定は 100000（Zephyr 版の起動時の速さ）です。アドレス・レジスター・書く値は 16 進、`dump` の
-バイト数は 10 進です。
+Zephyr 版の `i2c` コマンド（Zephyr の `drivers/i2c/i2c_shell.c` にローカルのパッチ 0004 を当てたもの）と同じファイル
+`common/shell/i2c_shell.c` を `zshell.c` で動かします（`nuttx/apps/i2c` は組み込みコマンドの main のソースとして
+ビルドするだけ。FreeRTOS 版も同じファイル）。サブコマンド（`scan`、`recover`、`read`、`read_byte`、`direct_read`、`write`、
+`write_byte`、`speed`）、構文、出力、ヘルプは Zephyr 版と同じで、デバイスは互換層の I2C のバス `i2c@40044000`
+（LSM6DSO のドライバーが使うもの）です。`i2c speed` はこのバスの速さを変えるので、センサーの転送の速さも変わります
+（Zephyr 版と同じ）。
 
-| Zephyr 版 | NuttX 版 | 違い |
-|---|---|---|
-| `i2c scan i2c@40044000` | `i2c dev 03 77` | 確かめ方が違う。Zephyr 版は 0 バイトの書き込みで確かめ、ドライバーがそれを断る（`-ENOTSUP`）ので、最初のアドレスで `I2C: i2c@40044000 does not support this scan (zero-length writes)` を表示して止まり、`-ENOTSUP` を返す（1 つのアドレスは `i2c direct_read i2c@40044000 6a 1` で確かめる）。NuttX 版は 1 バイト読み出しで、0x60 と 0x6a が見える。`-z`（0 バイトの書き込み）でも最初のアドレスで `i2ctool: dev: bus 0 does not support zero-byte writes; no -z scan` を表示して止まり、失敗する |
-| `i2c read_byte i2c@40044000 6a 0f` | `i2c get -a 6a -r 0f` | |
-| `i2c read i2c@40044000 6a 10 10` | `i2c dump -a 6a -r 10 16` | 最大 256 バイト（Zephyr 版は 64）。Zephyr 版のバイト数は 16 進 |
-| `i2c direct_read i2c@40044000 6a 1` | `i2c get -a 6a` | `-r` を付けなければレジスターを送らない |
-| `i2c write_byte i2c@40044000 6a 07 5a` | `i2c set -a 6a -r 07 5a` | |
-| `i2c write i2c@40044000 6a 07 5a 00` | なし | NuttX 版は 1 回に 1 つの値（`-w 16` で 2 バイト） |
-| `i2c speed i2c@40044000 3` | `-f 1000000`（以後のコマンドに残る） | Zephyr 版はバスの設定を変える（起動時は 1 MHz）。NuttX 版はツールの設定だけ |
-| `i2c recover i2c@40044000` | `i2c reset` | どちらも `-ENOTSUP` で失敗する（このボードにはリカバリーの処理がない） |
+```
+nsh$ i2c read_byte i2c@40044000 6a 0f
+Output: 0x6c
+```
 
-`i2c verf` は書き込んで読み返すコマンドなので、センサーの設定を書き換えます。`i2c` ツールは優先度 100 で
-動きます（Zephyr 版のシェルのコマンドは 104 に当たる位置）。
+- `i2c scan` は 0 バイトの書き込みで確かめ、ドライバーがそれを断る（`-ENOTSUP`）ので、最初のアドレスで
+  `I2C: i2c@40044000 does not support this scan (zero-length writes)` を表示して止まり、失敗します（Zephyr 版と同じ。
+  1 つのアドレスは `i2c direct_read i2c@40044000 6a 1` で確かめる）。
+- `i2c recover` はこのボードにリカバリーの処理が無いので `-ENOTSUP` で失敗します（表示する番号は NuttX の値）。
+- `i2c target` はありません（Zephyr 版も `CONFIG_I2C_TARGET` が無効）。I2C1（`CONFIG_I2C_DW_I2C1`）には互換層のデバイスが
+  無いので、このコマンドからは使えません。
+- 優先度 104、スタック 3072 です。`/dev/i2c0` は登録しません（NuttX の `i2c` ツールは入れていない）。
 
 ## LSM6DSOX（IMU）
 
@@ -683,12 +684,11 @@ LF に直して同一）で行います。FIFO のストリーム（INT1 の割�
   `BOARD_LSM6DSOX_*` にあります（加速度 ±8 g、ジャイロ ±2000 dps、ODR は両方停止、高性能モード）。
   初期化後のレジスターは `CTRL1_XL`=0x0c、`CTRL2_G`=0x0c、`CTRL3_C`=0x44、`CTRL9_XL`=0xe2、
   `FIFO_CTRL1`〜`4`・`COUNTER_BDR_REG1`/`2`・`INT1_CTRL`・`INT2_CTRL`・`CTRL4_C`〜`CTRL8_XL`・`CTRL10_C` が 0 です
-  （`i2c dump -a 6a -r 00 32` で確認できます）。
+  （`i2c read i2c@40044000 6a 00 20` で確認できます）。
 - **I2C**: 起動時の速さは Zephyr 版のデバイスツリーと同じ 1 MHz（`board.h` の `BOARD_I2C0_FREQUENCY`）で、`i2c_configure()`（Zephyr の API の写し）で
   100 kHz・400 kHz に変えられます。NuttX の I2C はメッセージごとに周波数を持つので、
-  この速さは I2C0 のデバイス（互換層の NuttX の実装、`nuttx/drivers/compat`）が覚えていて、ドライバーの転送だけに使います。`i2c`
-  ツールは自分の `-f` の周波数で動き、ドライバーの速さを変えません（Zephyr 版の `i2c speed` はバスの設定を
-  変えます）。レジスターの読み出しは 1 回の転送（レジスター番号の書き込み → RESTART → 読み出し）、書き込みは
+  この速さは I2C0 のデバイス（互換層の NuttX の実装、`nuttx/drivers/compat`）が覚えていて、互換層を通る転送に使います。
+  `i2c speed` もこの速さを変えます（Zephyr 版と同じ）。レジスターの読み出しは 1 回の転送（レジスター番号の書き込み → RESTART → 読み出し）、書き込みは
   STOP 付きの 1 メッセージで、Zephyr の `i2c_burst_read_dt()`・`i2c_write_dt()` と同じ形です。FIFO の読み出しは
   32 バイト以上なので DMA を使います。
 - **単発の取得**（`sensor_sample_fetch()`・`sensor_channel_get()`）、**属性**（`sensor_attr_set()` の ODR と
@@ -1148,7 +1148,7 @@ OS ごとのヘッダー（`sensor_shell_os.h`、`wifi_profile_os.h`、`lsm6dso_
 | `common/drivers/i2c_dw/` | I2C のコア: 直下に `i2c_dw.c`（I2C0 と、`CONFIG_I2C_DW_I2C1`（既定で無効）のとき I2C1）、`internal/` にその定義 `i2c_dw.h`・`i2c_dw_registers.h`・`i2c_dw_rp2040.h` と DMA での読み出し `i2c_dw_rp2040_dma_priv.h`（DMA のコマンド語を含む。Zephyr 版はパッチ 0003 に同じ関数を持つ）（ファイル名はパッチ後の Zephyr のドライバーに合わせる）、`include/` に `i2c_dma` の関数の宣言 `i2c_dw_rp2040_dma.h`、`port/` に境界のヘッダー `i2c_dw_os.h` と DMA 読み出しの `i2c_dw_dma_os.h`（NuttX 版と FreeRTOS 版が使う。前置きヘッダーなしでコンパイルする。境界は `nuttx/drivers/README_ja.md` の「I2C0」）。コアのつなぎは `port/nuttx/`（NuttX 版: `i2c_dw_os_impl.h`・`i2c_dw_instance.h`、起動の `i2c_dw_controllers_rp2040.h`、DMA の部分 `i2c_dw_dma_os_rp2040.c`。`nuttx/drivers/i2c_dw/Make.defs` がビルドする）と `port/freertos/`（FreeRTOS 版） |
 | `common/chip/rp2040/` | どの OS も持たない RP2040 のコード: `include/rp2040_timer_us.h`（TIMER の読み出し）、`include/rp2040_watchdog_reboot.h`、KV の領域の flash の境界 `rp2040_flash_kv.c`（`include/rp2040_flash_kv.h`。ボードの flash の操作は `include/rp2040_flash_kv_os.h` で宣言）。FreeRTOS 版と共有し、ボードの `src/Make.defs` が前置きヘッダーなしでコンパイルする |
 | `common/compat/` | 互換層の OS に依存しない部分（Zephyr の API のヘッダー `zephyr/...`。`i2c_dma` の状態 `zephyr/drivers/i2c/i2c_dw_rp2040_dma.h` は I2C のコアの `common/drivers/i2c_dw/include/i2c_dw_rp2040_dma.h` を読む。`zephyr_compat.h`、ワーク、RTIO、ブロックのプール、デバイスの一覧、`gpio0`、`net_mgmt`、Wi-Fi の要求、sensor の既定の iodev）と、互換層の上でビルドする NuttX 版・FreeRTOS 版が使う Zephyr のライブラリーの写し（`sensor_shell_stream.c`・`sensor_shell.h`、`wifi_credentials.c`・`wifi_credentials_backend_settings.c`・`wifi_credentials_internal.h`）、境界のヘッダー（`priorities.h`、`cpu_load.h`、`gpio_os.h`）。Zephyr 版は使わない |
-| `common/shell/` | `subcmd.[ch]`（サブコマンドの表の処理）、`zshell.c`（`<zephyr/shell/shell.h>` で書いたコマンドの処理: 語の照合、ワイルドカード、引数の数の検査、ヘルプ）とその OS との境界 `zshell_os.h`（NuttX 版の部分は `nuttx/apps/subcmd/zshell_os_impl.h`）。前置きヘッダーなしでコンパイルする。Zephyr 版は使わない。ほかに `i2c_dma_shell.c`（3 つの OS のファームウェアの `i2c_dma` コマンド。Zephyr のシェルの API で書いてあり、NuttX 版では `nuttx/apps/i2c_dma` が前置きヘッダー付きでビルドする）と `nina_shell.c`（Zephyr 版と FreeRTOS 版の `nina` コマンド。NuttX 版は自前の `nuttx/apps/nina`） |
+| `common/shell/` | `i2c_shell.c`（Zephyr 版のツリーにパッチ 0004 を当てたファイル。`nuttx/apps/i2c` がビルドする）、`subcmd.[ch]`（サブコマンドの表の処理）、`zshell.c`（`<zephyr/shell/shell.h>` で書いたコマンドの処理: 語の照合、ワイルドカード、引数の数の検査、ヘルプ）とその OS との境界 `zshell_os.h`（NuttX 版の部分は `nuttx/apps/subcmd/zshell_os_impl.h`）。前置きヘッダーなしでコンパイルする。Zephyr 版は使わない。ほかに `i2c_dma_shell.c`（3 つの OS のファームウェアの `i2c_dma` コマンド。Zephyr のシェルの API で書いてあり、NuttX 版では `nuttx/apps/i2c_dma` が前置きヘッダー付きでビルドする）と `nina_shell.c`（Zephyr 版と FreeRTOS 版の `nina` コマンド。NuttX 版は自前の `nuttx/apps/nina`） |
 | `common/compat/log/` | `log_ring.[ch]`（RAM ログのリング、行の前置き、頻度制限）、`app_log.h`（`LOG_*` マクロ。NuttX の部分は `nuttx/drivers/include/app_log_os.h`）、`log_ram.c`・`log_ram.h`（RAM ログと `LOG_*` マクロの関数。FreeRTOS 版と共有。NuttX の部分は `nuttx/drivers/include/log_ram_os_impl.h`、syslog のチャネルは `nuttx/drivers/log/log_ram_syslog.c`）、`fault_record.[ch]`（異常停止の記録の形式、CRC-32、watchdog の scratch への写し、表示の行。FreeRTOS 版だけが使う）。Zephyr 版は使わない |
 | `common/tests/` | 上のファイルを対象にするテスト 37 本と、Zephyr のツリーとの照合 `zephyr_copies`・`zephyr_sensor_shell_patched`（`common/tests/run.sh` が実行し、3 つの OS のファームウェアの `host_tests.sh` が最初に呼ぶ。互換層の `zephyr_rtio`・`zephyr_work`・`mqtt_min` は偽のカーネルの上、NINA のコアの `nina_proto`・`nina_sock`・`nina_wifi`・`nina_dns`・`nina_passthrough` はテストが定義する境界の偽物の上。`nina_core_independent` はコアの各ファイルを C ライブラリーと自分のヘッダーだけでコンパイルし、`i2c_dw_public_headers` は I2C のコアの `include/` をそのディレクトリーだけでコンパイルし、LSM6DSO の `lsm6dso_core_independent`・`lsm6dso_public_headers` はそのコアと `include/` に同じことをする）。`lsm6dso_stream` はコアのストリーム `lsm6dso_stream.c` を、境界のホストでの実装（`common/tests/lsm6dso_os_host/`）とコアの FIFO の呼び出しの偽物の上で動かす |
 | `common/tests/fakes/` | テスト用の Zephyr のヘッダーと ST のヘッダーの代わり（`zephyr/drivers/sensor.h`、`zephyr/drivers/sensor_clock.h`、`zephyr/drivers/i2c.h`、`zephyr/rtio/rtio.h`、`lsm6dso_reg.h`） |

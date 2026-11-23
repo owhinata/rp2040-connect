@@ -280,7 +280,11 @@ done
 # and TIMER functions and of the controllers' and the DMA's registers (tests/i2c_dw/pico_fake),
 # under the shared core (common/drivers/i2c_dw/i2c_dw.c, through tests/i2c_dw/i2c_dw_core.c,
 # which gives the test the core's static command words, with the prelude, as
-# drivers/i2c_dw/i2c_dw.cmake builds it), on the same kernel and layer objects.  Twice: as the
+# drivers/i2c_dw/i2c_dw.cmake builds it), with the "i2c" command on it (the copy of Zephyr's
+# I2C shell, common/shell/i2c_shell.c, with its options and warnings as
+# drivers/i2c_shell/i2c_shell.cmake builds it, on the shared zshell.c, subcmd.c, the layer's
+# devices zephyr_device.c and the test's shell backend tests/i2c_dw/zshell_os_impl.h), on the
+# same kernel and layer objects.  Twice: as the
 # default build (i2c0 only, CONFIG_I2C_DW_I2C0), and with CONFIG_I2C_DW_I2C1 too
 # (-DI2C_DW_I2C1=ON), whose run adds the tests of i2c1.  The host's cc reports -Wsign-compare
 # for two MIN()s of i2c_dw.c (an int count and a uint32_t one, as in Zephyr's i2c_dw.c; the
@@ -293,13 +297,20 @@ for variant in i2c0 i2c1; do
     [[ $variant == i2c1 ]] && i2cdefs+=(-DCONFIG_I2C_DW_I2C1=1)
     i2cobjs=()
     for src in "$i2cdir/port/freertos/i2c_dw_dma_os_rp2040.c" tests/i2c_dw/main.c \
-               tests/i2c_dw/i2c_dw_core.c; do
+               tests/i2c_dw/i2c_dw_core.c ../common/shell/i2c_shell.c \
+               ../common/shell/zshell.c ../common/shell/subcmd.c ../common/compat/zephyr_device.c \
+               ../common/compat/subsys/portability/posix/c_lib_ext/fnmatch.c; do
         obj="$out/i2c_${variant}_$(basename "$src" .c).o"
         extra=()
         case $src in
             */i2c_dw_core.c) extra=(-include drivers/compat/common_prelude.h -Wno-sign-compare) ;;
+            */i2c_shell.c) extra=(-include drivers/compat/common_prelude.h -Wno-sign-compare
+                                  -Wno-unused-parameter -DCONFIG_I2C_SHELL_BUFFER_SIZE=64
+                                  -DCONFIG_LOG_DEFAULT_LEVEL=3) ;;
+            */zshell.c) extra=(-Dcalloc=test_calloc -Dfree=test_free) ;;
         esac
-        cc "${flags[@]}" "${strict[@]}" "${i2cdefs[@]}" "${i2cinc[@]}" "${inc[@]}" "${extra[@]}" \
+        cc "${flags[@]}" "${strict[@]}" "${i2cdefs[@]}" -Itests/i2c_dw -I$seng -I../common/shell \
+            -DZ_SHELL_CMD_ROOT_GLOBAL "${i2cinc[@]}" "${inc[@]}" "${extra[@]}" \
             -c "$src" -o "$obj"
         i2cobjs+=("$obj")
     done
@@ -315,7 +326,7 @@ for variant in i2c0 i2c1; do
         timeout 60 "$out/i2c_dw_$variant" >"$out/log" 2>&1 || { cat "$out/log"; exit 1; }
     fi
 done
-printf 'ok  i2c_dw (I2C0 and I2C1 boundaries and devices, DMA reads on the Pico SDK DMA, Zephyr I2C API, FreeRTOS POSIX port)\n'
+printf 'ok  i2c_dw (I2C0 and I2C1 boundaries and devices, DMA reads on the Pico SDK DMA, Zephyr I2C API, "i2c" command, FreeRTOS POSIX port)\n'
 
 # GPIO bank 0 (freertos/tests/gpio): the board's boundary of the layer's gpio0
 # (drivers/compat/rp2040/gpio_os_rp2040.c) on fakes of the Pico SDK's GPIO and IRQ functions

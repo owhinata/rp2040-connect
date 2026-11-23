@@ -5,8 +5,8 @@
 # RAM log (common/compat/log).  They use the fake headers of tests/fakes, the fake kernel of
 # tests/zephyr_fakes or (the NINA core) fakes of its boundary defined by the tests, and need no
 # board and no Zephyr tree (the checks that the copies of Zephyr's files are unchanged, that
-# the I2C core matches the Zephyr build's patched driver and that the sensor shell is the file
-# of the patched tree run when the tree is there).  tests/app_threads.py checks the
+# the I2C core matches the Zephyr build's patched driver and that the sensor shell and the I2C
+# shell are the files of the patched tree run when the tree is there).  tests/app_threads.py checks the
 # application's table of threads against the sources and the build files.
 # zephyr/script/host_tests.sh and nuttx/script/host_tests.sh run this
 # before their own tests.
@@ -347,8 +347,21 @@ if [[ -f $ztree/VERSION ]]; then
         "$OLDPWD/$zpatches"/0006-sensor-shell-*.patch)
     cmp drivers/sensor_shell/sensor_shell.c "$ztmp/drivers/sensor/sensor_shell.c"
     printf 'ok  zephyr_sensor_shell_patched (patch 0006)\n'
+
+    # The I2C shell of the FreeRTOS build is the file of the Zephyr build's patched tree too:
+    # Zephyr's drivers/i2c/i2c_shell.c with the local patch 0004 ("i2c scan" refuses a
+    # controller that cannot send a write of no bytes), applied to the tree's HEAD in a scratch
+    # directory, is byte for byte shell/i2c_shell.c.
+    ztmp=$out/zephyr_i2c_shell
+    mkdir -p "$ztmp"
+    git -C "$ztree" archive HEAD drivers/i2c/i2c_shell.c | tar -x -C "$ztmp"
+    (cd "$ztmp" && git apply --include='drivers/i2c/i2c_shell.c' \
+        "$OLDPWD/$zpatches"/0004-i2c-shell-*.patch)
+    cmp shell/i2c_shell.c "$ztmp/drivers/i2c/i2c_shell.c"
+    printf 'ok  zephyr_i2c_shell_patched (patch 0004)\n'
 else
     printf 'skip zephyr_copies (no zephyr/zephyr: run west update)\n'
     printf 'skip i2c_dw_sync (no zephyr/zephyr: run west update)\n'
     printf 'skip zephyr_sensor_shell_patched (no zephyr/zephyr: run west update)\n'
+    printf 'skip zephyr_i2c_shell_patched (no zephyr/zephyr: run west update)\n'
 fi

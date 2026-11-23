@@ -48,8 +48,8 @@ int device_init(const struct device *dev)
 /* The devices, in the order of their initialization in the Zephyr build
  * (gpio: PRE_KERNEL_1; i2c0: POST_KERNEL 50; the LSM6DSOX: POST_KERNEL,
  * CONFIG_SENSOR_INIT_PRIORITY 90), with the node label of the Zephyr
- * build's devicetree and whether the API is a sensor API.  gpio0 exists
- * with the FIFO stream only (zephyr_gpio.c).
+ * build's devicetree and whether the API is a sensor API or an I2C API.
+ * gpio0 exists with the FIFO stream only (zephyr_gpio.c).
  */
 
 static const struct
@@ -57,13 +57,14 @@ static const struct
   const struct device *dev;
   const char *nodelabel;
   bool sensor;
+  bool i2c;
 } g_devices[] =
 {
 #ifdef CONFIG_LSM6DSO_STREAM
-  { DEVICE_DT_GET(DT_NODELABEL(gpio0)), "gpio0", false },
+  { DEVICE_DT_GET(DT_NODELABEL(gpio0)), "gpio0", false, false },
 #endif
-  { DEVICE_DT_GET(DT_NODELABEL(i2c0)), "i2c0", false },
-  { DEVICE_DT_GET(DT_NODELABEL(lsm6dsox)), "lsm6dsox", true },
+  { DEVICE_DT_GET(DT_NODELABEL(i2c0)), "i2c0", false, true },
+  { DEVICE_DT_GET(DT_NODELABEL(lsm6dsox)), "lsm6dsox", true, false },
 };
 
 size_t z_device_count(void)
@@ -136,6 +137,21 @@ bool z_device_api_is_sensor(const struct device *dev)
       if (g_devices[i].dev == dev)
         {
           return g_devices[i].sensor;
+        }
+    }
+
+  return false;
+}
+
+bool z_device_api_is_i2c(const struct device *dev)
+{
+  size_t i;
+
+  for (i = 0; i < ARRAY_SIZE(g_devices); i++)
+    {
+      if (g_devices[i].dev == dev)
+        {
+          return g_devices[i].i2c;
         }
     }
 

@@ -55,8 +55,10 @@
  * through i2c_dw_configure(), any class but standard, fast and fast plus
  * (the RP2040's I2C has no high speed); a refused class changes nothing
  * (Zephyr's stores the minimum counts, see i2c_dw.c).  The mode bits are
- * ignored (Zephyr forces controller mode).  The API table has no
- * recover_bus, as the compatibility layer has no i2c_recover_bus().
+ * ignored (Zephyr forces controller mode).  The API table's recover_bus
+ * is Zephyr's i2c_dw_recovery_bus() without a recover-bus callback: it
+ * returns -ENOTSUP ("i2c recover").  It has no get_config, as Zephyr's
+ * driver: i2c_get_config() returns -ENOSYS.
  *
  * The speed class (one for each device) of a transfer is read by the core
  * under bus_sem, as Zephyr's driver reads its class: a transfer that waits
@@ -179,9 +181,21 @@ static int i2c_dw_runtime_configure(const struct device *dev, uint32_t config)
 	return ret;
 }
 
+/* i2c_dw_recovery_bus() of Zephyr's driver: without a wrapper's recover-bus
+ * callback there is no recovery (the board has no bit-banged one), so the
+ * request fails and the caller does not take the bus for recovered.
+ */
+static int i2c_dw_recovery_bus(const struct device *dev)
+{
+	(void)dev;
+
+	return -ENOTSUP;
+}
+
 static DEVICE_API(i2c, i2c_dw_funcs) = {
 	.configure = i2c_dw_runtime_configure,
 	.transfer = i2c_dw_transfer,
+	.recover_bus = i2c_dw_recovery_bus,
 };
 
 /* Each instance's device and Zephyr's i2c_dw_isr() for it. */

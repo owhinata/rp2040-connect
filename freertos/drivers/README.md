@@ -40,6 +40,7 @@ semaphores, `k_poll()`, timeouts, sleeps and threads on about twenty primitives 
 | `drivers/telnet/` | Builds in the Telnet shell (`telnet.cmake`; the code is `common/compat/shell_engine/shell_telnet.c`) |
 | `drivers/zperf/` | Builds in `zperf` (the code is `common/compat/zperf_iperf3.c` and `zephyr_zperf_shell.c`) |
 | `drivers/sensor_shell/` | The FreeRTOS part of the `sensor` command (`sensor_shell_os.[ch]`) |
+| `drivers/i2c_shell/` | Adds the `i2c` command (`i2c_shell.cmake`; the command is `common/shell/i2c_shell.c`, the same file as `drivers/i2c/i2c_shell.c` of the Zephyr build's patched tree) |
 | `drivers/include/` | The FreeRTOS part of `app_log.h` (`app_log_os.h`) and of the RAM log (`log_ram_os_impl.h`: the ring's section, the interrupt mask, the TIMER) |
 | `tests/` | Host tests ("Host tests" below) |
 
@@ -51,7 +52,9 @@ Shared files only the FreeRTOS build compiles: `common/compat/zephyr_wifi_shell.
 (`ifconfig`). The RAM log `common/compat/log/log_ram.c` (on its ring `log_ring.c`) is shared with
 the NuttX build.
 `i2c_dma`'s `common/shell/i2c_dma_shell.c` and `nina`'s `common/shell/nina_shell.c` (`nina version`,
-`nina passthrough`) are built by the Zephyr build too.
+`nina passthrough`) are built by the Zephyr build too. `i2c`'s `common/shell/i2c_shell.c` is a
+byte-for-byte copy of Zephyr's `drivers/i2c/i2c_shell.c` with the local patch 0004 (`zephyr_i2c_shell_patched`
+of `common/tests/run.sh` compares them), built by the NuttX build too (the Zephyr build builds the file in its tree).
 
 ## The FreeRTOS part of the Zephyr compatibility layer
 
@@ -350,8 +353,12 @@ interrupts disabled.
   `vTaskDelay()`, and the clock is the TIMER (`time_us_64()`) in ms, not the tick. The only things of
   Zephyr's left are the API it is used with: the layer's devices and `<zephyr/drivers/i2c.h>`.
 - **Refused requests**: a transfer with a message of no bytes returns `-ENOTSUP` before anything is sent
-  (the core, as the Zephyr build's driver: the controller cannot transfer no bytes). The layer's I2C API
-  has no `i2c_recover_bus()` (the board has no bus recovery).
+  (the core, as the Zephyr build's driver: the controller cannot transfer no bytes; `i2c scan` stops at its
+  first address with the reason and fails). A request for a bus recovery (`i2c_recover_bus()`, `i2c recover`)
+  is `-ENOTSUP`, as the Zephyr build's driver without a recover-bus callback (the board has no bus
+  recovery). As in the Zephyr build's driver there is no `get_config`: `i2c_get_config()` returns `-ENOSYS`,
+  so `i2c speed` calls `i2c_configure()` with `I2C_MODE_CONTROLLER` and the new speed class (the later
+  transfers run at it).
 - **The instances** are chosen as in the NuttX build's Kconfig: `drivers/i2c_dw/i2c_dw.cmake` defines
   `CONFIG_I2C_DW_I2C0` always (the LSM6DSOX is on it; `drivers/lsm6dso/lsm6dso.cmake` stops the
   configuration without it) and `CONFIG_I2C_DW_I2C1` with the CMake option `I2C_DW_I2C1` (off by
@@ -363,7 +370,7 @@ interrupts disabled.
   GPIO18 (SDA, Arduino D6) and GPIO19 (SCL, D7) with the internal pull-ups (`I2C1_SDA_GPIO`,
   `I2C1_SCL_GPIO` in `i2c_dw_instance.h`), always on the interrupts (the DMA reads and `i2c_dma` are
   I2C0's). It starts after I2C0 in `main()`; a failure is logged and leaves `i2c1` not ready. It is not
-  in the layer's device list (`device_get_binding()`). I2C1 has been built and host-tested but never used with a real device.
+  in the layer's device list (`device_get_binding()`), so the `i2c` command does not reach it. I2C1 has been built and host-tested but never used with a real device.
 - **The DMA reads of I2C0** use the Pico SDK's own DMA (`hardware_dma`, `hardware_irq`) through the core's
   second boundary, `port/i2c_dw_dma_os.h`, implemented in `port/freertos/i2c_dw_dma_os_rp2040.c`. Per read, two
   channels come from `dma_claim_unused_channel(false)` (none free: the read takes the interrupts and counts a
@@ -449,7 +456,7 @@ Given as `freertos/script/build.sh -DNAME=VALUE` (kept until `--clean`).
 | `shell` | Two shell sessions, line editing, output routing, `help` and the generic commands with their output |
 | `kv` | The flash boundary and the key-value store (on fakes of the Pico SDK's flash functions) |
 | `nina` | The NINA's SPI and line boundaries (with the long transfers by DMA on a fake DMA: the threshold, the end state of SPI1, the shared DMA_IRQ_1, the timeout and its abort, a lost byte, a bus error, a transfer after each, channels that do not stop, no free channels, the messages logged) and the FreeRTOS binding of `nina_os.h` (no compatibility layer; built twice, with a 1 ms and a 4 ms tick): the wait for READY on its interrupt, the waits for the IRQ line's edges (two tasks woken by one edge, the timeout), the shared bank interrupt, locks, the Wi-Fi thread's wake-up, sleeps' ticks, the clock across the tick's wrap |
-| `i2c_dw` | I2C0's boundary and device, Zephyr's I2C API (built twice: i2c0 only, and with `CONFIG_I2C_DW_I2C1`, which adds i2c1's start, pins, transfers, an unanswered address, long reads that never take the DMA, i2c0 unaffected, and transfers on both buses from two tasks); the binding's semaphores, waits' ticks, sleeps and clock; the DMA part (`i2c_dw_dma_os_rp2040.c`) on fakes of the Pico SDK's DMA: claims, setup, start, the shared handler (end, bus error, other users' channels), stop, release; the core's DMA reads on it: the read, the 32-byte limit, fallbacks, bus errors on TX and RX, timeout, the reads off, a stop that does not end (quarantine), the counters; the core's DMA command words |
+| `i2c_dw` | I2C0's boundary and device, Zephyr's I2C API, the `i2c` command on it (the devices of its arguments, `speed` and the speed of the transfers after it, `read_byte`, `write_byte`, `read` in hex, an unknown device, `scan` refused, `recover`) (built twice: i2c0 only, and with `CONFIG_I2C_DW_I2C1`, which adds i2c1's start, pins, transfers, an unanswered address, long reads that never take the DMA, i2c0 unaffected, and transfers on both buses from two tasks); the binding's semaphores, waits' ticks, sleeps and clock; the DMA part (`i2c_dw_dma_os_rp2040.c`) on fakes of the Pico SDK's DMA: claims, setup, start, the shared handler (end, bus error, other users' channels), stop, release; the core's DMA reads on it: the read, the 32-byte limit, fallbacks, bus errors on TX and RX, timeout, the reads off, a stop that does not end (quarantine), the counters; the core's DMA command words |
 | `gpio` | GPIO bank 0's boundary, `gpio0`, the FIFO interrupt |
 | `imu` | Address conversions, `hwinfo` |
 | `mqtt` | The MQTT transport (fake broker); then a run against the host's `imu-host check` (skipped without `host/.venv`) |
@@ -462,8 +469,8 @@ Given as `freertos/script/build.sh -DNAME=VALUE` (kept until `--clean`).
 
 ## Differences from the Zephyr and NuttX builds
 
-The custom commands (`imu`, `kv`, `ntp`, `nina`, `dmesg`, `i2c_dma`, `sensor`, `wifi cred`) and `zperf` have
-the Zephyr build's syntax and output.
+The custom commands (`imu`, `kv`, `ntp`, `nina`, `dmesg`, `i2c_dma`, `sensor`, `wifi cred`), `i2c` and `zperf`
+have the Zephyr build's syntax and output.
 
 | Item | Zephyr build | NuttX build | FreeRTOS build |
 |---|---|---|---|

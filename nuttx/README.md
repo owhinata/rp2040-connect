@@ -87,7 +87,6 @@ with its purpose and the Zephyr code it matches.
 | `apps/0004-readline-full-line` | Drops further characters when the line is full |
 | `apps/0005-iperf-free-argtable` | Fixes `iperf` leaking heap on every run |
 | `apps/0006-iperf-len-option-udp-eagain` | Adds `-l` to `iperf` and retries a UDP send that fails with `EAGAIN` |
-| `apps/0007-i2ctool-zero-byte-scan-not-supported` | `i2c dev -z` stops with a message and fails when the bus refuses zero-byte writes (`ENOTSUP`), instead of showing `--` everywhere; `i2c` returns a failing exit status when its command fails (also `reset`, `dev` and `verf`, which said so and returned success) |
 
 ## Build
 
@@ -316,8 +315,8 @@ NINA firmware: 3.0.2
 NINA capabilities: 0x00000007 (in use 0x00000007)
 nsh$ i2c_dma stats
 dma_transfers=... dma_bytes=... dma_errors=0 dma_fallbacks=0
-nsh$ i2c get -a 6a -r 0f
-READ Bus: 0 Addr: 6a Subaddr: 0f Value: 6c
+nsh$ i2c read_byte i2c@40044000 6a 0f
+Output: 0x6c
 nsh$ irqstack
 0x20002f88 IRQ 00                           (real size 2048):	unused 1684	usage  364 / 2048 (17 %)
 ```
@@ -381,20 +380,14 @@ datagrams at 512 bytes or less, as in `-u -l 500`.
 | `kernel uptime` | `uptime` | |
 | `date get` | `date` | For example `Sat, Nov 14 03:23:03 2026` |
 | `date set 2026-11-14 03:23:03` | `date -s "Nov 14 03:23:03 2026"` | |
-| `i2c scan i2c@40044000` | `i2c dev 03 77` | |
-| `i2c read_byte i2c@40044000 6a 0f` | `i2c get -a 6a -r 0f` | |
-| `i2c read i2c@40044000 6a 10 10` | `i2c dump -a 6a -r 10 16` | The NuttX build's byte count is decimal |
-| `i2c direct_read i2c@40044000 6a 1` | `i2c get -a 6a` | |
-| `i2c write_byte i2c@40044000 6a 07 5a` | `i2c set -a 6a -r 07 5a` | |
-| `i2c speed i2c@40044000 3` | `-f 1000000` | Only a setting of the tool in the NuttX build |
-| `i2c recover i2c@40044000` | `i2c reset` | |
+| `i2c ...` (`scan`, `read_byte`, `read`, `direct_read`, `write_byte`, `write`, `speed`, `recover`) | Same | `i2c speed i2c@40044000 <1-3>` changes the speed of the sensor's bus (1 = 100 kHz, 2 = 400 kHz, 3 = 1 MHz) |
 | `devmem <address>` (read) | `xd <hex address> <bytes>` | No write |
 | `retval` | `echo $?` | |
 | `rem <text>` | `# <text>` | |
 | `help` | `help` | |
 | – | `irqstack` | Use of the interrupt stack |
 
-The Zephyr build's `i2c write`, `gpio`, `log`, `device`, `history`, `clear`, `resize`, `shell`, and the
+The Zephyr build's `gpio`, `log`, `device`, `history`, `clear`, `resize`, `shell`, and the
 subcommands of `wifi`, `net` and `kernel` not listed above do not exist in the NuttX build. The PC
 tools (`imu-host`, `ImuStudio`, `script/kv_transfer.py`) only send commands from the "Same" rows.
 

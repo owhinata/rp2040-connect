@@ -110,7 +110,7 @@ picocom /dev/serial/by-id/usb-NuttX_NuttX_USB_Console_*-if00
 - While Wi-Fi is connected, the same shell is also on Telnet (see "Shell over Wi-Fi (Telnet)").
 - `help` lists the commands: first nsh's own (`uname`, `ps`, `free`, `echo`, `sleep`, ...), then,
   after `Builtin Apps:`, the commands of the NuttX build and the NuttX applications (`wapi`, `iperf`,
-  `i2c`, ...). "Commands of the Zephyr build and of the NuttX build" maps them to the Zephyr build's
+  ...). "Commands of the Zephyr build and of the NuttX build" maps them to the Zephyr build's
   commands. An unknown command gives `nsh: <name>: command not found` (the Zephyr build prints
   `<name>: command not found`).
 - `reboot` restarts the board (the Zephyr build's `kernel reboot`). It also restarts when given
@@ -335,7 +335,7 @@ number of arguments) is `SUBCMD()`, and `SHELL_CMD_ARG()` (mandatory and optiona
   empty line, as in Zephyr. There is no `resize` command to change the terminal width.
 - The exit status is 0 on success and 1 on failure, help or a wrong number of arguments.
 
-`sensor`, `imu`, `ntp` and `i2c_dma`, whose command tables are in the sources shared with the Zephyr build
+`sensor`, `imu`, `ntp`, `i2c_dma` and `i2c`, whose command tables are in the sources shared with the Zephyr build
 (`common/`), run on `zshell.c` (`z_shell_cmd_main()`) of the same part. The rules are the ones
 above; in addition, as in the Zephyr shell, it handles dynamic subcommands (device names, channel
 names and so on), the `SHELL_HELP()` description with its `Usage:` line, the expansion of a
@@ -650,8 +650,9 @@ Instead of the Zephyr build's `zperf` (iperf 3 protocol), the port uses NuttX's 
 
 ## I2C0 (`i2c`)
 
-I2C0 carries the LSM6DSOX (0x6A) and the ATECC608A (0x60). It is registered as `/dev/i2c0` for NuttX's `i2c` tool.
-Reads that meet the conditions run on DMA (see "DMA reads (`i2c_dma`)" below).
+I2C0 carries the LSM6DSOX (0x6A) and the ATECC608A (0x60). It is the layer's I2C bus `i2c@40044000`, used with the
+Zephyr build's `i2c` command (see "The `i2c` command" below). Reads that meet the conditions run on DMA (see
+"DMA reads (`i2c_dma`)" below).
 
 The driver is the I2C core shared with the FreeRTOS build (`common/drivers/i2c_dw/`). It is a copy of the controller part
 of the DesignWare I2C driver that the Zephyr version uses (Zephyr's `drivers/i2c/i2c_dw.c` with the local patch
@@ -661,8 +662,8 @@ of the DesignWare I2C driver that the Zephyr version uses (Zephyr's `drivers/i2c
 section of `nuttx/drivers/README.md`.
 
 ```
-nsh$ i2c get -a 6a -r 0f
-READ Bus: 0 Addr: 6a Subaddr: 0f Value: 6c
+nsh$ i2c read_byte i2c@40044000 6a 0f
+Output: 0x6c
 ```
 
 - Wiring (`BOARD_I2C0_*` in the board's `include/board.h`): SDA on GPIO12, SCL on GPIO13. As the
@@ -717,27 +718,28 @@ anything but `on` or `off` gives `Expected on or off`). As in the Zephyr build, 
 sets the value: it neither waits for nor stops a transfer in progress. "Only while no stream or
 transfer runs" is a rule for the user; the command does not check it. Priority 104, stack 3072.
 
-### The `i2c` tool and the Zephyr build's `i2c` command
+### The `i2c` command
 
-The Zephyr build's `i2c` command (Zephyr's shell) is not ported; NuttX's `i2c` tool
-(`CONFIG_SYSTEM_I2CTOOL`) takes its place. Its options (`-a` address, `-r` register, `-f`
-frequency and so on) stay until changed. The default frequency is 100000 (the Zephyr build's
-speed at boot). Addresses, registers and values to write are hexadecimal; the byte count of `dump`
-is decimal.
+The command is the file of the Zephyr build's `i2c` command (Zephyr's `drivers/i2c/i2c_shell.c` with the
+local patch 0004), `common/shell/i2c_shell.c`, run on `zshell.c` (`nuttx/apps/i2c` only builds it
+as the builtin command's main source; the FreeRTOS build uses the same file). The subcommands (`scan`,
+`recover`, `read`, `read_byte`, `direct_read`, `write`, `write_byte`, `speed`), syntax, output and help are
+the Zephyr build's, and the device is the layer's I2C bus `i2c@40044000` (the one the LSM6DSO driver
+uses): `i2c speed` changes this bus's speed, so the sensor's transfers change speed too (as in the Zephyr
+build).
 
-| Zephyr build | NuttX build | Differences |
-|---|---|---|
-| `i2c scan i2c@40044000` | `i2c dev 03 77` | Probes differently. The Zephyr build probes with 0-byte writes, which the driver refuses (`-ENOTSUP`), so the scan stops at the first address with `I2C: i2c@40044000 does not support this scan (zero-length writes)` and returns `-ENOTSUP` (probe one address with `i2c direct_read i2c@40044000 6a 1`). The NuttX build reads 1 byte and sees 0x60 and 0x6a. With `-z` (0-byte writes) it stops at the first address too, with `i2ctool: dev: bus 0 does not support zero-byte writes; no -z scan`, and fails |
-| `i2c read_byte i2c@40044000 6a 0f` | `i2c get -a 6a -r 0f` | |
-| `i2c read i2c@40044000 6a 10 10` | `i2c dump -a 6a -r 10 16` | Up to 256 bytes (the Zephyr build: 64). The Zephyr build's byte count is hexadecimal |
-| `i2c direct_read i2c@40044000 6a 1` | `i2c get -a 6a` | Without `-r` no register is sent |
-| `i2c write_byte i2c@40044000 6a 07 5a` | `i2c set -a 6a -r 07 5a` | |
-| `i2c write i2c@40044000 6a 07 5a 00` | none | The NuttX tool writes one value at a time (two bytes with `-w 16`) |
-| `i2c speed i2c@40044000 3` | `-f 1000000` (kept for later commands) | The Zephyr build changes the bus setting (1 MHz at the start); the NuttX tool only changes its own setting |
-| `i2c recover i2c@40044000` | `i2c reset` | Both fail with `-ENOTSUP` (the board has no recovery routine) |
+```
+nsh$ i2c read_byte i2c@40044000 6a 0f
+Output: 0x6c
+```
 
-`i2c verf` writes and reads back, so it changes the sensor's settings. The `i2c` tool runs at
-priority 100 (the Zephyr build's shell commands are at the place of 104).
+- `i2c scan` probes with 0-byte writes, which the driver refuses (`-ENOTSUP`), so it stops at the first
+  address with `I2C: i2c@40044000 does not support this scan (zero-length writes)` and fails (as in the
+  Zephyr build; probe one address with `i2c direct_read i2c@40044000 6a 1`).
+- `i2c recover` fails with `-ENOTSUP`: the board has no recovery routine (the number shown is NuttX's).
+- There is no `i2c target` (`CONFIG_I2C_TARGET` is off in the Zephyr build too). I2C1
+  (`CONFIG_I2C_DW_I2C1`) has no device of the layer, so the command does not reach it.
+- Priority 104, stack 3072. Nothing is registered as `/dev/i2c0` (NuttX's `i2c` tool is not built).
 
 ## LSM6DSOX (IMU)
 
@@ -778,13 +780,12 @@ runs on the Zephyr build's own files (`common/drivers/lsm6dso/port/zephyr/`) (be
   gyro ±2000 dps, both ODRs off, high-performance mode). After it, `CTRL1_XL`=0x0c,
   `CTRL2_G`=0x0c, `CTRL3_C`=0x44, `CTRL9_XL`=0xe2, and `FIFO_CTRL1`..`4`, `COUNTER_BDR_REG1`/`2`,
   `INT1_CTRL`, `INT2_CTRL`, `CTRL4_C`..`CTRL8_XL` and `CTRL10_C` are 0 (see
-  `i2c dump -a 6a -r 00 32`).
+  `i2c read i2c@40044000 6a 00 20`).
 - **I2C**: the speed at boot is 1 MHz, as in the Zephyr build's devicetree (`BOARD_I2C0_FREQUENCY` in
   `board.h`); `i2c_configure()` (a copy of Zephyr's API) changes it to 100 kHz or 400 kHz. A NuttX I2C
   transfer carries its frequency in each message, so the I2C0 device (the layer's NuttX implementation, `nuttx/drivers/compat`)
-  keeps this speed and the driver's transfers use it. The `i2c` tool runs at its own `-f`
-  frequency and does not change the driver's speed (the Zephyr build's `i2c speed` changes the
-  bus). A register read is one transfer (write the register number → RESTART → read), a write is
+  keeps this speed and the transfers through the layer use it. `i2c speed` changes it too (as in the
+  Zephyr build). A register read is one transfer (write the register number → RESTART → read), a write is
   one message with STOP: the shape of Zephyr's `i2c_burst_read_dt()` and `i2c_write_dt()`. FIFO
   reads are 32 bytes or more and use DMA.
 - **Single readings** (`sensor_sample_fetch()`, `sensor_channel_get()`), **attributes** (ODR and
@@ -1330,7 +1331,7 @@ with the layer's NuttX implementation (`nuttx/drivers/compat/`; the Zephyr build
 | `common/drivers/i2c_dw/` | The I2C core: at the top `i2c_dw.c` (I2C0, and I2C1 with `CONFIG_I2C_DW_I2C1`, off by default); in `internal/` its definitions `i2c_dw.h`, `i2c_dw_registers.h`, `i2c_dw_rp2040.h` and its DMA reads `i2c_dw_rp2040_dma_priv.h`, with the DMA command words (the Zephyr build has the same function in patch 0003) (the file names of Zephyr's patched driver); in `include/` the declarations of the `i2c_dma` functions `i2c_dw_rp2040_dma.h`; in `port/` the headers of its boundaries, `i2c_dw_os.h` and, for the DMA reads, `i2c_dw_dma_os.h` (the NuttX and FreeRTOS builds use them; they are compiled without the prelude; the boundaries are described under "I2C0" in `nuttx/drivers/README.md`); the core's bindings in `port/nuttx/` (this build: `i2c_dw_os_impl.h`, `i2c_dw_instance.h`, the start `i2c_dw_controllers_rp2040.h` and the DMA part `i2c_dw_dma_os_rp2040.c`, built by `nuttx/drivers/i2c_dw/Make.defs`) and `port/freertos/` (the FreeRTOS build) |
 | `common/chip/rp2040/` | The RP2040's code that no OS owns: `include/rp2040_timer_us.h` (the TIMER's read), `include/rp2040_watchdog_reboot.h`, and the key-value area's flash boundary `rp2040_flash_kv.c` (`include/rp2040_flash_kv.h`; the board's flash operations are declared in `include/rp2040_flash_kv_os.h`), shared with the FreeRTOS build and compiled by the board's `src/Make.defs` without the prelude |
 | `common/compat/` | the OS-independent part of the compatibility layer (the headers of Zephyr's API `zephyr/...`, among them the `i2c_dma` state `zephyr/drivers/i2c/i2c_dw_rp2040_dma.h`, which includes the I2C core's `common/drivers/i2c_dw/include/i2c_dw_rp2040_dma.h`, `zephyr_compat.h`, work items, RTIO, the block pool, the device list, `gpio0`, `net_mgmt`, the Wi-Fi requests, the sensors' default iodev) and the copies of Zephyr's libraries that the builds on the layer use (`sensor_shell_stream.c`, `sensor_shell.h`, `wifi_credentials.c`, `wifi_credentials_backend_settings.c`, `wifi_credentials_internal.h`), and boundary headers (`priorities.h`, `cpu_load.h`, `gpio_os.h`); the Zephyr build does not use it |
-| `common/shell/` | `subcmd.[ch]` (the subcommand tables), `zshell.c` (the handling of commands written with `<zephyr/shell/shell.h>`: word matching, wildcards, argument count checks, help) and its boundary to the OS, `zshell_os.h` (the NuttX build's part is `nuttx/apps/subcmd/zshell_os_impl.h`); compiled without the prelude; the Zephyr build does not use them. Also `i2c_dma_shell.c` (the `i2c_dma` command of the three builds, written on Zephyr's shell API; the NuttX build's `nuttx/apps/i2c_dma` builds it with the prelude), and `nina_shell.c` (the `nina` command of the Zephyr and FreeRTOS builds; the NuttX build has its own, `nuttx/apps/nina`) |
+| `common/shell/` | `i2c_shell.c` (the file of the Zephyr build's tree with its patch 0004; built by `nuttx/apps/i2c`), `subcmd.[ch]` (the subcommand tables), `zshell.c` (the handling of commands written with `<zephyr/shell/shell.h>`: word matching, wildcards, argument count checks, help) and its boundary to the OS, `zshell_os.h` (the NuttX build's part is `nuttx/apps/subcmd/zshell_os_impl.h`); compiled without the prelude; the Zephyr build does not use them. Also `i2c_dma_shell.c` (the `i2c_dma` command of the three builds, written on Zephyr's shell API; the NuttX build's `nuttx/apps/i2c_dma` builds it with the prelude), and `nina_shell.c` (the `nina` command of the Zephyr and FreeRTOS builds; the NuttX build has its own, `nuttx/apps/nina`) |
 | `common/compat/log/` | `log_ring.[ch]` (the RAM log's ring, line prefix and rate limit), `app_log.h` (the `LOG_*` macros; the NuttX part is `nuttx/drivers/include/app_log_os.h`), `log_ram.c`, `log_ram.h` (the RAM log and the functions of the `LOG_*` macros, shared with the FreeRTOS build; the NuttX part is `nuttx/drivers/include/log_ram_os_impl.h`, the syslog channel `nuttx/drivers/log/log_ram_syslog.c`), `fault_record.[ch]` (the record of a fatal error: its format, CRC-32, the copy in the watchdog's scratch registers and its lines; only the FreeRTOS build uses it); the Zephyr build does not use it |
 | `common/tests/` | the 37 tests of the files above and the checks against the Zephyr tree, `zephyr_copies` and `zephyr_sensor_shell_patched` (run by `common/tests/run.sh`, which the `host_tests.sh` of the three builds call first; the layer's `zephyr_rtio`, `zephyr_work` and `mqtt_min` on the fake kernel, the NINA core's `nina_proto`, `nina_sock`, `nina_wifi`, `nina_dns` and `nina_passthrough` on fakes of its boundaries defined by the tests, `nina_core_independent`, each core file compiled with the C library and its own headers only, `i2c_dw_public_headers`, the I2C core's `include/` compiled with that directory alone, and the LSM6DSO's `lsm6dso_core_independent` and `lsm6dso_public_headers`, the same for its core and its `include/`); `lsm6dso_stream` runs the core's stream `lsm6dso_stream.c` on the host's parts of its boundaries (`common/tests/lsm6dso_os_host/`) with fakes of the core's FIFO calls |
 | `common/tests/fakes/` | stand-ins for the Zephyr and ST headers the tests need (`zephyr/drivers/sensor.h`, `zephyr/drivers/sensor_clock.h`, `zephyr/drivers/i2c.h`, `zephyr/rtio/rtio.h`, `lsm6dso_reg.h`) |
