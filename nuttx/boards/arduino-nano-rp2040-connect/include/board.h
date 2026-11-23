@@ -120,7 +120,7 @@
 
 #define BOARD_I2C0_SDA_GPIO          12
 #define BOARD_I2C0_SCL_GPIO          13
-#define BOARD_I2C0_FREQUENCY         100000 /* clock-frequency at boot */
+#define BOARD_I2C0_FREQUENCY         1000000 /* clock-frequency at boot */
 #define BOARD_LSM6DSOX_I2C_ADDR      0x6a
 #define BOARD_LSM6DSOX_INT1_GPIO     24  /* irq-gpios, active high */
 #define BOARD_LSM6DSOX_INT1_FLAGS    0   /* <&gpio0 24 0>: active high, no pull */

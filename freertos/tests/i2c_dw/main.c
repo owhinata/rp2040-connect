@@ -24,7 +24,8 @@
  * - The start: I2C0's reset, GPIO12 then GPIO13 as Zephyr's pinctrl sets
  *   them (in its order), the I2C0 line; the controller off, the spike
  *   lengths 1, SDA hold kept; i2c0 ready.  A second call does nothing.
- * - WHO_AM_I through i2c_burst_read_dt() at 100 kHz: the commands (0x0f;
+ * - WHO_AM_I through i2c_burst_read_dt() at i2c0's 1 MHz of the start
+ *   (counts 31/31) and then at 100 kHz: the commands (0x0f;
  *   then READ|STOP|RESTART), the byte, IC_TAR, the SCL counts 500/625,
  *   IC_CON with the DMA reads' RX_FIFO_FULL_HLD_CTRL, and without it once
  *   the DMA reads are off.
@@ -791,16 +792,21 @@ static void test_who_am_i(void)
 	assert(who_am_i() == LSM6DSOX_ID);
 	expect_hw(WHO_AM_I_BUS);
 	assert((REG(IC_TAR) & 0x3ff) == LSM6DSOX_ADDR);
-	assert(REG(IC_SS_SCL_HCNT) == 500);
-	assert(REG(IC_SS_SCL_LCNT) == 625);
-	assert(REG(IC_CON) == CON_STD_DMA);
+	/* The first transfer sets i2c0's speed at the start, 1 MHz. */
+	assert(REG(IC_FS_SCL_HCNT) == 31);
+	assert(REG(IC_FS_SCL_LCNT) == 31);
+	assert(REG(IC_CON) == CON_FAST_DMA);
 	assert(REG(IC_RX_TL) == 0);
 	assert(REG(IC_INTR_MASK) == 0);
 	assert((REG(IC_ENABLE) & 1) == 1);
 
-	/* Two in a row: the semaphores are back at 0. */
+	/* Two in a row: the semaphores are back at 0.  At 100 kHz from here. */
+	assert(i2c_configure(i2c0, I2C_MODE_CONTROLLER | I2C_SPEED_SET(I2C_SPEED_STANDARD)) == 0);
 	assert(who_am_i() == LSM6DSOX_ID);
 	expect_hw(WHO_AM_I_BUS_AFTER_READ);
+	assert(REG(IC_SS_SCL_HCNT) == 500);
+	assert(REG(IC_SS_SCL_LCNT) == 625);
+	assert(REG(IC_CON) == CON_STD_DMA);
 
 	/* The DMA reads off: IC_CON without RX_FIFO_FULL_HLD_CTRL. */
 	i2c_dw_rp2040_dma_set_enabled(false);

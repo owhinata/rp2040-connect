@@ -178,7 +178,7 @@ imu status
 imu stop
 ```
 
-`imu start` は引数を取りません。センサーを 6667 Hz・FIFO watermark 128・I²C 1 MHz に設定し、
+`imu start` は引数を取りません。センサーを 6667 Hz・FIFO watermark 128 に設定し（I²C は起動時から 1 MHz）、
 止めるまで送信を続けます。
 
 - **MQTT サーバーが動いていないとき**：取得は始まり、繋がるまでのバッチは破棄して数えます。
@@ -419,5 +419,6 @@ NINA は 0001〜0006 のファームウェアです。
   ありません）。
 - 2026-11-14 のイメージ（boot2 の分周 4、C ライブラリの `memcpy`・`memset` と割り算、NINA はパッチ 0001・0002 のファームウェア）では、
   送信中の `cpu_active` が Zephyr 版 62.6〜63.3 %、NuttX 版 67.7〜67.9 % でした。
-- `sensor stream` は、Zephyr 版と NuttX 版のどちらでも ODR を上げると `Read failed` で止まりました。Zephyr 版は
-  833 Hz 以上、NuttX 版は 3333 Hz 以上です（2026-11-14 のイメージ、watermark 128、USB コンソール、各 1 回）。
+- `sensor stream` が止まらずに動いた ODR は、FreeRTOS 版が 6667 Hz まで、NuttX 版が 3333 Hz まで、Zephyr 版が 833 Hz までです
+  （2026-11-23 のイメージ、再起動の直後、watermark 32、USB コンソール、各 30 秒を 1 回）。それより上では、表示が追いつかずに
+  `Read failed` で止まります。

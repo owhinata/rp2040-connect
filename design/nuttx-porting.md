@@ -733,7 +733,7 @@ is decimal.
 | `i2c direct_read i2c@40044000 6a 1` | `i2c get -a 6a` | Without `-r` no register is sent |
 | `i2c write_byte i2c@40044000 6a 07 5a` | `i2c set -a 6a -r 07 5a` | |
 | `i2c write i2c@40044000 6a 07 5a 00` | none | The NuttX tool writes one value at a time (two bytes with `-w 16`) |
-| `i2c speed i2c@40044000 3` | `-f 1000000` (kept for later commands) | The Zephyr build changes the bus setting, and `imu start` sets 1 MHz there; the NuttX tool only changes its own setting |
+| `i2c speed i2c@40044000 3` | `-f 1000000` (kept for later commands) | The Zephyr build changes the bus setting (1 MHz at the start); the NuttX tool only changes its own setting |
 | `i2c recover i2c@40044000` | `i2c reset` | Both fail with `-ENOTSUP` (the board has no recovery routine) |
 
 `i2c verf` writes and reads back, so it changes the sensor's settings. The `i2c` tool runs at
@@ -779,8 +779,8 @@ runs on the Zephyr build's own files (`common/drivers/lsm6dso/port/zephyr/`) (be
   `CTRL2_G`=0x0c, `CTRL3_C`=0x44, `CTRL9_XL`=0xe2, and `FIFO_CTRL1`..`4`, `COUNTER_BDR_REG1`/`2`,
   `INT1_CTRL`, `INT2_CTRL`, `CTRL4_C`..`CTRL8_XL` and `CTRL10_C` are 0 (see
   `i2c dump -a 6a -r 00 32`).
-- **I2C**: the speed at boot is the devicetree's 100 kHz; `i2c_configure()` (a copy of Zephyr's
-  API) changes it to 400 kHz or 1 MHz (the Zephyr build's `imu start` sets 1 MHz). A NuttX I2C
+- **I2C**: the speed at boot is 1 MHz, as in the Zephyr build's devicetree (`BOARD_I2C0_FREQUENCY` in
+  `board.h`); `i2c_configure()` (a copy of Zephyr's API) changes it to 100 kHz or 400 kHz. A NuttX I2C
   transfer carries its frequency in each message, so the I2C0 device (the layer's NuttX implementation, `nuttx/drivers/compat`)
   keeps this speed and the driver's transfers use it. The `i2c` tool runs at its own `-f`
   frequency and does not change the driver's speed (the Zephyr build's `i2c speed` changes the

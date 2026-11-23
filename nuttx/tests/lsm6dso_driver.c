@@ -429,6 +429,8 @@ static void test_init_errors(void)
 	reset_logs();
 	transfers = 0;
 	nack_at = 0;
+	/* The board binds i2c0 at BOARD_I2C0_FREQUENCY, 1 MHz. */
+	expect_frequency = 1000000;
 	assert(rp2040_lsm6dso_initialize(&fake_master) == -EIO);
 	assert(!device_is_ready(imu()) && imu()->state->init_res == EIO);
 	assert(strcmp(log_text, "<inf> LSM6DSO: Initialize device lsm6dsox@6a\n"

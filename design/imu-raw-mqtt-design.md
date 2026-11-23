@@ -52,6 +52,8 @@ I2C at 1 MHz, timestamp decimation 8, a 2.4 GHz connection to a UGREEN USB adapt
 an access point on the PC, and `imu-host check` as the receiver (at the time, the script it was moved from). **Each test was
 run once**; none of this is a long-term guarantee.
 
+I2C0 has this setting from the start, for the FIFO streams (`imu start`, `sensor stream`) and for single reads
+and writes alike (100 kHz cannot empty the FIFO from 833 Hz up).
 "I2C at 1 MHz" is the speed class asked for (Fast-mode Plus); the real SCL is faster than 1 MHz. With the
 DesignWare driver's counts and the 125 MHz clock, SCL is high for 39 clocks (312 ns) and low for 32
 (256 ns), and a recorded read of 3584 bytes in 22.9 ms puts it at about 1.4 MHz (the waveform was not

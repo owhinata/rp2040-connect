@@ -644,7 +644,7 @@ Zephyr 版の `i2c` コマンド（Zephyr のシェル）は移さず、NuttX �
 | `i2c direct_read i2c@40044000 6a 1` | `i2c get -a 6a` | `-r` を付けなければレジスターを送らない |
 | `i2c write_byte i2c@40044000 6a 07 5a` | `i2c set -a 6a -r 07 5a` | |
 | `i2c write i2c@40044000 6a 07 5a 00` | なし | NuttX 版は 1 回に 1 つの値（`-w 16` で 2 バイト） |
-| `i2c speed i2c@40044000 3` | `-f 1000000`（以後のコマンドに残る） | Zephyr 版はバスの設定を変え、`imu start` も 1 MHz に変える。NuttX 版はツールの設定だけ |
+| `i2c speed i2c@40044000 3` | `-f 1000000`（以後のコマンドに残る） | Zephyr 版はバスの設定を変える（起動時は 1 MHz）。NuttX 版はツールの設定だけ |
 | `i2c recover i2c@40044000` | `i2c reset` | どちらも `-ENOTSUP` で失敗する（このボードにはリカバリーの処理がない） |
 
 `i2c verf` は書き込んで読み返すコマンドなので、センサーの設定を書き換えます。`i2c` ツールは優先度 100 で
@@ -684,8 +684,8 @@ LF に直して同一）で行います。FIFO のストリーム（INT1 の割�
   初期化後のレジスターは `CTRL1_XL`=0x0c、`CTRL2_G`=0x0c、`CTRL3_C`=0x44、`CTRL9_XL`=0xe2、
   `FIFO_CTRL1`〜`4`・`COUNTER_BDR_REG1`/`2`・`INT1_CTRL`・`INT2_CTRL`・`CTRL4_C`〜`CTRL8_XL`・`CTRL10_C` が 0 です
   （`i2c dump -a 6a -r 00 32` で確認できます）。
-- **I2C**: 起動時の速さはデバイスツリーの 100 kHz で、`i2c_configure()`（Zephyr の API の写し）で 400 kHz・1 MHz に
-  変えられます（Zephyr 版の `imu start` は 1 MHz にします）。NuttX の I2C はメッセージごとに周波数を持つので、
+- **I2C**: 起動時の速さは Zephyr 版のデバイスツリーと同じ 1 MHz（`board.h` の `BOARD_I2C0_FREQUENCY`）で、`i2c_configure()`（Zephyr の API の写し）で
+  100 kHz・400 kHz に変えられます。NuttX の I2C はメッセージごとに周波数を持つので、
   この速さは I2C0 のデバイス（互換層の NuttX の実装、`nuttx/drivers/compat`）が覚えていて、ドライバーの転送だけに使います。`i2c`
   ツールは自分の `-f` の周波数で動き、ドライバーの速さを変えません（Zephyr 版の `i2c speed` はバスの設定を
   変えます）。レジスターの読み出しは 1 回の転送（レジスター番号の書き込み → RESTART → 読み出し）、書き込みは

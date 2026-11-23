@@ -545,7 +545,7 @@ patched driver with the same branches, order and values.
 | `common/drivers/lsm6dso/include/lsm6dso.h` | The extended API: the FIFO words and their parser (`lsm6dso_fifo.h`), the calibration's types (`lsm6dso_cal.h`) and calls, the FIFO statistics, the private attributes, the stop of a stream, the timestamp read; `<zephyr/drivers/sensor/lsm6dso.h>` through `common/compat/zephyr/drivers/sensor/lsm6dso.h` |
 | `common/drivers/lsm6dso/port/zephyr/lsm6dso_rtio_stream.c` | The FIFO stream's RTIO side (below): the device's INT1 line, RTIO's request handed to the core's stream, the stop and the settings of the extended API. The same file as the Zephyr version's |
 | `common/drivers/lsm6dso/port/zephyr/lsm6dso_decoder.[ch]` | The decoders of the stream's and the single reads' buffers (`get_decoder`). The same files as the Zephyr version's |
-| the board's `src/rp2040_lsm6dso.[ch]` | Makes I2C0 the compatibility layer's bus device (`i2c0`, 100 kHz) and initializes `lsm6dsox` (from `rp2040_bringup()`) |
+| the board's `src/rp2040_lsm6dso.[ch]` | Makes I2C0 the compatibility layer's bus device (`i2c0`, 1 MHz) and initializes `lsm6dsox` (from `rp2040_bringup()`) |
 | the board's `src/rp2040_gpio_os.c` | GPIO bank 0 for the compatibility layer's `gpio0` (input set-up, levels, edge and level interrupts); `<gpio_os.h>` (`common/compat`) |
 
 What the driver's calls into the system are on NuttX (those of the core through

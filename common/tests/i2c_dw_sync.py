@@ -476,8 +476,20 @@ def main():
             ck.eq("i2c0's devicetree properties that the core takes as absent", props, [])
             ck.eq('transfer timeout (ms)', int(config['CONFIG_I2C_TRANSFER_TIMEOUT_MS']),
                   int(ch['I2C_DW_TRANSFER_TIMEOUT_MS'][1]))
-            ck.eq('clock-frequency of i2c0', one(r'clock-frequency = <\s*(\w+)\s*>', node, 'clock')[0],
-                  '0x186a0')
+            # The speed of i2c0 at the start: Zephyr's devicetree (the application's
+            # overlay), the FreeRTOS binding's I2C0_SPEED and the NuttX board's
+            # BOARD_I2C0_FREQUENCY.
+            here = os.path.dirname(os.path.abspath(__file__))
+            ck.eq('clock-frequency of i2c0 (Zephyr, FreeRTOS, NuttX)',
+                  [int(one(r'clock-frequency = <\s*(\w+)\s*>', node, 'clock')[0], 0),
+                   one(r'#define I2C0_SPEED\s+(\w+)',
+                       read(os.path.join(here, '..', 'drivers', 'i2c_dw', 'port', 'freertos',
+                                         'i2c_dw_instance.h')), 'I2C0_SPEED')[0],
+                   int(one(r'#define BOARD_I2C0_FREQUENCY\s+(\d+)',
+                           read(os.path.join(here, '..', '..', 'nuttx', 'boards',
+                                             'arduino-nano-rp2040-connect', 'include',
+                                             'board.h')), 'BOARD_I2C0_FREQUENCY')[0])],
+                  [1000000, 'I2C_SPEED_FAST_PLUS', 1000000])
         else:
             print('skip i2c_dw_sync .config and zephyr.dts (no build)')
 

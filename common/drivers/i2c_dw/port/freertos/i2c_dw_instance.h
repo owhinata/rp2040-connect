@@ -102,13 +102,19 @@
 #define I2C0_SDA_GPIO 12
 #define I2C0_SCL_GPIO 13
 #define I2C0_PULL_UP  false
+/* The Zephyr build's clock-frequency of i2c0 (its app.overlay): the
+ * LSM6DSOX is alone on this bus, and its FIFO from 833 Hz up fills faster
+ * than 100 kHz can empty it, at 6667 Hz faster than 400 kHz can.
+ */
+#define I2C0_SPEED    I2C_SPEED_FAST_PLUS
 #define I2C1_SDA_GPIO 18 /* D6 */
 #define I2C1_SCL_GPIO 19 /* D7 */
 #define I2C1_PULL_UP  true
+#define I2C1_SPEED    I2C_SPEED_STANDARD
 
 /* The speed class that i2c_configure() last set on each device (at first
- * the devicetree's clock-frequency, I2C_BITRATE_STANDARD, which
- * i2c_dw_init_config() sets).
+ * I2C0_SPEED or I2C1_SPEED; the core starts the controller at
+ * I2C_SPEED_STANDARD and the first transfer sets the device's).
  */
 #ifdef CONFIG_I2C_DW_I2C0
 static volatile uint32_t i2c0_speed;
@@ -283,7 +289,7 @@ static inline int i2c_dw_os_initialize(const struct device *dev, struct i2c_dw_d
 		return ret;
 	}
 
-	I2C_DW_OS_SPEED(dw) = dw->speed;
+	I2C_DW_OS_SPEED(dw) = I2C_DW_INST(dw, I2C0_SPEED, I2C1_SPEED);
 	dw->ready = true;
 	dev->state->init_res = 0;
 	dev->state->initialized = true;

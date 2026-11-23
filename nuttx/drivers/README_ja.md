@@ -483,7 +483,7 @@ DMA の部分を同じ分岐・順序・値で写したものです。
 | `common/drivers/lsm6dso/include/lsm6dso.h` | 拡張 API（FIFO のワードとその解析 `lsm6dso_fifo.h`、校正の型 `lsm6dso_cal.h` と呼び出し、FIFO の統計、独自属性、ストリームの停止、タイムスタンプの読み取り）。`common/compat/zephyr/drivers/sensor/lsm6dso.h` を通して `<zephyr/drivers/sensor/lsm6dso.h>` |
 | `common/drivers/lsm6dso/port/zephyr/lsm6dso_rtio_stream.c` | FIFO のストリームの RTIO 側（下）。デバイスの INT1 の線、RTIO の要求をコアのストリームへ渡すこと、拡張 API の停止と設定。Zephyr 版と同じファイル |
 | `common/drivers/lsm6dso/port/zephyr/lsm6dso_decoder.[ch]` | ストリームと単発取得のバッファーのデコーダー（`get_decoder`）。Zephyr 版と同じファイル |
-| ボードの `src/rp2040_lsm6dso.[ch]` | I2C0 を互換層のバスのデバイス（`i2c0`、100 kHz）にし、`lsm6dsox` を初期化する（`rp2040_bringup()` から） |
+| ボードの `src/rp2040_lsm6dso.[ch]` | I2C0 を互換層のバスのデバイス（`i2c0`、1 MHz）にし、`lsm6dsox` を初期化する（`rp2040_bringup()` から） |
 | ボードの `src/rp2040_gpio_os.c` | 互換層の `gpio0` のための GPIO バンク 0（入力の設定、レベルの読み出し、エッジ・レベルの割り込み）。`<gpio_os.h>`（`common/compat`） |
 
 ドライバーが使う OS の機能の、NuttX 版での中身（コアのものは `port/zephyr/lsm6dso_os_impl.h`・`lsm6dso_stream_req_impl.h` を通し、つなぎのものは直接）:

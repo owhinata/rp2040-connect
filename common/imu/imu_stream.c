@@ -10,7 +10,6 @@
 #include <string.h>
 #include <zephyr/device.h>
 #include <zephyr/drivers/hwinfo.h>
-#include <zephyr/drivers/i2c.h>
 #include <zephyr/drivers/sensor.h>
 #include <zephyr/kernel.h>
 #include <zephyr/net/net_if.h>
@@ -628,7 +627,6 @@ static int next_session(uint8_t session[16])
 static int cmd_start(const struct shell *sh, size_t argc, char **argv)
 {
 	const struct device *dev = DEVICE_DT_GET(DT_NODELABEL(lsm6dsox));
-	const struct device *bus = DEVICE_DT_GET(DT_BUS(DT_NODELABEL(lsm6dsox)));
 	struct imu_raw_mqtt_config *cfg = &transport_config;
 	struct sensor_value odr = {.val1 = DEFAULT_ODR_HZ};
 	unsigned long number, watermark = DEFAULT_WATERMARK;
@@ -638,7 +636,7 @@ static int cmd_start(const struct shell *sh, size_t argc, char **argv)
 
 	ARG_UNUSED(argc);
 	ARG_UNUSED(argv);
-	if (!device_is_ready(dev) || !device_is_ready(bus)) {
+	if (!device_is_ready(dev)) {
 		return -ENODEV;
 	}
 	if (atomic_get(&restart_blocked)) {
@@ -669,11 +667,7 @@ static int cmd_start(const struct shell *sh, size_t argc, char **argv)
 		odr.val1 = (int32_t)number;
 	}
 	(void)kv_number(KEY_WATERMARK, &watermark, 1, LSM6DSO_FIFO_MAX_WATERMARK);
-	/* 1 MHz: at 6667 Hz the FIFO fills faster than 400 kHz can empty it. */
-	rc = i2c_configure(bus, I2C_MODE_CONTROLLER | I2C_SPEED_SET(I2C_SPEED_FAST_PLUS));
-	if (!rc) {
-		rc = sensor_attr_set(dev, SENSOR_CHAN_ACCEL_XYZ, SENSOR_ATTR_SAMPLING_FREQUENCY, &odr);
-	}
+	rc = sensor_attr_set(dev, SENSOR_CHAN_ACCEL_XYZ, SENSOR_ATTR_SAMPLING_FREQUENCY, &odr);
 	if (!rc) {
 		rc = sensor_attr_set(dev, SENSOR_CHAN_GYRO_XYZ, SENSOR_ATTR_SAMPLING_FREQUENCY, &odr);
 	}

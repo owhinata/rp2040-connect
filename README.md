@@ -182,8 +182,8 @@ imu status
 imu stop
 ```
 
-`imu start` takes no arguments. It sets the sensor to 6667 Hz, FIFO watermark 128 and I2C at
-1 MHz, and streams until stopped.
+`imu start` takes no arguments. It sets the sensor to 6667 Hz and FIFO watermark 128 (the I2C bus
+runs at 1 MHz from the start), and streams until stopped.
 
 - **No MQTT server running**: acquisition starts, and batches are discarded and counted until
   the connection is made. Delivery starts from that point.
@@ -436,6 +436,6 @@ The NINA ran the firmware with patches 0001 to 0006.
 - With the images of 2026-11-14 (boot2 at clock divider 4, the C library's `memcpy`, `memset` and division,
   the NINA firmware with patches 0001 and 0002), the `cpu_active` while sending was 62.6 to 63.3% in the
   Zephyr build and 67.7 to 67.9% in the NuttX build.
-- `sensor stream` stopped with `Read failed` at higher output data rates in both the Zephyr and the NuttX
-  build: at 833 Hz and above in the Zephyr build, at 3333 Hz and above in the NuttX build (the images of
-  2026-11-14, watermark 128, USB console, one run each).
+- `sensor stream` ran without stopping up to 6667 Hz in the FreeRTOS build, up to 3333 Hz in the NuttX build and up
+  to 833 Hz in the Zephyr build (the images of 2026-11-23, straight after a restart, watermark 32, USB console,
+  one run of 30 seconds each). Above that the output does not keep up and it stops with `Read failed`.

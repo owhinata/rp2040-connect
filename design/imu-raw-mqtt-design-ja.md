@@ -48,6 +48,7 @@ PC 上のアプリケーションに MQTT で送信する。各軸はセンサ�
 タイムスタンプ decimation 8、UGREEN の USB アダプターを PC 上で AP にした 2.4 GHz 接続、
 受信は `imu-host check`（試験時は、同じ処理の移行前のスクリプト）。**各試験は 1 回ずつ**であり、長期の保証ではない。
 
+I²C0 は起動時からこの設定で、FIFO のストリーム（`imu start`、`sensor stream`）も単発の読み書きも同じ速さで行う（100 kHz では、833 Hz 以上の FIFO を読み切れない）。
 「I²C 1 MHz」は速度の区分（Fast-mode Plus）の指定で、実際の SCL は 1 MHz を超える。DesignWare のドライバーの数え方では、
 125 MHz のクロックで SCL の High が 39 クロック（312 ns）、Low が 32 クロック（256 ns）になり、3584 バイトの読み出しが
 22.9 ms だった記録から見積もると約 1.4 MHz である（波形は測っていない）。LSM6DSOX の規格（1 MHz 以下、Low は 0.50 µs 以上、High は 0.26 µs 以上）の

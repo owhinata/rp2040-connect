@@ -2944,3 +2944,26 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
 - A のあとのイメージ: Zephyr 378,360 B、NuttX 287,184 B、FreeRTOS 240,920 B。**基準: `snapshot-1123f`**。ホストテスト 58・69・67。FreeRTOS 版でアプリの送信 19.4%・欠番 0（アプリの経路はデコーダーを通らない）。
 - 残り: `sensor stream` のときにバスを 1 MHz にする方法（ユーザーの判断待ち）。README の「ODR を上げると止まる」の記述はそのあとで直す。
 - 実機: FreeRTOS 版（A を入れたビルド）。
+
+## I2C0 を起動時から 1 MHz に（2026-11-23、ユーザーの決定: 案 1）
+
+- Zephyr: `app.overlay` の `&i2c0 { clock-frequency = <I2C_BITRATE_FAST_PLUS>; }`。NuttX: `board.h` の `BOARD_I2C0_FREQUENCY` 1000000（互換層のバスのデバイスが持つ速さ。`i2c` ツールは自分の `-f`）。
+  FreeRTOS: `i2c_dw_instance.h` の `I2C0_SPEED`（`I2C1_SPEED` は 100 kHz のまま）。コアはコントローラーを 100 kHz で始め、最初の転送がデバイスの速さに合わせる（コアは変えていない）。
+  `imu start` の `i2c_configure()` と、そのためのバスのデバイスの参照は削除。
+- 検査: `i2c_dw_sync.py` は「Zephyr のデバイスツリー = FreeRTOS の `I2C0_SPEED` = NuttX の `BOARD_I2C0_FREQUENCY`」を比べる形に。FreeRTOS の I2C のテストは最初の転送が 1 MHz（31/31）であることを確かめ、
+  そのあと 100 kHz に設定して従来の流れ。NuttX の `lsm6dso_driver` はボードがバスをつないだあとの周波数を 1 MHz に。ホストテスト 58・69・67。
+- 速さを変えるコマンド: Zephyr 版・FreeRTOS 版は `i2c speed i2c@40044000 <0〜3>`（バスの設定が変わる）、NuttX 版は `i2c … -f <Hz>`（ツールの設定だけ）。
+- イメージ: Zephyr 378,328 B、NuttX 287,088 B、FreeRTOS 241,248 B。**基準: `snapshot-1123g`**。
+- 実機（再起動の直後、`imu start` を通さずに `sensor stream … on fifo_wm incl`、watermark 32、USB、各 30 秒）:
+
+  | レート | FreeRTOS | NuttX | Zephyr |
+  |---|---|---|---|
+  | 104 Hz | 動く（2.6%、1.7 kB/秒） | 動く | 動く |
+  | 833 Hz | 動く（13.6%、13.4 kB/秒） | 動く（13.4 kB/秒） | 動く（12.5 kB/秒） |
+  | 3333 Hz | 動く（51.9%、53.9 kB/秒） | 動く（46.3 kB/秒） | 0.2 秒で -105 |
+  | 6667 Hz | 動く（37.6%、16.6 kB/秒） | 0.2 秒で -105 | 0.1 秒で -105 |
+
+  アプリの送信: FreeRTOS 19.5%、Zephyr 21.4%、NuttX 23.6%、欠番 0。
+- 残る -105: 表示が追いつかないとバッチが大きくなり、シェルのプール（2 kB、約 280 語）に入りきらない語数になったところで止まる。FreeRTOS 版の 6667 Hz は、バッチが大きくなったところで釣り合って続く
+  （表示が 3333 Hz より少ないのはそのため）。対策の候補は、シェルのプールを FIFO 全体（512 語、約 3.6 kB）が入る大きさにすること（上流のシェルへのパッチ 0006 と写しの変更）。未着手。
+- 実機: NuttX 版（この変更のビルド）。
