@@ -419,6 +419,6 @@ NINA は 0001〜0006 のファームウェアです。
   ありません）。
 - 2026-11-14 のイメージ（boot2 の分周 4、C ライブラリの `memcpy`・`memset` と割り算、NINA はパッチ 0001・0002 のファームウェア）では、
   送信中の `cpu_active` が Zephyr 版 62.6〜63.3 %、NuttX 版 67.7〜67.9 % でした。
-- `sensor stream` が止まらずに動いた ODR は、FreeRTOS 版が 6667 Hz まで、NuttX 版が 3333 Hz まで、Zephyr 版が 833 Hz までです
-  （2026-11-23 のイメージ、再起動の直後、watermark 32、USB コンソール、各 30 秒を 1 回）。それより上では、表示が追いつかずに
-  `Read failed` で止まります。
+- `sensor stream` が止まらずに動いた ODR は、FreeRTOS 版と NuttX 版が 6667 Hz まで、Zephyr 版が 3333 Hz までです
+  （2026-11-23 のイメージ、再起動の直後、watermark 32、USB コンソール、各 30 秒を 1 回）。表示が追いつかないときは、
+  1 回に読む量が大きくなります（FIFO 全体まで）。Zephyr 版の 6667 Hz では FIFO があふれ、`Read failed: -139` で止まります。

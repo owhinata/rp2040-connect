@@ -63,7 +63,7 @@ patches:
       when the controller refuses its zero-length probes (the DesignWare
       driver of patch 0003), instead of reporting "0 devices found".
   - path: zephyr/0006-sensor-shell-fifo-attributes.patch
-    sha256sum: 34f8fc0ad9bdf422f51441db9b9d2f72d2188cfe41d7a734107428e9ccfa33d4
+    sha256sum: 127abe67c210aad4ad9276f31a9c58a4e528fa9ca25724905a5e1fa1e5ab4e82
     module: zephyr
     author: rp2040-connect
     email: noreply@example.invalid

@@ -278,8 +278,8 @@ static struct sensor_read_config iodev_sensor_shell_read_config = {
 };
 RTIO_IODEV_DEFINE(iodev_sensor_shell_read, &__sensor_iodev_api, &iodev_sensor_shell_read_config);
 
-/* Create the RTIO context to service the reading */
-RTIO_DEFINE_WITH_MEMPOOL(sensor_read_rtio, 8, 8, 32, 64, 4);
+/* Create the RTIO context to service the reading: the pool holds a whole LSM6DSO FIFO */
+RTIO_DEFINE_WITH_MEMPOOL(sensor_read_rtio, 8, 8, 64, 64, 4);
 
 static int parse_named_int(const char *name, const char *const heystack[], size_t count)
 {

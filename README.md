@@ -436,6 +436,7 @@ The NINA ran the firmware with patches 0001 to 0006.
 - With the images of 2026-11-14 (boot2 at clock divider 4, the C library's `memcpy`, `memset` and division,
   the NINA firmware with patches 0001 and 0002), the `cpu_active` while sending was 62.6 to 63.3% in the
   Zephyr build and 67.7 to 67.9% in the NuttX build.
-- `sensor stream` ran without stopping up to 6667 Hz in the FreeRTOS build, up to 3333 Hz in the NuttX build and up
-  to 833 Hz in the Zephyr build (the images of 2026-11-23, straight after a restart, watermark 32, USB console,
-  one run of 30 seconds each). Above that the output does not keep up and it stops with `Read failed`.
+- `sensor stream` ran without stopping up to 6667 Hz in the FreeRTOS and NuttX builds and up to 3333 Hz in the
+  Zephyr build (the images of 2026-11-23, straight after a restart, watermark 32, USB console, one run of 30
+  seconds each). When the output does not keep up, the batches grow (up to the whole FIFO); in the Zephyr build
+  at 6667 Hz the FIFO overruns and the stream stops with `Read failed: -139`.
