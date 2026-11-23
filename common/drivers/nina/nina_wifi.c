@@ -1,10 +1,30 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /* The NINA-W102's Wi-Fi operations (nina_wifi.h), on the module's commands
- * and the kernel services of nina_os.h.  The state of the connection is
- * under nina_os_wifi_lock(); the values that the threads also read
- * without it (the generation, the generation of the last request, whether
- * a scan runs) are C11 atomics, of which only loads and stores are used:
- * every change that reads the value first is made under the lock.
+ * and the kernel services of nina_os.h.  The state of the connection and
+ * the requests to the Wi-Fi thread are under nina_os_wifi_lock(); the
+ * values that the threads also read without it (the generation, the
+ * generation of the last request, whether a scan runs) are C11 atomics, of
+ * which only loads and stores are used: every change that reads the value
+ * first is made under the lock.
+ *
+ * One thread (nina_wifi_thread()) does what takes time, in one state at a
+ * time:
+ *
+ *   IDLE        takes the pending request, else waits for one
+ *               (nina_os_wifi_wait()) until the monitor's deadline
+ *   CONNECTING  connect_once(): the module's state every
+ *               NINA_CONNECT_POLL_MS, at most NINA_CONNECT_CHECKS times
+ *   SCANNING    scan_once(): the asynchronous scan polled every
+ *               NINA_SCAN_POLL_MS, at most NINA_SCAN_WAIT_MS, then the
+ *               results (0x27 and the four commands of each network)
+ *
+ * The monitor's check (monitor_once()) runs at its deadline in each of
+ * them: in IDLE when the wait ends, in CONNECTING and SCANNING within
+ * their sleeps (busy_sleep_ms()), which are split at the deadline; the
+ * next deadline is NINA_MONITOR_MS after the check's end.  A connection
+ * that comes up starts the period again from there.  A scan and a
+ * connection refuse each other (-EBUSY) while one is requested or runs,
+ * so at most one request is pending at a time.
  */
 
 #include <errno.h>
@@ -32,7 +52,7 @@
 #define NINA_SCAN_WAIT_MS 10000
 #endif
 
-/* The connect thread asks for the connection state up to
+/* A connection attempt asks for the connection state up to
  * NINA_CONNECT_CHECKS times, NINA_CONNECT_POLL_MS apart; the monitor asks
  * every NINA_MONITOR_MS while connected, and a link reported down
  * NINA_MONITOR_LOST_CHECKS times in a row is lost.
@@ -69,6 +89,22 @@ static nina_wifi_scan_cb_t scan_cb;
 static void *scan_arg;
 static bool scan_reconnect;
 static unsigned int disconnected_checks;
+
+/* The requests to the Wi-Fi thread, under the lock. */
+#define WIFI_REQUEST_SCAN    (1u << 0)
+#define WIFI_REQUEST_CONNECT (1u << 1)
+static unsigned int requests;
+/* The monitor's next check on nina_os_uptime_ms(); the Wi-Fi thread's own. */
+static int64_t monitor_deadline;
+
+static void busy_sleep_ms(uint32_t ms);
+
+/* Under the lock: makes WHICH pending and wakes the Wi-Fi thread. */
+static void request_post(unsigned int which)
+{
+	requests |= which;
+	nina_os_wifi_post();
+}
 
 static int request_one(uint8_t cmd, const uint8_t *data, size_t length, uint8_t *result,
 		       size_t cap, size_t *n)
@@ -112,7 +148,7 @@ static int scan_async(void)
 		return -EIO;
 	}
 	for (;;) {
-		nina_os_sleep_ms(NINA_SCAN_POLL_MS);
+		busy_sleep_ms(NINA_SCAN_POLL_MS);
 		ret = request_one(NINA_CMD_GET_SCAN_STATE, NULL, 0, &state, 1, &n);
 		if (ret || n != 1) {
 			return ret ? ret : -EPROTO;
@@ -133,7 +169,9 @@ static int scan_async(void)
 	}
 }
 
-/* One request of the scan thread; RECORDS takes the answer of 0x27. */
+/* SCANNING: the scan that nina_wifi_scan() requested; RECORDS takes the
+ * answer of 0x27.
+ */
 static void scan_once(uint8_t *records, size_t cap)
 {
 	size_t len, offset = 0, n;
@@ -143,7 +181,6 @@ static void scan_once(uint8_t *records, size_t cap)
 	bool reconnect;
 	int ret;
 
-	nina_os_wifi_wait(NINA_OS_WIFI_SCAN);
 	cb = scan_cb;
 	arg = scan_arg;
 	reconnect = scan_reconnect;
@@ -202,15 +239,6 @@ static void scan_once(uint8_t *records, size_t cap)
 	}
 }
 
-void nina_wifi_scan_thread(void)
-{
-	uint8_t records[NINA_WIFI_SCAN_MAX * (NINA_WIFI_SSID_MAX_LEN + 1)];
-
-	for (;;) {
-		scan_once(records, sizeof(records));
-	}
-}
-
 int nina_wifi_scan(nina_wifi_scan_cb_t cb, void *arg)
 {
 	bool was_connected;
@@ -242,11 +270,14 @@ int nina_wifi_scan(nina_wifi_scan_cb_t cb, void *arg)
 	if (was_connected) {
 		ops->disconnected(NINA_WIFI_DISCONNECT_SCAN);
 	}
-	nina_os_wifi_post(NINA_OS_WIFI_SCAN);
+	/* After the event: the scan's results follow it. */
+	nina_os_wifi_lock();
+	request_post(WIFI_REQUEST_SCAN);
+	nina_os_wifi_unlock();
 	return 0;
 }
 
-/* One request of the connect thread. */
+/* CONNECTING: the attempt that nina_wifi_connect() started. */
 static void connect_once(void)
 {
 	uint8_t value, ip[12];
@@ -254,7 +285,6 @@ static void connect_once(void)
 	int ret = -ETIMEDOUT;
 	long id;
 
-	nina_os_wifi_wait(NINA_OS_WIFI_CONNECT);
 	id = atomic_load(&request_generation);
 
 	for (int i = 0; i < NINA_CONNECT_CHECKS && id == atomic_load(&generation); i++) {
@@ -293,6 +323,8 @@ static void connect_once(void)
 					break;
 				}
 				connected = true;
+				/* The monitor's period starts with the link. */
+				monitor_deadline = nina_os_uptime_ms() + NINA_MONITOR_MS;
 				ops->link_up();
 				nina_os_wifi_unlock();
 				ret = 0;
@@ -303,7 +335,7 @@ static void connect_once(void)
 		 * the new asynchronous connection attempt is still
 		 * starting. */
 		ret = -ETIMEDOUT;
-		nina_os_sleep_ms(NINA_CONNECT_POLL_MS);
+		busy_sleep_ms(NINA_CONNECT_POLL_MS);
 	}
 
 	nina_os_wifi_lock();
@@ -312,13 +344,6 @@ static void connect_once(void)
 	}
 	connecting = false;
 	nina_os_wifi_unlock();
-}
-
-void nina_wifi_connect_thread(void)
-{
-	for (;;) {
-		connect_once();
-	}
 }
 
 int nina_wifi_connect(const struct nina_wifi_connect_params *params)
@@ -371,7 +396,7 @@ int nina_wifi_connect(const struct nina_wifi_connect_params *params)
 		return ret ? ret : -EIO;
 	}
 
-	nina_os_wifi_post(NINA_OS_WIFI_CONNECT);
+	request_post(WIFI_REQUEST_CONNECT);
 	nina_os_wifi_unlock();
 	return 0;
 }
@@ -404,7 +429,7 @@ int nina_wifi_disconnect(void)
 	return 0;
 }
 
-/* One pass of the monitor. */
+/* The monitor's check: one status request while connected. */
 static void monitor_once(void)
 {
 	uint8_t state;
@@ -412,7 +437,6 @@ static void monitor_once(void)
 	int ret;
 	bool lost = false;
 
-	nina_os_sleep_ms(NINA_MONITOR_MS);
 	nina_os_wifi_lock();
 	if (!connected) {
 		disconnected_checks = 0;
@@ -440,10 +464,75 @@ static void monitor_once(void)
 	}
 }
 
-void nina_wifi_monitor_thread(void)
+/* The monitor's check and its next deadline, NINA_MONITOR_MS after the
+ * check's end (the period of a sleep after each check).
+ */
+static void monitor_run(void)
 {
+	monitor_once();
+	monitor_deadline = nina_os_uptime_ms() + NINA_MONITOR_MS;
+}
+
+/* nina_os_sleep_ms(MS) in CONNECTING and SCANNING.  When the monitor's
+ * deadline comes before the end, the sleep ends there, the check runs, and
+ * the rest of MS is slept; the next command then follows MS after the
+ * previous one, or after the check if that took longer.
+ */
+static void busy_sleep_ms(uint32_t ms)
+{
+	int64_t now = nina_os_uptime_ms();
+	int64_t end = now + ms;
+
+	if (monitor_deadline > end) {
+		nina_os_sleep_ms(ms);
+		return;
+	}
+	if (monitor_deadline > now) {
+		nina_os_sleep_ms((uint32_t)(monitor_deadline - now));
+	}
+	monitor_run();
+	now = nina_os_uptime_ms();
+	if (end > now) {
+		nina_os_sleep_ms((uint32_t)(end - now));
+	}
+}
+
+/* One pass of the Wi-Fi thread: the monitor's check when its deadline has
+ * come, else the pending request (CONNECTING or SCANNING, then back here),
+ * else IDLE's wait, at most until the deadline.
+ */
+static void wifi_once(uint8_t *records, size_t cap)
+{
+	int64_t left = monitor_deadline - nina_os_uptime_ms();
+	unsigned int taken;
+
+	if (left <= 0) {
+		monitor_run();
+		return;
+	}
+	nina_os_wifi_lock();
+	taken = requests;
+	requests = 0;
+	nina_os_wifi_unlock();
+	if (taken & WIFI_REQUEST_CONNECT) {
+		connect_once();
+	}
+	if (taken & WIFI_REQUEST_SCAN) {
+		scan_once(records, cap);
+	}
+	if (!taken) {
+		/* At most NINA_MONITOR_MS. */
+		nina_os_wifi_wait((uint32_t)left);
+	}
+}
+
+void nina_wifi_thread(void)
+{
+	uint8_t records[NINA_WIFI_SCAN_MAX * (NINA_WIFI_SSID_MAX_LEN + 1)];
+
+	monitor_deadline = nina_os_uptime_ms() + NINA_MONITOR_MS;
 	for (;;) {
-		monitor_once();
+		wifi_once(records, sizeof(records));
 	}
 }
 

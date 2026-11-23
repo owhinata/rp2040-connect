@@ -36,8 +36,10 @@
  * does not end a later wait.
  *
  * With CONFIG_NINA_NET, the Wi-Fi operations' lock (an rmutex of its own)
- * and the requests of their threads (a semaphore each, at most one count,
- * the check and the post in one critical section).
+ * and the Wi-Fi thread's wake-up (one semaphore, at most one count, the
+ * check and the post in one critical section; the wait a timed wait of
+ * MSEC2TICK(ms) ticks: at once after a post before it, at a post during
+ * it, or after its time).
  */
 
 #include <assert.h>
@@ -75,6 +77,7 @@ void nina_poller_edge(void)
 static uint64_t now;            /* ticks of 100 us */
 
 static uint64_t change_at = UINT64_MAX; /* tick of the planned change */
+static uint64_t wifi_post_at = UINT64_MAX; /* tick of a nina_os_wifi_post() */
 static bool change_to_high;     /* the physical level it gives */
 static bool change_after_read;  /* change right after the next read */
 
@@ -102,6 +105,10 @@ static void advance(uint64_t ticks)
 		if (now == irq_edge_at) {
 			irq_edge_at = UINT64_MAX;
 			irq_edge();
+		}
+		if (now == wifi_post_at) {
+			wifi_post_at = UINT64_MAX;
+			nina_os_wifi_post();
 		}
 	}
 }
@@ -534,17 +541,11 @@ void leave_critical_section(irqstate_t flags)
 	critical = 0;
 }
 
-int nxsem_wait_uninterruptible(sem_t *sem)
-{
-	assert(sem->count > 0);
-	sem->count--;
-	return 0;
-}
-
 static void test_wifi(void)
 {
 	rmutex_t *nina, *wifi;
-	sem_t *scan, *connect;
+	sem_t *wake;
+	uint64_t start;
 
 	assert(nina_os_lock() == 0);
 	nina = last_rmutex;
@@ -555,21 +556,33 @@ static void test_wifi(void)
 	nina_os_wifi_unlock();
 	assert(wifi->depth == 0);
 
-	/* Two posts leave one request; the scan's and the connection's are
-	 * apart; each post checks and posts in one critical section. */
+	/* Two posts leave one wake-up, each checked and posted in one critical
+	 * section; a wait then returns at once and takes it. */
 	criticals = 0;
-	nina_os_wifi_post(NINA_OS_WIFI_SCAN);
-	scan = last_posted;
+	nina_os_wifi_post();
+	wake = last_posted;
 	last_posted = NULL;
-	nina_os_wifi_post(NINA_OS_WIFI_SCAN);
-	assert(last_posted == NULL && scan->count == 1);
-	nina_os_wifi_post(NINA_OS_WIFI_CONNECT);
-	connect = last_posted;
-	assert(connect != scan && connect->count == 1);
-	assert(criticals == 3 && !critical);
-	nina_os_wifi_wait(NINA_OS_WIFI_SCAN);
-	nina_os_wifi_wait(NINA_OS_WIFI_CONNECT);
-	assert(scan->count == 0 && connect->count == 0);
+	nina_os_wifi_post();
+	assert(last_posted == NULL && wake->count == 1);
+	assert(criticals == 2 && !critical);
+	waits = 0;
+	start = now;
+	nina_os_wifi_wait(2000);
+	assert(waits == 1 && last_delay == MSEC2TICK(2000) && now == start);
+	assert(wake->count == 0);
+
+	/* No post: the whole time, MSEC2TICK(ms) ticks plus one (2000 ms:
+	 * 20001 ticks of 100 us). */
+	nina_os_wifi_wait(2000);
+	assert(waits == 2 && now == start + 20001 && wake->count == 0);
+
+	/* A post during the wait (another thread's, at a planned tick): the
+	 * wait ends there. */
+	wifi_post_at = now + 5;
+	start = now;
+	nina_os_wifi_wait(1000);
+	assert(waits == 3 && now == start + 5 && wake->count == 0);
+	wifi_post_at = UINT64_MAX;
 }
 
 int main(void)

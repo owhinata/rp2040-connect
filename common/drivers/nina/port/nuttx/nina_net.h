@@ -18,11 +18,10 @@
 
 int nina_net_initialize(void);
 
-/* Starts the core's threads nina_scan_tid, nina_connect_tid and
- * nina_monitor_tid (kernel threads on static stacks, at the priorities and
- * with the stacks of priorities.h), each before the next, where Zephyr
- * starts its static threads: the init task calls it.  0 or the first
- * failure's negative errno.
+/* Starts the core's thread nina_wifi_tid (a kernel thread on a static
+ * stack, at the priority and with the stack of priorities.h) and returns
+ * once it runs, where Zephyr starts its static threads: the init task
+ * calls it.  0 or the negative errno of the thread's creation.
  */
 
 int nina_net_start(void);

@@ -57,8 +57,9 @@
 #define configUSE_TASK_NOTIFICATIONS            1
 /* Index 0 for the Pico SDK (pico_async_context_freertos) and the port's
  * plain notifications, index 1 for the compatibility layer's waits (F02),
- * index 2 for the NINA's socket event waits
- * (common/drivers/nina/port/freertos/nina_os.c), index 3 for the I2C
+ * index 2 for the NINA's waits (the socket events and the Wi-Fi thread's
+ * wake-up, common/drivers/nina/port/freertos/nina_os.c, and the SPI DMA,
+ * nina_bus_dma_rp2040.c), index 3 for the I2C
  * driver's semaphores (common/drivers/i2c_dw/port/freertos/i2c_dw_os_impl.h).
  */
 #define configTASK_NOTIFICATION_ARRAY_ENTRIES   4

@@ -156,7 +156,7 @@ cnina=../common/drivers/nina
 # of the board's GPIO bank 0: ready during the wait, the timeout, a change right after the read,
 # stale wake-ups.  Also the socket events on the IRQ line (GPIO2, with CONFIG_NINA_USRSOCK as
 # nina/Make.defs builds nina_os.c), with the socket loops' waits (nina_wait.c), and the Wi-Fi
-# operations' lock and requests (CONFIG_NINA_NET).
+# operations' lock and the Wi-Fi thread's wake-up (CONFIG_NINA_NET).
 ninaos=(-DCONFIG_NINA_USRSOCK=1 -DCONFIG_NINA_NET=1 -Itests/nina_os_fakes -Itests/fakes -I"$ccompat"
         -I"$cnina/include" -I"$cnina/internal" -I"$cnina/port" -I"$cnina/port/nuttx")
 cc "${flags[@]}" "${ninaos[@]}" -I"$zfakes" -c "$cnina/port/nuttx/nina_os.c" -o "$out/nina_os_os.o"

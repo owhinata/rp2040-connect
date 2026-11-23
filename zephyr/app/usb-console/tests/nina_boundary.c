@@ -24,10 +24,11 @@
  *   end of its time without an edge, and an edge between the caller's
  *   read of the count and its k_sem_take() (the count left ends it at
  *   once); a count left from an earlier edge does not end a later wait.
- * - The Wi-Fi operations' lock and requests (nina_os_wifi_*()): a mutex of
- *   its own taken for ever, and one semaphore of limit 1 for each request
- *   (two posts leave one, the scan's and the connection's apart), taken
- *   for ever.
+ * - The Wi-Fi operations' lock and the Wi-Fi thread's wake-up
+ *   (nina_os_wifi_*()): a mutex of its own taken for ever, and one
+ *   semaphore of limit 1 (two posts leave one), taken with the wait's time
+ *   in K_MSEC(): at once after a post (also one before the wait), after
+ *   the time without one.
  * - With CONFIG_NINA_PASSTHROUGH (as the build has it), the NINA
  *   passthrough mode (common/drivers/nina/include/nina_passthrough.h): while it is
  *   active the bus is never ready, so a request is -ENODEV before any line
@@ -279,7 +280,8 @@ int spi_write(const struct device *dev, const struct spi_config *cfg, const stru
 }
 
 static struct k_mutex *last_mutex;
-static unsigned int forever_takes;
+static unsigned int wifi_takes;
+static bool wifi_take; /* the next k_sem_take() is nina_os_wifi_wait()'s */
 
 int k_mutex_lock(struct k_mutex *lock, k_timeout_t timeout)
 {
@@ -337,13 +339,18 @@ int k_sem_take(struct k_sem *sem, k_timeout_t timeout)
 	 * edge within the timeout runs the interrupt, whose k_sem_reset()
 	 * wakes this waiter with -EAGAIN (its k_sem_give() leaves a count);
 	 * else the time runs out. */
-	/* The Wi-Fi operations' requests: taken for ever, here only when one
-	 * is pending. */
-	if (timeout.us == -1) {
-		assert(sem->count == 1 && sem->limit == 1);
-		sem->count--;
-		forever_takes++;
-		return 0;
+	/* The Wi-Fi thread's wake-up: a count left is taken at once, else the
+	 * time runs out. */
+	if (wifi_take) {
+		wifi_take = false;
+		assert(sem->limit == 1 && timeout.us >= 0);
+		wifi_takes++;
+		if (sem->count) {
+			sem->count--;
+			return 0;
+		}
+		now_us += timeout.us;
+		return -EAGAIN;
 	}
 	if (event_sem_seen && sem == event_sem_seen) {
 		assert(timeout.us >= 0);
@@ -674,6 +681,7 @@ static void test_events(void)
 static void test_wifi(void)
 {
 	struct k_mutex *nina, *wifi;
+	int64_t start;
 
 	(void)nina_os_lock();
 	nina = last_mutex;
@@ -683,16 +691,25 @@ static void test_wifi(void)
 	nina_os_wifi_unlock();
 	assert(nina && wifi && nina != wifi);
 
-	/* Two posts leave one request; each request has its own. */
-	nina_os_wifi_post(NINA_OS_WIFI_SCAN);
-	nina_os_wifi_post(NINA_OS_WIFI_SCAN);
-	nina_os_wifi_post(NINA_OS_WIFI_CONNECT);
-	nina_os_wifi_wait(NINA_OS_WIFI_CONNECT);
-	nina_os_wifi_wait(NINA_OS_WIFI_SCAN);
-	assert(forever_takes == 2);
-	nina_os_wifi_post(NINA_OS_WIFI_SCAN);
-	nina_os_wifi_wait(NINA_OS_WIFI_SCAN);
-	assert(forever_takes == 3);
+	/* Two posts before the wait leave one wake-up: the first wait returns
+	 * at once, the second after its 2000 ms. */
+	start = now_us;
+	nina_os_wifi_post();
+	nina_os_wifi_post();
+	wifi_take = true;
+	nina_os_wifi_wait(2000);
+	assert(wifi_takes == 1 && now_us == start);
+	wifi_take = true;
+	nina_os_wifi_wait(2000);
+	assert(wifi_takes == 2 && now_us == start + 2000000);
+	/* The time in K_MSEC(): 1 ms. */
+	wifi_take = true;
+	nina_os_wifi_wait(1);
+	assert(wifi_takes == 3 && now_us == start + 2001000);
+	nina_os_wifi_post();
+	wifi_take = true;
+	nina_os_wifi_wait(1);
+	assert(wifi_takes == 4 && now_us == start + 2001000);
 }
 
 int main(void)

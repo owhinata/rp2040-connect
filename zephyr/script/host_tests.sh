@@ -20,7 +20,7 @@ run() {
 
 # The shared NINA SPI link (common/drivers/nina/internal/nina_proto.c) on this build's boundary
 # (common/drivers/nina/port/zephyr/nina_bus.c: the devicetree's lines and SPI calls; its
-# nina_os.c: the kernel's, the Wi-Fi operations' lock and requests, and the READY and IRQ edge
+# nina_os.c: the kernel's, the Wi-Fi operations' lock and wake-up, and the READY and IRQ edge
 # interrupts; the socket loops' waits, internal/nina_wait.c), on fakes of the Zephyr
 # calls: framing, reset, READY waits (sampled when the READY callback cannot be added, else on the
 # edge interrupt), the socket events' waits and their start, failed and successful.  With
@@ -71,7 +71,7 @@ run nina_socket "${nina_socket[@]}"
 # The core's Zephyr binding (common/drivers/nina/port/zephyr/nina_net.c, which the test includes) on
 # fakes of the Zephyr declarations it uses and of the core's Wi-Fi functions: the device and its
 # interface's init, Zephyr's scan, connect and status parameters and results, the core's
-# operations on the interface and as Zephyr's events, the Wi-Fi profile's hooks, the threads.
+# operations on the interface and as Zephyr's events, the Wi-Fi profile's hooks, the thread.
 # The operations themselves are common/tests/nina_wifi.c's; the binding on the FreeRTOS build's
 # compatibility layer with the core, end to end, is freertos/tests/wifi.
 run nina_net -std=gnu17 -Wall -Wextra -Werror -I"$app/tests/net_fakes" -I../common/drivers/nina/include \

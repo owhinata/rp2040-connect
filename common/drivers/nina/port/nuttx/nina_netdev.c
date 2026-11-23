@@ -8,8 +8,8 @@
  * the compatibility layer's interface), registers wlan0 (NET_LL_IEEE80211,
  * administratively up, no carrier) and initializes the core
  * (nina_wifi_init(): the MAC address, the module's capabilities), as Zephyr
- * does at boot; nina_net_start() (the init task) starts the core's three
- * threads.  The wireless ioctls of NuttX's wapi (SIOCxIW*, via netdev's
+ * does at boot; nina_net_start() (the init task) starts the core's Wi-Fi
+ * thread.  The wireless ioctls of NuttX's wapi (SIOCxIW*, via netdev's
  * d_ioctl) call the core:
  *
  *   SIOCSIWSCAN      nina_wifi_scan() (a passive scan, an ESSID or
@@ -137,11 +137,9 @@ static uint32_t g_cipher;               /* IW_AUTH_CIPHER_*, 0 unset */
 static uint8_t g_key[WEXT_KEY_MAX];
 static size_t g_key_len;
 
-/* The core's threads (nina_net_start()). */
+/* The core's thread (nina_net_start()). */
 
-static uint8_t g_scan_stack[APP_STACK_NINA_SCAN] aligned_data(8);
-static uint8_t g_connect_stack[APP_STACK_NINA_CONNECT] aligned_data(8);
-static uint8_t g_monitor_stack[APP_STACK_NINA_MONITOR] aligned_data(8);
+static uint8_t g_wifi_stack[APP_STACK_NINA_WIFI] aligned_data(8);
 static sem_t g_thread_started = SEM_INITIALIZER(0);
 
 static void lock(FAR mutex_t *mutex)
@@ -209,7 +207,7 @@ static const struct nina_wifi_ops g_ops =
 
 /* Scan ------------------------------------------------------------------ */
 
-/* In the core's scan thread. */
+/* In the core's Wi-Fi thread. */
 
 static void scan_result(FAR void *arg, int status,
                         FAR const struct nina_wifi_scan_result *result)
@@ -794,32 +792,14 @@ int nina_net_initialize(void)
   return 0;
 }
 
-/* The threads ----------------------------------------------------------- */
+/* The thread ------------------------------------------------------------ */
 
-static int scan_main(int argc, FAR char *argv[])
+static int wifi_main(int argc, FAR char *argv[])
 {
   (void)argc;
   (void)argv;
   nxsem_post(&g_thread_started);
-  nina_wifi_scan_thread();
-  return 0;
-}
-
-static int connect_main(int argc, FAR char *argv[])
-{
-  (void)argc;
-  (void)argv;
-  nxsem_post(&g_thread_started);
-  nina_wifi_connect_thread();
-  return 0;
-}
-
-static int monitor_main(int argc, FAR char *argv[])
-{
-  (void)argc;
-  (void)argv;
-  nxsem_post(&g_thread_started);
-  nina_wifi_monitor_thread();
+  nina_wifi_thread();
   return 0;
 }
 
@@ -827,13 +807,13 @@ static int monitor_main(int argc, FAR char *argv[])
  * static threads are all running when main() starts.
  */
 
-static int start_thread(FAR const char *name, int priority,
-                        FAR uint8_t *stack, int stack_size, main_t entry)
+int nina_net_start(void)
 {
   int pid;
 
-  pid = kthread_create_with_stack(name, priority, stack, stack_size,
-                                  entry, NULL);
+  pid = kthread_create_with_stack("nina_wifi_tid", APP_PRIO_NINA_WIFI,
+                                  g_wifi_stack, sizeof(g_wifi_stack),
+                                  wifi_main, NULL);
   if (pid < 0)
     {
       return pid;
@@ -841,27 +821,4 @@ static int start_thread(FAR const char *name, int priority,
 
   nxsem_wait_uninterruptible(&g_thread_started);
   return 0;
-}
-
-int nina_net_start(void)
-{
-  int ret;
-
-  ret = start_thread("nina_scan_tid", APP_PRIO_NINA_SCAN, g_scan_stack,
-                     sizeof(g_scan_stack), scan_main);
-  if (ret == 0)
-    {
-      ret = start_thread("nina_connect_tid", APP_PRIO_NINA_CONNECT,
-                         g_connect_stack, sizeof(g_connect_stack),
-                         connect_main);
-    }
-
-  if (ret == 0)
-    {
-      ret = start_thread("nina_monitor_tid", APP_PRIO_NINA_MONITOR,
-                         g_monitor_stack, sizeof(g_monitor_stack),
-                         monitor_main);
-    }
-
-  return ret;
 }

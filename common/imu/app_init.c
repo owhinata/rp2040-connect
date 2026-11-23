@@ -45,15 +45,13 @@ static void thread_started(int ret, const char *name)
  */
 void app_threads_start(void)
 {
-	/* The NINA driver's (scan, connect, link monitor; the core's
-	 * nina_wifi.c).  The Zephyr binding defines them
+	/* The NINA driver's (scan, connect and link monitor in one thread;
+	 * the core's nina_wifi.c).  The Zephyr binding defines it
 	 * (common/drivers/nina/port/zephyr/nina_net.c); the NuttX binding
-	 * starts them itself (common/drivers/nina/port/nuttx/nina_netdev.c).
+	 * starts it itself (common/drivers/nina/port/nuttx/nina_netdev.c).
 	 */
 #ifdef CONFIG_WIFI_NINA_LOCAL
-	APP_THREAD_START(nina_scan_tid);
-	APP_THREAD_START(nina_connect_tid);
-	APP_THREAD_START(nina_monitor_tid);
+	APP_THREAD_START(nina_wifi_tid);
 #endif
 #ifdef CONFIG_NINA_NET
 	thread_started(nina_net_start(), "nina_net_start");

@@ -40,20 +40,26 @@ void nina_os_dns_unlock(void);
 void nina_os_wifi_lock(void);
 void nina_os_wifi_unlock(void);
 
-/* The requests to the Wi-Fi operations' threads (nina_wifi.c):
- * K_SEM_DEFINE(name, 0, 1) of the core before, one for each WHICH.
- * nina_os_wifi_post() makes one request pending (a second one before the
- * thread takes it leaves one); nina_os_wifi_wait() waits, as long as it
- * takes and not ended by signals, until one is pending and takes it.  One
- * waiter for each WHICH: the thread of that request.  Not from an
- * interrupt handler.
+/* The wake-up of the Wi-Fi operations' thread (nina_wifi.c, which keeps its
+ * requests itself, under nina_os_wifi_lock(), and looks at them before
+ * every wait).
+ *
+ * nina_os_wifi_post(): wakes the thread.  From any thread, with or without
+ * nina_os_wifi_lock() held, also while the Wi-Fi thread is busy: the
+ * wake-up is then left pending (at most one; a second post before the
+ * thread takes it leaves one) and ends its next wait at once.
+ *
+ * nina_os_wifi_wait(MS): the Wi-Fi thread only, without the lock.  Returns
+ * after a post (also one made before the call, since the previous return),
+ * after MS milliseconds (rounded up to ticks, plus one tick, as the
+ * sleeps), or earlier for no reason; the caller looks at its requests and
+ * at its clock again in each case.  Not ended by signals.
+ *
+ * Neither from an interrupt handler.
  */
 
-#define NINA_OS_WIFI_SCAN    0 /* the scan thread's request */
-#define NINA_OS_WIFI_CONNECT 1 /* the connect thread's request */
-
-void nina_os_wifi_post(unsigned int which);
-void nina_os_wifi_wait(unsigned int which);
+void nina_os_wifi_post(void);
+void nina_os_wifi_wait(uint32_t ms);
 
 /* k_sleep(K_USEC(us)) and k_sleep(K_MSEC(ms)): the time rounded up to
  * ticks, plus one tick.  Not ended by signals.

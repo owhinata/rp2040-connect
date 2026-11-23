@@ -2,17 +2,18 @@
 /* Host test of common/drivers/nina/nina_wifi.c (included) on fakes of its
  * boundary: the module's commands (nina_proto_request(), nina_proto_ip_config(), the
  * capabilities), the kernel services of nina_os.h (the Wi-Fi lock and
- * requests, the sleeps and the clock) and a binding's struct
- * nina_wifi_ops, which record what they are asked.  The threads' passes
- * (scan_once(), connect_once(), monitor_once()) run in the test's thread,
- * after the request that posts them.
+ * wake-up, the sleeps and the clock) and a binding's struct
+ * nina_wifi_ops, which record what they are asked.  The Wi-Fi thread's
+ * passes (wifi_once()) run in the test's thread, after the request that
+ * posts them; the fake wait returns at once when a post is pending (logged
+ * "wake"), else it moves the clock by its time (logged "wait<ms>").
  *
  * - nina_wifi_init(): the MAC address (0x22 with the dummy), a short
  *   answer or an error, the capability probe after it either way.
  * - nina_wifi_connect(): the checks of the parameters in their order, the
  *   application's refusal, -EALREADY, -EBUSY during an attempt or a scan;
  *   0x11 with the SSID and the passphrase, 0x10 with the SSID alone; the
- *   module's refusal; then the connect thread: 0x20 every 500 ms until
+ *   module's refusal; then the Wi-Fi thread: 0x20 every 500 ms until
  *   connected, 0x17 (no power save), 0x21 until it has an address, the
  *   address, netmask and gateway, link up and the result 0 under the lock;
  *   60 checks then -ETIMEDOUT; a power mode refused (-EIO); a bad answer
@@ -21,7 +22,8 @@
  *   after each.
  * - nina_wifi_disconnect(): the pause, 0x30 with the dummy, link down
  *   (only when connected), the event; the module's refusal.
- * - The monitor: every 2 s, no command while not connected; a link seen
+ * - The monitor: IDLE waits until its deadline, then the check, every 2 s
+ *   after the end of the last; no command while not connected; a link seen
  *   down twice in a row is lost (link down, the event, the reconnection);
  *   once is not.
  * - nina_wifi_scan(): 0x27 on 3.0.2 with the link given up first and the
@@ -34,6 +36,16 @@
  *   BSSID reversed, the RSSI), a short answer.
  * - Without the optional hooks: connections allowed, nothing paused or
  *   asked.
+ * - The one thread's states together: the monitor's checks at their
+ *   deadlines within an asynchronous scan that keeps the link (the sleep
+ *   split there; a loss seen twice is reported once, during the scan,
+ *   whose results still come), and IDLE's wait after it until the next
+ *   deadline; a connection and a scan refused (-EBUSY) while the results
+ *   are fetched; the checks within an attempt asking nothing (the count
+ *   reset) and the period started again from the connection; a request
+ *   posted at the deadline (the check first, then the request); the 10 s
+ *   of a scan with a check every 2 s, and the 30 s of an attempt with the
+ *   checks between its polls.
  */
 
 #include <assert.h>
@@ -204,7 +216,7 @@ uint32_t nina_proto_capabilities(void)
 /* The kernel ------------------------------------------------------------ */
 
 static int lock_depth;
-static unsigned int pending[2];
+static bool woken;
 static int64_t now_ms;
 
 void nina_os_wifi_lock(void)
@@ -219,18 +231,23 @@ void nina_os_wifi_unlock(void)
 	lock_depth--;
 }
 
-void nina_os_wifi_post(unsigned int which)
+void nina_os_wifi_post(void)
 {
-	assert(which < 2);
-	note("post%u", which);
-	pending[which] = 1;
+	note("post");
+	woken = true;
 }
 
-void nina_os_wifi_wait(unsigned int which)
+void nina_os_wifi_wait(uint32_t ms)
 {
-	assert(which < 2 && pending[which]);
 	assert(lock_depth == 0);
-	pending[which] = 0;
+	if (woken) {
+		woken = false;
+		note("wake");
+		return;
+	}
+	assert(ms > 0 && ms <= NINA_MONITOR_MS);
+	note("wait%u", (unsigned int)ms);
+	now_ms += ms;
 }
 
 void nina_os_sleep_ms(uint32_t ms)
@@ -348,6 +365,17 @@ static void scan_cb_fake(void *arg, int status, const struct nina_wifi_scan_resu
 
 /* Helpers ----------------------------------------------------------------- */
 
+/* A monitor's deadline that the tests do not reach. */
+#define NO_DEADLINE (INT64_MAX / 4)
+
+static uint8_t thread_records[NINA_WIFI_SCAN_MAX * (NINA_WIFI_SSID_MAX_LEN + 1)];
+
+/* One pass of the Wi-Fi thread. */
+static void thread_pass(void)
+{
+	wifi_once(thread_records, sizeof(thread_records));
+}
+
 static const uint8_t mac_reply[6] = {0x11, 0x22, 0x33, 0x44, 0x55, 0x66};
 static const uint8_t ssid[] = "Net";
 static const uint8_t psk[] = "password";
@@ -387,7 +415,9 @@ static void reset(const struct nina_wifi_ops *with)
 	connecting = false;
 	atomic_store(&scanning, false);
 	disconnected_checks = 0;
-	pending[0] = pending[1] = 0;
+	requests = 0;
+	woken = false;
+	monitor_deadline = NO_DEADLINE;
 	caps = 0;
 	hook = NULL;
 	ip_set_ret = 0;
@@ -408,10 +438,14 @@ static void connect_now(void)
 	answer_byte(NINA_CMD_GET_CONN_STATUS, NINA_WL_CONNECTED);
 	answer_byte(NINA_CMD_SET_POWER_MODE, 1);
 	ip_answers(1, ip_ok);
-	connect_once();
+	thread_pass();
 	steps_done();
+	/* The wake-up of the post, left: the next wait returns at once. */
+	assert(woken);
+	thread_pass();
 	log_buf[0] = '\0';
 	assert(connected && !connecting);
+	monitor_deadline = NO_DEADLINE;
 }
 
 /* The tests --------------------------------------------------------------- */
@@ -493,7 +527,7 @@ static void test_connect_checks(void)
 	assert(nina_wifi_connect(&p) == -ETIMEDOUT);
 	steps_done();
 	expect_log("allowed? 11(4e6574)(70617373776f7264) allowed? 11(4e6574)(70617373776f7264)");
-	assert(!connecting && !pending[NINA_OS_WIFI_CONNECT]);
+	assert(!connecting && !(requests & WIFI_REQUEST_CONNECT));
 }
 
 static void test_connect(void)
@@ -507,7 +541,7 @@ static void test_connect(void)
 	answer_byte(NINA_CMD_SET_PASSPHRASE, 1);
 	assert(nina_wifi_connect(&p) == 0);
 	steps_done();
-	expect_log("allowed? 11(4e6574)(70617373776f7264) post1");
+	expect_log("allowed? 11(4e6574)(70617373776f7264) post");
 	assert(atomic_load(&generation) == gen + 1 && atomic_load(&request_generation) == gen + 1);
 	/* Busy during the attempt, for another attempt and for a scan. */
 	assert(nina_wifi_connect(&p) == -EBUSY);
@@ -523,7 +557,7 @@ static void test_connect(void)
 	answer_byte(NINA_CMD_GET_CONN_STATUS, NINA_WL_CONNECTED);
 	answer_byte(NINA_CMD_SET_POWER_MODE, 1);
 	ip_answers(2, no_ip, ip_ok);
-	connect_once();
+	thread_pass();
 	steps_done();
 	expect_log("20 sleep500 20 sleep500 20 17(00) 21 sleep500 20 17(00) 21 "
 		   "ip_set(10.42.0.97/255.255.255.0,10.42.0.1) up result(0)");
@@ -539,11 +573,11 @@ static void test_connect(void)
 	answer_byte(NINA_CMD_SET_NET, 1);
 	assert(nina_wifi_connect(&p) == 0);
 	steps_done();
-	expect_log("allowed? 10(4e6574) post1");
+	expect_log("allowed? 10(4e6574) post");
 	answer_byte(NINA_CMD_GET_CONN_STATUS, NINA_WL_CONNECTED);
 	answer_byte(NINA_CMD_SET_POWER_MODE, 1);
 	ip_answers(1, ip_ok);
-	connect_once();
+	thread_pass();
 	steps_done();
 	expect_log("20 17(00) 21 ip_set(10.42.0.97/255.255.255.0,10.42.0.1) up result(0)");
 }
@@ -558,7 +592,7 @@ static void start_attempt(void)
 	log_buf[0] = '\0';
 }
 
-/* A disconnection from another thread, at a command of the connect thread. */
+/* A disconnection from another thread, at a command of the Wi-Fi thread. */
 static void disconnect_hook(void)
 {
 	assert(nina_wifi_disconnect() == 0);
@@ -575,7 +609,7 @@ static void test_connect_failures(void)
 		answer_byte(NINA_CMD_GET_CONN_STATUS, 6);
 	}
 	now_ms = 0;
-	connect_once();
+	thread_pass();
 	steps_done();
 	assert(now_ms == 60 * 500);
 	{
@@ -593,7 +627,7 @@ static void test_connect_failures(void)
 	start_attempt();
 	answer_byte(NINA_CMD_GET_CONN_STATUS, NINA_WL_CONNECTED);
 	answer_byte(NINA_CMD_SET_POWER_MODE, 0);
-	connect_once();
+	thread_pass();
 	steps_done();
 	{
 		char expected[64];
@@ -605,7 +639,7 @@ static void test_connect_failures(void)
 	/* A short answer of 0x20; then an error of 0x21. */
 	start_attempt();
 	answer(NINA_CMD_GET_CONN_STATUS, 0, short_reply, 0);
-	connect_once();
+	thread_pass();
 	steps_done();
 	{
 		char expected[64];
@@ -617,7 +651,7 @@ static void test_connect_failures(void)
 	answer_byte(NINA_CMD_GET_CONN_STATUS, NINA_WL_CONNECTED);
 	answer_byte(NINA_CMD_SET_POWER_MODE, 1);
 	ip_ret = -EIO;
-	connect_once();
+	thread_pass();
 	steps_done();
 	{
 		char expected[64];
@@ -632,7 +666,7 @@ static void test_connect_failures(void)
 	answer_byte(NINA_CMD_SET_POWER_MODE, 1);
 	ip_answers(1, ip_ok);
 	ip_set_ret = -ENOMEM;
-	connect_once();
+	thread_pass();
 	steps_done();
 	ip_set_ret = 0;
 	{
@@ -652,7 +686,7 @@ static void test_connect_failures(void)
 	answer_byte(NINA_CMD_DISCONNECT, 1);
 	hook = disconnect_hook;
 	hook_on = NINA_CMD_GET_CONN_STATUS;
-	connect_once();
+	thread_pass();
 	steps_done();
 	expect_log("20 pause 30(ff) disconnected(request) sleep500");
 	assert(!connecting && !connected);
@@ -666,7 +700,7 @@ static void test_connect_failures(void)
 	ip_answers(1, ip_ok);
 	hook = disconnect_hook;
 	hook_on = NINA_CMD_GET_IPADDR;
-	connect_once();
+	thread_pass();
 	steps_done();
 	expect_log("20 17(00) 21 pause 30(ff) disconnected(request)");
 	assert(!connecting && !connected);
@@ -702,14 +736,24 @@ static void test_disconnect(void)
 	assert(connected);
 }
 
+/* IDLE until the monitor's deadline, then the check. */
+static void monitor_pass(void)
+{
+	thread_pass();
+	thread_pass();
+}
+
 static void test_monitor(void)
 {
 	reset(&fake_ops);
 	now_ms = 0;
-	monitor_once();
-	expect_log("sleep2000");
+	monitor_deadline = NINA_MONITOR_MS;
+	monitor_pass();
+	expect_log("wait2000");
+	assert(now_ms == 2000 && monitor_deadline == 4000);
 
 	connect_now();
+	monitor_deadline = now_ms + NINA_MONITOR_MS;
 	answer_byte(NINA_CMD_GET_CONN_STATUS, NINA_WL_CONNECTED);
 	answer_byte(NINA_CMD_GET_CONN_STATUS, 6); /* once down */
 	answer_byte(NINA_CMD_GET_CONN_STATUS, NINA_WL_CONNECTED);
@@ -717,21 +761,22 @@ static void test_monitor(void)
 	answer(NINA_CMD_GET_CONN_STATUS, -ETIMEDOUT, NULL, 0); /* not counted */
 	answer_byte(NINA_CMD_GET_CONN_STATUS, 6); /* twice: lost */
 	for (int i = 0; i < 6; i++) {
-		monitor_once();
+		monitor_pass();
 	}
 	steps_done();
-	expect_log("sleep2000 20 sleep2000 20 sleep2000 20 sleep2000 20 sleep2000 20 sleep2000 20 "
+	expect_log("wait2000 20 wait2000 20 wait2000 20 wait2000 20 wait2000 20 wait2000 20 "
 		   "down(10.42.0.97) disconnected(lost) reconnect");
 	assert(!connected);
-	monitor_once();
-	expect_log("sleep2000");
+	monitor_pass();
+	expect_log("wait2000");
 
 	/* A connection after the loss starts the count again. */
 	connect_now();
+	monitor_deadline = now_ms;
 	answer_byte(NINA_CMD_GET_CONN_STATUS, 6);
-	monitor_once();
+	thread_pass();
 	steps_done();
-	assert(connected);
+	assert(connected && disconnected_checks == 1);
 	log_buf[0] = '\0';
 }
 
@@ -763,7 +808,6 @@ static void network_answers(unsigned int i)
 static void test_scan(void)
 {
 	uint8_t records[340];
-	uint8_t buf[NINA_WIFI_SCAN_MAX * (NINA_WIFI_SSID_MAX_LEN + 1)];
 	size_t len;
 
 	assert(nina_wifi_scan(NULL, NULL) == -EINVAL);
@@ -772,7 +816,7 @@ static void test_scan(void)
 	reset(&fake_ops);
 	connect_now();
 	assert(nina_wifi_scan(scan_cb_fake, &scan_arg_seen) == 0);
-	expect_log("down(10.42.0.97) disconnected(scan) post0");
+	expect_log("down(10.42.0.97) disconnected(scan) post");
 	assert(!connected);
 	assert(nina_wifi_scan(scan_cb_fake, &scan_arg_seen) == -EBUSY);
 	{
@@ -786,7 +830,7 @@ static void test_scan(void)
 	network_answers(0);
 	network_answers(1);
 	nresults = 0;
-	scan_once(buf, sizeof(buf));
+	thread_pass();
 	steps_done();
 	expect_log("27 32(00) 33(00) 3c(00) 3d(00) net 32(01) 33(01) 3c(01) 3d(01) net done(0) "
 		   "reconnect");
@@ -802,10 +846,10 @@ static void test_scan(void)
 	connect_now();
 	caps = NINA_CAP_SCAN_KEEPS_LINK;
 	assert(nina_wifi_scan(scan_cb_fake, &scan_arg_seen) == 0);
-	expect_log("post0");
+	expect_log("post");
 	assert(connected);
 	answer(NINA_CMD_SCAN_NETWORKS, 0, records, 0);
-	scan_once(buf, sizeof(buf));
+	thread_pass();
 	steps_done();
 	expect_log("27 done(0)");
 
@@ -818,9 +862,9 @@ static void test_scan(void)
 	len = scan_records(records, 1);
 	answer(NINA_CMD_SCAN_NETWORKS, 0, records, len);
 	network_answers(0);
-	scan_once(buf, sizeof(buf));
+	thread_pass();
 	steps_done();
-	expect_log("post0 36 sleep100 6b sleep100 6b 27 32(00) 33(00) 3c(00) 3d(00) net done(0)");
+	expect_log("post 36 sleep100 6b sleep100 6b 27 32(00) 33(00) 3c(00) 3d(00) net done(0)");
 
 	/* Its ends: not started, stopped, failed, a short answer, too long. */
 	static const struct {
@@ -839,21 +883,21 @@ static void test_scan(void)
 		if (ends[i].start) {
 			answer_byte(NINA_CMD_GET_SCAN_STATE, ends[i].state);
 		}
-		scan_once(buf, sizeof(buf));
+		thread_pass();
 		steps_done();
 		snprintf(expected, sizeof(expected),
-			 ends[i].start ? "post0 36 sleep100 6b done(%d)" : "post0 36 done(%d)",
+			 ends[i].start ? "post 36 sleep100 6b done(%d)" : "post 36 done(%d)",
 			 ends[i].status);
 		expect_log(expected);
 	}
 	assert(nina_wifi_scan(scan_cb_fake, &scan_arg_seen) == 0);
 	answer(NINA_CMD_START_SCAN_NETWORKS, 0, records, 0);
-	scan_once(buf, sizeof(buf));
+	thread_pass();
 	steps_done();
 	{
 		char expected[64];
 
-		snprintf(expected, sizeof(expected), "post0 36 done(%d)", -EPROTO);
+		snprintf(expected, sizeof(expected), "post 36 done(%d)", -EPROTO);
 		expect_log(expected);
 	}
 	/* Still running after 10 s: -ETIMEDOUT, without 0x27. */
@@ -863,7 +907,7 @@ static void test_scan(void)
 		answer_byte(NINA_CMD_GET_SCAN_STATE, NINA_SCAN_RUNNING);
 	}
 	now_ms = 0;
-	scan_once(buf, sizeof(buf));
+	thread_pass();
 	steps_done();
 	assert(now_ms == 10000);
 	{
@@ -879,11 +923,11 @@ static void test_scan(void)
 	records[0] = 33;
 	assert(nina_wifi_scan(scan_cb_fake, &scan_arg_seen) == 0);
 	answer(NINA_CMD_SCAN_NETWORKS, 0, records, 34);
-	scan_once(buf, sizeof(buf));
+	thread_pass();
 	records[0] = 5;
 	assert(nina_wifi_scan(scan_cb_fake, &scan_arg_seen) == 0);
 	answer(NINA_CMD_SCAN_NETWORKS, 0, records, 4);
-	scan_once(buf, sizeof(buf));
+	thread_pass();
 	len = scan_records(records, 11);
 	assert(nina_wifi_scan(scan_cb_fake, &scan_arg_seen) == 0);
 	answer(NINA_CMD_SCAN_NETWORKS, 0, records, len);
@@ -891,13 +935,13 @@ static void test_scan(void)
 		network_answers(i);
 	}
 	nresults = 0;
-	scan_once(buf, sizeof(buf));
+	thread_pass();
 	assert(nresults == 10);
 	len = scan_records(records, 1);
 	assert(nina_wifi_scan(scan_cb_fake, &scan_arg_seen) == 0);
 	answer(NINA_CMD_SCAN_NETWORKS, 0, records, len);
 	answer(NINA_CMD_GET_IDX_RSSI, 0, records, 3);
-	scan_once(buf, sizeof(buf));
+	thread_pass();
 	steps_done();
 	{
 		char done[32];
@@ -959,13 +1003,179 @@ static void test_bare_ops(void)
 	answer_byte(NINA_CMD_GET_CONN_STATUS, NINA_WL_CONNECTED);
 	answer_byte(NINA_CMD_SET_POWER_MODE, 1);
 	ip_answers(1, ip_ok);
-	connect_once();
+	thread_pass();
 	answer_byte(NINA_CMD_DISCONNECT, 1);
 	assert(nina_wifi_disconnect() == 0);
 	steps_done();
-	expect_log("11(4e6574)(70617373776f7264) post1 20 17(00) 21 "
+	expect_log("11(4e6574)(70617373776f7264) post 20 17(00) 21 "
 		   "ip_set(10.42.0.97/255.255.255.0,10.42.0.1) up result(0) 30(ff) "
 		   "down(10.42.0.97) disconnected(request)");
+}
+
+/* The thread's states together ------------------------------------------- */
+
+static void test_monitor_in_scan(void)
+{
+	uint8_t records[340];
+	char expected[1024];
+	size_t len;
+
+	/* Connected, the link kept through an asynchronous scan, the monitor's
+	 * deadline 150 ms after the start: checks at 150 and at 2150 ms, each
+	 * within a poll's sleep; down twice: lost during the scan, once.  The
+	 * scan goes on and its result comes. */
+	reset(&fake_ops);
+	connect_now();
+	caps = NINA_CAP_SCAN_KEEPS_LINK | NINA_CAP_ASYNC_SCAN;
+	now_ms = 0;
+	monitor_deadline = 150;
+	assert(nina_wifi_scan(scan_cb_fake, &scan_arg_seen) == 0);
+	answer_byte(NINA_CMD_START_SCAN_NETWORKS, 1);
+	answer_byte(NINA_CMD_GET_SCAN_STATE, NINA_SCAN_RUNNING); /* 100 ms */
+	answer_byte(NINA_CMD_GET_CONN_STATUS, 6);               /* 150: once down */
+	for (int i = 0; i < 20; i++) {                         /* 200 .. 2100 */
+		answer_byte(NINA_CMD_GET_SCAN_STATE, NINA_SCAN_RUNNING);
+	}
+	answer_byte(NINA_CMD_GET_CONN_STATUS, 6);            /* 2150: twice */
+	answer_byte(NINA_CMD_GET_SCAN_STATE, NINA_SCAN_DONE); /* 2200 */
+	len = scan_records(records, 1);
+	answer(NINA_CMD_SCAN_NETWORKS, 0, records, len);
+	network_answers(0);
+	nresults = 0;
+	thread_pass();
+	steps_done();
+	strcpy(expected, "post 36 sleep100 6b sleep50 20 sleep50 6b");
+	for (int i = 0; i < 19; i++) {
+		strcat(expected, " sleep100 6b");
+	}
+	strcat(expected, " sleep50 20 down(10.42.0.97) disconnected(lost) reconnect sleep50 6b 27 "
+			 "32(00) 33(00) 3c(00) 3d(00) net done(0)");
+	expect_log(expected);
+	assert(now_ms == 2200 && nresults == 1 && !connected && !atomic_load(&scanning));
+	assert(monitor_deadline == 4150);
+
+	/* IDLE: the post's wake-up left, then the wait until the deadline, then
+	 * the check, which asks nothing now. */
+	thread_pass();
+	thread_pass();
+	expect_log("wake wait1950");
+	thread_pass();
+	expect_log("");
+	assert(now_ms == 4150 && monitor_deadline == 6150);
+}
+
+/* Another thread's requests while the results are fetched. */
+static void requests_during_fetch(void)
+{
+	struct nina_wifi_connect_params p = psk_params();
+
+	assert(nina_wifi_connect(&p) == -EBUSY);
+	assert(nina_wifi_scan(scan_cb_fake, &scan_arg_seen) == -EBUSY);
+}
+
+static void test_busy_in_fetch(void)
+{
+	reset(&fake_ops);
+	assert(nina_wifi_scan(scan_cb_fake, &scan_arg_seen) == 0);
+	answer(NINA_CMD_SCAN_NETWORKS, 0, NULL, 0);
+	hook = requests_during_fetch;
+	hook_on = NINA_CMD_SCAN_NETWORKS;
+	thread_pass();
+	steps_done();
+	expect_log("post 27 allowed? done(0)");
+	assert(!connecting && !atomic_load(&scanning) && requests == 0);
+}
+
+static void test_monitor_in_connect(void)
+{
+	/* Not connected during the attempt: the check at 700 ms (between two
+	 * polls) asks nothing and resets the count left from an earlier link;
+	 * the connection starts the period again. */
+	reset(&fake_ops);
+	start_attempt();
+	now_ms = 0;
+	monitor_deadline = 700;
+	disconnected_checks = 1;
+	answer_byte(NINA_CMD_GET_CONN_STATUS, 6);
+	answer_byte(NINA_CMD_GET_CONN_STATUS, 6);
+	answer_byte(NINA_CMD_GET_CONN_STATUS, NINA_WL_CONNECTED);
+	answer_byte(NINA_CMD_SET_POWER_MODE, 1);
+	ip_answers(1, ip_ok);
+	thread_pass();
+	steps_done();
+	expect_log("20 sleep500 20 sleep200 sleep300 20 17(00) 21 "
+		   "ip_set(10.42.0.97/255.255.255.0,10.42.0.1) up result(0)");
+	assert(connected && disconnected_checks == 0);
+	assert(now_ms == 1000 && monitor_deadline == 3000);
+	answer_byte(NINA_CMD_GET_CONN_STATUS, NINA_WL_CONNECTED);
+	thread_pass();
+	monitor_pass();
+	steps_done();
+	expect_log("wake wait2000 20");
+	assert(now_ms == 3000 && monitor_deadline == 5000);
+}
+
+static void test_request_at_deadline(void)
+{
+	/* The check first, then the scan. */
+	reset(&fake_ops);
+	connect_now();
+	caps = NINA_CAP_SCAN_KEEPS_LINK;
+	now_ms = 5000;
+	monitor_deadline = 5000;
+	assert(nina_wifi_scan(scan_cb_fake, &scan_arg_seen) == 0);
+	answer_byte(NINA_CMD_GET_CONN_STATUS, NINA_WL_CONNECTED);
+	thread_pass();
+	steps_done();
+	expect_log("post 20");
+	assert(monitor_deadline == 7000 && atomic_load(&scanning));
+	answer(NINA_CMD_SCAN_NETWORKS, 0, NULL, 0);
+	thread_pass();
+	steps_done();
+	expect_log("27 done(0)");
+	assert(connected && now_ms == 5000);
+}
+
+static void test_timeouts(void)
+{
+	char expected[64];
+
+	/* A scan that never ends, connected with the link kept: given up at
+	 * 10 s as before; a check every 2 s meanwhile (at 2, 4, 6, 8 and 10 s,
+	 * before the poll of that time). */
+	reset(&fake_ops);
+	connect_now();
+	caps = NINA_CAP_SCAN_KEEPS_LINK | NINA_CAP_ASYNC_SCAN;
+	now_ms = 0;
+	monitor_deadline = 2000;
+	assert(nina_wifi_scan(scan_cb_fake, &scan_arg_seen) == 0);
+	answer_byte(NINA_CMD_START_SCAN_NETWORKS, 1);
+	for (int k = 1; k <= 100; k++) {
+		if (k % 20 == 0) {
+			answer_byte(NINA_CMD_GET_CONN_STATUS, NINA_WL_CONNECTED);
+		}
+		answer_byte(NINA_CMD_GET_SCAN_STATE, NINA_SCAN_RUNNING);
+	}
+	thread_pass();
+	steps_done();
+	assert(now_ms == 10000 && monitor_deadline == 12000 && connected);
+	snprintf(expected, sizeof(expected), "sleep100 20 6b done(%d)", -ETIMEDOUT);
+	assert(log_ends(expected));
+
+	/* An attempt that never connects: 60 polls in 30 s as before, the
+	 * checks (at 1.7 s, then every 2 s) between them asking nothing. */
+	reset(&fake_ops);
+	start_attempt();
+	now_ms = 0;
+	monitor_deadline = 1700;
+	for (int i = 0; i < 60; i++) {
+		answer_byte(NINA_CMD_GET_CONN_STATUS, 6);
+	}
+	thread_pass();
+	steps_done();
+	assert(now_ms == 30000 && monitor_deadline == 31700 && !connected && !connecting);
+	snprintf(expected, sizeof(expected), "20 sleep200 sleep300 result(%d)", -ETIMEDOUT);
+	assert(log_ends(expected));
 }
 
 int main(void)
@@ -979,6 +1189,11 @@ int main(void)
 	test_scan();
 	test_status();
 	test_bare_ops();
+	test_monitor_in_scan();
+	test_busy_in_fetch();
+	test_monitor_in_connect();
+	test_request_at_deadline();
+	test_timeouts();
 	puts("nina_wifi: tests passed");
 	return 0;
 }

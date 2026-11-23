@@ -12,13 +12,12 @@
  *                                            and its wireless ioctls (wapi)
  *
  * A binding calls nina_wifi_init() once, before any other function here,
- * and starts three threads with its OS's calls, at the priorities and
- * with the stacks of its build's table (common/compat/priorities.h):
- * nina_scan_tid runs nina_wifi_scan_thread(), nina_connect_tid
- * nina_wifi_connect_thread() and nina_monitor_tid
- * nina_wifi_monitor_thread(); none of them returns.  The threads may start
- * before nina_wifi_init(): they wait for a request (the scan and connect
- * threads) or for a connection (the monitor) first.
+ * and starts one thread with its OS's calls, at the priority and with the
+ * stack of its build's table (common/compat/priorities.h): nina_wifi_tid
+ * runs nina_wifi_thread(), which does not return.  It does the scans, the
+ * connection attempts and the link monitor's checks every 2 s, one at a
+ * time (nina_wifi.c).  It may start before nina_wifi_init(): it waits for
+ * a request, and the monitor asks the module nothing until a connection.
  *
  * What happens comes back through the binding's struct nina_wifi_ops and
  * the scan's callback.  "Under the lock" below: called with
@@ -49,7 +48,7 @@ struct nina_wifi_scan_result {
 	uint8_t channel;
 };
 
-/* The scan's callback, in the scan thread: once with STATUS 0 for each
+/* The scan's callback, in the Wi-Fi thread: once with STATUS 0 for each
  * network, then once with RESULT NULL and the scan's status (0, or a
  * negative errno: -EIO the scan failed or did not start, -ECANCELED it was
  * stopped, -ETIMEDOUT it ran past NINA_SCAN_WAIT_MS, -EPROTO a bad answer,
@@ -96,7 +95,7 @@ struct nina_wifi_ops {
 	/* The connection's IPv4 configuration from the module (4 bytes each,
 	 * network order; ADDR is never 0.0.0.0), when the module reports the
 	 * connection: 0, or a negative errno (the connection then fails with
-	 * it).  Under the lock, in the connect thread.
+	 * it).  Under the lock, in the Wi-Fi thread.
 	 */
 	int (*ip_set)(const uint8_t *addr, const uint8_t *netmask, const uint8_t *gateway);
 	/* After ip_set(): the interface is on the network.  Under the lock. */
@@ -109,7 +108,7 @@ struct nina_wifi_ops {
 	/* The end of a connection attempt that nina_wifi_connect() started:
 	 * 0 connected, or a negative errno (-ETIMEDOUT, -EIO, -EPROTO, a
 	 * command's or ip_set()'s error).  Not called when a disconnection or
-	 * a scan cancelled the attempt.  Under the lock, in the connect thread.
+	 * a scan cancelled the attempt.  Under the lock, in the Wi-Fi thread.
 	 */
 	void (*connect_result)(int status);
 	/* The connection ended (after link_down(), or after a disconnection
@@ -140,14 +139,15 @@ struct nina_wifi_reconnect_ops {
 };
 
 /* Keeps OPS (NULL: none) from now on.  At any time, from a thread: the
- * driver's threads read the registration atomically, each call of a hook
- * through the one it read.  A hook of an earlier registration may
+ * Wi-Fi thread and the callers of the functions here read the
+ * registration atomically, each call of a hook through the one it read.
+ * A hook of an earlier registration may
  * therefore still be running, or start, a moment after this returns, so
  * every OPS and its functions must stay valid for good (static).
  */
 void nina_wifi_set_reconnect_ops(const struct nina_wifi_reconnect_ops *ops);
 
-/* Starts a scan in the scan thread; the results come to CB with ARG.
+/* Starts a scan in the Wi-Fi thread; the results come to CB with ARG.
  * Without NINA_CAP_SCAN_KEEPS_LINK a connection is given up first:
  * link_down() and disconnected(NINA_WIFI_DISCONNECT_SCAN) here, and
  * reconnect_request() after the scan.  0, -EINVAL (CB NULL), -EBUSY (a
@@ -160,7 +160,7 @@ int nina_wifi_scan(nina_wifi_scan_cb_t cb, void *arg);
  * -ENOTSUP: neither open nor WPA2-PSK), asks connection_allowed()
  * (-ECANCELED), refuses while connected (-EALREADY) or during a scan or
  * another attempt (-EBUSY), then gives the module the network (-EIO when
- * it refuses, or the command's error).  0: the connect thread waits for
+ * it refuses, or the command's error).  0: the Wi-Fi thread waits for
  * the connection (up to 60 checks 500 ms apart) and reports it with
  * connect_result().
  */
@@ -191,9 +191,7 @@ int nina_wifi_fw_version(char version[NINA_WIFI_FW_VERSION_SIZE]);
  */
 void nina_wifi_capabilities(uint32_t *module, uint32_t *in_use);
 
-/* The threads' bodies (see above). */
-void nina_wifi_scan_thread(void);
-void nina_wifi_connect_thread(void);
-void nina_wifi_monitor_thread(void);
+/* The Wi-Fi thread's body (see above). */
+void nina_wifi_thread(void);
 
 #endif /* NINA_WIFI_H_ */

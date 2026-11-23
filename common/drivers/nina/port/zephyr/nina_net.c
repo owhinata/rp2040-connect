@@ -8,7 +8,8 @@
  * netmask and gateway, dormant on and off) and raises Zephyr's events
  * (NET_EVENT_WIFI_CONNECT_RESULT, _DISCONNECT_RESULT; the scan's results
  * go to the callback of Zephyr's Wi-Fi management, which raises
- * NET_EVENT_WIFI_SCAN_RESULT and _SCAN_DONE).  The core's threads are K_THREAD_DEFINE() threads here.
+ * NET_EVENT_WIFI_SCAN_RESULT and _SCAN_DONE).  The core's Wi-Fi thread is
+ * the K_THREAD_DEFINE() thread nina_wifi_tid here.
  *
  * The FreeRTOS build compiles this file on its Zephyr compatibility layer
  * (freertos/drivers/wifi/wifi.cmake, common/compat/net_offload/zephyr_net_init.c).
@@ -99,7 +100,7 @@ static enum wifi_security_type scan_security(uint8_t type)
 	}
 }
 
-/* In the core's scan thread; ARG is the interface of the request. */
+/* In the core's Wi-Fi thread; ARG is the interface of the request. */
 static void scan_result(void *arg, int status, const struct nina_wifi_scan_result *found)
 {
 	struct net_if *iface = arg;
@@ -246,32 +247,14 @@ static const struct net_wifi_mgmt_offload api = {
 NET_DEVICE_DT_OFFLOAD_DEFINE(DT_COMPAT_GET_ANY_STATUS_OKAY(arduino_nina_spi), driver_init, NULL, NULL,
 			     NULL, CONFIG_WIFI_INIT_PRIORITY, &api, 1500);
 
-/* The core's threads -------------------------------------------------- */
+/* The core's thread --------------------------------------------------- */
 
-static void scan_thread(void *a, void *b, void *c)
+static void wifi_thread(void *a, void *b, void *c)
 {
 	ARG_UNUSED(a);
 	ARG_UNUSED(b);
 	ARG_UNUSED(c);
-	nina_wifi_scan_thread();
+	nina_wifi_thread();
 }
 
-static void connect_thread(void *a, void *b, void *c)
-{
-	ARG_UNUSED(a);
-	ARG_UNUSED(b);
-	ARG_UNUSED(c);
-	nina_wifi_connect_thread();
-}
-
-static void monitor_thread(void *a, void *b, void *c)
-{
-	ARG_UNUSED(a);
-	ARG_UNUSED(b);
-	ARG_UNUSED(c);
-	nina_wifi_monitor_thread();
-}
-
-K_THREAD_DEFINE(nina_scan_tid, 1536, scan_thread, NULL, NULL, NULL, 8, 0, 0);
-K_THREAD_DEFINE(nina_connect_tid, 1024, connect_thread, NULL, NULL, NULL, 8, 0, 0);
-K_THREAD_DEFINE(nina_monitor_tid, 1536, monitor_thread, NULL, NULL, NULL, 9, 0, 0);
+K_THREAD_DEFINE(nina_wifi_tid, 2048, wifi_thread, NULL, NULL, NULL, 8, 0, 0);

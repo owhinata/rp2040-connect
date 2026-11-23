@@ -31,9 +31,8 @@
  * - SIOCSIWAP: the two addresses that disconnect, -ENOTSUP for others,
  *   -ENETDOWN.  SIOCGIWESSID, SIOCGIWAP, SIOCGIWSENS from the core's
  *   status; the modes; -ENOTTY, -EINVAL.
- * - nina_net_start(): nina_scan_tid (priority 110, 1536 bytes),
- *   nina_connect_tid (110, 1024), nina_monitor_tid (109, 1536), each
- *   running its core loop before the next starts; a failure stops it.
+ * - nina_net_start(): nina_wifi_tid (priority 110, 2048 bytes) running the
+ *   core's loop before it returns; the creation's error.
  */
 
 #include <assert.h>
@@ -229,19 +228,9 @@ int nina_wifi_status(struct nina_wifi_status *status)
 	return core_ret;
 }
 
-void nina_wifi_scan_thread(void)
+void nina_wifi_thread(void)
 {
-	note("scan_thread");
-}
-
-void nina_wifi_connect_thread(void)
-{
-	note("connect_thread");
-}
-
-void nina_wifi_monitor_thread(void)
-{
-	note("monitor_thread");
+	note("wifi_thread");
 }
 
 /* Helpers ----------------------------------------------------------------- */
@@ -648,13 +637,12 @@ static void test_disconnect_status(void)
 static void test_start(void)
 {
 	assert(nina_net_start() == 0);
-	expect_log("thread(nina_scan_tid,110,1536) scan_thread "
-		   "thread(nina_connect_tid,110,1024) connect_thread "
-		   "thread(nina_monitor_tid,109,1536) monitor_thread");
+	expect_log("thread(nina_wifi_tid,110,2048) wifi_thread");
 	assert(g_thread_started.count == 0);
 	kthread_ret = -ENOMEM;
 	assert(nina_net_start() == -ENOMEM);
-	expect_log("thread(nina_scan_tid,110,1536)");
+	expect_log("thread(nina_wifi_tid,110,2048)");
+	assert(g_thread_started.count == 0);
 	kthread_ret = 0;
 }
 

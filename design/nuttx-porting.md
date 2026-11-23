@@ -1180,8 +1180,8 @@ NuttX-only threads are in `nuttx/drivers/include/priorities_os.h`). The Zephyr b
 
 | Thread | Zephyr | NuttX | Stack |
 |---|---|---|---|
-| `wifi_reconnect_tid`, `nina_scan_tid`, `nina_connect_tid` | 8 | 110 | 2048, 1536, 1024 |
-| `time_sync_tid`, `imu_stream_tid`, `nina_monitor_tid` | 9 | 109 | 2048, 2048, 1536 |
+| `wifi_reconnect_tid`, `nina_wifi_tid` (the NINA's scans, connection attempts and link monitor, one at a time) | 8 | 110 | 2048, 2048 |
+| `time_sync_tid`, `imu_stream_tid` | 9 | 109 | 2048, 2048 |
 | `imu_fifo_worker` | 10 | 108 | 2048 |
 | `imu_raw_mqtt_tid` | 11 | 107 | 2048 |
 | `nina_event` (turns the NINA's socket state into usrsock events; NuttX only; started by the first socket) | – | 106 | 1536 |
@@ -1200,12 +1200,11 @@ NuttX-only threads are in `nuttx/drivers/include/priorities_os.h`). The Zephyr b
   priority preempts them. In the port so far these are `sysworkq` and `net_mgmt` (both 119), and
   no thread has a higher priority. The two at 119 take turns by time slicing (Zephyr's cooperative
   threads only switch when one yields).
-- The `K_THREAD_DEFINE()` threads (`nina_scan_tid`, `nina_connect_tid`, `nina_monitor_tid`,
-  `imu_stream_tid`, `imu_raw_mqtt_tid`, `time_sync_tid`, `wifi_reconnect_tid`,
-  `sensor_shell_tid`) are started by init at the start of its start-up work, as the Zephyr build
+- The `K_THREAD_DEFINE()` threads (`nina_wifi_tid`, `imu_stream_tid`, `imu_raw_mqtt_tid`,
+  `time_sync_tid`, `wifi_reconnect_tid`, `sensor_shell_tid`) are started by init at the start of its start-up work, as the Zephyr build
   starts them before `main()`.
-- The stacks of `imu_stream_tid`, `imu_raw_mqtt_tid`, `time_sync_tid`, `imu_fifo_worker`, `sysworkq`, `RTIO WQ 0`, `net_mgmt`, the
-  `nina_*_tid` threads, `wifi_reconnect_tid` and `sensor_shell_tid` are static arrays
+- The stacks of `imu_stream_tid`, `imu_raw_mqtt_tid`, `time_sync_tid`, `imu_fifo_worker`, `sysworkq`, `RTIO WQ 0`, `net_mgmt`,
+  `nina_wifi_tid`, `wifi_reconnect_tid` and `sensor_shell_tid` are static arrays
   as in Zephyr (`K_THREAD_DEFINE()`, `K_THREAD_STACK_DEFINE()`, NuttX's
   `kthread_create_with_stack()`). `ps` shows them smaller by the area NuttX puts at their start
   (2048 → 2008, 2000 for `imu_stream_tid`; 1024 → 976).
@@ -1352,7 +1351,7 @@ semaphores and clock and of GPIO bank 0: READY changing during the wait (both di
 timeout at the deadline after a single wait, a change right after the core's read (the wait
 returns at once), a wake-up and a latched edge left from before (dropped), the edge enabled only
 during a wait, and at most one count in the semaphore; and the Wi-Fi operations' lock and the
-requests of their threads.
+Wi-Fi thread's wake-up.
 
 `nuttx/tests/nina_passthrough.c` checks `nina passthrough` of `apps/nina` (the order of the help,
 the confirmation word, the argument counts, the messages, and the driver's request made only with

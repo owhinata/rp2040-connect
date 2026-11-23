@@ -1018,8 +1018,8 @@ NuttX 標準のクリティカルセクションの監視（`CONFIG_SCHED_CRITMO
 
 | スレッド | Zephyr | NuttX | スタック |
 |---|---|---|---|
-| `wifi_reconnect_tid`、`nina_scan_tid`、`nina_connect_tid` | 8 | 110 | 2048、1536、1024 |
-| `time_sync_tid`、`imu_stream_tid`、`nina_monitor_tid` | 9 | 109 | 2048、2048、1536 |
+| `wifi_reconnect_tid`、`nina_wifi_tid`（NINA のスキャン・接続の試み・接続の監視を 1 つずつ行う） | 8 | 110 | 2048、2048 |
+| `time_sync_tid`、`imu_stream_tid` | 9 | 109 | 2048、2048 |
 | `imu_fifo_worker` | 10 | 108 | 2048 |
 | `imu_raw_mqtt_tid` | 11 | 107 | 2048 |
 | `nina_event`（NINA のソケットの状態を usrsock のイベントにする。NuttX 版だけ。最初のソケットで起動） | – | 106 | 1536 |
@@ -1037,10 +1037,10 @@ NuttX 標準のクリティカルセクションの監視（`CONFIG_SCHED_CRITMO
   他のスレッドに横取りされない協調スレッドが無く、より高い優先度のスレッドには横取りされます。今の移植で
   協調スレッドに当たるのは `sysworkq` と `net_mgmt`（どちらも 119）で、それより高い優先度のスレッドは
   ありません。同じ 119 の 2 つは時分割で交代します（Zephyr の協調スレッドどうしは自分で譲るまで交代しない）。
-- `K_THREAD_DEFINE()` のスレッド（`nina_scan_tid`、`nina_connect_tid`、`nina_monitor_tid`、`imu_stream_tid`、
+- `K_THREAD_DEFINE()` のスレッド（`nina_wifi_tid`、`imu_stream_tid`、
   `imu_raw_mqtt_tid`、`time_sync_tid`、`wifi_reconnect_tid`、`sensor_shell_tid`）は、
   Zephyr 版が `main()` の前に始めるのに合わせて、init が起動処理の最初に始めます。
-- `imu_stream_tid`、`imu_raw_mqtt_tid`、`time_sync_tid`、`imu_fifo_worker`、`sysworkq`、`RTIO WQ 0`、`net_mgmt`、`nina_*_tid`、`wifi_reconnect_tid`、`sensor_shell_tid` のスタックは Zephyr と同じく静的な配列です
+- `imu_stream_tid`、`imu_raw_mqtt_tid`、`time_sync_tid`、`imu_fifo_worker`、`sysworkq`、`RTIO WQ 0`、`net_mgmt`、`nina_wifi_tid`、`wifi_reconnect_tid`、`sensor_shell_tid` のスタックは Zephyr と同じく静的な配列です
   （`K_THREAD_DEFINE()`・`K_THREAD_STACK_DEFINE()`、NuttX の `kthread_create_with_stack()`）。`ps` の STACK は
   NuttX が先頭に置く領域の分だけ小さく出ます（2048 → 2008。`imu_stream_tid` は 2000、1024 → 976）。
 - `CONFIG_PRIORITY_INHERITANCE=y` です。ミューテックスは優先度継承あり、セマフォは既定で継承なし
@@ -1165,7 +1165,7 @@ OS ごとのヘッダー（`sensor_shell_os.h`、`wifi_profile_os.h`、`lsm6dso_
 `common/compat/zephyr_gpio.c` を通る）を、NuttX のセマフォと時計、GPIO バンク 0 の偽物の上で確かめます。待ちの途中の
 READY の変化（両方の向き）、1 回の待ちのあとの期限でのタイムアウト、コアが読んだ直後の変化（待ちがすぐ返る）、
 前から残った起床とラッチされたエッジ（捨てる）、待ちの間だけエッジが有効なこと、セマフォの数が 1 を超えないこと、
-Wi-Fi の操作のロックとそのスレッドへの要求です。
+Wi-Fi の操作のロックと、Wi-Fi のスレッドを起こす待ちです。
 
 `nuttx/tests/nina_passthrough.c` は、`apps/nina` の `nina passthrough`（ヘルプの順、確認の語、引数の数、メッセージ、
 `confirm` のときだけドライバーの要求を呼ぶこと）を確かめます。中継そのもの（`common/drivers/nina/nina_passthrough.c`: 線、出口、

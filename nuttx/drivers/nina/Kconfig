@@ -83,8 +83,7 @@ config NINA_NET
 	---help---
 		nina_wifi.c (common/drivers/nina, shared with the Zephyr build:
 		scan, connect, disconnect, status and the 2-second link monitor,
-		with its threads nina_scan_tid, nina_connect_tid and
-		nina_monitor_tid) and its NuttX binding in
+		in its one thread nina_wifi_tid) and its NuttX binding in
 		common/drivers/nina/port/nuttx: nina_netdev.c registers the module as
 		the network device wlan0 and turns wapi's wireless ioctls into
 		the core's calls; nina_wifi_mgmt.c serves the applications' Zephyr

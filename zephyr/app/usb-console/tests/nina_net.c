@@ -25,8 +25,8 @@
  *   address removed, the gateway 0.0.0.0, dormant on; the connect result
  *   and the disconnection (status 0, for every reason) as Zephyr's events;
  *   the Wi-Fi profile's three functions as the hooks.
- * - The threads: nina_scan_tid (1536 bytes, priority 8), nina_connect_tid
- *   (1024, 8), nina_monitor_tid (1536, 9), each running its core loop.
+ * - The thread: nina_wifi_tid (2048 bytes, priority 8), running the core's
+ *   loop.
  */
 
 #include <assert.h>
@@ -214,19 +214,9 @@ int nina_wifi_status(struct nina_wifi_status *status)
 	return core_ret;
 }
 
-void nina_wifi_scan_thread(void)
+void nina_wifi_thread(void)
 {
-	note("scan_thread");
-}
-
-void nina_wifi_connect_thread(void)
-{
-	note("connect_thread");
-}
-
-void nina_wifi_monitor_thread(void)
-{
-	note("monitor_thread");
+	note("wifi_thread");
 }
 
 /* Zephyr's scan callback ---------------------------------------------------- */
@@ -435,14 +425,10 @@ static void test_ops(void)
 
 static void test_threads(void)
 {
-	assert(strcmp(nina_scan_tid.name, "nina_scan_tid") == 0);
-	assert(nina_scan_tid.stack_size == 1536 && nina_scan_tid.prio == 8);
-	assert(nina_connect_tid.stack_size == 1024 && nina_connect_tid.prio == 8);
-	assert(nina_monitor_tid.stack_size == 1536 && nina_monitor_tid.prio == 9);
-	nina_scan_tid.entry(NULL, NULL, NULL);
-	nina_connect_tid.entry(NULL, NULL, NULL);
-	nina_monitor_tid.entry(NULL, NULL, NULL);
-	expect_log("scan_thread connect_thread monitor_thread");
+	assert(strcmp(nina_wifi_tid.name, "nina_wifi_tid") == 0);
+	assert(nina_wifi_tid.stack_size == 2048 && nina_wifi_tid.prio == 8);
+	nina_wifi_tid.entry(NULL, NULL, NULL);
+	expect_log("wifi_thread");
 }
 
 int main(void)

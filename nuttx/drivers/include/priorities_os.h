@@ -17,8 +17,8 @@
  *
  * The values of priorities.h on NuttX:
  *
- *   wifi_reconnect_tid, nina_scan_tid, nina_connect_tid      8 -> 110
- *   nina_monitor_tid, time_sync_tid, imu_stream_tid          9 -> 109
+ *   wifi_reconnect_tid, nina_wifi_tid                        8 -> 110
+ *   time_sync_tid, imu_stream_tid                            9 -> 109
  *   imu_fifo_worker                                         10 -> 108
  *   imu_raw_mqtt_tid                                        11 -> 107
  *   main (the init task, nuttx/apps/init: it does what main() does at

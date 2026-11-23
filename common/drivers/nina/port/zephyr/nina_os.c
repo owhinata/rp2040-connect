@@ -8,9 +8,11 @@
  *   nina_os_dns_lock(), _unlock()  K_MUTEX_DEFINE(nina_dns_lock), the same
  *   nina_os_wifi_lock(), _unlock() K_MUTEX_DEFINE(connect_state_lock), the
  *                                  same
- *   nina_os_wifi_post(which),      K_SEM_DEFINE(scan_request, 0, 1) and
- *   nina_os_wifi_wait(which)       connect_request: k_sem_give(),
- *                                  k_sem_take(K_FOREVER)
+ *   nina_os_wifi_post(),           K_SEM_DEFINE(wifi_request, 0, 1):
+ *   nina_os_wifi_wait(ms)          k_sem_give(), k_sem_take(K_MSEC(ms)) (a
+ *                                  give left from a post whose request the
+ *                                  core has already taken ends a later
+ *                                  wait early)
  *   nina_os_sleep_us(us)           k_sleep(K_USEC(us))
  *   nina_os_sleep_ms(ms)           k_sleep(K_MSEC(ms))
  *   nina_os_uptime_ms()            k_uptime_get()
@@ -90,8 +92,7 @@ void nina_os_dns_unlock(void)
 }
 
 K_MUTEX_DEFINE(connect_state_lock);
-static K_SEM_DEFINE(scan_request, 0, 1);
-static K_SEM_DEFINE(connect_request, 0, 1);
+static K_SEM_DEFINE(wifi_request, 0, 1);
 
 void nina_os_wifi_lock(void)
 {
@@ -103,19 +104,14 @@ void nina_os_wifi_unlock(void)
 	(void)k_mutex_unlock(&connect_state_lock);
 }
 
-static struct k_sem *wifi_request(unsigned int which)
+void nina_os_wifi_post(void)
 {
-	return which == NINA_OS_WIFI_SCAN ? &scan_request : &connect_request;
+	k_sem_give(&wifi_request);
 }
 
-void nina_os_wifi_post(unsigned int which)
+void nina_os_wifi_wait(uint32_t ms)
 {
-	k_sem_give(wifi_request(which));
-}
-
-void nina_os_wifi_wait(unsigned int which)
-{
-	(void)k_sem_take(wifi_request(which), K_FOREVER);
+	(void)k_sem_take(&wifi_request, K_MSEC(ms));
 }
 
 void nina_os_sleep_us(uint32_t us)

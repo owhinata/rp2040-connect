@@ -29,7 +29,7 @@
  *   the automatic reconnection; "wifi scan" prints the module's networks;
  *   "wifi connect -k 0" joins an open network with the SSID alone.
  * - "wifi cred auto_connect" connects with the stored network; a lost link
- *   (the module's status, seen twice by nina_monitor_tid) raises the
+ *   (the module's status, seen twice by the monitor of nina_wifi_tid) raises the
  *   disconnection, and wifi_reconnect_tid connects again 4 s later.
  * - Garbage collection of the store (many writes): the entry is still read.
  * - "ifconfig" (common/shell/ifconfig_shell.c), with and without
@@ -290,8 +290,7 @@ static void put_le32(uint8_t *b, int32_t v)
  * tested in tests/nina); the rest of the binding, the waits on the module's
  * lines, is not needed here. */
 static K_MUTEX_DEFINE(connect_state_lock);
-static K_SEM_DEFINE(scan_request, 0, 1);
-static K_SEM_DEFINE(connect_request, 0, 1);
+static K_SEM_DEFINE(wifi_request, 0, 1);
 
 void nina_os_wifi_lock(void)
 {
@@ -303,14 +302,14 @@ void nina_os_wifi_unlock(void)
 	(void)k_mutex_unlock(&connect_state_lock);
 }
 
-void nina_os_wifi_post(unsigned int which)
+void nina_os_wifi_post(void)
 {
-	k_sem_give(which == NINA_OS_WIFI_SCAN ? &scan_request : &connect_request);
+	k_sem_give(&wifi_request);
 }
 
-void nina_os_wifi_wait(unsigned int which)
+void nina_os_wifi_wait(uint32_t ms)
 {
-	(void)k_sem_take(which == NINA_OS_WIFI_SCAN ? &scan_request : &connect_request, K_FOREVER);
+	(void)k_sem_take(&wifi_request, K_MSEC(ms));
 }
 
 void nina_os_sleep_ms(uint32_t ms)
@@ -650,9 +649,7 @@ static void test_start(void)
 	/* The rest of the build's start (main.c), the store being empty. */
 	assert(wifi_credentials_init() == 0);
 	assert(wifi_shell_init() == 0);
-	assert(K_THREAD_DEFINE_START(nina_scan_tid) == 0);
-	assert(K_THREAD_DEFINE_START(nina_connect_tid) == 0);
-	assert(K_THREAD_DEFINE_START(nina_monitor_tid) == 0);
+	assert(K_THREAD_DEFINE_START(nina_wifi_tid) == 0);
 	assert(K_THREAD_DEFINE_START(wifi_reconnect_tid) == 0);
 	assert(kv_store_init() == 0);
 	ret = wifi_profile_init();

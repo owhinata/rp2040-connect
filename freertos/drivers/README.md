@@ -111,8 +111,8 @@ use a stack of their own (MSP, 2048 bytes; the `(interrupts)` row of `ps`).
 | `net_mgmt`, `sysworkq` | 21 (-1) | 2048, 384 | Network events; the system work queue (the work of the LSM6DSOX FIFO interrupt) |
 | `main` | 20 (0) | 2048 | The second half of the start-up ("Start-up" below); ends when done. Its stack is in SCRATCH_X, which only core 1 (never started) would use (`app/usb-console/ld/`) |
 | `sensor_shell_tid`, `RTIO WQ 0` | 20 (0) | 2048, 1024 | Printing `sensor` results; RTIO work |
-| `nina_scan_tid`, `nina_connect_tid`, `wifi_reconnect_tid` | 12 (8) | 1536, 1024, 2048 | Wi-Fi scan, connection, automatic reconnection |
-| `nina_monitor_tid`, `time_sync_tid`, `imu_stream_tid` | 11 (9) | 1536, 2048, 2048 | Link monitor, time synchronization, acquisition |
+| `nina_wifi_tid`, `wifi_reconnect_tid` | 12 (8) | 2048, 2048 | Wi-Fi scan, connection and link monitor (one at a time); automatic reconnection |
+| `time_sync_tid`, `imu_stream_tid` | 11 (9) | 2048, 2048 | Time synchronization, acquisition |
 | `imu_fifo_worker` | 10 (10) | 2048 | FIFO reads |
 | `imu_raw_mqtt_tid` | 9 (11) | 2048 | MQTT transport |
 | `console`, `shell_telnet`, `telnet_service`, `zperf_server_tid` | 6 (14) | 3072, 3072, 2048, 2048 | The USB and Telnet shells (commands run in these tasks), Telnet accepts, the server of `zperf tcp download` |
@@ -215,8 +215,8 @@ boundary (the five functions of `common/compat/flash_kv_os.h`) with the RP2040's
   longer ones by DMA while the calling task sleeps, as in the Zephyr and NuttX builds, `nina_bus_dma_rp2040.c`: see below) and `nina_os.h`
   (the core's FreeRTOS binding `common/drivers/nina/port/freertos/nina_os.c`, written on FreeRTOS and the
   Pico SDK without the compatibility layer: FreeRTOS recursive mutexes with priority inheritance for the
-  NINA lock, the name resolution lock and the Wi-Fi operations' lock, binary semaphores for the Wi-Fi
-  threads' requests, the "rounded up, plus one tick" sleep, the TIMER in ms as the clock). Its objects are
+  NINA lock, the name resolution lock and the Wi-Fi operations' lock, the Wi-Fi thread's task notification
+  2 as its wake-up (the core keeps its requests itself), the "rounded up, plus one tick" sleep, the TIMER in ms as the clock). Its objects are
   static and made at the first use of any of them.
   The boundaries mean what the "NINA-W102" tables of
   [`nuttx/drivers/README.md`](../../nuttx/drivers/README.md) say.
@@ -259,7 +259,7 @@ boundary (the five functions of `common/compat/flash_kv_os.h`) with the RP2040's
   intervals (20 ms, 1 ms for sends) whatever the firmware. Checking with a poll command that the socket
   is writable before a TCP send's data goes again does not depend on the firmware.
 - Wi-Fi: the core's Wi-Fi operations with the Zephyr build's binding of them
-  (`common/drivers/nina/port/zephyr/nina_net.c`: Zephyr's Wi-Fi management and interface, the three threads),
+  (`common/drivers/nina/port/zephyr/nina_net.c`: Zephyr's Wi-Fi management and interface, the thread `nina_wifi_tid`),
   the credentials (a copy of Zephyr's `wifi_credentials`) and the automatic reconnection
   (`common/imu/wifi_profile.c`) run on the layer's `net_if`, `net_mgmt` and `wifi_mgmt` (`net_offload/zephyr_net_if.c`;
   `net_offload/zephyr_net_init.c` registers the interface at the start, as Zephyr's `net_init()`); this build has no
@@ -448,7 +448,7 @@ Given as `freertos/script/build.sh -DNAME=VALUE` (kept until `--clean`).
 | `tick` | The tick's catch-up (`tick_catchup.h`): the step itself, and on a model of SysTick and the CPU (interrupt latencies, interrupts disabled for 0 to 60 ticks) that the tick never gets ahead of the TIMER and is at most one tick behind once caught up |
 | `shell` | Two shell sessions, line editing, output routing, `help` and the generic commands with their output |
 | `kv` | The flash boundary and the key-value store (on fakes of the Pico SDK's flash functions) |
-| `nina` | The NINA's SPI and line boundaries (with the long transfers by DMA on a fake DMA: the threshold, the end state of SPI1, the shared DMA_IRQ_1, the timeout and its abort, a lost byte, a bus error, a transfer after each, channels that do not stop, no free channels, the messages logged) and the FreeRTOS binding of `nina_os.h` (no compatibility layer; built twice, with a 1 ms and a 4 ms tick): the wait for READY on its interrupt, the waits for the IRQ line's edges (two tasks woken by one edge, the timeout), the shared bank interrupt, locks, requests, sleeps' ticks, the clock across the tick's wrap |
+| `nina` | The NINA's SPI and line boundaries (with the long transfers by DMA on a fake DMA: the threshold, the end state of SPI1, the shared DMA_IRQ_1, the timeout and its abort, a lost byte, a bus error, a transfer after each, channels that do not stop, no free channels, the messages logged) and the FreeRTOS binding of `nina_os.h` (no compatibility layer; built twice, with a 1 ms and a 4 ms tick): the wait for READY on its interrupt, the waits for the IRQ line's edges (two tasks woken by one edge, the timeout), the shared bank interrupt, locks, the Wi-Fi thread's wake-up, sleeps' ticks, the clock across the tick's wrap |
 | `i2c_dw` | I2C0's boundary and device, Zephyr's I2C API (built twice: i2c0 only, and with `CONFIG_I2C_DW_I2C1`, which adds i2c1's start, pins, transfers, an unanswered address, long reads that never take the DMA, i2c0 unaffected, and transfers on both buses from two tasks); the binding's semaphores, waits' ticks, sleeps and clock; the DMA part (`i2c_dw_dma_os_rp2040.c`) on fakes of the Pico SDK's DMA: claims, setup, start, the shared handler (end, bus error, other users' channels), stop, release; the core's DMA reads on it: the read, the 32-byte limit, fallbacks, bus errors on TX and RX, timeout, the reads off, a stop that does not end (quarantine), the counters; the core's DMA command words |
 | `gpio` | GPIO bank 0's boundary, `gpio0`, the FIFO interrupt |
 | `imu` | Address conversions, `hwinfo` |

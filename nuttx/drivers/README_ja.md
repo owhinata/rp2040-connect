@@ -26,7 +26,7 @@ API へのつなぎ（`common/drivers/nina/port/nuttx/`。RP2040 の SPI と線�
 
 | 境界 | NuttX 版の実装 | 満たすこと |
 |---|---|---|
-| `common/drivers/nina/port/nina_os.h` | `common/drivers/nina/port/nuttx/nina_os.c` | `nina_os_lock()`・`nina_os_unlock()`: 再帰可能で優先度継承のあるロック（Zephyr 版の `K_MUTEX_DEFINE(nina_lock)`）。`nina_os_wifi_lock()`・`nina_os_wifi_unlock()`: Wi-Fi の操作のロック（`rmutex_t`）。`nina_os_wifi_post()`・`nina_os_wifi_wait()`: スキャンと接続のスレッドへの要求（それぞれセマフォ 1 つ、数は最大 1）。`nina_os_lock()` は 0 か負の errno を返し、失敗は `nina_proto_request()`・`nina_proto_ip_config()` がそのまま返す。`nina_os_dns_lock()`・`nina_os_dns_unlock()`: 名前解決の 2 つの命令の間に持つ、優先度継承のあるロック。`nina_os_sleep_us()`・`nina_os_sleep_ms()`: Zephyr の `k_sleep()` と同じく tick に切り上げて 1 tick 足した時間眠り、シグナルでは終わらない。`nina_os_uptime_ms()`: カーネルの時計の ms（切り捨て。`k_uptime_get()`）。`nina_os_ready_start()`・`nina_os_ready_arm()`・`nina_os_ready_wait()`・`nina_os_ready_disarm()`: READY の変化を割り込みで待つ（`nina_os_ready_start()` がコールバックを登録し、失敗したらコアは 100 µs ごとに読む。下の「READY の待ち」）。`nina_os_event_start()`・`nina_os_event_seq()`・`nina_os_event_wait()`: IRQ の線（GPIO2）の立ち上がりのエッジを数え、待っている全スレッドを起こす（`nina_os_event_start()` が失敗したらビット 2 が無いときの間隔で待つ。下の「ファームウェアの追加機能」） |
+| `common/drivers/nina/port/nina_os.h` | `common/drivers/nina/port/nuttx/nina_os.c` | `nina_os_lock()`・`nina_os_unlock()`: 再帰可能で優先度継承のあるロック（Zephyr 版の `K_MUTEX_DEFINE(nina_lock)`）。`nina_os_wifi_lock()`・`nina_os_wifi_unlock()`: Wi-Fi の操作のロック（`rmutex_t`）。`nina_os_wifi_post()`・`nina_os_wifi_wait()`: Wi-Fi のスレッドを起こす（セマフォ 1 つ、数は最大 1。待ちは post か、tick に切り上げて 1 tick 足した時間で終わる。要求はコアが自分で持つ）。`nina_os_lock()` は 0 か負の errno を返し、失敗は `nina_proto_request()`・`nina_proto_ip_config()` がそのまま返す。`nina_os_dns_lock()`・`nina_os_dns_unlock()`: 名前解決の 2 つの命令の間に持つ、優先度継承のあるロック。`nina_os_sleep_us()`・`nina_os_sleep_ms()`: Zephyr の `k_sleep()` と同じく tick に切り上げて 1 tick 足した時間眠り、シグナルでは終わらない。`nina_os_uptime_ms()`: カーネルの時計の ms（切り捨て。`k_uptime_get()`）。`nina_os_ready_start()`・`nina_os_ready_arm()`・`nina_os_ready_wait()`・`nina_os_ready_disarm()`: READY の変化を割り込みで待つ（`nina_os_ready_start()` がコールバックを登録し、失敗したらコアは 100 µs ごとに読む。下の「READY の待ち」）。`nina_os_event_start()`・`nina_os_event_seq()`・`nina_os_event_wait()`: IRQ の線（GPIO2）の立ち上がりのエッジを数え、待っている全スレッドを起こす（`nina_os_event_start()` が失敗したらビット 2 が無いときの間隔で待つ。下の「ファームウェアの追加機能」） |
 | `common/drivers/nina/port/nina_bus.h` | `port/nuttx/nina_bus_rp2040.c` | `nina_bus_initialize()`: コアが最初の要求のときに呼ぶ。SPI とそのピンを設定して CS を非アクティブにする（READY・RESET・IRQ には触れない。2 回目からは何もしない）。使えないとき（中継モードのあいだ）は `-ENODEV`。`nina_bus_pin_configure()`・`nina_bus_pin_set()`・`nina_bus_pin_get()`: 論理値（1 がアクティブ）。極性とプルはボードが知る（CS GPIO9 アクティブ low、READY GPIO10 アクティブ low・プルアップ、RESET GPIO3 アクティブ low、IRQ GPIO2 アクティブ high・プルダウン）。`nina_bus_transceive()`: モード 0・8 ビット・MSB first の同期転送（RX が NULL なら書くだけ）、CS には触れない |
 | 構成 | `nina/Kconfig` | `CONFIG_NINA_TCP_MAX_IO`（既定 3584）と `CONFIG_NINA_SEND_RETRY_MS`（既定 1）。`nina_sock.h` が読み、無ければ既定値を使う |
 | C ライブラリ | NuttX の libc | `nina_sock.[ch]`・`nina_dns.[ch]` は POSIX の `<sys/socket.h>`・`<sys/types.h>`・`<sys/uio.h>`・`<netinet/in.h>`・`<netinet/tcp.h>`・`<arpa/inet.h>`・`<poll.h>`・`<netdb.h>` の型と定数（`struct sockaddr_in`、`struct iovec`、`struct addrinfo`、`AF_INET`、`MSG_DONTWAIT`、`POLLIN`、`EAI_*` など）と、`inet_pton()`・`htons()`・`malloc()`・`free()` を使う。`nina_sock_poll_revents()` が返す `POLL*` と `EAI_*` の値は、呼び出す側と同じヘッダーのもの |
@@ -180,12 +180,13 @@ Zephyr 版はソケットのオフロード（`common/drivers/nina/port/zephyr/n
 
 | ファイル | 役割 |
 |---|---|
-| `common/drivers/nina/nina_wifi.c`・`include/nina_wifi.h` | コアの Wi-Fi の操作（Zephyr 版・FreeRTOS 版と同じファイル）。スキャン・接続・切断・状態・接続の監視と、3 つのスレッド `nina_scan_tid`・`nina_connect_tid`・`nina_monitor_tid` の本体。起きたことはつなぎのコールバック（`struct nina_wifi_ops`）に返す |
-| `common/drivers/nina/port/nuttx/nina_netdev.c` | NINA を NuttX のネットワークデバイス `wlan0` として登録し、wapi の無線の ioctl をコアの呼び出しにし、コアの結果を `wlan0`（アドレス、キャリア）に反映し、3 つのスレッドを始める。NuttX 版だけ |
+| `common/drivers/nina/nina_wifi.c`・`include/nina_wifi.h` | コアの Wi-Fi の操作（Zephyr 版・FreeRTOS 版と同じファイル）。スキャン・接続・切断・状態・接続の監視と、これらを 1 つずつ行うスレッド `nina_wifi_tid` の本体。起きたことはつなぎのコールバック（`struct nina_wifi_ops`）に返す |
+| `common/drivers/nina/port/nuttx/nina_netdev.c` | NINA を NuttX のネットワークデバイス `wlan0` として登録し、wapi の無線の ioctl をコアの呼び出しにし、コアの結果を `wlan0`（アドレス、キャリア）に反映し、スレッドを始める。NuttX 版だけ |
 | `common/drivers/nina/port/nuttx/nina_wifi_mgmt.[ch]` | アプリが使う Zephyr の Wi-Fi 管理（互換層の `net_mgmt()`）をコアの上で：`net_if_get_default()` のインターフェース、`NET_REQUEST_WIFI_CONNECT`（`NET_REQUEST_WIFI_CONNECT_STORED` が保存したネットワークごとに出す）、接続のイベント、Wi-Fi のプロファイルの再接続をコアのフックに（`CONFIG_WIFI_PROFILE` のとき `common/imu/wifi_profile.c`。無ければ接続はすべて許し、再接続しない） |
 | `common/drivers/nina/port/nuttx/nina_net.h` | `nina_net_initialize()`（ボードの起動処理）と `nina_net_start()`（init が実行するアプリのスレッドの表、`common/imu/app_init.c`） |
 
-- 操作は Zephyr 版と同じです: 監視は 2 秒ごとに、接続中なら NINA の状態（0x20）を見て、2 回続けて未接続なら切断として
+- 操作は Zephyr 版と同じで、1 つのスレッドで行います: 監視は 2 秒ごとに、接続中なら NINA の状態（0x20）を見て
+  （スキャン中や接続の試み中も、そのポーリングの sleep の間で）、2 回続けて未接続なら切断として
   IP の設定を消し、切断のイベントを出して再接続を頼みます。接続は NINA に SSID（とパスフレーズ）を渡した後、
   500 ms ごとに最大 60 回状態を見て、接続できたら省電力を切り（0x17）、IP の設定（0x21）を読んで
   インターフェースに入れ、結果のイベント（失敗は `-ETIMEDOUT` など）を出します。要求の世代
@@ -197,9 +198,9 @@ Zephyr 版はソケットのオフロード（`common/drivers/nina/port/zephyr/n
   `POST_KERNEL` でセンサーの後に初期化し、NVS を `main()` で用意するのと同じ順）。`net_mgmt` のスレッドを始めて互換層の
   インターフェースを登録し、`wlan0` を `NET_LL_IEEE80211` で登録して `IFF_UP`・キャリアなしにし、NINA から MAC アドレス
   （0x22）と追加機能を読みます（`nina_wifi_init()`。Zephyr と同じ順）。これが NINA への最初の命令なので、ここで NINA の
-  リセット（10 ms、750 ms）が入ります。3 つのスレッドは、Zephyr が静的なスレッドを始めるところで init が
+  リセット（10 ms、750 ms）が入ります。スレッド `nina_wifi_tid` は、Zephyr が静的なスレッドを始めるところで init が
   `nina_net_start()` で始めます（アプリのスレッドの表、`common/imu/app_init.c` の `app_threads_start()` の最初の項目）。静的なスタックのカーネルスレッド（`kthread_create_with_stack()`）で、優先度とスタックは
-  `priorities.h` の値（110、110、109。1536、1024、1536 バイト）、1 つが動き出してから次を始めます。
+  `priorities.h` の値（110。2048 バイト）、動き出してから `nina_net_start()` が戻ります。
 - インターフェースの値: IPv4 のアドレス・ネットマスク・ゲートウェイは `wlan0` の `d_ipaddr`・`d_netmask`・
   `d_draddr`、MAC アドレスは `d_mac` に書きます。NuttX の `ifconfig`（`/proc/net/wlan0`）と `SIOCGIFADDR` などは
   そこを読みます。Zephyr の「休止（dormant）」は `IFF_RUNNING` が無い状態です（接続すると `RUNNING` が付く）。
@@ -254,7 +255,7 @@ NuttX 版のビット 2 の待ち:
 - 待つ TCP 送信の次の周: poll だけをした周（書き込み可能でなかった）のあとは、その要求が命令の前に控えた数から
   変わったとき（最長 100 ms、送信の期限まで）、データを送って 0 バイトだった周のあとはビット 2 が無いときと同じく 1 ms 後です。
 - `nina_os_event_start()` が失敗したときは、ビット 2 があっても、ビット 2 が無いときの間隔で待ちます。
-- `nina_os.c` の割り込みと待ち、Wi-Fi の操作のロックと要求は `nuttx/tests/nina_os.c`（`nina_os`）が確かめます。`nina_event` の
+- `nina_os.c` の割り込みと待ち、Wi-Fi の操作のロックと Wi-Fi のスレッドを起こす待ちは `nuttx/tests/nina_os.c`（`nina_os`）が確かめます。`nina_event` の
   エッジでの周は、ホストテストで確かめていません。
 
 ### 中継モード（`nina passthrough confirm`）

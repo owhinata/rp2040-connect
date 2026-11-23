@@ -100,8 +100,8 @@ FreeRTOS 版だけがビルドする共有ファイル: `common/compat/zephyr_wi
 | `net_mgmt`、`sysworkq` | 21（-1） | 2048、384 | ネットワークのイベント、システムワークキュー（LSM6DSOX の FIFO の割り込みのワーク） |
 | `main` | 20（0） | 2048 | 起動の後半（下の「起動」）。終わると消える。スタックは、コア 1（起動しない）だけが使う SCRATCH_X にある（`app/usb-console/ld/`） |
 | `sensor_shell_tid`、`RTIO WQ 0` | 20（0） | 2048、1024 | `sensor` の結果の表示、RTIO のワーク |
-| `nina_scan_tid`、`nina_connect_tid`、`wifi_reconnect_tid` | 12（8） | 1536、1024、2048 | Wi-Fi のスキャン・接続・自動再接続 |
-| `nina_monitor_tid`、`time_sync_tid`、`imu_stream_tid` | 11（9） | 1536、2048、2048 | 接続の監視、時刻同期、取得 |
+| `nina_wifi_tid`、`wifi_reconnect_tid` | 12（8） | 2048、2048 | Wi-Fi のスキャン・接続・接続の監視（1 つずつ行う）、自動再接続 |
+| `time_sync_tid`、`imu_stream_tid` | 11（9） | 2048、2048 | 時刻同期、取得 |
 | `imu_fifo_worker` | 10（10） | 2048 | FIFO の読み出し |
 | `imu_raw_mqtt_tid` | 9（11） | 2048 | MQTT の送信 |
 | `console`、`shell_telnet`、`telnet_service`、`zperf_server_tid` | 6（14） | 3072、3072、2048、2048 | USB と Telnet のシェル（コマンドはこのタスクで走る）、Telnet の受け付け、`zperf tcp download` のサーバー |
@@ -182,7 +182,7 @@ FreeRTOS 版の flash の操作（`common/chip/rp2040/include/rp2040_flash_kv_os
   `nina_dns.c`・`nina_wifi.c`）です。FreeRTOS 版は境界 `nina_bus.h`（`common/drivers/nina/port/freertos/nina_bus_rp2040.c`: SPI1 を 7.8125 MHz で、64 バイト未満の転送はポーリング、それ以上は呼んだタスクを眠らせて DMA（`nina_bus_dma_rp2040.c`。下記。Zephyr 版・NuttX 版と同じ境目）、
   CS・READY・RESET・IRQ の 4 本。Zephyr のドライバーと同じ順と値で設定）と `nina_os.h`（コアの FreeRTOS へのつなぎ
   `common/drivers/nina/port/freertos/nina_os.c`。互換層を使わず FreeRTOS と Pico SDK で直接書いたもの: NINA のロック・名前解決のロック・
-  Wi-Fi の操作のロックは優先度継承のある FreeRTOS の再帰ミューテックス、Wi-Fi のスレッドへの要求は 2 値セマフォ、「切り上げ + 1 tick」の
+  Wi-Fi の操作のロックは優先度継承のある FreeRTOS の再帰ミューテックス、Wi-Fi のスレッドを起こすのはそのタスク通知 2（要求はコアが自分で持つ）、「切り上げ + 1 tick」の
   sleep、時計は TIMER の ms）を実装します。つなぎのオブジェクトは静的で、どれかを最初に使うときに作ります。境界の意味は
   [`nuttx/drivers/README_ja.md`](../../nuttx/drivers/README_ja.md) の「NINA-W102」の表のとおりです。
 - コアの READY の待ちは、READY のエッジ割り込み（GPIO10）が与える 2 値セマフォで眠り、最長 10 ms ごとに READY を読み直します。
@@ -215,7 +215,7 @@ FreeRTOS 版の flash の操作（`common/chip/rp2040/include/rp2040_flash_kv_os
   失敗したときは、ビット 2 があっても、ビット 2 が無いときの間隔（20 ms、送信は 1 ms）で待ちます。TCP 送信の再試行で、全量を送り直す前に poll 命令で書き込み可能を
   確かめるのは、ファームウェアに依りません。
 - Wi-Fi: コアの Wi-Fi の操作と、Zephyr 版と同じそのつなぎ（`common/drivers/nina/port/zephyr/nina_net.c`: Zephyr の Wi-Fi 管理と
-  インターフェース、3 つのスレッド）、資格情報（Zephyr の `wifi_credentials` の写し）、自動再接続（`common/imu/wifi_profile.c`）を、
+  インターフェース、スレッド `nina_wifi_tid`）、資格情報（Zephyr の `wifi_credentials` の写し）、自動再接続（`common/imu/wifi_profile.c`）を、
   互換層の `net_if`・`net_mgmt`・`wifi_mgmt`（`net_offload/zephyr_net_if.c`。インターフェースは起動時に `net_offload/zephyr_net_init.c` が Zephyr の
   `net_init()` と同じく登録）の上で動かします。FreeRTOS 版は
   ネットワーク層を持たないので Zephyr へのつなぎを使います。`wifi` コマンドは `common/compat/zephyr_wifi_shell.c` で、このボードで使えるオプションだけを残しています。
@@ -377,7 +377,7 @@ MQTT のクライアントは NuttX 版と共有する `common/imu/mqtt_min.c`�
 | `tick` | tick の追いつき（`tick_catchup.h`）: 判定の 1 歩と、SysTick と CPU の模型（割り込みの遅れ、0〜60 tick の割り込みの停止）の上で、tick が TIMER より先に進まず、追いついたあとの遅れが 1 tick 以内であること |
 | `shell` | 2 つのセッションのシェル、行編集、出力先、`help` と汎用のコマンドとその出力 |
 | `kv` | フラッシュの境界と KV（Pico SDK のフラッシュ関数の偽物の上） |
-| `nina` | NINA の SPI と線の境界（偽の DMA の上で長い転送の DMA も: しきい値、SPI1 の終わりの状態、共有の DMA_IRQ_1、時間切れと中断、失われたバイト、バスのエラー、それぞれのあとの転送、止まらないチャネル、空きの無いチャネル、記録するメッセージ）と、`nina_os.h` の FreeRTOS へのつなぎ（互換層なし。tick 1 ms と 4 ms で 2 回ビルド）: READY の割り込み待ち、IRQ の線のエッジの待ち（2 つのタスクを 1 つのエッジで起こす、時間切れ）、共有のバンクの割り込み、ロック、要求、sleep の tick 数、tick の一周をまたぐ時計 |
+| `nina` | NINA の SPI と線の境界（偽の DMA の上で長い転送の DMA も: しきい値、SPI1 の終わりの状態、共有の DMA_IRQ_1、時間切れと中断、失われたバイト、バスのエラー、それぞれのあとの転送、止まらないチャネル、空きの無いチャネル、記録するメッセージ）と、`nina_os.h` の FreeRTOS へのつなぎ（互換層なし。tick 1 ms と 4 ms で 2 回ビルド）: READY の割り込み待ち、IRQ の線のエッジの待ち（2 つのタスクを 1 つのエッジで起こす、時間切れ）、共有のバンクの割り込み、ロック、Wi-Fi のスレッドを起こす待ち、sleep の tick 数、tick の一周をまたぐ時計 |
 | `i2c_dw` | I2C0 の境界とデバイス、Zephyr の I2C の API（2 回作る: i2c0 だけと、`CONFIG_I2C_DW_I2C1` 付き。後者は i2c1 の起動、ピン、転送、応答の無いアドレス、DMA を使わない長い読み出し、影響を受けない i2c0、2 つのタスクからの両バスの転送を加える）。つなぎのセマフォ、待ちの tick、スリープ、時計。Pico SDK の DMA の偽物の上の DMA の部分（`i2c_dw_dma_os_rp2040.c`）: チャネルの取得、設定、開始、共有のハンドラー（終了、バスエラー、ほかの利用者のチャネル）、停止、返却。その上のコアの DMA 読み出し: 読み出し、32 バイトの下限、フォールバック、TX と RX のバスエラー、タイムアウト、DMA 読み出しの無効、終わらない停止（隔離）、カウンター。コアの DMA のコマンド語 |
 | `gpio` | GPIO バンク 0 の境界、`gpio0`、FIFO の割り込み |
 | `imu` | アドレスの変換、`hwinfo` |

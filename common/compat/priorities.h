@@ -34,18 +34,14 @@
 #define APP_PRIO_WIFI_RECONNECT     APP_PRIO_FROM_ZEPHYR(8)
 #define APP_STACK_WIFI_RECONNECT    2048
 
-/* The NINA core's threads (common/drivers/nina/include/nina_wifi.h): K_THREAD_DEFINE()
- * of common/drivers/nina/port/zephyr/nina_net.c, nina_scan_tid (1536, 8),
- * nina_connect_tid (1024, 8), nina_monitor_tid (1536, 9); the NuttX
- * binding (common/drivers/nina/port/nuttx/nina_netdev.c) starts them with these.
+/* The NINA core's Wi-Fi thread (common/drivers/nina/include/nina_wifi.h):
+ * K_THREAD_DEFINE() of common/drivers/nina/port/zephyr/nina_net.c,
+ * nina_wifi_tid (2048, 8); the NuttX binding
+ * (common/drivers/nina/port/nuttx/nina_netdev.c) starts it with these.
  */
 
-#define APP_PRIO_NINA_SCAN          APP_PRIO_FROM_ZEPHYR(8)
-#define APP_STACK_NINA_SCAN         1536
-#define APP_PRIO_NINA_CONNECT       APP_PRIO_FROM_ZEPHYR(8)
-#define APP_STACK_NINA_CONNECT      1024
-#define APP_PRIO_NINA_MONITOR       APP_PRIO_FROM_ZEPHYR(9)
-#define APP_STACK_NINA_MONITOR      1536
+#define APP_PRIO_NINA_WIFI          APP_PRIO_FROM_ZEPHYR(8)
+#define APP_STACK_NINA_WIFI         2048
 
 /* common/imu/time_sync.c:295 time_sync_tid (2048, 9) */
 

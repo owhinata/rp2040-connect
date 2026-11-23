@@ -42,9 +42,10 @@
  * - The wait: in the calling task (nina_proto.c holds nina_lock: one
  *   transfer at a time), on the notification, for at most 2 ms + LEN / 256
  *   ms rounded up to ticks, plus one tick (the transfer itself takes
- *   LEN x 1.024 us).  A notification left from a socket event wait of the
- *   same index (nina_os.c) is cleared before the start, and the wait looks
- *   at the end flag, not at the notification.  If the time runs out, or a
+ *   LEN x 1.024 us).  A notification left from a socket event wait or a
+ *   wake-up of the Wi-Fi thread on the same index (nina_os.c) is cleared
+ *   before the start, and the wait looks at the end flag, not at the
+ *   notification.  If the time runs out, or a
  *   channel reports a bus error: the RX channel's interrupt off, both
  *   channels aborted (CHAN_ABORT) and waited for at most
  *   NINA_BUS_DMA_STOP_US, both flags acknowledged (an abort may raise one:

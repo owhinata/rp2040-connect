@@ -438,8 +438,8 @@ Zephyr 版の `i2c write`、`gpio`、`log`、`device`、`history`、`clear`、`r
 
 | スレッド | Zephyr | NuttX | スタック |
 |---|---|---|---|
-| `wifi_reconnect_tid`、`nina_scan_tid`、`nina_connect_tid` | 8 | 110 | 2048、1536、1024 |
-| `time_sync_tid`、`imu_stream_tid`、`nina_monitor_tid` | 9 | 109 | 2048、2048、1536 |
+| `wifi_reconnect_tid`、`nina_wifi_tid` | 8 | 110 | 2048、2048 |
+| `time_sync_tid`、`imu_stream_tid` | 9 | 109 | 2048、2048 |
 | `imu_fifo_worker` | 10 | 108 | 2048 |
 | `imu_raw_mqtt_tid` | 11 | 107 | 2048 |
 | `nina_event`（NuttX 版だけ） | – | 106 | 1536 |

@@ -15,9 +15,26 @@
  *                                   (INCLUDE_vTaskSuspend): nina_os_lock()
  *                                   returns 0.  FreeRTOS refuses the unlock
  *                                   of a mutex the caller does not hold
- *   K_SEM_DEFINE(scan_request,      a FreeRTOS binary semaphore each: a give
- *   0, 1) and connect_request       while one is pending leaves one; the wait
- *                                   is for ever
+ *   K_SEM_DEFINE(wifi_request,      the Wi-Fi thread's task notification
+ *   0, 1), k_sem_give(),            NINA_OS_NOTIFY_INDEX (below): the first
+ *   k_sem_take(K_MSEC(ms))          nina_os_wifi_wait() keeps the calling
+ *                                   task and returns at once; from then on
+ *                                   nina_os_wifi_post() gives it
+ *                                   (xTaskNotifyGiveIndexed(); a post
+ *                                   before is not kept, and the core looks
+ *                                   at its requests after that first return),
+ *                                   and the wait takes it with
+ *                                   ulTaskNotifyTakeIndexed() for the time
+ *                                   rounded up to ticks, plus one tick.  The
+ *                                   SPI DMA's waits of the same task clear
+ *                                   the index before they start, so a
+ *                                   wake-up given while the thread is busy
+ *                                   may be lost: the core sets its request
+ *                                   before it posts and looks at it before
+ *                                   every wait, so the request is not.  A
+ *                                   wake-up left from a post whose request
+ *                                   the core has already taken ends a later
+ *                                   wait early
  *   k_sleep(K_USEC(us)),            vTaskDelay(ticks + 1) for the time
  *   k_sleep(K_MSEC(ms))             rounded up to ticks (Zephyr wakes a
  *                                   relative timeout at the current tick +
@@ -133,14 +150,15 @@
 #include "nina_board_rp2040.h"
 #include "nina_os.h"
 
-/* The task notification of the socket events' waits; index 0 is the Pico
- * SDK's and the application's, 1 the compatibility layer's
- * (FreeRTOSConfig.h).
+/* The task notification of the socket events' waits and of the Wi-Fi
+ * thread's wake-up (a task waits for one of them at a time; the SPI DMA's
+ * waits use it too, nina_bus_dma_rp2040.c); index 0 is the Pico SDK's and
+ * the application's, 1 the compatibility layer's (FreeRTOSConfig.h).
  */
 #define NINA_OS_NOTIFY_INDEX 2
 
 #if configTASK_NOTIFICATION_ARRAY_ENTRIES <= NINA_OS_NOTIFY_INDEX
-#error "the NINA's socket event waits use task notification index 2"
+#error "the NINA's socket event and Wi-Fi waits use task notification index 2"
 #endif
 
 /* READY, active low; the IRQ line, active high (nina_board_rp2040.h). */
@@ -158,18 +176,16 @@
 static StaticSemaphore_t nina_lock_buffer;
 static StaticSemaphore_t nina_dns_lock_buffer;
 static StaticSemaphore_t connect_state_lock_buffer;
-static StaticSemaphore_t scan_request_buffer;
-static StaticSemaphore_t connect_request_buffer;
 static StaticSemaphore_t ready_sem_buffer;
 
 static SemaphoreHandle_t nina_lock;
 static SemaphoreHandle_t nina_dns_lock;
 static SemaphoreHandle_t connect_state_lock;
-static SemaphoreHandle_t scan_request;
-static SemaphoreHandle_t connect_request;
 static SemaphoreHandle_t ready_sem;
+/* The task in nina_os_wifi_wait() (set by its first call). */
+static TaskHandle_t volatile wifi_waiter;
 
-/* Makes the objects once: the first lock or request of any task finds
+/* Makes the objects once: the first lock of any task finds
  * ready_sem, the last one made, still NULL.  The critical section keeps a
  * second task from making them again.
  */
@@ -181,8 +197,6 @@ static void make_objects(void)
 		nina_dns_lock = xSemaphoreCreateRecursiveMutexStatic(&nina_dns_lock_buffer);
 		connect_state_lock =
 			xSemaphoreCreateRecursiveMutexStatic(&connect_state_lock_buffer);
-		scan_request = xSemaphoreCreateBinaryStatic(&scan_request_buffer);
-		connect_request = xSemaphoreCreateBinaryStatic(&connect_request_buffer);
 		ready_sem = xSemaphoreCreateBinaryStatic(&ready_sem_buffer);
 	}
 	taskEXIT_CRITICAL();
@@ -286,21 +300,23 @@ void nina_os_wifi_unlock(void)
 	(void)xSemaphoreGiveRecursive(connect_state_lock);
 }
 
-static SemaphoreHandle_t wifi_request(unsigned int which)
+void nina_os_wifi_post(void)
 {
-	return which == NINA_OS_WIFI_SCAN ? scan_request : connect_request;
+	TaskHandle_t task = wifi_waiter;
+
+	if (task != NULL) {
+		(void)xTaskNotifyGiveIndexed(task, NINA_OS_NOTIFY_INDEX);
+	}
 }
 
-void nina_os_wifi_post(unsigned int which)
+void nina_os_wifi_wait(uint32_t ms)
 {
-	objects();
-	(void)xSemaphoreGive(wifi_request(which));
-}
-
-void nina_os_wifi_wait(unsigned int which)
-{
-	objects();
-	(void)xSemaphoreTake(wifi_request(which), portMAX_DELAY);
+	if (wifi_waiter == NULL) {
+		wifi_waiter = xTaskGetCurrentTaskHandle();
+		return;
+	}
+	(void)ulTaskNotifyTakeIndexed(NINA_OS_NOTIFY_INDEX, pdTRUE,
+				      block_ticks(ticks_ceil((uint64_t)ms * 1000u)));
 }
 
 /* The lines' interrupt ----------------------------------------------------------*/

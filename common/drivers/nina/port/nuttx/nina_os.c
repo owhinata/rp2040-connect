@@ -21,10 +21,13 @@
  *   (k_ticks_to_ms_floor64()).  TICK2MSEC() rounds down too.
  * - K_MUTEX_DEFINE(connect_state_lock) of nina_wifi.c (with
  *   CONFIG_NINA_NET): an rmutex_t, as nina_lock.
- * - K_SEM_DEFINE(scan_request, 0, 1) and connect_request of nina_wifi.c:
- *   a sem_t each (SEM_INITIALIZER: no priority inheritance), posted only
- *   when no count is pending (the limit of 1), the check and the post in
- *   one critical section; the wait is nxsem_wait_uninterruptible().
+ * - K_SEM_DEFINE(wifi_request, 0, 1), the Wi-Fi thread's wake-up
+ *   (nina_os_wifi_post(), _wait()): a sem_t (SEM_INITIALIZER: no priority
+ *   inheritance), posted only when no count is pending (the limit of 1),
+ *   the check and the post in one critical section; the wait is
+ *   nxsem_tickwait_uninterruptible() for ms rounded up to ticks, plus one
+ *   tick (as the sleeps).  A count left from a post whose request the core
+ *   has already taken ends a later wait early.
  *
  * The core's waits for READY (nina_proto.c wait_ready()) sleep on an edge
  * interrupt of the line instead of sampling it every 100 us, as the other
@@ -280,11 +283,7 @@ void nina_os_dns_unlock(void)
 
 #ifdef CONFIG_NINA_NET
 static rmutex_t g_wifi_lock = NXRMUTEX_INITIALIZER;
-static sem_t g_wifi_request[2] =
-{
-  SEM_INITIALIZER(0),           /* NINA_OS_WIFI_SCAN */
-  SEM_INITIALIZER(0),           /* NINA_OS_WIFI_CONNECT */
-};
+static sem_t g_wifi_request = SEM_INITIALIZER(0);
 
 void nina_os_wifi_lock(void)
 {
@@ -298,22 +297,22 @@ void nina_os_wifi_unlock(void)
   nxrmutex_unlock(&g_wifi_lock);
 }
 
-void nina_os_wifi_post(unsigned int which)
+void nina_os_wifi_post(void)
 {
   irqstate_t flags = enter_critical_section();
   int value;
 
-  if (nxsem_get_value(&g_wifi_request[which], &value) == 0 && value <= 0)
+  if (nxsem_get_value(&g_wifi_request, &value) == 0 && value <= 0)
     {
-      nxsem_post(&g_wifi_request[which]);
+      nxsem_post(&g_wifi_request);
     }
 
   leave_critical_section(flags);
 }
 
-void nina_os_wifi_wait(unsigned int which)
+void nina_os_wifi_wait(uint32_t ms)
 {
-  nxsem_wait_uninterruptible(&g_wifi_request[which]);
+  nxsem_tickwait_uninterruptible(&g_wifi_request, MSEC2TICK(ms));
 }
 #endif
 

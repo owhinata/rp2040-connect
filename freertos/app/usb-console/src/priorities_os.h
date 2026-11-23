@@ -21,8 +21,8 @@
  *
  * The values of priorities.h on FreeRTOS:
  *
- *   wifi_reconnect_tid, nina_scan_tid, nina_connect_tid       8 -> 12
- *   nina_monitor_tid, time_sync_tid, imu_stream_tid           9 -> 11
+ *   wifi_reconnect_tid, nina_wifi_tid                         8 -> 12
+ *   time_sync_tid, imu_stream_tid                             9 -> 11
  *   imu_fifo_worker                                          10 -> 10
  *   imu_raw_mqtt_tid                                         11 ->  9
  *   main, sensor shell processing, RTIO WQ 0                  0 -> 20
