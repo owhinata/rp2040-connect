@@ -36,7 +36,7 @@ import sys
 # while it runs, iperf's two threads, the NINA passthrough mode's two
 # threads and its 16 KiB ring) and the TCBs, task groups and file lists.
 # Their worst case together is estimated at about 55 KiB (see "Code in
-# RAM" in nuttx/drivers/README.md); the minimum keeps about 25 KiB more
+# RAM" in design/nuttx-porting.md); the minimum keeps about 25 KiB more
 # for fragmentation and for the ring's 16 KiB in one piece.
 
 HEAP_MIN = 80 * 1024

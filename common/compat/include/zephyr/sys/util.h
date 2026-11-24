@@ -2,7 +2,7 @@
 /* The few macros of Zephyr's <zephyr/sys/util.h> (and util_macro.h) that the
  * ported sources use, with Zephyr's definitions, so that those sources keep
  * their text.  Part of the small Zephyr compatibility layer of the port
- * (common/compat, see nuttx/drivers/README.md); it is not Zephyr's
+ * (common/compat, see common/compat/README.md); it is not Zephyr's
  * header and has nothing else.
  */
 

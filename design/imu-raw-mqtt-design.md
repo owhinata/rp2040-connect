@@ -96,7 +96,7 @@ As a guide to load, `cpu_active` while streaming at 6667 Hz with time stamping i
 | about 21.4% | about 23.5 to 24.7% | about 19.3 to 19.7% | about 18.4% |
 
 The NINA's SPI moves the transfers of 64 bytes or more by DMA while the calling thread waits, and polls the
-shorter ones (the driver notes of each build). In a run with every payload byte set to a known value and checked on
+shorter ones (the OS sections of [the NINA-W102 driver](../common/drivers/nina/README.md#the-bindings-of-each-os)). In a run with every payload byte set to a known value and checked on
 the PC, 18 to 20 million bytes per build arrived with none wrong (the Zephyr, NuttX and FreeRTOS builds). Running the
 busy code from RAM is described in "Code in RAM" in section 9.1.
 
@@ -140,7 +140,7 @@ Verified on the board (the conditions and values are kept in the records, not in
 - The final image (2026-11-18: the divider, the ROM's `memcpy` and `memset`, support for the new firmware,
   `bootsel`, `nina passthrough`): the first measurement after flashing, the capability bits of
   `nina version`, `iperf`, reading the NINA's flash through the passthrough, `bootsel` (Telnet with the
-  image before). Saving the divider was checked with test images (`nuttx/drivers/README.md`).
+  image before). Saving the divider was checked with test images ("Integer division" in [`nuttx-porting.md`](nuttx-porting.md#integer-division)).
 
 Not verified:
 
@@ -284,7 +284,7 @@ flowchart LR
 | Send queue | `common/imu/imu_raw_queue.*` |
 | MQTT sending, reconnecting, status / info | `common/imu/imu_raw_mqtt.*`, `common/imu/imu_raw_status.*` |
 | Acquisition thread, recovery, shell (`imu`) | `common/imu/imu_stream.c` |
-| NINA sockets | `common/drivers/nina/port/zephyr/nina_socket.c`, `common/drivers/nina/nina_sock.*` (see the [driver README](../zephyr/app/usb-console/drivers/README.md)) |
+| NINA sockets | `common/drivers/nina/port/zephyr/nina_socket.c`, `common/drivers/nina/nina_sock.*` (see [the NINA-W102 driver](../common/drivers/nina/README.md#sockets)) |
 
 `src/` and `drivers/` are under `zephyr/app/usb-console`; `common/` is under the repository's root and
 holds the parts whose files are the same as the NuttX, FreeRTOS and ThreadX builds' (section 9.1).
@@ -940,7 +940,7 @@ RP2040's registers or its SDK; the Zephyr build's SPI and lines come from the de
 #### The I2C core
 
 **The I2C core (`common/drivers/i2c_dw/`)** is the I2C driver of the NuttX, FreeRTOS and ThreadX builds (the details of the OS
-parts are in the I2C sections of each build's driver notes).
+parts are in the OS sections of [the DesignWare I2C core](../common/drivers/i2c_dw/README.md#each-oss-binding)).
 
 - **What it is**: a copy of the Zephyr build's driver (Zephyr's `drivers/i2c/i2c_dw.c` with the local patch
   `zephyr/manifest/zephyr/patches/zephyr/0003-i2c-dw-rp2040-fifo-and-dma.patch`). The intended differences (the OS's
@@ -965,7 +965,7 @@ parts are in the I2C sections of each build's driver notes).
 - **Other code that uses DMA**: other code of the same program may use the OS's DMA as usual. It must not touch the
   two channels a read holds, reset the DMA block, or write the registers that the channels share (interrupt enable
   and status, CHAN_ABORT) as a whole (only its own channels' bits). The rules of each build, such as those for the
-  interrupt line, are in its driver notes.
+  interrupt line, are in the OS sections of [the DesignWare I2C core](../common/drivers/i2c_dw/README.md#each-oss-binding).
 - **The `i2c_dma` command**: `common/shell/i2c_dma_shell.c` in all four builds (NuttX: on `zshell.c`). The patched
   driver and the core define the same three functions, and the command reads their declarations from
   `<zephyr/drivers/i2c/i2c_dw_rp2040_dma.h>`: in the Zephyr build the header that the patch adds to Zephyr's tree, in
@@ -1015,10 +1015,9 @@ OS's firmware runs it from RAM; the read-only data stays in the flash. The Zephy
 build lists the objects in the board's linker script, and `.data`'s copy takes them (about 44 KiB, the heap keeps
 about 112 KiB). The FreeRTOS and ThreadX builds use `common/imu/port/pico_sdk/ram_code.cmake`, and add for the OS only
 the NINA core's binding (`nina_os.c`). In the FreeRTOS build it takes about 49 KiB of RAM from newlib's
-`malloc()` (used by the shell, `zperf` and the NINA passthrough mode); about 89 kB is left (the drivers'
-README). A check after the
-link stops each build when a listed object's code is not in RAM or too little RAM is left (the drivers' README of
-each build). The kernel stays in the flash in all four builds.
+`malloc()` (used by the shell, `zperf` and the NINA passthrough mode); about 89 kB is left ([the FreeRTOS port](freertos-port.md#code-in-ram)). A check after the
+link stops each build when a listed object's code is not in RAM or too little RAM is left (the ports of [Zephyr](zephyr-port.md#code-in-ram),
+[NuttX](nuttx-porting.md#code-in-ram) and [FreeRTOS](freertos-port.md#code-in-ram)). The kernel stays in the flash in all four builds.
 
 #### The NINA passthrough
 
@@ -1034,8 +1033,8 @@ the SPI share pins).
 
 The NINA firmware's additions (the patches 0003 to 0006 of `firmware/nina-fw/`; the specification is
 "Host interface of 0003 to 0006" in `firmware/nina-fw/README.md`) are handled by the shared core, the
-same in the four builds (details: "Firmware additions" in the
-[driver description](../zephyr/app/usb-console/drivers/README.md)).
+same in the four builds (details: "Firmware additions" in
+[the NINA-W102 driver](../common/drivers/nina/README.md#firmware-additions-patches-0003-to-0006)).
 
 - Once after initialization, command 0x6A gives the bits. A firmware without the command (3.0.2 and
   the like) answers `0xEF`: no additions, and the driver works without them.
@@ -1073,8 +1072,9 @@ same in the four builds (details: "Firmware additions" in the
 ### 9.2 The Zephyr build
 
 `zephyr/` is the Zephyr 4.5 workspace, with the application in `zephyr/app/usb-console`. Usage is in the
-[README](../README.md), the drivers in
-[`zephyr/app/usb-console/drivers/README.md`](../zephyr/app/usb-console/drivers/README.md).
+[README](../README.md), the port's internals in
+[`zephyr-port.md`](zephyr-port.md), the shared drivers in their READMEs ([NINA-W102](../common/drivers/nina/README.md), [I2C](../common/drivers/i2c_dw/README.md),
+[LSM6DSO](../common/drivers/lsm6dso/README.md)).
 
 #### 9.2.1 Approach
 
@@ -1085,7 +1085,7 @@ same in the four builds (details: "Firmware additions" in the
   9.4.1 and 9.5.1).
 - The Zephyr build's patches are listed in
   `zephyr/manifest/zephyr/patches.yml`, and `source zephyr/script/setup.sh` applies them with `west patch` (see
-  "Local patches of Zephyr" in the [driver notes](../zephyr/app/usb-console/drivers/README.md)).
+  "Local patches of Zephyr" in [`zephyr-port.md`](zephyr-port.md#local-patches-of-zephyr)).
 
 #### 9.2.2 Clocks and tick
 
@@ -1122,7 +1122,8 @@ the interrupted thread. `kernel ps` shows the share since the previous `kernel p
 
 `nuttx/` holds a port of the same firmware to NuttX 13.1.0 (the NuttX port). Usage, the command map, the error number map and the detailed list of
 differences are in [`nuttx/README.md`](../nuttx/README.md), the drivers in
-[`nuttx/drivers/README.md`](../nuttx/drivers/README.md), the port of each function in
+their READMEs ([NINA-W102](../common/drivers/nina/README.md), [I2C](../common/drivers/i2c_dw/README.md), [LSM6DSO](../common/drivers/lsm6dso/README.md)) and
+[the compatibility layer's](../common/compat/README.md), the port of each function and the port's internals in
 [`design/nuttx-porting.md`](nuttx-porting.md).
 
 #### 9.3.1 Approach
@@ -1235,7 +1236,7 @@ difference of the total run time in `/proc/<tid>/critmon` ("CPU load" in `design
 `freertos/` holds the same firmware built on the Raspberry Pi Pico SDK 2.3.1 and the FreeRTOS kernel
 V11.3.3 (one core): the FreeRTOS build. Usage and commands are in
 [`freertos/README.md`](../freertos/README.md), the internals and the table of differences from the Zephyr
-and NuttX builds in [`freertos/drivers/README.md`](../freertos/drivers/README.md).
+and NuttX builds in [`design/freertos-port.md`](freertos-port.md).
 
 #### 9.4.1 Approach
 
@@ -1301,7 +1302,7 @@ interval since the previous `ps` (since the start for the first; idle included, 
 `threadx/` holds the same firmware built on the Raspberry Pi Pico SDK 2.3.1 and the ThreadX kernel alone (Eclipse
 ThreadX v6.5.2.202603b_rel, the Cortex-M0 port `ports/cortex_m0/gnu`): the ThreadX build. USBX, NetX Duo and FileX
 are not used. Usage is in [`threadx/README.md`](../threadx/README.md), the internals and the table of differences
-from the FreeRTOS build in [`threadx/drivers/README.md`](../threadx/drivers/README.md).
+from the FreeRTOS build in [`design/threadx-port.md`](threadx-port.md).
 
 #### 9.5.1 Approach
 

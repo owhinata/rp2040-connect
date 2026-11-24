@@ -124,7 +124,7 @@ void usb_console_init(void)
 
 	/* The bounds of the key-value area from the linker script; until they
 	 * are found right, the store refuses to erase or program the flash
-	 * (common/pico_sdk/drivers/kv).  No flash access.  After I2C0, where
+	 * (common/chip/rp2040/port/pico_sdk).  No flash access.  After I2C0, where
 	 * the NuttX build's bringup checks its flash; the store itself is
 	 * mounted by the thread "main".
 	 */

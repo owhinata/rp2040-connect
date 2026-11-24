@@ -84,7 +84,7 @@ I²C0 は起動時からこの設定で、FIFO のストリーム（`imu start`�
 |---|---|---|---|
 | 約 21.4% | 約 23.5〜24.7% | 約 19.3〜19.7% | 約 18.4% |
 
-NINA の SPI は、64 バイト以上の転送を DMA で行って呼んだスレッドを待たせ、短い転送はポーリングする（各 OS のドライバーの説明）。
+NINA の SPI は、64 バイト以上の転送を DMA で行って呼んだスレッドを待たせ、短い転送はポーリングする（[NINA-W102 のドライバー](../common/drivers/nina/README_ja.md#各-os-のつなぎ)の各 OS の節）。
 全バイトを決まった値にして PC 側で照合する確認では、Zephyr 版・NuttX 版・FreeRTOS 版とも約 1800〜2050 万バイトで不一致は 0 だった。
 よく通るコードを RAM で動かす配置は §9.1 の「RAM に置くコード」に書く。
 
@@ -116,7 +116,7 @@ NINA の SPI は、64 バイト以上の転送を DMA で行って呼んだス�
 - NuttX 版の後で書き込んだ Zephyr 版が、KV と保存済みの Wi-Fi の資格情報をそのまま使うこと（2026-11-18）。
 - 最終のイメージ（2026-11-18。除算器、ROM の `memcpy`・`memset`、新しいファームウェアへの対応、`bootsel`、`nina passthrough`）:
   書き込み直後の送信、`nina version` の機能のビット、`iperf`、中継での NINA の flash の読み出し、`bootsel`（Telnet は 1 つ前のイメージで確認）。
-  除算器の退避は試験のイメージで確かめた（`nuttx/drivers/README_ja.md`）。
+  除算器の退避は試験のイメージで確かめた（[`nuttx-porting-ja.md`](nuttx-porting-ja.md#整数の割り算) の「整数の割り算」）。
 
 未確認の範囲:
 
@@ -228,7 +228,7 @@ flowchart LR
 | 送信キュー | `common/imu/imu_raw_queue.*` |
 | MQTT 送信・再接続・status / info | `common/imu/imu_raw_mqtt.*`、`common/imu/imu_raw_status.*` |
 | 取得スレッド・回復・シェル（`imu`） | `common/imu/imu_stream.c` |
-| NINA のソケット | `common/drivers/nina/port/zephyr/nina_socket.c`、`common/drivers/nina/nina_sock.*`（[ドライバーの説明](../zephyr/app/usb-console/drivers/README_ja.md)） |
+| NINA のソケット | `common/drivers/nina/port/zephyr/nina_socket.c`、`common/drivers/nina/nina_sock.*`（[NINA-W102 のドライバー](../common/drivers/nina/README_ja.md#ソケット)） |
 
 `src/`・`drivers/` は `zephyr/app/usb-console` の下、`common/` はリポジトリのルートの下で、NuttX 版・FreeRTOS 版・ThreadX 版と
 同じファイルを使う部分（§9.1）。
@@ -796,7 +796,7 @@ NINA の OS に依存しないコアは `common/drivers/nina/` にあり、4 つ
 #### I2C のコア
 
 **I2C のコア（`common/drivers/i2c_dw/`）** は、NuttX 版・FreeRTOS 版・ThreadX 版の I2C のドライバーである（OS の部分の細部は、
-NuttX 版・FreeRTOS 版のドライバーの説明の I2C の節）。
+[DesignWare I2C のコア](../common/drivers/i2c_dw/README_ja.md#各-os-のつなぎ)の各 OS の節）。
 
 - **何か**: Zephyr 版のドライバー（Zephyr の `drivers/i2c/i2c_dw.c` にローカルのパッチ
   `zephyr/manifest/zephyr/patches/zephyr/0003-i2c-dw-rp2040-fifo-and-dma.patch` を当てたもの）の写し。意図した違い（OS の
@@ -819,7 +819,7 @@ NuttX 版・FreeRTOS 版のドライバーの説明の I2C の節）。
   レジスターに触れず、境界の関数はどれも DMA のほかの利用者を待たない。
 - **DMA を使うほかのコード**: 同じプログラムのほかのコードも、OS の DMA を通常どおり使える。読み出しが持つ 2 つの
   チャネルに触れない、DMA のブロックをリセットしない、チャネルが共有するレジスター（割り込みの有効・状態、CHAN_ABORT）を
-  丸ごと書かない（自分のチャネルのビットだけにする）。割り込みの線の扱いなど、OS ごとの規則は各 OS のドライバーの説明にある。
+  丸ごと書かない（自分のチャネルのビットだけにする）。割り込みの線の扱いなど、OS ごとの規則は [DesignWare I2C のコア](../common/drivers/i2c_dw/README_ja.md#各-os-のつなぎ)の各 OS の節にある。
 - **`i2c_dma` コマンド**: 4 つの OS のファームウェアとも `common/shell/i2c_dma_shell.c`（NuttX 版は `zshell.c` の上）。パッチ後のドライバーと
   コアが同じ 3 つの関数を定義し、コマンドはその宣言を `<zephyr/drivers/i2c/i2c_dw_rp2040_dma.h>` で読む。Zephyr 版では
   パッチが Zephyr のツリーに足すヘッダー、NuttX 版・FreeRTOS 版・ThreadX 版では `common/compat` の同名のヘッダーで、後者はコアの
@@ -862,8 +862,8 @@ RP2040 の低い層の 3 つは `common/` に置かず、各 OS への変更と�
 コードの再配置。RAM 約 56 KiB、残り 約 64.7 kB）。NuttX 版はボードのリンカースクリプトにオブジェクトを並べ、`.data` の写しが
 運ぶ（約 44 KiB。ヒープは約 112 KiB 残る）。FreeRTOS 版と ThreadX 版は `common/imu/port/pico_sdk/ram_code.cmake` で、OS の分として足すのは
 NINA のコアのつなぎ（`nina_os.c`）だけ。FreeRTOS 版の RAM は newlib の `malloc()`（使うのはシェル、`zperf`、NINA の
-中継モード）の領域から約 49 KiB を取り、約 89 kB が残る（ドライバー説明）。どれも、並べた
-オブジェクトのコードが RAM に無いときと RAM の残りが足りないときに、リンクのあとの検査がビルドを止める（各 OS のドライバーの説明）。
+中継モード）の領域から約 49 KiB を取り、約 89 kB が残る（[FreeRTOS 版のポート](freertos-port-ja.md#ram-に置くコード)）。どれも、並べた
+オブジェクトのコードが RAM に無いときと RAM の残りが足りないときに、リンクのあとの検査がビルドを止める（[Zephyr 版](zephyr-port-ja.md#ram-に置くコード)・[NuttX 版](nuttx-porting-ja.md#ram-に置くコード)・[FreeRTOS 版](freertos-port-ja.md#ram-に置くコード)のポートの説明）。
 カーネルは 4 つの OS ともフラッシュに置く。
 
 #### NINA の中継モード
@@ -877,7 +877,7 @@ scratch レジスター）は各 OS のつなぎ（`common/drivers/nina/port/<OS
 
 NINA のファームウェアの追加機能（`firmware/nina-fw/` のパッチ 0003〜0006。仕様は `firmware/nina-fw/README.md` の
 「Host interface of 0003 to 0006」）は、共有のコアが 4 つの OS のファームウェアで同じに扱う（詳しくは
-[ドライバーの説明](../zephyr/app/usb-console/drivers/README_ja.md)の「ファームウェアの追加機能」）。
+[NINA-W102 のドライバー](../common/drivers/nina/README_ja.md#ファームウェアの追加機能パッチ-00030006)の「ファームウェアの追加機能」）。
 
 - 初期化のあと 1 回、命令 0x6A で機能のビットを得る。命令を持たないファームウェア（3.0.2 など）は `0xEF` で答えるので、
   機能なしとして、追加機能を使わずに動く。
@@ -906,8 +906,8 @@ NINA のファームウェアの追加機能（`firmware/nina-fw/` のパッチ 
 
 ### 9.2 Zephyr 版
 
-`zephyr/` は Zephyr 4.5 のワークスペースで、アプリは `zephyr/app/usb-console`。使い方は [README](../README_ja.md)、ドライバーは
-[`zephyr/app/usb-console/drivers/README_ja.md`](../zephyr/app/usb-console/drivers/README_ja.md) にある。
+`zephyr/` は Zephyr 4.5 のワークスペースで、アプリは `zephyr/app/usb-console`。使い方は [README](../README_ja.md)、ポートの内部は
+[`zephyr-port-ja.md`](zephyr-port-ja.md)、共有のドライバーはそれぞれの README（[NINA-W102](../common/drivers/nina/README_ja.md)、[I2C](../common/drivers/i2c_dw/README_ja.md)、[LSM6DSO](../common/drivers/lsm6dso/README_ja.md)）にある。
 
 #### 9.2.1 方針
 
@@ -916,7 +916,7 @@ NINA のファームウェアの追加機能（`firmware/nina-fw/` のパッチ 
 - スレッドの優先度は §2 の Zephyr の値で、ほかの OS のファームウェアはこれを対応の式で写す（§9.3.1、§9.4.1、§9.5.1）。
 - Zephyr 版の
   パッチは `zephyr/manifest/zephyr/patches.yml` にあり、`source zephyr/script/setup.sh` が `west patch` で当てる（仕組みは
-  [ドライバーの説明](../zephyr/app/usb-console/drivers/README_ja.md)の「Zephyr へのローカルのパッチ」）。
+  [`zephyr-port-ja.md`](zephyr-port-ja.md#zephyr-へのローカルのパッチ)の「Zephyr へのローカルのパッチ」）。
 
 #### 9.2.2 時計と tick
 
@@ -947,8 +947,8 @@ Zephyr の NVS と settings を使う（§9.1）。KV の領域に Zephyr の NV
 ### 9.3 NuttX 版
 
 `nuttx/` に、同じファームウェアを NuttX 13.1.0 に移植したもの（NuttX 版）がある。使い方とコマンドの対応、エラー番号の対応、細かな違いの
-一覧は [`nuttx/README_ja.md`](../nuttx/README_ja.md)、ドライバーは
-[`nuttx/drivers/README_ja.md`](../nuttx/drivers/README_ja.md)、各機能の移植は [`design/nuttx-porting-ja.md`](nuttx-porting-ja.md) にある。
+一覧は [`nuttx/README_ja.md`](../nuttx/README_ja.md)、ドライバーは共有のドライバーの README
+（[NINA-W102](../common/drivers/nina/README_ja.md)、[I2C](../common/drivers/i2c_dw/README_ja.md)、[LSM6DSO](../common/drivers/lsm6dso/README_ja.md)）と[互換層の説明](../common/compat/README_ja.md)、各機能の移植とポートの内部は [`design/nuttx-porting-ja.md`](nuttx-porting-ja.md) にある。
 
 #### 9.3.1 方針
 
@@ -1037,7 +1037,7 @@ Zephyr 版は前回の `kernel ps` からの区間の割合（最初は起動か
 
 `freertos/` に、同じファームウェアを Raspberry Pi Pico SDK 2.3.1 と FreeRTOS カーネル V11.3.3（1 コア）で作ったもの
 （FreeRTOS 版）がある。使い方とコマンドは [`freertos/README_ja.md`](../freertos/README_ja.md)、内部の説明と Zephyr 版・NuttX 版との違いの表は
-[`freertos/drivers/README_ja.md`](../freertos/drivers/README_ja.md) にある。
+[`design/freertos-port-ja.md`](freertos-port-ja.md) にある。
 
 #### 9.4.1 方針
 
@@ -1093,7 +1093,7 @@ NuttX 版にはこの割り込みが無い）。`ps` の CPU 列は前回の `ps
 `threadx/` に、同じファームウェアを Raspberry Pi Pico SDK 2.3.1 と ThreadX のカーネル（Eclipse ThreadX v6.5.2.202603b_rel。Cortex-M0 のポート
 `ports/cortex_m0/gnu`）だけで作ったもの（ThreadX 版）がある。USBX・NetX Duo・FileX は使わない。使い方は
 [`threadx/README_ja.md`](../threadx/README_ja.md)、内部の説明と FreeRTOS 版との違いの表は
-[`threadx/drivers/README_ja.md`](../threadx/drivers/README_ja.md) にある。
+[`design/threadx-port-ja.md`](threadx-port-ja.md) にある。
 
 #### 9.5.1 方針
 

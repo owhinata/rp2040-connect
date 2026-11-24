@@ -7,7 +7,7 @@
  * k_yield(), the cycle counter, the OS's assertion and the work queues'
  * wait.  The functions on them are zephyr_kernel.c and zephyr_mutex.c.
  * Part of the NuttX implementation of the layer (common/compat/port/nuttx,
- * see nuttx/drivers/README.md).
+ * see common/compat/README.md).
  */
 
 #ifndef __COMMON_COMPAT_PORT_NUTTX_ZEPHYR_OS_H

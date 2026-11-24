@@ -6,7 +6,7 @@
  * Zephyr's code, in zephyr_wifi_utils.c.
  *
  * Part of the small Zephyr compatibility layer of the port
- * (common/compat, see nuttx/drivers/README.md).
+ * (common/compat, see common/compat/README.md).
  */
 
 #ifndef COMMON_COMPAT_INCLUDE_ZEPHYR_NET_WIFI_UTILS_H

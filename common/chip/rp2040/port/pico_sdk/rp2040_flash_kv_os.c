@@ -55,7 +55,7 @@
  * while XIP is off cannot run the fault exit (fault.c is in the flash):
  * the core locks up without a record until the board is reset.
  *
- * Shared by the builds on the Pico SDK (common/pico_sdk/drivers/kv; the
+ * Shared by the builds on the Pico SDK (common/chip/rp2040/port/pico_sdk; the
  * NuttX build's is
  * common/chip/rp2040/port/nuttx/rp2040_flash_kv_os.c).
  */

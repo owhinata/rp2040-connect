@@ -3,7 +3,7 @@
  * ported code uses, with Zephyr's definitions: values at any alignment,
  * independent of the CPU's byte order.  Part of the small Zephyr
  * compatibility layer of the port (common/compat, see
- * nuttx/drivers/README.md).
+ * common/compat/README.md).
  */
 
 #ifndef COMMON_COMPAT_INCLUDE_ZEPHYR_SYS_BYTEORDER_H

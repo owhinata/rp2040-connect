@@ -50,7 +50,7 @@ threadx/script/host_tests.sh [-v]
 ```
 
 共有ソースのテストと、ThreadX の部分（互換層のカーネルの部分、I2C と NINA の待ち）のテストを、ThreadX の Linux 用のポートの上で
-走らせます（約 25 秒）。ボードは要りません。項目は [`drivers/README_ja.md`](drivers/README_ja.md) にあります。
+走らせます（約 25 秒）。ボードは要りません。項目は [`design/threadx-port-ja.md`](../design/threadx-port-ja.md#ホストテスト) にあります。
 
 ## 書き込み
 
@@ -83,6 +83,6 @@ USB の CDC ACM ポートがコンソールです。端末を開くとプロン�
 | `../common/compat/port/threadx/`、`../common/shell/port/threadx/` | Zephyr 互換層（カーネルの基本の操作、優先度と時分割）と汎用のコマンドの ThreadX の部分 |
 | `../common/` の各部品の `port/pico_sdk/` | Pico SDK の上の OS で共有する部分（FreeRTOS 版と同じ） |
 | `../common/drivers/<ドライバー>/port/threadx/` | ドライバーの待ちとロック |
-| `tests/` | ホストテストと、実機の試験用のファームウェア `board_kernel`（[`drivers/README_ja.md`](drivers/README_ja.md)） |
+| `tests/` | ホストテストと、実機の試験用のファームウェア `board_kernel`（[`design/threadx-port-ja.md`](../design/threadx-port-ja.md)） |
 | `script/` | `setup.sh`、`build.sh`、`flash.sh`、`format.sh`、`host_tests.sh` |
 | `PORTING_PLAN.md`、`PORTING_STATUS.md` | 移植の計画と、進み具合・確かめたことの記録 |

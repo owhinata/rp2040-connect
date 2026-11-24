@@ -4,7 +4,7 @@
  * data, device_is_ready(), the run-once initialization, and getting a
  * devicetree node's device with DEVICE_DT_GET(DT_NODELABEL(label)).  Part of
  * the small Zephyr compatibility layer of the port (common/compat,
- * see nuttx/drivers/README.md).
+ * see common/compat/README.md).
  *
  * Zephyr initializes its devices by itself before main(); here the board
  * calls device_init() at the place of the same order in its bring-up

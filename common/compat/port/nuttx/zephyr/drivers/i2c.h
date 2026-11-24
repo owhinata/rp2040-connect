@@ -4,7 +4,7 @@
  * common/shell/i2c_shell.c) use, on a NuttX I2C master
  * (struct i2c_master_s, I2C_TRANSFER(), I2C_RESET()).  Part of the small Zephyr
  * compatibility layer of the port (common/compat/port/nuttx,
- * zephyr_i2c.c there; see nuttx/drivers/README.md).
+ * zephyr_i2c.c there; see common/compat/README.md).
  *
  * The bus is a struct device whose data is a struct i2c_compat_bus: the
  * NuttX I2C master and the bus speed.  Zephyr keeps the speed in the bus

@@ -6,7 +6,7 @@
  * lock is released (a thread made ready, e.g. by k_sem_give(), runs at
  * k_spin_unlock()).  Part of the small Zephyr compatibility layer of the
  * port, its OS-independent part (common/compat, see
- * nuttx/drivers/README.md).
+ * common/compat/README.md).
  *
  * The OS part: "zephyr_os_spinlock.h" (common/compat/port/nuttx on NuttX,
  * common/tests/zephyr_fakes in host tests, common/compat/port/generic for

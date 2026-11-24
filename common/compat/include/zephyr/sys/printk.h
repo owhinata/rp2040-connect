@@ -4,7 +4,7 @@
  * as snprintf() and vsnprintf() of the C library; so does this one.
  * printk() itself is not provided (the port logs with app_log.h).  Part of
  * the small Zephyr compatibility layer of the port (common/compat,
- * see nuttx/drivers/README.md).  Included by <zephyr/kernel.h>, as in
+ * see common/compat/README.md).  Included by <zephyr/kernel.h>, as in
  * Zephyr.
  */
 

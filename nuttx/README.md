@@ -18,7 +18,8 @@ Further reading:
 
 - How each part works in detail: [`design/nuttx-porting.md`](../design/nuttx-porting.md)
 - The drivers (NINA, I2C0, LSM6DSOX) and the Zephyr API compatibility layer:
-  [`drivers/README.md`](drivers/README.md)
+  [NINA](../common/drivers/nina/README.md), [I2C](../common/drivers/i2c_dw/README.md), [LSM6DSO](../common/drivers/lsm6dso/README.md),
+  [the compatibility layer](../common/compat/README.md)
 - The design summary: [§9.3](../design/imu-raw-mqtt-design.md) of the design document ("9.3 The NuttX build")
 - Performance compared with the other builds: "Performance of the four builds" in the
   top-level [`README.md`](../README.md)

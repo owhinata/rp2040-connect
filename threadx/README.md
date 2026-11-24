@@ -54,7 +54,7 @@ threadx/script/host_tests.sh [-v]
 
 Runs the tests of the shared sources and of the ThreadX part (the kernel part of the compatibility layer, the
 waits of I2C and of the NINA) on ThreadX's Linux port (about 25 s). No board is needed. The items are listed
-in [`drivers/README.md`](drivers/README.md).
+in [`design/threadx-port.md`](../design/threadx-port.md#host-tests).
 
 ## Flashing
 
@@ -88,6 +88,6 @@ The USB CDC ACM port is the console. A terminal shows the prompt `threadx:~$ `. 
 | `../common/compat/port/threadx/`, `../common/shell/port/threadx/` | The ThreadX part of the Zephyr compatibility layer (the kernel's basic operations, the priorities and time slices) and of the generic commands |
 | `port/pico_sdk/` of the parts of `../common/` | What the builds on the Pico SDK share (the same as the FreeRTOS build) |
 | `../common/drivers/<driver>/port/threadx/` | The drivers' waits and locks |
-| `tests/` | The host tests and the board test firmware `board_kernel` ([`drivers/README.md`](drivers/README.md)) |
+| `tests/` | The host tests and the board test firmware `board_kernel` ([`design/threadx-port.md`](../design/threadx-port.md)) |
 | `script/` | `setup.sh`, `build.sh`, `flash.sh`, `format.sh`, `host_tests.sh` |
 | `PORTING_PLAN.md`, `PORTING_STATUS.md` | The plan of the port and the record of progress and of what was checked |

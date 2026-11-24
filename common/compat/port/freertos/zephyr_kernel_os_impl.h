@@ -34,7 +34,7 @@
  * zephyr_compat_tick() of "zephyr_compat_os.h"); priorities_os.h of this directory
  * (common/compat/include/priorities.h) is the board's; rp2040_timer_us() is common/chip/rp2040's,
  * read by the board's port header.  Part of the FreeRTOS implementation of the layer
- * (common/compat/port/freertos; see freertos/drivers/README.md).
+ * (common/compat/port/freertos; see common/compat/README.md).
  */
 
 #ifndef COMMON_COMPAT_PORT_FREERTOS_ZEPHYR_KERNEL_OS_IMPL_H
@@ -259,7 +259,7 @@ Z_OS_INLINE uint64_t z_os_clock_us(void)
 
 /* Mutexes --------------------------------------------------------------------*/
 
-/* Priority inheritance (approximation, see freertos/drivers/README.md):
+/* Priority inheritance (approximation, see common/compat/README.md):
  * FreeRTOS raises the holder to the priority of the highest waiter, one
  * level only (Zephyr follows a chain of holders), and drops it back only when
  * the holder has released every mutex it holds (Zephyr adjusts it at each

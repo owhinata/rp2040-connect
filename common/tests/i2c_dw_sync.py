@@ -4,7 +4,7 @@
 
 The Zephyr build uses Zephyr's DesignWare driver with a local patch
 (zephyr/manifest/zephyr/patches/zephyr/0003-i2c-dw-rp2040-fifo-and-dma.patch);
-the core that the NuttX and FreeRTOS builds use is a port of it, with the
+the core of the NuttX, FreeRTOS and ThreadX builds is a port of it, with the
 differences listed at the top of i2c_dw.c.  Its DMA reads use the OS's own
 DMA driver through the boundary of common/drivers/i2c_dw/port/i2c_dw_dma_os.h in
 place of Zephyr's DMA API (RENAMES turns those calls into the boundary's).

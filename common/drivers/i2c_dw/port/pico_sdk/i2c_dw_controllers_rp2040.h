@@ -13,8 +13,8 @@
 
 #ifdef CONFIG_I2C_DW_I2C0
 /* Resets I2C0, sets up GPIO12 (SDA) and GPIO13 (SCL), checks the block
- * (IC_COMP_TYPE), writes the controller's registers for 100 kHz (the
- * devicetree's clock-frequency) and enables its interrupt; the device i2c0
+ * (IC_COMP_TYPE), writes the controller's registers for 100 kHz (the core's
+ * start; the first transfer sets I2C0_SPEED) and enables its interrupt; the device i2c0
  * is ready after it.  Before, the shared handler of the DMA interrupt for
  * the DMA reads (i2c_dw_dma_os_rp2040.c), as the Zephyr build initializes its
  * DMA device (POST_KERNEL 40) before i2c0 (POST_KERNEL 50).  Once, before the

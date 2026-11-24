@@ -32,7 +32,7 @@
  * k_poll(), the start of a thread, the timer of a delayable item) are each
  * OS's: on NuttX zephyr_kernel.c and zephyr_mutex.c (sem_t, kthreads,
  * wdog), in host tests a fake (common/tests/zephyr_fakes), and for an OS
- * that offers only basic primitives (FreeRTOS) the generic ones of
+ * that offers only basic primitives (FreeRTOS, ThreadX) the generic ones of
  * common/compat/kernel_generic on the primitives of its zephyr_kernel_os.h.
  *
  * Timeouts are kernel ticks, as in Zephyr (100 us in the Zephyr build,
@@ -91,7 +91,7 @@
  * k_busy_wait(), z_add_timeout() and z_abort_timeout().
  *
  * Part of the small Zephyr compatibility layer of the port, its
- * OS-independent part (common/compat, see nuttx/drivers/README.md).
+ * OS-independent part (common/compat, see common/compat/README.md).
  */
 
 #ifndef COMMON_COMPAT_INCLUDE_ZEPHYR_KERNEL_H
@@ -326,9 +326,9 @@ int z_thread_static_start(const struct z_thread_static *thread);
  * the TIMER read once (zephyr_init.c).  On NuttX the tick is the TIMER
  * count over CONFIG_USEC_PER_TICK (the board's tickless timer,
  * rp2040_oneshot.c), so this is the tick count in ms; it is 64 bits wide
- * where clock_systime_ticks() is 32.  FreeRTOS's tick is not used: it is 32
- * bits wide and stands still while interrupts are masked for longer than a
- * tick, until the application's tick hook catches up.
+ * where clock_systime_ticks() is 32.  The FreeRTOS and ThreadX ticks are not used: they are 32
+ * bits wide and stand still while interrupts are masked for longer than a
+ * tick, until the application's tick catch-up runs.
  */
 
 int64_t k_uptime_get(void);

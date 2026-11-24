@@ -21,7 +21,7 @@
  * main()).
  *
  * Part of the small Zephyr compatibility layer of the port
- * (common/compat, see nuttx/drivers/README.md).
+ * (common/compat, see common/compat/README.md).
  */
 
 /*

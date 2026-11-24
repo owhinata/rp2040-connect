@@ -18,7 +18,7 @@
  * the port listens to them.
  *
  * Part of the small Zephyr compatibility layer of the port
- * (common/compat/port/nuttx, see nuttx/drivers/README.md).
+ * (common/compat/port/nuttx, see common/compat/README.md).
  */
 
 #ifndef __COMMON_COMPAT_PORT_NUTTX_ZEPHYR_NET_NET_IF_H

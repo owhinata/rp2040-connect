@@ -6,7 +6,7 @@
  * command's stdout (/dev/ttyACM0 for USB, /dev/telnet0 for Telnet), and
  * the task of the command that runs on it.  Part of the NuttX
  * implementation of the layer (common/compat/port/nuttx, see
- * nuttx/drivers/README.md).
+ * common/compat/README.md).
  */
 
 #ifndef __COMMON_COMPAT_PORT_NUTTX_ZEPHYR_OS_SHELL_H

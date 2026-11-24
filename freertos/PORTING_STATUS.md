@@ -3117,3 +3117,32 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
   run_time.[ch]}}` と `threadx/drivers/pico_sdk_interop/`、`nuttx/drivers/*/{Make.defs,Kconfig}`・`nuttx/apps/*`（Kconfig・Make・入口）・ボード。
 - 文書: `design/os-boundary` の冒頭に「`common/` の配置」（3 層の決まりと、新しい OS が作るディレクトリーの一覧）。設計書・4 つのドライバー説明・README の表を最終の配置に。
 - 残っている古い記述（今回とは別）: `nuttx/drivers/README` が、ボードの `src/` に無い `rp2040_spi.c` を挙げている。
+
+## ドライバーの README を、コアの README と OS のポートの文書に分けた（2026-11-24）
+
+- きっかけ: ユーザーの指摘「drivers/ に README しか存在してないので、別の場所に移すか、まとめ直したほうがよい」。3 層への作り直しでソースが `common/` に移り、
+  `zephyr/app/usb-console/drivers/`・`freertos/drivers/` は README だけ、`threadx/drivers/` は `pico_sdk_interop/` だけになっていた。中身も、共有のコアの説明が
+  4 か所に重複し、残りは「その OS のポートの内部の説明」だった。
+- 決めたこと（ユーザーが推奨案を選択）: ソースの 3 層と同じ線引きにする。
+  - 共有のコアの説明は、コアの隣に 1 つずつ: `common/drivers/{nina,i2c_dw,lsm6dso}/README(_ja).md`、`common/compat/README(_ja).md`。構成は 4 つとも同じ
+    （ディレクトリー、コアの動作、OS が実装する境界、各 OS のつなぎ: Zephyr・NuttX・Pico SDK・FreeRTOS・ThreadX、テスト）。`i2c`・`i2c_dma` コマンドは i2c_dw、
+    `sensor` コマンドは lsm6dso の README。
+  - OS のポートの内部は `design/` に OS ごと: `design/{zephyr,freertos,threadx}-port(-ja).md` を新しく作り、NuttX は既存の `design/nuttx-porting(-ja).md` に統合。
+    Pico SDK の上の OS で共有する部分（起動、アイドル、異常停止、KV のフラッシュ、RAM に置くコード、割り込み）は `freertos-port` の 1 つの章に書き、`threadx-port` はリンク。
+    「ThreadX の内部を使うところ」の一覧は `threadx-port` に丸ごと置く。
+  - 古い 4 つの README は削除（空になった `zephyr/app/usb-console/drivers/` と `freertos/drivers/` も無くなる）。新しい OS が書く文書は `design/<OS>-port` と、
+    各コアの README の「各 OS のつなぎ」の節。
+- 進め方: 古い README の節ごとの行き先を表にして、5 つの subagent（NINA／I2C と LSM6DSO／互換層／Zephyr と NuttX／FreeRTOS と ThreadX）を並行で走らせ、
+  そのあと 1 つの subagent が担当どうしの重複の整理とリンクの張り替えをした。ルートと各 OS の README・`CLAUDE.md` はメイン。
+- 同じ日に設計書（`design/imu-raw-mqtt-design`）も組み替えた: 旧 §8 検証と各 OS の確認の範囲を §1 へ、校正を §8、旧 §11〜13 を §9「共有ソースと各 OS」
+  （9.1 共有ソース、9.2 Zephyr、9.3 NuttX、9.4 FreeRTOS、9.5 ThreadX。同じ 6 つの小見出し）、未決定事項を §10 へ。§3.4「センサーを読む 3 つの経路」と図（`design/img/`）を追加。
+  **これより前の節に出てくる設計書の節番号と `*/drivers/README` は、古い名前のまま。**
+- 新しい文書から落としたもの（経緯と過去の数値。この作業ログには残っている）: RAM に置く前後の `cpu_active` とキャッシュの外れの数、カーネルを RAM に置く試み、
+  NINA のドライバーを載せ替える前のイメージでの確認結果と `zperf` の値、中継モードの読み出しの時間、Zephyr の TLS を試した段落、FIFO の取得だけの過去の計測。
+- ついでに直したコメント（行数は変えない）: 古い README を指していた互換層のヘッダーなど約 25 ファイル、`common/pico_sdk/drivers/kv` の古いパス（2 か所）、
+  ThreadX が抜けていた一覧（`nina_os.h`、`run.sh`、`i2c_dw_sync.py`、`kernel.h`）、`i2c_dw_controllers_rp2040.h` の 100 kHz の説明。
+- 確認: 同じ `SOURCE_DATE_EPOCH=1763337600` の clean build（NuttX は `-j 1`）で、4 つの OS のイメージが `restructure/s0` とバイト単位で一致。ホストテスト 68・56・61・73
+  （subagent が実行）、`format.sh --check`（FreeRTOS・ThreadX）、Markdown の相対リンクとアンカーの検査（32 ファイル、問題 0。GitHub 上の表示は未確認）。
+  イメージが同じなので実機には書いていない。実機は ThreadX 版のまま。
+- 残した点: `design/zephyr-port` の RAM の数値（残り 63,960 バイト、RAM のコード 57,320 バイト）は古い README のままで、いまのビルドの値と照合していない。
+  新しい文書の本文は古い README の文を移したもので、ソースとの 1 つずつの照合はしていない。

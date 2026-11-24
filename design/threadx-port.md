@@ -1,12 +1,12 @@
-# Drivers and the compatibility layer (ThreadX build)
+# The ThreadX port
 
-English | [日本語](README_ja.md)
+English | [日本語](threadx-port-ja.md)
 
 The firmware of this repository is the same firmware built on four OSes, Zephyr, NuttX, Pico SDK + FreeRTOS
 and Pico SDK + ThreadX, called the Zephyr, NuttX, FreeRTOS and ThreadX builds. This document describes the
-inside of the ThreadX build (`threadx/`). Its use is in [`threadx/README.md`](../README.md), the list of what
-each build writes in [`design/os-boundary.md`](../../design/os-boundary.md), and the design summary in §9.5 of the
-[design document](../../design/imu-raw-mqtt-design.md). The details are in the comment at the top of each file.
+inside of the ThreadX build's port (`threadx/`). Its use is in [`threadx/README.md`](../threadx/README.md), the list of what
+each build writes in [`os-boundary.md`](os-boundary.md), and the design summary in §9.5 of the
+[design document](imu-raw-mqtt-design.md). The details are in the comment at the top of each file.
 
 The ThreadX build uses only the ThreadX kernel (Eclipse ThreadX v6.5.2.202603b_rel, its Cortex-M0 port
 `ports/cortex_m0/gnu`); the start, clocks, USB, flash and DMA are the Pico SDK 2.3.1's. USBX, NetX Duo and
@@ -16,76 +16,45 @@ shared with the FreeRTOS build. The shared sources are written on Zephyr's API, 
 build, runs them on a layer that provides that API under Zephyr's names (the "compatibility layer"). Its
 kernel part is the generic implementation on an OS's primitives (`common/compat/kernel_generic/`); the
 ThreadX build writes those primitives. The network is the layer's socket layer (`common/compat/net_offload/`),
-the shell the shared shell engine (`common/compat/shell_engine/`). The shared parts are described in
-[`freertos/drivers/README.md`](../../freertos/drivers/README.md); this document covers only ThreadX's.
+the shell the shared shell engine (`common/compat/shell_engine/`). The parts shared by the OSes on the Pico SDK
+(the steps of the start, the idle measurement, fatal errors, the key-value store's flash, the code in RAM) are
+described in ["Shared by the OSes on the Pico SDK" of `freertos-port.md`](freertos-port.md#shared-by-the-oses-on-the-pico-sdk);
+this document covers only ThreadX's.
 
 ## Directories
 
+Below, `src/` is `threadx/app/usb-console/src/`.
+
 | Where | Holds |
 |---|---|
-| `app/usb-console/` | the build (`CMakeLists.txt`: the settings and sources given to the shared `common/imu/port/pico_sdk/usb-console.cmake`; `threadx_kernel.cmake`: ThreadX's kernel, port and execution profile kit as sources of the firmware, plus the board's part, the vectors and the Pico SDK's locks), the kernel configuration (`tx_user.h`), `src/`: the entry of the start (`main.c`: `main()`, the kernel's set-up, the thread "main", the scheduler), SysTick and the exception priorities (`tx_initialize_low_level.c`), the tick (`tick.c`), the ThreadX parts of the shared application's boundaries (idle `idle_os.h`, fatal errors `fault_os.c`, `ps` and the version `commands_os.c`), each thread's run time (`run_time.[ch]`) |
+| `threadx/app/usb-console/` | the build (`CMakeLists.txt`: the settings and sources given to the shared `common/imu/port/pico_sdk/usb-console.cmake`, `RAM_CODE_OS_SOURCES`; `threadx_kernel.cmake`: ThreadX's kernel, port and execution profile kit as sources of the firmware, plus the board's part, the vectors and the Pico SDK's locks), the kernel configuration (`tx_user.h`), `src/`: the entry of the start (`main.c`: `main()`, the kernel's set-up, the thread "main", the scheduler), SysTick and the exception priorities (`tx_initialize_low_level.c`), the tick (`tick.c`), the ThreadX parts of the shared application's boundaries (idle `idle_os.h`, fatal errors `fault_os.c`, `ps` and the version `commands_os.c`), each thread's run time (`run_time.[ch]`) |
 | `common/compat/port/threadx/` | the layer's ThreadX part: the primitives of the generic kernel part (`zephyr_kernel_os_impl.h`), the lock's variables (`zephyr_kernel_os.c`), priorities and time slices (`priorities_os.h`), the board's port header (`rp2040/zephyr_os_port.h`) |
 | `common/shell/port/threadx/` | the OS part of the generic commands (`kernel_shell_os_impl.h`) |
-| `drivers/pico_sdk_interop/` | the waits of the Pico SDK's mutexes, semaphores and sleeps on ThreadX's threads ("The Pico SDK's locks" below) |
+| `threadx/drivers/pico_sdk_interop/` | the waits of the Pico SDK's mutexes, semaphores and sleeps on ThreadX's threads (`pico_sdk_interop.[ch]`, `pico_sdk_interop.cmake`; "The Pico SDK's locks" below) |
 | `common/drivers/i2c_dw/port/threadx/` | the I2C core's waits, clock and sleeps (`i2c_dw_os_impl.h`) |
 | `common/drivers/nina/port/threadx/` | the NINA core's binding to ThreadX (`nina_os.c`) and the SPI DMA's wait (`nina_bus_dma_os_impl.h`) |
-| `tests/` | host tests (`compat/`, `i2c_dw/`, `nina/`) and the board test firmware (`board_kernel/`) |
-| `script/` | `setup.sh` (fetches ThreadX, the Pico SDK, the toolchain, picotool, clang-format and ST's `lsm6dso_reg.c`), `build.sh`, `flash.sh`, `format.sh`, `host_tests.sh` |
+| `threadx/tests/` | host tests (`compat/`, `i2c_dw/`, `nina/`) and the board test firmware (`board_kernel/`) |
+| `threadx/script/` | `setup.sh` (fetches ThreadX, the Pico SDK, the toolchain, picotool, clang-format and ST's `lsm6dso_reg.c`), `build.sh`, `flash.sh`, `format.sh`, `host_tests.sh` |
 
 `threadx/threadx`, `threadx/pico-sdk`, `threadx/toolchain`, `threadx/picotool` and `threadx/stmemsc` are
 fetched by `setup.sh` and not in Git. ThreadX's sources are built unchanged.
 
-## The layer's kernel part
+## The layer's kernel part and the drivers' waits
 
-The primitives and what each must do are in `common/compat/port/zephyr_kernel_os.h` and sections
-2.5 and 2.6 of `design/os-boundary.md`. The ThreadX build makes them as follows.
+The primitives of the layer's kernel part (the thread's lock, the wake flag and the storage after the stack,
+the start and end of a thread, mutexes, priorities and time slices, clocks, assertion) are in
+`common/compat/port/threadx/zephyr_kernel_os_impl.h`; how they are made is in
+[`common/compat/README.md`](../common/compat/README.md). The I2C and NINA bindings are written on ThreadX and
+the Pico SDK directly, not on the layer, and wait on `TX_SEMAPHORE`s the drivers own
+([`common/drivers/i2c_dw/README.md`](../common/drivers/i2c_dw/README.md),
+[`common/drivers/nina/README.md`](../common/drivers/nina/README.md)).
 
-- **The thread's lock** (`z_os_task_lock()`): interrupts masked (PRIMASK), and at the outermost level
-  ThreadX's `_tx_thread_preempt_disable` raised. The unlock lowers it with interrupts still masked,
-  restores the mask, then makes the switch the services inside the lock left with
-  `_tx_thread_system_preempt_check()`. Masking alone is not enough: when a service makes a more urgent
-  thread ready, ThreadX's Cortex-M port pends PendSV and unmasks interrupts for an instant to switch,
-  which would switch in the middle of the lock. Every service checks `_tx_thread_preempt_disable` before it
-  switches (ThreadX uses it around its own sequences), so "no switch until unlock" holds. Nothing waits
-  inside the lock, so one depth and one saved mask serve all threads. An ISR's lock is PRIMASK alone.
-- **The wake flag and the storage after the stack**: `K_THREAD_STACK_DEFINE()` keeps 272 bytes after each
-  stack (`Z_OS_THREAD_RESERVED`) for a `struct z_tx_thread`: the `TX_THREAD` (200 bytes with the execution
-  profile kit's), the wake flag's `TX_SEMAPHORE` (28), the thread's function and argument (8) and the name
-  array (32). The wake flag is a binary semaphore with the ceiling 1 (`tx_semaphore_ceiling_put(…, 1)`), so a
-  wake before the wait is kept. The flag is in that storage, so every thread that waits through the layer
-  is started by `z_os_thread_start()` (the start-up thread "main" too); a thread made with ThreadX's API
-  directly cannot call `k_sem_take()` or `k_poll()`.
-- **Start of a thread**: the wake flag is made, `tx_thread_create()` is called unstarted (`TX_DONT_START`),
-  `*tid` is set, then `tx_thread_resume()`. The thread cannot run before `*tid` is set (at the resume at once
-  if it is more urgent than the caller). Also before the scheduler.
-- **End of a thread and reuse of its stack**: `z_os_thread_exit()` `tx_thread_terminate()`s the caller.
-  ThreadX keeps an ended thread in its list of created threads, `TX_TERMINATED` (`TX_COMPLETED` when its
-  function returned), with the mutexes it held released. The next start on the same stack makes
-  `z_os_thread_start()` delete that record and the wake flag first; on the stack of a thread that has not
-  ended it returns `-EBUSY`.
-- **Mutexes** (`k_mutex`): one `TX_MUTEX` (52 bytes) with priority inheritance (`TX_INHERIT`), recursive for
-  its owner. All-zero is unlocked; the first lock creates it (inside the lock, so two threads cannot both
-  create it). Right after the creation it is taken out of ThreadX's list of created mutexes
-  (`_tx_mutex_created_ptr`, `_tx_mutex_created_count`) and it is never deleted: the application zeroes
-  mutexes after use (`mqtt_client_init()` zeroes the client at every connection), which would break the
-  list. ThreadX then refers to such a mutex only while a thread owns it (the owner's list of owned
-  mutexes) or waits on it, as Zephyr does. ThreadX does not lower the owner when a waiter times out until
-  the release, so on a timeout `z_os_mutex_lock()` computes the owner's priority as ThreadX's release does
-  and sets it with `_tx_mutex_priority_change()` (Zephyr's rule of `kernel/mutex.c`; the acceptance test's
-  `mutex_inherit` checks it). Inheritance is one level, and at each release the owner returns to the
-  highest waiter of the mutexes it still holds, or its own priority.
-- **Priorities** (`common/compat/port/threadx/priorities_os.h`): the layer's value is 15 − the Zephyr priority
-  (larger more urgent), ThreadX's priority 31 − that value, that is the Zephyr priority + 16. Zephyr's 32
-  levels (−16 to 15) map one to one on ThreadX's 32 (0 to 31). Zephyr's idle 15 (ThreadX 31) is not given to
-  a thread of the layer. The kernel has no thread of its own (no idle thread, no timer thread).
-- **Time slices**: threads of Zephyr priority 0 and below in urgency (layer value 15 and lower) get
-  ThreadX's `time_slice` of 20 ticks from `z_os_thread_start()` (the Zephyr build's
-  `CONFIG_TIMESLICE_SIZE=20`, `CONFIG_TIMESLICE_PRIORITY=0`); the cooperative priorities get none. ThreadX
-  keeps the rest of a preempted thread's slice and starts a new one when the slice is used up (Zephyr starts
-  a new one at every switch).
-- **Clocks**: `k_cycle_*()` and `k_uptime_*()` are the RP2040 TIMER (`rp2040_timer_us()`), not the tick.
-- **Assertion**: `Z_OS_ASSERT()` is `app_assert_failed()` (fault record and restart). The error checking of
-  ThreadX's API stays on; a bad call returns an error code and is not a fatal error.
+- ThreadX's semaphore is light (a count and a list of waiters) and an interrupt may put it (unlike FreeRTOS's
+  semaphores made of queues).
+- ThreadX has no wake-up of a thread's own that a driver may use (FreeRTOS's task notification indices). The
+  per-thread semaphore is the layer's wake flag; sharing it would let either side end or eat the other's waits.
+  Suspending and resuming the thread (`tx_thread_suspend()`, `tx_thread_resume()`) would lose a resume that comes
+  before the suspension, so it is not used.
 
 ## The tick
 
@@ -109,7 +78,7 @@ The primitives and what each must do are in `common/compat/port/zephyr_kernel_os
 ## The kernel's start and the vectors
 
 - The entry is `main()` in `src/main.c`. It calls the shared steps
-  (`common/imu/port/pico_sdk/usb_console.h`) in order, with ThreadX's part between them:
+  (["Start-up" of `freertos-port.md`](freertos-port.md#start-up)) in order, with ThreadX's part between them:
   1. `usb_console_early_init()`: the RAM log, the passthrough mode's check and its run (interrupts
      enabled), the last run's fatal error record;
   2. `_tx_initialize_kernel_setup()` (the low-level and ThreadX's initialization, without the scheduler)
@@ -155,7 +124,7 @@ kit's idle time, the `(idle)` row of `ps`. `cpu_active` is not that idle time bu
 
 By default the Pico SDK's `mutex_t`, `semaphore_t` and `sleep_ms()` take the core number for the owner and
 wait spinning on WFE. With several threads on one core, a second thread takes a held mutex for its own
-(a "deadlock"), and `stdio_usb` silently drops the output or the input. `drivers/pico_sdk_interop/` is the
+(a "deadlock"), and `stdio_usb` silently drops the output or the input. `threadx/drivers/pico_sdk_interop/` is the
 SDK's RTOS adapter header (`PICO_CONFIG_RTOS_ADAPTER_HEADER`, read by every source) that overrides the hooks
 of `pico/lock_core.h`, as FreeRTOS's RP2040 port does with `configSUPPORT_PICO_SYNC_INTEROP`.
 
@@ -179,61 +148,40 @@ names that thread, which is not always the running one. The FreeRTOS build (`con
 2) checks at every switch; ThreadX does not check at a preemption by PendSV. ThreadX keeps the top word of
 each stack for the pattern. STACK FREE of `ps` is the bytes at the bottom of the stack that still hold 0xEF.
 
-## The drivers' waits
-
-The I2C and NINA bindings are written on ThreadX and the Pico SDK directly, not on the layer. What they
-wait on are `TX_SEMAPHORE`s the drivers own.
-
-- ThreadX's semaphore is light (a count and a list of waiters) and an interrupt may put it (unlike
-  FreeRTOS's semaphores made of queues).
-- ThreadX has no wake-up of a thread's own that a driver may use (FreeRTOS's task notification indices).
-  The per-thread semaphore is the layer's wake flag; sharing it would let either side end or eat the other's
-  waits. Suspending and resuming the thread (`tx_thread_suspend()`, `tx_thread_resume()`) would lose a resume
-  that comes before the suspension, so it is not used.
-- I2C (`i2c_dw_os_impl.h`): `device_sync_sem` and `rp2040_dma_sem` from 0 with the limit `UINT_MAX`, the bus
-  lock `bus_sem` from 1 with the limit 1 (no priority inheritance; at the release, with two or more waiters,
-  `tx_semaphore_prioritize()` puts the most urgent first). A give is `tx_semaphore_ceiling_put()`,
-  `k_sem_reset()` writes the count with interrupts masked. `i2c_dw_os_sem_init()` may be called twice before
-  the kernel (when the controller did not start the first time); the second call keeps the object made and
-  writes the count and the limit. Before the kernel and in an ISR ThreadX refuses a wait (`TX_WAIT_ERROR`);
-  the take then tries once more without a wait.
-- NINA (`nina_os.c`): the three locks are `TX_MUTEX`es with priority inheritance, the READY wait and the
-  Wi-Fi thread's wake-up `TX_SEMAPHORE`s. A socket event wait makes a semaphore on its stack for the call and
-  deletes it at the end (the event interrupt walks the list of waiters and wakes them all). The SPI DMA's
-  wait (`nina_bus_dma_os_impl.h`) is one semaphore of the transfers (one at a time, inside
-  `nina_os_lock()`). The objects are made at the first use and never deleted (they stay in the lists of
-  created objects).
-- Timed waits and sleeps last the time rounded up to ticks plus one tick (Zephyr's rule; ThreadX's wait of
-  n ends at the current tick + n). The clock is the TIMER in ms, not the tick.
-
 ## The code in RAM
 
 The code on the hot paths (the drivers and the application on the paths of the sensor's reads and of the send)
-runs from RAM instead of the flash (the shared list `common/imu/port/pico_sdk/ram_code.cmake`). The OS
+runs from RAM instead of the flash (the shared list `common/imu/port/pico_sdk/ram_code.cmake`;
+["Code in RAM" of `freertos-port.md`](freertos-port.md#code-in-ram)). The OS
 part adds only the NINA core's binding, as in the FreeRTOS build (`RAM_CODE_OS_SOURCES` of
-`app/usb-console/CMakeLists.txt`). ThreadX's kernel stays in the flash: with its hot code in RAM as well, the
-`cpu_active` while sending is only 0.1 to 0.2 points lower, for about 7 KiB of RAM.
+`threadx/app/usb-console/CMakeLists.txt`: `common/drivers/nina/port/threadx/nina_os.c`). ThreadX's kernel stays in the flash.
 
 ## ThreadX's internals in use
 
 Only these places use what ThreadX's public API does not offer. When ThreadX is upgraded, check that these
-names and their meanings have not changed.
+names and their meanings have not changed. The layer's ThreadX part (`common/compat/port/threadx/`) and the
+drivers' bindings are listed here too.
 
 | What | Where | Why |
 |---|---|---|
-| `_tx_thread_preempt_disable` | `common/compat/port/threadx/zephyr_kernel_os_impl.h` (`z_os_task_lock()`), `drivers/pico_sdk_interop/pico_sdk_interop.c` (whether a thread may block) | no switch inside the lock ("The thread's lock" above) |
+| `_tx_thread_preempt_disable` | `common/compat/port/threadx/zephyr_kernel_os_impl.h` (`z_os_task_lock()`), `threadx/drivers/pico_sdk_interop/pico_sdk_interop.c` (whether a thread may block) | no switch inside the lock (the thread's lock in [`common/compat/README.md`](../common/compat/README.md)) |
 | `_tx_thread_system_preempt_check()` | `zephyr_kernel_os_impl.h` (`z_os_task_unlock()`) | the switch the services inside the lock left, at the unlock |
-| `_tx_thread_current_ptr`, `_tx_thread_system_state` | `zephyr_kernel_os_impl.h`, the port header, `fault_os.c`, `commands_os.c`, `pico_sdk_interop.c` | the calling thread, before the kernel, in an ISR (without a call) |
-| members of `TX_THREAD` (`tx_thread_priority`, `tx_thread_state`, `tx_thread_name`, `tx_thread_stack_start`/`_end`, `tx_thread_timer`, the run times) | `zephyr_kernel_os_impl.h`, `commands_os.c`, `fault_os.c`, `run_time.c` | the priority, whether it ended, the name, the state and free stack of `ps` |
+| `_tx_thread_current_ptr` | `zephyr_kernel_os_impl.h`, `src/fault_os.c`, `src/commands_os.c`, `pico_sdk_interop.c` | the calling thread (without a call) |
+| `_tx_thread_system_state` | `zephyr_kernel_os_impl.h` (`z_os_pre_kernel()`) | before the kernel (without a call; whether in an ISR, the port header `common/compat/port/threadx/rp2040/zephyr_os_port.h` reads from IPSR) |
+| members of `TX_THREAD` (`tx_thread_priority`, `tx_thread_state`, `tx_thread_name`, `tx_thread_stack_start`/`_end`, `tx_thread_timer`, the run times) | `zephyr_kernel_os_impl.h`, `src/commands_os.c`, `src/fault_os.c`, `src/run_time.c` | the priority, whether it ended, the name, the state and free stack of `ps` |
 | `_tx_mutex_created_ptr`, `_tx_mutex_created_count` and relinking `tx_mutex_created_next`/`_previous` | `zephyr_kernel_os_impl.h` (`z_tx_mutex_create()`) | a mutex that may be zeroed is taken out of the list of created mutexes |
 | members of `TX_MUTEX` and `_tx_mutex_priority_change()` | `zephyr_kernel_os_impl.h` (`z_tx_mutex_timed_out()`, `z_os_mutex_unlock()`) | the owner's priority dropped at a waiter's timeout; the owner's check |
 | direct reads and writes of `tx_semaphore_count`, `tx_semaphore_suspended_count` | `common/drivers/i2c_dw/port/threadx/i2c_dw_os_impl.h` | `k_sem_reset()` and the second initialization before the kernel (ThreadX has no service that writes a count), the reordering with two or more waiters |
-| `_tx_thread_created_ptr`, `_tx_thread_created_count` | `commands_os.c` (`ps`) | the list of threads (read with interrupts masked) |
+| `_tx_thread_created_ptr`, `_tx_thread_created_count` | `src/commands_os.c` (`ps`) | the list of threads (read with interrupts masked) |
 | `_tx_initialize_kernel_setup()` | `src/main.c` | objects and threads made before the scheduler |
-| `_tx_timer_interrupt()`, `_tx_initialize_unused_memory`, `_tx_thread_system_stack_ptr`, `__tx_PendSVHandler`/`__tx_SVCallHandler` | `src/tick.c`, `src/tx_initialize_low_level.c`, `threadx_kernel.cmake` | the port's tick and handlers (as the port's example `tx_initialize_low_level.S` sets them) |
+| `_tx_timer_interrupt()`, `_tx_initialize_unused_memory`, `_tx_thread_system_stack_ptr`, `__tx_PendSVHandler`/`__tx_SVCallHandler` | `src/tick.c`, `src/tx_initialize_low_level.c`, `threadx/app/usb-console/threadx_kernel.cmake` | the port's tick and handlers (as the port's example `tx_initialize_low_level.S` sets them) |
 | `_tx_execution_idle_time_total`, `tx_low_power_enter()`/`_exit()` | `src/run_time.c`, `src/idle_os.h` | the kit's idle time, the hooks of the scheduler's wait (neither declared in a ThreadX header) |
 
 ## Threads
+
+The priorities are ThreadX's numbers (the Zephyr priority + 16, 0 the most urgent;
+`common/compat/port/threadx/priorities_os.h`). The kernel has no thread of its own (no idle thread, no timer
+thread).
 
 | Thread | Priority (ThreadX, Zephyr) | Stack | Role |
 |---|---|---|---|
@@ -251,7 +199,8 @@ include the 272 bytes after each stack.
 
 ## Differences from the FreeRTOS build
 
-The commands' syntax and the form of their output are the FreeRTOS build's. What differs:
+The commands' syntax and the form of their output are the FreeRTOS build's. What differs (the table with the
+Zephyr and NuttX builds is ["Differences from the other builds" of `freertos-port.md`](freertos-port.md#differences-from-the-other-builds)):
 
 | Point | FreeRTOS build | ThreadX build |
 |---|---|---|
@@ -269,18 +218,18 @@ The commands' syntax and the form of their output are the FreeRTOS build's. What
 
 `threadx/script/host_tests.sh [-v]` runs the shared sources' tests (`common/tests/run.sh`), then the following
 on ThreadX's Linux port (`ports/linux/gnu` in ThreadX's tree). No board is needed. An interrupt is one Linux
-thread inside ThreadX's context save and restore (`tests/i2c_dw/tx_test_isr.c`).
+thread inside ThreadX's context save and restore (`threadx/tests/i2c_dw/tx_test_isr.c`).
 
 | Test | Covers |
 |---|---|
 | `zephyr_kernel_os_impl` | the ThreadX part (`common/compat/port/threadx/zephyr_kernel_os_impl.h`) compiles alone, reading no header of the layer |
-| `zephyr_kernel_test` | the layer's kernel (the 22 tests of `common/tests/zephyr_kernel/zephyr_kernel_test.c`, twice; the second run reuses the first's objects and stacks). The wake from a hardware interrupt, the real-time checks and the tick's catch-up skip. The test's tick is a one-tick ThreadX timer |
-| `i2c_dw` | the FreeRTOS build's test body (`freertos/tests/i2c_dw/main.c`) with the ThreadX part (`tests/i2c_dw/i2c_dw_test_os.c`): the I2C0 and I2C1 boundaries and devices, the DMA reads, Zephyr's I2C API, the `i2c` command; and that a wait is not ended by the layer's wake flag or another semaphore, a give right before the wait is not lost, deadlines across the tick count's wrap, a second `i2c_dw_os_sem_init()`, calls before the kernel and in an ISR |
-| `nina` | the FreeRTOS build's test body (`freertos/tests/nina/main.c`) with `tests/nina/nina_test_os.c`: the SPI and line boundary with its DMA, the READY and event interrupts, locks, sleeps, clock; and the calls before the kernel, a Wi-Fi post before the first wait, priority inheritance across two mutexes, the windows right before a wait |
+| `zephyr_kernel_test` | the layer's kernel (the 22 tests of `common/tests/zephyr_kernel/zephyr_kernel_test.c`, twice; the second run reuses the first's objects and stacks). The wake from a hardware interrupt, the real-time checks and the tick's catch-up skip. The test's tick is a one-tick ThreadX timer. The ThreadX part is `threadx/tests/compat/` |
+| `i2c_dw` | the FreeRTOS build's test body (`freertos/tests/i2c_dw/main.c`) with the ThreadX part (`threadx/tests/i2c_dw/i2c_dw_test_os.c`). The items are in [the DesignWare I2C core](../common/drivers/i2c_dw/README.md#tests) |
+| `nina` | the FreeRTOS build's test body (`freertos/tests/nina/main.c`) with `threadx/tests/nina/nina_test_os.c`. The items are in [the NINA-W102 driver](../common/drivers/nina/README.md#tests) |
 
 ## The board test firmware (`tests/board_kernel`)
 
-A tool to check the ThreadX part on the board, not a product firmware. On the product's start and the
+A tool to check the ThreadX part on the board (`threadx/tests/board_kernel/`), not a product firmware. On the product's start and the
 board's part (`tx_user.h`, the low-level initialization, the tick) it runs:
 
 - the 22 tests of the layer's kernel with the board's platform part (`test_port.c`: a TIMER alarm's

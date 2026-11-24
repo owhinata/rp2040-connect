@@ -24,7 +24,7 @@
  *   nina_passthrough_bus.h  the module's side: the request's words, the
  *                           restart, RESETN and GPIO0, the UART with its
  *                           interrupt, the LED (each build's chip code:
- *                           zephyr/app/usb-console/drivers/nina,
+ *                           common/drivers/nina/port/zephyr,
  *                           common/drivers/nina/port/pico_sdk, the NuttX board's src)
  *   nina_passthrough_os.h   the host's side: the time, the writes to the
  *                           USB serial port, the log, the UART interrupt's

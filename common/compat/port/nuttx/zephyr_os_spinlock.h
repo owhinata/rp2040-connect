@@ -7,7 +7,7 @@
  * sched_lock() does nothing (NuttX switches at the end of the interrupt,
  * as Zephyr does).  The lock word is not used.  Part of the NuttX
  * implementation of the layer (common/compat/port/nuttx, see
- * nuttx/drivers/README.md).
+ * common/compat/README.md).
  */
 
 #ifndef __COMMON_COMPAT_PORT_NUTTX_ZEPHYR_OS_SPINLOCK_H

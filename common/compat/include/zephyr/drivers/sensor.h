@@ -13,7 +13,7 @@
  * default iodev and decoder (sensor_default_rtio.c, a copy of Zephyr's
  * drivers/sensor/default_rtio_sensor.c).  The functions and conversions
  * are Zephyr's, written out.  Part of the small Zephyr compatibility layer
- * of the port (common/compat, see nuttx/drivers/README.md).
+ * of the port (common/compat, see common/compat/README.md).
  *
  * The print formats of the decoded data (PRIsensor_*_data, with the Q
  * value format of <zephyr/dsp/print_format.h>) are Zephyr's, for the

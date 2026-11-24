@@ -12,7 +12,7 @@ PC の時刻を付けて Wi-Fi 経由の MQTT で送信します。
 - USB と Telnet のシェルから操作します。
 
 設計の詳細は [IMU RAW・MQTT 配信の設計](design/imu-raw-mqtt-design-ja.md)、ドライバー
-（LSM6DSO、I²C、NINA）は [ローカルドライバーの説明](zephyr/app/usb-console/drivers/README_ja.md) を
+は [LSM6DSO](common/drivers/lsm6dso/README_ja.md)・[I²C](common/drivers/i2c_dw/README_ja.md)・[NINA](common/drivers/nina/README_ja.md) の各 README を
 参照してください。同じファームウェアの NuttX 版（`nuttx/`）、Pico SDK + FreeRTOS 版（`freertos/`）、Pico SDK + ThreadX 版（`threadx/`）もあります
 （下の「4 つの OS のファームウェアと `common/`」）。
 
@@ -46,7 +46,7 @@ source script/setup.sh
 Python パッケージ、Zephyr SDK を用意し、Zephyr とモジュールにこのリポジトリのローカルのパッチ
 （`zephyr/manifest/zephyr/patches.yml`）を当て、現在のシェルに `ZEPHYR_SDK_INSTALL_DIR` と `west` の
 エイリアスを設定します。新しいターミナルでは再度読み込んでください。パッチの内容と戻し方は
-[ドライバーの説明](zephyr/app/usb-console/drivers/README_ja.md) の「Zephyr へのローカルのパッチ」にあります。
+[Zephyr 版のポートの説明](design/zephyr-port-ja.md#zephyr-へのローカルのパッチ) にあります。
 
 ## ビルドと書き込み
 
@@ -354,7 +354,6 @@ OS に依存しない部分のテスト（`common/tests/run.sh`）を先に実�
 | 場所 | 内容 |
 |---|---|
 | `zephyr/app/usb-console/src/` | Zephyr 版だけのアプリのソース（KV、RAM ログ、起動処理） |
-| `zephyr/app/usb-console/drivers/` | Zephyr 版のドライバーの説明（I²C、SPI（PL022）、sensor シェルは Zephyr のものにローカルのパッチ、LSM6DSO と NINA のドライバーは `common/drivers/`） |
 | `zephyr/app/usb-console/tests/` | Zephyr 版だけのホストテスト |
 | `zephyr/app/blink/` | LED 点滅のサンプル |
 | `zephyr/script/` | 環境構築、ホストテスト |

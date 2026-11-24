@@ -6,7 +6,7 @@
  *   int handler(const struct shell *sh, size_t argc, char **argv)
  *
  * Part of the small Zephyr compatibility layer of the port: its
- * OS-independent part (common/compat; see nuttx/drivers/README.md), with
+ * OS-independent part (common/compat; see common/compat/README.md), with
  * the command handling in common/shell/zshell.c.
  *
  * Output: shell_fprintf() and shell_print(), shell_info(), shell_warn(),

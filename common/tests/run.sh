@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Build and run the host tests of the sources shared by the Zephyr and NuttX builds (common/)
+# Build and run the host tests of the sources shared by the four builds (common/)
 # and of the OS-independent parts that the builds other than Zephyr's share: the Zephyr
 # compatibility layer (common/compat), the shell's subcommand dispatch (common/shell) and the
 # RAM log (common/compat/log).  They use the fake headers of tests/fakes, the fake kernel of
@@ -8,7 +8,7 @@
 # the I2C core matches the Zephyr build's patched driver and that the sensor shell and the I2C
 # shell are the files of the patched tree run when the tree is there).  tests/app_threads.py checks the
 # application's table of threads against the sources and the build files.
-# zephyr/script/host_tests.sh and nuttx/script/host_tests.sh run this
+# The script/host_tests.sh of zephyr/, nuttx/, freertos/ and threadx/ run this
 # before their own tests.
 set -euo pipefail
 cd "$(dirname "$0")/.."
@@ -298,10 +298,10 @@ run sys_getopt "${flags[@]}" -D_DEFAULT_SOURCE -DCONFIG_GETOPT_LONG=1 -Itests/kv
     -Itests/zephyr_fakes -Icompat/include -Icompat/lib/utils/getopt tests/sys_getopt.c \
     compat/lib/utils/getopt/getopt.c compat/lib/utils/getopt/getopt_long.c
 # The RAM log's ring (compat/log/log_ring.c): the retained ring, dmesg pieces, line prefix and
-# rate limit.  Then the RAM log on the ring (compat/log/log_ram.c, shared by the NuttX and
-# FreeRTOS builds) on the host's part of its boundary (tests/log_ram_os_host): the lines of the
+# rate limit.  Then the RAM log on the ring (compat/log/log_ram.c, shared by the builds
+# other than Zephyr's) on the host's part of its boundary (tests/log_ram_os_host): the lines of the
 # LOG_* macros, the OS's raw bytes, the check at the start, the rate limit and the lock around the
-# ring.  Each with the ring's size of the FreeRTOS build (4096) and of the NuttX build (8192).
+# ring.  Each with the ring's size of the FreeRTOS and ThreadX builds (4096) and of the NuttX build (8192).
 for size in 4096 8192; do
     run "log_ring_$size" "${flags[@]}" -DLOG_RAM_TEST_SIZE=$size -Itests/log_ram_os_host \
         -Icompat/include -Icompat/internal tests/log_ring.c compat/log/log_ring.c

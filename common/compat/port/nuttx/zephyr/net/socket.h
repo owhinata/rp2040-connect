@@ -24,7 +24,7 @@
  * Zephyr build gives POLLERR.
  *
  * Part of the small Zephyr compatibility layer of the port
- * (common/compat/port/nuttx, see nuttx/drivers/README.md).  Include
+ * (common/compat/port/nuttx, see common/compat/README.md).  Include
  * NuttX's headers before the layer's (see <zephyr/sys/atomic.h>).
  */
 

@@ -13,8 +13,8 @@ raw values, adds the PC's time, and sends it over Wi-Fi with MQTT.
 - It is operated from a shell over USB or Telnet.
 
 See the [IMU RAW and MQTT design](design/imu-raw-mqtt-design.md) for the details and
-[zephyr/app/usb-console/drivers](zephyr/app/usb-console/drivers/README.md) for the drivers (LSM6DSO, I2C,
-NINA). The same firmware also has a NuttX build (`nuttx/`), a Pico SDK + FreeRTOS build (`freertos/`) and a
+the READMEs of the drivers ([LSM6DSO](common/drivers/lsm6dso/README.md), [I2C](common/drivers/i2c_dw/README.md),
+[NINA](common/drivers/nina/README.md)). The same firmware also has a NuttX build (`nuttx/`), a Pico SDK + FreeRTOS build (`freertos/`) and a
 Pico SDK + ThreadX build (`threadx/`) ("The four builds and `common/`" below).
 
 This is experimental. Measurements are started and stopped by hand from the shell, and the
@@ -48,7 +48,7 @@ It prepares, under `zephyr/`, `.venv`, the west workspace (Zephyr v4.5.0 and mod
 Zephyr SDK as needed, applies this repository's local patches to Zephyr and its modules
 (`zephyr/manifest/zephyr/patches.yml`), and sets `ZEPHYR_SDK_INSTALL_DIR` and a `west` alias in the
 current shell. Source it again in every new terminal. "Local patches of Zephyr" in the
-[driver notes](zephyr/app/usb-console/drivers/README.md) describes the patches and how to take them back.
+[notes on the Zephyr port](design/zephyr-port.md#local-patches-of-zephyr) describes the patches and how to take them back.
 
 ## Build and flash
 
@@ -366,7 +366,6 @@ summary (missing batches, valid and reversed times) and at the errors in `imu st
 | Path | Content |
 |---|---|
 | `zephyr/app/usb-console/src/` | Application sources of the Zephyr build only (key-value store, RAM log, start-up) |
-| `zephyr/app/usb-console/drivers/` | The description of the Zephyr build's drivers (I2C, the PL022 SPI and the sensor shell are Zephyr's with local patches; the LSM6DSO and NINA drivers are in `common/drivers/`) |
 | `zephyr/app/usb-console/tests/` | Host tests of the Zephyr build only |
 | `zephyr/app/blink/` | LED blink sample |
 | `zephyr/script/` | Setup, host tests |

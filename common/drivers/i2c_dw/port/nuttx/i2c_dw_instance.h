@@ -38,7 +38,7 @@
  *                                         pinctrl_rpi_pico.c steps; the
  *                                         pins of include/board.h)
  *
- * Differences of the NuttX interface (see nuttx/drivers/README.md):
+ * Differences of the NuttX interface (see common/drivers/i2c_dw/README.md):
  * the speed comes with each transfer (msgs[0].frequency; 100 kHz, 400 kHz
  * and 1 MHz, as Zephyr's i2c_map_dt_bitrate() takes them) instead of from
  * i2c_configure(); one address per transfer; no 10-bit addresses.

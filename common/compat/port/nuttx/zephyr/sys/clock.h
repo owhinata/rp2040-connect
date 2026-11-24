@@ -15,7 +15,7 @@
  * time added to the monotonic clock (the TIMER, rp2040_oneshot.c of the
  * board); setting it moves only the base, as Zephyr's moves only its
  * offset from the uptime.  Part of the small Zephyr compatibility layer of
- * the port (common/compat/port/nuttx, see nuttx/drivers/README.md).
+ * the port (common/compat/port/nuttx, see common/compat/README.md).
  */
 
 #ifndef __COMMON_COMPAT_PORT_NUTTX_ZEPHYR_SYS_CLOCK_H

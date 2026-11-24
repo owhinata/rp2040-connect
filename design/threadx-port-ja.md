@@ -1,11 +1,11 @@
-# ドライバーと互換層（ThreadX 版）
+# ThreadX 版のポート
 
-[English](README.md) | 日本語
+[English](threadx-port.md) | 日本語
 
 このリポジトリーのファームウェアは、同じファームウェアを Zephyr・NuttX・Pico SDK + FreeRTOS・Pico SDK + ThreadX の 4 つの OS の上で
 それぞれビルドしたもので、それぞれを Zephyr 版・NuttX 版・FreeRTOS 版・ThreadX 版と呼びます。この文書は ThreadX 版（`threadx/`）の
-内部の説明です。使い方は [`threadx/README_ja.md`](../README_ja.md)、各 OS のファームウェアが書くものの一覧は
-[`design/os-boundary-ja.md`](../../design/os-boundary-ja.md)、設計の要約は [設計書](../../design/imu-raw-mqtt-design-ja.md) の §9.5 にあります。細部は各ファイルの
+ポートの内部の説明です。使い方は [`threadx/README_ja.md`](../threadx/README_ja.md)、各 OS のファームウェアが書くものの一覧は
+[`os-boundary-ja.md`](os-boundary-ja.md)、設計の要約は [設計書](imu-raw-mqtt-design-ja.md) の §9.5 にあります。細部は各ファイルの
 先頭のコメントにあります。
 
 ThreadX 版は、ThreadX のカーネル（Eclipse ThreadX v6.5.2.202603b_rel。Cortex-M0 のポート `ports/cortex_m0/gnu`）だけを使い、起動・クロック・USB・
@@ -14,62 +14,39 @@ Pico SDK の上の部分（`common/` の各モジュールの `port/pico_sdk/` �
 ソースは Zephyr の API で書いてあるので、ThreadX 版は FreeRTOS 版と同じく、その API を Zephyr と同じ名前で提供する層（以下「互換層」）の上で
 動かします。カーネルの部分は、OS の基本の操作の上に置く汎用の実装（`common/compat/kernel_generic/`）で、ThreadX 版が書くのはその
 基本の操作です。ネットワークは互換層のソケット層（`common/compat/net_offload/`）、シェルは共有のシェルのエンジン（`common/compat/shell_engine/`）
-です。共有の部分の説明は [`freertos/drivers/README_ja.md`](../../freertos/drivers/README_ja.md) にあり、ここでは ThreadX の部分だけを書きます。
+です。Pico SDK の上の OS で共有する部分（起動の段階、アイドルの測り方、異常停止、KV のフラッシュ、RAM に置くコード）の説明は
+[`freertos-port-ja.md` の「Pico SDK の上の OS で共有する部分」](freertos-port-ja.md#pico-sdk-の上の-os-で共有する部分) にあり、ここでは ThreadX の部分だけを書きます。
 
 ## ディレクトリー
 
+以下、`src/` は `threadx/app/usb-console/src/` です。
+
 | 場所 | 内容 |
 |---|---|
-| `app/usb-console/` | ビルド（`CMakeLists.txt`: 共有の `common/imu/port/pico_sdk/usb-console.cmake` に渡す設定とソース。`threadx_kernel.cmake`: ThreadX のカーネル・ポート・実行時間のキットをファームウェアのソースとして加え、ボードの部分、ベクター、Pico SDK のロックの連携を足す）、カーネルの設定（`tx_user.h`）、`src/`: 起動の入口（`main.c`: `main()`、カーネルの準備、スレッド "main"、スケジューラー）、SysTick と例外の優先度（`tx_initialize_low_level.c`）、tick（`tick.c`）、共有のアプリの境界の ThreadX の部分（アイドル `idle_os.h`、異常停止 `fault_os.c`、`ps` とバージョン `commands_os.c`）、スレッドごとの実行時間（`run_time.[ch]`） |
+| `threadx/app/usb-console/` | ビルド（`CMakeLists.txt`: 共有の `common/imu/port/pico_sdk/usb-console.cmake` に渡す設定とソース、`RAM_CODE_OS_SOURCES`。`threadx_kernel.cmake`: ThreadX のカーネル・ポート・実行時間のキットをファームウェアのソースとして加え、ボードの部分、ベクター、Pico SDK のロックの連携を足す）、カーネルの設定（`tx_user.h`）、`src/`: 起動の入口（`main.c`: `main()`、カーネルの準備、スレッド "main"、スケジューラー）、SysTick と例外の優先度（`tx_initialize_low_level.c`）、tick（`tick.c`）、共有のアプリの境界の ThreadX の部分（アイドル `idle_os.h`、異常停止 `fault_os.c`、`ps` とバージョン `commands_os.c`）、スレッドごとの実行時間（`run_time.[ch]`） |
 | `common/compat/port/threadx/` | 互換層の ThreadX の部分: 汎用のカーネルの部分の基本の操作（`zephyr_kernel_os_impl.h`）、そのロックの変数（`zephyr_kernel_os.c`）、優先度と時分割（`priorities_os.h`）、ボードのポートのヘッダー（`rp2040/zephyr_os_port.h`） |
 | `common/shell/port/threadx/` | 汎用のコマンドの OS の部分（`kernel_shell_os_impl.h`） |
-| `drivers/pico_sdk_interop/` | Pico SDK のミューテックス・セマフォ・スリープの待ちを ThreadX のスレッドにつなぐもの（下の「Pico SDK のロックの連携」） |
+| `threadx/drivers/pico_sdk_interop/` | Pico SDK のミューテックス・セマフォ・スリープの待ちを ThreadX のスレッドにつなぐもの（`pico_sdk_interop.[ch]`、`pico_sdk_interop.cmake`。下の「Pico SDK のロックの連携」） |
 | `common/drivers/i2c_dw/port/threadx/` | I2C のコアの待ち・時計・スリープ（`i2c_dw_os_impl.h`） |
 | `common/drivers/nina/port/threadx/` | NINA のコアの ThreadX へのつなぎ（`nina_os.c`）と SPI の DMA の待ち（`nina_bus_dma_os_impl.h`） |
-| `tests/` | ホストテスト（`compat/`、`i2c_dw/`、`nina/`）と実機の試験用ファームウェア（`board_kernel/`） |
-| `script/` | `setup.sh`（ThreadX、Pico SDK、ツールチェーン、picotool、clang-format、ST の `lsm6dso_reg.c` の取得）、`build.sh`、`flash.sh`、`format.sh`、`host_tests.sh` |
+| `threadx/tests/` | ホストテスト（`compat/`、`i2c_dw/`、`nina/`）と実機の試験用ファームウェア（`board_kernel/`） |
+| `threadx/script/` | `setup.sh`（ThreadX、Pico SDK、ツールチェーン、picotool、clang-format、ST の `lsm6dso_reg.c` の取得）、`build.sh`、`flash.sh`、`format.sh`、`host_tests.sh` |
 
 `threadx/threadx`、`threadx/pico-sdk`、`threadx/toolchain`、`threadx/picotool`、`threadx/stmemsc` は `setup.sh` が取得するもので、Git 管理外です。
 ThreadX のソースは変更せずにビルドします。
 
-## 互換層のカーネルの部分
+## 互換層のカーネルの部分とドライバーの待ち
 
-基本の操作の一覧とそれぞれに求めることは `common/compat/port/zephyr_kernel_os.h` と `design/os-boundary-ja.md` の 2.5・2.6 にあります。
-ThreadX 版の作りは次のとおりです。
+互換層のカーネルの部分の基本の操作（スレッドのロック、起こしの印とスタックのあとの領域、スレッドの開始と終わり、ミューテックス、
+優先度と時分割、時計、アサーション）は `common/compat/port/threadx/zephyr_kernel_os_impl.h` にあり、作りは
+[`common/compat/README_ja.md`](../common/compat/README_ja.md) にあります。I2C と NINA のつなぎは互換層を通さず ThreadX と Pico SDK で
+直接書いてあり、待ちのオブジェクトはドライバーが持つ `TX_SEMAPHORE` です（[`common/drivers/i2c_dw/README_ja.md`](../common/drivers/i2c_dw/README_ja.md)、
+[`common/drivers/nina/README_ja.md`](../common/drivers/nina/README_ja.md)）。
 
-- **スレッドのロック**（`z_os_task_lock()`）: 割り込みを止め（PRIMASK）、いちばん外のロックで ThreadX の `_tx_thread_preempt_disable` を
-  上げます。解除では割り込みを止めたまま下げ、マスクを戻してから `_tx_thread_system_preempt_check()` で、ロックの中のサービスが残した
-  切り替えを行います。割り込みを止めるだけでは足りません。ThreadX の Cortex-M のポートは、サービスがもっと急ぐスレッドを実行可能に
-  したとき、PendSV を立てて割り込みを一瞬許して切り替えるので、ロックの途中で切り替わってしまいます。どのサービスも切り替えの前に
-  `_tx_thread_preempt_disable` を見るので（ThreadX 自身も自分の手順のまわりで使う）、これで「解除まで切り替えない」が成り立ちます。
-  ロックの中で待つことは無いので、深さと保存したマスクは全スレッドで 1 組です。ISR のロックは PRIMASK だけです。
-- **起こしの印とスタックのあとの領域**: `K_THREAD_STACK_DEFINE()` は各スタックのあとに 272 バイト（`Z_OS_THREAD_RESERVED`）を取り、
-  そこに `struct z_tx_thread` を置きます: `TX_THREAD`（実行時間のキットの分を含めて 200 バイト）、起こしの印の `TX_SEMAPHORE`（28）、
-  スレッドの関数と引数（8）、名前の配列（32）。起こしの印は上限 1 の 2 値セマフォで（`tx_semaphore_ceiling_put(…, 1)`）、待つ前の起こしは
-  残ります。印はこの領域にあるので、互換層を通して待つスレッドはすべて `z_os_thread_start()` で始めます（起動のスレッド "main" も）。
-  ThreadX の API で直接作ったスレッドは `k_sem_take()` や `k_poll()` を呼べません。
-- **スレッドの開始**: 起こしの印を作り、`tx_thread_create()` を止めたまま（`TX_DONT_START`）呼び、`*tid` を入れてから `tx_thread_resume()` します。
-  したがってスレッドは `*tid` が入るまで走りません（呼んだ側より急げば resume のときにすぐ走る）。スケジューラーの前からも呼べます。
-- **スレッドの終わりと再利用**: `z_os_thread_exit()` は自分を `tx_thread_terminate()` します。ThreadX は終わったスレッドを作成済みの一覧に
-  `TX_TERMINATED`（関数が戻ったときは `TX_COMPLETED`）のまま残し、持っていたミューテックスを解放します。同じスタックで次にスレッドを始めると、
-  `z_os_thread_start()` がその記録と起こしの印を消してから作ります。まだ終わっていないスレッドのスタックでは `-EBUSY` です。
-- **ミューテックス**（`k_mutex`）: `TX_MUTEX` 1 つ（52 バイト）で、優先度継承あり（`TX_INHERIT`）、持ち主には再帰。全部 0 は未ロックで、最初の
-  lock で作ります（ロックの中で作るので、2 つのスレッドが同時に作ることはない）。作った直後に ThreadX の作成済みのミューテックスの一覧
-  （`_tx_mutex_created_ptr`、`_tx_mutex_created_count`）から外し、削除はしません。アプリは使ったあとのミューテックスを 0 で埋めることがあり
-  （`mqtt_client_init()` が接続のたびにクライアントごと埋める）、一覧につながったままだと一覧が壊れるためです。外したミューテックスを ThreadX が
-  参照するのは、持ち主がいるあいだ（持ち主の持っているミューテックスの一覧）と待ち手がいるあいだだけで、Zephyr と同じです。
-  ThreadX は待ち手がタイムアウトしても持ち主の優先度を解放まで下げないので、タイムアウトのとき `z_os_mutex_lock()` が ThreadX の解放と同じ計算で
-  持ち主の優先度を求め、`_tx_mutex_priority_change()` で戻します（Zephyr の `kernel/mutex.c` の規則。受け入れ試験の `mutex_inherit` が確かめる）。
-  継承は 1 段で、持ち主は解放のたびに、まだ持っているミューテックスの待ち手の最高（無ければ自分の優先度）に戻ります。
-- **優先度**（`common/compat/port/threadx/priorities_os.h`）: 互換層の値は 15 − Zephyr の優先度（大きいほど急ぐ）で、ThreadX の優先度はその 31 − 値、
-  つまり Zephyr の優先度 + 16 です。Zephyr の 32 段（−16〜15）が ThreadX の 32 段（0〜31）に 1 対 1 で対応します。Zephyr のアイドルの 15（ThreadX の 31）は
-  互換層のスレッドに使いません。カーネル自身のスレッドはありません（アイドルスレッドもタイマーのスレッドも無い）。
-- **時分割**: Zephyr の優先度 0 以上（互換層の値 15 以下）のスレッドには、`z_os_thread_start()` が ThreadX の `time_slice` 20 tick を付けます
-  （Zephyr 版の `CONFIG_TIMESLICE_SIZE=20`、`CONFIG_TIMESLICE_PRIORITY=0` と同じ）。協調の優先度には付けません。ThreadX は横取りされたスレッドの
-  残りの時間を保ち、時間を使い切ったときに新しい時分割を始めます（Zephyr は切り替えのたびに始め直す）。
-- **時計**: `k_cycle_*()`・`k_uptime_*()` は RP2040 の TIMER（`rp2040_timer_us()`）で、tick から作りません。
-- **アサーション**: `Z_OS_ASSERT()` は `app_assert_failed()`（異常停止の記録と再起動）です。ThreadX の API のエラー検査は有効のままで、
-  間違った呼び出しはエラーの値を返すだけで、異常停止にはなりません。
+- ThreadX のセマフォは数と待ち手の一覧だけの軽いもので、割り込みから put できます（FreeRTOS のキューで作ったセマフォとは事情が違う）。
+- ThreadX には、ドライバーが使えるスレッド自身の起こし（FreeRTOS のタスク通知の番号）がありません。スレッドごとのセマフォは互換層の
+  起こしの印で、共用すると片方がもう片方の待ちを終わらせたり起こしを食べたりします。スレッドの停止と再開（`tx_thread_suspend()`・
+  `tx_thread_resume()`）は、停止の前に来た再開を取りこぼすので使いません。
 
 ## tick
 
@@ -88,7 +65,7 @@ ThreadX 版の作りは次のとおりです。
 
 ## カーネルの開始とベクター
 
-- 入口は `src/main.c` の `main()` です。共有の段階（`common/imu/port/pico_sdk/usb_console.h`）を順に呼び、あいだに ThreadX の部分を書きます。
+- 入口は `src/main.c` の `main()` です。共有の段階（[`freertos-port-ja.md` の「起動」](freertos-port-ja.md#起動)）を順に呼び、あいだに ThreadX の部分を書きます。
   1. `usb_console_early_init()`: RAM ログ、中継モードの確認と実行（割り込みは許可）、前回の異常停止の記録。
   2. `_tx_initialize_kernel_setup()`（低レベルの初期化と ThreadX の初期化。スケジューラーは始めない）と、スタックの検査のハンドラーの登録。
   3. `usb_console_init()`: 互換層のオブジェクトとスレッド、I2C、KV の領域の範囲。
@@ -125,7 +102,7 @@ ThreadX 付属の実行時間のキット（`utility/execution_profile_kit`、`T
 
 Pico SDK の `mutex_t`・`semaphore_t`・`sleep_ms()` は、既定ではコアの番号を持ち主とし、WFE で回って待ちます。1 つのコアに複数のスレッドがあると、
 2 本目のスレッドが持たれているミューテックスを自分のものと見て（「デッドロック」と判断し）、`stdio_usb` は出力や入力を黙って捨てます。
-`drivers/pico_sdk_interop/` は SDK の RTOS のアダプターのヘッダー（`PICO_CONFIG_RTOS_ADAPTER_HEADER`。全ソースに読ませる）で `pico/lock_core.h` の
+`threadx/drivers/pico_sdk_interop/` は SDK の RTOS のアダプターのヘッダー（`PICO_CONFIG_RTOS_ADAPTER_HEADER`。全ソースに読ませる）で `pico/lock_core.h` の
 フックを差し替えます（FreeRTOS の RP2040 のポートの `configSUPPORT_PICO_SYNC_INTEROP` と同じ作り）。
 
 - 持ち主の ID は呼んだスレッドの `TX_THREAD`（割り込みの中では例外の番号の 2 倍、スケジューラーの前は 0）。
@@ -143,52 +120,36 @@ Pico SDK の `mutex_t`・`semaphore_t`・`sleep_ms()` は、既定ではコア�
 確かめますが、ThreadX は PendSV による横取りのときは確かめません。ThreadX は各スタックの上端の 1 語を印に使います。`ps` の STACK FREE は、
 スタックの下から 0xEF のまま残っているバイト数です。
 
-## ドライバーの待ち
-
-I2C と NINA のつなぎは、互換層を通さず ThreadX と Pico SDK で直接書いてあります。待ちのオブジェクトはドライバーが持つ `TX_SEMAPHORE` です。
-
-- ThreadX のセマフォは数と待ち手の一覧だけの軽いもので、割り込みから put できます（FreeRTOS のキューで作ったセマフォとは事情が違う）。
-- ThreadX には、ドライバーが使えるスレッド自身の起こし（FreeRTOS のタスク通知の番号）がありません。スレッドごとのセマフォは互換層の起こしの印で、
-  共用すると片方がもう片方の待ちを終わらせたり起こしを食べたりします。スレッドの停止と再開（`tx_thread_suspend()`・`tx_thread_resume()`）は、
-  停止の前に来た再開を取りこぼすので使いません。
-- I2C（`i2c_dw_os_impl.h`）: `device_sync_sem` と `rp2040_dma_sem` は 0 から上限 `UINT_MAX`、バスのロック `bus_sem` は 1 から上限 1（優先度継承なし。
-  解放のときに待ち手が 2 つ以上なら `tx_semaphore_prioritize()` で最も急ぐものを先頭に）。give は `tx_semaphore_ceiling_put()`、`k_sem_reset()` は
-  割り込みを止めて数を書きます。`i2c_dw_os_sem_init()` はカーネルの前に 2 回呼ばれることがあり（コントローラーが最初に始まらなかったとき）、
-  2 回目は作ったオブジェクトを残して数と上限を書きます。カーネルの前と ISR の中では ThreadX が待ちを断る（`TX_WAIT_ERROR`）ので、そのときは
-  待たずにもう一度取ります。
-- NINA（`nina_os.c`）: 3 つのロックは優先度継承のある `TX_MUTEX`、READY の待ちと Wi-Fi のスレッドの起こしは `TX_SEMAPHORE`。ソケットのイベントの待ちは、
-  待つたびに自分のスタックにセマフォを作り、終わりで消します（イベントの割り込みが待ち手の一覧をたどって全員を起こす）。SPI の DMA の待ち
-  （`nina_bus_dma_os_impl.h`）は転送のためのセマフォ 1 つです（転送は `nina_os_lock()` の中で 1 つずつ）。オブジェクトは最初の使用で作り、
-  消しません（作成済みの一覧に残る）。
-- 時間つきの待ちとスリープは、時間を tick に切り上げて 1 tick 足します（Zephyr の規則。ThreadX の n の待ちは今の tick + n で終わる）。
-  時計は tick ではなく TIMER の ms です。
-
 ## RAM に置くコード
 
 よく通るコード（センサーの読み出しと送信の経路のドライバーとアプリ）はフラッシュではなく RAM から実行します
-（共有の一覧 `common/imu/port/pico_sdk/ram_code.cmake`）。OS の分として足すのは、FreeRTOS 版と同じく NINA のコアの
-つなぎだけです（`app/usb-console/CMakeLists.txt` の `RAM_CODE_OS_SOURCES`）。ThreadX のカーネルはフラッシュに置きます。
-カーネルのよく通る部分も RAM に置くと、送信中の `cpu_active` は 0.1〜0.2 ポイント下がるだけで、RAM を約 7 KiB 使います。
+（共有の一覧 `common/imu/port/pico_sdk/ram_code.cmake`。[`freertos-port-ja.md` の「RAM に置くコード」](freertos-port-ja.md#ram-に置くコード)）。OS の分として足すのは、FreeRTOS 版と同じく NINA のコアの
+つなぎだけです（`threadx/app/usb-console/CMakeLists.txt` の `RAM_CODE_OS_SOURCES`: `common/drivers/nina/port/threadx/nina_os.c`）。ThreadX のカーネルはフラッシュに置きます。
 
 ## ThreadX の内部を使うところ
 
 公開の API に無いものを使うのは次のところだけです。ThreadX を新しいバージョンにするときは、これらの名前と意味が変わっていないことを確かめます。
+互換層の ThreadX の部分（`common/compat/port/threadx/`）とドライバーのつなぎの分も、ここにまとめます。
 
 | 使うもの | 場所 | 理由 |
 |---|---|---|
-| `_tx_thread_preempt_disable` | `common/compat/port/threadx/zephyr_kernel_os_impl.h`（`z_os_task_lock()`）、`drivers/pico_sdk_interop/pico_sdk_interop.c`（待てるかの判定） | ロックの中で切り替えないため（上の「スレッドのロック」） |
+| `_tx_thread_preempt_disable` | `common/compat/port/threadx/zephyr_kernel_os_impl.h`（`z_os_task_lock()`）、`threadx/drivers/pico_sdk_interop/pico_sdk_interop.c`（待てるかの判定） | ロックの中で切り替えないため（[`common/compat/README_ja.md`](../common/compat/README_ja.md) のスレッドのロック） |
 | `_tx_thread_system_preempt_check()` | `zephyr_kernel_os_impl.h`（`z_os_task_unlock()`） | ロックの中のサービスが残した切り替えを解除で行う |
-| `_tx_thread_current_ptr`、`_tx_thread_system_state` | `zephyr_kernel_os_impl.h`、ポートのヘッダー、`fault_os.c`、`commands_os.c`、`pico_sdk_interop.c` | 呼んだスレッド、カーネルの前か、ISR の中か（呼び出しなしで） |
-| `TX_THREAD` のメンバー（`tx_thread_priority`、`tx_thread_state`、`tx_thread_name`、`tx_thread_stack_start`・`_end`、`tx_thread_timer`、実行時間） | `zephyr_kernel_os_impl.h`、`commands_os.c`、`fault_os.c`、`run_time.c` | 優先度、終わったか、名前、`ps` の状態とスタックの空き |
+| `_tx_thread_current_ptr` | `zephyr_kernel_os_impl.h`、`src/fault_os.c`、`src/commands_os.c`、`pico_sdk_interop.c` | 呼んだスレッド（呼び出しなしで） |
+| `_tx_thread_system_state` | `zephyr_kernel_os_impl.h`（`z_os_pre_kernel()`） | カーネルの前か（呼び出しなしで。ISR の中かは、ポートのヘッダー `common/compat/port/threadx/rp2040/zephyr_os_port.h` が IPSR で見る） |
+| `TX_THREAD` のメンバー（`tx_thread_priority`、`tx_thread_state`、`tx_thread_name`、`tx_thread_stack_start`・`_end`、`tx_thread_timer`、実行時間） | `zephyr_kernel_os_impl.h`、`src/commands_os.c`、`src/fault_os.c`、`src/run_time.c` | 優先度、終わったか、名前、`ps` の状態とスタックの空き |
 | `_tx_mutex_created_ptr`、`_tx_mutex_created_count` と `tx_mutex_created_next`・`_previous` の付け替え | `zephyr_kernel_os_impl.h`（`z_tx_mutex_create()`） | 0 で埋められるミューテックスを作成済みの一覧から外す |
 | `TX_MUTEX` のメンバーと `_tx_mutex_priority_change()` | `zephyr_kernel_os_impl.h`（`z_tx_mutex_timed_out()`、`z_os_mutex_unlock()`） | 待ち手のタイムアウトで持ち主の優先度を戻す。持ち主の確認 |
 | `tx_semaphore_count`、`tx_semaphore_suspended_count` への直接の読み書き | `common/drivers/i2c_dw/port/threadx/i2c_dw_os_impl.h` | `k_sem_reset()`、カーネルの前の 2 回目の初期化（ThreadX に数を書くサービスは無い）、待ち手が 2 つ以上のときの並べ替え |
-| `_tx_thread_created_ptr`、`_tx_thread_created_count` | `commands_os.c`（`ps`） | スレッドの一覧（割り込みを止めて読む） |
+| `_tx_thread_created_ptr`、`_tx_thread_created_count` | `src/commands_os.c`（`ps`） | スレッドの一覧（割り込みを止めて読む） |
 | `_tx_initialize_kernel_setup()` | `src/main.c` | スケジューラーの前にオブジェクトとスレッドを作る |
-| `_tx_timer_interrupt()`、`_tx_initialize_unused_memory`、`_tx_thread_system_stack_ptr`、`__tx_PendSVHandler`・`__tx_SVCallHandler` | `src/tick.c`、`src/tx_initialize_low_level.c`、`threadx_kernel.cmake` | ポートの tick とハンドラー（ポートの例の `tx_initialize_low_level.S` がするのと同じ） |
+| `_tx_timer_interrupt()`、`_tx_initialize_unused_memory`、`_tx_thread_system_stack_ptr`、`__tx_PendSVHandler`・`__tx_SVCallHandler` | `src/tick.c`、`src/tx_initialize_low_level.c`、`threadx/app/usb-console/threadx_kernel.cmake` | ポートの tick とハンドラー（ポートの例の `tx_initialize_low_level.S` がするのと同じ） |
 | `_tx_execution_idle_time_total`、`tx_low_power_enter()`・`_exit()` | `src/run_time.c`、`src/idle_os.h` | キットのアイドルの時間、スケジューラーの待ちのフック（どちらも ThreadX のヘッダーに宣言が無い） |
 
 ## スレッド
+
+優先度は ThreadX の番号（Zephyr の優先度 + 16、0 が最優先。`common/compat/port/threadx/priorities_os.h`）です。カーネル自身のスレッド
+（アイドルスレッド、タイマーのスレッド）はありません。
 
 | スレッド | 優先度（ThreadX、Zephyr） | スタック | 内容 |
 |---|---|---|---|
@@ -205,7 +166,8 @@ I2C と NINA のつなぎは、互換層を通さず ThreadX と Pico SDK で直
 
 ## FreeRTOS 版との違い
 
-コマンドの構文と出力の形は FreeRTOS 版と同じです。違いは次のとおりです。
+コマンドの構文と出力の形は FreeRTOS 版と同じです。違いは次のとおりです（Zephyr 版・NuttX 版とも比べた表は
+[`freertos-port-ja.md` の「ほかの OS との違い」](freertos-port-ja.md#ほかの-os-との違い)）。
 
 | 点 | FreeRTOS 版 | ThreadX 版 |
 |---|---|---|
@@ -223,18 +185,18 @@ I2C と NINA のつなぎは、互換層を通さず ThreadX と Pico SDK で直
 
 `threadx/script/host_tests.sh [-v]` が、共有ソースのテスト（`common/tests/run.sh`）に続けて、次を ThreadX の Linux ポート（ThreadX のツリーの
 `ports/linux/gnu`）の上で動かします。ボードは要りません。割り込みは、ThreadX のコンテキストの保存と復元に包んだ Linux のスレッド 1 本です
-（`tests/i2c_dw/tx_test_isr.c`）。
+（`threadx/tests/i2c_dw/tx_test_isr.c`）。
 
 | テスト | 対象 |
 |---|---|
 | `zephyr_kernel_os_impl` | ThreadX の部分（`common/compat/port/threadx/zephyr_kernel_os_impl.h`）が互換層のヘッダーを読まずに単独でコンパイルできること |
-| `zephyr_kernel_test` | 互換層のカーネル（`common/tests/zephyr_kernel/zephyr_kernel_test.c` の 22 項目を 2 回。2 回目は 1 回目のオブジェクトとスタックを使い直す）。ハードウェアの割り込みからの起床、実時間の確認、tick の追いつきは飛ばす。テストの tick は 1 tick の ThreadX のタイマー |
-| `i2c_dw` | FreeRTOS 版のテストの本体（`freertos/tests/i2c_dw/main.c`）を ThreadX の部分（`tests/i2c_dw/i2c_dw_test_os.c`）と一緒に。I2C0 と I2C1 の境界とデバイス、DMA 読み出し、Zephyr の I2C の API、`i2c` コマンド。加えて、互換層の起こしや別のセマフォで待ちが終わらないこと、待つ直前の give が失われないこと、tick の一周をまたぐ期限、2 回目の `i2c_dw_os_sem_init()`、カーネルの前と ISR の中の呼び出し |
-| `nina` | FreeRTOS 版のテストの本体（`freertos/tests/nina/main.c`）を `tests/nina/nina_test_os.c` と一緒に。SPI と線の境界と DMA、READY とイベントの割り込み、ロック、スリープ、時計。加えて、カーネルの前の呼び出し、最初の待ちの前の Wi-Fi の post、2 つのミューテックスにまたがる優先度継承、待つ直前の窓 |
+| `zephyr_kernel_test` | 互換層のカーネル（`common/tests/zephyr_kernel/zephyr_kernel_test.c` の 22 項目を 2 回。2 回目は 1 回目のオブジェクトとスタックを使い直す）。ハードウェアの割り込みからの起床、実時間の確認、tick の追いつきは飛ばす。テストの tick は 1 tick の ThreadX のタイマー。ThreadX の部分は `threadx/tests/compat/` |
+| `i2c_dw` | FreeRTOS 版のテストの本体（`freertos/tests/i2c_dw/main.c`）を ThreadX の部分（`threadx/tests/i2c_dw/i2c_dw_test_os.c`）と一緒に。項目は [DesignWare I2C のコア](../common/drivers/i2c_dw/README_ja.md#テスト) |
+| `nina` | FreeRTOS 版のテストの本体（`freertos/tests/nina/main.c`）を `threadx/tests/nina/nina_test_os.c` と一緒に。項目は [NINA-W102 のドライバー](../common/drivers/nina/README_ja.md#テスト) |
 
 ## 実機の試験用ファームウェア（`tests/board_kernel`）
 
-ThreadX の部分を実機で確かめるための道具で、製品のファームウェアではありません。製品と同じ起動の手順とボードの部分（`tx_user.h`、
+ThreadX の部分を実機で確かめるための道具（`threadx/tests/board_kernel/`）で、製品のファームウェアではありません。製品と同じ起動の手順とボードの部分（`tx_user.h`、
 低レベルの初期化、tick）の上で、次を動かします。
 
 - 互換層のカーネルの試験 22 項目を、ボードのプラットフォームの部分（`test_port.c`: TIMER のアラームの割り込み、実時間、割り込みを止める時間）で。

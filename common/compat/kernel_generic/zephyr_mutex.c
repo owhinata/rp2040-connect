@@ -17,8 +17,8 @@
  * K_MUTEX_DEFINE(settings_lock); the OS's struct k_mutex provides it.  Not
  * from an interrupt handler, as in Zephyr.
  *
- * Priority inheritance is the OS's (FreeRTOS's approximation: see
- * freertos/drivers/README.md; ThreadX's: threadx/drivers/README.md).
+ * Priority inheritance is the OS's (FreeRTOS's approximation and ThreadX's:
+ * see common/compat/README.md).
  */
 
 #include <errno.h>

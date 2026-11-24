@@ -2,8 +2,8 @@
 /* The kernel services the shared NINA core uses (nina_proto.c, nina_sock.c,
  * nina_dns.c, nina_wifi.c), in the terms of Zephyr's calls, which the core
  * had before it was shared.  Each build implements them:
- * common/drivers/nina/port/zephyr/nina_os.c, common/drivers/nina/port/nuttx/nina_os.c
- * and common/drivers/nina/port/freertos/nina_os.c; the host tests
+ * port/zephyr/nina_os.c, port/nuttx/nina_os.c, port/freertos/nina_os.c and
+ * port/threadx/nina_os.c of common/drivers/nina; the host tests
  * (common/tests/nina_*.c) replace them with fakes.
  */
 
