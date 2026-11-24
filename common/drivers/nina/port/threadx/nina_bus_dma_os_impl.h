@@ -64,8 +64,9 @@ NINA_BUS_DMA_OS_INLINE nina_bus_dma_os_thread_t nina_bus_dma_os_self(void)
 NINA_BUS_DMA_OS_INLINE void nina_bus_dma_os_wake_clear(void)
 {
 	if (!nina_bus_dma_wake_made) {
-		nina_bus_dma_wake_made = tx_semaphore_create(&nina_bus_dma_wake,
-							     (CHAR *)"nina_bus_dma", 0) == TX_SUCCESS;
+		nina_bus_dma_wake_made =
+			tx_semaphore_create(&nina_bus_dma_wake, (CHAR *)"nina_bus_dma", 0) ==
+			TX_SUCCESS;
 		return;
 	}
 	(void)tx_semaphore_get(&nina_bus_dma_wake, TX_NO_WAIT);

@@ -96,6 +96,7 @@ NINA（`port/threadx/nina_os.c` と DMA の待ち）、互換層のソケット�
 ### T5: 仕上げ
 
 よく通るコードの RAM への配置と検査、RAM の残りとスタックの調整、`cpu_active` の計測（ほかの 3 つと同じ条件。止めた状態の値も）、
+**ThreadX のカーネルを RAM に置くかどうかの判断**（ユーザー、2026-11-24:「Kernel は RAM コードでもいいかもしれない。tickless と同様、後ほど検討」。よく通る部分で約 5.5 KiB。`cpu_active` と XIP キャッシュの外れの数を、置いた場合と置かない場合で比べて示す。FreeRTOS 版のカーネルも同じ扱いにするかを合わせて決める）、
 **tick を止めるかどうかの判断**（決定事項の tick の行。計測の結果と、分解能を細かくできる利点をユーザーに示して決める）、
 文書（`threadx/README`・`threadx/drivers/README` の日英、ルートの README、設計書、`design/os-boundary` に ThreadX の列）、`CLAUDE.md`。
 

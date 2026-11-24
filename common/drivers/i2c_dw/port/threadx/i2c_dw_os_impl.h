@@ -97,9 +97,9 @@
  * thread in one critical section).  A wait that ends by its time has left
  * the list in ThreadX's timeout; a give after that counts up.  The waits
  * are those of a thread: ThreadX refuses a wait before the kernel runs or in
- * an interrupt handler (TX_WAIT_ERROR, with its error checking on), which
- * returns -EAGAIN here; a take without a wait (bus_lock() of a free bus) is
- * also allowed before the kernel runs.
+ * an interrupt handler (TX_WAIT_ERROR, with its error checking on), and
+ * there a take has the count if there is one (bus_lock() of a free bus
+ * before the kernel runs) and returns -EAGAIN otherwise.
  *
  * The semaphores are ThreadX objects of their own, apart from the
  * compatibility layer's wake flag of each thread (zephyr_kernel_os_impl.h
@@ -173,13 +173,21 @@ typedef struct i2c_msg i2c_dw_os_msg_t;
  * the instance calls it (i2c_dw_instance.h), before anything waits on or
  * gives the semaphore, from a thread or before the kernel runs.  A second
  * start of the instance (its controller did not start the first time)
- * makes the semaphore again (ThreadX refuses to create one twice).
+ * keeps the ThreadX object made by the first (ThreadX refuses to create
+ * one twice, and to delete one before the kernel runs) and sets its count
+ * and limit anew, with interrupts masked as ThreadX's own services change
+ * the count; nothing waits on it then.
  */
 static inline void i2c_dw_os_sem_init(i2c_dw_os_sem_t *sem, unsigned int initial,
 				      unsigned int limit)
 {
 	if (sem->limit != 0) {
-		(void)tx_semaphore_delete(&sem->sem);
+		uint32_t state = save_and_disable_interrupts();
+
+		sem->sem.tx_semaphore_count = initial;
+		sem->limit = limit;
+		restore_interrupts(state);
+		return;
 	}
 	sem->limit = limit;
 	(void)tx_semaphore_create(&sem->sem, (CHAR *)"i2c_dw", initial);
@@ -205,10 +213,19 @@ static inline ULONG i2c_dw_os_block_ticks(uint64_t ticks)
 	return (ULONG)ticks + 1;
 }
 
-/* k_sem_take() for the wait option TICKS (TX_WAIT_FOREVER: for ever). */
+/* k_sem_take() for the wait option TICKS (TX_WAIT_FOREVER: for ever).
+ * ThreadX refuses a wait where no thread can block (TX_WAIT_ERROR: before
+ * the kernel runs, in an interrupt handler) even when the count is there:
+ * then one try without a wait.
+ */
 static inline int i2c_dw_os_sem_wait(i2c_dw_os_sem_t *sem, ULONG ticks)
 {
-	if (tx_semaphore_get(&sem->sem, ticks) == TX_SUCCESS) {
+	UINT ret = tx_semaphore_get(&sem->sem, ticks);
+
+	if (ret == TX_WAIT_ERROR) {
+		ret = tx_semaphore_get(&sem->sem, TX_NO_WAIT);
+	}
+	if (ret == TX_SUCCESS) {
 		return 0;
 	}
 	return ticks == TX_NO_WAIT ? -EBUSY : -EAGAIN;
@@ -257,18 +274,19 @@ static inline void i2c_dw_os_sem_reset(i2c_dw_os_sem_t *sem)
 }
 
 /* The lock: the count at once when it is free (also before the kernel
- * runs, where ThreadX refuses a wait); otherwise a wait in ThreadX's list.
+ * runs, see i2c_dw_os_sem_wait()); otherwise a wait in ThreadX's list.
  */
 static inline int i2c_dw_os_bus_lock(i2c_dw_os_sem_t *sem)
 {
-	if (tx_semaphore_get(&sem->sem, TX_NO_WAIT) == TX_SUCCESS) {
-		return 0;
-	}
 	return i2c_dw_os_sem_wait(sem, TX_WAIT_FOREVER);
 }
 
 /* With two or more waiters, the most urgent (the first of them among
- * equals) goes to the front before the put hands it the count.
+ * equals) goes to the front before the put hands it the count.  A thread
+ * that joins the list after the look at the count (an interrupt readied it
+ * and it ran first) is behind the one the put hands the count to, as if it
+ * had come after the give; only when no waiter was there to look at does
+ * the put take the first that came.
  */
 static inline void i2c_dw_os_bus_unlock(i2c_dw_os_sem_t *sem)
 {

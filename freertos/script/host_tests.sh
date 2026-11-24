@@ -208,7 +208,8 @@ else
 fi
 printf 'ok  kv (flash boundary and store, FreeRTOS POSIX port)\n'
 
-# The NINA link (freertos/tests/nina): the board's boundaries of the shared core (the core's
+# The NINA link (freertos/tests/nina: main.c, which threadx/script/host_tests.sh builds too, on
+# FreeRTOS's part of the test, nina_test_os.c): the board's boundaries of the shared core (the core's
 # FreeRTOS binding in common/drivers/nina/port/freertos: nina_bus_rp2040.c with its long
 # transfers by DMA, nina_bus_dma_rp2040.c, whose messages go to the test (tests/nina/log_fake),
 # and nina_os.c with its waits on READY's and the IRQ line's edge interrupts and its own raw
@@ -235,7 +236,7 @@ for hz in 1000 250; do
     done
     for src in ../common/drivers/nina/port/pico_sdk/nina_bus_rp2040.c \
                ../common/drivers/nina/port/pico_sdk/nina_bus_dma_rp2040.c \
-               ../common/drivers/nina/port/freertos/nina_os.c tests/nina/main.c \
+               ../common/drivers/nina/port/freertos/nina_os.c tests/nina/main.c tests/nina/nina_test_os.c \
                ../common/drivers/nina/internal/nina_proto.c ../common/drivers/nina/internal/nina_wait.c; do
         obj="$out/nina${hz}_$(basename "$src" .c).o"
         extra=()
@@ -246,7 +247,9 @@ for hz in 1000 250; do
             "${extra[@]}" -c "$src" -o "$obj"
         ninaobjs+=("$obj")
     done
-    cc "${flags[@]}" "${ninaobjs[@]}" -o "$out/nina$hz"
+    # The windows before the waits' blocks (tests/nina/nina_test_os.c).
+    cc "${flags[@]}" -Wl,--wrap=ulTaskGenericNotifyTake -Wl,--wrap=xQueueSemaphoreTake \
+        "${ninaobjs[@]}" -o "$out/nina$hz"
     if (( verbose )); then
         timeout 60 "$out/nina$hz"
     else
@@ -255,7 +258,8 @@ for hz in 1000 250; do
     printf 'ok  nina (SPI and line boundary with its DMA, FreeRTOS binding: READY and event interrupts, locks, sleeps, clock; %s Hz tick, FreeRTOS POSIX port)\n' "$hz"
 done
 
-# I2C0 and I2C1 (freertos/tests/i2c_dw): the shared core's FreeRTOS binding
+# I2C0 and I2C1 (freertos/tests/i2c_dw: main.c, which threadx/script/host_tests.sh builds too,
+# on FreeRTOS's part of the test, i2c_dw_test_os.c): the shared core's FreeRTOS binding
 # (common/drivers/i2c_dw/port/freertos: i2c_dw_os_impl.h, i2c_dw_instance.h with the devices
 # i2c0 and i2c1 and their Zephyr I2C API, i2c_dw_dma_os_rp2040.c with the DMA reads' channels;
 # drivers/compat/zephyr/drivers/i2c.h) on fakes of the Pico SDK's GPIO, reset, IRQ, sync, DMA
@@ -280,7 +284,7 @@ for variant in i2c0 i2c1; do
     [[ $variant == i2c1 ]] && i2cdefs+=(-DCONFIG_I2C_DW_I2C1=1)
     i2cobjs=()
     for src in "$i2cdir/port/pico_sdk/i2c_dw_dma_os_rp2040.c" tests/i2c_dw/main.c \
-               tests/i2c_dw/i2c_dw_core.c ../common/shell/i2c_shell.c \
+               tests/i2c_dw/i2c_dw_test_os.c tests/i2c_dw/i2c_dw_core.c ../common/shell/i2c_shell.c \
                ../common/shell/zshell.c ../common/shell/subcmd.c ../common/compat/zephyr_device.c \
                ../common/compat/subsys/portability/posix/c_lib_ext/fnmatch.c; do
         obj="$out/i2c_${variant}_$(basename "$src" .c).o"
@@ -297,9 +301,9 @@ for variant in i2c0 i2c1; do
             -c "$src" -o "$obj"
         i2cobjs+=("$obj")
     done
-    # The test keeps each write of CHAN_ABORT through the stop of the DMA part, and gives a
-    # semaphore between a wait's look at its count and its block through the tick count's
-    # read there (main.c).
+    # The test keeps each write of CHAN_ABORT through the stop of the DMA part (main.c), and
+    # gives a semaphore between a wait's look at its count and its block through the tick
+    # count's read there (i2c_dw_test_os.c).
     cc "${flags[@]}" -Wl,--wrap=i2c_dw_dma_os_stop -Wl,--wrap=xTaskGetTickCount \
         "${kernobjs[@]}" "${i2cobjs[@]}" \
         -o "$out/i2c_dw_$variant"

@@ -136,3 +136,25 @@
 - まだ確かめていない: 送信中の Telnet の接続と切断、切断と再接続、`wifi scan`、`zperf`、中継モード、再起動の直後の `sensor stream`（watermark 32）、長時間。
   ドライバーの待ちのホストテスト（別の subagent が作業中。その途中の `port/threadx/` の変更を含むビルドで上の確認をした）。
 - 実機: ThreadX 版（このビルド）。
+
+## ドライバーの待ちのホストテストと、実機の確認の続き（2026-11-24）
+
+- ホストテスト: `threadx/tests/i2c_dw/`・`threadx/tests/nina/`（ThreadX の Linux ポートの上。割り込みは `tx_test_isr.c` が 1 本の Linux のスレッドで
+  `_tx_thread_context_save()`・`_restore()` に包んで動かす）。FreeRTOS のテストの本体（`freertos/tests/{i2c_dw,nina}/main.c`）をカーネルに依存しない形にし、
+  カーネルごとの部分を `*_test_os.[ch]` に出して、ThreadX はパスで再利用する。`threadx/script/host_tests.sh` は先に `common/tests/run.sh` を動かす（56 件、約 25 秒）。FreeRTOS は 68 のまま。
+- `i2c_dw_os_impl.h`（ThreadX）で見つけて直した不具合 2 つ: (1) カーネルが動く前の 2 回目の `i2c_dw_os_sem_init()` が何もしなかった（削除も作成も断られる）→ その場で数と上限を書く。
+  (2) 時間つきの take が、カーネルが動く前と ISR の中で、数があっても失敗した（`TX_WAIT_ERROR`）→ そのエラーのときだけ待たずにもう一度試す。NINA の 2 つのファイルに不具合は見つからなかった。
+- 読んで確かめた点（実機でしか確かめられないものは残る）: 待ち手のスタックに置くセマフォと ISR からの put は、マスクの中で一覧を空にするので安全。`tx_semaphore_count` への直接の書き込みは
+  「数 > 0 なら待ち手なし」の決まりを保つ。バスのロックは、見た瞬間に待ち手が 0 でそのあと 2 本が続けて入ると、急ぐほうでなく先着が取る（数命令のあいだに横取りが 2 回要る。コードに記載）。
+- FreeRTOS と ThreadX で見える違い（どれも境界の範囲内。T5 で `design/os-boundary` に書く）: 最初の待ちの前の Wi-Fi の post を ThreadX は残す（Zephyr と同じ）、FreeRTOS は残さず最初の待ちがすぐ戻る。
+  優先度の継承は、ThreadX は解放のたびに「まだ持っているミューテックスの待ち手の最高」まで下げ、FreeRTOS は全部を放してから下げる。
+- T0 のカーネルの試験が、10 回のうち 1 回ホストで落ちた（`k_msleep(1)` が 2 tick のはずが 3 tick。ホストの負荷による時間のずれと見ているが未確認）。
+- 利用者の発言（2026-11-24）: カーネルは RAM コードでもよいかもしれない。tickless と同様にあとで検討する（計画の T5 に追記）。
+- **実機（修正を含むビルド）**:
+  - 再起動の直後の `sensor stream`（watermark 32、各 30 秒。FreeRTOS 版と同じ条件）: 104 Hz 2.1%、833 Hz 10.9%、3333 Hz 41.9%、6667 Hz 37.0%、4 つとも止まらない
+    （FreeRTOS は 2.6・13.6・52.0・37.6%。表示のバイト数は同じ）。
+  - 送信中の Telnet: 3 回とも接続 0.05 秒以内で `uptime` が返る。送信中の `wifi scan`、`wifi disconnect` → `wifi cred auto_connect` で再接続し、送信が戻る。再接続のあとの Telnet も動く。
+    この計測の全体で batches 2940、published 2569、dropped 371（スキャンと約 6 秒の切断の分。受信側の欠番 372、時刻の逆行 0、overruns 0）、`cpu_active` 18.4%。
+  - スタックの残り: sysworkq 136 / 384（変わらず）、net_mgmt 1296、shell_telnet 1660、imu_raw_mqtt_tid 824、割り込みスタック 1628。
+- まだ確かめていない: `zperf`、中継モード、長時間、`-DI2C_DW_I2C1=ON` の実機。
+- 実機: ThreadX 版（このビルド）。

@@ -1,16 +1,23 @@
 /* SPDX-License-Identifier: MIT */
-/* The host test of the FreeRTOS build's boundaries of the NINA core on the
- * FreeRTOS POSIX port: common/drivers/nina/port/pico_sdk/nina_bus_rp2040.c and the core's
- * FreeRTOS binding (common/drivers/nina/port/freertos/nina_os.c, on FreeRTOS and
- * the Pico SDK alone: no compatibility layer is linked) on fakes of the
- * Pico SDK's DMA, GPIO, GPIO interrupt, IRQ, reset, SPI and TIMER functions
- * (pico_fake/, implemented here: they record the calls and play the
- * module), and the shared core over both (common/drivers/nina/internal/nina_proto.c),
- * as the board builds them (common/pico_sdk/drivers/nina/nina.cmake).
+/* The host test of the boundaries of the NINA core on the Pico SDK and a
+ * kernel, on that kernel's host port:
+ * common/drivers/nina/port/pico_sdk/nina_bus_rp2040.c and the core's binding
+ * of the kernel (common/drivers/nina/port/freertos/nina_os.c on the FreeRTOS
+ * POSIX port, port/threadx/nina_os.c on ThreadX's Linux port, each with its
+ * nina_bus_dma_os_impl.h; on the kernel and the Pico SDK alone: no
+ * compatibility layer is linked) on fakes of the Pico SDK's DMA, GPIO, GPIO
+ * interrupt, IRQ, reset, SPI and TIMER functions (pico_fake/, implemented
+ * here: they record the calls and play the module), and the shared core
+ * over both (common/drivers/nina/internal/nina_proto.c), as the board
+ * builds them (common/pico_sdk/drivers/nina/nina.cmake).  What the test
+ * needs of the kernel is the kernel's nina_test_os.c (nina_test_os.h: this
+ * directory's for FreeRTOS, threadx/tests/nina's for ThreadX), which also
+ * has the tests of what the binding's header leaves to the kernel (the
+ * Wi-Fi thread's wake-up before its first wait, among others).
  * freertos/script/host_tests.sh runs it twice: with the board's 1 ms tick,
- * and with a 4 ms one (configTICK_RATE_HZ 250); both times the kernel's
- * tick count starts 5 s before it wraps, and the fake TIMER 4.5 s before
- * its low 32 bits wrap.
+ * and with a 4 ms one (configTICK_RATE_HZ 250); threadx/script/host_tests.sh
+ * once, at ThreadX's 1 ms; each time the kernel's tick count starts 5 s
+ * before it wraps, and the fake TIMER 4.5 s before its low 32 bits wrap.
  *
  * - nina_bus_initialize(), which the core calls at its first request (a
  *   second call does nothing): the reset of SPI1, the three SPI pins as
@@ -28,10 +35,6 @@
  * - nina_os_lock(): recursive and with priority inheritance; the DNS lock
  *   is a separate mutex, and so is the Wi-Fi operations' lock
  *   (nina_os_wifi_lock(), with priority inheritance).
- * - The Wi-Fi thread's wake-up (nina_os_wifi_post(), _wait()): a post
- *   before any wait is not kept, and the first wait returns at once; then a
- *   waiting task runs at the post; two posts before the wait end one wait,
- *   and the next waits its whole time (rounded up to ticks, plus one).
  * - A module that gets ready while a request waits: the request goes on
  *   within a few ticks of it.
  * - The sleeps' and waits' ticks: the time rounded up to ticks, plus one
@@ -53,7 +56,10 @@
  *   increment, the RX channel started before the TX channel, SSPDMACR set
  *   only while the DMA moves the bytes (the polled fakes check it is 0),
  *   the calling task blocked meanwhile, the overrun flag cleared after;
- * - a notification left on the NINA's index does not end the wait early;
+ * - a wake-up of the task that is not the transfer's (on FreeRTOS a
+ *   notification left on the NINA's index) does not end the wait early;
+ *   the transfer's end between its look at the end flag and its wait does
+ *   (nina_test_os_dma_window());
  * - each handler looks at and acknowledges its own channels only, also
  *   when both flags are raised at once;
  * - a transfer that never ends: -EIO after the wait (2 ms + LEN / 256 ms in
@@ -82,7 +88,8 @@
  * - a wait that times out reads READY once per 10 ms (the binding's
  *   slices), a wait that the interrupt ends early twice;
  * - a change right after the core's read of READY (before it waits) is not
- *   lost: the wait returns at once;
+ *   lost: the wait returns at once; so is one between the wait's start and
+ *   its block (nina_test_os_ready_window());
  * - the arm drops a wake-up left from an earlier wait, and an edge latched
  *   while READY's event was off does not fire once it is on.
  *
@@ -90,8 +97,10 @@
  * nina_os_event_start() enables its rising edge; each edge counts one and
  * ends the waits of every task that waits (two at once here); a wait
  * without an edge ends after its time (0: at once); one whose count has
- * moved returns at once; a notification left from before does not end a
- * wait; a waiter that timed out is not woken by a later edge.  A start
+ * moved returns at once, and so does one with an edge between its join of
+ * the waiters and its block (nina_test_os_event_window()); a wake-up of the
+ * task that is not the wait's does not end it; a waiter that timed out is
+ * not woken by a later edge.  A start
  * that fails cannot happen here (the binding's starts return 0); the
  * fallback after a failed start is common/tests/nina_wait.c's and
  * nina_proto.c's.
@@ -108,9 +117,6 @@
 
 #include <time.h>
 
-#include "FreeRTOS.h"
-#include "task.h"
-
 #include "hardware/dma.h"
 #include "hardware/gpio.h"
 #include "hardware/irq.h"
@@ -122,11 +128,10 @@
 #include "nina_bus_dma_rp2040.h"
 #include "nina_os.h"
 #include "nina_proto.h"
+#include "nina_test_os.h"
 
-#define RUNNER_STACK 16384
-#define HELPER_STACK 16384
-#define LOG_SIZE     4096
-#define NUM_GPIO     30
+#define LOG_SIZE 4096
+#define NUM_GPIO 30
 
 #define GPIO_IRQ   2
 #define GPIO_RESET 3
@@ -134,13 +139,11 @@
 #define GPIO_READY 10
 #define GPIO_INT1  24
 
-/* The shell's priority (APP_PRIO_SHELL): "nina version" runs in the
- * console's task.
- */
-#define RUNNER_PRIORITY 6
-
 /* The tick in ms, rounded up (the slack of the timing checks). */
-#define TICK_MS ((1000 + configTICK_RATE_HZ - 1) / configTICK_RATE_HZ)
+#define TICK_MS ((int64_t)((1000 + nina_test_os_tick_hz() - 1) / nina_test_os_tick_hz()))
+
+/* MS in ticks, rounded down (FreeRTOS's pdMS_TO_TICKS()). */
+#define MS_TO_TICKS(ms) ((uint32_t)((uint64_t)(ms) * nina_test_os_tick_hz() / 1000u))
 
 /* Where the fake TIMER starts (host_tests.sh: 4.5 s before its low word
  * wraps).
@@ -148,11 +151,6 @@
 #ifndef TEST_TIMER_START_US
 #define TEST_TIMER_START_US 0
 #endif
-
-/* The configuration has a tick hook (the board's catch-up, not used here). */
-void vApplicationTickHook(void)
-{
-}
 
 /* The fake TIMER: the host's monotonic clock from TEST_TIMER_START_US. */
 static uint64_t host_start_us;
@@ -350,18 +348,24 @@ static uint32_t ready_events(void)
 /* The NVIC: IO_IRQ_BANK0's raw handlers run in turn, as the SDK's shared
  * handlers, if an enabled event of a pin is pending.
  */
-static void bank_irq(void)
+static void bank_handlers(void *arg)
 {
-	if (!bank_enabled || ((ready_events() & ready_inte) == 0 && (irq_intr & irq_inte) == 0 &&
-			      (int1_intr & int1_inte) == 0)) {
-		return;
-	}
+	(void)arg;
 	bank_irqs++;
 	for (unsigned int i = 0; i < num_handlers; i++) {
 		running_mask = handler_masks[i];
 		handlers[i]();
 		running_mask = 0;
 	}
+}
+
+static void bank_irq(void)
+{
+	if (!bank_enabled || ((ready_events() & ready_inte) == 0 && (irq_intr & irq_inte) == 0 &&
+			      (int1_intr & int1_inte) == 0)) {
+		return;
+	}
+	nina_test_os_isr(bank_handlers, NULL);
 }
 
 /* A handler may only look at and acknowledge the pins of its mask. */
@@ -406,7 +410,7 @@ static void set_module_alive(bool alive)
 }
 
 /* Ticks at the reset sequence's edges (each valid once its flag is set). */
-static TickType_t tick_reset_active, tick_reset_inactive, tick_irq_low;
+static uint32_t tick_reset_active, tick_reset_inactive, tick_irq_low;
 static bool seen_reset_active, seen_reset_inactive, seen_irq_low;
 
 /* The fakes of the Pico SDK (pico_fake/pico_nina_fake.h) ---------------------*/
@@ -478,16 +482,16 @@ static void line_changed(uint gpio, bool was_cs)
 	}
 	if (gpio == GPIO_RESET && pins[gpio].out) {
 		if (!pins[gpio].level && !seen_reset_active) {
-			tick_reset_active = xTaskGetTickCount();
+			tick_reset_active = nina_test_os_ticks();
 			seen_reset_active = true;
 		} else if (pins[gpio].level && seen_reset_active && !seen_reset_inactive) {
-			tick_reset_inactive = xTaskGetTickCount();
+			tick_reset_inactive = nina_test_os_ticks();
 			seen_reset_inactive = true;
 			module_resets++;
 		}
 	}
 	if (gpio == 2 && pins[gpio].out && !pins[gpio].level && !seen_irq_low) {
-		tick_irq_low = xTaskGetTickCount();
+		tick_irq_low = nina_test_os_ticks();
 		seen_irq_low = true;
 	}
 	ready_update();
@@ -537,6 +541,16 @@ static void irq_rise(void)
 {
 	irq_intr |= GPIO_IRQ_EDGE_RISE;
 	bank_irq();
+}
+
+void nina_test_irq_rise(void)
+{
+	irq_rise();
+}
+
+void nina_test_module_alive(bool alive)
+{
+	set_module_alive(alive);
 }
 
 /* The SDK's: clear the events (INTR), then set or clear them in INTE.  Only
@@ -694,7 +708,6 @@ enum dma_mode {
 static enum dma_mode dma_mode;
 static bool dma_other_too; /* the engine raises the stand-in's flag too */
 static int dma_rx_ch = -1, dma_tx_ch = -1;
-static TaskHandle_t dma_engine_task, runner_task;
 static unsigned int dma_irqs, other_handled;
 static uint32_t last_abort;
 
@@ -722,11 +735,9 @@ static void other_isr(void)
 /* DMA_IRQ_1, a level interrupt: its handlers run while an enabled flag is
  * raised; each takes its own, so none is left.
  */
-static void dma_interrupt(void)
+static void dma_line_handlers(void *arg)
 {
-	if (!dma_line_enabled || (dma_intr & dma_inte[1]) == 0) {
-		return;
-	}
+	(void)arg;
 	dma_irqs++;
 	for (unsigned int i = 0; i < num_dma_handlers; i++) {
 		dma_handler_mask =
@@ -735,6 +746,14 @@ static void dma_interrupt(void)
 		dma_handler_mask = 0;
 	}
 	assert((dma_intr & dma_inte[1]) == 0);
+}
+
+static void dma_interrupt(void)
+{
+	if (!dma_line_enabled || (dma_intr & dma_inte[1]) == 0) {
+		return;
+	}
+	nina_test_os_isr(dma_line_handlers, NULL);
 }
 
 int dma_claim_unused_channel(bool required)
@@ -841,7 +860,7 @@ void dma_channel_configure(uint channel, const dma_channel_config_t *config,
 	assert(spi1_inst.hw.dmacr == (SPI_SSPDMACR_TXDMAE_BITS | SPI_SSPDMACR_RXDMAE_BITS));
 	dma_tx_ch = (int)channel;
 	record("tx(%u,%u)", channel, (unsigned int)encoded_transfer_count);
-	xTaskNotifyGive(dma_engine_task);
+	nina_test_os_dma_kick();
 }
 
 static void dma_end(int ch)
@@ -851,9 +870,10 @@ static void dma_end(int ch)
 }
 
 /* The bytes of the started transfer through the module, as the two
- * channels and SPI1 move them, while the caller sleeps.
+ * channels and SPI1 move them, while the caller sleeps (the kernel's DMA
+ * engine calls it a tick after the TX channel's start).
  */
-static void dma_move(void)
+void nina_test_dma_move(void)
 {
 	int tx = dma_tx_ch, rx = dma_rx_ch;
 	uint32_t n = dma_ch[tx].count;
@@ -861,7 +881,7 @@ static void dma_move(void)
 	const volatile uint8_t *src = dma_ch[tx].read;
 	volatile uint8_t *dst = dma_ch[rx].write;
 
-	assert(eTaskGetState(runner_task) == eBlocked);
+	assert(nina_test_os_dma_caller_waits());
 	assert(spi1_inst.hw.dmacr == (SPI_SSPDMACR_TXDMAE_BITS | SPI_SSPDMACR_RXDMAE_BITS));
 	assert(spi1_inst.hw.cr1 & SPI_SSPCR1_SSE_BITS);
 	if (dma_mode == DMA_STALL || dma_mode == DMA_STUCK) {
@@ -895,16 +915,6 @@ static void dma_move(void)
 		dma_intr |= 1u << OTHER_CHANNEL;
 	}
 	dma_interrupt();
-}
-
-static void dma_engine(void *arg)
-{
-	(void)arg;
-	for (;;) {
-		(void)ulTaskNotifyTake(pdTRUE, portMAX_DELAY);
-		vTaskDelay(1);
-		dma_move();
-	}
 }
 
 void hw_set_bits(io_rw_32 *addr, uint32_t mask)
@@ -973,17 +983,17 @@ int spi_write_blocking(spi_inst_t *spi, const uint8_t *src, size_t len)
 /* The binding's sleeps and waits: the time rounded up to ticks, plus one
  * tick (none for 0).
  */
-static TickType_t sleep_ticks(uint64_t us)
+static uint32_t sleep_ticks(uint64_t us)
 {
-	uint64_t ticks = (us * configTICK_RATE_HZ + 999999u) / 1000000u;
+	uint64_t ticks = (us * nina_test_os_tick_hz() + 999999u) / 1000000u;
 
-	return ticks == 0 ? 0 : (TickType_t)(ticks + 1);
+	return ticks == 0 ? 0 : (uint32_t)(ticks + 1);
 }
 
 /* A sleep of N ticks ends at the N-th tick; the test allows a few ticks of
  * the POSIX port's lateness.
  */
-static void expect_ticks(TickType_t got, TickType_t expected)
+static void expect_ticks(uint32_t got, uint32_t expected)
 {
 	if (got < expected || got > expected + 5) {
 		printf("ticks: expected %lu, got %lu\n", (unsigned long)expected,
@@ -996,6 +1006,11 @@ static void expect_ticks(TickType_t got, TickType_t expected)
 static int64_t now_ms(void)
 {
 	return (int64_t)(time_us_64() / 1000u);
+}
+
+int64_t nina_test_now_ms(void)
+{
+	return now_ms();
 }
 
 static int version(char *out, size_t cap)
@@ -1125,9 +1140,9 @@ static void test_no_answer(void)
 
 static void wake_helper(void *arg)
 {
-	vTaskDelay(pdMS_TO_TICKS((uintptr_t)arg));
+	nina_test_os_delay(MS_TO_TICKS((uintptr_t)arg));
 	set_module_alive(true);
-	vTaskDelete(NULL);
+	nina_test_os_thread_exit();
 }
 
 /* The module gets ready while the request waits for it (a helper task
@@ -1145,8 +1160,7 @@ static void test_late_ready(void)
 
 	set_module_alive(false);
 	recording = false;
-	assert(xTaskCreate(wake_helper, "wake", HELPER_STACK / sizeof(StackType_t), (void *)50,
-			   uxTaskPriorityGet(NULL) + 1, NULL) == pdPASS);
+	(void)nina_test_os_thread_start(wake_helper, (void *)50, 1);
 	reads = ready_reads;
 	start = now_ms();
 	assert(version(v, sizeof(v)) == 0);
@@ -1209,7 +1223,7 @@ static void test_ready_between_read_and_wait(void)
  */
 static void test_ready_waits(void)
 {
-	TickType_t t;
+	uint32_t t;
 	unsigned int irqs;
 
 	set_module_alive(false);
@@ -1230,23 +1244,33 @@ static void test_ready_waits(void)
 	 * once.
 	 */
 	nina_os_ready_arm(1);
-	t = xTaskGetTickCount();
+	t = nina_test_os_ticks();
 	nina_os_ready_wait(3);
-	expect_ticks(xTaskGetTickCount() - t, sleep_ticks(3000));
-	t = xTaskGetTickCount();
+	expect_ticks(nina_test_os_ticks() - t, sleep_ticks(3000));
+	t = nina_test_os_ticks();
 	nina_os_ready_wait(25);
-	expect_ticks(xTaskGetTickCount() - t, sleep_ticks(10000));
-	t = xTaskGetTickCount();
+	expect_ticks(nina_test_os_ticks() - t, sleep_ticks(10000));
+	t = nina_test_os_ticks();
 	nina_os_ready_wait(0);
-	assert(xTaskGetTickCount() - t <= 1);
+	assert(nina_test_os_ticks() - t <= 1);
 
 	/* An edge before the wait: the wait returns at once. */
 	irqs = bank_irqs;
 	set_module_alive(true);
 	assert(bank_irqs == irqs + 1);
-	t = xTaskGetTickCount();
+	t = nina_test_os_ticks();
 	nina_os_ready_wait(10);
-	assert(xTaskGetTickCount() - t <= 1);
+	assert(nina_test_os_ticks() - t <= 1);
+
+	/* An edge between the wait's start and its block (the kernel's
+	 * nina_test_os_ready_window()): the wait returns at once.
+	 */
+	set_module_alive(false); /* rising: its event is off */
+	irqs = bank_irqs;
+	nina_test_os_ready_window();
+	t = nina_test_os_ticks();
+	nina_os_ready_wait(10);
+	assert(nina_test_os_ticks() - t <= 1 && bank_irqs == irqs + 1 && !ready_high);
 
 	/* A wake-up left from before the arm is dropped: the edge gave the
 	 * semaphore, nobody took it before the disarm.
@@ -1263,9 +1287,9 @@ static void test_ready_waits(void)
 	nina_os_ready_arm(1);
 	/* The latched falling edge was cleared by the enable: no interrupt. */
 	assert(bank_irqs == irqs && (ready_intr & GPIO_IRQ_EDGE_FALL) == 0);
-	t = xTaskGetTickCount();
+	t = nina_test_os_ticks();
 	nina_os_ready_wait(10);
-	expect_ticks(xTaskGetTickCount() - t, sleep_ticks(10000));
+	expect_ticks(nina_test_os_ticks() - t, sleep_ticks(10000));
 	nina_os_ready_disarm();
 	set_module_alive(true);
 	ready_intr = 0;
@@ -1284,21 +1308,19 @@ static void event_helper(void *arg)
 
 	nina_os_event_wait(event_mark, event_wait_ms);
 	event_woke[slot] = now_ms();
-	vTaskDelete(NULL);
+	nina_test_os_thread_exit();
 }
 
-static void start_event_helper(int slot, UBaseType_t priority)
+static void start_event_helper(int slot, int above)
 {
-	assert(xTaskCreate(event_helper, "ev", HELPER_STACK / sizeof(StackType_t),
-			   (void *)(intptr_t)slot, priority, NULL) == pdPASS);
+	(void)nina_test_os_thread_start(event_helper, (void *)(intptr_t)slot, above);
 }
 
 static void test_events(void)
 {
-	UBaseType_t mine = uxTaskPriorityGet(NULL);
 	uint32_t seq;
 	int64_t start, took;
-	TickType_t t;
+	uint32_t t;
 
 	/* The start: GPIO2's events off, then its rising edge, nothing else of
 	 * the line; the handler is not added again.
@@ -1315,13 +1337,13 @@ static void test_events(void)
 	event_mark = seq;
 	event_wait_ms = 1000;
 	event_woke[0] = event_woke[1] = -1;
-	start_event_helper(0, mine + 1);
-	start_event_helper(1, mine + 1);
-	vTaskDelay(pdMS_TO_TICKS(30));
+	start_event_helper(0, 1);
+	start_event_helper(1, 1);
+	nina_test_os_delay(MS_TO_TICKS(30));
 	assert(event_woke[0] == -1 && event_woke[1] == -1);
 	start = now_ms();
 	irq_rise();
-	vTaskDelay(pdMS_TO_TICKS(5));
+	nina_test_os_delay(MS_TO_TICKS(5));
 	assert(nina_os_event_seq() == seq + 1);
 	assert(event_woke[0] >= start && event_woke[0] < start + 5);
 	assert(event_woke[1] >= start && event_woke[1] < start + 5);
@@ -1333,18 +1355,18 @@ static void test_events(void)
 
 	/* No edge: the time (100 ms), rounded up to ticks, plus one. */
 	seq = nina_os_event_seq();
-	t = xTaskGetTickCount();
+	t = nina_test_os_ticks();
 	start = now_ms();
 	nina_os_event_wait(seq, 100);
 	took = now_ms() - start;
-	expect_ticks(xTaskGetTickCount() - t, sleep_ticks(100000));
+	expect_ticks(nina_test_os_ticks() - t, sleep_ticks(100000));
 	/* The POSIX port's ticks lag its clock by a few ms. */
 	assert(nina_os_event_seq() == seq && took >= 100 && took <= 120 + 2 * TICK_MS);
 
 	/* 0 ms: at once. */
-	t = xTaskGetTickCount();
+	t = nina_test_os_ticks();
 	nina_os_event_wait(seq, 0);
-	assert(xTaskGetTickCount() - t <= 1);
+	assert(nina_test_os_ticks() - t <= 1);
 
 	/* An edge before the wait (after the caller read the count): at once. */
 	seq = nina_os_event_seq();
@@ -1353,14 +1375,24 @@ static void test_events(void)
 	nina_os_event_wait(seq, 100);
 	assert(now_ms() - start <= 1 && nina_os_event_seq() == seq + 1);
 
-	/* A notification left on the binding's index (a waiter that timed out
-	 * as it was woken) does not end the next wait early.
+	/* An edge between the wait's join and its block (the kernel's
+	 * nina_test_os_event_window()): at once.
 	 */
 	seq = nina_os_event_seq();
-	(void)xTaskNotifyGiveIndexed(xTaskGetCurrentTaskHandle(), 2);
-	t = xTaskGetTickCount();
+	nina_test_os_event_window();
+	t = nina_test_os_ticks();
+	nina_os_event_wait(seq, 1000);
+	assert(nina_test_os_ticks() - t <= 1 && nina_os_event_seq() == seq + 1);
+
+	/* A wake-up that is not the wait's (on FreeRTOS a notification left on
+	 * the binding's index by a waiter that timed out as it was woken) does
+	 * not end the next wait early.
+	 */
+	seq = nina_os_event_seq();
+	nina_test_os_stray_wake();
+	t = nina_test_os_ticks();
 	nina_os_event_wait(seq, 20);
-	expect_ticks(xTaskGetTickCount() - t, sleep_ticks(20000));
+	expect_ticks(nina_test_os_ticks() - t, sleep_ticks(20000));
 
 	/* A waiter that timed out has left the list: a later edge wakes only
 	 * the one that still waits.
@@ -1369,12 +1401,12 @@ static void test_events(void)
 	event_mark = seq;
 	event_wait_ms = 10;
 	event_woke[2] = -1;
-	start_event_helper(2, mine + 1);
-	vTaskDelay(pdMS_TO_TICKS(40));
+	start_event_helper(2, 1);
+	nina_test_os_delay(MS_TO_TICKS(40));
 	assert(event_woke[2] != -1);
 	event_wait_ms = 1000;
 	event_woke[0] = -1;
-	start_event_helper(0, mine + 1);
+	start_event_helper(0, 1);
 	start = now_ms();
 	irq_rise();
 	assert(event_woke[0] >= start && nina_os_event_seq() == seq + 1);
@@ -1449,9 +1481,9 @@ static void expect_polled(size_t len)
 }
 
 /* The wait's ticks for LEN bytes: 2 ms + LEN / 256 ms in ticks, plus one. */
-static TickType_t dma_wait_ticks(size_t len)
+static uint32_t dma_wait_ticks(size_t len)
 {
-	return (TickType_t)(((2 + len / 256) * configTICK_RATE_HZ + 999) / 1000 + 1);
+	return (uint32_t)(((2 + len / 256) * nina_test_os_tick_hz() + 999) / 1000 + 1);
 }
 
 static void test_dma(void)
@@ -1459,7 +1491,7 @@ static void test_dma(void)
 	uint32_t rx_bit = 1u << NINA_RX_CHANNEL;
 	unsigned int calls_before, handled;
 	char expected[128];
-	TickType_t t, took;
+	uint32_t t, took;
 
 	for (size_t i = 0; i < sizeof(dma_tx); i++) {
 		dma_tx[i] = (uint8_t)(i * 7 + 3);
@@ -1481,12 +1513,21 @@ static void test_dma(void)
 	dma_xfer(2400, true, 0);
 	expect_dma_calls(2400, true, "");
 
-	/* A notification left on the NINA's index: the wait still ends with the
-	 * transfer.
+	/* A wake-up that is not the transfer's (on FreeRTOS a notification left
+	 * on the NINA's index): the wait still ends with the transfer.
 	 */
-	(void)xTaskNotifyGiveIndexed(xTaskGetCurrentTaskHandle(), 2);
+	nina_test_os_stray_wake();
 	dma_xfer(200, false, 0);
 	expect_dma_calls(200, false, "");
+
+	/* The transfer's end between its look at the end flag and its wait
+	 * (the kernel's nina_test_os_dma_window()): the wait returns at once.
+	 */
+	t = nina_test_os_ticks();
+	nina_test_os_dma_window();
+	dma_xfer(300, false, 0);
+	expect_dma_calls(300, false, "");
+	assert(nina_test_os_ticks() - t <= 1);
 
 	/* The stand-in's flag alone: its handler takes it, the NINA's leaves
 	 * it (check_own_channel()); both at once: each takes its own.
@@ -1507,9 +1548,9 @@ static void test_dma(void)
 	 * error logged; the next transfer works.
 	 */
 	dma_mode = DMA_STALL;
-	t = xTaskGetTickCount();
+	t = nina_test_os_ticks();
 	dma_xfer(2400, false, -EIO);
-	took = xTaskGetTickCount() - t;
+	took = nina_test_os_ticks() - t;
 	snprintf(expected, sizeof(expected), "inte(%u,0) abort(%#x) inte(%u,1) ", NINA_RX_CHANNEL,
 		 (unsigned int)nina_channels(), NINA_RX_CHANNEL);
 	expect_dma_calls(2400, false, expected);
@@ -1593,25 +1634,25 @@ static void test_dma(void)
 
 static void test_sleeps(void)
 {
-	TickType_t t;
+	uint32_t t;
 
-	t = xTaskGetTickCount();
+	t = nina_test_os_ticks();
 	nina_os_sleep_us(100);
-	expect_ticks(xTaskGetTickCount() - t, sleep_ticks(100));
-	t = xTaskGetTickCount();
+	expect_ticks(nina_test_os_ticks() - t, sleep_ticks(100));
+	t = nina_test_os_ticks();
 	nina_os_sleep_us(1500);
-	expect_ticks(xTaskGetTickCount() - t, sleep_ticks(1500));
-	t = xTaskGetTickCount();
+	expect_ticks(nina_test_os_ticks() - t, sleep_ticks(1500));
+	t = nina_test_os_ticks();
 	nina_os_sleep_ms(10);
-	expect_ticks(xTaskGetTickCount() - t, sleep_ticks(10000));
-	t = xTaskGetTickCount();
+	expect_ticks(nina_test_os_ticks() - t, sleep_ticks(10000));
+	t = nina_test_os_ticks();
 	nina_os_sleep_ms(7);
-	expect_ticks(xTaskGetTickCount() - t, sleep_ticks(7000));
+	expect_ticks(nina_test_os_ticks() - t, sleep_ticks(7000));
 	/* 0: a yield, no tick. */
-	t = xTaskGetTickCount();
+	t = nina_test_os_ticks();
 	nina_os_sleep_us(0);
 	nina_os_sleep_ms(0);
-	assert(xTaskGetTickCount() - t <= 1);
+	assert(nina_test_os_ticks() - t <= 1);
 }
 
 /* A task that sleeps for UINT32_MAX ms (clamped to INT32_MAX ms: about
@@ -1624,19 +1665,18 @@ static void long_sleep_helper(void *arg)
 	(void)arg;
 	nina_os_sleep_ms(UINT32_MAX);
 	long_sleep_done = true;
-	vTaskDelete(NULL);
+	nina_test_os_thread_exit();
 }
 
 static void test_long_sleep(void)
 {
-	TaskHandle_t task;
+	nina_test_os_thread_t task;
 
 	long_sleep_done = false;
-	assert(xTaskCreate(long_sleep_helper, "sleep", HELPER_STACK / sizeof(StackType_t), NULL,
-			   uxTaskPriorityGet(NULL) + 1, &task) == pdPASS);
-	vTaskDelay(pdMS_TO_TICKS(20));
-	assert(!long_sleep_done && eTaskGetState(task) == eBlocked);
-	vTaskDelete(task);
+	task = nina_test_os_thread_start(long_sleep_helper, NULL, 1);
+	nina_test_os_delay(MS_TO_TICKS(20));
+	assert(!long_sleep_done && nina_test_os_thread_blocked(task));
+	nina_test_os_thread_delete(task);
 }
 
 /* The clock: the TIMER in ms, rounded down, also across the wrap of the
@@ -1645,7 +1685,7 @@ static void test_long_sleep(void)
  */
 static void test_uptime(void)
 {
-	TickType_t last_tick = xTaskGetTickCount();
+	uint32_t last_tick = nina_test_os_ticks();
 	int64_t last = nina_os_uptime_ms();
 	bool tick_wrapped = false;
 	int64_t start = last;
@@ -1654,7 +1694,7 @@ static void test_uptime(void)
 		uint64_t before = time_us_64();
 		int64_t ms = nina_os_uptime_ms();
 		uint64_t after = time_us_64();
-		TickType_t tick = xTaskGetTickCount();
+		uint32_t tick = nina_test_os_ticks();
 
 		assert(ms >= (int64_t)(before / 1000) && ms <= (int64_t)(after / 1000));
 		assert(ms >= last);
@@ -1664,7 +1704,7 @@ static void test_uptime(void)
 		last_tick = tick;
 		last = ms;
 		assert(last - start < 10000);
-		vTaskDelay(1);
+		nina_test_os_delay(1);
 	}
 	printf("nina: uptime %lld ms across the wrap of the tick and of the TIMER's low word\n",
 	       (long long)last);
@@ -1680,7 +1720,7 @@ static void wifi_lock_helper(void *arg)
 	nina_os_wifi_lock();
 	nina_os_wifi_unlock();
 	helper_state = 4;
-	vTaskDelete(NULL);
+	nina_test_os_thread_exit();
 }
 
 /* Takes nina_lock, then the DNS lock (ARG non-NULL) or nina_lock only. */
@@ -1696,19 +1736,18 @@ static void lock_helper(void *arg)
 		nina_os_dns_unlock();
 	}
 	helper_state = 4;
-	vTaskDelete(NULL);
+	nina_test_os_thread_exit();
 }
 
-static void start_helper(UBaseType_t priority, void *arg)
+static void start_helper(int above, void *arg)
 {
 	helper_state = 0;
-	assert(xTaskCreate(lock_helper, "helper", HELPER_STACK / sizeof(StackType_t), arg, priority,
-			   NULL) == pdPASS);
+	(void)nina_test_os_thread_start(lock_helper, arg, above);
 }
 
 static void test_locks(void)
 {
-	UBaseType_t mine = uxTaskPriorityGet(NULL);
+	int mine = nina_test_os_priority();
 
 	/* Recursive: the owner takes it twice.  The helper (higher) runs at once
 	 * and waits; this task has its priority until the last unlock, which
@@ -1718,13 +1757,13 @@ static void test_locks(void)
 	assert(nina_os_lock() == 0);
 	start_helper(mine + 2, NULL);
 	assert(helper_state == 1);
-	assert(uxTaskPriorityGet(NULL) == mine + 2);
+	assert(nina_test_os_priority() == mine + 2);
 	nina_os_unlock();
 	assert(helper_state == 1);
-	assert(uxTaskPriorityGet(NULL) == mine + 2);
+	assert(nina_test_os_priority() == mine + 2);
 	nina_os_unlock();
 	assert(helper_state == 4);
-	assert(uxTaskPriorityGet(NULL) == mine);
+	assert(nina_test_os_priority() == mine);
 
 	/* An unlock by a task that does not hold it changes nothing. */
 	nina_os_unlock();
@@ -1737,78 +1776,26 @@ static void test_locks(void)
 	nina_os_dns_lock();
 	start_helper(mine + 2, "dns");
 	assert(helper_state == 2);
-	assert(uxTaskPriorityGet(NULL) == mine + 2);
+	assert(nina_test_os_priority() == mine + 2);
 	nina_os_dns_unlock();
 	assert(helper_state == 4);
-	assert(uxTaskPriorityGet(NULL) == mine);
+	assert(nina_test_os_priority() == mine);
 
 	/* The Wi-Fi lock is a third one, with priority inheritance. */
 	nina_os_wifi_lock();
 	start_helper(mine + 2, "dns");
 	assert(helper_state == 4);
 	helper_state = 0;
-	assert(xTaskCreate(wifi_lock_helper, "helper", HELPER_STACK / sizeof(StackType_t), NULL,
-			   mine + 2, NULL) == pdPASS);
+	(void)nina_test_os_thread_start(wifi_lock_helper, NULL, mine + 2);
 	assert(helper_state == 1);
-	assert(uxTaskPriorityGet(NULL) == mine + 2);
+	assert(nina_test_os_priority() == mine + 2);
 	nina_os_wifi_unlock();
 	assert(helper_state == 4);
-	assert(uxTaskPriorityGet(NULL) == mine);
+	assert(nina_test_os_priority() == mine);
 }
 
-static volatile unsigned int wakes;
-static volatile TickType_t wake_ticks;
-
-/* The Wi-Fi thread: waits 1000 ms again and again, and notes how many
- * waits ended and the ticks of the last.
- */
-static void wifi_wake_helper(void *arg)
+void nina_test_run(void)
 {
-	(void)arg;
-	for (;;) {
-		TickType_t t = xTaskGetTickCount();
-
-		nina_os_wifi_wait(1000);
-		wake_ticks = xTaskGetTickCount() - t;
-		wakes++;
-	}
-}
-
-static void test_wifi_wake(void)
-{
-	UBaseType_t mine = uxTaskPriorityGet(NULL);
-	TaskHandle_t task;
-	unsigned int n;
-
-	/* Before any wait: nothing to wake. */
-	nina_os_wifi_post();
-	wakes = 0;
-	/* The first wait returns at once; the second waits. */
-	assert(xTaskCreate(wifi_wake_helper, "wifi", HELPER_STACK / sizeof(StackType_t), NULL,
-			   mine + 1, &task) == pdPASS);
-	assert(wakes == 1 && wake_ticks == 0);
-	/* A post wakes it at once. */
-	nina_os_wifi_post();
-	assert(wakes == 2 && wake_ticks <= 1);
-	/* Two posts while it cannot run: one wait ends at once, the next takes
-	 * its whole time. */
-	vTaskPrioritySet(task, mine - 1);
-	nina_os_wifi_post();
-	nina_os_wifi_post();
-	assert(wakes == 2);
-	vTaskDelay(2);
-	assert(wakes == 3);
-	vTaskPrioritySet(task, mine + 1);
-	n = wakes;
-	vTaskDelay(sleep_ticks(1000000) + 10);
-	assert(wakes == n + 1);
-	expect_ticks(wake_ticks, sleep_ticks(1000000));
-	vTaskDelete(task);
-}
-
-static void runner(void *arg)
-{
-	(void)arg;
 	test_initialize();
 	test_lines();
 	test_version();
@@ -1823,21 +1810,14 @@ static void runner(void *arg)
 	test_sleeps();
 	test_long_sleep();
 	test_locks();
-	test_wifi_wake();
+	nina_test_os_tests();
 	test_uptime();
-	printf("nina: tick %d Hz\n", configTICK_RATE_HZ);
+	printf("nina: tick %u Hz\n", nina_test_os_tick_hz());
 	fflush(stdout);
-	_exit(0);
 }
 
-int main(void)
+void nina_test_setup(void)
 {
-	/* printf() must not allocate in a task (the port can switch threads
-	 * while the C library holds its locks).
-	 */
-	static char out[1 << 12];
-
-	setvbuf(stdout, out, _IOLBF, sizeof(out));
 	host_start_us = host_us();
 	/* The backend's handler for GPIO24, as gpio_os_rp2040.c adds it when the
 	 * LSM6DSOX's interrupt is first enabled.
@@ -1853,12 +1833,4 @@ int main(void)
 	dma_line_enabled = true;
 	dma_inte[1] = 1u << OTHER_CHANNEL;
 	calls[0] = '\0';
-	if (xTaskCreate(runner, "runner", RUNNER_STACK / sizeof(StackType_t), NULL, RUNNER_PRIORITY,
-			&runner_task) != pdPASS ||
-	    xTaskCreate(dma_engine, "dma", HELPER_STACK / sizeof(StackType_t), NULL,
-			configMAX_PRIORITIES - 1, &dma_engine_task) != pdPASS) {
-		return 2;
-	}
-	vTaskStartScheduler();
-	return 3;
 }
