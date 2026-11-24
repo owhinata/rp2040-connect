@@ -7,7 +7,7 @@
  * (common/drivers/nina/include/nina_passthrough.h).  It was the Zephyr build's
  * src/main.c (cmd_nina_version() and the registration); the Zephyr and
  * FreeRTOS builds use it (zephyr/app/usb-console/CMakeLists.txt,
- * common/pico_sdk/drivers/nina/nina.cmake).  The NuttX build has the same command
+ * common/drivers/nina/port/pico_sdk/nina.cmake).  The NuttX build has the same command
  * as a builtin application on subcmd (nuttx/apps/nina/nina_main.c); moving
  * it onto this file changes its image (its help and errors would come from
  * zshell.c).

@@ -8,18 +8,18 @@
  * port, its OS-independent part (common/compat, see
  * nuttx/drivers/README.md).
  *
- * The OS part: "zephyr_os_spinlock.h" (nuttx/drivers/compat on NuttX,
- * common/tests/zephyr_fakes in host tests, common/compat/kernel_generic for
+ * The OS part: "zephyr_os_spinlock.h" (common/compat/port/nuttx on NuttX,
+ * common/tests/zephyr_fakes in host tests, common/compat/port/generic for
  * an OS on basic primitives) provides struct k_spinlock,
  * k_spinlock_key_t, k_spin_lock() and k_spin_unlock() with that meaning,
  * in threads and in interrupt handlers, nested in the same thread.
  */
 
-#ifndef __NUTTX_DRIVERS_COMPAT_ZEPHYR_SPINLOCK_H
-#define __NUTTX_DRIVERS_COMPAT_ZEPHYR_SPINLOCK_H
+#ifndef COMMON_COMPAT_INCLUDE_ZEPHYR_SPINLOCK_H
+#define COMMON_COMPAT_INCLUDE_ZEPHYR_SPINLOCK_H
 
 #include <stdint.h>
 
 #include "zephyr_os_spinlock.h"
 
-#endif /* __NUTTX_DRIVERS_COMPAT_ZEPHYR_SPINLOCK_H */
+#endif /* COMMON_COMPAT_INCLUDE_ZEPHYR_SPINLOCK_H */

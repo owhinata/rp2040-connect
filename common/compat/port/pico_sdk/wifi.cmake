@@ -7,7 +7,7 @@
 #   pico_sdk_wifi(<target>)
 #
 # after pico_sdk_zephyr_compat(), pico_sdk_kv() and pico_sdk_nina()
-# (compat.cmake, kv.cmake, common/pico_sdk/drivers/nina/nina.cmake: the
+# (compat.cmake, kv.cmake, common/drivers/nina/port/pico_sdk/nina.cmake: the
 # layer and its shell, the settings on the key-value area, the NINA link).  It adds to the target what the
 # NuttX build has with CONFIG_NINA_NET, CONFIG_WIFI_CREDENTIALS
 # and CONFIG_WIFI_PROFILE (nuttx/drivers/nina/Make.defs,

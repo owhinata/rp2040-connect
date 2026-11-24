@@ -14,8 +14,8 @@
  * compiles no user does not compile zephyr_heap.c.
  */
 
-#ifndef COMMON_COMPAT_ZEPHYR_HEAP_H
-#define COMMON_COMPAT_ZEPHYR_HEAP_H
+#ifndef COMMON_COMPAT_INCLUDE_ZEPHYR_HEAP_H
+#define COMMON_COMPAT_INCLUDE_ZEPHYR_HEAP_H
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -41,4 +41,4 @@ static inline void *k_heap_alloc(struct k_heap *heap, size_t bytes, k_timeout_t 
 	return z_heap_alloc(heap, bytes, timeout.ticks);
 }
 
-#endif /* COMMON_COMPAT_ZEPHYR_HEAP_H */
+#endif /* COMMON_COMPAT_INCLUDE_ZEPHYR_HEAP_H */

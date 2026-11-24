@@ -26,8 +26,8 @@
  * (common/compat, see nuttx/drivers/README.md).
  */
 
-#ifndef __NUTTX_DRIVERS_COMPAT_ZEPHYR_NET_NET_MGMT_H
-#define __NUTTX_DRIVERS_COMPAT_ZEPHYR_NET_NET_MGMT_H
+#ifndef COMMON_COMPAT_INCLUDE_ZEPHYR_NET_NET_MGMT_H
+#define COMMON_COMPAT_INCLUDE_ZEPHYR_NET_NET_MGMT_H
 
 #include <stddef.h>
 #include <stdint.h>
@@ -98,4 +98,4 @@ static inline void net_mgmt_event_notify(uint64_t mgmt_event,
 
 int net_mgmt_event_init(void);
 
-#endif /* __NUTTX_DRIVERS_COMPAT_ZEPHYR_NET_NET_MGMT_H */
+#endif /* COMMON_COMPAT_INCLUDE_ZEPHYR_NET_NET_MGMT_H */

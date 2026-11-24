@@ -9,8 +9,8 @@
  * of the small Zephyr compatibility layer of the port (common/compat).
  */
 
-#ifndef __COMMON_COMPAT_ZEPHYR_TOOLCHAIN_H
-#define __COMMON_COMPAT_ZEPHYR_TOOLCHAIN_H
+#ifndef COMMON_COMPAT_INCLUDE_ZEPHYR_TOOLCHAIN_H
+#define COMMON_COMPAT_INCLUDE_ZEPHYR_TOOLCHAIN_H
 
 #include <zephyr/sys/util.h>
 
@@ -30,4 +30,4 @@
 #  define CODE_UNREACHABLE    __builtin_unreachable()
 #endif
 
-#endif /* __COMMON_COMPAT_ZEPHYR_TOOLCHAIN_H */
+#endif /* COMMON_COMPAT_INCLUDE_ZEPHYR_TOOLCHAIN_H */

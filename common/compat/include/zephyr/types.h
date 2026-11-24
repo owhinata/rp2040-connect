@@ -6,10 +6,10 @@
  * the port (common/compat).
  */
 
-#ifndef __NUTTX_DRIVERS_COMPAT_ZEPHYR_TYPES_H
-#define __NUTTX_DRIVERS_COMPAT_ZEPHYR_TYPES_H
+#ifndef COMMON_COMPAT_INCLUDE_ZEPHYR_TYPES_H
+#define COMMON_COMPAT_INCLUDE_ZEPHYR_TYPES_H
 
 #include <stddef.h>
 #include <stdint.h>
 
-#endif /* __NUTTX_DRIVERS_COMPAT_ZEPHYR_TYPES_H */
+#endif /* COMMON_COMPAT_INCLUDE_ZEPHYR_TYPES_H */

@@ -80,7 +80,10 @@ trap 'rm -rf "$out"' EXIT
 # RP2040's TIMER read is common/chip's under tests/compat/rp2040_timer_us.h.
 # common/compat/libc_net/include (the POSIX network headers newlib lacks) is added by the tests
 # that need it, before the host's.  The shell's tests add the shell engine's backend
-# (common/compat/port/generic) after their own directory (a test's OS parts first).
+# (common/compat/port/generic) after their own directory (a test's OS parts first), and the
+# shell's headers (common/shell: include/, the boundaries in port/ and the parts for an OS
+# without its own in port/generic, zshell_os_impl.h and sensor_shell_os.h).
+shinc_dirs=(-I../common/shell/include -I../common/shell/port -I../common/shell/port/generic)
 noff=../common/compat/net_offload
 lnet=../common/compat/libc_net
 seng=../common/compat/shell_engine
@@ -132,7 +135,7 @@ printf 'ok  zephyr_kernel_test (the layer kernel, FreeRTOS POSIX port)\n'
 # getopt), the engine's "help" and the generic commands (common/shell/kernel_shell.c, with the
 # test's kernel_shell_os_impl.h) and the serial session (shell_serial.c, on the test's console
 # transport), on the same kernel and layer objects.
-shinc=(-Itests/shell -I../common/compat/port/generic -I../common/shell -I../common/compat/lib/utils/getopt
+shinc=(-Itests/shell -I../common/compat/port/generic "${shinc_dirs[@]}" -I../common/compat/lib/utils/getopt
        -DZ_SHELL_CMD_ROOT_GLOBAL -DCONFIG_GETOPT_LONG=1 -U_FORTIFY_SOURCE -ffunction-sections
        -fdata-sections)
 shobjs=()
@@ -168,17 +171,18 @@ fi
 printf 'ok  shell (two sessions, generic commands, serial session, FreeRTOS POSIX port)\n'
 
 # The key-value store (freertos/tests/kv): the board's flash boundary (the RP2040's shared part,
-# common/chip/rp2040/rp2040_flash_kv.c, on common/pico_sdk/drivers/kv/rp2040_flash_kv_os.c) on fakes of the Pico
+# common/chip/rp2040/rp2040_flash_kv.c, on common/chip/rp2040/port/pico_sdk/rp2040_flash_kv_os.c) on fakes of the Pico
 # SDK's flash functions (tests/kv/pico_fake), under the shared store as the
 # board builds it (common/imu/kv_store.c, kv_store_wipe.c, zephyr_flash_kv.c, the copies of
 # Zephyr's settings, NVS and hex.c with their options, common/compat/port/pico_sdk/kv.cmake; the RP2040's part
 # without the prelude, as the board builds it), on the same kernel and layer objects.  Unused parts (the "kv" command's table) are left out by --gc-sections.
 kvinc=(-D_GNU_SOURCE -DPICO_FLASH_ASSUME_CORE1_SAFE=1 -DZ_SHELL_CMD_ROOT_GLOBAL -Itests/kv/pico_fake
-       -I../common/chip/rp2040/include -I../common/compat/port/generic -I../common/imu -I../common/compat/subsys/settings/include
+       -I../common/chip/rp2040/include -I../common/chip/rp2040/port -I../common/compat/port/generic -I../common/imu
+       -I../common/compat/subsys/settings/include
        -I../common/compat/subsys/settings/src -ffunction-sections -fdata-sections)
 kvconfig=(-include ../common/compat/include/zephyr_kv_config.h -Wno-undef)
 kvobjs=()
-for src in ../common/pico_sdk/drivers/kv/rp2040_flash_kv_os.c ../common/chip/rp2040/rp2040_flash_kv.c tests/kv/main.c \
+for src in ../common/chip/rp2040/port/pico_sdk/rp2040_flash_kv_os.c ../common/chip/rp2040/rp2040_flash_kv.c tests/kv/main.c \
            ../common/imu/kv_store.c \
            ../common/compat/kv_store_wipe.c ../common/compat/zephyr_flash_kv.c \
            ../common/compat/lib/utils/hex.c ../common/compat/subsys/settings/src/settings.c \
@@ -190,7 +194,7 @@ for src in ../common/pico_sdk/drivers/kv/rp2040_flash_kv_os.c ../common/chip/rp2
     extra=()
     case $src in
         ../common/chip/*) ;;
-        ../common/pico_sdk/*|../common/compat/port/pico_sdk/*) ;;
+        ../common/*/port/pico_sdk/*) ;;
         ../common/*) extra=(-include ../common/compat/port/generic/common_prelude.h) ;;
     esac
     case $src in
@@ -217,7 +221,7 @@ printf 'ok  kv (flash boundary and store, FreeRTOS POSIX port)\n'
 # and nina_os.c with its waits on READY's and the IRQ line's edge interrupts and its own raw
 # handler of IO_IRQ_BANK0) on fakes of the Pico SDK's DMA, GPIO, GPIO interrupt, IRQ, reset,
 # SPI and TIMER functions (tests/nina/pico_fake), under the shared core (nina_proto.c and nina_wait.c of
-# common/drivers/nina/internal, with the prelude, as common/pico_sdk/drivers/nina/nina.cmake builds them), on a
+# common/drivers/nina/internal, with the prelude, as common/drivers/nina/port/pico_sdk/nina.cmake builds them), on a
 # kernel of its own and no
 # compatibility layer (of its include directories only FreeRTOS's part, for the board's
 # priorities_os.h that the test's FreeRTOSConfig.h reads).  Twice: with the board's 1 ms
@@ -269,9 +273,9 @@ done
 # and TIMER functions and of the controllers' and the DMA's registers (tests/i2c_dw/pico_fake),
 # under the shared core (common/drivers/i2c_dw/i2c_dw.c, through tests/i2c_dw/i2c_dw_core.c,
 # which gives the test the core's static command words, with the prelude, as
-# common/pico_sdk/drivers/i2c_dw/i2c_dw.cmake builds it), with the "i2c" command on it (the copy of Zephyr's
+# common/drivers/i2c_dw/port/pico_sdk/i2c_dw.cmake builds it), with the "i2c" command on it (the copy of Zephyr's
 # I2C shell, common/shell/i2c_shell.c, with its options and warnings as
-# common/pico_sdk/drivers/i2c_shell/i2c_shell.cmake builds it, on the shared zshell.c, subcmd.c, the layer's
+# common/shell/port/pico_sdk/i2c_shell.cmake builds it, on the shared zshell.c, subcmd.c, the layer's
 # devices zephyr_device.c and the test's shell backend tests/i2c_dw/zshell_os_impl.h), on the
 # same kernel and layer objects.  Twice: as the
 # default build (i2c0 only, CONFIG_I2C_DW_I2C0), and with CONFIG_I2C_DW_I2C1 too
@@ -299,7 +303,7 @@ for variant in i2c0 i2c1; do
                                   -DCONFIG_LOG_DEFAULT_LEVEL=3) ;;
             */zshell.c) extra=(-Dcalloc=test_calloc -Dfree=test_free) ;;
         esac
-        cc "${flags[@]}" "${strict[@]}" "${i2cdefs[@]}" -Itests/i2c_dw -I../common/compat/port/generic -I../common/shell \
+        cc "${flags[@]}" "${strict[@]}" "${i2cdefs[@]}" -Itests/i2c_dw -I../common/compat/port/generic "${shinc_dirs[@]}" \
             -DZ_SHELL_CMD_ROOT_GLOBAL "${i2cinc[@]}" "${inc[@]}" "${extra[@]}" \
             -c "$src" -o "$obj"
         i2cobjs+=("$obj")
@@ -324,7 +328,7 @@ printf 'ok  i2c_dw (I2C0 and I2C1 boundaries and devices, DMA reads on the Pico 
 # INT1 line (the driver's OS part on Zephyr, common/drivers/lsm6dso/port/zephyr/lsm6dso_os.c,
 # which the test includes; with ST's lsm6dso_reg.h, freertos/stmemsc, for the driver's headers;
 # the stream's work queue, which the test does not start, is left out by --gc-sections), with
-# the prelude and CONFIG_LSM6DSO_STREAM as common/pico_sdk/drivers/lsm6dso/lsm6dso.cmake builds them; the
+# the prelude and CONFIG_LSM6DSO_STREAM as common/drivers/lsm6dso/port/pico_sdk/lsm6dso.cmake builds them; the
 # layer's start (common/compat/zephyr_init.c) again with that option (zephyr_compat_initialize()
 # starts gpio0), on the same kernel objects.
 if [[ -f stmemsc/lsm6dso_reg.h ]]; then
@@ -338,7 +342,7 @@ if [[ -f stmemsc/lsm6dso_reg.h ]]; then
         obj="$out/gpio_$(basename "$src" .c).o"
         extra=()
         case $src in
-            ../common/pico_sdk/*|../common/compat/port/pico_sdk/*) ;;
+            ../common/*/port/pico_sdk/*) ;;
             ../common/*) extra=(-include ../common/compat/port/generic/common_prelude.h) ;;
             tests/gpio/*) extra=(-include ../common/compat/port/generic/common_prelude.h) ;;
         esac
@@ -384,7 +388,7 @@ printf 'ok  imu (address conversions, hwinfo, FreeRTOS POSIX port)\n'
 # The MQTT transport (freertos/tests/mqtt): the shared common/imu/imu_raw_mqtt.c with its JSON
 # messages (imu_raw_status.c), the port's MQTT client (mqtt_min.c, with -Wno-sign-compare) and
 # its socket layer (mqtt_min_sock.c), the queue and the packets (imu_raw_queue.c,
-# imu_raw_packet.c), with the prelude, as common/pico_sdk/drivers/imu/imu.cmake builds them, on the build's
+# imu_raw_packet.c), with the prelude, as common/imu/port/pico_sdk/imu.cmake builds them, on the build's
 # interface (common/compat/net_offload/zephyr_net_if.c), fake zsock_*() calls with the NINA's
 # waits and a fake broker (tests/mqtt/main.c), on the same kernel and layer objects: the thread, the
 # connection, the messages, the intervals, congestion, failures, CONNACK, the stop.  It waits
@@ -399,7 +403,7 @@ for src in tests/mqtt/main.c $lnet/inet.c "${mqttsrcs[@]}"; do
     extra=()
     case $src in
         $noff/*|$lnet/*) ;;
-        ../common/pico_sdk/*|../common/compat/port/pico_sdk/*) ;;
+        ../common/*/port/pico_sdk/*) ;;
         ../common/*) extra=(-include ../common/compat/port/generic/common_prelude.h) ;;
     esac
     case $src in
@@ -432,7 +436,7 @@ if [[ -x $imuhost ]] && command -v python3 >/dev/null; then
         extra=()
         case $src in
             $noff/*) ;;
-            ../common/pico_sdk/*|../common/compat/port/pico_sdk/*) ;;
+            ../common/*/port/pico_sdk/*) ;;
             ../common/*) extra=(-include ../common/compat/port/generic/common_prelude.h) ;;
         esac
         case $src in
@@ -454,14 +458,14 @@ else
 fi
 
 # The time synchronization (freertos/tests/time_sync): the shared common/imu/time_sync.c and
-# time_offset.c with the prelude, as common/pico_sdk/drivers/imu/imu.cmake builds them, on the build's realtime
+# time_offset.c with the prelude, as common/imu/port/pico_sdk/imu.cmake builds them, on the build's realtime
 # clock (common/compat/port/pico_sdk/zephyr_sys_clock.c), interface (common/compat/net_offload/zephyr_net_if.c)
 # and net_mgmt events (common/compat/zephyr_net_mgmt.c with the "net_mgmt" thread), the build's
 # shell on a console that captures, fake zsock_*() calls with a fake NTP server, and the TIMER's
 # registers on the test port's clock (tests/compat/rp2040_timer_us.h, under common/chip's
 # read), on the same kernel and layer objects.  It waits for the real intervals (2 s): about 12 s.
 tsinc=(-DZ_SHELL_CMD_ROOT_GLOBAL -DCONFIG_GETOPT_LONG=1 -U_FORTIFY_SOURCE
-       -Itests/shell -I../common/compat/port/generic -I$lnet/include -I../common/shell
+       -Itests/shell -I../common/compat/port/generic -I$lnet/include "${shinc_dirs[@]}"
        -I../common/compat/lib/utils/getopt -I../common/imu -ffunction-sections -fdata-sections)
 tsobjs=()
 for src in tests/time_sync/main.c ../common/compat/port/pico_sdk/zephyr_sys_clock.c $noff/zephyr_net_if.c \
@@ -475,7 +479,7 @@ for src in tests/time_sync/main.c ../common/compat/port/pico_sdk/zephyr_sys_cloc
     extra=()
     case $src in
         ../common/shell/*|*/fnmatch.c|*/getopt*.c|$noff/*|$lnet/*) ;;
-        ../common/pico_sdk/*|../common/compat/port/pico_sdk/*) ;;
+        ../common/*/port/pico_sdk/*) ;;
         ../common/*) extra=(-include ../common/compat/port/generic/common_prelude.h) ;;
     esac
     case $src in
@@ -526,7 +530,7 @@ printf 'ok  sockets (descriptor table, implementations, dispatch, fcntl, poll, r
 # (../common/drivers/nina/port/zephyr/nina_socket.c: the offload, its wait loops, its resolver on its
 # k_heap) on the layer's socket part as above and on the shared core
 # (common/drivers/nina/nina_sock.c, nina_dns.c, internal/nina_wait.c), with the prelude and
-# NINA_OS_DNS_OFFLOAD, as common/pico_sdk/drivers/nina/nina.cmake builds them, and the address conversions
+# NINA_OS_DNS_OFFLOAD, as common/drivers/nina/port/pico_sdk/nina.cmake builds them, and the address conversions
 # (common/compat/libc_net/inet.c), on a fake module and a fake clock (the test's
 # nina_proto_request(), nina_os.h, and the binding's k_uptime_get() and k_sleep() through
 # -Wl,--wrap), on the same kernel and layer objects.  common/compat/libc_net/include (newlib's
@@ -542,7 +546,7 @@ for src in ../common/drivers/nina/port/zephyr/nina_socket.c $lnet/inet.c tests/s
     case $src in
         $noff/subsys/*|$noff/lib/os/*) extra=(-Wno-sign-compare) ;;
         $noff/*|$lnet/*) ;;
-        ../common/pico_sdk/*|../common/compat/port/pico_sdk/*) ;;
+        ../common/*/port/pico_sdk/*) ;;
         ../common/*) extra=(-include ../common/compat/port/generic/common_prelude.h) ;;
     esac
     case $src in
@@ -576,7 +580,7 @@ printf 'ok  socket (descriptors, wait loops, options, poll, resolver, FreeRTOS P
 # scan and its failures, a loss of the link during the scan.
 wifiinc=(-D_GNU_SOURCE -DZ_SHELL_CMD_ROOT_GLOBAL -DCONFIG_GETOPT_LONG=1 -DCONFIG_WIFI_CREDENTIALS=1
          -U_FORTIFY_SOURCE -Itests/shell -I../common/compat/port/generic
-         -I../common/shell -I../common/compat/lib/utils/getopt -I../common/drivers/nina/include
+         "${shinc_dirs[@]}" -I../common/compat/lib/utils/getopt -I../common/drivers/nina/include
          -I../common/drivers/nina/internal -I../common/drivers/nina/port
          -I../common/imu -I../common/tests -I../common/compat/subsys/settings/include
          -I../common/compat/subsys/settings/src -ffunction-sections -fdata-sections)
@@ -606,7 +610,7 @@ for src in $noff/zephyr_net_if.c $noff/zephyr_net_init.c ../common/shell/ifconfi
     case $src in
         ../common/tests/*) ;;
         ../common/shell/*|*/fnmatch.c|*/getopt*.c|$noff/*|$lnet/*) ;;
-        ../common/pico_sdk/*|../common/compat/port/pico_sdk/*) ;;
+        ../common/*/port/pico_sdk/*) ;;
         ../common/*) extra=(-include ../common/compat/port/generic/common_prelude.h) ;;
     esac
     case $src in
@@ -646,7 +650,7 @@ printf 'ok  wifi (interface, events, credentials, reconnection, wifi and ifconfi
 # after a test) and their allocation failing.
 if command -v python3 >/dev/null; then
     tninc=(-D_GNU_SOURCE -DZ_SHELL_CMD_ROOT_GLOBAL -DCONFIG_GETOPT_LONG=1 -U_FORTIFY_SOURCE
-           -Itests/telnet -Itests/shell -I../common/compat/port/generic -I../common/shell
+           -Itests/telnet -Itests/shell -I../common/compat/port/generic "${shinc_dirs[@]}"
            -I../common/compat/lib/utils/getopt -ffunction-sections -fdata-sections)
     tnobjs=()
     for src in $seng/shell_telnet.c tests/telnet/main.c tests/telnet/host_sock.c \
@@ -686,7 +690,7 @@ fi
 # imu_cal_codec.c, on a fake key-value store), on the shared LSM6DSO driver with its FIFO stream
 # and ST's lsm6dso_reg.c (freertos/stmemsc), the layer's devices, gpio0, RTIO and its work queue
 # and the default sensor iodev and decoder, with the prelude, CONFIG_LSM6DSO_STREAM and the
-# per-file options of common/pico_sdk/drivers/lsm6dso/lsm6dso.cmake and common/pico_sdk/drivers/sensor_shell/sensor_shell.cmake;
+# per-file options of common/drivers/lsm6dso/port/pico_sdk/lsm6dso.cmake and common/shell/port/pico_sdk/sensor_shell.cmake;
 # the layer's start (common/compat/zephyr_init.c) again with that option (gpio0); the build's
 # shell with two sessions on consoles that capture; a fake LSM6DSOX behind a fake i2c0 and a fake INT1 on the layer's GPIO
 # boundary.  On the same kernel objects.  The results on the session that asked, the wait of
@@ -695,7 +699,7 @@ fi
 if [[ -f stmemsc/lsm6dso_reg.c ]]; then
     ssinc=(-D_GNU_SOURCE -DZ_SHELL_CMD_ROOT_GLOBAL -DCONFIG_GETOPT_LONG=1 -DCONFIG_LSM6DSO_STREAM=1
            -U_FORTIFY_SOURCE -Itests/shell -I../common/compat/port/generic
-           -I../common/shell -I../common/shell/port/generic -I../common/compat/lib/utils/getopt
+           "${shinc_dirs[@]}" -I../common/compat/lib/utils/getopt
            -I../common/drivers/lsm6dso/port/pico_sdk
            -I../common/drivers/lsm6dso/port/zephyr -I../common/drivers/lsm6dso/include
            -I../common/drivers/lsm6dso/internal -I../common/drivers/lsm6dso/port
@@ -728,7 +732,7 @@ if [[ -f stmemsc/lsm6dso_reg.c ]]; then
             ../common/shell/sensor_shell.c|*/sensor_shell_os.c)
                 extra=(-include ../common/compat/port/generic/common_prelude.h) ;;
             ../common/shell/*|*/fnmatch.c|*/getopt*.c) ;;
-            ../common/pico_sdk/*|../common/compat/port/pico_sdk/*) ;;
+            ../common/*/port/pico_sdk/*) ;;
             ../common/*|tests/sensor_shell/*) extra=(-include ../common/compat/port/generic/common_prelude.h) ;;
         esac
         case $src in

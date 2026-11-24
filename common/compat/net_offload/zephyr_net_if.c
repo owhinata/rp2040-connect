@@ -3,7 +3,7 @@
  * network stack of its own: the state of the one network interface (the
  * NINA-W102's), under a spinlock (a few words each time).  See the header.
  * The NuttX build keeps the same state in its network device
- * (nuttx/drivers/compat/zephyr_net_if.c).  Part of common/compat/net_offload,
+ * (common/compat/port/nuttx/zephyr_net_if.c).  Part of common/compat/net_offload,
  * which the FreeRTOS build uses.
  */
 

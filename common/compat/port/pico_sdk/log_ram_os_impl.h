@@ -13,8 +13,8 @@
  *   none).
  */
 
-#ifndef COMMON_PICO_SDK_DRIVERS_INCLUDE_LOG_RAM_OS_IMPL_H
-#define COMMON_PICO_SDK_DRIVERS_INCLUDE_LOG_RAM_OS_IMPL_H
+#ifndef COMMON_COMPAT_PORT_PICO_SDK_LOG_RAM_OS_IMPL_H
+#define COMMON_COMPAT_PORT_PICO_SDK_LOG_RAM_OS_IMPL_H
 
 #include <stdint.h>
 
@@ -46,4 +46,4 @@ static inline void log_ram_os_attach(void)
 {
 }
 
-#endif /* COMMON_PICO_SDK_DRIVERS_INCLUDE_LOG_RAM_OS_IMPL_H */
+#endif /* COMMON_COMPAT_PORT_PICO_SDK_LOG_RAM_OS_IMPL_H */

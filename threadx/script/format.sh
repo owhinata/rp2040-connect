@@ -4,7 +4,7 @@
 # of the layer, the shared drivers' ThreadX bindings), which only the
 # ThreadX build compiles, with clang-format and threadx/.clang-format (the
 # Zephyr project's style).  The shared sources the ThreadX build compiles
-# with the FreeRTOS build (common/*/port/pico_sdk, common/pico_sdk,
+# with the FreeRTOS build (common/*/port/pico_sdk, common/drivers/*/port/pico_sdk,
 # common/compat/kernel_generic, ...) are freertos/script/format.sh's.  Run
 # it from anywhere; it sources threadx/script/setup.sh itself, which
 # installs clang-format.

@@ -6,8 +6,8 @@
  * header and has nothing else.
  */
 
-#ifndef __NUTTX_DRIVERS_COMPAT_ZEPHYR_SYS_UTIL_H
-#define __NUTTX_DRIVERS_COMPAT_ZEPHYR_SYS_UTIL_H
+#ifndef COMMON_COMPAT_INCLUDE_ZEPHYR_SYS_UTIL_H
+#define COMMON_COMPAT_INCLUDE_ZEPHYR_SYS_UTIL_H
 
 #include <stddef.h>
 #include <stdint.h>
@@ -202,4 +202,4 @@ static inline uint32_t sys_gcd_s(int32_t a, int32_t b)
 #define Z_IS_ENABLED2(one_or_two_args)  Z_IS_ENABLED3(one_or_two_args 1, 0)
 #define Z_IS_ENABLED3(ignore_this, val, ...) val
 
-#endif /* __NUTTX_DRIVERS_COMPAT_ZEPHYR_SYS_UTIL_H */
+#endif /* COMMON_COMPAT_INCLUDE_ZEPHYR_SYS_UTIL_H */

@@ -51,7 +51,7 @@
  *
  * Part of the Zephyr compatibility layer for an OS on the Pico SDK with the
  * generic kernel part (common/compat/port/pico_sdk; NuttX's is
- * the board's src/rp2040_gpio_os.c).
+ * common/compat/port/nuttx/rp2040_gpio_os.c).
  */
 
 #include <errno.h>

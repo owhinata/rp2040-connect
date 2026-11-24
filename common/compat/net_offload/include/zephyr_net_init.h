@@ -5,8 +5,8 @@
  * headers.  The FreeRTOS build's main() task calls it.
  */
 
-#ifndef COMMON_COMPAT_NET_OFFLOAD_ZEPHYR_NET_INIT_H
-#define COMMON_COMPAT_NET_OFFLOAD_ZEPHYR_NET_INIT_H
+#ifndef COMMON_COMPAT_NET_OFFLOAD_INCLUDE_ZEPHYR_NET_INIT_H
+#define COMMON_COMPAT_NET_OFFLOAD_INCLUDE_ZEPHYR_NET_INIT_H
 
 /* Starts the layer's network part as Zephyr's net_init() does at boot
  * (zephyr_net_init.c): the network event thread ("net_mgmt"), then the
@@ -23,4 +23,4 @@
  */
 int zephyr_net_initialize(void);
 
-#endif /* COMMON_COMPAT_NET_OFFLOAD_ZEPHYR_NET_INIT_H */
+#endif /* COMMON_COMPAT_NET_OFFLOAD_INCLUDE_ZEPHYR_NET_INIT_H */

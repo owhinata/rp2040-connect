@@ -14,7 +14,7 @@
  * (CONFIG_SCHED_THREAD_USAGE, cycles counted at each switch; interrupt
  * handlers count in the thread they interrupted) of this list less those of
  * the previous one, for each thread by its handle
- * (common/shell/ps_interval.h; nothing runs between two lists).  The share
+ * (common/shell/include/ps_interval.h; nothing runs between two lists).  The share
  * is of all the cycles of the interval (execution_cycles of
  * k_thread_runtime_stats_all_get(): non-idle and idle), so the rows, the
  * idle thread's included, add up to about 100%.

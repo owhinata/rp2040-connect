@@ -16,8 +16,8 @@
  * (common/compat/libc_net), which the FreeRTOS build uses with newlib.
  */
 
-#ifndef FREERTOS_DRIVERS_LIBC_NETDB_H
-#define FREERTOS_DRIVERS_LIBC_NETDB_H
+#ifndef COMMON_COMPAT_LIBC_NET_INCLUDE_NETDB_H
+#define COMMON_COMPAT_LIBC_NET_INCLUDE_NETDB_H
 
 #include <sys/socket.h>
 
@@ -49,4 +49,4 @@ struct addrinfo {
 #define EAI_SYSTEM   -11
 #define EAI_OVERFLOW -12
 
-#endif /* FREERTOS_DRIVERS_LIBC_NETDB_H */
+#endif /* COMMON_COMPAT_LIBC_NET_INCLUDE_NETDB_H */

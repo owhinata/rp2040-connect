@@ -12,11 +12,11 @@
  * port (common/compat).
  */
 
-#ifndef __NUTTX_DRIVERS_COMPAT_ZEPHYR_SYS_ITERABLE_SECTIONS_H
-#define __NUTTX_DRIVERS_COMPAT_ZEPHYR_SYS_ITERABLE_SECTIONS_H
+#ifndef COMMON_COMPAT_INCLUDE_ZEPHYR_SYS_ITERABLE_SECTIONS_H
+#define COMMON_COMPAT_INCLUDE_ZEPHYR_SYS_ITERABLE_SECTIONS_H
 
 #define STRUCT_SECTION_FOREACH(struct_type, iterator) \
   for (struct struct_type *iterator = (struct struct_type *)0; \
        iterator != (struct struct_type *)0; iterator = (struct struct_type *)0)
 
-#endif /* __NUTTX_DRIVERS_COMPAT_ZEPHYR_SYS_ITERABLE_SECTIONS_H */
+#endif /* COMMON_COMPAT_INCLUDE_ZEPHYR_SYS_ITERABLE_SECTIONS_H */

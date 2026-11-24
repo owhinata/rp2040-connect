@@ -6,7 +6,7 @@
  * <zephyr/kernel.h> and the sources of the generic kernel part on it with
  * nothing of the layer's network part on the include path
  * (kernel_generic_independent).  The OS part a port writes is
- * freertos/drivers/compat/zephyr_kernel_os_impl.h.
+ * common/compat/port/freertos/zephyr_kernel_os_impl.h.
  */
 
 #ifndef COMMON_TESTS_KERNEL_GENERIC_HOST_ZEPHYR_KERNEL_OS_IMPL_H

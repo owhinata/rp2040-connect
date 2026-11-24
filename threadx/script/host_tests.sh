@@ -122,6 +122,7 @@ done
 i2cdir=../common/drivers/i2c_dw
 frtest=../freertos/tests/i2c_dw
 seng=../common/compat/shell_engine
+shinc_dirs=(-I../common/shell/include -I../common/shell/port -I../common/shell/port/generic)
 i2cinc=(-I"$frtest/pico_fake" -I"$i2cdir" -I"$i2cdir/include" -I"$i2cdir/internal" -I"$i2cdir/port"
         -I"$i2cdir/port/threadx" -I"$i2cdir/port/pico_sdk")
 for variant in i2c0 i2c1; do
@@ -142,7 +143,7 @@ for variant in i2c0 i2c1; do
                                   -DCONFIG_LOG_DEFAULT_LEVEL=3) ;;
             */zshell.c) extra=(-Dcalloc=test_calloc -Dfree=test_free) ;;
         esac
-        cc "${flags[@]}" "${strict[@]}" "${i2cdefs[@]}" -I"$frtest" -I../common/compat/port/generic -I../common/shell \
+        cc "${flags[@]}" "${strict[@]}" "${i2cdefs[@]}" -I"$frtest" -I../common/compat/port/generic "${shinc_dirs[@]}" \
             -I../common/compat/include -DZ_SHELL_CMD_ROOT_GLOBAL "${i2cinc[@]}" "${inc[@]}" "${extra[@]}" \
             -c "$src" -o "$obj"
         i2cobjs+=("$obj")

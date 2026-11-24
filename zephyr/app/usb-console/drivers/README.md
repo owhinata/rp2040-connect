@@ -561,7 +561,7 @@ flash) of the sources listed in `app/usb-console/ram_code.cmake` runs from RAM:
 
 The scheduler (`kernel/sched.c`), the thread switch (`swap_helper.S`), the interrupt entry and exit, the
 SysTick driver and the idle loop stay in the flash. The other builds' lists have the same roles
-(`common/pico_sdk/app/usb-console/ram_code.cmake`, which moves the compatibility layer's kernel part where this
+(`common/imu/port/pico_sdk/ram_code.cmake`, which moves the compatibility layer's kernel part where this
 list moves Zephyr's kernel objects). This placement took `cpu_active` while sending
 from 35.8% to 21.4% and the cache's misses from about 390,000 to 5,200 a second (33.1% to 19.7% on the
 FreeRTOS build). The scheduler, the thread switch and the interrupt entry in RAM too made 0.2 points

@@ -51,7 +51,7 @@
 #define configSUPPORT_PICO_TIME_INTEROP         1
 
 /* The key-value store's flash operations do not stop core 1 while XIP is
- * off (common/pico_sdk/drivers/kv/rp2040_flash_kv_os.c).
+ * off (common/chip/rp2040/port/pico_sdk/rp2040_flash_kv_os.c).
  */
 #if configNUMBER_OF_CORES != 1
 #error "rp2040_flash_kv_os.c does not stop the other core while XIP is off"
@@ -107,7 +107,7 @@
 /* Checks ----------------------------------------------------------------------*/
 
 /* Both end in the common exit of fatal errors, which records the error and
- * restarts the board (src/fault.c of common/pico_sdk/app/usb-console; the
+ * restarts the board (src/fault.c of common/imu/port/pico_sdk; the
  * stack overflow hook is src/fault_os.c).
  */
 #define configCHECK_FOR_STACK_OVERFLOW          2

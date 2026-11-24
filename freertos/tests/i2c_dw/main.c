@@ -8,7 +8,7 @@
  * port/pico_sdk/i2c_dw_dma_os_rp2040.c and
  * common/compat/port/generic/zephyr/drivers/i2c.h, under the shared core
  * (common/drivers/i2c_dw/i2c_dw.c, through i2c_dw_core.c here, with the
- * prelude, as common/pico_sdk/drivers/i2c_dw/i2c_dw.cmake builds it), on fakes of
+ * prelude, as common/drivers/i2c_dw/port/pico_sdk/i2c_dw.cmake builds it), on fakes of
  * the Pico SDK's GPIO, reset, IRQ, sync, TIMER and DMA functions
  * (pico_fake/, implemented here: they record the calls), on arrays in place of I2C0's and I2C1's
  * registers and a structure in place of the DMA's, on which the test plays

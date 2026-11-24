@@ -11,9 +11,8 @@ each build writes in [`design/os-boundary.md`](../../design/os-boundary.md), and
 The ThreadX build uses only the ThreadX kernel (Eclipse ThreadX v6.5.2.202603b_rel, its Cortex-M0 port
 `ports/cortex_m0/gnu`); the start, clocks, USB, flash and DMA are the Pico SDK 2.3.1's. USBX, NetX Duo and
 FileX are not used. Most of the sources are in `common/`, shared by the four builds, and the parts on the
-Pico SDK (`common/pico_sdk/`, `common/compat/port/pico_sdk/`, each driver's `port/pico_sdk/`,
-`common/compat/port/generic/`) are shared with
-the FreeRTOS build. The shared sources are written on Zephyr's API, so the ThreadX build, as the FreeRTOS
+Pico SDK (the `port/pico_sdk/` directories of the modules of `common/`, and their `port/generic/`) are
+shared with the FreeRTOS build. The shared sources are written on Zephyr's API, so the ThreadX build, as the FreeRTOS
 build, runs them on a layer that provides that API under Zephyr's names (the "compatibility layer"). Its
 kernel part is the generic implementation on an OS's primitives (`common/compat/kernel_generic/`); the
 ThreadX build writes those primitives. The network is the layer's socket layer (`common/compat/net_offload/`),
@@ -24,8 +23,9 @@ the shell the shared shell engine (`common/compat/shell_engine/`). The shared pa
 
 | Where | Holds |
 |---|---|
-| `app/usb-console/` | the build (`CMakeLists.txt`: the settings and sources given to the shared `common/pico_sdk/app/usb-console/usb-console.cmake`; `threadx_kernel.cmake`: ThreadX's kernel, port and execution profile kit as sources of the firmware, plus the board's part, the vectors and the Pico SDK's locks), the kernel configuration (`tx_user.h`), `src/`: the entry of the start (`main.c`: `main()`, the kernel's set-up, the thread "main", the scheduler), SysTick and the exception priorities (`tx_initialize_low_level.c`), the tick (`tick.c`), the ThreadX parts of the shared application's boundaries (idle `idle_os.h`, fatal errors `fault_os.c`, `ps` and the version `commands_os.c`, generic commands `kernel_shell_os_impl.h`), each thread's run time (`run_time.[ch]`) |
+| `app/usb-console/` | the build (`CMakeLists.txt`: the settings and sources given to the shared `common/imu/port/pico_sdk/usb-console.cmake`; `threadx_kernel.cmake`: ThreadX's kernel, port and execution profile kit as sources of the firmware, plus the board's part, the vectors and the Pico SDK's locks), the kernel configuration (`tx_user.h`), `src/`: the entry of the start (`main.c`: `main()`, the kernel's set-up, the thread "main", the scheduler), SysTick and the exception priorities (`tx_initialize_low_level.c`), the tick (`tick.c`), the ThreadX parts of the shared application's boundaries (idle `idle_os.h`, fatal errors `fault_os.c`, `ps` and the version `commands_os.c`), each thread's run time (`run_time.[ch]`) |
 | `common/compat/port/threadx/` | the layer's ThreadX part: the primitives of the generic kernel part (`zephyr_kernel_os_impl.h`), the lock's variables (`zephyr_kernel_os.c`), priorities and time slices (`priorities_os.h`), the board's port header (`rp2040/zephyr_os_port.h`) |
+| `common/shell/port/threadx/` | the OS part of the generic commands (`kernel_shell_os_impl.h`) |
 | `drivers/pico_sdk_interop/` | the waits of the Pico SDK's mutexes, semaphores and sleeps on ThreadX's threads ("The Pico SDK's locks" below) |
 | `common/drivers/i2c_dw/port/threadx/` | the I2C core's waits, clock and sleeps (`i2c_dw_os_impl.h`) |
 | `common/drivers/nina/port/threadx/` | the NINA core's binding to ThreadX (`nina_os.c`) and the SPI DMA's wait (`nina_bus_dma_os_impl.h`) |
@@ -109,7 +109,7 @@ The primitives and what each must do are in `common/compat/port/zephyr_kernel_os
 ## The kernel's start and the vectors
 
 - The entry is `main()` in `src/main.c`. It calls the shared steps
-  (`common/pico_sdk/app/usb-console/src/usb_console.h`) in order, with ThreadX's part between them:
+  (`common/imu/port/pico_sdk/usb_console.h`) in order, with ThreadX's part between them:
   1. `usb_console_early_init()`: the RAM log, the passthrough mode's check and its run (interrupts
      enabled), the last run's fatal error record;
   2. `_tx_initialize_kernel_setup()` (the low-level and ThreadX's initialization, without the scheduler)
@@ -138,7 +138,7 @@ The primitives and what each must do are in `common/compat/port/zephyr_kernel_os
 ThreadX has no idle thread. With no thread ready the scheduler loops inside PendSV: interrupts masked,
 `tx_low_power_enter()`, `WFI`, `tx_low_power_exit()`, interrupts unmasked (`TX_LOW_POWER`, `TX_ENABLE_WFI` of
 `tx_user.h`). `src/idle_os.h` names those two hooks as the two halves of the shared
-`common/pico_sdk/app/usb-console/src/idle.c` (`IDLE_OS_ENTER`: open the window and blink the LED;
+`common/imu/port/pico_sdk/idle.c` (`IDLE_OS_ENTER`: open the window and blink the LED;
 `IDLE_OS_EXIT`: close the window). The measurement is the other builds': the handler of the interrupt that
 ended the wait runs after the window, so it counts as load. The 1 ms tick interrupt counts as load too.
 
@@ -209,7 +209,7 @@ wait on are `TX_SEMAPHORE`s the drivers own.
 ## The code in RAM
 
 The code on the hot paths (the drivers and the application on the paths of the sensor's reads and of the send)
-runs from RAM instead of the flash (the shared list `common/pico_sdk/app/usb-console/ram_code.cmake`). The OS
+runs from RAM instead of the flash (the shared list `common/imu/port/pico_sdk/ram_code.cmake`). The OS
 part adds only the NINA core's binding, as in the FreeRTOS build (`RAM_CODE_OS_SOURCES` of
 `app/usb-console/CMakeLists.txt`). ThreadX's kernel stays in the flash: with its hot code in RAM as well, the
 `cpu_active` while sending is only 0.1 to 0.2 points lower, for about 7 KiB of RAM.

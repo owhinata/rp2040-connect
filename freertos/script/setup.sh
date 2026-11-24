@@ -166,7 +166,7 @@ _freertos_setup() {
   fi
 
   # ST LSM6DSO register driver (freertos/stmemsc, built by
-  # common/pico_sdk/drivers/lsm6dso/lsm6dso.cmake) -------------------------
+  # common/drivers/lsm6dso/port/pico_sdk/lsm6dso.cmake) -------------------------
   if [[ ! -f "${root}/stmemsc/lsm6dso_reg.c" ]] || [[ ! -f "${root}/stmemsc/lsm6dso_reg.h" ]] || \
      ! _freertos_sha256_ok "${root}/stmemsc/lsm6dso_reg.c" "$lsm6dso_c_sha256" || \
      ! _freertos_sha256_ok "${root}/stmemsc/lsm6dso_reg.h" "$lsm6dso_h_sha256"; then

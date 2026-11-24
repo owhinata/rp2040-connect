@@ -14,8 +14,8 @@
  *   (common/compat/port/nuttx/log_ram_syslog.c).
  */
 
-#ifndef __NUTTX_DRIVERS_INCLUDE_LOG_RAM_OS_IMPL_H
-#define __NUTTX_DRIVERS_INCLUDE_LOG_RAM_OS_IMPL_H
+#ifndef __COMMON_COMPAT_PORT_NUTTX_LOG_RAM_OS_IMPL_H
+#define __COMMON_COMPAT_PORT_NUTTX_LOG_RAM_OS_IMPL_H
 
 #include <nuttx/config.h>
 
@@ -54,4 +54,4 @@ static inline void log_ram_os_attach(void)
   log_ram_syslog_register();
 }
 
-#endif /* __NUTTX_DRIVERS_INCLUDE_LOG_RAM_OS_IMPL_H */
+#endif /* __COMMON_COMPAT_PORT_NUTTX_LOG_RAM_OS_IMPL_H */

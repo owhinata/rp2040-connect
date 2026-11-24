@@ -10,8 +10,8 @@
  * cpu_load_backend_idle.c) with the times already in microseconds.
  */
 
-#ifndef __NUTTX_DRIVERS_INCLUDE_CPU_LOAD_H
-#define __NUTTX_DRIVERS_INCLUDE_CPU_LOAD_H
+#ifndef COMMON_COMPAT_PORT_CPU_LOAD_H
+#define COMMON_COMPAT_PORT_CPU_LOAD_H
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -128,4 +128,4 @@ static inline int cpu_load_ratio(uint64_t total, uint64_t idle)
 }
 #endif
 
-#endif /* __NUTTX_DRIVERS_INCLUDE_CPU_LOAD_H */
+#endif /* COMMON_COMPAT_PORT_CPU_LOAD_H */

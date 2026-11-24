@@ -14,7 +14,8 @@
 # with k_heap (common/compat/zephyr_heap.c, include/zephyr_heap.h) and the
 # host check's OS part of that kernel part (common/tests/kernel_generic_host/), and
 # common/chip/ (the RP2040's code that no OS owns, which all three builds
-# compile) and common/pico_sdk/, with clang-format and freertos/.clang-format (the Zephyr project's style).  Run
+# compile; not its NuttX part, port/nuttx/, in NuttX's style), with clang-format and
+# freertos/.clang-format (the Zephyr project's style).  Run
 # it from anywhere; it sources freertos/script/setup.sh itself, which
 # installs clang-format.
 #
@@ -35,7 +36,7 @@ check=0
 case "${1:-}" in
   "") ;;
   --check) check=1 ;;
-  -h|--help) sed -n '2,29p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+  -h|--help) sed -n '2,30p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
   *) printf 'Unknown option: %s\n' "$1" >&2; exit 2 ;;
 esac
 
@@ -61,9 +62,8 @@ mapfile -t files < <(find "${root}/app" "${root}/tests" \
   "${compat}"/internal/{zephyr_os_internal,cli,shell_argv}.h \
   "${compat}"/port/{zephyr_kernel_os,shell_serial_os}.h \
   "${compat}/zephyr_heap.c" \
-  "${root}/../common/tests/kernel_generic_host" "${root}/../common/chip" \
-  "${root}/../common/pico_sdk" -type f \
-  \( -name '*.c' -o -name '*.h' \) ! -name FreeRTOSConfig.h \
+  "${root}/../common/tests/kernel_generic_host" "${root}/../common/chip" -type f \
+  \( -name '*.c' -o -name '*.h' \) ! -name FreeRTOSConfig.h ! -path '*/port/nuttx/*' \
   ! -path "${net_offload}/lib/*" ! -path "${net_offload}/subsys/*" \
   ! -path "${net_offload}/include/zephyr/sys/fdtable.h" \
   ! -path "${net_offload}/include/zephyr/net/socket_offload.h" | sort)

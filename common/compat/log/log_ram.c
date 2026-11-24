@@ -18,7 +18,7 @@
  *   mode takes the time at the call too but formats later in its logging
  *   thread.
  * - The OS's own log, if it has one, goes in as it is with log_ram_store()
- *   (log_ram_os_attach(); on NuttX syslog(), nuttx/drivers/log/
+ *   (log_ram_os_attach(); on NuttX syslog(), common/compat/port/nuttx/
  *   log_ram_syslog.c; Zephyr: printk, CONFIG_LOG_PRINTK).
  */
 

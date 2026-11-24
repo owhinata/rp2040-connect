@@ -12,8 +12,8 @@
  * that exist are listed in <zephyr/devicetree.h>.
  */
 
-#ifndef __NUTTX_DRIVERS_COMPAT_ZEPHYR_DEVICE_H
-#define __NUTTX_DRIVERS_COMPAT_ZEPHYR_DEVICE_H
+#ifndef COMMON_COMPAT_INCLUDE_ZEPHYR_DEVICE_H
+#define COMMON_COMPAT_INCLUDE_ZEPHYR_DEVICE_H
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -131,4 +131,4 @@ bool z_device_api_is_i2c(const struct device *dev);
 
 #include <zephyr/devicetree.h>
 
-#endif /* __NUTTX_DRIVERS_COMPAT_ZEPHYR_DEVICE_H */
+#endif /* COMMON_COMPAT_INCLUDE_ZEPHYR_DEVICE_H */

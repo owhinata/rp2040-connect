@@ -10,13 +10,13 @@
  * OS whose headers define names of their own (NuttX's <nuttx/atomic.h>:
  * atomic_t, atomic_set(), ... with other meanings) reads them in
  * "zephyr_os_atomic.h", included first, and undefines its macros there
- * (nuttx/drivers/compat on NuttX; empty in host tests,
+ * (common/compat/port/nuttx on NuttX; empty in host tests,
  * common/tests/zephyr_fakes).  A file that uses both must include the OS's
  * headers before any header of the compatibility layer.
  */
 
-#ifndef __NUTTX_DRIVERS_COMPAT_ZEPHYR_SYS_ATOMIC_H
-#define __NUTTX_DRIVERS_COMPAT_ZEPHYR_SYS_ATOMIC_H
+#ifndef COMMON_COMPAT_INCLUDE_ZEPHYR_SYS_ATOMIC_H
+#define COMMON_COMPAT_INCLUDE_ZEPHYR_SYS_ATOMIC_H
 
 #include <stdbool.h>
 
@@ -100,4 +100,4 @@ static inline atomic_val_t atomic_or(atomic_t *target, atomic_val_t value)
   return old;
 }
 
-#endif /* __NUTTX_DRIVERS_COMPAT_ZEPHYR_SYS_ATOMIC_H */
+#endif /* COMMON_COMPAT_INCLUDE_ZEPHYR_SYS_ATOMIC_H */

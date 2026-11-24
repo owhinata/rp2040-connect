@@ -4,13 +4,13 @@
  * (included below, compiled as nuttx/apps/i2c_dma/Makefile builds it, with
  * the prelude; Z_SHELL_CMD_NAMED_MAIN turns its main() into
  * z_shell_main_i2c_dma()), on common/shell/zshell.c with the NuttX
- * backends (apps/subcmd/zshell_os_impl.h), with the I2C0 core's side
+ * backends (common/shell/port/nuttx/zshell_os_impl.h), with the I2C0 core's side
  * (i2c_dw_rp2040_dma.h of common/drivers/i2c_dw) replaced by
  * fakes.
  *
  * Against the command that the NuttX build had until 2026-11-18
  * (nuttx/apps/i2c_dma/i2c_dma_main.c: the same set as a
- * common/shell/subcmd.h table on subcmd_main(), printing with printf()
+ * common/shell/include/subcmd.h table on subcmd_main(), printing with printf()
  * and stderr; copied below as ref_*), each command line must give the same
  * exit status, the same calls of the fakes, and the same bytes on stdout,
  * on stderr and, with both on one file, in the same order (stdout line

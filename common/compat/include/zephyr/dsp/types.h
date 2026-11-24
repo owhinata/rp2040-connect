@@ -4,8 +4,8 @@
  * (common/compat).
  */
 
-#ifndef __NUTTX_DRIVERS_COMPAT_ZEPHYR_DSP_TYPES_H
-#define __NUTTX_DRIVERS_COMPAT_ZEPHYR_DSP_TYPES_H
+#ifndef COMMON_COMPAT_INCLUDE_ZEPHYR_DSP_TYPES_H
+#define COMMON_COMPAT_INCLUDE_ZEPHYR_DSP_TYPES_H
 
 #include <stdint.h>
 
@@ -14,4 +14,4 @@ typedef int16_t q15_t;
 typedef int32_t q31_t;
 typedef int64_t q63_t;
 
-#endif /* __NUTTX_DRIVERS_COMPAT_ZEPHYR_DSP_TYPES_H */
+#endif /* COMMON_COMPAT_INCLUDE_ZEPHYR_DSP_TYPES_H */

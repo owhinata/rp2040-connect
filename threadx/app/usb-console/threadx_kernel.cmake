@@ -17,7 +17,7 @@
 #   TX_LOW_POWER, TX_ENABLE_WFI and TX_EXECUTION_PROFILE_ENABLE from it).
 #   They are the target's own sources, as the FreeRTOS kernel's are in the
 #   FreeRTOS build, so that their objects can be named in the list of code
-#   that runs from RAM (common/pico_sdk/app/usb-console/ram_code.cmake);
+#   that runs from RAM (common/imu/port/pico_sdk/ram_code.cmake);
 #   the link drops the functions that are not called (each in a section
 #   of its own, -ffunction-sections, and --gc-sections, as the Pico SDK
 #   builds);
@@ -33,7 +33,7 @@
 # - the include directories of ThreadX and tx_user.h, and the Pico SDK's
 #   locks and sleeps on ThreadX (threadx/drivers/pico_sdk_interop).
 #
-# The idle wait's hooks (the halves of common/pico_sdk/app/usb-console/src/
+# The idle wait's hooks (the halves of common/imu/port/pico_sdk/
 # idle.c named by src/idle_os.h) and the threads' run time (src/run_time.c)
 # are the firmware's to add: the test firmware has its own LED.
 

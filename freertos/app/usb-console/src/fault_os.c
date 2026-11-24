@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 /* The FreeRTOS part of the fatal error exit (fault.h of
- * common/pico_sdk/app/usb-console/src): the running task's name from its
+ * common/imu/port/pico_sdk): the running task's name from its
  * control block, and the kernel's stack overflow check as an entry.
  * configASSERT() (FreeRTOSConfig.h) calls fault.c's app_assert_failed(), and
  * a task function that returns ends in the port's prvTaskExitError(), which

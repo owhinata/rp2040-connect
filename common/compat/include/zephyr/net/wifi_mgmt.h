@@ -24,8 +24,8 @@
  * (common/compat, see nuttx/drivers/README.md).
  */
 
-#ifndef __NUTTX_DRIVERS_COMPAT_ZEPHYR_NET_WIFI_MGMT_H
-#define __NUTTX_DRIVERS_COMPAT_ZEPHYR_NET_WIFI_MGMT_H
+#ifndef COMMON_COMPAT_INCLUDE_ZEPHYR_NET_WIFI_MGMT_H
+#define COMMON_COMPAT_INCLUDE_ZEPHYR_NET_WIFI_MGMT_H
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -348,4 +348,4 @@ void wifi_mgmt_raise_connect_result_event(struct net_if *iface, int status);
 void wifi_mgmt_raise_disconnect_result_event(struct net_if *iface,
                                              int status);
 
-#endif /* __NUTTX_DRIVERS_COMPAT_ZEPHYR_NET_WIFI_MGMT_H */
+#endif /* COMMON_COMPAT_INCLUDE_ZEPHYR_NET_WIFI_MGMT_H */

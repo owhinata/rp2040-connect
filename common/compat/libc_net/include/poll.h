@@ -8,8 +8,8 @@
  * (common/compat/libc_net), which the FreeRTOS build uses with newlib.
  */
 
-#ifndef FREERTOS_DRIVERS_LIBC_POLL_H
-#define FREERTOS_DRIVERS_LIBC_POLL_H
+#ifndef COMMON_COMPAT_LIBC_NET_INCLUDE_POLL_H
+#define COMMON_COMPAT_LIBC_NET_INCLUDE_POLL_H
 
 typedef unsigned int nfds_t;
 
@@ -26,4 +26,4 @@ struct pollfd {
 #define POLLHUP  0x10
 #define POLLNVAL 0x20
 
-#endif /* FREERTOS_DRIVERS_LIBC_POLL_H */
+#endif /* COMMON_COMPAT_LIBC_NET_INCLUDE_POLL_H */

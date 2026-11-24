@@ -10,8 +10,8 @@
  * Part of the NuttX implementation of the layer (common/compat/port/nuttx).
  */
 
-#ifndef __NUTTX_DRIVERS_COMPAT_ZEPHYR_OS_ATOMIC_H
-#define __NUTTX_DRIVERS_COMPAT_ZEPHYR_OS_ATOMIC_H
+#ifndef __COMMON_COMPAT_PORT_NUTTX_ZEPHYR_OS_ATOMIC_H
+#define __COMMON_COMPAT_PORT_NUTTX_ZEPHYR_OS_ATOMIC_H
 
 #include <nuttx/config.h>
 #include <nuttx/atomic.h>
@@ -22,4 +22,4 @@
 #undef atomic_or
 #undef atomic_xor
 
-#endif /* __NUTTX_DRIVERS_COMPAT_ZEPHYR_OS_ATOMIC_H */
+#endif /* __COMMON_COMPAT_PORT_NUTTX_ZEPHYR_OS_ATOMIC_H */

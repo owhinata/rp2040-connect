@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MIT */
 /* The "dmesg" shell command on the RAM log (common/compat/include/log_ram.h), for the
  * builds that run the Zephyr shell's commands on the compatibility layer's
- * shell (the FreeRTOS build, common/pico_sdk/drivers/compat/compat.cmake; NuttX
+ * shell (the FreeRTOS build, common/compat/port/pico_sdk/compat.cmake; NuttX
  * has its own application, nuttx/apps/dmesg).  cmd_dmesg() of the Zephyr
  * build's zephyr/app/usb-console/src/log_ram.c, with the same text: the log
  * in pieces of up to 96 bytes, so that no second copy of it is needed; the

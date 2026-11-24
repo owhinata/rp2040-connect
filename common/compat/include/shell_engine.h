@@ -12,7 +12,7 @@
  * global root entry z_shell_root_<syntax>; the application lists the roots
  * in its table, shell_engine_cmds[] (sorted by name, as Zephyr sorts its
  * root commands), with SHELL_ENGINE_CMD(syntax).  A command written for
- * NuttX's builtin applications on common/shell/subcmd.h (an
+ * NuttX's builtin applications on common/shell/include/subcmd.h (an
  * int main(int argc, char **argv) that calls subcmd_main()) is listed with
  * SHELL_ENGINE_MAIN(name, help, function).
  *
@@ -24,8 +24,8 @@
  * session (shell_console.h).
  */
 
-#ifndef COMMON_COMPAT_SHELL_ENGINE_SHELL_ENGINE_H
-#define COMMON_COMPAT_SHELL_ENGINE_SHELL_ENGINE_H
+#ifndef COMMON_COMPAT_INCLUDE_SHELL_ENGINE_H
+#define COMMON_COMPAT_INCLUDE_SHELL_ENGINE_H
 
 #include <stddef.h>
 
@@ -75,4 +75,4 @@ int shell_engine_execute(char *line);
  */
 void shell_engine_help(void);
 
-#endif /* COMMON_COMPAT_SHELL_ENGINE_SHELL_ENGINE_H */
+#endif /* COMMON_COMPAT_INCLUDE_SHELL_ENGINE_H */

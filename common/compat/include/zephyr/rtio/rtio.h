@@ -47,8 +47,8 @@
  * (common/compat, see nuttx/drivers/README.md).
  */
 
-#ifndef __NUTTX_DRIVERS_COMPAT_ZEPHYR_RTIO_RTIO_H
-#define __NUTTX_DRIVERS_COMPAT_ZEPHYR_RTIO_RTIO_H
+#ifndef COMMON_COMPAT_INCLUDE_ZEPHYR_RTIO_RTIO_H
+#define COMMON_COMPAT_INCLUDE_ZEPHYR_RTIO_RTIO_H
 
 #include <errno.h>
 #include <stdbool.h>
@@ -949,4 +949,4 @@ static inline int rtio_submit(struct rtio *r, uint32_t wait_count)
   return res;
 }
 
-#endif /* __NUTTX_DRIVERS_COMPAT_ZEPHYR_RTIO_RTIO_H */
+#endif /* COMMON_COMPAT_INCLUDE_ZEPHYR_RTIO_RTIO_H */

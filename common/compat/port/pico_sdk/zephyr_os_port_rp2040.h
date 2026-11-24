@@ -19,8 +19,8 @@
  *                              with it).  From the tick interrupt
  */
 
-#ifndef COMMON_PICO_SDK_DRIVERS_COMPAT_RP2040_ZEPHYR_OS_PORT_RP2040_H
-#define COMMON_PICO_SDK_DRIVERS_COMPAT_RP2040_ZEPHYR_OS_PORT_RP2040_H
+#ifndef COMMON_COMPAT_PORT_PICO_SDK_ZEPHYR_OS_PORT_RP2040_H
+#define COMMON_COMPAT_PORT_PICO_SDK_ZEPHYR_OS_PORT_RP2040_H
 
 #include <stdint.h>
 #include "hardware/regs/m0plus.h"
@@ -42,4 +42,4 @@ static inline void z_os_tick_pend(void)
 	scb_hw->icsr = M0PLUS_ICSR_PENDSTSET_BITS;
 }
 
-#endif /* COMMON_PICO_SDK_DRIVERS_COMPAT_RP2040_ZEPHYR_OS_PORT_RP2040_H */
+#endif /* COMMON_COMPAT_PORT_PICO_SDK_ZEPHYR_OS_PORT_RP2040_H */

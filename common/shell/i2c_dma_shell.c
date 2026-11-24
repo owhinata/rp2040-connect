@@ -6,7 +6,7 @@
  * header of Zephyr's tree; in the others, the shared core's i2c_dw.c and
  * its i2c_dw_rp2040_dma.h, through a header of that name in common/compat).  The Zephyr build
  * (zephyr/app/usb-console/CMakeLists.txt) uses it on Zephyr's shell, the
- * FreeRTOS build (common/pico_sdk/drivers/i2c_dw/i2c_dw.cmake) on the shared shell
+ * FreeRTOS build (common/drivers/i2c_dw/port/pico_sdk/i2c_dw.cmake) on the shared shell
  * (common/shell/zshell.c).  The text is that of the command the Zephyr
  * build had in its driver until 2026-11-18, with the same syntax, help and
  * output.

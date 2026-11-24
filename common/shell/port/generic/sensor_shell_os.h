@@ -7,7 +7,7 @@
  * result (sensor_shell_os_get_arm()/_wait()) and the processing thread's
  * callback.  The Zephyr build's header (drivers/sensor/sensor_shell_os.h of
  * its patched tree) does nothing for the wait; the NuttX
- * build's (nuttx/apps/sensor/sensor_shell_os.h) waits as this one does.
+ * build's (common/shell/port/nuttx/sensor_shell_os.h) waits as this one does.
  *
  * Where the results go: the read's completion carries the command's
  * processing context (struct sensor_shell_processing_context), which holds
@@ -15,7 +15,7 @@
  * session that ran the command, the USB port or the Telnet client
  * (common/compat/port/generic/zephyr_os_shell.h).  The processing thread
  * (sensor_shell_tid) prints with shell_print(ctx.sh, ...), which
- * writes straight to that console (common/compat/port/generic/zshell_os_impl.h),
+ * writes straight to that console (common/shell/port/generic/zshell_os_impl.h),
  * as Zephyr's processing thread prints on the shell instance that started
  * the read or the stream.  A console lives as long as the system: while
  * its session has no terminal (the USB port closed, the Telnet client
@@ -32,8 +32,8 @@
  * prompt below it.  The NuttX build does the same for nsh.
  */
 
-#ifndef COMMON_COMPAT_OS_GENERIC_SENSOR_SHELL_OS_H
-#define COMMON_COMPAT_OS_GENERIC_SENSOR_SHELL_OS_H
+#ifndef COMMON_SHELL_PORT_GENERIC_SENSOR_SHELL_OS_H
+#define COMMON_SHELL_PORT_GENERIC_SENSOR_SHELL_OS_H
 
 #include <stdint.h>
 
@@ -72,4 +72,4 @@ void sensor_shell_os_get_wait(void *ctx, int err);
 void sensor_shell_os_processing_callback(int result, uint8_t *buf, uint32_t buf_len,
 					 void *userdata);
 
-#endif /* COMMON_COMPAT_OS_GENERIC_SENSOR_SHELL_OS_H */
+#endif /* COMMON_SHELL_PORT_GENERIC_SENSOR_SHELL_OS_H */

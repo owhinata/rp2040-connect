@@ -8,8 +8,8 @@
  * common/compat/port/pico_sdk/stdio_wrap.c).
  */
 
-#ifndef COMMON_PICO_SDK_DRIVERS_SHELL_SHELL_SERIAL_OS_IMPL_H
-#define COMMON_PICO_SDK_DRIVERS_SHELL_SHELL_SERIAL_OS_IMPL_H
+#ifndef COMMON_COMPAT_PORT_PICO_SDK_SHELL_SERIAL_OS_IMPL_H
+#define COMMON_COMPAT_PORT_PICO_SDK_SHELL_SERIAL_OS_IMPL_H
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -57,4 +57,4 @@ static inline void shell_serial_os_write(const char *buf, size_t len)
 	stdio_usb.out_chars(buf, (int)len);
 }
 
-#endif /* COMMON_PICO_SDK_DRIVERS_SHELL_SHELL_SERIAL_OS_IMPL_H */
+#endif /* COMMON_COMPAT_PORT_PICO_SDK_SHELL_SERIAL_OS_IMPL_H */

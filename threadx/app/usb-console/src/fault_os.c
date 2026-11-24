@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 /* The ThreadX part of the fatal error exit (fault.h of
- * common/pico_sdk/app/usb-console/src): the running thread's name from its
+ * common/imu/port/pico_sdk): the running thread's name from its
  * control block, and ThreadX's stack check as an entry.
  *
  * ThreadX's other fatal paths end in fault.c's own entries: the layer's

@@ -33,7 +33,7 @@ void board_lock_test(int *passed, int *failed);
  * priority 14, the lowest; the threads they start are all above it):
  *
  *   idle_test.c  the idle wait's CPU load and the threads' run time
- *                (common/pico_sdk/app/usb-console/src/idle.c and
+ *                (common/imu/port/pico_sdk/idle.c and
  *                threadx/app/usb-console/src/run_time.c)
  *   sdk_test.c   the Pico SDK's mutexes, sleeps and stdio on ThreadX
  *                (threadx/drivers/pico_sdk_interop)

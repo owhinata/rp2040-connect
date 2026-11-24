@@ -12,8 +12,8 @@
  * none has it open, the output is dropped.
  */
 
-#ifndef COMMON_COMPAT_SHELL_ENGINE_SHELL_SERIAL_H
-#define COMMON_COMPAT_SHELL_ENGINE_SHELL_SERIAL_H
+#ifndef COMMON_COMPAT_INCLUDE_SHELL_SERIAL_H
+#define COMMON_COMPAT_INCLUDE_SHELL_SERIAL_H
 
 #include "shell_console.h"
 
@@ -36,4 +36,4 @@ void shell_serial_init(const char *name);
  */
 int shell_serial_start(const char *prompt, void (*on_connect)(void));
 
-#endif /* COMMON_COMPAT_SHELL_ENGINE_SHELL_SERIAL_H */
+#endif /* COMMON_COMPAT_INCLUDE_SHELL_SERIAL_H */

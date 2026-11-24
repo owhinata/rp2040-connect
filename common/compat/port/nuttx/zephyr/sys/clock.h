@@ -18,8 +18,8 @@
  * the port (common/compat/port/nuttx, see nuttx/drivers/README.md).
  */
 
-#ifndef __NUTTX_DRIVERS_COMPAT_ZEPHYR_SYS_CLOCK_H
-#define __NUTTX_DRIVERS_COMPAT_ZEPHYR_SYS_CLOCK_H
+#ifndef __COMMON_COMPAT_PORT_NUTTX_ZEPHYR_SYS_CLOCK_H
+#define __COMMON_COMPAT_PORT_NUTTX_ZEPHYR_SYS_CLOCK_H
 
 #include <errno.h>
 #include <time.h>
@@ -53,4 +53,4 @@ static inline int sys_clock_settime(int clock_id, const struct timespec *ts)
   return clock_settime(clock_id, ts) == 0 ? 0 : -EINVAL;
 }
 
-#endif /* __NUTTX_DRIVERS_COMPAT_ZEPHYR_SYS_CLOCK_H */
+#endif /* __COMMON_COMPAT_PORT_NUTTX_ZEPHYR_SYS_CLOCK_H */

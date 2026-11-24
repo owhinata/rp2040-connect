@@ -14,8 +14,8 @@
  * Characters beyond CLI_LINE_MAX are dropped.
  */
 
-#ifndef COMMON_COMPAT_SHELL_ENGINE_CLI_H
-#define COMMON_COMPAT_SHELL_ENGINE_CLI_H
+#ifndef COMMON_COMPAT_INTERNAL_CLI_H
+#define COMMON_COMPAT_INTERNAL_CLI_H
 
 #include <stddef.h>
 
@@ -56,4 +56,4 @@ void cli_prompt(struct cli *cli);
  */
 void cli_input(struct cli *cli, char c);
 
-#endif /* COMMON_COMPAT_SHELL_ENGINE_CLI_H */
+#endif /* COMMON_COMPAT_INTERNAL_CLI_H */

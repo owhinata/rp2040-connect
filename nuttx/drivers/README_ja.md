@@ -9,7 +9,9 @@ Zephyr 版・NuttX 版・FreeRTOS 版・ThreadX 版と呼びます。この文�
 symlink で、`libexternal.a` になります）。`Makefile`・`Kconfig` と、部分ごとのディレクトリー（`Make.defs`、あれば `Kconfig`）:
 `nina/`、`i2c_dw/`、`lsm6dso/`（ST の `st_lsm6dso_reg.c` も）、`compat/`（互換層）、`log/`（RAM ログ）。コードそのものは
 リポジトリの `common/` にあります（ドライバーは `common/drivers/`、互換層は `common/compat/`、その NuttX の実装は
-`common/compat/port/nuttx/`）。ボード側の部分は `nuttx/boards/arduino-nano-rp2040-connect/src/` にあります。Zephyr 版のドライバー説明は `zephyr/app/usb-console/drivers/README_ja.md` です。コマンドの
+`common/compat/port/nuttx/`、シェルのコマンドの NuttX の部分は `common/shell/port/nuttx/`、KV のフラッシュの操作は
+`common/chip/rp2040/port/nuttx/`）。ボード側の部分は `nuttx/boards/arduino-nano-rp2040-connect/src/` にあります。Zephyr 版の
+ドライバー説明は `zephyr/app/usb-console/drivers/README_ja.md` です。コマンドの
 使い方と Zephyr 版との違いは `nuttx/README_ja.md`、各機能の動作の詳しい説明は `design/nuttx-porting-ja.md` に
 あります。
 
@@ -622,7 +624,7 @@ NuttX 自身のコード（スケジューラー、セマフォ、タイマー�
   それらが呼ぶもの。異常停止の報告が、その異常で書き換わったかもしれない RAM のコードに頼らないようにします。
   libgcc の補助の関数（switch の表、64 ビットの乗算）も、報告の整形が使うのでフラッシュに残ります。
 
-KV のフラッシュの処理は、これとは別に RAM に置いてあります（`.ram_code.kv_flash_op`、`src/rp2040_flash_kv_os.c`）。XIP が止まっている
+KV のフラッシュの処理は、これとは別に RAM に置いてあります（`.ram_code.kv_flash_op`、`common/chip/rp2040/port/nuttx/rp2040_flash_kv_os.c`）。XIP が止まっている
 間は割り込みを止めて動き、ブート ROM と RAM に写した boot2 だけを呼びます。NINA の中継モードの UART の割り込みはフラッシュに
 残ります。
 
@@ -669,7 +671,9 @@ Zephyr の API を、Zephyr の名前のまま最小限だけ用意したもの�
   どれも前置きヘッダーを付けません。
 
 インクルードパスは NuttX の実装（`common/compat/port/nuttx`。カーネル側・ボード・アプリ）、共通の部分（`common/compat/include`・
-`port`・`internal`）の順です（Pico SDK の上の OS が使う OS に依存しない実装 `common/compat/port/generic` は入れません）。共通の
+`port`・`internal`）の順です（その仕組みを自分で持たない OS のための実装で、Pico SDK の上の OS が使う `common/compat/port/generic` は入れません）。
+シェルのコマンドを持つアプリは、シェルのヘッダーも足します（`apps/subcmd` は `common/shell/include`・`port`・`port/nuttx`、
+`apps/sensor` は `common/shell/include`・`port/nuttx`、`apps/nina` と `apps/wifi` は `common/shell/include`）。共通の
 `.c` はカーネル側（`compat/Make.defs`）とアプリ（`apps/sensor`・`apps/wifi`）が `VPATH` で参照し、前置き
 ヘッダーを付けてコンパイルします。ホストテストは `common/tests/zephyr_fakes` に偽のカーネル（OS ごとの
 ヘッダーとその関数）を置き、NuttX の実装より先にインクルードパスに入れます。
@@ -729,7 +733,7 @@ Zephyr の API を、Zephyr の名前のまま最小限だけ用意したもの�
 | `zephyr_hwinfo.c`（NuttX） | `hwinfo_get_device_id()`。ボードのチップ ID（`rp2040_chip_id()`） |
 | `zephyr_net_if.c`（NuttX）、`zephyr_net_mgmt.c`、`zephyr_wifi_mgmt.c` | インターフェース（NuttX のネットワークデバイスの値）、`net_mgmt` のイベントの待ち行列とスレッド（スレッドは `z_thread_static_start()` で起動。優先度とスタックの大きさは `priorities.h` の `APP_PRIO_NET_MGMT`・`APP_STACK_NET_MGMT`）、Wi-Fi の要求の処理（Zephyr の `subsys/net/l2/wifi/wifi_mgmt.c` の検査の写し）とイベント、`NET_REQUEST_WIFI_CONNECT_STORED`（同じファイルの `connect_stored_command()` の写し。`CONFIG_WIFI_CREDENTIALS` のとき）。`CONFIG_NINA_NET` のときだけ。NINA のつなぎ（`common/drivers/nina/port/nuttx/nina_wifi_mgmt.c`）がコアの上でアプリに提供する |
 | `zephyr_wifi_utils.c` | `wifi_security_txt()`・`wifi_band_txt()`（Zephyr の `wifi_mgmt.c`）、チャネルの検査（`wifi_utils.c`）、`net_bytes_from_str()`（`subsys/net/ip/utils.c`）の写し。`wifi cred` が使う。OS に依存しない。`CONFIG_NINA_NET` のときだけ |
-| `sensor_shell_stream.c` | Zephyr の `drivers/sensor/sensor_shell_stream.c` の写し（sensor シェルの処理スレッド）。OS の `sensor_shell_os.h` を最初に読み、処理スレッドのコールバックを `sensor_shell_os_processing_callback()` にした（NuttX 版は `nuttx/apps/sensor/sensor_shell_nuttx.c`）。`apps/sensor` がビルドする |
+| `sensor_shell_stream.c` | Zephyr の `drivers/sensor/sensor_shell_stream.c` の写し（sensor シェルの処理スレッド）。OS の `sensor_shell_os.h` を最初に読み、処理スレッドのコールバックを `sensor_shell_os_processing_callback()` にした（NuttX 版は `common/shell/port/nuttx/sensor_shell_nuttx.c`）。`apps/sensor` がビルドする |
 | `wifi_credentials.c`、`wifi_credentials_backend_settings.c` | Zephyr の `subsys/net/lib/wifi_credentials/` の写し（保存した Wi-Fi の資格情報）。`apps/wifi` がビルドする。バックエンドの変更は 2 つ: 読み込みのバッファーを 8 バイトに揃えた（構造体として読むため。Cortex-M0+ は揃っていない読み出しで止まる）、番号の書式を `%zu` にした |
 | `subsys/kvss/nvs/`、`subsys/settings/`、`subsys/crc/crc8_sw.c`、`lib/utils/hex.c` | Zephyr v4.5.0 の NVS、settings、CRC-8、16 進の変換の写し（無改変。下の「KV」）。`apps/imu` がビルドする |
 | `zephyr_flash_kv.c` | KV の領域の flash デバイスと flash map（下の「KV」）。`apps/imu` がビルドする |
@@ -797,7 +801,7 @@ Zephyr の API を、Zephyr の名前のまま最小限だけ用意したもの�
   先に付ける）。
 - **OS ごとのヘッダー**（共有するソースの）: 共有するソースのうち OS のファームウェアごとに違う数行は、同じ名前の小さなヘッダーに出し、Zephyr 版と
   NuttX 版がそれぞれのものを読みます（上の LSM6DSO のデバイスの `lsm6dso_instance.h` のほかに）。`sensor_shell_os.h`（`sensor_shell.c` と互換層の `sensor_shell_stream.c` が最初に読む。NuttX 版
-  `nuttx/apps/sensor/` は Zephyr 版の構成の値とログを読み、`sensor get` が結果の表示を待つ 2 行と処理スレッドのコールバックを関数にする。
+  `common/shell/port/nuttx/`（ビルドは `nuttx/apps/sensor`）は Zephyr 版の構成の値とログを読み、`sensor get` が結果の表示を待つ 2 行と処理スレッドのコールバックを関数にする。
   Zephyr 版（パッチを当てたツリーの `drivers/sensor/sensor_shell_os.h`）は何もしない）と `wifi_profile_os.h`（再接続のスレッドの
   `wifi_reconnect_tid` の宣言。Zephyr 版 `zephyr/app/usb-console/src/` は `K_THREAD_DEFINE()` が作るとおり
   `const k_tid_t`、NuttX 版 `nuttx/apps/wifi/` は互換層の `K_THREAD_DEFINE()` がスレッドを始めるときに値を書くので
@@ -857,9 +861,9 @@ Zephyr の API を、Zephyr の名前のまま最小限だけ用意したもの�
 - **シェル**: `shell_print()`・`shell_info()`・`shell_warn()`・`shell_error()` は改行を付けて書きます（Zephyr は
   情報を緑、警告を黄色、エラーを赤で出す。ここでは色を付けない）。書き先は `sh` で決まります。
   - `sh` が NULL: 呼んだタスクの標準出力（`shell_print()`・`shell_info()`）と標準エラー（`shell_warn()`・
-    `shell_error()`）。`common/shell/subcmd.h` で表を書いたコマンド（`kv`、`nina` など）は NULL を渡します。
+    `shell_error()`）。`common/shell/include/subcmd.h` で表を書いたコマンド（`kv`、`nina` など）は NULL を渡します。
   - `sh` がバックエンド: `SHELL_CMD_REGISTER()` で登録したコマンド（`sensor`、`imu`、`ntp`）が受け取るもので、
-    NuttX 版のバックエンド（`nuttx/apps/subcmd/zshell_os_impl.h`。`struct shell` は `zephyr_os_shell.h`）が
+    NuttX 版のバックエンド（`common/shell/port/nuttx/zshell_os_impl.h`。`struct shell` は `zephyr_os_shell.h`）が
     コマンドの標準出力の端末ごとに 1 つ持ちます（USB は `/dev/ttyACM0`、
     Telnet は `/dev/telnet0`。`F_GETPATH`、Telnet の装置はそれをソケットに渡してしまうので `/dev` の中から
     `fstat()` の i-node 番号で探す）。Zephyr のシェルのインスタンスと同じく、起動中ずっと残ります。そのコマンド
@@ -882,7 +886,7 @@ Zephyr の API を、Zephyr の名前のまま最小限だけ用意したもの�
     `struct shell_cmd_entry` が持つ（Zephyr は `union shell_cmd_entry` を置いたリンカーのセクションで見分ける）、
     選択モード・別名・リモートのコマンド・生の引数・Tab 補完（nsh のもの）が無い、カーソルを VT100 の
     シーケンスで動かす代わりに空白を出す。
-  - `zshell.c` は OS に依存しません。OS の部分（`common/shell/zshell_os.h` が一覧を持つ）は、`struct shell`、
+  - `zshell.c` は OS に依存しません。OS の部分（`common/shell/port/zshell_os.h` が一覧を持つ）は、`struct shell`、
     バックエンドへの出力 `z_shell_backend_vfprintf()`、呼んだタスクのセッションのバックエンドを返す関数、ハンドラーの
     呼び出しの前後の印の 2 つです。ヘルプとエラーは `printf()`・`fprintf(stderr)` で出すので、コマンドを実行する
     タスクの標準出力・標準エラーがそのセッションの端末であることが前提です（NuttX ではコマンドごとのタスクが持つ）。
@@ -1010,7 +1014,7 @@ settings のうち Zephyr 版が使う部分を改変せずに写し、Zephyr �
 - **RP2040 の部分**（`common/chip/rp2040/rp2040_flash_kv.c`。NuttX 版・FreeRTOS 版・ThreadX 版が共有）: `initialize` はリンカー
   スクリプトの `__kv_start`・`__kv_end` とイメージの終わりを定数と比べ、そのあと OS の側の flash の操作を準備する。`read` は
   キャッシュを通らない XIP の別名（0x13000000）から写す。`program` はページを RAM に写す。`program` と `erase` は要求を
-  定数と範囲で確かめ、OS の側の flash の操作（`common/chip/rp2040/include/rp2040_flash_kv_os.h`）に範囲と一緒に渡す:
+  定数と範囲で確かめ、OS の側の flash の操作（`common/chip/rp2040/port/rp2040_flash_kv_os.h`）に範囲と一緒に渡す:
 
   ```c
   int rp2040_flash_kv_os_init(void);
@@ -1019,8 +1023,8 @@ settings のうち Zephyr 版が使う部分を改変せずに写し、Zephyr �
   int rp2040_flash_kv_os_erase(uint32_t sector_offset, uint32_t lo, uint32_t hi);
   ```
 
-  OS の側は、flash に触れる直前に割り込みを止めた中で、要求が `[lo, hi)` に収まることをもう一度確かめる。NuttX 版（ボードの
-  `src/rp2040_flash_kv_os.c`）: `init` はブート ROM の flash の関数を探し、boot2 を RAM に写す。`program` と `erase` は、
+  OS の側は、flash に触れる直前に割り込みを止めた中で、要求が `[lo, hi)` に収まることをもう一度確かめる。NuttX 版（`common/chip/rp2040/port/nuttx/rp2040_flash_kv_os.c`。
+  ボードの `src/Make.defs` が `VPATH` で `libboard.a` に入れる）: `init` はブート ROM の flash の関数を探し、boot2 を RAM に写す。`program` と `erase` は、
   割り込みを止めて RAM 上の関数（`.ram_code.kv_flash_op`。ブート ROM と boot2 の写しだけを呼ぶ）を動かす。NuttX 自身の
   このチップの flash ドライバー（`rp2040_flash_mtd.c`）は使わない: イメージの後ろの SmartFS の領域の MTD デバイスで、最初の
   起動のときにそこから flash の終わりまでを消す。FreeRTOS 版・ThreadX 版: Pico SDK の `flash_range_program()`・`flash_range_erase()` を

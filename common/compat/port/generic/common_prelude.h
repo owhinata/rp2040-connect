@@ -3,7 +3,7 @@
  * (common/), which a build without Kconfig (FreeRTOS, ThreadX) includes
  * before each of them (-include, as the Zephyr build reads its
  * configuration into every file with -imacros autoconf.h, and the NuttX
- * build its nuttx/drivers/compat/common_prelude.h): the values of the
+ * build its common/compat/port/nuttx/common_prelude.h): the values of the
  * Zephyr build's Kconfig options that the shared sources use and that such
  * a build has no option of its own for
  * (zephyr/build/usb-console/zephyr/.config).  No OS header has to come
@@ -19,8 +19,8 @@
  * prelude and Kconfig); the options of the others are added with them.
  */
 
-#ifndef COMMON_COMPAT_OS_GENERIC_COMMON_PRELUDE_H
-#define COMMON_COMPAT_OS_GENERIC_COMMON_PRELUDE_H
+#ifndef COMMON_COMPAT_PORT_GENERIC_COMMON_PRELUDE_H
+#define COMMON_COMPAT_PORT_GENERIC_COMMON_PRELUDE_H
 
 /* The Zephyr build's CONFIG_SENSOR_LOG_LEVEL (3, info): the log level of
  * lsm6dso.c, lsm6dso_rtio.c and sensor_shell.c.
@@ -55,13 +55,13 @@
  * Zephyr build's CONFIG_NINA_PASSTHROUGH, zephyr/app/usb-console/Kconfig):
  * "nina passthrough" of the shared "nina" command
  * (common/shell/nina_shell.c).  The builds on the Pico SDK always have the
- * mode (common/pico_sdk/drivers/nina/nina.cmake).
+ * mode (common/drivers/nina/port/pico_sdk/nina.cmake).
  */
 #define CONFIG_NINA_PASSTHROUGH 1
 
 /* The FIFO stream of the LSM6DSO driver, CONFIG_SENSOR_ASYNC_API in the
  * Zephyr build (lsm6dso.c, lsm6dso.h): on with the driver
- * (CONFIG_LSM6DSO_STREAM, which common/pico_sdk/drivers/lsm6dso/lsm6dso.cmake
+ * (CONFIG_LSM6DSO_STREAM, which common/drivers/lsm6dso/port/pico_sdk/lsm6dso.cmake
  * defines for every source of the build, as the NuttX build's Kconfig
  * option of that name).  It changes the driver's structures, so a build's
  * own source that includes lsm6dso.h is compiled with this prelude too.
@@ -70,4 +70,4 @@
 #define CONFIG_SENSOR_ASYNC_API 1
 #endif
 
-#endif /* COMMON_COMPAT_OS_GENERIC_COMMON_PRELUDE_H */
+#endif /* COMMON_COMPAT_PORT_GENERIC_COMMON_PRELUDE_H */

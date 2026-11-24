@@ -10,7 +10,7 @@
  * sensor_shell_os.h and, in the processing thread, the OS's callback
  * (sensor_shell_os_processing_callback(): sensor_shell_processing_callback()
  * and the end of a waiting "sensor get"; NuttX's is in
- * nuttx/apps/sensor/sensor_shell_nuttx.c) added.  The thread is named
+ * common/shell/port/nuttx/sensor_shell_nuttx.c) added.  The thread is named
  * sensor_shell_tid, as the Zephyr build's local patch 0006 names it there
  * (a name that fits the name column of "ps").  The thread is the
  * layer's K_THREAD_DEFINE() (Zephyr priority 0; on NuttX a kernel thread

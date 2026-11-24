@@ -1,9 +1,9 @@
 /* SPDX-License-Identifier: MIT */
 /* The test's part of the Zephyr shell's command handling
  * (common/shell/zshell.c, which includes this file first through
- * common/shell/zshell_os.h) for the "i2c" command of main.c: one backend,
+ * common/shell/port/zshell_os.h) for the "i2c" command of main.c: one backend,
  * whose output goes to main.c's capture (test_shell_capture()), in place of
- * the shell engine's consoles (common/compat/port/generic/zshell_os_impl.h).
+ * the shell engine's consoles (common/shell/port/generic/zshell_os_impl.h).
  */
 
 #ifndef FREERTOS_TESTS_I2C_DW_ZSHELL_OS_IMPL_H

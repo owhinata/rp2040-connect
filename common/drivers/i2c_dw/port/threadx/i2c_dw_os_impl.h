@@ -103,7 +103,7 @@
  *
  * The semaphores are ThreadX objects of their own, apart from the
  * compatibility layer's wake flag of each thread (zephyr_kernel_os_impl.h
- * of threadx/drivers/compat), so that a wake-up of the one never ends a wait
+ * of common/compat/port/threadx), so that a wake-up of the one never ends a wait
  * of the other, as the FreeRTOS build keeps them apart on two task
  * notification indices (1 the layer's, 3 the I2C's).  They are made once
  * and never zeroed, so they stay in ThreadX's list of created semaphores.

@@ -11,10 +11,10 @@ name such a thread.  Each entry is under one #ifdef CONFIG_<X>, the option
 of the module that defines the thread, and in each build the option must be
 set exactly when the build compiles the defining source:
 
-- FreeRTOS: the .cmake file (common/pico_sdk/, shared by the builds on the
-  Pico SDK, or the application's CMakeLists.txt in freertos/) that lists the
-  source defines CONFIG_<X>=1; no such build file defines it when none lists
-  the source;
+- FreeRTOS: the .cmake file (in a port/pico_sdk/ directory of common/, shared
+  by the builds on the Pico SDK, or the application's CMakeLists.txt in
+  freertos/) that lists the source defines CONFIG_<X>=1; no such build file
+  defines it when none lists the source;
 - NuttX: X is an option of the NuttX build's Kconfig and the Makefile that
   lists the source, or the Make.defs beside it, tests CONFIG_<X>; X is no
   option of the NuttX build when no NuttX build file lists the source.
@@ -101,8 +101,9 @@ def main():
     if not errors:
         print(f"ok  table names the {len(defs)} threads of the sources")
 
-    f_files = [p for p in files if p.startswith(("freertos/", "common/pico_sdk/")) and
-               (p.endswith(".cmake") or p.endswith("CMakeLists.txt"))]
+    f_files = [p for p in files
+               if (p.startswith("freertos/") or (p.startswith("common/") and "/port/pico_sdk/" in p))
+               and (p.endswith(".cmake") or p.endswith("CMakeLists.txt"))]
     n_files = [p for p in files if p.startswith("nuttx/") and
                os.path.basename(p) in ("Makefile", "Make.defs")]
     n_options = set()

@@ -11,8 +11,8 @@
  * OS-independent part (common/compat).
  */
 
-#ifndef COMMON_COMPAT_ZEPHYR_NET_ZPERF_H
-#define COMMON_COMPAT_ZEPHYR_NET_ZPERF_H
+#ifndef COMMON_COMPAT_INCLUDE_ZEPHYR_NET_ZPERF_H
+#define COMMON_COMPAT_INCLUDE_ZEPHYR_NET_ZPERF_H
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -74,4 +74,4 @@ int zperf_tcp_download(const struct zperf_download_params *param, zperf_callback
 /* Stops it (ending a test in progress); -EALREADY when it does not run. */
 int zperf_tcp_download_stop(void);
 
-#endif /* COMMON_COMPAT_ZEPHYR_NET_ZPERF_H */
+#endif /* COMMON_COMPAT_INCLUDE_ZEPHYR_NET_ZPERF_H */

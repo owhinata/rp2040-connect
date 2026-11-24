@@ -10,7 +10,9 @@ with ThreadX: the Zephyr, NuttX, FreeRTOS and ThreadX builds. This document desc
 directory per part with its `Make.defs` (and `Kconfig`): `nina/`, `i2c_dw/`, `lsm6dso/` (also ST's
 `st_lsm6dso_reg.c`), `compat/` (the compatibility layer) and `log/` (the RAM log). The code itself is in
 the repository's `common/`: the drivers in `common/drivers/`, the compatibility layer in `common/compat/`
-with its NuttX implementation in `common/compat/port/nuttx/`. The board's part is in
+with its NuttX implementation in `common/compat/port/nuttx/`, the shell commands' NuttX part in
+`common/shell/port/nuttx/`, the key-value area's flash operations in `common/chip/rp2040/port/nuttx/`.
+The board's part is in
 `nuttx/boards/arduino-nano-rp2040-connect/src/`. The Zephyr version's driver notes are
 `zephyr/app/usb-console/drivers/README.md`. How to use the commands, and the differences from the
 Zephyr version, are in `nuttx/README.md`, and how each part works in detail is in
@@ -711,7 +713,7 @@ Some code must stay in the flash, and the check below enforces it:
   flash for this reason: the report's formatting uses them.
 
 The key-value store's flash routine is in RAM on its own (`.ram_code.kv_flash_op`,
-`src/rp2040_flash_kv_os.c`): while XIP is off it runs with interrupts disabled and calls only the boot ROM
+`common/chip/rp2040/port/nuttx/rp2040_flash_kv_os.c`): while XIP is off it runs with interrupts disabled and calls only the boot ROM
 and its RAM copy of boot2. The NINA passthrough mode's UART interrupt stays in the flash.
 
 The cost in RAM is the code (about 44 KiB) and the long-branch veneers that ld puts in RAM for its calls
@@ -769,9 +771,12 @@ is in two places:
 
 The include path is the NuttX implementation (`common/compat/port/nuttx`, for the kernel side, the
 board and the applications), then the shared part (`common/compat/include`, `port`, `internal`;
-`common/compat/port/generic`, the OS-independent implementation of the Pico SDK builds, is not on
-it). The kernel side (`compat/Make.defs`) and the applications (`apps/sensor`,
-`apps/wifi`) find the shared `.c` files through `VPATH` and compile them with the prelude. The host
+`common/compat/port/generic`, the implementation for an OS without its own that the Pico SDK builds
+use, is not on it). The applications with shell commands add the shell's headers (`apps/subcmd`:
+`common/shell/include`, `port` and `port/nuttx`; `apps/sensor`: `common/shell/include` and `port/nuttx`;
+`apps/nina` and `apps/wifi`: `common/shell/include`). The kernel side (`compat/Make.defs`) and the
+applications (`apps/sensor`, `apps/wifi`) find the shared `.c` files through `VPATH` and compile them with
+the prelude. The host
 tests have a fake kernel (the OS headers and their functions) in `common/tests/zephyr_fakes`, ahead
 of the NuttX implementation on the include path.
 
@@ -830,7 +835,7 @@ of the NuttX implementation on the include path.
 | `zephyr_hwinfo.c` (NuttX) | `hwinfo_get_device_id()` on the board's chip ID (`rp2040_chip_id()`) |
 | `zephyr_net_if.c` (NuttX), `zephyr_net_mgmt.c`, `zephyr_wifi_mgmt.c` | The interface (values of the NuttX network device), the `net_mgmt` event queue and thread (started with `z_thread_static_start()`; its priority and stack size are `APP_PRIO_NET_MGMT`, `APP_STACK_NET_MGMT` of `priorities.h`), the Wi-Fi requests (a copy of the checks of Zephyr's `subsys/net/l2/wifi/wifi_mgmt.c`) and events, `NET_REQUEST_WIFI_CONNECT_STORED` (a copy of `connect_stored_command()` of the same file; with `CONFIG_WIFI_CREDENTIALS`). Only with `CONFIG_NINA_NET`. The NINA's binding (`common/drivers/nina/port/nuttx/nina_wifi_mgmt.c`) serves them on the core for the applications |
 | `zephyr_wifi_utils.c` | Copies of `wifi_security_txt()` and `wifi_band_txt()` (Zephyr's `wifi_mgmt.c`), the channel checks (`wifi_utils.c`) and `net_bytes_from_str()` (`subsys/net/ip/utils.c`), for `wifi cred`. OS-independent. Only with `CONFIG_NINA_NET` |
-| `sensor_shell_stream.c` | A copy of Zephyr's `drivers/sensor/sensor_shell_stream.c` (the sensor shell's processing thread). It includes the OS's `sensor_shell_os.h` first, and the processing thread's callback is `sensor_shell_os_processing_callback()` (in the NuttX build, `nuttx/apps/sensor/sensor_shell_nuttx.c`). Built by `apps/sensor` |
+| `sensor_shell_stream.c` | A copy of Zephyr's `drivers/sensor/sensor_shell_stream.c` (the sensor shell's processing thread). It includes the OS's `sensor_shell_os.h` first, and the processing thread's callback is `sensor_shell_os_processing_callback()` (in the NuttX build, `common/shell/port/nuttx/sensor_shell_nuttx.c`). Built by `apps/sensor` |
 | `wifi_credentials.c`, `wifi_credentials_backend_settings.c` | Copies of Zephyr's `subsys/net/lib/wifi_credentials/` (the stored Wi-Fi credentials). Built by `apps/wifi`. Two changes in the backend: the read buffer is aligned to 8 bytes (it is read as a struct; the Cortex-M0+ faults on an unaligned access) and the index formats are `%zu` |
 | `subsys/kvss/nvs/`, `subsys/settings/`, `subsys/crc/crc8_sw.c`, `lib/utils/hex.c` | Unchanged copies of Zephyr v4.5.0's NVS, settings, CRC-8 and hex conversions ("Key-value store" below). Built by `apps/imu` |
 | `zephyr_flash_kv.c` | The key-value area's flash device and flash map ("Key-value store" below). Built by `apps/imu` |
@@ -911,7 +916,7 @@ of the NuttX implementation on the include path.
   small header of the same name, of which the Zephyr and the NuttX build each have their own
   (besides `lsm6dso_instance.h`, the LSM6DSO device, above):
   `sensor_shell_os.h` (included first by `sensor_shell.c` and by the layer's
-  `sensor_shell_stream.c`; the NuttX one, `nuttx/apps/sensor/`, reads the Zephyr build's
+  `sensor_shell_stream.c`; the NuttX one, `common/shell/port/nuttx/`, built by `nuttx/apps/sensor`, reads the Zephyr build's
   configuration values and the log and makes the two lines with which `sensor get` waits for its
   result to be printed, and the processing thread's callback, call functions; the Zephyr one,
   `drivers/sensor/sensor_shell_os.h` of its patched tree, does nothing) and `wifi_profile_os.h` (the
@@ -987,9 +992,9 @@ of the NuttX implementation on the include path.
   says where the text goes.
   - `sh` is NULL: the calling task's stdout (`shell_print()`, `shell_info()`) and stderr
     (`shell_warn()`, `shell_error()`). The commands whose tables are written with
-    `common/shell/subcmd.h` (`kv`, `nina` and others) pass NULL.
+    `common/shell/include/subcmd.h` (`kv`, `nina` and others) pass NULL.
   - `sh` is a backend: what a command registered with `SHELL_CMD_REGISTER()` (`sensor`, `imu`,
-    `ntp`) gets. The NuttX build's backends (`nuttx/apps/subcmd/zshell_os_impl.h`; `struct shell` is
+    `ntp`) gets. The NuttX build's backends (`common/shell/port/nuttx/zshell_os_impl.h`; `struct shell` is
     in `zephyr_os_shell.h`) keep one per terminal that a command's stdout is (`/dev/ttyACM0`
     for USB, `/dev/telnet0` for Telnet; `F_GETPATH`, and since a Telnet session's device passes that
     on to its socket, a search of `/dev` for the inode number of `fstat()`). Like Zephyr's shell
@@ -1016,7 +1021,7 @@ of the NuttX implementation on the include path.
     its `struct shell_cmd_entry` (Zephyr tells from the linker section its `union shell_cmd_entry`
     is in); no select mode, aliases, remote commands, raw arguments or Tab completion (nsh's);
     spaces where Zephyr moves the cursor with VT100 sequences.
-  - `zshell.c` is OS-independent. The OS part (listed in `common/shell/zshell_os.h`) is
+  - `zshell.c` is OS-independent. The OS part (listed in `common/shell/port/zshell_os.h`) is
     `struct shell`, the output to a backend `z_shell_backend_vfprintf()`, a function that returns
     the backend of the calling task's session, and two marks around the handler's call. The help and
     the errors are printed with `printf()` and `fprintf(stderr)`, so stdout and stderr of the task
@@ -1165,7 +1170,7 @@ originals.
   with the constants, then readies the build's flash operations; `read` copies from the uncached
   XIP alias (0x13000000); `program` copies the page into RAM; `program` and `erase` check the
   request against the constants and the bounds and hand it to the build's flash operations
-  (`common/chip/rp2040/include/rp2040_flash_kv_os.h`) with the bounds:
+  (`common/chip/rp2040/port/rp2040_flash_kv_os.h`) with the bounds:
 
   ```c
   int rp2040_flash_kv_os_init(void);
@@ -1175,7 +1180,7 @@ originals.
   ```
 
   The build checks the request against `[lo, hi)` once more with interrupts off, right before the
-  flash is touched. The NuttX build's (the board's `src/rp2040_flash_kv_os.c`): `init` finds the
+  flash is touched. The NuttX build's (`common/chip/rp2040/port/nuttx/rp2040_flash_kv_os.c`, built into `libboard.a` by the board's `src/Make.defs` through `VPATH`): `init` finds the
   boot ROM's flash functions and copies boot2 into RAM; `program` and `erase` run a RAM function
   (`.ram_code.kv_flash_op`) with interrupts disabled that calls the boot ROM and the copy of boot2
   only. NuttX's own flash driver for the chip (`rp2040_flash_mtd.c`) is not used: it is an MTD device

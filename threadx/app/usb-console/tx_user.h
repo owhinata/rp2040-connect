@@ -24,7 +24,7 @@
  *   then WFI, then tx_low_power_exit(), then unmasking them, in a loop
  *   (TX_LOW_POWER, TX_ENABLE_WFI; tx_thread_schedule.S).  The two hooks
  *   open and close the CPU load's window around the WFI (the halves of
- *   common/pico_sdk/app/usb-console/src/idle.c).
+ *   common/imu/port/pico_sdk/idle.c).
  * - The run time of each thread for "ps" (src/run_time.h): ThreadX's
  *   execution profile kit (utility/execution_profile_kit,
  *   TX_EXECUTION_PROFILE_ENABLE), which the scheduler calls at every switch

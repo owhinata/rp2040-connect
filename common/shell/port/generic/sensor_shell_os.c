@@ -3,7 +3,7 @@
  * (common/shell/port/generic): the wait of "sensor get" for its
  * printed result (sensor_shell_os.h), on the Zephyr compatibility layer's
  * semaphore.  The same behaviour as the NuttX build's
- * nuttx/apps/sensor/sensor_shell_nuttx.c.
+ * common/shell/port/nuttx/sensor_shell_nuttx.c.
  *
  * The read's completion reaches the processing thread
  * (sensor_shell_tid, common/compat/sensor_shell_stream.c), which

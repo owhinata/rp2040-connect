@@ -427,7 +427,7 @@ Zephyr 版の `gpio`、`log`、`device`、`history`、`clear`、`resize`、`shel
 
 ## スレッドと優先度
 
-優先度は `NuttX = 118 − Zephyr` で対応させています（`common/compat/include/priorities.h` の `APP_PRIO_*`・`APP_STACK_*`。換算は `nuttx/drivers/include/priorities_os.h`）。
+優先度は `NuttX = 118 − Zephyr` で対応させています（`common/compat/include/priorities.h` の `APP_PRIO_*`・`APP_STACK_*`。換算は `common/compat/port/nuttx/priorities_os.h`）。
 
 | スレッド | Zephyr | NuttX | スタック |
 |---|---|---|---|
@@ -467,10 +467,10 @@ OS に依存しない部分のホストテスト 73 本を PC 上でビルドし
 | 置き場所 | 内容 |
 |---|---|
 | `boards/arduino-nano-rp2040-connect/` | ボード定義（`configs/imu/defconfig`、`include/board.h`、リンカースクリプト、`src/` の起動処理・時計・I2C0 と DMA の NuttX の部分・KV の flash など） |
-| `drivers/` | カーネル側のコード（`libexternal.a` になる）: NINA（`nina/`: オプションとビルドの規則。ドライバーは `../common/drivers/nina/` と、その NuttX へのつなぎ `port/nuttx/`）、I2C（`i2c_dw/`: オプションとビルドの規則。ドライバーは `../common/drivers/i2c_dw/` と `port/nuttx/`）、LSM6DSOX（`lsm6dso/`）、RAM ログ（`log/`。リングは `../common/compat/log/`）、Zephyr の API の互換層の NuttX の実装（`compat/`）、共通のヘッダーの NuttX の部分（`include/`） |
+| `drivers/` | カーネル側のコード（`libexternal.a` になる）: NINA（`nina/`: オプションとビルドの規則。ドライバーは `../common/drivers/nina/` と、その NuttX へのつなぎ `port/nuttx/`）、I2C（`i2c_dw/`: オプションとビルドの規則。ドライバーは `../common/drivers/i2c_dw/` と `port/nuttx/`）、LSM6DSOX（`lsm6dso/`）、RAM ログ（`log/`: ビルドの規則。ソースは `../common/compat/log/` と `../common/compat/port/nuttx/`）、Zephyr の API の互換層のビルドの規則（`compat/`。NuttX の実装は `../common/compat/port/nuttx/`） |
 | `apps/` | アプリ: `init`（起動処理と Telnet）、`imu`（取得・MQTT・時刻同期・校正・KV）、`kv`、`nina`、`ntp`、`wifi`、`sensor`、`i2c_dma`、`dmesg`、`irqstack`、`bootsel`、`subcmd`（Zephyr のシェルのコマンド処理とサブコマンドの処理。ソースは `../common/shell/`、ここには NuttX のシェルのバックエンド） |
 | `patches/` | NuttX と nuttx-apps へのパッチ |
 | `script/` | `setup.sh`、`build.sh`、`flash.sh`、`host_tests.sh`、`bin2uf2.py`、`kconfig-tweak` |
 | `tests/` | ホストテスト（NuttX 版だけのもの） |
-| `../common/` | Zephyr 版・FreeRTOS 版・ThreadX 版と共有するソース（`imu/`、`drivers/lsm6dso/`、`drivers/stmemsc/`、`drivers/nina/`、`drivers/i2c_dw/`、`shell/`。`drivers/nina/` の NINA のコアは 4 つの OS のファームウェアが、`drivers/i2c_dw/` の I2C のコアはNuttX 版と FreeRTOS 版が使う）、互換層の OS に依存しない部分（`compat/`）、シェルのコマンド処理（`shell/`）、`LOG_*` マクロと RAM ログ（`compat/log/`）とそれらのホストテスト。ビルドは `VPATH` でそこを参照し、NINA のコア、I2C のコア、stmemsc、`shell/`、`compat/log/` を除く各ファイルに前置きヘッダー（`drivers/compat/common_prelude.h`）を付けてコンパイルする。オブジェクトは `apps/imu`・`apps/wifi`・`apps/sensor`・`apps/subcmd`・`drivers`・ボードのディレクトリーにできる |
+| `../common/` | Zephyr 版・FreeRTOS 版・ThreadX 版と共有するソース（`imu/`、`drivers/lsm6dso/`、`drivers/stmemsc/`、`drivers/nina/`、`drivers/i2c_dw/`、`shell/`。`drivers/nina/` の NINA のコアは 4 つの OS のファームウェアが、`drivers/i2c_dw/` の I2C のコアはNuttX 版と FreeRTOS 版が使う）、互換層の OS に依存しない部分（`compat/`）、シェルのコマンド処理（`shell/`）、`LOG_*` マクロと RAM ログ（`compat/log/`）とそれらのホストテスト。ビルドは `VPATH` でそこを参照し、NINA のコア、I2C のコア、stmemsc、`shell/`、`compat/log/` を除く各ファイルに前置きヘッダー（`../common/compat/port/nuttx/common_prelude.h`）を付けてコンパイルする。オブジェクトは `apps/imu`・`apps/wifi`・`apps/sensor`・`apps/subcmd`・`drivers`・ボードのディレクトリーにできる |
 | `nuttx/`、`nuttx-apps/`、`pico-sdk/`、`toolchain/`、`stmemsc/`、`.venv/`、`build/` | `setup.sh` が取得するものとビルドの生成物（Git 管理外） |

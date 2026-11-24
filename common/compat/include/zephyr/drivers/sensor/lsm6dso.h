@@ -6,9 +6,9 @@
  * shell and the IMU service include it by Zephyr's name in the three builds.
  */
 
-#ifndef __COMMON_COMPAT_ZEPHYR_DRIVERS_SENSOR_LSM6DSO_H
-#define __COMMON_COMPAT_ZEPHYR_DRIVERS_SENSOR_LSM6DSO_H
+#ifndef COMMON_COMPAT_INCLUDE_ZEPHYR_DRIVERS_SENSOR_LSM6DSO_H
+#define COMMON_COMPAT_INCLUDE_ZEPHYR_DRIVERS_SENSOR_LSM6DSO_H
 
 #include "../../../../../drivers/lsm6dso/include/lsm6dso.h"
 
-#endif /* __COMMON_COMPAT_ZEPHYR_DRIVERS_SENSOR_LSM6DSO_H */
+#endif /* COMMON_COMPAT_INCLUDE_ZEPHYR_DRIVERS_SENSOR_LSM6DSO_H */

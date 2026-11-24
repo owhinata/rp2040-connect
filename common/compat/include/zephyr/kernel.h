@@ -44,8 +44,8 @@
  * k_queue, k_msgq, k_timer, k_poll on other object types, user mode, SMP.
  *
  * The OS part: "zephyr_os.h", which this header includes first, from the
- * OS's directory of the layer (nuttx/drivers/compat on NuttX,
- * common/tests/zephyr_fakes in host tests, common/compat/kernel_generic for
+ * OS's directory of the layer (common/compat/port/nuttx on NuttX,
+ * common/tests/zephyr_fakes in host tests, common/compat/port/generic for
  * an OS on basic primitives), provides:
  *
  *   - the OS's headers that must come before the layer's (the layer's
@@ -94,8 +94,8 @@
  * OS-independent part (common/compat, see nuttx/drivers/README.md).
  */
 
-#ifndef __NUTTX_DRIVERS_COMPAT_ZEPHYR_KERNEL_H
-#define __NUTTX_DRIVERS_COMPAT_ZEPHYR_KERNEL_H
+#ifndef COMMON_COMPAT_INCLUDE_ZEPHYR_KERNEL_H
+#define COMMON_COMPAT_INCLUDE_ZEPHYR_KERNEL_H
 
 /* The OS part first (its headers come before the layer's). */
 
@@ -567,4 +567,4 @@ void z_abort_timeout(struct _timeout *to);
 
 #include "zephyr_compat.h"
 
-#endif /* __NUTTX_DRIVERS_COMPAT_ZEPHYR_KERNEL_H */
+#endif /* COMMON_COMPAT_INCLUDE_ZEPHYR_KERNEL_H */

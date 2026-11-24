@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: MIT */
-/* common/shell/ps_interval.h: the CPU column of "ps" (FreeRTOS build) and
+/* common/shell/include/ps_interval.h: the CPU column of "ps" (FreeRTOS build) and
  * "kernel ps" (Zephyr build), each task's share since the previous list.
  */
 #include <assert.h>

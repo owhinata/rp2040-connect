@@ -17,8 +17,8 @@
  * (common/compat/libc_net), which the FreeRTOS build uses with newlib.
  */
 
-#ifndef FREERTOS_DRIVERS_LIBC_SYS_SOCKET_H
-#define FREERTOS_DRIVERS_LIBC_SYS_SOCKET_H
+#ifndef COMMON_COMPAT_LIBC_NET_INCLUDE_SYS_SOCKET_H
+#define COMMON_COMPAT_LIBC_NET_INCLUDE_SYS_SOCKET_H
 
 #include <stddef.h>
 #include <stdint.h>
@@ -81,4 +81,4 @@ struct msghdr {
 	int msg_flags;
 };
 
-#endif /* FREERTOS_DRIVERS_LIBC_SYS_SOCKET_H */
+#endif /* COMMON_COMPAT_LIBC_NET_INCLUDE_SYS_SOCKET_H */

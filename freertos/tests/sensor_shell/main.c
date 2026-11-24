@@ -8,7 +8,7 @@
  * sessions on two consoles that capture), the Zephyr compatibility layer
  * (its kernel part, work queues, RTIO with its work queue, devices, gpio0,
  * the default sensor iodev and decoder) and the shared LSM6DSO driver with
- * its FIFO stream on ST's lsm6dso_reg.c, as common/pico_sdk/drivers/lsm6dso/
+ * its FIFO stream on ST's lsm6dso_reg.c, as common/drivers/lsm6dso/port/pico_sdk/
  * lsm6dso.cmake builds them.  The sensor is a fake LSM6DSOX behind a fake
  * i2c0 (register banks, auto-increment, software reset, FIFO, timestamp, the
  * same model as the NuttX build's test, nuttx/tests/lsm6dso_driver.c) with a

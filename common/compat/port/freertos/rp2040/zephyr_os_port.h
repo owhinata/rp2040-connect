@@ -26,8 +26,8 @@
  * TIMER, common/chip/rp2040) available: z_os_clock_us() is it.
  */
 
-#ifndef FREERTOS_DRIVERS_COMPAT_ZEPHYR_OS_PORT_H
-#define FREERTOS_DRIVERS_COMPAT_ZEPHYR_OS_PORT_H
+#ifndef COMMON_COMPAT_PORT_FREERTOS_RP2040_ZEPHYR_OS_PORT_H
+#define COMMON_COMPAT_PORT_FREERTOS_RP2040_ZEPHYR_OS_PORT_H
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -56,4 +56,4 @@ static inline void z_os_task_unlock(void)
 	taskEXIT_CRITICAL();
 }
 
-#endif /* FREERTOS_DRIVERS_COMPAT_ZEPHYR_OS_PORT_H */
+#endif /* COMMON_COMPAT_PORT_FREERTOS_RP2040_ZEPHYR_OS_PORT_H */

@@ -9,8 +9,8 @@
  * compatibility layer of the port (common/compat).
  */
 
-#ifndef __NUTTX_DRIVERS_COMPAT_ZEPHYR_SYS_MEM_BLOCKS_H
-#define __NUTTX_DRIVERS_COMPAT_ZEPHYR_SYS_MEM_BLOCKS_H
+#ifndef COMMON_COMPAT_INCLUDE_ZEPHYR_SYS_MEM_BLOCKS_H
+#define COMMON_COMPAT_INCLUDE_ZEPHYR_SYS_MEM_BLOCKS_H
 
 #include <stddef.h>
 #include <stdint.h>
@@ -60,4 +60,4 @@ int sys_mem_blocks_alloc_contiguous(sys_mem_blocks_t *mem_block,
 int sys_mem_blocks_free_contiguous(sys_mem_blocks_t *mem_block, void *block,
                                    size_t count);
 
-#endif /* __NUTTX_DRIVERS_COMPAT_ZEPHYR_SYS_MEM_BLOCKS_H */
+#endif /* COMMON_COMPAT_INCLUDE_ZEPHYR_SYS_MEM_BLOCKS_H */

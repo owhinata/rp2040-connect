@@ -6,11 +6,11 @@
  * compatibility layer of the port (common/compat).
  */
 
-#ifndef __NUTTX_DRIVERS_COMPAT_ZEPHYR_SYS_CPU_LOAD_H
-#define __NUTTX_DRIVERS_COMPAT_ZEPHYR_SYS_CPU_LOAD_H
+#ifndef COMMON_COMPAT_INCLUDE_ZEPHYR_SYS_CPU_LOAD_H
+#define COMMON_COMPAT_INCLUDE_ZEPHYR_SYS_CPU_LOAD_H
 
 /* common/compat/port/cpu_load.h (angle brackets: not this directory). */
 
 #include <cpu_load.h>
 
-#endif /* __NUTTX_DRIVERS_COMPAT_ZEPHYR_SYS_CPU_LOAD_H */
+#endif /* COMMON_COMPAT_INCLUDE_ZEPHYR_SYS_CPU_LOAD_H */

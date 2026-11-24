@@ -17,8 +17,8 @@
  * mounted; the rest is left as it is (<zephyr/storage/flash_map.h>).
  */
 
-#ifndef __COMMON_COMPAT_FLASH_KV_H
-#define __COMMON_COMPAT_FLASH_KV_H
+#ifndef COMMON_COMPAT_INCLUDE_FLASH_KV_H
+#define COMMON_COMPAT_INCLUDE_FLASH_KV_H
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -335,4 +335,4 @@ int flash_kv_layout(enum flash_kv_layout_e *layout);
 
 int flash_kv_wipe(void);
 
-#endif /* __COMMON_COMPAT_FLASH_KV_H */
+#endif /* COMMON_COMPAT_INCLUDE_FLASH_KV_H */

@@ -28,8 +28,8 @@
  * Zephyr compatibility layer of the port (common/compat).
  */
 
-#ifndef __COMMON_COMPAT_ZEPHYR_KV_CONFIG_H
-#define __COMMON_COMPAT_ZEPHYR_KV_CONFIG_H
+#ifndef COMMON_COMPAT_INCLUDE_ZEPHYR_KV_CONFIG_H
+#define COMMON_COMPAT_INCLUDE_ZEPHYR_KV_CONFIG_H
 
 #define CONFIG_NVS                            1
 #define CONFIG_NVS_LOG_LEVEL                  3
@@ -41,4 +41,4 @@
 #define CONFIG_SETTINGS_LOG_LEVEL             3
 #define CONFIG_MULTITHREADING                 1
 
-#endif /* __COMMON_COMPAT_ZEPHYR_KV_CONFIG_H */
+#endif /* COMMON_COMPAT_INCLUDE_ZEPHYR_KV_CONFIG_H */

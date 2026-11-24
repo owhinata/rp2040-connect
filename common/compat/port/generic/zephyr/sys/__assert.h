@@ -7,10 +7,10 @@
  * an assertion of its own in the layer (common/compat/port/generic).
  */
 
-#ifndef COMMON_COMPAT_OS_GENERIC_ZEPHYR_SYS___ASSERT_H
-#define COMMON_COMPAT_OS_GENERIC_ZEPHYR_SYS___ASSERT_H
+#ifndef COMMON_COMPAT_PORT_GENERIC_ZEPHYR_SYS___ASSERT_H
+#define COMMON_COMPAT_PORT_GENERIC_ZEPHYR_SYS___ASSERT_H
 
 #define __ASSERT_NO_MSG(test) ((void)sizeof((test) ? 1 : 0))
 #define __ASSERT(test, ...)   ((void)sizeof((test) ? 1 : 0))
 
-#endif /* COMMON_COMPAT_OS_GENERIC_ZEPHYR_SYS___ASSERT_H */
+#endif /* COMMON_COMPAT_PORT_GENERIC_ZEPHYR_SYS___ASSERT_H */

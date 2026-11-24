@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: MIT */
-/* The part of the Pico SDK that common/pico_sdk/drivers/kv/rp2040_flash_kv_os.c uses,
+/* The part of the Pico SDK that common/chip/rp2040/port/pico_sdk/rp2040_flash_kv_os.c uses,
  * for its host test (freertos/tests/kv/main.c, which implements the
  * functions): the board's flash size and the SDK's result codes.  The
  * hardware/ and pico/ headers next to this one are the test's as well.

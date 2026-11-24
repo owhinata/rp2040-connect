@@ -11,7 +11,7 @@
  * the frame the hardware saves when it is interrupted.
  *
  * The OS part: "priorities_os.h", included first from the OS's directory
- * (nuttx/drivers/include on NuttX), defines APP_PRIO_FROM_ZEPHYR(p), the
+ * (common/compat/port/nuttx on NuttX), defines APP_PRIO_FROM_ZEPHYR(p), the
  * OS's priority of Zephyr's priority p (-16..14, keeping the order; with the
  * generic kernel part in z_os_prio_t's order, larger more urgent, whatever
  * the OS's own numbering), and the priorities and stacks of the OS's own
@@ -20,8 +20,8 @@
  * measured on that OS; common/compat and the OS's threads use these values.
  */
 
-#ifndef __NUTTX_DRIVERS_INCLUDE_PRIORITIES_H
-#define __NUTTX_DRIVERS_INCLUDE_PRIORITIES_H
+#ifndef COMMON_COMPAT_INCLUDE_PRIORITIES_H
+#define COMMON_COMPAT_INCLUDE_PRIORITIES_H
 
 #include "priorities_os.h"
 
@@ -136,4 +136,4 @@
 #define APP_STACK_TELNET_SERVICE    2048
 #endif
 
-#endif /* __NUTTX_DRIVERS_INCLUDE_PRIORITIES_H */
+#endif /* COMMON_COMPAT_INCLUDE_PRIORITIES_H */

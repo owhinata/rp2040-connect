@@ -11,8 +11,8 @@
  * a program outside the area destroys the firmware.
  */
 
-#ifndef __COMMON_COMPAT_FLASH_KV_OS_H
-#define __COMMON_COMPAT_FLASH_KV_OS_H
+#ifndef COMMON_COMPAT_PORT_FLASH_KV_OS_H
+#define COMMON_COMPAT_PORT_FLASH_KV_OS_H
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -65,4 +65,4 @@ int flash_kv_os_program(uint32_t page_offset,
 
 int flash_kv_os_erase(uint32_t sector_offset);
 
-#endif /* __COMMON_COMPAT_FLASH_KV_OS_H */
+#endif /* COMMON_COMPAT_PORT_FLASH_KV_OS_H */

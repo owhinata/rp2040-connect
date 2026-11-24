@@ -78,11 +78,11 @@ USB の CDC ACM ポートがコンソールです。端末を開くとプロン�
 
 | 場所 | 内容 |
 |---|---|
-| `app/usb-console/` | アプリの ThreadX の部分: 入口の `main()`（`src/main.c`）、カーネルの設定（`tx_user.h`）、tick、優先度、異常停止・`ps` の ThreadX の部分 |
-| `drivers/compat/` | Zephyr 互換層の ThreadX の部分（共有ソース `common/` を動かす） |
+| `app/usb-console/` | アプリの ThreadX の部分: 入口の `main()`（`src/main.c`）、カーネルの設定（`tx_user.h`）、tick、異常停止・`ps` の ThreadX の部分 |
 | `drivers/pico_sdk_interop/` | Pico SDK のロックと待ちを ThreadX のスレッドにつなぐ部分 |
-| `../common/pico_sdk/` | Pico SDK の上の OS で共有する部分（FreeRTOS 版と同じ） |
-| `../common/drivers/<ドライバー>/port/` | ドライバーのつなぎ: `pico_sdk/`（FreeRTOS 版と同じ）と `threadx/`（待ちとロック） |
+| `../common/compat/port/threadx/`、`../common/shell/port/threadx/` | Zephyr 互換層（カーネルの基本の操作、優先度と時分割）と汎用のコマンドの ThreadX の部分 |
+| `../common/` の各部品の `port/pico_sdk/` | Pico SDK の上の OS で共有する部分（FreeRTOS 版と同じ） |
+| `../common/drivers/<ドライバー>/port/threadx/` | ドライバーの待ちとロック |
 | `tests/` | ホストテストと、実機の試験用のファームウェア `board_kernel`（[`drivers/README_ja.md`](drivers/README_ja.md)） |
 | `script/` | `setup.sh`、`build.sh`、`flash.sh`、`format.sh`、`host_tests.sh` |
 | `PORTING_PLAN.md`、`PORTING_STATUS.md` | 移植の計画と、進み具合・確かめたことの記録 |

@@ -5,12 +5,12 @@
  * (app_log.h) and by the OS's own console log, shown by the "dmesg"
  * command.  log_ram.c implements these functions on log_ring.h and on the
  * OS's part declared in log_ram_os.h (on NuttX with syslog() as the OS's
- * log, nuttx/drivers/log/log_ram_syslog.c; the command is nuttx/apps/dmesg;
+ * log, common/compat/port/nuttx/log_ram_syslog.c; the command is nuttx/apps/dmesg;
  * on FreeRTOS common/shell/dmesg_shell.c).
  */
 
-#ifndef __NUTTX_DRIVERS_INCLUDE_LOG_RAM_H
-#define __NUTTX_DRIVERS_INCLUDE_LOG_RAM_H
+#ifndef COMMON_COMPAT_INCLUDE_LOG_RAM_H
+#define COMMON_COMPAT_INCLUDE_LOG_RAM_H
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -55,4 +55,4 @@ size_t log_ram_piece(uint64_t *position, bool *first, char *piece,
 }
 #endif
 
-#endif /* __NUTTX_DRIVERS_INCLUDE_LOG_RAM_H */
+#endif /* COMMON_COMPAT_INCLUDE_LOG_RAM_H */

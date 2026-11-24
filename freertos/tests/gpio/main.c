@@ -10,7 +10,7 @@
  * Zephyr, common/drivers/lsm6dso/port/zephyr/lsm6dso_os.c, which this test
  * includes, with the core's lsm6dso_stream_int1() defined here), with the
  * prelude and CONFIG_LSM6DSO_STREAM, as
- * common/pico_sdk/drivers/lsm6dso/lsm6dso.cmake builds them.
+ * common/drivers/lsm6dso/port/pico_sdk/lsm6dso.cmake builds them.
  *
  * - The start: gpio0 is not ready before zephyr_compat_initialize() and is
  *   after it, which touches no register and adds no handler.

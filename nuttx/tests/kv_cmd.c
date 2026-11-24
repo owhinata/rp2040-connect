@@ -3,7 +3,7 @@
  * common/imu/kv_store.c (the Zephyr build's command, compiled with
  * Z_SHELL_CMD_NAMED_MAIN as apps/imu builds it; apps/kv's main() calls
  * it) and "kv wipe" (common/compat/kv_store_wipe.c), on
- * common/shell/zshell.c with the NuttX backends (apps/subcmd/
+ * common/shell/zshell.c with the NuttX backends (common/shell/port/nuttx/
  * zshell_os_impl.h) and the key-value store on a fake flash (the copies of
  * Zephyr's settings and NVS, common/compat/zephyr_flash_kv.c,
  * common/tests/kv_flash_fake.c).

@@ -15,8 +15,8 @@
  * applications: common/compat/port/nuttx.
  */
 
-#ifndef __NUTTX_DRIVERS_INCLUDE_APP_LOG_OS_H
-#define __NUTTX_DRIVERS_INCLUDE_APP_LOG_OS_H
+#ifndef __COMMON_COMPAT_PORT_NUTTX_APP_LOG_OS_H
+#define __COMMON_COMPAT_PORT_NUTTX_APP_LOG_OS_H
 
 #include <nuttx/config.h>
 
@@ -38,4 +38,4 @@
 
 #define LOG_RAM_SIZE 8192
 
-#endif /* __NUTTX_DRIVERS_INCLUDE_APP_LOG_OS_H */
+#endif /* __COMMON_COMPAT_PORT_NUTTX_APP_LOG_OS_H */

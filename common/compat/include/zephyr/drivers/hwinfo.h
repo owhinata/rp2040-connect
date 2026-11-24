@@ -5,8 +5,8 @@
  * nuttx/drivers/README.md).
  */
 
-#ifndef __NUTTX_DRIVERS_COMPAT_ZEPHYR_DRIVERS_HWINFO_H
-#define __NUTTX_DRIVERS_COMPAT_ZEPHYR_DRIVERS_HWINFO_H
+#ifndef COMMON_COMPAT_INCLUDE_ZEPHYR_DRIVERS_HWINFO_H
+#define COMMON_COMPAT_INCLUDE_ZEPHYR_DRIVERS_HWINFO_H
 
 #include <stddef.h>
 #include <stdint.h>
@@ -23,4 +23,4 @@
 
 ssize_t hwinfo_get_device_id(uint8_t *buffer, size_t length);
 
-#endif /* __NUTTX_DRIVERS_COMPAT_ZEPHYR_DRIVERS_HWINFO_H */
+#endif /* COMMON_COMPAT_INCLUDE_ZEPHYR_DRIVERS_HWINFO_H */

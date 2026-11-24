@@ -19,8 +19,8 @@
  * the small Zephyr compatibility layer of the port (common/compat).
  */
 
-#ifndef __COMMON_COMPAT_ZEPHYR_STORAGE_FLASH_MAP_H
-#define __COMMON_COMPAT_ZEPHYR_STORAGE_FLASH_MAP_H
+#ifndef COMMON_COMPAT_INCLUDE_ZEPHYR_STORAGE_FLASH_MAP_H
+#define COMMON_COMPAT_INCLUDE_ZEPHYR_STORAGE_FLASH_MAP_H
 
 #include <stddef.h>
 #include <stdint.h>
@@ -64,4 +64,4 @@ static inline void flash_area_close(const struct flash_area *fa)
 int flash_area_get_sectors(int fa_id, uint32_t *count,
                            struct flash_sector *sectors);
 
-#endif /* __COMMON_COMPAT_ZEPHYR_STORAGE_FLASH_MAP_H */
+#endif /* COMMON_COMPAT_INCLUDE_ZEPHYR_STORAGE_FLASH_MAP_H */

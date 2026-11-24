@@ -7,9 +7,9 @@
  * common/compat/zephyr_work.c and zephyr_init.c; the mutexes are
  * zephyr_mutex.c; the types are in zephyr_os.h.  No OS call but the
  * primitives (those of the FreeRTOS and ThreadX builds are
- * <OS>/drivers/compat/zephyr_kernel_os_impl.h; NuttX
+ * common/compat/port/<OS>/zephyr_kernel_os_impl.h; NuttX
  * implements the Zephyr-level functions directly instead,
- * nuttx/drivers/compat/zephyr_kernel.c).
+ * common/compat/port/nuttx/zephyr_kernel.c).
  *
  *   Zephyr                    here
  *   k_sem                     Zephyr's own rules (kernel/sem.c) on a count

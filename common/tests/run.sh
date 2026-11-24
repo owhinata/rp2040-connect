@@ -131,9 +131,9 @@ run mqtt_min "${flags[@]}" -Wno-sign-compare "${zinc[@]}" -I"$imu" tests/mqtt_mi
 # The kernel tick's catch-up for an OS with a periodic tick (compat/include/tick_catchup.h,
 # of the generic kernel part; the tick hooks of the builds on the Pico SDK): the step alone and on a model
 # of SysTick, its pending bit and masked interrupts.  The LED's blink from the idle pass of the
-# builds on the Pico SDK (pico_sdk/app/usb-console/src/idle_blink.h): its schedule.  No kernel.
+# builds on the Pico SDK (imu/port/pico_sdk/idle_blink.h): its schedule.  No kernel.
 run tick_catchup "${flags[@]}" -Icompat/include tests/tick_catchup.c
-run idle_blink "${flags[@]}" -Ipico_sdk/app/usb-console/src tests/idle_blink.c
+run idle_blink "${flags[@]}" -Iimu/port/pico_sdk tests/idle_blink.c
 
 # The layer's headers are in one set (compat/include, compat/internal, compat/port and, for an
 # OS without its own, compat/port/generic), but its parts are chosen independently: the
@@ -155,7 +155,7 @@ part_log=(compat/include/app_log.h compat/include/log_ram.h compat/include/fault
 part_shell_engine=(compat/include/shell_console.h compat/include/shell_engine.h
                    compat/include/shell_serial.h compat/include/shell_telnet.h
                    compat/internal/cli.h compat/internal/shell_argv.h compat/port/shell_serial_os.h
-                   compat/port/generic/zshell_os_impl.h compat/port/generic/zephyr_os_shell.h)
+                   compat/port/generic/zephyr_os_shell.h)
 part_layer=(compat/include/zephyr_compat.h compat/include/zephyr_heap.h compat/include/priorities.h
             compat/include/flash_kv.h compat/include/zephyr_kv_config.h compat/include/kv_store_os.h
             compat/include/sensor_shell.h compat/port/gpio_os.h compat/port/flash_kv_os.h
@@ -163,10 +163,16 @@ part_layer=(compat/include/zephyr_compat.h compat/include/zephyr_heap.h compat/i
             compat/internal/zperf_iperf3.h)
 listed=$(printf '%s\n' "${part_kernel_generic[@]}" "${part_generic[@]}" "${part_log[@]}" \
              "${part_shell_engine[@]}" "${part_layer[@]}" | sort)
+# existing: the lines of stdin that name a file (a tracked file deleted from the working tree is
+# no longer one).
+existing() {
+    local f
+    while IFS= read -r f; do [[ ! -e $f ]] || printf '%s\n' "$f"; done
+}
 present=$(git ls-files --cached --others --exclude-standard 'compat/include/*' 'compat/internal/*' \
               'compat/port/*' | grep -v '^compat/include/zephyr/' | grep -v '^compat/port/[^/]*/[^/]' |
           cat - <(git ls-files --cached --others --exclude-standard 'compat/port/generic/*') |
-          sort -u)
+          existing | sort -u)
 if [[ $listed != "$(sort -u <<<"$listed")" || $listed != "$present" ]]; then
     printf 'compat: the headers of compat/{include,internal,port} and the lists of run.sh differ:\n'
     diff <(printf '%s\n' "$listed") <(printf '%s\n' "$present") || true
@@ -208,14 +214,14 @@ done
 printf 'ok  kernel_generic_independent (%d files; %d headers in the parts)\n' "${#kgen_files[@]}" \
     "$(wc -l <<<"$listed")"
 # The network part (compat/net_offload) compiles on a kernel part written directly on an OS
-# (the fake kernel, tests/zephyr_fakes, as the NuttX build's nuttx/drivers/compat) without
+# (the fake kernel, tests/zephyr_fakes, as the NuttX build's common/compat/port/nuttx) without
 # compat/kernel_generic, with the C library's POSIX network headers (the host's) in place of
 # compat/libc_net: each of its headers and sources (its reduced copies of Zephyr's files compare
 # signed with unsigned, as Zephyr's, -Wno-sign-compare).  They resolve no header of the generic
 # kernel part, of compat/port/generic, of the RAM log or of the shell engine.
 noff_inc=(-D_DEFAULT_SOURCE -Itests/zephyr_fakes -Icompat/net_offload/include -Icompat/include
           -Icompat/port -Icompat/internal)
-noff_files=($(git ls-files --cached --others --exclude-standard 'compat/net_offload/*.[ch]'))
+noff_files=($(git ls-files --cached --others --exclude-standard 'compat/net_offload/*.[ch]' | existing))
 for f in "${noff_files[@]}"; do
     printf '#include "%s"\n' "$f" | cc "${flags[@]}" -Wno-sign-compare -I. "${noff_inc[@]}" \
         -fsyntax-only -x c -
@@ -280,10 +286,10 @@ run nina_passthrough "${flags[@]}" "${nina_inc[@]}" -Icompat/include tests/nina_
 
 # The shell's subcommand dispatch with the Zephyr shell's output (shell/subcmd.c: the kv, nina,
 # ... tables of the NuttX build).
-run subcmd "${flags[@]}" -Ishell tests/subcmd.c shell/subcmd.c
+run subcmd "${flags[@]}" -Ishell/include tests/subcmd.c shell/subcmd.c
 # The same with the copy of Zephyr's fnmatch() (compat/subsys/portability, which the FreeRTOS
 # build links: newlib has none) instead of the host's.
-run subcmd_fnmatch "${flags[@]}" -Ishell -Icompat/include tests/subcmd.c shell/subcmd.c \
+run subcmd_fnmatch "${flags[@]}" -Ishell/include -Icompat/include tests/subcmd.c shell/subcmd.c \
     compat/subsys/portability/posix/c_lib_ext/fnmatch.c
 # The copies of Zephyr's getopt (compat/lib/utils/getopt, for the FreeRTOS build): short and long
 # options, permutation, errors, and two states parsing two command lines interleaved, as two
@@ -308,8 +314,8 @@ run cpu_load "${flags[@]}" -Icompat/port tests/cpu_load.c
 # The read of the RP2040's TIMER (chip/rp2040: rp2040_timer_us()) on scripted registers.
 run rp2040_timer_us "${flags[@]}" -Ichip/rp2040/include tests/rp2040_timer_us.c
 # The CPU column of "ps" (FreeRTOS) and "kernel ps" (Zephyr): each task's share since the
-# previous list (shell/ps_interval.h).
-run ps_interval "${flags[@]}" -Ishell tests/ps_interval.c
+# previous list (shell/include/ps_interval.h).
+run ps_interval "${flags[@]}" -Ishell/include tests/ps_interval.c
 # The record of a fatal error that the FreeRTOS build keeps across its restart
 # (compat/log/fault_record.c): the check, the watchdog scratch copy and the lines, the range
 # check and the HardFault's exception frame (synthetic frames at both ends of a "RAM" followed by an
@@ -323,11 +329,11 @@ run hex "${flags[@]}" -Icompat/include tests/hex.c compat/lib/utils/hex.c
 # what the area holds (Zephyr's NVS, the NuttX build's earlier format, erased, other).
 run flash_kv "${flags[@]}" -Icompat/include tests/flash_kv.c
 # The RP2040's part of the area's flash that the NuttX and FreeRTOS builds share
-# (chip/rp2040/rp2040_flash_kv.c) on a fake of the build's flash operations (rp2040_flash_kv_os.h)
+# (chip/rp2040/rp2040_flash_kv.c) on a fake of the build's flash operations (port/rp2040_flash_kv_os.h)
 # and 8 KiB mapped at the area's uncached XIP address: the start and the linker script's bounds,
 # every program and erase offset around the area, the reads, the messages.
 run rp2040_flash_kv "${flags[@]}" -D_GNU_SOURCE -Itests/kv_fakes -Icompat/include -Icompat/port \
-    -Ichip/rp2040/include tests/rp2040_flash_kv.c chip/rp2040/rp2040_flash_kv.c
+    -Ichip/rp2040/include -Ichip/rp2040/port tests/rp2040_flash_kv.c chip/rp2040/rp2040_flash_kv.c
 # The key-value store (imu/kv_store.c, the Zephyr build's) on the copies of Zephyr's settings and
 # NVS (compat/subsys, built as they are, without warnings, with the Zephyr build's Kconfig values
 # of compat/include/zephyr_kv_config.h), the flash device and map of the area (compat/zephyr_flash_kv.c)

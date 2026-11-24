@@ -6,8 +6,8 @@
  * zephyr/app/usb-console/src/log_ram.c.
  */
 
-#ifndef __NUTTX_DRIVERS_LOG_LOG_RING_H
-#define __NUTTX_DRIVERS_LOG_LOG_RING_H
+#ifndef COMMON_COMPAT_INTERNAL_LOG_RING_H
+#define COMMON_COMPAT_INTERNAL_LOG_RING_H
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -88,4 +88,4 @@ bool log_ring_ratelimit(uint32_t *last_ms, uint32_t *skipped,
                         uint32_t now_ms, uint32_t rate_ms,
                         uint32_t *skipped_out);
 
-#endif /* __NUTTX_DRIVERS_LOG_LOG_RING_H */
+#endif /* COMMON_COMPAT_INTERNAL_LOG_RING_H */

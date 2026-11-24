@@ -7,8 +7,8 @@
  * common/compat/include/kv_store_os.h), compiled with
  * the compatibility layer's <zephyr/shell/shell.h> and
  * Z_SHELL_CMD_NAMED_MAIN and run on common/shell/zshell.c (with the NuttX
- * backends, apps/subcmd/zshell_os_impl.h), against the same sets written
- * as common/shell/subcmd.h tables (subcmd_main(), as the NuttX
+ * backends, common/shell/port/nuttx/zshell_os_impl.h), against the same sets written
+ * as common/shell/include/subcmd.h tables (subcmd_main(), as the NuttX
  * build ran these commands before they were shared with the Zephyr
  * build: the handlers then got sh == NULL; "kv" as nuttx/apps/kv/kv_main.c
  * had it, with "wipe" added).

@@ -18,7 +18,7 @@
  * Usable in threads and in interrupt handlers (on NuttX from the kernel
  * side, nuttx/drivers and the board code, and from the applications: flat
  * build).  The include path is common/compat/include and the OS's directory of
- * "app_log_os.h" (on NuttX $(TOPDIR)/external/include).
+ * "app_log_os.h" (on NuttX common/compat/port/nuttx).
  *
  * Levels are checked at compile time only: a message above the level of
  * its file (or above CONFIG_LOG_MAX_LEVEL) is not compiled in.
@@ -28,7 +28,7 @@
  * caller's context and on its stack (see app_log_printf() in log_ram.c).
  *
  * The OS part: "app_log_os.h", which this header includes first, from the
- * OS's directory (nuttx/drivers/include on NuttX), provides:
+ * OS's directory (common/compat/port/nuttx on NuttX), provides:
  *
  *   - the OS's configuration (CONFIG_LOG_DEFAULT_LEVEL and
  *     CONFIG_LOG_MAX_LEVEL, both optional),
@@ -40,8 +40,8 @@
  * (log_ram_os.h).
  */
 
-#ifndef __NUTTX_DRIVERS_INCLUDE_APP_LOG_H
-#define __NUTTX_DRIVERS_INCLUDE_APP_LOG_H
+#ifndef COMMON_COMPAT_INCLUDE_APP_LOG_H
+#define COMMON_COMPAT_INCLUDE_APP_LOG_H
 
 #include "app_log_os.h"
 
@@ -199,4 +199,4 @@ bool app_log_ratelimit_pass(uint32_t *last_ms, uint32_t *skipped,
 }
 #endif
 
-#endif /* __NUTTX_DRIVERS_INCLUDE_APP_LOG_H */
+#endif /* COMMON_COMPAT_INCLUDE_APP_LOG_H */

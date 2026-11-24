@@ -34,8 +34,8 @@
  * <zephyr/sys/atomic.h>).
  */
 
-#ifndef __NUTTX_DRIVERS_COMPAT_ZEPHYR_NET_MQTT_H
-#define __NUTTX_DRIVERS_COMPAT_ZEPHYR_NET_MQTT_H
+#ifndef COMMON_COMPAT_INCLUDE_ZEPHYR_NET_MQTT_H
+#define COMMON_COMPAT_INCLUDE_ZEPHYR_NET_MQTT_H
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -496,4 +496,4 @@ int mqtt_readall_publish_payload(struct mqtt_client *client,
 }
 #endif
 
-#endif /* __NUTTX_DRIVERS_COMPAT_ZEPHYR_NET_MQTT_H */
+#endif /* COMMON_COMPAT_INCLUDE_ZEPHYR_NET_MQTT_H */

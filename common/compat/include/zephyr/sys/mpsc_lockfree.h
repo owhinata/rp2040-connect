@@ -7,8 +7,8 @@
  * Zephyr compatibility layer of the port (common/compat).
  */
 
-#ifndef __NUTTX_DRIVERS_COMPAT_ZEPHYR_SYS_MPSC_LOCKFREE_H
-#define __NUTTX_DRIVERS_COMPAT_ZEPHYR_SYS_MPSC_LOCKFREE_H
+#ifndef COMMON_COMPAT_INCLUDE_ZEPHYR_SYS_MPSC_LOCKFREE_H
+#define COMMON_COMPAT_INCLUDE_ZEPHYR_SYS_MPSC_LOCKFREE_H
 
 #include <stddef.h>
 
@@ -68,4 +68,4 @@ static inline struct mpsc_node *mpsc_pop(struct mpsc *q)
   return n;
 }
 
-#endif /* __NUTTX_DRIVERS_COMPAT_ZEPHYR_SYS_MPSC_LOCKFREE_H */
+#endif /* COMMON_COMPAT_INCLUDE_ZEPHYR_SYS_MPSC_LOCKFREE_H */

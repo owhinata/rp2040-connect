@@ -10,8 +10,8 @@
  * see nuttx/drivers/README.md).
  */
 
-#ifndef __NUTTX_DRIVERS_COMPAT_ZEPHYR_OS_H
-#define __NUTTX_DRIVERS_COMPAT_ZEPHYR_OS_H
+#ifndef __COMMON_COMPAT_PORT_NUTTX_ZEPHYR_OS_H
+#define __COMMON_COMPAT_PORT_NUTTX_ZEPHYR_OS_H
 
 /* NuttX's headers first: <zephyr/sys/atomic.h> takes over NuttX's atomic
  * names.
@@ -149,4 +149,4 @@ static inline uint32_t k_cycle_get_32(void)
   return (uint32_t)rp2040_timer_us();
 }
 
-#endif /* __NUTTX_DRIVERS_COMPAT_ZEPHYR_OS_H */
+#endif /* __COMMON_COMPAT_PORT_NUTTX_ZEPHYR_OS_H */

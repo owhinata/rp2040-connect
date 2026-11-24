@@ -2,7 +2,7 @@
 /* Zephyr's __ASSERT() and __ASSERT_NO_MSG() (<zephyr/sys/__assert.h>) for
  * host tests: assert().  The Zephyr build has CONFIG_ASSERT off, so they
  * compile to nothing there; on NuttX they are DEBUGASSERT()
- * (nuttx/drivers/compat/zephyr/sys/__assert.h).
+ * (common/compat/port/nuttx/zephyr/sys/__assert.h).
  */
 
 #ifndef __NUTTX_DRIVERS_COMPAT_ZEPHYR_SYS___ASSERT_H

@@ -4,8 +4,8 @@
  * Include after <zephyr/kernel.h>.
  */
 
-#ifndef COMMON_COMPAT_KERNEL_GENERIC_ZEPHYR_OS_INTERNAL_H
-#define COMMON_COMPAT_KERNEL_GENERIC_ZEPHYR_OS_INTERNAL_H
+#ifndef COMMON_COMPAT_INTERNAL_ZEPHYR_OS_INTERNAL_H
+#define COMMON_COMPAT_INTERNAL_ZEPHYR_OS_INTERNAL_H
 
 #include "zephyr_kernel_os.h"
 
@@ -18,4 +18,4 @@
  */
 z_os_ticks_t z_wait_ticks(k_timeout_t timeout);
 
-#endif /* COMMON_COMPAT_KERNEL_GENERIC_ZEPHYR_OS_INTERNAL_H */
+#endif /* COMMON_COMPAT_INTERNAL_ZEPHYR_OS_INTERNAL_H */

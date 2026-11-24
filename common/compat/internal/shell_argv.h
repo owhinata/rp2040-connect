@@ -6,8 +6,8 @@
  * line is changed in place.
  */
 
-#ifndef COMMON_COMPAT_SHELL_ENGINE_SHELL_ARGV_H
-#define COMMON_COMPAT_SHELL_ENGINE_SHELL_ARGV_H
+#ifndef COMMON_COMPAT_INTERNAL_SHELL_ARGV_H
+#define COMMON_COMPAT_INTERNAL_SHELL_ARGV_H
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -20,4 +20,4 @@
  */
 char z_shell_make_argv(size_t *argc, const char **argv, char *cmd, uint8_t max_argc);
 
-#endif /* COMMON_COMPAT_SHELL_ENGINE_SHELL_ARGV_H */
+#endif /* COMMON_COMPAT_INTERNAL_SHELL_ARGV_H */

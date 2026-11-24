@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MIT */
 /* The host test of the FreeRTOS build's time synchronization on the FreeRTOS
  * POSIX port: the shared common/imu/time_sync.c and time_offset.c with the
- * prelude, as common/pico_sdk/drivers/imu/imu.cmake builds them, on the build's OS
+ * prelude, as common/imu/port/pico_sdk/imu.cmake builds them, on the build's OS
  * parts (the realtime clock of the layer's <zephyr/sys/clock.h>,
  * common/compat/port/pico_sdk/zephyr_sys_clock.c; the interface,
  * zephyr_net_if.c; the net_mgmt events with the thread "net_mgmt",

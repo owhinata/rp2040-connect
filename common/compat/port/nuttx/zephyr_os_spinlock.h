@@ -10,8 +10,8 @@
  * nuttx/drivers/README.md).
  */
 
-#ifndef __NUTTX_DRIVERS_COMPAT_ZEPHYR_OS_SPINLOCK_H
-#define __NUTTX_DRIVERS_COMPAT_ZEPHYR_OS_SPINLOCK_H
+#ifndef __COMMON_COMPAT_PORT_NUTTX_ZEPHYR_OS_SPINLOCK_H
+#define __COMMON_COMPAT_PORT_NUTTX_ZEPHYR_OS_SPINLOCK_H
 
 #include <sched.h>
 #include <nuttx/irq.h>
@@ -37,4 +37,4 @@ static inline void k_spin_unlock(struct k_spinlock *l, k_spinlock_key_t key)
   sched_unlock();
 }
 
-#endif /* __NUTTX_DRIVERS_COMPAT_ZEPHYR_OS_SPINLOCK_H */
+#endif /* __COMMON_COMPAT_PORT_NUTTX_ZEPHYR_OS_SPINLOCK_H */

@@ -160,10 +160,10 @@ USB の CDC ACM ポートがコンソールです（UART0 は使いません）�
 
 | 場所 | 内容 |
 |---|---|
-| `app/usb-console/` | アプリの FreeRTOS の部分: 入口の `main()`（`src/main.c`）、カーネルの設定（`FreeRTOSConfig.h`）、tick、優先度、異常停止・`ps` の FreeRTOS の部分（`main()` が呼ぶ起動の各段階、コマンド、アイドル、異常停止の本体は `../common/pico_sdk/app/usb-console/`） |
-| `drivers/compat/` | Zephyr 互換層の FreeRTOS の部分（共有ソース `common/` を動かす） |
-| `../common/pico_sdk/` | Pico SDK の上の OS で共有する部分: コンソールの USB シリアルと標準出力、KV のフラッシュ、GPIO、各ドライバーをビルドに入れる cmake、RAM に置くコードの一覧 |
-| `../common/drivers/<ドライバー>/port/` | ドライバーのつなぎ: `pico_sdk/`（SPI・DMA・ピン・デバイスの定義）と `freertos/`（待ちとロック） |
+| `app/usb-console/` | アプリの FreeRTOS の部分: 入口の `main()`（`src/main.c`）、カーネルの設定（`FreeRTOSConfig.h`）、tick、異常停止・`ps` の FreeRTOS の部分（`main()` が呼ぶ起動の各段階、コマンド、アイドル、異常停止の本体は `../common/imu/port/pico_sdk/`） |
+| `../common/compat/port/freertos/`、`../common/shell/port/freertos/` | Zephyr 互換層（カーネルの基本の操作、優先度）と汎用のコマンドの FreeRTOS の部分 |
+| `../common/` の各部品の `port/pico_sdk/` | Pico SDK の上の OS で共有する部分: コンソールの USB シリアルと標準出力、KV のフラッシュ、GPIO、ドライバーの SPI・DMA・ピン、ビルドに入れる cmake。アプリの起動・コマンド・異常停止は `../common/imu/port/pico_sdk/` |
+| `../common/drivers/<ドライバー>/port/freertos/` | ドライバーの待ちとロック |
 | `tests/` | ホストテスト |
 | `script/` | `setup.sh`、`build.sh`、`flash.sh`、`format.sh`、`host_tests.sh` |
 | `PORTING_PLAN.md`、`PORTING_STATUS.md` | 移植の計画と、進み具合・確かめたことの記録 |

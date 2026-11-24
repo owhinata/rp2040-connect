@@ -5,9 +5,9 @@
  * of the small Zephyr compatibility layer of the port (common/compat).
  */
 
-#ifndef __NUTTX_DRIVERS_COMPAT_ZEPHYR_LOGGING_LOG_H
-#define __NUTTX_DRIVERS_COMPAT_ZEPHYR_LOGGING_LOG_H
+#ifndef COMMON_COMPAT_INCLUDE_ZEPHYR_LOGGING_LOG_H
+#define COMMON_COMPAT_INCLUDE_ZEPHYR_LOGGING_LOG_H
 
 #include "app_log.h"
 
-#endif /* __NUTTX_DRIVERS_COMPAT_ZEPHYR_LOGGING_LOG_H */
+#endif /* COMMON_COMPAT_INCLUDE_ZEPHYR_LOGGING_LOG_H */

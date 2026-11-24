@@ -5,13 +5,13 @@
  * nina_os.c) and IRQ line (GPIO2, its socket events, nina_os.c) use.
  * Each OS implements it as Zephyr's RP2040 GPIO driver does
  * (drivers/gpio/gpio_rpi_pico.c, on the pico-sdk's hardware_gpio): on
- * NuttX the board's src/rp2040_gpio_os.c (BOARD_LSM6DSOX_INT1_GPIO), on
- * FreeRTOS common/pico_sdk/drivers/compat/rp2040/gpio_os_rp2040.c.  Shared by the
+ * NuttX common/compat/port/nuttx/rp2040_gpio_os.c (BOARD_LSM6DSOX_INT1_GPIO), on
+ * FreeRTOS common/compat/port/pico_sdk/gpio_os_rp2040.c.  Shared by the
  * board code and the layer (common/compat).
  */
 
-#ifndef __NUTTX_DRIVERS_INCLUDE_GPIO_OS_H
-#define __NUTTX_DRIVERS_INCLUDE_GPIO_OS_H
+#ifndef COMMON_COMPAT_PORT_GPIO_OS_H
+#define COMMON_COMPAT_PORT_GPIO_OS_H
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -50,4 +50,4 @@ int gpio_os_irq_configure(unsigned int pin, uint32_t events);
 
 void gpio_os_irq_handler(unsigned int pin);
 
-#endif /* __NUTTX_DRIVERS_INCLUDE_GPIO_OS_H */
+#endif /* COMMON_COMPAT_PORT_GPIO_OS_H */

@@ -7,8 +7,8 @@
  * zephyr_compat.h it includes none of the layer's Zephyr headers.
  */
 
-#ifndef COMMON_COMPAT_KERNEL_GENERIC_ZEPHYR_COMPAT_OS_H
-#define COMMON_COMPAT_KERNEL_GENERIC_ZEPHYR_COMPAT_OS_H
+#ifndef COMMON_COMPAT_INCLUDE_ZEPHYR_COMPAT_OS_H
+#define COMMON_COMPAT_INCLUDE_ZEPHYR_COMPAT_OS_H
 
 /* Runs the timeouts of the layer (the timers of delayable work items,
  * z_add_timeout()) that are due: one call per kernel tick, from the tick
@@ -19,4 +19,4 @@
  */
 void zephyr_compat_tick(void);
 
-#endif /* COMMON_COMPAT_KERNEL_GENERIC_ZEPHYR_COMPAT_OS_H */
+#endif /* COMMON_COMPAT_INCLUDE_ZEPHYR_COMPAT_OS_H */

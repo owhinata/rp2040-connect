@@ -8,12 +8,12 @@
  * Zephyr.
  */
 
-#ifndef __NUTTX_DRIVERS_COMPAT_ZEPHYR_SYS_PRINTK_H
-#define __NUTTX_DRIVERS_COMPAT_ZEPHYR_SYS_PRINTK_H
+#ifndef COMMON_COMPAT_INCLUDE_ZEPHYR_SYS_PRINTK_H
+#define COMMON_COMPAT_INCLUDE_ZEPHYR_SYS_PRINTK_H
 
 #include <stdio.h>
 
 #define snprintk(...) snprintf(__VA_ARGS__)
 #define vsnprintk(str, size, fmt, ap) vsnprintf(str, size, fmt, ap)
 
-#endif /* __NUTTX_DRIVERS_COMPAT_ZEPHYR_SYS_PRINTK_H */
+#endif /* COMMON_COMPAT_INCLUDE_ZEPHYR_SYS_PRINTK_H */

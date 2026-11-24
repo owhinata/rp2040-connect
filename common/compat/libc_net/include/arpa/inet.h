@@ -9,8 +9,8 @@
  * (common/compat/libc_net), which the FreeRTOS build uses with newlib.
  */
 
-#ifndef FREERTOS_DRIVERS_LIBC_ARPA_INET_H
-#define FREERTOS_DRIVERS_LIBC_ARPA_INET_H
+#ifndef COMMON_COMPAT_LIBC_NET_INCLUDE_ARPA_INET_H
+#define COMMON_COMPAT_LIBC_NET_INCLUDE_ARPA_INET_H
 
 #include <stdint.h>
 #include <netinet/in.h>
@@ -50,4 +50,4 @@ int inet_pton(int af, const char *src, void *dst);
  */
 const char *inet_ntop(int af, const void *src, char *dst, socklen_t size);
 
-#endif /* FREERTOS_DRIVERS_LIBC_ARPA_INET_H */
+#endif /* COMMON_COMPAT_LIBC_NET_INCLUDE_ARPA_INET_H */

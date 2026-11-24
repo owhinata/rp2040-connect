@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 /* The start of the ThreadX build: main() runs the shared steps of the USB
- * console on the Pico SDK (common/pico_sdk/app/usb-console/src/
+ * console on the Pico SDK (common/imu/port/pico_sdk/
  * usb_console.h) with ThreadX's own: the kernel set up without its
  * scheduler (_tx_initialize_kernel_setup()), the thread "main" started by
  * the compatibility layer (z_os_thread_start()) and the scheduler
@@ -47,7 +47,7 @@ void fault_os_stack_error(TX_THREAD *thread);
  * layer's storage of the thread after it (Z_OS_THREAD_RESERVED:
  * zephyr_kernel_os_impl.h of common/compat/port/threadx), is not in .bss but
  * in SCRATCH_X, which only core 1's stack would use
- * (common/pico_sdk/app/usb-console/ld/section_extra_post_scratch.incl; this
+ * (common/imu/port/pico_sdk/ld/section_extra_post_scratch.incl; this
  * build does not link pico_multicore, so the whole 4 KiB is free).  Not
  * loaded: ThreadX fills the stack when it creates the thread, and main()
  * clears the storage after it, which a restart leaves as the last run had

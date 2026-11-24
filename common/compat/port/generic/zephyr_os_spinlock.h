@@ -19,8 +19,8 @@
  * the unlock may enable them.  The lock word is not used.
  */
 
-#ifndef COMMON_COMPAT_KERNEL_GENERIC_ZEPHYR_OS_SPINLOCK_H
-#define COMMON_COMPAT_KERNEL_GENERIC_ZEPHYR_OS_SPINLOCK_H
+#ifndef COMMON_COMPAT_PORT_GENERIC_ZEPHYR_OS_SPINLOCK_H
+#define COMMON_COMPAT_PORT_GENERIC_ZEPHYR_OS_SPINLOCK_H
 
 #include <stdint.h>
 
@@ -59,4 +59,4 @@ static inline void k_spin_unlock(struct k_spinlock *l, k_spinlock_key_t key)
 	}
 }
 
-#endif /* COMMON_COMPAT_KERNEL_GENERIC_ZEPHYR_OS_SPINLOCK_H */
+#endif /* COMMON_COMPAT_PORT_GENERIC_ZEPHYR_OS_SPINLOCK_H */

@@ -7,7 +7,7 @@
  * board's <gpio_os.h>.  OS-independent apart from k_spin_lock().  Part
  * of the small Zephyr compatibility layer of the port, its OS-independent
  * part (common/compat); the board implements <gpio_os.h> (here; on
- * NuttX the board's src/rp2040_gpio_os.c).
+ * NuttX common/compat/port/nuttx/rp2040_gpio_os.c).
  */
 
 #include <errno.h>

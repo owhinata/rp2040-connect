@@ -10,8 +10,8 @@
  * (common/compat/libc_net), which the FreeRTOS build uses with newlib.
  */
 
-#ifndef FREERTOS_DRIVERS_LIBC_NETINET_IN_H
-#define FREERTOS_DRIVERS_LIBC_NETINET_IN_H
+#ifndef COMMON_COMPAT_LIBC_NET_INCLUDE_NETINET_IN_H
+#define COMMON_COMPAT_LIBC_NET_INCLUDE_NETINET_IN_H
 
 #include <stdint.h>
 #include <sys/socket.h>
@@ -50,4 +50,4 @@ struct sockaddr_in6 {
 #define INET_ADDRSTRLEN  16
 #define INET6_ADDRSTRLEN 46
 
-#endif /* FREERTOS_DRIVERS_LIBC_NETINET_IN_H */
+#endif /* COMMON_COMPAT_LIBC_NET_INCLUDE_NETINET_IN_H */

@@ -21,8 +21,8 @@
  * (common/compat/port/nuttx, see nuttx/drivers/README.md).
  */
 
-#ifndef __NUTTX_DRIVERS_COMPAT_ZEPHYR_NET_NET_IF_H
-#define __NUTTX_DRIVERS_COMPAT_ZEPHYR_NET_NET_IF_H
+#ifndef __COMMON_COMPAT_PORT_NUTTX_ZEPHYR_NET_NET_IF_H
+#define __COMMON_COMPAT_PORT_NUTTX_ZEPHYR_NET_NET_IF_H
 
 #include <netinet/in.h>
 #include <stdbool.h>
@@ -85,4 +85,4 @@ struct net_in_addr net_if_ipv4_get_gw(struct net_if *iface);
 
 bool net_if_is_admin_up(struct net_if *iface);
 
-#endif /* __NUTTX_DRIVERS_COMPAT_ZEPHYR_NET_NET_IF_H */
+#endif /* __COMMON_COMPAT_PORT_NUTTX_ZEPHYR_NET_NET_IF_H */

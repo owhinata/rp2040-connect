@@ -8,8 +8,8 @@
  * shell_telnet.c for what it does and how it differs.
  */
 
-#ifndef COMMON_COMPAT_SHELL_ENGINE_SHELL_TELNET_H
-#define COMMON_COMPAT_SHELL_ENGINE_SHELL_TELNET_H
+#ifndef COMMON_COMPAT_INCLUDE_SHELL_TELNET_H
+#define COMMON_COMPAT_INCLUDE_SHELL_TELNET_H
 
 /* Opens the listening socket (any address, the port, a backlog of 1) and
  * starts the threads "shell_telnet" (the session: runs its commands;
@@ -24,4 +24,4 @@
  */
 int shell_telnet_init(const char *prompt);
 
-#endif /* COMMON_COMPAT_SHELL_ENGINE_SHELL_TELNET_H */
+#endif /* COMMON_COMPAT_INCLUDE_SHELL_TELNET_H */

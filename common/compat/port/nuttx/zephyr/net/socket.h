@@ -28,8 +28,8 @@
  * NuttX's headers before the layer's (see <zephyr/sys/atomic.h>).
  */
 
-#ifndef __NUTTX_DRIVERS_COMPAT_ZEPHYR_NET_SOCKET_H
-#define __NUTTX_DRIVERS_COMPAT_ZEPHYR_NET_SOCKET_H
+#ifndef __COMMON_COMPAT_PORT_NUTTX_ZEPHYR_NET_SOCKET_H
+#define __COMMON_COMPAT_PORT_NUTTX_ZEPHYR_NET_SOCKET_H
 
 #include <arpa/inet.h>
 #include <netdb.h>
@@ -74,4 +74,4 @@ int close(int fd);
   nina_dns_getaddrinfo(host, service, hints, res)
 #define zsock_freeaddrinfo(res) nina_dns_freeaddrinfo(res)
 
-#endif /* __NUTTX_DRIVERS_COMPAT_ZEPHYR_NET_SOCKET_H */
+#endif /* __COMMON_COMPAT_PORT_NUTTX_ZEPHYR_NET_SOCKET_H */

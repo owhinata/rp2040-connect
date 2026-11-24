@@ -10,7 +10,7 @@
  * i2c_recover_bus(), as Zephyr's header has them.  Part of the Zephyr
  * compatibility layer for an OS without an I2C model of its own
  * (common/compat/port/generic; the NuttX build has its own,
- * nuttx/drivers/compat/zephyr/drivers/i2c.h, on a NuttX I2C master).
+ * common/compat/port/nuttx/zephyr/drivers/i2c.h, on a NuttX I2C master).
  *
  * The bus is the device of its driver, as in Zephyr: i2c0 is the I2C0
  * controller of the shared core (common/drivers/i2c_dw/i2c_dw.c), whose
@@ -42,8 +42,8 @@
  * the other helpers (the shared sources call none of them).
  */
 
-#ifndef COMMON_COMPAT_OS_GENERIC_ZEPHYR_DRIVERS_I2C_H
-#define COMMON_COMPAT_OS_GENERIC_ZEPHYR_DRIVERS_I2C_H
+#ifndef COMMON_COMPAT_PORT_GENERIC_ZEPHYR_DRIVERS_I2C_H
+#define COMMON_COMPAT_PORT_GENERIC_ZEPHYR_DRIVERS_I2C_H
 
 #include <errno.h>
 #include <stdbool.h>
@@ -245,4 +245,4 @@ static inline int i2c_target_driver_unregister(const struct device *dev)
 	return -ENOSYS;
 }
 
-#endif /* COMMON_COMPAT_OS_GENERIC_ZEPHYR_DRIVERS_I2C_H */
+#endif /* COMMON_COMPAT_PORT_GENERIC_ZEPHYR_DRIVERS_I2C_H */

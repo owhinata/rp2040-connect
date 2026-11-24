@@ -47,8 +47,8 @@
  * ThreadX implementation of the layer (common/compat/port/threadx).
  */
 
-#ifndef THREADX_DRIVERS_COMPAT_ZEPHYR_KERNEL_OS_IMPL_H
-#define THREADX_DRIVERS_COMPAT_ZEPHYR_KERNEL_OS_IMPL_H
+#ifndef COMMON_COMPAT_PORT_THREADX_ZEPHYR_KERNEL_OS_IMPL_H
+#define COMMON_COMPAT_PORT_THREADX_ZEPHYR_KERNEL_OS_IMPL_H
 
 #include <errno.h>
 #include <stdbool.h>
@@ -507,4 +507,4 @@ static inline int z_os_mutex_unlock(struct k_mutex *mutex)
 	return tx_mutex_put(m) == TX_SUCCESS ? 0 : -EINVAL;
 }
 
-#endif /* THREADX_DRIVERS_COMPAT_ZEPHYR_KERNEL_OS_IMPL_H */
+#endif /* COMMON_COMPAT_PORT_THREADX_ZEPHYR_KERNEL_OS_IMPL_H */

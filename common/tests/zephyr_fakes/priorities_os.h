@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MIT */
 /* The OS part of the port's priorities (common/compat/include/priorities.h) for
  * host tests: the NuttX build's mapping of Zephyr's priorities (118 - p,
- * nuttx/drivers/include/priorities_os.h), as K_PRIO_PREEMPT() of the fake
+ * common/compat/port/nuttx/priorities_os.h), as K_PRIO_PREEMPT() of the fake
  * kernel (zephyr_os.h).
  */
 

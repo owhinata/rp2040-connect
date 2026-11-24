@@ -7,7 +7,7 @@
  * unlocking a mutex that nobody holds -EINVAL, one that another thread holds
  * -EPERM (z_os_mutex_unlock()).  Part of the generic kernel part of the
  * small Zephyr compatibility layer of the port (NuttX's is
- * nuttx/drivers/compat/zephyr_mutex.c).
+ * common/compat/port/nuttx/zephyr_mutex.c).
  *
  * Zephyr's k_mutex is unlocked when all zero: k_mutex_lock() takes it when
  * lock_count is 0 (kernel/mutex.c), so a mutex in a zeroed static structure

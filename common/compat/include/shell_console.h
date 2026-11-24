@@ -12,8 +12,8 @@
  * subcmd.c: help and errors), and its text reaches the session that runs
  * it.  The OS routes its stdout and stderr to shell_console_write() of
  * shell_console_current() (the console transport, shell_serial_os.h; the
- * FreeRTOS build's common/pico_sdk/drivers/shell/shell_stdio.c and
- * common/pico_sdk/drivers/libc/stdio_wrap.c).
+ * FreeRTOS build's common/compat/port/pico_sdk/shell_stdio.c and
+ * common/compat/port/pico_sdk/stdio_wrap.c).
  *
  * A console turns "\n" into "\r\n" (unless "\r" came just before, also at
  * the end of the previous write), as the Pico SDK's stdio does for a
@@ -28,8 +28,8 @@
  * run commands at the same time.
  */
 
-#ifndef COMMON_COMPAT_SHELL_ENGINE_SHELL_CONSOLE_H
-#define COMMON_COMPAT_SHELL_ENGINE_SHELL_CONSOLE_H
+#ifndef COMMON_COMPAT_INCLUDE_SHELL_CONSOLE_H
+#define COMMON_COMPAT_INCLUDE_SHELL_CONSOLE_H
 
 #include <stdarg.h>
 #include <stdbool.h>
@@ -114,4 +114,4 @@ void shell_console_unlock(struct shell_console *con);
 void shell_console_vprintf(struct shell_console *con, const char *fmt, va_list args)
 	__attribute__((format(printf, 2, 0)));
 
-#endif /* COMMON_COMPAT_SHELL_ENGINE_SHELL_CONSOLE_H */
+#endif /* COMMON_COMPAT_INCLUDE_SHELL_CONSOLE_H */

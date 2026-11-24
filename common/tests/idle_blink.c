@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 /* The host test of the LED's blink from the idle pass
- * (common/pico_sdk/app/usb-console/src/idle_blink.h): the first pass, the
+ * (common/imu/port/pico_sdk/idle_blink.h): the first pass, the
  * period, passes in between, and a late pass.  No kernel; run by
  * common/tests/run.sh.
  */

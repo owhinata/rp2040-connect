@@ -21,8 +21,8 @@
  * (common/compat/port/nuttx).
  */
 
-#ifndef __NUTTX_DRIVERS_COMPAT_COMMON_PRELUDE_H
-#define __NUTTX_DRIVERS_COMPAT_COMMON_PRELUDE_H
+#ifndef __COMMON_COMPAT_PORT_NUTTX_COMMON_PRELUDE_H
+#define __COMMON_COMPAT_PORT_NUTTX_COMMON_PRELUDE_H
 
 #ifdef __NuttX__
 #  include <nuttx/config.h>
@@ -49,4 +49,4 @@
 #  define CONFIG_SENSOR_ASYNC_API 1
 #endif
 
-#endif /* __NUTTX_DRIVERS_COMPAT_COMMON_PRELUDE_H */
+#endif /* __COMMON_COMPAT_PORT_NUTTX_COMMON_PRELUDE_H */

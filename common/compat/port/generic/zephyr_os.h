@@ -8,8 +8,8 @@
  * zephyr_kernel.c and zephyr_mutex.c.  Includes no OS header itself.
  */
 
-#ifndef COMMON_COMPAT_KERNEL_GENERIC_ZEPHYR_OS_H
-#define COMMON_COMPAT_KERNEL_GENERIC_ZEPHYR_OS_H
+#ifndef COMMON_COMPAT_PORT_GENERIC_ZEPHYR_OS_H
+#define COMMON_COMPAT_PORT_GENERIC_ZEPHYR_OS_H
 
 #include <limits.h>
 #include <stdbool.h>
@@ -150,4 +150,4 @@ static inline uint32_t k_cycle_get_32(void)
 	return (uint32_t)z_os_clock_us();
 }
 
-#endif /* COMMON_COMPAT_KERNEL_GENERIC_ZEPHYR_OS_H */
+#endif /* COMMON_COMPAT_PORT_GENERIC_ZEPHYR_OS_H */

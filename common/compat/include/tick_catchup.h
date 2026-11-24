@@ -4,7 +4,7 @@
  * kernel part (the tick hooks of the builds on the Pico SDK: FreeRTOS's
  * freertos/app/usb-console/src/tick.c), which read the TIMER for it with
  * z_os_tick_now_us32() and add a tick with z_os_tick_pend() (on the RP2040,
- * common/pico_sdk/drivers/compat/rp2040/zephyr_os_port_rp2040.h); the
+ * common/compat/port/pico_sdk/zephyr_os_port_rp2040.h); the
  * tick rate is Z_OS_TICK_HZ (zephyr_kernel_os.h).
  *
  * The tick is SysTick's periodic interrupt (1 ms).  While interrupts stay

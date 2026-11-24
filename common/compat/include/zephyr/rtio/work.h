@@ -10,8 +10,8 @@
  * (common/compat).
  */
 
-#ifndef __NUTTX_DRIVERS_COMPAT_ZEPHYR_RTIO_WORK_H
-#define __NUTTX_DRIVERS_COMPAT_ZEPHYR_RTIO_WORK_H
+#ifndef COMMON_COMPAT_INCLUDE_ZEPHYR_RTIO_WORK_H
+#define COMMON_COMPAT_INCLUDE_ZEPHYR_RTIO_WORK_H
 
 #include <stdint.h>
 
@@ -52,4 +52,4 @@ int rtio_workq_initialize(void);
 
 bool rtio_workq_process(void);
 
-#endif /* __NUTTX_DRIVERS_COMPAT_ZEPHYR_RTIO_WORK_H */
+#endif /* COMMON_COMPAT_INCLUDE_ZEPHYR_RTIO_WORK_H */

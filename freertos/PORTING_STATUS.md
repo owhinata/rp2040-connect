@@ -3096,3 +3096,24 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
 - 残り（次の段階）: 担当の範囲の外にある古いパスの記述（`common/` の中のコメント、`design/`、README。表は `freertos/build/baseline/restructure/tools/moves-{a,b}.tsv`）、
   シェル（`common/shell/{include,port}` と各 OS の実装）、チップ（`common/chip/rp2040/port`）、各ドライバーとシェルのコマンドの cmake → それぞれの `port/pico_sdk/`、
   アプリの Pico SDK の部分 → `common/imu/port/pico_sdk/`、`common/pico_sdk/` の削除、インクルードガードの古い名前。
+
+## `common/` を 3 層に: 段階 3（シェル、チップ、cmake、アプリ、`common/pico_sdk/` の削除、2026-11-24）
+
+- 段階 2 のあとに範囲の外に残っていた古いパスの記述（ソースのコメント 38 ファイル、設計書）を直した。`__FILE__`・`__LINE__` が効くファイルは行数を変えていない。
+- `common/shell`: `include/`（`subcmd.h`・`ps_interval.h`）、`port/`（`zshell_os.h`・`kernel_shell_os.h`）、`port/nuttx/`（`nuttx/apps/subcmd`・`apps/sensor` から 4 ファイル）、
+  `port/{freertos,threadx}/`（`kernel_shell_os_impl.h`）、`port/generic/`（`sensor_shell_os.[ch]` と、`compat/port/generic` から `zshell_os_impl.h`）、`port/pico_sdk/`（`i2c_shell.cmake`・`sensor_shell.cmake`）。
+  `zephyr_os_shell.h` は互換層の `<zephyr/shell/shell.h>` の OS 部分なので `compat/port/generic` のまま。Zephyr 版の変更は `main.c` の include パス 1 つだけ。
+- `common/chip/rp2040`: `port/`（`rp2040_flash_kv_os.h`）、`port/nuttx/`（ボードの `rp2040_flash_kv_os.c`。`libboard.a` のまま）、`port/pico_sdk/`（`rp2040_flash_kv_os.c` とリンカースクリプトの部分）。
+- 各ドライバーの cmake → `common/drivers/{nina,i2c_dw,lsm6dso}/port/pico_sdk/`。アプリの Pico SDK の部分（`usb_console.[ch]`・`commands.c`・`fault.[ch]`・`idle.c`・`irq_stack.c`・`app.h`、
+  `usb-console.cmake`・`ram_code.cmake`・`imu.cmake`、`ld/`）→ `common/imu/port/pico_sdk/`（平ら）。**`common/pico_sdk/` は無くなった。**
+- インクルードガード 113 個をパスに合わせて改名（ドライバーとアプリ、Zephyr の写し、意図して同じ名前にしてある組は除く）。
+- 検査の直し: `common/tests/app_threads.py` は `common/**/port/pico_sdk/` の cmake を見る（段階 2 で cmake が移って FreeRTOS の件数が 7 → 5 に落ちていたのが 7 に戻った）。`run.sh` の
+  ヘッダーの一覧は、作業ツリーに無いファイルを除く。FreeRTOS のホストテストのプレリュードなしの条件は `../common/*/port/pico_sdk/*`。
+- 確かめ方（メインが最後の状態で確認）: 同じ `SOURCE_DATE_EPOCH` の clean build で、**4 つの OS のイメージが作り直しの前（`restructure/s0`）とバイト単位で一致**。subagent は項目ごとにも確認し、
+  読んだヘッダーの照合（ファームウェア 1,112 オブジェクト、ホストテスト 930 コンパイル）は差 0。ホストテスト 68・56・61・73。`-DI2C_DW_I2C1=ON` と `board_kernel` もビルドできる。
+  実機は確かめていない（イメージが同じ。確認しようとしたときユーザーが picocom を開いていた）。
+- 最後の配置: `common/` は `chip/`・`compat/`・`drivers/`・`imu/`・`shell/`・`tests/`。各 OS のディレクトリーに残るもの: `freertos/app/usb-console/{CMakeLists.txt, FreeRTOSConfig.h, src/{main.c, tick.c,
+  commands_os.c, fault_os.c, idle_os.h}}`、`threadx/app/usb-console/{CMakeLists.txt, threadx_kernel.cmake, tx_user.h, src/{main.c, tick.c, tx_initialize_low_level.c, commands_os.c, fault_os.c, idle_os.h,
+  run_time.[ch]}}` と `threadx/drivers/pico_sdk_interop/`、`nuttx/drivers/*/{Make.defs,Kconfig}`・`nuttx/apps/*`（Kconfig・Make・入口）・ボード。
+- 文書: `design/os-boundary` の冒頭に「`common/` の配置」（3 層の決まりと、新しい OS が作るディレクトリーの一覧）。設計書・4 つのドライバー説明・README の表を最終の配置に。
+- 残っている古い記述（今回とは別）: `nuttx/drivers/README` が、ボードの `src/` に無い `rp2040_spi.c` を挙げている。

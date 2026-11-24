@@ -28,7 +28,7 @@ include(${THREADX_DIR}/app/usb-console/threadx_kernel.cmake)
 # the ThreadX primitives, common/compat/port/threadx), the OS-independent part
 # the test uses (common/compat: zephyr_init.c, zephyr_work.c,
 # zephyr_rtio_workq.c), the product's idle wait (the halves of
-# common/pico_sdk/app/usb-console/src/idle.c named by
+# common/imu/port/pico_sdk/idle.c named by
 # threadx/app/usb-console/src/idle_os.h) and run time
 # (threadx/app/usb-console/src/run_time.c), and the test.
 add_executable(board_kernel
@@ -37,7 +37,7 @@ add_executable(board_kernel
   idle_test.c
   sdk_test.c
   test_port.c
-  ${COMMON_DIR}/pico_sdk/app/usb-console/src/idle.c
+  ${COMMON_DIR}/imu/port/pico_sdk/idle.c
   ${THREADX_DIR}/app/usb-console/src/run_time.c
   ${COMMON_DIR}/tests/zephyr_kernel/zephyr_kernel_test.c
   ${COMMON_DIR}/compat/kernel_generic/zephyr_kernel.c
@@ -60,7 +60,7 @@ threadx_kernel(board_kernel)
 # the generic kernel part's zephyr_os.h with the default zephyr_os_atomic.h),
 # the layer's headers (common/compat/include, port and internal), the
 # RP2040's TIMER (common/chip/rp2040/include), the shared application
-# headers idle.c reads (common/pico_sdk/app/usb-console/src: app.h,
+# headers idle.c reads (common/imu/port/pico_sdk: app.h,
 # idle_blink.h) and the test.
 target_include_directories(board_kernel PRIVATE
   ${CMAKE_CURRENT_LIST_DIR}
@@ -73,7 +73,7 @@ target_include_directories(board_kernel PRIVATE
   ${COMMON_DIR}/compat/port
   ${COMMON_DIR}/compat/internal
   ${COMMON_DIR}/chip/rp2040/include
-  ${COMMON_DIR}/pico_sdk/app/usb-console/src
+  ${COMMON_DIR}/imu/port/pico_sdk
   ${COMMON_DIR}/tests/zephyr_kernel
   ${COMMON_DIR}/tests/zephyr_kernel/kernel_generic
 )
@@ -89,7 +89,7 @@ target_compile_definitions(board_kernel PRIVATE
 
 # The LED shows this firmware's states (main.c): no blink from the idle
 # wait.
-set_source_files_properties(${COMMON_DIR}/pico_sdk/app/usb-console/src/idle.c
+set_source_files_properties(${COMMON_DIR}/imu/port/pico_sdk/idle.c
   PROPERTIES COMPILE_DEFINITIONS IDLE_BLINK=0
 )
 

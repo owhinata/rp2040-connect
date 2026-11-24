@@ -18,7 +18,7 @@ Pico SDK and ThreadX (`threadx/`): the Zephyr, NuttX, FreeRTOS and ThreadX build
 Section 11 describes the design differences of the port to NuttX 13.1.0 (`nuttx/`), section 12 the
 layout of the sources the four builds share (`common/`), and section 13 the design differences of the
 build on the Pico SDK and FreeRTOS (`freertos/`). The ThreadX build shares the parts on the Pico SDK
-(`common/pico_sdk/`, each driver's `port/pico_sdk/`) with the FreeRTOS build; its internals are described in
+(the `port/pico_sdk/` directories of `common/`) with the FreeRTOS build; its internals are described in
 [`threadx/drivers/README.md`](../threadx/drivers/README.md).
 
 ### Agreed requirements
@@ -489,7 +489,7 @@ The code of the sensor's 6667 Hz path and of the send path does not fit in the R
 OS's firmware runs it from RAM; the read-only data stays in the flash. The Zephyr build lists the sources in
 `zephyr/app/usb-console/ram_code.cmake` (Zephyr's code relocation, about 56 KiB of RAM, 63,960 bytes left). The NuttX
 build lists the objects in the board's linker script, and `.data`'s copy takes them (about 44 KiB, the heap keeps
-about 112 KiB). The FreeRTOS and ThreadX builds use `common/pico_sdk/app/usb-console/ram_code.cmake` (section 13.2). A check after the
+about 112 KiB). The FreeRTOS and ThreadX builds use `common/imu/port/pico_sdk/ram_code.cmake` (section 13.2). A check after the
 link stops each build when a listed object's code is not in RAM or too little RAM is left (the drivers' README of
 each build). This took `cpu_active` while sending from 35.8% to 21.4% on the Zephyr build, from 36.1% to 23.8% on the NuttX build and from 33.1% to 19.7% on the FreeRTOS build.
 
@@ -726,7 +726,7 @@ version's; what has been verified on the NuttX port is listed separately in 11.7
   either; the NuttX, FreeRTOS and ThreadX builds use it (the Zephyr build uses Zephyr's driver with a local patch, §12).
 - The shared sources run on top of a compatibility layer
   (its OS-independent part in `common/compat/`, its NuttX implementation in
-  `nuttx/drivers/compat/`) that provides the OS calls **under Zephyr's names**. The layer has only what the copied sources use
+  `common/compat/port/nuttx/`) that provides the OS calls **under Zephyr's names**. The layer has only what the copied sources use
   (`struct device`, the sensor API, RTIO, work queues, parts of `k_sem`, `k_mutex` and `k_poll`,
   `net_mgmt` events, `zsock_*()`, shell command tables). The constants, branches, order, waits,
   counters and output strings are those of the Zephyr sources.
@@ -906,11 +906,17 @@ host tests (`common/tests/run.sh`) run first in the `host_tests.sh` of each of t
 | `common/drivers/stmemsc/` | The glue between ST's driver and Zephyr's I2C API | NuttX, FreeRTOS and ThreadX |
 | `common/compat/` | The OS-independent part of the compatibility layer and copies of Zephyr's libraries (the key-value store's NVS and settings, the Wi-Fi credentials, getopt and others) | NuttX, FreeRTOS and ThreadX |
 | `common/shell/`, `common/compat/log/` | Zephyr's shell command handling, the `i2c_dma` and `nina` commands, the `LOG_*` macros and the RAM log's ring | NuttX, FreeRTOS and ThreadX (`i2c_dma` all four, `nina` Zephyr, FreeRTOS and ThreadX) |
+| `common/chip/rp2040/` | The RP2040's code that no OS owns (the TIMER's read, the watchdog's restart, the key-value area's flash boundary) | All four (the flash boundary NuttX, FreeRTOS and ThreadX) |
+| `common/imu/port/pico_sdk/` | The application's part on the Pico SDK (the shared steps of the start, `version`, `free`, the idle windows, fatal errors, the build) | FreeRTOS and ThreadX |
 
-The OS parts are implementations of narrow boundary headers in each build's directory.
+Each module of `common/` has the same layout: the headers other modules read in `include/`, its own in
+`internal/`, the boundary headers an OS implements in `port/`, an OS's implementation in `port/<os>/`, the
+implementation shared by the builds on the Pico SDK in `port/pico_sdk/` and the one for an OS without its
+own in `port/generic/` (`design/os-boundary.md`). The OS parts are implementations of narrow boundary
+headers, in the modules' `port/<os>/` and in each build's directory.
 
 - The kernel part of the compatibility layer (`k_mutex`, `k_sem`, threads, clocks and so on; listed at the
-  top of `common/compat/include/zephyr/kernel.h`): `nuttx/drivers/compat/`, `freertos/drivers/compat/`, `threadx/drivers/compat/`.
+  top of `common/compat/include/zephyr/kernel.h`): `common/compat/port/nuttx/`, `common/compat/port/freertos/`, `common/compat/port/threadx/`.
 - The priority mapping `priorities_os.h` (read by `common/compat/include/priorities.h`), the NINA's `nina_os.h` and
   `nina_bus.h` (`nina_os.h`'s implementations are in the core's bindings,
   `common/drivers/nina/port/zephyr/`, `nuttx/`, `freertos/` and `threadx/`), the I2C core's `i2c_dw_os.h` and the DMA reads' `i2c_dw_dma_os.h` (implemented in the core's bindings,
@@ -1037,7 +1043,7 @@ and NuttX builds in [`freertos/drivers/README.md`](../freertos/drivers/README.md
 ### 13.1 Approach
 
 - The shared sources of section 12 run on the compatibility layer, as in the NuttX build. The FreeRTOS
-  part of the layer is `freertos/drivers/compat/`.
+  part of the layer is `common/compat/port/freertos/`.
 - Priorities map as `FreeRTOS = 20 − Zephyr`. Cooperative threads are approximated by higher priorities,
   and priority inheritance goes one level only (Zephyr follows the chain of holders). The choice among tasks
   of one priority is FreeRTOS's (the next task of the priority at every switch; in Zephyr a preempted
@@ -1070,7 +1076,7 @@ and NuttX builds in [`freertos/drivers/README.md`](../freertos/drivers/README.md
 - The NINA's READY is waited for on GPIO10's edge interrupt (as in the Zephyr and NuttX
   builds).
 - The code of the sensor's 6667 Hz path and of the send path runs from RAM
-  (`common/pico_sdk/app/usb-console/ram_code.cmake`; its read-only data stays in the flash): it does not fit in
+  (`common/imu/port/pico_sdk/ram_code.cmake`; its read-only data stays in the flash): it does not fit in
   the 16 KiB XIP cache, and the cache's misses took about 14 points of `cpu_active` while sending (33.1%
   without the placement, 19.7% with it, 2026-11-23). It takes about 49 KiB of RAM from newlib's
   `malloc()` (used by the shell, `zperf` and the NINA passthrough mode); about 87 KiB is left (the drivers'

@@ -55,7 +55,7 @@ typedef int k_tid_t;
 /* The tick of the NuttX build (100 us). */
 #define Z_USEC_PER_TICK 100
 
-/* The NuttX build's priorities (118 - p, nuttx/drivers/include/priorities_os.h),
+/* The NuttX build's priorities (118 - p, common/compat/port/nuttx/priorities_os.h),
  * which the tests check.
  */
 #define K_PRIO_PREEMPT(x) (118 - (x))

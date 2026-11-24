@@ -12,8 +12,8 @@
  * its headers define atomic names, its own zephyr_os_atomic.h (the default
  * here is empty); an OS with richer objects of its own can implement
  * the Zephyr-level functions directly instead (the NuttX build,
- * nuttx/drivers/compat).  The primitives of the FreeRTOS and ThreadX builds
- * are freertos/ and threadx/drivers/compat/zephyr_kernel_os_impl.h.
+ * common/compat/port/nuttx).  The primitives of the FreeRTOS and ThreadX
+ * builds are common/compat/port/{freertos,threadx}/zephyr_kernel_os_impl.h.
  *
  * The generic part includes this header (through zephyr_os.h, first in
  * <zephyr/kernel.h>, and zephyr_os_spinlock.h); it includes the OS's part,
@@ -67,8 +67,8 @@
  * z_os_isr_lock() and z_os_isr_unlock() in an ISR (k_spin_lock()).
  */
 
-#ifndef COMMON_COMPAT_KERNEL_GENERIC_ZEPHYR_KERNEL_OS_H
-#define COMMON_COMPAT_KERNEL_GENERIC_ZEPHYR_KERNEL_OS_H
+#ifndef COMMON_COMPAT_PORT_ZEPHYR_KERNEL_OS_H
+#define COMMON_COMPAT_PORT_ZEPHYR_KERNEL_OS_H
 
 #include "zephyr_kernel_os_impl.h"
 
@@ -253,4 +253,4 @@ static bool z_os_mutex_lock(struct k_mutex *mutex, z_os_ticks_t ticks);
  */
 static int z_os_mutex_unlock(struct k_mutex *mutex);
 
-#endif /* COMMON_COMPAT_KERNEL_GENERIC_ZEPHYR_KERNEL_OS_H */
+#endif /* COMMON_COMPAT_PORT_ZEPHYR_KERNEL_OS_H */

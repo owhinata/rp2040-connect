@@ -28,8 +28,8 @@
  * here.
  */
 
-#ifndef THREADX_DRIVERS_COMPAT_RP2040_ZEPHYR_OS_PORT_H
-#define THREADX_DRIVERS_COMPAT_RP2040_ZEPHYR_OS_PORT_H
+#ifndef COMMON_COMPAT_PORT_THREADX_RP2040_ZEPHYR_OS_PORT_H
+#define COMMON_COMPAT_PORT_THREADX_RP2040_ZEPHYR_OS_PORT_H
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -67,4 +67,4 @@ void app_assert_failed(const char *file, int line);
 		}                                                                                  \
 	} while (0)
 
-#endif /* THREADX_DRIVERS_COMPAT_RP2040_ZEPHYR_OS_PORT_H */
+#endif /* COMMON_COMPAT_PORT_THREADX_RP2040_ZEPHYR_OS_PORT_H */

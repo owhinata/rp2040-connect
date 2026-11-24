@@ -86,7 +86,7 @@
 #define APP_STACK_SENSOR_SHELL   2048
 
 /* Not used by the port; for reference (Zephyr build, as in
- * nuttx/drivers/include/priorities_os.h):
+ * common/compat/port/nuttx/priorities_os.h):
  *   rx_q[0]        -1 (cooperative)  -> 21, 1504 (Zephyr's IP stack, idle)
  *   tcp_work      -14 (cooperative)  -> does not fit (Zephyr's IP stack)
  *   usbd, usbd@50110000 -8 (coop.)   -> 28 (FreeRTOS: the Pico SDK runs

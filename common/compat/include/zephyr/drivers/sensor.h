@@ -25,8 +25,8 @@
  * DEVICE_DT_DEFINE() of <zephyr/device.h>).
  */
 
-#ifndef __NUTTX_DRIVERS_COMPAT_ZEPHYR_DRIVERS_SENSOR_H
-#define __NUTTX_DRIVERS_COMPAT_ZEPHYR_DRIVERS_SENSOR_H
+#ifndef COMMON_COMPAT_INCLUDE_ZEPHYR_DRIVERS_SENSOR_H
+#define COMMON_COMPAT_INCLUDE_ZEPHYR_DRIVERS_SENSOR_H
 
 #include <errno.h>
 #include <stdbool.h>
@@ -794,4 +794,4 @@ static inline int sensor_value_from_micro(struct sensor_value *val,
   return 0;
 }
 
-#endif /* __NUTTX_DRIVERS_COMPAT_ZEPHYR_DRIVERS_SENSOR_H */
+#endif /* COMMON_COMPAT_INCLUDE_ZEPHYR_DRIVERS_SENSOR_H */

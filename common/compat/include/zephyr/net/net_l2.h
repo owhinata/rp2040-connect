@@ -7,9 +7,9 @@
  * compatibility layer of the port (common/compat).
  */
 
-#ifndef COMMON_COMPAT_ZEPHYR_NET_NET_L2_H
-#define COMMON_COMPAT_ZEPHYR_NET_NET_L2_H
+#ifndef COMMON_COMPAT_INCLUDE_ZEPHYR_NET_NET_L2_H
+#define COMMON_COMPAT_INCLUDE_ZEPHYR_NET_NET_L2_H
 
 #include <zephyr/logging/log.h>
 
-#endif /* COMMON_COMPAT_ZEPHYR_NET_NET_L2_H */
+#endif /* COMMON_COMPAT_INCLUDE_ZEPHYR_NET_NET_L2_H */

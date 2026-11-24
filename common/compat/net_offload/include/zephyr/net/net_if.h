@@ -9,7 +9,7 @@
  *   struct net_if: the interface; its state (one IPv4 address with its
  *   netmask, the default gateway, the link address, the MTU, dormant and
  *   administratively up) is kept by zephyr_net_if.c, as the NuttX build
- *   keeps it in its network device (nuttx/drivers/compat/zephyr/net/
+ *   keeps it in its network device (common/compat/port/nuttx/zephyr/net/
  *   net_if.h has the same functions).  Dormant is Zephyr's "connected to
  *   the network or not".
  *
@@ -22,8 +22,8 @@
  * FreeRTOS build uses.
  */
 
-#ifndef FREERTOS_DRIVERS_COMPAT_ZEPHYR_NET_NET_IF_H
-#define FREERTOS_DRIVERS_COMPAT_ZEPHYR_NET_NET_IF_H
+#ifndef COMMON_COMPAT_NET_OFFLOAD_INCLUDE_ZEPHYR_NET_NET_IF_H
+#define COMMON_COMPAT_NET_OFFLOAD_INCLUDE_ZEPHYR_NET_NET_IF_H
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -153,4 +153,4 @@ uint16_t net_if_get_mtu(struct net_if *iface);
  */
 #define net_if_socket_offload_set(iface, socket_create) ((void)(iface))
 
-#endif /* FREERTOS_DRIVERS_COMPAT_ZEPHYR_NET_NET_IF_H */
+#endif /* COMMON_COMPAT_NET_OFFLOAD_INCLUDE_ZEPHYR_NET_NET_IF_H */

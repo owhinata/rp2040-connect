@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: MIT */
-/* The ThreadX part of the idle wait (common/pico_sdk/app/usb-console/src/
+/* The ThreadX part of the idle wait (common/imu/port/pico_sdk/
  * idle.c, which describes it): ThreadX has no idle thread.  With no thread
  * ready, its Cortex-M0 scheduler waits inside PendSV (tx_thread_schedule.S,
  * __tx_ts_wait), in a loop of

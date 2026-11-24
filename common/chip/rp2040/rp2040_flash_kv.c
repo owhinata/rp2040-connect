@@ -83,7 +83,7 @@ static int kv_flash(uint32_t offset, const uint8_t *page, uint32_t count)
 	return rp2040_flash_kv_os_erase(offset, lo, hi);
 }
 
-/* The boundary of common/compat/flash_kv_os.h. */
+/* The boundary of common/compat/port/flash_kv_os.h. */
 
 int flash_kv_os_initialize(void)
 {

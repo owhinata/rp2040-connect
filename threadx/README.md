@@ -83,11 +83,11 @@ The USB CDC ACM port is the console. A terminal shows the prompt `threadx:~$ `. 
 
 | Place | Content |
 |---|---|
-| `app/usb-console/` | The ThreadX part of the application: the entry `main()` (`src/main.c`), the kernel configuration (`tx_user.h`), the tick, the priorities, the ThreadX parts of the fatal errors and `ps` |
-| `drivers/compat/` | The ThreadX part of the Zephyr compatibility layer (runs the shared sources of `common/`) |
+| `app/usb-console/` | The ThreadX part of the application: the entry `main()` (`src/main.c`), the kernel configuration (`tx_user.h`), the tick, the ThreadX parts of the fatal errors and `ps` |
 | `drivers/pico_sdk_interop/` | Ties the Pico SDK's locks and waits to ThreadX's threads |
-| `../common/pico_sdk/` | What the builds on the Pico SDK share (the same as the FreeRTOS build) |
-| `../common/drivers/<driver>/port/` | The drivers' glue: `pico_sdk/` (the same as the FreeRTOS build) and `threadx/` (waits and locks) |
+| `../common/compat/port/threadx/`, `../common/shell/port/threadx/` | The ThreadX part of the Zephyr compatibility layer (the kernel's basic operations, the priorities and time slices) and of the generic commands |
+| `port/pico_sdk/` of the parts of `../common/` | What the builds on the Pico SDK share (the same as the FreeRTOS build) |
+| `../common/drivers/<driver>/port/threadx/` | The drivers' waits and locks |
 | `tests/` | The host tests and the board test firmware `board_kernel` ([`drivers/README.md`](drivers/README.md)) |
 | `script/` | `setup.sh`, `build.sh`, `flash.sh`, `format.sh`, `host_tests.sh` |
 | `PORTING_PLAN.md`, `PORTING_STATUS.md` | The plan of the port and the record of progress and of what was checked |

@@ -3,7 +3,7 @@
 # kernel, for the Arduino Nano RP2040 Connect.  Built by
 # threadx/script/build.sh, which sets PICO_SDK_PATH, THREADX_PATH and
 # PICO_TOOLCHAIN_PATH (threadx/script/setup.sh).  What the builds on the
-# Pico SDK share is common/pico_sdk/app/usb-console/usb-console.cmake; this
+# Pico SDK share is common/imu/port/pico_sdk/usb-console.cmake; this
 # file gives it the ThreadX parts.
 
 cmake_minimum_required(VERSION 3.13)
@@ -24,12 +24,14 @@ pico_sdk_init()
 include(${CMAKE_CURRENT_LIST_DIR}/threadx_kernel.cmake)
 
 # The sources shared with the Zephyr and NuttX builds (common/ at the root of
-# the repository), with the parts shared by the builds on the Pico SDK
-# (common/pico_sdk), and the ThreadX part of the Zephyr compatibility layer
-# that runs them (common/compat/port/threadx, after PICO_SDK_OS:
-# zephyr_kernel_os_impl.h, the primitives of the generic kernel part, with
-# its variables in zephyr_kernel_os.c, priorities_os.h, and
-# rp2040/zephyr_os_port.h).
+# the repository), with the parts shared by the builds on the Pico SDK (the
+# port/pico_sdk directories of common/), and the ThreadX parts that run
+# them, found after PICO_SDK_OS: the Zephyr compatibility layer's
+# (common/compat/port/threadx: zephyr_kernel_os_impl.h, the primitives of
+# the generic kernel part, with its variables in zephyr_kernel_os.c,
+# priorities_os.h, and rp2040/zephyr_os_port.h), the shell's
+# (common/shell/port/threadx: kernel_shell_os_impl.h, the generic commands'
+# OS part) and the drivers' bindings (common/drivers/<driver>/port/threadx).
 get_filename_component(COMMON_DIR ${CMAKE_CURRENT_LIST_DIR}/../../../common ABSOLUTE)
 set(PICO_SDK_OS threadx)
 get_filename_component(PICO_SDK_STMEMSC_DIR ${CMAKE_CURRENT_LIST_DIR}/../../stmemsc ABSOLUTE)
@@ -47,32 +49,33 @@ set(THREADX_PORT_SRC $ENV{THREADX_PATH}/ports/cortex_m0/gnu/src)
 set(RAM_CODE_OS_SOURCES
   common/drivers/nina/port/threadx/nina_os.c
 )
-include(${COMMON_DIR}/pico_sdk/app/usb-console/usb-console.cmake)
+include(${COMMON_DIR}/imu/port/pico_sdk/usb-console.cmake)
 
 # The start: main() (src/main.c) with ThreadX's set-up, the thread "main"
-# and the scheduler, which calls the shared steps (src/usb_console.c of
-# PICO_SDK_APP_DIR) and, through them, the application's start shared by
-# the three builds (common/imu/app_main.h: app_main.c, app_init.c); the
-# commands (src/commands.c, with "ps" and the kernel's part of "version" of
-# src/commands_os.c here) and the generic commands
-# (common/shell/kernel_shell.c, on src/kernel_shell_os_impl.h); the fatal
-# errors (with the stack check's handler and the running thread's name,
-# src/fault_os.c), the idle wait (its halves, src/idle_os.h) and the
-# interrupt stack; the run times of "ps" (src/run_time.c); the variables
-# of the layer's ThreadX part; the records of fatal errors.  threadx_kernel() adds
-# ThreadX and its tick.
+# and the scheduler, which calls the shared steps (usb_console.c of
+# PICO_SDK_APP_DIR, common/imu/port/pico_sdk) and, through them, the
+# application's start shared by the three builds (common/imu/app_main.h:
+# app_main.c, app_init.c); the commands (commands.c there, with "ps" and
+# the kernel's part of "version" of src/commands_os.c here) and the generic
+# commands (common/shell/kernel_shell.c, on kernel_shell_os_impl.h); the
+# fatal errors (fault.c there, with the stack check's handler and the
+# running thread's name, src/fault_os.c), the idle wait (idle.c there, its
+# halves in src/idle_os.h) and the interrupt stack (irq_stack.c there); the
+# run times of "ps" (src/run_time.c); the variables of the layer's ThreadX
+# part; the records of fatal errors.  threadx_kernel() adds ThreadX and its
+# tick.
 add_executable(usb-console
   src/main.c
-  ${PICO_SDK_APP_DIR}/src/usb_console.c
+  ${PICO_SDK_APP_DIR}/usb_console.c
   ${COMMON_DIR}/imu/app_main.c
   ${COMMON_DIR}/imu/app_init.c
-  ${PICO_SDK_APP_DIR}/src/commands.c
+  ${PICO_SDK_APP_DIR}/commands.c
   src/commands_os.c
   ${COMMON_DIR}/shell/kernel_shell.c
-  ${PICO_SDK_APP_DIR}/src/fault.c
+  ${PICO_SDK_APP_DIR}/fault.c
   src/fault_os.c
-  ${PICO_SDK_APP_DIR}/src/idle.c
-  ${PICO_SDK_APP_DIR}/src/irq_stack.c
+  ${PICO_SDK_APP_DIR}/idle.c
+  ${PICO_SDK_APP_DIR}/irq_stack.c
   src/run_time.c
   ${COMMON_DIR}/compat/port/threadx/zephyr_kernel_os.c
   ${COMMON_DIR}/compat/log/fault_record.c

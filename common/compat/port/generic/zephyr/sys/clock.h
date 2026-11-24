@@ -13,12 +13,12 @@
  *   includes its <zephyr/sys_clock.h>)
  *
  * The builds on the Pico SDK implement it in
- * common/pico_sdk/drivers/compat/zephyr_sys_clock.c: the monotonic clock is
+ * common/compat/port/pico_sdk/zephyr_sys_clock.c: the monotonic clock is
  * the RP2040 TIMER (rp2040_timer_us(), microseconds since the start), and
  * the realtime clock is that plus a base that
  * sys_clock_settime() sets, as Zephyr's realtime clock is its uptime plus an
  * offset (lib/os/clock.c) and NuttX's CLOCK_REALTIME a base added to its
- * monotonic clock (the TIMER, nuttx/drivers/compat/zephyr/sys/clock.h).
+ * monotonic clock (the TIMER, common/compat/port/nuttx/zephyr/sys/clock.h).
  * Both read in microseconds: tv_nsec is a whole number of microseconds.
  * Zephyr's uptime is its kernel tick (100 us, driven by SysTick, which falls
  * behind under load); this one follows the TIMER, as the NuttX build's
@@ -26,8 +26,8 @@
  * of its own (common/compat/port/generic).
  */
 
-#ifndef COMMON_COMPAT_OS_GENERIC_ZEPHYR_SYS_CLOCK_H
-#define COMMON_COMPAT_OS_GENERIC_ZEPHYR_SYS_CLOCK_H
+#ifndef COMMON_COMPAT_PORT_GENERIC_ZEPHYR_SYS_CLOCK_H
+#define COMMON_COMPAT_PORT_GENERIC_ZEPHYR_SYS_CLOCK_H
 
 #include <errno.h>
 #include <time.h>
@@ -58,4 +58,4 @@
 int sys_clock_gettime(int clock_id, struct timespec *ts);
 int sys_clock_settime(int clock_id, const struct timespec *ts);
 
-#endif /* COMMON_COMPAT_OS_GENERIC_ZEPHYR_SYS_CLOCK_H */
+#endif /* COMMON_COMPAT_PORT_GENERIC_ZEPHYR_SYS_CLOCK_H */

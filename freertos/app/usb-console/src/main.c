@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 /* The start of the FreeRTOS build: main() runs the shared steps of the USB
- * console on the Pico SDK (common/pico_sdk/app/usb-console/src/
+ * console on the Pico SDK (common/imu/port/pico_sdk/
  * usb_console.h) with FreeRTOS's own: the task "main" and the scheduler.
  * FreeRTOS needs no set-up before its first object.
  */
@@ -17,7 +17,7 @@
 
 /* The task "main"'s stack, used only until the task ends, is not in .bss
  * but in SCRATCH_X, which only core 1's stack would use
- * (common/pico_sdk/app/usb-console/ld/section_extra_post_scratch.incl).
+ * (common/imu/port/pico_sdk/ld/section_extra_post_scratch.incl).
  * Not loaded: the kernel fills it when it creates the task.
  */
 static StackType_t main_stack[MAIN_STACK_SIZE]

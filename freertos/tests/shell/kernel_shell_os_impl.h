@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 /* The host test's part of the generic shell commands
- * (common/shell/kernel_shell_os.h): a fixed tick count, restarts that are
+ * (common/shell/port/kernel_shell_os.h): a fixed tick count, restarts that are
  * only counted, and the record the test sets (freertos/tests/shell/main.c).
  */
 

@@ -24,7 +24,7 @@
  *   Zephyr's STRUCT_SECTION_ITERABLE() does; the linker script collects them
  *   sorted by name, that is by priority (the same number of digits), between
  *   _net_socket_register_list_start and _net_socket_register_list_end
- *   (common/pico_sdk/drivers/compat/ld/section_extra_post_text.incl on the board,
+ *   (common/compat/port/pico_sdk/ld/section_extra_post_text.incl on the board,
  *   freertos/tests/sockets/net_socket_register.ld in the host tests).
  * - Name resolution: zsock_getaddrinfo() and zsock_freeaddrinfo() go to the
  *   registered resolver (<zephyr/net/socket_offload.h>,
@@ -54,8 +54,8 @@
  * FreeRTOS build uses.
  */
 
-#ifndef FREERTOS_DRIVERS_COMPAT_ZEPHYR_NET_SOCKET_H
-#define FREERTOS_DRIVERS_COMPAT_ZEPHYR_NET_SOCKET_H
+#ifndef COMMON_COMPAT_NET_OFFLOAD_INCLUDE_ZEPHYR_NET_SOCKET_H
+#define COMMON_COMPAT_NET_OFFLOAD_INCLUDE_ZEPHYR_NET_SOCKET_H
 
 #include <stdarg.h>
 #include <stdbool.h>
@@ -241,4 +241,4 @@ struct socket_op_vtable {
 };
 /** @endcond */
 
-#endif /* FREERTOS_DRIVERS_COMPAT_ZEPHYR_NET_SOCKET_H */
+#endif /* COMMON_COMPAT_NET_OFFLOAD_INCLUDE_ZEPHYR_NET_SOCKET_H */

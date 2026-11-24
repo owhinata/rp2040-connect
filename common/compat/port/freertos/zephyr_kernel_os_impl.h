@@ -37,8 +37,8 @@
  * (common/compat/port/freertos; see freertos/drivers/README.md).
  */
 
-#ifndef FREERTOS_DRIVERS_COMPAT_ZEPHYR_KERNEL_OS_IMPL_H
-#define FREERTOS_DRIVERS_COMPAT_ZEPHYR_KERNEL_OS_IMPL_H
+#ifndef COMMON_COMPAT_PORT_FREERTOS_ZEPHYR_KERNEL_OS_IMPL_H
+#define COMMON_COMPAT_PORT_FREERTOS_ZEPHYR_KERNEL_OS_IMPL_H
 
 #include <errno.h>
 #include <stdbool.h>
@@ -314,4 +314,4 @@ Z_OS_INLINE int z_os_mutex_unlock(struct k_mutex *mutex)
 	return xSemaphoreGiveRecursive(handle) == pdPASS ? 0 : -EINVAL;
 }
 
-#endif /* FREERTOS_DRIVERS_COMPAT_ZEPHYR_KERNEL_OS_IMPL_H */
+#endif /* COMMON_COMPAT_PORT_FREERTOS_ZEPHYR_KERNEL_OS_IMPL_H */

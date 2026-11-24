@@ -43,7 +43,7 @@
  *                               towards DESIRED, falling for 1 (ready),
  *                               rising for 0, through the board's GPIO
  *                               bank 0 (gpio_os_irq_configure(), the
- *                               board's src/rp2040_gpio_os.c: clears an edge
+ *                               layer's rp2040_gpio_os.c: clears an edge
  *                               latched while the event was off, then
  *                               enables it)
  *   the interrupt               IO_IRQ_BANK0: NuttX's rp2040_gpio_interrupt()

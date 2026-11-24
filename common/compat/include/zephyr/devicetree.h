@@ -27,8 +27,8 @@
  *                                                  compat/zephyr_flash_kv.c)
  */
 
-#ifndef __NUTTX_DRIVERS_COMPAT_ZEPHYR_DEVICETREE_H
-#define __NUTTX_DRIVERS_COMPAT_ZEPHYR_DEVICETREE_H
+#ifndef COMMON_COMPAT_INCLUDE_ZEPHYR_DEVICETREE_H
+#define COMMON_COMPAT_INCLUDE_ZEPHYR_DEVICETREE_H
 
 #include <zephyr/sys/util.h>
 
@@ -69,4 +69,4 @@ DEVICE_DT_DECLARE(i2c0);
 DEVICE_DT_DECLARE(i2c1);
 DEVICE_DT_DECLARE(lsm6dsox);
 
-#endif /* __NUTTX_DRIVERS_COMPAT_ZEPHYR_DEVICETREE_H */
+#endif /* COMMON_COMPAT_INCLUDE_ZEPHYR_DEVICETREE_H */

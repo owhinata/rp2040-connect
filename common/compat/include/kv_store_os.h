@@ -13,8 +13,8 @@
  * the calibration and the Wi-Fi credentials.
  */
 
-#ifndef COMMON_COMPAT_KV_STORE_OS_H_
-#define COMMON_COMPAT_KV_STORE_OS_H_
+#ifndef COMMON_COMPAT_INCLUDE_KV_STORE_OS_H
+#define COMMON_COMPAT_INCLUDE_KV_STORE_OS_H
 
 #include <stddef.h>
 

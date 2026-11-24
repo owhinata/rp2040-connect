@@ -20,8 +20,8 @@
  * (common/compat).
  */
 
-#ifndef __COMMON_COMPAT_ZEPHYR_DRIVERS_FLASH_H
-#define __COMMON_COMPAT_ZEPHYR_DRIVERS_FLASH_H
+#ifndef COMMON_COMPAT_INCLUDE_ZEPHYR_DRIVERS_FLASH_H
+#define COMMON_COMPAT_INCLUDE_ZEPHYR_DRIVERS_FLASH_H
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -85,4 +85,4 @@ size_t flash_get_write_block_size(const struct device *dev);
 int flash_get_page_info_by_offs(const struct device *dev, off_t offset,
                                 struct flash_pages_info *info);
 
-#endif /* __COMMON_COMPAT_ZEPHYR_DRIVERS_FLASH_H */
+#endif /* COMMON_COMPAT_INCLUDE_ZEPHYR_DRIVERS_FLASH_H */

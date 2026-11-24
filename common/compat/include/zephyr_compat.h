@@ -6,8 +6,8 @@
  * (zephyr_init.c), on the OS's start of a thread.
  */
 
-#ifndef __NUTTX_DRIVERS_COMPAT_ZEPHYR_COMPAT_H
-#define __NUTTX_DRIVERS_COMPAT_ZEPHYR_COMPAT_H
+#ifndef COMMON_COMPAT_INCLUDE_ZEPHYR_COMPAT_H
+#define COMMON_COMPAT_INCLUDE_ZEPHYR_COMPAT_H
 
 /* Starts the system work queue ("sysworkq"), the RTIO work queue
  * ("RTIO WQ 0", zephyr_rtio_workq.c) and, with the LSM6DSO's FIFO stream
@@ -31,4 +31,4 @@ int zephyr_compat_initialize(void);
     z_thread_start_##name(); \
   })
 
-#endif /* __NUTTX_DRIVERS_COMPAT_ZEPHYR_COMPAT_H */
+#endif /* COMMON_COMPAT_INCLUDE_ZEPHYR_COMPAT_H */

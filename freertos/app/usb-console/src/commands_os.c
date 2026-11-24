@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 /* The FreeRTOS part of the commands of the USB console (commands_os.h of
- * common/pico_sdk/app/usb-console/src, which describes each item;
+ * common/imu/port/pico_sdk, which describes each item;
  * commands.c registers the commands): the kernel's name and version for
  * "version", and "ps" on FreeRTOS's task list and run time counters, with
  * the counters' clock.
@@ -45,7 +45,7 @@ _Static_assert(PS_TASKS_MAX <= PS_INTERVAL_TASKS_MAX, "ps keeps every task");
 /* The tasks: state, priority, the least free stack so far and the share of
  * the CPU time since the previous "ps" (since the start for the first), from
  * any shell: the run time counters (TIMER, 1 us) of this list less those of
- * the previous one (common/shell/ps_interval.h; nothing runs between two
+ * the previous one (common/shell/include/ps_interval.h; nothing runs between two
  * lists).  The share is of all the time of the interval, the idle task's
  * included, so the rows add up to about 100%; interrupt handlers count in
  * the task they interrupted.  Then the CPU load over the same interval as

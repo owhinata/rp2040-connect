@@ -3,7 +3,7 @@
 # the Arduino Nano RP2040 Connect.  Built by freertos/script/build.sh, which
 # sets PICO_SDK_PATH, FREERTOS_KERNEL_PATH and PICO_TOOLCHAIN_PATH
 # (freertos/script/setup.sh).  What the builds on the Pico SDK share is
-# common/pico_sdk/app/usb-console/usb-console.cmake; this file gives it the
+# common/imu/port/pico_sdk/usb-console.cmake; this file gives it the
 # FreeRTOS parts.
 
 cmake_minimum_required(VERSION 3.13)
@@ -20,11 +20,14 @@ set(CMAKE_C_STANDARD 11)
 pico_sdk_init()
 
 # The sources shared with the Zephyr and NuttX builds (common/ at the root of
-# the repository), with the parts shared by the builds on the Pico SDK
-# (common/pico_sdk), and the FreeRTOS part of the Zephyr compatibility layer
-# that runs them (common/compat/port/freertos, after PICO_SDK_OS:
-# zephyr_kernel_os_impl.h, the primitives of the generic kernel part,
-# priorities_os.h, and rp2040/zephyr_os_port.h).
+# the repository), with the parts shared by the builds on the Pico SDK (the
+# port/pico_sdk directories of common/), and the FreeRTOS parts that run
+# them, found after PICO_SDK_OS: the Zephyr compatibility layer's
+# (common/compat/port/freertos: zephyr_kernel_os_impl.h, the primitives of
+# the generic kernel part, priorities_os.h, and rp2040/zephyr_os_port.h),
+# the shell's (common/shell/port/freertos: kernel_shell_os_impl.h, the
+# generic commands' OS part) and the drivers' bindings
+# (common/drivers/<driver>/port/freertos).
 get_filename_component(COMMON_DIR ${CMAKE_CURRENT_LIST_DIR}/../../../common ABSOLUTE)
 set(PICO_SDK_OS freertos)
 get_filename_component(PICO_SDK_STMEMSC_DIR ${CMAKE_CURRENT_LIST_DIR}/../../stmemsc ABSOLUTE)
@@ -39,31 +42,32 @@ set(PICO_SDK_USB_PRODUCT "FreeRTOS USB Console")
 set(RAM_CODE_OS_SOURCES
   common/drivers/nina/port/freertos/nina_os.c
 )
-include(${COMMON_DIR}/pico_sdk/app/usb-console/usb-console.cmake)
+include(${COMMON_DIR}/imu/port/pico_sdk/usb-console.cmake)
 
 # The start: main() (src/main.c) with the task "main" and the scheduler,
-# which calls the shared steps (src/usb_console.c of PICO_SDK_APP_DIR) and,
-# through them, the application's start shared by the three builds
-# (common/imu/app_main.h: app_main.c, app_init.c); the commands
-# (src/commands.c, with "ps" and the kernel's part of "version" of
-# src/commands_os.c here, which also has the run time counters' clock) and
-# the generic commands (common/shell/kernel_shell.c, on
-# src/kernel_shell_os_impl.h); the fatal errors (with FreeRTOS's stack
-# overflow hook and the running task's name, src/fault_os.c), the idle pass
-# and the interrupt stack; FreeRTOS's tick hook (src/tick.c); the records
-# of fatal errors.
+# which calls the shared steps (usb_console.c of PICO_SDK_APP_DIR,
+# common/imu/port/pico_sdk) and, through them, the application's start
+# shared by the three builds (common/imu/app_main.h: app_main.c,
+# app_init.c); the commands (commands.c there, with "ps" and the kernel's
+# part of "version" of src/commands_os.c here, which also has the run time
+# counters' clock) and the generic commands (common/shell/kernel_shell.c,
+# on kernel_shell_os_impl.h); the fatal errors (fault.c there, with
+# FreeRTOS's stack overflow hook and the running task's name,
+# src/fault_os.c), the idle pass and the interrupt stack (idle.c,
+# irq_stack.c there); FreeRTOS's tick hook (src/tick.c); the records of
+# fatal errors.
 add_executable(usb-console
   src/main.c
-  ${PICO_SDK_APP_DIR}/src/usb_console.c
+  ${PICO_SDK_APP_DIR}/usb_console.c
   ${COMMON_DIR}/imu/app_main.c
   ${COMMON_DIR}/imu/app_init.c
-  ${PICO_SDK_APP_DIR}/src/commands.c
+  ${PICO_SDK_APP_DIR}/commands.c
   src/commands_os.c
   ${COMMON_DIR}/shell/kernel_shell.c
-  ${PICO_SDK_APP_DIR}/src/fault.c
+  ${PICO_SDK_APP_DIR}/fault.c
   src/fault_os.c
-  ${PICO_SDK_APP_DIR}/src/idle.c
-  ${PICO_SDK_APP_DIR}/src/irq_stack.c
+  ${PICO_SDK_APP_DIR}/idle.c
+  ${PICO_SDK_APP_DIR}/irq_stack.c
   src/tick.c
   ${COMMON_DIR}/compat/log/fault_record.c
 )

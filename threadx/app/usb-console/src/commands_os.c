@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 /* The ThreadX part of the commands of the USB console (commands_os.h of
- * common/pico_sdk/app/usb-console/src, which describes each item;
+ * common/imu/port/pico_sdk, which describes each item;
  * commands.c registers the commands): the kernel's name and version for
  * "version", and "ps" on ThreadX's list of created threads and the
  * execution profile kit's run times (run_time.h).
@@ -103,7 +103,7 @@ static size_t ps_stack_free(const TX_THREAD *t)
  * inheritance), the least free stack so far and the share of the CPU time
  * since the previous "ps" (since the start for the first), from any shell:
  * the run times of this list less those of the previous one
- * (common/shell/ps_interval.h; nothing runs between two lists).  Threads
+ * (common/shell/include/ps_interval.h; nothing runs between two lists).  Threads
  * that have ended (TX_COMPLETED, TX_TERMINATED: the start-up thread "main"
  * once it is done), which ThreadX keeps in its list, are left out, as the
  * other builds' lists do not show them.  The row "(idle)" is the time the

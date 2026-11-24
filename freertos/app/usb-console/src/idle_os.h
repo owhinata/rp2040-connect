@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: MIT */
-/* The FreeRTOS part of the idle pass (common/pico_sdk/app/usb-console/src/
+/* The FreeRTOS part of the idle pass (common/imu/port/pico_sdk/
  * idle.c, which describes it): FreeRTOS's idle task calls
  * vApplicationIdleHook() in its loop (configUSE_IDLE_HOOK 1, task.h declares
  * it); without tickless idle (configUSE_TICKLESS_IDLE 0) the RP2040 port

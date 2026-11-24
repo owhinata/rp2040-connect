@@ -10,8 +10,7 @@
 
 ThreadX 版は、ThreadX のカーネル（Eclipse ThreadX v6.5.2.202603b_rel。Cortex-M0 のポート `ports/cortex_m0/gnu`）だけを使い、起動・クロック・USB・
 フラッシュ・DMA は Pico SDK 2.3.1 のものです。USBX・NetX Duo・FileX は使いません。ソースの大半は 4 つの OS で共有する `common/` にあり、
-Pico SDK の上の部分（`common/pico_sdk/`、`common/compat/port/pico_sdk/`、各ドライバーの `port/pico_sdk/`、`common/compat/port/generic/`）は
-FreeRTOS 版と共有します。共有の
+Pico SDK の上の部分（`common/` の各モジュールの `port/pico_sdk/` と `port/generic/`）は FreeRTOS 版と共有します。共有の
 ソースは Zephyr の API で書いてあるので、ThreadX 版は FreeRTOS 版と同じく、その API を Zephyr と同じ名前で提供する層（以下「互換層」）の上で
 動かします。カーネルの部分は、OS の基本の操作の上に置く汎用の実装（`common/compat/kernel_generic/`）で、ThreadX 版が書くのはその
 基本の操作です。ネットワークは互換層のソケット層（`common/compat/net_offload/`）、シェルは共有のシェルのエンジン（`common/compat/shell_engine/`）
@@ -21,8 +20,9 @@ FreeRTOS 版と共有します。共有の
 
 | 場所 | 内容 |
 |---|---|
-| `app/usb-console/` | ビルド（`CMakeLists.txt`: 共有の `common/pico_sdk/app/usb-console/usb-console.cmake` に渡す設定とソース。`threadx_kernel.cmake`: ThreadX のカーネル・ポート・実行時間のキットをファームウェアのソースとして加え、ボードの部分、ベクター、Pico SDK のロックの連携を足す）、カーネルの設定（`tx_user.h`）、`src/`: 起動の入口（`main.c`: `main()`、カーネルの準備、スレッド "main"、スケジューラー）、SysTick と例外の優先度（`tx_initialize_low_level.c`）、tick（`tick.c`）、共有のアプリの境界の ThreadX の部分（アイドル `idle_os.h`、異常停止 `fault_os.c`、`ps` とバージョン `commands_os.c`、汎用のコマンド `kernel_shell_os_impl.h`）、スレッドごとの実行時間（`run_time.[ch]`） |
+| `app/usb-console/` | ビルド（`CMakeLists.txt`: 共有の `common/imu/port/pico_sdk/usb-console.cmake` に渡す設定とソース。`threadx_kernel.cmake`: ThreadX のカーネル・ポート・実行時間のキットをファームウェアのソースとして加え、ボードの部分、ベクター、Pico SDK のロックの連携を足す）、カーネルの設定（`tx_user.h`）、`src/`: 起動の入口（`main.c`: `main()`、カーネルの準備、スレッド "main"、スケジューラー）、SysTick と例外の優先度（`tx_initialize_low_level.c`）、tick（`tick.c`）、共有のアプリの境界の ThreadX の部分（アイドル `idle_os.h`、異常停止 `fault_os.c`、`ps` とバージョン `commands_os.c`）、スレッドごとの実行時間（`run_time.[ch]`） |
 | `common/compat/port/threadx/` | 互換層の ThreadX の部分: 汎用のカーネルの部分の基本の操作（`zephyr_kernel_os_impl.h`）、そのロックの変数（`zephyr_kernel_os.c`）、優先度と時分割（`priorities_os.h`）、ボードのポートのヘッダー（`rp2040/zephyr_os_port.h`） |
+| `common/shell/port/threadx/` | 汎用のコマンドの OS の部分（`kernel_shell_os_impl.h`） |
 | `drivers/pico_sdk_interop/` | Pico SDK のミューテックス・セマフォ・スリープの待ちを ThreadX のスレッドにつなぐもの（下の「Pico SDK のロックの連携」） |
 | `common/drivers/i2c_dw/port/threadx/` | I2C のコアの待ち・時計・スリープ（`i2c_dw_os_impl.h`） |
 | `common/drivers/nina/port/threadx/` | NINA のコアの ThreadX へのつなぎ（`nina_os.c`）と SPI の DMA の待ち（`nina_bus_dma_os_impl.h`） |
@@ -88,7 +88,7 @@ ThreadX 版の作りは次のとおりです。
 
 ## カーネルの開始とベクター
 
-- 入口は `src/main.c` の `main()` です。共有の段階（`common/pico_sdk/app/usb-console/src/usb_console.h`）を順に呼び、あいだに ThreadX の部分を書きます。
+- 入口は `src/main.c` の `main()` です。共有の段階（`common/imu/port/pico_sdk/usb_console.h`）を順に呼び、あいだに ThreadX の部分を書きます。
   1. `usb_console_early_init()`: RAM ログ、中継モードの確認と実行（割り込みは許可）、前回の異常停止の記録。
   2. `_tx_initialize_kernel_setup()`（低レベルの初期化と ThreadX の初期化。スケジューラーは始めない）と、スタックの検査のハンドラーの登録。
   3. `usb_console_init()`: 互換層のオブジェクトとスレッド、I2C、KV の領域の範囲。
@@ -109,7 +109,7 @@ ThreadX 版の作りは次のとおりです。
 
 ThreadX にはアイドルスレッドがありません。実行できるスレッドが無いと、スケジューラーは PendSV の中で、割り込みを止めて
 `tx_low_power_enter()`、`WFI`、`tx_low_power_exit()`、割り込みの許可をくり返します（`tx_user.h` の `TX_LOW_POWER`、`TX_ENABLE_WFI`）。
-`src/idle_os.h` がこの 2 つのフックを、共有の `common/pico_sdk/app/usb-console/src/idle.c` の 2 つの半分（`IDLE_OS_ENTER`: 区間を開き LED を点滅、
+`src/idle_os.h` がこの 2 つのフックを、共有の `common/imu/port/pico_sdk/idle.c` の 2 つの半分（`IDLE_OS_ENTER`: 区間を開き LED を点滅、
 `IDLE_OS_EXIT`: 区間を閉じる）にします。測り方はほかの OS のファームウェアと同じで、待ちを起こした割り込みのハンドラーは区間のあとに
 動くので負荷に入ります。1 ms ごとの tick の割り込みも負荷に入ります。
 
@@ -166,7 +166,7 @@ I2C と NINA のつなぎは、互換層を通さず ThreadX と Pico SDK で直
 ## RAM に置くコード
 
 よく通るコード（センサーの読み出しと送信の経路のドライバーとアプリ）はフラッシュではなく RAM から実行します
-（共有の一覧 `common/pico_sdk/app/usb-console/ram_code.cmake`）。OS の分として足すのは、FreeRTOS 版と同じく NINA のコアの
+（共有の一覧 `common/imu/port/pico_sdk/ram_code.cmake`）。OS の分として足すのは、FreeRTOS 版と同じく NINA のコアの
 つなぎだけです（`app/usb-console/CMakeLists.txt` の `RAM_CODE_OS_SOURCES`）。ThreadX のカーネルはフラッシュに置きます。
 カーネルのよく通る部分も RAM に置くと、送信中の `cpu_active` は 0.1〜0.2 ポイント下がるだけで、RAM を約 7 KiB 使います。
 

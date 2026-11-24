@@ -171,10 +171,10 @@ The console is the USB CDC ACM port (UART0 is not used). Opening a terminal show
 
 | Place | Content |
 |---|---|
-| `app/usb-console/` | The FreeRTOS part of the application: the entry `main()` (`src/main.c`), the kernel configuration (`FreeRTOSConfig.h`), the tick, the priorities, the FreeRTOS parts of the fatal errors and `ps` (the steps of the start that `main()` calls, the commands, the idle pass and the fatal error handling are in `../common/pico_sdk/app/usb-console/`) |
-| `drivers/compat/` | The FreeRTOS part of the Zephyr compatibility layer (runs the shared sources of `common/`) |
-| `../common/pico_sdk/` | What the builds on the Pico SDK share: the USB serial console and the standard output, the KV flash, GPIO, the cmake files that bring each driver into the build, the list of the code in RAM |
-| `../common/drivers/<driver>/port/` | The drivers' glue: `pico_sdk/` (SPI, DMA, pins, device definitions) and `freertos/` (waits and locks) |
+| `app/usb-console/` | The FreeRTOS part of the application: the entry `main()` (`src/main.c`), the kernel configuration (`FreeRTOSConfig.h`), the tick, the FreeRTOS parts of the fatal errors and `ps` (the steps of the start that `main()` calls, the commands, the idle pass and the fatal error handling are in `../common/imu/port/pico_sdk/`) |
+| `../common/compat/port/freertos/`, `../common/shell/port/freertos/` | The FreeRTOS part of the Zephyr compatibility layer (the kernel's basic operations, the priorities) and of the generic commands |
+| `port/pico_sdk/` of the parts of `../common/` | What the builds on the Pico SDK share: the USB serial console and the standard output, the KV flash, GPIO, the drivers' SPI, DMA and pins, and the cmake files that bring them into the build. The application's start, commands and fatal errors are in `../common/imu/port/pico_sdk/` |
+| `../common/drivers/<driver>/port/freertos/` | The drivers' waits and locks |
 | `tests/` | Host tests |
 | `script/` | `setup.sh`, `build.sh`, `flash.sh`, `format.sh`, `host_tests.sh` |
 | `PORTING_PLAN.md`, `PORTING_STATUS.md` | The plan of the port, and the record of its progress and of what was checked (in Japanese) |

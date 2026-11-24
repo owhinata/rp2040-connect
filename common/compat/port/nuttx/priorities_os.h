@@ -33,8 +33,8 @@
  * applications: common/compat/port/nuttx.
  */
 
-#ifndef __NUTTX_DRIVERS_INCLUDE_PRIORITIES_OS_H
-#define __NUTTX_DRIVERS_INCLUDE_PRIORITIES_OS_H
+#ifndef __COMMON_COMPAT_PORT_NUTTX_PRIORITIES_OS_H
+#define __COMMON_COMPAT_PORT_NUTTX_PRIORITIES_OS_H
 
 #define APP_PRIO_FROM_ZEPHYR(p)     (118 - (p))
 
@@ -72,4 +72,4 @@
  *   idle           15                -> NuttX idle (0), 256 (NuttX 1024)
  */
 
-#endif /* __NUTTX_DRIVERS_INCLUDE_PRIORITIES_OS_H */
+#endif /* __COMMON_COMPAT_PORT_NUTTX_PRIORITIES_OS_H */

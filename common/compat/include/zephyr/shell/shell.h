@@ -15,7 +15,7 @@
  *     other commands write (nuttx/apps/kv): stdout for shell_print() and
  *     shell_info(), stderr for shell_warn() and shell_error() (Zephyr
  *     prints the last ones in yellow and red).  The commands whose sets are
- *     written with common/shell/subcmd.h pass NULL.
+ *     written with common/shell/include/subcmd.h pass NULL.
  *   - sh != NULL: a shell backend, the terminal of a shell session (on
  *     NuttX the nsh session's /dev/ttyACM0 or /dev/telnet0), which the
  *     commands registered with SHELL_CMD_REGISTER() below get as sh.  As in
@@ -43,16 +43,16 @@
  * the devices of <zephyr/device.h>.
  *
  * The OS part: "zephyr_os_shell.h", from the OS's directory of the layer
- * (nuttx/drivers/compat on NuttX), defines struct shell, a shell backend
+ * (common/compat/port/nuttx on NuttX), defines struct shell, a shell backend
  * (Zephyr: the instance of a shell transport), with whatever the OS's
  * backend needs to find the terminal of a session and to tell output from
  * the session's running command from output of other threads.  The OS
  * implements z_shell_backend_vfprintf() (below) and the boundary of
- * common/shell/zshell_os.h.
+ * common/shell/port/zshell_os.h.
  */
 
-#ifndef __NUTTX_DRIVERS_COMPAT_ZEPHYR_SHELL_SHELL_H
-#define __NUTTX_DRIVERS_COMPAT_ZEPHYR_SHELL_SHELL_H
+#ifndef COMMON_COMPAT_INCLUDE_ZEPHYR_SHELL_SHELL_H
+#define COMMON_COMPAT_INCLUDE_ZEPHYR_SHELL_SHELL_H
 
 #include <stdarg.h>
 #include <stdbool.h>
@@ -91,7 +91,7 @@ enum shell_vt100_color
 #define SHELL_ERROR    SHELL_VT100_COLOR_RED
 
 /* The output to a backend (the OS's part of zshell.c, see
- * common/shell/zshell_os.h): COLOR is SHELL_NORMAL, SHELL_INFO,
+ * common/shell/port/zshell_os.h): COLOR is SHELL_NORMAL, SHELL_INFO,
  * SHELL_WARNING or SHELL_ERROR as the macros below pass it.  Weak, so that
  * the sources that only pass NULL link without zshell.c.
  */
@@ -356,7 +356,7 @@ int z_shell_cmd_main(const struct shell_static_entry *root, int argc,
 /* Zephyr's shell_help(sh): prints the help of the command that runs (the
  * deepest one with a handler), as a wrong argument count does.  From the
  * handler only, in its task.  common/shell/zshell.c, where the OS's part
- * keeps the running command (ZSHELL_OS_ACTIVE_CMD, common/shell/zshell_os.h;
+ * keeps the running command (ZSHELL_OS_ACTIVE_CMD, common/shell/port/zshell_os.h;
  * the FreeRTOS build).
  */
 
@@ -390,4 +390,4 @@ const struct device *shell_device_filter(size_t idx,
 
 const struct device *shell_device_get_binding(const char *name);
 
-#endif /* __NUTTX_DRIVERS_COMPAT_ZEPHYR_SHELL_SHELL_H */
+#endif /* COMMON_COMPAT_INCLUDE_ZEPHYR_SHELL_SHELL_H */

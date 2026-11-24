@@ -5,7 +5,8 @@
 # kernel side (common/drivers/nina, built by nuttx/drivers/nina; the flat
 # build links it in); its header nina_proto.h is in
 # common/drivers/nina/internal.
-# subcmd.c is in common/shell (built by ../subcmd), and so is subcmd.h.
+# subcmd.c is in common/shell (built by ../subcmd), subcmd.h in
+# common/shell/include.
 # "nina passthrough confirm" calls nina_passthrough_request() of the
 # NINA driver (nina_passthrough.h, also in common/drivers/nina).
 ############################################################################
@@ -20,6 +21,6 @@ MODULE    = $(CONFIG_APP_NINA)
 MAINSRC   = nina_main.c
 
 CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)drivers$(DELIM)nina$(DELIM)include
-CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)shell
+CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)shell$(DELIM)include
 
 include $(APPDIR)/Application.mk

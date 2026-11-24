@@ -9,8 +9,8 @@
  * (common/compat, see nuttx/drivers/README.md).
  */
 
-#ifndef __NUTTX_DRIVERS_COMPAT_ZEPHYR_NET_WIFI_UTILS_H
-#define __NUTTX_DRIVERS_COMPAT_ZEPHYR_NET_WIFI_UTILS_H
+#ifndef COMMON_COMPAT_INCLUDE_ZEPHYR_NET_WIFI_UTILS_H
+#define COMMON_COMPAT_INCLUDE_ZEPHYR_NET_WIFI_UTILS_H
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -30,4 +30,4 @@ bool wifi_utils_validate_chan_6g(uint16_t chan);
 
 int net_bytes_from_str(uint8_t *buf, int buf_len, const char *src);
 
-#endif /* __NUTTX_DRIVERS_COMPAT_ZEPHYR_NET_WIFI_UTILS_H */
+#endif /* COMMON_COMPAT_INCLUDE_ZEPHYR_NET_WIFI_UTILS_H */

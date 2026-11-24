@@ -26,9 +26,10 @@ target_include_directories(app PRIVATE src ${COMMON_DIR}/imu
 # CONFIG_LSM6DSO_LOCAL replaces Zephyr's CONFIG_LSM6DSO and whose build rules make a library of
 # its own and export the driver's extended API <zephyr/drivers/sensor/lsm6dso.h>.  The sensor
 # shell is Zephyr's with the local patch 0006 (manifest/zephyr/patches/zephyr).
-# "kernel ps" (main.c): the interval arithmetic shared with the FreeRTOS build's "ps", and the
-# kernel's internal headers for the interrupt stack (z_stack_space_get(), as Thread Analyzer).
-set_property(SOURCE src/main.c APPEND PROPERTY INCLUDE_DIRECTORIES ${COMMON_DIR}/shell
+# "kernel ps" (main.c): the interval arithmetic shared with the FreeRTOS build's "ps"
+# (common/shell/include/ps_interval.h), and the kernel's internal headers for the interrupt stack
+# (z_stack_space_get(), as Thread Analyzer).
+set_property(SOURCE src/main.c APPEND PROPERTY INCLUDE_DIRECTORIES ${COMMON_DIR}/shell/include
   ${ZEPHYR_BASE}/kernel/include ${ZEPHYR_BASE}/arch/${ARCH}/include)
 
 # NINA-W102: the shared core of common/drivers/nina (the Wi-Fi operations nina_wifi.c, the

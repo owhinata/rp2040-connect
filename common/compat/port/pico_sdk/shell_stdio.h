@@ -14,12 +14,12 @@
  * reaches it comes in order with printf().
  */
 
-#ifndef COMMON_PICO_SDK_DRIVERS_SHELL_SHELL_STDIO_H
-#define COMMON_PICO_SDK_DRIVERS_SHELL_SHELL_STDIO_H
+#ifndef COMMON_COMPAT_PORT_PICO_SDK_SHELL_STDIO_H
+#define COMMON_COMPAT_PORT_PICO_SDK_SHELL_STDIO_H
 
 #include "pico/stdio/driver.h"
 
 /* After stdio_init_all(): REPLACED (&stdio_usb) leaves the SDK's list. */
 void shell_stdio_init(stdio_driver_t *replaced);
 
-#endif /* COMMON_PICO_SDK_DRIVERS_SHELL_SHELL_STDIO_H */
+#endif /* COMMON_COMPAT_PORT_PICO_SDK_SHELL_STDIO_H */

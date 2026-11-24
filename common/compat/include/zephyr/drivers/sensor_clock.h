@@ -9,8 +9,8 @@
  * Zephyr compatibility layer of the port (common/compat).
  */
 
-#ifndef __NUTTX_DRIVERS_COMPAT_ZEPHYR_DRIVERS_SENSOR_CLOCK_H
-#define __NUTTX_DRIVERS_COMPAT_ZEPHYR_DRIVERS_SENSOR_CLOCK_H
+#ifndef COMMON_COMPAT_INCLUDE_ZEPHYR_DRIVERS_SENSOR_CLOCK_H
+#define COMMON_COMPAT_INCLUDE_ZEPHYR_DRIVERS_SENSOR_CLOCK_H
 
 #include <stdint.h>
 
@@ -19,4 +19,4 @@
 int sensor_clock_get_cycles(uint64_t *cycles);
 uint64_t sensor_clock_cycles_to_ns(uint64_t cycles);
 
-#endif /* __NUTTX_DRIVERS_COMPAT_ZEPHYR_DRIVERS_SENSOR_CLOCK_H */
+#endif /* COMMON_COMPAT_INCLUDE_ZEPHYR_DRIVERS_SENSOR_CLOCK_H */

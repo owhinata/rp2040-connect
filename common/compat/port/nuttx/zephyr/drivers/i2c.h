@@ -43,8 +43,8 @@
  * are needed).
  */
 
-#ifndef __NUTTX_DRIVERS_COMPAT_ZEPHYR_DRIVERS_I2C_H
-#define __NUTTX_DRIVERS_COMPAT_ZEPHYR_DRIVERS_I2C_H
+#ifndef __COMMON_COMPAT_PORT_NUTTX_ZEPHYR_DRIVERS_I2C_H
+#define __COMMON_COMPAT_PORT_NUTTX_ZEPHYR_DRIVERS_I2C_H
 
 #include <errno.h>
 #include <stdbool.h>
@@ -231,4 +231,4 @@ static inline bool i2c_is_ready_dt(const struct i2c_dt_spec *spec)
   return device_is_ready(spec->bus);
 }
 
-#endif /* __NUTTX_DRIVERS_COMPAT_ZEPHYR_DRIVERS_I2C_H */
+#endif /* __COMMON_COMPAT_PORT_NUTTX_ZEPHYR_DRIVERS_I2C_H */

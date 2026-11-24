@@ -10,7 +10,7 @@
  * RP2040, so the bytes are copied unchanged) and pico_get_unique_board_id()
  * returns that copy, so nothing here stops the flash (XIP) while the
  * scheduler runs, as the NuttX build reads it once at boot
- * (nuttx/drivers/compat/zephyr_hwinfo.c).  The same bytes as the USB serial
+ * (common/compat/port/nuttx/zephyr_hwinfo.c).  The same bytes as the USB serial
  * number and the "id" command.  Part of the Zephyr compatibility layer for
  * the OSes on the Pico SDK (common/compat/port/pico_sdk, the RP2040's
  * part).

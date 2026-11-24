@@ -69,13 +69,16 @@
 #   the model of its own (common/compat/port/generic: <zephyr/drivers/i2c.h>,
 #   <zephyr/sys/clock.h>, <zephyr/sys/__assert.h>, app_log_os.h, the generic
 #   kernel part's zephyr_os.h and default zephyr_os_atomic.h, the shell
-#   engine's zshell_os_impl.h, ...), common/compat/net_offload/include (the
+#   engine's zephyr_os_shell.h, ...), common/compat/net_offload/include (the
 #   network part's Zephyr headers, before common/compat/include: its
 #   <zephyr/net/net_ip.h> takes the place of the layer's),
 #   common/compat/libc_net/include (headers newlib does not have, so none
 #   hides one of newlib's), the layer's headers (common/compat/include: the
-#   Zephyr headers and the others; internal; port: the boundaries) and
-#   common/shell;
+#   Zephyr headers and the others; internal; port: the boundaries) and the
+#   shell's (common/shell/include: subcmd.h, ps_interval.h; port: its
+#   boundaries zshell_os.h and kernel_shell_os.h; port/<OS>: the OS's
+#   kernel_shell_os_impl.h; port/generic: zshell_os_impl.h, the shell
+#   engine's backends of zshell.c, and sensor_shell_os.h);
 # - the definitions every source sees: Z_SHELL_CMD_ROOT_GLOBAL (a
 #   SHELL_CMD_REGISTER() makes the root z_shell_root_<syntax> for the
 #   application's table, shell_engine.h), CONFIG_GETOPT_LONG=1 (Zephyr's
@@ -188,7 +191,10 @@ function(pico_sdk_zephyr_compat target)
     ${PICO_SDK_COMMON_DIR}/compat/include
     ${PICO_SDK_COMMON_DIR}/compat/port
     ${PICO_SDK_COMMON_DIR}/compat/internal
-    ${PICO_SDK_COMMON_DIR}/shell
+    ${PICO_SDK_COMMON_DIR}/shell/include
+    ${PICO_SDK_COMMON_DIR}/shell/port
+    ${PICO_SDK_COMMON_DIR}/shell/port/${PICO_SDK_OS}
+    ${PICO_SDK_COMMON_DIR}/shell/port/generic
     ${PICO_SDK_COMMON_DIR}/compat/lib/utils/getopt
   )
 

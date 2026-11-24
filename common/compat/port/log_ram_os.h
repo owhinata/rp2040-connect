@@ -10,8 +10,8 @@
  * anything that can block there.
  *
  * Each OS's build puts its "log_ram_os_impl.h" on the include path of
- * log_ram.c (the NuttX build's is nuttx/drivers/include/log_ram_os_impl.h,
- * the FreeRTOS build's common/pico_sdk/drivers/include/log_ram_os_impl.h).  It
+ * log_ram.c (the NuttX build's is common/compat/port/nuttx/log_ram_os_impl.h,
+ * the FreeRTOS build's common/compat/port/pico_sdk/log_ram_os_impl.h).  It
  * defines:
  *
  *   LOG_RAM_OS_RETAINED(name)
@@ -24,8 +24,8 @@
  * and the functions below.
  */
 
-#ifndef __COMMON_LOG_LOG_RAM_OS_H
-#define __COMMON_LOG_LOG_RAM_OS_H
+#ifndef COMMON_COMPAT_PORT_LOG_RAM_OS_H
+#define COMMON_COMPAT_PORT_LOG_RAM_OS_H
 
 #include "log_ram_os_impl.h"
 
@@ -60,4 +60,4 @@ static uint64_t log_ram_os_uptime_us(void);
 
 static void log_ram_os_attach(void);
 
-#endif /* __COMMON_LOG_LOG_RAM_OS_H */
+#endif /* COMMON_COMPAT_PORT_LOG_RAM_OS_H */

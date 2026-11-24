@@ -2,7 +2,7 @@
 /* The record of a fatal error that the firmware keeps across the restart it
  * makes after the error, and its text: the OS-independent part, kept apart
  * so the host tests (common/tests/fault_record.c) can run it.  Used by the
- * FreeRTOS build (common/pico_sdk/app/usb-console/src/fault.c), which fills the
+ * FreeRTOS build (common/imu/port/pico_sdk/fault.c), which fills the
  * record at the common exit of panic(), the HardFault handler, failed
  * assertions, stack overflows and _exit(), keeps it in RAM that the
  * start-up code leaves alone (__uninitialized_ram) with a copy of the reason,
@@ -23,8 +23,8 @@
  * instead and have no such record.
  */
 
-#ifndef COMMON_LOG_FAULT_RECORD_H
-#define COMMON_LOG_FAULT_RECORD_H
+#ifndef COMMON_COMPAT_INCLUDE_FAULT_RECORD_H
+#define COMMON_COMPAT_INCLUDE_FAULT_RECORD_H
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -185,4 +185,4 @@ void fault_record_print(const struct fault_record *r);
 }
 #endif
 
-#endif /* COMMON_LOG_FAULT_RECORD_H */
+#endif /* COMMON_COMPAT_INCLUDE_FAULT_RECORD_H */

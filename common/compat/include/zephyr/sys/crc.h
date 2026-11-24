@@ -15,8 +15,8 @@
  * the port (common/compat).
  */
 
-#ifndef __COMMON_COMPAT_ZEPHYR_SYS_CRC_H
-#define __COMMON_COMPAT_ZEPHYR_SYS_CRC_H
+#ifndef COMMON_COMPAT_INCLUDE_ZEPHYR_SYS_CRC_H
+#define COMMON_COMPAT_INCLUDE_ZEPHYR_SYS_CRC_H
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -31,4 +31,4 @@ uint8_t crc8(const uint8_t *src, size_t len, uint8_t polynomial,
 uint16_t crc16_ccitt(uint16_t seed, const uint8_t *src, size_t len);
 uint32_t crc32_ieee(const uint8_t *data, size_t len);
 
-#endif /* __COMMON_COMPAT_ZEPHYR_SYS_CRC_H */
+#endif /* COMMON_COMPAT_INCLUDE_ZEPHYR_SYS_CRC_H */

@@ -52,8 +52,8 @@
  * its periodic reports ("-i"), "zperf jobs", "setip", "upload2".
  */
 
-#ifndef COMMON_COMPAT_ZPERF_IPERF3_H
-#define COMMON_COMPAT_ZPERF_IPERF3_H
+#ifndef COMMON_COMPAT_INTERNAL_ZPERF_IPERF3_H
+#define COMMON_COMPAT_INTERNAL_ZPERF_IPERF3_H
 
 #include <stdbool.h>
 #include <stddef.h>
@@ -143,4 +143,4 @@ int zperf_iperf3_results_decode(const char *json, size_t len,
 int zperf_iperf3_fmt_seconds(char *buf, size_t size, uint64_t usec);
 int zperf_iperf3_parse_seconds(const char *str, size_t len, uint64_t *usec);
 
-#endif /* COMMON_COMPAT_ZPERF_IPERF3_H */
+#endif /* COMMON_COMPAT_INTERNAL_ZPERF_IPERF3_H */

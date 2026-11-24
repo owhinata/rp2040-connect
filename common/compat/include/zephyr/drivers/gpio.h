@@ -13,8 +13,8 @@
  * (common/compat).
  */
 
-#ifndef __NUTTX_DRIVERS_COMPAT_ZEPHYR_DRIVERS_GPIO_H
-#define __NUTTX_DRIVERS_COMPAT_ZEPHYR_DRIVERS_GPIO_H
+#ifndef COMMON_COMPAT_INCLUDE_ZEPHYR_DRIVERS_GPIO_H
+#define COMMON_COMPAT_INCLUDE_ZEPHYR_DRIVERS_GPIO_H
 
 #include <stdbool.h>
 #include <stdint.h>
@@ -143,4 +143,4 @@ int gpio_add_callback(const struct device *port,
 int gpio_remove_callback(const struct device *port,
                          struct gpio_callback *callback);
 
-#endif /* __NUTTX_DRIVERS_COMPAT_ZEPHYR_DRIVERS_GPIO_H */
+#endif /* COMMON_COMPAT_INCLUDE_ZEPHYR_DRIVERS_GPIO_H */

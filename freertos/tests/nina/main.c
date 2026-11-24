@@ -9,7 +9,7 @@
  * interrupt, IRQ, reset, SPI and TIMER functions (pico_fake/, implemented
  * here: they record the calls and play the module), and the shared core
  * over both (common/drivers/nina/internal/nina_proto.c), as the board
- * builds them (common/pico_sdk/drivers/nina/nina.cmake).  What the test
+ * builds them (common/drivers/nina/port/pico_sdk/nina.cmake).  What the test
  * needs of the kernel is the kernel's nina_test_os.c (nina_test_os.h: this
  * directory's for FreeRTOS, threadx/tests/nina's for ThreadX), which also
  * has the tests of what the binding's header leaves to the kernel (the

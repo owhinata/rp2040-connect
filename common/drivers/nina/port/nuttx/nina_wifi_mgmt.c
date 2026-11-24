@@ -20,7 +20,7 @@
  * (common/compat/zephyr_wifi_mgmt.c), which reaches nina_wifi_connect()
  * through the one operation of this interface; the core's results come
  * back as the layer's events from wlan0's binding (nina_netdev.c).  The
- * interface is wlan0's device (net_if.h of nuttx/drivers/compat reads its
+ * interface is wlan0's device (net_if.h of common/compat/port/nuttx reads its
  * addresses).  wapi does not come here: nina_netdev.c calls the core.
  */
 

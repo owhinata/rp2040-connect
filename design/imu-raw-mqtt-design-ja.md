@@ -15,7 +15,7 @@ PC 上のアプリケーションに MQTT で送信する。各軸はセンサ�
 このファームウェアは Zephyr のほか、NuttX 13.1.0（`nuttx/`）、Pico SDK + FreeRTOS（`freertos/`）、Pico SDK + ThreadX（`threadx/`）の
 上でもそれぞれビルドでき、それぞれを Zephyr 版・NuttX 版・FreeRTOS 版・ThreadX 版と呼ぶ。NuttX 版の設計上の違いは §11、4 つの OS の
 ファームウェアで共有するソース（`common/`）の構成は §12、FreeRTOS 版の設計上の違いは §13 に記す。ThreadX 版は Pico SDK の上の部分
-（`common/pico_sdk/`、各ドライバーの `port/pico_sdk/`）を FreeRTOS 版と共有し、その内部は
+（`common/` の各モジュールの `port/pico_sdk/`）を FreeRTOS 版と共有し、その内部は
 [`threadx/drivers/README_ja.md`](../threadx/drivers/README_ja.md) に記す。
 
 ### 合意済みの要求
@@ -430,7 +430,7 @@ PC 側で照合する確認では、Zephyr 版・NuttX 版・FreeRTOS 版とも�
 センサーの 6667 Hz の経路と送信の経路のコードは RP2040 の 16 KiB の XIP キャッシュに収まらないので、各 OS のファームウェアは
 それを RAM で動かす（定数はフラッシュに残す）。Zephyr 版は `zephyr/app/usb-console/ram_code.cmake` にソースを並べる（Zephyr の
 コードの再配置。RAM 約 56 KiB、残り 63,960 バイト）。NuttX 版はボードのリンカースクリプトにオブジェクトを並べ、`.data` の写しが
-運ぶ（約 44 KiB。ヒープは約 112 KiB 残る）。FreeRTOS 版と ThreadX 版は `common/pico_sdk/app/usb-console/ram_code.cmake`（§13.2）。どれも、並べた
+運ぶ（約 44 KiB。ヒープは約 112 KiB 残る）。FreeRTOS 版と ThreadX 版は `common/imu/port/pico_sdk/ram_code.cmake`（§13.2）。どれも、並べた
 オブジェクトのコードが RAM に無いときと RAM の残りが足りないときに、リンクのあとの検査がビルドを止める（各 OS のドライバーの説明）。
 送信中の `cpu_active` は、これで Zephyr 版が 35.8% から 21.4%、NuttX 版が 36.1% から 23.8%、FreeRTOS 版が 33.1% から 19.7% になった。
 
@@ -620,7 +620,7 @@ NuttX 版の確認の範囲は §11.7 に分けて書く。
   レジスターか SDK の上。Zephyr 版の SPI と線は devicetree から引くので、その `nina_bus.c` はチップに依存しない）。
   I2C のコア（`common/drivers/i2c_dw/`。Zephyr 版のパッチ後の `i2c_dw.c` の写し）も OS に依存せず、NuttX 版・FreeRTOS 版・ThreadX 版が
   使う（Zephyr 版は Zephyr のドライバーにローカルのパッチを当てて使う。§12）。
-- 共有するソースは、OS の呼び出しを **Zephyr の名前のまま**提供する互換層（OS に依存しない部分は `common/compat/`、NuttX の実装は `nuttx/drivers/compat/`）の上で動かす。
+- 共有するソースは、OS の呼び出しを **Zephyr の名前のまま**提供する互換層（OS に依存しない部分は `common/compat/`、NuttX の実装は `common/compat/port/nuttx/`）の上で動かす。
   互換層は、移したソースが使う部分だけを持つ（`struct device`、センサーの API、RTIO、ワークキュー、
   `k_sem`・`k_mutex`・`k_poll` の一部、`net_mgmt` のイベント、`zsock_*()`、シェルのコマンドの表）。
   定数、分岐、順序、待ち時間、カウンター、出力の文は Zephyr 版のソースのものがそのまま使われる。
@@ -766,11 +766,16 @@ Zephyr の名前のまま提供する互換層の上でビルドする。ホス�
 | `common/drivers/stmemsc/` | ST のドライバーと Zephyr の I2C の API のつなぎ | NuttX 版・FreeRTOS 版・ThreadX 版 |
 | `common/compat/` | 互換層の OS に依存しない部分と、Zephyr のライブラリーの写し（KV の NVS と settings、Wi-Fi の資格情報、getopt など） | NuttX 版・FreeRTOS 版・ThreadX 版 |
 | `common/shell/`、`common/compat/log/` | Zephyr のシェルのコマンド処理の再現、`i2c_dma`・`nina` コマンド、`LOG_*` と RAM ログのリング | NuttX 版・FreeRTOS 版・ThreadX 版（`i2c_dma` は 4 つとも、`nina` は Zephyr 版・FreeRTOS 版・ThreadX 版） |
+| `common/chip/rp2040/` | どの OS も持たない RP2040 のコード（TIMER の読み出し、watchdog での再起動、KV の領域の flash の境界） | 4 つとも（flash の境界は NuttX 版・FreeRTOS 版・ThreadX 版） |
+| `common/imu/port/pico_sdk/` | Pico SDK の上のアプリの部分（起動の共有の段階、`version`・`free`、アイドルの区間、異常停止、ビルド） | FreeRTOS 版・ThreadX 版 |
 
-OS ごとの部分は、狭い境界のヘッダーの実装として各 OS のディレクトリー（ドライバーでは `port/<OS>/`）に置く。
+`common/` の各モジュールは同じ形に並べる: ほかのモジュールが読むヘッダーは `include/`、自分だけが読むヘッダーは `internal/`、
+OS が実装する境界のヘッダーは `port/`、ある OS の実装は `port/<OS>/`、Pico SDK の上の OS のファームウェアで共有する実装は
+`port/pico_sdk/`、その仕組みを自分で持たない OS のための実装は `port/generic/`（`design/os-boundary-ja.md`）。OS ごとの部分は、
+狭い境界のヘッダーの実装として、各モジュールの `port/<OS>/` と各 OS のディレクトリーに置く。
 
 - 互換層のカーネルの部分（`k_mutex`、`k_sem`、スレッド、時計など。一覧は `common/compat/include/zephyr/kernel.h` の先頭）:
-  `nuttx/drivers/compat/`、`freertos/drivers/compat/`、`threadx/drivers/compat/`。
+  `common/compat/port/nuttx/`、`common/compat/port/freertos/`、`common/compat/port/threadx/`。
 - 優先度の対応 `priorities_os.h`（`common/compat/include/priorities.h` が読む）、NINA の `nina_os.h`・`nina_bus.h`（`nina_os.h` の OS ごとの
   実装はコアのつなぎ `common/drivers/nina/port/zephyr/`・`nuttx/`・`freertos/`・`threadx/` にある）、I2C の
   `i2c_dw_os.h` と DMA 読み出しの `i2c_dw_dma_os.h`（実装はコアのつなぎ `common/drivers/i2c_dw/port/nuttx/`・`pico_sdk/`・`freertos/`・`threadx/` にある）、KV の flash の `flash_kv_os.h`、シェルのバックエンド `zshell_os.h`、ログの `app_log_os.h`・`log_ram.h`・`log_ram_os.h`。
@@ -875,7 +880,7 @@ NINA のファームウェアの追加機能（`firmware/nina-fw/` のパッチ 
 
 ### 13.1 方針
 
-- §12 の共有ソースを、NuttX 版と同じく互換層の上で動かす。互換層の FreeRTOS の部分は `freertos/drivers/compat/`。
+- §12 の共有ソースを、NuttX 版と同じく互換層の上で動かす。互換層の FreeRTOS の部分は `common/compat/port/freertos/`。
 - 優先度は `FreeRTOS = 20 − Zephyr` で対応させる。協調スレッドは高い優先度で近似し、優先度継承は 1 段だけ
   （Zephyr は持ち主の連鎖をたどる）。同じ優先度のタスクの選び方は FreeRTOS 標準（切り替えのたびに同じ優先度の
   次のタスク。Zephyr では横取りされたスレッドが続きを走る）で、時分割 20 ms は tick フックで作る。
@@ -901,7 +906,7 @@ NINA のファームウェアの追加機能（`firmware/nina-fw/` のパッチ 
   NuttX 版にはこの割り込みが無い）。`ps` の CPU 列は前回の `ps` からの区間の
   割合（最初は起動から。アイドルを含み、合計は約 100 %）。
 - NINA の READY は GPIO10 のエッジ割り込みで待つ（Zephyr 版・NuttX 版も同じ）。
-- センサーの 6667 Hz の経路と送信の経路のコードは RAM で動かす（`common/pico_sdk/app/usb-console/ram_code.cmake`。定数は
+- センサーの 6667 Hz の経路と送信の経路のコードは RAM で動かす（`common/imu/port/pico_sdk/ram_code.cmake`。定数は
   フラッシュに残す）。16 KiB の XIP キャッシュに収まらず、送信中はキャッシュの外れが `cpu_active` の約 14 ポイントを
   占めていた（この配置なしで 33.1%、ありで 19.7%。2026-11-23）。RAM は newlib の `malloc()`（使うのはシェル、`zperf`、NINA の
   中継モード）の領域から約 49 KiB を取り、約 87 KiB が残る（ドライバー説明）。

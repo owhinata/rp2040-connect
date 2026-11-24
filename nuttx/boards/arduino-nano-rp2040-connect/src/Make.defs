@@ -91,10 +91,11 @@ endif
 # The key-value area's flash (the last 8 KiB): the OS boundary of
 # common/compat/port/flash_kv_os.h, the RP2040's part shared with the FreeRTOS
 # build (common/chip/rp2040/rp2040_flash_kv.c: the range checks, the reads,
-# the page copy) on this board's flash operations with the boot ROM
-# (rp2040_flash_kv_os.c, rp2040_flash_kv_os.h of
-# common/chip/rp2040/include).  flash_kv_os.h is found through the -I of
-# common/compat/port below.
+# the page copy) on the flash operations with the boot ROM of the chip's
+# NuttX part (common/chip/rp2040/port/nuttx/rp2040_flash_kv_os.c, on
+# rp2040_flash_kv_os.h of common/chip/rp2040/port), both built here, in
+# libboard.a, as the board's code.  flash_kv_os.h is found through the -I
+# of common/compat/port below.
 
 ifeq ($(CONFIG_RP2040_FLASH_KV),y)
 CHIP_RP2040_SRC = $(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)chip$(DELIM)rp2040
@@ -102,6 +103,9 @@ CSRCS += rp2040_flash_kv.c
 CSRCS += rp2040_flash_kv_os.c
 DEPPATH += --dep-path $(CHIP_RP2040_SRC)
 VPATH += :$(CHIP_RP2040_SRC)
+DEPPATH += --dep-path $(CHIP_RP2040_SRC)$(DELIM)port$(DELIM)nuttx
+VPATH += :$(CHIP_RP2040_SRC)$(DELIM)port$(DELIM)nuttx
+CFLAGS += ${INCDIR_PREFIX}$(CHIP_RP2040_SRC)$(DELIM)port
 endif
 
 # The I2C driver (I2C0, I2C1) is built with the other drivers

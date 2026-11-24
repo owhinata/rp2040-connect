@@ -5,9 +5,9 @@
  * layer of the port (common/compat).
  */
 
-#ifndef __NUTTX_DRIVERS_COMPAT_ZEPHYR_NET_NET_IP_H
-#define __NUTTX_DRIVERS_COMPAT_ZEPHYR_NET_NET_IP_H
+#ifndef COMMON_COMPAT_INCLUDE_ZEPHYR_NET_NET_IP_H
+#define COMMON_COMPAT_INCLUDE_ZEPHYR_NET_NET_IP_H
 
 #include <netinet/in.h>
 
-#endif /* __NUTTX_DRIVERS_COMPAT_ZEPHYR_NET_NET_IP_H */
+#endif /* COMMON_COMPAT_INCLUDE_ZEPHYR_NET_NET_IP_H */

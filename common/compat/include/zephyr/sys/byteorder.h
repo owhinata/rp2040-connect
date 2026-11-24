@@ -6,8 +6,8 @@
  * nuttx/drivers/README.md).
  */
 
-#ifndef __NUTTX_DRIVERS_COMPAT_ZEPHYR_SYS_BYTEORDER_H
-#define __NUTTX_DRIVERS_COMPAT_ZEPHYR_SYS_BYTEORDER_H
+#ifndef COMMON_COMPAT_INCLUDE_ZEPHYR_SYS_BYTEORDER_H
+#define COMMON_COMPAT_INCLUDE_ZEPHYR_SYS_BYTEORDER_H
 
 #include <stdint.h>
 
@@ -33,4 +33,4 @@ static inline uint32_t sys_get_be32(const uint8_t src[4])
   return ((uint32_t)sys_get_be16(&src[0]) << 16) | sys_get_be16(&src[2]);
 }
 
-#endif /* __NUTTX_DRIVERS_COMPAT_ZEPHYR_SYS_BYTEORDER_H */
+#endif /* COMMON_COMPAT_INCLUDE_ZEPHYR_SYS_BYTEORDER_H */
