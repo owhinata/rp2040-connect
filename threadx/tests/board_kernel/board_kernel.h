@@ -29,6 +29,24 @@ void board_led_set(enum board_led state);
 void board_tick_test(int *passed, int *failed);
 void board_lock_test(int *passed, int *failed);
 
+/* The checks of the OS part of the product (from the runner, Zephyr
+ * priority 14, the lowest; the threads they start are all above it):
+ *
+ *   idle_test.c  the idle wait's CPU load and the threads' run time
+ *                (threadx/app/usb-console/src/idle.c, run_time.c)
+ *   sdk_test.c   the Pico SDK's mutexes, sleeps and stdio on ThreadX
+ *                (threadx/drivers/pico_sdk_interop)
+ *
+ * board_sdk_pre_kernel() runs in main() before ThreadX is set up (its
+ * result is printed by board_sdk_test()).
+ */
+void board_idle_test(int *passed, int *failed);
+void board_sdk_pre_kernel(void);
+void board_sdk_test(int *passed, int *failed);
+
+/* Prints "<name>: ok" or "<name>: FAILED" and counts it (lock_test.c). */
+void board_result(const char *name, bool ok, int *passed, int *failed);
+
 /* The line of the tick's measurement, kept for the summary (main.c). */
 extern char board_tick_line[96];
 

@@ -16,18 +16,16 @@
  *   z_tx_irq_restore(s)    TX_RESTORE (__disable_interrupts(),
  *                          __restore_interrupts() of tx_port.h; the state is
  *                          PRIMASK, 0 or 1)
- *   z_os_busy_wait_us(us)  spins on the TIMER (busy_wait_us_32())
  *   z_os_clock_us()        the RP2040 TIMER (rp2040_timer_us(),
  *                          common/chip/rp2040)
- *   z_os_tick_now_us32()   the TIMER's low 32 bits (time_us_32(): one read
- *                          of TIMERAWL), for the tick's catch-up
- *                          (tick_catchup.h)
- *   z_os_tick_pend()       pends SysTick (ICSR.PENDSTSET): the tick handler
- *                          runs once more, right after the current one
- *                          (SysTick is above PendSV, tx_initialize_low_level.c),
- *                          and counts one more tick (a pend that meets a
- *                          pending SysTick merges with it)
  *   Z_TX_ASSERT(test)      app_assert_failed() of the application
+ *
+ * z_os_busy_wait_us() and the tick's catch-up's z_os_tick_now_us32() and
+ * z_os_tick_pend() (tick_catchup.h; here the pended SysTick runs right after
+ * the current one, SysTick being above PendSV, tx_initialize_low_level.c)
+ * are the same for every OS on the Pico SDK:
+ * common/pico_sdk/drivers/compat/rp2040/zephyr_os_port_rp2040.h, included
+ * here.
  */
 
 #ifndef THREADX_DRIVERS_COMPAT_RP2040_ZEPHYR_OS_PORT_H
@@ -36,11 +34,9 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-#include "hardware/regs/m0plus.h"
-#include "hardware/structs/scb.h"
-#include "hardware/timer.h"
 #include "tx_api.h"
 #include "rp2040_timer_us.h"
+#include "zephyr_os_port_rp2040.h"
 
 static inline bool z_os_in_isr(void)
 {
@@ -57,24 +53,9 @@ static inline void z_tx_irq_restore(UINT state)
 	__restore_interrupts(state);
 }
 
-static inline void z_os_busy_wait_us(uint32_t us)
-{
-	busy_wait_us_32(us);
-}
-
 static inline uint64_t z_os_clock_us(void)
 {
 	return rp2040_timer_us();
-}
-
-static inline uint32_t z_os_tick_now_us32(void)
-{
-	return time_us_32();
-}
-
-static inline void z_os_tick_pend(void)
-{
-	scb_hw->icsr = M0PLUS_ICSR_PENDSTSET_BITS;
 }
 
 void app_assert_failed(const char *file, int line);

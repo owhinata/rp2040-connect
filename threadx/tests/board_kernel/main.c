@@ -6,7 +6,10 @@
  * port with the board's kernel part (threadx/app/usb-console: tx_user.h,
  * the low-level initialization and the tick), with the platform part of the
  * board (test_port.c), so the checks of interrupts, real time and the tick's
- * catch-up run too, and the board's direct checks (lock_test.c).
+ * catch-up run too, the board's direct checks (lock_test.c), and the checks
+ * of the OS part of the product: the idle wait's CPU load and the threads'
+ * run time (idle_test.c), the Pico SDK's locks and sleeps on ThreadX
+ * (sdk_test.c).
  *
  * The start is the product's: main() sets up the board, then ThreadX
  * without the scheduler (_tx_initialize_kernel_setup(): the low-level and
@@ -255,6 +258,8 @@ static void runner(void *arg)
 
 	board_tick_test(&board_passed, &board_failed);
 	board_lock_test(&board_passed, &board_failed);
+	board_idle_test(&board_passed, &board_failed);
+	board_sdk_test(&board_passed, &board_failed);
 	printf("board_test: %d passed, %d failed\n", board_passed, board_failed);
 	zephyr_kernel_test_port_quiet();
 
@@ -291,6 +296,7 @@ int main(void)
 	if (!add_repeating_timer_ms(-LED_SLOT_MS, led_step, NULL, &led_timer)) {
 		app_assert_failed(__FILE__, __LINE__);
 	}
+	board_sdk_pre_kernel();
 
 	/* The tick's catch-up takes SysTick's period for exactly one tick of
 	 * the TIMER (tx_initialize_low_level.c).

@@ -88,3 +88,25 @@
 - `threadx/` の実機用のファイル（`tick.c`、`threadx_kernel.cmake` など）への T1 の追従は、作業 A（アイドル・実行時間・SDK との連携）の commit に入る。この commit の時点では
   `threadx/script/build.sh` は通らない（ホストテストは通る）。
 - 実機: 変更なし（ThreadX の試験用のファームウェアのまま）。FreeRTOS 版はイメージが同じなので書いていない。
+
+## 作業 A: アイドル、実行時間、Pico SDK との連携（2026-11-24、T1 と並行）
+
+- `tx_user.h`: `TX_LOW_POWER`、`TX_ENABLE_WFI`、`TX_EXECUTION_PROFILE_ENABLE`、`TX_EXECUTION_TIME_SOURCE`（TIMER の生の下位ワード）。`.S` も `tx_user.h` を読むので、
+  中身は `#define` だけにし、C の部分は `#ifndef __ASSEMBLER__` の中。
+- アイドル（`threadx/app/usb-console/src/idle.c`）: `tx_low_power_enter()` で区間を開いて LED を点滅、`tx_low_power_exit()` で閉じる。`cpu_load_get()`・`idle_ps_window()`・`idle_led_init()`。
+  計算は共有の `cpu_load.h`。共有の `idle.c`（`IDLE_OS_HOOK`、1 回分に WFI を含む形）は ThreadX に合わない（待ちは ThreadX のアセンブリーの中）ので、約 40 行が二重。
+  合う形の案: 共有のファイルが `IDLE_OS_ENTER`・`IDLE_OS_EXIT` を定義し、`IDLE_OS_HOOK` はその 2 つから組む（T2 の後半で直す。FreeRTOS のイメージの一致を確かめる）。
+- 実行時間（`run_time.[ch]`）: ThreadX 付属のキットを無変更で。合計は 64 ビット。割り込みの時間は割り込まれたスレッドに付く（FreeRTOS の実行時間の統計と同じ）。
+  切り替え 1 回あたり約 100 サイクル（逆アセンブルからの見積もり）。`TX_THREAD` が 12 B 増える。
+- Pico SDK との連携（`threadx/drivers/pico_sdk_interop/`）: SDK の `lock_core` の入口を ThreadX に向ける（FreeRTOS の RP2040 ポートと同じ作り）。持ち主の ID はスレッドのポインター、
+  待ちは `TX_EVENT_FLAGS_GROUP` 1 つ（ビット = スピンロックの番号）。**正しさのために必要**: 既定の持ち主の ID（コアの番号）では、2 つ目のスレッドが `stdio_usb` のミューテックスを
+  自分のものと見て、出力や入力が黙って捨てられる。`malloc` のミューテックスも有効にした。`flash_safe_execute()` は割り込みを止めるだけなので対応不要。約 1.7 kB。
+- **実機の結果**（試験用のファームウェア、`board_test: 11 passed, 0 failed`、カーネルの試験 22 項目も通る）:
+  - idle: 何もしないとき `cpu_load` 0.2%（`tx_low_power_enter` は 1 秒に 1010 回 = 1 ms の tick）、回り続けるとき 100.0%。
+  - profile: 300 ms と 100 ms 回したスレッドが 300,024 µs と 100,008 µs。スレッドの合計 400‰ と `cpu_load` 401‰ が合う。
+  - SDK のミューテックス: 待つスレッドは 199,780 µs 止まり、そのあいだ最低優先度のスレッドが動いた。`timeout_ms(50)` は 50,003 µs で時間切れ。`sleep_ms(100)` は 100,007 µs。
+  - 2 つのスレッドからの同時の `printf()`: 最長 165 µs。ロックの試験のアラームは解除の 31 µs 後（キットを入れる前は 18 µs）。
+- 大きさ（試験用）: text 66,512、bss 46,216。
+- 試験用のファームウェアには `bootsel` が無い。BOOTSEL に入れるには、USB のポートを 1200 bps で開く（Pico SDK の `stdio_usb` の機能）。
+- T1 への追従（`tick.c`、`threadx_kernel.cmake`、`rp2040/zephyr_os_port.h`、試験の `CMakeLists.txt`）もこの commit に入る。`threadx/script/build.sh board_kernel` が通る。
+- 実機: ThreadX の試験用のファームウェア（このビルド）。

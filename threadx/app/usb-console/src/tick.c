@@ -11,8 +11,8 @@
  * time slices of 20 ms are ThreadX's own (z_os_thread_start() gives them,
  * priorities_os.h).
  *
- * It also keeps the count up with the TIMER (tick_catchup.h, shared with the
- * FreeRTOS build): when tick interrupts were lost while interrupts were
+ * It also keeps the count up with the TIMER (tick_catchup.h of
+ * common/compat/kernel_generic, shared with the FreeRTOS build): when tick interrupts were lost while interrupts were
  * masked (a flash erase), it pends SysTick again, once per lost tick, so
  * this handler runs again right after it returns and counts each of them
  * as a tick of its own, through the layer's timeouts too.  SysTick is above
@@ -28,10 +28,9 @@
 #include "zephyr_compat_os.h"
 #include "zephyr_os_port.h"
 
-/* tick_catchup.h reads the tick rate under the FreeRTOS build's name. */
-#define configTICK_RATE_HZ TX_TIMER_TICKS_PER_SECOND
-/* Its path, wherever the FreeRTOS build keeps it (threadx_kernel.cmake). */
-#include TICK_CATCHUP_HEADER
+/* Z_OS_TICK_HZ for tick_catchup.h (common/compat/kernel_generic). */
+#include "zephyr_kernel_os.h"
+#include "tick_catchup.h"
 
 /* The Cortex-M0 port's tick (src/tx_timer_interrupt.S), which ThreadX
  * declares in no header.

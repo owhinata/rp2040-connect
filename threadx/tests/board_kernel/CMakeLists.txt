@@ -27,11 +27,16 @@ include(${THREADX_DIR}/app/usb-console/threadx_kernel.cmake)
 # The layer's kernel part (the generic one, common/compat/kernel_generic, on
 # the ThreadX primitives, threadx/drivers/compat), the OS-independent part
 # the test uses (common/compat: zephyr_init.c, zephyr_work.c,
-# zephyr_rtio_workq.c), and the test.
+# zephyr_rtio_workq.c), the product's idle wait and run time
+# (threadx/app/usb-console/src: idle.c, run_time.c), and the test.
 add_executable(board_kernel
   main.c
   lock_test.c
+  idle_test.c
+  sdk_test.c
   test_port.c
+  ${THREADX_DIR}/app/usb-console/src/idle.c
+  ${THREADX_DIR}/app/usb-console/src/run_time.c
   ${COMMON_DIR}/tests/zephyr_kernel/zephyr_kernel_test.c
   ${COMMON_DIR}/compat/kernel_generic/zephyr_kernel.c
   ${COMMON_DIR}/compat/zephyr_init.c
@@ -44,19 +49,27 @@ add_executable(board_kernel
 threadx_kernel(board_kernel)
 
 # This directory (zephyr_kernel_test_os_impl.h), the board's priorities_os.h
-# (threadx/app/usb-console/src), the board's port header first, then the
-# ThreadX part of the layer (with its <zephyr/sys/clock.h> and
-# <zephyr/sys/__assert.h>), the generic kernel part, the layer's Zephyr
-# headers (common/compat), the RP2040's TIMER (common/chip/rp2040/include)
-# and the test.
+# and run_time.h (threadx/app/usb-console/src), the board's port header
+# first with the part shared by the OSes on the Pico SDK
+# (common/pico_sdk/drivers/compat/rp2040),
+# then the ThreadX part of the layer, the layer's <zephyr/sys/clock.h> and
+# <zephyr/sys/__assert.h> for an OS without its own
+# (common/compat/os_generic/include), the generic kernel part (with the
+# default zephyr_os_atomic.h), the layer's Zephyr headers (common/compat),
+# the RP2040's TIMER (common/chip/rp2040/include), the shared application
+# headers idle.c reads (common/pico_sdk/app/usb-console/src: app.h,
+# idle_blink.h) and the test.
 target_include_directories(board_kernel PRIVATE
   ${CMAKE_CURRENT_LIST_DIR}
   ${THREADX_DIR}/app/usb-console/src
   ${THREADX_DIR}/drivers/compat/rp2040
+  ${COMMON_DIR}/pico_sdk/drivers/compat/rp2040
   ${THREADX_DIR}/drivers/compat
+  ${COMMON_DIR}/compat/os_generic/include
   ${COMMON_DIR}/compat/kernel_generic
   ${COMMON_DIR}/compat
   ${COMMON_DIR}/chip/rp2040/include
+  ${COMMON_DIR}/pico_sdk/app/usb-console/src
   ${COMMON_DIR}/tests/zephyr_kernel
   ${COMMON_DIR}/tests/zephyr_kernel/kernel_generic
 )
@@ -70,8 +83,18 @@ target_compile_definitions(board_kernel PRIVATE
   USBD_DESC_STR_MAX=32
 )
 
-# The test's fputs() to the Pico SDK's stdio (main.c).
-target_link_options(board_kernel PRIVATE -Wl,--wrap=fputs)
+# The LED shows this firmware's states (main.c): no blink from the idle
+# wait.
+set_source_files_properties(${THREADX_DIR}/app/usb-console/src/idle.c
+  PROPERTIES COMPILE_DEFINITIONS IDLE_BLINK=0
+)
+
+# The test's fputs() to the Pico SDK's stdio (main.c), and the count of the
+# idle wait's passes (idle_test.c).
+target_link_options(board_kernel PRIVATE
+  -Wl,--wrap=fputs
+  -Wl,--wrap=tx_low_power_enter
+)
 
 target_link_libraries(board_kernel
   pico_stdlib

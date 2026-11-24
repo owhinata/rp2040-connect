@@ -51,7 +51,7 @@ static volatile bool alarm_ran;
 static volatile bool alarm_in_isr;
 static volatile uint64_t alarm_us;
 
-static void result(const char *name, bool ok, int *passed, int *failed)
+void board_result(const char *name, bool ok, int *passed, int *failed)
 {
 	printf("%s: %s\n", name, ok ? "ok" : "FAILED");
 	if (ok) {
@@ -78,7 +78,7 @@ void board_tick_test(int *passed, int *failed)
 		 "tick_rate: %lu ThreadX ticks in %llu us of the TIMER", (unsigned long)ticks,
 		 (unsigned long long)us);
 	printf("%s\n", board_tick_line);
-	result("tick_rate", ticks >= 999 && ticks <= 1001, passed, failed);
+	board_result("tick_rate", ticks >= 999 && ticks <= 1001, passed, failed);
 }
 
 /* The waker: waits for its flag (more urgent than the caller, it gets there
@@ -143,7 +143,7 @@ static void test_lock_wake(int *passed, int *failed)
 	printf("  inside the lock: %s, after the unlock: %s\n", inside ? "ran" : "not run",
 	       after ? "ran" : "not run");
 	waker_join();
-	result("lock_wake", ok && !inside && after, passed, failed);
+	board_result("lock_wake", ok && !inside && after, passed, failed);
 }
 
 static void test_lock_nested(int *passed, int *failed)
@@ -166,7 +166,7 @@ static void test_lock_nested(int *passed, int *failed)
 	printf("  inside: %s, after the inner unlock: %s, after the outer: %s\n",
 	       inside ? "ran" : "not run", between ? "ran" : "not run", after ? "ran" : "not run");
 	waker_join();
-	result("lock_nested", ok && !inside && !between && after, passed, failed);
+	board_result("lock_nested", ok && !inside && !between && after, passed, failed);
 }
 
 /* In the alarm's interrupt (the Pico SDK's default alarm pool). */
@@ -220,10 +220,10 @@ static void test_lock_alarm(int *passed, int *failed)
 		       (long long)(alarm_us - unlock_us), (long long)(waker_us - alarm_us));
 	}
 	waker_join();
-	result("lock_alarm",
-	       ok && armed && !isr_inside && !waker_inside && isr_after && waker_after &&
-		       alarm_in_isr && alarm_us >= unlock_us && waker_us >= alarm_us,
-	       passed, failed);
+	board_result("lock_alarm",
+		     ok && armed && !isr_inside && !waker_inside && isr_after && waker_after &&
+			     alarm_in_isr && alarm_us >= unlock_us && waker_us >= alarm_us,
+		     passed, failed);
 }
 
 void board_lock_test(int *passed, int *failed)
