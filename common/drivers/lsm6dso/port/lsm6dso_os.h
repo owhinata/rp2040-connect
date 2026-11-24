@@ -21,8 +21,8 @@
  *
  * The Zephyr build's part is port/zephyr/lsm6dso_os_impl.h with
  * port/zephyr/lsm6dso_os.c, on Zephyr's kernel, GPIO, I2C, sensor clock
- * and logging; the NuttX and FreeRTOS builds use the same part on their
- * Zephyr compatibility layers.  The host tests' part is
+ * and logging; the NuttX, FreeRTOS and ThreadX builds use the same part on
+ * their Zephyr compatibility layers.  The host tests' part is
  * common/tests/lsm6dso_os_host/lsm6dso_os_impl.h.
  *
  * lsm6dso_os_impl.h: types and macros

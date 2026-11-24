@@ -23,7 +23,7 @@ subagent（`model: opus`）が実装し、メインがレビュー・ホスト�
 | tick | **1 ms 固定に決定**（2026-11-24。tickless を試作して実機で測った: 何もしないとき −0.1〜0.2 ポイント、送信中 +1.1 ポイント、100 µs では +1.9 ポイント。結果は STATUS）。以下は判断の前の記述: まず 1 ms 固定（FreeRTOS 版と同じ。SysTick）。**全機能が動いたあと T5 で、tick を止めるかどうかを判断する**（Zephyr 版・NuttX 版は tickless で分解能 100 µs。止めれば分解能を細かくできる利点がある。ThreadX の標準の仕組みは `utility/low_power`。互換層の汎用のカーネルの部分の tick の入口を「まとめて n tick 進める」形に広げる必要がある） | ユーザー（2026-11-24） |
 | アイドルと `cpu_active` | ThreadX の仕組みを使う: 待ちは `TX_ENABLE_WFI`、区間の開け閉めと LED は `TX_LOW_POWER` のフック（`tx_low_power_enter`・`_exit` を自前で書く。計算は共有の `cpu_load.h`）。最低優先度のスレッドを自前で置く案は取り下げ（ユーザーの指摘） | ユーザーの指摘とメインの案（2026-11-24） |
 | `ps` の CPU 列 | `TX_EXECUTION_PROFILE_ENABLE`（付属の `utility/execution_profile_kit`。時計は RP2040 の TIMER）。`cpu_active` にはキットのアイドル時間を使わない（Pico SDK の割り込みハンドラーの時間をアイドルに数えるので、ほかの OS と比べられない） | メインの案 |
-| カーネルのコードの置き場所 | ThreadX のカーネルのよく通る部分も RAM に置く（計測では −0.1〜0.2 ポイント、RAM 約 7 kB。「RAM がそこそこ空いているので置く」）。**あとで Zephyr 版・NuttX 版・FreeRTOS 版のカーネルも RAM に置く**（以前の「スケジューラーまわりを足さない」の決定を改める） | ユーザー（2026-11-24） |
+| カーネルのコードの置き場所 | **フラッシュに置く（4 つの OS とも）に決定**（2026-11-24。NuttX 版でパッチと検査の緩和が要り、異常停止の報告が弱くなると分かって、ユーザーが取りやめた。経緯は STATUS）。以下は取りやめる前の記述: ThreadX のカーネルのよく通る部分も RAM に置く（計測では −0.1〜0.2 ポイント、RAM 約 7 kB。「RAM がそこそこ空いているので置く」）。**あとで Zephyr 版・NuttX 版・FreeRTOS 版のカーネルも RAM に置く**（以前の「スケジューラーまわりを足さない」の決定を改める） | ユーザー（2026-11-24） |
 | 取得するツリー | `threadx/` の下に ThreadX・Pico SDK・ツールチェーンを `setup.sh` が取得する（NuttX 版・FreeRTOS 版と同じく、OS のディレクトリーごとに持つ） | メインの案 |
 | スタイル | Zephyr。新しいファイルの SPDX は MIT。`threadx/script/format.sh` | 既存の決まり |
 

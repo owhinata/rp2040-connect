@@ -162,12 +162,10 @@ I2C と NINA のつなぎは、互換層を通さず ThreadX と Pico SDK で直
 
 ## RAM に置くコード
 
-よく通るコードはフラッシュではなく RAM から実行します（共有の一覧 `common/pico_sdk/app/usb-console/ram_code.cmake` と、
-`app/usb-console/CMakeLists.txt` の `RAM_CODE_OS_SOURCES`）。ThreadX の分は、スケジューラー（PendSV、切り替え、待ち）、
-互換層の待ち・ドライバーの待ち・Pico SDK のロックが呼ぶサービス（セマフォ、ミューテックス、イベントフラグ、スリープ、
-スレッドの停止と再開）、tick（タイマーの割り込み、タイムアウト、時分割）、実行時間のキット、アイドルのフック、
-Pico SDK のロックの連携、NINA のコアのつなぎです（約 7 KiB）。FreeRTOS 版は、OS の分として NINA のコアのつなぎだけを
-RAM に置きます。
+よく通るコード（センサーの読み出しと送信の経路のドライバーとアプリ）はフラッシュではなく RAM から実行します
+（共有の一覧 `common/pico_sdk/app/usb-console/ram_code.cmake`）。OS の分として足すのは、FreeRTOS 版と同じく NINA のコアの
+つなぎだけです（`app/usb-console/CMakeLists.txt` の `RAM_CODE_OS_SOURCES`）。ThreadX のカーネルはフラッシュに置きます。
+カーネルのよく通る部分も RAM に置くと、送信中の `cpu_active` は 0.1〜0.2 ポイント下がるだけで、RAM を約 7 KiB 使います。
 
 ## ThreadX の内部を使うところ
 

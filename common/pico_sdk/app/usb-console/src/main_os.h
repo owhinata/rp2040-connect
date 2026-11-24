@@ -12,24 +12,24 @@
  *                               compatibility layer is made (the USB stdio,
  *                               the consoles, zephyr_compat_initialize()):
  *                               whatever the OS must do before its objects
- *                               and threads can be made ahead of the
- *                               scheduler's start (FreeRTOS: nothing)
+ *                               and threads can be made (FreeRTOS: nothing).
+ *                               The OS may keep interrupts masked from here
+ *                               to main_os_kernel_start(): main() in between
+ *                               needs no interrupt and no time to pass
  *   main_os_thread_start(fn)    called once from main(), before the
  *                               scheduler starts: makes the start-up thread
  *                               "main", which runs fn(NULL) once the
  *                               scheduler runs, at APP_PRIO_MAIN with
- *                               APP_STACK_MAIN bytes of stack
- *                               (common/compat/priorities.h), its stack and
- *                               control block static (the stack may be in
- *                               SCRATCH_X, the section .scratch_x_noload.*
- *                               of ld/section_extra_post_scratch.incl, which
- *                               nothing else uses)
+ *                               APP_STACK_MAIN bytes of stack (priorities.h),
+ *                               its stack and control block static (the
+ *                               stack may be in SCRATCH_X's noload storage,
+ *                               ld/section_extra_post_scratch.incl, which
+ *                               keeps the last run's bytes: clear what the
+ *                               OS keeps there)
  *   main_os_thread_exit()       the end of fn: ends the start-up thread (its
- *                               objects are not used again).  Does not
- *                               return
- *   main_os_kernel_start()      the end of main(): starts the scheduler
- *                               (with the checks the OS's tick needs).  Does
- *                               not return
+ *                               objects are not used again; no return)
+ *   main_os_kernel_start()      the end of main(): starts the scheduler, with
+ *                               the checks the OS's tick needs (no return)
  *
  * Static inline (always inline), so that main() compiles as if it called the
  * OS directly.  The OS's part may also define the OS's hooks that belong to

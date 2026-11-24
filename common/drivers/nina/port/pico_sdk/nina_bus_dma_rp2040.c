@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MIT */
 /* The long transfers of nina_bus_rp2040.c by DMA, on the Pico SDK's
  * hardware_dma and hardware_irq and the OS's wait (nina_bus_dma_os.h): the
- * calling task sleeps while two DMA channels move the bytes through SPI1's
+ * calling thread sleeps while two DMA channels move the bytes through SPI1's
  * data register, instead of spinning on the FIFOs.  Shorter transfers stay
  * on the SDK's polled calls (nina_bus_rp2040.c).
  *
@@ -27,25 +27,25 @@
  *   128 bytes and the parameters of the socket writes.
  * - A transfer: SPI1's end state checked (the shifter idle, the RX FIFO
  *   empty, the overrun flag cleared, as the SDK's polled calls leave it),
- *   the task's wake-up cleared (nina_bus_dma_os_wake_clear()), the RX
+ *   the wake-up cleared (nina_bus_dma_os_wake_clear()), the RX
  *   channel started (8-bit reads of SSPDR without increment, DREQ_SPI1_RX,
  *   into RX or, when RX is NULL, into one sink byte without increment),
  *   SSPDMACR's TXDMAE and RXDMAE set, the TX channel started (8-bit reads
  *   of TX with increment, so the same bytes as the polled calls, into SSPDR
  *   without increment, DREQ_SPI1_TX).  The transfer has ended when the RX
  *   channel has taken LEN bytes: every byte clocked out and in.  The
- *   handler acknowledges the RX channel's flag, notes the end and notifies
- *   the task (nina_bus_dma_os_wake_from_isr(), nina_bus_dma_os_isr_end()).  Then
+ *   handler acknowledges the RX channel's flag, notes the end and wakes
+ *   the thread (nina_bus_dma_os_wake_from_isr(), nina_bus_dma_os_isr_end()).  Then
  *   SSPDMACR is cleared again (off between transfers, as the polled calls
  *   expect), the TX channel's flag acknowledged, and the end state checked
  *   once more.  No bus priority is set.
- * - The wait: in the calling task (nina_proto.c holds nina_lock: one
- *   transfer at a time), on its wake-up, for at most 2 ms + LEN / 256
- *   ms rounded up to ticks, plus one tick (the transfer itself takes
- *   LEN x 1.024 us).  A notification left from a socket event wait or a
- *   wake-up of the Wi-Fi thread (the same wake-up, nina_os.h) is cleared
- *   before the start, and the wait looks at the end flag, not at the
- *   wake-up.  If the time runs out, or a
+ * - The wait: in the calling thread (nina_proto.c holds nina_lock: one
+ *   transfer at a time), on the OS's wake-up of nina_bus_dma_os.h (the
+ *   thread's own, shared with nina_os.h's waits on FreeRTOS; the binding's
+ *   semaphore on ThreadX), for at most 2 ms + LEN / 256 ms rounded up to
+ *   ticks, plus one tick (the transfer itself takes LEN x 1.024 us).  A
+ *   wake-up left from before is cleared before the start, and the wait
+ *   looks at the end flag, not at the wake-up.  If the time runs out, or a
  *   channel reports a bus error: the RX channel's interrupt off, both
  *   channels aborted (CHAN_ABORT) and waited for at most
  *   NINA_BUS_DMA_STOP_US, both flags acknowledged (an abort may raise one:
@@ -61,15 +61,15 @@
  *   one line per 5 s, then the number held back), so that a fault of every
  *   long transfer does not fill the log.  Giving up the DMA logs once.
  *
- * The wake-up is the calling thread's own, the one of the NINA's other
- * waits (nina_os.h; on FreeRTOS a task notification,
- * port/freertos/nina_bus_dma_os_impl.h).
+ * The wake-up is the OS part's (port/<OS>/nina_bus_dma_os_impl.h): on
+ * FreeRTOS the calling task's notification of the NINA's other waits
+ * (nina_os.h), on ThreadX a semaphore of the transfers.
  *
  * The handler is short (a flag, a notification) and runs at the SDK's
  * default priority (0x80), as I2C0's and the other DMA handler's: on the
  * single core they do not interrupt each other.  While the DMA runs the
- * calling task is blocked: the IMU's FIFO task and the I2C0 reads run as
- * before, now without a spinning task beneath them.
+ * calling thread is blocked: the IMU's FIFO thread and the I2C0 reads run
+ * as before, now without a spinning thread beneath them.
  */
 
 #include <errno.h>

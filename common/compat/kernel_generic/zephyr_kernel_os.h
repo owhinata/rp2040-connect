@@ -12,8 +12,8 @@
  * its headers define atomic names, its own zephyr_os_atomic.h (the default
  * here is empty); an OS with richer objects of its own can implement
  * the Zephyr-level functions directly instead (the NuttX build,
- * nuttx/drivers/compat).  The FreeRTOS build's primitives are
- * freertos/drivers/compat/zephyr_kernel_os_impl.h.
+ * nuttx/drivers/compat).  The primitives of the FreeRTOS and ThreadX builds
+ * are freertos/ and threadx/drivers/compat/zephyr_kernel_os_impl.h.
  *
  * The generic part includes this header (through zephyr_os.h, first in
  * <zephyr/kernel.h>, and zephyr_os_spinlock.h); it includes the OS's part,
@@ -53,9 +53,10 @@
  *   struct k_mutex, Z_MUTEX_INITIALIZER(obj)
  *                        the OS's own recursive mutex with priority
  *                        inheritance; a k_mutex left all zero (never
- *                        initialized) must work as an unlocked mutex, as
- *                        Zephyr's does (the MQTT client's before
- *                        mqtt_client_init())
+ *                        initialized, or zeroed while unlocked after use,
+ *                        mqtt_client_init()) must work as an unlocked
+ *                        mutex, as Zephyr's does: the OS holds no
+ *                        reference to an unlocked mutex
  *   Z_OS_ASSERT(test)    the OS's own assertion (it may compile to
  *                        nothing)
  *
@@ -140,7 +141,11 @@ static z_os_prio_t z_os_thread_prio_self(void);
  * before the new thread can run, as Zephyr starts its static threads with
  * the scheduler locked.  From a thread or before the scheduler starts.  0,
  * -EINVAL (bad priority or stack) or another negative errno of the OS.
- * When fn returns, the thread calls z_os_thread_exit() (fn does it).
+ * When fn returns, the thread calls z_os_thread_exit() (fn does it).  It may
+ * be called again on the stack of a thread that has ended (the OS removes
+ * its records of that thread first).  Time slices among threads of the
+ * same Zephyr priority >= 0 (Zephyr's CONFIG_TIMESLICE_SIZE 20 ms,
+ * CONFIG_TIMESLICE_PRIORITY 0) are the OS part's to provide.
  */
 static int z_os_thread_start(void (*fn)(void *arg), const char *name, void *stack,
 			     size_t stack_size, int prio, void *arg, z_os_thread_t *tid);
@@ -167,12 +172,13 @@ static void z_os_thread_local_set(void *value);
 
 /* Waits and wakes --------------------------------------------------------*/
 
-/* Each thread has one wake flag of its own, which nothing else of the OS
- * or the application uses.  The flag is latched: a z_os_wake() made after
- * z_os_wait_prepare() and before the thread's z_os_wait() makes that
- * z_os_wait() return at once (k_sem_take() and k_poll() unlock before they
- * wait, and the give may come in between).  Several wakes before a wait
- * count as one.
+/* Each thread the layer starts (z_os_thread_start()) has one wake flag of
+ * its own, which nothing else of the OS or the application uses; a thread
+ * that waits through the layer must be one of them.  The flag is latched: a
+ * z_os_wake() made after z_os_wait_prepare() and before the thread's
+ * z_os_wait() makes that z_os_wait() return at once (k_sem_take() and
+ * k_poll() unlock before they wait, and the give may come in between).
+ * Several wakes before a wait count as one.
  */
 
 /* Clears the calling thread's flag (a wake left by an earlier wait that
@@ -229,7 +235,9 @@ static uint64_t z_os_clock_us(void);
 /* Mutexes --------------------------------------------------------------------*/
 
 /* The OS's own mutex, so that priority inheritance is the OS's.  Threads
- * only, not locked.  An all-zero struct k_mutex is unlocked.
+ * only, not locked.  An all-zero struct k_mutex is unlocked.  When a
+ * waiter's timeout ends its wait, the owner's priority inherited from it
+ * is dropped (as Zephyr's).
  */
 
 /* k_mutex_init(): 0 or -EINVAL. */

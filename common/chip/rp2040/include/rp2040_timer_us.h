@@ -1,8 +1,8 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /* The RP2040's TIMER block (RP2040 datasheet 4.6.5): its registers and the
  * read of its 64-bit counter, rp2040_timer_us(), for every build (Zephyr,
- * NuttX, FreeRTOS).  The registers have no side effect when read and no OS
- * owns the counter, so this header needs nothing from an OS or SDK.
+ * NuttX, FreeRTOS, ThreadX).  The registers have no side effect when read
+ * and no OS owns the counter, so this header needs nothing from an OS or SDK.
  *
  * The offsets and bits are those of the Pico SDK's
  * src/rp2040/hardware_regs/include/hardware/regs/timer.h.  They differ from

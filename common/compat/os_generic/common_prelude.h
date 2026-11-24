@@ -1,13 +1,13 @@
 /* SPDX-License-Identifier: MIT */
 /* The prelude of the sources shared with the Zephyr and NuttX builds
- * (common/), which a build without Kconfig (the FreeRTOS build) includes
+ * (common/), which a build without Kconfig (FreeRTOS, ThreadX) includes
  * before each of them (-include, as the Zephyr build reads its
  * configuration into every file with -imacros autoconf.h, and the NuttX
  * build its nuttx/drivers/compat/common_prelude.h): the values of the
  * Zephyr build's Kconfig options that the shared sources use and that such
  * a build has no option of its own for
  * (zephyr/build/usb-console/zephyr/.config).  No OS header has to come
- * first (the FreeRTOS kernel's take no name of the compatibility layer, see
+ * first (those of FreeRTOS and ThreadX take no name of the layer, see
  * zephyr_os_atomic.h).  Part of the compatibility layer for an OS without
  * the model of its own (common/compat/os_generic).
  *

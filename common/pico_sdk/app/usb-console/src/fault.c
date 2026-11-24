@@ -141,7 +141,7 @@ void __attribute__((noreturn)) panic(const char *fmt, ...)
 	fault_finish(r);
 }
 
-/* The OS's assertion (FreeRTOS: configASSERT(), FreeRTOSConfig.h). */
+/* The OS's assertion (FreeRTOS: configASSERT(); ThreadX: Z_TX_ASSERT()). */
 void app_assert_failed(const char *file, int line)
 {
 	struct fault_record *r =

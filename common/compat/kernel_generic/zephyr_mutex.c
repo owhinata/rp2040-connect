@@ -18,7 +18,7 @@
  * from an interrupt handler, as in Zephyr.
  *
  * Priority inheritance is the OS's (FreeRTOS's approximation: see
- * freertos/drivers/README.md).
+ * freertos/drivers/README.md; ThreadX's: threadx/drivers/README.md).
  */
 
 #include <errno.h>

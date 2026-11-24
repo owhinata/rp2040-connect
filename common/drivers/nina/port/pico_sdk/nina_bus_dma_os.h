@@ -9,12 +9,12 @@
  * compiler makes one function of each with its caller (the socket writes
  * and the module's reads in chunks of 128 bytes go this way).
  *
- * One transfer at a time: the caller holds nina_os_lock() (nina_proto.c).
- * The wait uses the calling thread's own wake-up, the one of the NINA's
- * waits of nina_os.h (the Wi-Fi thread's wake-up, the socket events): a
- * thread waits for one of them at a time, and the transfer drops a wake-up
- * left from those before it starts (the core sets its requests before it
- * posts and looks at them before every wait, so none is lost by that).
+ * One transfer at a time (nina_os_lock(), nina_proto.c).  The wait is on a
+ * wake-up the OS's part chooses: the calling thread's own, which may be
+ * shared with the NINA's waits of nina_os.h (FreeRTOS: task notification
+ * index 2), or an object of the binding's (ThreadX: one semaphore of the
+ * transfers).  The transfer drops a wake-up left from before it starts (the
+ * core sets its requests before it posts and looks at them before a wait).
  *
  * nina_bus_dma_os_impl.h: types and macros
  *
@@ -32,8 +32,8 @@
  *                                  waits need a thread to block; before,
  *                                  every transfer stays polled)
  *   nina_bus_dma_os_self()         the calling thread
- *   nina_bus_dma_os_wake_clear()   drops a wake-up of the calling thread
- *                                  left from before (also one given by a
+ *   nina_bus_dma_os_wake_clear()   drops a wake-up left from before (with
+ *                                  a shared wake-up, also one given by a
  *                                  post of nina_os.h): a later
  *                                  nina_bus_dma_os_wake_wait() blocks until
  *                                  a new one
@@ -41,7 +41,7 @@
  *                                  MS milliseconds rounded up to ticks, plus
  *                                  one tick (as the NINA's other waits)
  *   nina_bus_dma_os_tick_count()   the kernel's tick count
- *   nina_bus_dma_os_wake_wait(t)   blocks the calling thread until its
+ *   nina_bus_dma_os_wake_wait(t)   blocks the calling thread until the
  *                                  wake-up (taking it) or for at most T
  *                                  ticks (T > 0), or returns earlier for no
  *                                  reason; the caller looks at its flag and
@@ -50,9 +50,9 @@
  * The DMA interrupt handler (any time, also with no thread waiting):
  *
  *   nina_bus_dma_os_wake_from_isr(thread, &woken)
- *                                  gives THREAD its wake-up (kept until it
- *                                  waits) and notes in WOKEN whether a
- *                                  switch to it is due
+ *                                  gives THREAD (the waiting thread) its
+ *                                  wake-up (kept until it waits) and notes
+ *                                  in WOKEN whether a switch to it is due
  *   nina_bus_dma_os_isr_end(woken) at the end of the handler: switches to
  *                                  the woken thread when WOKEN says so (or
  *                                  nothing, if the OS switches at the end

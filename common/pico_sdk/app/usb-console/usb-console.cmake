@@ -1,22 +1,24 @@
 # SPDX-License-Identifier: MIT
 # The USB console on the Pico SDK for the Arduino Nano RP2040 Connect: what
 # the builds on the Pico SDK share of the application's build.  The OS's
-# CMakeLists.txt (freertos/app/usb-console) sets, after pico_sdk_init():
+# CMakeLists.txt (freertos/ or threadx/app/usb-console) sets, after
+# pico_sdk_init():
 #
 #   COMMON_DIR                 common/ at the root of the repository
 #   PICO_SDK_OS, PICO_SDK_OS_COMPAT_DIRS, PICO_SDK_STMEMSC_DIR
 #                              the OS's part of the layer and the drivers'
 #                              bindings (common/pico_sdk/drivers/compat/compat.cmake)
 #   PICO_SDK_OS_APP_DIRS       the OS's application directories, put first on
-#                              the include path (FreeRTOSConfig.h,
-#                              priorities_os.h, the OS's parts of the
+#                              the include path (FreeRTOSConfig.h on
+#                              FreeRTOS, priorities_os.h, the OS's parts of the
 #                              application's boundaries: idle_os.h,
 #                              fault_os_impl.h, main_os_impl.h,
 #                              commands_os_impl.h, kernel_shell_os_impl.h)
-#   PICO_SDK_OS_LIBRARIES      the OS's libraries (FreeRTOS-Kernel), linked
-#                              after the SDK's
+#   PICO_SDK_OS_LIBRARIES      the OS's libraries (FreeRTOS-Kernel; none for
+#                              ThreadX), linked after the SDK's
 #   PICO_SDK_USB_PRODUCT       the USB product string, the name under
-#                              /dev/serial/by-id ("FreeRTOS USB Console"),
+#                              /dev/serial/by-id ("FreeRTOS USB Console",
+#                              "ThreadX USB Console"),
 #                              at most 31 characters
 #   RAM_CODE_OS_SOURCES        the OS's sources whose code runs from RAM
 #                              (ram_code.cmake)

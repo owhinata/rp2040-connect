@@ -3,8 +3,8 @@
  * RP2040: reads, 256-byte page programs and 4 KiB sector erases of the last
  * 8 KiB of the 16 MiB flash (flash offsets 0xffe000-0xffffff, XIP
  * 0x10ffe000-0x10ffffff, two sectors), the Zephyr build's
- * storage_partition.  Shared by the NuttX and FreeRTOS builds, which have
- * no flash driver of their own for the area (the Zephyr build uses its
+ * storage_partition.  Shared by the NuttX, FreeRTOS and ThreadX builds, which
+ * have no flash driver of their own for the area (the Zephyr build uses its
  * flash driver and does not compile this file); each writes the flash
  * operations that stop XIP (rp2040_flash_kv_os.h).  The copies of Zephyr's
  * NVS and settings (common/compat/subsys) keep the store in the area in the

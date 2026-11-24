@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MIT */
-/* The USB console on the Pico SDK and an OS's kernel (main_os.h; the
- * FreeRTOS build's is FreeRTOS): a shell on the
+/* The USB console on the Pico SDK and an OS's kernel (main_os.h: FreeRTOS
+ * or ThreadX): a shell on the
  * USB CDC ACM port, the key-value store, the SPI link to the NINA-W102, I2C0
  * with its DMA reads (and I2C1 as a build option), the LSM6DSOX, the IMU
  * acquisition service with its MQTT transport, Wi-Fi with the stored

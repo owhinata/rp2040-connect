@@ -6,8 +6,8 @@
  * threads and the start of what Zephyr starts at boot are
  * common/compat/zephyr_work.c and zephyr_init.c; the mutexes are
  * zephyr_mutex.c; the types are in zephyr_os.h.  No OS call but the
- * primitives (the FreeRTOS build's are
- * freertos/drivers/compat/zephyr_kernel_os_impl.h; NuttX
+ * primitives (those of the FreeRTOS and ThreadX builds are
+ * <OS>/drivers/compat/zephyr_kernel_os_impl.h; NuttX
  * implements the Zephyr-level functions directly instead,
  * nuttx/drivers/compat/zephyr_kernel.c).
  *
@@ -402,8 +402,8 @@ int k_thread_name_set(k_tid_t thread, const char *name)
 		return -EINVAL;
 	}
 	/* The thread's own array (Z_OS_THREAD_NAME_SIZE, 32 as Zephyr's
-	 * CONFIG_THREAD_MAX_NAME_LEN in the FreeRTOS build); a longer name is
-	 * cut, as in Zephyr.
+	 * CONFIG_THREAD_MAX_NAME_LEN in the FreeRTOS and ThreadX builds); a
+	 * longer name is cut, as in Zephyr.
 	 */
 	dst = z_os_thread_name(task);
 	key = k_spin_lock(&sem_lock);

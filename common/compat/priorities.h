@@ -10,14 +10,14 @@
  * their own (Zephyr's CONFIG_ISR_STACK_SIZE): a thread's stack only takes
  * the frame the hardware saves when it is interrupted.
  *
- * The OS part: "priorities_os.h", which this header includes first, from
- * the OS's directory (nuttx/drivers/include on NuttX), defines
- * APP_PRIO_FROM_ZEPHYR(p), the OS's priority of Zephyr's priority p
- * (-16..14, keeping the order), and the priorities and stacks of the OS's
- * own threads.  It may also set the stacks of the layer's own threads
+ * The OS part: "priorities_os.h", included first from the OS's directory
+ * (nuttx/drivers/include on NuttX), defines APP_PRIO_FROM_ZEPHYR(p), the
+ * OS's priority of Zephyr's priority p (-16..14, keeping the order; with the
+ * generic kernel part in z_os_prio_t's order, larger more urgent, whatever
+ * the OS's own numbering), and the priorities and stacks of the OS's own
+ * threads.  It may also set the stacks of the layer's own threads
  * (APP_STACK_SYSWORKQ, _NET_MGMT, _SENSOR_SHELL, _TELNET_SERVICE) to sizes
- * measured on that OS; the values below are Zephyr's.  The shared part of the Zephyr compatibility layer
- * (common/compat) and the OS's threads use the values below.
+ * measured on that OS; common/compat and the OS's threads use these values.
  */
 
 #ifndef __NUTTX_DRIVERS_INCLUDE_PRIORITIES_H

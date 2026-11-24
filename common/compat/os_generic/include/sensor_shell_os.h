@@ -43,8 +43,8 @@
 
 /* The Zephyr build's values (zephyr/build/usb-console/zephyr/.config):
  * CONFIG_SENSOR_SHELL_STREAM=y, CONFIG_SENSOR_SHELL_THREAD_STACK_SIZE=3072
- * (here APP_STACK_SENSOR_SHELL of the OS's priorities_os.h: the FreeRTOS
- * build's is 2048 as measured there),
+ * (here APP_STACK_SENSOR_SHELL of the OS's priorities_os.h: 2048 in the
+ * FreeRTOS and ThreadX builds, as measured there),
  * CONFIG_SENSOR_SHELL_TRIG_PRINT_TIMEOUT_MS=5000,
  * CONFIG_SENSOR_SHELL_MAX_TRIGGER_DEVICES=1; CONFIG_SENSOR_INFO (so no
  * "sensor info") and CONFIG_SENSOR_SHELL_BATTERY are not set.  The thread's

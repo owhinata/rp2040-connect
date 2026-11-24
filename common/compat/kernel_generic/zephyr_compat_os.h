@@ -12,8 +12,8 @@
 
 /* Runs the timeouts of the layer (the timers of delayable work items,
  * z_add_timeout()) that are due: one call per kernel tick, from the tick
- * interrupt (the FreeRTOS build: vApplicationTickHook(), configUSE_TICK_HOOK,
- * freertos/app/usb-console/src/tick.c), as
+ * interrupt (FreeRTOS: vApplicationTickHook(), ThreadX: isr_systick, in
+ * their builds' app/usb-console/src/tick.c), as
  * Zephyr runs its timeouts in the system clock interrupt.  The functions run
  * there, in the interrupt; the layer counts the calls as its ticks.
  */

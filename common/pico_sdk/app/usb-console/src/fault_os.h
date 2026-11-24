@@ -16,8 +16,8 @@
  *       services that check their context.  Static inline (always inline).
  *
  *   The OS's own fatal error entries, as ordinary functions with the OS's
- *   names (FreeRTOS: vApplicationStackOverflowHook(), its stack overflow
- *   check).  Each starts with struct fault_record *r =
+ *   names (FreeRTOS: vApplicationStackOverflowHook(), ThreadX:
+ *   fault_os_stack_error()).  Each starts with struct fault_record *r =
  *   fault_begin(FAULT_REASON_..., pc) (interrupts off; NULL inside the exit
  *   itself), fills the record when r is not NULL (the thread's name for a
  *   stack overflow, at most sizeof(r->task) - 1 bytes) and ends with

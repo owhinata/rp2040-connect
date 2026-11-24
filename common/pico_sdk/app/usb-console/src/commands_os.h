@@ -21,7 +21,7 @@
  *                               the row "(interrupts)" (irq_stack_size(),
  *                               irq_stack_used() of app.h), and the CPU load
  *                               over the same interval (idle_ps_window() of
- *                               app.h), in the FreeRTOS build's format;
+ *                               app.h), in one format for every OS;
  *                               0, or a negative errno.  From any shell
  *                               session's thread (two at once)
  */

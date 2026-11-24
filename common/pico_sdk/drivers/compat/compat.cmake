@@ -1,15 +1,15 @@
 # SPDX-License-Identifier: MIT
 # The Zephyr compatibility layer of a build on the Pico SDK with the generic
-# kernel part (the FreeRTOS build), the shell, the RAM log and the shared
-# sources they build (common/).  The build's CMakeLists.txt sets, before it
-# include()s this file:
+# kernel part (the FreeRTOS and ThreadX builds), the shell, the RAM log and
+# the shared sources they build (common/).  The build's CMakeLists.txt
+# sets, before it include()s this file:
 #
 #   PICO_SDK_OS               the name of the OS's binding directories,
 #                             common/drivers/<driver>/port/<PICO_SDK_OS>
-#                             (freertos)
+#                             (freertos, threadx)
 #   PICO_SDK_OS_COMPAT_DIRS   the directories of the OS's part of the layer,
-#                             the port header's first (freertos/drivers/compat/
-#                             rp2040, freertos/drivers/compat)
+#                             the port header's first (<OS>/drivers/compat/
+#                             rp2040, <OS>/drivers/compat)
 #   PICO_SDK_STMEMSC_DIR      ST's register driver of the LSM6DSO, fetched by
 #                             the build's setup.sh (lsm6dso.cmake)
 #
@@ -86,8 +86,9 @@
 #   and common/compat/libc_net, nor on the shell engine,
 #   common/compat/shell_engine, which are written without it).
 #
-# The application provides the OS's configuration (FreeRTOSConfig.h, with
-# configNUM_THREAD_LOCAL_STORAGE_POINTERS >= 1) and priorities_os.h
+# The application provides the OS's configuration with a thread pointer of
+# the layer's (FreeRTOSConfig.h's configNUM_THREAD_LOCAL_STORAGE_POINTERS >= 1,
+# tx_user.h's TX_THREAD_USER_EXTENSION) and priorities_os.h
 # on its include path, a tick hook that calls
 # zephyr_compat_tick() (common/compat/kernel_generic/zephyr_compat_os.h),
 # the table of commands

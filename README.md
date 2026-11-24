@@ -414,18 +414,18 @@ The NINA ran the firmware with patches 0001 to 0006.
 
 | Item | Zephyr build | NuttX build | FreeRTOS build | ThreadX build |
 |---|---|---|---|---|
-| `cpu_active` while sending (2026-11-23) | 21.9% (2 runs) | 23.5% (2 runs) | 19.6% (2 runs) | 18.3% (2 runs) |
+| `cpu_active` while sending (2026-11-23) | 21.9% (2 runs) | 23.5% (2 runs) | 19.6% (2 runs) | 18.4 to 18.5% (4 runs) |
 | `cpu_active` at rest | not measured | not measured | 0.7% (30 seconds, 3 runs) | 0.5% (17 seconds, 1 run) |
 | TCP send (board to PC) | 3.36 and 3.47 Mbit/s (`zperf`) | 3.34 Mbit/s (`iperf`, 1 run) | 3.47 to 3.84 Mbit/s (`zperf`, 3 runs) | 3.62 Mbit/s (`zperf`, 1 run) |
 | TCP receive (PC to board) | 1.89 and 1.99 Mbit/s (`zperf`) | 1.22 Mbit/s (`iperf`, 1 run) | 2.41 to 2.52 Mbit/s (`zperf`, 3 runs) | 2.52 Mbit/s (`zperf`, 1 run) |
-| Image size (`.bin`, 2026-11-23) | 378,392 bytes | 287,224 bytes | 240,968 bytes | 248,644 bytes (2026-11-24) |
+| Image size (`.bin`, 2026-11-23) | 378,392 bytes | 287,224 bytes | 240,968 bytes | 248,580 bytes (2026-11-24) |
 
 - The TCP rates come from different commands (`zperf` in the Zephyr and FreeRTOS builds speaks the iperf 3
   protocol, `iperf` in the NuttX build the iperf 2 protocol), so they are a rough comparison.
 - `cpu_active` while sending and the image sizes are from the images of 2026-11-23 (after the NINA's SPI transfers
   of 64 bytes or more went to DMA and the hot code went to RAM).
 - Each OS's firmware keeps its hot code (the sensor reading and send paths: about 56 kB in the Zephyr build, 46 kB
-  in the NuttX build, 49 kB in the FreeRTOS build) in RAM. The cache for code executed from flash (16 kB) then
+  in the NuttX build, 49 kB in the FreeRTOS build and the same list in the ThreadX build) in RAM. The cache for code executed from flash (16 kB) then
   misses far less, and `cpu_active` went from 35.8% to 21.4% (Zephyr), from 36.1% to 23.8% (NuttX) and from 33.1%
   to 19.7% (FreeRTOS); the misses went from about 390,000 to about 5,000 a second in the Zephyr build and from
   about 340,000 to about 6,000 in the FreeRTOS build.

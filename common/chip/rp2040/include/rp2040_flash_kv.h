@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 /* The key-value area's flash on the RP2040, shared by the builds that have
- * no flash driver of their own for it (NuttX, FreeRTOS):
+ * no flash driver of their own for it (NuttX, FreeRTOS, ThreadX):
  * common/chip/rp2040/rp2040_flash_kv.c implements common/compat/flash_kv_os.h
  * on the build's flash operations (rp2040_flash_kv_os.h).  This header has
  * what the host tests call besides flash_kv_os.h.

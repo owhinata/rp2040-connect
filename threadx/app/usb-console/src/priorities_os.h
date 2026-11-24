@@ -66,9 +66,11 @@
  * the rest of a thread's storage are not on its stack but after it
  * (Z_OS_THREAD_RESERVED: 272 bytes, TX_THREAD 200 with the execution
  * profile kit's times, the wake flag's TX_SEMAPHORE 28, the entry 8, the
- * name 32; FreeRTOS 136).
+ * name 32; FreeRTOS 136).  The system work queue's stack is larger than
+ * the FreeRTOS build's 384: with 384 its lowest free mark on the board was
+ * 136 bytes.
  */
-#define APP_STACK_SYSWORKQ       384
+#define APP_STACK_SYSWORKQ       512
 #define APP_STACK_NET_MGMT       2048
 #define APP_STACK_TELNET_SERVICE 2048
 #define APP_STACK_SENSOR_SHELL   2048

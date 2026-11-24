@@ -26,8 +26,8 @@
 #include <zephyr/sys/clock.h> /* MSEC_PER_SEC, ..., as Zephyr's <zephyr/kernel.h> */
 
 /* Timeouts are kernel ticks, as in Zephyr: the OS's tick (1 ms in the
- * FreeRTOS build; the Zephyr build's CONFIG_SYS_CLOCK_TICKS_PER_SEC is
- * 10000).  K_MSEC(), K_SECONDS() and k_usleep() convert with
+ * FreeRTOS and ThreadX builds; CONFIG_SYS_CLOCK_TICKS_PER_SEC of the Zephyr
+ * build is 10000).  K_MSEC(), K_SECONDS() and k_usleep() convert with
  * Z_USEC_PER_TICK, k_uptime_get() and the cycle counter are
  * z_os_clock_us() whatever the tick, and 1000 must be a multiple of
  * Z_USEC_PER_TICK (<zephyr/kernel.h>).  A relative wait ends at the current
@@ -92,8 +92,8 @@ typedef z_os_thread_t k_tid_t;
  */
 #define K_THREAD_STACK_RESERVED Z_OS_THREAD_RESERVED
 
-/* Priorities: K_PRIO_PREEMPT(p) is the OS's priority of Zephyr's p
- * (APP_PRIO_FROM_ZEPHYR, priorities_os.h; 20 - p in the FreeRTOS build).
+/* K_PRIO_PREEMPT(p): the OS's priority of Zephyr's p (APP_PRIO_FROM_ZEPHYR,
+ * priorities_os.h; 20 - p in the FreeRTOS build, 15 - p in the ThreadX one).
  */
 #define K_PRIO_PREEMPT(x) APP_PRIO_FROM_ZEPHYR(x)
 

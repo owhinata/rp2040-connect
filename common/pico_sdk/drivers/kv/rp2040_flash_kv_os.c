@@ -33,11 +33,11 @@
  * an OS that links pico_multicore (PICO_ERROR_NOT_PERMITTED; the FreeRTOS
  * kernel's RP2040 port links it).  The OS runs on core 0 only and never
  * starts core 1 (FreeRTOS: configNUMBER_OF_CORES 1, checked in its
- * FreeRTOSConfig.h), so core 1 stays in the boot ROM, which does not fetch
- * from the flash.  An OS's own critical section on one core is the same
- * "cpsid i"; the SDK's helper is used because pico_flash's helper is what
- * the SDK provides for this and what an SDK library writing the flash
- * would use too.  No DMA channel of the port reads from the flash.
+ * FreeRTOSConfig.h; ThreadX's Cortex-M0 port has one core), so core 1
+ * stays in the boot ROM, which does not fetch from the flash.  An OS's own
+ * critical section on one core is the same "cpsid i"; pico_flash's helper
+ * is used as what the SDK provides for this, and what an SDK library
+ * writing the flash would use too.  No DMA channel of the port reads it.
  *
  * The interrupts are off for one 256-byte page program (about 0.4-0.5 ms)
  * or one 4 KiB sector erase (34-40 ms measured on the NuttX build) at a

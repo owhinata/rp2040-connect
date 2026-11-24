@@ -9,8 +9,8 @@
  *
  * The user's part of every build is RTIO's, port/zephyr/
  * lsm6dso_stream_req_impl.h (a multishot read of the sensor API's stream),
- * which the NuttX and FreeRTOS builds compile on their Zephyr compatibility
- * layers; the host tests' part is common/tests/lsm6dso_os_host/
+ * which the NuttX, FreeRTOS and ThreadX builds compile on their Zephyr
+ * compatibility layers; the host tests' part is common/tests/lsm6dso_os_host/
  * lsm6dso_stream_req_impl.h.
  *
  * lsm6dso_stream_req_impl.h: types

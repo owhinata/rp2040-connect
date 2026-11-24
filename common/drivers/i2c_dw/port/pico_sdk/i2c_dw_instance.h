@@ -41,8 +41,8 @@
  *                                          DMA interrupt's shared
  *                                          handler); the semaphores are
  *                                          made there, in their own
- *                                          memory (i2c_dw_os_sem_init()
- *                                          of i2c_dw_os_impl.h)
+ *                                          memory (i2c_dw_os_sem_init(),
+ *                                          see below)
  *
  * The transfer refuses what the core does not do and Zephyr's driver
  * would do wrong or not at all: a device that is not ready (-ENODEV; in
@@ -60,18 +60,18 @@
  * returns -ENOTSUP ("i2c recover").  It has no get_config, as Zephyr's
  * driver: i2c_get_config() returns -ENOSYS.
  *
- * The speed class (one for each device) of a transfer is read by the core
- * under bus_sem, as Zephyr's driver reads its class: a transfer that waits
- * for the bus while another task's i2c_configure() completes runs at the
- * class that call set.
+ * i2c_dw_os_sem_init() of the OS's i2c_dw_os_impl.h is part of this
+ * instance's OS boundary: it may be called twice and before the kernel runs.
+ * The core reads a transfer's speed class under bus_sem, as Zephyr's: one that
+ * waits while another thread's i2c_configure() completes runs at its class.
  *
  * The interrupt handler runs at the Pico SDK's default priority for the
  * peripherals (0x80, the same as the DMA's and the USB's; see
  * i2c_dw_dma_os_rp2040.c), calls the core's body and, through
  * i2c_dw_os_sem_give() of the OS's i2c_dw_os_impl.h (port/<OS>), the waiting
- * thread's wake-up (FreeRTOS: vTaskNotifyGiveIndexedFromISR()), and asks for
- * the switch to the woken thread at the end of the handler (PendSV): the
- * thread runs right after the handler.  irq_set_exclusive_handler() panics if a handler
+ * thread's wake-up (the OS's give: FreeRTOS a task notification, ThreadX
+ * tx_semaphore_ceiling_put()), and the switch to the woken thread at the end
+ * of the handler (PendSV).  irq_set_exclusive_handler() panics if a handler
  * is already installed on the line (hard_assert(), on in this Release
  * build); nothing else in this build uses I2C0, I2C1 or their pins (the
  * Pico SDK's board header names GPIO12/13 as PICO_DEFAULT_I2C_SDA_PIN/

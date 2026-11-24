@@ -201,13 +201,11 @@ wait on are `TX_SEMAPHORE`s the drivers own.
 
 ## The code in RAM
 
-The code on the hot paths runs from RAM instead of the flash (the shared list
-`common/pico_sdk/app/usb-console/ram_code.cmake` and `RAM_CODE_OS_SOURCES` of
-`app/usb-console/CMakeLists.txt`). ThreadX's part is the scheduler (PendSV, the switch and the wait), the
-services that the layer's waits, the drivers' waits and the Pico SDK's locks call (semaphores, mutexes, event
-flags, sleeps, the suspend and resume of threads), the tick (the timer interrupt, the timeouts and the time
-slices), the execution profile kit, the idle hooks, the tie of the Pico SDK's locks and the NINA core's
-binding (about 7 KiB). The FreeRTOS build puts only the NINA core's binding in RAM as its OS part.
+The code on the hot paths (the drivers and the application on the paths of the sensor's reads and of the send)
+runs from RAM instead of the flash (the shared list `common/pico_sdk/app/usb-console/ram_code.cmake`). The OS
+part adds only the NINA core's binding, as in the FreeRTOS build (`RAM_CODE_OS_SOURCES` of
+`app/usb-console/CMakeLists.txt`). ThreadX's kernel stays in the flash: with its hot code in RAM as well, the
+`cpu_active` while sending is only 0.1 to 0.2 points lower, for about 7 KiB of RAM.
 
 ## ThreadX's internals in use
 
