@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: MIT */
-/* The OS part of common/compat/log/app_log.h for the host tests of the RAM log
+/* The OS part of common/compat/include/app_log.h for the host tests of the RAM log
  * (tests/log_ram.c, tests/log_ring.c): nothing to read first and no options
  * (the defaults, as the FreeRTOS build's); the ring's size is given by the
  * test's build (-DLOG_RAM_TEST_SIZE=4096 or 8192, the FreeRTOS and the

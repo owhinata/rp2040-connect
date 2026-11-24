@@ -140,7 +140,7 @@ The RAM log of the Zephyr build's `src/log_ram.c`, shared with the FreeRTOS and 
 `common/compat/log/log_ram.c` on the ring, line prefix and rate limit of `common/compat/log/log_ring.c`, with its
 NuttX part `nuttx/drivers/include/log_ram_os_impl.h` (the ring's section, the interrupt mask, the
 TIMER) and the syslog channel `nuttx/drivers/log/log_ram_syslog.c`; the `LOG_*` macros are
-`common/compat/log/app_log.h` with its NuttX part `nuttx/drivers/include/app_log_os.h`.
+`common/compat/include/app_log.h` with its NuttX part `nuttx/drivers/include/app_log_os.h`.
 
 - An 8192-byte ring buffer in `.noinit` (`LOG_RAM_SIZE` in `nuttx/drivers/include/app_log_os.h`; the
   Zephyr, FreeRTOS and ThreadX builds' have 4096 bytes; it was made larger so that a fatal error report fits from
@@ -175,7 +175,7 @@ TIMER) and the syslog channel `nuttx/drivers/log/log_ram_syslog.c`; the `LOG_*` 
   ring. NuttX's `CONFIG_ARCH_STACKDUMP_MAX_LENGTH` only limits the dump of a stack that
   SP is not in, so it does not help here. The Zephyr build also restarts after a fatal error
   (`CONFIG_RESET_ON_FATAL_ERROR=y`; its RAM log is 4 KiB).
-- Sources use it the Zephyr way: `#include "app_log.h"` (`common/compat/log/`; usable from
+- Sources use it the Zephyr way: `#include "app_log.h"` (`common/compat/include/`; usable from
   the kernel side, the board code and the applications, also in interrupt handlers), then per file
   `LOG_MODULE_REGISTER(name, LOG_LEVEL_INF)` (without a level: `CONFIG_LOG_DEFAULT_LEVEL`,
   default 3, or `LOG_LEVEL` if defined before the include), and `LOG_ERR()`, `LOG_WRN()`,
@@ -199,11 +199,11 @@ Zephyr build stored, and the other way round. The API and the command are the Ze
 - Layers: `kv_store.c` → Zephyr's settings (`settings_save_one()`, `settings_load_one()`,
   `settings_delete()`) → Zephyr's NVS → the compatibility layer's flash device and flash map
   (`common/compat/zephyr_flash_kv.c`) → the OS boundary (the five functions of
-  `common/compat/flash_kv_os.h`; on the RP2040 `common/chip/rp2040/rp2040_flash_kv.c`, shared with the
+  `common/compat/port/flash_kv_os.h`; on the RP2040 `common/chip/rp2040/rp2040_flash_kv.c`, shared with the
   FreeRTOS and ThreadX builds, on the board's flash operations with the boot ROM, `src/rp2040_flash_kv_os.c`). The settings and NVS
   are unchanged copies of Zephyr v4.5.0's sources (`common/compat/subsys/` and others; the list is
   in the compatibility layer's section of the driver notes), built with the Zephyr build's Kconfig
-  values (`common/compat/zephyr_kv_config.h`).
+  values (`common/compat/include/zephyr_kv_config.h`).
 - Format (the values of the Zephyr build's `.config` and devicetree): NVS sectors of 4096 bytes × 2
   (`CONFIG_SETTINGS_NVS_SECTOR_SIZE_MULT=1`; of `CONFIG_SETTINGS_NVS_SECTOR_COUNT=8`, the 2 that fit
   in 8 KiB), a write block of 1 byte, erase value 0xFF. NVS's allocation table entries (ATEs) are 8
@@ -1177,7 +1177,7 @@ mechanism; turning this on does not change how it measures.
 
 ## Thread priorities and stacks
 
-Priorities map as `NuttX = 118 − Zephyr`; `common/compat/priorities.h` holds the constants
+Priorities map as `NuttX = 118 − Zephyr`; `common/compat/include/priorities.h` holds the constants
 (`APP_PRIO_*`) and the stack sizes (`APP_STACK_*`) (the mapping `APP_PRIO_FROM_ZEPHYR()` and the
 NuttX-only threads are in `nuttx/drivers/include/priorities_os.h`). The Zephyr build's application threads
 (priorities 8 to 11) become 110 to 107, its shell thread (14) 104.
@@ -1333,7 +1333,7 @@ with the layer's NuttX implementation (`nuttx/drivers/compat/`; the Zephyr build
 | `common/chip/rp2040/` | The RP2040's code that no OS owns: `include/rp2040_timer_us.h` (the TIMER's read), `include/rp2040_watchdog_reboot.h`, and the key-value area's flash boundary `rp2040_flash_kv.c` (`include/rp2040_flash_kv.h`; the board's flash operations are declared in `include/rp2040_flash_kv_os.h`), shared with the FreeRTOS and ThreadX builds and compiled by the board's `src/Make.defs` without the prelude |
 | `common/compat/` | the OS-independent part of the compatibility layer (the headers of Zephyr's API `zephyr/...`, among them the `i2c_dma` state `zephyr/drivers/i2c/i2c_dw_rp2040_dma.h`, which includes the I2C core's `common/drivers/i2c_dw/include/i2c_dw_rp2040_dma.h`, `zephyr_compat.h`, work items, RTIO, the block pool, the device list, `gpio0`, `net_mgmt`, the Wi-Fi requests, the sensors' default iodev) and the copies of Zephyr's libraries that the builds on the layer use (`sensor_shell_stream.c`, `sensor_shell.h`, `wifi_credentials.c`, `wifi_credentials_backend_settings.c`, `wifi_credentials_internal.h`), and boundary headers (`priorities.h`, `cpu_load.h`, `gpio_os.h`); the Zephyr build does not use it |
 | `common/shell/` | `sensor_shell.c` (the file of the Zephyr build's tree with its patch 0006), `i2c_shell.c` (the file of the Zephyr build's tree with its patch 0004; built by `nuttx/apps/i2c`), `subcmd.[ch]` (the subcommand tables), `zshell.c` (the handling of commands written with `<zephyr/shell/shell.h>`: word matching, wildcards, argument count checks, help) and its boundary to the OS, `zshell_os.h` (the NuttX build's part is `nuttx/apps/subcmd/zshell_os_impl.h`); compiled without the prelude; the Zephyr build does not use them. Also `i2c_dma_shell.c` (the `i2c_dma` command of the three builds, written on Zephyr's shell API; the NuttX build's `nuttx/apps/i2c_dma` builds it with the prelude), and `nina_shell.c` (the `nina` command of the Zephyr and FreeRTOS builds; the NuttX build has its own, `nuttx/apps/nina`) |
-| `common/compat/log/` | `log_ring.[ch]` (the RAM log's ring, line prefix and rate limit), `app_log.h` (the `LOG_*` macros; the NuttX part is `nuttx/drivers/include/app_log_os.h`), `log_ram.c`, `log_ram.h` (the RAM log and the functions of the `LOG_*` macros, shared with the FreeRTOS and ThreadX builds; the NuttX part is `nuttx/drivers/include/log_ram_os_impl.h`, the syslog channel `nuttx/drivers/log/log_ram_syslog.c`), `fault_record.[ch]` (the record of a fatal error: its format, CRC-32, the copy in the watchdog's scratch registers and its lines; only the FreeRTOS build uses it); the Zephyr build does not use it |
+| `common/compat/log/` (the headers in `common/compat/include/`, `internal/`, `port/`) | `log_ring.c` with `internal/log_ring.h` (the RAM log's ring, line prefix and rate limit), `app_log.h` (the `LOG_*` macros; the NuttX part is `nuttx/drivers/include/app_log_os.h`), `log_ram.c`, `log_ram.h`, `port/log_ram_os.h` (the RAM log and the functions of the `LOG_*` macros, shared with the FreeRTOS and ThreadX builds; the NuttX part is `nuttx/drivers/include/log_ram_os_impl.h`, the syslog channel `nuttx/drivers/log/log_ram_syslog.c`), `fault_record.c`, `fault_record.h` (the record of a fatal error: its format, CRC-32, the copy in the watchdog's scratch registers and its lines; only the FreeRTOS build uses it); the Zephyr build does not use it |
 | `common/tests/` | the 37 tests of the files above and the checks against the Zephyr tree, `zephyr_copies` and `zephyr_sensor_shell_patched` (run by `common/tests/run.sh`, which the `host_tests.sh` of the four builds call first; the layer's `zephyr_rtio`, `zephyr_work` and `mqtt_min` on the fake kernel, the NINA core's `nina_proto`, `nina_sock`, `nina_wifi`, `nina_dns` and `nina_passthrough` on fakes of its boundaries defined by the tests, `nina_core_independent`, each core file compiled with the C library and its own headers only, `i2c_dw_public_headers`, the I2C core's `include/` compiled with that directory alone, and the LSM6DSO's `lsm6dso_core_independent` and `lsm6dso_public_headers`, the same for its core and its `include/`); `lsm6dso_stream` runs the core's stream `lsm6dso_stream.c` on the host's parts of its boundaries (`common/tests/lsm6dso_os_host/`) with fakes of the core's FIFO calls |
 | `common/tests/fakes/` | stand-ins for the Zephyr and ST headers the tests need (`zephyr/drivers/sensor.h`, `zephyr/drivers/sensor_clock.h`, `zephyr/drivers/i2c.h`, `zephyr/rtio/rtio.h`, `lsm6dso_reg.h`) |
 | `common/tests/zephyr_fakes/` | the compatibility layer's fake kernel: the OS headers (`zephyr_os.h`, `zephyr_os_spinlock.h`, `zephyr_os_atomic.h`, `priorities_os.h`, `zephyr/sys/__assert.h`) and their functions (`zephyr_kernel_host.[ch]`: one thread; the test runs the work queues and fires the timers); the NuttX build's tests use it too |
@@ -1376,7 +1376,7 @@ rate, UART1's words, the ring) is tested by `common/tests/nina_passthrough.c`; i
 host test.
 
 `common/tests/cpu_load.c` and `common/tests/log_ring.c` test shared parts that the Zephyr
-build does not use. The first compares the arithmetic of `common/compat/cpu_load.h` with the
+build does not use. The first compares the arithmetic of `common/compat/port/cpu_load.h` with the
 steps of Zephyr's `cpu_load_get_cpu()` (reset, an open window, zero time, rounding down). The second compares
 `common/compat/log/log_ring.c` with the byte-by-byte store of the Zephyr build's `log_ram.c`
 over 20,000 random writes, compares the line prefix with the time arithmetic of Zephyr's
@@ -1401,7 +1401,7 @@ garbage collection (10 erases or more), a full store (`-ENOSPC`, deleting still 
 once, usable after `kv wipe`); that the flash device refuses requests outside the area; that
 Zephyr's NVS itself gives `-EDEADLK` on an area whose two sector ends are written; and the power
 loss (see "Key-value store"). `flash_kv` checks the range checks of
-`common/compat/flash_kv.h` around the edges and for every page and erase sector of the first
+`common/compat/include/flash_kv.h` around the edges and for every page and erase sector of the first
 and last MiB of the flash, and the page writes, at many offsets and lengths around page boundaries,
 by seeing that exactly the written bytes change. For the boot-time check it confirms that Zephyr's
 and NuttX's NVS entries are each accepted and that the other format's entries (200,000 layouts each,

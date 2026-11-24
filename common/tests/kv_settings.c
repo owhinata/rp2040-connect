@@ -49,7 +49,7 @@
 
 extern bool settings_subsys_initialized;
 
-/* The log (common/compat/log/app_log.h): one line "<lvl> module: text" each. */
+/* The log (common/compat/include/app_log.h): one line "<lvl> module: text" each. */
 
 static char log_buf[8192];
 

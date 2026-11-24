@@ -325,7 +325,7 @@ include パスに足す。オブジェクトはボードのディレクトリー
 | `common/drivers/i2c_dw/port/i2c_dw_dma_os.h` | DMA 読み出しの DMA の境界: OS 自身の DMA ドライバーに求めるもの（下の 2 つ目の表）。パッチを当てたドライバーの Zephyr の DMA API の呼び出しに 1 つずつ対応する。OS の名前を含まず、コアは DMA のレジスターに触れない |
 | `common/drivers/i2c_dw/internal/i2c_dw.h` | OS に依存しない定義と純粋な関数: Zephyr 版の `i2c_dw.h` の定義、SCL のカウント、周波数から速さの区分、NuttX のフラグ（`I2C_M_*`）から Zephyr のフラグ（`I2C_MSG_*`）への変換、`IC_DATA_CMD` に書く語。ホストテスト `common/tests/i2c_dw.c` |
 | `common/drivers/i2c_dw/internal/i2c_dw_registers.h` | Zephyr 版の `i2c_dw_registers.h` の写し（アクセス関数は 32 ビットの volatile のアクセスで定義。番地の型は Zephyr の `mm_reg_t` の代わりに `uintptr_t`） |
-| `common/drivers/i2c_dw/include/i2c_dw_rp2040_dma.h` | `i2c_dma` コマンド（4 つの OS のファームウェアで共有の `common/shell/i2c_dma_shell.c`。NuttX 版のビルドは `nuttx/apps/i2c_dma`）が読み書きする状態: DMA の有効・無効と 4 つのカウンター（`i2c_dw_rp2040_dma_get_stats()`・`_enabled()`・`_set_enabled()`）。コマンドは Zephyr の名前 `<zephyr/drivers/i2c/i2c_dw_rp2040_dma.h>` で読み、それは `common/compat/zephyr/drivers/i2c/` の同名のヘッダーがこのファイルを読む形です。宣言はパッチ 0003 が Zephyr のツリーに足すヘッダーと同じ（`i2c_dw_sync` が確かめる）。`include/` のヘッダーはこれだけで、そのディレクトリーだけでコンパイルできる（`common/tests/run.sh` の `i2c_dw_public_headers`） |
+| `common/drivers/i2c_dw/include/i2c_dw_rp2040_dma.h` | `i2c_dma` コマンド（4 つの OS のファームウェアで共有の `common/shell/i2c_dma_shell.c`。NuttX 版のビルドは `nuttx/apps/i2c_dma`）が読み書きする状態: DMA の有効・無効と 4 つのカウンター（`i2c_dw_rp2040_dma_get_stats()`・`_enabled()`・`_set_enabled()`）。コマンドは Zephyr の名前 `<zephyr/drivers/i2c/i2c_dw_rp2040_dma.h>` で読み、それは `common/compat/include/zephyr/drivers/i2c/` の同名のヘッダーがこのファイルを読む形です。宣言はパッチ 0003 が Zephyr のツリーに足すヘッダーと同じ（`i2c_dw_sync` が確かめる）。`include/` のヘッダーはこれだけで、そのディレクトリーだけでコンパイルできる（`common/tests/run.sh` の `i2c_dw_public_headers`） |
 | `common/drivers/i2c_dw/port/nuttx/i2c_dw_os_impl.h` | 境界の NuttX の実装: セマフォ（`sem_t`。`nxsem_post()`、`nxsem_tickwait_uninterruptible()`、`nxsem_wait_uninterruptible()`、`nxsem_reset()`）、時刻（システムの tick）、`nxsched_msleep()`、`up_irq_save()`、メッセージ（`struct i2c_msg_s` と、`i2c_dw_msg_flags()` での Zephyr のフラグへの変換）、`I2C_DW_CLOCK_SPEED`（`BOARD_PERI_FREQ`） |
 | `common/drivers/i2c_dw/port/nuttx/i2c_dw_instance.h` | I2C0 と I2C1 の NuttX の部分: `struct i2c_master_s` の操作表（`I2C_TRANSFER()` は要求を確かめて周波数から速さを決め、コアの転送を呼ぶ。`I2C_RESET()`）、`irq_attach()` で登録する割り込みハンドラー、リセットとピン（`i2c_dw_pinctrl()`）は両方で共有し、`i2c_dw_i2c0_initialize()` と `i2c_dw_i2c1_initialize()`。ホストテストは `nuttx/tests/i2c_dw_instance.c` |
 | `common/drivers/i2c_dw/port/nuttx/i2c_dw_dma_os_rp2040.c` | DMA の境界の NuttX の実装。NuttX 自身の DMA ドライバー `arch/arm/src/rp2040/rp2040_dmac.c`（`CONFIG_RP2040_DMAC`）の上に作る。ホストテストは `nuttx/tests/i2c_dw_dma_os.c` |
@@ -351,7 +351,7 @@ include パスに足す。オブジェクトはボードのディレクトリー
 | `I2C_DW_CLOCK_SPEED` | `CONFIG_I2C_DW_CLOCK_SPEED`（MHz、125） | `BOARD_PERI_FREQ / 1000000` |
 | `i2c_dw_os_prepare(dw)`（`i2c_dw_instance.h`） | `reset_line_toggle_dt()` と `pinctrl_apply_state()`: I2C0 か I2C1 のリセット、そのピンを I2C（4 mA、遅いスルー、シュミットと入力を有効。I2C0 の GPIO12・13 はプルなし、I2C1 のピンは内部プルアップ） | RESETS と `rp2040_gpio_*()`（`i2c_dw_pinctrl()`。Zephyr の `pinctrl_rpi_pico.c` の手順） |
 | `i2c_dw_os_irq_enable(dw)`（同） | `IRQ_CONNECT()`・`irq_enable()`: I2C0_IRQ か I2C1_IRQ で `i2c_dw_isr_handler(dw)` を呼ぶハンドラー | `irq_attach()`・`up_enable_irq()` |
-| `app_log.h` | `LOG_MODULE_REGISTER()`、`LOG_ERR()`、`LOG_ERR_RATELIMIT()`（レベルはコアが定める 3） | `common/compat/log/app_log.h` と NuttX の部分 `nuttx/drivers/include/app_log_os.h`（RAM ログ） |
+| `app_log.h` | `LOG_MODULE_REGISTER()`、`LOG_ERR()`、`LOG_ERR_RATELIMIT()`（レベルはコアが定める 3） | `common/compat/include/app_log.h` と NuttX の部分 `nuttx/drivers/include/app_log_os.h`（RAM ログ） |
 | `CONFIG_I2C_DW_I2C0`・`CONFIG_I2C_DW_I2C1` | 作るインスタンス（Zephyr ではデバイスツリーの有効なノード） | `nuttx/drivers/i2c_dw/Kconfig`（既定で `I2C_DW_I2C0` は有効、`I2C_DW_I2C1` は無効） |
 | `CONFIG_I2C_DW_RP2040_DMA` | I2C0 の DMA 読み出しを作る（Zephyr 版と同じ名前のシンボル） | Kconfig |
 
@@ -479,7 +479,7 @@ DMA の部分を同じ分岐・順序・値で写したものです。
 | `common/drivers/stmemsc/stmemsc.h`、`stmemsc_i2c.c`、`stmemsc_mdelay.c` | Zephyr の `drivers/sensor/st/stmemsc/` の I2C の部分の写し（ST の `stmdev_ctx_t` と Zephyr の I2C の API のつなぎ。`stmemsc_mdelay()` は互換層の `k_msleep()`）。FreeRTOS 版・ThreadX 版と共有する（前置きヘッダーは付けない）。`lsm6dso_sensor.h`・`lsm6dso_os_impl.h` の `<stmemsc.h>` はインクルードパスでこのファイルになる |
 | `lsm6dso/st_lsm6dso_reg.c` | ST の `lsm6dso_reg.c`（`nuttx/stmemsc/`、Git 管理外）をそのままビルドするための 1 行の包み |
 | `common/drivers/lsm6dso/port/zephyr/lsm6dso_rtio.c` | ドライバーの RTIO の submit。ストリームは `lsm6dso_rtio_stream.c` へ、単発取得は sensor API のフォールバックの写しへ。Zephyr 版と同じファイル（ログは互換層の `<zephyr/logging/log.h>`、レベル `CONFIG_SENSOR_LOG_LEVEL` は前置きヘッダー） |
-| `common/drivers/lsm6dso/include/lsm6dso.h` | 拡張 API（FIFO のワードとその解析 `lsm6dso_fifo.h`、校正の型 `lsm6dso_cal.h` と呼び出し、FIFO の統計、独自属性、ストリームの停止、タイムスタンプの読み取り）。`common/compat/zephyr/drivers/sensor/lsm6dso.h` を通して `<zephyr/drivers/sensor/lsm6dso.h>` |
+| `common/drivers/lsm6dso/include/lsm6dso.h` | 拡張 API（FIFO のワードとその解析 `lsm6dso_fifo.h`、校正の型 `lsm6dso_cal.h` と呼び出し、FIFO の統計、独自属性、ストリームの停止、タイムスタンプの読み取り）。`common/compat/include/zephyr/drivers/sensor/lsm6dso.h` を通して `<zephyr/drivers/sensor/lsm6dso.h>` |
 | `common/drivers/lsm6dso/port/zephyr/lsm6dso_rtio_stream.c` | FIFO のストリームの RTIO 側（下）。デバイスの INT1 の線、RTIO の要求をコアのストリームへ渡すこと、拡張 API の停止と設定。Zephyr 版と同じファイル |
 | `common/drivers/lsm6dso/port/zephyr/lsm6dso_decoder.[ch]` | ストリームと単発取得のバッファーのデコーダー（`get_decoder`）。Zephyr 版と同じファイル |
 | ボードの `src/rp2040_lsm6dso.[ch]` | I2C0 を互換層のバスのデバイス（`i2c0`、1 MHz）にし、`lsm6dsox` を初期化する（`rp2040_bringup()` から） |
@@ -647,7 +647,7 @@ XIP キャッシュのカウンター（当たり 0x1400000c、アクセス 0x14
 Zephyr の API を、Zephyr の名前のまま最小限だけ用意したものです。Zephyr の sensor・RTIO・カーネルの全体は
 移していません。互換層は 2 か所に分かれています。
 
-- **OS に依存しない部分**（リポジトリの `common/compat/`）: Zephyr の API のヘッダー（`common/compat/zephyr/...`）、
+- **OS に依存しない部分**（リポジトリの `common/compat/`）: Zephyr の API のヘッダー（`common/compat/include/zephyr/...`）、
   ワーク、RTIO、ブロックのプール、デバイスの一覧、`gpio0`、`net_mgmt` のイベント、Wi-Fi の要求、sensor の既定の
   iodev と、互換層の上でビルドする NuttX 版・FreeRTOS 版・ThreadX 版が使う Zephyr のライブラリーの写し（`sensor_shell_stream.c`・`sensor_shell.h`、
   Wi-Fi の資格情報の `wifi_credentials.c`・`wifi_credentials_backend_settings.c`・`wifi_credentials_internal.h`、
@@ -699,7 +699,7 @@ Zephyr の API を、Zephyr の名前のまま最小限だけ用意したもの�
 | `flash_kv.h`、`flash_kv_os.h` | KV の領域の定数（`0xffe000` から 8 KiB、256 バイトのページ、4 KiB のセクター）、OS の境界（`flash_kv_os.h`。下の「KV」）、範囲の検査・ページへの分割・領域の中身の判定（Zephyr の NVS、以前の NuttX 版の形式、消去済み、それ以外） |
 | `zephyr_kv_config.h` | 写した NVS と settings の前に読む Zephyr 版の Kconfig の値（`CONFIG_SETTINGS_NVS_SECTOR_COUNT` など。下の「KV」） |
 | `kv_store_os.h` | `common/imu/kv_store.c` の OS の部分: `kv wipe` のサブコマンド（Zephyr 版の `zephyr/app/usb-console/src/kv_store_os.h` は空） |
-| `zephyr/logging/log.h` | `LOG_MODULE_REGISTER()`、`LOG_ERR()` などのログのマクロ。ポートの `app_log.h`（`common/compat/log/`。`dmesg` の RAM ログ）を読むだけ |
+| `zephyr/logging/log.h` | `LOG_MODULE_REGISTER()`、`LOG_ERR()` などのログのマクロ。ポートの `app_log.h`（`common/compat/include/`。`dmesg` の RAM ログ）を読むだけ |
 | `zephyr/net/net_ip.h` | IPv4 のアドレスの型 `struct in_addr`（`imu_raw_mqtt.h`）。NuttX の `<netinet/in.h>` を読むだけ（同じメンバー `s_addr`、ネットワークバイト順） |
 | `zephyr_compat.h` | `zephyr_compat_initialize()`（ボードの起動処理が呼ぶ。下）、`K_THREAD_DEFINE_START()`（アプリのスレッドの表、`common/imu/app_init.c` が呼ぶ） |
 | `sensor_shell.h` | Zephyr の `drivers/sensor/sensor_shell.h` の写し（sensor シェルの共通の型。Zephyr 版は Zephyr のものを読む） |
@@ -754,11 +754,11 @@ Zephyr の API を、Zephyr の名前のまま最小限だけ用意したもの�
   - `zephyr_os_shell.h`（`<zephyr/shell/shell.h>` が読む）: `struct shell`（下の「シェル」）。
   - 全体が OS ごとのヘッダー: `zephyr/net/socket.h`、`zephyr/net/net_if.h`、`zephyr/sys/clock.h`、
     `zephyr/sys/__assert.h`、`zephyr/drivers/i2c.h`。
-  - 共通の `.c` とヘッダーが読む境界のヘッダー: `priorities.h`（`APP_STACK_NET_MGMT`・`APP_PRIO_RTIO_WQ`・`APP_STACK_RTIO_WQ`。`common/compat/` にあり、
+  - 共通の `.c` とヘッダーが読む境界のヘッダー: `priorities.h`（`APP_STACK_NET_MGMT`・`APP_PRIO_RTIO_WQ`・`APP_STACK_RTIO_WQ`。`common/compat/include/` にあり、
     OS の部分 `priorities_os.h` の `APP_PRIO_FROM_ZEPHYR()` を読む。NuttX 版は `nuttx/drivers/include/`）、
-    `gpio_os.h`（`zephyr_gpio.c`。`common/compat/` にあり、ボードが実装する）、`app_log.h`（`<zephyr/logging/log.h>`、
-    `sensor_default_rtio.c`、資格情報。`common/compat/log/` にあり、OS の部分 `app_log_os.h` を読む）、`<cpu_load.h>`
-    （`<zephyr/sys/cpu_load.h>`。`common/compat/`）、`sensor_shell_os.h`
+    `gpio_os.h`（`zephyr_gpio.c`。`common/compat/port/` にあり、ボードが実装する）、`app_log.h`（`<zephyr/logging/log.h>`、
+    `sensor_default_rtio.c`、資格情報。`common/compat/include/` にあり、OS の部分 `app_log_os.h` を読む）、`<cpu_load.h>`
+    （`<zephyr/sys/cpu_load.h>`。`common/compat/port/`）、`sensor_shell_os.h`
     （`sensor_shell_stream.c`）。構成の値 `CONFIG_LSM6DSO_STREAM`（`zephyr_device.c`）と
     `CONFIG_WIFI_CREDENTIALS`・`_MAX_ENTRIES`・`_SAE_PASSWORD_LENGTH`・`_CONNECT_STORED_CONNECTION_TIMEOUT`（Wi-Fi の
     ヘッダーと `zephyr_wifi_mgmt.c`）は、互換層のヘッダーより先に定義されている必要があります（NuttX 版は

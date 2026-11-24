@@ -47,7 +47,7 @@
  * object core statistics, the offloaded port tracking.  Only the zsock_*()
  * names: there is no socket(), poll(), close() or fcntl() on these
  * descriptors, which are not newlib's (its 0, 1 and 2 are the console's,
- * common/compat/shell_engine/shell_console.h).
+ * common/compat/include/shell_console.h).
  *
  * Part of the network part of the Zephyr compatibility layer for an OS
  * without a network stack of its own (common/compat/net_offload), which the
@@ -113,7 +113,7 @@
 /* The Zephyr build's CONFIG_NET_SOCKETS_PRIORITY_DEFAULT (50), the priority
  * of NET_SOCKET_DEFAULT_PRIO.  CONFIG_NET_SOCKETS_OFFLOAD_PRIORITY (40), with
  * which an offloaded implementation registers, is in the prelude of the
- * shared sources (common/compat/os_generic/common_prelude.h), as Zephyr's
+ * shared sources (common/compat/port/generic/common_prelude.h), as Zephyr's
  * Kconfig values are in every source.
  */
 #ifndef CONFIG_NET_SOCKETS_PRIORITY_DEFAULT

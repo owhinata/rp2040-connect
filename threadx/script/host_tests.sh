@@ -54,12 +54,12 @@ txdefs=(-DTX_INCLUDE_USER_DEFINE_FILE -D_GNU_SOURCE -DTX_LINUX_MULTI_CORE)
 txinc=(-Itests/compat -I"$tx/common/inc" -I"$linux/inc")
 # The test's port header and tx_user.h first, then the board's priorities_os.h
 # (app/usb-console/src), the layer (ThreadX's part, the parts for an OS without its own
-# <zephyr/sys/clock.h> and <zephyr/sys/__assert.h>, common/compat/os_generic/include, the
-# generic kernel part common/compat/kernel_generic with its default zephyr_os_atomic.h,
-# common/compat) and ThreadX.
+# <zephyr/sys/clock.h> and <zephyr/sys/__assert.h> with the generic kernel part's zephyr_os.h
+# and default zephyr_os_atomic.h, common/compat/port/generic, then the layer's headers,
+# common/compat/include, port and internal) and ThreadX.
 kgen=../common/compat/kernel_generic
-inc=(-Itests/compat -Iapp/usb-console/src -Idrivers/compat -I../common/compat/os_generic/include
-     -I"$kgen" -I../common/compat
+inc=(-Itests/compat -Iapp/usb-console/src -Idrivers/compat -I../common/compat/port/generic
+     -I../common/compat/include -I../common/compat/port -I../common/compat/internal
      -I"$tx/common/inc" -I"$linux/inc")
 flags=(-std=gnu11 -O2 -g -pthread "${txdefs[@]}")
 strict=(-Wall -Wextra -Werror)
@@ -136,14 +136,14 @@ for variant in i2c0 i2c1; do
         obj="$out/i2c_${variant}_$(basename "$src" .c).o"
         extra=()
         case $src in
-            */i2c_dw_core.c) extra=(-include ../common/compat/os_generic/common_prelude.h -Wno-sign-compare) ;;
-            */i2c_shell.c) extra=(-include ../common/compat/os_generic/common_prelude.h -Wno-sign-compare
+            */i2c_dw_core.c) extra=(-include ../common/compat/port/generic/common_prelude.h -Wno-sign-compare) ;;
+            */i2c_shell.c) extra=(-include ../common/compat/port/generic/common_prelude.h -Wno-sign-compare
                                   -Wno-unused-parameter -DCONFIG_I2C_SHELL_BUFFER_SIZE=64
                                   -DCONFIG_LOG_DEFAULT_LEVEL=3) ;;
             */zshell.c) extra=(-Dcalloc=test_calloc -Dfree=test_free) ;;
         esac
-        cc "${flags[@]}" "${strict[@]}" "${i2cdefs[@]}" -I"$frtest" -I$seng -I../common/shell \
-            -I../common/compat/log -DZ_SHELL_CMD_ROOT_GLOBAL "${i2cinc[@]}" "${inc[@]}" "${extra[@]}" \
+        cc "${flags[@]}" "${strict[@]}" "${i2cdefs[@]}" -I"$frtest" -I../common/compat/port/generic -I../common/shell \
+            -I../common/compat/include -DZ_SHELL_CMD_ROOT_GLOBAL "${i2cinc[@]}" "${inc[@]}" "${extra[@]}" \
             -c "$src" -o "$obj"
         i2cobjs+=("$obj")
     done
@@ -183,7 +183,7 @@ for src in "$ninadir/port/pico_sdk/nina_bus_rp2040.c" "$ninadir/port/pico_sdk/ni
     obj="$out/nina_$(basename "$src" .c).o"
     extra=()
     case $src in
-        "$ninadir"/internal/nina_*.c) extra=(-include ../common/compat/os_generic/common_prelude.h) ;;
+        "$ninadir"/internal/nina_*.c) extra=(-include ../common/compat/port/generic/common_prelude.h) ;;
     esac
     cc "${flags[@]}" "${strict[@]}" "${ninainc[@]}" "${ninadefs[@]}" "${extra[@]}" \
         -c "$src" -o "$obj"

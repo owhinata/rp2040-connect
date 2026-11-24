@@ -20,21 +20,21 @@ newlib に無い POSIX のネットワークのヘッダーは `common/compat/li
 
 FreeRTOS 版が自分で持つファイルは `freertos/` にあります。Pico SDK の上のほかの OS のファームウェア（ThreadX 版）と共有するもの（FreeRTOS ではなく
 Pico SDK と互換層の上で書いたもの）は、`freertos/` と同じ並びの `common/pico_sdk/`（`app/usb-console/`、`drivers/<部分>/`）、
-各ドライバーの `port/pico_sdk/`、`common/compat/os_generic/`（その仕組みを自分で持たない OS のための互換層の部分）にあります。
+各ドライバーの `port/pico_sdk/`、`common/compat/port/generic/`・`common/shell/port/generic/`（その仕組みを自分で持たない OS のための部分）にあります。
 FreeRTOS 版は、いくつかの境界（下の `*_os.h` のヘッダー）を通して FreeRTOS の部分を渡し、その実装は `freertos/` にあります。
 
 | 場所 | 内容 |
 |---|---|
-| `app/usb-console/` | ビルド（`CMakeLists.txt`: `common/pico_sdk/app/usb-console/usb-console.cmake` に渡す FreeRTOS の設定とソースの一覧）、カーネルの設定（`FreeRTOSConfig.h`。コアが 1 つであることも確かめる）、`src/`: 起動の入口（`main.c`: `main()`、タスク "main"、スケジューラー）、優先度の対応（`priorities_os.h`）、tick フック（`tick.c`。tick の追いつきの判定は `common/compat/kernel_generic/tick_catchup.h`）、汎用のコマンドの OS の部分（`kernel_shell_os_impl.h`。`uptime` の tick の数も）、共有のアプリの境界の FreeRTOS の部分: アイドルの 1 回分（`idle_os.h`: アイドルフック）、異常停止（`fault_os.c`: 動いているタスクの名前、スタックのあふれのフック）、コマンド（`commands_os.c`: `ps` とその実行時間の時計、カーネルのバージョン） |
+| `app/usb-console/` | ビルド（`CMakeLists.txt`: `common/pico_sdk/app/usb-console/usb-console.cmake` に渡す FreeRTOS の設定とソースの一覧）、カーネルの設定（`FreeRTOSConfig.h`。コアが 1 つであることも確かめる）、`src/`: 起動の入口（`main.c`: `main()`、タスク "main"、スケジューラー）、優先度の対応（`priorities_os.h`）、tick フック（`tick.c`。tick の追いつきの判定は `common/compat/include/tick_catchup.h`）、汎用のコマンドの OS の部分（`kernel_shell_os_impl.h`。`uptime` の tick の数も）、共有のアプリの境界の FreeRTOS の部分: アイドルの 1 回分（`idle_os.h`: アイドルフック）、異常停止（`fault_os.c`: 動いているタスクの名前、スタックのあふれのフック）、コマンド（`commands_os.c`: `ps` とその実行時間の時計、カーネルのバージョン） |
 | `common/pico_sdk/app/usb-console/` | Pico SDK の上の OS のファームウェアで共有: ビルド（`usb-console.cmake`: ドライバー、インクルードのディレクトリー、SDK のオプション。`ram_code.cmake`: RAM で動かすコード。`ld/`: 起動のスレッドのスタックを SCRATCH_X に）、`src/`: 起動の共有の段階（`usb_console.[ch]`。OS の `main()` が呼ぶ）、コマンド `version`・`free` と全コマンドの表（`commands.c`。境界は `commands_os.h`）、アイドルの 1 回分と CPU 負荷（`idle.c`。LED の点滅は `idle_blink.h`）、異常停止（`fault.[ch]`。OS の入口が呼ぶ関数と、OS が書く関数の宣言も）、割り込み用スタックの空き（`irq_stack.c`）、`app.h` |
 | `drivers/compat/` | 互換層の FreeRTOS の部分: 汎用のカーネルの部分の基本の操作（`zephyr_kernel_os_impl.h`）とポートのヘッダー（`rp2040/zephyr_os_port.h`: `z_os_in_isr()`、`z_os_yield_from_isr()`、`z_os_task_lock()`・`_unlock()`） |
 | `common/pico_sdk/drivers/compat/` | 互換層の Pico SDK の上の部分: 互換層・シェル・RAM ログのビルド（`compat.cmake`）、ソケットの実装の登録のためのリンカースクリプトの部分（`ld/`）、壁時計（`zephyr_sys_clock.c`）、RP2040 の部分（`rp2040/`: OS で共通のポートのヘッダーの部分 `zephyr_os_port_rp2040.h`、GPIO バンク 0 の `gpio_os_rp2040.c`、チップ ID の `zephyr_hwinfo.c`） |
-| `common/compat/os_generic/` | その仕組みを自分で持たない OS のための互換層の部分: `include/zephyr/drivers/i2c.h`（ドライバーのデバイスの上の Zephyr の I2C の API）、`include/zephyr/sys/clock.h`、`include/zephyr/sys/__assert.h`、前置き（`common_prelude.h`）、`app_log_os.h`、センサーのシェルの OS の部分（`include/sensor_shell_os.h`、`sensor_shell_os.c`）、`wifi_profile_os.h` |
-| `common/compat/kernel_generic/` | 基本の操作だけを持つ OS のための互換層のカーネルの部分。OS に依存しない: `k_sem`・`k_poll()`・タイムアウト・スリープ・スレッドの起動（`zephyr_kernel.c`）、`k_mutex`（`zephyr_mutex.c`）、`<zephyr/kernel.h>`・`<zephyr/spinlock.h>` の OS の部分（`zephyr_os.h`・`zephyr_os_spinlock.h`）、tick のフックの入口（`zephyr_compat_os.h`）とその追いつき（`tick_catchup.h`）、既定の `zephyr_os_atomic.h`、基本の操作の宣言（`zephyr_kernel_os.h`）。ワークキューのスレッド、システムワークキュー、`zephyr_compat_initialize()` は共有の `common/compat/zephyr_init.c` |
+| `common/compat/port/generic/` | その仕組みを自分で持たない OS のための互換層の部分: `zephyr/drivers/i2c.h`（ドライバーのデバイスの上の Zephyr の I2C の API）、`zephyr/sys/clock.h`、`zephyr/sys/__assert.h`、前置き（`common_prelude.h`）、`app_log_os.h`、`wifi_profile_os.h`、汎用のカーネルの部分の `zephyr_os.h`・`zephyr_os_spinlock.h`・既定の `zephyr_os_atomic.h`、シェルのエンジンの `zshell.c` に対するバックエンド（`zshell_os_impl.h`・`zephyr_os_shell.h`）。センサーのシェルの OS の部分は `common/shell/port/generic/`（`sensor_shell_os.h`、`sensor_shell_os.c`）。互換層のほかのヘッダーは `common/compat/include/`・`internal/`・`port/`（OS が実装する境界） |
+| `common/compat/kernel_generic/` | 基本の操作だけを持つ OS のための互換層のカーネルの部分。OS に依存しない: `k_sem`・`k_poll()`・タイムアウト・スリープ・スレッドの起動（`zephyr_kernel.c`）、`k_mutex`（`zephyr_mutex.c`）。ヘッダーは、`<zephyr/kernel.h>`・`<zephyr/spinlock.h>` の OS の部分と既定の `zephyr_os_atomic.h`（`common/compat/port/generic/`: `zephyr_os.h`・`zephyr_os_spinlock.h`）、tick のフックの入口とその追いつき（`common/compat/include/`: `zephyr_compat_os.h`・`tick_catchup.h`）、基本の操作の宣言（`common/compat/port/zephyr_kernel_os.h`）。ワークキューのスレッド、システムワークキュー、`zephyr_compat_initialize()` は共有の `common/compat/zephyr_init.c` |
 | `common/tests/zephyr_kernel/` | 互換層のカーネルのホストテスト（OS に依存しない。`zephyr_kernel_test.c`。OS の部分とプラットフォームの部分が用意するものは `zephyr_kernel_test.h` にあり、基本の操作の上の項目は `kernel_generic/zephyr_kernel_test_os.h`）。FreeRTOS 版の部分は `tests/compat/` |
 | `common/compat/net_offload/` | 互換層のネットワークの部分（OS に依存しない）: Zephyr のソケット層（`subsys/net/lib/sockets/`・`lib/os/zvfs/` の Zephyr のファイルを縮めた写し）、ネットワークのインターフェース（`zephyr_net_if.c`）とネットワークの部分の開始（`zephyr_net_init.c`、`zephyr_net_initialize()`）、それらのヘッダーは `include/` の下（`zephyr/net/`、`zephyr/sys/fdtable.h`、`zephyr_net_init.h`）。`k_heap`（`zephyr_heap.c`、`<zephyr/kernel.h>` が読む `zephyr_heap.h`）は、どちらのカーネルの部分でも使えるよう `common/compat/` にある |
 | `common/compat/libc_net/` | newlib に無いソケット系のヘッダー（`include/`。型と定数だけ）、`inet_pton`・`inet_ntop`（`inet.c`） |
-| `common/compat/shell_engine/` | 自分のシェルを持たない OS のためのシェル（互換層の API の上）: 行編集（`cli.c`）、コマンドの表と実行と `help`（`shell_engine.c`）、Zephyr の引数の分割の写し（`shell_argv.c`）、コンソールとスレッドごとの出力先（`shell_console.c`）、セッションごとの getopt（`getopt_state.c`）、`zshell.c` に対するシェルのバックエンド（`zshell_os_impl.h`・`zephyr_os_shell.h`）、シリアルのセッション（`shell_serial.c`。OS が用意するコンソールの経路は `shell_serial_os.h` が宣言する）、Telnet のシェル（`shell_telnet.c`） |
+| `common/compat/shell_engine/` | 自分のシェルを持たない OS のためのシェル（互換層の API の上）: 行編集（`cli.c`）、コマンドの表と実行と `help`（`shell_engine.c`）、Zephyr の引数の分割の写し（`shell_argv.c`）、コンソールとスレッドごとの出力先（`shell_console.c`）、セッションごとの getopt（`getopt_state.c`）、`zshell.c` に対するシェルのバックエンド（`common/compat/port/generic/`: `zshell_os_impl.h`・`zephyr_os_shell.h`）、シリアルのセッション（`shell_serial.c`。OS が用意するコンソールの経路は `common/compat/port/shell_serial_os.h` が宣言する）、Telnet のシェル（`shell_telnet.c`）。ほかのヘッダーは `common/compat/include/`・`internal/` |
 | `common/pico_sdk/drivers/shell/` | シェルのエンジンに対する Pico SDK の上のコンソールの経路（`shell_serial_os_impl.h`: Pico SDK の USB CDC ACM のドライバー）と Pico SDK の stdio の差し替え（`shell_stdio.c`） |
 | `common/pico_sdk/drivers/libc/` | newlib の FILE 関数の差し替え（`stdio_wrap.c`） |
 | `common/pico_sdk/drivers/include/` | RAM ログの Pico SDK の上の部分（`log_ram_os_impl.h`: リングのセクション、割り込みの禁止、TIMER） |
@@ -46,13 +46,13 @@ FreeRTOS 版は、いくつかの境界（下の `*_os.h` のヘッダー）を�
 | `common/pico_sdk/drivers/wifi/` | Wi-Fi（NINA のコアの `common/drivers/nina/nina_wifi.c` と、その Zephyr へのつなぎ `common/drivers/nina/port/zephyr/nina_net.c`、資格情報、自動再接続）の組み込みと `ifconfig`（`common/shell/ifconfig_shell.c`） |
 | `common/pico_sdk/drivers/telnet/` | Telnet のシェルの組み込み（`telnet.cmake`。本体は `common/compat/shell_engine/shell_telnet.c`） |
 | `common/pico_sdk/drivers/zperf/` | `zperf` の組み込み（本体は `common/compat/zperf_iperf3.c`・`zephyr_zperf_shell.c`） |
-| `common/pico_sdk/drivers/sensor_shell/` | `sensor` コマンドの組み込み（`sensor_shell.cmake`。OS の部分は `common/compat/os_generic/sensor_shell_os.c`） |
+| `common/pico_sdk/drivers/sensor_shell/` | `sensor` コマンドの組み込み（`sensor_shell.cmake`。OS の部分は `common/shell/port/generic/sensor_shell_os.c`） |
 | `common/pico_sdk/drivers/i2c_shell/` | `i2c` コマンドの組み込み（`i2c_shell.cmake`。本体は Zephyr 版のパッチを当てたツリーの `drivers/i2c/i2c_shell.c` と同じ `common/shell/i2c_shell.c`） |
 | `tests/` | ホストテスト（下の「ホストテスト」） |
 
 Pico SDK の上の FreeRTOS 版と ThreadX 版だけがビルドする共有ファイル: `common/compat/zephyr_wifi_shell.c`（Zephyr の `wifi_shell.c` から
-`connect`・`disconnect`・`scan`・`status` を取り出したもの）、`zephyr_zperf_shell.c`・`zperf_iperf3.[ch]`（`zperf`）、
-`common/compat/log/fault_record.[ch]`（異常停止の記録の形式）、`common/shell/dmesg_shell.c`（`dmesg`）、
+`connect`・`disconnect`・`scan`・`status` を取り出したもの）、`zephyr_zperf_shell.c`・`zperf_iperf3.c`・`internal/zperf_iperf3.h`（`zperf`）、
+`common/compat/log/fault_record.c`・`common/compat/include/fault_record.h`（異常停止の記録の形式）、`common/shell/dmesg_shell.c`（`dmesg`）、
 `common/shell/kernel_shell.c`（`id`・`uptime`・`date`・`sleep`・`devmem`・`fault`・`reboot`・`bootsel`。境界は
 `common/shell/kernel_shell_os.h`）、`common/shell/ifconfig_shell.c`（`ifconfig`）。RAM ログ `common/compat/log/log_ram.c`（リングは
 `log_ring.c`）は NuttX 版・ThreadX 版と共有する。`i2c_dma` の `common/shell/i2c_dma_shell.c` と `nina` の
@@ -62,8 +62,8 @@ Pico SDK の上の FreeRTOS 版と ThreadX 版だけがビルドする共有フ�
 
 ## Zephyr 互換層の FreeRTOS の部分
 
-何を提供するかは `common/compat/zephyr/kernel.h` の先頭の一覧にあります。カーネルの部分は、FreeRTOS が用意する基本の操作
-（`drivers/compat/zephyr_kernel_os_impl.h`。一覧とそれぞれに求めることは `common/compat/kernel_generic/zephyr_kernel_os.h` と `design/os-boundary-ja.md` の
+何を提供するかは `common/compat/include/zephyr/kernel.h` の先頭の一覧にあります。カーネルの部分は、FreeRTOS が用意する基本の操作
+（`drivers/compat/zephyr_kernel_os_impl.h`。一覧とそれぞれに求めることは `common/compat/port/zephyr_kernel_os.h` と `design/os-boundary-ja.md` の
 2.5）の上の汎用の実装（`common/compat/kernel_generic/zephyr_kernel.c`・`zephyr_mutex.c`。作りはそのコメント）です。Zephyr の前提のうち、
 次のものを再現しています。
 
@@ -91,7 +91,7 @@ Pico SDK の上の FreeRTOS 版と ThreadX 版だけがビルドする共有フ�
 
 - 32 ビットの tick は約 49.7 日で一周します。
 - 割り込みを止めている間（フラッシュの消去・書き込み。消去 1 回で約 40〜50 ms）は SysTick の割り込みが 1 回分しか保留されず、
-  残りの tick は失われます。tick フック（`tick.c`、判定は `common/compat/kernel_generic/tick_catchup.h`）が tick ごとに TIMER と比べ、1 tick 以上遅れていれば
+  残りの tick は失われます。tick フック（`tick.c`、判定は `common/compat/include/tick_catchup.h`）が tick ごとに TIMER と比べ、1 tick 以上遅れていれば
   SysTick を保留にし直すので、失われた tick はポートの通常のハンドラーが 1 つずつ数えます（起床、切り替えの要求、tick フックの
   互換層のタイムアウトと時分割も各 tick で動く）。tick は TIMER より先に進みません。そのため tick は、割り込みを止めている間を
   除いて、TIMER から 1 tick 以内に保たれます。`xTaskCatchUpTicks()` は使いません（タスクからしか呼べず、補った tick では
@@ -100,7 +100,7 @@ Pico SDK の上の FreeRTOS 版と ThreadX 版だけがビルドする共有フ�
 
 ## タスク
 
-優先度は `common/compat/priorities.h`（Zephyr 版の値と `20 − Zephyr`）と `app/usb-console/src/priorities_os.h`
+優先度は `common/compat/include/priorities.h`（Zephyr 版の値と `20 − Zephyr`）と `app/usb-console/src/priorities_os.h`
 （FreeRTOS 版だけのタスクと、FreeRTOS 版で測った使用量に合わせた互換層のスレッドのスタック。最大の使用量の 1.5 倍、
 256 バイト以上、64 の倍数。シェルのセッションは Zephyr 版と同じ 3072）にあります。スタックはバイト。割り込みは別のスタック（MSP、2048 バイト。`ps` の
 `(interrupts)` の行）を使います。
@@ -161,7 +161,7 @@ KV、校正値、時刻同期、自動接続の順に始めます。
 
 ## RAM ログと異常停止
 
-- RAM ログ（NuttX 版・ThreadX 版と共有の `common/compat/log/log_ram.c`。Pico SDK の上の部分は ThreadX 版と共有の `common/pico_sdk/drivers/include/log_ram_os_impl.h`。大きさは `common/compat/os_generic/include/app_log_os.h` の `LOG_RAM_SIZE`）は
+- RAM ログ（NuttX 版・ThreadX 版と共有の `common/compat/log/log_ram.c`。Pico SDK の上の部分は ThreadX 版と共有の `common/pico_sdk/drivers/include/log_ram_os_impl.h`。大きさは `common/compat/port/generic/app_log_os.h` の `LOG_RAM_SIZE`）は
   Zephyr 版と同じ 4 KiB で（異常停止は数行の記録を残し、次の起動でそれをログに書く）、起動時に初期化しない RAM（`__uninitialized_ram`）に置きます。
   watchdog の再起動、`reboot`、RESET ボタンでは残り、電源断で消えます。`LOG_*` の行は呼び出した文脈（割り込み
   ハンドラーを含む）で整形し、時刻は TIMER から取ります。`dmesg`（`common/shell/dmesg_shell.c`）で表示します。
@@ -169,7 +169,7 @@ KV、校正値、時刻同期、自動接続の順に始めます。
   あふれ（`configCHECK_FOR_STACK_OVERFLOW` 2）、`_exit()` が 1 つの出口に入り、記録（理由、PC、LR、SP、
   例外のフレーム、タスク、時刻）を RAM と watchdog の scratch レジスター 0〜3 に残して watchdog で再起動します。
   次の起動で記録を `dmesg` に書き、`fault` とコンソールのバナーで表示します。記録の形式、HardFault の例外のフレームの読み取り
-  （フレームが RAM の中にあるときだけ）、次の起動での RAM の記録と scratch レジスターの写しの選び方は `common/compat/log/fault_record.[ch]`。
+  （フレームが RAM の中にあるときだけ）、次の起動での RAM の記録と scratch レジスターの写しの選び方は `common/compat/log/fault_record.c`・`common/compat/include/fault_record.h`。
   `fault.c` に残るのは入口、ハンドラーの入口（`isr_hardfault`）、タスクの名前、watchdog のレジスターと再起動です。
 
 ## KV のフラッシュ
@@ -177,7 +177,7 @@ KV、校正値、時刻同期、自動接続の順に始めます。
 KV は Zephyr 版・NuttX 版と同じく、フラッシュの末尾 8 KiB（`0xffe000`〜`0xffffff`、4 KiB のセクター 2 つ）に
 Zephyr の NVS と settings の形式で置きます（写しは `common/compat/subsys/`、形式の説明は
 [`nuttx/drivers/README_ja.md`](../../nuttx/drivers/README_ja.md) の「KV: Zephyr の NVS と settings の写し」）。
-flash の境界（`common/compat/flash_kv_os.h` の 5 つの関数）は、NuttX 版・ThreadX 版と共有の RP2040 の部分（`common/chip/rp2040/rp2040_flash_kv.c`: 検査、読み出し、ページの写し）が、
+flash の境界（`common/compat/port/flash_kv_os.h` の 5 つの関数）は、NuttX 版・ThreadX 版と共有の RP2040 の部分（`common/chip/rp2040/rp2040_flash_kv.c`: 検査、読み出し、ページの写し）が、
 Pico SDK の上の flash の操作（`common/chip/rp2040/include/rp2040_flash_kv_os.h`。ThreadX 版と共有の `common/pico_sdk/drivers/kv/rp2040_flash_kv_os.c`: Pico SDK の `flash_range_program()`・`flash_range_erase()` を `flash_safe_execute()` で）の上で実装します。
 
 - リンカースクリプト（`common/pico_sdk/drivers/kv/ld/`、`kv.cmake`）が FLASH の長さを `0xffe000` にしてイメージを領域の外に置き、

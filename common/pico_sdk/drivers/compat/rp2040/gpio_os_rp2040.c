@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 /* GPIO bank 0 for the Zephyr compatibility layer's gpio0 device
- * (common/compat/gpio_os.h, used by common/compat/zephyr_gpio.c) on the
+ * (common/compat/port/gpio_os.h, used by common/compat/zephyr_gpio.c) on the
  * Pico SDK's hardware_gpio, as Zephyr's drivers/gpio/gpio_rpi_pico.c drives
  * it (that driver is written on the same SDK calls):
  *

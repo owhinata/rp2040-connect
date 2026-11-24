@@ -38,7 +38,7 @@ static inline void kernel_shell_os_reboot(uint32_t delay_ms);
 static inline void kernel_shell_os_bootsel(uint32_t delay_ms);
 
 /* "fault": the record of the fatal error that ended the run before this
- * start (common/compat/log/fault_record.h), or NULL when there is none or
+ * start (common/compat/include/fault_record.h), or NULL when there is none or
  * the OS keeps no such record.
  */
 static inline const struct fault_record *kernel_shell_os_fault_last(void);

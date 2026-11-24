@@ -13,7 +13,7 @@
  *
  * A binding calls nina_wifi_init() once, before any other function here,
  * and starts one thread with its OS's calls, at the priority and with the
- * stack of its build's table (common/compat/priorities.h): nina_wifi_tid
+ * stack of its build's table (common/compat/include/priorities.h): nina_wifi_tid
  * runs nina_wifi_thread(), which does not return.  It does the scans, the
  * connection attempts and the link monitor's checks every 2 s, one at a
  * time (nina_wifi.c).  It may start before nina_wifi_init(): it waits for

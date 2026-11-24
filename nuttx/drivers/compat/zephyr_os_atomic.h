@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /* The NuttX part of <zephyr/sys/atomic.h> of the Zephyr compatibility
- * layer (common/compat/zephyr/sys/atomic.h, which includes this header
+ * layer (common/compat/include/zephyr/sys/atomic.h, which includes this header
  * before it defines its names).  NuttX's <nuttx/atomic.h> (pulled in by
  * most kernel headers) has its own atomic_t and atomic_set(), atomic_add(),
  * atomic_or()... with other meanings.  It is included here first and its

@@ -21,7 +21,7 @@ config APP_DMESG_PRIORITY
 	---help---
 		The Zephyr build runs shell commands in the shell thread, at
 		K_LOWEST_APPLICATION_THREAD_PRIO (14), which is 104 here
-		(common/compat/priorities.h, APP_PRIO_SHELL).
+		(common/compat/include/priorities.h, APP_PRIO_SHELL).
 
 config APP_DMESG_STACKSIZE
 	int "dmesg stack size"

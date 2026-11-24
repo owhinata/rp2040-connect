@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 /* The ThreadX part of the port's thread priorities and stack sizes
- * (common/compat/priorities.h, which includes this header first), and the
+ * (common/compat/include/priorities.h, which includes this header first), and the
  * time slices:
  *
  *   layer priority = 15 - Zephyr priority      (larger = more urgent)
@@ -13,7 +13,7 @@
  * p + 16, what "ps" shows).  The priorities of priorities.h
  * (APP_PRIO_FROM_ZEPHYR()) are in the order of the generic kernel part of
  * the layer, a larger value more urgent (z_os_prio_t,
- * common/compat/kernel_generic/zephyr_kernel_os.h): 15 - p, so Zephyr
+ * common/compat/port/zephyr_kernel_os.h): 15 - p, so Zephyr
  * -16..14 is 31..1 and Zephyr's idle 15 would be 0, which no thread of the
  * layer takes (z_os_thread_start() refuses it).  z_os_thread_start() gives
  * ThreadX 31 - that value (Z_TX_PRIORITY(), zephyr_kernel_os_impl.h).

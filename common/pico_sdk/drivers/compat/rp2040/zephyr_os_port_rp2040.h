@@ -1,11 +1,11 @@
 /* SPDX-License-Identifier: MIT */
 /* The primitives of the generic kernel part of the Zephyr compatibility
- * layer (common/compat/kernel_generic/zephyr_kernel_os.h) and of a periodic
+ * layer (common/compat/port/zephyr_kernel_os.h) and of a periodic
  * kernel tick that are the same for every OS on the Pico SDK on the RP2040:
  * the OS's port header ("zephyr_os_port.h", read by its
  * zephyr_kernel_os_impl.h) includes this one.  The OS's tick hook uses the
  * last two to keep its tick count up with the TIMER (tick_catchup.h of
- * common/compat/kernel_generic).
+ * the generic kernel part, in common/compat/include).
  *
  *   z_os_busy_wait_us(us)      spins on the TIMER (busy_wait_us_32()).  Any
  *                              context

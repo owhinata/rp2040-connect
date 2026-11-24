@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 /* The FreeRTOS part of the port's task priorities and stack sizes
- * (common/compat/priorities.h, which includes this header first):
+ * (common/compat/include/priorities.h, which includes this header first):
  *
  *   FreeRTOS priority = 20 - Zephyr priority
  *

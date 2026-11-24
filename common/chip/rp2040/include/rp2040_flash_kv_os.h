@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MIT */
 /* The flash operations of the key-value area on the RP2040 that a build
  * writes for the shared part (common/chip/rp2040/rp2040_flash_kv.c, which
- * implements common/compat/flash_kv_os.h with them): the page program and
+ * implements common/compat/port/flash_kv_os.h with them): the page program and
  * the sector erase, which stop XIP, and their start.  The NuttX build
  * writes them with the boot ROM
  * (nuttx/boards/arduino-nano-rp2040-connect/src/rp2040_flash_kv_os.c), the
@@ -9,7 +9,7 @@
  * (common/pico_sdk/drivers/kv/rp2040_flash_kv_os.c).
  *
  * The shared part calls them only with a request it has checked against
- * the area (common/compat/flash_kv.h) and against the bounds it took from
+ * the area (common/compat/include/flash_kv.h) and against the bounds it took from
  * the linker script, from threads, one at a time.  The build checks the
  * request once more against the bounds it is given (lo, hi: flash offsets,
  * [lo, hi); 0 and 0 while the area is not ready) with the interrupts off,

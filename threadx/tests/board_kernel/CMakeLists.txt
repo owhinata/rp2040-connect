@@ -54,10 +54,11 @@ threadx_kernel(board_kernel)
 # idle_os.h and run_time.h (threadx/app/usb-console/src), the board's port
 # header first with the part shared by the OSes on the Pico SDK
 # (common/pico_sdk/drivers/compat/rp2040),
-# then the ThreadX part of the layer, the layer's <zephyr/sys/clock.h> and
-# <zephyr/sys/__assert.h> for an OS without its own
-# (common/compat/os_generic/include), the generic kernel part (with the
-# default zephyr_os_atomic.h), the layer's Zephyr headers (common/compat),
+# then the ThreadX part of the layer, the layer's implementations for an
+# OS without its own (common/compat/port/generic: <zephyr/sys/clock.h>,
+# <zephyr/sys/__assert.h>, the generic kernel part's zephyr_os.h with the
+# default zephyr_os_atomic.h), the layer's headers (common/compat/include,
+# port and internal),
 # the RP2040's TIMER (common/chip/rp2040/include), the shared application
 # headers idle.c reads (common/pico_sdk/app/usb-console/src: app.h,
 # idle_blink.h) and the test.
@@ -67,9 +68,10 @@ target_include_directories(board_kernel PRIVATE
   ${THREADX_DIR}/drivers/compat/rp2040
   ${COMMON_DIR}/pico_sdk/drivers/compat/rp2040
   ${THREADX_DIR}/drivers/compat
-  ${COMMON_DIR}/compat/os_generic/include
-  ${COMMON_DIR}/compat/kernel_generic
-  ${COMMON_DIR}/compat
+  ${COMMON_DIR}/compat/port/generic
+  ${COMMON_DIR}/compat/include
+  ${COMMON_DIR}/compat/port
+  ${COMMON_DIR}/compat/internal
   ${COMMON_DIR}/chip/rp2040/include
   ${COMMON_DIR}/pico_sdk/app/usb-console/src
   ${COMMON_DIR}/tests/zephyr_kernel

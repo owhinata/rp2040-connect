@@ -5,7 +5,8 @@
 # model, kernel (work queues, semaphores), RTIO, GPIO, sensor API and I2C
 # API that the ported driver (lsm6dso/) and its callers use, under Zephyr's
 # names.  Its OS-independent part is in common/compat (headers in
-# common/compat/zephyr/, include path $(TOPDIR)/../../common/compat); the
+# common/compat/include, internal and port, include paths
+# $(TOPDIR)/../../common/compat/<dir>); the
 # NuttX implementation is this directory (the OS headers zephyr_os*.h, the
 # OS parts *_os.h of the shared sources, the NuttX headers in
 # compat/zephyr/, include path $(TOPDIR)/external/compat, which comes
@@ -56,7 +57,9 @@ CSRCS += zephyr_wifi_utils.c
 endif
 
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)compat
-CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)compat
+CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)compat$(DELIM)include
+CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)compat$(DELIM)port
+CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)compat$(DELIM)internal
 
 # The sources of common/compat, with the prelude of the shared sources.
 

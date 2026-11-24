@@ -2,7 +2,7 @@
 /* The port's minimal MQTT client (mqtt_min.c): the build-time settings of
  * the Zephyr build's MQTT library and the thin socket layer under it.  The
  * client's API is Zephyr's, <zephyr/net/mqtt.h> of the compatibility layer
- * (common/compat/zephyr/net/mqtt.h).  The builds on the compatibility
+ * (common/compat/include/zephyr/net/mqtt.h).  The builds on the compatibility
  * layer use it (the Zephyr build has Zephyr's MQTT library).
  *
  * The socket layer has the meaning of the Zephyr socket calls that

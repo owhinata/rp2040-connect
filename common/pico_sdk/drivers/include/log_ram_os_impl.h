@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 /* The part of the RAM log for an OS on the Pico SDK
- * (common/compat/log/log_ram_os.h, read only by
+ * (common/compat/port/log_ram_os.h, read only by
  * common/compat/log/log_ram.c):
  *
  * - the ring in RAM that the start-up code leaves alone (the Pico SDK's

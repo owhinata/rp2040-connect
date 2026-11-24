@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 /* <zephyr/sys/clock.h> of the Zephyr compatibility layer
- * (common/compat/os_generic/include) for an OS on the Pico SDK without a
+ * (common/compat/port/generic) for an OS on the Pico SDK without a
  * realtime clock of its own: the monotonic clock is the RP2040 TIMER
  * (rp2040_timer_us() of common/chip/rp2040) and the realtime clock is the
  * TIMER plus a base, under a spinlock (the 64-bit base is two words).  See

@@ -146,7 +146,7 @@ static void sleep_ms(uint32_t ms)
 		}                                                                                  \
 	} while (0)
 
-/* The log (common/compat/log/app_log.h): not used by the files under test. */
+/* The log (common/compat/include/app_log.h): not used by the files under test. */
 void app_log_vprintf(int level, const char *module, const char *func, const char *fmt, va_list ap)
 {
 	(void)level;

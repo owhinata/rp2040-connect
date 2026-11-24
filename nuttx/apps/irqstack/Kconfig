@@ -23,7 +23,7 @@ config APP_IRQSTACK_PRIORITY
 	default 104
 	---help---
 		The shell's priority (APP_PRIO_SHELL in
-		common/compat/priorities.h): the Zephyr build runs shell
+		common/compat/include/priorities.h): the Zephyr build runs shell
 		commands in its shell thread.
 
 config APP_IRQSTACK_STACKSIZE

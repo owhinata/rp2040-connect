@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: MIT */
-/* The OS boundary of the key-value area (common/compat/flash_kv_os.h) on the
+/* The OS boundary of the key-value area (common/compat/port/flash_kv_os.h) on the
  * RP2040: reads, 256-byte page programs and 4 KiB sector erases of the last
  * 8 KiB of the 16 MiB flash (flash offsets 0xffe000-0xffffff, XIP
  * 0x10ffe000-0x10ffffff, two sectors), the Zephyr build's

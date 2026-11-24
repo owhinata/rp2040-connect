@@ -1,8 +1,8 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-/* The NuttX part of the logging macros (common/compat/log/app_log.h, which
+/* The NuttX part of the logging macros (common/compat/include/app_log.h, which
  * includes this header first): the configuration (CONFIG_LOG_*_LEVEL),
  * <syslog.h>, and the size of the RAM log's ring
- * (common/compat/log/log_ring.h, log_ram.h).
+ * (common/compat/internal/log_ring.h, log_ram.h).
  *
  * <syslog.h> defines LOG_ERR as a syslog priority.  This header includes
  * <syslog.h> first and app_log.h replaces LOG_ERR with the function-like

@@ -15,7 +15,7 @@
 # calls with the prelude of the shared sources (compat/common_prelude.h),
 # as in the Zephyr build's module.  Its extended API
 # <zephyr/drivers/sensor/lsm6dso.h> is include/lsm6dso.h, which
-# common/compat finds.  This build's own file is
+# common/compat/include finds.  This build's own file is
 # port/nuttx/lsm6dso_instance.h (the device that lsm6dso_sensor.c defines
 # at its end, from the board's values).  With them: ST's glue
 # (stmemsc_i2c.c, stmemsc_mdelay.c and stmemsc.h, in

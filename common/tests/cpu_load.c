@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-/* The arithmetic of common/compat/cpu_load.h against the steps of
+/* The arithmetic of common/compat/port/cpu_load.h against the steps of
  * Zephyr's cpu_load_get_cpu() (lib/os/cpu_load/cpu_load_backend_idle.c).
  */
 #include <assert.h>

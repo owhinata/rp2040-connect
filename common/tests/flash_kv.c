@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-/* compat/flash_kv.h: the range checks done before every flash erase
+/* compat/include/flash_kv.h: the range checks done before every flash erase
  * and program, the split of writes into pages, and the check of the
  * area's contents before Zephyr's NVS mounts it: Zephyr's ATEs, the NuttX
  * build's earlier format (NuttX's NVS; each rule of the check, at its

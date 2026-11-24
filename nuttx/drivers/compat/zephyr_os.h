@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /* The NuttX part of <zephyr/kernel.h> of the Zephyr compatibility layer
- * (common/compat/zephyr/kernel.h, which includes this header first and
+ * (common/compat/include/zephyr/kernel.h, which includes this header first and
  * lists what it must provide): NuttX's headers that come before the
  * layer's, the tick, the OS objects (k_mutex, k_sem, the timer of a
  * delayable work item, k_tid_t), the priorities, the calling thread,

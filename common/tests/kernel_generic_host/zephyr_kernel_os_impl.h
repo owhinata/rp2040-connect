@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 /* The smallest OS part of the generic kernel part of the Zephyr
- * compatibility layer (common/compat/kernel_generic/zephyr_kernel_os.h) for
+ * compatibility layer (common/compat/port/zephyr_kernel_os.h) for
  * the host checks of common/tests/run.sh: one thread, no interrupts, the
  * host's monotonic clock.  It only has to compile: run.sh compiles
  * <zephyr/kernel.h> and the sources of the generic kernel part on it with

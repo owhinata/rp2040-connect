@@ -4,7 +4,7 @@
  * common/imu/imu_stream.c, common/imu/time_sync.c and common/imu/kv_store.c
  * (cut out of the files by script/host_tests.sh, IMU_SHELL_INC,
  * NTP_SHELL_INC and KV_SHELL_INC; "kv" with the "wipe" entry of
- * common/compat/kv_store_os.h), compiled with
+ * common/compat/include/kv_store_os.h), compiled with
  * the compatibility layer's <zephyr/shell/shell.h> and
  * Z_SHELL_CMD_NAMED_MAIN and run on common/shell/zshell.c (with the NuttX
  * backends, apps/subcmd/zshell_os_impl.h), against the same sets written

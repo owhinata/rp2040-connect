@@ -696,7 +696,7 @@ Zephyr 版は前回の `kernel ps` からの区間の割合（最初は起動か
   API も Zephyr 版の `kv_store.c`（`common/imu/kv_store.c`）をそのまま使う。名前は `app_kv/<キー>`、Wi-Fi の
   資格情報は `wifi_cred/<番号>`。Zephyr 版と NuttX 版のどちらが書いた KV も、もう一方がそのまま読み書きする。
 - flash の操作（読み出し、256 バイトのページの書き込み、4 KiB のセクターの消去）は OS ごとの小さな境界
-  （`common/compat/flash_kv_os.h`）にあり、範囲は末尾 8 KiB だけに限る。RP2040 では NuttX 版・FreeRTOS 版・ThreadX 版がその検査と読み出しを
+  （`common/compat/port/flash_kv_os.h`）にあり、範囲は末尾 8 KiB だけに限る。RP2040 では NuttX 版・FreeRTOS 版・ThreadX 版がその検査と読み出しを
   共有し（`common/chip/rp2040/rp2040_flash_kv.c`）、各 OS の側はページの書き込みとセクターの消去だけを書く。割り込みを止めるのはページの書き込み
   1 回と消去 1 回のそれぞれの間（消去は 34〜40 ms）。
 - KV の領域に Zephyr の NVS でも消去済みでもないデータ（NuttX 版の以前の形式、別のファームウェアの残り）が
@@ -769,9 +769,9 @@ Zephyr の名前のまま提供する互換層の上でビルドする。ホス�
 
 OS ごとの部分は、狭い境界のヘッダーの実装として各 OS のディレクトリー（ドライバーでは `port/<OS>/`）に置く。
 
-- 互換層のカーネルの部分（`k_mutex`、`k_sem`、スレッド、時計など。一覧は `common/compat/zephyr/kernel.h` の先頭）:
+- 互換層のカーネルの部分（`k_mutex`、`k_sem`、スレッド、時計など。一覧は `common/compat/include/zephyr/kernel.h` の先頭）:
   `nuttx/drivers/compat/`、`freertos/drivers/compat/`、`threadx/drivers/compat/`。
-- 優先度の対応 `priorities_os.h`（`common/compat/priorities.h` が読む）、NINA の `nina_os.h`・`nina_bus.h`（`nina_os.h` の OS ごとの
+- 優先度の対応 `priorities_os.h`（`common/compat/include/priorities.h` が読む）、NINA の `nina_os.h`・`nina_bus.h`（`nina_os.h` の OS ごとの
   実装はコアのつなぎ `common/drivers/nina/port/zephyr/`・`nuttx/`・`freertos/`・`threadx/` にある）、I2C の
   `i2c_dw_os.h` と DMA 読み出しの `i2c_dw_dma_os.h`（実装はコアのつなぎ `common/drivers/i2c_dw/port/nuttx/`・`pico_sdk/`・`freertos/`・`threadx/` にある）、KV の flash の `flash_kv_os.h`、シェルのバックエンド `zshell_os.h`、ログの `app_log_os.h`・`log_ram.h`・`log_ram_os.h`。
 - OS ごとに違う数行: `sensor_shell_os.h`（`sensor get` の待ち）、`wifi_profile_os.h`、`lsm6dso_instance.h`（デバイスの
@@ -781,7 +781,7 @@ OS ごとの部分は、狭い境界のヘッダーの実装として各 OS の�
 `port/zephyr/` は Zephyr のモジュール（`zephyr/module.yml`。アプリの `ZEPHYR_EXTRA_MODULES` に入れる）で、そのオプション
 `CONFIG_LSM6DSO_LOCAL` が同じデバイスツリーのノードの Zephyr のドライバーに代わり（`prj.conf` で `CONFIG_LSM6DSO=n`）、
 そのライブラリーがコアとつなぎを持ち、`<zephyr/drivers/sensor/lsm6dso.h>` を公開する。NuttX 版・FreeRTOS 版・ThreadX 版は同じコアと
-つなぎを互換層の上でビルドし、互換層が `<zephyr/drivers/sensor/lsm6dso.h>` も提供する（`common/compat/zephyr/drivers/sensor/`）。
+つなぎを互換層の上でビルドし、互換層が `<zephyr/drivers/sensor/lsm6dso.h>` も提供する（`common/compat/include/zephyr/drivers/sensor/`）。
 `lsm6dso_instance.h` は OS ごとに持つ（`port/nuttx/`、Pico SDK の上のビルドは `port/pico_sdk/`）。**sensor シェル（`common/shell/sensor_shell.c`）** は、
 Zephyr 版では Zephyr の `drivers/sensor/sensor_shell.c` にローカルのパッチ 0006（`zephyr/manifest/zephyr/patches/zephyr/`）を
 当てたもので、NuttX 版・FreeRTOS 版・ThreadX 版も同じファイルを使い、`sensor_shell_os.h` は OS ごとに持つ。パッチを当てたツリーのファイルとバイト単位で
@@ -894,7 +894,7 @@ NINA のファームウェアの追加機能（`firmware/nina-fw/` のパッチ 
   ポートは tickless に対応していない。待ち時間を tick に切り上げて 1 tick 足す規則は Zephyr 版と同じ。
 - 割り込みを止めている間（フラッシュの消去・書き込み）は SysTick の割り込みが失われる。tick フックが tick ごとに TIMER と
   比べ、1 tick 以上遅れていれば SysTick を保留にし直して、失われた tick をポートの通常のハンドラーで 1 つずつ数えさせる
-  （`common/compat/kernel_generic/tick_catchup.h`。tick は TIMER より先に進まない）。これが無いと `kv set` 1 回で 46〜50 ms
+  （`common/compat/include/tick_catchup.h`。tick は TIMER より先に進まない）。これが無いと `kv set` 1 回で 46〜50 ms
   遅れていた（2026-11-17、3 回）。入れたあとは、100 文字の `kv set` 90 回のあとも「TIMER の ms − tick」は 2.8〜3.1 だった
   （2026-11-18）。`xTaskCatchUpTicks()` は、タスクからしか呼べず、補った tick で tick フックが呼ばれないので使わない。
 - `cpu_active` は §11.4 と同じアイドルの窓の方式で測る。1 ms ごとの tick の割り込みは負荷に入る（Zephyr 版・

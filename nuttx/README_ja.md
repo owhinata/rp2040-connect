@@ -427,7 +427,7 @@ Zephyr 版の `gpio`、`log`、`device`、`history`、`clear`、`resize`、`shel
 
 ## スレッドと優先度
 
-優先度は `NuttX = 118 − Zephyr` で対応させています（`common/compat/priorities.h` の `APP_PRIO_*`・`APP_STACK_*`。換算は `nuttx/drivers/include/priorities_os.h`）。
+優先度は `NuttX = 118 − Zephyr` で対応させています（`common/compat/include/priorities.h` の `APP_PRIO_*`・`APP_STACK_*`。換算は `nuttx/drivers/include/priorities_os.h`）。
 
 | スレッド | Zephyr | NuttX | スタック |
 |---|---|---|---|

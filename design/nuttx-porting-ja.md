@@ -128,7 +128,7 @@ UART0（GPIO0 が TX、GPIO1 が RX。Arduino の D1/D0）はコンソールで�
 
 Zephyr 版の `src/log_ram.c` と同じ RAM ログで、FreeRTOS 版・ThreadX 版と共有します（`common/compat/log/log_ram.c`。リング・行の前置き・頻度制限は
 `common/compat/log/log_ring.c`、NuttX の部分は `nuttx/drivers/include/log_ram_os_impl.h`（リングのセクション、割り込みの禁止、TIMER）と
-syslog のチャネル `nuttx/drivers/log/log_ram_syslog.c`。`LOG_*` マクロは `common/compat/log/app_log.h` で、その NuttX の部分が
+syslog のチャネル `nuttx/drivers/log/log_ram_syslog.c`。`LOG_*` マクロは `common/compat/include/app_log.h` で、その NuttX の部分が
 `nuttx/drivers/include/app_log_os.h`）。
 
 - 8192 バイトのリングバッファーを `.noinit` に置きます（`nuttx/drivers/include/app_log_os.h` の `LOG_RAM_SIZE`。
@@ -159,7 +159,7 @@ syslog のチャネル `nuttx/drivers/log/log_ram_syslog.c`。`LOG_*` マクロ�
   NuttX の `CONFIG_ARCH_STACKDUMP_MAX_LENGTH` は SP がそのスタックの外のときのダンプにしか効かないので、
   この目的には使えません。Zephyr 版も致命的なエラーの後に再起動する設定です
   （`CONFIG_RESET_ON_FATAL_ERROR=y`。Zephyr 版の RAM ログは 4 KiB）。
-- ソースからは Zephyr と同じ書き方で使います。`#include "app_log.h"`（`common/compat/log/`。
+- ソースからは Zephyr と同じ書き方で使います。`#include "app_log.h"`（`common/compat/include/`。
   カーネル側・ボード・アプリのどれからも使え、割り込みハンドラーからも呼べます）のあと、ファイルごとに
   `LOG_MODULE_REGISTER(名前, LOG_LEVEL_INF)`（レベルを省くと `CONFIG_LOG_DEFAULT_LEVEL`、既定 3。
   include の前に `LOG_LEVEL` を定義していればその値）、本文で `LOG_ERR()`、`LOG_WRN()`、`LOG_INF()`、
@@ -180,9 +180,9 @@ syslog のチャネル `nuttx/drivers/log/log_ram_syslog.c`。`LOG_*` マクロ�
 
 - 構成: `kv_store.c` → Zephyr の settings（`settings_save_one()`・`settings_load_one()`・`settings_delete()`）→
   Zephyr の NVS → 互換層の flash デバイスと flash map（`common/compat/zephyr_flash_kv.c`）→ OS の境界
-  （`common/compat/flash_kv_os.h` の 5 関数。RP2040 では FreeRTOS 版・ThreadX 版と共有の `common/chip/rp2040/rp2040_flash_kv.c` が、ボードのブート ROM での flash の操作 `src/rp2040_flash_kv_os.c` の上で実装）。settings と NVS は
+  （`common/compat/port/flash_kv_os.h` の 5 関数。RP2040 では FreeRTOS 版・ThreadX 版と共有の `common/chip/rp2040/rp2040_flash_kv.c` が、ボードのブート ROM での flash の操作 `src/rp2040_flash_kv_os.c` の上で実装）。settings と NVS は
   Zephyr v4.5.0 のソースを改変せずに写したもの（`common/compat/subsys/` ほか。一覧はドライバー説明の互換層の
-  節）で、Zephyr 版の Kconfig の値（`common/compat/zephyr_kv_config.h`）でビルドします。
+  節）で、Zephyr 版の Kconfig の値（`common/compat/include/zephyr_kv_config.h`）でビルドします。
 - 形式（Zephyr 版の `.config` とデバイスツリーと同じ値）: NVS のセクターは 4096 バイト × 2
   （`CONFIG_SETTINGS_NVS_SECTOR_SIZE_MULT=1`、`CONFIG_SETTINGS_NVS_SECTOR_COUNT=8` のうち 8 KiB に収まる 2）、
   書き込み単位は 1 バイト、消去値は 0xFF。NVS の索引（ATE）は 8 バイト（id、offset、len、part、CRC-8）で、
@@ -1012,7 +1012,7 @@ NuttX 標準のクリティカルセクションの監視（`CONFIG_SCHED_CRITMO
 
 ## スレッドの優先度とスタック
 
-優先度は `NuttX = 118 − Zephyr` で対応させ、`common/compat/priorities.h` に定数（`APP_PRIO_*`）と
+優先度は `NuttX = 118 − Zephyr` で対応させ、`common/compat/include/priorities.h` に定数（`APP_PRIO_*`）と
 スタックの大きさ（`APP_STACK_*`）を置きます（換算 `APP_PRIO_FROM_ZEPHYR()` と NuttX だけのスレッドは
 `nuttx/drivers/include/priorities_os.h`）。Zephyr 版のアプリのスレッド（優先度 8〜11）は 110〜107、
 シェルのスレッド（14）は 104 です。
@@ -1148,7 +1148,7 @@ OS ごとのヘッダー（`sensor_shell_os.h`、`wifi_profile_os.h`、`lsm6dso_
 | `common/chip/rp2040/` | どの OS も持たない RP2040 のコード: `include/rp2040_timer_us.h`（TIMER の読み出し）、`include/rp2040_watchdog_reboot.h`、KV の領域の flash の境界 `rp2040_flash_kv.c`（`include/rp2040_flash_kv.h`。ボードの flash の操作は `include/rp2040_flash_kv_os.h` で宣言）。FreeRTOS 版・ThreadX 版と共有し、ボードの `src/Make.defs` が前置きヘッダーなしでコンパイルする |
 | `common/compat/` | 互換層の OS に依存しない部分（Zephyr の API のヘッダー `zephyr/...`。`i2c_dma` の状態 `zephyr/drivers/i2c/i2c_dw_rp2040_dma.h` は I2C のコアの `common/drivers/i2c_dw/include/i2c_dw_rp2040_dma.h` を読む。`zephyr_compat.h`、ワーク、RTIO、ブロックのプール、デバイスの一覧、`gpio0`、`net_mgmt`、Wi-Fi の要求、sensor の既定の iodev）と、互換層の上でビルドする NuttX 版・FreeRTOS 版・ThreadX 版が使う Zephyr のライブラリーの写し（`sensor_shell_stream.c`・`sensor_shell.h`、`wifi_credentials.c`・`wifi_credentials_backend_settings.c`・`wifi_credentials_internal.h`）、境界のヘッダー（`priorities.h`、`cpu_load.h`、`gpio_os.h`）。Zephyr 版は使わない |
 | `common/shell/` | `sensor_shell.c`（Zephyr 版のツリーにパッチ 0006 を当てたファイル）、`i2c_shell.c`（Zephyr 版のツリーにパッチ 0004 を当てたファイル。`nuttx/apps/i2c` がビルドする）、`subcmd.[ch]`（サブコマンドの表の処理）、`zshell.c`（`<zephyr/shell/shell.h>` で書いたコマンドの処理: 語の照合、ワイルドカード、引数の数の検査、ヘルプ）とその OS との境界 `zshell_os.h`（NuttX 版の部分は `nuttx/apps/subcmd/zshell_os_impl.h`）。前置きヘッダーなしでコンパイルする。Zephyr 版は使わない。ほかに `i2c_dma_shell.c`（3 つの OS のファームウェアの `i2c_dma` コマンド。Zephyr のシェルの API で書いてあり、NuttX 版では `nuttx/apps/i2c_dma` が前置きヘッダー付きでビルドする）と `nina_shell.c`（Zephyr 版と FreeRTOS 版の `nina` コマンド。NuttX 版は自前の `nuttx/apps/nina`） |
-| `common/compat/log/` | `log_ring.[ch]`（RAM ログのリング、行の前置き、頻度制限）、`app_log.h`（`LOG_*` マクロ。NuttX の部分は `nuttx/drivers/include/app_log_os.h`）、`log_ram.c`・`log_ram.h`（RAM ログと `LOG_*` マクロの関数。FreeRTOS 版・ThreadX 版と共有。NuttX の部分は `nuttx/drivers/include/log_ram_os_impl.h`、syslog のチャネルは `nuttx/drivers/log/log_ram_syslog.c`）、`fault_record.[ch]`（異常停止の記録の形式、CRC-32、watchdog の scratch への写し、表示の行。FreeRTOS 版だけが使う）。Zephyr 版は使わない |
+| `common/compat/log/`（ヘッダーは `common/compat/include/`・`internal/`・`port/`） | `log_ring.c` と `internal/log_ring.h`（RAM ログのリング、行の前置き、頻度制限）、`app_log.h`（`LOG_*` マクロ。NuttX の部分は `nuttx/drivers/include/app_log_os.h`）、`log_ram.c`・`log_ram.h`・`port/log_ram_os.h`（RAM ログと `LOG_*` マクロの関数。FreeRTOS 版・ThreadX 版と共有。NuttX の部分は `nuttx/drivers/include/log_ram_os_impl.h`、syslog のチャネルは `nuttx/drivers/log/log_ram_syslog.c`）、`fault_record.c`・`fault_record.h`（異常停止の記録の形式、CRC-32、watchdog の scratch への写し、表示の行。FreeRTOS 版だけが使う）。Zephyr 版は使わない |
 | `common/tests/` | 上のファイルを対象にするテスト 37 本と、Zephyr のツリーとの照合 `zephyr_copies`・`zephyr_sensor_shell_patched`（`common/tests/run.sh` が実行し、4 つの OS のファームウェアの `host_tests.sh` が最初に呼ぶ。互換層の `zephyr_rtio`・`zephyr_work`・`mqtt_min` は偽のカーネルの上、NINA のコアの `nina_proto`・`nina_sock`・`nina_wifi`・`nina_dns`・`nina_passthrough` はテストが定義する境界の偽物の上。`nina_core_independent` はコアの各ファイルを C ライブラリーと自分のヘッダーだけでコンパイルし、`i2c_dw_public_headers` は I2C のコアの `include/` をそのディレクトリーだけでコンパイルし、LSM6DSO の `lsm6dso_core_independent`・`lsm6dso_public_headers` はそのコアと `include/` に同じことをする）。`lsm6dso_stream` はコアのストリーム `lsm6dso_stream.c` を、境界のホストでの実装（`common/tests/lsm6dso_os_host/`）とコアの FIFO の呼び出しの偽物の上で動かす |
 | `common/tests/fakes/` | テスト用の Zephyr のヘッダーと ST のヘッダーの代わり（`zephyr/drivers/sensor.h`、`zephyr/drivers/sensor_clock.h`、`zephyr/drivers/i2c.h`、`zephyr/rtio/rtio.h`、`lsm6dso_reg.h`） |
 | `common/tests/zephyr_fakes/` | 互換層の偽のカーネル: OS ごとのヘッダー（`zephyr_os.h`・`zephyr_os_spinlock.h`・`zephyr_os_atomic.h`・`priorities_os.h`、`zephyr/sys/__assert.h`）とその関数（`zephyr_kernel_host.[ch]`。1 スレッドで、ワークキューとタイマーはテストが回す）。NuttX 版のテストも使う |
@@ -1184,7 +1184,7 @@ Wi-Fi の操作のロックと、Wi-Fi のスレッドを起こす待ちです�
 （`common/drivers/nina/port/nuttx/nina_passthrough_os.c`、`nina_passthrough_bus_rp2040.c`）はホストテストで確かめていません。
 
 `common/tests/cpu_load.c` と `common/tests/log_ring.c` は、Zephyr 版が使わない共通の部分のテストです。前者は
-`common/compat/cpu_load.h` の計算を Zephyr の `cpu_load_get_cpu()` の手順（リセット、開いている区間、0 の扱い、
+`common/compat/port/cpu_load.h` の計算を Zephyr の `cpu_load_get_cpu()` の手順（リセット、開いている区間、0 の扱い、
 切り捨て）と比べます。後者は `common/compat/log/log_ring.c` を、Zephyr 版の `log_ram.c` の 1 バイトずつの
 書き込みと乱数の書き込み 2 万回で比べ、行の前置きを Zephyr の `log_output.c` の時刻の計算と乱数 20 万個で
 比べ、`dmesg` の取り出し（上書き中の読み飛ばし、リングの 2 倍での打ち切り）と頻度制限を、各 OS のファームウェアのリングの大きさ（4096 バイトと 8192 バイト）で確かめます（`common/tests/log_ram.c` も同じ）。
@@ -1202,7 +1202,7 @@ Zephyr の NVS が書く最初の索引、`app_kv/imu.port` と `app_kv/imu.sess
 上限、再起動の後、整理（消去 10 回以上）、満杯（`-ENOSPC`、削除はできる）、別のデータ（乱数、1 バイトだけ
 書かれた領域、以前の NuttX 版の形式: 使わず、触れず、ログが 1 回、`kv wipe` の後に使える）、flash デバイスが
 領域の外を断ること、Zephyr の NVS そのものが両方のセクターの末尾が書かれた領域で `-EDEADLK` になること、
-電源断（上の「キーと値の保存」）。`flash_kv` は `common/compat/flash_kv.h` の範囲の検査を境界の前後と、
+電源断（上の「キーと値の保存」）。`flash_kv` は `common/compat/include/flash_kv.h` の範囲の検査を境界の前後と、
 flash の先頭と末尾 1 MiB のすべてのページ・消去単位で確かめ、ページ単位の書き込みを、ページ境界の前後の
 さまざまな位置と長さで、書いたバイトだけが変わることで確かめます。起動時の判定は、Zephyr の NVS の索引と
 NuttX の NVS の索引をそれぞれ受け付け、相手の形式の索引の並び（CRC がたまたま合うものを含む、それぞれ

@@ -12,7 +12,7 @@
  * priorities_os.h).
  *
  * It also keeps the count up with the TIMER (tick_catchup.h of
- * common/compat/kernel_generic, shared with the FreeRTOS build): when tick
+ * common/compat/include, shared with the FreeRTOS build): when tick
  * interrupts were lost while interrupts were masked (a flash erase), it
  * pends SysTick again, once per lost tick, so this handler runs again right
  * after it returns and counts each of them as a tick of its own, through
@@ -29,7 +29,7 @@
 #include "zephyr_compat_os.h"
 #include "zephyr_os_port.h"
 
-/* Z_OS_TICK_HZ for tick_catchup.h (common/compat/kernel_generic). */
+/* Z_OS_TICK_HZ for tick_catchup.h (common/compat/include). */
 #include "zephyr_kernel_os.h"
 #include "tick_catchup.h"
 

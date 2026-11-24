@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: Apache-2.0 */
-/* The NuttX part of the RAM log (common/compat/log/log_ram_os.h, read only by
+/* The NuttX part of the RAM log (common/compat/port/log_ram_os.h, read only by
  * common/compat/log/log_ram.c):
  *
  * - the ring in .noinit (arduino-nano-rp2040-connect-flash.ld places it

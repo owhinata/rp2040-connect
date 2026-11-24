@@ -13,8 +13,8 @@
 # (nuttx/drivers/compat/zephyr_i2c.c, bound by the board).
 #
 # Include paths: the Zephyr compatibility layer ($(TOPDIR)/external/compat
-# and common/compat: <zephyr/drivers/i2c.h>, <zephyr/shell/shell.h>), and
-# the logging macros (common/compat/log: app_log.h; its NuttX part in
+# and common/compat/include: <zephyr/drivers/i2c.h>, <zephyr/shell/shell.h>), and
+# the logging macros (common/compat/include: app_log.h; its NuttX part in
 # $(TOPDIR)/external/include).
 ############################################################################
 
@@ -28,9 +28,9 @@ MODULE    = $(CONFIG_APP_I2C)
 MAINSRC   = i2c_shell.c
 
 CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)include
-CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)compat$(DELIM)log
 CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)compat
-CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)compat
+CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)compat$(DELIM)include
+CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)compat$(DELIM)port
 
 VPATH    += :../../../common/shell
 DEPPATH  += --dep-path ../../../common/shell

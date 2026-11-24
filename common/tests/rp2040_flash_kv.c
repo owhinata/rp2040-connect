@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 /* chip/rp2040/rp2040_flash_kv.c, the OS boundary of the key-value area
- * (compat/flash_kv_os.h) that the NuttX and FreeRTOS builds share, on a
+ * (compat/port/flash_kv_os.h) that the NuttX and FreeRTOS builds share, on a
  * fake of the build's flash operations (rp2040_flash_kv_os.h, defined
  * here): the fake records every call, checks that it is a page or sector
  * of the area with the area's bounds and the shared part's RAM copy of the
@@ -110,7 +110,7 @@ int rp2040_flash_kv_os_erase(uint32_t sector_offset, uint32_t lo, uint32_t hi)
 	return 0;
 }
 
-/* The log (compat/log/app_log.h) ---------------------------------------------*/
+/* The log (compat/include/app_log.h) ---------------------------------------------*/
 
 /* What was logged since log_clear(); what does not fit is dropped. */
 static char log_buf[LOG_LEN];

@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /* The NuttX part of the port's thread priorities and stack sizes
- * (common/compat/priorities.h, which includes this header first):
+ * (common/compat/include/priorities.h, which includes this header first):
  *
  *   NuttX priority = 118 - Zephyr priority
  *
@@ -65,7 +65,7 @@
  *   tcp_work      -14 (cooperative)  -> 132, 1024 (Zephyr's IP stack, idle)
  *   usbd, usbd@50110000 -8 (coop.)   -> 126, 1024 / 512 (NuttX: interrupt)
  *   logging        14                -> 104, 768 (NuttX: none, see
- *                                       common/compat/log/app_log.h)
+ *                                       common/compat/include/app_log.h)
  *   zperf_work_q   15 -> 14          -> 104, 2048 (NuttX: iperf, whose
  *                                       threads have fixed priorities
  *                                       100 and 101)

@@ -377,7 +377,7 @@ the include path; the objects are made in the board's directory).
 | `common/drivers/i2c_dw/port/i2c_dw_dma_os.h` | The DMA boundary of the DMA reads: what they need from the OS's own DMA driver (the second table below), one call for each call of Zephyr's DMA API in the patched driver. No OS name; the core touches no DMA register |
 | `common/drivers/i2c_dw/internal/i2c_dw.h` | Definitions and pure functions without OS headers: the definitions of the Zephyr version's `i2c_dw.h`, the SCL counts, the speed class of a frequency, the NuttX flags (`I2C_M_*`) turned into Zephyr's (`I2C_MSG_*`) and the words written to `IC_DATA_CMD`. Host test `common/tests/i2c_dw.c` |
 | `common/drivers/i2c_dw/internal/i2c_dw_registers.h` | A copy of the Zephyr version's `i2c_dw_registers.h` (the accessors are defined on plain volatile 32-bit accesses, the addresses are `uintptr_t` in place of Zephyr's `mm_reg_t`) |
-| `common/drivers/i2c_dw/include/i2c_dw_rp2040_dma.h` | The state that the `i2c_dma` command (`common/shell/i2c_dma_shell.c`, shared by the four builds; this build's is built by `nuttx/apps/i2c_dma`) reads and sets: DMA on or off and the four counters (`i2c_dw_rp2040_dma_get_stats()`, `_enabled()`, `_set_enabled()`). The command includes it by Zephyr's name, `<zephyr/drivers/i2c/i2c_dw_rp2040_dma.h>`: the header of that name in `common/compat/zephyr/drivers/i2c/` includes this file. The declarations are those of the header that patch 0003 adds to Zephyr's tree (`i2c_dw_sync` checks). The only header of `include/`; it compiles with that directory alone (`common/tests/run.sh`, `i2c_dw_public_headers`) |
+| `common/drivers/i2c_dw/include/i2c_dw_rp2040_dma.h` | The state that the `i2c_dma` command (`common/shell/i2c_dma_shell.c`, shared by the four builds; this build's is built by `nuttx/apps/i2c_dma`) reads and sets: DMA on or off and the four counters (`i2c_dw_rp2040_dma_get_stats()`, `_enabled()`, `_set_enabled()`). The command includes it by Zephyr's name, `<zephyr/drivers/i2c/i2c_dw_rp2040_dma.h>`: the header of that name in `common/compat/include/zephyr/drivers/i2c/` includes this file. The declarations are those of the header that patch 0003 adds to Zephyr's tree (`i2c_dw_sync` checks). The only header of `include/`; it compiles with that directory alone (`common/tests/run.sh`, `i2c_dw_public_headers`) |
 | `common/drivers/i2c_dw/port/nuttx/i2c_dw_os_impl.h` | The NuttX implementation of the boundary: semaphores (`sem_t`: `nxsem_post()`, `nxsem_tickwait_uninterruptible()`, `nxsem_wait_uninterruptible()`, `nxsem_reset()`), time (the system ticks), `nxsched_msleep()`, `up_irq_save()`, the messages (`struct i2c_msg_s`, with Zephyr's flags made by `i2c_dw_msg_flags()`), `I2C_DW_CLOCK_SPEED` (`BOARD_PERI_FREQ`) |
 | `common/drivers/i2c_dw/port/nuttx/i2c_dw_instance.h` | The NuttX part of I2C0 and I2C1: the operations of `struct i2c_master_s` (`I2C_TRANSFER()` checks the request, takes the speed from the frequency and calls the core's transfer; `I2C_RESET()`), the interrupt handler attached with `irq_attach()`, the reset and the pins (`i2c_dw_pinctrl()`), shared by both, `i2c_dw_i2c0_initialize()` and `i2c_dw_i2c1_initialize()`. Host test `nuttx/tests/i2c_dw_instance.c` |
 | `common/drivers/i2c_dw/port/nuttx/i2c_dw_dma_os_rp2040.c` | The NuttX implementation of the DMA boundary on NuttX's own DMA driver, `arch/arm/src/rp2040/rp2040_dmac.c` (`CONFIG_RP2040_DMAC`). Host test `nuttx/tests/i2c_dw_dma_os.c` |
@@ -404,7 +404,7 @@ marked "interrupt" are called from the interrupt handlers.
 | `I2C_DW_CLOCK_SPEED` | `CONFIG_I2C_DW_CLOCK_SPEED` (MHz, 125) | `BOARD_PERI_FREQ / 1000000` |
 | `i2c_dw_os_prepare(dw)` (`i2c_dw_instance.h`) | `reset_line_toggle_dt()` and `pinctrl_apply_state()`: reset I2C0 or I2C1, its pins as I2C (4 mA, slow slew, Schmitt trigger and input enabled; I2C0's GPIO12 and 13 without pulls, I2C1's with the internal pull-ups) | RESETS and `rp2040_gpio_*()` (`i2c_dw_pinctrl()`, the steps of Zephyr's `pinctrl_rpi_pico.c`) |
 | `i2c_dw_os_irq_enable(dw)` (same) | `IRQ_CONNECT()`, `irq_enable()`: a handler of I2C0_IRQ or I2C1_IRQ that calls `i2c_dw_isr_handler(dw)` | `irq_attach()`, `up_enable_irq()` |
-| `app_log.h` | `LOG_MODULE_REGISTER()`, `LOG_ERR()`, `LOG_ERR_RATELIMIT()` (at the level 3 that the core sets) | `common/compat/log/app_log.h` with its NuttX part `nuttx/drivers/include/app_log_os.h` (the RAM log) |
+| `app_log.h` | `LOG_MODULE_REGISTER()`, `LOG_ERR()`, `LOG_ERR_RATELIMIT()` (at the level 3 that the core sets) | `common/compat/include/app_log.h` with its NuttX part `nuttx/drivers/include/app_log_os.h` (the RAM log) |
 | `CONFIG_I2C_DW_I2C0`, `CONFIG_I2C_DW_I2C1` | The instances to build (Zephyr: the devicetree's enabled nodes) | `nuttx/drivers/i2c_dw/Kconfig` (`I2C_DW_I2C0` on, `I2C_DW_I2C1` off by default) |
 | `CONFIG_I2C_DW_RP2040_DMA` | Build the DMA reads of I2C0 (the same symbol as the Zephyr version's) | Kconfig |
 
@@ -543,7 +543,7 @@ patched driver with the same branches, order and values.
 | `common/drivers/stmemsc/stmemsc.h`, `stmemsc_i2c.c`, `stmemsc_mdelay.c` | A copy of the I2C part of Zephyr's `drivers/sensor/st/stmemsc/` (the glue between ST's `stmdev_ctx_t` and Zephyr's I2C API; `stmemsc_mdelay()` is the layer's `k_msleep()`), shared with the FreeRTOS and ThreadX builds (compiled without the prelude). `lsm6dso_sensor.h` and `lsm6dso_os_impl.h` include `<stmemsc.h>`, which is this one through the include path |
 | `lsm6dso/st_lsm6dso_reg.c` | A one-line wrapper that builds ST's `lsm6dso_reg.c` (`nuttx/stmemsc/`, not in Git) as it is |
 | `common/drivers/lsm6dso/port/zephyr/lsm6dso_rtio.c` | The driver's RTIO submit: a stream to `lsm6dso_rtio_stream.c`, a single read through a copy of the sensor API's fallback. The same file as the Zephyr version's (the log is the layer's `<zephyr/logging/log.h>`, the level `CONFIG_SENSOR_LOG_LEVEL` is in the prelude) |
-| `common/drivers/lsm6dso/include/lsm6dso.h` | The extended API: the FIFO words and their parser (`lsm6dso_fifo.h`), the calibration's types (`lsm6dso_cal.h`) and calls, the FIFO statistics, the private attributes, the stop of a stream, the timestamp read; `<zephyr/drivers/sensor/lsm6dso.h>` through `common/compat/zephyr/drivers/sensor/lsm6dso.h` |
+| `common/drivers/lsm6dso/include/lsm6dso.h` | The extended API: the FIFO words and their parser (`lsm6dso_fifo.h`), the calibration's types (`lsm6dso_cal.h`) and calls, the FIFO statistics, the private attributes, the stop of a stream, the timestamp read; `<zephyr/drivers/sensor/lsm6dso.h>` through `common/compat/include/zephyr/drivers/sensor/lsm6dso.h` |
 | `common/drivers/lsm6dso/port/zephyr/lsm6dso_rtio_stream.c` | The FIFO stream's RTIO side (below): the device's INT1 line, RTIO's request handed to the core's stream, the stop and the settings of the extended API. The same file as the Zephyr version's |
 | `common/drivers/lsm6dso/port/zephyr/lsm6dso_decoder.[ch]` | The decoders of the stream's and the single reads' buffers (`get_decoder`). The same files as the Zephyr version's |
 | the board's `src/rp2040_lsm6dso.[ch]` | Makes I2C0 the compatibility layer's bus device (`i2c0`, 1 MHz) and initializes `lsm6dsox` (from `rp2040_bringup()`) |
@@ -739,7 +739,7 @@ sensor command) use. Zephyr's sensor subsystem, RTIO and kernel as a whole are n
 is in two places:
 
 - **The OS-independent part** (the repository's `common/compat/`): the headers of Zephyr's API
-  (`common/compat/zephyr/...`), the work items, RTIO, the block pool, the device list, `gpio0`, the
+  (`common/compat/include/zephyr/...`), the work items, RTIO, the block pool, the device list, `gpio0`, the
   `net_mgmt` events, the Wi-Fi requests, the sensors' default iodev, and the copies of Zephyr's
   libraries that the builds on the layer use (`sensor_shell_stream.c` and `sensor_shell.h`; the
   stored Wi-Fi credentials, `wifi_credentials.c`, `wifi_credentials_backend_settings.c` and
@@ -795,7 +795,7 @@ of the NuttX implementation on the include path.
 | `flash_kv.h`, `flash_kv_os.h` | The key-value area's constants (8 KiB from `0xffe000`, 256-byte pages, 4 KiB sectors), the OS boundary (`flash_kv_os.h`, "Key-value store" below), the range checks, the split into pages and the check of what the area holds (Zephyr's NVS, the earlier NuttX build's format, erased, other) |
 | `zephyr_kv_config.h` | The Zephyr build's Kconfig values read before the copied NVS and settings (`CONFIG_SETTINGS_NVS_SECTOR_COUNT` and others; "Key-value store" below) |
 | `kv_store_os.h` | The OS part of `common/imu/kv_store.c`: the `kv wipe` subcommand (the Zephyr build's `zephyr/app/usb-console/src/kv_store_os.h` is empty) |
-| `zephyr/logging/log.h` | `LOG_MODULE_REGISTER()`, `LOG_ERR()` and the other logging macros. It only includes the port's `app_log.h` (`common/compat/log/`; the RAM log of `dmesg`) |
+| `zephyr/logging/log.h` | `LOG_MODULE_REGISTER()`, `LOG_ERR()` and the other logging macros. It only includes the port's `app_log.h` (`common/compat/include/`; the RAM log of `dmesg`) |
 | `zephyr/net/net_ip.h` | The IPv4 address type `struct in_addr` (`imu_raw_mqtt.h`). It only includes NuttX's `<netinet/in.h>` (the same member `s_addr`, network byte order) |
 | `zephyr_compat.h` | `zephyr_compat_initialize()` (called by the board's bring-up, below), `K_THREAD_DEFINE_START()` (called by the application's table of threads, `common/imu/app_init.c`) |
 | `sensor_shell.h` | A copy of Zephyr's `drivers/sensor/sensor_shell.h` (the sensor shell's shared types; the Zephyr build reads Zephyr's) |
@@ -857,11 +857,11 @@ of the NuttX implementation on the include path.
     `zephyr/sys/clock.h`, `zephyr/sys/__assert.h`, `zephyr/drivers/i2c.h`.
   - Boundary headers that the shared files read: `priorities.h` (`APP_STACK_NET_MGMT`,
     `APP_PRIO_RTIO_WQ`, `APP_STACK_RTIO_WQ`; in
-    `common/compat/`, on `APP_PRIO_FROM_ZEPHYR()` of the OS part `priorities_os.h`, in the NuttX
-    build in `nuttx/drivers/include/`), `gpio_os.h` (`zephyr_gpio.c`; in `common/compat/`, the
+    `common/compat/include/`, on `APP_PRIO_FROM_ZEPHYR()` of the OS part `priorities_os.h`, in the NuttX
+    build in `nuttx/drivers/include/`), `gpio_os.h` (`zephyr_gpio.c`; in `common/compat/port/`, the
     board implements it), `app_log.h` (`<zephyr/logging/log.h>`, `sensor_default_rtio.c`, the
-    credentials; in `common/compat/log/`, on the OS part `app_log_os.h`), `<cpu_load.h>`
-    (`<zephyr/sys/cpu_load.h>`; `common/compat/`), `sensor_shell_os.h` (`sensor_shell_stream.c`). The configuration
+    credentials; in `common/compat/include/`, on the OS part `app_log_os.h`), `<cpu_load.h>`
+    (`<zephyr/sys/cpu_load.h>`; `common/compat/port/`), `sensor_shell_os.h` (`sensor_shell_stream.c`). The configuration
     values `CONFIG_LSM6DSO_STREAM` (`zephyr_device.c`) and `CONFIG_WIFI_CREDENTIALS`,
     `_MAX_ENTRIES`, `_SAE_PASSWORD_LENGTH`, `_CONNECT_STORED_CONNECTION_TIMEOUT` (the Wi-Fi headers and
     `zephyr_wifi_mgmt.c`) must be defined before the layer's headers (in the NuttX build by

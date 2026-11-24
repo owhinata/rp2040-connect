@@ -3,7 +3,7 @@
  * (common/shell/zshell.c, which includes this file first through
  * common/shell/zshell_os.h) for the "i2c" command of main.c: one backend,
  * whose output goes to main.c's capture (test_shell_capture()), in place of
- * the shell engine's consoles (common/compat/shell_engine/zshell_os_impl.h).
+ * the shell engine's consoles (common/compat/port/generic/zshell_os_impl.h).
  */
 
 #ifndef FREERTOS_TESTS_I2C_DW_ZSHELL_OS_IMPL_H

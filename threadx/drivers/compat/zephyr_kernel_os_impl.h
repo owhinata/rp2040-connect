@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 /* The ThreadX primitives of the generic kernel part of the Zephyr
- * compatibility layer (common/compat/kernel_generic/zephyr_kernel_os.h,
+ * compatibility layer (common/compat/port/zephyr_kernel_os.h,
  * which states what each must do; read only through it).  What depends on
  * the ThreadX port and the board (z_os_in_isr(), the interrupt mask
  * z_tx_irq_save() and z_tx_irq_restore(), z_os_busy_wait_us() and the
@@ -41,7 +41,7 @@
  * TX_TIMER_PROCESS_IN_ISR so that sleeps and timeouts end in the tick
  * interrupt), a tick that calls zephyr_compat_tick() of "zephyr_compat_os.h"
  * once per ThreadX tick from the tick interrupt, priorities_os.h
- * (common/compat/priorities.h; also the time slices, APP_TIMESLICE_TICKS
+ * (common/compat/include/priorities.h; also the time slices, APP_TIMESLICE_TICKS
  * and APP_TIMESLICE_PRIO_MAX) and what the port header reads.  Part of the
  * ThreadX implementation of the layer (threadx/drivers/compat).
  */

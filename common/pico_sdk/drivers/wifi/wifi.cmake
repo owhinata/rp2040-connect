@@ -34,7 +34,7 @@
 #   <zephyr/net/wifi_credentials.h>);
 # - the Wi-Fi profile (common/imu/wifi_profile.c: the migration of the old
 #   profile, the thread wifi_reconnect_tid; its OS part on the layer
-#   common/compat/os_generic/include/wifi_profile_os.h);
+#   common/compat/port/generic/wifi_profile_os.h);
 # - the "wifi" command: connect, disconnect, scan and status
 #   (common/compat/zephyr_wifi_shell.c, the part of Zephyr's wifi_shell.c the
 #   driver serves; wifi_shell_init() at boot) and "wifi cred" (the unchanged

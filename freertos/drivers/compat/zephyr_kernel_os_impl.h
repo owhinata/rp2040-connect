@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 /* The FreeRTOS primitives of the generic kernel part of the Zephyr
- * compatibility layer (common/compat/kernel_generic/zephyr_kernel_os.h,
+ * compatibility layer (common/compat/port/zephyr_kernel_os.h,
  * which states what each must do; read only through it).  What depends on the FreeRTOS port and the
  * board (z_os_in_isr(), z_os_yield_from_isr(), z_os_task_lock(), z_os_task_unlock(),
  * z_os_busy_wait_us() and the clock) is the port header "zephyr_os_port.h"
@@ -32,7 +32,7 @@
  * recursive mutexes, static allocation (nothing here allocates
  * dynamically), configUSE_TICK_HOOK with a hook that calls
  * zephyr_compat_tick() of "zephyr_compat_os.h"), priorities_os.h
- * (common/compat/priorities.h); rp2040_timer_us() is common/chip/rp2040's,
+ * (common/compat/include/priorities.h); rp2040_timer_us() is common/chip/rp2040's,
  * read by the board's port header.  Part of the FreeRTOS implementation of the layer
  * (freertos/drivers/compat; see freertos/drivers/README.md).
  */

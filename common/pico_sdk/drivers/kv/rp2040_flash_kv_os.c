@@ -3,7 +3,7 @@
  * (common/chip/rp2040/include/rp2040_flash_kv_os.h): one 256-byte page
  * program or one 4 KiB sector erase with XIP off and the interrupts off,
  * for the shared part, common/chip/rp2040/rp2040_flash_kv.c, which
- * implements the OS boundary of the area (common/compat/flash_kv_os.h)
+ * implements the OS boundary of the area (common/compat/port/flash_kv_os.h)
  * with them and checks every request against the area and the linker
  * script's bounds first.  The last check, with the interrupts off right
  * before flash_range_program() or flash_range_erase() is called, is here
@@ -48,8 +48,8 @@
  * handled when the interrupts come back, so the kernel's tick (and with it
  * the compatibility layer's timeouts, sleeps and the time slices) stands
  * still for up to about 40 ticks per erase; the OS's tick hook then counts
- * the lost ticks at once, from the TIMER (tick_catchup.h of
- * common/compat/kernel_generic), so the waits end at the end of the erase
+ * the lost ticks at once, from the TIMER (tick_catchup.h of the generic
+ * kernel part, common/compat/include), so the waits end at the end of the erase
  * instead of that much later.  k_uptime_*() and
  * time_us_64() come from the TIMER, which keeps counting.  A fatal error
  * while XIP is off cannot run the fault exit (fault.c is in the flash):

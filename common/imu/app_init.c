@@ -84,7 +84,7 @@ void app_threads_start(void)
 	APP_THREAD_START(sensor_shell_tid);
 #endif
 	/* The iperf3 server of "zperf tcp download"
-	 * (common/compat/zperf_iperf3.h), Zephyr's net_socket_service
+	 * (common/compat/internal/zperf_iperf3.h), Zephyr's net_socket_service
 	 * thread: waits until the server is started.
 	 */
 #ifdef CONFIG_NET_ZPERF

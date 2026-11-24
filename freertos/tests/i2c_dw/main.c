@@ -6,7 +6,7 @@
  * ThreadX's Linux port), the devices i2c0 and i2c1 and their Zephyr I2C API
  * in port/pico_sdk/i2c_dw_instance.h, the DMA reads' channels in
  * port/pico_sdk/i2c_dw_dma_os_rp2040.c and
- * common/compat/os_generic/include/zephyr/drivers/i2c.h, under the shared core
+ * common/compat/port/generic/zephyr/drivers/i2c.h, under the shared core
  * (common/drivers/i2c_dw/i2c_dw.c, through i2c_dw_core.c here, with the
  * prelude, as common/pico_sdk/drivers/i2c_dw/i2c_dw.cmake builds it), on fakes of
  * the Pico SDK's GPIO, reset, IRQ, sync, TIMER and DMA functions

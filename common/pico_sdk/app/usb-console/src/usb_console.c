@@ -81,7 +81,7 @@ void usb_console_init(void)
 
 	/* The USB CDC ACM port, its console "usb" (the default console of the
 	 * threads that have none) and the stdio of the threads on the consoles
-	 * (common/compat/shell_engine/shell_serial.h on the console transport
+	 * (common/compat/include/shell_serial.h on the console transport
 	 * common/pico_sdk/drivers/shell/shell_serial_os_impl.h).  No wait for
 	 * the host (PICO_STDIO_USB_CONNECT_WAIT_TIMEOUT_MS 0): the enumeration
 	 * runs once the scheduler does.
@@ -183,7 +183,7 @@ void usb_console_main_thread(const char *prompt)
 	 * "wifi" command's: the listening socket on port 23 (whether or not
 	 * Wi-Fi is connected; the NINA keeps it across disconnections) and the
 	 * threads "shell_telnet" and "telnet_service"
-	 * (common/compat/shell_engine/shell_telnet.h).  A failure is logged and
+	 * (common/compat/include/shell_telnet.h).  A failure is logged and
 	 * leaves no Telnet.
 	 */
 	(void)shell_telnet_init(prompt);

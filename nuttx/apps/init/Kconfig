@@ -44,7 +44,7 @@ config INIT_NSH_PRIORITY
 		Priority of the nsh session task.  The Zephyr build runs its shell
 		thread at the lowest application priority,
 		K_LOWEST_APPLICATION_THREAD_PRIO (14), which is 104 here
-		(APP_PRIO_SHELL in common/compat/priorities.h): below
+		(APP_PRIO_SHELL in common/compat/include/priorities.h): below
 		every other thread of the port.
 
 config INIT_NSH_STACKSIZE

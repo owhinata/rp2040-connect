@@ -89,12 +89,12 @@ CSRCS += rp2040_idle_cpuload.c
 endif
 
 # The key-value area's flash (the last 8 KiB): the OS boundary of
-# common/compat/flash_kv_os.h, the RP2040's part shared with the FreeRTOS
+# common/compat/port/flash_kv_os.h, the RP2040's part shared with the FreeRTOS
 # build (common/chip/rp2040/rp2040_flash_kv.c: the range checks, the reads,
 # the page copy) on this board's flash operations with the boot ROM
 # (rp2040_flash_kv_os.c, rp2040_flash_kv_os.h of
 # common/chip/rp2040/include).  flash_kv_os.h is found through the -I of
-# common/compat below.
+# common/compat/port below.
 
 ifeq ($(CONFIG_RP2040_FLASH_KV),y)
 CHIP_RP2040_SRC = $(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)chip$(DELIM)rp2040
@@ -136,21 +136,21 @@ VPATH += :board
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)arch$(DELIM)$(CONFIG_ARCH)$(DELIM)src$(DELIM)board$(DELIM)board
 
 # Headers shared with nuttx/drivers and the applications: nuttx/drivers/include
-# (the NuttX parts app_log_os.h and priorities_os.h), common/compat/log (app_log.h,
-# log_ram.h; common/compat has priorities.h, cpu_load.h and
-# gpio_os.h).  The NINA driver's headers for its users:
-# common/drivers/nina/include (nina_passthrough.h); its NuttX binding's
+# (the NuttX parts app_log_os.h and priorities_os.h), the layer's
+# (common/compat/include: app_log.h, log_ram.h, priorities.h;
+# common/compat/port: cpu_load.h, gpio_os.h, below).  The NINA driver's
+# headers for its users: common/drivers/nina/include (nina_passthrough.h); its NuttX binding's
 # wlan0 (nina_net.h): common/drivers/nina/port/nuttx.  The driver itself is
 # built with the other drivers (nuttx/drivers/nina/Make.defs).
 
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)include
-CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)compat$(DELIM)log
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)drivers$(DELIM)nina$(DELIM)include
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)drivers$(DELIM)nina$(DELIM)port$(DELIM)nuttx
 
 # The small Zephyr compatibility layer (<zephyr/device.h>, ...): its NuttX
 # implementation, nuttx/drivers/compat, then its OS-independent part,
-# common/compat.
+# common/compat/include and port.
 
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)compat
-CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)compat
+CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)compat$(DELIM)include
+CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)compat$(DELIM)port

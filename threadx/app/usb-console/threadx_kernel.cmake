@@ -25,7 +25,7 @@
 #   (_tx_initialize_low_level(): SysTick, the priorities of PendSV, SVCall
 #   and SysTick) and src/tick.c (isr_systick: ThreadX's tick, the layer's
 #   tick and the catch-up of lost ticks, with tick_catchup.h of
-#   common/compat/kernel_generic, on the target's include path);
+#   common/compat/include, on the target's include path);
 # - ThreadX's scheduler on the vectors of the Pico SDK's crt0 (its
 #   isr_pendsv and isr_svcall are weak breakpoints; the link defines them
 #   as ThreadX's handlers, so the vector table holds ThreadX's own

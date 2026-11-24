@@ -107,16 +107,16 @@ function(pico_sdk_usb_console target)
 
   # The OS's directories (PICO_SDK_OS_APP_DIRS); src/ here (app.h, fault.h,
   # usb_console.h, commands_os.h, which the OS's sources include too);
-  # priorities.h and cpu_load.h (common/compat); fault_record.h
-  # (common/compat/log); the RP2040's code that no OS owns
+  # priorities.h and fault_record.h (common/compat/include), cpu_load.h
+  # (common/compat/port); the RP2040's code that no OS owns
   # (common/chip/rp2040/include: rp2040_timer_us.h; rp2040_flash_kv.h and
   # rp2040_flash_kv_os.h of the key-value area's flash,
   # common/pico_sdk/drivers/kv/kv.cmake).
   target_include_directories(${target} PRIVATE
     ${PICO_SDK_OS_APP_DIRS}
     ${PICO_SDK_APP_DIR}/src
-    ${COMMON_DIR}/compat
-    ${COMMON_DIR}/compat/log
+    ${COMMON_DIR}/compat/include
+    ${COMMON_DIR}/compat/port
     ${COMMON_DIR}/chip/rp2040/include
   )
 

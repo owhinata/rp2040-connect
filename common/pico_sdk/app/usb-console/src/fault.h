@@ -5,7 +5,7 @@
  * the OS's assertion and assert(), the OS's own entries (the OS's
  * fault_os.c: FreeRTOS's stack overflow hook, ThreadX's stack check's
  * handler) and _exit() all end in one exit, which disables interrupts,
- * fills a record (common/compat/log/fault_record.h: reason, PC, LR, SP, the
+ * fills a record (common/compat/include/fault_record.h: reason, PC, LR, SP, the
  * exception frame of a HardFault, the running thread, the time and a
  * message), keeps it in RAM that the start-up code leaves alone
  * (__uninitialized_ram) and the reason, PC and LR in the watchdog's scratch

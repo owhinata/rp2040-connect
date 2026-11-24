@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /* The NuttX part of <zephyr/shell/shell.h> of the Zephyr compatibility
- * layer (common/compat/zephyr/shell/shell.h, which includes this file):
+ * layer (common/compat/include/zephyr/shell/shell.h, which includes this file):
  * struct shell, a shell backend of nuttx/apps/subcmd/zshell_os_impl.h.  A
  * backend is the terminal of an nsh session, known by the path of the
  * command's stdout (/dev/ttyACM0 for USB, /dev/telnet0 for Telnet), and

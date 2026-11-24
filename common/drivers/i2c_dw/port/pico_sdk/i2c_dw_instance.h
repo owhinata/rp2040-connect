@@ -2,7 +2,7 @@
 /* The Pico SDK part of the I2C core (common/drivers/i2c_dw/i2c_dw.c,
  * which includes this file at its end): I2C0 and, with CONFIG_I2C_DW_I2C1,
  * I2C1 as the devices i2c0 and i2c1 of the Zephyr compatibility layer with
- * Zephyr's I2C API (<zephyr/drivers/i2c.h> of common/compat/os_generic),
+ * Zephyr's I2C API (<zephyr/drivers/i2c.h> of common/compat/port/generic),
  * their interrupts, resets and pins on the Pico SDK, and
  * i2c_dw_i2c0_initialize() and i2c_dw_i2c1_initialize()
  * (i2c_dw_controllers_rp2040.h).  Each instance's device, interrupt handler,

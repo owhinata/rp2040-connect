@@ -22,7 +22,7 @@ config APP_BOOTSEL_PRIORITY
 	default 104
 	---help---
 		The shell's priority (APP_PRIO_SHELL in
-		common/compat/priorities.h).
+		common/compat/include/priorities.h).
 
 config APP_BOOTSEL_STACKSIZE
 	int "bootsel stack size"

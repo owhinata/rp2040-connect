@@ -43,7 +43,7 @@
 #define configUSE_EVENT_GROUPS                0
 #define configUSE_STREAM_BUFFERS              0
 /* Pointer 0: the task's custom data of the layer, its console
- * (common/compat/shell_engine/shell_console.h, the host test of
+ * (common/compat/include/shell_console.h, the host test of
  * freertos/tests/shell). */
 #define configNUM_THREAD_LOCAL_STORAGE_POINTERS 1
 #define configUSE_TIMERS                      0

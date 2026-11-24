@@ -25,7 +25,7 @@
  * program or one 4 KiB sector erase with XIP off and interrupts disabled,
  * with the boot ROM, for the shared part
  * (common/chip/rp2040/rp2040_flash_kv.c), which implements the OS boundary
- * of the area (common/compat/flash_kv_os.h) with them and checks every
+ * of the area (common/compat/port/flash_kv_os.h) with them and checks every
  * request against the area and the linker script's bounds first.  NuttX's
  * own flash driver for this chip (arch/arm/src/rp2040/rp2040_flash_mtd.c,
  * RP2040_FLASH_FILE_SYSTEM) is not used: its area is the SmartFS region

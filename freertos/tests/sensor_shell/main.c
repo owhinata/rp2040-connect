@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 /* The host test of the FreeRTOS build's "sensor" command
- * (common/compat/os_generic/sensor_shell_os.c: the shared common/shell/
+ * (common/shell/port/generic/sensor_shell_os.c: the shared common/shell/
  * sensor_shell.c, the copy of Zephyr's sensor_shell_stream.c with its
  * processing thread, and the FreeRTOS part sensor_shell_os.c) and of the
  * calibration it shows ("imu cal": the shared common/imu/imu_cal.c), on the

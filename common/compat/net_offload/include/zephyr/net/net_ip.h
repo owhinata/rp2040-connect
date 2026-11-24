@@ -12,9 +12,9 @@
  * Zephyr's except NET_AF_INET (2 here and on NuttX, 1 in Zephyr; nothing
  * leaves the build with it).
  *
- * This header takes the place of common/compat/zephyr/net/net_ip.h (which
+ * This header takes the place of common/compat/include/zephyr/net/net_ip.h (which
  * the NuttX build uses) in the FreeRTOS build: common/compat/net_offload/
- * include comes before common/compat on its include path.
+ * include comes before common/compat/include on its include path.
  * Part of the network part of the Zephyr compatibility layer for an OS
  * without a network stack of its own (common/compat/net_offload), which the
  * FreeRTOS build uses.

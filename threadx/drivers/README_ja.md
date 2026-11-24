@@ -10,7 +10,7 @@
 
 ThreadX 版は、ThreadX のカーネル（Eclipse ThreadX v6.5.2.202603b_rel。Cortex-M0 のポート `ports/cortex_m0/gnu`）だけを使い、起動・クロック・USB・
 フラッシュ・DMA は Pico SDK 2.3.1 のものです。USBX・NetX Duo・FileX は使いません。ソースの大半は 4 つの OS で共有する `common/` にあり、
-Pico SDK の上の部分（`common/pico_sdk/`、各ドライバーの `port/pico_sdk/`、`common/compat/os_generic/`）は FreeRTOS 版と共有します。共有の
+Pico SDK の上の部分（`common/pico_sdk/`、各ドライバーの `port/pico_sdk/`、`common/compat/port/generic/`）は FreeRTOS 版と共有します。共有の
 ソースは Zephyr の API で書いてあるので、ThreadX 版は FreeRTOS 版と同じく、その API を Zephyr と同じ名前で提供する層（以下「互換層」）の上で
 動かします。カーネルの部分は、OS の基本の操作の上に置く汎用の実装（`common/compat/kernel_generic/`）で、ThreadX 版が書くのはその
 基本の操作です。ネットワークは互換層のソケット層（`common/compat/net_offload/`）、シェルは共有のシェルのエンジン（`common/compat/shell_engine/`）
@@ -33,7 +33,7 @@ ThreadX のソースは変更せずにビルドします。
 
 ## 互換層のカーネルの部分
 
-基本の操作の一覧とそれぞれに求めることは `common/compat/kernel_generic/zephyr_kernel_os.h` と `design/os-boundary-ja.md` の 2.5・2.6 にあります。
+基本の操作の一覧とそれぞれに求めることは `common/compat/port/zephyr_kernel_os.h` と `design/os-boundary-ja.md` の 2.5・2.6 にあります。
 ThreadX 版の作りは次のとおりです。
 
 - **スレッドのロック**（`z_os_task_lock()`）: 割り込みを止め（PRIMASK）、いちばん外のロックで ThreadX の `_tx_thread_preempt_disable` を
@@ -81,7 +81,7 @@ ThreadX 版の作りは次のとおりです。
 - `isr_systick`（`src/tick.c`）: まず TIMER を読み、ThreadX の tick（`_tx_timer_interrupt()`: 時計、時分割、`TX_TIMER_PROCESS_IN_ISR` による
   スリープとタイムアウト）、失われた tick の追いつき、互換層のタイムアウト（`zephyr_compat_tick()`）の順に動かします。タイマーのスレッドは
   ありません。起こされたスレッドへの切り替えは、ハンドラーのあとの PendSV です。
-- 追いつき: 割り込みを止めているあいだ（フラッシュの消去）に失われた tick は、共有の `common/compat/kernel_generic/tick_catchup.h` が TIMER と比べて
+- 追いつき: 割り込みを止めているあいだ（フラッシュの消去）に失われた tick は、共有の `common/compat/include/tick_catchup.h` が TIMER と比べて
   見つけ、1 tick ごとに SysTick を保留にし直します。SysTick は PendSV より上なので、足した tick は切り替えの前に続けて動き、それぞれが
   通常の tick として数えられます（FreeRTOS 版と同じ判定）。tick は TIMER より先に進みません。
 

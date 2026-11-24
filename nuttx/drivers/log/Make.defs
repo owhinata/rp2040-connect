@@ -2,7 +2,8 @@
 # nuttx/drivers/log/Make.defs
 #
 # The RAM log: its shared part (log_ram.c on log_ring.c, in common/compat/log,
-# which the host tests also build; the NuttX part of its boundary is
+# headers in common/compat/include, internal and port, which the host tests
+# also build; the NuttX part of its boundary is
 # include/log_ram_os_impl.h) and the syslog channel (log_ram_syslog.c).
 # Included by nuttx/drivers/Makefile.  VPATH and DEPPATH of common/compat/log are
 # relative to nuttx/drivers (mkdeps needs relative ones); the objects are

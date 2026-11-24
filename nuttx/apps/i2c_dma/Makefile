@@ -13,10 +13,10 @@
 # (common/drivers/i2c_dw/i2c_dw.c, which the flat build links in through
 # the board); its header is include/i2c_dw_rp2040_dma.h there, which the
 # command includes as <zephyr/drivers/i2c/i2c_dw_rp2040_dma.h>
-# (common/compat).
+# (common/compat/include).
 #
 # Include paths: the Zephyr compatibility layer ($(TOPDIR)/external/compat
-# and common/compat: <zephyr/shell/shell.h>,
+# and common/compat/include and port: <zephyr/shell/shell.h>,
 # <zephyr/drivers/i2c/i2c_dw_rp2040_dma.h>).
 ############################################################################
 
@@ -30,7 +30,8 @@ MODULE    = $(CONFIG_I2C_DW_RP2040_DMA_SHELL)
 MAINSRC   = i2c_dma_shell.c
 
 CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)compat
-CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)compat
+CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)compat$(DELIM)include
+CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)compat$(DELIM)port
 
 VPATH    += :../../../common/shell
 DEPPATH  += --dep-path ../../../common/shell

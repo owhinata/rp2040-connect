@@ -13,9 +13,9 @@
 # wifi_credentials_shell.c is its main source), linked into libapps.
 #
 # Include paths: the Zephyr compatibility layer
-# ($(TOPDIR)/external/compat and common/compat, which has
+# ($(TOPDIR)/external/compat and common/compat/include, port and internal, which has
 # wifi_credentials_internal.h), the port's shared headers
-# (common/compat/log: app_log.h; common/compat: priorities.h; their NuttX parts in
+# (common/compat/include: app_log.h, priorities.h; their NuttX parts in
 # $(TOPDIR)/external/include), common/shell (subcmd.h), this
 # directory (wifi_profile_os.h, for the file in common/imu), common/imu
 # (wifi_profile.h, kv_store.h) and common/drivers/nina/include (nina_wifi.h:
@@ -40,9 +40,10 @@ MAINSRC   = wifi_credentials_shell.c
 endif
 
 CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)include
-CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)compat$(DELIM)log
 CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)compat
-CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)compat
+CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)compat$(DELIM)include
+CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)compat$(DELIM)port
+CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)compat$(DELIM)internal
 CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)shell
 CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)drivers$(DELIM)nina$(DELIM)include
 CFLAGS   += ${INCDIR_PREFIX}$(APPDIR)$(DELIM)external$(DELIM)wifi

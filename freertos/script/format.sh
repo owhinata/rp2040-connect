@@ -6,9 +6,11 @@
 # FreeRTOS build uses), common/tests/zephyr_kernel/ (the host test of the layer's kernel),
 # common/compat/shell_engine/ (the shell for an OS without one) and
 # common/compat/kernel_generic/ (the kernel part for an OS that offers only
-# basic primitives), which only the FreeRTOS build compiles, with k_heap
-# (common/compat/zephyr_heap.c, zephyr_heap.h) and the host check's OS part
-# of that kernel part (common/tests/kernel_generic_host/), and
+# basic primitives) with their headers in common/compat/include, internal
+# and port, common/compat/port/generic/ and common/shell/port/generic/ (the
+# parts for an OS without its own), which only the FreeRTOS build compiles,
+# with k_heap (common/compat/zephyr_heap.c, include/zephyr_heap.h) and the
+# host check's OS part of that kernel part (common/tests/kernel_generic_host/), and
 # common/chip/ (the RP2040's code that no OS owns, which all three builds
 # compile), with clang-format and freertos/.clang-format (the Zephyr project's style).  Run
 # it from anywhere; it sources freertos/script/setup.sh itself, which
@@ -31,7 +33,7 @@ check=0
 case "${1:-}" in
   "") ;;
   --check) check=1 ;;
-  -h|--help) sed -n '2,25p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+  -h|--help) sed -n '2,27p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
   *) printf 'Unknown option: %s\n' "$1" >&2; exit 2 ;;
 esac
 
@@ -43,15 +45,20 @@ setup_status=$?
 set -eu
 (( setup_status == 0 )) || { printf 'format.sh: freertos/script/setup.sh failed\n' >&2; exit 1; }
 
-net_offload="${root}/../common/compat/net_offload"
+compat="${root}/../common/compat"
+net_offload="${compat}/net_offload"
 mapfile -t files < <(find "${root}/app" "${root}/drivers" "${root}/tests" \
   "${root}"/../common/drivers/*/port/freertos "${root}"/../common/drivers/*/port/pico_sdk \
   "${net_offload}" \
   "${root}/../common/compat/libc_net" "${root}/../common/tests/zephyr_kernel" \
   "${root}/../common/compat/shell_engine" "${root}/../common/compat/kernel_generic" \
-  "${root}/../common/compat/zephyr_heap.c" "${root}/../common/compat/zephyr_heap.h" \
+  "${compat}"/include/{zephyr_compat_os,tick_catchup,zephyr_heap}.h \
+  "${compat}"/include/shell_{console,engine,serial,telnet}.h \
+  "${compat}"/internal/{zephyr_os_internal,cli,shell_argv}.h \
+  "${compat}"/port/{zephyr_kernel_os,shell_serial_os}.h "${compat}/port/generic" \
+  "${compat}/zephyr_heap.c" "${root}/../common/shell/port/generic" \
   "${root}/../common/tests/kernel_generic_host" "${root}/../common/chip" \
-  "${root}/../common/pico_sdk" "${root}/../common/compat/os_generic" -type f \
+  "${root}/../common/pico_sdk" -type f \
   \( -name '*.c' -o -name '*.h' \) ! -name FreeRTOSConfig.h \
   ! -path "${net_offload}/lib/*" ! -path "${net_offload}/subsys/*" \
   ! -path "${net_offload}/include/zephyr/sys/fdtable.h" \

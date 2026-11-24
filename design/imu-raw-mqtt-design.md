@@ -818,7 +818,7 @@ difference of the total run time in `/proc/<tid>/critmon` ("CPU load" in `design
   names are `app_kv/<key>` and, for the Wi-Fi credentials, `wifi_cred/<number>`. Each build reads
   and writes what the other stored.
 - The flash operations (reads, 256-byte page programs, 4 KiB sector erases) are behind a small
-  boundary for each OS (`common/compat/flash_kv_os.h`), limited to the last 8 KiB; on the RP2040 the
+  boundary for each OS (`common/compat/port/flash_kv_os.h`), limited to the last 8 KiB; on the RP2040 the
   NuttX, FreeRTOS and ThreadX builds share its checks and reads (`common/chip/rp2040/rp2040_flash_kv.c`) and
   each writes only the page program and the sector erase. Interrupts are off for one page program
   or one erase at a time (34-40 ms for an erase).
@@ -910,8 +910,8 @@ host tests (`common/tests/run.sh`) run first in the `host_tests.sh` of each of t
 The OS parts are implementations of narrow boundary headers in each build's directory.
 
 - The kernel part of the compatibility layer (`k_mutex`, `k_sem`, threads, clocks and so on; listed at the
-  top of `common/compat/zephyr/kernel.h`): `nuttx/drivers/compat/`, `freertos/drivers/compat/`, `threadx/drivers/compat/`.
-- The priority mapping `priorities_os.h` (read by `common/compat/priorities.h`), the NINA's `nina_os.h` and
+  top of `common/compat/include/zephyr/kernel.h`): `nuttx/drivers/compat/`, `freertos/drivers/compat/`, `threadx/drivers/compat/`.
+- The priority mapping `priorities_os.h` (read by `common/compat/include/priorities.h`), the NINA's `nina_os.h` and
   `nina_bus.h` (`nina_os.h`'s implementations are in the core's bindings,
   `common/drivers/nina/port/zephyr/`, `nuttx/`, `freertos/` and `threadx/`), the I2C core's `i2c_dw_os.h` and the DMA reads' `i2c_dw_dma_os.h` (implemented in the core's bindings,
   `common/drivers/i2c_dw/port/nuttx/`, `pico_sdk/`, `freertos/` and `threadx/`), the key-value flash's `flash_kv_os.h`, the shell backend
@@ -924,7 +924,7 @@ Zephyr binding `port/zephyr/` is a Zephyr module (`zephyr/module.yml`, in the ap
 whose option `CONFIG_LSM6DSO_LOCAL` takes the place of Zephyr's own driver of the same devicetree nodes
 (`CONFIG_LSM6DSO=n` in `prj.conf`), whose library holds the core and the binding, and which exports
 `<zephyr/drivers/sensor/lsm6dso.h>`. The NuttX, FreeRTOS and ThreadX builds compile the same core and binding on the
-compatibility layer, which also provides `<zephyr/drivers/sensor/lsm6dso.h>` (`common/compat/zephyr/drivers/sensor/`);
+compatibility layer, which also provides `<zephyr/drivers/sensor/lsm6dso.h>` (`common/compat/include/zephyr/drivers/sensor/`);
 each has its own `lsm6dso_instance.h` (`port/nuttx/`; the builds on the Pico SDK `port/pico_sdk/`). **The sensor shell
 (`common/shell/sensor_shell.c`)** is, in the Zephyr build, Zephyr's `drivers/sensor/sensor_shell.c` with the local
 patch 0006 (`zephyr/manifest/zephyr/patches/zephyr/`); the other builds compile the same file, each with its own
@@ -1060,7 +1060,7 @@ and NuttX builds in [`freertos/drivers/README.md`](../freertos/drivers/README.md
 - SysTick interrupts are lost while interrupts are disabled (flash erases and programs). The tick hook
   compares the count with the TIMER at every tick and, when it is a whole tick behind, pends SysTick again,
   so that the port's usual handler counts the lost ticks one by one
-  (`common/compat/kernel_generic/tick_catchup.h`; the tick never gets ahead of the TIMER). Without it a
+  (`common/compat/include/tick_catchup.h`; the tick never gets ahead of the TIMER). Without it a
   `kv set` that included an erase lost 46-50 ms (2026-11-17, 3 times); with it, "TIMER ms − tick" was 2.8 to
   3.1 after 90 `kv set` of 100 characters (2026-11-18). `xTaskCatchUpTicks()` is not used: it can be called
   from tasks only, and the tick hook does not run for the ticks it adds.

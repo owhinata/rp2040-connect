@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 /* The idle wait and the CPU load measured from idle windows,
- * cpu_load_get() (common/compat/cpu_load.h), for the builds on the Pico SDK.
+ * cpu_load_get() (common/compat/port/cpu_load.h), for the builds on the Pico SDK.
  *
  * The same measurement as the Zephyr build (CONFIG_CPU_LOAD with
  * CONFIG_CPU_LOAD_BACKEND_IDLE_HOOK) and the NuttX build's up_idle()
@@ -10,7 +10,7 @@
  * masks it (ARMv6-M), so an interrupt that arrives between disabling
  * interrupts and WFI is not missed (WFI returns at once), and the handler of
  * the interrupt that woke the CPU runs after the window closes, so it counts
- * as load.  The arithmetic is common/compat/cpu_load.h's, the steps of
+ * as load.  The arithmetic is common/compat/port/cpu_load.h's, the steps of
  * Zephyr's cpu_load_get_cpu().
  *
  * The OS's part, idle_os.h (in the OS's application directory), names the

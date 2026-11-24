@@ -1,7 +1,7 @@
 # SPDX-License-Identifier: MIT
 # The key-value store of the builds on the Pico SDK and its "kv" command, on the
 # flash of the key-value area (the last 8 KiB of the 16 MiB flash,
-# common/compat/flash_kv.h), in the Zephyr build's format.  include()
+# common/compat/include/flash_kv.h), in the Zephyr build's format.  include()
 # this file from the application's CMakeLists.txt, then call
 #
 #   pico_sdk_kv(<target>)
@@ -34,7 +34,7 @@
 # Each shared source is compiled with the prelude of the shared sources
 # (common_prelude.h), as in compat.cmake.  The copies of Zephyr's settings
 # and NVS are read with the Zephyr build's Kconfig values first
-# (common/compat/zephyr_kv_config.h, -include); they test unset options with
+# (common/compat/include/zephyr_kv_config.h, -include); they test unset options with
 # #if, which -Wundef would report (not part of -Wall -Wextra; also turned off
 # here, as on NuttX).  They are compiled unchanged, so the warnings of the
 # application's -Wall -Wextra that Zephyr's code gives are turned off for
@@ -100,7 +100,7 @@ function(pico_sdk_kv target)
   )
 
   set(prelude "-include;${PICO_SDK_PRELUDE}")
-  set(kv_config "-include;${PICO_SDK_COMMON_DIR}/compat/zephyr_kv_config.h;-Wno-undef")
+  set(kv_config "-include;${PICO_SDK_COMMON_DIR}/compat/include/zephyr_kv_config.h;-Wno-undef")
   set(nvs_warnings "-Wno-format;-Wno-sign-compare;-Wno-unused-parameter")
   set_source_files_properties(${kv_common_sources} PROPERTIES
     COMPILE_OPTIONS "${prelude}"

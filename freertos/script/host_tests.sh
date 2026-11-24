@@ -43,7 +43,7 @@
 #   host's sockets with the NINA's behaviour, driven over TCP on 127.0.0.1 by
 #   freertos/tests/telnet/client.py (python3; with the host's iperf3, which is skipped when
 #   missing) (freertos/tests/telnet, about 60 s), and the "sensor" command
-#   (common/compat/os_generic/sensor_shell_os.c with the shared sensor shell, its processing thread and
+#   (common/shell/port/generic/sensor_shell_os.c with the shared sensor shell, its processing thread and
 #   "imu cal") on the shared LSM6DSO driver and a fake sensor, from two sessions
 #   (freertos/tests/sensor_shell; skipped without freertos/stmemsc/lsm6dso_reg.c).
 #   The tests of the shared code that needs no kernel, among them the tick's catch-up and the
@@ -72,19 +72,21 @@ out=$(mktemp -d)
 trap 'rm -rf "$out"' EXIT
 
 # The test's FreeRTOSConfig.h and port header first, then the board's
-# priorities_os.h (app/usb-console/src), the layer (FreeRTOS's part, the generic kernel part
-# common/compat/kernel_generic, its network part for an OS without a network stack,
-# common/compat/net_offload, before common/compat as on the board) and the kernel.  The
+# priorities_os.h (app/usb-console/src), the layer (FreeRTOS's part, the parts for an OS
+# without its own and the generic kernel part's headers in common/compat/port/generic, its
+# network part for an OS without a network stack, common/compat/net_offload/include, before
+# the layer's headers common/compat/include, port and internal, as on the board) and the
+# kernel.  The
 # RP2040's TIMER read is common/chip's under tests/compat/rp2040_timer_us.h.
 # common/compat/libc_net/include (the POSIX network headers newlib lacks) is added by the tests
-# that need it, before the host's.  The shell's tests add the shell engine,
-# common/compat/shell_engine, after their own directory (a test's OS parts first).
+# that need it, before the host's.  The shell's tests add the shell engine's backend
+# (common/compat/port/generic) after their own directory (a test's OS parts first).
 noff=../common/compat/net_offload
 lnet=../common/compat/libc_net
 seng=../common/compat/shell_engine
 kgen=../common/compat/kernel_generic
-inc=(-Itests/compat -Iapp/usb-console/src -Idrivers/compat -I../common/compat/os_generic/include -I"$kgen" -I"$noff/include"
-     -I../common/compat -I../common/compat/log -I"$kernel/include" -I"$posix" -I"$posix/utils")
+inc=(-Itests/compat -Iapp/usb-console/src -Idrivers/compat -I../common/compat/port/generic -I"$noff/include"
+     -I../common/compat/include -I../common/compat/port -I../common/compat/internal -I"$kernel/include" -I"$posix" -I"$posix/utils")
 flags=(-std=gnu11 -O2 -g -pthread)
 strict=(-Wall -Wextra -Werror)
 
@@ -101,7 +103,7 @@ done
 for src in ../common/compat/zephyr_init.c ../common/compat/zephyr_work.c \
            ../common/compat/zephyr_rtio_workq.c; do
     obj="$out/common_$(basename "$src" .c).o"
-    cc "${flags[@]}" "${strict[@]}" "${inc[@]}" -include ../common/compat/os_generic/common_prelude.h \
+    cc "${flags[@]}" "${strict[@]}" "${inc[@]}" -include ../common/compat/port/generic/common_prelude.h \
         -c "$src" -o "$obj"
     objs+=("$obj")
 done
@@ -130,7 +132,7 @@ printf 'ok  zephyr_kernel_test (the layer kernel, FreeRTOS POSIX port)\n'
 # getopt), the engine's "help" and the generic commands (common/shell/kernel_shell.c, with the
 # test's kernel_shell_os_impl.h) and the serial session (shell_serial.c, on the test's console
 # transport), on the same kernel and layer objects.
-shinc=(-Itests/shell -I$seng -I../common/shell -I../common/compat/lib/utils/getopt
+shinc=(-Itests/shell -I../common/compat/port/generic -I../common/shell -I../common/compat/lib/utils/getopt
        -DZ_SHELL_CMD_ROOT_GLOBAL -DCONFIG_GETOPT_LONG=1 -U_FORTIFY_SOURCE -ffunction-sections
        -fdata-sections)
 shobjs=()
@@ -172,9 +174,9 @@ printf 'ok  shell (two sessions, generic commands, serial session, FreeRTOS POSI
 # Zephyr's settings, NVS and hex.c with their options, common/pico_sdk/drivers/kv/kv.cmake; the RP2040's part
 # without the prelude, as the board builds it), on the same kernel and layer objects.  Unused parts (the "kv" command's table) are left out by --gc-sections.
 kvinc=(-D_GNU_SOURCE -DPICO_FLASH_ASSUME_CORE1_SAFE=1 -DZ_SHELL_CMD_ROOT_GLOBAL -Itests/kv/pico_fake
-       -I../common/chip/rp2040/include -I$seng -I../common/imu -I../common/compat/subsys/settings/include
+       -I../common/chip/rp2040/include -I../common/compat/port/generic -I../common/imu -I../common/compat/subsys/settings/include
        -I../common/compat/subsys/settings/src -ffunction-sections -fdata-sections)
-kvconfig=(-include ../common/compat/zephyr_kv_config.h -Wno-undef)
+kvconfig=(-include ../common/compat/include/zephyr_kv_config.h -Wno-undef)
 kvobjs=()
 for src in ../common/pico_sdk/drivers/kv/rp2040_flash_kv_os.c ../common/chip/rp2040/rp2040_flash_kv.c tests/kv/main.c \
            ../common/imu/kv_store.c \
@@ -189,7 +191,7 @@ for src in ../common/pico_sdk/drivers/kv/rp2040_flash_kv_os.c ../common/chip/rp2
     case $src in
         ../common/chip/*) ;;
         ../common/pico_sdk/*) ;;
-        ../common/*) extra=(-include ../common/compat/os_generic/common_prelude.h) ;;
+        ../common/*) extra=(-include ../common/compat/port/generic/common_prelude.h) ;;
     esac
     case $src in
         */subsys/*) extra+=("${kvconfig[@]}") ;;
@@ -241,7 +243,7 @@ for hz in 1000 250; do
         obj="$out/nina${hz}_$(basename "$src" .c).o"
         extra=()
         case $src in
-            ../common/drivers/nina/internal/nina_*.c) extra=(-include ../common/compat/os_generic/common_prelude.h) ;;
+            ../common/drivers/nina/internal/nina_*.c) extra=(-include ../common/compat/port/generic/common_prelude.h) ;;
         esac
         cc "${flags[@]}" "${strict[@]}" "${ninainc[@]}" "${ninadefs[@]}" \
             "${extra[@]}" -c "$src" -o "$obj"
@@ -290,13 +292,13 @@ for variant in i2c0 i2c1; do
         obj="$out/i2c_${variant}_$(basename "$src" .c).o"
         extra=()
         case $src in
-            */i2c_dw_core.c) extra=(-include ../common/compat/os_generic/common_prelude.h -Wno-sign-compare) ;;
-            */i2c_shell.c) extra=(-include ../common/compat/os_generic/common_prelude.h -Wno-sign-compare
+            */i2c_dw_core.c) extra=(-include ../common/compat/port/generic/common_prelude.h -Wno-sign-compare) ;;
+            */i2c_shell.c) extra=(-include ../common/compat/port/generic/common_prelude.h -Wno-sign-compare
                                   -Wno-unused-parameter -DCONFIG_I2C_SHELL_BUFFER_SIZE=64
                                   -DCONFIG_LOG_DEFAULT_LEVEL=3) ;;
             */zshell.c) extra=(-Dcalloc=test_calloc -Dfree=test_free) ;;
         esac
-        cc "${flags[@]}" "${strict[@]}" "${i2cdefs[@]}" -Itests/i2c_dw -I$seng -I../common/shell \
+        cc "${flags[@]}" "${strict[@]}" "${i2cdefs[@]}" -Itests/i2c_dw -I../common/compat/port/generic -I../common/shell \
             -DZ_SHELL_CMD_ROOT_GLOBAL "${i2cinc[@]}" "${inc[@]}" "${extra[@]}" \
             -c "$src" -o "$obj"
         i2cobjs+=("$obj")
@@ -336,8 +338,8 @@ if [[ -f stmemsc/lsm6dso_reg.h ]]; then
         extra=()
         case $src in
             ../common/pico_sdk/*) ;;
-            ../common/*) extra=(-include ../common/compat/os_generic/common_prelude.h) ;;
-            tests/gpio/*) extra=(-include ../common/compat/os_generic/common_prelude.h) ;;
+            ../common/*) extra=(-include ../common/compat/port/generic/common_prelude.h) ;;
+            tests/gpio/*) extra=(-include ../common/compat/port/generic/common_prelude.h) ;;
         esac
         cc "${flags[@]}" "${strict[@]}" "${gpioinc[@]}" "${inc[@]}" "${extra[@]}" -c "$src" -o "$obj"
         gpioobjs+=("$obj")
@@ -397,7 +399,7 @@ for src in tests/mqtt/main.c $lnet/inet.c "${mqttsrcs[@]}"; do
     case $src in
         $noff/*|$lnet/*) ;;
         ../common/pico_sdk/*) ;;
-        ../common/*) extra=(-include ../common/compat/os_generic/common_prelude.h) ;;
+        ../common/*) extra=(-include ../common/compat/port/generic/common_prelude.h) ;;
     esac
     case $src in
         */mqtt_min.c) extra+=(-Wno-sign-compare) ;;
@@ -430,7 +432,7 @@ if [[ -x $imuhost ]] && command -v python3 >/dev/null; then
         case $src in
             $noff/*) ;;
             ../common/pico_sdk/*) ;;
-            ../common/*) extra=(-include ../common/compat/os_generic/common_prelude.h) ;;
+            ../common/*) extra=(-include ../common/compat/port/generic/common_prelude.h) ;;
         esac
         case $src in
             */mqtt_min.c) extra+=(-Wno-sign-compare) ;;
@@ -458,7 +460,7 @@ fi
 # registers on the test port's clock (tests/compat/rp2040_timer_us.h, under common/chip's
 # read), on the same kernel and layer objects.  It waits for the real intervals (2 s): about 12 s.
 tsinc=(-DZ_SHELL_CMD_ROOT_GLOBAL -DCONFIG_GETOPT_LONG=1 -U_FORTIFY_SOURCE
-       -Itests/shell -I$seng -I$lnet/include -I../common/shell
+       -Itests/shell -I../common/compat/port/generic -I$lnet/include -I../common/shell
        -I../common/compat/lib/utils/getopt -I../common/imu -ffunction-sections -fdata-sections)
 tsobjs=()
 for src in tests/time_sync/main.c ../common/pico_sdk/drivers/compat/zephyr_sys_clock.c $noff/zephyr_net_if.c \
@@ -473,7 +475,7 @@ for src in tests/time_sync/main.c ../common/pico_sdk/drivers/compat/zephyr_sys_c
     case $src in
         ../common/shell/*|*/fnmatch.c|*/getopt*.c|$noff/*|$lnet/*) ;;
         ../common/pico_sdk/*) ;;
-        ../common/*) extra=(-include ../common/compat/os_generic/common_prelude.h) ;;
+        ../common/*) extra=(-include ../common/compat/port/generic/common_prelude.h) ;;
     esac
     case $src in
         *zshell.c|*shell_console.c) extra+=(-Dcalloc=test_calloc -Dmalloc=test_malloc -Dfree=test_free) ;;
@@ -506,7 +508,7 @@ for src in tests/sockets/main.c "${socksrcs[@]}"; do
     extra=()
     case $src in
         */subsys/*|*/lib/os/*) extra=(-Wno-sign-compare) ;;
-        ../common/compat/zephyr_heap.c) extra=(-include ../common/compat/os_generic/common_prelude.h) ;;
+        ../common/compat/zephyr_heap.c) extra=(-include ../common/compat/port/generic/common_prelude.h) ;;
     esac
     cc "${flags[@]}" "${strict[@]}" -I$lnet/include "${inc[@]}" "${extra[@]}" -c "$src" -o "$obj"
     layerobjs+=("$obj")
@@ -540,7 +542,7 @@ for src in ../common/drivers/nina/port/zephyr/nina_socket.c $lnet/inet.c tests/s
         $noff/subsys/*|$noff/lib/os/*) extra=(-Wno-sign-compare) ;;
         $noff/*|$lnet/*) ;;
         ../common/pico_sdk/*) ;;
-        ../common/*) extra=(-include ../common/compat/os_generic/common_prelude.h) ;;
+        ../common/*) extra=(-include ../common/compat/port/generic/common_prelude.h) ;;
     esac
     case $src in
         */nina_socket.c|*/nina_sock.c|*/nina_dns.c) extra+=(-DNINA_OS_DNS_OFFLOAD) ;;
@@ -572,7 +574,7 @@ printf 'ok  socket (descriptors, wait loops, options, poll, resolver, FreeRTOS P
 # firmware's capability bits (a fake nina_proto_probe_capabilities()): the link kept, the asynchronous
 # scan and its failures, a loss of the link during the scan.
 wifiinc=(-D_GNU_SOURCE -DZ_SHELL_CMD_ROOT_GLOBAL -DCONFIG_GETOPT_LONG=1 -DCONFIG_WIFI_CREDENTIALS=1
-         -U_FORTIFY_SOURCE -Itests/shell -I$seng
+         -U_FORTIFY_SOURCE -Itests/shell -I../common/compat/port/generic
          -I../common/shell -I../common/compat/lib/utils/getopt -I../common/drivers/nina/include
          -I../common/drivers/nina/internal -I../common/drivers/nina/port
          -I../common/imu -I../common/tests -I../common/compat/subsys/settings/include
@@ -604,7 +606,7 @@ for src in $noff/zephyr_net_if.c $noff/zephyr_net_init.c ../common/shell/ifconfi
         ../common/tests/*) ;;
         ../common/shell/*|*/fnmatch.c|*/getopt*.c|$noff/*|$lnet/*) ;;
         ../common/pico_sdk/*) ;;
-        ../common/*) extra=(-include ../common/compat/os_generic/common_prelude.h) ;;
+        ../common/*) extra=(-include ../common/compat/port/generic/common_prelude.h) ;;
     esac
     case $src in
         */subsys/settings/*|*/subsys/crc/*|*/subsys/kvss/*) extra+=("${kvconfig[@]}") ;;
@@ -643,7 +645,7 @@ printf 'ok  wifi (interface, events, credentials, reconnection, wifi and ifconfi
 # after a test) and their allocation failing.
 if command -v python3 >/dev/null; then
     tninc=(-D_GNU_SOURCE -DZ_SHELL_CMD_ROOT_GLOBAL -DCONFIG_GETOPT_LONG=1 -U_FORTIFY_SOURCE
-           -Itests/telnet -Itests/shell -I$seng -I../common/shell
+           -Itests/telnet -Itests/shell -I../common/compat/port/generic -I../common/shell
            -I../common/compat/lib/utils/getopt -ffunction-sections -fdata-sections)
     tnobjs=()
     for src in $seng/shell_telnet.c tests/telnet/main.c tests/telnet/host_sock.c \
@@ -655,9 +657,9 @@ if command -v python3 >/dev/null; then
         obj="$out/telnet_$(basename "$src" .c).o"
         extra=()
         case $src in
-            */zperf_iperf3.c) extra=(-include ../common/compat/os_generic/common_prelude.h
+            */zperf_iperf3.c) extra=(-include ../common/compat/port/generic/common_prelude.h
                                      -Dmalloc=zperf_test_malloc -Dfree=zperf_test_free) ;;
-            */zephyr_zperf_shell.c) extra=(-include ../common/compat/os_generic/common_prelude.h) ;;
+            */zephyr_zperf_shell.c) extra=(-include ../common/compat/port/generic/common_prelude.h) ;;
             */shell_telnet.c) extra=(-DCONFIG_SHELL_TELNET_PORT=test_telnet_port
                                     "-include" tests/telnet/port.h) ;;
             *zshell.c|*shell_console.c) extra=(-Dcalloc=test_calloc -Dmalloc=test_malloc -Dfree=test_free) ;;
@@ -679,7 +681,7 @@ fi
 
 # The "sensor" command (freertos/tests/sensor_shell): the shared common/shell/
 # sensor_shell.c, the copy of Zephyr's sensor_shell_stream.c with its processing thread and the
-# build's part (../common/compat/os_generic/sensor_shell_os.c), with "imu cal" (common/imu/imu_cal.c,
+# build's part (../common/shell/port/generic/sensor_shell_os.c), with "imu cal" (common/imu/imu_cal.c,
 # imu_cal_codec.c, on a fake key-value store), on the shared LSM6DSO driver with its FIFO stream
 # and ST's lsm6dso_reg.c (freertos/stmemsc), the layer's devices, gpio0, RTIO and its work queue
 # and the default sensor iodev and decoder, with the prelude, CONFIG_LSM6DSO_STREAM and the
@@ -691,8 +693,8 @@ fi
 # from the other, a session whose terminal is gone, the FIFO taken by another stream.  About 2 s.
 if [[ -f stmemsc/lsm6dso_reg.c ]]; then
     ssinc=(-D_GNU_SOURCE -DZ_SHELL_CMD_ROOT_GLOBAL -DCONFIG_GETOPT_LONG=1 -DCONFIG_LSM6DSO_STREAM=1
-           -U_FORTIFY_SOURCE -Itests/shell -I$seng
-           -I../common/shell -I../common/compat/lib/utils/getopt
+           -U_FORTIFY_SOURCE -Itests/shell -I../common/compat/port/generic
+           -I../common/shell -I../common/shell/port/generic -I../common/compat/lib/utils/getopt
            -I../common/drivers/lsm6dso/port/pico_sdk
            -I../common/drivers/lsm6dso/port/zephyr -I../common/drivers/lsm6dso/include
            -I../common/drivers/lsm6dso/internal -I../common/drivers/lsm6dso/port
@@ -700,7 +702,7 @@ if [[ -f stmemsc/lsm6dso_reg.c ]]; then
     cc "${flags[@]}" -w -Istmemsc -c stmemsc/lsm6dso_reg.c -o "$out/sensor_lsm6dso_reg.o"
     ssobjs=("$out/sensor_lsm6dso_reg.o")
     for src in tests/sensor_shell/main.c ../common/compat/zephyr_init.c \
-               ../common/compat/os_generic/sensor_shell_os.c \
+               ../common/shell/port/generic/sensor_shell_os.c \
                $seng/cli.c $seng/getopt_state.c $seng/shell_console.c \
                $seng/shell_engine.c $seng/shell_argv.c ../common/pico_sdk/drivers/libc/stdio_wrap.c \
                ../common/shell/zshell.c ../common/shell/subcmd.c \
@@ -722,10 +724,11 @@ if [[ -f stmemsc/lsm6dso_reg.c ]]; then
         obj="$out/sensor_$(basename "$src" .c).o"
         extra=()
         case $src in
-            ../common/shell/sensor_shell.c) extra=(-include ../common/compat/os_generic/common_prelude.h) ;;
+            ../common/shell/sensor_shell.c|*/sensor_shell_os.c)
+                extra=(-include ../common/compat/port/generic/common_prelude.h) ;;
             ../common/shell/*|*/fnmatch.c|*/getopt*.c) ;;
             ../common/pico_sdk/*) ;;
-            ../common/*|*/sensor_shell_os.c|tests/sensor_shell/*) extra=(-include ../common/compat/os_generic/common_prelude.h) ;;
+            ../common/*|tests/sensor_shell/*) extra=(-include ../common/compat/port/generic/common_prelude.h) ;;
         esac
         case $src in
             */lsm6dso_sensor.c) extra+=(-Wno-unused-parameter -Wno-sign-compare -Wno-cast-function-type) ;;

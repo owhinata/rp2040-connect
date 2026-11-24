@@ -122,46 +122,106 @@ printf 'ok  i2c_dw_public_headers (%d files)\n' "${#i2c_dw_public[@]}"
 # Zephyr's own library when the Zephyr tree is there.
 compat=(compat/zephyr_work.c compat/zephyr_rtio.c compat/zephyr_mem_blocks.c
         compat/zephyr_rtio_workq.c tests/zephyr_fakes/zephyr_kernel_host.c)
-zinc=(-D_DEFAULT_SOURCE -Itests/zephyr_fakes -Icompat)
+zinc=(-D_DEFAULT_SOURCE -Itests/zephyr_fakes -Icompat/include -Icompat/port)
 run zephyr_rtio "${flags[@]}" "${zinc[@]}" tests/zephyr_rtio.c "${compat[@]}"
 run zephyr_work "${flags[@]}" "${zinc[@]}" tests/zephyr_work.c "${compat[@]}"
 run mqtt_min "${flags[@]}" -Wno-sign-compare "${zinc[@]}" -I"$imu" tests/mqtt_min.c \
     "$imu/mqtt_min.c" "${compat[@]}"
 
-# The kernel tick's catch-up for an OS with a periodic tick (compat/kernel_generic/
-# tick_catchup.h, the tick hooks of the builds on the Pico SDK): the step alone and on a model
+# The kernel tick's catch-up for an OS with a periodic tick (compat/include/tick_catchup.h,
+# of the generic kernel part; the tick hooks of the builds on the Pico SDK): the step alone and on a model
 # of SysTick, its pending bit and masked interrupts.  The LED's blink from the idle pass of the
 # builds on the Pico SDK (pico_sdk/app/usb-console/src/idle_blink.h): its schedule.  No kernel.
-run tick_catchup "${flags[@]}" -Icompat/kernel_generic tests/tick_catchup.c
+run tick_catchup "${flags[@]}" -Icompat/include tests/tick_catchup.c
 run idle_blink "${flags[@]}" -Ipico_sdk/app/usb-console/src tests/idle_blink.c
 
-# The layer's kernel part and its network part are chosen independently.  The generic kernel
-# part (compat/kernel_generic) compiles with the layer's headers (compat), an OS's primitives
+# The layer's headers are in one set (compat/include, compat/internal, compat/port and, for an
+# OS without its own, compat/port/generic), but its parts are chosen independently: the
+# generic kernel part (compat/kernel_generic), the network part (compat/net_offload), the POSIX
+# network headers (compat/libc_net), the shell engine (compat/shell_engine) and the RAM log
+# (compat/log).  Each header of the set belongs to the layer as a whole or to one part (the
+# lists below; a header that is in none, or in two, fails), and a part's sources are checked to
+# resolve no header of the parts they must not need (cc -M), as when each part had its own
+# include directory.
+part_kernel_generic=(compat/include/zephyr_compat_os.h compat/include/tick_catchup.h
+                     compat/port/zephyr_kernel_os.h compat/internal/zephyr_os_internal.h
+                     compat/port/generic/zephyr_os.h compat/port/generic/zephyr_os_spinlock.h
+                     compat/port/generic/zephyr_os_atomic.h)
+part_generic=(compat/port/generic/zephyr/drivers/i2c.h compat/port/generic/zephyr/sys/clock.h
+              compat/port/generic/zephyr/sys/__assert.h compat/port/generic/app_log_os.h
+              compat/port/generic/wifi_profile_os.h compat/port/generic/common_prelude.h)
+part_log=(compat/include/app_log.h compat/include/log_ram.h compat/include/fault_record.h
+          compat/internal/log_ring.h compat/port/log_ram_os.h)
+part_shell_engine=(compat/include/shell_console.h compat/include/shell_engine.h
+                   compat/include/shell_serial.h compat/include/shell_telnet.h
+                   compat/internal/cli.h compat/internal/shell_argv.h compat/port/shell_serial_os.h
+                   compat/port/generic/zshell_os_impl.h compat/port/generic/zephyr_os_shell.h)
+part_layer=(compat/include/zephyr_compat.h compat/include/zephyr_heap.h compat/include/priorities.h
+            compat/include/flash_kv.h compat/include/zephyr_kv_config.h compat/include/kv_store_os.h
+            compat/include/sensor_shell.h compat/port/gpio_os.h compat/port/flash_kv_os.h
+            compat/port/cpu_load.h compat/internal/wifi_credentials_internal.h
+            compat/internal/zperf_iperf3.h)
+listed=$(printf '%s\n' "${part_kernel_generic[@]}" "${part_generic[@]}" "${part_log[@]}" \
+             "${part_shell_engine[@]}" "${part_layer[@]}" | sort)
+present=$(git ls-files --cached --others --exclude-standard 'compat/include/*' 'compat/internal/*' \
+              'compat/port/*' | grep -v '^compat/include/zephyr/' | grep -v '^compat/port/[^/]*/[^/]' |
+          cat - <(git ls-files --cached --others --exclude-standard 'compat/port/generic/*') |
+          sort -u)
+if [[ $listed != "$(sort -u <<<"$listed")" || $listed != "$present" ]]; then
+    printf 'compat: the headers of compat/{include,internal,port} and the lists of run.sh differ:\n'
+    diff <(printf '%s\n' "$listed") <(printf '%s\n' "$present") || true
+    exit 1
+fi
+# resolves_none NAME FILE CC-ARGS... -- FORBIDDEN...: FILE (an #include argument) compiles with
+# CC-ARGS and resolves none of FORBIDDEN (files, or directories ending in /).
+resolves_none() {
+    local name=$1 f=$2 args=() deps h
+    shift 2
+    while [[ $1 != -- ]]; do args+=("$1"); shift; done
+    shift
+    deps=$(printf '#include %s\n' "$f" | cc "${args[@]}" -M -x c - | tr ' \\' '\n\n' |
+           grep -v -e '^$' -e ':$' | xargs -r -d '\n' realpath -m --relative-to=. | sort -u)
+    for h in "$@"; do
+        if [[ $h == */ ]] && grep -q "^$h" <<<"$deps" || grep -qx "$h" <<<"$deps"; then
+            printf '%s: %s resolves %s\n' "$name" "$f" "$h"
+            exit 1
+        fi
+    done
+}
+# The generic kernel part compiles with the layer's headers, an OS's primitives
 # (tests/kernel_generic_host: zephyr_kernel_os_impl.h and priorities_os.h; zephyr_os_atomic.h
 # is the generic part's default, <zephyr/sys/clock.h> and <zephyr/sys/__assert.h> the layer's
-# for an OS without its own, compat/os_generic/include) and nothing of the
-# network part (compat/net_offload/include) or of the POSIX network headers
-# (compat/libc_net/include) on the include path: <zephyr/kernel.h> (k_heap included), its
-# sources, and the OS-independent sources on it.
-kgen_inc=(-D_DEFAULT_SOURCE -Itests/kernel_generic_host -Icompat/os_generic/include
-          -Icompat/kernel_generic -Icompat)
+# for an OS without its own, compat/port/generic) and nothing of the network part
+# (compat/net_offload/include) or of the POSIX network headers (compat/libc_net/include) on the
+# include path: <zephyr/kernel.h> (k_heap included), its sources, and the OS-independent
+# sources on it; they resolve no header of the RAM log or of the shell engine.
+kgen_inc=(-D_DEFAULT_SOURCE -Itests/kernel_generic_host -Icompat/port/generic -Icompat/include
+          -Icompat/port -Icompat/internal)
 kgen_files=("<zephyr/kernel.h>" "<zephyr/spinlock.h>" '"zephyr_compat_os.h"'
             '"compat/kernel_generic/zephyr_kernel.c"' '"compat/kernel_generic/zephyr_mutex.c"'
             '"compat/zephyr_heap.c"' '"compat/zephyr_work.c"' '"compat/zephyr_init.c"')
 for f in "${kgen_files[@]}"; do
     printf '#include %s\n' "$f" | cc "${flags[@]}" -I. "${kgen_inc[@]}" -fsyntax-only -x c -
+    resolves_none kernel_generic_independent "$f" "${flags[@]}" -I. "${kgen_inc[@]}" -- \
+        "${part_log[@]}" "${part_shell_engine[@]}" compat/net_offload/ compat/libc_net/
 done
-printf 'ok  kernel_generic_independent (%d files)\n' "${#kgen_files[@]}"
+printf 'ok  kernel_generic_independent (%d files; %d headers in the parts)\n' "${#kgen_files[@]}" \
+    "$(wc -l <<<"$listed")"
 # The network part (compat/net_offload) compiles on a kernel part written directly on an OS
 # (the fake kernel, tests/zephyr_fakes, as the NuttX build's nuttx/drivers/compat) without
 # compat/kernel_generic, with the C library's POSIX network headers (the host's) in place of
 # compat/libc_net: each of its headers and sources (its reduced copies of Zephyr's files compare
-# signed with unsigned, as Zephyr's, -Wno-sign-compare).
-noff_inc=(-D_DEFAULT_SOURCE -Itests/zephyr_fakes -Icompat/net_offload/include -Icompat)
+# signed with unsigned, as Zephyr's, -Wno-sign-compare).  They resolve no header of the generic
+# kernel part, of compat/port/generic, of the RAM log or of the shell engine.
+noff_inc=(-D_DEFAULT_SOURCE -Itests/zephyr_fakes -Icompat/net_offload/include -Icompat/include
+          -Icompat/port -Icompat/internal)
 noff_files=($(git ls-files --cached --others --exclude-standard 'compat/net_offload/*.[ch]'))
 for f in "${noff_files[@]}"; do
     printf '#include "%s"\n' "$f" | cc "${flags[@]}" -Wno-sign-compare -I. "${noff_inc[@]}" \
         -fsyntax-only -x c -
+    resolves_none net_offload_independent "\"$f\"" "${flags[@]}" -Wno-sign-compare -I. \
+        "${noff_inc[@]}" -- "${part_kernel_generic[@]}" "${part_generic[@]}" "${part_log[@]}" \
+        "${part_shell_engine[@]}" compat/libc_net/
 done
 printf 'ok  net_offload_independent (%d files)\n' "${#noff_files[@]}"
 
@@ -215,7 +275,7 @@ run nina_dns_offload "${flags[@]}" -D_DEFAULT_SOURCE -DNINA_OS_DNS_OFFLOAD "${ni
 # error record of the same registers (compat/log/fault_record.c), DTR and RTS on the module's
 # lines, the rate and the way out, the buffer from the UART's interrupt (also on two threads), the
 # start, the data both ways with their counts, the tick and the way out's sequence.
-run nina_passthrough "${flags[@]}" "${nina_inc[@]}" -Icompat/log tests/nina_passthrough.c \
+run nina_passthrough "${flags[@]}" "${nina_inc[@]}" -Icompat/include tests/nina_passthrough.c \
     compat/log/fault_record.c
 
 # The shell's subcommand dispatch with the Zephyr shell's output (shell/subcmd.c: the kv, nina,
@@ -223,13 +283,13 @@ run nina_passthrough "${flags[@]}" "${nina_inc[@]}" -Icompat/log tests/nina_pass
 run subcmd "${flags[@]}" -Ishell tests/subcmd.c shell/subcmd.c
 # The same with the copy of Zephyr's fnmatch() (compat/subsys/portability, which the FreeRTOS
 # build links: newlib has none) instead of the host's.
-run subcmd_fnmatch "${flags[@]}" -Ishell -Icompat tests/subcmd.c shell/subcmd.c \
+run subcmd_fnmatch "${flags[@]}" -Ishell -Icompat/include tests/subcmd.c shell/subcmd.c \
     compat/subsys/portability/posix/c_lib_ext/fnmatch.c
 # The copies of Zephyr's getopt (compat/lib/utils/getopt, for the FreeRTOS build): short and long
 # options, permutation, errors, and two states parsing two command lines interleaved, as two
 # shell sessions do.
 run sys_getopt "${flags[@]}" -D_DEFAULT_SOURCE -DCONFIG_GETOPT_LONG=1 -Itests/kv_fakes \
-    -Itests/zephyr_fakes -Icompat -Icompat/log -Icompat/lib/utils/getopt tests/sys_getopt.c \
+    -Itests/zephyr_fakes -Icompat/include -Icompat/lib/utils/getopt tests/sys_getopt.c \
     compat/lib/utils/getopt/getopt.c compat/lib/utils/getopt/getopt_long.c
 # The RAM log's ring (compat/log/log_ring.c): the retained ring, dmesg pieces, line prefix and
 # rate limit.  Then the RAM log on the ring (compat/log/log_ram.c, shared by the NuttX and
@@ -238,12 +298,13 @@ run sys_getopt "${flags[@]}" -D_DEFAULT_SOURCE -DCONFIG_GETOPT_LONG=1 -Itests/kv
 # ring.  Each with the ring's size of the FreeRTOS build (4096) and of the NuttX build (8192).
 for size in 4096 8192; do
     run "log_ring_$size" "${flags[@]}" -DLOG_RAM_TEST_SIZE=$size -Itests/log_ram_os_host \
-        -Icompat/log tests/log_ring.c compat/log/log_ring.c
+        -Icompat/include -Icompat/internal tests/log_ring.c compat/log/log_ring.c
     run "log_ram_$size" "${flags[@]}" -DLOG_RAM_TEST_SIZE=$size -Itests/log_ram_os_host \
-        -Icompat/log tests/log_ram.c compat/log/log_ram.c compat/log/log_ring.c
+        -Icompat/include -Icompat/internal -Icompat/port tests/log_ram.c compat/log/log_ram.c \
+        compat/log/log_ring.c
 done
-# The CPU load arithmetic of the idle loop (compat/cpu_load.h).
-run cpu_load "${flags[@]}" -Icompat tests/cpu_load.c
+# The CPU load arithmetic of the idle loop (compat/port/cpu_load.h).
+run cpu_load "${flags[@]}" -Icompat/port tests/cpu_load.c
 # The read of the RP2040's TIMER (chip/rp2040: rp2040_timer_us()) on scripted registers.
 run rp2040_timer_us "${flags[@]}" -Ichip/rp2040/include tests/rp2040_timer_us.c
 # The CPU column of "ps" (FreeRTOS) and "kernel ps" (Zephyr): each task's share since the
@@ -253,28 +314,29 @@ run ps_interval "${flags[@]}" -Ishell tests/ps_interval.c
 # (compat/log/fault_record.c): the check, the watchdog scratch copy and the lines, the range
 # check and the HardFault's exception frame (synthetic frames at both ends of a "RAM" followed by an
 # unmapped page), the choice of the record at the next start.
-run fault_record "${flags[@]}" -Icompat/log tests/fault_record.c compat/log/fault_record.c
+run fault_record "${flags[@]}" -Icompat/include tests/fault_record.c compat/log/fault_record.c
 
 # The hexadecimal conversions of the "kv" command (compat/lib/utils/hex.c, the copy of Zephyr's
 # lib/utils/hex.c).
-run hex "${flags[@]}" -Icompat tests/hex.c compat/lib/utils/hex.c
-# The key-value area's helpers (compat/flash_kv.h): range checks, page writes, the check of
+run hex "${flags[@]}" -Icompat/include tests/hex.c compat/lib/utils/hex.c
+# The key-value area's helpers (compat/include/flash_kv.h): range checks, page writes, the check of
 # what the area holds (Zephyr's NVS, the NuttX build's earlier format, erased, other).
-run flash_kv "${flags[@]}" -Icompat tests/flash_kv.c
+run flash_kv "${flags[@]}" -Icompat/include tests/flash_kv.c
 # The RP2040's part of the area's flash that the NuttX and FreeRTOS builds share
 # (chip/rp2040/rp2040_flash_kv.c) on a fake of the build's flash operations (rp2040_flash_kv_os.h)
 # and 8 KiB mapped at the area's uncached XIP address: the start and the linker script's bounds,
 # every program and erase offset around the area, the reads, the messages.
-run rp2040_flash_kv "${flags[@]}" -D_GNU_SOURCE -Itests/kv_fakes -Icompat -Icompat/log \
+run rp2040_flash_kv "${flags[@]}" -D_GNU_SOURCE -Itests/kv_fakes -Icompat/include -Icompat/port \
     -Ichip/rp2040/include tests/rp2040_flash_kv.c chip/rp2040/rp2040_flash_kv.c
 # The key-value store (imu/kv_store.c, the Zephyr build's) on the copies of Zephyr's settings and
 # NVS (compat/subsys, built as they are, without warnings, with the Zephyr build's Kconfig values
-# of compat/zephyr_kv_config.h), the flash device and map of the area (compat/zephyr_flash_kv.c)
+# of compat/include/zephyr_kv_config.h), the flash device and map of the area (compat/zephyr_flash_kv.c)
 # and "kv wipe" (compat/kv_store_wipe.c), on a fake flash (tests/kv_flash_fake.c) and the fake
 # kernel: the bytes on the flash, reads, writes, limits, garbage collection, foreign data, the
 # device's refusals, a power loss at every flash operation of a sequence.  Its log, shell
 # backend and app_log_os.h are tests/kv_fakes and the test's own.
-kvinc=(-D_GNU_SOURCE -DZ_SHELL_CMD_NAMED_MAIN -Itests/kv_fakes -Itests/zephyr_fakes -Icompat -Icompat/log
+kvinc=(-D_GNU_SOURCE -DZ_SHELL_CMD_NAMED_MAIN -Itests/kv_fakes -Itests/zephyr_fakes -Icompat/include
+       -Icompat/port
        -Iimu -Icompat/subsys/settings/include -Icompat/subsys/settings/src
        -Icompat/subsys/kvss/nvs -Itests)
 kvobjs=()
@@ -283,11 +345,11 @@ for f in compat/subsys/kvss/nvs/nvs.c compat/subsys/settings/src/settings.c \
          compat/subsys/settings/src/settings_nvs.c compat/subsys/crc/crc8_sw.c \
          compat/lib/utils/hex.c; do
     o="$out/kv_$(basename "$f" .c).o"
-    cc -std=gnu17 -w -ffunction-sections -fdata-sections -include compat/zephyr_kv_config.h \
+    cc -std=gnu17 -w -ffunction-sections -fdata-sections -include compat/include/zephyr_kv_config.h \
         "${kvinc[@]}" -c "$f" -o "$o"
     kvobjs+=("$o")
 done
-run kv_settings "${flags[@]}" -include compat/zephyr_kv_config.h "${kvinc[@]}" tests/kv_settings.c \
+run kv_settings "${flags[@]}" -include compat/include/zephyr_kv_config.h "${kvinc[@]}" tests/kv_settings.c \
     tests/kv_flash_fake.c compat/zephyr_flash_kv.c compat/kv_store_wipe.c imu/kv_store.c \
     tests/zephyr_fakes/zephyr_kernel_host.c "${kvobjs[@]}"
 
@@ -311,17 +373,17 @@ if [[ -f $ztree/VERSION ]]; then
         compat/subsys/settings/include/settings/settings_file.h:subsys/settings/include/settings/settings_file.h \
         compat/subsys/crc/crc8_sw.c:subsys/crc/crc8_sw.c \
         compat/lib/utils/hex.c:lib/utils/hex.c \
-        compat/zephyr/kvss/nvs.h:include/zephyr/kvss/nvs.h \
-        compat/zephyr/settings/settings.h:include/zephyr/settings/settings.h \
-        compat/zephyr/sys/slist.h:include/zephyr/sys/slist.h \
-        compat/zephyr/sys/list_gen.h:include/zephyr/sys/list_gen.h \
+        compat/include/zephyr/kvss/nvs.h:include/zephyr/kvss/nvs.h \
+        compat/include/zephyr/settings/settings.h:include/zephyr/settings/settings.h \
+        compat/include/zephyr/sys/slist.h:include/zephyr/sys/slist.h \
+        compat/include/zephyr/sys/list_gen.h:include/zephyr/sys/list_gen.h \
         compat/subsys/portability/posix/c_lib_ext/fnmatch.c:subsys/portability/posix/c_lib_ext/fnmatch.c \
-        compat/zephyr/posix/fnmatch.h:include/zephyr/posix/fnmatch.h \
+        compat/include/zephyr/posix/fnmatch.h:include/zephyr/posix/fnmatch.h \
         compat/lib/utils/getopt/getopt.c:lib/utils/getopt/getopt.c \
         compat/lib/utils/getopt/getopt_long.c:lib/utils/getopt/getopt_long.c \
         compat/lib/utils/getopt/getopt_common.h:lib/utils/getopt/getopt_common.h \
         compat/lib/utils/getopt/README:lib/utils/getopt/README \
-        compat/zephyr/sys/sys_getopt.h:include/zephyr/sys/sys_getopt.h \
+        compat/include/zephyr/sys/sys_getopt.h:include/zephyr/sys/sys_getopt.h \
         compat/subsys/net/lib/wifi_credentials/wifi_credentials_shell.c:subsys/net/lib/wifi_credentials/wifi_credentials_shell.c; do
         cmp "${pair%%:*}" "$ztree/${pair#*:}"
     done

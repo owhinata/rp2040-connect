@@ -107,7 +107,7 @@ config RP2040_FLASH_KV
 		include/board.h; __kv_start, __kv_end in
 		scripts/arduino-nano-rp2040-connect-flash.ld), the place of the
 		Zephyr build's storage_partition: the OS boundary of
-		common/compat/flash_kv_os.h (the RP2040's part shared with the
+		common/compat/port/flash_kv_os.h (the RP2040's part shared with the
 		FreeRTOS build, common/chip/rp2040/rp2040_flash_kv.c, on the
 		board's flash operations with the boot ROM,
 		src/rp2040_flash_kv_os.c), under the flash device of

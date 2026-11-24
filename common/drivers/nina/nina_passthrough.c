@@ -7,7 +7,7 @@
  * events.
  *
  * - The request: four words, "NINA" "PASS" and their complements.  The
- *   words are those of the fatal error record (common/compat/log/fault_record.h),
+ *   words are those of the fatal error record (common/compat/include/fault_record.h),
  *   which starts with "FA" in the high half of the first; this one starts
  *   with "NI", so neither is taken for the other, and a fatal error during
  *   the restart replaces the request (the next start is a normal one).

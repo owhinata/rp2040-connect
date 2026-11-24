@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: MIT */
-/* The OS part of the port's priorities (common/compat/priorities.h) for the
+/* The OS part of the port's priorities (common/compat/include/priorities.h) for the
  * host check of the generic kernel part (zephyr_kernel_os_impl.h here):
  * larger is more urgent, as the generic part's z_os_prio_t.
  */

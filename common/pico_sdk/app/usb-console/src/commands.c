@@ -2,7 +2,7 @@
 /* The commands of the builds on the Pico SDK that only the OS and the
  * Pico SDK can answer ("version", "free", and "ps", whose handler and the
  * kernel's name and version are the OS's, commands_os.h), written as
- * Zephyr shell commands (common/compat/shell_engine/shell_engine.h), and
+ * Zephyr shell commands (common/compat/include/shell_engine.h), and
  * the table of all the commands of the shell (shell_engine_cmds[]).
  */
 #include <malloc.h>

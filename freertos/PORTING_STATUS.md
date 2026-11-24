@@ -3064,3 +3064,17 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
 - 進め方: 最初に `compat` のヘッダーの移動（全部の include パスに触れるので単独で）。そのあと Pico SDK の側と NuttX の側を並行で、最後に両方にまたがる部分。各段階で 4 つのビルドとホストテスト、
   イメージが移動の前と一致すること（同じ `SOURCE_DATE_EPOCH`。NuttX は `-j 1`）を確かめる。一致しない段階だけ実機で送信を確かめる。文書は各段階の commit で直す。
 - 新しい OS（Pico SDK の上）が作るもの（移動のあと）: `common/compat/port/<OS>/`、`common/shell/port/<OS>/`、`common/drivers/{i2c_dw,nina}/port/<OS>/`、`<OS>/app/`、`<OS>/script/`、`<OS>/tests/`。
+
+## `common/` を 3 層に: 段階 1（`compat` のヘッダー、2026-11-24）
+
+- `common/compat/zephyr/**` → `compat/include/zephyr/**`、ほかから読むヘッダー → `compat/include/`（16）、内側だけのもの → `compat/internal/`（6）、OS が実装する境界のヘッダー → `compat/port/`
+  （`gpio_os.h`・`flash_kv_os.h`・`cpu_load.h`・`zephyr_kernel_os.h`・`log_ram_os.h`・`shell_serial_os.h`）、`os_generic` と汎用のカーネルの部分・シェルのエンジンの「OS の部分に当たるヘッダー」→ `compat/port/generic/`、
+  センサーのシェルの OS 部分 → `common/shell/port/generic/`。`os_generic/` は無くなった。直下の `.c` と `kernel_generic/`・`log/`・`shell_engine/` の `.c` は動かしていない。
+- 同じ名前のヘッダーの扱い: NuttX にも同じ名前がある汎用のもの（`zephyr_os.h`・`zephyr_os_spinlock.h`・`zephyr_os_atomic.h`・`zshell_os_impl.h`・`zephyr_os_shell.h`・`app_log_os.h`・`wifi_profile_os.h`、
+  `zephyr/drivers/i2c.h` など）は `port/generic/` に置き、NuttX の include パスには入れない（`include/` に置くと NuttX のものが隠れる組があった）。`net_offload/include`・`libc_net/include` は自分の場所のまま。
+- 部品の独立の検査（`run.sh`）: include パスが 1 組になったので、ヘッダーの帰属の表（39 ヘッダーが 5 つの部品のどれか 1 つに属する）と、`cc -M` で解決したヘッダーに禁止のものが無いことの確認に替えた。
+- 確かめ方: 同じ `SOURCE_DATE_EPOCH=1763337600` の clean build（NuttX は `-j 1`。2 回のビルドが一致することを先に確認）で、4 つの OS のイメージが移動の前とバイト単位で一致（FreeRTOS と ThreadX はメインも確認）。
+  オブジェクトごとに読んだヘッダーを移動の表で写して比べ、ファームウェアの 1,112 オブジェクトとホストテストの 930 コンパイルが全部一致（道具は `freertos/build/baseline/restructure/tools/`、Git 管理外）。
+  ホストテスト 68・56・61・73。実機は不要（イメージが同じ）。
+- 次: Pico SDK の側（FreeRTOS・ThreadX の実装と `common/pico_sdk/drivers/{compat,shell,libc,include}` → `compat/port/{freertos,threadx,pico_sdk}/`）と NuttX の側（`nuttx/drivers/{compat,include,log}`、
+  ボードの `rp2040_gpio_os.c` → `compat/port/nuttx/`）を並行で。そのあとシェル、チップ、各 cmake、アプリの Pico SDK の部分（`common/imu/port/pico_sdk/`）、`common/pico_sdk/` の削除。

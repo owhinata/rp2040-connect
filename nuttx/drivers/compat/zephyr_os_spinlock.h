@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /* The NuttX part of <zephyr/spinlock.h> of the Zephyr compatibility layer
- * (common/compat/zephyr/spinlock.h).  NuttX switches at once to a thread
- * that nxsem_post() makes ready, even with interrupts masked, so here the
+ * (common/compat/include/zephyr/spinlock.h).  NuttX switches at once to a
+ * thread that nxsem_post() makes ready, even with interrupts masked, so here the
  * lock is sched_lock() and up_irq_save(): the switch waits for
  * k_spin_unlock() (sched_unlock()), as in Zephyr.  In an interrupt handler
  * sched_lock() does nothing (NuttX switches at the end of the interrupt,

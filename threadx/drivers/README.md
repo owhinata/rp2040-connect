@@ -11,7 +11,7 @@ each build writes in [`design/os-boundary.md`](../../design/os-boundary.md), and
 The ThreadX build uses only the ThreadX kernel (Eclipse ThreadX v6.5.2.202603b_rel, its Cortex-M0 port
 `ports/cortex_m0/gnu`); the start, clocks, USB, flash and DMA are the Pico SDK 2.3.1's. USBX, NetX Duo and
 FileX are not used. Most of the sources are in `common/`, shared by the four builds, and the parts on the
-Pico SDK (`common/pico_sdk/`, each driver's `port/pico_sdk/`, `common/compat/os_generic/`) are shared with
+Pico SDK (`common/pico_sdk/`, each driver's `port/pico_sdk/`, `common/compat/port/generic/`) are shared with
 the FreeRTOS build. The shared sources are written on Zephyr's API, so the ThreadX build, as the FreeRTOS
 build, runs them on a layer that provides that API under Zephyr's names (the "compatibility layer"). Its
 kernel part is the generic implementation on an OS's primitives (`common/compat/kernel_generic/`); the
@@ -36,7 +36,7 @@ fetched by `setup.sh` and not in Git. ThreadX's sources are built unchanged.
 
 ## The layer's kernel part
 
-The primitives and what each must do are in `common/compat/kernel_generic/zephyr_kernel_os.h` and sections
+The primitives and what each must do are in `common/compat/port/zephyr_kernel_os.h` and sections
 2.5 and 2.6 of `design/os-boundary.md`. The ThreadX build makes them as follows.
 
 - **The thread's lock** (`z_os_task_lock()`): interrupts masked (PRIMASK), and at the outermost level
@@ -101,7 +101,7 @@ The primitives and what each must do are in `common/compat/kernel_generic/zephyr
   lost ticks and the layer's timeouts (`zephyr_compat_tick()`). There is no timer thread. The switch to a
   woken thread is PendSV after the handler.
 - Catch-up: ticks lost while interrupts are masked (a flash erase) are found against the TIMER by the
-  shared `common/compat/kernel_generic/tick_catchup.h`, which pends SysTick again once per lost tick.
+  shared `common/compat/include/tick_catchup.h`, which pends SysTick again once per lost tick.
   SysTick is above PendSV, so the added ticks run one after another before the switch, each counted as a
   normal tick (the same test as the FreeRTOS build's). The tick never runs ahead of the TIMER.
 
