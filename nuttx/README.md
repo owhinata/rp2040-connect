@@ -20,7 +20,7 @@ Further reading:
 - The drivers (NINA, I2C0, LSM6DSOX) and the Zephyr API compatibility layer:
   [`drivers/README.md`](drivers/README.md)
 - The design summary: [§11](../design/imu-raw-mqtt-design.md) of the design document ("11. The NuttX port")
-- Performance compared with the other builds: "Performance of the three builds" in the
+- Performance compared with the other builds: "Performance of the four builds" in the
   top-level [`README.md`](../README.md)
 - The plan, history and verified facts of the port (work logs, in Japanese):
   [`PORTING_PLAN.md`](PORTING_PLAN.md), [`PORTING_STATUS.md`](PORTING_STATUS.md),
@@ -130,7 +130,7 @@ nuttx/script/flash.sh --build    # build first, then write
 
 `flash.sh` (shared with the Zephyr and FreeRTOS builds: `script/flash_uf2.sh`) checks that the UF2 is
 for the RP2040 and looks for the `RPI-RP2` drive of the RP2040 boot ROM. Without one, it sends
-`bootsel` to the USB shell of whichever of the three builds is running (not when the console is open in
+`bootsel` to the USB shell of whichever of the four builds is running (not when the console is open in
 another program) and waits for the drive. When no shell answers, it explains how to enter BOOTSEL by
 hand (press the RESET button twice quickly; if that does not work, connect `REC` to `GND` with a
 jumper wire, press RESET, and remove the wire when the drive appears) and waits. If the drive is not
@@ -491,8 +491,8 @@ NuttX puts at the start of a stack (2048 → 2008 and so on).
 nuttx/script/host_tests.sh
 ```
 
-This builds and runs the 59 host tests of the OS-independent parts on the PC. The first 39 are the
-tests of the sources shared by the three builds and of the shared parts of the layer, the
+This builds and runs the 73 host tests of the OS-independent parts on the PC. The first 53 are the
+tests of the sources shared by the four builds and of the shared parts of the layer, the
 shell, the RAM log's ring and the key-value store (the last one, `zephyr_copies`, checks that the
 copied Zephyr files are the same as the originals), run by `common/tests/run.sh`. It needs no board, only
 the host's `cc` (C17). Without ST's `lsm6dso_reg.c` (fetched by `setup.sh`), the 3 tests that use it
@@ -510,5 +510,5 @@ Zephyr build changes), are in "Host test details" in [`design/nuttx-porting.md`]
 | `patches/` | Patches to NuttX and nuttx-apps |
 | `script/` | `setup.sh`, `build.sh`, `flash.sh`, `host_tests.sh`, `bin2uf2.py`, `kconfig-tweak` |
 | `tests/` | Host tests (those of the NuttX build only) |
-| `../common/` | Sources shared with the Zephyr and FreeRTOS builds (`imu/`, `drivers/lsm6dso/`, `drivers/stmemsc/`, `drivers/nina/`, `drivers/i2c_dw/`, `shell/`; the NINA core in `drivers/nina/` is used by the three builds, the I2C core in `drivers/i2c_dw/` by this build and the FreeRTOS build), the OS-independent part of the compatibility layer (`compat/`), the shell's command handling (`shell/`), the `LOG_*` macros and the RAM log (`compat/log/`) and their host tests. The build finds them through `VPATH` and compiles each but the NINA core, the I2C core, stmemsc, `shell/` and `compat/log/` with the prelude (`drivers/compat/common_prelude.h`); the objects are made in `apps/imu`, `apps/wifi`, `apps/sensor`, `apps/subcmd`, `drivers` and the board's directory |
+| `../common/` | Sources shared with the Zephyr, FreeRTOS and ThreadX builds (`imu/`, `drivers/lsm6dso/`, `drivers/stmemsc/`, `drivers/nina/`, `drivers/i2c_dw/`, `shell/`; the NINA core in `drivers/nina/` is used by the four builds, the I2C core in `drivers/i2c_dw/` by this build and the FreeRTOS build), the OS-independent part of the compatibility layer (`compat/`), the shell's command handling (`shell/`), the `LOG_*` macros and the RAM log (`compat/log/`) and their host tests. The build finds them through `VPATH` and compiles each but the NINA core, the I2C core, stmemsc, `shell/` and `compat/log/` with the prelude (`drivers/compat/common_prelude.h`); the objects are made in `apps/imu`, `apps/wifi`, `apps/sensor`, `apps/subcmd`, `drivers` and the board's directory |
 | `nuttx/`, `nuttx-apps/`, `pico-sdk/`, `toolchain/`, `stmemsc/`, `.venv/`, `build/` | What `setup.sh` fetches and the build products (not in Git) |

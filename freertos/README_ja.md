@@ -6,7 +6,7 @@ Arduino Nano RP2040 Connect 向けに、Raspberry Pi Pico SDK と FreeRTOS カ�
 ビルドする環境です。`zephyr/`、`nuttx/`、`openmv/` と同じく、必要なものを `freertos/` の下に取得します。
 
 Zephyr 版・NuttX 版と同じく、LSM6DSOX の RAW データを 6667 Hz で取得し、Wi-Fi 経由の MQTT で PC へ送ります。
-ソースの大半は 3 つの OS のファームウェアで共有する `common/` にあります。
+ソースの大半は 4 つの OS のファームウェアで共有する `common/` にあります。
 
 | 項目 | 内容 |
 |---|---|
@@ -77,11 +77,11 @@ freertos/script/flash.sh [--build] [--wait 秒] [--dry-run] [UF2]
 ```
 
 1. `RPI-RP2` ドライブ（BOOTSEL モードの RP2040）があれば、そこへ UF2 をコピーします。
-2. 無くて、3 つの OS のファームウェア（Zephyr 版、NuttX 版、FreeRTOS 版）のどれかの USB コンソールがあれば、`bootsel` コマンドを送ってドライブを
+2. 無くて、4 つの OS のファームウェア（Zephyr 版、NuttX 版、FreeRTOS 版、ThreadX 版）のどれかの USB コンソールがあれば、`bootsel` コマンドを送ってドライブを
    待ちます。操作は要りません（コンソールを別のプログラムで開いているときは送りません）。
 3. どちらも無いか、シェルが応答しなければ、BOOTSEL への入り方を表示してドライブを待ちます。
 
-`--dry-run` は、何をするかを表示するだけです。本体は 3 つの OS のファームウェアで共通の `script/flash_uf2.sh` です。
+`--dry-run` は、何をするかを表示するだけです。本体は 4 つの OS のファームウェアで共通の `script/flash_uf2.sh` です。
 
 コピーのあと、USB コンソール（`/dev/serial/by-id/usb-*FreeRTOS_USB_Console*`）のパスを表示します。
 

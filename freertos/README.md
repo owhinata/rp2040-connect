@@ -6,7 +6,7 @@ A build environment for firmware on the Raspberry Pi Pico SDK and the FreeRTOS k
 Nano RP2040 Connect. Like `zephyr/`, `nuttx/` and `openmv/`, it fetches what it needs under `freertos/`.
 
 Like the Zephyr and NuttX builds, it reads the raw data of the LSM6DSOX at 6667 Hz and sends it to the PC
-over MQTT on Wi-Fi. Most of the sources are in `common/`, shared by the three builds.
+over MQTT on Wi-Fi. Most of the sources are in `common/`, shared by the four builds.
 
 | Item | Content |
 |---|---|
@@ -78,12 +78,12 @@ freertos/script/flash.sh [--build] [--wait SEC] [--dry-run] [UF2]
 ```
 
 1. If there is an `RPI-RP2` drive (an RP2040 in BOOTSEL), the UF2 is copied to it.
-2. Otherwise, if the USB console of one of the three builds (Zephyr, NuttX, FreeRTOS) is there, the script
+2. Otherwise, if the USB console of one of the four builds (Zephyr, NuttX, FreeRTOS, ThreadX) is there, the script
    sends it the `bootsel` command and waits for the drive. Nothing has to be done by hand (nothing is sent
    while another program has the console open).
 3. If neither is there, or the shell does not answer, it explains how to enter BOOTSEL and waits for the drive.
 
-`--dry-run` only prints what would be done. The work is done by `script/flash_uf2.sh`, shared by the three builds.
+`--dry-run` only prints what would be done. The work is done by `script/flash_uf2.sh`, shared by the four builds.
 
 After the copy it prints the path of the USB console (`/dev/serial/by-id/usb-*FreeRTOS_USB_Console*`).
 

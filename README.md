@@ -14,8 +14,8 @@ raw values, adds the PC's time, and sends it over Wi-Fi with MQTT.
 
 See the [IMU RAW and MQTT design](design/imu-raw-mqtt-design.md) for the details and
 [zephyr/app/usb-console/drivers](zephyr/app/usb-console/drivers/README.md) for the drivers (LSM6DSO, I2C,
-NINA). The same firmware also has a NuttX build (`nuttx/`) and a Pico SDK + FreeRTOS build (`freertos/`)
-("The three builds and `common/`" below).
+NINA). The same firmware also has a NuttX build (`nuttx/`), a Pico SDK + FreeRTOS build (`freertos/`) and a
+Pico SDK + ThreadX build (`threadx/`) ("The four builds and `common/`" below).
 
 This is experimental. Measurements are started and stopped by hand from the shell, and the
 only software on the PC side is a receiver script for verification. The design document lists
@@ -62,8 +62,8 @@ routines (`CONFIG_RP2040_ROM_MEM_OPS`), integer division the hardware divider (`
 and `CONFIG_NINA_PASSTHROUGH` adds `nina passthrough confirm` (all on by default).
 
 The UF2 goes in through the bootloader mode (BOOTSEL), in which a USB drive named `RPI-RP2` appears.
-`flash.sh` (shared with the NuttX and FreeRTOS builds: `script/flash_uf2.sh`) copies the UF2 to that
-drive. Without the drive, it sends `bootsel` to the USB shell of whichever of the three builds is
+`flash.sh` (shared with the NuttX, FreeRTOS and ThreadX builds: `script/flash_uf2.sh`) copies the UF2 to that
+drive. Without the drive, it sends `bootsel` to the USB shell of whichever of the four builds is
 running (not when the console is open in another program), waits for the drive and its mount, and
 after the copy prints the new USB console. When no shell answers, it shows how to enter BOOTSEL by
 hand and waits: press RESET twice quickly, or, if that does not do it either, press RESET while `REC`
@@ -85,7 +85,7 @@ the build and cautions. The first line of `nina version` is the version, the sec
 ### Reading and writing the NINA firmware
 
 `nina passthrough confirm` restarts the board with its USB serial port relayed to the NINA's UART (all
-three builds; the RP2040's firmware and KV store stay). esptool on the PC then reads and writes the module (run the example from the repository root).
+four builds; the RP2040's firmware and KV store stay). esptool on the PC then reads and writes the module (run the example from the repository root).
 esptool 5.3.0 gets no answer with `--before no-reset`, so give it a configuration file that leaves RTS set:
 
 ```bash
@@ -312,7 +312,7 @@ zperf tcp download stop
 ```
 
 UDP sending at the requested 500 kbit/s had no loss (2026-11-12, 30 s, one run). The TCP rates are
-in the last section, "Performance of the three builds". Both were taken with IMU streaming stopped and
+in the last section, "Performance of the four builds". Both were taken with IMU streaming stopped and
 depend on the radio environment.
 
 ### Shell over Wi-Fi
@@ -345,7 +345,7 @@ zephyr/script/host_tests.sh
 
 This runs, on the PC and without a board, the tests for FIFO word parsing, batches and
 payloads, the send queue, time assignment, the NTP estimate, the driver's FIFO setup and stop
-handling, and NINA SPI framing. The tests of the sources shared with the NuttX and FreeRTOS builds
+handling, and NINA SPI framing. The tests of the sources shared with the NuttX, FreeRTOS and ThreadX builds
 and of the OS-independent parts of the Zephyr API compatibility layer, the shell's subcommand handling,
 the RAM log's ring and the key-value store (`common/tests/run.sh`) run first.
 
@@ -372,29 +372,31 @@ summary (missing batches, valid and reversed times) and at the errors in `imu st
 | `zephyr/script/` | Setup, host tests |
 | `zephyr/manifest/west.yml` | Versions of Zephyr and its modules |
 | `zephyr/manifest/zephyr/` | Local patches of Zephyr and its modules |
-| `common/` | Sources shared by the three builds, with their host tests (layout in section 12 of the [design](design/imu-raw-mqtt-design.md)) |
+| `common/` | Sources shared by the four builds, with their host tests (layout in section 12 of the [design](design/imu-raw-mqtt-design.md)) |
 | `nuttx/` | The NuttX build |
 | `freertos/` | The Pico SDK + FreeRTOS build |
+| `threadx/` | The Pico SDK + ThreadX build |
 | `openmv/` | Build environment for the OpenMV MicroPython firmware ([`openmv/README.md`](openmv/README.md)) |
 | `design/` | Design and investigation notes |
 | `firmware/nina-fw/` | Fixes and build for the NINA firmware |
 | `host/` | PC-side tools and the display application `ImuStudio` |
-| `script/` | Temporary access point on the PC, backup and restore of the key-value store, the UF2 writing shared by the three builds |
+| `script/` | Temporary access point on the PC, backup and restore of the key-value store, the UF2 writing shared by the four builds |
 
-## The three builds and `common/`
+## The four builds and `common/`
 
-The same firmware comes in three builds: Zephyr (`zephyr/`), NuttX (`nuttx/`, NuttX 13.1.0) and Pico SDK + FreeRTOS
-(`freertos/`, Pico SDK 2.3.1 and the FreeRTOS kernel V11.3.3). Most sources are the same files in `common/`; the NuttX and
-FreeRTOS builds compile them on a compatibility layer that reproduces Zephyr's API under Zephyr's names. Acquisition, MQTT
+The same firmware comes in four builds: Zephyr (`zephyr/`), NuttX (`nuttx/`, NuttX 13.1.0), Pico SDK + FreeRTOS
+(`freertos/`, Pico SDK 2.3.1 and the FreeRTOS kernel V11.3.3) and Pico SDK + ThreadX (`threadx/`, Pico SDK 2.3.1 and the
+ThreadX 6.5.2 kernel). Most sources are the same files in `common/`; the NuttX, FreeRTOS and ThreadX builds compile them on a compatibility layer that reproduces Zephyr's API under Zephyr's names. Acquisition, MQTT
 delivery, time synchronization, the key-value store (same place and format, so it stays when you switch builds),
 calibration, Wi-Fi and the Telnet shell behave the same, and the commands of this project (`imu`, `kv`, `ntp`, `nina`,
-`dmesg`, `i2c_dma`, `sensor`, `wifi cred`) have the same syntax and output in the three builds.
+`dmesg`, `i2c_dma`, `sensor`, `wifi cred`) have the same syntax and output in the four builds.
 
 | Build | Usage | What differs for the user |
 |---|---|---|
 | Zephyr | this README | The other commands are Zephyr's standard ones (`wifi`, `net`, `kernel`, `zperf` and so on) |
 | NuttX | [`nuttx/README.md`](nuttx/README.md) | The other commands are NuttX's standard ones (`wapi`, `ifconfig`, `iperf`, `ps`, `reboot` and so on) |
 | FreeRTOS | [`freertos/README.md`](freertos/README.md) | The other commands have short names (`version`, `reboot`, `ps`, `ifconfig` and so on); `zperf` is TCP only |
+| ThreadX | [`threadx/README.md`](threadx/README.md) | The FreeRTOS build's commands; the priority numbers and the rows of `ps` differ slightly |
 
 The PC tools work with every build ("Board firmware" in [`host/README.md`](host/README.md)). Section 12 of the
 [design](design/imu-raw-mqtt-design.md) describes the layout of `common/`, sections 11 and 13 the design differences of the
@@ -402,21 +404,21 @@ NuttX and FreeRTOS builds. What a port to
 another OS writes on its own side (the kernel part, the console, the log, the key-value flash, the start, and each
 driver's binding) is listed in [The boundary between the shared code and an OS](design/os-boundary.md).
 
-## Performance of the three builds
+## Performance of the four builds
 
 Measured on the same board, PC, access point and receiver (`imu-host check`) on the same day (2026-11-18),
-flashing one firmware after the other. The values while sending are from a 6667 Hz measurement sent over MQTT,
+flashing one firmware after the other (the ThreadX column is from 2026-11-24). The values while sending are from a 6667 Hz measurement sent over MQTT,
 with `imu start` from the USB shell and `imu stop` 60 to 70 seconds later. No run had missing batches. The TCP
 rates were taken with IMU streaming stopped, for about 10 seconds, the board sending 1024 bytes at a time.
 The NINA ran the firmware with patches 0001 to 0006.
 
-| Item | Zephyr build | NuttX build | FreeRTOS build |
-|---|---|---|---|
-| `cpu_active` while sending (2026-11-23) | 21.9% (2 runs) | 23.5% (2 runs) | 19.6% (2 runs) |
-| `cpu_active` at rest | not measured | not measured | 0.7% (30 seconds, 3 runs) |
-| TCP send (board to PC) | 3.36 and 3.47 Mbit/s (`zperf`) | 3.34 Mbit/s (`iperf`, 1 run) | 3.47 to 3.84 Mbit/s (`zperf`, 3 runs) |
-| TCP receive (PC to board) | 1.89 and 1.99 Mbit/s (`zperf`) | 1.22 Mbit/s (`iperf`, 1 run) | 2.41 to 2.52 Mbit/s (`zperf`, 3 runs) |
-| Image size (`.bin`, 2026-11-23) | 378,392 bytes | 287,224 bytes | 240,968 bytes |
+| Item | Zephyr build | NuttX build | FreeRTOS build | ThreadX build |
+|---|---|---|---|---|
+| `cpu_active` while sending (2026-11-23) | 21.9% (2 runs) | 23.5% (2 runs) | 19.6% (2 runs) | 18.3% (2 runs) |
+| `cpu_active` at rest | not measured | not measured | 0.7% (30 seconds, 3 runs) | 0.5% (17 seconds, 1 run) |
+| TCP send (board to PC) | 3.36 and 3.47 Mbit/s (`zperf`) | 3.34 Mbit/s (`iperf`, 1 run) | 3.47 to 3.84 Mbit/s (`zperf`, 3 runs) | 3.62 Mbit/s (`zperf`, 1 run) |
+| TCP receive (PC to board) | 1.89 and 1.99 Mbit/s (`zperf`) | 1.22 Mbit/s (`iperf`, 1 run) | 2.41 to 2.52 Mbit/s (`zperf`, 3 runs) | 2.52 Mbit/s (`zperf`, 1 run) |
+| Image size (`.bin`, 2026-11-23) | 378,392 bytes | 287,224 bytes | 240,968 bytes | 248,644 bytes (2026-11-24) |
 
 - The TCP rates come from different commands (`zperf` in the Zephyr and FreeRTOS builds speaks the iperf 3
   protocol, `iperf` in the NuttX build the iperf 2 protocol), so they are a rough comparison.
@@ -431,12 +433,12 @@ The NINA ran the firmware with patches 0001 to 0006.
   42.4% (FreeRTOS). With the images of 2026-11-18 (everything polled) it was 49.4%, 50.8% and 40.3%.
 - `cpu_active` moves when only the layout of the image changes, with the same functions (by one or two points
   while the code was executed from flash, by about half a point now).
-- The FreeRTOS build's `cpu_active` includes the time of the tick interrupt every 1 ms (the Zephyr and NuttX
+- The `cpu_active` of the FreeRTOS and ThreadX builds includes the time of the tick interrupt every 1 ms (the Zephyr and NuttX
   builds have no such interrupt).
 - With the images of 2026-11-14 (boot2 at clock divider 4, the C library's `memcpy`, `memset` and division,
   the NINA firmware with patches 0001 and 0002), the `cpu_active` while sending was 62.6 to 63.3% in the
   Zephyr build and 67.7 to 67.9% in the NuttX build.
-- `sensor stream` ran without stopping up to 6667 Hz in the FreeRTOS and NuttX builds and up to 3333 Hz in the
+- `sensor stream` ran without stopping up to 6667 Hz in the FreeRTOS, NuttX and ThreadX builds and up to 3333 Hz in the
   Zephyr build (the images of 2026-11-23, straight after a restart, watermark 32, USB console, one run of 30
   seconds each). When the output does not keep up, the batches grow (up to the whole FIFO); in the Zephyr build
   at 6667 Hz the FIFO overruns and the stream stops with `Read failed: -139`.
