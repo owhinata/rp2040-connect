@@ -155,8 +155,8 @@ I2C と NINA のつなぎは、互換層を通さず ThreadX と Pico SDK で直
   割り込みを止めて数を書きます。`i2c_dw_os_sem_init()` はカーネルの前に 2 回呼ばれることがあり（コントローラーが最初に始まらなかったとき）、
   2 回目は作ったオブジェクトを残して数と上限を書きます。カーネルの前と ISR の中では ThreadX が待ちを断る（`TX_WAIT_ERROR`）ので、そのときは
   待たずにもう一度取ります。
-- NINA（`nina_os.c`）: 3 つのロックは優先度継承のある `TX_MUTEX`、READY の待ちと Wi-Fi のスレッドの起こしは `TX_SEMAPHORE`。ソケットの事象の待ちは、
-  待つたびに自分のスタックにセマフォを作り、終わりで消します（事象の割り込みが待ち手の一覧をたどって全員を起こす）。SPI の DMA の待ち
+- NINA（`nina_os.c`）: 3 つのロックは優先度継承のある `TX_MUTEX`、READY の待ちと Wi-Fi のスレッドの起こしは `TX_SEMAPHORE`。ソケットのイベントの待ちは、
+  待つたびに自分のスタックにセマフォを作り、終わりで消します（イベントの割り込みが待ち手の一覧をたどって全員を起こす）。SPI の DMA の待ち
   （`nina_bus_dma_os_impl.h`）は転送のためのセマフォ 1 つです（転送は `nina_os_lock()` の中で 1 つずつ）。オブジェクトは最初の使用で作り、
   消しません（作成済みの一覧に残る）。
 - 時間つきの待ちとスリープは、時間を tick に切り上げて 1 tick 足します（Zephyr の規則。ThreadX の n の待ちは今の tick + n で終わる）。
@@ -229,7 +229,7 @@ I2C と NINA のつなぎは、互換層を通さず ThreadX と Pico SDK で直
 | `zephyr_kernel_os_impl` | ThreadX の部分（`drivers/compat/zephyr_kernel_os_impl.h`）が互換層のヘッダーを読まずに単独でコンパイルできること |
 | `zephyr_kernel_test` | 互換層のカーネル（`common/tests/zephyr_kernel/zephyr_kernel_test.c` の 22 項目を 2 回。2 回目は 1 回目のオブジェクトとスタックを使い直す）。ハードウェアの割り込みからの起床、実時間の確認、tick の追いつきは飛ばす。テストの tick は 1 tick の ThreadX のタイマー |
 | `i2c_dw` | FreeRTOS 版のテストの本体（`freertos/tests/i2c_dw/main.c`）を ThreadX の部分（`tests/i2c_dw/i2c_dw_test_os.c`）と一緒に。I2C0 と I2C1 の境界とデバイス、DMA 読み出し、Zephyr の I2C の API、`i2c` コマンド。加えて、互換層の起こしや別のセマフォで待ちが終わらないこと、待つ直前の give が失われないこと、tick の一周をまたぐ期限、2 回目の `i2c_dw_os_sem_init()`、カーネルの前と ISR の中の呼び出し |
-| `nina` | FreeRTOS 版のテストの本体（`freertos/tests/nina/main.c`）を `tests/nina/nina_test_os.c` と一緒に。SPI と線の境界と DMA、READY と事象の割り込み、ロック、スリープ、時計。加えて、カーネルの前の呼び出し、最初の待ちの前の Wi-Fi の post、2 つのミューテックスにまたがる優先度継承、待つ直前の窓 |
+| `nina` | FreeRTOS 版のテストの本体（`freertos/tests/nina/main.c`）を `tests/nina/nina_test_os.c` と一緒に。SPI と線の境界と DMA、READY とイベントの割り込み、ロック、スリープ、時計。加えて、カーネルの前の呼び出し、最初の待ちの前の Wi-Fi の post、2 つのミューテックスにまたがる優先度継承、待つ直前の窓 |
 
 ## 実機の試験用ファームウェア（`tests/board_kernel`）
 

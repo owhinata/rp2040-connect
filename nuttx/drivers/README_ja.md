@@ -83,7 +83,7 @@ Zephyr 版はソケットのオフロード（`common/drivers/nina/port/zephyr/n
 |---|---|
 | `common/drivers/nina/nina_sock.c`・`internal/nina_sock.h` | ソケットの表（10 個）と NINA のソケット命令: `nina_socket_create()`・`do_bind()`・`do_listen()`・`do_accept()`・`do_connect()`・`do_close()`・`do_setsockopt()` と、送受信の `udp_send()`・`do_send()`・`do_sendmsg()`・`udp_recv()`・`do_recv()`（送受信の待ちのループは要求 1 回で 1 周）。4 つの OS のファームウェアが使う。`nina_sock_poll_revents()`（ソケット 1 つ分の `do_poll()`）は Zephyr 版・FreeRTOS 版・ThreadX 版だけが使う。OS に依存しない |
 | `common/drivers/nina/port/nuttx/nina_usrsock.c` | usrsock の要求を上の関数に振り分け、応答（ACK）を返す |
-| `common/drivers/nina/port/nuttx/nina_poller.c` | スレッド `nina_event`。NINA のソケットの状態を見て usrsock のイベントにする。待つ送信の再試行の時間も計る。ファームウェアがソケットの事象を通知するときは IRQ の線のエッジで起きる |
+| `common/drivers/nina/port/nuttx/nina_poller.c` | スレッド `nina_event`。NINA のソケットの状態を見て usrsock のイベントにする。待つ送信の再試行の時間も計る。ファームウェアがソケットのイベントを通知するときは IRQ の線のエッジで起きる |
 | `common/drivers/nina/port/nuttx/nina_usrsock.h` | 上の 2 つの間の宣言 |
 
 - 要求は、呼び出したスレッドの文脈で、その優先度のまま同期して処理します（Zephyr 版のソケット呼び出しと
@@ -100,7 +100,7 @@ Zephyr 版はソケットのオフロード（`common/drivers/nina/port/zephyr/n
   書ける → `SENDTO_READY`、接続済み TCP のエラーフラグか poll の失敗 → `REMOTE_CLOSED`。UDP のエラー
   フラグは伝えません（Zephyr 版でもデータグラムの呼び出しはその後も続きます）。usrsock が既に持っている
   イベントのソケットは問い合わせず、問い合わせるものが無ければスレッドは要求で起こされるまで眠ります。
-  ファームウェアがソケットの事象を通知する場合（下の「ファームウェアの追加機能」）は、20 ms の代わりに IRQ の線の
+  ファームウェアがソケットのイベントを通知する場合（下の「ファームウェアの追加機能」）は、20 ms の代わりに IRQ の線の
   エッジ（最長 100 ms）で問い合わせます。
 - どのソケットも上のとおりに扱います: MQTT と時刻同期のソケット（互換層の `zsock_*()` は NuttX のソケットの
   呼び出し）も、Telnet・iperf・nsh のコマンドのソケットも同じです。`nina_event` の優先度（106）は使う側のスレッド
@@ -152,7 +152,7 @@ Zephyr 版はソケットのオフロード（`common/drivers/nina/port/zephyr/n
     クライアントの CONNACK: 2 バイト、続いて 2 バイト）が最初の部分で止まります。`nina_event` が次の受信の後に
     なることがあるためです。
   - UDP のソケットの最初の送信（NINA 側のソケットを作る）のあとは、`nina_event` がすぐにそのソケットを poll
-    します（ソケットの事象があるときは、この poll のあとで、時刻同期の応答などが届くと IRQ の線にエッジが出ます）。
+    します（ソケットのイベントがあるときは、この poll のあとで、時刻同期の応答などが届くと IRQ の線にエッジが出ます）。
   - データを見つけた poll（`nina_event`）は、次の受信の最初の poll の代わりに使います（その間に
     データを取る者はいません）。
 - TCP の受信の 0 は、相手が閉じたか接続が失敗したことを示します（NINA はどちらも 0 バイトと答えます。
@@ -599,7 +599,7 @@ NuttX 版のコードは、シグナルハンドラーを登録しません（`s
 - I2C0（`i2c_dw.c`。I2C1 をビルドしたときはそれも）と DMA の部分、NuttX の DMA のドライバー（`rp2040_dmac.c`。NINA の SPI も使う）
 - LSM6DSOX のドライバーと stmemsc のつなぎ（設定にだけ使う ST の `st_lsm6dso_reg.c` は除く）
 - IMU のサービスのストリーム、バッチ、キュー、時刻付け（NTP のやり取りと校正は除く）
-- MQTT とそのソケットの呼び出し、NINA の usrsock のつなぎ（`nina_usrsock.c`）と事象のスレッド（`nina_poller.c`）、ソケット・
+- MQTT とそのソケットの呼び出し、NINA の usrsock のつなぎ（`nina_usrsock.c`）とイベントのスレッド（`nina_poller.c`）、ソケット・
   プロトコル・待ち・NuttX のつなぎ・SPI、NuttX の SPI のドライバー（`rp2040_spi.c`）とボードのチップセレクト（`src/rp2040_spi.c`）
 
 NuttX 自身のコード（スケジューラー、セマフォ、タイマー、ソケットの層と usrsock、ファイル記述子と `poll()`）はフラッシュに

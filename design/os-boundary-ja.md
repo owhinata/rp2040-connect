@@ -183,7 +183,7 @@ POSIX のネットワークのヘッダー（C ライブラリーのものか `l
 | 互換層より先に読む OS のヘッダー | 互換層の `<zephyr/sys/atomic.h>` が atomic の名前を引き取るため | NuttX のヘッダー、`"rp2040_timer_us.h"`（`common/chip/rp2040`） | `zephyr_kernel_os.h`（OS のヘッダー。F は FreeRTOS のヘッダーと `zephyr_os_port.h`、T は ThreadX の `tx_api.h`・`tx_thread.h` などと `zephyr_os_port.h`）、`priorities.h`、`<zephyr/sys/clock.h>` |
 | `Z_USEC_PER_TICK` | tick の長さ（µs）。1000 がその倍数であること | `CONFIG_USEC_PER_TICK`（100） | `1000000 / Z_OS_TICK_HZ`（F は `configTICK_RATE_HZ`、T は `TX_TIMER_TICKS_PER_SECOND`。どちらも 1000） |
 | `struct k_mutex`、`Z_MUTEX_INITIALIZER(obj)` | 全部 0 のものがロックされていないミューテックスとして動くこと（使ったあとに 0 で埋めたものも。2.6） | `rmutex_t` と `ready` の印 | OS のもの（F は静的な再帰ミューテックス、T は ThreadX のミューテックス。どちらも最初の使用で作る） |
-| `struct k_sem`、`Z_SEM_INITIALIZER(obj, initial, limit)` | 上限つきの数、poll の事象の一覧 | `sem_t`、上限、事象 | 互換層自身の数、待ち手、事象 |
+| `struct k_sem`、`Z_SEM_INITIALIZER(obj, initial, limit)` | 上限つきの数、poll のイベントの一覧 | `sem_t`、上限、イベント | 互換層自身の数、待ち手、イベント |
 | `K_SEM_MAX_LIMIT` | 上限の最大値 | `SEM_VALUE_MAX` | `UINT_MAX` |
 | `struct _timeout`、`_timeout_func_t` | 遅延つきワークアイテムのタイマー | `struct wdog_s` | 互換層のタイムアウトの一覧の要素 |
 | `k_tid_t` | スレッドの識別 | `pid_t` | `z_os_thread_t`（F は `TaskHandle_t`、T は `TX_THREAD *`） |
@@ -242,11 +242,11 @@ RTIO のワークキュー、`CONFIG_LSM6DSO_STREAM` のとき gpio0）、`k_upt
 
 | 点 | N | F（Zephyr の規則） | T |
 |---|---|---|---|
-| `k_sem_take()` で待つスレッドがいるときの `k_sem_give()` | 数を post し、登録された poll の事象にもすべて知らせる | 待ち手が数を受け取り、poll の事象には知らせない | F と同じ |
-| poll している者がいるときの `k_sem_give()` | 登録された事象すべてに知らせ、全員を起こす | 最初に登録された事象だけに知らせる | F と同じ |
+| `k_sem_take()` で待つスレッドがいるときの `k_sem_give()` | 数を post し、登録された poll のイベントにもすべて知らせる | 待ち手が数を受け取り、poll のイベントには知らせない | F と同じ |
+| poll している者がいるときの `k_sem_give()` | 登録されたイベントすべてに知らせ、全員を起こす | 最初に登録されたイベントだけに知らせる | F と同じ |
 | `k_sem_reset()` と待ち手 | 数を空にし、待ち手は待ち続ける | 待ち手は −EAGAIN で戻る | F と同じ |
-| 登録された poll の事象の順 | 新しいものが先頭（前に足す） | スレッドの優先度の順、同じ優先度では先着順 | F と同じ |
-| 起きたあとの `k_poll()` | すべてのセマフォの数を見直す | 知らされた事象だけを数える | F と同じ |
+| 登録された poll のイベントの順 | 新しいものが先頭（前に足す） | スレッドの優先度の順、同じ優先度では先着順 | F と同じ |
+| 起きたあとの `k_poll()` | すべてのセマフォの数を見直す | 知らされたイベントだけを数える | F と同じ |
 | 割り込みの中でタイムアウトつきの `k_sem_take()` | 確かめない | −EBUSY | F と同じ |
 | `k_mutex_unlock()` のエラー | `nxrmutex_unlock()` の結果 | −EINVAL（誰も持たない）、−EPERM（ほかの持ち主） | F と同じ |
 | `k_thread_name_set()` | `CONFIG_TASK_NAME_SIZE` が無いと −ENOSYS | NULL は呼んだスレッド | F と同じ |

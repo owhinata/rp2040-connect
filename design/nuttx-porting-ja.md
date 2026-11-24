@@ -856,7 +856,7 @@ status は 0、info は 1 で retain）、クライアント ID（`imu-<device>`
 入力の確認は 100 ms ごと、キューが空なら 5 ms 待つ）、再接続の間隔（1 秒）、CONNACK の待ち（5 秒）、
 `imu start` の最初の接続の待ち（最大 3 秒）、切断中のバッチを捨てて数えること、送信に失敗したバッチを
 再送しないこと、`imu stop` で最後の status を最大 0.5 秒待つこと、`imu status` の `mqtt` の各項目と
-それが増える事象は Zephyr 版と同じです。
+それが増えるイベントは Zephyr 版と同じです。
 
 - スレッド `imu_raw_mqtt_tid`（Zephyr の優先度 11 → 107、スタック 2048 の静的な配列）。init が起動処理の
   最初に始め、`imu start` を待ちます。
@@ -868,7 +868,7 @@ status は 0、info は 1 で retain）、クライアント ID（`imu-<device>`
 - ソケットはブロッキングのまま使います（Zephyr 版と同じ）。接続は最大 10 秒、空きのない送信は最大
   10 秒待ってから失敗します（NINA のドライバーの期限。`nuttx/drivers/README_ja.md` の「ソケット（usrsock）」）。
 - 互換層の `zsock_socket()`・`zsock_poll()`・`zsock_recv()` は NuttX の `socket()`・`poll()`・`recv()` なので、
-  ソケットは普通の usrsock のソケットです: `nina_event` が NINA に問い合わせ（20 ms ごと、ソケットの事象があれば
+  ソケットは普通の usrsock のソケットです: `nina_event` が NINA に問い合わせ（20 ms ごと、ソケットのイベントがあれば
   IRQ の線のエッジ）、見つけたものをイベントにします（`nuttx/drivers/README_ja.md` の「ソケット（usrsock）」）。
   Zephyr 版は `imu_raw_mqtt_tid` だけが問い合わせます（受信の確認のたびに `CMD_POLL` を 1 回、100 ms ごと）。
 - 受信の確認（`zsock_poll()`、100 ms ごと、待ち時間 0）と CONNACK の待ち（`zsock_poll()`、5000 ms）は、usrsock が
@@ -916,8 +916,8 @@ Subcommands:
   ドライバーがそのたびにソケットの状態を問い合わせ（`CMD_POLL`）、届いていれば読みます。こちらでは NuttX の
   `recv(MSG_DONTWAIT)` で、usrsock は受信可の印（`RECVFROM_AVAIL`）を持つまで自分で `EAGAIN` を返します。印は
   `nina_event` がソケットの poll から立て（最初は NINA 側のソケットを作る最初の送信の直後、以後 20 ms ごと、
-  ソケットの事象があれば IRQ の線のエッジ）、受信はその poll の結果を使って poll を重ねずにデータグラムを
-  読みます。そのため t4 は `nina_event` が応答に気づいたときに読みます: ソケットの事象があれば応答のエッジの
+  ソケットのイベントがあれば IRQ の線のエッジ）、受信はその poll の結果を使って poll を重ねずにデータグラムを
+  読みます。そのため t4 は `nina_event` が応答に気づいたときに読みます: ソケットのイベントがあれば応答のエッジの
   すぐ後、無ければ最大 20 ms 遅れ、その遅れが往復に入り、半分がオフセットに入ります（推定は直近 8 回のうち往復が
   最短のものを使う）。`nuttx/drivers/README_ja.md` の「ソケット（usrsock）」の節。
 - Zephyr 版との違い: `k_uptime_get()`（応答の待ち 250 ms、60 秒の判定、`last_reply_ms_ago`）は NuttX 版では

@@ -215,7 +215,7 @@ Zephyr の DesignWare I²C ドライバー（`drivers/i2c/i2c_dw.c`）に、ロ�
   割り込み方式へ切り替えます。
 - DMA の処理は、読み出しのコマンド語を作る関数 `i2c_dw_rp2040_read_commands()` も含めて
   `drivers/i2c/i2c_dw_rp2040_dma_priv.h`（`i2c_dw.c` が 1 回だけ読む）にあります。コマンド語とバッファー（合わせて
-  10,752 バイト）、セマフォ、事象、チャネルは I²C0 だけのためのドライバーの静的変数です。インスタンスごとのデータに
+  10,752 バイト）、セマフォ、イベント、チャネルは I²C0 だけのためのドライバーの静的変数です。インスタンスごとのデータに
   持つのは、DMA の読み出し中かどうかと、コントローラーを隔離したかどうかだけです。
 
 **`i2c_dma` コマンド**は、4 つの OS のファームウェアで共有する `common/shell/i2c_dma_shell.c` をアプリに入れたものです。パッチが
@@ -322,7 +322,7 @@ close、bind、listen、accept、connect、send、recv、sendto、recvfrom、ioc
 - **必ず非ブロッキング**にします。命令は NINA の SPI ハンドラーの中で実行されるので、
   ブロックする呼び出しは Wi-Fi の管理を含む全体を止めます。ソケットは作成直後に
   非ブロッキングにし、接続完了・受信・送信可能の待ちは、ドライバー側で poll 命令を
-  20 ms 間隔で繰り返します（ファームウェアがソケットの事象を通知する場合は、IRQ の線のエッジで
+  20 ms 間隔で繰り返します（ファームウェアがソケットのイベントを通知する場合は、IRQ の線のエッジで
   起きます。下の「ファームウェアの追加機能」）。
 - **失敗と「0 バイト」は応答で区別できません**。受信は先に poll で読めることを確かめます
   （読めるのに 0 バイトなら相手が閉じた）。TCP 送信で 0 が返ったときは、1 ms 後に poll 命令で
@@ -361,11 +361,11 @@ close、bind、listen、accept、connect、send、recv、sendto、recvfrom、ioc
 |---|---|---|
 | 0 | 接続中のスキャンで接続を保つ | 接続中のスキャンを切断として扱いません（アドレスはそのまま、切断のイベントも繋ぎ直しもありません）。スキャン中に接続が切れたときは、接続監視（2 秒ごと）がほかの切断と同じく検出します |
 | 1 | 非同期のスキャン | 0x36 で始め、0x6B を 100 ms ごとに尋ね、終わったら 0x27 で結果を読みます。NINA のロックは命令ごとにしか持たないので、スキャン中も送信は止まりません。10 秒たっても終わらなければ 0x27 を送らずに失敗（`-ETIMEDOUT`）にします。始められない・失敗は `-EIO`、接続や切断で止められたときは `-ECANCELED` です |
-| 2 | ソケットの事象を IRQ の線で通知 | ソケットの待ち（connect、受信、`poll`、送信の再試行）が、20 ms（送信は 1 ms）の間隔の代わりに、GPIO2 の立ち上がりのエッジの割り込みで起きます（最長 100 ms で聞き直す） |
+| 2 | ソケットのイベントを IRQ の線で通知 | ソケットの待ち（connect、受信、`poll`、送信の再試行）が、20 ms（送信は 1 ms）の間隔の代わりに、GPIO2 の立ち上がりのエッジの割り込みで起きます（最長 100 ms で聞き直す） |
 
 ビット 2 の待ち方（`common/drivers/nina/internal/nina_wait.h`）:
 
-- ファームウェアの規則どおり、事象を登録しうる命令（poll、recv、accept、send、connect）の前にエッジの数を控え、
+- ファームウェアの規則どおり、イベントを登録しうる命令（poll、recv、accept、send、connect）の前にエッジの数を控え、
   「まだ」の答えのあとは、数が変わるか 100 ms たつまで待って尋ね直します。命令の前のエッジは 1 回余分に
   尋ねるだけで、取りこぼしたエッジは最長 100 ms の遅れになるだけです（正しさは尋ね直しが保ちます）。
 - 線はすべてのソケットで共通なので、エッジのたびに待っているすべてのスレッドが起きます。起きても何も
@@ -602,12 +602,12 @@ picolibc の中からの呼び出しと、GCC が構造体のコピーやルー�
 | `lsm6dso_core_independent` | LSM6DSO のコアの各ファイル（`common/drivers/lsm6dso/` の直下の `.c`、`include/lsm6dso_cal.h`・`lsm6dso_fifo.h`、`internal/`、`port/` の境界）が、C ライブラリー・ST の `lsm6dso_reg.h`・自分のヘッダー・ホストでの境界の実装（`common/tests/lsm6dso_os_host/` の 2 つ）だけでコンパイルできること |
 | `lsm6dso_public_headers` | `common/drivers/lsm6dso/include/` のヘッダーがそのディレクトリーだけでコンパイルできること（`lsm6dso.h` は sensor API と RTIO の偽物と一緒に） |
 | `nina_wifi` | Wi-Fi の操作（`nina_wifi.c`）を偽の境界とつなぎで：接続とその確認、そのスレッド（500 ms ごとの確認、省電力の設定、アドレス、60 回、試行中の切断）、切断、監視（2 回で切れたとみなす）、3.0.2 とパッチを当てたファームウェアのスキャンとその終わり方、状態。1 つのスレッドの状態の組み合わせ（スキャン中と接続の試み中の、期限どおりの監視の確認、スキャン中に見つかる切断、結果の取得中に断る要求、期限ちょうどの要求、確認を挟んだ 10 秒と 30 秒の上限） |
-| `nina_wait` | ソケットの待ち（`nina_wait.c`）：間隔（事象を始める前と、始められなかったあと）、IRQ の線のエッジ、100 ms の時間切れ、期限、休み（偽の時計と線） |
+| `nina_wait` | ソケットの待ち（`nina_wait.c`）：間隔（イベントを始める前と、始められなかったあと）、IRQ の線のエッジ、100 ms の時間切れ、期限、休み（偽の時計と線） |
 | `nina_sock`、`nina_dns`、`nina_dns_offload` | NINA のソケットの命令、名前解決（`nina_dns_offload` は Zephyr 版と同じ `NINA_OS_DNS_OFFLOAD` の形） |
 | `nina_boundary` | 共有の `nina_proto.c` を `common/drivers/nina/port/zephyr/` の `nina_bus.c`・`nina_os.c`（Wi-Fi の操作のロックと、Wi-Fi のスレッドを起こす待ちも）に載せたもの：フレーミング、線と設定の対応、リセットの手順、READY の割り込み待ち（コールバックの登録、セマフォのリセット、エッジの向き、転送前の無効化、10 ms の上限）と、コールバックを登録できなかったときのポーリング。IRQ の線のエッジの待ち（始められないとき、GPIO2 のコールバックと立ち上がりのエッジ、エッジの数、エッジで終わる待ち、時間切れ、待つ直前のエッジ） |
 | `nina_boundary_passthrough` | 上と同じものを `CONFIG_NINA_PASSTHROUGH` で。中継の間はバスが無く、線にも SPI にも触れずに `-ENODEV`、中継でなくなれば通常どおり |
 | `nina_boundary_spi_dma`・`nina_bus_spi_dma_threshold` | 上と同じものを `prj.conf` のバスの構成（PL022 の DMA のモードと `CONFIG_SPI_PL022_DMA_MIN_LEN` 64）で。しきい値の無い DMA のモードでは `nina_bus.c` がビルドできないこと |
 | `nina_passthrough` | 中継のコア（`nina_passthrough.c`）を偽の境界で：再起動の印と異常停止の記録の区別、DTR・RTS とモジュールの線の対応、レートと出口、バッファー（2 つのスレッドでも）、起動、両方向のデータとその数（ブレーク、オーバーラン、バッファーの満杯、ホストが無いとき）、tick（GPIO0 を離す時刻、LED）、出口の手順 |
 | `passthrough` | 中継の Zephyr 側 `common/drivers/nina/port/zephyr/nina_passthrough_os.c` と `nina_shell.c` の `nina passthrough` を本物のコアと、偽の Zephyr と偽のモジュール側で：起動時の印の扱い、USB の通知と tick での線とレート、両方向のデータと割り込みの受け渡し、USB が無い間の破棄、出口の手順、コマンド |
-| `nina_socket` | ソケットのオフロード `common/drivers/nina/port/zephyr/nina_socket.c` を共有のコアに載せたもの：ファイル記述子、待ちのループと sleep（事象を始められなかったあと）、オプション、accept、sendmsg、データグラム、poll、リゾルバーの登録。事象を始めたあとの IRQ の線のエッジの待ち（パスの間のエッジ、時間切れ、期限、送信の待ち方、NINA 以外の記述子を含む `poll`） |
+| `nina_socket` | ソケットのオフロード `common/drivers/nina/port/zephyr/nina_socket.c` を共有のコアに載せたもの：ファイル記述子、待ちのループと sleep（イベントを始められなかったあと）、オプション、accept、sendmsg、データグラム、poll、リゾルバーの登録。イベントを始めたあとの IRQ の線のエッジの待ち（パスの間のエッジ、時間切れ、期限、送信の待ち方、NINA 以外の記述子を含む `poll`） |
 | `nina_net` | Zephyr へのつなぎ `common/drivers/nina/port/zephyr/nina_net.c` を、偽の Zephyr の宣言と偽のコアで：デバイス、インターフェースの初期化、スキャンのパラメーターと結果、接続・切断・状態、コアのコールバックのインターフェースと Zephyr のイベントへの反映、プロファイルのフック、スレッドのスタックと優先度（1 つ） |

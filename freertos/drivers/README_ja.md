@@ -223,8 +223,8 @@ Pico SDK の上の flash の操作（`common/chip/rp2040/include/rp2040_flash_kv
   作り直します。
 - ファームウェアの追加機能（パッチ 0003〜0006。命令 0x6A のビット）: 動作は Zephyr 版と同じです（説明は
   [`zephyr/app/usb-console/drivers/README_ja.md`](../../zephyr/app/usb-console/drivers/README_ja.md) の同名の節）。
-  接続中のスキャンで接続を保つ・非同期のスキャン（`nina_wifi.c`）、ソケットの事象での待ち（`common/drivers/nina/internal/nina_wait.c`
-  と `zephyr/nina_socket.c` の待ちのループ）。事象は IRQ の線（GPIO2）の立ち上がりのエッジの割り込みで、つなぎが数を
+  接続中のスキャンで接続を保つ・非同期のスキャン（`nina_wifi.c`）、ソケットのイベントでの待ち（`common/drivers/nina/internal/nina_wait.c`
+  と `zephyr/nina_socket.c` の待ちのループ）。イベントは IRQ の線（GPIO2）の立ち上がりのエッジの割り込みで、つなぎが数を
   数え、待っている全タスクを起こします（待つタスクを並べた表から、それぞれのタスク通知 2 で）。`nina_os_event_start()` が
   失敗したときは、ビット 2 があっても、ビット 2 が無いときの間隔（20 ms、送信は 1 ms）で待ちます。TCP 送信の再試行で、全量を送り直す前に poll 命令で書き込み可能を
   確かめるのは、ファームウェアに依りません。
