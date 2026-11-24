@@ -2,25 +2,27 @@
 
 English | [日本語](README_ja.md)
 
+The firmware of this repository is built on four OSes, Zephyr, NuttX, the Pico SDK with FreeRTOS and the Pico SDK
+with ThreadX: the Zephyr, NuttX, FreeRTOS and ThreadX builds.
 The internals of the FreeRTOS build (`freertos/`). How to use it and the list of commands are in
 [`freertos/README.md`](../README.md), the summary of the design in §13 of the
 [design document](../../design/imu-raw-mqtt-design.md). The details are in the comment at the top of each
 file; this page shows where the files are and how they relate to the Zephyr and NuttX builds.
 
-Most of the FreeRTOS build's sources are in `common/`, which the three builds share (acquisition,
+Most of the FreeRTOS build's sources are in `common/`, which the four builds share (acquisition,
 transport, time synchronization, calibration, key-value store, the LSM6DSO, NINA and I2C drivers, the
 shell's command handling). The shared sources are written on Zephyr's API, so the FreeRTOS build, like the
-NuttX build, runs them on a compatibility layer that provides Zephyr's API under Zephyr's names. The
+NuttX and ThreadX builds, runs them on a compatibility layer that provides Zephyr's API under Zephyr's names. The
 OS-independent part of the layer is `common/compat/`, the FreeRTOS part `freertos/drivers/compat/`. The
 layer's network part for an OS without a network stack of its own (Zephyr's socket layer, the network
 interface) is `common/compat/net_offload/`, and the POSIX network headers newlib lacks are
 `common/compat/libc_net/`; the layer's kernel part for an OS that offers only basic primitives (Zephyr's
 semaphores, `k_poll()`, timeouts, sleeps and threads on about twenty primitives of the OS) is
-`common/compat/kernel_generic/`, on FreeRTOS's primitives; only the FreeRTOS build uses them.
+`common/compat/kernel_generic/`, on FreeRTOS's primitives in this build; the FreeRTOS and ThreadX builds use them.
 
 ## Directories
 
-The FreeRTOS build's own files are in `freertos/`; what it shares with the other builds on the Pico SDK
+The FreeRTOS build's own files are in `freertos/`; what it shares with the other builds on the Pico SDK (the ThreadX build)
 (the parts written on the Pico SDK and the compatibility layer, not on FreeRTOS) is in
 `common/pico_sdk/`, whose layout follows `freertos/` (`app/usb-console/`, `drivers/<part>/`), in the
 drivers' `port/pico_sdk/` directories, and in `common/compat/os_generic/` (the layer's parts for an OS
@@ -54,13 +56,13 @@ without the model of its own). The FreeRTOS build gives them its parts through a
 | `common/pico_sdk/drivers/i2c_shell/` | Adds the `i2c` command (`i2c_shell.cmake`; the command is `common/shell/i2c_shell.c`, the same file as `drivers/i2c/i2c_shell.c` of the Zephyr build's patched tree) |
 | `tests/` | Host tests ("Host tests" below) |
 
-Shared files only the FreeRTOS build compiles: `common/compat/zephyr_wifi_shell.c` (`connect`,
+Shared files only the FreeRTOS and ThreadX builds on the Pico SDK compile: `common/compat/zephyr_wifi_shell.c` (`connect`,
 `disconnect`, `scan` and `status` taken from Zephyr's `wifi_shell.c`), `zephyr_zperf_shell.c` and
 `zperf_iperf3.[ch]` (`zperf`), `common/compat/log/fault_record.[ch]` (the format of the fatal error record),
 `common/shell/dmesg_shell.c` (`dmesg`), `common/shell/kernel_shell.c` (`id`, `uptime`, `date`, `sleep`, `devmem`,
 `fault`, `reboot`, `bootsel`, on the boundary `common/shell/kernel_shell_os.h`), `common/shell/ifconfig_shell.c`
 (`ifconfig`). The RAM log `common/compat/log/log_ram.c` (on its ring `log_ring.c`) is shared with
-the NuttX build.
+the NuttX and ThreadX builds.
 `i2c_dma`'s `common/shell/i2c_dma_shell.c` and `nina`'s `common/shell/nina_shell.c` (`nina version`,
 `nina passthrough`) are built by the Zephyr build too. `i2c`'s `common/shell/i2c_shell.c` is a
 byte-for-byte copy of Zephyr's `drivers/i2c/i2c_shell.c` with the local patch 0004 (`zephyr_i2c_shell_patched`
@@ -84,7 +86,7 @@ assumptions of Zephyr are reproduced:
   notification (index 1; 0 is left to the Pico SDK and the application). A give from an interrupt
   handler asks for a switch at the end of the handler, so the woken task runs right after it.
 - **Static threads**: the tasks of `K_THREAD_DEFINE()` are started by the start-up task (`main`) from
-  the application's table shared with the NuttX build (`app_threads_start()`, `common/imu/app_init.c`). Every thread of the layer (the work queues', `RTIO WQ 0`, `net_mgmt`) starts the
+  the application's table shared with the NuttX and ThreadX builds (`app_threads_start()`, `common/imu/app_init.c`). Every thread of the layer (the work queues', `RTIO WQ 0`, `net_mgmt`) starts the
   same way (`z_thread_static_start()`: a task on its static stack, deleted when its function returns).
 - **Time**: `k_uptime_*()`, `k_cycle_*()` and `time_sync_mono_us()` come from the RP2040's TIMER (1 MHz),
   not from the tick (`rp2040_timer_us()`).
@@ -138,7 +140,7 @@ the stacks without it.
 
 **Start-up** (`main.c`): `main()` sets up the RAM log, reads the fatal error record, sets up the console,
 the layer, the NINA's SPI, I2C0 (first the DMA interrupt's handler for its reads) and the flash of the key-value store; then the task `main` starts the
-LSM6DSOX and the NINA's network interface, then the application's start shared by the three builds
+LSM6DSOX and the NINA's network interface, then the application's start shared by the four builds
 (`common/imu/app_main.h`, the Zephyr build's initialization order) with this build's `wifi` command and
 Telnet in it: the Wi-Fi credentials, the `wifi` command, Telnet, the `K_THREAD_DEFINE()` threads, the
 key-value store, the calibration, the time synchronization and the automatic connection, in this order.
@@ -182,7 +184,7 @@ the interval of interest); timed by the TIMER.
 
 ## RAM log and fatal errors
 
-- The RAM log (`common/compat/log/log_ram.c`, shared with the NuttX build; this build's part is
+- The RAM log (`common/compat/log/log_ram.c`, shared with the NuttX and ThreadX builds; the part on the Pico SDK, shared with the ThreadX build, is
   `common/pico_sdk/drivers/include/log_ram_os_impl.h`; its size, `LOG_RAM_SIZE` in `common/compat/os_generic/include/app_log_os.h`) is
   4 KiB, as in the Zephyr build (a fatal error leaves a record of a few lines, written into the log at the
   next start), in RAM that the start-up code does not initialize (`__uninitialized_ram`). It survives the watchdog's restart, `reboot` and the RESET button, not a power
@@ -204,9 +206,9 @@ As in the Zephyr and NuttX builds, the key-value store is in the last 8 KiB of t
 (`0xffe000`..`0xffffff`, two 4 KiB sectors) in the format of Zephyr's NVS and settings (the copies are in
 `common/compat/subsys/`, the format is described in "Key-value store: copies of Zephyr's NVS and settings"
 of [`nuttx/drivers/README.md`](../../nuttx/drivers/README.md)). The FreeRTOS build implements the flash
-boundary (the five functions of `common/compat/flash_kv_os.h`) with the RP2040's part shared with the NuttX build
-(`common/chip/rp2040/rp2040_flash_kv.c`: the checks, the reads, the page copy) on its own flash operations
-(`common/chip/rp2040/include/rp2040_flash_kv_os.h`: `common/pico_sdk/drivers/kv/rp2040_flash_kv_os.c`, the Pico SDK's
+boundary (the five functions of `common/compat/flash_kv_os.h`) with the RP2040's part shared with the NuttX and ThreadX builds
+(`common/chip/rp2040/rp2040_flash_kv.c`: the checks, the reads, the page copy) on the flash operations on the Pico SDK
+(`common/chip/rp2040/include/rp2040_flash_kv_os.h`: `common/pico_sdk/drivers/kv/rp2040_flash_kv_os.c`, shared with the ThreadX build, the Pico SDK's
 `flash_range_program()` and `flash_range_erase()` through `flash_safe_execute()`).
 
 - The linker script (`common/pico_sdk/drivers/kv/ld/`, `kv.cmake`) sets the FLASH length to `0xffe000`, keeping the image
@@ -239,7 +241,7 @@ boundary (the five functions of `common/compat/flash_kv_os.h`) with the RP2040's
   `IO_IRQ_BANK0` for GPIO10 and GPIO2 (`gpio_add_raw_irq_handler_masked()`, beside the GPIO bank 0
   backend's for GPIO24; each handler acknowledges only its own pins). The Zephyr build does the same; the
   NuttX build waits without the 10 ms slices. Whether the interrupt is used is decided at run time: if
-  `nina_os_ready_start()` fails after the first reset, READY is read every 100 µs instead (in all three
+  `nina_os_ready_start()` fails after the first reset, READY is read every 100 µs instead (in all four
   builds; the FreeRTOS binding's does not fail).
 - Sockets: the layer has Zephyr's socket layer down to its list of socket implementations (reduced
   copies of Zephyr's `sockets.c`, `getaddrinfo.c`, `socket_offload.c`, `zvfs_fdtable.c` and
@@ -282,8 +284,8 @@ boundary (the five functions of `common/compat/flash_kv_os.h`) with the RP2040's
   unchanged copy of Zephyr's `wifi_credentials_shell.c`. `ifconfig` (`common/shell/ifconfig_shell.c`)
   prints in the NuttX build's format.
 
-- The esptool passthrough (`nina passthrough confirm`): the NINA driver's core shared with the Zephyr and
-  NuttX builds (`common/drivers/nina/nina_passthrough.c`), with its host side on TinyUSB and the Pico SDK
+- The esptool passthrough (`nina passthrough confirm`): the NINA driver's core shared with the Zephyr,
+  NuttX and ThreadX builds (`common/drivers/nina/nina_passthrough.c`), with its host side on TinyUSB and the Pico SDK
   (`common/drivers/nina/port/pico_sdk/nina_passthrough_os.c`) and its module side (`common/drivers/nina/port/pico_sdk/nina_passthrough_bus_rp2040.c`)
   (wiring and lines in "The esptool passthrough" of
   [`zephyr/app/usb-console/drivers/README.md`](../../zephyr/app/usb-console/drivers/README.md)). The command
@@ -298,7 +300,7 @@ boundary (the five functions of `common/compat/flash_kv_os.h`) with the RP2040's
 The Pico SDK's defaults. Integer division is `pico_divider` on the hardware divider, and the port
 (`portUSE_DIVIDER_SAVE_RESTORE`) saves and restores the divider's four words at every switch (the Zephyr
 and NuttX builds, with local patches, save it only in the middle of a division, DIRTY). A division by
-zero gives the Pico SDK routines' results, the same in the three builds. `memcpy` and `memset` are
+zero gives the Pico SDK routines' results, the same in the four builds. `memcpy` and `memset` are
 `pico_mem_ops`, the boot ROM's routines; boot2 is the Pico SDK board definition's, for the W25Q080
 (divider 2, 62.5 MHz).
 
@@ -343,7 +345,7 @@ interrupts disabled.
 
 ## I2C0 and DMA, LSM6DSOX, GPIO interrupt
 
-- **The driver**: I2C0 and I2C1 are the I2C core shared with the NuttX build (`common/drivers/i2c_dw/`;
+- **The driver**: I2C0 and I2C1 are the I2C core shared with the NuttX and ThreadX builds (`common/drivers/i2c_dw/`;
   the core itself and its relation to the Zephyr build's driver are in section 12 of the
   [design](../../design/imu-raw-mqtt-design.md)). The FreeRTOS build implements the core's
   `port/i2c_dw_os.h` boundary in its FreeRTOS binding, `common/drivers/i2c_dw/port/freertos/`:
@@ -439,7 +441,7 @@ interrupts disabled.
 The acquisition service (`imu_stream.c`), the time synchronization (`time_sync.c`, `time_offset.c`), the
 transport (`imu_raw_mqtt.c`, `imu_raw_status.c`) and the calibration (`imu_cal.c`) are the Zephyr build's
 files in `common/imu/`, built in by `../common/pico_sdk/drivers/imu/imu.cmake`. The MQTT client is `common/imu/mqtt_min.c` and
-`mqtt_min_sock.c`, shared with the NuttX build.
+`mqtt_min_sock.c`, shared with the NuttX and ThreadX builds.
 
 - The wall clock (`common/pico_sdk/drivers/compat/zephyr_sys_clock.c`) is the TIMER plus a base (built as in the NuttX
   build); newlib's `gettimeofday()` reads the same clock. `date` shows it in UTC.
@@ -482,24 +484,24 @@ Given as `freertos/script/build.sh -DNAME=VALUE` (kept until `--clean`).
 The custom commands (`imu`, `kv`, `ntp`, `nina`, `dmesg`, `i2c_dma`, `sensor`, `wifi cred`), `i2c` and `zperf`
 have the Zephyr build's syntax and output.
 
-| Item | Zephyr build | NuttX build | FreeRTOS build |
-|---|---|---|---|
-| Prompt | `uart:~$ ` on USB, `~$ ` on Telnet | `nsh$ ` | `freertos:~$ ` |
-| Version, restart, task list, time since start | `kernel version`, `kernel reboot`, `kernel ps`, `kernel uptime` | `uname -a`, `reboot`, `ps`, `uptime` | `version`, `reboot`, `ps`, `uptime` |
-| IP address, date | `net iface`, `date get` | `ifconfig`, `date` | `ifconfig`, `date` (UTC, show only) |
-| `wifi` | All of Zephyr's | `wifi cred` only (`wapi` connects) | `connect` (`-s`, `-p`, `-k 0/1`), `disconnect`, `scan`, `status`, `cred` |
-| Speed test | `zperf` (iperf3 protocol, TCP and UDP) | `iperf` (iperf2 protocol) | `zperf` (iperf3 protocol, TCP only) |
-| BOOTSEL from the shell | `bootsel` | `bootsel` | `bootsel` |
-| `sensor get` | Returns at once; the result comes after the prompt | Waits up to 2 s for the result | As NuttX |
-| Right after a Telnet connection | Sends nothing | Sends the prompt | Sends nothing |
-| Echo on Telnet | No | Yes | No |
-| Error numbers (errno) | Zephyr's (`EILSEQ` 138) | NuttX's (`EILSEQ` 84) | newlib's (as Zephyr's; `EILSEQ` 138) |
-| Priorities | Zephyr | `118 − Zephyr` | `20 − Zephyr` |
-| Device interrupt priority | 0xC0 | 0x80 | 0x80 |
-| Kernel clock | SysTick (late while sending) | Tickless on the TIMER | 1 kHz SysTick (catches up with the TIMER after interrupts were disabled); `k_uptime` from the TIMER |
-| Saving the divider | At switches, only when DIRTY (local patch) | At switches, only when DIRTY (patch 0009) | Four words at every switch (the Pico SDK port) |
-| The NINA's READY | Edge interrupt (GPIO10, read again every 10 ms) | Edge interrupt (GPIO10) | Edge interrupt (GPIO10, read again every 10 ms) |
-| Sockets | Offload (the calling thread waits) | usrsock and `nina_event` | The Zephyr build's offload on the layer's socket layer (the calling task waits) |
-| RAM log | 4 KiB | 8 KiB | 4 KiB |
-| After a fatal error | Restart, report in `dmesg` | Restart, report in `dmesg` | Restart, record in `dmesg`, `fault` and the banner |
-| `ifconfig` netmask while disconnected | – | Kept | 0.0.0.0 |
+| Item | Zephyr build | NuttX build | FreeRTOS build | ThreadX build |
+|---|---|---|---|---|
+| Prompt | `uart:~$ ` on USB, `~$ ` on Telnet | `nsh$ ` | `freertos:~$ ` | `threadx:~$ ` |
+| Version, restart, task list, time since start | `kernel version`, `kernel reboot`, `kernel ps`, `kernel uptime` | `uname -a`, `reboot`, `ps`, `uptime` | `version`, `reboot`, `ps`, `uptime` | As FreeRTOS |
+| IP address, date | `net iface`, `date get` | `ifconfig`, `date` | `ifconfig`, `date` (UTC, show only) | As FreeRTOS |
+| `wifi` | All of Zephyr's | `wifi cred` only (`wapi` connects) | `connect` (`-s`, `-p`, `-k 0/1`), `disconnect`, `scan`, `status`, `cred` | As FreeRTOS |
+| Speed test | `zperf` (iperf3 protocol, TCP and UDP) | `iperf` (iperf2 protocol) | `zperf` (iperf3 protocol, TCP only) | As FreeRTOS |
+| BOOTSEL from the shell | `bootsel` | `bootsel` | `bootsel` | `bootsel` |
+| `sensor get` | Returns at once; the result comes after the prompt | Waits up to 2 s for the result | As NuttX | As NuttX |
+| Right after a Telnet connection | Sends nothing | Sends the prompt | Sends nothing | Sends nothing |
+| Echo on Telnet | No | Yes | No | No |
+| Error numbers (errno) | Zephyr's (`EILSEQ` 138) | NuttX's (`EILSEQ` 84) | newlib's (as Zephyr's; `EILSEQ` 138) | newlib's (as FreeRTOS) |
+| Priorities | Zephyr | `118 − Zephyr` | `20 − Zephyr` | `15 − Zephyr` (ThreadX's number Zephyr + 16, 0 the most urgent) |
+| Device interrupt priority | 0xC0 | 0x80 | 0x80 | 0x80 |
+| Kernel clock | SysTick (late while sending) | Tickless on the TIMER | 1 kHz SysTick (catches up with the TIMER after interrupts were disabled); `k_uptime` from the TIMER | As FreeRTOS |
+| Saving the divider | At switches, only when DIRTY (local patch) | At switches, only when DIRTY (patch 0009) | Four words at every switch (the Pico SDK port) | None (ThreadX's Cortex-M0 port) |
+| The NINA's READY | Edge interrupt (GPIO10, read again every 10 ms) | Edge interrupt (GPIO10) | Edge interrupt (GPIO10, read again every 10 ms) | Edge interrupt (GPIO10, read again every 10 ms) |
+| Sockets | Offload (the calling thread waits) | usrsock and `nina_event` | The Zephyr build's offload on the layer's socket layer (the calling task waits) | As FreeRTOS |
+| RAM log | 4 KiB | 8 KiB | 4 KiB | 4 KiB |
+| After a fatal error | Restart, report in `dmesg` | Restart, report in `dmesg` | Restart, record in `dmesg`, `fault` and the banner | As FreeRTOS |
+| `ifconfig` netmask while disconnected | – | Kept | 0.0.0.0 | 0.0.0.0 |

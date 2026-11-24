@@ -12,9 +12,11 @@ PC 上のアプリケーションに MQTT で送信する。各軸はセンサ�
 できていない範囲を記す。全体はまだ実験段階で、ペイロード形式やトピックは実装済みだが
 確定ではなく、PC 側の専用アプリの仕様に合わせて見直す前提である。使い方は
 [README](../README_ja.md) を参照。
-このファームウェアは Zephyr のほか、NuttX 13.1.0（`nuttx/`）と Pico SDK + FreeRTOS（`freertos/`）の上でもそれぞれ
-ビルドでき、それぞれを Zephyr 版・NuttX 版・FreeRTOS 版と呼ぶ。NuttX 版の設計上の違いは §11、3 つの OS のファームウェアで
-共有するソース（`common/`）の構成は §12、FreeRTOS 版の設計上の違いは §13 に記す。
+このファームウェアは Zephyr のほか、NuttX 13.1.0（`nuttx/`）、Pico SDK + FreeRTOS（`freertos/`）、Pico SDK + ThreadX（`threadx/`）の
+上でもそれぞれビルドでき、それぞれを Zephyr 版・NuttX 版・FreeRTOS 版・ThreadX 版と呼ぶ。NuttX 版の設計上の違いは §11、4 つの OS の
+ファームウェアで共有するソース（`common/`）の構成は §12、FreeRTOS 版の設計上の違いは §13 に記す。ThreadX 版は Pico SDK の上の部分
+（`common/pico_sdk/`、各ドライバーの `port/pico_sdk/`）を FreeRTOS 版と共有し、その内部は
+[`threadx/drivers/README_ja.md`](../threadx/drivers/README_ja.md) に記す。
 
 ### 合意済みの要求
 
@@ -104,7 +106,7 @@ flowchart LR
 | 取得スレッド・回復・シェル（`imu`） | `common/imu/imu_stream.c` |
 | NINA のソケット | `common/drivers/nina/port/zephyr/nina_socket.c`、`common/drivers/nina/nina_sock.*`（[ドライバーの説明](../zephyr/app/usb-console/drivers/README_ja.md)） |
 
-`src/`・`drivers/` は `zephyr/app/usb-console` の下、`common/` はリポジトリのルートの下で、NuttX 版・FreeRTOS 版と
+`src/`・`drivers/` は `zephyr/app/usb-console` の下、`common/` はリポジトリのルートの下で、NuttX 版・FreeRTOS 版・ThreadX 版と
 同じファイルを使う部分（§12）。
 
 FIFO 読み出しと送信は独立している。Wi-Fi・MQTT の切断や送信待ちで FIFO の読み出しを
@@ -423,12 +425,12 @@ NTP の往復時間は、送信中で中央値 約 7 ms、推定に使われた�
 ポーリングしていた。今の各 OS のファームウェアは、64 バイト以上の転送を DMA で行って呼んだスレッドを待たせ、短い転送はポーリングする
 （各 OS のドライバーの説明）。2026-11-23 のイメージでは、同じイメージの中で DMA を止めると 44.1%、DMA ありで 34.6% だった
 （Zephyr 版、約 70 秒 × 各 3 回、欠番 0。NuttX 版は 47.4% → 37.2%、FreeRTOS 版は 42.4% → 32.5%）。全バイトを決まった値にして
-PC 側で照合する確認では、3 つの OS のファームウェアとも約 1800〜2050 万バイトで不一致は 0 だった。
+PC 側で照合する確認では、Zephyr 版・NuttX 版・FreeRTOS 版とも約 1800〜2050 万バイトで不一致は 0 だった。
 
 センサーの 6667 Hz の経路と送信の経路のコードは RP2040 の 16 KiB の XIP キャッシュに収まらないので、各 OS のファームウェアは
 それを RAM で動かす（定数はフラッシュに残す）。Zephyr 版は `zephyr/app/usb-console/ram_code.cmake` にソースを並べる（Zephyr の
 コードの再配置。RAM 約 56 KiB、残り 63,960 バイト）。NuttX 版はボードのリンカースクリプトにオブジェクトを並べ、`.data` の写しが
-運ぶ（約 44 KiB。ヒープは約 112 KiB 残る）。FreeRTOS 版は `common/pico_sdk/app/usb-console/ram_code.cmake`（§13.2）。どれも、並べた
+運ぶ（約 44 KiB。ヒープは約 112 KiB 残る）。FreeRTOS 版と ThreadX 版は `common/pico_sdk/app/usb-console/ram_code.cmake`（§13.2）。どれも、並べた
 オブジェクトのコードが RAM に無いときと RAM の残りが足りないときに、リンクのあとの検査がビルドを止める（各 OS のドライバーの説明）。
 送信中の `cpu_active` は、これで Zephyr 版が 35.8% から 21.4%、NuttX 版が 36.1% から 23.8%、FreeRTOS 版が 33.1% から 19.7% になった。
 
@@ -437,7 +439,7 @@ PC 側で照合する確認では、3 つの OS のファームウェアとも�
 書いた KV と資格情報での自動接続を確かめた。最終のイメージ（2026-11-18。boot2 の分周 2、ROM の `memcpy`・`memset`、除算器、
 新しいファームウェア（0001〜0006）への対応、`bootsel`、`nina passthrough`）では、書き込み直後の送信、接続中の
 `zperf tcp download stop` の繰り返しのあとの USB と Telnet のシェル、中継での NINA の flash の読み出し、`bootsel` を確かめた。
-AP 断からの復帰、受信側の輻輳、長時間の連続は最終のイメージでは未確認（3 つの OS のファームウェアとも）。
+AP 断からの復帰、受信側の輻輳、長時間の連続は最終のイメージでは未確認（Zephyr 版・NuttX 版・FreeRTOS 版とも）。
 
 ## 9. 未決定事項
 
@@ -603,19 +605,20 @@ NuttX 版の確認の範囲は §11.7 に分けて書く。
   各ファイルに前置きヘッダー（NuttX の設定と、互換層より先に読む NuttX のヘッダー、ファイルが使う Zephyr の Kconfig の
   値と名前）を付けてコンパイルし、OS ごとに違う数行は OS ごとの小さなヘッダー（`sensor_shell_os.h`、
   `wifi_profile_os.h`、`lsm6dso_sensor.c` が末尾で読む LSM6DSO のデバイスの `lsm6dso_instance.h`。Zephyr 版はデバイスツリーの
-  インスタンス化のマクロ、NuttX 版はボードの値を使うデバイス 1 つ）に出している。LSM6DSO のドライバーのコア（`lsm6dso.c`、FIFO のストリームの状態機械の `lsm6dso_stream.c`、`lsm6dso_cal.c`、`lsm6dso_fifo.c`）は OS を持たず、境界 `port/lsm6dso_os.h` を通して OS に、`port/lsm6dso_stream_req.h` を通してストリームを使う側につながる。その実装は 3 つの OS のファームウェアとも Zephyr へのつなぎの `port/zephyr/lsm6dso_os_impl.h` と `lsm6dso_os.c`、`lsm6dso_stream_req_impl.h`（RTIO。NuttX 版・FreeRTOS 版では互換層の上）で、互換層を持つほかの OS はこのドライバーのために何も書かない。NINA の OS に依存しないコアも `common/drivers/nina/` にあり、3 つの OS のファームウェアが使う。直下（外から読むヘッダーは `include/`）はドライバーが提供する機能
+  インスタンス化のマクロ、NuttX 版はボードの値を使うデバイス 1 つ）に出している。LSM6DSO のドライバーのコア（`lsm6dso.c`、FIFO のストリームの状態機械の `lsm6dso_stream.c`、`lsm6dso_cal.c`、`lsm6dso_fifo.c`）は OS を持たず、境界 `port/lsm6dso_os.h` を通して OS に、`port/lsm6dso_stream_req.h` を通してストリームを使う側につながる。その実装は 4 つの OS のファームウェアとも Zephyr へのつなぎの `port/zephyr/lsm6dso_os_impl.h` と `lsm6dso_os.c`、`lsm6dso_stream_req_impl.h`（RTIO。NuttX 版・FreeRTOS 版・ThreadX 版では互換層の上）で、互換層を持つほかの OS はこのドライバーのために何も書かない。NINA の OS に依存しないコアも `common/drivers/nina/` にあり、4 つの OS のファームウェアが使う。直下（外から読むヘッダーは `include/`）はドライバーが提供する機能
   （Wi-Fi の操作 `nina_wifi.[ch]`、ソケットの表と命令 `nina_sock.[ch]`、名前解決 `nina_dns.[ch]`、esptool の中継 `nina_passthrough.[ch]`）、
   `internal/` はコアの内側の部品（プロトコルのバイトと SPI の転送層 `nina_proto.[ch]`、ソケットのループの
   待ち `nina_wait.[ch]`）、`port/` は各 OS の側が実装する狭い境界のヘッダー（`nina_os.h`・`nina_bus.h`、中継の `nina_passthrough_os.h`・
   `nina_passthrough_bus.h`）とその実装。`nina version` の
-  `common/shell/nina_shell.c` も 3 つの OS のファームウェアが使う。コアの各 OS の API へのつなぎは `port/` の下の OS の名前のサブディレクトリーにある:
+  `common/shell/nina_shell.c` は Zephyr 版・FreeRTOS 版・ThreadX 版が使う（NuttX 版は同じ構文と出力の `nuttx/apps/nina`）。コアの各 OS の API へのつなぎは `port/` の下の OS の名前のサブディレクトリーにある:
   `common/drivers/nina/port/zephyr/`（Zephyr の Wi-Fi 管理とネットワークインターフェース `nina_net.c`、`nina_os.c`、ソケットの
-  オフロード `nina_socket.c`。FreeRTOS 版は、Zephyr のソケット層をソケットの実装の一覧のところまで持つ互換層の上で、1 つ目と最後をビルドする）、`common/drivers/nina/port/nuttx/`（wapi の ioctl を
+  オフロード `nina_socket.c`。FreeRTOS 版と ThreadX 版は、Zephyr のソケット層をソケットの実装の一覧のところまで持つ互換層の上で、1 つ目と最後をビルドする）、`common/drivers/nina/port/nuttx/`（wapi の ioctl を
   コアの上で受けるネットワークデバイス `wlan0`、アプリが使う Zephyr の Wi-Fi 管理をコアの上で、`nina_os.c`、usrsock）、
-  `common/drivers/nina/port/freertos/`（FreeRTOS 版の `nina_os.c`。FreeRTOS と Pico SDK の上）。どのつなぎにも esptool の中継のホスト側
+  `common/drivers/nina/port/freertos/`・`threadx/`（FreeRTOS 版・ThreadX 版の `nina_os.c`。その OS と Pico SDK の上）、
+  `common/drivers/nina/port/pico_sdk/`（Pico SDK の上の 2 つのビルドが共有する SPI・DMA・線と中継）。Zephyr・NuttX・Pico SDK のどのつなぎにも esptool の中継のホスト側
   （`nina_passthrough_os.c`）がある。チップとボードのものも同じ場所にあり、名前に `_rp2040` が付く（SPI と線 `nina_bus_rp2040.c`、中継のモジュール側 `nina_passthrough_bus_rp2040.c`。RP2040 の
   レジスターか SDK の上。Zephyr 版の SPI と線は devicetree から引くので、その `nina_bus.c` はチップに依存しない）。
-  I2C のコア（`common/drivers/i2c_dw/`。Zephyr 版のパッチ後の `i2c_dw.c` の写し）も OS に依存せず、NuttX 版と FreeRTOS 版が
+  I2C のコア（`common/drivers/i2c_dw/`。Zephyr 版のパッチ後の `i2c_dw.c` の写し）も OS に依存せず、NuttX 版・FreeRTOS 版・ThreadX 版が
   使う（Zephyr 版は Zephyr のドライバーにローカルのパッチを当てて使う。§12）。
 - 共有するソースは、OS の呼び出しを **Zephyr の名前のまま**提供する互換層（OS に依存しない部分は `common/compat/`、NuttX の実装は `nuttx/drivers/compat/`）の上で動かす。
   互換層は、移したソースが使う部分だけを持つ（`struct device`、センサーの API、RTIO、ワークキュー、
@@ -693,16 +696,16 @@ Zephyr 版は前回の `kernel ps` からの区間の割合（最初は起動か
   API も Zephyr 版の `kv_store.c`（`common/imu/kv_store.c`）をそのまま使う。名前は `app_kv/<キー>`、Wi-Fi の
   資格情報は `wifi_cred/<番号>`。Zephyr 版と NuttX 版のどちらが書いた KV も、もう一方がそのまま読み書きする。
 - flash の操作（読み出し、256 バイトのページの書き込み、4 KiB のセクターの消去）は OS ごとの小さな境界
-  （`common/compat/flash_kv_os.h`）にあり、範囲は末尾 8 KiB だけに限る。RP2040 では NuttX 版と FreeRTOS 版がその検査と読み出しを
+  （`common/compat/flash_kv_os.h`）にあり、範囲は末尾 8 KiB だけに限る。RP2040 では NuttX 版・FreeRTOS 版・ThreadX 版がその検査と読み出しを
   共有し（`common/chip/rp2040/rp2040_flash_kv.c`）、各 OS の側はページの書き込みとセクターの消去だけを書く。割り込みを止めるのはページの書き込み
   1 回と消去 1 回のそれぞれの間（消去は 34〜40 ms）。
 - KV の領域に Zephyr の NVS でも消去済みでもないデータ（NuttX 版の以前の形式、別のファームウェアの残り）が
   あると、NuttX 版は消さずにエラーを `dmesg` に出し、KV の操作はエラー（`-EILSEQ`）を返す。`kv wipe confirm`
-  （NuttX 版と FreeRTOS 版）で消して使い始める。Zephyr 版は Zephyr の NVS のとおりに動く（両方のセクターの末尾が
+  （NuttX 版・FreeRTOS 版・ThreadX 版）で消して使い始める。Zephyr 版は Zephyr の NVS のとおりに動く（両方のセクターの末尾が
   書かれていればマウントに失敗、どちらかが消去済みなら領域を消して空で始める）。
 - `script/kv_transfer.py` は、KV の領域が失われる場面（別のファームウェアを書くとき、`kv wipe` の前）に、
   シェルの `kv get` で退避し（`backup`）、`kv sethex` で書き戻す（`restore`。校正値の後に `imu cal reload`、
-  Wi-Fi の資格情報はパスワードを入力させて `wifi cred add`）。Zephyr 版・NuttX 版・FreeRTOS 版の間の書き換えには要らない。
+  Wi-Fi の資格情報はパスワードを入力させて `wifi cred add`）。Zephyr 版・NuttX 版・FreeRTOS 版・ThreadX 版の間の書き換えには要らない。
   どの OS のファームウェアかは `kernel version`・`uname -a`・`version` の応答で見分ける。
 
 ### 11.6 異常停止とログ
@@ -747,70 +750,71 @@ Zephyr 版は前回の `kernel ps` からの区間の割合（最初は起動か
 
 ## 12. 共有ソース（`common/`）
 
-3 つの OS のファームウェアは、OS に依存しない処理と Zephyr の API で書いたドライバー・サービスを、リポジトリの `common/` の 1 本の
-ファイルで共有する。Zephyr 版はそれを Zephyr 本体の上でビルドし、NuttX 版と FreeRTOS 版は Zephyr の API を
-Zephyr の名前のまま提供する互換層の上でビルドする。ホストテスト（`common/tests/run.sh`）は 3 つの OS のファームウェアの
+4 つの OS のファームウェアは、OS に依存しない処理と Zephyr の API で書いたドライバー・サービスを、リポジトリの `common/` の 1 本の
+ファイルで共有する。Zephyr 版はそれを Zephyr 本体の上でビルドし、NuttX 版・FreeRTOS 版・ThreadX 版は Zephyr の API を
+Zephyr の名前のまま提供する互換層の上でビルドする。ホストテスト（`common/tests/run.sh`）は 4 つの OS のファームウェアの
 `host_tests.sh` が最初に実行する。
 
 | 場所 | 中身 | 使うファームウェア |
 |---|---|---|
-| `common/imu/` | 取得サービスと `imu`、バッチ・ペイロード・キュー・status、時刻の対応付けと時刻同期・`ntp`、校正と `imu cal`、MQTT の送信、Wi-Fi のプロファイルと自動再接続、KV の API と `kv`、送信と時刻同期の代わりの `imu_raw_mqtt_null.c`・`time_sync_null.c` | 3 つとも（MQTT のクライアント `mqtt_min*` は NuttX 版と FreeRTOS 版。Zephyr 版は Zephyr の MQTT ライブラリー。代わりのファイルはそのモジュールを持たないビルドだけ） |
-| `common/drivers/lsm6dso/` | LSM6DSO のドライバー。直下に OS を持たないコア（`lsm6dso.c`・`lsm6dso_stream.c`・`lsm6dso_cal.c`・`lsm6dso_fifo.c`。ヘッダーは `include/`・`internal/`、境界 `lsm6dso_os.h`・`lsm6dso_stream_req.h` は `port/`）、`port/zephyr/` に FIFO のストリームの RTIO 側を含む Zephyr へのつなぎ（Zephyr 版では Zephyr のモジュール。拡張 API の `<zephyr/drivers/sensor/lsm6dso.h>` は `include/lsm6dso.h`）、`port/nuttx/`・`port/freertos/` に NuttX 版・FreeRTOS 版のデバイス | 3 つとも |
-| `common/shell/sensor_shell.c` | sensor シェル。OS ごとの `sensor_shell_os.h` を除き、Zephyr 版のパッチを当てたツリーのファイル（パッチ 0006、下） | 3 つとも |
-| `common/drivers/nina/` | NINA のコア（SPI の転送層、ソケット、名前解決、Wi-Fi の操作 `nina_wifi.[ch]`、ソケットの待ち `nina_wait.[ch]`、宣言 `nina_proto.h`）と esptool の中継 `nina_passthrough.[ch]`（境界 `nina_passthrough_bus.h`・`nina_passthrough_os.h`）。OS の定義を持たない | 3 つとも |
-| `common/drivers/nina/port/zephyr/`、`nuttx/`、`freertos/` | コアの Zephyr の API へのつなぎ（Wi-Fi 管理とインターフェース、カーネルの機能、ソケットのオフロード、devicetree binding とオプション）、NuttX の API へのつなぎ（`wlan0` と wapi、アプリが使う Zephyr の Wi-Fi 管理、カーネルの機能、usrsock）、FreeRTOS と Pico SDK へのつなぎ（カーネルの機能 `nina_os.c`: ロック、要求、sleep、時計、READY と IRQ の線のエッジ割り込みでの待ち）。どれにも中継のホスト側 `nina_passthrough_os.c`（Zephyr の CDC ACM、cdcacm、TinyUSB） | `zephyr/` は Zephyr 版と FreeRTOS 版（Wi-Fi とソケットのつなぎを互換層の上で）、`nuttx/` は NuttX 版、`freertos/` は FreeRTOS 版 |
-| `common/drivers/i2c_dw/` | I2C のコア（I2C0 と I2C1。ファイル名は Zephyr のものに合わせる: 直下に `i2c_dw.c`、`internal/` に `i2c_dw.h`・`i2c_dw_registers.h`・`i2c_dw_rp2040.h`・`i2c_dw_rp2040_dma_priv.h`（DMA 読み出しとそのコマンド語））、`i2c_dma` の関数の宣言 `include/i2c_dw_rp2040_dma.h`、`port/` に境界 `i2c_dw_os.h`・`i2c_dw_dma_os.h`、`port/nuttx/`・`port/freertos/` にコアのつなぎ | NuttX 版と FreeRTOS 版（Zephyr 版はパッチ 0003 の同じドライバー。下） |
-| `common/drivers/stmemsc/` | ST のドライバーと Zephyr の I2C の API のつなぎ | NuttX 版と FreeRTOS 版 |
-| `common/compat/` | 互換層の OS に依存しない部分と、Zephyr のライブラリーの写し（KV の NVS と settings、Wi-Fi の資格情報、getopt など） | NuttX 版と FreeRTOS 版 |
-| `common/shell/`、`common/compat/log/` | Zephyr のシェルのコマンド処理の再現、`i2c_dma`・`nina` コマンド、`LOG_*` と RAM ログのリング | NuttX 版と FreeRTOS 版（`i2c_dma` は 3 つとも、`nina` は Zephyr 版と FreeRTOS 版） |
+| `common/imu/` | 取得サービスと `imu`、バッチ・ペイロード・キュー・status、時刻の対応付けと時刻同期・`ntp`、校正と `imu cal`、MQTT の送信、Wi-Fi のプロファイルと自動再接続、KV の API と `kv`、送信と時刻同期の代わりの `imu_raw_mqtt_null.c`・`time_sync_null.c` | 4 つとも（MQTT のクライアント `mqtt_min*` は NuttX 版・FreeRTOS 版・ThreadX 版。Zephyr 版は Zephyr の MQTT ライブラリー。代わりのファイルはそのモジュールを持たないビルドだけ） |
+| `common/drivers/lsm6dso/` | LSM6DSO のドライバー。直下に OS を持たないコア（`lsm6dso.c`・`lsm6dso_stream.c`・`lsm6dso_cal.c`・`lsm6dso_fifo.c`。ヘッダーは `include/`・`internal/`、境界 `lsm6dso_os.h`・`lsm6dso_stream_req.h` は `port/`）、`port/zephyr/` に FIFO のストリームの RTIO 側を含む Zephyr へのつなぎ（Zephyr 版では Zephyr のモジュール。拡張 API の `<zephyr/drivers/sensor/lsm6dso.h>` は `include/lsm6dso.h`）、`port/nuttx/` に NuttX 版の、`port/pico_sdk/` に Pico SDK の上のビルド（FreeRTOS 版・ThreadX 版）のデバイス | 4 つとも |
+| `common/shell/sensor_shell.c` | sensor シェル。OS ごとの `sensor_shell_os.h` を除き、Zephyr 版のパッチを当てたツリーのファイル（パッチ 0006、下） | 4 つとも |
+| `common/drivers/nina/` | NINA のコア（SPI の転送層、ソケット、名前解決、Wi-Fi の操作 `nina_wifi.[ch]`、ソケットの待ち `nina_wait.[ch]`、宣言 `nina_proto.h`）と esptool の中継 `nina_passthrough.[ch]`（境界 `nina_passthrough_bus.h`・`nina_passthrough_os.h`）。OS の定義を持たない | 4 つとも |
+| `common/drivers/nina/port/zephyr/`、`nuttx/`、`pico_sdk/`、`freertos/`、`threadx/` | コアの Zephyr の API へのつなぎ（Wi-Fi 管理とインターフェース、カーネルの機能、ソケットのオフロード、devicetree binding とオプション）、NuttX の API へのつなぎ（`wlan0` と wapi、アプリが使う Zephyr の Wi-Fi 管理、カーネルの機能、usrsock）、Pico SDK へのつなぎ（SPI・DMA・線、中継のモジュール側）、FreeRTOS と ThreadX へのつなぎ（カーネルの機能 `nina_os.c`: ロック、要求、sleep、時計、READY と IRQ の線のエッジ割り込みでの待ち。DMA の完了の待ち `nina_bus_dma_os_impl.h`）。`zephyr/`・`nuttx/`・`pico_sdk/` に中継のホスト側 `nina_passthrough_os.c`（Zephyr の CDC ACM、cdcacm、TinyUSB） | `zephyr/` は Zephyr 版と FreeRTOS 版・ThreadX 版（Wi-Fi とソケットのつなぎを互換層の上で）、`nuttx/` は NuttX 版、`pico_sdk/` は FreeRTOS 版と ThreadX 版、`freertos/` は FreeRTOS 版、`threadx/` は ThreadX 版 |
+| `common/drivers/i2c_dw/` | I2C のコア（I2C0 と I2C1。ファイル名は Zephyr のものに合わせる: 直下に `i2c_dw.c`、`internal/` に `i2c_dw.h`・`i2c_dw_registers.h`・`i2c_dw_rp2040.h`・`i2c_dw_rp2040_dma_priv.h`（DMA 読み出しとそのコマンド語））、`i2c_dma` の関数の宣言 `include/i2c_dw_rp2040_dma.h`、`port/` に境界 `i2c_dw_os.h`・`i2c_dw_dma_os.h`、`port/nuttx/`・`port/pico_sdk/`・`port/freertos/`・`port/threadx/` にコアのつなぎ | NuttX 版・FreeRTOS 版・ThreadX 版（Zephyr 版はパッチ 0003 の同じドライバー。下） |
+| `common/drivers/stmemsc/` | ST のドライバーと Zephyr の I2C の API のつなぎ | NuttX 版・FreeRTOS 版・ThreadX 版 |
+| `common/compat/` | 互換層の OS に依存しない部分と、Zephyr のライブラリーの写し（KV の NVS と settings、Wi-Fi の資格情報、getopt など） | NuttX 版・FreeRTOS 版・ThreadX 版 |
+| `common/shell/`、`common/compat/log/` | Zephyr のシェルのコマンド処理の再現、`i2c_dma`・`nina` コマンド、`LOG_*` と RAM ログのリング | NuttX 版・FreeRTOS 版・ThreadX 版（`i2c_dma` は 4 つとも、`nina` は Zephyr 版・FreeRTOS 版・ThreadX 版） |
 
 OS ごとの部分は、狭い境界のヘッダーの実装として各 OS のディレクトリー（ドライバーでは `port/<OS>/`）に置く。
 
 - 互換層のカーネルの部分（`k_mutex`、`k_sem`、スレッド、時計など。一覧は `common/compat/zephyr/kernel.h` の先頭）:
-  `nuttx/drivers/compat/`、`freertos/drivers/compat/`。
+  `nuttx/drivers/compat/`、`freertos/drivers/compat/`、`threadx/drivers/compat/`。
 - 優先度の対応 `priorities_os.h`（`common/compat/priorities.h` が読む）、NINA の `nina_os.h`・`nina_bus.h`（`nina_os.h` の OS ごとの
-  実装はコアのつなぎ `common/drivers/nina/port/zephyr/`・`nuttx/`・`freertos/` にある）、I2C の
-  `i2c_dw_os.h` と DMA 読み出しの `i2c_dw_dma_os.h`（実装はコアのつなぎ `common/drivers/i2c_dw/port/nuttx/`・`freertos/` にある）、KV の flash の `flash_kv_os.h`、シェルのバックエンド `zshell_os.h`、ログの `app_log_os.h`・`log_ram.h`・`log_ram_os.h`。
+  実装はコアのつなぎ `common/drivers/nina/port/zephyr/`・`nuttx/`・`freertos/`・`threadx/` にある）、I2C の
+  `i2c_dw_os.h` と DMA 読み出しの `i2c_dw_dma_os.h`（実装はコアのつなぎ `common/drivers/i2c_dw/port/nuttx/`・`pico_sdk/`・`freertos/`・`threadx/` にある）、KV の flash の `flash_kv_os.h`、シェルのバックエンド `zshell_os.h`、ログの `app_log_os.h`・`log_ram.h`・`log_ram_os.h`。
 - OS ごとに違う数行: `sensor_shell_os.h`（`sensor get` の待ち）、`wifi_profile_os.h`、`lsm6dso_instance.h`（デバイスの
   生成）、`kv_store_os.h`（`kv wipe` の有無）。
 
 **LSM6DSO のドライバー（`common/drivers/lsm6dso/`）** は、Zephyr 版でも NINA と同じく `common/` から使う。Zephyr へのつなぎ
 `port/zephyr/` は Zephyr のモジュール（`zephyr/module.yml`。アプリの `ZEPHYR_EXTRA_MODULES` に入れる）で、そのオプション
 `CONFIG_LSM6DSO_LOCAL` が同じデバイスツリーのノードの Zephyr のドライバーに代わり（`prj.conf` で `CONFIG_LSM6DSO=n`）、
-そのライブラリーがコアとつなぎを持ち、`<zephyr/drivers/sensor/lsm6dso.h>` を公開する。NuttX 版と FreeRTOS 版は同じコアと
+そのライブラリーがコアとつなぎを持ち、`<zephyr/drivers/sensor/lsm6dso.h>` を公開する。NuttX 版・FreeRTOS 版・ThreadX 版は同じコアと
 つなぎを互換層の上でビルドし、互換層が `<zephyr/drivers/sensor/lsm6dso.h>` も提供する（`common/compat/zephyr/drivers/sensor/`）。
-`lsm6dso_instance.h` は OS ごとに持つ（`port/nuttx/`・`port/freertos/`）。**sensor シェル（`common/shell/sensor_shell.c`）** は、
+`lsm6dso_instance.h` は OS ごとに持つ（`port/nuttx/`、Pico SDK の上のビルドは `port/pico_sdk/`）。**sensor シェル（`common/shell/sensor_shell.c`）** は、
 Zephyr 版では Zephyr の `drivers/sensor/sensor_shell.c` にローカルのパッチ 0006（`zephyr/manifest/zephyr/patches/zephyr/`）を
-当てたもので、NuttX 版・FreeRTOS 版も同じファイルを使い、`sensor_shell_os.h` は OS ごとに持つ。パッチを当てたツリーのファイルとバイト単位で
+当てたもので、NuttX 版・FreeRTOS 版・ThreadX 版も同じファイルを使い、`sensor_shell_os.h` は OS ごとに持つ。パッチを当てたツリーのファイルとバイト単位で
 同じことを、ホストテスト `zephyr_sensor_shell_patched` が確かめる（ツリーがあるとき。ツリーの HEAD とパッチから作る）。
 
-**I2C のコア（`common/drivers/i2c_dw/`）** は、NuttX 版と FreeRTOS 版の I2C のドライバーである（OS の部分の細部は、
+**I2C のコア（`common/drivers/i2c_dw/`）** は、NuttX 版・FreeRTOS 版・ThreadX 版の I2C のドライバーである（OS の部分の細部は、
 NuttX 版・FreeRTOS 版のドライバーの説明の I2C の節）。
 
 - **何か**: Zephyr 版のドライバー（Zephyr の `drivers/i2c/i2c_dw.c` にローカルのパッチ
   `zephyr/manifest/zephyr/patches/zephyr/0003-i2c-dw-rp2040-fifo-and-dma.patch` を当てたもの）の写し。意図した違い（OS の
   呼び出し、Zephyr 版で使わない機能の省略など）は `i2c_dw.c` の冒頭の一覧に限る。Zephyr 版はこのコアに載せず、パッチ後の
-  ドライバーを使う（NINA のドライバーは 3 つの OS のファームウェアとも共有のコア）。
+  ドライバーを使う（NINA のドライバーは 4 つの OS のファームウェアとも共有のコア）。
 - **I2C0 と I2C1**: パッチ後のドライバーと同じく、コアはビルドしたコントローラーごとにインスタンスを持つ。i2c0 は
-  LSM6DSOX に要るので、NuttX 版では `CONFIG_I2C_DW_I2C0`（既定で有効）、FreeRTOS 版では常にビルドする。i2c1 は NuttX 版の
-  `CONFIG_I2C_DW_I2C1`、FreeRTOS 版の `-DI2C_DW_I2C1=ON`（どちらも既定で無効）のときだけ。i2c1 はビルドとホストテストで
+  LSM6DSOX に要るので、NuttX 版では `CONFIG_I2C_DW_I2C0`（既定で有効）、FreeRTOS 版・ThreadX 版では常にビルドする。i2c1 は NuttX 版の
+  `CONFIG_I2C_DW_I2C1`、FreeRTOS 版・ThreadX 版の `-DI2C_DW_I2C1=ON`（どれも既定で無効）のときだけ。i2c1 はビルドとホストテストで
   確かめただけで、実際のデバイスで使ったことはない。
 - **OS の部分**: 境界 `port/i2c_dw_os.h`（セマフォ、時計、割り込みの登録、リセットとピン、OS のドライバーモデルへの接続）を
-  NuttX 版と FreeRTOS 版が、その OS へのコアのつなぎ（`port/nuttx/`、`port/freertos/`）で、その OS 自身の機能の上に実装する（FreeRTOS への
-  つなぎは FreeRTOS のセマフォと遅延、Pico SDK の上。互換層のものは、使う側の API である Zephyr の I2C の API だけ）。
+  NuttX 版・FreeRTOS 版・ThreadX 版が、その OS へのコアのつなぎ（`port/nuttx/`、`port/freertos/`・`port/threadx/` と、Pico SDK の上のビルドが共有する
+  `port/pico_sdk/`）で、その OS 自身の機能の上に実装する（FreeRTOS へのつなぎは FreeRTOS のセマフォと遅延、ThreadX へのつなぎは ThreadX のセマフォ、
+  どちらも Pico SDK の上。互換層のものは、使う側の API である Zephyr の I2C の API だけ）。
 - **DMA 読み出し**（`CONFIG_I2C_DW_RP2040_DMA`）: i2c0 だけ。条件、コマンド語、しきい値、停止、隔離、カウンターはパッチと
   同じ。パッチが Zephyr の DMA API（と、停止の中の Pico SDK のレジスターの関数）を呼ぶところで、コアは DMA の境界
   `port/i2c_dw_dma_os.h` を 1 つずつ呼ぶ。違うのは、チャネルの設定（`dma_config()` とその構造体の代わりに TX 側と RX 側の
-  2 つの呼び出し）と、停止の待ち（すべてのチャネルの abort ではなく、各チャネル自身の abort を待つ）だけ。境界は NuttX 版と FreeRTOS 版が
-  OS 自身の DMA ドライバー（FreeRTOS 版は Pico SDK のもの、NuttX 版は `rp2040_dmac.c`）の上に実装する（各つなぎの
+  2 つの呼び出し）と、停止の待ち（すべてのチャネルの abort ではなく、各チャネル自身の abort を待つ）だけ。境界は NuttX 版と Pico SDK の上のビルド（FreeRTOS 版・ThreadX 版）が
+  OS 自身の DMA ドライバー（Pico SDK の上のビルドは Pico SDK のもの、NuttX 版は `rp2040_dmac.c`）の上に実装する（`port/nuttx/`・`port/pico_sdk/` の
   `i2c_dw_dma_os_rp2040.c`）。コアは DMA の
   レジスターに触れず、境界の関数はどれも DMA のほかの利用者を待たない。
 - **DMA を使うほかのコード**: 同じプログラムのほかのコードも、OS の DMA を通常どおり使える。読み出しが持つ 2 つの
   チャネルに触れない、DMA のブロックをリセットしない、チャネルが共有するレジスター（割り込みの有効・状態、CHAN_ABORT）を
   丸ごと書かない（自分のチャネルのビットだけにする）。割り込みの線の扱いなど、OS ごとの規則は各 OS のドライバーの説明にある。
-- **`i2c_dma` コマンド**: 3 つの OS のファームウェアとも `common/shell/i2c_dma_shell.c`（NuttX 版は `zshell.c` の上）。パッチ後のドライバーと
+- **`i2c_dma` コマンド**: 4 つの OS のファームウェアとも `common/shell/i2c_dma_shell.c`（NuttX 版は `zshell.c` の上）。パッチ後のドライバーと
   コアが同じ 3 つの関数を定義し、コマンドはその宣言を `<zephyr/drivers/i2c/i2c_dw_rp2040_dma.h>` で読む。Zephyr 版では
-  パッチが Zephyr のツリーに足すヘッダー、NuttX 版と FreeRTOS 版では `common/compat` の同名のヘッダーで、後者はコアの
+  パッチが Zephyr のツリーに足すヘッダー、NuttX 版・FreeRTOS 版・ThreadX 版では `common/compat` の同名のヘッダーで、後者はコアの
   `common/drivers/i2c_dw/include/i2c_dw_rp2040_dma.h`（ドライバーを使う側のための唯一のヘッダー）を読む。
 
 パッチ後のドライバーとコアは次のようにしてそろえて保つ。
@@ -831,25 +835,25 @@ NuttX 版・FreeRTOS 版のドライバーの説明の I2C の節）。
 - 比べていない関数（Zephyr の初期化、PM、target モード、OS の部分）のずれは検出しない。OS ごとの `i2c_dw_dma_os.h` の実装は、
   OS の DMA の偽物の上の NuttX 版・FreeRTOS 版のホストテストで確かめる。
 
-RP2040 の低い層の 3 つは `common/` に置かず、各 OS への変更として持つ（FreeRTOS 版は Pico SDK の既定のまま）。
+RP2040 の低い層の 3 つは `common/` に置かず、各 OS への変更として持つ（FreeRTOS 版と ThreadX 版は Pico SDK の既定のまま）。
 
-| 項目 | Zephyr 版 | NuttX 版 | FreeRTOS 版 |
-|---|---|---|---|
-| boot2 のフラッシュのクロック（分周 2、62.5 MHz） | hal_rpi_pico へのローカルのパッチ | ボードの `scripts/Make.defs` | Pico SDK の boot2 |
-| 整数の割り算をハードウェアの除算器で | `CONFIG_RP2040_PICO_DIVIDER` + Zephyr へのパッチ（PendSV で DIRTY のときだけ退避） | `CONFIG_RP2040_PICO_DIVIDER` + `nuttx/0009`（`arm_doirq()` で DIRTY のときだけ退避） | `pico_divider`（ポートが切り替えのたびに 4 語を退避） |
-| `memcpy`・`memset` をブート ROM で | `CONFIG_RP2040_ROM_MEM_OPS`（Zephyr の SoC へのパッチ） | `nuttx/0010` の `CONFIG_RP2040_ROM_MEM_OPS` | `pico_mem_ops` |
+| 項目 | Zephyr 版 | NuttX 版 | FreeRTOS 版 | ThreadX 版 |
+|---|---|---|---|---|
+| boot2 のフラッシュのクロック（分周 2、62.5 MHz） | hal_rpi_pico へのローカルのパッチ | ボードの `scripts/Make.defs` | Pico SDK の boot2 | Pico SDK の boot2 |
+| 整数の割り算をハードウェアの除算器で | `CONFIG_RP2040_PICO_DIVIDER` + Zephyr へのパッチ（PendSV で DIRTY のときだけ退避） | `CONFIG_RP2040_PICO_DIVIDER` + `nuttx/0009`（`arm_doirq()` で DIRTY のときだけ退避） | `pico_divider`（ポートが切り替えのたびに 4 語を退避） | `pico_divider`（ThreadX の Cortex-M0 のポートは切り替えで退避しない） |
+| `memcpy`・`memset` をブート ROM で | `CONFIG_RP2040_ROM_MEM_OPS`（Zephyr の SoC へのパッチ） | `nuttx/0010` の `CONFIG_RP2040_ROM_MEM_OPS` | `pico_mem_ops` | `pico_mem_ops` |
 
 0 での割り算は、どの OS のファームウェアも Pico SDK のルーチンの結果（32 ビットは飽和した商と余り 0、64 ビットは libgcc と同じ）。Zephyr 版の
 パッチは `zephyr/manifest/zephyr/patches.yml` にあり、`source zephyr/script/setup.sh` が `west patch` で当てる（仕組みは
 [ドライバーの説明](../zephyr/app/usb-console/drivers/README_ja.md)の「Zephyr へのローカルのパッチ」）。
 
-`nina passthrough confirm`（3 つの OS のファームウェアとも）は、USB の CDC ACM を NINA の UART に中継するモードで再起動する（PC の esptool で NINA の
+`nina passthrough confirm`（4 つの OS のファームウェアとも）は、USB の CDC ACM を NINA の UART に中継するモードで再起動する（PC の esptool で NINA の
 flash を読み書きする）。中継（再起動の印、DTR・RTS とモジュールの線、レート、両方向のデータ、出口）は NINA のドライバーの共有の
 `nina_passthrough.c` で、ホスト側（USB のシリアル、時刻）は各 OS のつなぎ、モジュール側（UART1、モジュールの線、watchdog の
-scratch レジスター）は各 OS のつなぎ（`common/drivers/nina/port/<OS>/nina_passthrough_bus_rp2040.c`）にある。どの OS のファームウェアも通常の起動とは別の起動で、NINA の SPI を起こさない（UART と SPI がピンを共有するため）。
+scratch レジスター）は各 OS のつなぎ（`common/drivers/nina/port/<OS>/nina_passthrough_bus_rp2040.c`）にある（Pico SDK の上のビルドは、どちらも `port/pico_sdk/`）。どの OS のファームウェアも通常の起動とは別の起動で、NINA の SPI を起こさない（UART と SPI がピンを共有するため）。
 
 NINA のファームウェアの追加機能（`firmware/nina-fw/` のパッチ 0003〜0006。仕様は `firmware/nina-fw/README.md` の
-「Host interface of 0003 to 0006」）は、共有のコアが 3 つの OS のファームウェアで同じに扱う（詳しくは
+「Host interface of 0003 to 0006」）は、共有のコアが 4 つの OS のファームウェアで同じに扱う（詳しくは
 [ドライバーの説明](../zephyr/app/usb-console/drivers/README_ja.md)の「ファームウェアの追加機能」）。
 
 - 初期化のあと 1 回、命令 0x6A で機能のビットを得る。命令を持たないファームウェア（3.0.2 など）は `0xEF` で答えるので、

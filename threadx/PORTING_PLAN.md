@@ -23,6 +23,7 @@ subagent（`model: opus`）が実装し、メインがレビュー・ホスト�
 | tick | まず 1 ms 固定（FreeRTOS 版と同じ。SysTick）。**全機能が動いたあと T5 で、tick を止めるかどうかを判断する**（Zephyr 版・NuttX 版は tickless で分解能 100 µs。止めれば分解能を細かくできる利点がある。ThreadX の標準の仕組みは `utility/low_power`。互換層の汎用のカーネルの部分の tick の入口を「まとめて n tick 進める」形に広げる必要がある） | ユーザー（2026-11-24） |
 | アイドルと `cpu_active` | ThreadX の仕組みを使う: 待ちは `TX_ENABLE_WFI`、区間の開け閉めと LED は `TX_LOW_POWER` のフック（`tx_low_power_enter`・`_exit` を自前で書く。計算は共有の `cpu_load.h`）。最低優先度のスレッドを自前で置く案は取り下げ（ユーザーの指摘） | ユーザーの指摘とメインの案（2026-11-24） |
 | `ps` の CPU 列 | `TX_EXECUTION_PROFILE_ENABLE`（付属の `utility/execution_profile_kit`。時計は RP2040 の TIMER）。`cpu_active` にはキットのアイドル時間を使わない（Pico SDK の割り込みハンドラーの時間をアイドルに数えるので、ほかの OS と比べられない） | メインの案 |
+| カーネルのコードの置き場所 | ThreadX のカーネルのよく通る部分も RAM に置く（計測では −0.1〜0.2 ポイント、RAM 約 7 kB。「RAM がそこそこ空いているので置く」）。**あとで Zephyr 版・NuttX 版・FreeRTOS 版のカーネルも RAM に置く**（以前の「スケジューラーまわりを足さない」の決定を改める） | ユーザー（2026-11-24） |
 | 取得するツリー | `threadx/` の下に ThreadX・Pico SDK・ツールチェーンを `setup.sh` が取得する（NuttX 版・FreeRTOS 版と同じく、OS のディレクトリーごとに持つ） | メインの案 |
 | スタイル | Zephyr。新しいファイルの SPDX は MIT。`threadx/script/format.sh` | 既存の決まり |
 
@@ -96,8 +97,7 @@ NINA（`port/threadx/nina_os.c` と DMA の待ち）、互換層のソケット�
 ### T5: 仕上げ
 
 よく通るコードの RAM への配置と検査、RAM の残りとスタックの調整、`cpu_active` の計測（ほかの 3 つと同じ条件。止めた状態の値も）、
-**ThreadX のカーネルを RAM に置くかどうかの判断**（ユーザー、2026-11-24:「Kernel は RAM コードでもいいかもしれない。tickless と同様、後ほど検討」。よく通る部分で約 5.5 KiB。`cpu_active` と XIP キャッシュの外れの数を、置いた場合と置かない場合で比べて示す。FreeRTOS 版のカーネルも同じ扱いにするかを合わせて決める）、
-**tick を止めるかどうかの判断**（決定事項の tick の行。計測の結果と、分解能を細かくできる利点をユーザーに示して決める）、
+**tick を止めて実際に動かし、採るかどうかを判断する**（ユーザー、2026-11-24:「実際に tickless で動かしてみないと判断できない」）。（決定事項の tick の行。計測の結果と、分解能を細かくできる利点をユーザーに示して決める）、
 文書（`threadx/README`・`threadx/drivers/README` の日英、ルートの README、設計書、`design/os-boundary` に ThreadX の列）、`CLAUDE.md`。
 
 - `design/os-boundary` の「新しい OS で書くもの」を、実際に書いたものと照らして直す（この計画のいちばんの成果）。

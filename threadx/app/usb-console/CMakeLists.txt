@@ -39,12 +39,49 @@ set(PICO_SDK_OS_APP_DIRS ${CMAKE_CURRENT_LIST_DIR}/src)
 set(PICO_SDK_OS_LIBRARIES)
 # The name under /dev/serial/by-id (threadx/script/flash.sh looks for it).
 set(PICO_SDK_USB_PRODUCT "ThreadX USB Console")
-# The NINA core's binding (its locks, waits and READY's interrupt) runs from
-# RAM with the shared code (ram_code.cmake), as in the FreeRTOS build.  The
-# kernel stays in the flash, as the FreeRTOS build's does.
+# ThreadX's code on the sensor's and the send's paths runs from RAM with the
+# shared code (ram_code.cmake): the scheduler (PendSV, the switch and the
+# wait), the services the layer's waits, the drivers' waits and the Pico
+# SDK's locks call (semaphores, mutexes, event flags, sleeps, the suspend
+# and resume of threads, the preemption check), the tick (the timer
+# interrupt, the timeouts and the time slices), the execution profile kit
+# (at every switch); the layer's tick and the idle hooks; the Pico SDK's
+# locks on ThreadX; the NINA core's binding (its locks, waits and READY's
+# interrupt).  About 7 KiB of RAM.
 set(THREADX_SRC $ENV{THREADX_PATH}/common/src)
 set(THREADX_PORT_SRC $ENV{THREADX_PATH}/ports/cortex_m0/gnu/src)
 set(RAM_CODE_OS_SOURCES
+  ${THREADX_PORT_SRC}/tx_thread_schedule.S
+  ${THREADX_PORT_SRC}/tx_timer_interrupt.S
+  ${THREADX_SRC}/tx_thread_system_resume.c
+  ${THREADX_SRC}/tx_thread_system_suspend.c
+  ${THREADX_SRC}/tx_thread_system_preempt_check.c
+  ${THREADX_SRC}/tx_thread_timeout.c
+  ${THREADX_SRC}/tx_thread_time_slice.c
+  ${THREADX_SRC}/tx_thread_sleep.c
+  ${THREADX_SRC}/tx_thread_relinquish.c
+  ${THREADX_SRC}/tx_thread_identify.c
+  ${THREADX_SRC}/tx_timer_expiration_process.c
+  ${THREADX_SRC}/tx_timer_system_activate.c
+  ${THREADX_SRC}/tx_timer_system_deactivate.c
+  ${THREADX_SRC}/tx_time_get.c
+  ${THREADX_SRC}/tx_semaphore_get.c
+  ${THREADX_SRC}/txe_semaphore_get.c
+  ${THREADX_SRC}/tx_semaphore_ceiling_put.c
+  ${THREADX_SRC}/txe_semaphore_ceiling_put.c
+  ${THREADX_SRC}/tx_semaphore_cleanup.c
+  ${THREADX_SRC}/tx_mutex_get.c
+  ${THREADX_SRC}/txe_mutex_get.c
+  ${THREADX_SRC}/tx_mutex_put.c
+  ${THREADX_SRC}/txe_mutex_put.c
+  ${THREADX_SRC}/tx_event_flags_get.c
+  ${THREADX_SRC}/txe_event_flags_get.c
+  ${THREADX_SRC}/tx_event_flags_set.c
+  ${THREADX_SRC}/txe_event_flags_set.c
+  $ENV{THREADX_PATH}/utility/execution_profile_kit/tx_execution_profile.c
+  threadx/app/usb-console/src/tick.c
+  common/pico_sdk/app/usb-console/src/idle.c
+  threadx/drivers/pico_sdk_interop/pico_sdk_interop.c
   common/drivers/nina/port/threadx/nina_os.c
 )
 include(${COMMON_DIR}/pico_sdk/app/usb-console/usb-console.cmake)

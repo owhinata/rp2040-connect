@@ -13,9 +13,13 @@ and what has and has not been verified on hardware. The whole is still experimen
 payload format and topics are implemented but not final, and are expected to be revised
 against the specification of a dedicated PC application. See the [README](../README.md) for
 usage.
+The firmware is also built on NuttX 13.1.0 (`nuttx/`), on the Pico SDK and FreeRTOS (`freertos/`) and on the
+Pico SDK and ThreadX (`threadx/`): the Zephyr, NuttX, FreeRTOS and ThreadX builds.
 Section 11 describes the design differences of the port to NuttX 13.1.0 (`nuttx/`), section 12 the
-layout of the sources the three builds share (`common/`), and section 13 the design differences of the
-build on the Pico SDK and FreeRTOS (`freertos/`).
+layout of the sources the four builds share (`common/`), and section 13 the design differences of the
+build on the Pico SDK and FreeRTOS (`freertos/`). The ThreadX build shares the parts on the Pico SDK
+(`common/pico_sdk/`, each driver's `port/pico_sdk/`) with the FreeRTOS build; its internals are described in
+[`threadx/drivers/README.md`](../threadx/drivers/README.md).
 
 ### Agreed requirements
 
@@ -121,7 +125,7 @@ flowchart LR
 | NINA sockets | `common/drivers/nina/port/zephyr/nina_socket.c`, `common/drivers/nina/nina_sock.*` (see the [driver README](../zephyr/app/usb-console/drivers/README.md)) |
 
 `src/` and `drivers/` are under `zephyr/app/usb-console`; `common/` is under the repository's root and
-holds the parts whose files are the same as the NuttX and FreeRTOS builds' (section 12).
+holds the parts whose files are the same as the NuttX, FreeRTOS and ThreadX builds' (section 12).
 
 Reading the FIFO and sending are independent. A lost Wi-Fi or MQTT connection, or a send that
 waits, never blocks FIFO reads. Thread priorities are 9 for acquisition (batching) and time
@@ -478,13 +482,14 @@ present ones each OS's firmware moves the transfers of 64 bytes or more by DMA w
 polls the shorter ones (the driver notes of each build). With the image of 2026-11-23, `cpu_active` was 44.1% with
 the DMA switched off in that same image and 34.6% with it (the Zephyr build, about 70 seconds, 3 runs each, no
 missing batch; the NuttX build 47.4% and 37.2%, the FreeRTOS build 42.4% and 32.5%). In a run with every payload
-byte set to a known value and checked on the PC, 18 to 20 million bytes per build arrived with none wrong.
+byte set to a known value and checked on the PC, 18 to 20 million bytes per build arrived with none wrong (the Zephyr,
+NuttX and FreeRTOS builds).
 
 The code of the sensor's 6667 Hz path and of the send path does not fit in the RP2040's 16 KiB XIP cache, so each
 OS's firmware runs it from RAM; the read-only data stays in the flash. The Zephyr build lists the sources in
 `zephyr/app/usb-console/ram_code.cmake` (Zephyr's code relocation, about 56 KiB of RAM, 63,960 bytes left). The NuttX
 build lists the objects in the board's linker script, and `.data`'s copy takes them (about 44 KiB, the heap keeps
-about 112 KiB). The FreeRTOS build uses `common/pico_sdk/app/usb-console/ram_code.cmake` (section 13.2). A check after the
+about 112 KiB). The FreeRTOS and ThreadX builds use `common/pico_sdk/app/usb-console/ram_code.cmake` (section 13.2). A check after the
 link stops each build when a listed object's code is not in RAM or too little RAM is left (the drivers' README of
 each build). This took `cpu_active` while sending from 35.8% to 21.4% on the Zephyr build, from 36.1% to 23.8% on the NuttX build and from 33.1% to 19.7% on the FreeRTOS build.
 
@@ -496,7 +501,7 @@ image (2026-11-18: boot2 at divider 2, the ROM's `memcpy` and `memset`, the divi
 with 0001 to 0006, `bootsel`, `nina passthrough`), the first measurement after flashing, the USB and Telnet shells
 after repeated `zperf tcp download stop` during a connection, reading the NINA's flash through the passthrough
 and `bootsel` were checked. Recovery from losing the access point, a congested receiver and long runs have not
-been checked with the final image (in any of the three builds).
+been checked with the final image (in any of the Zephyr, NuttX and FreeRTOS builds).
 
 ## 9. Open questions
 
@@ -692,31 +697,33 @@ version's; what has been verified on the NuttX port is listed separately in 11.7
   instance macros, one device with the board's values on NuttX). The LSM6DSO driver's core
   (`lsm6dso.c`, `lsm6dso_stream.c` with the FIFO stream's state machine, `lsm6dso_cal.c`, `lsm6dso_fifo.c`) has no
   OS of its own and reaches the OS through the boundary `port/lsm6dso_os.h` and the stream's user through
-  `port/lsm6dso_stream_req.h`, which all three builds implement with the Zephyr binding's
+  `port/lsm6dso_stream_req.h`, which all four builds implement with the Zephyr binding's
   `port/zephyr/lsm6dso_os_impl.h` with `lsm6dso_os.c` and `lsm6dso_stream_req_impl.h` (RTIO; on the
-  compatibility layer in the NuttX and FreeRTOS builds), so another OS with that layer writes nothing for
+  compatibility layer in the NuttX, FreeRTOS and ThreadX builds), so another OS with that layer writes nothing for
   the driver. The NINA's
-  OS-independent core is in `common/drivers/nina/` too and is used by the three builds. Its top
+  OS-independent core is in `common/drivers/nina/` too and is used by the four builds. Its top
   holds what the driver offers, with the headers for its users in `include/` (the Wi-Fi operations `nina_wifi.[ch]`, the socket table and commands
   `nina_sock.[ch]`, name resolution `nina_dns.[ch]`, the esptool passthrough
   `nina_passthrough.[ch]`), `internal/` the parts inside the core (the protocol's bytes
   and the SPI link `nina_proto.[ch]`, the waits of the socket loops `nina_wait.[ch]`), and `port/`
   the headers of the narrow boundaries that each build implements (`nina_os.h` and `nina_bus.h`, the
   passthrough's `nina_passthrough_os.h` and `nina_passthrough_bus.h`) with their implementations.
-  The `nina version` command `common/shell/nina_shell.c` is shared by the three builds as well. The
+  The `nina version` command `common/shell/nina_shell.c` is used by the Zephyr, FreeRTOS and ThreadX builds (the
+  NuttX build has `nuttx/apps/nina`, with the same syntax and output). The
   core's bindings to each OS's APIs are in subdirectories of `port/` named after the OS: `common/drivers/nina/port/zephyr/` (Zephyr's Wi-Fi management and
-  network interface `nina_net.c`, `nina_os.c`, the socket offload `nina_socket.c`; the FreeRTOS build
-  compiles the first and the last on its compatibility layer, which has Zephyr's socket layer down to
+  network interface `nina_net.c`, `nina_os.c`, the socket offload `nina_socket.c`; the FreeRTOS and ThreadX builds
+  compile the first and the last on their compatibility layer, which has Zephyr's socket layer down to
   the list of socket implementations), `common/drivers/nina/port/nuttx/` (the network device
   `wlan0` with wapi's ioctls on the core, the applications' Zephyr Wi-Fi management on the core,
-  `nina_os.c`, usrsock) and `common/drivers/nina/port/freertos/` (the FreeRTOS build's `nina_os.c` on
-  FreeRTOS and the Pico SDK); each also has the esptool passthrough's host side
-  (`nina_passthrough_os.c`). What is the chip's and the board's is in the same places, with `_rp2040` in its name (the SPI and
+  `nina_os.c`, usrsock), `common/drivers/nina/port/freertos/` and `threadx/` (the FreeRTOS and ThreadX builds'
+  `nina_os.c` on that OS and the Pico SDK) and `common/drivers/nina/port/pico_sdk/` (the SPI, DMA, lines and
+  passthrough that the two builds on the Pico SDK share); the Zephyr, NuttX and Pico SDK bindings each have the
+  esptool passthrough's host side (`nina_passthrough_os.c`). What is the chip's and the board's is in the same places, with `_rp2040` in its name (the SPI and
   lines `nina_bus_rp2040.c`, the passthrough's module side `nina_passthrough_bus_rp2040.c`, on the
   RP2040's registers or its SDK; the Zephyr build's SPI and lines come from the devicetree, so its
   `nina_bus.c` does not depend on the chip).
   The I2C core (`common/drivers/i2c_dw/`, a copy of the Zephyr build's patched `i2c_dw.c`) does not depend on the OS
-  either; the NuttX and FreeRTOS builds use it (the Zephyr build uses Zephyr's driver with a local patch, §12).
+  either; the NuttX, FreeRTOS and ThreadX builds use it (the Zephyr build uses Zephyr's driver with a local patch, §12).
 - The shared sources run on top of a compatibility layer
   (its OS-independent part in `common/compat/`, its NuttX implementation in
   `nuttx/drivers/compat/`) that provides the OS calls **under Zephyr's names**. The layer has only what the copied sources use
@@ -812,18 +819,18 @@ difference of the total run time in `/proc/<tid>/critmon` ("CPU load" in `design
   and writes what the other stored.
 - The flash operations (reads, 256-byte page programs, 4 KiB sector erases) are behind a small
   boundary for each OS (`common/compat/flash_kv_os.h`), limited to the last 8 KiB; on the RP2040 the
-  NuttX and FreeRTOS builds share its checks and reads (`common/chip/rp2040/rp2040_flash_kv.c`) and
+  NuttX, FreeRTOS and ThreadX builds share its checks and reads (`common/chip/rp2040/rp2040_flash_kv.c`) and
   each writes only the page program and the sector erase. Interrupts are off for one page program
   or one erase at a time (34-40 ms for an erase).
 - If the area holds data that is neither Zephyr's NVS nor erased (the NuttX port's earlier format,
   what another firmware left), the NuttX port does not erase it, reports it in `dmesg`, and the
-  KV operations return an error (`-EILSEQ`). `kv wipe confirm` (NuttX and FreeRTOS builds) erases it. The
+  KV operations return an error (`-EILSEQ`). `kv wipe confirm` (NuttX, FreeRTOS and ThreadX builds) erases it. The
   Zephyr version does what Zephyr's NVS does (the mount fails if the ends of both sectors are
   written; if either is erased, it erases the area and starts empty).
 - `script/kv_transfer.py` backs the values up through the shell's `kv get` (`backup`) and writes
   them back with `kv sethex` (`restore`; `imu cal reload` after the calibration, and the Wi-Fi
   credentials with `wifi cred add` after asking for the password) when the area is lost (flashing
-  another firmware, before `kv wipe`). Switching between the Zephyr, NuttX and FreeRTOS builds
+  another firmware, before `kv wipe`). Switching between the Zephyr, NuttX, FreeRTOS and ThreadX builds
   does not need it. It tells the builds apart by the reply to `kernel version`, `uname -a` or
   `version`.
 
@@ -883,31 +890,31 @@ Not verified:
 
 ## 12. Shared sources (`common/`)
 
-The three builds share the OS-independent code and the drivers and services written on Zephyr's API as
-single files in the repository's `common/`. The Zephyr build compiles them on Zephyr itself; the NuttX and
-FreeRTOS builds compile them on a compatibility layer that provides Zephyr's API under Zephyr's names. The
-host tests (`common/tests/run.sh`) run first in the `host_tests.sh` of each of the three builds.
+The four builds share the OS-independent code and the drivers and services written on Zephyr's API as
+single files in the repository's `common/`. The Zephyr build compiles them on Zephyr itself; the NuttX,
+FreeRTOS and ThreadX builds compile them on a compatibility layer that provides Zephyr's API under Zephyr's names. The
+host tests (`common/tests/run.sh`) run first in the `host_tests.sh` of each of the four builds.
 
 | Place | Contents | Builds |
 |---|---|---|
-| `common/imu/` | The acquisition service and `imu`, batches, payload, queue, status, time assignment and time synchronization with `ntp`, calibration and `imu cal`, the MQTT transport, the Wi-Fi profile and automatic reconnection, the key-value API and `kv`; the null implementations of the transport and of the time synchronization (`imu_raw_mqtt_null.c`, `time_sync_null.c`) | All three (the MQTT client `mqtt_min*` NuttX and FreeRTOS; the Zephyr build uses Zephyr's MQTT library; the null implementations only a build without the module) |
-| `common/drivers/lsm6dso/` | The LSM6DSO driver: its core with no OS at the top (`lsm6dso.c`, `lsm6dso_stream.c`, `lsm6dso_cal.c`, `lsm6dso_fifo.c`; headers in `include/` and `internal/`, the boundaries `lsm6dso_os.h` and `lsm6dso_stream_req.h` in `port/`), its Zephyr binding with the FIFO stream's RTIO side in `port/zephyr/` (a Zephyr module for the Zephyr build; its extended API `<zephyr/drivers/sensor/lsm6dso.h>` is `include/lsm6dso.h`), and the NuttX and FreeRTOS builds' devices in `port/nuttx/` and `port/freertos/` | All three |
-| `common/shell/sensor_shell.c` | The sensor shell, the file of the Zephyr build's patched tree (patch 0006, below), but each build's `sensor_shell_os.h` | All three |
-| `common/drivers/nina/` | The NINA core (SPI link, sockets, name resolution, the Wi-Fi operations `nina_wifi.[ch]`, the socket waits `nina_wait.[ch]`, the declarations `nina_proto.h`), the esptool passthrough `nina_passthrough.[ch]` with its boundaries `nina_passthrough_bus.h` and `nina_passthrough_os.h`, with no OS of its own | All three |
-| `common/drivers/nina/port/zephyr/`, `nuttx/`, `freertos/` | The core's bindings to Zephyr's APIs (Wi-Fi management and interface, kernel services, socket offload, the devicetree binding and options), to NuttX's (`wlan0` and wapi, the applications' Zephyr Wi-Fi management, kernel services, usrsock) and to FreeRTOS and the Pico SDK (kernel services `nina_os.c`: locks, requests, sleeps, the clock, the waits on READY's and the IRQ line's edge interrupts); in each, the passthrough's host side `nina_passthrough_os.c` (Zephyr's CDC ACM, cdcacm, TinyUSB) | `zephyr/`: Zephyr and FreeRTOS (its Wi-Fi and socket bindings, on the compatibility layer); `nuttx/`: NuttX; `freertos/`: FreeRTOS |
-| `common/drivers/i2c_dw/` | The I2C core (I2C0 and I2C1; file names as Zephyr's: `i2c_dw.c` at the top and, in `internal/`, `i2c_dw.h`, `i2c_dw_registers.h`, `i2c_dw_rp2040.h`, `i2c_dw_rp2040_dma_priv.h` with the DMA reads and their command words), the declarations of the `i2c_dma` functions in `include/i2c_dw_rp2040_dma.h`, the boundaries `i2c_dw_os.h` and `i2c_dw_dma_os.h` in `port/`, and the bindings in `port/nuttx/` and `port/freertos/` | NuttX and FreeRTOS (the Zephyr build: the same driver in patch 0003, below) |
-| `common/drivers/stmemsc/` | The glue between ST's driver and Zephyr's I2C API | NuttX and FreeRTOS |
-| `common/compat/` | The OS-independent part of the compatibility layer and copies of Zephyr's libraries (the key-value store's NVS and settings, the Wi-Fi credentials, getopt and others) | NuttX and FreeRTOS |
-| `common/shell/`, `common/compat/log/` | Zephyr's shell command handling, the `i2c_dma` and `nina` commands, the `LOG_*` macros and the RAM log's ring | NuttX and FreeRTOS (`i2c_dma` all three, `nina` Zephyr and FreeRTOS) |
+| `common/imu/` | The acquisition service and `imu`, batches, payload, queue, status, time assignment and time synchronization with `ntp`, calibration and `imu cal`, the MQTT transport, the Wi-Fi profile and automatic reconnection, the key-value API and `kv`; the null implementations of the transport and of the time synchronization (`imu_raw_mqtt_null.c`, `time_sync_null.c`) | All four (the MQTT client `mqtt_min*` NuttX, FreeRTOS and ThreadX; the Zephyr build uses Zephyr's MQTT library; the null implementations only a build without the module) |
+| `common/drivers/lsm6dso/` | The LSM6DSO driver: its core with no OS at the top (`lsm6dso.c`, `lsm6dso_stream.c`, `lsm6dso_cal.c`, `lsm6dso_fifo.c`; headers in `include/` and `internal/`, the boundaries `lsm6dso_os.h` and `lsm6dso_stream_req.h` in `port/`), its Zephyr binding with the FIFO stream's RTIO side in `port/zephyr/` (a Zephyr module for the Zephyr build; its extended API `<zephyr/drivers/sensor/lsm6dso.h>` is `include/lsm6dso.h`), the NuttX build's device in `port/nuttx/` and the device of the builds on the Pico SDK (FreeRTOS, ThreadX) in `port/pico_sdk/` | All four |
+| `common/shell/sensor_shell.c` | The sensor shell, the file of the Zephyr build's patched tree (patch 0006, below), but each build's `sensor_shell_os.h` | All four |
+| `common/drivers/nina/` | The NINA core (SPI link, sockets, name resolution, the Wi-Fi operations `nina_wifi.[ch]`, the socket waits `nina_wait.[ch]`, the declarations `nina_proto.h`), the esptool passthrough `nina_passthrough.[ch]` with its boundaries `nina_passthrough_bus.h` and `nina_passthrough_os.h`, with no OS of its own | All four |
+| `common/drivers/nina/port/zephyr/`, `nuttx/`, `pico_sdk/`, `freertos/`, `threadx/` | The core's bindings to Zephyr's APIs (Wi-Fi management and interface, kernel services, socket offload, the devicetree binding and options), to NuttX's (`wlan0` and wapi, the applications' Zephyr Wi-Fi management, kernel services, usrsock), to the Pico SDK (SPI, DMA, lines, the passthrough's module side) and to FreeRTOS and ThreadX (kernel services `nina_os.c`: locks, requests, sleeps, the clock, the waits on READY's and the IRQ line's edge interrupts; the wait for the DMA's completion `nina_bus_dma_os_impl.h`); in `zephyr/`, `nuttx/` and `pico_sdk/`, the passthrough's host side `nina_passthrough_os.c` (Zephyr's CDC ACM, cdcacm, TinyUSB) | `zephyr/`: Zephyr, FreeRTOS and ThreadX (their Wi-Fi and socket bindings, on the compatibility layer); `nuttx/`: NuttX; `pico_sdk/`: FreeRTOS and ThreadX; `freertos/`: FreeRTOS; `threadx/`: ThreadX |
+| `common/drivers/i2c_dw/` | The I2C core (I2C0 and I2C1; file names as Zephyr's: `i2c_dw.c` at the top and, in `internal/`, `i2c_dw.h`, `i2c_dw_registers.h`, `i2c_dw_rp2040.h`, `i2c_dw_rp2040_dma_priv.h` with the DMA reads and their command words), the declarations of the `i2c_dma` functions in `include/i2c_dw_rp2040_dma.h`, the boundaries `i2c_dw_os.h` and `i2c_dw_dma_os.h` in `port/`, and the bindings in `port/nuttx/`, `port/pico_sdk/`, `port/freertos/` and `port/threadx/` | NuttX, FreeRTOS and ThreadX (the Zephyr build: the same driver in patch 0003, below) |
+| `common/drivers/stmemsc/` | The glue between ST's driver and Zephyr's I2C API | NuttX, FreeRTOS and ThreadX |
+| `common/compat/` | The OS-independent part of the compatibility layer and copies of Zephyr's libraries (the key-value store's NVS and settings, the Wi-Fi credentials, getopt and others) | NuttX, FreeRTOS and ThreadX |
+| `common/shell/`, `common/compat/log/` | Zephyr's shell command handling, the `i2c_dma` and `nina` commands, the `LOG_*` macros and the RAM log's ring | NuttX, FreeRTOS and ThreadX (`i2c_dma` all four, `nina` Zephyr, FreeRTOS and ThreadX) |
 
 The OS parts are implementations of narrow boundary headers in each build's directory.
 
 - The kernel part of the compatibility layer (`k_mutex`, `k_sem`, threads, clocks and so on; listed at the
-  top of `common/compat/zephyr/kernel.h`): `nuttx/drivers/compat/`, `freertos/drivers/compat/`.
+  top of `common/compat/zephyr/kernel.h`): `nuttx/drivers/compat/`, `freertos/drivers/compat/`, `threadx/drivers/compat/`.
 - The priority mapping `priorities_os.h` (read by `common/compat/priorities.h`), the NINA's `nina_os.h` and
   `nina_bus.h` (`nina_os.h`'s implementations are in the core's bindings,
-  `common/drivers/nina/port/zephyr/`, `nuttx/` and `freertos/`), the I2C core's `i2c_dw_os.h` and the DMA reads' `i2c_dw_dma_os.h` (implemented in the core's bindings,
-  `common/drivers/i2c_dw/port/nuttx/` and `freertos/`), the key-value flash's `flash_kv_os.h`, the shell backend
+  `common/drivers/nina/port/zephyr/`, `nuttx/`, `freertos/` and `threadx/`), the I2C core's `i2c_dw_os.h` and the DMA reads' `i2c_dw_dma_os.h` (implemented in the core's bindings,
+  `common/drivers/i2c_dw/port/nuttx/`, `pico_sdk/`, `freertos/` and `threadx/`), the key-value flash's `flash_kv_os.h`, the shell backend
   `zshell_os.h`, the log's `app_log_os.h`, `log_ram.h` and `log_ram_os.h`.
 - A few lines that differ per build: `sensor_shell_os.h` (the wait of `sensor get`), `wifi_profile_os.h`,
   `lsm6dso_instance.h` (the device), `kv_store_os.h` (whether there is `kv wipe`).
@@ -916,45 +923,45 @@ The OS parts are implementations of narrow boundary headers in each build's dire
 Zephyr binding `port/zephyr/` is a Zephyr module (`zephyr/module.yml`, in the application's `ZEPHYR_EXTRA_MODULES`)
 whose option `CONFIG_LSM6DSO_LOCAL` takes the place of Zephyr's own driver of the same devicetree nodes
 (`CONFIG_LSM6DSO=n` in `prj.conf`), whose library holds the core and the binding, and which exports
-`<zephyr/drivers/sensor/lsm6dso.h>`. The NuttX and FreeRTOS builds compile the same core and binding on the
+`<zephyr/drivers/sensor/lsm6dso.h>`. The NuttX, FreeRTOS and ThreadX builds compile the same core and binding on the
 compatibility layer, which also provides `<zephyr/drivers/sensor/lsm6dso.h>` (`common/compat/zephyr/drivers/sensor/`);
-each has its own `lsm6dso_instance.h` (`port/nuttx/`, `port/freertos/`). **The sensor shell
+each has its own `lsm6dso_instance.h` (`port/nuttx/`; the builds on the Pico SDK `port/pico_sdk/`). **The sensor shell
 (`common/shell/sensor_shell.c`)** is, in the Zephyr build, Zephyr's `drivers/sensor/sensor_shell.c` with the local
 patch 0006 (`zephyr/manifest/zephyr/patches/zephyr/`); the other builds compile the same file, each with its own
 `sensor_shell_os.h`. The host test `zephyr_sensor_shell_patched` checks that it is byte for byte the tree's file
 with the patch (made from the tree's HEAD, when the tree is there).
 
-**The I2C core (`common/drivers/i2c_dw/`)** is the I2C driver of the NuttX and FreeRTOS builds (the details of the OS
+**The I2C core (`common/drivers/i2c_dw/`)** is the I2C driver of the NuttX, FreeRTOS and ThreadX builds (the details of the OS
 parts are in the I2C sections of each build's driver notes).
 
 - **What it is**: a copy of the Zephyr build's driver (Zephyr's `drivers/i2c/i2c_dw.c` with the local patch
   `zephyr/manifest/zephyr/patches/zephyr/0003-i2c-dw-rp2040-fifo-and-dma.patch`). The intended differences (the OS's
   calls, what the Zephyr build does not use left out, and so on) are only those listed at the top of `i2c_dw.c`. The
-  Zephyr build does not use the core; it uses the patched driver (the NINA driver is the shared core in all three
+  Zephyr build does not use the core; it uses the patched driver (the NINA driver is the shared core in all four
   builds).
 - **I2C0 and I2C1**: like the patched driver, the core has an instance for each controller that is built. i2c0 is
-  needed by the LSM6DSOX, so the NuttX build builds it with `CONFIG_I2C_DW_I2C0` (on by default) and the FreeRTOS
-  build always. i2c1 only with the NuttX build's `CONFIG_I2C_DW_I2C1` or the FreeRTOS build's `-DI2C_DW_I2C1=ON` (both
+  needed by the LSM6DSOX, so the NuttX build builds it with `CONFIG_I2C_DW_I2C0` (on by default) and the FreeRTOS and
+  ThreadX builds always. i2c1 only with the NuttX build's `CONFIG_I2C_DW_I2C1` or the FreeRTOS and ThreadX builds' `-DI2C_DW_I2C1=ON` (all
   off by default). i2c1 has been built and host-tested, never used with a real device.
 - **The OS part**: each build implements the boundary `port/i2c_dw_os.h` (semaphores, clock, interrupt connection,
-  reset and pins, the link to the OS's driver model) in the core's binding for its OS, `port/nuttx/` or
-  `port/freertos/`, on that OS's own services (the FreeRTOS binding on FreeRTOS's semaphores and delays and the
-  Pico SDK; only the API the driver is used with, Zephyr's I2C API, is the compatibility layer's).
+  reset and pins, the link to the OS's driver model) in the core's binding for its OS, `port/nuttx/`, or
+  `port/freertos/` or `port/threadx/` with `port/pico_sdk/` that the builds on the Pico SDK share, on that OS's own services (the FreeRTOS binding on FreeRTOS's semaphores and delays, the ThreadX binding on ThreadX's semaphores,
+  both on the Pico SDK; only the API the driver is used with, Zephyr's I2C API, is the compatibility layer's).
 - **DMA reads** (`CONFIG_I2C_DW_RP2040_DMA`): i2c0 only. The conditions, command words, thresholds, stop, quarantine and
   counters are the patch's. Where the patch calls Zephyr's DMA API (and the Pico SDK's register helpers in its stop),
   the core calls the DMA boundary `port/i2c_dw_dma_os.h`, one call for each. The only differences are the setup of a
   channel (two calls, for the TX and the RX side, in place of `dma_config()` and its structures) and the stop's wait
-  (each channel's own abort, not every channel's). Each build implements the boundary on the OS's own DMA driver (the
-  Pico SDK's in the FreeRTOS build, `rp2040_dmac.c` in the NuttX build; `i2c_dw_dma_os_rp2040.c` of each binding). The core touches no DMA register, and no
+  (each channel's own abort, not every channel's). The NuttX build and the builds on the Pico SDK (FreeRTOS, ThreadX) implement the boundary on the OS's own DMA driver (the
+  Pico SDK's in the builds on the Pico SDK, `rp2040_dmac.c` in the NuttX build; `i2c_dw_dma_os_rp2040.c` of `port/nuttx/` and `port/pico_sdk/`). The core touches no DMA register, and no
   function of the boundary waits for another user of the DMA.
 - **Other code that uses DMA**: other code of the same program may use the OS's DMA as usual. It must not touch the
   two channels a read holds, reset the DMA block, or write the registers that the channels share (interrupt enable
   and status, CHAN_ABORT) as a whole (only its own channels' bits). The rules of each build, such as those for the
   interrupt line, are in its driver notes.
-- **The `i2c_dma` command**: `common/shell/i2c_dma_shell.c` in all three builds (NuttX: on `zshell.c`). The patched
+- **The `i2c_dma` command**: `common/shell/i2c_dma_shell.c` in all four builds (NuttX: on `zshell.c`). The patched
   driver and the core define the same three functions, and the command reads their declarations from
   `<zephyr/drivers/i2c/i2c_dw_rp2040_dma.h>`: in the Zephyr build the header that the patch adds to Zephyr's tree, in
-  the NuttX and FreeRTOS builds the header of the same name in `common/compat`, which includes the core's
+  the NuttX, FreeRTOS and ThreadX builds the header of the same name in `common/compat`, which includes the core's
   `common/drivers/i2c_dw/include/i2c_dw_rp2040_dma.h`, the only header for the driver's users.
 
 The patched driver and the core are kept the same as follows.
@@ -978,30 +985,31 @@ The patched driver and the core are kept the same as follows.
 - Drift in the functions it does not pair (Zephyr's initialization, PM, target mode, the OS's parts) is not detected.
   Each build's implementation of `i2c_dw_dma_os.h` is checked by host tests of its own on fakes of the OS's DMA.
 
-Three low-level RP2040 items are not in `common/` but changes to each OS (the FreeRTOS build keeps the Pico
+Three low-level RP2040 items are not in `common/` but changes to each OS (the FreeRTOS and ThreadX builds keep the Pico
 SDK's defaults).
 
-| Item | Zephyr build | NuttX build | FreeRTOS build |
-|---|---|---|---|
-| boot2's flash clock (divider 2, 62.5 MHz) | Local patch of hal_rpi_pico | The board's `scripts/Make.defs` | The Pico SDK's boot2 |
-| Integer division on the hardware divider | `CONFIG_RP2040_PICO_DIVIDER` and a patch of Zephyr (saved in PendSV, only when DIRTY) | `CONFIG_RP2040_PICO_DIVIDER` and `nuttx/0009` (saved in `arm_doirq()`, only when DIRTY) | `pico_divider` (the port saves four words at every switch) |
-| `memcpy` and `memset` from the boot ROM | `CONFIG_RP2040_ROM_MEM_OPS` (a patch of Zephyr's SoC) | `CONFIG_RP2040_ROM_MEM_OPS` of `nuttx/0010` | `pico_mem_ops` |
+| Item | Zephyr build | NuttX build | FreeRTOS build | ThreadX build |
+|---|---|---|---|---|
+| boot2's flash clock (divider 2, 62.5 MHz) | Local patch of hal_rpi_pico | The board's `scripts/Make.defs` | The Pico SDK's boot2 | The Pico SDK's boot2 |
+| Integer division on the hardware divider | `CONFIG_RP2040_PICO_DIVIDER` and a patch of Zephyr (saved in PendSV, only when DIRTY) | `CONFIG_RP2040_PICO_DIVIDER` and `nuttx/0009` (saved in `arm_doirq()`, only when DIRTY) | `pico_divider` (the port saves four words at every switch) | `pico_divider` (ThreadX's Cortex-M0 port does not save it at a switch) |
+| `memcpy` and `memset` from the boot ROM | `CONFIG_RP2040_ROM_MEM_OPS` (a patch of Zephyr's SoC) | `CONFIG_RP2040_ROM_MEM_OPS` of `nuttx/0010` | `pico_mem_ops` | `pico_mem_ops` |
 
 A division by zero gives the Pico SDK routines' results in every build (for 32 bits a saturated quotient and a
 remainder of 0, for 64 bits the same as libgcc's). The Zephyr build's patches are listed in
 `zephyr/manifest/zephyr/patches.yml`, and `source zephyr/script/setup.sh` applies them with `west patch` (see
 "Local patches of Zephyr" in the [driver notes](../zephyr/app/usb-console/drivers/README.md)).
 
-`nina passthrough confirm` (all three builds) restarts the board with the USB CDC ACM port relayed to the NINA's
+`nina passthrough confirm` (all four builds) restarts the board with the USB CDC ACM port relayed to the NINA's
 UART, so that esptool on the PC reads and writes the NINA's flash. The mode (the restart mark, DTR and RTS
 on the module's lines, the rate, the data both ways, the way out) is the NINA driver's shared
 `nina_passthrough.c`; its host side (the USB serial port, the time) is in each OS's binding, its module side
-(UART1, the module's lines, the watchdog's scratch registers) in each build's directory. In every build it is a start of its own that does not start the NINA's SPI link (the UART and
+(UART1, the module's lines, the watchdog's scratch registers) in each OS's binding
+(`common/drivers/nina/port/<OS>/nina_passthrough_bus_rp2040.c`; for the builds on the Pico SDK, both in `port/pico_sdk/`). In every build it is a start of its own that does not start the NINA's SPI link (the UART and
 the SPI share pins).
 
 The NINA firmware's additions (the patches 0003 to 0006 of `firmware/nina-fw/`; the specification is
 "Host interface of 0003 to 0006" in `firmware/nina-fw/README.md`) are handled by the shared core, the
-same in the three builds (details: "Firmware additions" in the
+same in the four builds (details: "Firmware additions" in the
 [driver description](../zephyr/app/usb-console/drivers/README.md)).
 
 - Once after initialization, command 0x6A gives the bits. A firmware without the command (3.0.2 and

@@ -175,3 +175,16 @@
   RAM は約 7 kB（`free` の表示では 8 kB）減る。計測用のビルドは commit していない。実機は commit 済みの構成に戻した。
 - 基準: `freertos/build/baseline/threadx/snapshot-1124a/image.bin`（248,580 B）。
 - 実機: ThreadX 版（commit 済みの構成）。
+
+## カーネルを RAM に、文書（2026-11-24）
+
+- ユーザーの決定: 「RAM がそこそこ空いているのでカーネルも RAM に置く。あとで Zephyr・NuttX・FreeRTOS もそうする」「tickless は実際に動かしてみないと判断できない」。
+- `RAM_CODE_OS_SOURCES` に ThreadX のよく通る部分（32 ファイル）を戻した。text 248,644、`free` のまだ取れる量 81,920 B。
+  実機（書き込み直後の最初の計測、60 秒）: `cpu_active` 18.2%（status 18.3%）、欠番 0、batches 2445 = published。
+- 文書（subagent）: `design/os-boundary(-ja).md` を 4 つの OS の今の状態に（T の列、2.6 に境界の決まり、6.1 に F と T で見える違い、「新しい OS で書くもの」を ThreadX が実際に書いたものと照合）、
+  `threadx/drivers/README(_ja).md`（新規）、ほかの設計書・ドライバー説明の「3 つ」と古いパスの修正。
+- ThreadX 版が書いた量（`wc -l`、かっこ内はコメントと空行を除く）: ファームウェア 2,825 行（1,342）、スクリプト 587、ホストテスト 1,426、実機の試験用ファームウェア 1,351。
+  下調べの見積もり（1,100〜1,250 行）に対して、コードの行は 1,342。
+- まだ: `threadx/README`（日英）とルートの README（メインが書く）、共有のソースのコメントに残る「FreeRTOS だけ」の書き方の修正（subagent が一覧を作った。行数を変えると
+  FreeRTOS のイメージが変わる所があるので、イメージを確かめながら直す）、tickless の実装と計測、ほかの 3 つの OS のカーネルを RAM に置く作業。
+- 実機: ThreadX 版（カーネルを RAM に置いたビルド）。

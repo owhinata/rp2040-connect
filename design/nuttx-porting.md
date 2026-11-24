@@ -2,6 +2,8 @@
 
 English | [日本語](nuttx-porting-ja.md)
 
+The firmware of this repository is built on four OSes, Zephyr, NuttX, the Pico SDK with FreeRTOS and the Pico SDK
+with ThreadX: the Zephyr, NuttX, FreeRTOS and ThreadX builds.
 How each part of the NuttX build works in detail. Usage is in
 `nuttx/README.md`, the drivers and the compatibility layer in `nuttx/drivers/README.md`, and the
 history and the reasons for the decisions in `nuttx/PORTING_STATUS.md`, `nuttx/PORTING_NOTES.md`
@@ -115,7 +117,7 @@ picocom /dev/serial/by-id/usb-NuttX_NuttX_USB_Console_*-if00
   `<name>: command not found`).
 - `reboot` restarts the board (the Zephyr build's `kernel reboot`). It also restarts when given
   an argument, `reboot --help` included.
-- `bootsel` restarts into BOOTSEL (the USB mass storage `RPI-RP2`), as in the FreeRTOS build (the
+- `bootsel` restarts into BOOTSEL (the USB mass storage `RPI-RP2`), as in the FreeRTOS and ThreadX builds (the
   boot ROM's `reset_usb_boot(0, 0)`). No confirmation word; arguments are ignored. It saves pressing
   RESET twice before writing an image.
 - `irqstack` prints the peak use of the interrupt stack since boot in one line (the format of the
@@ -134,19 +136,19 @@ UART, as in the Zephyr build, but nothing is written to it.
 
 ## Log (`dmesg`)
 
-The RAM log of the Zephyr build's `src/log_ram.c`, shared with the FreeRTOS build:
+The RAM log of the Zephyr build's `src/log_ram.c`, shared with the FreeRTOS and ThreadX builds:
 `common/compat/log/log_ram.c` on the ring, line prefix and rate limit of `common/compat/log/log_ring.c`, with its
 NuttX part `nuttx/drivers/include/log_ram_os_impl.h` (the ring's section, the interrupt mask, the
 TIMER) and the syslog channel `nuttx/drivers/log/log_ram_syslog.c`; the `LOG_*` macros are
 `common/compat/log/app_log.h` with its NuttX part `nuttx/drivers/include/app_log_os.h`.
 
 - An 8192-byte ring buffer in `.noinit` (`LOG_RAM_SIZE` in `nuttx/drivers/include/app_log_os.h`; the
-  Zephyr and FreeRTOS builds' have 4096 bytes; it was made larger so that a fatal error report fits from
+  Zephyr, FreeRTOS and ThreadX builds' have 4096 bytes; it was made larger so that a fatal error report fits from
   its first line). The startup code does not clear it, so
   its contents survive a reset such as `reboot`. At boot its header (the magic number and its
   inverse, the start and the length) is checked, and the ring is emptied if it is not intact. The
   magic number is the Zephyr build's `0x4c4f4752` XORed with the size (`0x4c4f6752`), so a ring
-  of another size left in RAM (the FreeRTOS build's 4096-byte one, `0x4c4f5752`, or the Zephyr
+  of another size left in RAM (the FreeRTOS and ThreadX builds' 4096-byte one, `0x4c4f5752`, or the Zephyr
   build's) is emptied rather than misread.
   Power-off clears it. When it is full, the oldest bytes are overwritten.
 - `dmesg` prints what is stored as is, or `No logs.` when it is empty; arguments are ignored. As in
@@ -192,13 +194,13 @@ The settings, the calibration and the Wi-Fi credentials are stored in the last 8
 (`0x10ffe000`-`0x10ffffff`, two 4 KiB erase sectors), the Zephyr build's `storage_partition`, in
 the Zephyr build's format (Zephyr's NVS and settings): the NuttX build reads and writes what the
 Zephyr build stored, and the other way round. The API and the command are the Zephyr build's
-`kv_store.c` itself (`common/imu/kv_store.c`, used by all three builds).
+`kv_store.c` itself (`common/imu/kv_store.c`, used by all four builds).
 
 - Layers: `kv_store.c` → Zephyr's settings (`settings_save_one()`, `settings_load_one()`,
   `settings_delete()`) → Zephyr's NVS → the compatibility layer's flash device and flash map
   (`common/compat/zephyr_flash_kv.c`) → the OS boundary (the five functions of
   `common/compat/flash_kv_os.h`; on the RP2040 `common/chip/rp2040/rp2040_flash_kv.c`, shared with the
-  FreeRTOS build, on the board's flash operations with the boot ROM, `src/rp2040_flash_kv_os.c`). The settings and NVS
+  FreeRTOS and ThreadX builds, on the board's flash operations with the boot ROM, `src/rp2040_flash_kv_os.c`). The settings and NVS
   are unchanged copies of Zephyr v4.5.0's sources (`common/compat/subsys/` and others; the list is
   in the compatibility layer's section of the driver notes), built with the Zephyr build's Kconfig
   values (`common/compat/zephyr_kv_config.h`).
@@ -390,7 +392,7 @@ NINA firmware: 3.0.2
   by an even number, so the clock is 7.8125 MHz (the same in the Zephyr build). NuttX's SPI1
   driver (`rp2040_spi.c`) is used with `CONFIG_RP2040_SPI_DMA`: an exchange of more than
   `CONFIG_RP2040_SPI_DMATHRESHOLD` bytes (63) goes by DMA, whose completion the thread waits for
-  without a time limit, and shorter ones are polled (the same line as the Zephyr and FreeRTOS
+  without a time limit, and shorter ones are polled (the same line as the Zephyr, FreeRTOS and ThreadX
   builds). The driver takes its two channels without waiting (local patch `nuttx/0013`). The transfer layer, not the SPI driver, drives CS as a GPIO,
   and keeps it asserted while waiting for the answer. There is no `/dev/spi1`
   (`CONFIG_RP2040_SPI_DRIVER` is off).
@@ -400,7 +402,7 @@ NINA firmware: 3.0.2
   code sets up `wlan0` (at boot, as in the Zephyr build), so the USB console appears after these
   waits.
 - The steps and values of a request are those of the Zephyr build (`common/drivers/nina/internal/nina_proto.c`,
-  shared by the three builds). READY is not sampled every 100 µs but, as in the Zephyr and FreeRTOS
+  shared by the four builds). READY is not sampled every 100 µs but, as in the Zephyr, FreeRTOS and ThreadX
   builds, waited for on its GPIO interrupt (see "Waiting for READY" in `nuttx/drivers/README.md`),
   with the same limits: `-ETIMEDOUT` after 2000 ms before sending, 20 ms for the
   NINA to answer CS by releasing READY, and 10000 ms for the answer to be ready. Up to 1000 bytes
@@ -410,7 +412,7 @@ NINA firmware: 3.0.2
 ### Passthrough mode (`nina passthrough confirm`)
 
 A mode for reading and writing the NINA's firmware with esptool on the PC (in place of Arduino's
-SerialNINAPassthrough sketch; the same mode in the three builds, the NINA driver's
+SerialNINAPassthrough sketch; the same mode in the four builds, the NINA driver's
 `common/drivers/nina/nina_passthrough.c`). `nina passthrough confirm` restarts the
 board with its USB serial port connected to the NINA's UART (without the confirmation word the
 command refuses). The UART is on the pins of the SPI's MISO and CS (GPIO8, GPIO9), so in this mode the
@@ -654,7 +656,7 @@ I2C0 carries the LSM6DSOX (0x6A) and the ATECC608A (0x60). It is the layer's I2C
 Zephyr build's `i2c` command (see "The `i2c` command" below). Reads that meet the conditions run on DMA (see
 "DMA reads (`i2c_dma`)" below).
 
-The driver is the I2C core shared with the FreeRTOS build (`common/drivers/i2c_dw/`). It is a copy of the controller part
+The driver is the I2C core shared with the FreeRTOS and ThreadX builds (`common/drivers/i2c_dw/`). It is a copy of the controller part
 of the DesignWare I2C driver that the Zephyr version uses (Zephyr's `drivers/i2c/i2c_dw.c` with the local patch
 `zephyr/manifest/zephyr/patches/zephyr/0003-i2c-dw-rp2040-fifo-and-dma.patch`); NuttX's `rp2040_i2c.c`
 (`CONFIG_RP2040_I2C`) is not used. Section 12 of the [design](imu-raw-mqtt-design.md) describes the core; the NuttX part
@@ -711,7 +713,7 @@ i2c_dma mode on|off   switch (only while no stream or transfer runs)
 i2c_dma stats         DMA transfers, bytes, errors, fallbacks to interrupts (since boot)
 ```
 
-The command is the one of the Zephyr and FreeRTOS builds, `common/shell/i2c_dma_shell.c`,
+The command is the one of the Zephyr, FreeRTOS and ThreadX builds, `common/shell/i2c_dma_shell.c`,
 run on `zshell.c` (`nuttx/apps/i2c_dma` only builds it as the builtin command's main source), so the
 output, help and errors are the same (`dma_transfers=0 dma_bytes=0 dma_errors=0 dma_fallbacks=0`;
 anything but `on` or `off` gives `Expected on or off`). As in the Zephyr build, switching only
@@ -722,7 +724,7 @@ transfer runs" is a rule for the user; the command does not check it. Priority 1
 
 The command is the file of the Zephyr build's `i2c` command (Zephyr's `drivers/i2c/i2c_shell.c` with the
 local patch 0004), `common/shell/i2c_shell.c`, run on `zshell.c` (`nuttx/apps/i2c` only builds it
-as the builtin command's main source; the FreeRTOS build uses the same file). The subcommands (`scan`,
+as the builtin command's main source; the FreeRTOS and ThreadX builds use the same file). The subcommands (`scan`,
 `recover`, `read`, `read_byte`, `direct_read`, `write`, `write_byte`, `speed`), syntax, output and help are
 the Zephyr build's, and the device is the layer's I2C bus `i2c@40044000` (the one the LSM6DSO driver
 uses): `i2c speed` changes this bus's speed, so the sensor's transfers change speed too (as in the Zephyr
@@ -935,14 +937,14 @@ Subcommands:
   same KV keys (`imu.host`, `imu.port`, `imu.device`, `imu.odr`, `imu.watermark`).
 - Acquisition runs in the thread `imu_stream_tid` (Zephyr priority 9 → 109, a static 2048-byte
   stack). Zephyr starts `K_THREAD_DEFINE()` threads before `main()`; here init starts it from the
-  application's table of threads shared with the FreeRTOS build (`app_threads_start()` of
+  application's table of threads shared with the FreeRTOS and ThreadX builds (`app_threads_start()` of
   `common/imu/app_init.c`, `K_THREAD_DEFINE_START()`), before the part that does what `main()` does. The `imu`
   command itself is a builtin at the shell's priority (104).
 - The session ID is the chip ID in its first 8 bytes (the USB serial number; the bytes of Zephyr's
   `hwinfo_get_device_id()`), then the KV value `imu.session` (4 bytes, big-endian, incremented and
   stored by every `imu start`), then zeros. The Zephyr build's counter is not carried over; the
   NuttX build starts at 1.
-- init calls the Zephyr build's `main()` itself, shared by the three builds (`app_main()`,
+- init calls the Zephyr build's `main()` itself, shared by the four builds (`app_main()`,
   `common/imu/app_main.c`): `kv_store_init()` → `imu_cal_init()` (on failure
   `Could not set up the IMU calibration: <value>`) → `time_sync_init()` → `wifi_profile_init()`.
 
@@ -1026,7 +1028,7 @@ events that advance them are the same as in the Zephyr build.
 `common/imu/time_sync.c` is the Zephyr build's file (`nuttx/apps/imu/` builds it). The compatibility
 layer provides the calls into the system (sockets, `net_mgmt` events, the realtime clock) under
 Zephyr's names. `time_sync_mono_us()` is `rp2040_timer_us()` of `common/chip/rp2040`, the TIMER's
-read that all three builds share. The Kconfig options
+read that all four builds share. The Kconfig options
 that the file uses (`CONFIG_NINA_NTP_*`) are the NuttX build's options of the same names. The
 layer makes the command registration at the end
 `z_shell_main_ntp()`, which the `main()` of the builtin command `ntp` (`nuttx/apps/ntp/`) calls
@@ -1098,7 +1100,7 @@ default), `CONFIG_SCHED_TICKLESS=y` and `CONFIG_USEC_PER_TICK=100`.
   CPU clock, a different source. In both versions the application reads the TIMER directly as its
   time base.
 - The board's monotonic clock is `rp2040_timer_us()` (`common/chip/rp2040/include/rp2040_timer_us.h`,
-  shared by the three builds, always inline). It reads the TIMER's TIMERAWH, TIMERAWL and TIMERAWH
+  shared by the four builds, always inline). It reads the TIMER's TIMERAWH, TIMERAWL and TIMERAWH
   again until the two high words agree. It has no side effect and takes no lock, so the kernel,
   the applications and interrupt handlers may all call it. The value
   is µs since boot; the TIMER starts again from 0 at every boot (`reboot` included). It is the
@@ -1164,7 +1166,7 @@ mechanism; turning this on does not change how it measures.
     nanosecond digit). The total only grows, so the difference of two readings gives the share over
     an interval (what `Total execution cycles` of the Zephyr build's `kernel thread list` gives).
     The longest run goes back to 0 at each read.
-- The CPU of the Zephyr build's `kernel ps` and the FreeRTOS build's `ps` is the share since the previous
+- The CPU of the Zephyr build's `kernel ps` and the FreeRTOS and ThreadX builds' `ps` is the share since the previous
   run of the command (in 0.1 % steps, since boot for the first; type it at the start and at the end of
   the interval of interest), and `Total execution cycles` of the Zephyr build's `kernel thread list` a
   cycle count since boot. The CPU column of
@@ -1270,8 +1272,8 @@ linked in with `ld --wrap` in the board's `scripts/Make.defs`.
   `arm_doirq()`, which, when the task changes, keeps the old task's divider, only when DIRTY is set, in 20
   bytes of `struct xcptcontext` and restores the new one's (a task that was not dividing comes back with DIRTY
   clear). It is also saved before the last switch of `arm_sigdeliver()`. The FreeRTOS build (the Pico SDK's
-  port) saves four words at every switch.
-- A division by zero gives the Pico SDK routines' results (as in the Zephyr and FreeRTOS builds): for 32 bits
+  port) saves four words at every switch. The ThreadX build (ThreadX's Cortex-M0 port) does not save it at a switch.
+- A division by zero gives the Pico SDK routines' results (as in the Zephyr, FreeRTOS and ThreadX builds): for 32 bits
   a saturated quotient (0xffffffff, 0x7fffffff or 0x80000000; 0 for 0 / 0) and a remainder of 0 (libgcc gave a
   quotient of 0 and the dividend); for 64 bits the same as libgcc's.
 - The routines use only the SIO and the stack, so they work from the start of `__start()`, in interrupt
@@ -1284,7 +1286,7 @@ linked in with `ld --wrap` in the board's `scripts/Make.defs`.
 The code of the sensor's 6667 Hz path and of the send path (the layer's kernel part, work queue, RTIO and
 GPIO, I2C0 and its DMA, the LSM6DSOX driver, the IMU service's stream, batches and time stamps, MQTT, the
 NINA's usrsock binding, sockets, protocol and SPI, with NuttX's DMA and SPI drivers) runs from RAM instead
-of through the 16 KiB XIP cache, as in the FreeRTOS build. The objects are listed in the board's linker
+of through the 16 KiB XIP cache, as in the FreeRTOS and ThreadX builds. The objects are listed in the board's linker
 script (`scripts/arduino-nano-rp2040-connect-flash.ld`), whose `.text` leaves their code to `.data`;
 `__start()` copies it to RAM with the rest of `.data`. Their read-only data, NuttX's own code and what must
 not move (the code that runs before `.data` is copied, code with an `svc`, the fault path) stay in the
@@ -1303,8 +1305,8 @@ The present code registers no handler, so normal operation does not take this pa
 
 ## Host test details
 
-The following files are used by both the Zephyr and the NuttX build (and the FreeRTOS build) and are kept once each in the
-repository's `common/` (the NuttX and FreeRTOS builds use the I2C core;
+The following files are used by both the Zephyr and the NuttX build (and the FreeRTOS and ThreadX builds) and are kept once each in the
+repository's `common/` (the NuttX, FreeRTOS and ThreadX builds use the I2C core;
 see the table; the layout of `common/` as a whole is in §12 of the design document). The Zephyr
 build's `CMakeLists.txt` and the NuttX build's Makefiles
 (`apps/imu/Makefile`, `apps/nina/Makefile`, `apps/wifi/Makefile`, `apps/sensor/Makefile`, `drivers/compat/Make.defs`,
@@ -1325,14 +1327,14 @@ with the layer's NuttX implementation (`nuttx/drivers/compat/`; the Zephyr build
 |---|---|
 | `common/imu/` | `imu_stream.c`, `imu_raw_{batch,packet,queue,status,time}`, `imu_tick_clock`, `time_sync.[ch]`, `time_offset`, `imu_cal_codec.c`, `imu_cal.[ch]`, `imu_raw_mqtt.[ch]`, `wifi_profile.[ch]`, `kv_store.[ch]`, `mqtt_min.[ch]` and `mqtt_min_sock.c` (the MQTT client of the builds on the compatibility layer and its socket layer; the Zephyr build does not use them), `imu_raw_mqtt_null.c` and `time_sync_null.c` (the null implementations for a build without `CONFIG_IMU_RAW_MQTT` or `CONFIG_TIME_SYNC`) |
 | `common/drivers/lsm6dso/` | The driver: at the top its core `lsm6dso.c`, `lsm6dso_stream.c`, `lsm6dso_cal.c`, `lsm6dso_fifo.c` (with no OS; in `internal/` `lsm6dso_core.h`, `lsm6dso_stream.h` and `lsm6dso_fifo_packet.h`, in `port/` the boundaries `lsm6dso_os.h` and `lsm6dso_stream_req.h`), in `include/` the headers for its users `lsm6dso_cal.h`, `lsm6dso_fifo.h` and the extended API `lsm6dso.h` (`<zephyr/drivers/sensor/lsm6dso.h>` through `common/compat`), in `port/zephyr/` the Zephyr binding (`lsm6dso_sensor.[ch]`, `lsm6dso_decoder.[ch]`, `lsm6dso_rtio.c`, `lsm6dso_rtio_stream.c`, `lsm6dso_os_impl.h`, `lsm6dso_os.c`, `lsm6dso_stream_req_impl.h`; the Zephyr build's module), in `port/nuttx/` and `port/freertos/` each build's `lsm6dso_instance.h` |
-| `common/drivers/nina/` | The NINA core: at the top (headers in `include/`) `nina_wifi.[ch]`, `nina_sock.[ch]`, `nina_dns.[ch]`, the esptool passthrough `nina_passthrough.[ch]`; in `internal/` `nina_proto.[ch]` and `nina_wait.[ch]`; in `port/` the headers of its boundaries, `nina_os.h` and `nina_bus.h` (the passthrough's `nina_passthrough_bus.h` and `nina_passthrough_os.h`) (the three builds use them; they do not use Zephyr's API and the NuttX build compiles them without the prelude; the boundary is described under "NINA-W102" in `nuttx/drivers/README.md`); the core's bindings in `port/zephyr/` (the Zephyr and FreeRTOS builds) and `port/nuttx/` (this build: `wlan0`, the applications' Wi-Fi management, `nina_os.c`, usrsock, the passthrough's host side `nina_passthrough_os.c`, the RP2040's SPI and lines `nina_bus_rp2040.c`, the passthrough's module side `nina_passthrough_bus_rp2040.c`) |
-| `common/drivers/stmemsc/` | `stmemsc.h`, `stmemsc_i2c.c`, `stmemsc_mdelay.c` (a copy of the I2C part of Zephyr's stmemsc, used by the NuttX and FreeRTOS builds and compiled without the prelude; the Zephyr build uses Zephyr's) |
-| `common/drivers/i2c_dw/` | The I2C core: at the top `i2c_dw.c` (I2C0, and I2C1 with `CONFIG_I2C_DW_I2C1`, off by default); in `internal/` its definitions `i2c_dw.h`, `i2c_dw_registers.h`, `i2c_dw_rp2040.h` and its DMA reads `i2c_dw_rp2040_dma_priv.h`, with the DMA command words (the Zephyr build has the same function in patch 0003) (the file names of Zephyr's patched driver); in `include/` the declarations of the `i2c_dma` functions `i2c_dw_rp2040_dma.h`; in `port/` the headers of its boundaries, `i2c_dw_os.h` and, for the DMA reads, `i2c_dw_dma_os.h` (the NuttX and FreeRTOS builds use them; they are compiled without the prelude; the boundaries are described under "I2C0" in `nuttx/drivers/README.md`); the core's bindings in `port/nuttx/` (this build: `i2c_dw_os_impl.h`, `i2c_dw_instance.h`, the start `i2c_dw_controllers_rp2040.h` and the DMA part `i2c_dw_dma_os_rp2040.c`, built by `nuttx/drivers/i2c_dw/Make.defs`) and `port/freertos/` (the FreeRTOS build) |
-| `common/chip/rp2040/` | The RP2040's code that no OS owns: `include/rp2040_timer_us.h` (the TIMER's read), `include/rp2040_watchdog_reboot.h`, and the key-value area's flash boundary `rp2040_flash_kv.c` (`include/rp2040_flash_kv.h`; the board's flash operations are declared in `include/rp2040_flash_kv_os.h`), shared with the FreeRTOS build and compiled by the board's `src/Make.defs` without the prelude |
+| `common/drivers/nina/` | The NINA core: at the top (headers in `include/`) `nina_wifi.[ch]`, `nina_sock.[ch]`, `nina_dns.[ch]`, the esptool passthrough `nina_passthrough.[ch]`; in `internal/` `nina_proto.[ch]` and `nina_wait.[ch]`; in `port/` the headers of its boundaries, `nina_os.h` and `nina_bus.h` (the passthrough's `nina_passthrough_bus.h` and `nina_passthrough_os.h`) (the four builds use them; they do not use Zephyr's API and the NuttX build compiles them without the prelude; the boundary is described under "NINA-W102" in `nuttx/drivers/README.md`); the core's bindings in `port/zephyr/` (the Zephyr, FreeRTOS and ThreadX builds) and `port/nuttx/` (this build: `wlan0`, the applications' Wi-Fi management, `nina_os.c`, usrsock, the passthrough's host side `nina_passthrough_os.c`, the RP2040's SPI and lines `nina_bus_rp2040.c`, the passthrough's module side `nina_passthrough_bus_rp2040.c`) |
+| `common/drivers/stmemsc/` | `stmemsc.h`, `stmemsc_i2c.c`, `stmemsc_mdelay.c` (a copy of the I2C part of Zephyr's stmemsc, used by the NuttX, FreeRTOS and ThreadX builds and compiled without the prelude; the Zephyr build uses Zephyr's) |
+| `common/drivers/i2c_dw/` | The I2C core: at the top `i2c_dw.c` (I2C0, and I2C1 with `CONFIG_I2C_DW_I2C1`, off by default); in `internal/` its definitions `i2c_dw.h`, `i2c_dw_registers.h`, `i2c_dw_rp2040.h` and its DMA reads `i2c_dw_rp2040_dma_priv.h`, with the DMA command words (the Zephyr build has the same function in patch 0003) (the file names of Zephyr's patched driver); in `include/` the declarations of the `i2c_dma` functions `i2c_dw_rp2040_dma.h`; in `port/` the headers of its boundaries, `i2c_dw_os.h` and, for the DMA reads, `i2c_dw_dma_os.h` (the NuttX, FreeRTOS and ThreadX builds use them; they are compiled without the prelude; the boundaries are described under "I2C0" in `nuttx/drivers/README.md`); the core's bindings in `port/nuttx/` (this build: `i2c_dw_os_impl.h`, `i2c_dw_instance.h`, the start `i2c_dw_controllers_rp2040.h` and the DMA part `i2c_dw_dma_os_rp2040.c`, built by `nuttx/drivers/i2c_dw/Make.defs`) and `port/freertos/` (the FreeRTOS build) |
+| `common/chip/rp2040/` | The RP2040's code that no OS owns: `include/rp2040_timer_us.h` (the TIMER's read), `include/rp2040_watchdog_reboot.h`, and the key-value area's flash boundary `rp2040_flash_kv.c` (`include/rp2040_flash_kv.h`; the board's flash operations are declared in `include/rp2040_flash_kv_os.h`), shared with the FreeRTOS and ThreadX builds and compiled by the board's `src/Make.defs` without the prelude |
 | `common/compat/` | the OS-independent part of the compatibility layer (the headers of Zephyr's API `zephyr/...`, among them the `i2c_dma` state `zephyr/drivers/i2c/i2c_dw_rp2040_dma.h`, which includes the I2C core's `common/drivers/i2c_dw/include/i2c_dw_rp2040_dma.h`, `zephyr_compat.h`, work items, RTIO, the block pool, the device list, `gpio0`, `net_mgmt`, the Wi-Fi requests, the sensors' default iodev) and the copies of Zephyr's libraries that the builds on the layer use (`sensor_shell_stream.c`, `sensor_shell.h`, `wifi_credentials.c`, `wifi_credentials_backend_settings.c`, `wifi_credentials_internal.h`), and boundary headers (`priorities.h`, `cpu_load.h`, `gpio_os.h`); the Zephyr build does not use it |
 | `common/shell/` | `sensor_shell.c` (the file of the Zephyr build's tree with its patch 0006), `i2c_shell.c` (the file of the Zephyr build's tree with its patch 0004; built by `nuttx/apps/i2c`), `subcmd.[ch]` (the subcommand tables), `zshell.c` (the handling of commands written with `<zephyr/shell/shell.h>`: word matching, wildcards, argument count checks, help) and its boundary to the OS, `zshell_os.h` (the NuttX build's part is `nuttx/apps/subcmd/zshell_os_impl.h`); compiled without the prelude; the Zephyr build does not use them. Also `i2c_dma_shell.c` (the `i2c_dma` command of the three builds, written on Zephyr's shell API; the NuttX build's `nuttx/apps/i2c_dma` builds it with the prelude), and `nina_shell.c` (the `nina` command of the Zephyr and FreeRTOS builds; the NuttX build has its own, `nuttx/apps/nina`) |
-| `common/compat/log/` | `log_ring.[ch]` (the RAM log's ring, line prefix and rate limit), `app_log.h` (the `LOG_*` macros; the NuttX part is `nuttx/drivers/include/app_log_os.h`), `log_ram.c`, `log_ram.h` (the RAM log and the functions of the `LOG_*` macros, shared with the FreeRTOS build; the NuttX part is `nuttx/drivers/include/log_ram_os_impl.h`, the syslog channel `nuttx/drivers/log/log_ram_syslog.c`), `fault_record.[ch]` (the record of a fatal error: its format, CRC-32, the copy in the watchdog's scratch registers and its lines; only the FreeRTOS build uses it); the Zephyr build does not use it |
-| `common/tests/` | the 37 tests of the files above and the checks against the Zephyr tree, `zephyr_copies` and `zephyr_sensor_shell_patched` (run by `common/tests/run.sh`, which the `host_tests.sh` of the three builds call first; the layer's `zephyr_rtio`, `zephyr_work` and `mqtt_min` on the fake kernel, the NINA core's `nina_proto`, `nina_sock`, `nina_wifi`, `nina_dns` and `nina_passthrough` on fakes of its boundaries defined by the tests, `nina_core_independent`, each core file compiled with the C library and its own headers only, `i2c_dw_public_headers`, the I2C core's `include/` compiled with that directory alone, and the LSM6DSO's `lsm6dso_core_independent` and `lsm6dso_public_headers`, the same for its core and its `include/`); `lsm6dso_stream` runs the core's stream `lsm6dso_stream.c` on the host's parts of its boundaries (`common/tests/lsm6dso_os_host/`) with fakes of the core's FIFO calls |
+| `common/compat/log/` | `log_ring.[ch]` (the RAM log's ring, line prefix and rate limit), `app_log.h` (the `LOG_*` macros; the NuttX part is `nuttx/drivers/include/app_log_os.h`), `log_ram.c`, `log_ram.h` (the RAM log and the functions of the `LOG_*` macros, shared with the FreeRTOS and ThreadX builds; the NuttX part is `nuttx/drivers/include/log_ram_os_impl.h`, the syslog channel `nuttx/drivers/log/log_ram_syslog.c`), `fault_record.[ch]` (the record of a fatal error: its format, CRC-32, the copy in the watchdog's scratch registers and its lines; only the FreeRTOS build uses it); the Zephyr build does not use it |
+| `common/tests/` | the 37 tests of the files above and the checks against the Zephyr tree, `zephyr_copies` and `zephyr_sensor_shell_patched` (run by `common/tests/run.sh`, which the `host_tests.sh` of the four builds call first; the layer's `zephyr_rtio`, `zephyr_work` and `mqtt_min` on the fake kernel, the NINA core's `nina_proto`, `nina_sock`, `nina_wifi`, `nina_dns` and `nina_passthrough` on fakes of its boundaries defined by the tests, `nina_core_independent`, each core file compiled with the C library and its own headers only, `i2c_dw_public_headers`, the I2C core's `include/` compiled with that directory alone, and the LSM6DSO's `lsm6dso_core_independent` and `lsm6dso_public_headers`, the same for its core and its `include/`); `lsm6dso_stream` runs the core's stream `lsm6dso_stream.c` on the host's parts of its boundaries (`common/tests/lsm6dso_os_host/`) with fakes of the core's FIFO calls |
 | `common/tests/fakes/` | stand-ins for the Zephyr and ST headers the tests need (`zephyr/drivers/sensor.h`, `zephyr/drivers/sensor_clock.h`, `zephyr/drivers/i2c.h`, `zephyr/rtio/rtio.h`, `lsm6dso_reg.h`) |
 | `common/tests/zephyr_fakes/` | the compatibility layer's fake kernel: the OS headers (`zephyr_os.h`, `zephyr_os_spinlock.h`, `zephyr_os_atomic.h`, `priorities_os.h`, `zephyr/sys/__assert.h`) and their functions (`zephyr_kernel_host.[ch]`: one thread; the test runs the work queues and fires the timers); the NuttX build's tests use it too |
 
@@ -1546,7 +1548,7 @@ FIONBIO), bind, listen (backlog clamped to 1..255), accept (the peer's address a
 its port, `EAGAIN`, `EMFILE`), connect (UDP; TCP in progress, the errno of each SO_ERROR value, the
 error flag, the 10000 ms limit, a failed poll, closing the NINA's socket after a failure), close,
 setsockopt, what `nina_event` queries and turns into events, and `nina_sock_poll_revents()` (the
-Zephyr and FreeRTOS builds' `do_poll()` for one socket). For sending and receiving: TCP
+Zephyr, FreeRTOS and ThreadX builds' `do_poll()` for one socket). For sending and receiving: TCP
 send (at most 3584 bytes a call, the answer checks, `MSG_DONTWAIT`, the passes of a waiting send
 with its state check every 100 ms and its 10000 ms limit, a continued call told from a new one),
 `sendmsg` (vectors joined into one command, what it refuses), UDP send (the address checks, the
