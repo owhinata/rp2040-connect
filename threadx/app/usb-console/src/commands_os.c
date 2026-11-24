@@ -1,13 +1,10 @@
 /* SPDX-License-Identifier: MIT */
 /* The ThreadX part of the commands of the USB console (commands_os.h of
- * common/pico_sdk/app/usb-console/src, which describes each item; included
- * once, by commands.c): the kernel's name and version for "version", and
- * "ps" on ThreadX's list of created threads and the execution profile
- * kit's run times (run_time.h).
+ * common/pico_sdk/app/usb-console/src, which describes each item;
+ * commands.c registers the commands): the kernel's name and version for
+ * "version", and "ps" on ThreadX's list of created threads and the
+ * execution profile kit's run times (run_time.h).
  */
-
-#ifndef COMMANDS_OS_IMPL_H
-#define COMMANDS_OS_IMPL_H
 
 #include <errno.h>
 #include <stdbool.h>
@@ -22,16 +19,19 @@
 #include <zephyr/shell/shell.h>
 
 #include "app.h"
+#include "commands_os.h"
 #include "ps_interval.h"
 #include "run_time.h"
 
-#define COMMANDS_OS_KERNEL_NAME    "ThreadX kernel"
-#define COMMANDS_OS_KERNEL_VERSION commands_os_kernel_version()
+const char *commands_os_kernel_name(void)
+{
+	return "ThreadX kernel";
+}
 
 /* "6.5.2.202603b", from tx_api.h (the tag v6.5.2.202603b_rel).  Two shells
  * may write it at once, with the same text.
  */
-static const char *commands_os_kernel_version(void)
+const char *commands_os_kernel_version(void)
 {
 	static char version[24];
 
@@ -120,7 +120,7 @@ static size_t ps_stack_free(const TX_THREAD *t)
  */
 static K_MUTEX_DEFINE(ps_lock);
 
-static int cmd_ps(const struct shell *sh, size_t argc, char **argv)
+int commands_os_ps(const struct shell *sh, size_t argc, char **argv)
 {
 	TX_INTERRUPT_SAVE_AREA
 	static struct ps_row rows[PS_TASKS_MAX - 1];
@@ -204,5 +204,3 @@ static int cmd_ps(const struct shell *sh, size_t argc, char **argv)
 	k_mutex_unlock(&ps_lock);
 	return 0;
 }
-
-#endif /* COMMANDS_OS_IMPL_H */

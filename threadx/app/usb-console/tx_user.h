@@ -40,7 +40,7 @@
  *   and of the word above its top, and its saved stack pointer against the
  *   lowest address; a failure calls the handler that the USB console
  *   registers with tx_thread_stack_error_notify() (its fatal error exit,
- *   src/fault_os_impl.h).  FreeRTOS checks at every switch out of a task
+ *   src/fault_os.c).  FreeRTOS checks at every switch out of a task
  *   (PendSV), ThreadX at those calls (the preemption by PendSV is not one
  *   of them).  The check needs the stack filling, which stays on; ThreadX
  *   leaves one word at the top of each stack for the pattern.

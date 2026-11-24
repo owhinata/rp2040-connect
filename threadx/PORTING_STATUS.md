@@ -268,3 +268,17 @@
 - 同じ「共有のファイルが OS のヘッダーを読み込む」形の残り 3 か所（subagent の評価。未着手、ユーザーに相談）: 異常停止（`fault.c`。反転すると少し読みやすい）、
   `ps` とバージョン（`commands.c`。反転してよい、効果は中くらい）、アイドル（`idle.c`。フックの名前を決めるマクロだけなので、そのままを勧める）。
 - 実機: ThreadX 版（このビルド）。
+
+## 異常停止と `ps`・バージョンも、OS の側のファイルが共有の関数を呼ぶ形に（2026-11-24、ユーザーの了承）
+
+- 起動と同じ形にそろえた（アイドルはそのまま。`idle_os.h` はフックの名前を決めるマクロだけ）。
+- 異常停止: 共有の `fault.h` が `fault_begin()`・`fault_finish()`（どの文脈からでも呼べる。待たない、確保しない、OS を呼ばない）と `FAULT_RAM_START`・`_END` を宣言し、OS の `src/fault_os.c` が
+  カーネルから呼ばれる入口（FreeRTOS: `vApplicationStackOverflowHook()`、ThreadX: `fault_os_stack_error()`）と `fault_os_thread_name()`（普通の関数になった）を持つ。`fault_os.h` と 2 つの `fault_os_impl.h` は削除。
+- `ps`・バージョン: OS の `src/commands_os.c` が `commands_os_ps()`・`commands_os_kernel_name()`・`_version()` を持つ（FreeRTOS は `app_run_time_us()` も）。登録と表は共有の `commands.c` のまま。
+  2 つの `commands_os_impl.h` は削除。ThreadX の `ps` を `run_time.c` に入れなかったのは、`run_time.c` を実機の試験用のファームウェア（シェルなし）もビルドするため。
+- 逆アセンブルで、異常停止の呼び出しの順と、異常停止の関数がフラッシュにあることを確かめた（subagent）。文字列の差は `version` の書式だけ（出力は同じ）。
+  text: FreeRTOS 248,016（+112）、ThreadX 248,740（+88）。ホストテスト 68・56。Zephyr・NuttX はこれらをコンパイルしない。
+- **実機**（FreeRTOS 版と ThreadX 版とも）: `version` の 1 行が前と同じ、`ps` の形が前と同じ（ThreadX は `(idle)` の行）、`devmem 30000000` のあと再起動して `fault` に HardFault・タスク console・pc・lr・sp、
+  送信 60 秒は 19.3%・18.4% で欠番 0。スタックのあふれは起こす手段が無いので実機では確かめていない。
+- あわせて `nuttx/apps/bootsel/bootsel_main.c` の古いコメント（`bootsel` の場所）を直した（コメントだけ、行数は同じ）。
+- 実機: FreeRTOS 版（このビルド）。

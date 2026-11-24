@@ -1,15 +1,13 @@
 /* SPDX-License-Identifier: MIT */
 /* The FreeRTOS part of the commands of the USB console (commands_os.h of
- * common/pico_sdk/app/usb-console/src, which describes each item; included
- * once, by commands.c): the kernel's name and version for "version", and
- * "ps" on FreeRTOS's task list and run time counters, with the counter's
- * clock.
+ * common/pico_sdk/app/usb-console/src, which describes each item;
+ * commands.c registers the commands): the kernel's name and version for
+ * "version", and "ps" on FreeRTOS's task list and run time counters, with
+ * the counters' clock.
  */
 
-#ifndef COMMANDS_OS_IMPL_H
-#define COMMANDS_OS_IMPL_H
-
 #include <errno.h>
+#include <stddef.h>
 #include <stdint.h>
 #include "hardware/timer.h"
 #include "FreeRTOS.h"
@@ -17,16 +15,24 @@
 #include <zephyr/kernel.h>
 #include <zephyr/shell/shell.h>
 #include "app.h"
+#include "commands_os.h"
 #include "ps_interval.h"
 
-#define COMMANDS_OS_KERNEL_NAME    "FreeRTOS kernel"
-#define COMMANDS_OS_KERNEL_VERSION tskKERNEL_VERSION_NUMBER
+const char *commands_os_kernel_name(void)
+{
+	return "FreeRTOS kernel";
+}
+
+const char *commands_os_kernel_version(void)
+{
+	return tskKERNEL_VERSION_NUMBER;
+}
 
 #define PS_TASKS_MAX 24
 
 /* The run time of the tasks, in microseconds of the TIMER: the counter
  * FreeRTOSConfig.h names (portGET_RUN_TIME_COUNTER_VALUE()), which the
- * kernel reads at each switch.  The other hooks are in fault_os_impl.h
+ * kernel reads at each switch.  The other hooks are in fault_os.c
  * (fatal errors), idle_os.h and tick.c.
  */
 uint64_t app_run_time_us(void)
@@ -48,7 +54,7 @@ _Static_assert(PS_TASKS_MAX <= PS_INTERVAL_TASKS_MAX, "ps keeps every task");
  */
 static K_MUTEX_DEFINE(ps_lock);
 
-static int cmd_ps(const struct shell *sh, size_t argc, char **argv)
+int commands_os_ps(const struct shell *sh, size_t argc, char **argv)
 {
 	static TaskStatus_t tasks[PS_TASKS_MAX];
 	static struct ps_interval interval;
@@ -103,5 +109,3 @@ static int cmd_ps(const struct shell *sh, size_t argc, char **argv)
 	k_mutex_unlock(&ps_lock);
 	return 0;
 }
-
-#endif /* COMMANDS_OS_IMPL_H */

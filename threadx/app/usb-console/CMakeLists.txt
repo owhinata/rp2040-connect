@@ -53,12 +53,13 @@ include(${COMMON_DIR}/pico_sdk/app/usb-console/usb-console.cmake)
 # and the scheduler, which calls the shared steps (src/usb_console.c of
 # PICO_SDK_APP_DIR) and, through them, the application's start shared by
 # the three builds (common/imu/app_main.h: app_main.c, app_init.c); the
-# commands (src/commands.c, with "ps" and
-# "version" of src/commands_os_impl.h) and the generic commands
+# commands (src/commands.c, with "ps" and the kernel's part of "version" of
+# src/commands_os.c here) and the generic commands
 # (common/shell/kernel_shell.c, on src/kernel_shell_os_impl.h); the fatal
-# errors, the idle wait (its halves, src/idle_os.h) and the interrupt
-# stack; the run times of "ps" (src/run_time.c); the variables of the
-# layer's ThreadX part; the records of fatal errors.  threadx_kernel() adds
+# errors (with the stack check's handler and the running thread's name,
+# src/fault_os.c), the idle wait (its halves, src/idle_os.h) and the
+# interrupt stack; the run times of "ps" (src/run_time.c); the variables
+# of the layer's ThreadX part; the records of fatal errors.  threadx_kernel() adds
 # ThreadX and its tick.
 add_executable(usb-console
   src/main.c
@@ -66,8 +67,10 @@ add_executable(usb-console
   ${COMMON_DIR}/imu/app_main.c
   ${COMMON_DIR}/imu/app_init.c
   ${PICO_SDK_APP_DIR}/src/commands.c
+  src/commands_os.c
   ${COMMON_DIR}/shell/kernel_shell.c
   ${PICO_SDK_APP_DIR}/src/fault.c
+  src/fault_os.c
   ${PICO_SDK_APP_DIR}/src/idle.c
   ${PICO_SDK_APP_DIR}/src/irq_stack.c
   src/run_time.c

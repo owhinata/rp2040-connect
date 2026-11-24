@@ -24,7 +24,7 @@
  *
  * The other hooks of the kernel are in tx_user.h, tick.c,
  * tx_initialize_low_level.c, idle_os.h (the idle wait), run_time.c (the
- * run time of "ps") and fault_os_impl.h (the stack check's handler,
+ * run time of "ps") and fault_os.c (the stack check's handler,
  * registered here).
  */
 #include <stdint.h>
@@ -40,7 +40,7 @@
 
 #define PROMPT "threadx:~$ "
 
-/* The stack check's handler (fault_os_impl.h, tx_user.h). */
+/* The stack check's handler (fault_os.c, tx_user.h). */
 void fault_os_stack_error(TX_THREAD *thread);
 
 /* The thread "main"'s stack, used only until the thread ends, with the

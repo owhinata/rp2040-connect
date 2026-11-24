@@ -1,19 +1,16 @@
 /* SPDX-License-Identifier: MIT */
 /* The commands of the builds on the Pico SDK that only the OS and the
- * Pico SDK can answer ("version", "free", and "ps" of the OS's part,
- * commands_os.h), written as Zephyr shell commands
- * (common/compat/shell_engine/shell_engine.h), and the table of all the
- * commands of the shell (shell_engine_cmds[]).
+ * Pico SDK can answer ("version", "free", and "ps", whose handler and the
+ * kernel's name and version are the OS's, commands_os.h), written as
+ * Zephyr shell commands (common/compat/shell_engine/shell_engine.h), and
+ * the table of all the commands of the shell (shell_engine_cmds[]).
  */
-#include <errno.h>
 #include <malloc.h>
 #include <stdint.h>
 #include "pico/version.h"
 #include <zephyr/kernel.h>
 #include <zephyr/shell/shell.h>
-#include "app.h"
 #include "shell_engine.h"
-#include "ps_interval.h"
 #include "commands_os.h"
 
 static int cmd_version(const struct shell *sh, size_t argc, char **argv)
@@ -21,8 +18,8 @@ static int cmd_version(const struct shell *sh, size_t argc, char **argv)
 	(void)argc;
 	(void)argv;
 
-	shell_print(sh, COMMANDS_OS_KERNEL_NAME " %s, Pico SDK %s, GCC %s",
-		    COMMANDS_OS_KERNEL_VERSION, PICO_SDK_VERSION_STRING, __VERSION__);
+	shell_print(sh, "%s %s, Pico SDK %s, GCC %s", commands_os_kernel_name(),
+		    commands_os_kernel_version(), PICO_SDK_VERSION_STRING, __VERSION__);
 	return 0;
 }
 
@@ -54,7 +51,7 @@ static int cmd_free(const struct shell *sh, size_t argc, char **argv)
 SHELL_CMD_REGISTER(free, NULL, "Show the use of malloc()", cmd_free);
 
 /* The OS's "ps" (commands_os.h). */
-SHELL_CMD_REGISTER(ps, NULL, "List the tasks and show the CPU load", cmd_ps);
+SHELL_CMD_REGISTER(ps, NULL, "List the tasks and show the CPU load", commands_os_ps);
 
 /* The commands of other sources: "help" of the shell engine
  * (common/compat/shell_engine/shell_engine.c), the generic commands of

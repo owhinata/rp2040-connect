@@ -1,5 +1,7 @@
 /* SPDX-License-Identifier: MIT */
-/* Fatal errors: the entries, the common exit and the record (fault.h). */
+/* Fatal errors: the common exit, its own entries and the record (fault.h).
+ * The OS's entries and the running thread's name are the OS's fault_os.c.
+ */
 
 #include <stdarg.h>
 #include <stdbool.h>
@@ -13,14 +15,9 @@
 #include "app.h"
 #include "app_log.h"
 #include "fault.h"
-#include "fault_os.h"
 #include "rp2040_timer_us.h"
 
 LOG_MODULE_REGISTER(fault);
-
-/* The RP2040's SRAM, where stacks and the kernel's objects are. */
-#define FAULT_RAM_START 0x20000000u
-#define FAULT_RAM_END   0x20042000u
 
 /* Left alone by the start-up code (crt0 only copies .data and zeroes .bss),
  * so it survives the watchdog's restart.  Power-on leaves random contents,
@@ -72,10 +69,9 @@ static void __attribute__((noreturn)) restart(void)
 	}
 }
 
-/* Disables interrupts and starts a record.  Returns NULL when a fatal error
- * happens inside the exit; the caller then only restarts.
- */
-static struct fault_record *fault_begin(uint32_t reason, uint32_t pc)
+/* The common exit (fault.h) ---------------------------------------------*/
+
+struct fault_record *fault_begin(uint32_t reason, uint32_t pc)
 {
 	struct fault_record *r = &fault_ram;
 
@@ -93,10 +89,7 @@ static struct fault_record *fault_begin(uint32_t reason, uint32_t pc)
 	return r;
 }
 
-/* The common exit: the running task, the time, the seal, the scratch
- * registers and the restart.
- */
-static void __attribute__((noreturn)) fault_finish(struct fault_record *r)
+void fault_finish(struct fault_record *r)
 {
 	uint32_t s[FAULT_SCRATCH_WORDS];
 
@@ -116,7 +109,7 @@ static void __attribute__((noreturn)) fault_finish(struct fault_record *r)
 	restart();
 }
 
-/* Entries ----------------------------------------------------------------*/
+/* Its own entries --------------------------------------------------------*/
 
 /* The Pico SDK's panic() (pico/platform/panic.h).  PICO_PANIC_FUNCTION is
  * defined empty (usb-console.cmake), which leaves the SDK's own panic() out
@@ -180,9 +173,6 @@ void __attribute__((noreturn)) _exit(int status)
 	}
 	fault_finish(r);
 }
-
-/* The OS's own entries (fault_os.h). */
-#include "fault_os_impl.h"
 
 /* Called by isr_hardfault() with the stack that holds the exception frame
  * and EXC_RETURN.

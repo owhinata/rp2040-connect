@@ -1,7 +1,6 @@
 /* SPDX-License-Identifier: MIT */
-/* The ThreadX part of the fatal error exit (fault_os.h of
- * common/pico_sdk/app/usb-console/src, which describes each item; included
- * once, by fault.c, among its entries): the running thread's name from its
+/* The ThreadX part of the fatal error exit (fault.h of
+ * common/pico_sdk/app/usb-console/src): the running thread's name from its
  * control block, and ThreadX's stack check as an entry.
  *
  * ThreadX's other fatal paths end in fault.c's own entries: the layer's
@@ -12,15 +11,14 @@
  * layer's threads do not return).
  */
 
-#ifndef FAULT_OS_IMPL_H
-#define FAULT_OS_IMPL_H
-
 #include <stddef.h>
 #include <stdint.h>
 #include <string.h>
 
 #include "tx_api.h"
 #include "tx_thread.h"
+
+#include "fault.h"
 
 #ifndef TX_ENABLE_STACK_CHECKING
 #error "fault_os_stack_error() is the handler of TX_ENABLE_STACK_CHECKING (tx_user.h)"
@@ -31,8 +29,7 @@
  * a corrupted kernel.  The layer's threads keep their names in the storage
  * after their stacks (zephyr_kernel_os_impl.h of threadx/drivers/compat).
  */
-static inline __attribute__((always_inline)) void fault_os_copy_name(const TX_THREAD *thread,
-								     char *name, size_t size)
+static void fault_os_copy_name(const TX_THREAD *thread, char *name, size_t size)
 {
 	if (thread == NULL || !fault_record_in_range((uintptr_t)thread, sizeof(TX_THREAD),
 						     FAULT_RAM_START, FAULT_RAM_END)) {
@@ -49,7 +46,7 @@ static inline __attribute__((always_inline)) void fault_os_copy_name(const TX_TH
  * thread, and while it waits with no thread ready (a fault in an interrupt
  * handler then has no thread).
  */
-static inline __attribute__((always_inline)) void fault_os_thread_name(char *name, size_t size)
+void fault_os_thread_name(char *name, size_t size)
 {
 	fault_os_copy_name(_tx_thread_current_ptr, name, size);
 }
@@ -72,5 +69,3 @@ void fault_os_stack_error(TX_THREAD *thread)
 	}
 	fault_finish(r);
 }
-
-#endif /* FAULT_OS_IMPL_H */

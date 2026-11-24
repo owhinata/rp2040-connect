@@ -45,19 +45,24 @@ include(${COMMON_DIR}/pico_sdk/app/usb-console/usb-console.cmake)
 # The start: main() (src/main.c) with the task "main" and the scheduler,
 # which calls the shared steps (src/usb_console.c of PICO_SDK_APP_DIR) and,
 # through them, the application's start shared by the three builds
-# (common/imu/app_main.h: app_main.c, app_init.c); the commands (src/commands.c, with "ps" and
-# "version" of src/commands_os_impl.h) and the generic commands
-# (common/shell/kernel_shell.c, on src/kernel_shell_os_impl.h); the fatal
-# errors, the idle pass and the interrupt stack; FreeRTOS's tick hook
-# (src/tick.c); the records of fatal errors.
+# (common/imu/app_main.h: app_main.c, app_init.c); the commands
+# (src/commands.c, with "ps" and the kernel's part of "version" of
+# src/commands_os.c here, which also has the run time counters' clock) and
+# the generic commands (common/shell/kernel_shell.c, on
+# src/kernel_shell_os_impl.h); the fatal errors (with FreeRTOS's stack
+# overflow hook and the running task's name, src/fault_os.c), the idle pass
+# and the interrupt stack; FreeRTOS's tick hook (src/tick.c); the records
+# of fatal errors.
 add_executable(usb-console
   src/main.c
   ${PICO_SDK_APP_DIR}/src/usb_console.c
   ${COMMON_DIR}/imu/app_main.c
   ${COMMON_DIR}/imu/app_init.c
   ${PICO_SDK_APP_DIR}/src/commands.c
+  src/commands_os.c
   ${COMMON_DIR}/shell/kernel_shell.c
   ${PICO_SDK_APP_DIR}/src/fault.c
+  src/fault_os.c
   ${PICO_SDK_APP_DIR}/src/idle.c
   ${PICO_SDK_APP_DIR}/src/irq_stack.c
   src/tick.c

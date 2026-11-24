@@ -12,7 +12,6 @@
 #                              the include path (FreeRTOSConfig.h on
 #                              FreeRTOS, priorities_os.h, the OS's parts of the
 #                              application's boundaries: idle_os.h,
-#                              fault_os_impl.h, commands_os_impl.h,
 #                              kernel_shell_os_impl.h)
 #   PICO_SDK_OS_LIBRARIES      the OS's libraries (FreeRTOS-Kernel; none for
 #                              ThreadX), linked after the SDK's
@@ -107,7 +106,7 @@ function(pico_sdk_usb_console target)
   )
 
   # The OS's directories (PICO_SDK_OS_APP_DIRS); src/ here (app.h, fault.h,
-  # usb_console.h, the application's boundaries fault_os.h, commands_os.h);
+  # usb_console.h, commands_os.h, which the OS's sources include too);
   # priorities.h and cpu_load.h (common/compat); fault_record.h
   # (common/compat/log); the RP2040's code that no OS owns
   # (common/chip/rp2040/include: rp2040_timer_us.h; rp2040_flash_kv.h and

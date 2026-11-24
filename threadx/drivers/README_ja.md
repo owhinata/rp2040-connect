@@ -20,7 +20,7 @@ Pico SDK の上の部分（`common/pico_sdk/`、各ドライバーの `port/pico
 
 | 場所 | 内容 |
 |---|---|
-| `app/usb-console/` | ビルド（`CMakeLists.txt`: 共有の `common/pico_sdk/app/usb-console/usb-console.cmake` に渡す設定とソース。`threadx_kernel.cmake`: ThreadX のカーネル・ポート・実行時間のキットをファームウェアのソースとして加え、ボードの部分、ベクター、Pico SDK のロックの連携を足す）、カーネルの設定（`tx_user.h`）、`src/`: 起動の入口（`main.c`: `main()`、カーネルの準備、スレッド "main"、スケジューラー）、SysTick と例外の優先度（`tx_initialize_low_level.c`）、tick（`tick.c`）、優先度と時分割（`priorities_os.h`）、共有のアプリの境界の ThreadX の部分（アイドル `idle_os.h`、異常停止 `fault_os_impl.h`、`ps` とバージョン `commands_os_impl.h`、汎用のコマンド `kernel_shell_os_impl.h`）、スレッドごとの実行時間（`run_time.[ch]`） |
+| `app/usb-console/` | ビルド（`CMakeLists.txt`: 共有の `common/pico_sdk/app/usb-console/usb-console.cmake` に渡す設定とソース。`threadx_kernel.cmake`: ThreadX のカーネル・ポート・実行時間のキットをファームウェアのソースとして加え、ボードの部分、ベクター、Pico SDK のロックの連携を足す）、カーネルの設定（`tx_user.h`）、`src/`: 起動の入口（`main.c`: `main()`、カーネルの準備、スレッド "main"、スケジューラー）、SysTick と例外の優先度（`tx_initialize_low_level.c`）、tick（`tick.c`）、優先度と時分割（`priorities_os.h`）、共有のアプリの境界の ThreadX の部分（アイドル `idle_os.h`、異常停止 `fault_os.c`、`ps` とバージョン `commands_os.c`、汎用のコマンド `kernel_shell_os_impl.h`）、スレッドごとの実行時間（`run_time.[ch]`） |
 | `drivers/compat/` | 互換層の ThreadX の部分: 汎用のカーネルの部分の基本の操作（`zephyr_kernel_os_impl.h`）、そのロックの変数（`zephyr_kernel_os.c`）、ボードのポートのヘッダー（`rp2040/zephyr_os_port.h`） |
 | `drivers/pico_sdk_interop/` | Pico SDK のミューテックス・セマフォ・スリープの待ちを ThreadX のスレッドにつなぐもの（下の「Pico SDK のロックの連携」） |
 | `common/drivers/i2c_dw/port/threadx/` | I2C のコアの待ち・時計・スリープ（`i2c_dw_os_impl.h`） |
@@ -118,7 +118,7 @@ ThreadX 付属の実行時間のキット（`utility/execution_profile_kit`、`T
 32 ビット（1 µs）で、合計は 64 ビットです。スレッドの時間は切り替えで入ってから出るまでなので、スレッドを割り込んだハンドラーの時間は
 そのスレッドに入ります（Pico SDK のハンドラーはキットの `_tx_execution_isr_enter()` を呼ばない。FreeRTOS の実行時間の統計と同じ）。スケジューラーが
 待っていた時間はキットのアイドルの時間で、`ps` の `(idle)` の行です。`cpu_active` はキットのアイドルの時間ではなく、上の区間から測ります。
-読み出しは `src/run_time.c`、表示は `src/commands_os_impl.h` です。キットの分だけ `TX_THREAD` が 12 バイト大きくなります。
+読み出しは `src/run_time.c`、表示は `src/commands_os.c` です。キットの分だけ `TX_THREAD` が 12 バイト大きくなります。
 
 ## Pico SDK のロックの連携
 
@@ -137,7 +137,7 @@ Pico SDK の `mutex_t`・`semaphore_t`・`sleep_ms()` は、既定ではコア�
 ## スタックの検査
 
 `TX_ENABLE_STACK_CHECKING`: スレッドが自分で待ちに入るとき（待ち、スリープ、譲り）と再開されるときに、ThreadX がスタックのいちばん下の語と
-上端の上の語の 0xEF の印、保存したスタックポインターを確かめ、外れていれば `fault_os_stack_error()`（`src/fault_os_impl.h`）を呼びます。異常停止の
+上端の上の語の 0xEF の印、保存したスタックポインターを確かめ、外れていれば `fault_os_stack_error()`（`src/fault_os.c`）を呼びます。異常停止の
 記録には、そのスレッドの名前が入ります（動いているスレッドとは限らない）。FreeRTOS 版（`configCHECK_FOR_STACK_OVERFLOW` 2）は切り替えのたびに
 確かめますが、ThreadX は PendSV による横取りのときは確かめません。ThreadX は各スタックの上端の 1 語を印に使います。`ps` の STACK FREE は、
 スタックの下から 0xEF のまま残っているバイト数です。
@@ -177,12 +177,12 @@ I2C と NINA のつなぎは、互換層を通さず ThreadX と Pico SDK で直
 |---|---|---|
 | `_tx_thread_preempt_disable` | `drivers/compat/zephyr_kernel_os_impl.h`（`z_os_task_lock()`）、`drivers/pico_sdk_interop/pico_sdk_interop.c`（待てるかの判定） | ロックの中で切り替えないため（上の「スレッドのロック」） |
 | `_tx_thread_system_preempt_check()` | `zephyr_kernel_os_impl.h`（`z_os_task_unlock()`） | ロックの中のサービスが残した切り替えを解除で行う |
-| `_tx_thread_current_ptr`、`_tx_thread_system_state` | `zephyr_kernel_os_impl.h`、ポートのヘッダー、`fault_os_impl.h`、`commands_os_impl.h`、`pico_sdk_interop.c` | 呼んだスレッド、カーネルの前か、ISR の中か（呼び出しなしで） |
-| `TX_THREAD` のメンバー（`tx_thread_priority`、`tx_thread_state`、`tx_thread_name`、`tx_thread_stack_start`・`_end`、`tx_thread_timer`、実行時間） | `zephyr_kernel_os_impl.h`、`commands_os_impl.h`、`fault_os_impl.h`、`run_time.c` | 優先度、終わったか、名前、`ps` の状態とスタックの空き |
+| `_tx_thread_current_ptr`、`_tx_thread_system_state` | `zephyr_kernel_os_impl.h`、ポートのヘッダー、`fault_os.c`、`commands_os.c`、`pico_sdk_interop.c` | 呼んだスレッド、カーネルの前か、ISR の中か（呼び出しなしで） |
+| `TX_THREAD` のメンバー（`tx_thread_priority`、`tx_thread_state`、`tx_thread_name`、`tx_thread_stack_start`・`_end`、`tx_thread_timer`、実行時間） | `zephyr_kernel_os_impl.h`、`commands_os.c`、`fault_os.c`、`run_time.c` | 優先度、終わったか、名前、`ps` の状態とスタックの空き |
 | `_tx_mutex_created_ptr`、`_tx_mutex_created_count` と `tx_mutex_created_next`・`_previous` の付け替え | `zephyr_kernel_os_impl.h`（`z_tx_mutex_create()`） | 0 で埋められるミューテックスを作成済みの一覧から外す |
 | `TX_MUTEX` のメンバーと `_tx_mutex_priority_change()` | `zephyr_kernel_os_impl.h`（`z_tx_mutex_timed_out()`、`z_os_mutex_unlock()`） | 待ち手のタイムアウトで持ち主の優先度を戻す。持ち主の確認 |
 | `tx_semaphore_count`、`tx_semaphore_suspended_count` への直接の読み書き | `common/drivers/i2c_dw/port/threadx/i2c_dw_os_impl.h` | `k_sem_reset()`、カーネルの前の 2 回目の初期化（ThreadX に数を書くサービスは無い）、待ち手が 2 つ以上のときの並べ替え |
-| `_tx_thread_created_ptr`、`_tx_thread_created_count` | `commands_os_impl.h`（`ps`） | スレッドの一覧（割り込みを止めて読む） |
+| `_tx_thread_created_ptr`、`_tx_thread_created_count` | `commands_os.c`（`ps`） | スレッドの一覧（割り込みを止めて読む） |
 | `_tx_initialize_kernel_setup()` | `src/main.c` | スケジューラーの前にオブジェクトとスレッドを作る |
 | `_tx_timer_interrupt()`、`_tx_initialize_unused_memory`、`_tx_thread_system_stack_ptr`、`__tx_PendSVHandler`・`__tx_SVCallHandler` | `src/tick.c`、`src/tx_initialize_low_level.c`、`threadx_kernel.cmake` | ポートの tick とハンドラー（ポートの例の `tx_initialize_low_level.S` がするのと同じ） |
 | `_tx_execution_idle_time_total`、`tx_low_power_enter()`・`_exit()` | `src/run_time.c`、`src/idle_os.h` | キットのアイドルの時間、スケジューラーの待ちのフック（どちらも ThreadX のヘッダーに宣言が無い） |

@@ -25,8 +25,8 @@ FreeRTOS 版は、いくつかの境界（下の `*_os.h` のヘッダー）を�
 
 | 場所 | 内容 |
 |---|---|
-| `app/usb-console/` | ビルド（`CMakeLists.txt`: `common/pico_sdk/app/usb-console/usb-console.cmake` に渡す FreeRTOS の設定とソースの一覧）、カーネルの設定（`FreeRTOSConfig.h`。コアが 1 つであることも確かめる）、`src/`: 起動の入口（`main.c`: `main()`、タスク "main"、スケジューラー）、優先度の対応（`priorities_os.h`）、tick フック（`tick.c`。tick の追いつきの判定は `common/compat/kernel_generic/tick_catchup.h`）、汎用のコマンドの OS の部分（`kernel_shell_os_impl.h`。`uptime` の tick の数も）、共有のアプリの境界の FreeRTOS の部分: アイドルの 1 回分（`idle_os.h`: アイドルフック）、異常停止（`fault_os_impl.h`: 動いているタスクの名前、スタックのあふれのフック）、コマンド（`commands_os_impl.h`: `ps` とその実行時間の時計、カーネルのバージョン） |
-| `common/pico_sdk/app/usb-console/` | Pico SDK の上の OS のファームウェアで共有: ビルド（`usb-console.cmake`: ドライバー、インクルードのディレクトリー、SDK のオプション。`ram_code.cmake`: RAM で動かすコード。`ld/`: 起動のスレッドのスタックを SCRATCH_X に）、`src/`: 起動の共有の段階（`usb_console.[ch]`。OS の `main()` が呼ぶ）、コマンド `version`・`free` と全コマンドの表（`commands.c`。境界は `commands_os.h`）、アイドルの 1 回分と CPU 負荷（`idle.c`。LED の点滅は `idle_blink.h`）、異常停止（`fault.[ch]`。境界は `fault_os.h`）、割り込み用スタックの空き（`irq_stack.c`）、`app.h` |
+| `app/usb-console/` | ビルド（`CMakeLists.txt`: `common/pico_sdk/app/usb-console/usb-console.cmake` に渡す FreeRTOS の設定とソースの一覧）、カーネルの設定（`FreeRTOSConfig.h`。コアが 1 つであることも確かめる）、`src/`: 起動の入口（`main.c`: `main()`、タスク "main"、スケジューラー）、優先度の対応（`priorities_os.h`）、tick フック（`tick.c`。tick の追いつきの判定は `common/compat/kernel_generic/tick_catchup.h`）、汎用のコマンドの OS の部分（`kernel_shell_os_impl.h`。`uptime` の tick の数も）、共有のアプリの境界の FreeRTOS の部分: アイドルの 1 回分（`idle_os.h`: アイドルフック）、異常停止（`fault_os.c`: 動いているタスクの名前、スタックのあふれのフック）、コマンド（`commands_os.c`: `ps` とその実行時間の時計、カーネルのバージョン） |
+| `common/pico_sdk/app/usb-console/` | Pico SDK の上の OS のファームウェアで共有: ビルド（`usb-console.cmake`: ドライバー、インクルードのディレクトリー、SDK のオプション。`ram_code.cmake`: RAM で動かすコード。`ld/`: 起動のスレッドのスタックを SCRATCH_X に）、`src/`: 起動の共有の段階（`usb_console.[ch]`。OS の `main()` が呼ぶ）、コマンド `version`・`free` と全コマンドの表（`commands.c`。境界は `commands_os.h`）、アイドルの 1 回分と CPU 負荷（`idle.c`。LED の点滅は `idle_blink.h`）、異常停止（`fault.[ch]`。OS の入口が呼ぶ関数と、OS が書く関数の宣言も）、割り込み用スタックの空き（`irq_stack.c`）、`app.h` |
 | `drivers/compat/` | 互換層の FreeRTOS の部分: 汎用のカーネルの部分の基本の操作（`zephyr_kernel_os_impl.h`）とポートのヘッダー（`rp2040/zephyr_os_port.h`: `z_os_in_isr()`、`z_os_yield_from_isr()`、`z_os_task_lock()`・`_unlock()`） |
 | `common/pico_sdk/drivers/compat/` | 互換層の Pico SDK の上の部分: 互換層・シェル・RAM ログのビルド（`compat.cmake`）、ソケットの実装の登録のためのリンカースクリプトの部分（`ld/`）、壁時計（`zephyr_sys_clock.c`）、RP2040 の部分（`rp2040/`: OS で共通のポートのヘッダーの部分 `zephyr_os_port_rp2040.h`、GPIO バンク 0 の `gpio_os_rp2040.c`、チップ ID の `zephyr_hwinfo.c`） |
 | `common/compat/os_generic/` | その仕組みを自分で持たない OS のための互換層の部分: `include/zephyr/drivers/i2c.h`（ドライバーのデバイスの上の Zephyr の I2C の API）、`include/zephyr/sys/clock.h`、`include/zephyr/sys/__assert.h`、前置き（`common_prelude.h`）、`app_log_os.h`、センサーのシェルの OS の部分（`include/sensor_shell_os.h`、`sensor_shell_os.c`）、`wifi_profile_os.h` |
@@ -142,8 +142,8 @@ KV、校正値、時刻同期、自動接続の順に始めます。
   数の検査は共有の `common/shell/zshell.c` が行います。コマンドの表と行編集は `common/compat/shell_engine/`（`shell_engine.c`・`cli.c`。`help` も `shell_engine.c`）です。
   汎用のコマンドは `common/shell/kernel_shell.c` で、OS に求めるもの（tick の数、2 つの再起動、前回の異常停止の記録）は
   `common/shell/kernel_shell_os.h` が宣言し、FreeRTOS 版の実装は `app/usb-console/src/kernel_shell_os_impl.h` です。OS と Pico SDK だけが
-  答えられるコマンドは、`common/pico_sdk/app/usb-console/src/commands.c`（`version`・`free` と全コマンドの表）と FreeRTOS 版の
-  `app/usb-console/src/commands_os_impl.h`（`ps`、カーネルのバージョン）です。
+  答えられるコマンドは、`common/pico_sdk/app/usb-console/src/commands.c`（`version`・`free` と全コマンドの表。境界は `commands_os.h`）と FreeRTOS 版の
+  `app/usb-console/src/commands_os.c`（`ps`、カーネルの名前とバージョン。`commands.c` が呼び、コマンドを登録する）です。
 - コンソール、セッション、Telnet はシェルのエンジン（`common/compat/shell_engine/`）のもので、互換層の `k_mutex`・`k_sem`・
   `z_thread_static_start()` とスレッドのカスタムデータ（`k_thread_custom_data_get()`。FreeRTOS ではスレッドローカルのポインター）の
   上で書いています。コンソール（`shell_console.c`）はセッションの端末（USB と Telnet）で、各タスクを 1 つのコンソールに
@@ -165,7 +165,7 @@ KV、校正値、時刻同期、自動接続の順に始めます。
   Zephyr 版と同じ 4 KiB で（異常停止は数行の記録を残し、次の起動でそれをログに書く）、起動時に初期化しない RAM（`__uninitialized_ram`）に置きます。
   watchdog の再起動、`reboot`、RESET ボタンでは残り、電源断で消えます。`LOG_*` の行は呼び出した文脈（割り込み
   ハンドラーを含む）で整形し、時刻は TIMER から取ります。`dmesg`（`common/shell/dmesg_shell.c`）で表示します。
-- 異常停止（`common/pico_sdk/app/usb-console/src/fault.[ch]`。FreeRTOS 版の部分は `app/usb-console/src/fault_os_impl.h`）: `panic()`、HardFault、`configASSERT()` と `assert()`、スタックの
+- 異常停止（`common/pico_sdk/app/usb-console/src/fault.[ch]`。FreeRTOS 版の部分は `app/usb-console/src/fault_os.c` で、動いているタスクの名前と、`fault.h` の `fault_begin()`・`fault_finish()` を呼ぶスタックのあふれのフック）: `panic()`、HardFault、`configASSERT()` と `assert()`、スタックの
   あふれ（`configCHECK_FOR_STACK_OVERFLOW` 2）、`_exit()` が 1 つの出口に入り、記録（理由、PC、LR、SP、
   例外のフレーム、タスク、時刻）を RAM と watchdog の scratch レジスター 0〜3 に残して watchdog で再起動します。
   次の起動で記録を `dmesg` に書き、`fault` とコンソールのバナーで表示します。記録の形式、HardFault の例外のフレームの読み取り

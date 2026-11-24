@@ -23,7 +23,7 @@ the shell the shared shell engine (`common/compat/shell_engine/`). The shared pa
 
 | Where | Holds |
 |---|---|
-| `app/usb-console/` | the build (`CMakeLists.txt`: the settings and sources given to the shared `common/pico_sdk/app/usb-console/usb-console.cmake`; `threadx_kernel.cmake`: ThreadX's kernel, port and execution profile kit as sources of the firmware, plus the board's part, the vectors and the Pico SDK's locks), the kernel configuration (`tx_user.h`), `src/`: the entry of the start (`main.c`: `main()`, the kernel's set-up, the thread "main", the scheduler), SysTick and the exception priorities (`tx_initialize_low_level.c`), the tick (`tick.c`), priorities and time slices (`priorities_os.h`), the ThreadX parts of the shared application's boundaries (idle `idle_os.h`, fatal errors `fault_os_impl.h`, `ps` and the version `commands_os_impl.h`, generic commands `kernel_shell_os_impl.h`), each thread's run time (`run_time.[ch]`) |
+| `app/usb-console/` | the build (`CMakeLists.txt`: the settings and sources given to the shared `common/pico_sdk/app/usb-console/usb-console.cmake`; `threadx_kernel.cmake`: ThreadX's kernel, port and execution profile kit as sources of the firmware, plus the board's part, the vectors and the Pico SDK's locks), the kernel configuration (`tx_user.h`), `src/`: the entry of the start (`main.c`: `main()`, the kernel's set-up, the thread "main", the scheduler), SysTick and the exception priorities (`tx_initialize_low_level.c`), the tick (`tick.c`), priorities and time slices (`priorities_os.h`), the ThreadX parts of the shared application's boundaries (idle `idle_os.h`, fatal errors `fault_os.c`, `ps` and the version `commands_os.c`, generic commands `kernel_shell_os_impl.h`), each thread's run time (`run_time.[ch]`) |
 | `drivers/compat/` | the layer's ThreadX part: the primitives of the generic kernel part (`zephyr_kernel_os_impl.h`), the lock's variables (`zephyr_kernel_os.c`), the board's port header (`rp2040/zephyr_os_port.h`) |
 | `drivers/pico_sdk_interop/` | the waits of the Pico SDK's mutexes, semaphores and sleeps on ThreadX's threads ("The Pico SDK's locks" below) |
 | `common/drivers/i2c_dw/port/threadx/` | the I2C core's waits, clock and sleeps (`i2c_dw_os_impl.h`) |
@@ -148,7 +148,7 @@ Its clock is the TIMER's low 32 bits (1 µs); the totals are 64-bit. A thread's 
 to its switch out, so the handlers that interrupt a thread count in it (the Pico SDK's handlers do not call
 the kit's `_tx_execution_isr_enter()`; as FreeRTOS's run time stats). The time the scheduler waited is the
 kit's idle time, the `(idle)` row of `ps`. `cpu_active` is not that idle time but the windows above. Read by
-`src/run_time.c`, shown by `src/commands_os_impl.h`. The kit makes `TX_THREAD` 12 bytes larger.
+`src/run_time.c`, shown by `src/commands_os.c`. The kit makes `TX_THREAD` 12 bytes larger.
 
 ## The Pico SDK's locks
 
@@ -173,7 +173,7 @@ of `pico/lock_core.h`, as FreeRTOS's RP2040 port does with `configSUPPORT_PICO_S
 
 `TX_ENABLE_STACK_CHECKING`: when a thread suspends itself (a wait, a sleep, a relinquish) and when it is
 resumed, ThreadX checks the 0xEF fill of the lowest word of its stack and of the word above its top, and its
-saved stack pointer, and on a failure calls `fault_os_stack_error()` (`src/fault_os_impl.h`). The fault record
+saved stack pointer, and on a failure calls `fault_os_stack_error()` (`src/fault_os.c`). The fault record
 names that thread, which is not always the running one. The FreeRTOS build (`configCHECK_FOR_STACK_OVERFLOW`
 2) checks at every switch; ThreadX does not check at a preemption by PendSV. ThreadX keeps the top word of
 each stack for the pattern. STACK FREE of `ps` is the bytes at the bottom of the stack that still hold 0xEF.
@@ -222,12 +222,12 @@ names and their meanings have not changed.
 |---|---|---|
 | `_tx_thread_preempt_disable` | `drivers/compat/zephyr_kernel_os_impl.h` (`z_os_task_lock()`), `drivers/pico_sdk_interop/pico_sdk_interop.c` (whether a thread may block) | no switch inside the lock ("The thread's lock" above) |
 | `_tx_thread_system_preempt_check()` | `zephyr_kernel_os_impl.h` (`z_os_task_unlock()`) | the switch the services inside the lock left, at the unlock |
-| `_tx_thread_current_ptr`, `_tx_thread_system_state` | `zephyr_kernel_os_impl.h`, the port header, `fault_os_impl.h`, `commands_os_impl.h`, `pico_sdk_interop.c` | the calling thread, before the kernel, in an ISR (without a call) |
-| members of `TX_THREAD` (`tx_thread_priority`, `tx_thread_state`, `tx_thread_name`, `tx_thread_stack_start`/`_end`, `tx_thread_timer`, the run times) | `zephyr_kernel_os_impl.h`, `commands_os_impl.h`, `fault_os_impl.h`, `run_time.c` | the priority, whether it ended, the name, the state and free stack of `ps` |
+| `_tx_thread_current_ptr`, `_tx_thread_system_state` | `zephyr_kernel_os_impl.h`, the port header, `fault_os.c`, `commands_os.c`, `pico_sdk_interop.c` | the calling thread, before the kernel, in an ISR (without a call) |
+| members of `TX_THREAD` (`tx_thread_priority`, `tx_thread_state`, `tx_thread_name`, `tx_thread_stack_start`/`_end`, `tx_thread_timer`, the run times) | `zephyr_kernel_os_impl.h`, `commands_os.c`, `fault_os.c`, `run_time.c` | the priority, whether it ended, the name, the state and free stack of `ps` |
 | `_tx_mutex_created_ptr`, `_tx_mutex_created_count` and relinking `tx_mutex_created_next`/`_previous` | `zephyr_kernel_os_impl.h` (`z_tx_mutex_create()`) | a mutex that may be zeroed is taken out of the list of created mutexes |
 | members of `TX_MUTEX` and `_tx_mutex_priority_change()` | `zephyr_kernel_os_impl.h` (`z_tx_mutex_timed_out()`, `z_os_mutex_unlock()`) | the owner's priority dropped at a waiter's timeout; the owner's check |
 | direct reads and writes of `tx_semaphore_count`, `tx_semaphore_suspended_count` | `common/drivers/i2c_dw/port/threadx/i2c_dw_os_impl.h` | `k_sem_reset()` and the second initialization before the kernel (ThreadX has no service that writes a count), the reordering with two or more waiters |
-| `_tx_thread_created_ptr`, `_tx_thread_created_count` | `commands_os_impl.h` (`ps`) | the list of threads (read with interrupts masked) |
+| `_tx_thread_created_ptr`, `_tx_thread_created_count` | `commands_os.c` (`ps`) | the list of threads (read with interrupts masked) |
 | `_tx_initialize_kernel_setup()` | `src/main.c` | objects and threads made before the scheduler |
 | `_tx_timer_interrupt()`, `_tx_initialize_unused_memory`, `_tx_thread_system_stack_ptr`, `__tx_PendSVHandler`/`__tx_SVCallHandler` | `src/tick.c`, `src/tx_initialize_low_level.c`, `threadx_kernel.cmake` | the port's tick and handlers (as the port's example `tx_initialize_low_level.S` sets them) |
 | `_tx_execution_idle_time_total`, `tx_low_power_enter()`/`_exit()` | `src/run_time.c`, `src/idle_os.h` | the kit's idle time, the hooks of the scheduler's wait (neither declared in a ThreadX header) |

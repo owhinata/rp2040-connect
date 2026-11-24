@@ -1,23 +1,25 @@
 /* SPDX-License-Identifier: MIT */
-/* The FreeRTOS part of the fatal error exit (fault_os.h of
- * common/pico_sdk/app/usb-console/src, which describes each item; included
- * once, by fault.c, among its entries): the running task's name from its
+/* The FreeRTOS part of the fatal error exit (fault.h of
+ * common/pico_sdk/app/usb-console/src): the running task's name from its
  * control block, and the kernel's stack overflow check as an entry.
+ * configASSERT() (FreeRTOSConfig.h) calls fault.c's app_assert_failed(), and
+ * a task function that returns ends in the port's prvTaskExitError(), which
+ * calls panic().
  */
 
-#ifndef FAULT_OS_IMPL_H
-#define FAULT_OS_IMPL_H
-
 #include <stddef.h>
+#include <stdint.h>
 #include <string.h>
 
 #include "FreeRTOS.h"
 #include "task.h"
 
+#include "fault.h"
+
 /* The handle is the task's control block; a fault may come from a corrupted
  * kernel, so only read it inside the RAM.
  */
-static inline __attribute__((always_inline)) void fault_os_thread_name(char *name, size_t size)
+void fault_os_thread_name(char *name, size_t size)
 {
 	TaskHandle_t task;
 
@@ -46,5 +48,3 @@ void vApplicationStackOverflowHook(TaskHandle_t task, char *name)
 	}
 	fault_finish(r);
 }
-
-#endif /* FAULT_OS_IMPL_H */

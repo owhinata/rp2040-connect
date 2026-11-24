@@ -106,7 +106,8 @@
 /* Checks ----------------------------------------------------------------------*/
 
 /* Both end in the common exit of fatal errors, which records the error and
- * restarts the board (src/fault.c).
+ * restarts the board (src/fault.c of common/pico_sdk/app/usb-console; the
+ * stack overflow hook is src/fault_os.c).
  */
 #define configCHECK_FOR_STACK_OVERFLOW          2
 
@@ -122,7 +123,9 @@ void app_assert_failed(const char *file, int line);
 
 /* The "ps" command ------------------------------------------------------------*/
 
-/* Run time is counted in microseconds of the RP2040 TIMER. */
+/* Run time is counted in microseconds of the RP2040 TIMER
+ * (app_run_time_us(), src/commands_os.c).
+ */
 
 #define configUSE_TRACE_FACILITY                1
 #define configUSE_STATS_FORMATTING_FUNCTIONS    0
