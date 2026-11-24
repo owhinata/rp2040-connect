@@ -3041,3 +3041,26 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
   基板の ATECC608（0x60）は応答しなかった（眠っているときは応答しない）。NuttX 版で送信 70 秒: 24.6%、欠番 0。
 - 確かめていない: 送信中（`imu start` のあいだ）のスキャン。断る仕組みは無く、0x6a への 1 バイトの読み出しが FIFO の語を 1 つ進める可能性がある。送信中のスキャンは勧めない。
 - 実機: NuttX 版（このビルド）。
+
+## `common/` を 3 層に: 計画（2026-11-24、ユーザーの決定）
+
+- きっかけ: ユーザー「common についても、drivers と同様に include, internal, port 構成にしたい」。メインは「部品ごとに。効果が大きいのは `compat`」と答え、OS ごとの実装の置き場所は
+  A（境界のヘッダーだけ集める）と B（実装も `common/<部品>/port/<OS>/` へ）を示した。ユーザーは B。`compat` の中は、部品ごとの個別の 3 層（案 1）でなく **全体で 1 つ（案 2）**。
+- 決まり（ユーザーの了承）:
+  1. `compat` は 3 層を 1 つ: `common/compat/include/`（Zephyr の名前のヘッダー群と、ほかから読むヘッダー）、`internal/`、`port/`（層全体の境界のヘッダー）、
+     `port/{nuttx,freertos,threadx}/`（OS ごとの実装）、`port/pico_sdk/`（Pico SDK の上の OS で共有）、`port/generic/`（OS を問わない実装。いまの `os_generic`）。
+     `kernel_generic/`・`log/`・`shell_engine/`・`net_offload/`・`libc_net/` はソースを分けるサブディレクトリーとして残す（部品の独立は文書と `*_independent` の検査で保つ）。
+  2. 線引き: 「`common/<部品>/port/` のヘッダーを実装するファイルは `common/<部品>/port/<OS>/` に置く。それ以外（入口の `main.c`、カーネルの設定、アプリの OS の部分、ビルド、スクリプト、テスト）は
+     `<OS>/` に残す」。`main.c`・`fault_os.c`・`commands_os.c`・`tick.c`・`idle_os.h`・`tx_user.h`・`FreeRTOSConfig.h` は残る。
+  3. アプリ（`common/imu`）は 3 層にしない。ただし Pico SDK の上で動かすための部分（いまの `common/pico_sdk/app/usb-console/`: 起動、コマンドの表、異常停止、アイドル、アプリのビルドの定義）を
+     `common/imu/port/pico_sdk/` に置く。
+  4. `common/shell` は `include/`・`port/`（`zshell_os.h`・`kernel_shell_os.h`）・`port/<OS>/`・`port/generic/`（センサーのシェルの OS 部分）。`common/chip/rp2040` は `port/`・`port/{nuttx,pico_sdk}/`。
+  5. **`common/pico_sdk/` は無くす**（ユーザー:「ほかの port と同じような感じで」）。コードは各部品の `port/pico_sdk/`、各ドライバーの cmake はそのドライバーの `port/pico_sdk/`、
+     互換層の cmake とリンカースクリプトの部分は `compat/port/pico_sdk/`、シェルのコマンドの cmake は `shell/port/pico_sdk/`、アプリの分は 3 のとおり。
+  6. 効果の小さい移動（シェルのエンジン、チップの部分）も行う。NuttX のビルドが場所を決めているもの（`Make.defs`、`Kconfig`、コマンドの入口、ボードの起動）は `nuttx/` に残す。Zephyr 版は動かすものが無い。
+- 下調べ（subagent、読むだけ）で分かったこと: 動くのは約 125 ファイル。`__FILE__` が製品のイメージに入るのは `common/compat/zephyr_init.c:83` と `nina/port/{freertos,threadx}/nina_os.c` だけ（どちらも動かさない。行数を保つ）。
+  NuttX のリンカースクリプトと検査はアーカイブとオブジェクトの名前で照合する（名前は変えない）。NuttX の `compat/Make.defs` は `common/compat/*.c` のワイルドカードでプレリュードを付けるソースを選ぶので、直下の `.c` は動かさない。
+  NuttX の VPATH は同じ名前の先勝ち（`zephyr_kernel.c` などが `port/nuttx` と `kernel_generic` の両方にある）。同じ名前のヘッダーは 33 組あり、include パスの順を保つ。ホストテストのパスの参照は 4 つの OS で約 370 か所。
+- 進め方: 最初に `compat` のヘッダーの移動（全部の include パスに触れるので単独で）。そのあと Pico SDK の側と NuttX の側を並行で、最後に両方にまたがる部分。各段階で 4 つのビルドとホストテスト、
+  イメージが移動の前と一致すること（同じ `SOURCE_DATE_EPOCH`。NuttX は `-j 1`）を確かめる。一致しない段階だけ実機で送信を確かめる。文書は各段階の commit で直す。
+- 新しい OS（Pico SDK の上）が作るもの（移動のあと）: `common/compat/port/<OS>/`、`common/shell/port/<OS>/`、`common/drivers/{i2c_dw,nina}/port/<OS>/`、`<OS>/app/`、`<OS>/script/`、`<OS>/tests/`。
