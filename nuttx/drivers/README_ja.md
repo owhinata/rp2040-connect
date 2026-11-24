@@ -384,7 +384,7 @@ OS の I2C0 のデバイス（`i2c_dw_instance.h`）は、`i2c_0_runtime` の `b
 256 個以上、メッセージごとに違うアドレスや速さ、10 ビットアドレス、バッファーがない、準備ができていない）を断り、
 メッセージが 0 個なら 0 を返し、ほかは `i2c_dw_transfer_msgs(dw, msgs, count, address, speed)` の結果を返します
 （`speed` は Zephyr の速さの区分）。この関数は、0 バイトのメッセージを含む転送を、何も送る前に `-ENOTSUP` で
-断ります（コントローラーは 0 バイトの転送ができない。`i2c scan` は Zephyr 版と同じく、最初のアドレスで `I2C: i2c@40044000 does not support this scan (zero-length writes)` を表示して止まり、失敗する）。I2C0 と DMA の割り込みは同じ優先度で（`CONFIG_ARCH_IRQPRIO` は無効で、
+断ります（コントローラーは 0 バイトの転送ができない。`i2c scan` は Zephyr 版と同じく、1 バイトの読み出しで確かめる）。I2C0 と DMA の割り込みは同じ優先度で（`CONFIG_ARCH_IRQPRIO` は無効で、
 すべての割り込みが既定の優先度）、ハンドラーと転送は 1 つのコアで動きます。
 
 - 転送は呼び出したスレッドが進め、バイトの出し入れは割り込みで行います。呼び出し元はセマフォで完了を

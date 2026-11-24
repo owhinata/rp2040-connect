@@ -358,9 +358,9 @@ if [[ -f $ztree/VERSION ]]; then
     printf 'ok  zephyr_sensor_shell_patched (patch 0006)\n'
 
     # The I2C shell of the FreeRTOS build is the file of the Zephyr build's patched tree too:
-    # Zephyr's drivers/i2c/i2c_shell.c with the local patch 0004 ("i2c scan" refuses a
-    # controller that cannot send a write of no bytes), applied to the tree's HEAD in a scratch
-    # directory, is byte for byte shell/i2c_shell.c.
+    # Zephyr's drivers/i2c/i2c_shell.c with the local patch 0004 ("i2c scan" probes with
+    # one-byte reads on a controller that cannot send a write of no bytes), applied to the
+    # tree's HEAD in a scratch directory, is byte for byte shell/i2c_shell.c.
     ztmp=$out/zephyr_i2c_shell
     mkdir -p "$ztmp"
     git -C "$ztree" archive HEAD drivers/i2c/i2c_shell.c | tar -x -C "$ztmp"

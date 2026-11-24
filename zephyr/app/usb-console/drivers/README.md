@@ -227,10 +227,10 @@ that apply to every controller.
 
 **Every controller**: a transfer with a message of no bytes is refused with `-ENOTSUP` before any of its messages is
 sent (the controller cannot transfer no bytes; upstream sends one byte instead). The shell's `i2c scan` probes with such
-writes, so it stops at the first address, prints `I2C: i2c@40044000 does not support this scan (zero-length writes)`
-and returns `-ENOTSUP` (the local patch `zephyr/0004-i2c-shell-scan-not-supported.patch`, for any controller that
-refuses those writes; another error, a NACK, still shows `--`). Probe one address with
-`i2c direct_read i2c@40044000 6a 1`.
+writes; when the first one returns `-ENOTSUP`, it probes that address and the rest with a read of one byte and prints
+`Probed with one-byte reads (no zero-length writes)` after the table (the local patch
+`zephyr/0004-i2c-shell-scan-read-probe.patch`, for any controller that refuses those writes). An address that acks
+is shown, any error (a NACK) is `--`. Probe one address with `i2c direct_read i2c@40044000 6a 1`.
 `i2c_recover_bus()` (the shell's `i2c recover`) returns `-ENOTSUP`: the board has no bus recovery. Before a transfer,
 the driver still clears a stuck-bus state and goes on to the transfer, as upstream.
 
@@ -609,7 +609,7 @@ Some changes to Zephyr and its modules are local patches for Zephyr's `west patc
 | `zephyr/0001-arm-cortex-m-rp2040-divider-save.patch` | zephyr | `CONFIG_ARM_RP2040_DIVIDER_SAVE`: the thread switches (PendSV, `swap_helper.S`) save and restore the SIO divider |
 | `zephyr/0002-soc-rp2040-rom-mem-ops.patch` | zephyr | `CONFIG_RP2040_ROM_MEM_OPS`: `memcpy` and `memset` through the boot ROM's routines |
 | `zephyr/0003-i2c-dw-rp2040-fifo-and-dma.patch` | zephyr | The DesignWare I2C driver (`drivers/i2c/i2c_dw.c`): the RP2040's FIFO depth and RX threshold, and I2C0's DMA reads with `CONFIG_I2C_DW_RP2040_DMA` (I2C). The constants are in a new file `drivers/i2c/i2c_dw_rp2040.h`, the DMA code with the read commands in `i2c_dw_rp2040_dma_priv.h`, and the declarations of the `i2c_dma` command's functions in `include/zephyr/drivers/i2c/i2c_dw_rp2040_dma.h`; 16 places go into the upstream files (`i2c_dw.c` 14, `i2c_dw.h` 1, `Kconfig.dw` 1); on every controller, a message of no bytes is refused (`-ENOTSUP`) and `i2c_recover_bus()` returns `-ENOTSUP` |
-| `zephyr/0004-i2c-shell-scan-not-supported.patch` | zephyr | The shell's `i2c scan` (`drivers/i2c/i2c_shell.c`): when a probe (a write of no bytes) returns `-ENOTSUP`, the command stops, prints that the controller does not support this scan, and returns `-ENOTSUP`, instead of showing `--` everywhere and "0 devices found". Other errors still show `--` |
+| `zephyr/0004-i2c-shell-scan-read-probe.patch` | zephyr | The shell's `i2c scan` (`drivers/i2c/i2c_shell.c`): when a probe (a write of no bytes) returns `-ENOTSUP`, that address and the rest are probed with a read of one byte, and a line after the table says so, instead of showing `--` everywhere and "0 devices found". Any error of a probe shows `--` |
 | `zephyr/0006-sensor-shell-fifo-attributes.patch` | zephyr | The sensor shell (`drivers/sensor/sensor_shell.c`): the LSM6DSO's FIFO attributes and the fixes (Sensor shell), with `drivers/sensor/sensor_shell_os.h`. Needs the LSM6DSO driver of `common/drivers/lsm6dso/` (its `<zephyr/drivers/sensor/lsm6dso.h>`) |
 | `zephyr/0007-spi-pl022-dma-min-len.patch` | zephyr | The PL022 SPI driver (`drivers/spi/spi_pl022.c`, `Kconfig.pl022`): `CONFIG_SPI_PL022_DMA_MIN_LEN` (default 0, as upstream): in the DMA mode a transfer shorter than that many bytes takes the polled path (a transfer of no bytes takes the context lock and moves nothing); after a DMA transfer SSPDMACR's request enables are cleared, and after one that failed or timed out its channels are stopped (NINA-W102) |
 | `zephyr/0008-code-relocation-module-objects.patch` | zephyr | The code relocation's generator (`scripts/build/gen_relocate_app.py`): when its two searches for a source's object find nothing, it takes the object of the source's name if no other object has that name. A library whose name is not its directory's (the LSM6DSO module's `lsm6dso_local`) names the object of a source in that directory `<library>.dir/<name>.obj`, which the searches did not find; the source then stayed in the flash without a message (Code in RAM) |

@@ -6,8 +6,9 @@
  * common/compat/zephyr_device.c), against a fake NuttX I2C master that
  * records each transfer (frequency, flags, lengths), answers WHO_AM_I
  * (0x6c at 0x0f) and 0xa0, 0xa1, ... for other reads, refuses a message of
- * no bytes (-ENOTSUP, as the board's driver) and its I2C_RESET()
- * (-ENOTSUP).  The expected text is the Zephyr build's, from the copied
+ * no bytes (-ENOTSUP, as the board's driver; or sends it, as a controller
+ * that can) and its I2C_RESET() (-ENOTSUP), and for a scan answers only
+ * at 0x60 and 0x6a (-EIO, a NACK, elsewhere; counted, not recorded).  The expected text is the Zephyr build's, from the copied
  * code and zephyr/subsys/shell:
  *
  * - the devices of the arguments: the ready I2C devices (i2c@40044000, not
@@ -18,9 +19,12 @@
  *   refused and changes nothing.
  * - "i2c read_byte" (write NOSTOP + read), "i2c write_byte" (one write),
  *   "i2c read" in Zephyr's hexdump, "i2c direct_read" (one read).
- * - "i2c scan": the master refuses the write of no bytes, so the scan stops
- *   at its first address with patch 0004's message; "i2c recover":
- *   I2C_RESET()'s -ENOTSUP.
+ * - "i2c scan" (patch 0004): the master refuses the write of no bytes to the
+ *   first address, so every address is probed with a read of one byte;
+ *   0x60 and 0x6a in the table, "--" elsewhere, the note of the one-byte
+ *   reads, "2 devices found"; then a read works.  A master that sends the
+ *   write of no bytes is probed with it only, without the note.
+ *   "i2c recover": I2C_RESET()'s -ENOTSUP.
  * - i2c_transfer(): STOP on the last message, NuttX's NOSTOP and NOSTART
  *   from Zephyr's flags, the address and the bus's frequency on each.
  */
@@ -29,6 +33,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <stdarg.h>
+#include <stdbool.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -45,6 +50,13 @@ int i2c_main(int argc, char *argv[]);
 
 static char bus_log[1024];
 static uint8_t reg;
+
+/* The scan's model: zero_ok sends messages of no bytes; with scan, only
+ * 0x60 and 0x6a answer, and the others' NACKs are counted.
+ */
+static bool zero_ok;
+static bool scan;
+static int refused, nacked_reads, nacked_writes;
 
 static void note(const char *fmt, ...) __attribute__((format(printf, 1, 2)));
 
@@ -71,9 +83,18 @@ static int fake_transfer(struct i2c_master_s *dev, struct i2c_msg_s *msgs, int c
 {
 	(void)dev;
 	for (int i = 0; i < count; i++) {
-		if (msgs[i].length == 0) {
+		if (msgs[i].length == 0 && !zero_ok) {
+			refused++;
 			return -ENOTSUP;
 		}
+	}
+	if (scan && msgs[0].addr != 0x60 && msgs[0].addr != 0x6a) {
+		if (msgs[0].flags & I2C_M_READ) {
+			nacked_reads++;
+		} else {
+			nacked_writes++;
+		}
+		return -EIO;
 	}
 	for (int i = 0; i < count; i++) {
 		note("%u:%x:%x:%d ", (unsigned int)msgs[i].frequency, msgs[i].addr, msgs[i].flags,
@@ -232,21 +253,55 @@ static void test_read_write(void)
 	expect_bus("1000000:6a:1:4 ");
 }
 
+/* The table of a scan that finds 0x60 and 0x6a, then NOTE and the count. */
+static void scan_text(char *want, size_t size, const char *note)
+{
+	int n = snprintf(want, size, "     0  1  2  3  4  5  6  7  8  9  a  b  c  d  e  f\n");
+
+	for (int a = 0; a <= 0x77; a++) {
+		if (a % 16 == 0) {
+			n += snprintf(want + n, size - n, "%02x: ", a);
+		}
+		if (a < 0x04) {
+			n += snprintf(want + n, size - n, "   ");
+		} else if (a == 0x60 || a == 0x6a) {
+			n += snprintf(want + n, size - n, "%02x ", a);
+		} else {
+			n += snprintf(want + n, size - n, "-- ");
+		}
+		if (a % 16 == 15) {
+			n += snprintf(want + n, size - n, "\n");
+		}
+	}
+	snprintf(want + n, size - n, "                        \n%s2 devices found on i2c@40044000\n",
+		 note);
+}
+
 static void test_scan_recover(void)
 {
-	char want[512];
-	int n;
+	char want[1024];
 
-	assert(run("scan", "i2c@40044000") == EXIT_FAILURE);
-	n = snprintf(want, sizeof(want),
-		     "     0  1  2  3  4  5  6  7  8  9  a  b  c  d  e  f\n00: ");
-	for (int i = 0; i < 4; i++) {
-		n += snprintf(want + n, sizeof(want) - n, "   ");
-	}
-	snprintf(want + n, sizeof(want) - n,
-		 "\nI2C: i2c@40044000 does not support this scan (zero-length writes)\n");
+	/* The write of no bytes refused once, then reads of one byte. */
+	scan = true;
+	assert(run("scan", "i2c@40044000") == EXIT_SUCCESS);
+	scan_text(want, sizeof(want), "Probed with one-byte reads (no zero-length writes)\n");
 	expect(want);
-	expect_bus("");
+	expect_bus("1000000:60:1:1 1000000:6a:1:1 ");
+	assert(refused == 1 && nacked_reads == 0x77 - 0x04 + 1 - 2 && nacked_writes == 0);
+	scan = false;
+	assert(run("read_byte", "i2c@40044000", "6a", "0f") == EXIT_SUCCESS);
+	expect("Output: 0x6c\n");
+	expect_bus("1000000:6a:40:1 1000000:6a:1:1 ");
+
+	/* A master that sends the write of no bytes: no reads, no note. */
+	zero_ok = scan = true;
+	refused = nacked_reads = 0;
+	assert(run("scan", "i2c@40044000") == EXIT_SUCCESS);
+	scan_text(want, sizeof(want), "");
+	expect(want);
+	expect_bus("1000000:60:0:0 1000000:6a:0:0 ");
+	assert(refused == 0 && nacked_reads == 0 && nacked_writes == 0x77 - 0x04 + 1 - 2);
+	zero_ok = scan = false;
 
 	assert(run("recover", "i2c@40044000") == EXIT_FAILURE);
 	snprintf(want, sizeof(want), "I2C: Bus recovery failed (err %d)\n", -ENOTSUP);

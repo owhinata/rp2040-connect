@@ -3025,3 +3025,19 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
   基準 `snapshot-1124a` の NuttX を取り直した。ホストテスト 59・71・68。
 - 実機（NuttX 版）: `i2c read_byte`、`i2c speed` 1 → 833 Hz の `sensor stream` が止まる・3 → 動く、アプリの送信 24.7%・欠番 0。
 - 実機: NuttX 版（このビルド）。
+
+## `i2c scan` を 1 バイトの読み出しで（2026-11-24、ユーザーの指示）
+
+- きっかけ: ユーザーが ThreadX 版で `i2c scan` を実行し、「未対応と表示して失敗」を見た。「動くようにしてください」。長さ 0 のメッセージを断る決まり（4 つの OS とも `-ENOTSUP`）は変えない。
+- Zephyr のシェルへのパッチ 0004 を作り直した（`0004-i2c-shell-scan-read-probe.patch`。前の `0004-i2c-shell-scan-not-supported.patch` は削除）。`cmd_i2c_scan()` は各アドレスにまず上流と同じ
+  長さ 0 の書き込みを送り、`-ENOTSUP` が返ったら、そのアドレスから先は 1 バイトの読み出し（`I2C_MSG_READ | I2C_MSG_STOP`）で調べる。表の形は上流のまま。切り替えたときだけ、表のあとに
+  `Probed with one-byte reads (no zero-length writes)` を 1 行出す。長さ 0 の書き込みを受けるコントローラーでは上流と同じ動き。`common/shell/i2c_shell.c` は写し（`zephyr_i2c_shell_patched` が照合）。
+- アドレスの NACK のあと: 共有のコア（NuttX・FreeRTOS・ThreadX）も Zephyr のパッチ済みのドライバーも、割り込みの経路で `TX_ABRT` を受けてすぐ `-EIO` を返す（タイムアウトも復旧も無い）。
+  スキャン 1 回で、頻度制限つきの `<err> i2c_dw: NACK …` が 2〜3 行ログに残る（異常ではない）。
+- テスト: FreeRTOS・ThreadX 共用の `freertos/tests/i2c_dw/main.c`（0x60 と 0x6a だけが応答するモデル。表・行・バスに長さ 0 が出ないこと・そのあとの `read_byte`）、`nuttx/tests/i2c_shell.c`
+  （切り替える場合と、長さ 0 を受けるマスターの場合）。ホストテスト: Zephyr 61、NuttX 73、FreeRTOS 68、ThreadX 56。
+- イメージ: Zephyr 378,348 B（+20）、NuttX 283,824 B（+16）、FreeRTOS text 247,856（+24）、ThreadX text 248,612（+32）。**基準: `snapshot-1124b`**（Zephyr・NuttX・ThreadX）。
+- **実機（4 つの OS とも同じ結果）**: `i2c scan i2c@40044000` は表の 0x6a だけを表示し、`1 devices found`。そのあとの `i2c read_byte … 6a 0f` は 0x6c。ThreadX 版では `sensor get` も確認。
+  基板の ATECC608（0x60）は応答しなかった（眠っているときは応答しない）。NuttX 版で送信 70 秒: 24.6%、欠番 0。
+- 確かめていない: 送信中（`imu start` のあいだ）のスキャン。断る仕組みは無く、0x6a への 1 バイトの読み出しが FIFO の語を 1 つ進める可能性がある。送信中のスキャンは勧めない。
+- 実機: NuttX 版（このビルド）。

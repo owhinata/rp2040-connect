@@ -366,8 +366,8 @@ interrupts disabled.
   `vTaskDelay()`, and the clock is the TIMER (`time_us_64()`) in ms, not the tick. The only things of
   Zephyr's left are the API it is used with: the layer's devices and `<zephyr/drivers/i2c.h>`.
 - **Refused requests**: a transfer with a message of no bytes returns `-ENOTSUP` before anything is sent
-  (the core, as the Zephyr build's driver: the controller cannot transfer no bytes; `i2c scan` stops at its
-  first address with the reason and fails). A request for a bus recovery (`i2c_recover_bus()`, `i2c recover`)
+  (the core, as the Zephyr build's driver: the controller cannot transfer no bytes; `i2c scan` then probes
+  with one-byte reads, as in the Zephyr build). A request for a bus recovery (`i2c_recover_bus()`, `i2c recover`)
   is `-ENOTSUP`, as the Zephyr build's driver without a recover-bus callback (the board has no bus
   recovery). As in the Zephyr build's driver there is no `get_config`: `i2c_get_config()` returns `-ENOSYS`,
   so `i2c speed` calls `i2c_configure()` with `I2C_MODE_CONTROLLER` and the new speed class (the later

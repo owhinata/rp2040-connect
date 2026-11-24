@@ -250,3 +250,5 @@
   `free` のまだ取れる量 90,112 B。基準 `freertos/build/baseline/threadx/snapshot-1124a/image.bin` を取り直した。ホストテスト: FreeRTOS 68、ThreadX 56、Zephyr 61、NuttX 73。
 - `i2c scan`: ユーザーが ThreadX 版で実行し、「未対応と表示して失敗」を見た。1 バイトの読み出しで調べる方式に変えて動くようにする（ユーザーの指示。作業の最後に）。
 - 実機: ThreadX 版（最終の構成）。
+
+- （追記）`i2c scan` は 1 バイトの読み出しで動くようにした。4 つの OS の実機で確認済み。記録は `freertos/PORTING_STATUS.md` の同日の節。

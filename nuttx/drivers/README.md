@@ -439,9 +439,8 @@ transfer entry (one for both) refuses what the Zephyr API cannot express (no mes
 speeds that differ between messages, a 10-bit address, a missing buffer, a device that is not ready),
 returns 0 for no message, and otherwise returns `i2c_dw_transfer_msgs(dw, msgs, count, address,
 speed)` (`speed` is Zephyr's speed class), which refuses a transfer with a message of no bytes
-with `-ENOTSUP` before anything is sent (the controller cannot transfer no bytes; `i2c scan` stops at the
-first address with `I2C: i2c@40044000 does not support this scan (zero-length writes)` and fails, as in the
-Zephyr build). The I2C0
+with `-ENOTSUP` before anything is sent (the controller cannot transfer no bytes; `i2c scan` then probes
+with one-byte reads, as in the Zephyr build). The I2C0
 and DMA interrupts run at the same priority (`CONFIG_ARCH_IRQPRIO` off: every interrupt at the
 default), and the handlers and the transfers run on one core.
 

@@ -196,10 +196,10 @@ Zephyr の DesignWare I²C ドライバー（`drivers/i2c/i2c_dw.c`）に、ロ�
 当たる下の 2 点のほかは Zephyr のままです。
 
 **どのコントローラーでも**: 0 バイトのメッセージを含む転送は、どのメッセージも送る前に `-ENOTSUP` で断ります（コントローラーは
-0 バイトの転送ができず、上流は代わりに 1 バイトを送ります）。シェルの `i2c scan` はその書き込みで確かめるので、最初のアドレスで
-止まり、`I2C: i2c@40044000 does not support this scan (zero-length writes)` を表示して `-ENOTSUP` を返します（ローカルの
-パッチ `zephyr/0004-i2c-shell-scan-not-supported.patch`。その書き込みを断るどのコントローラーでも同じ。ほかのエラー、つまり
-NACK は従来どおり `--`）。1 つのアドレスは `i2c direct_read i2c@40044000 6a 1` で確かめます。`i2c_recover_bus()`（シェルの
+0 バイトの転送ができず、上流は代わりに 1 バイトを送ります）。シェルの `i2c scan` はその書き込みで確かめ、最初の書き込みが
+`-ENOTSUP` を返すと、そのアドレスと残りを 1 バイトの読み出しで確かめて、表のあとに
+`Probed with one-byte reads (no zero-length writes)` を表示します（ローカルのパッチ `zephyr/0004-i2c-shell-scan-read-probe.patch`。
+その書き込みを断るどのコントローラーでも同じ）。ACK を返したアドレスを表示し、エラー（NACK）は `--` です。1 つのアドレスは `i2c direct_read i2c@40044000 6a 1` で確かめます。`i2c_recover_bus()`（シェルの
 `i2c recover`）は `-ENOTSUP` を返します（このボードにはバスの復旧が無い）。転送の前には、上流と同じく、バスが固まった状態を
 消して転送に進みます。
 
@@ -532,7 +532,7 @@ Zephyr 本体とモジュールの一部の変更は、Zephyr の `west patch` �
 | `zephyr/0001-arm-cortex-m-rp2040-divider-save.patch` | zephyr | `CONFIG_ARM_RP2040_DIVIDER_SAVE`: スレッドの切り替え（PendSV、`swap_helper.S`）で SIO の除算器を退避・復元する |
 | `zephyr/0002-soc-rp2040-rom-mem-ops.patch` | zephyr | `CONFIG_RP2040_ROM_MEM_OPS`: `memcpy`・`memset` をブート ROM のルーチンにする |
 | `zephyr/0003-i2c-dw-rp2040-fifo-and-dma.patch` | zephyr | DesignWare I²C ドライバー（`drivers/i2c/i2c_dw.c`）: RP2040 の FIFO の深さと RX のしきい値、`CONFIG_I2C_DW_RP2040_DMA` の I²C0 の DMA 読み出し（「I²C」）。定数は新しいファイル `drivers/i2c/i2c_dw_rp2040.h` に、DMA の塊と読み出しのコマンド語は `i2c_dw_rp2040_dma_priv.h` に、`i2c_dma` コマンドの関数の宣言は `include/zephyr/drivers/i2c/i2c_dw_rp2040_dma.h` に置き、上流のファイルに入るのは 16 か所（`i2c_dw.c` 14、`i2c_dw.h` 1、`Kconfig.dw` 1）。どのコントローラーでも、0 バイトのメッセージを断り（`-ENOTSUP`）、`i2c_recover_bus()` は `-ENOTSUP` を返す |
-| `zephyr/0004-i2c-shell-scan-not-supported.patch` | zephyr | シェルの `i2c scan`（`drivers/i2c/i2c_shell.c`）: 確かめの書き込み（0 バイト）が `-ENOTSUP` を返したら、どこも `--` で「0 devices found」とする代わりに、止まって、コントローラーがこのスキャンに対応していないことを表示し、`-ENOTSUP` を返す。ほかのエラーは従来どおり `--` |
+| `zephyr/0004-i2c-shell-scan-read-probe.patch` | zephyr | シェルの `i2c scan`（`drivers/i2c/i2c_shell.c`）: 確かめの書き込み（0 バイト）が `-ENOTSUP` を返したら、どこも `--` で「0 devices found」とする代わりに、そのアドレスと残りを 1 バイトの読み出しで確かめ、表のあとにそのことを 1 行表示する。確かめのエラーはどれも `--` |
 | `zephyr/0006-sensor-shell-fifo-attributes.patch` | zephyr | sensor シェル（`drivers/sensor/sensor_shell.c`）: LSM6DSO の FIFO の属性と修正（「sensor シェル」）、`drivers/sensor/sensor_shell_os.h`。`common/drivers/lsm6dso/` の LSM6DSO のドライバー（その `<zephyr/drivers/sensor/lsm6dso.h>`）が要る |
 | `zephyr/0007-spi-pl022-dma-min-len.patch` | zephyr | PL022 の SPI のドライバー（`drivers/spi/spi_pl022.c`・`Kconfig.pl022`）: `CONFIG_SPI_PL022_DMA_MIN_LEN`（既定 0 で上流と同じ）。DMA のモードで、そのバイト数より短い転送はポーリングの経路を通る（0 バイトの転送はコンテキストのロックを取って何も送らない）。DMA の転送のあとは SSPDMACR の要求を戻し、失敗か時間切れの転送のあとはそのチャネルを止める（「NINA-W102」） |
 | `zephyr/0008-code-relocation-module-objects.patch` | zephyr | コードの再配置の生成器（`scripts/build/gen_relocate_app.py`）: ソースのオブジェクトを探す 2 つの方法で見つからないとき、その名前のオブジェクトがほかに無ければそれを使う。名前がディレクトリーの名前を含まないライブラリー（LSM6DSO のモジュールの `lsm6dso_local`）は、そのディレクトリーのソースのオブジェクトを `<ライブラリー>.dir/<名前>.obj` とするので見つからず、そのソースは何も表示されずにフラッシュに残っていた（「RAM に置くコード」） |

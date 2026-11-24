@@ -643,8 +643,8 @@ nsh$ i2c read_byte i2c@40044000 6a 0f
 Output: 0x6c
 ```
 
-- `i2c scan` は 0 バイトの書き込みで確かめ、ドライバーがそれを断る（`-ENOTSUP`）ので、最初のアドレスで
-  `I2C: i2c@40044000 does not support this scan (zero-length writes)` を表示して止まり、失敗します（Zephyr 版と同じ。
+- `i2c scan` は 0 バイトの書き込みで確かめます。ドライバーが最初の書き込みを断る（`-ENOTSUP`）ので、そのアドレスと残りを
+  1 バイトの読み出しで確かめ、表のあとに `Probed with one-byte reads (no zero-length writes)` を表示します（Zephyr 版と同じ。
   1 つのアドレスは `i2c direct_read i2c@40044000 6a 1` で確かめる）。
 - `i2c recover` はこのボードにリカバリーの処理が無いので `-ENOTSUP` で失敗します（表示する番号は NuttX の値）。
 - `i2c target` はありません（Zephyr 版も `CONFIG_I2C_TARGET` が無効）。I2C1（`CONFIG_I2C_DW_I2C1`）には互換層のデバイスが

@@ -36,7 +36,9 @@ static int get_bytes_count_for_hex(char *arg)
 /*
  * This sends I2C messages without any data (i.e. stop condition after
  * sending just the address). If there is an ACK for the address, it
- * is assumed there is a device present.
+ * is assumed there is a device present.  On a controller that cannot
+ * send such a message (i2c_transfer() returns -ENOTSUP), the address
+ * and the next ones are probed with a read of one byte instead.
  *
  * WARNING: As there is no standard I2C detection command, this code
  * uses arbitrary SMBus commands (namely SMBus quick write and SMBus
@@ -51,6 +53,7 @@ static int cmd_i2c_scan(const struct shell *sh, size_t argc, char **argv)
 {
 	const struct device *dev;
 	uint8_t cnt = 0, first = 0x04, last = 0x77;
+	bool read_probe = false;
 
 	dev = shell_device_get_binding(argv[ARGV_DEV]);
 
@@ -74,25 +77,32 @@ static int cmd_i2c_scan(const struct shell *sh, size_t argc, char **argv)
 
 			/* Send the address to read from */
 			msgs[0].buf = &dst;
-			msgs[0].len = 0U;
-			msgs[0].flags = I2C_MSG_WRITE | I2C_MSG_STOP;
+			msgs[0].len = read_probe ? 1U : 0U;
+			msgs[0].flags = (read_probe ? I2C_MSG_READ : I2C_MSG_WRITE) |
+					I2C_MSG_STOP;
 			ret = i2c_transfer(dev, &msgs[0], 1, i + j);
+			if (ret == -ENOTSUP && !read_probe) {
+				/* The controller cannot send a write of no bytes:
+				 * this address and the next ones are probed with
+				 * a read of one byte.
+				 */
+				read_probe = true;
+				msgs[0].len = 1U;
+				msgs[0].flags = I2C_MSG_READ | I2C_MSG_STOP;
+				ret = i2c_transfer(dev, &msgs[0], 1, i + j);
+			}
 			if (ret == 0) {
 				shell_fprintf_normal(sh, "%02x ", i + j);
 				++cnt;
-			} else if (ret == -ENOTSUP) {
-				/* The controller cannot send a write of no bytes:
-				 * no address can be probed this way.
-				 */
-				shell_print(sh, "");
-				shell_error(sh, "I2C: %s does not support this scan "
-					    "(zero-length writes)", argv[ARGV_DEV]);
-				return -ENOTSUP;
 			} else {
 				shell_fprintf_normal(sh, "-- ");
 			}
 		}
 		shell_print(sh, "");
+	}
+
+	if (read_probe) {
+		shell_print(sh, "Probed with one-byte reads (no zero-length writes)");
 	}
 
 	shell_print(sh, "%u devices found on %s", cnt, argv[ARGV_DEV]);

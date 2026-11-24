@@ -1,0 +1,79 @@
+Subject: [PATCH] drivers: i2c: shell: scan with one-byte reads when no
+ zero-length writes
+
+Local patch of this workspace (zephyr/manifest/zephyr/patches.yml), not
+meant for upstream.
+
+"i2c scan" probes each address with a write of no bytes and prints "--"
+for every error. A controller that cannot send such a write (the
+DesignWare driver returns -ENOTSUP for a message of length 0) would show
+"--" everywhere and "0 devices found", although devices answer. When a
+probe returns -ENOTSUP, the command probes that address and the next
+ones with a read of one byte (as i2cdetect -r and the Pico SDK's bus
+scan do) and, after the table, prints that it probed with one-byte
+reads. An ACK of the address shows the address, any error shows "--".
+A controller that sends the write of no bytes is probed as upstream.
+
+diff --git a/drivers/i2c/i2c_shell.c b/drivers/i2c/i2c_shell.c
+index fa6f6c86034..e41ee67feb1 100644
+--- a/drivers/i2c/i2c_shell.c
++++ b/drivers/i2c/i2c_shell.c
+@@ -36,7 +36,9 @@ static int get_bytes_count_for_hex(char *arg)
+ /*
+  * This sends I2C messages without any data (i.e. stop condition after
+  * sending just the address). If there is an ACK for the address, it
+- * is assumed there is a device present.
++ * is assumed there is a device present.  On a controller that cannot
++ * send such a message (i2c_transfer() returns -ENOTSUP), the address
++ * and the next ones are probed with a read of one byte instead.
+  *
+  * WARNING: As there is no standard I2C detection command, this code
+  * uses arbitrary SMBus commands (namely SMBus quick write and SMBus
+@@ -51,6 +53,7 @@ static int cmd_i2c_scan(const struct shell *sh, size_t argc, char **argv)
+ {
+ 	const struct device *dev;
+ 	uint8_t cnt = 0, first = 0x04, last = 0x77;
++	bool read_probe = false;
+ 
+ 	dev = shell_device_get_binding(argv[ARGV_DEV]);
+ 
+@@ -70,12 +73,25 @@ static int cmd_i2c_scan(const struct shell *sh, size_t argc, char **argv)
+ 
+ 			struct i2c_msg msgs[1];
+ 			uint8_t dst;
++			int ret;
+ 
+ 			/* Send the address to read from */
+ 			msgs[0].buf = &dst;
+-			msgs[0].len = 0U;
+-			msgs[0].flags = I2C_MSG_WRITE | I2C_MSG_STOP;
+-			if (i2c_transfer(dev, &msgs[0], 1, i + j) == 0) {
++			msgs[0].len = read_probe ? 1U : 0U;
++			msgs[0].flags = (read_probe ? I2C_MSG_READ : I2C_MSG_WRITE) |
++					I2C_MSG_STOP;
++			ret = i2c_transfer(dev, &msgs[0], 1, i + j);
++			if (ret == -ENOTSUP && !read_probe) {
++				/* The controller cannot send a write of no bytes:
++				 * this address and the next ones are probed with
++				 * a read of one byte.
++				 */
++				read_probe = true;
++				msgs[0].len = 1U;
++				msgs[0].flags = I2C_MSG_READ | I2C_MSG_STOP;
++				ret = i2c_transfer(dev, &msgs[0], 1, i + j);
++			}
++			if (ret == 0) {
+ 				shell_fprintf_normal(sh, "%02x ", i + j);
+ 				++cnt;
+ 			} else {
+@@ -85,6 +101,10 @@ static int cmd_i2c_scan(const struct shell *sh, size_t argc, char **argv)
+ 		shell_print(sh, "");
+ 	}
+ 
++	if (read_probe) {
++		shell_print(sh, "Probed with one-byte reads (no zero-length writes)");
++	}
++
+ 	shell_print(sh, "%u devices found on %s", cnt, argv[ARGV_DEV]);
+ 
+ 	return 0;

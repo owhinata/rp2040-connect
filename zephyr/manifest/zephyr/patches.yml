@@ -51,17 +51,18 @@ patches:
       DMA controller, and the functions of the app's "i2c_dma" command in
       <zephyr/drivers/i2c/i2c_dw_rp2040_dma.h>), enabled in the app's
       prj.conf.
-  - path: zephyr/0004-i2c-shell-scan-not-supported.patch
-    sha256sum: a4158eaad8dc586a8124cf246ab408ba891971a4f147fedd405decd74026cc83
+  - path: zephyr/0004-i2c-shell-scan-read-probe.patch
+    sha256sum: 28ef91a3e3850e72c643b5cee519d5b06d5171c0ffa8f84ba1533324752ff433
     module: zephyr
     author: rp2040-connect
     email: noreply@example.invalid
-    date: 2026-11-21
+    date: 2026-11-24
     upstreamable: false
     comments: |
-      The shell's "i2c scan" stops and returns -ENOTSUP, with a message,
-      when the controller refuses its zero-length probes (the DesignWare
-      driver of patch 0003), instead of reporting "0 devices found".
+      The shell's "i2c scan" probes with one-byte reads, and says so after
+      the table, when the controller refuses its zero-length writes (the
+      DesignWare driver of patch 0003), instead of reporting "--" for every
+      address and "0 devices found".
   - path: zephyr/0006-sensor-shell-fifo-attributes.patch
     sha256sum: 127abe67c210aad4ad9276f31a9c58a4e528fa9ca25724905a5e1fa1e5ab4e82
     module: zephyr

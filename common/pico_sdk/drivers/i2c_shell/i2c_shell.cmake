@@ -10,10 +10,10 @@
 # i2c_dw.cmake: the layer with its shell and <zephyr/drivers/i2c.h>, the
 # device i2c0 "i2c@40044000").  It adds to the target the command,
 # common/shell/i2c_shell.c: Zephyr v4.5.0's
-# drivers/i2c/i2c_shell.c with the local patch 0004 ("i2c scan" refuses a
-# controller that cannot send a write of no bytes), the file of the Zephyr
-# build's patched tree (common/tests/run.sh compares the two).  Its
-# SHELL_CMD_REGISTER() makes the root z_shell_root_i2c for the
+# drivers/i2c/i2c_shell.c with the local patch 0004 ("i2c scan" probes with
+# one-byte reads on a controller that cannot send a write of no bytes), the
+# file of the Zephyr build's patched tree (common/tests/run.sh compares the
+# two).  Its SHELL_CMD_REGISTER() makes the root z_shell_root_i2c for the
 # application's table.  The commands of "i2c target" are not built
 # (CONFIG_I2C_TARGET, off in the Zephyr build).
 #

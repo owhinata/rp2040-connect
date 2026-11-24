@@ -735,9 +735,9 @@ nsh$ i2c read_byte i2c@40044000 6a 0f
 Output: 0x6c
 ```
 
-- `i2c scan` probes with 0-byte writes, which the driver refuses (`-ENOTSUP`), so it stops at the first
-  address with `I2C: i2c@40044000 does not support this scan (zero-length writes)` and fails (as in the
-  Zephyr build; probe one address with `i2c direct_read i2c@40044000 6a 1`).
+- `i2c scan` probes with 0-byte writes; the driver refuses the first one (`-ENOTSUP`), so it probes that
+  address and the rest with one-byte reads and prints `Probed with one-byte reads (no zero-length writes)`
+  after the table (as in the Zephyr build; probe one address with `i2c direct_read i2c@40044000 6a 1`).
 - `i2c recover` fails with `-ENOTSUP`: the board has no recovery routine (the number shown is NuttX's).
 - There is no `i2c target` (`CONFIG_I2C_TARGET` is off in the Zephyr build too). I2C1
   (`CONFIG_I2C_DW_I2C1`) has no device of the layer, so the command does not reach it.

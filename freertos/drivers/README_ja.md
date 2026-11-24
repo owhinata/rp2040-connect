@@ -303,7 +303,7 @@ SPI の待つ呼び出し、USB のドライバーの一部）、NINA の中継�
   TIMER（`time_us_64()`）の ms です。Zephyr のものとして残るのは、使う側の API（互換層のデバイスと
   `<zephyr/drivers/i2c.h>`）だけです。
 - **断る要求**: 0 バイトのメッセージを含む転送は、何も送る前に `-ENOTSUP` を返します（コアが断る。Zephyr 版のドライバーと
-  同じで、コントローラーは 0 バイトの転送ができない。`i2c scan` は最初のアドレスで理由を表示して失敗する）。バスの復旧の要求
+  同じで、コントローラーは 0 バイトの転送ができない。`i2c scan` は Zephyr 版と同じく、1 バイトの読み出しで確かめる）。バスの復旧の要求
   （`i2c_recover_bus()`、`i2c recover`）は、Zephyr 版のドライバーが復旧のコールバックを持たないときと同じく `-ENOTSUP` です
   （このボードにはバスの復旧が無い）。Zephyr 版のドライバーと同じく `get_config` は無く、`i2c_get_config()` は `-ENOSYS` を返すので、
   `i2c speed` は `I2C_MODE_CONTROLLER` と新しい速さの区分で `i2c_configure()` を呼びます（以後の転送はその速さ）。

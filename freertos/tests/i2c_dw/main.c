@@ -78,8 +78,11 @@
  *   (the SCL counts), and fails for a class the controller does not have,
  *   changing nothing; "i2c read_byte", "i2c write_byte" and "i2c read" in
  *   Zephyr's hexdump (a DMA read of 32 bytes); no such device; "i2c scan"
- *   stops at its first address (a write of no bytes, -ENOTSUP) with patch
- *   0004's message; "i2c recover" fails with -ENOTSUP.
+ *   (patch 0004): the write of no bytes refused (-ENOTSUP), every address
+ *   probed with a read of one byte, the two answering ones in the table,
+ *   "--" for the NACKed ones (no timeout), the note of the one-byte reads
+ *   and "2 devices found", then a read that works; "i2c recover" fails
+ *   with -ENOTSUP.
  * - The boundary's semaphore and time functions: K_MSEC() rounding plus
  *   one tick, the deadline's last try without waiting, a give from an
  *   interrupt handler and from a task, a give between a wait's look at the
@@ -521,6 +524,7 @@ enum hw_mode {
 	HW_OFF,          /* no interrupt at all (a dead bus) */
 	HW_DEVICE,       /* the LSM6DSOX answers */
 	HW_NACK,         /* nothing at the address: the address byte is not acked */
+	HW_SCAN,         /* as HW_DEVICE at SCAN_ADDR_A and SCAN_ADDR_B, else HW_NACK */
 	HW_DMA,          /* the DMA read ends: both channels, then STOP_DET */
 	HW_DMA_TX_ERROR, /* the TX channel stops on a read bus error */
 	HW_DMA_RX_ERROR, /* the RX channel stops on a write bus error */
@@ -529,6 +533,10 @@ enum hw_mode {
 };
 
 static volatile enum hw_mode hw_mode = HW_OFF;
+
+/* The devices of HW_SCAN: the board's ATECC608 and the LSM6DSOX. */
+#define SCAN_ADDR_A 0x60
+#define SCAN_ADDR_B 0x6a
 static char hw_log[LOG_SIZE];
 static uint8_t device_reg;
 
@@ -576,14 +584,17 @@ static void interrupt(uint32_t intr_stat, uint32_t status)
  * asks for the first command (TX_EMPTY); for a read, the byte arrives
  * (RX_FULL): answer(the register last written); STOP_DET after a command
  * with STOP.  Messages of one byte.  In mode HW_NACK nothing acks the
- * address.  The commands go to the log through note().
+ * address, in HW_SCAN nothing but SCAN_ADDR_A and SCAN_ADDR_B (IC_TAR).
+ * The commands go to the log through note().
  */
 static void bus_message(volatile uint32_t *regs, uint irq, enum hw_mode mode, uint8_t *reg,
 			uint8_t (*answer)(uint8_t reg), void (*note)(const char *fmt, ...))
 {
 	uint32_t cmd;
 
-	if (mode == HW_NACK) {
+	uint32_t tar = regs[IC_TAR / 4] & 0x3ff;
+
+	if (mode == HW_NACK || (mode == HW_SCAN && tar != SCAN_ADDR_A && tar != SCAN_ADDR_B)) {
 		regs[IC_TX_ABRT_SRC / 4] = 1; /* ADDR7BNACK */
 		bus_interrupt(regs, irq, STAT_TX_ABRT, STATUS_TFNF);
 		regs[IC_TX_ABRT_SRC / 4] = 0;
@@ -1892,7 +1903,9 @@ static void help_run(const char *line, char *out, size_t size)
 static void test_shell(void)
 {
 	char expected[LOG_SIZE];
-	int n;
+	char bus[LOG_SIZE];
+	uint32_t ticks;
+	int n, m;
 
 	hw_mode = HW_DEVICE;
 
@@ -1963,20 +1976,49 @@ static void test_shell(void)
 	assert(shell_run("i2c read_byte i2c9 6a 0f") == 1);
 	expect_shell("I2C: Device driver i2c9 not found.\n");
 
-	/* "i2c scan": the core refuses a write of no bytes (-ENOTSUP), so the
-	 * scan stops at its first address with patch 0004's message.
+	/* "i2c scan": the core refuses the write of no bytes to the first
+	 * address (-ENOTSUP, nothing on the bus), so every address is probed
+	 * with a read of one byte (READ|STOP): SCAN_ADDR_A and SCAN_ADDR_B
+	 * answer, the others NACK at once (-EIO, "--"; no timeout: about one
+	 * tick each).  Then a normal transfer works.
 	 */
-	assert(shell_run("i2c scan i2c@40044000") == 1);
+	hw_mode = HW_SCAN;
+	ticks = i2c_dw_test_os_ticks();
+	assert(shell_run("i2c scan i2c@40044000") == 0);
+	ticks = i2c_dw_test_os_ticks() - ticks;
+	assert(ticks < 2 * (0x77 - 0x04 + 1) + 20);
 	n = snprintf(expected, sizeof(expected),
-		     "     0  1  2  3  4  5  6  7  8  9  a  b  c  d  e  f\n00: ");
-	for (int i = 0; i < 4; i++) {
-		n += snprintf(expected + n, sizeof(expected) - n, "   ");
+		     "     0  1  2  3  4  5  6  7  8  9  a  b  c  d  e  f\n");
+	m = 0;
+	for (int a = 0; a <= 0x77; a++) {
+		if (a % 16 == 0) {
+			n += snprintf(expected + n, sizeof(expected) - n, "%02x: ", a);
+		}
+		if (a < 0x04) {
+			n += snprintf(expected + n, sizeof(expected) - n, "   ");
+		} else if (a == SCAN_ADDR_A || a == SCAN_ADDR_B) {
+			n += snprintf(expected + n, sizeof(expected) - n, "%02x ", a);
+			m += snprintf(bus + m, sizeof(bus) - m, "0x300 ");
+		} else {
+			n += snprintf(expected + n, sizeof(expected) - n, "-- ");
+			m += snprintf(bus + m, sizeof(bus) - m, "nack ");
+		}
+		if (a % 16 == 15) {
+			n += snprintf(expected + n, sizeof(expected) - n, "\n");
+		}
 	}
 	snprintf(expected + n, sizeof(expected) - n,
-		 "\nI2C: i2c@40044000 does not support this scan (zero-length writes)\n");
+		 "                        \n"
+		 "Probed with one-byte reads (no zero-length writes)\n"
+		 "2 devices found on i2c@40044000\n");
 	expect_shell(expected);
-	i2c_dw_test_os_delay(5);
-	expect_hw("");
+	expect_hw(bus);
+	assert(strstr(log_text, "<1> i2c_dw: NACK on i2c@40044000\n") == log_text);
+	log_text[0] = '\0';
+	hw_mode = HW_DEVICE;
+	assert(shell_run("i2c read_byte i2c@40044000 6a 0f") == 0);
+	expect_shell("Output: 0x6c\n");
+	expect_hw(WHO_AM_I_BUS_AFTER_READ);
 
 	/* "i2c recover": no recover-bus callback, as Zephyr's driver. */
 	assert(shell_run("i2c recover i2c@40044000") == 1);
