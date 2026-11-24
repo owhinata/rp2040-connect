@@ -110,3 +110,29 @@
 - 試験用のファームウェアには `bootsel` が無い。BOOTSEL に入れるには、USB のポートを 1200 bps で開く（Pico SDK の `stdio_usb` の機能）。
 - T1 への追従（`tick.c`、`threadx_kernel.cmake`、`rp2040/zephyr_os_port.h`、試験の `CMakeLists.txt`）もこの commit に入る。`threadx/script/build.sh board_kernel` が通る。
 - 実機: ThreadX の試験用のファームウェア（このビルド）。
+
+## T2〜T4 の入口: 製品のファームウェアの組み立てと、実機での最初の確認（2026-11-24）
+
+- `threadx/app/usb-console/`: `CMakeLists.txt`（共有の `pico_sdk_usb_console()` の上。USB の製品名 "ThreadX USB Console"）、境界の実装 `src/main_os_impl.h`・`fault_os_impl.h`・
+  `commands_os_impl.h`（`version`・`ps`）・`kernel_shell_os_impl.h`・`idle_os.h`、`priorities_os.h`。`script/flash_uf2.sh --target threadx`、`threadx/script/{flash,format}.sh`、`setup.sh` は stmemsc も取得。
+- 共有のコードの変更は 1 つだけ: `common/pico_sdk/app/usb-console/src/idle.c` が、区間を開く・閉じるの 2 つの半分を持ち、OS が `IDLE_OS_ENTER`・`IDLE_OS_EXIT`（ThreadX: `tx_low_power_enter`・`_exit`）
+  か、1 回分の全体 `IDLE_OS_HOOK`（FreeRTOS）のどちらかを名付ける。ThreadX の `idle.c` の写しは削除。FreeRTOS のイメージは `t1-before` と一致（subagent が 2 回確認）。
+- 起動: `main_os_kernel_init()`（`_tx_initialize_kernel_setup()`）からスケジューラーの開始まで割り込みは止まったまま。そのあいだの `main()` は割り込みも時間の経過も要らないことを
+  読んで確かめた（USB の接続待ちは 0、I2C は転送なし、ログは RAM へ）。メインのスレッドのスタック（SCRATCH_X、noload）の予約領域は、起動のたびに 0 で埋める
+  （ウォッチドッグの再起動のあとに前の ThreadX のオブジェクトの ID が残るため）。
+- スタックの検査: `TX_ENABLE_STACK_CHECKING`（スレッドが自分で待ちに入るとき・再開されるときに確かめる。FreeRTOS の方式 2 と違い、PendSV での横取りのときは確かめない）。
+- `ps`: FreeRTOS 版と同じ列。PRIO は ThreadX の数（0 が最優先、Zephyr の p + 16）。終わったスレッド（"main"）は出さない。`(idle)` の行はキットのアイドル時間。
+- **よく通るコードの RAM への配置**: subagent は ThreadX のカーネルのよく通る部分（約 5.5 KiB）も RAM に置いたが、メインが外した（FreeRTOS 版はカーネルをフラッシュに置いたまま。
+  「スケジューラーまわりを RAM に足さない」という以前の決定にも合わせる）。OS の分は FreeRTOS 版と同じ `nina_os.c` だけ。T5 で測ってから判断する。
+- 大きさ: text 248,580、bss 113,660（FreeRTOS は 247,832・116,840）。`free`: まだ取れる量 90,112 B。スレッドごとの予約領域は 272 B（キットで `TX_THREAD` が 12 B 増えた）。
+- **実機（書き込み直後の最初の起動から）**:
+  - USB が列挙され、プロンプト `threadx:~$`。`version`・`ps`・`uptime`・`free`・`fault`・`dmesg`（`<err>` なし）。
+  - `i2c read_byte … 6a 0f` = 0x6c、`sensor get`、`kv get imu.port`（ほかの OS のファームウェアが書いた KV が読める）。Wi-Fi は自動で接続、`nina version` 3.0.2、`ntp status` は同期。
+  - **送信（書き込み直後の最初の計測、60 秒）: `cpu_active` 18.5%、欠番 0、時刻の逆行 0、`published` = `batches` 2446、`max_transfer_us` 5892。**
+    スレッドの内訳は mqtt 2.7・fifo 14.2・stream 17.8（FreeRTOS は 2.8・14.1・17.3）。
+  - `sensor stream`（送信の計測のあと、watermark が 128 語のまま。FreeRTOS 版の計測とは条件が違う）: 104・833・3333・6667 Hz とも 30 秒止まらず、2.x・5.7・20.5・37.5%。
+  - KV の書き込み → `reboot` → 削除。`devmem 30000000` → 再起動後の `fault` に HardFault、タスク console、pc・lr・sp。
+  - スタックの残り（送信と `sensor stream` のあと）: sysworkq 136 / 384、imu_raw_mqtt_tid 788、割り込みスタック 1660。sysworkq は余裕が少ないので T5 で見直す。
+- まだ確かめていない: 送信中の Telnet の接続と切断、切断と再接続、`wifi scan`、`zperf`、中継モード、再起動の直後の `sensor stream`（watermark 32）、長時間。
+  ドライバーの待ちのホストテスト（別の subagent が作業中。その途中の `port/threadx/` の変更を含むビルドで上の確認をした）。
+- 実機: ThreadX 版（このビルド）。

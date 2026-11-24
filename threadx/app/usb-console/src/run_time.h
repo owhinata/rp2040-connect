@@ -11,8 +11,8 @@
  * _tx_thread_context_save()/_restore() would), as in FreeRTOS's run time
  * stats.  The time the scheduler waits with no thread ready, handlers in
  * it included, is the kit's idle time.  "cpu_active" is not this idle
- * time but the idle windows of src/idle.c, where handlers count as load,
- * as in the other builds.
+ * time but the idle windows of common/pico_sdk/app/usb-console/src/idle.c
+ * (idle_os.h), where handlers count as load, as in the other builds.
  *
  * The kit's clock is the TIMER's low word: a run of one thread longer than
  * 71.6 minutes without a switch would lose 2^32 us, and a run that starts

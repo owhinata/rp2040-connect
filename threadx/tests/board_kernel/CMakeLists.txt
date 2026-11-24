@@ -27,15 +27,17 @@ include(${THREADX_DIR}/app/usb-console/threadx_kernel.cmake)
 # The layer's kernel part (the generic one, common/compat/kernel_generic, on
 # the ThreadX primitives, threadx/drivers/compat), the OS-independent part
 # the test uses (common/compat: zephyr_init.c, zephyr_work.c,
-# zephyr_rtio_workq.c), the product's idle wait and run time
-# (threadx/app/usb-console/src: idle.c, run_time.c), and the test.
+# zephyr_rtio_workq.c), the product's idle wait (the halves of
+# common/pico_sdk/app/usb-console/src/idle.c named by
+# threadx/app/usb-console/src/idle_os.h) and run time
+# (threadx/app/usb-console/src/run_time.c), and the test.
 add_executable(board_kernel
   main.c
   lock_test.c
   idle_test.c
   sdk_test.c
   test_port.c
-  ${THREADX_DIR}/app/usb-console/src/idle.c
+  ${COMMON_DIR}/pico_sdk/app/usb-console/src/idle.c
   ${THREADX_DIR}/app/usb-console/src/run_time.c
   ${COMMON_DIR}/tests/zephyr_kernel/zephyr_kernel_test.c
   ${COMMON_DIR}/compat/kernel_generic/zephyr_kernel.c
@@ -48,9 +50,9 @@ add_executable(board_kernel
 
 threadx_kernel(board_kernel)
 
-# This directory (zephyr_kernel_test_os_impl.h), the board's priorities_os.h
-# and run_time.h (threadx/app/usb-console/src), the board's port header
-# first with the part shared by the OSes on the Pico SDK
+# This directory (zephyr_kernel_test_os_impl.h), the board's priorities_os.h,
+# idle_os.h and run_time.h (threadx/app/usb-console/src), the board's port
+# header first with the part shared by the OSes on the Pico SDK
 # (common/pico_sdk/drivers/compat/rp2040),
 # then the ThreadX part of the layer, the layer's <zephyr/sys/clock.h> and
 # <zephyr/sys/__assert.h> for an OS without its own
@@ -85,7 +87,7 @@ target_compile_definitions(board_kernel PRIVATE
 
 # The LED shows this firmware's states (main.c): no blink from the idle
 # wait.
-set_source_files_properties(${THREADX_DIR}/app/usb-console/src/idle.c
+set_source_files_properties(${COMMON_DIR}/pico_sdk/app/usb-console/src/idle.c
   PROPERTIES COMPILE_DEFINITIONS IDLE_BLINK=0
 )
 

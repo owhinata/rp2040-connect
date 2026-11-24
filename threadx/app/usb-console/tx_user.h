@@ -19,11 +19,12 @@
  *
  * The board's own:
  *
- * - The idle wait (src/idle.c): with no thread ready, the scheduler waits
- *   inside PendSV, interrupts masked, calling tx_low_power_enter(), then
- *   WFI, then tx_low_power_exit(), then unmasking them, in a loop
+ * - The idle wait (src/idle_os.h): with no thread ready, the scheduler
+ *   waits inside PendSV, interrupts masked, calling tx_low_power_enter(),
+ *   then WFI, then tx_low_power_exit(), then unmasking them, in a loop
  *   (TX_LOW_POWER, TX_ENABLE_WFI; tx_thread_schedule.S).  The two hooks
- *   open and close the CPU load's window around the WFI.
+ *   open and close the CPU load's window around the WFI (the halves of
+ *   common/pico_sdk/app/usb-console/src/idle.c).
  * - The run time of each thread for "ps" (src/run_time.h): ThreadX's
  *   execution profile kit (utility/execution_profile_kit,
  *   TX_EXECUTION_PROFILE_ENABLE), which the scheduler calls at every switch
@@ -32,6 +33,17 @@
  *   the kit takes a 32-bit source that wraps at TX_EXECUTION_MAX_TIME_SOURCE
  *   (its default, 0xFFFFFFFF, every 71.6 minutes: a run of one thread may
  *   be up to that long) and keeps the totals in 64 bits (EXECUTION_TIME).
+ * - The stack check (TX_ENABLE_STACK_CHECKING), the counterpart of the
+ *   FreeRTOS build's configCHECK_FOR_STACK_OVERFLOW 2: when a thread
+ *   suspends itself (a wait, a sleep) or relinquishes, and when it is
+ *   resumed, ThreadX checks the 0xEF fill of the lowest word of its stack
+ *   and of the word above its top, and its saved stack pointer against the
+ *   lowest address; a failure calls the handler that the USB console
+ *   registers with tx_thread_stack_error_notify() (its fatal error exit,
+ *   src/fault_os_impl.h).  FreeRTOS checks at every switch out of a task
+ *   (PendSV), ThreadX at those calls (the preemption by PendSV is not one
+ *   of them).  The check needs the stack filling, which stays on; ThreadX
+ *   leaves one word at the top of each stack for the pattern.
  *
  * The kernel allocates nothing: every object's memory is the caller's, and
  * no byte or block pool is created (tx_application_define() gets no free
@@ -54,6 +66,8 @@
 #define TX_ENABLE_WFI
 
 #define TX_EXECUTION_PROFILE_ENABLE
+
+#define TX_ENABLE_STACK_CHECKING
 
 #ifndef __ASSEMBLER__
 #include "rp2040_timer_us.h"

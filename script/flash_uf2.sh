@@ -3,10 +3,11 @@
 # Write a UF2 image to the Arduino Nano RP2040 Connect through the RP2040
 # USB bootloader (BOOTSEL, the RPI-RP2 drive).  No sudo.
 #
-# The shared part of zephyr/script/flash.sh, nuttx/script/flash.sh and
-# freertos/script/flash.sh, which run it with --target.  Whichever of the
-# three builds is running, its shell's "bootsel" command restarts the board
-# into BOOTSEL, so any of them can be written over any other.
+# The shared part of zephyr/script/flash.sh, nuttx/script/flash.sh,
+# freertos/script/flash.sh and threadx/script/flash.sh, which run it with
+# --target.  Whichever of the four builds is running, its shell's "bootsel"
+# command restarts the board into BOOTSEL, so any of them can be written
+# over any other.
 #
 #   script/flash_uf2.sh --target nuttx [--build] [UF2]
 #   script/flash_uf2.sh other.uf2         any RP2040 UF2 (OpenMV, ...)
@@ -28,23 +29,26 @@ byid_dir="${FLASH_UF2_BYID_DIR:-/dev/serial/by-id}"
 zephyr_glob='usb-Zephyr_Project_Zephyr_USB_Console_*'
 nuttx_glob='usb-*NuttX_USB_Console*'
 freertos_glob='usb-*FreeRTOS_USB_Console*'
-declare -A build_name=([zephyr]=Zephyr [nuttx]=NuttX [freertos]=FreeRTOS)
-declare -A build_glob=([zephyr]="$zephyr_glob" [nuttx]="$nuttx_glob" [freertos]="$freertos_glob")
+threadx_glob='usb-*ThreadX_USB_Console*'
+declare -A build_name=([zephyr]=Zephyr [nuttx]=NuttX [freertos]=FreeRTOS [threadx]=ThreadX)
+declare -A build_glob=([zephyr]="$zephyr_glob" [nuttx]="$nuttx_glob" [freertos]="$freertos_glob"
+  [threadx]="$threadx_glob")
 declare -A build_uf2=(
   [zephyr]="${repo}/zephyr/build/usb-console/zephyr/zephyr.uf2"
   [nuttx]="${repo}/nuttx/build/nuttx.uf2"
   [freertos]="${repo}/freertos/build/usb-console/usb-console.uf2"
+  [threadx]="${repo}/threadx/build/usb-console/usb-console.uf2"
 )
-builds=(zephyr nuttx freertos)
-# The shells' prompts (Zephyr, NuttX, FreeRTOS).
-prompt_re='uart:~\$ |nsh\$ |freertos:~\$ '
+builds=(zephyr nuttx freertos threadx)
+# The shells' prompts (Zephyr, NuttX, FreeRTOS, ThreadX).
+prompt_re='uart:~\$ |nsh\$ |freertos:~\$ |threadx:~\$ '
 drive_label=RPI-RP2
 uf2_family=e48bff56          # RP2040
 probe_s=2                    # for the shell's answer to Ctrl-C
 bootsel_s=15                 # for the drive after "bootsel"
 
 usage() {
-  local prog=script/flash_uf2.sh def="(required)" cons="a USB console of the three builds"
+  local prog=script/flash_uf2.sh def="(required)" cons="a USB console of the four builds"
   if [[ -n "$target" ]]; then
     prog="${target}/script/flash.sh"
     def="(default: ${build_uf2[$target]#"${repo}/"})"
@@ -55,10 +59,10 @@ Usage: ${prog} [options] [UF2]
 
 Write UF2 ${def} to the board:
   1. If an RPI-RP2 drive (RP2040 in BOOTSEL) is present, copy to it.
-  2. Otherwise, if the USB console of one of the three builds (Zephyr, NuttX,
-     FreeRTOS) is present and not open in another program, send it Ctrl-C;
-     when its shell answers with a prompt, send "bootsel" and wait for the
-     drive.
+  2. Otherwise, if the USB console of one of the four builds (Zephyr, NuttX,
+     FreeRTOS, ThreadX) is present and not open in another program, send it
+     Ctrl-C; when its shell answers with a prompt, send "bootsel" and wait
+     for the drive.
   3. Otherwise (no console, or no answer: an old or stuck image, the NINA
      passthrough), explain how to enter BOOTSEL by hand and wait for the
      drive.
@@ -85,7 +89,7 @@ wait_s=60
 help=0
 while (( $# )); do
   case "$1" in
-    --target) shift; target="${1:?--target needs zephyr, nuttx or freertos}" ;;
+    --target) shift; target="${1:?--target needs zephyr, nuttx, freertos or threadx}" ;;
     --target=*) target="${1#--target=}" ;;
     --build) build=1 ;;
     --dry-run) dry=1 ;;
@@ -101,7 +105,7 @@ while (( $# )); do
   shift
 done
 if [[ -n "$target" && -z "${build_name[$target]:-}" ]]; then
-  printf 'Unknown target: %s (zephyr, nuttx or freertos)\n' "$target" >&2
+  printf 'Unknown target: %s (zephyr, nuttx, freertos or threadx)\n' "$target" >&2
   exit 2
 fi
 if (( help )); then
@@ -133,7 +137,7 @@ run_build() {
         .venv/bin/west build -b arduino_nano_connect app/usb-console -d build/usb-console
       )
       ;;
-    nuttx | freertos)
+    nuttx | freertos | threadx)
       "${repo}/${target}/script/build.sh"
       ;;
   esac
@@ -283,7 +287,7 @@ list_byid() {  # glob -> matching paths, one per line
   shopt -u nullglob
 }
 
-# Sets console and console_build when exactly one console of the three
+# Sets console and console_build when exactly one console of the four
 # builds is present; returns 1 otherwise (and lists them when several).
 pick_console() {
   local b f found=() kinds=()
@@ -311,11 +315,12 @@ console_in_use() {
   "$fuser_cmd" -s "$(readlink -f -- "$1")" 2>/dev/null
 }
 
-# Ctrl-C drops whatever is on the command line in all three shells (Zephyr's
-# metakeys, NuttX's readline with patches/apps/0003, the FreeRTOS command
-# line) and they answer with a new prompt.  Only then is "bootsel" sent; no
-# prompt (an old or stuck image, the NINA passthrough, where the bytes go to
-# the module's UART) sends nothing more.  The port is set to 115200 before it
+# Ctrl-C drops whatever is on the command line in all four shells (Zephyr's
+# metakeys, NuttX's readline with patches/apps/0003, the command line of the
+# shell engine of the FreeRTOS and ThreadX builds) and they answer with a
+# new prompt.  Only then is "bootsel" sent; no prompt (an old or stuck
+# image, the NINA passthrough, where the bytes go to the module's UART)
+# sends nothing more.  The port is set to 115200 before it
 # is opened and closed: a port closed at 300 bps leaves the NINA passthrough.
 send_bootsel() {  # device
   local dev="$1" fd buf="" ch end now
@@ -354,7 +359,7 @@ flash.sh: put the board into BOOTSEL by hand:
 EOF
 }
 
-# The console to wait for after the copy: the target's, or any of the three.
+# The console to wait for after the copy: the target's, or any of the four.
 wait_globs() {
   if [[ -n "$target" ]]; then
     printf '%s\n' "${build_glob[$target]}"
@@ -454,7 +459,7 @@ fi
 if [[ -n "$target" ]]; then
   wait_text="the ${build_name[$target]} USB console (${byid_dir}/${build_glob[$target]})"
 else
-  wait_text="a USB console of the three builds"
+  wait_text="a USB console of the four builds"
 fi
 
 if (( dry )) && [[ -z "$drive_dev" ]]; then
@@ -499,4 +504,4 @@ fi
 if [[ -n "$target" ]]; then
   die "no ${build_name[$target]} USB console appeared within ${wait_s} s (was the UF2 a ${build_name[$target]} build?)"
 fi
-note "the drive went away; no console of the three builds appeared (another firmware?)"
+note "the drive went away; no console of the four builds appeared (another firmware?)"

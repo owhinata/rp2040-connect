@@ -12,10 +12,11 @@
  * priorities_os.h).
  *
  * It also keeps the count up with the TIMER (tick_catchup.h of
- * common/compat/kernel_generic, shared with the FreeRTOS build): when tick interrupts were lost while interrupts were
- * masked (a flash erase), it pends SysTick again, once per lost tick, so
- * this handler runs again right after it returns and counts each of them
- * as a tick of its own, through the layer's timeouts too.  SysTick is above
+ * common/compat/kernel_generic, shared with the FreeRTOS build): when tick
+ * interrupts were lost while interrupts were masked (a flash erase), it
+ * pends SysTick again, once per lost tick, so this handler runs again right
+ * after it returns and counts each of them as a tick of its own, through
+ * the layer's timeouts too.  SysTick is above
  * PendSV, so the added ticks run one after another before the scheduler
  * switches.  The TIMER is read first, for the least latency since the
  * tick's interrupt.

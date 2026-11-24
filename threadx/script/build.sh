@@ -2,9 +2,10 @@
 # Build a Pico SDK + ThreadX firmware for the Arduino Nano RP2040 Connect.
 # Run it from anywhere; it sources threadx/script/setup.sh itself.
 #
+#   threadx/script/build.sh                       build threadx/app/usb-console
+#   threadx/script/build.sh --clean               remove its build directory first
 #   threadx/script/build.sh board_kernel          the kernel test firmware
 #                                                 (threadx/tests/board_kernel)
-#   threadx/script/build.sh --clean board_kernel  remove its build directory first
 
 set -euo pipefail
 
@@ -16,8 +17,9 @@ Usage: threadx/script/build.sh [options] [APP]
                 (default: usb-console).  The result is
                 threadx/build/APP/APP.uf2.
   --clean       Remove threadx/build/APP first.
-  -DNAME=VALUE  Pass a CMake option on.  CMake keeps it in the build
-                directory until --clean.
+  -DNAME=VALUE  Pass a CMake option on (e.g. -DI2C_DW_I2C1=ON, the
+                I2C1 controller).  CMake keeps it in the build directory
+                until --clean.
   -j N          Parallel jobs (default: number of CPUs).
   -v            Verbose make output.
   -h, --help    Show this help.

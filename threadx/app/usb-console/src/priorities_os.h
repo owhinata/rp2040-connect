@@ -41,9 +41,36 @@
 #define APP_TIMESLICE_PRIO_MAX APP_PRIO_FROM_ZEPHYR(0)
 
 /* No thread of the kernel: ThreadX has no idle thread (its scheduler waits
- * when no thread is ready) and, with TX_TIMER_PROCESS_IN_ISR, no timer
- * thread.  The stacks of the layer's own threads are Zephyr's
- * (priorities.h) until they are measured on the board.
+ * when no thread is ready, in PendSV on the main stack) and, with
+ * TX_TIMER_PROCESS_IN_ISR, no timer thread.  The FreeRTOS build's timer task
+ * wakes the threads that wait on the Pico SDK's locks and sleeps; here an
+ * interrupt handler wakes them itself (threadx/drivers/pico_sdk_interop).
+ *
+ * Interrupts have a stack of their own (the main stack, MSP: PICO_STACK_SIZE
+ * 0x800 = 2048 bytes, Zephyr's CONFIG_ISR_STACK_SIZE=2048; the
+ * "(interrupts)" row of "ps"), which also holds the frames of main() below
+ * the scheduler's start and the scheduler's wait with the idle hooks.
+ *
+ * The stacks of the layer's own threads start at the FreeRTOS build's
+ * values (freertos/app/usb-console/src/priorities_os.h, measured there:
+ * sysworkq 200 bytes used of 384, net_mgmt 1024 of 2048, telnet_service
+ * 1164 of 2048, sensor_shell_tid 1048 of 2048), until they are measured
+ * here ("ps").  What a thread's stack holds of the kernel is about the
+ * same on both: the context of a switched-out thread (ThreadX's Cortex-M0
+ * port: r4-r11 and LR, 36 bytes, above the 32 the hardware pushes;
+ * FreeRTOS's RP2040 port: r4-r11, 32), and the frames of the kernel's
+ * services in the waits (ThreadX: the API's error check, txe_*(), then the
+ * service and _tx_thread_system_suspend() with the stack check, which may
+ * call _tx_thread_stack_analyze()).  ThreadX leaves the top word of each
+ * stack for the stack check's pattern (tx_user.h).  The control block and
+ * the rest of a thread's storage are not on its stack but after it
+ * (Z_OS_THREAD_RESERVED: 272 bytes, TX_THREAD 200 with the execution
+ * profile kit's times, the wake flag's TX_SEMAPHORE 28, the entry 8, the
+ * name 32; FreeRTOS 136).
  */
+#define APP_STACK_SYSWORKQ       384
+#define APP_STACK_NET_MGMT       2048
+#define APP_STACK_TELNET_SERVICE 2048
+#define APP_STACK_SENSOR_SHELL   2048
 
 #endif /* PRIORITIES_OS_H */

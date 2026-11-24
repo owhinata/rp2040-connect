@@ -75,6 +75,7 @@
 /threadx/pico-sdk.tmp/
 /threadx/toolchain/
 /threadx/.venv/
+/threadx/stmemsc/
 # picotool's source, fetched by the Pico SDK at the first build.
 /threadx/picotool/
 # Output of threadx/script/build.sh.
