@@ -5,7 +5,7 @@ English | [日本語](README_ja.md)
 The firmware of this repository is built on four OSes, Zephyr, NuttX, the Pico SDK with FreeRTOS and the Pico SDK
 with ThreadX: the Zephyr, NuttX, FreeRTOS and ThreadX builds.
 The internals of the FreeRTOS build (`freertos/`). How to use it and the list of commands are in
-[`freertos/README.md`](../README.md), the summary of the design in §13 of the
+[`freertos/README.md`](../README.md), the summary of the design in §9.4 of the
 [design document](../../design/imu-raw-mqtt-design.md). The details are in the comment at the top of each
 file; this page shows where the files are and how they relate to the Zephyr and NuttX builds.
 
@@ -346,7 +346,7 @@ interrupts disabled.
 ## I2C0 and DMA, LSM6DSOX, GPIO interrupt
 
 - **The driver**: I2C0 and I2C1 are the I2C core shared with the NuttX and ThreadX builds (`common/drivers/i2c_dw/`;
-  the core itself and its relation to the Zephyr build's driver are in section 12 of the
+  the core itself and its relation to the Zephyr build's driver are in section 9.1 of the
   [design](../../design/imu-raw-mqtt-design.md)). The FreeRTOS build implements the core's
   `port/i2c_dw_os.h` boundary in its FreeRTOS binding, `common/drivers/i2c_dw/port/freertos/`:
   `i2c_dw_os_impl.h` (semaphores, clock, sleeps, interrupt masking) and `i2c_dw_instance.h` (the layer's

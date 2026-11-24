@@ -4,7 +4,7 @@
 
 このリポジトリーのファームウェアは、Zephyr・NuttX・Pico SDK + FreeRTOS・Pico SDK + ThreadX の 4 つの OS の上でそれぞれビルドでき、それぞれを
 Zephyr 版・NuttX 版・FreeRTOS 版・ThreadX 版と呼びます。この文書は FreeRTOS 版（`freertos/`）の内部の説明です。使い方とコマンドの一覧は [`freertos/README_ja.md`](../README_ja.md)、
-設計の要約は [設計書](../../design/imu-raw-mqtt-design-ja.md) の §13 にあります。細部は各ファイルの先頭の
+設計の要約は [設計書](../../design/imu-raw-mqtt-design-ja.md) の §9.4 にあります。細部は各ファイルの先頭の
 コメントに書いてあり、ここではファイルの場所と、Zephyr 版・NuttX 版との関係を示します。
 
 FreeRTOS 版のソースの大半は、4 つの OS のファームウェアで共有する `common/` にあります（取得、送信、時刻同期、校正、KV、
@@ -283,7 +283,7 @@ SPI の待つ呼び出し、USB のドライバーの一部）、NINA の中継�
 ## I2C0 と DMA、LSM6DSOX、GPIO の割り込み
 
 - **ドライバー**: I2C0 と I2C1 は、NuttX 版・ThreadX 版と共有する I2C のコア（`common/drivers/i2c_dw/`）です（コアそのものと
-  Zephyr 版のドライバーとの関係は[設計書](../../design/imu-raw-mqtt-design-ja.md)の §12）。FreeRTOS 版はコアの境界
+  Zephyr 版のドライバーとの関係は[設計書](../../design/imu-raw-mqtt-design-ja.md)の §9.1）。FreeRTOS 版はコアの境界
   `port/i2c_dw_os.h` を、FreeRTOS へのつなぎ `common/drivers/i2c_dw/port/freertos/` の `i2c_dw_os_impl.h`（セマフォ、
   時計、スリープ、割り込み禁止）と `i2c_dw_instance.h`（互換層のデバイスと Zephyr の I2C の API、割り込みの登録、
   リセット、ピン）で実装します。境界の一覧は [`nuttx/drivers/README_ja.md`](../../nuttx/drivers/README_ja.md) の

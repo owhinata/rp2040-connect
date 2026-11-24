@@ -228,7 +228,7 @@ i2c_dma stats         DMA 転送数、バイト数、エラー、割り込み方
 ```
 
 **NuttX 版・FreeRTOS 版・ThreadX 版との関係**: NuttX 版・FreeRTOS 版・ThreadX 版の I²C のコア（`common/drivers/i2c_dw/`）は、このパッチ後のドライバーの写しです。
-両者のずれはホストテストの `i2c_dw_sync` が検出します（仕組みは[設計書](../../../../design/imu-raw-mqtt-design-ja.md)の §12、
+両者のずれはホストテストの `i2c_dw_sync` が検出します（仕組みは[設計書](../../../../design/imu-raw-mqtt-design-ja.md)の §9.1、
 Zephyr を上げるときの手順は下の「Zephyr へのローカルのパッチ」）。
 
 FIFO の取得だけを行った過去の測定（6667 Hz、1 MHz、各 1 回）では、watermark 128 のとき

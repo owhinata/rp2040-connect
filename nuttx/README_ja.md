@@ -16,7 +16,7 @@
 
 - 各機能の動作の詳しい説明: [`design/nuttx-porting-ja.md`](../design/nuttx-porting-ja.md)
 - ドライバー（NINA、I2C0、LSM6DSOX）と Zephyr の API の互換層: [`drivers/README_ja.md`](drivers/README_ja.md)
-- 設計の要約: 設計書 [§11](../design/imu-raw-mqtt-design-ja.md)（「11. NuttX 版」）
+- 設計の要約: 設計書 [§9.3](../design/imu-raw-mqtt-design-ja.md)（「9.3 NuttX 版」）
 - Zephyr 版との性能の比較: ルートの [`README_ja.md`](../README_ja.md) の「4 つの OS のファームウェアの性能」
 - 移植の計画・経緯・確かめた事実（作業ログ）: [`PORTING_PLAN.md`](PORTING_PLAN.md)、
   [`PORTING_STATUS.md`](PORTING_STATUS.md)、[`PORTING_NOTES.md`](PORTING_NOTES.md)

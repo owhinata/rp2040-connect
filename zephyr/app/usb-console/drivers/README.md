@@ -260,7 +260,7 @@ i2c_dma stats         DMA transfers, bytes, errors and fallbacks (cumulative)
 ```
 
 **The other builds**: the I2C core of the NuttX, FreeRTOS and ThreadX builds (`common/drivers/i2c_dw/`) is a port of this patched
-driver. The host test `i2c_dw_sync` detects where the two drift apart (how, in section 12 of the
+driver. The host test `i2c_dw_sync` detects where the two drift apart (how, in section 9.1 of the
 [design](../../../../design/imu-raw-mqtt-design.md); the steps when moving to a newer Zephyr, in "Local patches of
 Zephyr" below).
 

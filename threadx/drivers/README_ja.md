@@ -5,7 +5,7 @@
 このリポジトリーのファームウェアは、同じファームウェアを Zephyr・NuttX・Pico SDK + FreeRTOS・Pico SDK + ThreadX の 4 つの OS の上で
 それぞれビルドしたもので、それぞれを Zephyr 版・NuttX 版・FreeRTOS 版・ThreadX 版と呼びます。この文書は ThreadX 版（`threadx/`）の
 内部の説明です。使い方は [`threadx/README_ja.md`](../README_ja.md)、各 OS のファームウェアが書くものの一覧は
-[`design/os-boundary-ja.md`](../../design/os-boundary-ja.md)、設計の要約は [設計書](../../design/imu-raw-mqtt-design-ja.md) にあります。細部は各ファイルの
+[`design/os-boundary-ja.md`](../../design/os-boundary-ja.md)、設計の要約は [設計書](../../design/imu-raw-mqtt-design-ja.md) の §9.5 にあります。細部は各ファイルの
 先頭のコメントにあります。
 
 ThreadX 版は、ThreadX のカーネル（Eclipse ThreadX v6.5.2.202603b_rel。Cortex-M0 のポート `ports/cortex_m0/gnu`）だけを使い、起動・クロック・USB・

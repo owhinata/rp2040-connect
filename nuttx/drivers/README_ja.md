@@ -316,7 +316,7 @@ RP2040 のレジスターのモジュール側（`port/nuttx/nina_passthrough_bu
 ## I2C0
 
 I2C0 と I2C1 のドライバーは、FreeRTOS 版・ThreadX 版と共有する I2C のコアです（コアそのもの、Zephyr 版のドライバーとの関係、
-DMA を使うほかのコードの規則の共通の部分は[設計書](../../design/imu-raw-mqtt-design-ja.md)の §12）。NuttX の
+DMA を使うほかのコードの規則の共通の部分は[設計書](../../design/imu-raw-mqtt-design-ja.md)の §9.1）。NuttX の
 `rp2040_i2c.c`（`CONFIG_RP2040_I2C`）は使いません。コアはリポジトリの `common/drivers/i2c_dw/` にあり、NINA のドライバーと同じ
 3 層です。直下に `i2c_dw.c`、ドライバーを使う側のヘッダーは `include/`、コアの内側のヘッダーは `internal/`、2 つの境界は
 `port/`、NuttX のつなぎは `port/nuttx/` にあります（ボードの `src/Make.defs` が `VPATH` でソースを参照し、4 つのディレクトリーを

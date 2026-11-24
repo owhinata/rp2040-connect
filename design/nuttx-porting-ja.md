@@ -573,7 +573,7 @@ I2C0 には LSM6DSOX（0x6A）と ATECC608A（0x60）が載っています。互
 ドライバーは、FreeRTOS 版・ThreadX 版と共有する I2C のコア（`common/drivers/i2c_dw/`）です。Zephyr 版が使う DesignWare I2C の
 ドライバー（Zephyr の `drivers/i2c/i2c_dw.c` にローカルのパッチ
 `zephyr/manifest/zephyr/patches/zephyr/0003-i2c-dw-rp2040-fifo-and-dma.patch` を当てたもの）のコントローラーの部分の写しで、
-NuttX の `rp2040_i2c.c`（`CONFIG_RP2040_I2C`）は使いません。コアの説明は[設計書](imu-raw-mqtt-design-ja.md)の §12、NuttX の
+NuttX の `rp2040_i2c.c`（`CONFIG_RP2040_I2C`）は使いません。コアの説明は[設計書](imu-raw-mqtt-design-ja.md)の §9.1、NuttX の
 部分（`common/drivers/i2c_dw/port/nuttx/` にあるコアの NuttX へのつなぎと境界の表）は `nuttx/drivers/README_ja.md` の
 「I2C0」にあります。
 
@@ -824,7 +824,7 @@ Subcommands:
 `common/imu/imu_cal.c` は Zephyr 版と同じファイルです（値の形式の `imu_cal_codec.c`・`imu_cal.h` も同じく `common/imu/` にあります）。
 KV のキー（`imu.cal.accel.<µg/LSB>`、`imu.cal.gyro.<µdps/LSB>`）と値（56 バイト）、現在の感度のキーだけを
 使うこと、`imu cal`・`imu cal reload`・`imu cal zero` の構文・出力・エラーの文は Zephyr 版と同じです
-（Zephyr 版の README の「校正値の適用」、設計書 §10）。
+（Zephyr 版の README の「校正値の適用」、設計書 §8）。
 
 ```text
 nsh$ imu cal
@@ -1127,7 +1127,7 @@ NuttX 版のコードはシグナルハンドラーを登録しません（`siga
 ## ホストテストの詳細
 
 次のファイルは Zephyr 版と NuttX 版（と FreeRTOS 版・ThreadX 版）が同じものを使い、リポジトリの `common/` に 1 本ずつ置いています（I2C のコアは
-NuttX 版・FreeRTOS 版・ThreadX 版が使います。下の表。`common/` の全体の構成は設計書の §12）。
+NuttX 版・FreeRTOS 版・ThreadX 版が使います。下の表。`common/` の全体の構成は設計書の §9.1）。
 Zephyr 版の `CMakeLists.txt` と NuttX 版の Makefile（`apps/imu/Makefile`、`apps/nina/Makefile`、`apps/wifi/Makefile`、`apps/sensor/Makefile`、`apps/subcmd/Makefile`、
 `drivers/compat/Make.defs`、`drivers/log/Make.defs`、`drivers/lsm6dso/Make.defs`、`drivers/nina/Make.defs`、ボードの `src/Make.defs`）がそこを参照します。Zephyr の API を
 使うもの（`common/drivers/` の FIFO の設定とストリーム、単発取得の RTIO の経路、NINA の Wi-Fi、sensor シェルと、

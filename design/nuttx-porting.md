@@ -659,7 +659,7 @@ Zephyr build's `i2c` command (see "The `i2c` command" below). Reads that meet th
 The driver is the I2C core shared with the FreeRTOS and ThreadX builds (`common/drivers/i2c_dw/`). It is a copy of the controller part
 of the DesignWare I2C driver that the Zephyr version uses (Zephyr's `drivers/i2c/i2c_dw.c` with the local patch
 `zephyr/manifest/zephyr/patches/zephyr/0003-i2c-dw-rp2040-fifo-and-dma.patch`); NuttX's `rp2040_i2c.c`
-(`CONFIG_RP2040_I2C`) is not used. Section 12 of the [design](imu-raw-mqtt-design.md) describes the core; the NuttX part
+(`CONFIG_RP2040_I2C`) is not used. Section 9.1 of the [design](imu-raw-mqtt-design.md) describes the core; the NuttX part
 (the core's NuttX binding in `common/drivers/i2c_dw/port/nuttx/` and the tables of the boundaries) is in the "I2C0"
 section of `nuttx/drivers/README.md`.
 
@@ -955,7 +955,7 @@ Subcommands:
 (`imu.cal.accel.<ug/LSB>`, `imu.cal.gyro.<udps/LSB>`) and values (56 bytes), using only the key of
 the current sensitivity, and the syntax, output and error messages of `imu cal`,
 `imu cal reload` and `imu cal zero` are the Zephyr build's (the Zephyr build's README,
-"Applying a calibration", and the design document, section 10).
+"Applying a calibration", and the design document, section 8).
 
 ```text
 nsh$ imu cal
@@ -1307,7 +1307,7 @@ The present code registers no handler, so normal operation does not take this pa
 
 The following files are used by both the Zephyr and the NuttX build (and the FreeRTOS and ThreadX builds) and are kept once each in the
 repository's `common/` (the NuttX, FreeRTOS and ThreadX builds use the I2C core;
-see the table; the layout of `common/` as a whole is in §12 of the design document). The Zephyr
+see the table; the layout of `common/` as a whole is in §9.1 of the design document). The Zephyr
 build's `CMakeLists.txt` and the NuttX build's Makefiles
 (`apps/imu/Makefile`, `apps/nina/Makefile`, `apps/wifi/Makefile`, `apps/sensor/Makefile`, `apps/subcmd/Makefile`, `drivers/compat/Make.defs`,
 `drivers/log/Make.defs`, `drivers/lsm6dso/Make.defs`, `drivers/nina/Make.defs`, the board's `src/Make.defs`) refer to them

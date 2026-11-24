@@ -372,7 +372,7 @@ summary (missing batches, valid and reversed times) and at the errors in `imu st
 | `zephyr/script/` | Setup, host tests |
 | `zephyr/manifest/west.yml` | Versions of Zephyr and its modules |
 | `zephyr/manifest/zephyr/` | Local patches of Zephyr and its modules |
-| `common/` | Sources shared by the four builds, with their host tests (layout in section 12 of the [design](design/imu-raw-mqtt-design.md)) |
+| `common/` | Sources shared by the four builds, with their host tests (layout in section 9.1 of the [design](design/imu-raw-mqtt-design.md)) |
 | `nuttx/` | The NuttX build |
 | `freertos/` | The Pico SDK + FreeRTOS build |
 | `threadx/` | The Pico SDK + ThreadX build |
@@ -398,9 +398,9 @@ calibration, Wi-Fi and the Telnet shell behave the same, and the commands of thi
 | FreeRTOS | [`freertos/README.md`](freertos/README.md) | The other commands have short names (`version`, `reboot`, `ps`, `ifconfig` and so on); `zperf` is TCP only |
 | ThreadX | [`threadx/README.md`](threadx/README.md) | The FreeRTOS build's commands; the priority numbers and the rows of `ps` differ slightly |
 
-The PC tools work with every build ("Board firmware" in [`host/README.md`](host/README.md)). Section 12 of the
-[design](design/imu-raw-mqtt-design.md) describes the layout of `common/`, sections 11 and 13 the design differences of the
-NuttX and FreeRTOS builds. What a port to
+The PC tools work with every build ("Board firmware" in [`host/README.md`](host/README.md)). Section 9.1 of the
+[design](design/imu-raw-mqtt-design.md) describes the layout of `common/`, sections 9.2 to 9.5 the design differences of each
+build. What a port to
 another OS writes on its own side (the kernel part, the console, the log, the key-value flash, the start, and each
 driver's binding) is listed in [The boundary between the shared code and an OS](design/os-boundary.md).
 

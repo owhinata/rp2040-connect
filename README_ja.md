@@ -360,7 +360,7 @@ OS に依存しない部分のテスト（`common/tests/run.sh`）を先に実�
 | `zephyr/script/` | 環境構築、ホストテスト |
 | `zephyr/manifest/west.yml` | Zephyr とモジュールのバージョン |
 | `zephyr/manifest/zephyr/` | Zephyr とモジュールへのローカルのパッチ |
-| `common/` | 4 つの OS のファームウェアが共有するソースとそのホストテスト（構成は[設計書](design/imu-raw-mqtt-design-ja.md)の §12） |
+| `common/` | 4 つの OS のファームウェアが共有するソースとそのホストテスト（構成は[設計書](design/imu-raw-mqtt-design-ja.md)の §9.1） |
 | `nuttx/` | NuttX 版 |
 | `freertos/` | Pico SDK + FreeRTOS 版 |
 | `threadx/` | Pico SDK + ThreadX 版 |
@@ -386,7 +386,7 @@ KV（同じ場所・同じ形式なので、別の OS のファームウェア�
 | ThreadX 版 | [`threadx/README_ja.md`](threadx/README_ja.md) | FreeRTOS 版と同じコマンド。`ps` の優先度の数と行が少し違う |
 
 PC 側のツールはどの OS のファームウェアにも使えます（[`host/README_ja.md`](host/README_ja.md) の「ボードのファームウェア」）。`common/` の構成は
-[設計書](design/imu-raw-mqtt-design-ja.md)の §12、NuttX 版と FreeRTOS 版の設計上の違いは §11 と §13 にあります。別の OS へ移植するときに
+[設計書](design/imu-raw-mqtt-design-ja.md)の §9.1、OS ごとの設計上の違いは §9.2〜§9.5 にあります。別の OS へ移植するときに
 その OS の側で書くもの（カーネルの部分、コンソール、ログ、KV、起動、各ドライバーのつなぎ）は、
 [共有のコードと OS の境界](design/os-boundary-ja.md)にまとめています。
 

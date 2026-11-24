@@ -369,7 +369,7 @@ LED, both the mass storage and PICOBOOT interfaces on).
 ## I2C0
 
 The driver of I2C0 and I2C1 is the I2C core shared with the FreeRTOS and ThreadX builds (the core itself, its relation to the
-Zephyr build's driver and the common part of the rules for other code that uses DMA are in section 12 of the
+Zephyr build's driver and the common part of the rules for other code that uses DMA are in section 9.1 of the
 [design](../../design/imu-raw-mqtt-design.md)). NuttX's `rp2040_i2c.c` (`CONFIG_RP2040_I2C`) is not used. The core is
 in the repository's `common/drivers/i2c_dw/`, in three layers as the NINA driver's: `i2c_dw.c` at the top, the header for
 the driver's users in `include/`, the core's own headers in `internal/`, the two boundaries in `port/` and the NuttX

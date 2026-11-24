@@ -5,7 +5,7 @@ English | [日本語](README_ja.md)
 The firmware of this repository is the same firmware built on four OSes, Zephyr, NuttX, Pico SDK + FreeRTOS
 and Pico SDK + ThreadX, called the Zephyr, NuttX, FreeRTOS and ThreadX builds. This document describes the
 inside of the ThreadX build (`threadx/`). Its use is in [`threadx/README.md`](../README.md), the list of what
-each build writes in [`design/os-boundary.md`](../../design/os-boundary.md), and the design summary in the
+each build writes in [`design/os-boundary.md`](../../design/os-boundary.md), and the design summary in §9.5 of the
 [design document](../../design/imu-raw-mqtt-design.md). The details are in the comment at the top of each file.
 
 The ThreadX build uses only the ThreadX kernel (Eclipse ThreadX v6.5.2.202603b_rel, its Cortex-M0 port
