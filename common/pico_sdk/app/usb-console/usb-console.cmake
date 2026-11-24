@@ -5,12 +5,12 @@
 # pico_sdk_init():
 #
 #   COMMON_DIR                 common/ at the root of the repository
-#   PICO_SDK_OS, PICO_SDK_OS_COMPAT_DIRS, PICO_SDK_STMEMSC_DIR
+#   PICO_SDK_OS, PICO_SDK_STMEMSC_DIR
 #                              the OS's part of the layer and the drivers'
-#                              bindings (common/pico_sdk/drivers/compat/compat.cmake)
+#                              bindings (common/compat/port/pico_sdk/compat.cmake)
 #   PICO_SDK_OS_APP_DIRS       the OS's application directories, put first on
 #                              the include path (FreeRTOSConfig.h on
-#                              FreeRTOS, priorities_os.h, the OS's parts of the
+#                              FreeRTOS, the OS's parts of the
 #                              application's boundaries: idle_os.h,
 #                              kernel_shell_os_impl.h)
 #   PICO_SDK_OS_LIBRARIES      the OS's libraries (FreeRTOS-Kernel; none for
@@ -29,20 +29,21 @@
 #
 #   pico_sdk_usb_console(<target>)
 #
-# which adds the drivers (common/pico_sdk/drivers/*: the layer and its shell,
-# the key-value store, the NINA, I2C0 and the option I2C1, the LSM6DSOX,
-# the IMU service, Wi-Fi, Telnet, zperf, the "sensor" and "i2c" commands),
-# the code that runs from RAM (ram_code.cmake), the start-up thread's stack
+# which adds the layer and its shell, the key-value store, Wi-Fi, Telnet and
+# zperf (common/compat/port/pico_sdk/*.cmake), the drivers
+# (common/pico_sdk/drivers/*: the NINA, I2C0 and the option I2C1, the
+# LSM6DSOX, the IMU service, the "sensor" and "i2c" commands), the code that
+# runs from RAM (ram_code.cmake), the start-up thread's stack
 # in SCRATCH_X (ld/section_extra_post_scratch.incl), the include
 # directories, the options of the SDK and the outputs (.uf2, .bin, .hex,
 # .dis, .map).
 
 get_filename_component(PICO_SDK_APP_DIR ${CMAKE_CURRENT_LIST_DIR} ABSOLUTE)
 
-include(${COMMON_DIR}/pico_sdk/drivers/compat/compat.cmake)
+include(${COMMON_DIR}/compat/port/pico_sdk/compat.cmake)
 # The key-value store and the "kv" command, on the last 8 KiB of the flash,
-# which the linker script keeps the image out of (common/pico_sdk/drivers/kv).
-include(${COMMON_DIR}/pico_sdk/drivers/kv/kv.cmake)
+# which the linker script keeps the image out of (kv.cmake there).
+include(${COMMON_DIR}/compat/port/pico_sdk/kv.cmake)
 # The SPI link to the NINA-W102 module and the "nina" command
 # (common/pico_sdk/drivers/nina).
 include(${COMMON_DIR}/pico_sdk/drivers/nina/nina.cmake)
@@ -59,12 +60,13 @@ include(${COMMON_DIR}/pico_sdk/drivers/lsm6dso/lsm6dso.cmake)
 include(${COMMON_DIR}/pico_sdk/drivers/imu/imu.cmake)
 # Wi-Fi: the NINA's network interface, the net_mgmt events, the stored
 # credentials with the automatic reconnection and the "wifi" command
-# (common/pico_sdk/drivers/wifi).
-include(${COMMON_DIR}/pico_sdk/drivers/wifi/wifi.cmake)
-# The Telnet shell on TCP port 23 (common/pico_sdk/drivers/telnet).
-include(${COMMON_DIR}/pico_sdk/drivers/telnet/telnet.cmake)
-# The "zperf" command: TCP tests against iperf3 (common/pico_sdk/drivers/zperf).
-include(${COMMON_DIR}/pico_sdk/drivers/zperf/zperf.cmake)
+# (common/compat/port/pico_sdk/wifi.cmake).
+include(${COMMON_DIR}/compat/port/pico_sdk/wifi.cmake)
+# The Telnet shell on TCP port 23 (common/compat/port/pico_sdk/telnet.cmake).
+include(${COMMON_DIR}/compat/port/pico_sdk/telnet.cmake)
+# The "zperf" command: TCP tests against iperf3
+# (common/compat/port/pico_sdk/zperf.cmake).
+include(${COMMON_DIR}/compat/port/pico_sdk/zperf.cmake)
 # The "sensor" command: the Zephyr build's sensor shell with its processing
 # thread (common/pico_sdk/drivers/sensor_shell).
 include(${COMMON_DIR}/pico_sdk/drivers/sensor_shell/sensor_shell.cmake)
@@ -111,7 +113,7 @@ function(pico_sdk_usb_console target)
   # (common/compat/port); the RP2040's code that no OS owns
   # (common/chip/rp2040/include: rp2040_timer_us.h; rp2040_flash_kv.h and
   # rp2040_flash_kv_os.h of the key-value area's flash,
-  # common/pico_sdk/drivers/kv/kv.cmake).
+  # common/compat/port/pico_sdk/kv.cmake).
   target_include_directories(${target} PRIVATE
     ${PICO_SDK_OS_APP_DIRS}
     ${PICO_SDK_APP_DIR}/src
@@ -151,7 +153,7 @@ function(pico_sdk_usb_console target)
   # The SDK's chain slots of shared interrupt handlers (12 bytes of RAM each),
   # for every core and line together: its default with stdio_usb, 6, is
   # taken by USBCTRL_IRQ's two (TinyUSB's and stdio_usb's), IO_IRQ_BANK0's two
-  # raw handlers (common/pico_sdk/drivers/compat/rp2040/gpio_os_rp2040.c and
+  # raw handlers (common/compat/port/pico_sdk/gpio_os_rp2040.c and
   # the NINA's nina_os.c) and DMA_IRQ_1's two (I2C0's reads and the NINA's
   # SPI DMA); one more would end in the SDK's hard_assert() when it is added.
   # 8 leaves room for two.

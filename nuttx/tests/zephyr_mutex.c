@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /* Host test of the compatibility layer's k_mutex on NuttX
- * (nuttx/drivers/compat/zephyr_mutex.c), built with __NuttX__ on a model
- * of NuttX 13.1.0's recursive mutex (tests/zephyr_mutex_fakes/nuttx/
+ * (common/compat/port/nuttx/zephyr_mutex.c), built with __NuttX__ on a
+ * model of NuttX 13.1.0's recursive mutex (tests/zephyr_mutex_fakes/nuttx/
  * mutex.h: an all-zero mutex is held by thread 0).
  *
  * Zephyr's k_mutex is unlocked when all zero (kernel/mutex.c: lock_count

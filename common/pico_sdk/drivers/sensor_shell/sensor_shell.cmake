@@ -6,7 +6,7 @@
 #   pico_sdk_sensor_shell(<target>)
 #
 # after pico_sdk_zephyr_compat() and pico_sdk_lsm6dso()
-# (common/pico_sdk/drivers/compat/compat.cmake, common/pico_sdk/drivers/lsm6dso/
+# (common/compat/port/pico_sdk/compat.cmake, common/pico_sdk/drivers/lsm6dso/
 # lsm6dso.cmake: the layer with its shell, RTIO and RTIO work queue, the
 # device lsm6dsox with its FIFO stream and the default iodev and decoder of
 # the sensor API).  It adds to the target the NuttX build's sources of

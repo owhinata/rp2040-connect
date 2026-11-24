@@ -2,7 +2,7 @@
 /* The ThreadX kernel test firmware: a bring-up tool for the ThreadX build
  * on the board, not the product firmware.  It runs the Zephyr compatibility
  * layer's kernel test (common/tests/zephyr_kernel/zephyr_kernel_test.c, on
- * the ThreadX primitives, threadx/drivers/compat) on ThreadX's Cortex-M0
+ * the ThreadX primitives, common/compat/port/threadx) on ThreadX's Cortex-M0
  * port with the board's kernel part (threadx/app/usb-console: tx_user.h,
  * the low-level initialization and the tick), with the platform part of the
  * board (test_port.c), so the checks of interrupts, real time and the tick's

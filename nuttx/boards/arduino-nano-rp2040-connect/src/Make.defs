@@ -113,16 +113,23 @@ CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)dri
 endif
 
 # The i2c0 and lsm6dsox devices of the Zephyr compatibility layer
-# (nuttx/drivers/compat, nuttx/drivers/lsm6dso).
+# (common/compat, nuttx/drivers/lsm6dso).
 
 ifeq ($(CONFIG_LSM6DSO_LOCAL),y)
 CSRCS += rp2040_lsm6dso.c
 endif
 
-# GPIO bank 0 for the compatibility layer's gpio0 (the LSM6DSOX's INT1).
+# GPIO bank 0 for the compatibility layer's gpio0 (the LSM6DSOX's INT1):
+# the OS boundary of common/compat/port/gpio_os.h, implemented in the
+# layer's NuttX part (common/compat/port/nuttx/rp2040_gpio_os.c) and built
+# here, in libboard.a, as the board's code (it needs the chip's private
+# headers).
 
 ifeq ($(CONFIG_LSM6DSO_STREAM),y)
+COMPAT_NUTTX_SRC = $(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)compat$(DELIM)port$(DELIM)nuttx
 CSRCS += rp2040_gpio_os.c
+DEPPATH += --dep-path $(COMPAT_NUTTX_SRC)
+VPATH += :$(COMPAT_NUTTX_SRC)
 endif
 
 # The stack sentinel in the scheduler's switch hook.
@@ -135,22 +142,23 @@ DEPPATH += --dep-path board
 VPATH += :board
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)arch$(DELIM)$(CONFIG_ARCH)$(DELIM)src$(DELIM)board$(DELIM)board
 
-# Headers shared with nuttx/drivers and the applications: nuttx/drivers/include
-# (the NuttX parts app_log_os.h and priorities_os.h), the layer's
+# Headers shared with nuttx/drivers and the applications: the Zephyr
+# compatibility layer's NuttX part, common/compat/port/nuttx (the NuttX
+# parts app_log_os.h and priorities_os.h, zephyr_os.h, the NuttX headers of
+# <zephyr/...>), the layer's OS-independent part
 # (common/compat/include: app_log.h, log_ram.h, priorities.h;
 # common/compat/port: cpu_load.h, gpio_os.h, below).  The NINA driver's
 # headers for its users: common/drivers/nina/include (nina_passthrough.h); its NuttX binding's
 # wlan0 (nina_net.h): common/drivers/nina/port/nuttx.  The driver itself is
 # built with the other drivers (nuttx/drivers/nina/Make.defs).
 
-CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)include
+CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)compat$(DELIM)port$(DELIM)nuttx
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)drivers$(DELIM)nina$(DELIM)include
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)drivers$(DELIM)nina$(DELIM)port$(DELIM)nuttx
 
-# The small Zephyr compatibility layer (<zephyr/device.h>, ...): its NuttX
-# implementation, nuttx/drivers/compat, then its OS-independent part,
+# The small Zephyr compatibility layer (<zephyr/device.h>, ...): after its
+# NuttX implementation (above), its OS-independent part,
 # common/compat/include and port.
 
-CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)compat
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)compat$(DELIM)include
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)compat$(DELIM)port

@@ -4,7 +4,7 @@
  * (imu_raw_status.c), the port's MQTT client (mqtt_min.c) and its socket
  * layer (mqtt_min_sock.c), the queue and the packets (imu_raw_queue.c,
  * imu_raw_packet.c), with the prelude, as common/pico_sdk/drivers/imu/imu.cmake
- * builds them, on the build's interface (freertos/drivers/compat/
+ * builds them, on the build's interface (common/compat/net_offload/
  * zephyr_net_if.c) and the layer's thread, mutex, semaphore, sleeps and
  * clock, with fake zsock_*() calls (here) that behave as the build's NINA
  * sockets do where the transport depends on it (one descriptor from 0, a

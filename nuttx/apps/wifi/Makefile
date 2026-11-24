@@ -12,11 +12,11 @@
 # task starts the thread) and the "wifi" builtin command (APP_WIFI:
 # wifi_credentials_shell.c is its main source), linked into libapps.
 #
-# Include paths: the Zephyr compatibility layer
-# ($(TOPDIR)/external/compat and common/compat/include, port and internal, which has
+# Include paths: the Zephyr compatibility layer (common/compat/port/nuttx
+# and common/compat/include, port and internal, which has
 # wifi_credentials_internal.h), the port's shared headers
 # (common/compat/include: app_log.h, priorities.h; their NuttX parts in
-# $(TOPDIR)/external/include), common/shell (subcmd.h), this
+# common/compat/port/nuttx), common/shell (subcmd.h), this
 # directory (wifi_profile_os.h, for the file in common/imu), common/imu
 # (wifi_profile.h, kv_store.h) and common/drivers/nina/include (nina_wifi.h:
 # the profile gives the driver its reconnection).
@@ -39,8 +39,7 @@ MODULE    = $(CONFIG_APP_WIFI)
 MAINSRC   = wifi_credentials_shell.c
 endif
 
-CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)include
-CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)compat
+CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)compat$(DELIM)port$(DELIM)nuttx
 CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)compat$(DELIM)include
 CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)compat$(DELIM)port
 CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)compat$(DELIM)internal
@@ -58,7 +57,7 @@ include $(APPDIR)/Application.mk
 
 wifi_credentials.c$(SUFFIX)$(OBJEXT) \
 wifi_credentials_backend_settings.c$(SUFFIX)$(OBJEXT): \
-  CFLAGS += -include $(TOPDIR)$(DELIM)external$(DELIM)compat$(DELIM)common_prelude.h
+  CFLAGS += -include $(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)compat$(DELIM)port$(DELIM)nuttx$(DELIM)common_prelude.h
 ifeq ($(CONFIG_WIFI_PROFILE),y)
-wifi_profile.c$(SUFFIX)$(OBJEXT): CFLAGS += -include $(TOPDIR)$(DELIM)external$(DELIM)compat$(DELIM)common_prelude.h
+wifi_profile.c$(SUFFIX)$(OBJEXT): CFLAGS += -include $(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)compat$(DELIM)port$(DELIM)nuttx$(DELIM)common_prelude.h
 endif

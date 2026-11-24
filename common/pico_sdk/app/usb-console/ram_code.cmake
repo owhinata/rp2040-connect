@@ -60,8 +60,8 @@ set(RAM_CODE_SOURCES
   common/compat/zephyr_mem_blocks.c
   common/compat/zephyr_sensor_clock.c
   common/compat/zephyr_gpio.c
-  common/pico_sdk/drivers/compat/zephyr_sys_clock.c
-  common/pico_sdk/drivers/compat/rp2040/gpio_os_rp2040.c
+  common/compat/port/pico_sdk/zephyr_sys_clock.c
+  common/compat/port/pico_sdk/gpio_os_rp2040.c
   ${PICO_SDK_PATH}/src/rp2_common/hardware_gpio/gpio.c
 
   # I2C0 with its DMA reads (the FIFO's status and words).  I2C1, when it

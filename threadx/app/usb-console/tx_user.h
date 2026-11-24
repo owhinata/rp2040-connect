@@ -4,7 +4,7 @@
  * assembly sources (TX_INCLUDE_USER_DEFINE_FILE, which threadx_kernel.cmake
  * passes to both; so everything here outside the C part at the end is
  * plain #define).  What the ThreadX part of the Zephyr compatibility layer
- * (threadx/drivers/compat/zephyr_kernel_os_impl.h) needs, as the host test
+ * (common/compat/port/threadx/zephyr_kernel_os_impl.h) needs, as the host test
  * has it (threadx/tests/compat/tx_user.h):
  *
  * - The tick: 1 ms (Z_OS_TICK_HZ; ThreadX's default is 10 ms).  SysTick

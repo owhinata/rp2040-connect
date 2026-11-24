@@ -3078,3 +3078,21 @@ T01b の結果から（2026-11-17。詳細は `freertos/PORTING_NOTES_T01b.md` �
   ホストテスト 68・56・61・73。実機は不要（イメージが同じ）。
 - 次: Pico SDK の側（FreeRTOS・ThreadX の実装と `common/pico_sdk/drivers/{compat,shell,libc,include}` → `compat/port/{freertos,threadx,pico_sdk}/`）と NuttX の側（`nuttx/drivers/{compat,include,log}`、
   ボードの `rp2040_gpio_os.c` → `compat/port/nuttx/`）を並行で。そのあとシェル、チップ、各 cmake、アプリの Pico SDK の部分（`common/imu/port/pico_sdk/`）、`common/pico_sdk/` の削除。
+
+## `common/` を 3 層に: 段階 2（OS ごとの実装を `compat/port/<OS>/` へ、2026-11-24）
+
+- 2 つの subagent が並行で（触るファイルを分けた）。
+  - Pico SDK の側: `freertos/drivers/compat/**`・`threadx/drivers/compat/**` と 2 つの `priorities_os.h` → `common/compat/port/{freertos,threadx}/`（`rp2040/zephyr_os_port.h` の段は保つ）。
+    `common/pico_sdk/drivers/{compat,include,shell,libc}` のコードと、互換層の cmake（`compat.cmake`・`kv.cmake`・`wifi.cmake`・`zperf.cmake`・`telnet.cmake`）とリンカースクリプトの部分 →
+    `common/compat/port/pico_sdk/`（平ら）。`compat.cmake` は OS の場所を `PICO_SDK_OS` から導く（`PICO_SDK_OS_COMPAT_DIRS` は無くなった）。`freertos/drivers/` は README だけ、
+    `threadx/drivers/` は README と `pico_sdk_interop/` だけになった。
+  - NuttX の側: `nuttx/drivers/compat/*`（`Make.defs` 以外）、`nuttx/drivers/include/*`、`nuttx/drivers/log/log_ram_syslog.c`、ボードの `src/rp2040_gpio_os.c` → `common/compat/port/nuttx/`。
+    `nuttx/drivers/compat/`・`log/` は `Make.defs` だけ、`nuttx/drivers/include/` は無くなった。ボードのファイルは `src/Make.defs` の VPATH から作るので `libboard.a` のまま（オブジェクトの名前もアーカイブも変わらない）。
+    include パスの `external/compat`・`external/include` は `common/compat/port/nuttx` の 1 つに。
+- 気を付けた点: FreeRTOS のホストテストは、プレリュードを付けないソースをパスの形（`../common/pico_sdk/*`）で選んでいた。移したソースにプレリュードが付いてしまうのを、読んだヘッダーの照合で見つけて直した。
+  NuttX の VPATH には `kernel_generic`・`net_offload`・`port/generic`・`port/pico_sdk` を入れない（同じ名前のソースがある）。
+- 確かめ方: 2 つの変更を合わせた状態で、FreeRTOS・ThreadX・NuttX のイメージが段階 1 の前の基準とバイト単位で一致（メインが確認。Zephyr は `common/compat` を使わない）。
+  各担当の読んだヘッダーの照合は差 0。ホストテスト 68・56・61・73。実機は不要。
+- 残り（次の段階）: 担当の範囲の外にある古いパスの記述（`common/` の中のコメント、`design/`、README。表は `freertos/build/baseline/restructure/tools/moves-{a,b}.tsv`）、
+  シェル（`common/shell/{include,port}` と各 OS の実装）、チップ（`common/chip/rp2040/port`）、各ドライバーとシェルのコマンドの cmake → それぞれの `port/pico_sdk/`、
+  アプリの Pico SDK の部分 → `common/imu/port/pico_sdk/`、`common/pico_sdk/` の削除、インクルードガードの古い名前。

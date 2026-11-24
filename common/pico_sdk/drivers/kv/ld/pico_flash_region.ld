@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MIT */
 /* The Pico SDK's pico_flash_region.ld (pico_flash_region.template.ld, read
  * inside MEMORY by memory_flash.incl), replaced for the builds on the Pico SDK
- * (common/pico_sdk/drivers/kv/kv.cmake, pico_add_linker_script_override_path()):
+ * (common/compat/port/pico_sdk/kv.cmake, pico_add_linker_script_override_path()):
  * the image may use the 16 MiB flash except its last 8 KiB, the key-value
  * area (0x10ffe000-0x10ffffff, common/compat/include/flash_kv.h).  An image
  * that does not fit fails to link ("region `FLASH' overflowed").  The

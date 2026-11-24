@@ -9,11 +9,12 @@
 # Each subdirectory adds its sources from its own Make.defs, e.g.
 #   include nina/Make.defs
 # with "CSRCS += ...", "VPATH += :nina" and "DEPPATH += --dep-path nina".
-# include/ holds the headers shared with the board code and the
-# applications ($(TOPDIR)/external/include; the OS-independent ones are in
-# common/compat/include, internal and port); compat/ the NuttX
-# implementation of the small Zephyr compatibility layer
-# ($(TOPDIR)/external/compat; its OS-independent part is common/compat).
+# compat/ builds the NuttX implementation of the small Zephyr
+# compatibility layer, common/compat/port/nuttx (its OS-independent part is
+# common/compat), whose headers this code, the board code and the
+# applications read (include path
+# $(TOPDIR)/../../common/compat/port/nuttx, set by compat/Make.defs before
+# common/compat/include, port and internal).
 ############################################################################
 
 include $(TOPDIR)/Make.defs
@@ -26,8 +27,6 @@ include nina/Make.defs
 include i2c_dw/Make.defs
 include compat/Make.defs
 include lsm6dso/Make.defs
-
-CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)include
 
 # The chip's private headers (arm_internal.h, rp2040_gpio.h, hardware/...),
 # for the parts of the drivers that are the RP2040's (the NINA's bus and

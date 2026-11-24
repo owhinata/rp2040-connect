@@ -6,7 +6,7 @@
 #   pico_sdk_imu(<target>)
 #
 # after pico_sdk_zephyr_compat(), pico_sdk_kv() and pico_sdk_lsm6dso()
-# (common/pico_sdk/drivers/compat/compat.cmake, common/pico_sdk/drivers/kv/kv.cmake,
+# (common/compat/port/pico_sdk/compat.cmake, common/compat/port/pico_sdk/kv.cmake,
 # common/pico_sdk/drivers/lsm6dso/lsm6dso.cmake: the layer, the key-value store and
 # the device lsm6dsox with its FIFO stream), with pico_sdk_nina() and
 # pico_sdk_wifi() in the same target (the sockets of the MQTT transport and
@@ -42,10 +42,10 @@
 #   z_shell_root_ntp for the application's table).  It reads the RP2040
 #   TIMER with rp2040_timer_us() (common/chip/rp2040, on the application's
 #   include path), the realtime clock of the layer's <zephyr/sys/clock.h>
-#   (common/pico_sdk/drivers/compat/zephyr_sys_clock.c) and the CONFIG_NINA_NTP_*
+#   (common/compat/port/pico_sdk/zephyr_sys_clock.c) and the CONFIG_NINA_NTP_*
 #   values of the prelude;
 # - the part of the layer they need: hwinfo_get_device_id()
-#   (common/pico_sdk/drivers/compat/rp2040/zephyr_hwinfo.c, on pico_unique_id);
+#   (common/compat/port/pico_sdk/zephyr_hwinfo.c, on pico_unique_id);
 #   the address conversions of <zephyr/net/socket.h> and newlib's missing
 #   network headers are the layer's (compat.cmake);
 # - the include directory common/imu (the LSM6DSO driver's
@@ -83,7 +83,7 @@ function(pico_sdk_imu target)
     ${imu_common_sources}
     ${PICO_SDK_COMMON_DIR}/imu/time_sync.c
     ${PICO_SDK_COMMON_DIR}/imu/time_offset.c
-    ${PICO_SDK_DRIVERS_DIR}/compat/rp2040/zephyr_hwinfo.c
+    ${PICO_SDK_COMPAT_PORT_DIR}/zephyr_hwinfo.c
   )
 
   target_include_directories(${target} PRIVATE

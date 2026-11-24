@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 /* The host test of the FreeRTOS build's GPIO boundary on the FreeRTOS POSIX
- * port: common/pico_sdk/drivers/compat/rp2040/gpio_os_rp2040.c (common/compat/
+ * port: common/compat/port/pico_sdk/gpio_os_rp2040.c (common/compat/
  * gpio_os.h on the Pico SDK's hardware_gpio) on fakes of the SDK's GPIO
  * and IRQ functions (pico_fake/, implemented here: they record the calls and
  * play GPIO bank 0's levels, latched edges and interrupt enables), under

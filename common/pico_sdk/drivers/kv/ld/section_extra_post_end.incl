@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MIT */
 /* The Pico SDK's section_extra_post_end.incl (empty, included after
  * section_end.incl for symbols and checks of the application), replaced
- * for the builds on the Pico SDK (common/pico_sdk/drivers/kv/kv.cmake): the bounds of the
+ * for the builds on the Pico SDK (common/compat/port/pico_sdk/kv.cmake): the bounds of the
  * key-value area, the last 8 KiB of the 16 MiB flash
  * (common/compat/include/flash_kv.h), and the checks that the image ends
  * before it.  flash_kv_os_initialize() (common/chip/rp2040/rp2040_flash_kv.c)

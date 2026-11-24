@@ -82,7 +82,7 @@ void usb_console_init(void)
 	/* The USB CDC ACM port, its console "usb" (the default console of the
 	 * threads that have none) and the stdio of the threads on the consoles
 	 * (common/compat/include/shell_serial.h on the console transport
-	 * common/pico_sdk/drivers/shell/shell_serial_os_impl.h).  No wait for
+	 * common/compat/port/pico_sdk/shell_serial_os_impl.h).  No wait for
 	 * the host (PICO_STDIO_USB_CONNECT_WAIT_TIMEOUT_MS 0): the enumeration
 	 * runs once the scheduler does.
 	 */

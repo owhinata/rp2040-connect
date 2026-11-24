@@ -469,7 +469,7 @@ static DEVICE_API(i2c, fake_i2c_api) = {
 DEVICE_DT_DEFINE(i2c0, "i2c@40044000", NULL, NULL, NULL, &fake_i2c_api);
 
 /* Fake INT1 (GPIO24) on the layer's GPIO boundary (gpio_os.h; on the
- * board common/pico_sdk/drivers/compat/rp2040/gpio_os_rp2040.c): high while the FIFO
+ * board common/compat/port/pico_sdk/gpio_os_rp2040.c): high while the FIFO
  * threshold is routed to it and the FIFO holds the watermark; a rising edge
  * calls the layer's handler (common/compat/zephyr_gpio.c) if enabled.
  */

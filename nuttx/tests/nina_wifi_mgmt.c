@@ -2,7 +2,7 @@
 /* Host test of the applications' Zephyr Wi-Fi management on NuttX:
  * common/drivers/nina/port/nuttx/nina_wifi_mgmt.c under the compatibility
  * layer's Wi-Fi requests (common/compat/zephyr_wifi_mgmt.c) and interface
- * (nuttx/drivers/compat/zephyr_net_if.c), as nina/Make.defs and
+ * (common/compat/port/nuttx/zephyr_net_if.c), as nina/Make.defs and
  * compat/Make.defs build them, on fakes of the network device's lock
  * (tests/nina_netdev_fakes), of net_mgmt's event thread and events, of the
  * core's nina_wifi_connect().

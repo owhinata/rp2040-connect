@@ -12,8 +12,8 @@
 # lsm6dso_decoder.c; the core's OS part lsm6dso_os_impl.h with
 # lsm6dso_os.c, and its user part lsm6dso_stream_req_impl.h), compiled on
 # the compatibility layer's kernel, device, GPIO, sensor, RTIO and I2C
-# calls with the prelude of the shared sources (compat/common_prelude.h),
-# as in the Zephyr build's module.  Its extended API
+# calls with the prelude of the shared sources
+# (common/compat/port/nuttx/common_prelude.h), as in the Zephyr build's module.  Its extended API
 # <zephyr/drivers/sensor/lsm6dso.h> is include/lsm6dso.h, which
 # common/compat/include finds.  This build's own file is
 # port/nuttx/lsm6dso_instance.h (the device that lsm6dso_sensor.c defines
@@ -58,5 +58,5 @@ CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)dri
 LSM6DSO_COMMON_CSRCS = $(notdir $(wildcard ../../common/drivers/lsm6dso/*.c \
                                            ../../common/drivers/lsm6dso/port/zephyr/*.c))
 $(patsubst %.c,%$(OBJEXT),$(filter $(LSM6DSO_COMMON_CSRCS),$(CSRCS))): \
-  CFLAGS += -include $(TOPDIR)$(DELIM)external$(DELIM)compat$(DELIM)common_prelude.h
+  CFLAGS += -include $(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)compat$(DELIM)port$(DELIM)nuttx$(DELIM)common_prelude.h
 endif

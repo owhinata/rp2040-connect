@@ -2,7 +2,7 @@
 /* ThreadX configuration of the host test of the Zephyr compatibility layer
  * (threadx/tests/compat, ThreadX's Linux port), read by tx_port.h
  * (TX_INCLUDE_USER_DEFINE_FILE): what the layer's ThreadX part
- * (threadx/drivers/compat/zephyr_kernel_os_impl.h) needs, as the board will
+ * (common/compat/port/threadx/zephyr_kernel_os_impl.h) needs, as the board will
  * have it.
  *
  * - The tick: 1 ms (Z_OS_TICK_HZ; ThreadX's default is 10 ms).

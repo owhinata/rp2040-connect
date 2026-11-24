@@ -23,7 +23,7 @@
  *
  * The hook also runs the Zephyr compatibility layer's timeouts (the timers
  * of delayable work items, z_add_timeout(): zephyr_compat_tick() of
- * freertos/drivers/compat), before the slices, in the same interrupt.
+ * common/compat/port/freertos), before the slices, in the same interrupt.
  *
  * Before both, it keeps the count up with the TIMER (tick_catchup.h): when tick
  * interrupts were lost while interrupts were masked (a flash erase), it pends

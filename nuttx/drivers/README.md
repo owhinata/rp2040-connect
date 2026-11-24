@@ -5,8 +5,12 @@ English | [日本語](README_ja.md)
 The firmware of this repository is built on four OSes, Zephyr, NuttX, the Pico SDK with FreeRTOS and the Pico SDK
 with ThreadX: the Zephyr, NuttX, FreeRTOS and ThreadX builds. This document describes the NuttX build's drivers.
 
-`nuttx/drivers/` holds the port's code that NuttX builds on the kernel side (through the symlink
-`nuttx/nuttx/external`, into `libexternal.a`). The board's part is in
+`nuttx/drivers/` holds the build definitions of the port's code that NuttX builds on the kernel side
+(through the symlink `nuttx/nuttx/external`, into `libexternal.a`): `Makefile`, `Kconfig` and one
+directory per part with its `Make.defs` (and `Kconfig`): `nina/`, `i2c_dw/`, `lsm6dso/` (also ST's
+`st_lsm6dso_reg.c`), `compat/` (the compatibility layer) and `log/` (the RAM log). The code itself is in
+the repository's `common/`: the drivers in `common/drivers/`, the compatibility layer in `common/compat/`
+with its NuttX implementation in `common/compat/port/nuttx/`. The board's part is in
 `nuttx/boards/arduino-nano-rp2040-connect/src/`. The Zephyr version's driver notes are
 `zephyr/app/usb-console/drivers/README.md`. How to use the commands, and the differences from the
 Zephyr version, are in `nuttx/README.md`, and how each part works in detail is in
@@ -61,8 +65,8 @@ What the core needs from the OS and the board (its boundary):
 - Waiting for READY: instead of sampling READY (GPIO10, active low) every 100 µs, the core's
   `wait_ready()` sleeps until the line's interrupt reports a change (as in the Zephyr, FreeRTOS and ThreadX
   builds). `nina_os_ready_arm()` sets the semaphore to 0, then enables
-  the edge towards the desired level (ready: falling, busy: rising) through the board's
-  `src/rp2040_gpio_os.c` (`gpio_os_irq_configure()`, which clears an edge latched while the event
+  the edge towards the desired level (ready: falling, busy: rising) through
+  `common/compat/port/nuttx/rp2040_gpio_os.c` (`gpio_os_irq_configure()`, which clears an edge latched while the event
   was off before enabling it); the core reads READY after that. A change after the read stays in
   the semaphore, so the wait returns at once. The interrupt is GPIO bank 0's single IRQ, shared
   with the LSM6DSOX's INT1 (GPIO24); a callback on the compatibility layer's `gpio0` only posts
@@ -71,7 +75,7 @@ What the core needs from the OS and the board (its boundary):
   timeout are both on the tickless tick read from the TIMER, so they do not drift apart while
   interrupts are masked (a flash erase); the FreeRTOS and ThreadX builds wait in slices of 10 ms because their
   tick stands still meanwhile and catches up with the TIMER afterwards. `nina_os_ready_disarm()` disables the edge, so CS toggling READY during
-  the transfers raises no interrupts. `gpio0` and `src/rp2040_gpio_os.c` are built with
+  the transfers raises no interrupts. `gpio0` and `rp2040_gpio_os.c` are built with
   `CONFIG_LSM6DSO_STREAM`, so `CONFIG_NINA` depends on it. The callback is added to
   `gpio0` by `nina_os_ready_start()` after the first reset; if that fails, the core reads READY
   every 100 µs instead (same deadlines and results).
@@ -284,7 +288,7 @@ again is a change that does not depend on the firmware.
 
 Bit 2 on NuttX:
 
-- The GPIO2 interrupt of `common/drivers/nina/port/nuttx/nina_os.c` (the board's `src/rp2040_gpio_os.c`, a callback of the layer's
+- The GPIO2 interrupt of `common/drivers/nina/port/nuttx/nina_os.c` (`common/compat/port/nuttx/rp2040_gpio_os.c`, a callback of the layer's
   `gpio0`) counts the edges, posts the `sem_t` of every waiting thread (a broadcast) and wakes
   `nina_event` (`nina_poller_edge()`).
 - `nina_event` starts its next pass as soon as the count has changed since the count noted before
@@ -404,7 +408,7 @@ marked "interrupt" are called from the interrupt handlers.
 | `I2C_DW_CLOCK_SPEED` | `CONFIG_I2C_DW_CLOCK_SPEED` (MHz, 125) | `BOARD_PERI_FREQ / 1000000` |
 | `i2c_dw_os_prepare(dw)` (`i2c_dw_instance.h`) | `reset_line_toggle_dt()` and `pinctrl_apply_state()`: reset I2C0 or I2C1, its pins as I2C (4 mA, slow slew, Schmitt trigger and input enabled; I2C0's GPIO12 and 13 without pulls, I2C1's with the internal pull-ups) | RESETS and `rp2040_gpio_*()` (`i2c_dw_pinctrl()`, the steps of Zephyr's `pinctrl_rpi_pico.c`) |
 | `i2c_dw_os_irq_enable(dw)` (same) | `IRQ_CONNECT()`, `irq_enable()`: a handler of I2C0_IRQ or I2C1_IRQ that calls `i2c_dw_isr_handler(dw)` | `irq_attach()`, `up_enable_irq()` |
-| `app_log.h` | `LOG_MODULE_REGISTER()`, `LOG_ERR()`, `LOG_ERR_RATELIMIT()` (at the level 3 that the core sets) | `common/compat/include/app_log.h` with its NuttX part `nuttx/drivers/include/app_log_os.h` (the RAM log) |
+| `app_log.h` | `LOG_MODULE_REGISTER()`, `LOG_ERR()`, `LOG_ERR_RATELIMIT()` (at the level 3 that the core sets) | `common/compat/include/app_log.h` with its NuttX part `common/compat/port/nuttx/app_log_os.h` (the RAM log) |
 | `CONFIG_I2C_DW_I2C0`, `CONFIG_I2C_DW_I2C1` | The instances to build (Zephyr: the devicetree's enabled nodes) | `nuttx/drivers/i2c_dw/Kconfig` (`I2C_DW_I2C0` on, `I2C_DW_I2C1` off by default) |
 | `CONFIG_I2C_DW_RP2040_DMA` | Build the DMA reads of I2C0 (the same symbol as the Zephyr version's) | Kconfig |
 
@@ -547,7 +551,7 @@ patched driver with the same branches, order and values.
 | `common/drivers/lsm6dso/port/zephyr/lsm6dso_rtio_stream.c` | The FIFO stream's RTIO side (below): the device's INT1 line, RTIO's request handed to the core's stream, the stop and the settings of the extended API. The same file as the Zephyr version's |
 | `common/drivers/lsm6dso/port/zephyr/lsm6dso_decoder.[ch]` | The decoders of the stream's and the single reads' buffers (`get_decoder`). The same files as the Zephyr version's |
 | the board's `src/rp2040_lsm6dso.[ch]` | Makes I2C0 the compatibility layer's bus device (`i2c0`, 1 MHz) and initializes `lsm6dsox` (from `rp2040_bringup()`) |
-| the board's `src/rp2040_gpio_os.c` | GPIO bank 0 for the compatibility layer's `gpio0` (input set-up, levels, edge and level interrupts); `<gpio_os.h>` (`common/compat`) |
+| `common/compat/port/nuttx/rp2040_gpio_os.c` | GPIO bank 0 for the compatibility layer's `gpio0` (input set-up, levels, edge and level interrupts); `<gpio_os.h>` (`common/compat/port/`). Built into the board's `libboard.a` (the board's `src/Make.defs`, through `VPATH`) |
 
 What the driver's calls into the system are on NuttX (those of the core through
 `port/zephyr/lsm6dso_os_impl.h` and `lsm6dso_stream_req_impl.h`, those of the binding directly):
@@ -675,7 +679,7 @@ read-only data stays in the flash) of the objects listed in the board's linker s
 `EXCLUDE_FILE` between "RAM code begin" and "RAM code end") runs from RAM:
 
 - the layer's kernel part (`zephyr_kernel.c`, `zephyr_mutex.c`), work queue, RTIO and its work queue,
-  memory blocks, sensor clock, `gpio0` with the board's GPIO glue (`src/rp2040_gpio_os.c`), and the I2C
+  memory blocks, sensor clock, `gpio0` with its GPIO glue (`rp2040_gpio_os.c`, in `libboard.a`), and the I2C
   API that the LSM6DSOX's reads go through (`zephyr_i2c.c`);
 - I2C0 (`i2c_dw.c`, also I2C1's when it is built) with its DMA part, and NuttX's DMA driver
   (`rp2040_dmac.c`, also used by the NINA's SPI);
@@ -750,19 +754,28 @@ is in two places:
   key-value area's flash `flash_kv_os.h`). The command handling of the shell's
   `zephyr/shell/shell.h` is `common/shell/zshell.c` ("Shell" below). The Zephyr build does not use
   it (it has Zephyr itself).
-- **The NuttX implementation** (`nuttx/drivers/compat/`): the kernel part (`zephyr_kernel.c`,
+- **The NuttX implementation** (`common/compat/port/nuttx/`): the kernel part (`zephyr_kernel.c`,
   `zephyr_mutex.c`), the OS headers (`zephyr_os.h`, `zephyr_os_spinlock.h`, `zephyr_os_atomic.h`,
   `zephyr_os_shell.h`), the headers that depend on NuttX as a whole (`zephyr/net/socket.h`,
   `net_if.h`, `zephyr/sys/clock.h`, `__assert.h`, `zephyr/drivers/i2c.h`), the `.c` files of
-  I2C, the interface and the chip ID, and the prelude (`common_prelude.h`).
+  I2C, the interface and the chip ID, the prelude (`common_prelude.h`), the NuttX parts of the
+  shared headers `app_log.h`, `priorities.h` and the RAM log (`app_log_os.h`, `priorities_os.h`,
+  `log_ram_os_impl.h`, with the syslog channel `log_ram_syslog.c`) and GPIO bank 0 under `gpio0`
+  (`rp2040_gpio_os.c`). `nuttx/drivers/compat/Make.defs` builds its `.c` files into
+  `libexternal.a` (`log_ram_syslog.c` from `nuttx/drivers/log/Make.defs`; both find them through
+  `VPATH`, ahead of the shared part's directories), the board's `src/Make.defs` builds
+  `rp2040_gpio_os.c` into `libboard.a` (it needs the chip's private headers). None of them gets the
+  prelude.
 
-The include path is the NuttX implementation (`$(TOPDIR)/external/compat`), then the shared part
-(`common/compat`). The kernel side (`compat/Make.defs`) and the applications (`apps/sensor`,
+The include path is the NuttX implementation (`common/compat/port/nuttx`, for the kernel side, the
+board and the applications), then the shared part (`common/compat/include`, `port`, `internal`;
+`common/compat/port/generic`, the OS-independent implementation of the Pico SDK builds, is not on
+it). The kernel side (`compat/Make.defs`) and the applications (`apps/sensor`,
 `apps/wifi`) find the shared `.c` files through `VPATH` and compile them with the prelude. The host
 tests have a fake kernel (the OS headers and their functions) in `common/tests/zephyr_fakes`, ahead
 of the NuttX implementation on the include path.
 
-| Header (in `common/compat/` unless marked) | Contents |
+| Header (in `common/compat/` unless marked; (NuttX): in `common/compat/port/nuttx/`) | Contents |
 |---|---|
 | `zephyr/device.h` | `struct device` (name, config, API, state, data, init function), `device_is_ready()`, `device_init()` (the meaning of Zephyr's `do_device_init()`), `DEVICE_DT_GET()`, `DEVICE_DT_DEFINE()`, `DEVICE_API()`, `device_get_binding()` (node name), `device_get_by_dt_nodelabel()` (node label), `DEVICE_API_IS(sensor, dev)` (below) |
 | `zephyr/devicetree.h` | `DT_NODELABEL()`, `DT_BUS()`; the nodes are `gpio0`, `i2c0` and `lsm6dsox` only. `DT_HAS_COMPAT_ON_BUS_STATUS_OKAY()` (Zephyr's definition): 1 for `st_lsm6dso` on `i2c`, 0 for any other compatible or bus (`lsm6dso.h`). `DT_HAS_CHOSEN()` is always 0 (the Zephyr build chooses no `zephyr,settings-partition` either) |
@@ -802,7 +815,7 @@ of the NuttX implementation on the include path.
 | `zephyr_os.h`, `zephyr_os_spinlock.h`, `zephyr_os_atomic.h`, `zephyr_os_shell.h` (NuttX) | The OS headers (below): NuttX's types (`rmutex_t`, `sem_t`, a wdog, `pid_t`), the tick, the priorities, the TIMER, `k_yield()` (`sched_yield()`), the assertion (`DEBUGASSERT()`), the work queue's wait (`nxsem_wait_uninterruptible()`), `sched_lock()` and `up_irq_save()`, the takeover of `<nuttx/atomic.h>`'s names, `struct shell` (the terminal's path and the command's task) |
 | `common_prelude.h` (NuttX) | The prelude (below) |
 
-| Source (in `common/compat/` unless marked) | Contents |
+| Source (in `common/compat/` unless marked; (NuttX): in `common/compat/port/nuttx/`) | Contents |
 |---|---|
 | `zephyr_mutex.c` (NuttX) | `k_mutex` on NuttX (`rmutex_t`). Zephyr's `k_mutex` is unlocked when all zero (`lock_count` 0), and Zephyr's MQTT library locks the client's mutex in `mqtt_abort()` before `mqtt_client_init()`; NuttX's all-zero mutex counts as held by thread 0, and the lock never returns. So `K_MUTEX_DEFINE()` and `k_mutex_init()` set a mark (`ready`), and one without it (all zero) is initialized by its first lock or unlock (once, under the layer's spin lock) |
 | `zephyr_kernel.c` (NuttX) | The OS part on NuttX: `k_sem` (`sem_t`, the limit checked in `k_sem_give()`), `k_poll()`, the timer of delayable work (a wdog), thread names, the start of a thread (`z_thread_static_start()`: a kernel thread on its static stack; the start data handed over, the caller waits until the thread has taken it), `k_sleep()`, `k_msleep()`, `k_usleep()`, `k_busy_wait()` |
@@ -833,7 +846,7 @@ of the NuttX implementation on the include path.
   ticks + 1, as in Zephyr. Not ported: flush, drain, plug, stopping a queue, the work timeout,
   `k_work_cancel()`, `k_work_cancel_delayable()`.
 - **OS headers** (of the layer): the shared headers hold no OS types; they include these headers
-  from the OS's directory (`nuttx/drivers/compat/` in the NuttX build, `common/tests/zephyr_fakes/`
+  from the OS's directory (`common/compat/port/nuttx/` in the NuttX build, `common/tests/zephyr_fakes/`
   in the host tests). The list of what each must provide is in the leading comment of the shared
   header that includes it.
   - `zephyr_os.h` (included first by `<zephyr/kernel.h>`): the OS headers needed before the layer,
@@ -858,8 +871,8 @@ of the NuttX implementation on the include path.
   - Boundary headers that the shared files read: `priorities.h` (`APP_STACK_NET_MGMT`,
     `APP_PRIO_RTIO_WQ`, `APP_STACK_RTIO_WQ`; in
     `common/compat/include/`, on `APP_PRIO_FROM_ZEPHYR()` of the OS part `priorities_os.h`, in the NuttX
-    build in `nuttx/drivers/include/`), `gpio_os.h` (`zephyr_gpio.c`; in `common/compat/port/`, the
-    board implements it), `app_log.h` (`<zephyr/logging/log.h>`, `sensor_default_rtio.c`, the
+    build in `common/compat/port/nuttx/`), `gpio_os.h` (`zephyr_gpio.c`; in `common/compat/port/`,
+    implemented by `common/compat/port/nuttx/rp2040_gpio_os.c`), `app_log.h` (`<zephyr/logging/log.h>`, `sensor_default_rtio.c`, the
     credentials; in `common/compat/include/`, on the OS part `app_log_os.h`), `<cpu_load.h>`
     (`<zephyr/sys/cpu_load.h>`; `common/compat/port/`), `sensor_shell_os.h` (`sensor_shell_stream.c`). The configuration
     values `CONFIG_LSM6DSO_STREAM` (`zephyr_device.c`) and `CONFIG_WIFI_CREDENTIALS`,
@@ -933,7 +946,7 @@ of the NuttX implementation on the include path.
   `RTIO_WQ_0`.
 - **GPIO**: one port, `gpio0` (GPIO0..29), inputs only (outputs are `-ENOTSUP`). Pin set-up,
   interrupts (edges and levels, logical or physical), levels and callbacks are copies of Zephyr's
-  `gpio.h` and `gpio_rpi_pico.c`; the board's `src/rp2040_gpio_os.c` writes the registers as the
+  `gpio.h` and `gpio_rpi_pico.c`; `common/compat/port/nuttx/rp2040_gpio_os.c` writes the registers as the
   pico-sdk's `gpio_set_pulls()`, `gpio_set_function()`, `gpio_set_dir()` and
   `gpio_set_irq_enabled()` do (the pin's events in `INTR` are cleared before they are enabled or
   disabled). The interrupt comes from NuttX's `rp2040_gpio` bank interrupt (which clears the

@@ -3,7 +3,7 @@
  * the build's network parts (common/compat/net_offload/zephyr_net_if.c and
  * the start of the network part, common/compat/net_offload/zephyr_net_init.c)
  * under the shared ones as
- * common/pico_sdk/drivers/wifi/wifi.cmake builds them (common/drivers/nina/nina_wifi.c and its
+ * common/compat/port/pico_sdk/wifi.cmake builds them (common/drivers/nina/nina_wifi.c and its
  * Zephyr binding common/drivers/nina/port/zephyr/nina_net.c, common/compat/zephyr_net_mgmt.c,
  * zephyr_wifi_mgmt.c, zephyr_wifi_utils.c, wifi_credentials.c and its settings backend,
  * common/imu/wifi_profile.c, the "wifi" command of common/compat/zephyr_wifi_shell.c and the copy

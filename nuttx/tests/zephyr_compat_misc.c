@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /* Host test of the parts of the Zephyr compatibility layer
- * (common/compat and nuttx/drivers/compat) that the IMU service
+ * (common/compat and common/compat/port/nuttx) that the IMU service
  * (common/imu/imu_stream.c)
  * added, against Zephyr's definitions:
  *

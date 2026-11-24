@@ -6,7 +6,7 @@
 #   pico_sdk_i2c_shell(<target>)
 #
 # after pico_sdk_zephyr_compat() and pico_sdk_i2c_dw()
-# (common/pico_sdk/drivers/compat/compat.cmake, common/pico_sdk/drivers/i2c_dw/
+# (common/compat/port/pico_sdk/compat.cmake, common/pico_sdk/drivers/i2c_dw/
 # i2c_dw.cmake: the layer with its shell and <zephyr/drivers/i2c.h>, the
 # device i2c0 "i2c@40044000").  It adds to the target the command,
 # common/shell/i2c_shell.c: Zephyr v4.5.0's

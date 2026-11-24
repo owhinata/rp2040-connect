@@ -1,8 +1,8 @@
 /* SPDX-License-Identifier: MIT */
 /* The port header of the Zephyr compatibility layer (see
- * freertos/drivers/compat/rp2040/zephyr_os_port.h, the board's) for the host
+ * common/compat/port/freertos/rp2040/zephyr_os_port.h, the board's) for the host
  * tests on the FreeRTOS POSIX port: with the FreeRTOS calls of
- * freertos/drivers/compat/zephyr_kernel_os_impl.h, the host implementation
+ * common/compat/port/freertos/zephyr_kernel_os_impl.h, the host implementation
  * of the generic kernel part's primitives (zephyr_kernel_os.h).  There the
  * tasks are threads of which one runs at a time, the interrupts are signals,
  * and the only "interrupt handler" is the tick hook (main.c counts it in

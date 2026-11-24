@@ -7,8 +7,7 @@
 # It uses nshlib's internal headers (nsh.h, nsh_console.h) to run an nsh
 # session without the login greeting (see rp2040_init.c).  app_log.h comes
 # and priorities.h from common/compat/include, their NuttX parts
-# (app_log_os.h, priorities_os.h) from nuttx/drivers/include
-# ($(TOPDIR)/external/include).
+# (app_log_os.h, priorities_os.h) from common/compat/port/nuttx.
 # It calls the application's start shared with the other builds
 # (common/imu/app_main.h: app_main.c, app_init.c, found through VPATH and
 # compiled with the prelude of the shared sources, common_prelude.h,
@@ -28,9 +27,8 @@ include $(APPDIR)/Make.defs
 CSRCS = rp2040_init.c rp2040_telnet.c app_main.c app_init.c
 
 CFLAGS += ${INCDIR_PREFIX}$(APPDIR)$(DELIM)nshlib
-CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)include
+CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)compat$(DELIM)port$(DELIM)nuttx
 CFLAGS += ${INCDIR_PREFIX}$(APPDIR)$(DELIM)external$(DELIM)imu
-CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)compat
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)compat$(DELIM)include
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)compat$(DELIM)port
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)imu
@@ -43,4 +41,4 @@ DEPPATH += --dep-path ../../../common/imu
 include $(APPDIR)/Application.mk
 
 app_main.c$(SUFFIX)$(OBJEXT) app_init.c$(SUFFIX)$(OBJEXT): \
-  CFLAGS += -include $(TOPDIR)$(DELIM)external$(DELIM)compat$(DELIM)common_prelude.h
+  CFLAGS += -include $(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)compat$(DELIM)port$(DELIM)nuttx$(DELIM)common_prelude.h

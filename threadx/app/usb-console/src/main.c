@@ -45,7 +45,7 @@ void fault_os_stack_error(TX_THREAD *thread);
 
 /* The thread "main"'s stack, used only until the thread ends, with the
  * layer's storage of the thread after it (Z_OS_THREAD_RESERVED:
- * zephyr_kernel_os_impl.h of threadx/drivers/compat), is not in .bss but
+ * zephyr_kernel_os_impl.h of common/compat/port/threadx), is not in .bss but
  * in SCRATCH_X, which only core 1's stack would use
  * (common/pico_sdk/app/usb-console/ld/section_extra_post_scratch.incl; this
  * build does not link pico_multicore, so the whole 4 KiB is free).  Not

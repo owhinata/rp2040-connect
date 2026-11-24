@@ -4,7 +4,7 @@
 # - The tests of the sources shared with the other builds
 #   (common/tests/run.sh).
 # - The ThreadX part of the Zephyr compatibility layer's kernel
-#   (threadx/drivers/compat/zephyr_kernel_os_impl.h, the primitives of the
+#   (common/compat/port/threadx/zephyr_kernel_os_impl.h, the primitives of the
 #   generic kernel part, common/compat/kernel_generic) compiles alone: it
 #   reads ThreadX's headers and its port header, and none of the layer's.
 # - The test of the layer's kernel part (the generic one, on the ThreadX
@@ -52,13 +52,13 @@ trap 'rm -rf "$out"' EXIT
 # (TX_LINUX_MULTI_CORE, with _GNU_SOURCE), as its example build does.
 txdefs=(-DTX_INCLUDE_USER_DEFINE_FILE -D_GNU_SOURCE -DTX_LINUX_MULTI_CORE)
 txinc=(-Itests/compat -I"$tx/common/inc" -I"$linux/inc")
-# The test's port header and tx_user.h first, then the board's priorities_os.h
-# (app/usb-console/src), the layer (ThreadX's part, the parts for an OS without its own
+# The test's port header and tx_user.h first, then the layer (ThreadX's part with the board's
+# priorities_os.h, common/compat/port/threadx, the parts for an OS without its own
 # <zephyr/sys/clock.h> and <zephyr/sys/__assert.h> with the generic kernel part's zephyr_os.h
 # and default zephyr_os_atomic.h, common/compat/port/generic, then the layer's headers,
 # common/compat/include, port and internal) and ThreadX.
 kgen=../common/compat/kernel_generic
-inc=(-Itests/compat -Iapp/usb-console/src -Idrivers/compat -I../common/compat/port/generic
+inc=(-Itests/compat -I../common/compat/port/threadx -I../common/compat/port/generic
      -I../common/compat/include -I../common/compat/port -I../common/compat/internal
      -I"$tx/common/inc" -I"$linux/inc")
 flags=(-std=gnu11 -O2 -g -pthread "${txdefs[@]}")
@@ -67,9 +67,9 @@ strict=(-Wall -Wextra -Werror)
 # The ThreadX part reads no header of the layer: it compiles with ThreadX's and its own
 # include paths only.
 printf '#include "zephyr_kernel_os_impl.h"\n' >"$out/impl_alone.c"
-cc "${flags[@]}" "${strict[@]}" -Itests/compat -Iapp/usb-console/src -Idrivers/compat \
+cc "${flags[@]}" "${strict[@]}" -Itests/compat -I../common/compat/port/threadx \
     -I"$tx/common/inc" -I"$linux/inc" -c "$out/impl_alone.c" -o "$out/impl_alone.o"
-if grep -n '#include <zephyr/' drivers/compat/*.h drivers/compat/*.c; then
+if grep -n '#include <zephyr/' ../common/compat/port/threadx/*.h ../common/compat/port/threadx/*.c; then
     printf 'host_tests.sh: the ThreadX part of the layer reads a header of the layer\n' >&2
     exit 1
 fi
@@ -89,7 +89,7 @@ for src in ../common/compat/zephyr_init.c ../common/compat/zephyr_work.c \
     cc "${flags[@]}" "${strict[@]}" "${inc[@]}" -c "$src" -o "$obj"
     objs+=("$obj")
 done
-for src in $kgen/zephyr_kernel.c $kgen/zephyr_mutex.c drivers/compat/zephyr_kernel_os.c \
+for src in $kgen/zephyr_kernel.c $kgen/zephyr_mutex.c ../common/compat/port/threadx/zephyr_kernel_os.c \
            ../common/tests/zephyr_kernel/zephyr_kernel_test.c tests/compat/main.c; do
     obj="$out/$(basename "$src" .c).o"
     cc "${flags[@]}" "${strict[@]}" "${inc[@]}" -I../common/tests/zephyr_kernel \

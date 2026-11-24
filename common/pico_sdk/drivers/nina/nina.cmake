@@ -5,7 +5,7 @@
 #
 #   pico_sdk_nina(<target>)
 #
-# after pico_sdk_zephyr_compat(<target>) (common/pico_sdk/drivers/compat/compat.cmake,
+# after pico_sdk_zephyr_compat(<target>) (common/compat/port/pico_sdk/compat.cmake,
 # whose layer and shell it needs).  It adds to the target:
 #
 # - the shared core of the link (common/drivers/nina/internal/nina_proto.c:
@@ -18,7 +18,7 @@
 #   disconnect, status, the link monitor) and their Zephyr binding on the
 #   layer (common/drivers/nina/port/zephyr/nina_net.c: Zephyr's Wi-Fi
 #   management and interface, the thread nina_wifi_tid); pico_sdk_wifi()
-#   (common/pico_sdk/drivers/wifi/wifi.cmake) adds the layer's network part that
+#   (common/compat/port/pico_sdk/wifi.cmake) adds the layer's network part that
 #   they run on;
 # - the sockets: the shared socket table and commands
 #   (common/drivers/nina/nina_sock.c) and resolver (nina_dns.c), and the
@@ -26,7 +26,7 @@
 #   (common/drivers/nina/port/zephyr/nina_socket.c: Zephyr's socket offload, the
 #   wait loops, the resolver registered as the offload's with its results on
 #   a 2048-byte k_heap; NINA_OS_DNS_OFFLOAD), on the layer's socket part
-#   (common/pico_sdk/drivers/compat/compat.cmake): the time synchronization, the
+#   (common/compat/port/pico_sdk/compat.cmake): the time synchronization, the
 #   MQTT transport, Telnet and the speed test call the layer's zsock_*();
 # - the two boundaries of the core: the OS's binding
 #   common/drivers/nina/port/<OS>/nina_os.c (PICO_SDK_OS; nina_os.h: the

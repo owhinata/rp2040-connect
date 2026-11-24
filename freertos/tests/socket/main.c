@@ -6,7 +6,7 @@
  * NET_SOCKET_OFFLOAD_REGISTER(), with NINA_OS_DNS_OFFLOAD) on the shared
  * NINA core (common/drivers/nina/nina_sock.c, nina_dns.c) and the address
  * conversions (common/compat/libc_net/inet.c), as the board builds them
- * (common/pico_sdk/drivers/compat/compat.cmake, common/pico_sdk/drivers/nina/nina.cmake),
+ * (common/compat/port/pico_sdk/compat.cmake, common/pico_sdk/drivers/nina/nina.cmake),
  * on a fake module (nina_proto_request(), here: the firmware's sockets as a small
  * model that logs each command) and a fake clock (nina_os.h, and the
  * binding's k_uptime_get() and k_sleep(), wrapped here with -Wl,--wrap: the

@@ -3,7 +3,7 @@
  * POSIX port: the shared common/imu/time_sync.c and time_offset.c with the
  * prelude, as common/pico_sdk/drivers/imu/imu.cmake builds them, on the build's OS
  * parts (the realtime clock of the layer's <zephyr/sys/clock.h>,
- * common/pico_sdk/drivers/compat/zephyr_sys_clock.c; the interface,
+ * common/compat/port/pico_sdk/zephyr_sys_clock.c; the interface,
  * zephyr_net_if.c; the net_mgmt events with the thread "net_mgmt",
  * common/compat/zephyr_net_mgmt.c; the thread time_sync_tid of
  * K_THREAD_DEFINE(); the layer's semaphore, mutex, sleeps and clock), the

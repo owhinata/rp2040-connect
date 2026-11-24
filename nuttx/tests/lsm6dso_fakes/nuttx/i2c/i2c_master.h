@@ -1,8 +1,8 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 /* The part of NuttX 13.1.0's <nuttx/i2c/i2c_master.h> that
- * compat/zephyr_i2c.c uses, with the same values (and the I2C_SPEED_* in
- * Hz that <zephyr/drivers/i2c.h> must replace); I2C_RESET() with
- * CONFIG_I2C_RESET (the host test i2c_shell).
+ * common/compat/port/nuttx/zephyr_i2c.c uses, with the same values (and
+ * the I2C_SPEED_* in Hz that <zephyr/drivers/i2c.h> must replace);
+ * I2C_RESET() with CONFIG_I2C_RESET (the host test i2c_shell).
  */
 #ifndef TEST_FAKE_NUTTX_I2C_MASTER_H
 #define TEST_FAKE_NUTTX_I2C_MASTER_H

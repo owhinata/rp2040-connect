@@ -2,7 +2,8 @@
 /* Host test of the "i2c" command (common/shell/i2c_shell.c, the
  * copy of the Zephyr build's I2C shell, as nuttx/apps/i2c builds it) on the
  * Zephyr shell's command handling of common/shell/zshell.c and the
- * compatibility layer's I2C bus device (compat/zephyr_i2c.c, the devices of
+ * compatibility layer's I2C bus device
+ * (common/compat/port/nuttx/zephyr_i2c.c, the devices of
  * common/compat/zephyr_device.c), against a fake NuttX I2C master that
  * records each transfer (frequency, flags, lengths), answers WHO_AM_I
  * (0x6c at 0x0f) and 0xa0, 0xa1, ... for other reads, refuses a message of

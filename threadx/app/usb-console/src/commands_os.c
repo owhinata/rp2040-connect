@@ -99,7 +99,7 @@ static size_t ps_stack_free(const TX_THREAD *t)
 }
 
 /* The threads: state, priority (ThreadX's, 0 the most urgent: Zephyr's
- * priority + 16, src/priorities_os.h; raised by a mutex's priority
+ * priority + 16, common/compat/port/threadx/priorities_os.h; raised by a mutex's priority
  * inheritance), the least free stack so far and the share of the CPU time
  * since the previous "ps" (since the start for the first), from any shell:
  * the run times of this list less those of the previous one

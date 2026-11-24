@@ -26,8 +26,8 @@ config APP_IMU
 	select LIBC_IPv4_ADDRCONV if !NET_IPv4
 	---help---
 		imu_stream.c (common/imu, shared with the Zephyr build) on the
-		Zephyr compatibility layer (common/compat and
-		nuttx/drivers/compat): the thread imu_stream_tid (Zephyr
+		Zephyr compatibility layer (common/compat, its NuttX part in
+		common/compat/port/nuttx): the thread imu_stream_tid (Zephyr
 		priority 9, NuttX 109, 2048-byte stack), which the init task
 		starts at boot, and the "imu start|stop|status|cal" command
 		with the Zephyr build's syntax and output, and the calibration

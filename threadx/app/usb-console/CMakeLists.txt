@@ -26,15 +26,15 @@ include(${CMAKE_CURRENT_LIST_DIR}/threadx_kernel.cmake)
 # The sources shared with the Zephyr and NuttX builds (common/ at the root of
 # the repository), with the parts shared by the builds on the Pico SDK
 # (common/pico_sdk), and the ThreadX part of the Zephyr compatibility layer
-# that runs them (threadx/drivers/compat: zephyr_kernel_os_impl.h, the
-# primitives of the generic kernel part, and rp2040/zephyr_os_port.h).
+# that runs them (common/compat/port/threadx, after PICO_SDK_OS:
+# zephyr_kernel_os_impl.h, the primitives of the generic kernel part, with
+# its variables in zephyr_kernel_os.c, priorities_os.h, and
+# rp2040/zephyr_os_port.h).
 get_filename_component(COMMON_DIR ${CMAKE_CURRENT_LIST_DIR}/../../../common ABSOLUTE)
 set(PICO_SDK_OS threadx)
-get_filename_component(THREADX_COMPAT_DIR ${CMAKE_CURRENT_LIST_DIR}/../../drivers/compat ABSOLUTE)
-set(PICO_SDK_OS_COMPAT_DIRS ${THREADX_COMPAT_DIR}/rp2040 ${THREADX_COMPAT_DIR})
 get_filename_component(PICO_SDK_STMEMSC_DIR ${CMAKE_CURRENT_LIST_DIR}/../../stmemsc ABSOLUTE)
-# priorities_os.h and the ThreadX parts of the application's boundaries
-# (src/); tx_user.h comes with the kernel (threadx_kernel()).
+# The ThreadX parts of the application's boundaries (src/); tx_user.h comes
+# with the kernel (threadx_kernel()).
 set(PICO_SDK_OS_APP_DIRS ${CMAKE_CURRENT_LIST_DIR}/src)
 set(PICO_SDK_OS_LIBRARIES)
 # The name under /dev/serial/by-id (threadx/script/flash.sh looks for it).
@@ -74,7 +74,7 @@ add_executable(usb-console
   ${PICO_SDK_APP_DIR}/src/idle.c
   ${PICO_SDK_APP_DIR}/src/irq_stack.c
   src/run_time.c
-  ${THREADX_COMPAT_DIR}/zephyr_kernel_os.c
+  ${COMMON_DIR}/compat/port/threadx/zephyr_kernel_os.c
   ${COMMON_DIR}/compat/log/fault_record.c
 )
 

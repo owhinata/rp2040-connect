@@ -1,8 +1,8 @@
 /* SPDX-License-Identifier: MIT */
 /* The port header of the Zephyr compatibility layer (see
- * threadx/drivers/compat/rp2040/zephyr_os_port.h, the board's) for the host
+ * common/compat/port/threadx/rp2040/zephyr_os_port.h, the board's) for the host
  * tests on ThreadX's Linux port (ports/linux/gnu), with the ThreadX calls of
- * threadx/drivers/compat/zephyr_kernel_os_impl.h the host implementation of
+ * common/compat/port/threadx/zephyr_kernel_os_impl.h the host implementation of
  * the generic kernel part's primitives (zephyr_kernel_os.h).  There every
  * ThreadX thread is a Linux thread of which the scheduler lets one run at a
  * time, an interrupt is a Linux thread that suspends the running one

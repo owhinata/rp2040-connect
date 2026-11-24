@@ -6,7 +6,7 @@
 #   pico_sdk_lsm6dso(<target>)
 #
 # after pico_sdk_zephyr_compat(<target>) and pico_sdk_i2c_dw(<target>)
-# (common/pico_sdk/drivers/compat/compat.cmake, common/pico_sdk/drivers/i2c_dw/
+# (common/compat/port/pico_sdk/compat.cmake, common/pico_sdk/drivers/i2c_dw/
 # i2c_dw.cmake: the layer's kernel, work queues and RTIO, and the device
 # i2c0; the configuration stops if CONFIG_I2C_DW_I2C0 is not on, as the
 # NuttX build's LSM6DSO_LOCAL depends on I2C_DW_I2C0).  It adds to the target the same sources as the NuttX build's
@@ -31,7 +31,7 @@
 #   devices gpio0, i2c0 and lsm6dsox; zephyr_gpio.c, the device gpio0;
 #   sensor_default_rtio.c, the default iodev and decoder of the sensor API;
 #   zephyr_sensor_clock.c, the sensor clock on the TIMER) and their part
-#   on the Pico SDK (common/pico_sdk/drivers/compat/rp2040/gpio_os_rp2040.c, GPIO bank 0 and its
+#   on the Pico SDK (common/compat/port/pico_sdk/gpio_os_rp2040.c, GPIO bank 0 and its
 #   interrupt on the Pico SDK);
 # - the start of the sensor (common/drivers/lsm6dso/port/pico_sdk:
 #   lsm6dso_board.c, lsm6dso_board.h);
@@ -88,7 +88,7 @@ function(pico_sdk_lsm6dso target)
     ${lsm6dso_driver_sources}
     ${lsm6dso_compat_sources}
     ${PICO_SDK_STMEMSC_DIR}/lsm6dso_reg.c
-    ${PICO_SDK_DRIVERS_DIR}/compat/rp2040/gpio_os_rp2040.c
+    ${PICO_SDK_COMPAT_PORT_DIR}/gpio_os_rp2040.c
     ${lsm6dso_dir}/port/pico_sdk/lsm6dso_board.c
   )
 

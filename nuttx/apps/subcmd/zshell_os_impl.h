@@ -4,8 +4,8 @@
  * common/shell/zshell_os.h): the shell backends.
  *
  * Backends: a struct shell per terminal (<zephyr/shell/shell.h>, NuttX
- * part nuttx/drivers/compat/zephyr_os_shell.h: the path of the command's
- * stdout, /dev/ttyACM0 for USB, /dev/telnet0 for Telnet, found by
+ * part common/compat/port/nuttx/zephyr_os_shell.h: the path of the
+ * command's stdout, /dev/ttyACM0 for USB, /dev/telnet0 for Telnet, found by
  * F_GETPATH or by the inode number among /dev), kept for the life of the
  * system as Zephyr's shell instances are.  Output to it from the command
  * itself goes to its stdout and stderr; output from any other task or

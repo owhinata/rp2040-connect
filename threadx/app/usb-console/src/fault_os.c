@@ -4,7 +4,7 @@
  * control block, and ThreadX's stack check as an entry.
  *
  * ThreadX's other fatal paths end in fault.c's own entries: the layer's
- * Z_TX_ASSERT() (threadx/drivers/compat/rp2040/zephyr_os_port.h) calls
+ * Z_TX_ASSERT() (common/compat/port/threadx/rp2040/zephyr_os_port.h) calls
  * app_assert_failed(); ThreadX's services report a bad call with an error
  * code (TX_DISABLE_ERROR_CHECKING is not set), which is not a fatal error;
  * a thread whose function returns is left TX_COMPLETED by ThreadX (the
@@ -27,7 +27,7 @@
 /* The name of THREAD into NAME (SIZE bytes, its NUL already there), when
  * the control block and the name are inside the RAM: a fault may come from
  * a corrupted kernel.  The layer's threads keep their names in the storage
- * after their stacks (zephyr_kernel_os_impl.h of threadx/drivers/compat).
+ * after their stacks (zephyr_kernel_os_impl.h of common/compat/port/threadx).
  */
 static void fault_os_copy_name(const TX_THREAD *thread, char *name, size_t size)
 {

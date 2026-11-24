@@ -28,7 +28,8 @@
 #define configUSE_TICK_HOOK                     1
 
 /* Priorities 0..31, a higher number runs first; the port's are
- * 20 - (Zephyr priority) (src/priorities_os.h, common/compat/include/priorities.h).
+ * 20 - (Zephyr priority) (common/compat/port/freertos/priorities_os.h,
+ * common/compat/include/priorities.h).
  * Task names as long as Zephyr's (CONFIG_THREAD_MAX_NAME_LEN=32, with the
  * terminating null).
  */
@@ -80,7 +81,7 @@
 
 /* The timer task also wakes the tasks that wait on the Pico SDK's locks and
  * sleeps when an interrupt handler releases them; its priority and stack
- * are in src/priorities_os.h.
+ * are in common/compat/port/freertos/priorities_os.h.
  */
 #define configUSE_TIMERS                        1
 #define configTIMER_TASK_PRIORITY               APP_PRIO_TIMER_SVC
@@ -96,7 +97,7 @@
 #define configKERNEL_PROVIDED_STATIC_MEMORY     1   /* idle and timer tasks */
 /* No kernel heap: every task, queue and semaphore is static (the
  * compatibility layer's threads keep their control blocks after their
- * stacks, freertos/drivers/compat/zephyr_kernel_os_impl.h), and a call that
+ * stacks, common/compat/port/freertos/zephyr_kernel_os_impl.h), and a call that
  * would allocate does not link.  malloc() is newlib's (the shell, "zperf",
  * the NINA passthrough mode's buffer).
  */

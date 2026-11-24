@@ -6,22 +6,24 @@
 # API that the ported driver (lsm6dso/) and its callers use, under Zephyr's
 # names.  Its OS-independent part is in common/compat (headers in
 # common/compat/include, internal and port, include paths
-# $(TOPDIR)/../../common/compat/<dir>); the
-# NuttX implementation is this directory (the OS headers zephyr_os*.h, the
-# OS parts *_os.h of the shared sources, the NuttX headers in
-# compat/zephyr/, include path $(TOPDIR)/external/compat, which comes
-# first).  Included by nuttx/drivers/Makefile.  VPATH and DEPPATH of
-# common/compat are relative to nuttx/drivers (mkdeps needs relative ones);
-# the objects are made there.  compat/common_prelude.h is the prelude of
-# the sources shared with the Zephyr build and of the layer's shared
-# sources (common/): the build definitions that compile them include it
-# before each one (-include).
+# $(TOPDIR)/../../common/compat/<dir>); the NuttX implementation is
+# common/compat/port/nuttx (the OS headers zephyr_os*.h, the OS parts
+# *_os.h of the shared sources, the NuttX headers in zephyr/, the sources
+# zephyr_*.c; include path $(TOPDIR)/../../common/compat/port/nuttx, which
+# comes first).  Included by nuttx/drivers/Makefile.  VPATH and DEPPATH of
+# common/compat and its port/nuttx are relative to nuttx/drivers (mkdeps
+# needs relative ones); the objects are made there.  port/nuttx comes first
+# in VPATH: common/compat/kernel_generic and net_offload have sources of
+# the same names, and are not in it.  common_prelude.h of port/nuttx is
+# the prelude of the sources shared with the Zephyr build and of the
+# layer's shared sources (common/): the build definitions that compile
+# them include it before each one (-include).
 ############################################################################
 
 ifeq ($(CONFIG_LSM6DSO_LOCAL),y)
 CSRCS += zephyr_device.c zephyr_i2c.c
-DEPPATH += --dep-path compat
-VPATH += :compat
+DEPPATH += --dep-path ../../common/compat/port/nuttx
+VPATH += :../../common/compat/port/nuttx
 DEPPATH += --dep-path ../../common/compat
 VPATH += :../../common/compat
 endif
@@ -56,13 +58,14 @@ CSRCS += zephyr_net_if.c zephyr_net_mgmt.c zephyr_wifi_mgmt.c
 CSRCS += zephyr_wifi_utils.c
 endif
 
-CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)compat
+CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)compat$(DELIM)port$(DELIM)nuttx
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)compat$(DELIM)include
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)compat$(DELIM)port
 CFLAGS += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)compat$(DELIM)internal
 
-# The sources of common/compat, with the prelude of the shared sources.
+# The sources of common/compat (not those of port/nuttx), with the prelude
+# of the shared sources.
 
 COMPAT_COMMON_CSRCS = $(notdir $(wildcard ../../common/compat/*.c))
 $(patsubst %.c,%$(OBJEXT),$(filter $(COMPAT_COMMON_CSRCS),$(CSRCS))): \
-  CFLAGS += -include $(TOPDIR)$(DELIM)external$(DELIM)compat$(DELIM)common_prelude.h
+  CFLAGS += -include $(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)compat$(DELIM)port$(DELIM)nuttx$(DELIM)common_prelude.h

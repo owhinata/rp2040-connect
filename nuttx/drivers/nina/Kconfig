@@ -23,8 +23,9 @@ config NINA
 		waits for the module's READY
 		line (GPIO10) sleep on its edge interrupt
 		(common/drivers/nina/port/nuttx/nina_os.c),
-		through the compatibility layer's gpio0 and the board's
-		src/rp2040_gpio_os.c, which are built with LSM6DSO_STREAM.
+		through the compatibility layer's gpio0 and
+		common/compat/port/nuttx/rp2040_gpio_os.c, which are built
+		with LSM6DSO_STREAM.
 
 if NINA
 

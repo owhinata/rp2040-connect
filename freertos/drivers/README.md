@@ -13,7 +13,7 @@ Most of the FreeRTOS build's sources are in `common/`, which the four builds sha
 transport, time synchronization, calibration, key-value store, the LSM6DSO, NINA and I2C drivers, the
 shell's command handling). The shared sources are written on Zephyr's API, so the FreeRTOS build, like the
 NuttX and ThreadX builds, runs them on a compatibility layer that provides Zephyr's API under Zephyr's names. The
-OS-independent part of the layer is `common/compat/`, the FreeRTOS part `freertos/drivers/compat/`. The
+OS-independent part of the layer is `common/compat/`, the FreeRTOS part `common/compat/port/freertos/`. The
 layer's network part for an OS without a network stack of its own (Zephyr's socket layer, the network
 interface) is `common/compat/net_offload/`, and the POSIX network headers newlib lacks are
 `common/compat/libc_net/`; the layer's kernel part for an OS that offers only basic primitives (Zephyr's
@@ -24,34 +24,29 @@ semaphores, `k_poll()`, timeouts, sleeps and threads on about twenty primitives 
 
 The FreeRTOS build's own files are in `freertos/`; what it shares with the other builds on the Pico SDK (the ThreadX build)
 (the parts written on the Pico SDK and the compatibility layer, not on FreeRTOS) is in
-`common/pico_sdk/`, whose layout follows `freertos/` (`app/usb-console/`, `drivers/<part>/`), in the
-drivers' `port/pico_sdk/` directories, and in `common/compat/port/generic/` and `common/shell/port/generic/`
-(the parts for an OS without the model of its own). The FreeRTOS build gives them its parts through a few boundaries (the
-`*_os.h` headers below), each with a FreeRTOS implementation in `freertos/`.
+`common/pico_sdk/`, whose layout follows `freertos/` (`app/usb-console/`, `drivers/<part>/`), in the layer's
+`common/compat/port/pico_sdk/` and the drivers' `port/pico_sdk/` directories, and in `common/compat/port/generic/`
+and `common/shell/port/generic/` (the parts for an OS without the model of its own). The FreeRTOS build gives them its
+parts through a few boundaries (the `*_os.h` headers below), each with a FreeRTOS implementation: the layer's in
+`common/compat/port/freertos/`, the drivers' in their `port/freertos/`, the application's in `freertos/app/`.
 
 | Place | Contents |
 |---|---|
-| `app/usb-console/` | The build (`CMakeLists.txt`: the FreeRTOS settings of `common/pico_sdk/app/usb-console/usb-console.cmake`, the list of the sources), the kernel configuration (`FreeRTOSConfig.h`, which also checks the one core), and `src/`: the entry of the start (`main.c`: `main()`, the task "main", the scheduler), the priority mapping (`priorities_os.h`), the tick hook (`tick.c`; the catch-up's decision is `common/compat/include/tick_catchup.h`), the OS part of the generic commands (`kernel_shell_os_impl.h`, with the tick count of `uptime`), and the FreeRTOS parts of the shared application's boundaries: the idle pass (`idle_os.h`: the idle hook), the fatal errors (`fault_os.c`: the running task's name, the stack overflow hook), the commands (`commands_os.c`: `ps` with the clock of its run times, the kernel's version) |
+| `app/usb-console/` | The build (`CMakeLists.txt`: the FreeRTOS settings of `common/pico_sdk/app/usb-console/usb-console.cmake`, the list of the sources), the kernel configuration (`FreeRTOSConfig.h`, which also checks the one core), and `src/`: the entry of the start (`main.c`: `main()`, the task "main", the scheduler), the tick hook (`tick.c`; the catch-up's decision is `common/compat/include/tick_catchup.h`), the OS part of the generic commands (`kernel_shell_os_impl.h`, with the tick count of `uptime`), and the FreeRTOS parts of the shared application's boundaries: the idle pass (`idle_os.h`: the idle hook), the fatal errors (`fault_os.c`: the running task's name, the stack overflow hook), the commands (`commands_os.c`: `ps` with the clock of its run times, the kernel's version) |
 | `common/pico_sdk/app/usb-console/` | Shared with the builds on the Pico SDK: the build (`usb-console.cmake`: the drivers, the include directories, the SDK's options; `ram_code.cmake`: the code that runs from RAM; `ld/`: the start-up thread's stack in SCRATCH_X) and `src/`: the shared steps of the start (`usb_console.[ch]`, called by the OS's `main()`), the commands `version` and `free` and the table of all commands (`commands.c`, on `commands_os.h`), the idle pass and the CPU load (`idle.c`; the LED's blink `idle_blink.h`), fatal errors (`fault.[ch]`, with the functions the OS's entries call and the one the OS provides), the free interrupt stack (`irq_stack.c`), `app.h` |
-| `drivers/compat/` | The FreeRTOS part of the layer: the primitives of the generic kernel part (`zephyr_kernel_os_impl.h`) and the port header (`rp2040/zephyr_os_port.h`: `z_os_in_isr()`, `z_os_yield_from_isr()`, `z_os_task_lock()`/`_unlock()`) |
-| `common/pico_sdk/drivers/compat/` | The layer's part on the Pico SDK: the build of the layer, the shell and the RAM log (`compat.cmake`), the linker script's part for the socket implementations (`ld/`), the wall clock (`zephyr_sys_clock.c`), the RP2040 part (`rp2040/`: the port header's part shared by the OSes, `zephyr_os_port_rp2040.h`; GPIO bank 0, `gpio_os_rp2040.c`; chip ID, `zephyr_hwinfo.c`) |
+| `common/compat/port/freertos/` | The FreeRTOS part of the layer: the primitives of the generic kernel part (`zephyr_kernel_os_impl.h`), the priority mapping (`priorities_os.h`) and the port header (`rp2040/zephyr_os_port.h`: `z_os_in_isr()`, `z_os_yield_from_isr()`, `z_os_task_lock()`/`_unlock()`) |
+| `common/compat/port/pico_sdk/` | The layer's part on the Pico SDK, shared by the OSes on it: the build of the layer, the shell and the RAM log (`compat.cmake`), of the key-value store (`kv.cmake`; the flash operations are `common/pico_sdk/drivers/kv/`), of Wi-Fi (`wifi.cmake`: the NINA core's `common/drivers/nina/nina_wifi.c` with its Zephyr binding `common/drivers/nina/port/zephyr/nina_net.c`, credentials, reconnection, and `ifconfig`, `common/shell/ifconfig_shell.c`), of the Telnet shell (`telnet.cmake`; the code is `common/compat/shell_engine/shell_telnet.c`) and of `zperf` (`zperf.cmake`; the code is `common/compat/zperf_iperf3.c` and `zephyr_zperf_shell.c`); the linker script's part for the socket implementations (`ld/`), the wall clock (`zephyr_sys_clock.c`), the port header's part shared by the OSes (`zephyr_os_port_rp2040.h`), GPIO bank 0 (`gpio_os_rp2040.c`), the chip ID (`zephyr_hwinfo.c`), the console transport for the shell engine (`shell_serial_os_impl.h`: the Pico SDK's USB CDC ACM driver) and the replacement of the Pico SDK's stdio driver (`shell_stdio.c`, `shell_stdio.h`), wrappers of newlib's FILE functions (`stdio_wrap.c`), the RAM log's part (`log_ram_os_impl.h`: the ring's section, the interrupt mask, the TIMER) |
 | `common/compat/port/generic/` | The layer's parts for an OS without the model of its own: `zephyr/drivers/i2c.h` (Zephyr's I2C API on the driver's device), `zephyr/sys/clock.h`, `zephyr/sys/__assert.h`, the prelude (`common_prelude.h`), `app_log_os.h`, `wifi_profile_os.h`, the generic kernel part's `zephyr_os.h`, `zephyr_os_spinlock.h` and default `zephyr_os_atomic.h`, the shell engine's backend of `zshell.c` (`zshell_os_impl.h`, `zephyr_os_shell.h`). The sensor shell's OS part is `common/shell/port/generic/` (`sensor_shell_os.h`, `sensor_shell_os.c`). The layer's other headers are in `common/compat/include/`, `internal/` and `port/` (the boundaries an OS implements) |
 | `common/compat/kernel_generic/` | The layer's kernel part for an OS that offers only basic primitives, OS-independent: `k_sem`, `k_poll()`, the timeouts, the sleeps and the start of a thread (`zephyr_kernel.c`), `k_mutex` (`zephyr_mutex.c`). Its headers: the OS part of `<zephyr/kernel.h>` and `<zephyr/spinlock.h>` and the default `zephyr_os_atomic.h` (`common/compat/port/generic/`: `zephyr_os.h`, `zephyr_os_spinlock.h`), the tick hook's entry and its catch-up (`common/compat/include/`: `zephyr_compat_os.h`, `tick_catchup.h`), the declaration of the primitives (`common/compat/port/zephyr_kernel_os.h`). The work queues' threads, the system work queue and `zephyr_compat_initialize()` are the shared `common/compat/zephyr_init.c` |
 | `common/tests/zephyr_kernel/` | The host test of the layer's kernel, OS-independent (`zephyr_kernel_test.c`; `zephyr_kernel_test.h` lists what an OS's part and a platform's part provide; `kernel_generic/zephyr_kernel_test_os.h`, its items on the primitives). This build's parts are in `tests/compat/` |
 | `common/compat/net_offload/` | The layer's network part, OS-independent: Zephyr's socket layer (reduced copies of Zephyr's files in `subsys/net/lib/sockets/` and `lib/os/zvfs/`), the network interface (`zephyr_net_if.c`) and the start of the network part (`zephyr_net_init.c`, `zephyr_net_initialize()`), their headers under `include/` (`zephyr/net/`, `zephyr/sys/fdtable.h`, `zephyr_net_init.h`). `k_heap` (`zephyr_heap.c`, `zephyr_heap.h`, which `<zephyr/kernel.h>` includes) is in `common/compat/`, with either kernel part |
 | `common/compat/libc_net/` | The socket headers newlib lacks (`include/`, types and constants only), `inet_pton` and `inet_ntop` (`inet.c`) |
 | `common/compat/shell_engine/` | The shell for an OS without one of its own, on the layer's API: line editing (`cli.c`), the command table and execution with `help` (`shell_engine.c`), a copy of Zephyr's argument split (`shell_argv.c`), the consoles and each thread's output (`shell_console.c`), getopt per session (`getopt_state.c`), the shell's backend for `zshell.c` (`common/compat/port/generic/`: `zshell_os_impl.h`, `zephyr_os_shell.h`), the serial session (`shell_serial.c`; the console transport an OS provides is declared in `common/compat/port/shell_serial_os.h`), the Telnet shell (`shell_telnet.c`); its other headers are in `common/compat/include/` and `internal/` |
-| `common/pico_sdk/drivers/shell/` | The console transport on the Pico SDK for the shell engine (`shell_serial_os_impl.h`: the Pico SDK's USB CDC ACM driver) and the replacement of the Pico SDK's stdio driver (`shell_stdio.c`) |
-| `common/pico_sdk/drivers/libc/` | Wrappers of newlib's FILE functions (`stdio_wrap.c`) |
-| `common/pico_sdk/drivers/include/` | The RAM log's part on the Pico SDK (`log_ram_os_impl.h`: the ring's section, the interrupt mask, the TIMER) |
-| `common/pico_sdk/drivers/kv/` | The key-value store's build (`kv.cmake`), the flash operations on the Pico SDK (`rp2040_flash_kv_os.c`, under the RP2040's shared part `common/chip/rp2040/rp2040_flash_kv.c`) and the linker script override (`ld/`) |
+| `common/pico_sdk/drivers/kv/` | The key-value store's flash operations on the Pico SDK (`rp2040_flash_kv_os.c`, under the RP2040's shared part `common/chip/rp2040/rp2040_flash_kv.c`) and the linker script override (`ld/`); its build is `common/compat/port/pico_sdk/kv.cmake` |
 | `common/pico_sdk/drivers/nina/` | `nina.cmake`, which adds the NINA driver to the build. The driver is in `common/drivers/nina/`; its binding is FreeRTOS's `common/drivers/nina/port/freertos/` (the `nina_os.h` boundary, `nina_os.c`; the DMA's waits, `nina_bus_dma_os_impl.h`) with the Pico SDK's `common/drivers/nina/port/pico_sdk/`: the passthrough's host side (`nina_passthrough_os.c`), SPI1 and the module's lines (`nina_bus_rp2040.c`, its long transfers by DMA in `nina_bus_dma_rp2040.c` on the waits of `nina_bus_dma_os.h`), the passthrough's module side (`nina_passthrough_bus_rp2040.c`: UART1, the module's lines, the watchdog's scratch registers, the LED), the board's lines (`nina_board_rp2040.h`); the sockets and the interface are the Zephyr binding's (`common/drivers/nina/port/zephyr/nina_socket.c`, `nina_net.c`) |
 | `common/pico_sdk/drivers/i2c_dw/` | `i2c_dw.cmake`, which adds the I2C driver to the build (I2C0, and I2C1 as an option). The driver is in `common/drivers/i2c_dw/`; its binding is FreeRTOS's `common/drivers/i2c_dw/port/freertos/` (the `i2c_dw_os.h` boundary on FreeRTOS and the TIMER, `i2c_dw_os_impl.h`) with the Pico SDK's `common/drivers/i2c_dw/port/pico_sdk/`: the devices with Zephyr's I2C API, their interrupts, resets and pins (`i2c_dw_instance.h`), their start (`i2c_dw_controllers_rp2040.h`), I2C0's DMA reads on the Pico SDK's DMA (`i2c_dw_dma_os_rp2040.c`) |
 | `common/pico_sdk/drivers/lsm6dso/` | The LSM6DSOX's build rules (`lsm6dso.cmake`); the device and its start are `common/drivers/lsm6dso/port/pico_sdk/` (`lsm6dso_instance.h`, `lsm6dso_board.c`) |
 | `common/pico_sdk/drivers/imu/` | Builds in the acquisition service, MQTT and time synchronization (`common/imu/`; `imu.cmake`) |
-| `common/pico_sdk/drivers/wifi/` | Builds in Wi-Fi (the NINA core's `common/drivers/nina/nina_wifi.c` with its Zephyr binding `common/drivers/nina/port/zephyr/nina_net.c`, credentials, reconnection) and `ifconfig` (`common/shell/ifconfig_shell.c`) |
-| `common/pico_sdk/drivers/telnet/` | Builds in the Telnet shell (`telnet.cmake`; the code is `common/compat/shell_engine/shell_telnet.c`) |
-| `common/pico_sdk/drivers/zperf/` | Builds in `zperf` (the code is `common/compat/zperf_iperf3.c` and `zephyr_zperf_shell.c`) |
 | `common/pico_sdk/drivers/sensor_shell/` | Builds in the `sensor` command (`sensor_shell.cmake`; its OS part is `common/shell/port/generic/sensor_shell_os.c`) |
 | `common/pico_sdk/drivers/i2c_shell/` | Adds the `i2c` command (`i2c_shell.cmake`; the command is `common/shell/i2c_shell.c`, the same file as `drivers/i2c/i2c_shell.c` of the Zephyr build's patched tree) |
 | `tests/` | Host tests ("Host tests" below) |
@@ -72,7 +67,7 @@ of `common/tests/run.sh` compares them), built by the NuttX build too (the Zephy
 
 What the layer provides is listed at the top of `common/compat/include/zephyr/kernel.h`. Its kernel part is the
 generic implementation (`common/compat/kernel_generic/zephyr_kernel.c` and `zephyr_mutex.c`; how it works
-is in their comments) on primitives that FreeRTOS provides (`drivers/compat/zephyr_kernel_os_impl.h`; the
+is in their comments) on primitives that FreeRTOS provides (`common/compat/port/freertos/zephyr_kernel_os_impl.h`; the
 list and what each must do are `common/compat/port/zephyr_kernel_os.h` and section 2.5 of
 `design/os-boundary.md`). These
 assumptions of Zephyr are reproduced:
@@ -115,7 +110,7 @@ Left as approximations:
 ## Tasks
 
 The priorities are in `common/compat/include/priorities.h` (the Zephyr build's values and `20 − Zephyr`) and
-`app/usb-console/src/priorities_os.h` (the tasks of this build only, and the stacks of the layer's own
+`common/compat/port/freertos/priorities_os.h` (the tasks of this build only, and the stacks of the layer's own
 threads sized as measured on this build: peak use plus half, at least 256 bytes, a multiple of 64; the
 shell sessions keep Zephyr's 3072). Stacks are in bytes. Interrupts
 use a stack of their own (MSP, 2048 bytes; the `(interrupts)` row of `ps`).
@@ -172,14 +167,14 @@ the interval of interest); timed by the TIMER.
   (`k_thread_custom_data_get()`, on a FreeRTOS thread local storage pointer). A console (`shell_console.c`)
   is a session's terminal (USB or Telnet); each task is bound to one console, and its `printf()` and
   `fprintf(stderr)` go there. Tasks bound to no console write to USB. The replacement of the Pico SDK's
-  stdio driver (`shell_stdio.c`) and `--wrap` of newlib's FILE functions (`common/pico_sdk/drivers/libc/stdio_wrap.c`)
+  stdio driver (`shell_stdio.c`) and `--wrap` of newlib's FILE functions (`common/compat/port/pico_sdk/stdio_wrap.c`)
   route every output path through it.
 - USB: the engine's serial session (`shell_serial.c`, the task `console`) on this build's console transport
-  (`common/pico_sdk/drivers/shell/shell_serial_os_impl.h`, declared in `shell_serial_os.h`: the stdio redirection, input
+  (`common/compat/port/pico_sdk/shell_serial_os_impl.h`, declared in `shell_serial_os.h`: the stdio redirection, input
   arrived, the line open, read, write). The prompt appears when the terminal opens the port, after the
   banner of `usb_console.c`. When the terminal stops reading, the Pico SDK's driver waits up to 500 ms for room in
   its 64-byte buffer and drops the rest.
-- Telnet (`common/compat/shell_engine/shell_telnet.c`, built in by `../common/pico_sdk/drivers/telnet/telnet.cmake`): port 23,
+- Telnet (`common/compat/shell_engine/shell_telnet.c`, built in by `common/compat/port/pico_sdk/telnet.cmake`): port 23,
   one client at a time. As Zephyr's `shell_telnet.c`,
   it sends nothing on connection, takes Telnet commands out without answering, and does not echo. Where it
   differs from Zephyr is listed at the top of the file (it looks once more whether the first client has
@@ -189,7 +184,7 @@ the interval of interest); timed by the TIMER.
 ## RAM log and fatal errors
 
 - The RAM log (`common/compat/log/log_ram.c`, shared with the NuttX and ThreadX builds; the part on the Pico SDK, shared with the ThreadX build, is
-  `common/pico_sdk/drivers/include/log_ram_os_impl.h`; its size, `LOG_RAM_SIZE` in `common/compat/port/generic/app_log_os.h`) is
+  `common/compat/port/pico_sdk/log_ram_os_impl.h`; its size, `LOG_RAM_SIZE` in `common/compat/port/generic/app_log_os.h`) is
   4 KiB, as in the Zephyr build (a fatal error leaves a record of a few lines, written into the log at the
   next start), in RAM that the start-up code does not initialize (`__uninitialized_ram`). It survives the watchdog's restart, `reboot` and the RESET button, not a power
   cycle. `LOG_*` lines are formatted in the caller's context (interrupt handlers included), timed by the
@@ -215,7 +210,7 @@ boundary (the five functions of `common/compat/port/flash_kv_os.h`) with the RP2
 (`common/chip/rp2040/include/rp2040_flash_kv_os.h`: `common/pico_sdk/drivers/kv/rp2040_flash_kv_os.c`, shared with the ThreadX build, the Pico SDK's
 `flash_range_program()` and `flash_range_erase()` through `flash_safe_execute()`).
 
-- The linker script (`common/pico_sdk/drivers/kv/ld/`, `kv.cmake`) sets the FLASH length to `0xffe000`, keeping the image
+- The linker script (`common/pico_sdk/drivers/kv/ld/`, `common/compat/port/pico_sdk/kv.cmake`) sets the FLASH length to `0xffe000`, keeping the image
   out of the area, and checks `__kv_start`, `__kv_end` and the end of the image with `ASSERT`.
 - A program or erase request is checked against the area three times: in `zephyr_flash_kv.c`, in the
   RP2040's shared part, and right before the flash is touched (with interrupts disabled). Until the linker
@@ -251,7 +246,7 @@ boundary (the five functions of `common/compat/port/flash_kv_os.h`) with the RP2
   copies of Zephyr's `sockets.c`, `getaddrinfo.c`, `socket_offload.c`, `zvfs_fdtable.c` and
   `zvfs_poll.c` in `common/compat/net_offload/`; what each leaves out is in its header). An implementation registers itself with
   `NET_SOCKET_OFFLOAD_REGISTER()` or `NET_SOCKET_REGISTER()`; the linker script collects the
-  registrations sorted by priority (`common/pico_sdk/drivers/compat/ld/section_extra_post_text.incl`), and
+  registrations sorted by priority (`common/compat/port/pico_sdk/ld/section_extra_post_text.incl`), and
   `zsock_socket()` takes the first whose family matches and whose `is_supported()` accepts. The other
   calls go through the descriptor table to the implementation's `struct socket_op_vtable` under the
   descriptor's mutex, `poll` through `ZFD_IOCTL_POLL_PREPARE` and `ZFD_IOCTL_POLL_OFFLOAD`, and
@@ -435,7 +430,7 @@ interrupts disabled.
   `lsm6dso_reg.c` (fetched to `freertos/stmemsc/` by `setup.sh`) and the stmemsc glue
   (`common/drivers/stmemsc/`); one device is made with the board's values
   (`common/drivers/lsm6dso/port/pico_sdk/lsm6dso_instance.h`, before `port/zephyr/` on the include path).
-- GPIO (`common/pico_sdk/drivers/compat/rp2040/gpio_os_rp2040.c`): GPIO bank 0 under the layer's `gpio0`, driven with the same
+- GPIO (`common/compat/port/pico_sdk/gpio_os_rp2040.c`): GPIO bank 0 under the layer's `gpio0`, driven with the same
   Pico SDK calls as Zephyr's `gpio_rpi_pico.c`. The interrupt handler is added with
   `gpio_add_raw_irq_handler_masked()`; only the LSM6DSOX's INT1 (GPIO24) can interrupt through `gpio0`
   (other pins get `-ENOTSUP`; the NINA's READY and IRQ line are on the NINA binding's handler).
@@ -447,11 +442,11 @@ transport (`imu_raw_mqtt.c`, `imu_raw_status.c`) and the calibration (`imu_cal.c
 files in `common/imu/`, built in by `../common/pico_sdk/drivers/imu/imu.cmake`. The MQTT client is `common/imu/mqtt_min.c` and
 `mqtt_min_sock.c`, shared with the NuttX and ThreadX builds.
 
-- The wall clock (`common/pico_sdk/drivers/compat/zephyr_sys_clock.c`) is the TIMER plus a base (built as in the NuttX
+- The wall clock (`common/compat/port/pico_sdk/zephyr_sys_clock.c`) is the TIMER plus a base (built as in the NuttX
   build); newlib's `gettimeofday()` reads the same clock. `date` shows it in UTC.
 - `time_sync.c` reads the TIMER with `rp2040_timer_us()` of `common/chip/rp2040`, as the layer's clocks do.
 - The chip ID (the first 8 bytes of the session ID) is `pico_get_unique_board_id()`, the same flash ID as
-  the Zephyr build's `hwinfo_get_device_id()` (`common/pico_sdk/drivers/compat/rp2040/zephyr_hwinfo.c`).
+  the Zephyr build's `hwinfo_get_device_id()` (`common/compat/port/pico_sdk/zephyr_hwinfo.c`).
 
 ## Build options
 

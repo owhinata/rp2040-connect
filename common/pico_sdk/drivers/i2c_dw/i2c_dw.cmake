@@ -5,7 +5,7 @@
 #
 #   pico_sdk_i2c_dw(<target> [I2C1])
 #
-# after pico_sdk_zephyr_compat(<target>) (common/pico_sdk/drivers/compat/compat.cmake,
+# after pico_sdk_zephyr_compat(<target>) (common/compat/port/pico_sdk/compat.cmake,
 # whose layer and shell it needs).  It adds to the target:
 #
 # - the shared core of the controller (common/drivers/i2c_dw: i2c_dw.c, the

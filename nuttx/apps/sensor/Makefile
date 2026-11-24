@@ -12,11 +12,11 @@
 # additions (sensor_shell_os.h, the NuttX part that both include first,
 # and sensor_shell_nuttx.c), linked into libapps.
 #
-# Include paths: the Zephyr compatibility layer ($(TOPDIR)/external/compat
+# Include paths: the Zephyr compatibility layer (common/compat/port/nuttx
 # and common/compat/include, which has the copy of Zephyr's sensor_shell.h and the
 # LSM6DSO driver's <zephyr/drivers/sensor/lsm6dso.h>, which sensor_shell.c
 # reads), the port's shared headers (common/compat/include: app_log.h,
-# priorities.h; their NuttX parts in $(TOPDIR)/external/include),
+# priorities.h; their NuttX parts in common/compat/port/nuttx),
 # common/shell (subcmd.h) and this directory (sensor_shell_os.h, for the
 # files in common/).
 ############################################################################
@@ -31,8 +31,7 @@ MODULE    = $(CONFIG_APP_SENSOR)
 MAINSRC   = sensor_shell.c
 CSRCS     = sensor_shell_stream.c sensor_shell_nuttx.c
 
-CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)include
-CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)external$(DELIM)compat
+CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)compat$(DELIM)port$(DELIM)nuttx
 CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)compat$(DELIM)include
 CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)compat$(DELIM)port
 CFLAGS   += ${INCDIR_PREFIX}$(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)shell
@@ -46,4 +45,4 @@ DEPPATH  += --dep-path ../../../common/compat
 include $(APPDIR)/Application.mk
 
 sensor_shell.c$(SUFFIX)$(OBJEXT) sensor_shell_stream.c$(SUFFIX)$(OBJEXT): \
-  CFLAGS += -include $(TOPDIR)$(DELIM)external$(DELIM)compat$(DELIM)common_prelude.h
+  CFLAGS += -include $(TOPDIR)$(DELIM)..$(DELIM)..$(DELIM)common$(DELIM)compat$(DELIM)port$(DELIM)nuttx$(DELIM)common_prelude.h

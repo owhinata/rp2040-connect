@@ -22,15 +22,14 @@ pico_sdk_init()
 # The sources shared with the Zephyr and NuttX builds (common/ at the root of
 # the repository), with the parts shared by the builds on the Pico SDK
 # (common/pico_sdk), and the FreeRTOS part of the Zephyr compatibility layer
-# that runs them (freertos/drivers/compat: zephyr_kernel_os_impl.h, the
-# primitives of the generic kernel part, and rp2040/zephyr_os_port.h).
+# that runs them (common/compat/port/freertos, after PICO_SDK_OS:
+# zephyr_kernel_os_impl.h, the primitives of the generic kernel part,
+# priorities_os.h, and rp2040/zephyr_os_port.h).
 get_filename_component(COMMON_DIR ${CMAKE_CURRENT_LIST_DIR}/../../../common ABSOLUTE)
 set(PICO_SDK_OS freertos)
-get_filename_component(FREERTOS_COMPAT_DIR ${CMAKE_CURRENT_LIST_DIR}/../../drivers/compat ABSOLUTE)
-set(PICO_SDK_OS_COMPAT_DIRS ${FREERTOS_COMPAT_DIR}/rp2040 ${FREERTOS_COMPAT_DIR})
 get_filename_component(PICO_SDK_STMEMSC_DIR ${CMAKE_CURRENT_LIST_DIR}/../../stmemsc ABSOLUTE)
-# FreeRTOSConfig.h; priorities_os.h and the FreeRTOS parts of the
-# application's boundaries (src/).
+# FreeRTOSConfig.h and the FreeRTOS parts of the application's boundaries
+# (src/).
 set(PICO_SDK_OS_APP_DIRS ${CMAKE_CURRENT_LIST_DIR} ${CMAKE_CURRENT_LIST_DIR}/src)
 set(PICO_SDK_OS_LIBRARIES FreeRTOS-Kernel)
 # The name under /dev/serial/by-id (freertos/script/flash.sh looks for it).

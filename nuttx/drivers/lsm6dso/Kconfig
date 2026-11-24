@@ -33,8 +33,9 @@ config LSM6DSO_STREAM
 		CONFIG_SENSOR_ASYNC_API part of its binding
 		(port/zephyr/lsm6dso_rtio_stream.c, lsm6dso_rtio.c,
 		lsm6dso_decoder.c, lsm6dso_os.c), on the compatibility
-		layer's RTIO, work queues and gpio0 (compat/).  Always on
+		layer's RTIO, work queues and gpio0 (compat/Make.defs).  Always on
 		with LSM6DSO_LOCAL: as in Zephyr, lsm6dso_sensor.c does not
 		build without it.  The board starts the layer's threads
 		(zephyr_compat_initialize()) before the LSM6DSOX and builds
-		src/rp2040_gpio_os.c for the INT1 interrupt.
+		common/compat/port/nuttx/rp2040_gpio_os.c for the INT1
+		interrupt.

@@ -3,10 +3,11 @@
  * lsm6dso.c and the Zephyr binding port/zephyr/lsm6dso_sensor.c, shared with
  * the Zephyr build, with the NuttX build's device:
  * port/nuttx/lsm6dso_instance.h) on ST's real lsm6dso_reg.c, the
- * stmemsc glue and the Zephyr compatibility layer (compat/zephyr_i2c.c,
- * zephyr_device.c), against a fake LSM6DSOX behind a fake NuttX I2C master
- * (register banks, auto-increment, software reset, FIFO, timestamp) and
- * fake kernel services.  It checks what the driver must do as in the
+ * stmemsc glue and the Zephyr compatibility layer
+ * (common/compat/port/nuttx/zephyr_i2c.c, common/compat/zephyr_device.c),
+ * against a fake LSM6DSOX behind a fake NuttX I2C master (register banks,
+ * auto-increment, software reset, FIFO, timestamp) and fake kernel
+ * services.  It checks what the driver must do as in the
  * Zephyr build:
  *
  * - init: the log lines and their order, the register writes in order
@@ -119,9 +120,10 @@ static void event(const char *fmt, ...)
 }
 
 /* The driver's waits and its cycle counter (<zephyr/kernel.h>; on NuttX in
- * compat/zephyr_kernel.c and the layer's k_cycle_get_32()).  Its mutexes
- * and spin lock are those of the fake kernel (common/tests/zephyr_fakes: a mutex
- * counts its depth, a spin lock must not be taken twice).
+ * common/compat/port/nuttx/zephyr_kernel.c and the layer's
+ * k_cycle_get_32()).  Its mutexes and spin lock are those of the fake
+ * kernel (common/tests/zephyr_fakes: a mutex counts its depth, a spin
+ * lock must not be taken twice).
  * k_cyc_to_ns_floor64() is the layer's own (a cycle is 1 us).
  */
 

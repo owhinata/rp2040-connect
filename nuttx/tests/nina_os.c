@@ -7,7 +7,7 @@
  * failed start is common/tests/nina_proto.c's), with the compatibility layer's gpio0
  * (common/compat/zephyr_gpio.c), on fakes of NuttX's semaphores, mutexes,
  * sleeps and clock (tests/nina_os_fakes) and of the board's GPIO bank 0
- * (<gpio_os.h>, the board's src/rp2040_gpio_os.c on the target).
+ * (<gpio_os.h>, common/compat/port/nuttx/rp2040_gpio_os.c on the target).
  *
  * The fake clock counts ticks of 100 us; only the semaphore's timed wait
  * and the sleeps run it.  READY (GPIO10, active low) changes at a planned
