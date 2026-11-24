@@ -181,6 +181,75 @@ stalled FIFO handling on purpose. The present firmware does not have that comman
 be reproduced on it. I2C faults, the give-up path and unexpected tags
 have not been produced on hardware.
 
+### 3.4 The three paths that read the sensor
+
+Three paths read the sensor: `sensor get`, `sensor stream` and `imu start`. All of them go through Zephyr's sensor
+API and RTIO and share the driver below (`common/drivers/lsm6dso`) and I2C. What differs is the threads and the
+buffers on the side that uses the API.
+
+The three figures have the same layout. The horizontal line is the boundary of the sensor API and RTIO: above it is
+the side that uses the API, below it the side that implements it. Each figure draws in full only the boxes and lines
+its path uses. Solid orange lines are requests and notifications, dashed blue lines the flow of the data, and the
+numbers are the steps under the figure.
+
+**`sensor get` (one read)**
+
+![The path of sensor get](img/sensor-path-get.svg)
+
+1. `console` requests one read (`sensor_read_async_mempool()`).
+2. `RTIO WQ 0` reads the registers through the driver and I2C.
+3. The values go into a buffer taken from the shell's pool (`sensor_read_rtio`).
+4. The notification of the completed read wakes `sensor_shell_tid`.
+5. `sensor_shell_tid` converts to physical values and writes to the terminal itself; `console` is not on this path.
+
+**`sensor stream` (reads the FIFO continuously and prints)**
+
+![The path of sensor stream](img/sensor-path-stream.svg)
+
+1. `console` requests continuous reads (`sensor_stream()`). The driver keeps the request, and the command returns.
+2. When the FIFO reaches its watermark, the INT1 interrupt comes. Its handler only submits a work item to `sysworkq`.
+3. `sysworkq` passes the read on as a work item of `imu_fifo_worker`.
+4. `imu_fifo_worker` reads the FIFO over I2C (DMA).
+5. The data goes straight into a buffer taken from the shell's pool.
+6. The notification of the completed read wakes `sensor_shell_tid`.
+7. `sensor_shell_tid` converts and writes the average of that read to the terminal itself.
+
+Steps 2 to 7 repeat.
+
+**`imu start` (reads the FIFO continuously and sends by MQTT)**
+
+![The path of imu start](img/sensor-path-imu.svg)
+
+1. `console` notifies `imu_stream_tid` of the start (`k_sem_give(&start_request)`).
+2. `imu_stream_tid` requests continuous reads (`sensor_stream()`).
+3. When the FIFO reaches its watermark, the INT1 interrupt comes and submits a work item to `sysworkq`.
+4. `sysworkq` passes the read on as a work item of `imu_fifo_worker`.
+5. `imu_fifo_worker` reads the FIFO over I2C (DMA).
+6. The data goes straight into a buffer taken from the measurement's pool (`imu_rtio`).
+7. The notification of the completed read wakes `imu_stream_tid`, which builds batches of the raw values and gives
+   them their times.
+8. A batch goes into the send queue (8 batches).
+9. `imu_raw_mqtt_tid` takes it from the queue and sends it by MQTT.
+
+Steps 3 to 9 repeat.
+
+| | `sensor get` | `sensor stream` | `imu start` |
+|---|---|---|---|
+| Thread that requests | `console` | `console` | `imu_stream_tid` |
+| Thread that reads the sensor | `RTIO WQ 0` | `sysworkq` → `imu_fifo_worker` | the same |
+| What is read | registers | the FIFO | the same |
+| Buffer | the shell's pool, 4 kB (64 blocks of 64 bytes) | the same | the measurement's pool, 8 kB (128 blocks of 64 bytes) |
+| Thread that is notified | `sensor_shell_tid` | `sensor_shell_tid` | `imu_stream_tid` |
+| What it does then | converts and prints | converts and prints the average | builds batches, sent by MQTT |
+
+- The pools belong to the side that uses the API. The driver has no buffer of its own: for every read it takes one
+  from the user's pool, fills it and gives it back.
+- A read takes as large a buffer as the pool has, up to the whole FIFO (512 words, about 3.6 kB). The shell's pool
+  holds one read. The thread that is notified (`sensor_shell_tid` at priority 0, `imu_stream_tid` at 9) has a higher
+  priority than `imu_fifo_worker` (10), so it finishes and returns the buffer before the next read starts.
+- The chip has one FIFO, so `sensor stream` and `imu start` cannot run together: the one started first has it, and
+  the other is refused.
+
 ## 4. Communication and behaviour when disconnected
 
 ### 4.1 Policy

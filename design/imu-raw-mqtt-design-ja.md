@@ -155,6 +155,69 @@ PC 側は現状、`host/` の `imu-host` が MQTT クライアント 1 台を直
 このコマンドは今のファームウェアに無いので、今の実機では再現できない。I²C 障害、回復を
 諦める経路、想定外タグは実機で発生させていない。
 
+### 3.4 センサーを読む 3 つの経路
+
+センサーを読む経路は `sensor get`、`sensor stream`、`imu start` の 3 つである。どれも Zephyr のセンサーの API と RTIO を通り、
+その下のドライバー（`common/drivers/lsm6dso`）と I2C を共有する。違うのは、API を使う側のスレッドとバッファである。
+
+3 つの図は同じ配置で、横線がセンサーの API と RTIO の境界である。上が API を使う側、下が実装する側で、その経路が使う箱と線だけを
+濃く描いている。橙の実線は要求と通知、青の破線はデータの流れで、番号は図の下の手順に対応する。
+
+**`sensor get`（1 回だけ読む）**
+
+![sensor get の経路](img/sensor-path-get-ja.svg)
+
+1. `console` が 1 回の読み出しを要求する（`sensor_read_async_mempool()`）。
+2. `RTIO WQ 0` が、ドライバーと I2C を通してレジスターを読む。
+3. 読んだ値は、シェルのプール（`sensor_read_rtio`）から借りたバッファに入る。
+4. 読み出しの完了の通知で `sensor_shell_tid` が起きる。
+5. `sensor_shell_tid` が物理量に換算し、自分で端末に書き出す。`console` は通らない。
+
+**`sensor stream`（FIFO を読み続けて表示する）**
+
+![sensor stream の経路](img/sensor-path-stream-ja.svg)
+
+1. `console` が連続の読み出しを要求する（`sensor_stream()`）。要求はドライバーが保持し、コマンドはすぐ戻る。
+2. FIFO がしきい値に達すると INT1 の割り込みが入る。割り込みハンドラーは `sysworkq` に処理を渡すだけである。
+3. `sysworkq` が、読み出しの処理を `imu_fifo_worker` に渡す。
+4. `imu_fifo_worker` が、FIFO を I2C（DMA）で読む。
+5. データは、シェルのプールから借りたバッファに直接入る。
+6. 完了の通知で `sensor_shell_tid` が起きる。
+7. `sensor_shell_tid` が換算し、1 回分の平均を自分で端末に書き出す。
+
+2〜7 を繰り返す。
+
+**`imu start`（FIFO を読み続けて MQTT で送る）**
+
+![imu start の経路](img/sensor-path-imu-ja.svg)
+
+1. `console` が `imu_stream_tid` に開始を通知する（`k_sem_give(&start_request)`）。
+2. `imu_stream_tid` が連続の読み出しを要求する（`sensor_stream()`）。
+3. FIFO がしきい値に達すると INT1 の割り込みが入り、`sysworkq` に処理が渡る。
+4. `sysworkq` が、読み出しの処理を `imu_fifo_worker` に渡す。
+5. `imu_fifo_worker` が、FIFO を I2C（DMA）で読む。
+6. データは、計測のプール（`imu_rtio`）から借りたバッファに直接入る。
+7. 完了の通知で `imu_stream_tid` が起きる。生の値のままバッチにまとめ、時刻を付ける。
+8. バッチは送信待ちのキュー（バッチ 8 個分）に入る。
+9. `imu_raw_mqtt_tid` がキューから取り出して MQTT で送る。
+
+3〜9 を繰り返す。
+
+| | `sensor get` | `sensor stream` | `imu start` |
+|---|---|---|---|
+| 要求するスレッド | `console` | `console` | `imu_stream_tid` |
+| センサーから読むスレッド | `RTIO WQ 0` | `sysworkq` → `imu_fifo_worker` | 同じ |
+| 読むもの | レジスター | FIFO | 同じ |
+| バッファ | シェルのプール 4 kB（64 バイト × 64 個） | 同じ | 計測のプール 8 kB（64 バイト × 128 個） |
+| 通知を受けるスレッド | `sensor_shell_tid` | `sensor_shell_tid` | `imu_stream_tid` |
+| 受けたあとの処理 | 換算して表示 | 換算し、平均を表示 | バッチ化し、MQTT で送る |
+
+- プールは API を使う側が持つ。ドライバーは自分のバッファを持たず、読み出しのたびに使う側のプールから借りて、読んだデータを入れて返す。
+- 1 回の読み出しは、プールから取れるだけ大きく、最大で FIFO 全体（512 語、約 3.6 kB）の分まで借りる。シェルのプールには 1 回分しか入らない。
+  通知を受けるスレッド（`sensor_shell_tid` は優先度 0、`imu_stream_tid` は 9）が `imu_fifo_worker`（10）より優先度が高いので、
+  受けた側が処理を終えてバッファを返してから、次の読み出しが始まる。
+- FIFO はチップに 1 つなので、`sensor stream` と `imu start` は同時には使えない。先に始めたほうが使い、あとのほうは断られる。
+
 ## 4. 通信と切断時の動作
 
 ### 4.1 方針
