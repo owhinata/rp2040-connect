@@ -60,3 +60,31 @@
   （FreeRTOS には SDK の連携の設定がある。ThreadX では WFE で回る）、割り込みスタックの検査、ThreadX のスケジューラーの待ちに WFI が無いこと。
 - `script/flash_uf2.sh` は ThreadX を知らないので、書き込みのあと「3 つのどのコンソールも現れない」と表示する（書き込み自体はできる）。T2 の後半で `--target threadx` を足す。
 - 実機: ThreadX の試験用のファームウェア。
+
+## T1: Pico SDK の部分の切り出し（2026-11-24）
+
+- ユーザーの決定（勧めの案 4 つ）: 置き場所 `common/pico_sdk/`、互換層の新しい部分 `common/compat/os_generic/`、起動の順は共有、T1 ではイメージの一致を厳密に守る。
+- 7 段階で移した。各段階のあと `SOURCE_DATE_EPOCH=1763337600 freertos/script/build.sh --clean` のイメージが移動の前（`freertos/build/baseline/freertos/t1-before/`）と
+  バイト単位で一致することを確かめた（メインも最後の状態で確認）。Zephyr は `snapshot-1124a` と一致、NuttX は同じ大きさでビルド時刻の文字列だけが違う。
+  ホストテスト: FreeRTOS 68、Zephyr 61、NuttX 73（tick とアイドルの点滅のテストがカーネルの要らない `common/tests` に移り、`run.sh` の件数が 2 増えた）。
+- いまの配置:
+  - `common/pico_sdk/app/usb-console/`: `main.c`・`commands.c`・`fault.c`・`idle.c`・`irq_stack.c`、`usb-console.cmake`（`pico_sdk_usb_console()`）、`ram_code.cmake`、リンカースクリプトの部分。
+  - `common/pico_sdk/drivers/`: 互換層の Pico SDK の部分（GPIO、hwinfo、時計、`zephyr_os_port_rp2040.h`）、コンソールと stdio、KV のフラッシュ、各ドライバーの cmake（`pico_sdk_<x>()`）。
+  - `common/compat/os_generic/`: 互換層の `i2c.h`・`sys/clock.h`・`sys/__assert.h`、プレリュード、センサーのシェルの OS 部分、`app_log_os.h`、`wifi_profile_os.h`。
+  - `common/compat/kernel_generic/`: `tick_catchup.h`（`Z_OS_TICK_HZ` の上）、空の `zephyr_os_atomic.h` の既定。
+  - 各ドライバーの `port/pico_sdk/`: I2C のデバイス・コントローラー・DMA、センサーのデバイスと開始、NINA の SPI・DMA・ピン・中継モード。
+  - FreeRTOS に残ったもの: `FreeRTOSConfig.h`、`tick.c`、`priorities_os.h`、`kernel_shell_os_impl.h`、新しい境界の実装 4 つ（`main_os_impl.h` 79 行、`idle_os.h` 17、`fault_os_impl.h` 50、
+    `commands_os_impl.h` 95）、`zephyr_kernel_os_impl.h`、`rp2040/zephyr_os_port.h`（59 行に）、`port/freertos/` の `nina_os.c`・`nina_bus_dma_os_impl.h`・`i2c_dw_os_impl.h`。
+    `freertos/app/usb-console/CMakeLists.txt` は 65 行。`freertos/drivers/` は `compat/` と README だけ。
+- 新しい境界: `main_os.h`（プロンプト、カーネルの準備、メインのスレッドの開始と終了、スケジューラーの開始）、`idle_os.h`（アイドルの 1 回分の名前）、`fault_os.h`（実行中のスレッドの名前、
+  OS 自身の致命的なエラーの入口）、`commands_os.h`（カーネルの名前とバージョン、`cmd_ps()`）、`nina_bus_dma_os.h`（DMA の完了の待ち）、`zephyr_os_port_rp2040.h`。
+- 下調べから変えた点: `kernel_shell_os_impl.h` は FreeRTOS に残した（共有にしてイメージを保つには、ファイルの行数より多い入口が要る）。`zephyr_sys_clock.c` は `os_generic` でなく
+  `common/pico_sdk`（`k_cycle_get_64()` に替えるとコードが変わる）。`nina_bus_dma_os.h` は `always_inline`（そうしないと ISR の関数の順が変わる）で、`port/` でなく `port/pico_sdk/` に置いた
+  （`nina_core_independent` が `port/*.h` を単独でコンパイルするため）。`os_clock.h` は削除（使われていたのは `os_tick_count()` だけ）。
+- 同時に入れたもの（作業 B、コンパイルだけ確認）: ThreadX 用の `common/drivers/i2c_dw/port/threadx/i2c_dw_os_impl.h`、`common/drivers/nina/port/threadx/nina_os.c`・`nina_bus_dma_os_impl.h`。
+  待ちはドライバーが自分で持つ `TX_SEMAPHORE`（ThreadX のセマフォは軽い作りで、FreeRTOS のキューのセマフォとは事情が違う。スレッドの停止と再開は起こしを取りこぼすので取らない）。
+  動作は未確認。ホストテストは未作成。
+- 境界について分かったこと（T5 で反映）: `nina_bus_dma_os.h` の「スレッド自身の起こしを共用する」は FreeRTOS の作りのまま。`i2c_dw_os_sem_init()` は境界の外なのに共有のコードが呼ぶ。
+- `threadx/` の実機用のファイル（`tick.c`、`threadx_kernel.cmake` など）への T1 の追従は、作業 A（アイドル・実行時間・SDK との連携）の commit に入る。この commit の時点では
+  `threadx/script/build.sh` は通らない（ホストテストは通る）。
+- 実機: 変更なし（ThreadX の試験用のファームウェアのまま）。FreeRTOS 版はイメージが同じなので書いていない。

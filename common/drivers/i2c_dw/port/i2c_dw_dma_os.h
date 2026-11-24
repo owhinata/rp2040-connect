@@ -3,7 +3,7 @@
  * i2c_dw_rp2040_dma_priv.h) need from the OS's DMA: two channels for one
  * read, set up for I2C0's IC_DATA_CMD, started, stopped and given back.
  * Each OS's binding implements these functions on the OS's own DMA driver
- * (port/freertos/i2c_dw_dma_os_rp2040.c on the Pico SDK's hardware_dma and
+ * (port/pico_sdk/i2c_dw_dma_os_rp2040.c on the Pico SDK's hardware_dma and
  * hardware_irq, port/nuttx/i2c_dw_dma_os_rp2040.c on NuttX's
  * rp2040_dmac.c), so that other code of the same program may use that DMA
  * the usual way.  The core touches no DMA register.

@@ -2,7 +2,7 @@
 /* The host test of the FreeRTOS build's key-value store on the FreeRTOS
  * POSIX port: the flash boundary of the board (the RP2040's shared part,
  * common/chip/rp2040/rp2040_flash_kv.c, on this build's flash operations,
- * freertos/drivers/kv/rp2040_flash_kv_os.c) on fakes of the Pico SDK's
+ * common/pico_sdk/drivers/kv/rp2040_flash_kv_os.c) on fakes of the Pico SDK's
  * flash functions (pico_fake/, implemented here on 8 KiB of memory mapped
  * at the area's uncached XIP address, where the shared part reads), under the
  * shared store as the board builds it (common/imu/kv_store.c,

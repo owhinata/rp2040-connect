@@ -4,7 +4,7 @@
  * to the module's UART0, the LED.  It is the chip's and the board's, so
  * each build implements it for its chip, on the RP2040's registers
  * or its SDK: common/drivers/nina/port/zephyr/nina_passthrough_bus_rp2040.c,
- * common/drivers/nina/port/freertos/nina_passthrough_bus_rp2040.c,
+ * common/drivers/nina/port/pico_sdk/nina_passthrough_bus_rp2040.c,
  * common/drivers/nina/port/nuttx/nina_passthrough_bus_rp2040.c; the
  * host tests replace it with fakes.  The board (the mbed core's
  * variants/NANO_RP2040_CONNECT; nina_bus.h):

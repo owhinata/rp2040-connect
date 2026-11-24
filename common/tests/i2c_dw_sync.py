@@ -477,13 +477,13 @@ def main():
             ck.eq('transfer timeout (ms)', int(config['CONFIG_I2C_TRANSFER_TIMEOUT_MS']),
                   int(ch['I2C_DW_TRANSFER_TIMEOUT_MS'][1]))
             # The speed of i2c0 at the start: Zephyr's devicetree (the application's
-            # overlay), the FreeRTOS binding's I2C0_SPEED and the NuttX board's
+            # overlay), the Pico SDK binding's I2C0_SPEED and the NuttX board's
             # BOARD_I2C0_FREQUENCY.
             here = os.path.dirname(os.path.abspath(__file__))
             ck.eq('clock-frequency of i2c0 (Zephyr, FreeRTOS, NuttX)',
                   [int(one(r'clock-frequency = <\s*(\w+)\s*>', node, 'clock')[0], 0),
                    one(r'#define I2C0_SPEED\s+(\w+)',
-                       read(os.path.join(here, '..', 'drivers', 'i2c_dw', 'port', 'freertos',
+                       read(os.path.join(here, '..', 'drivers', 'i2c_dw', 'port', 'pico_sdk',
                                          'i2c_dw_instance.h')), 'I2C0_SPEED')[0],
                    int(one(r'#define BOARD_I2C0_FREQUENCY\s+(\d+)',
                            read(os.path.join(here, '..', '..', 'nuttx', 'boards',

@@ -5,7 +5,7 @@
  * includes the OS's part, "shell_serial_os_impl.h", then declares the
  * functions that part must define (static inline), so a different one does
  * not compile.  The FreeRTOS build's part is
- * freertos/drivers/shell/shell_serial_os_impl.h (the Pico SDK's USB CDC ACM
+ * common/pico_sdk/drivers/shell/shell_serial_os_impl.h (the Pico SDK's USB CDC ACM
  * driver, stdio_usb, and its stdio).
  *
  * The terminal is one serial line (a USB CDC ACM port, a UART) that a

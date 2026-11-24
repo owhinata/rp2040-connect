@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: MIT */
 /* The iterable section of the layer's socket implementations for the host
  * tests (freertos/script/host_tests.sh links with -Wl,-T,<this file>): the
- * board's freertos/drivers/compat/ld/section_extra_post_text.incl inserted
+ * board's common/pico_sdk/drivers/compat/ld/section_extra_post_text.incl inserted
  * into the host linker's default script.
  */
 SECTIONS

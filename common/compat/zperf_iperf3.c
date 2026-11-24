@@ -3,7 +3,7 @@
  * <zephyr/net/zperf.h>): JSON, the TCP client and the TCP server.  Part of
  * the small Zephyr compatibility layer of the port, its OS-independent part
  * (common/compat); built by the FreeRTOS build only
- * (freertos/drivers/zperf/zperf.cmake).
+ * (common/pico_sdk/drivers/zperf/zperf.cmake).
  *
  * The buffers are taken from malloc() only while they are in use: the
  * client's for one upload, the server's from zperf_tcp_download() until the

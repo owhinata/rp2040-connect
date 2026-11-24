@@ -6,7 +6,7 @@
  * writes them with the boot ROM
  * (nuttx/boards/arduino-nano-rp2040-connect/src/rp2040_flash_kv_os.c), the
  * FreeRTOS build with the Pico SDK's hardware_flash and pico_flash
- * (freertos/drivers/kv/rp2040_flash_kv_os.c).
+ * (common/pico_sdk/drivers/kv/rp2040_flash_kv_os.c).
  *
  * The shared part calls them only with a request it has checked against
  * the area (common/compat/flash_kv.h) and against the bounds it took from

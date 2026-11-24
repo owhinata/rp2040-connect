@@ -110,7 +110,7 @@ def _body_lines(output, line):
 
 # ファームウェアの版を表示するコマンドと、その出力から版を取り出す正規表現。並びは試す順。
 # FreeRTOS 版の version は "FreeRTOS kernel V11.3.3, Pico SDK 2.3.1, GCC 15.2.1 ..." を出す
-# （freertos/app/usb-console/src/commands.c。FreeRTOS 版に kernel version は無い）。
+# （common/pico_sdk/app/usb-console/src/commands.c。FreeRTOS 版に kernel version は無い）。
 VERSION_COMMANDS = (
     ('zephyr', 'kernel version', r'Zephyr version \S+'),
     ('nuttx', 'uname -a', r'NuttX[^\r\n]*'),

@@ -2,7 +2,7 @@
 /* The record of a fatal error that the firmware keeps across the restart it
  * makes after the error, and its text: the OS-independent part, kept apart
  * so the host tests (common/tests/fault_record.c) can run it.  Used by the
- * FreeRTOS build (freertos/app/usb-console/src/fault.c), which fills the
+ * FreeRTOS build (common/pico_sdk/app/usb-console/src/fault.c), which fills the
  * record at the common exit of panic(), the HardFault handler, failed
  * assertions, stack overflows and _exit(), keeps it in RAM that the
  * start-up code leaves alone (__uninitialized_ram) with a copy of the reason,

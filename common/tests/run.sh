@@ -128,14 +128,23 @@ run zephyr_work "${flags[@]}" "${zinc[@]}" tests/zephyr_work.c "${compat[@]}"
 run mqtt_min "${flags[@]}" -Wno-sign-compare "${zinc[@]}" -I"$imu" tests/mqtt_min.c \
     "$imu/mqtt_min.c" "${compat[@]}"
 
+# The kernel tick's catch-up for an OS with a periodic tick (compat/kernel_generic/
+# tick_catchup.h, the tick hooks of the builds on the Pico SDK): the step alone and on a model
+# of SysTick, its pending bit and masked interrupts.  The LED's blink from the idle pass of the
+# builds on the Pico SDK (pico_sdk/app/usb-console/src/idle_blink.h): its schedule.  No kernel.
+run tick_catchup "${flags[@]}" -Icompat/kernel_generic tests/tick_catchup.c
+run idle_blink "${flags[@]}" -Ipico_sdk/app/usb-console/src tests/idle_blink.c
+
 # The layer's kernel part and its network part are chosen independently.  The generic kernel
 # part (compat/kernel_generic) compiles with the layer's headers (compat), an OS's primitives
-# (tests/kernel_generic_host: zephyr_kernel_os_impl.h, with the per-OS zephyr_os_atomic.h,
-# priorities_os.h, <zephyr/sys/clock.h> and <zephyr/sys/__assert.h>) and nothing of the
+# (tests/kernel_generic_host: zephyr_kernel_os_impl.h and priorities_os.h; zephyr_os_atomic.h
+# is the generic part's default, <zephyr/sys/clock.h> and <zephyr/sys/__assert.h> the layer's
+# for an OS without its own, compat/os_generic/include) and nothing of the
 # network part (compat/net_offload/include) or of the POSIX network headers
 # (compat/libc_net/include) on the include path: <zephyr/kernel.h> (k_heap included), its
 # sources, and the OS-independent sources on it.
-kgen_inc=(-D_DEFAULT_SOURCE -Itests/kernel_generic_host -Icompat/kernel_generic -Icompat)
+kgen_inc=(-D_DEFAULT_SOURCE -Itests/kernel_generic_host -Icompat/os_generic/include
+          -Icompat/kernel_generic -Icompat)
 kgen_files=("<zephyr/kernel.h>" "<zephyr/spinlock.h>" '"zephyr_compat_os.h"'
             '"compat/kernel_generic/zephyr_kernel.c"' '"compat/kernel_generic/zephyr_mutex.c"'
             '"compat/zephyr_heap.c"' '"compat/zephyr_work.c"' '"compat/zephyr_init.c"')

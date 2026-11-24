@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 /* The host test of the FreeRTOS build's GPIO boundary on the FreeRTOS POSIX
- * port: freertos/drivers/compat/rp2040/gpio_os_rp2040.c (common/compat/
+ * port: common/pico_sdk/drivers/compat/rp2040/gpio_os_rp2040.c (common/compat/
  * gpio_os.h on the Pico SDK's hardware_gpio) on fakes of the SDK's GPIO
  * and IRQ functions (pico_fake/, implemented here: they record the calls and
  * play GPIO bank 0's levels, latched edges and interrupt enables), under
@@ -10,7 +10,7 @@
  * Zephyr, common/drivers/lsm6dso/port/zephyr/lsm6dso_os.c, which this test
  * includes, with the core's lsm6dso_stream_int1() defined here), with the
  * prelude and CONFIG_LSM6DSO_STREAM, as
- * freertos/drivers/lsm6dso/lsm6dso.cmake builds them.
+ * common/pico_sdk/drivers/lsm6dso/lsm6dso.cmake builds them.
  *
  * - The start: gpio0 is not ready before zephyr_compat_initialize() and is
  *   after it, which touches no register and adds no handler.

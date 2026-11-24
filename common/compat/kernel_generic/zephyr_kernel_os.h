@@ -6,9 +6,11 @@
  * and k_mutex (zephyr_kernel.c, zephyr_mutex.c, zephyr_os.h,
  * zephyr_os_spinlock.h in this directory, common/compat/kernel_generic, the
  * kernel part for an OS that offers only these primitives).  An OS that
- * offers them writes nothing else of the kernel part but
- * zephyr_os_atomic.h and a tick hook that calls zephyr_compat_tick()
- * (zephyr_compat_os.h); an OS with richer objects of its own can implement
+ * offers them writes nothing else of the kernel part but a tick hook that
+ * calls zephyr_compat_tick() (zephyr_compat_os.h; with tick_catchup.h for a
+ * periodic tick that interrupts masked for long can lose) and, only when
+ * its headers define atomic names, its own zephyr_os_atomic.h (the default
+ * here is empty); an OS with richer objects of its own can implement
  * the Zephyr-level functions directly instead (the NuttX build,
  * nuttx/drivers/compat).  The FreeRTOS build's primitives are
  * freertos/drivers/compat/zephyr_kernel_os_impl.h.

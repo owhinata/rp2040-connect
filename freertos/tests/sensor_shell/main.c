@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 /* The host test of the FreeRTOS build's "sensor" command
- * (freertos/drivers/sensor_shell: the shared common/shell/
+ * (common/compat/os_generic/sensor_shell_os.c: the shared common/shell/
  * sensor_shell.c, the copy of Zephyr's sensor_shell_stream.c with its
  * processing thread, and the FreeRTOS part sensor_shell_os.c) and of the
  * calibration it shows ("imu cal": the shared common/imu/imu_cal.c), on the
@@ -8,7 +8,7 @@
  * sessions on two consoles that capture), the Zephyr compatibility layer
  * (its kernel part, work queues, RTIO with its work queue, devices, gpio0,
  * the default sensor iodev and decoder) and the shared LSM6DSO driver with
- * its FIFO stream on ST's lsm6dso_reg.c, as freertos/drivers/lsm6dso/
+ * its FIFO stream on ST's lsm6dso_reg.c, as common/pico_sdk/drivers/lsm6dso/
  * lsm6dso.cmake builds them.  The sensor is a fake LSM6DSOX behind a fake
  * i2c0 (register banks, auto-increment, software reset, FIFO, timestamp, the
  * same model as the NuttX build's test, nuttx/tests/lsm6dso_driver.c) with a
@@ -469,7 +469,7 @@ static DEVICE_API(i2c, fake_i2c_api) = {
 DEVICE_DT_DEFINE(i2c0, "i2c@40044000", NULL, NULL, NULL, &fake_i2c_api);
 
 /* Fake INT1 (GPIO24) on the layer's GPIO boundary (gpio_os.h; on the
- * board freertos/drivers/compat/rp2040/gpio_os_rp2040.c): high while the FIFO
+ * board common/pico_sdk/drivers/compat/rp2040/gpio_os_rp2040.c): high while the FIFO
  * threshold is routed to it and the FIFO holds the watermark; a rising edge
  * calls the layer's handler (common/compat/zephyr_gpio.c) if enabled.
  */

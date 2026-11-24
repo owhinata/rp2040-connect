@@ -20,28 +20,38 @@ semaphores, `k_poll()`, timeouts, sleeps and threads on about twenty primitives 
 
 ## Directories
 
+The FreeRTOS build's own files are in `freertos/`; what it shares with the other builds on the Pico SDK
+(the parts written on the Pico SDK and the compatibility layer, not on FreeRTOS) is in
+`common/pico_sdk/`, whose layout follows `freertos/` (`app/usb-console/`, `drivers/<part>/`), in the
+drivers' `port/pico_sdk/` directories, and in `common/compat/os_generic/` (the layer's parts for an OS
+without the model of its own). The FreeRTOS build gives them its parts through a few boundaries (the
+`*_os.h` headers below), each with a FreeRTOS implementation in `freertos/`.
+
 | Place | Contents |
 |---|---|
-| `app/usb-console/` | Start-up (`main.c`), the commands of this build only (`commands.c`: `version`, `free`, `ps`) and the table of all commands, the OS part of the generic commands (`kernel_shell_os_impl.h`), the kernel configuration (`FreeRTOSConfig.h`), the priority mapping (`priorities_os.h`), time (`os_clock.h`), the tick hook (`tick.c`; the catch-up's decision in `tick_catchup.h`), the CPU load (`idle.c`), fatal errors (`fault.[ch]`), the free interrupt stack (`irq_stack.c`) |
-| `drivers/compat/` | The FreeRTOS part of the layer: the primitives of the generic kernel part (`zephyr_kernel_os_impl.h`; the port's in `rp2040/zephyr_os_port.h`) and `zephyr_os_atomic.h`, the linker script's part for the socket implementations (`ld/`), the wall clock (`zephyr_sys_clock.c`), the prelude header (`common_prelude.h`), the RP2040 part (`rp2040/`: the port header, GPIO bank 0, chip ID) |
-| `common/compat/kernel_generic/` | The layer's kernel part for an OS that offers only basic primitives, OS-independent: `k_sem`, `k_poll()`, the timeouts, the sleeps and the start of a thread (`zephyr_kernel.c`), `k_mutex` (`zephyr_mutex.c`), the OS part of `<zephyr/kernel.h>` and `<zephyr/spinlock.h>` (`zephyr_os.h`, `zephyr_os_spinlock.h`), the tick hook's entry (`zephyr_compat_os.h`), and the declaration of the primitives (`zephyr_kernel_os.h`). The work queues' threads, the system work queue and `zephyr_compat_initialize()` are the shared `common/compat/zephyr_init.c` |
+| `app/usb-console/` | The build (`CMakeLists.txt`: the FreeRTOS settings of `common/pico_sdk/app/usb-console/usb-console.cmake`, the list of the sources), the kernel configuration (`FreeRTOSConfig.h`, which also checks the one core), and `src/`: the priority mapping (`priorities_os.h`), the tick hook (`tick.c`; the catch-up's decision is `common/compat/kernel_generic/tick_catchup.h`), the OS part of the generic commands (`kernel_shell_os_impl.h`, with the tick count of `uptime`), and the FreeRTOS parts of the shared application's boundaries: the start (`main_os_impl.h`: the task "main", the scheduler, the run time of `ps`), the idle pass (`idle_os.h`: the idle hook), the fatal errors (`fault_os_impl.h`: the running task's name, the stack overflow hook), the commands (`commands_os_impl.h`: `ps`, the kernel's version) |
+| `common/pico_sdk/app/usb-console/` | Shared with the builds on the Pico SDK: the build (`usb-console.cmake`: the drivers, the include directories, the SDK's options; `ram_code.cmake`: the code that runs from RAM; `ld/`: the start-up thread's stack in SCRATCH_X) and `src/`: the start (`main.c`, on `main_os.h`), the commands `version` and `free` and the table of all commands (`commands.c`, on `commands_os.h`), the idle pass and the CPU load (`idle.c`; the LED's blink `idle_blink.h`), fatal errors (`fault.[ch]`, on `fault_os.h`), the free interrupt stack (`irq_stack.c`), `app.h` |
+| `drivers/compat/` | The FreeRTOS part of the layer: the primitives of the generic kernel part (`zephyr_kernel_os_impl.h`) and the port header (`rp2040/zephyr_os_port.h`: `z_os_in_isr()`, `z_os_yield_from_isr()`, `z_os_task_lock()`/`_unlock()`) |
+| `common/pico_sdk/drivers/compat/` | The layer's part on the Pico SDK: the build of the layer, the shell and the RAM log (`compat.cmake`), the linker script's part for the socket implementations (`ld/`), the wall clock (`zephyr_sys_clock.c`), the RP2040 part (`rp2040/`: the port header's part shared by the OSes, `zephyr_os_port_rp2040.h`; GPIO bank 0, `gpio_os_rp2040.c`; chip ID, `zephyr_hwinfo.c`) |
+| `common/compat/os_generic/` | The layer's parts for an OS without the model of its own: `include/zephyr/drivers/i2c.h` (Zephyr's I2C API on the driver's device), `include/zephyr/sys/clock.h`, `include/zephyr/sys/__assert.h`, the prelude (`common_prelude.h`), `app_log_os.h`, the sensor shell's OS part (`include/sensor_shell_os.h`, `sensor_shell_os.c`), `wifi_profile_os.h` |
+| `common/compat/kernel_generic/` | The layer's kernel part for an OS that offers only basic primitives, OS-independent: `k_sem`, `k_poll()`, the timeouts, the sleeps and the start of a thread (`zephyr_kernel.c`), `k_mutex` (`zephyr_mutex.c`), the OS part of `<zephyr/kernel.h>` and `<zephyr/spinlock.h>` (`zephyr_os.h`, `zephyr_os_spinlock.h`), the tick hook's entry (`zephyr_compat_os.h`) and its catch-up (`tick_catchup.h`), the default `zephyr_os_atomic.h`, and the declaration of the primitives (`zephyr_kernel_os.h`). The work queues' threads, the system work queue and `zephyr_compat_initialize()` are the shared `common/compat/zephyr_init.c` |
 | `common/tests/zephyr_kernel/` | The host test of the layer's kernel, OS-independent (`zephyr_kernel_test.c`; `zephyr_kernel_test.h` lists what an OS's part and a platform's part provide; `kernel_generic/zephyr_kernel_test_os.h`, its items on the primitives). This build's parts are in `tests/compat/` |
 | `common/compat/net_offload/` | The layer's network part, OS-independent: Zephyr's socket layer (reduced copies of Zephyr's files in `subsys/net/lib/sockets/` and `lib/os/zvfs/`), the network interface (`zephyr_net_if.c`) and the start of the network part (`zephyr_net_init.c`, `zephyr_net_initialize()`), their headers under `include/` (`zephyr/net/`, `zephyr/sys/fdtable.h`, `zephyr_net_init.h`). `k_heap` (`zephyr_heap.c`, `zephyr_heap.h`, which `<zephyr/kernel.h>` includes) is in `common/compat/`, with either kernel part |
 | `common/compat/libc_net/` | The socket headers newlib lacks (`include/`, types and constants only), `inet_pton` and `inet_ntop` (`inet.c`) |
-| `drivers/shell/` | This build's console transport for the shell engine (`shell_serial_os_impl.h`: the Pico SDK's USB CDC ACM driver) and the replacement of the Pico SDK's stdio driver (`shell_stdio.c`) |
 | `common/compat/shell_engine/` | The shell for an OS without one of its own, on the layer's API: line editing (`cli.c`), the command table and execution with `help` (`shell_engine.c`), a copy of Zephyr's argument split (`shell_argv.c`), the consoles and each thread's output (`shell_console.c`), getopt per session (`getopt_state.c`), the shell's backend for `zshell.c` (`zshell_os_impl.h`, `zephyr_os_shell.h`), the serial session (`shell_serial.c`; the console transport an OS provides is declared in `shell_serial_os.h`), the Telnet shell (`shell_telnet.c`) |
-| `drivers/libc/` | Wrappers of newlib's FILE functions (`stdio_wrap.c`) |
-| `drivers/kv/` | The flash operations of the key-value store on the Pico SDK (`rp2040_flash_kv_os.c`, under the RP2040's shared part `common/chip/rp2040/rp2040_flash_kv.c`) and the linker script override (`ld/`, `kv.cmake`) |
-| `drivers/nina/` | Only `nina.cmake`, which adds the NINA driver to the build. The driver is in `common/drivers/nina/`, and this build's parts are its FreeRTOS binding `common/drivers/nina/port/freertos/`: the `nina_os.h` boundary (`nina_os.c`), the passthrough's host side (`nina_passthrough_os.c`), SPI1 and the module's lines on the Pico SDK (`nina_bus_rp2040.c`, its long transfers by DMA in `nina_bus_dma_rp2040.c`), the passthrough's module side (`nina_passthrough_bus_rp2040.c`: UART1, the module's lines, the watchdog's scratch registers, the LED); the sockets and the interface are the Zephyr binding's (`common/drivers/nina/port/zephyr/nina_socket.c`, `nina_net.c`) |
-| `drivers/i2c_dw/` | `i2c_dw.cmake`, which adds the I2C driver to the build (I2C0, and I2C1 as an option). The driver is in `common/drivers/i2c_dw/`, and this build's parts are its FreeRTOS binding `common/drivers/i2c_dw/port/freertos/`: the `i2c_dw_os.h` boundary on FreeRTOS and the TIMER (`i2c_dw_os_impl.h`), the devices with Zephyr's I2C API, their interrupts, resets and pins (`i2c_dw_instance.h`), their start (`i2c_dw_controllers_rp2040.h`), I2C0's DMA reads on the Pico SDK's DMA (`i2c_dw_dma_os_rp2040.c`) |
-| `drivers/lsm6dso/` | The LSM6DSOX's build rules (`lsm6dso.cmake`), its initialization (`lsm6dso_board.c`) |
-| `drivers/imu/` | Builds in the acquisition service, MQTT and time synchronization (`common/imu/`; `imu.cmake`), the prelude of `time_sync.c` |
-| `drivers/wifi/` | Builds in Wi-Fi (the NINA core's `common/drivers/nina/nina_wifi.c` with its Zephyr binding `common/drivers/nina/port/zephyr/nina_net.c`, credentials, reconnection) and `ifconfig` (`common/shell/ifconfig_shell.c`) |
-| `drivers/telnet/` | Builds in the Telnet shell (`telnet.cmake`; the code is `common/compat/shell_engine/shell_telnet.c`) |
-| `drivers/zperf/` | Builds in `zperf` (the code is `common/compat/zperf_iperf3.c` and `zephyr_zperf_shell.c`) |
-| `drivers/sensor_shell/` | The FreeRTOS part of the `sensor` command (`sensor_shell_os.[ch]`) |
-| `drivers/i2c_shell/` | Adds the `i2c` command (`i2c_shell.cmake`; the command is `common/shell/i2c_shell.c`, the same file as `drivers/i2c/i2c_shell.c` of the Zephyr build's patched tree) |
-| `drivers/include/` | The FreeRTOS part of `app_log.h` (`app_log_os.h`) and of the RAM log (`log_ram_os_impl.h`: the ring's section, the interrupt mask, the TIMER) |
+| `common/pico_sdk/drivers/shell/` | The console transport on the Pico SDK for the shell engine (`shell_serial_os_impl.h`: the Pico SDK's USB CDC ACM driver) and the replacement of the Pico SDK's stdio driver (`shell_stdio.c`) |
+| `common/pico_sdk/drivers/libc/` | Wrappers of newlib's FILE functions (`stdio_wrap.c`) |
+| `common/pico_sdk/drivers/include/` | The RAM log's part on the Pico SDK (`log_ram_os_impl.h`: the ring's section, the interrupt mask, the TIMER) |
+| `common/pico_sdk/drivers/kv/` | The key-value store's build (`kv.cmake`), the flash operations on the Pico SDK (`rp2040_flash_kv_os.c`, under the RP2040's shared part `common/chip/rp2040/rp2040_flash_kv.c`) and the linker script override (`ld/`) |
+| `common/pico_sdk/drivers/nina/` | `nina.cmake`, which adds the NINA driver to the build. The driver is in `common/drivers/nina/`; its binding is FreeRTOS's `common/drivers/nina/port/freertos/` (the `nina_os.h` boundary, `nina_os.c`; the DMA's waits, `nina_bus_dma_os_impl.h`) with the Pico SDK's `common/drivers/nina/port/pico_sdk/`: the passthrough's host side (`nina_passthrough_os.c`), SPI1 and the module's lines (`nina_bus_rp2040.c`, its long transfers by DMA in `nina_bus_dma_rp2040.c` on the waits of `nina_bus_dma_os.h`), the passthrough's module side (`nina_passthrough_bus_rp2040.c`: UART1, the module's lines, the watchdog's scratch registers, the LED), the board's lines (`nina_board_rp2040.h`); the sockets and the interface are the Zephyr binding's (`common/drivers/nina/port/zephyr/nina_socket.c`, `nina_net.c`) |
+| `common/pico_sdk/drivers/i2c_dw/` | `i2c_dw.cmake`, which adds the I2C driver to the build (I2C0, and I2C1 as an option). The driver is in `common/drivers/i2c_dw/`; its binding is FreeRTOS's `common/drivers/i2c_dw/port/freertos/` (the `i2c_dw_os.h` boundary on FreeRTOS and the TIMER, `i2c_dw_os_impl.h`) with the Pico SDK's `common/drivers/i2c_dw/port/pico_sdk/`: the devices with Zephyr's I2C API, their interrupts, resets and pins (`i2c_dw_instance.h`), their start (`i2c_dw_controllers_rp2040.h`), I2C0's DMA reads on the Pico SDK's DMA (`i2c_dw_dma_os_rp2040.c`) |
+| `common/pico_sdk/drivers/lsm6dso/` | The LSM6DSOX's build rules (`lsm6dso.cmake`); the device and its start are `common/drivers/lsm6dso/port/pico_sdk/` (`lsm6dso_instance.h`, `lsm6dso_board.c`) |
+| `common/pico_sdk/drivers/imu/` | Builds in the acquisition service, MQTT and time synchronization (`common/imu/`; `imu.cmake`) |
+| `common/pico_sdk/drivers/wifi/` | Builds in Wi-Fi (the NINA core's `common/drivers/nina/nina_wifi.c` with its Zephyr binding `common/drivers/nina/port/zephyr/nina_net.c`, credentials, reconnection) and `ifconfig` (`common/shell/ifconfig_shell.c`) |
+| `common/pico_sdk/drivers/telnet/` | Builds in the Telnet shell (`telnet.cmake`; the code is `common/compat/shell_engine/shell_telnet.c`) |
+| `common/pico_sdk/drivers/zperf/` | Builds in `zperf` (the code is `common/compat/zperf_iperf3.c` and `zephyr_zperf_shell.c`) |
+| `common/pico_sdk/drivers/sensor_shell/` | Builds in the `sensor` command (`sensor_shell.cmake`; its OS part is `common/compat/os_generic/sensor_shell_os.c`) |
+| `common/pico_sdk/drivers/i2c_shell/` | Adds the `i2c` command (`i2c_shell.cmake`; the command is `common/shell/i2c_shell.c`, the same file as `drivers/i2c/i2c_shell.c` of the Zephyr build's patched tree) |
 | `tests/` | Host tests ("Host tests" below) |
 
 Shared files only the FreeRTOS build compiles: `common/compat/zephyr_wifi_shell.c` (`connect`,
@@ -77,7 +87,7 @@ assumptions of Zephyr are reproduced:
   the application's table shared with the NuttX build (`app_threads_start()`, `common/imu/app_init.c`). Every thread of the layer (the work queues', `RTIO WQ 0`, `net_mgmt`) starts the
   same way (`z_thread_static_start()`: a task on its static stack, deleted when its function returns).
 - **Time**: `k_uptime_*()`, `k_cycle_*()` and `time_sync_mono_us()` come from the RP2040's TIMER (1 MHz),
-  not from the tick (`os_clock.h`).
+  not from the tick (`rp2040_timer_us()`).
 
 Left as approximations:
 
@@ -91,7 +101,7 @@ Left as approximations:
 
 - The 32-bit tick wraps after about 49.7 days.
 - While interrupts are disabled (a flash erase or program; about 40 to 50 ms per erase), SysTick keeps one
-  interrupt pending and the other ticks are lost. The tick hook (`tick.c`, decision in `tick_catchup.h`)
+  interrupt pending and the other ticks are lost. The tick hook (`tick.c`, decision in `common/compat/kernel_generic/tick_catchup.h`)
   compares the count with the TIMER at every tick and, when it is a whole tick behind, pends SysTick
   again, so the port's usual handler counts the lost ticks one by one (wake-ups, switch requests, and the
   tick hook's timeouts of the layer and time slices run on each). The tick never gets ahead of the
@@ -112,14 +122,14 @@ use a stack of their own (MSP, 2048 bytes; the `(interrupts)` row of `ps`).
 |---|---|---|---|
 | `Tmr Svc` | 31 (–) | 384 | The kernel's timer task; wakes the waiters of Pico SDK locks released in interrupt handlers |
 | `net_mgmt`, `sysworkq` | 21 (-1) | 2048, 384 | Network events; the system work queue (the work of the LSM6DSOX FIFO interrupt) |
-| `main` | 20 (0) | 2048 | The second half of the start-up ("Start-up" below); ends when done. Its stack is in SCRATCH_X, which only core 1 (never started) would use (`app/usb-console/ld/`) |
+| `main` | 20 (0) | 2048 | The second half of the start-up ("Start-up" below); ends when done. Its stack is in SCRATCH_X, which only core 1 (never started) would use (`common/pico_sdk/app/usb-console/ld/`, `main_os_impl.h`) |
 | `sensor_shell_tid`, `RTIO WQ 0` | 20 (0) | 2048, 1024 | Printing `sensor` results; RTIO work |
 | `nina_wifi_tid`, `wifi_reconnect_tid` | 12 (8) | 2048, 2048 | Wi-Fi scan, connection and link monitor (one at a time); automatic reconnection |
 | `time_sync_tid`, `imu_stream_tid` | 11 (9) | 2048, 2048 | Time synchronization, acquisition |
 | `imu_fifo_worker` | 10 (10) | 2048 | FIFO reads |
 | `imu_raw_mqtt_tid` | 9 (11) | 2048 | MQTT transport |
 | `console`, `shell_telnet`, `telnet_service`, `zperf_server_tid` | 6 (14) | 3072, 3072, 2048, 2048 | The USB and Telnet shells (commands run in these tasks), Telnet accepts, the server of `zperf tcp download` |
-| `IDLE` | 0 (–) | 256 | Idle; measures the CPU load and blinks the LED (GPIO6) every 500 ms while it runs (`idle.c`) |
+| `IDLE` | 0 (–) | 256 | Idle; measures the CPU load and blinks the LED (GPIO6) every 500 ms while it runs (`common/pico_sdk/app/usb-console/src/idle.c`, the idle hook of `idle_os.h`) |
 
 The kernel has no heap (`configSUPPORT_DYNAMIC_ALLOCATION` 0): every task, queue and semaphore is
 static. Each thread of the layer keeps its control block (136 bytes) after its stack, in the array of
@@ -133,7 +143,7 @@ LSM6DSOX and the NINA's network interface, then the application's start shared b
 Telnet in it: the Wi-Fi credentials, the `wifi` command, Telnet, the `K_THREAD_DEFINE()` threads, the
 key-value store, the calibration, the time synchronization and the automatic connection, in this order.
 
-**CPU load** (`idle.c`): the idle hook disables interrupts, opens the window, waits with `WFI`, closes the
+**CPU load** (`common/pico_sdk/app/usb-console/src/idle.c`): the idle hook disables interrupts, opens the window, waits with `WFI`, closes the
 window and enables interrupts (the measurement of the Zephyr build's `CONFIG_CPU_LOAD` and the NuttX
 build's `up_idle()`). The tick interrupt every 1 ms counts as load (the Zephyr and NuttX builds have no
 such interrupt). The CPU column of `ps` is the share of the
@@ -148,21 +158,22 @@ the interval of interest); timed by the TIMER.
   and the line editor are `common/compat/shell_engine/` (`shell_engine.c`, `cli.c`; `shell_engine.c` also has `help`). The
   generic commands are `common/shell/kernel_shell.c`; what they need from the OS (the tick count, the two
   restarts, the last fatal error's record) is declared in `common/shell/kernel_shell_os.h` and is
-  `app/usb-console/src/kernel_shell_os_impl.h` here. The commands of this build only are in
-  `app/usb-console/src/commands.c`, with the table of all commands.
+  `app/usb-console/src/kernel_shell_os_impl.h` here. The commands only the OS and the Pico SDK answer
+  are `common/pico_sdk/app/usb-console/src/commands.c` (`version`, `free`, with the table of all
+  commands) and this build's `app/usb-console/src/commands_os_impl.h` (`ps`, the kernel's version).
 - The consoles, the sessions and Telnet are the shell engine's (`common/compat/shell_engine/`), written on
   the layer's `k_mutex`, `k_sem`, `z_thread_static_start()` and thread custom data
   (`k_thread_custom_data_get()`, on a FreeRTOS thread local storage pointer). A console (`shell_console.c`)
   is a session's terminal (USB or Telnet); each task is bound to one console, and its `printf()` and
   `fprintf(stderr)` go there. Tasks bound to no console write to USB. The replacement of the Pico SDK's
-  stdio driver (`shell_stdio.c`) and `--wrap` of newlib's FILE functions (`drivers/libc/stdio_wrap.c`)
+  stdio driver (`shell_stdio.c`) and `--wrap` of newlib's FILE functions (`common/pico_sdk/drivers/libc/stdio_wrap.c`)
   route every output path through it.
 - USB: the engine's serial session (`shell_serial.c`, the task `console`) on this build's console transport
-  (`drivers/shell/shell_serial_os_impl.h`, declared in `shell_serial_os.h`: the stdio redirection, input
+  (`common/pico_sdk/drivers/shell/shell_serial_os_impl.h`, declared in `shell_serial_os.h`: the stdio redirection, input
   arrived, the line open, read, write). The prompt appears when the terminal opens the port, after the
   banner of `main.c`. When the terminal stops reading, the Pico SDK's driver waits up to 500 ms for room in
   its 64-byte buffer and drops the rest.
-- Telnet (`common/compat/shell_engine/shell_telnet.c`, built in by `drivers/telnet/telnet.cmake`): port 23,
+- Telnet (`common/compat/shell_engine/shell_telnet.c`, built in by `../common/pico_sdk/drivers/telnet/telnet.cmake`): port 23,
   one client at a time. As Zephyr's `shell_telnet.c`,
   it sends nothing on connection, takes Telnet commands out without answering, and does not echo. Where it
   differs from Zephyr is listed at the top of the file (it looks once more whether the first client has
@@ -172,12 +183,12 @@ the interval of interest); timed by the TIMER.
 ## RAM log and fatal errors
 
 - The RAM log (`common/compat/log/log_ram.c`, shared with the NuttX build; this build's part is
-  `drivers/include/log_ram_os_impl.h`; its size, `LOG_RAM_SIZE` in `drivers/include/app_log_os.h`) is
+  `common/pico_sdk/drivers/include/log_ram_os_impl.h`; its size, `LOG_RAM_SIZE` in `common/compat/os_generic/include/app_log_os.h`) is
   4 KiB, as in the Zephyr build (a fatal error leaves a record of a few lines, written into the log at the
   next start), in RAM that the start-up code does not initialize (`__uninitialized_ram`). It survives the watchdog's restart, `reboot` and the RESET button, not a power
   cycle. `LOG_*` lines are formatted in the caller's context (interrupt handlers included), timed by the
   TIMER. `dmesg` (`common/shell/dmesg_shell.c`) prints it.
-- Fatal errors (`app/usb-console/src/fault.[ch]`): `panic()`, HardFault, `configASSERT()` and `assert()`,
+- Fatal errors (`common/pico_sdk/app/usb-console/src/fault.[ch]`, with this build's `app/usb-console/src/fault_os_impl.h`): `panic()`, HardFault, `configASSERT()` and `assert()`,
   stack overflow (`configCHECK_FOR_STACK_OVERFLOW` 2) and `_exit()` end in one exit,
   which keeps a record (reason, PC, LR, SP, exception frame, task, time) in RAM and in the watchdog's
   scratch registers 0..3 and restarts the board with the watchdog. The next start writes the record to
@@ -195,10 +206,10 @@ As in the Zephyr and NuttX builds, the key-value store is in the last 8 KiB of t
 of [`nuttx/drivers/README.md`](../../nuttx/drivers/README.md)). The FreeRTOS build implements the flash
 boundary (the five functions of `common/compat/flash_kv_os.h`) with the RP2040's part shared with the NuttX build
 (`common/chip/rp2040/rp2040_flash_kv.c`: the checks, the reads, the page copy) on its own flash operations
-(`common/chip/rp2040/include/rp2040_flash_kv_os.h`: `drivers/kv/rp2040_flash_kv_os.c`, the Pico SDK's
+(`common/chip/rp2040/include/rp2040_flash_kv_os.h`: `common/pico_sdk/drivers/kv/rp2040_flash_kv_os.c`, the Pico SDK's
 `flash_range_program()` and `flash_range_erase()` through `flash_safe_execute()`).
 
-- The linker script (`drivers/kv/ld/`, `kv.cmake`) sets the FLASH length to `0xffe000`, keeping the image
+- The linker script (`common/pico_sdk/drivers/kv/ld/`, `kv.cmake`) sets the FLASH length to `0xffe000`, keeping the image
   out of the area, and checks `__kv_start`, `__kv_end` and the end of the image with `ASSERT`.
 - A program or erase request is checked against the area three times: in `zephyr_flash_kv.c`, in the
   RP2040's shared part, and right before the flash is touched (with interrupts disabled). Until the linker
@@ -213,7 +224,7 @@ boundary (the five functions of `common/compat/flash_kv_os.h`) with the RP2040's
 
 - The SPI transport, the socket table and commands, name resolution and the Wi-Fi operations are the
   shared core (`internal/nina_proto.c`, `nina_sock.c`, `nina_dns.c` and `nina_wifi.c` of `common/drivers/nina/`). The FreeRTOS build implements the
-  boundaries `nina_bus.h` (`common/drivers/nina/port/freertos/nina_bus_rp2040.c`: SPI1 at 7.8125 MHz and the CS, READY, RESET
+  boundaries `nina_bus.h` (`common/drivers/nina/port/pico_sdk/nina_bus_rp2040.c`: SPI1 at 7.8125 MHz and the CS, READY, RESET
   and IRQ lines, set up in the order and with the values of Zephyr's drivers; transfers shorter than 64 bytes polled,
   longer ones by DMA while the calling task sleeps, as in the Zephyr and NuttX builds, `nina_bus_dma_rp2040.c`: see below) and `nina_os.h`
   (the core's FreeRTOS binding `common/drivers/nina/port/freertos/nina_os.c`, written on FreeRTOS and the
@@ -234,7 +245,7 @@ boundary (the five functions of `common/compat/flash_kv_os.h`) with the RP2040's
   copies of Zephyr's `sockets.c`, `getaddrinfo.c`, `socket_offload.c`, `zvfs_fdtable.c` and
   `zvfs_poll.c` in `common/compat/net_offload/`; what each leaves out is in its header). An implementation registers itself with
   `NET_SOCKET_OFFLOAD_REGISTER()` or `NET_SOCKET_REGISTER()`; the linker script collects the
-  registrations sorted by priority (`drivers/compat/ld/section_extra_post_text.incl`), and
+  registrations sorted by priority (`common/pico_sdk/drivers/compat/ld/section_extra_post_text.incl`), and
   `zsock_socket()` takes the first whose family matches and whose `is_supported()` accepts. The other
   calls go through the descriptor table to the implementation's `struct socket_op_vtable` under the
   descriptor's mutex, `poll` through `ZFD_IOCTL_POLL_PREPARE` and `ZFD_IOCTL_POLL_OFFLOAD`, and
@@ -273,7 +284,7 @@ boundary (the five functions of `common/compat/flash_kv_os.h`) with the RP2040's
 
 - The esptool passthrough (`nina passthrough confirm`): the NINA driver's core shared with the Zephyr and
   NuttX builds (`common/drivers/nina/nina_passthrough.c`), with its host side on TinyUSB and the Pico SDK
-  (`common/drivers/nina/port/freertos/nina_passthrough_os.c`) and its module side (`common/drivers/nina/port/freertos/nina_passthrough_bus_rp2040.c`)
+  (`common/drivers/nina/port/pico_sdk/nina_passthrough_os.c`) and its module side (`common/drivers/nina/port/pico_sdk/nina_passthrough_bus_rp2040.c`)
   (wiring and lines in "The esptool passthrough" of
   [`zephyr/app/usb-console/drivers/README.md`](../../zephyr/app/usb-console/drivers/README.md)). The command
   leaves a mark in the watchdog's scratch registers 0 to 3 and restarts; `main()` sees it before anything
@@ -295,7 +306,7 @@ zero gives the Pico SDK routines' results, the same in the three builds. `memcpy
 
 The flash is executed through the RP2040's 16 KiB XIP cache, and the code on the 6667 Hz path of the
 sensor and on the send path does not fit in it. The code (`.text*`; their read-only data stays in the flash)
-of the objects listed in `app/usb-console/ram_code.cmake` runs from RAM:
+of the objects listed in `common/pico_sdk/app/usb-console/ram_code.cmake` runs from RAM:
 
 - the layer's kernel part, work queue, RTIO, memory blocks, sensor clock, wall clock and `gpio0`, with the
   Pico SDK's `hardware_gpio`;
@@ -359,8 +370,8 @@ interrupts disabled.
   recovery). As in the Zephyr build's driver there is no `get_config`: `i2c_get_config()` returns `-ENOSYS`,
   so `i2c speed` calls `i2c_configure()` with `I2C_MODE_CONTROLLER` and the new speed class (the later
   transfers run at it).
-- **The instances** are chosen as in the NuttX build's Kconfig: `drivers/i2c_dw/i2c_dw.cmake` defines
-  `CONFIG_I2C_DW_I2C0` always (the LSM6DSOX is on it; `drivers/lsm6dso/lsm6dso.cmake` stops the
+- **The instances** are chosen as in the NuttX build's Kconfig: `../common/pico_sdk/drivers/i2c_dw/i2c_dw.cmake` defines
+  `CONFIG_I2C_DW_I2C0` always (the LSM6DSOX is on it; `../common/pico_sdk/drivers/lsm6dso/lsm6dso.cmake` stops the
   configuration without it) and `CONFIG_I2C_DW_I2C1` with the CMake option `I2C_DW_I2C1` (off by
   default). Each instance has its own device, interrupt handler, speed class and start-up
   (`i2c_dw_i2c0_initialize()`, `i2c_dw_i2c1_initialize()` in `i2c_dw_controllers_rp2040.h`) under its symbol;
@@ -372,7 +383,7 @@ interrupts disabled.
   I2C0's). It starts after I2C0 in `main()`; a failure is logged and leaves `i2c1` not ready. It is not
   in the layer's device list (`device_get_binding()`), so the `i2c` command does not reach it. I2C1 has been built and host-tested but never used with a real device.
 - **The DMA reads of I2C0** use the Pico SDK's own DMA (`hardware_dma`, `hardware_irq`) through the core's
-  second boundary, `port/i2c_dw_dma_os.h`, implemented in `port/freertos/i2c_dw_dma_os_rp2040.c`. Per read, two
+  second boundary, `port/i2c_dw_dma_os.h`, implemented in `port/pico_sdk/i2c_dw_dma_os_rp2040.c`. Per read, two
   channels come from `dma_claim_unused_channel(false)` (none free: the read takes the interrupts and counts a
   fallback); they are set up with the SDK's channel configuration (TX: 16-bit command words to IC_DATA_CMD,
   DREQ 32; RX: bytes from it, DREQ 33), started with `dma_channel_start()` and given back with
@@ -388,7 +399,7 @@ interrupts disabled.
   flags in its handler of a shared line; reset the DMA block or write the whole of INTE0/INTE1, INTS0/INTS1 or
   CHAN_ABORT (only its own channels' bits); claim all twelve channels for good if the reads are to keep the
   DMA (they then fall back to the interrupts).
-- **The NINA's SPI by DMA** (`common/drivers/nina/port/freertos/nina_bus_dma_rp2040.c`): a transfer of at least
+- **The NINA's SPI by DMA** (`common/drivers/nina/port/pico_sdk/nina_bus_dma_rp2040.c`): a transfer of at least
   64 bytes (the SOCKET_SEND bodies, the long reads) goes through two channels claimed with
   `dma_claim_unused_channel(false)` at the bus's first use (the normal mode only; without two free channels every
   transfer stays polled) and kept: RX first (SSPDR to the buffer, or to one sink byte, DREQ 19), then SSPDMACR's
@@ -406,7 +417,7 @@ interrupts disabled.
   (`PICO_MAX_SHARED_IRQ_HANDLERS`, 6 by default with stdio over USB), and adding one more than that ends in
   `hard_assert()`. Six are in use: USBCTRL_IRQ's two (TinyUSB, stdio_usb), IO_IRQ_BANK0's two raw handlers
   (`gpio_os_rp2040.c`, the NINA's `nina_os.c`) and DMA_IRQ_1's two (I2C0's reads, the NINA's SPI). The
-  application sets 8 (`app/usb-console/CMakeLists.txt`; 12 bytes of RAM per slot).
+  application sets 8 (`common/pico_sdk/app/usb-console/usb-console.cmake`; 12 bytes of RAM per slot).
 - Interrupt priorities stay at the Pico SDK's default 0x80, so all device interrupts are at one level (as
   on NuttX; the Zephyr build uses 0xC0).
 - The LSM6DSOX runs on the shared driver (`common/drivers/lsm6dso/`, the Zephyr build's driver: its core
@@ -417,8 +428,8 @@ interrupts disabled.
   `<zephyr/drivers/sensor/lsm6dso.h>` is `include/lsm6dso.h`, through `common/compat`), ST's
   `lsm6dso_reg.c` (fetched to `freertos/stmemsc/` by `setup.sh`) and the stmemsc glue
   (`common/drivers/stmemsc/`); one device is made with the board's values
-  (`common/drivers/lsm6dso/port/freertos/lsm6dso_instance.h`, before `port/zephyr/` on the include path).
-- GPIO (`drivers/compat/rp2040/gpio_os_rp2040.c`): GPIO bank 0 under the layer's `gpio0`, driven with the same
+  (`common/drivers/lsm6dso/port/pico_sdk/lsm6dso_instance.h`, before `port/zephyr/` on the include path).
+- GPIO (`common/pico_sdk/drivers/compat/rp2040/gpio_os_rp2040.c`): GPIO bank 0 under the layer's `gpio0`, driven with the same
   Pico SDK calls as Zephyr's `gpio_rpi_pico.c`. The interrupt handler is added with
   `gpio_add_raw_irq_handler_masked()`; only the LSM6DSOX's INT1 (GPIO24) can interrupt through `gpio0`
   (other pins get `-ENOTSUP`; the NINA's READY and IRQ line are on the NINA binding's handler).
@@ -427,14 +438,14 @@ interrupts disabled.
 
 The acquisition service (`imu_stream.c`), the time synchronization (`time_sync.c`, `time_offset.c`), the
 transport (`imu_raw_mqtt.c`, `imu_raw_status.c`) and the calibration (`imu_cal.c`) are the Zephyr build's
-files in `common/imu/`, built in by `drivers/imu/imu.cmake`. The MQTT client is `common/imu/mqtt_min.c` and
+files in `common/imu/`, built in by `../common/pico_sdk/drivers/imu/imu.cmake`. The MQTT client is `common/imu/mqtt_min.c` and
 `mqtt_min_sock.c`, shared with the NuttX build.
 
-- The wall clock (`drivers/compat/zephyr_sys_clock.c`) is the TIMER plus a base (built as in the NuttX
+- The wall clock (`common/pico_sdk/drivers/compat/zephyr_sys_clock.c`) is the TIMER plus a base (built as in the NuttX
   build); newlib's `gettimeofday()` reads the same clock. `date` shows it in UTC.
-- `time_sync.c` reads the TIMER with `rp2040_timer_us()` of `common/chip/rp2040`, as `os_clock.h` does.
+- `time_sync.c` reads the TIMER with `rp2040_timer_us()` of `common/chip/rp2040`, as the layer's clocks do.
 - The chip ID (the first 8 bytes of the session ID) is `pico_get_unique_board_id()`, the same flash ID as
-  the Zephyr build's `hwinfo_get_device_id()` (`drivers/compat/rp2040/zephyr_hwinfo.c`).
+  the Zephyr build's `hwinfo_get_device_id()` (`common/pico_sdk/drivers/compat/rp2040/zephyr_hwinfo.c`).
 
 ## Build options
 
@@ -452,7 +463,6 @@ Given as `freertos/script/build.sh -DNAME=VALUE` (kept until `--clean`).
 | Test | Subject |
 |---|---|
 | `compat` | The layer's kernel (`common/tests/zephyr_kernel/zephyr_kernel_test.c`, 22 items: mutexes, semaphores, sleep, clock, `k_poll`, work, spinlock, atomic, static threads, time slices; wake-ups from the tick interrupt; on this port the checks of real time, of a hardware interrupt and of the tick's catch-up are skipped) |
-| `tick` | The tick's catch-up (`tick_catchup.h`): the step itself, and on a model of SysTick and the CPU (interrupt latencies, interrupts disabled for 0 to 60 ticks) that the tick never gets ahead of the TIMER and is at most one tick behind once caught up |
 | `shell` | Two shell sessions, line editing, output routing, `help` and the generic commands with their output |
 | `kv` | The flash boundary and the key-value store (on fakes of the Pico SDK's flash functions) |
 | `nina` | The NINA's SPI and line boundaries (with the long transfers by DMA on a fake DMA: the threshold, the end state of SPI1, the shared DMA_IRQ_1, the timeout and its abort, a lost byte, a bus error, a transfer after each, channels that do not stop, no free channels, the messages logged) and the FreeRTOS binding of `nina_os.h` (no compatibility layer; built twice, with a 1 ms and a 4 ms tick): the wait for READY on its interrupt, the waits for the IRQ line's edges (two tasks woken by one edge, the timeout), the shared bank interrupt, locks, the Wi-Fi thread's wake-up, sleeps' ticks, the clock across the tick's wrap |

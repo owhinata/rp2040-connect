@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 /* The host test of the FreeRTOS build's shell (the shell engine
- * common/compat/shell_engine, with freertos/drivers/libc/stdio_wrap.c and
+ * common/compat/shell_engine, with common/pico_sdk/drivers/libc/stdio_wrap.c and
  * the shared common/shell/zshell.c, subcmd.c, kernel_shell.c, the copies of
  * Zephyr's fnmatch() and getopt, common/compat/log/fault_record.c) on the
  * FreeRTOS POSIX port:
@@ -22,7 +22,7 @@
  *   common/shell/kernel_shell.c ("id", "uptime", "date", "sleep", "devmem",
  *   "fault", "reboot", "bootsel"), with their output, on this directory's
  *   kernel_shell_os_impl.h, a fake hwinfo_get_device_id() and the layer's
- *   realtime clock (freertos/drivers/compat/zephyr_sys_clock.c);
+ *   realtime clock (common/pico_sdk/drivers/compat/zephyr_sys_clock.c);
  * - the serial session (common/compat/shell_engine/shell_serial.c) on this
  *   directory's console transport (shell_serial_os_impl.h): nothing while
  *   the line is closed, the banner and the prompt when it opens, a command
@@ -31,7 +31,7 @@
  * The Pico SDK's stdio is played by this file as pico_stdio does it:
  * printf(), vprintf(), puts() and putchar() are wrapped (-Wl,--wrap) and,
  * like the SDK's newlib write(), end in stdio_put_string(), which writes to
- * the calling task's console (freertos/drivers/shell/shell_stdio.c on the
+ * the calling task's console (common/pico_sdk/drivers/shell/shell_stdio.c on the
  * board).  The shell's calloc(), malloc() and free() run with the
  * scheduler suspended (the POSIX port may switch threads inside the C
  * library's locks).

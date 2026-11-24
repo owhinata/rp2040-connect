@@ -12,7 +12,7 @@
  * the K_THREAD_DEFINE() thread nina_wifi_tid here.
  *
  * The FreeRTOS build compiles this file on its Zephyr compatibility layer
- * (freertos/drivers/wifi/wifi.cmake, common/compat/net_offload/zephyr_net_init.c).
+ * (common/pico_sdk/drivers/wifi/wifi.cmake, common/compat/net_offload/zephyr_net_init.c).
  */
 
 #include <errno.h>

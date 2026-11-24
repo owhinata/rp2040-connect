@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 /* The part of the Pico SDK's "pico/stdio.h" that
- * freertos/drivers/libc/stdio_wrap.c uses, for the host test of the shell
+ * common/pico_sdk/drivers/libc/stdio_wrap.c uses, for the host test of the shell
  * (freertos/tests/shell/main.c implements it as pico_stdio does: on the
  * consoles of shell_console.h).
  */

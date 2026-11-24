@@ -123,7 +123,7 @@
  *                               list when it times out
  *
  * The handler shares IO_IRQ_BANK0 with the board's GPIO bank 0 backend
- * (freertos/drivers/compat/rp2040/gpio_os_rp2040.c, the LSM6DSOX's INT1, GPIO24)
+ * (common/pico_sdk/drivers/compat/rp2040/gpio_os_rp2040.c, the LSM6DSOX's INT1, GPIO24)
  * the SDK's way: each adds a raw handler with
  * gpio_add_raw_irq_handler_masked() for its own pins (the SDK asserts that
  * no pin is in two masks), and each looks at and acknowledges only its own

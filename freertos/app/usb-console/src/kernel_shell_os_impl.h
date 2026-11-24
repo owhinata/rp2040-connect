@@ -15,11 +15,15 @@
 #include "task.h"
 
 #include "fault.h"
-#include "os_clock.h"
 
+/* FreeRTOS's tick count since the scheduler started: 1 ms, 32 bits (it wraps
+ * after about 49.7 days; the time since the start is read from the TIMER
+ * instead, rp2040_timer_us()).
+ */
 static inline uint32_t kernel_shell_os_tick_count(void)
 {
-	return os_tick_count();
+	return (uint32_t)(xPortIsInsideInterrupt() ? xTaskGetTickCountFromISR()
+						   : xTaskGetTickCount());
 }
 
 /* The watchdog restarts the board delay_ms later; the task waits for it. */

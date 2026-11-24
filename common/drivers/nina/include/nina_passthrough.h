@@ -25,7 +25,7 @@
  *                           restart, RESETN and GPIO0, the UART with its
  *                           interrupt, the LED (each build's chip code:
  *                           zephyr/app/usb-console/drivers/nina,
- *                           freertos/drivers/nina, the NuttX board's src)
+ *                           common/pico_sdk/drivers/nina, the NuttX board's src)
  *   nina_passthrough_os.h   the host's side: the time, the writes to the
  *                           USB serial port, the log, the UART interrupt's
  *                           part of the OS (the OS bindings,

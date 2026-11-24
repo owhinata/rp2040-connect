@@ -1,0 +1,37 @@
+# SPDX-License-Identifier: MIT
+# The "zperf" command of the builds on the Pico SDK: the TCP tests of the iperf3
+# protocol both ways (the PC runs "iperf3 -s" or "iperf3 -c <board>"), with
+# the syntax and output of the Zephyr build's zperf.  include() this file
+# from the application's CMakeLists.txt, then call
+#
+#   pico_sdk_zperf(<target>)
+#
+# after pico_sdk_zephyr_compat() and pico_sdk_nina() (the layer with its
+# shell, the NINA's sockets).  It adds the port's minimal iperf3
+# (common/compat/zperf_iperf3.c, the layer's <zephyr/net/zperf.h>) and the
+# command (common/compat/zephyr_zperf_shell.c, the TCP part of Zephyr's
+# zperf_shell.c), each with the prelude of the shared sources
+# (common_prelude.h), as in compat.cmake.  The application starts the
+# server's thread with K_THREAD_DEFINE_START(zperf_server_tid) and lists
+# the command in its table (SHELL_ENGINE_CMD(zperf)).
+
+function(pico_sdk_zperf target)
+  set(zperf_common_sources
+    ${PICO_SDK_COMMON_DIR}/compat/zperf_iperf3.c
+    ${PICO_SDK_COMMON_DIR}/compat/zephyr_zperf_shell.c
+  )
+
+  target_sources(${target} PRIVATE
+    ${zperf_common_sources}
+  )
+
+  # Zephyr's option of zperf, which the application's start
+  # (common/imu/app_init.c) reads.
+  target_compile_definitions(${target} PRIVATE
+    CONFIG_NET_ZPERF=1
+  )
+
+  set_source_files_properties(${zperf_common_sources} PROPERTIES
+    COMPILE_OPTIONS "-include;${PICO_SDK_PRELUDE}"
+  )
+endfunction()

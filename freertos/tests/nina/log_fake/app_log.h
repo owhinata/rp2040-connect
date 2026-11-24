@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 /* The host test's stand-in for the RAM log's macros (common/compat/log/
- * app_log.h) in common/drivers/nina/port/freertos/nina_bus_dma_rp2040.c:
+ * app_log.h) in common/drivers/nina/port/pico_sdk/nina_bus_dma_rp2040.c:
  * each message goes to test_log() of main.c, which keeps it for the test's
  * checks; a rate-limited one is marked "rl " (the limit itself is the RAM
  * log's, tested by common/tests/log_ram.c).

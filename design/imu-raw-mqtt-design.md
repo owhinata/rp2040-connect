@@ -484,7 +484,7 @@ The code of the sensor's 6667 Hz path and of the send path does not fit in the R
 OS's firmware runs it from RAM; the read-only data stays in the flash. The Zephyr build lists the sources in
 `zephyr/app/usb-console/ram_code.cmake` (Zephyr's code relocation, about 56 KiB of RAM, 63,960 bytes left). The NuttX
 build lists the objects in the board's linker script, and `.data`'s copy takes them (about 44 KiB, the heap keeps
-about 112 KiB). The FreeRTOS build uses `freertos/app/usb-console/ram_code.cmake` (section 13.2). A check after the
+about 112 KiB). The FreeRTOS build uses `common/pico_sdk/app/usb-console/ram_code.cmake` (section 13.2). A check after the
 link stops each build when a listed object's code is not in RAM or too little RAM is left (the drivers' README of
 each build). This took `cpu_active` while sending from 35.8% to 21.4% on the Zephyr build, from 36.1% to 23.8% on the NuttX build and from 33.1% to 19.7% on the FreeRTOS build.
 
@@ -1052,7 +1052,7 @@ and NuttX builds in [`freertos/drivers/README.md`](../freertos/drivers/README.md
 - SysTick interrupts are lost while interrupts are disabled (flash erases and programs). The tick hook
   compares the count with the TIMER at every tick and, when it is a whole tick behind, pends SysTick again,
   so that the port's usual handler counts the lost ticks one by one
-  (`freertos/app/usb-console/src/tick_catchup.h`; the tick never gets ahead of the TIMER). Without it a
+  (`common/compat/kernel_generic/tick_catchup.h`; the tick never gets ahead of the TIMER). Without it a
   `kv set` that included an erase lost 46-50 ms (2026-11-17, 3 times); with it, "TIMER ms − tick" was 2.8 to
   3.1 after 90 `kv set` of 100 characters (2026-11-18). `xTaskCatchUpTicks()` is not used: it can be called
   from tasks only, and the tick hook does not run for the ticks it adds.
@@ -1062,7 +1062,7 @@ and NuttX builds in [`freertos/drivers/README.md`](../freertos/drivers/README.md
 - The NINA's READY is waited for on GPIO10's edge interrupt (as in the Zephyr and NuttX
   builds).
 - The code of the sensor's 6667 Hz path and of the send path runs from RAM
-  (`freertos/app/usb-console/ram_code.cmake`; its read-only data stays in the flash): it does not fit in
+  (`common/pico_sdk/app/usb-console/ram_code.cmake`; its read-only data stays in the flash): it does not fit in
   the 16 KiB XIP cache, and the cache's misses took about 14 points of `cpu_active` while sending (33.1%
   without the placement, 19.7% with it, 2026-11-23). It takes about 49 KiB of RAM from newlib's
   `malloc()` (used by the shell, `zperf` and the NINA passthrough mode); about 87 KiB is left (the drivers'

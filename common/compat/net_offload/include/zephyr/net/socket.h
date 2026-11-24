@@ -24,7 +24,7 @@
  *   Zephyr's STRUCT_SECTION_ITERABLE() does; the linker script collects them
  *   sorted by name, that is by priority (the same number of digits), between
  *   _net_socket_register_list_start and _net_socket_register_list_end
- *   (freertos/drivers/compat/ld/section_extra_post_text.incl on the board,
+ *   (common/pico_sdk/drivers/compat/ld/section_extra_post_text.incl on the board,
  *   freertos/tests/sockets/net_socket_register.ld in the host tests).
  * - Name resolution: zsock_getaddrinfo() and zsock_freeaddrinfo() go to the
  *   registered resolver (<zephyr/net/socket_offload.h>,
@@ -113,7 +113,7 @@
 /* The Zephyr build's CONFIG_NET_SOCKETS_PRIORITY_DEFAULT (50), the priority
  * of NET_SOCKET_DEFAULT_PRIO.  CONFIG_NET_SOCKETS_OFFLOAD_PRIORITY (40), with
  * which an offloaded implementation registers, is in the prelude of the
- * shared sources (freertos/drivers/compat/common_prelude.h), as Zephyr's
+ * shared sources (common/compat/os_generic/common_prelude.h), as Zephyr's
  * Kconfig values are in every source.
  */
 #ifndef CONFIG_NET_SOCKETS_PRIORITY_DEFAULT

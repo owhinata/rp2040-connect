@@ -22,7 +22,7 @@
 #   layer's <zephyr/drivers/i2c.h>) with the shared core on fakes of the
 #   Pico SDK's GPIO, reset, IRQ, sync, DMA and TIMER functions and of the
 #   controllers' registers (freertos/tests/i2c_dw), and GPIO bank
-#   0's boundary (freertos/drivers/compat/rp2040/gpio_os_rp2040.c) under the
+#   0's boundary (freertos/common/pico_sdk/drivers/compat/rp2040/gpio_os_rp2040.c) under the
 #   layer's gpio0 and the LSM6DSO's FIFO interrupt on fakes of the Pico SDK's
 #   GPIO and IRQ functions (freertos/tests/gpio), and the IMU service's
 #   parts of the build (address conversions, hwinfo: freertos/tests/imu),
@@ -43,13 +43,11 @@
 #   host's sockets with the NINA's behaviour, driven over TCP on 127.0.0.1 by
 #   freertos/tests/telnet/client.py (python3; with the host's iperf3, which is skipped when
 #   missing) (freertos/tests/telnet, about 60 s), and the "sensor" command
-#   (freertos/drivers/sensor_shell with the shared sensor shell, its processing thread and
+#   (common/compat/os_generic/sensor_shell_os.c with the shared sensor shell, its processing thread and
 #   "imu cal") on the shared LSM6DSO driver and a fake sensor, from two sessions
 #   (freertos/tests/sensor_shell; skipped without freertos/stmemsc/lsm6dso_reg.c).
-# - The kernel tick's catch-up of ticks lost while interrupts are masked
-#   (freertos/app/usb-console/src/tick_catchup.h) on a model of SysTick
-#   (freertos/tests/tick, no kernel), and the LED's blink from the idle hook
-#   (freertos/app/usb-console/src/idle_blink.h, freertos/tests/idle).
+#   The tests of the shared code that needs no kernel, among them the tick's catch-up and the
+#   idle pass's blink of the builds on the Pico SDK, are common/tests/run.sh's.
 #
 #   freertos/script/host_tests.sh        run them
 #   freertos/script/host_tests.sh -v     also show the tests' output
@@ -60,7 +58,7 @@ verbose=0
 case "${1:-}" in
   "") ;;
   -v) verbose=1 ;;
-  -h|--help) sed -n '2,56p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
+  -h|--help) sed -n '2,53p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'; exit 0 ;;
   *) printf 'Unknown option: %s\n' "$1" >&2; exit 2 ;;
 esac
 
@@ -85,7 +83,7 @@ noff=../common/compat/net_offload
 lnet=../common/compat/libc_net
 seng=../common/compat/shell_engine
 kgen=../common/compat/kernel_generic
-inc=(-Itests/compat -Iapp/usb-console/src -Idrivers/compat -I"$kgen" -I"$noff/include" -Idrivers/include
+inc=(-Itests/compat -Iapp/usb-console/src -Idrivers/compat -I../common/compat/os_generic/include -I"$kgen" -I"$noff/include"
      -I../common/compat -I../common/compat/log -I"$kernel/include" -I"$posix" -I"$posix/utils")
 flags=(-std=gnu11 -O2 -g -pthread)
 strict=(-Wall -Wextra -Werror)
@@ -103,7 +101,7 @@ done
 for src in ../common/compat/zephyr_init.c ../common/compat/zephyr_work.c \
            ../common/compat/zephyr_rtio_workq.c; do
     obj="$out/common_$(basename "$src" .c).o"
-    cc "${flags[@]}" "${strict[@]}" "${inc[@]}" -include drivers/compat/common_prelude.h \
+    cc "${flags[@]}" "${strict[@]}" "${inc[@]}" -include ../common/compat/os_generic/common_prelude.h \
         -c "$src" -o "$obj"
     objs+=("$obj")
 done
@@ -127,23 +125,6 @@ else
 fi
 printf 'ok  zephyr_kernel_test (the layer kernel, FreeRTOS POSIX port)\n'
 
-# The kernel tick's catch-up (freertos/tests/tick): the step of the board's tick hook
-# (app/usb-console/src/tick_catchup.h) alone and on a model of SysTick, its pending bit and
-# masked interrupts.  No kernel.
-cc "${flags[@]}" "${strict[@]}" -Iapp/usb-console/src tests/tick/main.c -o "$out/tick"
-if (( verbose )); then
-    timeout 60 "$out/tick"
-else
-    timeout 60 "$out/tick" >"$out/log" 2>&1 || { cat "$out/log"; exit 1; }
-fi
-printf 'ok  tick (catch-up of lost ticks, model of SysTick)\n'
-
-# The LED's blink from the idle hook (freertos/tests/idle): its schedule
-# (app/usb-console/src/idle_blink.h) alone.  No kernel.
-cc "${flags[@]}" "${strict[@]}" -Iapp/usb-console/src tests/idle/main.c -o "$out/idle"
-timeout 60 "$out/idle" >"$out/log" 2>&1 || { cat "$out/log"; exit 1; }
-printf 'ok  idle (the LED'"'"'s blink from the idle hook)\n'
-
 # The shell (freertos/tests/shell): the line editor, two sessions at once on two consoles
 # (each task's stdout, the shared zshell.c and subcmd.c, the copies of Zephyr's fnmatch() and
 # getopt), the engine's "help" and the generic commands (common/shell/kernel_shell.c, with the
@@ -154,10 +135,10 @@ shinc=(-Itests/shell -I$seng -I../common/shell -I../common/compat/lib/utils/geto
        -fdata-sections)
 shobjs=()
 for src in $seng/cli.c $seng/getopt_state.c $seng/shell_console.c \
-           $seng/shell_engine.c $seng/shell_argv.c drivers/libc/stdio_wrap.c \
+           $seng/shell_engine.c $seng/shell_argv.c ../common/pico_sdk/drivers/libc/stdio_wrap.c \
            tests/shell/main.c ../common/shell/zshell.c ../common/shell/subcmd.c \
            ../common/shell/kernel_shell.c ../common/compat/log/fault_record.c \
-           drivers/compat/zephyr_sys_clock.c $seng/shell_serial.c \
+           ../common/pico_sdk/drivers/compat/zephyr_sys_clock.c $seng/shell_serial.c \
            ../common/compat/subsys/portability/posix/c_lib_ext/fnmatch.c \
            ../common/compat/lib/utils/getopt/getopt.c ../common/compat/lib/utils/getopt/getopt_long.c; do
     obj="$out/shell_$(basename "$src" .c).o"
@@ -185,17 +166,17 @@ fi
 printf 'ok  shell (two sessions, generic commands, serial session, FreeRTOS POSIX port)\n'
 
 # The key-value store (freertos/tests/kv): the board's flash boundary (the RP2040's shared part,
-# common/chip/rp2040/rp2040_flash_kv.c, on drivers/kv/rp2040_flash_kv_os.c) on fakes of the Pico
+# common/chip/rp2040/rp2040_flash_kv.c, on common/pico_sdk/drivers/kv/rp2040_flash_kv_os.c) on fakes of the Pico
 # SDK's flash functions (tests/kv/pico_fake), under the shared store as the
 # board builds it (common/imu/kv_store.c, kv_store_wipe.c, zephyr_flash_kv.c, the copies of
-# Zephyr's settings, NVS and hex.c with their options, drivers/kv/kv.cmake; the RP2040's part
+# Zephyr's settings, NVS and hex.c with their options, common/pico_sdk/drivers/kv/kv.cmake; the RP2040's part
 # without the prelude, as the board builds it), on the same kernel and layer objects.  Unused parts (the "kv" command's table) are left out by --gc-sections.
 kvinc=(-D_GNU_SOURCE -DPICO_FLASH_ASSUME_CORE1_SAFE=1 -DZ_SHELL_CMD_ROOT_GLOBAL -Itests/kv/pico_fake
        -I../common/chip/rp2040/include -I$seng -I../common/imu -I../common/compat/subsys/settings/include
        -I../common/compat/subsys/settings/src -ffunction-sections -fdata-sections)
 kvconfig=(-include ../common/compat/zephyr_kv_config.h -Wno-undef)
 kvobjs=()
-for src in drivers/kv/rp2040_flash_kv_os.c ../common/chip/rp2040/rp2040_flash_kv.c tests/kv/main.c \
+for src in ../common/pico_sdk/drivers/kv/rp2040_flash_kv_os.c ../common/chip/rp2040/rp2040_flash_kv.c tests/kv/main.c \
            ../common/imu/kv_store.c \
            ../common/compat/kv_store_wipe.c ../common/compat/zephyr_flash_kv.c \
            ../common/compat/lib/utils/hex.c ../common/compat/subsys/settings/src/settings.c \
@@ -207,7 +188,8 @@ for src in drivers/kv/rp2040_flash_kv_os.c ../common/chip/rp2040/rp2040_flash_kv
     extra=()
     case $src in
         ../common/chip/*) ;;
-        ../common/*) extra=(-include drivers/compat/common_prelude.h) ;;
+        ../common/pico_sdk/*) ;;
+        ../common/*) extra=(-include ../common/compat/os_generic/common_prelude.h) ;;
     esac
     case $src in
         */subsys/*) extra+=("${kvconfig[@]}") ;;
@@ -232,14 +214,14 @@ printf 'ok  kv (flash boundary and store, FreeRTOS POSIX port)\n'
 # and nina_os.c with its waits on READY's and the IRQ line's edge interrupts and its own raw
 # handler of IO_IRQ_BANK0) on fakes of the Pico SDK's DMA, GPIO, GPIO interrupt, IRQ, reset,
 # SPI and TIMER functions (tests/nina/pico_fake), under the shared core (nina_proto.c and nina_wait.c of
-# common/drivers/nina/internal, with the prelude, as drivers/nina/nina.cmake builds them), on a
+# common/drivers/nina/internal, with the prelude, as common/pico_sdk/drivers/nina/nina.cmake builds them), on a
 # kernel of its own and no
 # compatibility layer (none of its include directories either).  Twice: with the board's 1 ms
 # tick, and with a 4 ms one (configTICK_RATE_HZ 250); both times the tick count starts 5 s before
 # it wraps (configINITIAL_TICK_COUNT) and the fake TIMER 4.5 s before its low word wraps.
 ninainc=(-Itests/nina/pico_fake -Itests/nina/log_fake -I../common/drivers/nina/include
          -I../common/drivers/nina/internal -I../common/drivers/nina/port
-         -I../common/drivers/nina/port/freertos
+         -I../common/drivers/nina/port/freertos -I../common/drivers/nina/port/pico_sdk
          -Itests/compat -Iapp/usb-console/src -I"$kernel/include" -I"$posix" -I"$posix/utils")
 for hz in 1000 250; do
     ninadefs=(-DconfigTICK_RATE_HZ=$hz "-DconfigINITIAL_TICK_COUNT=((TickType_t)0 - 5 * $hz)"
@@ -251,14 +233,14 @@ for hz in 1000 250; do
         cc "${flags[@]}" -w "${ninainc[@]}" "${ninadefs[@]}" -c "$src" -o "$obj"
         ninaobjs+=("$obj")
     done
-    for src in ../common/drivers/nina/port/freertos/nina_bus_rp2040.c \
-               ../common/drivers/nina/port/freertos/nina_bus_dma_rp2040.c \
+    for src in ../common/drivers/nina/port/pico_sdk/nina_bus_rp2040.c \
+               ../common/drivers/nina/port/pico_sdk/nina_bus_dma_rp2040.c \
                ../common/drivers/nina/port/freertos/nina_os.c tests/nina/main.c \
                ../common/drivers/nina/internal/nina_proto.c ../common/drivers/nina/internal/nina_wait.c; do
         obj="$out/nina${hz}_$(basename "$src" .c).o"
         extra=()
         case $src in
-            ../common/drivers/nina/internal/nina_*.c) extra=(-include drivers/compat/common_prelude.h) ;;
+            ../common/drivers/nina/internal/nina_*.c) extra=(-include ../common/compat/os_generic/common_prelude.h) ;;
         esac
         cc "${flags[@]}" "${strict[@]}" "${ninainc[@]}" "${ninadefs[@]}" \
             "${extra[@]}" -c "$src" -o "$obj"
@@ -280,9 +262,9 @@ done
 # and TIMER functions and of the controllers' and the DMA's registers (tests/i2c_dw/pico_fake),
 # under the shared core (common/drivers/i2c_dw/i2c_dw.c, through tests/i2c_dw/i2c_dw_core.c,
 # which gives the test the core's static command words, with the prelude, as
-# drivers/i2c_dw/i2c_dw.cmake builds it), with the "i2c" command on it (the copy of Zephyr's
+# common/pico_sdk/drivers/i2c_dw/i2c_dw.cmake builds it), with the "i2c" command on it (the copy of Zephyr's
 # I2C shell, common/shell/i2c_shell.c, with its options and warnings as
-# drivers/i2c_shell/i2c_shell.cmake builds it, on the shared zshell.c, subcmd.c, the layer's
+# common/pico_sdk/drivers/i2c_shell/i2c_shell.cmake builds it, on the shared zshell.c, subcmd.c, the layer's
 # devices zephyr_device.c and the test's shell backend tests/i2c_dw/zshell_os_impl.h), on the
 # same kernel and layer objects.  Twice: as the
 # default build (i2c0 only, CONFIG_I2C_DW_I2C0), and with CONFIG_I2C_DW_I2C1 too
@@ -291,20 +273,21 @@ done
 # board's arm-none-eabi-gcc 15.2 with the same -Wextra does not).
 i2cdir=../common/drivers/i2c_dw
 i2cinc=(-Itests/i2c_dw/pico_fake -I"$i2cdir" -I"$i2cdir/include" -I"$i2cdir/internal"
-        -I"$i2cdir/port" -I"$i2cdir/port/freertos")
+        -I"$i2cdir/port" -I"$i2cdir/port/freertos"
+        -I"$i2cdir/port/pico_sdk")
 for variant in i2c0 i2c1; do
     i2cdefs=(-DCONFIG_I2C_DW_I2C0=1)
     [[ $variant == i2c1 ]] && i2cdefs+=(-DCONFIG_I2C_DW_I2C1=1)
     i2cobjs=()
-    for src in "$i2cdir/port/freertos/i2c_dw_dma_os_rp2040.c" tests/i2c_dw/main.c \
+    for src in "$i2cdir/port/pico_sdk/i2c_dw_dma_os_rp2040.c" tests/i2c_dw/main.c \
                tests/i2c_dw/i2c_dw_core.c ../common/shell/i2c_shell.c \
                ../common/shell/zshell.c ../common/shell/subcmd.c ../common/compat/zephyr_device.c \
                ../common/compat/subsys/portability/posix/c_lib_ext/fnmatch.c; do
         obj="$out/i2c_${variant}_$(basename "$src" .c).o"
         extra=()
         case $src in
-            */i2c_dw_core.c) extra=(-include drivers/compat/common_prelude.h -Wno-sign-compare) ;;
-            */i2c_shell.c) extra=(-include drivers/compat/common_prelude.h -Wno-sign-compare
+            */i2c_dw_core.c) extra=(-include ../common/compat/os_generic/common_prelude.h -Wno-sign-compare) ;;
+            */i2c_shell.c) extra=(-include ../common/compat/os_generic/common_prelude.h -Wno-sign-compare
                                   -Wno-unused-parameter -DCONFIG_I2C_SHELL_BUFFER_SIZE=64
                                   -DCONFIG_LOG_DEFAULT_LEVEL=3) ;;
             */zshell.c) extra=(-Dcalloc=test_calloc -Dfree=test_free) ;;
@@ -329,27 +312,28 @@ done
 printf 'ok  i2c_dw (I2C0 and I2C1 boundaries and devices, DMA reads on the Pico SDK DMA, Zephyr I2C API, "i2c" command, FreeRTOS POSIX port)\n'
 
 # GPIO bank 0 (freertos/tests/gpio): the board's boundary of the layer's gpio0
-# (drivers/compat/rp2040/gpio_os_rp2040.c) on fakes of the Pico SDK's GPIO and IRQ functions
+# (common/pico_sdk/drivers/compat/rp2040/gpio_os_rp2040.c) on fakes of the Pico SDK's GPIO and IRQ functions
 # (tests/gpio/pico_fake), under common/compat/zephyr_gpio.c and zephyr_device.c and the LSM6DSO's
 # INT1 line (the driver's OS part on Zephyr, common/drivers/lsm6dso/port/zephyr/lsm6dso_os.c,
 # which the test includes; with ST's lsm6dso_reg.h, freertos/stmemsc, for the driver's headers;
 # the stream's work queue, which the test does not start, is left out by --gc-sections), with
-# the prelude and CONFIG_LSM6DSO_STREAM as drivers/lsm6dso/lsm6dso.cmake builds them; the
+# the prelude and CONFIG_LSM6DSO_STREAM as common/pico_sdk/drivers/lsm6dso/lsm6dso.cmake builds them; the
 # layer's start (common/compat/zephyr_init.c) again with that option (zephyr_compat_initialize()
 # starts gpio0), on the same kernel objects.
 if [[ -f stmemsc/lsm6dso_reg.h ]]; then
     lsm=../common/drivers/lsm6dso
-    gpioinc=(-Itests/gpio/pico_fake -I$lsm/include -I$lsm/internal -I$lsm/port -I$lsm/port/freertos
+    gpioinc=(-Itests/gpio/pico_fake -I$lsm/include -I$lsm/internal -I$lsm/port -I$lsm/port/pico_sdk
              -I$lsm/port/zephyr -I../common/drivers/stmemsc -Istmemsc
              -DCONFIG_LSM6DSO_STREAM=1 -ffunction-sections -fdata-sections)
     gpioobjs=()
-    for src in drivers/compat/rp2040/gpio_os_rp2040.c ../common/compat/zephyr_init.c tests/gpio/main.c \
+    for src in ../common/pico_sdk/drivers/compat/rp2040/gpio_os_rp2040.c ../common/compat/zephyr_init.c tests/gpio/main.c \
                ../common/compat/zephyr_gpio.c ../common/compat/zephyr_device.c; do
         obj="$out/gpio_$(basename "$src" .c).o"
         extra=()
         case $src in
-            ../common/*) extra=(-include drivers/compat/common_prelude.h) ;;
-            tests/gpio/*) extra=(-include drivers/compat/common_prelude.h) ;;
+            ../common/pico_sdk/*) ;;
+            ../common/*) extra=(-include ../common/compat/os_generic/common_prelude.h) ;;
+            tests/gpio/*) extra=(-include ../common/compat/os_generic/common_prelude.h) ;;
         esac
         cc "${flags[@]}" "${strict[@]}" "${gpioinc[@]}" "${inc[@]}" "${extra[@]}" -c "$src" -o "$obj"
         gpioobjs+=("$obj")
@@ -372,12 +356,12 @@ fi
 # The IMU service's FreeRTOS parts (freertos/tests/imu): the address conversions
 # (common/compat/libc_net/inet.c, the layer's <zephyr/net/socket.h> on
 # common/compat/libc_net/include) and
-# hwinfo_get_device_id() (drivers/compat/rp2040/zephyr_hwinfo.c) on a fake of
+# hwinfo_get_device_id() (common/pico_sdk/drivers/compat/rp2040/zephyr_hwinfo.c) on a fake of
 # pico_get_unique_board_id(), on the same kernel and layer objects.  tests/imu/fake
 # (pico/unique_id.h) comes first.
 imuinc=(-Itests/imu/fake -I$lnet/include)
 imuobjs=()
-for src in $lnet/inet.c drivers/compat/rp2040/zephyr_hwinfo.c tests/imu/main.c; do
+for src in $lnet/inet.c ../common/pico_sdk/drivers/compat/rp2040/zephyr_hwinfo.c tests/imu/main.c; do
     obj="$out/imu_$(basename "$src" .c).o"
     cc "${flags[@]}" "${strict[@]}" "${imuinc[@]}" "${inc[@]}" -c "$src" -o "$obj"
     imuobjs+=("$obj")
@@ -393,7 +377,7 @@ printf 'ok  imu (address conversions, hwinfo, FreeRTOS POSIX port)\n'
 # The MQTT transport (freertos/tests/mqtt): the shared common/imu/imu_raw_mqtt.c with its JSON
 # messages (imu_raw_status.c), the port's MQTT client (mqtt_min.c, with -Wno-sign-compare) and
 # its socket layer (mqtt_min_sock.c), the queue and the packets (imu_raw_queue.c,
-# imu_raw_packet.c), with the prelude, as drivers/imu/imu.cmake builds them, on the build's
+# imu_raw_packet.c), with the prelude, as common/pico_sdk/drivers/imu/imu.cmake builds them, on the build's
 # interface (common/compat/net_offload/zephyr_net_if.c), fake zsock_*() calls with the NINA's
 # waits and a fake broker (tests/mqtt/main.c), on the same kernel and layer objects: the thread, the
 # connection, the messages, the intervals, congestion, failures, CONNACK, the stop.  It waits
@@ -408,7 +392,8 @@ for src in tests/mqtt/main.c $lnet/inet.c "${mqttsrcs[@]}"; do
     extra=()
     case $src in
         $noff/*|$lnet/*) ;;
-        ../common/*) extra=(-include drivers/compat/common_prelude.h) ;;
+        ../common/pico_sdk/*) ;;
+        ../common/*) extra=(-include ../common/compat/os_generic/common_prelude.h) ;;
     esac
     case $src in
         */mqtt_min.c) extra+=(-Wno-sign-compare) ;;
@@ -440,7 +425,8 @@ if [[ -x $imuhost ]] && command -v python3 >/dev/null; then
         extra=()
         case $src in
             $noff/*) ;;
-            ../common/*) extra=(-include drivers/compat/common_prelude.h) ;;
+            ../common/pico_sdk/*) ;;
+            ../common/*) extra=(-include ../common/compat/os_generic/common_prelude.h) ;;
         esac
         case $src in
             */mqtt_min.c) extra+=(-Wno-sign-compare) ;;
@@ -461,8 +447,8 @@ else
 fi
 
 # The time synchronization (freertos/tests/time_sync): the shared common/imu/time_sync.c and
-# time_offset.c with the prelude, as drivers/imu/imu.cmake builds them, on the build's realtime
-# clock (drivers/compat/zephyr_sys_clock.c), interface (common/compat/net_offload/zephyr_net_if.c)
+# time_offset.c with the prelude, as common/pico_sdk/drivers/imu/imu.cmake builds them, on the build's realtime
+# clock (common/pico_sdk/drivers/compat/zephyr_sys_clock.c), interface (common/compat/net_offload/zephyr_net_if.c)
 # and net_mgmt events (common/compat/zephyr_net_mgmt.c with the "net_mgmt" thread), the build's
 # shell on a console that captures, fake zsock_*() calls with a fake NTP server, and the TIMER's
 # registers on the test port's clock (tests/compat/rp2040_timer_us.h, under common/chip's
@@ -471,9 +457,9 @@ tsinc=(-DZ_SHELL_CMD_ROOT_GLOBAL -DCONFIG_GETOPT_LONG=1 -U_FORTIFY_SOURCE
        -Itests/shell -I$seng -I$lnet/include -I../common/shell
        -I../common/compat/lib/utils/getopt -I../common/imu -ffunction-sections -fdata-sections)
 tsobjs=()
-for src in tests/time_sync/main.c drivers/compat/zephyr_sys_clock.c $noff/zephyr_net_if.c \
+for src in tests/time_sync/main.c ../common/pico_sdk/drivers/compat/zephyr_sys_clock.c $noff/zephyr_net_if.c \
            $lnet/inet.c $seng/getopt_state.c $seng/shell_console.c \
-           $seng/shell_engine.c $seng/shell_argv.c drivers/libc/stdio_wrap.c \
+           $seng/shell_engine.c $seng/shell_argv.c ../common/pico_sdk/drivers/libc/stdio_wrap.c \
            ../common/shell/zshell.c ../common/shell/subcmd.c \
            ../common/compat/subsys/portability/posix/c_lib_ext/fnmatch.c \
            ../common/compat/lib/utils/getopt/getopt.c ../common/compat/lib/utils/getopt/getopt_long.c \
@@ -482,7 +468,8 @@ for src in tests/time_sync/main.c drivers/compat/zephyr_sys_clock.c $noff/zephyr
     extra=()
     case $src in
         ../common/shell/*|*/fnmatch.c|*/getopt*.c|$noff/*|$lnet/*) ;;
-        ../common/*) extra=(-include drivers/compat/common_prelude.h) ;;
+        ../common/pico_sdk/*) ;;
+        ../common/*) extra=(-include ../common/compat/os_generic/common_prelude.h) ;;
     esac
     case $src in
         *zshell.c|*shell_console.c) extra+=(-Dcalloc=test_calloc -Dmalloc=test_malloc -Dfree=test_free) ;;
@@ -500,7 +487,7 @@ printf 'ok  time_sync (realtime clock, TIMER read, thread, NTP exchanges, ntp st
 
 # The layer's socket part (freertos/tests/sockets): the reduced copies of Zephyr's socket layer
 # and descriptor table (common/compat/net_offload: subsys/net/lib/sockets, lib/os/zvfs, with
-# -Wno-sign-compare as drivers/compat/compat.cmake builds them) and k_heap
+# -Wno-sign-compare as common/pico_sdk/drivers/compat/compat.cmake builds them) and k_heap
 # (common/compat/zephyr_heap.c, with the prelude, as on the board), on fake socket implementations registered with
 # NET_SOCKET_REGISTER() and NET_SOCKET_OFFLOAD_REGISTER() and the host linker's section of them
 # (tests/sockets/net_socket_register.ld), on the same kernel and layer objects: the descriptor
@@ -515,7 +502,7 @@ for src in tests/sockets/main.c "${socksrcs[@]}"; do
     extra=()
     case $src in
         */subsys/*|*/lib/os/*) extra=(-Wno-sign-compare) ;;
-        ../common/compat/zephyr_heap.c) extra=(-include drivers/compat/common_prelude.h) ;;
+        ../common/compat/zephyr_heap.c) extra=(-include ../common/compat/os_generic/common_prelude.h) ;;
     esac
     cc "${flags[@]}" "${strict[@]}" -I$lnet/include "${inc[@]}" "${extra[@]}" -c "$src" -o "$obj"
     layerobjs+=("$obj")
@@ -532,7 +519,7 @@ printf 'ok  sockets (descriptor table, implementations, dispatch, fcntl, poll, r
 # (../common/drivers/nina/port/zephyr/nina_socket.c: the offload, its wait loops, its resolver on its
 # k_heap) on the layer's socket part as above and on the shared core
 # (common/drivers/nina/nina_sock.c, nina_dns.c, internal/nina_wait.c), with the prelude and
-# NINA_OS_DNS_OFFLOAD, as drivers/nina/nina.cmake builds them, and the address conversions
+# NINA_OS_DNS_OFFLOAD, as common/pico_sdk/drivers/nina/nina.cmake builds them, and the address conversions
 # (common/compat/libc_net/inet.c), on a fake module and a fake clock (the test's
 # nina_proto_request(), nina_os.h, and the binding's k_uptime_get() and k_sleep() through
 # -Wl,--wrap), on the same kernel and layer objects.  common/compat/libc_net/include (newlib's
@@ -548,7 +535,8 @@ for src in ../common/drivers/nina/port/zephyr/nina_socket.c $lnet/inet.c tests/s
     case $src in
         $noff/subsys/*|$noff/lib/os/*) extra=(-Wno-sign-compare) ;;
         $noff/*|$lnet/*) ;;
-        ../common/*) extra=(-include drivers/compat/common_prelude.h) ;;
+        ../common/pico_sdk/*) ;;
+        ../common/*) extra=(-include ../common/compat/os_generic/common_prelude.h) ;;
     esac
     case $src in
         */nina_socket.c|*/nina_sock.c|*/nina_dns.c) extra+=(-DNINA_OS_DNS_OFFLOAD) ;;
@@ -567,7 +555,7 @@ printf 'ok  socket (descriptors, wait loops, options, poll, resolver, FreeRTOS P
 
 # Wi-Fi (freertos/tests/wifi): the build's network parts (common/compat/net_offload/
 # zephyr_net_if.c, zephyr_net_init.c) under the shared ones as
-# drivers/wifi/wifi.cmake builds them (the NINA core's Wi-Fi operations common/drivers/nina/
+# common/pico_sdk/drivers/wifi/wifi.cmake builds them (the NINA core's Wi-Fi operations common/drivers/nina/
 # nina_wifi.c and its Zephyr binding common/drivers/nina/port/zephyr/nina_net.c, the
 # layer's net_mgmt and Wi-Fi requests, the stored credentials and their settings backend, the
 # Wi-Fi profile, the "wifi" command and the copy of Zephyr's wifi_credentials_shell.c, with the
@@ -580,7 +568,7 @@ printf 'ok  socket (descriptors, wait loops, options, poll, resolver, FreeRTOS P
 # firmware's capability bits (a fake nina_proto_probe_capabilities()): the link kept, the asynchronous
 # scan and its failures, a loss of the link during the scan.
 wifiinc=(-D_GNU_SOURCE -DZ_SHELL_CMD_ROOT_GLOBAL -DCONFIG_GETOPT_LONG=1 -DCONFIG_WIFI_CREDENTIALS=1
-         -U_FORTIFY_SOURCE -Itests/shell -I$seng -Idrivers/wifi
+         -U_FORTIFY_SOURCE -Itests/shell -I$seng
          -I../common/shell -I../common/compat/lib/utils/getopt -I../common/drivers/nina/include
          -I../common/drivers/nina/internal -I../common/drivers/nina/port
          -I../common/imu -I../common/tests -I../common/compat/subsys/settings/include
@@ -589,7 +577,7 @@ wifiobjs=()
 for src in $noff/zephyr_net_if.c $noff/zephyr_net_init.c ../common/shell/ifconfig_shell.c \
            tests/wifi/main.c \
            $seng/cli.c $seng/getopt_state.c $seng/shell_console.c \
-           $seng/shell_engine.c $seng/shell_argv.c drivers/libc/stdio_wrap.c \
+           $seng/shell_engine.c $seng/shell_argv.c ../common/pico_sdk/drivers/libc/stdio_wrap.c \
            ../common/shell/zshell.c ../common/shell/subcmd.c \
            ../common/compat/subsys/portability/posix/c_lib_ext/fnmatch.c \
            ../common/compat/lib/utils/getopt/getopt.c ../common/compat/lib/utils/getopt/getopt_long.c \
@@ -611,7 +599,8 @@ for src in $noff/zephyr_net_if.c $noff/zephyr_net_init.c ../common/shell/ifconfi
     case $src in
         ../common/tests/*) ;;
         ../common/shell/*|*/fnmatch.c|*/getopt*.c|$noff/*|$lnet/*) ;;
-        ../common/*) extra=(-include drivers/compat/common_prelude.h) ;;
+        ../common/pico_sdk/*) ;;
+        ../common/*) extra=(-include ../common/compat/os_generic/common_prelude.h) ;;
     esac
     case $src in
         */subsys/settings/*|*/subsys/crc/*|*/subsys/kvss/*) extra+=("${kvconfig[@]}") ;;
@@ -640,7 +629,7 @@ printf 'ok  wifi (interface, events, credentials, reconnection, wifi and ifconfi
 # (common/compat/shell_engine/shell_telnet.c, its port a variable here) and shell, the port's
 # iperf3 and the
 # "zperf" command (common/compat/zperf_iperf3.c, zephyr_zperf_shell.c, with the prelude, as
-# drivers/zperf/zperf.cmake builds them), on the zsock_*() calls over the host's sockets with
+# common/pico_sdk/drivers/zperf/zperf.cmake builds them), on the zsock_*() calls over the host's sockets with
 # the NINA's behaviour (tests/telnet/host_sock.c), on the same kernel and layer objects.  The
 # program is the board; tests/telnet/client.py starts it and is the client: the Telnet
 # protocol and line ends, a second client refused, 140 connections and disconnections, the
@@ -655,16 +644,16 @@ if command -v python3 >/dev/null; then
     tnobjs=()
     for src in $seng/shell_telnet.c tests/telnet/main.c tests/telnet/host_sock.c \
                $seng/getopt_state.c $seng/shell_console.c $seng/shell_engine.c \
-               $seng/shell_argv.c drivers/libc/stdio_wrap.c ../common/shell/zshell.c \
+               $seng/shell_argv.c ../common/pico_sdk/drivers/libc/stdio_wrap.c ../common/shell/zshell.c \
                ../common/shell/subcmd.c ../common/compat/subsys/portability/posix/c_lib_ext/fnmatch.c \
                ../common/compat/lib/utils/getopt/getopt.c ../common/compat/lib/utils/getopt/getopt_long.c \
                ../common/compat/zperf_iperf3.c ../common/compat/zephyr_zperf_shell.c; do
         obj="$out/telnet_$(basename "$src" .c).o"
         extra=()
         case $src in
-            */zperf_iperf3.c) extra=(-include drivers/compat/common_prelude.h
+            */zperf_iperf3.c) extra=(-include ../common/compat/os_generic/common_prelude.h
                                      -Dmalloc=zperf_test_malloc -Dfree=zperf_test_free) ;;
-            */zephyr_zperf_shell.c) extra=(-include drivers/compat/common_prelude.h) ;;
+            */zephyr_zperf_shell.c) extra=(-include ../common/compat/os_generic/common_prelude.h) ;;
             */shell_telnet.c) extra=(-DCONFIG_SHELL_TELNET_PORT=test_telnet_port
                                     "-include" tests/telnet/port.h) ;;
             *zshell.c|*shell_console.c) extra=(-Dcalloc=test_calloc -Dmalloc=test_malloc -Dfree=test_free) ;;
@@ -686,11 +675,11 @@ fi
 
 # The "sensor" command (freertos/tests/sensor_shell): the shared common/shell/
 # sensor_shell.c, the copy of Zephyr's sensor_shell_stream.c with its processing thread and the
-# build's part (drivers/sensor_shell/sensor_shell_os.c), with "imu cal" (common/imu/imu_cal.c,
+# build's part (../common/compat/os_generic/sensor_shell_os.c), with "imu cal" (common/imu/imu_cal.c,
 # imu_cal_codec.c, on a fake key-value store), on the shared LSM6DSO driver with its FIFO stream
 # and ST's lsm6dso_reg.c (freertos/stmemsc), the layer's devices, gpio0, RTIO and its work queue
 # and the default sensor iodev and decoder, with the prelude, CONFIG_LSM6DSO_STREAM and the
-# per-file options of drivers/lsm6dso/lsm6dso.cmake and drivers/sensor_shell/sensor_shell.cmake;
+# per-file options of common/pico_sdk/drivers/lsm6dso/lsm6dso.cmake and common/pico_sdk/drivers/sensor_shell/sensor_shell.cmake;
 # the layer's start (common/compat/zephyr_init.c) again with that option (gpio0); the build's
 # shell with two sessions on consoles that capture; a fake LSM6DSOX behind a fake i2c0 and a fake INT1 on the layer's GPIO
 # boundary.  On the same kernel objects.  The results on the session that asked, the wait of
@@ -698,18 +687,18 @@ fi
 # from the other, a session whose terminal is gone, the FIFO taken by another stream.  About 2 s.
 if [[ -f stmemsc/lsm6dso_reg.c ]]; then
     ssinc=(-D_GNU_SOURCE -DZ_SHELL_CMD_ROOT_GLOBAL -DCONFIG_GETOPT_LONG=1 -DCONFIG_LSM6DSO_STREAM=1
-           -U_FORTIFY_SOURCE -Itests/shell -I$seng -Idrivers/sensor_shell -Idrivers/lsm6dso
+           -U_FORTIFY_SOURCE -Itests/shell -I$seng
            -I../common/shell -I../common/compat/lib/utils/getopt
-           -I../common/drivers/lsm6dso/port/freertos
+           -I../common/drivers/lsm6dso/port/pico_sdk
            -I../common/drivers/lsm6dso/port/zephyr -I../common/drivers/lsm6dso/include
            -I../common/drivers/lsm6dso/internal -I../common/drivers/lsm6dso/port
            -I../common/drivers/stmemsc -Istmemsc -I../common/imu -ffunction-sections -fdata-sections)
     cc "${flags[@]}" -w -Istmemsc -c stmemsc/lsm6dso_reg.c -o "$out/sensor_lsm6dso_reg.o"
     ssobjs=("$out/sensor_lsm6dso_reg.o")
     for src in tests/sensor_shell/main.c ../common/compat/zephyr_init.c \
-               drivers/sensor_shell/sensor_shell_os.c \
+               ../common/compat/os_generic/sensor_shell_os.c \
                $seng/cli.c $seng/getopt_state.c $seng/shell_console.c \
-               $seng/shell_engine.c $seng/shell_argv.c drivers/libc/stdio_wrap.c \
+               $seng/shell_engine.c $seng/shell_argv.c ../common/pico_sdk/drivers/libc/stdio_wrap.c \
                ../common/shell/zshell.c ../common/shell/subcmd.c \
                ../common/compat/subsys/portability/posix/c_lib_ext/fnmatch.c \
                ../common/compat/lib/utils/getopt/getopt.c ../common/compat/lib/utils/getopt/getopt_long.c \
@@ -729,9 +718,10 @@ if [[ -f stmemsc/lsm6dso_reg.c ]]; then
         obj="$out/sensor_$(basename "$src" .c).o"
         extra=()
         case $src in
-            ../common/shell/sensor_shell.c) extra=(-include drivers/compat/common_prelude.h) ;;
+            ../common/shell/sensor_shell.c) extra=(-include ../common/compat/os_generic/common_prelude.h) ;;
             ../common/shell/*|*/fnmatch.c|*/getopt*.c) ;;
-            ../common/*|*/sensor_shell_os.c|tests/sensor_shell/*) extra=(-include drivers/compat/common_prelude.h) ;;
+            ../common/pico_sdk/*) ;;
+            ../common/*|*/sensor_shell_os.c|tests/sensor_shell/*) extra=(-include ../common/compat/os_generic/common_prelude.h) ;;
         esac
         case $src in
             */lsm6dso_sensor.c) extra+=(-Wno-unused-parameter -Wno-sign-compare -Wno-cast-function-type) ;;

@@ -3,7 +3,7 @@
  * the core needs from the OS and its USB serial port.  Each OS binding
  * implements it next to its other parts:
  * common/drivers/nina/port/zephyr/nina_passthrough_os.c (Zephyr's USB device
- * stack, CDC ACM), common/drivers/nina/port/freertos/nina_passthrough_os.c
+ * stack, CDC ACM), common/drivers/nina/port/pico_sdk/nina_passthrough_os.c
  * (TinyUSB and the Pico SDK, without the scheduler) and
  * common/drivers/nina/port/nuttx/nina_passthrough_os.c (cdcacm's
  * /dev/ttyACM0); the host tests replace it with fakes.  The binding also

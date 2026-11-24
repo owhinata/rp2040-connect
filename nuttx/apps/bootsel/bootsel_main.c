@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: MIT */
 /* The "bootsel" command: the FreeRTOS build's cmd_bootsel()
- * (freertos/app/usb-console/src/commands.c), with the same message.  It
+ * (common/pico_sdk/app/usb-console/src/commands.c), with the same message.  It
  * restarts into the boot ROM's USB loader (the RPI-RP2 drive), as holding
  * the board's REC pad low at reset does, through the board's
  * rp2040_reset_usb_boot() (<arch/board/rp2040_restart.h>).  Arguments are

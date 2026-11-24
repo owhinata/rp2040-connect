@@ -45,11 +45,13 @@ set -eu
 
 net_offload="${root}/../common/compat/net_offload"
 mapfile -t files < <(find "${root}/app" "${root}/drivers" "${root}/tests" \
-  "${root}"/../common/drivers/*/port/freertos "${net_offload}" \
+  "${root}"/../common/drivers/*/port/freertos "${root}"/../common/drivers/*/port/pico_sdk \
+  "${net_offload}" \
   "${root}/../common/compat/libc_net" "${root}/../common/tests/zephyr_kernel" \
   "${root}/../common/compat/shell_engine" "${root}/../common/compat/kernel_generic" \
   "${root}/../common/compat/zephyr_heap.c" "${root}/../common/compat/zephyr_heap.h" \
-  "${root}/../common/tests/kernel_generic_host" "${root}/../common/chip" -type f \
+  "${root}/../common/tests/kernel_generic_host" "${root}/../common/chip" \
+  "${root}/../common/pico_sdk" "${root}/../common/compat/os_generic" -type f \
   \( -name '*.c' -o -name '*.h' \) ! -name FreeRTOSConfig.h \
   ! -path "${net_offload}/lib/*" ! -path "${net_offload}/subsys/*" \
   ! -path "${net_offload}/include/zephyr/sys/fdtable.h" \

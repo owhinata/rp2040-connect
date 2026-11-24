@@ -3,7 +3,7 @@
  * port: the shared common/imu/imu_raw_mqtt.c with its JSON messages
  * (imu_raw_status.c), the port's MQTT client (mqtt_min.c) and its socket
  * layer (mqtt_min_sock.c), the queue and the packets (imu_raw_queue.c,
- * imu_raw_packet.c), with the prelude, as freertos/drivers/imu/imu.cmake
+ * imu_raw_packet.c), with the prelude, as common/pico_sdk/drivers/imu/imu.cmake
  * builds them, on the build's interface (freertos/drivers/compat/
  * zephyr_net_if.c) and the layer's thread, mutex, semaphore, sleeps and
  * clock, with fake zsock_*() calls (here) that behave as the build's NINA

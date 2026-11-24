@@ -4,9 +4,9 @@
  * on FreeRTOS's task notifications and delays and the TIMER, the devices i2c0 and
  * i2c1 and their Zephyr I2C API in i2c_dw_instance.h, the DMA reads'
  * channels in i2c_dw_dma_os_rp2040.c) and
- * freertos/drivers/compat/zephyr/drivers/i2c.h, under the shared core
+ * common/compat/os_generic/include/zephyr/drivers/i2c.h, under the shared core
  * (common/drivers/i2c_dw/i2c_dw.c, through i2c_dw_core.c here, with the
- * prelude, as freertos/drivers/i2c_dw/i2c_dw.cmake builds it), on fakes of
+ * prelude, as common/pico_sdk/drivers/i2c_dw/i2c_dw.cmake builds it), on fakes of
  * the Pico SDK's GPIO, reset, IRQ, sync, TIMER and DMA functions
  * (pico_fake/, implemented here: they record the calls), on arrays in place of I2C0's and I2C1's
  * registers and a structure in place of the DMA's, which a task of this test

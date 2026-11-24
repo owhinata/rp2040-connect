@@ -11,7 +11,7 @@
 /* The tick is 1 ms (the Zephyr build's CONFIG_SYS_CLOCK_TICKS_PER_SEC=10000
  * and the NuttX build's CONFIG_USEC_PER_TICK=100 are 100 us).  It is 32 bits
  * wide (the RP2040 port has no 64-bit tick) and wraps after about 49.7 days;
- * the time since the start comes from the TIMER instead (src/os_clock.h).
+ * the time since the start comes from the TIMER instead (rp2040_timer_us()).
  * Both other builds are tickless; this one has a periodic tick (SysTick),
  * whose handler counts as CPU load.
  */
@@ -48,6 +48,13 @@
 #define configNUMBER_OF_CORES                   1
 #define configSUPPORT_PICO_SYNC_INTEROP         1
 #define configSUPPORT_PICO_TIME_INTEROP         1
+
+/* The key-value store's flash operations do not stop core 1 while XIP is
+ * off (common/pico_sdk/drivers/kv/rp2040_flash_kv_os.c).
+ */
+#if configNUMBER_OF_CORES != 1
+#error "rp2040_flash_kv_os.c does not stop the other core while XIP is off"
+#endif
 
 /* Kernel objects ------------------------------------------------------------*/
 

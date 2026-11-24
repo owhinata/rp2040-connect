@@ -1,12 +1,12 @@
 /* SPDX-License-Identifier: MIT */
 /* The host test of the FreeRTOS build's parts of the IMU service on the
- * FreeRTOS POSIX port, as freertos/drivers/imu/imu.cmake builds them:
+ * FreeRTOS POSIX port, as common/pico_sdk/drivers/imu/imu.cmake builds them:
  *
  * - inet_pton() and inet_ntop() (common/compat/libc_net/inet.c), Zephyr's
  *   zsock_inet_pton() and zsock_inet_ntop() of the layer's
  *   <zephyr/net/socket.h>: dotted decimal IPv4 addresses only, POSIX's
  *   return values and errno.
- * - hwinfo_get_device_id() (freertos/drivers/compat/rp2040/zephyr_hwinfo.c)
+ * - hwinfo_get_device_id() (common/pico_sdk/drivers/compat/rp2040/zephyr_hwinfo.c)
  *   on a fake of pico_get_unique_board_id(): the 8 bytes unchanged, cut to
  *   the caller's length.
  *

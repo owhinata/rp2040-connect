@@ -1,5 +1,5 @@
 /* SPDX-License-Identifier: MIT */
-/* The part of the Pico SDK that common/drivers/nina/port/freertos/nina_bus_rp2040.c with
+/* The part of the Pico SDK that common/drivers/nina/port/pico_sdk/nina_bus_rp2040.c with
  * its DMA part (nina_bus_dma_rp2040.c there) and the NINA core's FreeRTOS
  * binding (common/drivers/nina/port/freertos/nina_os.c: the GPIO interrupt
  * functions for READY's and the IRQ line's edges, the TIMER) use, for their

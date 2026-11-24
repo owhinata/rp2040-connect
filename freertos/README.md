@@ -171,17 +171,10 @@ The console is the USB CDC ACM port (UART0 is not used). Opening a terminal show
 
 | Place | Content |
 |---|---|
-| `app/usb-console/` | The application: start-up, commands, kernel configuration (`FreeRTOSConfig.h`) |
-| `drivers/compat/` | The FreeRTOS part of the Zephyr compatibility layer (runs the shared sources in `common/`) |
-| `drivers/shell/`, `drivers/libc/` | The USB serial transport of the console and the connection of standard output (the console, shell, Telnet, RAM log and network layer are in `../common/`) |
-| `drivers/kv/` | Reading and writing the flash of the key-value store |
-| `drivers/nina/` | Adds the NINA-W102 driver to the build (the driver is `../common/drivers/nina/`) |
-| `drivers/wifi/` | Brings in Wi-Fi (the code is in `common/`) |
-| `drivers/telnet/`, `drivers/zperf/` | Bring in the Telnet shell and the throughput test (the code is in `../common/`) |
-| `drivers/i2c_dw/` | I2C0 and DMA (the sensor's bus) |
-| `drivers/lsm6dso/` | Build rules and the start-up check of the LSM6DSOX (the driver and its device are in `common/drivers/lsm6dso/`) |
-| `drivers/imu/` | Brings in the acquisition, the transport and the time synchronization (in `common/imu/`) |
-| `drivers/sensor_shell/` | Brings in the `sensor` command (in `common/shell/`) |
+| `app/usb-console/` | The FreeRTOS part of the application: the kernel configuration (`FreeRTOSConfig.h`), the tick, the priorities, the FreeRTOS parts of the start, the fatal errors and `ps` (the start sequence, the commands, the idle pass and the fatal error handling are in `../common/pico_sdk/app/usb-console/`) |
+| `drivers/compat/` | The FreeRTOS part of the Zephyr compatibility layer (runs the shared sources of `common/`) |
+| `../common/pico_sdk/` | What the builds on the Pico SDK share: the USB serial console and the standard output, the KV flash, GPIO, the cmake files that bring each driver into the build, the list of the code in RAM |
+| `../common/drivers/<driver>/port/` | The drivers' glue: `pico_sdk/` (SPI, DMA, pins, device definitions) and `freertos/` (waits and locks) |
 | `tests/` | Host tests |
 | `script/` | `setup.sh`, `build.sh`, `flash.sh`, `format.sh`, `host_tests.sh` |
 | `PORTING_PLAN.md`, `PORTING_STATUS.md` | The plan of the port, and the record of its progress and of what was checked (in Japanese) |

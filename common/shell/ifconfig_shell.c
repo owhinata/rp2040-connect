@@ -2,7 +2,7 @@
 /* The "ifconfig" shell command of the builds that run the Zephyr shell's
  * commands on the compatibility layer's shell and its network part for an
  * OS without a network stack (the FreeRTOS build,
- * freertos/drivers/wifi/wifi.cmake; NuttX has nsh's): the NuttX build's
+ * common/pico_sdk/drivers/wifi/wifi.cmake; NuttX has nsh's): the NuttX build's
  * "ifconfig" (nsh) without arguments or with the interface's name, with the
  * same lines, on the state of the layer's one interface
  * (<zephyr/net/net_if.h>, common/compat/net_offload/zephyr_net_if.c), which

@@ -1,12 +1,12 @@
 /* SPDX-License-Identifier: MIT */
 /* The host test of the FreeRTOS build's boundaries of the NINA core on the
- * FreeRTOS POSIX port: common/drivers/nina/port/freertos/nina_bus_rp2040.c and the core's
+ * FreeRTOS POSIX port: common/drivers/nina/port/pico_sdk/nina_bus_rp2040.c and the core's
  * FreeRTOS binding (common/drivers/nina/port/freertos/nina_os.c, on FreeRTOS and
  * the Pico SDK alone: no compatibility layer is linked) on fakes of the
  * Pico SDK's DMA, GPIO, GPIO interrupt, IRQ, reset, SPI and TIMER functions
  * (pico_fake/, implemented here: they record the calls and play the
  * module), and the shared core over both (common/drivers/nina/internal/nina_proto.c),
- * as the board builds them (freertos/drivers/nina/nina.cmake).
+ * as the board builds them (common/pico_sdk/drivers/nina/nina.cmake).
  * freertos/script/host_tests.sh runs it twice: with the board's 1 ms tick,
  * and with a 4 ms one (configTICK_RATE_HZ 250); both times the kernel's
  * tick count starts 5 s before it wraps, and the fake TIMER 4.5 s before

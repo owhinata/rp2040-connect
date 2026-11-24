@@ -2,7 +2,9 @@
 # The USB console on the Raspberry Pi Pico SDK and the FreeRTOS kernel, for
 # the Arduino Nano RP2040 Connect.  Built by freertos/script/build.sh, which
 # sets PICO_SDK_PATH, FREERTOS_KERNEL_PATH and PICO_TOOLCHAIN_PATH
-# (freertos/script/setup.sh).
+# (freertos/script/setup.sh).  What the builds on the Pico SDK share is
+# common/pico_sdk/app/usb-console/usb-console.cmake; this file gives it the
+# FreeRTOS parts.
 
 cmake_minimum_required(VERSION 3.13)
 
@@ -18,155 +20,46 @@ set(CMAKE_C_STANDARD 11)
 pico_sdk_init()
 
 # The sources shared with the Zephyr and NuttX builds (common/ at the root of
-# the repository), and the FreeRTOS implementation of the Zephyr
-# compatibility layer that runs them (freertos/drivers/compat).
+# the repository), with the parts shared by the builds on the Pico SDK
+# (common/pico_sdk), and the FreeRTOS part of the Zephyr compatibility layer
+# that runs them (freertos/drivers/compat: zephyr_kernel_os_impl.h, the
+# primitives of the generic kernel part, and rp2040/zephyr_os_port.h).
 get_filename_component(COMMON_DIR ${CMAKE_CURRENT_LIST_DIR}/../../../common ABSOLUTE)
-include(${CMAKE_CURRENT_LIST_DIR}/../../drivers/compat/compat.cmake)
-# The key-value store and the "kv" command, on the last 8 KiB of the flash,
-# which the linker script keeps the image out of (freertos/drivers/kv).
-include(${CMAKE_CURRENT_LIST_DIR}/../../drivers/kv/kv.cmake)
-# The SPI link to the NINA-W102 module and the "nina" command
-# (freertos/drivers/nina).
-include(${CMAKE_CURRENT_LIST_DIR}/../../drivers/nina/nina.cmake)
-# I2C0 with its DMA reads (the device i2c0 of the compatibility layer), I2C1
-# as an option (the device i2c1) and the "i2c_dma" command
-# (freertos/drivers/i2c_dw).
-include(${CMAKE_CURRENT_LIST_DIR}/../../drivers/i2c_dw/i2c_dw.cmake)
-# The LSM6DSOX with its FIFO stream, on i2c0 and the layer's gpio0 and RTIO
-# (freertos/drivers/lsm6dso).
-include(${CMAKE_CURRENT_LIST_DIR}/../../drivers/lsm6dso/lsm6dso.cmake)
-# The IMU acquisition service and the "imu" command, with its MQTT transport,
-# and the time synchronization with the "ntp" command (freertos/drivers/imu).
-include(${CMAKE_CURRENT_LIST_DIR}/../../drivers/imu/imu.cmake)
-# Wi-Fi: the NINA's network interface, the net_mgmt events, the stored
-# credentials with the automatic reconnection and the "wifi" command
-# (freertos/drivers/wifi).
-include(${CMAKE_CURRENT_LIST_DIR}/../../drivers/wifi/wifi.cmake)
-# The Telnet shell on TCP port 23 (freertos/drivers/telnet).
-include(${CMAKE_CURRENT_LIST_DIR}/../../drivers/telnet/telnet.cmake)
-# The "zperf" command: TCP tests against iperf3 (freertos/drivers/zperf).
-include(${CMAKE_CURRENT_LIST_DIR}/../../drivers/zperf/zperf.cmake)
-# The "sensor" command: the Zephyr build's sensor shell with its processing
-# thread (freertos/drivers/sensor_shell).
-include(${CMAKE_CURRENT_LIST_DIR}/../../drivers/sensor_shell/sensor_shell.cmake)
-# The "i2c" command: the Zephyr build's I2C shell (freertos/drivers/i2c_shell).
-include(${CMAKE_CURRENT_LIST_DIR}/../../drivers/i2c_shell/i2c_shell.cmake)
+set(PICO_SDK_OS freertos)
+get_filename_component(FREERTOS_COMPAT_DIR ${CMAKE_CURRENT_LIST_DIR}/../../drivers/compat ABSOLUTE)
+set(PICO_SDK_OS_COMPAT_DIRS ${FREERTOS_COMPAT_DIR}/rp2040 ${FREERTOS_COMPAT_DIR})
+get_filename_component(PICO_SDK_STMEMSC_DIR ${CMAKE_CURRENT_LIST_DIR}/../../stmemsc ABSOLUTE)
+# FreeRTOSConfig.h; priorities_os.h and the FreeRTOS parts of the
+# application's boundaries (src/).
+set(PICO_SDK_OS_APP_DIRS ${CMAKE_CURRENT_LIST_DIR} ${CMAKE_CURRENT_LIST_DIR}/src)
+set(PICO_SDK_OS_LIBRARIES FreeRTOS-Kernel)
+# The name under /dev/serial/by-id (freertos/script/flash.sh looks for it).
+set(PICO_SDK_USB_PRODUCT "FreeRTOS USB Console")
+# The NINA core's FreeRTOS binding (its locks, waits and READY's interrupt)
+# runs from RAM with the shared code (ram_code.cmake).
+set(RAM_CODE_OS_SOURCES
+  common/drivers/nina/port/freertos/nina_os.c
+)
+include(${COMMON_DIR}/pico_sdk/app/usb-console/usb-console.cmake)
 
-# The code of the sensor's and the send's paths, which runs from RAM: the
-# flash's XIP cache is too small for it (ram_code.cmake).
-include(${CMAKE_CURRENT_LIST_DIR}/ram_code.cmake)
-
-# I2C1 (the device i2c1 on GPIO18/D6 and GPIO19/D7, freertos/drivers/i2c_dw):
-# off by default (freertos/script/build.sh -DI2C_DW_I2C1=ON).  I2C0 has no
-# option: the LSM6DSOX is on it.
-option(I2C_DW_I2C1 "Build the I2C1 controller (device i2c1)" OFF)
-set(i2c_dw_options)
-if(I2C_DW_I2C1)
-  list(APPEND i2c_dw_options I2C1)
-endif()
-
-# The generic commands (common/shell/kernel_shell.c, on src/kernel_shell_os_impl.h)
-# are linked where this build's own were, after src/commands.c.  The
-# application's start shared by the three builds (common/imu/app_main.h:
-# app_main.c, app_init.c) follows src/main.c, which calls it.
+# The shared start (src/main.c of PICO_SDK_APP_DIR) and the application's
+# start shared by the three builds (common/imu/app_main.h: app_main.c,
+# app_init.c), which it calls; the commands (src/commands.c, with "ps" and
+# "version" of src/commands_os_impl.h) and the generic commands
+# (common/shell/kernel_shell.c, on src/kernel_shell_os_impl.h); the fatal
+# errors, the idle pass and the interrupt stack; FreeRTOS's tick hook
+# (src/tick.c); the records of fatal errors.
 add_executable(usb-console
-  src/main.c
+  ${PICO_SDK_APP_DIR}/src/main.c
   ${COMMON_DIR}/imu/app_main.c
   ${COMMON_DIR}/imu/app_init.c
-  src/commands.c
+  ${PICO_SDK_APP_DIR}/src/commands.c
   ${COMMON_DIR}/shell/kernel_shell.c
-  src/fault.c
-  src/idle.c
-  src/irq_stack.c
+  ${PICO_SDK_APP_DIR}/src/fault.c
+  ${PICO_SDK_APP_DIR}/src/idle.c
+  ${PICO_SDK_APP_DIR}/src/irq_stack.c
   src/tick.c
   ${COMMON_DIR}/compat/log/fault_record.c
 )
 
-freertos_zephyr_compat(usb-console)
-freertos_kv(usb-console)
-freertos_nina(usb-console)
-freertos_i2c_dw(usb-console ${i2c_dw_options})
-freertos_lsm6dso(usb-console)
-freertos_imu(usb-console)
-freertos_wifi(usb-console)
-freertos_telnet(usb-console)
-freertos_zperf(usb-console)
-freertos_sensor_shell(usb-console)
-freertos_i2c_shell(usb-console)
-freertos_ram_code(usb-console)
-
-# The stack of the start-up task "main" in SCRATCH_X, which only core 1's
-# stack would use (ld/section_extra_post_scratch.incl, src/main.c).
-pico_add_linker_script_override_path(usb-console ${CMAKE_CURRENT_LIST_DIR}/ld
-  FILES section_extra_post_scratch.incl
-)
-
-# FreeRTOSConfig.h; priorities_os.h (src/, which FreeRTOSConfig.h includes);
-# priorities.h and cpu_load.h (common/compat);
-# fault_record.h (common/compat/log); the RP2040's code that no OS owns
-# (common/chip/rp2040/include: rp2040_timer_us.h, which src/os_clock.h reads;
-# rp2040_flash_kv.h and rp2040_flash_kv_os.h of the key-value area's flash,
-# drivers/kv/kv.cmake).
-target_include_directories(usb-console PRIVATE
-  ${CMAKE_CURRENT_LIST_DIR}
-  ${CMAKE_CURRENT_LIST_DIR}/src
-  ${COMMON_DIR}/compat
-  ${COMMON_DIR}/compat/log
-  ${COMMON_DIR}/chip/rp2040/include
-)
-
-target_compile_options(usb-console PRIVATE -Wall -Wextra)
-set_source_files_properties(${COMMON_DIR}/imu/app_main.c ${COMMON_DIR}/imu/app_init.c PROPERTIES
-  COMPILE_OPTIONS "-include;${FREERTOS_COMPAT_DIR}/common_prelude.h"
-)
-
-# The name under /dev/serial/by-id (freertos/script/flash.sh looks for it).
-# The Pico SDK cuts USB strings to USBD_DESC_STR_MAX - 1 characters (19 by
-# default, one short of this name).
-target_compile_definitions(usb-console PRIVATE
-  USBD_PRODUCT="FreeRTOS USB Console"
-  USBD_DESC_STR_MAX=32
-)
-
-# Fatal errors end in src/fault.c, which defines panic() itself: an empty
-# PICO_PANIC_FUNCTION leaves the SDK's panic() (pico_platform_panic/panic.c)
-# out, and the weak stand-in of custom_panic_function.S gives way to ours.
-target_compile_definitions(usb-console PRIVATE
-  PICO_PANIC_FUNCTION=
-)
-
-# malloc() returns NULL when it finds no room, as in the Zephyr and NuttX
-# builds, instead of the Pico SDK's default panic (pico_malloc): its users
-# check (the shell's command state and long lines, zperf's buffers, the
-# NINA passthrough mode's buffer, newlib's own).
-target_compile_definitions(usb-console PRIVATE
-  PICO_MALLOC_PANIC=0
-)
-
-# The SDK's chain slots of shared interrupt handlers (12 bytes of RAM each),
-# for every core and line together: its default with stdio_usb, 6, is
-# taken by USBCTRL_IRQ's two (TinyUSB's and stdio_usb's), IO_IRQ_BANK0's two
-# raw handlers (drivers/compat/rp2040/gpio_os_rp2040.c and the NINA's
-# nina_os.c) and DMA_IRQ_1's two (I2C0's reads and the NINA's SPI DMA); one
-# more would end in the SDK's hard_assert() when it is added.  8 leaves room
-# for two.
-target_compile_definitions(usb-console PRIVATE
-  PICO_MAX_SHARED_IRQ_HANDLERS=8
-)
-
-target_link_libraries(usb-console
-  pico_stdlib
-  pico_bootrom
-  pico_unique_id
-  hardware_sync
-  hardware_timer
-  hardware_watchdog
-  FreeRTOS-Kernel
-)
-
-# The console is the USB CDC ACM port; UART0 (GPIO0/1) is left alone.
-pico_enable_stdio_usb(usb-console 1)
-pico_enable_stdio_uart(usb-console 0)
-
-# usb-console.uf2, .bin, .hex, .dis and .map
-pico_add_extra_outputs(usb-console)
+pico_sdk_usb_console(usb-console)

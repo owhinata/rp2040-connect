@@ -5,7 +5,7 @@
  * their flags, and the Zephyr GPIO and SPI calls on them).  nina_proto.c is
  * written against this interface.  Each build implements it:
  * zephyr/nina_bus.c next to this file (on the devicetree),
- * nuttx/nina_bus_rp2040.c and freertos/nina_bus_rp2040.c (on the
+ * nuttx/nina_bus_rp2040.c and pico_sdk/nina_bus_rp2040.c (on the
  * RP2040's SPI1 and GPIO); the host test (common/tests/nina_proto.c)
  * replaces it with fakes.
  *

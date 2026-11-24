@@ -39,10 +39,13 @@ trap 'rm -rf "$out"' EXIT
 txdefs=(-DTX_INCLUDE_USER_DEFINE_FILE -D_GNU_SOURCE -DTX_LINUX_MULTI_CORE)
 txinc=(-Itests/compat -I"$tx/common/inc" -I"$linux/inc")
 # The test's port header and tx_user.h first, then the board's priorities_os.h
-# (app/usb-console/src), the layer (ThreadX's part, the generic kernel part
-# common/compat/kernel_generic, common/compat) and ThreadX.
+# (app/usb-console/src), the layer (ThreadX's part, the parts for an OS without its own
+# <zephyr/sys/clock.h> and <zephyr/sys/__assert.h>, common/compat/os_generic/include, the
+# generic kernel part common/compat/kernel_generic with its default zephyr_os_atomic.h,
+# common/compat) and ThreadX.
 kgen=../common/compat/kernel_generic
-inc=(-Itests/compat -Iapp/usb-console/src -Idrivers/compat -I"$kgen" -I../common/compat
+inc=(-Itests/compat -Iapp/usb-console/src -Idrivers/compat -I../common/compat/os_generic/include
+     -I"$kgen" -I../common/compat
      -I"$tx/common/inc" -I"$linux/inc")
 flags=(-std=gnu11 -O2 -g -pthread "${txdefs[@]}")
 strict=(-Wall -Wextra -Werror)

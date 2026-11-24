@@ -25,7 +25,7 @@
  *   same clock, and cannot add a tick: the port's tick is a thread's
  *   usleep() and a signal, with nothing to pend, so z_os_tick_pend() does
  *   nothing and the count stays behind the clock as the port makes it.  The
- *   catch-up itself is checked by freertos/tests/tick, on a model of SysTick.
+ *   catch-up itself is checked by common/tests/tick_catchup.c, on a model of SysTick.
  */
 
 #ifndef FREERTOS_TESTS_COMPAT_ZEPHYR_OS_PORT_H

@@ -428,7 +428,7 @@ PC 側で照合する確認では、3 つの OS のファームウェアとも�
 センサーの 6667 Hz の経路と送信の経路のコードは RP2040 の 16 KiB の XIP キャッシュに収まらないので、各 OS のファームウェアは
 それを RAM で動かす（定数はフラッシュに残す）。Zephyr 版は `zephyr/app/usb-console/ram_code.cmake` にソースを並べる（Zephyr の
 コードの再配置。RAM 約 56 KiB、残り 63,960 バイト）。NuttX 版はボードのリンカースクリプトにオブジェクトを並べ、`.data` の写しが
-運ぶ（約 44 KiB。ヒープは約 112 KiB 残る）。FreeRTOS 版は `freertos/app/usb-console/ram_code.cmake`（§13.2）。どれも、並べた
+運ぶ（約 44 KiB。ヒープは約 112 KiB 残る）。FreeRTOS 版は `common/pico_sdk/app/usb-console/ram_code.cmake`（§13.2）。どれも、並べた
 オブジェクトのコードが RAM に無いときと RAM の残りが足りないときに、リンクのあとの検査がビルドを止める（各 OS のドライバーの説明）。
 送信中の `cpu_active` は、これで Zephyr 版が 35.8% から 21.4%、NuttX 版が 36.1% から 23.8%、FreeRTOS 版が 33.1% から 19.7% になった。
 
@@ -890,14 +890,14 @@ NINA のファームウェアの追加機能（`firmware/nina-fw/` のパッチ 
   ポートは tickless に対応していない。待ち時間を tick に切り上げて 1 tick 足す規則は Zephyr 版と同じ。
 - 割り込みを止めている間（フラッシュの消去・書き込み）は SysTick の割り込みが失われる。tick フックが tick ごとに TIMER と
   比べ、1 tick 以上遅れていれば SysTick を保留にし直して、失われた tick をポートの通常のハンドラーで 1 つずつ数えさせる
-  （`freertos/app/usb-console/src/tick_catchup.h`。tick は TIMER より先に進まない）。これが無いと `kv set` 1 回で 46〜50 ms
+  （`common/compat/kernel_generic/tick_catchup.h`。tick は TIMER より先に進まない）。これが無いと `kv set` 1 回で 46〜50 ms
   遅れていた（2026-11-17、3 回）。入れたあとは、100 文字の `kv set` 90 回のあとも「TIMER の ms − tick」は 2.8〜3.1 だった
   （2026-11-18）。`xTaskCatchUpTicks()` は、タスクからしか呼べず、補った tick で tick フックが呼ばれないので使わない。
 - `cpu_active` は §11.4 と同じアイドルの窓の方式で測る。1 ms ごとの tick の割り込みは負荷に入る（Zephyr 版・
   NuttX 版にはこの割り込みが無い）。`ps` の CPU 列は前回の `ps` からの区間の
   割合（最初は起動から。アイドルを含み、合計は約 100 %）。
 - NINA の READY は GPIO10 のエッジ割り込みで待つ（Zephyr 版・NuttX 版も同じ）。
-- センサーの 6667 Hz の経路と送信の経路のコードは RAM で動かす（`freertos/app/usb-console/ram_code.cmake`。定数は
+- センサーの 6667 Hz の経路と送信の経路のコードは RAM で動かす（`common/pico_sdk/app/usb-console/ram_code.cmake`。定数は
   フラッシュに残す）。16 KiB の XIP キャッシュに収まらず、送信中はキャッシュの外れが `cpu_active` の約 14 ポイントを
   占めていた（この配置なしで 33.1%、ありで 19.7%。2026-11-23）。RAM は newlib の `malloc()`（使うのはシェル、`zperf`、NINA の
   中継モード）の領域から約 49 KiB を取り、約 87 KiB が残る（ドライバー説明）。

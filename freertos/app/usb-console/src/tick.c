@@ -40,6 +40,7 @@
 #include "task.h"
 #include "priorities.h"
 #include "zephyr_compat_os.h"
+#include "zephyr_kernel_os.h"
 #include "zephyr_os_port.h"
 #include "tick_catchup.h"
 

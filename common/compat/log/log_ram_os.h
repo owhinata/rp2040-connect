@@ -11,7 +11,7 @@
  *
  * Each OS's build puts its "log_ram_os_impl.h" on the include path of
  * log_ram.c (the NuttX build's is nuttx/drivers/include/log_ram_os_impl.h,
- * the FreeRTOS build's freertos/drivers/include/log_ram_os_impl.h).  It
+ * the FreeRTOS build's common/pico_sdk/drivers/include/log_ram_os_impl.h).  It
  * defines:
  *
  *   LOG_RAM_OS_RETAINED(name)

@@ -160,17 +160,10 @@ USB の CDC ACM ポートがコンソールです（UART0 は使いません）�
 
 | 場所 | 内容 |
 |---|---|
-| `app/usb-console/` | アプリ: 起動、コマンド、カーネルの設定（`FreeRTOSConfig.h`） |
+| `app/usb-console/` | アプリの FreeRTOS の部分: カーネルの設定（`FreeRTOSConfig.h`）、tick、優先度、起動・異常停止・`ps` の FreeRTOS の部分（起動の順、コマンド、アイドル、異常停止の本体は `../common/pico_sdk/app/usb-console/`） |
 | `drivers/compat/` | Zephyr 互換層の FreeRTOS の部分（共有ソース `common/` を動かす） |
-| `drivers/shell/`、`drivers/libc/` | コンソールの USB シリアルの入出力と、標準出力の接続（コンソール、シェル、Telnet、RAM ログ、ネットワークの層は `../common/`） |
-| `drivers/kv/` | KV のフラッシュの読み書き |
-| `drivers/nina/` | NINA-W102 のドライバーをビルドに入れる設定（ドライバーは `../common/drivers/nina/`） |
-| `drivers/wifi/` | Wi-Fi の組み込み（本体は `common/`） |
-| `drivers/telnet/`、`drivers/zperf/` | Telnet のシェルと速度測定の組み込み（本体は `../common/`） |
-| `drivers/i2c_dw/` | I2C0 と DMA（センサーのバス） |
-| `drivers/lsm6dso/` | LSM6DSOX のビルドの規則と起動時の確認（ドライバーとデバイスの定義は `common/drivers/lsm6dso/`） |
-| `drivers/imu/` | 取得・送信・時刻同期の組み込み（本体は `common/imu/`） |
-| `drivers/sensor_shell/` | `sensor` コマンドの組み込み（本体は `common/shell/`） |
+| `../common/pico_sdk/` | Pico SDK の上の OS で共有する部分: コンソールの USB シリアルと標準出力、KV のフラッシュ、GPIO、各ドライバーをビルドに入れる cmake、RAM に置くコードの一覧 |
+| `../common/drivers/<ドライバー>/port/` | ドライバーのつなぎ: `pico_sdk/`（SPI・DMA・ピン・デバイスの定義）と `freertos/`（待ちとロック） |
 | `tests/` | ホストテスト |
 | `script/` | `setup.sh`、`build.sh`、`flash.sh`、`format.sh`、`host_tests.sh` |
 | `PORTING_PLAN.md`、`PORTING_STATUS.md` | 移植の計画と、進み具合・確かめたことの記録 |

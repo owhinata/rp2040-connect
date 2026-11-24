@@ -1,0 +1,19 @@
+/* SPDX-License-Identifier: MIT */
+/* The Pico SDK's section_extra_post_scratch.incl (empty, included between
+ * the end of the scratch sections and the stacks, "to add extra sections
+ * in the scratch memory, before the stack"), replaced for the USB console
+ * on the Pico SDK (usb-console.cmake, pico_add_linker_script_override_path()):
+ * what the OS puts in the sections .scratch_x_noload.*, not loaded, at the
+ * start of SCRATCH_X (the stack of the start-up thread "main", main_os.h;
+ * FreeRTOS: main_os_impl.h).  The SDK keeps the rest of SCRATCH_X for core
+ * 1's stack (.stack1_dummy, 2 KiB at its top), which the builds never start
+ * (FreeRTOS: configNUMBER_OF_CORES 1); the linker fails if the two do not
+ * fit.
+ */
+SECTIONS
+{
+    .scratch_x_noload (NOLOAD) : ALIGN(8)
+    {
+        *(.scratch_x_noload.*)
+    } > SCRATCH_X
+}

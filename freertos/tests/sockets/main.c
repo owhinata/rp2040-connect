@@ -4,7 +4,7 @@
  * net/lib/sockets: sockets.c, getaddrinfo.c, socket_offload.c) and
  * descriptor table (common/compat/net_offload/lib/os/zvfs: zvfs_fdtable.c,
  * zvfs_poll.c), and k_heap (common/compat/zephyr_heap.c), as
- * freertos/drivers/compat/compat.cmake builds them, on fake socket
+ * common/pico_sdk/drivers/compat/compat.cmake builds them, on fake socket
  * implementations registered here and the host linker's section of them
  * (net_socket_register.ld here):
  *

@@ -32,8 +32,8 @@
  * recursive mutexes, static allocation (nothing here allocates
  * dynamically), configUSE_TICK_HOOK with a hook that calls
  * zephyr_compat_tick() of "zephyr_compat_os.h"), priorities_os.h
- * (common/compat/priorities.h) and os_clock.h (rp2040_timer_us(), read by the
- * board's port header).  Part of the FreeRTOS implementation of the layer
+ * (common/compat/priorities.h); rp2040_timer_us() is common/chip/rp2040's,
+ * read by the board's port header.  Part of the FreeRTOS implementation of the layer
  * (freertos/drivers/compat; see freertos/drivers/README.md).
  */
 
@@ -251,7 +251,7 @@ Z_OS_INLINE void z_os_suspend(void)
 	vTaskSuspend(NULL);
 }
 
-/* rp2040_timer_us(): the board's TIMER (os_clock.h), or the host's clock. */
+/* rp2040_timer_us(): the board's TIMER (common/chip/rp2040), or the host's clock. */
 Z_OS_INLINE uint64_t z_os_clock_us(void)
 {
 	return rp2040_timer_us();
