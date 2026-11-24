@@ -619,7 +619,7 @@ static void test_start(void)
 	struct net_in_addr gateway = {.s_addr = htonl(0x0a2a0001)};
 
 	/* The interface as the NINA driver leaves it on a connection
-	 * (10.42.0.97/24 via 10.42.0.1), and the build's start (main.c).
+	 * (10.42.0.97/24 via 10.42.0.1), and the build's start (usb_console.c).
 	 */
 	assert(net_mgmt_event_init() == 0);
 	z_net_if_register(&iface);

@@ -78,7 +78,7 @@ USB の CDC ACM ポートがコンソールです。端末を開くとプロン�
 
 | 場所 | 内容 |
 |---|---|
-| `app/usb-console/` | アプリの ThreadX の部分: カーネルの設定（`tx_user.h`）、tick、優先度、起動・異常停止・`ps` の ThreadX の部分 |
+| `app/usb-console/` | アプリの ThreadX の部分: 入口の `main()`（`src/main.c`）、カーネルの設定（`tx_user.h`）、tick、優先度、異常停止・`ps` の ThreadX の部分 |
 | `drivers/compat/` | Zephyr 互換層の ThreadX の部分（共有ソース `common/` を動かす） |
 | `drivers/pico_sdk_interop/` | Pico SDK のロックと待ちを ThreadX のスレッドにつなぐ部分 |
 | `../common/pico_sdk/` | Pico SDK の上の OS で共有する部分（FreeRTOS 版と同じ） |

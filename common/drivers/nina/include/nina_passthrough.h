@@ -77,7 +77,7 @@ __attribute__((noreturn)) void nina_passthrough_request(void);
 
 /* The mode, instead of the normal firmware: never returns (it ends with a
  * restart into the normal firmware).  The OS binding's: Zephyr's main(),
- * FreeRTOS's main() before the scheduler, NuttX's init task.
+ * usb_console_early_init() on the Pico SDK, NuttX's init task.
  */
 __attribute__((noreturn)) void nina_passthrough_run(void);
 

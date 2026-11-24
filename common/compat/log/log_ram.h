@@ -30,7 +30,7 @@ extern "C"
 /* Check the retained ring (empty it if its header is not intact) and make
  * the RAM log the OS's log (log_ram_os_attach(); on NuttX the syslog
  * channel).  Called once, early (on NuttX from the board's
- * rp2040_boardinitialize(), on FreeRTOS first in main()).
+ * rp2040_boardinitialize(), on the Pico SDK first in main()).
  */
 
 void log_ram_initialize(void);

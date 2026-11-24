@@ -646,7 +646,7 @@ static void test_start(void)
 	assert(net_if_is_admin_up(iface) && net_if_is_dormant(iface));
 	assert(net_if_ipv4_get_global_addr(iface, NET_ADDR_PREFERRED) == NULL);
 
-	/* The rest of the build's start (main.c), the store being empty. */
+	/* The rest of the build's start (usb_console.c), the store being empty. */
 	assert(wifi_credentials_init() == 0);
 	assert(wifi_shell_init() == 0);
 	assert(K_THREAD_DEFINE_START(nina_wifi_tid) == 0);

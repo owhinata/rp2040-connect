@@ -5,8 +5,8 @@
  * mode), written on TinyUSB and the Pico SDK.  The module's side is the
  * build's (common/drivers/nina/port/pico_sdk/nina_passthrough_bus_rp2040.c).
  *
- * main() asks nina_passthrough_check() first thing (before fault_boot(),
- * which clears the same scratch registers); with the request it starts
+ * usb_console_early_init() asks nina_passthrough_check() first thing (before
+ * fault_boot(), which clears the same scratch registers); on a request it starts
  * nothing of the normal firmware (no task, no scheduler, no SPI1, no NINA
  * request, no I2C, no key-value store) and runs nina_passthrough_run(),
  * one loop on the processor:

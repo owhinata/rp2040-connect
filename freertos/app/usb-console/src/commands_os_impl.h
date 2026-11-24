@@ -2,7 +2,8 @@
 /* The FreeRTOS part of the commands of the USB console (commands_os.h of
  * common/pico_sdk/app/usb-console/src, which describes each item; included
  * once, by commands.c): the kernel's name and version for "version", and
- * "ps" on FreeRTOS's task list and run time counters.
+ * "ps" on FreeRTOS's task list and run time counters, with the counter's
+ * clock.
  */
 
 #ifndef COMMANDS_OS_IMPL_H
@@ -10,6 +11,7 @@
 
 #include <errno.h>
 #include <stdint.h>
+#include "hardware/timer.h"
 #include "FreeRTOS.h"
 #include "task.h"
 #include <zephyr/kernel.h>
@@ -21,6 +23,16 @@
 #define COMMANDS_OS_KERNEL_VERSION tskKERNEL_VERSION_NUMBER
 
 #define PS_TASKS_MAX 24
+
+/* The run time of the tasks, in microseconds of the TIMER: the counter
+ * FreeRTOSConfig.h names (portGET_RUN_TIME_COUNTER_VALUE()), which the
+ * kernel reads at each switch.  The other hooks are in fault_os_impl.h
+ * (fatal errors), idle_os.h and tick.c.
+ */
+uint64_t app_run_time_us(void)
+{
+	return time_us_64();
+}
 
 _Static_assert(PS_TASKS_MAX <= PS_INTERVAL_TASKS_MAX, "ps keeps every task");
 

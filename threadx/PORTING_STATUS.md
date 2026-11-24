@@ -252,3 +252,19 @@
 - 実機: ThreadX 版（最終の構成）。
 
 - （追記）`i2c scan` は 1 バイトの読み出しで動くようにした。4 つの OS の実機で確認済み。記録は `freertos/PORTING_STATUS.md` の同日の節。
+
+## 入口の `main()` を OS のディレクトリーに（2026-11-24、ユーザーの指摘）
+
+- ユーザーが `threadx/app/usb-console/src/main_os_impl.h` を開いて「main 関数は結局どこにいったのですか」「なんだかわかりにくい」。原因は作り: Pico SDK の上の 2 つだけ、共有の `main()` が
+  OS のヘッダーを読み込んで穴を埋める形で、Zephyr 版・NuttX 版（OS の入口が共有の関数を呼ぶ）と向きが逆だった。T1 で FreeRTOS のイメージを変えないことを優先して残った形。
+- 直した形（ユーザーの了承）: `freertos/app/usb-console/src/main.c` と `threadx/app/usb-console/src/main.c` に `main()` を置き、共有の 4 つの関数を順に呼ぶ:
+  `usb_console_early_init()`（RAM ログ、中継モードの確認）→ OS のカーネルの準備 → `usb_console_init()`（コンソール、互換層、I2C、KV）→ スレッド "main"（本体は `usb_console_main_thread()`）→
+  `usb_console_shell_start()` → OS のスケジューラーの開始。共有の本体は `common/pico_sdk/app/usb-console/src/usb_console.[ch]`（もとの `main.c`）。`main_os.h` と 2 つの `main_os_impl.h` は削除。
+  FreeRTOS の `app_run_time_us()` は `commands_os_impl.h` へ（`ps` の時計）。panic の文字列 1 つが `"z_os_thread_start"` に変わった。
+- 逆アセンブルで、起動の呼び出しの順が前後で同じことを確かめた（subagent）。text: FreeRTOS 247,904（+48）、ThreadX 248,652（+40）。ホストテスト 68・56。Zephyr のイメージは `snapshot-1124b` と一致。
+- 文書: `design/os-boundary` の 4.6 に「起動の入口」（4 つの OS の入口のファイルと手順を同じ形で並べた）、3 節の行、ドライバー説明、README の表。
+- **実機**: FreeRTOS 版と ThreadX 版とも、書き込み直後に起動してプロンプトが出る、`ps` に "main" の行が無い、`dmesg` に `<err>` なし、送信 60 秒は 19.3%・18.5% で欠番 0。
+  中継モードへの入り方は、この変更のあとでは確かめていない（呼び出しの順は同じ）。
+- 同じ「共有のファイルが OS のヘッダーを読み込む」形の残り 3 か所（subagent の評価。未着手、ユーザーに相談）: 異常停止（`fault.c`。反転すると少し読みやすい）、
+  `ps` とバージョン（`commands.c`。反転してよい、効果は中くらい）、アイドル（`idle.c`。フックの名前を決めるマクロだけなので、そのままを勧める）。
+- 実機: ThreadX 版（このビルド）。

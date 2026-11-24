@@ -55,7 +55,7 @@ static inline __attribute__((always_inline)) void fault_os_thread_name(char *nam
 }
 
 /* The handler of ThreadX's stack check (tx_user.h: TX_ENABLE_STACK_CHECKING),
- * registered by main_os_kernel_init() with tx_thread_stack_error_notify():
+ * registered by main() (main.c) with tx_thread_stack_error_notify():
  * ThreadX calls it when the fill pattern at the bottom or the top of
  * THREAD's stack has been overwritten, or its saved stack pointer is below
  * the stack, as it suspends THREAD (a wait, a sleep) or resumes it; from

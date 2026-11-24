@@ -25,8 +25,8 @@ FreeRTOS 版は、いくつかの境界（下の `*_os.h` のヘッダー）を�
 
 | 場所 | 内容 |
 |---|---|
-| `app/usb-console/` | ビルド（`CMakeLists.txt`: `common/pico_sdk/app/usb-console/usb-console.cmake` に渡す FreeRTOS の設定とソースの一覧）、カーネルの設定（`FreeRTOSConfig.h`。コアが 1 つであることも確かめる）、`src/`: 優先度の対応（`priorities_os.h`）、tick フック（`tick.c`。tick の追いつきの判定は `common/compat/kernel_generic/tick_catchup.h`）、汎用のコマンドの OS の部分（`kernel_shell_os_impl.h`。`uptime` の tick の数も）、共有のアプリの境界の FreeRTOS の部分: 起動（`main_os_impl.h`: タスク "main"、スケジューラー、`ps` の実行時間）、アイドルの 1 回分（`idle_os.h`: アイドルフック）、異常停止（`fault_os_impl.h`: 動いているタスクの名前、スタックのあふれのフック）、コマンド（`commands_os_impl.h`: `ps`、カーネルのバージョン） |
-| `common/pico_sdk/app/usb-console/` | Pico SDK の上の OS のファームウェアで共有: ビルド（`usb-console.cmake`: ドライバー、インクルードのディレクトリー、SDK のオプション。`ram_code.cmake`: RAM で動かすコード。`ld/`: 起動のスレッドのスタックを SCRATCH_X に）、`src/`: 起動（`main.c`。境界は `main_os.h`）、コマンド `version`・`free` と全コマンドの表（`commands.c`。境界は `commands_os.h`）、アイドルの 1 回分と CPU 負荷（`idle.c`。LED の点滅は `idle_blink.h`）、異常停止（`fault.[ch]`。境界は `fault_os.h`）、割り込み用スタックの空き（`irq_stack.c`）、`app.h` |
+| `app/usb-console/` | ビルド（`CMakeLists.txt`: `common/pico_sdk/app/usb-console/usb-console.cmake` に渡す FreeRTOS の設定とソースの一覧）、カーネルの設定（`FreeRTOSConfig.h`。コアが 1 つであることも確かめる）、`src/`: 起動の入口（`main.c`: `main()`、タスク "main"、スケジューラー）、優先度の対応（`priorities_os.h`）、tick フック（`tick.c`。tick の追いつきの判定は `common/compat/kernel_generic/tick_catchup.h`）、汎用のコマンドの OS の部分（`kernel_shell_os_impl.h`。`uptime` の tick の数も）、共有のアプリの境界の FreeRTOS の部分: アイドルの 1 回分（`idle_os.h`: アイドルフック）、異常停止（`fault_os_impl.h`: 動いているタスクの名前、スタックのあふれのフック）、コマンド（`commands_os_impl.h`: `ps` とその実行時間の時計、カーネルのバージョン） |
+| `common/pico_sdk/app/usb-console/` | Pico SDK の上の OS のファームウェアで共有: ビルド（`usb-console.cmake`: ドライバー、インクルードのディレクトリー、SDK のオプション。`ram_code.cmake`: RAM で動かすコード。`ld/`: 起動のスレッドのスタックを SCRATCH_X に）、`src/`: 起動の共有の段階（`usb_console.[ch]`。OS の `main()` が呼ぶ）、コマンド `version`・`free` と全コマンドの表（`commands.c`。境界は `commands_os.h`）、アイドルの 1 回分と CPU 負荷（`idle.c`。LED の点滅は `idle_blink.h`）、異常停止（`fault.[ch]`。境界は `fault_os.h`）、割り込み用スタックの空き（`irq_stack.c`）、`app.h` |
 | `drivers/compat/` | 互換層の FreeRTOS の部分: 汎用のカーネルの部分の基本の操作（`zephyr_kernel_os_impl.h`）とポートのヘッダー（`rp2040/zephyr_os_port.h`: `z_os_in_isr()`、`z_os_yield_from_isr()`、`z_os_task_lock()`・`_unlock()`） |
 | `common/pico_sdk/drivers/compat/` | 互換層の Pico SDK の上の部分: 互換層・シェル・RAM ログのビルド（`compat.cmake`）、ソケットの実装の登録のためのリンカースクリプトの部分（`ld/`）、壁時計（`zephyr_sys_clock.c`）、RP2040 の部分（`rp2040/`: OS で共通のポートのヘッダーの部分 `zephyr_os_port_rp2040.h`、GPIO バンク 0 の `gpio_os_rp2040.c`、チップ ID の `zephyr_hwinfo.c`） |
 | `common/compat/os_generic/` | その仕組みを自分で持たない OS のための互換層の部分: `include/zephyr/drivers/i2c.h`（ドライバーのデバイスの上の Zephyr の I2C の API）、`include/zephyr/sys/clock.h`、`include/zephyr/sys/__assert.h`、前置き（`common_prelude.h`）、`app_log_os.h`、センサーのシェルの OS の部分（`include/sensor_shell_os.h`、`sensor_shell_os.c`）、`wifi_profile_os.h` |
@@ -109,7 +109,7 @@ Pico SDK の上の FreeRTOS 版と ThreadX 版だけがビルドする共有フ�
 |---|---|---|---|
 | `Tmr Svc` | 31（–） | 384 | カーネルのタイマータスク。割り込みで解放された Pico SDK のロックの待ち手を起こす |
 | `net_mgmt`、`sysworkq` | 21（-1） | 2048、384 | ネットワークのイベント、システムワークキュー（LSM6DSOX の FIFO の割り込みのワーク） |
-| `main` | 20（0） | 2048 | 起動の後半（下の「起動」）。終わると消える。スタックは、コア 1（起動しない）だけが使う SCRATCH_X にある（`common/pico_sdk/app/usb-console/ld/`、`main_os_impl.h`） |
+| `main` | 20（0） | 2048 | 起動の後半（下の「起動」）。終わると消える。スタックは、コア 1（起動しない）だけが使う SCRATCH_X にある（`common/pico_sdk/app/usb-console/ld/`、`src/main.c`） |
 | `sensor_shell_tid`、`RTIO WQ 0` | 20（0） | 2048、1024 | `sensor` の結果の表示、RTIO のワーク |
 | `nina_wifi_tid`、`wifi_reconnect_tid` | 12（8） | 2048、2048 | Wi-Fi のスキャン・接続・接続の監視（1 つずつ行う）、自動再接続 |
 | `time_sync_tid`、`imu_stream_tid` | 11（9） | 2048、2048 | 時刻同期、取得 |
@@ -122,9 +122,11 @@ Pico SDK の上の FreeRTOS 版と ThreadX 版だけがビルドする共有フ�
 スレッドは、制御ブロック（136 バイト）を `K_THREAD_STACK_DEFINE()` の配列のスタックのあとに置きます（`Z_OS_THREAD_RESERVED`、
 `compat/zephyr_kernel_os_impl.h`）。上の表の大きさは、それを除いたスタックです。
 
-**起動**（`main.c`）: `main()` で RAM ログ、異常停止の記録の読み出し、コンソール、互換層、NINA の SPI、
-I2C0（先にその読み出しのための DMA の割り込みハンドラー）、KV のフラッシュの準備を行い、タスク `main` で LSM6DSOX、
-NINA のインターフェースを始め、そのあと 4 つの OS のファームウェアで共有のアプリの起動（`common/imu/app_main.h`。Zephyr 版の初期化の順）に
+**起動**（`src/main.c`）: `main()` が共有の段階（`common/pico_sdk/app/usb-console/src/usb_console.h`）を順に呼びます。
+`usb_console_early_init()` で RAM ログと異常停止の記録の読み出し、`usb_console_init()` でコンソール、互換層、NINA の SPI、
+I2C0（先にその読み出しのための DMA の割り込みハンドラー）、KV のフラッシュの準備を行います。
+次にタスク `main` を作り、`usb_console_shell_start()` でタスク `console` を作って、スケジューラーを始めます。
+タスク `main`（`usb_console_main_thread()`）は LSM6DSOX、NINA のインターフェースを始め、そのあと 4 つの OS のファームウェアで共有のアプリの起動（`common/imu/app_main.h`。Zephyr 版の初期化の順）に
 FreeRTOS 版の `wifi` コマンドと Telnet を挟んで、Wi-Fi の資格情報、`wifi` コマンド、Telnet、`K_THREAD_DEFINE()` のスレッド、
 KV、校正値、時刻同期、自動接続の順に始めます。
 
@@ -150,7 +152,7 @@ KV、校正値、時刻同期、自動接続の順に始めます。
   （`common/pico_sdk/drivers/libc/stdio_wrap.c`）で、出力の経路をすべてここに通します。
 - USB: エンジンのシリアルのセッション（`shell_serial.c`、タスク `console`）を、FreeRTOS 版のコンソールの経路
   （`common/pico_sdk/drivers/shell/shell_serial_os_impl.h`。宣言は `shell_serial_os.h`: stdio の行き先、入力の到着、回線が開いているか、読み、書き）の
-  上で動かします。端末がポートを開くと `main.c` のバナーのあとにプロンプトを出します。端末が読まないときは Pico SDK の
+  上で動かします。端末がポートを開くと `usb_console.c` のバナーのあとにプロンプトを出します。端末が読まないときは Pico SDK の
   ドライバーが 64 バイトのバッファーの空きを最長 500 ms 待ち、残りを捨てます。
 - Telnet（`common/compat/shell_engine/shell_telnet.c`。`../common/pico_sdk/drivers/telnet/telnet.cmake` が組み込む）: ポート 23、同時 1 接続。Zephyr の `shell_telnet.c` と同じく、接続しても
   何も送らず、Telnet のコマンドは取り除いて応答せず、エコーしません。Zephyr 版と違えた点はファイルの先頭の
@@ -315,7 +317,7 @@ SPI の待つ呼び出し、USB のドライバーの一部）、NINA の中継�
 - **I2C1**（ボード上では何もつながっていない）は互換層のデバイス `i2c1`（`DEVICE_DT_GET(DT_NODELABEL(i2c1))`、名前は
   `i2c@40048000`）で、`i2c0` と同じ Zephyr の I2C の API を持ち、GPIO18（SDA、Arduino の D6）と GPIO19（SCL、D7）を
   内部プルアップ付きで使い（`i2c_dw_instance.h` の `I2C1_SDA_GPIO`・`I2C1_SCL_GPIO`）、常に割り込みで転送します
-  （DMA 読み出しと `i2c_dma` は I2C0 だけ）。`main()` で I2C0 のあとに起動し、失敗してもログに残して `i2c1` が
+  （DMA 読み出しと `i2c_dma` は I2C0 だけ）。`usb_console_init()` で I2C0 のあとに起動し、失敗してもログに残して `i2c1` が
   準備できないだけです。互換層のデバイスの一覧（`device_get_binding()`）には入らないので、`i2c` コマンドからは使えません。
   I2C1 はビルドとホストテストで確かめただけで、実際のデバイスで使ったことはありません。
 - **I2C0 の DMA 読み出し**は、コアの 2 つ目の境界 `port/i2c_dw_dma_os.h` を通して Pico SDK 自身の DMA（`hardware_dma`、

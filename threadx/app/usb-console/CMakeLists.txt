@@ -49,9 +49,11 @@ set(RAM_CODE_OS_SOURCES
 )
 include(${COMMON_DIR}/pico_sdk/app/usb-console/usb-console.cmake)
 
-# The shared start (src/main.c of PICO_SDK_APP_DIR) and the application's
-# start shared by the three builds (common/imu/app_main.h: app_main.c,
-# app_init.c), which it calls; the commands (src/commands.c, with "ps" and
+# The start: main() (src/main.c) with ThreadX's set-up, the thread "main"
+# and the scheduler, which calls the shared steps (src/usb_console.c of
+# PICO_SDK_APP_DIR) and, through them, the application's start shared by
+# the three builds (common/imu/app_main.h: app_main.c, app_init.c); the
+# commands (src/commands.c, with "ps" and
 # "version" of src/commands_os_impl.h) and the generic commands
 # (common/shell/kernel_shell.c, on src/kernel_shell_os_impl.h); the fatal
 # errors, the idle wait (its halves, src/idle_os.h) and the interrupt
@@ -59,7 +61,8 @@ include(${COMMON_DIR}/pico_sdk/app/usb-console/usb-console.cmake)
 # layer's ThreadX part; the records of fatal errors.  threadx_kernel() adds
 # ThreadX and its tick.
 add_executable(usb-console
-  ${PICO_SDK_APP_DIR}/src/main.c
+  src/main.c
+  ${PICO_SDK_APP_DIR}/src/usb_console.c
   ${COMMON_DIR}/imu/app_main.c
   ${COMMON_DIR}/imu/app_init.c
   ${PICO_SDK_APP_DIR}/src/commands.c

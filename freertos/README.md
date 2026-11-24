@@ -171,7 +171,7 @@ The console is the USB CDC ACM port (UART0 is not used). Opening a terminal show
 
 | Place | Content |
 |---|---|
-| `app/usb-console/` | The FreeRTOS part of the application: the kernel configuration (`FreeRTOSConfig.h`), the tick, the priorities, the FreeRTOS parts of the start, the fatal errors and `ps` (the start sequence, the commands, the idle pass and the fatal error handling are in `../common/pico_sdk/app/usb-console/`) |
+| `app/usb-console/` | The FreeRTOS part of the application: the entry `main()` (`src/main.c`), the kernel configuration (`FreeRTOSConfig.h`), the tick, the priorities, the FreeRTOS parts of the fatal errors and `ps` (the steps of the start that `main()` calls, the commands, the idle pass and the fatal error handling are in `../common/pico_sdk/app/usb-console/`) |
 | `drivers/compat/` | The FreeRTOS part of the Zephyr compatibility layer (runs the shared sources of `common/`) |
 | `../common/pico_sdk/` | What the builds on the Pico SDK share: the USB serial console and the standard output, the KV flash, GPIO, the cmake files that bring each driver into the build, the list of the code in RAM |
 | `../common/drivers/<driver>/port/` | The drivers' glue: `pico_sdk/` (SPI, DMA, pins, device definitions) and `freertos/` (waits and locks) |

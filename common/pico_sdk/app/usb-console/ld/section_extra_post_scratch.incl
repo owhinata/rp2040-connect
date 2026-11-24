@@ -4,8 +4,8 @@
  * in the scratch memory, before the stack"), replaced for the USB console
  * on the Pico SDK (usb-console.cmake, pico_add_linker_script_override_path()):
  * what the OS puts in the sections .scratch_x_noload.*, not loaded, at the
- * start of SCRATCH_X (the stack of the start-up thread "main", main_os.h
- * and the OS's main_os_impl.h).  The rest of SCRATCH_X is core 1's stack,
+ * start of SCRATCH_X (the stack of the start-up thread "main", in the
+ * OS's main.c).  The rest of SCRATCH_X is core 1's stack,
  * which the builds never start: 2 KiB at its top (.stack1_dummy) where
  * pico_multicore is linked (FreeRTOS, configNUMBER_OF_CORES 1), none where
  * it is not (ThreadX: all 4 KiB free).  The linker fails if they do not fit.

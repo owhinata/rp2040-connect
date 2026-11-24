@@ -31,8 +31,8 @@ without the model of its own). The FreeRTOS build gives them its parts through a
 
 | Place | Contents |
 |---|---|
-| `app/usb-console/` | The build (`CMakeLists.txt`: the FreeRTOS settings of `common/pico_sdk/app/usb-console/usb-console.cmake`, the list of the sources), the kernel configuration (`FreeRTOSConfig.h`, which also checks the one core), and `src/`: the priority mapping (`priorities_os.h`), the tick hook (`tick.c`; the catch-up's decision is `common/compat/kernel_generic/tick_catchup.h`), the OS part of the generic commands (`kernel_shell_os_impl.h`, with the tick count of `uptime`), and the FreeRTOS parts of the shared application's boundaries: the start (`main_os_impl.h`: the task "main", the scheduler, the run time of `ps`), the idle pass (`idle_os.h`: the idle hook), the fatal errors (`fault_os_impl.h`: the running task's name, the stack overflow hook), the commands (`commands_os_impl.h`: `ps`, the kernel's version) |
-| `common/pico_sdk/app/usb-console/` | Shared with the builds on the Pico SDK: the build (`usb-console.cmake`: the drivers, the include directories, the SDK's options; `ram_code.cmake`: the code that runs from RAM; `ld/`: the start-up thread's stack in SCRATCH_X) and `src/`: the start (`main.c`, on `main_os.h`), the commands `version` and `free` and the table of all commands (`commands.c`, on `commands_os.h`), the idle pass and the CPU load (`idle.c`; the LED's blink `idle_blink.h`), fatal errors (`fault.[ch]`, on `fault_os.h`), the free interrupt stack (`irq_stack.c`), `app.h` |
+| `app/usb-console/` | The build (`CMakeLists.txt`: the FreeRTOS settings of `common/pico_sdk/app/usb-console/usb-console.cmake`, the list of the sources), the kernel configuration (`FreeRTOSConfig.h`, which also checks the one core), and `src/`: the entry of the start (`main.c`: `main()`, the task "main", the scheduler), the priority mapping (`priorities_os.h`), the tick hook (`tick.c`; the catch-up's decision is `common/compat/kernel_generic/tick_catchup.h`), the OS part of the generic commands (`kernel_shell_os_impl.h`, with the tick count of `uptime`), and the FreeRTOS parts of the shared application's boundaries: the idle pass (`idle_os.h`: the idle hook), the fatal errors (`fault_os_impl.h`: the running task's name, the stack overflow hook), the commands (`commands_os_impl.h`: `ps` with the clock of its run times, the kernel's version) |
+| `common/pico_sdk/app/usb-console/` | Shared with the builds on the Pico SDK: the build (`usb-console.cmake`: the drivers, the include directories, the SDK's options; `ram_code.cmake`: the code that runs from RAM; `ld/`: the start-up thread's stack in SCRATCH_X) and `src/`: the shared steps of the start (`usb_console.[ch]`, called by the OS's `main()`), the commands `version` and `free` and the table of all commands (`commands.c`, on `commands_os.h`), the idle pass and the CPU load (`idle.c`; the LED's blink `idle_blink.h`), fatal errors (`fault.[ch]`, on `fault_os.h`), the free interrupt stack (`irq_stack.c`), `app.h` |
 | `drivers/compat/` | The FreeRTOS part of the layer: the primitives of the generic kernel part (`zephyr_kernel_os_impl.h`) and the port header (`rp2040/zephyr_os_port.h`: `z_os_in_isr()`, `z_os_yield_from_isr()`, `z_os_task_lock()`/`_unlock()`) |
 | `common/pico_sdk/drivers/compat/` | The layer's part on the Pico SDK: the build of the layer, the shell and the RAM log (`compat.cmake`), the linker script's part for the socket implementations (`ld/`), the wall clock (`zephyr_sys_clock.c`), the RP2040 part (`rp2040/`: the port header's part shared by the OSes, `zephyr_os_port_rp2040.h`; GPIO bank 0, `gpio_os_rp2040.c`; chip ID, `zephyr_hwinfo.c`) |
 | `common/compat/os_generic/` | The layer's parts for an OS without the model of its own: `include/zephyr/drivers/i2c.h` (Zephyr's I2C API on the driver's device), `include/zephyr/sys/clock.h`, `include/zephyr/sys/__assert.h`, the prelude (`common_prelude.h`), `app_log_os.h`, the sensor shell's OS part (`include/sensor_shell_os.h`, `sensor_shell_os.c`), `wifi_profile_os.h` |
@@ -124,7 +124,7 @@ use a stack of their own (MSP, 2048 bytes; the `(interrupts)` row of `ps`).
 |---|---|---|---|
 | `Tmr Svc` | 31 (–) | 384 | The kernel's timer task; wakes the waiters of Pico SDK locks released in interrupt handlers |
 | `net_mgmt`, `sysworkq` | 21 (-1) | 2048, 384 | Network events; the system work queue (the work of the LSM6DSOX FIFO interrupt) |
-| `main` | 20 (0) | 2048 | The second half of the start-up ("Start-up" below); ends when done. Its stack is in SCRATCH_X, which only core 1 (never started) would use (`common/pico_sdk/app/usb-console/ld/`, `main_os_impl.h`) |
+| `main` | 20 (0) | 2048 | The second half of the start-up ("Start-up" below); ends when done. Its stack is in SCRATCH_X, which only core 1 (never started) would use (`common/pico_sdk/app/usb-console/ld/`, `src/main.c`) |
 | `sensor_shell_tid`, `RTIO WQ 0` | 20 (0) | 2048, 1024 | Printing `sensor` results; RTIO work |
 | `nina_wifi_tid`, `wifi_reconnect_tid` | 12 (8) | 2048, 2048 | Wi-Fi scan, connection and link monitor (one at a time); automatic reconnection |
 | `time_sync_tid`, `imu_stream_tid` | 11 (9) | 2048, 2048 | Time synchronization, acquisition |
@@ -138,8 +138,11 @@ static. Each thread of the layer keeps its control block (136 bytes) after its s
 `K_THREAD_STACK_DEFINE()` (`Z_OS_THREAD_RESERVED`, `compat/zephyr_kernel_os_impl.h`); the sizes above are
 the stacks without it.
 
-**Start-up** (`main.c`): `main()` sets up the RAM log, reads the fatal error record, sets up the console,
-the layer, the NINA's SPI, I2C0 (first the DMA interrupt's handler for its reads) and the flash of the key-value store; then the task `main` starts the
+**Start-up** (`src/main.c`): `main()` calls the shared steps (`common/pico_sdk/app/usb-console/src/usb_console.h`) in order.
+`usb_console_early_init()` sets up the RAM log and reads the fatal error record. `usb_console_init()` sets up the console,
+the layer, the NINA's SPI, I2C0 (first the DMA interrupt's handler for its reads) and the flash of the key-value store.
+Then `main()` makes the task `main`, `usb_console_shell_start()` makes the task `console`, and the scheduler starts.
+The task `main` (`usb_console_main_thread()`) starts the
 LSM6DSOX and the NINA's network interface, then the application's start shared by the four builds
 (`common/imu/app_main.h`, the Zephyr build's initialization order) with this build's `wifi` command and
 Telnet in it: the Wi-Fi credentials, the `wifi` command, Telnet, the `K_THREAD_DEFINE()` threads, the
@@ -173,7 +176,7 @@ the interval of interest); timed by the TIMER.
 - USB: the engine's serial session (`shell_serial.c`, the task `console`) on this build's console transport
   (`common/pico_sdk/drivers/shell/shell_serial_os_impl.h`, declared in `shell_serial_os.h`: the stdio redirection, input
   arrived, the line open, read, write). The prompt appears when the terminal opens the port, after the
-  banner of `main.c`. When the terminal stops reading, the Pico SDK's driver waits up to 500 ms for room in
+  banner of `usb_console.c`. When the terminal stops reading, the Pico SDK's driver waits up to 500 ms for room in
   its 64-byte buffer and drops the rest.
 - Telnet (`common/compat/shell_engine/shell_telnet.c`, built in by `../common/pico_sdk/drivers/telnet/telnet.cmake`): port 23,
   one client at a time. As Zephyr's `shell_telnet.c`,
@@ -382,7 +385,7 @@ interrupts disabled.
   (`DEVICE_DT_GET(DT_NODELABEL(i2c1))`, name `i2c@40048000`), with the same Zephyr I2C API as `i2c0`, on
   GPIO18 (SDA, Arduino D6) and GPIO19 (SCL, D7) with the internal pull-ups (`I2C1_SDA_GPIO`,
   `I2C1_SCL_GPIO` in `i2c_dw_instance.h`), always on the interrupts (the DMA reads and `i2c_dma` are
-  I2C0's). It starts after I2C0 in `main()`; a failure is logged and leaves `i2c1` not ready. It is not
+  I2C0's). It starts after I2C0 in `usb_console_init()`; a failure is logged and leaves `i2c1` not ready. It is not
   in the layer's device list (`device_get_binding()`), so the `i2c` command does not reach it. I2C1 has been built and host-tested but never used with a real device.
 - **The DMA reads of I2C0** use the Pico SDK's own DMA (`hardware_dma`, `hardware_irq`) through the core's
   second boundary, `port/i2c_dw_dma_os.h`, implemented in `port/pico_sdk/i2c_dw_dma_os_rp2040.c`. Per read, two

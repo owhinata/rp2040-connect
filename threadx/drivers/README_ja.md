@@ -20,7 +20,7 @@ Pico SDK の上の部分（`common/pico_sdk/`、各ドライバーの `port/pico
 
 | 場所 | 内容 |
 |---|---|
-| `app/usb-console/` | ビルド（`CMakeLists.txt`: 共有の `common/pico_sdk/app/usb-console/usb-console.cmake` に渡す設定とソース。`threadx_kernel.cmake`: ThreadX のカーネル・ポート・実行時間のキットをファームウェアのソースとして加え、ボードの部分、ベクター、Pico SDK のロックの連携を足す）、カーネルの設定（`tx_user.h`）、`src/`: SysTick と例外の優先度（`tx_initialize_low_level.c`）、tick（`tick.c`）、優先度と時分割（`priorities_os.h`）、共有のアプリの境界の ThreadX の部分（起動 `main_os_impl.h`、アイドル `idle_os.h`、異常停止 `fault_os_impl.h`、`ps` とバージョン `commands_os_impl.h`、汎用のコマンド `kernel_shell_os_impl.h`）、スレッドごとの実行時間（`run_time.[ch]`） |
+| `app/usb-console/` | ビルド（`CMakeLists.txt`: 共有の `common/pico_sdk/app/usb-console/usb-console.cmake` に渡す設定とソース。`threadx_kernel.cmake`: ThreadX のカーネル・ポート・実行時間のキットをファームウェアのソースとして加え、ボードの部分、ベクター、Pico SDK のロックの連携を足す）、カーネルの設定（`tx_user.h`）、`src/`: 起動の入口（`main.c`: `main()`、カーネルの準備、スレッド "main"、スケジューラー）、SysTick と例外の優先度（`tx_initialize_low_level.c`）、tick（`tick.c`）、優先度と時分割（`priorities_os.h`）、共有のアプリの境界の ThreadX の部分（アイドル `idle_os.h`、異常停止 `fault_os_impl.h`、`ps` とバージョン `commands_os_impl.h`、汎用のコマンド `kernel_shell_os_impl.h`）、スレッドごとの実行時間（`run_time.[ch]`） |
 | `drivers/compat/` | 互換層の ThreadX の部分: 汎用のカーネルの部分の基本の操作（`zephyr_kernel_os_impl.h`）、そのロックの変数（`zephyr_kernel_os.c`）、ボードのポートのヘッダー（`rp2040/zephyr_os_port.h`） |
 | `drivers/pico_sdk_interop/` | Pico SDK のミューテックス・セマフォ・スリープの待ちを ThreadX のスレッドにつなぐもの（下の「Pico SDK のロックの連携」） |
 | `common/drivers/i2c_dw/port/threadx/` | I2C のコアの待ち・時計・スリープ（`i2c_dw_os_impl.h`） |
@@ -73,7 +73,7 @@ ThreadX 版の作りは次のとおりです。
 ## tick
 
 - SysTick を 1 ms（`TX_TIMER_TICKS_PER_SECOND` 1000）で使います。設定は `src/tx_initialize_low_level.c`（`_tx_initialize_low_level()`）で、
-  `clk_sys / 1000` 周期です。`main_os_kernel_start()` は clk_sys が tick の整数倍であることを確かめます。
+  `clk_sys / 1000` 周期です。`src/main.c` の `main()` は、スケジューラーを始める前に clk_sys が tick の整数倍であることを確かめます。
 - 例外の優先度: PendSV と SVCall は 0xC0（最低）、SysTick は 0x80（Pico SDK がデバイスの割り込みに付ける既定と同じ）。ThreadX の Cortex-M0 の
   スケジューラーは、実行できるスレッドが無いあいだ PendSV のハンドラーの中で待つので、そこから抜けられるのは PendSV より上の割り込みだけです。
   SysTick を PendSV と同じ高さにすると、スレッドが全部眠っているときに tick が入らず、誰も起きなくなります。0xC0 にした割り込みはアイドルの
@@ -87,16 +87,18 @@ ThreadX 版の作りは次のとおりです。
 
 ## カーネルの開始とベクター
 
-- 起動は共有の `common/pico_sdk/app/usb-console/src/main.c` で、ThreadX の部分は `src/main_os_impl.h` です。`main_os_kernel_init()` が
-  `_tx_initialize_kernel_setup()`（低レベルの初期化と ThreadX の初期化。スケジューラーは始めない）を呼び、スタックの検査のハンドラーを
-  登録します。そのあと `main()` が互換層のオブジェクトとスレッドを作り、`main_os_kernel_start()` が `tx_kernel_enter()` を呼びます（済んだ初期化は
-  飛ばし、空の `tx_application_define()` のあとスケジューラーへ）。
-- `_tx_initialize_low_level()` は割り込みを止めるので、`main_os_kernel_init()` からスケジューラーが最初のスレッドを取るまで割り込みは
-  止まったままです。そのあいだの `main()` は、割り込みも時間の経過も要らないことだけをします（USB の stdio はホストを待たない、I2C は転送しない、
-  ログは RAM へ）。USB の列挙、最初の tick、保留された割り込みは、スケジューラーが始まってから動きます。中継モードの確認と実行は
-  `main_os_kernel_init()` の前（割り込みは許可）です。
+- 入口は `src/main.c` の `main()` です。共有の段階（`common/pico_sdk/app/usb-console/src/usb_console.h`）を順に呼び、あいだに ThreadX の部分を書きます。
+  1. `usb_console_early_init()`: RAM ログ、中継モードの確認と実行（割り込みは許可）、前回の異常停止の記録。
+  2. `_tx_initialize_kernel_setup()`（低レベルの初期化と ThreadX の初期化。スケジューラーは始めない）と、スタックの検査のハンドラーの登録。
+  3. `usb_console_init()`: 互換層のオブジェクトとスレッド、I2C、KV の領域の範囲。
+  4. `z_os_thread_start()`: スレッド "main"（本体は `usb_console_main_thread()`、終わったら `z_os_thread_exit()`）。
+  5. `usb_console_shell_start()`: スレッド "console"。
+  6. `tx_kernel_enter()`（済んだ初期化は飛ばし、空の `tx_application_define()` のあとスケジューラーへ）。
+- `_tx_initialize_low_level()` は割り込みを止めるので、2 からスケジューラーが最初のスレッドを取るまで割り込みは止まったままです。
+  3〜5 は、割り込みも時間の経過も要らないことだけをします（USB の stdio はホストを待たない、I2C は転送しない、ログは RAM へ）。
+  USB の列挙、最初の tick、保留された割り込みは、スケジューラーが始まってから動きます。
 - 起動のスレッド "main" のスタックは SCRATCH_X の noload の領域にあり、起動のコードは 0 にしません。ウォッチドッグの再起動のあとは前の実行の
-  ThreadX のオブジェクトの ID が残っているので、`main_os_thread_start()` はスタックのあとの領域を 0 で埋めてから始めます。
+  ThreadX のオブジェクトの ID が残っているので、`main()` はスタックのあとの領域を 0 で埋めてから始めます。
 - ベクター: Pico SDK の crt0 がベクターの表とメインのスタックを持ちます。SDK の弱い `isr_pendsv`・`isr_svcall` を、リンクの `--defsym` で
   ThreadX の `__tx_PendSVHandler`・`__tx_SVCallHandler` にします（`threadx_kernel.cmake`）。`isr_systick` は `src/tick.c` です。割り込みはメインの
   スタック（MSP、2048 バイト。`ps` の `(interrupts)`）で動き、スケジューラーの待ちとアイドルのフックもそこで動きます。
@@ -181,7 +183,7 @@ I2C と NINA のつなぎは、互換層を通さず ThreadX と Pico SDK で直
 | `TX_MUTEX` のメンバーと `_tx_mutex_priority_change()` | `zephyr_kernel_os_impl.h`（`z_tx_mutex_timed_out()`、`z_os_mutex_unlock()`） | 待ち手のタイムアウトで持ち主の優先度を戻す。持ち主の確認 |
 | `tx_semaphore_count`、`tx_semaphore_suspended_count` への直接の読み書き | `common/drivers/i2c_dw/port/threadx/i2c_dw_os_impl.h` | `k_sem_reset()`、カーネルの前の 2 回目の初期化（ThreadX に数を書くサービスは無い）、待ち手が 2 つ以上のときの並べ替え |
 | `_tx_thread_created_ptr`、`_tx_thread_created_count` | `commands_os_impl.h`（`ps`） | スレッドの一覧（割り込みを止めて読む） |
-| `_tx_initialize_kernel_setup()` | `src/main_os_impl.h` | スケジューラーの前にオブジェクトとスレッドを作る |
+| `_tx_initialize_kernel_setup()` | `src/main.c` | スケジューラーの前にオブジェクトとスレッドを作る |
 | `_tx_timer_interrupt()`、`_tx_initialize_unused_memory`、`_tx_thread_system_stack_ptr`、`__tx_PendSVHandler`・`__tx_SVCallHandler` | `src/tick.c`、`src/tx_initialize_low_level.c`、`threadx_kernel.cmake` | ポートの tick とハンドラー（ポートの例の `tx_initialize_low_level.S` がするのと同じ） |
 | `_tx_execution_idle_time_total`、`tx_low_power_enter()`・`_exit()` | `src/run_time.c`、`src/idle_os.h` | キットのアイドルの時間、スケジューラーの待ちのフック（どちらも ThreadX のヘッダーに宣言が無い） |
 

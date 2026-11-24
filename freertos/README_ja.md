@@ -160,7 +160,7 @@ USB の CDC ACM ポートがコンソールです（UART0 は使いません）�
 
 | 場所 | 内容 |
 |---|---|
-| `app/usb-console/` | アプリの FreeRTOS の部分: カーネルの設定（`FreeRTOSConfig.h`）、tick、優先度、起動・異常停止・`ps` の FreeRTOS の部分（起動の順、コマンド、アイドル、異常停止の本体は `../common/pico_sdk/app/usb-console/`） |
+| `app/usb-console/` | アプリの FreeRTOS の部分: 入口の `main()`（`src/main.c`）、カーネルの設定（`FreeRTOSConfig.h`）、tick、優先度、異常停止・`ps` の FreeRTOS の部分（`main()` が呼ぶ起動の各段階、コマンド、アイドル、異常停止の本体は `../common/pico_sdk/app/usb-console/`） |
 | `drivers/compat/` | Zephyr 互換層の FreeRTOS の部分（共有ソース `common/` を動かす） |
 | `../common/pico_sdk/` | Pico SDK の上の OS で共有する部分: コンソールの USB シリアルと標準出力、KV のフラッシュ、GPIO、各ドライバーをビルドに入れる cmake、RAM に置くコードの一覧 |
 | `../common/drivers/<ドライバー>/port/` | ドライバーのつなぎ: `pico_sdk/`（SPI・DMA・ピン・デバイスの定義）と `freertos/`（待ちとロック） |

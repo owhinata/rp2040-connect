@@ -48,7 +48,7 @@
 # The application calls zephyr_net_initialize(), wifi_credentials_init() and
 # wifi_shell_init() in its task "main", starts the threads with
 # K_THREAD_DEFINE_START() and calls wifi_profile_init() after
-# kv_store_init(), in the order of the Zephyr build's boot (see main.c).
+# kv_store_init(), in the order of the Zephyr build's boot (see usb_console.c).
 #
 # Each shared source is compiled with the prelude of the shared sources
 # (common_prelude.h), as in compat.cmake.  The copy of Zephyr's

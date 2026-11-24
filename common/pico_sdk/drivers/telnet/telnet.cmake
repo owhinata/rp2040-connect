@@ -11,7 +11,7 @@
 # shell engine, whose include directory has shell_telnet.h; the NINA's
 # sockets).  The application calls shell_telnet_init() in its task "main"
 # once the NINA's interface is set up and before the threads that use the
-# network start (see main.c).
+# network start (see usb_console.c).
 
 function(pico_sdk_telnet target)
   target_sources(${target} PRIVATE

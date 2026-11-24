@@ -14,13 +14,14 @@
  */
 int idle_ps_window(uint64_t *total_us);
 
-/* The LED (GPIO6), off, for the idle pass's blink (idle.c): from main()
- * before the scheduler starts.
+/* The LED (GPIO6), off, for the idle pass's blink (idle.c): from
+ * usb_console_shell_start(), before the scheduler starts.
  */
 void idle_led_init(void);
 
 /* The interrupt stack (the main stack, irq_stack.c): paint it first in
- * main(), then read its lowest address, size and high-water mark in bytes.
+ * usb_console_early_init(), then read its lowest address, size and
+ * high-water mark in bytes.
  */
 void irq_stack_paint(void);
 uintptr_t irq_stack_base(void);

@@ -12,8 +12,8 @@
 #                              the include path (FreeRTOSConfig.h on
 #                              FreeRTOS, priorities_os.h, the OS's parts of the
 #                              application's boundaries: idle_os.h,
-#                              fault_os_impl.h, main_os_impl.h,
-#                              commands_os_impl.h, kernel_shell_os_impl.h)
+#                              fault_os_impl.h, commands_os_impl.h,
+#                              kernel_shell_os_impl.h)
 #   PICO_SDK_OS_LIBRARIES      the OS's libraries (FreeRTOS-Kernel; none for
 #                              ThreadX), linked after the SDK's
 #   PICO_SDK_USB_PRODUCT       the USB product string, the name under
@@ -24,8 +24,9 @@
 #                              (ram_code.cmake)
 #
 # then include()s this file, adds the executable with its sources
-# (add_executable(): the shared ones of src/ here, PICO_SDK_APP_DIR, with
-# the OS's own, in the order of the link) and calls
+# (add_executable(): its own main() first, which calls the shared start of
+# src/usb_console.h, then the shared ones of src/ here, PICO_SDK_APP_DIR,
+# with the OS's own, in the order of the link) and calls
 #
 #   pico_sdk_usb_console(<target>)
 #
@@ -100,13 +101,13 @@ function(pico_sdk_usb_console target)
   pico_sdk_ram_code(${target})
 
   # The stack of the start-up thread "main" in SCRATCH_X, which only core 1's
-  # stack would use (ld/section_extra_post_scratch.incl, main_os.h).
+  # stack would use (ld/section_extra_post_scratch.incl, the OS's main.c).
   pico_add_linker_script_override_path(${target} ${PICO_SDK_APP_DIR}/ld
     FILES section_extra_post_scratch.incl
   )
 
   # The OS's directories (PICO_SDK_OS_APP_DIRS); src/ here (app.h, fault.h,
-  # the application's boundaries main_os.h, fault_os.h, commands_os.h);
+  # usb_console.h, the application's boundaries fault_os.h, commands_os.h);
   # priorities.h and cpu_load.h (common/compat); fault_record.h
   # (common/compat/log); the RP2040's code that no OS owns
   # (common/chip/rp2040/include: rp2040_timer_us.h; rp2040_flash_kv.h and

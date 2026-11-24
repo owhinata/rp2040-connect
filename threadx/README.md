@@ -83,7 +83,7 @@ The USB CDC ACM port is the console. A terminal shows the prompt `threadx:~$ `. 
 
 | Place | Content |
 |---|---|
-| `app/usb-console/` | The ThreadX part of the application: the kernel configuration (`tx_user.h`), the tick, the priorities, the ThreadX parts of the start, the fatal errors and `ps` |
+| `app/usb-console/` | The ThreadX part of the application: the entry `main()` (`src/main.c`), the kernel configuration (`tx_user.h`), the tick, the priorities, the ThreadX parts of the fatal errors and `ps` |
 | `drivers/compat/` | The ThreadX part of the Zephyr compatibility layer (runs the shared sources of `common/`) |
 | `drivers/pico_sdk_interop/` | Ties the Pico SDK's locks and waits to ThreadX's threads |
 | `../common/pico_sdk/` | What the builds on the Pico SDK share (the same as the FreeRTOS build) |
